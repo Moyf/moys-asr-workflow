@@ -26,3 +26,12 @@ __pycache__/
 node_modules/
 playwright-report/
 test-results/
+
+# Local Windows GUI packaging outputs. Keep generated executables local.
+/build/
+/dist/
+/dist/MAW/MAW.exe
+*.exe
+*.spec.bak
+!MAW.spec
+.playwright-mcp/

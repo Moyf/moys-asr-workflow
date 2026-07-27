@@ -1,0 +1,108 @@
+name: Release Windows GUI
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows x64 bundle
+    runs-on: windows-2022
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Verify tag matches pyproject version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PyProject = Get-Content -LiteralPath 'pyproject.toml' -Raw
+          if ($PyProject -notmatch '(?m)^version = "(?<version>[^"]+)"$') {
+            throw 'Could not read project.version from pyproject.toml.'
+          }
+          $ExpectedTag = "v$($Matches.version)"
+          if ('${{ github.ref_name }}' -ne $ExpectedTag) {
+            throw "Tag ${{ github.ref_name }} does not match pyproject version $ExpectedTag."
+          }
+
+      - name: Install locked dependencies
+        run: uv sync --group build --frozen
+
+      - name: Run packaging contract tests
+        run: uv run python -m unittest tests/test_packaging_contract.py
+
+      - name: Run Python tests
+        run: uv run python -m unittest discover -s tests -p "test_*.py"
+
+      - name: Build MAW GUI bundle
+        shell: pwsh
+        run: .\scripts\build-windows.ps1 -SkipTests
+
+      - name: Smoke MAW executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ExePath = 'dist\MAW\MAW.exe'
+          if (-not (Test-Path -LiteralPath $ExePath -PathType Leaf)) {
+            throw 'Missing dist\MAW\MAW.exe after build.'
+          }
+          $HelpProcess = Start-Process -FilePath $ExePath -ArgumentList '--help' -PassThru -WindowStyle Hidden
+          if ($HelpProcess.WaitForExit(10000)) {
+            if ($HelpProcess.ExitCode -eq 0) {
+              exit 0
+            }
+          } else {
+            Stop-Process -Id $HelpProcess.Id -Force
+          }
+          $GuiProcess = Start-Process -FilePath $ExePath -PassThru -WindowStyle Hidden
+          if ($GuiProcess.WaitForExit(5000)) {
+            if ($GuiProcess.ExitCode -ne 0) {
+              throw "MAW.exe launch smoke exited with $($GuiProcess.ExitCode)."
+            }
+          } else {
+            Stop-Process -Id $GuiProcess.Id -Force
+          }
+
+      - name: Create release archive and checksum
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Version = '${{ github.ref_name }}'
+          $Archive = "MAW-Windows-x64-$Version.zip"
+          Compress-Archive -LiteralPath 'dist\MAW' -DestinationPath $Archive -Force
+          $Hash = Get-FileHash -Algorithm SHA256 -LiteralPath $Archive
+          "$($Hash.Hash)  $Archive" | Set-Content -LiteralPath "$Archive.sha256" -Encoding ascii
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MAW-Windows-x64-${{ github.ref_name }}
+          path: |
+            MAW-Windows-x64-${{ github.ref_name }}.zip
+            MAW-Windows-x64-${{ github.ref_name }}.zip.sha256
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          files: |
+            MAW-Windows-x64-${{ github.ref_name }}.zip
+            MAW-Windows-x64-${{ github.ref_name }}.zip.sha256
