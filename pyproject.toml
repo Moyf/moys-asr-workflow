@@ -11,17 +11,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# CPU 版（默认）：torch 从 PyPI 安装，无 CUDA 加速
 local = [
     "qwen-asr",
     "modelscope",
     "faster-whisper",
     "torch>=2.0",
 ]
-# CUDA 版：torch 从 PyTorch CUDA 索引安装
-# 安装方式：
-#   uv sync --extra local-cuda
-#   uv pip install torch --index-url https://download.pytorch.org/whl/cu124
 local-cuda = [
     "qwen-asr",
     "modelscope",
@@ -29,10 +24,14 @@ local-cuda = [
     "torch>=2.0",
 ]
 
-# PyTorch CUDA 索引注册（供参考，默认不激活）
-# [[tool.uv.index]]
-# name = "pytorch-cu124"
-# url = "https://download.pytorch.org/whl/cu124"
+# 默认使用 PyTorch CUDA 索引（CUDA 版 torch 兼容 CPU）
+# 无 NVIDIA GPU 时 torch 自动回退 CPU，无需额外配置
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
 
 [tool.commitizen]
 name = "cz_conventional_contributors"
