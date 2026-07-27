@@ -219,6 +219,10 @@ function applyHistoryRecord(record) {
   }
   DATA.segments.length = 0;
   record.segs.forEach(s => DATA.segments.push(s));
+  // 历史恢复会改变下标身份；丢弃旧面板绑定，避免 clearSelection() 把旧面板
+  // 内容提交到恢复后占据同一下标的另一条字幕，并因此生成新历史、清空 redo。
+  currentCuePanelIdx = -1;
+  cuePanelUndoPushed = false;
   clearSelection();
   lastActive = -1;
   renderAll();
