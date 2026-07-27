@@ -41,6 +41,10 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("name='MAW'", spec)
         self.assertIn("console=False", spec)
         self.assertIn("upx=False", spec)
+        self.assertIn("collect_data_files(\"sv_ttk\")", spec)
+        self.assertIn("assets", spec)
+        self.assertIn("maw.ico", spec)
+        self.assertIn("icon=str(ROOT / 'assets' / 'maw.ico')", spec)
         self.assertIn("COLLECT(", spec)
         self.assertNotIn("onefile=True", spec)
         for bundled_path in ("web", "server-editor", "LICENSE", "THIRD_PARTY_NOTICES.md"):

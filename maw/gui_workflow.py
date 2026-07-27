@@ -16,6 +16,8 @@ from pathlib import Path
 from threading import Event
 from typing import TextIO, final
 
+from maw.gui_config import DEFAULT_MODEL_ID
+
 
 @dataclass(frozen=True, slots=True)
 class OutputPaths:
@@ -28,10 +30,12 @@ class OutputPaths:
 class TranscriptionRequest:
     media_path: Path
     srt_path: Path
+    model: str = DEFAULT_MODEL_ID
     language: str = ""
     api_key: str = ""
     length_limit: str = ""
     region: str = ""
+    workspace_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,9 +102,29 @@ def build_transcribe_command(
     command = [exe, "--transcribe"] if is_frozen else [exe, str(script)]
     command.append(str(request.media_path))
     command.extend(["--output", str(build_output_paths(request.srt_path).srt), "--json", "--no-html"])
+    _append_option(command, "--model", request.model or DEFAULT_MODEL_ID)
     _append_option(command, "--language", request.language)
     _append_option(command, "--length-limit", request.length_limit)
     _append_option(command, "--region", request.region)
+    return command
+
+
+def build_serve_command(
+    json_path: Path,
+    media_path: Path | None,
+    port: int,
+    *,
+    executable: Path | str | None = None,
+    frozen: bool | None = None,
+) -> list[str]:
+    exe = str(executable or sys.executable)
+    is_frozen = bool(getattr(sys, "frozen", False) if frozen is None else frozen)
+    script = Path(__file__).resolve().parents[1] / "server-editor" / "serve.py"
+    command = [exe, "--serve"] if is_frozen else [exe, str(script)]
+    command.append(str(json_path))
+    if media_path:
+        command.extend(["-m", str(media_path)])
+    command.extend(["--port", str(port)])
     return command
 
 
@@ -116,7 +140,7 @@ def run_transcription(
         raise TranscriptionCancelledError
     paths = build_output_paths(request.srt_path)
     paths.srt.parent.mkdir(parents=True, exist_ok=True)
-    env = _child_environment(os.environ, request.api_key)
+    env = _child_environment(os.environ, request.api_key, request.workspace_id)
     command = build_transcribe_command(request, executable=executable, frozen=frozen)
     process = subprocess.Popen(
         command,
@@ -198,10 +222,12 @@ def _read_process_lines(stdout: TextIO | None, lines: queue.Queue[str | None]) -
     lines.put(None)
 
 
-def _child_environment(parent: Mapping[str, str], api_key: str) -> dict[str, str]:
+def _child_environment(parent: Mapping[str, str], api_key: str, workspace_id: str = "") -> dict[str, str]:
     env = dict(parent)
     if api_key:
         env["DASHSCOPE_API_KEY"] = api_key
+    if workspace_id:
+        env["DASHSCOPE_WORKSPACE_ID"] = workspace_id
     return env
 
 

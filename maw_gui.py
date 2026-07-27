@@ -1,10 +1,12 @@
-# pyright: reportAny=false, reportUnusedCallResult=false
+# pyright: reportAny=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false
 
 from __future__ import annotations
 
 import argparse
+import importlib
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -12,6 +14,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--smoke-import", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
         "--transcribe",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--serve",
         action="store_true",
         help=argparse.SUPPRESS,
     )
@@ -24,6 +31,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if args.transcribe:
         return _run_internal_transcribe(rest)
+    if args.serve:
+        return _run_internal_serve(rest)
     from maw.gui import run_app
 
     run_app()
@@ -37,6 +46,21 @@ def _run_internal_transcribe(argv: Sequence[str]) -> int:
     try:
         sys.argv = ["generate_subtitle_qwen_api.py", *argv]
         result = generate_subtitle_qwen_api.main()
+    finally:
+        sys.argv = old_argv
+    return 0 if result is None else int(result)
+
+
+def _run_internal_serve(argv: Sequence[str]) -> int:
+    server_dir = Path(__file__).resolve().parent / "server-editor"
+    if str(server_dir) not in sys.path:
+        sys.path.insert(0, str(server_dir))
+    serve = importlib.import_module("serve")
+
+    old_argv = sys.argv[:]
+    try:
+        sys.argv = ["serve.py", *argv]
+        result = serve.main()
     finally:
         sys.argv = old_argv
     return 0 if result is None else int(result)

@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT))
 
 from maw.gui_workflow import (  # noqa: E402
     TranscriptionRequest,
+    build_serve_command,
     build_output_paths,
     build_transcribe_command,
     run_transcription,
@@ -44,6 +45,7 @@ class GuiWorkflowTests(unittest.TestCase):
         request = TranscriptionRequest(
             media_path=self.media_path,
             srt_path=self.srt_path,
+            model="qwen3-asr-flash-filetrans",
             language="zh",
             api_key="secret-key",
         )
@@ -56,6 +58,7 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertIn("--json", command)
         self.assertIn("--no-html", command)
         self.assertEqual(command[command.index("--output") + 1], str(self.srt_path))
+        self.assertEqual(command[command.index("--model") + 1], "qwen3-asr-flash-filetrans")
         self.assertEqual(command[command.index("--language") + 1], "zh")
         self.assertNotIn("secret-key", " ".join(command))
 
@@ -73,6 +76,7 @@ class GuiWorkflowTests(unittest.TestCase):
             media_path=self.media_path,
             srt_path=self.srt_path,
             api_key="secret-key",
+            workspace_id="workspace-123",
         )
         self.srt_path.write_text("1\n", encoding="utf-8")
         self.srt_path.with_suffix(".json").write_text('{"segments": []}\n', encoding="utf-8")
@@ -94,6 +98,7 @@ class GuiWorkflowTests(unittest.TestCase):
 
         kwargs = popen.call_args.kwargs
         self.assertEqual(kwargs["env"]["DASHSCOPE_API_KEY"], "secret-key")
+        self.assertEqual(kwargs["env"]["DASHSCOPE_WORKSPACE_ID"], "workspace-123")
         self.assertNotEqual(os.environ.get("DASHSCOPE_API_KEY"), "secret-key")
         self.assertEqual(events, ["started", "done"])
         self.assertEqual(result.srt_path, self.srt_path)
@@ -184,6 +189,33 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertFalse(ignored_cancellation, "quiet subprocess ignored cancellation")
         self.assertEqual(len(outcome), 1)
         self.assertIn("cancelled", str(outcome[0]).lower())
+
+    def test_build_serve_command_source_mode_uses_server_script(self) -> None:
+        project_path = self.root / "project.json"
+        media_path = self.root / "clip.mp4"
+
+        command = build_serve_command(
+            project_path,
+            media_path,
+            9876,
+            executable=Path("python.exe"),
+            frozen=False,
+        )
+
+        self.assertEqual(command[0], "python.exe")
+        self.assertIn("serve.py", command[1])
+        self.assertEqual(command[2], str(project_path))
+        self.assertEqual(command[command.index("-m") + 1], str(media_path))
+        self.assertEqual(command[command.index("--port") + 1], "9876")
+
+    def test_build_serve_command_frozen_mode_dispatches_same_executable(self) -> None:
+        project_path = self.root / "project.json"
+
+        command = build_serve_command(project_path, None, 8765, executable=Path("MAW.exe"), frozen=True)
+
+        self.assertEqual(command[:3], ["MAW.exe", "--serve", str(project_path)])
+        self.assertNotIn("-m", command)
+        self.assertEqual(command[command.index("--port") + 1], "8765")
 
     def test_entrypoint_smoke_import_argument_does_not_open_window(self) -> None:
         import maw_gui

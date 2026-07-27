@@ -6,6 +6,7 @@
 |---|---|---|
 | [requests](https://requests.readthedocs.io/) | HTTP requests to the ASR API | Apache-2.0 |
 | [jieba](https://github.com/fxsjy/jieba) | Chinese subtitle segmentation | MIT |
+| [sv-ttk](https://github.com/rdbende/Sun-Valley-ttk-theme) | Sun Valley themed ttk widgets for the desktop GUI | MIT |
 | [PyInstaller](https://pyinstaller.org/) | Build the optional Windows application bundle | GPL-2.0-or-later with a bootloader exception that permits distributing bundled applications |
 | [Python](https://www.python.org/) | Runtime embedded in the optional Windows application bundle | Python Software Foundation License |
 | [FFmpeg](https://ffmpeg.org/) | Inspect media, extract audio, and build waveform peaks | Not bundled; the license depends on the build you install |

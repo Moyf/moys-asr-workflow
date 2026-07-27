@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_data_files
+
 
 ROOT = Path(SPECPATH).resolve()
 
@@ -11,7 +13,9 @@ datas = [
     (str(ROOT / "LICENSE"), "."),
     (str(ROOT / "THIRD_PARTY_NOTICES.md"), "."),
     (str(ROOT / "blank-editor.html"), "."),
+    (str(ROOT / "assets" / "maw.ico"), "assets"),
 ]
+datas += collect_data_files("sv_ttk")
 
 excluded_runtime_paths = [
     ".env",
@@ -48,6 +52,7 @@ a = Analysis(
         "generate_subtitle_qwen_api",
         "serve",
         "maw.gui",
+        "maw.gui_config",
         "maw.gui_workflow",
         "maw.project",
     ],
@@ -76,6 +81,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(ROOT / 'assets' / 'maw.ico'),
 )
 coll = COLLECT(
     exe,

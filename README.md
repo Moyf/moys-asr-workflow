@@ -32,7 +32,9 @@
 
 ### Windows 图形界面
 
-从 GitHub Releases 下载 `MAW-Windows-x64-v*.zip`，解压后双击 `MAW.exe`。选择媒体与 SRT 输出位置，填写 Qwen API Key，即可在窗口中生成 SRT、JSON 工程和便携编辑器 HTML。Key 只传给本次转写子进程，不会写入工程文件。
+从 GitHub Releases 下载 `MAW-Windows-x64-v*.zip`，解压后双击 `MAW.exe`。选择媒体与 SRT 输出位置，确认模型、地域、语言和可选时长上限，填写 Qwen API Key，即可在窗口中生成 SRT、JSON 工程和便携编辑器 HTML。需要复用 Key 时，可点“保存到 .env”；密钥只保存在本机 `.env`，不会写入工程文件或日志。
+
+GUI 还可以直接选择工程 JSON 并启动 `http://127.0.0.1` 本地编辑器服务器；中英文界面可在右上角切换。
 
 图形版仍要求系统能找到 `ffmpeg` 和 `ffprobe`；本项目不会捆绑或自动安装它们。程序无法检测媒体时，请安装 FFmpeg 并把它的 `bin` 目录加入 PATH，然后重新打开 MAW。
 

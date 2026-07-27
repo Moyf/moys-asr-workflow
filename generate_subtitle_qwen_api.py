@@ -1,3 +1,5 @@
+# pyright: reportAny=false, reportAttributeAccessIssue=false, reportMissingParameterType=false, reportMissingTypeArgument=false, reportMissingTypeStubs=false, reportReturnType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false, reportUnusedCallResult=false, reportUnusedVariable=false, reportImplicitStringConcatenation=false, reportArgumentType=false, reportIndexIssue=false
+
 """使用阿里云 qwen3-asr-flash-filetrans API 生成视频字幕（云端版）。
 
 特点：
@@ -423,7 +425,7 @@ def upload_to_oss(policy: dict, file_path: str) -> str:
 
 def submit_filetrans(base_url: str, api_key: str, file_url: str,
                      language: str | None, enable_words: bool,
-                     enable_itn: bool) -> str:
+                     enable_itn: bool, model: str = FILETRANS_MODEL) -> str:
     """提交异步 ASR 任务，返回 task_id。"""
     params: dict = {
         "channel_id": [0],
@@ -443,7 +445,7 @@ def submit_filetrans(base_url: str, api_key: str, file_url: str,
             "X-DashScope-OssResourceResolve": "enable",
         },
         json={
-            "model": FILETRANS_MODEL,
+            "model": model,
             "input": {"file_url": file_url},
             "parameters": params,
         },
@@ -558,7 +560,8 @@ def parse_transcription_result(result: dict) -> dict:
 # ===== 顶层转写入口 =====
 
 def transcribe(audio_path: str, language: str | None, hotwords: list[str],
-               config: dict, file_url_override: str | None = None) -> dict:
+               config: dict, file_url_override: str | None = None,
+               model: str = FILETRANS_MODEL) -> dict:
     """调 DashScope filetrans API 做转录。
 
     返回可由本项目编辑器读取的工程数据：
@@ -582,8 +585,8 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
         file_url = file_url_override
         print(f"[filetrans] 使用用户提供的 URL: {file_url}")
     else:
-        print(f"[upload] 获取上传凭证 ({FILETRANS_MODEL})...")
-        policy = get_upload_policy(base_url, api_key, FILETRANS_MODEL)
+        print(f"[upload] 获取上传凭证 ({model})...")
+        policy = get_upload_policy(base_url, api_key, model)
         file_url = upload_to_oss(policy, audio_path)
         print(f"[upload] 上传完成: {file_url}")
 
@@ -596,6 +599,7 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
         language=norm_lang,
         enable_words=config["enable_words"],
         enable_itn=config["enable_itn"],
+        model=model,
     )
     print(f"[filetrans] 任务已提交: task_id={task_id}")
 
@@ -672,6 +676,10 @@ def main():
         help="覆盖 .env 的 DASHSCOPE_REGION（beijing / singapore）",
     )
     parser.add_argument(
+        "--model", default=FILETRANS_MODEL,
+        help=f"覆盖 ASR 模型（默认 {FILETRANS_MODEL}）",
+    )
+    parser.add_argument(
         "--debug", action="store_true",
         help="输出 API 原始结果用于调试",
     )
@@ -734,6 +742,7 @@ def main():
         result = transcribe(
             audio_path, args.language, hotwords, config,
             file_url_override=args.file_url,
+            model=args.model,
         )
         elapsed = time.perf_counter() - t0
 
