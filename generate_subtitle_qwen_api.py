@@ -33,6 +33,7 @@ from edit import get_default_sticker_dir
 # ===== 路径与常量 =====
 
 HOTWORDS_FILE = Path(__file__).parent / "hotwords.txt"
+HOTWORDS_EXAMPLE_FILE = Path(__file__).parent / "hotwords.example.txt"
 ENV_FILE = Path(__file__).parent / ".env"
 
 FILETRANS_MODEL = "qwen3-asr-flash-filetrans"
@@ -110,212 +111,28 @@ def _normalize_language(lang: str | None) -> str | None:
     return LANGUAGE_MAP.get(key, key)
 
 
-# ===== ffmpeg 工具函数（与本地版一致） =====
+# ===== ffmpeg 工具函数（由 maw.utils 提供） =====
 
-def extract_audio(video_path: str, output_path: str) -> None:
-    cmd = [
-        "ffmpeg", "-i", video_path,
-        "-vn", "-acodec", "pcm_s16le",
-        "-ar", "16000", "-ac", "1",
-        "-y", output_path,
-    ]
-    print(f"[ffmpeg] 正在提取音频: {video_path}")
-    subprocess.run(cmd, check=True, capture_output=True)
-    print("[ffmpeg] 音频提取完成")
-
-
-def get_duration_sec(filepath: str) -> float:
-    cmd = [
-        "ffprobe", "-v", "quiet",
-        "-show_entries", "format=duration",
-        "-of", "csv=p=0", filepath,
-    ]
-    out = subprocess.run(cmd, check=True, capture_output=True, text=True)
-    return float(out.stdout.strip())
-
-
-def _parse_duration(value: str) -> float:
-    """解析时长字符串，支持 h/m/s 后缀。"""
-    value = value.strip().lower()
-    m = _re.fullmatch(r'([\d.]+)\s*(h|m|s)?', value)
-    if not m:
-        raise argparse.ArgumentTypeError(f"无法解析时长: '{value}'，示例: 10m, 20s, 1h, 90")
-    num = float(m.group(1))
-    unit = m.group(2)
-    if unit == 'h':
-        return num * 3600
-    elif unit == 'm':
-        return num * 60
-    return num
+from maw.utils import (
+    extract_audio, get_duration_sec, format_timestamp,
+    generate_srt, split_words_to_segments,
+    parse_duration as _parse_duration,
+)
 
 
 def load_hotwords() -> list[str]:
-    """从 hotwords.txt 读取热词列表，忽略注释行和空行。"""
-    if not HOTWORDS_FILE.exists():
+    """从 hotwords.txt 读取热词列表（不存在则回退 hotwords.example.txt）。"""
+    p = HOTWORDS_FILE if HOTWORDS_FILE.exists() else HOTWORDS_EXAMPLE_FILE
+    if not p.exists():
         return []
     words = []
-    for line in HOTWORDS_FILE.read_text(encoding="utf-8").splitlines():
+    for line in p.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if line and not line.startswith("#"):
             words.append(line)
     return words
 
 
-# ===== SRT / 时间戳工具（与本地版一致） =====
-
-def format_timestamp(ms: int) -> str:
-    h = ms // 3_600_000
-    ms %= 3_600_000
-    m = ms // 60_000
-    ms %= 60_000
-    s = ms // 1_000
-    ms %= 1_000
-    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
-
-
-def generate_srt(segments: list[dict]) -> str:
-    lines = []
-    for i, seg in enumerate(segments, 1):
-        start = format_timestamp(seg["start"])
-        end = format_timestamp(seg["end"])
-        text = seg["text"].strip()
-        lines.append(f"{i}\n{start} --> {end}\n{text}\n")
-    return "\n".join(lines)
-
-
-# ===== 切句逻辑（与本地版 _split_words_to_segments 一致，纯 Python 复制） =====
-
-def _split_by_silence(items: list[dict], min_gap_ms: int) -> list[list[dict]]:
-    """按相邻 item 之间的静音间隔切分。"""
-    if not items or min_gap_ms <= 0:
-        return [items] if items else []
-    groups: list[list[dict]] = []
-    cur: list[dict] = [items[0]]
-    for prev, nxt in zip(items, items[1:]):
-        gap = nxt["start"] - prev["end"]
-        if gap >= min_gap_ms:
-            groups.append(cur)
-            cur = []
-        cur.append(nxt)
-    if cur:
-        groups.append(cur)
-    return groups
-
-
-def _split_long_group(items: list[dict], max_len: int, weak_punct: set) -> list[list[dict]]:
-    text_total = "".join(it["text"] for it in items)
-    if len(text_total) <= max_len:
-        return [items]
-
-    # 优先按弱标点拆
-    cum_len = 0
-    punct_idx = None
-    for i, it in enumerate(items):
-        cum_len += len(it["text"])
-        if cum_len > max_len:
-            break
-        if any(c in weak_punct for c in it["text"]):
-            punct_idx = i + 1
-
-    if punct_idx is not None and punct_idx < len(items):
-        return _split_long_group(items[:punct_idx], max_len, weak_punct) + \
-               _split_long_group(items[punct_idx:], max_len, weak_punct)
-
-    # 用 jieba 分词找断点
-    try:
-        import jieba
-        words = list(jieba.cut(text_total))
-    except ImportError:
-        words = list(text_total)  # 无 jieba 则按字硬切
-    boundaries = []
-    pos = 0
-    for w in words:
-        pos += len(w)
-        boundaries.append(pos)
-
-    best_char_pos = None
-    for b in boundaries:
-        if 0 < b <= max_len:
-            if best_char_pos is None or abs(b - max_len) < abs(best_char_pos - max_len):
-                best_char_pos = b
-
-    if best_char_pos is not None and best_char_pos < len(text_total):
-        cum_len = 0
-        split_idx = None
-        for i, it in enumerate(items):
-            cum_len += len(it["text"])
-            if cum_len >= best_char_pos:
-                split_idx = i + 1
-                break
-        if split_idx is not None and 0 < split_idx < len(items):
-            return _split_long_group(items[:split_idx], max_len, weak_punct) + \
-                   _split_long_group(items[split_idx:], max_len, weak_punct)
-
-    # 兜底：按 max_len 字符硬切
-    cum_len = 0
-    for i, it in enumerate(items):
-        cum_len += len(it["text"])
-        if cum_len >= max_len:
-            return [items[:i + 1]] + _split_long_group(items[i + 1:], max_len, weak_punct)
-    return [items]
-
-
-def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
-                             gap_split_ms: int = 1000) -> list[dict]:
-    """把字/词级 timestamps 合并成句子级字幕。
-
-    切分策略（与本地版一致）：
-    0. 按静音间隔（>= gap_split_ms）预切
-    1. 每个静音组内按强标点（。！？；\\n）继续切句
-    2. 合并过短片段（< min_len 字符）
-    3. 对超长片段，按弱标点（，、：,;）拆分
-    4. 没有弱标点时，用 jieba 分词找最佳断点
-    """
-    STRONG_PUNCT = set("。！？；\n")
-    WEAK_PUNCT = set("，、：,;")
-
-    def to_seg(group):
-        text = "".join(it["text"] for it in group)
-        return {
-            "start": group[0]["start"],
-            "end": group[-1]["end"],
-            "text": text,
-            "items": [dict(it) for it in group],
-        }
-
-    final: list[list[dict]] = []
-    silence_groups = _split_by_silence(items, gap_split_ms)
-
-    for sg in silence_groups:
-        raw_groups: list[list[dict]] = []
-        buf: list[dict] = []
-        for it in sg:
-            buf.append(it)
-            if any(c in STRONG_PUNCT for c in it["text"]):
-                raw_groups.append(buf)
-                buf = []
-        if buf:
-            raw_groups.append(buf)
-
-        merged: list[list[dict]] = []
-        for grp in raw_groups:
-            seg_text = "".join(it["text"] for it in grp)
-            if merged and len(seg_text) < min_len:
-                merged[-1].extend(grp)
-            else:
-                merged.append(list(grp))
-        if len(merged) >= 2:
-            last_text = "".join(it["text"] for it in merged[-1])
-            if len(last_text) < min_len:
-                merged[-2].extend(merged.pop())
-
-        for grp in merged:
-            final.extend(_split_long_group(grp, max_len, WEAK_PUNCT))
-
-    return [to_seg(g) for g in final if g]
-
-
-# ===== DashScope filetrans API 调用 =====
 
 def get_upload_policy(base_url: str, api_key: str, model: str) -> dict:
     """获取 DashScope 临时 OSS 上传凭证。"""

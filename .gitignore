@@ -20,9 +20,9 @@ __pycache__/
 *.m4a
 *.flac
 *.srt
-/.omo
 
-# Dev-only browser test tooling (Playwright)
+# Shared dev / build tooling (Playwright, PyInstaller)
+/.omo
 node_modules/
 playwright-report/
 test-results/
@@ -35,3 +35,28 @@ test-results/
 *.spec.bak
 !MAW.spec
 .playwright-mcp/
+<<<<<<< HEAD
+=======
+
+# Uploaded media via Web Console
+uploads/
+
+# Console history
+.console-history.json
+
+# Runtime results (auto-generated during transcription)
+results/
+
+# Local model weights (download manually, several GB each)
+models/
+!models/.gitkeep
+
+# 实际热词文件（运行时生成，不入库）
+/hotwords.txt
+
+# Pip freeze 导出（依赖已在 pyproject.toml 中记录）
+requirements.txt
+requirements-local.txt
+
+# 开发者工具配置
+/.reasonix/

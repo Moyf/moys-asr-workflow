@@ -3,7 +3,7 @@ name = "moys-asr-workflow"
 version = "1.1.0"
 description = "A small Qwen ASR API to local subtitle-editor workflow."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 license = { text = "AGPL-3.0-only" }
 dependencies = [
     "jieba>=0.42",
@@ -15,3 +15,15 @@ dependencies = [
 build = [
     "pyinstaller==6.16.0",
 ]
+
+[project.optional-dependencies]
+local = [
+    "qwen-asr",
+    "modelscope",
+    "faster-whisper",
+    "torch>=2.0",
+    "send2trash>=1.8",
+]
+# CUDA 用户装完依赖后替换 torch：
+#   uv sync --extra local
+#   uv pip install torch --index-url https://download.pytorch.org/whl/cu124

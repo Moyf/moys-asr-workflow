@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MAW 控制台</title>
+<style>
+  :root {
+    --bg: #1a1d23;
+    --surface: #22262e;
+    --border: #363b44;
+    --text: #d1d5db;
+    --text-dim: #8892a0;
+    --accent: #4a9eff;
+    --accent-hover: #6bb0ff;
+    --green: #34d399;
+    --red: #f87171;
+    --yellow: #fbbf24;
+    --font: 'Segoe UI', system-ui, sans-serif;
+    --mono: 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .app { max-width: 920px; margin: 0 auto; }
+  h1 {
+    font-size: 22px; font-weight: 600; margin-bottom: 4px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  h1 small { font-size: 13px; font-weight: 400; color: var(--text-dim); }
+  .subtitle { color: var(--text-dim); font-size: 13px; margin-bottom: 24px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 14px; font-weight: 600; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .row { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .row:last-child { margin-bottom: 0; }
+  .field { flex: 1; min-width: 180px; }
+  .field label {
+    display: block; font-size: 12px; color: var(--text-dim);
+    margin-bottom: 4px; font-weight: 500;
+  }
+  input, select, textarea {
+    width: 100%; padding: 8px 10px;
+    background: #1a1d23; border: 1px solid var(--border);
+    border-radius: 5px; color: var(--text); font-size: 13px;
+    font-family: var(--font); outline: none;
+    transition: border-color .15s;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  textarea {
+    resize: vertical; min-height: 48px;
+    font-family: var(--mono); font-size: 12px;
+  }
+  .checkbox-row {
+    display: flex; align-items: center; gap: 8px; margin-right: 16px;
+  }
+  .checkbox-row input[type="checkbox"] { width: auto; accent-color: var(--accent); }
+  .checkbox-row label { font-size: 13px; cursor: pointer; }
+  .btn {
+    padding: 10px 24px; border: none; border-radius: 6px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: background .15s, opacity .15s;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-green { background: var(--green); color: #000; }
+  .btn-green:hover { background: #4ade80; }
+  .btn-outline {
+    background: transparent; border: 1px solid var(--border); color: var(--text);
+  }
+  .btn-outline:hover { border-color: var(--text-dim); }
+  .btn-sm { padding: 6px 14px; font-size: 12px; }
+  .log-box {
+    background: #111318; border: 1px solid var(--border);
+    border-radius: 6px; padding: 12px;
+    font-family: var(--mono); font-size: 12px; line-height: 1.6;
+    min-height: 120px; max-height: 400px; overflow-y: auto;
+    white-space: pre-wrap; word-break: break-all; color: #b4bcc8;
+  }
+  .log-box .info { color: var(--accent); }
+  .log-box .ok { color: var(--green); }
+  .log-box .err { color: var(--red); }
+  .log-box .warn { color: var(--yellow); }
+  .task-list { margin-top: 8px; max-height: 200px; overflow-y: auto; scrollbar-width: thin; }
+  .task-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px;
+  }
+  .task-item:last-child { border-bottom: none; }
+  .task-id { font-family: var(--mono); font-size: 12px; color: var(--text-dim); min-width: 70px; }
+  .task-status {
+    font-size: 12px; padding: 2px 8px; border-radius: 10px;
+    font-weight: 500; min-width: 60px; text-align: center;
+  }
+  .status-running { background: #1e3a5f; color: var(--accent); }
+  .status-done { background: #14532d; color: var(--green); }
+  .status-failed { background: #451a1a; color: var(--red); }
+  .status-cancelled { background: #422d0b; color: var(--yellow); }
+  .task-args { color: var(--text-dim); font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task-action { margin-left: auto; }
+  .spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid var(--accent); border-top-color: transparent;
+    border-radius: 50%; animation: spin .6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .flex { display: flex; align-items: center; gap: 8px; }
+  .gap { gap: 12px; }
+  .mt-8 { margin-top: 8px; }
+  .mt-16 { margin-top: 16px; }
+  .mb-8 { margin-bottom: 8px; }
+  .hidden { display: none !important; }
+  .file-input-row {
+    display: flex; gap: 6px;
+  }
+  .file-input-row input { flex: 1; }
+  .btn-browse {
+    padding: 8px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 5px; color: var(--text);
+    cursor: pointer; font-size: 13px; white-space: nowrap;
+    transition: border-color .15s;
+  }
+  .btn-browse:hover { border-color: var(--accent); }
+  .upload-hint { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .hw-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: #1a1d23; border: 1px solid var(--border);
+    border-radius: 4px; padding: 3px 8px; font-size: 12px;
+    margin: 3px 6px 3px 0;
+  }
+  .hw-chip:hover { border-color: var(--accent); }
+  .hw-chip .hw-text { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hw-chip .hw-edit { cursor: pointer; color: var(--text-dim); font-size: 11px; }
+  .hw-chip .hw-edit:hover { color: var(--accent); }
+  .hw-chip .hw-del { cursor: pointer; color: var(--red); font-weight: bold; font-size: 14px; line-height: 1; }
+  .hw-chip .hw-del:hover { color: #fca5a5; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <h1>🎙️ MAW 控制台 <small>Moy's ASR Workflow</small></h1>
+  <div class="subtitle">选择模型、配置参数、一键转写，完成后打开编辑器。</div>
+
+  <!-- 配置区 -->
+  <div class="card">
+    <div class="card-title">⚙️ 转写设置</div>
+
+    <div class="row">
+      <div class="field" style="flex:3">
+        <label>媒体文件路径</label>
+        <div class="file-input-row">
+          <input type="text" id="inputPath" placeholder="例如 D:\Videos\example.mp4">
+          <button class="btn-browse" id="btnBrowse" onclick="pickFile()">📁 选择文件</button>
+        </div>
+        <div class="upload-hint" id="uploadHint"></div>
+      </div>
+      <div class="field" style="min-width:140px;flex:0 0 auto;">
+        <label>识别模型</label>
+        <select id="modelSelect">
+          <option value="api">☁️ 云端 Qwen API</option>
+          <option value="local-0.6B" selected>💻 本地 Qwen3-ASR-0.6B</option>
+          <option value="local-1.7B">💻 本地 Qwen3-ASR-1.7B</option>
+          <option value="whisper">🧠 faster-whisper large-v3（GPU·英文）</option>
+        </select>
+        <div id="modelHint" style="font-size:11px;color:var(--text-dim);margin-top:4px;">
+          Qwen3-ASR：中文识别更准，支持字级时间戳 | faster-whisper：英文识别更佳，句子级时间戳
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:1px;">
+        <!-- API Key 按钮已删除（P0-2: .env 不应通过 HTTP 暴露） -->
+      </div>
+    </div>
+
+    <!-- 本地模型状态 -->
+    <div id="modelStatusRow" style="margin-top:4px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span id="modelStatusText" style="font-size:12px;color:var(--text-dim);">本地模型：未加载</span>
+      <button class="btn btn-sm btn-primary" id="btnLoadModel" onclick="loadModel()" style="display:none;">加载模型</button>
+      <button class="btn btn-sm btn-outline" id="btnUnloadQwen" onclick="unloadModel('qwen')" style="display:none;">卸载 Qwen</button>
+      <button class="btn btn-sm btn-outline" id="btnUnloadWhisper" onclick="unloadModel('whisper')" style="display:none;">卸载 Whisper</button>
+      <span id="modelSpinner" class="spinner hidden"></span>
+      <div class="checkbox-row" id="gpuCheckRow" style="display:none;">
+        <input type="checkbox" id="chkUseGpu" checked onchange="onGpuToggle()">
+        <label for="chkUseGpu">使用 CUDA</label>
+      </div>
+    </div>
+
+    <!-- 模型下载 -->
+    <div id="modelDownloadRow" style="margin-top:4px;margin-bottom:4px;display:none;flex-wrap:wrap;align-items:center;gap:6px;">
+      <span style="font-size:12px;color:var(--text-dim);">下载模型：</span>
+      <select id="downloadModelSelect" style="width:auto;font-size:12px;padding:4px 8px;">
+        <option value="qwen-0.6B">Qwen3-ASR-0.6B (~1.9GB)</option>
+        <option value="qwen-1.7B">Qwen3-ASR-1.7B (~4.2GB)</option>
+        <option value="aligner">Qwen3-ForcedAligner-0.6B (~1.8GB)</option>
+        <option value="faster-whisper">faster-whisper-large-v3 (~3.1GB, hf-mirror)</option>
+      </select>
+      <button class="btn btn-sm btn-primary" onclick="startDownload()" style="font-size:12px;">下载</button>
+      <button class="btn btn-sm btn-outline" id="btnCancelDownload" onclick="cancelDownload()" style="font-size:12px;display:none;color:var(--red);">取消</button>
+      <span id="downloadProgress" style="font-size:12px;color:var(--text-dim);"></span>
+      <button class="btn btn-sm btn-outline" onclick="refreshDownloadStatus()" style="font-size:12px;">🔄</button>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label>语言（留空自动识别）</label>
+        <select id="langSelect">
+          <option value="">自动识别</option>
+          <option value="Chinese">中文</option>
+          <option value="English">英文</option>
+          <option value="Cantonese">粤语</option>
+          <option value="Japanese">日语</option>
+          <option value="Korean">韩语</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>测试时长（-ll，例如 2m）</label>
+        <input type="text" id="lengthLimit" placeholder="留空则处理全部">
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label>热词（仅限 Qwen3-ASR 本地模型）</label>
+        <div style="display:flex;gap:6px;margin-bottom:8px;">
+          <input type="text" id="hotwordInput" placeholder="输入热词后点击添加" style="flex:1;" onkeydown="if(event.key==='Enter')addHotword()">
+          <button class="btn btn-sm btn-primary" onclick="addHotword()" style="white-space:nowrap;">＋ 添加</button>
+        </div>
+        <div id="hotwordList"></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="checkbox-row">
+        <input type="checkbox" id="chkKeepPunct">
+        <label for="chkKeepPunct">保留句末标点</label>
+      </div>
+    </div>
+
+    <div class="flex gap mt-8">
+      <button class="btn btn-primary" id="btnStart" onclick="startTranscribe()">▶ 开始转写</button>
+      <button class="btn btn-outline btn-sm hidden" id="btnCancel" onclick="cancelTask()">停止</button>
+      <button class="btn btn-green btn-sm" id="btnOpenEditor" onclick="openEditor()">📂 打开编辑器</button>
+    </div>
+  </div>
+
+  <!-- 输出 -->
+  <div class="card" id="logCard">
+    <div class="card-title">
+      <span>📋 输出日志</span>
+      <span id="taskIndicator" class="hidden"><span class="spinner"></span> 转写中...</span>
+    </div>
+    <div class="log-box" id="logBox">就绪。选择文件后点击"开始转写"。</div>
+  </div>
+
+  <!-- 任务历史 -->
+  <div class="card">
+    <div class="card-title">📜 最近任务
+      <button class="btn-browse" style="font-size:11px;padding:2px 10px;margin-left:auto;" onclick="refreshTaskList()">🔄</button>
+      <button class="btn-browse" style="font-size:11px;padding:2px 10px;color:var(--orange);" onclick="cleanUploads()">🗑️ 清理上传缓存</button>
+    </div>
+    <div class="task-list" id="taskList">
+      <div style="color:var(--text-dim);font-size:13px;">暂无任务</div>
+    </div>
+  </div>
+
+  <!-- 编辑器进程管理 -->
+  <div class="card">
+    <div class="card-title">🖥️ 编辑器进程 <span style="font-size:11px;font-weight:400;color:var(--text-dim);">（无窗口后台运行）</span>
+      <button class="btn-browse" style="font-size:11px;padding:2px 10px;margin-left:auto;" onclick="refreshEditors()">刷新</button>
+    </div>
+    <div class="task-list" id="editorList">
+      <div style="color:var(--text-dim);font-size:13px;">无运行中的编辑器</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 隐藏的文件选择器 -->
+<input type="file" id="filePicker" accept="video/*,audio/*,.mp4,.mkv,.avi,.mov,.wmv,.flv,.wav,.mp3,.m4a,.aac,.ogg,.flac" style="display:none">
+
+<script>
+// ========== 文件选择 ==========
+const filePicker = document.getElementById('filePicker');
+const inputPath = document.getElementById('inputPath');
+const uploadHint = document.getElementById('uploadHint');
+const btnBrowse = document.getElementById('btnBrowse');
+let isUploading = false;
+let _pendingFile = null;  // 浏览器不支持 file.path 时暂存文件对象，转写时再上传
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;  // 2GB，与服务器一致
+
+filePicker.addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const sizeMB = file.size / 1024 / 1024;
+  
+  // P1-7: 客户端侧文件大小校验，拒绝超大文件
+  if (file.size > MAX_UPLOAD_BYTES) {
+    uploadHint.textContent = '❌ 文件过大（超过 2GB 限制）';
+    filePicker.value = '';
+    return;
+  }
+  
+  // 支持完整路径 → 直接记录，转写时后端自动处理
+  if (file.path) {
+    inputPath.value = file.path;
+    uploadHint.textContent = '已选择: ' + file.name + ' (' + sizeMB.toFixed(1) + ' MB)';
+    _pendingFile = null;
+    return;
+  }
+
+  // 不支持完整路径 → 暂存文件对象，转写时统一上传
+  _pendingFile = file;
+  inputPath.value = file.name;
+  uploadHint.textContent = '已暂存: ' + file.name + ' (' + sizeMB.toFixed(1) + ' MB)（转写时自动上传）';
+});
+
+async function pickFile() {
+  if (isUploading) return;
+  filePicker.click();
+}
+
+async function uploadFile(file) {
+  isUploading = true;
+  const oldText = btnBrowse.textContent;
+  btnBrowse.textContent = '⏳ 上传中...';
+  btnBrowse.disabled = true;
+  uploadHint.textContent = '正在上传 ' + file.name + '...';
+
+  try {
+    const form = new FormData();
+    form.append('file', file);
+
+    const resp = await fetch('/api/upload', { method: 'POST', body: form });
+    const data = await resp.json();
+
+    if (data.ok) {
+      inputPath.value = data.path;
+      uploadHint.textContent = '✅ 已上传: ' + data.name + ' (' + data.size_mb + ' MB) → 临时路径';
+    } else {
+      uploadHint.textContent = '❌ 上传失败: ' + (data.error || '未知错误');
+      inputPath.value = file.name; // 至少填入文件名
+    }
+  } catch (e) {
+    uploadHint.textContent = '❌ 上传出错: ' + e.message;
+    inputPath.value = file.name;
+  } finally {
+    isUploading = false;
+    btnBrowse.textContent = oldText;
+    btnBrowse.disabled = false;
+    filePicker.value = ''; // 允许再次选择同一文件
+  }
+}
+
+<!-- ========== API Key 编辑已删除（P0-2: .env 不应通过 HTTP 暴露） ========== -->
+
+// ========== 模型管理 ==========
+document.getElementById('modelSelect').addEventListener('change', function() {
+  updateModelUI();
+});
+
+function updateModelUI() {
+  const isLocal = document.getElementById('modelSelect').value !== 'api';
+  document.getElementById('modelStatusRow').style.display = isLocal ? 'flex' : 'none';
+  document.getElementById('modelDownloadRow').style.display = isLocal ? 'flex' : 'none';
+  // btnApiKey 已删除（P0-2: .env 不应通过 HTTP 暴露）
+  // GPU 复选框：仅本地模型可用时显示，通过 queryModelStatus 自动检测 CUDA
+  if (isLocal) { queryModelStatus(); refreshDownloadStatus(); }
+}
+
+async function queryModelStatus() {
+  try {
+    const r = await fetch('/api/model/status');
+    const d = await r.json();
+    const modelType = document.getElementById('modelSelect').value;
+    const isWhisper = modelType === 'whisper';
+    const st = isWhisper ? (d.whisper || {}) : (d.qwen || d);
+    const statusText = document.getElementById('modelStatusText');
+    const btnLoad = document.getElementById('btnLoadModel');
+    const btnUnloadQwen = document.getElementById('btnUnloadQwen');
+    const btnUnloadWhisper = document.getElementById('btnUnloadWhisper');
+    const spinner = document.getElementById('modelSpinner');
+    const gpuRow = document.getElementById('gpuCheckRow');
+
+    // Qwen 锁定：加载中或已加载时，禁用另一个 Qwen 选项（需在 loading return 之前执行）
+    const qwenLocked = d.qwen && (d.qwen.loaded || d.qwen.loading);
+    const qwenSize = qwenLocked ? (d.qwen.model_size || '') : '';
+    document.querySelectorAll('#modelSelect option[value^="local-"]').forEach(opt => {
+      const isThisQwen = opt.value === 'local-0.6B' && qwenSize === '0.6B'
+                      || opt.value === 'local-1.7B' && qwenSize === '1.7B';
+      opt.disabled = qwenLocked && !isThisQwen;
+    });
+
+    const label = isWhisper ? 'faster-whisper' : 'Qwen3-ASR';
+
+    // 检测 CUDA 可用性：看后端返回的设备信息或 loaded 状态
+    const cudaAvail = (d.qwen && d.qwen.device && d.qwen.device.startsWith('cuda'))
+                   || (d.whisper && d.whisper.device && d.whisper.device.startsWith('cuda'));
+    gpuRow.style.display = cudaAvail ? '' : 'none';
+
+    if (st.loading) {
+      statusText.textContent = label + '：加载中...';
+      btnLoad.style.display = 'none';
+      btnUnloadQwen.style.display = 'none';
+      btnUnloadWhisper.style.display = 'none';
+      spinner.classList.remove('hidden');
+      setTimeout(queryModelStatus, 2000);
+      return;
+    }
+    if (st.loaded) {
+      const detail = isWhisper ? '' : ('Qwen3-ASR-' + (st.model_size || ''));
+      const dev = st.device ? ' (' + st.device + ')' : '';
+      statusText.textContent = label + '\u5df2\u52a0\u8f7d' + (detail ? ' ' + detail : '') + dev;
+      btnLoad.style.display = 'none';
+      btnUnloadQwen.style.display = isWhisper ? 'none' : '';
+      btnUnloadWhisper.style.display = isWhisper ? '' : 'none';
+      spinner.classList.add('hidden');
+    } else {
+      const err = st.error ? ' (' + st.error + ')' : '';
+      statusText.textContent = label + '\uff1a\u672a\u52a0\u8f7d' + err;
+      btnLoad.style.display = '';
+      btnUnloadQwen.style.display = 'none';
+      btnUnloadWhisper.style.display = 'none';
+      spinner.classList.add('hidden');
+    }
+  } catch(e) {}
+}
+
+async function loadModel() {
+  const modelType = document.getElementById('modelSelect').value;
+  const useGpu = document.getElementById('chkUseGpu').checked;
+  appendLog('[\u4fe1\u606f] \u6b63\u5728\u52a0\u8f7d ' + modelType + ' ...', 'info');
+  try {
+    const r = await fetch('/api/model/load', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({model: modelType, use_gpu: useGpu}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      appendLog('[\u4fe1\u606f] ' + d.message, 'info');
+      setTimeout(queryModelStatus, 1000);
+    } else {
+      appendLog('[\u9519\u8bef] ' + d.error, 'err');
+    }
+  } catch(e) {
+    appendLog('[\u9519\u8bef] ' + e.message, 'err');
+  }
+}
+
+async function unloadModel(model) {
+  appendLog('[信息] 正在卸载 ' + model + ' ...', 'info');
+  try {
+    const r = await fetch('/api/model/unload', {method: 'POST', body: JSON.stringify({model: model}), headers: {'Content-Type': 'application/json'}});
+    const d = await r.json();
+    if (d.ok) {
+      appendLog('[完成] ' + model + ' 已卸载。', 'ok');
+      queryModelStatus();
+    }
+  } catch(e) {
+    appendLog('[\u9519\u8bef] ' + e.message, 'err');
+  }
+}
+
+function onGpuToggle() {
+  const useGpu = document.getElementById('chkUseGpu').checked;
+  appendLog('[信息] GPU ' + (useGpu ? '已启用' : '已禁用') + '（需重新加载模型生效）', 'info');
+}
+
+// ========== 模型下载 ==========
+async function cancelDownload() {
+  try {
+    const r = await fetch('/api/model/download-status');
+    const d = await r.json();
+    if (!d.ok) return;
+    for (const [key, m] of Object.entries(d.models || {})) {
+      if (m.status === 'running') {
+        await fetch('/api/cancel-task', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({task_id: key}),
+        });
+        appendLog('[信息] 已取消下载 ' + m.name, 'info');
+        setTimeout(refreshDownloadStatus, 1000);
+        break;
+      }
+    }
+  } catch(e) {}
+}
+
+async function startDownload() {
+  const key = document.getElementById('downloadModelSelect').value;
+  appendLog('[\u4fe1\u606f] \u5f00\u59cb\u4e0b\u8f7d ' + key + '...', 'info');
+  try {
+    const r = await fetch('/api/model/download', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({key}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      appendLog('[\u4fe1\u606f] ' + d.message, 'info');
+      setTimeout(refreshDownloadStatus, 2000);
+    } else {
+      appendLog('[\u9519\u8bef] ' + d.error, 'err');
+    }
+  } catch(e) {
+    appendLog('[\u9519\u8bef] ' + e.message, 'err');
+  }
+}
+
+async function refreshDownloadStatus() {
+  try {
+    const r = await fetch('/api/model/download-status');
+    const d = await r.json();
+    if (!d.ok) return;
+    const prog = document.getElementById('downloadProgress');
+    const parts = [];
+    let anyRunning = false;
+    for (const [key, m] of Object.entries(d.models || {})) {
+      if (m.status === 'done') {
+        parts.push(m.name + ': ✅');
+      } else if (m.status === 'running') {
+        parts.push(m.name + ': ⬇️ ' + m.progress + '%');
+        setTimeout(refreshDownloadStatus, 3000);
+        anyRunning = true;
+      } else if (m.status === 'failed') {
+        parts.push(m.name + ': ❌ ' + (m.error || '失败'));
+      } else {
+        parts.push(m.name + ': ❌');
+      }
+    }
+    prog.textContent = parts.join(' | ');
+    // 下载中时显示取消按钮
+    const btnCancelDownload = document.getElementById('btnCancelDownload');
+    if (btnCancelDownload) btnCancelDownload.style.display = anyRunning ? '' : 'none';
+  } catch(e) {}
+}
+
+// ========== 日志 ==========
+function appendLog(msg, cls) {
+  const box = document.getElementById('logBox');
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = msg;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+function setLog(text) {
+  const box = document.getElementById('logBox');
+  box.innerHTML = '';
+  text.split('\n').forEach(line => {
+    const d = document.createElement('div');
+    if (line.includes('[ERROR]') || line.includes('Error:')) d.className = 'err';
+    else if (line.includes('[警告]') || line.includes('Warning:')) d.className = 'warn';
+    else if (line.includes('[info]') || line.includes('[local]') || line.includes('[upload]') || line.includes('[热词]')) d.className = 'info';
+    else if (line.includes('saved') || line.includes('完成') || line.includes('SUCCEEDED')) d.className = 'ok';
+    d.textContent = line;
+    box.appendChild(d);
+  });
+  box.scrollTop = box.scrollHeight;
+}
+
+// ========== 任务 ==========
+let currentTaskId = null;
+let pollTimer = null;
+
+async function startTranscribe() {
+  let path = inputPath.value.trim();
+  if (!path) {
+    appendLog('[错误] 请先选择或输入媒体文件路径。', 'err');
+    return;
+  }
+
+  // 检查是否有正在运行的任务
+  try {
+    const r = await fetch('/api/tasks');
+    const d = await r.json();
+    if (d.tasks && d.tasks.some(t => t.status === 'running')) {
+      appendLog('[错误] 有任务正在运行，请等待完成后再试。', 'err');
+      return;
+    }
+  } catch(e) {}
+
+  // 检查模型是否已加载（在上传文件之前）
+  const modelType = document.getElementById('modelSelect').value;
+  if (modelType !== 'api') {
+    try {
+      const r = await fetch('/api/model/status');
+      const d = await r.json();
+      if (modelType === 'whisper') {
+        if (!d.whisper || !d.whisper.loaded) {
+          appendLog('[错误] faster-whisper 未加载，请先加载模型', 'err');
+          resetButtons();
+          return;
+        }
+      } else {
+        const size = modelType === 'local-1.7B' ? '1.7B' : '0.6B';
+        if (!d.qwen || !d.qwen.loaded || d.qwen.model_size !== size) {
+          appendLog('[错误] Qwen3-ASR-' + size + ' 未加载，请先加载模型', 'err');
+          resetButtons();
+          return;
+        }
+      }
+    } catch(e) {
+      appendLog('[错误] 无法检查模型状态: ' + e.message, 'err');
+      resetButtons();
+      return;
+    }
+  }
+
+  document.getElementById('btnStart').disabled = true;
+  document.getElementById('btnCancel').classList.remove('hidden');
+  document.getElementById('taskIndicator').classList.remove('hidden');
+  setLog('');
+  appendLog('[信息] 提交转写任务...', 'info');
+
+  // 有暂存文件（浏览器无完整路径）→ 先上传
+  if (_pendingFile) {
+    // P1-7: 客户端侧大小校验
+    if (_pendingFile.size > MAX_UPLOAD_BYTES) {
+      appendLog('[错误] 文件超过 2GB 限制，无法上传', 'err');
+      resetButtons();
+      return;
+    }
+    appendLog('[信息] 正在上传文件...', 'info');
+    try {
+      const form = new FormData();
+      form.append('file', _pendingFile);
+      const uploadResp = await fetch('/api/upload', { method: 'POST', body: form });
+      const uploadData = await uploadResp.json();
+      if (!uploadData.ok) {
+        appendLog('[错误] 上传失败: ' + (uploadData.error || ''), 'err');
+        resetButtons();
+        return;
+      }
+      path = uploadData.path;
+      _pendingFile = null;
+      inputPath.value = path;
+      appendLog('[信息] 上传完成: ' + uploadData.name, 'info');
+    } catch (e) {
+      appendLog('[错误] 上传失败: ' + e.message, 'err');
+      resetButtons();
+      return;
+    }
+  }
+
+  const body = {
+    input_path: path,
+    model: document.getElementById('modelSelect').value,
+    language: document.getElementById('langSelect').value,
+    hotwords: _hotwords.join('\n'),
+    keep_punct: document.getElementById('chkKeepPunct').checked,
+    length_limit: document.getElementById('lengthLimit').value.trim(),
+    _display_name: window._loadedDisplayName || '',
+    _task_id: window._loadedTaskId || '',
+  };
+
+  try {
+    const resp = await fetch('/api/transcribe', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (!data.ok) {
+      appendLog('[错误] ' + data.error, 'err');
+      resetButtons();
+      return;
+    }
+    currentTaskId = data.task_id;
+    appendLog('[完成] 任务 ' + currentTaskId + ' 已提交。', 'ok');
+    pollTask(currentTaskId);
+  } catch (e) {
+    appendLog('[错误] ' + e.message, 'err');
+    resetButtons();
+  }
+}
+
+function pollTask(taskId) {
+  if (pollTimer) clearTimeout(pollTimer);
+  fetch('/api/log?task_id=' + taskId)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) return;
+      const task = data.task;
+      if (task.log) setLog(task.log);
+
+      if (task.status === 'running') {
+        pollTimer = setTimeout(() => pollTask(taskId), 1000);
+      } else {
+        appendLog('--- ' + (task.status === 'done' ? '完成' : task.status === 'failed' ? '失败' : '已取消') + ' ---', task.status === 'done' ? 'ok' : 'err');
+        resetButtons();
+        if (task.status === 'done' && task.json_path) {
+          document.getElementById('btnOpenEditor').dataset.jsonPath = task.json_path;
+        }
+        refreshTaskList();
+      }
+    })
+    .catch(() => {
+      pollTimer = setTimeout(() => pollTask(taskId), 2000);
+    });
+}
+
+function cancelTask() {
+  if (!currentTaskId) return;
+  fetch('/api/cancel-task', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({task_id: currentTaskId}),
+  }).then(() => {
+    appendLog('[信息] 已请求停止。', 'warn');
+  });
+}
+
+function resetButtons() {
+  document.getElementById('btnStart').disabled = false;
+  document.getElementById('btnCancel').classList.add('hidden');
+  document.getElementById('taskIndicator').classList.add('hidden');
+  if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+}
+
+async function openEditor() {
+  const jsonPath = document.getElementById('btnOpenEditor').dataset.jsonPath || '';
+  appendLog('[信息] 正在启动编辑器...', 'info');
+  try {
+    const r = await fetch('/api/open-editor', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({json_path: jsonPath}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      appendLog('[完成] 编辑器已启动 → ' + d.url, 'ok');
+      appendLog('[提示] 关闭编辑器窗口即可停止服务。', 'info');
+      setTimeout(refreshEditors, 2000);
+      window.open(d.url, '_blank');
+    } else {
+      appendLog('[错误] ' + d.error, 'err');
+      if (d.log) {
+        appendLog('--- 编辑器错误日志 ---', 'err');
+        d.log.split('\n').forEach(l => appendLog(l, 'err'));
+      }
+    }
+  } catch (e) {
+    appendLog('[错误] ' + e.message, 'err');
+  }
+}
+
+async function openEditorWithPath(jsonPath) {
+  if (!jsonPath) return;
+  appendLog('[信息] 正在打开工程: ' + jsonPath, 'info');
+  try {
+    const r = await fetch('/api/open-editor', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({json_path: jsonPath}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      appendLog('[完成] 编辑器已启动 → ' + d.url, 'ok');
+      appendLog('[提示] 关闭编辑器窗口即可停止服务。', 'info');
+      setTimeout(refreshEditors, 2000);
+      window.open(d.url, '_blank');
+    } else {
+      appendLog('[错误] ' + d.error, 'err');
+      if (d.log) {
+        appendLog('--- 编辑器错误日志 ---', 'err');
+        d.log.split('\n').forEach(l => appendLog(l, 'err'));
+      }
+    }
+  } catch (e) {
+    appendLog('[错误] ' + e.message, 'err');
+  }
+}
+
+async function loadTask(taskId) {
+  appendLog('[信息] 加载任务配置: ' + taskId, 'info');
+  try {
+    const r = await fetch('/api/task/load?task_id=' + taskId);
+    const d = await r.json();
+    if (!d.ok) {
+      appendLog('[错误] ' + (d.error || '加载失败'), 'err');
+      return;
+    }
+    const cfg = d.config;
+    document.getElementById('inputPath').value = cfg.input_path || '';
+    document.getElementById('modelSelect').value = cfg.model || 'local-0.6B';
+    document.getElementById('langSelect').value = cfg.language || '';
+    // 热词：解析文本列表到 _hotwords 数组
+    _hotwords = [];
+    for (const line of (cfg.hotwords || '').split('\n')) {
+      const w = line.trim();
+      if (w && !w.startsWith('#')) _hotwords.push(w);
+    }
+    renderHotwordList();
+    document.getElementById('chkKeepPunct').checked = cfg.keep_punct || false;
+    document.getElementById('lengthLimit').value = cfg.length_limit || '';
+    uploadHint.textContent = '已复制: ' + (cfg.input_path || '');
+    // 新任务不继承旧 task_id
+    window._loadedDisplayName = '';
+    window._loadedTaskId = '';
+    appendLog('[完成] 配置已加载。点击"开始转写"执行。', 'ok');
+    updateModelUI();
+  } catch(e) {
+    appendLog('[错误] ' + e.message, 'err');
+  }
+}
+
+
+
+async function deleteTask(taskId) {
+  if (!confirm('确定删除任务 ' + taskId + '？\n\n结果目录（JSON/SRT/HTML）将移入回收站。')) return;
+  try {
+    const r = await fetch('/api/task/delete', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({task_id: taskId, delete_results: true}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      appendLog('[完成] 任务 ' + taskId + ' 已删除。', 'ok');
+      refreshTaskList();
+    }
+  } catch(e) {
+    appendLog('[错误] ' + e.message, 'err');
+  }
+}
+
+async function cleanUploads() {
+  if (!confirm('确定清理所有上传缓存文件？\n\n这将删除 uploads/ 目录下的所有文件（移入回收站），不影响转写结果文件。')) return;
+  try {
+    const r = await fetch('/api/clean-uploads', { method: 'POST' });
+    const d = await r.json();
+    appendLog('[完成] ' + (d.message || '缓存已清理'), 'ok');
+    refreshTaskList();
+  } catch(e) {
+    appendLog('[错误] ' + e.message, 'err');
+  }
+}
+
+async function refreshTaskList() {
+  try {
+    const r = await fetch('/api/tasks');
+    const d = await r.json();
+    const container = document.getElementById('taskList');
+    if (!d.ok || !d.tasks.length) {
+      container.innerHTML = '<div style="color:var(--text-dim);font-size:13px;">暂无任务</div>';
+      return;
+    }
+    const statusMap = { running: '运行中', done: '完成', failed: '失败', cancelled: '已取消' };
+    container.innerHTML = d.tasks.map(t => {
+      const statusClass = 'status-' + t.status;
+      const label = statusMap[t.status] || t.status;
+      const argsStr = (t.args || []).join(' ').substring(0, 80);
+      const displayName = t.display_name ? t.display_name : t.id;
+      return `<div class="task-item">
+        <span class="task-id" title="${displayName}">${displayName}</span>
+        <span class="task-status ${statusClass}">${label}</span>
+        <span class="task-args" title="${t.script} ${argsStr}">${t.script} ${argsStr}</span>
+        <span style="color:var(--text-dim);font-size:11px;">${t.started_at || ''}</span>
+        <span style="display:flex;gap:4px;margin-left:auto;flex-shrink:0;align-items:center;white-space:nowrap;">
+          <button class="btn-browse" style="font-size:11px;padding:2px 8px;${t.status === 'running' ? 'opacity:0.4;pointer-events:none;' : ''}" onclick="loadTask('${t.id}')" ${t.status === 'running' ? 'disabled' : ''}>加载</button>
+          ${t.status === 'done' && t.json_path
+            ? `<button class="btn-browse" style="font-size:11px;padding:2px 8px;" onclick="openEditorWithPath('${t.json_path.replace(/\\/g, '\\\\')}')">在编辑器中打开</button>`
+            : ''}
+          <button class="btn-browse" style="font-size:11px;padding:2px 8px;color:var(--red);${t.status === 'running' ? 'opacity:0.4;pointer-events:none;' : ''}" onclick="deleteTask('${t.id}')" ${t.status === 'running' ? 'disabled' : ''}>❌</button>
+      </div>`;
+    }).join('');
+  } catch(e) {}
+}
+
+// ========== 编辑器进程管理 ==========
+async function refreshEditors() {
+  try {
+    const r = await fetch('/api/editors');
+    const d = await r.json();
+    const container = document.getElementById('editorList');
+    if (!d.ok || !d.editors || !d.editors.length) {
+      container.innerHTML = '<div style="color:var(--text-dim);font-size:13px;">无运行中的编辑器</div>';
+      return;
+    }
+    container.innerHTML = d.editors.map(e =>
+      `<div class="task-item">
+        <span style="font-family:var(--mono);font-size:12px;color:var(--text-dim);min-width:40px;">PID ${e.pid}</span>
+        <span style="font-size:12px;">端口 ${e.port}</span>
+        <span style="font-size:12px;color:var(--text-dim);flex:1;">${e.label}</span>
+        <span style="font-size:11px;color:var(--text-dim);">${e.started_at || ''}</span>
+        <button class="btn-browse" style="font-size:11px;padding:2px 8px;color:var(--red);"
+          onclick="killEditor(${e.pid})">关闭</button>
+      </div>`
+    ).join('');
+  } catch(e) {}
+}
+
+async function killEditor(pid) {
+  if (!confirm('确定关闭编辑器进程 PID ' + pid + ' ？')) return;
+  try {
+    const r = await fetch('/api/editor/kill', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({pid}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      appendLog('[完成] 编辑器进程已关闭。', 'ok');
+      refreshEditors();
+    }
+  } catch(e) {
+    appendLog('[错误] ' + e.message, 'err');
+  }
+}
+
+// ========== 热词管理 ==========
+let _hotwords = [];
+
+function getHotwordsText() {
+  return _hotwords.join('\n');
+}
+
+function renderHotwordList() {
+  const container = document.getElementById('hotwordList');
+  if (!_hotwords.length) {
+    container.innerHTML = '<div style="color:var(--text-dim);font-size:12px;">暂无热词，在上方输入后点击添加。</div>';
+    return;
+  }
+  container.innerHTML = _hotwords.map((w, i) =>
+    `<span class="hw-chip">
+      <span class="hw-text" title="${w.replace(/"/g, '&quot;')}">${w.replace(/</g, '&lt;')}</span>
+      <span class="hw-edit" onclick="editHotword(${i})" title="编辑">✎</span>
+      <span class="hw-del" onclick="removeHotword(${i})" title="删除">×</span>
+    </span>`
+  ).join('');
+}
+
+function addHotword() {
+  const input = document.getElementById('hotwordInput');
+  const word = input.value.trim();
+  if (!word) return;
+  if (_hotwords.includes(word)) {
+    appendLog('[警告] 该热词已存在: ' + word, 'warn');
+    return;
+  }
+  _hotwords.push(word);
+  input.value = '';
+  input.focus();
+  renderHotwordList();
+  saveHotwords();
+}
+
+function removeHotword(index) {
+  _hotwords.splice(index, 1);
+  renderHotwordList();
+  saveHotwords();
+}
+
+function editHotword(index) {
+  const old = _hotwords[index];
+  const newVal = prompt('编辑热词文本：', old);
+  if (newVal === null || newVal.trim() === '') return;
+  const trimmed = newVal.trim();
+  if (trimmed !== old && _hotwords.includes(trimmed)) {
+    alert('该热词已存在。');
+    return;
+  }
+  _hotwords[index] = trimmed;
+  renderHotwordList();
+  saveHotwords();
+}
+
+async function loadHotwords() {
+  try {
+    const r = await fetch('/api/hotwords');
+    const d = await r.json();
+    if (!d.ok) return;
+    _hotwords = [];
+    for (const line of (d.content || '').split('\n')) {
+      const w = line.trim();
+      if (w && !w.startsWith('#')) _hotwords.push(w);
+    }
+    renderHotwordList();
+  } catch(e) {
+    // 静默失败
+  }
+}
+
+async function saveHotwords() {
+  const text = getHotwordsText();
+  try {
+    const r = await fetch('/api/hotwords', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({content: text}),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      appendLog('[错误] 热词保存失败', 'err');
+    }
+  } catch(e) {
+    appendLog('[错误] 热词保存失败: ' + e.message, 'err');
+  }
+}
+
+// ========== 初始化 ==========
+refreshTaskList();
+setInterval(refreshTaskList, 5000);
+refreshEditors();
+updateModelUI();
+loadHotwords();
+</script>
+</body>
+</html>

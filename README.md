@@ -5,7 +5,7 @@
 ![MAWE 字幕编辑器预览](assets/screenshot.webp)
 
 **MAW** 是 Moy's ASR Workflow 的简称。  
-这是一个 **最小可用复刻版**：优先让没有 GPU、刚接触命令行的用户跑通完整流程。它目前只支持 Qwen / 阿里云百炼的云端 API，不包含本地模型、其他 ASR 引擎或自动下载模型。
+这是一个 **最小可用复刻版**：优先让没有 GPU、刚接触命令行的用户跑通完整流程。它默认使用 Qwen / 阿里云百炼的云端 API，也**通过可选依赖支持本地 Qwen3-ASR 推理和 faster-whisper**（详见[本地模式](#本地模式可选)）。
 
 > 之后会有更完整的 **Moy's Open Subtitle Editor（MOSE）**：不需要懂编程也能直接用的整合工作站！  
 > 这个仓库会保持小而可用，并为将来导入 MOSE 留出工程 JSON 的兼容路径；详见 [docs/MOSE.md](docs/MOSE.md)。
@@ -32,7 +32,7 @@
 
 ### Windows 图形界面
 
-从 GitHub Releases 下载 `MAW-Windows-x64-v*.zip`，解压后双击 `MAW.exe`。选择媒体与 SRT 输出位置，确认模型、地域、语言和可选时长上限，填写 Qwen API Key，即可在窗口中生成 SRT、JSON 工程和便携编辑器 HTML。需要复用 Key 时，可点“保存到 .env”；密钥只保存在本机 `.env`，不会写入工程文件或日志。
+从 GitHub Releases 下载 `MAW-Windows-x64-v*.zip`，解压后双击 `MAW.exe`。选择媒体与 SRT 输出位置，确认模型、地域、语言和可选时长上限，填写 Qwen API Key，即可在窗口中生成 SRT、JSON 工程和便携编辑器 HTML。需要复用 Key 时，可点"保存到 .env"；密钥只保存在本机 `.env`，不会写入工程文件或日志。
 
 GUI 还可以直接选择工程 JSON 并启动 `http://127.0.0.1` 本地编辑器服务器；中英文界面可在右上角切换。
 
@@ -49,6 +49,45 @@ uv run python maw_gui.py
 > [!tip]
 > **给人类**：把这个项目地址发给你的 AI Agent 然后让它参考文档操作即可！  
 > <img src="assets/show.webp" width="300" alt="sticker">
+
+## 本地模式（可选）
+
+如果你有 NVIDIA GPU（或足够快的 CPU），可以用本地模型做转写，不依赖云端 API。
+
+### 安装本地依赖
+
+```powershell
+uv sync --extra local
+```
+
+这会在纯 CPU 上安装 Qwen3-ASR 和 faster-whisper；有 NVIDIA GPU 的话再执行一步：
+
+```powershell
+uv pip install torch --index-url https://download.pytorch.org/whl/cu124
+```
+
+### 启动 Web 控制台
+
+安装完成后，运行 Web 控制台来管理模型、文件、转写和编辑器：
+
+```powershell
+uv run python web-console/server.py
+```
+
+浏览器打开 `http://127.0.0.1:10101`。在控制台内可以：
+
+- 下载并加载 Qwen3-ASR（0.6B / 1.7B）或 faster-whisper-large-v3
+- 选择本地文件或通过上传添加媒体
+- 一键转写，完成后直接打开编辑器
+- 管理热词、任务历史和缓存
+
+详细说明见 [docs/LOCAL_DEPLOY.md](docs/LOCAL_DEPLOY.md)。
+
+### 纯命令行
+
+不想用 Web 控制台？本地模型也支持命令行方式（见 `docs/WORKFLOW.md`）。
+
+---
 
 在 PowerShell 中执行：
 
@@ -141,7 +180,7 @@ uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.json"
 
 ## 关于 API
 
-- 这是 **API-first** 工具，不含模型下载和本地 Qwen 推理。
+- 这是 **API-first** 工具，云端 API 开箱即用；本地模式为可选附加。
 - API Key 仅读取自环境变量或本机 `.env`；`.env` 已被 Git 忽略，绝不要提交、截图或发给别人。
 - 每次转写会使用你的 Key 调用阿里云百炼服务，文件大小与保留政策以官方当前说明为准：[Qwen ASR 文档](https://help.aliyun.com/zh/model-studio/qwen-asr-api-reference)。
 - 当前 API 端点面向 `qwen3-asr-flash-filetrans`，支持北京与新加坡地域；配置项说明在 `.env.example`。
@@ -156,7 +195,7 @@ uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.json"
 
 ## 项目边界
 
-本仓库刻意不包含：本地模型与 GPU 依赖、其他 ASR 引擎、模型对比工具、剪辑软件脚本、样例媒体、缓存、个人表情包和任何密钥。
+本仓库刻意不包含：模型权重、GPU 依赖、其他 ASR 引擎、模型对比工具、剪辑软件脚本、样例媒体、缓存、个人表情包和任何密钥。
 
 如果你准备修改或维护它，请先读 [AGENTS.md](AGENTS.md)。第三方组件说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 

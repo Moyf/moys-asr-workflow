@@ -29,7 +29,7 @@
 | `segments` | `array<object>` | **必填** | 字幕段数组。**缺失或不是数组时，页面直接弹「文件格式不对，缺少 segments 字段」并拒绝加载** |
 | `media` | `string` | 否 | 媒体文件路径（绝对/相对均可）。便携 HTML 会在“打开工程”时用它的文件名匹配同一次选择的媒体；只选 JSON 时会提示用户继续选择媒体。浏览器安全限制下不能自行读取该路径或跳转其目录。服务器编辑器可按该路径自动加载 |
 | `language` | `string` | 否 | 语言代码，如 `Chinese`、`English`。仅用于显示 |
-| `model` | `string` | 否 | ASR 模型名，如 `qwen3-asr`。仅用于显示 |
+| `model` | `string` | 否 | ASR 模型名，如 `qwen3-asr-api`、`qwen3-asr-local-0.6B`、`qwen3-asr-local-1.7B`、`faster-whisper-large-v3`。仅用于显示 |
 | `sticker_root` | `string` | 否 | 表情包根目录绝对路径。打开工程时会覆盖编辑器内的 `STICKER_ROOT` |
 | `waveform` | `object` | 否 | 可丢弃的紧凑波形缓存。由 `edit.py` 或浏览器自动生成；不影响字幕语义 |
 | `gap_remove` | `object` | 否 | 可逆的空隙移除决定。保留原始媒体/字幕时间，仅描述导出与跳过播放时使用的派生时间轴 |

@@ -4,6 +4,28 @@
 
 ## [Unreleased]
 
+### Added
+
+- 本地 Qwen3-ASR 推理支持（可选依赖 `local`，0.6B / 1.7B）
+- Web 控制台 `web-console/server.py`（一站式模型管理 + 文件处理 + 转写 + 编辑器启动）
+- faster-whisper-large-v3 引擎支持（CPU/GPU，英文识别更佳）
+- 热词功能（仅本地 Qwen3-ASR 模型，通过 context 软提示注入）
+- `/assets/` 路径限制到 `web-console/assets/` 子目录，新增路径遍历防护
+- Qwen 模型切换锁定：加载后自动禁用另一个 Qwen 选项
+
+### Changed
+
+- 从 `generate_subtitle_qwen_api.py` 抽取公共工具函数到 `maw.utils`
+- Web 控制台转写任务创建逻辑统一到 `_create_task` 方法，消除 `_start_transcribe` 与 `_start_transcribe_with_body` 的代码重复
+- Whisper 输出跳过 `split_words_to_segments` 二次切分，直接使用原生句子级边界
+- `_unload_model` 支持单独卸载 Qwen 或 Whisper
+- 热词文件写入改为原子模式（`.tmp` + `replace()`）
+
+### Fixed
+
+- `length_limit` 上限校验（最大 4 小时）
+- 模型卸载时先移至 CPU 再释放，确保显存清理
+- `_load_model` 拒绝加载与当前已加载不同的 Qwen 模型
 ## [1.1.0] - 2026-07-28
 
 ### Added
