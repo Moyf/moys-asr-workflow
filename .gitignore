@@ -31,9 +31,6 @@ uploads/
 models/
 !models/.gitkeep
 
-# Reasonix agent context / configuration (local-only AI tooling)
-.reasonix/
-
 # Pip freeze 导出（依赖已在 pyproject.toml 中记录）
 requirements.txt
 requirements-local.txt

@@ -1496,7 +1496,7 @@ def main():
 
     print(f"MAW Console started (local only)")
     print(f"  URL: {url}")
-    print(f"  Editor port: 8765")
+    print(f"  Editor: 动态端口（启动后显示在日志中）")
     print("  Press Ctrl+C to stop.")
 
     if not args.no_open:
