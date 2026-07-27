@@ -31,6 +31,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from maw.project import ProjectValidationFailed, normalize_project
 from waveform import (
     DEFAULT_PEAKS_PER_SECOND,
     WaveformError,
@@ -257,9 +258,10 @@ def main():
         print(f"错误: JSON 文件不存在 - {json_path}")
         return 1
 
-    data = json.loads(json_path.read_text(encoding="utf-8"))
-    if "segments" not in data:
-        print(f"错误: JSON 缺少 segments 字段")
+    try:
+        data = normalize_project(json.loads(json_path.read_text(encoding="utf-8")))
+    except ProjectValidationFailed as exc:
+        print(f"错误: {exc}")
         return 1
 
     # 媒体

@@ -29,6 +29,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import edit  # noqa: E402
+from maw.project import ProjectValidationFailed, normalize_project  # noqa: E402
 
 
 MAX_RECENT_PROJECTS = 10
@@ -203,9 +204,7 @@ def load_project(
     json_path = json_path.resolve()
     if not json_path.exists():
         raise FileNotFoundError(f"JSON 文件不存在 - {json_path}")
-    data = json.loads(json_path.read_text(encoding="utf-8"))
-    if not isinstance(data.get("segments"), list):
-        raise ValueError("JSON 缺少 segments 数组")
+    data = normalize_project(json.loads(json_path.read_text(encoding="utf-8")))
 
     media_path = resolve_media_path(json_path, data, explicit_media)
     # 保存时应沿用实际被服务器加载的媒体；这也会把 -m 覆盖的路径同步回工程。
@@ -351,15 +350,17 @@ class EditorServer(ThreadingHTTPServer):
     def save_project(self, project_data: dict, filename: str | None = None) -> tuple[Path, Path | None]:
         if not self.project.json_path:
             raise SaveProjectError("空白服务器没有绑定工程路径；请使用“导出工程”")
-        if not isinstance(project_data, dict) or not isinstance(project_data.get("segments"), list):
-            raise SaveProjectError("工程内容缺少 segments 数组")
+        try:
+            normalized_project = normalize_project(project_data)
+        except ProjectValidationFailed as error:
+            raise SaveProjectError(str(error)) from error
 
         target = self.project.json_path
         if filename is not None:
             target = safe_project_filename(target.parent, filename)
         with self.save_lock:
-            backup = write_project_json(target, project_data)
-            self.project = replace(self.project, data=project_data, json_path=target)
+            backup = write_project_json(target, normalized_project)
+            self.project = replace(self.project, data=normalized_project, json_path=target)
             self.remember_project(target)
         return target, backup
 
