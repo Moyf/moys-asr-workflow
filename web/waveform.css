@@ -22,6 +22,27 @@
   background: #4f78a5;
   color: #fff;
 }
+.waveform-tool-switch {
+  display: inline-flex;
+  border: 1px solid #46586c;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.toolbar .waveform-tool-switch button {
+  border: 0;
+  border-right: 1px solid #46586c;
+  border-radius: 0;
+  padding: 4px 9px;
+  background: #293746;
+}
+.toolbar .waveform-tool-switch button:last-child { border-right: 0; }
+.toolbar .waveform-tool-switch button.active {
+  background: #4f78a5;
+  color: #fff;
+}
+/* 剃刀工具下字幕块显示拆分光标，提示点击即拆分 */
+.waveform-pane.tool-razor .waveform-cue-block { cursor: crosshair; }
+.waveform-pane.tool-razor .waveform-cue-handle { cursor: crosshair; }
 .waveform-setting {
   display: inline-flex;
   align-items: center;

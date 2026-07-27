@@ -182,14 +182,27 @@
     height: 1px; background: #444; margin: 4px 0;
   }
 
-  /* === Header info === */
-  .header-info {
-    flex: 0 0 auto; font-size: 11px; color: #777; margin-bottom: 6px;
-    display: flex; gap: 12px; flex-wrap: wrap;
+  /* === 操作帮助 === */
+  .help-panel {
+    flex: 0 0 auto; display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr));
+    gap: 8px; margin: -2px 0 8px; padding: 8px;
+    background: #1b232a; border: 1px solid #3d5366; border-radius: 6px;
   }
-  .header-info kbd {
+  .help-panel[hidden] { display: none; }
+  .help-group {
+    display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px 12px;
+    padding: 8px; color: #9aabb8; font-size: 11px;
+    background: rgba(10, 16, 21, 0.32); border: 1px solid #304352; border-radius: 5px;
+  }
+  .help-title {
+    flex: 0 0 100%; color: #89a9c3; font-weight: 600; letter-spacing: .08em;
+  }
+  .help-panel kbd {
     background: #333; border: 1px solid #555; border-radius: 3px;
     padding: 1px 5px; font-size: 10px; color: #ccc; font-family: monospace;
+  }
+  @media (max-width: 860px) {
+    .help-panel { grid-template-columns: 1fr; }
   }
 
   /* === 当前字幕编辑区 === */

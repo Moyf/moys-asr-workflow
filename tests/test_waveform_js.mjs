@@ -62,6 +62,74 @@ test('moves one shared boundary while preserving both cue durations', () => {
 });
 
 
+test('Alt-drag moves only the hit side of a shared boundary, leaving the neighbor untouched', () => {
+  // 共享边界在 1000：默认拖动会同时改左侧 end 和右侧 start；Alt 独立拖动只改被命中一侧。
+  const segments = [
+    { start: 0, end: 1000, items: [{ text: 'A', start: 0, end: 1000 }] },
+    { start: 1000, end: 2200, items: [{ text: 'B', start: 1000, end: 2200 }] },
+  ];
+  // 拖动右侧段的 start（左半段 end 不变）
+  helpers.applyIndependentEdge(segments, 0, 'start', 1500, 100);
+  assert.deepEqual(JSON.parse(JSON.stringify(segments)), [
+    { start: 0, end: 1000, items: [{ text: 'A', start: 0, end: 1000 }] },
+    { start: 1500, end: 2200, items: [{ text: 'B', start: 1500, end: 2200 }] },
+  ]);
+  // 拖动左侧段的 end（右侧段 start 不变）
+  helpers.applyIndependentEdge(segments, 0, 'end', 800, 100);
+  assert.deepEqual(JSON.parse(JSON.stringify(segments)), [
+    { start: 0, end: 800, items: [{ text: 'A', start: 0, end: 800 }] },
+    { start: 1500, end: 2200, items: [{ text: 'B', start: 1500, end: 2200 }] },
+  ]);
+});
+
+
+test('razor split snaps to the nearest item boundary and refuses 100ms edges', () => {
+  const segment = {
+    start: 1000, end: 5000, text: 'ABCD',
+    items: [
+      { text: 'A', start: 1000, end: 2000 },
+      { text: 'B', start: 2000, end: 3000 },
+      { text: 'C', start: 3000, end: 4000 },
+      { text: 'D', start: 4000, end: 5000 },
+    ],
+  };
+  // 指针在两个 item 边界正中时，选择后一个边界。
+  const splitMid = helpers.splitSegmentAtTime(segment, 2500);
+  assert.equal(splitMid.splitMs, 3000);
+  assert.deepEqual(JSON.parse(JSON.stringify(splitMid.left.items)), [
+    { text: 'A', start: 1000, end: 2000 },
+    { text: 'B', start: 2000, end: 3000 },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(splitMid.right.items)), [
+    { text: 'C', start: 3000, end: 4000 },
+    { text: 'D', start: 4000, end: 5000 },
+  ]);
+  assert.equal(splitMid.left.end, 3000);
+  assert.equal(splitMid.right.start, 3000);
+  assert.equal(splitMid.left._dirty, true);
+  assert.equal(splitMid.right._dirty, true);
+
+  // 有 item 时间码时，边缘点击会吸附到最近的合法 item 边界。
+  const splitEdge = helpers.splitSegmentAtTime(segment, 1050);
+  assert.equal(splitEdge.splitMs, 2000);
+
+  // 过短段（< 200ms）直接拒绝
+  const tooShort = { start: 0, end: 150, text: 'X', items: [] };
+  assert.equal(helpers.splitSegmentAtTime(tooShort, 75), null);
+});
+
+
+test('razor split without items falls back to the integer millisecond nearest the pointer', () => {
+  const segment = { start: 1000, end: 4000, text: 'hello', items: [] };
+  const split = helpers.splitSegmentAtTime(segment, 2300);
+  assert.equal(split.splitMs, 2300);
+  assert.equal(split.left.end, 2300);
+  assert.equal(split.right.start, 2300);
+  assert.equal(split.left.items, null);
+  assert.equal(split.right.items, null);
+});
+
+
 test('clamps a new cue to the available gap and minimum duration', () => {
   assert.deepEqual(
     JSON.parse(JSON.stringify(helpers.normalizeNewCueRange(4500, 6200, 10000, 4000, 7000, 100))),

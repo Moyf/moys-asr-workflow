@@ -30,7 +30,7 @@
   const DEFAULT_LAYOUT_ROWS = [42, 18, 40];
   const PREVIOUS_DEFAULT_LAYOUT_ROWS = [42, 27, 31];
   const DEFAULT_SETTINGS = {
-    mode: 'basic',
+    mode: 'multi',
     layout: 'wave-right',
     visibleSeconds: 20,
     secondsPerRow: 10,
@@ -452,6 +452,107 @@
     return segments;
   }
 
+  // Alt-drag a shared resize handle moves ONLY the hit side, leaving the
+  // neighboring segment's opposite edge untouched. This is the independent
+  // counterpart to applySharedBoundary, which moves both sides linked.
+  // edge === 'end' moves segments[leftIndex].end; 'start' moves
+  // segments[leftIndex + 1].start. The moved edge is clamped to keep at
+  // least minDuration inside its own segment and not cross its other edge.
+  function applyIndependentEdge(segments, leftIndex, edge, valueMs, minDuration = MIN_CUE_MS) {
+    const left = segments[leftIndex];
+    const right = segments[leftIndex + 1];
+    if (!left || !right || (edge !== 'end' && edge !== 'start')) return segments;
+    const value = roundMs(valueMs);
+    if (edge === 'end') {
+      const lower = left.start + minDuration;
+      const upper = Number.isFinite(left.end) ? left.end : Infinity;
+      // 不越过右侧段的起始，避免产生负时长或重叠；但不强制拉动邻居。
+      const ceiling = Number.isFinite(right.start) ? right.start : upper;
+      const next = clamp(value, lower, Math.min(upper, ceiling));
+      const oldEnd = left.end;
+      left.end = next;
+      left.items = remapItems(left.items, left.start, oldEnd, left.start, next);
+    } else {
+      const upper = right.end - minDuration;
+      const floor = Number.isFinite(right.start) ? right.start : 0;
+      const base = Number.isFinite(left.end) ? left.end : floor;
+      const next = clamp(value, Math.max(floor, base), upper);
+      const oldStart = right.start;
+      right.start = next;
+      right.items = remapItems(right.items, oldStart, right.end, next, right.end);
+    }
+    return segments;
+  }
+
+  // Safe split point selection for the razor tool. Given a segment and a
+  // pointer time, prefer the nearest item boundary (midpoint between adjacent
+  // items' end/start); otherwise fall back to the integer millisecond nearest
+  // the pointer. Refuse any split within minEdge of either segment edge so a
+  // razor click never produces a sub-100ms sliver. Returns { left, right,
+  // splitMs } with cloned items allocated by time, or null when refused.
+  function splitSegmentAtTime(segment, timeMs, minEdge = MIN_CUE_MS) {
+    if (!segment) return null;
+    const start = Math.round(Number(segment.start));
+    const end = Math.round(Number(segment.end));
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end - start < minEdge * 2) return null;
+    const target = Number.isFinite(Number(timeMs)) ? Number(timeMs) : (start + end) / 2;
+
+    const items = Array.isArray(segment.items) ? segment.items : [];
+    // Collect candidate item-boundary times (midpoint between adjacent items).
+    const boundaries = [];
+    for (let i = 1; i < items.length; i++) {
+      const prevEnd = Number(items[i - 1].end);
+      const nextStart = Number(items[i].start);
+      if (Number.isFinite(prevEnd) && Number.isFinite(nextStart)) {
+        boundaries.push(Math.round((prevEnd + nextStart) / 2));
+      }
+    }
+    let splitMs;
+    if (boundaries.length) {
+      splitMs = boundaries.reduce((best, value) => (
+        Math.abs(value - target) <= Math.abs(best - target) ? value : best
+      ), boundaries[0]);
+    } else {
+      splitMs = Math.round(target);
+    }
+    splitMs = clamp(splitMs, start + minEdge, end - minEdge);
+    if (splitMs <= start + minEdge - 1 || splitMs >= end - minEdge + 1) return null;
+
+    const leftItems = [];
+    const rightItems = [];
+    for (const item of items) {
+      const itemStart = Number(item.start);
+      const itemEnd = Number(item.end);
+      // An item straddling the split snaps to the side whose start is closer.
+      if (Number.isFinite(itemEnd) && itemEnd <= splitMs) {
+        leftItems.push({ ...item });
+      } else if (Number.isFinite(itemStart) && itemStart >= splitMs) {
+        rightItems.push({ ...item });
+      } else if (Number.isFinite(itemStart) && Number.isFinite(itemEnd)) {
+        if (splitMs - itemStart <= itemEnd - splitMs) {
+          leftItems.push({ ...item });
+        } else {
+          rightItems.push({ ...item });
+        }
+      } else {
+        leftItems.push({ ...item });
+      }
+    }
+
+    const clone = (base) => ({ ...base });
+    const left = clone(segment);
+    const right = clone(segment);
+    left.start = start;
+    left.end = splitMs;
+    right.start = splitMs;
+    right.end = end;
+    left.items = leftItems.length ? leftItems : null;
+    right.items = rightItems.length ? rightItems : null;
+    left._dirty = true;
+    right._dirty = true;
+    return { left, right, splitMs };
+  }
+
   function normalizeNewCueRange(start, end, duration, previousEnd = 0, nextStart = duration, minDuration = MIN_CUE_MS) {
     const lower = clamp(roundMs(previousEnd), 0, Math.max(0, duration));
     const upper = clamp(roundMs(nextStart), lower, Math.max(lower, duration));
@@ -494,6 +595,9 @@
       // Shift+滚轮调振幅的 rAF 节流：一帧内的滚动累加方向后只触发一次
       this.pendingScaleDirection = 0;
       this.scaleRafScheduled = false;
+      // 波形交互工具：'select'（默认，保留 Ctrl/Shift/分组多选与拖动）或
+      // 'razor'（左键点击字幕块即在指针位置安全拆分）。Alt 行为不随工具变化。
+      this.tool = 'select';
 
       this.workspace = document.getElementById('editor-workspace');
       this.panel = document.getElementById('current-cue-panel');
@@ -541,6 +645,15 @@
       document.querySelectorAll('[data-waveform-mode]').forEach((button) => {
         button.addEventListener('click', () => this.setMode(button.dataset.waveformMode));
       });
+      document.querySelectorAll('[data-waveform-tool]').forEach((button) => {
+        button.addEventListener('click', () => this.setTool(button.dataset.waveformTool));
+      });
+      // 初始工具按钮高亮（默认 select）
+      document.querySelectorAll('[data-waveform-tool]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.waveformTool === this.tool);
+      });
+      this.pane?.classList.toggle('tool-select', this.tool === 'select');
+      this.pane?.classList.toggle('tool-razor', this.tool === 'razor');
       document.getElementById('waveform-zoom-in').addEventListener('click', () => this.changeZoom(-1));
       document.getElementById('waveform-zoom-out').addEventListener('click', () => this.changeZoom(1));
       this.waveformScaleDownButton?.addEventListener('click', () => this.changeWaveformScale(-1));
@@ -740,6 +853,25 @@
       if (mode === 'basic') this.centerBasicOnCurrentTime();
       if (this.isMultiMode()) this.multiRange = [-1, -1];
       this.render();
+    }
+
+    // 工具切换：'select' 为默认选择工具，保留全部 Ctrl/Shift/分组多选与
+    // 拖动行为；'razor' 让左键点击字幕块在指针位置安全拆分。切回 select
+    // 不会清除已有选中，便于拆分后立即继续操作。
+    setTool(tool) {
+      if (tool !== 'select' && tool !== 'razor') return;
+      if (this.tool === tool) return;
+      this.tool = tool;
+      this.pane?.classList.toggle('tool-razor', tool === 'razor');
+      this.pane?.classList.toggle('tool-select', tool === 'select');
+      document.querySelectorAll('[data-waveform-tool]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.waveformTool === tool);
+      });
+      this.setStatus(tool === 'razor' ? '剃刀工具：点击字幕块在指针位置拆分' : '选择工具');
+    }
+
+    getTool() {
+      return this.tool;
     }
 
     setLayout(layout) {
@@ -1791,6 +1923,27 @@
       if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
+      // 剃刀工具：无修饰键左键点击字幕块（非手柄）时，在指针位置安全拆分。
+      // 修饰键（Alt/Ctrl/Cmd/Shift）仍走原行为，便于拆分后立即多选/禁用。
+      const targetHandle = event.target.closest('.waveform-cue-handle');
+      if (this.tool === 'razor' && !targetHandle
+          && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+        const timeMs = this.timeFromPointer(event, row);
+        this.options.splitCueAtTime?.(index, timeMs);
+        return;
+      }
+      // Alt 行为分裂：命中共享边界手柄时拆开为单侧独立拖动；否则保持
+      // Alt+点击字幕块切换禁用的既有行为。
+      if (event.altKey && targetHandle) {
+        const sharedLeft = targetHandle.classList.contains('left')
+          && index > 0 && this.isSharedBoundary(event, index - 1, index, row);
+        const sharedRight = targetHandle.classList.contains('right')
+          && index + 1 < this.options.getSegments().length
+          && this.isSharedBoundary(event, index, index + 1, row);
+        if (sharedLeft || sharedRight) {
+          return this.beginIndependentEdgeDrag(event, index, row, targetHandle);
+        }
+      }
       if (event.altKey) {
         this.options.toggleDisabled?.([index]);
         return;
@@ -1805,7 +1958,6 @@
         this.options.selectCueRange?.(index);
         return;
       }
-      const targetHandle = event.target.closest('.waveform-cue-handle');
       let boundaryIndex = index;
       const kind = targetHandle?.classList.contains('left')
         ? (index > 0 && this.isSharedBoundary(event, index - 1, index, row)
@@ -1854,6 +2006,55 @@
       if (!left || !right || Math.abs(left.end - right.start) > SNAP_MS) return false;
       const pointerMs = this.timeFromPointer(event, row);
       return Math.abs(pointerMs - left.end) <= SNAP_MS || Math.abs(pointerMs - right.start) <= SNAP_MS;
+    }
+
+    // Alt-drag 命中共享边界手柄：只拖动被命中一侧，邻居的相反边保持不动。
+    // 默认（非 Alt）拖动共享边界会把两侧一起联动；本方法是该联动的独立拆开版本。
+    beginIndependentEdgeDrag(event, index, row, targetHandle) {
+      const segments = this.options.getSegments();
+      const isLeftHandle = targetHandle.classList.contains('left');
+      // left 手柄命中 index-1|index 共享边界 → 移动 index 段的 start；
+      // right 手柄命中 index|index+1 共享边界 → 移动 index 段的 end。
+      const movedIndex = isLeftHandle ? index : index;
+      const edge = isLeftHandle ? 'start' : 'end';
+      const dragIndex = isLeftHandle ? index - 1 : index; // 左侧段索引，用于 applyIndependentEdge
+      const originals = new Map([[movedIndex, {
+        start: segments[movedIndex].start,
+        end: segments[movedIndex].end,
+        items: Array.isArray(segments[movedIndex].items)
+          ? segments[movedIndex].items.map((item) => ({ ...item })) : segments[movedIndex].items,
+      }]]);
+      const rect = row.getBoundingClientRect();
+      this.drag = {
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        rangeMs: Number(row.dataset.endMs) - Number(row.dataset.startMs),
+        rowWidth: Math.max(1, rect.width),
+        kind: 'resize-boundary-independent',
+        index: movedIndex,
+        edge,
+        dragIndex,
+        indices: [movedIndex],
+        row,
+        originals,
+        started: false,
+        changed: false,
+      };
+      event.currentTarget.classList.add('dragging');
+      window.addEventListener('pointermove', this._dragMove = (moveEvent) => this.moveCueDrag(moveEvent));
+      window.addEventListener('pointerup', this._dragEnd = (upEvent) => this.endCueDrag(upEvent), { once: true });
+      window.addEventListener('pointercancel', this._dragEnd, { once: true });
+    }
+
+    applyIndependentBoundaryDrag(drag, rawDelta) {
+      const segments = this.options.getSegments();
+      const original = drag.originals.get(drag.index);
+      if (!original) return;
+      const base = drag.edge === 'start' ? original.start : original.end;
+      const value = base + rawDelta;
+      applyIndependentEdge(segments, drag.dragIndex, drag.edge, value, MIN_CUE_MS);
+      const seg = segments[drag.index];
+      this.setStatus(`${drag.edge === 'start' ? '起点' : '终点'} ${formatCompact(drag.edge === 'start' ? seg.start : seg.end)}`);
     }
 
     beginCueCreate(event, row) {
@@ -2063,10 +2264,14 @@
       if (!drag.started && Math.abs(deltaMs) < 2) return;
       if (!drag.started) {
         drag.started = true;
-        this.options.onBeginEdit(drag.kind === 'move' ? '移动字幕时间' : '调整字幕边界');
+        const label = drag.kind === 'move' ? '移动字幕时间'
+          : drag.kind === 'resize-boundary-independent' ? '独立调整字幕边界'
+          : '调整字幕边界';
+        this.options.onBeginEdit(label);
       }
       if (drag.kind === 'move') this.applyMoveDrag(drag, deltaMs, event.altKey);
       else if (drag.kind === 'resize-boundary') this.applyBoundaryDrag(drag, deltaMs, event.altKey);
+      else if (drag.kind === 'resize-boundary-independent') this.applyIndependentBoundaryDrag(drag, deltaMs);
       else this.applyResizeDrag(drag, deltaMs, event.altKey);
       drag.changed = true;
       this.refreshCueBlocks();
@@ -2260,6 +2465,8 @@
       roundMs,
       sourceForFile,
       applySharedBoundary,
+      applyIndependentEdge,
+      splitSegmentAtTime,
       normalizeNewCueRange,
       clampWaveformScale,
       waveformScaleAfterStep,

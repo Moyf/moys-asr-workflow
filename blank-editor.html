@@ -189,14 +189,27 @@
     height: 1px; background: #444; margin: 4px 0;
   }
 
-  /* === Header info === */
-  .header-info {
-    flex: 0 0 auto; font-size: 11px; color: #777; margin-bottom: 6px;
-    display: flex; gap: 12px; flex-wrap: wrap;
+  /* === 操作帮助 === */
+  .help-panel {
+    flex: 0 0 auto; display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr));
+    gap: 8px; margin: -2px 0 8px; padding: 8px;
+    background: #1b232a; border: 1px solid #3d5366; border-radius: 6px;
   }
-  .header-info kbd {
+  .help-panel[hidden] { display: none; }
+  .help-group {
+    display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px 12px;
+    padding: 8px; color: #9aabb8; font-size: 11px;
+    background: rgba(10, 16, 21, 0.32); border: 1px solid #304352; border-radius: 5px;
+  }
+  .help-title {
+    flex: 0 0 100%; color: #89a9c3; font-weight: 600; letter-spacing: .08em;
+  }
+  .help-panel kbd {
     background: #333; border: 1px solid #555; border-radius: 3px;
     padding: 1px 5px; font-size: 10px; color: #ccc; font-family: monospace;
+  }
+  @media (max-width: 860px) {
+    .help-panel { grid-template-columns: 1fr; }
   }
 
   /* === 当前字幕编辑区 === */
@@ -676,6 +689,27 @@
   background: #4f78a5;
   color: #fff;
 }
+.waveform-tool-switch {
+  display: inline-flex;
+  border: 1px solid #46586c;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.toolbar .waveform-tool-switch button {
+  border: 0;
+  border-right: 1px solid #46586c;
+  border-radius: 0;
+  padding: 4px 9px;
+  background: #293746;
+}
+.toolbar .waveform-tool-switch button:last-child { border-right: 0; }
+.toolbar .waveform-tool-switch button.active {
+  background: #4f78a5;
+  color: #fff;
+}
+/* 剃刀工具下字幕块显示拆分光标，提示点击即拆分 */
+.waveform-pane.tool-razor .waveform-cue-block { cursor: crosshair; }
+.waveform-pane.tool-razor .waveform-cue-handle { cursor: crosshair; }
 .waveform-setting {
   display: inline-flex;
   align-items: center;
@@ -1340,7 +1374,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-07-27 19:31</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-07-27 20:20</span>
   <span class="json-name empty" id="json-name" title="点击复制 JSON 文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -1405,6 +1439,11 @@
     <button type="button" data-waveform-mode="multi">多行</button>
   </span>
   <span class="sep"></span>
+  <span class="waveform-tool-switch" role="group" aria-label="波形工具">
+    <button type="button" data-waveform-tool="select" class="active" title="选择工具（默认）：点击选中、拖动移动、拖动边界调整；Ctrl/Shift 多选，Alt 切换禁用，Alt 拖共享边界只动一侧">选择</button>
+    <button type="button" data-waveform-tool="razor" title="剃刀工具：点击字幕块在指针位置安全拆分（按词/字级时间码对齐，拒绝 100ms 以内的边缘拆分）；Esc 切回选择">剃刀</button>
+  </span>
+  <span class="sep"></span>
   <button type="button" id="gap-remove-manage" title="打开可拖动的移除静音空隙工具窗" aria-expanded="false" aria-controls="gap-remove-panel">移除静音空隙</button>
   <label class="toggle gap-skip-toggle" title="播放时跳过已移除的静音空隙；左键定位到空隙内时可临时预览"><input type="checkbox" id="gap-skip-playback" checked> 跳过空隙</label>
   <span class="gap-remove-summary" id="gap-remove-summary">未扫描空隙</span>
@@ -1422,6 +1461,7 @@
   <button type="button" id="layout-import" title="导入布局 JSON">导入布局</button>
   <input type="file" id="layout-import-file" accept=".layout.json,.json,application/json" style="display:none">
   <button type="button" id="editor-settings-toggle" title="展开字幕、波形与导出设置" aria-expanded="false" aria-controls="editor-settings-panel">⚙ 设置</button>
+  <button type="button" id="help-toggle" title="查看鼠标操作与键盘快捷键" aria-expanded="false" aria-controls="help-panel">帮助</button>
   <span class="waveform-status" id="waveform-status">等待波形数据</span>
 </div>
 
@@ -1586,25 +1626,36 @@
   </div>
 </section>
 
+<section class="help-panel" id="help-panel" aria-label="操作帮助" hidden>
+  <div class="help-group">
+    <span class="help-title">字幕操作</span>
+    <span><kbd>单击</kbd> 跳转</span>
+    <span><kbd>双击</kbd> 编辑</span>
+    <span><kbd>右键</kbd> 菜单</span>
+    <span><kbd>Shift+点击</kbd> 范围选</span>
+    <span><kbd>Ctrl+点击</kbd> 切换选</span>
+    <span><kbd>Alt+点击</kbd> 禁用切换</span>
+  </div>
+  <div class="help-group">
+    <span class="help-title">空隙与波形</span>
+    <span><kbd>双击波形</kbd> 播放/暂停</span>
+    <span><kbd>Alt+点击空隙</kbd> 移除/保留</span>
+    <span><kbd>中键拖动</kbd> 增加静音</span>
+    <span><kbd>Alt+中键拖动</kbd> 恢复声音</span>
+    <span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>
+    <span><kbd>Ctrl+滚轮</kbd> 调整时间缩放/每行长度</span>
+  </div>
+  <div class="help-group">
+    <span class="help-title">播放与编辑</span>
+    <span><kbd>空格</kbd> 播放/暂停</span>
+    <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> 倍速 ×0.5/重置/×2</span>
+    <span><kbd>Delete</kbd> 删除所选字幕</span>
+    <span><kbd>Ctrl+Z</kbd> 撤销</span>
+  </div>
+</section>
+
 <input type="file" id="open-project-file" accept=".json,application/json,video/*,audio/*" multiple style="display:none">
 <input type="file" id="load-media-file" accept="video/*,audio/*" style="display:none">
-
-<div class="header-info">
-  <span><kbd>单击</kbd> 跳转</span>
-  <span><kbd>双击</kbd> 编辑</span>
-  <span><kbd>右键</kbd> 菜单</span>
-  <span><kbd>Shift+点击</kbd> 范围选</span>
-  <span><kbd>Ctrl+点击</kbd> 切换选</span>
-  <span><kbd>Alt+点击</kbd> 禁用切换</span>
-  <span><kbd>Alt+点击空隙</kbd> 移除/保留</span>
-  <span><kbd>中键拖动</kbd> 增加静音</span>
-  <span><kbd>Alt+中键拖动</kbd> 恢复声音</span>
-  <span><kbd>Ctrl+拖动</kbd> 新增字幕</span>
-  <span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>
-  <span><kbd>空格</kbd> 播放/暂停</span>
-  <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> 倍速 ×0.5/重置/×2</span>
-  <span><kbd>Ctrl+Z</kbd> 撤销</span>
-</div>
 
 <div class="editor-workspace waveform-basic" id="editor-workspace">
   <div class="player-wrap">
@@ -2228,7 +2279,7 @@
   const DEFAULT_LAYOUT_ROWS = [42, 18, 40];
   const PREVIOUS_DEFAULT_LAYOUT_ROWS = [42, 27, 31];
   const DEFAULT_SETTINGS = {
-    mode: 'basic',
+    mode: 'multi',
     layout: 'wave-right',
     visibleSeconds: 20,
     secondsPerRow: 10,
@@ -2650,6 +2701,107 @@
     return segments;
   }
 
+  // Alt-drag a shared resize handle moves ONLY the hit side, leaving the
+  // neighboring segment's opposite edge untouched. This is the independent
+  // counterpart to applySharedBoundary, which moves both sides linked.
+  // edge === 'end' moves segments[leftIndex].end; 'start' moves
+  // segments[leftIndex + 1].start. The moved edge is clamped to keep at
+  // least minDuration inside its own segment and not cross its other edge.
+  function applyIndependentEdge(segments, leftIndex, edge, valueMs, minDuration = MIN_CUE_MS) {
+    const left = segments[leftIndex];
+    const right = segments[leftIndex + 1];
+    if (!left || !right || (edge !== 'end' && edge !== 'start')) return segments;
+    const value = roundMs(valueMs);
+    if (edge === 'end') {
+      const lower = left.start + minDuration;
+      const upper = Number.isFinite(left.end) ? left.end : Infinity;
+      // 不越过右侧段的起始，避免产生负时长或重叠；但不强制拉动邻居。
+      const ceiling = Number.isFinite(right.start) ? right.start : upper;
+      const next = clamp(value, lower, Math.min(upper, ceiling));
+      const oldEnd = left.end;
+      left.end = next;
+      left.items = remapItems(left.items, left.start, oldEnd, left.start, next);
+    } else {
+      const upper = right.end - minDuration;
+      const floor = Number.isFinite(right.start) ? right.start : 0;
+      const base = Number.isFinite(left.end) ? left.end : floor;
+      const next = clamp(value, Math.max(floor, base), upper);
+      const oldStart = right.start;
+      right.start = next;
+      right.items = remapItems(right.items, oldStart, right.end, next, right.end);
+    }
+    return segments;
+  }
+
+  // Safe split point selection for the razor tool. Given a segment and a
+  // pointer time, prefer the nearest item boundary (midpoint between adjacent
+  // items' end/start); otherwise fall back to the integer millisecond nearest
+  // the pointer. Refuse any split within minEdge of either segment edge so a
+  // razor click never produces a sub-100ms sliver. Returns { left, right,
+  // splitMs } with cloned items allocated by time, or null when refused.
+  function splitSegmentAtTime(segment, timeMs, minEdge = MIN_CUE_MS) {
+    if (!segment) return null;
+    const start = Math.round(Number(segment.start));
+    const end = Math.round(Number(segment.end));
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end - start < minEdge * 2) return null;
+    const target = Number.isFinite(Number(timeMs)) ? Number(timeMs) : (start + end) / 2;
+
+    const items = Array.isArray(segment.items) ? segment.items : [];
+    // Collect candidate item-boundary times (midpoint between adjacent items).
+    const boundaries = [];
+    for (let i = 1; i < items.length; i++) {
+      const prevEnd = Number(items[i - 1].end);
+      const nextStart = Number(items[i].start);
+      if (Number.isFinite(prevEnd) && Number.isFinite(nextStart)) {
+        boundaries.push(Math.round((prevEnd + nextStart) / 2));
+      }
+    }
+    let splitMs;
+    if (boundaries.length) {
+      splitMs = boundaries.reduce((best, value) => (
+        Math.abs(value - target) <= Math.abs(best - target) ? value : best
+      ), boundaries[0]);
+    } else {
+      splitMs = Math.round(target);
+    }
+    splitMs = clamp(splitMs, start + minEdge, end - minEdge);
+    if (splitMs <= start + minEdge - 1 || splitMs >= end - minEdge + 1) return null;
+
+    const leftItems = [];
+    const rightItems = [];
+    for (const item of items) {
+      const itemStart = Number(item.start);
+      const itemEnd = Number(item.end);
+      // An item straddling the split snaps to the side whose start is closer.
+      if (Number.isFinite(itemEnd) && itemEnd <= splitMs) {
+        leftItems.push({ ...item });
+      } else if (Number.isFinite(itemStart) && itemStart >= splitMs) {
+        rightItems.push({ ...item });
+      } else if (Number.isFinite(itemStart) && Number.isFinite(itemEnd)) {
+        if (splitMs - itemStart <= itemEnd - splitMs) {
+          leftItems.push({ ...item });
+        } else {
+          rightItems.push({ ...item });
+        }
+      } else {
+        leftItems.push({ ...item });
+      }
+    }
+
+    const clone = (base) => ({ ...base });
+    const left = clone(segment);
+    const right = clone(segment);
+    left.start = start;
+    left.end = splitMs;
+    right.start = splitMs;
+    right.end = end;
+    left.items = leftItems.length ? leftItems : null;
+    right.items = rightItems.length ? rightItems : null;
+    left._dirty = true;
+    right._dirty = true;
+    return { left, right, splitMs };
+  }
+
   function normalizeNewCueRange(start, end, duration, previousEnd = 0, nextStart = duration, minDuration = MIN_CUE_MS) {
     const lower = clamp(roundMs(previousEnd), 0, Math.max(0, duration));
     const upper = clamp(roundMs(nextStart), lower, Math.max(lower, duration));
@@ -2692,6 +2844,9 @@
       // Shift+滚轮调振幅的 rAF 节流：一帧内的滚动累加方向后只触发一次
       this.pendingScaleDirection = 0;
       this.scaleRafScheduled = false;
+      // 波形交互工具：'select'（默认，保留 Ctrl/Shift/分组多选与拖动）或
+      // 'razor'（左键点击字幕块即在指针位置安全拆分）。Alt 行为不随工具变化。
+      this.tool = 'select';
 
       this.workspace = document.getElementById('editor-workspace');
       this.panel = document.getElementById('current-cue-panel');
@@ -2739,6 +2894,15 @@
       document.querySelectorAll('[data-waveform-mode]').forEach((button) => {
         button.addEventListener('click', () => this.setMode(button.dataset.waveformMode));
       });
+      document.querySelectorAll('[data-waveform-tool]').forEach((button) => {
+        button.addEventListener('click', () => this.setTool(button.dataset.waveformTool));
+      });
+      // 初始工具按钮高亮（默认 select）
+      document.querySelectorAll('[data-waveform-tool]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.waveformTool === this.tool);
+      });
+      this.pane?.classList.toggle('tool-select', this.tool === 'select');
+      this.pane?.classList.toggle('tool-razor', this.tool === 'razor');
       document.getElementById('waveform-zoom-in').addEventListener('click', () => this.changeZoom(-1));
       document.getElementById('waveform-zoom-out').addEventListener('click', () => this.changeZoom(1));
       this.waveformScaleDownButton?.addEventListener('click', () => this.changeWaveformScale(-1));
@@ -2938,6 +3102,25 @@
       if (mode === 'basic') this.centerBasicOnCurrentTime();
       if (this.isMultiMode()) this.multiRange = [-1, -1];
       this.render();
+    }
+
+    // 工具切换：'select' 为默认选择工具，保留全部 Ctrl/Shift/分组多选与
+    // 拖动行为；'razor' 让左键点击字幕块在指针位置安全拆分。切回 select
+    // 不会清除已有选中，便于拆分后立即继续操作。
+    setTool(tool) {
+      if (tool !== 'select' && tool !== 'razor') return;
+      if (this.tool === tool) return;
+      this.tool = tool;
+      this.pane?.classList.toggle('tool-razor', tool === 'razor');
+      this.pane?.classList.toggle('tool-select', tool === 'select');
+      document.querySelectorAll('[data-waveform-tool]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.waveformTool === tool);
+      });
+      this.setStatus(tool === 'razor' ? '剃刀工具：点击字幕块在指针位置拆分' : '选择工具');
+    }
+
+    getTool() {
+      return this.tool;
     }
 
     setLayout(layout) {
@@ -3989,6 +4172,27 @@
       if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
+      // 剃刀工具：无修饰键左键点击字幕块（非手柄）时，在指针位置安全拆分。
+      // 修饰键（Alt/Ctrl/Cmd/Shift）仍走原行为，便于拆分后立即多选/禁用。
+      const targetHandle = event.target.closest('.waveform-cue-handle');
+      if (this.tool === 'razor' && !targetHandle
+          && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+        const timeMs = this.timeFromPointer(event, row);
+        this.options.splitCueAtTime?.(index, timeMs);
+        return;
+      }
+      // Alt 行为分裂：命中共享边界手柄时拆开为单侧独立拖动；否则保持
+      // Alt+点击字幕块切换禁用的既有行为。
+      if (event.altKey && targetHandle) {
+        const sharedLeft = targetHandle.classList.contains('left')
+          && index > 0 && this.isSharedBoundary(event, index - 1, index, row);
+        const sharedRight = targetHandle.classList.contains('right')
+          && index + 1 < this.options.getSegments().length
+          && this.isSharedBoundary(event, index, index + 1, row);
+        if (sharedLeft || sharedRight) {
+          return this.beginIndependentEdgeDrag(event, index, row, targetHandle);
+        }
+      }
       if (event.altKey) {
         this.options.toggleDisabled?.([index]);
         return;
@@ -4003,7 +4207,6 @@
         this.options.selectCueRange?.(index);
         return;
       }
-      const targetHandle = event.target.closest('.waveform-cue-handle');
       let boundaryIndex = index;
       const kind = targetHandle?.classList.contains('left')
         ? (index > 0 && this.isSharedBoundary(event, index - 1, index, row)
@@ -4052,6 +4255,55 @@
       if (!left || !right || Math.abs(left.end - right.start) > SNAP_MS) return false;
       const pointerMs = this.timeFromPointer(event, row);
       return Math.abs(pointerMs - left.end) <= SNAP_MS || Math.abs(pointerMs - right.start) <= SNAP_MS;
+    }
+
+    // Alt-drag 命中共享边界手柄：只拖动被命中一侧，邻居的相反边保持不动。
+    // 默认（非 Alt）拖动共享边界会把两侧一起联动；本方法是该联动的独立拆开版本。
+    beginIndependentEdgeDrag(event, index, row, targetHandle) {
+      const segments = this.options.getSegments();
+      const isLeftHandle = targetHandle.classList.contains('left');
+      // left 手柄命中 index-1|index 共享边界 → 移动 index 段的 start；
+      // right 手柄命中 index|index+1 共享边界 → 移动 index 段的 end。
+      const movedIndex = isLeftHandle ? index : index;
+      const edge = isLeftHandle ? 'start' : 'end';
+      const dragIndex = isLeftHandle ? index - 1 : index; // 左侧段索引，用于 applyIndependentEdge
+      const originals = new Map([[movedIndex, {
+        start: segments[movedIndex].start,
+        end: segments[movedIndex].end,
+        items: Array.isArray(segments[movedIndex].items)
+          ? segments[movedIndex].items.map((item) => ({ ...item })) : segments[movedIndex].items,
+      }]]);
+      const rect = row.getBoundingClientRect();
+      this.drag = {
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        rangeMs: Number(row.dataset.endMs) - Number(row.dataset.startMs),
+        rowWidth: Math.max(1, rect.width),
+        kind: 'resize-boundary-independent',
+        index: movedIndex,
+        edge,
+        dragIndex,
+        indices: [movedIndex],
+        row,
+        originals,
+        started: false,
+        changed: false,
+      };
+      event.currentTarget.classList.add('dragging');
+      window.addEventListener('pointermove', this._dragMove = (moveEvent) => this.moveCueDrag(moveEvent));
+      window.addEventListener('pointerup', this._dragEnd = (upEvent) => this.endCueDrag(upEvent), { once: true });
+      window.addEventListener('pointercancel', this._dragEnd, { once: true });
+    }
+
+    applyIndependentBoundaryDrag(drag, rawDelta) {
+      const segments = this.options.getSegments();
+      const original = drag.originals.get(drag.index);
+      if (!original) return;
+      const base = drag.edge === 'start' ? original.start : original.end;
+      const value = base + rawDelta;
+      applyIndependentEdge(segments, drag.dragIndex, drag.edge, value, MIN_CUE_MS);
+      const seg = segments[drag.index];
+      this.setStatus(`${drag.edge === 'start' ? '起点' : '终点'} ${formatCompact(drag.edge === 'start' ? seg.start : seg.end)}`);
     }
 
     beginCueCreate(event, row) {
@@ -4261,10 +4513,14 @@
       if (!drag.started && Math.abs(deltaMs) < 2) return;
       if (!drag.started) {
         drag.started = true;
-        this.options.onBeginEdit(drag.kind === 'move' ? '移动字幕时间' : '调整字幕边界');
+        const label = drag.kind === 'move' ? '移动字幕时间'
+          : drag.kind === 'resize-boundary-independent' ? '独立调整字幕边界'
+          : '调整字幕边界';
+        this.options.onBeginEdit(label);
       }
       if (drag.kind === 'move') this.applyMoveDrag(drag, deltaMs, event.altKey);
       else if (drag.kind === 'resize-boundary') this.applyBoundaryDrag(drag, deltaMs, event.altKey);
+      else if (drag.kind === 'resize-boundary-independent') this.applyIndependentBoundaryDrag(drag, deltaMs);
       else this.applyResizeDrag(drag, deltaMs, event.altKey);
       drag.changed = true;
       this.refreshCueBlocks();
@@ -4458,6 +4714,8 @@
       roundMs,
       sourceForFile,
       applySharedBoundary,
+      applyIndependentEdge,
+      splitSegmentAtTime,
       normalizeNewCueRange,
       clampWaveformScale,
       waveformScaleAfterStep,
@@ -4684,6 +4942,8 @@ const cueListShowCharcountToggle = document.getElementById('cue-list-show-charco
 const cueEditorShowNavigationToggle = document.getElementById('cue-editor-show-navigation');
 const cueEditorShowStickerToggle = document.getElementById('cue-editor-show-sticker');
 const selectGroupMembersToggle = document.getElementById('select-group-members');
+const helpToggle = document.getElementById('help-toggle');
+const helpPanel = document.getElementById('help-panel');
 const replaceModal = document.getElementById('replace-modal');
 const stickerModal = document.getElementById('sticker-modal');
 const stickerPreviewModal = document.getElementById('sticker-preview-modal');
@@ -4789,6 +5049,12 @@ if (selectGroupMembersToggle) selectGroupMembersToggle.checked = EDITOR_SETTINGS
 applyCueListDisplaySettings();
 applyCueEditorDisplaySettings();
 editorSettingsToggle?.addEventListener('click', () => setEditorSettingsPanelOpen(editorSettingsPanel?.hidden));
+helpToggle?.addEventListener('click', () => {
+  const open = helpPanel?.hidden === true;
+  if (helpPanel) helpPanel.hidden = !open;
+  helpToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  helpToggle.classList.toggle('active', open);
+});
 splitKeySel.addEventListener('change', () => updateEditorSettings({ splitKey: splitKeySel.value }));
 bindCueListDisplayToggle(cueListShowIndexToggle, 'cueListShowIndex');
 bindCueListDisplayToggle(cueListShowTimeToggle, 'cueListShowTime');
@@ -6416,6 +6682,41 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
   e.stopPropagation();
   deleteSegments([...selectedIdxs]);
+});
+
+// 波形工具切换：V=选择（默认），C=剃刀，Esc=切回选择。与 J/K/L 一样只在
+// 非输入/非模态/非编辑态下触发，避免抢占文本编辑与弹窗按键。
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'v' && e.key !== 'V' && e.key !== 'c' && e.key !== 'C' && e.key !== 'Escape') return;
+  if (!waveformEditor) return;
+  // Escape：上下文菜单/弹窗/编辑态各自先处理；只有波形工具在 razor 时才切回。
+  if (e.key === 'Escape') {
+    if (editingState) return;
+    if (ctxmenu.classList.contains('show')) return;
+    if (replaceModal.classList.contains('show')) return;
+    if (stickerModal.classList.contains('show')) return;
+    if (stickerPreviewModal.classList.contains('show')) return;
+    if (projectMediaModal.classList.contains('show')) return;
+    if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+    if (waveformEditor.getTool() !== 'razor') return;
+    e.preventDefault();
+    waveformEditor.setTool('select');
+    return;
+  }
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
+  if (editingState) return;
+  if (replaceModal.classList.contains('show')) return;
+  if (stickerModal.classList.contains('show')) return;
+  if (stickerPreviewModal.classList.contains('show')) return;
+  if (projectMediaModal.classList.contains('show')) return;
+  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+  if (ctxmenu.classList.contains('show')) return;
+  if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+  const tool = (e.key === 'v' || e.key === 'V') ? 'select' : 'razor';
+  if (waveformEditor.getTool() === tool) return;
+  e.preventDefault();
+  waveformEditor.setTool(tool);
 });
 
 // 点击外部 -> 完成编辑
@@ -8338,6 +8639,10 @@ function initWaveformEditor() {
     showContextMenu: (x, y, idx, timeMs) => showContextMenu(x, y, idx, timeMs),
     addCueAtTime: (timeMs, x, y) => addCueAtWaveformTime(timeMs, x, y),
     addCueRange: (startMs, endMs, x, y) => addCueRangeFromWaveform(startMs, endMs, x, y),
+    // 剃刀工具：在波形指针位置安全拆分字幕。复用右键菜单的波形时间拆分路径，
+    // 它会先用 splitCharOffsetAtTime 把指针时间映射到最近的字/词级边界，再
+    // 走 splitAtCursor；这样剃刀与右键拆分行为一致，且保留 items 时间码精度。
+    splitCueAtTime: (idx, timeMs) => splitFromContextMenu(idx, 0, 0, timeMs),
     onBeginEdit: (label) => pushUndo(label),
     onLayoutUndo: (label, snapshot) => pushLayoutUndo(label, snapshot),
     onCommitEdit: (idxs, kind) => {
@@ -8348,7 +8653,9 @@ function initWaveformEditor() {
         ? `已移动 ${idxs.length} 条字幕`
         : kind === 'resize-boundary'
           ? `已联动调整第 ${idxs[0] + 1} / ${idxs[1] + 1} 条边界`
-          : `已调整第 ${idxs[0] + 1} 条字幕时间`);
+          : kind === 'resize-boundary-independent'
+            ? `已独立调整第 ${idxs[0] + 1} 条字幕边界`
+            : `已调整第 ${idxs[0] + 1} 条字幕时间`);
     },
     onPayload: (payload) => { DATA.waveform = payload; },
   });

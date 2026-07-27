@@ -206,6 +206,8 @@ const cueListShowCharcountToggle = document.getElementById('cue-list-show-charco
 const cueEditorShowNavigationToggle = document.getElementById('cue-editor-show-navigation');
 const cueEditorShowStickerToggle = document.getElementById('cue-editor-show-sticker');
 const selectGroupMembersToggle = document.getElementById('select-group-members');
+const helpToggle = document.getElementById('help-toggle');
+const helpPanel = document.getElementById('help-panel');
 const replaceModal = document.getElementById('replace-modal');
 const stickerModal = document.getElementById('sticker-modal');
 const stickerPreviewModal = document.getElementById('sticker-preview-modal');
@@ -311,6 +313,12 @@ if (selectGroupMembersToggle) selectGroupMembersToggle.checked = EDITOR_SETTINGS
 applyCueListDisplaySettings();
 applyCueEditorDisplaySettings();
 editorSettingsToggle?.addEventListener('click', () => setEditorSettingsPanelOpen(editorSettingsPanel?.hidden));
+helpToggle?.addEventListener('click', () => {
+  const open = helpPanel?.hidden === true;
+  if (helpPanel) helpPanel.hidden = !open;
+  helpToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  helpToggle.classList.toggle('active', open);
+});
 splitKeySel.addEventListener('change', () => updateEditorSettings({ splitKey: splitKeySel.value }));
 bindCueListDisplayToggle(cueListShowIndexToggle, 'cueListShowIndex');
 bindCueListDisplayToggle(cueListShowTimeToggle, 'cueListShowTime');
@@ -1938,6 +1946,41 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
   e.stopPropagation();
   deleteSegments([...selectedIdxs]);
+});
+
+// 波形工具切换：V=选择（默认），C=剃刀，Esc=切回选择。与 J/K/L 一样只在
+// 非输入/非模态/非编辑态下触发，避免抢占文本编辑与弹窗按键。
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'v' && e.key !== 'V' && e.key !== 'c' && e.key !== 'C' && e.key !== 'Escape') return;
+  if (!waveformEditor) return;
+  // Escape：上下文菜单/弹窗/编辑态各自先处理；只有波形工具在 razor 时才切回。
+  if (e.key === 'Escape') {
+    if (editingState) return;
+    if (ctxmenu.classList.contains('show')) return;
+    if (replaceModal.classList.contains('show')) return;
+    if (stickerModal.classList.contains('show')) return;
+    if (stickerPreviewModal.classList.contains('show')) return;
+    if (projectMediaModal.classList.contains('show')) return;
+    if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+    if (waveformEditor.getTool() !== 'razor') return;
+    e.preventDefault();
+    waveformEditor.setTool('select');
+    return;
+  }
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
+  if (editingState) return;
+  if (replaceModal.classList.contains('show')) return;
+  if (stickerModal.classList.contains('show')) return;
+  if (stickerPreviewModal.classList.contains('show')) return;
+  if (projectMediaModal.classList.contains('show')) return;
+  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+  if (ctxmenu.classList.contains('show')) return;
+  if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+  const tool = (e.key === 'v' || e.key === 'V') ? 'select' : 'razor';
+  if (waveformEditor.getTool() === tool) return;
+  e.preventDefault();
+  waveformEditor.setTool(tool);
 });
 
 // 点击外部 -> 完成编辑
@@ -3860,6 +3903,10 @@ function initWaveformEditor() {
     showContextMenu: (x, y, idx, timeMs) => showContextMenu(x, y, idx, timeMs),
     addCueAtTime: (timeMs, x, y) => addCueAtWaveformTime(timeMs, x, y),
     addCueRange: (startMs, endMs, x, y) => addCueRangeFromWaveform(startMs, endMs, x, y),
+    // 剃刀工具：在波形指针位置安全拆分字幕。复用右键菜单的波形时间拆分路径，
+    // 它会先用 splitCharOffsetAtTime 把指针时间映射到最近的字/词级边界，再
+    // 走 splitAtCursor；这样剃刀与右键拆分行为一致，且保留 items 时间码精度。
+    splitCueAtTime: (idx, timeMs) => splitFromContextMenu(idx, 0, 0, timeMs),
     onBeginEdit: (label) => pushUndo(label),
     onLayoutUndo: (label, snapshot) => pushLayoutUndo(label, snapshot),
     onCommitEdit: (idxs, kind) => {
@@ -3870,7 +3917,9 @@ function initWaveformEditor() {
         ? `已移动 ${idxs.length} 条字幕`
         : kind === 'resize-boundary'
           ? `已联动调整第 ${idxs[0] + 1} / ${idxs[1] + 1} 条边界`
-          : `已调整第 ${idxs[0] + 1} 条字幕时间`);
+          : kind === 'resize-boundary-independent'
+            ? `已独立调整第 ${idxs[0] + 1} 条字幕边界`
+            : `已调整第 ${idxs[0] + 1} 条字幕时间`);
     },
     onPayload: (payload) => { DATA.waveform = payload; },
   });
