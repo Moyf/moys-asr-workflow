@@ -55,16 +55,16 @@ DASHSCOPE_API_KEY=sk-替换成你的真实密钥
 
 
 <details>
-<summary>🔐 为了方便你快速体验，你可以先用这个 key 试试 </summary>
+<summary>🔐 为了方便你快速体验，你可以先用这个 key 尝试 </summary>
   
+**解密网站：** [魔曰](https://abracadabra-demo.pages.dev/)
+
 **话语：** `此夜有早鹤远璃，智水清路。遥书为鹏兮，惠琴为路。局以莹聪，恭登益莺，此鸳有长天美星，盈涧青声。是家也，声悦冰高，裳寒光雅。或探冰动鸳，行叶于空，事瑞竹，学莹语。此鹂有临树瀚琴，青铃秋语。鹤鹤见雪，莹于雪叶，余恋静飞，恋文湛换。或关城探鹏，见木于韵，飞瑞鸳，驿聪楼良，乃后关。此心有瀚火速棋，聪鸳盈光。不必问也，或学铃留鸢，致月于雨。流早霞，恋明楼善，乃速探。莹风定棋，书莺致福。虽返说极悠，明少不同。此礼有彩光青天，纯火旧鲤。此铃有慧声新木，绮恋冷棋，或振水选家，流驿于镜。`  
   
 **密钥：** `moimoi`
   
-**解密网站：** [魔曰](https://abracadabra-demo.pages.dev/)
-
 > 目前应该还剩6小时的额度，**请勿滥用**，如果发现异常情况我会直接禁用这个key ヽ(\` 3 ´)ﾉ  
-> 用不了了就说明额度被薅光了，为了方便大家尝试，还请尽量只做2分钟内的测试，然后自己申请 API 来用w
+> 用不了了就说明额度被薅光了，为了方便大家体验，还请尽量只做2分钟内的测试，觉得 OK 再申请 API 来用w
 
 </details>
 
@@ -142,6 +142,15 @@ uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.json"
 本仓库刻意不包含：本地模型与 GPU 依赖、其他 ASR 引擎、模型对比工具、剪辑软件脚本、样例媒体、缓存、个人表情包和任何密钥。
 
 如果你准备修改或维护它，请先读 [AGENTS.md](AGENTS.md)。第三方组件说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+## 致谢
+
+❤️ 感谢 @Hanekit 老师的宝贵意见和建议  
+❤️ 感谢 @大狗 老师的超绝可爱表情包支持  
+❤️ 感谢 @LiRenTech 的 [gap-gone](https://github.com/LiRenTech/gap-gone) 项目  
+<sup>本项目的多行波形和空隙去除灵感皆来源于此</sup>  
+🤖 感谢 ChatGPT 和 OpenCode 的代码助力（咦）  
+<sup>主要由 gpt-5.6 和 glm-5.2 协作生产</sup>
 
 ## 许可证
 
