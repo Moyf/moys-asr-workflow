@@ -33,7 +33,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $PyProject = Get-Content -LiteralPath 'pyproject.toml' -Raw
-          if ($PyProject -notmatch '(?m)^version = "(?<version>[^"]+)"$') {
+          if ($PyProject -notmatch '(?m)^version = "(?<version>[^"]+)"\r?$') {
             throw 'Could not read project.version from pyproject.toml.'
           }
           $ExpectedTag = "v$($Matches.version)"
