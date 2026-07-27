@@ -134,63 +134,147 @@ function isMediaFile(file) {
   return Boolean(file) && (file.type.startsWith('video/') || file.type.startsWith('audio/') || MEDIA_FILE_RE.test(file.name));
 }
 
-// === Undo 栈 ===
-// 每个"逻辑动作"前 push 一个 DATA.segments 的深拷贝快照。
-// Ctrl+Z 弹栈恢复。粒度=操作级（不是字符级）。栈深 100。
-const UNDO_STACK = [];
+// === 统一撤销/重做 ===
+// 四种记录 kind 共享一个历史栈：
+//   segments   —— 字幕增删改、拆分合并、表情包/颜色、批量替换等
+//   layout     —— 布局导入/重置/拖动停靠
+//   gap_remove —— 静音空隙扫描与人工修正
+//   preview    —— 字幕预览（overlay）开关
+// 栈深上限 100；新动作清空 redo；Ctrl/Cmd+Z 撤销、Ctrl/Cmd+Shift+Z 重做。
+// 编辑文本输入框或 modal 打开时让原生行为优先（见 keydown 守卫）。
 const UNDO_LIMIT = 100;
+const editorHistory = window.AsrEditorUtils.createHistoryStack(UNDO_LIMIT);
 let gapRemoveDirty = false;
 function snapshotSegments() {
   // _dirty 也保留，恢复后能再次导出"工程文件"时正确标记
   return JSON.parse(JSON.stringify(DATA.segments));
 }
 function pushUndo(label) {
-  UNDO_STACK.push({ label: label || 'edit', segs: snapshotSegments() });
-  if (UNDO_STACK.length > UNDO_LIMIT) UNDO_STACK.shift();
+  editorHistory.push({ kind: 'segments', label: label || '编辑', segs: snapshotSegments() });
+  updateUndoRedoButtons();
 }
 function pushLayoutUndo(label, snapshot) {
   if (!snapshot) return;
-  UNDO_STACK.push({ label: label || '调整布局', layout: snapshot });
-  if (UNDO_STACK.length > UNDO_LIMIT) UNDO_STACK.shift();
+  editorHistory.push({ kind: 'layout', label: label || '调整布局', layout: snapshot });
+  updateUndoRedoButtons();
 }
 function pushGapRemoveUndo(label) {
-  UNDO_STACK.push({
+  editorHistory.push({
+    kind: 'gap_remove',
     label: label || '空隙移除',
     gapRemove: DATA.gap_remove ? JSON.parse(JSON.stringify(DATA.gap_remove)) : null,
     gapRemoveDirty,
   });
-  if (UNDO_STACK.length > UNDO_LIMIT) UNDO_STACK.shift();
+  updateUndoRedoButtons();
 }
-function performUndo() {
-  if (!UNDO_STACK.length) {
-    flashHint('没有可撤销的操作');
-    return;
+function pushPreviewUndo(label, preview) {
+  editorHistory.push({ kind: 'preview', label: label || '预览', preview });
+  updateUndoRedoButtons();
+}
+function snapshotPreviewState() {
+  return { overlay: !!overlayToggle.checked };
+}
+function applyPreviewState(state) {
+  if (!state || typeof state.overlay !== 'boolean') return;
+  overlayToggle.checked = state.overlay;
+  updateEditorSettings({ overlayEnabled: state.overlay });
+  if (!state.overlay) overlayEl.classList.add('hidden');
+  else update();
+}
+// 按记录 kind 拍下当前状态，作为对端栈的镜像（label 沿用原记录）
+function snapshotCurrentForKind(kind, label) {
+  if (kind === 'layout') {
+    return { kind: 'layout', label: label || '调整布局', layout: waveformEditor?.getLayoutHistorySnapshot?.() || null };
   }
-  if (editingState) finishEdit(false);  // 撤销前丢弃当前编辑（保持快照前后一致）
-  const last = UNDO_STACK.pop();
-  if (last.layout) {
-    if (!waveformEditor?.restoreLayoutHistorySnapshot?.(last.layout)) {
-      flashHint('布局撤销失败：布局模块尚未加载');
-      return;
+  if (kind === 'gap_remove') {
+    return {
+      kind: 'gap_remove', label: label || '空隙移除',
+      gapRemove: DATA.gap_remove ? JSON.parse(JSON.stringify(DATA.gap_remove)) : null,
+      gapRemoveDirty,
+    };
+  }
+  if (kind === 'preview') {
+    return { kind: 'preview', label: label || '预览', preview: snapshotPreviewState() };
+  }
+  return { kind: 'segments', label: label || '编辑', segs: snapshotSegments() };
+}
+function applyHistoryRecord(record) {
+  if (record.kind === 'layout') {
+    if (!waveformEditor?.restoreLayoutHistorySnapshot?.(record.layout)) {
+      flashHint('布局恢复失败：布局模块尚未加载');
+      return false;
     }
     DATA.layout = waveformEditor.getLayoutData();
-    flashHint(`已撤销：${last.label}（剩 ${UNDO_STACK.length} 步）`);
-    return;
+    return true;
   }
-  if (Object.prototype.hasOwnProperty.call(last, 'gapRemove')) {
-    DATA.gap_remove = last.gapRemove;
-    gapRemoveDirty = last.gapRemoveDirty;
+  if (record.kind === 'gap_remove') {
+    DATA.gap_remove = record.gapRemove;
+    gapRemoveDirty = record.gapRemoveDirty;
     updateGapRemoveUi();
-    flashHint(`已撤销：${last.label}（剩 ${UNDO_STACK.length} 步）`);
-    return;
+    return true;
+  }
+  if (record.kind === 'preview') {
+    applyPreviewState(record.preview);
+    return true;
   }
   DATA.segments.length = 0;
-  last.segs.forEach(s => DATA.segments.push(s));
+  record.segs.forEach(s => DATA.segments.push(s));
   clearSelection();
   lastActive = -1;
   renderAll();
-  flashHint(`已撤销：${last.label}（剩 ${UNDO_STACK.length} 步）`);
+  return true;
 }
+function performUndo() {
+  const top = editorHistory.peekUndo();
+  if (!top) { flashHint('没有可撤销的操作'); return; }
+  if (top.kind === 'layout' && typeof waveformEditor?.restoreLayoutHistorySnapshot !== 'function') {
+    flashHint('布局撤销失败：布局模块尚未加载');
+    return;
+  }
+  if (editingState) finishEdit(false);  // 撤销前丢弃当前编辑（保持快照前后一致）
+  const current = snapshotCurrentForKind(top.kind, top.label);
+  const record = editorHistory.popUndo(current);
+  if (!record) return;
+  applyHistoryRecord(record);
+  flashHint(`已撤销：${record.label}（剩 ${editorHistory.undoLength()} 步）`);
+  updateUndoRedoButtons();
+}
+function performRedo() {
+  const top = editorHistory.peekRedo();
+  if (!top) { flashHint('没有可重做的操作'); return; }
+  if (top.kind === 'layout' && typeof waveformEditor?.restoreLayoutHistorySnapshot !== 'function') {
+    flashHint('布局重做失败：布局模块尚未加载');
+    return;
+  }
+  if (editingState) finishEdit(false);
+  const current = snapshotCurrentForKind(top.kind, top.label);
+  const record = editorHistory.popRedo(current);
+  if (!record) return;
+  applyHistoryRecord(record);
+  flashHint(`已重做：${record.label}（剩 ${editorHistory.redoLength()} 步）`);
+  updateUndoRedoButtons();
+}
+// modal 或文本输入聚焦时不触发全局撤销/重做（让浏览器/输入框自己处理）
+function historyGuarded() {
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) {
+    return true;
+  }
+  return replaceModal.classList.contains('show')
+      || stickerModal.classList.contains('show')
+      || stickerPreviewModal.classList.contains('show')
+      || projectMediaModal.classList.contains('show')
+      || document.getElementById('sticker-root-modal').classList.contains('show');
+}
+const undoBtn = document.getElementById('undo-btn');
+const redoBtn = document.getElementById('redo-btn');
+function updateUndoRedoButtons() {
+  if (undoBtn) undoBtn.disabled = !editorHistory.canUndo();
+  if (redoBtn) redoBtn.disabled = !editorHistory.canRedo();
+}
+if (undoBtn) undoBtn.addEventListener('click', () => performUndo());
+if (redoBtn) redoBtn.addEventListener('click', () => performRedo());
+updateUndoRedoButtons();
 const nowEl = document.getElementById('now');
 const searchEl = document.getElementById('search');
 const visibleCountEl = document.getElementById('visible-count');
@@ -1920,21 +2004,18 @@ document.addEventListener('keydown', (e) => {
   flashHint(`倍速: ${fmtRate(r)}`);
 });
 
-// Ctrl+Z / Cmd+Z 撤销
+// Ctrl/Cmd+Z 撤销；Ctrl/Cmd+Shift+Z 或 Ctrl/Cmd+Y 重做
 document.addEventListener('keydown', (e) => {
-  if (e.key !== 'z' && e.key !== 'Z') return;
+  const isZ = e.key === 'z' || e.key === 'Z';
+  const isY = e.key === 'y' || e.key === 'Y';
+  if (!isZ && !isY) return;
   if (!(e.ctrlKey || e.metaKey)) return;
-  if (e.shiftKey) return;  // Ctrl+Shift+Z 留给未来 redo
-  // 编辑文本时让浏览器自己处理 input 内的撤销
-  const a = document.activeElement;
-  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable)) return;
-  // modal 打开时不触发（modal 内有自己的 input）
-  if (replaceModal.classList.contains('show')) return;
-  if (stickerModal.classList.contains('show')) return;
-  if (stickerPreviewModal.classList.contains('show')) return;
-  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+  const isRedo = isY || e.shiftKey;
+  // 编辑文本时让浏览器自己处理 input 内的撤销/重做
+  if (historyGuarded()) return;
   e.preventDefault();
-  performUndo();
+  if (isRedo) performRedo();
+  else performUndo();
 });
 
 // Delete 键删除选中的字幕（最小命令面，供回归测试与键盘操作）
@@ -2083,6 +2164,8 @@ function update() {
 player.addEventListener('timeupdate', update);
 player.addEventListener('seeked', update);
 overlayToggle.addEventListener('change', () => {
+  // change 触发时 checked 已是新值；压入改变前的状态作为撤销点
+  pushPreviewUndo('切换字幕预览', { overlay: !overlayToggle.checked });
   updateEditorSettings({ overlayEnabled: overlayToggle.checked });
   if (!overlayToggle.checked) overlayEl.classList.add('hidden');
   else update();
@@ -2989,7 +3072,8 @@ async function openProjectFile(file, mediaFiles = [], pendingMediaRequest = null
     if (data.sticker_root) STICKER_ROOT = data.sticker_root;
     DATA.segments.length = 0;
     data.segments.forEach((segment) => DATA.segments.push(segment));
-    UNDO_STACK.length = 0;
+    editorHistory.clear();
+    updateUndoRedoButtons();
     clearSelection();
     lastActive = -1;
     if (waveformEditor) {

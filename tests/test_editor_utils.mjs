@@ -330,3 +330,95 @@ test('shares configured Enter semantics between list editing and current cue edi
     'split',
   );
 });
+
+
+test('history stack: push clears redo and peek reports top without popping', () => {
+  const h = helpers.createHistoryStack(100);
+  assert.equal(h.canUndo(), false);
+  assert.equal(h.canRedo(), false);
+  assert.equal(h.peekUndo(), null);
+  h.push({ kind: 'segments', label: 'A', segs: [1] });
+  h.push({ kind: 'segments', label: 'B', segs: [2] });
+  assert.equal(h.undoLength(), 2);
+  assert.equal(h.canUndo(), true);
+  assert.deepEqual(h.peekUndo(), { kind: 'segments', label: 'B', segs: [2] });
+  assert.equal(h.undoLength(), 2); // peek 不消费
+});
+
+
+test('history stack: popUndo/popRedo round-trip restores records and mirrors current snapshots', () => {
+  const h = helpers.createHistoryStack(100);
+  h.push({ kind: 'segments', label: 'edit1', segs: ['after1'] });
+  h.push({ kind: 'segments', label: 'edit2', segs: ['after2'] });
+
+  // undo edit2: 当前状态 'after2' 进入 redo，返回 'edit2'（其 segs 是 edit2 之前的快照）
+  const undoRecord = h.popUndo({ kind: 'segments', label: 'edit2', segs: ['after2'] });
+  assert.deepEqual(undoRecord, { kind: 'segments', label: 'edit2', segs: ['after2'] });
+  assert.equal(h.undoLength(), 1);
+  assert.equal(h.redoLength(), 1);
+  assert.equal(h.canRedo(), true);
+
+  // redo edit2: 当前状态（刚还原的 'edit2' 之前状态）回到 undo，返回 redo 顶部 'after2'
+  const redoRecord = h.popRedo({ kind: 'segments', label: 'edit2', segs: ['before2'] });
+  assert.deepEqual(redoRecord, { kind: 'segments', label: 'edit2', segs: ['after2'] });
+  assert.equal(h.undoLength(), 2);
+  assert.equal(h.redoLength(), 0);
+});
+
+
+test('history stack: a new push after undo clears the redo stack', () => {
+  const h = helpers.createHistoryStack(100);
+  h.push({ kind: 'segments', label: 'A', segs: [1] });
+  h.popUndo({ kind: 'segments', label: 'A', segs: [1] });
+  assert.equal(h.redoLength(), 1);
+  h.push({ kind: 'segments', label: 'B', segs: [2] });
+  assert.equal(h.redoLength(), 0);
+  assert.equal(h.canRedo(), false);
+  assert.equal(h.undoLength(), 1);
+});
+
+
+test('history stack: limit trims oldest undo entries and clamps to at least 1', () => {
+  const h = helpers.createHistoryStack(3);
+  h.push({ label: 'a' });
+  h.push({ label: 'b' });
+  h.push({ label: 'c' });
+  h.push({ label: 'd' });
+  assert.equal(h.undoLength(), 3);
+  assert.equal(h.peekUndo().label, 'd');
+  // 最旧的 'a' 被裁掉
+  const first = h.popUndo({ label: 'cur' });
+  assert.equal(first.label, 'd');
+  const second = h.popUndo({ label: 'cur' });
+  assert.equal(second.label, 'c');
+  const third = h.popUndo({ label: 'cur' });
+  assert.equal(third.label, 'b');
+  assert.equal(h.canUndo(), false);
+  // undo 已空：popUndo 返回 null，不抛错；redo 仍持有 3 条镜像
+  assert.equal(h.popUndo({ label: 'x' }), null);
+  assert.equal(h.redoLength(), 3);
+  // 清空 redo 后 popRedo 才返回 null
+  h.clearRedo();
+  assert.equal(h.popRedo({ label: 'x' }), null);
+});
+
+
+test('history stack: clear and clearRedo reset the right stacks', () => {
+  const h = helpers.createHistoryStack(100);
+  h.push({ label: 'a' });
+  h.popUndo({ label: 'cur' });
+  h.push({ label: 'b' });
+  // undo=[b], redo=[] 已被 push 清空
+  assert.equal(h.redoLength(), 0);
+  h.popUndo({ label: 'cur' });
+  // undo=[], redo=[cur]
+  assert.equal(h.undoLength(), 0);
+  assert.equal(h.redoLength(), 1);
+  h.clearRedo();
+  assert.equal(h.redoLength(), 0);
+  h.push({ label: 'c' });
+  h.push({ label: 'd' });
+  h.clear();
+  assert.equal(h.undoLength(), 0);
+  assert.equal(h.redoLength(), 0);
+});

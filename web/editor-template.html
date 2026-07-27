@@ -17,6 +17,10 @@ __WAVEFORM_CSS__
   <span class="json-name __JSON_NAME_CLASS__" id="json-name" title="点击复制 JSON 文件名">__JSON_DISPLAY__</span>
 </h1>
 <div class="toolbar row-actions">
+  <span class="undo-redo-group" role="group" aria-label="撤销重做">
+    <button type="button" id="undo-btn" title="撤销 (Ctrl/Cmd+Z)" disabled>↶ 撤销</button>
+    <button type="button" id="redo-btn" title="重做 (Ctrl/Cmd+Shift+Z)" disabled>↷ 重做</button>
+  </span>
   <button id="open-project" title="可同选工程 JSON 与媒体；仅选 JSON 时会询问是否继续选择关联媒体">打开工程</button>
   <div class="dropdown" id="recent-projects" hidden>
     <button type="button" id="recent-projects-toggle" title="打开本机最近使用的工程">最近工程</button>

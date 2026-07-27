@@ -104,6 +104,10 @@
     border-radius: 4px; padding: 4px 10px; font-size: 12px; cursor: pointer;
   }
   .toolbar button:hover { background: #4a5e72; }
+  .toolbar button:disabled { opacity: .42; cursor: not-allowed; }
+  .toolbar button:disabled:hover { background: #3a4a5a; }
+  .toolbar .undo-redo-group { display: inline-flex; gap: 4px; align-items: center; }
+  .toolbar .undo-redo-group button { min-width: 32px; }
   .toolbar button.dirty { background: #4a3a2a; border-color: #806040; color: #ffd9a8; }
   .toolbar button.danger { background: #5a3a3a; border-color: #804040; color: #ffcccc; }
   .toolbar button.danger:hover { background: #6e4a4a; }
