@@ -3279,7 +3279,7 @@
       this.scroll.addEventListener('scroll', (event) => {
         if (!this.isMultiMode()) return;
         if (event.isTrusted && !this.autoScrolling) this.manualFollowUntil = Date.now() + 3000;
-        this.renderMultiVisible();
+        this.scheduleMultiVisible();
       });
       this.bindDivider();
       this.bindLayoutResizers();
@@ -3295,6 +3295,7 @@
           dividerDrag = { pointerId: event.pointerId, snapshot: this.getLayoutHistorySnapshot(), changed: false };
           divider.classList.add('dragging');
           divider.setPointerCapture(event.pointerId);
+          this.layoutDragging = true;
         });
         divider.addEventListener('pointermove', (event) => {
           if (!dividerDrag || dividerDrag.pointerId !== event.pointerId) return;
@@ -3318,9 +3319,13 @@
         });
         const finish = (event) => {
           if (!dividerDrag || dividerDrag.pointerId !== event.pointerId) return;
+          const changed = dividerDrag.changed;
           dividerDrag = null;
           divider.classList.remove('dragging');
           try { divider.releasePointerCapture(event.pointerId); } catch (_) {}
+          this.layoutDragging = false;
+          // 松手后按最终尺寸做一次清晰重绘
+          if (changed) this.scheduleRender();
           saveSettings(this.settings);
         };
         divider.addEventListener('pointerup', finish);
@@ -3339,6 +3344,7 @@
           drag = { pointerId: event.pointerId, snapshot: this.getLayoutHistorySnapshot(), changed: false };
           resizer.classList.add('dragging');
           resizer.setPointerCapture?.(event.pointerId);
+          this.layoutDragging = true;
         });
         resizer.addEventListener('pointermove', (event) => {
           if (!drag || drag.pointerId !== event.pointerId) return;
@@ -3374,9 +3380,13 @@
         });
         const finish = (event) => {
           if (!drag || drag.pointerId !== event.pointerId) return;
+          const changed = drag.changed;
           drag = null;
           resizer.classList.remove('dragging');
           try { resizer.releasePointerCapture?.(event.pointerId); } catch (_) {}
+          this.layoutDragging = false;
+          // 松手后按最终尺寸做一次清晰重绘
+          if (changed) this.scheduleRender();
           saveSettings(this.settings);
         };
         resizer.addEventListener('pointerup', finish);
@@ -4115,6 +4125,33 @@
       this.resizeFrame = requestAnimationFrame(() => this.render());
     }
 
+    scheduleMultiVisible() {
+      // 滚动事件一帧内可能触发多次；合并到每帧最多一次可视区渲染
+      if (this.multiVisibleFrame) return;
+      this.multiVisibleFrame = requestAnimationFrame(() => {
+        this.multiVisibleFrame = 0;
+        this.renderMultiVisible();
+      });
+    }
+
+    scheduleBasicRender() {
+      // 高频滚轮逐事件全绘单行波形会卡顿；合并到每帧最多一次
+      if (this.basicRenderFrame) return;
+      this.basicRenderFrame = requestAnimationFrame(() => {
+        this.basicRenderFrame = 0;
+        this.renderBasic();
+      });
+    }
+
+    scheduleRefreshCueBlocks() {
+      // 高回报率指针设备一帧内触发多次 pointermove；合并到每帧最多一次块重排
+      if (this.cueRefreshFrame) return;
+      this.cueRefreshFrame = requestAnimationFrame(() => {
+        this.cueRefreshFrame = 0;
+        this.refreshCueBlocks();
+      });
+    }
+
     render() {
       this.applyLayout();
       if (this.settings.mode === 'hidden') return;
@@ -4124,8 +4161,23 @@
         return;
       }
       this.empty.classList.add('hidden');
+      if (this.layoutDragging) {
+        // 布局拖拽中：不做全量重建（每帧 14 个 canvas 重绘会卡顿），
+        // 只把已有位图按新尺寸拉伸；松手后由 finish 里的 scheduleRender 恢复清晰
+        this.stretchWaveformCanvases();
+        return;
+      }
       if (this.settings.mode === 'basic') this.renderBasic();
       else this.renderMulti();
+    }
+
+    stretchWaveformCanvases() {
+      // 字幕块/空隙块/播放头均为百分比定位，会随行宽自动跟随；
+      // 只有 canvas 位图需要按新尺寸临时拉伸
+      this.content.querySelectorAll('.waveform-row canvas').forEach((canvas) => {
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+      });
     }
 
     renderSegments() {
@@ -4168,18 +4220,43 @@
         return;
       }
       this.multiRange = [first, last];
-      this.content.replaceChildren();
       this.content.style.height = `${rowCount * stride - ROW_GAP}px`;
-      for (let index = first; index <= last; index++) {
-        const startMs = index * rowDurationMs;
-        const endMs = Math.min(this.durationMs, startMs + rowDurationMs);
-        const row = this.createRow(startMs, endMs, index, false);
-        row.style.top = `${index * stride}px`;
-        row.style.height = `${ROW_HEIGHT}px`;
-        this.content.appendChild(row);
-        this.drawRow(row);
+      if (force) {
+        // 全量重建：先完成所有 DOM 变更再统一绘制，避免逐行强制同步布局
+        this.content.replaceChildren();
+        const rows = [];
+        for (let index = first; index <= last; index++) {
+          rows.push(this.content.appendChild(this.createMultiRow(index, rowDurationMs)));
+        }
+        for (const row of rows) this.drawRow(row);
+        this.updatePlayback(false);
+        return;
       }
+      // 增量更新：只移除滚出可视范围的行、只绘制新进入的行；
+      // 仍在范围内的行保留原 canvas 不重绘，消除滚动时的整体重建卡顿
+      const wanted = new Set();
+      for (let index = first; index <= last; index++) wanted.add(String(index));
+      const existing = new Set();
+      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+        if (wanted.has(row.dataset.rowIndex)) existing.add(row.dataset.rowIndex);
+        else row.remove();
+      });
+      const created = [];
+      for (let index = first; index <= last; index++) {
+        if (existing.has(String(index))) continue;
+        created.push(this.content.appendChild(this.createMultiRow(index, rowDurationMs)));
+      }
+      for (const row of created) this.drawRow(row);
       this.updatePlayback(false);
+    }
+
+    createMultiRow(index, rowDurationMs) {
+      const startMs = index * rowDurationMs;
+      const endMs = Math.min(this.durationMs, startMs + rowDurationMs);
+      const row = this.createRow(startMs, endMs, index, false);
+      row.style.top = `${index * (ROW_HEIGHT + ROW_GAP)}px`;
+      row.style.height = `${ROW_HEIGHT}px`;
+      return row;
     }
 
     createRow(startMs, endMs, rowIndex, basic) {
@@ -4503,7 +4580,7 @@
         const delta = Math.sign(event.deltaY || event.deltaX) * windowMs * 0.12;
         this.basicWindowStartMs = clamp(this.basicWindowStartMs + delta, 0, maxStart);
         this.manualFollowUntil = Date.now() + 3000;
-        this.renderBasic();
+        this.scheduleBasicRender();
         return;
       }
       if (this.isMultiMode() && (event.ctrlKey || event.metaKey)) {
@@ -4737,7 +4814,16 @@
       );
       drag.changed = JSON.stringify(drag.nextGaps) !== JSON.stringify(drag.originalGaps);
       drag.valueMs = valueMs;
-      this.previewGapBoundaryDrag(drag);
+      this.scheduleGapPreview(drag);
+    }
+
+    scheduleGapPreview(drag) {
+      // 与字幕块拖拽同理：合并到每帧最多一次预览重排
+      if (this.gapPreviewFrame) return;
+      this.gapPreviewFrame = requestAnimationFrame(() => {
+        this.gapPreviewFrame = 0;
+        if (this.gapBoundaryDrag === drag) this.previewGapBoundaryDrag(drag);
+      });
     }
 
     endGapBoundaryDrag(event) {
@@ -4834,7 +4920,7 @@
       else if (drag.kind === 'resize-boundary-independent') this.applyIndependentBoundaryDrag(drag, deltaMs);
       else this.applyResizeDrag(drag, deltaMs, event.altKey);
       drag.changed = true;
-      this.refreshCueBlocks();
+      this.scheduleRefreshCueBlocks();
     }
 
     applyMoveDrag(drag, rawDelta, disableSnap) {
