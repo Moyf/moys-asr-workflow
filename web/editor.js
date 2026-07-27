@@ -15,6 +15,7 @@ const DEFAULT_EDITOR_SETTINGS = {
   cueListShowCharcount: true,
   cueEditorShowNavigation: true,
   cueEditorShowSticker: false,
+  selectGroupMembers: false,
 };
 
 function readEditorSettings() {
@@ -30,6 +31,7 @@ function readEditorSettings() {
       cueListShowCharcount: saved.cueListShowCharcount !== false,
       cueEditorShowNavigation: saved.cueEditorShowNavigation !== false,
       cueEditorShowSticker: saved.cueEditorShowSticker === true,
+      selectGroupMembers: saved.selectGroupMembers === true,
     };
   } catch (_) {
     return { ...DEFAULT_EDITOR_SETTINGS };
@@ -203,6 +205,7 @@ const cueListShowStickerToggle = document.getElementById('cue-list-show-sticker'
 const cueListShowCharcountToggle = document.getElementById('cue-list-show-charcount');
 const cueEditorShowNavigationToggle = document.getElementById('cue-editor-show-navigation');
 const cueEditorShowStickerToggle = document.getElementById('cue-editor-show-sticker');
+const selectGroupMembersToggle = document.getElementById('select-group-members');
 const replaceModal = document.getElementById('replace-modal');
 const stickerModal = document.getElementById('sticker-modal');
 const stickerPreviewModal = document.getElementById('sticker-preview-modal');
@@ -304,6 +307,7 @@ function bindCueEditorDisplayToggle(toggle, key) {
 splitKeySel.value = EDITOR_SETTINGS.splitKey;
 overlayToggle.checked = EDITOR_SETTINGS.overlayEnabled;
 exportStartAtZeroToggle.checked = EDITOR_SETTINGS.exportStartAtZero;
+if (selectGroupMembersToggle) selectGroupMembersToggle.checked = EDITOR_SETTINGS.selectGroupMembers;
 applyCueListDisplaySettings();
 applyCueEditorDisplaySettings();
 editorSettingsToggle?.addEventListener('click', () => setEditorSettingsPanelOpen(editorSettingsPanel?.hidden));
@@ -316,6 +320,9 @@ bindCueEditorDisplayToggle(cueEditorShowNavigationToggle, 'cueEditorShowNavigati
 bindCueEditorDisplayToggle(cueEditorShowStickerToggle, 'cueEditorShowSticker');
 exportStartAtZeroToggle.addEventListener('change', () => {
   updateEditorSettings({ exportStartAtZero: exportStartAtZeroToggle.checked });
+});
+selectGroupMembersToggle?.addEventListener('change', () => {
+  updateEditorSettings({ selectGroupMembers: selectGroupMembersToggle.checked });
 });
 
 function setGapRemoveData(next, { dirty = true } = {}) {
@@ -792,6 +799,46 @@ function selectOnly(idx) {
   selCountEl.textContent = '1';
   if (waveformEditor) waveformEditor.updateSelection();
   setCurrentCuePanelIndex(idx);
+}
+// 返回与 idx 同属一个表情包/颜色分组的全部字幕下标（含 idx 自身）。
+// head 持有 sticker/color，成员持 sticker_ref/color_ref 指向 head。
+function groupMemberIdxs(idx) {
+  const seg = DATA.segments[idx];
+  if (!seg) return [idx];
+  const heads = new Set();
+  if (seg.sticker) heads.add(idx);
+  else if (seg.sticker_ref) heads.add(seg.sticker_ref.headIdx);
+  if (seg.color) heads.add(idx);
+  else if (seg.color_ref) heads.add(seg.color_ref.headIdx);
+  if (!heads.size) return [idx];
+  const members = [];
+  DATA.segments.forEach((s, i) => {
+    const sHead = s.sticker ? i : (s.sticker_ref ? s.sticker_ref.headIdx : null);
+    const cHead = s.color ? i : (s.color_ref ? s.color_ref.headIdx : null);
+    if ((sHead !== null && heads.has(sHead)) || (cHead !== null && heads.has(cHead))) {
+      members.push(i);
+    }
+  });
+  return members.length ? members : [idx];
+}
+// 普通单击字幕时的选择逻辑：开启「同时选中分组内项目」且属于分组时选整组，否则只选本行。
+function selectCueByClick(idx) {
+  if (EDITOR_SETTINGS.selectGroupMembers) {
+    const members = groupMemberIdxs(idx);
+    if (members.length > 1) {
+      clearSelection();
+      members.forEach((i) => {
+        selectedIdxs.add(i);
+        const el = container.querySelector(`.cue[data-idx="${i}"]`);
+        if (el) el.classList.add('selected');
+      });
+      selCountEl.textContent = String(selectedIdxs.size);
+      if (waveformEditor) waveformEditor.updateSelection();
+      setCurrentCuePanelIndex(idx);
+      return;
+    }
+  }
+  selectOnly(idx);
 }
 
 // === 渲染 ===
@@ -1605,6 +1652,13 @@ function deleteSegments(idxs) {
     flashHint('不能删除全部字幕');
     return;
   }
+  // Commit any pending cue-panel edit and reset panel state BEFORE splicing.
+  // Without this, clearSelection() → setCurrentCuePanelIndex(-1) → commitCuePanelEdit()
+  // would write the stale panel text to whatever segment now occupies the old index
+  // after splice shifts the array — causing wrong-adjacent text overwrites.
+  commitCuePanelEdit();
+  currentCuePanelIdx = -1;
+  cuePanelUndoPushed = false;
   pushUndo(`删除 ${sorted.length} 条字幕`);
   const removeSet = new Set(sorted);
 
@@ -1709,8 +1763,8 @@ function bindCueEvents(el, idx) {
     clickTimer = setTimeout(() => {
       clickTimer = null;
       if (editingState) return;
-      // 普通单击 = 跳转 + 重置选择为本行
-      selectOnly(idx);
+      // 普通单击 = 跳转 + 重置选择为本行（或整组，取决于设置）
+      selectCueByClick(idx);
       lastClickedIdx = idx;
       const seg = DATA.segments[idx];
       seekTo(seg.start / 1000);
@@ -1864,6 +1918,26 @@ document.addEventListener('keydown', (e) => {
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   e.preventDefault();
   performUndo();
+});
+
+// Delete 键删除选中的字幕（最小命令面，供回归测试与键盘操作）
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+  // 编辑文本时让浏览器自己处理
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
+  // modal 打开时不触发
+  if (replaceModal.classList.contains('show')) return;
+  if (stickerModal.classList.contains('show')) return;
+  if (stickerPreviewModal.classList.contains('show')) return;
+  if (projectMediaModal.classList.contains('show')) return;
+  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+  if (ctxmenu.classList.contains('show')) return;
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  if (selectedIdxs.size === 0) return;
+  e.preventDefault();
+  e.stopPropagation();
+  deleteSegments([...selectedIdxs]);
 });
 
 // 点击外部 -> 完成编辑
@@ -3758,10 +3832,20 @@ function initWaveformEditor() {
     getSegments: () => DATA.segments,
     getSelection: () => selectedIdxs,
     selectCue: (idx) => {
-      selectOnly(idx);
+      selectCueByClick(idx);
       lastClickedIdx = idx;
       const cue = container.querySelector(`.cue[data-idx="${idx}"]`);
       if (cue) scrollCueIntoViewIfNeeded(cue);
+    },
+    clearSelection: () => clearSelection(),
+    toggleCueSelection: (idx) => {
+      toggleSel(idx);
+      lastClickedIdx = idx;
+    },
+    selectCueRange: (idx) => {
+      if (lastClickedIdx >= 0) selectRange(lastClickedIdx, idx);
+      else selectOnly(idx);
+      lastClickedIdx = idx;
     },
     seek: seekFromWaveform,
     togglePlayback,

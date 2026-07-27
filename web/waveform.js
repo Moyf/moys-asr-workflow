@@ -1598,6 +1598,8 @@
           this.beginCueCreate(event, row);
           return;
         }
+        // 普通左键点击空白波形：清除字幕选中并跳转播放头
+        this.options.clearSelection?.();
         this.seekFromPointer(event, row);
       });
       row.addEventListener('auxclick', (event) => {
@@ -1791,6 +1793,16 @@
       event.stopPropagation();
       if (event.altKey) {
         this.options.toggleDisabled?.([index]);
+        return;
+      }
+      // Ctrl/Cmd+click toggles selection without starting a drag
+      if (event.ctrlKey || event.metaKey) {
+        this.options.toggleCueSelection?.(index);
+        return;
+      }
+      // Shift+click selects a range from lastClickedIdx to index
+      if (event.shiftKey) {
+        this.options.selectCueRange?.(index);
         return;
       }
       const targetHandle = event.target.closest('.waveform-cue-handle');
