@@ -2,6 +2,20 @@
 
 本项目采用 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 的记录方式。
 
+## [Unreleased]
+
+## [1.1.0] - 2026-07-28
+
+### Added
+
+- 新增 Windows `tkinter + ttk` 图形界面，可选择媒体和输出路径、填写 Qwen Key、查看进度、取消任务并打开输出。
+- 新增 PyInstaller `onedir` Windows 构建脚本与 `v*` 标签触发的 GitHub Release 工作流；FFmpeg/ffprobe 继续保持外部依赖。
+- 字幕画面预览支持鼠标拖动、八方向缩放、键盘调整、撤销/重做，以及 localhost 保存和便携 JSON 导出的持久化。
+
+### Changed
+
+- 工程 JSON 新增可选 `preview.subtitle` 归一化几何；旧工程缺少该字段时保持原有字幕位置。
+
 ## [1.0.1] - 2026-07-26
 
 ### Added

@@ -30,6 +30,20 @@
 
 ## 最快上手（推荐）
 
+### Windows 图形界面
+
+从 GitHub Releases 下载 `MAW-Windows-x64-v*.zip`，解压后双击 `MAW.exe`。选择媒体与 SRT 输出位置，填写 Qwen API Key，即可在窗口中生成 SRT、JSON 工程和便携编辑器 HTML。Key 只传给本次转写子进程，不会写入工程文件。
+
+图形版仍要求系统能找到 `ffmpeg` 和 `ffprobe`；本项目不会捆绑或自动安装它们。程序无法检测媒体时，请安装 FFmpeg 并把它的 `bin` 目录加入 PATH，然后重新打开 MAW。
+
+也可以从源码启动同一界面：
+
+```powershell
+uv run python maw_gui.py
+```
+
+下面的命令行方式仍完整保留，适合自动化和精细参数调整。
+
 > [!tip]
 > **给人类**：把这个项目地址发给你的 AI Agent 然后让它参考文档操作即可！  
 > <img src="assets/show.webp" width="300" alt="sticker">
@@ -111,6 +125,7 @@ uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.json"
   - 拆分或合并字幕 ⭐：工程 JSON 含字/词级时间码时，拆分后会按这些时间码分配两侧的时间，仍能保持准确。
   - 可显示当前单句的时长、字数和阅读速度，并过滤过长文本。
   - 可预览并批量替换关键词。
+  - 视频画面内的字幕预览可直接拖动和缩放；位置与大小保存在 JSON 工程中，撤销/重做、localhost 保存及便携 HTML 导出后仍会保留。
   - 可检测并移除静音空隙；这不会改写原始媒体或原始字幕时间，而是建立可撤销的压缩时间线供播放和导出使用。
   - 可保存 JSON 工程，或导出标准 SRT 字幕。
 - 拓展部分

@@ -4,6 +4,8 @@
 
 前端不复制：每次访问首页都会从项目根目录的 `web/` 和 `web/editor-template.html` 渲染，因此它与 `edit.py` 生成的自包含 `file://` HTML 始终共享同一套功能和样式。
 
+Windows Release 中的 `MAW.exe` 用于生成工程和便携 HTML；生成完成后可以直接打开 HTML。需要 localhost 的媒体 Range、原路径安全保存和最近工程功能时，继续使用本页的源码服务器命令。
+
 ```powershell
 cd <MAW 仓库目录>
 

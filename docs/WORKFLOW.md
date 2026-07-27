@@ -4,6 +4,10 @@
 
 ## 0. 安装依赖
 
+如果使用 GitHub Releases 提供的 Windows 图形版，Python 与 uv 已由应用打包，不需要单独安装；但 `ffmpeg` 和 `ffprobe` 仍是外部依赖。解压后双击 `MAW.exe`，在窗口中选择媒体、输出位置并填写 API Key 即可。
+
+源码方式继续按下列步骤安装：
+
 确认下列命令都有输出：
 
 ```powershell
@@ -31,6 +35,8 @@ py -3.11 -m venv .venv
 
 ## 1. 配置 Qwen API
 
+图形版可在遮罩输入框中填写 API Key；它只进入本次子进程环境，不会写回 `.env` 或 JSON。源码命令行方式使用下面的 `.env`：
+
 ```powershell
 Copy-Item .env.example .env
 notepad .env
@@ -45,6 +51,8 @@ DASHSCOPE_API_KEY=sk-你的密钥
 北京地域默认使用 `DASHSCOPE_REGION=beijing`；新加坡地域改为 `singapore` 并填写 `DASHSCOPE_WORKSPACE_ID`。环境变量优先于 `.env`。密钥申请和地域说明以[官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)为准。
 
 ## 2. 先跑小样本
+
+图形版的“Length limit”可填写 `2m`，效果等同于命令行 `-ll 2m`。
 
 先用 `-ll 2m` 限制在两分钟，既减少费用也便于排错：
 
@@ -104,6 +112,7 @@ uv run python server-editor\serve.py --blank
 
 - 双击文本改字；右键可以按文字或波形位置拆分、合并与批量替换。
 - 可拖动波形中的字幕块或边缘微调时间；相邻字幕共享边界时会保持连续。
+- 播放器内的字幕预览可直接拖动；悬停或聚焦后拖动八个手柄可缩放。方向键移动，`Shift` 加速移动，`Alt + 方向键` 调整尺寸。几何保存在工程 `preview.subtitle`，不会改变字幕时间。
 - “移除静音空隙”只建立可逆的压缩时间线，不修改原媒体和原字幕时间。
 - 常规 SRT 通过工具栏导出；若启用了空隙移除，可选择去空隙 SRT、OTIO、FFconcat 或保留区域 JSON。
 
