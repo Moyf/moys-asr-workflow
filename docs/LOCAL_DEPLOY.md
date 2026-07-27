@@ -98,23 +98,6 @@ uv run python web-console\server.py
 5. 选择或输入媒体文件路径
 6. 点击「开始转写」
 
-### 命令行
-
-```powershell
-# 云端 API
-uv run python generate_subtitle_qwen_api.py "video.mp4" --json
-
-# 本地 Qwen3-ASR
-uv run python generate_subtitle_local.py "video.mp4" --json
-
-# 指定模型尺寸
-uv run python generate_subtitle_local.py "video.mp4" --model 1.7B --json
-
-# 通过 .env 指定本地模型路径（见 .env.example）
-# QWEN3_ASR_MODEL_PATH=./models/Qwen3-ASR-0.6B
-# QWEN3_ASR_ALIGNER_PATH=./models/Qwen3-ForcedAligner-0.6B
-```
-
 ## 注意事项
 
 - **模型权重**不会被提交到 git（已配置 .gitignore），每次 clone 后需重新下载
