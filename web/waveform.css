@@ -40,7 +40,7 @@
   background: #4f78a5;
   color: #fff;
 }
-/* 剃刀工具下字幕块显示拆分光标，提示点击即拆分 */
+/* 分割工具下字幕块显示拆分光标，提示点击即拆分 */
 .waveform-pane.tool-razor .waveform-cue-block { cursor: crosshair; }
 .waveform-pane.tool-razor .waveform-cue-handle { cursor: crosshair; }
 .waveform-setting {
@@ -62,7 +62,7 @@
 
 .editor-workspace {
   --waveform-split: 60%;
-  --layout-column: 58%;
+  --layout-column: 44%;
   --layout-row-top: 42%;
   --layout-row-middle: 18%;
   --layout-row-bottom: 40%;
@@ -633,8 +633,10 @@
 .waveform-cue-block:hover { filter: brightness(1.16); }
 .waveform-cue-block.selected {
   z-index: 6;
-  outline: 2px solid #d8edff;
+  border-color: #ffd54a;
+  outline: 2px solid #ffd54a;
   outline-offset: 1px;
+  box-shadow: 0 0 0 1px rgba(89, 62, 0, .72), 0 0 8px rgba(255, 213, 74, .45);
 }
 .waveform-cue-block.active {
   background: color-mix(in srgb, var(--cue-color) 70%, #28547a);

@@ -180,6 +180,12 @@ test('normalizes independent layout data and preserves the right-column preset',
 });
 
 
+test('defaults the right-column layout to a wider waveform pane', () => {
+  const normalized = helpers.normalizeLayoutData({ preset: 'wave-right' });
+  assert.equal(normalized.columnPercent, 44);
+});
+
+
 test('migrates only the previous wave-right default to the more compact default', () => {
   const migrated = helpers.normalizeLayoutData({
     preset: 'wave-right',

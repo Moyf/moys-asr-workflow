@@ -103,6 +103,11 @@
     background: #3a4a5a; color: #cce0ff; border: 1px solid #4a6080;
     border-radius: 4px; padding: 4px 10px; font-size: 12px; cursor: pointer;
   }
+  .toolbar button:has(> .toolbar-button-icon) { display: inline-flex; align-items: center; gap: 5px; }
+  .toolbar-button-icon {
+    width: 14px; height: 14px; flex: 0 0 auto;
+    fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
+  }
   .toolbar button:hover { background: #4a5e72; }
   .toolbar button:disabled { opacity: .42; cursor: not-allowed; }
   .toolbar button:disabled:hover { background: #3a4a5a; }
@@ -121,6 +126,7 @@
     cursor: pointer; user-select: none;
   }
   .toolbar .right-group { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .toolbar-utility-group { display: inline-flex; align-items: center; gap: 4px; }
 
   .editor-settings-panel {
     flex: 0 0 auto; display: grid; grid-template-columns: repeat(3, minmax(190px, 1fr));
@@ -140,8 +146,11 @@
   }
   .editor-settings-item { display: inline-flex; align-items: center; gap: 6px; color: #a8bac9; font-size: 12px; }
   .editor-settings-item[hidden] { display: none; }
-  .editor-settings-list-fields { flex-wrap: wrap; }
+  .editor-settings-list-fields { flex-wrap: nowrap; }
+  .editor-settings-display-row { flex: 0 0 100%; }
   .editor-settings-list-fields > span { color: #7f94a5; }
+  .editor-settings-display-row > span,
+  .editor-settings-display-row > .toggle { white-space: nowrap; }
   .editor-settings-panel select {
     background: #202b35; color: #e1edf6; border: 1px solid #486277;
     border-radius: 4px; padding: 4px 6px; font-size: 12px; cursor: pointer;
@@ -164,6 +173,10 @@
   }
   @media (max-width: 860px) {
     .editor-settings-panel { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 420px) {
+    .editor-settings-display-row { gap: 3px; font-size: 11px; }
+    .editor-settings-display-row > .toggle { gap: 2px; }
   }
 
   /* === 下拉菜单（导出额外数据）=== */

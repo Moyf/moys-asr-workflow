@@ -36,7 +36,7 @@
     secondsPerRow: 10,
     side: 'left',
     splitPercent: 60,
-    layoutColumnPercent: 58,
+    layoutColumnPercent: 44,
     layoutRows: [...DEFAULT_LAYOUT_ROWS],
     freeOrder: [...DEFAULT_FREE_ORDER],
     layoutTree: null,
@@ -90,7 +90,7 @@
     };
   }
 
-  function legacyOrderToLayoutTree(order, columnPercent = 58, rows = DEFAULT_LAYOUT_ROWS) {
+  function legacyOrderToLayoutTree(order, columnPercent = DEFAULT_SETTINGS.layoutColumnPercent, rows = DEFAULT_LAYOUT_ROWS) {
     const ids = normalizeFreeOrder(order);
     const [top, middle, bottom] = normalizeLayoutRows(rows);
     const left = splitLayoutNode(
@@ -866,7 +866,7 @@
       document.querySelectorAll('[data-waveform-tool]').forEach((button) => {
         button.classList.toggle('active', button.dataset.waveformTool === tool);
       });
-      this.setStatus(tool === 'razor' ? '剃刀工具：点击字幕块在指针位置拆分' : '选择工具');
+      this.setStatus(tool === 'razor' ? '分割工具：点击字幕块在指针位置拆分' : '选择工具');
     }
 
     getTool() {
@@ -1779,6 +1779,13 @@
         block.classList.toggle('selected', this.options.getSelection().has(Number(block.dataset.idx)));
       });
       this.positionPlayheads();
+    }
+
+    refreshCueLabel(index) {
+      const segment = this.options.getSegments()[index];
+      if (!segment) return;
+      this.content.querySelectorAll(`.waveform-cue-block[data-idx="${index}"] .waveform-cue-label`)
+        .forEach((label) => { label.textContent = segment.text.replace(/\s+/g, ' '); });
     }
 
     updateSelection() {

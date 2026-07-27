@@ -83,8 +83,14 @@ __WAVEFORM_CSS__
   </span>
   <span class="sep"></span>
   <span class="waveform-tool-switch" role="group" aria-label="波形工具">
-    <button type="button" data-waveform-tool="select" class="active" title="选择工具（默认）：点击选中、拖动移动、拖动边界调整；Ctrl/Shift 多选，Alt 切换禁用，Alt 拖共享边界只动一侧">选择</button>
-    <button type="button" data-waveform-tool="razor" title="剃刀工具：点击字幕块在指针位置安全拆分（按词/字级时间码对齐，拒绝 100ms 以内的边缘拆分）；Esc 切回选择">剃刀</button>
+    <button type="button" data-waveform-tool="select" class="active" title="选择工具（默认）：点击选中、拖动移动、拖动边界调整；Ctrl/Shift 多选，Alt 切换禁用，Alt 拖共享边界只动一侧">
+      <svg class="toolbar-button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.75 12.25 8 8 9.25 6.25 13.5 3 1.75Z"/><path d="m8.3 9.2 3.2 3.05"/></svg>
+      <span>选择</span>
+    </button>
+    <button type="button" data-waveform-tool="razor" title="分割工具：点击字幕块在指针位置安全拆分（按词/字级时间码对齐，拒绝 100ms 以内的边缘拆分）；Esc 切回选择">
+      <svg class="toolbar-button-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="4" r="2.25"/><circle cx="4" cy="12" r="2.25"/><path d="m5.8 5.35 7.2 5.4M5.8 10.65 13 5.25"/></svg>
+      <span>分割</span>
+    </button>
   </span>
   <span class="sep"></span>
   <button type="button" id="gap-remove-manage" title="打开可拖动的移除静音空隙工具窗" aria-expanded="false" aria-controls="gap-remove-panel">移除静音空隙</button>
@@ -103,8 +109,14 @@ __WAVEFORM_CSS__
   <button type="button" id="layout-export" title="导出当前布局 JSON">导出布局</button>
   <button type="button" id="layout-import" title="导入布局 JSON">导入布局</button>
   <input type="file" id="layout-import-file" accept=".layout.json,.json,application/json" style="display:none">
-  <button type="button" id="editor-settings-toggle" title="展开字幕、波形与导出设置" aria-expanded="false" aria-controls="editor-settings-panel">⚙ 设置</button>
-  <button type="button" id="help-toggle" title="查看鼠标操作与键盘快捷键" aria-expanded="false" aria-controls="help-panel">帮助</button>
+  <span class="sep" aria-hidden="true"></span>
+  <span class="toolbar-utility-group" role="group" aria-label="编辑器工具">
+    <button type="button" id="editor-settings-toggle" title="展开字幕、波形与导出设置" aria-expanded="false" aria-controls="editor-settings-panel">🔧 设置</button>
+    <button type="button" id="help-toggle" title="查看鼠标操作与键盘快捷键" aria-expanded="false" aria-controls="help-panel">
+      <svg class="toolbar-button-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M6.5 6.25A1.75 1.75 0 1 1 8.7 7.94C8.25 8.16 8 8.55 8 9.15M8 11.75h.01"/></svg>
+      <span>帮助</span>
+    </button>
+  </span>
   <span class="waveform-status" id="waveform-status">等待波形数据</span>
 </div>
 
@@ -202,20 +214,14 @@ __WAVEFORM_CSS__
 <section class="editor-settings-panel" id="editor-settings-panel" aria-label="MAWE 设置" hidden>
   <div class="editor-settings-group">
     <span class="editor-settings-title">字幕</span>
-    <label class="editor-settings-item">拆分按键
-      <select id="split-key">
-        <option value="ctrl-enter" selected>Ctrl+Enter</option>
-        <option value="enter">Enter</option>
-      </select>
-    </label>
-    <div class="editor-settings-item editor-settings-list-fields">
+    <div class="editor-settings-item editor-settings-list-fields editor-settings-display-row">
       <span>字幕列表显示内容</span>
       <label class="toggle"><input type="checkbox" id="cue-list-show-index" checked> 序号</label>
       <label class="toggle"><input type="checkbox" id="cue-list-show-time" checked> 时间码</label>
       <label class="toggle"><input type="checkbox" id="cue-list-show-sticker"> 表情包</label>
       <label class="toggle"><input type="checkbox" id="cue-list-show-charcount" checked> 字数</label>
     </div>
-    <div class="editor-settings-item editor-settings-list-fields">
+    <div class="editor-settings-item editor-settings-list-fields editor-settings-display-row">
       <span>字幕编辑显示内容</span>
       <label class="toggle"><input type="checkbox" id="cue-editor-show-navigation" checked> 前后跳转</label>
       <label class="toggle"><input type="checkbox" id="cue-editor-show-sticker"> 表情包</label>
@@ -223,11 +229,21 @@ __WAVEFORM_CSS__
     <label class="toggle editor-settings-item" title="开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条">
       <input type="checkbox" id="select-group-members"> 同时选中分组内项目
     </label>
+  </div>
+  <div class="editor-settings-group">
+    <span class="editor-settings-title">操作</span>
     <label class="editor-settings-item" title="字幕列表与波形字幕块的普通单击行为；双击编辑不受影响">
       单击行为
       <select id="click-behavior">
         <option value="select-only" selected>仅选中</option>
         <option value="select-and-seek">选中并跳转</option>
+      </select>
+    </label>
+    <label class="editor-settings-item" title="编辑字幕时，选择 Enter 或 Ctrl+Enter 在文字光标处拆分；另一个按键用于保存">
+      字幕编辑拆分按键
+      <select id="split-key">
+        <option value="ctrl-enter" selected>Ctrl+Enter</option>
+        <option value="enter">Enter</option>
       </select>
     </label>
   </div>
@@ -290,6 +306,7 @@ __WAVEFORM_CSS__
     <span class="help-title">空隙与波形</span>
     <span><kbd>双击波形</kbd> 播放/暂停</span>
     <span><kbd>右键波形背景</kbd> 创建或按音频位置拆分字幕</span>
+    <span><kbd id="help-waveform-split-key">B</kbd> 在红色播放指针处拆分字幕</span>
     <span><kbd>Alt+点击空隙</kbd> 移除/保留</span>
     <span><kbd>中键拖动</kbd> 增加静音</span>
     <span><kbd>Alt+中键拖动</kbd> 恢复声音</span>
@@ -301,7 +318,9 @@ __WAVEFORM_CSS__
     <span><kbd>空格</kbd> 播放/暂停</span>
     <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> 倍速 ×0.5/重置/×2</span>
     <span><kbd>Delete</kbd> 删除所选字幕</span>
+    <span><kbd id="help-split-key">Ctrl+Enter</kbd> 编辑字幕时在文字光标处拆分</span>
     <span><kbd>Ctrl+Z</kbd> 撤销</span>
+    <span><kbd>Ctrl+Shift+Z</kbd> 重做</span>
   </div>
 </section>
 

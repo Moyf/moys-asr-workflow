@@ -110,6 +110,11 @@
     background: #3a4a5a; color: #cce0ff; border: 1px solid #4a6080;
     border-radius: 4px; padding: 4px 10px; font-size: 12px; cursor: pointer;
   }
+  .toolbar button:has(> .toolbar-button-icon) { display: inline-flex; align-items: center; gap: 5px; }
+  .toolbar-button-icon {
+    width: 14px; height: 14px; flex: 0 0 auto;
+    fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
+  }
   .toolbar button:hover { background: #4a5e72; }
   .toolbar button:disabled { opacity: .42; cursor: not-allowed; }
   .toolbar button:disabled:hover { background: #3a4a5a; }
@@ -128,6 +133,7 @@
     cursor: pointer; user-select: none;
   }
   .toolbar .right-group { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .toolbar-utility-group { display: inline-flex; align-items: center; gap: 4px; }
 
   .editor-settings-panel {
     flex: 0 0 auto; display: grid; grid-template-columns: repeat(3, minmax(190px, 1fr));
@@ -147,8 +153,11 @@
   }
   .editor-settings-item { display: inline-flex; align-items: center; gap: 6px; color: #a8bac9; font-size: 12px; }
   .editor-settings-item[hidden] { display: none; }
-  .editor-settings-list-fields { flex-wrap: wrap; }
+  .editor-settings-list-fields { flex-wrap: nowrap; }
+  .editor-settings-display-row { flex: 0 0 100%; }
   .editor-settings-list-fields > span { color: #7f94a5; }
+  .editor-settings-display-row > span,
+  .editor-settings-display-row > .toggle { white-space: nowrap; }
   .editor-settings-panel select {
     background: #202b35; color: #e1edf6; border: 1px solid #486277;
     border-radius: 4px; padding: 4px 6px; font-size: 12px; cursor: pointer;
@@ -171,6 +180,10 @@
   }
   @media (max-width: 860px) {
     .editor-settings-panel { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 420px) {
+    .editor-settings-display-row { gap: 3px; font-size: 11px; }
+    .editor-settings-display-row > .toggle { gap: 2px; }
   }
 
   /* === 下拉菜单（导出额外数据）=== */
@@ -713,7 +726,7 @@
   background: #4f78a5;
   color: #fff;
 }
-/* 剃刀工具下字幕块显示拆分光标，提示点击即拆分 */
+/* 分割工具下字幕块显示拆分光标，提示点击即拆分 */
 .waveform-pane.tool-razor .waveform-cue-block { cursor: crosshair; }
 .waveform-pane.tool-razor .waveform-cue-handle { cursor: crosshair; }
 .waveform-setting {
@@ -735,7 +748,7 @@
 
 .editor-workspace {
   --waveform-split: 60%;
-  --layout-column: 58%;
+  --layout-column: 44%;
   --layout-row-top: 42%;
   --layout-row-middle: 18%;
   --layout-row-bottom: 40%;
@@ -1306,8 +1319,10 @@
 .waveform-cue-block:hover { filter: brightness(1.16); }
 .waveform-cue-block.selected {
   z-index: 6;
-  outline: 2px solid #d8edff;
+  border-color: #ffd54a;
+  outline: 2px solid #ffd54a;
   outline-offset: 1px;
+  box-shadow: 0 0 0 1px rgba(89, 62, 0, .72), 0 0 8px rgba(255, 213, 74, .45);
 }
 .waveform-cue-block.active {
   background: color-mix(in srgb, var(--cue-color) 70%, #28547a);
@@ -1380,7 +1395,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-07-27 20:53</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-07-27 22:14</span>
   <span class="json-name empty" id="json-name" title="点击复制 JSON 文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -1450,8 +1465,14 @@
   </span>
   <span class="sep"></span>
   <span class="waveform-tool-switch" role="group" aria-label="波形工具">
-    <button type="button" data-waveform-tool="select" class="active" title="选择工具（默认）：点击选中、拖动移动、拖动边界调整；Ctrl/Shift 多选，Alt 切换禁用，Alt 拖共享边界只动一侧">选择</button>
-    <button type="button" data-waveform-tool="razor" title="剃刀工具：点击字幕块在指针位置安全拆分（按词/字级时间码对齐，拒绝 100ms 以内的边缘拆分）；Esc 切回选择">剃刀</button>
+    <button type="button" data-waveform-tool="select" class="active" title="选择工具（默认）：点击选中、拖动移动、拖动边界调整；Ctrl/Shift 多选，Alt 切换禁用，Alt 拖共享边界只动一侧">
+      <svg class="toolbar-button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.75 12.25 8 8 9.25 6.25 13.5 3 1.75Z"/><path d="m8.3 9.2 3.2 3.05"/></svg>
+      <span>选择</span>
+    </button>
+    <button type="button" data-waveform-tool="razor" title="分割工具：点击字幕块在指针位置安全拆分（按词/字级时间码对齐，拒绝 100ms 以内的边缘拆分）；Esc 切回选择">
+      <svg class="toolbar-button-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="4" r="2.25"/><circle cx="4" cy="12" r="2.25"/><path d="m5.8 5.35 7.2 5.4M5.8 10.65 13 5.25"/></svg>
+      <span>分割</span>
+    </button>
   </span>
   <span class="sep"></span>
   <button type="button" id="gap-remove-manage" title="打开可拖动的移除静音空隙工具窗" aria-expanded="false" aria-controls="gap-remove-panel">移除静音空隙</button>
@@ -1470,8 +1491,14 @@
   <button type="button" id="layout-export" title="导出当前布局 JSON">导出布局</button>
   <button type="button" id="layout-import" title="导入布局 JSON">导入布局</button>
   <input type="file" id="layout-import-file" accept=".layout.json,.json,application/json" style="display:none">
-  <button type="button" id="editor-settings-toggle" title="展开字幕、波形与导出设置" aria-expanded="false" aria-controls="editor-settings-panel">⚙ 设置</button>
-  <button type="button" id="help-toggle" title="查看鼠标操作与键盘快捷键" aria-expanded="false" aria-controls="help-panel">帮助</button>
+  <span class="sep" aria-hidden="true"></span>
+  <span class="toolbar-utility-group" role="group" aria-label="编辑器工具">
+    <button type="button" id="editor-settings-toggle" title="展开字幕、波形与导出设置" aria-expanded="false" aria-controls="editor-settings-panel">🔧 设置</button>
+    <button type="button" id="help-toggle" title="查看鼠标操作与键盘快捷键" aria-expanded="false" aria-controls="help-panel">
+      <svg class="toolbar-button-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M6.5 6.25A1.75 1.75 0 1 1 8.7 7.94C8.25 8.16 8 8.55 8 9.15M8 11.75h.01"/></svg>
+      <span>帮助</span>
+    </button>
+  </span>
   <span class="waveform-status" id="waveform-status">等待波形数据</span>
 </div>
 
@@ -1569,20 +1596,14 @@
 <section class="editor-settings-panel" id="editor-settings-panel" aria-label="MAWE 设置" hidden>
   <div class="editor-settings-group">
     <span class="editor-settings-title">字幕</span>
-    <label class="editor-settings-item">拆分按键
-      <select id="split-key">
-        <option value="ctrl-enter" selected>Ctrl+Enter</option>
-        <option value="enter">Enter</option>
-      </select>
-    </label>
-    <div class="editor-settings-item editor-settings-list-fields">
+    <div class="editor-settings-item editor-settings-list-fields editor-settings-display-row">
       <span>字幕列表显示内容</span>
       <label class="toggle"><input type="checkbox" id="cue-list-show-index" checked> 序号</label>
       <label class="toggle"><input type="checkbox" id="cue-list-show-time" checked> 时间码</label>
       <label class="toggle"><input type="checkbox" id="cue-list-show-sticker"> 表情包</label>
       <label class="toggle"><input type="checkbox" id="cue-list-show-charcount" checked> 字数</label>
     </div>
-    <div class="editor-settings-item editor-settings-list-fields">
+    <div class="editor-settings-item editor-settings-list-fields editor-settings-display-row">
       <span>字幕编辑显示内容</span>
       <label class="toggle"><input type="checkbox" id="cue-editor-show-navigation" checked> 前后跳转</label>
       <label class="toggle"><input type="checkbox" id="cue-editor-show-sticker"> 表情包</label>
@@ -1590,11 +1611,21 @@
     <label class="toggle editor-settings-item" title="开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条">
       <input type="checkbox" id="select-group-members"> 同时选中分组内项目
     </label>
+  </div>
+  <div class="editor-settings-group">
+    <span class="editor-settings-title">操作</span>
     <label class="editor-settings-item" title="字幕列表与波形字幕块的普通单击行为；双击编辑不受影响">
       单击行为
       <select id="click-behavior">
         <option value="select-only" selected>仅选中</option>
         <option value="select-and-seek">选中并跳转</option>
+      </select>
+    </label>
+    <label class="editor-settings-item" title="编辑字幕时，选择 Enter 或 Ctrl+Enter 在文字光标处拆分；另一个按键用于保存">
+      字幕编辑拆分按键
+      <select id="split-key">
+        <option value="ctrl-enter" selected>Ctrl+Enter</option>
+        <option value="enter">Enter</option>
       </select>
     </label>
   </div>
@@ -1657,6 +1688,7 @@
     <span class="help-title">空隙与波形</span>
     <span><kbd>双击波形</kbd> 播放/暂停</span>
     <span><kbd>右键波形背景</kbd> 创建或按音频位置拆分字幕</span>
+    <span><kbd id="help-waveform-split-key">B</kbd> 在红色播放指针处拆分字幕</span>
     <span><kbd>Alt+点击空隙</kbd> 移除/保留</span>
     <span><kbd>中键拖动</kbd> 增加静音</span>
     <span><kbd>Alt+中键拖动</kbd> 恢复声音</span>
@@ -1668,7 +1700,9 @@
     <span><kbd>空格</kbd> 播放/暂停</span>
     <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> 倍速 ×0.5/重置/×2</span>
     <span><kbd>Delete</kbd> 删除所选字幕</span>
+    <span><kbd id="help-split-key">Ctrl+Enter</kbd> 编辑字幕时在文字光标处拆分</span>
     <span><kbd>Ctrl+Z</kbd> 撤销</span>
+    <span><kbd>Ctrl+Shift+Z</kbd> 重做</span>
   </div>
 </section>
 
@@ -2345,7 +2379,7 @@
     secondsPerRow: 10,
     side: 'left',
     splitPercent: 60,
-    layoutColumnPercent: 58,
+    layoutColumnPercent: 44,
     layoutRows: [...DEFAULT_LAYOUT_ROWS],
     freeOrder: [...DEFAULT_FREE_ORDER],
     layoutTree: null,
@@ -2399,7 +2433,7 @@
     };
   }
 
-  function legacyOrderToLayoutTree(order, columnPercent = 58, rows = DEFAULT_LAYOUT_ROWS) {
+  function legacyOrderToLayoutTree(order, columnPercent = DEFAULT_SETTINGS.layoutColumnPercent, rows = DEFAULT_LAYOUT_ROWS) {
     const ids = normalizeFreeOrder(order);
     const [top, middle, bottom] = normalizeLayoutRows(rows);
     const left = splitLayoutNode(
@@ -3175,7 +3209,7 @@
       document.querySelectorAll('[data-waveform-tool]').forEach((button) => {
         button.classList.toggle('active', button.dataset.waveformTool === tool);
       });
-      this.setStatus(tool === 'razor' ? '剃刀工具：点击字幕块在指针位置拆分' : '选择工具');
+      this.setStatus(tool === 'razor' ? '分割工具：点击字幕块在指针位置拆分' : '选择工具');
     }
 
     getTool() {
@@ -4088,6 +4122,13 @@
         block.classList.toggle('selected', this.options.getSelection().has(Number(block.dataset.idx)));
       });
       this.positionPlayheads();
+    }
+
+    refreshCueLabel(index) {
+      const segment = this.options.getSegments()[index];
+      if (!segment) return;
+      this.content.querySelectorAll(`.waveform-cue-block[data-idx="${index}"] .waveform-cue-label`)
+        .forEach((label) => { label.textContent = segment.text.replace(/\s+/g, ' '); });
     }
 
     updateSelection() {
@@ -5052,6 +5093,7 @@ const cueEditorShowStickerToggle = document.getElementById('cue-editor-show-stic
 const selectGroupMembersToggle = document.getElementById('select-group-members');
 const helpToggle = document.getElementById('help-toggle');
 const helpPanel = document.getElementById('help-panel');
+const helpSplitKey = document.getElementById('help-split-key');
 const clickBehaviorSelect = document.getElementById('click-behavior');
 const replaceModal = document.getElementById('replace-modal');
 const stickerModal = document.getElementById('sticker-modal');
@@ -5151,7 +5193,16 @@ function bindCueEditorDisplayToggle(toggle, key) {
   });
 }
 
+function splitKeyLabel() {
+  return splitKeySel.value === 'enter' ? 'Enter' : 'Ctrl+Enter';
+}
+
+function refreshSplitKeyHelp() {
+  if (helpSplitKey) helpSplitKey.textContent = splitKeyLabel();
+}
+
 splitKeySel.value = EDITOR_SETTINGS.splitKey;
+refreshSplitKeyHelp();
 overlayToggle.checked = EDITOR_SETTINGS.overlayEnabled;
 exportStartAtZeroToggle.checked = EDITOR_SETTINGS.exportStartAtZero;
 if (selectGroupMembersToggle) selectGroupMembersToggle.checked = EDITOR_SETTINGS.selectGroupMembers;
@@ -5165,7 +5216,10 @@ helpToggle?.addEventListener('click', () => {
   helpToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
   helpToggle.classList.toggle('active', open);
 });
-splitKeySel.addEventListener('change', () => updateEditorSettings({ splitKey: splitKeySel.value }));
+splitKeySel.addEventListener('change', () => {
+  updateEditorSettings({ splitKey: splitKeySel.value });
+  refreshSplitKeyHelp();
+});
 bindCueListDisplayToggle(cueListShowIndexToggle, 'cueListShowIndex');
 bindCueListDisplayToggle(cueListShowTimeToggle, 'cueListShowTime');
 bindCueListDisplayToggle(cueListShowStickerToggle, 'cueListShowSticker');
@@ -5913,6 +5967,7 @@ cuePanelText?.addEventListener('input', () => {
     setTextHtml(cue.querySelector('.text'), seg.text, searchEl.value);
     applyCharCount(cue.querySelector('.charcount'), seg.text);
   }
+  waveformEditor?.refreshCueLabel(currentCuePanelIdx);
 });
 cuePanelText?.addEventListener('blur', () => commitCuePanelEdit());
 cuePanelStart?.addEventListener('change', () => commitCuePanelEdit());
@@ -6212,6 +6267,7 @@ function finishEdit(save) {
   setTextHtml(textEl, DATA.segments[idx].text, searchEl.value);
   const cntEl = el.querySelector('.charcount');
   if (cntEl) applyCharCount(cntEl, DATA.segments[idx].text);
+  waveformEditor?.refreshCueLabel(idx);
   editingState = null;
 }
 
@@ -6828,6 +6884,31 @@ document.addEventListener('keydown', (e) => {
   if (waveformEditor.getTool() === tool) return;
   e.preventDefault();
   waveformEditor.setTool(tool);
+});
+
+// B：按红色播放指针所在时间拆分其内部字幕。复用波形右键/剃刀的字词边界映射，
+// 不依赖当前选择；文本编辑、弹窗和修饰键状态下不抢占输入。
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'b' && e.key !== 'B') return;
+  if (!waveformEditor || editingState || e.repeat) return;
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
+  if (replaceModal.classList.contains('show')) return;
+  if (stickerModal.classList.contains('show')) return;
+  if (stickerPreviewModal.classList.contains('show')) return;
+  if (projectMediaModal.classList.contains('show')) return;
+  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+  if (ctxmenu.classList.contains('show')) return;
+  if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+  const timeMs = Math.round(player.currentTime * 1000);
+  const idx = DATA.segments.findIndex((segment) => timeMs > segment.start && timeMs < segment.end);
+  if (idx < 0) {
+    flashHint('播放头位置没有可拆分字幕');
+    return;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+  splitFromContextMenu(idx, 0, 0, timeMs);
 });
 
 // 点击外部 -> 完成编辑
@@ -8595,7 +8676,7 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
     const splitLabel = Number.isFinite(waveformTimeMs)
       ? '按音频位置拆分'
       : '按文字位置拆分';
-    addItem(splitLabel, 'Ctrl+Enter', () => splitFromContextMenu(idx, x, y, waveformTimeMs));
+    addItem(splitLabel, splitKeyLabel(), () => splitFromContextMenu(idx, x, y, waveformTimeMs));
     addSep();
     addItem('分配表情包…', '', () => openStickerPicker([idx], false));
     if (DATA.segments[idx].sticker || DATA.segments[idx].sticker_ref) {
@@ -8615,7 +8696,6 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
     );
     addSep();
     addItem('删除字幕', '', () => {
-      if (!confirm(`确定删除第 ${idx + 1} 条字幕？`)) return;
       deleteSegments([idx]);
     }, { danger: true });
   } else {
@@ -8641,7 +8721,6 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
     );
     addSep();
     addItem(`删除 ${targetIdxs.length} 条字幕`, '', () => {
-      if (!confirm(`确定删除选中的 ${targetIdxs.length} 条字幕？`)) return;
       deleteSegments(targetIdxs);
     }, { danger: true });
     addItem('清除所有选中', '', () => clearSelection());

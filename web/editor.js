@@ -299,6 +299,7 @@ const cueEditorShowStickerToggle = document.getElementById('cue-editor-show-stic
 const selectGroupMembersToggle = document.getElementById('select-group-members');
 const helpToggle = document.getElementById('help-toggle');
 const helpPanel = document.getElementById('help-panel');
+const helpSplitKey = document.getElementById('help-split-key');
 const clickBehaviorSelect = document.getElementById('click-behavior');
 const replaceModal = document.getElementById('replace-modal');
 const stickerModal = document.getElementById('sticker-modal');
@@ -398,7 +399,16 @@ function bindCueEditorDisplayToggle(toggle, key) {
   });
 }
 
+function splitKeyLabel() {
+  return splitKeySel.value === 'enter' ? 'Enter' : 'Ctrl+Enter';
+}
+
+function refreshSplitKeyHelp() {
+  if (helpSplitKey) helpSplitKey.textContent = splitKeyLabel();
+}
+
 splitKeySel.value = EDITOR_SETTINGS.splitKey;
+refreshSplitKeyHelp();
 overlayToggle.checked = EDITOR_SETTINGS.overlayEnabled;
 exportStartAtZeroToggle.checked = EDITOR_SETTINGS.exportStartAtZero;
 if (selectGroupMembersToggle) selectGroupMembersToggle.checked = EDITOR_SETTINGS.selectGroupMembers;
@@ -412,7 +422,10 @@ helpToggle?.addEventListener('click', () => {
   helpToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
   helpToggle.classList.toggle('active', open);
 });
-splitKeySel.addEventListener('change', () => updateEditorSettings({ splitKey: splitKeySel.value }));
+splitKeySel.addEventListener('change', () => {
+  updateEditorSettings({ splitKey: splitKeySel.value });
+  refreshSplitKeyHelp();
+});
 bindCueListDisplayToggle(cueListShowIndexToggle, 'cueListShowIndex');
 bindCueListDisplayToggle(cueListShowTimeToggle, 'cueListShowTime');
 bindCueListDisplayToggle(cueListShowStickerToggle, 'cueListShowSticker');
@@ -1160,6 +1173,7 @@ cuePanelText?.addEventListener('input', () => {
     setTextHtml(cue.querySelector('.text'), seg.text, searchEl.value);
     applyCharCount(cue.querySelector('.charcount'), seg.text);
   }
+  waveformEditor?.refreshCueLabel(currentCuePanelIdx);
 });
 cuePanelText?.addEventListener('blur', () => commitCuePanelEdit());
 cuePanelStart?.addEventListener('change', () => commitCuePanelEdit());
@@ -1459,6 +1473,7 @@ function finishEdit(save) {
   setTextHtml(textEl, DATA.segments[idx].text, searchEl.value);
   const cntEl = el.querySelector('.charcount');
   if (cntEl) applyCharCount(cntEl, DATA.segments[idx].text);
+  waveformEditor?.refreshCueLabel(idx);
   editingState = null;
 }
 
@@ -2075,6 +2090,31 @@ document.addEventListener('keydown', (e) => {
   if (waveformEditor.getTool() === tool) return;
   e.preventDefault();
   waveformEditor.setTool(tool);
+});
+
+// B：按红色播放指针所在时间拆分其内部字幕。复用波形右键/剃刀的字词边界映射，
+// 不依赖当前选择；文本编辑、弹窗和修饰键状态下不抢占输入。
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'b' && e.key !== 'B') return;
+  if (!waveformEditor || editingState || e.repeat) return;
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
+  if (replaceModal.classList.contains('show')) return;
+  if (stickerModal.classList.contains('show')) return;
+  if (stickerPreviewModal.classList.contains('show')) return;
+  if (projectMediaModal.classList.contains('show')) return;
+  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+  if (ctxmenu.classList.contains('show')) return;
+  if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+  const timeMs = Math.round(player.currentTime * 1000);
+  const idx = DATA.segments.findIndex((segment) => timeMs > segment.start && timeMs < segment.end);
+  if (idx < 0) {
+    flashHint('播放头位置没有可拆分字幕');
+    return;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+  splitFromContextMenu(idx, 0, 0, timeMs);
 });
 
 // 点击外部 -> 完成编辑
@@ -3842,7 +3882,7 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
     const splitLabel = Number.isFinite(waveformTimeMs)
       ? '按音频位置拆分'
       : '按文字位置拆分';
-    addItem(splitLabel, 'Ctrl+Enter', () => splitFromContextMenu(idx, x, y, waveformTimeMs));
+    addItem(splitLabel, splitKeyLabel(), () => splitFromContextMenu(idx, x, y, waveformTimeMs));
     addSep();
     addItem('分配表情包…', '', () => openStickerPicker([idx], false));
     if (DATA.segments[idx].sticker || DATA.segments[idx].sticker_ref) {
@@ -3862,7 +3902,6 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
     );
     addSep();
     addItem('删除字幕', '', () => {
-      if (!confirm(`确定删除第 ${idx + 1} 条字幕？`)) return;
       deleteSegments([idx]);
     }, { danger: true });
   } else {
@@ -3888,7 +3927,6 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
     );
     addSep();
     addItem(`删除 ${targetIdxs.length} 条字幕`, '', () => {
-      if (!confirm(`确定删除选中的 ${targetIdxs.length} 条字幕？`)) return;
       deleteSegments(targetIdxs);
     }, { danger: true });
     addItem('清除所有选中', '', () => clearSelection());
