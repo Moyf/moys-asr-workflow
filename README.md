@@ -2,9 +2,13 @@
 
 把一个视频或音频交给 Qwen ASR API，得到可编辑的字幕工程、SRT 和浏览器字幕编辑器。
 
-**MAW** 是 Moy's ASR Workflow 的简称。这是一个 **最小可用复刻版**：优先让没有 GPU、刚接触命令行的用户跑通完整流程。它目前只支持 Qwen / 阿里云百炼的云端 API，不包含本地模型、其他 ASR 引擎或自动下载模型。
+![MAWE 字幕编辑器预览](assets/screenshot.webp)
 
-> 之后会有更完整的 **Moy's Open Subtitle Editor（MOSE）**：网页、桌面和便携 HTML 三种形态共享同一个工程格式。这个仓库会保持小而可用，并为将来导入 MOSE 留出工程 JSON 的兼容路径；详见 [docs/MOSE.md](docs/MOSE.md)。
+**MAW** 是 Moy's ASR Workflow 的简称。  
+这是一个 **最小可用复刻版**：优先让没有 GPU、刚接触命令行的用户跑通完整流程。它目前只支持 Qwen / 阿里云百炼的云端 API，不包含本地模型、其他 ASR 引擎或自动下载模型。
+
+> 之后会有更完整的 **Moy's Open Subtitle Editor（MOSE）**：不需要懂编程也能直接用的整合工作站！  
+> 这个仓库会保持小而可用，并为将来导入 MOSE 留出工程 JSON 的兼容路径；详见 [docs/MOSE.md](docs/MOSE.md)。
 
 ## 这套工具能做什么
 
@@ -13,9 +17,8 @@
 3. 在浏览器中校正文本、时间、波形、静音空隙和字幕布局。
 4. 导出 SRT、工程 JSON，以及编辑器支持的额外格式。
 
-所有编辑都在本机浏览器完成。转写时，脚本会把待识别媒体直接上传到你配置的阿里云百炼账户；本项目没有自己的服务器、不会代管你的 API Key 或媒体。
-
-![MAWE 字幕编辑器预览](assets/screenshot.webp)
+所有编辑都在本机浏览器完成。  
+转写时，脚本会把待识别媒体直接上传到你配置的阿里云百炼账户；本项目没有自己的服务器、不会代管你的 API Key 或媒体。
 
 ## 你需要准备
 
@@ -27,14 +30,14 @@
 
 ## 最快上手（推荐）
 
-> 给人类：  
-> 把这个项目地址发给你的 AI Agent 然后让它教你怎么用就行！  
-> ![show|200](assets/show.webp)
+> [!tip]
+> **给人类**：把这个项目地址发给你的 AI Agent 然后让它参考文档操作即可！  
+> <img src="assets/show.webp" width="300" alt="sticker">
 
 在 PowerShell 中执行：
 
 ```powershell
-git clone <这个仓库的地址> moys-asr-workflow
+git clone https://github.com/Moyf/moys-asr-workflow moys-asr-workflow
 cd moys-asr-workflow
 uv sync
 Copy-Item .env.example .env
@@ -45,6 +48,17 @@ Copy-Item .env.example .env
 ```ini
 DASHSCOPE_API_KEY=sk-替换成你的真实密钥
 ```
+
+> [!tip]
+> [如何获取 QwenASR 的 API](https://help.aliyun.com/zh/model-studio/get-api-key)  
+> （不含广告，用 QwenASR 只是因为我测试下来它中文转录表现最好）
+
+
+> 🪙 为了方便你快速体验，你可以先用这个 key 试试：  
+> `sk-ws-H.EIHPLXD.u1iq.MEQCIA5-5pinIik0dveObIDOp0pEcZDmiLwDxvgEDa4N2_NhAiARhQRoE94e53oqaAPOXu4t-fA8meNyPwMZGwWaoQLHzQ`
+>   
+> 目前应该还剩6小时的额度，**请勿滥用**，如果发现异常情况我会直接禁用这个key ヽ(\` 3 ´)ﾉ  
+> 用不了了就说明额度被薅光了，为了方便大家尝试，还请尽量只做2分钟内的测试，然后自己申请 API 来用w
 
 然后转写一个文件：
 
@@ -68,7 +82,8 @@ uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" -ll 2m --jso
 
 ## MAWE — Moy's ASR Workflow Editor
 
-MAWE 是 MAW 自带的字幕编辑器。推荐使用它的本地服务器模式：可稳定拖动大型媒体、自动载入 JSON 中记录的媒体路径，并支持安全保存工程：
+MAWE 是 MAW 自带的字幕编辑器。  
+推荐使用它的本地服务器模式：可稳定拖动大型媒体、自动载入 JSON 中记录的媒体路径，并支持安全保存工程：
 
 ```powershell
 uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.json"
@@ -76,9 +91,9 @@ uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.json"
 
 浏览器会自动打开 `http://127.0.0.1:8765`。编辑完成后点“保存工程”；覆盖前会留下同目录 `.json.bak` 备份。按 `Ctrl+C` 停止服务。
 
-> [!note]
-> 也可以直接双击转写生成的 `.edit.html`，或双击仓库里的 `blank-editor.html` 后用“打开工程”同时选择 JSON 和媒体。
-> 单 HTML 文件模式更适合离线携带；本地服务器模式更适合日常编辑。
+> [!important]
+> 也可以直接双击转写生成的 `.edit.html`，或双击仓库里的 `blank-editor.html` 后用“打开工程”同时选择 JSON 和媒体。  
+> 单 HTML 文件模式适合你嫌起服务器麻烦（或者搞不来）；本地服务器模式更适合日常编辑，因为更容易和本机文件做交互。
 
 ### 目前支持的特性
 
@@ -93,7 +108,7 @@ uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.json"
   - 可给字幕附加**表情包**或**颜色**，并在多句字幕之间保持关联。
   - 可导出 Resolve JSON；配合兼容的达芬奇执行脚本，可在达芬奇内批量导入字幕颜色与表情包配置。执行脚本不随这个最小版 MAW 发布。
 
-> [!info]
+> [!note]  
 > 多行波形相关特性参考了 [gap-gone](https://github.com/LiRenTech/gap-gone) 项目 ❤️
 
 详细的使用方法、数据要求、快捷键和导出说明见 [编辑器指南](docs/EDITOR_GUIDE.md)。完整步骤、常用参数与排错见 [docs/WORKFLOW.md](docs/WORKFLOW.md)，工程 JSON 结构见 [JSON_SCHEMA.md](JSON_SCHEMA.md)。
@@ -107,9 +122,11 @@ uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.json"
 
 ### 费用
 
-- 本项目本身是开源项目，可免费使用；为了效率，默认调用阿里云的 Qwen API。
-- 阿里云 Qwen ASR 注册后免费赠送 10 小时转录时间，超出额度后按 0.792 元/小时计费，详见 [价格文档](https://help.aliyun.com/zh/model-studio/model-pricing#dbf1305ef4a69)。
-- 如果你有不错的配置，也可以自己本地部署开源的 [QwenASR](https://github.com/QwenLM/Qwen3-ASR) 本地转录，不产生云端费用。
+- 本项目本身是开源项目，可免费使用；为了省事儿和兼容性，默认调用阿里云的 Qwen API。
+- 阿里云 Qwen ASR 注册后免费赠送 10 小时转录时间，超出额度后按 `0.792 元/小时` 计费，详见 [价格文档](https://help.aliyun.com/zh/model-studio/model-pricing#dbf1305ef4a69)。
+- 如果你有不错的配置，也可以自己本地部署开源的 [QwenASR](https://github.com/QwenLM/Qwen3-ASR) 本地转录，不产生云端费用，只需要一点电费。
+
+😭*我说我只有一台 AMD 显卡的台式机和一台 Mac Mini 所以跑不了本地模型有懂的吗*  
 
 ## 项目边界
 
