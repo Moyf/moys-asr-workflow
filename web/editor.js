@@ -172,12 +172,16 @@ function pushPreviewUndo(label, preview) {
   updateUndoRedoButtons();
 }
 function snapshotPreviewState() {
-  return { overlay: !!overlayToggle.checked };
+  return {
+    overlay: !!overlayToggle.checked,
+    subtitle: { ...getPreviewGeometry() },
+  };
 }
 function applyPreviewState(state) {
   if (!state || typeof state.overlay !== 'boolean') return;
   overlayToggle.checked = state.overlay;
   updateEditorSettings({ overlayEnabled: state.overlay });
+  if (state.subtitle) setPreviewGeometry(state.subtitle, { markDirty: true });
   if (!state.overlay) overlayEl.classList.add('hidden');
   else update();
 }
@@ -285,7 +289,7 @@ const visibleCountEl = document.getElementById('visible-count');
 const totalCountEl = document.getElementById('total-count');
 const selCountEl = document.getElementById('sel-count');
 const overlayEl = document.getElementById('overlay');
-const overlayTextEl = overlayEl.querySelector('span');
+const overlayTextEl = overlayEl.querySelector('span:not(.overlay-handle)');
 const overlayToggle = document.getElementById('overlay-toggle');
 const playerEmpty = document.getElementById('player-empty');
 const playerWrap = document.querySelector('.player-wrap');
@@ -2126,6 +2130,124 @@ document.addEventListener('mousedown', (e) => {
   if (!editingState.el.contains(e.target)) finishEdit(true);
 });
 
+// === 字幕预览几何（preview.subtitle）===
+// 归一化 {x,y,width,height} 存于 DATA.preview.subtitle。纯钳制/归一化逻辑在
+// AsrEditorUtils（已单测）；这里只负责 DOM 应用、指针/键盘手势、每手势一条撤销、脏标记。
+const GEO_UTILS = window.AsrEditorUtils;
+let previewGeometryDirty = false;
+
+function getPreviewGeometry() {
+  return GEO_UTILS.normalizePreviewGeometry(DATA.preview?.subtitle);
+}
+// 写回 DATA.preview.subtitle 并刷新 DOM。markDirty=false 用于初次加载，不弄脏工程。
+function setPreviewGeometry(geo, { markDirty = true } = {}) {
+  const clamped = GEO_UTILS.clampPreviewGeometry(GEO_UTILS.normalizePreviewGeometry(geo));
+  if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
+  DATA.preview.subtitle = clamped;
+  if (markDirty) previewGeometryDirty = true;
+  applyPreviewGeometryToDom(clamped);
+  return clamped;
+}
+function applyPreviewGeometryToDom(geo) {
+  const css = GEO_UTILS.previewGeometryToCss(geo);
+  overlayEl.style.left = css.left;
+  overlayEl.style.top = css.top;
+  overlayEl.style.width = css.width;
+  overlayEl.style.height = css.height;
+  overlayEl.style.right = 'auto';
+  overlayEl.style.bottom = 'auto';
+}
+// 只有当预览开关开启时才允许几何编辑（关闭时 overlay 完全隐藏）。
+function refreshPreviewGeometryEditable() {
+  overlayEl.classList.toggle('geometry-enabled', !!overlayToggle.checked);
+}
+
+// --- 指针拖动 / 缩放（Pointer Events）---
+let previewGesture = null;  // { pointerId, handle, startX, startY, startGeo }
+function playerWrapRect() {
+  return playerWrap.getBoundingClientRect();
+}
+function beginPreviewGesture(event, handle) {
+  if (!overlayToggle.checked) return;
+  const rect = playerWrapRect();
+  if (rect.width <= 0 || rect.height <= 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  // 一手势一撤销：在手势开始时压入手势前的快照。
+  pushPreviewUndo(handle === 'move' ? '移动字幕预览' : '缩放字幕预览', snapshotPreviewState());
+  previewGesture = {
+    pointerId: event.pointerId,
+    handle,
+    startX: event.clientX,
+    startY: event.clientY,
+    startGeo: getPreviewGeometry(),
+    rect,
+  };
+  overlayEl.classList.add('dragging', 'editable');
+  try { event.target.setPointerCapture?.(event.pointerId); } catch (_) {}
+}
+function movePreviewGesture(event) {
+  if (!previewGesture || event.pointerId !== previewGesture.pointerId) return;
+  const { rect, startX, startY, startGeo, handle } = previewGesture;
+  const dx = (event.clientX - startX) / rect.width;
+  const dy = (event.clientY - startY) / rect.height;
+  const next = GEO_UTILS.applyPreviewGeometryDelta(startGeo, handle, dx, dy);
+  setPreviewGeometry(next, { markDirty: true });
+}
+function endPreviewGesture(event) {
+  if (!previewGesture || event.pointerId !== previewGesture.pointerId) return;
+  try { event.target.releasePointerCapture?.(event.pointerId); } catch (_) {}
+  previewGesture = null;
+  overlayEl.classList.remove('dragging');
+}
+overlayEl.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0) return;
+  const handleEl = event.target.closest?.('.overlay-handle');
+  const handle = handleEl ? handleEl.dataset.handle : 'move';
+  beginPreviewGesture(event, handle);
+});
+overlayEl.addEventListener('pointermove', movePreviewGesture);
+overlayEl.addEventListener('pointerup', endPreviewGesture);
+overlayEl.addEventListener('pointercancel', endPreviewGesture);
+
+// --- 键盘操作（聚焦时）---
+// 方向键移动 1%；Shift 加速到 10%；Alt+方向缩放；Enter/Space 切换 editable；Esc 失焦。
+overlayEl.addEventListener('keydown', (event) => {
+  if (!overlayToggle.checked) return;
+  if (event.key === 'Escape') { overlayEl.blur(); return; }
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    overlayEl.classList.toggle('editable');
+    return;
+  }
+  const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+  const dir = arrows[event.key];
+  if (!dir) return;
+  event.preventDefault();
+  const step = event.shiftKey ? 0.10 : 0.01;
+  const resize = event.altKey;  // Alt+方向缩放；否则移动
+  const dx = dir[0] * step;
+  const dy = dir[1] * step;
+  pushPreviewUndo(resize ? '缩放字幕预览' : '移动字幕预览', snapshotPreviewState());
+  const startGeo = getPreviewGeometry();
+  const next = resize
+    ? GEO_UTILS.applyPreviewGeometryDelta(startGeo, dir[0] !== 0 ? 'e' : 's', dx, dy)
+    : GEO_UTILS.applyPreviewGeometryDelta(startGeo, 'move', dx, dy);
+  setPreviewGeometry(next, { markDirty: true });
+});
+
+// 播放器缩放时几何以百分比表达，天然自适应；ResizeObserver 仅在盒子越界后回钳。
+if (typeof ResizeObserver === 'function') {
+  const previewResizeObserver = new ResizeObserver(() => {
+    applyPreviewGeometryToDom(getPreviewGeometry());
+  });
+  previewResizeObserver.observe(playerWrap);
+}
+
+// 初次应用（不弄脏工程）。
+setPreviewGeometry(getPreviewGeometry(), { markDirty: false });
+refreshPreviewGeometryEditable();
+
 // === 当前行高亮 + overlay ===
 let lastActive = -1;
 function findActive(tMs) {
@@ -2211,9 +2333,13 @@ function update() {
 player.addEventListener('timeupdate', update);
 player.addEventListener('seeked', update);
 overlayToggle.addEventListener('change', () => {
-  // change 触发时 checked 已是新值；压入改变前的状态作为撤销点
-  pushPreviewUndo('切换字幕预览', { overlay: !overlayToggle.checked });
+  // change 触发时 checked 已是新值；压入改变前的状态（overlay 取反、几何为当前值）作为撤销点
+  pushPreviewUndo('切换字幕预览', {
+    overlay: !overlayToggle.checked,
+    subtitle: { ...getPreviewGeometry() },
+  });
   updateEditorSettings({ overlayEnabled: overlayToggle.checked });
+  refreshPreviewGeometryEditable();
   if (!overlayToggle.checked) overlayEl.classList.add('hidden');
   else update();
 });
@@ -2406,6 +2532,8 @@ function buildJson() {
   if (DATA.gap_remove) out.gap_remove = normalizedGapRemoveData(DATA.gap_remove);
   const layout = waveformEditor?.getLayoutData?.() || DATA.layout;
   if (layout) out.layout = layout;
+  // 预览几何：始终写入归一化后的当前几何，便于跨机/重开保持位置。
+  out.preview = { subtitle: getPreviewGeometry() };
   return JSON.stringify(out, null, 2);
 }
 
@@ -2804,7 +2932,7 @@ function configureServerSaveControls() {
 }
 
 function hasUnsavedProjectChanges() {
-  return gapRemoveDirty || DATA.segments.some((segment) => segment._dirty);
+  return gapRemoveDirty || previewGeometryDirty || DATA.segments.some((segment) => segment._dirty);
 }
 
 async function openRecentProject(project) {
@@ -2888,6 +3016,7 @@ function configureServerProjectSettings() {
 function markProjectSaved(filename, backupName) {
   DATA.segments.forEach((segment) => { delete segment._dirty; });
   gapRemoveDirty = false;
+  previewGeometryDirty = false;
   FILENAME_BASE = filename.replace(/\.json$/i, '');
   const jsonEl = document.getElementById('json-name');
   if (jsonEl) {
@@ -3178,6 +3307,10 @@ async function openProjectFile(file, mediaFiles = [], pendingMediaRequest = null
     DATA.layout = data.layout || null;
     DATA.gap_remove = data.gap_remove || null;
     gapRemoveDirty = false;
+    // 预览几何：归一化后应用；缺失时回退到 legacy 默认，且不弄脏工程。
+    DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
+    setPreviewGeometry(getPreviewGeometry(), { markDirty: false });
+    refreshPreviewGeometryEditable();
     if (data.sticker_root) STICKER_ROOT = data.sticker_root;
     DATA.segments.length = 0;
     data.segments.forEach((segment) => DATA.segments.push(segment));

@@ -19,6 +19,7 @@
   "waveform": { ... },
   "gap_remove": { ... },
   "layout": { ... },
+  "preview": { ... },
   "segments": [ ... ]
 }
 ```
@@ -33,6 +34,7 @@
 | `waveform` | `object` | 否 | 可丢弃的紧凑波形缓存。由 `edit.py` 或浏览器自动生成；不影响字幕语义 |
 | `gap_remove` | `object` | 否 | 可逆的空隙移除决定。保留原始媒体/字幕时间，仅描述导出与跳过播放时使用的派生时间轴 |
 | `layout` | `object` | 否 | 编辑器四个功能区的布局与尺寸；可单独导出/导入，不影响字幕和波形缓存 |
+| `preview` | `object` | 否 | 预览呈现设置。目前仅含 `preview.subtitle`：字幕预览框在播放器内的归一化几何。不影响字幕时间与文本 |
 
 ### 1.1 waveform 波形缓存
 
@@ -142,6 +144,31 @@
 - 扫描不会移除开头或结尾的素材。
 - 波形将 `removed: true` 画为橙色斜纹、`removed: false` 画为灰蓝斜纹；左键仅跳转播放头，Alt+左键才在两种状态间切换。
 - 旧版按字幕间隔扫描的结果会保留在工程中，但为避免误删已停用；重新扫描后会写入 `detector: "audio_gate"`。
+
+### 1.4 preview 预览呈现
+
+`preview` 记录预览呈现层的设置，与字幕时间/文本完全解耦。目前只定义 `preview.subtitle`：字幕预览框（编辑器里 `#overlay`）在播放器区域内的几何，以 player-wrap 矩形的**归一化分数**存储，因此在播放器缩放和跨机传输后仍然一致。
+
+```json
+{
+  "subtitle": { "x": 0.0, "y": 0.76, "width": 1.0, "height": 0.16 }
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `x` | `number` | 是 | 左上角横坐标，占播放器宽度的分数，范围 `[0, 1]` |
+| `y` | `number` | 是 | 左上角纵坐标，占播放器高度的分数，范围 `[0, 1]` |
+| `width` | `number` | 是 | 预览框宽度，占播放器宽度的分数，范围 `[0, 1]` |
+| `height` | `number` | 是 | 预览框高度，占播放器高度的分数，范围 `[0, 1]` |
+
+### 约束
+
+- 四个字段都必须是数字（不接受字符串、布尔），且落在 `[0, 1]`。
+- 盒子必须留在播放器内：`x + width <= 1` 且 `y + height <= 1`。
+- 编辑器额外强制最小可读尺寸 `width >= 0.20`、`height >= 0.08`（这是编辑器 UX 钳制，非数据契约的硬校验；导入时会被编辑器再钳制）。
+- `preview` 缺失或 `preview.subtitle` 缺失时按**旧工程**处理，编辑器使用默认几何 `{ x: 0, y: 0.76, width: 1, height: 0.16 }`——它复刻原来的 `bottom: 8%` 字幕带（占 76%→92%，底部留 8%）。
+- 该几何只移动/缩放预览框容器；内部文字 `<span>` 仍保持居中与药丸样式，`segments[*].start/end/items[*].start/end` 永不被此几何改动。
 
 ---
 
@@ -410,7 +437,11 @@ uv run python edit.py your_generated.json
 | `sticker_root` | string | ❌ | 表情包根目录 |
 | `waveform` | object | ❌ | 可丢弃的 `moy.asr.waveform.v1` 峰值缓存 |
 | `gap_remove` | object | ❌ | 可逆的 `moy.asr.gap_remove.v1` 空隙移除决定 |
-
+| `preview` | object | ❌ | 预览呈现设置容器 |
+| `preview.subtitle.x` | number | ❌ | 归一化 `[0,1]`，`x + width <= 1` |
+| `preview.subtitle.y` | number | ❌ | 归一化 `[0,1]`，`y + height <= 1` |
+| `preview.subtitle.width` | number | ❌ | 归一化 `[0,1]`，编辑器最小 0.20 |
+| `preview.subtitle.height` | number | ❌ | 归一化 `[0,1]`，编辑器最小 0.08 |
 ---
 
 ## 九、版本与兼容

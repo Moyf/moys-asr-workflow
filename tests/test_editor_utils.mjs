@@ -479,3 +479,77 @@ test('history stack: clear and clearRedo reset the right stacks', () => {
   assert.equal(h.undoLength(), 0);
   assert.equal(h.redoLength(), 0);
 });
+
+
+// === preview.subtitle geometry helpers ===
+
+test('normalizePreviewGeometry returns legacy default for invalid input', () => {
+  const expected = { x: 0, y: 0.76, width: 1, height: 0.16 };
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizePreviewGeometry(null))), expected);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizePreviewGeometry('bad'))), expected);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizePreviewGeometry({}))), expected);
+});
+
+test('normalizePreviewGeometry clamps out-of-range values to valid bounds', () => {
+  const geo = JSON.parse(JSON.stringify(helpers.normalizePreviewGeometry({ x: -0.5, y: 2, width: 0.1, height: 2 })));
+  assert.equal(geo.x, 0);
+  assert.equal(geo.width, helpers.PREVIEW_MIN_WIDTH); // 0.20
+  assert.equal(geo.height, 1);
+  // y was 2, but y + height must be <= 1, so y = 1 - height = 0
+  assert.equal(geo.y, 0);
+});
+
+test('clampPreviewGeometry enforces min-size and box-fits-inside-player', () => {
+  const clamped = JSON.parse(JSON.stringify(
+    helpers.clampPreviewGeometry({ x: 0.9, y: 0.9, width: 0.5, height: 0.5 }),
+  ));
+  assert.ok(clamped.x + clamped.width <= 1.0001, 'x + width <= 1');
+  assert.ok(clamped.y + clamped.height <= 1.0001, 'y + height <= 1');
+  assert.ok(clamped.width >= helpers.PREVIEW_MIN_WIDTH - 0.0001, 'width >= min');
+  assert.ok(clamped.height >= helpers.PREVIEW_MIN_HEIGHT - 0.0001, 'height >= min');
+  assert.ok(clamped.x >= 0 && clamped.y >= 0, 'x,y >= 0');
+});
+
+test('previewGeometryToCss converts normalized fractions to percentage strings', () => {
+  const css = helpers.previewGeometryToCss({ x: 0.5, y: 0.25, width: 0.4, height: 0.1 });
+  assert.equal(css.left, '50.0000%');
+  assert.equal(css.top, '25.0000%');
+  assert.equal(css.width, '40.0000%');
+  assert.equal(css.height, '10.0000%');
+});
+
+test('applyPreviewGeometryDelta moves the box and clamps to player bounds', () => {
+  const geo = { x: 0.4, y: 0.4, width: 0.3, height: 0.2 };
+  const moved = helpers.applyPreviewGeometryDelta(geo, 'move', 0.5, 0.5);
+  // 0.4 + 0.5 = 0.9, but x + width (0.3) must be <= 1 → x = 0.7
+  assert.ok(moved.x + moved.width <= 1.0001);
+  assert.ok(moved.y + moved.height <= 1.0001);
+  assert.ok(Math.abs(moved.width - 0.3) < 1e-9);
+  assert.ok(Math.abs(moved.height - 0.2) < 1e-9);
+});
+
+test('applyPreviewGeometryDelta resize-se grows width and height', () => {
+  const geo = { x: 0.1, y: 0.1, width: 0.3, height: 0.2 };
+  const resized = helpers.applyPreviewGeometryDelta(geo, 'se', 0.2, 0.1);
+  assert.ok(Math.abs(resized.x - 0.1) < 1e-9);
+  assert.ok(Math.abs(resized.y - 0.1) < 1e-9);
+  assert.ok(Math.abs(resized.width - 0.5) < 1e-9, `width ~0.5, got ${resized.width}`);
+  assert.ok(Math.abs(resized.height - 0.3) < 1e-9, `height ~0.3, got ${resized.height}`);
+});
+
+test('applyPreviewGeometryDelta resize-nw shrinks and enforces min-size', () => {
+  const geo = { x: 0.1, y: 0.1, width: 0.3, height: 0.2 };
+  // drag nw by (+0.4, +0.15) — tries to shrink width to -0.1, height to 0.05
+  const resized = helpers.applyPreviewGeometryDelta(geo, 'nw', 0.4, 0.15);
+  assert.ok(resized.width >= helpers.PREVIEW_MIN_WIDTH - 0.0001, 'width >= min');
+  assert.ok(resized.height >= helpers.PREVIEW_MIN_HEIGHT - 0.0001, 'height >= min');
+});
+
+test('applyPreviewGeometryDelta resize-w keeps right edge fixed at min-size', () => {
+  const geo = { x: 0.2, y: 0.2, width: 0.4, height: 0.2 };
+  // drag west handle right by 0.3 → width would be 0.1 < min 0.20
+  const resized = helpers.applyPreviewGeometryDelta(geo, 'w', 0.3, 0);
+  assert.ok(resized.width >= helpers.PREVIEW_MIN_WIDTH - 0.0001);
+  // right edge (x + width) should stay at original 0.2 + 0.4 = 0.6
+  assert.ok(Math.abs((resized.x + resized.width) - 0.6) < 0.001);
+});

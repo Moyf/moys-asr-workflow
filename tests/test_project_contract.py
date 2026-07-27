@@ -97,6 +97,75 @@ class ProjectContractTests(unittest.TestCase):
         self.assertIn(("$.segments[0].sticker_ref.headIdx", "must point to an earlier head segment"), errors)
         self.assertIn(("$.segments[2].sticker_ref.name", "must match referenced head name"), errors)
 
+    def test_validate_project_accepts_absent_preview_as_legacy(self) -> None:
+        project = {"segments": [{"start": 0, "end": 1000, "text": "hi"}]}
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok)
+        self.assertNotIn("preview", result.project)
+
+    def test_validate_project_accepts_valid_preview_subtitle_geometry(self) -> None:
+        project = {
+            "segments": [{"start": 0, "end": 1000, "text": "hi"}],
+            "preview": {"subtitle": {"x": 0.0, "y": 0.76, "width": 1.0, "height": 0.16}},
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.project["preview"]["subtitle"]["y"], 0.76)
+
+    def test_validate_project_rejects_preview_subtitle_out_of_range(self) -> None:
+        project = {
+            "segments": [{"start": 0, "end": 1000, "text": "hi"}],
+            "preview": {"subtitle": {"x": -0.1, "y": 0.5, "width": 1.5, "height": 0.2}},
+        }
+
+        result = validate_project(project)
+        paths = {error.path for error in result.errors}
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.preview.subtitle.x", paths)
+        self.assertIn("$.preview.subtitle.width", paths)
+
+    def test_validate_project_rejects_preview_subtitle_box_outside_player(self) -> None:
+        project = {
+            "segments": [{"start": 0, "end": 1000, "text": "hi"}],
+            "preview": {"subtitle": {"x": 0.8, "y": 0.8, "width": 0.5, "height": 0.5}},
+        }
+
+        result = validate_project(project)
+        messages = {error.message for error in result.errors}
+
+        self.assertFalse(result.ok)
+        self.assertIn("x + width must be <= 1", messages)
+        self.assertIn("y + height must be <= 1", messages)
+
+    def test_validate_project_rejects_preview_subtitle_wrong_type_and_missing_field(self) -> None:
+        project = {
+            "segments": [{"start": 0, "end": 1000, "text": "hi"}],
+            "preview": {"subtitle": {"x": "0.5", "y": 0.5, "width": 0.5}},
+        }
+
+        result = validate_project(project)
+        paths = {error.path for error in result.errors}
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.preview.subtitle.x", paths)
+        self.assertIn("$.preview.subtitle.height", paths)
+
+    def test_validate_project_rejects_non_object_preview(self) -> None:
+        project = {
+            "segments": [{"start": 0, "end": 1000, "text": "hi"}],
+            "preview": "not-an-object",
+        }
+
+        result = validate_project(project)
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.preview", {error.path for error in result.errors})
+
 
 if __name__ == "__main__":
     unittest.main()

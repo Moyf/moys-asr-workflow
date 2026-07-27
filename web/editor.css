@@ -50,10 +50,13 @@
   }
   .player-empty.hidden, .cues-empty.hidden { display: none; }
   .subtitle-overlay {
-    position: absolute; left: 0; right: 0; bottom: 8%;
+    position: absolute; left: 0; right: auto; top: 76%; height: 16%; width: 100%;
+    display: flex; align-items: center; justify-content: center;
     text-align: center; pointer-events: none;
-    z-index: 10; padding: 0 12px;
+    z-index: 10; padding: 0 12px; box-sizing: border-box;
   }
+  /* 几何可编辑时，容器接收指针；文字 span 仍不拦截，避免选中文本干扰拖动 */
+  .subtitle-overlay.geometry-enabled { pointer-events: auto; cursor: move; }
   .subtitle-overlay span {
     display: inline-block; max-width: 90%;
     background: rgba(0,0,0,0.65);
@@ -62,8 +65,40 @@
     font-size: clamp(14px, 2.5vw, 26px);
     line-height: 1.3; white-space: pre-wrap; word-break: break-word;
     text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    pointer-events: none;
   }
   .subtitle-overlay.hidden { display: none; }
+  /* 编辑态：hover / focus / 正在拖动缩放时显示虚线框、聚焦环与 8 个手柄。
+     其余时候完全不可见，预览呈现与旧版一致。 */
+  .subtitle-overlay .overlay-handle { display: none; }
+  .subtitle-overlay.geometry-enabled:hover,
+  .subtitle-overlay.geometry-enabled:focus,
+  .subtitle-overlay.geometry-enabled.editable,
+  .subtitle-overlay.geometry-enabled.dragging {
+    outline: 1px dashed rgba(94, 167, 255, 0.9);
+    outline-offset: 0;
+  }
+  .subtitle-overlay.geometry-enabled:focus { outline: 2px solid #5ea7ff; }
+  .subtitle-overlay.geometry-enabled:hover .overlay-handle,
+  .subtitle-overlay.geometry-enabled:focus .overlay-handle,
+  .subtitle-overlay.geometry-enabled.editable .overlay-handle,
+  .subtitle-overlay.geometry-enabled.dragging .overlay-handle {
+    display: block;
+  }
+  .subtitle-overlay .overlay-handle {
+    position: absolute; width: 12px; height: 12px;
+    background: #fff; border: 1px solid #2b3540; border-radius: 2px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.6);
+    pointer-events: auto; z-index: 11;
+  }
+  .subtitle-overlay .overlay-handle[data-handle="nw"] { top: -6px; left: -6px; cursor: nwse-resize; }
+  .subtitle-overlay .overlay-handle[data-handle="n"]  { top: -6px; left: 50%; margin-left: -6px; cursor: ns-resize; }
+  .subtitle-overlay .overlay-handle[data-handle="ne"] { top: -6px; right: -6px; cursor: nesw-resize; }
+  .subtitle-overlay .overlay-handle[data-handle="e"]  { top: 50%; right: -6px; margin-top: -6px; cursor: ew-resize; }
+  .subtitle-overlay .overlay-handle[data-handle="se"] { bottom: -6px; right: -6px; cursor: nwse-resize; }
+  .subtitle-overlay .overlay-handle[data-handle="s"]  { bottom: -6px; left: 50%; margin-left: -6px; cursor: ns-resize; }
+  .subtitle-overlay .overlay-handle[data-handle="sw"] { bottom: -6px; left: -6px; cursor: nesw-resize; }
+  .subtitle-overlay .overlay-handle[data-handle="w"]  { top: 50%; left: -6px; margin-top: -6px; cursor: ew-resize; }
 
   /* === Toolbar === */
   .toolbar {

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass
-from typing import TypeAlias
+from typing import TypeGuard, final
 
+from maw.project_preview import JsonDict, JsonValue, clamped_preview, validate_preview
 
-JsonScalar: TypeAlias = str | int | float | bool | None
-JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
-JsonDict: TypeAlias = dict[str, JsonValue]
+# Python 3.11 has no typing.override; basedpyright's override marker is therefore
+# disabled for this compatibility module.
+# pyright: reportImplicitOverride=false
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,11 +38,12 @@ class ProjectValidationResult:
         }
 
 
+@final
 class ProjectValidationFailed(ValueError):
     """Raised when a project cannot cross the strict MAW boundary."""
 
     def __init__(self, errors: tuple[ProjectValidationError, ...]) -> None:
-        self.errors = errors
+        self.errors: tuple[ProjectValidationError, ...] = errors
         super().__init__(str(self))
 
     def __str__(self) -> str:
@@ -56,7 +58,7 @@ def validate_project(project: JsonValue, preview_duration_ms: int | None = None)
         errors.append(ProjectValidationError("$.preview_duration_ms", "must be integer milliseconds"))
     if errors:
         return ProjectValidationResult(False, tuple(errors), None, None)
-    preview = _clamped_preview(normalized, preview_duration_ms) if preview_duration_ms is not None else None
+    preview = clamped_preview(normalized, preview_duration_ms) if preview_duration_ms is not None else None
     return ProjectValidationResult(True, (), normalized, preview)
 
 
@@ -86,9 +88,11 @@ def _normalize_copy(project: JsonValue, errors: list[ProjectValidationError]) ->
             errors.append(ProjectValidationError(path, "must be an object"))
             continue
         _validate_segment(segment, path, previous_end, errors)
-        if _valid_segment_time(segment):
-            previous_end = segment["end"]
+        end = segment.get("end")
+        if _valid_segment_time(segment) and _is_int_ms(end):
+            previous_end = end
     _validate_head_refs(segments, errors)
+    errors.extend(ProjectValidationError(path, message) for path, message in validate_preview(normalized))
     return normalized
 
 
@@ -132,8 +136,9 @@ def _validate_items(segment: JsonDict, path: str, errors: list[ProjectValidation
             errors.append(ProjectValidationError(item_path, "must be an object"))
             continue
         _validate_item(item, item_path, segment, previous_end, errors)
-        if _valid_item_time(item):
-            previous_end = item["end"]
+        end = item.get("end")
+        if _valid_item_time(item) and _is_int_ms(end):
+            previous_end = end
 
 
 def _validate_item(
@@ -183,6 +188,8 @@ def _validate_ref_pair(
     errors: list[ProjectValidationError],
 ) -> None:
     segment = segments[index]
+    if not isinstance(segment, dict):
+        return
     head = segment.get(head_field)
     ref = segment.get(ref_field)
     if head is not None and not isinstance(head, dict):
@@ -204,10 +211,14 @@ def _validate_ref_pair(
         errors.append(ProjectValidationError(f"{path}.{ref_field}.headIdx", "must point to an earlier head segment"))
         return
     target = segments[head_idx]
-    if not isinstance(target, dict) or not isinstance(target.get(head_field), dict):
+    if not isinstance(target, dict):
         errors.append(ProjectValidationError(f"{path}.{ref_field}.headIdx", f"must point to a {head_field} head"))
         return
-    target_name = target[head_field].get("name")
+    target_head = target.get(head_field)
+    if not isinstance(target_head, dict):
+        errors.append(ProjectValidationError(f"{path}.{ref_field}.headIdx", f"must point to a {head_field} head"))
+        return
+    target_name = target_head.get("name")
     ref_name = ref.get("name")
     if isinstance(target_name, str) and isinstance(ref_name, str) and target_name != ref_name:
         errors.append(ProjectValidationError(f"{path}.{ref_field}.name", "must match referenced head name"))
@@ -227,45 +238,21 @@ def _validate_head(head: JsonDict, path: str, errors: list[ProjectValidationErro
         errors.append(ProjectValidationError(f"{path}.end", "must be >= start"))
 
 
-def _clamped_preview(project: JsonDict, duration_ms: int | None) -> JsonDict:
-    preview = copy.deepcopy(project)
-    if duration_ms is None:
-        return preview
-    duration = max(0, duration_ms)
-    preview_segments: list[JsonDict] = []
-    for segment in project["segments"]:
-        if segment["end"] <= 0 or segment["start"] >= duration:
-            continue
-        next_segment = copy.deepcopy(segment)
-        next_segment["start"] = max(0, segment["start"])
-        next_segment["end"] = min(duration, segment["end"])
-        if isinstance(segment.get("items"), list):
-            next_segment["items"] = _clamped_items(segment["items"], next_segment["start"], next_segment["end"])
-        preview_segments.append(next_segment)
-    preview["segments"] = preview_segments
-    return preview
-
-
-def _clamped_items(items: list[JsonDict], start: int, end: int) -> list[JsonDict]:
-    result: list[JsonDict] = []
-    for item in items:
-        if item["end"] < start or item["start"] > end:
-            continue
-        next_item = copy.deepcopy(item)
-        next_item["start"] = max(start, item["start"])
-        next_item["end"] = min(end, item["end"])
-        if next_item["end"] >= next_item["start"]:
-            result.append(next_item)
-    return result
-
-
-def _is_int_ms(value: JsonValue) -> bool:
+def _is_int_ms(value: JsonValue) -> TypeGuard[int]:
     return type(value) is int
 
 
 def _valid_segment_time(segment: JsonDict) -> bool:
-    return _is_int_ms(segment.get("start")) and _is_int_ms(segment.get("end")) and segment["end"] > segment["start"]
+    start = segment.get("start")
+    end = segment.get("end")
+    if not (_is_int_ms(start) and _is_int_ms(end)):
+        return False
+    return end > start
 
 
 def _valid_item_time(item: JsonDict) -> bool:
-    return _is_int_ms(item.get("start")) and _is_int_ms(item.get("end")) and item["end"] >= item["start"]
+    start = item.get("start")
+    end = item.get("end")
+    if not (_is_int_ms(start) and _is_int_ms(end)):
+        return False
+    return end >= start
