@@ -28,7 +28,7 @@ uv sync --extra local
 **CUDA 版（NVIDIA GPU 加速）：**
 
 ```powershell
-uv sync --extra local-cuda
+uv sync --extra local
 uv pip install torch --index-url https://download.pytorch.org/whl/cu124
 ```
 
