@@ -16,6 +16,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   cueEditorShowNavigation: true,
   cueEditorShowSticker: false,
   selectGroupMembers: false,
+  // 字幕列表单击行为：select-only 仅选中（默认），select-and-seek 选中并跳转播放头。
+  clickBehavior: 'select-only',
 };
 
 function readEditorSettings() {
@@ -32,6 +34,7 @@ function readEditorSettings() {
       cueEditorShowNavigation: saved.cueEditorShowNavigation !== false,
       cueEditorShowSticker: saved.cueEditorShowSticker === true,
       selectGroupMembers: saved.selectGroupMembers === true,
+      clickBehavior: saved.clickBehavior === 'select-and-seek' ? 'select-and-seek' : 'select-only',
     };
   } catch (_) {
     return { ...DEFAULT_EDITOR_SETTINGS };
@@ -208,6 +211,7 @@ const cueEditorShowStickerToggle = document.getElementById('cue-editor-show-stic
 const selectGroupMembersToggle = document.getElementById('select-group-members');
 const helpToggle = document.getElementById('help-toggle');
 const helpPanel = document.getElementById('help-panel');
+const clickBehaviorSelect = document.getElementById('click-behavior');
 const replaceModal = document.getElementById('replace-modal');
 const stickerModal = document.getElementById('sticker-modal');
 const stickerPreviewModal = document.getElementById('sticker-preview-modal');
@@ -310,6 +314,7 @@ splitKeySel.value = EDITOR_SETTINGS.splitKey;
 overlayToggle.checked = EDITOR_SETTINGS.overlayEnabled;
 exportStartAtZeroToggle.checked = EDITOR_SETTINGS.exportStartAtZero;
 if (selectGroupMembersToggle) selectGroupMembersToggle.checked = EDITOR_SETTINGS.selectGroupMembers;
+if (clickBehaviorSelect) clickBehaviorSelect.value = EDITOR_SETTINGS.clickBehavior;
 applyCueListDisplaySettings();
 applyCueEditorDisplaySettings();
 editorSettingsToggle?.addEventListener('click', () => setEditorSettingsPanelOpen(editorSettingsPanel?.hidden));
@@ -331,6 +336,9 @@ exportStartAtZeroToggle.addEventListener('change', () => {
 });
 selectGroupMembersToggle?.addEventListener('change', () => {
   updateEditorSettings({ selectGroupMembers: selectGroupMembersToggle.checked });
+});
+clickBehaviorSelect?.addEventListener('change', () => {
+  updateEditorSettings({ clickBehavior: clickBehaviorSelect.value === 'select-and-seek' ? 'select-and-seek' : 'select-only' });
 });
 
 function setGapRemoveData(next, { dirty = true } = {}) {
@@ -1771,13 +1779,14 @@ function bindCueEvents(el, idx) {
     clickTimer = setTimeout(() => {
       clickTimer = null;
       if (editingState) return;
-      // 普通单击 = 跳转 + 重置选择为本行（或整组，取决于设置）
+      // 选中本行（或整组，取决于设置）；select-and-seek 时同时跳转播放头
       selectCueByClick(idx);
       lastClickedIdx = idx;
-      const seg = DATA.segments[idx];
-      seekTo(seg.start / 1000);
       scrollCueToCenter(el);
-      waveformEditor?.revealTime(seg.start, true);
+      waveformEditor?.revealTime(DATA.segments[idx].start, true);
+      if (EDITOR_SETTINGS.clickBehavior === 'select-and-seek') {
+        seekTo(DATA.segments[idx].start / 1000);
+      }
     }, 220);
   });
   el.addEventListener('dblclick', (e) => {
@@ -3629,6 +3638,10 @@ function addCueAtWaveformTime(timeMs, clickX, clickY) {
   const index = insertAt < 0 ? DATA.segments.length : insertAt;
   const previousEnd = index > 0 ? DATA.segments[index - 1].end : 0;
   const nextStart = index < DATA.segments.length ? DATA.segments[index].start : duration;
+  if (timeMs < previousEnd) {
+    flashHint('当前位置已有字幕，请使用“按音频位置拆分当前字幕”');
+    return;
+  }
   const gap = nextStart - previousEnd;
   if (gap < 100) {
     flashHint('这里没有足够的空白区域');
@@ -3638,6 +3651,40 @@ function addCueAtWaveformTime(timeMs, clickX, clickY) {
   const end = Math.min(nextStart, start + 1000);
   const adjustedStart = end - start >= 100 ? start : Math.max(previousEnd, nextStart - 1000);
   addCueRangeFromWaveform(adjustedStart, end, clickX, clickY);
+}
+
+// 右键波形背景：创建字幕，或按右键对应的音频位置拆分命中的字幕。
+function showWaveformBlankMenu(timeMs, clickX, clickY) {
+  ctxmenu.innerHTML = '';
+  function addItem(label, fn, disabled = false) {
+    const it = document.createElement('div');
+    it.className = `item${disabled ? ' disabled' : ''}`;
+    const lbl = document.createElement('span'); lbl.textContent = label;
+    it.appendChild(lbl);
+    const kb = document.createElement('kbd'); kb.style.visibility = 'hidden';
+    it.appendChild(kb);
+    if (!disabled) {
+      it.addEventListener('click', () => { ctxmenu.classList.remove('show'); fn(); });
+    }
+    ctxmenu.appendChild(it);
+  }
+  const splitIdx = DATA.segments.findIndex((segment) => (
+    timeMs > segment.start && timeMs < segment.end
+  ));
+  addItem('创建字幕', () => addCueAtWaveformTime(timeMs, clickX, clickY));
+  addItem(
+    '按音频位置拆分当前字幕',
+    () => splitFromContextMenu(splitIdx, clickX, clickY, timeMs),
+    splitIdx < 0,
+  );
+
+  ctxmenu.classList.add('show');
+  const rect = ctxmenu.getBoundingClientRect();
+  let nx = clickX, ny = clickY;
+  if (clickX + rect.width > window.innerWidth) nx = window.innerWidth - rect.width - 4;
+  if (clickY + rect.height > window.innerHeight) ny = window.innerHeight - rect.height - 4;
+  ctxmenu.style.left = nx + 'px';
+  ctxmenu.style.top = ny + 'px';
 }
 
 // === 右键菜单 ===
@@ -3901,12 +3948,13 @@ function initWaveformEditor() {
     resizeGapBoundary: resizeManualGapBoundary,
     previewGapAt,
     showContextMenu: (x, y, idx, timeMs) => showContextMenu(x, y, idx, timeMs),
-    addCueAtTime: (timeMs, x, y) => addCueAtWaveformTime(timeMs, x, y),
+    showBlankWaveformMenu: (timeMs, x, y) => showWaveformBlankMenu(timeMs, x, y),
     addCueRange: (startMs, endMs, x, y) => addCueRangeFromWaveform(startMs, endMs, x, y),
     // 剃刀工具：在波形指针位置安全拆分字幕。复用右键菜单的波形时间拆分路径，
     // 它会先用 splitCharOffsetAtTime 把指针时间映射到最近的字/词级边界，再
     // 走 splitAtCursor；这样剃刀与右键拆分行为一致，且保留 items 时间码精度。
     splitCueAtTime: (idx, timeMs) => splitFromContextMenu(idx, 0, 0, timeMs),
+    getClickBehavior: () => EDITOR_SETTINGS.clickBehavior,
     onBeginEdit: (label) => pushUndo(label),
     onLayoutUndo: (label, snapshot) => pushLayoutUndo(label, snapshot),
     onCommitEdit: (idxs, kind) => {

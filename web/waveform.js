@@ -586,7 +586,6 @@
       this.multiRange = [-1, -1];
       this.activeIndex = -1;
       this.drag = null;
-      this.createDrag = null;
       this.gapRangeDrag = null;
       this.gapBoundaryDrag = null;
       this.suppressGapClickUntil = 0;
@@ -1726,10 +1725,6 @@
         }
         if (event.button !== 0 || event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
         event.preventDefault();
-        if (event.ctrlKey || event.metaKey) {
-          this.beginCueCreate(event, row);
-          return;
-        }
         // 普通左键点击空白波形：清除字幕选中并跳转播放头
         this.options.clearSelection?.();
         this.seekFromPointer(event, row);
@@ -1745,8 +1740,9 @@
       row.addEventListener('contextmenu', (event) => {
         if (event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
         event.preventDefault();
+        event.stopPropagation();
         const time = this.timeFromPointer(event, row);
-        this.options.addCueAtTime?.(time, event.clientX, event.clientY);
+        this.options.showBlankWaveformMenu?.(time, event.clientX, event.clientY);
       });
       return row;
     }
@@ -2057,21 +2053,6 @@
       this.setStatus(`${drag.edge === 'start' ? '起点' : '终点'} ${formatCompact(drag.edge === 'start' ? seg.start : seg.end)}`);
     }
 
-    beginCueCreate(event, row) {
-      const rect = row.getBoundingClientRect();
-      this.createDrag = {
-        pointerId: event.pointerId,
-        row,
-        startClientX: event.clientX,
-        rowWidth: Math.max(1, rect.width),
-        startMs: this.timeFromPointer(event, row),
-      };
-      row.setPointerCapture?.(event.pointerId);
-      window.addEventListener('pointermove', this._createMove = (moveEvent) => this.moveCueCreate(moveEvent));
-      window.addEventListener('pointerup', this._createEnd = (upEvent) => this.endCueCreate(upEvent), { once: true });
-      window.addEventListener('pointercancel', this._createEnd, { once: true });
-    }
-
     beginGapBoundaryDrag(event, index, row, edge) {
       if (event.button !== 0 || this.options.getGapOperationMode?.() !== 'boundary_drag') return;
       event.preventDefault();
@@ -2231,31 +2212,6 @@
       this.options.applyGapRange?.(start, end, drag.removed);
     }
 
-    moveCueCreate(event) {
-      if (!this.createDrag || event.pointerId !== this.createDrag.pointerId) return;
-      event.preventDefault();
-      this.createDrag.endMs = this.timeFromPointer(event, this.createDrag.row);
-      this.setStatus(`新增 ${formatCompact(Math.min(this.createDrag.startMs, this.createDrag.endMs))} → ${formatCompact(Math.max(this.createDrag.startMs, this.createDrag.endMs))}`);
-    }
-
-    endCueCreate(event) {
-      const drag = this.createDrag;
-      if (!drag || event.pointerId !== drag.pointerId) return;
-      window.removeEventListener('pointermove', this._createMove);
-      window.removeEventListener('pointerup', this._createEnd);
-      window.removeEventListener('pointercancel', this._createEnd);
-      this.createDrag = null;
-      const endMs = drag.endMs ?? drag.startMs;
-      const start = Math.min(drag.startMs, endMs);
-      const finish = Math.max(drag.startMs, endMs);
-      if (finish - start >= MIN_CUE_MS) {
-        this.options.addCueRange?.(start, finish, event.clientX, event.clientY);
-      } else {
-        this.options.seek(drag.startMs / 1000);
-        this.updatePlayback();
-      }
-    }
-
     moveCueDrag(event) {
       const drag = this.drag;
       if (!drag || event.pointerId !== drag.pointerId) return;
@@ -2398,7 +2354,8 @@
       this.content.querySelectorAll('.waveform-cue-block.dragging').forEach((block) => block.classList.remove('dragging'));
       this.drag = null;
       if (!drag.changed) {
-        this.seekFromPointer(event, drag.row);
+        // select-only 模式下点击字幕块只选中不跳转；select-and-seek 跳到点击位置
+        if (this.options.getClickBehavior?.() !== 'select-only') this.seekFromPointer(event, drag.row);
         return;
       }
       drag.indices.forEach((idx) => { this.options.getSegments()[idx]._dirty = true; });

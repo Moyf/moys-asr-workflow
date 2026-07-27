@@ -301,6 +301,7 @@
     cursor: pointer; font-size: 14px; line-height: 1.5;
     border-left: 3px solid transparent;
     transition: background 0.15s;
+    user-select: none;
   }
   .cue.has-color { background: color-mix(in srgb, var(--color-bar, #777) 30%, transparent); }
   .cue.has-color:hover { background: color-mix(in srgb, var(--color-bar, #777) 30%, #2f2f2f); }
@@ -391,6 +392,7 @@
   .cue .text[contenteditable] {
     outline: 1px dashed #d49a4a; padding: 2px 4px;
     background: #1d2530; min-width: 50%; white-space: pre-wrap;
+    user-select: text;
   }
   .cue mark { background: #d4a04a; color: #1a1a1a; padding: 0 2px; border-radius: 2px; }
 
@@ -1374,7 +1376,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-07-27 20:20</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-07-27 20:35</span>
   <span class="json-name empty" id="json-name" title="点击复制 JSON 文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -1580,6 +1582,13 @@
     <label class="toggle editor-settings-item" title="开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条">
       <input type="checkbox" id="select-group-members"> 同时选中分组内项目
     </label>
+    <label class="editor-settings-item" title="字幕列表与波形字幕块的普通单击行为；双击编辑不受影响">
+      单击行为
+      <select id="click-behavior">
+        <option value="select-only" selected>仅选中</option>
+        <option value="select-and-seek">选中并跳转</option>
+      </select>
+    </label>
   </div>
   <div class="editor-settings-group">
     <span class="editor-settings-title">波形</span>
@@ -1629,7 +1638,7 @@
 <section class="help-panel" id="help-panel" aria-label="操作帮助" hidden>
   <div class="help-group">
     <span class="help-title">字幕操作</span>
-    <span><kbd>单击</kbd> 跳转</span>
+    <span><kbd>单击</kbd> 选中</span>
     <span><kbd>双击</kbd> 编辑</span>
     <span><kbd>右键</kbd> 菜单</span>
     <span><kbd>Shift+点击</kbd> 范围选</span>
@@ -1639,6 +1648,7 @@
   <div class="help-group">
     <span class="help-title">空隙与波形</span>
     <span><kbd>双击波形</kbd> 播放/暂停</span>
+    <span><kbd>右键波形背景</kbd> 创建或按音频位置拆分字幕</span>
     <span><kbd>Alt+点击空隙</kbd> 移除/保留</span>
     <span><kbd>中键拖动</kbd> 增加静音</span>
     <span><kbd>Alt+中键拖动</kbd> 恢复声音</span>
@@ -2835,7 +2845,6 @@
       this.multiRange = [-1, -1];
       this.activeIndex = -1;
       this.drag = null;
-      this.createDrag = null;
       this.gapRangeDrag = null;
       this.gapBoundaryDrag = null;
       this.suppressGapClickUntil = 0;
@@ -3975,10 +3984,6 @@
         }
         if (event.button !== 0 || event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
         event.preventDefault();
-        if (event.ctrlKey || event.metaKey) {
-          this.beginCueCreate(event, row);
-          return;
-        }
         // 普通左键点击空白波形：清除字幕选中并跳转播放头
         this.options.clearSelection?.();
         this.seekFromPointer(event, row);
@@ -3994,8 +3999,9 @@
       row.addEventListener('contextmenu', (event) => {
         if (event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
         event.preventDefault();
+        event.stopPropagation();
         const time = this.timeFromPointer(event, row);
-        this.options.addCueAtTime?.(time, event.clientX, event.clientY);
+        this.options.showBlankWaveformMenu?.(time, event.clientX, event.clientY);
       });
       return row;
     }
@@ -4306,21 +4312,6 @@
       this.setStatus(`${drag.edge === 'start' ? '起点' : '终点'} ${formatCompact(drag.edge === 'start' ? seg.start : seg.end)}`);
     }
 
-    beginCueCreate(event, row) {
-      const rect = row.getBoundingClientRect();
-      this.createDrag = {
-        pointerId: event.pointerId,
-        row,
-        startClientX: event.clientX,
-        rowWidth: Math.max(1, rect.width),
-        startMs: this.timeFromPointer(event, row),
-      };
-      row.setPointerCapture?.(event.pointerId);
-      window.addEventListener('pointermove', this._createMove = (moveEvent) => this.moveCueCreate(moveEvent));
-      window.addEventListener('pointerup', this._createEnd = (upEvent) => this.endCueCreate(upEvent), { once: true });
-      window.addEventListener('pointercancel', this._createEnd, { once: true });
-    }
-
     beginGapBoundaryDrag(event, index, row, edge) {
       if (event.button !== 0 || this.options.getGapOperationMode?.() !== 'boundary_drag') return;
       event.preventDefault();
@@ -4480,31 +4471,6 @@
       this.options.applyGapRange?.(start, end, drag.removed);
     }
 
-    moveCueCreate(event) {
-      if (!this.createDrag || event.pointerId !== this.createDrag.pointerId) return;
-      event.preventDefault();
-      this.createDrag.endMs = this.timeFromPointer(event, this.createDrag.row);
-      this.setStatus(`新增 ${formatCompact(Math.min(this.createDrag.startMs, this.createDrag.endMs))} → ${formatCompact(Math.max(this.createDrag.startMs, this.createDrag.endMs))}`);
-    }
-
-    endCueCreate(event) {
-      const drag = this.createDrag;
-      if (!drag || event.pointerId !== drag.pointerId) return;
-      window.removeEventListener('pointermove', this._createMove);
-      window.removeEventListener('pointerup', this._createEnd);
-      window.removeEventListener('pointercancel', this._createEnd);
-      this.createDrag = null;
-      const endMs = drag.endMs ?? drag.startMs;
-      const start = Math.min(drag.startMs, endMs);
-      const finish = Math.max(drag.startMs, endMs);
-      if (finish - start >= MIN_CUE_MS) {
-        this.options.addCueRange?.(start, finish, event.clientX, event.clientY);
-      } else {
-        this.options.seek(drag.startMs / 1000);
-        this.updatePlayback();
-      }
-    }
-
     moveCueDrag(event) {
       const drag = this.drag;
       if (!drag || event.pointerId !== drag.pointerId) return;
@@ -4647,7 +4613,8 @@
       this.content.querySelectorAll('.waveform-cue-block.dragging').forEach((block) => block.classList.remove('dragging'));
       this.drag = null;
       if (!drag.changed) {
-        this.seekFromPointer(event, drag.row);
+        // select-only 模式下点击字幕块只选中不跳转；select-and-seek 跳到点击位置
+        if (this.options.getClickBehavior?.() !== 'select-only') this.seekFromPointer(event, drag.row);
         return;
       }
       drag.indices.forEach((idx) => { this.options.getSegments()[idx]._dirty = true; });
@@ -4752,6 +4719,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   cueEditorShowNavigation: true,
   cueEditorShowSticker: false,
   selectGroupMembers: false,
+  // 字幕列表单击行为：select-only 仅选中（默认），select-and-seek 选中并跳转播放头。
+  clickBehavior: 'select-only',
 };
 
 function readEditorSettings() {
@@ -4768,6 +4737,7 @@ function readEditorSettings() {
       cueEditorShowNavigation: saved.cueEditorShowNavigation !== false,
       cueEditorShowSticker: saved.cueEditorShowSticker === true,
       selectGroupMembers: saved.selectGroupMembers === true,
+      clickBehavior: saved.clickBehavior === 'select-and-seek' ? 'select-and-seek' : 'select-only',
     };
   } catch (_) {
     return { ...DEFAULT_EDITOR_SETTINGS };
@@ -4944,6 +4914,7 @@ const cueEditorShowStickerToggle = document.getElementById('cue-editor-show-stic
 const selectGroupMembersToggle = document.getElementById('select-group-members');
 const helpToggle = document.getElementById('help-toggle');
 const helpPanel = document.getElementById('help-panel');
+const clickBehaviorSelect = document.getElementById('click-behavior');
 const replaceModal = document.getElementById('replace-modal');
 const stickerModal = document.getElementById('sticker-modal');
 const stickerPreviewModal = document.getElementById('sticker-preview-modal');
@@ -5046,6 +5017,7 @@ splitKeySel.value = EDITOR_SETTINGS.splitKey;
 overlayToggle.checked = EDITOR_SETTINGS.overlayEnabled;
 exportStartAtZeroToggle.checked = EDITOR_SETTINGS.exportStartAtZero;
 if (selectGroupMembersToggle) selectGroupMembersToggle.checked = EDITOR_SETTINGS.selectGroupMembers;
+if (clickBehaviorSelect) clickBehaviorSelect.value = EDITOR_SETTINGS.clickBehavior;
 applyCueListDisplaySettings();
 applyCueEditorDisplaySettings();
 editorSettingsToggle?.addEventListener('click', () => setEditorSettingsPanelOpen(editorSettingsPanel?.hidden));
@@ -5067,6 +5039,9 @@ exportStartAtZeroToggle.addEventListener('change', () => {
 });
 selectGroupMembersToggle?.addEventListener('change', () => {
   updateEditorSettings({ selectGroupMembers: selectGroupMembersToggle.checked });
+});
+clickBehaviorSelect?.addEventListener('change', () => {
+  updateEditorSettings({ clickBehavior: clickBehaviorSelect.value === 'select-and-seek' ? 'select-and-seek' : 'select-only' });
 });
 
 function setGapRemoveData(next, { dirty = true } = {}) {
@@ -6507,13 +6482,14 @@ function bindCueEvents(el, idx) {
     clickTimer = setTimeout(() => {
       clickTimer = null;
       if (editingState) return;
-      // 普通单击 = 跳转 + 重置选择为本行（或整组，取决于设置）
+      // 选中本行（或整组，取决于设置）；select-and-seek 时同时跳转播放头
       selectCueByClick(idx);
       lastClickedIdx = idx;
-      const seg = DATA.segments[idx];
-      seekTo(seg.start / 1000);
       scrollCueToCenter(el);
-      waveformEditor?.revealTime(seg.start, true);
+      waveformEditor?.revealTime(DATA.segments[idx].start, true);
+      if (EDITOR_SETTINGS.clickBehavior === 'select-and-seek') {
+        seekTo(DATA.segments[idx].start / 1000);
+      }
     }, 220);
   });
   el.addEventListener('dblclick', (e) => {
@@ -8365,6 +8341,10 @@ function addCueAtWaveformTime(timeMs, clickX, clickY) {
   const index = insertAt < 0 ? DATA.segments.length : insertAt;
   const previousEnd = index > 0 ? DATA.segments[index - 1].end : 0;
   const nextStart = index < DATA.segments.length ? DATA.segments[index].start : duration;
+  if (timeMs < previousEnd) {
+    flashHint('当前位置已有字幕，请使用“按音频位置拆分当前字幕”');
+    return;
+  }
   const gap = nextStart - previousEnd;
   if (gap < 100) {
     flashHint('这里没有足够的空白区域');
@@ -8374,6 +8354,40 @@ function addCueAtWaveformTime(timeMs, clickX, clickY) {
   const end = Math.min(nextStart, start + 1000);
   const adjustedStart = end - start >= 100 ? start : Math.max(previousEnd, nextStart - 1000);
   addCueRangeFromWaveform(adjustedStart, end, clickX, clickY);
+}
+
+// 右键波形背景：创建字幕，或按右键对应的音频位置拆分命中的字幕。
+function showWaveformBlankMenu(timeMs, clickX, clickY) {
+  ctxmenu.innerHTML = '';
+  function addItem(label, fn, disabled = false) {
+    const it = document.createElement('div');
+    it.className = `item${disabled ? ' disabled' : ''}`;
+    const lbl = document.createElement('span'); lbl.textContent = label;
+    it.appendChild(lbl);
+    const kb = document.createElement('kbd'); kb.style.visibility = 'hidden';
+    it.appendChild(kb);
+    if (!disabled) {
+      it.addEventListener('click', () => { ctxmenu.classList.remove('show'); fn(); });
+    }
+    ctxmenu.appendChild(it);
+  }
+  const splitIdx = DATA.segments.findIndex((segment) => (
+    timeMs > segment.start && timeMs < segment.end
+  ));
+  addItem('创建字幕', () => addCueAtWaveformTime(timeMs, clickX, clickY));
+  addItem(
+    '按音频位置拆分当前字幕',
+    () => splitFromContextMenu(splitIdx, clickX, clickY, timeMs),
+    splitIdx < 0,
+  );
+
+  ctxmenu.classList.add('show');
+  const rect = ctxmenu.getBoundingClientRect();
+  let nx = clickX, ny = clickY;
+  if (clickX + rect.width > window.innerWidth) nx = window.innerWidth - rect.width - 4;
+  if (clickY + rect.height > window.innerHeight) ny = window.innerHeight - rect.height - 4;
+  ctxmenu.style.left = nx + 'px';
+  ctxmenu.style.top = ny + 'px';
 }
 
 // === 右键菜单 ===
@@ -8637,12 +8651,13 @@ function initWaveformEditor() {
     resizeGapBoundary: resizeManualGapBoundary,
     previewGapAt,
     showContextMenu: (x, y, idx, timeMs) => showContextMenu(x, y, idx, timeMs),
-    addCueAtTime: (timeMs, x, y) => addCueAtWaveformTime(timeMs, x, y),
+    showBlankWaveformMenu: (timeMs, x, y) => showWaveformBlankMenu(timeMs, x, y),
     addCueRange: (startMs, endMs, x, y) => addCueRangeFromWaveform(startMs, endMs, x, y),
     // 剃刀工具：在波形指针位置安全拆分字幕。复用右键菜单的波形时间拆分路径，
     // 它会先用 splitCharOffsetAtTime 把指针时间映射到最近的字/词级边界，再
     // 走 splitAtCursor；这样剃刀与右键拆分行为一致，且保留 items 时间码精度。
     splitCueAtTime: (idx, timeMs) => splitFromContextMenu(idx, 0, 0, timeMs),
+    getClickBehavior: () => EDITOR_SETTINGS.clickBehavior,
     onBeginEdit: (label) => pushUndo(label),
     onLayoutUndo: (label, snapshot) => pushLayoutUndo(label, snapshot),
     onCommitEdit: (idxs, kind) => {

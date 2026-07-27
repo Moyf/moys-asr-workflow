@@ -294,6 +294,7 @@
     cursor: pointer; font-size: 14px; line-height: 1.5;
     border-left: 3px solid transparent;
     transition: background 0.15s;
+    user-select: none;
   }
   .cue.has-color { background: color-mix(in srgb, var(--color-bar, #777) 30%, transparent); }
   .cue.has-color:hover { background: color-mix(in srgb, var(--color-bar, #777) 30%, #2f2f2f); }
@@ -384,6 +385,7 @@
   .cue .text[contenteditable] {
     outline: 1px dashed #d49a4a; padding: 2px 4px;
     background: #1d2530; min-width: 50%; white-space: pre-wrap;
+    user-select: text;
   }
   .cue mark { background: #d4a04a; color: #1a1a1a; padding: 0 2px; border-radius: 2px; }
 

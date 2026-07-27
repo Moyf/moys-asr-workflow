@@ -219,6 +219,13 @@ __WAVEFORM_CSS__
     <label class="toggle editor-settings-item" title="开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条">
       <input type="checkbox" id="select-group-members"> 同时选中分组内项目
     </label>
+    <label class="editor-settings-item" title="字幕列表与波形字幕块的普通单击行为；双击编辑不受影响">
+      单击行为
+      <select id="click-behavior">
+        <option value="select-only" selected>仅选中</option>
+        <option value="select-and-seek">选中并跳转</option>
+      </select>
+    </label>
   </div>
   <div class="editor-settings-group">
     <span class="editor-settings-title">波形</span>
@@ -268,7 +275,7 @@ __WAVEFORM_CSS__
 <section class="help-panel" id="help-panel" aria-label="操作帮助" hidden>
   <div class="help-group">
     <span class="help-title">字幕操作</span>
-    <span><kbd>单击</kbd> 跳转</span>
+    <span><kbd>单击</kbd> 选中</span>
     <span><kbd>双击</kbd> 编辑</span>
     <span><kbd>右键</kbd> 菜单</span>
     <span><kbd>Shift+点击</kbd> 范围选</span>
@@ -278,6 +285,7 @@ __WAVEFORM_CSS__
   <div class="help-group">
     <span class="help-title">空隙与波形</span>
     <span><kbd>双击波形</kbd> 播放/暂停</span>
+    <span><kbd>右键波形背景</kbd> 创建或按音频位置拆分字幕</span>
     <span><kbd>Alt+点击空隙</kbd> 移除/保留</span>
     <span><kbd>中键拖动</kbd> 增加静音</span>
     <span><kbd>Alt+中键拖动</kbd> 恢复声音</span>
