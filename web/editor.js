@@ -323,6 +323,8 @@ const cuesEmpty = document.getElementById('cues-empty');
 const saveProjectButton = document.getElementById('save-project');
 const saveProjectAsButton = document.getElementById('save-project-as');
 const gapRemovedExportDropdown = document.getElementById('gap-removed-export-dropdown');
+const downloadSrtButton = document.getElementById('download-srt');
+const subtitleExportDropdown = document.getElementById('subtitle-export-dropdown');
 const editorSettingsToggle = document.getElementById('editor-settings-toggle');
 const editorSettingsPanel = document.getElementById('editor-settings-panel');
 const exportStartAtZeroToggle = document.getElementById('export-start-at-zero');
@@ -981,6 +983,7 @@ function renderAll() {
   if (waveformEditor) waveformEditor.renderSegments();
   renderCurrentCuePanel();
   syncPlayerPlaceholder();
+  updateSubtitleExportUi();
 }
 
 function parsePanelTime(value, fallback) {
@@ -2268,6 +2271,59 @@ function buildGapRemovedSrt() {
   return parts.join('\n');
 }
 
+function usedSubtitleColors() {
+  const names = new Set(DATA.segments.filter((segment) => !segment.disabled).map((segment) => (
+    window.AsrEditorUtils.effectiveColorName(segment, DATA.segments)
+  )).filter((name) => COLOR_BY_NAME[name]));
+  return COLOR_PALETTE.filter((color) => names.has(color.name));
+}
+
+function updateSubtitleExportUi() {
+  const hasColors = usedSubtitleColors().length > 0;
+  if (downloadSrtButton) downloadSrtButton.hidden = hasColors;
+  if (subtitleExportDropdown) {
+    subtitleExportDropdown.hidden = !hasColors;
+    if (!hasColors) subtitleExportDropdown.classList.remove('open');
+  }
+}
+
+async function downloadColorSrts(gapRemoved = false) {
+  if (editingState) finishEdit(true);
+  const colors = usedSubtitleColors();
+  const removed = gapRemoved ? getRemovedGapRanges() : [];
+  if (!colors.length) {
+    flashHint('没有可导出的彩色字幕');
+    return;
+  }
+  if (gapRemoved && !removed.length) {
+    flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除');
+    return;
+  }
+  const timeOffset = gapRemoved
+    ? 0
+    : window.AsrEditorUtils.getSrtExportOffset(DATA.segments, EDITOR_SETTINGS.exportStartAtZero);
+  for (const color of colors) {
+    const payload = window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
+      colorName: color.name,
+      timeOffset,
+      mapTime: gapRemoved
+        ? (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed)
+        : undefined,
+      ensurePositiveDuration: gapRemoved,
+      formatTime: fmtSrtTime,
+    });
+    const gapSuffix = gapRemoved ? '_gap-removed' : '';
+    const saved = await downloadFile(
+      payload,
+      `${FILENAME_BASE}${gapSuffix}_${color.name}.srt`,
+      'text/plain',
+      { desc: `${color.label}色字幕 SRT`, types: { 'text/plain': ['.srt'] } },
+    );
+    if (!saved) return;
+  }
+  flashHint(`已按颜色导出 ${colors.length} 份字幕`);
+}
+
 function gapRemovedExportContext() {
   const removed = getRemovedGapRanges();
   if (!removed.length) {
@@ -2898,6 +2954,13 @@ document.getElementById('download-srt').addEventListener('click', async () => {
     desc: 'SRT 字幕文件', types: { 'text/plain': ['.srt'] }
   });
 });
+document.getElementById('download-full-srt').addEventListener('click', async () => {
+  if (editingState) finishEdit(true);
+  await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
+    desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
+  });
+});
+document.getElementById('download-color-srt').addEventListener('click', () => downloadColorSrts(false));
 document.getElementById('download-json').addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   await downloadFile(buildJson(), `${FILENAME_BASE}.json`, 'application/json', {
@@ -2956,6 +3019,7 @@ document.getElementById('download-gap-removed-srt').addEventListener('click', as
     });
   }
 });
+document.getElementById('download-gap-removed-color-srt').addEventListener('click', () => downloadColorSrts(true));
 document.getElementById('download-gap-removed-otio').addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedOtio();
@@ -3018,6 +3082,7 @@ function bindToolbarExportDropdown(dropdownId, buttonId, menuId) {
     if (e.key === 'Escape') dd.classList.remove('open');
   });
 }
+bindToolbarExportDropdown('subtitle-export-dropdown', 'subtitle-export-btn', 'subtitle-export-menu');
 bindToolbarExportDropdown('gap-removed-export-dropdown', 'gap-removed-export-btn', 'gap-removed-export-menu');
 bindToolbarExportDropdown('extra-export-dropdown', 'extra-export-btn', 'extra-export-menu');
 

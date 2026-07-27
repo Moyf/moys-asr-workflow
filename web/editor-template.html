@@ -33,12 +33,20 @@ __WAVEFORM_CSS__
 
   <span class="right-group">
     <button id="download-srt">导出字幕</button>
+    <span class="dropdown" id="subtitle-export-dropdown" hidden>
+      <button id="subtitle-export-btn" title="导出完整字幕或按颜色分别导出字幕">导出字幕 ▾</button>
+      <div class="dropdown-menu" id="subtitle-export-menu">
+        <div class="dropdown-item" id="download-full-srt">导出完整字幕</div>
+        <div class="dropdown-item" id="download-color-srt">按颜色导出字幕</div>
+      </div>
+    </span>
     <button id="download-json">导出工程</button>
     <span class="dropdown gap-removed-export-dropdown" id="gap-removed-export-dropdown" hidden>
       <button id="gap-removed-export-btn" title="导出应用当前空隙移除结果的字幕、时间线或保留区域计划">导出去空隙版本 ▾</button>
       <div class="dropdown-menu" id="gap-removed-export-menu">
         <div class="dropdown-item" id="download-gap-removed-srt" title="按移除静音空隙后的时间轴导出字幕；原工程时间不变">字幕 SRT</div>
-        <div class="dropdown-item" id="download-gap-removed-otio" title="导出原视频/音频的去空隙 OTIO 时间线，供支持 OTIO 的剪辑工具或工作流使用">OTIO 工程</div>
+        <div class="dropdown-item" id="download-gap-removed-color-srt" title="按移除静音空隙后的时间轴，为每种已使用颜色分别导出一份字幕">按颜色导出字幕</div>
+        <div class="dropdown-item" id="download-gap-removed-otio" title="导出原视频/音频的去空隙 OTIO 时间线，供支持 OTIO 的剪辑工具或工作流使用">时间线 OTIO 工程</div>
         <div class="dropdown-item" id="download-gap-removed-ffconcat" title="导出 FFmpeg concat demuxer 可读取的保留区间；流复制的切点精度受关键帧和编码包限制">FFconcat 文件</div>
         <div class="dropdown-item" id="download-gap-removed-regions-json" title="以毫秒为单位导出原媒体中的全部保留区域，供自定义脚本或工具读取">保留区域 JSON</div>
         <div class="dropdown-item" id="download-gap-removed-sticker-otio" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIO；完全落在空隙内的表情包会被丢弃">表情包 OTIO</div>

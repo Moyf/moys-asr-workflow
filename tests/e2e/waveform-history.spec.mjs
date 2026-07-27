@@ -216,3 +216,81 @@ test('context-menu subtitle deletion is immediate and undoable', async ({ page }
   await page.getByRole('button', { name: /撤销/ }).click();
   await expect(page.locator('.cue')).toHaveCount(6);
 });
+
+test('colored subtitles expose full and per-color SRT downloads with stable names', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 58000 };
+    DATA.segments[1].color_ref = { name: 'red', headIdx: 0 };
+    DATA.segments[2].color = { name: 'blue', value: '#168cff', start: 100000, end: 108000 };
+    renderAll();
+    window.showSaveFilePicker = undefined;
+  });
+
+  await expect(page.locator('#download-srt')).toBeHidden();
+  await expect(page.locator('#subtitle-export-dropdown')).toBeVisible();
+  await page.locator('#subtitle-export-btn').click();
+  await expect(page.locator('#download-full-srt')).toBeVisible();
+  await expect(page.locator('#download-color-srt')).toBeVisible();
+
+  const downloads = [];
+  page.on('download', (download) => downloads.push(download));
+  await page.locator('#download-color-srt').click();
+  await expect.poll(() => downloads.length).toBe(2);
+  expect(downloads.map((download) => download.suggestedFilename())).toEqual([
+    'project_red.srt',
+    'project_blue.srt',
+  ]);
+  expect(await downloads[0].createReadStream().then(async (stream) => {
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    return Buffer.concat(chunks).toString('utf8');
+  })).toContain('Alpha');
+});
+
+test('subtitle export stays direct when only disabled subtitles have colors', async ({ page }) => {
+  await page.goto(server.url);
+  await expect(page.locator('#download-srt')).toBeVisible();
+  await expect(page.locator('#subtitle-export-dropdown')).toBeHidden();
+
+  await page.evaluate(() => {
+    DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 8000 };
+    DATA.segments[0].disabled = true;
+    renderAll();
+  });
+  await expect(page.locator('#download-srt')).toBeVisible();
+  await expect(page.locator('#subtitle-export-dropdown')).toBeHidden();
+});
+
+test('gap-removed export includes color SRT and names OTIO as a timeline project', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 58000 };
+    DATA.segments[1].color_ref = { name: 'red', headIdx: 0 };
+    DATA.gap_remove = {
+      schema: 'moy.asr.gap_remove.v1',
+      detector: 'audio_gate',
+      minimum_ms: 500,
+      threshold_db: -24,
+      hysteresis_db: 2,
+      lead_in_ms: 40,
+      lead_out_ms: 80,
+      skip_playback: true,
+      operation_mode: 'middle_drag',
+      manual_corrections: false,
+      gaps: [{ start: 20000, end: 30000, removed: true }],
+    };
+    updateGapRemoveUi();
+    renderAll();
+    window.showSaveFilePicker = undefined;
+  });
+
+  await page.locator('#gap-removed-export-btn').click();
+  await expect(page.locator('#download-gap-removed-color-srt')).toBeVisible();
+  await expect(page.locator('#download-gap-removed-otio')).toHaveText('时间线 OTIO 工程');
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#download-gap-removed-color-srt').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('project_gap-removed_red.srt');
+});

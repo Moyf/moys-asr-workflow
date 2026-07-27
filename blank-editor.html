@@ -1395,7 +1395,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-07-27 22:14</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-07-27 22:24</span>
   <span class="json-name empty" id="json-name" title="点击复制 JSON 文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -1415,12 +1415,20 @@
 
   <span class="right-group">
     <button id="download-srt">导出字幕</button>
+    <span class="dropdown" id="subtitle-export-dropdown" hidden>
+      <button id="subtitle-export-btn" title="导出完整字幕或按颜色分别导出字幕">导出字幕 ▾</button>
+      <div class="dropdown-menu" id="subtitle-export-menu">
+        <div class="dropdown-item" id="download-full-srt">导出完整字幕</div>
+        <div class="dropdown-item" id="download-color-srt">按颜色导出字幕</div>
+      </div>
+    </span>
     <button id="download-json">导出工程</button>
     <span class="dropdown gap-removed-export-dropdown" id="gap-removed-export-dropdown" hidden>
       <button id="gap-removed-export-btn" title="导出应用当前空隙移除结果的字幕、时间线或保留区域计划">导出去空隙版本 ▾</button>
       <div class="dropdown-menu" id="gap-removed-export-menu">
         <div class="dropdown-item" id="download-gap-removed-srt" title="按移除静音空隙后的时间轴导出字幕；原工程时间不变">字幕 SRT</div>
-        <div class="dropdown-item" id="download-gap-removed-otio" title="导出原视频/音频的去空隙 OTIO 时间线，供支持 OTIO 的剪辑工具或工作流使用">OTIO 工程</div>
+        <div class="dropdown-item" id="download-gap-removed-color-srt" title="按移除静音空隙后的时间轴，为每种已使用颜色分别导出一份字幕">按颜色导出字幕</div>
+        <div class="dropdown-item" id="download-gap-removed-otio" title="导出原视频/音频的去空隙 OTIO 时间线，供支持 OTIO 的剪辑工具或工作流使用">时间线 OTIO 工程</div>
         <div class="dropdown-item" id="download-gap-removed-ffconcat" title="导出 FFmpeg concat demuxer 可读取的保留区间；流复制的切点精度受关键帧和编码包限制">FFconcat 文件</div>
         <div class="dropdown-item" id="download-gap-removed-regions-json" title="以毫秒为单位导出原媒体中的全部保留区域，供自定义脚本或工具读取">保留区域 JSON</div>
         <div class="dropdown-item" id="download-gap-removed-sticker-otio" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIO；完全落在空隙内的表情包会被丢弃">表情包 OTIO</div>
@@ -2006,6 +2014,42 @@
     return firstEnabled ? Math.max(0, Math.round(Number(firstEnabled.start))) : 0;
   }
 
+  function effectiveColorName(segment, segments) {
+    const direct = segment?.color?.name;
+    if (typeof direct === 'string' && direct) return direct;
+    const reference = segment?.color_ref;
+    const headName = Number.isInteger(reference?.headIdx)
+      ? segments?.[reference.headIdx]?.color?.name
+      : null;
+    if (typeof headName === 'string' && headName) return headName;
+    return typeof reference?.name === 'string' && reference.name ? reference.name : null;
+  }
+
+  function buildSrtPayload(segments, options = {}) {
+    const source = Array.isArray(segments) ? segments : [];
+    const colorName = typeof options.colorName === 'string' ? options.colorName : null;
+    const timeOffset = Math.max(0, Math.round(Number(options.timeOffset)) || 0);
+    const mapTime = typeof options.mapTime === 'function'
+      ? options.mapTime
+      : (timeMs) => Math.max(0, Math.round(Number(timeMs) || 0) - timeOffset);
+    const formatTime = typeof options.formatTime === 'function'
+      ? options.formatTime
+      : (timeMs) => String(timeMs);
+    const parts = [];
+    source.filter((segment) => (
+      segment && !segment.disabled && (!colorName || effectiveColorName(segment, source) === colorName)
+    )).forEach((segment, index) => {
+      const start = Math.max(0, Math.round(Number(mapTime(segment.start)) || 0));
+      const mappedEnd = Math.max(0, Math.round(Number(mapTime(segment.end)) || 0));
+      const end = options.ensurePositiveDuration ? Math.max(start + 1, mappedEnd) : mappedEnd;
+      parts.push(String(index + 1));
+      parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
+      parts.push(String(segment.text || ''));
+      parts.push('');
+    });
+    return parts.join('\n');
+  }
+
   function fileBasename(value) {
     return String(value || '').trim().split(/[\\/]/).pop() || '';
   }
@@ -2327,6 +2371,8 @@
     splitCharOffsetAtTime,
     findAdjacentCueIndex,
     getSrtExportOffset,
+    effectiveColorName,
+    buildSrtPayload,
     fileBasename,
     findProjectMediaFile,
     normalizeGapRemoveGaps,
@@ -5117,6 +5163,8 @@ const cuesEmpty = document.getElementById('cues-empty');
 const saveProjectButton = document.getElementById('save-project');
 const saveProjectAsButton = document.getElementById('save-project-as');
 const gapRemovedExportDropdown = document.getElementById('gap-removed-export-dropdown');
+const downloadSrtButton = document.getElementById('download-srt');
+const subtitleExportDropdown = document.getElementById('subtitle-export-dropdown');
 const editorSettingsToggle = document.getElementById('editor-settings-toggle');
 const editorSettingsPanel = document.getElementById('editor-settings-panel');
 const exportStartAtZeroToggle = document.getElementById('export-start-at-zero');
@@ -5775,6 +5823,7 @@ function renderAll() {
   if (waveformEditor) waveformEditor.renderSegments();
   renderCurrentCuePanel();
   syncPlayerPlaceholder();
+  updateSubtitleExportUi();
 }
 
 function parsePanelTime(value, fallback) {
@@ -7062,6 +7111,59 @@ function buildGapRemovedSrt() {
   return parts.join('\n');
 }
 
+function usedSubtitleColors() {
+  const names = new Set(DATA.segments.filter((segment) => !segment.disabled).map((segment) => (
+    window.AsrEditorUtils.effectiveColorName(segment, DATA.segments)
+  )).filter((name) => COLOR_BY_NAME[name]));
+  return COLOR_PALETTE.filter((color) => names.has(color.name));
+}
+
+function updateSubtitleExportUi() {
+  const hasColors = usedSubtitleColors().length > 0;
+  if (downloadSrtButton) downloadSrtButton.hidden = hasColors;
+  if (subtitleExportDropdown) {
+    subtitleExportDropdown.hidden = !hasColors;
+    if (!hasColors) subtitleExportDropdown.classList.remove('open');
+  }
+}
+
+async function downloadColorSrts(gapRemoved = false) {
+  if (editingState) finishEdit(true);
+  const colors = usedSubtitleColors();
+  const removed = gapRemoved ? getRemovedGapRanges() : [];
+  if (!colors.length) {
+    flashHint('没有可导出的彩色字幕');
+    return;
+  }
+  if (gapRemoved && !removed.length) {
+    flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除');
+    return;
+  }
+  const timeOffset = gapRemoved
+    ? 0
+    : window.AsrEditorUtils.getSrtExportOffset(DATA.segments, EDITOR_SETTINGS.exportStartAtZero);
+  for (const color of colors) {
+    const payload = window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
+      colorName: color.name,
+      timeOffset,
+      mapTime: gapRemoved
+        ? (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed)
+        : undefined,
+      ensurePositiveDuration: gapRemoved,
+      formatTime: fmtSrtTime,
+    });
+    const gapSuffix = gapRemoved ? '_gap-removed' : '';
+    const saved = await downloadFile(
+      payload,
+      `${FILENAME_BASE}${gapSuffix}_${color.name}.srt`,
+      'text/plain',
+      { desc: `${color.label}色字幕 SRT`, types: { 'text/plain': ['.srt'] } },
+    );
+    if (!saved) return;
+  }
+  flashHint(`已按颜色导出 ${colors.length} 份字幕`);
+}
+
 function gapRemovedExportContext() {
   const removed = getRemovedGapRanges();
   if (!removed.length) {
@@ -7692,6 +7794,13 @@ document.getElementById('download-srt').addEventListener('click', async () => {
     desc: 'SRT 字幕文件', types: { 'text/plain': ['.srt'] }
   });
 });
+document.getElementById('download-full-srt').addEventListener('click', async () => {
+  if (editingState) finishEdit(true);
+  await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
+    desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
+  });
+});
+document.getElementById('download-color-srt').addEventListener('click', () => downloadColorSrts(false));
 document.getElementById('download-json').addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   await downloadFile(buildJson(), `${FILENAME_BASE}.json`, 'application/json', {
@@ -7750,6 +7859,7 @@ document.getElementById('download-gap-removed-srt').addEventListener('click', as
     });
   }
 });
+document.getElementById('download-gap-removed-color-srt').addEventListener('click', () => downloadColorSrts(true));
 document.getElementById('download-gap-removed-otio').addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedOtio();
@@ -7812,6 +7922,7 @@ function bindToolbarExportDropdown(dropdownId, buttonId, menuId) {
     if (e.key === 'Escape') dd.classList.remove('open');
   });
 }
+bindToolbarExportDropdown('subtitle-export-dropdown', 'subtitle-export-btn', 'subtitle-export-menu');
 bindToolbarExportDropdown('gap-removed-export-dropdown', 'gap-removed-export-btn', 'gap-removed-export-menu');
 bindToolbarExportDropdown('extra-export-dropdown', 'extra-export-btn', 'extra-export-menu');
 

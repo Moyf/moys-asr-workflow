@@ -150,6 +150,42 @@
     return firstEnabled ? Math.max(0, Math.round(Number(firstEnabled.start))) : 0;
   }
 
+  function effectiveColorName(segment, segments) {
+    const direct = segment?.color?.name;
+    if (typeof direct === 'string' && direct) return direct;
+    const reference = segment?.color_ref;
+    const headName = Number.isInteger(reference?.headIdx)
+      ? segments?.[reference.headIdx]?.color?.name
+      : null;
+    if (typeof headName === 'string' && headName) return headName;
+    return typeof reference?.name === 'string' && reference.name ? reference.name : null;
+  }
+
+  function buildSrtPayload(segments, options = {}) {
+    const source = Array.isArray(segments) ? segments : [];
+    const colorName = typeof options.colorName === 'string' ? options.colorName : null;
+    const timeOffset = Math.max(0, Math.round(Number(options.timeOffset)) || 0);
+    const mapTime = typeof options.mapTime === 'function'
+      ? options.mapTime
+      : (timeMs) => Math.max(0, Math.round(Number(timeMs) || 0) - timeOffset);
+    const formatTime = typeof options.formatTime === 'function'
+      ? options.formatTime
+      : (timeMs) => String(timeMs);
+    const parts = [];
+    source.filter((segment) => (
+      segment && !segment.disabled && (!colorName || effectiveColorName(segment, source) === colorName)
+    )).forEach((segment, index) => {
+      const start = Math.max(0, Math.round(Number(mapTime(segment.start)) || 0));
+      const mappedEnd = Math.max(0, Math.round(Number(mapTime(segment.end)) || 0));
+      const end = options.ensurePositiveDuration ? Math.max(start + 1, mappedEnd) : mappedEnd;
+      parts.push(String(index + 1));
+      parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
+      parts.push(String(segment.text || ''));
+      parts.push('');
+    });
+    return parts.join('\n');
+  }
+
   function fileBasename(value) {
     return String(value || '').trim().split(/[\\/]/).pop() || '';
   }
@@ -471,6 +507,8 @@
     splitCharOffsetAtTime,
     findAdjacentCueIndex,
     getSrtExportOffset,
+    effectiveColorName,
+    buildSrtPayload,
     fileBasename,
     findProjectMediaFile,
     normalizeGapRemoveGaps,

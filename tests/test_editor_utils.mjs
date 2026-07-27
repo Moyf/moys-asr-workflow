@@ -90,6 +90,63 @@ test('aligns SRT export to the first enabled subtitle when requested', () => {
 });
 
 
+test('resolves referenced subtitle colors from their head when available', () => {
+  const segments = [
+    { color: { name: 'red' } },
+    { color_ref: { name: 'stale', headIdx: 0 } },
+    { color_ref: { name: 'blue', headIdx: 99 } },
+    {},
+  ];
+  assert.equal(helpers.effectiveColorName(segments[0], segments), 'red');
+  assert.equal(helpers.effectiveColorName(segments[1], segments), 'red');
+  assert.equal(helpers.effectiveColorName(segments[2], segments), 'blue');
+  assert.equal(helpers.effectiveColorName(segments[3], segments), null);
+});
+
+
+test('builds a color SRT on the shared full-export timeline and excludes disabled cues', () => {
+  const segments = [
+    { start: 500, end: 900, text: 'plain' },
+    { start: 1000, end: 1800, text: 'lead', color: { name: 'red' } },
+    { start: 2000, end: 2800, text: 'member', color_ref: { name: 'red', headIdx: 1 } },
+    { start: 3000, end: 3800, text: 'disabled', color_ref: { name: 'red', headIdx: 1 }, disabled: true },
+  ];
+  assert.equal(helpers.buildSrtPayload(segments, {
+    colorName: 'red',
+    timeOffset: 500,
+    formatTime: (timeMs) => `${timeMs}ms`,
+  }), [
+    '1',
+    '500ms --> 1300ms',
+    'lead',
+    '',
+    '2',
+    '1500ms --> 2300ms',
+    'member',
+    '',
+  ].join('\n'));
+});
+
+
+test('builds a gap-mapped color SRT with positive cue durations', () => {
+  const segments = [
+    { start: 1000, end: 1400, text: 'red', color: { name: 'red' } },
+    { start: 1500, end: 1600, text: 'blue', color: { name: 'blue' } },
+  ];
+  assert.equal(helpers.buildSrtPayload(segments, {
+    colorName: 'red',
+    mapTime: () => 500,
+    ensurePositiveDuration: true,
+    formatTime: (timeMs) => `${timeMs}ms`,
+  }), [
+    '1',
+    '500ms --> 501ms',
+    'red',
+    '',
+  ].join('\n'));
+});
+
+
 test('prefers the media named by a project when JSON and media are selected together', () => {
   const files = [
     { name: 'other.mp3' },
