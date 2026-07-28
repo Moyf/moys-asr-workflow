@@ -18,7 +18,7 @@
   const ROOT_EDGE_DROP_MAX_PX = 48;
   const ZOOM_PRESETS = [5, 10, 20, 30, 60];
   const ROW_PRESETS = [5, 10, 20, 30];
-  const ROW_HEIGHT = 96;
+  const ROW_HEIGHT_PRESETS = [64, 80, 96, 120, 144, 168];
   const ROW_GAP = 10;
   const MIN_CUE_MS = 100;
   const MIN_WAVEFORM_SCALE = 0.25;
@@ -34,6 +34,7 @@
     layout: 'wave-right',
     visibleSeconds: 20,
     secondsPerRow: 10,
+    rowHeight: 120,
     side: 'left',
     splitPercent: 60,
     layoutColumnPercent: 44,
@@ -43,6 +44,7 @@
     layoutEditing: false,
     waveformScale: 1,
     disabledDisplay: 'dim',
+    showGroupBadges: true,
   };
   const PALETTE = {
     red: '#e74c3c',
@@ -54,6 +56,26 @@
 
   function clamp(value, low, high) {
     return Math.max(low, Math.min(high, value));
+  }
+
+  // 组序号徽章：按 color/sticker 的 head/ref 结构计算每条字幕的 { ordinal, total, isHead }。
+  // 优先表情包组，其次颜色组；组大小 <2 时不显示。队长（head）恒为 1/total。
+  function computeGroupBadges(segments) {
+    const badges = new Map();
+    const apply = (headField, refField) => {
+      segments.forEach((seg, headIdx) => {
+        if (!seg[headField] || badges.has(headIdx)) return;
+        const members = [headIdx];
+        segments.forEach((candidate, idx) => {
+          if (candidate[refField]?.headIdx === headIdx && !badges.has(idx)) members.push(idx);
+        });
+        if (members.length < 2) return;
+        members.forEach((idx, i) => badges.set(idx, { ordinal: i + 1, total: members.length, isHead: i === 0 }));
+      });
+    };
+    apply('sticker', 'sticker_ref');
+    apply('color', 'color_ref');
+    return badges;
   }
 
   function roundMs(value) {
@@ -335,6 +357,8 @@
           ? Number(parsed.visibleSeconds) : DEFAULT_SETTINGS.visibleSeconds,
         secondsPerRow: ROW_PRESETS.includes(Number(parsed.secondsPerRow))
           ? Number(parsed.secondsPerRow) : DEFAULT_SETTINGS.secondsPerRow,
+        rowHeight: ROW_HEIGHT_PRESETS.includes(Number(parsed.rowHeight))
+          ? Number(parsed.rowHeight) : DEFAULT_SETTINGS.rowHeight,
         side: parsed.side === 'right' ? 'right' : 'left',
         splitPercent: layoutData.splitPercent,
         layoutColumnPercent: layoutData.columnPercent,
@@ -344,6 +368,7 @@
         layoutEditing: false,
         waveformScale: clampWaveformScale(Number(parsed.waveformScale) || DEFAULT_SETTINGS.waveformScale),
         disabledDisplay: parsed.disabledDisplay === 'hidden' ? 'hidden' : 'dim',
+        showGroupBadges: parsed.showGroupBadges !== false,
       };
     } catch (_) {
       return {
@@ -614,6 +639,8 @@
       this.waveformScaleDownButton = document.getElementById('waveform-scale-down');
       this.waveformScaleUpButton = document.getElementById('waveform-scale-up');
       this.secondsPerRowSelect = document.getElementById('waveform-seconds-per-row');
+      this.rowHeightSelect = document.getElementById('waveform-row-height');
+      this.showGroupBadgesToggle = document.getElementById('waveform-show-group-badges');
       this.sideSelect = document.getElementById('waveform-side');
       this.disabledDisplaySelect = document.getElementById('waveform-disabled-display');
       this.layoutPresetSelect = document.getElementById('layout-preset');
@@ -662,6 +689,16 @@
         this.settings.secondsPerRow = Number(this.secondsPerRowSelect.value);
         saveSettings(this.settings);
         this.multiRange = [-1, -1];
+        this.render();
+      });
+      this.rowHeightSelect?.addEventListener('change', () => {
+        this.settings.rowHeight = Number(this.rowHeightSelect.value);
+        saveSettings(this.settings);
+        this.render();
+      });
+      this.showGroupBadgesToggle?.addEventListener('change', () => {
+        this.settings.showGroupBadges = this.showGroupBadgesToggle.checked;
+        saveSettings(this.settings);
         this.render();
       });
       this.sideSelect?.addEventListener('change', () => {
@@ -827,6 +864,7 @@
       this.windowLabel.textContent = `${this.settings.visibleSeconds} 秒`;
       if (this.waveformScaleLabel) this.waveformScaleLabel.textContent = `×${parseFloat(this.settings.waveformScale.toFixed(2))}`;
       this.secondsPerRowSelect.value = String(this.settings.secondsPerRow);
+      if (this.rowHeightSelect) this.rowHeightSelect.value = String(this.settings.rowHeight);
       if (this.sideSelect) this.sideSelect.value = this.settings.side;
       if (this.disabledDisplaySelect) this.disabledDisplaySelect.value = this.settings.disabledDisplay;
       if (this.layoutPresetSelect) this.layoutPresetSelect.value = this.settings.layout;
@@ -845,13 +883,16 @@
       document.getElementById('waveform-zoom-in').disabled = !basicMode;
       document.getElementById('waveform-zoom-out').disabled = !basicMode;
       this.secondsPerRowSelect.disabled = !multiMode;
+      if (this.rowHeightSelect) this.rowHeightSelect.disabled = !multiMode;
       if (this.waveformScaleDownButton) this.waveformScaleDownButton.disabled = !waveformVisible;
       if (this.waveformScaleUpButton) this.waveformScaleUpButton.disabled = !waveformVisible;
       // 「显示窗口」仅基础模式有意义；「每行长度」仅多行模式有意义；隐藏波形时两项都收起。
       const windowSetting = document.getElementById('waveform-window-setting');
       const secondsPerRowSetting = document.getElementById('waveform-seconds-per-row-setting');
+      const rowHeightSetting = document.getElementById('waveform-row-height-setting');
       if (windowSetting) windowSetting.hidden = !basicMode;
       if (secondsPerRowSetting) secondsPerRowSetting.hidden = !multiMode;
+      if (rowHeightSetting) rowHeightSetting.hidden = !multiMode;
     }
 
     setMode(mode) {
@@ -1311,12 +1352,12 @@
       }
       const rowDurationMs = this.settings.secondsPerRow * 1000;
       const rowIndex = clamp(Math.floor(timeMs / rowDurationMs), 0, Math.max(0, Math.ceil(this.durationMs / rowDurationMs) - 1));
-      const stride = ROW_HEIGHT + ROW_GAP;
-      const target = center
-        ? rowIndex * stride - Math.max(0, (this.scroll.clientHeight - ROW_HEIGHT) * 0.45)
+      const stride = this.settings.rowHeight + ROW_GAP;
+      const scrollTop = center
+        ? rowIndex * stride - Math.max(0, (this.scroll.clientHeight - this.settings.rowHeight) * 0.45)
         : rowIndex * stride;
       this.autoScrolling = true;
-      this.scroll.scrollTop = Math.max(0, target);
+      this.scroll.scrollTop = Math.max(0, scrollTop);
       this.manualFollowUntil = Date.now() + 3000;
       requestAnimationFrame(() => {
         this.autoScrolling = false;
@@ -1606,7 +1647,7 @@
     renderMulti() {
       const rowDurationMs = this.settings.secondsPerRow * 1000;
       const rowCount = Math.max(1, Math.ceil(this.durationMs / rowDurationMs));
-      this.content.style.height = `${rowCount * (ROW_HEIGHT + ROW_GAP) - ROW_GAP}px`;
+      this.content.style.height = `${rowCount * (this.settings.rowHeight + ROW_GAP) - ROW_GAP}px`;
       this.multiRange = [-1, -1];
       this.renderMultiVisible(true);
     }
@@ -1615,7 +1656,7 @@
       if (!this.isMultiMode() || !this.payload) return;
       const rowDurationMs = this.settings.secondsPerRow * 1000;
       const rowCount = Math.max(1, Math.ceil(this.durationMs / rowDurationMs));
-      const stride = ROW_HEIGHT + ROW_GAP;
+      const stride = this.settings.rowHeight + ROW_GAP;
       const first = clamp(Math.floor(this.scroll.scrollTop / stride) - 2, 0, rowCount - 1);
       const last = clamp(Math.ceil((this.scroll.scrollTop + this.scroll.clientHeight) / stride) + 2, 0, rowCount - 1);
       if (!force && first === this.multiRange[0] && last === this.multiRange[1]) {
@@ -1657,8 +1698,8 @@
       const startMs = index * rowDurationMs;
       const endMs = Math.min(this.durationMs, startMs + rowDurationMs);
       const row = this.createRow(startMs, endMs, index, false);
-      row.style.top = `${index * (ROW_HEIGHT + ROW_GAP)}px`;
-      row.style.height = `${ROW_HEIGHT}px`;
+      row.style.top = `${index * (this.settings.rowHeight + ROW_GAP)}px`;
+      row.style.height = `${this.settings.rowHeight}px`;
       return row;
     }
 
@@ -1754,6 +1795,7 @@
       const segments = this.options.getSegments();
       const selected = this.options.getSelection();
       const now = this.currentTimeMs();
+      const groupBadges = computeGroupBadges(segments);
       segments.forEach((segment, index) => {
         if (segment.end <= startMs || segment.start >= endMs) return;
         if (segment.disabled && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden')) return;
@@ -1769,6 +1811,22 @@
         label.className = 'waveform-cue-label';
         label.textContent = segment.text.replace(/\s+/g, ' ');
         block.appendChild(label);
+        const badge = this.settings.showGroupBadges !== false ? groupBadges.get(index) : null;
+        if (badge) {
+          // 徽章挂在行上、块上方（不遮挡块内文字）；块过窄时不显示，避免与相邻徽章重叠
+          const badgeDuration = Math.max(1, endMs - startMs);
+          const badgeVisibleStart = Math.max(startMs, segment.start);
+          const badgeVisibleEnd = Math.min(endMs, segment.end);
+          // 行创建时还未挂载（clientWidth=0），用容器宽度估算块像素宽（行宽=容器宽）
+          const blockWidthPx = ((badgeVisibleEnd - badgeVisibleStart) / badgeDuration) * this.content.clientWidth;
+          if (blockWidthPx >= 56) {
+            const badgeEl = document.createElement('span');
+            badgeEl.className = 'waveform-cue-badge' + (badge.isHead ? ' head' : '');
+            badgeEl.textContent = badge.isHead ? `👑 ${badge.ordinal}/${badge.total}` : `${badge.ordinal}/${badge.total}`;
+            badgeEl.style.left = `${((badgeVisibleStart - startMs) / badgeDuration) * 100}%`;
+            row.appendChild(badgeEl);
+          }
+        }
         if (segment.start >= startMs) {
           const leftHandle = document.createElement('span');
           leftHandle.className = 'waveform-cue-handle left';
@@ -1965,6 +2023,20 @@
     }
 
     handleWheel(event) {
+      if (this.isMultiMode() && event.ctrlKey && event.shiftKey) {
+        // Ctrl+Shift+滚轮：仅多行模式下循环调整行高预设，向上滚放大，不改变时间映射
+        event.preventDefault();
+        const current = ROW_HEIGHT_PRESETS.indexOf(this.settings.rowHeight);
+        const next = clamp(current + (event.deltaY > 0 ? -1 : 1), 0, ROW_HEIGHT_PRESETS.length - 1);
+        if (next !== current) {
+          this.settings.rowHeight = ROW_HEIGHT_PRESETS[next];
+      if (this.rowHeightSelect) this.rowHeightSelect.value = String(this.settings.rowHeight);
+      if (this.showGroupBadgesToggle) this.showGroupBadgesToggle.checked = this.settings.showGroupBadges !== false;
+          saveSettings(this.settings);
+          this.renderMulti();
+        }
+        return;
+      }
       if (event.shiftKey && this.settings.mode !== 'hidden') {
         event.preventDefault();
         // 用 rAF 合并高频滚轮：一帧内累加方向，避免每次 wheel 都重渲染导致卡顿
@@ -2483,7 +2555,7 @@
         const rowIndex = Math.floor(now / (this.settings.secondsPerRow * 1000));
         if (rowIndex < this.multiRange[0] || rowIndex > this.multiRange[1]) {
           this.autoScrolling = true;
-          this.scroll.scrollTop = Math.max(0, rowIndex * (ROW_HEIGHT + ROW_GAP) - this.scroll.clientHeight * 0.35);
+          this.scroll.scrollTop = Math.max(0, rowIndex * (this.settings.rowHeight + ROW_GAP) - this.scroll.clientHeight * 0.35);
           requestAnimationFrame(() => { this.autoScrolling = false; });
           this.renderMultiVisible(true);
         }

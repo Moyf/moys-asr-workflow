@@ -150,13 +150,12 @@
   }
   .player-empty.hidden, .cues-empty.hidden { display: none; }
   .subtitle-overlay {
-    position: absolute; left: 0; right: auto; top: 76%; height: 16%; width: 100%;
+    position: absolute; left: 17.5%; right: auto; top: 76%; height: 16%; width: 65%;
     display: flex; align-items: center; justify-content: center;
     text-align: center; pointer-events: none;
     z-index: 10; padding: 0 12px; box-sizing: border-box;
   }
-  /* 几何可编辑时，容器接收指针；文字 span 仍不拦截，避免选中文本干扰拖动 */
-  .subtitle-overlay.geometry-enabled { pointer-events: auto; cursor: move; }
+  /* 几何可编辑时由 .geo-box.geometry-enabled 接收指针；文字 span 仍不拦截，避免选中文本干扰拖动 */
   .subtitle-overlay span {
     display: inline-block; max-width: 90%;
     background: rgba(0,0,0,0.65);
@@ -168,37 +167,57 @@
     pointer-events: none;
   }
   .subtitle-overlay.hidden { display: none; }
-  /* 编辑态：hover / focus / 正在拖动缩放时显示虚线框、聚焦环与 8 个手柄。
-     其余时候完全不可见，预览呈现与旧版一致。 */
-  .subtitle-overlay .overlay-handle { display: none; }
-  .subtitle-overlay.geometry-enabled:hover,
-  .subtitle-overlay.geometry-enabled:focus,
-  .subtitle-overlay.geometry-enabled.editable,
-  .subtitle-overlay.geometry-enabled.dragging {
-    outline: 1px dashed rgba(94, 167, 255, 0.9);
+  /* 几何编辑盒（字幕预览 / 表情包预览共用）：
+     点击聚焦 / 控制点编辑 / 正在拖动缩放时显示实线框与方形手柄；hover 不显示。 */
+  .geo-box { pointer-events: none; }
+  .geo-box.geometry-enabled { pointer-events: auto; cursor: move; }
+  .geo-box .overlay-handle { display: none; }
+  .geo-box.geometry-enabled:focus,
+  .geo-box.geometry-enabled.editable,
+  .geo-box.geometry-enabled.dragging {
+    outline: 1.5px solid rgba(108, 165, 232, 0.95);
     outline-offset: 0;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
   }
-  .subtitle-overlay.geometry-enabled:focus { outline: 2px solid #5ea7ff; }
-  .subtitle-overlay.geometry-enabled:hover .overlay-handle,
-  .subtitle-overlay.geometry-enabled:focus .overlay-handle,
-  .subtitle-overlay.geometry-enabled.editable .overlay-handle,
-  .subtitle-overlay.geometry-enabled.dragging .overlay-handle {
+  .geo-box.geometry-enabled:focus { outline: 2px solid var(--accent-line); }
+  .geo-box.geometry-enabled:focus .overlay-handle,
+  .geo-box.geometry-enabled.editable .overlay-handle,
+  .geo-box.geometry-enabled.dragging .overlay-handle {
     display: block;
   }
-  .subtitle-overlay .overlay-handle {
-    position: absolute; width: 12px; height: 12px;
-    background: #fff; border: 1px solid #2b3540; border-radius: 2px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  .geo-box .overlay-handle {
+    position: absolute; width: 10px; height: 10px; box-sizing: border-box;
+    padding: 0; max-width: none;  /* 抵消文字 span 规则的内边距与限宽，否则手柄被撑变形 */
+    background: var(--accent); border: 1px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.55);
     pointer-events: auto; z-index: 11;
   }
-  .subtitle-overlay .overlay-handle[data-handle="nw"] { top: -6px; left: -6px; cursor: nwse-resize; }
-  .subtitle-overlay .overlay-handle[data-handle="n"]  { top: -6px; left: 50%; margin-left: -6px; cursor: ns-resize; }
-  .subtitle-overlay .overlay-handle[data-handle="ne"] { top: -6px; right: -6px; cursor: nesw-resize; }
-  .subtitle-overlay .overlay-handle[data-handle="e"]  { top: 50%; right: -6px; margin-top: -6px; cursor: ew-resize; }
-  .subtitle-overlay .overlay-handle[data-handle="se"] { bottom: -6px; right: -6px; cursor: nwse-resize; }
-  .subtitle-overlay .overlay-handle[data-handle="s"]  { bottom: -6px; left: 50%; margin-left: -6px; cursor: ns-resize; }
-  .subtitle-overlay .overlay-handle[data-handle="sw"] { bottom: -6px; left: -6px; cursor: nesw-resize; }
-  .subtitle-overlay .overlay-handle[data-handle="w"]  { top: 50%; left: -6px; margin-top: -6px; cursor: ew-resize; }
+  .geo-box .overlay-handle[data-handle="nw"] { top: -5px; left: -5px; cursor: nwse-resize; }
+  .geo-box .overlay-handle[data-handle="n"]  { top: -5px; left: 50%; margin-left: -5px; cursor: ns-resize; }
+  .geo-box .overlay-handle[data-handle="ne"] { top: -5px; right: -5px; cursor: nesw-resize; }
+  .geo-box .overlay-handle[data-handle="e"]  { top: 50%; right: -5px; margin-top: -5px; cursor: ew-resize; }
+  .geo-box .overlay-handle[data-handle="se"] { bottom: -5px; right: -5px; cursor: nwse-resize; }
+  .geo-box .overlay-handle[data-handle="s"]  { bottom: -5px; left: 50%; margin-left: -5px; cursor: ns-resize; }
+  .geo-box .overlay-handle[data-handle="sw"] { bottom: -5px; left: -5px; cursor: nesw-resize; }
+  .geo-box .overlay-handle[data-handle="w"]  { top: 50%; left: -5px; margin-top: -5px; cursor: ew-resize; }
+
+  /* 表情包预览层：位置与尺寸由 preview.sticker 几何驱动（默认右上角） */
+  #sticker-overlay-layer {
+    position: absolute; left: 73%; top: 4%; width: 24%; height: 30%;
+    z-index: 9;
+  }
+  #sticker-overlay-layer .sticker-overlay-content {
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column; gap: 6px;
+    align-items: center; justify-content: center;
+    pointer-events: none;
+  }
+  /* img 元素收缩到图像实际尺寸（max 约束 + contain），阴影/背景贴合图像而不是撑满整个几何盒 */
+  #sticker-overlay-layer .sticker-overlay-content img {
+    flex: 0 1 auto; min-height: 0; max-width: 100%; max-height: 100%;
+    object-fit: contain; border-radius: var(--radius-sm);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); background: rgba(0,0,0,0.35);
+  }
 
   /* === Toolbar === */
   .toolbar {
@@ -265,7 +284,8 @@
   .toolbar button.danger { background: var(--red-soft); border-color: var(--red); color: var(--red-hover); }
   .toolbar button.danger:hover { background: rgba(224, 122, 122, 0.22); border-color: var(--red-hover); color: #ffd6d6; }
   .toolbar button.active { background: var(--accent-tint-strong); border-color: var(--accent); color: var(--accent-hover); }
-  .toolbar button.active:hover { background: var(--accent-soft); border-color: var(--accent-hover); }
+  /* hover 不改 border-color：按钮组共享边框，单边变色会出现奇怪的蓝色分隔线 */
+  .toolbar button.active:hover { background: var(--accent-soft); }
   .toolbar .sep { width: 1px; height: 16px; background: var(--border); margin: 0 6px; opacity: .8; }
   .toolbar .info { color: var(--text-muted); font-variant-numeric: tabular-nums; }
   .toolbar .info b { color: var(--text-secondary); font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -278,7 +298,7 @@
   .toolbar-utility-group { display: inline-flex; align-items: center; gap: 4px; }
 
   .editor-settings-panel {
-    flex: 0 0 auto; display: grid; grid-template-columns: repeat(3, minmax(190px, 1fr));
+    flex: 0 0 auto; display: grid; grid-template-columns: repeat(4, minmax(190px, 1fr));
     gap: 8px; margin: -2px 0 8px; padding: 10px;
     background: var(--bg-panel);
     border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
@@ -358,7 +378,7 @@
 
   /* === 操作帮助 === */
   .help-panel {
-    flex: 0 0 auto; display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr));
+    flex: 0 0 auto; display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr));
     gap: 8px; margin: -2px 0 8px; padding: 10px;
     background: var(--bg-panel); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
     box-shadow: var(--shadow-1);
@@ -372,6 +392,9 @@
   .help-title {
     flex: 0 0 100%; color: var(--text-secondary); font-weight: 600; letter-spacing: .08em;
     text-transform: uppercase;
+  }
+  .help-note {
+    flex: 0 0 100%; color: var(--text-muted); font-size: 10px;
   }
   .help-panel kbd {
     background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -503,8 +526,7 @@
   }
   .cue .time {
     font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); user-select: none;
-    min-width: 40px; max-width: 100px; padding-top: 1px; flex: 0 3 100px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    min-width: 66px; max-width: 130px; padding-top: 1px; flex: 0 8 auto;
     font-variant-numeric: tabular-nums;
   }
   .cue .sticker-slot {
@@ -555,8 +577,9 @@
   .cue.active .index { color: var(--accent-hover); }
   .cue.dirty { border-left-color: var(--amber); }
   .cue.editing { background: var(--amber-soft); border-left-color: var(--amber); cursor: text; }
-  .cue.selected { background: var(--accent-tint); border-left-color: var(--accent-hover); }
-  .cue.selected.active { background: rgba(108, 165, 232, 0.30); }
+  /* 选中用琥珀色系（内描边环），与 active 的蓝色系明确区分 */
+  .cue.selected { background: var(--amber-soft); box-shadow: inset 0 0 0 1px var(--amber); }
+  .cue.selected.active { background: rgba(108, 165, 232, 0.30); box-shadow: inset 0 0 0 1px var(--amber); }
   /* 禁用项：灰色底不透明，文字变淡；active 高亮照常覆盖以便播放时定位 */
   .cue.disabled { background: rgba(255, 255, 255, 0.02); border-left-color: var(--border-strong); }
   .cue.disabled .text { color: var(--text-muted); }
@@ -608,8 +631,25 @@
   }
   .modal .actions button:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
   .modal .actions button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
-  .modal .actions button.danger { background: var(--red-soft); border-color: var(--red); color: var(--red-hover); }
-  .modal .actions button.danger:hover { background: rgba(224, 122, 122, 0.22); border-color: var(--red-hover); color: #ffd6d6; }
+.modal .actions button.danger { background: var(--red-soft); border-color: var(--red); color: var(--red-hover); }
+.modal .actions button.danger:hover { background: rgba(224, 122, 122, 0.22); border-color: var(--red-hover); color: #ffd6d6; }
+  .modal .actions button.primary { background: var(--accent-tint-strong); border-color: var(--accent); color: var(--accent-hover); }
+  .modal .actions button.primary:hover { background: var(--accent-soft); }
+  /* 模态正文辅助元素（描述 / 提示 / 字段行） */
+  .modal .modal-desc { font-size: 12px; color: var(--text-muted); margin: 0 0 8px; }
+  .modal .modal-hint { font-size: 11px; color: var(--text-faint); margin-top: 6px; }
+  .modal .modal-field-row { display: flex; gap: 6px; align-items: stretch; }
+  .modal .modal-field-row input[type=text] { flex: 1 1 auto; width: auto; }
+  .modal .modal-field-row button {
+    flex: 0 0 auto; padding: 0 12px;
+    background: var(--btn-bg); color: var(--btn-text); border: 1px solid var(--btn-border);
+    border-radius: var(--radius-sm); font-size: 12px; cursor: pointer;
+    transition: background var(--t-fast), border-color var(--t-fast);
+  }
+  .modal .modal-field-row button:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  #sticker-root-modal .modal { width: 540px; }
+  .editor-settings-hint { display: block; font-size: 11px; color: var(--text-faint); margin: 2px 0 0; }
+  .editor-settings-hint[hidden] { display: none; }
   .modal .preview {
     font-size: 12px; color: var(--text-muted); margin-top: 6px; min-height: 16px;
     max-height: 34vh; overflow-y: auto;
@@ -683,24 +723,6 @@
   .gap-remove-close:hover { color: #f4d5c0; background: #50362f; border-color: #755048; }
   .gap-remove-close:focus-visible { outline: 2px solid var(--amber-line); outline-offset: 1px; }
   .gap-remove-panel-body { min-height: 0; overflow-y: auto; padding: 14px; }
-  .gap-remove-operation-section {
-    margin-bottom: 14px; padding: 11px 12px;
-    color: var(--text-secondary); background: var(--amber-tint); border: 1px solid #755035; border-radius: var(--radius-md);
-  }
-  .gap-remove-operation-header {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  }
-  .gap-remove-operation-title { color: var(--amber-hover); font-size: 11px; font-weight: 700; letter-spacing: .04em; }
-  .gap-remove-operation-section select {
-    min-width: 116px; height: 29px; padding: 3px 24px 3px 7px;
-    color: #fff0df; background: var(--bg-input); border: 1px solid #8a5c39; border-radius: var(--radius-sm);
-    outline: 0; cursor: pointer; font-size: 11px;
-    transition: border-color var(--t-fast);
-  }
-  .gap-remove-operation-section select:focus { border-color: var(--amber); box-shadow: var(--focus-ring-amber); }
-  .gap-remove-operation-section p { margin: 9px 0 3px; font-size: 11px; line-height: 1.5; }
-  .gap-remove-operation-section p strong { color: var(--amber-hover); font-weight: 600; }
-  .gap-remove-operation-section > small { color: #a98c70; font-size: 9px; line-height: 1.45; }
   .gap-remove-parameters-heading {
     display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 0 1px 7px;
   }
@@ -858,6 +880,32 @@
   .ctxmenu .item kbd {
     background: var(--bg-input); color: var(--text-muted); padding: 1px 6px; border-radius: var(--radius-sm);
     font-family: var(--font-mono); font-size: 10px; border: 1px solid var(--border-subtle);
+  }
+
+  /* === 右上角提示卡片（flashHint）===
+     最多 3 条垂直堆叠，新提示出现在下方；fade in/out 由 JS 驱动 */
+  #hint-stack {
+    position: fixed; top: 16px; right: 16px; z-index: 300;
+    display: flex; flex-direction: column; gap: 8px;
+    max-width: 380px;
+  }
+  .hint-card {
+    padding: 13px 18px;
+    background: var(--bg-overlay); color: var(--text-primary);
+    font-size: 14px; line-height: 1.55; word-break: break-word;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-3);
+    animation: hint-fade-in .18s ease-out;
+  }
+  .hint-card.hide { animation: hint-fade-out .2s ease-in forwards; }
+  @keyframes hint-fade-in {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes hint-fade-out {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(-8px); }
   }
 
   /* === Drag & Drop 遮罩 === */
@@ -1560,9 +1608,17 @@
   touch-action: none;
 }
 .waveform-cue-block:hover { filter: brightness(1.16); }
+/* 分组徽章：放在块上方的行内区域（bottom = 块高35 + 块底7 + 间距2），
+   纯视觉提示不遮挡块内文字；left 由 JS 按块位置写入 */
+.waveform-cue-badge {
+  position: absolute; bottom: 44px; z-index: 6;
+  font-size: 11px; line-height: 1.3; padding: 1px 5px; white-space: nowrap;
+  color: var(--text-secondary); background: rgba(0, 0, 0, 0.65); border-radius: 3px;
+  pointer-events: none; font-family: var(--font-mono);
+}
+.waveform-cue-badge.head { color: #ffd54a; }
 .waveform-cue-block.selected {
   z-index: 6;
-  border-color: #ffd54a;
   outline: 2px solid #ffd54a;
   outline-offset: 1px;
   box-shadow: 0 0 0 1px rgba(89, 62, 0, .72), 0 0 8px rgba(255, 213, 74, .45);
@@ -1638,7 +1694,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-07-28 01:49</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-07-28 17:08</span>
   <span class="json-name empty" id="json-name" title="点击复制 JSON 文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -1694,6 +1750,7 @@
     <span class="clear-x" id="search-clear" title="清空">×</span>
   </span>
   <label class="toggle"><input type="checkbox" id="overlay-toggle" checked> 字幕预览</label>
+  <label class="toggle" title="在视频画面右上角预览当前时间的表情包"><input type="checkbox" id="sticker-overlay-toggle"> 表情包预览</label>
   <span class="info">显示 <b id="visible-count">0</b> / <b id="total-count">0</b></span>
   <label class="toggle"><input type="checkbox" id="hide-disabled-toggle"> 隐藏禁用</label>
   <span class="sep"></span>
@@ -1710,9 +1767,9 @@
 <div class="toolbar row-waveform" id="waveform-toolbar">
   <span class="info">波形</span>
   <span class="waveform-mode-switch" role="group" aria-label="波形模式">
-    <button type="button" data-waveform-mode="hidden">隐藏</button>
-    <button type="button" data-waveform-mode="basic">基础</button>
     <button type="button" data-waveform-mode="multi">多行</button>
+    <button type="button" data-waveform-mode="basic">基础</button>
+    <button type="button" data-waveform-mode="hidden">隐藏</button>
   </span>
   <span class="sep"></span>
   <span class="waveform-tool-switch" role="group" aria-label="波形工具">
@@ -1745,10 +1802,7 @@
   <span class="sep" aria-hidden="true"></span>
   <span class="toolbar-utility-group" role="group" aria-label="编辑器工具">
     <button type="button" id="editor-settings-toggle" title="展开字幕、波形与导出设置" aria-expanded="false" aria-controls="editor-settings-panel">🔧 设置</button>
-    <button type="button" id="help-toggle" title="查看鼠标操作与键盘快捷键" aria-expanded="false" aria-controls="help-panel">
-      <svg class="toolbar-button-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M6.5 6.25A1.75 1.75 0 1 1 8.7 7.94C8.25 8.16 8 8.55 8 9.15M8 11.75h.01"/></svg>
-      <span>帮助</span>
-    </button>
+    <button type="button" id="help-toggle" title="查看鼠标操作与键盘快捷键" aria-expanded="false" aria-controls="help-panel">🤔 帮助</button>
   </span>
   <span class="waveform-status" id="waveform-status">等待波形数据</span>
 </div>
@@ -1763,18 +1817,6 @@
     <button type="button" id="gap-remove-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭移除静音空隙工具窗">×</button>
   </header>
   <div class="gap-remove-panel-body">
-    <section class="gap-remove-operation-section" aria-labelledby="gap-remove-operation-title">
-      <div class="gap-remove-operation-header">
-        <span class="gap-remove-operation-title" id="gap-remove-operation-title">空隙操作</span>
-        <select id="gap-remove-operation-mode">
-          <option value="none">无</option>
-          <option value="boundary_drag">拖动边界</option>
-          <option value="middle_drag" selected>中键拖动</option>
-        </select>
-      </div>
-      <p>可选择<strong>拖动边界</strong>或<strong>中键拖动</strong>进行人工修正；Alt+左键始终切换整段。</p>
-      <small>中键拖动默认增加静音；按住 Alt 才恢复声音。边界碰到另一空隙时会合并。</small>
-    </section>
     <div class="gap-remove-parameters-heading">
       <span>扫描参数</span>
       <small>按波形音量扫描内部空隙，不改写原时间轴</small>
@@ -1859,9 +1901,6 @@
       <label class="toggle"><input type="checkbox" id="cue-editor-show-navigation" checked> 前后跳转</label>
       <label class="toggle"><input type="checkbox" id="cue-editor-show-sticker"> 表情包</label>
     </div>
-    <label class="toggle editor-settings-item" title="开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条">
-      <input type="checkbox" id="select-group-members"> 同时选中分组内项目
-    </label>
   </div>
   <div class="editor-settings-group">
     <span class="editor-settings-title">操作</span>
@@ -1872,12 +1911,16 @@
         <option value="select-and-seek">选中并跳转</option>
       </select>
     </label>
+    <small class="editor-settings-hint" id="click-behavior-hint">「仅选中」时可以用F键功能来跳转并播放字幕</small>
     <label class="editor-settings-item" title="编辑字幕时，选择 Enter 或 Ctrl+Enter 在文字光标处拆分；另一个按键用于保存">
       字幕编辑拆分按键
       <select id="split-key">
         <option value="ctrl-enter" selected>Ctrl+Enter</option>
         <option value="enter">Enter</option>
       </select>
+    </label>
+    <label class="toggle editor-settings-item" title="开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条">
+      <input type="checkbox" id="select-group-members"> 同时选中分组内项目
     </label>
   </div>
   <div class="editor-settings-group">
@@ -1904,10 +1947,31 @@
         <option value="30">30 秒</option>
       </select>
     </label>
+    <label class="editor-settings-item" id="waveform-row-height-setting" title="多行波形每一行的高度；也可用 Ctrl+Shift+滚轮 在波形上直接调节">每行高度
+      <select id="waveform-row-height">
+        <option value="64">64 px</option>
+        <option value="80">80 px</option>
+        <option value="96">96 px</option>
+        <option value="120" selected>120 px</option>
+        <option value="144">144 px</option>
+        <option value="168">168 px</option>
+      </select>
+    </label>
+    <label class="toggle editor-settings-item" title="在多行波形中，为成组（颜色/表情包）字幕在块上方显示队长皇冠与组内序号">
+      <input type="checkbox" id="waveform-show-group-badges" checked> 显示分组标记
+    </label>
     <label class="editor-settings-item">禁用波形
       <select id="waveform-disabled-display">
         <option value="dim" selected>淡化</option>
         <option value="hidden">完全隐藏</option>
+      </select>
+    </label>
+    <label class="editor-settings-item" title="移除静音空隙的人工修正方式；Alt+左键始终切换整段；中键拖动默认增加静音，按住 Alt 才恢复声音，边界碰到另一空隙时会合并">
+      空隙操作
+      <select id="gap-remove-operation-mode">
+        <option value="none">无</option>
+        <option value="boundary_drag">拖动边界</option>
+        <option value="middle_drag" selected>中键拖动</option>
       </select>
     </label>
   </div>
@@ -1915,6 +1979,9 @@
     <span class="editor-settings-title">导出</span>
     <label class="toggle editor-settings-item" title="只影响导出的 SRT，不改动工程或 OTIO 的时间轴">
       <input type="checkbox" id="export-start-at-zero" checked> SRT 首条从 0 开始
+    </label>
+    <label class="toggle editor-settings-item" title="勾选后按颜色导出时只选择一次导出文件夹，自动按「文件名_颜色」批量保存；取消勾选则逐个颜色弹出保存对话框">
+      <input type="checkbox" id="export-color-unified" checked> 彩色字幕统一导出
     </label>
   </div>
   <div class="editor-settings-group" id="server-project-settings" hidden>
@@ -1931,27 +1998,33 @@
     <span><kbd>单击</kbd> 选中</span>
     <span><kbd>双击</kbd> 编辑</span>
     <span><kbd>右键</kbd> 菜单</span>
-    <span><kbd>Shift+点击</kbd> 范围选</span>
-    <span><kbd>Ctrl+点击</kbd> 切换选</span>
-    <span><kbd>Alt+点击</kbd> 禁用切换</span>
+    <span><kbd>Shift+点击</kbd> 连选</span>
+    <span><kbd>Ctrl+点击</kbd> 多选</span>
+    <span><kbd>Alt+点击</kbd> 切换字幕禁用</span>
+    <span><kbd id="help-split-key">Ctrl+Enter</kbd>（编辑字幕文本时）在文字光标处拆分</span>
   </div>
   <div class="help-group">
-    <span class="help-title">空隙与波形</span>
+    <span class="help-title">波形</span>
     <span><kbd>双击波形</kbd> 播放/暂停</span>
-    <span><kbd>右键波形背景</kbd> 创建或按音频位置拆分字幕</span>
+    <span><kbd>右键波形背景</kbd> 显示菜单</span>
     <span><kbd id="help-waveform-split-key">B</kbd> 在红色播放指针处拆分字幕</span>
-    <span><kbd>Alt+点击空隙</kbd> 移除/保留</span>
-    <span><kbd>中键拖动</kbd> 增加静音</span>
-    <span><kbd>Alt+中键拖动</kbd> 恢复声音</span>
     <span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>
     <span><kbd>Ctrl+滚轮</kbd> 调整时间缩放/每行长度</span>
+    <span><kbd>Ctrl+Shift+滚轮</kbd> 调整每行高度</span>
+  </div>
+  <div class="help-group">
+    <span class="help-title">静音空隙</span>
+    <span><kbd>Alt+点击静音空隙区段</kbd> 切换移除/保留</span>
+    <span class="help-note">设置的空隙操作为「中键拖动」时：</span>
+    <span><kbd>中键拖动</kbd> 增加静音区段</span>
+    <span><kbd>Alt+中键拖动</kbd> 增加恢复区段</span>
   </div>
   <div class="help-group">
     <span class="help-title">播放与编辑</span>
     <span><kbd>空格</kbd> 播放/暂停</span>
     <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> 倍速 ×0.5/重置/×2</span>
+    <span><kbd>F</kbd> 跳转并播放选中字幕（多选跳第一条）</span>
     <span><kbd>Delete</kbd> 删除所选字幕</span>
-    <span><kbd id="help-split-key">Ctrl+Enter</kbd> 编辑字幕时在文字光标处拆分</span>
     <span><kbd>Ctrl+Z</kbd> 撤销</span>
     <span><kbd>Ctrl+Shift+Z</kbd> 重做</span>
   </div>
@@ -1964,7 +2037,7 @@
   <div class="player-wrap">
     <audio id="player" controls preload="metadata" style="width:100%;display:block;"></audio>
     <div class="player-empty" id="player-empty">加载媒体后显示视频</div>
-    <div id="overlay" class="subtitle-overlay hidden" tabindex="0" role="group" aria-label="字幕预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 或空格显示控制点，Esc 退出。"><span></span><span class="overlay-handle" data-handle="nw" aria-hidden="true"></span><span class="overlay-handle" data-handle="n" aria-hidden="true"></span><span class="overlay-handle" data-handle="ne" aria-hidden="true"></span><span class="overlay-handle" data-handle="e" aria-hidden="true"></span><span class="overlay-handle" data-handle="se" aria-hidden="true"></span><span class="overlay-handle" data-handle="s" aria-hidden="true"></span><span class="overlay-handle" data-handle="sw" aria-hidden="true"></span><span class="overlay-handle" data-handle="w" aria-hidden="true"></span></div>
+    <div id="overlay" class="subtitle-overlay geo-box hidden" tabindex="0" role="group" aria-label="字幕预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 或空格显示控制点，Esc 退出。"><span></span><span class="overlay-handle" data-handle="nw" aria-hidden="true"></span><span class="overlay-handle" data-handle="n" aria-hidden="true"></span><span class="overlay-handle" data-handle="ne" aria-hidden="true"></span><span class="overlay-handle" data-handle="e" aria-hidden="true"></span><span class="overlay-handle" data-handle="se" aria-hidden="true"></span><span class="overlay-handle" data-handle="s" aria-hidden="true"></span><span class="overlay-handle" data-handle="sw" aria-hidden="true"></span><span class="overlay-handle" data-handle="w" aria-hidden="true"></span></div>
   </div>
   <section class="current-cue-panel" id="current-cue-panel" aria-label="当前字幕编辑区">
     <div class="cue-panel-layout">
@@ -2023,7 +2096,7 @@
     </div>
     <div class="actions">
       <button type="button" id="project-media-later">稍后加载</button>
-      <button type="button" id="project-media-select" class="danger">选择媒体</button>
+      <button type="button" id="project-media-select" class="primary">选择媒体</button>
     </div>
   </div>
 </div>
@@ -2044,7 +2117,7 @@
     <div class="preview" id="replace-preview">输入查找内容查看预览</div>
     <div class="actions">
       <button id="replace-cancel">取消</button>
-      <button id="replace-confirm" class="danger">替换全部</button>
+      <button id="replace-confirm" class="primary">替换全部</button>
     </div>
   </div>
 </div>
@@ -2077,23 +2150,23 @@
 
 <!-- 表情包根目录 modal -->
 <div class="modal-mask" id="sticker-root-modal">
-  <div class="modal" style="width: 540px;">
+  <div class="modal">
     <h3>设置表情包根目录</h3>
-    <div style="font-size:12px;color:#888;margin-bottom:8px;">
+    <div class="modal-desc">
       所有表情包路径都基于此根目录。修改后页面所有缩略图会立刻按新路径加载。
     </div>
-    <label>当前根目录（绝对路径）</label>
-    <div style="display:flex;gap:6px;align-items:stretch;">
-      <input type="text" id="sticker-root-input" placeholder="如 D:/AI/AI音频转录/表情包" autocomplete="off" style="flex:1 1 auto;">
-      <button id="sticker-root-pick" title="浏览本地文件夹（同时会重新扫描表情包列表）" style="flex:0 0 auto;padding:0 12px;">📁 浏览…</button>
+    <label for="sticker-root-input">当前根目录（绝对路径）</label>
+    <div class="modal-field-row">
+      <input type="text" id="sticker-root-input" placeholder="如 D:/AI/AI音频转录/表情包" autocomplete="off">
+      <button id="sticker-root-pick" title="浏览本地文件夹（同时会重新扫描表情包列表）">📁 浏览…</button>
     </div>
     <input type="file" id="sticker-root-folder-input" webkitdirectory directory multiple style="display:none">
-    <div style="font-size:11px;color:#777;margin-top:6px;">
+    <div class="modal-hint">
       支持 OS 路径（D:/foo/bar）或 file:// URL。手动改路径只替换前缀；点 📁 浏览选本地文件夹会重新扫描表情包。
     </div>
     <div class="actions">
       <button id="sticker-root-cancel">取消</button>
-      <button id="sticker-root-confirm" class="danger">应用</button>
+      <button id="sticker-root-confirm" class="primary">应用</button>
     </div>
   </div>
 </div>
@@ -2571,23 +2644,27 @@
   const PREVIEW_MIN_WIDTH = 0.20;
   const PREVIEW_MIN_HEIGHT = 0.08;
   const DEFAULT_PREVIEW_GEOMETRY = Object.freeze({
-    x: 0, y: 0.76, width: 1, height: 0.16,
+    x: 0.175, y: 0.76, width: 0.65, height: 0.16,
   });
-  // 复刻原 CSS bottom:8% 的带状：y=0.76, height=0.16 → 76%→92%，留 8% 底边距。
+  // 复刻原 CSS bottom:8% 的带状：y=0.76, height=0.16 → 76%→92%，留 8% 底边距；宽度默认 65% 居中。
+  // 表情包预览的默认几何：右上角小图。
+  const DEFAULT_STICKER_GEOMETRY = Object.freeze({
+    x: 0.73, y: 0.04, width: 0.24, height: 0.3,
+  });
 
   function clampNumber(value, fallback) {
     const n = Number(value);
     return Number.isFinite(n) ? n : fallback;
   }
 
-  // 把任意输入归一化为合法 geometry；非法字段回退到 legacy 默认值。
-  function normalizePreviewGeometry(value) {
-    if (!value || typeof value !== 'object') return { ...DEFAULT_PREVIEW_GEOMETRY };
+  // 把任意输入归一化为合法 geometry；非法字段回退到指定默认值。
+  function normalizePreviewGeometry(value, defaults = DEFAULT_PREVIEW_GEOMETRY) {
+    if (!value || typeof value !== 'object') return { ...defaults };
     const geo = {
-      x: clampNumber(value.x, DEFAULT_PREVIEW_GEOMETRY.x),
-      y: clampNumber(value.y, DEFAULT_PREVIEW_GEOMETRY.y),
-      width: clampNumber(value.width, DEFAULT_PREVIEW_GEOMETRY.width),
-      height: clampNumber(value.height, DEFAULT_PREVIEW_GEOMETRY.height),
+      x: clampNumber(value.x, defaults.x),
+      y: clampNumber(value.y, defaults.y),
+      width: clampNumber(value.width, defaults.width),
+      height: clampNumber(value.height, defaults.height),
     };
     return clampPreviewGeometry(geo);
   }
@@ -2726,8 +2803,9 @@
     createHistoryStack,
     PREVIEW_MIN_WIDTH,
     PREVIEW_MIN_HEIGHT,
-    DEFAULT_PREVIEW_GEOMETRY,
-    normalizePreviewGeometry,
+  DEFAULT_PREVIEW_GEOMETRY,
+  DEFAULT_STICKER_GEOMETRY,
+  normalizePreviewGeometry,
     clampPreviewGeometry,
     previewGeometryToCss,
     applyPreviewGeometryDelta,
@@ -2753,7 +2831,7 @@
   const ROOT_EDGE_DROP_MAX_PX = 48;
   const ZOOM_PRESETS = [5, 10, 20, 30, 60];
   const ROW_PRESETS = [5, 10, 20, 30];
-  const ROW_HEIGHT = 96;
+  const ROW_HEIGHT_PRESETS = [64, 80, 96, 120, 144, 168];
   const ROW_GAP = 10;
   const MIN_CUE_MS = 100;
   const MIN_WAVEFORM_SCALE = 0.25;
@@ -2769,6 +2847,7 @@
     layout: 'wave-right',
     visibleSeconds: 20,
     secondsPerRow: 10,
+    rowHeight: 120,
     side: 'left',
     splitPercent: 60,
     layoutColumnPercent: 44,
@@ -2778,6 +2857,7 @@
     layoutEditing: false,
     waveformScale: 1,
     disabledDisplay: 'dim',
+    showGroupBadges: true,
   };
   const PALETTE = {
     red: '#e74c3c',
@@ -2789,6 +2869,26 @@
 
   function clamp(value, low, high) {
     return Math.max(low, Math.min(high, value));
+  }
+
+  // 组序号徽章：按 color/sticker 的 head/ref 结构计算每条字幕的 { ordinal, total, isHead }。
+  // 优先表情包组，其次颜色组；组大小 <2 时不显示。队长（head）恒为 1/total。
+  function computeGroupBadges(segments) {
+    const badges = new Map();
+    const apply = (headField, refField) => {
+      segments.forEach((seg, headIdx) => {
+        if (!seg[headField] || badges.has(headIdx)) return;
+        const members = [headIdx];
+        segments.forEach((candidate, idx) => {
+          if (candidate[refField]?.headIdx === headIdx && !badges.has(idx)) members.push(idx);
+        });
+        if (members.length < 2) return;
+        members.forEach((idx, i) => badges.set(idx, { ordinal: i + 1, total: members.length, isHead: i === 0 }));
+      });
+    };
+    apply('sticker', 'sticker_ref');
+    apply('color', 'color_ref');
+    return badges;
   }
 
   function roundMs(value) {
@@ -3070,6 +3170,8 @@
           ? Number(parsed.visibleSeconds) : DEFAULT_SETTINGS.visibleSeconds,
         secondsPerRow: ROW_PRESETS.includes(Number(parsed.secondsPerRow))
           ? Number(parsed.secondsPerRow) : DEFAULT_SETTINGS.secondsPerRow,
+        rowHeight: ROW_HEIGHT_PRESETS.includes(Number(parsed.rowHeight))
+          ? Number(parsed.rowHeight) : DEFAULT_SETTINGS.rowHeight,
         side: parsed.side === 'right' ? 'right' : 'left',
         splitPercent: layoutData.splitPercent,
         layoutColumnPercent: layoutData.columnPercent,
@@ -3079,6 +3181,7 @@
         layoutEditing: false,
         waveformScale: clampWaveformScale(Number(parsed.waveformScale) || DEFAULT_SETTINGS.waveformScale),
         disabledDisplay: parsed.disabledDisplay === 'hidden' ? 'hidden' : 'dim',
+        showGroupBadges: parsed.showGroupBadges !== false,
       };
     } catch (_) {
       return {
@@ -3349,6 +3452,8 @@
       this.waveformScaleDownButton = document.getElementById('waveform-scale-down');
       this.waveformScaleUpButton = document.getElementById('waveform-scale-up');
       this.secondsPerRowSelect = document.getElementById('waveform-seconds-per-row');
+      this.rowHeightSelect = document.getElementById('waveform-row-height');
+      this.showGroupBadgesToggle = document.getElementById('waveform-show-group-badges');
       this.sideSelect = document.getElementById('waveform-side');
       this.disabledDisplaySelect = document.getElementById('waveform-disabled-display');
       this.layoutPresetSelect = document.getElementById('layout-preset');
@@ -3397,6 +3502,16 @@
         this.settings.secondsPerRow = Number(this.secondsPerRowSelect.value);
         saveSettings(this.settings);
         this.multiRange = [-1, -1];
+        this.render();
+      });
+      this.rowHeightSelect?.addEventListener('change', () => {
+        this.settings.rowHeight = Number(this.rowHeightSelect.value);
+        saveSettings(this.settings);
+        this.render();
+      });
+      this.showGroupBadgesToggle?.addEventListener('change', () => {
+        this.settings.showGroupBadges = this.showGroupBadgesToggle.checked;
+        saveSettings(this.settings);
         this.render();
       });
       this.sideSelect?.addEventListener('change', () => {
@@ -3562,6 +3677,7 @@
       this.windowLabel.textContent = `${this.settings.visibleSeconds} 秒`;
       if (this.waveformScaleLabel) this.waveformScaleLabel.textContent = `×${parseFloat(this.settings.waveformScale.toFixed(2))}`;
       this.secondsPerRowSelect.value = String(this.settings.secondsPerRow);
+      if (this.rowHeightSelect) this.rowHeightSelect.value = String(this.settings.rowHeight);
       if (this.sideSelect) this.sideSelect.value = this.settings.side;
       if (this.disabledDisplaySelect) this.disabledDisplaySelect.value = this.settings.disabledDisplay;
       if (this.layoutPresetSelect) this.layoutPresetSelect.value = this.settings.layout;
@@ -3580,13 +3696,16 @@
       document.getElementById('waveform-zoom-in').disabled = !basicMode;
       document.getElementById('waveform-zoom-out').disabled = !basicMode;
       this.secondsPerRowSelect.disabled = !multiMode;
+      if (this.rowHeightSelect) this.rowHeightSelect.disabled = !multiMode;
       if (this.waveformScaleDownButton) this.waveformScaleDownButton.disabled = !waveformVisible;
       if (this.waveformScaleUpButton) this.waveformScaleUpButton.disabled = !waveformVisible;
       // 「显示窗口」仅基础模式有意义；「每行长度」仅多行模式有意义；隐藏波形时两项都收起。
       const windowSetting = document.getElementById('waveform-window-setting');
       const secondsPerRowSetting = document.getElementById('waveform-seconds-per-row-setting');
+      const rowHeightSetting = document.getElementById('waveform-row-height-setting');
       if (windowSetting) windowSetting.hidden = !basicMode;
       if (secondsPerRowSetting) secondsPerRowSetting.hidden = !multiMode;
+      if (rowHeightSetting) rowHeightSetting.hidden = !multiMode;
     }
 
     setMode(mode) {
@@ -4046,12 +4165,12 @@
       }
       const rowDurationMs = this.settings.secondsPerRow * 1000;
       const rowIndex = clamp(Math.floor(timeMs / rowDurationMs), 0, Math.max(0, Math.ceil(this.durationMs / rowDurationMs) - 1));
-      const stride = ROW_HEIGHT + ROW_GAP;
-      const target = center
-        ? rowIndex * stride - Math.max(0, (this.scroll.clientHeight - ROW_HEIGHT) * 0.45)
+      const stride = this.settings.rowHeight + ROW_GAP;
+      const scrollTop = center
+        ? rowIndex * stride - Math.max(0, (this.scroll.clientHeight - this.settings.rowHeight) * 0.45)
         : rowIndex * stride;
       this.autoScrolling = true;
-      this.scroll.scrollTop = Math.max(0, target);
+      this.scroll.scrollTop = Math.max(0, scrollTop);
       this.manualFollowUntil = Date.now() + 3000;
       requestAnimationFrame(() => {
         this.autoScrolling = false;
@@ -4341,7 +4460,7 @@
     renderMulti() {
       const rowDurationMs = this.settings.secondsPerRow * 1000;
       const rowCount = Math.max(1, Math.ceil(this.durationMs / rowDurationMs));
-      this.content.style.height = `${rowCount * (ROW_HEIGHT + ROW_GAP) - ROW_GAP}px`;
+      this.content.style.height = `${rowCount * (this.settings.rowHeight + ROW_GAP) - ROW_GAP}px`;
       this.multiRange = [-1, -1];
       this.renderMultiVisible(true);
     }
@@ -4350,7 +4469,7 @@
       if (!this.isMultiMode() || !this.payload) return;
       const rowDurationMs = this.settings.secondsPerRow * 1000;
       const rowCount = Math.max(1, Math.ceil(this.durationMs / rowDurationMs));
-      const stride = ROW_HEIGHT + ROW_GAP;
+      const stride = this.settings.rowHeight + ROW_GAP;
       const first = clamp(Math.floor(this.scroll.scrollTop / stride) - 2, 0, rowCount - 1);
       const last = clamp(Math.ceil((this.scroll.scrollTop + this.scroll.clientHeight) / stride) + 2, 0, rowCount - 1);
       if (!force && first === this.multiRange[0] && last === this.multiRange[1]) {
@@ -4392,8 +4511,8 @@
       const startMs = index * rowDurationMs;
       const endMs = Math.min(this.durationMs, startMs + rowDurationMs);
       const row = this.createRow(startMs, endMs, index, false);
-      row.style.top = `${index * (ROW_HEIGHT + ROW_GAP)}px`;
-      row.style.height = `${ROW_HEIGHT}px`;
+      row.style.top = `${index * (this.settings.rowHeight + ROW_GAP)}px`;
+      row.style.height = `${this.settings.rowHeight}px`;
       return row;
     }
 
@@ -4489,6 +4608,7 @@
       const segments = this.options.getSegments();
       const selected = this.options.getSelection();
       const now = this.currentTimeMs();
+      const groupBadges = computeGroupBadges(segments);
       segments.forEach((segment, index) => {
         if (segment.end <= startMs || segment.start >= endMs) return;
         if (segment.disabled && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden')) return;
@@ -4504,6 +4624,22 @@
         label.className = 'waveform-cue-label';
         label.textContent = segment.text.replace(/\s+/g, ' ');
         block.appendChild(label);
+        const badge = this.settings.showGroupBadges !== false ? groupBadges.get(index) : null;
+        if (badge) {
+          // 徽章挂在行上、块上方（不遮挡块内文字）；块过窄时不显示，避免与相邻徽章重叠
+          const badgeDuration = Math.max(1, endMs - startMs);
+          const badgeVisibleStart = Math.max(startMs, segment.start);
+          const badgeVisibleEnd = Math.min(endMs, segment.end);
+          // 行创建时还未挂载（clientWidth=0），用容器宽度估算块像素宽（行宽=容器宽）
+          const blockWidthPx = ((badgeVisibleEnd - badgeVisibleStart) / badgeDuration) * this.content.clientWidth;
+          if (blockWidthPx >= 56) {
+            const badgeEl = document.createElement('span');
+            badgeEl.className = 'waveform-cue-badge' + (badge.isHead ? ' head' : '');
+            badgeEl.textContent = badge.isHead ? `👑 ${badge.ordinal}/${badge.total}` : `${badge.ordinal}/${badge.total}`;
+            badgeEl.style.left = `${((badgeVisibleStart - startMs) / badgeDuration) * 100}%`;
+            row.appendChild(badgeEl);
+          }
+        }
         if (segment.start >= startMs) {
           const leftHandle = document.createElement('span');
           leftHandle.className = 'waveform-cue-handle left';
@@ -4700,6 +4836,20 @@
     }
 
     handleWheel(event) {
+      if (this.isMultiMode() && event.ctrlKey && event.shiftKey) {
+        // Ctrl+Shift+滚轮：仅多行模式下循环调整行高预设，向上滚放大，不改变时间映射
+        event.preventDefault();
+        const current = ROW_HEIGHT_PRESETS.indexOf(this.settings.rowHeight);
+        const next = clamp(current + (event.deltaY > 0 ? -1 : 1), 0, ROW_HEIGHT_PRESETS.length - 1);
+        if (next !== current) {
+          this.settings.rowHeight = ROW_HEIGHT_PRESETS[next];
+      if (this.rowHeightSelect) this.rowHeightSelect.value = String(this.settings.rowHeight);
+      if (this.showGroupBadgesToggle) this.showGroupBadgesToggle.checked = this.settings.showGroupBadges !== false;
+          saveSettings(this.settings);
+          this.renderMulti();
+        }
+        return;
+      }
       if (event.shiftKey && this.settings.mode !== 'hidden') {
         event.preventDefault();
         // 用 rAF 合并高频滚轮：一帧内累加方向，避免每次 wheel 都重渲染导致卡顿
@@ -5218,7 +5368,7 @@
         const rowIndex = Math.floor(now / (this.settings.secondsPerRow * 1000));
         if (rowIndex < this.multiRange[0] || rowIndex > this.multiRange[1]) {
           this.autoScrolling = true;
-          this.scroll.scrollTop = Math.max(0, rowIndex * (ROW_HEIGHT + ROW_GAP) - this.scroll.clientHeight * 0.35);
+          this.scroll.scrollTop = Math.max(0, rowIndex * (this.settings.rowHeight + ROW_GAP) - this.scroll.clientHeight * 0.35);
           requestAnimationFrame(() => { this.autoScrolling = false; });
           this.renderMultiVisible(true);
         }
@@ -5272,8 +5422,8 @@
 })();
 const DATA = {"segments": [], "media": "", "language": "", "model": ""};
 let FILENAME_BASE = "untitled";
-const STICKERS = [];
-let STICKER_ROOT = "";  // 表情包根目录的绝对路径（无尾斜杠）
+const STICKERS = [{"name": "大狗/10分10分-wb", "filename": "10分10分-wb.png", "rel": "大狗/10分10分-wb.png"}, {"name": "大狗/21-嘻嘻-wb", "filename": "21-嘻嘻-wb.png", "rel": "大狗/21-嘻嘻-wb.png"}, {"name": "大狗/Quson-wb", "filename": "Quson-wb.png", "rel": "大狗/Quson-wb.png"}, {"name": "大狗/不可以-无-wb", "filename": "不可以-无-wb.png", "rel": "大狗/不可以-无-wb.png"}, {"name": "大狗/不开心-bg", "filename": "不开心-bg.png", "rel": "大狗/不开心-bg.png"}, {"name": "大狗/不要-wb", "filename": "不要-wb.png", "rel": "大狗/不要-wb.png"}, {"name": "大狗/举刀-wb", "filename": "举刀-wb.jpg", "rel": "大狗/举刀-wb.jpg"}, {"name": "大狗/什么-wb", "filename": "什么-wb.png", "rel": "大狗/什么-wb.png"}, {"name": "大狗/什么啊-wb", "filename": "什么啊-wb.png", "rel": "大狗/什么啊-wb.png"}, {"name": "大狗/傻乎乎", "filename": "傻乎乎.png", "rel": "大狗/傻乎乎.png"}, {"name": "大狗/吃包包-wb", "filename": "吃包包-wb.png", "rel": "大狗/吃包包-wb.png"}, {"name": "大狗/吐舌-wb", "filename": "吐舌-wb.png", "rel": "大狗/吐舌-wb.png"}, {"name": "大狗/呆住", "filename": "呆住.png", "rel": "大狗/呆住.png"}, {"name": "大狗/唉你这-wb", "filename": "唉你这-wb.png", "rel": "大狗/唉你这-wb.png"}, {"name": "大狗/啊这-wb", "filename": "啊这-wb.png", "rel": "大狗/啊这-wb.png"}, {"name": "大狗/喝茶-wb", "filename": "喝茶-wb.png", "rel": "大狗/喝茶-wb.png"}, {"name": "大狗/嗯？怎？", "filename": "嗯？怎？.png", "rel": "大狗/嗯？怎？.png"}, {"name": "大狗/在干什么-wb", "filename": "在干什么-wb.png", "rel": "大狗/在干什么-wb.png"}, {"name": "大狗/墨聪明-wb", "filename": "墨聪明-wb.png", "rel": "大狗/墨聪明-wb.png"}, {"name": "大狗/好变态-wb", "filename": "好变态-wb.png", "rel": "大狗/好变态-wb.png"}, {"name": "大狗/尴尬-wb", "filename": "尴尬-wb.png", "rel": "大狗/尴尬-wb.png"}, {"name": "大狗/平身-wb", "filename": "平身-wb.png", "rel": "大狗/平身-wb.png"}, {"name": "大狗/开心大叫-wb", "filename": "开心大叫-wb.png", "rel": "大狗/开心大叫-wb.png"}, {"name": "大狗/忠诚-wb", "filename": "忠诚-wb.png", "rel": "大狗/忠诚-wb.png"}, {"name": "大狗/快打钱", "filename": "快打钱.png", "rel": "大狗/快打钱.png"}, {"name": "大狗/思索", "filename": "思索.png", "rel": "大狗/思索.png"}, {"name": "大狗/思考-wb", "filename": "思考-wb.png", "rel": "大狗/思考-wb.png"}, {"name": "大狗/慌张-wb", "filename": "慌张-wb.png", "rel": "大狗/慌张-wb.png"}, {"name": "大狗/拇指-wb", "filename": "拇指-wb.png", "rel": "大狗/拇指-wb.png"}, {"name": "大狗/按按钮", "filename": "按按钮.gif", "rel": "大狗/按按钮.gif"}, {"name": "大狗/杀戮-wb", "filename": "杀戮-wb.png", "rel": "大狗/杀戮-wb.png"}, {"name": "大狗/消沉-wb", "filename": "消沉-wb.png", "rel": "大狗/消沉-wb.png"}, {"name": "大狗/爆炸-wb", "filename": "爆炸-wb.png", "rel": "大狗/爆炸-wb.png"}, {"name": "大狗/网络皇帝-wb", "filename": "网络皇帝-wb.png", "rel": "大狗/网络皇帝-wb.png"}, {"name": "大狗/蛋花眼哭哭-wb", "filename": "蛋花眼哭哭-wb.png", "rel": "大狗/蛋花眼哭哭-wb.png"}, {"name": "大狗/觉得骄傲-wb", "filename": "觉得骄傲-wb.png", "rel": "大狗/觉得骄傲-wb.png"}, {"name": "大狗/记小本本-wb", "filename": "记小本本-wb.png", "rel": "大狗/记小本本-wb.png"}, {"name": "大狗/记小本本-看本本-wb", "filename": "记小本本-看本本-wb.png", "rel": "大狗/记小本本-看本本-wb.png"}, {"name": "大狗/诶嘿-wb", "filename": "诶嘿-wb.png", "rel": "大狗/诶嘿-wb.png"}, {"name": "大狗/超多疑问", "filename": "超多疑问.jpg", "rel": "大狗/超多疑问.jpg"}, {"name": "大狗/问号", "filename": "问号.png", "rel": "大狗/问号.png"}, {"name": "大狗/震撼-wb", "filename": "震撼-wb.png", "rel": "大狗/震撼-wb.png"}, {"name": "大狗/黑脸", "filename": "黑脸.png", "rel": "大狗/黑脸.png"}];
+let STICKER_ROOT = "E:/MoyCloud/Resource/素材/表情包";  // 表情包根目录的绝对路径（无尾斜杠）
 const STICKER_URL_PREFIX = "";
 const SERVER_CONFIG = null;
 const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';
@@ -5288,6 +5438,10 @@ const DEFAULT_EDITOR_SETTINGS = {
   cueEditorShowNavigation: true,
   cueEditorShowSticker: false,
   selectGroupMembers: false,
+  // 按颜色导出 SRT：统一导出只选一次文件夹，按「文件名_颜色」批量保存。
+  exportColorUnified: true,
+  // 表情包预览：在视频画面内渲染当前时间的表情包（默认关闭）。
+  stickerOverlayEnabled: false,
   // 字幕列表单击行为：select-only 仅选中（默认），select-and-seek 选中并跳转播放头。
   clickBehavior: 'select-only',
 };
@@ -5306,6 +5460,8 @@ function readEditorSettings() {
       cueEditorShowNavigation: saved.cueEditorShowNavigation !== false,
       cueEditorShowSticker: saved.cueEditorShowSticker === true,
       selectGroupMembers: saved.selectGroupMembers === true,
+      exportColorUnified: saved.exportColorUnified !== false,
+      stickerOverlayEnabled: saved.stickerOverlayEnabled === true,
       clickBehavior: saved.clickBehavior === 'select-and-seek' ? 'select-and-seek' : 'select-only',
     };
   } catch (_) {
@@ -5447,6 +5603,7 @@ function snapshotPreviewState() {
   return {
     overlay: !!overlayToggle.checked,
     subtitle: { ...getPreviewGeometry() },
+    sticker: { ...getStickerGeometry() },
   };
 }
 function applyPreviewState(state) {
@@ -5454,6 +5611,7 @@ function applyPreviewState(state) {
   overlayToggle.checked = state.overlay;
   updateEditorSettings({ overlayEnabled: state.overlay });
   if (state.subtitle) setPreviewGeometry(state.subtitle, { markDirty: true });
+  if (state.sticker) setStickerGeometry(state.sticker, { markDirty: true });
   if (!state.overlay) overlayEl.classList.add('hidden');
   else update();
 }
@@ -5563,6 +5721,7 @@ const selCountEl = document.getElementById('sel-count');
 const overlayEl = document.getElementById('overlay');
 const overlayTextEl = overlayEl.querySelector('span:not(.overlay-handle)');
 const overlayToggle = document.getElementById('overlay-toggle');
+const stickerOverlayToggle = document.getElementById('sticker-overlay-toggle');
 const playerEmpty = document.getElementById('player-empty');
 const playerWrap = document.querySelector('.player-wrap');
 const splitKeySel = document.getElementById('split-key');
@@ -5573,6 +5732,7 @@ const cueListShowCharcountToggle = document.getElementById('cue-list-show-charco
 const cueEditorShowNavigationToggle = document.getElementById('cue-editor-show-navigation');
 const cueEditorShowStickerToggle = document.getElementById('cue-editor-show-sticker');
 const selectGroupMembersToggle = document.getElementById('select-group-members');
+const exportColorUnifiedToggle = document.getElementById('export-color-unified');
 const helpToggle = document.getElementById('help-toggle');
 const helpPanel = document.getElementById('help-panel');
 const helpSplitKey = document.getElementById('help-split-key');
@@ -5690,6 +5850,8 @@ refreshSplitKeyHelp();
 overlayToggle.checked = EDITOR_SETTINGS.overlayEnabled;
 exportStartAtZeroToggle.checked = EDITOR_SETTINGS.exportStartAtZero;
 if (selectGroupMembersToggle) selectGroupMembersToggle.checked = EDITOR_SETTINGS.selectGroupMembers;
+if (exportColorUnifiedToggle) exportColorUnifiedToggle.checked = EDITOR_SETTINGS.exportColorUnified;
+if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.stickerOverlayEnabled;
 if (clickBehaviorSelect) clickBehaviorSelect.value = EDITOR_SETTINGS.clickBehavior;
 applyCueListDisplaySettings();
 applyCueEditorDisplaySettings();
@@ -5716,9 +5878,19 @@ exportStartAtZeroToggle.addEventListener('change', () => {
 selectGroupMembersToggle?.addEventListener('change', () => {
   updateEditorSettings({ selectGroupMembers: selectGroupMembersToggle.checked });
 });
+exportColorUnifiedToggle?.addEventListener('change', () => {
+  updateEditorSettings({ exportColorUnified: exportColorUnifiedToggle.checked });
+});
 clickBehaviorSelect?.addEventListener('change', () => {
   updateEditorSettings({ clickBehavior: clickBehaviorSelect.value === 'select-and-seek' ? 'select-and-seek' : 'select-only' });
+  refreshClickBehaviorHint();
 });
+// 「仅选中」模式下提示可用右键菜单「跳转并播放」（或 F 快捷键）
+function refreshClickBehaviorHint() {
+  const hint = document.getElementById('click-behavior-hint');
+  if (hint) hint.hidden = EDITOR_SETTINGS.clickBehavior !== 'select-only';
+}
+refreshClickBehaviorHint();
 
 function setGapRemoveData(next, { dirty = true } = {}) {
   DATA.gap_remove = normalizedGapRemoveData(next);
@@ -7167,7 +7339,8 @@ function bindCueEvents(el, idx) {
       scrollCueToCenter(el);
       waveformEditor?.revealTime(DATA.segments[idx].start, true);
       if (EDITOR_SETTINGS.clickBehavior === 'select-and-seek') {
-        seekTo(DATA.segments[idx].start / 1000);
+        // 只跳转到句首，不改动播放状态：暂停时保持暂停，播放时跳后续播
+        seekFromWaveform(DATA.segments[idx].start / 1000);
       }
     }, 220);
   });
@@ -7371,6 +7544,26 @@ document.addEventListener('keydown', (e) => {
   waveformEditor.setTool(tool);
 });
 
+// F：跳转并播放选中字幕（多选跳到第一条）。任意单击行为下都生效；
+// 文本编辑、弹窗和修饰键状态下不抢占输入。
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'f' && e.key !== 'F') return;
+  if (editingState || e.repeat) return;
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
+  if (replaceModal.classList.contains('show')) return;
+  if (stickerModal.classList.contains('show')) return;
+  if (stickerPreviewModal.classList.contains('show')) return;
+  if (projectMediaModal.classList.contains('show')) return;
+  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+  if (ctxmenu.classList.contains('show')) return;
+  if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+  if (!selectedIdxs.size) return;
+  const first = Math.min(...selectedIdxs);
+  seekFromWaveform(DATA.segments[first].start / 1000);
+  if (player.paused) togglePlayback();
+});
+
 // B：按红色播放指针所在时间拆分其内部字幕。复用波形右键/剃刀的字词边界映射，
 // 不依赖当前选择；文本编辑、弹窗和修饰键状态下不抢占输入。
 document.addEventListener('keydown', (e) => {
@@ -7429,67 +7622,109 @@ function applyPreviewGeometryToDom(geo) {
   overlayEl.style.right = 'auto';
   overlayEl.style.bottom = 'auto';
 }
-// 只有当预览开关开启时才允许几何编辑（关闭时 overlay 完全隐藏）。
+// === 表情包预览几何（preview.sticker）===
+// 与字幕预览同一套归一化/钳制逻辑，仅默认值不同（右上角小图）。
+function getStickerGeometry() {
+  return GEO_UTILS.normalizePreviewGeometry(DATA.preview?.sticker, GEO_UTILS.DEFAULT_STICKER_GEOMETRY);
+}
+// 写回 DATA.preview.sticker 并刷新 DOM。markDirty=false 用于初次加载，不弄脏工程。
+function setStickerGeometry(geo, { markDirty = true } = {}) {
+  const clamped = GEO_UTILS.clampPreviewGeometry(
+    GEO_UTILS.normalizePreviewGeometry(geo, GEO_UTILS.DEFAULT_STICKER_GEOMETRY),
+  );
+  if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
+  DATA.preview.sticker = clamped;
+  if (markDirty) previewGeometryDirty = true;
+  applyStickerGeometryToDom(clamped);
+  return clamped;
+}
+function applyStickerGeometryToDom(geo) {
+  const css = GEO_UTILS.previewGeometryToCss(geo);
+  stickerOverlayLayer.style.left = css.left;
+  stickerOverlayLayer.style.top = css.top;
+  stickerOverlayLayer.style.width = css.width;
+  stickerOverlayLayer.style.height = css.height;
+  stickerOverlayLayer.style.right = 'auto';
+  stickerOverlayLayer.style.bottom = 'auto';
+}
+// 只有当对应预览开关开启时才允许几何编辑（关闭时字幕盒完全隐藏、表情包盒不拦截指针）。
 function refreshPreviewGeometryEditable() {
   overlayEl.classList.toggle('geometry-enabled', !!overlayToggle.checked);
+  stickerOverlayLayer.classList.toggle('geometry-enabled', !!stickerOverlayToggle?.checked);
 }
 
-// --- 指针拖动 / 缩放（Pointer Events）---
-let previewGesture = null;  // { pointerId, handle, startX, startY, startGeo }
+// --- 指针拖动 / 缩放（Pointer Events），字幕预览与表情包预览共用 ---
+let previewGesture = null;  // { pointerId, handle, target, startX, startY, startGeo, rect }
+function previewTargetEl(target) { return target === 'sticker' ? stickerOverlayLayer : overlayEl; }
+function previewTargetEnabled(target) {
+  return target === 'sticker' ? !!stickerOverlayToggle?.checked : !!overlayToggle.checked;
+}
+function getTargetGeometry(target) { return target === 'sticker' ? getStickerGeometry() : getPreviewGeometry(); }
+function setTargetGeometry(target, geo) {
+  if (target === 'sticker') setStickerGeometry(geo); else setPreviewGeometry(geo);
+}
 function playerWrapRect() {
   return playerWrap.getBoundingClientRect();
 }
-function beginPreviewGesture(event, handle) {
-  if (!overlayToggle.checked) return;
+function beginPreviewGesture(event, handle, target) {
+  if (!previewTargetEnabled(target)) return;
   const rect = playerWrapRect();
   if (rect.width <= 0 || rect.height <= 0) return;
   event.preventDefault();
   event.stopPropagation();
+  const targetLabel = target === 'sticker' ? '表情包预览' : '字幕预览';
   // 一手势一撤销：在手势开始时压入手势前的快照。
-  pushPreviewUndo(handle === 'move' ? '移动字幕预览' : '缩放字幕预览', snapshotPreviewState());
+  pushPreviewUndo((handle === 'move' ? '移动' : '缩放') + targetLabel, snapshotPreviewState());
   previewGesture = {
     pointerId: event.pointerId,
     handle,
+    target,
     startX: event.clientX,
     startY: event.clientY,
-    startGeo: getPreviewGeometry(),
+    startGeo: getTargetGeometry(target),
     rect,
   };
-  overlayEl.classList.add('dragging', 'editable');
+  previewTargetEl(target).classList.add('dragging', 'editable');
   try { event.target.setPointerCapture?.(event.pointerId); } catch (_) {}
 }
 function movePreviewGesture(event) {
   if (!previewGesture || event.pointerId !== previewGesture.pointerId) return;
-  const { rect, startX, startY, startGeo, handle } = previewGesture;
+  const { rect, startX, startY, startGeo, handle, target } = previewGesture;
   const dx = (event.clientX - startX) / rect.width;
   const dy = (event.clientY - startY) / rect.height;
   const next = GEO_UTILS.applyPreviewGeometryDelta(startGeo, handle, dx, dy);
-  setPreviewGeometry(next, { markDirty: true });
+  setTargetGeometry(target, next);
 }
 function endPreviewGesture(event) {
   if (!previewGesture || event.pointerId !== previewGesture.pointerId) return;
   try { event.target.releasePointerCapture?.(event.pointerId); } catch (_) {}
+  previewTargetEl(previewGesture.target).classList.remove('dragging');
   previewGesture = null;
-  overlayEl.classList.remove('dragging');
 }
-overlayEl.addEventListener('pointerdown', (event) => {
-  if (event.button !== 0) return;
-  const handleEl = event.target.closest?.('.overlay-handle');
-  const handle = handleEl ? handleEl.dataset.handle : 'move';
-  beginPreviewGesture(event, handle);
-});
-overlayEl.addEventListener('pointermove', movePreviewGesture);
-overlayEl.addEventListener('pointerup', endPreviewGesture);
-overlayEl.addEventListener('pointercancel', endPreviewGesture);
+function bindPreviewBoxPointerEvents(el, target) {
+  el.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    // beginPreviewGesture 的 preventDefault 会阻止默认聚焦，显式聚焦让调整框随 :focus 显示
+    el.focus();
+    const handleEl = event.target.closest?.('.overlay-handle');
+    const handle = handleEl ? handleEl.dataset.handle : 'move';
+    beginPreviewGesture(event, handle, target);
+  });
+  el.addEventListener('pointermove', movePreviewGesture);
+  el.addEventListener('pointerup', endPreviewGesture);
+  el.addEventListener('pointercancel', endPreviewGesture);
+}
+bindPreviewBoxPointerEvents(overlayEl, 'subtitle');
 
-// --- 键盘操作（聚焦时）---
+// --- 键盘操作（聚焦时），字幕预览与表情包预览共用 ---
 // 方向键移动 1%；Shift 加速到 10%；Alt+方向缩放；Enter/Space 切换 editable；Esc 失焦。
-overlayEl.addEventListener('keydown', (event) => {
-  if (!overlayToggle.checked) return;
-  if (event.key === 'Escape') { overlayEl.blur(); return; }
+function handlePreviewBoxKeydown(event, target) {
+  if (!previewTargetEnabled(target)) return;
+  const el = previewTargetEl(target);
+  if (event.key === 'Escape') { el.blur(); return; }
   if (event.key === 'Enter' || event.key === ' ') {
     event.preventDefault();
-    overlayEl.classList.toggle('editable');
+    el.classList.toggle('editable');
     return;
   }
   const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
@@ -7500,13 +7735,26 @@ overlayEl.addEventListener('keydown', (event) => {
   const resize = event.altKey;  // Alt+方向缩放；否则移动
   const dx = dir[0] * step;
   const dy = dir[1] * step;
-  pushPreviewUndo(resize ? '缩放字幕预览' : '移动字幕预览', snapshotPreviewState());
-  const startGeo = getPreviewGeometry();
+  const targetLabel = target === 'sticker' ? '表情包预览' : '字幕预览';
+  pushPreviewUndo((resize ? '缩放' : '移动') + targetLabel, snapshotPreviewState());
+  const startGeo = getTargetGeometry(target);
   const next = resize
     ? GEO_UTILS.applyPreviewGeometryDelta(startGeo, dir[0] !== 0 ? 'e' : 's', dx, dy)
     : GEO_UTILS.applyPreviewGeometryDelta(startGeo, 'move', dx, dy);
-  setPreviewGeometry(next, { markDirty: true });
-});
+  setTargetGeometry(target, next);
+}
+overlayEl.addEventListener('keydown', (event) => handlePreviewBoxKeydown(event, 'subtitle'));
+
+// 点击预览框（字幕/表情包）以外的地方：失焦并退出控制点编辑态，调整框随之隐藏。
+// 捕获阶段监听，避免其他组件 pointerdown 的 stopPropagation 跳过失焦。
+document.addEventListener('pointerdown', (event) => {
+  if (previewGesture) return;
+  [overlayEl, stickerOverlayLayer].forEach((el) => {
+    if (el.contains(event.target)) return;
+    el.classList.remove('editable');
+    if (document.activeElement === el) el.blur();
+  });
+}, true);
 
 // 播放器缩放时几何以百分比表达，天然自适应；ResizeObserver 仅在盒子越界后回钳。
 if (typeof ResizeObserver === 'function') {
@@ -7515,10 +7763,6 @@ if (typeof ResizeObserver === 'function') {
   });
   previewResizeObserver.observe(playerWrap);
 }
-
-// 初次应用（不弄脏工程）。
-setPreviewGeometry(getPreviewGeometry(), { markDirty: false });
-refreshPreviewGeometryEditable();
 
 // === 当前行高亮 + overlay ===
 let lastActive = -1;
@@ -7601,7 +7845,72 @@ function update() {
       overlayEl.classList.add('hidden');
     }
   }
+  renderStickerOverlay(tMs);
 }
+// === 表情包预览（视频画面内）===
+// 层位置/尺寸由 preview.sticker 几何驱动（默认右上角）；点击后可拖动/缩放，与字幕预览同一套交互。
+const stickerOverlayLayer = document.createElement('div');
+stickerOverlayLayer.id = 'sticker-overlay-layer';
+stickerOverlayLayer.className = 'geo-box';
+stickerOverlayLayer.tabIndex = 0;
+stickerOverlayLayer.setAttribute('role', 'group');
+stickerOverlayLayer.setAttribute('aria-label', '表情包预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 或空格显示控制点，Esc 退出。');
+const stickerOverlayContent = document.createElement('div');
+stickerOverlayContent.className = 'sticker-overlay-content';
+stickerOverlayLayer.appendChild(stickerOverlayContent);
+['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach((h) => {
+  const handle = document.createElement('span');
+  handle.className = 'overlay-handle';
+  handle.dataset.handle = h;
+  stickerOverlayLayer.appendChild(handle);
+});
+playerWrap.appendChild(stickerOverlayLayer);
+bindPreviewBoxPointerEvents(stickerOverlayLayer, 'sticker');
+stickerOverlayLayer.addEventListener('keydown', (event) => handlePreviewBoxKeydown(event, 'sticker'));
+
+function activeStickersAt(tMs) {
+  const found = new Map();  // 同组 head/ref 去重，按文件名键
+  DATA.segments.forEach((seg) => {
+    if (seg.disabled) return;
+    if (seg.sticker) {
+      const start = seg.sticker.start ?? seg.start;
+      const end = seg.sticker.end ?? seg.end;
+      if (tMs >= start && tMs <= end) found.set(seg.sticker.filename || seg.sticker.name, seg.sticker);
+      return;
+    }
+    const ref = seg.sticker_ref;
+    if (!ref) return;
+    const headSeg = DATA.segments[ref.headIdx];
+    const source = headSeg?.sticker;
+    if (source && tMs >= (source.start ?? headSeg.start) && tMs <= (source.end ?? headSeg.end)) {
+      found.set(source.filename || source.name, source);
+    }
+  });
+  return [...found.values()];
+}
+
+function renderStickerOverlay(tMs) {
+  if (!stickerOverlayToggle?.checked) { stickerOverlayContent.replaceChildren(); return; }
+  stickerOverlayContent.replaceChildren(...activeStickersAt(tMs).map((sticker) => {
+    const img = document.createElement('img');
+    img.src = stickerUrl(sticker);
+    img.alt = sticker.name;
+    img.title = sticker.name;
+    return img;
+  }));
+}
+
+stickerOverlayToggle?.addEventListener('change', () => {
+  updateEditorSettings({ stickerOverlayEnabled: stickerOverlayToggle.checked });
+  refreshPreviewGeometryEditable();
+  update();
+});
+
+// 初次应用（不弄脏工程）：字幕与表情包预览几何。必须在 stickerOverlayLayer 创建之后执行（TDZ）。
+setPreviewGeometry(getPreviewGeometry(), { markDirty: false });
+setStickerGeometry(getStickerGeometry(), { markDirty: false });
+refreshPreviewGeometryEditable();
+
 player.addEventListener('timeupdate', update);
 player.addEventListener('seeked', update);
 overlayToggle.addEventListener('change', () => {
@@ -7700,19 +8009,40 @@ async function downloadColorSrts(gapRemoved = false) {
   const timeOffset = gapRemoved
     ? 0
     : window.AsrEditorUtils.getSrtExportOffset(DATA.segments, EDITOR_SETTINGS.exportStartAtZero);
+  const gapSuffix = gapRemoved ? '_gap-removed' : '';
+  const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
+    colorName: color.name,
+    timeOffset,
+    mapTime: gapRemoved
+      ? (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed)
+      : undefined,
+    ensurePositiveDuration: gapRemoved,
+    formatTime: fmtSrtTime,
+  });
+  // 统一导出：只选一次导出文件夹，按「文件名_颜色」批量写入
+  if (EDITOR_SETTINGS.exportColorUnified && window.showDirectoryPicker) {
+    try {
+      const dirHandle = await window.showDirectoryPicker({ id: 'maw-color-srt-export' });
+      for (const color of colors) {
+        const handle = await dirHandle.getFileHandle(
+          `${FILENAME_BASE}${gapSuffix}_${color.name}.srt`,
+          { create: true },
+        );
+        const writable = await handle.createWritable();
+        await writable.write(new Blob([buildPayload(color)], { type: 'text/plain;charset=utf-8' }));
+        await writable.close();
+      }
+      flashHint(`已按颜色导出 ${colors.length} 份字幕`);
+      return;
+    } catch (e) {
+      // 用户取消文件夹选择 — 静默退出，不回退
+      if (e && e.name === 'AbortError') return;
+      // 其他错误（如安全限制）：回退到逐个保存
+    }
+  }
   for (const color of colors) {
-    const payload = window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
-      colorName: color.name,
-      timeOffset,
-      mapTime: gapRemoved
-        ? (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed)
-        : undefined,
-      ensurePositiveDuration: gapRemoved,
-      formatTime: fmtSrtTime,
-    });
-    const gapSuffix = gapRemoved ? '_gap-removed' : '';
     const saved = await downloadFile(
-      payload,
+      buildPayload(color),
       `${FILENAME_BASE}${gapSuffix}_${color.name}.srt`,
       'text/plain',
       { desc: `${color.label}色字幕 SRT`, types: { 'text/plain': ['.srt'] } },
@@ -8582,6 +8912,7 @@ async function openProjectFile(file, mediaFiles = [], pendingMediaRequest = null
     // 预览几何：归一化后应用；缺失时回退到 legacy 默认，且不弄脏工程。
     DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
     setPreviewGeometry(getPreviewGeometry(), { markDirty: false });
+    setStickerGeometry(getStickerGeometry(), { markDirty: false });
     refreshPreviewGeometryEditable();
     if (data.sticker_root) STICKER_ROOT = data.sticker_root;
     DATA.segments.length = 0;
@@ -8773,19 +9104,14 @@ document.getElementById('sticker-root-btn').addEventListener('click', () => {
 document.getElementById('sticker-root-cancel').addEventListener('click', () => stickerRootModal.classList.remove('show'));
 stickerRootModal.addEventListener('click', (e) => { if (e.target === stickerRootModal) stickerRootModal.classList.remove('show'); });
 
-// 「📁 浏览…」按钮：调用 webkitdirectory 选本地文件夹
-// 浏览器拿不到绝对路径，所以用 blob URL 替换 STICKERS 数组
-document.getElementById('sticker-root-pick').addEventListener('click', () => {
-  stickerRootFolderInput.value = '';
-  stickerRootFolderInput.click();
-});
-stickerRootFolderInput.addEventListener('change', (e) => {
-  const files = Array.from(e.target.files || []);
-  if (!files.length) return;
-  // 只保留图片文件
-  const IMG_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
-  const imgs = files.filter(f => IMG_EXT.test(f.name));
-  if (!imgs.length) {
+// 「📁 浏览…」按钮：优先用 showDirectoryPicker 选本地文件夹——原生选择器本身就是确认动作，
+// 不会再弹浏览器的「是否上传 N 个文件到此站点」提示；不支持时回退 webkitdirectory。
+// 浏览器拿不到绝对路径，所以用 blob URL 替换 STICKERS 数组。
+const STICKER_IMG_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
+
+function applyStickerFiles(entries, topDir) {
+  // entries: [{ file, rel }]，rel 为相对所选文件夹的路径
+  if (!entries.length) {
     flashHint('选中的文件夹里没有图片文件');
     return;
   }
@@ -8794,16 +9120,12 @@ stickerRootFolderInput.addEventListener('change', (e) => {
     if (s._blobUrl) { try { URL.revokeObjectURL(s._blobUrl); } catch (e) {} }
   });
   STICKERS.length = 0;
-  // 取顶层目录名作为提示性 STICKER_ROOT；浏览器本地加载拿不到真实磁盘路径。
-  const firstRel = imgs[0].webkitRelativePath || imgs[0].name;
-  const topDir = firstRel.includes('/') ? firstRel.split('/')[0] : '';
-  for (const f of imgs) {
-    const rel = (f.webkitRelativePath || f.name).split('/').slice(1).join('/') || f.name;
+  for (const { file, rel } of entries) {
     STICKERS.push({
-      name: f.name.replace(/\.[^.]+$/, ''),
-      filename: f.name,
+      name: file.name.replace(/\.[^.]+$/, ''),
+      filename: file.name,
       rel: rel,
-      _blobUrl: URL.createObjectURL(f),
+      _blobUrl: URL.createObjectURL(file),
     });
   }
   // 显示一个虚拟根，仅作 UI 提示；导出 OTIO 仍需要用户填写实际表情包根目录。
@@ -8811,6 +9133,48 @@ stickerRootFolderInput.addEventListener('change', (e) => {
   stickerRootInput.value = STICKER_ROOT;
   renderAll();
   flashHint(`已加载 ${STICKERS.length} 张表情包（${topDir || '本地'}）`);
+}
+
+async function collectStickerEntries(dirHandle, prefix, out) {
+  for await (const entry of dirHandle.values()) {
+    if (entry.kind === 'file') {
+      if (STICKER_IMG_EXT.test(entry.name)) out.push({ handle: entry, rel: prefix + entry.name });
+    } else if (entry.kind === 'directory') {
+      await collectStickerEntries(entry, `${prefix}${entry.name}/`, out);
+    }
+  }
+}
+
+document.getElementById('sticker-root-pick').addEventListener('click', async () => {
+  if (window.showDirectoryPicker) {
+    try {
+      const dirHandle = await window.showDirectoryPicker({ id: 'maw-sticker-root' });
+      const found = [];
+      await collectStickerEntries(dirHandle, '', found);
+      const entries = [];
+      for (const item of found) entries.push({ file: await item.handle.getFile(), rel: item.rel });
+      applyStickerFiles(entries, dirHandle.name);
+      return;
+    } catch (e) {
+      // 用户取消选择 — 静默退出；其他错误（安全限制等）回退到 webkitdirectory
+      if (e && e.name === 'AbortError') return;
+    }
+  }
+  stickerRootFolderInput.value = '';
+  stickerRootFolderInput.click();
+});
+
+stickerRootFolderInput.addEventListener('change', (e) => {
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  // 只保留图片文件；取顶层目录名作为提示性 STICKER_ROOT（浏览器拿不到真实磁盘路径）
+  const imgs = files.filter(f => STICKER_IMG_EXT.test(f.name));
+  const firstRel = imgs[0]?.webkitRelativePath || '';
+  const topDir = firstRel.includes('/') ? firstRel.split('/')[0] : '';
+  applyStickerFiles(
+    imgs.map(f => ({ file: f, rel: (f.webkitRelativePath || f.name).split('/').slice(1).join('/') || f.name })),
+    topDir,
+  );
 });
 
 document.getElementById('sticker-root-confirm').addEventListener('click', () => {
@@ -8958,7 +9322,7 @@ let stickerTargetIdxs = [];     // 要分配的 segment indexes
 
 function openStickerPicker(idxs, isMulti) {
   if (!STICKERS.length) {
-    flashHint('没有可用的表情包，请用 --stickers 参数指定文件夹');
+    flashHint('没有可用的表情包，请先用🦊按钮配置表情包文件夹');
     return;
   }
   stickerTargetMode = isMulti ? 'multi' : 'single';
@@ -9349,10 +9713,23 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
   }
 
   if (!isMulti) {
+    // 仅「仅选中」模式提供：「选中并跳转」时左键单击本身就会跳转，右键菜单项是多余的
+    if (EDITOR_SETTINGS.clickBehavior === 'select-only') {
+      addItem('跳转并播放', '', () => {
+        seekFromWaveform(DATA.segments[idx].start / 1000);
+        if (player.paused) togglePlayback();
+      });
+      addSep();
+    }
     const splitLabel = Number.isFinite(waveformTimeMs)
       ? '按音频位置拆分'
       : '按文字位置拆分';
-    addItem(splitLabel, splitKeyLabel(), () => splitFromContextMenu(idx, x, y, waveformTimeMs));
+    // 不显示 splitKeyLabel()：Enter/Ctrl+Enter 拆分仅在文本编辑态有效，
+    // 右键菜单里展示快捷键会误导用户以为菜单场景下也能按键触发。
+    addItem(splitLabel, '', () => splitFromContextMenu(idx, x, y, waveformTimeMs));
+    if (EDITOR_SETTINGS.clickBehavior === 'select-only') {
+      addItem('跳转到字幕并播放', '', () => seekTo(DATA.segments[idx].start / 1000));
+    }
     addSep();
     addItem('分配表情包…', '', () => openStickerPicker([idx], false));
     if (DATA.segments[idx].sticker || DATA.segments[idx].sticker_ref) {
@@ -9428,17 +9805,37 @@ document.addEventListener('keydown', (e) => {
 });
 
 // === Hint ===
-let hintTimer = null;
+// 右上角提示卡片堆栈：样式在 editor.css（#hint-stack / .hint-card）。
+// 最多同时显示 3 条，新提示追加在下方。
+const HINT_MAX_VISIBLE = 3;
+const HINT_DURATION_MS = 1800;
+const HINT_FADE_OUT_MS = 200;  // 与 editor.css 的 hint-fade-out 时长一致
+
+function dismissHintCard(card) {
+  if (!card || card.dataset.dismissed) return;
+  card.dataset.dismissed = '1';
+  card.classList.add('hide');
+  setTimeout(() => card.remove(), HINT_FADE_OUT_MS);
+}
+
 function flashHint(msg) {
-  let el = document.getElementById('hint');
-  if (!el) {
-    el = document.createElement('div'); el.id = 'hint';
-    el.style.cssText = 'position:fixed;top:20px;right:20px;background:#3a4a5a;color:#cce0ff;padding:8px 12px;border-radius:4px;border:1px solid #4a6080;z-index:300;font-size:13px;';
-    document.body.appendChild(el);
+  let stack = document.getElementById('hint-stack');
+  if (!stack) {
+    stack = document.createElement('div'); stack.id = 'hint-stack';
+    document.body.appendChild(stack);
   }
-  el.textContent = msg; el.style.display = 'block';
-  clearTimeout(hintTimer);
-  hintTimer = setTimeout(() => { el.style.display = 'none'; }, 1800);
+  // 先挤掉最早的再插入新卡片：溢出项立即移除（不走退场动画），
+  // 保证视觉上始终最多 3 条，不会出现第 4 条先闪现再挤出的跳动。
+  while (stack.children.length >= HINT_MAX_VISIBLE) {
+    const oldest = stack.firstElementChild;
+    oldest.dataset.dismissed = '1';  // 让其到期定时器空转
+    oldest.remove();
+  }
+  const card = document.createElement('div');
+  card.className = 'hint-card';
+  card.textContent = msg;
+  stack.appendChild(card);
+  setTimeout(() => dismissHintCard(card), HINT_DURATION_MS);
 }
 
 // 振幅到达上下限时由波形模块派发的事件：rAF 节流后仍可能每帧触发，冷却避免提示闪烁

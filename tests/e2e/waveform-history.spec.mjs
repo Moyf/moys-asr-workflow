@@ -139,7 +139,7 @@ test('B does not split in a gap or while editing text', async ({ page }) => {
   });
   await page.keyboard.press('b');
   await expect(page.locator('.cue')).toHaveCount(6);
-  await expect(page.locator('#hint')).toContainText('播放头位置没有可拆分字幕');
+  await expect(page.locator('.hint-card', { hasText: '播放头位置没有可拆分字幕' })).toHaveCount(1);
 
   const firstCue = page.locator('.waveform-cue-block[data-idx="0"]').first();
   await firstCue.click();
@@ -192,11 +192,12 @@ test('waveform toolbar exposes grouped icon controls and selected cues use a yel
   await expect(selectTool.locator('svg')).toHaveCount(1);
   await expect(splitTool).toContainText('分割');
   await expect(splitTool.locator('svg')).toHaveCount(1);
-  await expect(page.locator('#help-toggle svg')).toHaveCount(1);
+  await expect(page.locator('#help-toggle')).toContainText('帮助');
 
   const cue = page.locator('.waveform-cue-block[data-idx="0"]').first();
   await cue.click();
-  await expect(cue).toHaveCSS('border-top-color', 'rgb(255, 213, 74)');
+  // 选中字幕块用 outline 高亮（不再改 border-color）
+  await expect(cue).toHaveCSS('outline-color', 'rgb(255, 213, 74)');
 });
 
 test('context-menu subtitle deletion is immediate and undoable', async ({ page }) => {
@@ -218,6 +219,13 @@ test('context-menu subtitle deletion is immediate and undoable', async ({ page }
 });
 
 test('colored subtitles expose full and per-color SRT downloads with stable names', async ({ page }) => {
+  // 关闭「彩色字幕统一导出」，回到逐个下载的行为（默认勾选时会走目录选择器，自动化无法处理）
+  await page.addInitScript(() => {
+    const key = 'moy.asr.editor.settings.v1';
+    const saved = JSON.parse(localStorage.getItem(key) || '{}');
+    saved.exportColorUnified = false;
+    localStorage.setItem(key, JSON.stringify(saved));
+  });
   await page.goto(server.url);
   await page.evaluate(() => {
     DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 58000 };
@@ -263,6 +271,13 @@ test('subtitle export stays direct when only disabled subtitles have colors', as
 });
 
 test('gap-removed export includes color SRT and names OTIO as a timeline project', async ({ page }) => {
+  // 关闭「彩色字幕统一导出」，回到逐个下载的行为（默认勾选时会走目录选择器，自动化无法处理）
+  await page.addInitScript(() => {
+    const key = 'moy.asr.editor.settings.v1';
+    const saved = JSON.parse(localStorage.getItem(key) || '{}');
+    saved.exportColorUnified = false;
+    localStorage.setItem(key, JSON.stringify(saved));
+  });
   await page.goto(server.url);
   await page.evaluate(() => {
     DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 58000 };

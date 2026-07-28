@@ -77,13 +77,13 @@ function onDiskSegmentTiming(segments) {
   }));
 }
 
-test('overlay starts at the legacy default band and reports normalized geometry', async ({ page }) => {
+test('overlay starts at the default band and reports normalized geometry', async ({ page }) => {
   await page.goto(server.url);
   await revealOverlay(page);
   const geo = await readGeometry(page);
-  expect(geo.x).toBeCloseTo(0, 5);
+  expect(geo.x).toBeCloseTo(0.175, 5);
   expect(geo.y).toBeCloseTo(0.76, 5);
-  expect(geo.width).toBeCloseTo(1, 5);
+  expect(geo.width).toBeCloseTo(0.65, 5);
   expect(geo.height).toBeCloseTo(0.16, 5);
 });
 
@@ -125,8 +125,8 @@ test('resizing via the south-east handle grows the box within player bounds', as
   });
   const before = await readGeometry(page);
   const handle = overlay.locator('.overlay-handle[data-handle="se"]');
-  // Handle only receives pointer events while the overlay is hovered/focused.
-  await overlay.hover();
+  // 手柄仅在预览框点击聚焦后显示（hover 不再触发）。
+  await overlay.click();
   const hb = await handle.boundingBox();
   expect(hb).not.toBeNull();
   await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);

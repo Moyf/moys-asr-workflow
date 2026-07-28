@@ -1,4 +1,4 @@
-﻿// Waveform deletion identity regression — shared scenario suite.
+// Waveform deletion identity regression — shared scenario suite.
 // Runs identical assertions against both localhost server and portable HTML.
 // All selection is through real waveform pointer/click actions (no force).
 // All waits are on observable DOM/DATA state (no arbitrary sleeps).
@@ -29,6 +29,7 @@ async function configureMultiRowMode(page) {
       layout: 'wave-right',
       visibleSeconds: 20,
       secondsPerRow: 5,
+      rowHeight: 96,
       side: 'left',
       splitPercent: 60,
       layoutColumnPercent: 58,
@@ -149,12 +150,10 @@ async function pressDeleteAndWait(page, expectedSegmentCount) {
 // Press Delete and verify the project is NOT mutated (all-delete refusal).
 async function pressDeleteAndExpectRefusal(page, expectedSegmentCount) {
   await page.keyboard.press('Delete');
-  // Wait for the refusal hint to appear
+  // Wait for the refusal hint to appear（提示卡片为堆栈结构，匹配任一卡片文本）
   await page.waitForFunction(
-    () => {
-      const hint = document.getElementById('hint');
-      return hint && hint.textContent.includes('不能删除全部字幕');
-    },
+    () => [...document.querySelectorAll('.hint-card')]
+      .some((el) => el.textContent.includes('不能删除全部字幕')),
     { timeout: 5000 },
   );
   // Verify segment count is unchanged

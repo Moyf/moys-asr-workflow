@@ -16,6 +16,10 @@ const DEFAULT_EDITOR_SETTINGS = {
   cueEditorShowNavigation: true,
   cueEditorShowSticker: false,
   selectGroupMembers: false,
+  // 按颜色导出 SRT：统一导出只选一次文件夹，按「文件名_颜色」批量保存。
+  exportColorUnified: true,
+  // 表情包预览：在视频画面内渲染当前时间的表情包（默认关闭）。
+  stickerOverlayEnabled: false,
   // 字幕列表单击行为：select-only 仅选中（默认），select-and-seek 选中并跳转播放头。
   clickBehavior: 'select-only',
 };
@@ -34,6 +38,8 @@ function readEditorSettings() {
       cueEditorShowNavigation: saved.cueEditorShowNavigation !== false,
       cueEditorShowSticker: saved.cueEditorShowSticker === true,
       selectGroupMembers: saved.selectGroupMembers === true,
+      exportColorUnified: saved.exportColorUnified !== false,
+      stickerOverlayEnabled: saved.stickerOverlayEnabled === true,
       clickBehavior: saved.clickBehavior === 'select-and-seek' ? 'select-and-seek' : 'select-only',
     };
   } catch (_) {
@@ -175,6 +181,7 @@ function snapshotPreviewState() {
   return {
     overlay: !!overlayToggle.checked,
     subtitle: { ...getPreviewGeometry() },
+    sticker: { ...getStickerGeometry() },
   };
 }
 function applyPreviewState(state) {
@@ -182,6 +189,7 @@ function applyPreviewState(state) {
   overlayToggle.checked = state.overlay;
   updateEditorSettings({ overlayEnabled: state.overlay });
   if (state.subtitle) setPreviewGeometry(state.subtitle, { markDirty: true });
+  if (state.sticker) setStickerGeometry(state.sticker, { markDirty: true });
   if (!state.overlay) overlayEl.classList.add('hidden');
   else update();
 }
@@ -291,6 +299,7 @@ const selCountEl = document.getElementById('sel-count');
 const overlayEl = document.getElementById('overlay');
 const overlayTextEl = overlayEl.querySelector('span:not(.overlay-handle)');
 const overlayToggle = document.getElementById('overlay-toggle');
+const stickerOverlayToggle = document.getElementById('sticker-overlay-toggle');
 const playerEmpty = document.getElementById('player-empty');
 const playerWrap = document.querySelector('.player-wrap');
 const splitKeySel = document.getElementById('split-key');
@@ -301,6 +310,7 @@ const cueListShowCharcountToggle = document.getElementById('cue-list-show-charco
 const cueEditorShowNavigationToggle = document.getElementById('cue-editor-show-navigation');
 const cueEditorShowStickerToggle = document.getElementById('cue-editor-show-sticker');
 const selectGroupMembersToggle = document.getElementById('select-group-members');
+const exportColorUnifiedToggle = document.getElementById('export-color-unified');
 const helpToggle = document.getElementById('help-toggle');
 const helpPanel = document.getElementById('help-panel');
 const helpSplitKey = document.getElementById('help-split-key');
@@ -418,6 +428,8 @@ refreshSplitKeyHelp();
 overlayToggle.checked = EDITOR_SETTINGS.overlayEnabled;
 exportStartAtZeroToggle.checked = EDITOR_SETTINGS.exportStartAtZero;
 if (selectGroupMembersToggle) selectGroupMembersToggle.checked = EDITOR_SETTINGS.selectGroupMembers;
+if (exportColorUnifiedToggle) exportColorUnifiedToggle.checked = EDITOR_SETTINGS.exportColorUnified;
+if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.stickerOverlayEnabled;
 if (clickBehaviorSelect) clickBehaviorSelect.value = EDITOR_SETTINGS.clickBehavior;
 applyCueListDisplaySettings();
 applyCueEditorDisplaySettings();
@@ -444,9 +456,19 @@ exportStartAtZeroToggle.addEventListener('change', () => {
 selectGroupMembersToggle?.addEventListener('change', () => {
   updateEditorSettings({ selectGroupMembers: selectGroupMembersToggle.checked });
 });
+exportColorUnifiedToggle?.addEventListener('change', () => {
+  updateEditorSettings({ exportColorUnified: exportColorUnifiedToggle.checked });
+});
 clickBehaviorSelect?.addEventListener('change', () => {
   updateEditorSettings({ clickBehavior: clickBehaviorSelect.value === 'select-and-seek' ? 'select-and-seek' : 'select-only' });
+  refreshClickBehaviorHint();
 });
+// 「仅选中」模式下提示可用右键菜单「跳转并播放」（或 F 快捷键）
+function refreshClickBehaviorHint() {
+  const hint = document.getElementById('click-behavior-hint');
+  if (hint) hint.hidden = EDITOR_SETTINGS.clickBehavior !== 'select-only';
+}
+refreshClickBehaviorHint();
 
 function setGapRemoveData(next, { dirty = true } = {}) {
   DATA.gap_remove = normalizedGapRemoveData(next);
@@ -1895,7 +1917,8 @@ function bindCueEvents(el, idx) {
       scrollCueToCenter(el);
       waveformEditor?.revealTime(DATA.segments[idx].start, true);
       if (EDITOR_SETTINGS.clickBehavior === 'select-and-seek') {
-        seekTo(DATA.segments[idx].start / 1000);
+        // 只跳转到句首，不改动播放状态：暂停时保持暂停，播放时跳后续播
+        seekFromWaveform(DATA.segments[idx].start / 1000);
       }
     }, 220);
   });
@@ -2099,6 +2122,26 @@ document.addEventListener('keydown', (e) => {
   waveformEditor.setTool(tool);
 });
 
+// F：跳转并播放选中字幕（多选跳到第一条）。任意单击行为下都生效；
+// 文本编辑、弹窗和修饰键状态下不抢占输入。
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'f' && e.key !== 'F') return;
+  if (editingState || e.repeat) return;
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
+  if (replaceModal.classList.contains('show')) return;
+  if (stickerModal.classList.contains('show')) return;
+  if (stickerPreviewModal.classList.contains('show')) return;
+  if (projectMediaModal.classList.contains('show')) return;
+  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+  if (ctxmenu.classList.contains('show')) return;
+  if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+  if (!selectedIdxs.size) return;
+  const first = Math.min(...selectedIdxs);
+  seekFromWaveform(DATA.segments[first].start / 1000);
+  if (player.paused) togglePlayback();
+});
+
 // B：按红色播放指针所在时间拆分其内部字幕。复用波形右键/剃刀的字词边界映射，
 // 不依赖当前选择；文本编辑、弹窗和修饰键状态下不抢占输入。
 document.addEventListener('keydown', (e) => {
@@ -2157,67 +2200,109 @@ function applyPreviewGeometryToDom(geo) {
   overlayEl.style.right = 'auto';
   overlayEl.style.bottom = 'auto';
 }
-// 只有当预览开关开启时才允许几何编辑（关闭时 overlay 完全隐藏）。
+// === 表情包预览几何（preview.sticker）===
+// 与字幕预览同一套归一化/钳制逻辑，仅默认值不同（右上角小图）。
+function getStickerGeometry() {
+  return GEO_UTILS.normalizePreviewGeometry(DATA.preview?.sticker, GEO_UTILS.DEFAULT_STICKER_GEOMETRY);
+}
+// 写回 DATA.preview.sticker 并刷新 DOM。markDirty=false 用于初次加载，不弄脏工程。
+function setStickerGeometry(geo, { markDirty = true } = {}) {
+  const clamped = GEO_UTILS.clampPreviewGeometry(
+    GEO_UTILS.normalizePreviewGeometry(geo, GEO_UTILS.DEFAULT_STICKER_GEOMETRY),
+  );
+  if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
+  DATA.preview.sticker = clamped;
+  if (markDirty) previewGeometryDirty = true;
+  applyStickerGeometryToDom(clamped);
+  return clamped;
+}
+function applyStickerGeometryToDom(geo) {
+  const css = GEO_UTILS.previewGeometryToCss(geo);
+  stickerOverlayLayer.style.left = css.left;
+  stickerOverlayLayer.style.top = css.top;
+  stickerOverlayLayer.style.width = css.width;
+  stickerOverlayLayer.style.height = css.height;
+  stickerOverlayLayer.style.right = 'auto';
+  stickerOverlayLayer.style.bottom = 'auto';
+}
+// 只有当对应预览开关开启时才允许几何编辑（关闭时字幕盒完全隐藏、表情包盒不拦截指针）。
 function refreshPreviewGeometryEditable() {
   overlayEl.classList.toggle('geometry-enabled', !!overlayToggle.checked);
+  stickerOverlayLayer.classList.toggle('geometry-enabled', !!stickerOverlayToggle?.checked);
 }
 
-// --- 指针拖动 / 缩放（Pointer Events）---
-let previewGesture = null;  // { pointerId, handle, startX, startY, startGeo }
+// --- 指针拖动 / 缩放（Pointer Events），字幕预览与表情包预览共用 ---
+let previewGesture = null;  // { pointerId, handle, target, startX, startY, startGeo, rect }
+function previewTargetEl(target) { return target === 'sticker' ? stickerOverlayLayer : overlayEl; }
+function previewTargetEnabled(target) {
+  return target === 'sticker' ? !!stickerOverlayToggle?.checked : !!overlayToggle.checked;
+}
+function getTargetGeometry(target) { return target === 'sticker' ? getStickerGeometry() : getPreviewGeometry(); }
+function setTargetGeometry(target, geo) {
+  if (target === 'sticker') setStickerGeometry(geo); else setPreviewGeometry(geo);
+}
 function playerWrapRect() {
   return playerWrap.getBoundingClientRect();
 }
-function beginPreviewGesture(event, handle) {
-  if (!overlayToggle.checked) return;
+function beginPreviewGesture(event, handle, target) {
+  if (!previewTargetEnabled(target)) return;
   const rect = playerWrapRect();
   if (rect.width <= 0 || rect.height <= 0) return;
   event.preventDefault();
   event.stopPropagation();
+  const targetLabel = target === 'sticker' ? '表情包预览' : '字幕预览';
   // 一手势一撤销：在手势开始时压入手势前的快照。
-  pushPreviewUndo(handle === 'move' ? '移动字幕预览' : '缩放字幕预览', snapshotPreviewState());
+  pushPreviewUndo((handle === 'move' ? '移动' : '缩放') + targetLabel, snapshotPreviewState());
   previewGesture = {
     pointerId: event.pointerId,
     handle,
+    target,
     startX: event.clientX,
     startY: event.clientY,
-    startGeo: getPreviewGeometry(),
+    startGeo: getTargetGeometry(target),
     rect,
   };
-  overlayEl.classList.add('dragging', 'editable');
+  previewTargetEl(target).classList.add('dragging', 'editable');
   try { event.target.setPointerCapture?.(event.pointerId); } catch (_) {}
 }
 function movePreviewGesture(event) {
   if (!previewGesture || event.pointerId !== previewGesture.pointerId) return;
-  const { rect, startX, startY, startGeo, handle } = previewGesture;
+  const { rect, startX, startY, startGeo, handle, target } = previewGesture;
   const dx = (event.clientX - startX) / rect.width;
   const dy = (event.clientY - startY) / rect.height;
   const next = GEO_UTILS.applyPreviewGeometryDelta(startGeo, handle, dx, dy);
-  setPreviewGeometry(next, { markDirty: true });
+  setTargetGeometry(target, next);
 }
 function endPreviewGesture(event) {
   if (!previewGesture || event.pointerId !== previewGesture.pointerId) return;
   try { event.target.releasePointerCapture?.(event.pointerId); } catch (_) {}
+  previewTargetEl(previewGesture.target).classList.remove('dragging');
   previewGesture = null;
-  overlayEl.classList.remove('dragging');
 }
-overlayEl.addEventListener('pointerdown', (event) => {
-  if (event.button !== 0) return;
-  const handleEl = event.target.closest?.('.overlay-handle');
-  const handle = handleEl ? handleEl.dataset.handle : 'move';
-  beginPreviewGesture(event, handle);
-});
-overlayEl.addEventListener('pointermove', movePreviewGesture);
-overlayEl.addEventListener('pointerup', endPreviewGesture);
-overlayEl.addEventListener('pointercancel', endPreviewGesture);
+function bindPreviewBoxPointerEvents(el, target) {
+  el.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    // beginPreviewGesture 的 preventDefault 会阻止默认聚焦，显式聚焦让调整框随 :focus 显示
+    el.focus();
+    const handleEl = event.target.closest?.('.overlay-handle');
+    const handle = handleEl ? handleEl.dataset.handle : 'move';
+    beginPreviewGesture(event, handle, target);
+  });
+  el.addEventListener('pointermove', movePreviewGesture);
+  el.addEventListener('pointerup', endPreviewGesture);
+  el.addEventListener('pointercancel', endPreviewGesture);
+}
+bindPreviewBoxPointerEvents(overlayEl, 'subtitle');
 
-// --- 键盘操作（聚焦时）---
+// --- 键盘操作（聚焦时），字幕预览与表情包预览共用 ---
 // 方向键移动 1%；Shift 加速到 10%；Alt+方向缩放；Enter/Space 切换 editable；Esc 失焦。
-overlayEl.addEventListener('keydown', (event) => {
-  if (!overlayToggle.checked) return;
-  if (event.key === 'Escape') { overlayEl.blur(); return; }
+function handlePreviewBoxKeydown(event, target) {
+  if (!previewTargetEnabled(target)) return;
+  const el = previewTargetEl(target);
+  if (event.key === 'Escape') { el.blur(); return; }
   if (event.key === 'Enter' || event.key === ' ') {
     event.preventDefault();
-    overlayEl.classList.toggle('editable');
+    el.classList.toggle('editable');
     return;
   }
   const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
@@ -2228,13 +2313,26 @@ overlayEl.addEventListener('keydown', (event) => {
   const resize = event.altKey;  // Alt+方向缩放；否则移动
   const dx = dir[0] * step;
   const dy = dir[1] * step;
-  pushPreviewUndo(resize ? '缩放字幕预览' : '移动字幕预览', snapshotPreviewState());
-  const startGeo = getPreviewGeometry();
+  const targetLabel = target === 'sticker' ? '表情包预览' : '字幕预览';
+  pushPreviewUndo((resize ? '缩放' : '移动') + targetLabel, snapshotPreviewState());
+  const startGeo = getTargetGeometry(target);
   const next = resize
     ? GEO_UTILS.applyPreviewGeometryDelta(startGeo, dir[0] !== 0 ? 'e' : 's', dx, dy)
     : GEO_UTILS.applyPreviewGeometryDelta(startGeo, 'move', dx, dy);
-  setPreviewGeometry(next, { markDirty: true });
-});
+  setTargetGeometry(target, next);
+}
+overlayEl.addEventListener('keydown', (event) => handlePreviewBoxKeydown(event, 'subtitle'));
+
+// 点击预览框（字幕/表情包）以外的地方：失焦并退出控制点编辑态，调整框随之隐藏。
+// 捕获阶段监听，避免其他组件 pointerdown 的 stopPropagation 跳过失焦。
+document.addEventListener('pointerdown', (event) => {
+  if (previewGesture) return;
+  [overlayEl, stickerOverlayLayer].forEach((el) => {
+    if (el.contains(event.target)) return;
+    el.classList.remove('editable');
+    if (document.activeElement === el) el.blur();
+  });
+}, true);
 
 // 播放器缩放时几何以百分比表达，天然自适应；ResizeObserver 仅在盒子越界后回钳。
 if (typeof ResizeObserver === 'function') {
@@ -2243,10 +2341,6 @@ if (typeof ResizeObserver === 'function') {
   });
   previewResizeObserver.observe(playerWrap);
 }
-
-// 初次应用（不弄脏工程）。
-setPreviewGeometry(getPreviewGeometry(), { markDirty: false });
-refreshPreviewGeometryEditable();
 
 // === 当前行高亮 + overlay ===
 let lastActive = -1;
@@ -2329,7 +2423,72 @@ function update() {
       overlayEl.classList.add('hidden');
     }
   }
+  renderStickerOverlay(tMs);
 }
+// === 表情包预览（视频画面内）===
+// 层位置/尺寸由 preview.sticker 几何驱动（默认右上角）；点击后可拖动/缩放，与字幕预览同一套交互。
+const stickerOverlayLayer = document.createElement('div');
+stickerOverlayLayer.id = 'sticker-overlay-layer';
+stickerOverlayLayer.className = 'geo-box';
+stickerOverlayLayer.tabIndex = 0;
+stickerOverlayLayer.setAttribute('role', 'group');
+stickerOverlayLayer.setAttribute('aria-label', '表情包预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 或空格显示控制点，Esc 退出。');
+const stickerOverlayContent = document.createElement('div');
+stickerOverlayContent.className = 'sticker-overlay-content';
+stickerOverlayLayer.appendChild(stickerOverlayContent);
+['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach((h) => {
+  const handle = document.createElement('span');
+  handle.className = 'overlay-handle';
+  handle.dataset.handle = h;
+  stickerOverlayLayer.appendChild(handle);
+});
+playerWrap.appendChild(stickerOverlayLayer);
+bindPreviewBoxPointerEvents(stickerOverlayLayer, 'sticker');
+stickerOverlayLayer.addEventListener('keydown', (event) => handlePreviewBoxKeydown(event, 'sticker'));
+
+function activeStickersAt(tMs) {
+  const found = new Map();  // 同组 head/ref 去重，按文件名键
+  DATA.segments.forEach((seg) => {
+    if (seg.disabled) return;
+    if (seg.sticker) {
+      const start = seg.sticker.start ?? seg.start;
+      const end = seg.sticker.end ?? seg.end;
+      if (tMs >= start && tMs <= end) found.set(seg.sticker.filename || seg.sticker.name, seg.sticker);
+      return;
+    }
+    const ref = seg.sticker_ref;
+    if (!ref) return;
+    const headSeg = DATA.segments[ref.headIdx];
+    const source = headSeg?.sticker;
+    if (source && tMs >= (source.start ?? headSeg.start) && tMs <= (source.end ?? headSeg.end)) {
+      found.set(source.filename || source.name, source);
+    }
+  });
+  return [...found.values()];
+}
+
+function renderStickerOverlay(tMs) {
+  if (!stickerOverlayToggle?.checked) { stickerOverlayContent.replaceChildren(); return; }
+  stickerOverlayContent.replaceChildren(...activeStickersAt(tMs).map((sticker) => {
+    const img = document.createElement('img');
+    img.src = stickerUrl(sticker);
+    img.alt = sticker.name;
+    img.title = sticker.name;
+    return img;
+  }));
+}
+
+stickerOverlayToggle?.addEventListener('change', () => {
+  updateEditorSettings({ stickerOverlayEnabled: stickerOverlayToggle.checked });
+  refreshPreviewGeometryEditable();
+  update();
+});
+
+// 初次应用（不弄脏工程）：字幕与表情包预览几何。必须在 stickerOverlayLayer 创建之后执行（TDZ）。
+setPreviewGeometry(getPreviewGeometry(), { markDirty: false });
+setStickerGeometry(getStickerGeometry(), { markDirty: false });
+refreshPreviewGeometryEditable();
+
 player.addEventListener('timeupdate', update);
 player.addEventListener('seeked', update);
 overlayToggle.addEventListener('change', () => {
@@ -2428,19 +2587,40 @@ async function downloadColorSrts(gapRemoved = false) {
   const timeOffset = gapRemoved
     ? 0
     : window.AsrEditorUtils.getSrtExportOffset(DATA.segments, EDITOR_SETTINGS.exportStartAtZero);
+  const gapSuffix = gapRemoved ? '_gap-removed' : '';
+  const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
+    colorName: color.name,
+    timeOffset,
+    mapTime: gapRemoved
+      ? (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed)
+      : undefined,
+    ensurePositiveDuration: gapRemoved,
+    formatTime: fmtSrtTime,
+  });
+  // 统一导出：只选一次导出文件夹，按「文件名_颜色」批量写入
+  if (EDITOR_SETTINGS.exportColorUnified && window.showDirectoryPicker) {
+    try {
+      const dirHandle = await window.showDirectoryPicker({ id: 'maw-color-srt-export' });
+      for (const color of colors) {
+        const handle = await dirHandle.getFileHandle(
+          `${FILENAME_BASE}${gapSuffix}_${color.name}.srt`,
+          { create: true },
+        );
+        const writable = await handle.createWritable();
+        await writable.write(new Blob([buildPayload(color)], { type: 'text/plain;charset=utf-8' }));
+        await writable.close();
+      }
+      flashHint(`已按颜色导出 ${colors.length} 份字幕`);
+      return;
+    } catch (e) {
+      // 用户取消文件夹选择 — 静默退出，不回退
+      if (e && e.name === 'AbortError') return;
+      // 其他错误（如安全限制）：回退到逐个保存
+    }
+  }
   for (const color of colors) {
-    const payload = window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
-      colorName: color.name,
-      timeOffset,
-      mapTime: gapRemoved
-        ? (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed)
-        : undefined,
-      ensurePositiveDuration: gapRemoved,
-      formatTime: fmtSrtTime,
-    });
-    const gapSuffix = gapRemoved ? '_gap-removed' : '';
     const saved = await downloadFile(
-      payload,
+      buildPayload(color),
       `${FILENAME_BASE}${gapSuffix}_${color.name}.srt`,
       'text/plain',
       { desc: `${color.label}色字幕 SRT`, types: { 'text/plain': ['.srt'] } },
@@ -3310,6 +3490,7 @@ async function openProjectFile(file, mediaFiles = [], pendingMediaRequest = null
     // 预览几何：归一化后应用；缺失时回退到 legacy 默认，且不弄脏工程。
     DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
     setPreviewGeometry(getPreviewGeometry(), { markDirty: false });
+    setStickerGeometry(getStickerGeometry(), { markDirty: false });
     refreshPreviewGeometryEditable();
     if (data.sticker_root) STICKER_ROOT = data.sticker_root;
     DATA.segments.length = 0;
@@ -3501,19 +3682,14 @@ document.getElementById('sticker-root-btn').addEventListener('click', () => {
 document.getElementById('sticker-root-cancel').addEventListener('click', () => stickerRootModal.classList.remove('show'));
 stickerRootModal.addEventListener('click', (e) => { if (e.target === stickerRootModal) stickerRootModal.classList.remove('show'); });
 
-// 「📁 浏览…」按钮：调用 webkitdirectory 选本地文件夹
-// 浏览器拿不到绝对路径，所以用 blob URL 替换 STICKERS 数组
-document.getElementById('sticker-root-pick').addEventListener('click', () => {
-  stickerRootFolderInput.value = '';
-  stickerRootFolderInput.click();
-});
-stickerRootFolderInput.addEventListener('change', (e) => {
-  const files = Array.from(e.target.files || []);
-  if (!files.length) return;
-  // 只保留图片文件
-  const IMG_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
-  const imgs = files.filter(f => IMG_EXT.test(f.name));
-  if (!imgs.length) {
+// 「📁 浏览…」按钮：优先用 showDirectoryPicker 选本地文件夹——原生选择器本身就是确认动作，
+// 不会再弹浏览器的「是否上传 N 个文件到此站点」提示；不支持时回退 webkitdirectory。
+// 浏览器拿不到绝对路径，所以用 blob URL 替换 STICKERS 数组。
+const STICKER_IMG_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
+
+function applyStickerFiles(entries, topDir) {
+  // entries: [{ file, rel }]，rel 为相对所选文件夹的路径
+  if (!entries.length) {
     flashHint('选中的文件夹里没有图片文件');
     return;
   }
@@ -3522,16 +3698,12 @@ stickerRootFolderInput.addEventListener('change', (e) => {
     if (s._blobUrl) { try { URL.revokeObjectURL(s._blobUrl); } catch (e) {} }
   });
   STICKERS.length = 0;
-  // 取顶层目录名作为提示性 STICKER_ROOT；浏览器本地加载拿不到真实磁盘路径。
-  const firstRel = imgs[0].webkitRelativePath || imgs[0].name;
-  const topDir = firstRel.includes('/') ? firstRel.split('/')[0] : '';
-  for (const f of imgs) {
-    const rel = (f.webkitRelativePath || f.name).split('/').slice(1).join('/') || f.name;
+  for (const { file, rel } of entries) {
     STICKERS.push({
-      name: f.name.replace(/\.[^.]+$/, ''),
-      filename: f.name,
+      name: file.name.replace(/\.[^.]+$/, ''),
+      filename: file.name,
       rel: rel,
-      _blobUrl: URL.createObjectURL(f),
+      _blobUrl: URL.createObjectURL(file),
     });
   }
   // 显示一个虚拟根，仅作 UI 提示；导出 OTIO 仍需要用户填写实际表情包根目录。
@@ -3539,6 +3711,48 @@ stickerRootFolderInput.addEventListener('change', (e) => {
   stickerRootInput.value = STICKER_ROOT;
   renderAll();
   flashHint(`已加载 ${STICKERS.length} 张表情包（${topDir || '本地'}）`);
+}
+
+async function collectStickerEntries(dirHandle, prefix, out) {
+  for await (const entry of dirHandle.values()) {
+    if (entry.kind === 'file') {
+      if (STICKER_IMG_EXT.test(entry.name)) out.push({ handle: entry, rel: prefix + entry.name });
+    } else if (entry.kind === 'directory') {
+      await collectStickerEntries(entry, `${prefix}${entry.name}/`, out);
+    }
+  }
+}
+
+document.getElementById('sticker-root-pick').addEventListener('click', async () => {
+  if (window.showDirectoryPicker) {
+    try {
+      const dirHandle = await window.showDirectoryPicker({ id: 'maw-sticker-root' });
+      const found = [];
+      await collectStickerEntries(dirHandle, '', found);
+      const entries = [];
+      for (const item of found) entries.push({ file: await item.handle.getFile(), rel: item.rel });
+      applyStickerFiles(entries, dirHandle.name);
+      return;
+    } catch (e) {
+      // 用户取消选择 — 静默退出；其他错误（安全限制等）回退到 webkitdirectory
+      if (e && e.name === 'AbortError') return;
+    }
+  }
+  stickerRootFolderInput.value = '';
+  stickerRootFolderInput.click();
+});
+
+stickerRootFolderInput.addEventListener('change', (e) => {
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  // 只保留图片文件；取顶层目录名作为提示性 STICKER_ROOT（浏览器拿不到真实磁盘路径）
+  const imgs = files.filter(f => STICKER_IMG_EXT.test(f.name));
+  const firstRel = imgs[0]?.webkitRelativePath || '';
+  const topDir = firstRel.includes('/') ? firstRel.split('/')[0] : '';
+  applyStickerFiles(
+    imgs.map(f => ({ file: f, rel: (f.webkitRelativePath || f.name).split('/').slice(1).join('/') || f.name })),
+    topDir,
+  );
 });
 
 document.getElementById('sticker-root-confirm').addEventListener('click', () => {
@@ -3686,7 +3900,7 @@ let stickerTargetIdxs = [];     // 要分配的 segment indexes
 
 function openStickerPicker(idxs, isMulti) {
   if (!STICKERS.length) {
-    flashHint('没有可用的表情包，请用 --stickers 参数指定文件夹');
+    flashHint('没有可用的表情包，请先用🦊按钮配置表情包文件夹');
     return;
   }
   stickerTargetMode = isMulti ? 'multi' : 'single';
@@ -4077,10 +4291,23 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
   }
 
   if (!isMulti) {
+    // 仅「仅选中」模式提供：「选中并跳转」时左键单击本身就会跳转，右键菜单项是多余的
+    if (EDITOR_SETTINGS.clickBehavior === 'select-only') {
+      addItem('跳转并播放', '', () => {
+        seekFromWaveform(DATA.segments[idx].start / 1000);
+        if (player.paused) togglePlayback();
+      });
+      addSep();
+    }
     const splitLabel = Number.isFinite(waveformTimeMs)
       ? '按音频位置拆分'
       : '按文字位置拆分';
-    addItem(splitLabel, splitKeyLabel(), () => splitFromContextMenu(idx, x, y, waveformTimeMs));
+    // 不显示 splitKeyLabel()：Enter/Ctrl+Enter 拆分仅在文本编辑态有效，
+    // 右键菜单里展示快捷键会误导用户以为菜单场景下也能按键触发。
+    addItem(splitLabel, '', () => splitFromContextMenu(idx, x, y, waveformTimeMs));
+    if (EDITOR_SETTINGS.clickBehavior === 'select-only') {
+      addItem('跳转到字幕并播放', '', () => seekTo(DATA.segments[idx].start / 1000));
+    }
     addSep();
     addItem('分配表情包…', '', () => openStickerPicker([idx], false));
     if (DATA.segments[idx].sticker || DATA.segments[idx].sticker_ref) {
@@ -4156,17 +4383,37 @@ document.addEventListener('keydown', (e) => {
 });
 
 // === Hint ===
-let hintTimer = null;
+// 右上角提示卡片堆栈：样式在 editor.css（#hint-stack / .hint-card）。
+// 最多同时显示 3 条，新提示追加在下方。
+const HINT_MAX_VISIBLE = 3;
+const HINT_DURATION_MS = 1800;
+const HINT_FADE_OUT_MS = 200;  // 与 editor.css 的 hint-fade-out 时长一致
+
+function dismissHintCard(card) {
+  if (!card || card.dataset.dismissed) return;
+  card.dataset.dismissed = '1';
+  card.classList.add('hide');
+  setTimeout(() => card.remove(), HINT_FADE_OUT_MS);
+}
+
 function flashHint(msg) {
-  let el = document.getElementById('hint');
-  if (!el) {
-    el = document.createElement('div'); el.id = 'hint';
-    el.style.cssText = 'position:fixed;top:20px;right:20px;background:#3a4a5a;color:#cce0ff;padding:8px 12px;border-radius:4px;border:1px solid #4a6080;z-index:300;font-size:13px;';
-    document.body.appendChild(el);
+  let stack = document.getElementById('hint-stack');
+  if (!stack) {
+    stack = document.createElement('div'); stack.id = 'hint-stack';
+    document.body.appendChild(stack);
   }
-  el.textContent = msg; el.style.display = 'block';
-  clearTimeout(hintTimer);
-  hintTimer = setTimeout(() => { el.style.display = 'none'; }, 1800);
+  // 先挤掉最早的再插入新卡片：溢出项立即移除（不走退场动画），
+  // 保证视觉上始终最多 3 条，不会出现第 4 条先闪现再挤出的跳动。
+  while (stack.children.length >= HINT_MAX_VISIBLE) {
+    const oldest = stack.firstElementChild;
+    oldest.dataset.dismissed = '1';  // 让其到期定时器空转
+    oldest.remove();
+  }
+  const card = document.createElement('div');
+  card.className = 'hint-card';
+  card.textContent = msg;
+  stack.appendChild(card);
+  setTimeout(() => dismissHintCard(card), HINT_DURATION_MS);
 }
 
 // 振幅到达上下限时由波形模块派发的事件：rAF 节流后仍可能每帧触发，冷却避免提示闪烁
