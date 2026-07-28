@@ -134,7 +134,7 @@ def get_duration_sec(filepath: str) -> float:
     return float(out.stdout.strip())
 
 
-def _parse_duration(value: str) -> float:
+def parse_duration(value: str) -> float:
     """解析时长字符串，支持 h/m/s 后缀。"""
     value = value.strip().lower()
     m = _re.fullmatch(r'([\d.]+)\s*(h|m|s)?', value)
@@ -147,6 +147,10 @@ def _parse_duration(value: str) -> float:
     elif unit == 'm':
         return num * 60
     return num
+
+
+# 兼容旧私有名（generate_subtitle_soniox_api.py 等复用方请用 parse_duration）
+_parse_duration = parse_duration
 
 
 def load_hotwords() -> list[str]:

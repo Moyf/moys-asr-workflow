@@ -182,6 +182,7 @@
   "end": 5678,
   "text": "字幕文本",
   "items": [ ... ],
+  "speaker": "1",
   "sticker": null,
   "sticker_ref": null,
   "color": null,
@@ -196,6 +197,7 @@
 | `end` | `int` | **必填** | 段结束时间，**单位毫秒**，要求 `end > start` |
 | `text` | `string` | **必填** | 字幕显示文本。可含 `\n` 表示换行（在编辑器里渲染为 `<br>`） |
 | `items` | `array<object>` | 推荐填 | 字级时间戳数组。用于「双击拆分时按字分配时间」。可填 `[]`，此时拆分会按字符比例估算时间点 |
+| `speaker` | `string` | 否 | 说话人标签（非空字符串）。保存供应商返回的 opaque ID（如 Soniox 的 `"1"`/`"2"`），不转换为整数或姓名。仅当该段所有带语音 items 都是同一 speaker 时才写入；缺少该字段的旧工程继续有效 |
 | `sticker` | `object\|null` | 否 | 表情包 head 信息。见第四节 |
 | `sticker_ref` | `object\|null` | 否 | 引用上方 head 的表情包（跨多句用） |
 | `color` | `object\|null` | 否 | 颜色标记 head。见第四节 |
@@ -208,6 +210,7 @@
 - `segments` 建议按时间升序排列，且 `segments[i].end <= segments[i+1].start`
 - 代码不强校验时间重叠，但重叠会导致播放器跳转/高亮行为异常
 - `items` 首元素 `start` 建议等于 segment `start`，末元素 `end` 建议等于 segment `end`
+- 带 `speaker` 的工程遇到说话人变化时**必须切分字幕**，不能把两个 speaker 合入同一 segment
 
 ---
 
@@ -219,7 +222,8 @@
 {
   "text": "字",
   "start": 1234,
-  "end": 1300
+  "end": 1300,
+  "speaker": "1"
 }
 ```
 
@@ -228,6 +232,7 @@
 | `text` | `string` | 是 | 单字或单词。**所有 item 的 `text` 拼接后应等于所属 segment 的 `text`**（标点也应包含在内，编辑器拆分时会按需剥掉） |
 | `start` | `int` | 是 | 该字/词起始时间（毫秒） |
 | `end` | `int` | 是 | 该字/词结束时间（毫秒） |
+| `speaker` | `string` | 否 | 该字/词的说话人标签（非空字符串），保存供应商返回的 opaque ID |
 
 ### 生成建议
 
@@ -426,6 +431,8 @@ uv run python edit.py your_generated.json
 | `segments[i].items[k].text` | string | ✅ | 单字/词 |
 | `segments[i].items[k].start` | int | ✅ | 毫秒 |
 | `segments[i].items[k].end` | int | ✅ | 毫秒 |
+| `segments[i].items[k].speaker` | string | ❌ | 说话人 opaque ID |
+| `segments[i].speaker` | string | ❌ | 段内统一说话人才写入 |
 | `segments[i].sticker` | object\|null | ❌ | 表情包 head |
 | `segments[i].sticker_ref` | object\|null | ❌ | `{name, headIdx}` |
 | `segments[i].color` | object\|null | ❌ | `{name, value, start, end}` |
