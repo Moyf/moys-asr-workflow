@@ -24,37 +24,171 @@ class ModelConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class ProviderConfig:
+    id: str
+    label: str
+    key_url: str
+    models: tuple[ModelConfig, ...]
+    regions: tuple[tuple[str, str], ...]
+    languages: tuple[tuple[str, str], ...]
+    supports_speaker: bool = False
+    multi_language: bool = False
+    # 常用语言代码；为空表示不过滤（全部视为常用）。
+    # 多语言供应商开启「显示小语种」前，GUI 只展示这些 + 已选中的。
+    common_languages: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class EffectiveConfig:
     api_key: str
     region: str
     workspace_id: str
     language: str
     gui_lang: str
+    sticker_dir: str
+    show_rare_langs: bool = False
+    last_model: str | None = None
+    last_language: str | None = None
 
 
-MODELS: Final[tuple[ModelConfig, ...]] = (
-    ModelConfig(
-        id=DEFAULT_MODEL_ID,
-        label="Qwen3 ASR（文件转写）",
-        env_key="DASHSCOPE_API_KEY",
-    ),
-)
+QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (ModelConfig(id=DEFAULT_MODEL_ID, label="Qwen3 ASR（文件转写）", env_key="DASHSCOPE_API_KEY"),)
+
+SONIOX_MODELS: Final[tuple[ModelConfig, ...]] = (ModelConfig(id="stt-async-v5", label="Soniox Async STT（v5）", env_key="SONIOX_API_KEY"),)
 
 REGIONS: Final[tuple[tuple[str, str], ...]] = (
     ("beijing", "北京（华北 2，默认）"),
     ("singapore", "新加坡（需要 Workspace ID）"),
 )
 
+# Qwen-ASR（qwen3-asr-flash 系列）官方文档：language 只能指定一个语种，
+# 不指定即自动识别；取值如下（28 种 + 自动）。
+# https://help.aliyun.com/zh/model-studio/qwen-asr-api-reference
 LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
     ("", "自动识别"),
     ("zh", "中文 / Mandarin"),
     ("yue", "粤语 / Cantonese"),
     ("en", "英语 / English"),
     ("ja", "日语 / Japanese"),
-    ("ko", "韩语 / Korean"),
     ("de", "德语 / German"),
+    ("ko", "韩语 / Korean"),
+    ("ru", "俄语 / Russian"),
     ("fr", "法语 / French"),
+    ("pt", "葡萄牙语 / Portuguese"),
+    ("ar", "阿拉伯语 / Arabic"),
+    ("it", "意大利语 / Italian"),
+    ("es", "西班牙语 / Spanish"),
+    ("hi", "印地语 / Hindi"),
+    ("id", "印尼语 / Indonesian"),
+    ("th", "泰语 / Thai"),
+    ("tr", "土耳其语 / Turkish"),
+    ("uk", "乌克兰语 / Ukrainian"),
+    ("vi", "越南语 / Vietnamese"),
+    ("cs", "捷克语 / Czech"),
+    ("da", "丹麦语 / Danish"),
+    ("fil", "菲律宾语 / Filipino"),
+    ("fi", "芬兰语 / Finnish"),
+    ("is", "冰岛语 / Icelandic"),
+    ("ms", "马来语 / Malay"),
+    ("no", "挪威语 / Norwegian"),
+    ("pl", "波兰语 / Polish"),
+    ("sv", "瑞典语 / Swedish"),
 )
+
+# Soniox 官方文档：language_hints 是列表（可多选，仅偏向不限制），
+# 不提供即自动识别；支持 60 种语言（2026-07 文档）。
+# https://soniox.com/docs/stt/concepts/supported-languages
+SONIOX_LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
+    ("zh", "中文 / Mandarin"),
+    ("en", "英语 / English"),
+    ("ja", "日语 / Japanese"),
+    ("ko", "韩语 / Korean"),
+    ("af", "南非荷兰语 / Afrikaans"),
+    ("sq", "阿尔巴尼亚语 / Albanian"),
+    ("ar", "阿拉伯语 / Arabic"),
+    ("az", "阿塞拜疆语 / Azerbaijani"),
+    ("eu", "巴斯克语 / Basque"),
+    ("be", "白俄罗斯语 / Belarusian"),
+    ("bn", "孟加拉语 / Bengali"),
+    ("bs", "波斯尼亚语 / Bosnian"),
+    ("bg", "保加利亚语 / Bulgarian"),
+    ("ca", "加泰罗尼亚语 / Catalan"),
+    ("hr", "克罗地亚语 / Croatian"),
+    ("cs", "捷克语 / Czech"),
+    ("da", "丹麦语 / Danish"),
+    ("nl", "荷兰语 / Dutch"),
+    ("et", "爱沙尼亚语 / Estonian"),
+    ("fi", "芬兰语 / Finnish"),
+    ("fr", "法语 / French"),
+    ("gl", "加利西亚语 / Galician"),
+    ("de", "德语 / German"),
+    ("el", "希腊语 / Greek"),
+    ("gu", "古吉拉特语 / Gujarati"),
+    ("he", "希伯来语 / Hebrew"),
+    ("hi", "印地语 / Hindi"),
+    ("hu", "匈牙利语 / Hungarian"),
+    ("id", "印尼语 / Indonesian"),
+    ("it", "意大利语 / Italian"),
+    ("kn", "卡纳达语 / Kannada"),
+    ("kk", "哈萨克语 / Kazakh"),
+    ("lv", "拉脱维亚语 / Latvian"),
+    ("lt", "立陶宛语 / Lithuanian"),
+    ("mk", "马其顿语 / Macedonian"),
+    ("ms", "马来语 / Malay"),
+    ("ml", "马拉雅拉姆语 / Malayalam"),
+    ("mr", "马拉地语 / Marathi"),
+    ("no", "挪威语 / Norwegian"),
+    ("fa", "波斯语 / Persian"),
+    ("pl", "波兰语 / Polish"),
+    ("pt", "葡萄牙语 / Portuguese"),
+    ("pa", "旁遮普语 / Punjabi"),
+    ("ro", "罗马尼亚语 / Romanian"),
+    ("ru", "俄语 / Russian"),
+    ("sr", "塞尔维亚语 / Serbian"),
+    ("sk", "斯洛伐克语 / Slovak"),
+    ("sl", "斯洛文尼亚语 / Slovenian"),
+    ("es", "西班牙语 / Spanish"),
+    ("sw", "斯瓦希里语 / Swahili"),
+    ("sv", "瑞典语 / Swedish"),
+    ("tl", "菲律宾语 / Tagalog"),
+    ("ta", "泰米尔语 / Tamil"),
+    ("te", "泰卢固语 / Telugu"),
+    ("th", "泰语 / Thai"),
+    ("tr", "土耳其语 / Turkish"),
+    ("uk", "乌克兰语 / Ukrainian"),
+    ("ur", "乌尔都语 / Urdu"),
+    ("vi", "越南语 / Vietnamese"),
+    ("cy", "威尔士语 / Welsh"),
+)
+
+# Soniox 60 种里的常用语言（GUI 默认只显示这些；「显示小语种」开关打开后显示全部）
+SONIOX_COMMON_LANGUAGES: Final[tuple[str, ...]] = (
+    "zh", "en", "ja", "ko", "fr", "de", "es", "ru", "pt", "ar",
+    "hi", "id", "th", "vi", "it", "tr", "uk", "ms", "nl", "pl",
+)
+
+PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
+    ProviderConfig(
+        id="qwen",
+        label="Qwen ASR（阿里云百炼）",
+        key_url="https://help.aliyun.com/zh/model-studio/get-api-key",
+        models=QWEN_MODELS,
+        regions=REGIONS,
+        languages=LANGUAGES,
+    ),
+    ProviderConfig(
+        id="soniox",
+        label="Soniox STT",
+        key_url="https://console.soniox.com",
+        models=SONIOX_MODELS,
+        regions=(),
+        languages=SONIOX_LANGUAGES,
+        supports_speaker=True,
+        multi_language=True,
+        common_languages=SONIOX_COMMON_LANGUAGES,
+    ),
+)
+
+MODELS: Final[tuple[ModelConfig, ...]] = PROVIDERS[0].models
 
 
 def load_env(path: Path = DEFAULT_ENV_PATH) -> dict[str, str]:
@@ -98,20 +232,56 @@ def effective_config(path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] |
     def pick(key: str, default: str = "") -> str:
         return env.get(key) or file_values.get(key, default)
 
+    def pick_optional(key: str) -> str | None:
+        if key in env:
+            return env[key]
+        if key in file_values:
+            return file_values[key]
+        return None
+
     return EffectiveConfig(
         api_key=pick(MODELS[0].env_key),
         region=pick("DASHSCOPE_REGION", "beijing").lower() or "beijing",
         workspace_id=pick("DASHSCOPE_WORKSPACE_ID"),
         language=pick("DASHSCOPE_DEFAULT_LANGUAGE"),
         gui_lang=_gui_language(pick("MAW_GUI_LANG", "zh")),
+        sticker_dir=pick("STICKER_DIR"),
+        show_rare_langs=pick("MAW_GUI_SHOW_RARE_LANGS").strip().lower() in ("1", "true", "yes", "on"),
+        last_model=pick_optional("MAW_GUI_LAST_MODEL"),
+        last_language=pick_optional("MAW_GUI_LAST_LANGUAGE"),
     )
 
 
 def model_by_label(label: str) -> ModelConfig:
-    for model in MODELS:
-        if label == model.label or label == model.id:
-            return model
+    for provider in PROVIDERS:
+        for model in provider.models:
+            if label == model.label or label == model.id:
+                return model
     return MODELS[0]
+
+
+def provider_by_id(provider_id: str) -> ProviderConfig:
+    for provider in PROVIDERS:
+        if provider.id == provider_id:
+            return provider
+    return PROVIDERS[0]
+
+
+def provider_for_model(model_id: str) -> ProviderConfig:
+    for provider in PROVIDERS:
+        if any(model.id == model_id for model in provider.models):
+            return provider
+    return PROVIDERS[0]
+
+
+def api_key_for_provider(provider_id: str, path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] | None = None) -> str:
+    """按供应商读取 API Key（系统环境变量优先，其次 .env）。"""
+    provider = provider_by_id(provider_id)
+    if not provider.models:
+        return ""
+    env_key = provider.models[0].env_key
+    env = environ or os.environ
+    return env.get(env_key) or load_env(path).get(env_key, "")
 
 
 def region_label(region_id: str) -> str:

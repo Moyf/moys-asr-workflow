@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MAW Launcher</title>
+  <link rel="stylesheet" href="launcher.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div class="hero-copy">
+        <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.1.0</span></div>
+        <p data-i18n="hero_desc">本地媒体 -> AI 转写 -> 可编辑字幕工程</p>
+        <span id="demoBadge" class="demo-badge hidden" data-i18n="demo_mode">演示模式</span>
+      </div>
+      <nav class="hero-links" aria-label="links">
+        <button id="settingsButton" class="ghost small" type="button" aria-label="settings" data-i18n-title="settings_title" title="配置">⚙️<span id="settingsDot" class="settings-dot hidden"></span></button>
+        <button id="langToggle" class="ghost small" type="button">English</button>
+      </nav>
+      <button id="homeLink" class="text-link hero-home" type="button" data-i18n="project_home">项目官网</button>
+    </header>
+
+    <section id="mediaCard" class="card drop-card" aria-labelledby="mediaTitle">
+      <h2 id="mediaTitle" data-i18n="media_output">① 媒体与输出</h2>
+      <div id="dropZone" class="drop-zone" data-i18n="drop_hint">拖入音频/视频文件，或点击选择。</div>
+      <div class="field">
+        <label for="mediaPath" data-i18n="media">媒体文件</label>
+        <div class="path-row">
+          <input id="mediaPath" type="text" autocomplete="off">
+          <button id="pickMedia" class="ghost" type="button" data-i18n="choose">选择</button>
+        </div>
+        <p id="mediaPathError" class="field-error"></p>
+      </div>
+      <div class="field">
+        <label for="srtPath" data-i18n="srt_output">SRT 输出</label>
+        <input id="srtPath" type="text" autocomplete="off">
+        <p id="srtPathError" class="field-error"></p>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="settingsTitle">
+      <h2 id="settingsTitle" data-i18n="recognition">② 识别设置</h2>
+      <div class="provider-row">
+        <div class="field provider-field">
+          <label for="provider" data-i18n="provider">语音 API 供应商</label>
+          <select id="provider"></select>
+        </div>
+        <label class="check-field" for="testRun" data-i18n-title="test_run_title">
+          <input id="testRun" type="checkbox">
+          <span data-i18n="test_run">测试运行</span>
+        </label>
+      </div>
+      <div class="field">
+        <label for="apiKey" data-i18n="key">API Key</label>
+        <div class="path-row key-row">
+          <input id="apiKey" type="password" autocomplete="off">
+          <button id="saveSettings" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
+        </div>
+        <p id="keyStatus" class="hint">未配置密钥</p>
+        <p class="hint"><span data-i18n="key_hint_prefix">在</span> <button id="openKeyUrl" class="inline-link" type="button">阿里云百炼</button> <span data-i18n="key_hint_suffix">获取 API Key ↗</span></p>
+        <p id="apiKeyError" class="field-error"></p>
+      </div>
+      <div id="advancedCard" class="sub-accordion collapsed">
+        <button id="advancedToggle" class="accordion-header" type="button"><span class="chevron">▸</span><span data-i18n="advanced">高级选项</span></button>
+        <div class="collapse-body">
+          <div class="grid-two">
+            <div class="advanced-col">
+              <div class="field"><label for="model" data-i18n="model">模型</label><select id="model"></select></div>
+              <div id="regionField" class="field"><label for="region" data-i18n="region">地域</label><select id="region"></select></div>
+              <div id="workspaceField" class="field hidden">
+                <label for="workspaceId" data-i18n="workspace">工作空间 ID</label>
+                <input id="workspaceId" type="text" autocomplete="off">
+                <p class="hint" data-i18n="workspace_hint">新加坡地域需要填写 Workspace ID。</p>
+                <p id="workspaceIdError" class="field-error"></p>
+              </div>
+              <div class="field"><label for="lengthLimit" data-i18n="length_limit">时长上限</label><input id="lengthLimit" type="text" placeholder="2m / 30s / 1h" autocomplete="off"><p id="testRunHint" class="hint hidden" data-i18n="test_run_override">测试运行已限定前 2 分钟</p></div>
+            </div>
+            <div class="field">
+              <label for="language" data-i18n="language">语言</label>
+              <select id="language"></select>
+              <div class="lang-actions"><button id="languageReset" class="ghost small hidden" type="button" data-i18n="language_reset">重置（自动识别）</button></div>
+              <p id="languageHint" class="hint hidden" data-i18n="language_multi_hint">可多选；不选即自动识别（仅偏向，不限制）；默认仅显示常用语言，其余可在「配置 → 显示小语种」开启。</p>
+            </div>
+          </div>
+          <div id="speakerColorsField" class="field hidden">
+            <label class="check-field" for="speakerColors" data-i18n-title="speaker_colors_title">
+              <input id="speakerColors" type="checkbox" checked>
+              <span data-i18n="speaker_colors">给不同说话人分配字幕颜色</span>
+            </label>
+            <p class="hint" data-i18n="speaker_colors_hint">最多 5 种颜色；说话人超过 5 个时颜色循环复用。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="logTitle">
+      <h2 id="logTitle" data-i18n="logs">③ 日志</h2>
+      <div id="progress" class="progress hidden" aria-hidden="true"><span></span></div>
+      <pre id="log" class="log" aria-live="polite"></pre>
+    </section>
+
+    <section id="serverCard" class="card collapsed" aria-labelledby="serverTitle">
+      <button id="serverExpand" class="accordion-header card-accordion" type="button"><span class="chevron">▸</span><span id="serverTitle" data-i18n="server">④ 编辑器服务器</span></button>
+      <div id="serverBody" class="collapse-body">
+        <div class="field">
+          <label for="jsonPath" data-i18n="json_project">工程 JSON</label>
+          <div class="path-row">
+            <input id="jsonPath" type="text" autocomplete="off" data-i18n-placeholder="json_placeholder">
+            <button id="pickJson" class="ghost" type="button" data-i18n="choose">选择</button>
+          </div>
+          <p id="jsonPathError" class="field-error"></p>
+        </div>
+        <div id="serverMediaField" class="field hidden">
+          <label for="serverMediaPath" data-i18n="server_media">服务器媒体（可选）</label>
+          <div class="path-row">
+            <input id="serverMediaPath" type="text" autocomplete="off">
+            <button id="pickServerMedia" class="ghost" type="button" data-i18n="choose">选择</button>
+          </div>
+          <p class="hint warn" data-i18n="server_media_missing">工程未记录媒体，或文件已移动，请手动选择。</p>
+          <p id="serverMediaPathError" class="field-error"></p>
+        </div>
+        <div class="field compact"><label for="port" data-i18n="port">端口</label><input id="port" type="number" min="1" max="65535" value="8765"><p id="portError" class="field-error"></p></div>
+      </div>
+    </section>
+
+    <footer class="actions">
+      <button id="start" class="primary" type="button" data-i18n="start">生成字幕和工程</button>
+      <div class="split-wrap">
+        <button id="openMawe" class="ghost split-main" type="button" data-i18n="open_mawe">打开字幕编辑器（MAWE）</button>
+        <button id="openMenu" class="ghost split-caret" type="button" aria-haspopup="true">▾</button>
+        <div id="htmlMenu" class="split-menu hidden">
+          <button id="openHtml" type="button" data-i18n="open_html" disabled>打开 html 编辑器</button>
+          <button id="openBlankHtml" type="button" data-i18n="open_blank_html">打开 html 空模板</button>
+        </div>
+      </div>
+      <button id="openFolder" class="ghost hidden" type="button" data-i18n="open_folder">打开输出文件夹</button>
+    </footer>
+    <div id="status" class="status">就绪</div>
+  </main>
+
+  <div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div id="settingsBackdrop" class="modal-backdrop"></div>
+    <section class="modal-card">
+      <header class="modal-header">
+        <h2 id="settingsTitle" data-i18n="settings_title">配置</h2>
+        <button id="settingsClose" class="ghost small" type="button" aria-label="close">×</button>
+      </header>
+      <div class="settings-section">
+        <h3 data-i18n="settings_ffmpeg">FFmpeg</h3>
+        <div id="modalFfmpegFound" class="ffmpeg-line hidden" title=""><span>✓</span><span data-i18n="ffmpeg_found">成功定位到 ffmpeg</span><small id="ffmpegDir"></small><button id="changeFfmpeg" class="inline-link" type="button" data-i18n="change">更改</button></div>
+        <div id="modalFfmpegMissing" class="ffmpeg-missing hidden">
+          <p class="hint" data-i18n="ffmpeg_need">需要依赖 ffmpeg 先将视频转成音频后才能发送给服务器转录</p>
+        </div>
+        <div id="ffmpegPathBox" class="field hidden">
+          <label for="ffmpegPath" data-i18n="ffmpeg_path">FFmpeg 路径</label>
+          <div class="path-row">
+            <input id="ffmpegPath" type="text" autocomplete="off" data-i18n-placeholder="ffmpeg_placeholder">
+            <button id="saveFfmpeg" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
+          </div>
+          <p id="ffmpegPathError" class="field-error"></p>
+          <p class="hint"><button id="ffmpegHelp" class="inline-link" type="button" data-i18n="ffmpeg_help">如何安装 FFmpeg ↗</button></p>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3 data-i18n="settings_language">语言</h3>
+        <label class="check-field" for="showRareLangs">
+          <input id="showRareLangs" type="checkbox">
+          <span data-i18n="show_rare_langs">显示小语种</span>
+        </label>
+        <p class="hint" data-i18n="show_rare_langs_hint">开启后，「语言」列表显示供应商支持的全部语种；关闭时只显示常用语言。</p>
+      </div>
+      <div class="settings-section">
+        <h3 data-i18n="settings_stickers">默认表情包路径</h3>
+        <p class="hint" data-i18n="stickers_explain">表情包根目录供 HTML 编辑器使用；支持嵌套子目录（如 大狗/、Nox/ 等）。</p>
+        <p class="hint"><span data-i18n="current_value">当前</span>：<code id="stickerCurrent">未设置</code></p>
+        <div class="field">
+          <label for="stickerDir" data-i18n="sticker_dir">表情包根目录</label>
+          <div class="path-row">
+            <input id="stickerDir" type="text" autocomplete="off">
+            <button id="pickStickerDir" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
+            <button id="saveStickerDir" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
+          </div>
+          <p id="stickerDirError" class="field-error"></p>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script src="launcher.js"></script>
+</body>
+</html>
