@@ -167,7 +167,7 @@ uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.json"
 ❤️ 感谢 @LiRenTech 的 [gap-gone](https://github.com/LiRenTech/gap-gone) 项目  
 <sup>本项目的多行波形和空隙去除灵感皆来源于此</sup>  
 🤖 感谢 ChatGPT 和 OpenCode 的代码助力（咦）  
-<sup>主要由 gpt-5.6 和 glm-5.2 协作生产</sup>
+<sup>主要由 gpt-5.6、KimiK3 和 glm-5.2 协作生产</sup>
 
 ## 许可证
 
