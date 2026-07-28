@@ -34,6 +34,8 @@ test('English locale covers the editor shell and recent-project setting stays fi
   await expect(page.locator('#open-project')).toHaveText('Open project');
   await expect(page.locator('#save-project')).toHaveText('Save project');
   await expect(page.locator('#recent-projects-toggle')).toHaveText('Recent projects');
+  await expect(page.locator('#search')).toHaveAttribute('placeholder', 'Filter subtitles…');
+  await expect(page.locator('#cue-panel-text')).toHaveAttribute('placeholder', 'Select a subtitle to start editing…');
   await page.locator('#recent-projects-toggle').click();
   await expect(page.locator('#server-project-settings')).toContainText('Automatically open last project');
 
@@ -75,6 +77,8 @@ test('English locale covers the editor shell and recent-project setting stays fi
 
   await page.locator('#language-toggle').click();
   await expect(page.locator('#save-project')).toHaveText('保存工程');
+  await expect(page.locator('#search')).toHaveAttribute('placeholder', '过滤字幕…');
+  await expect(page.locator('#cue-panel-text')).toHaveAttribute('placeholder', '选择一条字幕开始编辑…');
   expect(await page.evaluate(() => localStorage.getItem('mawe.language'))).toBe('zh');
 });
 

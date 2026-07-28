@@ -201,6 +201,10 @@
     '#cue-list', '#cue-panel-text', '#overlay', '#sticker-overlay-layer',
     '#media-name', '#json-name', '#sticker-grid', 'script', 'style'
   ].join(',');
+  const ATTRIBUTE_SKIP_SELECTOR = [
+    '#cue-list', '#overlay', '#sticker-overlay-layer',
+    '#media-name', '#json-name', '#sticker-grid', 'script', 'style'
+  ].join(',');
 
   function normalizeLanguage(value) {
     return String(value || '').toLowerCase().startsWith('en') ? EN : ZH;
@@ -306,7 +310,7 @@
   }
 
   function translateAttributes(element) {
-    if (element.closest?.(SKIP_SELECTOR)) return;
+    if (element.closest?.(ATTRIBUTE_SKIP_SELECTOR)) return;
     if (!attributeOriginals.has(element)) attributeOriginals.set(element, {});
     const originals = attributeOriginals.get(element);
     ['title', 'placeholder', 'aria-label'].forEach((name) => {
@@ -315,8 +319,9 @@
       if (!(name in originals)) {
         originals[name] = current;
       } else {
-        const rendered = language === EN ? translateText(originals[name], EN) : originals[name];
-        if (current !== rendered) originals[name] = current;
+        const original = originals[name];
+        const translated = translateText(original, EN);
+        if (current !== original && current !== translated) originals[name] = current;
       }
       const original = originals[name];
       const next = language === EN ? translateText(original, EN) : original;

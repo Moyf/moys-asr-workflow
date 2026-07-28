@@ -39,6 +39,7 @@
 
 ### Fixed
 
+- 修复编辑器 placeholder 的双向本地化：字幕筛选框现在可从 English 正确切回中文，当前字幕编辑框的空状态提示也会随界面语言切换。
 - Qwen filetrans 偶发返回 `begin_time == end_time` 的词/句，独立切句后会触发 `$.segments[*].end: must be greater than start`；现在零/负时长片段会保留文字与字词时间戳并合并到相邻有效字幕。GUI 生成可选便携 HTML 失败时也只记警告，不再阻断已成功生成的 SRT/JSON 和 launcher 工程路径回填。
 - Soniox 轮询遇到临时网络错误（如跨国 SSL 超时）会立即失败，且 `finally` 误删仍在云端运行的任务；现在轮询对连续网络错误重试（连续 5 次后放弃），且仅在任务成功或进入终态失败时才清理云端记录——本地中断时保留任务并提示 `transcription_id` 供手动清理。
 - Soniox 英文 token 是 sub-word 片段（如 action → "ac"+"tion"、"wrong" → " w"+"r"+"ong,"），1:1 映射导致编辑器拆分时单词被腰斩；现在按实测契约（词首片段带前导空格）用 `merge_word_fragments()` 合并成词级 item 再切句，符合 JSON_SCHEMA 的「英文按词」约定，也顺带消除了切句落在单词中间的情况。CJK 保持逐字。

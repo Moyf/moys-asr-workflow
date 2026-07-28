@@ -1721,7 +1721,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-07-28 18:25</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-07-28 19:10</span>
   <span class="json-name empty" id="json-name" title="点击复制 JSON 文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -3043,6 +3043,10 @@
     '#cue-list', '#cue-panel-text', '#overlay', '#sticker-overlay-layer',
     '#media-name', '#json-name', '#sticker-grid', 'script', 'style'
   ].join(',');
+  const ATTRIBUTE_SKIP_SELECTOR = [
+    '#cue-list', '#overlay', '#sticker-overlay-layer',
+    '#media-name', '#json-name', '#sticker-grid', 'script', 'style'
+  ].join(',');
 
   function normalizeLanguage(value) {
     return String(value || '').toLowerCase().startsWith('en') ? EN : ZH;
@@ -3148,7 +3152,7 @@
   }
 
   function translateAttributes(element) {
-    if (element.closest?.(SKIP_SELECTOR)) return;
+    if (element.closest?.(ATTRIBUTE_SKIP_SELECTOR)) return;
     if (!attributeOriginals.has(element)) attributeOriginals.set(element, {});
     const originals = attributeOriginals.get(element);
     ['title', 'placeholder', 'aria-label'].forEach((name) => {
@@ -3157,8 +3161,9 @@
       if (!(name in originals)) {
         originals[name] = current;
       } else {
-        const rendered = language === EN ? translateText(originals[name], EN) : originals[name];
-        if (current !== rendered) originals[name] = current;
+        const original = originals[name];
+        const translated = translateText(original, EN);
+        if (current !== original && current !== translated) originals[name] = current;
       }
       const original = originals[name];
       const next = language === EN ? translateText(original, EN) : original;
