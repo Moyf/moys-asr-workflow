@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from maw.gui_web import EventPump, LauncherApi, LauncherPaths, _request_from_payload, _route_dropped_path  # noqa: E402
+from maw.gui_workflow import TranscriptionRequest, TranscriptionResult  # noqa: E402
 
 
 class FakeWindow:
@@ -450,6 +451,27 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertTrue(self.window.scripts)
         self.assertIn("queued", self.window.scripts[-1])
+
+    def test_worker_emits_done_with_json_when_optional_html_is_missing(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.root / "clip.wav",
+            srt_path=self.root / "clip.srt",
+        )
+        result = TranscriptionResult(
+            srt_path=self.root / "clip.srt",
+            json_path=self.root / "clip.json",
+            html_path=None,
+        )
+
+        with mock.patch("maw.gui_web.run_transcription", return_value=result):
+            self.api._worker_main(request, threading.Event())
+
+        self.assertEqual(self.api.result, result)
+        self.assertTrue(self.window.scripts)
+        event_script = self.window.scripts[-1]
+        self.assertIn('"type": "done"', event_script)
+        self.assertIn(str(result.json_path).replace("\\", "\\\\"), event_script)
+        self.assertIn('"htmlPath": ""', event_script)
 
     def test_route_dropped_path_routes_json_media_and_reject(self) -> None:
         """Given dropped paths, When routed, Then event type mirrors launcher drop behavior."""

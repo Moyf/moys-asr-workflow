@@ -324,6 +324,52 @@ def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
     return [to_seg(g) for g in final if g]
 
 
+def repair_nonpositive_duration_segments(segments: list[dict]) -> list[dict]:
+    """Merge zero/negative-duration API fragments into a neighboring subtitle.
+
+    Qwen filetrans occasionally returns a word or sentence whose begin_time and
+    end_time are identical. If punctuation/silence splitting isolates that item,
+    it becomes an invalid zero-duration segment. Keep its text/items, but attach
+    it to the next valid subtitle (or the previous one when it is trailing).
+    """
+    repaired: list[dict] = []
+    pending: list[dict] = []
+
+    def merge(parts: list[dict]) -> dict:
+        starts = [part["start"] for part in parts]
+        bounds = [value for part in parts for value in (part["start"], part["end"])]
+        start = min(starts)
+        end = max(bounds)
+        if end <= start:
+            end = start + 1
+        return {
+            "start": start,
+            "end": end,
+            "text": "".join(part.get("text", "") for part in parts),
+            "items": [
+                dict(item)
+                for part in parts
+                for item in part.get("items", [])
+            ],
+        }
+
+    for segment in segments:
+        if segment["end"] <= segment["start"]:
+            pending.append(segment)
+            continue
+        if pending:
+            segment = merge([*pending, segment])
+            pending = []
+        repaired.append(segment)
+
+    if pending:
+        if repaired:
+            repaired[-1] = merge([repaired[-1], *pending])
+        else:
+            repaired.append(merge(pending))
+    return repaired
+
+
 # ===== DashScope filetrans API 调用 =====
 
 def get_upload_policy(base_url: str, api_key: str, model: str) -> dict:
@@ -780,6 +826,8 @@ def main():
             segments = split_words_to_segments(
                 items, args.max_len, args.min_len, args.gap_split
             )
+
+    segments = repair_nonpositive_duration_segments(segments)
 
     # 剥句末标点（与本地版一致）
     if not args.keep_punct:

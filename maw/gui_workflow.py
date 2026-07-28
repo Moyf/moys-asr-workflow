@@ -181,7 +181,11 @@ def run_transcription(
         raise TranscriptionProcessError(process.returncode)
     _require_output(paths.srt, "SRT")
     _require_output(paths.json, "JSON")
-    html_path = render_editor_html(paths.json, request.media_path, paths.html)
+    try:
+        html_path = render_editor_html(paths.json, request.media_path, paths.html)
+    except Exception as error:  # HTML is optional; preserve successful SRT/JSON outputs.
+        html_path = None
+        (on_event or _ignore)(f"[warning] 编辑器 HTML 生成失败，SRT/JSON 已保留：{error}")
     return TranscriptionResult(srt_path=paths.srt, json_path=paths.json, html_path=html_path)
 
 

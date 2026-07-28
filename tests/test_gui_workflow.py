@@ -148,6 +148,31 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertEqual(started, [4321])
 
+    def test_run_transcription_keeps_json_when_optional_html_render_fails(self) -> None:
+        request = TranscriptionRequest(media_path=self.media_path, srt_path=self.srt_path)
+        self.srt_path.write_text("1\n", encoding="utf-8")
+        self.srt_path.with_suffix(".json").write_text('{"segments": []}\n', encoding="utf-8")
+        events: list[str] = []
+
+        class FakeProcess:
+            pid = 4321
+            returncode = 0
+            stdout = []
+
+            def poll(self) -> int | None:
+                return 0
+
+            def wait(self, timeout: float | None = None) -> int:
+                return 0
+
+        with mock.patch("maw.gui_workflow.subprocess.Popen", return_value=FakeProcess()):
+            with mock.patch("maw.gui_workflow.render_editor_html", side_effect=ValueError("invalid preview")):
+                result = run_transcription(request, on_event=events.append)
+
+        self.assertEqual(result.json_path, self.srt_path.with_suffix(".json"))
+        self.assertIsNone(result.html_path)
+        self.assertTrue(any("SRT/JSON 已保留" in event for event in events))
+
     def test_run_transcription_cancels_running_process(self) -> None:
         request = TranscriptionRequest(media_path=self.media_path, srt_path=self.srt_path)
         cancel_event = Event()
