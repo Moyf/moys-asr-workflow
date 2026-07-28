@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import json
+import os
 import sys
 import tempfile
 import threading
 import unittest
-import json
 from pathlib import Path
-from unittest import mock
 from typing import final
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -295,6 +296,22 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(result["found"])
         self.assertEqual(result["directory"], str(ffmpeg.parent))
 
+    def test_check_ffmpeg_falls_back_to_bundled_tools(self) -> None:
+        ffmpeg_dir = self.root / "ffmpeg" / "bin"
+        ffmpeg_dir.mkdir(parents=True)
+        ffmpeg = ffmpeg_dir / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        ffprobe = ffmpeg_dir / ("ffprobe.exe" if os.name == "nt" else "ffprobe")
+        ffmpeg.write_bytes(b"exe")
+        ffprobe.write_bytes(b"exe")
+
+        with mock.patch("maw.gui_web.shutil.which", return_value=None):
+            with mock.patch("maw.gui_web._bundled_ffmpeg_directory", return_value=ffmpeg_dir):
+                result = self.api.check_ffmpeg()
+
+        self.assertTrue(result["found"])
+        self.assertEqual(result["ffmpeg"], str(ffmpeg))
+        self.assertEqual(result["ffprobe"], str(ffprobe))
+
     def test_save_ffmpeg_path_invalid_stays_missing(self) -> None:
         result = self.api.save_ffmpeg_path({"path": str(self.root / "missing")})
 
@@ -493,6 +510,14 @@ class GuiWebBridgeTests(unittest.TestCase):
 
 @final
 class LauncherAssetContractTests(unittest.TestCase):
+    def test_launcher_hero_shows_the_bundled_brand_icon(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        self.assertIn('<div class="hero-brand">', page)
+        self.assertIn('<img class="hero-icon" src="../../assets/show.webp"', page)
+        self.assertIn(".hero-icon{width:72px;height:72px;", stylesheet)
+
     def test_sticker_picker_saves_immediately_without_a_separate_button(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")

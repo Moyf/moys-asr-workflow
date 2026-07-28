@@ -4,10 +4,14 @@
 
 ## [Unreleased]
 
-## [1.1.1] - 2026-07-28
+## [1.1.0] - 2026-07-28
 
 ### Added
 
+- 新增 Windows `tkinter + ttk` 图形界面，并进一步升级为 pywebview + HTML/JS 桌面 Launcher；可选择媒体和输出、管理供应商/API Key、查看进度、取消任务、打开输出或启动 MAWE，旧版 tkinter 界面保留为 `--tk` fallback。
+- Launcher 支持媒体拖放、转写前内联校验、中文 / English 切换、折叠的 MAWE 服务器设置，以及按供应商组织的模型、地域、语言与 API Key 获取入口。
+- 新增 PyInstaller `onedir` Windows 构建脚本与 `v*` 标签触发的 GitHub Release 工作流；Release 同时提供轻量普通版和内置 `ffmpeg.exe` / `ffprobe.exe` 的 `MAWxFF` 版。
+- 字幕画面预览支持鼠标拖动、八方向缩放、键盘调整、撤销/重做，以及 localhost 保存和便携 JSON 导出的持久化。
 - 新增 Soniox STT 供应商（`generate_subtitle_soniox_api.py`）：异步文件转写、token 级毫秒时间戳、自动语言识别；转写完成后自动清理云端文件与转写记录。
 - Soniox 可选说话人分离：`--speaker` 把供应商 opaque speaker 标签写入工程 JSON（`segments[*].speaker` / `items[*].speaker`）；`--speaker-colors` 进一步把说话人一次性映射为 5 种字幕颜色快照（超过 5 人循环复用并警告），之后仍可在编辑器自由修改。
 - 工程 JSON 新增可选 `speaker` 字段（segments/items 两级）；带 speaker 的工程在说话人变化时必须切分字幕段。
@@ -25,9 +29,13 @@
 - Qwen/Soniox CLI 新增 `--with-waveform`，可在转写生成工程 JSON 时内嵌波形峰值；GUI 转写默认开启，避免首次打开编辑器时生成 `<媒体名>.waveform.json` sidecar。
 - GUI 启动 localhost 编辑器或生成便携 HTML 时，MAWE 会继承启动器当前的中文 / English 界面语言；服务器启动参数只在首次加载时接管语言，随后仍可在编辑器内切换并记忆。
 - 编辑器新增 `A` / `D` 快捷键：跳到上一条 / 下一条字幕的句首并选中，保持当前播放或暂停状态。
+- Launcher HERO 新增品牌图标并收紧标题字距；Windows 冻结包同步分发图标资源。
+- Launcher 会自动发现 `MAWxFF` 包内的 FFmpeg，并把同一环境传给转写进程与 localhost 编辑器服务器。
 
 ### Changed
 
+- 工程 JSON 新增可选 `preview.subtitle` 归一化几何；旧工程缺少该字段时保持原有字幕位置。
+- Qwen API CLI 新增 `--model` 参数；默认仍使用 `qwen3-asr-flash-filetrans`。
 - `generate_subtitle_qwen_api.py` 的 `_parse_duration` 更名为 `parse_duration`（保留旧名别名，行为不变）。
 - GUI「打开 html 版编辑器」更名为「打开 html 编辑器」；表情包根目录示例文案改为「大狗/、Nox/ 等」。
 - GUI「给不同说话人分配颜色」更名为「给不同说话人分配字幕颜色」；高级选项对 Qwen 单选语言使用常规两列混排，对 Soniox 多选语言保留独立的右侧长列表。
@@ -40,6 +48,8 @@
 - 工程保存快捷键统一为 `Ctrl/Cmd+S`「保存工程」、`Ctrl/Cmd+Shift+S`「另存为」。
 - 字幕列表的时间码列改为整列响应式布局：宽列表统一单行显示，窄列表统一折成两行；工程没有任何表情包时自动收起空白表情包列。
 - GUI 的常用语言筛选提示同时覆盖单选和多选供应商；启动编辑器服务器期间按钮会显示「启动中」并禁用，转写完成后的橙色引导在悬停时保持高亮。
+- 编辑器「帮助」压缩播放快捷键说明：`J/K/L` 与空格同列，`A/D`、`F` 使用更短的无括号文案。
+- README 改为 Launcher-first 使用流程，补充 Qwen / Soniox 双供应商说明、最新版下载入口并更新 1.1.0 顶部截图。
 
 ### Fixed
 
@@ -48,22 +58,6 @@
 - Soniox 轮询遇到临时网络错误（如跨国 SSL 超时）会立即失败，且 `finally` 误删仍在云端运行的任务；现在轮询对连续网络错误重试（连续 5 次后放弃），且仅在任务成功或进入终态失败时才清理云端记录——本地中断时保留任务并提示 `transcription_id` 供手动清理。
 - Soniox 英文 token 是 sub-word 片段（如 action → "ac"+"tion"、"wrong" → " w"+"r"+"ong,"），1:1 映射导致编辑器拆分时单词被腰斩；现在按实测契约（词首片段带前导空格）用 `merge_word_fragments()` 合并成词级 item 再切句，符合 JSON_SCHEMA 的「英文按词」约定，也顺带消除了切句落在单词中间的情况。CJK 保持逐字。
 - localhost 保存端点断连时不再只显示 `Failed to fetch`：编辑器会明确提示服务器已断开，并允许立即把当前工程另存为 JSON，避免改动丢失。
-
-## [1.1.0] - 2026-07-28
-
-### Added
-
-- 新增 Windows `tkinter + ttk` 图形界面，可选择媒体和输出路径、填写 Qwen Key、查看进度、取消任务并打开输出。
-- 图形界面升级为 GUI v2：加入 `sv-ttk` 暗色主题、模型/地域/语言下拉框、按模型保存 API Key、中文/英文切换、本地编辑器服务器启动器与 EXE 图标。
-- 新增 pywebview + HTML/JS 桌面启动器作为默认 GUI；旧版 tkinter 界面保留为 `--tk` fallback。
-- pywebview 启动器支持媒体拖放、按语音 API 供应商组织设置、API Key 获取入口、折叠的 MAWE 服务器区和转写前内联校验。
-- 新增 PyInstaller `onedir` Windows 构建脚本与 `v*` 标签触发的 GitHub Release 工作流；FFmpeg/ffprobe 继续保持外部依赖。
-- 字幕画面预览支持鼠标拖动、八方向缩放、键盘调整、撤销/重做，以及 localhost 保存和便携 JSON 导出的持久化。
-
-### Changed
-
-- 工程 JSON 新增可选 `preview.subtitle` 归一化几何；旧工程缺少该字段时保持原有字幕位置。
-- Qwen API CLI 新增 `--model` 参数；默认仍使用 `qwen3-asr-flash-filetrans`。
 
 ## [1.0.1] - 2026-07-26
 

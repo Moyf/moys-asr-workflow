@@ -47,6 +47,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("maw.soniox", spec)
         self.assertIn("assets", spec)
         self.assertIn("maw.ico", spec)
+        self.assertIn("show.webp", spec)
         self.assertIn("icon=str(ROOT / 'assets' / 'maw.ico')", spec)
         self.assertIn("COLLECT(", spec)
         self.assertNotIn("onefile=True", spec)
@@ -65,8 +66,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("dist\\MAW\\MAW.exe", script)
         self.assertIn("$ErrorActionPreference = 'Stop'", script)
 
-    def test_release_workflow_is_tag_triggered_and_publishes_zip_checksum_release(self) -> None:
-        """Given a v* tag push, When workflow is read, Then it verifies and releases x64 build."""
+    def test_release_workflow_is_tag_triggered_and_publishes_both_windows_packages(self) -> None:
+        """Given a v* tag push, When workflow is read, Then it releases standard and MAWxFF builds."""
         workflow = read_text(".github/workflows/release-windows.yml")
 
         self.assertRegex(workflow, re.compile(r"on:\s+push:\s+tags:\s+- 'v\*'", re.MULTILINE))
@@ -80,6 +81,13 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("dist\\MAW\\MAW.exe", workflow)
         self.assertIn("Compress-Archive", workflow)
         self.assertIn("Get-FileHash", workflow)
+        self.assertIn("$FfmpegVersion = '8.1.2'", workflow)
+        self.assertIn("ffmpeg-$FfmpegVersion-essentials_build.zip", workflow)
+        self.assertIn("db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec", workflow)
+        self.assertIn("ffmpeg.exe", workflow)
+        self.assertIn("ffprobe.exe", workflow)
+        self.assertNotIn("ffplay.exe", workflow)
+        self.assertIn("MAWxFF-Windows-x64-${{ github.ref_name }}.zip", workflow)
         self.assertIn("actions/upload-artifact@v4", workflow)
         self.assertIn("softprops/action-gh-release@v2", workflow)
         self.assertIn("target_commitish: ${{ github.sha }}", workflow)

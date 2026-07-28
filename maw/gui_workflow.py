@@ -17,6 +17,7 @@ from threading import Event
 from typing import Final, TextIO, final
 
 from maw.gui_config import DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, load_env
+from maw.gui_platform import asset_path
 
 
 @dataclass(frozen=True, slots=True)
@@ -255,7 +256,12 @@ def _read_process_lines(stdout: TextIO | None, lines: queue.Queue[str | None]) -
 def _child_environment(parent: Mapping[str, str], api_key: str, workspace_id: str = "", provider: str = "qwen") -> dict[str, str]:
     env = dict(parent)
     env["PYTHONUNBUFFERED"] = "1"
-    _prepend_ffmpeg_path(env, parent.get("FFMPEG_PATH") or load_env(DEFAULT_ENV_PATH).get("FFMPEG_PATH", ""))
+    configured_path = parent.get("FFMPEG_PATH") or load_env(DEFAULT_ENV_PATH).get("FFMPEG_PATH", "")
+    configured = _prepend_ffmpeg_path(env, configured_path) if configured_path else False
+    if not configured:
+        bundled_directory = _bundled_ffmpeg_directory()
+        if bundled_directory:
+            _prepend_ffmpeg_path(env, str(bundled_directory))
     if provider == "soniox":
         if api_key:
             env["SONIOX_API_KEY"] = api_key
@@ -267,15 +273,28 @@ def _child_environment(parent: Mapping[str, str], api_key: str, workspace_id: st
     return env
 
 
-def _prepend_ffmpeg_path(env: dict[str, str], configured_path: str) -> None:
+def _prepend_ffmpeg_path(env: dict[str, str], configured_path: str) -> bool:
     if not configured_path.strip():
-        return
+        return False
     candidate = Path(configured_path.strip()).expanduser()
     directory = candidate if candidate.is_dir() else candidate.parent
     if not directory.exists():
-        return
+        return False
     old_path = env.get("PATH", "")
     env["PATH"] = str(directory) if not old_path else str(directory) + os.pathsep + old_path
+    return True
+
+
+def _bundled_ffmpeg_directory() -> Path | None:
+    ffmpeg_name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+    ffprobe_name = "ffprobe.exe" if os.name == "nt" else "ffprobe"
+    candidates = [asset_path("ffmpeg/bin")]
+    if getattr(sys, "frozen", False):
+        candidates.insert(0, Path(sys.executable).resolve().parent / "ffmpeg" / "bin")
+    for directory in candidates:
+        if (directory / ffmpeg_name).is_file() and (directory / ffprobe_name).is_file():
+            return directory
+    return None
 
 
 def _terminate(process: subprocess.Popen[str]) -> None:

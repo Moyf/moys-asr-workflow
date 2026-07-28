@@ -1,43 +1,57 @@
 # Moy's ASR Workflow（MAW）
 
-把一个视频或音频交给 Qwen ASR API，得到可编辑的字幕工程、SRT 和浏览器字幕编辑器。
+把一个视频或音频交给 Qwen 或 Soniox 云端 ASR API，得到可编辑的字幕工程、SRT 和浏览器字幕编辑器。
 
-![MAWE 字幕编辑器预览](assets/screenshot.webp)
+![MAWE 字幕编辑器预览](assets/screenshot-v1.1.0.jpg)
 
 **MAW** 是 Moy's ASR Workflow 的简称。  
-这是一个 **最小可用复刻版**：优先让没有 GPU、刚接触命令行的用户跑通完整流程。它支持 Qwen / 阿里云百炼与 Soniox 两家云端 ASR API，不包含本地模型或自动下载模型。
+现在的使用流程已经收束到 **Launcher**：选择本地媒体和 Qwen / Soniox 云端 ASR，生成 SRT + JSON 工程，再进入 MAWE 浏览器编辑器校对和导出。Windows 用户不需要先学命令行，也不需要 GPU；本项目仍然保持轻量，不包含本地模型、其他 ASR 引擎或自动下载模型。
+
+> [!tip]
+> **Windows 用户：[点我下载最新版](https://github.com/Moyf/moys-asr-workflow/releases/latest)**
+>
+> 电脑里已经装好 FFmpeg，就下载体积更小的 `MAW-Windows-x64-v*.zip`；没有安装、或者不知道 FFmpeg 是什么，就下载 `MAWxFF-Windows-x64-v*.zip`。解压后双击 `MAW.exe`，从 Launcher 开始就行。
 
 > 之后会有更完整的 **Moy's Open Subtitle Editor（MOSE）**：不需要懂编程也能直接用的整合工作站！  
 > 这个仓库会保持小而可用，并为将来导入 MOSE 留出工程 JSON 的兼容路径；详见 [docs/MOSE.md](docs/MOSE.md)。
 
 ## 这套工具能做什么
 
-1. 用 Qwen ASR API 把本地视频或音频转为字幕。
+1. 用 Qwen 或 Soniox API 把本地视频或音频转为字幕。
 2. 一次生成 `.srt`、含字级时间戳的 `.json` 工程和单文件 `.edit.html`。
 3. 在浏览器中校正文本、时间、波形、静音空隙和字幕布局。
 4. 导出 SRT、工程 JSON，以及编辑器支持的额外格式。
 
 所有编辑都在本机浏览器完成。  
-转写时，脚本会把待识别媒体直接上传到你配置的阿里云百炼账户；本项目没有自己的服务器、不会代管你的 API Key 或媒体。
+转写时，脚本会把待识别媒体直接上传到你选择的阿里云百炼或 Soniox 账户；本项目没有自己的服务器、不会代管你的 API Key 或媒体。
 
 ## 你需要准备
 
-- Windows 10/11（目前主要在 Windows 上验证）；macOS/Linux 也可尝试。
-- Python 3.11 或更新版本。
-- [uv](https://docs.astral.sh/uv/getting-started/installation/)（推荐）或普通 Python 虚拟环境。
-- [FFmpeg](https://ffmpeg.org/download.html)，并确保 `ffmpeg` 与 `ffprobe` 能在终端直接运行。
-- 一个阿里云百炼 Qwen API Key。申请入口：[获取 API Key](https://help.aliyun.com/zh/model-studio/get-api-key)。
+- 至少一个云端 ASR API Key：可以用[阿里云百炼 Qwen](https://help.aliyun.com/zh/model-studio/get-api-key)，也可以用支持说话人分离的 [Soniox](https://console.soniox.com)。
+- Windows 图形版：Windows 10/11；下载 `MAWxFF` 不需要另外安装 FFmpeg，下载普通版则需要系统里已经有 `ffmpeg` 和 `ffprobe`。
+- 从源码或命令行运行：Python 3.11 或更新版本、[uv](https://docs.astral.sh/uv/getting-started/installation/)（推荐），以及 [FFmpeg](https://ffmpeg.org/download.html)。macOS/Linux 也可尝试。
 
-## 最快上手（推荐）
+## 最快上手：从 Launcher 开始
 
 ### Windows 图形界面
 
-从 GitHub Releases 下载 `MAW-Windows-x64-v*.zip`，解压后双击 `MAW.exe`。默认会打开基于 pywebview 的桌面启动器：选择媒体与 SRT 输出位置，确认模型、地域、语言和可选时长上限，填写 Qwen API Key，即可在窗口中生成 SRT、JSON 工程和便携编辑器 HTML。需要复用 Key 时，可点“保存到 .env”；密钥只保存在本机 `.env`，不会写入工程文件或日志。
+[点我下载最新版](https://github.com/Moyf/moys-asr-workflow/releases/latest)，根据电脑情况选一个：
+
+- `MAWxFF-Windows-x64-v*.zip`：已经捆绑 MAW 会用到的 `ffmpeg.exe` 和 `ffprobe.exe`；没有 FFmpeg、或者不知道它是什么，下载这个。
+- `MAW-Windows-x64-v*.zip`：体积更小；适合已经安装 FFmpeg，并且终端能直接运行 `ffmpeg` / `ffprobe` 的用户。
+
+两个版本的 MAW 功能完全一样。解压后双击 `MAW.exe`，Launcher 会带你完成这条流程：
+
+```text
+选择供应商和媒体 -> 生成 SRT + JSON 工程 -> 打开 MAWE 校对 -> 保存或导出
+```
+
+在 Launcher 里选择 Qwen 或 Soniox、媒体与 SRT 输出位置，确认模型、语言和可选时长上限，填写对应的 API Key，即可生成 SRT、JSON 工程和便携编辑器 HTML。需要复用 Key 时，可点“存入本地环境”；密钥只保存在本机 `.env`，不会写入工程文件或日志。
 
 GUI 还可以直接选择工程 JSON 并启动 `http://127.0.0.1` 本地编辑器服务器；中英文界面可在右上角切换。
-启动器支持从资源管理器拖入音视频文件来自动填充媒体路径，并按供应商（Qwen / Soniox）组织模型、地域、语言和 API Key 获取入口；选择 Soniox 时可在「高级选项」中开启「给不同说话人分配颜色」。
+启动器支持从资源管理器拖入音视频文件来自动填充媒体路径，并按供应商（Qwen / Soniox）组织模型、地域、语言和 API Key 获取入口；选择 Soniox 时可在「高级选项」中开启「给不同说话人分配字幕颜色」。
 
-图形版仍要求系统能找到 `ffmpeg` 和 `ffprobe`；本项目不会捆绑或自动安装它们。程序无法检测媒体时，请安装 FFmpeg 并把它的 `bin` 目录加入 PATH，然后重新打开 MAW。
+普通版仍要求系统能找到 `ffmpeg` 和 `ffprobe`。如果 Launcher 提示未检测到 FFmpeg，可以换用 `MAWxFF` 版；也可以自行安装 FFmpeg，把它的 `bin` 目录加入 PATH 后重新打开 MAW。
 
 也可以从源码启动同一界面：
 
@@ -66,15 +80,18 @@ uv sync
 Copy-Item .env.example .env
 ```
 
-打开新建的 `.env`，填入这一行：
+打开新建的 `.env`，按你准备使用的供应商至少填一个 Key：
 
 ```ini
 DASHSCOPE_API_KEY=sk-替换成你的真实密钥
+SONIOX_API_KEY=替换成你的 Soniox Key
 ```
 
 > [!tip]
 > [如何获取 QwenASR 的 API](https://help.aliyun.com/zh/model-studio/get-api-key)  
 > （不含广告，用 QwenASR 只是因为我测试下来它中文转录表现最好）
+
+如果你更在意多语言或说话人分离，可以直接用 [Soniox Console](https://console.soniox.com) 申请 Key；两个 Key 不需要同时配置。
 
 
 <details>
@@ -112,7 +129,7 @@ uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" -ll 2m --jso
 
 如果不使用 uv，请看 [docs/WORKFLOW.md](docs/WORKFLOW.md) 的普通 Python 安装方式。
 
-## 可选：Soniox STT（第二供应商，支持说话人）
+## Soniox STT（第二供应商，支持说话人）
 
 除 Qwen 外，也可以用 [Soniox](https://soniox.com) 的异步 STT API 转写：
 
@@ -178,15 +195,16 @@ uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.json"
 
 ## 关于 API
 
-- 这是 **API-first** 工具，不含模型下载和本地 Qwen 推理。
+- 这是 **API-first** 工具，不含模型下载和本地推理引擎。
 - API Key 仅读取自环境变量或本机 `.env`；`.env` 已被 Git 忽略，绝不要提交、截图或发给别人。
-- 每次转写会使用你的 Key 调用阿里云百炼服务，文件大小与保留政策以官方当前说明为准：[Qwen ASR 文档](https://help.aliyun.com/zh/model-studio/qwen-asr-api-reference)。
-- 当前 API 端点面向 `qwen3-asr-flash-filetrans`，支持北京与新加坡地域；配置项说明在 `.env.example`。
+- 每次转写会使用你的 Key 调用所选供应商；文件大小、数据保留与账户政策请分别查看 [Qwen ASR 文档](https://help.aliyun.com/zh/model-studio/qwen-asr-api-reference) 或 [Soniox 文档](https://soniox.com/docs)。
+- Qwen 使用 `qwen3-asr-flash-filetrans`，支持北京与新加坡地域；Soniox 使用异步文件转写 API，并可选说话人分离。配置项说明都在 `.env.example`。
 
 ### 费用
 
-- 本项目本身是开源项目，可免费使用；为了省事儿和兼容性，默认调用阿里云的 Qwen API。
+- 本项目本身是开源项目，可免费使用；默认供应商仍是阿里云 Qwen，也可以在 GUI 或命令行里改用 Soniox。
 - 阿里云 Qwen ASR 注册后免费赠送 10 小时转录时间，超出额度后按 `0.792 元/小时` 计费，详见 [价格文档](https://help.aliyun.com/zh/model-studio/model-pricing#dbf1305ef4a69)。
+- Soniox 异步文件转写约 `$0.10/小时`，适合需要说话人分离、多语言或小语种的素材，详见 [Soniox Pricing](https://soniox.com/pricing)。
 - 如果你有不错的配置，也可以自己本地部署开源的 [QwenASR](https://github.com/QwenLM/Qwen3-ASR) 本地转录，不产生云端费用，只需要一点电费。
 
 😭*我说我只有一台 AMD 显卡的台式机和一台 Mac Mini 所以跑不了本地模型有懂的吗*  

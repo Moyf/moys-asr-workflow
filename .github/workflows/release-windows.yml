@@ -81,7 +81,7 @@ jobs:
             Stop-Process -Id $GuiProcess.Id -Force
           }
 
-      - name: Create release archive and checksum
+      - name: Create standard release archive
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -91,13 +91,66 @@ jobs:
           $Hash = Get-FileHash -Algorithm SHA256 -LiteralPath $Archive
           "$($Hash.Hash)  $Archive" | Set-Content -LiteralPath "$Archive.sha256" -Encoding ascii
 
-      - name: Upload build artifact
+      - name: Create FFmpeg-bundled release archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $FfmpegVersion = '8.1.2'
+          $FfmpegCommit = '38b88335f9'
+          $FfmpegArchive = "build\ffmpeg-$FfmpegVersion-essentials_build.zip"
+          $FfmpegUrl = "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-$FfmpegVersion-essentials_build.zip"
+          $ExpectedHash = 'db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec'
+          New-Item -ItemType Directory -Path 'build\ffmpeg-package' -Force | Out-Null
+          Invoke-WebRequest -Uri $FfmpegUrl -OutFile $FfmpegArchive
+          $ActualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $FfmpegArchive).Hash.ToLowerInvariant()
+          if ($ActualHash -ne $ExpectedHash) {
+            throw "FFmpeg archive checksum mismatch: expected $ExpectedHash, got $ActualHash."
+          }
+          Expand-Archive -LiteralPath $FfmpegArchive -DestinationPath 'build\ffmpeg-package' -Force
+
+          Copy-Item -LiteralPath 'dist\MAW' -Destination 'dist\MAWxFF' -Recurse
+          New-Item -ItemType Directory -Path 'dist\MAWxFF\ffmpeg\bin' -Force | Out-Null
+          $FfmpegExe = Get-ChildItem -LiteralPath 'build\ffmpeg-package' -Filter 'ffmpeg.exe' -File -Recurse | Select-Object -First 1
+          $FfprobeExe = Get-ChildItem -LiteralPath 'build\ffmpeg-package' -Filter 'ffprobe.exe' -File -Recurse | Select-Object -First 1
+          if (-not $FfmpegExe -or -not $FfprobeExe) {
+            throw 'The downloaded FFmpeg package did not contain ffmpeg.exe and ffprobe.exe.'
+          }
+          Copy-Item -LiteralPath $FfmpegExe.FullName -Destination 'dist\MAWxFF\ffmpeg\bin\ffmpeg.exe'
+          Copy-Item -LiteralPath $FfprobeExe.FullName -Destination 'dist\MAWxFF\ffmpeg\bin\ffprobe.exe'
+
+          $License = Get-ChildItem -LiteralPath 'build\ffmpeg-package' -Filter 'LICENSE' -File -Recurse | Select-Object -First 1
+          $Readme = Get-ChildItem -LiteralPath 'build\ffmpeg-package' -Filter 'README.txt' -File -Recurse | Select-Object -First 1
+          if (-not $License -or -not $Readme) {
+            throw 'The downloaded FFmpeg package did not contain its license and README.'
+          }
+          Copy-Item -LiteralPath $License.FullName -Destination 'dist\MAWxFF\ffmpeg\LICENSE.txt'
+          Copy-Item -LiteralPath $Readme.FullName -Destination 'dist\MAWxFF\ffmpeg\README.txt'
+          @(
+            "FFmpeg $FfmpegVersion Essentials build for Windows x64"
+            "Build provider: https://www.gyan.dev/ffmpeg/builds/"
+            "Original binary archive: $FfmpegUrl"
+            "Archive SHA-256: $ExpectedHash"
+            "Corresponding FFmpeg source commit: https://github.com/FFmpeg/FFmpeg/commit/$FfmpegCommit"
+            "FFmpeg source archive: https://github.com/FFmpeg/FFmpeg/archive/$FfmpegCommit.tar.gz"
+            'This MAWxFF package includes only ffmpeg.exe and ffprobe.exe from the original build.'
+            'See LICENSE.txt and README.txt in this directory for license and build configuration details.'
+          ) | Set-Content -LiteralPath 'dist\MAWxFF\ffmpeg\SOURCE.txt' -Encoding utf8
+
+          $Version = '${{ github.ref_name }}'
+          $Archive = "MAWxFF-Windows-x64-$Version.zip"
+          Compress-Archive -LiteralPath 'dist\MAWxFF' -DestinationPath $Archive -Force
+          $Hash = Get-FileHash -Algorithm SHA256 -LiteralPath $Archive
+          "$($Hash.Hash)  $Archive" | Set-Content -LiteralPath "$Archive.sha256" -Encoding ascii
+
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: MAW-Windows-x64-${{ github.ref_name }}
           path: |
             MAW-Windows-x64-${{ github.ref_name }}.zip
             MAW-Windows-x64-${{ github.ref_name }}.zip.sha256
+            MAWxFF-Windows-x64-${{ github.ref_name }}.zip
+            MAWxFF-Windows-x64-${{ github.ref_name }}.zip.sha256
           if-no-files-found: error
 
       - name: Create GitHub Release
@@ -106,6 +159,15 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           target_commitish: ${{ github.sha }}
+          body: |
+            ## 下载哪个？
+
+            - **不知道 FFmpeg 是什么，或者电脑里没有装：**下载 `MAWxFF-Windows-x64-${{ github.ref_name }}.zip`。它已经带上 MAW 所需的 `ffmpeg.exe` 和 `ffprobe.exe`，解压后直接双击 `MAW.exe`。
+            - **已经装好 FFmpeg，并且 `ffmpeg` / `ffprobe` 在 PATH 里：**下载体积更小的 `MAW-Windows-x64-${{ github.ref_name }}.zip`。
+
+            两个版本的 MAW 功能完全一致；区别只有是否捆绑 FFmpeg。`.sha256` 文件可用于校验下载完整性。
           files: |
             MAW-Windows-x64-${{ github.ref_name }}.zip
             MAW-Windows-x64-${{ github.ref_name }}.zip.sha256
+            MAWxFF-Windows-x64-${{ github.ref_name }}.zip
+            MAWxFF-Windows-x64-${{ github.ref_name }}.zip.sha256

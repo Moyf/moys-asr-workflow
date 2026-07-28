@@ -21,7 +21,7 @@ from typing import Final, final
 
 from maw.gui_config import DEFAULT_ENV_PATH, LANGUAGES, MODELS, PROVIDERS, REGIONS, ProviderConfig, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, startupinfo
-from maw.gui_workflow import TranscriptionRequest, TranscriptionResult, build_serve_command, default_srt_path, run_transcription
+from maw.gui_workflow import TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, build_serve_command, default_srt_path, run_transcription
 
 
 OPEN_DIALOG = 10
@@ -228,6 +228,7 @@ class LauncherApi:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             text=True,
+            env=_child_environment(os.environ, "", provider=""),
             cwd=str(self.paths.root),
             startupinfo=startupinfo(),
             creationflags=creationflags(),
@@ -537,7 +538,7 @@ def _check_ffmpeg(env_path: Path, override: str = "") -> dict[str, object]:
     ffprobe_path = shutil.which("ffprobe")
     configured_value = override or os.environ.get("FFMPEG_PATH", "") or effective_config_value(env_path, "FFMPEG_PATH")
     configured_dir = _ffmpeg_directory(configured_value)
-    if configured_value and configured_dir is None:
+    if override and configured_dir is None:
         return {"ok": True, "found": False, "ffmpeg": "", "ffprobe": "", "directory": ""}
     if configured_dir:
         ffmpeg_candidate = configured_dir / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
@@ -545,6 +546,11 @@ def _check_ffmpeg(env_path: Path, override: str = "") -> dict[str, object]:
         if ffmpeg_candidate.exists() and ffprobe_candidate.exists():
             ffmpeg_path = str(ffmpeg_candidate)
             ffprobe_path = str(ffprobe_candidate)
+    if not (ffmpeg_path and ffprobe_path):
+        bundled_dir = _bundled_ffmpeg_directory()
+        if bundled_dir:
+            ffmpeg_path = str(bundled_dir / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg"))
+            ffprobe_path = str(bundled_dir / ("ffprobe.exe" if os.name == "nt" else "ffprobe"))
     found = bool(ffmpeg_path and ffprobe_path)
     directory = str(Path(ffmpeg_path).parent) if ffmpeg_path else ""
     return {"ok": True, "found": found, "ffmpeg": ffmpeg_path or "", "ffprobe": ffprobe_path or "", "directory": directory}

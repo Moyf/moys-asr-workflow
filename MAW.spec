@@ -14,6 +14,7 @@ datas = [
     (str(ROOT / "THIRD_PARTY_NOTICES.md"), "."),
     (str(ROOT / "blank-editor.html"), "."),
     (str(ROOT / "assets" / "maw.ico"), "assets"),
+    (str(ROOT / "assets" / "show.webp"), "assets"),
 ]
 datas += collect_data_files("sv_ttk")
 

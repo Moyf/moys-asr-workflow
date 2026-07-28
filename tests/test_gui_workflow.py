@@ -150,6 +150,32 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertEqual(env["PATH"].split(os.pathsep)[0], str(ffmpeg_dir))
 
+    def test_child_environment_uses_bundled_ffmpeg_when_no_path_is_configured(self) -> None:
+        ffmpeg_dir = self.root / "ffmpeg" / "bin"
+        ffmpeg_dir.mkdir(parents=True)
+        (ffmpeg_dir / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).write_bytes(b"exe")
+        (ffmpeg_dir / ("ffprobe.exe" if os.name == "nt" else "ffprobe")).write_bytes(b"exe")
+
+        with mock.patch("maw.gui_workflow.asset_path", return_value=ffmpeg_dir):
+            with mock.patch("maw.gui_workflow.load_env", return_value={}):
+                env = _child_environment({"PATH": "C:\\Windows"}, "", "")
+
+        self.assertEqual(env["PATH"].split(os.pathsep)[0], str(ffmpeg_dir))
+
+    def test_child_environment_uses_release_root_ffmpeg_in_frozen_mode(self) -> None:
+        app_root = self.root / "MAWxFF"
+        ffmpeg_dir = app_root / "ffmpeg" / "bin"
+        ffmpeg_dir.mkdir(parents=True)
+        (ffmpeg_dir / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).write_bytes(b"exe")
+        (ffmpeg_dir / ("ffprobe.exe" if os.name == "nt" else "ffprobe")).write_bytes(b"exe")
+
+        with mock.patch("maw.gui_workflow.sys.frozen", True, create=True):
+            with mock.patch("maw.gui_workflow.sys.executable", str(app_root / "MAW.exe")):
+                with mock.patch("maw.gui_workflow.load_env", return_value={}):
+                    env = _child_environment({"PATH": "C:\\Windows"}, "", "")
+
+        self.assertEqual(env["PATH"].split(os.pathsep)[0], str(ffmpeg_dir))
+
     def test_run_transcription_reports_child_pid_after_popen(self) -> None:
         request = TranscriptionRequest(media_path=self.media_path, srt_path=self.srt_path)
         self.srt_path.write_text("1\n", encoding="utf-8")
