@@ -64,9 +64,9 @@
       <div id="advancedCard" class="sub-accordion collapsed">
         <button id="advancedToggle" class="accordion-header" type="button"><span class="chevron">▸</span><span data-i18n="advanced">高级选项</span></button>
         <div class="collapse-body">
-          <div class="grid-two">
+          <div id="advancedOptionsGrid" class="grid-two">
             <div class="advanced-col">
-              <div class="field"><label for="model" data-i18n="model">模型</label><select id="model"></select></div>
+              <div id="modelField" class="field"><label for="model" data-i18n="model">模型</label><select id="model"></select></div>
               <div id="regionField" class="field"><label for="region" data-i18n="region">地域</label><select id="region"></select></div>
               <div id="workspaceField" class="field hidden">
                 <label for="workspaceId" data-i18n="workspace">工作空间 ID</label>
@@ -74,13 +74,13 @@
                 <p class="hint" data-i18n="workspace_hint">新加坡地域需要填写 Workspace ID。</p>
                 <p id="workspaceIdError" class="field-error"></p>
               </div>
-              <div class="field"><label for="lengthLimit" data-i18n="length_limit">时长上限</label><input id="lengthLimit" type="text" placeholder="2m / 30s / 1h" autocomplete="off"><p id="testRunHint" class="hint hidden" data-i18n="test_run_override">测试运行已限定前 2 分钟</p></div>
+              <div id="lengthLimitField" class="field"><label for="lengthLimit" data-i18n="length_limit">时长上限</label><input id="lengthLimit" type="text" placeholder="2m / 30s / 1h" autocomplete="off"><p id="testRunHint" class="hint hidden" data-i18n="test_run_override">测试运行已限定前 2 分钟</p></div>
             </div>
-            <div class="field">
+            <div id="languageField" class="field">
               <label for="language" data-i18n="language">语言</label>
               <select id="language"></select>
               <div class="lang-actions"><button id="languageReset" class="ghost small hidden" type="button" data-i18n="language_reset">重置（自动识别）</button></div>
-              <p id="languageHint" class="hint hidden" data-i18n="language_multi_hint">可多选；不选即自动识别（仅偏向，不限制）；默认仅显示常用语言，其余可在「配置 → 显示小语种」开启。</p>
+              <p id="languageHint" class="hint hidden" data-i18n="language_multi_hint">可多选；不选即自动识别（仅偏向，不限制）；默认仅显示常用语言，其余可在「配置 → 显示相对小众的语言」开启。</p>
             </div>
           </div>
           <div id="speakerColorsField" class="field hidden">
@@ -166,9 +166,9 @@
         <h3 data-i18n="settings_language">语言</h3>
         <label class="check-field" for="showRareLangs">
           <input id="showRareLangs" type="checkbox">
-          <span data-i18n="show_rare_langs">显示小语种</span>
+          <span data-i18n="show_rare_langs">显示相对小众的语言</span>
         </label>
-        <p class="hint" data-i18n="show_rare_langs_hint">开启后，「语言」列表显示供应商支持的全部语种；关闭时只显示常用语言。</p>
+        <p class="hint" data-i18n="show_rare_langs_hint">开启后，「语言」列表显示供应商支持的全部语种；关闭时只显示 8 种常用语言。</p>
       </div>
       <div class="settings-section">
         <h3 data-i18n="settings_stickers">默认表情包路径</h3>

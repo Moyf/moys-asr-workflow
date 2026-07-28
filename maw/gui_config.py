@@ -34,7 +34,7 @@ class ProviderConfig:
     supports_speaker: bool = False
     multi_language: bool = False
     # 常用语言代码；为空表示不过滤（全部视为常用）。
-    # 多语言供应商开启「显示小语种」前，GUI 只展示这些 + 已选中的。
+    # 开启「显示相对小众的语言」前，GUI 只展示这些。
     common_languages: tuple[str, ...] = ()
 
 
@@ -92,6 +92,12 @@ LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
     ("no", "挪威语 / Norwegian"),
     ("pl", "波兰语 / Polish"),
     ("sv", "瑞典语 / Swedish"),
+)
+
+# 关闭「显示相对小众的语言」时，两家供应商统一保留这 8 种常用语言。
+# Qwen 的空代码（自动识别）也始终显示。
+QWEN_COMMON_LANGUAGES: Final[tuple[str, ...]] = (
+    "", "zh", "en", "ja", "ko", "fr", "de", "es", "ru",
 )
 
 # Soniox 官方文档：language_hints 是列表（可多选，仅偏向不限制），
@@ -160,10 +166,9 @@ SONIOX_LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
     ("cy", "威尔士语 / Welsh"),
 )
 
-# Soniox 60 种里的常用语言（GUI 默认只显示这些；「显示小语种」开关打开后显示全部）
+# Soniox 60 种里的常用语言（GUI 默认只显示这些；开关打开后显示全部）
 SONIOX_COMMON_LANGUAGES: Final[tuple[str, ...]] = (
-    "zh", "en", "ja", "ko", "fr", "de", "es", "ru", "pt", "ar",
-    "hi", "id", "th", "vi", "it", "tr", "uk", "ms", "nl", "pl",
+    "zh", "en", "ja", "ko", "fr", "de", "es", "ru",
 )
 
 PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
@@ -174,6 +179,7 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         models=QWEN_MODELS,
         regions=REGIONS,
         languages=LANGUAGES,
+        common_languages=QWEN_COMMON_LANGUAGES,
     ),
     ProviderConfig(
         id="soniox",

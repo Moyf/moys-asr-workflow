@@ -27,3 +27,12 @@ select[multiple]{appearance:auto;height:auto;max-height:180px;overflow-y:auto;pa
 select[multiple] option{padding:3px 4px;border-radius:4px}
 
 .lang-actions{display:flex;justify-content:flex-start}
+
+/* 单选语言使用常规两列混合布局；多选语言保留独立的右侧长列表。 */
+.grid-two.single-language .advanced-col{display:contents}
+.grid-two.single-language .field{margin-top:0}
+.grid-two.single-language #modelField{order:1}
+.grid-two.single-language #languageField{order:2}
+.grid-two.single-language #regionField{order:3}
+.grid-two.single-language #workspaceField{order:4}
+.grid-two.single-language #lengthLimitField{order:5}

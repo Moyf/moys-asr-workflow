@@ -156,19 +156,25 @@ class GuiConfigTests(unittest.TestCase):
         for expected in ("en", "ja", "ko", "cy", "ur", "sw"):
             self.assertIn(expected, codes)
 
-    def test_soniox_common_languages_is_subset_and_qwen_unfiltered(self) -> None:
-        """Given rare languages hidden by default, When common set read, Then it is a sensible subset; Qwen has no filter."""
+    def test_provider_common_languages_are_sensible_subsets_under_ten(self) -> None:
+        """Given less common languages are hidden, When common sets read, Then both providers expose 8 languages."""
+        qwen = gui_config.provider_by_id("qwen")
         soniox = gui_config.provider_by_id("soniox")
-        codes = {code for code, _label in soniox.languages}
 
-        self.assertTrue(soniox.common_languages)
-        self.assertTrue(set(soniox.common_languages).issubset(codes))
-        self.assertLess(len(soniox.common_languages), len(soniox.languages))
-        for expected in ("zh", "en", "ja", "ko"):
-            self.assertIn(expected, soniox.common_languages)
-        for rare in ("cy", "ur", "sw"):
-            self.assertNotIn(rare, soniox.common_languages)
-        self.assertEqual(gui_config.provider_by_id("qwen").common_languages, ())
+        for provider in (qwen, soniox):
+            codes = {code for code, _label in provider.languages}
+            common_codes = set(provider.common_languages) - {""}
+            self.assertEqual(len(common_codes), 8)
+            self.assertTrue(set(provider.common_languages).issubset(codes))
+            self.assertLess(len(provider.common_languages), len(provider.languages))
+            for expected in ("zh", "en", "ja", "ko"):
+                self.assertIn(expected, provider.common_languages)
+
+        self.assertIn("", qwen.common_languages)
+        for less_common in ("da", "fil", "is", "sv"):
+            self.assertNotIn(less_common, qwen.common_languages)
+        for less_common in ("da", "cy", "ur", "sw"):
+            self.assertNotIn(less_common, soniox.common_languages)
 
     def test_effective_config_parses_show_rare_langs_toggle(self) -> None:
         """Given the rare-language toggle in .env, When resolved, Then it becomes a boolean flag."""
