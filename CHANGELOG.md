@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-07-28
+
 ### Added
 
 - 新增 Soniox STT 供应商（`generate_subtitle_soniox_api.py`）：异步文件转写、token 级毫秒时间戳、自动语言识别；转写完成后自动清理云端文件与转写记录。
