@@ -154,99 +154,6 @@ class WordFragmentMergeTests(unittest.TestCase):
         self.assertEqual(segments[0]["text"], "The editing process.")
 
 
-class WesternSplitTests(unittest.TestCase):
-    def _words(self, pairs):
-        return [{"text": t, "start": s, "end": e} for t, s, e in pairs]
-
-    def test_western_splits_complete_sentences_like_real_data(self) -> None:
-        # 真实语料（merge 后）：旧逻辑输出 "The editing process. Now" + ", don't get me wrong,"
-        items = self._words([
-            ("The", 3870, 3930), (" editing", 4050, 4350), (" process.", 4470, 4950),
-            (" Now,", 5130, 5370), (" don't", 5550, 5670), (" get", 5730, 5790),
-            (" me", 5910, 5970), (" wrong,", 6030, 6270), (" I", 6390, 6450),
-            (" really", 6510, 6810), (" enjoy", 6870, 7170), (" it.", 7230, 7530),
-        ])
-
-        segments = soniox.split_words_to_segments_western(items, gap_split_ms=1500)
-
-        self.assertEqual(len(segments), 2)
-        self.assertEqual(segments[0]["text"], "The editing process.")
-        self.assertEqual(segments[1]["text"], " Now, don't get me wrong, I really enjoy it.")
-        self.assertEqual(segments[0]["items"][-1]["text"], " process.")
-
-    def test_western_merges_short_sentences(self) -> None:
-        items = self._words([
-            (" I", 0, 100), (" said", 100, 200), (" so.", 200, 300),
-            (" Yes.", 400, 500),
-            (" And", 600, 700), (" then", 700, 800), (" we", 800, 900), (" went", 900, 1000), (" home.", 1000, 1100),
-            (" Ok.", 1200, 1300),
-        ])
-
-        segments = soniox.split_words_to_segments_western(items, gap_split_ms=1500)
-
-        # " Yes."（1 词）并入前句；末尾 " Ok."（1 词）并入前句
-        self.assertEqual([s["text"] for s in segments],
-                         [" I said so. Yes.", " And then we went home. Ok."])
-
-    def test_western_overflow_prefers_weak_punct_cut(self) -> None:
-        words = [f" w{i}" for i in range(16)]
-        words[7] = " w7,"
-        items = self._words([(w, i * 100, i * 100 + 90) for i, w in enumerate(words)])
-
-        segments = soniox.split_words_to_segments_western(items, max_words=13, gap_split_ms=99999)
-
-        self.assertEqual(len(segments[0]["items"]), 8)  # 在第 8 词的逗号处断
-        self.assertTrue(segments[0]["text"].rstrip().endswith(","))
-
-    def test_western_overflow_hard_cut_without_weak_punct(self) -> None:
-        items = self._words([(f" w{i}", i * 100, i * 100 + 90) for i in range(15)])
-
-        segments = soniox.split_words_to_segments_western(items, max_words=13, gap_split_ms=99999)
-
-        self.assertEqual(len(segments[0]["items"]), 13)
-        self.assertEqual(len(segments[1]["items"]), 2)
-
-    def test_western_sentence_end_tolerates_trailing_quote(self) -> None:
-        items = self._words([
-            (" He", 0, 100), (" said", 100, 200), (' "stop."', 200, 300),
-            (" Next", 400, 500), (" one", 500, 600), (" comes.", 600, 700),
-        ])
-
-        segments = soniox.split_words_to_segments_western(items, gap_split_ms=1500)
-
-        self.assertEqual(segments[0]["text"], ' He said "stop."')
-        self.assertEqual(segments[1]["text"], " Next one comes.")
-
-    def test_cjk_dominant_detection(self) -> None:
-        self.assertTrue(soniox._is_cjk_dominant(self._words([("今", 0, 1), ("天", 1, 2)])))
-        self.assertFalse(soniox._is_cjk_dominant(self._words([(" hello", 0, 1), (" world", 1, 2)])))
-        self.assertTrue(soniox._is_cjk_dominant(self._words([
-            ("今", 0, 1), ("天", 1, 2), ("是", 2, 3), (" Monday", 3, 4),
-        ])))
-
-    def test_build_segments_western_run_validates(self) -> None:
-        tokens = [
-            _token("The", 3870, 3930, speaker="1"),
-            _token(" edit", 4050, 4110, speaker="1"),
-            _token("ing", 4290, 4350, speaker="1"),
-            _token(" process", 4470, 4530, speaker="1"),
-            _token(".", 4890, 4950, speaker="1"),
-            _token(" Now", 5130, 5190, speaker="1"),
-            _token(",", 5310, 5370, speaker="1"),
-            _token(" don", 5550, 5610, speaker="1"),
-            _token("'t", 5610, 5670, speaker="1"),
-        ]
-        items = soniox.tokens_to_items(soniox.merge_word_fragments(tokens))
-        segments = soniox.build_segments(items, max_len=21, min_len=5, gap_split_ms=1500)
-
-        result = validate_project({"segments": segments})
-        self.assertTrue(result.ok, msg=str([e.to_json() for e in result.errors]))
-        # 尾部 " Now, don't" 只有 2 词（< min_words 3），按设计并入前一句
-        self.assertEqual(len(segments), 1)
-        self.assertEqual(segments[0]["text"], "The editing process. Now, don't")
-        self.assertEqual(segments[0]["speaker"], "1")
-
-
 class SpeakerSplitTests(unittest.TestCase):
     def test_split_items_by_speaker_hard_splits_on_change(self) -> None:
         items = [
@@ -325,6 +232,28 @@ class BuildSegmentsTests(unittest.TestCase):
         )
 
         self.assertNotIn("speaker", segments[0])
+
+    def test_build_segments_western_run_validates(self) -> None:
+        tokens = [
+            _token("The", 3870, 3930, speaker="1"),
+            _token(" edit", 4050, 4110, speaker="1"),
+            _token("ing", 4290, 4350, speaker="1"),
+            _token(" process", 4470, 4530, speaker="1"),
+            _token(".", 4890, 4950, speaker="1"),
+            _token(" Now", 5130, 5190, speaker="1"),
+            _token(",", 5310, 5370, speaker="1"),
+            _token(" don", 5550, 5610, speaker="1"),
+            _token("'t", 5610, 5670, speaker="1"),
+        ]
+        items = soniox.tokens_to_items(soniox.merge_word_fragments(tokens))
+        segments = soniox.build_segments(items, max_len=21, min_len=5, gap_split_ms=1500)
+
+        result = validate_project({"segments": segments})
+        self.assertTrue(result.ok, msg=str([e.to_json() for e in result.errors]))
+        # 尾部 " Now, don't" 只有 2 词（< min_words 3），按设计并入前一句
+        self.assertEqual(len(segments), 1)
+        self.assertEqual(segments[0]["text"], "The editing process. Now, don't")
+        self.assertEqual(segments[0]["speaker"], "1")
 
 
 class SpeakerColorTests(unittest.TestCase):

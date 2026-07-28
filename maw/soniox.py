@@ -30,7 +30,12 @@ from pathlib import Path
 import requests
 from requests.exceptions import RequestException
 
-from generate_subtitle_qwen_api import split_by_silence, split_words_to_segments
+from generate_subtitle_qwen_api import (
+    WESTERN_MAX_WORDS,
+    WESTERN_MIN_WORDS,
+    is_cjk_char,
+    split_segments_auto,
+)
 
 BASE_URL = "https://api.soniox.com"
 DEFAULT_MODEL = "stt-async-v5"
@@ -246,18 +251,6 @@ def delete_transcription(base_url: str, api_key: str, transcription_id: str, *,
 
 # ===== tokens → MAW 工程映射 =====
 
-def _is_cjk_char(char: str) -> bool:
-    code = ord(char)
-    return (
-        0x3000 <= code <= 0x303F    # CJK 标点
-        or 0x3040 <= code <= 0x30FF  # 日文假名
-        or 0x3400 <= code <= 0x4DBF  # CJK 扩展 A
-        or 0x4E00 <= code <= 0x9FFF  # CJK 统一表意文字
-        or 0xF900 <= code <= 0xFAFF  # CJK 兼容表意
-        or 0xFF00 <= code <= 0xFFEF  # 全角字符
-    )
-
-
 def merge_word_fragments(tokens: list[dict]) -> list[dict]:
     """把 Soniox 的 sub-word 片段合并成「英文按词」的 token 序列。
 
@@ -278,7 +271,7 @@ def merge_word_fragments(tokens: list[dict]) -> list[dict]:
             bool(merged)
             and not text[0].isspace()
             and bool(stripped)
-            and not _is_cjk_char(stripped[0])
+            and not is_cjk_char(stripped[0])
         )
         if continuation:
             prev = merged[-1]
@@ -337,115 +330,22 @@ def split_items_by_speaker(items: list[dict]) -> list[list[dict]]:
     return runs
 
 
-# ===== 空格分词语言（英文等）切句 =====
-
-# 默认按词数计量：英文每条字幕 3–13 词（Netflix 风格上限约 14 词）
-WESTERN_MAX_WORDS = 13
-WESTERN_MIN_WORDS = 3
-
-# 句末强标点（完整句子边界）与弱标点（超长时的断点），兼容 CJK 全角
-WESTERN_STRONG_END = ".!?。！？；"
-WESTERN_WEAK_END = ",;:，、：,;—–"
-# 判定时剥掉的尾部引号/括号（如 word." 仍视为句号结尾）
-_TRAILING_QUOTES = "\"'”’)]}』」"
-
-
-def _ends_with_punct(text: str, punct: str) -> bool:
-    stripped = text.rstrip().rstrip(_TRAILING_QUOTES)
-    return bool(stripped) and stripped[-1] in punct
-
-
-def _split_long_western(group: list[dict], max_words: int) -> list[list[dict]]:
-    """超过 max_words 词的组：优先在 max_words 内最后一个弱标点处断开，
-    没有弱标点则按 max_words 硬切。"""
-    if len(group) <= max_words:
-        return [group]
-    cut = None
-    for i in range(1, min(max_words, len(group) - 1) + 1):
-        if _ends_with_punct(group[i - 1]["text"], WESTERN_WEAK_END):
-            cut = i
-    if cut is None:
-        cut = max_words
-    return [group[:cut]] + _split_long_western(group[cut:], max_words)
-
-
-def split_words_to_segments_western(items: list[dict], max_words: int = WESTERN_MAX_WORDS,
-                                    min_words: int = WESTERN_MIN_WORDS,
-                                    gap_split_ms: int = 1000) -> list[dict]:
-    """空格分词语言（英文等）的切句：尽量保住完整句子。
-
-    0. 按静音间隔（>= gap_split_ms）预切
-    1. 按句末强标点（. ! ? 及全角）切出完整句子
-    2. 合并过短句子（< min_words 词），避免单词成条
-    3. 超长句子（> max_words 词）优先按弱标点断，兜底硬切
-    """
-    def to_seg(group: list[dict]) -> dict:
-        return {
-            "start": group[0]["start"],
-            "end": group[-1]["end"],
-            "text": "".join(it["text"] for it in group),
-            "items": [dict(it) for it in group],
-        }
-
-    final: list[list[dict]] = []
-    for sg in split_by_silence(items, gap_split_ms):
-        raw_groups: list[list[dict]] = []
-        buf: list[dict] = []
-        for it in sg:
-            buf.append(it)
-            if _ends_with_punct(it["text"], WESTERN_STRONG_END):
-                raw_groups.append(buf)
-                buf = []
-        if buf:
-            raw_groups.append(buf)
-
-        merged: list[list[dict]] = []
-        for grp in raw_groups:
-            if merged and len(grp) < min_words:
-                merged[-1].extend(grp)
-            else:
-                merged.append(list(grp))
-        if len(merged) >= 2 and len(merged[-1]) < min_words:
-            merged[-2].extend(merged.pop())
-
-        for grp in merged:
-            final.extend(_split_long_western(grp, max_words))
-
-    return [to_seg(g) for g in final if g]
-
-
-def _is_cjk_dominant(items: list[dict]) -> bool:
-    """run 内 CJK item 占比 >= 50% 判定为中文主导（走中文切句逻辑）。"""
-    if not items:
-        return True
-    cjk = sum(
-        1 for it in items
-        if any(_is_cjk_char(c) for c in it["text"] if not c.isspace())
-    )
-    return cjk * 2 >= len(items)
-
-
 def build_segments(items: list[dict], *, max_len: int, min_len: int,
                    gap_split_ms: int,
                    max_words: int = WESTERN_MAX_WORDS,
                    min_words: int = WESTERN_MIN_WORDS) -> list[dict]:
-    """speaker run 内按主导文字双轨切句。
+    """speaker run 内切句（split_segments_auto 按静音组自动选择 CJK/英文逻辑）。
 
-    CJK 主导：复用与 Qwen 版一致的静音/全角标点/字数切句；
-    空格语言主导：按词数与 .!?,;: 切出完整句子（split_words_to_segments_western）。
     每个 segment 的 speaker 来自其 run（run 内统一，满足
     「segment 所有带语音 items 同一 speaker 才写入」的契约）。
     """
     segments: list[dict] = []
     for run in split_items_by_speaker(items):
         run_speaker = next((it["speaker"] for it in run if it.get("speaker")), None)
-        if _is_cjk_dominant(run):
-            run_segments = split_words_to_segments(run, max_len, min_len, gap_split_ms)
-        else:
-            run_segments = split_words_to_segments_western(
-                run, max_words, min_words, gap_split_ms
-            )
-        for seg in run_segments:
+        for seg in split_segments_auto(
+            run, max_len=max_len, min_len=min_len, gap_split_ms=gap_split_ms,
+            max_words=max_words, min_words=min_words,
+        ):
             if run_speaker is not None:
                 seg["speaker"] = run_speaker
             segments.append(seg)
