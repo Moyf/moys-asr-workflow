@@ -43,7 +43,7 @@ Batch 1 已验证场景（localhost 与便携 HTML 均通过真实波形交互�
 | 优先级 | 项目 | 已确认范围 | 状态 | 验收重点 |
 | --- | --- | --- | --- | --- |
 | 高 | 统一工程契约 | 严格校验整数毫秒、时序、items、head/ref，并让 CLI、供应商、GUI 共用生成核心 | 已确认 | Qwen 输出不回归；非法工程有明确错误 |
-| 高 | Soniox 接入 | 异步文件转写、token 时间戳、可选说话人；不含实时 WebSocket 与未定义翻译流程 | 已确认 | 模拟完整生命周期；有凭据时做真实 smoke test |
+| 高 | Soniox 接入 | 异步文件转写、token 时间戳、可选说话人；不含实时 WebSocket 与未定义翻译流程 | 开发中 | 模拟完整生命周期；有凭据时做真实 smoke test |
 | 低 | 本地 Qwen 示例 | 独立示例和独立依赖说明；不进入基础安装和 GUI | 已确认 | 基础 `uv sync` 不安装 GPU/模型依赖 |
 | 高 | GUI 工程生成器 | `tkinter + ttk` 薄控制器，复用统一生成核心；长任务不阻塞界面；不保存或显示完整 Key | 已确认 | 缺媒体、Key、FFmpeg、写入失败和取消均可恢复 |
 | 低 | Win + Mac 打包管线 | GitHub Actions 原生矩阵分别构建 Windows x64、macOS Intel、macOS Apple Silicon；CI 只上传工件 | 已确认 | PyInstaller 不跨平台编译；三个工件在对应系统启动 |
@@ -85,6 +85,7 @@ Batch 1 已验证场景（localhost 与便携 HTML 均通过真实波形交互�
 - `segments[*].speaker`：可选非空字符串；只有该段所有带语音的 items 都是同一 speaker 时才写入。
 - 缺少 speaker 的旧工程和供应商输出继续有效。
 - 说话人不会自动分配颜色；颜色仍由用户控制，避免供应商 ID 变化破坏人工标注。
+- 2026-07-28 修订：Soniox CLI 的 `--speaker-colors` 是用户显式开启的**生成期一次性快照**——把 speaker 按首次出现顺序写入普通 color head/ref 字段（5 色调色板循环），之后用户可自由修改；编辑器仍不做 speaker ↔ 颜色的动态绑定，原决策的精神不变。
 
 ## Final Cut 自动验收决策
 
@@ -112,6 +113,7 @@ Batch 1 已验证场景（localhost 与便携 HTML 均通过真实波形交互�
 | 2026-07-27 | 实施顺序 | 已确认 | 编辑器体验优先；删除 bug 的失败回归测试与修复作为首个用户可见交付 |
 | 2026-07-27 | 正式计划 | 评审通过 | Metis 缺口分析完成；Momus 与独立 Oracle 最终均无条件 `OKAY` |
 | 2026-07-27 | 波形工具（Batch 1） | 已确认 → 开发中 → 待验收 | 删除身份错位根因：`deleteSegments` 在 splice 后调用 `clearSelection()`→`setCurrentCuePanelIndex(-1)`→`commitCuePanelEdit()`，将旧面板文本写入 splice 后新占据该索引的段。最小修复：splice 前提交面板编辑并重置 `currentCuePanelIdx`。Del 键 + 波形 Ctrl/Shift 多选最小命令面。5 项 Playwright 回归场景（首/中/尾删除含虚拟滚动 + 多选删除 + 全删拒绝）在 localhost 与便携 HTML 双模式各通过 3 次重复。便携模式通过真实 file-input/modal 流加载 JSON+WAV 后波形交互可用。证据：`.omo/evidence/maw-1-1-batch-1/` |
+| 2026-07-28 | Soniox 接入 | 已确认 → 开发中 | 外部调研确认数据契约（token 级 start_ms/end_ms + token 级 speaker + token 级 language， Files API 直传，5 小时上限，文件不自动删除需清理）。已实现 `maw/soniox.py`（REST 客户端 + tokens→工程映射 + speaker→5 色快照）与 `generate_subtitle_soniox_api.py` CLI（`--speaker`/`--speaker-colors`），24 项合成夹具 unittest 通过（映射/硬切段/颜色快照/validate_project/轮询防御）。待真实凭据 smoke test 验证中文 token 粒度与 speaker 字段实测形态。 |
 
 ## 更新规则
 

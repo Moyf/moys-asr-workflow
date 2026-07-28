@@ -5,7 +5,7 @@
 ![MAWE 字幕编辑器预览](assets/screenshot.webp)
 
 **MAW** 是 Moy's ASR Workflow 的简称。  
-这是一个 **最小可用复刻版**：优先让没有 GPU、刚接触命令行的用户跑通完整流程。它目前只支持 Qwen / 阿里云百炼的云端 API，不包含本地模型、其他 ASR 引擎或自动下载模型。
+这是一个 **最小可用复刻版**：优先让没有 GPU、刚接触命令行的用户跑通完整流程。它支持 Qwen / 阿里云百炼与 Soniox 两家云端 ASR API，不包含本地模型或自动下载模型。
 
 > 之后会有更完整的 **Moy's Open Subtitle Editor（MOSE）**：不需要懂编程也能直接用的整合工作站！  
 > 这个仓库会保持小而可用，并为将来导入 MOSE 留出工程 JSON 的兼容路径；详见 [docs/MOSE.md](docs/MOSE.md)。
@@ -105,6 +105,36 @@ uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" -ll 2m --jso
 
 如果不使用 uv，请看 [docs/WORKFLOW.md](docs/WORKFLOW.md) 的普通 Python 安装方式。
 
+## 可选：Soniox STT（第二供应商，支持说话人）
+
+除 Qwen 外，也可以用 [Soniox](https://soniox.com) 的异步 STT API 转写：
+
+- token 级毫秒时间戳（粒度是 word/sub-word，中文不保证逐字）
+- 可选说话人分离（token 级 speaker 标签，单次任务最多 15 人）
+- 60+ 语言与自动语言识别，适合多语言/小语种素材
+- 约 $0.10/小时按量计费；2025-10 起新注册 API 不再赠送免费额度
+- 单文件最长 5 小时；转写完成后脚本自动清理云端文件与转写记录
+
+在 `.env` 填入 `SONIOX_API_KEY`（[console.soniox.com](https://console.soniox.com) 申请），然后：
+
+```powershell
+uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" --json
+```
+
+开启说话人分离，speaker 标签写入工程 JSON（不改变字幕颜色）：
+
+```powershell
+uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" --speaker --json
+```
+
+在说话人基础上，把不同说话人一次性映射成 5 种字幕颜色：
+
+```powershell
+uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" --speaker-colors --json
+```
+
+颜色写入的是普通 `color` 字段，之后可在编辑器里自由修改；说话人超过 5 个时颜色循环复用并给出警告。`--language zh,en` 可提供语言提示。
+
 ## MAWE — Moy's ASR Workflow Editor
 
 MAWE 是 MAW 自带的字幕编辑器。  
@@ -156,7 +186,7 @@ uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.json"
 
 ## 项目边界
 
-本仓库刻意不包含：本地模型与 GPU 依赖、其他 ASR 引擎、模型对比工具、剪辑软件脚本、样例媒体、缓存、个人表情包和任何密钥。
+本仓库刻意不包含：本地模型与 GPU 依赖、除 Qwen 与 Soniox 之外的 ASR 引擎、模型对比工具、剪辑软件脚本、样例媒体、缓存、个人表情包和任何密钥。
 
 如果你准备修改或维护它，请先读 [AGENTS.md](AGENTS.md)。第三方组件说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 

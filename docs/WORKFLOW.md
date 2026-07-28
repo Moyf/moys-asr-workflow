@@ -72,6 +72,26 @@ uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" -ll 2m --jso
 
 输入视频会先由 FFmpeg 提取单声道 16kHz WAV；音频输入也会通过 FFprobe 获取时长。没有 FFmpeg/FFprobe 时，这一步无法完成。
 
+## 用 Soniox 转写（可选，支持说话人）
+
+在 `.env` 填入 `SONIOX_API_KEY`（[console.soniox.com](https://console.soniox.com) 申请）后：
+
+```powershell
+uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" -ll 2m --json
+```
+
+常用可选项：
+
+```text
+--speaker            开启说话人分离，speaker 标签写入工程 JSON（不改变字幕颜色）
+--speaker-colors     在 --speaker 基础上，把不同说话人一次性映射成 5 种字幕颜色
+--language zh,en     语言提示，逗号分隔；默认自动识别
+```
+
+颜色写入的是普通 `color` 字段，之后可在编辑器里自由修改；说话人超过 5 个时颜色循环复用并给出警告。
+
+输出文件与 Qwen 流程相同（SRT / JSON / edit.html），文件命名标签为 `.soniox.`。注意：Soniox 单文件最长 5 小时；token 粒度是 word/sub-word，中文不保证逐字；转写完成后脚本会自动删除云端文件与转写记录。
+
 ## 3. 理解三个输出文件
 
 | File | Use it for | Keep it? |
