@@ -473,9 +473,9 @@ def _gui_lang(payload: Mapping[str, object]) -> str:
 
 def _port(payload: Mapping[str, object]) -> int:
     try:
-        value = int(str(payload.get("port") or "8765"))
+        value = int(str(payload.get("port") or "8250"))
     except ValueError:
-        return 8765
+        return 8250
     return min(65535, max(1, value))
 
 

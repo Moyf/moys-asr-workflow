@@ -15,7 +15,7 @@ from typing import final
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.gui_web import EventPump, LauncherApi, LauncherPaths, _request_from_payload, _route_dropped_path  # noqa: E402
+from maw.gui_web import EventPump, LauncherApi, LauncherPaths, _port, _request_from_payload, _route_dropped_path  # noqa: E402
 from maw.gui_workflow import TranscriptionRequest, TranscriptionResult  # noqa: E402
 
 
@@ -493,6 +493,20 @@ class GuiWebBridgeTests(unittest.TestCase):
 
 @final
 class LauncherAssetContractTests(unittest.TestCase):
+    def test_sticker_picker_saves_immediately_without_a_separate_button(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertNotIn('id="saveStickerDir"', page)
+        self.assertIn('if (result.ok) await saveStickerDirectory(result.path);', script)
+
+    def test_default_editor_port_is_8250(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+
+        self.assertEqual(_port({}), 8250)
+        self.assertEqual(_port({"port": "invalid"}), 8250)
+        self.assertIn('id="port" type="number" min="1" max="65535" value="8250"', page)
+
     def test_language_filter_hint_is_available_to_single_language_providers(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
@@ -500,6 +514,14 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="languageFilterHint"', page)
         self.assertIn('language_filter_hint: "默认仅显示常用语言', script)
         self.assertIn('$("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0);', script)
+
+    def test_launcher_section_titles_share_emoji_numbering_and_size(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        for expected in ("1️⃣ 媒体与输出", "2️⃣ 识别设置", "3️⃣ 日志", "4️⃣ 字幕编辑器设置"):
+            self.assertIn(expected, page)
+        self.assertIn(".card h2{margin:0 0 12px;color:var(--text-secondary);font-size:16px;", stylesheet)
 
     def test_server_start_button_exposes_disabled_starting_state(self) -> None:
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")

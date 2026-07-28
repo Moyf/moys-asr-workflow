@@ -151,7 +151,7 @@ MAWE 是 MAW 自带的字幕编辑器。
 uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.json"
 ```
 
-浏览器会自动打开 `http://127.0.0.1:8765`。MAWE 右上角可切换中文 / English；编辑完成后点“保存工程”或按 `Ctrl+S`，覆盖前会留下同目录 `.json.bak` 备份；`Ctrl+Shift+S` 为另存为。按 `Ctrl+C` 停止服务。
+浏览器会自动打开 `http://127.0.0.1:8250`。MAWE 右上角可切换中文 / English；编辑完成后点“保存工程”或按 `Ctrl+S`，覆盖前会留下同目录 `.json.bak` 备份；`Ctrl+Shift+S` 为另存为。按 `Ctrl+C` 停止服务。
 
 > [!important]
 > 也可以直接双击转写生成的 `.edit.html`，或双击仓库里的 `blank-editor.html` 后用“打开工程”同时选择 JSON 和媒体。  

@@ -22,7 +22,7 @@
     </header>
 
     <section id="mediaCard" class="card drop-card" aria-labelledby="mediaTitle">
-      <h2 id="mediaTitle" data-i18n="media_output">① 媒体与输出</h2>
+      <h2 id="mediaTitle" data-i18n="media_output">1️⃣ 媒体与输出</h2>
       <div id="dropZone" class="drop-zone" data-i18n="drop_hint">拖入音频/视频文件，或点击选择。</div>
       <div class="field">
         <label for="mediaPath" data-i18n="media">媒体文件</label>
@@ -40,7 +40,7 @@
     </section>
 
     <section class="card" aria-labelledby="settingsTitle">
-      <h2 id="settingsTitle" data-i18n="recognition">② 识别设置</h2>
+      <h2 id="settingsTitle" data-i18n="recognition">2️⃣ 识别设置</h2>
       <div class="provider-row">
         <div class="field provider-field">
           <label for="provider" data-i18n="provider">语音 API 供应商</label>
@@ -81,7 +81,7 @@
               <select id="language"></select>
               <div class="lang-actions"><button id="languageReset" class="ghost small hidden" type="button" data-i18n="language_reset">重置（自动识别）</button></div>
               <p id="languageHint" class="hint hidden" data-i18n="language_multi_hint">可多选；不选即自动识别（仅偏向，不限制）。</p>
-              <p id="languageFilterHint" class="hint hidden" data-i18n="language_filter_hint">默认仅显示常用语言，其余可在「配置 → 显示相对小众的语言」开启。</p>
+              <p id="languageFilterHint" class="hint hidden" data-i18n="language_filter_hint">默认仅显示常用语言，其余可在「配置」中开启。</p>
             </div>
           </div>
           <div id="speakerColorsField" class="field hidden">
@@ -96,13 +96,13 @@
     </section>
 
     <section class="card" aria-labelledby="logTitle">
-      <h2 id="logTitle" data-i18n="logs">③ 日志</h2>
+      <h2 id="logTitle" data-i18n="logs">3️⃣ 日志</h2>
       <div id="progress" class="progress hidden" aria-hidden="true"><span></span></div>
       <pre id="log" class="log" aria-live="polite"></pre>
     </section>
 
     <section id="serverCard" class="card collapsed" aria-labelledby="serverTitle">
-      <button id="serverExpand" class="accordion-header card-accordion" type="button"><span class="chevron">▸</span><span id="serverTitle" data-i18n="server">④ 编辑器服务器</span></button>
+      <button id="serverExpand" class="accordion-header card-accordion" type="button"><span class="chevron">▸</span><span id="serverTitle" data-i18n="server">4️⃣ 字幕编辑器设置</span></button>
       <div id="serverBody" class="collapse-body">
         <div class="field">
           <label for="jsonPath" data-i18n="json_project">工程 JSON</label>
@@ -121,7 +121,7 @@
           <p class="hint warn" data-i18n="server_media_missing">工程未记录媒体，或文件已移动，请手动选择。</p>
           <p id="serverMediaPathError" class="field-error"></p>
         </div>
-        <div class="field compact"><label for="port" data-i18n="port">端口</label><input id="port" type="number" min="1" max="65535" value="8765"><p id="portError" class="field-error"></p></div>
+        <div class="field compact"><label for="port" data-i18n="port">端口</label><input id="port" type="number" min="1" max="65535" value="8250"><p id="portError" class="field-error"></p></div>
       </div>
     </section>
 
@@ -180,7 +180,6 @@
           <div class="path-row">
             <input id="stickerDir" type="text" autocomplete="off">
             <button id="pickStickerDir" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
-            <button id="saveStickerDir" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
           </div>
           <p id="stickerDirError" class="field-error"></p>
         </div>

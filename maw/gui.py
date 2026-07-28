@@ -51,7 +51,7 @@ class GuiApp:
         self.api_key_var = tk.StringVar(value=config.api_key)
         self.length_var = tk.StringVar()
         self.json_var = tk.StringVar()
-        self.port_var = tk.StringVar(value="8765")
+        self.port_var = tk.StringVar(value="8250")
         self.status_var = tk.StringVar(value=self._t("ready"))
         self.api_status_var = tk.StringVar(value=self._key_status(config.api_key))
         self.i18n_widgets: dict[str, tk.Widget] = {}
