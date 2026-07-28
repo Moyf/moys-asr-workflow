@@ -1,5 +1,6 @@
 # pyright: reportImplicitOverride=false, reportPrivateUsage=false, reportUnannotatedClassAttribute=false, reportUninitializedInstanceVariable=false, reportUnusedCallResult=false, reportUnusedParameter=false
 
+import json
 import os
 import subprocess
 import sys
@@ -20,6 +21,7 @@ from maw.gui_workflow import (  # noqa: E402
     build_output_paths,
     build_transcribe_command,
     _child_environment,
+    render_editor_html,
     run_transcription,
 )
 
@@ -80,6 +82,7 @@ class GuiWorkflowTests(unittest.TestCase):
             srt_path=self.srt_path,
             api_key="secret-key",
             workspace_id="workspace-123",
+            ui_language="en",
         )
         self.srt_path.write_text("1\n", encoding="utf-8")
         self.srt_path.with_suffix(".json").write_text('{"segments": []}\n', encoding="utf-8")
@@ -96,7 +99,10 @@ class GuiWorkflowTests(unittest.TestCase):
                 return 0
 
         with mock.patch("maw.gui_workflow.subprocess.Popen", return_value=FakeProcess()) as popen:
-            with mock.patch("maw.gui_workflow.render_editor_html", return_value=self.srt_path.with_suffix(".edit.html")):
+            with mock.patch(
+                "maw.gui_workflow.render_editor_html",
+                return_value=self.srt_path.with_suffix(".edit.html"),
+            ) as render_html:
                 result = run_transcription(request, on_event=events.append)
 
         kwargs = popen.call_args.kwargs
@@ -107,6 +113,24 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(result.srt_path, self.srt_path)
         self.assertEqual(result.json_path, self.srt_path.with_suffix(".json"))
         self.assertEqual(result.html_path, self.srt_path.with_suffix(".edit.html"))
+        render_html.assert_called_once_with(
+            self.srt_path.with_suffix(".json"),
+            self.media_path,
+            self.srt_path.with_suffix(".edit.html"),
+            "en",
+        )
+
+    def test_render_editor_html_embeds_requested_gui_language(self) -> None:
+        json_path = self.srt_path.with_suffix(".json")
+        html_path = self.srt_path.with_suffix(".edit.html")
+        json_path.write_text(json.dumps({"segments": []}), encoding="utf-8")
+
+        result = render_editor_html(json_path, self.media_path, html_path, "en")
+
+        self.assertEqual(result, html_path)
+        page = html_path.read_text(encoding="utf-8")
+        self.assertIn('const GENERATED_LANGUAGE = typeof "en"', page)
+        self.assertNotIn("__UI_LANGUAGE_JSON__", page)
 
     def test_child_environment_forces_unbuffered_python_stdout(self) -> None:
         env = _child_environment({"PYTHONUNBUFFERED": "0"}, "secret-key", "workspace-123")

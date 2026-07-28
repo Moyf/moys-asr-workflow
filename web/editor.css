@@ -494,6 +494,7 @@
   .cues-container {
     flex: 1 1 auto; overflow-y: auto;
     position: relative;
+    container: cue-list / inline-size;
     background: var(--bg-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
     padding: 4px;
   }
@@ -529,8 +530,24 @@
   }
   .cue .time {
     font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); user-select: none;
-    min-width: 66px; max-width: 130px; padding-top: 1px; flex: 0 8 auto;
+    display: grid; grid-template-columns: max-content max-content max-content;
+    grid-template-areas: "start arrow end"; column-gap: .55ch; align-items: start;
+    width: 24ch; padding-top: 1px; flex: 0 0 24ch;
     font-variant-numeric: tabular-nums;
+  }
+  .cue .time-start { grid-area: start; }
+  .cue .time-arrow { grid-area: arrow; }
+  .cue .time-end { grid-area: end; }
+  .cue .time-start, .cue .time-arrow, .cue .time-end { white-space: nowrap; }
+  /* 列表变窄时，所有行同时切到同一个两行时间码列，避免逐行 flex 收缩造成错位。 */
+  @container cue-list (max-width: 700px) {
+    .cue .time {
+      grid-template-columns: max-content max-content;
+      grid-template-areas:
+        "start arrow"
+        "end end";
+      width: 11ch; flex-basis: 11ch;
+    }
   }
   .cue .sticker-slot {
     flex: 0 1 80px; min-width: 40px; max-width: 100px;

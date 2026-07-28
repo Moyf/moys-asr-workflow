@@ -78,6 +78,19 @@ test('English locale covers the editor shell and recent-project setting stays fi
   expect(await page.evaluate(() => localStorage.getItem('mawe.language'))).toBe('zh');
 });
 
+test('GUI launch language overrides the saved editor language once and persists it', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => localStorage.setItem('mawe.language', 'zh'));
+  await page.goto(`${server.url}?lang=en`);
+
+  await expect(page.locator('#save-project')).toHaveText('Save project');
+  expect(await page.evaluate(() => localStorage.getItem('mawe.language'))).toBe('en');
+  expect(new URL(page.url()).searchParams.has('lang')).toBe(false);
+
+  await page.reload();
+  await expect(page.locator('#save-project')).toHaveText('Save project');
+});
+
 test('Ctrl+S saves and Ctrl+Shift+S invokes save as', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
   await page.goto(server.url);

@@ -236,8 +236,9 @@ class LauncherApi:
         if not _wait_for_server(url, timeout=5.0):
             _ = self.stop_server()
             return _error_result("port", "server_no_response", url)
-        webbrowser.open(url)
-        return {"ok": True, "url": url}
+        launch_url = f"{url}?lang={_gui_lang(payload)}"
+        webbrowser.open(launch_url)
+        return {"ok": True, "url": launch_url}
 
     def check_server_media(self, payload: Mapping[str, object]) -> dict[str, object]:
         json_text = str(payload.get("jsonPath") or "").strip()
@@ -431,6 +432,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         workspace_id=workspace_id,
         provider=provider.id,
         speaker_colors=bool(payload.get("speakerColors")) and provider.supports_speaker,
+        ui_language=_gui_lang(payload),
     )
 
 

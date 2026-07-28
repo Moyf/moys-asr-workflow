@@ -4,6 +4,7 @@
   const STORAGE_KEY = 'mawe.language';
   const ZH = 'zh';
   const EN = 'en';
+  const GENERATED_LANGUAGE = typeof __UI_LANGUAGE_JSON__ === 'undefined' ? null : __UI_LANGUAGE_JSON__;
 
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
@@ -205,7 +206,37 @@
     return String(value || '').toLowerCase().startsWith('en') ? EN : ZH;
   }
 
+  function persistLanguage(nextLanguage) {
+    try { global.localStorage?.setItem(STORAGE_KEY, nextLanguage); } catch (_) {}
+  }
+
+  function languageFromLaunchUrl() {
+    try {
+      const location = global.location;
+      if (!location?.href) return null;
+      const url = new URL(location.href);
+      const requested = url.searchParams.get('lang');
+      if (requested !== ZH && requested !== EN) return null;
+      url.searchParams.delete('lang');
+      if (global.history?.replaceState && /^https?:$/.test(url.protocol)) {
+        global.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+      }
+      return requested;
+    } catch (_) {
+      return null;
+    }
+  }
+
   function readLanguage() {
+    const launched = languageFromLaunchUrl();
+    if (launched) {
+      persistLanguage(launched);
+      return launched;
+    }
+    if (GENERATED_LANGUAGE === ZH || GENERATED_LANGUAGE === EN) {
+      persistLanguage(GENERATED_LANGUAGE);
+      return GENERATED_LANGUAGE;
+    }
     try {
       return normalizeLanguage(global.localStorage?.getItem(STORAGE_KEY) || ZH);
     } catch (_) {
@@ -320,7 +351,7 @@
   function applyLanguage(nextLanguage, persist = true) {
     language = normalizeLanguage(nextLanguage);
     if (persist) {
-      try { global.localStorage?.setItem(STORAGE_KEY, language); } catch (_) {}
+      persistLanguage(language);
     }
     document.documentElement.lang = language === EN ? 'en' : 'zh-CN';
     translateTree(document.body);

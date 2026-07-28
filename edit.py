@@ -148,6 +148,7 @@ def render_editor_page(**context: str) -> str:
         "__STICKER_ROOT_JSON__": context["sticker_root_json"],
         "__STICKER_URL_PREFIX_JSON__": context.get("sticker_url_prefix_json", '""'),
         "__SERVER_CONFIG_JSON__": context.get("server_config_json", "null"),
+        "__UI_LANGUAGE_JSON__": context.get("ui_language_json", "null"),
         "__GENERATED_AT__": context["generated_at"],
         "__JSON_DISPLAY__": context["json_display"],
         "__JSON_NAME_CLASS__": context["json_name_class"],

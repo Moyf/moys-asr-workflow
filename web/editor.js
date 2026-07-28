@@ -392,7 +392,12 @@ function applyCueListDisplaySettings() {
   cueListShowCharcountToggle.checked = EDITOR_SETTINGS.cueListShowCharcount;
   container.classList.toggle('hide-cue-index', !EDITOR_SETTINGS.cueListShowIndex);
   container.classList.toggle('hide-cue-time', !EDITOR_SETTINGS.cueListShowTime);
-  container.classList.toggle('hide-cue-sticker', !EDITOR_SETTINGS.cueListShowSticker);
+  // 设置保留用户的显示偏好；当前工程完全没有表情包时，整列仍自动收起，
+  // 以后分配首个表情包会在下一次 renderAll() 中自动恢复。
+  const projectHasStickers = DATA.segments.some(segment => segment.sticker || segment.sticker_ref);
+  container.classList.toggle('hide-cue-sticker',
+    !EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
+  );
   container.classList.toggle('hide-cue-charcount', !EDITOR_SETTINGS.cueListShowCharcount);
 }
 
@@ -1001,6 +1006,7 @@ function renderAll() {
     container.appendChild(emptyState);
   }
   DATA.segments.forEach((seg, i) => container.appendChild(buildCueEl(seg, i)));
+  applyCueListDisplaySettings();
   totalCountEl.textContent = DATA.segments.length;
   applySearch(searchEl.value);
   // 重新应用选中样式（idx 不变时还有效；如果有 splice 改了顺序就先 clearSelection）
@@ -1262,7 +1268,16 @@ function buildCueEl(seg, idx) {
 
   const timeEl = document.createElement('span');
   timeEl.className = 'time';
-  timeEl.textContent = `${fmtShort(seg.start)} → ${fmtShort(seg.end)}`;
+  const timeStartEl = document.createElement('span');
+  timeStartEl.className = 'time-start';
+  timeStartEl.textContent = fmtShort(seg.start);
+  const timeArrowEl = document.createElement('span');
+  timeArrowEl.className = 'time-arrow';
+  timeArrowEl.textContent = '→';
+  const timeEndEl = document.createElement('span');
+  timeEndEl.className = 'time-end';
+  timeEndEl.textContent = fmtShort(seg.end);
+  timeEl.append(timeStartEl, timeArrowEl, timeEndEl);
 
   // 表情包槽位
   const slotEl = document.createElement('span');

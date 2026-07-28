@@ -36,3 +36,11 @@ select[multiple] option{padding:3px 4px;border-radius:4px}
 .grid-two.single-language #regionField{order:3}
 .grid-two.single-language #workspaceField{order:4}
 .grid-two.single-language #lengthLimitField{order:5}
+
+/* 转写完成后的橙色引导在 hover 时继续保持同一视觉语义。 */
+.ghost.attention:hover:not(:disabled){
+  border-color:var(--amber-hover);
+  background:rgba(212,154,74,.24);
+  color:#f0bc70;
+  box-shadow:0 0 0 2px var(--amber-soft)
+}

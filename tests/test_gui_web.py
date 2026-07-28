@@ -125,16 +125,21 @@ class GuiWebBridgeTests(unittest.TestCase):
         with mock.patch("maw.gui_web.subprocess.Popen", return_value=FakeProcess()) as popen:
             with mock.patch("maw.gui_web._wait_for_server", return_value=True) as wait_for_server:
                 with mock.patch("maw.gui_web.webbrowser.open") as open_browser:
-                    result = self.api.start_server({"jsonPath": str(project), "mediaPath": str(media), "port": "9876"})
+                    result = self.api.start_server({
+                        "jsonPath": str(project),
+                        "mediaPath": str(media),
+                        "port": "9876",
+                        "guiLang": "en",
+                    })
 
         command = popen.call_args.args[0]
         self.assertIn("serve.py", command[1])
         self.assertEqual(command[2], str(project))
         self.assertEqual(command[command.index("-m") + 1], str(media))
         self.assertEqual(command[command.index("--port") + 1], "9876")
-        self.assertEqual(result["url"], "http://127.0.0.1:9876/")
+        self.assertEqual(result["url"], "http://127.0.0.1:9876/?lang=en")
         wait_for_server.assert_called_once_with("http://127.0.0.1:9876/", timeout=5.0)
-        open_browser.assert_called_once_with("http://127.0.0.1:9876/")
+        open_browser.assert_called_once_with("http://127.0.0.1:9876/?lang=en")
 
     def test_start_server_reports_failure_when_port_never_responds(self) -> None:
         """Given child starts but port stays closed, When starting server, Then browser is not opened."""
@@ -414,9 +419,11 @@ class GuiWebBridgeTests(unittest.TestCase):
             "region": "beijing",
             "lengthLimit": "30m",
             "testRun": True,
+            "guiLang": "en",
         }, self.env_path)
 
         self.assertEqual(request.length_limit, "2m")
+        self.assertEqual(request.ui_language, "en")
 
     def test_request_from_payload_without_test_run_uses_manual_length_limit(self) -> None:
         media = self.root / "clip.mp3"
@@ -482,6 +489,32 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(media, {"type": "dropMedia", "path": r"D:\Videos\clip.MP4"})
         self.assertEqual(project, {"type": "dropJson", "path": r"D:\Videos\clip.json"})
         self.assertEqual(rejected, {"type": "dropReject", "path": r"D:\Videos\clip.txt"})
+
+
+@final
+class LauncherAssetContractTests(unittest.TestCase):
+    def test_language_filter_hint_is_available_to_single_language_providers(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="languageFilterHint"', page)
+        self.assertIn('language_filter_hint: "默认仅显示常用语言', script)
+        self.assertIn('$("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0);', script)
+
+    def test_server_start_button_exposes_disabled_starting_state(self) -> None:
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertIn('const SERVER_STARTING_TEXT = { zh: "启动中……", en: "Starting…" };', script)
+        self.assertIn("button.disabled = state.serverStarting;", script)
+        self.assertIn("state.serverStarting = true;", script)
+        self.assertIn("state.serverStarting = false;", script)
+        self.assertIn("guiLang: state.lang", script)
+
+    def test_attention_button_keeps_amber_hover_style(self) -> None:
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        self.assertIn(".ghost.attention:hover:not(:disabled)", stylesheet)
+        self.assertIn("border-color:var(--amber-hover)", stylesheet)
 
 
 if __name__ == "__main__":

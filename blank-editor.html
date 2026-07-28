@@ -501,6 +501,7 @@
   .cues-container {
     flex: 1 1 auto; overflow-y: auto;
     position: relative;
+    container: cue-list / inline-size;
     background: var(--bg-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
     padding: 4px;
   }
@@ -536,8 +537,24 @@
   }
   .cue .time {
     font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); user-select: none;
-    min-width: 66px; max-width: 130px; padding-top: 1px; flex: 0 8 auto;
+    display: grid; grid-template-columns: max-content max-content max-content;
+    grid-template-areas: "start arrow end"; column-gap: .55ch; align-items: start;
+    width: 24ch; padding-top: 1px; flex: 0 0 24ch;
     font-variant-numeric: tabular-nums;
+  }
+  .cue .time-start { grid-area: start; }
+  .cue .time-arrow { grid-area: arrow; }
+  .cue .time-end { grid-area: end; }
+  .cue .time-start, .cue .time-arrow, .cue .time-end { white-space: nowrap; }
+  /* 列表变窄时，所有行同时切到同一个两行时间码列，避免逐行 flex 收缩造成错位。 */
+  @container cue-list (max-width: 700px) {
+    .cue .time {
+      grid-template-columns: max-content max-content;
+      grid-template-areas:
+        "start arrow"
+        "end end";
+      width: 11ch; flex-basis: 11ch;
+    }
   }
   .cue .sticker-slot {
     flex: 0 1 80px; min-width: 40px; max-width: 100px;
@@ -1704,7 +1721,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-07-28 17:51</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-07-28 18:25</span>
   <span class="json-name empty" id="json-name" title="点击复制 JSON 文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -2829,6 +2846,7 @@
   const STORAGE_KEY = 'mawe.language';
   const ZH = 'zh';
   const EN = 'en';
+  const GENERATED_LANGUAGE = typeof null === 'undefined' ? null : null;
 
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
@@ -3030,7 +3048,37 @@
     return String(value || '').toLowerCase().startsWith('en') ? EN : ZH;
   }
 
+  function persistLanguage(nextLanguage) {
+    try { global.localStorage?.setItem(STORAGE_KEY, nextLanguage); } catch (_) {}
+  }
+
+  function languageFromLaunchUrl() {
+    try {
+      const location = global.location;
+      if (!location?.href) return null;
+      const url = new URL(location.href);
+      const requested = url.searchParams.get('lang');
+      if (requested !== ZH && requested !== EN) return null;
+      url.searchParams.delete('lang');
+      if (global.history?.replaceState && /^https?:$/.test(url.protocol)) {
+        global.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+      }
+      return requested;
+    } catch (_) {
+      return null;
+    }
+  }
+
   function readLanguage() {
+    const launched = languageFromLaunchUrl();
+    if (launched) {
+      persistLanguage(launched);
+      return launched;
+    }
+    if (GENERATED_LANGUAGE === ZH || GENERATED_LANGUAGE === EN) {
+      persistLanguage(GENERATED_LANGUAGE);
+      return GENERATED_LANGUAGE;
+    }
     try {
       return normalizeLanguage(global.localStorage?.getItem(STORAGE_KEY) || ZH);
     } catch (_) {
@@ -3145,7 +3193,7 @@
   function applyLanguage(nextLanguage, persist = true) {
     language = normalizeLanguage(nextLanguage);
     if (persist) {
-      try { global.localStorage?.setItem(STORAGE_KEY, language); } catch (_) {}
+      persistLanguage(language);
     }
     document.documentElement.lang = language === EN ? 'en' : 'zh-CN';
     translateTree(document.body);
@@ -6200,7 +6248,12 @@ function applyCueListDisplaySettings() {
   cueListShowCharcountToggle.checked = EDITOR_SETTINGS.cueListShowCharcount;
   container.classList.toggle('hide-cue-index', !EDITOR_SETTINGS.cueListShowIndex);
   container.classList.toggle('hide-cue-time', !EDITOR_SETTINGS.cueListShowTime);
-  container.classList.toggle('hide-cue-sticker', !EDITOR_SETTINGS.cueListShowSticker);
+  // 设置保留用户的显示偏好；当前工程完全没有表情包时，整列仍自动收起，
+  // 以后分配首个表情包会在下一次 renderAll() 中自动恢复。
+  const projectHasStickers = DATA.segments.some(segment => segment.sticker || segment.sticker_ref);
+  container.classList.toggle('hide-cue-sticker',
+    !EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
+  );
   container.classList.toggle('hide-cue-charcount', !EDITOR_SETTINGS.cueListShowCharcount);
 }
 
@@ -6809,6 +6862,7 @@ function renderAll() {
     container.appendChild(emptyState);
   }
   DATA.segments.forEach((seg, i) => container.appendChild(buildCueEl(seg, i)));
+  applyCueListDisplaySettings();
   totalCountEl.textContent = DATA.segments.length;
   applySearch(searchEl.value);
   // 重新应用选中样式（idx 不变时还有效；如果有 splice 改了顺序就先 clearSelection）
@@ -7070,7 +7124,16 @@ function buildCueEl(seg, idx) {
 
   const timeEl = document.createElement('span');
   timeEl.className = 'time';
-  timeEl.textContent = `${fmtShort(seg.start)} → ${fmtShort(seg.end)}`;
+  const timeStartEl = document.createElement('span');
+  timeStartEl.className = 'time-start';
+  timeStartEl.textContent = fmtShort(seg.start);
+  const timeArrowEl = document.createElement('span');
+  timeArrowEl.className = 'time-arrow';
+  timeArrowEl.textContent = '→';
+  const timeEndEl = document.createElement('span');
+  timeEndEl.className = 'time-end';
+  timeEndEl.textContent = fmtShort(seg.end);
+  timeEl.append(timeStartEl, timeArrowEl, timeEndEl);
 
   // 表情包槽位
   const slotEl = document.createElement('span');

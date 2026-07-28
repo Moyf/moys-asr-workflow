@@ -38,6 +38,7 @@ class TranscriptionRequest:
     workspace_id: str = ""
     provider: str = "qwen"
     speaker_colors: bool = False
+    ui_language: str = "zh"
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,14 +183,14 @@ def run_transcription(
     _require_output(paths.srt, "SRT")
     _require_output(paths.json, "JSON")
     try:
-        html_path = render_editor_html(paths.json, request.media_path, paths.html)
+        html_path = render_editor_html(paths.json, request.media_path, paths.html, request.ui_language)
     except Exception as error:  # HTML is optional; preserve successful SRT/JSON outputs.
         html_path = None
         (on_event or _ignore)(f"[warning] 编辑器 HTML 生成失败，SRT/JSON 已保留：{error}")
     return TranscriptionResult(srt_path=paths.srt, json_path=paths.json, html_path=html_path)
 
 
-def render_editor_html(json_path: Path, media_path: Path, html_path: Path) -> Path | None:
+def render_editor_html(json_path: Path, media_path: Path, html_path: Path, ui_language: str = "zh") -> Path | None:
     try:
         from edit import media_tag, render_editor_page
         from maw.project import normalize_project
@@ -210,6 +211,7 @@ def render_editor_html(json_path: Path, media_path: Path, html_path: Path) -> Pa
         filename_base_json=json.dumps(Path(json_path).stem, ensure_ascii=False),
         stickers_json="[]",
         sticker_root_json="null",
+        ui_language_json=json.dumps("en" if ui_language == "en" else "zh"),
         generated_at=time.strftime("%Y-%m-%d %H:%M:%S"),
         json_display=html.escape(Path(json_path).name),
         json_name_class="",
