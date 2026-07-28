@@ -28,7 +28,7 @@ web/                          # 所有前端源码
 uv run python edit.py --blank
 ```
 
-不要手改 `blank-editor.html` 内联副本。所有文本文件保持 UTF-8 与 LF 换行。
+不要手改 `blank-editor.html` 内联副本。所有文本文件必须保持 UTF-8 与 LF（`\n`）换行，包括 Windows 上编辑的 `.py`、`.js`、`.html`、`.md`、`.yml`、`.ps1` 等文件；禁止提交 CRLF（`\r\n`）。不要依赖开发者机器的 `core.autocrlf`，以仓库 `.gitattributes` 的 `eol=lf` 规则为准。
 
 ## 开发与验证
 

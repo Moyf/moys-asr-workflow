@@ -75,6 +75,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("tests/test_packaging_contract.py", workflow)
         self.assertIn("pyproject.toml", workflow)
         self.assertIn("github.ref_name", workflow)
+        self.assertIn(r'(?m)^version = "(?<version>[^"]+)"\r?$', workflow)
         self.assertIn("dist\\MAW\\MAW.exe", workflow)
         self.assertIn("Compress-Archive", workflow)
         self.assertIn("Get-FileHash", workflow)

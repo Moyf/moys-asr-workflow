@@ -1,0 +1,15 @@
+* text=auto eol=lf
+
+*.ico binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.zip binary
+*.exe binary
+*.dll binary
+*.pyd binary
+*.wav binary
+*.mp3 binary
+*.mp4 binary
