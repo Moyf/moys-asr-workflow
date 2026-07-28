@@ -24,7 +24,14 @@ __WAVEFORM_CSS__
   <button id="open-project" title="可同选工程 JSON 与媒体；仅选 JSON 时会询问是否继续选择关联媒体">打开工程</button>
   <div class="dropdown" id="recent-projects" hidden>
     <button type="button" id="recent-projects-toggle" title="打开本机最近使用的工程">最近工程</button>
-    <div class="dropdown-menu" id="recent-projects-menu"></div>
+    <div class="dropdown-menu" id="recent-projects-menu">
+      <label class="dropdown-item recent-project-setting" id="server-project-settings" hidden
+             title="下次不带 JSON 路径启动服务器时，自动恢复上次打开的工程">
+        <input type="checkbox" id="auto-open-last-project" checked> 自动打开上次工程
+      </label>
+      <div class="dropdown-separator" id="recent-projects-separator" hidden></div>
+      <div id="recent-projects-list"></div>
+    </div>
   </div>
   <button id="load-media" title="选择本地媒体文件并加载到播放器">加载媒体</button>
   <button id="save-project" title="保存回服务器启动时指定的工程 JSON" hidden>保存工程</button>
@@ -32,6 +39,7 @@ __WAVEFORM_CSS__
   <button id="sticker-root-btn" title="设置表情包根目录" style="font-size:16px;line-height:1;padding:2px 8px;">🦊</button>
 
   <span class="right-group">
+    <button type="button" id="language-toggle" class="language-toggle" title="Switch to English">EN</button>
     <button id="download-srt">导出字幕</button>
     <span class="dropdown" id="subtitle-export-dropdown" hidden>
       <button id="subtitle-export-btn" title="导出完整字幕或按颜色分别导出字幕">导出字幕 ▾</button>
@@ -303,12 +311,6 @@ __WAVEFORM_CSS__
       <input type="checkbox" id="export-color-unified" checked> 彩色字幕统一导出
     </label>
   </div>
-  <div class="editor-settings-group" id="server-project-settings" hidden>
-    <span class="editor-settings-title">本机工程</span>
-    <label class="toggle editor-settings-item" title="下次不带 JSON 路径启动服务器时，自动恢复上次打开的工程">
-      <input type="checkbox" id="auto-open-last-project" checked> 启动时打开上次工程
-    </label>
-  </div>
 </section>
 
 <section class="help-panel" id="help-panel" aria-label="操作帮助" hidden>
@@ -498,6 +500,7 @@ __WAVEFORM_CSS__
 
 <script>
 __EDITOR_UTILS_JS__
+__EDITOR_I18N_JS__
 __WAVEFORM_JS__
 __EDITOR_JS__
 </script>

@@ -8,6 +8,22 @@ const source = fs.readFileSync(new URL('../web/editor-utils.js', import.meta.url
 const context = { window: {} };
 vm.runInNewContext(source, context);
 const helpers = context.window.AsrEditorUtils;
+const i18nSource = fs.readFileSync(new URL('../web/editor-i18n.js', import.meta.url), 'utf8');
+const i18nContext = { window: {} };
+vm.runInNewContext(i18nSource, i18nContext);
+const i18n = i18nContext.window.MAWE_I18N;
+
+
+test('translates editor project controls and dynamic save messages to English', () => {
+  assert.equal(i18n.translateText('保存工程', 'en'), 'Save project');
+  assert.equal(i18n.translateText('自动打开上次工程', 'en'), 'Automatically open last project');
+  assert.equal(i18n.translateText('上次打开：demo.json', 'en'), 'Last opened: demo.json');
+  assert.equal(
+    i18n.translateText('已保存工程：demo.json（已备份为 demo.json.bak）', 'en'),
+    'Project saved: demo.json (backup: demo.json.bak)',
+  );
+  assert.equal(i18n.translateText('保存工程', 'zh'), '保存工程');
+});
 
 
 test('builds expandable replacement rows with before and after text', () => {

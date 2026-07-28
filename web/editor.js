@@ -345,6 +345,8 @@ const exportStartAtZeroToggle = document.getElementById('export-start-at-zero');
 const recentProjectsEl = document.getElementById('recent-projects');
 const recentProjectsToggle = document.getElementById('recent-projects-toggle');
 const recentProjectsMenu = document.getElementById('recent-projects-menu');
+const recentProjectsList = document.getElementById('recent-projects-list');
+const recentProjectsSeparator = document.getElementById('recent-projects-separator');
 const serverProjectSettingsEl = document.getElementById('server-project-settings');
 const autoOpenLastProjectToggle = document.getElementById('auto-open-last-project');
 const GAP_REMOVE_PANEL_POSITION_KEY = 'moy.asr.gap_remove.panel.v1';
@@ -3109,6 +3111,12 @@ function configureServerSaveControls() {
       button.title = '请用带 JSON 工程路径的服务器命令启动，才能直接保存';
     }
   });
+  if (saveProjectButton && serverProjectSavingEnabled()) {
+    saveProjectButton.title = '保存回当前工程 JSON（Ctrl/Cmd+S）';
+  }
+  if (saveProjectAsButton && serverProjectSavingEnabled()) {
+    saveProjectAsButton.title = '另存为到当前工程目录（Ctrl/Cmd+Shift+S）';
+  }
 }
 
 function hasUnsavedProjectChanges() {
@@ -3138,13 +3146,14 @@ async function openRecentProject(project) {
 }
 
 function configureRecentProjects() {
-  if (!SERVER_CONFIG?.recentProjectsUrl || !recentProjectsEl || !recentProjectsToggle || !recentProjectsMenu) {
+  if (!SERVER_CONFIG?.recentProjectsUrl || !recentProjectsEl || !recentProjectsToggle
+      || !recentProjectsMenu || !recentProjectsList) {
     return;
   }
   const projects = Array.isArray(SERVER_CONFIG.recentProjects) ? SERVER_CONFIG.recentProjects : [];
-  if (!projects.length) return;
   recentProjectsEl.hidden = false;
-  recentProjectsMenu.replaceChildren();
+  recentProjectsList.replaceChildren();
+  if (recentProjectsSeparator) recentProjectsSeparator.hidden = !projects.length;
   projects.forEach((project, index) => {
     if (!project || typeof project.path !== 'string' || typeof project.name !== 'string') return;
     const item = document.createElement('div');
@@ -3155,7 +3164,7 @@ function configureRecentProjects() {
       recentProjectsEl.classList.remove('open');
       openRecentProject(project);
     });
-    recentProjectsMenu.appendChild(item);
+    recentProjectsList.appendChild(item);
   });
   recentProjectsToggle.addEventListener('click', (event) => {
     event.stopPropagation();
@@ -3225,11 +3234,13 @@ async function saveProjectToServer(saveAs = false) {
       return;
     }
   }
+  const projectJson = buildJson();
   try {
-    const response = await fetch(SERVER_CONFIG.saveUrl, {
+    const saveUrl = new URL(SERVER_CONFIG.saveUrl, window.location.href);
+    const response = await fetch(saveUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project: JSON.parse(buildJson()), filename }),
+      body: JSON.stringify({ project: JSON.parse(projectJson), filename }),
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) {
@@ -3237,7 +3248,18 @@ async function saveProjectToServer(saveAs = false) {
     }
     markProjectSaved(result.filename, result.backup);
   } catch (error) {
-    flashHint(`保存失败：${error.message || error}`);
+    const detail = error?.message || error;
+    flashHint(`保存失败：${detail}`);
+    // A stale browser tab can outlive the localhost process (the browser reports
+    // ERR_CONNECTION_REFUSED). Offer a real file save so Ctrl+S never strands
+    // completed edits, while making clear that the bound JSON was not overwritten.
+    if (error instanceof TypeError
+        && confirm('无法连接本地编辑器服务器。是否改为导出工程 JSON，以免丢失改动？')) {
+      const saved = await downloadFile(projectJson, `${filename || FILENAME_BASE + '.json'}`, 'application/json', {
+        desc: '编辑器工程文件', types: { 'application/json': ['.json'] }
+      });
+      if (saved) flashHint('服务器未连接；工程已另存为 JSON，请重新启动本地编辑器后继续');
+    }
   }
 }
 
@@ -3278,6 +3300,13 @@ document.getElementById('download-json').addEventListener('click', async () => {
 });
 saveProjectButton?.addEventListener('click', () => saveProjectToServer(false));
 saveProjectAsButton?.addEventListener('click', () => saveProjectToServer(true));
+// Project-level save shortcuts intentionally override the browser page-save
+// command. finishEdit() inside saveProjectToServer commits an active text edit.
+document.addEventListener('keydown', (event) => {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 's') return;
+  event.preventDefault();
+  saveProjectToServer(event.shiftKey);
+});
 document.getElementById('layout-export')?.addEventListener('click', async () => {
   await downloadFile(buildLayoutJson(), `${FILENAME_BASE}.layout.json`, 'application/json', {
     desc: '编辑器布局文件', types: { 'application/json': ['.layout.json', '.json'] }

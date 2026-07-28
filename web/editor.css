@@ -365,6 +365,16 @@
     transition: background var(--t-fast), color var(--t-fast);
   }
   .toolbar .dropdown-item:hover { background: var(--accent-tint); color: var(--text-primary); }
+  .toolbar .dropdown-separator { height: 1px; margin: 4px 8px; background: var(--border-subtle); }
+  .toolbar .recent-project-setting {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .toolbar .recent-project-setting input { margin: 0; }
+  .toolbar .language-toggle { min-width: 38px; font-weight: 700; }
   .toolbar .dropdown-sep {
     height: 1px; background: var(--border-subtle); margin: 4px 0;
   }

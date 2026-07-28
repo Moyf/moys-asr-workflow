@@ -137,6 +137,7 @@ def render_editor_page(**context: str) -> str:
         "__EDITOR_CSS__": read_web_asset("editor.css").rstrip(),
         "__WAVEFORM_CSS__": read_web_asset("waveform.css").rstrip(),
         "__EDITOR_UTILS_JS__": read_web_asset("editor-utils.js").rstrip(),
+        "__EDITOR_I18N_JS__": read_web_asset("editor-i18n.js").rstrip(),
         "__WAVEFORM_JS__": read_web_asset("waveform.js").rstrip(),
         "__EDITOR_JS__": read_web_asset("editor.js").rstrip(),
         "__TITLE__": context["title"],

@@ -69,6 +69,8 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('id="save-project-as"', page)
         self.assertIn('id="recent-projects"', page)
         self.assertIn('id="auto-open-last-project"', page)
+        self.assertLess(page.index('id="auto-open-last-project"'), page.index('id="recent-projects-list"'))
+        self.assertIn("const STORAGE_KEY = 'mawe.language';", page)
         self.assertIn('class="waveform-mode-switch"', page)
 
         with server_editor.EditorServer(("127.0.0.1", 0), project) as server:

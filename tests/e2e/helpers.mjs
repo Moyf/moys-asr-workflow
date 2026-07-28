@@ -3,7 +3,7 @@
 // Event/process/port-based lifecycle — no arbitrary sleeps for correctness.
 import { execFileSync, spawn } from 'node:child_process';
 import { writeFileSync, readFileSync, existsSync, rmSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { randomBytes } from 'node:crypto';
@@ -164,6 +164,8 @@ export function generateProjectJson(filePath) {
 // when the process has fully exited.
 // ---------------------------------------------------------------------------
 export async function startServer(projectJsonPath, mediaPath, port) {
+  const settingsRoot = join(dirname(projectJsonPath), '.settings');
+  mkdirSync(settingsRoot, { recursive: true });
   const uvArgs = [
     'run', 'python', 'server-editor/serve.py',
     projectJsonPath,
@@ -177,7 +179,12 @@ export async function startServer(projectJsonPath, mediaPath, port) {
     cwd: process.cwd(),
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
-    env: { ...process.env, PYTHONUNBUFFERED: '1' },
+    env: {
+      ...process.env,
+      PYTHONUNBUFFERED: '1',
+      LOCALAPPDATA: settingsRoot,
+      XDG_CONFIG_HOME: settingsRoot,
+    },
   });
 
   const url = `http://127.0.0.1:${port}/`;
