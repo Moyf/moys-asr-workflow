@@ -1,0 +1,7 @@
+# 热词表示例（每行一个热词，# 开头为注释）
+# 仅本地 Qwen3-ASR 模型通过 context 软提示注入，效果为 best-effort
+# faster-whisper 不接收热词
+#
+# 示例：
+# 阿里云
+# 通义千问

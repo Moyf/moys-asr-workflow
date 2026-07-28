@@ -213,6 +213,8 @@ uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.json"
 
 本仓库刻意不包含：本地模型与 GPU 依赖、除 Qwen 与 Soniox 之外的 ASR 引擎、模型对比工具、剪辑软件脚本、样例媒体、缓存、个人表情包和任何密钥。
 
+> 💡 **本地模型支持**：本分支（`feat/local-model-standalone`）额外提供了本地 Qwen3-ASR 和 faster-whisper 转写能力，作为独立模块附加在上游 MAW 之上。详见 [docs/LOCAL_DEPLOY.md](docs/LOCAL_DEPLOY.md)。
+
 如果你准备修改或维护它，请先读 [AGENTS.md](AGENTS.md)。第三方组件说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 致谢

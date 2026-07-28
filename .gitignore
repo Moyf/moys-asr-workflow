@@ -35,3 +35,11 @@ test-results/
 *.spec.bak
 !MAW.spec
 .playwright-mcp/
+
+# 运行时热词文件
+/hotwords.txt
+# 转写结果输出目录
+/results/
+
+# 下载工作子进程的临时信息文件（含本地绝对路径，不应提交）
+/.download_info.json
