@@ -1,5 +1,7 @@
+# 全仓库文本文件保持 LF 换行（AGENTS.md 约定），避免 Windows 检出转 CRLF。
 * text=auto eol=lf
 
+# 二进制资源不做换行规范化
 *.ico binary
 *.png binary
 *.jpg binary
@@ -13,3 +15,7 @@
 *.wav binary
 *.mp3 binary
 *.mp4 binary
+*.mov binary
+*.mkv binary
+*.m4a binary
+*.flac binary
