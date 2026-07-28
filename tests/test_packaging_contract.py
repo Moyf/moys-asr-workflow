@@ -76,6 +76,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("pyproject.toml", workflow)
         self.assertIn("github.ref_name", workflow)
         self.assertIn(r'(?m)^version = "(?<version>[^"]+)"\r?$', workflow)
+        self.assertIn("PYTHONUTF8: '1'", workflow)
         self.assertIn("dist\\MAW\\MAW.exe", workflow)
         self.assertIn("Compress-Archive", workflow)
         self.assertIn("Get-FileHash", workflow)

@@ -23,7 +23,8 @@ SPEC.loader.exec_module(server_editor)
 class LocalEditorServerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp_dir.name)
+        # Windows CI may expose %TEMP% as an 8.3 short path while production code resolves it.
+        self.root = Path(self.temp_dir.name).resolve()
         self.media = self.root / "clip.mp3"
         self.media.write_bytes(b"0123456789")
         self.stickers = self.root / "stickers"

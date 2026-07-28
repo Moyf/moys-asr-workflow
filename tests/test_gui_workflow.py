@@ -29,7 +29,8 @@ from maw.gui_workflow import (  # noqa: E402
 class GuiWorkflowTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp_dir.name)
+        # Windows CI may expose %TEMP% as an 8.3 short path while production code resolves it.
+        self.root = Path(self.temp_dir.name).resolve()
         self.media_path = self.root / "clip.mp3"
         self.media_path.write_bytes(b"placeholder")
         self.srt_path = self.root / "out.srt"

@@ -12,6 +12,8 @@ jobs:
   build-windows:
     name: Build Windows x64 bundle
     runs-on: windows-2022
+    env:
+      PYTHONUTF8: '1'
 
     steps:
       - name: Check out repository
