@@ -34,7 +34,7 @@
 | `waveform` | `object` | 否 | 可丢弃的紧凑波形缓存。由 `edit.py` 或浏览器自动生成；不影响字幕语义 |
 | `gap_remove` | `object` | 否 | 可逆的空隙移除决定。保留原始媒体/字幕时间，仅描述导出与跳过播放时使用的派生时间轴 |
 | `layout` | `object` | 否 | 编辑器四个功能区的布局与尺寸；可单独导出/导入，不影响字幕和波形缓存 |
-| `preview` | `object` | 否 | 预览呈现设置。目前仅含 `preview.subtitle`：字幕预览框在播放器内的归一化几何。不影响字幕时间与文本 |
+| `preview` | `object` | 否 | 预览呈现设置。含 `preview.subtitle`（字幕预览框）与 `preview.sticker`（表情包预览层）两个归一化几何。不影响字幕时间与文本 |
 
 ### 1.1 waveform 波形缓存
 
@@ -60,7 +60,8 @@
 - `source` 用于缓存失效；媒体文件名、字节大小或最后修改时间变化时会重新计算。
 - 默认密度 100 峰/秒。三小时音频约产生 108 万峰、2.88 MB base64 字符串。
 - 未识别的 `schema` / `encoding` 会被忽略，不阻止工程加载。
-- 命令行生成器还会在媒体旁写入 `<媒体名>.waveform.json` sidecar；它使用同一 `source` 签名，可被后续工程复用。sidecar 不属于字幕真源，删除后可重新提取。
+- Qwen/Soniox 命令行生成器默认不内嵌波形；加 `--with-waveform` 时可在转写生成工程 JSON 时把同一 payload 写入顶层 `waveform`。GUI 转写默认开启该模式。
+- 编辑器首次打开缺少有效 `waveform` 的工程时，仍可能在媒体旁写入 `<媒体名>.waveform.json` sidecar；它使用同一 `source` 签名，可被后续工程复用。sidecar 不属于字幕真源，删除后可重新提取。
 
 ### 1.2 layout 布局
 
@@ -147,11 +148,12 @@
 
 ### 1.4 preview 预览呈现
 
-`preview` 记录预览呈现层的设置，与字幕时间/文本完全解耦。目前只定义 `preview.subtitle`：字幕预览框（编辑器里 `#overlay`）在播放器区域内的几何，以 player-wrap 矩形的**归一化分数**存储，因此在播放器缩放和跨机传输后仍然一致。
+`preview` 记录预览呈现层的设置，与字幕时间/文本完全解耦。目前定义两个子几何：`preview.subtitle`（字幕预览框，编辑器里 `#overlay`）与 `preview.sticker`（表情包预览层，编辑器里 `#sticker-overlay-layer`），都是在播放器区域内的几何，以 player-wrap 矩形的**归一化分数**存储，因此在播放器缩放和跨机传输后仍然一致。
 
 ```json
 {
-  "subtitle": { "x": 0.0, "y": 0.76, "width": 1.0, "height": 0.16 }
+  "subtitle": { "x": 0.175, "y": 0.76, "width": 0.65, "height": 0.16 },
+  "sticker": { "x": 0.73, "y": 0.04, "width": 0.24, "height": 0.3 }
 }
 ```
 
@@ -167,7 +169,8 @@
 - 四个字段都必须是数字（不接受字符串、布尔），且落在 `[0, 1]`。
 - 盒子必须留在播放器内：`x + width <= 1` 且 `y + height <= 1`。
 - 编辑器额外强制最小可读尺寸 `width >= 0.20`、`height >= 0.08`（这是编辑器 UX 钳制，非数据契约的硬校验；导入时会被编辑器再钳制）。
-- `preview` 缺失或 `preview.subtitle` 缺失时按**旧工程**处理，编辑器使用默认几何 `{ x: 0, y: 0.76, width: 1, height: 0.16 }`——它复刻原来的 `bottom: 8%` 字幕带（占 76%→92%，底部留 8%）。
+- `preview` 缺失或 `preview.subtitle` 缺失时按**旧工程**处理，编辑器使用默认几何 `{ x: 0.175, y: 0.76, width: 0.65, height: 0.16 }`——字幕带占 76%→92%（底部留 8%），宽度 65% 居中。
+- `preview.sticker` 缺失时同样按旧工程处理，使用默认几何 `{ x: 0.73, y: 0.04, width: 0.24, height: 0.3 }`（右上角）。两个几何共用同一套归一化与钳制规则。
 - 该几何只移动/缩放预览框容器；内部文字 `<span>` 仍保持居中与药丸样式，`segments[*].start/end/items[*].start/end` 永不被此几何改动。
 
 ---
@@ -449,6 +452,10 @@ uv run python edit.py your_generated.json
 | `preview.subtitle.y` | number | ❌ | 归一化 `[0,1]`，`y + height <= 1` |
 | `preview.subtitle.width` | number | ❌ | 归一化 `[0,1]`，编辑器最小 0.20 |
 | `preview.subtitle.height` | number | ❌ | 归一化 `[0,1]`，编辑器最小 0.08 |
+| `preview.sticker.x` | number | ❌ | 归一化 `[0,1]`，`x + width <= 1` |
+| `preview.sticker.y` | number | ❌ | 归一化 `[0,1]`，`y + height <= 1` |
+| `preview.sticker.width` | number | ❌ | 归一化 `[0,1]`，编辑器最小 0.20 |
+| `preview.sticker.height` | number | ❌ | 归一化 `[0,1]`，编辑器最小 0.08 |
 ---
 
 ## 九、版本与兼容

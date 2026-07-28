@@ -67,10 +67,11 @@ uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" -ll 2m --jso
 --gap-split 1000     相邻字间隔超过 N 毫秒时强制切句
 --keep-punct         保留每条字幕末尾的逗号和句号
 --no-html            只要 SRT 和 JSON，不生成便携 HTML
+--with-waveform      把波形写进工程 JSON，免去编辑器首次打开的 sidecar 缓存文件
 --debug              输出部分 API 原始结果，便于反馈问题
 ```
 
-输入视频会先由 FFmpeg 提取单声道 16kHz WAV；音频输入也会通过 FFprobe 获取时长。没有 FFmpeg/FFprobe 时，这一步无法完成。
+CLI 默认不内嵌波形；需要交给编辑器直接打开且不想生成 `<媒体名>.waveform.json` sidecar 时，加 `--with-waveform`。波形提取会额外用 FFmpeg 完整扫一遍媒体，失败时只给警告，不影响字幕与 JSON 输出。输入视频会先由 FFmpeg 提取单声道 16kHz WAV；音频输入也会通过 FFprobe 获取时长。没有 FFmpeg/FFprobe 时，这一步无法完成。
 
 ## 用 Soniox 转写（可选，支持说话人）
 
@@ -86,6 +87,7 @@ uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" -ll 2m --j
 --speaker            开启说话人分离，speaker 标签写入工程 JSON（不改变字幕颜色）
 --speaker-colors     在 --speaker 基础上，把不同说话人一次性映射成 5 种字幕颜色
 --language zh,en     语言提示，逗号分隔；默认自动识别
+--with-waveform      把波形写进工程 JSON，CLI 默认不内嵌
 ```
 
 颜色写入的是普通 `color` 字段，之后可在编辑器里自由修改；说话人超过 5 个时颜色循环复用并给出警告。
@@ -126,7 +128,7 @@ uv run python server-editor\serve.py "D:\Projects\subtitle.json" -m "E:\Media\mo
 uv run python server-editor\serve.py --blank
 ```
 
-不带参数会默认恢复最近一次**明确打开**的工程。若不想恢复，用 `--blank`。编辑器的“保存工程”会原子写回 JSON，并在覆盖前创建同目录 `.json.bak`。
+不带参数会默认恢复最近一次**明确打开**的工程。这个行为可在编辑器「最近工程」菜单第一项「自动打开上次工程」中开关；若只想本次空白启动，用 `--blank`。编辑器的“保存工程”（`Ctrl+S`）会原子写回 JSON，并在覆盖前创建同目录 `.json.bak`；`Ctrl+Shift+S` 为另存为。
 
 ## 5. 编辑和导出
 

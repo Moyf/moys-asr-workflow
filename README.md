@@ -32,9 +32,10 @@
 
 ### Windows 图形界面
 
-从 GitHub Releases 下载 `MAW-Windows-x64-v*.zip`，解压后双击 `MAW.exe`。选择媒体与 SRT 输出位置，确认模型、地域、语言和可选时长上限，填写 Qwen API Key，即可在窗口中生成 SRT、JSON 工程和便携编辑器 HTML。需要复用 Key 时，可点“保存到 .env”；密钥只保存在本机 `.env`，不会写入工程文件或日志。
+从 GitHub Releases 下载 `MAW-Windows-x64-v*.zip`，解压后双击 `MAW.exe`。默认会打开基于 pywebview 的桌面启动器：选择媒体与 SRT 输出位置，确认模型、地域、语言和可选时长上限，填写 Qwen API Key，即可在窗口中生成 SRT、JSON 工程和便携编辑器 HTML。需要复用 Key 时，可点“保存到 .env”；密钥只保存在本机 `.env`，不会写入工程文件或日志。
 
 GUI 还可以直接选择工程 JSON 并启动 `http://127.0.0.1` 本地编辑器服务器；中英文界面可在右上角切换。
+启动器支持从资源管理器拖入音视频文件来自动填充媒体路径，并按供应商（Qwen / Soniox）组织模型、地域、语言和 API Key 获取入口；选择 Soniox 时可在「高级选项」中开启「给不同说话人分配颜色」。
 
 图形版仍要求系统能找到 `ffmpeg` 和 `ffprobe`；本项目不会捆绑或自动安装它们。程序无法检测媒体时，请安装 FFmpeg 并把它的 `bin` 目录加入 PATH，然后重新打开 MAW。
 
@@ -42,6 +43,12 @@ GUI 还可以直接选择工程 JSON 并启动 `http://127.0.0.1` 本地编辑�
 
 ```powershell
 uv run python maw_gui.py
+```
+
+如果本机 WebView 运行环境异常，可临时使用旧版 tkinter 界面：
+
+```powershell
+uv run python maw_gui.py --tk
 ```
 
 下面的命令行方式仍完整保留，适合自动化和精细参数调整。
@@ -144,7 +151,7 @@ MAWE 是 MAW 自带的字幕编辑器。
 uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.json"
 ```
 
-浏览器会自动打开 `http://127.0.0.1:8765`。编辑完成后点“保存工程”；覆盖前会留下同目录 `.json.bak` 备份。按 `Ctrl+C` 停止服务。
+浏览器会自动打开 `http://127.0.0.1:8765`。MAWE 右上角可切换中文 / English；编辑完成后点“保存工程”或按 `Ctrl+S`，覆盖前会留下同目录 `.json.bak` 备份；`Ctrl+Shift+S` 为另存为。按 `Ctrl+C` 停止服务。
 
 > [!important]
 > 也可以直接双击转写生成的 `.edit.html`，或双击仓库里的 `blank-editor.html` 后用“打开工程”同时选择 JSON 和媒体。  

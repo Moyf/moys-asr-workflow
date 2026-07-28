@@ -114,6 +114,7 @@ Batch 1 已验证场景（localhost 与便携 HTML 均通过真实波形交互�
 | 2026-07-27 | 正式计划 | 评审通过 | Metis 缺口分析完成；Momus 与独立 Oracle 最终均无条件 `OKAY` |
 | 2026-07-27 | 波形工具（Batch 1） | 已确认 → 开发中 → 待验收 | 删除身份错位根因：`deleteSegments` 在 splice 后调用 `clearSelection()`→`setCurrentCuePanelIndex(-1)`→`commitCuePanelEdit()`，将旧面板文本写入 splice 后新占据该索引的段。最小修复：splice 前提交面板编辑并重置 `currentCuePanelIdx`。Del 键 + 波形 Ctrl/Shift 多选最小命令面。5 项 Playwright 回归场景（首/中/尾删除含虚拟滚动 + 多选删除 + 全删拒绝）在 localhost 与便携 HTML 双模式各通过 3 次重复。便携模式通过真实 file-input/modal 流加载 JSON+WAV 后波形交互可用。证据：`.omo/evidence/maw-1-1-batch-1/` |
 | 2026-07-28 | Soniox 接入 | 已确认 → 开发中 | 外部调研确认数据契约（token 级 start_ms/end_ms + token 级 speaker + token 级 language， Files API 直传，5 小时上限，文件不自动删除需清理）。已实现 `maw/soniox.py`（REST 客户端 + tokens→工程映射 + speaker→5 色快照）与 `generate_subtitle_soniox_api.py` CLI（`--speaker`/`--speaker-colors`），24 项合成夹具 unittest 通过（映射/硬切段/颜色快照/validate_project/轮询防御）。待真实凭据 smoke test 验证中文 token 粒度与 speaker 字段实测形态。 |
+| 2026-07-28 | GUI 供应商接入（Soniox） | — | pywebview 启动器支持 Soniox：provider 注册表扩展（`supports_speaker`、regions 可为空）、按供应商加载/保存 API Key、无地域供应商隐藏地域/工作空间、SRT 默认名按供应商区分、`--transcribe-soniox` 冻结分发。维护者确认交互：说话人颜色开关仅支持分离的供应商显示、位于「高级选项」、默认选中、提示最多 5 色。13 项新增 unittest 全绿。tkinter 旧版界面保持 Qwen 专用。 |
 
 ## 更新规则
 
