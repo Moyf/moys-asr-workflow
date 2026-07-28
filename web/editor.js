@@ -2070,6 +2070,52 @@ document.addEventListener('keydown', (e) => {
   flashHint(`倍速: ${fmtRate(r)}`);
 });
 
+// A/D：跳转到上一条/下一条字幕的句首并选中。跳转本身不改变播放状态：
+// 播放中会从新位置继续播放，暂停中只移动播放指针。
+document.addEventListener('keydown', (e) => {
+  const key = e.key.toLowerCase();
+  if (key !== 'a' && key !== 'd') return;
+  if (editingState) return;
+  const a = document.activeElement;
+  if (a && (
+    a.tagName === 'INPUT'
+    || a.tagName === 'TEXTAREA'
+    || a.tagName === 'SELECT'
+    || a.isContentEditable
+  )) return;
+  if (replaceModal.classList.contains('show')) return;
+  if (stickerModal.classList.contains('show')) return;
+  if (stickerPreviewModal.classList.contains('show')) return;
+  if (projectMediaModal.classList.contains('show')) return;
+  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+  if (ctxmenu.classList.contains('show')) return;
+  if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+
+  const direction = key === 'a' ? -1 : 1;
+  const next = window.AsrEditorUtils.findCueNavigationTarget(
+    DATA.segments,
+    currentCuePanelIdx,
+    Math.round(player.currentTime * 1000),
+    direction,
+    hideDisabled,
+  );
+  if (next < 0) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+  const wasPlaying = !player.paused;
+  selectOnly(next);
+  lastClickedIdx = next;
+  const cue = container.querySelector(`.cue[data-idx="${next}"]`);
+  if (cue) scrollCueToCenter(cue);
+  waveformEditor?.revealTime(DATA.segments[next].start, true);
+  seekFromWaveform(DATA.segments[next].start / 1000);
+  if (wasPlaying && player.paused) {
+    const promise = player.play();
+    if (promise && promise.catch) promise.catch(() => {});
+  }
+});
+
 // Ctrl/Cmd+Z 撤销；Ctrl/Cmd+Shift+Z 或 Ctrl/Cmd+Y 重做
 document.addEventListener('keydown', (e) => {
   const isZ = e.key === 'z' || e.key === 'Z';

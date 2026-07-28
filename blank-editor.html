@@ -1721,7 +1721,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-07-28 19:10</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-07-28 19:35</span>
   <span class="json-name empty" id="json-name" title="点击复制 JSON 文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -2051,6 +2051,7 @@
   <div class="help-group">
     <span class="help-title">播放与编辑</span>
     <span><kbd>空格</kbd> 播放/暂停</span>
+    <span><kbd>A</kbd> 上一条字幕；<kbd>D</kbd> 下一条字幕（跳到句首并选中，保持播放/暂停状态）</span>
     <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> 倍速 ×0.5/重置/×2</span>
     <span><kbd>F</kbd> 跳转并播放选中字幕（多选跳第一条）</span>
     <span><kbd>Delete</kbd> 删除所选字幕</span>
@@ -2346,6 +2347,35 @@
 
   function findAdjacentCueIndex(segments, currentIndex, direction, skipDisabled = false) {
     for (let index = currentIndex + direction; index >= 0 && index < segments.length; index += direction) {
+      if (!skipDisabled || !segments[index]?.disabled) return index;
+    }
+    return -1;
+  }
+
+  function findCueNavigationTarget(segments, currentIndex, timeMs, direction, skipDisabled = false) {
+    if (!Array.isArray(segments) || !segments.length || (direction !== -1 && direction !== 1)) return -1;
+    if (Number.isInteger(currentIndex) && currentIndex >= 0 && currentIndex < segments.length) {
+      return findAdjacentCueIndex(segments, currentIndex, direction, skipDisabled);
+    }
+
+    const time = Number(timeMs);
+    if (!Number.isFinite(time)) return -1;
+    const activeIndex = segments.findIndex((segment) => (
+      segment && Number(segment.start) <= time && Number(segment.end) >= time
+    ));
+    if (activeIndex >= 0) {
+      return findAdjacentCueIndex(segments, activeIndex, direction, skipDisabled);
+    }
+
+    if (direction < 0) {
+      for (let index = segments.length - 1; index >= 0; index -= 1) {
+        if (Number(segments[index]?.start) >= time) continue;
+        if (!skipDisabled || !segments[index]?.disabled) return index;
+      }
+      return -1;
+    }
+    for (let index = 0; index < segments.length; index += 1) {
+      if (Number(segments[index]?.start) <= time) continue;
       if (!skipDisabled || !segments[index]?.disabled) return index;
     }
     return -1;
@@ -2815,6 +2845,7 @@
     formatGapRemoveDuration,
     splitCharOffsetAtTime,
     findAdjacentCueIndex,
+    findCueNavigationTarget,
     getSrtExportOffset,
     effectiveColorName,
     buildSrtPayload,
@@ -2918,6 +2949,7 @@
     '切换字幕禁用': 'Toggle subtitle disabled', '删除所选字幕': 'Delete selected subtitles',
     '播放与编辑': 'Playback and editing', '空格': 'Space',
     '播放/暂停': 'Play/pause',
+    '上一条字幕；': 'Previous subtitle;', '下一条字幕（跳到句首并选中，保持播放/暂停状态）': 'Next subtitle (seek to the start and select it; keep the playback state)',
     '在红色播放指针处拆分字幕': 'Split subtitle at the red playhead',
     '跳转并播放选中字幕（多选跳第一条）': 'Seek to and play selected subtitle (first when multiple)',
     '倍速 ×0.5/重置/×2': 'Speed ×0.5/reset/×2',
@@ -7929,6 +7961,52 @@ document.addEventListener('keydown', (e) => {
   else if (k === 'l') r = Math.min(PLAYBACK_RATE_MAX, r * 2);
   player.playbackRate = r;
   flashHint(`倍速: ${fmtRate(r)}`);
+});
+
+// A/D：跳转到上一条/下一条字幕的句首并选中。跳转本身不改变播放状态：
+// 播放中会从新位置继续播放，暂停中只移动播放指针。
+document.addEventListener('keydown', (e) => {
+  const key = e.key.toLowerCase();
+  if (key !== 'a' && key !== 'd') return;
+  if (editingState) return;
+  const a = document.activeElement;
+  if (a && (
+    a.tagName === 'INPUT'
+    || a.tagName === 'TEXTAREA'
+    || a.tagName === 'SELECT'
+    || a.isContentEditable
+  )) return;
+  if (replaceModal.classList.contains('show')) return;
+  if (stickerModal.classList.contains('show')) return;
+  if (stickerPreviewModal.classList.contains('show')) return;
+  if (projectMediaModal.classList.contains('show')) return;
+  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+  if (ctxmenu.classList.contains('show')) return;
+  if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+
+  const direction = key === 'a' ? -1 : 1;
+  const next = window.AsrEditorUtils.findCueNavigationTarget(
+    DATA.segments,
+    currentCuePanelIdx,
+    Math.round(player.currentTime * 1000),
+    direction,
+    hideDisabled,
+  );
+  if (next < 0) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+  const wasPlaying = !player.paused;
+  selectOnly(next);
+  lastClickedIdx = next;
+  const cue = container.querySelector(`.cue[data-idx="${next}"]`);
+  if (cue) scrollCueToCenter(cue);
+  waveformEditor?.revealTime(DATA.segments[next].start, true);
+  seekFromWaveform(DATA.segments[next].start / 1000);
+  if (wasPlaying && player.paused) {
+    const promise = player.play();
+    if (promise && promise.catch) promise.catch(() => {});
+  }
 });
 
 // Ctrl/Cmd+Z 撤销；Ctrl/Cmd+Shift+Z 或 Ctrl/Cmd+Y 重做

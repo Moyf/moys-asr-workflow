@@ -22,6 +22,7 @@
 - GUI 新增「显示相对小众的语言」开关（配置弹窗，持久化到 `MAW_GUI_SHOW_RARE_LANGS`）：Qwen / Soniox 默认都只显示 8 种常用语言，开启后显示供应商支持的全部语言；Soniox 多选列表另有「重置（自动识别）」按钮。
 - Qwen/Soniox CLI 新增 `--with-waveform`，可在转写生成工程 JSON 时内嵌波形峰值；GUI 转写默认开启，避免首次打开编辑器时生成 `<媒体名>.waveform.json` sidecar。
 - GUI 启动 localhost 编辑器或生成便携 HTML 时，MAWE 会继承启动器当前的中文 / English 界面语言；服务器启动参数只在首次加载时接管语言，随后仍可在编辑器内切换并记忆。
+- 编辑器新增 `A` / `D` 快捷键：跳到上一条 / 下一条字幕的句首并选中，保持当前播放或暂停状态。
 
 ### Changed
 

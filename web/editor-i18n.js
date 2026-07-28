@@ -76,6 +76,7 @@
     '切换字幕禁用': 'Toggle subtitle disabled', '删除所选字幕': 'Delete selected subtitles',
     '播放与编辑': 'Playback and editing', '空格': 'Space',
     '播放/暂停': 'Play/pause',
+    '上一条字幕；': 'Previous subtitle;', '下一条字幕（跳到句首并选中，保持播放/暂停状态）': 'Next subtitle (seek to the start and select it; keep the playback state)',
     '在红色播放指针处拆分字幕': 'Split subtitle at the red playhead',
     '跳转并播放选中字幕（多选跳第一条）': 'Seek to and play selected subtitle (first when multiple)',
     '倍速 ×0.5/重置/×2': 'Speed ×0.5/reset/×2',

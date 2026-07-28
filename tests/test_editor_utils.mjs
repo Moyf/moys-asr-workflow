@@ -93,6 +93,23 @@ test('finds previous and next visible cue for the current cue panel', () => {
   assert.equal(helpers.findAdjacentCueIndex(segments, 2, 1, false), 3);
 });
 
+test('finds A/D navigation targets from selection or playhead', () => {
+  const segments = [
+    { start: 1000, end: 2000 },
+    { start: 2500, end: 3000, disabled: true },
+    { start: 3500, end: 4500 },
+    { start: 5000, end: 6000 },
+  ];
+
+  assert.equal(helpers.findCueNavigationTarget(segments, 2, 3500, -1, false), 1);
+  assert.equal(helpers.findCueNavigationTarget(segments, 2, 3500, -1, true), 0);
+  assert.equal(helpers.findCueNavigationTarget(segments, -1, 4000, -1, false), 1);
+  assert.equal(helpers.findCueNavigationTarget(segments, -1, 4000, -1, true), 0);
+  assert.equal(helpers.findCueNavigationTarget(segments, -1, 4000, 1, true), 3);
+  assert.equal(helpers.findCueNavigationTarget(segments, -1, 3200, -1, true), 0);
+  assert.equal(helpers.findCueNavigationTarget(segments, -1, 3200, 1, true), 2);
+});
+
 
 test('aligns SRT export to the first enabled subtitle when requested', () => {
   const segments = [

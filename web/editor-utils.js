@@ -142,6 +142,35 @@
     return -1;
   }
 
+  function findCueNavigationTarget(segments, currentIndex, timeMs, direction, skipDisabled = false) {
+    if (!Array.isArray(segments) || !segments.length || (direction !== -1 && direction !== 1)) return -1;
+    if (Number.isInteger(currentIndex) && currentIndex >= 0 && currentIndex < segments.length) {
+      return findAdjacentCueIndex(segments, currentIndex, direction, skipDisabled);
+    }
+
+    const time = Number(timeMs);
+    if (!Number.isFinite(time)) return -1;
+    const activeIndex = segments.findIndex((segment) => (
+      segment && Number(segment.start) <= time && Number(segment.end) >= time
+    ));
+    if (activeIndex >= 0) {
+      return findAdjacentCueIndex(segments, activeIndex, direction, skipDisabled);
+    }
+
+    if (direction < 0) {
+      for (let index = segments.length - 1; index >= 0; index -= 1) {
+        if (Number(segments[index]?.start) >= time) continue;
+        if (!skipDisabled || !segments[index]?.disabled) return index;
+      }
+      return -1;
+    }
+    for (let index = 0; index < segments.length; index += 1) {
+      if (Number(segments[index]?.start) <= time) continue;
+      if (!skipDisabled || !segments[index]?.disabled) return index;
+    }
+    return -1;
+  }
+
   function getSrtExportOffset(segments, alignFirstEnabled = true) {
     if (!alignFirstEnabled || !Array.isArray(segments)) return 0;
     const firstEnabled = segments.find((segment) => (
@@ -606,6 +635,7 @@
     formatGapRemoveDuration,
     splitCharOffsetAtTime,
     findAdjacentCueIndex,
+    findCueNavigationTarget,
     getSrtExportOffset,
     effectiveColorName,
     buildSrtPayload,
