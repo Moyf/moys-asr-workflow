@@ -105,6 +105,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
+          target_commitish: ${{ github.sha }}
           files: |
             MAW-Windows-x64-${{ github.ref_name }}.zip
             MAW-Windows-x64-${{ github.ref_name }}.zip.sha256

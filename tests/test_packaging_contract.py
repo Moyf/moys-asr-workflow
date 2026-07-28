@@ -82,6 +82,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("Get-FileHash", workflow)
         self.assertIn("actions/upload-artifact@v4", workflow)
         self.assertIn("softprops/action-gh-release@v2", workflow)
+        self.assertIn("target_commitish: ${{ github.sha }}", workflow)
         self.assertIn("GITHUB_TOKEN: ${{ github.token }}", workflow)
 
 
