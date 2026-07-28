@@ -39,6 +39,7 @@ from maw.soniox import (
     load_config,
     transcribe,
 )
+from waveform import embed_waveform
 
 
 def _language_hints(raw: str | None) -> list[str]:
@@ -61,11 +62,11 @@ def main():
     parser.add_argument("-o", "--output", help="输出 SRT 路径（默认与输入同目录）")
     parser.add_argument(
         "-l", "--max-len", type=int, default=21,
-        help="每条字幕最大字数（默认 21）",
+        help="每条字幕最大字数（默认 21；仅 CJK 内容生效，空格语言按词数自动处理）",
     )
     parser.add_argument(
         "--min-len", type=int, default=5,
-        help="句号间最短字数，不足则合并（默认 5）",
+        help="句号间最短字数，不足则合并（默认 5；仅 CJK 内容生效）",
     )
     parser.add_argument(
         "--language", default=None,
@@ -90,6 +91,10 @@ def main():
     parser.add_argument(
         "--json", dest="json_out", action="store_true",
         help="同时输出含 token 级时间戳的 JSON 文件（供 edit.py 加载）",
+    )
+    parser.add_argument(
+        "--with-waveform", action="store_true",
+        help="将波形峰值数据嵌入工程 JSON（GUI 转写默认开启）",
     )
     parser.add_argument(
         "-s", "--stickers", default=get_default_sticker_dir(),
@@ -261,6 +266,17 @@ def main():
                 for seg in segments
             ],
         }
+        if args.with_waveform:
+            waveform_result = embed_waveform(json_data, input_path)
+            json_data = waveform_result.project
+            if waveform_result.error is None:
+                waveform_payload = json_data["waveform"]
+                print(
+                    f"[waveform] 已嵌入 {waveform_payload['peak_count']} peaks "
+                    f"({waveform_payload['peaks_per_second']}/秒)"
+                )
+            else:
+                print(f"[waveform] 警告: {waveform_result.error}；已跳过内嵌波形")
         check = validate_project(json_data)
         if not check.ok:
             print("[警告] 工程 JSON 未通过契约校验，请把以下内容反馈给开发者：")

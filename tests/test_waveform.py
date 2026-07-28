@@ -1,7 +1,8 @@
+# pyright: reportAny=false, reportImplicitOverride=false, reportImplicitStringConcatenation=false, reportUnannotatedClassAttribute=false, reportUninitializedInstanceVariable=false, reportUnknownArgumentType=false, reportUnknownVariableType=false, reportUnusedCallResult=false, reportUnusedImport=false
+
 from __future__ import annotations
 
 import math
-import json
 import shutil
 import struct
 import sys
@@ -93,6 +94,33 @@ class WaveformExtractionTests(unittest.TestCase):
         self.assertEqual(cached, payload)
         self.assertFalse(extracted)
 
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    def test_embed_waveform_adds_valid_payload_without_sidecar(self) -> None:
+        project = {"segments": []}
+
+        result = waveform_module.embed_waveform(project, self.media_path)
+
+        self.assertIs(result.error, None)
+        self.assertEqual(project, {"segments": []})
+        embedded = result.project["waveform"]
+        self.assertTrue(waveform_module.is_waveform_payload(embedded))
+        self.assertTrue(waveform_module.waveform_matches_media(embedded, self.media_path))
+        self.assertEqual(embedded["encoding"], waveform_module.WAVEFORM_ENCODING)
+        self.assertGreater(embedded["peak_count"], 0)
+        self.assertEqual(embedded["source"], waveform_module.media_signature(self.media_path))
+        self.assertFalse(waveform_module.waveform_sidecar_path(self.media_path).exists())
+
+    def test_embed_waveform_leaves_project_unchanged_when_extraction_fails(self) -> None:
+        project = {"segments": [], "waveform": {"stale": True}}
+        bad_media = Path(self.temp_dir.name) / "notes.txt"
+        bad_media.write_text("not audio", encoding="utf-8")
+
+        result = waveform_module.embed_waveform(project, bad_media)
+
+        self.assertIsNotNone(result.error)
+        self.assertIs(result.project, project)
+        self.assertEqual(project, {"segments": [], "waveform": {"stale": True}})
+
 
 class EditorAssetTests(unittest.TestCase):
     def test_blank_editor_inlines_modular_assets(self) -> None:
@@ -126,9 +154,11 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('data-waveform-tool="select"', page)
         self.assertIn('data-waveform-tool="razor"', page)
         self.assertIn('<span>分割</span>', page)
-        self.assertEqual(page.count('class="toolbar-button-icon"'), 3)
+        # 帮助按钮改用 🤔 文本图标后，SVG 工具图标只剩选择/分割两个
+        self.assertEqual(page.count('class="toolbar-button-icon"'), 2)
         self.assertIn('.waveform-cue-block.selected {', page)
-        self.assertIn('border-color: #ffd54a;', page)
+        # 选中字幕块只用 outline + 阴影高亮，不再改 border-color
+        self.assertIn('outline: 2px solid #ffd54a;', page)
         self.assertIn('id="layout-drop-preview"', page)
         self.assertIn('layout-insert-preview', page)
         self.assertIn('insertLayoutModuleAtEdge', page)
@@ -175,7 +205,8 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('if (e.target === cuePanelText) return;', page)
         self.assertIn('.cue .sticker-slot {\n    flex: 0 1 80px; min-width: 40px;', page)
         self.assertIn('.cue .time {\n    font-size: 11px;', page)
-        self.assertIn('min-width: 40px; max-width: 100px; padding-top: 1px; flex: 0 3 100px;', page)
+        # 时间码按内容自然宽度显示，max-width 130px 兜底；宽度不足时换两行，把宽度优先让给文本
+        self.assertIn('min-width: 66px; max-width: 130px; padding-top: 1px; flex: 0 8 auto;', page)
         self.assertIn('overflow: hidden; text-overflow: ellipsis; white-space: nowrap;', page)
         self.assertIn('id="gap-remove-manage"', page)
         self.assertIn('id="gap-remove-panel"', page)
@@ -191,7 +222,9 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="gap-remove-hysteresis" min="0" max="30" step="0.5" value="2"', page)
         self.assertIn('id="gap-remove-operation-mode"', page)
         self.assertIn('<option value="middle_drag" selected>中键拖动</option>', page)
-        self.assertIn('class="gap-remove-operation-section"', page)
+        # 空隙操作已从「移除静音空隙」弹窗移到「设置/波形」分组
+        self.assertNotIn('class="gap-remove-operation-section"', page)
+        self.assertIn('空隙操作\n      <select id="gap-remove-operation-mode">', page)
         self.assertIn('class="gap-remove-parameters-heading"', page)
         self.assertIn('id="gap-removed-export-dropdown" hidden', page)
         self.assertIn('id="gap-removed-export-btn"', page)
@@ -263,7 +296,7 @@ class EditorAssetTests(unittest.TestCase):
             ROOT / "edit.py",
             ROOT / "waveform.py",
             ROOT / "server-editor" / "serve.py",
-            *sorted((ROOT / "web").glob("*")),
+            *(path for path in sorted((ROOT / "web").glob("*")) if path.is_file()),
         ]:
             content = path.read_bytes()
             self.assertNotIn(b"\r\n", content, path.name)

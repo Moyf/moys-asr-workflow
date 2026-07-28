@@ -16,8 +16,9 @@ token 契约：每个识别 token 必有 text/start_ms/end_ms（整数毫秒）�
 开启 enable_speaker_diarization 后 token 带 speaker（"1"/"2" 字符串标签，
 仅单次任务内有效，不是跨文件稳定身份）；
 开启 enable_language_identification 后 token 带 language（ISO 码）。
-注意：token 粒度是 word 或 sub-word，中文不保证逐字；
-一个 Soniox token 直接映射为一个 MAW item，不虚构 token 内部的时间。
+粒度（2026-07-28 实测）：英文等空格分词语言的 token 是 sub-word 片段
+（词首片段带前导空格，续段无空格），本模块先用 merge_word_fragments()
+合并成词级再映射 item；CJK token 保持逐字。
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from pathlib import Path
 import requests
 from requests.exceptions import RequestException
 
-from generate_subtitle_qwen_api import split_words_to_segments
+from generate_subtitle_qwen_api import split_by_silence, split_words_to_segments
 
 BASE_URL = "https://api.soniox.com"
 DEFAULT_MODEL = "stt-async-v5"
@@ -37,7 +38,16 @@ DEFAULT_MODEL = "stt-async-v5"
 # Soniox 异步转写单文件上限 300 分钟（官方 limits 文档，不可提升）
 MAX_AUDIO_SECONDS = 300 * 60
 
+# 轮询时允许的连续网络错误次数（api.soniox.com 在海外，偶发超时属正常）
+MAX_CONSECUTIVE_NETWORK_ERRORS = 5
+
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+
+
+class TranscriptionFailedError(RuntimeError):
+    """Soniox 任务进入终态失败（error/failed）。
+
+    与本地网络错误/超时区分：只有终态任务才可以安全删除云端记录。"""
 
 # 说话人 → 颜色快照的调色板，与 JSON_SCHEMA.md 第四节的 5 色一致
 SPEAKER_COLOR_PALETTE: tuple[tuple[str, str], ...] = (
@@ -150,14 +160,33 @@ def create_transcription(base_url: str, api_key: str, *,
 
 def poll_transcription(base_url: str, api_key: str, transcription_id: str, *,
                        interval: int, timeout: int, on_status=print) -> None:
-    """轮询直到 completed；error/failed/未知状态抛异常。"""
+    """轮询直到 completed；终态失败抛 TranscriptionFailedError。
+
+    临时网络错误（超时/连接失败）重试，连续 MAX_CONSECUTIVE_NETWORK_ERRORS
+    次失败才放弃——任务状态在云端，本地一次超时不代表转写失败。
+    """
     url = f"{base_url}/v1/transcriptions/{transcription_id}"
     deadline = time.time() + timeout
     last_status = ""
+    network_errors = 0
 
     while time.time() < deadline:
-        resp = requests.get(url, headers=_headers(api_key), timeout=30)
-        _raise_for_status(resp)
+        try:
+            resp = requests.get(url, headers=_headers(api_key), timeout=30)
+            _raise_for_status(resp)
+        except RequestException as e:
+            network_errors += 1
+            if network_errors >= MAX_CONSECUTIVE_NETWORK_ERRORS:
+                raise RuntimeError(
+                    f"Soniox 轮询连续 {network_errors} 次网络失败（跨国网络不稳定？），"
+                    f"放弃等待: {e}"
+                ) from e
+            on_status(f"[soniox] [警告] 轮询网络错误（第 {network_errors}/"
+                      f"{MAX_CONSECUTIVE_NETWORK_ERRORS} 次），{interval}s 后重试: {e}")
+            time.sleep(interval)
+            continue
+
+        network_errors = 0
         body = resp.json()
         status = body.get("status", "")
 
@@ -169,7 +198,7 @@ def poll_transcription(base_url: str, api_key: str, transcription_id: str, *,
             return
         # API Reference 与 SDK 的终态是 error；通用错误文档出现过 failed，防御兼容
         if status in ("error", "failed"):
-            raise RuntimeError(
+            raise TranscriptionFailedError(
                 f"Soniox 转写失败 [{body.get('error_type', 'UNKNOWN')}]: "
                 f"{body.get('error_message', '未知错误')}"
             )
@@ -216,6 +245,49 @@ def delete_transcription(base_url: str, api_key: str, transcription_id: str, *,
 
 
 # ===== tokens → MAW 工程映射 =====
+
+def _is_cjk_char(char: str) -> bool:
+    code = ord(char)
+    return (
+        0x3000 <= code <= 0x303F    # CJK 标点
+        or 0x3040 <= code <= 0x30FF  # 日文假名
+        or 0x3400 <= code <= 0x4DBF  # CJK 扩展 A
+        or 0x4E00 <= code <= 0x9FFF  # CJK 统一表意文字
+        or 0xF900 <= code <= 0xFAFF  # CJK 兼容表意
+        or 0xFF00 <= code <= 0xFFEF  # 全角字符
+    )
+
+
+def merge_word_fragments(tokens: list[dict]) -> list[dict]:
+    """把 Soniox 的 sub-word 片段合并成「英文按词」的 token 序列。
+
+    实测契约（2026-07-28，stt-async-v5）：词首片段带前导空格（" edit"），
+    词内续段没有前导空格（"ing"、"'t"、"ong,"）；标点通常无前导空格，
+    自然并入前词（"process."）。
+    规则：无前导空格且非 CJK 开头 → 并入前一个 token；CJK 开头
+    （中/日文逐字粒度）始终独立。合并后 start 取词首、end 取词尾，
+    speaker/language 取词首片段。
+    """
+    merged: list[dict] = []
+    for token in tokens:
+        text = token.get("text", "")
+        if not text:
+            continue
+        stripped = text.lstrip()
+        continuation = (
+            bool(merged)
+            and not text[0].isspace()
+            and bool(stripped)
+            and not _is_cjk_char(stripped[0])
+        )
+        if continuation:
+            prev = merged[-1]
+            prev["text"] += text
+            prev["end_ms"] = token.get("end_ms", prev.get("end_ms"))
+        else:
+            merged.append(dict(token))
+    return merged
+
 
 def tokens_to_items(tokens: list[dict]) -> list[dict]:
     """Soniox tokens → MAW items（整数毫秒）。一个 token 对应一个 item。
@@ -265,17 +337,115 @@ def split_items_by_speaker(items: list[dict]) -> list[list[dict]]:
     return runs
 
 
-def build_segments(items: list[dict], *, max_len: int, min_len: int,
-                   gap_split_ms: int) -> list[dict]:
-    """speaker run 内复用与 Qwen 版一致的静音/标点/长度切句。
+# ===== 空格分词语言（英文等）切句 =====
 
+# 默认按词数计量：英文每条字幕 3–13 词（Netflix 风格上限约 14 词）
+WESTERN_MAX_WORDS = 13
+WESTERN_MIN_WORDS = 3
+
+# 句末强标点（完整句子边界）与弱标点（超长时的断点），兼容 CJK 全角
+WESTERN_STRONG_END = ".!?。！？；"
+WESTERN_WEAK_END = ",;:，、：,;—–"
+# 判定时剥掉的尾部引号/括号（如 word." 仍视为句号结尾）
+_TRAILING_QUOTES = "\"'”’)]}』」"
+
+
+def _ends_with_punct(text: str, punct: str) -> bool:
+    stripped = text.rstrip().rstrip(_TRAILING_QUOTES)
+    return bool(stripped) and stripped[-1] in punct
+
+
+def _split_long_western(group: list[dict], max_words: int) -> list[list[dict]]:
+    """超过 max_words 词的组：优先在 max_words 内最后一个弱标点处断开，
+    没有弱标点则按 max_words 硬切。"""
+    if len(group) <= max_words:
+        return [group]
+    cut = None
+    for i in range(1, min(max_words, len(group) - 1) + 1):
+        if _ends_with_punct(group[i - 1]["text"], WESTERN_WEAK_END):
+            cut = i
+    if cut is None:
+        cut = max_words
+    return [group[:cut]] + _split_long_western(group[cut:], max_words)
+
+
+def split_words_to_segments_western(items: list[dict], max_words: int = WESTERN_MAX_WORDS,
+                                    min_words: int = WESTERN_MIN_WORDS,
+                                    gap_split_ms: int = 1000) -> list[dict]:
+    """空格分词语言（英文等）的切句：尽量保住完整句子。
+
+    0. 按静音间隔（>= gap_split_ms）预切
+    1. 按句末强标点（. ! ? 及全角）切出完整句子
+    2. 合并过短句子（< min_words 词），避免单词成条
+    3. 超长句子（> max_words 词）优先按弱标点断，兜底硬切
+    """
+    def to_seg(group: list[dict]) -> dict:
+        return {
+            "start": group[0]["start"],
+            "end": group[-1]["end"],
+            "text": "".join(it["text"] for it in group),
+            "items": [dict(it) for it in group],
+        }
+
+    final: list[list[dict]] = []
+    for sg in split_by_silence(items, gap_split_ms):
+        raw_groups: list[list[dict]] = []
+        buf: list[dict] = []
+        for it in sg:
+            buf.append(it)
+            if _ends_with_punct(it["text"], WESTERN_STRONG_END):
+                raw_groups.append(buf)
+                buf = []
+        if buf:
+            raw_groups.append(buf)
+
+        merged: list[list[dict]] = []
+        for grp in raw_groups:
+            if merged and len(grp) < min_words:
+                merged[-1].extend(grp)
+            else:
+                merged.append(list(grp))
+        if len(merged) >= 2 and len(merged[-1]) < min_words:
+            merged[-2].extend(merged.pop())
+
+        for grp in merged:
+            final.extend(_split_long_western(grp, max_words))
+
+    return [to_seg(g) for g in final if g]
+
+
+def _is_cjk_dominant(items: list[dict]) -> bool:
+    """run 内 CJK item 占比 >= 50% 判定为中文主导（走中文切句逻辑）。"""
+    if not items:
+        return True
+    cjk = sum(
+        1 for it in items
+        if any(_is_cjk_char(c) for c in it["text"] if not c.isspace())
+    )
+    return cjk * 2 >= len(items)
+
+
+def build_segments(items: list[dict], *, max_len: int, min_len: int,
+                   gap_split_ms: int,
+                   max_words: int = WESTERN_MAX_WORDS,
+                   min_words: int = WESTERN_MIN_WORDS) -> list[dict]:
+    """speaker run 内按主导文字双轨切句。
+
+    CJK 主导：复用与 Qwen 版一致的静音/全角标点/字数切句；
+    空格语言主导：按词数与 .!?,;: 切出完整句子（split_words_to_segments_western）。
     每个 segment 的 speaker 来自其 run（run 内统一，满足
     「segment 所有带语音 items 同一 speaker 才写入」的契约）。
     """
     segments: list[dict] = []
     for run in split_items_by_speaker(items):
         run_speaker = next((it["speaker"] for it in run if it.get("speaker")), None)
-        for seg in split_words_to_segments(run, max_len, min_len, gap_split_ms):
+        if _is_cjk_dominant(run):
+            run_segments = split_words_to_segments(run, max_len, min_len, gap_split_ms)
+        else:
+            run_segments = split_words_to_segments_western(
+                run, max_words, min_words, gap_split_ms
+            )
+        for seg in run_segments:
             if run_speaker is not None:
                 seg["speaker"] = run_speaker
             segments.append(seg)
@@ -382,13 +552,25 @@ def transcribe(audio_path: str, config: dict, *,
         )
         elapsed = time.perf_counter() - t0
         transcript = get_transcript(base_url, api_key, transcription_id)
-    finally:
+    except TranscriptionFailedError:
+        # 任务已是终态失败，云端记录可以安全清理
         delete_transcription(base_url, api_key, transcription_id, on_status=on_status)
+        raise
+    except Exception:
+        # 本地网络错误/超时等中断：任务可能仍在云端运行，绝不能删除，
+        # 否则丢掉即将完成的结果；提示用户按需手动清理
+        on_status(
+            f"[soniox] [警告] 本地轮询中断，云端任务可能仍在运行"
+            f"（transcription_id={transcription_id}）。"
+            f"如确认不再需要，请到 https://console.soniox.com 手动删除。"
+        )
+        raise
+    delete_transcription(base_url, api_key, transcription_id, on_status=on_status)
 
     tokens = transcript.get("tokens", [])
     on_status(f"[soniox] 转写完成，耗时 {elapsed:.1f}s | tokens={len(tokens)}")
     return {
         "text": transcript.get("text", ""),
         "language": majority_language(tokens),
-        "items": tokens_to_items(tokens),
+        "items": tokens_to_items(merge_word_fragments(tokens)),
     }

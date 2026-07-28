@@ -82,6 +82,171 @@ class TokenMappingTests(unittest.TestCase):
         self.assertNotIn("speaker", items[0])
 
 
+class WordFragmentMergeTests(unittest.TestCase):
+    def test_merges_subword_fragments_by_leading_space(self) -> None:
+        # 实测契约：词首片段带前导空格，续段无空格（" edit"+"ing" → " editing"）
+        tokens = [
+            _token("The", 3870, 3930),
+            _token(" edit", 4050, 4110),
+            _token("ing", 4290, 4350),
+            _token(" process", 4470, 4530),
+            _token(".", 4890, 4950),
+            _token(" Now", 5130, 5190),
+        ]
+
+        merged = soniox.merge_word_fragments(tokens)
+
+        self.assertEqual([t["text"] for t in merged],
+                         ["The", " editing", " process.", " Now"])
+        # start 取词首、end 取词尾
+        self.assertEqual((merged[1]["start_ms"], merged[1]["end_ms"]), (4050, 4350))
+        self.assertEqual((merged[2]["start_ms"], merged[2]["end_ms"]), (4470, 4950))
+
+    def test_merges_three_fragment_word(self) -> None:
+        tokens = [_token(" w", 6030, 6090), _token("r", 6090, 6150), _token("ong,", 6210, 6270)]
+
+        merged = soniox.merge_word_fragments(tokens)
+
+        self.assertEqual([t["text"] for t in merged], [" wrong,"])
+        self.assertEqual((merged[0]["start_ms"], merged[0]["end_ms"]), (6030, 6270))
+
+    def test_cjk_tokens_stay_character_level(self) -> None:
+        tokens = [_token("今", 0, 300), _token("天", 300, 600), _token("好", 600, 900)]
+
+        merged = soniox.merge_word_fragments(tokens)
+
+        self.assertEqual([t["text"] for t in merged], ["今", "天", "好"])
+
+    def test_mixed_cjk_and_english(self) -> None:
+        tokens = [
+            _token("今", 0, 300),
+            _token("天", 300, 600),
+            _token(" weath", 700, 1000),
+            _token("er", 1000, 1300),
+            _token(" good", 1500, 1800),
+        ]
+
+        merged = soniox.merge_word_fragments(tokens)
+
+        self.assertEqual([t["text"] for t in merged],
+                         ["今", "天", " weather", " good"])
+
+    def test_first_token_punctuation_becomes_standalone_item(self) -> None:
+        merged = soniox.merge_word_fragments([_token(",", 5310, 5370), _token(" don", 5550, 5610), _token("'t", 5610, 5670)])
+
+        self.assertEqual([t["text"] for t in merged], [",", " don't"])
+
+    def test_merged_items_join_matches_segment_text_and_validates(self) -> None:
+        tokens = [
+            _token("The", 3870, 3930, speaker="1"),
+            _token(" edit", 4050, 4110, speaker="1"),
+            _token("ing", 4290, 4350, speaker="1"),
+            _token(" process", 4470, 4530, speaker="1"),
+            _token(".", 4890, 4950, speaker="1"),
+        ]
+        items = soniox.tokens_to_items(soniox.merge_word_fragments(tokens))
+
+        self.assertEqual("".join(it["text"] for it in items), "The editing process.")
+        segments = soniox.build_segments(items, max_len=21, min_len=5, gap_split_ms=1500)
+
+        result = validate_project({"segments": segments})
+        self.assertTrue(result.ok, msg=str([e.to_json() for e in result.errors]))
+        self.assertEqual(segments[0]["text"], "The editing process.")
+
+
+class WesternSplitTests(unittest.TestCase):
+    def _words(self, pairs):
+        return [{"text": t, "start": s, "end": e} for t, s, e in pairs]
+
+    def test_western_splits_complete_sentences_like_real_data(self) -> None:
+        # 真实语料（merge 后）：旧逻辑输出 "The editing process. Now" + ", don't get me wrong,"
+        items = self._words([
+            ("The", 3870, 3930), (" editing", 4050, 4350), (" process.", 4470, 4950),
+            (" Now,", 5130, 5370), (" don't", 5550, 5670), (" get", 5730, 5790),
+            (" me", 5910, 5970), (" wrong,", 6030, 6270), (" I", 6390, 6450),
+            (" really", 6510, 6810), (" enjoy", 6870, 7170), (" it.", 7230, 7530),
+        ])
+
+        segments = soniox.split_words_to_segments_western(items, gap_split_ms=1500)
+
+        self.assertEqual(len(segments), 2)
+        self.assertEqual(segments[0]["text"], "The editing process.")
+        self.assertEqual(segments[1]["text"], " Now, don't get me wrong, I really enjoy it.")
+        self.assertEqual(segments[0]["items"][-1]["text"], " process.")
+
+    def test_western_merges_short_sentences(self) -> None:
+        items = self._words([
+            (" I", 0, 100), (" said", 100, 200), (" so.", 200, 300),
+            (" Yes.", 400, 500),
+            (" And", 600, 700), (" then", 700, 800), (" we", 800, 900), (" went", 900, 1000), (" home.", 1000, 1100),
+            (" Ok.", 1200, 1300),
+        ])
+
+        segments = soniox.split_words_to_segments_western(items, gap_split_ms=1500)
+
+        # " Yes."（1 词）并入前句；末尾 " Ok."（1 词）并入前句
+        self.assertEqual([s["text"] for s in segments],
+                         [" I said so. Yes.", " And then we went home. Ok."])
+
+    def test_western_overflow_prefers_weak_punct_cut(self) -> None:
+        words = [f" w{i}" for i in range(16)]
+        words[7] = " w7,"
+        items = self._words([(w, i * 100, i * 100 + 90) for i, w in enumerate(words)])
+
+        segments = soniox.split_words_to_segments_western(items, max_words=13, gap_split_ms=99999)
+
+        self.assertEqual(len(segments[0]["items"]), 8)  # 在第 8 词的逗号处断
+        self.assertTrue(segments[0]["text"].rstrip().endswith(","))
+
+    def test_western_overflow_hard_cut_without_weak_punct(self) -> None:
+        items = self._words([(f" w{i}", i * 100, i * 100 + 90) for i in range(15)])
+
+        segments = soniox.split_words_to_segments_western(items, max_words=13, gap_split_ms=99999)
+
+        self.assertEqual(len(segments[0]["items"]), 13)
+        self.assertEqual(len(segments[1]["items"]), 2)
+
+    def test_western_sentence_end_tolerates_trailing_quote(self) -> None:
+        items = self._words([
+            (" He", 0, 100), (" said", 100, 200), (' "stop."', 200, 300),
+            (" Next", 400, 500), (" one", 500, 600), (" comes.", 600, 700),
+        ])
+
+        segments = soniox.split_words_to_segments_western(items, gap_split_ms=1500)
+
+        self.assertEqual(segments[0]["text"], ' He said "stop."')
+        self.assertEqual(segments[1]["text"], " Next one comes.")
+
+    def test_cjk_dominant_detection(self) -> None:
+        self.assertTrue(soniox._is_cjk_dominant(self._words([("今", 0, 1), ("天", 1, 2)])))
+        self.assertFalse(soniox._is_cjk_dominant(self._words([(" hello", 0, 1), (" world", 1, 2)])))
+        self.assertTrue(soniox._is_cjk_dominant(self._words([
+            ("今", 0, 1), ("天", 1, 2), ("是", 2, 3), (" Monday", 3, 4),
+        ])))
+
+    def test_build_segments_western_run_validates(self) -> None:
+        tokens = [
+            _token("The", 3870, 3930, speaker="1"),
+            _token(" edit", 4050, 4110, speaker="1"),
+            _token("ing", 4290, 4350, speaker="1"),
+            _token(" process", 4470, 4530, speaker="1"),
+            _token(".", 4890, 4950, speaker="1"),
+            _token(" Now", 5130, 5190, speaker="1"),
+            _token(",", 5310, 5370, speaker="1"),
+            _token(" don", 5550, 5610, speaker="1"),
+            _token("'t", 5610, 5670, speaker="1"),
+        ]
+        items = soniox.tokens_to_items(soniox.merge_word_fragments(tokens))
+        segments = soniox.build_segments(items, max_len=21, min_len=5, gap_split_ms=1500)
+
+        result = validate_project({"segments": segments})
+        self.assertTrue(result.ok, msg=str([e.to_json() for e in result.errors]))
+        # 尾部 " Now, don't" 只有 2 词（< min_words 3），按设计并入前一句
+        self.assertEqual(len(segments), 1)
+        self.assertEqual(segments[0]["text"], "The editing process. Now, don't")
+        self.assertEqual(segments[0]["speaker"], "1")
+
+
 class SpeakerSplitTests(unittest.TestCase):
     def test_split_items_by_speaker_hard_splits_on_change(self) -> None:
         items = [
@@ -330,6 +495,85 @@ class ApiClientTests(unittest.TestCase):
         self.assertIn("401", str(raised.exception))
         self.assertIn("unauthenticated", str(raised.exception))
         self.assertIn("Incorrect API key", str(raised.exception))
+
+    def test_poll_transcription_retries_transient_network_errors(self) -> None:
+        with mock.patch("maw.soniox.requests") as req:
+            req.get.side_effect = [
+                requests.exceptions.ReadTimeout("boom"),
+                requests.exceptions.ConnectionError("boom"),
+                _response({"status": "completed"}),
+            ]
+            warnings = []
+
+            soniox.poll_transcription(
+                BASE, KEY, "t1", interval=0, timeout=60,
+                on_status=warnings.append,
+            )
+
+        self.assertEqual(req.get.call_count, 3)
+        self.assertTrue(any("重试" in w for w in warnings))
+
+    def test_poll_transcription_raises_after_consecutive_network_failures(self) -> None:
+        with mock.patch("maw.soniox.requests") as req:
+            req.get.side_effect = requests.exceptions.ReadTimeout("boom")
+
+            with self.assertRaises(RuntimeError) as raised:
+                soniox.poll_transcription(BASE, KEY, "t1", interval=0, timeout=60)
+
+        self.assertIn("连续", str(raised.exception))
+        self.assertEqual(req.get.call_count, soniox.MAX_CONSECUTIVE_NETWORK_ERRORS)
+
+    def test_transcribe_does_not_delete_remote_task_on_network_failure(self) -> None:
+        config = {"api_key": KEY, "base_url": BASE, "model": "stt-async-v5",
+                  "poll_interval": 0, "poll_timeout": 60}
+        messages = []
+        with mock.patch.object(soniox, "upload_file", return_value="f1"), \
+             mock.patch.object(soniox, "create_transcription", return_value="t1"), \
+             mock.patch.object(soniox, "poll_transcription",
+                               side_effect=requests.exceptions.ReadTimeout("boom")), \
+             mock.patch.object(soniox, "delete_transcription") as delete:
+            with self.assertRaises(requests.exceptions.ReadTimeout):
+                soniox.transcribe("audio.wav", config, on_status=messages.append)
+
+        delete.assert_not_called()
+        self.assertTrue(any("t1" in m and "手动删除" in m for m in messages))
+
+    def test_transcribe_deletes_remote_task_on_terminal_failure(self) -> None:
+        config = {"api_key": KEY, "base_url": BASE, "model": "stt-async-v5",
+                  "poll_interval": 0, "poll_timeout": 60}
+        with mock.patch.object(soniox, "upload_file", return_value="f1"), \
+             mock.patch.object(soniox, "create_transcription", return_value="t1"), \
+             mock.patch.object(soniox, "poll_transcription",
+                               side_effect=soniox.TranscriptionFailedError("bad audio")), \
+             mock.patch.object(soniox, "delete_transcription") as delete:
+            with self.assertRaises(soniox.TranscriptionFailedError):
+                soniox.transcribe("audio.wav", config, on_status=lambda _m: None)
+
+        delete.assert_called_once_with(BASE, KEY, "t1", on_status=mock.ANY)
+
+    def test_transcribe_deletes_remote_task_on_success(self) -> None:
+        config = {"api_key": KEY, "base_url": BASE, "model": "stt-async-v5",
+                  "poll_interval": 0, "poll_timeout": 60}
+        transcript = {
+            "text": "大家好",
+            "tokens": [
+                _token("大", 0, 300, speaker="1", language="zh"),
+                _token("家", 300, 600, speaker="1", language="zh"),
+                _token("好", 600, 900, speaker="1", language="zh"),
+            ],
+        }
+        with mock.patch.object(soniox, "upload_file", return_value="f1"), \
+             mock.patch.object(soniox, "create_transcription", return_value="t1"), \
+             mock.patch.object(soniox, "poll_transcription", return_value=None), \
+             mock.patch.object(soniox, "get_transcript", return_value=transcript), \
+             mock.patch.object(soniox, "delete_transcription") as delete:
+            result = soniox.transcribe("audio.wav", config, on_status=lambda _m: None)
+
+        delete.assert_called_once_with(BASE, KEY, "t1", on_status=mock.ANY)
+        self.assertEqual(result["text"], "大家好")
+        self.assertEqual(result["language"], "zh")
+        self.assertEqual(len(result["items"]), 3)
+        self.assertEqual(result["items"][0]["speaker"], "1")
 
     def test_delete_transcription_is_best_effort(self) -> None:
         with mock.patch("maw.soniox.requests") as req:

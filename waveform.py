@@ -1,3 +1,5 @@
+# pyright: reportAny=false, reportExplicitAny=false, reportMissingTypeArgument=false, reportOptionalSubscript=false, reportReturnType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false, reportUnusedCallResult=false
+
 """Compact, streaming waveform peak extraction for the subtitle editor.
 
 The browser UI consumes a small min/max envelope instead of decoded PCM.  The
@@ -13,6 +15,7 @@ import shutil
 import subprocess
 import sys
 from array import array
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +27,12 @@ DEFAULT_PEAKS_PER_SECOND = 100
 
 class WaveformError(RuntimeError):
     """Raised when a media file cannot be converted to waveform peaks."""
+
+
+@dataclass(frozen=True, slots=True)
+class EmbeddedWaveformResult:
+    project: dict[str, Any]
+    error: Exception | None = None
 
 
 def media_signature(media_path: Path) -> dict[str, int | str]:
@@ -208,6 +217,22 @@ def extract_waveform(
         "data": base64.b64encode(encoded).decode("ascii"),
         "source": media_signature(media_path),
     }
+
+
+def embed_waveform(
+    project: dict[str, Any],
+    media_path: Path,
+    *,
+    peaks_per_second: int = DEFAULT_PEAKS_PER_SECOND,
+) -> EmbeddedWaveformResult:
+    """Return a project copy with embedded peaks, or the original project on failure."""
+    try:
+        payload = extract_waveform(media_path, peaks_per_second=peaks_per_second)
+    except Exception as exc:  # noqa: BROAD_EXCEPT_OK
+        return EmbeddedWaveformResult(project=project, error=exc)
+    embedded = dict(project)
+    embedded["waveform"] = payload
+    return EmbeddedWaveformResult(project=embedded)
 
 
 def load_or_extract_waveform(

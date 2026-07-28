@@ -28,6 +28,7 @@ from pathlib import Path
 import requests
 
 from edit import get_default_sticker_dir
+from waveform import embed_waveform
 
 
 # ===== 路径与常量 =====
@@ -189,7 +190,7 @@ def generate_srt(segments: list[dict]) -> str:
 
 # ===== 切句逻辑（与本地版 _split_words_to_segments 一致，纯 Python 复制） =====
 
-def _split_by_silence(items: list[dict], min_gap_ms: int) -> list[list[dict]]:
+def split_by_silence(items: list[dict], min_gap_ms: int) -> list[list[dict]]:
     """按相邻 item 之间的静音间隔切分。"""
     if not items or min_gap_ms <= 0:
         return [items] if items else []
@@ -204,6 +205,10 @@ def _split_by_silence(items: list[dict], min_gap_ms: int) -> list[list[dict]]:
     if cur:
         groups.append(cur)
     return groups
+
+
+# 兼容旧私有名（maw/soniox.py 等复用方请用 split_by_silence）
+_split_by_silence = split_by_silence
 
 
 def _split_long_group(items: list[dict], max_len: int, weak_punct: set) -> list[list[dict]]:
@@ -288,7 +293,7 @@ def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
         }
 
     final: list[list[dict]] = []
-    silence_groups = _split_by_silence(items, gap_split_ms)
+    silence_groups = split_by_silence(items, gap_split_ms)
 
     for sg in silence_groups:
         raw_groups: list[list[dict]] = []
@@ -660,6 +665,10 @@ def main():
         help="同时输出含字级时间戳的 JSON 文件（供 edit.py 加载）",
     )
     parser.add_argument(
+        "--with-waveform", action="store_true",
+        help="将波形峰值数据嵌入工程 JSON（GUI 转写默认开启）",
+    )
+    parser.add_argument(
         "-s", "--stickers", default=get_default_sticker_dir(),
         help="表情包文件夹路径，传给 edit.py（默认读 .env 的 STICKER_DIR）",
     )
@@ -825,6 +834,17 @@ def main():
                 for seg in segments
             ],
         }
+        if args.with_waveform:
+            waveform_result = embed_waveform(json_data, input_path)
+            json_data = waveform_result.project
+            if waveform_result.error is None:
+                waveform_payload = json_data["waveform"]
+                print(
+                    f"[waveform] 已嵌入 {waveform_payload['peak_count']} peaks "
+                    f"({waveform_payload['peaks_per_second']}/秒)"
+                )
+            else:
+                print(f"[waveform] 警告: {waveform_result.error}；已跳过内嵌波形")
         json_path.write_text(
             json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8"
         )
