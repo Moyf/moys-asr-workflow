@@ -17,7 +17,9 @@ Moy 的 ASR 工作流由两部分组成：
 
 ![launcher](assets/launcher.jpg)  
 
-> 当前支持模型：阿里云百炼 Qwen / Fun-ASR 或 Soniox 云端 ASR API  
+> 当前支持模型：阿里云百炼 Qwen / Fun-ASR 或 Soniox 云端 ASR API
+
+> 源码中另有实验性的本地 Qwen3-ASR / FunASR CLI 流程，见 [docs/LOCAL_ASR.md](docs/LOCAL_ASR.md)；暂未接入 Launcher，也不随 Windows 包分发模型依赖。
 
 - **MAWE**：MAW 自带的字幕编辑器，基本上只是个 HTML 网页，但是功能强大到超出你的想象。  
 

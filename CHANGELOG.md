@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- 新增实验性的本地 Qwen3-ASR / FunASR CLI 流程：统一本地模型输出的时间戳，生成 SRT、`.mosp` 工程和可选便携 HTML；本地模型依赖保持为可选安装，暂未接入 Launcher 或 Windows 冻结包。
+
 ## [1.2.0] - 2026-08-02
 
 ### Added

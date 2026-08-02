@@ -2,13 +2,13 @@
 
 ## 项目目标
 
-`moys-asr-workflow`（简称 **MAW**）是一个刻意收窄的、可公开分发的 Qwen ASR API 工作流：
+`moys-asr-workflow`（简称 **MAW**）是一个刻意收窄的、可公开分发的 ASR 工作流。正式主流程仍是 Qwen ASR API；当前分支另提供不接入 Launcher 的实验性本地 Qwen3-ASR / FunASR CLI：
 
 ```text
-本地媒体 -> Qwen API -> SRT + JSON 工程 -> 本地浏览器编辑 -> 导出
+本地媒体 -> Qwen API 或本地 Qwen3-ASR/FunASR -> SRT + JSON 工程 -> 本地浏览器编辑 -> 导出
 ```
 
-它不是完整的 ASR 平台。不要在没有明确需求时引入本地模型、其他识别引擎、剪辑软件脚本、比较工具或任何个人工作流资产。未来完整产品是 MOSE，见 `docs/MOSE.md`。
+它不是完整的 ASR 平台。不要在没有明确需求时继续引入其他识别引擎、模型下载管理器、剪辑软件脚本、比较工具或任何个人工作流资产。未来完整产品是 MOSE，见 `docs/MOSE.md`。
 
 ## 先读这些文件
 
@@ -20,6 +20,7 @@ generate_subtitle_qwen_api.py # API 转写入口
 edit.py + waveform.py         # 单文件编辑器生成和波形缓存
 server-editor/serve.py        # 推荐的 localhost 编辑器
 web/                          # 所有前端源码
+docs/LOCAL_ASR.md             # 实验性本地 Qwen3-ASR / FunASR CLI
 ```
 
 `web/` 是唯一前端源码。`edit.py` 将它内联为便携 `.edit.html`，`server-editor` 则在每次请求时从它渲染页面。因此，修改 `web/` 或模板后必须运行：

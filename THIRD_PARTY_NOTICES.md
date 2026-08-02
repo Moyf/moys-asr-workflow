@@ -10,6 +10,8 @@
 | [PyInstaller](https://pyinstaller.org/) | Build the optional Windows application bundle | GPL-2.0-or-later with a bootloader exception that permits distributing bundled applications |
 | [Python](https://www.python.org/) | Runtime embedded in the optional Windows application bundle | Python Software Foundation License |
 | [FFmpeg](https://ffmpeg.org/) / [Gyan Windows build](https://www.gyan.dev/ffmpeg/builds/) | Inspect media, extract audio, and build waveform peaks | Not bundled in the standard package. The optional MAWxFF package includes separate FFmpeg 8.1.2 Essentials executables under GPL-3.0; its `ffmpeg/` directory includes the upstream license, build README, checksum, binary source, and corresponding source link |
+| [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) / `qwen-asr` | Optional local Qwen speech-recognition runtime | Not installed by default and not bundled; runtime code and downloaded model checkpoints remain subject to their upstream licenses and terms |
+| [FunASR](https://github.com/modelscope/FunASR) / `funasr` | Optional local speech-recognition runtime | Not installed by default and not bundled; runtime code and downloaded model checkpoints remain subject to their upstream licenses and terms |
 | Alibaba Cloud Model Studio / Qwen ASR | Speech recognition API | External service; subject to Alibaba Cloud terms, billing, and privacy policy |
 | [Soniox](https://soniox.com/) | Speech recognition API | External service; subject to Soniox terms, billing, and privacy policy |
 
