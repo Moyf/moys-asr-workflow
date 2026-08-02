@@ -44,6 +44,7 @@
       api_key_missing: "请填写 API Key，或先在 ⚙ 配置/密钥区保存。",
       workspace_missing: "新加坡地域需要 Workspace ID。",
       output_missing: "请填写 SRT 输出路径。",
+      ffprobe_start_failed: "ffprobe 启动失败（Windows 错误 0xC0000142）。请重新运行 MAW；如果仍然失败，请重新下载并完整解压 MAWxFF，并检查 Windows 安全中心是否拦截了 ffprobe.exe。",
       server_no_response: (detail) => `编辑器服务器没有响应（${detail || "http://127.0.0.1"}）——端口可能被占用，请检查端口后重试。`,
       server_start_failed: (detail) => `编辑器服务器启动失败：${detail || "请查看下方日志。"}`,
       sticker_dir_invalid: "表情包根目录不存在。"
@@ -57,6 +58,7 @@
       api_key_missing: "Enter an API Key, or save one first in Settings / API key.",
       workspace_missing: "Singapore region requires a Workspace ID.",
       output_missing: "Enter an SRT output path.",
+      ffprobe_start_failed: "ffprobe failed to start (Windows error 0xC0000142). Please run MAW again. If it keeps happening, download and fully extract MAWxFF again, and check Windows Security for a blocked ffprobe.exe.",
       server_no_response: (detail) => `The editor server did not respond (${detail || "http://127.0.0.1"}). The port may be occupied; check the port and retry.`,
       server_start_failed: (detail) => `The editor server failed to start: ${detail || "check the logs below."}`,
       sticker_dir_invalid: "Sticker root directory does not exist."
@@ -326,7 +328,7 @@
     appendLog(window.MAWLauncher.backend === "real" ? "MAW launcher ready." : "[mock] Static browser demo mode enabled."); setStatus(t("ready")); await checkExistingServer();
   }
 
-  function handleBackendEvent(event) { if (event.type === "log") appendLog(event.message); if (event.type === "error") { setRunning(false); setStatus(event.message || t("failed")); } if (event.type === "done") { state.result = event.result; setRunning(false); setJsonPath(event.result?.jsonPath || ""); $("openMawe").classList.add("attention"); $("openFolder").classList.remove("hidden"); syncHtmlMenu(); appendLog(t("done")); void checkExistingServer(t("done")); } if (event.type === "dropMedia") { setMedia(event.path || ""); setStatus(t("media")); } if (event.type === "dropJson") { setJsonPath(event.path || ""); setStatus(t("json_project")); } if (event.type === "dropReject") setStatus(t("drop_reject")); }
+  function handleBackendEvent(event) { if (event.type === "log") appendLog(event.message); if (event.type === "error") { setRunning(false); const detail = event.detail || event.message || ""; const message = event.code ? errText(event.code, detail) : detail || t("failed"); setStatus(message); appendLog(`[error] ${message}`); if (detail && detail !== message) appendLog(`[detail] ${detail}`); } if (event.type === "done") { state.result = event.result; setRunning(false); setJsonPath(event.result?.jsonPath || ""); $("openMawe").classList.add("attention"); $("openFolder").classList.remove("hidden"); syncHtmlMenu(); appendLog(t("done")); void checkExistingServer(t("done")); } if (event.type === "dropMedia") { setMedia(event.path || ""); setStatus(t("media")); } if (event.type === "dropJson") { setJsonPath(event.path || ""); setStatus(t("json_project")); } if (event.type === "dropReject") setStatus(t("drop_reject")); }
   window.MAWLauncher = { backend: "pending", onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); } };
 
   $("langToggle").addEventListener("click", async () => { state.lang = state.lang === "zh" ? "en" : "zh"; renderLanguage(); await bridge("save_settings", formPayload()); });

@@ -22,7 +22,7 @@ from typing import BinaryIO, Final, final
 
 from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, LANGUAGES, MODELS, PROVIDERS, REGIONS, ModelConfig, ProviderConfig, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, startupinfo
-from maw.gui_workflow import TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, build_serve_command, default_srt_path, run_transcription
+from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, build_serve_command, default_srt_path, run_transcription
 from maw.media import resolve_project_media
 
 
@@ -58,6 +58,14 @@ def _app_version(paths: object) -> str:
         return "1.2.0"
     match = re.search(r'(?m)^version = "([^"]+)"\r?$', text)
     return match.group(1) if match else "1.2.0"
+
+
+def _is_ffprobe_start_failure(lines: Sequence[str]) -> bool:
+    """Recognise the Windows loader failure emitted by a nested ffprobe process."""
+    detail = "\n".join(lines).lower()
+    return "ffprobe" in detail and any(
+        marker in detail for marker in ("3221225794", "0xc0000142", "c0000142")
+    )
 
 
 @final
@@ -423,13 +431,30 @@ class LauncherApi:
         self.pump.shutdown()
 
     def _worker_main(self, request: TranscriptionRequest, cancel_event: Event) -> None:
+        child_output: list[str] = []
+
+        def on_child_event(line: str) -> None:
+            child_output.append(line)
+            self._emit({"type": "log", "message": line})
+
         try:
             result = run_transcription(
                 request,
-                on_event=lambda line: self._emit({"type": "log", "message": line}),
+                on_event=on_child_event,
                 cancel_event=cancel_event,
                 on_process_start=lambda pid: self._emit({"type": "log", "message": f"[info] 转写进程已启动 (pid {pid})"}),
             )
+        except TranscriptionProcessError as error:
+            if _is_ffprobe_start_failure(child_output):
+                self._emit({
+                    "type": "error",
+                    "code": "ffprobe_start_failed",
+                    "detail": str(error),
+                })
+            else:
+                self._emit({"type": "error", "message": str(error)})
+            self.pump.flush()
+            return
         except Exception as error:  # noqa: BROAD_EXCEPT_OK - pywebview worker boundary reports to JS.
             self._emit({"type": "error", "message": str(error)})
             self.pump.flush()
