@@ -74,13 +74,12 @@ Moy 的 ASR 工作流由两部分组成：
 ## 你需要准备
 
 - 至少一个云端 ASR API Key：可以用[阿里云百炼](https://help.aliyun.com/zh/model-studio/get-api-key)调用 Qwen 或 Fun-ASR，也可以用支持说话人分离的 [Soniox](https://console.soniox.com)。
-- Windows 图形版：Windows 10/11；下载 `MAWxFF` 不需要另外安装 FFmpeg，下载普通版则需要系统里已经有 `ffmpeg` 和 `ffprobe`。
+- [Windows 图形版](https://github.com/Moyf/moys-asr-workflow/releases/latest)：Windows 10/11；下载 `MAWxFF` 不需要另外安装 FFmpeg，下载普通版则需要系统里已经有 `ffmpeg` 和 `ffprobe`。
 - 从源码或命令行运行：Python 3.11 或更新版本、[uv](https://docs.astral.sh/uv/getting-started/installation/)（推荐），以及 [FFmpeg](https://ffmpeg.org/download.html)。macOS/Linux 也可尝试。
 
 
 <details>
 <summary>废话压缩</summary>
-## 详情说明
 两个版本的 MAW 功能完全一样。解压后双击 `MAW.exe`，Launcher 会带你完成这条流程：
 
 ```text
