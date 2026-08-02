@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Launcher 新增实验性的本地 Qwen3-ASR / FunASR 识别方式：使用独立运行环境生成字幕，并复用 MAW 的 SRT、`.mosp` 工程与编辑器流程。
+
+### Changed
+
+- 暂时移除 Windows `MOSE.exe` 与 macOS `MOSE.app` 的 Release 打包，缩小分发包；Launcher 隐藏「在 MOSE 中打开」入口，默认使用 Server 版或 HTML 编辑器。
+
 ## [1.3.1] - 2026-08-10
 
 ### Added
