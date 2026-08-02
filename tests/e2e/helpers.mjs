@@ -9,6 +9,92 @@ import { createServer } from 'node:net';
 import { randomBytes } from 'node:crypto';
 
 // ---------------------------------------------------------------------------
+// Process cleanup for interrupted E2E runs.
+// ---------------------------------------------------------------------------
+// Keep this list limited to server processes started by this helper.  In
+// particular, do not try to discover or terminate every Python process on the
+// machine when a test runner is interrupted.
+const activeServerPids = new Set();
+let cleanupInProgress = false;
+
+function terminateProcessTreeSync(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+
+  try {
+    if (process.platform === 'win32') {
+      execFileSync('taskkill', ['/F', '/T', '/PID', String(pid)], {
+        windowsHide: true,
+        stdio: 'ignore',
+      });
+    } else {
+      process.kill(pid, 'SIGKILL');
+    }
+  } catch (_) {
+    // The process may already have exited between registration and cleanup.
+  }
+}
+
+function cleanupActiveServersSync() {
+  if (cleanupInProgress) return;
+  cleanupInProgress = true;
+  try {
+    for (const pid of activeServerPids) {
+      terminateProcessTreeSync(pid);
+    }
+  } finally {
+    activeServerPids.clear();
+    cleanupInProgress = false;
+  }
+}
+
+function registerServerProcess(proc) {
+  if (!Number.isInteger(proc.pid) || proc.pid <= 0) return;
+
+  activeServerPids.add(proc.pid);
+  proc.once('exit', () => activeServerPids.delete(proc.pid));
+  proc.once('error', () => activeServerPids.delete(proc.pid));
+}
+
+function stopServerProcess(proc) {
+  return new Promise((resolve) => {
+    if (proc.exitCode !== null || !Number.isInteger(proc.pid)) {
+      activeServerPids.delete(proc.pid);
+      resolve();
+      return;
+    }
+
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      proc.removeListener('exit', finish);
+      resolve();
+    };
+    const timeout = setTimeout(finish, 5000);
+
+    proc.once('exit', finish);
+    terminateProcessTreeSync(proc.pid);
+  });
+}
+
+process.on('exit', cleanupActiveServersSync);
+process.on('uncaughtExceptionMonitor', cleanupActiveServersSync);
+
+function handleTerminationSignal(signal) {
+  cleanupActiveServersSync();
+  process.exit(signal === 'SIGINT' ? 130 : 143);
+}
+
+process.on('SIGINT', () => handleTerminationSignal('SIGINT'));
+process.on('SIGTERM', () => handleTerminationSignal('SIGTERM'));
+if (process.platform === 'win32') {
+  process.on('SIGBREAK', () => handleTerminationSignal('SIGBREAK'));
+} else {
+  process.on('SIGHUP', () => handleTerminationSignal('SIGHUP'));
+}
+
+// ---------------------------------------------------------------------------
 // Deterministic PRNG (LCG) — fixed seed so WAV peaks and waveform data are
 // reproducible across runs.  No Math.random() where determinism matters.
 // ---------------------------------------------------------------------------
@@ -186,58 +272,54 @@ export async function startServer(projectJsonPath, mediaPath, port) {
       XDG_CONFIG_HOME: settingsRoot,
     },
   });
+  registerServerProcess(proc);
 
   const url = `http://127.0.0.1:${port}/`;
 
-  await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error('Server did not respond within 30s'));
-    }, 30000);
+  try {
+    await new Promise((resolve, reject) => {
+      let pollTimer;
+      let settled = false;
+      const allOutput = [];
+      const finish = (callback) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        if (pollTimer) clearTimeout(pollTimer);
+        callback();
+      };
+      const timeout = setTimeout(() => {
+        finish(() => reject(new Error('Server did not respond within 30s')));
+      }, 30000);
+      proc.stdout.on('data', (chunk) => allOutput.push(chunk.toString()));
+      proc.stderr.on('data', (chunk) => allOutput.push(chunk.toString()));
+      proc.on('error', (err) => finish(() => reject(err)));
+      proc.on('exit', (code) => finish(() => {
+        reject(new Error(`Server exited with code ${code}. Output: ${allOutput.join('')}`));
+      }));
 
-    const allOutput = [];
-    proc.stdout.on('data', (chunk) => allOutput.push(chunk.toString()));
-    proc.stderr.on('data', (chunk) => allOutput.push(chunk.toString()));
-    proc.on('error', (err) => { clearTimeout(timeout); reject(err); });
-    proc.on('exit', (code) => {
-      clearTimeout(timeout);
-      reject(new Error(`Server exited with code ${code}. Output: ${allOutput.join('')}`));
+      const poll = async () => {
+        try {
+          const res = await fetch(url);
+          if (res.ok) {
+            finish(resolve);
+            return;
+          }
+        } catch (_) {}
+        if (!settled) pollTimer = setTimeout(poll, 500);
+      };
+      poll();
     });
-
-    const poll = async () => {
-      try {
-        const res = await fetch(url);
-        if (res.ok) {
-          clearTimeout(timeout);
-          resolve();
-          return;
-        }
-      } catch (_) {}
-      setTimeout(poll, 500);
-    };
-    poll();
-  });
+  } catch (error) {
+    await stopServerProcess(proc);
+    throw error;
+  }
 
   return {
     url,
     proc,
     async stop() {
-      return new Promise((resolve) => {
-        if (proc.exitCode !== null) { resolve(); return; }
-        proc.on('exit', () => resolve());
-        try {
-          if (process.platform === 'win32') {
-            execFileSync('taskkill', ['/F', '/T', '/PID', String(proc.pid)], {
-              windowsHide: true,
-              stdio: 'ignore',
-            });
-          } else {
-            proc.kill('SIGKILL');
-          }
-        } catch (_) {
-          resolve();
-        }
-        setTimeout(resolve, 5000);
-      });
+      return stopServerProcess(proc);
     },
   };
 }
