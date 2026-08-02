@@ -16,8 +16,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.gui_web import EventPump, LauncherApi, LauncherPaths, _port, _request_from_payload, _route_dropped_path  # noqa: E402
-from maw.gui_workflow import TranscriptionRequest, TranscriptionResult  # noqa: E402
+from maw.gui_web import EventPump, LauncherApi, LauncherPaths, _is_ffprobe_start_failure, _port, _request_from_payload, _route_dropped_path  # noqa: E402
+from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 
 
 class FakeWindow:
@@ -579,6 +579,16 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn("onBackendEvents", self.window.scripts[0])
         self.assertLess(self.window.scripts[0].index("one"), self.window.scripts[0].index("two"))
 
+    def test_ffprobe_start_failure_is_recognised_from_child_output(self) -> None:
+        self.assertTrue(_is_ffprobe_start_failure([
+            "subprocess.CalledProcessError: Command ['ffprobe', ...]",
+            "returned non-zero exit status 3221225794.",
+        ]))
+        self.assertFalse(_is_ffprobe_start_failure([
+            "subprocess.CalledProcessError: Command ['ffprobe', ...]",
+            "returned non-zero exit status 1.",
+        ]))
+
     def test_launcher_api_queues_started_event_and_shutdown_flushes(self) -> None:
         self.api._emit({"type": "log", "message": "queued"})
 
@@ -607,6 +617,27 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('"type": "done"', event_script)
         self.assertIn(str(result.json_path).replace("\\", "\\\\"), event_script)
         self.assertIn('"htmlPath": ""', event_script)
+
+    def test_worker_emits_retryable_error_for_ffprobe_start_failure(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.root / "clip.wav",
+            srt_path=self.root / "clip.srt",
+        )
+
+        def fail_with_ffprobe_output(*_args: object, **kwargs: object) -> None:
+            callback = kwargs["on_event"]
+            assert callable(callback)
+            callback("subprocess.CalledProcessError: Command ['ffprobe', ...]")
+            callback("returned non-zero exit status 3221225794.")
+            raise TranscriptionProcessError(1)
+
+        with mock.patch("maw.gui_web.run_transcription", side_effect=fail_with_ffprobe_output):
+            self.api._worker_main(request, threading.Event())
+
+        self.assertTrue(self.window.scripts)
+        event_script = self.window.scripts[-1]
+        self.assertIn('"code": "ffprobe_start_failed"', event_script)
+        self.assertIn('"detail": "Transcription failed with exit code 1"', event_script)
 
     def test_route_dropped_path_routes_json_media_and_reject(self) -> None:
         """Given dropped paths, When routed, Then event type mirrors launcher drop behavior."""
