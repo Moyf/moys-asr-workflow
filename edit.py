@@ -1,12 +1,12 @@
-"""MAWE（Moy's ASR Workflow Editor）HTML 生成器（基于带字级时间戳的 JSON）+ 表情包管理。
+"""MAWE（Moy's ASR Workflow Editor）HTML 生成器（基于带字级时间戳的工程文件）+ 表情包管理。
 
 用法:
-    uv run python edit.py <subtitle.json> [-m media] [-s stickers_dir] [-o output.html]
+    uv run python edit.py <subtitle.mosp|subtitle.json> [-m media] [-s stickers_dir] [-o output.html]
 
 示例:
-    uv run python edit.py "subtitle-project.json" -m "video.mp4"
+    uv run python edit.py "subtitle-project.mosp" -m "video.mp4"
 
-JSON 由 generate_subtitle_qwen_api.py --json 生成，包含每条字幕的字级 timestamps。
+工程文件由 generate_subtitle_qwen_api.py --json 生成，内容是 UTF-8 JSON，默认扩展名为 `.mosp`，包含每条字幕的字级 timestamps。
 
 页面功能（HTML 单文件）:
 - 嵌入媒体播放器，单击字幕跳转
@@ -19,7 +19,7 @@ JSON 由 generate_subtitle_qwen_api.py --json 生成，包含每条字幕的字�
 - 媒体窗口叠加字幕预览（可开关）
 - 多选（Shift 范围选 / Ctrl 切换选）
 - 表情包：左侧缩略图、点击查看全尺寸、可删除/替换
-- 下载 SRT / JSON / Resolve JSON / OTIO 工程
+- 下载 SRT / `.mosp` 工程 / Resolve JSON / OTIO 工程
 - 空格快捷键播放/暂停
 """
 
@@ -194,7 +194,7 @@ def build_blank_html() -> str:
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     return render_editor_page(
-        title=html.escape("MAWE — Moy's ASR Workflow Editor · 用「打开工程」加载 JSON"),
+        title=html.escape("MAWE — Moy's ASR Workflow Editor · 用「打开工程」加载工程文件"),
         media_html=media_html,
         data_json=json.dumps(blank_data, ensure_ascii=False),
         filename_base_json=json.dumps("untitled", ensure_ascii=False),
@@ -213,11 +213,11 @@ def main():
     parser = argparse.ArgumentParser(description="MAWE — Moy's ASR Workflow Editor（含表情包管理 + 多选）")
     parser.add_argument(
         "json_path", nargs="?",
-        help="JSON 文件路径（由 generate_subtitle_qwen_api.py --json 生成）；--blank 模式下可省略",
+        help="工程文件路径（.mosp 或 .json，由 generate_subtitle_qwen_api.py --json 生成）；--blank 模式下可省略",
     )
     parser.add_argument(
         "-m", "--media",
-        help="媒体文件路径（默认从 JSON.media 读取，找不到时尝试同目录同名媒体）",
+        help="媒体文件路径（默认从工程文件的 media 读取，找不到时尝试同目录同名媒体）",
     )
     parser.add_argument(
         "-s", "--stickers",
@@ -225,16 +225,16 @@ def main():
     )
     parser.add_argument(
         "-o", "--output",
-        help="输出 HTML 路径（默认: JSON 同目录下 <stem>.edit.html）",
+        help="输出 HTML 路径（默认: 工程文件同目录下 <stem>.edit.html）",
     )
     parser.add_argument(
         "--blank", action="store_true",
-        help="生成空壳全功能编辑器（不含工程数据，打开后用「打开工程」加载 JSON）；"
+        help="生成空壳全功能编辑器（不含工程数据，打开后用「打开工程」加载工程文件）；"
              "默认输出到本项目根目录 blank-editor.html",
     )
     parser.add_argument(
         "--no-waveform", action="store_true",
-        help="不预生成波形峰值（已有 JSON 波形缓存仍会保留）",
+        help="不预生成波形峰值（已有工程文件中的波形缓存仍会保留）",
     )
     parser.add_argument(
         "--waveform-peaks-per-second", type=int,
@@ -258,7 +258,7 @@ def main():
 
     json_path = Path(args.json_path).resolve()
     if not json_path.exists():
-        print(f"错误: JSON 文件不存在 - {json_path}")
+        print(f"错误: 工程文件不存在 - {json_path}")
         return 1
 
     try:
@@ -354,12 +354,12 @@ def main():
     print("  • 基础波形 / 多行波形；拖动字幕块移动，拖动边缘调整起止时间")
     print("  • Shift+点击=范围选 / Ctrl+点击=切换选 / Alt+点击=切换禁用")
     print("  • 多选后右键：合并字幕、分配跨多句表情包、拓展表情包时间、标记颜色、禁用启用")
-    print("  • 拖拽文件到页面：视频/音频→加载媒体，JSON→打开工程")
+    print("  • 拖拽文件到页面：视频/音频→加载媒体，.mosp/.json→打开工程")
     print("  • 右键菜单可分配 5 色标记（红/黄/蓝/绿/紫），单选/多选都支持")
     print("  • 媒体窗口可叠加字幕预览（toolbar 切换）")
     print("  • 拆分键可切换 Enter / Ctrl+Enter")
     print("  • J/K/L 倍速控制（×0.5 / 重置 1× / ×2，叠加）")
-    print("  • 下载 SRT / JSON / Resolve JSON，以及编辑器支持的附加工程文件")
+    print("  • 下载 SRT / .mosp 工程 / Resolve JSON，以及编辑器支持的附加工程文件")
     return 0
 
 

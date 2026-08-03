@@ -1,6 +1,6 @@
-# 字幕工程 JSON 规范
+# 字幕工程文件规范（`.mosp` / `.json`）
 
-本文档定义 MAWE（Moy's ASR Workflow Editor）（`edit.py` 生成的 `.edit.html`）以及 `blank-editor.html` 共同接受的 JSON 工程文件格式。
+本文档定义 MAWE（Moy's ASR Workflow Editor）、`edit.py` 生成的 `.edit.html` 以及 `blank-editor.html` 共同接受的工程文件格式。工程文件内容是 UTF-8 JSON；`.mosp` 是当前默认和推荐的扩展名，`.json` 作为旧工程与兼容输入/输出扩展名继续支持。
 
 用途：让任意来源（ASR、第三方模型生成、人工手写）的 JSON 都能直接被编辑器加载、编辑、再导出。
 
@@ -18,7 +18,7 @@
   "sticker_root": "...",
   "waveform": { ... },
   "gap_remove": { ... },
-  "layout": { ... },
+  "workspace": { ... },
   "preview": { ... },
   "segments": [ ... ]
 }
@@ -27,7 +27,7 @@
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `segments` | `array<object>` | **必填** | 字幕段数组。**缺失或不是数组时，页面直接弹「文件格式不对，缺少 segments 字段」并拒绝加载** |
-| `media` | `string` | 否 | 媒体文件路径（绝对/相对均可）。便携 HTML 会在“打开工程”时用它的文件名匹配同一次选择的媒体；只选 JSON 时会提示用户继续选择媒体。浏览器安全限制下不能自行读取该路径或跳转其目录。服务器编辑器可按该路径自动加载 |
+| `media` | `string` | 否 | 媒体文件路径（绝对/相对均可）。便携 HTML 会在“打开工程”时用它的文件名匹配同一次选择的媒体；只选工程文件时会提示用户继续选择媒体。浏览器安全限制下不能自行读取该路径或跳转其目录。服务器编辑器可按该路径自动加载 |
 | `language` | `string` | 否 | 语言代码，如 `Chinese`、`English`。仅用于显示 |
 | `model` | `string` | 否 | ASR 模型名，如 `qwen3-asr`。仅用于显示 |
 | `sticker_root` | `string` | 否 | 表情包根目录绝对路径。打开工程时会覆盖编辑器内的 `STICKER_ROOT` |
@@ -35,6 +35,14 @@
 | `gap_remove` | `object` | 否 | 可逆的空隙移除决定。保留原始媒体/字幕时间，仅描述导出与跳过播放时使用的派生时间轴 |
 | `workspace` | `object` | 否 | 编辑器工作区：四个功能区的窗口布局与显示状态；不影响字幕和波形缓存。服务器版也可使用独立的本机命名工作区库跨工程复用 |
 | `preview` | `object` | 否 | 预览呈现设置。含 `preview.subtitle`（字幕预览框、可选字号与字体）与 `preview.sticker`（表情包预览层）两个归一化几何。不影响字幕时间与文本 |
+
+### 1.0 工程文件扩展名
+
+- 转写器和 Launcher 默认生成 `.mosp`；命令行的 `--json` 参数名称为历史兼容名称，含义是“同时生成工程文件”。
+- `.mosp` 文件不是新的二进制容器，而是普通 UTF-8 JSON，方便脚本、版本控制和其他工具读取。
+- 编辑器、服务器和桌面入口都继续接受 `.json`。打开旧 `.json` 工程时可以原扩展名保存，也可以通过“另存为”改成 `.mosp`。
+- 服务器覆盖保存会保留当前扩展名，并先创建同目录备份：`project.mosp.bak` 或 `project.json.bak`。
+- `.workspace.json` 是可选的独立工作区迁移文件，不是字幕工程文件；Resolve JSON、保留区域 JSON 等导出文件也不应重新作为工程打开。
 
 ### 1.1 waveform 波形缓存
 
@@ -60,7 +68,7 @@
 - `source` 用于缓存失效；媒体文件名、字节大小或最后修改时间变化时会重新计算。
 - 默认密度 100 峰/秒。三小时音频约产生 108 万峰、2.88 MB base64 字符串。
 - 未识别的 `schema` / `encoding` 会被忽略，不阻止工程加载。
-- Qwen/Soniox 命令行生成器默认不内嵌波形；加 `--with-waveform` 时可在转写生成工程 JSON 时把同一 payload 写入顶层 `waveform`。GUI 转写默认开启该模式。
+- Qwen/Soniox 命令行生成器默认不内嵌波形；加 `--with-waveform` 时可在转写生成工程文件时把同一 payload 写入顶层 `waveform`。GUI 转写默认开启该模式。
 - 编辑器首次打开缺少有效 `waveform` 的工程时，仍可能在媒体旁写入 `<媒体名>.waveform.json` sidecar；它使用同一 `source` 签名，可被后续工程复用。sidecar 不属于字幕真源，删除后可重新提取。
 
 ### 1.2 workspace 工作区
@@ -116,7 +124,7 @@
 - `rows` 是左侧“视频 / 当前字幕 / 字幕列表”的相对高度，编辑器会自动归一化并保证每区可用的最小高度。
 - `tree` 是 `custom` 渲染器的二叉 split tree。`type: "module"` 是功能区叶子；`type: "split"` 的 `direction` 为 `row`（左右）或 `column`（上下），`ratio` 是第一个子区的比例。
 - 布局编辑模式拖动标题条时，中央区域会显示“对换”预览；靠近上/下/左/右边沿会显示对应半区的“插入”预览。松开后目标叶子会被拆成新的横向或纵向 split，可继续嵌套。
-- 工程 JSON 导出会包含 `workspace`。单文件 HTML 在「工作区配置 ▾」提供“导出工作区配置 / 导入工作区配置”，以 `.workspace.json` 文件显式迁移该结构；服务器版的「保存工作区」则把同一结构保存到用户本机：内置工作区保存为该预设的本机覆盖版（可重置回默认），自定义工作区保存到命名工作区库（可另存、删除），均可供其他工程复用；该操作不会写回工程 JSON。
+- 工程文件导出会包含 `workspace`。单文件 HTML 在「工作区配置 ▾」提供“导出工作区配置 / 导入工作区配置”，以 `.workspace.json` 文件显式迁移该结构；服务器版的「保存工作区」则把同一结构保存到用户本机：内置工作区保存为该预设的本机覆盖版（可重置回默认），自定义工作区保存到命名工作区库（可另存、删除），均可供其他工程复用；该操作不会写回字幕工程文件。
 - 拖动模块、拖动任一布局分隔条、导入和重置工作区都会进入统一的 `Ctrl/Cmd+Z` 撤销栈；「编辑布局」中可用「重置工作区」恢复当前内置工作区的默认状态。
 
 ### 1.3 gap_remove 空隙移除
@@ -407,7 +415,7 @@
 
 ```bash
 cd <MAW 仓库目录>
-uv run python edit.py your_generated.json
+uv run python edit.py your_generated.mosp
 ```
 
 成功会生成 `your_generated.edit.html`。
@@ -415,7 +423,7 @@ uv run python edit.py your_generated.json
 ### 方式 2：用空壳编辑器加载
 
 1. `file://` 双击打开本仓库根目录的 `blank-editor.html`
-2. 点「打开工程」选 JSON 文件
+2. 点「打开工程」选 `.mosp` 或 `.json` 工程文件
 3. 若弹出「文件格式不对，缺少 segments 字段」红色提示，说明顶层结构错误
 4. 若正常显示字幕列表，则格式合格
 

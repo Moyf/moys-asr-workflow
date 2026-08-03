@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Documentation
+
+- 统一说明工程文件契约：`.mosp` 是当前默认扩展名，内容为 UTF-8 JSON；`.json` 继续作为旧工程和兼容输入/输出扩展名支持。补充了 `--json` 历史参数名、同扩展名 `.mosp.bak` / `.json.bak` 备份规则，以及 `.workspace.json` 等交换文件与字幕工程真源的区别。
+- 更新 `workspace` 工作区契约、四个内置工作区、本机工作区库字段和 MOSE/MAW 的当前边界；同步修正文档中的旧 `layout` 描述和过时的 MOSE 周计划状态。
+
 ## [1.2.1] - 2026-08-02
 
 ### Fixed

@@ -10,7 +10,7 @@
 - 全程 RESTful API（不用 SDK，因为 SDK 不支持 oss:// 给 filetrans）
 - 标点由 API 的 words[].punctuation 字段直接给出，跳过本地 LCS 对齐算法
 
-输出为通用的 JSON 工程格式（items/text/language），可直接交给 edit.py 编辑。
+输出为通用的 UTF-8 JSON 工程格式（默认保存为 `.mosp`，包含 items/text/language），可直接交给 edit.py 编辑。
 配置读取 .env 文件（DASHSCOPE_API_KEY 等）。
 """
 
@@ -1012,7 +1012,7 @@ def main():
     )
     parser.add_argument(
         "--speaker", action="store_true",
-        help="Fun-ASR 开启说话人分离，speaker 标签写入工程 JSON",
+        help="Fun-ASR 开启说话人分离，speaker 标签写入工程文件",
     )
     parser.add_argument(
         "--speaker-colors", action="store_true",
@@ -1020,11 +1020,11 @@ def main():
     )
     parser.add_argument(
         "--json", dest="json_out", action="store_true",
-        help="同时输出含字级时间戳的 JSON 文件（供 edit.py 加载）",
+        help="同时输出含字级时间戳的工程文件（默认 .mosp，供 edit.py 加载）",
     )
     parser.add_argument(
         "--with-waveform", action="store_true",
-        help="将波形峰值数据嵌入工程 JSON（GUI 转写默认开启）",
+        help="将波形峰值数据嵌入工程文件（GUI 转写默认开启）",
     )
     parser.add_argument(
         "-s", "--stickers", default=get_default_sticker_dir(),
@@ -1231,7 +1231,7 @@ def main():
         json_path.write_text(
             json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8"
         )
-        print(f"JSON 已保存到: {json_path}")
+        print(f"工程文件已保存到: {json_path}")
 
         if not args.no_html:
             edit_script = Path(__file__).parent / "edit.py"

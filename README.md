@@ -83,10 +83,10 @@ Moy 的 ASR 工作流由两部分组成：
 两个版本的 MAW 功能完全一样。解压后双击 `MAW.exe`，Launcher 会带你完成这条流程：
 
 ```text
-选择供应商和媒体 -> 生成 SRT + JSON 工程 -> 打开 MAWE 校对 -> 保存或导出
+选择供应商和媒体 -> 生成 SRT + .mosp 工程 -> 打开 MAWE 校对 -> 保存或导出
 ```
 
-在 Launcher 里选择阿里云百炼或 Soniox、媒体与 SRT 输出位置，确认模型、语言和可选时长上限，填写对应的 API Key，即可生成 SRT、JSON 工程和便携编辑器 HTML。百炼 Provider 下可以选择 Qwen3 ASR 或支持说话人分离的 Fun-ASR。需要复用 Key 时，可点“存入本地环境”；密钥只保存在本机 `.env`，不会写入工程文件或日志。
+在 Launcher 里选择阿里云百炼或 Soniox、媒体与 SRT 输出位置，确认模型、语言和可选时长上限，填写对应的 API Key，即可生成 SRT、`.mosp` 工程和便携编辑器 HTML。百炼 Provider 下可以选择 Qwen3 ASR 或支持说话人分离的 Fun-ASR。需要复用 Key 时，可点“存入本地环境”；密钥只保存在本机 `.env`，不会写入工程文件或日志。
 
 GUI 还可以直接选择 `.mosp` / `.json` 工程并启动 `http://127.0.0.1` 本地编辑器服务器；中英文界面可在右上角切换。
 启动器支持从资源管理器拖入音视频文件来自动填充媒体路径，并按供应商组织模型、地域、语言和 API Key 获取入口；选择 Fun-ASR 或 Soniox 时可在「高级选项」中开启「给不同说话人分配字幕颜色」。
@@ -148,7 +148,9 @@ uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" --json
 首次成功会在媒体同目录生成：
 
 - `…qwen3-asr-api….srt`：可导入播放器或剪辑软件的字幕；
-- 同名 `.json`：**工程真源**，以后继续编辑请保留它。
+- 同名 `.mosp`：**工程真源**，以后继续编辑请保留它。`.mosp` 文件内容仍是 UTF-8 JSON；编辑器和服务器也兼容打开、保存旧的 `.json` 工程。
+
+命令行里的 `--json` 参数名称为兼容旧版本而保留；它表示“同时生成工程文件”，当前默认扩展名是 `.mosp`，不是要求输出一个名为 `.json` 的文件。
 
 建议先只处理两分钟，确认 API、FFmpeg 与输出目录都正确：
 
@@ -169,7 +171,7 @@ Fun-ASR 与 Qwen 共用 `DASHSCOPE_API_KEY`、地域配置和临时 OSS 上传�
 uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" --model fun-asr --speaker-colors --json
 ```
 
-- `--speaker`：只把匿名 speaker 标签写入工程 JSON，不改变字幕颜色。
+- `--speaker`：只把匿名 speaker 标签写入工程文件，不改变字幕颜色。
 - `--speaker-colors`：启用说话人分离，并把不同说话人映射为 5 种可继续编辑的字幕颜色。
 - 默认输出名使用 `.fun-asr.` 标签；支持词级毫秒时间戳和自动语种识别。
 - 普通文件最长 12 小时 / 2 GB；开启说话人分离时仅支持单声道，官方建议控制在 2 小时以内。MAW 上传的是单声道音频。
@@ -191,7 +193,7 @@ uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" --model fun-
 uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" --json
 ```
 
-开启说话人分离，speaker 标签写入工程 JSON（不改变字幕颜色）：
+开启说话人分离，speaker 标签写入工程文件（不改变字幕颜色）：
 
 ```powershell
 uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" --speaker --json
@@ -215,14 +217,14 @@ MAWE 是 MAW 自带的字幕编辑器。
 
 点击 Launcher 的「启动字幕编辑器」，或者运行：
 ```powershell
-uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.json"
+uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.mosp"
 ```
 
 浏览器会自动打开 `http://127.0.0.1:8250`。
 
-MAWE 右上角可切换中文 / English；编辑完成后点“保存工程”或按 `Ctrl+S`，覆盖前会留下同目录 `.json.bak` 备份；`Ctrl+Shift+S` 为另存为。按 `Ctrl+C` 停止服务。
+MAWE 右上角可切换中文 / English；编辑完成后点“保存工程”或按 `Ctrl+S`，覆盖前会留下同目录、保持原扩展名的备份（`.mosp.bak` 或 `.json.bak`）；`Ctrl+Shift+S` 为另存为。按 `Ctrl+C` 停止服务。
 
-服务器版还可以把「工作区」保存在本机服务器设置中，因此可跨工程复用：一个工作区包含窗口布局与显示状态（字幕列表显示项、波形单/多行等）。三个内置工作区在“编辑布局”后可保存为本机覆盖版、重置为默认或另存为，但不可删除；选中自己保存的工作区后，可以继续保存、另存或删除。工作区只保存在本机，不写入工程 JSON。
+服务器版还可以把「工作区」保存在本机服务器设置中，因此可跨工程复用：一个工作区包含窗口布局与显示状态（字幕列表显示项、波形单/多行等）。四个内置工作区在“编辑布局”后可保存为本机覆盖版、重置为默认或另存为，但不可删除；选中自己保存的工作区后，可以继续保存、另存或删除。工作区只保存在本机，不写入工程文件。
 
 > [!important]
 > 除了服务器版本，也支持同时生成更为便携的 HTML 单文件编辑器。
@@ -233,12 +235,12 @@ MAWE 右上角可切换中文 / English；编辑完成后点“保存工程”�
 
 - 基础部分
   - 字幕：字幕列表与播放器播放时间绑定；点击字幕或波形可跳转到对应位置，播放器下方提供独立播放控制栏。
-  - 拆分或合并字幕 ⭐：工程 JSON 含字/词级时间码时，**拆分后会按这些时间码分配两侧的时间，仍能保持准确**。
+  - 拆分或合并字幕 ⭐：工程文件含字/词级时间码时，**拆分后会按这些时间码分配两侧的时间，仍能保持准确**。
   - 可显示当前单句的时长、字数和阅读速度，并过滤过长文本。
   - 可预览并批量替换关键词。
-  - 视频画面内的字幕预览可直接拖动和缩放；位置与大小保存在 JSON 工程中，撤销/重做、localhost 保存及便携 HTML 导出后仍会保留。
+  - 视频画面内的字幕预览可直接拖动和缩放；位置与大小保存在工程文件中，撤销/重做、localhost 保存及便携 HTML 导出后仍会保留。
   - 可检测并移除静音空隙；这不会改写原始媒体或原始字幕时间，而是建立可撤销的压缩时间线供播放和导出使用。
-  - 可保存 JSON 工程，或导出标准 SRT 字幕。
+  - 可保存 `.mosp` / `.json` 工程，或导出标准 SRT 字幕。
 - 操作部分
   - WASD 快速跳转前后字幕
   - Enter 进入字幕编辑模式
@@ -250,7 +252,7 @@ MAWE 右上角可切换中文 / English；编辑完成后点“保存工程”�
 > [!note]  
 > 多行波形相关特性参考了 [gap-gone](https://github.com/LiRenTech/gap-gone) 项目 ❤️
 
-详细的使用方法、数据要求、快捷键和导出说明见 [编辑器指南](docs/EDITOR_GUIDE.md)。完整步骤、常用参数与排错见 [docs/WORKFLOW.md](docs/WORKFLOW.md)，工程 JSON 结构见 [JSON_SCHEMA.md](JSON_SCHEMA.md)。
+详细的使用方法、数据要求、快捷键和导出说明见 [编辑器指南](docs/EDITOR_GUIDE.md)。完整步骤、常用参数与排错见 [docs/WORKFLOW.md](docs/WORKFLOW.md)，工程文件的数据结构见 [JSON_SCHEMA.md](JSON_SCHEMA.md)。
 
 ## 关于 API
 

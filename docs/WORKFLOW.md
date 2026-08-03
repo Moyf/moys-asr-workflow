@@ -1,6 +1,6 @@
 # 从零完成一次字幕工程
 
-这份指南按 Windows PowerShell 写；路径带空格时始终加双引号。MAW 是 Moy's ASR Workflow 的简称。
+这份指南按 Windows PowerShell 写；路径带空格时始终加双引号。MAW 是 Moy's ASR Workflow 的简称。工程文件的主扩展名是 `.mosp`；它是 UTF-8 JSON 内容，`.json` 作为旧工程和兼容导入/导出的扩展名继续支持。
 
 ## 0. 安装依赖
 
@@ -35,7 +35,7 @@ py -3.11 -m venv .venv
 
 ## 1. 配置阿里云百炼 API
 
-Qwen 与 Fun-ASR 共用同一个百炼 API Key。图形版可在遮罩输入框中填写 API Key；它只进入本次子进程环境，不会写回 `.env` 或 JSON。源码命令行方式使用下面的 `.env`：
+Qwen 与 Fun-ASR 共用同一个百炼 API Key。图形版可在遮罩输入框中填写 API Key；它只进入本次子进程环境，不会写回 `.env` 或工程文件。源码命令行方式使用下面的 `.env`：
 
 ```powershell
 Copy-Item .env.example .env
@@ -66,12 +66,12 @@ uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" -ll 2m --jso
 --language zh        已知纯中文时指定；中英日韩混说时不要指定
 --gap-split 1000     相邻字间隔超过 N 毫秒时强制切句
 --keep-punct         保留每条字幕末尾的逗号和句号
---no-html            只要 SRT 和 JSON，不生成便携 HTML
---with-waveform      把波形写进工程 JSON，免去编辑器首次打开的 sidecar 缓存文件
+--no-html            只要 SRT 和工程文件，不生成便携 HTML
+--with-waveform      把波形写进工程文件，免去编辑器首次打开的 sidecar 缓存文件
 --debug              输出部分 API 原始结果，便于反馈问题
 ```
 
-CLI 默认不内嵌波形；需要交给编辑器直接打开且不想生成 `<媒体名>.waveform.json` sidecar 时，加 `--with-waveform`。波形提取会额外用 FFmpeg 完整扫一遍媒体，失败时只给警告，不影响字幕与 JSON 输出。输入视频会先由 FFmpeg 提取单声道 16kHz WAV；音频输入也会通过 FFprobe 获取时长。没有 FFmpeg/FFprobe 时，这一步无法完成。
+CLI 默认不内嵌波形；需要交给编辑器直接打开且不想生成 `<媒体名>.waveform.json` sidecar 时，加 `--with-waveform`。波形提取会额外用 FFmpeg 完整扫一遍媒体，失败时只给警告，不影响字幕与工程文件输出。输入视频会先由 FFmpeg 提取单声道 16kHz WAV；音频输入也会通过 FFprobe 获取时长。没有 FFmpeg/FFprobe 时，这一步无法完成。
 
 ## 用 Fun-ASR 转写（百炼第二模型，支持说话人）
 
@@ -86,10 +86,10 @@ uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" --model fun-
 常用可选项：
 
 ```text
---speaker            开启说话人分离，speaker 标签写入工程 JSON（不改变字幕颜色）
+--speaker            开启说话人分离，speaker 标签写入工程文件（不改变字幕颜色）
 --speaker-colors     在 --speaker 基础上，把不同说话人一次性映射成 5 种字幕颜色
 --language zh        只提供一个语种提示；默认自动识别
---with-waveform      把波形写进工程 JSON，CLI 默认不内嵌
+--with-waveform      把波形写进工程文件，CLI 默认不内嵌
 ```
 
 Fun-ASR 普通文件限制为 12 小时 / 2 GB；说话人分离只适用于单声道，官方建议启用时音频不超过 2 小时。MAW 提交前会提取单声道音频，且超过建议时长时给出警告。说话人标签是匿名 ID，不是现实姓名；颜色只是普通工程字段，之后可以在 MAWE 中修改。
@@ -107,28 +107,31 @@ uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" -ll 2m --j
 常用可选项：
 
 ```text
---speaker            开启说话人分离，speaker 标签写入工程 JSON（不改变字幕颜色）
+--speaker            开启说话人分离，speaker 标签写入工程文件（不改变字幕颜色）
 --speaker-colors     在 --speaker 基础上，把不同说话人一次性映射成 5 种字幕颜色
 --language zh,en     语言提示，逗号分隔；默认自动识别
---with-waveform      把波形写进工程 JSON，CLI 默认不内嵌
+--with-waveform      把波形写进工程文件，CLI 默认不内嵌
 ```
 
 颜色写入的是普通 `color` 字段，之后可在编辑器里自由修改；说话人超过 5 个时颜色循环复用并给出警告。
 
-输出文件与 Qwen 流程相同（SRT / JSON / edit.html），文件命名标签为 `.soniox.`。注意：Soniox 单文件最长 5 小时；token 粒度是 word/sub-word，中文不保证逐字；转写完成后脚本会自动删除云端文件与转写记录。
+输出文件与 Qwen 流程相同（SRT / `.mosp` / edit.html），文件命名标签为 `.soniox.`。注意：Soniox 单文件最长 5 小时；token 粒度是 word/sub-word，中文不保证逐字；转写完成后脚本会自动删除云端文件与转写记录。
 
 ## 3. 理解三个输出文件
 
 | File | Use it for | Keep it? |
 |---|---|---|
 | `.srt` | 导入播放器、剪辑软件 | 可随时重新导出 |
-| `.json` | 字幕工程和字级时间戳 | **必须保留，建议备份** |
-| `.edit.html` | 带着工程走、离线检查 | 可从 JSON 再生成 |
+| `.mosp` | 默认字幕工程文件和字级时间戳；内容是 UTF-8 JSON | **必须保留，建议备份** |
+| `.json` | 旧版字幕工程文件；编辑器可继续打开、保存和另存为 | 已有旧工程请保留；新工程优先使用 `.mosp` |
+| `.edit.html` | 带着工程走、离线检查 | 可从 `.mosp` / `.json` 再生成 |
 
-如果只剩 JSON，仍可重新生成 HTML：
+命令行参数 `--json` 是历史兼容名称，表示“同时生成工程文件”；当前生成器默认写出 `.mosp`。保存工程时会保留当前扩展名，并在覆盖前创建同扩展名的 `.mosp.bak` 或 `.json.bak`。
+
+如果只剩 `.mosp` 或 `.json` 工程文件，仍可重新生成 HTML：
 
 ```powershell
-uv run python edit.py "D:\Videos\example.qwen3-asr-api.json" -m "D:\Videos\example.mp4"
+uv run python edit.py "D:\Videos\example.qwen3-asr-api.mosp" -m "D:\Videos\example.mp4"
 ```
 
 如需跳过预计算波形（超大媒体首次启动较慢），加 `--no-waveform`；浏览器仍可在加载媒体后尝试计算波形。
@@ -136,13 +139,13 @@ uv run python edit.py "D:\Videos\example.qwen3-asr-api.json" -m "D:\Videos\examp
 ## 4. 用推荐方式编辑
 
 ```powershell
-uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.json"
+uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.mosp"
 ```
 
-服务器只监听本机 `127.0.0.1`。它会尝试按 JSON 的 `media` 字段加载原媒体；媒体搬家后，显式指定：
+服务器只监听本机 `127.0.0.1`。它会尝试按工程文件的 `media` 字段加载原媒体；媒体搬家后，显式指定：
 
 ```powershell
-uv run python server-editor\serve.py "D:\Projects\subtitle.json" -m "E:\Media\moved-video.mp4"
+uv run python server-editor\serve.py "D:\Projects\subtitle.mosp" -m "E:\Media\moved-video.mp4"
 ```
 
 如果关联媒体是 FLV，服务器会先复用媒体旁边的同名 MP4（例如 `clip.flv` 对应 `clip.mp4`）；不存在时再调用用户配置的 `FFMPEG_PATH`，或 PATH 中的 `ffmpeg`，把转换结果原子写回媒体旁边。Desktop 版使用随应用提供的 FFmpeg sidecar。工程仍保存可继续使用的媒体路径。
@@ -153,9 +156,9 @@ uv run python server-editor\serve.py "D:\Projects\subtitle.json" -m "E:\Media\mo
 uv run python server-editor\serve.py --blank
 ```
 
-不带参数会默认恢复最近一次**明确打开**的工程。这个行为可在编辑器「最近工程」菜单第一项「自动打开上次工程」中开关；若只想本次空白启动，用 `--blank`。编辑器的“保存工程”（`Ctrl+S`）会原子写回 JSON，并在覆盖前创建同目录 `.json.bak`；`Ctrl+Shift+S` 为另存为。
+不带参数会默认恢复最近一次**明确打开**的工程。这个行为可在编辑器「最近工程」菜单第一项「自动打开上次工程」中开关；若只想本次空白启动，用 `--blank`。编辑器的“保存工程”（`Ctrl+S`）会原子写回当前 `.mosp` 或 `.json` 文件，并在覆盖前创建同目录、保持原扩展名的 `.mosp.bak` 或 `.json.bak`；`Ctrl+Shift+S` 为另存为。
 
-服务器版的「保存工作区」会存到本机服务器设置中，并在之后打开其他工程时继续使用；一个工作区包含窗口布局与显示状态（字幕列表显示项、波形单/多行等）。三个内置工作区在“编辑布局”后可保存为本机覆盖版、重置为默认或另存为，但不可删除；自定义工作区则可保存、另存为或删除。它不会改写工程 JSON，也不会上传到网络。
+服务器版的「保存工作区」会存到本机服务器设置中，并在之后打开其他工程时继续使用；一个工作区包含窗口布局与显示状态（字幕列表显示项、波形单/多行等）。四个内置工作区在“编辑布局”后可保存为本机覆盖版、重置为默认或另存为，但不可删除；自定义工作区则可保存、另存为或删除。它不会改写工程文件，也不会上传到网络。
 
 ## 5. 编辑和导出
 

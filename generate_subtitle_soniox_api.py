@@ -9,7 +9,7 @@
 - --speaker-colors 在说话人基础上把不同 speaker 一次性映射成 5 种字幕颜色
 - 单文件最长 5 小时；转写完成后自动清理云端文件与转写记录
 
-输出为通用的 JSON 工程格式（items/text/language，可选 speaker/color），
+输出为通用的 UTF-8 JSON 工程格式（默认保存为 `.mosp`，包含 items/text/language，可选 speaker/color），
 可直接交给 edit.py 编辑。配置读取 .env 文件（SONIOX_API_KEY 等）。
 """
 
@@ -82,7 +82,7 @@ def main():
     )
     parser.add_argument(
         "--speaker", action="store_true",
-        help="开启说话人分离，speaker 标签写入工程 JSON（不改变字幕颜色）",
+        help="开启说话人分离，speaker 标签写入工程文件（不改变字幕颜色）",
     )
     parser.add_argument(
         "--speaker-colors", action="store_true",
@@ -90,11 +90,11 @@ def main():
     )
     parser.add_argument(
         "--json", dest="json_out", action="store_true",
-        help="同时输出含 token 级时间戳的 JSON 文件（供 edit.py 加载）",
+        help="同时输出含 token 级时间戳的工程文件（默认 .mosp，供 edit.py 加载）",
     )
     parser.add_argument(
         "--with-waveform", action="store_true",
-        help="将波形峰值数据嵌入工程 JSON（GUI 转写默认开启）",
+        help="将波形峰值数据嵌入工程文件（GUI 转写默认开启）",
     )
     parser.add_argument(
         "-s", "--stickers", default=get_default_sticker_dir(),
@@ -279,13 +279,13 @@ def main():
                 print(f"[waveform] 警告: {waveform_result.error}；已跳过内嵌波形")
         check = validate_project(json_data)
         if not check.ok:
-            print("[警告] 工程 JSON 未通过契约校验，请把以下内容反馈给开发者：")
+            print("[警告] 工程文件未通过契约校验，请把以下内容反馈给开发者：")
             for err in check.errors[:10]:
                 print(f"  {err.path}: {err.message}")
         json_path.write_text(
             json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8"
         )
-        print(f"JSON 已保存到: {json_path}")
+        print(f"工程文件已保存到: {json_path}")
 
         if not args.no_html:
             edit_script = Path(__file__).parent / "edit.py"
