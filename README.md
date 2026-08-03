@@ -86,7 +86,7 @@ Moy 的 ASR 工作流由两部分组成：
 选择供应商和媒体 -> 生成 SRT + .mosp 工程 -> 打开 MAWE 校对 -> 保存或导出
 ```
 
-在 Launcher 里选择阿里云百炼或 Soniox、媒体与 SRT 输出位置，确认模型、语言和可选时长上限，填写对应的 API Key，即可生成 SRT、`.mosp` 工程和便携编辑器 HTML。百炼 Provider 下可以选择 Qwen3 ASR 或支持说话人分离的 Fun-ASR。需要复用 Key 时，可点“存入本地环境”；密钥只保存在本机 `.env`，不会写入工程文件或日志。
+在 Launcher 里选择阿里云百炼或 Soniox、媒体与 SRT 输出位置，确认模型、语言和可选时长上限，填写对应的 API Key，即可生成 SRT、`.mosp` 工程和便携编辑器 HTML。阿里云百炼 Provider 下可以选择 `qwen3-asr（准确率更高）`、`qwen-audio-3.0-asr（热词 / 上下文）` 或 `fun-asr（支持说话人）`。需要复用 Key 时，可点“存入本地环境”；密钥只保存在本机 `.env`，不会写入工程文件或日志。
 
 GUI 还可以直接选择 `.mosp` / `.json` 工程并启动 `http://127.0.0.1` 本地编辑器服务器；中英文界面可在右上角切换。
 启动器支持从资源管理器拖入音视频文件来自动填充媒体路径，并按供应商组织模型、地域、语言和 API Key 获取入口；选择 Fun-ASR 或 Soniox 时可在「高级选项」中开启「给不同说话人分配字幕颜色」。
@@ -161,9 +161,33 @@ uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" -ll 2m --jso
 如果不使用 uv，请看 [docs/WORKFLOW.md](docs/WORKFLOW.md) 的普通 Python 安装方式。
 
 
-## 百炼 Fun-ASR（同一供应商，支持说话人）
+## 百炼 qwen-audio-3.0-asr-flash-filetrans（热词与上下文）
 
-Fun-ASR 与 Qwen 共用 `DASHSCOPE_API_KEY`、地域配置和临时 OSS 上传链路。在 Launcher 的「阿里云百炼（FunASR/QwenASR）」下把模型切换为 `Fun-ASR（支持说话人）` 即可；开启「给不同说话人分配字幕颜色」后，Launcher 会同时启用说话人分离。
+Qwen-Audio 使用同一个 `DASHSCOPE_API_KEY`、地域和临时 OSS 上传链路。在 Launcher 的阿里云百炼 Provider 中选择 `qwen-audio-3.0-asr（热词 / 上下文）`，或在命令行显式指定模型：
+
+```powershell
+uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" --model qwen-audio-3.0-asr-flash-filetrans --json
+```
+
+它支持 Qwen-Audio 专用的即时热词、预编译词表和 context：
+
+- Launcher 的高级选项会在选择 Qwen-Audio 后显示 `Prompt / 上下文`、`即时热词` 和全局权重；即时热词支持直接输入或选择 UTF-8 `.txt` 文件。每项也可写成 `热词: 权重` 或 `热词：权重` 单独覆盖全局权重，权重只能是 1–5 或 50。预编译 `vocabulary_id` 暂不在 Launcher 开放，底层 CLI / `.env` 能力保留。这些 Launcher 值只随本次转写发送，不会保存到 `.env`。
+- `hotwords.txt`：默认热词文件，每行一个即时热词；也可用 `--hotword-file path.txt` 指定其他 UTF-8 文本文件。可用 `--hotword-weight 1` 到 `5` 或 `50` 调整权重。
+- 命令行可重复使用 `--hotword "词"` 追加本次即时热词；它会和 `hotwords.txt` 合并。
+- `DASHSCOPE_QWEN_AUDIO_VOCABULARY_ID` 或 `--vocabulary-id`：使用百炼预先创建的词表；词表的目标模型必须是 Qwen-Audio。
+- `--context "领域词表或前文"`：发送最多 400 字符的 `input.context`；较长内容建议用 `--context-file` 或 `.env` 中的 `DASHSCOPE_QWEN_AUDIO_CONTEXT_FILE`。
+- `--speaker` / `--speaker-colors`：开启说话人分离和可选颜色快照。
+
+即时热词按百炼规则校验：含非 ASCII 字符的单项最多 15 个字符，纯 ASCII 单项最多 7 个空格分隔的单词，每次最多 2000 项，权重 50 最多 50 项。不符合规则的输入会在 Launcher 下方警告，并在发送时忽略。
+
+Qwen-Audio 的输出默认使用 `.qwen-audio.` 文件名标签。即时热词与预编译词表同时配置时，以百炼服务端规则为准；Fun-ASR 需要单独创建并配置 `DASHSCOPE_FUNASR_VOCABULARY_ID`。
+
+Prompt / 上下文与即时热词的选择：Prompt 适合描述本次音频的领域、前文或会话背景，例如“这是某产品发布会，涉及 XXX、YYY”；即时热词适合明确的专有名词、人名、产品名，需要模型重点命中。变化频繁、需要解释上下文时优先 Prompt；稳定、短小、必须准确识别的词优先即时热词。两者也可以同时使用。
+
+
+## 百炼 fun-asr（同一供应商，支持说话人）
+
+Fun-ASR 与 Qwen 共用 `DASHSCOPE_API_KEY`、地域配置和临时 OSS 上传链路。在 Launcher 的阿里云百炼 Provider 下把模型切换为 `fun-asr（支持说话人）` 即可；开启「给不同说话人分配字幕颜色」后，Launcher 会同时启用说话人分离。
 
 命令行也可以直接选择第二个模型：
 
@@ -259,11 +283,11 @@ MAWE 右上角可切换中文 / English；编辑完成后点“保存工程”�
 - 这是 **API-first** 工具，不含模型下载和本地推理引擎。
 - API Key 仅读取自环境变量或本机 `.env`；`.env` 已被 Git 忽略，绝不要提交、截图或发给别人。
 - 每次转写会使用你的 Key 调用所选供应商；文件大小、数据保留与账户政策请分别查看[百炼语音识别文档](https://help.aliyun.com/zh/model-studio/asr-model/)或 [Soniox 文档](https://soniox.com/docs)。
-- 百炼 Provider 提供 `qwen3-asr-flash-filetrans` 和 `fun-asr`，支持北京与新加坡地域；北京可选填 Workspace ID 使用推荐的专属域名，新加坡必须填写。Fun-ASR 与 Soniox 均可选说话人分离。配置项说明都在 `.env.example`。
+- 百炼 Provider 提供 `qwen3-asr-flash-filetrans`、`qwen-audio-3.0-asr-flash-filetrans` 和 `fun-asr`，支持北京与新加坡地域；北京可选填 Workspace ID 使用推荐的专属域名，新加坡必须填写。Qwen-Audio、Fun-ASR 与 Soniox 均可选说话人分离。配置项说明都在 `.env.example`。
 
 ### 费用
 
-- 本项目本身是开源项目，可免费使用；默认模型仍是阿里云百炼 Qwen，也可以在 GUI 或命令行里改用同 Provider 的 Fun-ASR 或 Soniox。
+- 本项目本身是开源项目，可免费使用；默认模型仍是阿里云百炼 Qwen，也可以在 GUI 或命令行里改用同 Provider 的 Qwen-Audio、Fun-ASR 或 Soniox。
 - 阿里云 Qwen ASR 注册后免费赠送 10 小时转录时间，超出额度后按 `0.792 元/小时` 计费，详见 [价格文档](https://help.aliyun.com/zh/model-studio/model-pricing#dbf1305ef4a69)。
 - Soniox 异步文件转写约 `$0.10/小时`，适合需要说话人分离、多语言或小语种的素材，详见 [Soniox Pricing](https://soniox.com/pricing)。
 - 如果你有不错的配置，也可以自己本地部署开源的 [QwenASR](https://github.com/QwenLM/Qwen3-ASR) 本地转录，不产生云端费用，只需要一点电费。

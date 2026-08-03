@@ -13,6 +13,7 @@ ROOT: Final = Path(__file__).resolve().parents[1]
 DEFAULT_ENV_PATH: Final = ROOT / ".env"
 EXAMPLE_ENV_PATH: Final = ROOT / ".env.example"
 DEFAULT_MODEL_ID: Final = "qwen3-asr-flash-filetrans"
+QWEN_AUDIO_MODEL_ID: Final = "qwen-audio-3.0-asr-flash-filetrans"
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +23,9 @@ class ModelConfig:
     env_key: str
     note: str = ""
     supports_speaker: bool = False
+    supports_context: bool = False
+    supports_hotwords: bool = False
+    supports_vocabulary: bool = False
     languages: tuple[tuple[str, str], ...] = ()
 
 
@@ -206,13 +210,24 @@ SONIOX_COMMON_LANGUAGES: Final[tuple[str, ...]] = (
 QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
         id=DEFAULT_MODEL_ID,
-        label="Qwen3 ASR（准确率更高）",
+        label="qwen3-asr（准确率更高）",
         env_key="DASHSCOPE_API_KEY",
         languages=LANGUAGES,
     ),
     ModelConfig(
+        id=QWEN_AUDIO_MODEL_ID,
+        label="qwen-audio-3.0-asr（热词 / 上下文）",
+        env_key="DASHSCOPE_API_KEY",
+        note="支持即时热词、上下文与说话人分离",
+        supports_speaker=True,
+        supports_context=True,
+        supports_hotwords=True,
+        supports_vocabulary=True,
+        languages=FUNASR_LANGUAGES,
+    ),
+    ModelConfig(
         id="fun-asr",
-        label="Fun-ASR（支持说话人）",
+        label="fun-asr（支持说话人）",
         env_key="DASHSCOPE_API_KEY",
         note="支持说话人分离与词级时间戳",
         supports_speaker=True,
@@ -233,7 +248,7 @@ SONIOX_MODELS: Final[tuple[ModelConfig, ...]] = (
 PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
     ProviderConfig(
         id="qwen",
-        label="阿里云百炼（FunASR/QwenASR）",
+        label="阿里云百炼（QwenASR / FunASR）",
         key_url="https://help.aliyun.com/zh/model-studio/get-api-key",
         models=QWEN_MODELS,
         regions=REGIONS,

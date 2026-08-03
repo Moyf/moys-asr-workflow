@@ -40,6 +40,8 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "api_key_missing": "API key is required.",
     "workspace_missing": "Workspace ID is required for Singapore region.",
     "output_missing": "SRT output path is required.",
+    "context_too_long": "Qwen-Audio context is limited to 400 characters.",
+    "hotwords_file_missing": "Choose an existing UTF-8 .txt hotword file.",
     "server_no_response": "Editor server did not respond.",
     "server_start_failed": "Editor server failed to start.",
     "server_stop_not_maw": "The process using this port is not a MAW editor server.",
@@ -200,9 +202,25 @@ class LauncherApi:
 
     def choose_file(self, payload: Mapping[str, object]) -> dict[str, object]:
         kind = str(payload.get("kind") or "media")
-        file_types = ("MAW projects (*.mosp;*.json)",) if kind == "json" else ("Media files (*.mp4;*.mkv;*.avi;*.mov;*.wmv;*.flv;*.webm;*.ts;*.m4v;*.mp3;*.wav;*.m4a;*.flac;*.aac;*.ogg)", "All files (*.*)")
+        if kind == "json":
+            file_types = ("MAW projects (*.mosp;*.json)",)
+        elif kind == "hotwords":
+            file_types = ("Text files (*.txt)", "All files (*.*)")
+        else:
+            file_types = ("Media files (*.mp4;*.mkv;*.avi;*.mov;*.wmv;*.flv;*.webm;*.ts;*.m4v;*.mp3;*.wav;*.m4a;*.flac;*.aac;*.ogg)", "All files (*.*)")
         chosen = _file_dialog(open_dialog=True, file_types=file_types)
         return _dialog_result(chosen)
+
+    def read_hotword_file(self, payload: Mapping[str, object]) -> dict[str, object]:
+        value = str(payload.get("path") or "").strip()
+        path = Path(value).expanduser()
+        if not value or not path.is_file() or path.suffix.lower() != ".txt":
+            return _error_result("qwenAudioHotwordsFile", "hotwords_file_missing", value)
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as error:
+            return _error_result("qwenAudioHotwordsFile", "hotwords_file_missing", str(error))
+        return {"ok": True, "path": str(path), "text": text}
 
     def choose_folder(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         chosen = _folder_dialog()
@@ -542,6 +560,28 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         raise PreflightError("apiKey", "api_key_missing", "API key is required.")
     if provider.id == "qwen" and region == "singapore" and not workspace_id:
         raise PreflightError("workspaceId", "workspace_missing", "Workspace ID is required for Singapore region.")
+    qwen_audio_context = str(payload.get("qwenAudioContext") or "").strip() if model.supports_context else ""
+    if len(qwen_audio_context) > 400:
+        raise PreflightError(
+            "qwenAudioContext",
+            "context_too_long",
+            "Qwen-Audio context is limited to 400 characters.",
+        )
+    qwen_audio_hotwords_mode = str(payload.get("qwenAudioHotwordsMode") or "text").strip().lower()
+    qwen_audio_hotwords_file = ""
+    qwen_audio_hotwords = ""
+    if model.supports_hotwords and qwen_audio_hotwords_mode == "file":
+        hotwords_file_text = str(payload.get("qwenAudioHotwordsFile") or "").strip()
+        hotwords_file = Path(hotwords_file_text).expanduser()
+        if not hotwords_file.is_file() or hotwords_file.suffix.lower() != ".txt":
+            raise PreflightError(
+                "qwenAudioHotwordsFile",
+                "hotwords_file_missing",
+                "Qwen-Audio hotword source must be an existing .txt file.",
+            )
+        qwen_audio_hotwords_file = str(hotwords_file)
+    elif model.supports_hotwords:
+        qwen_audio_hotwords = str(payload.get("qwenAudioHotwords") or "").strip()
     return TranscriptionRequest(
         media_path=media,
         srt_path=srt,
@@ -549,6 +589,17 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         language=str(payload.get("language") or ""),
         api_key=api_key,
         length_limit="2m" if bool(payload.get("testRun")) else str(payload.get("lengthLimit") or "").strip(),
+        qwen_audio_context=qwen_audio_context,
+        qwen_audio_hotwords=qwen_audio_hotwords,
+        qwen_audio_hotwords_file=qwen_audio_hotwords_file,
+        qwen_audio_vocabulary_id=(
+            str(payload.get("qwenAudioVocabularyId") or "").strip()
+            if model.supports_vocabulary else ""
+        ),
+        qwen_audio_hotword_weight=(
+            str(payload.get("qwenAudioHotwordWeight") or "").strip()
+            if model.supports_hotwords else ""
+        ),
         region=region,
         workspace_id=workspace_id,
         provider=provider.id,
@@ -609,6 +660,8 @@ def _route_dropped_path(path: str) -> dict[str, object]:
     suffix = Path(path).suffix.lower()
     if suffix in {".json", ".mosp"}:
         return {"type": "dropJson", "path": path}
+    if suffix == ".txt":
+        return {"type": "dropHotwordFile", "path": path}
     if suffix in MEDIA_EXTS:
         return {"type": "dropMedia", "path": path}
     return {"type": "dropReject", "path": path}
@@ -778,6 +831,9 @@ def _model_payload(model: ModelConfig) -> dict[str, object]:
         "envKey": model.env_key,
         "note": model.note,
         "supportsSpeaker": model.supports_speaker,
+        "supportsContext": model.supports_context,
+        "supportsHotwords": model.supports_hotwords,
+        "supportsVocabulary": model.supports_vocabulary,
         "languages": [
             {"id": value, "label": label}
             for value, label in model.languages

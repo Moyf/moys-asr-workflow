@@ -9,13 +9,15 @@
 - 统一说明工程文件契约：`.mosp` 是当前默认扩展名，内容为 UTF-8 JSON；`.json` 继续作为旧工程和兼容输入/输出扩展名支持。补充了 `--json` 历史参数名、同扩展名 `.mosp.bak` / `.json.bak` 备份规则，以及 `.workspace.json` 等交换文件与字幕工程真源的区别。
 - 更新 `workspace` 工作区契约、四个内置工作区、本机工作区库字段和 MOSE/MAW 的当前边界；同步修正文档中的旧 `layout` 描述和过时的 MOSE 周计划状态。
 
+### Added
+
+- 增加阿里云百炼 `qwen-audio-3.0-asr-flash-filetrans`：支持异步文件转写、即时热词、预编译 `vocabulary_id`、context 上下文和说话人分离；保留旧 Qwen3/Fun-ASR 的 API 兼容路径。
+
 ## [1.2.1] - 2026-08-02
 
 ### Fixed
 
 - Launcher 现在能识别 MAWxFF 内置 `ffprobe.exe` 在 Windows 下启动失败（`0xC0000142` / `3221225794`），并提供重新运行 MAW、重新完整解压 MAWxFF 及检查 Windows 安全中心拦截情况的中英文提示；同时保留详细错误信息供排查。
-
-## [1.2.0] - 2026-08-02
 
 ### Added
 

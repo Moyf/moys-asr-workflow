@@ -75,7 +75,7 @@
           <div id="advancedOptionsGrid" class="grid-two">
             <div class="advanced-col">
               <div id="modelField" class="field"><label for="model" data-i18n="model">模型</label><select id="model"></select></div>
-              <div id="regionField" class="field"><label for="region" data-i18n="region">地域</label><select id="region"></select></div>
+              <div id="regionField" class="field hidden"><label for="region" data-i18n="region">地域</label><select id="region"></select></div>
               <div id="workspaceField" class="field hidden">
                 <label for="workspaceId" data-i18n="workspace">工作空间 ID</label>
                 <input id="workspaceId" type="text" autocomplete="off">
@@ -90,6 +90,53 @@
               <div class="lang-actions"><button id="languageReset" class="ghost small hidden" type="button" data-i18n="language_reset">重置（自动识别）</button></div>
               <p id="languageHint" class="hint hidden" data-i18n="language_multi_hint">可多选；不选即自动识别（仅偏向，不限制）。</p>
               <p id="languageFilterHint" class="hint hidden" data-i18n="language_filter_hint">默认仅显示常用语言，其余可在「配置」中开启。</p>
+            </div>
+          </div>
+          <div id="qwenAudioOptions" class="qwen-audio-options hidden">
+            <div id="qwenAudioContextField" class="field">
+              <label for="qwenAudioContext" data-i18n="qwen_audio_context">Prompt / 上下文</label>
+              <textarea id="qwenAudioContext" rows="3" autocomplete="off" data-i18n-placeholder="qwen_audio_context_placeholder"></textarea>
+              <p class="hint" data-i18n="qwen_audio_context_hint">领域词表或前文提示；本次任务最多发送 400 个字符，不是通用系统指令。</p>
+              <p id="qwenAudioContextCount" class="character-count" aria-live="polite">当前字符数：0/400</p>
+              <p id="qwenAudioContextError" class="field-error"></p>
+            </div>
+            <div class="qwen-audio-options-grid">
+              <div id="qwenAudioHotwordsField" class="field">
+                <label for="qwenAudioHotwords" data-i18n="qwen_audio_hotwords">即时热词</label>
+                <label for="qwenAudioHotwordsMode" data-i18n="qwen_audio_hotwords_mode">即时热词来源</label>
+                <select id="qwenAudioHotwordsMode">
+                  <option value="text" selected data-i18n="qwen_audio_hotwords_mode_text">直接输入</option>
+                  <option value="file" data-i18n="qwen_audio_hotwords_mode_file">选择文本文件</option>
+                </select>
+                <div id="qwenAudioHotwordsTextField" class="qwen-audio-hotwords-source">
+                  <textarea id="qwenAudioHotwords" rows="3" autocomplete="off" data-i18n-placeholder="qwen_audio_hotwords_placeholder"></textarea>
+                  <p class="hint" data-i18n="qwen_audio_hotwords_hint">每行一个，也支持逗号分隔；只作用于本次 Qwen-Audio 转写。</p>
+                </div>
+                <div id="qwenAudioHotwordsFileField" class="qwen-audio-hotwords-source hidden">
+                  <div class="path-row">
+                    <input id="qwenAudioHotwordsFile" type="text" autocomplete="off" data-i18n-placeholder="qwen_audio_hotwords_file_placeholder">
+                    <button id="pickQwenAudioHotwordsFile" class="ghost" type="button" data-i18n="choose">选择</button>
+                  </div>
+                  <p class="hint" data-i18n="qwen_audio_hotwords_file_hint">支持 UTF-8 编码的 .txt 文件，每行一个热词。</p>
+                  <p id="qwenAudioHotwordsFileError" class="field-error"></p>
+                </div>
+                <p class="hint" data-i18n="qwen_audio_hotwords_weight_override_hint">支持使用“热词: 权重”的形式单独指定某个词的权重，如：“obsidian: 5”（中英文冒号皆可）。未指定时使用右侧全局权重。</p>
+                <p id="qwenAudioHotwordsWarning" class="field-warning" aria-live="polite"></p>
+              </div>
+              <div class="qwen-audio-options-side">
+                <div id="qwenAudioHotwordWeightField" class="field">
+                  <label for="qwenAudioHotwordWeight" data-i18n="qwen_audio_hotword_weight">即时热词权重</label>
+                  <select id="qwenAudioHotwordWeight">
+                    <option value="1">1（较弱）</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5" selected>5（较强）</option>
+                    <option value="50">50（超级热词）</option>
+                  </select>
+                  <p class="hint" data-i18n="qwen_audio_hotword_weight_hint">权重 50 适合少量必须命中的词，最多 50 个。</p>
+                </div>
+              </div>
             </div>
           </div>
           <div id="speakerColorsField" class="field hidden">
