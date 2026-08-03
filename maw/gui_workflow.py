@@ -11,7 +11,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
@@ -68,10 +68,24 @@ class TranscriptionProcessError(Exception):
     """Raised when the transcription subprocess exits unsuccessfully."""
 
     exit_code: int
+    output: tuple[str, ...]
 
-    def __init__(self, exit_code: int) -> None:
+    def __init__(self, exit_code: int, output: Sequence[str] = ()) -> None:
         self.exit_code = exit_code
-        super().__init__(f"Transcription failed with exit code {exit_code}")
+        self.output = tuple(output)
+        detail = _tail_output(self.output)
+        message = f"Transcription failed with exit code {exit_code}"
+        if detail:
+            message += f": {detail}"
+        super().__init__(message)
+
+
+def _tail_output(output: Sequence[str], limit: int = 1) -> str:
+    """取子进程失败输出的最后若干行，用于透传具体失败原因。"""
+    lines = [line.strip() for line in output if line.strip()]
+    if not lines:
+        return ""
+    return " | ".join(lines[-limit:])
 
 
 @final
@@ -186,9 +200,16 @@ def run_transcription(
     )
     if on_process_start is not None:
         on_process_start(process.pid)
-    _stream_process(process, on_event or _ignore, cancel_event)
+    collected: list[str] = []
+
+    def forward(line: str) -> None:
+        collected.append(line)
+        if on_event:
+            on_event(line)
+
+    _stream_process(process, forward, cancel_event)
     if process.returncode != 0:
-        raise TranscriptionProcessError(process.returncode)
+        raise TranscriptionProcessError(process.returncode, output=collected)
     _require_output(paths.srt, "SRT")
     _require_output(paths.json, "JSON")
     html_path = None

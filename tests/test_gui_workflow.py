@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from maw.gui_workflow import (  # noqa: E402
+    TranscriptionProcessError,
     TranscriptionRequest,
     build_serve_command,
     build_output_paths,
@@ -212,6 +213,30 @@ class GuiWorkflowTests(unittest.TestCase):
                 run_transcription(request, on_process_start=started.append)
 
         self.assertEqual(started, [4321])
+
+    def test_run_transcription_failure_carries_child_output(self) -> None:
+        request = TranscriptionRequest(media_path=self.media_path, srt_path=self.srt_path)
+        events: list[str] = []
+
+        class FakeProcess:
+            pid = 4321
+            returncode = 1
+            stdout = ["[info] 提交任务...\n".encode(), "错误: 未识别到任何内容\n".encode()]
+
+            def poll(self) -> int | None:
+                return 1
+
+            def wait(self, timeout: float | None = None) -> int:
+                return 1
+
+        with mock.patch("maw.gui_workflow.subprocess.Popen", return_value=FakeProcess()):
+            with self.assertRaises(TranscriptionProcessError) as raised:
+                run_transcription(request, on_event=events.append)
+
+        self.assertEqual(raised.exception.exit_code, 1)
+        self.assertTrue(any("未识别到任何内容" in line for line in raised.exception.output))
+        self.assertIn("未识别到任何内容", str(raised.exception))
+        self.assertTrue(any("提交任务" in event for event in events))
 
     def test_run_transcription_keeps_json_when_optional_html_render_fails(self) -> None:
         request = TranscriptionRequest(media_path=self.media_path, srt_path=self.srt_path)
