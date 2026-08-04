@@ -42,6 +42,61 @@ test('remaps word timestamps when a cue edge changes', () => {
 });
 
 
+test('keeps remapped items inside the cue and never zero-length', () => {
+  const items = [
+    { text: 'A', start: -50, end: 60 },
+    { text: 'B', start: 60, end: 1050 },
+  ];
+  // 波形 remap 按 10ms 网格取整；越界值钳回段内
+  const remapped = helpers.remapItems(items, 0, 1000, 0, 100);
+  assert.deepEqual(JSON.parse(JSON.stringify(remapped)), [
+    { text: 'A', start: 0, end: 10 },
+    { text: 'B', start: 10, end: 100 },
+  ]);
+  // 极端压缩到 1ms 段时，词块仍保持 end > start
+  const squeezed = helpers.remapItems(
+    [{ text: 'A', start: 0, end: 500 }, { text: 'B', start: 500, end: 1000 }],
+    0, 1000, 0, 1,
+  );
+  squeezed.forEach((item) => assert.ok(item.end > item.start));
+});
+
+
+test('clamps straddling items into their split side', () => {
+  const segment = {
+    start: 0,
+    end: 1000,
+    text: 'AB',
+    items: [
+      { text: 'A', start: 0, end: 480 },
+      { text: 'B', start: 480, end: 1000 },
+    ],
+  };
+  const result = helpers.splitSegmentAtTime(segment, 500);
+  assert.ok(result);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.left.items)), [
+    { text: 'A', start: 0, end: 480 },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.right.items)), [
+    { text: 'B', start: 480, end: 1000 },
+  ]);
+  // 单个跨切点的词：归入左段时 end 钳到切点，归入右段时 start 钳到切点
+  const single = { start: 0, end: 1000, text: 'AB', items: [{ text: 'AB', start: 0, end: 1000 }] };
+  const leftSide = helpers.splitSegmentAtTime(single, 499);
+  assert.ok(leftSide);
+  assert.deepEqual(JSON.parse(JSON.stringify(leftSide.left.items)), [
+    { text: 'AB', start: 0, end: 499 },
+  ]);
+  assert.equal(leftSide.right.items, null);
+  const rightSide = helpers.splitSegmentAtTime(single, 501);
+  assert.ok(rightSide);
+  assert.equal(rightSide.left.items, null);
+  assert.deepEqual(JSON.parse(JSON.stringify(rightSide.right.items)), [
+    { text: 'AB', start: 501, end: 1000 },
+  ]);
+});
+
+
 test('uses browser-compatible media signatures', () => {
   assert.deepEqual(
     JSON.parse(JSON.stringify(helpers.sourceForFile({ name: 'x.wav', size: 42, lastModified: 1234 }))),

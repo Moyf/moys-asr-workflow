@@ -675,10 +675,12 @@
       } else if (Number.isFinite(itemStart) && itemStart >= splitMs) {
         rightItems.push({ ...item });
       } else if (Number.isFinite(itemStart) && Number.isFinite(itemEnd)) {
+        // 跨越切点的 item 归入更近的一侧，并把时间钳到该侧边界内，
+        // 避免 item 越出所属段导致保存校验失败。
         if (splitMs - itemStart <= itemEnd - splitMs) {
-          leftItems.push({ ...item });
+          leftItems.push({ ...item, end: Math.min(itemEnd, splitMs) });
         } else {
-          rightItems.push({ ...item });
+          rightItems.push({ ...item, start: Math.max(itemStart, splitMs) });
         }
       } else {
         leftItems.push({ ...item });
@@ -712,11 +714,15 @@
     if (!Array.isArray(items) || !items.length) return items;
     const oldDuration = Math.max(1, oldEnd - oldStart);
     const newDuration = Math.max(1, newEnd - newStart);
-    return items.map((item) => ({
-      ...item,
-      start: roundMs(newStart + ((item.start - oldStart) / oldDuration) * newDuration),
-      end: roundMs(newStart + ((item.end - oldStart) / oldDuration) * newDuration),
-    }));
+    return items.map((item) => {
+      // 等比缩放后钳回段内，并保证 end > start（防止取整后出现 0 长词块）。
+      const mappedStart = roundMs(newStart + ((item.start - oldStart) / oldDuration) * newDuration);
+      const mappedEnd = roundMs(newStart + ((item.end - oldStart) / oldDuration) * newDuration);
+      let start = Math.min(Math.max(mappedStart, newStart), newEnd);
+      const end = Math.min(Math.max(mappedEnd, start + 1), newEnd);
+      if (end <= start) start = Math.max(newStart, end - 1);
+      return { ...item, start, end };
+    });
   }
 
   class WaveformEditor {

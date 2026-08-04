@@ -1,11 +1,12 @@
 # pyright: reportAny=false, reportAttributeAccessIssue=false, reportMissingParameterType=false, reportMissingTypeArgument=false, reportMissingTypeStubs=false, reportReturnType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false, reportUnusedCallResult=false, reportUnusedVariable=false, reportImplicitStringConcatenation=false, reportArgumentType=false, reportIndexIssue=false
 
-"""使用阿里云百炼 Qwen / Fun-ASR 文件转写 API 生成视频字幕（云端版）。
+"""使用阿里云百炼 Qwen / Qwen-Audio / Fun-ASR 文件转写 API 生成视频字幕（云端版）。
 
 特点：
 - 无需 GPU、模型权重，只调 API（DASHSCOPE_API_KEY）
 - 走 filetrans 异步模式，原生支持字/词级时间戳，最长 12 小时音频
-- Fun-ASR 可选说话人分离，speaker 标签写入 MAW 工程
+- Qwen-Audio / Fun-ASR 可选说话人分离，speaker 标签写入 MAW 工程
+- Qwen-Audio 支持即时热词、预编译 vocabulary_id 和 context 上下文
 - 文件自动上传到 DashScope 临时 OSS（oss:// URL，48 小时有效）
 - 全程 RESTful API（不用 SDK，因为 SDK 不支持 oss:// 给 filetrans）
 - 标点由 API 的 words[].punctuation 字段直接给出，跳过本地 LCS 对齐算法
@@ -29,6 +30,8 @@ from pathlib import Path
 import requests
 
 from edit import get_default_sticker_dir
+from maw.project import repair_segment_durations
+from maw.qwen_audio import parse_qwen_audio_hotwords
 from maw.speaker import apply_speaker_colors, split_items_by_speaker
 from waveform import embed_waveform
 
@@ -38,7 +41,8 @@ from waveform import embed_waveform
 HOTWORDS_FILE = Path(__file__).parent / "hotwords.txt"
 ENV_FILE = Path(__file__).parent / ".env"
 
-FILETRANS_MODEL = "qwen3-asr-flash-filetrans"
+QWEN_AUDIO_FILETRANS_MODEL = "qwen-audio-3.0-asr-flash-filetrans"
+FILETRANS_MODEL = QWEN_AUDIO_FILETRANS_MODEL
 FUNASR_MODEL = "fun-asr"
 
 # 本地 language 名 → DashScope language code
@@ -88,6 +92,12 @@ def _get_config() -> dict:
         "default_language": pick("DASHSCOPE_DEFAULT_LANGUAGE"),
         "enable_words": pick("DASHSCOPE_ENABLE_WORDS", "true").lower() == "true",
         "enable_itn": pick("DASHSCOPE_ENABLE_ITN", "false").lower() == "true",
+        "qwen_audio_vocabulary_id": pick("DASHSCOPE_QWEN_AUDIO_VOCABULARY_ID"),
+        "funasr_vocabulary_id": pick("DASHSCOPE_FUNASR_VOCABULARY_ID"),
+        "qwen_audio_hotword_weight": _validate_hotword_weight(
+            pick("DASHSCOPE_QWEN_AUDIO_HOTWORD_WEIGHT", "5")
+        ),
+        "qwen_audio_context_file": pick("DASHSCOPE_QWEN_AUDIO_CONTEXT_FILE"),
         "poll_interval": int(pick("DASHSCOPE_POLL_INTERVAL", "5") or "5"),
         "poll_timeout": int(pick("DASHSCOPE_POLL_TIMEOUT", "1800") or "1800"),
         "base_url": _compute_base_url(region, workspace_id),
@@ -116,8 +126,39 @@ def _normalize_language(lang: str | None) -> str | None:
     return LANGUAGE_MAP.get(key, key)
 
 
+def _validate_hotword_weight(value: str | int) -> int:
+    """验证 Qwen-Audio 即时热词的权重。"""
+    try:
+        weight = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Qwen-Audio 热词权重必须是 1-5 或 50") from exc
+    if weight not in (*range(1, 6), 50):
+        raise ValueError("Qwen-Audio 热词权重必须是 1-5 或 50")
+    return weight
+
+
+def parse_hotword_weight(value: str) -> int:
+    """argparse 用的 Qwen-Audio 即时热词权重解析器。"""
+    try:
+        return _validate_hotword_weight(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def is_funasr_model(model: str) -> bool:
     return model == FUNASR_MODEL or model.startswith("fun-asr-") or model.startswith("fun-asr-mtl")
+
+
+def is_qwen_audio_model(model: str) -> bool:
+    return model == QWEN_AUDIO_FILETRANS_MODEL
+
+
+def supports_speaker_diarization(model: str) -> bool:
+    return is_funasr_model(model) or is_qwen_audio_model(model)
+
+
+def uses_file_urls(model: str) -> bool:
+    return is_funasr_model(model) or is_qwen_audio_model(model)
 
 
 def _dashscope_error_detail(response: requests.Response) -> str:
@@ -215,16 +256,41 @@ def parse_duration(value: str) -> float:
 _parse_duration = parse_duration
 
 
-def load_hotwords() -> list[str]:
-    """从 hotwords.txt 读取热词列表，忽略注释行和空行。"""
-    if not HOTWORDS_FILE.exists():
+def load_hotwords(path: str | os.PathLike[str] | None = None) -> list[str]:
+    """从 UTF-8 热词文件读取列表，忽略注释行和空行。"""
+    source = Path(path).expanduser() if path else HOTWORDS_FILE
+    if not source.exists():
+        if path:
+            raise FileNotFoundError(f"即时热词文件不存在: {source}")
         return []
     words = []
-    for line in HOTWORDS_FILE.read_text(encoding="utf-8").splitlines():
+    for line in source.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if line and not line.startswith("#"):
             words.append(line)
     return words
+
+
+def load_context_file(path: str | os.PathLike[str] | None) -> str:
+    """读取 Qwen-Audio 上下文文件；空路径表示不启用上下文。"""
+    if not path:
+        return ""
+    context_path = Path(path).expanduser()
+    if not context_path.exists():
+        raise FileNotFoundError(f"Qwen-Audio 上下文文件不存在: {context_path}")
+    return context_path.read_text(encoding="utf-8").strip()
+
+
+def build_qwen_audio_context(context_text: str | None) -> list[dict] | None:
+    """把领域词表/前文整理成官方 REST API 的 input.messages 形状。"""
+    text = (context_text or "").strip()
+    if not text:
+        return None
+    # 官方限制每轮上下文总长 400 字符；单条 user input_text 足够表达领域词表。
+    return [{
+        "role": "user",
+        "content": [{"type": "input_text", "text": text[:400]}],
+    }]
 
 
 # ===== SRT / 时间戳工具（与本地版一致） =====
@@ -660,15 +726,39 @@ def upload_to_oss(policy: dict, file_path: str) -> str:
 def submit_filetrans(base_url: str, api_key: str, file_url: str,
                      language: str | None, enable_words: bool,
                      enable_itn: bool, model: str = FILETRANS_MODEL,
-                     enable_speaker: bool = False) -> str:
+                     enable_speaker: bool = False,
+                     vocabulary_id: str | None = None,
+                     hotwords: list[str] | None = None,
+                     hotword_weight: int = 5,
+                     context: list[dict] | None = None) -> str:
     """提交异步 ASR 任务，返回 task_id。"""
-    if is_funasr_model(model):
+    if is_qwen_audio_model(model):
         params: dict = {
             "channel_id": [0],
             "diarization_enabled": enable_speaker,
         }
         if language:
             params["language_hints"] = [language]
+        if vocabulary_id:
+            params["vocabulary_id"] = vocabulary_id
+        if hotwords:
+            weight = _validate_hotword_weight(hotword_weight)
+            entries, _issues = parse_qwen_audio_hotwords(hotwords, weight)
+            params["vocabulary"] = {entry.text: entry.weight for entry in entries}
+            if not params["vocabulary"]:
+                params.pop("vocabulary")
+        input_payload = {"file_urls": [file_url]}
+        if context:
+            input_payload["messages"] = context
+    elif is_funasr_model(model):
+        params: dict = {
+            "channel_id": [0],
+            "diarization_enabled": enable_speaker,
+        }
+        if language:
+            params["language_hints"] = [language]
+        if vocabulary_id:
+            params["vocabulary_id"] = vocabulary_id
         input_payload = {"file_urls": [file_url]}
     else:
         params = {
@@ -725,7 +815,7 @@ def poll_task(base_url: str, api_key: str, task_id: str,
             last_status = status
 
         if status == "SUCCEEDED":
-            if is_funasr_model(model):
+            if uses_file_urls(model):
                 results = output.get("results") or []
                 result = next(
                     (
@@ -893,10 +983,21 @@ def build_segments_preserving_speakers(
 
 # ===== 顶层转写入口 =====
 
+def _configured_vocabulary_id(model: str, config: dict) -> str:
+    if is_qwen_audio_model(model):
+        return str(config.get("qwen_audio_vocabulary_id") or "").strip()
+    if is_funasr_model(model):
+        return str(config.get("funasr_vocabulary_id") or "").strip()
+    return ""
+
+
 def transcribe(audio_path: str, language: str | None, hotwords: list[str],
                config: dict, file_url_override: str | None = None,
                model: str = FILETRANS_MODEL,
-               enable_speaker: bool = False) -> dict:
+               enable_speaker: bool = False,
+               vocabulary_id: str | None = None,
+               context_text: str | None = None,
+               hotword_weight: int | None = None) -> dict:
     """调 DashScope filetrans API 做转录。
 
     返回可由本项目编辑器读取的工程数据：
@@ -911,15 +1012,44 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
             "       API Key 申请：https://help.aliyun.com/zh/model-studio/get-api-key"
         )
 
+    resolved_vocabulary_id = (vocabulary_id or _configured_vocabulary_id(model, config)).strip()
+    resolved_hotword_weight = hotword_weight
+    if resolved_hotword_weight is None:
+        resolved_hotword_weight = int(config.get("qwen_audio_hotword_weight", 5))
+    context = build_qwen_audio_context(context_text)
+
     if hotwords:
-        if is_funasr_model(model):
+        if is_qwen_audio_model(model):
+            filtered_hotwords, hotword_issues = parse_qwen_audio_hotwords(
+                hotwords,
+                resolved_hotword_weight,
+            )
+            for issue in hotword_issues:
+                print(
+                    f"[热词] 忽略第 {issue.index} 项（{issue.code}）：{issue.text}"
+                )
+            hotword_count = len(filtered_hotwords)
+        else:
+            hotword_count = len(hotwords)
+        if is_qwen_audio_model(model):
+            print(
+                f"[热词] 将通过 Qwen-Audio 即时 vocabulary 发送 {hotword_count} 个热词，"
+                f"weight={resolved_hotword_weight}。"
+            )
+        elif is_funasr_model(model):
             print(
                 f"[热词] 检测到 {len(hotwords)} 个本地热词。Fun-ASR 仅接受百炼控制台"
                 f"预建的 vocabulary_id，当前未发送 hotwords.txt。"
             )
         else:
             print(f"[热词] 检测到 {len(hotwords)} 个热词。注意：filetrans API 暂不支持热词注入，"
-                  f"本地 qwen-asr 版本才支持（通过 context 软提示）。")
+                  f"当前模型未发送 hotwords.txt。")
+    if context:
+        if is_qwen_audio_model(model):
+            context_chars = len(context[0]["content"][0]["text"])
+            print(f"[上下文] 已启用 Qwen-Audio context（{context_chars} 字符，最多发送 400 字符）。")
+        else:
+            print("[上下文] 当前模型不支持 Qwen-Audio context，已忽略。")
 
     # 1) 准备 file_url
     if file_url_override:
@@ -933,7 +1063,12 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
 
     # 2) 提交异步任务
     norm_lang = _normalize_language(language) or _normalize_language(config["default_language"])
-    if is_funasr_model(model):
+    if is_qwen_audio_model(model):
+        print(
+            f"[filetrans] 提交 Qwen-Audio 任务 (language={norm_lang or 'auto'}, "
+            f"speaker={'on' if enable_speaker else 'off'})..."
+        )
+    elif is_funasr_model(model):
         print(
             f"[filetrans] 提交 Fun-ASR 任务 (language={norm_lang or 'auto'}, "
             f"speaker={'on' if enable_speaker else 'off'})..."
@@ -948,6 +1083,10 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
         enable_itn=config["enable_itn"],
         model=model,
         enable_speaker=enable_speaker,
+        vocabulary_id=resolved_vocabulary_id or None,
+        hotwords=hotwords if is_qwen_audio_model(model) else None,
+        hotword_weight=resolved_hotword_weight,
+        context=context if is_qwen_audio_model(model) else None,
     )
     print(f"[filetrans] 任务已提交: task_id={task_id}")
 
@@ -960,7 +1099,7 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
         model=model,
     )
     elapsed_poll = time.perf_counter() - t0
-    if is_funasr_model(model):
+    if uses_file_urls(model):
         audio_secs = task_usage.get("duration", 0)
         print(f"[filetrans] 任务完成，耗时 {elapsed_poll:.1f}s | 计费语音 {audio_secs}s")
     else:
@@ -971,11 +1110,7 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
 
     # 4) 下载 + 解析
     raw = download_transcription(transcription_url)
-    result = (
-        parse_funasr_transcription_result(raw)
-        if is_funasr_model(model)
-        else parse_transcription_result(raw)
-    )
+    result = parse_funasr_transcription_result(raw) if uses_file_urls(model) else parse_transcription_result(raw)
     if not result.get("language") and norm_lang:
         result["language"] = norm_lang
     result["usage"] = task_usage
@@ -986,7 +1121,7 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
 
 def main():
     parser = argparse.ArgumentParser(
-        description="使用阿里云百炼 Qwen / Fun-ASR API 生成视频字幕（云端版）",
+        description="使用阿里云百炼 Qwen / Qwen-Audio / Fun-ASR API 生成视频字幕（云端版）",
     )
     parser.add_argument("input", help="输入视频或音频文件路径")
     parser.add_argument("-o", "--output", help="输出 SRT 路径（默认与输入同目录）")
@@ -1012,11 +1147,11 @@ def main():
     )
     parser.add_argument(
         "--speaker", action="store_true",
-        help="Fun-ASR 开启说话人分离，speaker 标签写入工程文件",
+        help="Qwen-Audio/Fun-ASR 开启说话人分离，speaker 标签写入工程 JSON",
     )
     parser.add_argument(
         "--speaker-colors", action="store_true",
-        help="Fun-ASR 在说话人分离基础上，把不同说话人映射成 5 种字幕颜色",
+        help="Qwen-Audio/Fun-ASR 在说话人分离基础上，把不同说话人映射成 5 种字幕颜色",
     )
     parser.add_argument(
         "--json", dest="json_out", action="store_true",
@@ -1048,7 +1183,31 @@ def main():
     )
     parser.add_argument(
         "--model", default=FILETRANS_MODEL,
-        help=f"覆盖 ASR 模型（默认 {FILETRANS_MODEL}）",
+        help=f"覆盖 ASR 模型（默认 {FILETRANS_MODEL}；可选 {QWEN_AUDIO_FILETRANS_MODEL} / {FUNASR_MODEL}）",
+    )
+    parser.add_argument(
+        "--vocabulary-id", default=None,
+        help="覆盖当前模型的百炼预编译 vocabulary_id（也可在 .env 配置）",
+    )
+    parser.add_argument(
+        "--hotword", action="append", default=None,
+        help="追加一个 Qwen-Audio 即时热词；可重复传入，与 hotwords.txt 合并",
+    )
+    parser.add_argument(
+        "--hotword-file", default=None,
+        help="使用指定 UTF-8 文本文件作为 Qwen-Audio 即时热词来源，替代默认 hotwords.txt",
+    )
+    parser.add_argument(
+        "--hotword-weight", type=parse_hotword_weight, default=None,
+        help="Qwen-Audio hotwords.txt 的即时热词权重（1-5 或 50；默认读 .env 的 5）",
+    )
+    parser.add_argument(
+        "--context", default=None,
+        help="Qwen-Audio context 领域词表/前文；最多发送 400 字符",
+    )
+    parser.add_argument(
+        "--context-file", default=None,
+        help="从 UTF-8 文件读取 Qwen-Audio context（与 --context 二选一）",
     )
     parser.add_argument(
         "--debug", action="store_true",
@@ -1056,8 +1215,10 @@ def main():
     )
     args = parser.parse_args()
     enable_speaker = args.speaker or args.speaker_colors
-    if enable_speaker and not is_funasr_model(args.model):
-        parser.error("--speaker / --speaker-colors 仅适用于 Fun-ASR 模型")
+    if enable_speaker and not supports_speaker_diarization(args.model):
+        parser.error("--speaker / --speaker-colors 仅适用于 Qwen-Audio 或 Fun-ASR 模型")
+    if args.context is not None and args.context_file:
+        parser.error("--context 与 --context-file 只能二选一")
 
     input_path = Path(args.input)
     if not input_path.exists() and not args.file_url:
@@ -1075,10 +1236,24 @@ def main():
         config["region"] = args.region.lower()
         config["base_url"] = _compute_base_url(config["region"], config["workspace_id"])
 
+    try:
+        context_text = args.context
+        if context_text is None:
+            context_text = load_context_file(args.context_file or config["qwen_audio_context_file"])
+    except (OSError, UnicodeError) as exc:
+        parser.error(str(exc))
+
     video_exts = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"}
     is_video = input_path.suffix.lower() in video_exts
 
-    hotwords = load_hotwords()
+    try:
+        hotwords = load_hotwords(args.hotword_file)
+    except (OSError, UnicodeError) as exc:
+        parser.error(str(exc))
+    for hotword in args.hotword or []:
+        normalized = hotword.strip()
+        if normalized and normalized not in hotwords:
+            hotwords.append(normalized)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         if args.file_url:
@@ -1098,7 +1273,7 @@ def main():
             print(f"[info] 音频总时长: {m}分{s}秒")
             if enable_speaker and duration > 2 * 60 * 60:
                 print(
-                    "[警告] Fun-ASR 官方建议说话人分离音频不超过 2 小时；"
+                    "[警告] Qwen-Audio/Fun-ASR 官方建议说话人分离音频不超过 2 小时；"
                     "当前任务可能失败或超时。"
                 )
 
@@ -1123,6 +1298,9 @@ def main():
             file_url_override=args.file_url,
             model=args.model,
             enable_speaker=enable_speaker,
+            vocabulary_id=args.vocabulary_id,
+            context_text=context_text,
+            hotword_weight=args.hotword_weight,
         )
         elapsed = time.perf_counter() - t0
 
@@ -1150,6 +1328,12 @@ def main():
                 items, max_len=args.max_len, min_len=args.min_len,
                 gap_split_ms=args.gap_split,
             )
+
+        # 兜底：上游可能返回 0 长（甚至倒挂）的词/段时间码，
+        # 拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
+        repaired_count = repair_segment_durations(segments)
+        if repaired_count:
+            print(f"[info] 已兜底修复 {repaired_count} 处 0 长/倒挂时间码（保底 100ms）")
 
     if enable_speaker:
         speakers = sorted({str(seg["speaker"]) for seg in segments if seg.get("speaker") is not None})
@@ -1185,7 +1369,11 @@ def main():
     if not args.output:
         speed_tag = f"{speed:.1f}x" if speed else "na"
         ts_prefix = f"[{datetime.now().strftime('%y%m%d%H%M')}]"
-        model_tag = "fun-asr" if is_funasr_model(args.model) else "qwen3-asr-api"
+        model_tag = (
+            "fun-asr" if is_funasr_model(args.model)
+            else "qwen-audio-asr-api" if is_qwen_audio_model(args.model)
+            else "qwen3-asr-api"
+        )
         output_path = output_path.with_name(
             f"{ts_prefix}{output_path.stem}.{model_tag}.{speed_tag}.srt"
         )
@@ -1203,7 +1391,11 @@ def main():
         json_data = {
             "media": str(input_path),
             "language": result.get("language", ""),
-            "model": args.model if is_funasr_model(args.model) else "qwen3-asr-api",
+            "model": (
+                args.model if is_funasr_model(args.model)
+                else "qwen-audio-asr-api" if is_qwen_audio_model(args.model)
+                else "qwen3-asr-api"
+            ),
             "segments": [
                 {
                     "start": seg["start"],

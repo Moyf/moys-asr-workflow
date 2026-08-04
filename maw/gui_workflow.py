@@ -17,8 +17,9 @@ from pathlib import Path
 from threading import Event
 from typing import BinaryIO, Final, TextIO, final
 
-from maw.gui_config import DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, load_env
+from maw.gui_config import QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, load_env
 from maw.gui_platform import asset_path
+from maw.qwen_audio import split_qwen_audio_hotwords
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +37,11 @@ class TranscriptionRequest:
     language: str = ""
     api_key: str = ""
     length_limit: str = ""
+    qwen_audio_context: str = ""
+    qwen_audio_hotwords: str = ""
+    qwen_audio_hotwords_file: str = ""
+    qwen_audio_vocabulary_id: str = ""
+    qwen_audio_hotword_weight: str = ""
     region: str = ""
     workspace_id: str = ""
     provider: str = "qwen"
@@ -115,9 +121,12 @@ def default_srt_path(
     model: str = DEFAULT_MODEL_ID,
 ) -> Path:
     media = Path(media_path).expanduser()
-    tag = ".fun-asr" if provider == "qwen" and model.startswith("fun-asr") else (
-        PROVIDER_SRT_TAGS.get(provider, PROVIDER_SRT_TAGS["qwen"])
-    )
+    if provider == "qwen" and model.startswith("fun-asr"):
+        tag = ".fun-asr"
+    elif provider == "qwen" and model == QWEN_AUDIO_MODEL_ID:
+        tag = ".qwen-audio"
+    else:
+        tag = PROVIDER_SRT_TAGS.get(provider, PROVIDER_SRT_TAGS["qwen"])
     return media.with_name(f"{media.stem}{tag}.srt")
 
 
@@ -145,10 +154,22 @@ def build_transcribe_command(
     else:
         _append_option(command, "--model", request.model or DEFAULT_MODEL_ID)
         _append_option(command, "--region", request.region)
-        if request.speaker_colors and request.model.startswith("fun-asr"):
+        if request.speaker_colors and (
+            request.model.startswith("fun-asr")
+            or request.model == QWEN_AUDIO_MODEL_ID
+        ):
             command.append("--speaker-colors")
     _append_option(command, "--language", request.language)
     _append_option(command, "--length-limit", request.length_limit)
+    if request.provider == "qwen" and request.model == QWEN_AUDIO_MODEL_ID:
+        _append_option(command, "--vocabulary-id", request.qwen_audio_vocabulary_id)
+        _append_option(command, "--hotword-weight", request.qwen_audio_hotword_weight)
+        _append_option(command, "--context", request.qwen_audio_context)
+        if request.qwen_audio_hotwords_file:
+            _append_option(command, "--hotword-file", request.qwen_audio_hotwords_file)
+        else:
+            for hotword in split_qwen_audio_hotwords(request.qwen_audio_hotwords):
+                command.extend(["--hotword", hotword])
     return command
 
 

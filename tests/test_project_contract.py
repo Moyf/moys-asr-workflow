@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import unittest
 
-from maw.project import ProjectValidationFailed, normalize_project, validate_project
+from maw.project import (
+    ProjectValidationFailed,
+    normalize_project,
+    repair_segment_durations,
+    validate_project,
+)
 
 
 class ProjectContractTests(unittest.TestCase):
@@ -81,6 +86,64 @@ class ProjectContractTests(unittest.TestCase):
             normalize_project(project)
 
         self.assertIn("$.segments[0].end", str(raised.exception))
+
+    def test_repair_segment_durations_widens_zero_length_item_and_segment(self) -> None:
+        """Given a zero-length trailing item, When repaired, Then it keeps at least 100ms."""
+        segments = [
+            {
+                "start": 17790,
+                "end": 20340,
+                "text": "用卫星拍照片 能得到什么？",
+                "items": [
+                    {"text": "用卫星拍照片 能得到", "start": 17790, "end": 20340},
+                    {"text": "什么？", "start": 20340, "end": 20340},
+                ],
+            },
+        ]
+
+        fixed = repair_segment_durations(segments)
+
+        self.assertGreaterEqual(fixed, 1)
+        segment = segments[0]
+        self.assertEqual(segment["end"], 20440)
+        self.assertEqual(segment["items"][1]["end"], 20440)
+        normalize_project({"segments": segments})
+
+    def test_repair_segment_durations_widens_zero_segment_and_cascades(self) -> None:
+        """Given a zero-length segment, When repaired, Then following segments stay ordered."""
+        segments = [
+            {"start": 0, "end": 1000, "text": "第一句"},
+            {"start": 1000, "end": 1000, "text": "嗯"},
+            {"start": 1000, "end": 2000, "text": "第二句"},
+        ]
+
+        fixed = repair_segment_durations(segments)
+
+        self.assertGreaterEqual(fixed, 2)
+        self.assertEqual((segments[1]["start"], segments[1]["end"]), (1000, 1100))
+        self.assertEqual(segments[2]["start"], 1100)
+        normalize_project({"segments": segments})
+
+    def test_repair_segment_durations_leaves_genuine_short_timings_untouched(self) -> None:
+        """Given valid sub-100ms timings, When repaired, Then nothing changes."""
+        segments = [
+            {
+                "start": 0,
+                "end": 300,
+                "text": "The end.",
+                "items": [
+                    {"text": "The", "start": 0, "end": 60},
+                    {"text": " end.", "start": 60, "end": 300},
+                ],
+            },
+            {"start": 400, "end": 460, "text": "嗯"},
+        ]
+
+        fixed = repair_segment_durations(segments)
+
+        self.assertEqual(fixed, 0)
+        self.assertEqual(segments[0]["items"][0]["end"], 60)
+        self.assertEqual((segments[1]["start"], segments[1]["end"]), (400, 460))
 
     def test_validate_project_rejects_forward_head_refs_and_name_mismatch(self) -> None:
         project = {
