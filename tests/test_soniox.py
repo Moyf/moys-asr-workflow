@@ -520,5 +520,16 @@ class ApiClientTests(unittest.TestCase):
         self.assertEqual(req.delete.call_args.args[0], f"{BASE}/v1/transcriptions/t1")
 
 
+class SonioxCliExitContractTests(unittest.TestCase):
+    def test_missing_input_exits_nonzero(self) -> None:
+        """缺失输入文件属于调用方错误，必须以非零退出码失败。"""
+        from generate_subtitle_soniox_api import main
+
+        with mock.patch("sys.argv", ["generate_subtitle_soniox_api.py", "does-not-exist.mp3"]):
+            with self.assertRaises(SystemExit) as raised:
+                main()
+        self.assertEqual(raised.exception.code, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
