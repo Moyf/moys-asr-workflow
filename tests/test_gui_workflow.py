@@ -441,14 +441,14 @@ class GuiWorkflowTests(unittest.TestCase):
     def test_default_srt_path_uses_provider_tag(self) -> None:
         from maw.gui_workflow import default_srt_path
 
-        self.assertEqual(default_srt_path(Path("clip.mp4")).name, "clip.qwen3-asr-api.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4")).name, "clip.qwen-audio.srt")
         self.assertEqual(
             default_srt_path(Path("clip.mp4"), model="fun-asr").name,
             "clip.fun-asr.srt",
         )
         self.assertEqual(
-            default_srt_path(Path("clip.mp4"), model="qwen-audio-3.0-asr-flash-filetrans").name,
-            "clip.qwen-audio.srt",
+            default_srt_path(Path("clip.mp4"), model="qwen3-asr-flash-filetrans").name,
+            "clip.qwen3-asr-api.srt",
         )
         self.assertEqual(default_srt_path(Path("clip.mp4"), provider="soniox").name, "clip.soniox.srt")
 

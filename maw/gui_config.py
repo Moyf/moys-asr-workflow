@@ -12,8 +12,10 @@ from typing import Final
 ROOT: Final = Path(__file__).resolve().parents[1]
 DEFAULT_ENV_PATH: Final = ROOT / ".env"
 EXAMPLE_ENV_PATH: Final = ROOT / ".env.example"
-DEFAULT_MODEL_ID: Final = "qwen3-asr-flash-filetrans"
 QWEN_AUDIO_MODEL_ID: Final = "qwen-audio-3.0-asr-flash-filetrans"
+QWEN3_ASR_MODEL_ID: Final = "qwen3-asr-flash-filetrans"
+# qwen-audio-3.0 是最新发布的模型，作为 Launcher 默认；旧 qwen3-asr 置底保留（后续可能移除）。
+DEFAULT_MODEL_ID: Final = QWEN_AUDIO_MODEL_ID
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,12 +211,6 @@ SONIOX_COMMON_LANGUAGES: Final[tuple[str, ...]] = (
 
 QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
-        id=DEFAULT_MODEL_ID,
-        label="qwen3-asr（准确率更高）",
-        env_key="DASHSCOPE_API_KEY",
-        languages=LANGUAGES,
-    ),
-    ModelConfig(
         id=QWEN_AUDIO_MODEL_ID,
         label="qwen-audio-3.0-asr（热词 / 上下文）",
         env_key="DASHSCOPE_API_KEY",
@@ -232,6 +228,12 @@ QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
         note="支持说话人分离与词级时间戳",
         supports_speaker=True,
         languages=FUNASR_LANGUAGES,
+    ),
+    ModelConfig(
+        id=QWEN3_ASR_MODEL_ID,
+        label="qwen3-asr（准确率更高）",
+        env_key="DASHSCOPE_API_KEY",
+        languages=LANGUAGES,
     ),
 )
 
@@ -270,7 +272,7 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
 )
 
 MODELS: Final[tuple[ModelConfig, ...]] = PROVIDERS[0].models
-LEGACY_MODELS: Final[tuple[ModelConfig, ...]] = (QWEN_MODELS[0],)
+LEGACY_MODELS: Final[tuple[ModelConfig, ...]] = tuple(model for model in QWEN_MODELS if model.id == QWEN3_ASR_MODEL_ID)
 
 
 def load_env(path: Path = DEFAULT_ENV_PATH) -> dict[str, str]:
