@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 from generate_subtitle_qwen_api import (
+    FILETRANS_MODEL,
     QWEN_AUDIO_FILETRANS_MODEL,
     build_qwen_audio_context,
     is_qwen_audio_model,
@@ -19,6 +20,9 @@ from maw.qwen_audio import parse_qwen_audio_hotwords
 
 
 class QwenAudioAdapterTests(unittest.TestCase):
+    def test_qwen_audio_is_the_default_filetrans_model(self) -> None:
+        self.assertEqual(FILETRANS_MODEL, QWEN_AUDIO_FILETRANS_MODEL)
+
     def test_load_hotwords_accepts_an_explicit_text_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "custom.txt"
@@ -88,7 +92,8 @@ class QwenAudioAdapterTests(unittest.TestCase):
         payload = post.call_args.kwargs["json"]
         self.assertEqual(payload["model"], QWEN_AUDIO_FILETRANS_MODEL)
         self.assertEqual(payload["input"]["file_urls"], ["oss://temporary/audio.wav"])
-        self.assertEqual(payload["input"]["context"][0]["role"], "user")
+        self.assertEqual(payload["input"]["messages"][0]["role"], "user")
+        self.assertNotIn("context", payload["input"])
         self.assertEqual(payload["parameters"]["language_hints"], ["zh"])
         self.assertTrue(payload["parameters"]["diarization_enabled"])
         self.assertEqual(payload["parameters"]["vocabulary_id"], "vocab-qwen-audio")

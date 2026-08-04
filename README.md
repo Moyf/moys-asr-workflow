@@ -37,8 +37,8 @@ Moy 的 ASR 工作流由两部分组成：
 ### 申请 API Key
 
 > [!tip]
-> [如何获取阿里云百炼的 QwenASR/FunASR 的 API](https://help.aliyun.com/zh/model-studio/get-api-key)  
-> （不含广告，默认用 QwenASR 只是因为我测试下来它中文转录表现最好，而且支持字词级时间码）
+> [如何获取阿里云百炼的 Qwen-Audio/Fun-ASR API](https://help.aliyun.com/zh/model-studio/get-api-key)
+> （不含广告，默认使用 Qwen-Audio 3.0，支持长音频、热词和说话人分离）
 
 如果你更在意小语种多语言，可以使用 [Soniox Console](https://console.soniox.com) 申请 Key；
 两个 Key 不需要同时配置，用到哪个配哪个即可。
@@ -147,7 +147,7 @@ uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" --json
 
 首次成功会在媒体同目录生成：
 
-- `…qwen3-asr-api….srt`：可导入播放器或剪辑软件的字幕；
+- `…qwen-audio….srt`：可导入播放器或剪辑软件的字幕；
 - 同名 `.mosp`：**工程真源**，以后继续编辑请保留它。`.mosp` 文件内容仍是 UTF-8 JSON；编辑器和服务器也兼容打开、保存旧的 `.json` 工程。
 
 命令行里的 `--json` 参数名称为兼容旧版本而保留；它表示“同时生成工程文件”，当前默认扩展名是 `.mosp`，不是要求输出一个名为 `.json` 的文件。
@@ -163,10 +163,10 @@ uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" -ll 2m --jso
 
 ## 百炼 qwen-audio-3.0-asr-flash-filetrans（热词与上下文）
 
-Qwen-Audio 使用同一个 `DASHSCOPE_API_KEY`、地域和临时 OSS 上传链路。在 Launcher 的阿里云百炼 Provider 中选择 `qwen-audio-3.0-asr（热词 / 上下文）`，或在命令行显式指定模型：
+Qwen-Audio 使用同一个 `DASHSCOPE_API_KEY`、地域和临时 OSS 上传链路。Launcher 和 CLI 默认都使用 `qwen-audio-3.0-asr-flash-filetrans`；需要切换其他模型时再通过 `--model` 或 Launcher 的模型选择器指定。
 
 ```powershell
-uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" --model qwen-audio-3.0-asr-flash-filetrans --json
+uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" --json
 ```
 
 它支持 Qwen-Audio 专用的即时热词、预编译词表和 context：
@@ -175,7 +175,7 @@ uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" --model qwen
 - `hotwords.txt`：默认热词文件，每行一个即时热词；也可用 `--hotword-file path.txt` 指定其他 UTF-8 文本文件。可用 `--hotword-weight 1` 到 `5` 或 `50` 调整权重。
 - 命令行可重复使用 `--hotword "词"` 追加本次即时热词；它会和 `hotwords.txt` 合并。
 - `DASHSCOPE_QWEN_AUDIO_VOCABULARY_ID` 或 `--vocabulary-id`：使用百炼预先创建的词表；词表的目标模型必须是 Qwen-Audio。
-- `--context "领域词表或前文"`：发送最多 400 字符的 `input.context`；较长内容建议用 `--context-file` 或 `.env` 中的 `DASHSCOPE_QWEN_AUDIO_CONTEXT_FILE`。
+- `--context "领域词表或前文"`：通过 `input.messages` 发送最多 400 字符的上下文；较长内容建议用 `--context-file` 或 `.env` 中的 `DASHSCOPE_QWEN_AUDIO_CONTEXT_FILE`。
 - `--speaker` / `--speaker-colors`：开启说话人分离和可选颜色快照。
 
 即时热词按百炼规则校验：含非 ASCII 字符的单项最多 15 个字符，纯 ASCII 单项最多 7 个空格分隔的单词，每次最多 2000 项，权重 50 最多 50 项。不符合规则的输入会在 Launcher 下方警告，并在发送时忽略。

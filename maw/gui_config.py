@@ -14,7 +14,7 @@ DEFAULT_ENV_PATH: Final = ROOT / ".env"
 EXAMPLE_ENV_PATH: Final = ROOT / ".env.example"
 QWEN_AUDIO_MODEL_ID: Final = "qwen-audio-3.0-asr-flash-filetrans"
 QWEN3_ASR_MODEL_ID: Final = "qwen3-asr-flash-filetrans"
-# qwen-audio-3.0 是最新发布的模型，作为 Launcher 默认；旧 qwen3-asr 置底保留（后续可能移除）。
+# qwen-audio-3.0 是最新发布的模型，作为各入口默认；旧 qwen3-asr 置底保留（后续可能移除）。
 DEFAULT_MODEL_ID: Final = QWEN_AUDIO_MODEL_ID
 
 
@@ -101,6 +101,7 @@ LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
 FUNASR_LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
     ("", "自动识别"),
     ("zh", "中文 / Chinese"),
+    ("yue", "粤语 / Cantonese"),
     ("en", "英语 / English"),
     ("ja", "日语 / Japanese"),
     ("ko", "韩语 / Korean"),
@@ -132,10 +133,10 @@ FUNASR_LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
     ("sk", "斯洛伐克语 / Slovak"),
 )
 
-# 关闭「显示相对小众的语言」时，两家供应商统一保留这 8 种常用语言。
+# 关闭「显示相对小众的语言」时，Qwen 保留 9 种、Soniox 保留 8 种常用语言。
 # Qwen 的空代码（自动识别）也始终显示。
 QWEN_COMMON_LANGUAGES: Final[tuple[str, ...]] = (
-    "", "zh", "en", "ja", "ko", "fr", "de", "es", "ru",
+    "", "zh", "yue", "en", "ja", "ko", "fr", "de", "es", "ru",
 )
 
 # Soniox 官方文档：language_hints 是列表（可多选，仅偏向不限制），

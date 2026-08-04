@@ -19,7 +19,7 @@
 | 字/词时间戳开关 | `enable_words` | 固定提供字/词时间戳，不发送旧开关 | 复用现有 items 解析 |
 | 预编译热词 | 当前入口未发送 | `parameters.vocabulary_id` | `.env` 或 `--vocabulary-id` |
 | 即时热词 | 不支持 | `parameters.vocabulary` | 从 `hotwords.txt` 读取，默认权重 5 |
-| 上下文增强 | 当前入口未发送 | `input.context` | `--context` 或 `--context-file` |
+| 上下文增强 | 当前入口未发送 | `input.messages` | `--context` 或 `--context-file` |
 | 说话人分离 | 当前入口不支持 | `diarization_enabled` | `--speaker` / `--speaker-colors` |
 
 字段形状和限制以[官方 Qwen-Audio/Fun-ASR HTTP API](https://help.aliyun.com/zh/model-studio/fun-asr-recorded-speech-recognition-http-api)
@@ -38,7 +38,7 @@
 
 Launcher 在选择 Qwen-Audio 后提供以下单次任务字段：
 
-- `Prompt / 上下文`：对应 API 的 `input.context`，最多 400 字符；它是领域词表/前文增强，不是通用 system prompt。
+- `Prompt / 上下文`：对应 API 的 `input.messages`，最多 400 字符；它是领域词表/前文增强，不是通用 system prompt。
 - `即时热词`：默认直接输入，每行或逗号分隔，转成 `parameters.vocabulary`；也可切换为选择 UTF-8 `.txt` 文件，每行一个词，不需要先创建词表。单项支持 `热词: 权重` / `热词：权重` 覆盖全局权重。
 - `即时热词权重`：支持 1–5 和 50；50 是超级热词，适合少量必须命中的词。
 - `Prompt / 上下文`：实时显示 `当前字符数：x/400`，超出限制时以红字提示并阻止提交。

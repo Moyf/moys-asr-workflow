@@ -60,6 +60,8 @@ DASHSCOPE_API_KEY=sk-你的密钥
 uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" -ll 2m --json
 ```
 
+CLI 未指定 `--model` 时默认使用 `qwen-audio-3.0-asr-flash-filetrans`；需要使用旧 Qwen3 或 Fun-ASR 时再显式指定模型。
+
 常用可选项：
 
 ```text
@@ -75,7 +77,7 @@ CLI 默认不内嵌波形；需要交给编辑器直接打开且不想生成 `<�
 
 ## 用 Qwen-Audio 3.0 ASR 转写（热词与上下文）
 
-在 Launcher 的阿里云百炼 Provider 中选择 `qwen-audio-3.0-asr（热词 / 上下文）`，或使用命令行：
+Launcher 和 CLI 默认都使用 `qwen-audio-3.0-asr-flash-filetrans`；需要切换其他模型时再显式指定：
 
 ```powershell
 uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" --model qwen-audio-3.0-asr-flash-filetrans -ll 2m --json

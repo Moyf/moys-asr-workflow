@@ -44,7 +44,7 @@
 | 自动语种识别 | 支持 | 支持 | 支持 | 支持 |
 | 说话人分离 | 不支持 | 支持，返回句级 `speaker_id` | 支持，返回句级 `speaker_id` | 支持，返回句级 speaker 信息 |
 | 热词 | 当前 Qwen Filetrans 不支持 | 支持即时 `vocabulary` 与预编译 `vocabulary_id` | 支持预建词表 | 支持平台级、请求级热词 |
-| 上下文增强 | 当前入口未发送 | 支持 `input.context` | 当前入口未发送 | 需按具体接口核对 |
+| 上下文增强 | 当前入口未发送 | 支持 `input.messages` | 当前入口未发送 | 需按具体接口核对 |
 | 情感识别 | 支持，但 MAW 当前没有写入工程 | 不支持 | 不支持 | 产品能力支持；极速版移除了部分客服能力字段，需按具体接口核对 |
 | 本地文件直传 | MAW 先上传到 DashScope 临时 OSS | MAW 先上传到 DashScope 临时 OSS | API 本身收 URL；可复用同类临时 OSS 流程 | 极速版支持 Base64；标准/闲时版主要收 URL |
 
@@ -52,7 +52,7 @@
 
 - Qwen-Audio 的 REST 请求使用 `input.file_urls` 数组，单次仍只支持一个 URL；成功轮询结果位于 `output.results[]`。
 - 即时热词权重取 1–5 或 50；权重 50 是超级热词，数量最多 50 个。预编译词表必须按 Qwen-Audio 目标模型创建。
-- `input.context` 用于专有词汇和领域上下文增强，每轮总长度最多 400 字符；MAW 的 `--context` / `--context-file` 发送一个 `user/input_text` 消息。
+- `input.messages` 用于专有词汇和领域上下文增强，每轮总长度最多 400 字符；MAW 的 `--context` / `--context-file` 发送一个 `user/input_text` 消息。
 - 说话人分离只适用于单声道，官方建议启用时音频不超过 2 小时。
 
 ### Fun-ASR 的关键限制
@@ -99,7 +99,7 @@ SRT/JSON 生成及已有 speaker 颜色逻辑：
   `--speaker` / `--speaker-colors` 控制说话人分离和颜色快照。
 - Web Launcher 把 Qwen-Audio 和 Fun-ASR 放在同一个百炼 Provider 下，并按模型切换支持语言、
   说话人开关和默认 `.qwen-audio.srt` / `.fun-asr.srt` 输出名。
-- Qwen-Audio 的即时热词、预编译 `vocabulary_id` 和 `input.context` 已接入；
+- Qwen-Audio 的即时热词、预编译 `vocabulary_id` 和 `input.messages` 已接入；
   `hotwords.txt` 只对 Qwen-Audio 作为即时热词发送。
 - Fun-ASR 的句级 `speaker_id` 会复制到对应 `items[]`，切句前先按 speaker
   变化硬切，确保一个 MAW segment 不跨说话人。

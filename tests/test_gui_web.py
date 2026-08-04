@@ -59,7 +59,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIsNone(config["lastLanguage"])
         self.assertEqual(config["stickerDir"], "")
         self.assertEqual(config["providers"][0]["keyUrl"], "https://help.aliyun.com/zh/model-studio/get-api-key")
-        self.assertEqual(len(config["providers"][0]["commonLanguages"]), 9)
+        self.assertEqual(len(config["providers"][0]["commonLanguages"]), 10)
         self.assertEqual(len(config["providers"][1]["commonLanguages"]), 8)
         self.assertEqual(config["models"][0]["id"], "qwen-audio-3.0-asr-flash-filetrans")
         self.assertEqual(config["models"][1]["id"], "fun-asr")

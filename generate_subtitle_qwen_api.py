@@ -41,8 +41,8 @@ from waveform import embed_waveform
 HOTWORDS_FILE = Path(__file__).parent / "hotwords.txt"
 ENV_FILE = Path(__file__).parent / ".env"
 
-FILETRANS_MODEL = "qwen3-asr-flash-filetrans"
 QWEN_AUDIO_FILETRANS_MODEL = "qwen-audio-3.0-asr-flash-filetrans"
+FILETRANS_MODEL = QWEN_AUDIO_FILETRANS_MODEL
 FUNASR_MODEL = "fun-asr"
 
 # 本地 language 名 → DashScope language code
@@ -282,7 +282,7 @@ def load_context_file(path: str | os.PathLike[str] | None) -> str:
 
 
 def build_qwen_audio_context(context_text: str | None) -> list[dict] | None:
-    """把领域词表/前文整理成官方 REST API 的 input.context 形状。"""
+    """把领域词表/前文整理成官方 REST API 的 input.messages 形状。"""
     text = (context_text or "").strip()
     if not text:
         return None
@@ -749,7 +749,7 @@ def submit_filetrans(base_url: str, api_key: str, file_url: str,
                 params.pop("vocabulary")
         input_payload = {"file_urls": [file_url]}
         if context:
-            input_payload["context"] = context
+            input_payload["messages"] = context
     elif is_funasr_model(model):
         params: dict = {
             "channel_id": [0],
