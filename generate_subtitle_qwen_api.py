@@ -30,6 +30,7 @@ from pathlib import Path
 import requests
 
 from edit import get_default_sticker_dir
+from maw.project import repair_segment_durations
 from maw.qwen_audio import parse_qwen_audio_hotwords
 from maw.speaker import apply_speaker_colors, split_items_by_speaker
 from waveform import embed_waveform
@@ -1327,6 +1328,12 @@ def main():
                 items, max_len=args.max_len, min_len=args.min_len,
                 gap_split_ms=args.gap_split,
             )
+
+        # 兜底：上游可能返回 0 长（甚至倒挂）的词/段时间码，
+        # 拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
+        repaired_count = repair_segment_durations(segments)
+        if repaired_count:
+            print(f"[info] 已兜底修复 {repaired_count} 处 0 长/倒挂时间码（保底 100ms）")
 
     if enable_speaker:
         speakers = sorted({str(seg["speaker"]) for seg in segments if seg.get("speaker") is not None})

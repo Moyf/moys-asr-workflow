@@ -39,6 +39,25 @@
     '多行': 'Multi-row', '基础': 'Basic', '隐藏': 'Hidden',
     '选择': 'Select', '分割': 'Razor', '移除静音空隙': 'Remove silent gaps',
     '跳过空隙': 'Skip gaps', '播放时跳过空隙': 'Skip gaps during playback', '未扫描空隙': 'Gaps not scanned', '工作区': 'Workspace',
+    '拼合字幕': 'Snap subtitles', '拼合参数': 'Snap parameters',
+    '直接修改字幕时间轴，整个操作一次撤销': 'Edits the subtitle timeline directly; the whole run is one undo step',
+    '间隔阈值': 'Interval threshold', '拓展方向': 'Snap direction',
+    '向前拓展': 'Extend earlier', '向后拓展': 'Extend later',
+    '吸收过短字幕': 'Absorb short subtitles', '短字幕阈值': 'Short-subtitle threshold', '吸收方向': 'Absorb direction',
+    '向前吸收': 'Into previous', '向后吸收': 'Into next',
+    '相邻字幕间隔小于此值时，拓展字幕长度把它们拼在一起；0 表示不处理':
+      'When the interval between adjacent subtitles is below this value, extend their lengths to snap them together; 0 disables it',
+    '向前：后方字幕的起点前拓；向后：前方字幕的终点后延':
+      'Earlier: the later subtitle extends its start backward; Later: the earlier subtitle extends its end forward',
+    '中文少于 N 个字 / 英文少于 N 个词即视为过短字幕':
+      'Fewer than N Chinese characters or N English words counts as a short subtitle',
+    '向前：过短字幕并入上一条；向后：并入下一条':
+      'Into previous: a short subtitle merges into the previous one; Into next: into the next one',
+    '过短的字幕直接并入相邻字幕；关闭后只拼合间隔':
+      'Short subtitles merge into a neighbor; when off, only intervals are snapped',
+    '按当前参数处理整段工程': 'Process the whole project with these parameters',
+    '没有需要拼合的间隔或过短字幕': 'No intervals or short subtitles to snap',
+    '字幕时长不足 200ms，无法拆分': 'Subtitles shorter than 200 ms cannot be split',
     '字幕列表编辑': 'Subtitle list editor', '右侧整列波形': 'Waveform column right',
     '传统字幕编辑器': 'Traditional subtitle editor',
     '编辑布局': 'Edit layout', '完成布局': 'Done editing', '重置工作区': 'Reset workspace',
@@ -232,6 +251,9 @@
     '选择工具（V，默认）：点击选中、拖动移动、拖动边界调整；Ctrl/Shift 多选，Shift+空白拖拽框选，Alt 切换禁用，Alt 拖共享边界只动一侧': 'Select tool (V, default): click to select, drag to move, drag edges to trim; Ctrl/Shift multi-select, Shift+drag on blank area to box-select, Alt toggles disabled, Alt-drag changes one shared edge',
     '分割工具（R）：点击字幕块在指针位置安全拆分（按词/字级时间码对齐，拒绝 100ms 以内的边缘拆分）；Esc 切回选择': 'Razor tool (R): click a subtitle block to split at the pointer using word/character timing; splits within 100 ms of an edge are rejected; Esc returns to Select',
     '打开可拖动的移除静音空隙工具窗': 'Open the draggable silent-gap tool',
+    '打开可拖动的拼合字幕工具窗': 'Open the draggable snap-subtitles tool',
+    '关闭拼合字幕工具窗': 'Close the snap-subtitles tool',
+    '关闭后只拼合间隔，不合并任何字幕': 'When off, only intervals are snapped and no subtitles are merged',
     '播放时跳过已移除的静音空隙；左键定位到空隙内时可临时预览': 'Skip removed silent gaps during playback; clicking inside a gap previews it temporarily',
     '工作区：窗口布局与显示状态（列表显示项、波形模式等）': 'Workspace: window layout and display state (list fields, waveform mode, etc.)',
     '显示面板标题条和拖动预览': 'Show panel title bars and drag previews',
@@ -395,6 +417,21 @@
     if (match) return `chars/s ${match[1]}`;
     match = /^合并\s+(\d+)\s+条字幕$/.exec(text);
     if (match) return `Merge ${match[1]} subtitles`;
+    // flashHint：已拼合字幕：拼合 2 处间隔，吸收 1 条短字幕
+    match = /^已拼合字幕：(.+)$/.exec(text);
+    if (match) {
+      const parts = match[1].split('，').map((part) => {
+        let inner = /^拼合\s*(\d+)\s*处间隔$/.exec(part);
+        if (inner) return `snapped ${inner[1]} intervals`;
+        inner = /^吸收\s*(\d+)\s*条短字幕$/.exec(part);
+        if (inner) return `absorbed ${inner[1]} short subtitles`;
+        return translateText(part, EN);
+      });
+      return `Snap subtitles: ${parts.join(', ')}`;
+    }
+    // flashHint：已自动修复 2 处 0 长时间码（保底 100ms）
+    match = /^已自动修复\s*(\d+)\s*处\s*0\s*长时间码（保底\s*100ms）$/.exec(text);
+    if (match) return `Auto-repaired ${match[1]} zero-length timings (100 ms minimum)`;
     match = /^删除\s+(\d+)\s+条字幕$/.exec(text);
     if (match) return `Delete ${match[1]} subtitles`;
     match = /^已将关联字幕统一设为「(.+)」$/.exec(text);

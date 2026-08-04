@@ -31,7 +31,7 @@ from generate_subtitle_qwen_api import (
     get_duration_sec,
     parse_duration,
 )
-from maw.project import validate_project
+from maw.project import repair_segment_durations, validate_project
 from maw.soniox import (
     MAX_AUDIO_SECONDS,
     apply_speaker_colors,
@@ -199,6 +199,12 @@ def main():
                 items, max_len=args.max_len, min_len=args.min_len,
                 gap_split_ms=args.gap_split,
             )
+
+        # 兜底：缺时间戳/倒挂的 token 会形成 0 长 item，
+        # 拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
+        repaired_count = repair_segment_durations(segments)
+        if repaired_count:
+            print(f"[info] 已兜底修复 {repaired_count} 处 0 长/倒挂时间码（保底 100ms）")
 
     if enable_speaker:
         speakers = sorted({str(seg["speaker"]) for seg in segments if seg.get("speaker")})

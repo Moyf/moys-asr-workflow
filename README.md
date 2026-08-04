@@ -171,7 +171,7 @@ uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" --model qwen
 
 它支持 Qwen-Audio 专用的即时热词、预编译词表和 context：
 
-- Launcher 的高级选项会在选择 Qwen-Audio 后显示 `Prompt / 上下文`、`即时热词` 和全局权重；即时热词支持直接输入或选择 UTF-8 `.txt` 文件。每项也可写成 `热词: 权重` 或 `热词：权重` 单独覆盖全局权重，权重只能是 1–5 或 50。预编译 `vocabulary_id` 暂不在 Launcher 开放，底层 CLI / `.env` 能力保留。这些 Launcher 值只随本次转写发送，不会保存到 `.env`。
+- Launcher 的高级选项会在选择 Qwen-Audio 后显示「附加上下文（Prompt）」、「即时热词」和默认热词权重；即时热词支持直接输入或从 UTF-8 `.txt` 文件读取。每项也可写成 `热词: 权重` 或 `热词：权重` 单独覆盖默认权重，权重只能是 1–5 或 50。预编译 `vocabulary_id` 暂不在 Launcher 开放，底层 CLI / `.env` 能力保留。这些 Launcher 值只随本次转写发送，不会保存到 `.env`。
 - `hotwords.txt`：默认热词文件，每行一个即时热词；也可用 `--hotword-file path.txt` 指定其他 UTF-8 文本文件。可用 `--hotword-weight 1` 到 `5` 或 `50` 调整权重。
 - 命令行可重复使用 `--hotword "词"` 追加本次即时热词；它会和 `hotwords.txt` 合并。
 - `DASHSCOPE_QWEN_AUDIO_VOCABULARY_ID` 或 `--vocabulary-id`：使用百炼预先创建的词表；词表的目标模型必须是 Qwen-Audio。
@@ -264,6 +264,7 @@ MAWE 右上角可切换中文 / English；编辑完成后点“保存工程”�
   - 可预览并批量替换关键词。
   - 视频画面内的字幕预览可直接拖动和缩放；位置与大小保存在工程文件中，撤销/重做、localhost 保存及便携 HTML 导出后仍会保留。
   - 可检测并移除静音空隙；这不会改写原始媒体或原始字幕时间，而是建立可撤销的压缩时间线供播放和导出使用。
+  - 可用「拼合字幕」整理细碎字幕：把间隔小于阈值（默认 200ms）的相邻字幕拓展贴合，并吸收过短的字幕（默认中文少于 3 字 / 英文少于 3 词）；拓展与吸收方向均可配置。
   - 可保存 `.mosp` / `.json` 工程，或导出标准 SRT 字幕。
 - 操作部分
   - WASD 快速跳转前后字幕

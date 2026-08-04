@@ -4,6 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MAW Launcher</title>
+  <script>
+    // 首屏防闪烁：样式表加载前按 localStorage / 系统偏好提前设置 data-theme
+    try {
+      var themePref = localStorage.getItem("MAW_GUI_THEME") || "system";
+      var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var resolvedDark = themePref === "dark" || (themePref !== "light" && prefersDark);
+      if (!resolvedDark) document.documentElement.dataset.theme = "light";
+    } catch (error) { /* localStorage 不可用时保持默认暗色 */ }
+  </script>
   <link rel="stylesheet" href="launcher.css">
 </head>
 <body>
@@ -59,6 +68,7 @@
           <span data-i18n="test_run">测试运行</span>
         </label>
       </div>
+      <p id="testRunHint" class="hint hidden" data-i18n="test_run_override">测试运行已限定前 2 分钟</p>
       <div class="field">
         <label for="apiKey" data-i18n="key">API Key</label>
         <div class="path-row key-row">
@@ -82,7 +92,7 @@
                 <p class="hint" data-i18n="workspace_hint">北京地域选填（推荐），新加坡地域必填。</p>
                 <p id="workspaceIdError" class="field-error"></p>
               </div>
-              <div id="lengthLimitField" class="field"><label for="lengthLimit" data-i18n="length_limit">时长上限</label><input id="lengthLimit" type="text" placeholder="2m / 30s / 1h" autocomplete="off"><p id="testRunHint" class="hint hidden" data-i18n="test_run_override">测试运行已限定前 2 分钟</p></div>
+              <div id="lengthLimitField" class="field"><label for="lengthLimit" data-i18n="length_limit">时长上限</label><input id="lengthLimit" type="text" placeholder="2m / 30s / 1h" autocomplete="off"></div>
             </div>
             <div id="languageField" class="field">
               <label for="language" data-i18n="language">语言</label>
@@ -94,47 +104,50 @@
           </div>
           <div id="qwenAudioOptions" class="qwen-audio-options hidden">
             <div id="qwenAudioContextField" class="field">
-              <label for="qwenAudioContext" data-i18n="qwen_audio_context">Prompt / 上下文</label>
+              <label for="qwenAudioContext" data-i18n="qwen_audio_context">附加上下文（Prompt）</label>
               <textarea id="qwenAudioContext" rows="3" autocomplete="off" data-i18n-placeholder="qwen_audio_context_placeholder"></textarea>
               <p class="hint" data-i18n="qwen_audio_context_hint">领域词表或前文提示；本次任务最多发送 400 个字符，不是通用系统指令。</p>
               <p id="qwenAudioContextCount" class="character-count" aria-live="polite">当前字符数：0/400</p>
               <p id="qwenAudioContextError" class="field-error"></p>
             </div>
-            <div class="qwen-audio-options-grid">
-              <div id="qwenAudioHotwordsField" class="field">
-                <label for="qwenAudioHotwords" data-i18n="qwen_audio_hotwords">即时热词</label>
-                <label for="qwenAudioHotwordsMode" data-i18n="qwen_audio_hotwords_mode">即时热词来源</label>
-                <select id="qwenAudioHotwordsMode">
-                  <option value="text" selected data-i18n="qwen_audio_hotwords_mode_text">直接输入</option>
-                  <option value="file" data-i18n="qwen_audio_hotwords_mode_file">选择文本文件</option>
-                </select>
-                <div id="qwenAudioHotwordsTextField" class="qwen-audio-hotwords-source">
-                  <textarea id="qwenAudioHotwords" rows="3" autocomplete="off" data-i18n-placeholder="qwen_audio_hotwords_placeholder"></textarea>
-                  <p class="hint" data-i18n="qwen_audio_hotwords_hint">每行一个，也支持逗号分隔；只作用于本次 Qwen-Audio 转写。</p>
-                </div>
-                <div id="qwenAudioHotwordsFileField" class="qwen-audio-hotwords-source hidden">
-                  <div class="path-row">
-                    <input id="qwenAudioHotwordsFile" type="text" autocomplete="off" data-i18n-placeholder="qwen_audio_hotwords_file_placeholder">
-                    <button id="pickQwenAudioHotwordsFile" class="ghost" type="button" data-i18n="choose">选择</button>
+            <div id="qwenAudioHotwordsSection">
+              <h3 data-i18n="qwen_audio_hotwords">即时热词</h3>
+              <div class="qwen-audio-options-grid">
+                <div id="qwenAudioHotwordsField" class="field">
+                  <input type="hidden" id="qwenAudioHotwordsMode" value="text">
+                  <div class="segmented" role="group">
+                    <button type="button" class="segment active" id="qwenAudioHotwordsModeText" data-i18n="qwen_audio_hotwords_mode_text">直接输入</button>
+                    <button type="button" class="segment" id="qwenAudioHotwordsModeFile" data-i18n="qwen_audio_hotwords_mode_file">从文件读取</button>
                   </div>
-                  <p class="hint" data-i18n="qwen_audio_hotwords_file_hint">支持 UTF-8 编码的 .txt 文件，每行一个热词。</p>
-                  <p id="qwenAudioHotwordsFileError" class="field-error"></p>
+                  <div id="qwenAudioHotwordsTextField" class="qwen-audio-hotwords-source">
+                    <textarea id="qwenAudioHotwords" rows="3" autocomplete="off" data-i18n-placeholder="qwen_audio_hotwords_placeholder"></textarea>
+                    <p class="hint" data-i18n="qwen_audio_hotwords_hint">每行一个，也支持逗号分隔；可直接拖入 .txt 文本文件自动填入；只作用于本次 Qwen-Audio 转写。</p>
+                    <p id="qwenAudioHotwordsError" class="field-error"></p>
+                  </div>
+                  <div id="qwenAudioHotwordsFileField" class="qwen-audio-hotwords-source hidden">
+                    <div class="path-row">
+                      <input id="qwenAudioHotwordsFile" type="text" autocomplete="off" data-i18n-placeholder="qwen_audio_hotwords_file_placeholder">
+                      <button id="pickQwenAudioHotwordsFile" class="ghost" type="button" data-i18n="choose">选择</button>
+                    </div>
+                    <p class="hint" data-i18n="qwen_audio_hotwords_file_hint">支持 UTF-8 编码的 .txt 文件，每行一个热词。</p>
+                    <p id="qwenAudioHotwordsFileError" class="field-error"></p>
+                  </div>
+                  <p id="qwenAudioHotwordsWarning" class="field-warning" aria-live="polite"></p>
                 </div>
-                <p class="hint" data-i18n="qwen_audio_hotwords_weight_override_hint">支持使用“热词: 权重”的形式单独指定某个词的权重，如：“obsidian: 5”（中英文冒号皆可）。未指定时使用右侧全局权重。</p>
-                <p id="qwenAudioHotwordsWarning" class="field-warning" aria-live="polite"></p>
-              </div>
-              <div class="qwen-audio-options-side">
-                <div id="qwenAudioHotwordWeightField" class="field">
-                  <label for="qwenAudioHotwordWeight" data-i18n="qwen_audio_hotword_weight">即时热词权重</label>
-                  <select id="qwenAudioHotwordWeight">
-                    <option value="1">1（较弱）</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                    <option value="5" selected>5（较强）</option>
-                    <option value="50">50（超级热词）</option>
-                  </select>
-                  <p class="hint" data-i18n="qwen_audio_hotword_weight_hint">权重 50 适合少量必须命中的词，最多 50 个。</p>
+                <div class="qwen-audio-options-side">
+                  <div id="qwenAudioHotwordWeightField" class="field">
+                    <label for="qwenAudioHotwordWeight" data-i18n="qwen_audio_hotword_weight">默认热词权重</label>
+                    <select id="qwenAudioHotwordWeight">
+                      <option value="1">1（较弱）</option>
+                      <option value="2">2</option>
+                      <option value="3">3</option>
+                      <option value="4">4</option>
+                      <option value="5" selected>5（较强）</option>
+                      <option value="50">50（超级热词）</option>
+                    </select>
+                    <p class="hint" data-i18n="qwen_audio_hotword_weight_hint">权重 50 适合少量必须命中的词，最多 50 个。</p>
+                    <p class="hint" data-i18n="qwen_audio_hotwords_weight_override_hint">支持用“热词: 权重”单独指定某个词的权重，如“obsidian: 5”（中英文冒号皆可）；未指定的热词使用默认权重。</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -203,6 +216,14 @@
         <h2 id="settingsTitle" data-i18n="settings_title">配置</h2>
         <button id="settingsClose" class="ghost small" type="button" aria-label="close">×</button>
       </header>
+      <div class="settings-section">
+        <h3 data-i18n="settings_appearance">外观</h3>
+        <div class="segmented" role="group">
+          <button type="button" class="segment" id="themeLight" data-i18n="theme_light">明亮模式</button>
+          <button type="button" class="segment" id="themeDark" data-i18n="theme_dark">暗色模式</button>
+          <button type="button" class="segment" id="themeSystem" data-i18n="theme_system">跟随系统设置</button>
+        </div>
+      </div>
       <div class="settings-section">
         <h3 data-i18n="settings_ffmpeg">FFmpeg</h3>
         <div id="modalFfmpegFound" class="ffmpeg-line hidden" title=""><span>✓</span><span data-i18n="ffmpeg_found">成功定位到 ffmpeg</span><small id="ffmpegDir"></small><button id="changeFfmpeg" class="inline-link" type="button" data-i18n="change">更改</button></div>
