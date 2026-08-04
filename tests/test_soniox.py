@@ -267,11 +267,11 @@ class SpeakerColorTests(unittest.TestCase):
         stats = soniox.apply_speaker_colors(segments)
 
         self.assertEqual(segments[0]["color"], {
-            "name": "red", "value": "#e74c3c", "start": 0, "end": 200,
+            "name": "yellow", "value": "#f1c40f", "start": 0, "end": 200,
         })
-        self.assertEqual(segments[1]["color_ref"], {"name": "red", "headIdx": 0})
+        self.assertEqual(segments[1]["color_ref"], {"name": "yellow", "headIdx": 0})
         self.assertEqual(segments[2]["color"], {
-            "name": "yellow", "value": "#f1c40f", "start": 200, "end": 300,
+            "name": "green", "value": "#2ecc71", "start": 200, "end": 300,
         })
         self.assertEqual(stats["speakers"], ["1", "2"])
         self.assertEqual(stats["colored_segments"], 3)
@@ -290,9 +290,9 @@ class SpeakerColorTests(unittest.TestCase):
         soniox.apply_speaker_colors(segments)
 
         # A B A 三个块各自成 head；同一 speaker 复用同一颜色名
-        self.assertEqual(segments[0]["color"]["name"], "red")
-        self.assertEqual(segments[1]["color"]["name"], "yellow")
-        self.assertEqual(segments[2]["color"]["name"], "red")
+        self.assertEqual(segments[0]["color"]["name"], "yellow")
+        self.assertEqual(segments[1]["color"]["name"], "green")
+        self.assertEqual(segments[2]["color"]["name"], "yellow")
         self.assertNotIn("color_ref", segments[2])
 
         result = validate_project({"segments": segments})

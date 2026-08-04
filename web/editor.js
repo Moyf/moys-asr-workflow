@@ -126,11 +126,11 @@ const EDITOR_SETTINGS = readEditorSettings();
 // 标记颜色：5 种基础色，用于给字幕分组着色。
 // 数据模型与表情包同构：head 持完整 color {name, value, start, end}，后续 ref 持 color_ref {name, headIdx}
 const COLOR_PALETTE = [
-  { name: 'red',    label: '红', value: '#e74c3c' },
   { name: 'yellow', label: '黄', value: '#f1c40f' },
-  { name: 'blue',   label: '蓝', value: '#168cff' },
   { name: 'green',  label: '绿', value: '#2ecc71' },
+  { name: 'red',    label: '红', value: '#e74c3c' },
   { name: 'purple', label: '紫', value: '#9b59b6' },
+  { name: 'blue',   label: '蓝', value: '#168cff' },
 ];
 const COLOR_BY_NAME = Object.fromEntries(COLOR_PALETTE.map(c => [c.name, c]));
 function colorValue(name) { return COLOR_BY_NAME[name]?.value || '#777'; }
@@ -465,7 +465,7 @@ const gapRemoveScanButton = document.getElementById('gap-remove-scan');
 const gapRemoveSkipPlayback = document.getElementById('gap-skip-playback');
 const gapRemoveList = document.getElementById('gap-remove-list');
 const gapRemoveClearAllButton = document.getElementById('gap-remove-clear-all');
-const AUTO_MERGE_PANEL_POSITION_KEY = 'moy.asr.auto_merge.panel.v1';
+const AUTO_MERGE_PANEL_POSITION_KEY = 'moy.asr.auto_merge.panel.v2';
 const autoMergePanel = document.getElementById('auto-merge-panel');
 const autoMergeDragHandle = document.getElementById('auto-merge-drag-handle');
 const autoMergeCloseButton = document.getElementById('auto-merge-close');
@@ -673,6 +673,7 @@ const autoMergeFloatingPanel = createFloatingPanel({
   panel: autoMergePanel,
   dragHandle: autoMergeDragHandle,
   manageButton: autoMergeManageButton,
+  anchorButton: autoMergeManageButton,
   positionKey: AUTO_MERGE_PANEL_POSITION_KEY,
   onOpen: syncAutoMergePanelInputs,
 });
@@ -970,7 +971,7 @@ function clearAllGaps() {
 
 // 可拖动非模态工具窗（移除静音空隙 / 拼合字幕共用模式）：
 // 负责显示/隐藏、工具栏按钮 active 态、标题栏拖动与位置持久化、窗口缩放回钳、Esc 关闭。
-function createFloatingPanel({ panel, dragHandle, manageButton, positionKey, onOpen }) {
+function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, positionKey, onOpen }) {
   if (!panel) return { open() {}, close() {}, toggle() {}, isOpen: () => false };
   let drag = null;
 
@@ -1004,10 +1005,27 @@ function createFloatingPanel({ panel, dragHandle, manageButton, positionKey, onO
     }
     if (Number.isFinite(saved?.left) && Number.isFinite(saved?.top)) {
       setPosition(saved.left, saved.top);
-      return;
+      return true;
     }
-    const rect = panel.getBoundingClientRect();
-    setPosition(rect.left, rect.top);
+    return false;
+  }
+
+  function positionNearAnchor() {
+    if (!anchorButton) return false;
+    const anchorRect = anchorButton.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const margin = 6;
+    const gap = 6;
+    let left = anchorRect.left;
+    if (left + panelRect.width > window.innerWidth - margin) {
+      left = anchorRect.right - panelRect.width;
+    }
+    let top = anchorRect.bottom + gap;
+    if (top + panelRect.height > window.innerHeight - margin) {
+      top = anchorRect.top - panelRect.height - gap;
+    }
+    setPosition(left, top);
+    return true;
   }
 
   function open() {
@@ -1016,7 +1034,9 @@ function createFloatingPanel({ panel, dragHandle, manageButton, positionKey, onO
     panel.setAttribute('aria-hidden', 'false');
     manageButton?.classList.add('active');
     manageButton?.setAttribute('aria-expanded', 'true');
-    requestAnimationFrame(restorePosition);
+    requestAnimationFrame(() => {
+      if (!restorePosition()) positionNearAnchor();
+    });
   }
 
   function close() {

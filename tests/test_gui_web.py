@@ -519,6 +519,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         }, self.env_path)
 
         self.assertEqual(request.length_limit, "2m")
+        self.assertEqual(request.srt_path.name, "out-test.srt")
         self.assertEqual(request.ui_language, "en")
 
     def test_request_from_payload_without_test_run_uses_manual_length_limit(self) -> None:

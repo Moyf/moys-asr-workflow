@@ -137,13 +137,20 @@ def main():
     with tempfile.TemporaryDirectory() as tmpdir:
         if is_video:
             audio_path = str(Path(tmpdir) / "audio.wav")
-            extract_audio(str(input_path), audio_path)
+            source_duration = get_duration_sec(str(input_path))
+            video_limit = args.length_limit if args.length_limit and args.length_limit < source_duration else None
+            extract_audio(str(input_path), audio_path, duration_limit=video_limit)
+            duration = get_duration_sec(audio_path)
+            if video_limit is not None:
+                lm, ls = divmod(int(video_limit), 60)
+                print(f"[info] 测试模式：从视频直接提取前 {lm}分{ls}秒，跳过其余内容")
         else:
             # 复制到 tmpdir 统一处理（避免 length_limit 改原文件）
             audio_path = str(Path(tmpdir) / input_path.name)
             shutil.copy2(input_path, audio_path)
 
-        duration = get_duration_sec(audio_path)
+        if not is_video:
+            duration = get_duration_sec(audio_path)
         m, s = divmod(int(duration), 60)
         print(f"[info] 音频总时长: {m}分{s}秒")
 

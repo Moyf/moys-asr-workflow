@@ -176,11 +176,11 @@
     },
   };
   const PALETTE = {
-    red: '#e74c3c',
     yellow: '#f1c40f',
-    blue: '#168cff',
     green: '#2ecc71',
+    red: '#e74c3c',
     purple: '#9b59b6',
+    blue: '#168cff',
   };
 
   function clamp(value, low, high) {

@@ -129,7 +129,7 @@
   //   snapDirection 'forward'（向后拓展）把前方字幕 end 后延到后一条 start。
   // - groups: [[idx, ...]]，过短字幕的合并组；absorbDirection 'previous'（向前吸收，
   //   默认）并入上一条、'next'（向后吸收）并入下一条；absorbShort 为 false 时不合并。
-  //   禁用项或 speaker 不一致的组合不合并。
+  //   吸收同样要求两条字幕的实际间隔在 (0, gapMs] 内；禁用项或 speaker 不一致的组合不合并。
   function planAutoMerge(segments, options = {}) {
     const gapMs = Math.max(0, Math.round(Number(options.gapMs) || 0));
     const snapDirection = options.snapDirection === 'forward' ? 'forward' : 'backward';
@@ -153,6 +153,9 @@
       const right = source[rightIdx];
       if (!left || !right) return false;
       if (left.disabled || right.disabled) return false;
+      if (!Number.isFinite(left.end) || !Number.isFinite(right.start)) return false;
+      const gap = right.start - left.end;
+      if (gap <= 0 || gap > gapMs) return false;
       return (left.speaker ?? null) === (right.speaker ?? null);
     };
     const groups = [];

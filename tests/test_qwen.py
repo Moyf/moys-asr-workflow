@@ -5,6 +5,7 @@ import unittest
 from unittest import mock
 
 from generate_subtitle_qwen_api import (
+    extract_audio,
     main,
     repair_nonpositive_duration_segments,
     split_words_to_segments,
@@ -34,6 +35,17 @@ class QwenCliExitContractTests(unittest.TestCase):
                         with self.assertRaises(SystemExit) as raised:
                             main()
         self.assertEqual(raised.exception.code, 2)
+
+
+class QwenMediaExtractionTests(unittest.TestCase):
+    def test_video_extraction_can_limit_duration_in_the_first_ffmpeg_pass(self) -> None:
+        with mock.patch("generate_subtitle_qwen_api.subprocess.run") as run:
+            extract_audio("input.mp4", "output.wav", duration_limit=120)
+
+        command = run.call_args.args[0]
+        self.assertEqual(command[:4], ["ffmpeg", "-i", "input.mp4", "-t"])
+        self.assertEqual(command[4], "120")
+        self.assertEqual(command[-1], "output.wav")
 
 
 class QwenTimestampRepairTests(unittest.TestCase):

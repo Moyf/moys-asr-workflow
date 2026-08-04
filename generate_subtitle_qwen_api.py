@@ -215,13 +215,15 @@ def _raise_for_dashscope_status(response: requests.Response, action: str) -> Non
 
 # ===== ffmpeg 工具函数（与本地版一致） =====
 
-def extract_audio(video_path: str, output_path: str) -> None:
-    cmd = [
-        "ffmpeg", "-i", video_path,
+def extract_audio(video_path: str, output_path: str, duration_limit: float | None = None) -> None:
+    cmd = ["ffmpeg", "-i", video_path]
+    if duration_limit is not None:
+        cmd.extend(["-t", str(duration_limit)])
+    cmd.extend([
         "-vn", "-acodec", "pcm_s16le",
         "-ar", "16000", "-ac", "1",
         "-y", output_path,
-    ]
+    ])
     print(f"[ffmpeg] 正在提取音频: {video_path}")
     subprocess.run(cmd, check=True, capture_output=True)
     print("[ffmpeg] 音频提取完成")
@@ -1262,13 +1264,20 @@ def main():
         else:
             if is_video:
                 audio_path = str(Path(tmpdir) / "audio.wav")
-                extract_audio(str(input_path), audio_path)
+                source_duration = get_duration_sec(str(input_path))
+                video_limit = args.length_limit if args.length_limit and args.length_limit < source_duration else None
+                extract_audio(str(input_path), audio_path, duration_limit=video_limit)
+                duration = get_duration_sec(audio_path)
+                if video_limit is not None:
+                    lm, ls = divmod(int(video_limit), 60)
+                    print(f"[info] 测试模式：从视频直接提取前 {lm}分{ls}秒，跳过其余内容")
             else:
                 # 复制到 tmpdir 统一处理（避免 length_limit 改原文件）
                 audio_path = str(Path(tmpdir) / input_path.name)
                 shutil.copy2(input_path, audio_path)
 
-            duration = get_duration_sec(audio_path)
+            if not is_video:
+                duration = get_duration_sec(audio_path)
             m, s = divmod(int(duration), 60)
             print(f"[info] 音频总时长: {m}分{s}秒")
             if enable_speaker and duration > 2 * 60 * 60:

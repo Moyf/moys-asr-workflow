@@ -1214,6 +1214,11 @@
   .toolbar #gap-removed-export-btn:hover {
     color: var(--gap-accent-hover-fg); background: linear-gradient(180deg, var(--gap-accent-hover-1), var(--gap-accent-hover-2)); border-color: var(--gap-accent-hover-border);
   }
+  .toolbar #gap-remove-manage.active {
+    color: var(--accent-hover); background: var(--accent-tint-strong);
+    border-color: var(--accent); box-shadow: none;
+  }
+  .toolbar #gap-remove-manage.active:hover { background: var(--accent-soft); border-color: var(--accent); }
   .toolbar #gap-remove-manage:focus-visible,
   .toolbar #gap-removed-export-btn:focus-visible { outline: 2px solid var(--amber-line); outline-offset: 1px; }
   .toolbar .gap-removed-export-dropdown .dropdown-menu { border-color: var(--gap-accent-menu-border); }

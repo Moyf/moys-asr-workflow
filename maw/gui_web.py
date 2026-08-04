@@ -22,7 +22,7 @@ from typing import BinaryIO, Final, final
 
 from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, LANGUAGES, MODELS, PROVIDERS, REGIONS, ModelConfig, ProviderConfig, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, startupinfo
-from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, build_serve_command, default_srt_path, run_transcription
+from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, build_serve_command, default_srt_path, run_transcription, with_test_suffix
 from maw.media import resolve_project_media
 
 
@@ -57,9 +57,9 @@ def _app_version(paths: object) -> str:
     try:
         text = Path(pyproject).read_text(encoding="utf-8")
     except OSError:
-        return "1.2.0"
+        return "1.3.0"
     match = re.search(r'(?m)^version = "([^"]+)"\r?$', text)
-    return match.group(1) if match else "1.2.0"
+    return match.group(1) if match else "1.3.0"
 
 
 def _is_ffprobe_start_failure(lines: Sequence[str]) -> bool:
@@ -166,9 +166,10 @@ class LauncherApi:
         media_text = str(payload.get("mediaPath") or "").strip()
         provider_id = str(payload.get("providerId") or "qwen")
         model_id = str(payload.get("modelId") or DEFAULT_MODEL_ID)
+        test_run = bool(payload.get("testRun"))
         return {
             "ok": bool(media_text),
-            "path": str(default_srt_path(Path(media_text), provider=provider_id, model=model_id))
+            "path": str(default_srt_path(Path(media_text), provider=provider_id, model=model_id, test_run=test_run))
             if media_text else "",
         }
 
@@ -543,6 +544,9 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     srt_text = str(payload.get("srtPath") or "").strip()
     media = Path(media_text).expanduser()
     srt = Path(srt_text).expanduser()
+    test_run = bool(payload.get("testRun"))
+    if test_run:
+        srt = with_test_suffix(srt)
     provider = provider_by_id(str(payload.get("providerId") or "qwen"))
     requested_model = str(payload.get("modelId") or "")
     model = next(
@@ -588,7 +592,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         model=model.id,
         language=str(payload.get("language") or ""),
         api_key=api_key,
-        length_limit="2m" if bool(payload.get("testRun")) else str(payload.get("lengthLimit") or "").strip(),
+        length_limit="2m" if test_run else str(payload.get("lengthLimit") or "").strip(),
         qwen_audio_context=qwen_audio_context,
         qwen_audio_hotwords=qwen_audio_hotwords,
         qwen_audio_hotwords_file=qwen_audio_hotwords_file,

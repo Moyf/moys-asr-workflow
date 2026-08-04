@@ -237,7 +237,7 @@ __WAVEFORM_CSS__
           <input type="number" id="auto-merge-gap-ms" min="0" max="10000" step="50" value="200" inputmode="numeric">
           <span class="gap-remove-unit">ms</span>
         </span>
-        <small>相邻字幕间隔小于此值时，拓展字幕长度把它们拼在一起；0 表示不处理</small>
+        <small>相邻字幕间隔在此范围内时，拓展字幕长度把它们拼在一起；0 表示不处理</small>
       </label>
       <label class="gap-remove-field">
         <span class="gap-remove-field-label">拓展方向</span>
@@ -251,7 +251,7 @@ __WAVEFORM_CSS__
     <label class="gap-remove-field auto-merge-absorb-field" title="关闭后只拼合间隔，不合并任何字幕">
       <span class="gap-remove-field-label">吸收过短字幕</span>
       <input type="checkbox" id="auto-merge-absorb-short" checked>
-      <small>过短的字幕直接并入相邻字幕；关闭后只拼合间隔</small>
+      <small>过短字幕也必须与相邻字幕间隔在上方阈值内才会吸收；关闭后只拼合间隔</small>
     </label>
     <div class="gap-remove-fields">
       <label class="gap-remove-field">
