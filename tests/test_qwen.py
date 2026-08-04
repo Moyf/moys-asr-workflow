@@ -1,12 +1,39 @@
 from __future__ import annotations
 
+import sys
 import unittest
+from unittest import mock
 
 from generate_subtitle_qwen_api import (
+    main,
     repair_nonpositive_duration_segments,
     split_words_to_segments,
 )
 from maw.project import normalize_project
+
+
+class QwenCliExitContractTests(unittest.TestCase):
+    def test_missing_input_exits_nonzero(self) -> None:
+        """缺失输入文件属于调用方错误，必须以非零退出码失败。"""
+        with mock.patch("sys.argv", ["generate_subtitle_qwen_api.py", "does-not-exist.mp3"]):
+            with self.assertRaises(SystemExit) as raised:
+                main()
+        self.assertEqual(raised.exception.code, 1)
+
+    def test_empty_transcription_exits_with_distinct_code(self) -> None:
+        """未识别到任何内容（空结果）应以可区分的非零退出码失败，而非成功。"""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            media = Path(tmp) / "silent.mp3"
+            media.write_bytes(b"x")
+            with mock.patch("sys.argv", ["generate_subtitle_qwen_api.py", str(media)]):
+                with mock.patch("generate_subtitle_qwen_api.get_duration_sec", return_value=1.0):
+                    with mock.patch("generate_subtitle_qwen_api.transcribe", return_value={}):
+                        with self.assertRaises(SystemExit) as raised:
+                            main()
+        self.assertEqual(raised.exception.code, 2)
 
 
 class QwenTimestampRepairTests(unittest.TestCase):

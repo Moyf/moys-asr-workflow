@@ -73,6 +73,18 @@ uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" -ll 2m --jso
 
 CLI 默认不内嵌波形；需要交给编辑器直接打开且不想生成 `<媒体名>.waveform.json` sidecar 时，加 `--with-waveform`。波形提取会额外用 FFmpeg 完整扫一遍媒体，失败时只给警告，不影响字幕与工程文件输出。输入视频会先由 FFmpeg 提取单声道 16kHz WAV；音频输入也会通过 FFprobe 获取时长。没有 FFmpeg/FFprobe 时，这一步无法完成。
 
+### CLI 退出码语义
+
+转写脚本在成功时以退出码 `0` 退出；出错时以非零退出码退出，便于脚本与 CI 判断成败：
+
+```text
+退出码 0   成功，SRT/JSON 已产出
+退出码 1   调用方错误，如输入文件不存在、未配置 API Key、时长超限
+退出码 2   转写完成但未识别到任何内容（静音/无有效语音），不会产出 SRT
+```
+
+错误消息写在 stderr（图形版会合并读取并透传具体原因），脚本自身不把业务错误打成静默成功。
+
 ## 用 Fun-ASR 转写（百炼第二模型，支持说话人）
 
 在 Launcher 中选择「阿里云百炼（FunASR/QwenASR）」Provider，再把模型切换为 `Fun-ASR（支持说话人）`。它复用 `DASHSCOPE_API_KEY`、地域和 Workspace 配置，默认输出名标签为 `.fun-asr.`。

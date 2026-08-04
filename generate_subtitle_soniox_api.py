@@ -120,8 +120,8 @@ def main():
 
     input_path = Path(args.input)
     if not input_path.exists():
-        print(f"错误: 文件不存在 - {input_path}")
-        return
+        print(f"错误: 文件不存在 - {input_path}", file=sys.stderr)
+        raise SystemExit(1)
 
     if args.output:
         output_path = Path(args.output)
@@ -178,8 +178,8 @@ def main():
         elapsed = time.perf_counter() - t0
 
         if not result or not result.get("text"):
-            print("错误: 未识别到任何内容")
-            return
+            print("错误: 未识别到任何内容", file=sys.stderr)
+            raise SystemExit(2)
 
         print(f"[info] 检测语言: {result.get('language', 'unknown')}")
 
