@@ -191,9 +191,10 @@ class GuiWebBridgeTests(unittest.TestCase):
         maw_executable.write_bytes(b"exe")
         mose_executable.write_bytes(b"exe")
 
-        with mock.patch.object(sys, "frozen", True, create=True):
-            with mock.patch.object(sys, "executable", str(maw_executable)):
-                self.assertEqual(_find_mose_executable(), mose_executable.resolve())
+        with mock.patch.object(sys, "platform", "win32"):
+            with mock.patch.object(sys, "frozen", True, create=True):
+                with mock.patch.object(sys, "executable", str(maw_executable)):
+                    self.assertEqual(_find_mose_executable(), mose_executable.resolve())
 
     def test_find_mose_resolves_macos_app_beside_frozen_maw(self) -> None:
         maw_executable = self.root / "MAW.app" / "Contents" / "MacOS" / "MAW"
