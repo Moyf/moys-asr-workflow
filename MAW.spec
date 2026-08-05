@@ -98,6 +98,6 @@ if sys.platform == 'darwin':
     app = BUNDLE(
         coll,
         name='MAW.app',
-        icon=None,
+        icon=str(ROOT / 'assets' / 'maw.icns'),
         bundle_identifier='com.moy.mawsasrworkflow',
     )

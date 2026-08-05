@@ -48,6 +48,9 @@ jobs:
       - name: Run packaging contract tests
         run: uv run python -m unittest tests/test_packaging_contract.py
 
+      - name: Verify macOS app icon asset
+        run: uv run python scripts/build_macos_icon.py --check
+
       - name: Run Python tests
         run: uv run python -m unittest discover -s tests -p "test_*.py"
 

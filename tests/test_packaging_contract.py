@@ -57,6 +57,20 @@ class PackagingContractTests(unittest.TestCase):
         for excluded_path in (".env", "node_modules", "tests", "ffmpeg", "*.mp4", "*.srt"):
             self.assertIn(excluded_path, spec)
 
+    def test_macos_bundle_uses_the_icns_app_icon(self) -> None:
+        """Given a macOS app bundle, When PyInstaller builds it, Then the bundle has the branded ICNS icon."""
+        spec = read_text("MAW.spec")
+        workflow = read_text(".github/workflows/build-macos.yml")
+        icon = (ROOT / "assets" / "maw.icns").read_bytes()
+
+        self.assertIn("icon=str(ROOT / 'assets' / 'maw.icns')", spec)
+        self.assertNotIn("icon=None", spec)
+        self.assertIn("scripts/build_macos_icon.py --check", workflow)
+        self.assertTrue(icon.startswith(b"icns"))
+        self.assertEqual(int.from_bytes(icon[4:8], "big"), len(icon))
+        self.assertIn(b"ic07", icon)
+        self.assertIn(b"ic08", icon)
+
     def test_local_build_script_invokes_uv_and_pyinstaller_for_maw_onedir(self) -> None:
         """Given a Windows developer build, When the script is read, Then it builds dist/MAW/MAW.exe."""
         script = read_text("scripts/build-windows.ps1")
