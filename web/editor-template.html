@@ -58,8 +58,8 @@ __WAVEFORM_CSS__
   <button id="sticker-root-btn" title="设置表情包根目录">🦊 表情包</button>
   <span class="sep"></span>
   <span class="undo-redo-group" role="group" aria-label="撤销重做">
-    <button type="button" id="undo-btn" title="撤销 (Ctrl/Cmd+Z)" disabled>↶ 撤销</button>
-    <button type="button" id="redo-btn" title="重做 (Ctrl/Cmd+Shift+Z)" disabled>↷ 重做</button>
+    <button type="button" id="undo-btn" title="撤销 (Ctrl(Cmd)+Z)" disabled>↶ 撤销</button>
+    <button type="button" id="redo-btn" title="重做 (Ctrl(Cmd)+Shift+Z)" disabled>↷ 重做</button>
   </span>
 
   <span class="right-group">
@@ -96,7 +96,7 @@ __WAVEFORM_CSS__
 
 <div class="toolbar main-toolbar">
   <span class="waveform-tool-switch" role="group" aria-label="波形工具">
-    <button type="button" data-waveform-tool="select" class="active" title="选择工具（V，默认）：点击选中、拖动移动、拖动边界调整；Ctrl/Shift 多选，Shift+空白拖拽框选，Alt 切换禁用，Alt 拖共享边界只动一侧">
+    <button type="button" data-waveform-tool="select" class="active" title="选择工具（V，默认）：点击选中、拖动移动、拖动边界调整；Ctrl(Cmd)/Shift 多选，Shift+空白拖拽框选，Alt 切换禁用，Alt 拖共享边界只动一侧">
       <svg class="toolbar-button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.75 12.25 8 8 9.25 6.25 13.5 3 1.75Z"/><path d="m8.3 9.2 3.2 3.05"/></svg>
       <span>选择</span>
     </button>
@@ -303,7 +303,7 @@ __WAVEFORM_CSS__
         <label class="toggle"><input type="checkbox" id="cue-editor-show-sticker"> 表情包</label>
       </span>
     </div>
-    <label class="editor-settings-item" title="编辑字幕时，选择 Enter 或 Ctrl+Enter 在文字光标处拆分；另一个按键用于保存">
+    <label class="editor-settings-item" title="编辑字幕时，选择 Enter 或 Ctrl(Cmd)+Enter 在文字光标处拆分；另一个按键用于保存">
       字幕（编辑状态下）拆分按键
       <select id="split-key">
         <option value="ctrl-enter" selected>Ctrl+Enter</option>
@@ -362,7 +362,7 @@ __WAVEFORM_CSS__
         <option value="30">30 秒</option>
       </select>
     </label>
-    <label class="editor-settings-item" id="waveform-row-height-setting" title="多行波形每一行的高度；也可用 Ctrl+Shift+滚轮 在波形上直接调节">每行高度
+    <label class="editor-settings-item" id="waveform-row-height-setting" title="多行波形每一行的高度；也可用 Ctrl(Cmd)+Shift+滚轮 在波形上直接调节">每行高度
       <select id="waveform-row-height">
         <option value="64">64 px</option>
         <option value="80">80 px</option>
@@ -424,14 +424,14 @@ __WAVEFORM_CSS__
     <span><kbd>Esc</kbd> 清除字幕选择（非编辑状态）</span>
     <span><kbd>右键</kbd> 菜单</span>
     <span><kbd>Shift+点击</kbd> 连选</span>
-    <span><kbd>Ctrl+点击</kbd> 多选</span>
+    <span><kbd data-mod-key>Ctrl+点击</kbd> 多选</span>
     <span><kbd>Alt+点击</kbd> 切换字幕禁用</span>
     <span><kbd>T</kbd> 分配表情包</span>
     <span><kbd>1~5</kbd> 标记颜色 <kbd>0</kbd> 清除颜色</span>
     <span><kbd>C</kbd> 合并所选字幕</span>
     <span><kbd id="help-split-key">Ctrl+Enter</kbd>（编辑字幕文本时）在文字光标处拆分</span>
-    <span><kbd>Ctrl+A</kbd> 选中所有字幕（非编辑状态）</span>
-    <span><kbd>Ctrl+D</kbd> 取消选择</span>
+    <span><kbd data-mod-key>Ctrl+A</kbd> 选中所有字幕（非编辑状态）</span>
+    <span><kbd data-mod-key>Ctrl+D</kbd> 取消选择</span>
   </div>
   <div class="help-group">
     <span class="help-title">波形</span>
@@ -441,8 +441,8 @@ __WAVEFORM_CSS__
     <span><kbd>V</kbd> 选择工具 <kbd>R</kbd> 分割工具</span>
     <span><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>
     <span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>
-    <span><kbd>Ctrl+滚轮</kbd> 调整时间缩放/每行长度</span>
-    <span><kbd>Ctrl+Shift+滚轮</kbd> 调整每行高度</span>
+    <span><kbd data-mod-key>Ctrl+滚轮</kbd> 调整时间缩放/每行长度</span>
+    <span><kbd data-mod-key>Ctrl+Shift+滚轮</kbd> 调整每行高度</span>
   </div>
   <div class="help-group">
     <span class="help-title">静音空隙</span>
@@ -458,8 +458,8 @@ __WAVEFORM_CSS__
     <span><kbd>Shift+A/W</kbd> 向前多选 <kbd>Shift+D/S</kbd> 向后多选</span>
     <span><kbd>F</kbd> 跳转并播放选中字幕</span>
     <span><kbd>Delete</kbd> 删除所选字幕</span>
-    <span><kbd>Ctrl+Z</kbd> 撤销</span>
-    <span><kbd>Ctrl+Shift+Z</kbd> 重做</span>
+    <span><kbd data-mod-key>Ctrl+Z</kbd> 撤销</span>
+    <span><kbd data-mod-key>Ctrl+Shift+Z</kbd> 重做</span>
   </div>
 </section>
 

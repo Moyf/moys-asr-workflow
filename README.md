@@ -98,7 +98,7 @@ Windows 下载解压之后点击 `MAW.exe` 并运行；macOS 下载后解压并�
 Launcher 的「打开编辑器」默认启动 MOSE 并传入工程路径。Windows 会优先读取当前用户注册表 `HKCU\Software\Moy\MOSE` 下仍有效的 `ExecutablePath`，macOS 则查找 `MOSE.app` 并启动其中的编辑器；找不到桌面版时，Server 版字幕编辑器和 HTML 空工程仍可从按钮右侧的拓展菜单打开。首次启动 Windows MAW 时还会为当前用户登记 `.mosp` 关联。GUI 还可以直接选择 `.mosp` / `.json` 工程并启动 `http://127.0.0.1` 本地编辑器服务器；中英文界面可在右上角切换。
 启动器支持从资源管理器拖入音视频文件来自动填充媒体路径，并按供应商组织模型、地域、语言和 API Key 获取入口；选择 Fun-ASR 或 Soniox 时可在「高级选项」中开启「给不同说话人分配字幕颜色」。
 
-Windows Release 的 Launcher 会优先打开同目录 MOSE；macOS 会查找同目录、包内或常见安装位置的 `MOSE.app`。如果找不到桌面版，可以从右侧菜单启动 Server 版或 HTML 编辑器。普通版仍要求系统能找到 `ffmpeg` 和 `ffprobe`；如果 Launcher 提示未检测到 FFmpeg，可以换用同平台的 `MAWxFF` 版，也可以自行安装 FFmpeg，把它的 `bin` 目录加入 PATH 后重新打开 MAW。
+Windows Release 的 Launcher 会优先打开同目录 MOSE；macOS 会查找同目录、包内或常见安装位置的 `MOSE.app`。如果找不到桌面版，可以从右侧菜单启动 Server 版或 HTML 编辑器。普通版仍要求系统能找到 `ffmpeg` 和 `ffprobe`；如果 Launcher 提示未检测到 FFmpeg，可以换用同平台的 `MAWxFF` 版，也可以自行安装 FFmpeg，把它的 `bin` 目录加入 PATH 后重新打开 MAW。macOS 从 Finder 启动时可能不会继承 Shell 的 PATH；Apple Silicon Homebrew 用户可在「配置」中填写 `/opt/homebrew/bin`，Intel Homebrew 通常填写 `/usr/local/bin`，并确认目录中同时有 `ffmpeg` 和 `ffprobe`。macOS GUI 保存的 API Key、FFmpeg 路径和其他设置位于 `~/Library/Application Support/Moy/MAW/.env`，不会写入 `.app` 包。
 
 ### 本地构建 Windows 图形包
 
@@ -276,7 +276,7 @@ uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.mosp"
 
 MOSE 是 Tauri 打包的独立可执行文件，看起来比较专业（？）
 
-编辑器右上角可切换中文 / English；编辑完成后点“保存工程”或按 `Ctrl+S`，覆盖前会留下同目录、保持原扩展名的备份（`.mosp.bak` 或 `.json.bak`）；`Ctrl+Shift+S` 为另存为。
+编辑器右上角可切换中文 / English；编辑完成后点“保存工程”或按 `Ctrl+S`（macOS 为 `Cmd+S`），覆盖前会留下同目录、保持原扩展名的备份（`.mosp.bak` 或 `.json.bak`）；`Ctrl+Shift+S`（macOS 为 `Cmd+Shift+S`）为另存为。
 
 服务器版还可以把「工作区」保存在本机服务器设置中，因此可跨工程复用：一个工作区包含窗口布局与显示状态（字幕列表显示项、波形单/多行等）。四个内置工作区在“编辑布局”后可保存为本机覆盖版、重置为默认或另存为，但不可删除；选中自己保存的工作区后，可以继续保存、另存或删除。工作区只保存在本机，不写入工程文件。
 

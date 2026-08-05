@@ -694,11 +694,20 @@
     return `${lines.join('\n')}\n`;
   }
 
+  // macOS 上用 ⌘（event.metaKey）替代 Ctrl；Win/Linux 仍是 Ctrl。
+  function isMacPlatform(nav) {
+    const n = nav || globalThis.navigator;
+    if (!n) return false;
+    const p = String(n.platform || n.userAgentData?.platform || '');
+    return /Mac|iPhone|iPad/.test(p);
+  }
+
   function configuredEnterAction(event, splitKey) {
     if (event?.key !== 'Enter') return null;
-    if (event.shiftKey && event.ctrlKey) return 'split';
+    const mod = event.ctrlKey || event.metaKey;
+    if (event.shiftKey && mod) return 'split';
     if (event.shiftKey) return 'newline';
-    if (event.ctrlKey) return splitKey === 'ctrl-enter' ? 'split' : 'save';
+    if (mod) return splitKey === 'ctrl-enter' ? 'split' : 'save';
     return splitKey === 'enter' ? 'split' : 'save';
   }
 
@@ -874,6 +883,7 @@
     buildGapRemovedIntervals,
     buildFfconcat,
     configuredEnterAction,
+    isMacPlatform,
     createHistoryStack,
     PREVIEW_MIN_WIDTH,
     PREVIEW_MIN_HEIGHT,

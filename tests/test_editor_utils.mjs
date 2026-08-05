@@ -720,10 +720,25 @@ test('shares configured Enter semantics between list editing and current cue edi
   assert.equal(helpers.configuredEnterAction({ key: 'Enter' }, 'enter'), 'split');
   assert.equal(helpers.configuredEnterAction({ key: 'Enter', ctrlKey: true }, 'enter'), 'save');
   assert.equal(helpers.configuredEnterAction({ key: 'Enter', shiftKey: true }, 'ctrl-enter'), 'newline');
+  // macOS：⌘（metaKey）与 Ctrl 等价
+  assert.equal(helpers.configuredEnterAction({ key: 'Enter', metaKey: true }, 'ctrl-enter'), 'split');
+  assert.equal(helpers.configuredEnterAction({ key: 'Enter', metaKey: true }, 'enter'), 'save');
+  assert.equal(helpers.configuredEnterAction({ key: 'Enter', shiftKey: true, metaKey: true }, 'ctrl-enter'), 'split');
+  assert.equal(helpers.configuredEnterAction({ key: 'Enter', ctrlKey: true, metaKey: true }, 'enter'), 'save');
   assert.equal(
     helpers.configuredEnterAction({ key: 'Enter', shiftKey: true, ctrlKey: true }, 'enter'),
     'split',
   );
+});
+
+
+test('isMacPlatform detects macOS while other platforms do not', () => {
+  assert.equal(helpers.isMacPlatform({ platform: 'MacIntel' }), true);
+  assert.equal(helpers.isMacPlatform({ platform: 'iPhone' }), true);
+  assert.equal(helpers.isMacPlatform({ platform: 'Win32' }), false);
+  assert.equal(helpers.isMacPlatform({ platform: 'Linux x86_64' }), false);
+  // 无 navigator 环境（如 node 测试）安全降级为 false
+  assert.equal(helpers.isMacPlatform(null), false);
 });
 
 

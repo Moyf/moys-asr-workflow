@@ -2380,8 +2380,8 @@
     }
 
     handleWheel(event) {
-      if (this.isMultiMode() && event.ctrlKey && event.shiftKey) {
-        // Ctrl+Shift+滚轮：仅多行模式下循环调整行高预设，向上滚放大，不改变时间映射
+      if (this.isMultiMode() && (event.ctrlKey || event.metaKey) && event.shiftKey) {
+        // Ctrl(Cmd)+Shift+滚轮：仅多行模式下循环调整行高预设，向上滚放大，不改变时间映射
         event.preventDefault();
         const current = ROW_HEIGHT_PRESETS.indexOf(this.settings.rowHeight);
         const next = clamp(current + (event.deltaY > 0 ? -1 : 1), 0, ROW_HEIGHT_PRESETS.length - 1);
@@ -2433,7 +2433,7 @@
       event.preventDefault();
       event.stopPropagation();
       // 剃刀工具：无修饰键左键点击字幕块（非手柄）时，在指针位置安全拆分。
-      // 修饰键（Alt/Ctrl/Cmd/Shift）仍走原行为，便于拆分后立即多选/禁用。
+      // 修饰键（Alt/Ctrl(Cmd)/Shift）仍走原行为，便于拆分后立即多选/禁用。
       const targetHandle = event.target.closest('.waveform-cue-handle');
       if (this.tool === 'razor' && !targetHandle
           && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
@@ -2457,7 +2457,7 @@
         this.options.toggleDisabled?.([index]);
         return;
       }
-      // Ctrl/Cmd+click toggles selection without starting a drag
+      // Ctrl(Cmd)+click toggles selection without starting a drag
       if (event.ctrlKey || event.metaKey) {
         this.options.toggleCueSelection?.(index);
         return;

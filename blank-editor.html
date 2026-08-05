@@ -2323,7 +2323,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-05 18:05</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-05 20:01</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -2357,8 +2357,8 @@
   <button id="sticker-root-btn" title="设置表情包根目录">🦊 表情包</button>
   <span class="sep"></span>
   <span class="undo-redo-group" role="group" aria-label="撤销重做">
-    <button type="button" id="undo-btn" title="撤销 (Ctrl/Cmd+Z)" disabled>↶ 撤销</button>
-    <button type="button" id="redo-btn" title="重做 (Ctrl/Cmd+Shift+Z)" disabled>↷ 重做</button>
+    <button type="button" id="undo-btn" title="撤销 (Ctrl(Cmd)+Z)" disabled>↶ 撤销</button>
+    <button type="button" id="redo-btn" title="重做 (Ctrl(Cmd)+Shift+Z)" disabled>↷ 重做</button>
   </span>
 
   <span class="right-group">
@@ -2395,7 +2395,7 @@
 
 <div class="toolbar main-toolbar">
   <span class="waveform-tool-switch" role="group" aria-label="波形工具">
-    <button type="button" data-waveform-tool="select" class="active" title="选择工具（V，默认）：点击选中、拖动移动、拖动边界调整；Ctrl/Shift 多选，Shift+空白拖拽框选，Alt 切换禁用，Alt 拖共享边界只动一侧">
+    <button type="button" data-waveform-tool="select" class="active" title="选择工具（V，默认）：点击选中、拖动移动、拖动边界调整；Ctrl(Cmd)/Shift 多选，Shift+空白拖拽框选，Alt 切换禁用，Alt 拖共享边界只动一侧">
       <svg class="toolbar-button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.75 12.25 8 8 9.25 6.25 13.5 3 1.75Z"/><path d="m8.3 9.2 3.2 3.05"/></svg>
       <span>选择</span>
     </button>
@@ -2602,7 +2602,7 @@
         <label class="toggle"><input type="checkbox" id="cue-editor-show-sticker"> 表情包</label>
       </span>
     </div>
-    <label class="editor-settings-item" title="编辑字幕时，选择 Enter 或 Ctrl+Enter 在文字光标处拆分；另一个按键用于保存">
+    <label class="editor-settings-item" title="编辑字幕时，选择 Enter 或 Ctrl(Cmd)+Enter 在文字光标处拆分；另一个按键用于保存">
       字幕（编辑状态下）拆分按键
       <select id="split-key">
         <option value="ctrl-enter" selected>Ctrl+Enter</option>
@@ -2661,7 +2661,7 @@
         <option value="30">30 秒</option>
       </select>
     </label>
-    <label class="editor-settings-item" id="waveform-row-height-setting" title="多行波形每一行的高度；也可用 Ctrl+Shift+滚轮 在波形上直接调节">每行高度
+    <label class="editor-settings-item" id="waveform-row-height-setting" title="多行波形每一行的高度；也可用 Ctrl(Cmd)+Shift+滚轮 在波形上直接调节">每行高度
       <select id="waveform-row-height">
         <option value="64">64 px</option>
         <option value="80">80 px</option>
@@ -2723,14 +2723,14 @@
     <span><kbd>Esc</kbd> 清除字幕选择（非编辑状态）</span>
     <span><kbd>右键</kbd> 菜单</span>
     <span><kbd>Shift+点击</kbd> 连选</span>
-    <span><kbd>Ctrl+点击</kbd> 多选</span>
+    <span><kbd data-mod-key>Ctrl+点击</kbd> 多选</span>
     <span><kbd>Alt+点击</kbd> 切换字幕禁用</span>
     <span><kbd>T</kbd> 分配表情包</span>
     <span><kbd>1~5</kbd> 标记颜色 <kbd>0</kbd> 清除颜色</span>
     <span><kbd>C</kbd> 合并所选字幕</span>
     <span><kbd id="help-split-key">Ctrl+Enter</kbd>（编辑字幕文本时）在文字光标处拆分</span>
-    <span><kbd>Ctrl+A</kbd> 选中所有字幕（非编辑状态）</span>
-    <span><kbd>Ctrl+D</kbd> 取消选择</span>
+    <span><kbd data-mod-key>Ctrl+A</kbd> 选中所有字幕（非编辑状态）</span>
+    <span><kbd data-mod-key>Ctrl+D</kbd> 取消选择</span>
   </div>
   <div class="help-group">
     <span class="help-title">波形</span>
@@ -2740,8 +2740,8 @@
     <span><kbd>V</kbd> 选择工具 <kbd>R</kbd> 分割工具</span>
     <span><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>
     <span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>
-    <span><kbd>Ctrl+滚轮</kbd> 调整时间缩放/每行长度</span>
-    <span><kbd>Ctrl+Shift+滚轮</kbd> 调整每行高度</span>
+    <span><kbd data-mod-key>Ctrl+滚轮</kbd> 调整时间缩放/每行长度</span>
+    <span><kbd data-mod-key>Ctrl+Shift+滚轮</kbd> 调整每行高度</span>
   </div>
   <div class="help-group">
     <span class="help-title">静音空隙</span>
@@ -2757,8 +2757,8 @@
     <span><kbd>Shift+A/W</kbd> 向前多选 <kbd>Shift+D/S</kbd> 向后多选</span>
     <span><kbd>F</kbd> 跳转并播放选中字幕</span>
     <span><kbd>Delete</kbd> 删除所选字幕</span>
-    <span><kbd>Ctrl+Z</kbd> 撤销</span>
-    <span><kbd>Ctrl+Shift+Z</kbd> 重做</span>
+    <span><kbd data-mod-key>Ctrl+Z</kbd> 撤销</span>
+    <span><kbd data-mod-key>Ctrl+Shift+Z</kbd> 重做</span>
   </div>
 </section>
 
@@ -3697,11 +3697,20 @@
     return `${lines.join('\n')}\n`;
   }
 
+  // macOS 上用 ⌘（event.metaKey）替代 Ctrl；Win/Linux 仍是 Ctrl。
+  function isMacPlatform(nav) {
+    const n = nav || globalThis.navigator;
+    if (!n) return false;
+    const p = String(n.platform || n.userAgentData?.platform || '');
+    return /Mac|iPhone|iPad/.test(p);
+  }
+
   function configuredEnterAction(event, splitKey) {
     if (event?.key !== 'Enter') return null;
-    if (event.shiftKey && event.ctrlKey) return 'split';
+    const mod = event.ctrlKey || event.metaKey;
+    if (event.shiftKey && mod) return 'split';
     if (event.shiftKey) return 'newline';
-    if (event.ctrlKey) return splitKey === 'ctrl-enter' ? 'split' : 'save';
+    if (mod) return splitKey === 'ctrl-enter' ? 'split' : 'save';
     return splitKey === 'enter' ? 'split' : 'save';
   }
 
@@ -3877,6 +3886,7 @@
     buildGapRemovedIntervals,
     buildFfconcat,
     configuredEnterAction,
+    isMacPlatform,
     createHistoryStack,
     PREVIEW_MIN_WIDTH,
     PREVIEW_MIN_HEIGHT,
@@ -4092,16 +4102,16 @@
       'Subtitle preview position. Drag to adjust; arrow keys move, hold Shift to speed up, hold Alt with arrows to resize, Enter or Space shows handles, Esc exits.',
     '表情包预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 或空格显示控制点，Esc 退出。':
       'Sticker preview position. Drag to adjust; arrow keys move, hold Shift to speed up, hold Alt with arrows to resize, Enter or Space shows handles, Esc exits.',
-    '撤销 (Ctrl/Cmd+Z)': 'Undo (Ctrl/Cmd+Z)',
-    '重做 (Ctrl/Cmd+Shift+Z)': 'Redo (Ctrl/Cmd+Shift+Z)',
+    '撤销 (Ctrl(Cmd)+Z)': 'Undo (Ctrl(Cmd)+Z)',
+    '重做 (Ctrl(Cmd)+Shift+Z)': 'Redo (Ctrl(Cmd)+Shift+Z)',
     '撤销重做': 'Undo and redo',
     '打开本机最近使用的工程': 'Open a recently used local project',
     '保存回服务器启动时指定的工程文件': 'Save to the project file bound when the server started',
-    '保存回当前工程文件（Ctrl/Cmd+S）': 'Save to the current project file (Ctrl/Cmd+S)',
+    '保存回当前工程文件（Ctrl(Cmd)+S）': 'Save to the current project file (Ctrl(Cmd)+S)',
     '另存为到当前工程目录': 'Save as in the current project folder',
-    '另存为工程文件（Ctrl/Cmd+Shift+S）': 'Save as a project file (Ctrl/Cmd+Shift+S)',
+    '另存为工程文件（Ctrl(Cmd)+Shift+S）': 'Save as a project file (Ctrl(Cmd)+Shift+S)',
     '🦊 表情包': '🦊 Stickers',
-    '另存为到当前工程目录（Ctrl/Cmd+Shift+S）': 'Save as in the current project folder (Ctrl/Cmd+Shift+S)',
+    '另存为到当前工程目录（Ctrl(Cmd)+Shift+S）': 'Save as in the current project folder (Ctrl(Cmd)+Shift+S)',
     '选择本地媒体文件并加载到播放器': 'Choose a local media file and load it in the player',
     '单独打开工程；浏览器无法自动读取关联媒体时会提示选择': 'Open a project by itself; the browser will prompt when it cannot read related media automatically',
     '设置表情包根目录': 'Set sticker root folder',
@@ -4138,7 +4148,7 @@
     '导出颜色与表情包的 Resolve JSON，供兼容执行脚本批量导入': 'Export color and sticker Resolve JSON for compatible import scripts',
     '导出只包含表情包图片轨道的 OTIO 工程': 'Export an OTIO project containing only sticker image tracks',
     '在视频画面右上角预览当前时间的表情包': 'Preview stickers at the current time over the video',
-    '选择工具（V，默认）：点击选中、拖动移动、拖动边界调整；Ctrl/Shift 多选，Shift+空白拖拽框选，Alt 切换禁用，Alt 拖共享边界只动一侧': 'Select tool (V, default): click to select, drag to move, drag edges to trim; Ctrl/Shift multi-select, Shift+drag on blank area to box-select, Alt toggles disabled, Alt-drag changes one shared edge',
+    '选择工具（V，默认）：点击选中、拖动移动、拖动边界调整；Ctrl(Cmd)/Shift 多选，Shift+空白拖拽框选，Alt 切换禁用，Alt 拖共享边界只动一侧': 'Select tool (V, default): click to select, drag to move, drag edges to trim; Ctrl(Cmd)/Shift multi-select, Shift+drag on blank area to box-select, Alt toggles disabled, Alt-drag changes one shared edge',
     '分割工具（R）：点击字幕块在指针位置安全拆分（按词/字级时间码对齐，拒绝 100ms 以内的边缘拆分）；Esc 切回选择': 'Razor tool (R): click a subtitle block to split at the pointer using word/character timing; splits within 100 ms of an edge are rejected; Esc returns to Select',
     '打开可拖动的移除静音空隙工具窗': 'Open the draggable silent-gap tool',
     '打开可拖动的拼合字幕工具窗': 'Open the draggable snap-subtitles tool',
@@ -4152,9 +4162,9 @@
     '将当前工作区另存为新的工作区': 'Save the current workspace as a new workspace',
     '删除本机保存的工作区': 'Delete the workspace saved on this machine',
     '字幕列表与波形字幕块的普通单击行为；双击编辑不受影响': 'Default click behavior for subtitle rows and waveform blocks; double-click editing is unchanged',
-    '编辑字幕时，选择 Enter 或 Ctrl+Enter 在文字光标处拆分；另一个按键用于保存': 'While editing, choose Enter or Ctrl+Enter to split at the text cursor; the other key saves',
+    '编辑字幕时，选择 Enter 或 Ctrl(Cmd)+Enter 在文字光标处拆分；另一个按键用于保存': 'While editing, choose Enter or Ctrl(Cmd)+Enter to split at the text cursor; the other key saves',
     '开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条': 'When enabled, clicking a sticker/color group member selects the whole group; otherwise only that subtitle is selected',
-    '多行波形每一行的高度；也可用 Ctrl+Shift+滚轮 在波形上直接调节': 'Height of each multi-row waveform row; Ctrl+Shift+wheel also adjusts it directly',
+    '多行波形每一行的高度；也可用 Ctrl(Cmd)+Shift+滚轮 在波形上直接调节': 'Height of each multi-row waveform row; Ctrl(Cmd)+Shift+wheel also adjusts it directly',
     '在多行波形中，为成组（颜色/表情包）字幕在块上方显示队长皇冠与组内序号': 'Show a leader crown and member index above grouped color/sticker subtitles in multi-row mode',
     '启用后，在波形空白区域按住左键拖动时，播放指针会实时跟随鼠标位置': 'When enabled, dragging with the left button on empty waveform areas moves the playhead along with the mouse',
     '移除静音空隙的人工修正方式；Alt+左键始终切换整段；中键拖动默认增加静音，按住 Alt 才恢复声音，边界碰到另一空隙时会合并': 'Manual silent-gap correction mode; Alt+click toggles a full region; middle-drag adds silence, Alt restores audio, and touching regions merge',
@@ -6835,8 +6845,8 @@
     }
 
     handleWheel(event) {
-      if (this.isMultiMode() && event.ctrlKey && event.shiftKey) {
-        // Ctrl+Shift+滚轮：仅多行模式下循环调整行高预设，向上滚放大，不改变时间映射
+      if (this.isMultiMode() && (event.ctrlKey || event.metaKey) && event.shiftKey) {
+        // Ctrl(Cmd)+Shift+滚轮：仅多行模式下循环调整行高预设，向上滚放大，不改变时间映射
         event.preventDefault();
         const current = ROW_HEIGHT_PRESETS.indexOf(this.settings.rowHeight);
         const next = clamp(current + (event.deltaY > 0 ? -1 : 1), 0, ROW_HEIGHT_PRESETS.length - 1);
@@ -6888,7 +6898,7 @@
       event.preventDefault();
       event.stopPropagation();
       // 剃刀工具：无修饰键左键点击字幕块（非手柄）时，在指针位置安全拆分。
-      // 修饰键（Alt/Ctrl/Cmd/Shift）仍走原行为，便于拆分后立即多选/禁用。
+      // 修饰键（Alt/Ctrl(Cmd)/Shift）仍走原行为，便于拆分后立即多选/禁用。
       const targetHandle = event.target.closest('.waveform-cue-handle');
       if (this.tool === 'razor' && !targetHandle
           && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
@@ -6912,7 +6922,7 @@
         this.options.toggleDisabled?.([index]);
         return;
       }
-      // Ctrl/Cmd+click toggles selection without starting a drag
+      // Ctrl(Cmd)+click toggles selection without starting a drag
       if (event.ctrlKey || event.metaKey) {
         this.options.toggleCueSelection?.(index);
         return;
@@ -7659,7 +7669,7 @@ function isMediaFile(file) {
 //   layout     —— 布局导入/重置/拖动停靠
 //   gap_remove —— 静音空隙扫描与人工修正
 //   preview    —— 字幕预览（overlay）开关
-// 栈深上限 100；新动作清空 redo；Ctrl/Cmd+Z 撤销、Ctrl/Cmd+Shift+Z 重做。
+// 栈深上限 100；新动作清空 redo；Ctrl(Cmd)+Z 撤销、Ctrl(Cmd)+Shift+Z 重做。
 // 编辑文本输入框或 modal 打开时让原生行为优先（见 keydown 守卫）。
 const UNDO_LIMIT = 100;
 const editorHistory = window.AsrEditorUtils.createHistoryStack(UNDO_LIMIT);
@@ -8024,8 +8034,25 @@ function bindCueEditorDisplayToggle(toggle, key) {
   });
 }
 
+// macOS 用 ⌘（Cmd）替代 Ctrl；Win/Linux 仍显示 Ctrl。
+function modKeyLabel() {
+  return window.AsrEditorUtils?.isMacPlatform() ? 'Cmd' : 'Ctrl';
+}
+
 function splitKeyLabel() {
-  return splitKeySel.value === 'enter' ? 'Enter' : 'Ctrl+Enter';
+  return splitKeySel.value === 'enter' ? 'Enter' : `${modKeyLabel()}+Enter`;
+}
+
+// 把帮助面板等静态 <kbd data-mod-key> 与「拆分按键」下拉选项文本按平台替换。
+function applyPlatformKeyLabels() {
+  if (modKeyLabel() === 'Ctrl') return;
+  document.querySelectorAll('[data-mod-key]').forEach((el) => {
+    el.textContent = el.textContent.replace(/^Ctrl/, 'Cmd');
+  });
+  if (splitKeySel) {
+    const opt = splitKeySel.querySelector('option[value="ctrl-enter"]');
+    if (opt) opt.textContent = 'Cmd+Enter';
+  }
 }
 
 function refreshSplitKeyHelp() {
@@ -8038,6 +8065,7 @@ function refreshSplitKeyHelp() {
 document.addEventListener('mawe:languagechange', () => refreshSplitKeyHelp());
 
 splitKeySel.value = EDITOR_SETTINGS.splitKey;
+applyPlatformKeyLabels();
 refreshSplitKeyHelp();
 if (mergeJoinTextInput) mergeJoinTextInput.value = EDITOR_SETTINGS.mergeJoinText;
 syncAutoMergePanelInputs();
@@ -10344,7 +10372,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Ctrl/Cmd+A：选中所有字幕。仅在「非编辑字幕」状态下生效；
+// Ctrl(Cmd)+A：选中所有字幕。仅在「非编辑字幕」状态下生效；
 // 焦点在输入框/文本域/可编辑元素或内联编辑态时，保留浏览器原生的「全选文本」行为。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'a' && e.key !== 'A') return;
@@ -10369,8 +10397,8 @@ document.addEventListener('keydown', (e) => {
   selectAll();
 });
 
-// Ctrl/Cmd+D：取消选中（清空当前字幕选择）。浏览器默认是「添加书签」，这里接管；
-// 与 Ctrl/Cmd+A 同样仅在非编辑字幕状态下生效。ESC 清除选中的行为保持不变。
+// Ctrl(Cmd)+D：取消选中（清空当前字幕选择）。浏览器默认是「添加书签」，这里接管；
+// 与 Ctrl(Cmd)+A 同样仅在非编辑字幕状态下生效。ESC 清除选中的行为保持不变。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'd' && e.key !== 'D') return;
   if (!e.ctrlKey && !e.metaKey) return;
@@ -10496,7 +10524,7 @@ document.addEventListener('keydown', (e) => {
   mergeSegments([...selectedIdxs]);
 });
 
-// Ctrl/Cmd+Z 撤销；Ctrl/Cmd+Shift+Z 或 Ctrl/Cmd+Y 重做
+// Ctrl(Cmd)+Z 撤销；Ctrl(Cmd)+Shift+Z 或 Ctrl(Cmd)+Y 重做
 document.addEventListener('keydown', (e) => {
   const isZ = e.key === 'z' || e.key === 'Z';
   const isY = e.key === 'y' || e.key === 'Y';
@@ -11631,11 +11659,11 @@ function configureServerSaveControls() {
      if (!serverProjectSavingEnabled()) button.title = '请用带工程文件路径的服务器命令启动，才能直接保存';
   });
   if (saveProjectButton && serverProjectSavingEnabled()) {
-    saveProjectButton.title = '保存回当前工程文件（Ctrl/Cmd+S）';
+    saveProjectButton.title = '保存回当前工程文件（Ctrl(Cmd)+S）';
   }
   // 另存为走系统文件对话框，不依赖服务器绑定，始终可用。
   if (saveProjectAsButton) {
-    saveProjectAsButton.title = '另存为工程文件（Ctrl/Cmd+Shift+S）';
+    saveProjectAsButton.title = '另存为工程文件（Ctrl(Cmd)+Shift+S）';
   }
 }
 
@@ -13406,7 +13434,7 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
     addItem(`删除 ${targetIdxs.length} 条字幕`, 'Delete', () => {
       deleteSegments(targetIdxs);
     }, { danger: true });
-    addItem('取消选择', 'Ctrl+D', () => clearSelection());
+    addItem('取消选择', `${modKeyLabel()}+D`, () => clearSelection());
   }
 
   // 调整 ctxmenu 位置（避免溢出）

@@ -240,14 +240,17 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   for (const row of rowBoxes) {
     expect(Math.max(...row.childTops) - Math.min(...row.childTops)).toBeLessThan(3);
   }
-  await expect(helpSplitKey).toHaveText('Ctrl+Enter');
+  const modKey = await page.evaluate(() => (
+    /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgentData?.platform || '') ? 'Cmd' : 'Ctrl'
+  ));
+  await expect(helpSplitKey).toHaveText(`${modKey}+Enter`);
   await expect(page.locator('#help-waveform-split-key')).toHaveText('B');
 
   await splitKey.selectOption('enter');
   await expect(helpSplitKey).toHaveText('Enter');
 
   await splitKey.selectOption('ctrl-enter');
-  await expect(helpSplitKey).toHaveText('Ctrl+Enter');
+  await expect(helpSplitKey).toHaveText(`${modKey}+Enter`);
 });
 
 test('waveform toolbar exposes grouped icon controls and selected cues use a yellow border', async ({ page }) => {

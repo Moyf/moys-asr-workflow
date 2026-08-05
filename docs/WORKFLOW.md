@@ -204,7 +204,7 @@ uv run python server-editor\serve.py "D:\Projects\subtitle.mosp" -m "E:\Media\mo
 uv run python server-editor\serve.py --blank
 ```
 
-不带参数会默认恢复最近一次**明确打开**的工程。这个行为可在编辑器「最近工程」菜单第一项「自动打开上次工程」中开关；若只想本次空白启动，用 `--blank`。编辑器的“保存工程”（`Ctrl+S`）会原子写回当前 `.mosp` 或 `.json` 文件，并在覆盖前创建同目录、保持原扩展名的 `.mosp.bak` 或 `.json.bak`；`Ctrl+Shift+S` 为另存为。
+不带参数会默认恢复最近一次**明确打开**的工程。这个行为可在编辑器「最近工程」菜单第一项「自动打开上次工程」中开关；若只想本次空白启动，用 `--blank`。编辑器的“保存工程”（`Ctrl+S`，macOS 为 `Cmd+S`）会原子写回当前 `.mosp` 或 `.json` 文件，并在覆盖前创建同目录、保持原扩展名的 `.mosp.bak` 或 `.json.bak`；`Ctrl+Shift+S`（macOS 为 `Cmd+Shift+S`）为另存为。
 
 服务器版的「保存工作区」会存到本机服务器设置中，并在之后打开其他工程时继续使用；一个工作区包含窗口布局与显示状态（字幕列表显示项、波形单/多行等）。四个内置工作区在“编辑布局”后可保存为本机覆盖版、重置为默认或另存为，但不可删除；自定义工作区则可保存、另存为或删除。它不会改写工程文件，也不会上传到网络。
 
@@ -223,6 +223,8 @@ uv run python server-editor\serve.py --blank
 ### 找不到 `ffmpeg` 或 `ffprobe`
 
 安装 FFmpeg 后关闭并重开 PowerShell，再运行 `ffmpeg -version`。不要只把 `ffmpeg.exe` 放在仓库里；更稳妥的是把其 `bin` 目录加入系统 PATH。
+
+macOS 从 Finder 启动 `.app` 时不一定会继承终端里的 PATH。Apple Silicon Homebrew 通常使用 `/opt/homebrew/bin`，Intel Homebrew 通常使用 `/usr/local/bin`；如果 Launcher 仍提示缺少 FFmpeg，可把对应目录填入「配置」中的 FFmpeg 路径，并确认其中同时存在 `ffmpeg` 和 `ffprobe`。macOS GUI 的配置会保存到 `~/Library/Application Support/Moy/MAW/.env`，不写入只读或被 App Translocation 隔离的 `.app` 包。
 
 ### 提示未配置 API Key
 

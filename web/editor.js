@@ -215,7 +215,7 @@ function isMediaFile(file) {
 //   layout     —— 布局导入/重置/拖动停靠
 //   gap_remove —— 静音空隙扫描与人工修正
 //   preview    —— 字幕预览（overlay）开关
-// 栈深上限 100；新动作清空 redo；Ctrl/Cmd+Z 撤销、Ctrl/Cmd+Shift+Z 重做。
+// 栈深上限 100；新动作清空 redo；Ctrl(Cmd)+Z 撤销、Ctrl(Cmd)+Shift+Z 重做。
 // 编辑文本输入框或 modal 打开时让原生行为优先（见 keydown 守卫）。
 const UNDO_LIMIT = 100;
 const editorHistory = window.AsrEditorUtils.createHistoryStack(UNDO_LIMIT);
@@ -580,8 +580,25 @@ function bindCueEditorDisplayToggle(toggle, key) {
   });
 }
 
+// macOS 用 ⌘（Cmd）替代 Ctrl；Win/Linux 仍显示 Ctrl。
+function modKeyLabel() {
+  return window.AsrEditorUtils?.isMacPlatform() ? 'Cmd' : 'Ctrl';
+}
+
 function splitKeyLabel() {
-  return splitKeySel.value === 'enter' ? 'Enter' : 'Ctrl+Enter';
+  return splitKeySel.value === 'enter' ? 'Enter' : `${modKeyLabel()}+Enter`;
+}
+
+// 把帮助面板等静态 <kbd data-mod-key> 与「拆分按键」下拉选项文本按平台替换。
+function applyPlatformKeyLabels() {
+  if (modKeyLabel() === 'Ctrl') return;
+  document.querySelectorAll('[data-mod-key]').forEach((el) => {
+    el.textContent = el.textContent.replace(/^Ctrl/, 'Cmd');
+  });
+  if (splitKeySel) {
+    const opt = splitKeySel.querySelector('option[value="ctrl-enter"]');
+    if (opt) opt.textContent = 'Cmd+Enter';
+  }
 }
 
 function refreshSplitKeyHelp() {
@@ -594,6 +611,7 @@ function refreshSplitKeyHelp() {
 document.addEventListener('mawe:languagechange', () => refreshSplitKeyHelp());
 
 splitKeySel.value = EDITOR_SETTINGS.splitKey;
+applyPlatformKeyLabels();
 refreshSplitKeyHelp();
 if (mergeJoinTextInput) mergeJoinTextInput.value = EDITOR_SETTINGS.mergeJoinText;
 syncAutoMergePanelInputs();
@@ -2900,7 +2918,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Ctrl/Cmd+A：选中所有字幕。仅在「非编辑字幕」状态下生效；
+// Ctrl(Cmd)+A：选中所有字幕。仅在「非编辑字幕」状态下生效；
 // 焦点在输入框/文本域/可编辑元素或内联编辑态时，保留浏览器原生的「全选文本」行为。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'a' && e.key !== 'A') return;
@@ -2925,8 +2943,8 @@ document.addEventListener('keydown', (e) => {
   selectAll();
 });
 
-// Ctrl/Cmd+D：取消选中（清空当前字幕选择）。浏览器默认是「添加书签」，这里接管；
-// 与 Ctrl/Cmd+A 同样仅在非编辑字幕状态下生效。ESC 清除选中的行为保持不变。
+// Ctrl(Cmd)+D：取消选中（清空当前字幕选择）。浏览器默认是「添加书签」，这里接管；
+// 与 Ctrl(Cmd)+A 同样仅在非编辑字幕状态下生效。ESC 清除选中的行为保持不变。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'd' && e.key !== 'D') return;
   if (!e.ctrlKey && !e.metaKey) return;
@@ -3052,7 +3070,7 @@ document.addEventListener('keydown', (e) => {
   mergeSegments([...selectedIdxs]);
 });
 
-// Ctrl/Cmd+Z 撤销；Ctrl/Cmd+Shift+Z 或 Ctrl/Cmd+Y 重做
+// Ctrl(Cmd)+Z 撤销；Ctrl(Cmd)+Shift+Z 或 Ctrl(Cmd)+Y 重做
 document.addEventListener('keydown', (e) => {
   const isZ = e.key === 'z' || e.key === 'Z';
   const isY = e.key === 'y' || e.key === 'Y';
@@ -4187,11 +4205,11 @@ function configureServerSaveControls() {
      if (!serverProjectSavingEnabled()) button.title = '请用带工程文件路径的服务器命令启动，才能直接保存';
   });
   if (saveProjectButton && serverProjectSavingEnabled()) {
-    saveProjectButton.title = '保存回当前工程文件（Ctrl/Cmd+S）';
+    saveProjectButton.title = '保存回当前工程文件（Ctrl(Cmd)+S）';
   }
   // 另存为走系统文件对话框，不依赖服务器绑定，始终可用。
   if (saveProjectAsButton) {
-    saveProjectAsButton.title = '另存为工程文件（Ctrl/Cmd+Shift+S）';
+    saveProjectAsButton.title = '另存为工程文件（Ctrl(Cmd)+Shift+S）';
   }
 }
 
@@ -5962,7 +5980,7 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
     addItem(`删除 ${targetIdxs.length} 条字幕`, 'Delete', () => {
       deleteSegments(targetIdxs);
     }, { danger: true });
-    addItem('取消选择', 'Ctrl+D', () => clearSelection());
+    addItem('取消选择', `${modKeyLabel()}+D`, () => clearSelection());
   }
 
   // 调整 ctxmenu 位置（避免溢出）
