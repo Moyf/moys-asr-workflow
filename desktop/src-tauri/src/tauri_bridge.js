@@ -391,5 +391,23 @@
     console.log('[MOSE] open-file 监听器已就绪');
   }
 
+  // index.html 在构建时生成，运行时设置（最近工程、工作区）需要从本机读取一次。
+  async function hydrateSettings() {
+    try {
+      var settings = await invoke('get_settings');
+      if (!settings || typeof settings !== 'object') return;
+      if (typeof SERVER_CONFIG !== 'undefined') {
+        Object.assign(SERVER_CONFIG, settings);
+      }
+      if (typeof configureRecentProjects === 'function') configureRecentProjects();
+      if (typeof configureServerProjectSettings === 'function') configureServerProjectSettings();
+      if (typeof configureServerWorkspaceLibrary === 'function') configureServerWorkspaceLibrary();
+    } catch (error) {
+      console.warn('[MOSE] 读取本机设置失败:', error);
+    }
+  }
+
+  void hydrateSettings();
+
   console.log('[MOSE] Tauri bridge initialized (fetch→invoke + open + media + stickers + waveform + file-assoc)');
 })();

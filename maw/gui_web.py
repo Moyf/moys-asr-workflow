@@ -8,6 +8,7 @@ import queue
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import tempfile
 import time
@@ -31,6 +32,10 @@ SAVE_DIALOG = 30
 FOLDER_DIALOG = 20
 WINDOW_TITLE = "MAW Launcher"
 MEDIA_EXTS: Final = frozenset({".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"})
+MOSE_REGISTRY_KEY = r"Software\Moy\MOSE"
+MOSE_FILE_TYPE = "Moy.MOSE.Project"
+# Keep this aligned with desktop/src-tauri/tauri.conf.json until an installer owns it.
+MOSE_VERSION = "0.1.0"
 
 
 ERROR_MESSAGES: Final[dict[str, str]] = {
@@ -44,6 +49,8 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "hotwords_file_missing": "Choose an existing UTF-8 .txt hotword file.",
     "server_no_response": "Editor server did not respond.",
     "server_start_failed": "Editor server failed to start.",
+    "mose_not_found": "MOSE desktop editor was not found in this MAW package.",
+    "mose_start_failed": "MOSE desktop editor failed to start.",
     "server_stop_not_maw": "The process using this port is not a MAW editor server.",
     "server_stop_failed": "Unable to stop the MAW editor server.",
     "sticker_dir_invalid": "Sticker directory does not exist.",
@@ -68,6 +75,108 @@ def _is_ffprobe_start_failure(lines: Sequence[str]) -> bool:
     return "ffprobe" in detail and any(
         marker in detail for marker in ("3221225794", "0xc0000142", "c0000142")
     )
+
+
+def _registered_mose_executable() -> Path | None:
+    """Read a valid independent MOSE installation registered for this user."""
+    if sys.platform != "win32":
+        return None
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, MOSE_REGISTRY_KEY) as key:
+            try:
+                value = winreg.QueryValueEx(key, "ExecutablePath")[0]
+            except OSError:
+                install_path = winreg.QueryValueEx(key, "InstallPath")[0]
+                value = Path(str(install_path)) / "MOSE.exe"
+    except (AttributeError, ImportError, OSError, TypeError, ValueError):
+        return None
+    candidate = Path(str(value)).expanduser()
+    if not candidate.is_file():
+        return None
+    try:
+        return candidate.resolve()
+    except OSError:
+        return candidate
+
+
+def _find_mose_executable() -> Path | None:
+    """Find the optional MOSE executable shipped beside the MAW Launcher."""
+    candidates: list[Path] = []
+    registered = _registered_mose_executable()
+    if registered is not None:
+        candidates.append(registered)
+    if getattr(sys, "frozen", False):
+        executable_dir = Path(sys.executable).resolve().parent
+        candidates.extend((executable_dir / "MOSE.exe", executable_dir / "mose.exe"))
+
+    repo_root = Path(__file__).resolve().parents[1]
+    candidates.extend(
+        (
+            repo_root / "MOSE.exe",
+            repo_root / "mose.exe",
+            repo_root / "desktop" / "target" / "release" / "mose.exe",
+            repo_root / "desktop" / "target" / "debug" / "mose.exe",
+            asset_path("MOSE.exe"),
+            asset_path("mose.exe"),
+        )
+    )
+
+    seen: set[Path] = set()
+    for candidate in candidates:
+        try:
+            candidate = candidate.resolve()
+        except OSError:
+            continue
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _register_mosp_association() -> bool:
+    """Register the portable package's .mosp association for the current Windows user."""
+    if sys.platform != "win32":
+        return False
+    registered = _registered_mose_executable()
+    executable = registered or _find_mose_executable()
+    if executable is None:
+        return False
+    icon = asset_path("assets/maw.ico")
+    if not icon.is_file():
+        icon = executable
+    try:
+        import winreg
+
+        version = MOSE_VERSION
+        if registered is not None:
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, MOSE_REGISTRY_KEY) as mose_key:
+                    existing_version = winreg.QueryValueEx(mose_key, "Version")[0]
+                if str(existing_version).strip():
+                    version = str(existing_version).strip()
+            except (AttributeError, OSError, TypeError, ValueError):
+                pass
+
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, MOSE_REGISTRY_KEY) as mose_key:
+            winreg.SetValueEx(mose_key, "InstallPath", 0, winreg.REG_SZ, str(executable.parent))
+            winreg.SetValueEx(mose_key, "ExecutablePath", 0, winreg.REG_SZ, str(executable))
+            winreg.SetValueEx(mose_key, "Version", 0, winreg.REG_SZ, version)
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.mosp") as extension_key:
+            winreg.SetValueEx(extension_key, None, 0, winreg.REG_SZ, MOSE_FILE_TYPE)
+            winreg.SetValueEx(extension_key, "Content Type", 0, winreg.REG_SZ, "application/json")
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MOSE_FILE_TYPE}") as file_type_key:
+            winreg.SetValueEx(file_type_key, None, 0, winreg.REG_SZ, "MOSE Project")
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MOSE_FILE_TYPE}\DefaultIcon") as icon_key:
+            winreg.SetValueEx(icon_key, None, 0, winreg.REG_SZ, f'"{icon}",0')
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MOSE_FILE_TYPE}\shell\open\command") as command_key:
+            winreg.SetValueEx(command_key, None, 0, winreg.REG_SZ, f'"{executable}" "%1"')
+    except (AttributeError, ImportError, OSError):
+        return False
+    return True
 
 
 @final
@@ -241,23 +350,36 @@ class LauncherApi:
         webbrowser.open(url)
         return {"ok": True}
 
+    def open_mose(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Open the packaged MOSE editor and pass it the selected project path."""
+        project_text = str(payload.get("jsonPath") or "").strip()
+        project = Path(project_text).expanduser() if project_text else None
+        if project is not None and not project.is_file():
+            return _error_result("jsonPath", "json_not_found", str(project))
+
+        executable = _find_mose_executable()
+        if executable is None:
+            return _error_result("editor", "mose_not_found", "MOSE.exe")
+
+        command = [str(executable)]
+        if project is not None:
+            command.append(str(project.resolve()))
+        try:
+            subprocess.Popen(
+                command,
+                cwd=str(executable.parent),
+                startupinfo=startupinfo(),
+                creationflags=creationflags(),
+            )
+        except OSError as error:
+            return _error_result("editor", "mose_start_failed", str(error))
+        return {"ok": True, "usedMose": True, "path": str(executable)}
+
     def start_server(self, payload: Mapping[str, object]) -> dict[str, object]:
         json_text = str(payload.get("jsonPath") or "").strip()
         port = _port(payload)
         url = f"http://127.0.0.1:{port}/"
         launch_url = f"{url}?lang={_gui_lang(payload)}"
-
-        # MOSE 桌面应用检测：安装了就优先用它打开（os.startfile 触发 .mosp 文件关联）
-        if json_text and os.name == "nt":
-            try:
-                import winreg
-                winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, ".mosp")
-                json_path = Path(json_text).expanduser()
-                if json_path.exists():
-                    os.startfile(str(json_path))
-                    return {"ok": True, "usedMose": True}
-            except (FileNotFoundError, OSError, KeyError):
-                pass  # MOSE 未安装或打开失败，fallback 到 serve.py
 
         if _wait_for_server(url, timeout=0.25):
             return {"ok": True, "url": launch_url, "serverAlreadyRunning": True}
@@ -498,6 +620,7 @@ def run_app() -> None:
 
     paths = default_paths()
     api = LauncherApi(paths=paths)
+    _register_mosp_association()
     window = webview.create_window(
         WINDOW_TITLE,
         url=paths.launcher_html.resolve().as_uri(),
