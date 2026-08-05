@@ -34,6 +34,9 @@ try {
     Push-Location -LiteralPath $MoseRoot
     try {
         npm ci
+        # Tauri validates frontendDist before it invokes Cargo's build script.
+        # Run the build script once up front so desktop\src\index.html exists.
+        cargo check --manifest-path (Join-Path $MoseRoot 'src-tauri\Cargo.toml')
         npm run tauri -- build
     }
     finally {

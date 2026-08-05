@@ -14,6 +14,7 @@
 ### Fixed
 
 - 修复 macOS 应用图标资源与构建配置，macOS Release 包现在会包含正确的图标。
+- 修复 Windows Release 打包顺序：在 Tauri 验证前预生成 MOSE 前端页面，避免干净 runner 找不到 `desktop/src/index.html`。
 
 ## [1.3.0] - 2026-08-05
 

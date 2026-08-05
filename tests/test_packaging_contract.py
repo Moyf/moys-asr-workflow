@@ -79,6 +79,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("uv run --group build pyinstaller", script)
         self.assertIn("MAW.spec", script)
         self.assertIn("dist\\MAW\\MAW.exe", script)
+        self.assertIn("cargo check --manifest-path", script)
         self.assertIn("npm run tauri -- build", script)
         self.assertIn("desktop\\src-tauri\\target\\release\\mose.exe", script)
         self.assertIn("dist\\MAW\\MOSE.exe", script)
