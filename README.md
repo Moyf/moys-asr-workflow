@@ -69,7 +69,7 @@ Windows 下载解压之后点击 `MAW.exe` 并运行；macOS 下载后解压并�
 
 1. 在 Launcher 中打开媒体，填写 API Key 后，点击 **生成字幕和工程**——MAW 会调用对应的模型把本地视频或音频转为字幕，同时生成工程文件。
 2. 如果你不需要精校字幕，直接用生成的 srt 字幕文件即可 🎉
-3. 如果你需要对字幕进行更复杂的编辑，点击「打开编辑器」后使用 MOSE；也可以从右侧菜单启动 Server 版或 HTML 编辑器。
+3. 生成工程后，主按钮默认启动 Server 版字幕编辑器；如果你需要使用 MOSE，可以从右侧菜单选择「在 MOSE 中打开」，也可以在那里打开 HTML 编辑器。
 4. 操作完成后，点击右上角按钮导出你所需的 SRT 字幕或是其他附加格式。
 
 所有编辑都在本机完成。  
@@ -95,10 +95,10 @@ Windows 下载解压之后点击 `MAW.exe` 并运行；macOS 下载后解压并�
 
 在 Launcher 里选择阿里云百炼或 Soniox、媒体与 SRT 输出位置，确认模型、语言和可选时长上限，填写对应的 API Key，即可生成 SRT、`.mosp` 工程和便携编辑器 HTML。阿里云百炼 Provider 默认使用最新发布的 `qwen-audio-3.0-asr（热词 / 上下文）`，也可以选择 `fun-asr（支持说话人）` 或 `qwen3-asr（准确率更高）`。需要复用 Key 时，可点“存入本地环境”；密钥只保存在本机 `.env`，不会写入工程文件或日志。
 
-Launcher 的「打开编辑器」默认启动 MOSE 并传入工程路径。Windows 会优先读取当前用户注册表 `HKCU\Software\Moy\MOSE` 下仍有效的 `ExecutablePath`，macOS 则查找 `MOSE.app` 并启动其中的编辑器；找不到桌面版时，Server 版字幕编辑器和 HTML 空工程仍可从按钮右侧的拓展菜单打开。首次启动 Windows MAW 时还会为当前用户登记 `.mosp` 关联。GUI 还可以直接选择 `.mosp` / `.json` 工程并启动 `http://127.0.0.1` 本地编辑器服务器；中英文界面可在右上角切换。
+Launcher 的主按钮默认启动 Server 版字幕编辑器并传入工程路径；从按钮右侧菜单选择「在 MOSE 中打开」时，才会查找并启动桌面版编辑器。Windows 会优先读取当前用户注册表 `HKCU\Software\Moy\MOSE` 下仍有效的 `ExecutablePath`，macOS 则查找同级或常见安装位置的 `MOSE.app`。首次启动 Windows MAW 时还会为当前用户登记 `.mosp` 关联。GUI 还可以直接选择 `.mosp` / `.json` 工程并启动 `http://127.0.0.1` 本地编辑器服务器；中英文界面可在右上角切换。
 启动器支持从资源管理器拖入音视频文件来自动填充媒体路径，并按供应商组织模型、地域、语言和 API Key 获取入口；选择 Fun-ASR 或 Soniox 时可在「高级选项」中开启「给不同说话人分配字幕颜色」。
 
-Windows Release 的 Launcher 会优先打开同目录 MOSE；macOS 会查找同目录、包内或常见安装位置的 `MOSE.app`。如果找不到桌面版，可以从右侧菜单启动 Server 版或 HTML 编辑器。普通版仍要求系统能找到 `ffmpeg` 和 `ffprobe`；如果 Launcher 提示未检测到 FFmpeg，可以换用同平台的 `MAWxFF` 版，也可以自行安装 FFmpeg，把它的 `bin` 目录加入 PATH 后重新打开 MAW。macOS 从 Finder 启动时可能不会继承 Shell 的 PATH；Apple Silicon Homebrew 用户可在「配置」中填写 `/opt/homebrew/bin`，Intel Homebrew 通常填写 `/usr/local/bin`，并确认目录中同时有 `ffmpeg` 和 `ffprobe`。macOS GUI 保存的 API Key、FFmpeg 路径和其他设置位于 `~/Library/Application Support/Moy/MAW/.env`，不会写入 `.app` 包。
+Windows Release 的 Launcher 默认使用 Server 版；需要桌面版时，请从右侧菜单选择「在 MOSE 中打开」。macOS 会查找同级、包内或常见安装位置的 `MOSE.app`；如果仍找不到，日志会列出实际检查过的路径。普通版仍要求系统能找到 `ffmpeg` 和 `ffprobe`；如果 Launcher 提示未检测到 FFmpeg，可以换用同平台的 `MAWxFF` 版，也可以自行安装 FFmpeg，把它的 `bin` 目录加入 PATH 后重新打开 MAW。macOS 从 Finder 启动时可能不会继承 Shell 的 PATH；Apple Silicon Homebrew 用户可在「配置」中填写 `/opt/homebrew/bin`，Intel Homebrew 通常填写 `/usr/local/bin`，并确认目录中同时有 `ffmpeg` 和 `ffprobe`。macOS GUI 保存的 API Key、FFmpeg 路径和其他设置位于 `~/Library/Application Support/Moy/MAW/.env`，不会写入 `.app` 包。
 
 ### 本地构建 Windows 图形包
 

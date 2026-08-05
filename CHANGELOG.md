@@ -2,6 +2,16 @@
 
 本项目采用 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 的记录方式。
 
+## [1.13.1-beta-5] - 2026-08-06
+
+### Changed
+
+- Launcher 默认恢复启动 Server 版字幕编辑器；「在 MOSE 中打开」改为右侧菜单中的显式入口，不再自动跳过 Server 版。
+
+### Fixed
+
+- 改进 macOS `MOSE.app` 的同级应用探测，并在找不到桌面版时把实际检查过的路径写入 Launcher 日志。
+
 ## [1.13.1-beta-4] - 2026-08-05
 
 ### Fixed

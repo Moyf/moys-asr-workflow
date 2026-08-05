@@ -7,16 +7,42 @@
 
 mod server;
 
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use tauri::{Emitter, Manager};
 #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
-use tauri::{Emitter, Manager, RunEvent};
+use tauri::RunEvent;
 
 use server::{
     extract_waveform, get_settings, open_project, open_project_at_path, pick_and_scan_stickers,
     pick_media, prepare_media, remember_project, resolve_media, save_project, settings_path,
     take_initial_project_path, update_settings, AppState, ServerSettings,
 };
+
+fn project_paths_from_args(args: &[String], cwd: &str) -> Vec<PathBuf> {
+    args.iter()
+        .filter_map(|arg| {
+            let candidate = PathBuf::from(arg);
+            let is_project = candidate
+                .extension()
+                .and_then(|value| value.to_str())
+                .map(|value| matches!(value.to_ascii_lowercase().as_str(), "mosp" | "json"))
+                .unwrap_or(false);
+            if !is_project {
+                return None;
+            }
+            let path = if candidate.is_absolute() {
+                candidate
+            } else if cwd.is_empty() {
+                candidate
+            } else {
+                Path::new(cwd).join(candidate)
+            };
+            Some(path.canonicalize().unwrap_or(path))
+        })
+        .collect()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -27,20 +53,33 @@ pub fn run() {
     // 启动 Tauri（注册 commands + dialog plugin + 共享状态）
     // 检查命令行参数（双击 .mosp 文件时 OS 传入路径）。不要假定
     // 工程一定是 nth(1)：启动器/打包器可能会在它前面附加参数。
-    let init_file = std::env::args().skip(1).find(|p| {
+    let init_files: Vec<PathBuf> = std::env::args().skip(1).find(|p| {
         let ext = std::path::Path::new(p)
             .extension()
             .and_then(|e| e.to_str())
             .map(|e| e.to_ascii_lowercase())
             .unwrap_or_default();
         matches!(ext.as_str(), "mosp" | "json")
-    });
+    }).map(PathBuf::from).into_iter().collect();
 
     let app = tauri::Builder::default()
+        // The plugin must be registered first so a second launch is forwarded
+        // before any other plugin handles its command-line arguments.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            let paths = project_paths_from_args(&argv, &cwd);
+            if let Some(state) = app.try_state::<AppState>() {
+                for path in &paths {
+                    state.queue_project_path(path.clone());
+                }
+            }
+            for path in paths {
+                let _ = app.emit("open-file", path.to_string_lossy().into_owned());
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
-            initial_project_path: Mutex::new(init_file.map(std::path::PathBuf::from)),
+            initial_project_path: Mutex::new(init_files),
             current_project_path: Mutex::new(None),
             settings: Mutex::new(settings),
             settings_path: s_path,
@@ -82,9 +121,7 @@ pub fn run() {
                 // installed its listener. Keep the path in state as well as
                 // emitting the event so the frontend can consume either path.
                 if let Some(state) = app_handle.try_state::<AppState>() {
-                    if let Ok(mut initial) = state.initial_project_path.lock() {
-                        *initial = Some(path.clone());
-                    }
+                    state.queue_project_path(path.clone());
                 }
                 let _ = app_handle.emit("open-file", path.to_string_lossy().into_owned());
                 break;

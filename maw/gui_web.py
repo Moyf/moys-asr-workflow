@@ -65,9 +65,9 @@ def _app_version(paths: object) -> str:
     try:
         text = Path(pyproject).read_text(encoding="utf-8")
     except OSError:
-        return "1.13.1-beta-1"
+        return "1.13.1-beta-5"
     match = re.search(r'(?m)^version = "([^"]+)"\r?$', text)
-    return match.group(1) if match else "1.13.1-beta-1"
+    return match.group(1) if match else "1.13.1-beta-5"
 
 
 def _is_ffprobe_start_failure(lines: Sequence[str]) -> bool:
@@ -111,8 +111,8 @@ def _macos_mose_executable(app_path: Path) -> Path | None:
     return None
 
 
-def _find_mose_executable() -> Path | None:
-    """Find the optional MOSE executable or macOS app bundle for the MAW Launcher."""
+def _mose_search_paths() -> list[Path]:
+    """Return the optional MOSE paths that the MAW Launcher will inspect."""
     candidates: list[Path] = []
     registered = _registered_mose_executable()
     if registered is not None:
@@ -135,8 +135,9 @@ def _find_mose_executable() -> Path | None:
             Path.home() / "Applications" / "mose.app",
         ]
         if getattr(sys, "frozen", False):
-            executable_dir = Path(sys.executable).resolve().parent
-            app_candidates[0:0] = [
+            executable_path = Path(sys.executable).resolve()
+            executable_dir = executable_path.parent
+            frozen_app_candidates = [
                 executable_dir / "MOSE.app",
                 executable_dir / "mose.app",
                 executable_dir.parent / "Resources" / "MOSE.app",
@@ -144,10 +145,21 @@ def _find_mose_executable() -> Path | None:
                 executable_dir.parent.parent.parent / "MOSE.app",
                 executable_dir.parent.parent.parent / "mose.app",
             ]
-        for app_path in app_candidates:
-            executable = _macos_mose_executable(app_path)
-            if executable is not None:
-                candidates.append(executable)
+            # In a normal PyInstaller .app, sys.executable is inside
+            # MAW.app/Contents/MacOS. Derive the sibling from the actual .app
+            # ancestor instead of relying on a fixed number of parent levels;
+            # this also works when the bundle is launched through a symlink or
+            # when PyInstaller changes its internal layout.
+            for bundle_path in executable_path.parents:
+                if bundle_path.suffix.lower() == ".app":
+                    frozen_app_candidates.extend(
+                        (
+                            bundle_path.parent / "MOSE.app",
+                            bundle_path.parent / "mose.app",
+                        )
+                    )
+            app_candidates[0:0] = frozen_app_candidates
+        candidates.extend(app_candidates)
     else:
         if getattr(sys, "frozen", False):
             executable_dir = Path(sys.executable).resolve().parent
@@ -163,8 +175,18 @@ def _find_mose_executable() -> Path | None:
             )
         )
 
+    return candidates
+
+
+def _find_mose_executable() -> Path | None:
+    """Find the optional MOSE executable or macOS app bundle for the MAW Launcher."""
     seen: set[Path] = set()
-    for candidate in candidates:
+    for candidate in _mose_search_paths():
+        if sys.platform == "darwin" and candidate.suffix.lower() == ".app":
+            executable = _macos_mose_executable(candidate)
+            if executable is None:
+                continue
+            candidate = executable
         try:
             candidate = candidate.resolve()
         except OSError:
@@ -424,7 +446,9 @@ class LauncherApi:
         executable = _find_mose_executable()
         if executable is None:
             expected = "MOSE.app" if sys.platform == "darwin" else "MOSE.exe"
-            return _error_result("editor", "mose_not_found", expected)
+            result = _error_result("editor", "mose_not_found", expected)
+            result["searchPaths"] = [str(path) for path in _mose_search_paths()]
+            return result
 
         command = [str(executable)]
         if project is not None:

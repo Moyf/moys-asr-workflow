@@ -59,7 +59,7 @@ class LocalEditorServerTests(unittest.TestCase):
         settings = server_editor.remember_project(server_editor.ServerSettings(), self.project_path)
         page = server_editor.build_server_page(project, settings).decode("utf-8")
         self.assertIn('src="/media"', page)
-        self.assertIn('const STICKER_URL_PREFIX = "/stickers";', page)
+        self.assertIn('let STICKER_URL_PREFIX = "/stickers";', page)
         self.assertIn('const SERVER_CONFIG = {"saveUrl": "/api/project", "canSave": true, ', page)
         self.assertIn('"autoLoadedMediaName": "clip.mp3", "recentProjectsUrl": "/api/recent-projects/open", ', page)
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)

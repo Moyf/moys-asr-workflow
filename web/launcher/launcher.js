@@ -152,11 +152,11 @@
     }
   };
   Object.assign(STRINGS.zh, {
-    open_mose: "🎬 打开编辑器",
+    open_mose: "🎬 在 MOSE 中打开",
     start_server_editor: "启动 Server 版字幕编辑器",
   });
   Object.assign(STRINGS.en, {
-    open_mose: "🎬 Open editor",
+    open_mose: "🎬 Open in MOSE",
     start_server_editor: "Start Server editor",
   });
 
@@ -188,7 +188,7 @@
         workspaceId: saved.workspaceId,
         guiLang: saved.guiLang,
         showRareLangs: saved.showRareLangs || false,
-        appVersion: "1.13.1-beta-1",
+        appVersion: "1.13.1-beta-5",
         stickerDir: saved.stickerDir || "",
         providers: [
           {
@@ -332,12 +332,13 @@
   function formPayload() { return { providerId: $("provider").value, modelId: $("model").value, mediaPath: $("mediaPath").value.trim(), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), language: languageValue(), lengthLimit: $("lengthLimit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, testRun: $("testRun").checked, speakerColors: $("speakerColors").checked, generateHtml: $("generateHtml").checked, guiLang: state.lang }; }
   function serverPayload() { return { jsonPath: $("jsonPath").value.trim(), mediaPath: $("serverMediaPath").value.trim(), port: $("port").value || "8250", guiLang: state.lang }; }
   function renderMoseButton() {
-    const button = $("openMawe");
+    const button = $("openMose");
+    if (!button) return;
     button.textContent = state.moseStarting ? SERVER_STARTING_TEXT[state.lang] : t("open_mose");
     button.disabled = state.moseStarting;
   }
   function renderServerButton() {
-    const button = $("openServerEditor");
+    const button = $("openMawe");
     if (!button) return;
     button.textContent = state.serverStarting
       ? SERVER_STARTING_TEXT[state.lang]
@@ -380,7 +381,7 @@
   }
   function setMedia(path) { $("mediaPath").value = path; setError("mediaPath", ""); syncFlvHints(); syncDefaultOutput(); }
   function setJsonPath(path) { $("jsonPath").value = path; setError("jsonPath", ""); refreshServerMedia(); }
-  function applyErrorResult(result, logDetail = true) { const message = errText(result.code, result.detail || result.error); const fieldMessage = result.code === "server_start_failed" ? t("server_start_failed_hint") : (result.code === "server_no_response" ? t("server_no_response_hint") : message); if (result.field) setError(result.field, fieldMessage); if (result.field === "port" || result.field === "serverMediaPath" || result.field === "jsonPath") expandServer(); setStatus(message); if (logDetail && (result.detail || result.error)) appendLog(`[error] ${result.code || "backend_error"}: ${result.detail || result.error}`); }
+  function applyErrorResult(result, logDetail = true) { const message = errText(result.code, result.detail || result.error); const fieldMessage = result.code === "server_start_failed" ? t("server_start_failed_hint") : (result.code === "server_no_response" ? t("server_no_response_hint") : message); if (result.field) setError(result.field, fieldMessage); if (result.field === "port" || result.field === "serverMediaPath" || result.field === "jsonPath") expandServer(); setStatus(message); if (logDetail && (result.detail || result.error)) appendLog(`[error] ${result.code || "backend_error"}: ${result.detail || result.error}`); if (logDetail && Array.isArray(result.searchPaths) && result.searchPaths.length) { const label = state.lang === "zh" ? "MOSE 搜索路径：" : "MOSE search paths:"; appendLog(`[diagnostic] ${label}\n${result.searchPaths.map((path) => `- ${path}`).join("\n")}`); } }
   function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
   function fail(field, message) { setError(field, message); setStatus(message); const input = $(field); if (input && input.scrollIntoView) input.scrollIntoView({ behavior: "smooth", block: "center" }); return false; }
   function toggle(id) { $(id).classList.toggle("collapsed"); renderChevron(id); }
@@ -406,7 +407,8 @@
   async function openMose() {
     clearErrors();
     if (state.moseStarting) return;
-    $("openMawe").classList.remove("attention");
+    $("htmlMenu").classList.add("hidden");
+    $("openMose").classList.remove("attention");
     state.moseStarting = true;
     renderMoseButton();
     try {
@@ -490,7 +492,7 @@
   $("qwenAudioHotwordsModeText").addEventListener("click", () => { setHotwordsMode("text"); setError("qwenAudioHotwordsFile", ""); }); $("qwenAudioHotwordsModeFile").addEventListener("click", () => { setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); }); $("pickQwenAudioHotwordsFile").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "hotwords" }); if (result.ok) await loadHotwordFile(result.path || "", false); });
   $("pickJson").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "json" }); if (result.ok) setJsonPath(result.path); });
   $("jsonPath").addEventListener("input", () => setError("jsonPath", "")); $("jsonPath").addEventListener("change", refreshServerMedia); $("pickServerMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (result.ok) { $("serverMediaPath").value = result.path; setError("serverMediaPath", ""); syncFlvHints(); } });
-  ["apiKey", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { state.detectedServerUrl = ""; renderMoseButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
+  ["apiKey", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
   $("refreshServerStatus").addEventListener("click", async () => { $("refreshServerStatus").disabled = true; try { await checkExistingServer(); } finally { $("refreshServerStatus").disabled = false; } });
   $("openKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().keyUrl }));
   $("ffmpegHelp").addEventListener("click", () => bridge("open_url", { url: "https://ffmpeg.org/download.html" }));
@@ -503,8 +505,8 @@
   $("languageReset").addEventListener("click", () => { const el = $("language"); Array.from(el.options).forEach((o) => { o.selected = false; }); savePrefsDebounced({ language: "" }); });
   $("saveSettings").addEventListener("click", async () => { const result = await bridge("save_settings", formPayload()); if (result.ok) { const current = provider(); current.apiKey = $("apiKey").value.trim(); current.maskedApiKey = result.maskedApiKey; state.config.apiKey = current.apiKey; state.config.maskedApiKey = result.maskedApiKey; renderKeyStatus(); setStatus(t("saved")); } else applyErrorResult(result); });
   $("start").addEventListener("click", async () => { if (!validateLocal()) return; $("log").textContent = ""; setRunning(true); $("logTitle").scrollIntoView({ behavior: "smooth", block: "start" }); const result = await bridge("start_transcription", formPayload()); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } });
-  $("openMawe").addEventListener("click", openMose); $("openFolder").addEventListener("click", () => bridge("open_output_folder"));
-  $("openMenu").addEventListener("click", () => $("htmlMenu").classList.toggle("hidden")); $("openServerEditor").addEventListener("click", openServerEditor); $("openHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_html"); }); $("openBlankHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_blank_html"); }); document.addEventListener("click", (event) => { if (!event.target.closest(".split-wrap")) $("htmlMenu").classList.add("hidden"); });
+  $("openMawe").addEventListener("click", openServerEditor); $("openFolder").addEventListener("click", () => bridge("open_output_folder"));
+  $("openMenu").addEventListener("click", () => $("htmlMenu").classList.toggle("hidden")); $("openMose").addEventListener("click", openMose); $("openHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_html"); }); $("openBlankHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_blank_html"); }); document.addEventListener("click", (event) => { if (!event.target.closest(".split-wrap")) $("htmlMenu").classList.add("hidden"); });
   $("mediaCard").addEventListener("dragenter", onDragEnter); $("mediaCard").addEventListener("dragleave", onDragLeave);
   bindDropField("qwenAudioHotwordsTextField", "text", "qwenAudioHotwords"); bindDropField("qwenAudioHotwordsFileField", "file", "qwenAudioHotwordsFile"); bindDropField("jsonPath", "json");
   document.addEventListener("dragover", (event) => { if (hasFileDrag(event)) event.preventDefault(); });

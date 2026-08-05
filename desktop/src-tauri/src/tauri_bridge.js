@@ -36,6 +36,54 @@
 
   var mediaLoadGeneration = 0;
   var projectOpenQueue = Promise.resolve();
+  var externalProjectQueue = Promise.resolve();
+  var externalProjectRequests = new Set();
+
+  function assetUrlForPath(path) {
+    var convertFileSrc =
+      (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.convertFileSrc) ||
+      (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.convertFileSrc);
+    if (typeof convertFileSrc !== 'function' || !path) return '';
+    try {
+      return convertFileSrc(path);
+    } catch (error) {
+      console.warn('[MOSE] asset URL 生成失败:', error);
+      return '';
+    }
+  }
+
+  function configureStickerAssetRoot(root) {
+    if (typeof STICKER_URL_PREFIX === 'undefined') return;
+    if (!root) {
+      STICKER_URL_PREFIX = '';
+      return;
+    }
+    var assetRoot = assetUrlForPath(root);
+    if (assetRoot) STICKER_URL_PREFIX = assetRoot;
+  }
+
+  function confirmProjectReplacement() {
+    if (typeof hasUnsavedProjectChanges !== 'function' || !hasUnsavedProjectChanges()) {
+      return true;
+    }
+    return window.confirm('当前工程有未保存的改动，是否打开新工程？将丢失未保存内容。');
+  }
+
+  function requestExternalProject(path) {
+    var projectPath = projectPathFromPayload(path);
+    if (!projectPath) return Promise.resolve(null);
+    if (externalProjectRequests.has(projectPath)) return externalProjectQueue;
+    externalProjectRequests.add(projectPath);
+    externalProjectQueue = externalProjectQueue.catch(function () {}).then(function () {
+      if (!confirmProjectReplacement()) return null;
+      return openProjectAtPath(projectPath);
+    }).finally(function () {
+      window.setTimeout(function () {
+        externalProjectRequests.delete(projectPath);
+      }, 1000);
+    });
+    return externalProjectQueue;
+  }
 
   // 把工程数据注入 editor.js：直接调 openProjectFile（全局函数），不模拟 file input。
   // openProjectFile 处理完后（.then），启用保存 + 更新最近工程 + 自动加载媒体。
@@ -51,6 +99,7 @@
     var file = new File([jsonContent], result.filename || 'untitled.mosp', {
       type: 'application/json',
     });
+    configureStickerAssetRoot(result.data && result.data.sticker_root);
     var generation = ++mediaLoadGeneration;
 
     if (typeof openProjectFile === 'function') {
@@ -138,16 +187,8 @@
 
   function mediaSourceUrl(result, fallbackPath) {
     var path = (result && (result.playbackPath || result.sourcePath)) || fallbackPath;
-    var convertFileSrc =
-      (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.convertFileSrc) ||
-      (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.convertFileSrc);
-    if (typeof convertFileSrc === 'function' && path) {
-      try {
-        return convertFileSrc(path);
-      } catch (error) {
-        console.warn('[MOSE] asset 媒体 URL 生成失败，回退到后端 URL:', error);
-      }
-    }
+    var assetUrl = assetUrlForPath(path);
+    if (assetUrl) return assetUrl;
     return (result && result.url) || '';
   }
 
@@ -274,6 +315,9 @@
       }
       if (urlStr.indexOf('mose://recent-projects') !== -1) {
         // "最近工程"切换：不只是记录路径，还要真正打开工程
+        if (!confirmProjectReplacement()) {
+          return okResponse({ ok: false, cancelled: true });
+        }
         var result = await invoke('open_project_at_path', body);
         if (result && result.ok) {
           loadProjectData(result);
@@ -318,6 +362,7 @@
       async function (e) {
         e.stopImmediatePropagation();
         try {
+          if (!confirmProjectReplacement()) return;
           var result = await invoke('open_project');
           if (!result || !result.ok || result.cancelled) return;
           loadProjectData(result);
@@ -368,7 +413,7 @@
 
   // === 4. 拦截"📁 浏览…"表情包按钮 ===
   // editor.js 的 sticker-root-pick 用浏览器 showDirectoryPicker/webkitdirectory（拿不到路径，用 blob URL）。
-  // Tauri 模式改为 dialog 选目录 + Rust 扫描 → file:// URL 直接加载图片。
+  // Tauri 模式改为 dialog 选目录 + Rust 扫描 → asset URL 加载图片。
   function setupStickerInterceptor() {
     var pickBtn = document.getElementById('sticker-root-pick');
     if (!pickBtn) {
@@ -385,7 +430,9 @@
           var result = await invoke('pick_and_scan_stickers');
           if (!result || !result.ok || result.cancelled) return;
 
-          // 更新 STICKERS 数组（file:// URL，不需要 blob URL）
+          configureStickerAssetRoot(result.root);
+
+          // 更新 STICKERS 数组（asset URL，不需要 blob URL）
           if (typeof STICKERS !== 'undefined') {
             STICKERS.forEach(function (s) {
               if (s._blobUrl) { try { URL.revokeObjectURL(s._blobUrl); } catch (e) {} }
@@ -394,7 +441,7 @@
             result.stickers.forEach(function (s) { STICKERS.push(s); });
           }
 
-          // STICKER_ROOT 改为实际路径（editor.js stickerUrl 会拼 file:// URL）
+          // STICKER_ROOT 保留实际路径，供工程保存和 Resolve 导出使用。
           if (typeof STICKER_ROOT !== 'undefined') {
             STICKER_ROOT = result.root;
           }
@@ -456,7 +503,7 @@
     var paths = nativeDropPaths(payload);
     var projectPath = paths.find(isProjectPath);
     if (projectPath) {
-      void openProjectAtPath(projectPath).catch(function (error) {
+      void requestExternalProject(projectPath).catch(function (error) {
         console.error('[MOSE] 拖放工程失败:', error);
       });
       return;
@@ -472,7 +519,7 @@
     var eventApi = window.__TAURI__ && window.__TAURI__.event;
     if (!eventApi || !eventApi.listen) return;
     void eventApi.listen('open-file', function (event) {
-      void openProjectAtPath(event && event.payload).catch(function (error) {
+      void requestExternalProject(event && event.payload).catch(function (error) {
         console.error('[MOSE] 关联工程打开失败:', error);
       });
     });
@@ -484,9 +531,13 @@
     void eventApi.listen('tauri://drag-drop', function (event) {
       handleNativeDrop(event && event.payload);
     });
-    void invoke('take_initial_project_path').then(function (path) {
-      if (!path) return;
-      return openProjectAtPath(path);
+    void invoke('take_initial_project_path').then(function (paths) {
+      var pending = Array.isArray(paths) ? paths : (paths ? [paths] : []);
+      pending.forEach(function (path) {
+        void requestExternalProject(path).catch(function (error) {
+          console.error('[MOSE] 启动工程打开失败:', error);
+        });
+      });
     }).catch(function (error) {
       console.error('[MOSE] 启动工程打开失败:', error);
     });

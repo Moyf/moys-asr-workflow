@@ -1,11 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "主窗口默认权限（MOSE alpha 仅启用 core 默认权限，后续按需收紧）",
+  "description": "MOSE 主窗口默认权限；外部程序只能由 Rust 命令按需调用",
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "dialog:default",
-    "shell:allow-execute"
+    "dialog:default"
   ]
 }
