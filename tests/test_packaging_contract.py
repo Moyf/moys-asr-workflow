@@ -97,7 +97,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("MAWxFF-macOS-arm64-${Version}.zip", workflow)
         self.assertIn('StandardStage="build/release/standard"', workflow)
         self.assertIn('XffStage="build/release/xff"', workflow)
-        self.assertIn('ditto -c -k --sequesterRsrc --keepParent MAW.app MOSE.app "$GITHUB_WORKSPACE/$StandardArchive"', workflow)
+        self.assertIn('zip -qry "$GITHUB_WORKSPACE/$StandardArchive" MAW.app MOSE.app', workflow)
         self.assertIn("unzip -l \"$StandardArchive\" | grep -q 'MOSE.app/Contents/MacOS/mose'", workflow)
         self.assertIn("MAWxFF-macOS-arm64-*.zip", workflow)
         self.assertNotIn(".zip.sha256", workflow)

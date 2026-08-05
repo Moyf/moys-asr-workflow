@@ -194,11 +194,11 @@ jobs:
           ditto dist/MOSE.app "$XffStage/MOSE.app"
           (
             cd "$StandardStage"
-            ditto -c -k --sequesterRsrc --keepParent MAW.app MOSE.app "$GITHUB_WORKSPACE/$StandardArchive"
+            zip -qry "$GITHUB_WORKSPACE/$StandardArchive" MAW.app MOSE.app
           )
           (
             cd "$XffStage"
-            ditto -c -k --sequesterRsrc --keepParent MAWxFF.app MOSE.app "$GITHUB_WORKSPACE/$XffArchive"
+            zip -qry "$GITHUB_WORKSPACE/$XffArchive" MAWxFF.app MOSE.app
           )
           unzip -l "$StandardArchive" | grep -q 'MAW.app/Contents/MacOS/MAW'
           unzip -l "$StandardArchive" | grep -q 'MOSE.app/Contents/MacOS/mose'
