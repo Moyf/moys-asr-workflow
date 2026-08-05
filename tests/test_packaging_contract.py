@@ -106,6 +106,44 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn('"icons/icon.ico"', config)
         self.assertIn('"ext": ["mosp"]', config)
 
+    def test_pr_release_workflow_builds_only_the_no_ffmpeg_windows_preview(self) -> None:
+        """Given a pull request, When packaging runs, Then only a read-only standard ZIP is uploaded."""
+        workflow = read_text(".github/workflows/pr-release-windows.yml")
+
+        self.assertRegex(workflow, re.compile(r"on:\s+pull_request:", re.MULTILINE))
+        self.assertIn("windows-2022", workflow)
+        self.assertIn("permissions:\n  contents: read", workflow)
+        self.assertIn("actions/setup-node@v4", workflow)
+        self.assertIn("dtolnay/rust-toolchain@stable", workflow)
+        self.assertIn("ref: ${{ github.event.pull_request.head.sha || github.sha }}", workflow)
+        self.assertIn("uv sync --group build --frozen", workflow)
+        self.assertIn("scripts\\build-windows.ps1 -SkipTests", workflow)
+        self.assertIn("dist\\MAW\\MAW.exe", workflow)
+        self.assertIn("dist\\MAW\\MOSE.exe", workflow)
+        self.assertIn("Verify no FFmpeg is bundled", workflow)
+        self.assertIn("Compress-Archive", workflow)
+        self.assertIn("Get-FileHash", workflow)
+        self.assertIn("actions/upload-artifact@v4", workflow)
+        self.assertIn("retention-days: 14", workflow)
+        self.assertIn("MAW-Windows-x64-pr-", workflow)
+        self.assertIn("persist-credentials: false", workflow)
+        self.assertNotIn("MAWxFF", workflow)
+        self.assertNotIn("softprops/action-gh-release", workflow)
+
+    def test_pr_release_comment_workflow_updates_the_pr_with_the_run_link(self) -> None:
+        """Given a completed PR package run, When the comment workflow runs, Then it updates one PR comment."""
+        workflow = read_text(".github/workflows/pr-release-comment.yml")
+
+        self.assertIn("workflow_run:", workflow)
+        self.assertIn("workflows: [Preview Windows Release]", workflow)
+        self.assertIn("types: [completed]", workflow)
+        self.assertIn("pull-requests: write", workflow)
+        self.assertIn("actions/github-script@v7", workflow)
+        self.assertIn("maw-windows-pr-release", workflow)
+        self.assertIn("issues.updateComment", workflow)
+        self.assertIn("issues.createComment", workflow)
+        self.assertIn("run.html_url", workflow)
+
 
 if __name__ == "__main__":
     _ = unittest.main()
