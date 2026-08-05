@@ -84,12 +84,16 @@
 
         // 自动加载关联媒体；Rust 已完成 media 字段和同目录候选解析。
         var mediaResolution = result.mediaResolution;
-        var resolvedMedia = mediaResolution && mediaResolution.resolvedPath;
+        // Prefer the Rust-resolved path (it handles relative media fields and
+        // same-directory recovery), but retain DATA.media as a fallback for
+        // older projects or a response from an older desktop backend.
+        var resolvedMedia = (mediaResolution && mediaResolution.resolvedPath) ||
+          (typeof DATA !== 'undefined' && DATA.media);
         if (mediaResolution && mediaResolution.status === 'conversion_needed') {
           flashHint(mediaResolution.message || 'flv 无法预览，将会自动转换成 mp4 格式');
         }
         if (resolvedMedia) {
-          autoLoadMedia(resolvedMedia, generation);
+          void autoLoadMedia(resolvedMedia, generation);
         } else if (mediaResolution && mediaResolution.message) {
           flashHint(mediaResolution.message);
         }
@@ -272,10 +276,16 @@
   // === 2. 拦截 window.location.reload ===
   // Tauri 模式下 index.html 只在启动时渲染一次，reload 不会更新数据。
   // 数据已通过 loadProjectData 注入，直接忽略 reload。
-
-  window.location.reload = function () {
-    console.log('[MOSE] reload 已拦截（Tauri 模式用数据注入替代）');
-  };
+  // 注意：Tauri v2 的 tauri.localhost 自定义协议下 location.reload 是只读属性，
+  // 直接赋值会抛 TypeError 并中断整个 bridge 初始化（打开工程/拖放/文件关联
+  // 全部失效）。这里必须用 try/catch 降级：拦得住就拦，拦不住就放行原生行为。
+  try {
+    window.location.reload = function () {
+      console.log('[MOSE] reload 已拦截（Tauri 模式用数据注入替代）');
+    };
+  } catch (reloadError) {
+    console.warn('[MOSE] location.reload 只读，无法拦截（其余功能不受影响）:', reloadError);
+  }
 
   // === 3. 拦截"打开工程"按钮 ===
 
@@ -417,7 +427,11 @@
   }
 
   function hideNativeDropOverlay() {
-    if (dragOverlay) dragOverlay.classList.remove('show');
+    // `dragOverlay` is a top-level `const` in editor.js and is not visible
+    // from this separately injected script. Resolve it through the DOM here
+    // so native Tauri drag events cannot abort before handling their paths.
+    var overlay = document.getElementById('drag-overlay');
+    if (overlay) overlay.classList.remove('show');
   }
 
   function handleNativeDrop(payload) {
@@ -446,7 +460,8 @@
       });
     });
     void eventApi.listen('tauri://drag-enter', function () {
-      if (dragOverlay) dragOverlay.classList.add('show');
+      var overlay = document.getElementById('drag-overlay');
+      if (overlay) overlay.classList.add('show');
     });
     void eventApi.listen('tauri://drag-leave', hideNativeDropOverlay);
     void eventApi.listen('tauri://drag-drop', function (event) {
