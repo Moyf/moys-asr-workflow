@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,7 +11,16 @@ from typing import Final
 
 
 ROOT: Final = Path(__file__).resolve().parents[1]
-DEFAULT_ENV_PATH: Final = ROOT / ".env"
+
+
+def default_env_path() -> Path:
+    """Return the writable GUI configuration path for the current platform."""
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Moy" / "MAW" / ".env"
+    return ROOT / ".env"
+
+
+DEFAULT_ENV_PATH: Final = default_env_path()
 EXAMPLE_ENV_PATH: Final = ROOT / ".env.example"
 QWEN_AUDIO_MODEL_ID: Final = "qwen-audio-3.0-asr-flash-filetrans"
 QWEN3_ASR_MODEL_ID: Final = "qwen3-asr-flash-filetrans"
@@ -293,6 +303,7 @@ def load_env(path: Path = DEFAULT_ENV_PATH) -> dict[str, str]:
 
 def save_env(path: Path, updates: Mapping[str, str]) -> None:
     target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
     text = _initial_env_text(target)
     lines = text.splitlines()
     seen: set[str] = set()

@@ -54,6 +54,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "server_stop_not_maw": "The process using this port is not a MAW editor server.",
     "server_stop_failed": "Unable to stop the MAW editor server.",
     "sticker_dir_invalid": "Sticker directory does not exist.",
+    "config_save_failed": "Local configuration could not be saved.",
 }
 
 
@@ -352,7 +353,10 @@ class LauncherApi:
             updates["DASHSCOPE_REGION"] = str(payload.get("region") or "beijing")
             updates["DASHSCOPE_DEFAULT_LANGUAGE"] = str(payload.get("language") or "")
             updates["DASHSCOPE_WORKSPACE_ID"] = str(payload.get("workspaceId") or "").strip()
-        save_env(self.paths.env_path, updates)
+        try:
+            save_env(self.paths.env_path, updates)
+        except (OSError, UnicodeError) as error:
+            return _error_result("", "config_save_failed", f"{self.paths.env_path}: {error}")
         return {"ok": True, "maskedApiKey": masked_secret(api_key), "message": "settings saved"}
 
     def save_prefs(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -364,7 +368,10 @@ class LauncherApi:
         if "showRareLangs" in payload:
             updates["MAW_GUI_SHOW_RARE_LANGS"] = "true" if payload.get("showRareLangs") else "false"
         if updates:
-            save_env(self.paths.env_path, updates)
+            try:
+                save_env(self.paths.env_path, updates)
+            except (OSError, UnicodeError) as error:
+                return _error_result("", "config_save_failed", f"{self.paths.env_path}: {error}")
         return {"ok": True}
 
     def choose_file(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -612,7 +619,10 @@ class LauncherApi:
 
     def save_ffmpeg_path(self, payload: Mapping[str, object]) -> dict[str, object]:
         value = str(payload.get("path") or "").strip()
-        save_env(self.paths.env_path, {"FFMPEG_PATH": value})
+        try:
+            save_env(self.paths.env_path, {"FFMPEG_PATH": value})
+        except (OSError, UnicodeError) as error:
+            return _error_result("ffmpegPath", "config_save_failed", f"{self.paths.env_path}: {error}")
         result = _check_ffmpeg(self.paths.env_path, override=value)
         result["ok"] = bool(result["found"])
         return result
@@ -622,7 +632,10 @@ class LauncherApi:
         path = Path(value).expanduser()
         if not value or not path.is_dir():
             return _error_result("stickerDir", "sticker_dir_invalid", value)
-        save_env(self.paths.env_path, {"STICKER_DIR": str(path)})
+        try:
+            save_env(self.paths.env_path, {"STICKER_DIR": str(path)})
+        except (OSError, UnicodeError) as error:
+            return _error_result("stickerDir", "config_save_failed", f"{self.paths.env_path}: {error}")
         return {"ok": True, "stickerDir": str(path)}
 
     def shutdown(self) -> None:

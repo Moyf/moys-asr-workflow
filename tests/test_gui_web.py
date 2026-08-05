@@ -562,6 +562,30 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertFalse(result["found"])
 
+    def test_save_ffmpeg_path_reports_configuration_write_failure(self) -> None:
+        with mock.patch("maw.gui_web.save_env", side_effect=PermissionError("read-only app bundle")):
+            result = self.api.save_ffmpeg_path({"path": "/opt/homebrew/bin"})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["field"], "ffmpegPath")
+        self.assertEqual(result["code"], "config_save_failed")
+        self.assertIn("read-only app bundle", result["detail"])
+
+    def test_save_ffmpeg_path_accepts_a_directory_with_both_macos_tools(self) -> None:
+        ffmpeg_dir = self.root / "bin"
+        ffmpeg_dir.mkdir()
+        ffmpeg_name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+        ffprobe_name = "ffprobe.exe" if os.name == "nt" else "ffprobe"
+        (ffmpeg_dir / ffmpeg_name).write_bytes(b"executable")
+        (ffmpeg_dir / ffprobe_name).write_bytes(b"executable")
+
+        result = self.api.save_ffmpeg_path({"path": str(ffmpeg_dir)})
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["found"])
+        self.assertEqual(result["directory"], str(ffmpeg_dir))
+        self.assertIn(f"FFMPEG_PATH={ffmpeg_dir}", self.env_path.read_text(encoding="utf-8"))
+
     def test_save_sticker_dir_rejects_missing_directory(self) -> None:
         result = self.api.save_sticker_dir({"path": str(self.root / "missing-stickers")})
 
@@ -921,6 +945,13 @@ class LauncherAssetContractTests(unittest.TestCase):
 
         self.assertNotIn('id="saveStickerDir"', page)
         self.assertIn('if (result.ok) await saveStickerDirectory(result.path);', script)
+
+    def test_ffmpeg_save_distinguishes_write_failure_from_missing_tools(self) -> None:
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertIn("config_save_failed", script)
+        self.assertIn("result.found === false", script)
+        self.assertIn("if (!result.ok) { const message = ffmpegSaveError(result);", script)
 
     def test_default_editor_port_is_8250(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
