@@ -8,6 +8,7 @@ import queue
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import tempfile
 import time
@@ -42,6 +43,8 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "output_missing": "SRT output path is required.",
     "server_no_response": "Editor server did not respond.",
     "server_start_failed": "Editor server failed to start.",
+    "mose_not_found": "MOSE desktop editor was not found in this MAW package.",
+    "mose_start_failed": "MOSE desktop editor failed to start.",
     "server_stop_not_maw": "The process using this port is not a MAW editor server.",
     "server_stop_failed": "Unable to stop the MAW editor server.",
     "sticker_dir_invalid": "Sticker directory does not exist.",
@@ -66,6 +69,39 @@ def _is_ffprobe_start_failure(lines: Sequence[str]) -> bool:
     return "ffprobe" in detail and any(
         marker in detail for marker in ("3221225794", "0xc0000142", "c0000142")
     )
+
+
+def _find_mose_executable() -> Path | None:
+    """Find the optional MOSE executable shipped beside the MAW Launcher."""
+    candidates: list[Path] = []
+    if getattr(sys, "frozen", False):
+        executable_dir = Path(sys.executable).resolve().parent
+        candidates.extend((executable_dir / "MOSE.exe", executable_dir / "mose.exe"))
+
+    repo_root = Path(__file__).resolve().parents[1]
+    candidates.extend(
+        (
+            repo_root / "MOSE.exe",
+            repo_root / "mose.exe",
+            repo_root / "desktop" / "target" / "release" / "mose.exe",
+            repo_root / "desktop" / "target" / "debug" / "mose.exe",
+            asset_path("MOSE.exe"),
+            asset_path("mose.exe"),
+        )
+    )
+
+    seen: set[Path] = set()
+    for candidate in candidates:
+        try:
+            candidate = candidate.resolve()
+        except OSError:
+            continue
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 @final
@@ -222,23 +258,36 @@ class LauncherApi:
         webbrowser.open(url)
         return {"ok": True}
 
+    def open_mose(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Open the packaged MOSE editor and pass it the selected project path."""
+        project_text = str(payload.get("jsonPath") or "").strip()
+        project = Path(project_text).expanduser() if project_text else None
+        if project is not None and not project.is_file():
+            return _error_result("jsonPath", "json_not_found", str(project))
+
+        executable = _find_mose_executable()
+        if executable is None:
+            return _error_result("editor", "mose_not_found", "MOSE.exe")
+
+        command = [str(executable)]
+        if project is not None:
+            command.append(str(project.resolve()))
+        try:
+            subprocess.Popen(
+                command,
+                cwd=str(executable.parent),
+                startupinfo=startupinfo(),
+                creationflags=creationflags(),
+            )
+        except OSError as error:
+            return _error_result("editor", "mose_start_failed", str(error))
+        return {"ok": True, "usedMose": True, "path": str(executable)}
+
     def start_server(self, payload: Mapping[str, object]) -> dict[str, object]:
         json_text = str(payload.get("jsonPath") or "").strip()
         port = _port(payload)
         url = f"http://127.0.0.1:{port}/"
         launch_url = f"{url}?lang={_gui_lang(payload)}"
-
-        # MOSE 桌面应用检测：安装了就优先用它打开（os.startfile 触发 .mosp 文件关联）
-        if json_text and os.name == "nt":
-            try:
-                import winreg
-                winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, ".mosp")
-                json_path = Path(json_text).expanduser()
-                if json_path.exists():
-                    os.startfile(str(json_path))
-                    return {"ok": True, "usedMose": True}
-            except (FileNotFoundError, OSError, KeyError):
-                pass  # MOSE 未安装或打开失败，fallback 到 serve.py
 
         if _wait_for_server(url, timeout=0.25):
             return {"ok": True, "url": launch_url, "serverAlreadyRunning": True}

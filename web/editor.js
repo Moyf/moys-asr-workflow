@@ -4026,40 +4026,46 @@ function configureRecentProjects() {
     }
     recentProjectsList.appendChild(item);
   });
-  recentProjectsToggle.addEventListener('click', (event) => {
-    event.stopPropagation();
-    recentProjectsEl.classList.toggle('open');
-  });
-  document.addEventListener('click', (event) => {
-    if (!recentProjectsEl.contains(event.target)) recentProjectsEl.classList.remove('open');
-  });
+  if (recentProjectsEl.dataset.listenersBound !== 'true') {
+    recentProjectsToggle.addEventListener('click', (event) => {
+      event.stopPropagation();
+      recentProjectsEl.classList.toggle('open');
+    });
+    document.addEventListener('click', (event) => {
+      if (!recentProjectsEl.contains(event.target)) recentProjectsEl.classList.remove('open');
+    });
+    recentProjectsEl.dataset.listenersBound = 'true';
+  }
 }
 
 function configureServerProjectSettings() {
   if (!SERVER_CONFIG?.settingsUrl || !serverProjectSettingsEl || !autoOpenLastProjectToggle) return;
   serverProjectSettingsEl.hidden = false;
   autoOpenLastProjectToggle.checked = SERVER_CONFIG.autoOpenLastProject !== false;
-  autoOpenLastProjectToggle.addEventListener('change', async () => {
-    const enabled = autoOpenLastProjectToggle.checked;
-    autoOpenLastProjectToggle.disabled = true;
-    try {
-      const response = await fetch(SERVER_CONFIG.settingsUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ autoOpenLastProject: enabled }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.ok) {
-        throw new Error(result.error || `服务器返回 ${response.status}`);
+  if (autoOpenLastProjectToggle.dataset.listenersBound !== 'true') {
+    autoOpenLastProjectToggle.addEventListener('change', async () => {
+      const enabled = autoOpenLastProjectToggle.checked;
+      autoOpenLastProjectToggle.disabled = true;
+      try {
+        const response = await fetch(SERVER_CONFIG.settingsUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ autoOpenLastProject: enabled }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) {
+          throw new Error(result.error || `服务器返回 ${response.status}`);
+        }
+        SERVER_CONFIG.autoOpenLastProject = result.autoOpenLastProject;
+      } catch (error) {
+        autoOpenLastProjectToggle.checked = SERVER_CONFIG.autoOpenLastProject !== false;
+        flashHint(`保存设置失败：${error.message || error}`);
+      } finally {
+        autoOpenLastProjectToggle.disabled = false;
       }
-      SERVER_CONFIG.autoOpenLastProject = result.autoOpenLastProject;
-    } catch (error) {
-      autoOpenLastProjectToggle.checked = SERVER_CONFIG.autoOpenLastProject !== false;
-      flashHint(`保存设置失败：${error.message || error}`);
-    } finally {
-      autoOpenLastProjectToggle.disabled = false;
-    }
-  });
+    });
+    autoOpenLastProjectToggle.dataset.listenersBound = 'true';
+  }
 }
 
 // === 工作区库：服务器版可把工作区（窗口布局 + 显示状态）保存到本机设置，跨工程复用 ===
@@ -4251,28 +4257,31 @@ function configureServerWorkspaceLibrary() {
   }
   refreshWorkspaceSelect();
   restoreWorkspaceSelection();
-  workspacePresetSelect?.addEventListener('change', () => applyWorkspaceSelection(workspacePresetSelect.value));
-  document.getElementById('layout-edit-toggle')?.addEventListener('click', () => {
-    // 拖放编辑只改窗口排列，不改变下拉框当前选中的工作区名称。
-    if (currentServerWorkspaceName) refreshWorkspaceSelect();
-    else if (currentBuiltinWorkspaceName && workspacePresetSelect) workspacePresetSelect.value = currentBuiltinWorkspaceName;
-    syncWorkspaceControls();
-  });
-  document.getElementById('layout-reset')?.addEventListener('click', () => {
-    const preset = currentBuiltinWorkspaceName;
-    if (preset) {
-      waveformEditor.setLayout(preset);
-      void updateServerWorkspaceSettings({ resetPresetWorkspace: preset }).then(() => {
-        flashHint(`已恢复「${preset}」默认工作区`);
-      }).catch((error) => {
-        flashHint(`重置工作区失败：${error.message || error}`);
-      });
-    }
-    syncWorkspaceControls();
-  });
-  saveWorkspaceButton?.addEventListener('click', () => { void saveCurrentWorkspace({ saveAs: false }); });
-  saveWorkspaceAsButton?.addEventListener('click', () => { void saveCurrentWorkspace({ saveAs: true }); });
-  deleteWorkspaceButton?.addEventListener('click', () => { void deleteCurrentServerWorkspace(); });
+  if (workspacePresetSelect?.dataset.listenersBound !== 'true') {
+    workspacePresetSelect?.addEventListener('change', () => applyWorkspaceSelection(workspacePresetSelect.value));
+    document.getElementById('layout-edit-toggle')?.addEventListener('click', () => {
+      // 拖放编辑只改窗口排列，不改变下拉框当前选中的工作区名称。
+      if (currentServerWorkspaceName) refreshWorkspaceSelect();
+      else if (currentBuiltinWorkspaceName && workspacePresetSelect) workspacePresetSelect.value = currentBuiltinWorkspaceName;
+      syncWorkspaceControls();
+    });
+    document.getElementById('layout-reset')?.addEventListener('click', () => {
+      const preset = currentBuiltinWorkspaceName;
+      if (preset) {
+        waveformEditor.setLayout(preset);
+        void updateServerWorkspaceSettings({ resetPresetWorkspace: preset }).then(() => {
+          flashHint(`已恢复「${preset}」默认工作区`);
+        }).catch((error) => {
+          flashHint(`重置工作区失败：${error.message || error}`);
+        });
+      }
+      syncWorkspaceControls();
+    });
+    saveWorkspaceButton?.addEventListener('click', () => { void saveCurrentWorkspace({ saveAs: false }); });
+    saveWorkspaceAsButton?.addEventListener('click', () => { void saveCurrentWorkspace({ saveAs: true }); });
+    deleteWorkspaceButton?.addEventListener('click', () => { void deleteCurrentServerWorkspace(); });
+    workspacePresetSelect.dataset.listenersBound = 'true';
+  }
   syncWorkspaceControls();
 }
 

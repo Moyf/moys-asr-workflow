@@ -65,6 +65,9 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("uv run --group build pyinstaller", script)
         self.assertIn("MAW.spec", script)
         self.assertIn("dist\\MAW\\MAW.exe", script)
+        self.assertIn("npm run tauri -- build", script)
+        self.assertIn("desktop\\src-tauri\\target\\release\\mose.exe", script)
+        self.assertIn("dist\\MAW\\MOSE.exe", script)
         self.assertIn("$ErrorActionPreference = 'Stop'", script)
 
     def test_release_workflow_is_tag_triggered_and_publishes_both_windows_packages(self) -> None:
@@ -73,6 +76,8 @@ class PackagingContractTests(unittest.TestCase):
 
         self.assertRegex(workflow, re.compile(r"on:\s+push:\s+tags:\s+- 'v\*'", re.MULTILINE))
         self.assertIn("windows-2022", workflow)
+        self.assertIn("actions/setup-node@v4", workflow)
+        self.assertIn("dtolnay/rust-toolchain@stable", workflow)
         self.assertIn("uv sync --group build --frozen", workflow)
         self.assertIn("tests/test_packaging_contract.py", workflow)
         self.assertIn("pyproject.toml", workflow)
@@ -80,6 +85,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn(r'(?m)^version = "(?<version>[^"]+)"\r?$', workflow)
         self.assertIn("PYTHONUTF8: '1'", workflow)
         self.assertIn("dist\\MAW\\MAW.exe", workflow)
+        self.assertIn("dist\\MAW\\MOSE.exe", workflow)
         self.assertIn("Compress-Archive", workflow)
         self.assertIn("Get-FileHash", workflow)
         self.assertIn("$FfmpegVersion = '8.1.2'", workflow)

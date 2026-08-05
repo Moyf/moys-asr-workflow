@@ -309,12 +309,6 @@ pub struct AppState {
     pub settings_path: PathBuf,
 }
 
-impl AppState {
-    pub fn can_save(&self) -> bool {
-        self.current_project_path.lock().unwrap().is_some()
-    }
-}
-
 // === settings.json 路径 ===
 
 pub fn settings_path() -> PathBuf {
@@ -483,6 +477,12 @@ pub fn remember_project(
         settings.save(&state.settings_path)?;
     }
     Ok(serde_json::json!({ "ok": true }))
+}
+
+#[tauri::command]
+pub fn get_settings(state: tauri::State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let settings = state.settings.lock().map_err(|_| "读取设置失败".to_string())?;
+    Ok(settings.to_server_config(false))
 }
 
 #[tauri::command]
@@ -671,13 +671,47 @@ fn cleanup_conversion_temp_files(playback: &Path) {
     }
 }
 
-/// 为 WebView 准备实际可播放的媒体；Desktop 使用随应用打包的 ffmpeg sidecar。
+fn bundled_ffmpeg_path() -> Option<PathBuf> {
+    let executable_name = if cfg!(target_os = "windows") {
+        "ffmpeg.exe"
+    } else {
+        "ffmpeg"
+    };
+    let mut candidates = Vec::new();
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(parent) = executable.parent() {
+            candidates.push(parent.join("ffmpeg").join("bin").join(executable_name));
+            candidates.push(parent.join(executable_name));
+        }
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        candidates.extend(std::env::split_paths(&path).map(|directory| directory.join(executable_name)));
+    }
+    candidates.into_iter().find(|path| path.is_file())
+}
+
+fn ffmpeg_command(
+    app: &tauri::AppHandle,
+    args: Vec<String>,
+) -> Result<tauri_plugin_shell::process::Command, String> {
+    use tauri_plugin_shell::ShellExt;
+
+    let command = if let Some(path) = bundled_ffmpeg_path() {
+        app.shell().command(path)
+    } else {
+        app.shell()
+            .sidecar("ffmpeg")
+            .map_err(|error| format!("无法找到 FFmpeg：请安装 FFmpeg，或使用 MAWxFF 版本：{}", error))?
+    };
+    Ok(command.args(args))
+}
+
+/// 为 WebView 准备实际可播放的媒体；优先使用 MAW 包内共享的 FFmpeg。
 #[tauri::command]
 pub async fn prepare_media(
     app: tauri::AppHandle,
     path: String,
 ) -> Result<serde_json::Value, String> {
-    use tauri_plugin_shell::ShellExt;
     use tauri_plugin_shell::process::CommandEvent;
 
     let source = PathBuf::from(&path).canonicalize().unwrap_or_else(|_| PathBuf::from(&path));
@@ -719,12 +753,8 @@ pub async fn prepare_media(
                     let _ = fs::remove_file(&temp_output);
                 }
                 args.push(temp_output.to_string_lossy().to_string());
-                let sidecar = app
-                    .shell()
-                    .sidecar("ffmpeg")
-                    .map_err(|e| format!("无法找到 ffmpeg sidecar: {}", e))?;
-                let (mut rx, _child) = sidecar
-                    .args(args)
+                let command = ffmpeg_command(&app, args)?;
+                let (mut rx, _child) = command
                     .spawn()
                     .map_err(|e| format!("ffmpeg 启动失败: {}", e))?;
                 let mut stderr = String::new();
@@ -904,7 +934,6 @@ pub async fn extract_waveform(
     media_path: String,
     peaks_per_second: Option<u32>,
 ) -> Result<serde_json::Value, String> {
-    use tauri_plugin_shell::ShellExt;
     use tauri_plugin_shell::process::CommandEvent;
 
     let pps = peaks_per_second.unwrap_or(100);
@@ -927,20 +956,15 @@ pub async fn extract_waveform(
             .unwrap_or(0),
     });
 
-    // 调 ffmpeg sidecar
-    let sidecar = app
-        .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| format!("无法找到 ffmpeg sidecar: {}", e))?;
-
-    let (mut rx, _child) = sidecar
-        .args([
-            "-nostdin", "-hide_banner", "-loglevel", "error",
-            "-i", &media_path,
-            "-map", "0:a:0", "-vn", "-ac", "1",
-            "-ar", &pcm_sample_rate.to_string(),
-            "-f", "s16le", "pipe:1",
-        ])
+    // 调优先解析到的共享 FFmpeg。
+    let command_args = vec![
+        "-nostdin".to_string(), "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), media_path.clone(),
+        "-map".to_string(), "0:a:0".to_string(), "-vn".to_string(), "-ac".to_string(), "1".to_string(),
+        "-ar".to_string(), pcm_sample_rate.to_string(),
+        "-f".to_string(), "s16le".to_string(), "pipe:1".to_string(),
+    ];
+    let (mut rx, _child) = ffmpeg_command(&app, command_args)?
         .spawn()
         .map_err(|e| format!("ffmpeg 启动失败: {}", e))?;
 

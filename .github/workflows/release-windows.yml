@@ -30,6 +30,14 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Verify tag matches pyproject version
         shell: pwsh
         run: |
@@ -52,7 +60,7 @@ jobs:
       - name: Run Python tests
         run: uv run python -m unittest discover -s tests -p "test_*.py"
 
-      - name: Build MAW GUI bundle
+      - name: Build MAW and MOSE bundle
         shell: pwsh
         run: .\scripts\build-windows.ps1 -SkipTests
 
@@ -79,6 +87,23 @@ jobs:
             }
           } else {
             Stop-Process -Id $GuiProcess.Id -Force
+          }
+
+      - name: Smoke MOSE executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ExePath = 'dist\MAW\MOSE.exe'
+          if (-not (Test-Path -LiteralPath $ExePath -PathType Leaf)) {
+            throw 'Missing dist\MAW\MOSE.exe after build.'
+          }
+          $MoseProcess = Start-Process -FilePath $ExePath -ArgumentList '--help' -PassThru -WindowStyle Hidden
+          if ($MoseProcess.WaitForExit(10000)) {
+            if ($MoseProcess.ExitCode -ne 0) {
+              throw "MOSE.exe launch smoke exited with $($MoseProcess.ExitCode)."
+            }
+          } else {
+            Stop-Process -Id $MoseProcess.Id -Force
           }
 
       - name: Create standard release archive
@@ -163,10 +188,10 @@ jobs:
           body: |
             ## 下载哪个？
 
-            - **不知道 FFmpeg 是什么，或者电脑里没有装** ： 下载 `MAWxFF-Windows-x64-${{ github.ref_name }}.zip`。它已经带上 MAW 所需的 `ffmpeg.exe` 和 `ffprobe.exe`，解压后直接双击 `MAW.exe`。
+            - **不知道 FFmpeg 是什么，或者电脑里没有装** ： 下载 `MAWxFF-Windows-x64-${{ github.ref_name }}.zip`。它已经带上 MAW 与 MOSE 所需的 `ffmpeg.exe` 和 `ffprobe.exe`，解压后直接双击 `MAW.exe`。
             - **已经装好 FFmpeg，并且 `ffmpeg` / `ffprobe` 在 PATH 里** ： 下载体积更小的 `MAW-Windows-x64-${{ github.ref_name }}.zip`。
 
-            两个版本的 MAW 功能完全一致；区别只有是否捆绑 FFmpeg。`.sha256` 文件可用于校验下载完整性。
+            启动 Launcher 后，「打开编辑器」会启动 MOSE 并自动传入当前工程；Server 版编辑器与 HTML 空工程仍可从右侧拓展菜单打开。两个版本的 MAW 功能完全一致；区别只有是否捆绑 FFmpeg。`.sha256` 文件可用于校验下载完整性。
           files: |
             MAW-Windows-x64-${{ github.ref_name }}.zip
             MAW-Windows-x64-${{ github.ref_name }}.zip.sha256
