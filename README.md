@@ -1,6 +1,8 @@
 # Moy's ASR Workflow（MAW）
 
+QQ 交流群：[1079160201](https://qm.qq.com/q/4YtxZIpzxC)
 
+> Up 精力有限，如有新需求请提 Issues，Q群仅供交流不接CPU。
 
 ## 这是什么
 
@@ -19,9 +21,11 @@ Moy 的 ASR 工作流由两部分组成：
 
 > 当前支持模型：阿里云百炼 Qwen / Fun-ASR 或 Soniox 云端 ASR API  
 
-- **MOSE / MAWE**：Windows Release 默认使用 MOSE 桌面编辑器；Server 版和单文件版 MAWE 仍作为备用入口。
+- **MOSE / MAWE**：搭配使用的字幕编辑器，功能有九分甚至十分的强劲：
 
 ![MAWE 字幕编辑器预览](assets/screenshot-v1.2.0.jpg)  
+
+*Windows Release 默认使用 MOSE 桌面编辑器；Server 版和单文件版 MAWE 仍作为备用入口。*
 
 ## 如何使用
 
@@ -36,13 +40,13 @@ Moy 的 ASR 工作流由两部分组成：
 
 > [!tip]
 > [如何获取阿里云百炼的 Qwen-Audio/Fun-ASR API](https://help.aliyun.com/zh/model-studio/get-api-key)
-> （不含广告，默认使用 Qwen-Audio 3.0，支持长音频、热词和说话人分离）
+> （不含广告，默认使用最新的 Qwen-Audio 3.0 ASR 模型，支持长音频、热词、说话人分离和提示词）
 
-如果你更在意小语种多语言，可以使用 [Soniox Console](https://console.soniox.com) 申请 Key；
-两个 Key 不需要同时配置，用到哪个配哪个即可。
+如果你更在意小语种多语言，可以使用 [Soniox Console](https://console.soniox.com) 申请 Key。
+
+**两个 Key 不需要同时配置，用到哪个配哪个即可。**
 
 配完之后点击「保存到本地环境」，下次就不用重复配置了。
-
 
 <details>
 <summary>🔐 为了方便你快速体验，你可以先用这个 key 尝试 </summary>
@@ -66,7 +70,7 @@ Moy 的 ASR 工作流由两部分组成：
 3. 如果你需要对字幕进行更复杂的编辑，点击「打开编辑器」后使用 MOSE；也可以从右侧菜单启动 Server 版或 HTML 编辑器。
 4. 操作完成后，点击右上角按钮导出你所需的 SRT 字幕或是其他附加格式。
 
-所有编辑都在本机浏览器完成。  
+所有编辑都在本机完成。  
 转写时，脚本会把待识别媒体直接上传到你选择的阿里云百炼或 Soniox 账户；本项目没有自己的服务器、不会代管你的 API Key 或媒体。
 
 ## 你需要准备
@@ -75,9 +79,12 @@ Moy 的 ASR 工作流由两部分组成：
 - [Windows 图形版](https://github.com/Moyf/moys-asr-workflow/releases/latest)：Windows 10/11；下载 `MAWxFF` 不需要另外安装 FFmpeg，下载普通版则需要系统里已经有 `ffmpeg` 和 `ffprobe`。
 - 从源码或命令行运行：Python 3.11 或更新版本、[uv](https://docs.astral.sh/uv/getting-started/installation/)（推荐），以及 [FFmpeg](https://ffmpeg.org/download.html)。macOS/Linux 也可尝试。
 
+> [!note]
+> 本地模型版本正在开发中…… 
 
 <details>
 <summary>废话压缩</summary>
+
 两个版本的 MAW 功能完全一样。解压后双击 `MAW.exe`，Launcher 会带你完成这条流程：
 
 ```text
@@ -236,10 +243,12 @@ uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" --speaker-
 </details>
 
 
-## MAWE — Moy's ASR Workflow Editor
+## MOSE — Moy's Open Subtitle Editor
 
-MAWE 是 MAW 自带的字幕编辑器。  
+MOSE/MAWE 是 MAW 自带的字幕编辑器。  
 推荐使用它的本地服务器模式：可稳定拖动大型媒体、保留最近工程记录、支持直接保存工程以及自动加载表情包路径。
+
+MAWE 是 MAW Editor，原始版本，纯网页实现，可以用 HTML 单文件或者启动 Server；
 
 需要手动启动 Server 版编辑器时，点击 Launcher 右侧菜单的「启动 Server 版字幕编辑器」，或者运行：
 ```powershell
@@ -248,14 +257,16 @@ uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.mosp"
 
 浏览器会自动打开 `http://127.0.0.1:8250`。
 
-MAWE 右上角可切换中文 / English；编辑完成后点“保存工程”或按 `Ctrl+S`，覆盖前会留下同目录、保持原扩展名的备份（`.mosp.bak` 或 `.json.bak`）；`Ctrl+Shift+S` 为另存为。按 `Ctrl+C` 停止服务。
+MOSE 是 Tauri 打包的独立可执行文件，看起来比较专业（？）
+
+编辑器右上角可切换中文 / English；编辑完成后点“保存工程”或按 `Ctrl+S`，覆盖前会留下同目录、保持原扩展名的备份（`.mosp.bak` 或 `.json.bak`）；`Ctrl+Shift+S` 为另存为。
 
 服务器版还可以把「工作区」保存在本机服务器设置中，因此可跨工程复用：一个工作区包含窗口布局与显示状态（字幕列表显示项、波形单/多行等）。四个内置工作区在“编辑布局”后可保存为本机覆盖版、重置为默认或另存为，但不可删除；选中自己保存的工作区后，可以继续保存、另存或删除。工作区只保存在本机，不写入工程文件。
 
 > [!important]
 > 除了服务器版本，也支持同时生成更为便携的 HTML 单文件编辑器。
 > 功能相对缺少一些，但是90%的编辑体验是相同的——生成的时候勾选「同时生成单文件编辑器」后，直接双击转写生成的 `.edit.html` （或者用 Launcher 中的“打开该项目的单文件编辑器”打开工程。  
-> 单 HTML 文件模式适合你嫌起服务器麻烦（或者搞不来）；本地服务器模式更适合日常编辑。
+> 单 HTML 文件模式适合你嫌起服务器麻烦（或者搞不来）；本地服务器模式更适合日常编辑。现在有了 exe/app 版本的话，就都用 MOSE 好啦。
 
 ### 目前支持的特性
 
@@ -271,7 +282,7 @@ MAWE 右上角可切换中文 / English；编辑完成后点“保存工程”�
 - 操作部分
   - WASD 快速跳转前后字幕
   - Enter 进入字幕编辑模式
-  - 更多操作详见「🤔帮助」按钮
+  - 更多操作详见右上角 **【🤔 帮助】** 按钮。
 - 拓展部分
   - 可给字幕附加**表情包**或**颜色**，并在多句字幕之间保持关联。
   - 可导出 Resolve JSON；配合兼容的达芬奇执行脚本，可在达芬奇内批量导入字幕颜色与表情包配置。执行脚本不随这个最小版 MAW 发布。
