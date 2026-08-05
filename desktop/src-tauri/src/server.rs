@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
+use tauri::Manager;
 
 pub const MAX_RECENT_PROJECTS: usize = 10;
 
@@ -881,6 +882,13 @@ pub async fn prepare_media(
             converted = true;
         }
     }
+
+    // The frontend uses Tauri's asset protocol for external media. Keep the
+    // scope narrow: only the source or generated playback file for this
+    // request is exposed to the webview.
+    app.state::<tauri::scope::Scopes>()
+        .allow_file(&playback)
+        .map_err(|error| format!("无法授权媒体访问：{}", error))?;
 
     Ok(serde_json::json!({
         "ok": true,

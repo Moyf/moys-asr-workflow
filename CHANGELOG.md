@@ -2,6 +2,13 @@
 
 本项目采用 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 的记录方式。
 
+## [1.13.1-beta-4] - 2026-08-05
+
+### Fixed
+
+- 修复 Tauri WebView 播放工程关联媒体时使用 `file://` 导致 MP4 等外部文件无法读取的问题；现在改用 asset protocol，并按请求授权实际媒体文件。
+- 补充桌面媒体访问的打包契约检查，确保 Tauri 配置、Rust 权限与前端 URL 转换保持一致。
+
 ## [1.13.1-beta-3] - 2026-08-05
 
 ### Fixed

@@ -136,6 +136,21 @@
     return replacement;
   }
 
+  function mediaSourceUrl(result, fallbackPath) {
+    var path = (result && (result.playbackPath || result.sourcePath)) || fallbackPath;
+    var convertFileSrc =
+      (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.convertFileSrc) ||
+      (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.convertFileSrc);
+    if (typeof convertFileSrc === 'function' && path) {
+      try {
+        return convertFileSrc(path);
+      } catch (error) {
+        console.warn('[MOSE] asset 媒体 URL 生成失败，回退到后端 URL:', error);
+      }
+    }
+    return (result && result.url) || '';
+  }
+
   function waitForMediaMetadata(mediaElement, name) {
     return new Promise(function (resolve, reject) {
       var settled = false;
@@ -180,8 +195,10 @@
       var metadataPromise = waitForMediaMetadata(mediaPlayer, result.name);
       if (mediaPlayer) {
         var source = mediaPlayer.querySelector('source');
-        if (source) source.src = result.url;
-        else mediaPlayer.src = result.url;
+        var mediaUrl = mediaSourceUrl(result, mediaPath);
+        if (!mediaUrl) throw new Error('后端没有返回可播放的媒体 URL。');
+        if (source) source.src = mediaUrl;
+        else mediaPlayer.src = mediaUrl;
         mediaPlayer.load();
       }
       try {
