@@ -121,13 +121,38 @@ jobs:
           $FfmpegVersion = '8.1.2'
           $FfmpegCommit = '38b88335f9'
           $FfmpegArchive = "build\ffmpeg-$FfmpegVersion-essentials_build.zip"
-          $FfmpegUrl = "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-$FfmpegVersion-essentials_build.zip"
+          $FfmpegUrls = @(
+            "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-$FfmpegVersion-essentials_build.zip"
+            "https://github.com/GyanD/codexffmpeg/releases/download/$FfmpegVersion/ffmpeg-$FfmpegVersion-essentials_build.zip"
+          )
           $ExpectedHash = 'db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec'
           New-Item -ItemType Directory -Path 'build\ffmpeg-package' -Force | Out-Null
-          Invoke-WebRequest -Uri $FfmpegUrl -OutFile $FfmpegArchive
-          $ActualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $FfmpegArchive).Hash.ToLowerInvariant()
-          if ($ActualHash -ne $ExpectedHash) {
-            throw "FFmpeg archive checksum mismatch: expected $ExpectedHash, got $ActualHash."
+          $DownloadedUrl = $null
+          foreach ($FfmpegUrl in $FfmpegUrls) {
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              try {
+                Write-Host "Downloading FFmpeg from $FfmpegUrl (attempt $attempt/3)"
+                Invoke-WebRequest -Uri $FfmpegUrl -OutFile $FfmpegArchive -TimeoutSec 120
+                $ActualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $FfmpegArchive).Hash.ToLowerInvariant()
+                if ($ActualHash -ne $ExpectedHash) {
+                  throw "FFmpeg archive checksum mismatch: expected $ExpectedHash, got $ActualHash."
+                }
+                $DownloadedUrl = $FfmpegUrl
+                break
+              } catch {
+                Remove-Item -LiteralPath $FfmpegArchive -Force -ErrorAction SilentlyContinue
+                Write-Warning "FFmpeg download failed from $FfmpegUrl (attempt $attempt/3): $($_.Exception.Message)"
+                if ($attempt -lt 3) {
+                  Start-Sleep -Seconds 10
+                }
+              }
+            }
+            if ($DownloadedUrl) {
+              break
+            }
+          }
+          if (-not $DownloadedUrl) {
+            throw "Unable to download a verified FFmpeg archive from any configured source."
           }
           Expand-Archive -LiteralPath $FfmpegArchive -DestinationPath 'build\ffmpeg-package' -Force
 
@@ -151,7 +176,7 @@ jobs:
           @(
             "FFmpeg $FfmpegVersion Essentials build for Windows x64"
             "Build provider: https://www.gyan.dev/ffmpeg/builds/"
-            "Original binary archive: $FfmpegUrl"
+            "Original binary archive: $DownloadedUrl"
             "Archive SHA-256: $ExpectedHash"
             "Corresponding FFmpeg source commit: https://github.com/FFmpeg/FFmpeg/commit/$FfmpegCommit"
             "FFmpeg source archive: https://github.com/FFmpeg/FFmpeg/archive/$FfmpegCommit.tar.gz"
