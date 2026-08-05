@@ -120,6 +120,7 @@ class PackagingContractTests(unittest.TestCase):
 
         self.assertIn('"icons/icon.ico"', config)
         self.assertIn('"ext": ["mosp"]', config)
+        self.assertNotIn('"externalBin"', config)
 
     def test_pr_release_workflow_builds_only_the_no_ffmpeg_windows_preview(self) -> None:
         """Given a pull request, When packaging runs, Then only a read-only standard ZIP is uploaded."""

@@ -27,7 +27,6 @@
   },
   "bundle": {
     "active": false,
-    "externalBin": ["binaries/ffmpeg"],
     "fileAssociations": [
       {
         "ext": ["mosp"],

@@ -15,6 +15,7 @@
 
 - 修复 macOS 应用图标资源与构建配置，macOS Release 包现在会包含正确的图标。
 - 修复 Windows Release 打包顺序：在 Tauri 验证前预生成 MOSE 前端页面，避免干净 runner 找不到 `desktop/src/index.html`。
+- 修复 MOSE Windows 构建对未随包提供的 Tauri FFmpeg sidecar 的错误依赖；发布包继续按标准版使用 PATH、MAWxFF 使用同目录 FFmpeg。
 
 ## [1.3.0] - 2026-08-05
 
