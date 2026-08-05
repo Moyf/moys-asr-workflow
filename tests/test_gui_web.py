@@ -16,7 +16,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, _find_mose_executable, _is_ffprobe_start_failure, _port, _request_from_payload, _route_dropped_path  # noqa: E402
+from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, _find_mose_executable, _is_ffprobe_start_failure, _port, _register_mosp_association, _request_from_payload, _route_dropped_path  # noqa: E402
 from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 
 
@@ -175,6 +175,48 @@ class GuiWebBridgeTests(unittest.TestCase):
         with mock.patch.object(sys, "frozen", True, create=True):
             with mock.patch.object(sys, "executable", str(maw_executable)):
                 self.assertEqual(_find_mose_executable(), mose_executable.resolve())
+
+    def test_register_mosp_association_points_to_mose_and_maw_icon(self) -> None:
+        executable = self.root / "MOSE.exe"
+        icon = self.root / "assets" / "maw.ico"
+        executable.write_bytes(b"exe")
+        icon.parent.mkdir()
+        icon.write_bytes(b"ico")
+
+        class FakeKey:
+            def __init__(self, path: str) -> None:
+                self.path = path
+
+            def __enter__(self) -> "FakeKey":
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+        class FakeWinreg:
+            HKEY_CURRENT_USER = object()
+            REG_SZ = 1
+
+            def __init__(self) -> None:
+                self.values: list[tuple[str, str | None, str]] = []
+
+            def CreateKey(self, _root: object, path: str) -> FakeKey:
+                return FakeKey(path)
+
+            def SetValueEx(self, key: FakeKey, name: str | None, _reserved: int, _kind: int, value: str) -> None:
+                self.values.append((key.path, name, value))
+
+        fake_winreg = FakeWinreg()
+        with mock.patch.object(sys, "platform", "win32"):
+            with mock.patch("maw.gui_web._find_mose_executable", return_value=executable):
+                with mock.patch("maw.gui_web.asset_path", return_value=icon):
+                    with mock.patch.dict(sys.modules, {"winreg": fake_winreg}):
+                        self.assertTrue(_register_mosp_association())
+
+        values = {path: value for path, name, value in fake_winreg.values if name is None}
+        self.assertEqual(values[r"Software\Classes\.mosp"], "Moy.MOSE.Project")
+        self.assertEqual(values[r"Software\Classes\Moy.MOSE.Project\DefaultIcon"], f'"{icon}",0')
+        self.assertEqual(values[r"Software\Classes\Moy.MOSE.Project\shell\open\command"], f'"{executable}" "%1"')
 
     def test_open_mose_reports_missing_project_before_starting(self) -> None:
         with mock.patch("maw.gui_web.subprocess.Popen") as popen:

@@ -104,6 +104,33 @@ def _find_mose_executable() -> Path | None:
     return None
 
 
+def _register_mosp_association() -> bool:
+    """Register the portable package's .mosp association for the current Windows user."""
+    if sys.platform != "win32":
+        return False
+    executable = _find_mose_executable()
+    if executable is None:
+        return False
+    icon = asset_path("assets/maw.ico")
+    if not icon.is_file():
+        icon = executable
+    try:
+        import winreg
+
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.mosp") as extension_key:
+            winreg.SetValueEx(extension_key, None, 0, winreg.REG_SZ, "Moy.MOSE.Project")
+            winreg.SetValueEx(extension_key, "Content Type", 0, winreg.REG_SZ, "application/json")
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\Moy.MOSE.Project") as file_type_key:
+            winreg.SetValueEx(file_type_key, None, 0, winreg.REG_SZ, "MOSE Project")
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\Moy.MOSE.Project\DefaultIcon") as icon_key:
+            winreg.SetValueEx(icon_key, None, 0, winreg.REG_SZ, f'"{icon}",0')
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\Moy.MOSE.Project\shell\open\command") as command_key:
+            winreg.SetValueEx(command_key, None, 0, winreg.REG_SZ, f'"{executable}" "%1"')
+    except (ImportError, OSError):
+        return False
+    return True
+
+
 @final
 class EventPump:
     def __init__(self, *, window_getter: Callable[[], object | None], interval: float = 0.1) -> None:
@@ -528,6 +555,7 @@ def run_app() -> None:
 
     paths = default_paths()
     api = LauncherApi(paths=paths)
+    _register_mosp_association()
     window = webview.create_window(
         WINDOW_TITLE,
         url=paths.launcher_html.resolve().as_uri(),
