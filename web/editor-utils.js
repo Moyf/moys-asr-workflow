@@ -62,6 +62,158 @@
     return segments.map((segment) => String(segment?.text || '')).join(separator);
   }
 
+  // 字幕“字数/词数”计量：含 CJK 字符时按「字」计（只数字母与汉字等文字、数字，
+  // 不计空白与标点），否则按空白切分计「词」数（同样要求词内至少一个文字/数字）。
+  function subtitleTextLength(text) {
+    const normalized = String(text || '').trim();
+    if (!normalized) return 0;
+    // CJK 判定区间：U+3400–U+4DBF（扩展 A）、U+4E00–U+9FFF（基本区）、U+F900–U+FAFF（兼容表意）。
+    if (/[㐀-䶿一-鿿豈-﫿]/.test(normalized)) {
+      const matches = normalized.match(/[\p{L}\p{N}]/gu);
+      return matches ? matches.length : 0;
+    }
+    return normalized.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
+  }
+
+  // 短字幕判定：中文少于 threshold 个字 / 英文少于 threshold 个词。
+  function isShortSubtitleText(text, threshold) {
+    const limit = Math.max(1, Math.round(Number(threshold) || 3));
+    return subtitleTextLength(text) < limit;
+  }
+
+  // 时长兜底（与 maw/project.py 的 repair_segment_durations 同规则，原地修改）：
+  // 任何 0 长（或倒挂）的段 / item 至少保留 minMs，且保持单调不重叠、item 不越出
+  // 所属段。只修改非法值，本已合法的短时长时间码（如真实的 60ms 词）保持不动。
+  // 返回修复的边界数量。
+  function normalizeSegmentTimings(segments, minMs = 100) {
+    const floor = Math.max(1, Math.round(Number(minMs) || 100));
+    const source = Array.isArray(segments) ? segments : [];
+    let fixed = 0;
+    let previousSegmentEnd = 0;
+    source.forEach((segment) => {
+      if (!segment || typeof segment !== 'object') return;
+      let start = Math.round(Number(segment.start));
+      let end = Math.round(Number(segment.end));
+      if (!Number.isFinite(start)) start = 0;
+      if (!Number.isFinite(end)) end = start;
+      if (start < previousSegmentEnd) { start = previousSegmentEnd; fixed++; }
+      const items = Array.isArray(segment.items) ? segment.items : null;
+      let previousItemEnd = start;
+      if (items) {
+        items.forEach((item) => {
+          if (!item || typeof item !== 'object') return;
+          let itemStart = Math.round(Number(item.start));
+          let itemEnd = Math.round(Number(item.end));
+          if (!Number.isFinite(itemStart)) itemStart = previousItemEnd;
+          if (!Number.isFinite(itemEnd)) itemEnd = itemStart;
+          if (itemStart < previousItemEnd) { itemStart = previousItemEnd; fixed++; }
+          if (itemEnd <= itemStart) { itemEnd = itemStart + floor; fixed++; }
+          item.start = itemStart;
+          item.end = itemEnd;
+          previousItemEnd = itemEnd;
+        });
+        const lastEnd = items.length ? items[items.length - 1].end : null;
+        if (Number.isFinite(lastEnd) && end < lastEnd) { end = lastEnd; fixed++; }
+      }
+      if (end <= start) { end = start + floor; fixed++; }
+      segment.start = start;
+      segment.end = end;
+      previousSegmentEnd = end;
+    });
+    return fixed;
+  }
+
+  // 拼合字幕计划（纯函数，不改动输入）。返回：
+  // - snaps: [{ index, edge, time }]，相邻间隔在 (0, gapMs] 时：
+  //   snapDirection 'backward'（向前拓展，默认）把后方字幕 start 前拓到前一条 end；
+  //   snapDirection 'forward'（向后拓展）把前方字幕 end 后延到后一条 start。
+  // - groups: [[idx, ...]]，过短字幕的合并组；absorbDirection 'previous'（向前吸收，
+  //   默认）并入上一条、'next'（向后吸收）并入下一条；absorbShort 为 false 时不合并。
+  //   吸收同样要求两条字幕的实际间隔在 (0, gapMs] 内；禁用项或 speaker 不一致的组合不合并。
+  function planAutoMerge(segments, options = {}) {
+    const gapMs = Math.max(0, Math.round(Number(options.gapMs) || 0));
+    const snapDirection = options.snapDirection === 'forward' ? 'forward' : 'backward';
+    const absorbShort = options.absorbShort !== false;
+    const absorbDirection = options.absorbDirection === 'next' ? 'next' : 'previous';
+    const shortCount = Math.max(1, Math.round(Number(options.shortCount) || 3));
+    const source = Array.isArray(segments) ? segments : [];
+    const snaps = [];
+    for (let i = 1; i < source.length; i++) {
+      const previous = source[i - 1];
+      const current = source[i];
+      if (!previous || !current) continue;
+      if (!Number.isFinite(previous.end) || !Number.isFinite(current.start)) continue;
+      const gap = current.start - previous.end;
+      if (gap <= 0 || gap > gapMs) continue;
+      if (snapDirection === 'forward') snaps.push({ index: i - 1, edge: 'end', time: current.start });
+      else snaps.push({ index: i, edge: 'start', time: previous.end });
+    }
+    const canMergePair = (leftIdx, rightIdx) => {
+      const left = source[leftIdx];
+      const right = source[rightIdx];
+      if (!left || !right) return false;
+      if (left.disabled || right.disabled) return false;
+      if (!Number.isFinite(left.end) || !Number.isFinite(right.start)) return false;
+      const gap = right.start - left.end;
+      if (gap <= 0 || gap > gapMs) return false;
+      return (left.speaker ?? null) === (right.speaker ?? null);
+    };
+    const groups = [];
+    if (absorbShort) {
+      const indexRange = (from, to) => Array.from({ length: to - from + 1 }, (_, k) => from + k);
+      let i = 0;
+      while (i < source.length) {
+        if (!isShortSubtitleText(source[i]?.text, shortCount)) { i++; continue; }
+        // 连续过短字幕区间 [i..j]（相邻短字幕之间也要满足合并条件）
+        let j = i;
+        while (j + 1 < source.length
+            && isShortSubtitleText(source[j + 1]?.text, shortCount)
+            && canMergePair(j, j + 1)) j++;
+        const lastGroup = groups[groups.length - 1];
+        const canExtendLast = !!(lastGroup && lastGroup[lastGroup.length - 1] === i - 1 && canMergePair(i - 1, i));
+        const canMergeBackward = i > 0 && canMergePair(i - 1, i);
+        const canMergeForward = j + 1 < source.length && canMergePair(j, j + 1);
+        if (absorbDirection === 'next') {
+          // 向后吸收：优先并入下一条；没有下一条（或不可合并）时退回上一条
+          if (canMergeForward) groups.push(indexRange(i, j + 1));
+          else if (canExtendLast) for (let k = i; k <= j; k++) lastGroup.push(k);
+          else if (canMergeBackward) groups.push(indexRange(i - 1, j));
+        } else {
+          // 向前吸收：优先并入上一条；首条（或上一条不可合并）时退回下一条
+          if (canExtendLast) for (let k = i; k <= j; k++) lastGroup.push(k);
+          else if (canMergeBackward) groups.push(indexRange(i - 1, j));
+          else if (canMergeForward) groups.push(indexRange(i, j + 1));
+        }
+        i = j + 1;
+      }
+    }
+    return { snaps, groups };
+  }
+
+  // 应用拼合间隔计划（原地修改 segments）：向前拓展把后方字幕 start 前拓到前一条
+  // end；向后拓展把前方字幕 end 后延到后一条 start。只许延长、不许缩短。
+  // 返回实际改动的字幕条数。
+  function applyAutoMergeSnaps(segments, snaps) {
+    const source = Array.isArray(segments) ? segments : [];
+    let changed = 0;
+    (Array.isArray(snaps) ? snaps : []).forEach((snap) => {
+      const segment = source[snap?.index];
+      if (!segment || !Number.isFinite(snap.time)) return;
+      if (snap.edge === 'end') {
+        if (snap.time > segment.end) {
+          segment.end = snap.time;
+          segment._dirty = true;
+          changed++;
+        }
+      } else if (snap.time >= 0 && snap.time < segment.start) {
+        segment.start = snap.time;
+        segment._dirty = true;
+        changed++;
+      }
+    });
+    return changed;
+  }
+
   function formatHumanDuration(durationMs) {
     const totalSeconds = Math.max(0, Math.floor(Number(durationMs) / 1000) || 0);
     const seconds = totalSeconds % 60;
@@ -696,6 +848,11 @@
     countTextUnits,
     cueMetrics,
     joinSegmentTexts,
+    subtitleTextLength,
+    isShortSubtitleText,
+    normalizeSegmentTimings,
+    planAutoMerge,
+    applyAutoMergeSnaps,
     formatHumanDuration,
     formatGapRemoveDuration,
     splitCharOffsetAtTime,

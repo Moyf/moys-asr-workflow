@@ -178,6 +178,28 @@ jobs:
             MAWxFF-Windows-x64-${{ github.ref_name }}.zip.sha256
           if-no-files-found: error
 
+      - name: Prepare release notes from CHANGELOG
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Version = '${{ github.ref_name }}'.TrimStart('v')
+          $Changelog = Get-Content -LiteralPath 'CHANGELOG.md' -Raw
+          $Pattern = "(?ms)^## \[$([regex]::Escape($Version))\][^\r\n]*\r?\n.*?(?=^## \[|\z)"
+          $Match = [regex]::Match($Changelog, $Pattern)
+          if (-not $Match.Success) {
+            throw "CHANGELOG.md does not contain a release section for $Version."
+          }
+          $DownloadGuide = @"
+          ## 下载哪个？
+
+          - **不知道 FFmpeg 是什么，或者电脑里没有装** ： 下载 ``MAWxFF-Windows-x64-${{ github.ref_name }}.zip``。它已经带上 MAW 与 MOSE 所需的 ``ffmpeg.exe`` 和 ``ffprobe.exe``，解压后直接双击 ``MAW.exe``。
+          - **已经装好 FFmpeg，并且 ``ffmpeg`` / ``ffprobe`` 在 PATH 里** ： 下载体积更小的 ``MAW-Windows-x64-${{ github.ref_name }}.zip``。
+
+          启动 Launcher 后，「打开编辑器」会启动 MOSE 并自动传入当前工程；Server 版编辑器与 HTML 空工程仍可从右侧拓展菜单打开。两个版本的 MAW 功能完全一致；区别只有是否捆绑 FFmpeg。``.sha256`` 文件可用于校验下载完整性。
+          "@
+          $Body = $DownloadGuide.Trim() + "`r`n`r`n" + $Match.Value.Trim()
+          Set-Content -LiteralPath 'release-notes.md' -Value $Body -Encoding utf8
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         env:
@@ -185,13 +207,7 @@ jobs:
         with:
           target_commitish: ${{ github.sha }}
           prerelease: ${{ contains(github.ref_name, '-') }}
-          body: |
-            ## 下载哪个？
-
-            - **不知道 FFmpeg 是什么，或者电脑里没有装** ： 下载 `MAWxFF-Windows-x64-${{ github.ref_name }}.zip`。它已经带上 MAW 与 MOSE 所需的 `ffmpeg.exe` 和 `ffprobe.exe`，解压后直接双击 `MAW.exe`。
-            - **已经装好 FFmpeg，并且 `ffmpeg` / `ffprobe` 在 PATH 里** ： 下载体积更小的 `MAW-Windows-x64-${{ github.ref_name }}.zip`。
-
-            启动 Launcher 后，「打开编辑器」会启动 MOSE 并自动传入当前工程；Server 版编辑器与 HTML 空工程仍可从右侧拓展菜单打开。两个版本的 MAW 功能完全一致；区别只有是否捆绑 FFmpeg。`.sha256` 文件可用于校验下载完整性。
+          body_path: release-notes.md
           files: |
             MAW-Windows-x64-${{ github.ref_name }}.zip
             MAW-Windows-x64-${{ github.ref_name }}.zip.sha256

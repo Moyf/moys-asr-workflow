@@ -52,6 +52,7 @@ class FunAsrAdapterTests(unittest.TestCase):
             enable_itn=False,
             model="fun-asr",
             enable_speaker=True,
+            vocabulary_id="vocab-fun",
         )
 
         self.assertEqual(task_id, "task-fun")
@@ -59,6 +60,7 @@ class FunAsrAdapterTests(unittest.TestCase):
         self.assertEqual(payload["input"], {"file_urls": ["oss://temporary/audio.wav"]})
         self.assertEqual(payload["parameters"]["language_hints"], ["zh"])
         self.assertTrue(payload["parameters"]["diarization_enabled"])
+        self.assertEqual(payload["parameters"]["vocabulary_id"], "vocab-fun")
         self.assertNotIn("enable_words", payload["parameters"])
         self.assertNotIn("enable_itn", payload["parameters"])
         self.assertEqual(

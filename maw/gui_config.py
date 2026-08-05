@@ -12,7 +12,10 @@ from typing import Final
 ROOT: Final = Path(__file__).resolve().parents[1]
 DEFAULT_ENV_PATH: Final = ROOT / ".env"
 EXAMPLE_ENV_PATH: Final = ROOT / ".env.example"
-DEFAULT_MODEL_ID: Final = "qwen3-asr-flash-filetrans"
+QWEN_AUDIO_MODEL_ID: Final = "qwen-audio-3.0-asr-flash-filetrans"
+QWEN3_ASR_MODEL_ID: Final = "qwen3-asr-flash-filetrans"
+# qwen-audio-3.0 是最新发布的模型，作为各入口默认；旧 qwen3-asr 置底保留（后续可能移除）。
+DEFAULT_MODEL_ID: Final = QWEN_AUDIO_MODEL_ID
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +25,9 @@ class ModelConfig:
     env_key: str
     note: str = ""
     supports_speaker: bool = False
+    supports_context: bool = False
+    supports_hotwords: bool = False
+    supports_vocabulary: bool = False
     languages: tuple[tuple[str, str], ...] = ()
 
 
@@ -95,6 +101,7 @@ LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
 FUNASR_LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
     ("", "自动识别"),
     ("zh", "中文 / Chinese"),
+    ("yue", "粤语 / Cantonese"),
     ("en", "英语 / English"),
     ("ja", "日语 / Japanese"),
     ("ko", "韩语 / Korean"),
@@ -126,10 +133,10 @@ FUNASR_LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
     ("sk", "斯洛伐克语 / Slovak"),
 )
 
-# 关闭「显示相对小众的语言」时，两家供应商统一保留这 8 种常用语言。
+# 关闭「显示相对小众的语言」时，Qwen 保留 9 种、Soniox 保留 8 种常用语言。
 # Qwen 的空代码（自动识别）也始终显示。
 QWEN_COMMON_LANGUAGES: Final[tuple[str, ...]] = (
-    "", "zh", "en", "ja", "ko", "fr", "de", "es", "ru",
+    "", "zh", "yue", "en", "ja", "ko", "fr", "de", "es", "ru",
 )
 
 # Soniox 官方文档：language_hints 是列表（可多选，仅偏向不限制），
@@ -205,18 +212,29 @@ SONIOX_COMMON_LANGUAGES: Final[tuple[str, ...]] = (
 
 QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
-        id=DEFAULT_MODEL_ID,
-        label="Qwen3 ASR（准确率更高）",
+        id=QWEN_AUDIO_MODEL_ID,
+        label="qwen-audio-3.0-asr（热词 / 上下文）",
         env_key="DASHSCOPE_API_KEY",
-        languages=LANGUAGES,
+        note="支持即时热词、上下文与说话人分离",
+        supports_speaker=True,
+        supports_context=True,
+        supports_hotwords=True,
+        supports_vocabulary=True,
+        languages=FUNASR_LANGUAGES,
     ),
     ModelConfig(
         id="fun-asr",
-        label="Fun-ASR（支持说话人）",
+        label="fun-asr（支持说话人）",
         env_key="DASHSCOPE_API_KEY",
         note="支持说话人分离与词级时间戳",
         supports_speaker=True,
         languages=FUNASR_LANGUAGES,
+    ),
+    ModelConfig(
+        id=QWEN3_ASR_MODEL_ID,
+        label="qwen3-asr（准确率更高）",
+        env_key="DASHSCOPE_API_KEY",
+        languages=LANGUAGES,
     ),
 )
 
@@ -233,7 +251,7 @@ SONIOX_MODELS: Final[tuple[ModelConfig, ...]] = (
 PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
     ProviderConfig(
         id="qwen",
-        label="阿里云百炼（FunASR/QwenASR）",
+        label="阿里云百炼（QwenASR / FunASR）",
         key_url="https://help.aliyun.com/zh/model-studio/get-api-key",
         models=QWEN_MODELS,
         regions=REGIONS,
@@ -255,7 +273,7 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
 )
 
 MODELS: Final[tuple[ModelConfig, ...]] = PROVIDERS[0].models
-LEGACY_MODELS: Final[tuple[ModelConfig, ...]] = (QWEN_MODELS[0],)
+LEGACY_MODELS: Final[tuple[ModelConfig, ...]] = tuple(model for model in QWEN_MODELS if model.id == QWEN3_ASR_MODEL_ID)
 
 
 def load_env(path: Path = DEFAULT_ENV_PATH) -> dict[str, str]:

@@ -103,18 +103,29 @@ class GuiConfigTests(unittest.TestCase):
 
     def test_model_registry_resolves_env_key_and_shape(self) -> None:
         """Given the v1 registry, When inspected, Then model metadata is complete."""
-        self.assertEqual(len(gui_config.MODELS), 2)
+        self.assertEqual(len(gui_config.MODELS), 3)
         model = gui_config.MODELS[0]
 
-        self.assertEqual(model.id, "qwen3-asr-flash-filetrans")
+        self.assertEqual(model.id, "qwen-audio-3.0-asr-flash-filetrans")
         self.assertEqual(model.env_key, "DASHSCOPE_API_KEY")
         self.assertTrue(model.label)
+        self.assertTrue(model.supports_speaker)
+        self.assertTrue(model.supports_context)
+        self.assertTrue(model.supports_hotwords)
+        self.assertTrue(model.supports_vocabulary)
+        self.assertEqual(model.label, "qwen-audio-3.0-asr（热词 / 上下文）")
+        self.assertIn("热词", model.note)
+        self.assertIn(("yue", "粤语 / Cantonese"), model.languages)
         funasr = gui_config.MODELS[1]
         self.assertEqual(funasr.id, "fun-asr")
         self.assertEqual(funasr.env_key, "DASHSCOPE_API_KEY")
         self.assertTrue(funasr.supports_speaker)
         self.assertIn(("zh", "中文 / Chinese"), funasr.languages)
-        self.assertEqual(len(funasr.languages), 31)
+        self.assertEqual(len(funasr.languages), 32)
+        qwen3 = gui_config.MODELS[2]
+        self.assertEqual(qwen3.id, "qwen3-asr-flash-filetrans")
+        self.assertEqual(qwen3.env_key, "DASHSCOPE_API_KEY")
+        self.assertFalse(qwen3.supports_speaker)
         self.assertEqual(
             [model.id for model in gui_config.LEGACY_MODELS],
             ["qwen3-asr-flash-filetrans"],
@@ -126,16 +137,18 @@ class GuiConfigTests(unittest.TestCase):
 
         self.assertEqual(provider.id, "qwen")
         self.assertIn("aliyun", provider.key_url)
-        self.assertEqual(provider.models[0].id, "qwen3-asr-flash-filetrans")
+        self.assertEqual(provider.models[0].id, "qwen-audio-3.0-asr-flash-filetrans")
         self.assertEqual(provider.regions[0][0], "beijing")
         self.assertEqual(provider.languages[0][0], "")
         self.assertTrue(provider.supports_speaker)
         self.assertEqual([model.id for model in provider.models], [
-            "qwen3-asr-flash-filetrans",
+            "qwen-audio-3.0-asr-flash-filetrans",
             "fun-asr",
+            "qwen3-asr-flash-filetrans",
         ])
-        self.assertFalse(provider.models[0].supports_speaker)
+        self.assertTrue(provider.models[0].supports_speaker)
         self.assertTrue(provider.models[1].supports_speaker)
+        self.assertFalse(provider.models[2].supports_speaker)
 
     def test_provider_registry_contains_soniox_with_speaker_support(self) -> None:
         """Given the provider registry, When inspected, Then Soniox is registered with speaker support and no regions."""
@@ -173,20 +186,21 @@ class GuiConfigTests(unittest.TestCase):
             self.assertIn(expected, codes)
 
     def test_provider_common_languages_are_sensible_subsets_under_ten(self) -> None:
-        """Given less common languages are hidden, When common sets read, Then both providers expose 8 languages."""
+        """Given less common languages are hidden, When common sets read, Then common language sets stay compact."""
         qwen = gui_config.provider_by_id("qwen")
         soniox = gui_config.provider_by_id("soniox")
 
         for provider in (qwen, soniox):
             codes = {code for code, _label in provider.languages}
-            common_codes = set(provider.common_languages) - {""}
-            self.assertEqual(len(common_codes), 8)
             self.assertTrue(set(provider.common_languages).issubset(codes))
             self.assertLess(len(provider.common_languages), len(provider.languages))
             for expected in ("zh", "en", "ja", "ko"):
                 self.assertIn(expected, provider.common_languages)
 
         self.assertIn("", qwen.common_languages)
+        self.assertIn("yue", qwen.common_languages)
+        self.assertEqual(len(set(qwen.common_languages) - {""}), 9)
+        self.assertEqual(len(set(soniox.common_languages) - {""}), 8)
         for less_common in ("da", "fil", "is", "sv"):
             self.assertNotIn(less_common, qwen.common_languages)
         for less_common in ("da", "cy", "ur", "sw"):
@@ -214,7 +228,7 @@ class GuiConfigTests(unittest.TestCase):
         model = gui_config.model_by_label("stt-async-v5")
 
         self.assertEqual(model.env_key, "SONIOX_API_KEY")
-        self.assertEqual(gui_config.model_by_label("no-such-model").id, "qwen3-asr-flash-filetrans")
+        self.assertEqual(gui_config.model_by_label("no-such-model").id, "qwen-audio-3.0-asr-flash-filetrans")
 
     def test_provider_for_model_maps_soniox_model(self) -> None:
         """Given a Soniox model id, When provider resolved, Then it maps to the soniox provider."""

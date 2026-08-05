@@ -1,0 +1,195 @@
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+from generate_subtitle_qwen_api import (
+    FILETRANS_MODEL,
+    QWEN_AUDIO_FILETRANS_MODEL,
+    build_qwen_audio_context,
+    is_qwen_audio_model,
+    load_hotwords,
+    parse_funasr_transcription_result,
+    poll_task,
+    submit_filetrans,
+    supports_speaker_diarization,
+)
+from maw.qwen_audio import parse_qwen_audio_hotwords
+
+
+class QwenAudioAdapterTests(unittest.TestCase):
+    def test_qwen_audio_is_the_default_filetrans_model(self) -> None:
+        self.assertEqual(FILETRANS_MODEL, QWEN_AUDIO_FILETRANS_MODEL)
+
+    def test_load_hotwords_accepts_an_explicit_text_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "custom.txt"
+            path.write_text("张三\n# 注释\n\n阿里云\n", encoding="utf-8")
+
+            self.assertEqual(load_hotwords(path), ["张三", "阿里云"])
+
+    def test_model_detection_and_speaker_support(self) -> None:
+        self.assertTrue(is_qwen_audio_model(QWEN_AUDIO_FILETRANS_MODEL))
+        self.assertTrue(supports_speaker_diarization(QWEN_AUDIO_FILETRANS_MODEL))
+        self.assertFalse(is_qwen_audio_model("qwen3-asr-flash-filetrans"))
+
+    def test_hotwords_support_individual_weights_and_filter_invalid_entries(self) -> None:
+        entries, issues = parse_qwen_audio_hotwords([
+            "厄尔尼诺",
+            "obsidian: 50",
+            "布洛芬：5",
+            "这是一条超过十五个字符的中文热词",
+            "one two three four five six seven eight",
+            "坏词: 6",
+        ], 4)
+
+        self.assertEqual(
+            [(entry.text, entry.weight) for entry in entries],
+            [("厄尔尼诺", 4), ("obsidian", 50), ("布洛芬", 5)],
+        )
+        self.assertEqual(
+            [issue.code for issue in issues],
+            ["text_too_long", "too_many_ascii_words", "invalid_weight"],
+        )
+
+    def test_context_uses_rest_messages_shape_and_400_character_limit(self) -> None:
+        context = build_qwen_audio_context("词表" + ("x" * 500))
+
+        self.assertEqual(context[0]["role"], "user")
+        content = context[0]["content"][0]
+        self.assertEqual(content["type"], "input_text")
+        self.assertEqual(len(content["text"]), 400)
+
+    @mock.patch("generate_subtitle_qwen_api.requests.post")
+    def test_submit_sends_qwen_audio_file_urls_vocabulary_and_context(
+        self,
+        post: mock.Mock,
+    ) -> None:
+        response = mock.Mock()
+        response.json.return_value = {
+            "output": {"task_id": "task-qwen-audio", "task_status": "PENDING"}
+        }
+        post.return_value = response
+
+        task_id = submit_filetrans(
+            "https://dashscope.aliyuncs.com",
+            "secret",
+            "oss://temporary/audio.wav",
+            language="zh",
+            enable_words=True,
+            enable_itn=False,
+            model=QWEN_AUDIO_FILETRANS_MODEL,
+            enable_speaker=True,
+            vocabulary_id="vocab-qwen-audio",
+            hotwords=["张三", "李四"],
+            hotword_weight=5,
+            context=build_qwen_audio_context("领域词表"),
+        )
+
+        self.assertEqual(task_id, "task-qwen-audio")
+        payload = post.call_args.kwargs["json"]
+        self.assertEqual(payload["model"], QWEN_AUDIO_FILETRANS_MODEL)
+        self.assertEqual(payload["input"]["file_urls"], ["oss://temporary/audio.wav"])
+        self.assertEqual(payload["input"]["messages"][0]["role"], "user")
+        self.assertNotIn("context", payload["input"])
+        self.assertEqual(payload["parameters"]["language_hints"], ["zh"])
+        self.assertTrue(payload["parameters"]["diarization_enabled"])
+        self.assertEqual(payload["parameters"]["vocabulary_id"], "vocab-qwen-audio")
+        self.assertEqual(payload["parameters"]["vocabulary"], {"张三": 5, "李四": 5})
+        self.assertNotIn("enable_words", payload["parameters"])
+        self.assertNotIn("enable_itn", payload["parameters"])
+        response.raise_for_status.assert_called_once_with()
+
+    @mock.patch("generate_subtitle_qwen_api.requests.post")
+    def test_submit_uses_individual_hotword_weights_and_ignores_invalid_entries(
+        self,
+        post: mock.Mock,
+    ) -> None:
+        response = mock.Mock()
+        response.json.return_value = {
+            "output": {"task_id": "task-weighted", "task_status": "PENDING"}
+        }
+        post.return_value = response
+
+        submit_filetrans(
+            "https://dashscope.aliyuncs.com",
+            "secret",
+            "oss://temporary/audio.wav",
+            language="zh",
+            enable_words=True,
+            enable_itn=False,
+            model=QWEN_AUDIO_FILETRANS_MODEL,
+            hotwords=["厄尔尼诺", "obsidian: 50", "坏词: 6"],
+            hotword_weight=4,
+        )
+
+        payload = post.call_args.kwargs["json"]
+        self.assertEqual(payload["parameters"]["vocabulary"], {"厄尔尼诺": 4, "obsidian": 50})
+
+    @mock.patch("generate_subtitle_qwen_api.requests.get")
+    def test_poll_reads_qwen_audio_subtask_result(self, get: mock.Mock) -> None:
+        response = mock.Mock()
+        response.json.return_value = {
+            "output": {
+                "task_status": "SUCCEEDED",
+                "results": [
+                    {
+                        "subtask_status": "SUCCEEDED",
+                        "transcription_url": "https://result.example/qwen-audio.json",
+                    }
+                ],
+            },
+            "usage": {"duration": 12},
+        }
+        get.return_value = response
+
+        result_url, usage = poll_task(
+            "https://dashscope.aliyuncs.com",
+            "secret",
+            "task-qwen-audio",
+            interval=0,
+            timeout=1,
+            model=QWEN_AUDIO_FILETRANS_MODEL,
+        )
+
+        self.assertEqual(result_url, "https://result.example/qwen-audio.json")
+        self.assertEqual(usage, {"duration": 12})
+
+    def test_parse_maps_qwen_audio_sentence_speaker_to_items(self) -> None:
+        result = parse_funasr_transcription_result(
+            {
+                "transcripts": [
+                    {
+                        "text": "你好。",
+                        "sentences": [
+                            {
+                                "language": "zh",
+                                "speaker_id": 2,
+                                "words": [
+                                    {
+                                        "begin_time": 100,
+                                        "end_time": 300,
+                                        "text": "你好",
+                                        "punctuation": "。",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+
+        self.assertEqual(result["language"], "zh")
+        self.assertEqual(result["items"], [{
+            "text": "你好。",
+            "start": 100,
+            "end": 300,
+            "speaker": "2",
+        }])
+
+
+if __name__ == "__main__":
+    _ = unittest.main()

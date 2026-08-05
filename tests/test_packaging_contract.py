@@ -103,7 +103,7 @@ class PackagingContractTests(unittest.TestCase):
     def test_mose_uses_maw_icon_and_declares_mosp_association(self) -> None:
         config = read_text("desktop/src-tauri/tauri.conf.json")
 
-        self.assertIn('"../../assets/maw.ico"', config)
+        self.assertIn('"icons/icon.ico"', config)
         self.assertIn('"ext": ["mosp"]', config)
 
 

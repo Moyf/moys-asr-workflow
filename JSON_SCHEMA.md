@@ -309,11 +309,11 @@
 
 | name | value |
 |---|---|
-| `red` | `#e74c3c` |
 | `yellow` | `#f1c40f` |
-| `blue` | `#3498db` |
 | `green` | `#2ecc71` |
+| `red` | `#e74c3c` |
 | `purple` | `#9b59b6` |
+| `blue` | `#3498db` |
 
 ### 4.4 color_ref
 

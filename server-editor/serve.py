@@ -31,7 +31,7 @@ if str(ROOT) not in sys.path:
 
 import edit  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
-from maw.project import ProjectValidationFailed, normalize_project  # noqa: E402
+from maw.project import ProjectValidationFailed, normalize_project, repair_segment_durations  # noqa: E402
 from maw.media import MediaConversionError, MediaResolutionError, MediaStatus, convert_media_for_browser, resolve_project_media  # noqa: E402
 
 
@@ -221,7 +221,15 @@ def load_project(
     json_path = json_path.resolve()
     if not json_path.exists():
         raise FileNotFoundError(f"JSON 文件不存在 - {json_path}")
-    data = normalize_project(json.loads(json_path.read_text(encoding="utf-8")))
+    raw_data = json.loads(json_path.read_text(encoding="utf-8"))
+    # 兜底：上游（或旧版工具）可能写入 0 长/倒挂的段、词时间码，
+    # 加载时先拉齐到至少 100ms，避免编辑器里出现看不见的字幕块、保存被校验拒绝。
+    raw_segments = raw_data.get("segments") if isinstance(raw_data, dict) else None
+    if isinstance(raw_segments, list):
+        repaired_count = repair_segment_durations(raw_segments)
+        if repaired_count:
+            print(f"[project] 已兜底修复 {repaired_count} 处 0 长/倒挂时间码（保底 100ms）")
+    data = normalize_project(raw_data)
 
     resolution = resolve_project_media(json_path, data, explicit_media)
     if not resolution.loadable:

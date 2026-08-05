@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from maw.gui_workflow import (  # noqa: E402
+    TranscriptionProcessError,
     TranscriptionRequest,
     build_serve_command,
     build_output_paths,
@@ -67,6 +68,41 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(command[command.index("--language") + 1], "zh")
         self.assertEqual(command.count("--with-waveform"), 1)
         self.assertNotIn("secret-key", " ".join(command))
+
+    def test_build_transcribe_command_qwen_audio_passes_one_shot_context_hotwords_and_vocabulary(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            model="qwen-audio-3.0-asr-flash-filetrans",
+            qwen_audio_context="产品名和专业术语",
+            qwen_audio_hotwords="张三\n李四,阿里云",
+            qwen_audio_vocabulary_id="vocab-qwen-audio",
+            qwen_audio_hotword_weight="50",
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertEqual(command[command.index("--context") + 1], "产品名和专业术语")
+        self.assertEqual(command[command.index("--vocabulary-id") + 1], "vocab-qwen-audio")
+        self.assertEqual(command[command.index("--hotword-weight") + 1], "50")
+        hotword_positions = [index for index, value in enumerate(command) if value == "--hotword"]
+        self.assertEqual([command[index + 1] for index in hotword_positions], ["张三", "李四", "阿里云"])
+
+    def test_build_transcribe_command_qwen_audio_uses_hotword_file_mode(self) -> None:
+        hotwords_file = self.root / "hotwords.txt"
+        hotwords_file.write_text("张三\n阿里云\n", encoding="utf-8")
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            model="qwen-audio-3.0-asr-flash-filetrans",
+            qwen_audio_hotwords_file=str(hotwords_file),
+            qwen_audio_hotwords="不会被使用",
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertEqual(command[command.index("--hotword-file") + 1], str(hotwords_file))
+        self.assertNotIn("--hotword", command)
 
     def test_build_transcribe_command_frozen_mode_dispatches_same_executable(self) -> None:
         request = TranscriptionRequest(media_path=self.media_path, srt_path=self.srt_path)
@@ -212,6 +248,30 @@ class GuiWorkflowTests(unittest.TestCase):
                 run_transcription(request, on_process_start=started.append)
 
         self.assertEqual(started, [4321])
+
+    def test_run_transcription_failure_carries_child_output(self) -> None:
+        request = TranscriptionRequest(media_path=self.media_path, srt_path=self.srt_path)
+        events: list[str] = []
+
+        class FakeProcess:
+            pid = 4321
+            returncode = 1
+            stdout = ["[info] 提交任务...\n".encode(), "错误: 未识别到任何内容\n".encode()]
+
+            def poll(self) -> int | None:
+                return 1
+
+            def wait(self, timeout: float | None = None) -> int:
+                return 1
+
+        with mock.patch("maw.gui_workflow.subprocess.Popen", return_value=FakeProcess()):
+            with self.assertRaises(TranscriptionProcessError) as raised:
+                run_transcription(request, on_event=events.append)
+
+        self.assertEqual(raised.exception.exit_code, 1)
+        self.assertTrue(any("未识别到任何内容" in line for line in raised.exception.output))
+        self.assertIn("未识别到任何内容", str(raised.exception))
+        self.assertTrue(any("提交任务" in event for event in events))
 
     def test_run_transcription_keeps_json_when_optional_html_render_fails(self) -> None:
         request = TranscriptionRequest(media_path=self.media_path, srt_path=self.srt_path)
@@ -406,12 +466,20 @@ class GuiWorkflowTests(unittest.TestCase):
     def test_default_srt_path_uses_provider_tag(self) -> None:
         from maw.gui_workflow import default_srt_path
 
-        self.assertEqual(default_srt_path(Path("clip.mp4")).name, "clip.qwen3-asr-api.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4")).name, "clip.qwen-audio.srt")
         self.assertEqual(
             default_srt_path(Path("clip.mp4"), model="fun-asr").name,
             "clip.fun-asr.srt",
         )
+        self.assertEqual(
+            default_srt_path(Path("clip.mp4"), model="qwen3-asr-flash-filetrans").name,
+            "clip.qwen3-asr-api.srt",
+        )
         self.assertEqual(default_srt_path(Path("clip.mp4"), provider="soniox").name, "clip.soniox.srt")
+        self.assertEqual(
+            default_srt_path(Path("clip.mp4"), test_run=True).name,
+            "clip.qwen-audio-test.srt",
+        )
 
     def test_entrypoint_transcribe_soniox_help_dispatches_soniox_script(self) -> None:
         import maw_gui

@@ -11,14 +11,15 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
 from typing import BinaryIO, Final, TextIO, final
 
-from maw.gui_config import DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, load_env
+from maw.gui_config import QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, load_env
 from maw.gui_platform import asset_path
+from maw.qwen_audio import split_qwen_audio_hotwords
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +37,11 @@ class TranscriptionRequest:
     language: str = ""
     api_key: str = ""
     length_limit: str = ""
+    qwen_audio_context: str = ""
+    qwen_audio_hotwords: str = ""
+    qwen_audio_hotwords_file: str = ""
+    qwen_audio_vocabulary_id: str = ""
+    qwen_audio_hotword_weight: str = ""
     region: str = ""
     workspace_id: str = ""
     provider: str = "qwen"
@@ -68,10 +74,24 @@ class TranscriptionProcessError(Exception):
     """Raised when the transcription subprocess exits unsuccessfully."""
 
     exit_code: int
+    output: tuple[str, ...]
 
-    def __init__(self, exit_code: int) -> None:
+    def __init__(self, exit_code: int, output: Sequence[str] = ()) -> None:
         self.exit_code = exit_code
-        super().__init__(f"Transcription failed with exit code {exit_code}")
+        self.output = tuple(output)
+        detail = _tail_output(self.output)
+        message = f"Transcription failed with exit code {exit_code}"
+        if detail:
+            message += f": {detail}"
+        super().__init__(message)
+
+
+def _tail_output(output: Sequence[str], limit: int = 1) -> str:
+    """取子进程失败输出的最后若干行，用于透传具体失败原因。"""
+    lines = [line.strip() for line in output if line.strip()]
+    if not lines:
+        return ""
+    return " | ".join(lines[-limit:])
 
 
 @final
@@ -95,16 +115,29 @@ def build_output_paths(srt_path: Path) -> OutputPaths:
 PROVIDER_SRT_TAGS: Final = {"qwen": ".qwen3-asr-api", "soniox": ".soniox"}
 
 
+def with_test_suffix(path: Path) -> Path:
+    """Append the test marker before the extension without duplicating it."""
+    path = Path(path)
+    if path.stem.lower().endswith("-test"):
+        return path
+    return path.with_name(f"{path.stem}-test{path.suffix}")
+
+
 def default_srt_path(
     media_path: Path,
     provider: str = "qwen",
     model: str = DEFAULT_MODEL_ID,
+    test_run: bool = False,
 ) -> Path:
     media = Path(media_path).expanduser()
-    tag = ".fun-asr" if provider == "qwen" and model.startswith("fun-asr") else (
-        PROVIDER_SRT_TAGS.get(provider, PROVIDER_SRT_TAGS["qwen"])
-    )
-    return media.with_name(f"{media.stem}{tag}.srt")
+    if provider == "qwen" and model.startswith("fun-asr"):
+        tag = ".fun-asr"
+    elif provider == "qwen" and model == QWEN_AUDIO_MODEL_ID:
+        tag = ".qwen-audio"
+    else:
+        tag = PROVIDER_SRT_TAGS.get(provider, PROVIDER_SRT_TAGS["qwen"])
+    output = media.with_name(f"{media.stem}{tag}.srt")
+    return with_test_suffix(output) if test_run else output
 
 
 def build_transcribe_command(
@@ -131,10 +164,22 @@ def build_transcribe_command(
     else:
         _append_option(command, "--model", request.model or DEFAULT_MODEL_ID)
         _append_option(command, "--region", request.region)
-        if request.speaker_colors and request.model.startswith("fun-asr"):
+        if request.speaker_colors and (
+            request.model.startswith("fun-asr")
+            or request.model == QWEN_AUDIO_MODEL_ID
+        ):
             command.append("--speaker-colors")
     _append_option(command, "--language", request.language)
     _append_option(command, "--length-limit", request.length_limit)
+    if request.provider == "qwen" and request.model == QWEN_AUDIO_MODEL_ID:
+        _append_option(command, "--vocabulary-id", request.qwen_audio_vocabulary_id)
+        _append_option(command, "--hotword-weight", request.qwen_audio_hotword_weight)
+        _append_option(command, "--context", request.qwen_audio_context)
+        if request.qwen_audio_hotwords_file:
+            _append_option(command, "--hotword-file", request.qwen_audio_hotwords_file)
+        else:
+            for hotword in split_qwen_audio_hotwords(request.qwen_audio_hotwords):
+                command.extend(["--hotword", hotword])
     return command
 
 
@@ -186,9 +231,16 @@ def run_transcription(
     )
     if on_process_start is not None:
         on_process_start(process.pid)
-    _stream_process(process, on_event or _ignore, cancel_event)
+    collected: list[str] = []
+
+    def forward(line: str) -> None:
+        collected.append(line)
+        if on_event:
+            on_event(line)
+
+    _stream_process(process, forward, cancel_event)
     if process.returncode != 0:
-        raise TranscriptionProcessError(process.returncode)
+        raise TranscriptionProcessError(process.returncode, output=collected)
     _require_output(paths.srt, "SRT")
     _require_output(paths.json, "JSON")
     html_path = None

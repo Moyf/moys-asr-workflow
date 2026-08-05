@@ -1,7 +1,7 @@
 # ASR 供应商调研：Fun-ASR 与豆包大模型录音文件识别
 
 > 调研日期：2026-07-28
-> 接入状态：百炼云端 `fun-asr` 已在当前 Unreleased 版本接入；豆包仍是候选方案。本文不代替真实素材上的准确率、时间戳和说话人分离测试。
+> 接入状态：百炼云端 `qwen-audio-3.0-asr-flash-filetrans` 与 `fun-asr` 已在当前 Unreleased 版本接入；豆包仍是候选方案。本文不代替真实素材上的准确率、时间戳和说话人分离测试。
 
 ## 结论
 
@@ -34,18 +34,26 @@
 
 ## 与 MAW 当前 Qwen 路径的能力对照
 
-| 能力 | Qwen3-ASR-Flash-Filetrans | 百炼云端 Fun-ASR | 豆包大模型录音文件识别 |
-|---|---|---|---|
-| 长音频异步转写 | 支持，最大 12 小时 / 2 GB | 支持，最大 12 小时 / 2 GB | 标准版支持长音频；官方产品说明为小于 5 小时、512 MB |
-| 句级时间戳 | 支持 | 支持，固定开启 | 支持 |
-| 字/词级时间戳 | `enable_words=true`；部分语种精度有保证 | 支持，固定开启 | 支持 |
-| 自动分句与标点 | 支持 | 支持 | 支持 |
-| ITN 数字规整 | 支持 | 支持 | 支持 |
-| 自动语种识别 | 支持 | 支持 | 支持 |
-| 说话人分离 | 不支持 | 支持，返回句级 `speaker_id` | 支持，返回句级 speaker 信息 |
-| 热词 | 当前 Qwen Filetrans 不支持 | 支持预建词表 | 支持平台级、请求级热词 |
-| 情感识别 | 支持，但 MAW 当前没有写入工程 | 不支持 | 产品能力支持；极速版移除了部分客服能力字段，需按具体接口核对 |
-| 本地文件直传 | MAW 先上传到 DashScope 临时 OSS | API 本身收 URL；可复用同类临时 OSS 流程 | 极速版支持 Base64；标准/闲时版主要收 URL |
+| 能力 | Qwen3-ASR-Flash-Filetrans | Qwen-Audio-3.0-ASR-Flash-Filetrans | 百炼云端 Fun-ASR | 豆包大模型录音文件识别 |
+|---|---|---|---|---|
+| 长音频异步转写 | 支持，最大 12 小时 / 2 GB | 支持，最大 12 小时 / 2 GB | 支持，最大 12 小时 / 2 GB | 标准版支持长音频；官方产品说明为小于 5 小时、512 MB |
+| 句级时间戳 | 支持 | 支持，固定开启 | 支持，固定开启 | 支持 |
+| 字/词级时间戳 | `enable_words=true`；部分语种精度有保证 | 支持，固定开启 | 支持，固定开启 | 支持 |
+| 自动分句与标点 | 支持 | 支持 | 支持 | 支持 |
+| ITN 数字规整 | 支持 | 支持 | 支持 | 支持 |
+| 自动语种识别 | 支持 | 支持 | 支持 | 支持 |
+| 说话人分离 | 不支持 | 支持，返回句级 `speaker_id` | 支持，返回句级 `speaker_id` | 支持，返回句级 speaker 信息 |
+| 热词 | 当前 Qwen Filetrans 不支持 | 支持即时 `vocabulary` 与预编译 `vocabulary_id` | 支持预建词表 | 支持平台级、请求级热词 |
+| 上下文增强 | 当前入口未发送 | 支持 `input.messages` | 当前入口未发送 | 需按具体接口核对 |
+| 情感识别 | 支持，但 MAW 当前没有写入工程 | 不支持 | 不支持 | 产品能力支持；极速版移除了部分客服能力字段，需按具体接口核对 |
+| 本地文件直传 | MAW 先上传到 DashScope 临时 OSS | MAW 先上传到 DashScope 临时 OSS | API 本身收 URL；可复用同类临时 OSS 流程 | 极速版支持 Base64；标准/闲时版主要收 URL |
+
+### Qwen-Audio 的关键限制
+
+- Qwen-Audio 的 REST 请求使用 `input.file_urls` 数组，单次仍只支持一个 URL；成功轮询结果位于 `output.results[]`。
+- 即时热词权重取 1–5 或 50；权重 50 是超级热词，数量最多 50 个。预编译词表必须按 Qwen-Audio 目标模型创建。
+- `input.messages` 用于专有词汇和领域上下文增强，每轮总长度最多 400 字符；MAW 的 `--context` / `--context-file` 发送一个 `user/input_text` 消息。
+- 说话人分离只适用于单声道，官方建议启用时音频不超过 2 小时。
 
 ### Fun-ASR 的关键限制
 
@@ -87,10 +95,12 @@
 按模型选择独立的提交 payload、轮询结果路径和解析器，并复用 DashScope 上传、
 SRT/JSON 生成及已有 speaker 颜色逻辑：
 
-- CLI 使用 `--model fun-asr` 选择模型，`--speaker` / `--speaker-colors`
-  控制说话人分离和颜色快照。
-- Web Launcher 把 Fun-ASR 放在「阿里云百炼（FunASR/QwenASR）」Provider 下作为第二模型，
-  并按模型切换支持语言、说话人开关和默认 `.fun-asr.srt` 输出名。
+- CLI 使用 `--model fun-asr` 或 `--model qwen-audio-3.0-asr-flash-filetrans` 选择模型，
+  `--speaker` / `--speaker-colors` 控制说话人分离和颜色快照。
+- Web Launcher 把 Qwen-Audio 和 Fun-ASR 放在同一个百炼 Provider 下，并按模型切换支持语言、
+  说话人开关和默认 `.qwen-audio.srt` / `.fun-asr.srt` 输出名。
+- Qwen-Audio 的即时热词、预编译 `vocabulary_id` 和 `input.messages` 已接入；
+  `hotwords.txt` 只对 Qwen-Audio 作为即时热词发送。
 - Fun-ASR 的句级 `speaker_id` 会复制到对应 `items[]`，切句前先按 speaker
   变化硬切，确保一个 MAW segment 不跨说话人。
 - 提交、成功/失败轮询、结果解析、说话人边界和零时长修复均有离线契约测试。
@@ -103,8 +113,8 @@ SRT/JSON 生成及已有 speaker 颜色逻辑：
 仍未实现的部分：
 
 1. 使用固定真实素材比较 Qwen、Fun-ASR、Soniox 的识别质量与时间戳偏差。
-2. 百炼热词词表管理；Fun-ASR 需要预建 vocabulary ID，不能直接发送
-   当前 `hotwords.txt`。
+2. 百炼词表的创建/管理界面；当前需要在百炼控制台创建目标模型匹配的词表，
+   再通过 `.env` 或 `--vocabulary-id` 使用。
 3. `speaker_count` 人数提示；当前让服务自动判断人数。
 
 ## 豆包 `audio_url` 的解决办法

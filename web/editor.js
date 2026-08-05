@@ -29,6 +29,16 @@ const DEFAULT_EDITOR_SETTINGS = {
   selectGroupMembers: false,
   // 合并字幕时各段文本之间插入的连接符（默认两个空格；留空则直接拼接）。
   mergeJoinText: '',
+  // 拼合字幕：相邻间隔不超过该毫秒值时拓展字幕长度拼合（0 表示不处理间隔）。
+  autoMergeGapMs: 200,
+  // 拼合字幕：backward 向前拓展（默认，后方字幕起点前拓）/ forward 向后拓展（前方字幕终点后延）。
+  autoMergeSnapDirection: 'backward',
+  // 拼合字幕：中文少于 N 个字 / 英文少于 N 个词的字幕并入相邻字幕。
+  autoMergeShortCount: 3,
+  // 拼合字幕：是否吸收过短字幕（默认开启；关闭后只拼合间隔）。
+  autoMergeAbsorbShort: true,
+  // 拼合字幕：previous 向前吸收（默认，并入上一条）/ next 向后吸收（并入下一条）。
+  autoMergeAbsorbDirection: 'previous',
   // 按颜色导出 SRT：统一导出先选择一个 SRT 文件名作为前缀。
   exportColorUnified: true,
   // 自动保存仅对绑定工程的 localhost 服务器版生效。
@@ -70,6 +80,11 @@ function readEditorSettings() {
       cueEditorShowSticker: saved.cueEditorShowSticker === true,
       selectGroupMembers: saved.selectGroupMembers === true,
       mergeJoinText: typeof saved.mergeJoinText === 'string' ? saved.mergeJoinText : DEFAULT_EDITOR_SETTINGS.mergeJoinText,
+      autoMergeGapMs: clampAutoMergeGapMs(saved.autoMergeGapMs),
+      autoMergeSnapDirection: saved.autoMergeSnapDirection === 'forward' ? 'forward' : 'backward',
+      autoMergeShortCount: clampAutoMergeShortCount(saved.autoMergeShortCount),
+      autoMergeAbsorbShort: saved.autoMergeAbsorbShort !== false,
+      autoMergeAbsorbDirection: saved.autoMergeAbsorbDirection === 'next' ? 'next' : 'previous',
       exportColorUnified: saved.exportColorUnified !== false,
       autoSaveProject: saved.autoSaveProject !== false,
       autoSaveIntervalSeconds: clampAutoSaveInterval(saved.autoSaveIntervalSeconds),
@@ -88,6 +103,16 @@ function clampAutoSaveInterval(value) {
   return Math.min(3600, Math.max(5, Number.isFinite(seconds) ? seconds : 30));
 }
 
+function clampAutoMergeGapMs(value) {
+  const ms = Math.round(Number(value));
+  return Math.min(10000, Math.max(0, Number.isFinite(ms) ? ms : DEFAULT_EDITOR_SETTINGS.autoMergeGapMs));
+}
+
+function clampAutoMergeShortCount(value) {
+  const count = Math.round(Number(value));
+  return Math.min(20, Math.max(1, Number.isFinite(count) ? count : DEFAULT_EDITOR_SETTINGS.autoMergeShortCount));
+}
+
 function saveEditorSettings(settings) {
   try {
     localStorage.setItem(EDITOR_SETTINGS_KEY, JSON.stringify(settings));
@@ -101,11 +126,11 @@ const EDITOR_SETTINGS = readEditorSettings();
 // 标记颜色：5 种基础色，用于给字幕分组着色。
 // 数据模型与表情包同构：head 持完整 color {name, value, start, end}，后续 ref 持 color_ref {name, headIdx}
 const COLOR_PALETTE = [
-  { name: 'red',    label: '红', value: '#e74c3c' },
   { name: 'yellow', label: '黄', value: '#f1c40f' },
-  { name: 'blue',   label: '蓝', value: '#168cff' },
   { name: 'green',  label: '绿', value: '#2ecc71' },
+  { name: 'red',    label: '红', value: '#e74c3c' },
   { name: 'purple', label: '紫', value: '#9b59b6' },
+  { name: 'blue',   label: '蓝', value: '#168cff' },
 ];
 const COLOR_BY_NAME = Object.fromEntries(COLOR_PALETTE.map(c => [c.name, c]));
 function colorValue(name) { return COLOR_BY_NAME[name]?.value || '#777'; }
@@ -440,6 +465,17 @@ const gapRemoveScanButton = document.getElementById('gap-remove-scan');
 const gapRemoveSkipPlayback = document.getElementById('gap-skip-playback');
 const gapRemoveList = document.getElementById('gap-remove-list');
 const gapRemoveClearAllButton = document.getElementById('gap-remove-clear-all');
+const AUTO_MERGE_PANEL_POSITION_KEY = 'moy.asr.auto_merge.panel.v2';
+const autoMergePanel = document.getElementById('auto-merge-panel');
+const autoMergeDragHandle = document.getElementById('auto-merge-drag-handle');
+const autoMergeCloseButton = document.getElementById('auto-merge-close');
+const autoMergeManageButton = document.getElementById('auto-merge-manage');
+const autoMergeRunButton = document.getElementById('auto-merge-run');
+const autoMergeGapMsInput = document.getElementById('auto-merge-gap-ms');
+const autoMergeSnapDirectionSelect = document.getElementById('auto-merge-snap-direction');
+const autoMergeAbsorbShortToggle = document.getElementById('auto-merge-absorb-short');
+const autoMergeShortCountInput = document.getElementById('auto-merge-short-count');
+const autoMergeAbsorbDirectionSelect = document.getElementById('auto-merge-absorb-direction');
 let gapPreviewRange = null;
 let gapRemovePanelDrag = null;
 let currentCuePanelIdx = -1;
@@ -560,6 +596,7 @@ document.addEventListener('mawe:languagechange', () => refreshSplitKeyHelp());
 splitKeySel.value = EDITOR_SETTINGS.splitKey;
 refreshSplitKeyHelp();
 if (mergeJoinTextInput) mergeJoinTextInput.value = EDITOR_SETTINGS.mergeJoinText;
+syncAutoMergePanelInputs();
 overlayToggle.checked = EDITOR_SETTINGS.overlayEnabled;
 exportStartAtZeroToggle.checked = EDITOR_SETTINGS.exportStartAtZero;
 if (selectGroupMembersToggle) selectGroupMembersToggle.checked = EDITOR_SETTINGS.selectGroupMembers;
@@ -630,6 +667,57 @@ splitKeySel.addEventListener('change', () => {
 });
 if (mergeJoinTextInput) mergeJoinTextInput.addEventListener('input', () => {
   updateEditorSettings({ mergeJoinText: mergeJoinTextInput.value });
+});
+// 拼合字幕工具窗：参数即时持久化；number 输入 change 时把显示值回钳到合法区间。
+const autoMergeFloatingPanel = createFloatingPanel({
+  panel: autoMergePanel,
+  dragHandle: autoMergeDragHandle,
+  manageButton: autoMergeManageButton,
+  anchorButton: autoMergeManageButton,
+  positionKey: AUTO_MERGE_PANEL_POSITION_KEY,
+  onOpen: syncAutoMergePanelInputs,
+});
+autoMergeCloseButton?.addEventListener('click', () => autoMergeFloatingPanel.close());
+autoMergeRunButton?.addEventListener('click', autoMergeSegments);
+autoMergeGapMsInput?.addEventListener('input', () => {
+  updateEditorSettings({ autoMergeGapMs: clampAutoMergeGapMs(autoMergeGapMsInput.value) });
+});
+autoMergeGapMsInput?.addEventListener('change', () => {
+  autoMergeGapMsInput.value = String(EDITOR_SETTINGS.autoMergeGapMs);
+});
+autoMergeSnapDirectionSelect?.addEventListener('change', () => {
+  updateEditorSettings({
+    autoMergeSnapDirection: autoMergeSnapDirectionSelect.value === 'forward' ? 'forward' : 'backward',
+  });
+});
+autoMergeAbsorbShortToggle?.addEventListener('change', () => {
+  updateEditorSettings({ autoMergeAbsorbShort: autoMergeAbsorbShortToggle.checked });
+  syncAutoMergeAbsorbFields();
+});
+autoMergeShortCountInput?.addEventListener('input', () => {
+  updateEditorSettings({ autoMergeShortCount: clampAutoMergeShortCount(autoMergeShortCountInput.value) });
+});
+autoMergeShortCountInput?.addEventListener('change', () => {
+  autoMergeShortCountInput.value = String(EDITOR_SETTINGS.autoMergeShortCount);
+});
+autoMergeAbsorbDirectionSelect?.addEventListener('change', () => {
+  updateEditorSettings({
+    autoMergeAbsorbDirection: autoMergeAbsorbDirectionSelect.value === 'next' ? 'next' : 'previous',
+  });
+});
+autoMergePanel?.querySelectorAll('input[type="number"]').forEach((input) => {
+  input.addEventListener('wheel', (event) => {
+    if (!event.deltaY) return;
+    event.preventDefault();
+    input.focus({ preventScroll: true });
+    try {
+      if (event.deltaY < 0) input.stepUp();
+      else input.stepDown();
+    } catch (_) {
+      return;
+    }
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }, { passive: false });
 });
 bindCueListDisplayToggle(cueListShowIndexToggle, 'cueListShowIndex');
 bindCueListDisplayToggle(cueListShowTimeToggle, 'cueListShowTime');
@@ -879,6 +967,132 @@ function clearAllGaps() {
   state.manual_corrections = false;
   setGapRemoveData(state);
   flashHint('已清理全部空隙区段');
+}
+
+// 可拖动非模态工具窗（移除静音空隙 / 拼合字幕共用模式）：
+// 负责显示/隐藏、工具栏按钮 active 态、标题栏拖动与位置持久化、窗口缩放回钳、Esc 关闭。
+function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, positionKey, onOpen }) {
+  if (!panel) return { open() {}, close() {}, toggle() {}, isOpen: () => false };
+  let drag = null;
+
+  function isOpen() { return panel.classList.contains('show'); }
+
+  function setPosition(left, top, { persist = false } = {}) {
+    const rect = panel.getBoundingClientRect();
+    const margin = 6;
+    const maxLeft = Math.max(margin, window.innerWidth - rect.width - margin);
+    const maxTop = Math.max(margin, window.innerHeight - rect.height - margin);
+    const nextLeft = Math.min(maxLeft, Math.max(margin, Math.round(left)));
+    const nextTop = Math.min(maxTop, Math.max(margin, Math.round(top)));
+    panel.style.left = `${nextLeft}px`;
+    panel.style.top = `${nextTop}px`;
+    panel.style.right = 'auto';
+    if (persist) {
+      try {
+        localStorage.setItem(positionKey, JSON.stringify({ left: nextLeft, top: nextTop }));
+      } catch (_) {
+        // file:// 隐私模式可能拒绝 localStorage；拖动本身仍保持可用。
+      }
+    }
+  }
+
+  function restorePosition() {
+    let saved = null;
+    try {
+      saved = JSON.parse(localStorage.getItem(positionKey) || 'null');
+    } catch (_) {
+      saved = null;
+    }
+    if (Number.isFinite(saved?.left) && Number.isFinite(saved?.top)) {
+      setPosition(saved.left, saved.top);
+      return true;
+    }
+    return false;
+  }
+
+  function positionNearAnchor() {
+    if (!anchorButton) return false;
+    const anchorRect = anchorButton.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const margin = 6;
+    const gap = 6;
+    let left = anchorRect.left;
+    if (left + panelRect.width > window.innerWidth - margin) {
+      left = anchorRect.right - panelRect.width;
+    }
+    let top = anchorRect.bottom + gap;
+    if (top + panelRect.height > window.innerHeight - margin) {
+      top = anchorRect.top - panelRect.height - gap;
+    }
+    setPosition(left, top);
+    return true;
+  }
+
+  function open() {
+    if (typeof onOpen === 'function') onOpen();
+    panel.classList.add('show');
+    panel.setAttribute('aria-hidden', 'false');
+    manageButton?.classList.add('active');
+    manageButton?.setAttribute('aria-expanded', 'true');
+    requestAnimationFrame(() => {
+      if (!restorePosition()) positionNearAnchor();
+    });
+  }
+
+  function close() {
+    panel.classList.remove('show', 'dragging');
+    panel.setAttribute('aria-hidden', 'true');
+    drag = null;
+    manageButton?.classList.remove('active');
+    manageButton?.setAttribute('aria-expanded', 'false');
+  }
+
+  function toggle() { if (isOpen()) close(); else open(); }
+
+  function finishDrag(event) {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    try {
+      dragHandle?.releasePointerCapture?.(event.pointerId);
+    } catch (_) {
+      // 指针在浏览器窗口外释放时，capture 可能已由浏览器自动清理。
+    }
+    drag = null;
+    panel.classList.remove('dragging');
+    const rect = panel.getBoundingClientRect();
+    setPosition(rect.left, rect.top, { persist: true });
+  }
+
+  dragHandle?.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || event.target.closest('button')) return;
+    const rect = panel.getBoundingClientRect();
+    drag = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    };
+    panel.classList.add('dragging');
+    dragHandle.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  });
+  dragHandle?.addEventListener('pointermove', (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    event.preventDefault();
+    setPosition(event.clientX - drag.offsetX, event.clientY - drag.offsetY);
+  });
+  dragHandle?.addEventListener('pointerup', finishDrag);
+  dragHandle?.addEventListener('pointercancel', finishDrag);
+  manageButton?.addEventListener('click', toggle);
+  window.addEventListener('resize', () => {
+    if (!isOpen()) return;
+    const rect = panel.getBoundingClientRect();
+    setPosition(rect.left, rect.top, { persist: true });
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || !isOpen() || editingState) return;
+    event.preventDefault();
+    close();
+  });
+  return { open, close, toggle, isOpen };
 }
 
 function gapRemovePanelIsOpen() {
@@ -1290,11 +1504,15 @@ function remapPanelItems(items, oldStart, oldEnd, newStart, newEnd) {
   if (!Array.isArray(items) || !items.length) return items;
   const oldDuration = Math.max(1, oldEnd - oldStart);
   const newDuration = Math.max(1, newEnd - newStart);
-  return items.map((item) => ({
-    ...item,
-    start: Math.round(newStart + ((item.start - oldStart) / oldDuration) * newDuration),
-    end: Math.round(newStart + ((item.end - oldStart) / oldDuration) * newDuration),
-  }));
+  return items.map((item) => {
+    // 等比缩放后钳回段内，并保证 end > start（防止取整后出现 0 长词块）。
+    const mappedStart = Math.round(newStart + ((item.start - oldStart) / oldDuration) * newDuration);
+    const mappedEnd = Math.round(newStart + ((item.end - oldStart) / oldDuration) * newDuration);
+    let start = Math.min(Math.max(mappedStart, newStart), newEnd);
+    const end = Math.min(Math.max(mappedEnd, start + 1), newEnd);
+    if (end <= start) start = Math.max(newStart, end - 1);
+    return { ...item, start, end };
+  });
 }
 
 function ensureCuePanelUndo() {
@@ -1811,6 +2029,12 @@ function splitAtCursor() {
     return;
   }
 
+  // 拆分后任一侧都不能短于 100ms（与波形分割工具同规则），否则拒绝拆分。
+  if (seg.end - seg.start < 200) {
+    flashHint('字幕时长不足 200ms，无法拆分');
+    return;
+  }
+
   const rightStartChar = fullText.length - rightText.length;
   const items = seg.items || [];
   const { leftItems, rightItems } = splitItemsAtChar(items, rightStartChar, fullText);
@@ -1832,7 +2056,9 @@ function splitAtCursor() {
   } else {
     const ratio = cursorOffset / fullText.length;
     const t = seg.start + (seg.end - seg.start) * ratio;
-    leftEnd = Math.round(t); rightStart = Math.round(t);
+    // 无词级时间码时按光标位置拆分；钳制边界保证两侧都至少 100ms。
+    const clamped = Math.min(Math.max(Math.round(t), seg.start + 100), seg.end - 100);
+    leftEnd = clamped; rightStart = clamped;
   }
 
   const leftSeg = {
@@ -1932,17 +2158,9 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
 }
 
 // === 合并 ===
-function mergeSegments(idxs) {
-  if (idxs.length < 2) { flashHint('请选择至少两个字幕块！'); return; }
-  const sorted = [...new Set(idxs)].sort((a, b) => a - b);
-  if (sorted.length < 2) { flashHint('请选择至少两个字幕块！'); return; }
-  // 确保连续
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i] !== sorted[i - 1] + 1) {
-      flashHint('选中的字幕必须连续');
-      return;
-    }
-  }
+// 把 DATA.segments 中连续下标 sorted 合并为一条，并维护 group 引用与组时间范围。
+// 不做参数校验、撤销与渲染，由调用方负责（mergeSegments / autoMergeSegments 共用）。
+function mergeContiguousIndices(sorted) {
   const segs = sorted.map(i => DATA.segments[i]);
   const stickerGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
     DATA.segments, sorted, 'sticker', 'sticker_ref',
@@ -1968,8 +2186,6 @@ function mergeSegments(idxs) {
     _dirty: true,
   };
   if (merged.items.length === 0) merged.items = null;
-  clearSelection();
-  pushUndo('合并字幕');
 
   // 选区并非全部同组时，不继承该组；先按删除切点规则重组外部存活成员，
   // 避免合并掉某个 head 后留下悬空引用。
@@ -2000,12 +2216,78 @@ function mergeSegments(idxs) {
     remapRef(segment.color_ref);
   });
   syncTimelineGroupRanges();
+  return merged;
+}
+
+function mergeSegments(idxs) {
+  if (idxs.length < 2) { flashHint('请选择至少两个字幕块！'); return; }
+  const sorted = [...new Set(idxs)].sort((a, b) => a - b);
+  if (sorted.length < 2) { flashHint('请选择至少两个字幕块！'); return; }
+  // 确保连续
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] !== sorted[i - 1] + 1) {
+      flashHint('选中的字幕必须连续');
+      return;
+    }
+  }
+  clearSelection();
+  pushUndo('合并字幕');
+  mergeContiguousIndices(sorted);
   renderAll();
   // 合并完成后选中合并结果，方便继续对这句新字幕操作
   selectOnly(sorted[0]);
   const el = container.querySelector(`.cue[data-idx="${sorted[0]}"]`);
   if (el) scrollCueToCenter(el);
   flashHint(`已合并 ${sorted.length} 条`);
+}
+
+// === 拼合字幕 ===
+// 把工具窗参数同步到控件；「吸收过短字幕」关闭时禁用短句相关参数。
+function syncAutoMergePanelInputs() {
+  if (autoMergeGapMsInput) autoMergeGapMsInput.value = String(EDITOR_SETTINGS.autoMergeGapMs);
+  if (autoMergeSnapDirectionSelect) autoMergeSnapDirectionSelect.value = EDITOR_SETTINGS.autoMergeSnapDirection;
+  if (autoMergeAbsorbShortToggle) autoMergeAbsorbShortToggle.checked = EDITOR_SETTINGS.autoMergeAbsorbShort;
+  if (autoMergeShortCountInput) autoMergeShortCountInput.value = String(EDITOR_SETTINGS.autoMergeShortCount);
+  if (autoMergeAbsorbDirectionSelect) autoMergeAbsorbDirectionSelect.value = EDITOR_SETTINGS.autoMergeAbsorbDirection;
+  syncAutoMergeAbsorbFields();
+}
+
+function syncAutoMergeAbsorbFields() {
+  const enabled = EDITOR_SETTINGS.autoMergeAbsorbShort;
+  if (autoMergeShortCountInput) autoMergeShortCountInput.disabled = !enabled;
+  if (autoMergeAbsorbDirectionSelect) autoMergeAbsorbDirectionSelect.disabled = !enabled;
+  autoMergePanel?.classList.toggle('absorb-disabled', !enabled);
+}
+
+// 一键处理整段工程：相邻间隔不超过 autoMergeGapMs 时按拓展方向拼合；
+// 过短的字幕（中文 < N 字 / 英文 < N 词）按吸收方向并入相邻字幕。
+function autoMergeSegments() {
+  const plan = window.AsrEditorUtils.planAutoMerge(DATA.segments, {
+    gapMs: EDITOR_SETTINGS.autoMergeGapMs,
+    snapDirection: EDITOR_SETTINGS.autoMergeSnapDirection,
+    absorbShort: EDITOR_SETTINGS.autoMergeAbsorbShort,
+    shortCount: EDITOR_SETTINGS.autoMergeShortCount,
+    absorbDirection: EDITOR_SETTINGS.autoMergeAbsorbDirection,
+  });
+  if (!plan.snaps.length && !plan.groups.length) {
+    flashHint('没有需要拼合的间隔或过短字幕');
+    return;
+  }
+  if (editingState) finishEdit(false);
+  clearSelection();
+  pushUndo('拼合字幕');
+  const snappedCount = window.AsrEditorUtils.applyAutoMergeSnaps(DATA.segments, plan.snaps);
+  // 合并从后往前进行，保持靠前组的下标仍然有效
+  for (let i = plan.groups.length - 1; i >= 0; i--) {
+    mergeContiguousIndices(plan.groups[i]);
+  }
+  renderAll();
+  update();
+  const mergedCount = plan.groups.reduce((sum, group) => sum + group.length - 1, 0);
+  const parts = [];
+  if (snappedCount) parts.push(`拼合 ${snappedCount} 处间隔`);
+  if (mergedCount) parts.push(`吸收 ${mergedCount} 条短字幕`);
+  flashHint(`已拼合字幕：${parts.join('，')}`);
 }
 
 // === 组拆分 helper（删除 / 清除颜色 / 清除表情包 通用）===
@@ -4729,6 +5011,10 @@ async function openProjectFile(file, options = {}) {
   try {
     const text = await file.text();
     const data = JSON.parse(text);
+    // 先兜底修复 0 长/倒挂时间码（保底 100ms），再校验结构，让旧工程仍能打开。
+    if (data && Array.isArray(data.segments)) {
+      window.AsrEditorUtils.normalizeSegmentTimings(data.segments);
+    }
     if (!isMawProject(data)) {
       flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。');
       return false;
@@ -5977,6 +6263,9 @@ window.addEventListener('drop', (e) => {
 });
 
 // === 启动 ===
+// 兜底：工程可能带有上游写入的 0 长/倒挂段、词时间码（旧版工具或异常识别结果），
+// 加载时统一拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
+const repairedTimingCount = window.AsrEditorUtils.normalizeSegmentTimings(DATA.segments);
 cleanPunctuation();
 configureServerSaveControls();
 configureServerAutoSave();
@@ -5988,6 +6277,9 @@ configureWorkspaceTransfer();
 totalCountEl.textContent = DATA.segments.length;
 renderAll();
 updateGapRemoveUi();
+if (repairedTimingCount > 0) {
+  flashHint(`已自动修复 ${repairedTimingCount} 处 0 长时间码（保底 100ms）`);
+}
 if (SERVER_CONFIG?.autoLoadedMediaName) {
   flashHint(`已自动加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`);
 }

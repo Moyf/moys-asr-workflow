@@ -31,7 +31,7 @@ from generate_subtitle_qwen_api import (
     get_duration_sec,
     parse_duration,
 )
-from maw.project import validate_project
+from maw.project import repair_segment_durations, validate_project
 from maw.soniox import (
     MAX_AUDIO_SECONDS,
     apply_speaker_colors,
@@ -120,8 +120,8 @@ def main():
 
     input_path = Path(args.input)
     if not input_path.exists():
-        print(f"错误: 文件不存在 - {input_path}")
-        return
+        print(f"错误: 文件不存在 - {input_path}", file=sys.stderr)
+        raise SystemExit(1)
 
     if args.output:
         output_path = Path(args.output)
@@ -137,13 +137,20 @@ def main():
     with tempfile.TemporaryDirectory() as tmpdir:
         if is_video:
             audio_path = str(Path(tmpdir) / "audio.wav")
-            extract_audio(str(input_path), audio_path)
+            source_duration = get_duration_sec(str(input_path))
+            video_limit = args.length_limit if args.length_limit and args.length_limit < source_duration else None
+            extract_audio(str(input_path), audio_path, duration_limit=video_limit)
+            duration = get_duration_sec(audio_path)
+            if video_limit is not None:
+                lm, ls = divmod(int(video_limit), 60)
+                print(f"[info] 测试模式：从视频直接提取前 {lm}分{ls}秒，跳过其余内容")
         else:
             # 复制到 tmpdir 统一处理（避免 length_limit 改原文件）
             audio_path = str(Path(tmpdir) / input_path.name)
             shutil.copy2(input_path, audio_path)
 
-        duration = get_duration_sec(audio_path)
+        if not is_video:
+            duration = get_duration_sec(audio_path)
         m, s = divmod(int(duration), 60)
         print(f"[info] 音频总时长: {m}分{s}秒")
 
@@ -178,8 +185,8 @@ def main():
         elapsed = time.perf_counter() - t0
 
         if not result or not result.get("text"):
-            print("错误: 未识别到任何内容")
-            return
+            print("错误: 未识别到任何内容", file=sys.stderr)
+            raise SystemExit(2)
 
         print(f"[info] 检测语言: {result.get('language', 'unknown')}")
 
@@ -199,6 +206,12 @@ def main():
                 items, max_len=args.max_len, min_len=args.min_len,
                 gap_split_ms=args.gap_split,
             )
+
+        # 兜底：缺时间戳/倒挂的 token 会形成 0 长 item，
+        # 拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
+        repaired_count = repair_segment_durations(segments)
+        if repaired_count:
+            print(f"[info] 已兜底修复 {repaired_count} 处 0 长/倒挂时间码（保底 100ms）")
 
     if enable_speaker:
         speakers = sorted({str(seg["speaker"]) for seg in segments if seg.get("speaker")})

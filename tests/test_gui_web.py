@@ -54,18 +54,22 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(config["region"], "singapore")
         self.assertEqual(config["guiLang"], "en")
         self.assertEqual(config["providerId"], "qwen")
-        self.assertEqual(config["modelId"], "qwen3-asr-flash-filetrans")
+        self.assertEqual(config["modelId"], "qwen-audio-3.0-asr-flash-filetrans")
         self.assertIsNone(config["lastModel"])
         self.assertIsNone(config["lastLanguage"])
         self.assertEqual(config["stickerDir"], "")
         self.assertEqual(config["providers"][0]["keyUrl"], "https://help.aliyun.com/zh/model-studio/get-api-key")
-        self.assertEqual(len(config["providers"][0]["commonLanguages"]), 9)
+        self.assertEqual(len(config["providers"][0]["commonLanguages"]), 10)
         self.assertEqual(len(config["providers"][1]["commonLanguages"]), 8)
-        self.assertEqual(config["models"][0]["id"], "qwen3-asr-flash-filetrans")
+        self.assertEqual(config["models"][0]["id"], "qwen-audio-3.0-asr-flash-filetrans")
         self.assertEqual(config["models"][1]["id"], "fun-asr")
-        self.assertFalse(config["models"][0]["supportsSpeaker"])
-        self.assertTrue(config["models"][1]["supportsSpeaker"])
-        self.assertEqual(config["models"][1]["languages"][0]["id"], "")
+        self.assertEqual(config["models"][2]["id"], "qwen3-asr-flash-filetrans")
+        self.assertTrue(config["models"][0]["supportsSpeaker"])
+        self.assertTrue(config["models"][0]["supportsContext"])
+        self.assertTrue(config["models"][0]["supportsHotwords"])
+        self.assertTrue(config["models"][0]["supportsVocabulary"])
+        self.assertEqual(config["models"][0]["languages"][0]["id"], "")
+        self.assertFalse(config["models"][2]["supportsSpeaker"])
         self.assertEqual(config["languages"][0]["id"], "")
 
     def test_save_settings_writes_env_without_echoing_key(self) -> None:
@@ -643,6 +647,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         }, self.env_path)
 
         self.assertEqual(request.length_limit, "2m")
+        self.assertEqual(request.srt_path.name, "out-test.srt")
         self.assertEqual(request.ui_language, "en")
 
     def test_request_from_payload_without_test_run_uses_manual_length_limit(self) -> None:
@@ -695,6 +700,88 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertFalse(qwen.speaker_colors)
         self.assertTrue(funasr.speaker_colors)
+
+    def test_request_from_payload_passes_qwen_audio_options_without_persisting_them(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        request = _request_from_payload({
+            "providerId": "qwen",
+            "modelId": "qwen-audio-3.0-asr-flash-filetrans",
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+            "region": "beijing",
+            "qwenAudioContext": "产品名和专业术语",
+            "qwenAudioHotwords": "张三\n李四,阿里云",
+            "qwenAudioVocabularyId": "vocab-qwen-audio",
+            "qwenAudioHotwordWeight": "50",
+        }, self.env_path)
+
+        self.assertEqual(request.qwen_audio_context, "产品名和专业术语")
+        self.assertEqual(request.qwen_audio_hotwords, "张三\n李四,阿里云")
+        self.assertEqual(request.qwen_audio_vocabulary_id, "vocab-qwen-audio")
+        self.assertEqual(request.qwen_audio_hotword_weight, "50")
+
+    def test_request_from_payload_passes_qwen_audio_hotword_file_mode(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        hotwords = self.root / "hotwords.txt"
+        hotwords.write_text("张三\n阿里云\n", encoding="utf-8")
+        request = _request_from_payload({
+            "providerId": "qwen",
+            "modelId": "qwen-audio-3.0-asr-flash-filetrans",
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+            "region": "beijing",
+            "qwenAudioHotwordsMode": "file",
+            "qwenAudioHotwordsFile": str(hotwords),
+            "qwenAudioHotwords": "不会被使用",
+        }, self.env_path)
+
+        self.assertEqual(request.qwen_audio_hotwords_file, str(hotwords))
+        self.assertEqual(request.qwen_audio_hotwords, "")
+
+    def test_request_from_payload_rejects_missing_qwen_audio_hotword_file(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+
+        with self.assertRaisesRegex(PreflightError, "\\.txt"):
+            _request_from_payload({
+                "providerId": "qwen",
+                "modelId": "qwen-audio-3.0-asr-flash-filetrans",
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "out.srt"),
+                "apiKey": "sk-test",
+                "region": "beijing",
+                "qwenAudioHotwordsMode": "file",
+                "qwenAudioHotwordsFile": str(self.root / "missing.txt"),
+            }, self.env_path)
+
+    def test_read_hotword_file_returns_utf8_text(self) -> None:
+        hotwords = self.root / "hotwords.txt"
+        hotwords.write_text("张三\n阿里云\n", encoding="utf-8")
+
+        result = self.api.read_hotword_file({"path": str(hotwords)})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["path"], str(hotwords))
+        self.assertEqual(result["text"], "张三\n阿里云\n")
+
+    def test_request_from_payload_rejects_qwen_audio_context_over_400_characters(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+
+        with self.assertRaisesRegex(PreflightError, "400"):
+            _request_from_payload({
+                "providerId": "qwen",
+                "modelId": "qwen-audio-3.0-asr-flash-filetrans",
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "out.srt"),
+                "apiKey": "sk-test",
+                "region": "beijing",
+                "qwenAudioContext": "x" * 401,
+            }, self.env_path)
 
     def test_event_pump_batches_events_and_preserves_order(self) -> None:
         pump = EventPump(window_getter=lambda: self.window)
@@ -767,17 +854,17 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('"code": "ffprobe_start_failed"', event_script)
         self.assertIn('"detail": "Transcription failed with exit code 1"', event_script)
 
-    def test_route_dropped_path_routes_json_media_and_reject(self) -> None:
+    def test_route_dropped_path_routes_json_media_and_hotword_file(self) -> None:
         """Given dropped paths, When routed, Then event type mirrors launcher drop behavior."""
         media = _route_dropped_path(r"D:\Videos\clip.MP4")
         project = _route_dropped_path(r"D:\Videos\clip.json")
         mosp_project = _route_dropped_path(r"D:\Videos\clip.mosp")
-        rejected = _route_dropped_path(r"D:\Videos\clip.txt")
+        hotwords = _route_dropped_path(r"D:\Videos\clip.txt")
 
         self.assertEqual(media, {"type": "dropMedia", "path": r"D:\Videos\clip.MP4"})
         self.assertEqual(project, {"type": "dropJson", "path": r"D:\Videos\clip.json"})
         self.assertEqual(mosp_project, {"type": "dropJson", "path": r"D:\Videos\clip.mosp"})
-        self.assertEqual(rejected, {"type": "dropReject", "path": r"D:\Videos\clip.txt"})
+        self.assertEqual(hotwords, {"type": "dropHotwordFile", "path": r"D:\Videos\clip.txt"})
 
 
 @final
@@ -895,13 +982,45 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn("const selectedModel = () =>", script)
         self.assertIn("applyProviderLanguages(provider(), selectedModel())", script)
 
-    def test_workspace_is_visible_for_beijing_and_required_only_for_singapore(self) -> None:
+    def test_qwen_audio_launcher_exposes_one_shot_context_and_hotwords_only(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
 
+        for field in ("qwenAudioContext", "qwenAudioHotwordsMode", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight"):
+            self.assertIn(f'id="{field}"', page)
+        self.assertIn('qwenAudioContext: $("qwenAudioContext").value.trim()', script)
+        self.assertIn('qwenAudioHotwords: $("qwenAudioHotwords").value.trim()', script)
+        self.assertIn('qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value', script)
+        self.assertIn('qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim()', script)
+        self.assertIn('kind: "hotwords"', script)
+        self.assertIn('read_hotword_file', script)
+        self.assertIn('qwenAudioContextCount', page)
+        self.assertIn('classList.toggle("over-limit", count > 400)', script)
+        self.assertIn('qwenAudioHotwordsWarning', page)
+        self.assertIn('qwen_audio_hotwords_weight_override_hint', script)
+        self.assertIn('parseHotwordEntry', script)
+        self.assertIn('MAX_SUPER_HOTWORDS = 50', script)
+        self.assertNotIn('id="qwenAudioVocabularyId"', page)
+        self.assertNotIn("qwenAudioVocabularyId", script)
+        self.assertIn('supportsContext', script)
+
+    def test_regional_fields_are_temporarily_hidden_for_domestic_launcher(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="regionField" class="field hidden"', page)
+        self.assertIn('id="workspaceField" class="field hidden"', page)
         self.assertIn("北京地域选填（推荐），新加坡地域必填。", page)
         self.assertIn(
-            '$("workspaceField").classList.toggle("hidden", provider().regions.length === 0);',
+            "const SHOW_REGIONAL_FIELDS = false;",
+            script,
+        )
+        self.assertIn(
+            '$("regionField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || current.regions.length === 0);',
+            script,
+        )
+        self.assertIn(
+            '$("workspaceField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || provider().regions.length === 0);',
             script,
         )
         self.assertIn('data.region === "singapore" && !data.workspaceId', script)
