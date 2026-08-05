@@ -25,14 +25,15 @@ pub fn run() {
     let settings = ServerSettings::load(&s_path);
 
     // 启动 Tauri（注册 commands + dialog plugin + 共享状态）
-    // 检查命令行参数（双击 .mosp 文件时 OS 传入路径）
-    let init_file = std::env::args().nth(1).filter(|p| {
+    // 检查命令行参数（双击 .mosp 文件时 OS 传入路径）。不要假定
+    // 工程一定是 nth(1)：启动器/打包器可能会在它前面附加参数。
+    let init_file = std::env::args().skip(1).find(|p| {
         let ext = std::path::Path::new(p)
             .extension()
             .and_then(|e| e.to_str())
-            .map(|e| e.to_lowercase())
+            .map(|e| e.to_ascii_lowercase())
             .unwrap_or_default();
-        ext == "mosp" || ext == "json"
+        matches!(ext.as_str(), "mosp" | "json")
     });
 
     let app = tauri::Builder::default()
