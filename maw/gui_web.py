@@ -64,9 +64,9 @@ def _app_version(paths: object) -> str:
     try:
         text = Path(pyproject).read_text(encoding="utf-8")
     except OSError:
-        return "1.3.0"
+        return "1.13.1-beta-1"
     match = re.search(r'(?m)^version = "([^"]+)"\r?$', text)
-    return match.group(1) if match else "1.3.0"
+    return match.group(1) if match else "1.13.1-beta-1"
 
 
 def _is_ffprobe_start_failure(lines: Sequence[str]) -> bool:

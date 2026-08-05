@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+## [1.13.1-beta-1] - 2026-08-05
+
+### Added
+
+- MAW Windows beta 包随附 MOSE 桌面编辑器；Launcher 可直接把当前工程交给同目录的 `MOSE.exe` 打开，Server 版编辑器和便携 HTML 仍保留为备用入口。
+- 增加 Windows Pull Request 预览包构建流程，便于在正式发布前测试打包结果。
+
+### Fixed
+
+- 修复 macOS 应用图标资源与构建配置，macOS Release 包现在会包含正确的图标。
+
 ## [1.3.0] - 2026-08-05
 
 ### Documentation
