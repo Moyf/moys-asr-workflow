@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- macOS Apple Silicon Release 新增 `MAWxFF-macOS-arm64` 包，内置静态 `ffmpeg` 与 `ffprobe`；普通 `MAW-macOS-arm64` 包继续保留。
+
+### Changed
+
+- Windows 与 macOS 正式 Release 不再额外上传 `.sha256` 校验文件；构建流程仍会校验下载的第三方 FFmpeg 包。
+- macOS Launcher 现在按 `MOSE.app` 查找并启动其中的编辑器可执行文件，不再把桌面版路径写死为 `MOSE.exe`。
+
 ## [1.13.1-beta-1] - 2026-08-05
 
 ### Added

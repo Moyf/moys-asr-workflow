@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "description": "MOSE — Moy's Open Subtitle Editor (Tauri 桌面应用开发目录)",
   "scripts": {
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "icons": "tauri icon ../assets/MOSE-icon.png -o src-tauri/icons"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

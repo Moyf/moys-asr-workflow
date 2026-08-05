@@ -304,6 +304,7 @@ impl ServerSettings {
 // === App State ===
 
 pub struct AppState {
+    pub initial_project_path: Mutex<Option<PathBuf>>,
     pub current_project_path: Mutex<Option<PathBuf>>,
     pub settings: Mutex<ServerSettings>,
     pub settings_path: PathBuf,
@@ -483,6 +484,22 @@ pub fn remember_project(
 pub fn get_settings(state: tauri::State<'_, AppState>) -> Result<serde_json::Value, String> {
     let settings = state.settings.lock().map_err(|_| "读取设置失败".to_string())?;
     Ok(settings.to_server_config(false))
+}
+
+/// Return and consume the project path supplied when MOSE was launched.
+/// The frontend calls this after it has initialized, so a startup argument
+/// cannot be lost before the JavaScript event listener is ready.
+#[tauri::command]
+pub fn take_initial_project_path(
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    let mut path = state
+        .initial_project_path
+        .lock()
+        .map_err(|_| "读取启动工程路径失败".to_string())?;
+    Ok(path
+        .take()
+        .map(|value| value.to_string_lossy().into_owned()))
 }
 
 #[tauri::command]

@@ -33,8 +33,10 @@ Moy 的 ASR 工作流由两部分组成：
 
 - `MAWxFF-Windows-x64-v*.zip`：已经捆绑 MAW 与 MOSE 会用到的 `ffmpeg.exe` 和 `ffprobe.exe`；没有 FFmpeg、或者不知道它是什么，下载这个。
 - `MAW-Windows-x64-v*.zip`：体积更小；适合已经安装 FFmpeg，并且终端能直接运行 `ffmpeg` / `ffprobe` 的用户。
+- `MAWxFF-macOS-arm64-v*.zip`：Apple Silicon Mac（M1/M2/M3/M4）版，已经捆绑 `ffmpeg` 和 `ffprobe`；不需要另外安装 FFmpeg。
+- `MAW-macOS-arm64-v*.zip`：Apple Silicon Mac 版，体积更小；需要系统能找到 `ffmpeg` 和 `ffprobe`。目前 macOS 图形 Release 只提供 arm64 包。
 
-下载解压之后点击 `MAW.exe` 并运行。
+Windows 下载解压之后点击 `MAW.exe` 并运行；macOS 下载后打开对应的 `.app`。
 
 ### 申请 API Key
 
@@ -77,6 +79,7 @@ Moy 的 ASR 工作流由两部分组成：
 
 - 至少一个云端 ASR API Key：可以用[阿里云百炼](https://help.aliyun.com/zh/model-studio/get-api-key)调用 Qwen 或 Fun-ASR，也可以用支持说话人分离的 [Soniox](https://console.soniox.com)。
 - [Windows 图形版](https://github.com/Moyf/moys-asr-workflow/releases/latest)：Windows 10/11；下载 `MAWxFF` 不需要另外安装 FFmpeg，下载普通版则需要系统里已经有 `ffmpeg` 和 `ffprobe`。
+- [macOS 图形版](https://github.com/Moyf/moys-asr-workflow/releases/latest)：目前提供 Apple Silicon arm64；下载 `MAWxFF` 不需要另外安装 FFmpeg，下载普通版则需要系统里已经有 `ffmpeg` 和 `ffprobe`。
 - 从源码或命令行运行：Python 3.11 或更新版本、[uv](https://docs.astral.sh/uv/getting-started/installation/)（推荐），以及 [FFmpeg](https://ffmpeg.org/download.html)。macOS/Linux 也可尝试。
 
 > [!note]
@@ -84,8 +87,7 @@ Moy 的 ASR 工作流由两部分组成：
 
 <details>
 <summary>废话压缩</summary>
-
-两个版本的 MAW 功能完全一样。解压后双击 `MAW.exe`，Launcher 会带你完成这条流程：
+同一平台的两个版本 MAW 功能完全一样，区别只有是否捆绑 FFmpeg。Windows 解压后双击 `MAW.exe`；macOS 打开 `.app`，Launcher 会带你完成这条流程：
 
 ```text
 选择供应商和媒体 -> 生成 SRT + .mosp 工程 -> 打开 MOSE 校对 -> 保存或导出
@@ -93,10 +95,10 @@ Moy 的 ASR 工作流由两部分组成：
 
 在 Launcher 里选择阿里云百炼或 Soniox、媒体与 SRT 输出位置，确认模型、语言和可选时长上限，填写对应的 API Key，即可生成 SRT、`.mosp` 工程和便携编辑器 HTML。阿里云百炼 Provider 默认使用最新发布的 `qwen-audio-3.0-asr（热词 / 上下文）`，也可以选择 `fun-asr（支持说话人）` 或 `qwen3-asr（准确率更高）`。需要复用 Key 时，可点“存入本地环境”；密钥只保存在本机 `.env`，不会写入工程文件或日志。
 
-Launcher 的「打开编辑器」默认启动 MOSE 并传入工程路径。MAW 会优先读取当前用户注册表 `HKCU\Software\Moy\MOSE` 下仍有效的 `ExecutablePath`；找不到时才使用当前压缩包内的 `MOSE.exe` fallback，并登记 `InstallPath`、`ExecutablePath` 和 `Version`。首次启动 MAW 时还会为当前用户登记 `.mosp` 关联，之后双击工程文件即可直接交给 MOSE。Server 版字幕编辑器和 HTML 空工程仍可从按钮右侧的拓展菜单打开。GUI 还可以直接选择 `.mosp` / `.json` 工程并启动 `http://127.0.0.1` 本地编辑器服务器；中英文界面可在右上角切换。
+Launcher 的「打开编辑器」默认启动 MOSE 并传入工程路径。Windows 会优先读取当前用户注册表 `HKCU\Software\Moy\MOSE` 下仍有效的 `ExecutablePath`，macOS 则查找 `MOSE.app` 并启动其中的编辑器；找不到桌面版时，Server 版字幕编辑器和 HTML 空工程仍可从按钮右侧的拓展菜单打开。首次启动 Windows MAW 时还会为当前用户登记 `.mosp` 关联。GUI 还可以直接选择 `.mosp` / `.json` 工程并启动 `http://127.0.0.1` 本地编辑器服务器；中英文界面可在右上角切换。
 启动器支持从资源管理器拖入音视频文件来自动填充媒体路径，并按供应商组织模型、地域、语言和 API Key 获取入口；选择 Fun-ASR 或 Soniox 时可在「高级选项」中开启「给不同说话人分配字幕颜色」。
 
-普通版仍要求系统能找到 `ffmpeg` 和 `ffprobe`。如果 Launcher 提示未检测到 FFmpeg，可以换用 `MAWxFF` 版；也可以自行安装 FFmpeg，把它的 `bin` 目录加入 PATH 后重新打开 MAW。
+Windows Release 的 Launcher 会优先打开同目录 MOSE；macOS 会查找包内或常见安装位置的 `MOSE.app`。如果找不到桌面版，可以从右侧菜单启动 Server 版或 HTML 编辑器。普通版仍要求系统能找到 `ffmpeg` 和 `ffprobe`；如果 Launcher 提示未检测到 FFmpeg，可以换用同平台的 `MAWxFF` 版，也可以自行安装 FFmpeg，把它的 `bin` 目录加入 PATH 后重新打开 MAW。
 
 ### 本地构建 Windows 图形包
 

@@ -12,7 +12,7 @@ use std::sync::Mutex;
 use server::{
     extract_waveform, get_settings, open_project, open_project_at_path, pick_and_scan_stickers,
     pick_media, prepare_media, remember_project, resolve_media, save_project, settings_path,
-    update_settings, AppState, ServerSettings,
+    take_initial_project_path, update_settings, AppState, ServerSettings,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -36,6 +36,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
+            initial_project_path: Mutex::new(init_file.map(std::path::PathBuf::from)),
             current_project_path: Mutex::new(None),
             settings: Mutex::new(settings),
             settings_path: s_path,
@@ -43,6 +44,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             open_project,
             open_project_at_path,
+            take_initial_project_path,
             get_settings,
             pick_media,
             save_project,
@@ -53,14 +55,6 @@ pub fn run() {
             pick_and_scan_stickers,
             extract_waveform,
         ])
-        .setup(move |app| {
-            // 启动时如有命令行传入的文件路径，发给前端加载
-            if let Some(path) = &init_file {
-                use tauri::Emitter;
-                let _ = app.emit("open-file", path.clone());
-            }
-            Ok(())
-        })
         .build(tauri::generate_context!())
         .expect("MOSE 启动失败");
 

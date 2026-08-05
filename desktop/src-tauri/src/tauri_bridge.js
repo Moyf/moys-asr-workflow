@@ -99,6 +99,25 @@
     }
   }
 
+  function projectPathFromPayload(payload) {
+    if (typeof payload === 'string') return payload;
+    if (payload && typeof payload.path === 'string') return payload.path;
+    return '';
+  }
+
+  function openProjectAtPath(path) {
+    var projectPath = projectPathFromPayload(path);
+    if (!projectPath) return Promise.resolve(null);
+    return invoke('open_project_at_path', { path: projectPath }).then(function (result) {
+      if (result && result.ok) {
+        loadProjectData(result);
+      } else if (result && result.error) {
+        alert(result.error);
+      }
+      return result;
+    });
+  }
+
   function replacePlayerForMedia(isVideo) {
     var current = document.getElementById('player');
     if (!current || current.tagName === (isVideo ? 'VIDEO' : 'AUDIO')) return current;
@@ -374,22 +393,75 @@
 
   setupStickerInterceptor();
 
-  // === 5. 监听 OS 级 .mosp 文件打开事件（双击 .mosp → MOSE 启动/聚焦 → 加载工程） ===
-  // 需要打包安装后生效（dev 模式下文件关联未注册到 OS）。
-  if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.listen) {
-    window.__TAURI__.event.listen('open-file', function (event) {
-      var path = event.payload;
-      if (!path) return;
-      invoke('open_project_at_path', { path: path }).then(function (result) {
-        if (result && result.ok) {
-          loadProjectData(result);
-        } else if (result && result.error) {
-          alert(result.error);
-        }
+  // === 5. 启动工程、文件关联与原生拖放 ===
+  // Tauri 会在页面加载前收到命令行参数；Rust 暂存它，页面就绪后由这里取出。
+  // 这也让从 Explorer 拖入的真实路径复用同一条工程/媒体解析链路。
+  function nativeDropPaths(payload) {
+    if (Array.isArray(payload)) return payload.filter(function (path) {
+      return typeof path === 'string' && path;
+    });
+    if (payload && Array.isArray(payload.paths)) {
+      return payload.paths.filter(function (path) {
+        return typeof path === 'string' && path;
+      });
+    }
+    return [];
+  }
+
+  function isProjectPath(path) {
+    return /\.(mosp|json)$/i.test(path);
+  }
+
+  function isMediaPath(path) {
+    return /\.(mp4|mkv|avi|mov|wmv|flv|webm|ts|m4v|mp3|wav|m4a|flac|aac|ogg|opus)$/i.test(path);
+  }
+
+  function hideNativeDropOverlay() {
+    if (dragOverlay) dragOverlay.classList.remove('show');
+  }
+
+  function handleNativeDrop(payload) {
+    hideNativeDropOverlay();
+    var paths = nativeDropPaths(payload);
+    var projectPath = paths.find(isProjectPath);
+    if (projectPath) {
+      void openProjectAtPath(projectPath).catch(function (error) {
+        console.error('[MOSE] 拖放工程失败:', error);
+      });
+      return;
+    }
+    var mediaPath = paths.find(isMediaPath);
+    if (mediaPath) {
+      var generation = ++mediaLoadGeneration;
+      void autoLoadMedia(mediaPath, generation, true);
+    }
+  }
+
+  function setupNativeFileDrop() {
+    var eventApi = window.__TAURI__ && window.__TAURI__.event;
+    if (!eventApi || !eventApi.listen) return;
+    void eventApi.listen('open-file', function (event) {
+      void openProjectAtPath(event && event.payload).catch(function (error) {
+        console.error('[MOSE] 关联工程打开失败:', error);
       });
     });
-    console.log('[MOSE] open-file 监听器已就绪');
+    void eventApi.listen('tauri://drag-enter', function () {
+      if (dragOverlay) dragOverlay.classList.add('show');
+    });
+    void eventApi.listen('tauri://drag-leave', hideNativeDropOverlay);
+    void eventApi.listen('tauri://drag-drop', function (event) {
+      handleNativeDrop(event && event.payload);
+    });
+    void invoke('take_initial_project_path').then(function (path) {
+      if (!path) return;
+      return openProjectAtPath(path);
+    }).catch(function (error) {
+      console.error('[MOSE] 启动工程打开失败:', error);
+    });
+    console.log('[MOSE] 文件关联、启动工程与原生拖放监听器已就绪');
   }
+
+  setupNativeFileDrop();
 
   // index.html 在构建时生成，运行时设置（最近工程、工作区）需要从本机读取一次。
   async function hydrateSettings() {

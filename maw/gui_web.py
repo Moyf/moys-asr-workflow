@@ -101,27 +101,66 @@ def _registered_mose_executable() -> Path | None:
         return candidate
 
 
+def _macos_mose_executable(app_path: Path) -> Path | None:
+    """Return the executable inside a macOS MOSE application bundle."""
+    for name in ("mose", "MOSE"):
+        candidate = app_path / "Contents" / "MacOS" / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def _find_mose_executable() -> Path | None:
-    """Find the optional MOSE executable shipped beside the MAW Launcher."""
+    """Find the optional MOSE executable or macOS app bundle for the MAW Launcher."""
     candidates: list[Path] = []
     registered = _registered_mose_executable()
     if registered is not None:
         candidates.append(registered)
-    if getattr(sys, "frozen", False):
-        executable_dir = Path(sys.executable).resolve().parent
-        candidates.extend((executable_dir / "MOSE.exe", executable_dir / "mose.exe"))
 
     repo_root = Path(__file__).resolve().parents[1]
-    candidates.extend(
-        (
-            repo_root / "MOSE.exe",
-            repo_root / "mose.exe",
-            repo_root / "desktop" / "target" / "release" / "mose.exe",
-            repo_root / "desktop" / "target" / "debug" / "mose.exe",
-            asset_path("MOSE.exe"),
-            asset_path("mose.exe"),
+    if sys.platform == "darwin":
+        app_candidates: list[Path] = [
+            repo_root / "MOSE.app",
+            repo_root / "mose.app",
+            repo_root / "desktop" / "target" / "release" / "bundle" / "macos" / "MOSE.app",
+            repo_root / "desktop" / "target" / "release" / "bundle" / "macos" / "mose.app",
+            repo_root / "desktop" / "target" / "debug" / "bundle" / "macos" / "MOSE.app",
+            repo_root / "desktop" / "target" / "debug" / "bundle" / "macos" / "mose.app",
+            asset_path("MOSE.app"),
+            asset_path("mose.app"),
+            Path("/Applications/MOSE.app"),
+            Path("/Applications/mose.app"),
+            Path.home() / "Applications" / "MOSE.app",
+            Path.home() / "Applications" / "mose.app",
+        ]
+        if getattr(sys, "frozen", False):
+            executable_dir = Path(sys.executable).resolve().parent
+            app_candidates[0:0] = [
+                executable_dir / "MOSE.app",
+                executable_dir / "mose.app",
+                executable_dir.parent / "Resources" / "MOSE.app",
+                executable_dir.parent / "Resources" / "mose.app",
+                executable_dir.parent.parent.parent / "MOSE.app",
+                executable_dir.parent.parent.parent / "mose.app",
+            ]
+        for app_path in app_candidates:
+            executable = _macos_mose_executable(app_path)
+            if executable is not None:
+                candidates.append(executable)
+    else:
+        if getattr(sys, "frozen", False):
+            executable_dir = Path(sys.executable).resolve().parent
+            candidates.extend((executable_dir / "MOSE.exe", executable_dir / "mose.exe"))
+        candidates.extend(
+            (
+                repo_root / "MOSE.exe",
+                repo_root / "mose.exe",
+                repo_root / "desktop" / "target" / "release" / "mose.exe",
+                repo_root / "desktop" / "target" / "debug" / "mose.exe",
+                asset_path("MOSE.exe"),
+                asset_path("mose.exe"),
+            )
         )
-    )
 
     seen: set[Path] = set()
     for candidate in candidates:
@@ -145,9 +184,10 @@ def _register_mosp_association() -> bool:
     executable = registered or _find_mose_executable()
     if executable is None:
         return False
-    icon = asset_path("assets/maw.ico")
-    if not icon.is_file():
-        icon = executable
+    # MOSE.exe already embeds the MOSE icon.  Referencing the executable keeps
+    # the association self-contained in the portable bundle and avoids pointing
+    # Explorer at MAW's launcher icon (or at a stale _MEIPASS path).
+    icon = executable
     try:
         import winreg
 
@@ -176,6 +216,13 @@ def _register_mosp_association() -> bool:
             winreg.SetValueEx(command_key, None, 0, winreg.REG_SZ, f'"{executable}" "%1"')
     except (AttributeError, ImportError, OSError):
         return False
+    try:
+        import ctypes
+
+        # Make Explorer invalidate its cached association/icon immediately.
+        ctypes.windll.shell32.SHChangeNotify(0x08000000, 0, None, None)
+    except (AttributeError, OSError, TypeError):
+        pass
     return True
 
 
@@ -359,7 +406,8 @@ class LauncherApi:
 
         executable = _find_mose_executable()
         if executable is None:
-            return _error_result("editor", "mose_not_found", "MOSE.exe")
+            expected = "MOSE.app" if sys.platform == "darwin" else "MOSE.exe"
+            return _error_result("editor", "mose_not_found", expected)
 
         command = [str(executable)]
         if project is not None:

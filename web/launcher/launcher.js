@@ -126,7 +126,7 @@
       ffprobe_start_failed: "ffprobe 启动失败（Windows 错误 0xC0000142）。请重新运行 MAW；如果仍然失败，请重新下载并完整解压 MAWxFF，并检查 Windows 安全中心是否拦截了 ffprobe.exe。",
       server_no_response: (detail) => `编辑器服务器没有响应（${detail || "http://127.0.0.1"}）——端口可能被占用，请检查端口后重试。`,
       server_start_failed: (detail) => `编辑器服务器启动失败：${detail || "请查看下方日志。"}`,
-      mose_not_found: "当前 MAW 包中没有找到 MOSE.exe，请确认桌面版编辑器文件存在。",
+      mose_not_found: (detail) => `当前 MAW 包中没有找到 ${detail || "MOSE.app"}，请确认桌面版编辑器文件存在。`,
       mose_start_failed: (detail) => `MOSE 启动失败：${detail || "请检查桌面版编辑器文件。"}`,
       sticker_dir_invalid: "表情包根目录不存在。"
     },
@@ -144,7 +144,7 @@
       ffprobe_start_failed: "ffprobe failed to start (Windows error 0xC0000142). Please run MAW again. If it keeps happening, download and fully extract MAWxFF again, and check Windows Security for a blocked ffprobe.exe.",
       server_no_response: (detail) => `The editor server did not respond (${detail || "http://127.0.0.1"}). The port may be occupied; check the port and retry.`,
       server_start_failed: (detail) => `The editor server failed to start: ${detail || "check the logs below."}`,
-      mose_not_found: "MOSE.exe was not found in this MAW package. Check that the desktop editor is present.",
+      mose_not_found: (detail) => `${detail || "MOSE.app"} was not found in this MAW package. Check that the desktop editor is present.`,
       mose_start_failed: (detail) => `MOSE failed to start: ${detail || "check the desktop editor files."}`,
       sticker_dir_invalid: "Sticker root directory does not exist."
     }
@@ -227,7 +227,7 @@
       save_settings: async (payload) => { saved = { ...saved, ...payload }; return { ok: true, maskedApiKey: payload.apiKey ? "sk-…mock" : "", message: "mock saved" }; },
       save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); return { ok: true }; },
       open_url: async ({ url }) => { window.open(url, "_blank"); return { ok: true }; },
-      open_mose: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "log", message: "[mock] would open MOSE.exe with the project path" }), 120); return { ok: true, usedMose: true }; },
+      open_mose: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "log", message: "[mock] would open the platform MOSE editor with the project path" }), 120); return { ok: true, usedMose: true }; },
       open_blank_html: async () => ({ ok: true }),
       check_ffmpeg: async () => ({ ok: true, found: true, directory: "D:\\FFmpeg\\bin", ffmpeg: "D:\\FFmpeg\\bin\\ffmpeg.exe", ffprobe: "D:\\FFmpeg\\bin\\ffprobe.exe" }),
       save_ffmpeg_path: async ({ path }) => ({ ok: Boolean(path), found: Boolean(path), directory: path || "", ffmpeg: path || "", ffprobe: path || "" }),

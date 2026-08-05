@@ -71,6 +71,23 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn(b"ic07", icon)
         self.assertIn(b"ic08", icon)
 
+    def test_macos_release_workflow_publishes_standard_and_xff_archives_without_checksums(self) -> None:
+        """Given a macOS arm64 release, When packaging runs, Then both app variants are uploaded without checksum assets."""
+        workflow = read_text(".github/workflows/build-macos.yml")
+
+        self.assertIn("runs-on: macos-14", workflow)
+        self.assertIn("architecture: arm64", workflow)
+        self.assertIn("https://www.osxexperts.net/ffmpeg81arm.zip", workflow)
+        self.assertIn("https://www.osxexperts.net/ffprobe81arm.zip", workflow)
+        self.assertIn("ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085bb9e8f6fe709598ad", workflow)
+        self.assertIn("a6640a77d38a6f0527c5b597e599cb36a3427a6931444ed80bc62542421950a1", workflow)
+        self.assertIn("MAWxFF.app/Contents/MacOS/ffmpeg/bin", workflow)
+        self.assertIn("codesign --force --deep --sign - dist/MAWxFF.app", workflow)
+        self.assertIn("MAW-macOS-arm64-${Version}.zip", workflow)
+        self.assertIn("MAWxFF-macOS-arm64-${Version}.zip", workflow)
+        self.assertIn("MAWxFF-macOS-arm64-*.zip", workflow)
+        self.assertNotIn(".zip.sha256", workflow)
+
     def test_local_build_script_invokes_uv_and_pyinstaller_for_maw_onedir(self) -> None:
         """Given a Windows developer build, When the script is read, Then it builds dist/MAW/MAW.exe."""
         script = read_text("scripts/build-windows.ps1")
@@ -114,12 +131,36 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("softprops/action-gh-release@v2", workflow)
         self.assertIn("target_commitish: ${{ github.sha }}", workflow)
         self.assertIn("GITHUB_TOKEN: ${{ github.token }}", workflow)
+        self.assertNotIn(".zip.sha256", workflow)
 
-    def test_mose_uses_maw_icon_and_declares_mosp_association(self) -> None:
+    def test_mose_uses_its_dedicated_icons_and_declares_mosp_association(self) -> None:
         config = read_text("desktop/src-tauri/tauri.conf.json")
+        package_json = read_text("desktop/package.json")
+        bridge = read_text("desktop/src-tauri/src/tauri_bridge.js")
+        rust = read_text("desktop/src-tauri/src/lib.rs")
+        gui = read_text("maw/gui_web.py")
+        icon_png = (ROOT / "assets" / "MOSE-icon.png").read_bytes()
+        icon_ico = (ROOT / "desktop" / "src-tauri" / "icons" / "icon.ico").read_bytes()
+        icon_icns = (ROOT / "desktop" / "src-tauri" / "icons" / "icon.icns").read_bytes()
 
         self.assertIn('"icons/icon.ico"', config)
+        self.assertIn('"icons/icon.icns"', config)
+        self.assertIn('"icons/32x32.png"', config)
+        self.assertIn('"icons/128x128.png"', config)
+        self.assertIn('"icons/128x128@2x.png"', config)
+        self.assertIn('"icons": "tauri icon ../assets/MOSE-icon.png -o src-tauri/icons"', package_json)
+        self.assertTrue(icon_png.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertEqual(icon_png[16:24], (500).to_bytes(4, "big") * 2)
+        self.assertEqual(icon_ico[:4], b"\x00\x00\x01\x00")
+        self.assertTrue(icon_icns.startswith(b"icns"))
         self.assertIn('"ext": ["mosp"]', config)
+        self.assertIn('"dragDropEnabled": true', config)
+        self.assertIn("icon = executable", gui)
+        self.assertIn("SHChangeNotify", gui)
+        self.assertIn("take_initial_project_path", rust)
+        self.assertIn("take_initial_project_path", bridge)
+        self.assertIn("tauri://drag-drop", bridge)
+        self.assertIn("openProjectAtPath(projectPath)", bridge)
         self.assertNotIn('"externalBin"', config)
 
     def test_pr_release_workflow_builds_only_the_no_ffmpeg_windows_preview(self) -> None:

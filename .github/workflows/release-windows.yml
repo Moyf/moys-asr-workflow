@@ -113,8 +113,6 @@ jobs:
           $Version = '${{ github.ref_name }}'
           $Archive = "MAW-Windows-x64-$Version.zip"
           Compress-Archive -LiteralPath 'dist\MAW' -DestinationPath $Archive -Force
-          $Hash = Get-FileHash -Algorithm SHA256 -LiteralPath $Archive
-          "$($Hash.Hash)  $Archive" | Set-Content -LiteralPath "$Archive.sha256" -Encoding ascii
 
       - name: Create FFmpeg-bundled release archive
         shell: pwsh
@@ -164,8 +162,6 @@ jobs:
           $Version = '${{ github.ref_name }}'
           $Archive = "MAWxFF-Windows-x64-$Version.zip"
           Compress-Archive -LiteralPath 'dist\MAWxFF' -DestinationPath $Archive -Force
-          $Hash = Get-FileHash -Algorithm SHA256 -LiteralPath $Archive
-          "$($Hash.Hash)  $Archive" | Set-Content -LiteralPath "$Archive.sha256" -Encoding ascii
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
@@ -173,9 +169,7 @@ jobs:
           name: MAW-Windows-x64-${{ github.ref_name }}
           path: |
             MAW-Windows-x64-${{ github.ref_name }}.zip
-            MAW-Windows-x64-${{ github.ref_name }}.zip.sha256
             MAWxFF-Windows-x64-${{ github.ref_name }}.zip
-            MAWxFF-Windows-x64-${{ github.ref_name }}.zip.sha256
           if-no-files-found: error
 
       - name: Prepare release notes from CHANGELOG
@@ -195,7 +189,7 @@ jobs:
           - **不知道 FFmpeg 是什么，或者电脑里没有装** ： 下载 ``MAWxFF-Windows-x64-${{ github.ref_name }}.zip``。它已经带上 MAW 与 MOSE 所需的 ``ffmpeg.exe`` 和 ``ffprobe.exe``，解压后直接双击 ``MAW.exe``。
           - **已经装好 FFmpeg，并且 ``ffmpeg`` / ``ffprobe`` 在 PATH 里** ： 下载体积更小的 ``MAW-Windows-x64-${{ github.ref_name }}.zip``。
 
-          启动 Launcher 后，「打开编辑器」会启动 MOSE 并自动传入当前工程；Server 版编辑器与 HTML 空工程仍可从右侧拓展菜单打开。两个版本的 MAW 功能完全一致；区别只有是否捆绑 FFmpeg。``.sha256`` 文件可用于校验下载完整性。
+          启动 Launcher 后，「打开编辑器」会启动 MOSE 并自动传入当前工程；Server 版编辑器与 HTML 空工程仍可从右侧拓展菜单打开。两个版本的 MAW 功能完全一致；区别只有是否捆绑 FFmpeg。
           "@
           $Body = $DownloadGuide.Trim() + "`r`n`r`n" + $Match.Value.Trim()
           Set-Content -LiteralPath 'release-notes.md' -Value $Body -Encoding utf8
@@ -210,6 +204,4 @@ jobs:
           body_path: release-notes.md
           files: |
             MAW-Windows-x64-${{ github.ref_name }}.zip
-            MAW-Windows-x64-${{ github.ref_name }}.zip.sha256
             MAWxFF-Windows-x64-${{ github.ref_name }}.zip
-            MAWxFF-Windows-x64-${{ github.ref_name }}.zip.sha256
