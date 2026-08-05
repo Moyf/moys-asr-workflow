@@ -319,6 +319,11 @@ pub fn settings_path() -> PathBuf {
             format!("{}\\AppData\\Local", home)
         });
         PathBuf::from(local)
+    } else if cfg!(target_os = "macos") {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+        PathBuf::from(home)
+            .join("Library")
+            .join("Application Support")
     } else {
         let data_dir = std::env::var("XDG_DATA_HOME").unwrap_or_else(|_| {
             let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
@@ -624,10 +629,7 @@ pub fn resolve_media(path: String) -> Result<serde_json::Value, String> {
             "error": format!("媒体文件不存在：{}", path),
         }));
     }
-    // Windows: file:///D:/path/to/file → 正斜杠
-    let posix = path.replace('\\', "/");
-    let trimmed = posix.trim_start_matches('/');
-    let url = format!("file:///{}", trimmed);
+    let url = media_file_url(&path_buf);
 
     Ok(serde_json::json!({
         "ok": true,
@@ -638,7 +640,43 @@ pub fn resolve_media(path: String) -> Result<serde_json::Value, String> {
 
 fn media_file_url(path: &Path) -> String {
     let posix = path.to_string_lossy().replace('\\', "/");
-    format!("file:///{}", posix.trim_start_matches('/'))
+    let prefix = if posix.starts_with('/') {
+        "file://"
+    } else {
+        "file:///"
+    };
+    let mut encoded = String::with_capacity(posix.len());
+    for byte in posix.bytes() {
+        let safe = matches!(
+            byte,
+            b'A'..=b'Z'
+                | b'a'..=b'z'
+                | b'0'..=b'9'
+                | b'/'
+                | b':'
+                | b'@'
+                | b'!'
+                | b'$'
+                | b'&'
+                | b'\''
+                | b'('
+                | b')'
+                | b','
+                | b';'
+                | b'='
+                | b'+'
+                | b'-'
+                | b'.'
+                | b'_'
+                | b'~'
+        );
+        if safe {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{:02X}", byte));
+        }
+    }
+    format!("{}{}", prefix, encoded)
 }
 
 fn converted_media_path(source: &Path) -> PathBuf {

@@ -112,8 +112,6 @@ jobs:
           $BuildSha = '${{ github.event.pull_request.head.sha || github.sha }}'
           $Archive = "MAW-Windows-x64-pr-$PrNumber-$BuildSha.zip"
           Compress-Archive -LiteralPath 'dist\MAW' -DestinationPath $Archive -Force
-          $Hash = Get-FileHash -Algorithm SHA256 -LiteralPath $Archive
-          "$($Hash.Hash)  $Archive" | Set-Content -LiteralPath "$Archive.sha256" -Encoding ascii
 
       - name: Upload no-FFmpeg release preview
         uses: actions/upload-artifact@v4
@@ -121,6 +119,5 @@ jobs:
           name: MAW-Windows-x64-pr-${{ github.event.pull_request.number || 'manual' }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             MAW-Windows-x64-pr-${{ github.event.pull_request.number || 'manual' }}-${{ github.event.pull_request.head.sha || github.sha }}.zip
-            MAW-Windows-x64-pr-${{ github.event.pull_request.number || 'manual' }}-${{ github.event.pull_request.head.sha || github.sha }}.zip.sha256
           if-no-files-found: error
           retention-days: 14

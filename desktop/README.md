@@ -26,7 +26,7 @@ cargo --version   # 能出版本号 = OK
 cd D:\Codes\moys-asr-workflow\desktop
 npm install       # 首次：安装 @tauri-apps/cli（package.json 里已声明）
 npx tauri dev     # 启动开发模式（编译 Rust + 从 web/ 生成 index.html + 开 webview 窗口）
-npx tauri build   # 构建 MOSE.exe；Release 由根目录脚本负责复制到 MAW 包
+npx tauri build   # Windows 构建 MOSE.exe；macOS 自动使用 tauri.macos.conf.json 构建 MOSE.app
 ```
 
 启动后：
@@ -66,6 +66,6 @@ MOSE 与 MAW/MAWE 共享同一份工程文件契约：内容是 UTF-8 JSON，推
 - 媒体自动加载、表情包目录扫描和 FFmpeg 波形 sidecar；
 - `.mosp` 文件关联配置，以及 MAW Release Launcher 直接启动同目录 MOSE 并传入工程路径的集成。
 
-MOSE 目前随 MAW Windows Release 一起分发；独立 MOSE 安装包、独立发布仓库同步脚本和稳定版发布周期仍未承诺。MAW 的 localhost 服务器与便携 HTML 仍是正式支持的备用入口。
+MOSE 目前随 MAW Windows/macOS Release 一起分发；macOS 包会将 `MOSE.app` 与 `MAW.app` 放在同一目录，方便 Launcher 调用。独立 MOSE 安装包、独立发布仓库同步脚本和稳定版发布周期仍未承诺。MAW 的 localhost 服务器与便携 HTML 仍是正式支持的备用入口。
 
 License: AGPL-3.0-only（与 MAW 主仓库一致）。

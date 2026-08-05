@@ -9,6 +9,9 @@ mod server;
 
 use std::sync::Mutex;
 
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
+use tauri::{Emitter, Manager, RunEvent};
+
 use server::{
     extract_waveform, get_settings, open_project, open_project_at_path, pick_and_scan_stickers,
     pick_media, prepare_media, remember_project, resolve_media, save_project, settings_path,
@@ -58,5 +61,35 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("MOSE 启动失败");
 
-    app.run(|_app_handle, _event| {});
+    app.run(|app_handle, event| {
+        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
+        if let RunEvent::Opened { urls } = event {
+            for url in urls {
+                let Ok(path) = url.to_file_path() else {
+                    continue;
+                };
+                let is_project = path
+                    .extension()
+                    .and_then(|value| value.to_str())
+                    .map(|value| matches!(value.to_ascii_lowercase().as_str(), "mosp" | "json"))
+                    .unwrap_or(false);
+                if !is_project {
+                    continue;
+                }
+
+                // Finder can deliver an Opened event before the webview has
+                // installed its listener. Keep the path in state as well as
+                // emitting the event so the frontend can consume either path.
+                if let Some(state) = app_handle.try_state::<AppState>() {
+                    if let Ok(mut initial) = state.initial_project_path.lock() {
+                        *initial = Some(path.clone());
+                    }
+                }
+                let _ = app_handle.emit("open-file", path.to_string_lossy().into_owned());
+                break;
+            }
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "android")))]
+        let _ = (app_handle, event);
+    });
 }

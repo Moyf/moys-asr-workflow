@@ -25,7 +25,7 @@ Moy 的 ASR 工作流由两部分组成：
 
 ![MAWE 字幕编辑器预览](assets/screenshot-v1.2.0.jpg)  
 
-*Windows Release 默认使用 MOSE 桌面编辑器；Server 版和单文件版 MAWE 仍作为备用入口。*
+*Windows 和 macOS Release 默认使用 MOSE 桌面编辑器；Server 版和单文件版 MAWE 仍作为备用入口。*
 
 ## 如何使用
 
@@ -33,10 +33,10 @@ Moy 的 ASR 工作流由两部分组成：
 
 - `MAWxFF-Windows-x64-v*.zip`：已经捆绑 MAW 与 MOSE 会用到的 `ffmpeg.exe` 和 `ffprobe.exe`；没有 FFmpeg、或者不知道它是什么，下载这个。
 - `MAW-Windows-x64-v*.zip`：体积更小；适合已经安装 FFmpeg，并且终端能直接运行 `ffmpeg` / `ffprobe` 的用户。
-- `MAWxFF-macOS-arm64-v*.zip`：Apple Silicon Mac（M1/M2/M3/M4）版，已经捆绑 `ffmpeg` 和 `ffprobe`；不需要另外安装 FFmpeg。
-- `MAW-macOS-arm64-v*.zip`：Apple Silicon Mac 版，体积更小；需要系统能找到 `ffmpeg` 和 `ffprobe`。目前 macOS 图形 Release 只提供 arm64 包。
+- `MAWxFF-macOS-arm64-v*.zip`：Apple Silicon Mac（M1/M2/M3/M4）版，已经捆绑 `MAW.app`、`MOSE.app`、`ffmpeg` 和 `ffprobe`；不需要另外安装 FFmpeg。
+- `MAW-macOS-arm64-v*.zip`：Apple Silicon Mac 版，体积更小；同样包含 `MAW.app` 和 `MOSE.app`，但需要系统能找到 `ffmpeg` 和 `ffprobe`。目前 macOS 图形 Release 只提供 arm64 包。
 
-Windows 下载解压之后点击 `MAW.exe` 并运行；macOS 下载后打开对应的 `.app`。
+Windows 下载解压之后点击 `MAW.exe` 并运行；macOS 下载后解压并打开 `MAW.app`，`MOSE.app` 会放在同一目录供 Launcher 调用。
 
 ### 申请 API Key
 
@@ -98,7 +98,7 @@ Windows 下载解压之后点击 `MAW.exe` 并运行；macOS 下载后打开对�
 Launcher 的「打开编辑器」默认启动 MOSE 并传入工程路径。Windows 会优先读取当前用户注册表 `HKCU\Software\Moy\MOSE` 下仍有效的 `ExecutablePath`，macOS 则查找 `MOSE.app` 并启动其中的编辑器；找不到桌面版时，Server 版字幕编辑器和 HTML 空工程仍可从按钮右侧的拓展菜单打开。首次启动 Windows MAW 时还会为当前用户登记 `.mosp` 关联。GUI 还可以直接选择 `.mosp` / `.json` 工程并启动 `http://127.0.0.1` 本地编辑器服务器；中英文界面可在右上角切换。
 启动器支持从资源管理器拖入音视频文件来自动填充媒体路径，并按供应商组织模型、地域、语言和 API Key 获取入口；选择 Fun-ASR 或 Soniox 时可在「高级选项」中开启「给不同说话人分配字幕颜色」。
 
-Windows Release 的 Launcher 会优先打开同目录 MOSE；macOS 会查找包内或常见安装位置的 `MOSE.app`。如果找不到桌面版，可以从右侧菜单启动 Server 版或 HTML 编辑器。普通版仍要求系统能找到 `ffmpeg` 和 `ffprobe`；如果 Launcher 提示未检测到 FFmpeg，可以换用同平台的 `MAWxFF` 版，也可以自行安装 FFmpeg，把它的 `bin` 目录加入 PATH 后重新打开 MAW。
+Windows Release 的 Launcher 会优先打开同目录 MOSE；macOS 会查找同目录、包内或常见安装位置的 `MOSE.app`。如果找不到桌面版，可以从右侧菜单启动 Server 版或 HTML 编辑器。普通版仍要求系统能找到 `ffmpeg` 和 `ffprobe`；如果 Launcher 提示未检测到 FFmpeg，可以换用同平台的 `MAWxFF` 版，也可以自行安装 FFmpeg，把它的 `bin` 目录加入 PATH 后重新打开 MAW。
 
 ### 本地构建 Windows 图形包
 
@@ -119,9 +119,24 @@ uv sync --group build --frozen
 
 本地脚本生成的是不捆绑 FFmpeg 的普通版。要生成带 `ffmpeg.exe` 和 `ffprobe.exe` 的 `MAWxFF` 版，还需要按 `.github/workflows/release-windows.yml` 中的 Release 流程准备并校验 FFmpeg；日常本地构建通常直接使用 `dist\MAW\` 即可。
 
+### 本地构建 macOS 图形包
+
+需要在 Apple Silicon macOS runner 或 Mac 上构建；PyInstaller 和 Tauri 都不会为 macOS 交叉编译。进入仓库根目录执行：
+
+```bash
+uv sync --group build --frozen
+uv run --group build pyinstaller --noconfirm --clean MAW.spec
+cd desktop
+npm ci
+cargo check --manifest-path src-tauri/Cargo.toml
+npm run tauri -- build --config src-tauri/tauri.macos.conf.json --bundles app --no-sign
+```
+
+MAW 的 App 在 `dist/MAW.app`，MOSE 的 App 在 `desktop/src-tauri/target/release/bundle/macos/MOSE.app`。正式 Release 会把两个 App 放进普通版和 `MAWxFF` 版 ZIP 的同一目录；未签名的本地构建可能需要在 macOS「隐私与安全性」中手动允许启动。
+
 ### MOSE / MAWE 编辑器入口
 
-Windows Release 中，Launcher 主按钮会打开 MOSE 桌面编辑器并传入当前 `.mosp` / `.json` 工程。需要 localhost 工作流时，从按钮右侧菜单选择「启动 Server 版字幕编辑器」；需要最便携的浏览器方式时，选择 HTML 编辑器。
+Windows 和 macOS Release 中，Launcher 主按钮会打开同目录的 MOSE 桌面编辑器并传入当前 `.mosp` / `.json` 工程。需要 localhost 工作流时，从按钮右侧菜单选择「启动 Server 版字幕编辑器」；需要最便携的浏览器方式时，选择 HTML 编辑器。
 
 ### 传统命令行方案
 

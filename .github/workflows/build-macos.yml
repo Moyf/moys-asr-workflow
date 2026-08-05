@@ -31,6 +31,14 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Verify tag matches pyproject version
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
@@ -70,7 +78,40 @@ jobs:
           "$AppExe" --help >/dev/null
 
       - name: Ad-hoc codesign the app bundle
-        run: codesign --force --deep --sign - dist/MAW.app
+        run: |
+          codesign --force --deep --sign - dist/MAW.app
+          codesign --verify --deep --strict --verbose=2 dist/MAW.app
+
+      - name: Install MOSE build dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Prepare MOSE frontend and validate Rust
+        working-directory: desktop
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Build MOSE macOS app bundle
+        working-directory: desktop
+        run: npm run tauri -- build --config src-tauri/tauri.macos.conf.json --bundles app --no-sign
+
+      - name: Smoke and sign MOSE app bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          MoseApp="desktop/src-tauri/target/release/bundle/macos/MOSE.app"
+          MoseExe="$MoseApp/Contents/MacOS/mose"
+          if [ ! -x "$MoseExe" ]; then
+            echo "Missing executable $MoseExe after Tauri build."
+            exit 1
+          fi
+          if ! file "$MoseExe" | grep -Eq 'arm64|Apple Silicon'; then
+            echo "MOSE was not built as an Apple Silicon executable:"
+            file "$MoseExe"
+            exit 1
+          fi
+          codesign --force --deep --sign - "$MoseApp"
+          codesign --verify --deep --strict --verbose=2 "$MoseApp"
+          ditto "$MoseApp" dist/MOSE.app
 
       - name: Build MAWxFF app bundle
         shell: bash
@@ -144,8 +185,25 @@ jobs:
           fi
           StandardArchive="MAW-macOS-arm64-${Version}.zip"
           XffArchive="MAWxFF-macOS-arm64-${Version}.zip"
-          ditto -c -k --sequesterRsrc --keepParent dist/MAW.app "$StandardArchive"
-          ditto -c -k --sequesterRsrc --keepParent dist/MAWxFF.app "$XffArchive"
+          StandardStage="build/release/standard"
+          XffStage="build/release/xff"
+          mkdir -p "$StandardStage" "$XffStage"
+          ditto dist/MAW.app "$StandardStage/MAW.app"
+          ditto dist/MOSE.app "$StandardStage/MOSE.app"
+          ditto dist/MAWxFF.app "$XffStage/MAWxFF.app"
+          ditto dist/MOSE.app "$XffStage/MOSE.app"
+          (
+            cd "$StandardStage"
+            ditto -c -k --sequesterRsrc --keepParent MAW.app MOSE.app "$GITHUB_WORKSPACE/$StandardArchive"
+          )
+          (
+            cd "$XffStage"
+            ditto -c -k --sequesterRsrc --keepParent MAWxFF.app MOSE.app "$GITHUB_WORKSPACE/$XffArchive"
+          )
+          unzip -l "$StandardArchive" | grep -q 'MAW.app/Contents/MacOS/MAW'
+          unzip -l "$StandardArchive" | grep -q 'MOSE.app/Contents/MacOS/mose'
+          unzip -l "$XffArchive" | grep -q 'MAWxFF.app/Contents/MacOS/MAW'
+          unzip -l "$XffArchive" | grep -q 'MOSE.app/Contents/MacOS/mose'
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

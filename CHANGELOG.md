@@ -2,16 +2,19 @@
 
 本项目采用 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 的记录方式。
 
-## [Unreleased]
+## [1.13.1-beta-2] - 2026-08-05
 
 ### Added
 
 - macOS Apple Silicon Release 新增 `MAWxFF-macOS-arm64` 包，内置静态 `ffmpeg` 与 `ffprobe`；普通 `MAW-macOS-arm64` 包继续保留。
+- macOS 普通版和 `MAWxFF` 版 Release 现在都会同时包含 `MAW.app` 与 `MOSE.app`，Launcher 可以直接把当前工程交给桌面编辑器。
 
 ### Changed
 
 - Windows 与 macOS 正式 Release 不再额外上传 `.sha256` 校验文件；构建流程仍会校验下载的第三方 FFmpeg 包。
 - macOS Launcher 现在按 `MOSE.app` 查找并启动其中的编辑器可执行文件，不再把桌面版路径写死为 `MOSE.exe`。
+- MOSE 在 macOS 使用 `~/Library/Application Support/Moy/mose/settings.json` 保存设置；Finder 打开 `.mosp` / `.json` 工程和 MAWxFF 内置 FFmpeg 的桌面编辑路径也已纳入跨平台链路。
+- MOSE 的本地媒体 `file://` URL 现在会编码空格、Unicode 和特殊字符，避免 macOS 文件名在 WebView 中打不开。
 
 ## [1.13.1-beta-1] - 2026-08-05
 

@@ -170,6 +170,21 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(popen.call_args.args[0], [str(executable), str(project.resolve())])
         self.assertEqual(popen.call_args.kwargs["cwd"], str(self.root))
 
+    def test_open_mose_forwards_bundled_ffmpeg_to_sibling_app(self) -> None:
+        executable = self.root / "MOSE.exe"
+        ffmpeg_dir = self.root / "ffmpeg" / "bin"
+        executable.write_bytes(b"exe")
+        ffmpeg_dir.mkdir(parents=True)
+
+        with mock.patch("maw.gui_web._find_mose_executable", return_value=executable):
+            with mock.patch("maw.gui_web._bundled_ffmpeg_directory", return_value=ffmpeg_dir):
+                with mock.patch("maw.gui_web.subprocess.Popen") as popen:
+                    result = self.api.open_mose({})
+
+        self.assertTrue(result["ok"])
+        child_path = popen.call_args.kwargs["env"]["PATH"].split(os.pathsep)
+        self.assertEqual(child_path[0], str(ffmpeg_dir))
+
     def test_find_mose_prefers_executable_beside_frozen_maw(self) -> None:
         maw_executable = self.root / "MAW.exe"
         mose_executable = self.root / "MOSE.exe"

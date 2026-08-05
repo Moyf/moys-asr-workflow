@@ -176,6 +176,16 @@ def _find_mose_executable() -> Path | None:
     return None
 
 
+def _mose_environment() -> dict[str, str]:
+    """Pass a bundled MAWxFF directory to MOSE when the two apps are siblings."""
+    environment = os.environ.copy()
+    bundled_directory = _bundled_ffmpeg_directory()
+    if bundled_directory is not None:
+        old_path = environment.get("PATH", "")
+        environment["PATH"] = str(bundled_directory) if not old_path else str(bundled_directory) + os.pathsep + old_path
+    return environment
+
+
 def _register_mosp_association() -> bool:
     """Register the portable package's .mosp association for the current Windows user."""
     if sys.platform != "win32":
@@ -418,6 +428,7 @@ class LauncherApi:
                 cwd=str(executable.parent),
                 startupinfo=startupinfo(),
                 creationflags=creationflags(),
+                env=_mose_environment(),
             )
         except OSError as error:
             return _error_result("editor", "mose_start_failed", str(error))
