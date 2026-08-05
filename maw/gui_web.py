@@ -32,6 +32,10 @@ SAVE_DIALOG = 30
 FOLDER_DIALOG = 20
 WINDOW_TITLE = "MAW Launcher"
 MEDIA_EXTS: Final = frozenset({".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"})
+MOSE_REGISTRY_KEY = r"Software\Moy\MOSE"
+MOSE_FILE_TYPE = "Moy.MOSE.Project"
+# Keep this aligned with desktop/src-tauri/tauri.conf.json until an installer owns it.
+MOSE_VERSION = "0.1.0"
 
 
 ERROR_MESSAGES: Final[dict[str, str]] = {
@@ -71,9 +75,36 @@ def _is_ffprobe_start_failure(lines: Sequence[str]) -> bool:
     )
 
 
+def _registered_mose_executable() -> Path | None:
+    """Read a valid independent MOSE installation registered for this user."""
+    if sys.platform != "win32":
+        return None
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, MOSE_REGISTRY_KEY) as key:
+            try:
+                value = winreg.QueryValueEx(key, "ExecutablePath")[0]
+            except OSError:
+                install_path = winreg.QueryValueEx(key, "InstallPath")[0]
+                value = Path(str(install_path)) / "MOSE.exe"
+    except (AttributeError, ImportError, OSError, TypeError, ValueError):
+        return None
+    candidate = Path(str(value)).expanduser()
+    if not candidate.is_file():
+        return None
+    try:
+        return candidate.resolve()
+    except OSError:
+        return candidate
+
+
 def _find_mose_executable() -> Path | None:
     """Find the optional MOSE executable shipped beside the MAW Launcher."""
     candidates: list[Path] = []
+    registered = _registered_mose_executable()
+    if registered is not None:
+        candidates.append(registered)
     if getattr(sys, "frozen", False):
         executable_dir = Path(sys.executable).resolve().parent
         candidates.extend((executable_dir / "MOSE.exe", executable_dir / "mose.exe"))
@@ -108,7 +139,8 @@ def _register_mosp_association() -> bool:
     """Register the portable package's .mosp association for the current Windows user."""
     if sys.platform != "win32":
         return False
-    executable = _find_mose_executable()
+    registered = _registered_mose_executable()
+    executable = registered or _find_mose_executable()
     if executable is None:
         return False
     icon = asset_path("assets/maw.ico")
@@ -117,16 +149,30 @@ def _register_mosp_association() -> bool:
     try:
         import winreg
 
+        version = MOSE_VERSION
+        if registered is not None:
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, MOSE_REGISTRY_KEY) as mose_key:
+                    existing_version = winreg.QueryValueEx(mose_key, "Version")[0]
+                if str(existing_version).strip():
+                    version = str(existing_version).strip()
+            except (AttributeError, OSError, TypeError, ValueError):
+                pass
+
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, MOSE_REGISTRY_KEY) as mose_key:
+            winreg.SetValueEx(mose_key, "InstallPath", 0, winreg.REG_SZ, str(executable.parent))
+            winreg.SetValueEx(mose_key, "ExecutablePath", 0, winreg.REG_SZ, str(executable))
+            winreg.SetValueEx(mose_key, "Version", 0, winreg.REG_SZ, version)
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.mosp") as extension_key:
-            winreg.SetValueEx(extension_key, None, 0, winreg.REG_SZ, "Moy.MOSE.Project")
+            winreg.SetValueEx(extension_key, None, 0, winreg.REG_SZ, MOSE_FILE_TYPE)
             winreg.SetValueEx(extension_key, "Content Type", 0, winreg.REG_SZ, "application/json")
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\Moy.MOSE.Project") as file_type_key:
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MOSE_FILE_TYPE}") as file_type_key:
             winreg.SetValueEx(file_type_key, None, 0, winreg.REG_SZ, "MOSE Project")
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\Moy.MOSE.Project\DefaultIcon") as icon_key:
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MOSE_FILE_TYPE}\DefaultIcon") as icon_key:
             winreg.SetValueEx(icon_key, None, 0, winreg.REG_SZ, f'"{icon}",0')
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\Moy.MOSE.Project\shell\open\command") as command_key:
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MOSE_FILE_TYPE}\shell\open\command") as command_key:
             winreg.SetValueEx(command_key, None, 0, winreg.REG_SZ, f'"{executable}" "%1"')
-    except (ImportError, OSError):
+    except (AttributeError, ImportError, OSError):
         return False
     return True
 

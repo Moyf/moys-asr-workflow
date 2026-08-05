@@ -199,6 +199,16 @@ class GuiWebBridgeTests(unittest.TestCase):
 
             def __init__(self) -> None:
                 self.values: list[tuple[str, str | None, str]] = []
+                self.read_values: dict[tuple[str, str], str] = {}
+
+            def OpenKey(self, _root: object, path: str) -> FakeKey:
+                return FakeKey(path)
+
+            def QueryValueEx(self, key: FakeKey, name: str) -> tuple[str, int]:
+                try:
+                    return self.read_values[(key.path, name)], self.REG_SZ
+                except KeyError as error:
+                    raise OSError from error
 
             def CreateKey(self, _root: object, path: str) -> FakeKey:
                 return FakeKey(path)
@@ -217,6 +227,48 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(values[r"Software\Classes\.mosp"], "Moy.MOSE.Project")
         self.assertEqual(values[r"Software\Classes\Moy.MOSE.Project\DefaultIcon"], f'"{icon}",0')
         self.assertEqual(values[r"Software\Classes\Moy.MOSE.Project\shell\open\command"], f'"{executable}" "%1"')
+        named_values = {(path, name): value for path, name, value in fake_winreg.values if name is not None}
+        self.assertEqual(named_values[(r"Software\Moy\MOSE", "InstallPath")], str(self.root))
+        self.assertEqual(named_values[(r"Software\Moy\MOSE", "ExecutablePath")], str(executable))
+        self.assertEqual(named_values[(r"Software\Moy\MOSE", "Version")], "0.1.0")
+
+    def test_find_mose_prefers_valid_registered_independent_installation(self) -> None:
+        registered = self.root / "installed" / "MOSE.exe"
+        bundled = self.root / "bundle" / "MOSE.exe"
+        registered.parent.mkdir()
+        bundled.parent.mkdir()
+        registered.write_bytes(b"installed")
+        bundled.write_bytes(b"bundled")
+        maw_executable = bundled.parent / "MAW.exe"
+        maw_executable.write_bytes(b"maw")
+
+        class FakeKey:
+            def __init__(self, path: str) -> None:
+                self.path = path
+
+            def __enter__(self) -> "FakeKey":
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+        class FakeWinreg:
+            HKEY_CURRENT_USER = object()
+            REG_SZ = 1
+
+            def OpenKey(self, _root: object, path: str) -> FakeKey:
+                return FakeKey(path)
+
+            def QueryValueEx(self, key: FakeKey, name: str) -> tuple[str, int]:
+                if key.path == r"Software\Moy\MOSE" and name == "ExecutablePath":
+                    return str(registered), self.REG_SZ
+                raise OSError
+
+        with mock.patch.object(sys, "platform", "win32"):
+            with mock.patch.object(sys, "frozen", True, create=True):
+                with mock.patch.object(sys, "executable", str(maw_executable)):
+                    with mock.patch.dict(sys.modules, {"winreg": FakeWinreg()}):
+                        self.assertEqual(_find_mose_executable(), registered.resolve())
 
     def test_open_mose_reports_missing_project_before_starting(self) -> None:
         with mock.patch("maw.gui_web.subprocess.Popen") as popen:
