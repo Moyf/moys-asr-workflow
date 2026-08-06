@@ -250,28 +250,12 @@ export function generateProjectJson(filePath) {
 // Returns { url, proc, stop } where stop() returns a Promise that resolves
 // when the process has fully exited.
 // ---------------------------------------------------------------------------
-export async function startServer(projectJsonPath, mediaPath, port) {
-  const settingsRoot = join(dirname(projectJsonPath), '.settings');
-  mkdirSync(settingsRoot, { recursive: true });
-  const uvArgs = [
-    'run', 'python', 'server-editor/serve.py',
-    projectJsonPath,
-    '-m', mediaPath,
-    '--no-waveform',
-    '--port', String(port),
-    '--no-open',
-  ];
-
+async function launchServerProcess(uvArgs, port, env) {
   const proc = spawn('uv', uvArgs, {
     cwd: process.cwd(),
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
-    env: {
-      ...process.env,
-      PYTHONUNBUFFERED: '1',
-      LOCALAPPDATA: settingsRoot,
-      XDG_CONFIG_HOME: settingsRoot,
-    },
+    env,
   });
   registerServerProcess(proc);
 
@@ -323,6 +307,44 @@ export async function startServer(projectJsonPath, mediaPath, port) {
       return stopServerProcess(proc);
     },
   };
+}
+
+export async function startServer(projectJsonPath, mediaPath, port) {
+  const settingsRoot = join(dirname(projectJsonPath), '.settings');
+  mkdirSync(settingsRoot, { recursive: true });
+  const uvArgs = [
+    'run', 'python', 'server-editor/serve.py',
+    projectJsonPath,
+    '-m', mediaPath,
+    '--no-waveform',
+    '--port', String(port),
+    '--no-open',
+  ];
+  return launchServerProcess(uvArgs, port, {
+    ...process.env,
+    PYTHONUNBUFFERED: '1',
+    LOCALAPPDATA: settingsRoot,
+    XDG_CONFIG_HOME: settingsRoot,
+  });
+}
+
+// 空白服务器（--blank）：用于「浏览器打开工程后由服务器接管」的回归测试。
+// settingsRoot 隔离本机最近工程记录，保证每次都以空白状态启动。
+export async function startBlankServer(port, settingsRoot) {
+  mkdirSync(settingsRoot, { recursive: true });
+  const uvArgs = [
+    'run', 'python', 'server-editor/serve.py',
+    '--blank',
+    '--no-waveform',
+    '--port', String(port),
+    '--no-open',
+  ];
+  return launchServerProcess(uvArgs, port, {
+    ...process.env,
+    PYTHONUNBUFFERED: '1',
+    LOCALAPPDATA: settingsRoot,
+    XDG_CONFIG_HOME: settingsRoot,
+  });
 }
 
 // ---------------------------------------------------------------------------

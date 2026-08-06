@@ -62,6 +62,7 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('let STICKER_URL_PREFIX = "/stickers";', page)
         self.assertIn('const SERVER_CONFIG = {"saveUrl": "/api/project", "canSave": true, ', page)
         self.assertIn('"autoLoadedMediaName": "clip.mp3", "recentProjectsUrl": "/api/recent-projects/open", ', page)
+        self.assertIn('"attachUrl": "/api/project/attach", "settingsUrl": "/api/settings", ', page)
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
         self.assertIn('"name": "clip.json"}], "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
         self.assertIn('"presetWorkspaces": {}, ', page)
@@ -320,6 +321,101 @@ class LocalEditorServerTests(unittest.TestCase):
                 self.assertEqual(status, 400)
                 self.assertFalse(result["ok"])
                 self.assertFalse((self.root.parent / "outside.json").exists())
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+
+    def test_attach_endpoint_binds_browser_opened_project_and_enables_save(self) -> None:
+        blank_project = server_editor.load_blank_project(str(self.stickers))
+        settings_path = self.root / "server-editor-settings.json"
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0),
+            blank_project,
+            settings=server_editor.ServerSettings(),
+            settings_path=settings_path,
+            stickers_dir=str(self.stickers),
+            no_waveform=True,
+            peaks_per_second=100,
+        ) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+                def post(endpoint: str, payload: dict) -> tuple[int, dict]:
+                    request = urllib.request.Request(
+                        f"{base_url}{endpoint}",
+                        data=json.dumps(payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    try:
+                        with urllib.request.urlopen(request) as response:
+                            return response.status, json.loads(response.read())
+                    except urllib.error.HTTPError as error:
+                        return error.code, json.loads(error.read())
+
+                browser_project = {
+                    "media": str(self.media),
+                    "segments": [{"start": 0, "end": 1000, "text": "浏览器打开的字幕"}],
+                }
+
+                # 失败矩阵：任何一项不满足都不得绑定工程路径。
+                notes = self.root / "notes.txt"
+                notes.write_text("not media", encoding="utf-8")
+                failure_cases = [
+                    ({"fileName": "../outside.json", "project": browser_project}, "文件名"),
+                    ({"fileName": "", "project": browser_project}, "文件名"),
+                    ({"fileName": "clip.json", "project": "not-a-dict"}, "对象"),
+                    ({"fileName": "clip.json", "project": {"segments": []}}, "媒体路径"),
+                    ({"fileName": "clip.json", "project": {"media": "clip.mp3", "segments": []}}, "绝对路径"),
+                    (
+                        {"fileName": "clip.json", "project": {"media": str(self.root / "gone.mp3"), "segments": []}},
+                        "不存在或已移动",
+                    ),
+                    (
+                        {"fileName": "clip.json", "project": {"media": str(notes), "segments": []}},
+                        "音视频",
+                    ),
+                    ({"fileName": "missing.json", "project": browser_project}, "同名工程"),
+                    (
+                        {
+                            "fileName": "clip.json",
+                            "project": {"media": str(self.media), "segments": [{"start": 5, "end": 900, "text": "旧副本"}]},
+                        },
+                        "内容不一致",
+                    ),
+                ]
+                for payload, hint in failure_cases:
+                    with self.subTest(hint=hint):
+                        status, result = post("/api/project/attach", payload)
+                        self.assertEqual(status, 400)
+                        self.assertFalse(result["ok"])
+                        self.assertIn(hint, result["error"])
+                        self.assertIsNone(server.project.json_path)
+
+                # 磁盘上的同名工程与浏览器副本一致：接管并恢复媒体与保存。
+                self.project_path.write_text(json.dumps(browser_project), encoding="utf-8")
+                status, result = post("/api/project/attach", {"fileName": "clip.json", "project": browser_project})
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+                self.assertEqual(result["name"], "clip.json")
+                self.assertEqual(result["mediaName"], "clip.mp3")
+                self.assertEqual(server.project.json_path, self.project_path.resolve())
+                self.assertEqual(server.project.media_path, self.media.resolve())
+                self.assertEqual(server.settings.recent_projects[0].path, self.project_path.resolve())
+                self.assertEqual(
+                    server_editor.read_server_settings(settings_path).recent_projects[0].path,
+                    self.project_path.resolve(),
+                )
+
+                # 接管后保存直接写回绑定的工程文件。
+                edited = {"media": str(self.media), "segments": [{"start": 0, "end": 1000, "text": "接管后保存"}]}
+                status, result = post("/api/project", {"project": edited, "filename": None})
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+                self.assertEqual(json.loads(self.project_path.read_text(encoding="utf-8")), edited)
             finally:
                 server.shutdown()
                 thread.join(timeout=2)

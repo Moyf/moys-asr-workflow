@@ -4288,6 +4288,26 @@ async function openRecentProject(project) {
   }
 }
 
+// 浏览器文件选择器拿不到工程的真实路径，但 MAW 工程记录的媒体是绝对路径。
+// 把工程名与内容交给服务器，由它定位同目录同名工程并接管：
+// 成功后整页刷新，由服务器渲染出自动加载媒体且可直接保存的状态。
+// 任何失败都静默回退为「手动选择媒体」的便携流程。
+async function attachProjectToServer(fileName, projectData) {
+  try {
+    const response = await fetch(SERVER_CONFIG.attachUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName, project: projectData }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) return false;
+    window.location.reload();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function configureRecentProjects() {
   if (!SERVER_CONFIG?.recentProjectsUrl || !recentProjectsEl || !recentProjectsToggle
       || !recentProjectsMenu || !recentProjectsList) {
@@ -5099,6 +5119,12 @@ async function openProjectFile(file, options = {}) {
     }
 
     const expectedName = window.AsrEditorUtils.fileBasename(DATA.media);
+    // 服务器版：浏览器拿不到工程真实路径，但工程记录的媒体是绝对路径。
+    // 先让服务器按它定位同目录同名工程并接管（自动加载媒体、允许 Ctrl(Cmd)+S 保存）；
+    // 接管失败（媒体已移动 / 同名工程缺失 / 内容不一致）再回退为手动选择媒体。
+    if (expectedName && SERVER_CONFIG?.attachUrl) {
+      if (await attachProjectToServer(file.name, data)) return true;
+    }
     if (expectedName && !suppressMediaPrompt) {
       pendingProjectMediaSelection = { projectReady: true };
       showProjectMediaModal();
@@ -6261,7 +6287,9 @@ async function handleDroppedFiles(files) {
     if (!confirm('当前有未保存的改动，是否确定加载新工程？将丢失未保存内容。')) return;
   }
   if (jsonFile) {
-    await openProjectFile(jsonFile);
+    // 工程与媒体一起拖入时，媒体随工程自动加载，不再弹窗要求重选。
+    const opened = await openProjectFile(jsonFile, { suppressMediaPrompt: Boolean(mediaFile) });
+    if (opened && mediaFile) await loadMediaFile(mediaFile);
     return;
   }
   if (srtFile && hasUnsavedProjectChanges()
