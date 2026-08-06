@@ -471,7 +471,8 @@ class LauncherApi:
         url = f"http://127.0.0.1:{port}/"
         launch_url = f"{url}?lang={_gui_lang(payload)}"
 
-        if _wait_for_server(url, timeout=0.25):
+        owned_server_running = self.server_process is not None and self.server_process.poll() is None
+        if _wait_for_server(url, timeout=0.25) and (not json_text or not owned_server_running):
             return {"ok": True, "url": launch_url, "serverAlreadyRunning": True}
         if not json_text:
             # 无工程：不带 JSON 路径启动，由服务器按「自动打开上次工程」设置恢复最近工程或回落为空白编辑器

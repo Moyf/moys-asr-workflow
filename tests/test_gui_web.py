@@ -425,6 +425,43 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["url"], "http://127.0.0.1:9876/?lang=zh")
         popen.assert_not_called()
 
+    def test_start_server_restarts_owned_server_for_a_new_project(self) -> None:
+        """Given an owned server, When another project opens, Then the server is rebound to that project."""
+        project = self.root / "second.json"
+        media = self.root / "second.mp4"
+        project.write_text(json.dumps({"media": str(media), "segments": []}), encoding="utf-8")
+        media.write_bytes(b"media")
+
+        class RunningProcess:
+            returncode = None
+
+            def poll(self) -> int | None:
+                return self.returncode
+
+            def terminate(self) -> None:
+                self.returncode = -15
+
+            def wait(self, timeout: float | None = None) -> int:
+                return self.returncode or 0
+
+        previous_process = RunningProcess()
+        replacement_process = RunningProcess()
+        self.api.server_process = previous_process
+
+        with mock.patch("maw.gui_web.subprocess.Popen", return_value=replacement_process) as popen:
+            with mock.patch("maw.gui_web._wait_for_server", side_effect=[True, True]):
+                result = self.api.start_server({
+                    "jsonPath": str(project),
+                    "port": "9876",
+                    "guiLang": "zh",
+                })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(previous_process.returncode, -15)
+        self.assertIs(self.api.server_process, replacement_process)
+        self.assertEqual(popen.call_args.args[0][2], str(project))
+        self.assertNotIn("serverAlreadyRunning", result)
+
     def test_server_status_reports_only_a_verified_maw_server(self) -> None:
         with mock.patch("maw.gui_web._wait_for_server", return_value=True):
             with mock.patch("maw.gui_web._maw_server_process_id", return_value=4321):
@@ -974,22 +1011,20 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('$("openHtml").classList.toggle("hidden", !enabled)', script)
         self.assertIn('$("openHtml").disabled = enabled && !state.result?.htmlPath', script)
 
-    def test_server_status_uses_clickable_link_and_detects_existing_server(self) -> None:
+    def test_server_status_uses_clickable_link_and_independent_stop_control(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
 
         self.assertIn('function setServerStatus(url, alreadyRunning = false, prefix = "")', script)
         self.assertIn('bridge("open_url", { url })', script)
         self.assertIn('server_already_running', script)
         self.assertIn('get_server_status', script)
-        self.assertIn('status-stop-link', script)
+        self.assertIn('id="stopServer" class="ghost server-stop hidden"', page)
+        self.assertIn('$("stopServer").addEventListener("click", stopEditorServer)', script)
         self.assertIn('bridge("stop_server", serverPayload())', script)
-        self.assertIn('state.serverRunning = starting && !result.serverAlreadyRunning;', script)
         self.assertIn('void checkExistingServer(t("done"));', script)
-        self.assertIn('server_address: "当前服务器地址："', script)
-        self.assertIn('server_start_hint: "请点击「启动字幕服务器」"', script)
-        self.assertIn('open_editor: "打开字幕编辑器"', script)
-        self.assertIn('id="refreshServerStatus"', page := (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8"))
-        self.assertIn('await bridge("open_url", { url: state.detectedServerUrl })', script)
+        self.assertIn('id="refreshServerStatus"', page)
+        self.assertNotIn('state.serverRunning ? t("server_stop")', script)
 
     def test_workspace_requests_sync_server_config_from_response(self) -> None:
         script = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
@@ -1043,6 +1078,13 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('bridge("open_mose"', script)
         self.assertIn('function openServerEditor()', script)
         self.assertIn('bridge("start_server"', script)
+
+    def test_project_change_marks_server_editor_action_for_rebinding(self) -> None:
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertIn('function setJsonPath(path)', script)
+        self.assertIn('$("openMawe").classList.add("attention")', script)
+        self.assertIn('state.serverProjectPath', script)
 
     def test_language_filter_hint_is_available_to_single_language_providers(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
