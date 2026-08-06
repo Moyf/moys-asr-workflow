@@ -24,7 +24,10 @@ from typing import BinaryIO, Final, final
 from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, LANGUAGES, MODELS, PROVIDERS, REGIONS, ModelConfig, ProviderConfig, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, startupinfo
 from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
-from maw.media import resolve_project_media
+from maw.media import find_ffmpeg, resolve_project_media
+from maw.postprocess import LlmPostprocessRequest, OutputMode, Replacement, ReplacementRequest, run_fixed_replacement as process_fixed_replacement, run_llm_postprocess as process_llm_postprocess
+from maw.postprocess_ffmpeg import FfconcatRequest, run_ffconcat_rebuild as process_ffconcat_rebuild
+from maw.postprocess_llm import LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, preset_by_id
 
 
 OPEN_DIALOG = 10
@@ -360,6 +363,7 @@ class LauncherApi:
             "regions": [{"id": value, "label": label} for value, label in REGIONS],
             "languages": [{"id": value, "label": label} for value, label in LANGUAGES],
             "providers": [_provider_payload(item, self.paths.env_path) for item in PROVIDERS],
+            "postprocessProviders": _postprocess_provider_payloads(self.paths.env_path),
         }
 
     def default_output(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -412,10 +416,100 @@ class LauncherApi:
                 return _error_result("", "config_save_failed", f"{self.paths.env_path}: {error}")
         return {"ok": True}
 
+    def save_postprocess_settings(self, payload: Mapping[str, object]) -> dict[str, object]:
+        preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
+        file_values = _postprocess_values(self.paths.env_path, preset.env_prefix)
+        api_key = str(payload.get("apiKey") or "").strip() or file_values["apiKey"]
+        updates = {
+            f"{preset.env_prefix}_API_KEY": api_key,
+            f"{preset.env_prefix}_BASE_URL": str(payload.get("baseUrl") or preset.base_url).strip(),
+            f"{preset.env_prefix}_MODEL": str(payload.get("model") or preset.model).strip(),
+            "MAW_POSTPROCESS_LAST_PROVIDER": preset.id,
+        }
+        try:
+            save_env(self.paths.env_path, updates)
+        except (OSError, UnicodeError) as error:
+            return _error_result("postprocessApiKey", "config_save_failed", f"{self.paths.env_path}: {error}")
+        return {"ok": True, "providerId": preset.id, "maskedApiKey": masked_secret(api_key)}
+
+    def run_fixed_replacement(self, payload: Mapping[str, object]) -> dict[str, object]:
+        try:
+            replacements = tuple(
+                Replacement(source=str(item.get("source") or ""), target=str(item.get("target") or ""))
+                for item in _mapping_list(payload.get("replacements"))
+            )
+            result = process_fixed_replacement(
+                ReplacementRequest(
+                    project_path=_optional_path(payload.get("projectPath")),
+                    srt_path=_optional_path(payload.get("srtPath")),
+                    output_mode=_output_mode(payload.get("outputMode")),
+                    replacements=replacements,
+                )
+            )
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "field": "postprocessInput", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
+        return _subtitle_artifact_result(result)
+
+    def run_llm_postprocess(self, payload: Mapping[str, object]) -> dict[str, object]:
+        preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
+        file_values = _postprocess_values(self.paths.env_path, preset.env_prefix)
+        settings = LlmSettings(
+            provider_id=preset.id,
+            api_key=str(payload.get("apiKey") or "").strip() or file_values["apiKey"],
+            base_url=str(payload.get("baseUrl") or "").strip() or file_values["baseUrl"] or preset.base_url,
+            model=str(payload.get("model") or "").strip() or file_values["model"] or preset.model,
+        )
+        if not settings.api_key:
+            return _error_result("postprocessApiKey", "api_key_missing", "Post-processing API key is required.")
+        if not settings.base_url or not settings.model:
+            return {"ok": False, "field": "postprocessProvider", "code": "postprocess_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
+        try:
+            result = process_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=_optional_path(payload.get("projectPath")),
+                    srt_path=_optional_path(payload.get("srtPath")),
+                    output_mode=_output_mode(payload.get("outputMode")),
+                    operation=str(payload.get("operation") or "proofread"),
+                    custom_prompt=str(payload.get("customPrompt") or ""),
+                ),
+                complete=lambda prompt, cues: complete_subtitle_groups(settings, prompt, cues),
+            )
+        except (OSError, UnicodeError, ValueError, RuntimeError) as error:
+            return {"ok": False, "field": "postprocessInput", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
+        return _subtitle_artifact_result(result)
+
+    def run_ffconcat_rebuild(self, payload: Mapping[str, object]) -> dict[str, object]:
+        configured = effective_config_value(self.paths.env_path, "FFMPEG_PATH")
+        ffmpeg = find_ffmpeg(configured)
+        if ffmpeg is None:
+            bundled_directory = _bundled_ffmpeg_directory()
+            if bundled_directory is not None:
+                ffmpeg = bundled_directory / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        if ffmpeg is None:
+            return {"ok": False, "field": "postprocessFfconcat", "code": "postprocess_failed", "detail": "FFmpeg was not found.", "error": "FFmpeg was not found."}
+        try:
+            result = process_ffconcat_rebuild(
+                FfconcatRequest(
+                    media_path=Path(str(payload.get("mediaPath") or "")),
+                    ffconcat_path=Path(str(payload.get("ffconcatPath") or "")),
+                ),
+                ffmpeg_path=ffmpeg,
+            )
+        except (OSError, ValueError, RuntimeError) as error:
+            return {"ok": False, "field": "postprocessFfconcat", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
+        return {
+            "ok": True,
+            "sourceMediaPath": str(result.source_media_path),
+            "mediaPath": str(result.media_path),
+            "ffconcatPath": str(result.ffconcat_path),
+        }
+
     def choose_file(self, payload: Mapping[str, object]) -> dict[str, object]:
         kind = str(payload.get("kind") or "media")
         if kind == "json":
             file_types = ("MAW projects (*.mosp;*.json)",)
+        elif kind == "ffconcat":
+            file_types = ("FFconcat scripts (*.ffconcat)",)
         elif kind == "hotwords":
             file_types = ("Text files (*.txt)", "All files (*.*)")
         else:
@@ -915,6 +1009,64 @@ def _port(payload: Mapping[str, object]) -> int:
 
 def _error_result(field: str, code: str, detail: str = "") -> dict[str, object]:
     return {"ok": False, "field": field, "code": code, "detail": detail, "error": ERROR_MESSAGES.get(code, detail or code)}
+
+
+def _optional_path(value: object) -> Path | None:
+    text = str(value or "").strip()
+    return Path(text) if text else None
+
+
+def _output_mode(value: object) -> OutputMode:
+    try:
+        return OutputMode(str(value or OutputMode.BOTH.value))
+    except ValueError:
+        return OutputMode.BOTH
+
+
+def _mapping_list(value: object) -> tuple[Mapping[str, object], ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return ()
+    return tuple(item for item in value if isinstance(item, Mapping))
+
+
+def _postprocess_values(env_path: Path, prefix: str) -> dict[str, str]:
+    from maw.gui_config import load_env
+
+    values = load_env(env_path)
+    return {
+        "apiKey": os.environ.get(f"{prefix}_API_KEY") or values.get(f"{prefix}_API_KEY", ""),
+        "baseUrl": os.environ.get(f"{prefix}_BASE_URL") or values.get(f"{prefix}_BASE_URL", ""),
+        "model": os.environ.get(f"{prefix}_MODEL") or values.get(f"{prefix}_MODEL", ""),
+    }
+
+
+def _postprocess_provider_payloads(env_path: Path) -> list[dict[str, object]]:
+    from maw.gui_config import load_env
+
+    file_values = load_env(env_path)
+    providers: list[dict[str, object]] = []
+    for preset in POSTPROCESS_PRESETS:
+        values = _postprocess_values(env_path, preset.env_prefix)
+        providers.append({
+            "id": preset.id,
+            "label": preset.label,
+            "baseUrl": values["baseUrl"] or preset.base_url,
+            "model": values["model"] or preset.model,
+            "maskedApiKey": masked_secret(values["apiKey"]),
+            "selected": file_values.get("MAW_POSTPROCESS_LAST_PROVIDER", "deepseek") == preset.id,
+        })
+    return providers
+
+
+def _subtitle_artifact_result(result: object) -> dict[str, object]:
+    return {
+        "ok": True,
+        "sourceProjectPath": str(getattr(result, "source_project_path", None) or ""),
+        "sourceSrtPath": str(getattr(result, "source_srt_path", None) or ""),
+        "projectPath": str(getattr(result, "project_path", None) or ""),
+        "srtPath": str(getattr(result, "srt_path", None) or ""),
+        "warnings": list(getattr(result, "warnings", ())),
+    }
 
 
 def _route_dropped_path(path: str) -> dict[str, object]:

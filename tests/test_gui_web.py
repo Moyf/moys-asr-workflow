@@ -100,6 +100,175 @@ class GuiWebBridgeTests(unittest.TestCase):
             "# keep\nDASHSCOPE_REGION=beijing\nSTICKER_DIR=stickers\nMAW_GUI_LAST_MODEL=stt-async-v5\nMAW_GUI_LAST_LANGUAGE=\n",
         )
 
+    def test_postprocess_config_masks_keys_and_saves_provider_settings(self) -> None:
+        self.env_path.write_text(
+            "MAW_POSTPROCESS_DEEPSEEK_API_KEY=sk-deepseek-secret\n"
+            "MAW_POSTPROCESS_DEEPSEEK_MODEL=deepseek-reasoner\n",
+            encoding="utf-8",
+        )
+
+        config = self.api.get_config()
+        result = self.api.save_postprocess_settings({
+            "providerId": "qwen",
+            "apiKey": "sk-qwen-private",
+            "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "model": "qwen-plus",
+        })
+
+        raw_providers = config["postprocessProviders"]
+        if not isinstance(raw_providers, list):
+            self.fail("postprocessProviders must be a list")
+        providers = {provider["id"]: provider for provider in raw_providers if isinstance(provider, dict)}
+        self.assertEqual(providers["deepseek"]["maskedApiKey"], "sk-…cret")
+        self.assertNotIn("apiKey", providers["deepseek"])
+        self.assertEqual(providers["deepseek"]["model"], "deepseek-reasoner")
+        self.assertEqual(result["maskedApiKey"], "sk-…vate")
+        self.assertNotIn("qwen-private", str(result))
+        self.assertIn("MAW_POSTPROCESS_QWEN_API_KEY=sk-qwen-private", self.env_path.read_text(encoding="utf-8"))
+
+    def test_postprocess_settings_keep_saved_key_when_key_field_is_blank(self) -> None:
+        self.env_path.write_text(
+            "MAW_POSTPROCESS_DEEPSEEK_API_KEY=sk-keep-this-key\n"
+            "MAW_POSTPROCESS_DEEPSEEK_MODEL=deepseek-chat\n",
+            encoding="utf-8",
+        )
+
+        result = self.api.save_postprocess_settings({
+            "providerId": "deepseek",
+            "apiKey": "",
+            "baseUrl": "https://api.deepseek.com/v1",
+            "model": "deepseek-reasoner",
+        })
+
+        saved = self.env_path.read_text(encoding="utf-8")
+        self.assertTrue(result["ok"])
+        self.assertIn("MAW_POSTPROCESS_DEEPSEEK_API_KEY=sk-keep-this-key", saved)
+        self.assertIn("MAW_POSTPROCESS_DEEPSEEK_MODEL=deepseek-reasoner", saved)
+        self.assertEqual(result["maskedApiKey"], "sk-…-key")
+
+    def test_postprocess_settings_return_field_error_for_injected_line_separator(self) -> None:
+        result = self.api.save_postprocess_settings({
+            "providerId": "custom",
+            "apiKey": "sk-safe",
+            "baseUrl": "https://example.com/v1",
+            "model": "safe\u2028FFMPEG_PATH=payload",
+        })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["field"], "postprocessModel")
+        self.assertEqual(result["code"], "config_save_failed")
+        self.assertFalse(self.env_path.exists())
+
+    def test_legacy_setting_bridges_return_structured_errors_for_invalid_values(self) -> None:
+        settings = self.api.save_settings({
+            "providerId": "qwen",
+            "modelId": "qwen-audio-3.0-asr-flash-filetrans",
+            "apiKey": "safe\x1cFFMPEG_PATH=payload",
+        })
+        prefs = self.api.save_prefs({"language": "safe\x85FFMPEG_PATH=payload"})
+        ffmpeg = self.api.save_ffmpeg_path({"path": "safe\u2029FFMPEG_PATH=payload"})
+
+        for result in (settings, prefs, ffmpeg):
+            with self.subTest(result=result):
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["code"], "config_save_failed")
+        self.assertFalse(self.env_path.exists())
+
+    def test_fixed_replacement_bridge_returns_chainable_project_and_srt_paths(self) -> None:
+        project = self.root / "clip.mosp"
+        project.write_text(
+            json.dumps({"segments": [{"start": 0, "end": 1000, "text": "错字"}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        result = self.api.run_fixed_replacement({
+            "projectPath": str(project),
+            "srtPath": "",
+            "outputMode": "both",
+            "replacements": [{"source": "错", "target": "正"}],
+        })
+
+        self.assertTrue(result["ok"])
+        output_project = Path(str(result["projectPath"]))
+        output_srt = Path(str(result["srtPath"]))
+        self.assertTrue(output_project.is_file())
+        self.assertTrue(output_srt.is_file())
+        self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["segments"][0]["text"], "正字")
+
+    def test_llm_bridge_uses_stored_key_without_echoing_it(self) -> None:
+        project = self.root / "clip.mosp"
+        project.write_text(
+            json.dumps({"segments": [{"start": 0, "end": 1000, "text": "待校对"}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        self.env_path.write_text("MAW_POSTPROCESS_DEEPSEEK_API_KEY=sk-stored-secret\n", encoding="utf-8")
+
+        with mock.patch("maw.gui_web.complete_subtitle_groups", return_value={"groups": [{"id": "c0001", "text": "已校对"}]}) as complete:
+            result = self.api.run_llm_postprocess({
+                "projectPath": str(project),
+                "outputMode": "json",
+                "operation": "proofread",
+                "providerId": "deepseek",
+                "apiKey": "",
+                "baseUrl": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+                "customPrompt": "",
+            })
+
+        settings = complete.call_args.args[0]
+        self.assertEqual(settings.api_key, "sk-stored-secret")
+        self.assertTrue(result["ok"])
+        self.assertNotIn("stored-secret", str(result))
+
+    def test_ffconcat_bridge_uses_configured_ffmpeg_and_returns_new_media_only(self) -> None:
+        media = self.root / "clip.mp4"
+        concat = self.root / "clip.ffconcat"
+        ffmpeg_name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+        ffprobe_name = "ffprobe.exe" if os.name == "nt" else "ffprobe"
+        ffmpeg = self.root / ffmpeg_name
+        ffprobe = self.root / ffprobe_name
+        _ = media.write_bytes(b"media")
+        _ = ffmpeg.write_bytes(b"exe")
+        _ = ffprobe.write_bytes(b"exe")
+        _ = concat.write_text(f"ffconcat version 1.0\nfile '{media.as_posix()}'\n", encoding="utf-8")
+        _ = self.env_path.write_text(f"FFMPEG_PATH={self.root}\n", encoding="utf-8")
+
+        with mock.patch("maw.gui_web.process_ffconcat_rebuild") as rebuild:
+            rebuild.return_value = mock.Mock(
+                source_media_path=media.resolve(),
+                media_path=(self.root / "clip.gap-removed.mp4").resolve(),
+                ffconcat_path=concat.resolve(),
+            )
+            result = self.api.run_ffconcat_rebuild({"mediaPath": str(media), "ffconcatPath": str(concat)})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(rebuild.call_args.kwargs["ffmpeg_path"], ffmpeg.resolve())
+        self.assertEqual(result["mediaPath"], str((self.root / "clip.gap-removed.mp4").resolve()))
+        self.assertNotIn("projectPath", result)
+
+    def test_ffconcat_bridge_falls_back_to_bundled_ffmpeg(self) -> None:
+        media = self.root / "clip.mp4"
+        concat = self.root / "clip.ffconcat"
+        bundled = self.root / "bundled"
+        ffmpeg = bundled / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        _ = bundled.mkdir()
+        _ = media.write_bytes(b"media")
+        _ = ffmpeg.write_bytes(b"exe")
+        _ = concat.write_text(f"ffconcat version 1.0\nfile '{media.as_posix()}'\n", encoding="utf-8")
+
+        with mock.patch("maw.gui_web.find_ffmpeg", return_value=None):
+            with mock.patch("maw.gui_web._bundled_ffmpeg_directory", return_value=bundled):
+                with mock.patch("maw.gui_web.process_ffconcat_rebuild") as rebuild:
+                    rebuild.return_value = mock.Mock(
+                        source_media_path=media.resolve(),
+                        media_path=(self.root / "clip.gap-removed.mp4").resolve(),
+                        ffconcat_path=concat.resolve(),
+                    )
+                    result = self.api.run_ffconcat_rebuild({"mediaPath": str(media), "ffconcatPath": str(concat)})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(rebuild.call_args.kwargs["ffmpeg_path"], ffmpeg.resolve())
+
     def test_get_config_exposes_last_language_empty_vs_absent(self) -> None:
         self.env_path.write_text("MAW_GUI_LAST_MODEL=stt-async-v5\nMAW_GUI_LAST_LANGUAGE=\n", encoding="utf-8")
 
@@ -1052,6 +1221,36 @@ class GuiWebBridgeTests(unittest.TestCase):
 
 @final
 class LauncherAssetContractTests(unittest.TestCase):
+    def test_launcher_exposes_chainable_postprocess_toolbox(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        for control in (
+            "toolboxFab",
+            "toolboxDrawer",
+            "toolboxLlmPanel",
+            "toolboxReplacePanel",
+            "toolboxFfconcatPanel",
+            "postprocessProvider",
+            "postprocessApiKey",
+            "postprocessBaseUrl",
+            "postprocessModel",
+            "postprocessPrompt",
+            "postprocessOutputMode",
+            "postprocessFfconcatPath",
+        ):
+            self.assertIn(f'id="{control}"', page)
+        self.assertIn('bridge("run_llm_postprocess"', script)
+        self.assertIn('bridge("run_fixed_replacement"', script)
+        self.assertIn('bridge("run_ffconcat_rebuild"', script)
+        self.assertIn('bridge("save_postprocess_settings"', script)
+        self.assertIn('$("jsonPath").value = result.projectPath', script)
+        self.assertIn('$("srtPath").value = result.srtPath', script)
+        self.assertIn('$("mediaPath").value = result.mediaPath', script)
+        self.assertIn(".toolbox-fab", stylesheet)
+        self.assertIn(".toolbox-drawer", stylesheet)
+
     def test_launcher_hero_shows_the_bundled_brand_icon(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
