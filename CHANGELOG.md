@@ -4,19 +4,25 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- 修复 macOS 从 Finder 启动普通版 `MAW.app` 时未自动检索 Homebrew 的 `/opt/homebrew/bin` 和 `/usr/local/bin`，导致找不到 `ffmpeg` / `ffprobe` 的问题。
-- 修复 macOS 按住 Shift 使用滚轮调整波形振幅时，滚动方向被错误判定为始终增大的问题。
-
 ### Added
 
+- Launcher 新增可链式后处理工具箱：支持文稿匹配、固定文字替换、DeepSeek / 智谱 Coding Plan / 阿里云 Qwen / 自定义 OpenAI-compatible LLM 校对与翻译，以及受限 FFconcat 媒体重组；每一步生成新文件并自动作为下一步输入。
+- 新增 LLM 字幕协议文档，模型仅接收临时 cue ID 与文字，字幕时间槽继续由本地工程独占管理。
 - **预览字幕支持读取本机字体** ：点击字体设置中的「读取本机字体」后，可将当前电脑已安装的字体族加入下拉框并选择；工程只保存字体名称，其他电脑缺少该字体时预览自动回退到默认无衬线字体。
 - **预览字幕支持调节背景色和不透明度** ：可通过取色器和不透明度滑块调整字幕背景；不透明度设为 0 时隐藏背景，旧工程继续使用半透明黑色。
 
 ### Changed
 
+- 暂时移除 Windows `MOSE.exe` 与 macOS `MOSE.app` 的 Release 打包，缩小分发包；Launcher 隐藏「在 MOSE 中打开」入口，默认使用 Server 版或 HTML 编辑器。
 - **字幕预览默认宽度调整为 80%** ：缺少预览几何的工程使用 80% 宽度、左右各留 10% 的默认字幕选框；已保存几何的工程不受影响。
+
+### Fixed
+
+- 后处理保存设置现在拒绝所有可注入换行符，同时保留合法空值；FFconcat 重组会校验实际产物、清理超时残片并复用发行包内置 FFmpeg。
+- LLM 校对保留本地时间槽和未知元数据，禁止合并 enabled / disabled 字幕，超过 300 条时按本地批次处理；SRT 导出会跳过 disabled 段并重新编号。
+- LLM 明文 HTTP 仅允许环回地址；工具箱标签页移到四个面板下方，切换时不再随面板高度上下移动；LLM API Key 可从工具箱快捷链接跳转到 Launcher 设置中保存。
+- 修复 macOS 从 Finder 启动普通版 `MAW.app` 时未自动检索 Homebrew 的 `/opt/homebrew/bin` 和 `/usr/local/bin`，导致找不到 `ffmpeg` / `ffprobe` 的问题。
+- 修复 macOS 按住 Shift 使用滚轮调整波形振幅时，滚动方向被错误判定为始终增大的问题。
 
 ## [1.3.2] - 2026-08-11
 
@@ -65,6 +71,30 @@
 
 - 修复同时拖入工程与媒体时媒体被静默忽略、仍弹窗要求重选的问题；现在媒体随工程自动加载，不再重复提示。
 - 修复字幕服务器在工程切换与停止控制上的若干问题。
+
+## [1.13.1-beta-5] - 2026-08-06
+
+### Changed
+
+- Launcher 默认恢复启动 Server 版字幕编辑器；「在 MOSE 中打开」改为右侧菜单中的显式入口，不再自动跳过 Server 版。
+
+### Fixed
+
+- 改进 macOS `MOSE.app` 的同级应用探测，并在找不到桌面版时把实际检查过的路径写入 Launcher 日志。
+
+## [1.13.1-beta-4] - 2026-08-05
+
+### Fixed
+
+- 修复 Tauri WebView 播放工程关联媒体时使用 `file://` 导致 MP4 等外部文件无法读取的问题；现在改用 asset protocol，并按请求授权实际媒体文件。
+- 补充桌面媒体访问的打包契约检查，确保 Tauri 配置、Rust 权限与前端 URL 转换保持一致。
+
+## [1.13.1-beta-3] - 2026-08-05
+
+### Fixed
+
+- 修复 Windows MOSE 双击 `.mosp` / `.json` 时只打开空白编辑器的问题，并兼容启动参数前附加其他参数的打包启动形式。
+- 修复 Tauri 原生拖放处理器的作用域错误；现在可以把工程或媒体文件拖入 MOSE 窗口。
 - 修复桌面工程加载后的关联媒体自动加载回退路径，避免错误退回浏览器无法读取工程目录的提示。
 - 修复 macOS 应用图标资源与构建配置，macOS Release 包现在会包含正确的图标。
 - 修复 MOSE Windows 构建对未随包提供的 Tauri FFmpeg sidecar 的错误依赖；发布包继续按标准版使用 PATH、MAWxFF 使用同目录 FFmpeg。

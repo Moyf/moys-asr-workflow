@@ -12,5 +12,6 @@
 | [FFmpeg](https://ffmpeg.org/) / [Gyan Windows build](https://www.gyan.dev/ffmpeg/builds/) / [OSXExperts macOS build](https://www.osxexperts.net/) | Inspect media, extract audio, and build waveform peaks | Not bundled in standard packages. `MAWxFF-Windows` includes FFmpeg 8.1.2 Essentials executables under GPL-3.0; `MAWxFF-macOS-arm64` includes FFmpeg 8.1 Apple Silicon static `ffmpeg` and `ffprobe` binaries. The bundled `ffmpeg/` directory includes FFmpeg license files and source/provider references. |
 | Alibaba Cloud Model Studio / Qwen ASR | Speech recognition API | External service; subject to Alibaba Cloud terms, billing, and privacy policy |
 | [Soniox](https://soniox.com/) | Speech recognition API | External service; subject to Soniox terms, billing, and privacy policy |
+| [DeepSeek](https://www.deepseek.com/) / Alibaba Cloud Model Studio Qwen / custom OpenAI-compatible endpoint | Optional subtitle text post-processing in the Launcher toolbox | External services; subject to the selected provider's terms, billing, and privacy policy |
 
 The `web/` editor, Python scripts, and documentation in this repository are distributed under the repository's `AGPL-3.0-only` license unless a file states otherwise.

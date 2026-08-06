@@ -81,3 +81,40 @@ legacy rendering when the user is not editing it.
   `/api/project` save + `maw.project.normalize_project` round-trip — no new endpoint.
 - Segment timing (`segments[*].start/end/items[*].start/end`) is never touched by
   preview geometry code.
+
+## 5. Launcher post-processing toolbox
+
+The Launcher adds one compact, fixed toolbox above the action footer. It reuses the
+existing Launcher tokens in `web/launcher/launcher.css`; no new color, typography,
+radius, or shadow system is introduced.
+
+### Primitives
+
+| Primitive | Purpose | States |
+|---|---|---|
+| `.toolbox-fab` | Round entry point at the lower-right edge | idle, hover, focus, expanded, disabled |
+| `.toolbox-drawer` | Bounded panel for one active post-processing workflow | hidden, open, busy |
+| `.toolbox-tabs` | Switch between LLM, fixed replacement, and FFconcat | idle, active, focus |
+| `.toolbox-result` | Show generated artifacts and chain state | empty, success, warning, error |
+
+The drawer owns its own vertical scroll and uses `max-block-size` plus
+`overflow-y: auto`; the document remains the outer Launcher scroll owner. At widths
+below 620px the drawer spans the viewport inset and all two-column rows become one
+column. Long paths use `overflow-wrap: anywhere` and never force horizontal scroll.
+
+### Interaction contract
+
+- Opening the drawer copies the Launcher's current project, SRT, and media paths.
+- A successful subtitle tool updates the Launcher project/SRT fields to the new
+  artifacts, so the next run consumes the previous run without overwriting source.
+  When a tool emits only one format, the stale alternate-format field is cleared;
+  this makes the newly generated artifact the single authoritative next input.
+- A successful FFconcat run updates only the media input. It never silently rewrites
+  the subtitle project or its timeline.
+- The LLM provider form supports DeepSeek, Qwen, and a custom OpenAI-compatible
+  endpoint. Saved keys are displayed only as masked values.
+- The floating button and drawer expose `aria-expanded`, dialog labeling, keyboard
+  focus, Escape close, and visible focus rings.
+- On narrow screens the floating button clears the two-row sticky action footer and
+  the open drawer clears the button; error results use primary text over the red-soft
+  background to preserve AA contrast.
