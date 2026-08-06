@@ -11,7 +11,7 @@
     open_html: "📝 打开该工程的 HTML 编辑器",
     open_blank_html: "📝 打开空的 HTML 编辑器",
     server_already_running: "🌐 当前字幕编辑服务器已在运行中：",
-    server_address: "🌐 当前服务器地址：",
+    server_address: "当前服务器地址：",
     server_start_hint: "请点击「启动字幕服务器」",
     server_no_response_hint: "编辑器服务器没有响应，请检查端口或下方状态。",
     server_start_failed_hint: "编辑器服务器启动失败，请查看下方状态和日志。",
@@ -103,6 +103,24 @@
     theme_dark: "Dark",
     theme_system: "Follow system"
   });
+  Object.assign(STRINGS.zh, {
+    toolbox_open: "打开后处理工具箱", toolbox_title: "后处理工具箱（Beta）", toolbox_chain_hint: "每次生成新文件，并自动作为下一步输入。", toolbox_beta_notice: "该功能正在开发中，可能不太稳定，仅供尝鲜，遇到问题实属正常，可前往 ", toolbox_beta_notice_tail: " 提反馈。", toolbox_no_media: "未选择媒体",
+    toolbox_input: "处理文件", toolbox_input_placeholder: "跟随工程文件自动填入，也可拖入 .mosp / .json / .srt", toolbox_input_hint: "默认跟随「工程文件」并在每次处理后更新；手动选择或拖入其他文件后，以这里的文件为准。", toolbox_drop_reject: "这里只接受 .mosp / .json / .srt 字幕或工程文件。",
+    toolbox_llm: "LLM 处理", toolbox_replace: "固定替换", toolbox_ffconcat: "媒体重组", toolbox_provider: "供应商", toolbox_operation: "任务", toolbox_proofread: "校对", toolbox_resegment: "重新断句", toolbox_translate_en: "翻译为英文", toolbox_translate_zh: "翻译为中文", toolbox_custom: "自定义",
+    toolbox_prompt: "附加提示词", toolbox_prompt_placeholder: "例如：保留专有名词，不要使用书面腔。", toolbox_time_hint: "模型只处理带 ID 的文字；本地时间槽始终是时间真源。", toolbox_output: "输出", toolbox_output_both: "工程 + SRT", toolbox_output_project: "仅工程", toolbox_output_srt: "仅 SRT", toolbox_run: "运行处理",
+    toolbox_replace_rules: "替换规则", toolbox_replace_placeholder: "错别字 => 正确文字\n旧名称 => 新名称", toolbox_replace_hint: "每行一条：原文 => 新文。修改文本后会移除失真的逐词时间。", toolbox_replace_safe: "分段起止时间保持不变。", toolbox_run_replace: "执行替换",
+    toolbox_ffconcat_warning: "只允许引用当前媒体。重组会生成新媒体，但不会改写字幕时间轴。", toolbox_run_media: "生成新媒体", toolbox_ready: "选择工具后运行；源文件不会被覆盖。", toolbox_running: "处理中……", toolbox_saved: "LLM 设置已保存。", toolbox_key_empty: "未保存此供应商的密钥", toolbox_key_loaded: "已保存密钥 {key}",
+    toolbox_need_source: "请先选择工程或 SRT。", toolbox_need_rules: "请至少填写一条有效替换规则。", toolbox_need_ffconcat: "请选择 .ffconcat 文件。", toolbox_need_media: "请先选择当前媒体。", toolbox_done: "处理完成，已切换到新产物：", toolbox_media_done: "媒体重组完成，已切换到新媒体："
+  });
+  Object.assign(STRINGS.en, {
+    toolbox_open: "Open post-processing toolbox", toolbox_title: "Post-processing toolbox (Beta)", toolbox_chain_hint: "Each run creates a new file and uses it as the next input.", toolbox_beta_notice: "This feature is still in development and may be unstable — issues are expected. Please report them on ", toolbox_beta_notice_tail: ".", toolbox_no_media: "No media selected",
+    toolbox_input: "File to process", toolbox_input_placeholder: "Follows the project file, or drop a .mosp / .json / .srt", toolbox_input_hint: "Follows the project file and updates after each run; choosing or dropping another file overrides it.", toolbox_drop_reject: "Only .mosp / .json / .srt subtitle or project files can be dropped here.",
+    toolbox_llm: "LLM", toolbox_replace: "Fixed replace", toolbox_ffconcat: "Media rebuild", toolbox_provider: "Provider", toolbox_operation: "Task", toolbox_proofread: "Proofread", toolbox_resegment: "Resegment", toolbox_translate_en: "Translate to English", toolbox_translate_zh: "Translate to Chinese", toolbox_custom: "Custom",
+    toolbox_prompt: "Additional prompt", toolbox_prompt_placeholder: "Example: preserve product names and use conversational language.", toolbox_time_hint: "The model edits ID-tagged text only; local time slots remain authoritative.", toolbox_output: "Output", toolbox_output_both: "Project + SRT", toolbox_output_project: "Project only", toolbox_output_srt: "SRT only", toolbox_run: "Run",
+    toolbox_replace_rules: "Replacement rules", toolbox_replace_placeholder: "old text => new text", toolbox_replace_hint: "One per line: source => target. Stale word timings are removed when text changes.", toolbox_replace_safe: "Segment start and end times stay unchanged.", toolbox_run_replace: "Replace",
+    toolbox_ffconcat_warning: "Only the current media may be referenced. A new media file is created without changing subtitle timing.", toolbox_run_media: "Build media", toolbox_ready: "Choose a tool and run it; source files are never overwritten.", toolbox_running: "Processing…", toolbox_saved: "LLM settings saved.", toolbox_key_empty: "No saved key for this provider", toolbox_key_loaded: "Saved key {key}",
+    toolbox_need_source: "Choose a project or SRT first.", toolbox_need_rules: "Enter at least one valid replacement rule.", toolbox_need_ffconcat: "Choose an .ffconcat file.", toolbox_need_media: "Choose the current media first.", toolbox_done: "Done. Chained to the new artifact:", toolbox_media_done: "Media rebuilt. Chained to the new media:"
+  });
   const SERVER_STARTING_TEXT = { zh: "启动中……", en: "Starting…" };
   // Launcher 暂时面向国内用户默认北京；地域和 Workspace 仍保留在请求契约中，后续可重新开放。
   const SHOW_REGIONAL_FIELDS = false;
@@ -168,13 +186,16 @@
   const HOTWORD_WEIGHTS = new Set([1, 2, 3, 4, 5, 50]);
   const MAX_HOTWORDS = 2000;
   const MAX_SUPER_HOTWORDS = 50;
-  const state = { lang: "zh", serverRunning: false, serverStarting: false, moseStarting: false, running: false, result: null, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system" };
+  const state = { lang: "zh", serverRunning: false, serverStarting: false, moseStarting: false, running: false, result: null, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false };
   const dragState = { depth: 0 };
   let api = null;
   let prefsTimer = 0;
 
   function mockApi() {
     let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "zh" };
+    const chainedPath = (path, operation, fallback) => path
+      ? path.replace(/(\.[^.\\/]+)$/u, `.${operation}$1`)
+      : fallback;
     return {
       get_config: async () => ({
         apiKey: saved.apiKey,
@@ -190,6 +211,12 @@
         showRareLangs: saved.showRareLangs || false,
         appVersion: "1.13.1-beta-5",
         stickerDir: saved.stickerDir || "",
+        postprocessProviders: [
+          { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash", maskedApiKey: "", selected: true },
+          { id: "zhipu", label: "智谱 Coding Plan", baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", model: "glm-5.2", maskedApiKey: "", selected: false },
+          { id: "qwen", label: "阿里云 Qwen", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus", maskedApiKey: "", selected: false },
+          { id: "custom", label: "Custom (OpenAI-compatible)", baseUrl: "", model: "", maskedApiKey: "", selected: false }
+        ],
         providers: [
           {
             id: "qwen",
@@ -224,7 +251,7 @@
         ]
       }),
       default_output: async ({ mediaPath, providerId, modelId, testRun }) => ({ ok: true, path: mediaPath ? mediaPath.replace(/\.[^.\\/]+$/, `${providerId === "soniox" ? ".soniox" : (modelId === "fun-asr" ? ".fun-asr" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio" : ".qwen3-asr-api"))}${testRun ? "-test" : ""}.srt`) : "" }),
-      choose_file: async ({ kind }) => ({ ok: true, path: kind === "json" ? "D:\\Demo\\project.json" : (kind === "hotwords" ? "D:\\Demo\\hotwords.txt" : "D:\\Demo\\clip.mp4") }),
+      choose_file: async ({ kind }) => ({ ok: true, path: kind === "json" ? "D:\\Demo\\project.json" : (kind === "subtitle" ? "D:\\Demo\\project.mosp" : (kind === "ffconcat" ? "D:\\Demo\\clip.ffconcat" : (kind === "hotwords" ? "D:\\Demo\\hotwords.txt" : "D:\\Demo\\clip.mp4"))) }),
       read_hotword_file: async () => ({ ok: true, path: "D:\\Demo\\hotwords.txt", text: "张三\n阿里云百炼\n专业术语\n" }),
       save_settings: async (payload) => { saved = { ...saved, ...payload }; return { ok: true, maskedApiKey: payload.apiKey ? "sk-…mock" : "", message: "mock saved" }; },
       save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); return { ok: true }; },
@@ -235,6 +262,10 @@
       save_ffmpeg_path: async ({ path }) => ({ ok: Boolean(path), found: Boolean(path), directory: path || "", ffmpeg: path || "", ffprobe: path || "" }),
       choose_folder: async () => ({ ok: true, path: "D:\\Stickers" }),
       save_sticker_dir: async ({ path }) => { saved.stickerDir = path || ""; return { ok: Boolean(path), stickerDir: saved.stickerDir, field: path ? "" : "stickerDir", error: path ? "" : "missing" }; },
+      save_postprocess_settings: async ({ providerId, apiKey }) => ({ ok: true, providerId, maskedApiKey: apiKey ? "sk-…mock" : "" }),
+      run_llm_postprocess: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "llm", "D:\\Demo\\clip.llm.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "llm", "D:\\Demo\\clip.llm.srt"), warnings: [] }),
+      run_fixed_replacement: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "replace", "D:\\Demo\\clip.replace.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "replace", "D:\\Demo\\clip.replace.srt"), warnings: [] }),
+      run_ffconcat_rebuild: async () => ({ ok: true, mediaPath: "D:\\Demo\\clip.gap-removed.mp4" }),
       check_server_media: async ({ jsonPath }) => ({ ok: Boolean(jsonPath), hasMedia: Boolean(jsonPath), mediaPath: "D:\\Demo\\clip.mp4", mediaExists: Boolean(jsonPath) }),
       start_server: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "log", message: "[mock] would open http://127.0.0.1:8250/ after server responds" }), 120); return { ok: true, url: "http://127.0.0.1:8250/" }; },
       get_server_status: async ({ port = "8250" }) => ({ ok: true, running: false, url: `http://127.0.0.1:${port}/` }),
@@ -398,7 +429,7 @@
   function onDragEnter(event) { if (!hasFileDrag(event) || !isInsideMediaCard(event.target)) return; event.preventDefault(); if (isInsideMediaCard(event.relatedTarget)) return; dragState.depth += 1; setDropHighlight(true); }
   function onDragLeave(event) { if (!isInsideMediaCard(event.target)) return; if (isInsideMediaCard(event.relatedTarget)) return; dragState.depth = Math.max(0, dragState.depth - 1); if (dragState.depth === 0) setDropHighlight(false); }
   function bindDropField(id, target, controlId) { const field = $(id); const control = $(controlId || id); field.addEventListener("dragenter", (event) => { if (!hasFileDrag(event)) return; event.preventDefault(); state.dropTarget = target; control.classList.add("drag-over"); }); field.addEventListener("dragover", (event) => { if (!hasFileDrag(event)) return; event.preventDefault(); state.dropTarget = target; control.classList.add("drag-over"); }); field.addEventListener("dragleave", (event) => { if (!field.contains(event.relatedTarget)) { control.classList.remove("drag-over"); if (state.dropTarget === target) state.dropTarget = ""; } }); }
-  function handleRoutedDrop(path) { const target = state.dropTarget; clearDropState(); const suffix = ext(path || ""); if (target === "json") { if (PROJECT_EXTS.has(suffix)) { setJsonPath(path); setStatus(t("json_project")); } else setError("jsonPath", t("drop_reject_json")); return; } if (target === "text" || target === "file") { if (suffix === ".txt") { void loadHotwordFile(path, target === "text"); } else setError(target === "text" ? "qwenAudioHotwords" : "qwenAudioHotwordsFile", t("drop_reject_txt")); return; } if (PROJECT_EXTS.has(suffix)) { setJsonPath(path); setStatus(t("json_project")); return; } if (suffix === ".txt") { void loadHotwordFile(path, false); return; } if (MEDIA_EXTS.has(suffix)) { setMedia(path); setStatus(t("media")); return; } setStatus(t("drop_reject")); }
+  function handleRoutedDrop(path) { const target = state.dropTarget; clearDropState(); const suffix = ext(path || ""); if (target === "toolboxInput") { if (PROJECT_EXTS.has(suffix) || suffix === ".srt") { $("toolboxInputPath").value = path; $("toolboxInputPath").dispatchEvent(new Event("input", { bubbles: true })); setError("toolboxInputPath", ""); } else setError("toolboxInputPath", t("toolbox_drop_reject")); return; } if (target === "json") { if (PROJECT_EXTS.has(suffix)) { setJsonPath(path); setStatus(t("json_project")); } else setError("jsonPath", t("drop_reject_json")); return; } if (target === "text" || target === "file") { if (suffix === ".txt") { void loadHotwordFile(path, target === "text"); } else setError(target === "text" ? "qwenAudioHotwords" : "qwenAudioHotwordsFile", t("drop_reject_txt")); return; } if (PROJECT_EXTS.has(suffix)) { setJsonPath(path); setStatus(t("json_project")); return; } if (suffix === ".txt") { void loadHotwordFile(path, false); return; } if (MEDIA_EXTS.has(suffix)) { setMedia(path); setStatus(t("media")); return; } setStatus(t("drop_reject")); }
   async function refreshServerMedia() { const jsonPath = $("jsonPath").value.trim(); const result = await bridge("check_server_media", { jsonPath }); state.serverMediaOk = Boolean(result.hasMedia && result.mediaExists); $("serverMediaField").classList.toggle("hidden", state.serverMediaOk || !jsonPath); return result; }
   async function refreshFfmpeg() { const result = await bridge("check_ffmpeg"); $("modalFfmpegFound").classList.toggle("hidden", !result.found); $("modalFfmpegMissing").classList.toggle("hidden", Boolean(result.found)); $("ffmpegPathBox").classList.toggle("hidden", Boolean(result.found)); $("settingsDot").classList.toggle("hidden", Boolean(result.found)); $("modalFfmpegFound").title = result.directory || ""; $("ffmpegDir").textContent = result.directory || ""; return result; }
   function ffmpegSaveError(result) { if (result.code) return errText(result.code, result.detail || result.error); if (result.found === false) return t("ffmpeg_missing"); return compactDetail(result.error) || t("failed"); }
@@ -469,16 +500,17 @@
     $("lengthLimitField").classList.toggle("hidden", !SHOW_LENGTH_LIMIT_FIELD);
     $("demoBadge").classList.toggle("hidden", window.MAWLauncher.backend !== "mock");
     state.config = await bridge("get_config");
+    window.MAWLauncher.config = state.config;
     state.lang = state.config.guiLang || "zh";
     fillSelect("provider", state.config.providers, state.config.providerId || "qwen");
     applyProvider(false);
     $("workspaceId").value = state.config.workspaceId || "";
     syncWorkspace(); syncTestRun(); renderChevron("advancedCard"); renderChevron("serverCard"); renderLanguage(); refreshFfmpeg();
-    appendLog(window.MAWLauncher.backend === "real" ? "MAW launcher ready." : "[mock] Static browser demo mode enabled."); setStatus(t("ready")); await checkExistingServer();
+    appendLog(window.MAWLauncher.backend === "real" ? "MAW launcher ready." : "[mock] Static browser demo mode enabled."); setStatus(t("ready")); await checkExistingServer(); window.dispatchEvent(new CustomEvent("mawlauncherready"));
   }
 
-  function handleBackendEvent(event) { if (event.type === "log") appendLog(event.message); if (event.type === "error") { setRunning(false); const detail = event.detail || event.message || ""; const message = event.code ? errText(event.code, detail) : detail || t("failed"); setStatus(message); appendLog(`[error] ${message}`); if (detail && detail !== message) appendLog(`[detail] ${detail}`); } if (event.type === "done") { state.result = event.result; setRunning(false); setJsonPath(event.result?.jsonPath || ""); $("openMawe").classList.add("attention"); $("openFolder").classList.remove("hidden"); syncHtmlMenu(); appendLog(t("done")); void checkExistingServer(t("done")); } if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropHotwordFile" || event.type === "dropReject") handleRoutedDrop(event.path || ""); }
-  window.MAWLauncher = { backend: "pending", onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); } };
+  function handleBackendEvent(event) { if (event.type === "log") appendLog(event.message); if (event.type === "error") { setRunning(false); const detail = event.detail || event.message || ""; const message = event.code ? errText(event.code, detail) : detail || t("failed"); setStatus(message); appendLog(`[error] ${message}`); if (detail && detail !== message) appendLog(`[detail] ${detail}`); } if (event.type === "done") { state.result = event.result; setRunning(false); setJsonPath(event.result?.jsonPath || ""); $("openMawe").classList.add("attention"); $("openFolder").classList.remove("hidden"); syncHtmlMenu(); appendLog(t("done")); void checkExistingServer(t("done")); } if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropReject") handleRoutedDrop(event.path || ""); }
+  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); } };
 
   $("langToggle").addEventListener("click", async () => { state.lang = state.lang === "zh" ? "en" : "zh"; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (!result.ok) applyErrorResult(result); });
   $("themeLight").addEventListener("click", () => setTheme("light")); $("themeDark").addEventListener("click", () => setTheme("dark")); $("themeSystem").addEventListener("click", () => setTheme("system"));
@@ -508,7 +540,7 @@
   $("openMawe").addEventListener("click", openServerEditor); $("openFolder").addEventListener("click", () => bridge("open_output_folder"));
   $("openMenu").addEventListener("click", () => $("htmlMenu").classList.toggle("hidden")); $("openMose").addEventListener("click", openMose); $("openHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_html"); }); $("openBlankHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_blank_html"); }); document.addEventListener("click", (event) => { if (!event.target.closest(".split-wrap")) $("htmlMenu").classList.add("hidden"); });
   $("mediaCard").addEventListener("dragenter", onDragEnter); $("mediaCard").addEventListener("dragleave", onDragLeave);
-  bindDropField("qwenAudioHotwordsTextField", "text", "qwenAudioHotwords"); bindDropField("qwenAudioHotwordsFileField", "file", "qwenAudioHotwordsFile"); bindDropField("jsonPath", "json");
+  bindDropField("qwenAudioHotwordsTextField", "text", "qwenAudioHotwords"); bindDropField("qwenAudioHotwordsFileField", "file", "qwenAudioHotwordsFile"); bindDropField("jsonPath", "json"); bindDropField("toolboxInputPath", "toolboxInput");
   document.addEventListener("dragover", (event) => { if (hasFileDrag(event)) event.preventDefault(); });
   document.addEventListener("dragend", clearDropState);
   document.addEventListener("dragleave", (event) => { if (!event.relatedTarget && event.target === document.documentElement) clearDropState(); });

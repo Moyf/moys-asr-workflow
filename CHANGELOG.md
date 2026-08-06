@@ -2,6 +2,25 @@
 
 本项目采用 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 的记录方式。
 
+## [Unreleased]
+
+### Added
+
+- Launcher 新增可链式后处理工具箱：支持固定文字替换、DeepSeek / 阿里云 Qwen / 自定义 OpenAI-compatible LLM 校对与翻译，以及受限 FFconcat 媒体重组；每一步生成新文件并自动作为下一步输入。
+- 后处理工具箱顶部新增独立的「处理文件」输入：默认跟随 Launcher 工程文件并在每次处理后自动更新，也可以手动选择或拖入其他 `.mosp` / `.json` / `.srt` 文件作为处理对象。
+- 后处理 LLM 供应商新增「智谱 Coding Plan」预设（`glm-5.2`）。
+- 新增 LLM 字幕协议文档，模型仅接收临时 cue ID 与文字，字幕时间槽继续由本地工程独占管理。
+
+### Changed
+
+- 后处理工具箱标题标注（Beta）并补充问题反馈入口；DeepSeek 后处理默认模型从 `deepseek-chat` 更新为 `deepseek-v4-flash`。
+
+### Fixed
+
+- 后处理保存设置现在拒绝换行等控制字符，避免本机 `.env` 键值被注入；FFconcat 重组会校验实际产物、清理超时残片并复用发行包内置 FFmpeg。
+- LLM 无修改时保留逐词时间与工程元数据；SRT 导出会折叠 cue 内空白段落，避免后续内容被误解析为新字幕块。
+- 修复单一格式后处理仍回退到旧输入、窄屏浮动工具按钮遮挡主操作，以及错误结果文字对比度不足的问题。
+
 ## [1.13.1-beta-5] - 2026-08-06
 
 ### Changed

@@ -42,6 +42,13 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("console=False", spec)
         self.assertIn("upx=False", spec)
         self.assertIn("maw.gui_web", spec)
+        for module in (
+            "maw.postprocess",
+            "maw.postprocess_io",
+            "maw.postprocess_llm",
+            "maw.postprocess_ffmpeg",
+        ):
+            self.assertIn(module, spec)
         self.assertNotIn("sv_ttk", spec)
         self.assertIn("generate_subtitle_qwen_api", spec)
         self.assertIn("generate_subtitle_soniox_api", spec)

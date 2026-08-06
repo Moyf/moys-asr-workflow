@@ -44,6 +44,19 @@ class GuiConfigTests(unittest.TestCase):
 
             self.assertEqual(gui_config.load_env(env_path)["FFMPEG_PATH"], "/opt/homebrew/bin")
 
+    def test_save_env_rejects_control_characters_without_modifying_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            _ = env_path.write_text("KEEP_ME=yes\n", encoding="utf-8")
+
+            separators = ("\r", "\n", "\x00", "\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029")
+            for separator in separators:
+                with self.subTest(separator=ascii(separator)):
+                    with self.assertRaises(ValueError):
+                        gui_config.save_env(env_path, {"MODEL": f"safe{separator}FFMPEG_PATH=payload.exe"})
+
+                    self.assertEqual(env_path.read_text(encoding="utf-8"), "KEEP_ME=yes\n")
+
     def test_save_env_creates_from_example_when_absent(self) -> None:
         """Given no env file, When saving, Then the local example is copied first."""
         with tempfile.TemporaryDirectory() as temp_dir:
