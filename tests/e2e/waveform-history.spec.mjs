@@ -215,18 +215,36 @@ test('waveform navigation keeps a cue row in the comfort zone', async ({ page })
   await expect.poll(() => page.evaluate(() => window.__waveformScrollBehaviors)).toContain('smooth');
 });
 
-test('B does not split outside the selected cue list or while editing text', async ({ page }) => {
+test('B does not split when the playhead is in a gap or while editing text', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('.cue[data-idx="0"]').click();
+  // 播放头位于空隙（20s）：列表外按 B 只提示、不拆分
+  await page.evaluate(() => {
+    const player = document.getElementById('player');
+    player.currentTime = 20;
+    player.dispatchEvent(new Event('timeupdate'));
+  });
   await page.locator('#media-controls').hover();
   await page.keyboard.press('b');
   await expect(page.locator('.cue')).toHaveCount(6);
+  await expect(page.locator('.hint-card', { hasText: '播放头位置没有可拆分字幕' })).toHaveCount(1);
 
   const panelText = page.locator('#cue-panel-text');
   await panelText.focus();
   await page.keyboard.press('b');
   await expect(panelText).toHaveValue('Alphab');
   await expect(page.locator('.cue')).toHaveCount(6);
+});
+
+test('B splits at the pointer audio position while hovering the waveform', async ({ page }) => {
+  await page.goto(server.url);
+  const row = page.locator('.waveform-row').first();
+  const box = await row.boundingBox();
+  // 第一行覆盖 0–5s；40% 处约 2s，落在第一条字幕（0–8s）内部
+  await page.mouse.move(box.x + box.width * 0.4, box.y + box.height / 2);
+  await page.keyboard.press('b');
+  await expect(page.locator('.cue')).toHaveCount(7);
+  await expect(page.locator('.cue .text').nth(0)).not.toHaveText('Alpha');
 });
 
 test('help reflects the selected subtitle-edit split key', async ({ page }) => {

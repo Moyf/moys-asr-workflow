@@ -341,17 +341,11 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('let interceptedSpace = false;', page)
         self.assertIn('e.stopImmediatePropagation();', page)
         self.assertIn('width: 74px; aspect-ratio: 1;', page)
+        # 面板行对选中/未选中使用同一套轨道尺寸：高度只随手动拖拽变化，不再因选中跳变
         self.assertIn('minmax(max-content, calc(var(--layout-row-middle)', page)
-        self.assertIn(
-            '.editor-workspace.layout-wave-right:has(> .current-cue-panel.empty) {\n'
-            '  grid-template-rows:\n'
-            '    minmax(56px, calc(var(--layout-row-top) - 9.333px))\n'
-            '    7px\n'
-            '    max-content\n'
-            '    7px\n'
-            '    minmax(56px, 1fr);',
-            page,
-        )
+        self.assertNotIn(':has(> .current-cue-panel.empty)', page)
+        # 不引入文本域自动增高：拖高面板时布局保持原样
+        self.assertNotIn('.layout-wave-right #cue-panel-text { flex:', page)
         self.assertNotIn('.editor-workspace.layout-wave-right > .current-cue-panel {\n  overflow-y: auto;', page)
         self.assertNotIn('id="waveform-side"', page)
         self.assertIn('getSrtExportOffset(', page)
