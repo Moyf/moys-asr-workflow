@@ -985,7 +985,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('bridge("stop_server", serverPayload())', script)
         self.assertIn('state.serverRunning = starting && !result.serverAlreadyRunning;', script)
         self.assertIn('void checkExistingServer(t("done"));', script)
-        self.assertIn('server_address: "当前服务器地址："', script)
+        self.assertIn('server_address: "🌐 当前服务器地址："', script)
         self.assertIn('server_start_hint: "请点击「启动字幕服务器」"', script)
         self.assertIn('open_editor: "打开字幕编辑器"', script)
         self.assertIn('id="refreshServerStatus"', page := (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8"))
