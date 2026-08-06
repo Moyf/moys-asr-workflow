@@ -224,6 +224,9 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('#editor-settings-toggle').click();
   await page.locator('#help-toggle').click();
+  const helpPanel = page.locator('#help-panel');
+  await expect(helpPanel).toHaveClass(/show/);
+  await expect(helpPanel).toHaveAttribute('aria-hidden', 'false');
 
   const settingsPanel = page.locator('#editor-settings-panel');
   const displayRows = settingsPanel.locator('.editor-settings-display-row');
@@ -251,6 +254,10 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
 
   await splitKey.selectOption('ctrl-enter');
   await expect(helpSplitKey).toHaveText(`${modKey}+Enter`);
+
+  await page.keyboard.press('Escape');
+  await expect(helpPanel).not.toHaveClass(/show/);
+  await expect(helpPanel).toHaveAttribute('aria-hidden', 'true');
 });
 
 test('waveform toolbar exposes grouped icon controls and selected cues use a yellow border', async ({ page }) => {

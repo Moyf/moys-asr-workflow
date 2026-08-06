@@ -399,6 +399,8 @@ const exportColorUnifiedToggle = document.getElementById('export-color-unified')
 const helpToggle = document.getElementById('help-toggle');
 const themeToggle = document.getElementById('theme-toggle');
 const helpPanel = document.getElementById('help-panel');
+const helpDragHandle = document.getElementById('help-drag-handle');
+const helpCloseButton = document.getElementById('help-close');
 const helpSplitKey = document.getElementById('help-split-key');
 const clickBehaviorSelect = document.getElementById('click-behavior');
 const clickTargetField = document.getElementById('click-target-field');
@@ -465,6 +467,7 @@ const gapRemoveScanButton = document.getElementById('gap-remove-scan');
 const gapRemoveSkipPlayback = document.getElementById('gap-skip-playback');
 const gapRemoveList = document.getElementById('gap-remove-list');
 const gapRemoveClearAllButton = document.getElementById('gap-remove-clear-all');
+const HELP_PANEL_POSITION_KEY = 'moy.asr.help.panel.v1';
 const AUTO_MERGE_PANEL_POSITION_KEY = 'moy.asr.auto_merge.panel.v2';
 const autoMergePanel = document.getElementById('auto-merge-panel');
 const autoMergeDragHandle = document.getElementById('auto-merge-drag-handle');
@@ -647,12 +650,15 @@ window.addEventListener('scroll', positionSubtitlePreviewSettingsPanel, true);
 subtitlePreviewSettings?.closest('.player-toolbar')?.addEventListener(
   'scroll', positionSubtitlePreviewSettingsPanel,
 );
-helpToggle?.addEventListener('click', () => {
-  const open = helpPanel?.hidden === true;
-  if (helpPanel) helpPanel.hidden = !open;
-  helpToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-  helpToggle.classList.toggle('active', open);
+// 帮助浮窗：与拼合字幕共用 createFloatingPanel（拖动、位置持久化、Esc 关闭）
+const helpFloatingPanel = createFloatingPanel({
+  panel: helpPanel,
+  dragHandle: helpDragHandle,
+  manageButton: helpToggle,
+  anchorButton: helpToggle,
+  positionKey: HELP_PANEL_POSITION_KEY,
 });
+helpCloseButton?.addEventListener('click', () => helpFloatingPanel.close());
 // 明暗主题：令牌全部定义在 CSS（:root 暗色 / [data-theme="light"] 亮色），
 // 这里只负责写 <html data-theme>、持久化、同步按钮，以及通知波形重绘画布。
 // 按钮显示的是「目标主题」（与相邻 🌐 语言按钮同一约定）：暗色时显示 🌖（点击转亮）。

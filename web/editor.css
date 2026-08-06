@@ -839,13 +839,8 @@
   }
 
   /* === 操作帮助 === */
-  .help-panel {
-    flex: 0 0 auto; display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr));
-    gap: 8px; margin: -2px 0 8px; padding: 10px;
-    background: var(--bg-panel); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
-    box-shadow: var(--shadow-1);
-  }
-  .help-panel[hidden] { display: none; }
+  .gap-remove-panel.help-panel { width: min(660px, calc(100vw - 24px)); }
+  .help-panel-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .help-group {
     display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px 12px;
     padding: 10px; color: var(--text-secondary); font-size: 11px;
@@ -863,8 +858,8 @@
     padding: 1px 5px; font-size: 10px; color: var(--text-secondary); font-family: var(--font-mono);
     box-shadow: 0 1px 0 var(--border-subtle);
   }
-  @media (max-width: 860px) {
-    .help-panel { grid-template-columns: 1fr; }
+  @media (max-width: 640px) {
+    .help-panel-body { grid-template-columns: 1fr; }
   }
 
   /* === 当前字幕编辑区 === */
