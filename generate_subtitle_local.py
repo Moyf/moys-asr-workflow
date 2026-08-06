@@ -1,7 +1,8 @@
 """Local QwenASR / FunASR -> SRT + MAW project CLI.
 
-This is intentionally a source-mode first step.  Model packages are optional,
-and no model downloader or desktop UI is included yet.
+This remains a source-mode first step.  Model packages are optional; the
+Launcher only routes to this CLI and lets the upstream runtime prepare its
+cache, rather than bundling a model manager into the application.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from typing import Sequence
 
 from maw.local_asr import (
     FUNASR_DEFAULT_MODEL,
+    QWEN_DEFAULT_FORCED_ALIGNER,
     QWEN_DEFAULT_MODEL,
     build_local_segments,
     create_local_engine,
@@ -34,13 +36,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--model", help=f"模型 ID 或本地模型路径（Qwen 默认: {QWEN_DEFAULT_MODEL}；FunASR 默认: {FUNASR_DEFAULT_MODEL}）",
     )
     parser.add_argument("--model-path", help="显式指定已经下载好的模型目录")
-    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
-    parser.add_argument("--forced-aligner", help="QwenASR Forced Aligner 模型 ID 或本地路径")
+    parser.add_argument(
+        "--device", choices=("auto", "cpu", "cuda"), default="auto",
+        help="推理设备（默认: auto，优先 CUDA；不可用时回退 CPU）",
+    )
+    parser.add_argument(
+        "--forced-aligner", default=QWEN_DEFAULT_FORCED_ALIGNER,
+        help=f"QwenASR Forced Aligner 模型 ID 或本地路径（默认: {QWEN_DEFAULT_FORCED_ALIGNER}）",
+    )
     parser.add_argument("--vad-model", help="FunASR 可选 VAD 模型")
     parser.add_argument("--punc-model", help="FunASR 可选标点模型")
     parser.add_argument("--speaker-model", help="FunASR 可选说话人模型")
     parser.add_argument("--language", help="语言提示，例如 zh 或 en")
     parser.add_argument("--hotword", action="append", default=[], help="热词，可重复传入")
+    parser.add_argument(
+        "--hotword-file", action="append", default=[], metavar="FILE",
+        help="UTF-8 热词文件，一行一个词；可重复传入",
+    )
     parser.add_argument("--batch-size-s", type=int, default=300, help="FunASR 分块秒数")
     parser.add_argument("-ll", "--length-limit", type=parse_duration, help="只处理前 N 秒，例如 2m")
     parser.add_argument("-o", "--output", help="输出 SRT 路径（默认与输入同目录）")
@@ -58,6 +70,18 @@ def default_output_path(input_path: Path, engine: str) -> Path:
     return input_path.with_name(f"{input_path.stem}.{tag}.srt")
 
 
+def load_hotword_files(paths: Sequence[str]) -> list[str]:
+    """Read UTF-8 hotword lists, ignoring blank lines and ``#`` comments."""
+    hotwords: list[str] = []
+    for raw_path in paths:
+        path = Path(raw_path).expanduser()
+        for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
+            value = raw_line.strip()
+            if value and not value.startswith("#") and value not in hotwords:
+                hotwords.append(value)
+    return hotwords
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     input_path = Path(args.input).expanduser().resolve()
@@ -73,6 +97,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.with_waveform and not args.json:
         print("错误: --with-waveform 需要同时指定 --json")
         return 2
+    try:
+        file_hotwords = load_hotword_files(args.hotword_file)
+    except OSError as error:
+        print(f"错误: 无法读取热词文件: {error}")
+        return 2
+    hotwords = list(dict.fromkeys([*args.hotword, *file_hotwords]))
 
     output_srt = Path(args.output).expanduser().resolve() if args.output else default_output_path(input_path, args.engine)
     engine = create_local_engine(
@@ -92,7 +122,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 audio_path,
                 language=args.language,
                 batch_size_s=args.batch_size_s,
-                hotwords=args.hotword,
+                hotwords=hotwords,
                 on_event=print,
             )
         segments = build_local_segments(

@@ -6,9 +6,14 @@
 
 ### Added
 
-- Launcher 新增实验性的本地 Qwen3-ASR / FunASR 识别方式：使用独立运行环境生成字幕，并复用 MAW 的 SRT、`.mosp` 工程与编辑器流程。
+- 新增实验性的本地 Qwen3-ASR / FunASR CLI 流程：统一本地模型输出的时间戳，生成 SRT、`.mosp` 工程和可选便携 HTML；本地模型依赖保持为可选安装。
+- Launcher 新增「本地模型」识别方式：扫描常见模型缓存、选择已有模型目录或准备上游模型缓存，并复用本地 CLI 生成字幕工程；本地推理依赖和模型权重仍不放入 Windows 冻结包。
+- Launcher 增加「安装本地模型支持」：普通用户无需执行 `uv sync --extra local`，GUI 会在用户目录创建独立运行环境并自动安装本地 ASR 依赖；运行环境与模型缓存分开管理，支持进度、取消、修复、重试和重新扫描。
 
 ### Changed
+
+- 本地模型准备阶段新增组件提示、等待时长、缓存文件数与缓存体积心跳；上游下载器暂时没有输出时，Launcher 仍会持续反馈准备状态。
+- Windows 冻结版本地转录改由独立运行环境 Python 执行，发布包只携带小型 `uv.exe` 安装器和 helper，不捆绑数 GB 的 Torch 或模型权重。
 
 - 暂时移除 Windows `MOSE.exe` 与 macOS `MOSE.app` 的 Release 打包，缩小分发包；Launcher 隐藏「在 MOSE 中打开」入口，默认使用 Server 版或 HTML 编辑器。
 

@@ -39,6 +39,14 @@ class ModelConfig:
     supports_hotwords: bool = False
     supports_vocabulary: bool = False
     languages: tuple[tuple[str, str], ...] = ()
+    kind: str = "cloud"
+    engine: str = ""
+    model_ref: str = ""
+    required_model_refs: tuple[str, ...] = ()
+    requires_runtime: tuple[str, ...] = ()
+    # 上游缓存中的实际模型 ID；当引擎用简写加载（如 FunASR paraformer-zh）
+    # 而缓存目录使用完整 ID 时，扫描器靠它定位已下载的模型。
+    cache_refs: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +62,8 @@ class ProviderConfig:
     # 常用语言代码；为空表示不过滤（全部视为常用）。
     # 开启「显示相对小众的语言」前，GUI 只展示这些。
     common_languages: tuple[str, ...] = ()
+    kind: str = "cloud"
+    requires_api_key: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -258,6 +268,35 @@ SONIOX_MODELS: Final[tuple[ModelConfig, ...]] = (
     ),
 )
 
+LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
+    ModelConfig(
+        id="qwen3-asr-local",
+        label="Qwen3-ASR 0.6B（本地）",
+        env_key="",
+        note="本地运行；首次准备会加载 Qwen3-ASR 与 Forced Aligner",
+        languages=LANGUAGES,
+        kind="local",
+        engine="qwen-asr",
+        model_ref="Qwen/Qwen3-ASR-0.6B",
+        required_model_refs=("Qwen/Qwen3-ForcedAligner-0.6B",),
+        requires_runtime=("qwen_asr", "torch"),
+    ),
+    ModelConfig(
+        id="funasr-local",
+        label="FunASR paraformer-zh（本地）",
+        env_key="",
+        note="本地运行；使用 FunASR 上游模型缓存",
+        languages=FUNASR_LANGUAGES,
+        kind="local",
+        engine="funasr",
+        model_ref="paraformer-zh",
+        requires_runtime=("funasr", "torchaudio"),
+        # FunASR model zoo 把 paraformer-zh 解析为这个 ModelScope ID；
+        # GUI 不能导入 FunASR，扫描缓存时需要显式的映射。
+        cache_refs=("iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",),
+    ),
+)
+
 PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
     ProviderConfig(
         id="qwen",
@@ -279,6 +318,18 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         supports_speaker=True,
         multi_language=True,
         common_languages=SONIOX_COMMON_LANGUAGES,
+    ),
+    ProviderConfig(
+        id="local",
+        label="本地模型",
+        key_url="",
+        models=LOCAL_MODELS,
+        regions=(),
+        languages=LANGUAGES,
+        supports_speaker=False,
+        common_languages=QWEN_COMMON_LANGUAGES,
+        kind="local",
+        requires_api_key=False,
     ),
 )
 
@@ -373,6 +424,8 @@ def provider_for_model(model_id: str) -> ProviderConfig:
 def api_key_for_provider(provider_id: str, path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] | None = None) -> str:
     """按供应商读取 API Key（系统环境变量优先，其次 .env）。"""
     provider = provider_by_id(provider_id)
+    if not provider.requires_api_key:
+        return ""
     if not provider.models:
         return ""
     env_key = provider.models[0].env_key

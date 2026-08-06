@@ -61,7 +61,7 @@
       <h2 id="settingsTitle" data-i18n="recognition">2️⃣ 识别设置</h2>
       <div class="provider-row">
         <div class="field provider-field">
-          <label for="provider" data-i18n="provider">语音 API 供应商</label>
+          <label for="provider" data-i18n="provider">识别方式</label>
           <select id="provider"></select>
         </div>
         <label class="check-field" for="testRun" data-i18n-title="test_run_title">
@@ -70,7 +70,12 @@
         </label>
       </div>
       <p id="testRunHint" class="hint hidden" data-i18n="test_run_override">快速测试已限定前 2 分钟</p>
-      <div class="field">
+      <div id="modelField" class="field">
+        <label for="model" data-i18n="model">模型</label>
+        <select id="model"></select>
+        <p id="modelNote" class="hint"></p>
+      </div>
+      <div id="cloudAuthField" class="field">
         <label for="apiKey" data-i18n="key">API Key</label>
         <div class="path-row key-row">
           <input id="apiKey" type="password" autocomplete="off">
@@ -80,12 +85,44 @@
         <p class="hint"><span data-i18n="key_hint_prefix">在</span> <button id="openKeyUrl" class="inline-link" type="button">阿里云百炼</button> <span data-i18n="key_hint_suffix">获取 API Key ↗</span></p>
         <p id="apiKeyError" class="field-error"></p>
       </div>
+      <div id="localRuntimePanel" class="local-runtime-panel hidden">
+        <div class="local-status-row">
+          <p id="localRuntimeStatus" class="local-status" aria-live="polite"></p>
+          <button id="refreshLocalRuntime" class="ghost small" type="button" data-i18n="local_refresh">重新扫描</button>
+        </div>
+        <div id="localRuntimeProgress" class="task-progress hidden" aria-live="polite">
+          <div class="task-progress-track"><span id="localRuntimeProgressBar"></span></div>
+          <p id="localRuntimeProgressMessage" class="hint"></p>
+        </div>
+        <p id="localRuntimeHint" class="hint"></p>
+        <button id="installLocalRuntime" class="primary small" type="button" data-i18n="local_runtime_install">安装本地模型支持</button>
+      </div>
+      <div id="localModelPanel" class="local-model-panel hidden">
+        <div class="local-status-row">
+          <p id="localModelStatus" class="local-status" aria-live="polite"></p>
+          <button id="refreshLocalModels" class="ghost small" type="button" data-i18n="local_refresh">重新扫描</button>
+        </div>
+        <p id="localModelHint" class="hint"></p>
+        <div class="field">
+          <label for="localModelPath" data-i18n="local_model_path">已有模型目录（可选）</label>
+          <div class="path-row">
+            <input id="localModelPath" type="text" autocomplete="off">
+            <button id="pickLocalModelPath" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
+          </div>
+          <p id="localModelPathError" class="field-error"></p>
+        </div>
+        <div id="localModelProgress" class="task-progress hidden" aria-live="polite">
+          <div class="task-progress-track indeterminate"><span></span></div>
+          <p id="localModelProgressMessage" class="hint"></p>
+        </div>
+        <button id="prepareLocalModel" class="ghost" type="button" data-i18n="local_prepare">下载模型</button>
+      </div>
       <div id="advancedCard" class="sub-accordion collapsed">
         <button id="advancedToggle" class="accordion-header" type="button"><span class="chevron">▸</span><span data-i18n="advanced">高级选项</span></button>
         <div class="collapse-body">
           <div id="advancedOptionsGrid" class="grid-two">
             <div class="advanced-col">
-              <div id="modelField" class="field"><label for="model" data-i18n="model">模型</label><select id="model"></select></div>
+              <div id="localDeviceField" class="field hidden"><label for="localDevice" data-i18n="local_device">设备</label><select id="localDevice"><option value="auto" data-i18n="device_auto">自动</option><option value="cpu" data-i18n="device_cpu">CPU</option><option value="cuda" data-i18n="device_cuda">CUDA</option></select></div>
               <div id="regionField" class="field hidden"><label for="region" data-i18n="region">地域</label><select id="region"></select></div>
               <div id="workspaceField" class="field hidden">
                 <label for="workspaceId" data-i18n="workspace">工作空间 ID</label>
@@ -173,6 +210,7 @@
     <section class="card" aria-labelledby="logTitle">
       <h2 id="logTitle" data-i18n="logs">3️⃣ 日志</h2>
       <div id="progress" class="progress hidden" aria-hidden="true"><span></span></div>
+      <p id="logLatest" class="log-latest hidden" aria-live="polite"></p>
       <pre id="log" class="log" aria-live="polite"></pre>
     </section>
 

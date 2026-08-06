@@ -21,7 +21,7 @@ Moy 的 ASR 工作流由两部分组成：
 
 > 当前支持模型：阿里云百炼 Qwen / Fun-ASR 或 Soniox 云端 ASR API
 
-> Launcher 已提供实验性的本地 Qwen3-ASR / FunASR 识别方式（Beta），见 [docs/LOCAL_ASR.md](docs/LOCAL_ASR.md)。本地运行环境和模型缓存按需下载，Windows 安装包本身不携带 Torch 或模型权重。
+> Launcher 已提供实验性的本地 Qwen3-ASR / FunASR 识别方式（Beta），见 [docs/LOCAL_ASR.md](docs/LOCAL_ASR.md)。Windows 打包版可通过 GUI 按需安装本地运行环境和模型；安装包本身不携带 Torch 或模型权重。
 
 - **MAWE**：MAW 自带的字幕编辑器，功能有九分甚至十分的强劲：
 
@@ -41,8 +41,7 @@ Windows 下载解压之后点击 `MAW.exe` 并运行；macOS 下载后解压并�
 
 ### 申请 API Key
 
-由于本地模型有一定的配置需求，做起来也更麻烦，因此 MAW 优先提供 API 转写服务。
-本地模型功能尚在[开发中](https://github.com/Moyf/moys-asr-workflow/pull/19)。
+由于本地模型有一定的配置需求，做起来也更麻烦，因此 MAW 优先提供 API 转写服务；本地模型入口目前仍是实验性的 Beta 功能。
 
 QwenASR 的水平如下：
 <img width="1604" height="1055" alt="image" src="https://github.com/user-attachments/assets/6c2f0272-f90b-4f2d-ae84-e2b68b173d02" />
@@ -113,7 +112,7 @@ QwenASR 的水平如下：
 
 ## 关于 API
 
-- 这是 **API-first** 工具，不含模型下载和本地推理引擎。
+- 这是 **API-first** 工具；本地模型入口属于实验性可选流程，不改变默认云端路径。
 - API Key 仅读取自环境变量或本机 `.env`；`.env` 已被 Git 忽略，绝不要提交、截图或发给别人。
 - 每次转写会使用你的 Key 调用所选供应商；文件大小、数据保留与账户政策请分别查看[百炼语音识别文档](https://help.aliyun.com/zh/model-studio/asr-model/)或 [Soniox 文档](https://soniox.com/docs)。
 - 百炼 Provider 提供 `qwen3-asr-flash-filetrans`、`qwen-audio-3.0-asr-flash-filetrans` 和 `fun-asr`，支持北京与新加坡地域；北京可选填 Workspace ID 使用推荐的专属域名，新加坡必须填写。Qwen-Audio、Fun-ASR 与 Soniox 均可选说话人分离。配置项说明都在 `.env.example`。

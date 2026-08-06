@@ -178,6 +178,17 @@ class GuiConfigTests(unittest.TestCase):
         self.assertTrue(provider.supports_speaker)
         self.assertTrue(provider.multi_language)
 
+    def test_provider_registry_contains_local_models_without_api_key(self) -> None:
+        provider = gui_config.provider_by_id("local")
+
+        self.assertEqual(provider.kind, "local")
+        self.assertFalse(provider.requires_api_key)
+        self.assertEqual([model.id for model in provider.models], ["qwen3-asr-local", "funasr-local"])
+        self.assertEqual(provider.models[0].model_ref, "Qwen/Qwen3-ASR-0.6B")
+        self.assertIn("Qwen/Qwen3-ForcedAligner-0.6B", provider.models[0].required_model_refs)
+        self.assertIn("torchaudio", provider.models[1].requires_runtime)
+        self.assertEqual(gui_config.api_key_for_provider("local"), "")
+
     def test_qwen_languages_single_select_with_auto_and_documented_28(self) -> None:
         """Given Qwen docs allow exactly one language, When registry read, Then auto + 27 codes are offered."""
         qwen = gui_config.provider_by_id("qwen")

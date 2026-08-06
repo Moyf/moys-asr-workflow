@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT))
 
 from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _port, _register_mosp_association, _request_from_payload, _route_dropped_path  # noqa: E402
 from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
+from maw.local_models import LocalModelStatus  # noqa: E402
 
 
 class FakeWindow:
@@ -58,6 +59,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIsNone(config["lastModel"])
         self.assertIsNone(config["lastLanguage"])
         self.assertEqual(config["stickerDir"], "")
+        self.assertIn(config["localRuntime"]["status"], {"missing", "broken", "ready"})
         self.assertEqual(config["providers"][0]["keyUrl"], "https://help.aliyun.com/zh/model-studio/get-api-key")
         self.assertEqual(len(config["providers"][0]["commonLanguages"]), 10)
         self.assertEqual(len(config["providers"][1]["commonLanguages"]), 8)
@@ -71,6 +73,22 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(config["models"][0]["languages"][0]["id"], "")
         self.assertFalse(config["models"][2]["supportsSpeaker"])
         self.assertEqual(config["languages"][0]["id"], "")
+
+    def test_get_config_exposes_local_provider_and_runtime_status(self) -> None:
+        config = self.api.get_config()
+
+        local = next(provider for provider in config["providers"] if provider["id"] == "local")
+        self.assertFalse(local["requiresApiKey"])
+        self.assertEqual(local["kind"], "local")
+        self.assertEqual(local["models"][0]["id"], "qwen3-asr-local")
+        self.assertIn(local["models"][0]["localStatus"]["status"], {"runtime_missing", "missing", "installed", "partial", "path_invalid", "broken"})
+
+    def test_save_settings_for_local_provider_does_not_write_a_fake_api_key(self) -> None:
+        result = self.api.save_settings({"providerId": "local", "modelId": "qwen3-asr-local", "apiKey": "", "guiLang": "zh"})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["maskedApiKey"], "")
+        self.assertIn("DASHSCOPE_API_KEY=\n", self.env_path.read_text(encoding="utf-8"))
 
     def test_save_settings_writes_env_without_echoing_key(self) -> None:
         """Given form values, When saved, Then .env is updated and response masks the key."""
@@ -681,6 +699,64 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["code"], "media_not_found")
         self.assertIn("media", result["error"].lower())
 
+    def test_local_request_skips_api_key_and_carries_engine_options(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        status = LocalModelStatus(
+            model_id="qwen3-asr-local",
+            engine="qwen-asr",
+            model_ref="Qwen/Qwen3-ASR-0.6B",
+            status="installed",
+            runtime_available=True,
+            installed=True,
+            path=str(self.root / "qwen"),
+            detail="ready",
+            runtime_source="managed",
+            runtime_python=str(self.root / "runtime" / "Scripts" / "python.exe"),
+        )
+
+        with mock.patch("maw.gui_web.inspect_local_model", return_value=status):
+            request = _request_from_payload({
+                "providerId": "local",
+                "modelId": "qwen3-asr-local",
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "out.srt"),
+                "device": "cpu",
+                "language": "zh",
+            }, self.env_path)
+
+        self.assertEqual(request.provider, "local")
+        self.assertEqual(request.engine, "qwen-asr")
+        self.assertEqual(request.model, "Qwen/Qwen3-ASR-0.6B")
+        self.assertEqual(request.device, "cpu")
+        self.assertEqual(request.api_key, "")
+        self.assertEqual(request.runtime_python, str(self.root / "runtime" / "Scripts" / "python.exe"))
+
+    def test_local_request_rejects_missing_model_before_subprocess(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        status = LocalModelStatus(
+            model_id="qwen3-asr-local",
+            engine="qwen-asr",
+            model_ref="Qwen/Qwen3-ASR-0.6B",
+            status="missing",
+            runtime_available=True,
+            installed=False,
+            detail="missing",
+        )
+
+        with mock.patch("maw.gui_web.inspect_local_model", return_value=status):
+            result = self.api.start_transcription({
+                "providerId": "local",
+                "modelId": "qwen3-asr-local",
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "out.srt"),
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "local_model_missing")
+        self.assertEqual(result["field"], "model")
+
     def test_start_transcription_rejects_empty_resolved_api_key(self) -> None:
         """Given media and output but no key anywhere, When starting, Then API key blocks."""
         media = self.root / "clip.mp3"
@@ -1236,6 +1312,37 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn("state.serverStarting = true;", script)
         self.assertIn("state.serverStarting = false;", script)
         self.assertIn("guiLang: state.lang", script)
+
+    def test_local_model_preparation_exposes_progress_events_and_cache_heartbeat(self) -> None:
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        local_models = (ROOT / "maw" / "local_models.py").read_text(encoding="utf-8")
+        backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
+
+        self.assertIn('event.type === "modelProgress"', script)
+        self.assertIn("localProgressMessage", script)
+        self.assertIn("已等待", local_models)
+        self.assertIn('"type": "modelProgress"', backend)
+
+    def test_local_model_paths_are_scoped_to_the_selected_model(self) -> None:
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertIn("localModelPaths", script)
+        self.assertIn("syncLocalModelPath(model)", script)
+        self.assertIn('status.status === "path_mismatch"', script)
+
+    def test_local_runtime_installation_has_separate_progress_and_repair_controls(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
+
+        self.assertIn('id="installLocalRuntime"', page)
+        self.assertIn('id="localRuntimeProgressBar"', page)
+        self.assertIn('id="localModelProgress"', page)
+        self.assertIn('bridge("install_local_runtime"', script)
+        self.assertIn('event.type === "localRuntimeProgress"', script)
+        self.assertIn('event.type === "localRuntimeReady"', script)
+        self.assertIn('def install_local_runtime(', backend)
+        self.assertIn('def cancel_local_runtime(', backend)
 
     def test_attention_button_keeps_amber_hover_style(self) -> None:
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")

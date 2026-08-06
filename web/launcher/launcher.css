@@ -304,6 +304,90 @@ label {
   margin-top: 0;
 }
 
+.local-model-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--accent-soft);
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--accent-tint), transparent 75%), var(--bg-input);
+}
+
+.local-runtime-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+}
+
+.local-runtime-panel > .primary {
+  justify-self: start;
+}
+
+.local-runtime-panel .hint {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.task-progress {
+  display: grid;
+  gap: 5px;
+}
+
+.task-progress-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+}
+
+.task-progress-track span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent-strong), var(--accent-hover));
+  transition: width 180ms ease-out;
+}
+
+.task-progress-track.indeterminate span {
+  width: 38%;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: sweep 1.2s infinite ease-in-out;
+}
+
+.local-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.local-status {
+  margin: 0;
+  color: var(--accent-hover);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.local-status.ready {
+  color: #8ecf9b;
+}
+
+.local-status.warn {
+  color: var(--amber-hover);
+}
+
+.local-model-panel > .ghost {
+  justify-self: start;
+}
+
 .check-field {
   height: 34px;
   display: flex;
@@ -633,6 +717,14 @@ textarea::placeholder {
   border-radius: inherit;
   background: linear-gradient(90deg, transparent, var(--accent), transparent);
   animation: sweep 1.2s infinite ease-in-out;
+}
+
+.log-latest {
+  margin: 0 0 10px;
+  color: var(--amber-hover);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .log {

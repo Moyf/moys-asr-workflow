@@ -14,7 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,6 +37,7 @@ VIDEO_EXTENSIONS = frozenset({
 })
 
 QWEN_DEFAULT_MODEL = "Qwen/Qwen3-ASR-0.6B"
+QWEN_DEFAULT_FORCED_ALIGNER = "Qwen/Qwen3-ForcedAligner-0.6B"
 FUNASR_DEFAULT_MODEL = "paraformer-zh"
 
 
@@ -97,7 +98,14 @@ def resolve_device(device: str) -> str:
     return "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def _missing_dependency(package: str, extra: str = "local") -> MissingLocalDependency:
+def _missing_dependency(
+    package: str,
+    extra: str = "local",
+    cause: ImportError | None = None,
+) -> MissingLocalDependency:
+    actual = str(getattr(cause, "name", "") or "").strip()
+    if actual:
+        package = {"qwen_asr": "qwen-asr"}.get(actual, actual)
     return MissingLocalDependency(
         f"缺少本地模型依赖 {package}；请先运行 `uv sync --extra {extra}`。"
     )
@@ -130,6 +138,66 @@ def _as_seconds_ms(value: object, default: int = 0) -> int:
         return int(round(float(value) * 1000))
     except (TypeError, ValueError):
         return default
+
+
+def _alignment_key(value: str) -> str:
+    """Normalize text for matching Qwen alignment tokens to ASR text."""
+    return "".join(
+        "'" if char in {"'", "’"} else char.casefold()
+        for char in value
+        if char.isalnum() or char in {"'", "’"}
+    )
+
+
+def _restore_qwen_alignment_text(text: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Restore ASR spaces and punctuation onto forced-alignment timestamps.
+
+    Qwen's forced aligner returns normalized word/character tokens without most
+    punctuation, while the accompanying ASR text retains it.  Map each aligned
+    token back to the source text so MAW's sentence splitter can prefer actual
+    sentence boundaries instead of falling back to word-count cuts.
+    """
+    restored = [dict(item) for item in items]
+    cursor = 0
+
+    for index, item in enumerate(restored):
+        token = _alignment_key(_as_text(item.get("text")))
+        if not token:
+            continue
+
+        match_start: int | None = None
+        match_end: int | None = None
+        for start in range(cursor, len(text)):
+            candidate = ""
+            for end in range(start, len(text)):
+                candidate += _alignment_key(text[end])
+                if not token.startswith(candidate):
+                    break
+                if candidate == token:
+                    match_start = start
+                    match_end = end + 1
+                    break
+            if match_end is not None:
+                break
+
+        if match_start is None or match_end is None:
+            continue
+
+        # Attach punctuation immediately following the aligned token. Whitespace
+        # starts the next item so western-language spaces remain intact.
+        while (
+            match_end < len(text)
+            and not text[match_end].isspace()
+            and not text[match_end].isalnum()
+            and text[match_end] not in {"'", "’"}
+        ):
+            match_end += 1
+        item["text"] = text[cursor:match_end]
+        cursor = match_end
+
+    if cursor < len(text) and restored:
+        restored[-1]["text"] = f"{restored[-1]['text']}{text[cursor:]}"
+    return restored
 
 
 def _speaker(value: object) -> str | None:
@@ -290,6 +358,13 @@ _QWEN_LANGUAGE_NAMES = {
     "ko": "Korean", "fr": "French", "de": "German", "es": "Spanish",
 }
 
+_QWEN_SPACE_SEPARATED_LANGUAGES = frozenset({
+    "arabic", "czech", "danish", "dutch", "english", "finnish", "french",
+    "german", "greek", "hindi", "hungarian", "indonesian", "italian", "malay",
+    "macedonian", "persian", "polish", "portuguese", "romanian", "russian",
+    "spanish", "swedish", "thai", "turkish", "vietnamese",
+})
+
 
 class QwenAsrEngine:
     """Lazy Qwen3-ASR runtime adapter."""
@@ -300,7 +375,7 @@ class QwenAsrEngine:
         *,
         model_path: str | Path | None = None,
         device: str = "auto",
-        forced_aligner: str | Path | None = None,
+        forced_aligner: str | Path | None = QWEN_DEFAULT_FORCED_ALIGNER,
     ) -> None:
         self.model = model
         self.model_path = str(model_path) if model_path else model
@@ -314,11 +389,11 @@ class QwenAsrEngine:
         try:
             from qwen_asr import Qwen3ASRModel  # type: ignore[import-not-found]
         except ImportError as error:
-            raise _missing_dependency("qwen-asr") from error
+            raise _missing_dependency("qwen-asr", cause=error) from error
         try:
             import torch  # type: ignore[import-not-found]
         except ImportError as error:
-            raise _missing_dependency("torch") from error
+            raise _missing_dependency("torch", cause=error) from error
 
         resolved_device = resolve_device(self.device)
         device_map = "cuda:0" if resolved_device == "cuda" else resolved_device
@@ -382,22 +457,27 @@ class QwenAsrEngine:
         result = runtime.transcribe(**kwargs)
         first = result[0] if isinstance(result, Sequence) and not isinstance(result, (str, bytes)) else result
         text = _as_text(_read_field(first, "text"))
+        language_value = _as_text(_read_field(first, "language")) or language or ""
+        uses_spaces = language_value.lower() in _QWEN_SPACE_SEPARATED_LANGUAGES
         items: list[dict[str, Any]] = []
         timestamps = _read_field(
             first,
             "time_stamps",
             _read_field(first, "timestamps", []),
         ) or []
-        if isinstance(timestamps, Sequence):
+        if isinstance(timestamps, Iterable) and not isinstance(timestamps, (str, bytes, Mapping)):
             for timestamp in timestamps:
                 timestamp_text = _as_text(_read_field(timestamp, "text"))
                 if not timestamp_text:
                     continue
+                if uses_spaces and items and not timestamp_text.startswith(" "):
+                    timestamp_text = f" {timestamp_text}"
                 start = _as_seconds_ms(_read_field(timestamp, "start_time"))
                 end = _as_seconds_ms(_read_field(timestamp, "end_time"))
                 if end > start:
                     items.append(_item(timestamp_text, start, end))
-        language_value = _as_text(_read_field(first, "language")) or language or ""
+        if items:
+            items = _restore_qwen_alignment_text(text, items)
         if on_event:
             on_event(f"[local] detected language: {language_value or 'unknown'}")
         return LocalTranscription(text, language_value, items, [], self.model)
@@ -430,7 +510,7 @@ class FunAsrEngine:
         try:
             from funasr import AutoModel  # type: ignore[import-not-found]
         except ImportError as error:
-            raise _missing_dependency("funasr") from error
+            raise _missing_dependency("funasr", cause=error) from error
 
         resolved_device = resolve_device(self.device)
         if on_event:
@@ -492,7 +572,7 @@ def create_local_engine(
             model or QWEN_DEFAULT_MODEL,
             model_path=model_path,
             device=device,
-            forced_aligner=forced_aligner,
+            forced_aligner=forced_aligner or QWEN_DEFAULT_FORCED_ALIGNER,
         )
     if normalized in {"funasr", "fun-asr"}:
         return FunAsrEngine(
@@ -629,6 +709,7 @@ __all__ = [
     "LocalTranscription",
     "MissingLocalDependency",
     "QWEN_DEFAULT_MODEL",
+    "QWEN_DEFAULT_FORCED_ALIGNER",
     "FunAsrEngine",
     "QwenAsrEngine",
     "build_local_segments",
