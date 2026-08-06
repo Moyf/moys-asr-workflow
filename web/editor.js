@@ -2479,6 +2479,19 @@ function scrollCueIntoViewIfNeeded(cueEl) {
 // === seek ===
 let seekWarned = false;
 let cueListPointer = null;
+// 最后一次指针按下所在的编辑区域：cue-list / waveform。
+// Enter（原地编辑 vs 聚焦字幕编辑区）据此分发；指针坐标由 cueListPointer /
+// lastPointerPos 提供，两者独立更新、互不替代。
+let lastEditRegion = null;
+let lastPointerPos = null;
+
+document.addEventListener('pointerdown', (e) => {
+  if (e.target instanceof Element && e.target.closest('.cue')) lastEditRegion = 'cue-list';
+  else if (e.target instanceof Element && e.target.closest('#waveform-pane')) lastEditRegion = 'waveform';
+}, true);
+document.addEventListener('pointermove', (e) => {
+  lastPointerPos = { x: e.clientX, y: e.clientY };
+}, true);
 
 function hoveredSelectedCueContext() {
   if (!cueListPointer || !selectedIdxs.has(cueListPointer.idx)) return null;
@@ -3038,8 +3051,9 @@ document.addEventListener('keydown', (e) => {
   if (color) assignColor(idxs, color.name);
 });
 
-// Enter：鼠标位于当前单选字幕的列表行时，直接进入该行的内联编辑。
-// 波形选中或鼠标位于列表外时不触发，避免抢占其它界面的 Enter。
+// Enter：按「最后激活的编辑区域」分发——最后点击的是字幕列表时，对当前单选
+// 字幕直接开始原地编辑（等同双击该行）；否则回到旧行为，聚焦字幕编辑区文本框
+// 并把光标置于末尾。内联编辑态、已聚焦编辑区或模态打开时不触发。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter') return;
   if (editingState) return;  // 内联编辑态的 Enter 交给 split/commit 处理
@@ -3060,10 +3074,27 @@ document.addEventListener('keydown', (e) => {
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
   if (selectedIdxs.size !== 1) return;
-  const context = hoveredSelectedCueContext();
-  if (!context || !DATA.segments[context.idx]) return;
+  if (lastEditRegion === 'cue-list') {
+    const context = hoveredSelectedCueContext();
+    const idx = context ? context.idx : [...selectedIdxs][0];
+    if (!DATA.segments[idx]) return;
+    const el = context ? context.el : container.querySelector(`.cue[data-idx="${idx}"]`);
+    if (!el) return;
+    e.preventDefault();
+    // 鼠标仍在行上时按指针位置落光标；否则全选文本，便于直接键入替换。
+    if (context) startEdit(context.el, context.idx, context.x, context.y);
+    else {
+      scrollCueIntoViewIfNeeded(el);
+      startEdit(el, idx);
+    }
+    return;
+  }
+  const idx = currentCuePanelIdx;
+  if (idx < 0 || !DATA.segments[idx]) return;
   e.preventDefault();
-  startEdit(context.el, context.idx, context.x, context.y);
+  cuePanelText.focus();
+  const end = cuePanelText.value.length;
+  cuePanelText.setSelectionRange(end, end);
 });
 
 // C：合并连续选中的字幕块。少于两条时只提示，不改动工程。
@@ -3173,8 +3204,11 @@ document.addEventListener('keydown', (e) => {
   if (player.paused) togglePlayback();
 });
 
-// B：鼠标位于当前单选字幕的列表行时，按指针对应的文字位置拆分。
-// 文本编辑、列表外、弹窗和修饰键状态下不抢占输入。
+// B：按指针所在区域分发——
+// 1) 鼠标悬停在已单选的字幕列表行上：按指针对应的文字位置拆分；
+// 2) 鼠标位于波形上：按指针的音频位置拆分（与波形右键「按音频位置拆分」一致）；
+// 3) 其它位置：按红色播放指针位置拆分（B 的原始行为）。
+// 文本编辑、弹窗和修饰键状态下不抢占输入。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'b' && e.key !== 'B') return;
   if (editingState || e.repeat) return;
@@ -3187,12 +3221,40 @@ document.addEventListener('keydown', (e) => {
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
-  if (selectedIdxs.size !== 1) return;
-  const context = hoveredSelectedCueContext();
-  if (!context || !DATA.segments[context.idx]) return;
-  e.preventDefault();
-  e.stopPropagation();
-  splitFromContextMenu(context.idx, context.x, context.y);
+  const splitAt = (idx, x, y, timeMs) => {
+    e.preventDefault();
+    e.stopPropagation();
+    splitFromContextMenu(idx, x, y, timeMs);
+  };
+  // 1) 字幕列表：需要单选 + 悬停提供文字位置
+  if (selectedIdxs.size === 1) {
+    const context = hoveredSelectedCueContext();
+    if (context && DATA.segments[context.idx]) {
+      splitAt(context.idx, context.x, context.y, null);
+      return;
+    }
+  }
+  // 2) 波形：指针音频位置
+  if (lastPointerPos) {
+    const pointerTimeMs = waveformEditor?.timeMsAtPoint?.(lastPointerPos.x, lastPointerPos.y);
+    if (Number.isFinite(pointerTimeMs)) {
+      const idx = DATA.segments.findIndex((segment) => pointerTimeMs > segment.start && pointerTimeMs < segment.end);
+      if (idx < 0) {
+        flashHint('指针位置没有可拆分字幕');
+        return;
+      }
+      splitAt(idx, 0, 0, pointerTimeMs);
+      return;
+    }
+  }
+  // 3) 播放头位置
+  const timeMs = Math.round(player.currentTime * 1000);
+  const idx = DATA.segments.findIndex((segment) => timeMs > segment.start && timeMs < segment.end);
+  if (idx < 0) {
+    flashHint('播放头位置没有可拆分字幕');
+    return;
+  }
+  splitAt(idx, 0, 0, timeMs);
 });
 
 // 点击外部 -> 完成编辑
@@ -5962,9 +6024,8 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
     const splitLabel = Number.isFinite(waveformTimeMs)
       ? '按音频位置拆分'
       : '按文字位置拆分';
-    // 「按音频位置拆分」与波形 B 键（在红色播放指针处拆分）同类；「按文字位置拆分」
-    // 的 Enter/Ctrl+Enter 仅在文本编辑态有效，菜单里展示会误导，故不显示。
-    const splitKbd = Number.isFinite(waveformTimeMs) ? 'B' : '';
+    // 「按音频位置拆分」对应波形上的 B；「按文字位置拆分」对应列表内悬停已选行时的 B。
+    const splitKbd = 'B';
     addItem(splitLabel, splitKbd, () => splitFromContextMenu(idx, x, y, waveformTimeMs));
     // 仅「仅选中」模式提供「跳转并播放」——其它两种单击行为本身就会跳转。
     if (EDITOR_SETTINGS.clickBehavior === 'select-only') {

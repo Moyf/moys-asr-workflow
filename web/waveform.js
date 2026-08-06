@@ -2248,6 +2248,16 @@
       return startMs + ratio * (endMs - startMs);
     }
 
+    // 屏幕坐标 -> 波形时间：命中某个波形行时返回该行内的时间（毫秒），否则返回 null。
+    // 供键盘快捷键（如 B 按指针音频位置拆分）在不构造指针事件的情况下复用行内映射。
+    timeMsAtPoint(clientX, clientY) {
+      const hit = document.elementFromPoint(clientX, clientY);
+      const row = hit?.closest?.('.waveform-row');
+      if (!row || !this.pane?.contains(row)) return null;
+      const timeMs = this.timeFromPointer({ clientX }, row);
+      return Number.isFinite(timeMs) ? timeMs : null;
+    }
+
     // 「允许拖动指针」：在波形空白区域按住左键拖动时，播放指针实时跟随鼠标
     // 所在位置。高回报率指针事件用 rAF 合并，每帧最多 seek 一次；松开时以
     // 最终位置再 seek 一次保证落点精确。指针捕获让拖出行范围时按行边界钳制。
