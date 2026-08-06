@@ -687,6 +687,17 @@ textarea::placeholder {
   border-radius: 0 var(--radius-md) var(--radius-md) 0;
 }
 
+.server-stop {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.server-stop:hover:not(:disabled) {
+  border-color: var(--red-hover);
+  background: var(--red-soft);
+  color: var(--red-hover);
+}
+
 .split-menu {
   position: absolute;
   bottom: 40px;
@@ -730,20 +741,6 @@ textarea::placeholder {
 .status-link {
   color: var(--accent);
   text-decoration: underline;
-}
-
-.status-stop-link {
-  margin-left: 8px;
-  border: 0;
-  background: transparent;
-  color: var(--red);
-  padding: 0;
-  font-size: 12px;
-  text-decoration: underline;
-}
-
-.status-stop-link:hover {
-  color: var(--red-hover);
 }
 
 .hidden {

@@ -30,6 +30,7 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import TypedDict
 
 from maw.project import ProjectValidationFailed, normalize_project
 from maw.media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS
@@ -42,6 +43,12 @@ from waveform import (
 VIDEO_EXTS = set(VIDEO_EXTENSIONS)
 AUDIO_EXTS = set(AUDIO_EXTENSIONS)
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+
+
+class Sticker(TypedDict):
+    name: str
+    filename: str
+    rel: str
 
 
 def media_tag(media_path: Path, media_url: str) -> str:
@@ -89,7 +96,7 @@ def get_default_sticker_dir() -> str | None:
     return os.getenv("STICKER_DIR") or env.get("STICKER_DIR") or None
 
 
-def scan_stickers(dir_path: Path, max_depth: int = 3, max_items: int = 500) -> tuple[str, list[dict]]:
+def scan_stickers(dir_path: Path, max_depth: int = 3, max_items: int = 500) -> tuple[str, list[Sticker]]:
     """扫描表情包目录（递归子目录）。
 
     返回 (root_abs, items)：
@@ -106,7 +113,7 @@ def scan_stickers(dir_path: Path, max_depth: int = 3, max_items: int = 500) -> t
     if not dir_path or not dir_path.exists() or not dir_path.is_dir():
         return ("", [])
     root_abs = dir_path.resolve()
-    items: list[dict] = []
+    items: list[Sticker] = []
     for p in sorted(root_abs.rglob("*")):
         if not p.is_file():
             continue
@@ -174,17 +181,9 @@ def build_blank_html() -> str:
     打开后可用「打开工程」单独选择 .mosp 或 .json；浏览器无法自动读取关联媒体时会提示选择，
     即可用最新功能编辑旧工程。
 
-    表情包根目录从 .env 的 STICKER_DIR 读取（若有），方便直接显示缩略图；
-    用户也可在页面里用 🦊 按钮临时改路径。
+    为保证仓库内发布的 blank-editor.html 可复现且不携带生成者的本机路径，
+    空壳不预载 STICKER_DIR；用户可在页面里用 🦊 按钮选择表情包目录。
     """
-    sticker_source = get_default_sticker_dir()
-    sticker_root = ""
-    stickers: list[dict] = []
-    if sticker_source:
-        sdir = Path(sticker_source).resolve()
-        if sdir.exists() and sdir.is_dir():
-            sticker_root, stickers = scan_stickers(sdir)
-
     blank_data = {"segments": [], "media": "", "language": "", "model": ""}
     # 空占位播放器：无 source，用户通过「加载媒体」加载
     media_html = (
@@ -198,8 +197,8 @@ def build_blank_html() -> str:
         media_html=media_html,
         data_json=json.dumps(blank_data, ensure_ascii=False),
         filename_base_json=json.dumps("untitled", ensure_ascii=False),
-        stickers_json=json.dumps(stickers, ensure_ascii=False),
-        sticker_root_json=json.dumps(sticker_root, ensure_ascii=False),
+        stickers_json="[]",
+        sticker_root_json='""',
         generated_at=html.escape(generated_at),
         json_display=html.escape("未加载工程"),
         json_name_class="empty",
@@ -271,10 +270,12 @@ def main():
     media_path = None
     if args.media:
         media_path = Path(args.media).resolve()
-    elif data.get("media"):
-        candidate = Path(data["media"])
-        if candidate.exists():
-            media_path = candidate.resolve()
+    else:
+        project_media = data.get("media")
+        if isinstance(project_media, str) and project_media:
+            candidate = Path(project_media)
+            if candidate.exists():
+                media_path = candidate.resolve()
 
     if not media_path or not media_path.exists():
         stem = json_path.stem.split(".")[0]
@@ -316,7 +317,7 @@ def main():
 
     # 表情包扫描：参数 > .env STICKER_DIR
     sticker_root = ""
-    stickers = []
+    stickers: list[Sticker] = []
     sticker_source = args.stickers or get_default_sticker_dir()
     if sticker_source:
         sticker_dir = Path(sticker_source).resolve()
@@ -345,7 +346,9 @@ def main():
     # 保持输出与源码一致为 LF，避免 Windows 文本模式转换成 CRLF。
     output_path.write_bytes(page.encode("utf-8"))
     print(f"编辑页面已生成: {output_path}")
-    print(f"段落数: {len(data['segments'])}")
+    segments = data["segments"]
+    assert isinstance(segments, list)
+    print(f"段落数: {len(segments)}")
     print(f"媒体: {media_path}")
     print(f"表情包: {len(stickers)} 张" + (f" (来自 {sticker_source})" if sticker_source else " (未指定 --stickers 且 .env 无 STICKER_DIR)"))
     print()

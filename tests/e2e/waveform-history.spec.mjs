@@ -27,6 +27,12 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false }));
+  });
+});
+
 test('undoing a waveform-created subtitle keeps redo available', async ({ page }) => {
   await page.goto(server.url);
   const row = page.locator('.waveform-row').filter({ has: page.locator('[data-idx="0"]') }).first();
@@ -107,13 +113,19 @@ test('current-cue text keeps the list and waveform labels in sync through undo a
   await expect(waveformLabel).toHaveText('Alpha revised');
 });
 
-test('B splits the subtitle under the waveform playhead and supports undo and redo', async ({ page }) => {
+test('B splits the selected subtitle under the cue-list pointer and supports undo and redo', async ({ page }) => {
   await page.goto(server.url);
-  await page.evaluate(() => {
-    const player = document.getElementById('player');
-    player.currentTime = 5;
-    player.dispatchEvent(new Event('timeupdate'));
+  const text = page.locator('.cue[data-idx="0"] .text');
+  await page.locator('.cue[data-idx="0"]').click();
+  const splitPoint = await text.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 2);
+    range.setEnd(node, 2);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
   });
+  await page.mouse.move(splitPoint.x, splitPoint.y);
 
   await page.keyboard.press('b');
   await expect.poll(() => page.locator('.cue').count()).toBe(7);
@@ -134,13 +146,16 @@ test('B split makes the selected latter half the Shift+click anchor', async ({ p
   await page.goto(server.url);
   const cues = page.locator('.cue');
 
-  // 保留拆分前的旧锚点，覆盖“已有字幕选中后再拆分”的回归场景。
   await cues.nth(0).click();
-  await page.evaluate(() => {
-    const player = document.getElementById('player');
-    player.currentTime = 5;
-    player.dispatchEvent(new Event('timeupdate'));
+  const splitPoint = await cues.nth(0).locator('.text').evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 2);
+    range.setEnd(node, 2);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
   });
+  await page.mouse.move(splitPoint.x, splitPoint.y);
   await page.keyboard.press('b');
 
   await expect.poll(() => page.locator('.cue').count()).toBe(7);
@@ -200,24 +215,36 @@ test('waveform navigation keeps a cue row in the comfort zone', async ({ page })
   await expect.poll(() => page.evaluate(() => window.__waveformScrollBehaviors)).toContain('smooth');
 });
 
-test('B does not split in a gap or while editing text', async ({ page }) => {
+test('B does not split when the playhead is in a gap or while editing text', async ({ page }) => {
   await page.goto(server.url);
+  await page.locator('.cue[data-idx="0"]').click();
+  // 播放头位于空隙（20s）：列表外按 B 只提示、不拆分
   await page.evaluate(() => {
     const player = document.getElementById('player');
     player.currentTime = 20;
     player.dispatchEvent(new Event('timeupdate'));
   });
+  await page.locator('#media-controls').hover();
   await page.keyboard.press('b');
   await expect(page.locator('.cue')).toHaveCount(6);
   await expect(page.locator('.hint-card', { hasText: '播放头位置没有可拆分字幕' })).toHaveCount(1);
 
-  const firstCue = page.locator('.waveform-cue-block[data-idx="0"]').first();
-  await firstCue.click();
   const panelText = page.locator('#cue-panel-text');
   await panelText.focus();
   await page.keyboard.press('b');
   await expect(panelText).toHaveValue('Alphab');
   await expect(page.locator('.cue')).toHaveCount(6);
+});
+
+test('B splits at the pointer audio position while hovering the waveform', async ({ page }) => {
+  await page.goto(server.url);
+  const row = page.locator('.waveform-row').first();
+  const box = await row.boundingBox();
+  // 第一行覆盖 0–5s；40% 处约 2s，落在第一条字幕（0–8s）内部
+  await page.mouse.move(box.x + box.width * 0.4, box.y + box.height / 2);
+  await page.keyboard.press('b');
+  await expect(page.locator('.cue')).toHaveCount(7);
+  await expect(page.locator('.cue .text').nth(0)).not.toHaveText('Alpha');
 });
 
 test('help reflects the selected subtitle-edit split key', async ({ page }) => {
@@ -330,15 +357,15 @@ test('C merges a common group and Shift+A/D extends the subtitle selection', asy
     renderAll();
   });
 
-  await cues.nth(1).click();
+  await cues.nth(1).locator('.text').click();
   await expect(cues.nth(1)).toHaveClass(/selected/);
   await page.keyboard.down('Control');
-  await cues.nth(2).click();
+  await cues.nth(2).locator('.text').click();
   await page.keyboard.up('Control');
   await page.keyboard.press('c');
 
   await expect(cues).toHaveCount(5);
-  await expect(cues.nth(1).locator('.text')).toHaveText('Bravo  Charlie');
+  await expect(cues.nth(1).locator('.text')).toHaveText('BravoCharlie');
   await expect.poll(() => page.evaluate(() => ({
     colorRef: DATA.segments[1].color_ref,
     stickerRef: DATA.segments[1].sticker_ref,
@@ -467,4 +494,47 @@ test('gap-removed export includes color SRT and names OTIO as a timeline project
   await page.locator('#download-gap-removed-color-srt').click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe('project_gap-removed_red.srt');
+});
+
+test('server media loads from the resolved project path and OTIO keeps its absolute source URL', async ({ page }) => {
+  await page.goto(server.url);
+  const state = await page.evaluate(() => ({
+    media: DATA.media,
+    currentSrc: document.getElementById('player').currentSrc,
+  }));
+  expect(state.media).toMatch(/synthetic\.wav$/);
+  expect(state.media).toMatch(/^(?:[A-Za-z]:[\\/]|\/)/);
+  expect(state.currentSrc).toBe(`${server.url}media`);
+
+  await page.evaluate(() => {
+    DATA.gap_remove = {
+      schema: 'moy.asr.gap_remove.v1',
+      detector: 'audio_gate',
+      minimum_ms: 500,
+      threshold_db: -24,
+      hysteresis_db: 2,
+      lead_in_ms: 40,
+      lead_out_ms: 80,
+      skip_playback: true,
+      operation_mode: 'middle_drag',
+      manual_corrections: false,
+      gaps: [{ start: 20000, end: 30000, removed: true }],
+    };
+    updateGapRemoveUi();
+    renderAll();
+    window.showSaveFilePicker = undefined;
+  });
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#gap-removed-export-btn').click();
+  await page.locator('#download-gap-removed-otio').click();
+  const download = await downloadPromise;
+  const payload = await download.createReadStream().then(async (stream) => {
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  });
+  const targetUrl = payload.tracks.children[0].children[0]
+    .media_references.DEFAULT_MEDIA.target_url;
+  expect(targetUrl).toMatch(/^file:\/\/\//);
+  expect(decodeURI(targetUrl)).toContain('synthetic.wav');
 });
