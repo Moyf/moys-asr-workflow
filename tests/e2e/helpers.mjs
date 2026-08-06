@@ -237,6 +237,7 @@ export function testSegments() {
 
 export function generateProjectJson(filePath) {
   const project = {
+    media: 'synthetic.wav',
     segments: testSegments(),
     waveform: generateWaveformPayload(DURATION_MS),
   };

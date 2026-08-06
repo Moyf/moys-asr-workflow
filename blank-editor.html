@@ -728,7 +728,7 @@
   #server-auto-save-settings .editor-settings-title,
   #server-auto-save-settings .editor-settings-item { width: 100%; }
   .editor-settings-list-fields { flex-wrap: wrap; }
-  .editor-settings-display-row { flex: 0 0 100%; }
+  .editor-settings-display-row { flex: 0 0 100%; flex-wrap: nowrap; align-items: flex-start; }
   .editor-settings-list-fields > span { color: var(--text-muted); }
   .editor-settings-display-row > span,
   .editor-settings-toggle-group > .toggle { white-space: nowrap; }
@@ -2323,7 +2323,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-06 00:32</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-06 16:28</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -2718,7 +2718,7 @@
     <span class="help-title">字幕操作</span>
     <span><kbd>单击</kbd> 选中</span>
     <span><kbd>双击</kbd> 编辑</span>
-    <span><kbd>Enter</kbd> 进入字幕编辑区（仅单选时）</span>
+    <span><kbd>Enter</kbd> 在鼠标所指的已选字幕行内编辑</span>
     <span><kbd>Esc</kbd> 退出字幕编辑区（文本编辑时）</span>
     <span><kbd>Esc</kbd> 清除字幕选择（非编辑状态）</span>
     <span><kbd>右键</kbd> 菜单</span>
@@ -2736,7 +2736,7 @@
     <span class="help-title">波形</span>
     <span><kbd>双击波形</kbd> 播放/暂停</span>
     <span><kbd>右键波形背景</kbd> 显示菜单</span>
-    <span><kbd id="help-waveform-split-key">B</kbd> 在红色播放指针处拆分字幕</span>
+    <span><kbd id="help-waveform-split-key">B</kbd> 在鼠标所指的已选字幕文字处拆分</span>
     <span><kbd>V</kbd> 选择工具 <kbd>R</kbd> 分割工具</span>
     <span><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>
     <span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>
@@ -3943,6 +3943,8 @@
     '直接修改字幕时间轴，整个操作一次撤销': 'Edits the subtitle timeline directly; the whole run is one undo step',
     '间隔阈值': 'Interval threshold', '拓展方向': 'Snap direction',
     '向前拓展': 'Extend earlier', '向后拓展': 'Extend later',
+    '相邻字幕间隔在此范围内时，拓展字幕长度把它们拼在一起；0 表示不处理':
+      'When adjacent subtitle intervals are within this threshold, extend their timing to snap them together; 0 disables it',
     '吸收过短字幕': 'Absorb short subtitles', '短字幕阈值': 'Short-subtitle threshold', '吸收方向': 'Absorb direction',
     '向前吸收': 'Into previous', '向后吸收': 'Into next',
     '相邻字幕间隔小于此值时，拓展字幕长度把它们拼在一起；0 表示不处理':
@@ -3955,11 +3957,13 @@
       'Into previous: a short subtitle merges into the previous one; Into next: into the next one',
     '过短的字幕直接并入相邻字幕；关闭后只拼合间隔':
       'Short subtitles merge into a neighbor; when off, only intervals are snapped',
+    '过短字幕也必须与相邻字幕间隔在上方阈值内才会吸收；关闭后只拼合间隔':
+      'Short subtitles are absorbed only when the adjacent interval is within the threshold above; when off, only intervals are snapped',
     '按当前参数处理整段工程': 'Process the whole project with these parameters',
     '没有需要拼合的间隔或过短字幕': 'No intervals or short subtitles to snap',
     '字幕时长不足 200ms，无法拆分': 'Subtitles shorter than 200 ms cannot be split',
     '字幕列表编辑': 'Subtitle list editor', '右侧整列波形': 'Waveform column right',
-    '传统字幕编辑器': 'Traditional subtitle editor',
+    '三折叠布局': 'Three-fold layout', '传统字幕编辑器': 'Traditional subtitle editor',
     '编辑布局': 'Edit layout', '完成布局': 'Done editing', '重置工作区': 'Reset workspace',
     '已保存工作区': 'Saved workspaces',
     '保存工作区': 'Save workspace', '另存为工作区': 'Save workspace as', '删除工作区': 'Delete workspace',
@@ -4015,6 +4019,8 @@
     '静音空隙': 'Silent gaps', 'Alt+点击静音空隙区段': 'Alt+click a silent-gap region',
     'Alt+中键拖动': 'Alt+middle-button drag',
     '选中': 'Select', '双击': 'Double-click', '编辑': 'Edit',
+    '在鼠标所指的已选字幕行内编辑': 'Edit the selected subtitle row under the pointer',
+    '在鼠标所指的已选字幕文字处拆分': 'Split the selected subtitle text under the pointer',
     '进入字幕编辑区（仅单选时）': 'Focus subtitle editor (single selection only)', '退出字幕编辑区（文本编辑时）': 'Exit subtitle editor (while editing)', '清除字幕选择（非编辑状态）': 'Clear subtitle selection (when not editing)',
     '选中所有字幕': 'Select all subtitles', '选中所有字幕（非编辑状态）': 'Select all subtitles (when not editing)',
     '右键': 'Right-click', '字幕操作': 'Subtitle actions',
@@ -4022,6 +4028,7 @@
     '切换字幕禁用': 'Toggle subtitle disabled', '删除所选字幕': 'Delete selected subtitles',
     '合并所选字幕': 'Merge selected subtitles',
     '播放与编辑': 'Playback and editing', '空格': 'Space',
+    '选择工具': 'Select tool', '分割工具': 'Razor tool',
     '播放/暂停': 'Play/pause', '前后跳转 5 秒': 'Seek back/forward 5 sec',
     '上一条字幕': 'Previous subtitle', '下一条字幕': 'Next subtitle',
     '向前多选': 'Extend selection backward', '向后多选': 'Extend selection forward',
@@ -4045,7 +4052,7 @@
     '加载媒体后显示视频': 'Video appears after loading media',
     '加载媒体后显示波形': 'Waveform appears after loading media',
     '‹ 前一条': '‹ Previous', '后一条 ›': 'Next ›', '＋ 表情包': '＋ Sticker',
-    '在光标处拆分': 'Split at cursor', '范围：全部字幕': 'Scope: all subtitles',
+    '在光标处拆分': 'Split at cursor', '在光标处拆分（': 'Split at cursor (', '范围：全部字幕': 'Scope: all subtitles',
     '查找': 'Find', '替换为': 'Replace with', '批量替换': 'Batch replace',
     '区分大小写': 'Case sensitive',
     '正则表达式': 'Regular expression',
@@ -9932,6 +9939,15 @@ function scrollCueIntoViewIfNeeded(cueEl) {
 
 // === seek ===
 let seekWarned = false;
+let cueListPointer = null;
+
+function hoveredSelectedCueContext() {
+  if (!cueListPointer || !selectedIdxs.has(cueListPointer.idx)) return null;
+  const el = container.querySelector(`.cue[data-idx="${cueListPointer.idx}"]`);
+  if (!el || !el.matches(':hover')) return null;
+  return { ...cueListPointer, el };
+}
+
 // === 单击/双击/Shift/Ctrl ===
 function bindCueEvents(el, idx) {
   let pointerDownState = null;
@@ -9968,6 +9984,7 @@ function bindCueEvents(el, idx) {
 
   el.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || (editingState && editingState.el === el)) return;
+    cueListPointer = { idx, x: e.clientX, y: e.clientY };
 
     // 这些子控件有自己的 click 行为；不要在父 cue 的 pointerdown 阶段抢先选中。
     const target = e.target instanceof Element ? e.target : null;
@@ -9994,6 +10011,12 @@ function bindCueEvents(el, idx) {
       suppressClick: action !== 'select',
       time: now,
     };
+  });
+  el.addEventListener('pointermove', (e) => {
+    cueListPointer = { idx, x: e.clientX, y: e.clientY };
+  });
+  el.addEventListener('pointerleave', () => {
+    if (cueListPointer?.idx === idx) cueListPointer = null;
   });
 
   el.addEventListener('click', (e) => {
@@ -10476,8 +10499,8 @@ document.addEventListener('keydown', (e) => {
   if (color) assignColor(idxs, color.name);
 });
 
-// Enter：仅选中单条字幕（列表或波形均可）时，进入字幕编辑区并聚焦文本框，
-// 光标置于末尾，方便直接继续编辑。内联编辑态、已聚焦编辑区或多个模态打开时不触发。
+// Enter：鼠标位于当前单选字幕的列表行时，直接进入该行的内联编辑。
+// 波形选中或鼠标位于列表外时不触发，避免抢占其它界面的 Enter。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter') return;
   if (editingState) return;  // 内联编辑态的 Enter 交给 split/commit 处理
@@ -10497,13 +10520,11 @@ document.addEventListener('keydown', (e) => {
   if (projectMediaModal.classList.contains('show')) return;
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
-  if (selectedIdxs.size !== 1) return;  // 仅单选时进入编辑区
-  const idx = currentCuePanelIdx;
-  if (idx < 0 || !DATA.segments[idx]) return;
+  if (selectedIdxs.size !== 1) return;
+  const context = hoveredSelectedCueContext();
+  if (!context || !DATA.segments[context.idx]) return;
   e.preventDefault();
-  cuePanelText.focus();
-  const end = cuePanelText.value.length;
-  cuePanelText.setSelectionRange(end, end);
+  startEdit(context.el, context.idx, context.x, context.y);
 });
 
 // C：合并连续选中的字幕块。少于两条时只提示，不改动工程。
@@ -10613,11 +10634,11 @@ document.addEventListener('keydown', (e) => {
   if (player.paused) togglePlayback();
 });
 
-// B：按红色播放指针所在时间拆分其内部字幕。复用波形右键/剃刀的字词边界映射，
-// 不依赖当前选择；文本编辑、弹窗和修饰键状态下不抢占输入。
+// B：鼠标位于当前单选字幕的列表行时，按指针对应的文字位置拆分。
+// 文本编辑、列表外、弹窗和修饰键状态下不抢占输入。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'b' && e.key !== 'B') return;
-  if (!waveformEditor || editingState || e.repeat) return;
+  if (editingState || e.repeat) return;
   const a = document.activeElement;
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
   if (replaceModal.classList.contains('show')) return;
@@ -10627,15 +10648,12 @@ document.addEventListener('keydown', (e) => {
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
-  const timeMs = Math.round(player.currentTime * 1000);
-  const idx = DATA.segments.findIndex((segment) => timeMs > segment.start && timeMs < segment.end);
-  if (idx < 0) {
-    flashHint('播放头位置没有可拆分字幕');
-    return;
-  }
+  if (selectedIdxs.size !== 1) return;
+  const context = hoveredSelectedCueContext();
+  if (!context || !DATA.segments[context.idx]) return;
   e.preventDefault();
   e.stopPropagation();
-  splitFromContextMenu(idx, 0, 0, timeMs);
+  splitFromContextMenu(context.idx, context.x, context.y);
 });
 
 // 点击外部 -> 完成编辑
@@ -11099,7 +11117,7 @@ function usedSubtitleColors() {
 }
 
 function updateSubtitleExportUi() {
-  const hasColors = usedSubtitleColors().length > 0;
+  const hasColors = usedSubtitleColors().some((color) => color.name !== 'default');
   if (downloadSrtButton) downloadSrtButton.hidden = hasColors;
   if (subtitleExportDropdown) {
     subtitleExportDropdown.hidden = !hasColors;
@@ -13375,13 +13393,7 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
   }
 
   if (!isMulti) {
-    // 组 1：跳转与拆分。仅「仅选中」模式提供「跳转并播放」——其它两种单击行为本身就会跳转。
-    if (EDITOR_SETTINGS.clickBehavior === 'select-only') {
-      addItem('跳转并播放', 'F', () => {
-        seekFromWaveform(DATA.segments[idx].start / 1000);
-        if (player.paused) togglePlayback();
-      });
-    }
+    // 组 1：拆分与跳转。拆分是字幕行右键菜单的首要动作。
     const splitLabel = Number.isFinite(waveformTimeMs)
       ? '按音频位置拆分'
       : '按文字位置拆分';
@@ -13389,6 +13401,13 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
     // 的 Enter/Ctrl+Enter 仅在文本编辑态有效，菜单里展示会误导，故不显示。
     const splitKbd = Number.isFinite(waveformTimeMs) ? 'B' : '';
     addItem(splitLabel, splitKbd, () => splitFromContextMenu(idx, x, y, waveformTimeMs));
+    // 仅「仅选中」模式提供「跳转并播放」——其它两种单击行为本身就会跳转。
+    if (EDITOR_SETTINGS.clickBehavior === 'select-only') {
+      addItem('跳转并播放', 'F', () => {
+        seekFromWaveform(DATA.segments[idx].start / 1000);
+        if (player.paused) togglePlayback();
+      });
+    }
     addSep();
     // 组 2：外观（表情包与颜色）
     addItem('分配表情包…', 'T', () => openStickerPicker([idx], false));

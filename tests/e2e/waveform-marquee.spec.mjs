@@ -31,6 +31,7 @@ const MARQUEE_SEGMENTS = [
 
 function generateMarqueeProject(filePath) {
   const project = {
+    media: 'synthetic.wav',
     segments: MARQUEE_SEGMENTS,
     waveform: generateWaveformPayload(MARQUEE_DURATION_MS),
   };

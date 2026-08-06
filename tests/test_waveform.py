@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 import shutil
 import struct
 import sys
@@ -177,6 +178,7 @@ class EditorAssetTests(unittest.TestCase):
         # 选中字幕块只用 outline + 阴影高亮（颜色走 --selection-* 变量），不再改 border-color
         self.assertIn('outline: 2px solid var(--selection-yellow);', page)
         self.assertIn('filter: brightness(1.08);', page)
+
         self.assertIn(
             'background: color-mix(in srgb, var(--color-bar, #777) 30%, var(--accent) 30%);',
             page,
@@ -354,6 +356,25 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('id="waveform-side"', page)
         self.assertIn('getSrtExportOffset(', page)
         self.assertNotRegex(page, r"__[A-Z][A-Z0-9_]+__")
+
+    def test_blank_editor_does_not_inline_local_stickers(self) -> None:
+        with tempfile.TemporaryDirectory() as sticker_dir:
+            sticker_path = Path(sticker_dir) / "private-sticker.png"
+            sticker_path.write_bytes(b"private")
+            previous_sticker_dir = os.environ.get("STICKER_DIR")
+            os.environ["STICKER_DIR"] = sticker_dir
+            try:
+                page = edit.build_blank_html()
+            finally:
+                if previous_sticker_dir is None:
+                    del os.environ["STICKER_DIR"]
+                else:
+                    os.environ["STICKER_DIR"] = previous_sticker_dir
+
+        self.assertIn("const STICKERS = [];", page)
+        self.assertIn('let STICKER_ROOT = "";', page)
+        self.assertNotIn("private-sticker.png", page)
+        self.assertNotIn(Path(sticker_dir).resolve().as_posix(), page)
 
     def test_user_text_that_looks_like_a_template_token_is_preserved(self) -> None:
         page = edit.render_editor_page(

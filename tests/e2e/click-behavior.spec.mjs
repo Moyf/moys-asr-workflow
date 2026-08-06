@@ -164,6 +164,65 @@ test('list cue selects on pointerdown and double-click still enters edit', async
   await expect(cue).toHaveClass(/editing/);
 });
 
+test('current cue panel keeps the same height before and after selection', async ({ page }) => {
+  await page.goto(server.url);
+  const panel = page.locator('#current-cue-panel');
+  const before = await panel.evaluate((element) => element.getBoundingClientRect().height);
+
+  await page.locator('.cue[data-idx="0"]').click();
+
+  const after = await panel.evaluate((element) => element.getBoundingClientRect().height);
+  expect(after).toBe(before);
+});
+
+test('list context menu leads with text-position split', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#click-behavior').selectOption('select-only');
+  await page.locator('.cue[data-idx="0"]').click({ button: 'right' });
+
+  await expect(page.locator('#ctxmenu .item').first()).toContainText('按文字位置拆分');
+});
+
+test('Enter starts inline editing only while the selected cue list is hovered', async ({ page }) => {
+  await page.goto(server.url);
+  const cue = page.locator('.cue[data-idx="0"]');
+  await cue.click();
+  await page.locator('#media-controls').hover();
+  await page.keyboard.press('Enter');
+  await expect(cue).not.toHaveClass(/editing/);
+
+  await cue.hover();
+  await page.keyboard.press('Enter');
+
+  await expect(cue).toHaveClass(/editing/);
+  await expect(page.locator('#cue-panel-text')).not.toBeFocused();
+});
+
+test('B splits the selected cue at the pointer only while the cue list is hovered', async ({ page }) => {
+  await page.goto(server.url);
+  const cue = page.locator('.cue[data-idx="0"]');
+  await cue.click();
+  await page.locator('#media-controls').hover();
+  await page.keyboard.press('b');
+  await expect(page.locator('.cue')).toHaveCount(6);
+
+  const text = cue.locator('.text');
+  const splitPoint = await text.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 2);
+    range.setEnd(node, 2);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.move(splitPoint.x, splitPoint.y);
+  await page.keyboard.press('b');
+
+  await expect(page.locator('.cue')).toHaveCount(7);
+  await expect(page.locator('.cue .text').nth(0)).not.toHaveText('Alpha');
+});
+
 test('space owns playback in media controls but remains text input in the cue editor', async ({ page }) => {
   await page.goto(server.url);
   await page.waitForFunction(() => {
