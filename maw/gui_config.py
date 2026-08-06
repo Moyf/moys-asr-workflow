@@ -321,7 +321,7 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
     ),
     ProviderConfig(
         id="local",
-        label="本地模型",
+        label="本地模型（Beta）",
         key_url="",
         models=LOCAL_MODELS,
         regions=(),
