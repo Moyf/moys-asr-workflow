@@ -8,10 +8,10 @@
   Object.assign(STRINGS.zh, {
     generate_html: "同时生成单文件版网页编辑器（html）",
     generate_html_title: "单文件版编辑器直接在浏览器打开就能用，优势是便携，但是会缺少保存功能（只能通过导出下载）",
-    open_html: "打开该工程的 HTML 编辑器",
-    open_blank_html: "打开空的 HTML 编辑器",
-    server_already_running: "当前字幕编辑服务器已在运行中：",
-    server_address: "当前服务器地址：",
+    open_html: "📝 打开该工程的 HTML 编辑器",
+    open_blank_html: "📝 打开空的 HTML 编辑器",
+    server_already_running: "🌐 当前字幕编辑服务器已在运行中：",
+    server_address: "🌐 当前服务器地址：",
     server_start_hint: "请点击「启动字幕服务器」",
     server_no_response_hint: "编辑器服务器没有响应，请检查端口或下方状态。",
     server_start_failed_hint: "编辑器服务器启动失败，请查看下方状态和日志。",
@@ -21,10 +21,10 @@
   Object.assign(STRINGS.en, {
     generate_html: "Also generate a single-file web editor (HTML)",
     generate_html_title: "The single-file editor works directly in a browser and is portable, but cannot save changes locally; export/download instead.",
-    open_html: "Open this project's HTML editor",
-    open_blank_html: "Open blank HTML editor",
-    server_already_running: "A subtitle editor server is already running: ",
-    server_address: "Current server address: ",
+    open_html: "📝 Open this project's HTML editor",
+    open_blank_html: "📝 Open blank HTML editor",
+    server_already_running: "🌐 A subtitle editor server is already running: ",
+    server_address: "🌐 Current server address: ",
     server_start_hint: "click \"Launch Subtitle Editor\"",
     server_no_response_hint: "The editor server did not respond. Check the port or the status below.",
     server_start_failed_hint: "The editor server failed to start. Check the status and logs below.",
@@ -153,11 +153,11 @@
   };
   Object.assign(STRINGS.zh, {
     open_mose: "🎬 在 MOSE 中打开",
-    start_server_editor: "启动 Server 版字幕编辑器",
+    start_server_editor: "🚀 启动字幕编辑器",
   });
   Object.assign(STRINGS.en, {
     open_mose: "🎬 Open in MOSE",
-    start_server_editor: "Start Server editor",
+    start_server_editor: "🚀 Start Editor",
   });
 
   const HOME_URL = "https://github.com/Moyf/moys-asr-workflow";
