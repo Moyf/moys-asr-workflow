@@ -508,6 +508,8 @@ class LauncherApi:
         kind = str(payload.get("kind") or "media")
         if kind == "json":
             file_types = ("MAW projects (*.mosp;*.json)",)
+        elif kind == "subtitle":
+            file_types = ("Subtitle files (*.mosp;*.json;*.srt)",)
         elif kind == "ffconcat":
             file_types = ("FFconcat scripts (*.ffconcat)",)
         elif kind == "hotwords":
@@ -1073,6 +1075,8 @@ def _route_dropped_path(path: str) -> dict[str, object]:
     suffix = Path(path).suffix.lower()
     if suffix in {".json", ".mosp"}:
         return {"type": "dropJson", "path": path}
+    if suffix == ".srt":
+        return {"type": "dropSubtitle", "path": path}
     if suffix == ".txt":
         return {"type": "dropHotwordFile", "path": path}
     if suffix in MEDIA_EXTS:

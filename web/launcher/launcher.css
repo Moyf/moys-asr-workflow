@@ -512,6 +512,7 @@ textarea::placeholder {
 
 #qwenAudioHotwords.drag-over,
 #qwenAudioHotwordsFile.drag-over,
+#toolboxInputPath.drag-over,
 #jsonPath.drag-over {
   border-color: var(--accent);
   background-color: var(--bg-raised);
@@ -816,19 +817,37 @@ textarea::placeholder {
   font-size: 12px;
 }
 
-.toolbox-source {
-  display: grid;
-  gap: 4px;
+.toolbox-beta {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border: 1px dashed var(--amber);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--amber);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.toolbox-beta .status-link {
+  color: var(--accent-hover);
+}
+
+.toolbox-input {
   margin-top: 12px;
   padding: 8px 10px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   background: var(--bg-input);
-  color: var(--text-muted);
+}
+
+.toolbox-input label {
   font-size: 11px;
 }
 
-.toolbox-source code,
+.toolbox-input .hint {
+  font-size: 11px;
+}
+
 .toolbox-run-row code {
   min-width: 0;
   overflow-wrap: anywhere;

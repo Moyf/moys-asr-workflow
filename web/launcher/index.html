@@ -224,14 +224,20 @@
   <aside id="toolboxDrawer" class="toolbox-drawer hidden" role="dialog" aria-modal="false" aria-labelledby="toolboxTitle">
     <header class="toolbox-header">
       <div>
-        <h2 id="toolboxTitle" data-i18n="toolbox_title">后处理工具箱</h2>
+        <h2 id="toolboxTitle" data-i18n="toolbox_title">后处理工具箱（Beta）</h2>
         <p data-i18n="toolbox_chain_hint">每次生成新文件，并自动作为下一步输入。</p>
       </div>
       <button id="toolboxClose" class="ghost small" type="button" aria-label="close">×</button>
     </header>
-    <div class="toolbox-source" aria-live="polite">
-      <span data-i18n="toolbox_source">当前输入</span>
-      <code id="toolboxSourcePath">未选择工程或 SRT</code>
+    <p class="toolbox-beta"><span data-i18n="toolbox_beta_notice">该功能正在开发中，可能不太稳定，仅供尝鲜，遇到问题实属正常，可前往 </span><a id="toolboxIssuesLink" class="status-link" href="https://github.com/Moyf/moys-asr-workflow/issues">issues</a><span data-i18n="toolbox_beta_notice_tail"> 提反馈。</span></p>
+    <div class="field toolbox-input">
+      <label for="toolboxInputPath" data-i18n="toolbox_input">处理文件</label>
+      <div class="path-row">
+        <input id="toolboxInputPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_input_placeholder" placeholder="跟随工程文件自动填入，也可拖入 .mosp / .json / .srt">
+        <button id="pickToolboxInput" class="ghost" type="button" data-i18n="choose">选择</button>
+      </div>
+      <p class="hint" data-i18n="toolbox_input_hint">默认跟随「工程文件」并在每次处理后更新；手动选择或拖入其他文件后，以这里的文件为准。</p>
+      <p id="toolboxInputPathError" class="field-error"></p>
     </div>
     <div class="toolbox-tabs" role="tablist" aria-label="post-processing tools">
       <button id="toolboxLlmTab" class="toolbox-tab active" type="button" role="tab" aria-selected="true" aria-controls="toolboxLlmPanel" data-tool="llm" data-i18n="toolbox_llm">LLM 处理</button>

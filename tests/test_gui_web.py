@@ -146,6 +146,28 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn("MAW_POSTPROCESS_DEEPSEEK_MODEL=deepseek-reasoner", saved)
         self.assertEqual(result["maskedApiKey"], "sk-…-key")
 
+    def test_postprocess_provider_presets_include_zhipu_coding_plan(self) -> None:
+        config = self.api.get_config()
+        raw_providers = config["postprocessProviders"]
+        if not isinstance(raw_providers, list):
+            self.fail("postprocessProviders must be a list")
+        providers = {provider["id"]: provider for provider in raw_providers if isinstance(provider, dict)}
+
+        self.assertEqual(providers["deepseek"]["model"], "deepseek-v4-flash")
+        self.assertEqual(providers["zhipu"]["label"], "智谱 Coding Plan")
+        self.assertEqual(providers["zhipu"]["baseUrl"], "https://open.bigmodel.cn/api/coding/paas/v4")
+        self.assertEqual(providers["zhipu"]["model"], "glm-5.2")
+
+        result = self.api.save_postprocess_settings({
+            "providerId": "zhipu",
+            "apiKey": "sk-zhipu-private",
+            "baseUrl": "https://open.bigmodel.cn/api/coding/paas/v4",
+            "model": "glm-5.2",
+        })
+        self.assertTrue(result["ok"])
+        self.assertNotIn("zhipu-private", str(result))
+        self.assertIn("MAW_POSTPROCESS_ZHIPU_API_KEY=sk-zhipu-private", self.env_path.read_text(encoding="utf-8"))
+
     def test_postprocess_settings_return_field_error_for_injected_line_separator(self) -> None:
         result = self.api.save_postprocess_settings({
             "providerId": "custom",
@@ -1211,11 +1233,13 @@ class GuiWebBridgeTests(unittest.TestCase):
         media = _route_dropped_path(r"D:\Videos\clip.MP4")
         project = _route_dropped_path(r"D:\Videos\clip.json")
         mosp_project = _route_dropped_path(r"D:\Videos\clip.mosp")
+        subtitle = _route_dropped_path(r"D:\Videos\clip.srt")
         hotwords = _route_dropped_path(r"D:\Videos\clip.txt")
 
         self.assertEqual(media, {"type": "dropMedia", "path": r"D:\Videos\clip.MP4"})
         self.assertEqual(project, {"type": "dropJson", "path": r"D:\Videos\clip.json"})
         self.assertEqual(mosp_project, {"type": "dropJson", "path": r"D:\Videos\clip.mosp"})
+        self.assertEqual(subtitle, {"type": "dropSubtitle", "path": r"D:\Videos\clip.srt"})
         self.assertEqual(hotwords, {"type": "dropHotwordFile", "path": r"D:\Videos\clip.txt"})
 
 
@@ -1229,6 +1253,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         for control in (
             "toolboxFab",
             "toolboxDrawer",
+            "toolboxInputPath",
+            "pickToolboxInput",
             "toolboxLlmPanel",
             "toolboxReplacePanel",
             "toolboxFfconcatPanel",
@@ -1245,6 +1271,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('bridge("run_fixed_replacement"', script)
         self.assertIn('bridge("run_ffconcat_rebuild"', script)
         self.assertIn('bridge("save_postprocess_settings"', script)
+        self.assertIn('bridge("choose_file", { kind: "subtitle" })', script)
         self.assertIn('$("jsonPath").value = result.projectPath', script)
         self.assertIn('$("srtPath").value = result.srtPath', script)
         self.assertIn('$("mediaPath").value = result.mediaPath', script)
