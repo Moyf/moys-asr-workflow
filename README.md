@@ -19,7 +19,7 @@ Moy 的 ASR 工作流由两部分组成：
 
 ![launcher](assets/launcher.jpg)  
 
-> 当前支持模型：阿里云百炼 Qwen / Fun-ASR 或 Soniox 云端 ASR API  
+> 当前支持模型：阿里云百炼 Qwen / Fun-ASR 或 Soniox 云端 ASR API；另附实验性的必剪 ASR（免 Key，非官方接口）
 
 - **MOSE / MAWE**：搭配使用的字幕编辑器，功能有九分甚至十分的强劲：
 
@@ -77,7 +77,7 @@ Windows 下载解压之后点击 `MAW.exe` 并运行；macOS 下载后解压并�
 
 ## 你需要准备
 
-- 至少一个云端 ASR API Key：可以用[阿里云百炼](https://help.aliyun.com/zh/model-studio/get-api-key)调用 Qwen 或 Fun-ASR，也可以用支持说话人分离的 [Soniox](https://console.soniox.com)。
+- 至少一个云端 ASR API Key：可以用[阿里云百炼](https://help.aliyun.com/zh/model-studio/get-api-key)调用 Qwen 或 Fun-ASR，也可以用支持说话人分离的 [Soniox](https://console.soniox.com)。不想申请 Key 时，也可直接选用实验性的必剪 ASR（仅中文；非官方接口，可能随时失效或限流）。
 - [Windows 图形版](https://github.com/Moyf/moys-asr-workflow/releases/latest)：Windows 10/11；下载 `MAWxFF` 不需要另外安装 FFmpeg，下载普通版则需要系统里已经有 `ffmpeg` 和 `ffprobe`。
 - [macOS 图形版](https://github.com/Moyf/moys-asr-workflow/releases/latest)：目前提供 Apple Silicon arm64；下载 `MAWxFF` 不需要另外安装 FFmpeg，下载普通版则需要系统里已经有 `ffmpeg` 和 `ffprobe`。
 - 从源码或命令行运行：Python 3.11 或更新版本、[uv](https://docs.astral.sh/uv/getting-started/installation/)（推荐），以及 [FFmpeg](https://ffmpeg.org/download.html)。macOS/Linux 也可尝试。
@@ -257,6 +257,21 @@ uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" --speaker-
 
 颜色写入的是普通 `color` 字段，之后可在编辑器里自由修改；说话人超过 5 个时颜色循环复用并给出警告。`--language zh,en` 可提供语言提示。
 
+## 必剪 ASR（实验性第三供应商，免 Key，仅中文）
+
+> [!warning]
+> 必剪 ASR 是 B 站必剪产品的**非公开内部接口**（致谢 [SocialSisterYi/bcut-asr](https://github.com/SocialSisterYi/bcut-asr) 的逆向整理），未授权第三方使用，可能随时变更、失效或触发限流甚至 IP 封禁。仅适合中文为主的轻量转写；重要或批量任务请改用上方正式供应商。
+
+无需任何 API Key，在 Launcher 的供应商列表最底部选择「必剪 ASR」即可；命令行：
+
+```powershell
+uv run python generate_subtitle_bcut_api.py "D:\Videos\example.mp4" --json
+```
+
+- 逐字毫秒时间戳写入工程 `items`，编辑器内拆分/合并仍保持准确。
+- 内置上限管理：单文件默认最长 2 小时，轮询间隔硬下限 2 秒，上传限次退避重试、分片顺序上传不并发——请勿绕过，免费接口禁不起高频调用。
+- 不支持语言指定（面向中文）、说话人分离与热词；输出命名标签为 `.bcut.`。
+
 </details>
 
 
@@ -315,12 +330,14 @@ MOSE 是 Tauri 打包的独立可执行文件，看起来比较专业（？）
 - API Key 仅读取自环境变量或本机 `.env`；`.env` 已被 Git 忽略，绝不要提交、截图或发给别人。
 - 每次转写会使用你的 Key 调用所选供应商；文件大小、数据保留与账户政策请分别查看[百炼语音识别文档](https://help.aliyun.com/zh/model-studio/asr-model/)或 [Soniox 文档](https://soniox.com/docs)。
 - 百炼 Provider 提供 `qwen3-asr-flash-filetrans`、`qwen-audio-3.0-asr-flash-filetrans` 和 `fun-asr`，支持北京与新加坡地域；北京可选填 Workspace ID 使用推荐的专属域名，新加坡必须填写。Qwen-Audio、Fun-ASR 与 Soniox 均可选说话人分离。配置项说明都在 `.env.example`。
+- 必剪 ASR 为实验性第三供应商：非官方免费接口，无需 Key，仅支持中文，稳定性与可用性不做任何保证，详见上文风险说明。
 
 ### 费用
 
 - 本项目本身是开源项目，可免费使用；默认模型为阿里云百炼最新发布的 Qwen-Audio 3.0，也可以在 GUI 或命令行里改用同 Provider 的 Qwen3-ASR、Fun-ASR 或 Soniox。
 - 阿里云 Qwen ASR 注册后免费赠送 10 小时转录时间，超出额度后按 `0.792 元/小时` 计费，详见 [价格文档](https://help.aliyun.com/zh/model-studio/model-pricing#dbf1305ef4a69)。
 - Soniox 异步文件转写约 `$0.10/小时`，适合需要说话人分离、多语言或小语种的素材，详见 [Soniox Pricing](https://soniox.com/pricing)。
+- 必剪 ASR 免费且无需 Key，但属于非官方接口：没有配额文档与稳定性保证，高频调用可能触发限流或封禁，请把它当作"应急体验"而非生产通道。
 - 如果你有不错的配置，也可以自己本地部署开源的 [QwenASR](https://github.com/QwenLM/Qwen3-ASR) 本地转录，不产生云端费用，只需要一点电费。
 
 😭*我说我只有一台 AMD 显卡的台式机和一台 Mac Mini 所以跑不了本地模型有懂的吗*  

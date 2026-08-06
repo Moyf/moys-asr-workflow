@@ -54,6 +54,12 @@ class ProviderConfig:
     # 常用语言代码；为空表示不过滤（全部视为常用）。
     # 开启「显示相对小众的语言」前，GUI 只展示这些。
     common_languages: tuple[str, ...] = ()
+    # 免 Key 供应商（如必剪）为 False：GUI 隐藏 API Key 输入并跳过校验。
+    requires_api_key: bool = True
+    # 接口不接受语言参数时为 False：GUI 隐藏语言选择。
+    supports_language: bool = True
+    # 供应商级风险提示（如非官方接口）；非空时 GUI 在供应商下方展示。
+    note: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -258,6 +264,21 @@ SONIOX_MODELS: Final[tuple[ModelConfig, ...]] = (
     ),
 )
 
+# 必剪（B 站非官方免费接口）：仅中文、无语言参数，单文件上限见 maw/bcut.py
+BCUT_LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
+    ("", "中文（自动识别）"),
+)
+
+BCUT_MODELS: Final[tuple[ModelConfig, ...]] = (
+    ModelConfig(
+        id="bcut-asr",
+        label="必剪 ASR（免 Key / 仅中文）",
+        env_key="",
+        note="逐字毫秒时间戳；无需 API Key",
+        languages=BCUT_LANGUAGES,
+    ),
+)
+
 PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
     ProviderConfig(
         id="qwen",
@@ -279,6 +300,22 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         supports_speaker=True,
         multi_language=True,
         common_languages=SONIOX_COMMON_LANGUAGES,
+    ),
+    # 实验性供应商，置底展示：非官方接口，风险与上限见 note 与 maw/bcut.py
+    ProviderConfig(
+        id="bcut",
+        label="必剪 ASR（非官方 · 免费 · 实验性）",
+        key_url="https://github.com/SocialSisterYi/bcut-asr",
+        models=BCUT_MODELS,
+        regions=(),
+        languages=BCUT_LANGUAGES,
+        requires_api_key=False,
+        supports_language=False,
+        note=(
+            "非官方免费接口：无需 API Key，仅支持中文，单文件上限 2 小时；"
+            "接口可能随时变更、失效或触发限流，请勿高频调用。"
+            "重要或批量任务建议使用上方正式供应商。"
+        ),
     ),
 )
 

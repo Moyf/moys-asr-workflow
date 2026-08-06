@@ -165,6 +165,30 @@ uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" -ll 2m --j
 
 输出文件与 Qwen 流程相同（SRT / `.mosp` / edit.html），文件命名标签为 `.soniox.`。注意：Soniox 单文件最长 5 小时；token 粒度是 word/sub-word，中文不保证逐字；转写完成后脚本会自动删除云端文件与转写记录。
 
+## 用必剪转写（实验性，免 Key，仅中文）
+
+> [!warning]
+> 必剪 ASR 是 B 站必剪产品的**非公开内部接口**，未授权第三方使用：可能随时变更、失效或触发限流甚至 IP 封禁。仅适合中文为主的轻量转写；重要或批量任务请改用上方正式供应商。
+
+无需任何 API Key，直接运行：
+
+```powershell
+uv run python generate_subtitle_bcut_api.py "D:\Videos\example.mp4" -ll 2m --json
+```
+
+输出文件与其他供应商相同，文件命名标签为 `.bcut.`。逐字毫秒时间戳会写入工程 `items`，编辑器内拆分/合并仍保持准确。
+
+上限管理（非官方接口的自我保护，不建议调整）：
+
+```text
+单文件时长上限    默认 2 小时（BCUT_MAX_AUDIO_SECONDS）
+轮询间隔          默认 3 秒，硬下限 2 秒（BCUT_POLL_INTERVAL，配低了会被抬回）
+轮询超时          默认 1800 秒（BCUT_POLL_TIMEOUT）
+上传/建任务重试   最多 3 次，指数退避；分片顺序上传不并发
+```
+
+接口只直接接收 `flac / aac / m4a / mp3 / wav`；视频和其他音频格式会先经 ffmpeg 转成 16k 单声道 wav 再上传。不支持语言指定（面向中文）、说话人分离与热词。
+
 ## 3. 理解三个输出文件
 
 | File | Use it for | Keep it? |

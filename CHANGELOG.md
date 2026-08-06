@@ -2,6 +2,13 @@
 
 本项目采用 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 的记录方式。
 
+## [Unreleased]
+
+### Added
+
+- 新增实验性第三供应商「必剪 ASR」（`generate_subtitle_bcut_api.py`）：B 站必剪的非公开免费接口，无需 API Key，逐字毫秒时间戳写入工程 `items`。Launcher 供应商列表置底展示并标注风险；选中后自动隐藏 API Key、语言、说话人与热词等不适用的选项。
+- 必剪供应商内置上限管理：单文件默认最长 2 小时（`BCUT_MAX_AUDIO_SECONDS`），轮询间隔硬下限 2 秒，上传/建任务限次退避重试，分片顺序上传不并发。
+
 ## [1.13.1-beta-5] - 2026-08-06
 
 ### Changed
