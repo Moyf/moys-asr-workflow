@@ -3,7 +3,9 @@
 
   const $ = (id) => document.getElementById(id);
   const panels = { llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel" };
+  const SUBTITLE_EXTS = new Set([".mosp", ".json", ".srt"]);
   let busy = false;
+  let inputManual = false;
 
   function t(key) {
     return window.MAWLauncher.translate(key);
@@ -22,9 +24,12 @@
     return providers.find((item) => item.id === $("postprocessProvider").value) || providers[0];
   }
 
+  function autoSourcePath() {
+    return $("jsonPath").value.trim() || $("srtPath").value.trim();
+  }
+
   function syncPaths() {
-    const source = $("jsonPath").value.trim() || $("srtPath").value.trim();
-    $("toolboxSourcePath").textContent = source || t("toolbox_no_source");
+    if (!inputManual) $("toolboxInputPath").value = autoSourcePath();
     $("toolboxMediaPath").textContent = $("mediaPath").value.trim() || t("toolbox_no_media");
   }
 
@@ -65,16 +70,33 @@
   function setBusy(nextBusy) {
     busy = nextBusy;
     $("toolboxProgress").classList.toggle("hidden", !busy);
-    ["runLlmPostprocess", "runFixedReplacement", "runFfconcatRebuild", "savePostprocessSettings"].forEach((id) => {
+    ["runLlmPostprocess", "runFixedReplacement", "runFfconcatRebuild", "savePostprocessSettings", "toolboxInputPath", "pickToolboxInput"].forEach((id) => {
       $(id).disabled = busy;
     });
     if (busy) setResult(t("toolbox_running"));
   }
 
+  function resolveInputPaths() {
+    const paths = inputPaths();
+    if (paths === null) {
+      setFieldError("toolboxInputPath", t("toolbox_drop_reject"));
+      setResult(t("toolbox_drop_reject"), "error");
+      return null;
+    }
+    setFieldError("toolboxInputPath", "");
+    if (!paths.projectPath && !paths.srtPath) {
+      setResult(t("toolbox_need_source"), "error");
+      return null;
+    }
+    return paths;
+  }
+
   function inputPaths() {
+    const source = $("toolboxInputPath").value.trim() || autoSourcePath();
+    if (source && !SUBTITLE_EXTS.has(extension(source))) return null;
     return {
-      projectPath: $("jsonPath").value.trim(),
-      srtPath: $("srtPath").value.trim(),
+      projectPath: extension(source) === ".srt" ? "" : source,
+      srtPath: extension(source) === ".srt" ? source : "",
       outputMode: $("postprocessOutputMode").value,
     };
   }
@@ -104,6 +126,7 @@
       $("srtPath").value = "";
       $("srtPath").dispatchEvent(new Event("input", { bubbles: true }));
     }
+    inputManual = false;
     syncPaths();
     const paths = [result.projectPath, result.srtPath].filter(Boolean);
     const warnings = Array.isArray(result.warnings) ? result.warnings : [];
@@ -140,11 +163,8 @@
   }
 
   async function runLlm() {
-    const paths = inputPaths();
-    if (!paths.projectPath && !paths.srtPath) {
-      setResult(t("toolbox_need_source"), "error");
-      return;
-    }
+    const paths = resolveInputPaths();
+    if (!paths) return;
     const item = provider();
     setBusy(true);
     try {
@@ -165,12 +185,9 @@
   }
 
   async function runReplacement() {
-    const paths = inputPaths();
+    const paths = resolveInputPaths();
+    if (!paths) return;
     const replacements = parseReplacements();
-    if (!paths.projectPath && !paths.srtPath) {
-      setResult(t("toolbox_need_source"), "error");
-      return;
-    }
     if (!replacements.length) {
       setFieldError("postprocessReplacements", t("toolbox_need_rules"));
       setResult(t("toolbox_need_rules"), "error");
@@ -236,6 +253,22 @@
   $("pickPostprocessFfconcat").addEventListener("click", async () => {
     const result = await bridge("choose_file", { kind: "ffconcat" });
     if (result.ok) $("postprocessFfconcatPath").value = result.path;
+  });
+  $("pickToolboxInput").addEventListener("click", async () => {
+    const result = await bridge("choose_file", { kind: "subtitle" });
+    if (result.ok) {
+      inputManual = true;
+      $("toolboxInputPath").value = result.path;
+      setFieldError("toolboxInputPath", "");
+    }
+  });
+  $("toolboxInputPath").addEventListener("input", () => {
+    inputManual = Boolean($("toolboxInputPath").value.trim());
+    setFieldError("toolboxInputPath", "");
+  });
+  $("toolboxIssuesLink").addEventListener("click", (event) => {
+    event.preventDefault();
+    bridge("open_url", { url: "https://github.com/Moyf/moys-asr-workflow/issues" });
   });
   $("postprocessReplacements").addEventListener("input", () => setFieldError("postprocessReplacements", ""));
   ["jsonPath", "srtPath", "mediaPath"].forEach((id) => $(id).addEventListener("input", syncPaths));

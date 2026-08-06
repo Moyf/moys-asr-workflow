@@ -46,8 +46,15 @@ PRESETS: Final[tuple[LlmProviderPreset, ...]] = (
         id="deepseek",
         label="DeepSeek",
         base_url="https://api.deepseek.com",
-        model="deepseek-chat",
+        model="deepseek-v4-flash",
         env_prefix="MAW_POSTPROCESS_DEEPSEEK",
+    ),
+    LlmProviderPreset(
+        id="zhipu",
+        label="智谱 Coding Plan",
+        base_url="https://open.bigmodel.cn/api/coding/paas/v4",
+        model="glm-5.2",
+        env_prefix="MAW_POSTPROCESS_ZHIPU",
     ),
     LlmProviderPreset(
         id="qwen",
