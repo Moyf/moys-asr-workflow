@@ -15,7 +15,7 @@
     server_start_hint: "请点击「启动字幕服务器」",
     server_no_response_hint: "编辑器服务器没有响应，请检查端口或下方状态。",
     server_start_failed_hint: "编辑器服务器启动失败，请查看下方状态和日志。",
-    open_editor: "打开字幕编辑器",
+    open_editor: "🚀 打开字幕编辑器",
     server_refresh: "刷新"
   });
   Object.assign(STRINGS.en, {
@@ -28,7 +28,7 @@
     server_start_hint: "click \"Launch Subtitle Editor\"",
     server_no_response_hint: "The editor server did not respond. Check the port or the status below.",
     server_start_failed_hint: "The editor server failed to start. Check the status and logs below.",
-    open_editor: "Open Subtitle Editor",
+    open_editor: "🚀 Open Subtitle Editor",
     server_refresh: "Refresh"
   });
   Object.assign(STRINGS.zh, {
