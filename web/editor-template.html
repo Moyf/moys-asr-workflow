@@ -280,6 +280,98 @@ __WAVEFORM_CSS__
   </div>
 </aside>
 
+<!-- 可拖动的非模态帮助窗口 -->
+<aside class="gap-remove-panel help-panel" id="help-panel" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="help-panel-title">
+  <header class="gap-remove-panel-header" id="help-drag-handle">
+    <div class="gap-remove-heading">
+      <span class="gap-remove-eyebrow">MAWE</span>
+      <h3 id="help-panel-title">操作帮助</h3>
+    </div>
+    <button type="button" id="help-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭帮助窗口">×</button>
+  </header>
+  <div class="gap-remove-panel-body help-panel-body">
+    <div class="help-group">
+      <span class="help-title">字幕操作</span>
+      <div class="help-subgroup">
+        <span class="help-subtitle">鼠标</span>
+        <span><kbd>单击</kbd> 选中</span>
+        <span><kbd>双击</kbd> 编辑</span>
+        <span><kbd>右键</kbd> 菜单</span>
+        <span><kbd>Alt+点击</kbd> 切换字幕禁用</span>
+      </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">多选</span>
+        <span><kbd>Shift+点击</kbd> 连选</span>
+        <span><kbd data-mod-key>Ctrl+点击</kbd> 多选</span>
+        <span><kbd data-mod-key>Ctrl+A</kbd> 选中所有字幕（非编辑状态）</span>
+        <span><kbd data-mod-key>Ctrl+D</kbd> 取消选择</span>
+      </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">编辑状态</span>
+        <span><kbd>Enter</kbd> 进入字幕编辑区（仅单选时）</span>
+        <span><kbd>Esc</kbd> 退出字幕编辑区（文本编辑时）</span>
+        <span><kbd>Esc</kbd> 清除字幕选择（非编辑状态）</span>
+        <span><kbd id="help-split-key">Ctrl+Enter</kbd>（编辑字幕文本时）在文字光标处拆分</span>
+      </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">功能快捷键</span>
+        <span><kbd>T</kbd> 分配表情包</span>
+        <span><kbd>1~5</kbd> 标记颜色 <kbd>0</kbd> 清除颜色</span>
+        <span><kbd>C</kbd> 合并所选字幕</span>
+      </div>
+    </div>
+    <div class="help-group">
+      <span class="help-title">波形</span>
+      <div class="help-subgroup">
+        <span class="help-subtitle">鼠标</span>
+        <span><kbd>双击波形</kbd> 播放/暂停</span>
+        <span><kbd>右键波形背景</kbd> 显示菜单</span>
+        <span><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>
+      </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">工具</span>
+        <span><kbd>V</kbd> 选择工具 <kbd>R</kbd> 分割工具</span>
+        <span><kbd id="help-waveform-split-key">B</kbd> 在红色播放指针处拆分字幕</span>
+      </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">滚轮</span>
+        <span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>
+        <span><kbd data-mod-key>Ctrl+滚轮</kbd> 调整时间缩放/每行长度</span>
+        <span><kbd data-mod-key>Ctrl+Shift+滚轮</kbd> 调整每行高度</span>
+      </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">静音空隙</span>
+        <span><kbd>Alt+点击静音空隙区段</kbd> 切换移除/保留</span>
+        <span class="help-note">空隙区段操作方式设为「中键拖动」时：</span>
+        <span><kbd>中键拖动</kbd> 增加静音区段</span>
+        <span><kbd>Alt+中键拖动</kbd> 增加恢复区段</span>
+      </div>
+    </div>
+    <div class="help-group">
+      <span class="help-title">播放与编辑</span>
+      <div class="help-subgroup">
+        <span class="help-subtitle">播放</span>
+        <span><kbd>空格</kbd> 播放/暂停</span>
+        <span><kbd>←</kbd>/<kbd>→</kbd> 前后跳转 5 秒</span>
+        <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> 倍速 ×0.5/重置/×2</span>
+      </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">字幕导航</span>
+        <span><kbd>A</kbd>或<kbd>W</kbd> 上一条字幕 <kbd>D</kbd>或<kbd>S</kbd> 下一条字幕</span>
+        <span><kbd>Shift+A/W</kbd> 向前多选</span>
+        <span><kbd>Shift+D/S</kbd> 向后多选</span>
+        <span><kbd>F</kbd> 跳转并播放选中字幕</span>
+      </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">编辑</span>
+        <span><kbd>Delete</kbd> 删除所选字幕</span>
+        <span><kbd data-mod-key>Ctrl+Z</kbd> 撤销</span>
+        <span><kbd data-mod-key>Ctrl+Shift+Z</kbd> 重做</span>
+      </div>
+    </div>
+  </div>
+</aside>
+
 <section class="editor-settings-panel" id="editor-settings-panel" aria-label="MAWE 设置" hidden>
   <div class="editor-settings-group">
     <span class="editor-settings-title">字幕列表和编辑区</span>
@@ -411,57 +503,6 @@ __WAVEFORM_CSS__
         <input id="auto-save-interval" type="number" min="5" max="3600" step="1" value="30">
       </label>
     </div>
-  </div>
-</section>
-
-<section class="help-panel" id="help-panel" aria-label="操作帮助" hidden>
-  <div class="help-group">
-    <span class="help-title">字幕操作</span>
-    <span><kbd>单击</kbd> 选中</span>
-    <span><kbd>双击</kbd> 编辑</span>
-    <span><kbd>Enter</kbd> 原地编辑已选字幕（最后点击在列表）</span>
-    <span><kbd>Enter</kbd> 聚焦字幕编辑区（其它区域）</span>
-    <span><kbd>B</kbd> 在鼠标所指的已选字幕文字处拆分（列表内）</span>
-    <span><kbd>Esc</kbd> 退出字幕编辑区（文本编辑时）</span>
-    <span><kbd>Esc</kbd> 清除字幕选择（非编辑状态）</span>
-    <span><kbd>右键</kbd> 菜单</span>
-    <span><kbd>Shift+点击</kbd> 连选</span>
-    <span><kbd data-mod-key>Ctrl+点击</kbd> 多选</span>
-    <span><kbd>Alt+点击</kbd> 切换字幕禁用</span>
-    <span><kbd>T</kbd> 分配表情包</span>
-    <span><kbd>1~5</kbd> 标记颜色 <kbd>0</kbd> 清除颜色</span>
-    <span><kbd>C</kbd> 合并所选字幕</span>
-    <span><kbd id="help-split-key">Ctrl+Enter</kbd>（编辑字幕文本时）在文字光标处拆分</span>
-    <span><kbd data-mod-key>Ctrl+A</kbd> 选中所有字幕（非编辑状态）</span>
-    <span><kbd data-mod-key>Ctrl+D</kbd> 取消选择</span>
-  </div>
-  <div class="help-group">
-    <span class="help-title">波形</span>
-    <span><kbd>双击波形</kbd> 播放/暂停</span>
-    <span><kbd>右键波形背景</kbd> 显示菜单</span>
-    <span><kbd id="help-waveform-split-key">B</kbd> 在鼠标所指的音频位置拆分（波形上；列表外按播放指针）</span>
-    <span><kbd>V</kbd> 选择工具 <kbd>R</kbd> 分割工具</span>
-    <span><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>
-    <span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>
-    <span><kbd data-mod-key>Ctrl+滚轮</kbd> 调整时间缩放/每行长度</span>
-    <span><kbd data-mod-key>Ctrl+Shift+滚轮</kbd> 调整每行高度</span>
-  </div>
-  <div class="help-group">
-    <span class="help-title">静音空隙</span>
-    <span><kbd>Alt+点击静音空隙区段</kbd> 切换移除/保留</span>
-    <span class="help-note">空隙区段操作方式设为「中键拖动」时：</span>
-    <span><kbd>中键拖动</kbd> 增加静音区段</span>
-    <span><kbd>Alt+中键拖动</kbd> 增加恢复区段</span>
-  </div>
-  <div class="help-group">
-    <span class="help-title">播放与编辑</span>
-    <span><kbd>空格</kbd> 播放/暂停 <kbd>←</kbd>/<kbd>→</kbd> 前后跳转 5 秒 <kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> 倍速 ×0.5/重置/×2</span>
-    <span><kbd>A</kbd>或<kbd>W</kbd> 上一条字幕 <kbd>D</kbd>或<kbd>S</kbd> 下一条字幕</span>
-    <span><kbd>Shift+A/W</kbd> 向前多选 <kbd>Shift+D/S</kbd> 向后多选</span>
-    <span><kbd>F</kbd> 跳转并播放选中字幕</span>
-    <span><kbd>Delete</kbd> 删除所选字幕</span>
-    <span><kbd data-mod-key>Ctrl+Z</kbd> 撤销</span>
-    <span><kbd data-mod-key>Ctrl+Shift+Z</kbd> 重做</span>
   </div>
 </section>
 
