@@ -46,6 +46,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("generate_subtitle_qwen_api", spec)
         self.assertIn("generate_subtitle_soniox_api", spec)
         self.assertIn("maw.soniox", spec)
+        self.assertIn("local-runtime", spec)
+        self.assertIn("local_runtime_worker.py", spec)
         self.assertIn("assets", spec)
         self.assertIn("maw.ico", spec)
         self.assertIn("show.webp", spec)
@@ -65,6 +67,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("uv run --group build pyinstaller", script)
         self.assertIn("MAW.spec", script)
         self.assertIn("dist\\MAW\\MAW.exe", script)
+        self.assertIn("bootstrap", script)
+        self.assertIn("uv.exe", script)
         self.assertIn("$ErrorActionPreference = 'Stop'", script)
 
     def test_release_workflow_is_tag_triggered_and_publishes_both_windows_packages(self) -> None:

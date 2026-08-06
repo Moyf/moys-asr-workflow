@@ -19,6 +19,7 @@ from typing import BinaryIO, Final, TextIO, final
 
 from maw.gui_config import DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, load_env
 from maw.gui_platform import asset_path
+from maw.local_runtime import model_cache_environment
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +43,11 @@ class TranscriptionRequest:
     speaker_colors: bool = False
     ui_language: str = "zh"
     generate_html: bool = True
+    engine: str = ""
+    model_path: str = ""
+    device: str = "auto"
+    forced_aligner: str = ""
+    runtime_python: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,7 +98,11 @@ def build_output_paths(srt_path: Path) -> OutputPaths:
     return OutputPaths(srt=srt, json=srt.with_suffix(".mosp"), html=srt.with_suffix(".edit.html"))
 
 
-PROVIDER_SRT_TAGS: Final = {"qwen": ".qwen3-asr-api", "soniox": ".soniox"}
+PROVIDER_SRT_TAGS: Final = {
+    "qwen": ".qwen3-asr-api",
+    "soniox": ".soniox",
+    "local": ".qwen-asr-local",
+}
 
 
 def default_srt_path(
@@ -101,9 +111,12 @@ def default_srt_path(
     model: str = DEFAULT_MODEL_ID,
 ) -> Path:
     media = Path(media_path).expanduser()
-    tag = ".fun-asr" if provider == "qwen" and model.startswith("fun-asr") else (
-        PROVIDER_SRT_TAGS.get(provider, PROVIDER_SRT_TAGS["qwen"])
-    )
+    if provider == "qwen" and model.startswith("fun-asr"):
+        tag = ".fun-asr"
+    elif provider == "local" and "funasr" in model.lower():
+        tag = ".funasr-local"
+    else:
+        tag = PROVIDER_SRT_TAGS.get(provider, PROVIDER_SRT_TAGS["qwen"])
     return media.with_name(f"{media.stem}{tag}.srt")
 
 
@@ -116,15 +129,31 @@ def build_transcribe_command(
     exe = str(executable or sys.executable)
     is_frozen = bool(getattr(sys, "frozen", False) if frozen is None else frozen)
     is_soniox = request.provider == "soniox"
-    script_name = "generate_subtitle_soniox_api.py" if is_soniox else "generate_subtitle_qwen_api.py"
+    is_local = request.provider == "local"
+    if is_local:
+        script_name = "generate_subtitle_local.py"
+    else:
+        script_name = "generate_subtitle_soniox_api.py" if is_soniox else "generate_subtitle_qwen_api.py"
     script = Path(__file__).resolve().parents[1] / script_name
-    if is_frozen:
-        command = [exe, "--transcribe-soniox" if is_soniox else "--transcribe"]
+    if is_local and request.runtime_python:
+        script = asset_path("local-runtime/generate_subtitle_local.py") if is_frozen else script
+        command = [request.runtime_python, str(script)]
+    elif is_frozen:
+        if is_local:
+            command = [exe, "--transcribe-local"]
+        else:
+            command = [exe, "--transcribe-soniox" if is_soniox else "--transcribe"]
     else:
         command = [exe, str(script)]
     command.append(str(request.media_path))
     command.extend(["--output", str(build_output_paths(request.srt_path).srt), "--json", "--no-html", "--with-waveform"])
-    if is_soniox:
+    if is_local:
+        _append_option(command, "--engine", request.engine or "qwen-asr")
+        _append_option(command, "--model", request.model)
+        _append_option(command, "--model-path", request.model_path)
+        _append_option(command, "--device", request.device)
+        _append_option(command, "--forced-aligner", request.forced_aligner)
+    elif is_soniox:
         _append_option(command, "--model", request.model if request.model != DEFAULT_MODEL_ID else "")
         if request.speaker_colors:
             command.append("--speaker-colors")
@@ -302,6 +331,8 @@ def _child_environment(parent: Mapping[str, str], api_key: str, workspace_id: st
             env["DASHSCOPE_API_KEY"] = api_key
         if workspace_id:
             env["DASHSCOPE_WORKSPACE_ID"] = workspace_id
+    if provider == "local":
+        env.update(model_cache_environment())
     return env
 
 

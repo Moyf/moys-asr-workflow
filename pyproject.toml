@@ -13,9 +13,22 @@ dependencies = [
 
 [project.optional-dependencies]
 local = [
+    "accelerate>=1.12",
     "funasr>=1.2.6",
+    "hf-xet>=1.5",
     "qwen-asr>=0.0.6",
+    "torch>=2.13.0",
+    "torchaudio>=2.11.0",
 ]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
+torchaudio = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
 
 [dependency-groups]
 build = [

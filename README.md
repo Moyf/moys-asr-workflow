@@ -19,7 +19,7 @@ Moy 的 ASR 工作流由两部分组成：
 
 > 当前支持模型：阿里云百炼 Qwen / Fun-ASR 或 Soniox 云端 ASR API
 
-> 源码中另有实验性的本地 Qwen3-ASR / FunASR CLI 流程，见 [docs/LOCAL_ASR.md](docs/LOCAL_ASR.md)；暂未接入 Launcher，也不随 Windows 包分发模型依赖。
+> Launcher 已提供实验性的本地 Qwen3-ASR / FunASR 识别方式，见 [docs/LOCAL_ASR.md](docs/LOCAL_ASR.md)。Windows 打包版可通过 GUI 安装本地运行环境和模型；安装包本身仍不携带 Torch 或模型权重。
 
 - **MAWE**：MAW 自带的字幕编辑器，基本上只是个 HTML 网页，但是功能强大到超出你的想象。  
 
@@ -257,7 +257,7 @@ MAWE 右上角可切换中文 / English；编辑完成后点“保存工程”�
 
 ## 关于 API
 
-- 这是 **API-first** 工具，不含模型下载和本地推理引擎。
+- 这是 **API-first** 工具；本地模型入口属于实验性可选流程，不改变默认云端路径。
 - API Key 仅读取自环境变量或本机 `.env`；`.env` 已被 Git 忽略，绝不要提交、截图或发给别人。
 - 每次转写会使用你的 Key 调用所选供应商；文件大小、数据保留与账户政策请分别查看[百炼语音识别文档](https://help.aliyun.com/zh/model-studio/asr-model/)或 [Soniox 文档](https://soniox.com/docs)。
 - 百炼 Provider 提供 `qwen3-asr-flash-filetrans` 和 `fun-asr`，支持北京与新加坡地域；北京可选填 Workspace ID 使用推荐的专属域名，新加坡必须填写。Fun-ASR 与 Soniox 均可选说话人分离。配置项说明都在 `.env.example`。

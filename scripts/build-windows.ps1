@@ -28,6 +28,11 @@ try {
         throw "PyInstaller completed but did not create dist\MAW\MAW.exe."
     }
 
+    $UvCommand = Get-Command uv -ErrorAction Stop
+    $BootstrapDirectory = Join-Path (Split-Path -Parent $ExePath) 'bootstrap'
+    New-Item -ItemType Directory -Path $BootstrapDirectory -Force | Out-Null
+    Copy-Item -LiteralPath $UvCommand.Source -Destination (Join-Path $BootstrapDirectory 'uv.exe') -Force
+
     Write-Host "Built $ExePath"
 }
 finally {

@@ -4,11 +4,13 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
-from generate_subtitle_local import build_parser, default_output_path
+from generate_subtitle_local import build_parser, default_output_path, load_hotword_files
 from maw.local_asr import (
     FUNASR_DEFAULT_MODEL,
+    QWEN_DEFAULT_FORCED_ALIGNER,
     QWEN_DEFAULT_MODEL,
     FunAsrEngine,
     LocalTranscription,
@@ -81,17 +83,24 @@ class LocalAsrNormalizationTests(unittest.TestCase):
 
 class LocalAsrFlowTests(unittest.TestCase):
     def test_qwen_seconds_timestamps_are_normalized_to_milliseconds(self) -> None:
+        class FakeAlignResult:
+            def __init__(self, items):
+                self.items = items
+
+            def __iter__(self):
+                return iter(self.items)
+
         class FakeRuntime:
             def transcribe(self, **kwargs):
                 self.kwargs = kwargs
-                return [{
-                    "text": "你好",
-                    "language": "Chinese",
-                    "time_stamps": [
-                        {"text": "你", "start_time": 0.123, "end_time": 0.456},
-                        {"text": "好", "start_time": 0.456, "end_time": 0.9},
-                    ],
-                }]
+                return [SimpleNamespace(
+                    text="你好",
+                    language="Chinese",
+                    time_stamps=FakeAlignResult([
+                        SimpleNamespace(text="你", start_time=0.123, end_time=0.456),
+                        SimpleNamespace(text="好", start_time=0.456, end_time=0.9),
+                    ]),
+                )]
 
         engine = QwenAsrEngine(forced_aligner="test-aligner")
         runtime = FakeRuntime()
@@ -106,11 +115,41 @@ class LocalAsrFlowTests(unittest.TestCase):
         self.assertEqual(runtime.kwargs["audio"], "sample.wav")
         self.assertEqual(runtime.kwargs["language"], "Chinese")
 
+    def test_qwen_english_alignment_items_restore_spaces(self) -> None:
+        class FakeRuntime:
+            def transcribe(self, **kwargs):
+                return [SimpleNamespace(
+                    text="Hello, world. Next sentence works!",
+                    language="English",
+                    time_stamps=[
+                        SimpleNamespace(text="Hello", start_time=0.0, end_time=0.4),
+                        SimpleNamespace(text="world", start_time=0.4, end_time=0.9),
+                        SimpleNamespace(text="Next", start_time=1.0, end_time=1.3),
+                        SimpleNamespace(text="sentence", start_time=1.3, end_time=1.8),
+                        SimpleNamespace(text="works", start_time=1.8, end_time=2.0),
+                    ],
+                )]
+
+        engine = QwenAsrEngine(forced_aligner="test-aligner")
+        engine._runtime = FakeRuntime()
+
+        result = engine.transcribe(Path("sample.wav"), language="en")
+
+        self.assertEqual(
+            [item["text"] for item in result.items],
+            ["Hello,", " world.", " Next", " sentence", " works!"],
+        )
+        self.assertEqual(
+            [segment["text"] for segment in build_local_segments(result, duration_ms=2200)],
+            ["Hello, world.", " Next sentence works!"],
+        )
+
     def test_engine_factory_does_not_import_optional_runtime(self) -> None:
         qwen = create_local_engine("qwen-asr")
         funasr = create_local_engine("funasr")
 
         self.assertEqual(qwen.model, QWEN_DEFAULT_MODEL)
+        self.assertEqual(qwen.forced_aligner, QWEN_DEFAULT_FORCED_ALIGNER)
         self.assertEqual(funasr.model, FUNASR_DEFAULT_MODEL)
 
     def test_fun_asr_runtime_import_is_lazy(self) -> None:
@@ -123,6 +162,18 @@ class LocalAsrFlowTests(unittest.TestCase):
     def test_resolve_device_auto_without_torch_falls_back_to_cpu(self) -> None:
         with mock.patch.dict("sys.modules", {"torch": None}):
             self.assertEqual(resolve_device("auto"), "cpu")
+
+    def test_resolve_device_auto_prefers_available_cuda(self) -> None:
+        class FakeCuda:
+            @staticmethod
+            def is_available() -> bool:
+                return True
+
+        class FakeTorch:
+            cuda = FakeCuda()
+
+        with mock.patch.dict("sys.modules", {"torch": FakeTorch()}):
+            self.assertEqual(resolve_device("auto"), "cuda")
 
     def test_default_output_uses_engine_tag(self) -> None:
         path = default_output_path(Path("D:/media/sample.mp4"), "funasr")
@@ -169,6 +220,13 @@ class LocalCliParserTests(unittest.TestCase):
         self.assertEqual(args.engine, "funasr")
         self.assertEqual(args.length_limit, 120.0)
         self.assertEqual(args.hotword, ["MAW"])
+
+    def test_hotword_files_support_comments_and_deduplication(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "terms.txt"
+            path.write_text("\ufeff# comment\nMAW\n\nQwen3-ASR\nMAW\n", encoding="utf-8")
+
+            self.assertEqual(load_hotword_files([str(path)]), ["MAW", "Qwen3-ASR"])
 
 
 if __name__ == "__main__":
