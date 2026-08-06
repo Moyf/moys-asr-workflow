@@ -112,7 +112,7 @@ def build_output_paths(srt_path: Path) -> OutputPaths:
     return OutputPaths(srt=srt, json=srt.with_suffix(".mosp"), html=srt.with_suffix(".edit.html"))
 
 
-PROVIDER_SRT_TAGS: Final = {"qwen": ".qwen3-asr-api", "soniox": ".soniox"}
+PROVIDER_SRT_TAGS: Final = {"qwen": ".qwen3-asr-api", "soniox": ".soniox", "bcut": ".bcut"}
 
 
 def with_test_suffix(path: Path) -> Path:
@@ -149,10 +149,22 @@ def build_transcribe_command(
     exe = str(executable or sys.executable)
     is_frozen = bool(getattr(sys, "frozen", False) if frozen is None else frozen)
     is_soniox = request.provider == "soniox"
-    script_name = "generate_subtitle_soniox_api.py" if is_soniox else "generate_subtitle_qwen_api.py"
+    is_bcut = request.provider == "bcut"
+    if is_soniox:
+        script_name = "generate_subtitle_soniox_api.py"
+    elif is_bcut:
+        script_name = "generate_subtitle_bcut_api.py"
+    else:
+        script_name = "generate_subtitle_qwen_api.py"
     script = Path(__file__).resolve().parents[1] / script_name
     if is_frozen:
-        command = [exe, "--transcribe-soniox" if is_soniox else "--transcribe"]
+        if is_soniox:
+            entry = "--transcribe-soniox"
+        elif is_bcut:
+            entry = "--transcribe-bcut"
+        else:
+            entry = "--transcribe"
+        command = [exe, entry]
     else:
         command = [exe, str(script)]
     command.append(str(request.media_path))
@@ -161,6 +173,10 @@ def build_transcribe_command(
         _append_option(command, "--model", request.model if request.model != DEFAULT_MODEL_ID else "")
         if request.speaker_colors:
             command.append("--speaker-colors")
+        _append_option(command, "--language", request.language)
+    elif is_bcut:
+        # 必剪接口无语言/模型/说话人参数，这里一律不下发
+        pass
     else:
         _append_option(command, "--model", request.model or DEFAULT_MODEL_ID)
         _append_option(command, "--region", request.region)
@@ -169,7 +185,7 @@ def build_transcribe_command(
             or request.model == QWEN_AUDIO_MODEL_ID
         ):
             command.append("--speaker-colors")
-    _append_option(command, "--language", request.language)
+        _append_option(command, "--language", request.language)
     _append_option(command, "--length-limit", request.length_limit)
     if request.provider == "qwen" and request.model == QWEN_AUDIO_MODEL_ID:
         _append_option(command, "--vocabulary-id", request.qwen_audio_vocabulary_id)
@@ -349,6 +365,8 @@ def _child_environment(parent: Mapping[str, str], api_key: str, workspace_id: st
     if provider == "soniox":
         if api_key:
             env["SONIOX_API_KEY"] = api_key
+    elif provider == "bcut":
+        pass  # 必剪为非官方免 Key 接口，无需注入凭据
     else:
         if api_key:
             env["DASHSCOPE_API_KEY"] = api_key

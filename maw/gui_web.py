@@ -368,9 +368,10 @@ class LauncherApi:
         model_id = str(payload.get("modelId") or "")
         model = next((item for item in provider.models if model_id in (item.id, item.label)), provider.models[0] if provider.models else model_by_label(model_id))
         updates = {
-            model.env_key: api_key,
             "MAW_GUI_LANG": _gui_lang(payload),
         }
+        if model.env_key:
+            updates[model.env_key] = api_key
         if provider.id == "qwen":
             updates["DASHSCOPE_REGION"] = str(payload.get("region") or "beijing")
             updates["DASHSCOPE_DEFAULT_LANGUAGE"] = str(payload.get("language") or "")
@@ -780,7 +781,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         raise PreflightError("mediaPath", "media_not_found", "Media file does not exist.")
     if not srt_text or not srt.name:
         raise PreflightError("srtPath", "output_missing", "SRT output path is required.")
-    if not api_key:
+    if provider.requires_api_key and not api_key:
         raise PreflightError("apiKey", "api_key_missing", "API key is required.")
     if provider.id == "qwen" and region == "singapore" and not workspace_id:
         raise PreflightError("workspaceId", "workspace_missing", "Workspace ID is required for Singapore region.")
@@ -1041,6 +1042,9 @@ def _provider_payload(provider: ProviderConfig, env_path: Path) -> dict[str, obj
         "maskedApiKey": masked_secret(api_key),
         "supportsSpeaker": provider.supports_speaker,
         "multiLanguage": provider.multi_language,
+        "requiresApiKey": provider.requires_api_key,
+        "supportsLanguage": provider.supports_language,
+        "note": provider.note,
         "commonLanguages": list(provider.common_languages),
         "models": [_model_payload(item) for item in provider.models],
         "regions": [{"id": value, "label": label} for value, label in provider.regions],
