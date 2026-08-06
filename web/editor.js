@@ -468,6 +468,7 @@ const gapRemoveSkipPlayback = document.getElementById('gap-skip-playback');
 const gapRemoveList = document.getElementById('gap-remove-list');
 const gapRemoveClearAllButton = document.getElementById('gap-remove-clear-all');
 const HELP_PANEL_POSITION_KEY = 'moy.asr.help.panel.v1';
+const HELP_PANEL_SIZE_KEY = 'moy.asr.help.panel.size.v1';
 const AUTO_MERGE_PANEL_POSITION_KEY = 'moy.asr.auto_merge.panel.v2';
 const autoMergePanel = document.getElementById('auto-merge-panel');
 const autoMergeDragHandle = document.getElementById('auto-merge-drag-handle');
@@ -657,8 +658,40 @@ const helpFloatingPanel = createFloatingPanel({
   manageButton: helpToggle,
   anchorButton: helpToggle,
   positionKey: HELP_PANEL_POSITION_KEY,
+  onOpen: restoreHelpPanelSize,
 });
 helpCloseButton?.addEventListener('click', () => helpFloatingPanel.close());
+// 浮窗尺寸：仅在用户拖过右下角缩放手柄后持久化；未缩放时保持 CSS 默认宽度/自动高度
+function restoreHelpPanelSize() {
+  if (!helpPanel) return;
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(HELP_PANEL_SIZE_KEY) || 'null');
+  } catch (_) {
+    saved = null;
+  }
+  if (!Number.isFinite(saved?.width) || !Number.isFinite(saved?.height)) return;
+  helpPanel.style.width = `${Math.min(Math.max(320, saved.width), window.innerWidth - 12)}px`;
+  helpPanel.style.height = `${Math.min(Math.max(240, saved.height), window.innerHeight - 12)}px`;
+}
+let helpPanelSizeSaveTimer = 0;
+if (helpPanel) {
+  new ResizeObserver(() => {
+    if (!helpPanel.classList.contains('show')) return;
+    if (!helpPanel.style.width && !helpPanel.style.height) return;
+    clearTimeout(helpPanelSizeSaveTimer);
+    helpPanelSizeSaveTimer = setTimeout(() => {
+      const rect = helpPanel.getBoundingClientRect();
+      try {
+        localStorage.setItem(HELP_PANEL_SIZE_KEY, JSON.stringify({
+          width: Math.round(rect.width), height: Math.round(rect.height),
+        }));
+      } catch (_) {
+        // file:// 隐私模式下 localStorage 可能被拒；缩放本身仍可用。
+      }
+    }, 250);
+  }).observe(helpPanel);
+}
 // 明暗主题：令牌全部定义在 CSS（:root 暗色 / [data-theme="light"] 亮色），
 // 这里只负责写 <html data-theme>、持久化、同步按钮，以及通知波形重绘画布。
 // 按钮显示的是「目标主题」（与相邻 🌐 语言按钮同一约定）：暗色时显示 🌖（点击转亮）。
