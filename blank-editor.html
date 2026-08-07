@@ -2318,7 +2318,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-04 15:54</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-07 01:07</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -2405,7 +2405,7 @@
     <option value="wave-right" selected>右侧整列波形</option>
     <option value="classic">字幕列表编辑</option>
     <option value="three-fold">三折叠布局</option>
-    <option value="traditional">传统字幕编辑器</option>
+    <option value="cinema">大荧幕布局</option>
   </select>
   <button type="button" id="layout-edit-toggle" title="显示面板标题条和拖动预览">编辑布局</button>
   <button type="button" id="layout-reset" title="恢复当前内置工作区的默认状态" hidden>重置工作区</button>
@@ -3941,7 +3941,7 @@
     '没有需要拼合的间隔或过短字幕': 'No intervals or short subtitles to snap',
     '字幕时长不足 200ms，无法拆分': 'Subtitles shorter than 200 ms cannot be split',
     '字幕列表编辑': 'Subtitle list editor', '右侧整列波形': 'Waveform column right',
-    '传统字幕编辑器': 'Traditional subtitle editor',
+    '大荧幕布局': 'Cinema screen layout',
     '编辑布局': 'Edit layout', '完成布局': 'Done editing', '重置工作区': 'Reset workspace',
     '已保存工作区': 'Saved workspaces',
     '保存工作区': 'Save workspace', '另存为工作区': 'Save workspace as', '删除工作区': 'Delete workspace',
@@ -4455,10 +4455,10 @@
   const ENCODING = 'i8-minmax-base64';
   const WORKSPACE_SCHEMA = 'moy.asr.editor.workspace.v1';
   // 渲染器预设：classic / wave-right 由专属 CSS 网格渲染；custom 由 layoutTree 渲染
-  // （传统字幕编辑器与用户保存的自定义工作区都以树渲染）。
+  // （大荧幕布局与用户保存的自定义工作区都以树渲染）。
   const RENDERER_PRESETS = ['classic', 'wave-right', 'custom'];
   // 内置工作区 id：下拉框可选项；custom 预设都由各自的布局树渲染。
-  const BUILTIN_WORKSPACE_IDS = ['classic', 'wave-right', 'three-fold', 'traditional'];
+  const BUILTIN_WORKSPACE_IDS = ['classic', 'wave-right', 'three-fold', 'cinema'];
   const MODULE_IDS = ['player', 'panel', 'cues', 'wave'];
   const MODULE_LABELS = { player: '视频', panel: '当前字幕', cues: '字幕列表', wave: '波形' };
   const DEFAULT_MODULE_ORDER = ['player', 'panel', 'cues', 'wave'];
@@ -4478,17 +4478,18 @@
       { type: 'module', id: 'wave' },
     ],
   };
-  const TRADITIONAL_SUBTITLE_LAYOUT_TREE = {
-    type: 'split', direction: 'column', ratio: 64,
+  // 大荧幕布局：左上大视频区、右上当前字幕/字幕列表、底部整行波形；以 custom 渲染器渲染。
+  const CINEMA_SCREEN_LAYOUT_TREE = {
+    type: 'split', direction: 'column', ratio: 72.711956653046,
     children: [
       {
-        type: 'split', direction: 'row', ratio: 32,
+        type: 'split', direction: 'row', ratio: 55.207499921561244,
         children: [
+          { type: 'module', id: 'player' },
           {
-            type: 'split', direction: 'column', ratio: 77,
-            children: [{ type: 'module', id: 'player' }, { type: 'module', id: 'panel' }],
+            type: 'split', direction: 'column', ratio: 20,
+            children: [{ type: 'module', id: 'panel' }, { type: 'module', id: 'cues' }],
           },
-          { type: 'module', id: 'cues' },
         ],
       },
       { type: 'module', id: 'wave' },
@@ -4585,7 +4586,7 @@
     ...DEFAULT_EDITOR_DISPLAY,
     cueEditorShowNavigation: true, cueEditorShowTimeActions: true, cueEditorShowSticker: true,
   };
-  const TRADITIONAL_SUBTITLE_EDITOR_DISPLAY = {
+  const CINEMA_SCREEN_EDITOR_DISPLAY = {
     ...DEFAULT_EDITOR_DISPLAY,
     cueEditorShowTimeActions: true,
   };
@@ -4615,11 +4616,15 @@
       splitPercent: 60, columnPercent: 30, rows: [42, 16, 42], tree: THREE_FOLD_LAYOUT_TREE,
       editorDisplay: THREE_FOLD_EDITOR_DISPLAY,
     },
-    // 传统字幕编辑器：左上视频+当前字幕、右侧字幕列表、底部单行波形；以 custom 渲染器渲染。
-    traditional: {
-      preset: 'custom', waveformMode: 'basic', splitPercent: 60, columnPercent: 36,
-      rows: [42, 18, 40], tree: TRADITIONAL_SUBTITLE_LAYOUT_TREE,
-      editorDisplay: TRADITIONAL_SUBTITLE_EDITOR_DISPLAY,
+    // 大荧幕布局：左上大视频区、右上当前字幕/字幕列表、底部整行单行波形；以 custom 渲染器渲染。
+    cinema: {
+      preset: 'custom', waveformMode: 'basic',
+      waveformSettings: {
+        visibleSeconds: 20, secondsPerRow: 10, rowHeight: 120, waveformScale: 5.5,
+        side: 'left', disabledDisplay: 'dim', showGroupBadges: true, dragPlayhead: true,
+      },
+      splitPercent: 60, columnPercent: 36, rows: [42, 18, 40], tree: CINEMA_SCREEN_LAYOUT_TREE,
+      editorDisplay: CINEMA_SCREEN_EDITOR_DISPLAY,
     },
   };
   const PALETTE = {
@@ -7436,8 +7441,8 @@
 })();
 const DATA = {"segments": [], "media": "", "language": "", "model": ""};
 let FILENAME_BASE = "untitled";
-const STICKERS = [{"name": "大狗/10分10分-wb", "filename": "10分10分-wb.png", "rel": "大狗/10分10分-wb.png"}, {"name": "大狗/21-嘻嘻-wb", "filename": "21-嘻嘻-wb.png", "rel": "大狗/21-嘻嘻-wb.png"}, {"name": "大狗/Quson-wb", "filename": "Quson-wb.png", "rel": "大狗/Quson-wb.png"}, {"name": "大狗/不可以-无-wb", "filename": "不可以-无-wb.png", "rel": "大狗/不可以-无-wb.png"}, {"name": "大狗/不开心-bg", "filename": "不开心-bg.png", "rel": "大狗/不开心-bg.png"}, {"name": "大狗/不要-wb", "filename": "不要-wb.png", "rel": "大狗/不要-wb.png"}, {"name": "大狗/举刀-wb", "filename": "举刀-wb.jpg", "rel": "大狗/举刀-wb.jpg"}, {"name": "大狗/什么-wb", "filename": "什么-wb.png", "rel": "大狗/什么-wb.png"}, {"name": "大狗/什么啊-wb", "filename": "什么啊-wb.png", "rel": "大狗/什么啊-wb.png"}, {"name": "大狗/傻乎乎", "filename": "傻乎乎.png", "rel": "大狗/傻乎乎.png"}, {"name": "大狗/吃包包-wb", "filename": "吃包包-wb.png", "rel": "大狗/吃包包-wb.png"}, {"name": "大狗/吐舌-wb", "filename": "吐舌-wb.png", "rel": "大狗/吐舌-wb.png"}, {"name": "大狗/呆住", "filename": "呆住.png", "rel": "大狗/呆住.png"}, {"name": "大狗/唉你这-wb", "filename": "唉你这-wb.png", "rel": "大狗/唉你这-wb.png"}, {"name": "大狗/啊这-wb", "filename": "啊这-wb.png", "rel": "大狗/啊这-wb.png"}, {"name": "大狗/喝茶-wb", "filename": "喝茶-wb.png", "rel": "大狗/喝茶-wb.png"}, {"name": "大狗/嗯？怎？", "filename": "嗯？怎？.png", "rel": "大狗/嗯？怎？.png"}, {"name": "大狗/在干什么-wb", "filename": "在干什么-wb.png", "rel": "大狗/在干什么-wb.png"}, {"name": "大狗/墨聪明-wb", "filename": "墨聪明-wb.png", "rel": "大狗/墨聪明-wb.png"}, {"name": "大狗/好变态-wb", "filename": "好变态-wb.png", "rel": "大狗/好变态-wb.png"}, {"name": "大狗/尴尬-wb", "filename": "尴尬-wb.png", "rel": "大狗/尴尬-wb.png"}, {"name": "大狗/平身-wb", "filename": "平身-wb.png", "rel": "大狗/平身-wb.png"}, {"name": "大狗/开心大叫-wb", "filename": "开心大叫-wb.png", "rel": "大狗/开心大叫-wb.png"}, {"name": "大狗/忠诚-wb", "filename": "忠诚-wb.png", "rel": "大狗/忠诚-wb.png"}, {"name": "大狗/快打钱", "filename": "快打钱.png", "rel": "大狗/快打钱.png"}, {"name": "大狗/思索", "filename": "思索.png", "rel": "大狗/思索.png"}, {"name": "大狗/思考-wb", "filename": "思考-wb.png", "rel": "大狗/思考-wb.png"}, {"name": "大狗/慌张-wb", "filename": "慌张-wb.png", "rel": "大狗/慌张-wb.png"}, {"name": "大狗/拇指-wb", "filename": "拇指-wb.png", "rel": "大狗/拇指-wb.png"}, {"name": "大狗/按按钮", "filename": "按按钮.gif", "rel": "大狗/按按钮.gif"}, {"name": "大狗/杀戮-wb", "filename": "杀戮-wb.png", "rel": "大狗/杀戮-wb.png"}, {"name": "大狗/消沉-wb", "filename": "消沉-wb.png", "rel": "大狗/消沉-wb.png"}, {"name": "大狗/爆炸-wb", "filename": "爆炸-wb.png", "rel": "大狗/爆炸-wb.png"}, {"name": "大狗/网络皇帝-wb", "filename": "网络皇帝-wb.png", "rel": "大狗/网络皇帝-wb.png"}, {"name": "大狗/蛋花眼哭哭-wb", "filename": "蛋花眼哭哭-wb.png", "rel": "大狗/蛋花眼哭哭-wb.png"}, {"name": "大狗/觉得骄傲-wb", "filename": "觉得骄傲-wb.png", "rel": "大狗/觉得骄傲-wb.png"}, {"name": "大狗/记小本本-wb", "filename": "记小本本-wb.png", "rel": "大狗/记小本本-wb.png"}, {"name": "大狗/记小本本-看本本-wb", "filename": "记小本本-看本本-wb.png", "rel": "大狗/记小本本-看本本-wb.png"}, {"name": "大狗/诶嘿-wb", "filename": "诶嘿-wb.png", "rel": "大狗/诶嘿-wb.png"}, {"name": "大狗/超多疑问", "filename": "超多疑问.jpg", "rel": "大狗/超多疑问.jpg"}, {"name": "大狗/问号", "filename": "问号.png", "rel": "大狗/问号.png"}, {"name": "大狗/震撼-wb", "filename": "震撼-wb.png", "rel": "大狗/震撼-wb.png"}, {"name": "大狗/黑脸", "filename": "黑脸.png", "rel": "大狗/黑脸.png"}];
-let STICKER_ROOT = "E:/MoyCloud/Resource/素材/表情包";  // 表情包根目录的绝对路径（无尾斜杠）
+const STICKERS = [];
+let STICKER_ROOT = "";  // 表情包根目录的绝对路径（无尾斜杠）
 const STICKER_URL_PREFIX = "";
 const SERVER_CONFIG = null;
 const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';
@@ -11761,7 +11766,7 @@ function configureServerProjectSettings() {
 }
 
 // === 工作区库：服务器版可把工作区（窗口布局 + 显示状态）保存到本机设置，跨工程复用 ===
-const BUILTIN_WORKSPACE_IDS = window.AsrWaveform?.builtinWorkspaceIds || ['classic', 'wave-right', 'three-fold', 'traditional'];
+const BUILTIN_WORKSPACE_IDS = window.AsrWaveform?.builtinWorkspaceIds || ['classic', 'wave-right', 'three-fold', 'cinema'];
 let currentServerWorkspaceName = '';
 let currentBuiltinWorkspaceName = '';
 const workspacePresetSelect = document.getElementById('workspace-preset');

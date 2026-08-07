@@ -37,7 +37,7 @@ from maw.media import MediaConversionError, MediaResolutionError, MediaStatus, c
 
 MAX_RECENT_PROJECTS = 10
 SETTINGS_FILE_NAME = "server-editor-settings.json"
-BUILTIN_WORKSPACE_IDS = frozenset({"classic", "wave-right", "three-fold", "traditional"})
+BUILTIN_WORKSPACE_IDS = frozenset({"classic", "wave-right", "three-fold", "cinema"})
 
 
 class ByteRange(NamedTuple):

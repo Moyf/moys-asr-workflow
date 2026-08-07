@@ -8,10 +8,10 @@
   const ENCODING = 'i8-minmax-base64';
   const WORKSPACE_SCHEMA = 'moy.asr.editor.workspace.v1';
   // 渲染器预设：classic / wave-right 由专属 CSS 网格渲染；custom 由 layoutTree 渲染
-  // （传统字幕编辑器与用户保存的自定义工作区都以树渲染）。
+  // （大荧幕布局与用户保存的自定义工作区都以树渲染）。
   const RENDERER_PRESETS = ['classic', 'wave-right', 'custom'];
   // 内置工作区 id：下拉框可选项；custom 预设都由各自的布局树渲染。
-  const BUILTIN_WORKSPACE_IDS = ['classic', 'wave-right', 'three-fold', 'traditional'];
+  const BUILTIN_WORKSPACE_IDS = ['classic', 'wave-right', 'three-fold', 'cinema'];
   const MODULE_IDS = ['player', 'panel', 'cues', 'wave'];
   const MODULE_LABELS = { player: '视频', panel: '当前字幕', cues: '字幕列表', wave: '波形' };
   const DEFAULT_MODULE_ORDER = ['player', 'panel', 'cues', 'wave'];
@@ -31,17 +31,18 @@
       { type: 'module', id: 'wave' },
     ],
   };
-  const TRADITIONAL_SUBTITLE_LAYOUT_TREE = {
-    type: 'split', direction: 'column', ratio: 64,
+  // 大荧幕布局：左上大视频区、右上当前字幕/字幕列表、底部整行波形；以 custom 渲染器渲染。
+  const CINEMA_SCREEN_LAYOUT_TREE = {
+    type: 'split', direction: 'column', ratio: 72.711956653046,
     children: [
       {
-        type: 'split', direction: 'row', ratio: 32,
+        type: 'split', direction: 'row', ratio: 55.207499921561244,
         children: [
+          { type: 'module', id: 'player' },
           {
-            type: 'split', direction: 'column', ratio: 77,
-            children: [{ type: 'module', id: 'player' }, { type: 'module', id: 'panel' }],
+            type: 'split', direction: 'column', ratio: 20,
+            children: [{ type: 'module', id: 'panel' }, { type: 'module', id: 'cues' }],
           },
-          { type: 'module', id: 'cues' },
         ],
       },
       { type: 'module', id: 'wave' },
@@ -138,7 +139,7 @@
     ...DEFAULT_EDITOR_DISPLAY,
     cueEditorShowNavigation: true, cueEditorShowTimeActions: true, cueEditorShowSticker: true,
   };
-  const TRADITIONAL_SUBTITLE_EDITOR_DISPLAY = {
+  const CINEMA_SCREEN_EDITOR_DISPLAY = {
     ...DEFAULT_EDITOR_DISPLAY,
     cueEditorShowTimeActions: true,
   };
@@ -168,11 +169,15 @@
       splitPercent: 60, columnPercent: 30, rows: [42, 16, 42], tree: THREE_FOLD_LAYOUT_TREE,
       editorDisplay: THREE_FOLD_EDITOR_DISPLAY,
     },
-    // 传统字幕编辑器：左上视频+当前字幕、右侧字幕列表、底部单行波形；以 custom 渲染器渲染。
-    traditional: {
-      preset: 'custom', waveformMode: 'basic', splitPercent: 60, columnPercent: 36,
-      rows: [42, 18, 40], tree: TRADITIONAL_SUBTITLE_LAYOUT_TREE,
-      editorDisplay: TRADITIONAL_SUBTITLE_EDITOR_DISPLAY,
+    // 大荧幕布局：左上大视频区、右上当前字幕/字幕列表、底部整行单行波形；以 custom 渲染器渲染。
+    cinema: {
+      preset: 'custom', waveformMode: 'basic',
+      waveformSettings: {
+        visibleSeconds: 20, secondsPerRow: 10, rowHeight: 120, waveformScale: 5.5,
+        side: 'left', disabledDisplay: 'dim', showGroupBadges: true, dragPlayhead: true,
+      },
+      splitPercent: 60, columnPercent: 36, rows: [42, 18, 40], tree: CINEMA_SCREEN_LAYOUT_TREE,
+      editorDisplay: CINEMA_SCREEN_EDITOR_DISPLAY,
     },
   };
   const PALETTE = {
