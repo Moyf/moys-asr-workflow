@@ -98,7 +98,6 @@
 }
 .editor-workspace > .player-wrap video {
   width: 100%;
-  max-height: 40vh;
   background: #000;
   object-fit: contain;
 }

@@ -115,7 +115,7 @@ test('uses display defaults for each built-in workspace preset', () => {
     cueEditorShowTimeActions: true,
     cueEditorShowSticker: true,
   });
-  assert.deepEqual(JSON.parse(JSON.stringify(builtinWorkspaces.traditional.editorDisplay)), {
+  assert.deepEqual(JSON.parse(JSON.stringify(builtinWorkspaces.cinema.editorDisplay)), {
     cueListShowIndex: true,
     cueListShowTime: true,
     cueListShowSticker: true,
@@ -144,6 +144,25 @@ test('registers the three-fold built-in workspace from the example layout', () =
   assert.equal(workspace.editorDisplay.cueEditorShowNavigation, true);
   assert.equal(workspace.editorDisplay.cueEditorShowTimeActions, true);
   assert.equal(workspace.editorDisplay.cueEditorShowSticker, true);
+});
+
+
+test('registers the cinema built-in workspace from the example layout', () => {
+  const workspace = builtinWorkspaces.cinema;
+  assert.equal(workspace.preset, 'custom');
+  assert.equal(workspace.waveformMode, 'basic');
+  assert.deepEqual(JSON.parse(JSON.stringify(workspace.rows)), [42, 18, 40]);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.collectLayoutModules(workspace.tree))), [
+    'player', 'panel', 'cues', 'wave',
+  ]);
+  assert.equal(workspace.tree.ratio, 72.711956653046);
+  assert.equal(workspace.tree.children[0].ratio, 55.207499921561244);
+  assert.equal(workspace.tree.children[0].children[1].ratio, 20);
+  assert.equal(workspace.waveformSettings.waveformScale, 5.5);
+  assert.equal(workspace.editorDisplay.cueListShowTime, true);
+  assert.equal(workspace.editorDisplay.cueEditorShowNavigation, false);
+  assert.equal(workspace.editorDisplay.cueEditorShowTimeActions, true);
+  assert.equal(workspace.editorDisplay.cueEditorShowSticker, false);
 });
 
 

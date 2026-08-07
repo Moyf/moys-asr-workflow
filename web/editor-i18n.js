@@ -63,7 +63,7 @@
     '没有需要拼合的间隔或过短字幕': 'No intervals or short subtitles to snap',
     '字幕时长不足 200ms，无法拆分': 'Subtitles shorter than 200 ms cannot be split',
     '字幕列表编辑': 'Subtitle list editor', '右侧整列波形': 'Waveform column right',
-    '三折叠布局': 'Three-fold layout', '传统字幕编辑器': 'Traditional subtitle editor',
+    '三折叠布局': 'Three-fold layout', '大荧幕布局': 'Cinema screen layout',
     '编辑布局': 'Edit layout', '完成布局': 'Done editing', '重置工作区': 'Reset workspace',
     '已保存工作区': 'Saved workspaces',
     '保存工作区': 'Save workspace', '另存为工作区': 'Save workspace as', '删除工作区': 'Delete workspace',

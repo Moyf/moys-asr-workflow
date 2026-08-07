@@ -79,7 +79,7 @@
 {
   "schema": "moy.asr.editor.workspace.v1",
   "preset": "custom",
-  "selectedPreset": "traditional",
+  "selectedPreset": "cinema",
   "waveformMode": "basic",
   "waveformSettings": { "visibleSeconds": 20, "secondsPerRow": 10, "rowHeight": 120, "waveformScale": 1, "side": "left", "disabledDisplay": "dim", "showGroupBadges": true, "dragPlayhead": true },
   "editorDisplay": { "cueListShowIndex": true, "cueListShowTime": true, "cueListShowSticker": false, "cueListShowCharcount": true, "cueEditorShowNavigation": false, "cueEditorShowTimeActions": true, "cueEditorShowSticker": false },
@@ -114,8 +114,8 @@
 }
 ```
 
-- `preset` 是**渲染器**，决定这份窗口布局如何绘制：`classic`（标准堆叠网格）、`wave-right`（右侧整列波形网格）或 `custom`（由 `tree` 渲染；「字幕列表编辑」「传统字幕编辑器」与用户自定义工作区都走这条路）。未知值回退到 `wave-right`。
-- `selectedPreset` 记录用户最后在**工作区下拉框**选择的项：内置工作区为 `classic` / `wave-right` / `three-fold` / `traditional`（传统字幕编辑器），本机命名工作区为 `saved:<名称>`。它与 `tree` 一起保存，使内部以 `custom` 渲染的工作区在重开工程后仍显示用户所见的名称。
+- `preset` 是**渲染器**，决定这份窗口布局如何绘制：`classic`（标准堆叠网格）、`wave-right`（右侧整列波形网格）或 `custom`（由 `tree` 渲染；「字幕列表编辑」「大荧幕布局」与用户自定义工作区都走这条路）。未知值回退到 `wave-right`。
+- `selectedPreset` 记录用户最后在**工作区下拉框**选择的项：内置工作区为 `classic` / `wave-right` / `three-fold` / `cinema`（大荧幕布局），本机命名工作区为 `saved:<名称>`。它与 `tree` 一起保存，使内部以 `custom` 渲染的工作区在重开工程后仍显示用户所见的名称。
 - `waveformMode` 可为 `multi`（多行）或 `basic`（单行）。工作区中存在该字段时随恢复一并切换；缺失时保持当前浏览器设置。
 - `waveformSettings` 保存波形区数值与显示偏好：基础模式窗口长度、多行每行长度及高度、振幅、左右侧、禁用字幕显示、分组徽章与拖动播放头。字段缺失时保持浏览器本机设置。
 - `editorDisplay` 保存“字幕列表显示”和“字幕编辑显示”两组开关。它只包含工作区可见性，不包含导出、自动保存或快捷键等全局偏好。

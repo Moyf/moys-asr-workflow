@@ -4501,7 +4501,7 @@ function configureServerProjectSettings() {
 }
 
 // === 工作区库：服务器版可把工作区（窗口布局 + 显示状态）保存到本机设置，跨工程复用 ===
-const BUILTIN_WORKSPACE_IDS = window.AsrWaveform?.builtinWorkspaceIds || ['classic', 'wave-right', 'three-fold', 'traditional'];
+const BUILTIN_WORKSPACE_IDS = window.AsrWaveform?.builtinWorkspaceIds || ['classic', 'wave-right', 'three-fold', 'cinema'];
 let currentServerWorkspaceName = '';
 let currentBuiltinWorkspaceName = '';
 const workspacePresetSelect = document.getElementById('workspace-preset');

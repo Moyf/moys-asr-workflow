@@ -406,7 +406,7 @@ class EditorAssetTests(unittest.TestCase):
 
     def test_preset_layouts_do_not_keep_inactive_resize_tracks(self) -> None:
         styles = (ROOT / "web" / "waveform.css").read_text(encoding="utf-8")
-        # 传统字幕编辑器与自定义工作区统一由 custom 渲染器渲染，不再保留 wave-bottom 专属网格
+        # 大荧幕布局与自定义工作区统一由 custom 渲染器渲染，不再保留 wave-bottom 专属网格
         self.assertNotIn(".layout-wave-bottom", styles)
         self.assertNotIn(
             ".layout-resizer-v { grid-column: 2; grid-row: 1 / 6; cursor: col-resize; display: block; }",

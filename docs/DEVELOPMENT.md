@@ -48,7 +48,7 @@ uv run python edit.py --blank
 {
   "schema": "moy.asr.editor.workspace.v1",
   "preset": "custom",
-  "selectedPreset": "traditional",
+  "selectedPreset": "cinema",
   "waveformMode": "basic",
   "waveformSettings": { "visibleSeconds": 20, "secondsPerRow": 10, "rowHeight": 120, "waveformScale": 1 },
   "editorDisplay": { "cueListShowIndex": true, "cueListShowTime": true, "cueListShowSticker": false, "cueListShowCharcount": true, "cueEditorShowNavigation": false, "cueEditorShowTimeActions": true, "cueEditorShowSticker": false },
@@ -85,8 +85,8 @@ uv run python edit.py --blank
 
 字段说明：
 
-- `preset`：`classic`、`wave-right` 或 `custom`。`custom` 由 `tree` 渲染；“字幕列表编辑”“三折叠布局”“传统字幕编辑器”和用户自定义工作区都使用该渲染器。未知值回退到 `wave-right`。
-- `selectedPreset`：最后在工作区下拉框选择的项：内置工作区为 `classic`、`wave-right`、`three-fold`、`traditional`，本机命名工作区为 `saved:<名称>`。它与实际渲染用的 `preset` 分开记录，使重开工程后仍显示用户所见的工作区名称。
+- `preset`：`classic`、`wave-right` 或 `custom`。`custom` 由 `tree` 渲染；“字幕列表编辑”“三折叠布局”“大荧幕布局”和用户自定义工作区都使用该渲染器。未知值回退到 `wave-right`。
+- `selectedPreset`：最后在工作区下拉框选择的项：内置工作区为 `classic`、`wave-right`、`three-fold`、`cinema`，本机命名工作区为 `saved:<名称>`。它与实际渲染用的 `preset` 分开记录，使重开工程后仍显示用户所见的工作区名称。
 - `waveformMode`：`multi` 或 `basic`，记录波形显示模式；缺失时保持当前浏览器设置。
 - `waveformSettings`：波形区的数值与显示偏好，包括基础窗口长度、多行每行长度和高度、振幅、侧边、禁用项显示、分组徽章与拖动播放头。缺失字段保持浏览器本机偏好。
 - `editorDisplay`：字幕列表和字幕编辑区的显示开关；不携带自动保存、导出、快捷键等与布局无关的全局偏好。
