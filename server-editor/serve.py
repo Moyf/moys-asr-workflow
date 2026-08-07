@@ -32,7 +32,7 @@ if str(ROOT) not in sys.path:
 import edit  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
 from maw.project import ProjectValidationFailed, normalize_project, repair_segment_durations  # noqa: E402
-from maw.media import MediaConversionError, MediaResolutionError, MediaStatus, convert_media_for_browser, resolve_project_media  # noqa: E402
+from maw.media import MEDIA_EXTENSIONS, MediaConversionError, MediaResolutionError, MediaStatus, convert_media_for_browser, resolve_project_media  # noqa: E402
 
 
 MAX_RECENT_PROJECTS = 10
@@ -81,6 +81,10 @@ class SaveProjectError(ValueError):
 
 class RecentProjectError(ValueError):
     """A client attempted to open a project that was not explicitly remembered."""
+
+
+class AttachProjectError(ValueError):
+    """A browser-opened project could not be bound to its on-disk file."""
 
 
 def default_settings_path() -> Path:
@@ -329,6 +333,7 @@ def build_server_page(project: ServerProject, settings: ServerSettings | None = 
             "canSave": project.json_path is not None,
             "autoLoadedMediaName": (project.source_media_path or project.media_path).name if project.media_path else None,
             "recentProjectsUrl": "/api/recent-projects/open",
+            "attachUrl": "/api/project/attach",
             "settingsUrl": "/api/settings",
             "recentProjects": [item.to_json() for item in settings.recent_projects],
             "autoOpenLastProject": settings.auto_open_last_project,
@@ -452,6 +457,62 @@ class EditorServer(ThreadingHTTPServer):
             self.persist_settings()
             return project
 
+    def attach_project(self, file_name: str, browser_project: dict) -> ServerProject:
+        """Bind a project opened through the browser to its on-disk file.
+
+        Browser file pickers never reveal real paths, but a MAW project records
+        its media as an absolute path. When the same-named project file sits next
+        to that media and its segments match the browser copy, the server takes
+        over: media auto-loads and Ctrl+S saves back to the project file.
+        """
+        candidate = Path(file_name)
+        if (
+            not file_name
+            or candidate.name != file_name
+            or candidate.suffix.lower() not in {".json", ".mosp"}
+            or file_name in {".", ".."}
+        ):
+            raise AttachProjectError("工程文件名不正确")
+        media_value = browser_project.get("media")
+        if not isinstance(media_value, str) or not media_value.strip():
+            raise AttachProjectError("工程没有记录媒体路径，无法由服务器接管")
+        media_path = Path(media_value).expanduser()
+        if not media_path.is_absolute():
+            raise AttachProjectError("工程记录的媒体路径不是绝对路径，无法由服务器接管")
+        try:
+            media_path = media_path.resolve(strict=True)
+        except OSError:
+            raise AttachProjectError("工程记录的媒体文件不存在或已移动")
+        if media_path.suffix.lower() not in MEDIA_EXTENSIONS:
+            raise AttachProjectError("工程记录的媒体不是可识别的音视频文件")
+        project_path = media_path.parent / candidate.name
+        if not project_path.is_file():
+            raise AttachProjectError("媒体同目录下没有同名工程文件，无法绑定保存")
+
+        # 防止同目录同名旧文件掉包：段落内容与浏览器打开的副本一致才接管。
+        browser_data = copy.deepcopy(browser_project)
+        browser_segments = browser_data.get("segments")
+        if isinstance(browser_segments, list):
+            repair_segment_durations(browser_segments)
+        try:
+            normalized_browser = normalize_project(browser_data)
+        except ProjectValidationFailed as error:
+            raise AttachProjectError(f"打开的工程内容无效：{error}") from error
+        project = load_project(
+            project_path,
+            None,
+            self.stickers_dir,
+            no_waveform=self.no_waveform,
+            peaks_per_second=self.peaks_per_second,
+        )
+        if project.data.get("segments") != normalized_browser.get("segments"):
+            raise AttachProjectError("媒体同目录的同名工程与打开的副本内容不一致，未接管")
+        with self.settings_lock:
+            self.project = project
+            self.settings = remember_project(self.settings, project.json_path)
+            self.persist_settings()
+        return project
+
     def save_project(self, project_data: dict, filename: str | None = None) -> tuple[Path, Path | None]:
         if not self.project.json_path:
             raise SaveProjectError("空白服务器没有绑定工程路径；请使用“导出工程”")
@@ -517,6 +578,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/api/project":
             self.save_project()
+        elif path == "/api/project/attach":
+            self.attach_project()
         elif path == "/api/recent-projects/open":
             self.open_recent_project()
         elif path == "/api/settings":
@@ -567,6 +630,28 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         except OSError as error:
             self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": f"加载工程失败：{error}"})
+            return
+        self.send_json(HTTPStatus.OK, {
+            "ok": True,
+            "name": project.json_path.name if project.json_path else "",
+            "mediaName": (project.source_media_path or project.media_path).name if project.media_path else "",
+        })
+
+    def attach_project(self) -> None:
+        try:
+            request = self.read_json_request()
+            file_name = request.get("fileName")
+            if not isinstance(file_name, str) or not file_name:
+                raise AttachProjectError("工程文件名格式不正确")
+            project_data = request.get("project")
+            if not isinstance(project_data, dict):
+                raise AttachProjectError("工程内容必须是对象")
+            project = self.editor_server.attach_project(file_name, project_data)
+        except (UnicodeDecodeError, json.JSONDecodeError, FileNotFoundError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        except OSError as error:
+            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": f"接管工程失败：{error}"})
             return
         self.send_json(HTTPStatus.OK, {
             "ok": True,

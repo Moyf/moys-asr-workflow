@@ -31,6 +31,14 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Verify tag matches pyproject version
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
@@ -47,6 +55,9 @@ jobs:
 
       - name: Run packaging contract tests
         run: uv run python -m unittest tests/test_packaging_contract.py
+
+      - name: Verify macOS app icon asset
+        run: uv run python scripts/build_macos_icon.py --check
 
       - name: Run Python tests
         run: uv run python -m unittest discover -s tests -p "test_*.py"
@@ -67,9 +78,104 @@ jobs:
           "$AppExe" --help >/dev/null
 
       - name: Ad-hoc codesign the app bundle
-        run: codesign --force --deep --sign - dist/MAW.app
+        run: |
+          codesign --force --deep --sign - dist/MAW.app
+          codesign --verify --deep --strict --verbose=2 dist/MAW.app
 
-      - name: Create release archive
+      - name: Install MOSE build dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Prepare MOSE frontend and validate Rust
+        working-directory: desktop
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Build MOSE macOS app bundle
+        working-directory: desktop
+        run: npm run tauri -- build --config src-tauri/tauri.macos.conf.json --bundles app --no-sign
+
+      - name: Smoke and sign MOSE app bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          MoseApp="desktop/src-tauri/target/release/bundle/macos/MOSE.app"
+          MoseExe="$MoseApp/Contents/MacOS/mose"
+          if [ ! -x "$MoseExe" ]; then
+            echo "Missing executable $MoseExe after Tauri build."
+            exit 1
+          fi
+          if ! file "$MoseExe" | grep -Eq 'arm64|Apple Silicon'; then
+            echo "MOSE was not built as an Apple Silicon executable:"
+            file "$MoseExe"
+            exit 1
+          fi
+          codesign --force --deep --sign - "$MoseApp"
+          codesign --verify --deep --strict --verbose=2 "$MoseApp"
+          ditto "$MoseApp" dist/MOSE.app
+
+      - name: Build MAWxFF app bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          FfmpegVersion="8.1"
+          FfmpegArchiveUrl="https://www.osxexperts.net/ffmpeg81arm.zip"
+          FfmpegArchiveSha256="ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085bb9e8f6fe709598ad"
+          FfprobeArchiveUrl="https://www.osxexperts.net/ffprobe81arm.zip"
+          FfprobeArchiveSha256="a6640a77d38a6f0527c5b597e599cb36a3427a6931444ed80bc62542421950a1"
+          FfmpegBinarySha256="9a08d61f9328e8164ba560ee7a79958e357307fcfeea6fe626b7d66cdc287028"
+          FfprobeBinarySha256="aab17ac7379c1178aaf400c3ef36cdb67db0b75b1a23eeef2cb9f658be8844e6"
+          LicenseBaseUrl="https://raw.githubusercontent.com/FFmpeg/FFmpeg/n8.1"
+          DownloadRoot="build/macos-ffmpeg/downloads"
+          ExtractRoot="build/macos-ffmpeg/extracted"
+          FfmpegArchive="$DownloadRoot/ffmpeg81arm.zip"
+          FfprobeArchive="$DownloadRoot/ffprobe81arm.zip"
+          mkdir -p "$DownloadRoot" "$ExtractRoot/ffmpeg" "$ExtractRoot/ffprobe"
+
+          curl --fail --location --retry 3 --silent --show-error --output "$FfmpegArchive" "$FfmpegArchiveUrl"
+          curl --fail --location --retry 3 --silent --show-error --output "$FfprobeArchive" "$FfprobeArchiveUrl"
+          printf '%s  %s\n' "$FfmpegArchiveSha256" "$FfmpegArchive" | shasum -a 256 -c -
+          printf '%s  %s\n' "$FfprobeArchiveSha256" "$FfprobeArchive" | shasum -a 256 -c -
+          unzip -q -o "$FfmpegArchive" -d "$ExtractRoot/ffmpeg"
+          unzip -q -o "$FfprobeArchive" -d "$ExtractRoot/ffprobe"
+
+          FfmpegBinary="$(find "$ExtractRoot/ffmpeg" -type f -name ffmpeg ! -path '*/__MACOSX/*' -print -quit)"
+          FfprobeBinary="$(find "$ExtractRoot/ffprobe" -type f -name ffprobe ! -path '*/__MACOSX/*' -print -quit)"
+          if [ -z "$FfmpegBinary" ] || [ -z "$FfprobeBinary" ]; then
+            echo "The downloaded macOS FFmpeg archives did not contain ffmpeg and ffprobe."
+            exit 1
+          fi
+          chmod +x "$FfmpegBinary" "$FfprobeBinary"
+          file "$FfmpegBinary" | grep -q 'arm64'
+          file "$FfprobeBinary" | grep -q 'arm64'
+          printf '%s  %s\n' "$FfmpegBinarySha256" "$FfmpegBinary" | shasum -a 256 -c -
+          printf '%s  %s\n' "$FfprobeBinarySha256" "$FfprobeBinary" | shasum -a 256 -c -
+
+          cp -R dist/MAW.app dist/MAWxFF.app
+          FfmpegDirectory="dist/MAWxFF.app/Contents/MacOS/ffmpeg"
+          mkdir -p "$FfmpegDirectory/bin"
+          cp "$FfmpegBinary" "$FfmpegDirectory/bin/ffmpeg"
+          cp "$FfprobeBinary" "$FfmpegDirectory/bin/ffprobe"
+          curl --fail --location --retry 3 --silent --show-error --output "$FfmpegDirectory/LICENSE.md" "$LicenseBaseUrl/LICENSE.md"
+          curl --fail --location --retry 3 --silent --show-error --output "$FfmpegDirectory/COPYING.GPLv3" "$LicenseBaseUrl/COPYING.GPLv3"
+          curl --fail --location --retry 3 --silent --show-error --output "$FfmpegDirectory/COPYING.LGPLv2.1" "$LicenseBaseUrl/COPYING.LGPLv2.1"
+          cat > "$FfmpegDirectory/SOURCE.txt" <<EOF
+          FFmpeg $FfmpegVersion Apple Silicon static binaries for MAWxFF.
+          Build provider: https://www.osxexperts.net/
+          Original ffmpeg archive: $FfmpegArchiveUrl
+          Original ffprobe archive: $FfprobeArchiveUrl
+          FFmpeg license and reference source: $LicenseBaseUrl
+          This MAWxFF package includes only ffmpeg and ffprobe from the original builds.
+          See LICENSE.md, COPYING.GPLv3, and COPYING.LGPLv2.1 in this directory.
+          EOF
+
+          codesign --force --deep --sign - dist/MAWxFF.app
+          dist/MAWxFF.app/Contents/MacOS/ffmpeg/bin/ffmpeg -version >/dev/null
+          dist/MAWxFF.app/Contents/MacOS/ffmpeg/bin/ffprobe -version >/dev/null
+          dist/MAWxFF.app/Contents/MacOS/MAW --smoke-import
+          dist/MAWxFF.app/Contents/MacOS/MAW --help >/dev/null
+          codesign --verify --deep --strict --verbose=2 dist/MAWxFF.app
+
+      - name: Create release archives
         shell: bash
         run: |
           set -euo pipefail
@@ -77,9 +183,27 @@ jobs:
           if [[ "$Version" != v* ]]; then
             Version="dev"
           fi
-          Archive="MAW-macOS-arm64-${Version}.zip"
-          ditto -c -k --sequesterRsrc --keepParent dist/MAW.app "$Archive"
-          shasum -a 256 "$Archive" > "${Archive}.sha256"
+          StandardArchive="MAW-macOS-arm64-${Version}.zip"
+          XffArchive="MAWxFF-macOS-arm64-${Version}.zip"
+          StandardStage="build/release/standard"
+          XffStage="build/release/xff"
+          mkdir -p "$StandardStage" "$XffStage"
+          ditto dist/MAW.app "$StandardStage/MAW.app"
+          ditto dist/MOSE.app "$StandardStage/MOSE.app"
+          ditto dist/MAWxFF.app "$XffStage/MAWxFF.app"
+          ditto dist/MOSE.app "$XffStage/MOSE.app"
+          (
+            cd "$StandardStage"
+            zip -qry "$GITHUB_WORKSPACE/$StandardArchive" MAW.app MOSE.app
+          )
+          (
+            cd "$XffStage"
+            zip -qry "$GITHUB_WORKSPACE/$XffArchive" MAWxFF.app MOSE.app
+          )
+          unzip -l "$StandardArchive" | grep -q 'MAW.app/Contents/MacOS/MAW'
+          unzip -l "$StandardArchive" | grep -q 'MOSE.app/Contents/MacOS/mose'
+          unzip -l "$XffArchive" | grep -q 'MAWxFF.app/Contents/MacOS/MAW'
+          unzip -l "$XffArchive" | grep -q 'MOSE.app/Contents/MacOS/mose'
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -87,7 +211,7 @@ jobs:
           name: MAW-macOS-arm64-${{ github.ref_name || 'dev' }}
           path: |
             MAW-macOS-arm64-*.zip
-            MAW-macOS-arm64-*.zip.sha256
+            MAWxFF-macOS-arm64-*.zip
           if-no-files-found: error
 
       - name: Attach artifacts to GitHub Release
@@ -100,4 +224,4 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             MAW-macOS-arm64-*.zip
-            MAW-macOS-arm64-*.zip.sha256
+            MAWxFF-macOS-arm64-*.zip

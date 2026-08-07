@@ -8,39 +8,39 @@
   Object.assign(STRINGS.zh, {
     generate_html: "同时生成单文件版网页编辑器（html）",
     generate_html_title: "单文件版编辑器直接在浏览器打开就能用，优势是便携，但是会缺少保存功能（只能通过导出下载）",
-    open_html: "打开该工程的 HTML 编辑器",
-    open_blank_html: "打开空的 HTML 编辑器",
-    server_already_running: "当前字幕编辑服务器已在运行中：",
-    server_address: "当前服务器地址：",
+    open_html: "📝 打开该工程的 HTML 编辑器",
+    open_blank_html: "📝 打开空的 HTML 编辑器",
+    server_already_running: "🌐 当前字幕编辑服务器已在运行中：",
+    server_address: "🌐 当前服务器地址：",
     server_start_hint: "请点击「启动字幕服务器」",
     server_no_response_hint: "编辑器服务器没有响应，请检查端口或下方状态。",
     server_start_failed_hint: "编辑器服务器启动失败，请查看下方状态和日志。",
-    open_editor: "打开字幕编辑器",
+    open_editor: "🚀 打开字幕编辑器",
     server_refresh: "刷新"
   });
   Object.assign(STRINGS.en, {
     generate_html: "Also generate a single-file web editor (HTML)",
     generate_html_title: "The single-file editor works directly in a browser and is portable, but cannot save changes locally; export/download instead.",
-    open_html: "Open this project's HTML editor",
-    open_blank_html: "Open blank HTML editor",
-    server_already_running: "A subtitle editor server is already running: ",
-    server_address: "Current server address: ",
+    open_html: "📝 Open this project's HTML editor",
+    open_blank_html: "📝 Open blank HTML editor",
+    server_already_running: "🌐 A subtitle editor server is already running: ",
+    server_address: "🌐 Current server address: ",
     server_start_hint: "click \"Launch Subtitle Editor\"",
     server_no_response_hint: "The editor server did not respond. Check the port or the status below.",
     server_start_failed_hint: "The editor server failed to start. Check the status and logs below.",
-    open_editor: "Open Subtitle Editor",
+    open_editor: "🚀 Open Subtitle Editor",
     server_refresh: "Refresh"
   });
   Object.assign(STRINGS.zh, {
     qwen_audio_context: "附加上下文（Prompt）",
-    qwen_audio_context_placeholder: "例如：产品名、专业术语、上一轮识别结果……",
+    qwen_audio_context_placeholder: "额外用来辅助 AI 判断的上下文提示词，例如：这是一段关于医药公司的会议记录，参与人员有阿米娅、凯尔希、维什戴尔等人，它们讨论的主要话题基于“源石”的治愈方案展开。",
     qwen_audio_context_hint: "领域词表或前文提示；本次任务最多发送 400 个字符，不是通用系统指令。",
     qwen_audio_context_count: "当前字符数：{count}/400",
     qwen_audio_hotwords: "即时热词",
     qwen_audio_hotwords_mode_text: "直接输入",
     qwen_audio_hotwords_mode_file: "从文件读取",
     qwen_audio_hotwords_placeholder: "哔哩哔哩\nMoy\n扑热息痛\nWubba Lubba Dub Dub",
-    qwen_audio_hotwords_hint: "每行一个，也支持逗号分隔；可直接拖入 .txt 文本文件自动填入；只作用于本次 Qwen-Audio 转写。",
+    qwen_audio_hotwords_hint: "如果有容易识别错的单词，可以在此填入，每行一个。模型会在解码过程中提高它们的匹配概率（也可拖入 .txt 文件自动填入）",
     qwen_audio_hotwords_file_placeholder: "拖入或选择 .txt 热词文件",
     qwen_audio_hotwords_file_hint: "支持 UTF-8 编码的 .txt 文件，每行一个热词。",
     qwen_audio_hotwords_weight_override_hint: "支持用“热词: 权重”单独指定某个词的权重，如“obsidian: 5”（中英文冒号皆可）；未指定的热词使用默认权重。",
@@ -63,14 +63,14 @@
   });
   Object.assign(STRINGS.en, {
     qwen_audio_context: "Prompt / context",
-    qwen_audio_context_placeholder: "For example: product names, domain terms, or prior recognition text…",
+    qwen_audio_context_placeholder: "An additional context prompt to help the AI interpret the audio, e.g.: This is a meeting transcript from a pharmaceutical company. Participants include Amiya, Kal'tsit, Wis'adel, and others. The main topic is a healing solution based on “Originium.”",
     qwen_audio_context_hint: "Domain terms or prior context; at most 400 characters per request, not a general system prompt.",
     qwen_audio_context_count: "Characters: {count}/400",
     qwen_audio_hotwords: "Instant hotwords",
     qwen_audio_hotwords_mode_text: "Direct input",
     qwen_audio_hotwords_mode_file: "Load from file",
     qwen_audio_hotwords_placeholder: "Bilibili\nMoy\nParacetamol\nWubba Lubba Dub Dub",
-    qwen_audio_hotwords_hint: "One per line or comma-separated; you can also drop a .txt file here to fill it in; applies only to this Qwen-Audio transcription.",
+    qwen_audio_hotwords_hint: "If there are words that are easy to misrecognize, enter them here, one per line. The model will increase their matching probability during decoding (you can also drop a .txt file here to fill them in automatically).",
     qwen_audio_hotwords_file_placeholder: "Drop or choose a .txt hotword file",
     qwen_audio_hotwords_file_hint: "UTF-8 .txt files are supported; one hotword per line.",
     qwen_audio_hotwords_weight_override_hint: "Use “hotword: weight” to override one term, e.g. “obsidian: 5” (English or Chinese colon); other terms use the default weight.",
@@ -124,8 +124,11 @@
       hotwords_file_missing: "请选择存在且为 UTF-8 编码的 .txt 热词文件。",
       output_missing: "请填写 SRT 输出路径。",
       ffprobe_start_failed: "ffprobe 启动失败（Windows 错误 0xC0000142）。请重新运行 MAW；如果仍然失败，请重新下载并完整解压 MAWxFF，并检查 Windows 安全中心是否拦截了 ffprobe.exe。",
+      config_save_failed: (detail) => `无法保存本地配置：${detail || "请检查应用数据目录权限后重试。"}`,
       server_no_response: (detail) => `编辑器服务器没有响应（${detail || "http://127.0.0.1"}）——端口可能被占用，请检查端口后重试。`,
       server_start_failed: (detail) => `编辑器服务器启动失败：${detail || "请查看下方日志。"}`,
+      mose_not_found: (detail) => `当前 MAW 包中没有找到 ${detail || "MOSE.app"}，请确认桌面版编辑器文件存在。`,
+      mose_start_failed: (detail) => `MOSE 启动失败：${detail || "请检查桌面版编辑器文件。"}`,
       sticker_dir_invalid: "表情包根目录不存在。"
     },
     en: {
@@ -140,11 +143,23 @@
       hotwords_file_missing: "Choose an existing UTF-8 .txt hotword file.",
       output_missing: "Enter an SRT output path.",
       ffprobe_start_failed: "ffprobe failed to start (Windows error 0xC0000142). Please run MAW again. If it keeps happening, download and fully extract MAWxFF again, and check Windows Security for a blocked ffprobe.exe.",
+      config_save_failed: (detail) => `Could not save local configuration: ${detail || "check the app-data directory permissions and try again."}`,
       server_no_response: (detail) => `The editor server did not respond (${detail || "http://127.0.0.1"}). The port may be occupied; check the port and retry.`,
       server_start_failed: (detail) => `The editor server failed to start: ${detail || "check the logs below."}`,
+      mose_not_found: (detail) => `${detail || "MOSE.app"} was not found in this MAW package. Check that the desktop editor is present.`,
+      mose_start_failed: (detail) => `MOSE failed to start: ${detail || "check the desktop editor files."}`,
       sticker_dir_invalid: "Sticker root directory does not exist."
     }
   };
+  Object.assign(STRINGS.zh, {
+    open_mose: "🎬 在 MOSE 中打开",
+    start_server_editor: "🚀 启动字幕编辑器",
+  });
+  Object.assign(STRINGS.en, {
+    open_mose: "🎬 Open in MOSE",
+    start_server_editor: "🚀 Start Editor",
+  });
+
   const HOME_URL = "https://github.com/Moyf/moys-asr-workflow";
   const LAST_MODEL_KEY = "MAW_GUI_LAST_MODEL";
   const LAST_LANGUAGE_KEY = "MAW_GUI_LAST_LANGUAGE";
@@ -153,7 +168,7 @@
   const HOTWORD_WEIGHTS = new Set([1, 2, 3, 4, 5, 50]);
   const MAX_HOTWORDS = 2000;
   const MAX_SUPER_HOTWORDS = 50;
-  const state = { lang: "zh", serverRunning: false, serverStarting: false, running: false, result: null, config: null, srtAuto: true, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system" };
+  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverProjectPath: "", moseStarting: false, running: false, result: null, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system" };
   const dragState = { depth: 0 };
   let api = null;
   let prefsTimer = 0;
@@ -173,7 +188,7 @@
         workspaceId: saved.workspaceId,
         guiLang: saved.guiLang,
         showRareLangs: saved.showRareLangs || false,
-        appVersion: "1.2.0",
+        appVersion: "1.13.1-beta-5",
         stickerDir: saved.stickerDir || "",
         providers: [
           {
@@ -208,12 +223,13 @@
           }
         ]
       }),
-      default_output: async ({ mediaPath, providerId, modelId }) => ({ ok: true, path: mediaPath ? mediaPath.replace(/\.[^.\\/]+$/, providerId === "soniox" ? ".soniox.srt" : (modelId === "fun-asr" ? ".fun-asr.srt" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio.srt" : ".qwen3-asr-api.srt"))) : "" }),
+      default_output: async ({ mediaPath, providerId, modelId, testRun }) => ({ ok: true, path: mediaPath ? mediaPath.replace(/\.[^.\\/]+$/, `${providerId === "soniox" ? ".soniox" : (modelId === "fun-asr" ? ".fun-asr" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio" : ".qwen3-asr-api"))}${testRun ? "-test" : ""}.srt`) : "" }),
       choose_file: async ({ kind }) => ({ ok: true, path: kind === "json" ? "D:\\Demo\\project.json" : (kind === "hotwords" ? "D:\\Demo\\hotwords.txt" : "D:\\Demo\\clip.mp4") }),
       read_hotword_file: async () => ({ ok: true, path: "D:\\Demo\\hotwords.txt", text: "张三\n阿里云百炼\n专业术语\n" }),
       save_settings: async (payload) => { saved = { ...saved, ...payload }; return { ok: true, maskedApiKey: payload.apiKey ? "sk-…mock" : "", message: "mock saved" }; },
       save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); return { ok: true }; },
       open_url: async ({ url }) => { window.open(url, "_blank"); return { ok: true }; },
+      open_mose: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "log", message: "[mock] would open the platform MOSE editor with the project path" }), 120); return { ok: true, usedMose: true }; },
       open_blank_html: async () => ({ ok: true }),
       check_ffmpeg: async () => ({ ok: true, found: true, directory: "D:\\FFmpeg\\bin", ffmpeg: "D:\\FFmpeg\\bin\\ffmpeg.exe", ffprobe: "D:\\FFmpeg\\bin\\ffprobe.exe" }),
       save_ffmpeg_path: async ({ path }) => ({ ok: Boolean(path), found: Boolean(path), directory: path || "", ffmpeg: path || "", ffprobe: path || "" }),
@@ -273,14 +289,6 @@
     link.className = "status-link";
     link.addEventListener("click", (event) => { event.preventDefault(); bridge("open_url", { url }); });
     status.append(link);
-    if (alreadyRunning) {
-      const stop = document.createElement("button");
-      stop.type = "button";
-      stop.className = "status-stop-link";
-      stop.textContent = t("server_stop");
-      stop.addEventListener("click", stopEditorServer);
-      status.append(stop);
-    }
   }
   const appendLog = (text) => { const log = $("log"); log.textContent += `${text}\n`; log.scrollTop = log.scrollHeight; };
 
@@ -315,21 +323,29 @@
   function clearErrors() { ["mediaPath", "srtPath", "apiKey", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => setError(field, "")); }
   function formPayload() { return { providerId: $("provider").value, modelId: $("model").value, mediaPath: $("mediaPath").value.trim(), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), language: languageValue(), lengthLimit: $("lengthLimit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, testRun: $("testRun").checked, speakerColors: $("speakerColors").checked, generateHtml: $("generateHtml").checked, guiLang: state.lang }; }
   function serverPayload() { return { jsonPath: $("jsonPath").value.trim(), mediaPath: $("serverMediaPath").value.trim(), port: $("port").value || "8250", guiLang: state.lang }; }
-  function renderMaweButton() {
+  function renderMoseButton() {
+    const button = $("openMose");
+    if (!button) return;
+    button.textContent = state.moseStarting ? SERVER_STARTING_TEXT[state.lang] : t("open_mose");
+    button.disabled = state.moseStarting;
+  }
+  function renderServerButton() {
     const button = $("openMawe");
+    if (!button) return;
     button.textContent = state.serverStarting
       ? SERVER_STARTING_TEXT[state.lang]
-      : (state.serverRunning ? t("server_stop") : (state.detectedServerUrl ? t("open_editor") : t("open_mawe")));
+      : ((state.serverRunning || state.detectedServerUrl) ? t("open_editor") : t("start_server_editor"));
     button.disabled = state.serverStarting;
+    $("stopServer").classList.toggle("hidden", !state.serverRunning && !state.detectedServerUrl);
+    $("stopServer").disabled = state.serverStarting;
   }
-  async function stopEditorServer() { const result = await bridge("stop_server", serverPayload()); if (!result.ok) { applyErrorResult(result); return; } state.serverRunning = false; state.detectedServerUrl = ""; renderMaweButton(); setStatus(t("ready")); }
-  async function checkExistingServer(prefix = "") { const previousUrl = state.detectedServerUrl; state.detectedServerUrl = ""; const result = await bridge("get_server_status", serverPayload()); if (!result.ok || !result.running || !result.url) { if (prefix) setStatus(`${prefix}，${t("server_start_hint")}`); else if (previousUrl) setStatus(t("ready")); renderMaweButton(); return; } const isExternalServer = !state.serverRunning; state.detectedServerUrl = isExternalServer ? result.url : ""; setServerStatus(result.url, isExternalServer, prefix); renderMaweButton(); }
+  async function stopEditorServer() { const result = await bridge("stop_server", serverPayload()); if (!result.ok) { applyErrorResult(result); return; } state.serverRunning = false; state.serverProjectPath = ""; state.detectedServerUrl = ""; renderServerButton(); setStatus(t("ready")); }
+  async function checkExistingServer(prefix = "") { const previousUrl = state.detectedServerUrl; state.detectedServerUrl = ""; const result = await bridge("get_server_status", serverPayload()); if (!result.ok || !result.running || !result.url) { state.serverRunning = false; state.serverProjectPath = ""; if (prefix) setStatus(`${prefix}，${t("server_start_hint")}`); else if (previousUrl) setStatus(t("ready")); renderServerButton(); return; } const isExternalServer = !state.serverRunning; state.detectedServerUrl = isExternalServer ? result.url : ""; setServerStatus(result.url, isExternalServer, prefix); renderServerButton(); }
   function syncHtmlMenu() { const enabled = $("generateHtml").checked; $("openHtml").classList.toggle("hidden", !enabled); $("openHtml").disabled = enabled && !state.result?.htmlPath; }
   function renderChevron(id) { const arrow = $(id).querySelector(".chevron"); if (arrow) arrow.textContent = $(id).classList.contains("collapsed") ? "▸" : "▾"; }
   function renderStickerCurrent() { $("stickerCurrent").textContent = state.config?.stickerDir || t("unset"); $("stickerDir").value = state.config?.stickerDir || ""; }
   async function saveStickerDirectory(path) { $("stickerDir").value = path; const result = await bridge("save_sticker_dir", { path }); setError("stickerDir", result.ok ? "" : errText(result.code, result.detail || result.error)); if (result.ok) { state.config.stickerDir = result.stickerDir; renderStickerCurrent(); setStatus(t("saved")); } else setStatus(errText(result.code, result.detail || result.error)); return result; }
   function renderKeyStatus() { const masked = state.config ? provider().maskedApiKey : ""; $("keyStatus").textContent = masked ? t("key_loaded").replace("{key}", masked) : t("key_empty"); }
-  function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); $("langToggle").textContent = t("other_language"); $("demoBadge").textContent = t("demo_mode"); renderKeyStatus(); renderStickerCurrent(); renderPromptCharacterCount(); renderHotwordWarnings(); renderMaweButton(); }
   function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); applySelectedModel(persistReset); $("openKeyUrl").textContent = current.label; $("regionField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || current.regions.length === 0); $("apiKey").value = current.apiKey || ""; renderKeyStatus(); syncWorkspace(); }
   function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
   function syncQwenAudioOptions(model) { const enabled = Boolean(model?.supportsContext || model?.supportsHotwords); $("qwenAudioOptions").classList.toggle("hidden", !enabled); $("qwenAudioContextField").classList.toggle("hidden", !model?.supportsContext); $("qwenAudioHotwordsSection").classList.toggle("hidden", !model?.supportsHotwords); syncQwenAudioHotwordsMode(); }
@@ -344,19 +360,22 @@
   function clearDropState() { dragState.depth = 0; state.dropTarget = ""; setDropHighlight(false); ["qwenAudioHotwords", "qwenAudioHotwordsFile", "jsonPath"].forEach((id) => $(id)?.classList.remove("drag-over")); }
   function setQwenAudioHotwordsFile(path) { if (ext(path) !== ".txt") { setError("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return false; } $("qwenAudioHotwordsFile").value = path; setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); return true; }
   async function loadHotwordFile(path, appendToText = false) { if (ext(path) !== ".txt") { setError("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); clearDropState(); return; } const result = await bridge("read_hotword_file", { path }); if (!result.ok) { applyErrorResult(result, false); clearDropState(); return; } if (appendToText) { const incoming = String(result.text || "").trim(); if (incoming) { const current = $("qwenAudioHotwords").value.trimEnd(); $("qwenAudioHotwords").value = current ? `${current}\n${incoming}` : incoming; } setHotwordsMode("text"); renderHotwordWarnings($("qwenAudioHotwords").value); setStatus(t("qwen_audio_hotwords_loaded")); } else { setQwenAudioHotwordsFile(result.path || path); renderHotwordWarnings(String(result.text || ""), Number($("qwenAudioHotwordWeight").value), true); } clearDropState(); }
+  function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); $("langToggle").textContent = t("other_language"); $("demoBadge").textContent = t("demo_mode"); renderKeyStatus(); renderStickerCurrent(); renderPromptCharacterCount(); renderHotwordWarnings(); renderMoseButton(); renderServerButton(); }
   function applyProviderLanguages(current, model, persistReset = false) { const el = $("language"); const previous = el.multiple ? Array.from(el.selectedOptions).map((o) => o.value) : (el.value ? [el.value] : []); const remembered = state.config.lastLanguage; const wanted = previous.length && persistReset ? previous : (remembered !== null && remembered !== undefined ? (remembered ? remembered.split(",") : []) : [state.config.language].filter(Boolean)); el.multiple = Boolean(current.multiLanguage); $("advancedOptionsGrid").classList.toggle("single-language", !current.multiLanguage); if (current.multiLanguage) el.size = 6; else el.removeAttribute("size"); const showRare = Boolean(state.config.showRareLangs); const commons = current.commonLanguages || []; const available = model.languages?.length ? model.languages : current.languages; const visible = !showRare && commons.length ? available.filter((item) => commons.includes(item.id)) : available; fillSelect("language", visible, ""); const codes = new Set(visible.map((item) => item.id)); const restored = wanted.filter((code) => code && codes.has(code)); if (current.multiLanguage) { Array.from(el.options).forEach((o) => { o.selected = restored.includes(o.value); }); } else { el.value = restored[0] || ""; } $("languageHint").classList.toggle("hidden", !current.multiLanguage); $("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0); $("languageReset").classList.toggle("hidden", !current.multiLanguage); }
   function languageValue() { const el = $("language"); if (el.multiple) return Array.from(el.selectedOptions).map((o) => o.value).filter(Boolean).join(","); return el.value; }
   function syncWorkspace() { $("workspaceField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || provider().regions.length === 0); }
-  function syncTestRun() { const on = $("testRun").checked; $("testRunHint").classList.toggle("hidden", !on); $("lengthLimit").disabled = on; }
+  function appendTestSuffix(path) { const value = String(path || "").trim(); if (!value || /-test(?=\.[^./\\]+$)/iu.test(value)) return value; const separator = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\")); const dot = value.lastIndexOf("."); if (dot <= separator) return `${value}-test`; return `${value.slice(0, dot)}-test${value.slice(dot)}`; }
+  function removeTestSuffix(path) { return String(path || "").replace(/-test(?=\.[^./\\]+$)/iu, ""); }
+  function syncTestRun() { const on = $("testRun").checked; $("testRunHint").classList.toggle("hidden", !on); $("lengthLimit").disabled = on; if (state.srtAuto) { void syncDefaultOutput(); return; } const current = $("srtPath").value.trim(); if (on) { const next = appendTestSuffix(current); state.testSuffixAdded = Boolean(current && next !== current); $("srtPath").value = next; } else if (state.testSuffixAdded) { $("srtPath").value = removeTestSuffix(current); state.testSuffixAdded = false; } }
   function savePrefsDebounced(payload) { clearTimeout(prefsTimer); prefsTimer = setTimeout(() => bridge("save_prefs", payload), 300); }
-  async function syncDefaultOutput() { const result = await bridge("default_output", { mediaPath: $("mediaPath").value.trim(), providerId: $("provider").value, modelId: $("model").value }); const path = result.ok ? result.path : ""; $("srtPath").placeholder = path; if (state.srtAuto) { $("srtPath").value = path; if (path) setError("srtPath", ""); } }
+  async function syncDefaultOutput() { const result = await bridge("default_output", { mediaPath: $("mediaPath").value.trim(), providerId: $("provider").value, modelId: $("model").value, testRun: $("testRun").checked }); const path = result.ok ? result.path : ""; $("srtPath").placeholder = path; if (state.srtAuto) { $("srtPath").value = path; if (path) setError("srtPath", ""); } }
   function syncFlvHints() {
     $("mediaPathFlvHint")?.classList.toggle("hidden", ext($("mediaPath").value.trim()) !== ".flv");
     $("serverMediaFlvHint")?.classList.toggle("hidden", ext($("serverMediaPath").value.trim()) !== ".flv");
   }
   function setMedia(path) { $("mediaPath").value = path; setError("mediaPath", ""); syncFlvHints(); syncDefaultOutput(); }
-  function setJsonPath(path) { $("jsonPath").value = path; setError("jsonPath", ""); refreshServerMedia(); }
-  function applyErrorResult(result, logDetail = true) { const message = errText(result.code, result.detail || result.error); const fieldMessage = result.code === "server_start_failed" ? t("server_start_failed_hint") : (result.code === "server_no_response" ? t("server_no_response_hint") : message); if (result.field) setError(result.field, fieldMessage); if (result.field === "port" || result.field === "serverMediaPath" || result.field === "jsonPath") expandServer(); setStatus(message); if (logDetail && (result.detail || result.error)) appendLog(`[error] ${result.code || "backend_error"}: ${result.detail || result.error}`); }
+  function setJsonPath(path) { $("jsonPath").value = path; setError("jsonPath", ""); if (path !== state.serverProjectPath) $("openMawe").classList.add("attention"); refreshServerMedia(); }
+  function applyErrorResult(result, logDetail = true) { const message = errText(result.code, result.detail || result.error); const fieldMessage = result.code === "server_start_failed" ? t("server_start_failed_hint") : (result.code === "server_no_response" ? t("server_no_response_hint") : message); if (result.field) setError(result.field, fieldMessage); if (result.field === "port" || result.field === "serverMediaPath" || result.field === "jsonPath") expandServer(); setStatus(message); if (logDetail && (result.detail || result.error)) appendLog(`[error] ${result.code || "backend_error"}: ${result.detail || result.error}`); if (logDetail && Array.isArray(result.searchPaths) && result.searchPaths.length) { const label = state.lang === "zh" ? "MOSE 搜索路径：" : "MOSE search paths:"; appendLog(`[diagnostic] ${label}\n${result.searchPaths.map((path) => `- ${path}`).join("\n")}`); } }
   function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
   function fail(field, message) { setError(field, message); setStatus(message); const input = $(field); if (input && input.scrollIntoView) input.scrollIntoView({ behavior: "smooth", block: "center" }); return false; }
   function toggle(id) { $(id).classList.toggle("collapsed"); renderChevron(id); }
@@ -376,45 +395,60 @@
   function handleRoutedDrop(path) { const target = state.dropTarget; clearDropState(); const suffix = ext(path || ""); if (target === "json") { if (PROJECT_EXTS.has(suffix)) { setJsonPath(path); setStatus(t("json_project")); } else setError("jsonPath", t("drop_reject_json")); return; } if (target === "text" || target === "file") { if (suffix === ".txt") { void loadHotwordFile(path, target === "text"); } else setError(target === "text" ? "qwenAudioHotwords" : "qwenAudioHotwordsFile", t("drop_reject_txt")); return; } if (PROJECT_EXTS.has(suffix)) { setJsonPath(path); setStatus(t("json_project")); return; } if (suffix === ".txt") { void loadHotwordFile(path, false); return; } if (MEDIA_EXTS.has(suffix)) { setMedia(path); setStatus(t("media")); return; } setStatus(t("drop_reject")); }
   async function refreshServerMedia() { const jsonPath = $("jsonPath").value.trim(); const result = await bridge("check_server_media", { jsonPath }); state.serverMediaOk = Boolean(result.hasMedia && result.mediaExists); $("serverMediaField").classList.toggle("hidden", state.serverMediaOk || !jsonPath); return result; }
   async function refreshFfmpeg() { const result = await bridge("check_ffmpeg"); $("modalFfmpegFound").classList.toggle("hidden", !result.found); $("modalFfmpegMissing").classList.toggle("hidden", Boolean(result.found)); $("ffmpegPathBox").classList.toggle("hidden", Boolean(result.found)); $("settingsDot").classList.toggle("hidden", Boolean(result.found)); $("modalFfmpegFound").title = result.directory || ""; $("ffmpegDir").textContent = result.directory || ""; return result; }
+  function ffmpegSaveError(result) { if (result.code) return errText(result.code, result.detail || result.error); if (result.found === false) return t("ffmpeg_missing"); return compactDetail(result.error) || t("failed"); }
   function openSettings() { $("settingsModal").classList.remove("hidden"); refreshFfmpeg(); renderStickerCurrent(); $("showRareLangs").checked = Boolean(state.config.showRareLangs); }
   function closeSettings() { $("settingsModal").classList.add("hidden"); }
-  async function openMawe() {
+  async function openMose() {
     clearErrors();
-    if (state.serverStarting) return;
-    if (state.detectedServerUrl) { await bridge("open_url", { url: state.detectedServerUrl }); return; }
-    $("openMawe").classList.remove("attention");
-    const starting = !state.serverRunning;
-    if (starting) {
-      state.serverStarting = true;
-      renderMaweButton();
-    }
+    if (state.moseStarting) return;
+    $("htmlMenu").classList.add("hidden");
+    $("openMose").classList.remove("attention");
+    state.moseStarting = true;
+    renderMoseButton();
     try {
-      if ($("jsonPath").value.trim()) {
+      const result = await bridge("open_mose", { jsonPath: $("jsonPath").value.trim() });
+      if (result.ok) setStatus(t("ready"));
+      else applyErrorResult(result);
+    } finally {
+      state.moseStarting = false;
+      renderMoseButton();
+    }
+  }
+
+  async function openServerEditor() {
+    clearErrors();
+    $("htmlMenu").classList.add("hidden");
+    if (state.serverStarting) return;
+    const projectPath = $("jsonPath").value.trim();
+    const currentUrl = state.detectedServerUrl || `http://127.0.0.1:${$("port").value || "8250"}/?lang=${state.lang}`;
+    if ((state.serverRunning && projectPath === state.serverProjectPath) || (state.detectedServerUrl && !projectPath)) { await bridge("open_url", { url: currentUrl }); return; }
+    state.serverStarting = true;
+    renderServerButton();
+    try {
+      if (projectPath) {
         const mediaState = await refreshServerMedia();
         if ((!mediaState.hasMedia || !mediaState.mediaExists) && !$("serverMediaPath").value.trim()) {
           expandServer();
           return fail("serverMediaPath", errText("server_media_missing", ""));
         }
       }
-      const result = state.serverRunning ? await bridge("stop_server", serverPayload()) : await bridge("start_server", serverPayload());
+      const result = await bridge("start_server", serverPayload());
       if (result.ok) {
-        // 已存在的服务器并非由当前 Launcher 创建：保持主按钮为“启动”，
-        // 仅在状态行提供链接与停止入口。
-        state.serverRunning = starting && !result.serverAlreadyRunning;
+        state.serverRunning = !result.serverAlreadyRunning;
+        state.serverProjectPath = state.serverRunning ? projectPath : "";
         state.detectedServerUrl = result.serverAlreadyRunning ? result.url || "" : "";
-        renderMaweButton();
+        $("openMawe").classList.remove("attention");
+        renderServerButton();
         if (result.url) {
           setServerStatus(result.url, Boolean(result.serverAlreadyRunning));
-          if (starting) await bridge("open_url", { url: result.url });
+          await bridge("open_url", { url: result.url });
         } else setStatus(t("ready"));
       } else {
         applyErrorResult(result);
       }
     } finally {
-      if (starting) {
-        state.serverStarting = false;
-        renderMaweButton();
-      }
+      state.serverStarting = false;
+      renderServerButton();
     }
   }
 
@@ -439,33 +473,33 @@
   function handleBackendEvent(event) { if (event.type === "log") appendLog(event.message); if (event.type === "error") { setRunning(false); const detail = event.detail || event.message || ""; const message = event.code ? errText(event.code, detail) : detail || t("failed"); setStatus(message); appendLog(`[error] ${message}`); if (detail && detail !== message) appendLog(`[detail] ${detail}`); } if (event.type === "done") { state.result = event.result; setRunning(false); setJsonPath(event.result?.jsonPath || ""); $("openMawe").classList.add("attention"); $("openFolder").classList.remove("hidden"); syncHtmlMenu(); appendLog(t("done")); void checkExistingServer(t("done")); } if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropHotwordFile" || event.type === "dropReject") handleRoutedDrop(event.path || ""); }
   window.MAWLauncher = { backend: "pending", onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); } };
 
-  $("langToggle").addEventListener("click", async () => { state.lang = state.lang === "zh" ? "en" : "zh"; renderLanguage(); await bridge("save_settings", formPayload()); });
+  $("langToggle").addEventListener("click", async () => { state.lang = state.lang === "zh" ? "en" : "zh"; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (!result.ok) applyErrorResult(result); });
   $("themeLight").addEventListener("click", () => setTheme("light")); $("themeDark").addEventListener("click", () => setTheme("dark")); $("themeSystem").addEventListener("click", () => setTheme("system"));
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme(); });
   $("homeLink").addEventListener("click", () => bridge("open_url", { url: HOME_URL }));
   $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => applySelectedModel(true)); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("region").addEventListener("change", syncWorkspace); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
   $("testRun").addEventListener("change", syncTestRun);
   $("generateHtml").addEventListener("change", syncHtmlMenu);
-  $("mediaPath").addEventListener("input", () => { setError("mediaPath", ""); syncFlvHints(); syncDefaultOutput(); }); $("srtPath").addEventListener("input", () => { state.srtAuto = false; setError("srtPath", ""); });
+  $("mediaPath").addEventListener("input", () => { setError("mediaPath", ""); syncFlvHints(); syncDefaultOutput(); }); $("srtPath").addEventListener("input", () => { state.srtAuto = false; state.testSuffixAdded = false; setError("srtPath", ""); });
   $("pickMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (!result.ok) return; if (!MEDIA_EXTS.has(ext(result.path))) { setStatus(t("drop_reject")); return; } setMedia(result.path); });
   $("qwenAudioHotwordsModeText").addEventListener("click", () => { setHotwordsMode("text"); setError("qwenAudioHotwordsFile", ""); }); $("qwenAudioHotwordsModeFile").addEventListener("click", () => { setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); }); $("pickQwenAudioHotwordsFile").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "hotwords" }); if (result.ok) await loadHotwordFile(result.path || "", false); });
   $("pickJson").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "json" }); if (result.ok) setJsonPath(result.path); });
   $("jsonPath").addEventListener("input", () => setError("jsonPath", "")); $("jsonPath").addEventListener("change", refreshServerMedia); $("pickServerMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (result.ok) { $("serverMediaPath").value = result.path; setError("serverMediaPath", ""); syncFlvHints(); } });
-  ["apiKey", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { state.detectedServerUrl = ""; renderMaweButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
+  ["apiKey", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
   $("refreshServerStatus").addEventListener("click", async () => { $("refreshServerStatus").disabled = true; try { await checkExistingServer(); } finally { $("refreshServerStatus").disabled = false; } });
   $("openKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().keyUrl }));
   $("ffmpegHelp").addEventListener("click", () => bridge("open_url", { url: "https://ffmpeg.org/download.html" }));
   $("settingsButton").addEventListener("click", openSettings); $("settingsClose").addEventListener("click", closeSettings); $("settingsBackdrop").addEventListener("click", closeSettings); document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeSettings(); });
   $("changeFfmpeg").addEventListener("click", () => $("ffmpegPathBox").classList.remove("hidden"));
-  $("saveFfmpeg").addEventListener("click", async () => { const result = await bridge("save_ffmpeg_path", { path: $("ffmpegPath").value.trim() }); setError("ffmpegPath", result.found ? "" : t("ffmpeg_missing")); if (result.found) { await refreshFfmpeg(); setStatus(t("saved")); } else setStatus(t("ffmpeg_missing")); });
+  $("saveFfmpeg").addEventListener("click", async () => { const result = await bridge("save_ffmpeg_path", { path: $("ffmpegPath").value.trim() }); if (!result.ok) { const message = ffmpegSaveError(result); setError("ffmpegPath", message); setStatus(message); return; } setError("ffmpegPath", ""); await refreshFfmpeg(); setStatus(t("saved")); });
   $("pickStickerDir").addEventListener("click", async () => { const result = await bridge("choose_folder"); if (result.ok) await saveStickerDirectory(result.path); });
   $("stickerDir").addEventListener("change", async () => { const path = $("stickerDir").value.trim(); if (path) await saveStickerDirectory(path); });
-  $("showRareLangs").addEventListener("change", async () => { state.config.showRareLangs = $("showRareLangs").checked; applyProviderLanguages(provider(), selectedModel()); await bridge("save_prefs", { showRareLangs: state.config.showRareLangs }); setStatus(t("saved")); });
+  $("showRareLangs").addEventListener("change", async () => { state.config.showRareLangs = $("showRareLangs").checked; applyProviderLanguages(provider(), selectedModel()); const result = await bridge("save_prefs", { showRareLangs: state.config.showRareLangs }); if (result.ok) setStatus(t("saved")); else applyErrorResult(result); });
   $("languageReset").addEventListener("click", () => { const el = $("language"); Array.from(el.options).forEach((o) => { o.selected = false; }); savePrefsDebounced({ language: "" }); });
-  $("saveSettings").addEventListener("click", async () => { const result = await bridge("save_settings", formPayload()); if (result.ok) { const current = provider(); current.apiKey = $("apiKey").value.trim(); current.maskedApiKey = result.maskedApiKey; state.config.apiKey = current.apiKey; state.config.maskedApiKey = result.maskedApiKey; renderKeyStatus(); setStatus(t("saved")); } });
+  $("saveSettings").addEventListener("click", async () => { const result = await bridge("save_settings", formPayload()); if (result.ok) { const current = provider(); current.apiKey = $("apiKey").value.trim(); current.maskedApiKey = result.maskedApiKey; state.config.apiKey = current.apiKey; state.config.maskedApiKey = result.maskedApiKey; renderKeyStatus(); setStatus(t("saved")); } else applyErrorResult(result); });
   $("start").addEventListener("click", async () => { if (!validateLocal()) return; $("log").textContent = ""; setRunning(true); $("logTitle").scrollIntoView({ behavior: "smooth", block: "start" }); const result = await bridge("start_transcription", formPayload()); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } });
-  $("openMawe").addEventListener("click", openMawe); $("openFolder").addEventListener("click", () => bridge("open_output_folder"));
-  $("openMenu").addEventListener("click", () => $("htmlMenu").classList.toggle("hidden")); $("openHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_html"); }); $("openBlankHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_blank_html"); }); document.addEventListener("click", (event) => { if (!event.target.closest(".split-wrap")) $("htmlMenu").classList.add("hidden"); });
+  $("openMawe").addEventListener("click", openServerEditor); $("stopServer").addEventListener("click", stopEditorServer); $("openFolder").addEventListener("click", () => bridge("open_output_folder"));
+  $("openMenu").addEventListener("click", () => $("htmlMenu").classList.toggle("hidden")); $("openMose").addEventListener("click", openMose); $("openHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_html"); }); $("openBlankHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_blank_html"); }); document.addEventListener("click", (event) => { if (!event.target.closest(".split-wrap")) $("htmlMenu").classList.add("hidden"); });
   $("mediaCard").addEventListener("dragenter", onDragEnter); $("mediaCard").addEventListener("dragleave", onDragLeave);
   bindDropField("qwenAudioHotwordsTextField", "text", "qwenAudioHotwords"); bindDropField("qwenAudioHotwordsFileField", "file", "qwenAudioHotwordsFile"); bindDropField("jsonPath", "json");
   document.addEventListener("dragover", (event) => { if (hasFileDrag(event)) event.preventDefault(); });

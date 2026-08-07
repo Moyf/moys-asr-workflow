@@ -728,7 +728,7 @@
   #server-auto-save-settings .editor-settings-title,
   #server-auto-save-settings .editor-settings-item { width: 100%; }
   .editor-settings-list-fields { flex-wrap: wrap; }
-  .editor-settings-display-row { flex: 0 0 100%; }
+  .editor-settings-display-row { flex: 0 0 100%; flex-wrap: nowrap; align-items: flex-start; }
   .editor-settings-list-fields > span { color: var(--text-muted); }
   .editor-settings-display-row > span,
   .editor-settings-toggle-group > .toggle { white-space: nowrap; }
@@ -857,32 +857,43 @@
   }
 
   /* === 操作帮助 === */
-  .help-panel {
-    flex: 0 0 auto; display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr));
-    gap: 8px; margin: -2px 0 8px; padding: 10px;
-    background: var(--bg-panel); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
-    box-shadow: var(--shadow-1);
+  .gap-remove-panel.help-panel {
+    width: min(720px, calc(100vw - 24px));
+    min-width: 320px; min-height: 240px; max-width: calc(100vw - 24px);
+    resize: both;
+    container: help-panel / inline-size;
   }
-  .help-panel[hidden] { display: none; }
+  .help-panel-body { flex: 1 1 auto; display: grid; grid-template-columns: 1fr; gap: 8px; align-content: start; }
   .help-group {
-    display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px 12px;
-    padding: 10px; color: var(--text-secondary); font-size: 11px;
+    display: flex; flex-wrap: wrap; align-content: flex-start; gap: 10px 12px;
+    padding: 12px; color: var(--text-secondary); font-size: 12px;
     background: var(--bg-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
   }
   .help-title {
     flex: 0 0 100%; color: var(--text-secondary); font-weight: 600; letter-spacing: .08em;
-    text-transform: uppercase;
+    text-transform: uppercase; font-size: 12px;
   }
+  .help-subgroup {
+    flex: 0 0 100%; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px 12px;
+  }
+  .help-subtitle {
+    flex: 0 0 100%; margin-top: 2px; color: var(--text-muted);
+    font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  }
+  .help-subgroup:first-of-type .help-subtitle { margin-top: 0; }
   .help-note {
     flex: 0 0 100%; color: var(--text-muted); font-size: 10px;
   }
   .help-panel kbd {
     background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm);
-    padding: 1px 5px; font-size: 10px; color: var(--text-secondary); font-family: var(--font-mono);
+    padding: 2px 6px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);
     box-shadow: 0 1px 0 var(--border-subtle);
   }
-  @media (max-width: 860px) {
-    .help-panel { grid-template-columns: 1fr; }
+  @container help-panel (min-width: 560px) {
+    .help-panel-body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @container help-panel (min-width: 980px) {
+    .help-panel-body { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
 
   /* === 当前字幕编辑区 === */
@@ -1232,6 +1243,11 @@
   .toolbar #gap-removed-export-btn:hover {
     color: var(--gap-accent-hover-fg); background: linear-gradient(180deg, var(--gap-accent-hover-1), var(--gap-accent-hover-2)); border-color: var(--gap-accent-hover-border);
   }
+  .toolbar #gap-remove-manage.active {
+    color: var(--accent-hover); background: var(--accent-tint-strong);
+    border-color: var(--accent); box-shadow: none;
+  }
+  .toolbar #gap-remove-manage.active:hover { background: var(--accent-soft); border-color: var(--accent); }
   .toolbar #gap-remove-manage:focus-visible,
   .toolbar #gap-removed-export-btn:focus-visible { outline: 2px solid var(--amber-line); outline-offset: 1px; }
   .toolbar .gap-removed-export-dropdown .dropdown-menu { border-color: var(--gap-accent-menu-border); }
@@ -1733,15 +1749,7 @@
   gap: 0 8px;
   overflow: hidden;
 }
-/* 空状态的宽版面板按内容收紧；释放的高度交给下方字幕列表。窄版仍由四层内容自然撑高。 */
-.editor-workspace.layout-wave-right:has(> .current-cue-panel.empty) {
-  grid-template-rows:
-    minmax(56px, calc(var(--layout-row-top) - 9.333px))
-    7px
-    max-content
-    7px
-    minmax(56px, 1fr);
-}
+/* 面板行对选中/未选中使用同一套轨道尺寸：高度只随手动拖拽变化，不再因选中跳变。 */
 .editor-workspace.layout-wave-right > .player-wrap,
 .editor-workspace.layout-wave-right > .current-cue-panel,
 .editor-workspace.layout-wave-right > .waveform-pane,
@@ -2318,7 +2326,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-07 01:07</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-07 09:39</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -2352,8 +2360,8 @@
   <button id="sticker-root-btn" title="设置表情包根目录">🦊 表情包</button>
   <span class="sep"></span>
   <span class="undo-redo-group" role="group" aria-label="撤销重做">
-    <button type="button" id="undo-btn" title="撤销 (Ctrl/Cmd+Z)" disabled>↶ 撤销</button>
-    <button type="button" id="redo-btn" title="重做 (Ctrl/Cmd+Shift+Z)" disabled>↷ 重做</button>
+    <button type="button" id="undo-btn" title="撤销 (Ctrl(Cmd)+Z)" disabled>↶ 撤销</button>
+    <button type="button" id="redo-btn" title="重做 (Ctrl(Cmd)+Shift+Z)" disabled>↷ 重做</button>
   </span>
 
   <span class="right-group">
@@ -2390,7 +2398,7 @@
 
 <div class="toolbar main-toolbar">
   <span class="waveform-tool-switch" role="group" aria-label="波形工具">
-    <button type="button" data-waveform-tool="select" class="active" title="选择工具（V，默认）：点击选中、拖动移动、拖动边界调整；Ctrl/Shift 多选，Shift+空白拖拽框选，Alt 切换禁用，Alt 拖共享边界只动一侧">
+    <button type="button" data-waveform-tool="select" class="active" title="选择工具（V，默认）：点击选中、拖动移动、拖动边界调整；Ctrl(Cmd)/Shift 多选，Shift+空白拖拽框选，Alt 切换禁用，Alt 拖共享边界只动一侧">
       <svg class="toolbar-button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.75 12.25 8 8 9.25 6.25 13.5 3 1.75Z"/><path d="m8.3 9.2 3.2 3.05"/></svg>
       <span>选择</span>
     </button>
@@ -2531,7 +2539,7 @@
           <input type="number" id="auto-merge-gap-ms" min="0" max="10000" step="50" value="200" inputmode="numeric">
           <span class="gap-remove-unit">ms</span>
         </span>
-        <small>相邻字幕间隔小于此值时，拓展字幕长度把它们拼在一起；0 表示不处理</small>
+        <small>相邻字幕间隔在此范围内时，拓展字幕长度把它们拼在一起；0 表示不处理</small>
       </label>
       <label class="gap-remove-field">
         <span class="gap-remove-field-label">拓展方向</span>
@@ -2545,7 +2553,7 @@
     <label class="gap-remove-field auto-merge-absorb-field" title="关闭后只拼合间隔，不合并任何字幕">
       <span class="gap-remove-field-label">吸收过短字幕</span>
       <input type="checkbox" id="auto-merge-absorb-short" checked>
-      <small>过短的字幕直接并入相邻字幕；关闭后只拼合间隔</small>
+      <small>过短字幕也必须与相邻字幕间隔在上方阈值内才会吸收；关闭后只拼合间隔</small>
     </label>
     <div class="gap-remove-fields">
       <label class="gap-remove-field">
@@ -2574,6 +2582,98 @@
   </div>
 </aside>
 
+<!-- 可拖动的非模态帮助窗口 -->
+<aside class="gap-remove-panel help-panel" id="help-panel" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="help-panel-title">
+  <header class="gap-remove-panel-header" id="help-drag-handle">
+    <div class="gap-remove-heading">
+      <span class="gap-remove-eyebrow">MAWE</span>
+      <h3 id="help-panel-title">操作帮助</h3>
+    </div>
+    <button type="button" id="help-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭帮助窗口">×</button>
+  </header>
+  <div class="gap-remove-panel-body help-panel-body">
+    <div class="help-group">
+      <span class="help-title">字幕操作</span>
+      <div class="help-subgroup">
+        <span class="help-subtitle">鼠标</span>
+        <span><kbd>单击</kbd> 选中</span>
+        <span><kbd>双击</kbd> 编辑</span>
+        <span><kbd>右键</kbd> 菜单</span>
+        <span><kbd>Alt+点击</kbd> 切换字幕禁用</span>
+      </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">多选</span>
+        <span><kbd>Shift+点击</kbd> 连选</span>
+        <span><kbd data-mod-key>Ctrl+点击</kbd> 多选</span>
+        <span><kbd data-mod-key>Ctrl+A</kbd> 选中所有字幕（非编辑状态）</span>
+        <span><kbd data-mod-key>Ctrl+D</kbd> 取消选择</span>
+      </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">编辑状态</span>
+        <span><kbd>Enter</kbd> 进入字幕编辑区（仅单选时）</span>
+        <span><kbd>Esc</kbd> 退出字幕编辑区（文本编辑时）</span>
+        <span><kbd>Esc</kbd> 清除字幕选择（非编辑状态）</span>
+        <span><kbd id="help-split-key">Ctrl+Enter</kbd>（编辑字幕文本时）在文字光标处拆分</span>
+      </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">功能快捷键</span>
+        <span><kbd>T</kbd> 分配表情包</span>
+        <span><kbd>1~5</kbd> 标记颜色 <kbd>0</kbd> 清除颜色</span>
+        <span><kbd>C</kbd> 合并所选字幕</span>
+      </div>
+    </div>
+    <div class="help-group">
+      <span class="help-title">波形</span>
+      <div class="help-subgroup">
+        <span class="help-subtitle">鼠标</span>
+        <span><kbd>双击波形</kbd> 播放/暂停</span>
+        <span><kbd>右键波形背景</kbd> 显示菜单</span>
+        <span><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>
+      </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">工具</span>
+        <span><kbd>V</kbd> 选择工具 <kbd>R</kbd> 分割工具</span>
+        <span><kbd id="help-waveform-split-key">B</kbd> 在红色播放指针处拆分字幕</span>
+      </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">滚轮</span>
+        <span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>
+        <span><kbd data-mod-key>Ctrl+滚轮</kbd> 调整时间缩放/每行长度</span>
+        <span><kbd data-mod-key>Ctrl+Shift+滚轮</kbd> 调整每行高度</span>
+      </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">静音空隙</span>
+        <span><kbd>Alt+点击静音空隙区段</kbd> 切换移除/保留</span>
+        <span class="help-note">空隙区段操作方式设为「中键拖动」时：</span>
+        <span><kbd>中键拖动</kbd> 增加静音区段</span>
+        <span><kbd>Alt+中键拖动</kbd> 增加恢复区段</span>
+      </div>
+    </div>
+    <div class="help-group">
+      <span class="help-title">播放与编辑</span>
+      <div class="help-subgroup">
+        <span class="help-subtitle">播放</span>
+        <span><kbd>空格</kbd> 播放/暂停</span>
+        <span><kbd>←</kbd>/<kbd>→</kbd> 前后跳转 5 秒</span>
+        <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> 倍速 ×0.5/重置/×2</span>
+      </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">字幕导航</span>
+        <span><kbd>A</kbd>或<kbd>W</kbd> 上一条字幕 <kbd>D</kbd>或<kbd>S</kbd> 下一条字幕</span>
+        <span><kbd>Shift+A/W</kbd> 向前多选</span>
+        <span><kbd>Shift+D/S</kbd> 向后多选</span>
+        <span><kbd>F</kbd> 跳转并播放选中字幕</span>
+      </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">编辑</span>
+        <span><kbd>Delete</kbd> 删除所选字幕</span>
+        <span><kbd data-mod-key>Ctrl+Z</kbd> 撤销</span>
+        <span><kbd data-mod-key>Ctrl+Shift+Z</kbd> 重做</span>
+      </div>
+    </div>
+  </div>
+</aside>
+
 <section class="editor-settings-panel" id="editor-settings-panel" aria-label="MAWE 设置" hidden>
   <div class="editor-settings-group">
     <span class="editor-settings-title">字幕列表和编辑区</span>
@@ -2597,7 +2697,7 @@
         <label class="toggle"><input type="checkbox" id="cue-editor-show-sticker"> 表情包</label>
       </span>
     </div>
-    <label class="editor-settings-item" title="编辑字幕时，选择 Enter 或 Ctrl+Enter 在文字光标处拆分；另一个按键用于保存">
+    <label class="editor-settings-item" title="编辑字幕时，选择 Enter 或 Ctrl(Cmd)+Enter 在文字光标处拆分；另一个按键用于保存">
       字幕（编辑状态下）拆分按键
       <select id="split-key">
         <option value="ctrl-enter" selected>Ctrl+Enter</option>
@@ -2656,7 +2756,7 @@
         <option value="30">30 秒</option>
       </select>
     </label>
-    <label class="editor-settings-item" id="waveform-row-height-setting" title="多行波形每一行的高度；也可用 Ctrl+Shift+滚轮 在波形上直接调节">每行高度
+    <label class="editor-settings-item" id="waveform-row-height-setting" title="多行波形每一行的高度；也可用 Ctrl(Cmd)+Shift+滚轮 在波形上直接调节">每行高度
       <select id="waveform-row-height">
         <option value="64">64 px</option>
         <option value="80">80 px</option>
@@ -2705,55 +2805,6 @@
         <input id="auto-save-interval" type="number" min="5" max="3600" step="1" value="30">
       </label>
     </div>
-  </div>
-</section>
-
-<section class="help-panel" id="help-panel" aria-label="操作帮助" hidden>
-  <div class="help-group">
-    <span class="help-title">字幕操作</span>
-    <span><kbd>单击</kbd> 选中</span>
-    <span><kbd>双击</kbd> 编辑</span>
-    <span><kbd>Enter</kbd> 进入字幕编辑区（仅单选时）</span>
-    <span><kbd>Esc</kbd> 退出字幕编辑区（文本编辑时）</span>
-    <span><kbd>Esc</kbd> 清除字幕选择（非编辑状态）</span>
-    <span><kbd>右键</kbd> 菜单</span>
-    <span><kbd>Shift+点击</kbd> 连选</span>
-    <span><kbd>Ctrl+点击</kbd> 多选</span>
-    <span><kbd>Alt+点击</kbd> 切换字幕禁用</span>
-    <span><kbd>T</kbd> 分配表情包</span>
-    <span><kbd>1~5</kbd> 标记颜色 <kbd>0</kbd> 清除颜色</span>
-    <span><kbd>C</kbd> 合并所选字幕</span>
-    <span><kbd id="help-split-key">Ctrl+Enter</kbd>（编辑字幕文本时）在文字光标处拆分</span>
-    <span><kbd>Ctrl+A</kbd> 选中所有字幕（非编辑状态）</span>
-    <span><kbd>Ctrl+D</kbd> 取消选择</span>
-  </div>
-  <div class="help-group">
-    <span class="help-title">波形</span>
-    <span><kbd>双击波形</kbd> 播放/暂停</span>
-    <span><kbd>右键波形背景</kbd> 显示菜单</span>
-    <span><kbd id="help-waveform-split-key">B</kbd> 在红色播放指针处拆分字幕</span>
-    <span><kbd>V</kbd> 选择工具 <kbd>R</kbd> 分割工具</span>
-    <span><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>
-    <span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>
-    <span><kbd>Ctrl+滚轮</kbd> 调整时间缩放/每行长度</span>
-    <span><kbd>Ctrl+Shift+滚轮</kbd> 调整每行高度</span>
-  </div>
-  <div class="help-group">
-    <span class="help-title">静音空隙</span>
-    <span><kbd>Alt+点击静音空隙区段</kbd> 切换移除/保留</span>
-    <span class="help-note">空隙区段操作方式设为「中键拖动」时：</span>
-    <span><kbd>中键拖动</kbd> 增加静音区段</span>
-    <span><kbd>Alt+中键拖动</kbd> 增加恢复区段</span>
-  </div>
-  <div class="help-group">
-    <span class="help-title">播放与编辑</span>
-    <span><kbd>空格</kbd> 播放/暂停 <kbd>←</kbd>/<kbd>→</kbd> 前后跳转 5 秒 <kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> 倍速 ×0.5/重置/×2</span>
-    <span><kbd>A</kbd>或<kbd>W</kbd> 上一条字幕 <kbd>D</kbd>或<kbd>S</kbd> 下一条字幕</span>
-    <span><kbd>Shift+A/W</kbd> 向前多选 <kbd>Shift+D/S</kbd> 向后多选</span>
-    <span><kbd>F</kbd> 跳转并播放选中字幕</span>
-    <span><kbd>Delete</kbd> 删除所选字幕</span>
-    <span><kbd>Ctrl+Z</kbd> 撤销</span>
-    <span><kbd>Ctrl+Shift+Z</kbd> 重做</span>
   </div>
 </section>
 
@@ -3127,7 +3178,7 @@
   //   snapDirection 'forward'（向后拓展）把前方字幕 end 后延到后一条 start。
   // - groups: [[idx, ...]]，过短字幕的合并组；absorbDirection 'previous'（向前吸收，
   //   默认）并入上一条、'next'（向后吸收）并入下一条；absorbShort 为 false 时不合并。
-  //   禁用项或 speaker 不一致的组合不合并。
+  //   吸收同样要求两条字幕的实际间隔在 (0, gapMs] 内；禁用项或 speaker 不一致的组合不合并。
   function planAutoMerge(segments, options = {}) {
     const gapMs = Math.max(0, Math.round(Number(options.gapMs) || 0));
     const snapDirection = options.snapDirection === 'forward' ? 'forward' : 'backward';
@@ -3151,6 +3202,9 @@
       const right = source[rightIdx];
       if (!left || !right) return false;
       if (left.disabled || right.disabled) return false;
+      if (!Number.isFinite(left.end) || !Number.isFinite(right.start)) return false;
+      const gap = right.start - left.end;
+      if (gap <= 0 || gap > gapMs) return false;
       return (left.speaker ?? null) === (right.speaker ?? null);
     };
     const groups = [];
@@ -3689,11 +3743,20 @@
     return `${lines.join('\n')}\n`;
   }
 
+  // macOS 上用 ⌘（event.metaKey）替代 Ctrl；Win/Linux 仍是 Ctrl。
+  function isMacPlatform(nav) {
+    const n = nav || globalThis.navigator;
+    if (!n) return false;
+    const p = String(n.platform || n.userAgentData?.platform || '');
+    return /Mac|iPhone|iPad/.test(p);
+  }
+
   function configuredEnterAction(event, splitKey) {
     if (event?.key !== 'Enter') return null;
-    if (event.shiftKey && event.ctrlKey) return 'split';
+    const mod = event.ctrlKey || event.metaKey;
+    if (event.shiftKey && mod) return 'split';
     if (event.shiftKey) return 'newline';
-    if (event.ctrlKey) return splitKey === 'ctrl-enter' ? 'split' : 'save';
+    if (mod) return splitKey === 'ctrl-enter' ? 'split' : 'save';
     return splitKey === 'enter' ? 'split' : 'save';
   }
 
@@ -3869,6 +3932,7 @@
     buildGapRemovedIntervals,
     buildFfconcat,
     configuredEnterAction,
+    isMacPlatform,
     createHistoryStack,
     PREVIEW_MIN_WIDTH,
     PREVIEW_MIN_HEIGHT,
@@ -3925,6 +3989,8 @@
     '直接修改字幕时间轴，整个操作一次撤销': 'Edits the subtitle timeline directly; the whole run is one undo step',
     '间隔阈值': 'Interval threshold', '拓展方向': 'Snap direction',
     '向前拓展': 'Extend earlier', '向后拓展': 'Extend later',
+    '相邻字幕间隔在此范围内时，拓展字幕长度把它们拼在一起；0 表示不处理':
+      'When adjacent subtitle intervals are within this threshold, extend their timing to snap them together; 0 disables it',
     '吸收过短字幕': 'Absorb short subtitles', '短字幕阈值': 'Short-subtitle threshold', '吸收方向': 'Absorb direction',
     '向前吸收': 'Into previous', '向后吸收': 'Into next',
     '相邻字幕间隔小于此值时，拓展字幕长度把它们拼在一起；0 表示不处理':
@@ -3937,11 +4003,13 @@
       'Into previous: a short subtitle merges into the previous one; Into next: into the next one',
     '过短的字幕直接并入相邻字幕；关闭后只拼合间隔':
       'Short subtitles merge into a neighbor; when off, only intervals are snapped',
+    '过短字幕也必须与相邻字幕间隔在上方阈值内才会吸收；关闭后只拼合间隔':
+      'Short subtitles are absorbed only when the adjacent interval is within the threshold above; when off, only intervals are snapped',
     '按当前参数处理整段工程': 'Process the whole project with these parameters',
     '没有需要拼合的间隔或过短字幕': 'No intervals or short subtitles to snap',
     '字幕时长不足 200ms，无法拆分': 'Subtitles shorter than 200 ms cannot be split',
     '字幕列表编辑': 'Subtitle list editor', '右侧整列波形': 'Waveform column right',
-    '大荧幕布局': 'Cinema screen layout',
+    '三折叠布局': 'Three-fold layout', '大荧幕布局': 'Cinema screen layout',
     '编辑布局': 'Edit layout', '完成布局': 'Done editing', '重置工作区': 'Reset workspace',
     '已保存工作区': 'Saved workspaces',
     '保存工作区': 'Save workspace', '另存为工作区': 'Save workspace as', '删除工作区': 'Delete workspace',
@@ -3997,13 +4065,20 @@
     '静音空隙': 'Silent gaps', 'Alt+点击静音空隙区段': 'Alt+click a silent-gap region',
     'Alt+中键拖动': 'Alt+middle-button drag',
     '选中': 'Select', '双击': 'Double-click', '编辑': 'Edit',
+    '原地编辑已选字幕（最后点击在列表）': 'Edit the selected subtitle in place (last click in the list)',
+    '聚焦字幕编辑区（其它区域）': 'Focus the subtitle editor (other regions)',
+    '在鼠标所指的已选字幕文字处拆分（列表内）': 'Split the selected subtitle text under the pointer (in the list)',
+    '在鼠标所指的音频位置拆分（波形上；列表外按播放指针）': 'Split at the audio position under the pointer (on the waveform; elsewhere at the playhead)',
     '进入字幕编辑区（仅单选时）': 'Focus subtitle editor (single selection only)', '退出字幕编辑区（文本编辑时）': 'Exit subtitle editor (while editing)', '清除字幕选择（非编辑状态）': 'Clear subtitle selection (when not editing)',
     '选中所有字幕': 'Select all subtitles', '选中所有字幕（非编辑状态）': 'Select all subtitles (when not editing)',
     '右键': 'Right-click', '字幕操作': 'Subtitle actions',
     '多选': 'Multi-select', '连选': 'Range select',
+    '鼠标': 'Mouse', '编辑状态': 'Editing', '功能快捷键': 'Action shortcuts',
+    '工具': 'Tools', '滚轮': 'Wheel', '字幕导航': 'Subtitle navigation',
     '切换字幕禁用': 'Toggle subtitle disabled', '删除所选字幕': 'Delete selected subtitles',
     '合并所选字幕': 'Merge selected subtitles',
     '播放与编辑': 'Playback and editing', '空格': 'Space',
+    '选择工具': 'Select tool', '分割工具': 'Razor tool',
     '播放/暂停': 'Play/pause', '前后跳转 5 秒': 'Seek back/forward 5 sec',
     '上一条字幕': 'Previous subtitle', '下一条字幕': 'Next subtitle',
     '向前多选': 'Extend selection backward', '向后多选': 'Extend selection forward',
@@ -4011,6 +4086,7 @@
     '跳转并播放选中字幕': 'Seek to and play selected subtitle',
     '倍速 ×0.5/重置/×2': 'Speed ×0.5/reset/×2',
     '双击波形': 'Double-click waveform', '右键波形背景': 'Right-click waveform background',
+    '选择工具': 'Select tool', '分割工具': 'Razor tool',
     '增加静音区段': 'Add silent region',
     '空隙区段操作方式设为「中键拖动」时：': 'When gap region operation is “Middle-button drag”:',
     '增加恢复区段': 'Add restored region', '切换移除/保留': 'Toggle removed/kept',
@@ -4027,7 +4103,7 @@
     '加载媒体后显示视频': 'Video appears after loading media',
     '加载媒体后显示波形': 'Waveform appears after loading media',
     '‹ 前一条': '‹ Previous', '后一条 ›': 'Next ›', '＋ 表情包': '＋ Sticker',
-    '在光标处拆分': 'Split at cursor', '范围：全部字幕': 'Scope: all subtitles',
+    '在光标处拆分': 'Split at cursor', '在光标处拆分（': 'Split at cursor (', '范围：全部字幕': 'Scope: all subtitles',
     '查找': 'Find', '替换为': 'Replace with', '批量替换': 'Batch replace',
     '区分大小写': 'Case sensitive',
     '正则表达式': 'Regular expression',
@@ -4084,16 +4160,16 @@
       'Subtitle preview position. Drag to adjust; arrow keys move, hold Shift to speed up, hold Alt with arrows to resize, Enter or Space shows handles, Esc exits.',
     '表情包预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 或空格显示控制点，Esc 退出。':
       'Sticker preview position. Drag to adjust; arrow keys move, hold Shift to speed up, hold Alt with arrows to resize, Enter or Space shows handles, Esc exits.',
-    '撤销 (Ctrl/Cmd+Z)': 'Undo (Ctrl/Cmd+Z)',
-    '重做 (Ctrl/Cmd+Shift+Z)': 'Redo (Ctrl/Cmd+Shift+Z)',
+    '撤销 (Ctrl(Cmd)+Z)': 'Undo (Ctrl(Cmd)+Z)',
+    '重做 (Ctrl(Cmd)+Shift+Z)': 'Redo (Ctrl(Cmd)+Shift+Z)',
     '撤销重做': 'Undo and redo',
     '打开本机最近使用的工程': 'Open a recently used local project',
     '保存回服务器启动时指定的工程文件': 'Save to the project file bound when the server started',
-    '保存回当前工程文件（Ctrl/Cmd+S）': 'Save to the current project file (Ctrl/Cmd+S)',
+    '保存回当前工程文件（Ctrl(Cmd)+S）': 'Save to the current project file (Ctrl(Cmd)+S)',
     '另存为到当前工程目录': 'Save as in the current project folder',
-    '另存为工程文件（Ctrl/Cmd+Shift+S）': 'Save as a project file (Ctrl/Cmd+Shift+S)',
+    '另存为工程文件（Ctrl(Cmd)+Shift+S）': 'Save as a project file (Ctrl(Cmd)+Shift+S)',
     '🦊 表情包': '🦊 Stickers',
-    '另存为到当前工程目录（Ctrl/Cmd+Shift+S）': 'Save as in the current project folder (Ctrl/Cmd+Shift+S)',
+    '另存为到当前工程目录（Ctrl(Cmd)+Shift+S）': 'Save as in the current project folder (Ctrl(Cmd)+Shift+S)',
     '选择本地媒体文件并加载到播放器': 'Choose a local media file and load it in the player',
     '单独打开工程；浏览器无法自动读取关联媒体时会提示选择': 'Open a project by itself; the browser will prompt when it cannot read related media automatically',
     '设置表情包根目录': 'Set sticker root folder',
@@ -4102,6 +4178,7 @@
     '查看鼠标操作与键盘快捷键': 'View mouse and keyboard shortcuts',
     '展开字幕、波形与导出设置': 'Open subtitle, waveform, and export settings',
     '关闭（Esc）': 'Close (Esc)',
+    '关闭帮助窗口': 'Close the help window',
     '关闭移除静音空隙工具窗': 'Close the silent-gap tool',
     '放大时间轴': 'Zoom in', '缩小时间轴': 'Zoom out',
     '增大波形振幅': 'Increase waveform amplitude',
@@ -4130,7 +4207,7 @@
     '导出颜色与表情包的 Resolve JSON，供兼容执行脚本批量导入': 'Export color and sticker Resolve JSON for compatible import scripts',
     '导出只包含表情包图片轨道的 OTIO 工程': 'Export an OTIO project containing only sticker image tracks',
     '在视频画面右上角预览当前时间的表情包': 'Preview stickers at the current time over the video',
-    '选择工具（V，默认）：点击选中、拖动移动、拖动边界调整；Ctrl/Shift 多选，Shift+空白拖拽框选，Alt 切换禁用，Alt 拖共享边界只动一侧': 'Select tool (V, default): click to select, drag to move, drag edges to trim; Ctrl/Shift multi-select, Shift+drag on blank area to box-select, Alt toggles disabled, Alt-drag changes one shared edge',
+    '选择工具（V，默认）：点击选中、拖动移动、拖动边界调整；Ctrl(Cmd)/Shift 多选，Shift+空白拖拽框选，Alt 切换禁用，Alt 拖共享边界只动一侧': 'Select tool (V, default): click to select, drag to move, drag edges to trim; Ctrl(Cmd)/Shift multi-select, Shift+drag on blank area to box-select, Alt toggles disabled, Alt-drag changes one shared edge',
     '分割工具（R）：点击字幕块在指针位置安全拆分（按词/字级时间码对齐，拒绝 100ms 以内的边缘拆分）；Esc 切回选择': 'Razor tool (R): click a subtitle block to split at the pointer using word/character timing; splits within 100 ms of an edge are rejected; Esc returns to Select',
     '打开可拖动的移除静音空隙工具窗': 'Open the draggable silent-gap tool',
     '打开可拖动的拼合字幕工具窗': 'Open the draggable snap-subtitles tool',
@@ -4144,9 +4221,9 @@
     '将当前工作区另存为新的工作区': 'Save the current workspace as a new workspace',
     '删除本机保存的工作区': 'Delete the workspace saved on this machine',
     '字幕列表与波形字幕块的普通单击行为；双击编辑不受影响': 'Default click behavior for subtitle rows and waveform blocks; double-click editing is unchanged',
-    '编辑字幕时，选择 Enter 或 Ctrl+Enter 在文字光标处拆分；另一个按键用于保存': 'While editing, choose Enter or Ctrl+Enter to split at the text cursor; the other key saves',
+    '编辑字幕时，选择 Enter 或 Ctrl(Cmd)+Enter 在文字光标处拆分；另一个按键用于保存': 'While editing, choose Enter or Ctrl(Cmd)+Enter to split at the text cursor; the other key saves',
     '开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条': 'When enabled, clicking a sticker/color group member selects the whole group; otherwise only that subtitle is selected',
-    '多行波形每一行的高度；也可用 Ctrl+Shift+滚轮 在波形上直接调节': 'Height of each multi-row waveform row; Ctrl+Shift+wheel also adjusts it directly',
+    '多行波形每一行的高度；也可用 Ctrl(Cmd)+Shift+滚轮 在波形上直接调节': 'Height of each multi-row waveform row; Ctrl(Cmd)+Shift+wheel also adjusts it directly',
     '在多行波形中，为成组（颜色/表情包）字幕在块上方显示队长皇冠与组内序号': 'Show a leader crown and member index above grouped color/sticker subtitles in multi-row mode',
     '启用后，在波形空白区域按住左键拖动时，播放指针会实时跟随鼠标位置': 'When enabled, dragging with the left button on empty waveform areas moves the playhead along with the mouse',
     '移除静音空隙的人工修正方式；Alt+左键始终切换整段；中键拖动默认增加静音，按住 Alt 才恢复声音，边界碰到另一空隙时会合并': 'Manual silent-gap correction mode; Alt+click toggles a full region; middle-drag adds silence, Alt restores audio, and touching regions merge',
@@ -4628,11 +4705,11 @@
     },
   };
   const PALETTE = {
-    red: '#e74c3c',
     yellow: '#f1c40f',
-    blue: '#168cff',
     green: '#2ecc71',
+    red: '#e74c3c',
     purple: '#9b59b6',
+    blue: '#168cff',
   };
 
   function clamp(value, low, high) {
@@ -6700,6 +6777,16 @@
       return startMs + ratio * (endMs - startMs);
     }
 
+    // 屏幕坐标 -> 波形时间：命中某个波形行时返回该行内的时间（毫秒），否则返回 null。
+    // 供键盘快捷键（如 B 按指针音频位置拆分）在不构造指针事件的情况下复用行内映射。
+    timeMsAtPoint(clientX, clientY) {
+      const hit = document.elementFromPoint(clientX, clientY);
+      const row = hit?.closest?.('.waveform-row');
+      if (!row || !this.pane?.contains(row)) return null;
+      const timeMs = this.timeFromPointer({ clientX }, row);
+      return Number.isFinite(timeMs) ? timeMs : null;
+    }
+
     // 「允许拖动指针」：在波形空白区域按住左键拖动时，播放指针实时跟随鼠标
     // 所在位置。高回报率指针事件用 rAF 合并，每帧最多 seek 一次；松开时以
     // 最终位置再 seek 一次保证落点精确。指针捕获让拖出行范围时按行边界钳制。
@@ -6832,8 +6919,8 @@
     }
 
     handleWheel(event) {
-      if (this.isMultiMode() && event.ctrlKey && event.shiftKey) {
-        // Ctrl+Shift+滚轮：仅多行模式下循环调整行高预设，向上滚放大，不改变时间映射
+      if (this.isMultiMode() && (event.ctrlKey || event.metaKey) && event.shiftKey) {
+        // Ctrl(Cmd)+Shift+滚轮：仅多行模式下循环调整行高预设，向上滚放大，不改变时间映射
         event.preventDefault();
         const current = ROW_HEIGHT_PRESETS.indexOf(this.settings.rowHeight);
         const next = clamp(current + (event.deltaY > 0 ? -1 : 1), 0, ROW_HEIGHT_PRESETS.length - 1);
@@ -6885,7 +6972,7 @@
       event.preventDefault();
       event.stopPropagation();
       // 剃刀工具：无修饰键左键点击字幕块（非手柄）时，在指针位置安全拆分。
-      // 修饰键（Alt/Ctrl/Cmd/Shift）仍走原行为，便于拆分后立即多选/禁用。
+      // 修饰键（Alt/Ctrl(Cmd)/Shift）仍走原行为，便于拆分后立即多选/禁用。
       const targetHandle = event.target.closest('.waveform-cue-handle');
       if (this.tool === 'razor' && !targetHandle
           && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
@@ -6909,7 +6996,7 @@
         this.options.toggleDisabled?.([index]);
         return;
       }
-      // Ctrl/Cmd+click toggles selection without starting a drag
+      // Ctrl(Cmd)+click toggles selection without starting a drag
       if (event.ctrlKey || event.metaKey) {
         this.options.toggleCueSelection?.(index);
         return;
@@ -7443,7 +7530,7 @@ const DATA = {"segments": [], "media": "", "language": "", "model": ""};
 let FILENAME_BASE = "untitled";
 const STICKERS = [];
 let STICKER_ROOT = "";  // 表情包根目录的绝对路径（无尾斜杠）
-const STICKER_URL_PREFIX = "";
+let STICKER_URL_PREFIX = "";
 const SERVER_CONFIG = null;
 const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';
 const CLICK_BEHAVIOR_VALUES = new Set(['select-only', 'select-and-seek', 'select-and-play']);
@@ -7567,11 +7654,11 @@ const EDITOR_SETTINGS = readEditorSettings();
 // 标记颜色：5 种基础色，用于给字幕分组着色。
 // 数据模型与表情包同构：head 持完整 color {name, value, start, end}，后续 ref 持 color_ref {name, headIdx}
 const COLOR_PALETTE = [
-  { name: 'red',    label: '红', value: '#e74c3c' },
   { name: 'yellow', label: '黄', value: '#f1c40f' },
-  { name: 'blue',   label: '蓝', value: '#168cff' },
   { name: 'green',  label: '绿', value: '#2ecc71' },
+  { name: 'red',    label: '红', value: '#e74c3c' },
   { name: 'purple', label: '紫', value: '#9b59b6' },
+  { name: 'blue',   label: '蓝', value: '#168cff' },
 ];
 const COLOR_BY_NAME = Object.fromEntries(COLOR_PALETTE.map(c => [c.name, c]));
 function colorValue(name) { return COLOR_BY_NAME[name]?.value || '#777'; }
@@ -7656,7 +7743,7 @@ function isMediaFile(file) {
 //   layout     —— 布局导入/重置/拖动停靠
 //   gap_remove —— 静音空隙扫描与人工修正
 //   preview    —— 字幕预览（overlay）开关
-// 栈深上限 100；新动作清空 redo；Ctrl/Cmd+Z 撤销、Ctrl/Cmd+Shift+Z 重做。
+// 栈深上限 100；新动作清空 redo；Ctrl(Cmd)+Z 撤销、Ctrl(Cmd)+Shift+Z 重做。
 // 编辑文本输入框或 modal 打开时让原生行为优先（见 keydown 守卫）。
 const UNDO_LIMIT = 100;
 const editorHistory = window.AsrEditorUtils.createHistoryStack(UNDO_LIMIT);
@@ -7840,6 +7927,8 @@ const exportColorUnifiedToggle = document.getElementById('export-color-unified')
 const helpToggle = document.getElementById('help-toggle');
 const themeToggle = document.getElementById('theme-toggle');
 const helpPanel = document.getElementById('help-panel');
+const helpDragHandle = document.getElementById('help-drag-handle');
+const helpCloseButton = document.getElementById('help-close');
 const helpSplitKey = document.getElementById('help-split-key');
 const clickBehaviorSelect = document.getElementById('click-behavior');
 const clickTargetField = document.getElementById('click-target-field');
@@ -7906,7 +7995,9 @@ const gapRemoveScanButton = document.getElementById('gap-remove-scan');
 const gapRemoveSkipPlayback = document.getElementById('gap-skip-playback');
 const gapRemoveList = document.getElementById('gap-remove-list');
 const gapRemoveClearAllButton = document.getElementById('gap-remove-clear-all');
-const AUTO_MERGE_PANEL_POSITION_KEY = 'moy.asr.auto_merge.panel.v1';
+const HELP_PANEL_POSITION_KEY = 'moy.asr.help.panel.v1';
+const HELP_PANEL_SIZE_KEY = 'moy.asr.help.panel.size.v1';
+const AUTO_MERGE_PANEL_POSITION_KEY = 'moy.asr.auto_merge.panel.v2';
 const autoMergePanel = document.getElementById('auto-merge-panel');
 const autoMergeDragHandle = document.getElementById('auto-merge-drag-handle');
 const autoMergeCloseButton = document.getElementById('auto-merge-close');
@@ -8021,8 +8112,25 @@ function bindCueEditorDisplayToggle(toggle, key) {
   });
 }
 
+// macOS 用 ⌘（Cmd）替代 Ctrl；Win/Linux 仍显示 Ctrl。
+function modKeyLabel() {
+  return window.AsrEditorUtils?.isMacPlatform() ? 'Cmd' : 'Ctrl';
+}
+
 function splitKeyLabel() {
-  return splitKeySel.value === 'enter' ? 'Enter' : 'Ctrl+Enter';
+  return splitKeySel.value === 'enter' ? 'Enter' : `${modKeyLabel()}+Enter`;
+}
+
+// 把帮助面板等静态 <kbd data-mod-key> 与「拆分按键」下拉选项文本按平台替换。
+function applyPlatformKeyLabels() {
+  if (modKeyLabel() === 'Ctrl') return;
+  document.querySelectorAll('[data-mod-key]').forEach((el) => {
+    el.textContent = el.textContent.replace(/^Ctrl/, 'Cmd');
+  });
+  if (splitKeySel) {
+    const opt = splitKeySel.querySelector('option[value="ctrl-enter"]');
+    if (opt) opt.textContent = 'Cmd+Enter';
+  }
 }
 
 function refreshSplitKeyHelp() {
@@ -8035,6 +8143,7 @@ function refreshSplitKeyHelp() {
 document.addEventListener('mawe:languagechange', () => refreshSplitKeyHelp());
 
 splitKeySel.value = EDITOR_SETTINGS.splitKey;
+applyPlatformKeyLabels();
 refreshSplitKeyHelp();
 if (mergeJoinTextInput) mergeJoinTextInput.value = EDITOR_SETTINGS.mergeJoinText;
 syncAutoMergePanelInputs();
@@ -8070,12 +8179,47 @@ window.addEventListener('scroll', positionSubtitlePreviewSettingsPanel, true);
 subtitlePreviewSettings?.closest('.player-toolbar')?.addEventListener(
   'scroll', positionSubtitlePreviewSettingsPanel,
 );
-helpToggle?.addEventListener('click', () => {
-  const open = helpPanel?.hidden === true;
-  if (helpPanel) helpPanel.hidden = !open;
-  helpToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-  helpToggle.classList.toggle('active', open);
+// 帮助浮窗：与拼合字幕共用 createFloatingPanel（拖动、位置持久化、Esc 关闭）
+const helpFloatingPanel = createFloatingPanel({
+  panel: helpPanel,
+  dragHandle: helpDragHandle,
+  manageButton: helpToggle,
+  anchorButton: helpToggle,
+  positionKey: HELP_PANEL_POSITION_KEY,
+  onOpen: restoreHelpPanelSize,
 });
+helpCloseButton?.addEventListener('click', () => helpFloatingPanel.close());
+// 浮窗尺寸：仅在用户拖过右下角缩放手柄后持久化；未缩放时保持 CSS 默认宽度/自动高度
+function restoreHelpPanelSize() {
+  if (!helpPanel) return;
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(HELP_PANEL_SIZE_KEY) || 'null');
+  } catch (_) {
+    saved = null;
+  }
+  if (!Number.isFinite(saved?.width) || !Number.isFinite(saved?.height)) return;
+  helpPanel.style.width = `${Math.min(Math.max(320, saved.width), window.innerWidth - 12)}px`;
+  helpPanel.style.height = `${Math.min(Math.max(240, saved.height), window.innerHeight - 12)}px`;
+}
+let helpPanelSizeSaveTimer = 0;
+if (helpPanel) {
+  new ResizeObserver(() => {
+    if (!helpPanel.classList.contains('show')) return;
+    if (!helpPanel.style.width && !helpPanel.style.height) return;
+    clearTimeout(helpPanelSizeSaveTimer);
+    helpPanelSizeSaveTimer = setTimeout(() => {
+      const rect = helpPanel.getBoundingClientRect();
+      try {
+        localStorage.setItem(HELP_PANEL_SIZE_KEY, JSON.stringify({
+          width: Math.round(rect.width), height: Math.round(rect.height),
+        }));
+      } catch (_) {
+        // file:// 隐私模式下 localStorage 可能被拒；缩放本身仍可用。
+      }
+    }, 250);
+  }).observe(helpPanel);
+}
 // 明暗主题：令牌全部定义在 CSS（:root 暗色 / [data-theme="light"] 亮色），
 // 这里只负责写 <html data-theme>、持久化、同步按钮，以及通知波形重绘画布。
 // 按钮显示的是「目标主题」（与相邻 🌐 语言按钮同一约定）：暗色时显示 🌖（点击转亮）。
@@ -8114,6 +8258,7 @@ const autoMergeFloatingPanel = createFloatingPanel({
   panel: autoMergePanel,
   dragHandle: autoMergeDragHandle,
   manageButton: autoMergeManageButton,
+  anchorButton: autoMergeManageButton,
   positionKey: AUTO_MERGE_PANEL_POSITION_KEY,
   onOpen: syncAutoMergePanelInputs,
 });
@@ -8411,7 +8556,7 @@ function clearAllGaps() {
 
 // 可拖动非模态工具窗（移除静音空隙 / 拼合字幕共用模式）：
 // 负责显示/隐藏、工具栏按钮 active 态、标题栏拖动与位置持久化、窗口缩放回钳、Esc 关闭。
-function createFloatingPanel({ panel, dragHandle, manageButton, positionKey, onOpen }) {
+function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, positionKey, onOpen }) {
   if (!panel) return { open() {}, close() {}, toggle() {}, isOpen: () => false };
   let drag = null;
 
@@ -8445,10 +8590,27 @@ function createFloatingPanel({ panel, dragHandle, manageButton, positionKey, onO
     }
     if (Number.isFinite(saved?.left) && Number.isFinite(saved?.top)) {
       setPosition(saved.left, saved.top);
-      return;
+      return true;
     }
-    const rect = panel.getBoundingClientRect();
-    setPosition(rect.left, rect.top);
+    return false;
+  }
+
+  function positionNearAnchor() {
+    if (!anchorButton) return false;
+    const anchorRect = anchorButton.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const margin = 6;
+    const gap = 6;
+    let left = anchorRect.left;
+    if (left + panelRect.width > window.innerWidth - margin) {
+      left = anchorRect.right - panelRect.width;
+    }
+    let top = anchorRect.bottom + gap;
+    if (top + panelRect.height > window.innerHeight - margin) {
+      top = anchorRect.top - panelRect.height - gap;
+    }
+    setPosition(left, top);
+    return true;
   }
 
   function open() {
@@ -8457,7 +8619,9 @@ function createFloatingPanel({ panel, dragHandle, manageButton, positionKey, onO
     panel.setAttribute('aria-hidden', 'false');
     manageButton?.classList.add('active');
     manageButton?.setAttribute('aria-expanded', 'true');
-    requestAnimationFrame(restorePosition);
+    requestAnimationFrame(() => {
+      if (!restorePosition()) positionNearAnchor();
+    });
   }
 
   function close() {
@@ -9881,6 +10045,28 @@ function scrollCueIntoViewIfNeeded(cueEl) {
 
 // === seek ===
 let seekWarned = false;
+let cueListPointer = null;
+// 最后一次指针按下所在的编辑区域：cue-list / waveform。
+// Enter（原地编辑 vs 聚焦字幕编辑区）据此分发；指针坐标由 cueListPointer /
+// lastPointerPos 提供，两者独立更新、互不替代。
+let lastEditRegion = null;
+let lastPointerPos = null;
+
+document.addEventListener('pointerdown', (e) => {
+  if (e.target instanceof Element && e.target.closest('.cue')) lastEditRegion = 'cue-list';
+  else if (e.target instanceof Element && e.target.closest('#waveform-pane')) lastEditRegion = 'waveform';
+}, true);
+document.addEventListener('pointermove', (e) => {
+  lastPointerPos = { x: e.clientX, y: e.clientY };
+}, true);
+
+function hoveredSelectedCueContext() {
+  if (!cueListPointer || !selectedIdxs.has(cueListPointer.idx)) return null;
+  const el = container.querySelector(`.cue[data-idx="${cueListPointer.idx}"]`);
+  if (!el || !el.matches(':hover')) return null;
+  return { ...cueListPointer, el };
+}
+
 // === 单击/双击/Shift/Ctrl ===
 function bindCueEvents(el, idx) {
   let pointerDownState = null;
@@ -9917,6 +10103,7 @@ function bindCueEvents(el, idx) {
 
   el.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || (editingState && editingState.el === el)) return;
+    cueListPointer = { idx, x: e.clientX, y: e.clientY };
 
     // 这些子控件有自己的 click 行为；不要在父 cue 的 pointerdown 阶段抢先选中。
     const target = e.target instanceof Element ? e.target : null;
@@ -9943,6 +10130,12 @@ function bindCueEvents(el, idx) {
       suppressClick: action !== 'select',
       time: now,
     };
+  });
+  el.addEventListener('pointermove', (e) => {
+    cueListPointer = { idx, x: e.clientX, y: e.clientY };
+  });
+  el.addEventListener('pointerleave', () => {
+    if (cueListPointer?.idx === idx) cueListPointer = null;
   });
 
   el.addEventListener('click', (e) => {
@@ -10321,7 +10514,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Ctrl/Cmd+A：选中所有字幕。仅在「非编辑字幕」状态下生效；
+// Ctrl(Cmd)+A：选中所有字幕。仅在「非编辑字幕」状态下生效；
 // 焦点在输入框/文本域/可编辑元素或内联编辑态时，保留浏览器原生的「全选文本」行为。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'a' && e.key !== 'A') return;
@@ -10346,8 +10539,8 @@ document.addEventListener('keydown', (e) => {
   selectAll();
 });
 
-// Ctrl/Cmd+D：取消选中（清空当前字幕选择）。浏览器默认是「添加书签」，这里接管；
-// 与 Ctrl/Cmd+A 同样仅在非编辑字幕状态下生效。ESC 清除选中的行为保持不变。
+// Ctrl(Cmd)+D：取消选中（清空当前字幕选择）。浏览器默认是「添加书签」，这里接管；
+// 与 Ctrl(Cmd)+A 同样仅在非编辑字幕状态下生效。ESC 清除选中的行为保持不变。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'd' && e.key !== 'D') return;
   if (!e.ctrlKey && !e.metaKey) return;
@@ -10425,8 +10618,9 @@ document.addEventListener('keydown', (e) => {
   if (color) assignColor(idxs, color.name);
 });
 
-// Enter：仅选中单条字幕（列表或波形均可）时，进入字幕编辑区并聚焦文本框，
-// 光标置于末尾，方便直接继续编辑。内联编辑态、已聚焦编辑区或多个模态打开时不触发。
+// Enter：按「最后激活的编辑区域」分发——最后点击的是字幕列表时，对当前单选
+// 字幕直接开始原地编辑（等同双击该行）；否则回到旧行为，聚焦字幕编辑区文本框
+// 并把光标置于末尾。内联编辑态、已聚焦编辑区或模态打开时不触发。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter') return;
   if (editingState) return;  // 内联编辑态的 Enter 交给 split/commit 处理
@@ -10446,7 +10640,22 @@ document.addEventListener('keydown', (e) => {
   if (projectMediaModal.classList.contains('show')) return;
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
-  if (selectedIdxs.size !== 1) return;  // 仅单选时进入编辑区
+  if (selectedIdxs.size !== 1) return;
+  if (lastEditRegion === 'cue-list') {
+    const context = hoveredSelectedCueContext();
+    const idx = context ? context.idx : [...selectedIdxs][0];
+    if (!DATA.segments[idx]) return;
+    const el = context ? context.el : container.querySelector(`.cue[data-idx="${idx}"]`);
+    if (!el) return;
+    e.preventDefault();
+    // 鼠标仍在行上时按指针位置落光标；否则全选文本，便于直接键入替换。
+    if (context) startEdit(context.el, context.idx, context.x, context.y);
+    else {
+      scrollCueIntoViewIfNeeded(el);
+      startEdit(el, idx);
+    }
+    return;
+  }
   const idx = currentCuePanelIdx;
   if (idx < 0 || !DATA.segments[idx]) return;
   e.preventDefault();
@@ -10473,7 +10682,7 @@ document.addEventListener('keydown', (e) => {
   mergeSegments([...selectedIdxs]);
 });
 
-// Ctrl/Cmd+Z 撤销；Ctrl/Cmd+Shift+Z 或 Ctrl/Cmd+Y 重做
+// Ctrl(Cmd)+Z 撤销；Ctrl(Cmd)+Shift+Z 或 Ctrl(Cmd)+Y 重做
 document.addEventListener('keydown', (e) => {
   const isZ = e.key === 'z' || e.key === 'Z';
   const isY = e.key === 'y' || e.key === 'Y';
@@ -10562,11 +10771,14 @@ document.addEventListener('keydown', (e) => {
   if (player.paused) togglePlayback();
 });
 
-// B：按红色播放指针所在时间拆分其内部字幕。复用波形右键/剃刀的字词边界映射，
-// 不依赖当前选择；文本编辑、弹窗和修饰键状态下不抢占输入。
+// B：按指针所在区域分发——
+// 1) 鼠标悬停在已单选的字幕列表行上：按指针对应的文字位置拆分；
+// 2) 鼠标位于波形上：按指针的音频位置拆分（与波形右键「按音频位置拆分」一致）；
+// 3) 其它位置：按红色播放指针位置拆分（B 的原始行为）。
+// 文本编辑、弹窗和修饰键状态下不抢占输入。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'b' && e.key !== 'B') return;
-  if (!waveformEditor || editingState || e.repeat) return;
+  if (editingState || e.repeat) return;
   const a = document.activeElement;
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
   if (replaceModal.classList.contains('show')) return;
@@ -10576,15 +10788,40 @@ document.addEventListener('keydown', (e) => {
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+  const splitAt = (idx, x, y, timeMs) => {
+    e.preventDefault();
+    e.stopPropagation();
+    splitFromContextMenu(idx, x, y, timeMs);
+  };
+  // 1) 字幕列表：需要单选 + 悬停提供文字位置
+  if (selectedIdxs.size === 1) {
+    const context = hoveredSelectedCueContext();
+    if (context && DATA.segments[context.idx]) {
+      splitAt(context.idx, context.x, context.y, null);
+      return;
+    }
+  }
+  // 2) 波形：指针音频位置
+  if (lastPointerPos) {
+    const pointerTimeMs = waveformEditor?.timeMsAtPoint?.(lastPointerPos.x, lastPointerPos.y);
+    if (Number.isFinite(pointerTimeMs)) {
+      const idx = DATA.segments.findIndex((segment) => pointerTimeMs > segment.start && pointerTimeMs < segment.end);
+      if (idx < 0) {
+        flashHint('指针位置没有可拆分字幕');
+        return;
+      }
+      splitAt(idx, 0, 0, pointerTimeMs);
+      return;
+    }
+  }
+  // 3) 播放头位置
   const timeMs = Math.round(player.currentTime * 1000);
   const idx = DATA.segments.findIndex((segment) => timeMs > segment.start && timeMs < segment.end);
   if (idx < 0) {
     flashHint('播放头位置没有可拆分字幕');
     return;
   }
-  e.preventDefault();
-  e.stopPropagation();
-  splitFromContextMenu(idx, 0, 0, timeMs);
+  splitAt(idx, 0, 0, timeMs);
 });
 
 // 点击外部 -> 完成编辑
@@ -11048,7 +11285,7 @@ function usedSubtitleColors() {
 }
 
 function updateSubtitleExportUi() {
-  const hasColors = usedSubtitleColors().length > 0;
+  const hasColors = usedSubtitleColors().some((color) => color.name !== 'default');
   if (downloadSrtButton) downloadSrtButton.hidden = hasColors;
   if (subtitleExportDropdown) {
     subtitleExportDropdown.hidden = !hasColors;
@@ -11608,11 +11845,11 @@ function configureServerSaveControls() {
      if (!serverProjectSavingEnabled()) button.title = '请用带工程文件路径的服务器命令启动，才能直接保存';
   });
   if (saveProjectButton && serverProjectSavingEnabled()) {
-    saveProjectButton.title = '保存回当前工程文件（Ctrl/Cmd+S）';
+    saveProjectButton.title = '保存回当前工程文件（Ctrl(Cmd)+S）';
   }
   // 另存为走系统文件对话框，不依赖服务器绑定，始终可用。
   if (saveProjectAsButton) {
-    saveProjectAsButton.title = '另存为工程文件（Ctrl/Cmd+Shift+S）';
+    saveProjectAsButton.title = '另存为工程文件（Ctrl(Cmd)+Shift+S）';
   }
 }
 
@@ -11680,6 +11917,26 @@ async function openRecentProject(project) {
   }
 }
 
+// 浏览器文件选择器拿不到工程的真实路径，但 MAW 工程记录的媒体是绝对路径。
+// 把工程名与内容交给服务器，由它定位同目录同名工程并接管：
+// 成功后整页刷新，由服务器渲染出自动加载媒体且可直接保存的状态。
+// 任何失败都静默回退为「手动选择媒体」的便携流程。
+async function attachProjectToServer(fileName, projectData) {
+  try {
+    const response = await fetch(SERVER_CONFIG.attachUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName, project: projectData }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) return false;
+    window.location.reload();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function configureRecentProjects() {
   if (!SERVER_CONFIG?.recentProjectsUrl || !recentProjectsEl || !recentProjectsToggle
       || !recentProjectsMenu || !recentProjectsList) {
@@ -11729,40 +11986,46 @@ function configureRecentProjects() {
     }
     recentProjectsList.appendChild(item);
   });
-  recentProjectsToggle.addEventListener('click', (event) => {
-    event.stopPropagation();
-    recentProjectsEl.classList.toggle('open');
-  });
-  document.addEventListener('click', (event) => {
-    if (!recentProjectsEl.contains(event.target)) recentProjectsEl.classList.remove('open');
-  });
+  if (recentProjectsEl.dataset.listenersBound !== 'true') {
+    recentProjectsToggle.addEventListener('click', (event) => {
+      event.stopPropagation();
+      recentProjectsEl.classList.toggle('open');
+    });
+    document.addEventListener('click', (event) => {
+      if (!recentProjectsEl.contains(event.target)) recentProjectsEl.classList.remove('open');
+    });
+    recentProjectsEl.dataset.listenersBound = 'true';
+  }
 }
 
 function configureServerProjectSettings() {
   if (!SERVER_CONFIG?.settingsUrl || !serverProjectSettingsEl || !autoOpenLastProjectToggle) return;
   serverProjectSettingsEl.hidden = false;
   autoOpenLastProjectToggle.checked = SERVER_CONFIG.autoOpenLastProject !== false;
-  autoOpenLastProjectToggle.addEventListener('change', async () => {
-    const enabled = autoOpenLastProjectToggle.checked;
-    autoOpenLastProjectToggle.disabled = true;
-    try {
-      const response = await fetch(SERVER_CONFIG.settingsUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ autoOpenLastProject: enabled }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.ok) {
-        throw new Error(result.error || `服务器返回 ${response.status}`);
+  if (autoOpenLastProjectToggle.dataset.listenersBound !== 'true') {
+    autoOpenLastProjectToggle.addEventListener('change', async () => {
+      const enabled = autoOpenLastProjectToggle.checked;
+      autoOpenLastProjectToggle.disabled = true;
+      try {
+        const response = await fetch(SERVER_CONFIG.settingsUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ autoOpenLastProject: enabled }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) {
+          throw new Error(result.error || `服务器返回 ${response.status}`);
+        }
+        SERVER_CONFIG.autoOpenLastProject = result.autoOpenLastProject;
+      } catch (error) {
+        autoOpenLastProjectToggle.checked = SERVER_CONFIG.autoOpenLastProject !== false;
+        flashHint(`保存设置失败：${error.message || error}`);
+      } finally {
+        autoOpenLastProjectToggle.disabled = false;
       }
-      SERVER_CONFIG.autoOpenLastProject = result.autoOpenLastProject;
-    } catch (error) {
-      autoOpenLastProjectToggle.checked = SERVER_CONFIG.autoOpenLastProject !== false;
-      flashHint(`保存设置失败：${error.message || error}`);
-    } finally {
-      autoOpenLastProjectToggle.disabled = false;
-    }
-  });
+    });
+    autoOpenLastProjectToggle.dataset.listenersBound = 'true';
+  }
 }
 
 // === 工作区库：服务器版可把工作区（窗口布局 + 显示状态）保存到本机设置，跨工程复用 ===
@@ -11954,28 +12217,31 @@ function configureServerWorkspaceLibrary() {
   }
   refreshWorkspaceSelect();
   restoreWorkspaceSelection();
-  workspacePresetSelect?.addEventListener('change', () => applyWorkspaceSelection(workspacePresetSelect.value));
-  document.getElementById('layout-edit-toggle')?.addEventListener('click', () => {
-    // 拖放编辑只改窗口排列，不改变下拉框当前选中的工作区名称。
-    if (currentServerWorkspaceName) refreshWorkspaceSelect();
-    else if (currentBuiltinWorkspaceName && workspacePresetSelect) workspacePresetSelect.value = currentBuiltinWorkspaceName;
-    syncWorkspaceControls();
-  });
-  document.getElementById('layout-reset')?.addEventListener('click', () => {
-    const preset = currentBuiltinWorkspaceName;
-    if (preset) {
-      waveformEditor.setLayout(preset);
-      void updateServerWorkspaceSettings({ resetPresetWorkspace: preset }).then(() => {
-        flashHint(`已恢复「${preset}」默认工作区`);
-      }).catch((error) => {
-        flashHint(`重置工作区失败：${error.message || error}`);
-      });
-    }
-    syncWorkspaceControls();
-  });
-  saveWorkspaceButton?.addEventListener('click', () => { void saveCurrentWorkspace({ saveAs: false }); });
-  saveWorkspaceAsButton?.addEventListener('click', () => { void saveCurrentWorkspace({ saveAs: true }); });
-  deleteWorkspaceButton?.addEventListener('click', () => { void deleteCurrentServerWorkspace(); });
+  if (workspacePresetSelect?.dataset.listenersBound !== 'true') {
+    workspacePresetSelect?.addEventListener('change', () => applyWorkspaceSelection(workspacePresetSelect.value));
+    document.getElementById('layout-edit-toggle')?.addEventListener('click', () => {
+      // 拖放编辑只改窗口排列，不改变下拉框当前选中的工作区名称。
+      if (currentServerWorkspaceName) refreshWorkspaceSelect();
+      else if (currentBuiltinWorkspaceName && workspacePresetSelect) workspacePresetSelect.value = currentBuiltinWorkspaceName;
+      syncWorkspaceControls();
+    });
+    document.getElementById('layout-reset')?.addEventListener('click', () => {
+      const preset = currentBuiltinWorkspaceName;
+      if (preset) {
+        waveformEditor.setLayout(preset);
+        void updateServerWorkspaceSettings({ resetPresetWorkspace: preset }).then(() => {
+          flashHint(`已恢复「${preset}」默认工作区`);
+        }).catch((error) => {
+          flashHint(`重置工作区失败：${error.message || error}`);
+        });
+      }
+      syncWorkspaceControls();
+    });
+    saveWorkspaceButton?.addEventListener('click', () => { void saveCurrentWorkspace({ saveAs: false }); });
+    saveWorkspaceAsButton?.addEventListener('click', () => { void saveCurrentWorkspace({ saveAs: true }); });
+    deleteWorkspaceButton?.addEventListener('click', () => { void deleteCurrentServerWorkspace(); });
+    workspacePresetSelect.dataset.listenersBound = 'true';
+  }
   syncWorkspaceControls();
 }
 
@@ -12482,6 +12748,12 @@ async function openProjectFile(file, options = {}) {
     }
 
     const expectedName = window.AsrEditorUtils.fileBasename(DATA.media);
+    // 服务器版：浏览器拿不到工程真实路径，但工程记录的媒体是绝对路径。
+    // 先让服务器按它定位同目录同名工程并接管（自动加载媒体、允许 Ctrl(Cmd)+S 保存）；
+    // 接管失败（媒体已移动 / 同名工程缺失 / 内容不一致）再回退为手动选择媒体。
+    if (expectedName && SERVER_CONFIG?.attachUrl) {
+      if (await attachProjectToServer(file.name, data)) return true;
+    }
     if (expectedName && !suppressMediaPrompt) {
       pendingProjectMediaSelection = { projectReady: true };
       showProjectMediaModal();
@@ -13315,20 +13587,20 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
   }
 
   if (!isMulti) {
-    // 组 1：跳转与拆分。仅「仅选中」模式提供「跳转并播放」——其它两种单击行为本身就会跳转。
+    // 组 1：拆分与跳转。拆分是字幕行右键菜单的首要动作。
+    const splitLabel = Number.isFinite(waveformTimeMs)
+      ? '按音频位置拆分'
+      : '按文字位置拆分';
+    // 「按音频位置拆分」对应波形上的 B；「按文字位置拆分」对应列表内悬停已选行时的 B。
+    const splitKbd = 'B';
+    addItem(splitLabel, splitKbd, () => splitFromContextMenu(idx, x, y, waveformTimeMs));
+    // 仅「仅选中」模式提供「跳转并播放」——其它两种单击行为本身就会跳转。
     if (EDITOR_SETTINGS.clickBehavior === 'select-only') {
       addItem('跳转并播放', 'F', () => {
         seekFromWaveform(DATA.segments[idx].start / 1000);
         if (player.paused) togglePlayback();
       });
     }
-    const splitLabel = Number.isFinite(waveformTimeMs)
-      ? '按音频位置拆分'
-      : '按文字位置拆分';
-    // 「按音频位置拆分」与波形 B 键（在红色播放指针处拆分）同类；「按文字位置拆分」
-    // 的 Enter/Ctrl+Enter 仅在文本编辑态有效，菜单里展示会误导，故不显示。
-    const splitKbd = Number.isFinite(waveformTimeMs) ? 'B' : '';
-    addItem(splitLabel, splitKbd, () => splitFromContextMenu(idx, x, y, waveformTimeMs));
     addSep();
     // 组 2：外观（表情包与颜色）
     addItem('分配表情包…', 'T', () => openStickerPicker([idx], false));
@@ -13374,7 +13646,7 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
     addItem(`删除 ${targetIdxs.length} 条字幕`, 'Delete', () => {
       deleteSegments(targetIdxs);
     }, { danger: true });
-    addItem('取消选择', 'Ctrl+D', () => clearSelection());
+    addItem('取消选择', `${modKeyLabel()}+D`, () => clearSelection());
   }
 
   // 调整 ctxmenu 位置（避免溢出）
@@ -13643,7 +13915,9 @@ async function handleDroppedFiles(files) {
     if (!confirm('当前有未保存的改动，是否确定加载新工程？将丢失未保存内容。')) return;
   }
   if (jsonFile) {
-    await openProjectFile(jsonFile);
+    // 工程与媒体一起拖入时，媒体随工程自动加载，不再弹窗要求重选。
+    const opened = await openProjectFile(jsonFile, { suppressMediaPrompt: Boolean(mediaFile) });
+    if (opened && mediaFile) await loadMediaFile(mediaFile);
     return;
   }
   if (srtFile && hasUnsavedProjectChanges()

@@ -1,16 +1,79 @@
 // MOSE server 级能力：Settings 读写 + IPC commands。
 // 等价于 MAW server-editor/serve.py 的 host 能力，但用 Tauri IPC 替代 HTTP。
 
-use std::fs;
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use tauri::Manager;
 
 pub const MAX_RECENT_PROJECTS: usize = 10;
 
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "ts", "m4v"];
 const AUDIO_EXTENSIONS: &[&str] = &["wav", "mp3", "m4a", "aac", "ogg", "flac", "opus"];
+
+fn replace_file_atomically(temp: &Path, target: &Path) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::{
+            MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+        };
+
+        let source: Vec<u16> = temp.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+        let destination: Vec<u16> = target.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+        let replaced = unsafe {
+            MoveFileExW(
+                source.as_ptr(),
+                destination.as_ptr(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        };
+        if replaced == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        return Ok(());
+    }
+
+    #[cfg(not(windows))]
+    fs::rename(temp, target)
+}
+
+fn atomic_write(path: &Path, contents: &str) -> Result<(), String> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
+    let filename = path.file_name().and_then(|value| value.to_str()).unwrap_or("settings.json");
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_nanos())
+        .unwrap_or_default();
+    let temp = parent.join(format!(".{}.tmp-{}-{}", filename, std::process::id(), stamp));
+
+    let result = (|| {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)
+            .map_err(|e| format!("创建临时文件失败: {}", e))?;
+        file.write_all(contents.as_bytes()).map_err(|e| format!("写入临时文件失败: {}", e))?;
+        file.flush().map_err(|e| format!("刷新临时文件失败: {}", e))?;
+        file.sync_all().map_err(|e| format!("同步临时文件失败: {}", e))?;
+        drop(file);
+        replace_file_atomically(&temp, path).map_err(|e| format!("替换文件失败: {}", e))?;
+        if let Ok(directory) = File::open(parent) {
+            let _ = directory.sync_all();
+        }
+        Ok(())
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_file(&temp);
+    }
+    result
+}
 
 #[derive(Clone)]
 struct MediaResolution {
@@ -247,13 +310,8 @@ impl ServerSettings {
     }
 
     pub fn save(&self, path: &Path) -> Result<(), String> {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
-        }
         let json = serde_json::to_string_pretty(self).map_err(|e| format!("序列化失败: {}", e))?;
-        fs::write(path, format!("{}\n", json))
-            .map_err(|e| format!("写入失败: {}", e))?;
-        Ok(())
+        atomic_write(path, &format!("{}\n", json))
     }
 
     pub fn remember_project(&mut self, path: &str) {
@@ -304,14 +362,19 @@ impl ServerSettings {
 // === App State ===
 
 pub struct AppState {
+    pub initial_project_path: Mutex<Vec<PathBuf>>,
     pub current_project_path: Mutex<Option<PathBuf>>,
     pub settings: Mutex<ServerSettings>,
     pub settings_path: PathBuf,
 }
 
 impl AppState {
-    pub fn can_save(&self) -> bool {
-        self.current_project_path.lock().unwrap().is_some()
+    pub fn queue_project_path(&self, path: PathBuf) {
+        if let Ok(mut pending) = self.initial_project_path.lock() {
+            if !pending.iter().any(|queued| queued == &path) {
+                pending.push(path);
+            }
+        }
     }
 }
 
@@ -324,6 +387,11 @@ pub fn settings_path() -> PathBuf {
             format!("{}\\AppData\\Local", home)
         });
         PathBuf::from(local)
+    } else if cfg!(target_os = "macos") {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+        PathBuf::from(home)
+            .join("Library")
+            .join("Application Support")
     } else {
         let data_dir = std::env::var("XDG_DATA_HOME").unwrap_or_else(|_| {
             let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
@@ -349,6 +417,18 @@ fn read_project_file(path: &Path) -> Result<(serde_json::Value, MediaResolution)
     Ok((data, resolution))
 }
 
+fn allow_project_sticker_root(app: &tauri::AppHandle, data: &serde_json::Value) {
+    let Some(root) = data.get("sticker_root").and_then(|value| value.as_str()) else {
+        return;
+    };
+    let root_path = PathBuf::from(root);
+    if root_path.is_dir() {
+        let _ = app
+            .state::<tauri::scope::Scopes>()
+            .allow_directory(root_path, true);
+    }
+}
+
 #[tauri::command]
 pub async fn open_project(
     state: tauri::State<'_, AppState>,
@@ -372,6 +452,7 @@ pub async fn open_project(
         .to_path_buf();
 
     let (data, media_resolution) = read_project_file(&path)?;
+    allow_project_sticker_root(&app, &data);
 
     // 设置当前工程路径（后续 save_project 用）
     *state.current_project_path.lock().unwrap() = Some(path.clone());
@@ -456,8 +537,7 @@ pub fn save_project(
     // 写工程文件（保持 LF，与 edit.py 一致）
     let json = serde_json::to_string_pretty(&project)
         .map_err(|e| format!("序列化失败: {}", e))?;
-    fs::write(&path, format!("{}\n", json))
-        .map_err(|e| format!("写入失败: {}", e))?;
+    atomic_write(&path, &format!("{}\n", json))?;
 
     let filename = path
         .file_name()
@@ -483,6 +563,29 @@ pub fn remember_project(
         settings.save(&state.settings_path)?;
     }
     Ok(serde_json::json!({ "ok": true }))
+}
+
+#[tauri::command]
+pub fn get_settings(state: tauri::State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let settings = state.settings.lock().map_err(|_| "读取设置失败".to_string())?;
+    Ok(settings.to_server_config(false))
+}
+
+/// Return and consume the project path supplied when MOSE was launched.
+/// The frontend calls this after it has initialized, so a startup argument
+/// cannot be lost before the JavaScript event listener is ready.
+#[tauri::command]
+pub fn take_initial_project_path(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let mut paths = state
+        .initial_project_path
+        .lock()
+        .map_err(|_| "读取启动工程路径失败".to_string())?;
+    Ok(paths
+        .drain(..)
+        .map(|value| value.to_string_lossy().into_owned())
+        .collect())
 }
 
 #[tauri::command]
@@ -554,6 +657,7 @@ pub fn update_settings(
 /// 打开指定路径的工程（用于"最近工程"切换，不弹 dialog）。
 #[tauri::command]
 pub fn open_project_at_path(
+    app: tauri::AppHandle,
     state: tauri::State<AppState>,
     path: String,
 ) -> Result<serde_json::Value, String> {
@@ -573,6 +677,7 @@ pub fn open_project_at_path(
     }
 
     let (data, media_resolution) = read_project_file(&path_buf)?;
+    allow_project_sticker_root(&app, &data);
 
     *state.current_project_path.lock().unwrap() = Some(path_buf.clone());
 
@@ -597,31 +702,29 @@ pub fn open_project_at_path(
     }))
 }
 
-/// 解析媒体文件路径为 webview 可访问的 URL（当前用 file:// 协议）。
+/// 解析媒体文件路径并授权 Tauri asset protocol 访问。
 #[tauri::command]
-pub fn resolve_media(path: String) -> Result<serde_json::Value, String> {
-    let path_buf = PathBuf::from(&path);
-    if !path_buf.exists() {
+pub fn resolve_media(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<serde_json::Value, String> {
+    let path_buf = PathBuf::from(&path).canonicalize().unwrap_or_else(|_| PathBuf::from(&path));
+    if !path_buf.is_file() {
         return Ok(serde_json::json!({
             "ok": false,
             "error": format!("媒体文件不存在：{}", path),
         }));
     }
-    // Windows: file:///D:/path/to/file → 正斜杠
-    let posix = path.replace('\\', "/");
-    let trimmed = posix.trim_start_matches('/');
-    let url = format!("file:///{}", trimmed);
+    app.state::<tauri::scope::Scopes>()
+        .allow_file(&path_buf)
+        .map_err(|error| format!("无法授权媒体访问：{}", error))?;
 
     Ok(serde_json::json!({
         "ok": true,
-        "url": url,
+        "sourcePath": path_buf.to_string_lossy(),
+        "playbackPath": path_buf.to_string_lossy(),
         "name": path_buf.file_name().and_then(|s| s.to_str()).unwrap_or("media"),
     }))
-}
-
-fn media_file_url(path: &Path) -> String {
-    let posix = path.to_string_lossy().replace('\\', "/");
-    format!("file:///{}", posix.trim_start_matches('/'))
 }
 
 fn converted_media_path(source: &Path) -> PathBuf {
@@ -671,13 +774,47 @@ fn cleanup_conversion_temp_files(playback: &Path) {
     }
 }
 
-/// 为 WebView 准备实际可播放的媒体；Desktop 使用随应用打包的 ffmpeg sidecar。
+fn bundled_ffmpeg_path() -> Option<PathBuf> {
+    let executable_name = if cfg!(target_os = "windows") {
+        "ffmpeg.exe"
+    } else {
+        "ffmpeg"
+    };
+    let mut candidates = Vec::new();
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(parent) = executable.parent() {
+            candidates.push(parent.join("ffmpeg").join("bin").join(executable_name));
+            candidates.push(parent.join(executable_name));
+        }
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        candidates.extend(std::env::split_paths(&path).map(|directory| directory.join(executable_name)));
+    }
+    candidates.into_iter().find(|path| path.is_file())
+}
+
+fn ffmpeg_command(
+    app: &tauri::AppHandle,
+    args: Vec<String>,
+) -> Result<tauri_plugin_shell::process::Command, String> {
+    use tauri_plugin_shell::ShellExt;
+
+    let command = if let Some(path) = bundled_ffmpeg_path() {
+        app.shell().command(path)
+    } else {
+        app.shell()
+            .sidecar("ffmpeg")
+            .map_err(|error| format!("无法找到 FFmpeg：请安装 FFmpeg，或使用 MAWxFF 版本：{}", error))?
+    };
+    Ok(command.args(args))
+}
+
+/// 为 WebView 准备实际可播放的媒体；优先使用 MAW 包内共享的 FFmpeg。
 #[tauri::command]
 pub async fn prepare_media(
     app: tauri::AppHandle,
     path: String,
 ) -> Result<serde_json::Value, String> {
-    use tauri_plugin_shell::ShellExt;
     use tauri_plugin_shell::process::CommandEvent;
 
     let source = PathBuf::from(&path).canonicalize().unwrap_or_else(|_| PathBuf::from(&path));
@@ -719,12 +856,8 @@ pub async fn prepare_media(
                     let _ = fs::remove_file(&temp_output);
                 }
                 args.push(temp_output.to_string_lossy().to_string());
-                let sidecar = app
-                    .shell()
-                    .sidecar("ffmpeg")
-                    .map_err(|e| format!("无法找到 ffmpeg sidecar: {}", e))?;
-                let (mut rx, _child) = sidecar
-                    .args(args)
+                let command = ffmpeg_command(&app, args)?;
+                let (mut rx, _child) = command
                     .spawn()
                     .map_err(|e| format!("ffmpeg 启动失败: {}", e))?;
                 let mut stderr = String::new();
@@ -797,10 +930,16 @@ pub async fn prepare_media(
         }
     }
 
+    // The frontend uses Tauri's asset protocol for external media. Keep the
+    // scope narrow: only the source or generated playback file for this
+    // request is exposed to the webview.
+    app.state::<tauri::scope::Scopes>()
+        .allow_file(&playback)
+        .map_err(|error| format!("无法授权媒体访问：{}", error))?;
+
     Ok(serde_json::json!({
         "ok": true,
         "status": if converted { "conversion_needed" } else { "success" },
-        "url": media_file_url(&playback),
         "name": source.file_name().and_then(|s| s.to_str()).unwrap_or("media"),
         "sourcePath": source.to_string_lossy(),
         "playbackPath": playback.to_string_lossy(),
@@ -881,6 +1020,10 @@ pub async fn pick_and_scan_stickers(app: tauri::AppHandle) -> Result<serde_json:
         .to_path_buf();
     let root_abs = root_path.canonicalize().unwrap_or(root_path);
 
+    app.state::<tauri::scope::Scopes>()
+        .allow_directory(&root_abs, true)
+        .map_err(|error| format!("无法授权表情包目录：{}", error))?;
+
     let mut items = Vec::new();
     scan_sticker_dir(&root_abs, &root_abs, 3, 0, 500, &mut items);
 
@@ -904,7 +1047,6 @@ pub async fn extract_waveform(
     media_path: String,
     peaks_per_second: Option<u32>,
 ) -> Result<serde_json::Value, String> {
-    use tauri_plugin_shell::ShellExt;
     use tauri_plugin_shell::process::CommandEvent;
 
     let pps = peaks_per_second.unwrap_or(100);
@@ -927,20 +1069,15 @@ pub async fn extract_waveform(
             .unwrap_or(0),
     });
 
-    // 调 ffmpeg sidecar
-    let sidecar = app
-        .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| format!("无法找到 ffmpeg sidecar: {}", e))?;
-
-    let (mut rx, _child) = sidecar
-        .args([
-            "-nostdin", "-hide_banner", "-loglevel", "error",
-            "-i", &media_path,
-            "-map", "0:a:0", "-vn", "-ac", "1",
-            "-ar", &pcm_sample_rate.to_string(),
-            "-f", "s16le", "pipe:1",
-        ])
+    // 调优先解析到的共享 FFmpeg。
+    let command_args = vec![
+        "-nostdin".to_string(), "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), media_path.clone(),
+        "-map".to_string(), "0:a:0".to_string(), "-vn".to_string(), "-ac".to_string(), "1".to_string(),
+        "-ar".to_string(), pcm_sample_rate.to_string(),
+        "-f".to_string(), "s16le".to_string(), "pipe:1".to_string(),
+    ];
+    let (mut rx, _child) = ffmpeg_command(&app, command_args)?
         .spawn()
         .map_err(|e| format!("ffmpeg 启动失败: {}", e))?;
 

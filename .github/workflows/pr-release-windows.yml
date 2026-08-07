@@ -1,0 +1,123 @@
+name: Preview Windows Release
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-release-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    name: Build Windows x64 no-FFmpeg preview
+    runs-on: windows-2022
+    env:
+      PYTHONUTF8: '1'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: uv sync --group build --frozen
+
+      - name: Run packaging contract tests
+        run: uv run python -m unittest tests/test_packaging_contract.py
+
+      - name: Run Python tests
+        run: uv run python -m unittest discover -s tests -p "test_*.py"
+
+      - name: Build MAW and MOSE bundle
+        shell: pwsh
+        run: .\scripts\build-windows.ps1 -SkipTests
+
+      - name: Smoke MAW executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ExePath = 'dist\MAW\MAW.exe'
+          if (-not (Test-Path -LiteralPath $ExePath -PathType Leaf)) {
+            throw 'Missing dist\MAW\MAW.exe after build.'
+          }
+          $HelpProcess = Start-Process -FilePath $ExePath -ArgumentList '--help' -PassThru -WindowStyle Hidden
+          if ($HelpProcess.WaitForExit(10000)) {
+            if ($HelpProcess.ExitCode -ne 0) {
+              throw "MAW.exe launch smoke exited with $($HelpProcess.ExitCode)."
+            }
+          } else {
+            Stop-Process -Id $HelpProcess.Id -Force
+          }
+
+      - name: Smoke MOSE executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ExePath = 'dist\MAW\MOSE.exe'
+          if (-not (Test-Path -LiteralPath $ExePath -PathType Leaf)) {
+            throw 'Missing dist\MAW\MOSE.exe after build.'
+          }
+          $HelpProcess = Start-Process -FilePath $ExePath -ArgumentList '--help' -PassThru -WindowStyle Hidden
+          if ($HelpProcess.WaitForExit(10000)) {
+            if ($HelpProcess.ExitCode -ne 0) {
+              throw "MOSE.exe launch smoke exited with $($HelpProcess.ExitCode)."
+            }
+          } else {
+            Stop-Process -Id $HelpProcess.Id -Force
+          }
+
+      - name: Verify no FFmpeg is bundled
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $BundledFfmpeg = Get-ChildItem -LiteralPath 'dist\MAW' -Recurse -File |
+            Where-Object { $_.Name -in @('ffmpeg.exe', 'ffprobe.exe', 'ffplay.exe') }
+          if ($BundledFfmpeg) {
+            throw "The PR preview must not bundle FFmpeg: $($BundledFfmpeg.FullName -join ', ')"
+          }
+
+      - name: Create no-FFmpeg release preview archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PrNumber = '${{ github.event.pull_request.number || 'manual' }}'
+          $BuildSha = '${{ github.event.pull_request.head.sha || github.sha }}'
+          $Archive = "MAW-Windows-x64-pr-$PrNumber-$BuildSha.zip"
+          Compress-Archive -LiteralPath 'dist\MAW' -DestinationPath $Archive -Force
+
+      - name: Upload no-FFmpeg release preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: MAW-Windows-x64-pr-${{ github.event.pull_request.number || 'manual' }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            MAW-Windows-x64-pr-${{ github.event.pull_request.number || 'manual' }}-${{ github.event.pull_request.head.sha || github.sha }}.zip
+          if-no-files-found: error
+          retention-days: 14

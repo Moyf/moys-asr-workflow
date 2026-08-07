@@ -169,15 +169,7 @@
   gap: 0 8px;
   overflow: hidden;
 }
-/* 空状态的宽版面板按内容收紧；释放的高度交给下方字幕列表。窄版仍由四层内容自然撑高。 */
-.editor-workspace.layout-wave-right:has(> .current-cue-panel.empty) {
-  grid-template-rows:
-    minmax(56px, calc(var(--layout-row-top) - 9.333px))
-    7px
-    max-content
-    7px
-    minmax(56px, 1fr);
-}
+/* 面板行对选中/未选中使用同一套轨道尺寸：高度只随手动拖拽变化，不再因选中跳变。 */
 .editor-workspace.layout-wave-right > .player-wrap,
 .editor-workspace.layout-wave-right > .current-cue-panel,
 .editor-workspace.layout-wave-right > .waveform-pane,

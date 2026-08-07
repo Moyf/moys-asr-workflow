@@ -21,7 +21,7 @@
       <div class="hero-brand">
         <img class="hero-icon" src="../../assets/show.webp" alt="" aria-hidden="true">
         <div class="hero-copy">
-          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.2.0</span></div>
+          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.13.1-beta-5</span></div>
           <p data-i18n="hero_desc">📺 本地媒体 ➜  🤖 AI 转写 ➜ ✨ 可编辑字幕工程</p>
           <span id="demoBadge" class="demo-badge hidden" data-i18n="demo_mode">演示模式</span>
         </div>
@@ -154,7 +154,7 @@
           </div>
           <div id="speakerColorsField" class="field hidden">
             <label class="check-field" for="speakerColors" data-i18n-title="speaker_colors_title">
-              <input id="speakerColors" type="checkbox" checked>
+              <input id="speakerColors" type="checkbox">
               <span data-i18n="speaker_colors">给不同说话人分配字幕颜色</span>
             </label>
             <p class="hint" data-i18n="speaker_colors_hint">最多 5 种颜色；说话人超过 5 个时颜色循环复用。</p>
@@ -197,13 +197,15 @@
     <footer class="actions">
       <button id="start" class="primary" type="button" data-i18n="start">生成字幕和工程</button>
       <div class="split-wrap">
-        <button id="openMawe" class="ghost split-main" type="button" data-i18n="open_mawe">打开字幕编辑器（MAWE）</button>
+        <button id="openMawe" class="ghost split-main" type="button" data-i18n="start_server_editor">启动 Server 版字幕编辑器</button>
         <button id="openMenu" class="ghost split-caret" type="button" aria-haspopup="true">▾</button>
         <div id="htmlMenu" class="split-menu hidden">
+          <button id="openMose" type="button" data-i18n="open_mose">在 MOSE 中打开</button>
           <button id="openHtml" class="hidden" type="button" data-i18n="open_html">打开该工程的 HTML 编辑器</button>
           <button id="openBlankHtml" type="button" data-i18n="open_blank_html">打开空的 HTML 编辑器</button>
         </div>
       </div>
+      <button id="stopServer" class="ghost server-stop hidden" type="button" data-i18n="server_stop">停止服务器</button>
       <button id="openFolder" class="ghost hidden" type="button" data-i18n="open_folder">打开输出文件夹</button>
     </footer>
     <div id="status" class="status">就绪</div>

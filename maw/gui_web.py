@@ -8,6 +8,7 @@ import queue
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import tempfile
 import time
@@ -22,7 +23,7 @@ from typing import BinaryIO, Final, final
 
 from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, LANGUAGES, MODELS, PROVIDERS, REGIONS, ModelConfig, ProviderConfig, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, startupinfo
-from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, build_serve_command, default_srt_path, run_transcription
+from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, build_serve_command, default_srt_path, run_transcription, with_test_suffix
 from maw.media import resolve_project_media
 
 
@@ -31,6 +32,10 @@ SAVE_DIALOG = 30
 FOLDER_DIALOG = 20
 WINDOW_TITLE = "MAW Launcher"
 MEDIA_EXTS: Final = frozenset({".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"})
+MOSE_REGISTRY_KEY = r"Software\Moy\MOSE"
+MOSE_FILE_TYPE = "Moy.MOSE.Project"
+# Keep this aligned with desktop/src-tauri/tauri.conf.json until an installer owns it.
+MOSE_VERSION = "0.1.0"
 
 
 ERROR_MESSAGES: Final[dict[str, str]] = {
@@ -44,9 +49,12 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "hotwords_file_missing": "Choose an existing UTF-8 .txt hotword file.",
     "server_no_response": "Editor server did not respond.",
     "server_start_failed": "Editor server failed to start.",
+    "mose_not_found": "MOSE desktop editor was not found in this MAW package.",
+    "mose_start_failed": "MOSE desktop editor failed to start.",
     "server_stop_not_maw": "The process using this port is not a MAW editor server.",
     "server_stop_failed": "Unable to stop the MAW editor server.",
     "sticker_dir_invalid": "Sticker directory does not exist.",
+    "config_save_failed": "Local configuration could not be saved.",
 }
 
 
@@ -57,9 +65,9 @@ def _app_version(paths: object) -> str:
     try:
         text = Path(pyproject).read_text(encoding="utf-8")
     except OSError:
-        return "1.2.0"
+        return "1.13.1-beta-5"
     match = re.search(r'(?m)^version = "([^"]+)"\r?$', text)
-    return match.group(1) if match else "1.2.0"
+    return match.group(1) if match else "1.13.1-beta-5"
 
 
 def _is_ffprobe_start_failure(lines: Sequence[str]) -> bool:
@@ -68,6 +76,187 @@ def _is_ffprobe_start_failure(lines: Sequence[str]) -> bool:
     return "ffprobe" in detail and any(
         marker in detail for marker in ("3221225794", "0xc0000142", "c0000142")
     )
+
+
+def _registered_mose_executable() -> Path | None:
+    """Read a valid independent MOSE installation registered for this user."""
+    if sys.platform != "win32":
+        return None
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, MOSE_REGISTRY_KEY) as key:
+            try:
+                value = winreg.QueryValueEx(key, "ExecutablePath")[0]
+            except OSError:
+                install_path = winreg.QueryValueEx(key, "InstallPath")[0]
+                value = Path(str(install_path)) / "MOSE.exe"
+    except (AttributeError, ImportError, OSError, TypeError, ValueError):
+        return None
+    candidate = Path(str(value)).expanduser()
+    if not candidate.is_file():
+        return None
+    try:
+        return candidate.resolve()
+    except OSError:
+        return candidate
+
+
+def _macos_mose_executable(app_path: Path) -> Path | None:
+    """Return the executable inside a macOS MOSE application bundle."""
+    for name in ("mose", "MOSE"):
+        candidate = app_path / "Contents" / "MacOS" / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _mose_search_paths() -> list[Path]:
+    """Return the optional MOSE paths that the MAW Launcher will inspect."""
+    candidates: list[Path] = []
+    registered = _registered_mose_executable()
+    if registered is not None:
+        candidates.append(registered)
+
+    repo_root = Path(__file__).resolve().parents[1]
+    if sys.platform == "darwin":
+        app_candidates: list[Path] = [
+            repo_root / "MOSE.app",
+            repo_root / "mose.app",
+            repo_root / "desktop" / "target" / "release" / "bundle" / "macos" / "MOSE.app",
+            repo_root / "desktop" / "target" / "release" / "bundle" / "macos" / "mose.app",
+            repo_root / "desktop" / "target" / "debug" / "bundle" / "macos" / "MOSE.app",
+            repo_root / "desktop" / "target" / "debug" / "bundle" / "macos" / "mose.app",
+            asset_path("MOSE.app"),
+            asset_path("mose.app"),
+            Path("/Applications/MOSE.app"),
+            Path("/Applications/mose.app"),
+            Path.home() / "Applications" / "MOSE.app",
+            Path.home() / "Applications" / "mose.app",
+        ]
+        if getattr(sys, "frozen", False):
+            executable_path = Path(sys.executable).resolve()
+            executable_dir = executable_path.parent
+            frozen_app_candidates = [
+                executable_dir / "MOSE.app",
+                executable_dir / "mose.app",
+                executable_dir.parent / "Resources" / "MOSE.app",
+                executable_dir.parent / "Resources" / "mose.app",
+                executable_dir.parent.parent.parent / "MOSE.app",
+                executable_dir.parent.parent.parent / "mose.app",
+            ]
+            # In a normal PyInstaller .app, sys.executable is inside
+            # MAW.app/Contents/MacOS. Derive the sibling from the actual .app
+            # ancestor instead of relying on a fixed number of parent levels;
+            # this also works when the bundle is launched through a symlink or
+            # when PyInstaller changes its internal layout.
+            for bundle_path in executable_path.parents:
+                if bundle_path.suffix.lower() == ".app":
+                    frozen_app_candidates.extend(
+                        (
+                            bundle_path.parent / "MOSE.app",
+                            bundle_path.parent / "mose.app",
+                        )
+                    )
+            app_candidates[0:0] = frozen_app_candidates
+        candidates.extend(app_candidates)
+    else:
+        if getattr(sys, "frozen", False):
+            executable_dir = Path(sys.executable).resolve().parent
+            candidates.extend((executable_dir / "MOSE.exe", executable_dir / "mose.exe"))
+        candidates.extend(
+            (
+                repo_root / "MOSE.exe",
+                repo_root / "mose.exe",
+                repo_root / "desktop" / "target" / "release" / "mose.exe",
+                repo_root / "desktop" / "target" / "debug" / "mose.exe",
+                asset_path("MOSE.exe"),
+                asset_path("mose.exe"),
+            )
+        )
+
+    return candidates
+
+
+def _find_mose_executable() -> Path | None:
+    """Find the optional MOSE executable or macOS app bundle for the MAW Launcher."""
+    seen: set[Path] = set()
+    for candidate in _mose_search_paths():
+        if sys.platform == "darwin" and candidate.suffix.lower() == ".app":
+            executable = _macos_mose_executable(candidate)
+            if executable is None:
+                continue
+            candidate = executable
+        try:
+            candidate = candidate.resolve()
+        except OSError:
+            continue
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _mose_environment() -> dict[str, str]:
+    """Pass a bundled MAWxFF directory to MOSE when the two apps are siblings."""
+    environment = os.environ.copy()
+    bundled_directory = _bundled_ffmpeg_directory()
+    if bundled_directory is not None:
+        old_path = environment.get("PATH", "")
+        environment["PATH"] = str(bundled_directory) if not old_path else str(bundled_directory) + os.pathsep + old_path
+    return environment
+
+
+def _register_mosp_association() -> bool:
+    """Register the portable package's .mosp association for the current Windows user."""
+    if sys.platform != "win32":
+        return False
+    registered = _registered_mose_executable()
+    executable = registered or _find_mose_executable()
+    if executable is None:
+        return False
+    # MOSE.exe already embeds the MOSE icon.  Referencing the executable keeps
+    # the association self-contained in the portable bundle and avoids pointing
+    # Explorer at MAW's launcher icon (or at a stale _MEIPASS path).
+    icon = executable
+    try:
+        import winreg
+
+        version = MOSE_VERSION
+        if registered is not None:
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, MOSE_REGISTRY_KEY) as mose_key:
+                    existing_version = winreg.QueryValueEx(mose_key, "Version")[0]
+                if str(existing_version).strip():
+                    version = str(existing_version).strip()
+            except (AttributeError, OSError, TypeError, ValueError):
+                pass
+
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, MOSE_REGISTRY_KEY) as mose_key:
+            winreg.SetValueEx(mose_key, "InstallPath", 0, winreg.REG_SZ, str(executable.parent))
+            winreg.SetValueEx(mose_key, "ExecutablePath", 0, winreg.REG_SZ, str(executable))
+            winreg.SetValueEx(mose_key, "Version", 0, winreg.REG_SZ, version)
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.mosp") as extension_key:
+            winreg.SetValueEx(extension_key, None, 0, winreg.REG_SZ, MOSE_FILE_TYPE)
+            winreg.SetValueEx(extension_key, "Content Type", 0, winreg.REG_SZ, "application/json")
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MOSE_FILE_TYPE}") as file_type_key:
+            winreg.SetValueEx(file_type_key, None, 0, winreg.REG_SZ, "MOSE Project")
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MOSE_FILE_TYPE}\DefaultIcon") as icon_key:
+            winreg.SetValueEx(icon_key, None, 0, winreg.REG_SZ, f'"{icon}",0')
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MOSE_FILE_TYPE}\shell\open\command") as command_key:
+            winreg.SetValueEx(command_key, None, 0, winreg.REG_SZ, f'"{executable}" "%1"')
+    except (AttributeError, ImportError, OSError):
+        return False
+    try:
+        import ctypes
+
+        # Make Explorer invalidate its cached association/icon immediately.
+        ctypes.windll.shell32.SHChangeNotify(0x08000000, 0, None, None)
+    except (AttributeError, OSError, TypeError):
+        pass
+    return True
 
 
 @final
@@ -166,9 +355,10 @@ class LauncherApi:
         media_text = str(payload.get("mediaPath") or "").strip()
         provider_id = str(payload.get("providerId") or "qwen")
         model_id = str(payload.get("modelId") or DEFAULT_MODEL_ID)
+        test_run = bool(payload.get("testRun"))
         return {
             "ok": bool(media_text),
-            "path": str(default_srt_path(Path(media_text), provider=provider_id, model=model_id))
+            "path": str(default_srt_path(Path(media_text), provider=provider_id, model=model_id, test_run=test_run))
             if media_text else "",
         }
 
@@ -185,7 +375,10 @@ class LauncherApi:
             updates["DASHSCOPE_REGION"] = str(payload.get("region") or "beijing")
             updates["DASHSCOPE_DEFAULT_LANGUAGE"] = str(payload.get("language") or "")
             updates["DASHSCOPE_WORKSPACE_ID"] = str(payload.get("workspaceId") or "").strip()
-        save_env(self.paths.env_path, updates)
+        try:
+            save_env(self.paths.env_path, updates)
+        except (OSError, UnicodeError) as error:
+            return _error_result("", "config_save_failed", f"{self.paths.env_path}: {error}")
         return {"ok": True, "maskedApiKey": masked_secret(api_key), "message": "settings saved"}
 
     def save_prefs(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -197,7 +390,10 @@ class LauncherApi:
         if "showRareLangs" in payload:
             updates["MAW_GUI_SHOW_RARE_LANGS"] = "true" if payload.get("showRareLangs") else "false"
         if updates:
-            save_env(self.paths.env_path, updates)
+            try:
+                save_env(self.paths.env_path, updates)
+            except (OSError, UnicodeError) as error:
+                return _error_result("", "config_save_failed", f"{self.paths.env_path}: {error}")
         return {"ok": True}
 
     def choose_file(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -240,25 +436,43 @@ class LauncherApi:
         webbrowser.open(url)
         return {"ok": True}
 
+    def open_mose(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Open the packaged MOSE editor and pass it the selected project path."""
+        project_text = str(payload.get("jsonPath") or "").strip()
+        project = Path(project_text).expanduser() if project_text else None
+        if project is not None and not project.is_file():
+            return _error_result("jsonPath", "json_not_found", str(project))
+
+        executable = _find_mose_executable()
+        if executable is None:
+            expected = "MOSE.app" if sys.platform == "darwin" else "MOSE.exe"
+            result = _error_result("editor", "mose_not_found", expected)
+            result["searchPaths"] = [str(path) for path in _mose_search_paths()]
+            return result
+
+        command = [str(executable)]
+        if project is not None:
+            command.append(str(project.resolve()))
+        try:
+            subprocess.Popen(
+                command,
+                cwd=str(executable.parent),
+                startupinfo=startupinfo(),
+                creationflags=creationflags(),
+                env=_mose_environment(),
+            )
+        except OSError as error:
+            return _error_result("editor", "mose_start_failed", str(error))
+        return {"ok": True, "usedMose": True, "path": str(executable)}
+
     def start_server(self, payload: Mapping[str, object]) -> dict[str, object]:
         json_text = str(payload.get("jsonPath") or "").strip()
         port = _port(payload)
         url = f"http://127.0.0.1:{port}/"
         launch_url = f"{url}?lang={_gui_lang(payload)}"
 
-        # MOSE 桌面应用检测：安装了就优先用它打开（os.startfile 触发 .mosp 文件关联）
-        if json_text and os.name == "nt":
-            try:
-                import winreg
-                winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, ".mosp")
-                json_path = Path(json_text).expanduser()
-                if json_path.exists():
-                    os.startfile(str(json_path))
-                    return {"ok": True, "usedMose": True}
-            except (FileNotFoundError, OSError, KeyError):
-                pass  # MOSE 未安装或打开失败，fallback 到 serve.py
-
-        if _wait_for_server(url, timeout=0.25):
+        owned_server_running = self.server_process is not None and self.server_process.poll() is None
+        if _wait_for_server(url, timeout=0.25) and (not json_text or not owned_server_running):
             return {"ok": True, "url": launch_url, "serverAlreadyRunning": True}
         if not json_text:
             # 无工程：不带 JSON 路径启动，由服务器按「自动打开上次工程」设置恢复最近工程或回落为空白编辑器
@@ -430,7 +644,10 @@ class LauncherApi:
 
     def save_ffmpeg_path(self, payload: Mapping[str, object]) -> dict[str, object]:
         value = str(payload.get("path") or "").strip()
-        save_env(self.paths.env_path, {"FFMPEG_PATH": value})
+        try:
+            save_env(self.paths.env_path, {"FFMPEG_PATH": value})
+        except (OSError, UnicodeError) as error:
+            return _error_result("ffmpegPath", "config_save_failed", f"{self.paths.env_path}: {error}")
         result = _check_ffmpeg(self.paths.env_path, override=value)
         result["ok"] = bool(result["found"])
         return result
@@ -440,7 +657,10 @@ class LauncherApi:
         path = Path(value).expanduser()
         if not value or not path.is_dir():
             return _error_result("stickerDir", "sticker_dir_invalid", value)
-        save_env(self.paths.env_path, {"STICKER_DIR": str(path)})
+        try:
+            save_env(self.paths.env_path, {"STICKER_DIR": str(path)})
+        except (OSError, UnicodeError) as error:
+            return _error_result("stickerDir", "config_save_failed", f"{self.paths.env_path}: {error}")
         return {"ok": True, "stickerDir": str(path)}
 
     def shutdown(self) -> None:
@@ -497,6 +717,7 @@ def run_app() -> None:
 
     paths = default_paths()
     api = LauncherApi(paths=paths)
+    _register_mosp_association()
     window = webview.create_window(
         WINDOW_TITLE,
         url=paths.launcher_html.resolve().as_uri(),
@@ -543,6 +764,9 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     srt_text = str(payload.get("srtPath") or "").strip()
     media = Path(media_text).expanduser()
     srt = Path(srt_text).expanduser()
+    test_run = bool(payload.get("testRun"))
+    if test_run:
+        srt = with_test_suffix(srt)
     provider = provider_by_id(str(payload.get("providerId") or "qwen"))
     requested_model = str(payload.get("modelId") or "")
     model = next(
@@ -588,7 +812,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         model=model.id,
         language=str(payload.get("language") or ""),
         api_key=api_key,
-        length_limit="2m" if bool(payload.get("testRun")) else str(payload.get("lengthLimit") or "").strip(),
+        length_limit="2m" if test_run else str(payload.get("lengthLimit") or "").strip(),
         qwen_audio_context=qwen_audio_context,
         qwen_audio_hotwords=qwen_audio_hotwords,
         qwen_audio_hotwords_file=qwen_audio_hotwords_file,

@@ -181,11 +181,11 @@
     },
   };
   const PALETTE = {
-    red: '#e74c3c',
     yellow: '#f1c40f',
-    blue: '#168cff',
     green: '#2ecc71',
+    red: '#e74c3c',
     purple: '#9b59b6',
+    blue: '#168cff',
   };
 
   function clamp(value, low, high) {
@@ -2253,6 +2253,16 @@
       return startMs + ratio * (endMs - startMs);
     }
 
+    // 屏幕坐标 -> 波形时间：命中某个波形行时返回该行内的时间（毫秒），否则返回 null。
+    // 供键盘快捷键（如 B 按指针音频位置拆分）在不构造指针事件的情况下复用行内映射。
+    timeMsAtPoint(clientX, clientY) {
+      const hit = document.elementFromPoint(clientX, clientY);
+      const row = hit?.closest?.('.waveform-row');
+      if (!row || !this.pane?.contains(row)) return null;
+      const timeMs = this.timeFromPointer({ clientX }, row);
+      return Number.isFinite(timeMs) ? timeMs : null;
+    }
+
     // 「允许拖动指针」：在波形空白区域按住左键拖动时，播放指针实时跟随鼠标
     // 所在位置。高回报率指针事件用 rAF 合并，每帧最多 seek 一次；松开时以
     // 最终位置再 seek 一次保证落点精确。指针捕获让拖出行范围时按行边界钳制。
@@ -2385,8 +2395,8 @@
     }
 
     handleWheel(event) {
-      if (this.isMultiMode() && event.ctrlKey && event.shiftKey) {
-        // Ctrl+Shift+滚轮：仅多行模式下循环调整行高预设，向上滚放大，不改变时间映射
+      if (this.isMultiMode() && (event.ctrlKey || event.metaKey) && event.shiftKey) {
+        // Ctrl(Cmd)+Shift+滚轮：仅多行模式下循环调整行高预设，向上滚放大，不改变时间映射
         event.preventDefault();
         const current = ROW_HEIGHT_PRESETS.indexOf(this.settings.rowHeight);
         const next = clamp(current + (event.deltaY > 0 ? -1 : 1), 0, ROW_HEIGHT_PRESETS.length - 1);
@@ -2438,7 +2448,7 @@
       event.preventDefault();
       event.stopPropagation();
       // 剃刀工具：无修饰键左键点击字幕块（非手柄）时，在指针位置安全拆分。
-      // 修饰键（Alt/Ctrl/Cmd/Shift）仍走原行为，便于拆分后立即多选/禁用。
+      // 修饰键（Alt/Ctrl(Cmd)/Shift）仍走原行为，便于拆分后立即多选/禁用。
       const targetHandle = event.target.closest('.waveform-cue-handle');
       if (this.tool === 'razor' && !targetHandle
           && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
@@ -2462,7 +2472,7 @@
         this.options.toggleDisabled?.([index]);
         return;
       }
-      // Ctrl/Cmd+click toggles selection without starting a drag
+      // Ctrl(Cmd)+click toggles selection without starting a drag
       if (event.ctrlKey || event.metaKey) {
         this.options.toggleCueSelection?.(index);
         return;

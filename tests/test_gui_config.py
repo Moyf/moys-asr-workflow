@@ -15,6 +15,14 @@ from maw import gui_config  # noqa: E402
 
 
 class GuiConfigTests(unittest.TestCase):
+    def test_default_env_path_uses_macos_application_support(self) -> None:
+        with mock.patch.object(gui_config.sys, "platform", "darwin"):
+            with mock.patch.object(gui_config.Path, "home", return_value=Path("/Users/test-user")):
+                self.assertEqual(
+                    gui_config.default_env_path(),
+                    Path("/Users/test-user/Library/Application Support/Moy/MAW/.env"),
+                )
+
     def test_save_env_preserves_comments_order_and_other_values(self) -> None:
         """Given an existing env file, When keys are saved, Then only those keys change."""
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -27,6 +35,14 @@ class GuiConfigTests(unittest.TestCase):
                 env_path.read_text(encoding="utf-8"),
                 "# heading\nDASHSCOPE_API_KEY=new\nKEEP_ME=yes\n\n# tail\nMAW_GUI_LANG=en\n",
             )
+
+    def test_save_env_creates_missing_parent_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / "Library" / "Application Support" / "Moy" / "MAW" / ".env"
+
+            gui_config.save_env(env_path, {"FFMPEG_PATH": "/opt/homebrew/bin"})
+
+            self.assertEqual(gui_config.load_env(env_path)["FFMPEG_PATH"], "/opt/homebrew/bin")
 
     def test_save_env_creates_from_example_when_absent(self) -> None:
         """Given no env file, When saving, Then the local example is copied first."""

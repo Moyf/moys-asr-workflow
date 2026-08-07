@@ -36,6 +36,54 @@
 
   var mediaLoadGeneration = 0;
   var projectOpenQueue = Promise.resolve();
+  var externalProjectQueue = Promise.resolve();
+  var externalProjectRequests = new Set();
+
+  function assetUrlForPath(path) {
+    var convertFileSrc =
+      (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.convertFileSrc) ||
+      (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.convertFileSrc);
+    if (typeof convertFileSrc !== 'function' || !path) return '';
+    try {
+      return convertFileSrc(path);
+    } catch (error) {
+      console.warn('[MOSE] asset URL 生成失败:', error);
+      return '';
+    }
+  }
+
+  function configureStickerAssetRoot(root) {
+    if (typeof STICKER_URL_PREFIX === 'undefined') return;
+    if (!root) {
+      STICKER_URL_PREFIX = '';
+      return;
+    }
+    var assetRoot = assetUrlForPath(root);
+    if (assetRoot) STICKER_URL_PREFIX = assetRoot;
+  }
+
+  function confirmProjectReplacement() {
+    if (typeof hasUnsavedProjectChanges !== 'function' || !hasUnsavedProjectChanges()) {
+      return true;
+    }
+    return window.confirm('当前工程有未保存的改动，是否打开新工程？将丢失未保存内容。');
+  }
+
+  function requestExternalProject(path) {
+    var projectPath = projectPathFromPayload(path);
+    if (!projectPath) return Promise.resolve(null);
+    if (externalProjectRequests.has(projectPath)) return externalProjectQueue;
+    externalProjectRequests.add(projectPath);
+    externalProjectQueue = externalProjectQueue.catch(function () {}).then(function () {
+      if (!confirmProjectReplacement()) return null;
+      return openProjectAtPath(projectPath);
+    }).finally(function () {
+      window.setTimeout(function () {
+        externalProjectRequests.delete(projectPath);
+      }, 1000);
+    });
+    return externalProjectQueue;
+  }
 
   // 把工程数据注入 editor.js：直接调 openProjectFile（全局函数），不模拟 file input。
   // openProjectFile 处理完后（.then），启用保存 + 更新最近工程 + 自动加载媒体。
@@ -51,6 +99,7 @@
     var file = new File([jsonContent], result.filename || 'untitled.mosp', {
       type: 'application/json',
     });
+    configureStickerAssetRoot(result.data && result.data.sticker_root);
     var generation = ++mediaLoadGeneration;
 
     if (typeof openProjectFile === 'function') {
@@ -84,12 +133,16 @@
 
         // 自动加载关联媒体；Rust 已完成 media 字段和同目录候选解析。
         var mediaResolution = result.mediaResolution;
-        var resolvedMedia = mediaResolution && mediaResolution.resolvedPath;
+        // Prefer the Rust-resolved path (it handles relative media fields and
+        // same-directory recovery), but retain DATA.media as a fallback for
+        // older projects or a response from an older desktop backend.
+        var resolvedMedia = (mediaResolution && mediaResolution.resolvedPath) ||
+          (typeof DATA !== 'undefined' && DATA.media);
         if (mediaResolution && mediaResolution.status === 'conversion_needed') {
           flashHint(mediaResolution.message || 'flv 无法预览，将会自动转换成 mp4 格式');
         }
         if (resolvedMedia) {
-          autoLoadMedia(resolvedMedia, generation);
+          void autoLoadMedia(resolvedMedia, generation);
         } else if (mediaResolution && mediaResolution.message) {
           flashHint(mediaResolution.message);
         }
@@ -97,6 +150,25 @@
     } else {
       console.error('[MOSE] openProjectFile 函数不可用');
     }
+  }
+
+  function projectPathFromPayload(payload) {
+    if (typeof payload === 'string') return payload;
+    if (payload && typeof payload.path === 'string') return payload.path;
+    return '';
+  }
+
+  function openProjectAtPath(path) {
+    var projectPath = projectPathFromPayload(path);
+    if (!projectPath) return Promise.resolve(null);
+    return invoke('open_project_at_path', { path: projectPath }).then(function (result) {
+      if (result && result.ok) {
+        loadProjectData(result);
+      } else if (result && result.error) {
+        alert(result.error);
+      }
+      return result;
+    });
   }
 
   function replacePlayerForMedia(isVideo) {
@@ -111,6 +183,13 @@
     if (typeof bindPlayerEvents === 'function') bindPlayerEvents(replacement);
     if (typeof waveformEditor !== 'undefined' && waveformEditor) waveformEditor.attachPlayer(replacement);
     return replacement;
+  }
+
+  function mediaSourceUrl(result, fallbackPath) {
+    var path = (result && (result.playbackPath || result.sourcePath)) || fallbackPath;
+    var assetUrl = assetUrlForPath(path);
+    if (assetUrl) return assetUrl;
+    return (result && result.url) || '';
   }
 
   function waitForMediaMetadata(mediaElement, name) {
@@ -157,8 +236,10 @@
       var metadataPromise = waitForMediaMetadata(mediaPlayer, result.name);
       if (mediaPlayer) {
         var source = mediaPlayer.querySelector('source');
-        if (source) source.src = result.url;
-        else mediaPlayer.src = result.url;
+        var mediaUrl = mediaSourceUrl(result, mediaPath);
+        if (!mediaUrl) throw new Error('后端没有返回可播放的媒体 URL。');
+        if (source) source.src = mediaUrl;
+        else mediaPlayer.src = mediaUrl;
         mediaPlayer.load();
       }
       try {
@@ -234,6 +315,9 @@
       }
       if (urlStr.indexOf('mose://recent-projects') !== -1) {
         // "最近工程"切换：不只是记录路径，还要真正打开工程
+        if (!confirmProjectReplacement()) {
+          return okResponse({ ok: false, cancelled: true });
+        }
         var result = await invoke('open_project_at_path', body);
         if (result && result.ok) {
           loadProjectData(result);
@@ -253,10 +337,16 @@
   // === 2. 拦截 window.location.reload ===
   // Tauri 模式下 index.html 只在启动时渲染一次，reload 不会更新数据。
   // 数据已通过 loadProjectData 注入，直接忽略 reload。
-
-  window.location.reload = function () {
-    console.log('[MOSE] reload 已拦截（Tauri 模式用数据注入替代）');
-  };
+  // 注意：Tauri v2 的 tauri.localhost 自定义协议下 location.reload 是只读属性，
+  // 直接赋值会抛 TypeError 并中断整个 bridge 初始化（打开工程/拖放/文件关联
+  // 全部失效）。这里必须用 try/catch 降级：拦得住就拦，拦不住就放行原生行为。
+  try {
+    window.location.reload = function () {
+      console.log('[MOSE] reload 已拦截（Tauri 模式用数据注入替代）');
+    };
+  } catch (reloadError) {
+    console.warn('[MOSE] location.reload 只读，无法拦截（其余功能不受影响）:', reloadError);
+  }
 
   // === 3. 拦截"打开工程"按钮 ===
 
@@ -272,6 +362,7 @@
       async function (e) {
         e.stopImmediatePropagation();
         try {
+          if (!confirmProjectReplacement()) return;
           var result = await invoke('open_project');
           if (!result || !result.ok || result.cancelled) return;
           loadProjectData(result);
@@ -322,7 +413,7 @@
 
   // === 4. 拦截"📁 浏览…"表情包按钮 ===
   // editor.js 的 sticker-root-pick 用浏览器 showDirectoryPicker/webkitdirectory（拿不到路径，用 blob URL）。
-  // Tauri 模式改为 dialog 选目录 + Rust 扫描 → file:// URL 直接加载图片。
+  // Tauri 模式改为 dialog 选目录 + Rust 扫描 → asset URL 加载图片。
   function setupStickerInterceptor() {
     var pickBtn = document.getElementById('sticker-root-pick');
     if (!pickBtn) {
@@ -339,7 +430,9 @@
           var result = await invoke('pick_and_scan_stickers');
           if (!result || !result.ok || result.cancelled) return;
 
-          // 更新 STICKERS 数组（file:// URL，不需要 blob URL）
+          configureStickerAssetRoot(result.root);
+
+          // 更新 STICKERS 数组（asset URL，不需要 blob URL）
           if (typeof STICKERS !== 'undefined') {
             STICKERS.forEach(function (s) {
               if (s._blobUrl) { try { URL.revokeObjectURL(s._blobUrl); } catch (e) {} }
@@ -348,7 +441,7 @@
             result.stickers.forEach(function (s) { STICKERS.push(s); });
           }
 
-          // STICKER_ROOT 改为实际路径（editor.js stickerUrl 会拼 file:// URL）
+          // STICKER_ROOT 保留实际路径，供工程保存和 Resolve 导出使用。
           if (typeof STICKER_ROOT !== 'undefined') {
             STICKER_ROOT = result.root;
           }
@@ -374,22 +467,102 @@
 
   setupStickerInterceptor();
 
-  // === 5. 监听 OS 级 .mosp 文件打开事件（双击 .mosp → MOSE 启动/聚焦 → 加载工程） ===
-  // 需要打包安装后生效（dev 模式下文件关联未注册到 OS）。
-  if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.listen) {
-    window.__TAURI__.event.listen('open-file', function (event) {
-      var path = event.payload;
-      if (!path) return;
-      invoke('open_project_at_path', { path: path }).then(function (result) {
-        if (result && result.ok) {
-          loadProjectData(result);
-        } else if (result && result.error) {
-          alert(result.error);
-        }
+  // === 5. 启动工程、文件关联与原生拖放 ===
+  // Tauri 会在页面加载前收到命令行参数；Rust 暂存它，页面就绪后由这里取出。
+  // 这也让从 Explorer 拖入的真实路径复用同一条工程/媒体解析链路。
+  function nativeDropPaths(payload) {
+    if (Array.isArray(payload)) return payload.filter(function (path) {
+      return typeof path === 'string' && path;
+    });
+    if (payload && Array.isArray(payload.paths)) {
+      return payload.paths.filter(function (path) {
+        return typeof path === 'string' && path;
+      });
+    }
+    return [];
+  }
+
+  function isProjectPath(path) {
+    return /\.(mosp|json)$/i.test(path);
+  }
+
+  function isMediaPath(path) {
+    return /\.(mp4|mkv|avi|mov|wmv|flv|webm|ts|m4v|mp3|wav|m4a|flac|aac|ogg|opus)$/i.test(path);
+  }
+
+  function hideNativeDropOverlay() {
+    // `dragOverlay` is a top-level `const` in editor.js and is not visible
+    // from this separately injected script. Resolve it through the DOM here
+    // so native Tauri drag events cannot abort before handling their paths.
+    var overlay = document.getElementById('drag-overlay');
+    if (overlay) overlay.classList.remove('show');
+  }
+
+  function handleNativeDrop(payload) {
+    hideNativeDropOverlay();
+    var paths = nativeDropPaths(payload);
+    var projectPath = paths.find(isProjectPath);
+    if (projectPath) {
+      void requestExternalProject(projectPath).catch(function (error) {
+        console.error('[MOSE] 拖放工程失败:', error);
+      });
+      return;
+    }
+    var mediaPath = paths.find(isMediaPath);
+    if (mediaPath) {
+      var generation = ++mediaLoadGeneration;
+      void autoLoadMedia(mediaPath, generation, true);
+    }
+  }
+
+  function setupNativeFileDrop() {
+    var eventApi = window.__TAURI__ && window.__TAURI__.event;
+    if (!eventApi || !eventApi.listen) return;
+    void eventApi.listen('open-file', function (event) {
+      void requestExternalProject(event && event.payload).catch(function (error) {
+        console.error('[MOSE] 关联工程打开失败:', error);
       });
     });
-    console.log('[MOSE] open-file 监听器已就绪');
+    void eventApi.listen('tauri://drag-enter', function () {
+      var overlay = document.getElementById('drag-overlay');
+      if (overlay) overlay.classList.add('show');
+    });
+    void eventApi.listen('tauri://drag-leave', hideNativeDropOverlay);
+    void eventApi.listen('tauri://drag-drop', function (event) {
+      handleNativeDrop(event && event.payload);
+    });
+    void invoke('take_initial_project_path').then(function (paths) {
+      var pending = Array.isArray(paths) ? paths : (paths ? [paths] : []);
+      pending.forEach(function (path) {
+        void requestExternalProject(path).catch(function (error) {
+          console.error('[MOSE] 启动工程打开失败:', error);
+        });
+      });
+    }).catch(function (error) {
+      console.error('[MOSE] 启动工程打开失败:', error);
+    });
+    console.log('[MOSE] 文件关联、启动工程与原生拖放监听器已就绪');
   }
+
+  setupNativeFileDrop();
+
+  // index.html 在构建时生成，运行时设置（最近工程、工作区）需要从本机读取一次。
+  async function hydrateSettings() {
+    try {
+      var settings = await invoke('get_settings');
+      if (!settings || typeof settings !== 'object') return;
+      if (typeof SERVER_CONFIG !== 'undefined') {
+        Object.assign(SERVER_CONFIG, settings);
+      }
+      if (typeof configureRecentProjects === 'function') configureRecentProjects();
+      if (typeof configureServerProjectSettings === 'function') configureServerProjectSettings();
+      if (typeof configureServerWorkspaceLibrary === 'function') configureServerWorkspaceLibrary();
+    } catch (error) {
+      console.warn('[MOSE] 读取本机设置失败:', error);
+    }
+  }
+
+  void hydrateSettings();
 
   console.log('[MOSE] Tauri bridge initialized (fetch→invoke + open + media + stickers + waveform + file-assoc)');
 })();

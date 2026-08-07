@@ -164,6 +164,121 @@ test('list cue selects on pointerdown and double-click still enters edit', async
   await expect(cue).toHaveClass(/editing/);
 });
 
+test('current cue panel keeps the same height before and after selection', async ({ page }) => {
+  // 高视口让 --layout-row-middle 的百分比下限超过面板内容高度，
+  // 才能覆盖「选中后面板被拖到布局高度、空态又缩回内容高度」的跳变回归。
+  await page.setViewportSize({ width: 1280, height: 1400 });
+  await page.goto(server.url);
+  const panel = page.locator('#current-cue-panel');
+  const before = await panel.evaluate((element) => element.getBoundingClientRect().height);
+
+  await page.locator('.cue[data-idx="0"]').click();
+
+  const after = await panel.evaluate((element) => element.getBoundingClientRect().height);
+  expect(after).toBe(before);
+});
+
+test('dragging the panel divider resizes the panel and stays consistent across selection', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1400 });
+  await page.goto(server.url);
+  const panel = page.locator('#current-cue-panel');
+  const textarea = page.locator('#cue-panel-text');
+  const measure = () => panel.evaluate((element) => element.getBoundingClientRect().height);
+  const measureText = () => textarea.evaluate((element) => element.getBoundingClientRect().height);
+
+  const panelBefore = await measure();
+  const textBefore = await measureText();
+
+  const resizer = page.locator('#layout-resizer-h2');
+  const box = await resizer.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 100, { steps: 5 });
+  await page.mouse.up();
+
+  const panelAfter = await measure();
+  expect(panelAfter).toBeGreaterThan(panelBefore + 50);
+  // 文本域保持默认高度（不做自动增高）
+  expect(await measureText()).toBe(textBefore);
+  // 选中后面板高度与拖拽后的空态保持一致
+  await page.locator('.cue[data-idx="0"]').click();
+  expect(await measure()).toBe(panelAfter);
+});
+
+test('list context menu leads with text-position split', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#click-behavior').selectOption('select-only');
+  await page.locator('.cue[data-idx="0"]').click({ button: 'right' });
+
+  await expect(page.locator('#ctxmenu .item').first()).toContainText('按文字位置拆分');
+});
+
+test('Enter follows the last clicked region: inline edit after list, panel focus after waveform', async ({ page }) => {
+  await page.goto(server.url);
+  const cue = page.locator('.cue[data-idx="0"]');
+  await cue.click();
+  // 最后点击在列表：即使鼠标已移出列表，Enter 仍开始原地编辑
+  await page.locator('#media-controls').hover();
+  await page.keyboard.press('Enter');
+  await expect(cue).toHaveClass(/editing/);
+  await expect(page.locator('#cue-panel-text')).not.toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(cue).not.toHaveClass(/editing/);
+
+  // 最后点击在波形背景：Enter 回到旧行为，聚焦字幕编辑区
+  const rowBox = await page.locator('.waveform-row').nth(1).boundingBox();
+  await page.mouse.click(rowBox.x + rowBox.width * 0.95, rowBox.y + rowBox.height / 2);
+  // 空白处点击会清除选择；不经过列表重新选中第一条（区域仍停留在波形）
+  await page.evaluate(() => selectOnly(0));
+  await page.keyboard.press('Enter');
+  await expect(cue).not.toHaveClass(/editing/);
+  await expect(page.locator('#cue-panel-text')).toBeFocused();
+});
+
+test('B splits at the pointer inside the cue list and at the playhead outside it', async ({ page }) => {
+  await page.goto(server.url);
+  const cue = page.locator('.cue[data-idx="0"]');
+  await cue.click();
+  // 列表外：播放头位于空隙（20s）时不拆分
+  await page.evaluate(() => {
+    const player = document.getElementById('player');
+    player.currentTime = 20;
+    player.dispatchEvent(new Event('timeupdate'));
+  });
+  await page.locator('#media-controls').hover();
+  await page.keyboard.press('b');
+  await expect(page.locator('.cue')).toHaveCount(6);
+
+  // 列表外：播放头位于字幕内（5s）时按播放头拆分
+  await page.evaluate(() => {
+    const player = document.getElementById('player');
+    player.currentTime = 5;
+    player.dispatchEvent(new Event('timeupdate'));
+  });
+  await page.keyboard.press('b');
+  await expect(page.locator('.cue')).toHaveCount(7);
+
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('.cue')).toHaveCount(6);
+
+  // 列表内悬停：按鼠标所指文字位置拆分
+  const text = cue.locator('.text');
+  const splitPoint = await text.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 2);
+    range.setEnd(node, 2);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.move(splitPoint.x, splitPoint.y);
+  await page.keyboard.press('b');
+
+  await expect(page.locator('.cue')).toHaveCount(7);
+  await expect(page.locator('.cue .text').nth(0)).not.toHaveText('Alpha');
+});
+
 test('space owns playback in media controls but remains text input in the cue editor', async ({ page }) => {
   await page.goto(server.url);
   await page.waitForFunction(() => {

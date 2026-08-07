@@ -1,6 +1,8 @@
 # Moy's ASR Workflow（MAW）
 
+QQ 交流群：[1079160201](https://qm.qq.com/q/4YtxZIpzxC)
 
+> Up 精力有限，如有新需求请提 Issues，Q群仅供交流不接CPU。
 
 ## 这是什么
 
@@ -19,32 +21,34 @@ Moy 的 ASR 工作流由两部分组成：
 
 > 当前支持模型：阿里云百炼 Qwen / Fun-ASR 或 Soniox 云端 ASR API  
 
-- **MAWE**：MAW 自带的字幕编辑器，基本上只是个 HTML 网页，但是功能强大到超出你的想象。  
+- **MOSE / MAWE**：搭配使用的字幕编辑器，功能有九分甚至十分的强劲：
 
 ![MAWE 字幕编辑器预览](assets/screenshot-v1.2.0.jpg)  
 
-> 之后可能会套个前端框架独立成 MOSE（Moy's Open Subtitle Editor），但之后再看。  
+*Windows 和 macOS Release 默认使用 MOSE 桌面编辑器；Server 版和单文件版 MAWE 仍作为备用入口。*
 
 ## 如何使用
 
 [点我下载最新版](https://github.com/Moyf/moys-asr-workflow/releases/latest)，根据电脑情况选一个：
 
-- `MAWxFF-Windows-x64-v*.zip`：已经捆绑 MAW 会用到的 `ffmpeg.exe` 和 `ffprobe.exe`；没有 FFmpeg、或者不知道它是什么，下载这个。
+- `MAWxFF-Windows-x64-v*.zip`：已经捆绑 MAW 与 MOSE 会用到的 `ffmpeg.exe` 和 `ffprobe.exe`；没有 FFmpeg、或者不知道它是什么，下载这个。
 - `MAW-Windows-x64-v*.zip`：体积更小；适合已经安装 FFmpeg，并且终端能直接运行 `ffmpeg` / `ffprobe` 的用户。
+- `MAWxFF-macOS-arm64-v*.zip`：Apple Silicon Mac（M1/M2/M3/M4）版，已经捆绑 `MAW.app`、`MOSE.app`、`ffmpeg` 和 `ffprobe`；不需要另外安装 FFmpeg。
+- `MAW-macOS-arm64-v*.zip`：Apple Silicon Mac 版，体积更小；同样包含 `MAW.app` 和 `MOSE.app`，但需要系统能找到 `ffmpeg` 和 `ffprobe`。目前 macOS 图形 Release 只提供 arm64 包。
 
-下载解压之后点击 `MAW.exe` 并运行。
+Windows 下载解压之后点击 `MAW.exe` 并运行；macOS 下载后解压并打开 `MAW.app`，`MOSE.app` 会放在同一目录供 Launcher 调用。
 
 ### 申请 API Key
 
 > [!tip]
 > [如何获取阿里云百炼的 Qwen-Audio/Fun-ASR API](https://help.aliyun.com/zh/model-studio/get-api-key)
-> （不含广告，默认使用 Qwen-Audio 3.0，支持长音频、热词和说话人分离）
+> （不含广告，默认使用最新的 Qwen-Audio 3.0 ASR 模型，支持长音频、热词、说话人分离和提示词）
 
-如果你更在意小语种多语言，可以使用 [Soniox Console](https://console.soniox.com) 申请 Key；
-两个 Key 不需要同时配置，用到哪个配哪个即可。
+如果你更在意小语种多语言，可以使用 [Soniox Console](https://console.soniox.com) 申请 Key。
+
+**两个 Key 不需要同时配置，用到哪个配哪个即可。**
 
 配完之后点击「保存到本地环境」，下次就不用重复配置了。
-
 
 <details>
 <summary>🔐 为了方便你快速体验，你可以先用这个 key 尝试 </summary>
@@ -65,44 +69,47 @@ Moy 的 ASR 工作流由两部分组成：
 
 1. 在 Launcher 中打开媒体，填写 API Key 后，点击 **生成字幕和工程**——MAW 会调用对应的模型把本地视频或音频转为字幕，同时生成工程文件。
 2. 如果你不需要精校字幕，直接用生成的 srt 字幕文件即可 🎉
-3. 如果你需要对字幕进行更复杂的编辑，点击**启动字幕编辑器**后，在浏览器中进行字幕编辑操作。
+3. 生成工程后，主按钮默认启动 Server 版字幕编辑器；如果你需要使用 MOSE，可以从右侧菜单选择「在 MOSE 中打开」，也可以在那里打开 HTML 编辑器。
 4. 操作完成后，点击右上角按钮导出你所需的 SRT 字幕或是其他附加格式。
 
-所有编辑都在本机浏览器完成。  
+所有编辑都在本机完成。  
 转写时，脚本会把待识别媒体直接上传到你选择的阿里云百炼或 Soniox 账户；本项目没有自己的服务器、不会代管你的 API Key 或媒体。
 
 ## 你需要准备
 
 - 至少一个云端 ASR API Key：可以用[阿里云百炼](https://help.aliyun.com/zh/model-studio/get-api-key)调用 Qwen 或 Fun-ASR，也可以用支持说话人分离的 [Soniox](https://console.soniox.com)。
 - [Windows 图形版](https://github.com/Moyf/moys-asr-workflow/releases/latest)：Windows 10/11；下载 `MAWxFF` 不需要另外安装 FFmpeg，下载普通版则需要系统里已经有 `ffmpeg` 和 `ffprobe`。
+- [macOS 图形版](https://github.com/Moyf/moys-asr-workflow/releases/latest)：目前提供 Apple Silicon arm64；下载 `MAWxFF` 不需要另外安装 FFmpeg，下载普通版则需要系统里已经有 `ffmpeg` 和 `ffprobe`。
 - 从源码或命令行运行：Python 3.11 或更新版本、[uv](https://docs.astral.sh/uv/getting-started/installation/)（推荐），以及 [FFmpeg](https://ffmpeg.org/download.html)。macOS/Linux 也可尝试。
 
+> [!note]
+> 本地模型版本正在开发中…… 
 
 <details>
 <summary>废话压缩</summary>
-两个版本的 MAW 功能完全一样。解压后双击 `MAW.exe`，Launcher 会带你完成这条流程：
+同一平台的两个版本 MAW 功能完全一样，区别只有是否捆绑 FFmpeg。Windows 解压后双击 `MAW.exe`；macOS 打开 `.app`，Launcher 会带你完成这条流程：
 
 ```text
-选择供应商和媒体 -> 生成 SRT + .mosp 工程 -> 打开 MAWE 校对 -> 保存或导出
+选择供应商和媒体 -> 生成 SRT + .mosp 工程 -> 打开 MOSE 校对 -> 保存或导出
 ```
 
 在 Launcher 里选择阿里云百炼或 Soniox、媒体与 SRT 输出位置，确认模型、语言和可选时长上限，填写对应的 API Key，即可生成 SRT、`.mosp` 工程和便携编辑器 HTML。阿里云百炼 Provider 默认使用最新发布的 `qwen-audio-3.0-asr（热词 / 上下文）`，也可以选择 `fun-asr（支持说话人）` 或 `qwen3-asr（准确率更高）`。需要复用 Key 时，可点“存入本地环境”；密钥只保存在本机 `.env`，不会写入工程文件或日志。
 
-GUI 还可以直接选择 `.mosp` / `.json` 工程并启动 `http://127.0.0.1` 本地编辑器服务器；中英文界面可在右上角切换。
+Launcher 的主按钮默认启动 Server 版字幕编辑器并传入工程路径；从按钮右侧菜单选择「在 MOSE 中打开」时，才会查找并启动桌面版编辑器。Windows 会优先读取当前用户注册表 `HKCU\Software\Moy\MOSE` 下仍有效的 `ExecutablePath`，macOS 则查找同级或常见安装位置的 `MOSE.app`。首次启动 Windows MAW 时还会为当前用户登记 `.mosp` 关联。GUI 还可以直接选择 `.mosp` / `.json` 工程并启动 `http://127.0.0.1` 本地编辑器服务器；中英文界面可在右上角切换。
 启动器支持从资源管理器拖入音视频文件来自动填充媒体路径，并按供应商组织模型、地域、语言和 API Key 获取入口；选择 Fun-ASR 或 Soniox 时可在「高级选项」中开启「给不同说话人分配字幕颜色」。
 
-普通版仍要求系统能找到 `ffmpeg` 和 `ffprobe`。如果 Launcher 提示未检测到 FFmpeg，可以换用 `MAWxFF` 版；也可以自行安装 FFmpeg，把它的 `bin` 目录加入 PATH 后重新打开 MAW。
+Windows Release 的 Launcher 默认使用 Server 版；需要桌面版时，请从右侧菜单选择「在 MOSE 中打开」。macOS 会查找同级、包内或常见安装位置的 `MOSE.app`；如果仍找不到，日志会列出实际检查过的路径。普通版仍要求系统能找到 `ffmpeg` 和 `ffprobe`；如果 Launcher 提示未检测到 FFmpeg，可以换用同平台的 `MAWxFF` 版，也可以自行安装 FFmpeg，把它的 `bin` 目录加入 PATH 后重新打开 MAW。macOS 从 Finder 启动时可能不会继承 Shell 的 PATH；Apple Silicon Homebrew 用户可在「配置」中填写 `/opt/homebrew/bin`，Intel Homebrew 通常填写 `/usr/local/bin`，并确认目录中同时有 `ffmpeg` 和 `ffprobe`。macOS GUI 保存的 API Key、FFmpeg 路径和其他设置位于 `~/Library/Application Support/Moy/MAW/.env`，不会写入 `.app` 包。
 
 ### 本地构建 Windows 图形包
 
-需要在 Windows 上构建；PyInstaller 不能在其他系统上交叉编译 Windows 包。先安装 Python 3.11+ 和 [uv](https://docs.astral.sh/uv/getting-started/installation/)，然后在仓库根目录的 PowerShell 中执行：
+需要在 Windows 上构建；PyInstaller 不能在其他系统上交叉编译 Windows 包。先安装 Python 3.11+、[uv](https://docs.astral.sh/uv/getting-started/installation/)、Node.js 和 Rust 工具链，然后在仓库根目录的 PowerShell 中执行：
 
 ```powershell
 uv sync --group build --frozen
 .\scripts\build-windows.ps1
 ```
 
-构建脚本会安装锁定的构建依赖、运行打包契约测试，并使用 `MAW.spec` 生成 PyInstaller `onedir` 包。输出目录为 `dist\MAW\`，启动程序是 `dist\MAW\MAW.exe`；分发时要保留整个目录，不能只复制 exe 文件。
+构建脚本会安装锁定的构建依赖、运行打包契约测试，使用 `MAW.spec` 生成 PyInstaller `onedir` 包，并构建 `MOSE.exe` 放入同一目录。输出目录为 `dist\MAW\`，启动程序是 `dist\MAW\MAW.exe`；分发时要保留整个目录，不能只复制 exe 文件。
 
 需要跳过打包契约测试时可以使用：
 
@@ -111,6 +118,25 @@ uv sync --group build --frozen
 ```
 
 本地脚本生成的是不捆绑 FFmpeg 的普通版。要生成带 `ffmpeg.exe` 和 `ffprobe.exe` 的 `MAWxFF` 版，还需要按 `.github/workflows/release-windows.yml` 中的 Release 流程准备并校验 FFmpeg；日常本地构建通常直接使用 `dist\MAW\` 即可。
+
+### 本地构建 macOS 图形包
+
+需要在 Apple Silicon macOS runner 或 Mac 上构建；PyInstaller 和 Tauri 都不会为 macOS 交叉编译。进入仓库根目录执行：
+
+```bash
+uv sync --group build --frozen
+uv run --group build pyinstaller --noconfirm --clean MAW.spec
+cd desktop
+npm ci
+cargo check --manifest-path src-tauri/Cargo.toml
+npm run tauri -- build --config src-tauri/tauri.macos.conf.json --bundles app --no-sign
+```
+
+MAW 的 App 在 `dist/MAW.app`，MOSE 的 App 在 `desktop/src-tauri/target/release/bundle/macos/MOSE.app`。正式 Release 会把两个 App 放进普通版和 `MAWxFF` 版 ZIP 的同一目录；未签名的本地构建可能需要在 macOS「隐私与安全性」中手动允许启动。
+
+### MOSE / MAWE 编辑器入口
+
+Windows 和 macOS Release 中，Launcher 主按钮会打开同目录的 MOSE 桌面编辑器并传入当前 `.mosp` / `.json` 工程。需要 localhost 工作流时，从按钮右侧菜单选择「启动 Server 版字幕编辑器」；需要最便携的浏览器方式时，选择 HTML 编辑器。
 
 ### 传统命令行方案
 
@@ -234,26 +260,30 @@ uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" --speaker-
 </details>
 
 
-## MAWE — Moy's ASR Workflow Editor
+## MOSE — Moy's Open Subtitle Editor
 
-MAWE 是 MAW 自带的字幕编辑器。  
+MOSE/MAWE 是 MAW 自带的字幕编辑器。  
 推荐使用它的本地服务器模式：可稳定拖动大型媒体、保留最近工程记录、支持直接保存工程以及自动加载表情包路径。
 
-点击 Launcher 的「启动字幕编辑器」，或者运行：
+MAWE 是 MAW Editor，原始版本，纯网页实现，可以用 HTML 单文件或者启动 Server；
+
+需要手动启动 Server 版编辑器时，点击 Launcher 右侧菜单的「启动 Server 版字幕编辑器」，或者运行：
 ```powershell
 uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.mosp"
 ```
 
 浏览器会自动打开 `http://127.0.0.1:8250`。
 
-MAWE 右上角可切换中文 / English；编辑完成后点“保存工程”或按 `Ctrl+S`，覆盖前会留下同目录、保持原扩展名的备份（`.mosp.bak` 或 `.json.bak`）；`Ctrl+Shift+S` 为另存为。按 `Ctrl+C` 停止服务。
+MOSE 是 Tauri 打包的独立可执行文件，看起来比较专业（？）
+
+编辑器右上角可切换中文 / English；编辑完成后点“保存工程”或按 `Ctrl+S`（macOS 为 `Cmd+S`），覆盖前会留下同目录、保持原扩展名的备份（`.mosp.bak` 或 `.json.bak`）；`Ctrl+Shift+S`（macOS 为 `Cmd+Shift+S`）为另存为。
 
 服务器版还可以把「工作区」保存在本机服务器设置中，因此可跨工程复用：一个工作区包含窗口布局与显示状态（字幕列表显示项、波形单/多行等）。四个内置工作区在“编辑布局”后可保存为本机覆盖版、重置为默认或另存为，但不可删除；选中自己保存的工作区后，可以继续保存、另存或删除。工作区只保存在本机，不写入工程文件。
 
 > [!important]
 > 除了服务器版本，也支持同时生成更为便携的 HTML 单文件编辑器。
 > 功能相对缺少一些，但是90%的编辑体验是相同的——生成的时候勾选「同时生成单文件编辑器」后，直接双击转写生成的 `.edit.html` （或者用 Launcher 中的“打开该项目的单文件编辑器”打开工程。  
-> 单 HTML 文件模式适合你嫌起服务器麻烦（或者搞不来）；本地服务器模式更适合日常编辑。
+> 单 HTML 文件模式适合你嫌起服务器麻烦（或者搞不来）；本地服务器模式更适合日常编辑。现在有了 exe/app 版本的话，就都用 MOSE 好啦。
 
 ### 目前支持的特性
 
@@ -268,8 +298,8 @@ MAWE 右上角可切换中文 / English；编辑完成后点“保存工程”�
   - 可保存 `.mosp` / `.json` 工程，或导出标准 SRT 字幕。
 - 操作部分
   - WASD 快速跳转前后字幕
-  - Enter 进入字幕编辑模式
-  - 更多操作详见「🤔帮助」按钮
+  - 鼠标停在已选字幕行时，Enter 原地编辑，B 在鼠标所指的文字位置拆分；B 在波形上按音频位置、其它区域按播放指针拆分
+  - 更多操作详见右上角 **【🤔 帮助】** 按钮。
 - 拓展部分
   - 可给字幕附加**表情包**或**颜色**，并在多句字幕之间保持关联。
   - 可导出 Resolve JSON；配合兼容的达芬奇执行脚本，可在达芬奇内批量导入字幕颜色与表情包配置。执行脚本不随这个最小版 MAW 发布。
@@ -303,6 +333,16 @@ MAWE 右上角可切换中文 / English；编辑完成后点“保存工程”�
 <sup>本项目的多行波形和空隙去除灵感皆来源于此</sup>  
 🤖 感谢 ChatGPT 和 OpenCode 的代码助力（咦）  
 <sup>主要由 gpt-5.6、KimiK3 和 glm-5.2 协作生产</sup>
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=Moyf%2Fmoys-asr-workflow&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Moyf/moys-asr-workflow&type=date&theme=dark&legend=top-left&sealed_token=_PToQhiZM0l9HWee443BsVO_Ent6c7W9XhetqS-GqzovCVxrR29_zMbiDuhZOZRQd-vsEaQhUvF262_K7KBgtzedaZ57WJ3lkgoDR9-QocuvQgw7_My_06JAPfChISW3AJh0fgpAJWVAi1XXRPs7I-5caimIiS5mNri_lJrB_9iBnvtf8_vvhtgAh-fL" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Moyf/moys-asr-workflow&type=date&legend=top-left&sealed_token=_PToQhiZM0l9HWee443BsVO_Ent6c7W9XhetqS-GqzovCVxrR29_zMbiDuhZOZRQd-vsEaQhUvF262_K7KBgtzedaZ57WJ3lkgoDR9-QocuvQgw7_My_06JAPfChISW3AJh0fgpAJWVAi1XXRPs7I-5caimIiS5mNri_lJrB_9iBnvtf8_vvhtgAh-fL" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Moyf/moys-asr-workflow&type=date&legend=top-left&sealed_token=_PToQhiZM0l9HWee443BsVO_Ent6c7W9XhetqS-GqzovCVxrR29_zMbiDuhZOZRQd-vsEaQhUvF262_K7KBgtzedaZ57WJ3lkgoDR9-QocuvQgw7_My_06JAPfChISW3AJh0fgpAJWVAi1XXRPs7I-5caimIiS5mNri_lJrB_9iBnvtf8_vvhtgAh-fL" />
+ </picture>
+</a>
 
 ## 许可证
 

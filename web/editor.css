@@ -710,7 +710,7 @@
   #server-auto-save-settings .editor-settings-title,
   #server-auto-save-settings .editor-settings-item { width: 100%; }
   .editor-settings-list-fields { flex-wrap: wrap; }
-  .editor-settings-display-row { flex: 0 0 100%; }
+  .editor-settings-display-row { flex: 0 0 100%; flex-wrap: nowrap; align-items: flex-start; }
   .editor-settings-list-fields > span { color: var(--text-muted); }
   .editor-settings-display-row > span,
   .editor-settings-toggle-group > .toggle { white-space: nowrap; }
@@ -839,32 +839,43 @@
   }
 
   /* === 操作帮助 === */
-  .help-panel {
-    flex: 0 0 auto; display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr));
-    gap: 8px; margin: -2px 0 8px; padding: 10px;
-    background: var(--bg-panel); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
-    box-shadow: var(--shadow-1);
+  .gap-remove-panel.help-panel {
+    width: min(720px, calc(100vw - 24px));
+    min-width: 320px; min-height: 240px; max-width: calc(100vw - 24px);
+    resize: both;
+    container: help-panel / inline-size;
   }
-  .help-panel[hidden] { display: none; }
+  .help-panel-body { flex: 1 1 auto; display: grid; grid-template-columns: 1fr; gap: 8px; align-content: start; }
   .help-group {
-    display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px 12px;
-    padding: 10px; color: var(--text-secondary); font-size: 11px;
+    display: flex; flex-wrap: wrap; align-content: flex-start; gap: 10px 12px;
+    padding: 12px; color: var(--text-secondary); font-size: 12px;
     background: var(--bg-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
   }
   .help-title {
     flex: 0 0 100%; color: var(--text-secondary); font-weight: 600; letter-spacing: .08em;
-    text-transform: uppercase;
+    text-transform: uppercase; font-size: 12px;
   }
+  .help-subgroup {
+    flex: 0 0 100%; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px 12px;
+  }
+  .help-subtitle {
+    flex: 0 0 100%; margin-top: 2px; color: var(--text-muted);
+    font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  }
+  .help-subgroup:first-of-type .help-subtitle { margin-top: 0; }
   .help-note {
     flex: 0 0 100%; color: var(--text-muted); font-size: 10px;
   }
   .help-panel kbd {
     background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm);
-    padding: 1px 5px; font-size: 10px; color: var(--text-secondary); font-family: var(--font-mono);
+    padding: 2px 6px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);
     box-shadow: 0 1px 0 var(--border-subtle);
   }
-  @media (max-width: 860px) {
-    .help-panel { grid-template-columns: 1fr; }
+  @container help-panel (min-width: 560px) {
+    .help-panel-body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @container help-panel (min-width: 980px) {
+    .help-panel-body { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
 
   /* === 当前字幕编辑区 === */
@@ -1214,6 +1225,11 @@
   .toolbar #gap-removed-export-btn:hover {
     color: var(--gap-accent-hover-fg); background: linear-gradient(180deg, var(--gap-accent-hover-1), var(--gap-accent-hover-2)); border-color: var(--gap-accent-hover-border);
   }
+  .toolbar #gap-remove-manage.active {
+    color: var(--accent-hover); background: var(--accent-tint-strong);
+    border-color: var(--accent); box-shadow: none;
+  }
+  .toolbar #gap-remove-manage.active:hover { background: var(--accent-soft); border-color: var(--accent); }
   .toolbar #gap-remove-manage:focus-visible,
   .toolbar #gap-removed-export-btn:focus-visible { outline: 2px solid var(--amber-line); outline-offset: 1px; }
   .toolbar .gap-removed-export-dropdown .dropdown-menu { border-color: var(--gap-accent-menu-border); }

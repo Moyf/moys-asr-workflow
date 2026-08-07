@@ -30,6 +30,14 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Verify tag matches pyproject version
         shell: pwsh
         run: |
@@ -52,7 +60,7 @@ jobs:
       - name: Run Python tests
         run: uv run python -m unittest discover -s tests -p "test_*.py"
 
-      - name: Build MAW GUI bundle
+      - name: Build MAW and MOSE bundle
         shell: pwsh
         run: .\scripts\build-windows.ps1 -SkipTests
 
@@ -81,6 +89,23 @@ jobs:
             Stop-Process -Id $GuiProcess.Id -Force
           }
 
+      - name: Smoke MOSE executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ExePath = 'dist\MAW\MOSE.exe'
+          if (-not (Test-Path -LiteralPath $ExePath -PathType Leaf)) {
+            throw 'Missing dist\MAW\MOSE.exe after build.'
+          }
+          $MoseProcess = Start-Process -FilePath $ExePath -ArgumentList '--help' -PassThru -WindowStyle Hidden
+          if ($MoseProcess.WaitForExit(10000)) {
+            if ($MoseProcess.ExitCode -ne 0) {
+              throw "MOSE.exe launch smoke exited with $($MoseProcess.ExitCode)."
+            }
+          } else {
+            Stop-Process -Id $MoseProcess.Id -Force
+          }
+
       - name: Create standard release archive
         shell: pwsh
         run: |
@@ -88,8 +113,6 @@ jobs:
           $Version = '${{ github.ref_name }}'
           $Archive = "MAW-Windows-x64-$Version.zip"
           Compress-Archive -LiteralPath 'dist\MAW' -DestinationPath $Archive -Force
-          $Hash = Get-FileHash -Algorithm SHA256 -LiteralPath $Archive
-          "$($Hash.Hash)  $Archive" | Set-Content -LiteralPath "$Archive.sha256" -Encoding ascii
 
       - name: Create FFmpeg-bundled release archive
         shell: pwsh
@@ -98,13 +121,38 @@ jobs:
           $FfmpegVersion = '8.1.2'
           $FfmpegCommit = '38b88335f9'
           $FfmpegArchive = "build\ffmpeg-$FfmpegVersion-essentials_build.zip"
-          $FfmpegUrl = "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-$FfmpegVersion-essentials_build.zip"
+          $FfmpegUrls = @(
+            "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-$FfmpegVersion-essentials_build.zip"
+            "https://github.com/GyanD/codexffmpeg/releases/download/$FfmpegVersion/ffmpeg-$FfmpegVersion-essentials_build.zip"
+          )
           $ExpectedHash = 'db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec'
           New-Item -ItemType Directory -Path 'build\ffmpeg-package' -Force | Out-Null
-          Invoke-WebRequest -Uri $FfmpegUrl -OutFile $FfmpegArchive
-          $ActualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $FfmpegArchive).Hash.ToLowerInvariant()
-          if ($ActualHash -ne $ExpectedHash) {
-            throw "FFmpeg archive checksum mismatch: expected $ExpectedHash, got $ActualHash."
+          $DownloadedUrl = $null
+          foreach ($FfmpegUrl in $FfmpegUrls) {
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              try {
+                Write-Host "Downloading FFmpeg from $FfmpegUrl (attempt $attempt/3)"
+                Invoke-WebRequest -Uri $FfmpegUrl -OutFile $FfmpegArchive -TimeoutSec 120
+                $ActualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $FfmpegArchive).Hash.ToLowerInvariant()
+                if ($ActualHash -ne $ExpectedHash) {
+                  throw "FFmpeg archive checksum mismatch: expected $ExpectedHash, got $ActualHash."
+                }
+                $DownloadedUrl = $FfmpegUrl
+                break
+              } catch {
+                Remove-Item -LiteralPath $FfmpegArchive -Force -ErrorAction SilentlyContinue
+                Write-Warning "FFmpeg download failed from $FfmpegUrl (attempt $attempt/3): $($_.Exception.Message)"
+                if ($attempt -lt 3) {
+                  Start-Sleep -Seconds 10
+                }
+              }
+            }
+            if ($DownloadedUrl) {
+              break
+            }
+          }
+          if (-not $DownloadedUrl) {
+            throw "Unable to download a verified FFmpeg archive from any configured source."
           }
           Expand-Archive -LiteralPath $FfmpegArchive -DestinationPath 'build\ffmpeg-package' -Force
 
@@ -128,7 +176,7 @@ jobs:
           @(
             "FFmpeg $FfmpegVersion Essentials build for Windows x64"
             "Build provider: https://www.gyan.dev/ffmpeg/builds/"
-            "Original binary archive: $FfmpegUrl"
+            "Original binary archive: $DownloadedUrl"
             "Archive SHA-256: $ExpectedHash"
             "Corresponding FFmpeg source commit: https://github.com/FFmpeg/FFmpeg/commit/$FfmpegCommit"
             "FFmpeg source archive: https://github.com/FFmpeg/FFmpeg/archive/$FfmpegCommit.tar.gz"
@@ -139,8 +187,6 @@ jobs:
           $Version = '${{ github.ref_name }}'
           $Archive = "MAWxFF-Windows-x64-$Version.zip"
           Compress-Archive -LiteralPath 'dist\MAWxFF' -DestinationPath $Archive -Force
-          $Hash = Get-FileHash -Algorithm SHA256 -LiteralPath $Archive
-          "$($Hash.Hash)  $Archive" | Set-Content -LiteralPath "$Archive.sha256" -Encoding ascii
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
@@ -148,10 +194,30 @@ jobs:
           name: MAW-Windows-x64-${{ github.ref_name }}
           path: |
             MAW-Windows-x64-${{ github.ref_name }}.zip
-            MAW-Windows-x64-${{ github.ref_name }}.zip.sha256
             MAWxFF-Windows-x64-${{ github.ref_name }}.zip
-            MAWxFF-Windows-x64-${{ github.ref_name }}.zip.sha256
           if-no-files-found: error
+
+      - name: Prepare release notes from CHANGELOG
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Version = '${{ github.ref_name }}'.TrimStart('v')
+          $Changelog = Get-Content -LiteralPath 'CHANGELOG.md' -Raw
+          $Pattern = "(?ms)^## \[$([regex]::Escape($Version))\][^\r\n]*\r?\n.*?(?=^## \[|\z)"
+          $Match = [regex]::Match($Changelog, $Pattern)
+          if (-not $Match.Success) {
+            throw "CHANGELOG.md does not contain a release section for $Version."
+          }
+          $DownloadGuide = @"
+          ## 下载哪个？
+
+          - **不知道 FFmpeg 是什么，或者电脑里没有装** ： 下载 ``MAWxFF-Windows-x64-${{ github.ref_name }}.zip``。它已经带上 MAW 与 MOSE 所需的 ``ffmpeg.exe`` 和 ``ffprobe.exe``，解压后直接双击 ``MAW.exe``。
+          - **已经装好 FFmpeg，并且 ``ffmpeg`` / ``ffprobe`` 在 PATH 里** ： 下载体积更小的 ``MAW-Windows-x64-${{ github.ref_name }}.zip``。
+
+          启动 Launcher 后，主按钮默认启动 Server 版字幕编辑器；需要桌面版时，从右侧菜单选择「在 MOSE 中打开」。HTML 空工程也仍可从该菜单打开。两个版本的 MAW 功能完全一致；区别只有是否捆绑 FFmpeg。
+          "@
+          $Body = $DownloadGuide.Trim() + "`r`n`r`n" + $Match.Value.Trim()
+          Set-Content -LiteralPath 'release-notes.md' -Value $Body -Encoding utf8
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -160,15 +226,7 @@ jobs:
         with:
           target_commitish: ${{ github.sha }}
           prerelease: ${{ contains(github.ref_name, '-') }}
-          body: |
-            ## 下载哪个？
-
-            - **不知道 FFmpeg 是什么，或者电脑里没有装** ： 下载 `MAWxFF-Windows-x64-${{ github.ref_name }}.zip`。它已经带上 MAW 所需的 `ffmpeg.exe` 和 `ffprobe.exe`，解压后直接双击 `MAW.exe`。
-            - **已经装好 FFmpeg，并且 `ffmpeg` / `ffprobe` 在 PATH 里** ： 下载体积更小的 `MAW-Windows-x64-${{ github.ref_name }}.zip`。
-
-            两个版本的 MAW 功能完全一致；区别只有是否捆绑 FFmpeg。`.sha256` 文件可用于校验下载完整性。
+          body_path: release-notes.md
           files: |
             MAW-Windows-x64-${{ github.ref_name }}.zip
-            MAW-Windows-x64-${{ github.ref_name }}.zip.sha256
             MAWxFF-Windows-x64-${{ github.ref_name }}.zip
-            MAWxFF-Windows-x64-${{ github.ref_name }}.zip.sha256

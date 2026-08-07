@@ -48,10 +48,10 @@ test('English locale covers the editor shell and recent-project setting stays fi
   const shellText = await page.locator('body').innerText();
   const untranslatedShellLines = shellText.split('\n')
     .map((line) => line.trim())
-    .filter((line) => /[\u3400-\u9fff]/u.test(line));
+    .filter((line) => /[\u3400-\u9fff]/u.test(line) && line !== '🌐中文');
   expect(untranslatedShellLines).toEqual([]);
   const untranslatedUiStrings = await page.evaluate(() => {
-    const skip = '#cue-list, #cue-panel-text, #overlay, #sticker-overlay-layer, #media-name, #json-name, #sticker-grid, script, style';
+    const skip = '#cue-list, #cue-panel-text, #overlay, #sticker-overlay-layer, #media-name, #json-name, #sticker-grid, #language-toggle, script, style';
     const found = new Set();
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     let node;
@@ -96,7 +96,24 @@ test('GUI launch language overrides the saved editor language once and persists 
 });
 
 test('Ctrl+S saves and Ctrl+Shift+S invokes save as', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
+  await page.addInitScript(() => {
+    localStorage.setItem('mawe.language', 'en');
+    window.__saveAsCapture = null;
+    window.showSaveFilePicker = async (options) => ({
+      name: options.suggestedName,
+      async createWritable() {
+        return {
+          async write(blob) {
+            window.__saveAsCapture = {
+              suggestedName: options.suggestedName,
+              content: await blob.text(),
+            };
+          },
+          async close() {},
+        };
+      },
+    });
+  });
   await page.goto(server.url);
 
   const saveResponse = page.waitForResponse((response) => (
@@ -104,17 +121,13 @@ test('Ctrl+S saves and Ctrl+Shift+S invokes save as', async ({ page }) => {
   ));
   await page.keyboard.press('Control+s');
   expect((await saveResponse).ok()).toBe(true);
-  await expect(page.locator('.hint-card').last()).toContainText('Project saved:');
+  await expect(page.locator('.hint-card').last()).toContainText('Saved!');
 
-  page.once('dialog', (dialog) => dialog.accept('shortcut-copy.json'));
-  const saveAsResponse = page.waitForResponse((response) => (
-    response.url().endsWith('/api/project')
-    && response.request().postDataJSON()?.filename === 'shortcut-copy.json'
-  ));
   await page.keyboard.press('Control+Shift+s');
-  const response = await saveAsResponse;
-  expect(response.ok()).toBe(true);
-  expect((await response.json()).filename).toBe('shortcut-copy.json');
+  await expect.poll(() => page.evaluate(() => window.__saveAsCapture)).not.toBeNull();
+  const saveAsCapture = await page.evaluate(() => window.__saveAsCapture);
+  expect(saveAsCapture.suggestedName).toBe('project.mosp');
+  expect(JSON.parse(saveAsCapture.content).segments).toHaveLength(6);
 });
 
 test('a disconnected save endpoint offers a JSON fallback download', async ({ page }) => {
@@ -122,9 +135,7 @@ test('a disconnected save endpoint offers a JSON fallback download', async ({ pa
   await page.route('**/api/project', (route) => route.abort('connectionrefused'));
   await page.evaluate(() => { window.showSaveFilePicker = undefined; });
   page.once('dialog', (dialog) => dialog.accept());
-  const currentFilename = (await page.locator('#json-name').innerText()).trim();
-
   const download = page.waitForEvent('download');
   await page.keyboard.press('Control+s');
-  expect((await download).suggestedFilename()).toBe(currentFilename);
+  expect((await download).suggestedFilename()).toBe('project.mosp');
 });

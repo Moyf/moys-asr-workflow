@@ -126,12 +126,12 @@ test('plans short-subtitle merges into the previous subtitle', () => {
     { start: 2100, end: 2600, text: '什么？' },
     { start: 3000, end: 5000, text: '这个东西卖一亿元' },
   ];
-  const plan = JSON.parse(JSON.stringify(helpers.planAutoMerge(segments, { gapMs: 0, shortCount: 3 })));
-  assert.deepEqual(plan.snaps, []);
+  const plan = JSON.parse(JSON.stringify(helpers.planAutoMerge(segments, { gapMs: 200, shortCount: 3 })));
+  assert.deepEqual(plan.snaps, [{ index: 1, edge: 'start', time: 2000 }]);
   assert.deepEqual(plan.groups, [[0, 1]]);
   // 关闭吸收后不产生任何合并组
   const noAbsorb = JSON.parse(JSON.stringify(helpers.planAutoMerge(segments, {
-    gapMs: 0, shortCount: 3, absorbShort: false,
+    gapMs: 200, shortCount: 3, absorbShort: false,
   })));
   assert.deepEqual(noAbsorb.groups, []);
 });
@@ -144,10 +144,10 @@ test('absorbs short subtitles into the next subtitle when direction is next', ()
     { start: 5100, end: 5400, text: '对吧' },
   ];
   const plan = JSON.parse(JSON.stringify(helpers.planAutoMerge(segments, {
-    gapMs: 0, shortCount: 3, absorbDirection: 'next',
+    gapMs: 200, shortCount: 3, absorbDirection: 'next',
   })));
-  // 「什么？」并入下一条；结尾的「对吧」没有下一条，退回并入上一条所在组
-  assert.deepEqual(plan.groups, [[1, 2, 3]]);
+  // 「什么？」与下一条间隔超过阈值，因此退回并入上一条；「对吧」并入上一条。
+  assert.deepEqual(plan.groups, [[0, 1], [2, 3]]);
 });
 
 test('merges a short first subtitle forward and chains consecutive shorts backward', () => {
@@ -158,7 +158,7 @@ test('merges a short first subtitle forward and chains consecutive shorts backwa
     { start: 3000, end: 3300, text: '没错' },
     { start: 3400, end: 5000, text: '这个东西卖一亿元' },
   ];
-  const plan = JSON.parse(JSON.stringify(helpers.planAutoMerge(segments, { gapMs: 0, shortCount: 3 })));
+  const plan = JSON.parse(JSON.stringify(helpers.planAutoMerge(segments, { gapMs: 200, shortCount: 3 })));
   // 首条「嗯」向前并入 1；「对吧」「没错」各自过短，链式并入上一条所在组
   assert.deepEqual(plan.groups, [[0, 1, 2, 3]]);
 });
@@ -170,8 +170,31 @@ test('skips auto-merge pairs that are disabled or have different speakers', () =
     { start: 3000, end: 5000, text: '第二句长字幕内容' },
     { start: 5100, end: 5600, text: '嗯', disabled: true },
   ];
-  const plan = JSON.parse(JSON.stringify(helpers.planAutoMerge(segments, { gapMs: 0, shortCount: 3 })));
+  const plan = JSON.parse(JSON.stringify(helpers.planAutoMerge(segments, { gapMs: 200, shortCount: 3 })));
   assert.deepEqual(plan.groups, []);
+});
+
+test('only absorbs short subtitles when their adjacent gap is within the threshold', () => {
+  const segments = [
+    { start: 0, end: 2000, text: '前一句较长字幕' },
+    { start: 2100, end: 2500, text: '短句' },
+    { start: 3000, end: 3400, text: '短句' },
+    { start: 3500, end: 5000, text: '后一句较长字幕' },
+  ];
+  const plan = JSON.parse(JSON.stringify(helpers.planAutoMerge(segments, { gapMs: 200, shortCount: 3 })));
+  // 第一条短字幕与前句间隔 100ms，可吸收；第二条与前条间隔 500ms，不能沿链吸收，
+  // 但它与后句间隔 100ms，因此仍可独立并入后句。
+  assert.deepEqual(plan.groups, [[0, 1], [2, 3]]);
+
+  const farShort = [
+    { start: 0, end: 1000, text: '前一句较长字幕' },
+    { start: 1500, end: 1800, text: '短句' },
+    { start: 3000, end: 4000, text: '后一句较长字幕' },
+  ];
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.planAutoMerge(farShort, { gapMs: 200, shortCount: 3 }).groups)),
+    [],
+  );
 });
 
 test('applies backward snaps by extending the later subtitle start earlier', () => {
@@ -697,10 +720,25 @@ test('shares configured Enter semantics between list editing and current cue edi
   assert.equal(helpers.configuredEnterAction({ key: 'Enter' }, 'enter'), 'split');
   assert.equal(helpers.configuredEnterAction({ key: 'Enter', ctrlKey: true }, 'enter'), 'save');
   assert.equal(helpers.configuredEnterAction({ key: 'Enter', shiftKey: true }, 'ctrl-enter'), 'newline');
+  // macOS：⌘（metaKey）与 Ctrl 等价
+  assert.equal(helpers.configuredEnterAction({ key: 'Enter', metaKey: true }, 'ctrl-enter'), 'split');
+  assert.equal(helpers.configuredEnterAction({ key: 'Enter', metaKey: true }, 'enter'), 'save');
+  assert.equal(helpers.configuredEnterAction({ key: 'Enter', shiftKey: true, metaKey: true }, 'ctrl-enter'), 'split');
+  assert.equal(helpers.configuredEnterAction({ key: 'Enter', ctrlKey: true, metaKey: true }, 'enter'), 'save');
   assert.equal(
     helpers.configuredEnterAction({ key: 'Enter', shiftKey: true, ctrlKey: true }, 'enter'),
     'split',
   );
+});
+
+
+test('isMacPlatform detects macOS while other platforms do not', () => {
+  assert.equal(helpers.isMacPlatform({ platform: 'MacIntel' }), true);
+  assert.equal(helpers.isMacPlatform({ platform: 'iPhone' }), true);
+  assert.equal(helpers.isMacPlatform({ platform: 'Win32' }), false);
+  assert.equal(helpers.isMacPlatform({ platform: 'Linux x86_64' }), false);
+  // 无 navigator 环境（如 node 测试）安全降级为 false
+  assert.equal(helpers.isMacPlatform(null), false);
 });
 
 

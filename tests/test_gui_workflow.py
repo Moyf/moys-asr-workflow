@@ -476,6 +476,10 @@ class GuiWorkflowTests(unittest.TestCase):
             "clip.qwen3-asr-api.srt",
         )
         self.assertEqual(default_srt_path(Path("clip.mp4"), provider="soniox").name, "clip.soniox.srt")
+        self.assertEqual(
+            default_srt_path(Path("clip.mp4"), test_run=True).name,
+            "clip.qwen-audio-test.srt",
+        )
 
     def test_entrypoint_transcribe_soniox_help_dispatches_soniox_script(self) -> None:
         import maw_gui

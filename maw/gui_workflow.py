@@ -115,10 +115,19 @@ def build_output_paths(srt_path: Path) -> OutputPaths:
 PROVIDER_SRT_TAGS: Final = {"qwen": ".qwen3-asr-api", "soniox": ".soniox"}
 
 
+def with_test_suffix(path: Path) -> Path:
+    """Append the test marker before the extension without duplicating it."""
+    path = Path(path)
+    if path.stem.lower().endswith("-test"):
+        return path
+    return path.with_name(f"{path.stem}-test{path.suffix}")
+
+
 def default_srt_path(
     media_path: Path,
     provider: str = "qwen",
     model: str = DEFAULT_MODEL_ID,
+    test_run: bool = False,
 ) -> Path:
     media = Path(media_path).expanduser()
     if provider == "qwen" and model.startswith("fun-asr"):
@@ -127,7 +136,8 @@ def default_srt_path(
         tag = ".qwen-audio"
     else:
         tag = PROVIDER_SRT_TAGS.get(provider, PROVIDER_SRT_TAGS["qwen"])
-    return media.with_name(f"{media.stem}{tag}.srt")
+    output = media.with_name(f"{media.stem}{tag}.srt")
+    return with_test_suffix(output) if test_run else output
 
 
 def build_transcribe_command(
