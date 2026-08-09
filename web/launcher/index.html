@@ -239,12 +239,6 @@
       <p class="hint" data-i18n="toolbox_input_hint">默认跟随「工程文件」并在每次处理后更新；手动选择或拖入其他文件后，以这里的文件为准。</p>
       <p id="toolboxInputPathError" class="field-error"></p>
     </div>
-    <div class="toolbox-tabs" role="tablist" aria-label="post-processing tools">
-      <button id="toolboxLlmTab" class="toolbox-tab active" type="button" role="tab" aria-selected="true" aria-controls="toolboxLlmPanel" data-tool="llm" data-i18n="toolbox_llm">LLM 处理</button>
-      <button id="toolboxReplaceTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxReplacePanel" data-tool="replace" data-i18n="toolbox_replace">固定替换</button>
-      <button id="toolboxFfconcatTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxFfconcatPanel" data-tool="ffconcat" data-i18n="toolbox_ffconcat">媒体重组</button>
-    </div>
-
     <section id="toolboxLlmPanel" class="toolbox-panel" role="tabpanel" aria-labelledby="toolboxLlmTab">
       <div class="toolbox-grid">
         <div class="field">
@@ -327,6 +321,12 @@
         <button id="runFfconcatRebuild" class="primary" type="button" data-i18n="toolbox_run_media">生成新媒体</button>
       </div>
     </section>
+
+    <div class="toolbox-tabs" role="tablist" aria-label="post-processing tools">
+      <button id="toolboxLlmTab" class="toolbox-tab active" type="button" role="tab" aria-selected="true" aria-controls="toolboxLlmPanel" data-tool="llm" data-i18n="toolbox_llm">LLM 处理</button>
+      <button id="toolboxReplaceTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxReplacePanel" data-tool="replace" data-i18n="toolbox_replace">固定替换</button>
+      <button id="toolboxFfconcatTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxFfconcatPanel" data-tool="ffconcat" data-i18n="toolbox_ffconcat">媒体重组</button>
+    </div>
 
     <div id="toolboxProgress" class="progress hidden" aria-hidden="true"><span></span></div>
     <div id="toolboxResult" class="toolbox-result" aria-live="polite" data-i18n="toolbox_ready">选择工具后运行；源文件不会被覆盖。</div>

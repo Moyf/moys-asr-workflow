@@ -397,7 +397,7 @@ class LauncherApi:
             updates["DASHSCOPE_WORKSPACE_ID"] = str(payload.get("workspaceId") or "").strip()
         try:
             save_env(self.paths.env_path, updates)
-        except (OSError, UnicodeError) as error:
+        except (OSError, UnicodeError, ValueError) as error:
             return _error_result("", "config_save_failed", f"{self.paths.env_path}: {error}")
         return {"ok": True, "maskedApiKey": masked_secret(api_key), "message": "settings saved"}
 
@@ -412,7 +412,7 @@ class LauncherApi:
         if updates:
             try:
                 save_env(self.paths.env_path, updates)
-            except (OSError, UnicodeError) as error:
+            except (OSError, UnicodeError, ValueError) as error:
                 return _error_result("", "config_save_failed", f"{self.paths.env_path}: {error}")
         return {"ok": True}
 
@@ -428,8 +428,17 @@ class LauncherApi:
         }
         try:
             save_env(self.paths.env_path, updates)
-        except (OSError, UnicodeError) as error:
-            return _error_result("postprocessApiKey", "config_save_failed", f"{self.paths.env_path}: {error}")
+        except (OSError, UnicodeError, ValueError) as error:
+            field = "postprocessApiKey"
+            for key, candidate in (
+                (f"{preset.env_prefix}_API_KEY", "postprocessApiKey"),
+                (f"{preset.env_prefix}_BASE_URL", "postprocessBaseUrl"),
+                (f"{preset.env_prefix}_MODEL", "postprocessModel"),
+            ):
+                if str(error).startswith(f"{key}:"):
+                    field = candidate
+                    break
+            return _error_result(field, "config_save_failed", f"{self.paths.env_path}: {error}")
         return {"ok": True, "providerId": preset.id, "maskedApiKey": masked_secret(api_key)}
 
     def run_fixed_replacement(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -767,7 +776,7 @@ class LauncherApi:
         value = str(payload.get("path") or "").strip()
         try:
             save_env(self.paths.env_path, {"FFMPEG_PATH": value})
-        except (OSError, UnicodeError) as error:
+        except (OSError, UnicodeError, ValueError) as error:
             return _error_result("ffmpegPath", "config_save_failed", f"{self.paths.env_path}: {error}")
         result = _check_ffmpeg(self.paths.env_path, override=value)
         result["ok"] = bool(result["found"])
@@ -780,7 +789,7 @@ class LauncherApi:
             return _error_result("stickerDir", "sticker_dir_invalid", value)
         try:
             save_env(self.paths.env_path, {"STICKER_DIR": str(path)})
-        except (OSError, UnicodeError) as error:
+        except (OSError, UnicodeError, ValueError) as error:
             return _error_result("stickerDir", "config_save_failed", f"{self.paths.env_path}: {error}")
         return {"ok": True, "stickerDir": str(path)}
 

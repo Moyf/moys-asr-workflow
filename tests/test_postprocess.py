@@ -223,6 +223,7 @@ class PostprocessTests(unittest.TestCase):
             "items": [{"start": 2400, "end": 3000, "text": "第三句"}],
             "sticker_ref": {"headIdx": 0},
         })
+        project["segments"] = segments
 
         processed = apply_llm_groups(project, {
             "groups": [

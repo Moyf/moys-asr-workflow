@@ -44,6 +44,8 @@
 
 任何检查失败都会终止本次处理，不写出部分结果。
 
+单次请求最多发送 300 条字幕。更大的工程会在本地按原顺序分批请求，保留全局 cue ID 后再统一校验和写出；为保持批次隔离，模型不能跨批次合并或拆分字幕。
+
 ## 4. 本地时间映射
 
 - 一对一修改：复制原段 `start/end`。
@@ -61,11 +63,11 @@
 
 ## 6. OpenAI-compatible HTTP 契约
 
-客户端向配置 URL 的 `/chat/completions` 发送 Bearer 认证请求；如果 URL 已以 `/chat/completions` 结尾则直接使用。请求包含：
+客户端向配置 URL 的 `/chat/completions` 发送 Bearer 认证请求；如果 URL 已以 `/chat/completions` 结尾则直接使用。出于凭据安全，HTTPS 可使用远端地址，明文 HTTP 只允许 `localhost`、`127.0.0.1` 或 IPv6 环回地址。请求包含：
 
 - `model`：当前供应商或自定义模型名；
 - `messages`：系统协议和 cue 文本数组；
 - `response_format: {"type": "json_object"}`；
 - `temperature: 0.1`。
 
-预设供应商为 DeepSeek 和阿里云 Qwen；Custom 可填写任意绝对 HTTP(S) OpenAI-compatible URL。API Key、URL、模型和最近供应商只保存在本机配置中，完整 Key 不进入工程、SRT、前端配置响应或任务结果。字幕文字会发送给用户选择的供应商，用户应自行确认其隐私和数据保留政策。
+预设供应商为 DeepSeek、智谱 Coding Plan 和阿里云 Qwen；Custom 可填写 HTTPS 或环回 HTTP 的 OpenAI-compatible URL。API Key、URL、模型和最近供应商只保存在本机配置中，完整 Key 不进入工程、SRT、前端配置响应或任务结果。字幕文字会发送给用户选择的供应商，用户应自行确认其隐私和数据保留政策。

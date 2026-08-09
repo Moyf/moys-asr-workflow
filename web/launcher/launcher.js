@@ -25,7 +25,7 @@
     open_html: "📝 打开该工程的 HTML 编辑器",
     open_blank_html: "📝 打开空的 HTML 编辑器",
     server_already_running: "🌐 当前字幕编辑服务器已在运行中：",
-    server_address: "当前服务器地址：",
+    server_address: "🌐 当前服务器地址：",
     server_start_hint: "请点击「启动字幕服务器」",
     server_no_response_hint: "编辑器服务器没有响应，请检查端口或下方状态。",
     server_start_failed_hint: "编辑器服务器启动失败，请查看下方状态和日志。",

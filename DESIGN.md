@@ -111,7 +111,7 @@ column. Long paths use `overflow-wrap: anywhere` and never force horizontal scro
   this makes the newly generated artifact the single authoritative next input.
 - A successful FFconcat run updates only the media input. It never silently rewrites
   the subtitle project or its timeline.
-- The LLM provider form supports DeepSeek, Qwen, and a custom OpenAI-compatible
+- The LLM provider form supports DeepSeek, Zhipu Coding Plan, Qwen, and a custom OpenAI-compatible
   endpoint. Saved keys are displayed only as masked values.
 - The floating button and drawer expose `aria-expanded`, dialog labeling, keyboard
   focus, Escape close, and visible focus rings.

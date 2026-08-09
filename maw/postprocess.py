@@ -55,6 +55,8 @@ PROMPTS: Final[dict[str, str]] = {
 
 SAFE_SCALARS: Final = ("speaker", "disabled")
 VISUAL_FIELDS: Final = ("sticker", "sticker_ref", "color", "color_ref")
+MAX_LLM_CUES_PER_REQUEST: Final = 300
+TIMING_FIELDS: Final = ("start", "end", "text", "items")
 
 
 def run_fixed_replacement(request: ReplacementRequest) -> SubtitleArtifact:
@@ -83,8 +85,15 @@ def run_llm_postprocess(request: LlmPostprocessRequest, *, complete: LlmComplete
     custom = request.custom_prompt.strip()
     system_prompt = _protocol_prompt(operation_prompt, custom)
     cues = _llm_cues(project)
-    response = complete(system_prompt, cues)
+    batches = [
+        cues[index : index + MAX_LLM_CUES_PER_REQUEST]
+        for index in range(0, len(cues), MAX_LLM_CUES_PER_REQUEST)
+    ] or [cues]
+    responses = [complete(system_prompt, batch) for batch in batches]
+    response = _combine_llm_responses(responses)
     processed, warnings = _apply_llm_groups_with_warnings(project, response)
+    if len(batches) > 1:
+        warnings = (f"字幕较长，已分批处理（共 {len(batches)} 批）。",) + warnings
     return _write(processed, source_project, source_srt, request.operation, request.output_mode, warnings)
 
 
@@ -114,12 +123,21 @@ def _apply_llm_groups_with_warnings(
         if not isinstance(text, str) or not text.strip():
             raise ValueError("each LLM group must contain non-empty text")
         source_ids = tuple(value for value in raw_ids if isinstance(value, str))
+        if len(set(source_ids)) != len(source_ids):
+            raise ValueError("LLM groups cannot repeat a source ID inside one group")
         parsed.append((source_ids, text.strip()))
     expected = [f"c{index:04d}" for index in range(1, len(source_segments) + 1)]
     flattened = [cue_id for source_ids, _text in parsed for cue_id in source_ids]
     collapsed = [cue_id for index, cue_id in enumerate(flattened) if index == 0 or cue_id != flattened[index - 1]]
     if collapsed != expected:
         raise ValueError("LLM groups must cover source cue IDs once, in order; only consecutive split repeats are allowed")
+    occurrences: dict[str, list[int]] = {}
+    for group_index, (source_ids, _text) in enumerate(parsed):
+        for cue_id in source_ids:
+            occurrences.setdefault(cue_id, []).append(group_index)
+    for cue_id, group_indexes in occurrences.items():
+        if len(group_indexes) > 1 and any(len(parsed[index][0]) != 1 for index in group_indexes):
+            raise ValueError(f"LLM split groups for {cue_id} must contain only one source ID")
     index_by_id = {cue_id: index for index, cue_id in enumerate(expected)}
     regrouped = any(len(ids) != 1 for ids, _text in parsed) or len(parsed) != len(source_segments)
     new_segments = _build_segments(source_segments, parsed, index_by_id)
@@ -145,6 +163,9 @@ def _build_segments(
         source_indexes = [index_by_id[cue_id] for cue_id in source_ids]
         first = sources[source_indexes[0]]
         last = sources[source_indexes[-1]]
+        disabled_states = {sources[index].get("disabled") is True for index in source_indexes}
+        if len(disabled_states) > 1:
+            raise ValueError("LLM groups cannot merge enabled and disabled cues")
         start = _required_ms(first, "start")
         end = _required_ms(last, "end")
         if len(source_ids) == 1 and split_counts.get(source_ids[0], 0) > 1:
@@ -158,18 +179,47 @@ def _build_segments(
             split_positions[source_ids[0]] = split_position + 1
             start, end = part_start, part_end
         unchanged = len(source_ids) == 1 and split_counts.get(source_ids[0], 0) == 1 and text == first.get("text")
-        segment: JsonDict = copy.deepcopy(first) if unchanged else {"start": start, "end": end, "text": text}
+        segment: JsonDict = copy.deepcopy(first) if unchanged else _copy_common_metadata(
+            [sources[index] for index in source_indexes],
+        )
         segment.update({"start": start, "end": end, "text": text})
-        scalar_values = {field: first.get(field) for field in SAFE_SCALARS}
-        for field, value in scalar_values.items():
-            if value is not None and all(source.get(field) == value for source in sources[source_indexes[0] : source_indexes[-1] + 1]):
-                segment[field] = copy.deepcopy(value)
-        if not regrouped:
+        if regrouped or not unchanged:
+            segment.pop("items", None)
+        if regrouped:
+            for field in VISUAL_FIELDS:
+                segment.pop(field, None)
+        elif not unchanged:
             for field in VISUAL_FIELDS:
                 if field in first:
                     segment[field] = copy.deepcopy(first[field])
+        scalar_values = {field: first.get(field) for field in SAFE_SCALARS}
+        for field, value in scalar_values.items():
+            if value is not None and all(source.get(field) == value for source in (sources[index] for index in source_indexes)):
+                segment[field] = copy.deepcopy(value)
         result.append(segment)
     return result
+
+
+def _copy_common_metadata(source_segments: Sequence[JsonDict]) -> JsonDict:
+    first = source_segments[0]
+    excluded = set(TIMING_FIELDS) | set(SAFE_SCALARS) | set(VISUAL_FIELDS)
+    result: JsonDict = {}
+    for field, value in first.items():
+        if field in excluded:
+            continue
+        if all(field in source and source[field] == value for source in source_segments[1:]):
+            result[field] = copy.deepcopy(value)
+    return result
+
+
+def _combine_llm_responses(responses: Sequence[Mapping[str, JsonValue]]) -> JsonDict:
+    groups: list[JsonValue] = []
+    for response in responses:
+        raw_groups = response.get("groups")
+        if not isinstance(raw_groups, list):
+            raise ValueError("LLM response must contain a groups array")
+        groups.extend(raw_groups)
+    return {"groups": groups}
 
 
 def _protocol_prompt(operation_prompt: str, custom_prompt: str) -> str:

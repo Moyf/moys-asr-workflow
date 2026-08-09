@@ -54,14 +54,22 @@ def read_srt(path: Path) -> JsonDict:
         raise PostprocessFileError(source, f"cannot read SRT: {error}") from error
     segments: list[JsonValue] = []
     previous_end = 0
-    for cue_index, block in enumerate(re.split(r"\r?\n\s*\r?\n", text.strip()), 1):
+    stripped = text.strip()
+    blocks = re.split(r"\r?\n\s*\r?\n", stripped) if stripped else []
+    for cue_index, block in enumerate(blocks, 1):
         lines = block.splitlines()
         timing_index = next((index for index, line in enumerate(lines) if "-->" in line), -1)
         if timing_index < 0:
-            continue
-        left, right = (part.strip() for part in lines[timing_index].split("-->", 1))
+            raise PostprocessFileError(source, f"cue {cue_index} has no timing line")
+        timing_parts = lines[timing_index].split("-->")
+        if len(timing_parts) != 2:
+            raise PostprocessFileError(source, f"cue {cue_index} has an invalid timestamp")
+        left, right = (part.strip() for part in timing_parts)
+        right_parts = right.split()
+        if not right_parts:
+            raise PostprocessFileError(source, f"cue {cue_index} has an invalid timestamp")
         start = _parse_srt_time(left, source, cue_index)
-        end = _parse_srt_time(right.split()[0], source, cue_index)
+        end = _parse_srt_time(right_parts[0], source, cue_index)
         if start < previous_end or end <= start:
             raise PostprocessFileError(source, f"cue {cue_index} has overlapping or invalid timing")
         segments.append({"start": start, "end": end, "text": "\n".join(lines[timing_index + 1 :]).strip()})
@@ -103,15 +111,19 @@ def render_srt(project: JsonDict) -> str:
     if not isinstance(segments, list):
         return ""
     blocks: list[str] = []
-    for index, segment in enumerate(segments, 1):
+    output_index = 1
+    for segment in segments:
         if not isinstance(segment, dict):
+            continue
+        if segment.get("disabled") is True:
             continue
         start = segment.get("start")
         end = segment.get("end")
         text = segment.get("text")
         if type(start) is int and type(end) is int and isinstance(text, str):
             safe_text = re.sub(r"\r?\n\s*\r?\n+", "\n", text.strip())
-            blocks.append(f"{index}\n{_format_srt_time(start)} --> {_format_srt_time(end)}\n{safe_text}\n")
+            blocks.append(f"{output_index}\n{_format_srt_time(start)} --> {_format_srt_time(end)}\n{safe_text}\n")
+            output_index += 1
     return "\n".join(blocks)
 
 
@@ -120,6 +132,8 @@ def _parse_srt_time(value: str, path: Path, cue_index: int) -> int:
     if match is None:
         raise PostprocessFileError(path, f"cue {cue_index} has an invalid timestamp")
     hours, minutes, seconds, milliseconds = (int(part) for part in match.groups())
+    if minutes >= 60 or seconds >= 60:
+        raise PostprocessFileError(path, f"cue {cue_index} has an invalid timestamp")
     return hours * 3_600_000 + minutes * 60_000 + seconds * 1_000 + milliseconds
 
 
@@ -147,6 +161,6 @@ def _atomic_write(path: Path, text: str) -> None:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
             _ = handle.write(text)
         os.replace(temporary_name, path)
-    except OSError:
+    except (OSError, UnicodeError):
         Path(temporary_name).unlink(missing_ok=True)
         raise

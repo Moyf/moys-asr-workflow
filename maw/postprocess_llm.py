@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 from dataclasses import dataclass
@@ -120,9 +121,23 @@ def _chat_endpoint(base_url: str) -> str:
     parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise LlmClientError("LLM API URL must be an absolute HTTP(S) URL")
+    if parsed.scheme == "http" and not _is_loopback_host(parsed.hostname):
+        raise LlmClientError("plain HTTP LLM API URLs are allowed only for loopback hosts")
     if value.endswith("/chat/completions"):
         return value
     return f"{value}/chat/completions"
+
+
+def _is_loopback_host(host: str | None) -> bool:
+    if not host:
+        return False
+    normalized = host.rstrip(".").lower()
+    if normalized == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
 
 
 def _response_content(body: JsonValue) -> str:

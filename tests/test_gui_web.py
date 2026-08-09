@@ -1278,6 +1278,17 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn(".toolbox-fab", stylesheet)
         self.assertIn(".toolbox-drawer", stylesheet)
 
+    def test_toolbox_tabs_follow_the_panels(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+
+        ffconcat_panel = page.index('id="toolboxFfconcatPanel"')
+        ffconcat_end = page.index("</section>", ffconcat_panel)
+        tabs = page.index('<div class="toolbox-tabs"')
+        progress = page.index('<div id="toolboxProgress"')
+
+        self.assertGreater(tabs, ffconcat_end)
+        self.assertLess(tabs, progress)
+
     def test_launcher_hero_shows_the_bundled_brand_icon(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
