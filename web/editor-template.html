@@ -725,11 +725,15 @@ __WAVEFORM_CSS__
     <label for="sticker-root-input">当前根目录（绝对路径）</label>
     <div class="modal-field-row">
       <input type="text" id="sticker-root-input" placeholder="如 D:/AI/AI音频转录/表情包" autocomplete="off">
-      <button id="sticker-root-pick" title="浏览本地文件夹（同时会重新扫描表情包列表）">📁 浏览…</button>
+      <button id="sticker-root-pick" title="扫描本地文件夹以加载表情包缩略图（浏览器拿不到磁盘路径，需手动填写导出路径）">📁 扫描</button>
     </div>
     <input type="file" id="sticker-root-folder-input" webkitdirectory directory multiple style="display:none">
+    <p id="sticker-root-browser-warn" class="modal-hint" style="display:none; color: #ffc864; font-weight: 600;">
+      ⬆️ 当前是浏览器加载模式，请手动填写真实磁盘路径以导出 OTIO 工程<br>
+      （或在启动器的 ⚙️ 设置中填写表情包路径后，重新启动服务器）
+    </p>
     <div class="modal-hint">
-      支持 OS 路径（D:/foo/bar）或 file:// URL。手动改路径只替换前缀；点 📁 浏览选本地文件夹会重新扫描表情包。
+      支持 OS 路径（D:/foo/bar 或 D:\foo\bar）或 file:// URL。点 📁 扫描只加载缩略图预览，不会自动填入导出路径。
     </div>
     <div class="actions">
       <button id="sticker-root-cancel">取消</button>

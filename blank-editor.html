@@ -2325,7 +2325,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-07 09:41</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-09 22:42</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -3026,11 +3026,15 @@
     <label for="sticker-root-input">当前根目录（绝对路径）</label>
     <div class="modal-field-row">
       <input type="text" id="sticker-root-input" placeholder="如 D:/AI/AI音频转录/表情包" autocomplete="off">
-      <button id="sticker-root-pick" title="浏览本地文件夹（同时会重新扫描表情包列表）">📁 浏览…</button>
+      <button id="sticker-root-pick" title="扫描本地文件夹以加载表情包缩略图（浏览器拿不到磁盘路径，需手动填写导出路径）">📁 扫描</button>
     </div>
     <input type="file" id="sticker-root-folder-input" webkitdirectory directory multiple style="display:none">
+    <p id="sticker-root-browser-warn" class="modal-hint" style="display:none; color: #ffc864; font-weight: 600;">
+      ⬆️ 当前是浏览器加载模式，请手动填写真实磁盘路径以导出 OTIO 工程<br>
+      （或在启动器的 ⚙️ 设置中填写表情包路径后，重新启动服务器）
+    </p>
     <div class="modal-hint">
-      支持 OS 路径（D:/foo/bar）或 file:// URL。手动改路径只替换前缀；点 📁 浏览选本地文件夹会重新扫描表情包。
+      支持 OS 路径（D:/foo/bar 或 D:\foo\bar）或 file:// URL。点 📁 扫描只加载缩略图预览，不会自动填入导出路径。
     </div>
     <div class="actions">
       <button id="sticker-root-cancel">取消</button>
@@ -4112,9 +4116,11 @@
     '设置表情包根目录': 'Set sticker root folder',
     '仅服务器版编辑器可将改动保存回当前工程文件': 'Only the server editor can save changes back to the current project file',
     '所有表情包路径都基于此根目录。修改后页面所有缩略图会立刻按新路径加载。': 'All sticker paths are relative to this root. Thumbnails update immediately after it changes.',
-    '支持 OS 路径（D:/foo/bar）或 file:// URL。手动改路径只替换前缀；点 📁 浏览选本地文件夹会重新扫描表情包。': 'Supports OS paths (D:/foo/bar) and file:// URLs. Editing the path only changes the prefix; Browse rescans the folder.',
+    '支持 OS 路径（D:/foo/bar 或 D:\\foo\\bar）或 file:// URL。点 📁 扫描只加载缩略图预览，不会自动填入导出路径。': 'Supports OS paths (D:/foo/bar or D:\\foo\\bar) and file:// URLs. 📁 Scan only loads thumbnail previews; it does not fill in the export path.',
     '当前根目录（绝对路径）': 'Current root folder (absolute path)',
-    '📁 浏览…': '📁 Browse…', '应用': 'Apply',
+    '📁 扫描': '📁 Scan', '应用': 'Apply',
+    '⬆️ 当前是浏览器加载模式，请手动填写真实磁盘路径以导出 OTIO 工程': '⬆️ Browser mode is active. Manually enter the real disk path to export the OTIO project',
+    '（或在启动器的 ⚙️ 设置中填写表情包路径后，重新启动服务器）': '(or set the sticker path in the Launcher ⚙️ settings and restart the server)',
     '选择关联媒体': 'Choose related media',
     '浏览器无法自动读取工程所在目录的关联媒体。': 'The browser cannot automatically read media from the project folder.',
     '现在选择一次，或稍后点击“加载媒体”。': 'Choose it once now, or click “Load media” later.',
@@ -4185,7 +4191,7 @@
     '选择一条字幕开始编辑…': 'Select a subtitle to start editing…',
     '要查找的内容': 'Text to find', '替换后的内容': 'Replacement text',
     '按文件名过滤...': 'Filter by filename…',
-    '浏览本地文件夹（同时会重新扫描表情包列表）': 'Browse a local folder and rescan stickers',
+    '扫描本地文件夹以加载表情包缩略图（浏览器拿不到磁盘路径，需手动填写导出路径）': 'Scan a local folder to load sticker thumbnails (the browser cannot see the disk path; fill in the export path manually)',
     '如 D:/AI/AI音频转录/表情包': 'e.g. D:/Media/Stickers',
     '下次不带 JSON 路径启动服务器时，自动恢复上次打开的工程': 'Automatically restore the last project when the server starts without a JSON path',
     '只影响导出的 SRT，不改动工程或 OTIO 的时间轴': 'Only affects exported SRT; project and OTIO timelines are unchanged',
@@ -11638,7 +11644,9 @@ function stickerOtioName(sticker, absPath) {
 }
 
 function buildStickerOtio() {
-  const collected = collectStickerOtioEntries(null);
+  // 传空数组而非 null：函数体内用 removed.length 判断是否走去空隙映射分支，
+  // 空数组 .length===0（falsy）正确退化为原始时间线，且避免 null.length 崩溃。
+  const collected = collectStickerOtioEntries([]);
   if (collected.error) {
     flashHint(collected.error);
     return null;
@@ -12950,16 +12958,24 @@ const stickerRootInput = document.getElementById('sticker-root-input');
 const stickerRootFolderInput = document.getElementById('sticker-root-folder-input');
 
 document.getElementById('sticker-root-btn').addEventListener('click', () => {
-  stickerRootInput.value = STICKER_ROOT || '';
+  // 浏览器加载模式（[本地] 前缀）下不在输入框显示虚拟标识，避免用户误以为是有效导出路径
+  stickerRootInput.value = (STICKER_ROOT && STICKER_ROOT.startsWith('[本地]')) ? '' : (STICKER_ROOT || '');
+  updateStickerRootBrowserWarn();
   stickerRootModal.classList.add('show');
   setTimeout(() => stickerRootInput.focus(), 50);
 });
+
+// 浏览器加载模式（[本地] 前缀）警告横幅显隐：只在 blob 模式下提示用户需手动填写真实磁盘路径
+function updateStickerRootBrowserWarn() {
+  const warn = document.getElementById('sticker-root-browser-warn');
+  if (warn) warn.style.display = (STICKER_ROOT && STICKER_ROOT.startsWith('[本地]')) ? 'block' : 'none';
+}
 document.getElementById('sticker-root-cancel').addEventListener('click', () => stickerRootModal.classList.remove('show'));
 stickerRootModal.addEventListener('click', (e) => { if (e.target === stickerRootModal) stickerRootModal.classList.remove('show'); });
 
-// 「📁 浏览…」按钮：优先用 showDirectoryPicker 选本地文件夹——原生选择器本身就是确认动作，
+// 「📁 扫描」按钮：优先用 showDirectoryPicker 选本地文件夹——原生选择器本身就是确认动作，
 // 不会再弹浏览器的「是否上传 N 个文件到此站点」提示；不支持时回退 webkitdirectory。
-// 浏览器拿不到绝对路径，所以用 blob URL 替换 STICKERS 数组。
+// 浏览器拿不到绝对路径，所以用 blob URL 替换 STICKERS 数组；导出路径需用户手动填写。
 const STICKER_IMG_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
 
 function applyStickerFiles(entries, topDir) {
@@ -12981,11 +12997,12 @@ function applyStickerFiles(entries, topDir) {
       _blobUrl: URL.createObjectURL(file),
     });
   }
-  // 显示一个虚拟根，仅作 UI 提示；导出 OTIO 仍需要用户填写实际表情包根目录。
+  // 显示一个虚拟根，仅作内部状态标识（stickerAbsPath 据此跳过导出）；浏览器拿不到真实磁盘路径。
+  // 不把 [本地] 虚拟标识填入输入框，避免用户误以为是有效导出路径。
   STICKER_ROOT = topDir ? `[本地] ${topDir}` : '[本地]';
-  stickerRootInput.value = STICKER_ROOT;
+  updateStickerRootBrowserWarn();
   renderAll();
-  flashHint(`已加载 ${STICKERS.length} 张表情包（${topDir || '本地'}）`);
+  flashHint(`扫描到 ${STICKERS.length} 个表情包；由于浏览器限制，你需要手动填写本地绝对路径，否则无法导出`);
 }
 
 async function collectStickerEntries(dirHandle, prefix, out) {
