@@ -57,7 +57,7 @@ class LocalModelDiscoveryTests(unittest.TestCase):
                 status = inspect_local_model(model, temp_dir)
 
         self.assertEqual(status.status, "installed")
-        self.assertEqual(status.path, str(Path(temp_dir).resolve()))
+        self.assertEqual(Path(status.path).resolve(), Path(temp_dir).resolve())
 
     def test_explicit_empty_folder_is_rejected(self) -> None:
         model = provider_by_id("local").models[1]
@@ -109,7 +109,7 @@ class LocalModelDiscoveryTests(unittest.TestCase):
 
         self.assertEqual(status.status, "installed")
         self.assertTrue(status.installed)
-        self.assertEqual(status.path, str(snapshot.resolve()))
+        self.assertEqual(Path(status.path).resolve(), snapshot.resolve())
 
     def test_funasr_legacy_modelscope_cache_is_detected_via_cache_refs(self) -> None:
         model = provider_by_id("local").models[1]
@@ -124,7 +124,7 @@ class LocalModelDiscoveryTests(unittest.TestCase):
                     status = inspect_local_model(model)
 
         self.assertEqual(status.status, "installed")
-        self.assertEqual(status.path, str(legacy.resolve()))
+        self.assertEqual(Path(status.path).resolve(), legacy.resolve())
 
     def test_empty_modelscope_fallback_directory_is_not_detected(self) -> None:
         model = provider_by_id("local").models[1]
