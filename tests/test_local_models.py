@@ -47,7 +47,7 @@ class LocalModelDiscoveryTests(unittest.TestCase):
 
         self.assertEqual(partial.status, "partial")
         self.assertEqual(installed.status, "installed")
-        self.assertEqual(installed.path, str(main.resolve()))
+        self.assertEqual(Path(installed.path).resolve(), main.resolve())
 
     def test_explicit_folder_is_used_without_persisting_it(self) -> None:
         model = provider_by_id("local").models[1]
