@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- 暂时移除 Windows `MOSE.exe` 与 macOS `MOSE.app` 的 Release 打包，缩小分发包；Launcher 隐藏「在 MOSE 中打开」入口，默认使用 Server 版或 HTML 编辑器。
+
 ## [1.13.1-beta-6] - 2026-08-06
 
 ### Added

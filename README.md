@@ -21,22 +21,22 @@ Moy 的 ASR 工作流由两部分组成：
 
 > 当前支持模型：阿里云百炼 Qwen / Fun-ASR 或 Soniox 云端 ASR API  
 
-- **MOSE / MAWE**：搭配使用的字幕编辑器，功能有九分甚至十分的强劲：
+- **MAWE**：MAW 自带的字幕编辑器，功能有九分甚至十分的强劲：
 
 ![MAWE 字幕编辑器预览](assets/screenshot-v1.2.0.jpg)  
 
-*Windows 和 macOS Release 默认使用 MOSE 桌面编辑器；Server 版和单文件版 MAWE 仍作为备用入口。*
+*当前 Release 默认使用 Server 版编辑器；便携 HTML 编辑器仍可作为备用入口。MOSE 桌面版暂不随 MAW 分发，待完成度足够后再恢复。*
 
 ## 如何使用
 
 [点我下载最新版](https://github.com/Moyf/moys-asr-workflow/releases/latest)，根据电脑情况选一个：
 
-- `MAWxFF-Windows-x64-v*.zip`：已经捆绑 MAW 与 MOSE 会用到的 `ffmpeg.exe` 和 `ffprobe.exe`；没有 FFmpeg、或者不知道它是什么，下载这个。
+- `MAWxFF-Windows-x64-v*.zip`：已经捆绑 MAW 所需的 `ffmpeg.exe` 和 `ffprobe.exe`；没有 FFmpeg、或者不知道它是什么，下载这个。
 - `MAW-Windows-x64-v*.zip`：体积更小；适合已经安装 FFmpeg，并且终端能直接运行 `ffmpeg` / `ffprobe` 的用户。
-- `MAWxFF-macOS-arm64-v*.zip`：Apple Silicon Mac（M1/M2/M3/M4）版，已经捆绑 `MAW.app`、`MOSE.app`、`ffmpeg` 和 `ffprobe`；不需要另外安装 FFmpeg。
-- `MAW-macOS-arm64-v*.zip`：Apple Silicon Mac 版，体积更小；同样包含 `MAW.app` 和 `MOSE.app`，但需要系统能找到 `ffmpeg` 和 `ffprobe`。目前 macOS 图形 Release 只提供 arm64 包。
+- `MAWxFF-macOS-arm64-v*.zip`：Apple Silicon Mac（M1/M2/M3/M4）版，已经捆绑 `MAW.app`、`ffmpeg` 和 `ffprobe`；不需要另外安装 FFmpeg。
+- `MAW-macOS-arm64-v*.zip`：Apple Silicon Mac 版，体积更小；包含 `MAW.app`，但需要系统能找到 `ffmpeg` 和 `ffprobe`。目前 macOS 图形 Release 只提供 arm64 包。
 
-Windows 下载解压之后点击 `MAW.exe` 并运行；macOS 下载后解压并打开 `MAW.app`，`MOSE.app` 会放在同一目录供 Launcher 调用。
+Windows 下载解压之后点击 `MAW.exe` 并运行；macOS 下载后解压并打开 `MAW.app`。
 
 ### 申请 API Key
 
@@ -69,7 +69,7 @@ Windows 下载解压之后点击 `MAW.exe` 并运行；macOS 下载后解压并�
 
 1. 在 Launcher 中打开媒体，填写 API Key 后，点击 **生成字幕和工程**——MAW 会调用对应的模型把本地视频或音频转为字幕，同时生成工程文件。
 2. 如果你不需要精校字幕，直接用生成的 srt 字幕文件即可 🎉
-3. 生成工程后，主按钮默认启动 Server 版字幕编辑器；如果你需要使用 MOSE，可以从右侧菜单选择「在 MOSE 中打开」，也可以在那里打开 HTML 编辑器。
+3. 生成工程后，主按钮默认启动 Server 版字幕编辑器；也可以从右侧菜单打开工程 HTML 编辑器或空白 HTML 编辑器。
 4. 操作完成后，点击右上角按钮导出你所需的 SRT 字幕或是其他附加格式。
 
 所有编辑都在本机完成。  
@@ -90,26 +90,26 @@ Windows 下载解压之后点击 `MAW.exe` 并运行；macOS 下载后解压并�
 同一平台的两个版本 MAW 功能完全一样，区别只有是否捆绑 FFmpeg。Windows 解压后双击 `MAW.exe`；macOS 打开 `.app`，Launcher 会带你完成这条流程：
 
 ```text
-选择供应商和媒体 -> 生成 SRT + .mosp 工程 -> 打开 MOSE 校对 -> 保存或导出
+选择供应商和媒体 -> 生成 SRT + .mosp 工程 -> 打开 Server 编辑器校对 -> 保存或导出
 ```
 
 在 Launcher 里选择阿里云百炼或 Soniox、媒体与 SRT 输出位置，确认模型、语言和可选时长上限，填写对应的 API Key，即可生成 SRT、`.mosp` 工程和便携编辑器 HTML。阿里云百炼 Provider 默认使用最新发布的 `qwen-audio-3.0-asr（热词 / 上下文）`，也可以选择 `fun-asr（支持说话人）` 或 `qwen3-asr（准确率更高）`。需要复用 Key 时，可点“存入本地环境”；密钥只保存在本机 `.env`，不会写入工程文件或日志。
 
-Launcher 的主按钮默认启动 Server 版字幕编辑器并传入工程路径；从按钮右侧菜单选择「在 MOSE 中打开」时，才会查找并启动桌面版编辑器。Windows 会优先读取当前用户注册表 `HKCU\Software\Moy\MOSE` 下仍有效的 `ExecutablePath`，macOS 则查找同级或常见安装位置的 `MOSE.app`。首次启动 Windows MAW 时还会为当前用户登记 `.mosp` 关联。GUI 还可以直接选择 `.mosp` / `.json` 工程并启动 `http://127.0.0.1` 本地编辑器服务器；中英文界面可在右上角切换。
+Launcher 的主按钮默认启动 Server 版字幕编辑器并传入工程路径；右侧菜单可以打开工程 HTML 编辑器或空白 HTML 编辑器。GUI 还可以直接选择 `.mosp` / `.json` 工程并启动 `http://127.0.0.1` 本地编辑器服务器；中英文界面可在右上角切换。
 启动器支持从资源管理器拖入音视频文件来自动填充媒体路径，并按供应商组织模型、地域、语言和 API Key 获取入口；选择 Fun-ASR 或 Soniox 时可在「高级选项」中开启「给不同说话人分配字幕颜色」。
 
-Windows Release 的 Launcher 默认使用 Server 版；需要桌面版时，请从右侧菜单选择「在 MOSE 中打开」。macOS 会查找同级、包内或常见安装位置的 `MOSE.app`；如果仍找不到，日志会列出实际检查过的路径。普通版仍要求系统能找到 `ffmpeg` 和 `ffprobe`；如果 Launcher 提示未检测到 FFmpeg，可以换用同平台的 `MAWxFF` 版，也可以自行安装 FFmpeg，把它的 `bin` 目录加入 PATH 后重新打开 MAW。macOS 从 Finder 启动时可能不会继承 Shell 的 PATH；Apple Silicon Homebrew 用户可在「配置」中填写 `/opt/homebrew/bin`，Intel Homebrew 通常填写 `/usr/local/bin`，并确认目录中同时有 `ffmpeg` 和 `ffprobe`。macOS GUI 保存的 API Key、FFmpeg 路径和其他设置位于 `~/Library/Application Support/Moy/MAW/.env`，不会写入 `.app` 包。
+Windows 和 macOS Release 的 Launcher 都默认使用 Server 版；右侧菜单提供工程 HTML 编辑器和空白 HTML 编辑器。普通版仍要求系统能找到 `ffmpeg` 和 `ffprobe`；如果 Launcher 提示未检测到 FFmpeg，可以换用同平台的 `MAWxFF` 版，也可以自行安装 FFmpeg，把它的 `bin` 目录加入 PATH 后重新打开 MAW。macOS 从 Finder 启动时可能不会继承 Shell 的 PATH；Apple Silicon Homebrew 用户可在「配置」中填写 `/opt/homebrew/bin`，Intel Homebrew 通常填写 `/usr/local/bin`，并确认目录中同时有 `ffmpeg` 和 `ffprobe`。macOS GUI 保存的 API Key、FFmpeg 路径和其他设置位于 `~/Library/Application Support/Moy/MAW/.env`，不会写入 `.app` 包。
 
 ### 本地构建 Windows 图形包
 
-需要在 Windows 上构建；PyInstaller 不能在其他系统上交叉编译 Windows 包。先安装 Python 3.11+、[uv](https://docs.astral.sh/uv/getting-started/installation/)、Node.js 和 Rust 工具链，然后在仓库根目录的 PowerShell 中执行：
+需要在 Windows 上构建；PyInstaller 不能在其他系统上交叉编译 Windows 包。先安装 Python 3.11+ 和 [uv](https://docs.astral.sh/uv/getting-started/installation/)，然后在仓库根目录的 PowerShell 中执行：
 
 ```powershell
 uv sync --group build --frozen
 .\scripts\build-windows.ps1
 ```
 
-构建脚本会安装锁定的构建依赖、运行打包契约测试，使用 `MAW.spec` 生成 PyInstaller `onedir` 包，并构建 `MOSE.exe` 放入同一目录。输出目录为 `dist\MAW\`，启动程序是 `dist\MAW\MAW.exe`；分发时要保留整个目录，不能只复制 exe 文件。
+构建脚本会安装锁定的构建依赖、运行打包契约测试，并使用 `MAW.spec` 生成 PyInstaller `onedir` 包。输出目录为 `dist\MAW\`，启动程序是 `dist\MAW\MAW.exe`；MOSE 暂不参与 MAW 打包，分发时要保留整个目录，不能只复制 exe 文件。
 
 需要跳过打包契约测试时可以使用：
 
@@ -121,22 +121,18 @@ uv sync --group build --frozen
 
 ### 本地构建 macOS 图形包
 
-需要在 Apple Silicon macOS runner 或 Mac 上构建；PyInstaller 和 Tauri 都不会为 macOS 交叉编译。进入仓库根目录执行：
+需要在 Apple Silicon macOS runner 或 Mac 上构建；PyInstaller 不会为 macOS 交叉编译。进入仓库根目录执行：
 
 ```bash
 uv sync --group build --frozen
 uv run --group build pyinstaller --noconfirm --clean MAW.spec
-cd desktop
-npm ci
-cargo check --manifest-path src-tauri/Cargo.toml
-npm run tauri -- build --config src-tauri/tauri.macos.conf.json --bundles app --no-sign
 ```
 
-MAW 的 App 在 `dist/MAW.app`，MOSE 的 App 在 `desktop/src-tauri/target/release/bundle/macos/MOSE.app`。正式 Release 会把两个 App 放进普通版和 `MAWxFF` 版 ZIP 的同一目录；未签名的本地构建可能需要在 macOS「隐私与安全性」中手动允许启动。
+MAW 的 App 在 `dist/MAW.app`；正式 Release 会把 MAW App 放进普通版和 `MAWxFF` 版 ZIP。未签名的本地构建可能需要在 macOS「隐私与安全性」中手动允许启动。
 
-### MOSE / MAWE 编辑器入口
+### MAWE 编辑器入口
 
-Windows 和 macOS Release 中，Launcher 主按钮会打开同目录的 MOSE 桌面编辑器并传入当前 `.mosp` / `.json` 工程。需要 localhost 工作流时，从按钮右侧菜单选择「启动 Server 版字幕编辑器」；需要最便携的浏览器方式时，选择 HTML 编辑器。
+Windows 和 macOS Release 中，Launcher 主按钮会打开 Server 版字幕编辑器并传入当前 `.mosp` / `.json` 工程；需要最便携的浏览器方式时，从按钮右侧菜单选择 HTML 编辑器。MOSE Tauri 桌面版仍保留在 `desktop/` 目录开发，但暂不随 MAW Release 分发。
 
 ### 传统命令行方案
 
