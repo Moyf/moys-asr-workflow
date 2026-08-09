@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -163,6 +164,16 @@ class ConfigTests(unittest.TestCase):
 
         self.assertEqual(config["poll_interval"], bcut.MIN_POLL_INTERVAL)
 
+    def test_timeout_and_audio_limit_have_positive_floors(self) -> None:
+        with mock.patch.dict(
+            "os.environ",
+            {"BCUT_POLL_TIMEOUT": "0", "BCUT_MAX_AUDIO_SECONDS": "-10"},
+        ), mock.patch.object(bcut, "ENV_FILE", Path("does-not-exist.env")):
+            config = bcut.load_config()
+
+        self.assertEqual(config["poll_timeout"], bcut.MIN_POLL_TIMEOUT)
+        self.assertEqual(config["max_audio_seconds"], bcut.MIN_MAX_AUDIO_SECONDS)
+
 
 class ApiClientTests(unittest.TestCase):
     def test_request_upload_payload_and_response(self, ) -> None:
@@ -218,6 +229,19 @@ class ApiClientTests(unittest.TestCase):
             with self.assertRaises(bcut.BcutApiError):
                 bcut.request_upload("a.wav", on_status=lambda _m: None)
 
+    def test_request_upload_rejects_missing_resource_identifiers(self) -> None:
+        with mock.patch("maw.bcut.requests") as req, \
+             mock.patch.object(Path, "stat") as stat:
+            stat.return_value = mock.Mock(st_size=10)
+            req.post.return_value = _data_response(
+                {"upload_urls": ["https://up/1"], "per_size": 10}
+            )
+
+            with self.assertRaises(bcut.BcutApiError) as raised:
+                bcut.request_upload("a.wav", on_status=lambda _m: None)
+
+        self.assertIn("资源标识", str(raised.exception))
+
     def test_upload_parts_sends_chunks_sequentially_and_collects_etags(self) -> None:
         upload = {"upload_urls": ["https://up/1", "https://up/2"], "per_size": 4}
         responses = []
@@ -226,15 +250,68 @@ class ApiClientTests(unittest.TestCase):
             resp.ok = True
             resp.headers = {"Etag": f"tag{i}"}
             responses.append(resp)
-        with mock.patch("maw.bcut.requests") as req, \
-             mock.patch.object(Path, "read_bytes", return_value=b"abcdefgh"):
-            req.put.side_effect = responses
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "a.wav"
+            path.write_bytes(b"abcdefgh")
+            with mock.patch("maw.bcut.requests") as req:
+                req.put.side_effect = responses
 
-            etags = bcut.upload_parts(upload, "a.wav", on_status=lambda _m: None)
+                etags = bcut.upload_parts(upload, str(path), on_status=lambda _m: None)
 
         self.assertEqual(etags, ["tag1", "tag2"])
         chunks = [call.kwargs["data"] for call in req.put.call_args_list]
         self.assertEqual(chunks, [b"abcd", b"efgh"])
+
+    def test_upload_parts_retries_same_url_without_rereading_whole_file(self) -> None:
+        upload = {"upload_urls": ["https://up/1"], "per_size": 4}
+        response = mock.Mock(ok=True, headers={"Etag": "tag1"})
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "a.wav"
+            path.write_bytes(b"abcdefgh")
+            with mock.patch("maw.bcut.requests") as req, \
+                 mock.patch("maw.bcut.time.sleep"):
+                req.put.side_effect = [requests.exceptions.ConnectionError("boom"), response]
+
+                with self.assertRaises(bcut.BcutApiError) as raised:
+                    bcut.upload_parts(upload, str(path), on_status=lambda _m: None)
+
+        self.assertIn("少于文件内容", str(raised.exception))
+        self.assertEqual(req.put.call_count, 2)
+        self.assertEqual(
+            [call.kwargs["data"] for call in req.put.call_args_list],
+            [b"abcd", b"abcd"],
+        )
+
+    def test_upload_parts_rejects_invalid_part_size(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "a.wav"
+            path.write_bytes(b"abcd")
+            with mock.patch("maw.bcut.requests") as req:
+                with self.assertRaises(bcut.BcutApiError):
+                    bcut.upload_parts(
+                        {"upload_urls": ["https://up/1"], "per_size": 0},
+                        str(path),
+                        on_status=lambda _m: None,
+                    )
+
+        req.put.assert_not_called()
+
+    def test_upload_parts_rejects_url_count_shorter_than_file(self) -> None:
+        response = mock.Mock(ok=True, headers={"Etag": "tag1"})
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "a.wav"
+            path.write_bytes(b"abcdefgh")
+            with mock.patch("maw.bcut.requests") as req:
+                req.put.return_value = response
+                with self.assertRaises(bcut.BcutApiError) as raised:
+                    bcut.upload_parts(
+                        {"upload_urls": ["https://up/1"], "per_size": 4},
+                        str(path),
+                        on_status=lambda _m: None,
+                    )
+
+        self.assertIn("少于文件内容", str(raised.exception))
+        req.put.assert_called_once()
 
     def test_commit_upload_returns_download_url(self) -> None:
         with mock.patch("maw.bcut.requests") as req:
@@ -313,6 +390,23 @@ class ApiClientTests(unittest.TestCase):
         self.assertEqual(req.get.call_count, 2)
         self.assertTrue(any("重试" in w for w in warnings))
 
+    def test_poll_task_retries_transient_http_errors(self) -> None:
+        with mock.patch("maw.bcut.requests") as req, \
+             mock.patch.object(bcut, "MIN_POLL_INTERVAL", 0):
+            req.get.side_effect = [
+                _data_response({}, status=503),
+                _data_response({
+                    "task_id": "t", "state": 4,
+                    "result": _result_json([]), "remark": "",
+                }),
+            ]
+            warnings = []
+
+            bcut.poll_task("t", interval=0, timeout=60, on_status=warnings.append)
+
+        self.assertEqual(req.get.call_count, 2)
+        self.assertTrue(any("HTTP 503" in w for w in warnings))
+
     def test_poll_task_raises_after_consecutive_network_failures(self) -> None:
         with mock.patch("maw.bcut.requests") as req, \
              mock.patch.object(bcut, "MIN_POLL_INTERVAL", 0):
@@ -356,7 +450,7 @@ class TranscribeRetryTests(unittest.TestCase):
     def _config(self):
         return {"poll_interval": 0, "poll_timeout": 60, "max_audio_seconds": 7200}
 
-    def test_transcribe_retries_failed_upload_then_succeeds(self) -> None:
+    def test_transcribe_retries_initial_network_failure_then_succeeds(self) -> None:
         raw = _result_json([_utterance("你好。", 0, 500, [_word("你", 0, 250)])])
         with mock.patch.object(
             bcut, "request_upload",
@@ -376,17 +470,33 @@ class TranscribeRetryTests(unittest.TestCase):
         self.assertEqual(result["language"], "zh")
         self.assertEqual(result["items"], [{"text": "你", "start": 0, "end": 250}])
 
-    def test_transcribe_gives_up_after_max_tries(self) -> None:
+    def test_transcribe_does_not_retry_non_network_upload_error(self) -> None:
         with mock.patch.object(
             bcut, "request_upload",
             side_effect=bcut.BcutApiError("接口错误"),
-        ) as request_upload, \
-             mock.patch("maw.bcut.time.sleep"):
+        ) as request_upload:
+            with self.assertRaises(bcut.BcutApiError):
+                bcut.transcribe("a.wav", self._config(), on_status=lambda _m: None)
+
+        self.assertEqual(request_upload.call_count, 1)
+
+    def test_transcribe_does_not_restart_upload_after_commit_network_error(self) -> None:
+        upload = {
+            "in_boss_key": "k", "resource_id": "r", "upload_id": "u",
+            "upload_urls": ["https://up/1"], "per_size": 1024,
+        }
+        with mock.patch.object(bcut, "request_upload", return_value=upload) as request_upload, \
+             mock.patch.object(bcut, "upload_parts", return_value=["tag"]), \
+             mock.patch.object(
+                 bcut, "commit_upload", side_effect=requests.exceptions.ConnectionError("boom")
+             ), \
+             mock.patch.object(bcut, "create_task") as create_task:
             with self.assertRaises(RuntimeError) as raised:
                 bcut.transcribe("a.wav", self._config(), on_status=lambda _m: None)
 
-        self.assertEqual(request_upload.call_count, bcut.MAX_TRIES)
-        self.assertIn("已放弃", str(raised.exception))
+        self.assertIn("结果未知", str(raised.exception))
+        request_upload.assert_called_once()
+        create_task.assert_not_called()
 
     def test_transcribe_rejects_unsupported_format_before_upload(self) -> None:
         with mock.patch.object(bcut, "request_upload") as request_upload:
@@ -395,6 +505,54 @@ class TranscribeRetryTests(unittest.TestCase):
 
         self.assertIn("转码", str(raised.exception))
         request_upload.assert_not_called()
+
+
+class BcutCliAudioPreparationTests(unittest.TestCase):
+    def test_length_limit_crops_supported_audio_before_max_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = Path(tmpdir) / "long.mp3"
+            output_path = Path(tmpdir) / "out.srt"
+            input_path.write_bytes(b"media")
+            durations = []
+
+            def duration_for(path: str) -> float:
+                durations.append(path)
+                return 10800.0 if Path(path).suffix.lower() == ".mp3" else 600.0
+
+            result = {"text": "测试", "language": "zh", "items": []}
+            with mock.patch(
+                "sys.argv",
+                [
+                    "generate_subtitle_bcut_api.py",
+                    str(input_path),
+                    "-ll", "10m",
+                    "-o", str(output_path),
+                ],
+            ), mock.patch(
+                "generate_subtitle_bcut_api.load_config",
+                return_value={
+                    "poll_interval": 2,
+                    "poll_timeout": 60,
+                    "max_audio_seconds": 7200,
+                },
+            ), mock.patch(
+                "generate_subtitle_bcut_api.get_duration_sec",
+                side_effect=duration_for,
+            ), mock.patch("generate_subtitle_bcut_api.extract_audio") as extract_audio, \
+                 mock.patch("generate_subtitle_bcut_api.shutil.copy2") as copy2, \
+                 mock.patch("generate_subtitle_bcut_api.transcribe", return_value=result) as transcribe:
+                from generate_subtitle_bcut_api import main
+
+                main()
+
+            extract_audio.assert_called_once_with(
+                str(input_path), mock.ANY, duration_limit=600.0
+            )
+            copy2.assert_not_called()
+            self.assertEqual(len(durations), 1)
+            self.assertTrue(durations[0].lower().endswith("audio.wav"))
+            self.assertTrue(transcribe.call_args.args[0].lower().endswith("audio.wav"))
+            self.assertTrue(output_path.exists())
 
 
 class BcutCliExitContractTests(unittest.TestCase):

@@ -184,7 +184,7 @@ uv run python generate_subtitle_bcut_api.py "D:\Videos\example.mp4" -ll 2m --jso
 单文件时长上限    默认 2 小时（BCUT_MAX_AUDIO_SECONDS）
 轮询间隔          默认 3 秒，硬下限 2 秒（BCUT_POLL_INTERVAL，配低了会被抬回）
 轮询超时          默认 1800 秒（BCUT_POLL_TIMEOUT）
-上传/建任务重试   最多 3 次，指数退避；分片顺序上传不并发
+申请上传/分片重试 最多 3 次，指数退避；提交分片/建任务不盲目重复；分片顺序上传不并发
 ```
 
 接口只直接接收 `flac / aac / m4a / mp3 / wav`；视频和其他音频格式会先经 ffmpeg 转成 16k 单声道 wav 再上传。不支持语言指定（面向中文）、说话人分离与热词。

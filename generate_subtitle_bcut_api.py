@@ -6,7 +6,7 @@
 - 无需 GPU、模型权重，也无需 API Key（B 站必剪的非公开免费接口）
 - 分片上传 + 异步轮询，逐字毫秒时间戳（words → MAW items）
 - 单文件时长默认上限 2 小时（.env 的 BCUT_MAX_AUDIO_SECONDS 可调）
-- 轮询间隔有硬下限，上传/建任务限次重试——非官方接口，请勿高频调用
+- 轮询间隔有硬下限，申请上传/分片只对临时错误限次重试——非官方接口，请勿高频调用
 
 风险：该接口未公开、未授权第三方使用，可能随时变更、失效或触发限流/封禁。
 仅支持中文为主的音频；无语言参数、无说话人分离、无热词。
@@ -112,14 +112,26 @@ def main():
         if needs_transcode:
             audio_path = str(Path(tmpdir) / "audio.wav")
             source_duration = get_duration_sec(str(input_path))
-            media_limit = args.length_limit if args.length_limit and args.length_limit < source_duration else None
+            media_limit = (
+                args.length_limit
+                if args.length_limit is not None and args.length_limit < source_duration
+                else None
+            )
             extract_audio(str(input_path), audio_path, duration_limit=media_limit)
             duration = get_duration_sec(audio_path)
             if media_limit is not None:
                 lm, ls = divmod(int(media_limit), 60)
                 print(f"[info] 测试模式：从源文件直接提取前 {lm}分{ls}秒，跳过其余内容")
+        elif args.length_limit is not None:
+            # 已支持的音频格式在 -ll 下也直接转为限长 wav，避免先复制完整文件并
+            # 按完整时长触发必剪上限，再进行第二次 ffmpeg 裁剪。
+            audio_path = str(Path(tmpdir) / "audio.wav")
+            extract_audio(str(input_path), audio_path, duration_limit=args.length_limit)
+            duration = get_duration_sec(audio_path)
+            lm, ls = divmod(int(min(args.length_limit, duration)), 60)
+            print(f"[info] 测试模式：从源文件直接提取前 {lm}分{ls}秒，跳过其余内容")
         else:
-            # 复制到 tmpdir 统一处理（避免 length_limit 改原文件）
+            # 无裁剪需求时复制到 tmpdir 统一处理（避免改动原文件）
             audio_path = str(Path(tmpdir) / input_path.name)
             shutil.copy2(input_path, audio_path)
             duration = get_duration_sec(audio_path)
@@ -134,21 +146,6 @@ def main():
                 f"（{max_seconds // 60} 分钟，可用 BCUT_MAX_AUDIO_SECONDS 调整）。\n"
                 f"       请用 -ll 截取部分时长，或先把音频分割成多个文件。"
             )
-
-        if args.length_limit and args.length_limit < duration:
-            limit_sec = args.length_limit
-            limited_path = str(Path(tmpdir) / "audio_limited.wav")
-            cmd = [
-                "ffmpeg", "-i", audio_path,
-                "-t", str(limit_sec),
-                "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
-                "-y", limited_path,
-            ]
-            subprocess.run(cmd, check=True, capture_output=True)
-            audio_path = limited_path
-            duration = limit_sec
-            lm, ls = divmod(int(limit_sec), 60)
-            print(f"[info] 已截取前 {lm}分{ls}秒用于测试")
 
         t0 = time.perf_counter()
         result = transcribe(audio_path, config)
