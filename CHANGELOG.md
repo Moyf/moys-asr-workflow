@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- 图形包 `MAW.exe` 新增公开命令行入口：`-h/--help`、`-i/--input`、`-o/--output`、可选 `.mosp` 输出路径、供应商与常用转写参数，以及 `--server` / `--stop-server` 的本机 Server 管理。
+- MAW Server 新增仅限 `127.0.0.1` 的停止接口，CLI 会优先请求该接口；Windows 下仍兼容停止旧版 MAW Server。
+
+### Changed
+
+- MAWxFF 直接从 CLI 启动时会自动把随包的 `ffmpeg\bin` 加入当前进程环境，和 Launcher 内部转写保持一致。
+
 ## [1.13.1-beta-6] - 2026-08-06
 
 ### Added

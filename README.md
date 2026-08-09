@@ -146,7 +146,31 @@ Windows 和 macOS Release 中，Launcher 主按钮会打开同目录的 MOSE 桌
 uv run python maw_gui.py
 ```
 
-下面的命令行方式仍完整保留，适合自动化和精细参数调整。
+图形版 `MAW.exe` 也提供同一套公开 CLI；不带参数时仍启动 Launcher，使用 `-h` 查看完整参数：
+
+```powershell
+.\MAW.exe -h
+```
+
+直接转写媒体时，`-o` 后第一个路径是 SRT，第二个可选路径是工程文件；省略第二个路径时会按 SRT 同名生成 `.mosp`：
+
+```powershell
+.\MAW.exe -i "D:\Videos\example.mp4" -o "D:\Videos\example.srt" "D:\Videos\example.mosp"
+```
+
+CLI 默认生成 SRT 和 `.mosp`，不生成便携 HTML；需要 HTML 时加 `--html`。常用选项包括 `--provider soniox`、`--model`、`--language`、`-ll 2m`、`--speaker-colors`、`--with-waveform`、`--region`、`--workspace-id`、`--hotword` 和 `--context`。API Key 继续从环境变量或 MAW 本机 `.env` 读取，不要放在命令行中。
+
+启动或停止本机 Server：
+
+```powershell
+.\MAW.exe --server 8250
+.\MAW.exe --server --port 8250 "D:\Videos\example.mosp" --no-open
+.\MAW.exe --stop-server 8250
+```
+
+服务器只监听 `127.0.0.1`；停止命令优先请求 MAW Server 的本机控制接口，旧版 Server 在 Windows 上则回退到已校验的 MAW 进程。停止前请先保存浏览器中的未保存工程修改。
+
+下面的源码命令行方式仍完整保留，适合自动化和精细参数调整。
 
 在 PowerShell 中执行：
 

@@ -496,6 +496,12 @@ class GuiWebBridgeTests(unittest.TestCase):
                 from maw.gui_web import _maw_server_process_id
                 self.assertEqual(_maw_server_process_id(9876), 4321)
 
+    def test_maw_server_pid_verifies_the_public_server_command(self) -> None:
+        with mock.patch("maw.gui_web._listening_process_id", return_value=4321):
+            with mock.patch("maw.gui_web._process_command_line", return_value='"D:\\Tools\\MAW.exe" --server 9876'):
+                from maw.gui_web import _maw_server_process_id
+                self.assertEqual(_maw_server_process_id(9876), 4321)
+
     def test_check_server_media_reports_existing_project_media(self) -> None:
         """Given JSON embeds existing media, When checked, Then media is usable."""
         media = self.root / "clip.mp4"

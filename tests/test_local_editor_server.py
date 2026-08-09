@@ -52,6 +52,25 @@ class LocalEditorServerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             server_editor.parse_byte_range("bytes=10-", 10)
 
+    def test_shutdown_endpoint_stops_the_loopback_server(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            base_url = f"http://127.0.0.1:{server.server_address[1]}"
+            request = urllib.request.Request(
+                f"{base_url}/api/shutdown",
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(request) as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(json.loads(response.read()), {"ok": True, "service": "maw-editor"})
+            thread.join(timeout=2)
+            self.assertFalse(thread.is_alive())
+
     def test_server_page_uses_shared_template_and_routes_stickers(self) -> None:
         project = server_editor.load_project(
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,

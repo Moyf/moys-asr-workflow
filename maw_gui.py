@@ -31,7 +31,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args, rest = build_parser().parse_known_args(argv)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if raw_argv and raw_argv[0] not in {"--smoke-import", "--transcribe", "--transcribe-soniox", "--serve"}:
+        from maw.cli import main as cli_main
+
+        return cli_main(raw_argv)
+
+    args, rest = build_parser().parse_known_args(raw_argv)
     if args.smoke_import:
         return 0
     if args.transcribe:

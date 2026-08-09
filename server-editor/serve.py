@@ -576,7 +576,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         path = urlsplit(self.path).path
-        if path == "/api/project":
+        if path == "/api/shutdown":
+            self.shutdown_server()
+        elif path == "/api/project":
             self.save_project()
         elif path == "/api/project/attach":
             self.attach_project()
@@ -586,6 +588,11 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.update_settings()
         else:
             self.send_error(HTTPStatus.NOT_FOUND, "未知 API")
+
+    def shutdown_server(self) -> None:
+        """Stop this loopback-only server from the MAW CLI."""
+        self.send_json(HTTPStatus.OK, {"ok": True, "service": "maw-editor"})
+        threading.Thread(target=self.editor_server.shutdown, daemon=True).start()
 
     def save_project(self) -> None:
         try:
