@@ -743,12 +743,14 @@ class GuiWebBridgeTests(unittest.TestCase):
             "region": "beijing",
             "lengthLimit": "30m",
             "testRun": True,
+            "debugRaw": True,
             "guiLang": "en",
         }, self.env_path)
 
         self.assertEqual(request.length_limit, "2m")
         self.assertEqual(request.srt_path.name, "out-test.srt")
         self.assertEqual(request.ui_language, "en")
+        self.assertTrue(request.debug_raw)
 
     def test_request_from_payload_without_test_run_uses_manual_length_limit(self) -> None:
         media = self.root / "clip.mp3"
@@ -1004,9 +1006,12 @@ class LauncherAssetContractTests(unittest.TestCase):
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
 
         self.assertIn('id="generateHtml" type="checkbox"', page)
+        self.assertIn('id="debugRaw" type="checkbox"', page)
+        self.assertIn('data-i18n-title="debug_raw_title"', page)
         self.assertIn('data-i18n-title="generate_html_title"', page)
         self.assertIn('id="openHtml" class="hidden"', page)
         self.assertIn('generateHtml: $("generateHtml").checked', script)
+        self.assertIn('debugRaw: $("debugRaw").checked', script)
         self.assertIn('function syncHtmlMenu()', script)
         self.assertIn('$("openHtml").classList.toggle("hidden", !enabled)', script)
         self.assertIn('$("openHtml").disabled = enabled && !state.result?.htmlPath', script)

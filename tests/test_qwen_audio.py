@@ -225,6 +225,126 @@ class QwenAudioAdapterTests(unittest.TestCase):
             "end": 300,
             "speaker": "2",
         }])
+        self.assertEqual(result["sentences"], [{
+            "text": "你好。",
+            "start": 100,
+            "end": 300,
+            "items": [{
+                "text": "你好。",
+                "start": 100,
+                "end": 300,
+                "speaker": "2",
+            }],
+            "speaker": "2",
+        }])
+
+    def test_qwen_audio_keeps_sentence_boundaries_without_punctuation(self) -> None:
+        result = parse_funasr_transcription_result(
+            {
+                "transcripts": [{
+                    "text": "受够了AI识别的劣质字幕又不想花那么多钱开会员想给自己的字幕制作省点力气给我3分钟解决你的字幕难题",
+                    "sentences": [
+                        {
+                            "begin_time": 160,
+                            "end_time": 1680,
+                            "text": "受够了AI识别的劣质字幕",
+                            "words": [{
+                                "begin_time": 200,
+                                "end_time": 1600,
+                                "text": "受够了AI识别的劣质字幕",
+                                "punctuation": "",
+                            }],
+                        },
+                        {
+                            "begin_time": 1840,
+                            "end_time": 3760,
+                            "text": "又不想花那么多钱开会员",
+                            "words": [{
+                                "begin_time": 1900,
+                                "end_time": 3700,
+                                "text": "又不想花那么多钱开会员",
+                                "punctuation": "",
+                            }],
+                        },
+                        {
+                            "begin_time": 3840,
+                            "end_time": 5920,
+                            "text": "想给自己的字幕制作省点力气",
+                            "words": [{
+                                "begin_time": 3900,
+                                "end_time": 5860,
+                                "text": "想给自己的字幕制作省点力气",
+                                "punctuation": "",
+                            }],
+                        },
+                        {
+                            "begin_time": 6160,
+                            "end_time": 8080,
+                            "text": "给我3分钟解决你的字幕难题",
+                            "words": [{
+                                "begin_time": 6200,
+                                "end_time": 8020,
+                                "text": "给我3分钟解决你的字幕难题",
+                                "punctuation": "",
+                            }],
+                        },
+                    ],
+                }]
+            }
+        )
+
+        segments = build_segments_from_api_sentences(
+            result["sentences"], max_len=21, min_len=5, gap_split_ms=1500,
+        )
+
+        self.assertEqual(
+            [segment["text"] for segment in segments],
+            [
+                "受够了AI识别的劣质字幕",
+                "又不想花那么多钱开会员",
+                "想给自己的字幕制作省点力气",
+                "给我3分钟解决你的字幕难题",
+            ],
+        )
+        self.assertEqual(
+            [(segment["start"], segment["end"]) for segment in segments],
+            [(160, 1680), (1840, 3760), (3840, 5920), (6160, 8080)],
+        )
+
+    def test_qwen_audio_natural_split_uses_phrase_boundaries(self) -> None:
+        word_texts = [
+            "受", "够了", "AI", "识别", "的", "劣质", "字幕",
+            "又不", "想", "花", "那么多", "钱", "开", "会员",
+            "想", "给自己的", "字幕", "制作", "省", "点", "力气",
+            "给我", "3", "分钟", "解决", "你的", "字幕", "难题",
+        ]
+        items = [
+            {"text": text, "start": index * 100, "end": (index + 1) * 100}
+            for index, text in enumerate(word_texts)
+        ]
+
+        segments = build_segments_from_api_sentences(
+            [{
+                "start": 0,
+                "end": len(word_texts) * 100,
+                "text": "".join(word_texts),
+                "items": items,
+            }],
+            max_len=21,
+            min_len=5,
+            gap_split_ms=1500,
+        )
+
+        self.assertEqual(
+            [segment["text"] for segment in segments],
+            [
+                "受够了AI识别的劣质字幕",
+                "又不想花那么多钱开会员",
+                "想给自己的字幕制作省点力气",
+                "给我3分钟解决你的字幕难题",
+            ],
+        )
+        self.assertTrue(all(len(segment["text"]) <= 21 for segment in segments))
 
 
 if __name__ == "__main__":

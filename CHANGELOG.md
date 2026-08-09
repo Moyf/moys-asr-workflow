@@ -4,9 +4,17 @@
 
 ## [Unreleased]
 
+### Added
+
+- Launcher 增加「调试运行（保存完整返回数据）」选项，额外保存 `<输出文件名>.asr-response.json`，便于排查 ASR 服务端的断句、标点和时间码。
+
 ### Changed
 
 - 暂时移除 Windows `MOSE.exe` 与 macOS `MOSE.app` 的 Release 打包，缩小分发包；Launcher 隐藏「在 MOSE 中打开」入口，默认使用 Server 版或 HTML 编辑器。
+
+### Fixed
+
+- 修复 Qwen-Audio 文件转写丢失云端句子边界，以及超长无标点句子退化为固定字数硬切的问题；现在会保留服务端句子边界，并在必要时按完整词边界和短语边界整理字幕。
 
 ## [1.13.1-beta-6] - 2026-08-06
 
