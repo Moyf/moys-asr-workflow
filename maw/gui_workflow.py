@@ -18,7 +18,7 @@ from threading import Event
 from typing import BinaryIO, Final, TextIO, final
 
 from maw.gui_config import QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, load_env
-from maw.gui_platform import asset_path
+from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
 from maw.qwen_audio import split_qwen_audio_hotwords
 from maw.local_runtime import model_cache_environment
 
@@ -277,12 +277,13 @@ def run_transcription(
     paths.srt.parent.mkdir(parents=True, exist_ok=True)
     env = _child_environment(os.environ, request.api_key, request.workspace_id, request.provider)
     command = build_transcribe_command(request, executable=executable, frozen=frozen)
-    process = subprocess.Popen(
+    process = popen_process_tree(
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         env=env,
         cwd=str(Path(__file__).resolve().parents[1]),
+        **process_group_kwargs(),
     )
     if on_process_start is not None:
         on_process_start(process.pid)
@@ -293,7 +294,10 @@ def run_transcription(
         if on_event:
             on_event(line)
 
-    _stream_process(process, forward, cancel_event)
+    try:
+        _stream_process(process, forward, cancel_event)
+    finally:
+        release_process_tree(process)
     if process.returncode != 0:
         raise TranscriptionProcessError(process.returncode, output=collected)
     _require_output(paths.srt, "SRT")
@@ -447,12 +451,7 @@ def _bundled_ffmpeg_directory() -> Path | None:
 
 
 def _terminate(process: subprocess.Popen[bytes]) -> None:
-    process.terminate()
-    try:
-        process.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait(timeout=5)
+    terminate_process_tree(process)
 
 
 def _require_output(path: Path, label: str) -> None:

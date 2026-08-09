@@ -11,26 +11,29 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
-from typing import Final
+from typing import Final, TextIO
 
-from maw.gui_platform import asset_path
+from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
 
 
-RUNTIME_VERSION: Final = "1"
+RUNTIME_VERSION: Final = "2"
 PYTHON_VERSION: Final = "3.11"
 PYTORCH_INDEX: Final = "https://download.pytorch.org/whl/cu130"
 GENERAL_REQUIREMENTS: Final[tuple[str, ...]] = (
     "accelerate>=1.12",
     "funasr>=1.2.6",
     "hf-xet>=1.5",
+    "jieba>=0.42",
     "qwen-asr>=0.0.6",
     "requests>=2.28",
 )
@@ -238,7 +241,7 @@ def install_local_runtime(
     verify_args = [
         str(python),
         "-c",
-        "from funasr import AutoModel; from qwen_asr import Qwen3ASRModel; import torch, torchaudio; print('MAW_LOCAL_RUNTIME_READY')",
+        "from funasr import AutoModel; from qwen_asr import Qwen3ASRModel; import jieba, torch, torchaudio; print('MAW_LOCAL_RUNTIME_READY')",
     ]
     _run_process(verify_args, env=_runtime_env(), cancel=cancel, on_line=lambda line: emit(line, 94, "verify"))
     _check_cancel(cancel)
@@ -267,6 +270,39 @@ def prepare_model_in_runtime(
     if not helper.exists():
         raise LocalRuntimeError(f"本地运行时助手缺失：{helper}")
     command = [str(status.python_path), str(helper), "prepare", "--engine", engine, "--model", model, "--device", device]
+    if model_path:
+        command.extend(["--model-path", model_path])
+    if forced_aligner:
+        command.extend(["--forced-aligner", forced_aligner])
+    return _run_process(
+        command,
+        env=_runtime_env(),
+        cancel=cancel_event or Event(),
+        on_line=on_event or (lambda _line: None),
+    )
+
+
+def prepare_model_in_process(
+    *,
+    engine: str,
+    model: str,
+    model_path: str = "",
+    device: str = "auto",
+    forced_aligner: str = "",
+    on_event: Callable[[str], None] | None = None,
+    cancel_event: Event | None = None,
+) -> int:
+    """Run source-mode model preparation in a killable child process.
+
+    Source-mode development environments have the optional packages installed
+    in MAW's own venv rather than in ``local-runtime``.  Keeping the loader in
+    a child process makes cancellation work the same way in both modes and
+    ensures preparation uses the same MAW model-cache variables as inference.
+    """
+    helper = _runtime_bundle_path("maw/local_runtime_worker.py")
+    if not helper.exists():
+        raise LocalRuntimeError(f"本地运行时助手缺失：{helper}")
+    command = [sys.executable, str(helper), "prepare", "--engine", engine, "--model", model, "--device", device]
     if model_path:
         command.extend(["--model-path", model_path])
     if forced_aligner:
@@ -324,7 +360,7 @@ def _uv_line(emit: RuntimeEvent, percent: int, stage: str) -> Callable[[str], No
 def _dependency_line(emit: RuntimeEvent) -> Callable[[str], None]:
     """Turn uv's package log into a coarse but honest install progress signal."""
     markers = {
-        "accelerate", "funasr", "hf-xet", "qwen-asr", "requests", "torch", "torchaudio",
+        "accelerate", "funasr", "hf-xet", "jieba", "qwen-asr", "requests", "torch", "torchaudio",
     }
     seen: set[str] = set()
 
@@ -348,7 +384,7 @@ def _run_process(
     on_line: Callable[[str], None],
 ) -> int:
     try:
-        process = subprocess.Popen(
+        process = popen_process_tree(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -357,31 +393,51 @@ def _run_process(
             errors="replace",
             env=dict(env),
             cwd=str(_runtime_bundle_path(".")),
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            **process_group_kwargs(),
         )
     except OSError as error:
         raise LocalRuntimeError(f"无法启动本地运行环境命令：{error}") from error
 
     output: list[str] = []
-    assert process.stdout is not None
-    for raw_line in process.stdout:
+    lines: queue.Queue[str | None] = queue.Queue()
+    reader = threading.Thread(
+        target=_read_process_lines,
+        args=(process.stdout, lines),
+        name="maw-local-runtime-output",
+        daemon=True,
+    )
+    reader.start()
+    while True:
+        if cancel.is_set():
+            terminate_process_tree(process)
+            raise LocalRuntimeCancelled("本地运行环境安装已取消。")
+        try:
+            raw_line = lines.get(timeout=0.1)
+        except queue.Empty:
+            if process.poll() is not None and not reader.is_alive():
+                break
+            continue
+        if raw_line is None:
+            break
         line = raw_line.rstrip("\r\n")
         if line:
             output.append(line)
             on_line(line)
-        if cancel.is_set():
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
-            raise LocalRuntimeCancelled("本地运行环境安装已取消。")
     return_code = process.wait()
+    release_process_tree(process)
     if return_code != 0:
         detail = "\n".join(output[-8:])
         raise LocalRuntimeError(f"本地运行环境命令失败（退出码 {return_code}）。{detail}")
     return return_code
+
+
+def _read_process_lines(stdout: TextIO | None, lines: queue.Queue[str | None]) -> None:
+    try:
+        if stdout is not None:
+            for line in stdout:
+                lines.put(line)
+    finally:
+        lines.put(None)
 
 
 def _check_cancel(cancel: Event) -> None:
@@ -402,7 +458,7 @@ def _runtime_package_dirs_present(root: Path) -> bool:
     if os.name != "nt":
         candidates = list(site_packages.glob("python*/site-packages"))
         site_packages = candidates[0] if candidates else site_packages
-    return all((site_packages / name).exists() for name in ("funasr", "qwen_asr", "torch", "torchaudio"))
+    return all((site_packages / name).exists() for name in ("funasr", "qwen_asr", "jieba", "torch", "torchaudio"))
 
 
 def _write_manifest(root: Path, values: Mapping[str, object]) -> None:
@@ -424,6 +480,7 @@ __all__ = [
     "managed_runtime_python",
     "managed_runtime_status",
     "model_cache_environment",
+    "prepare_model_in_process",
     "prepare_model_in_runtime",
     "runtime_python_path",
 ]

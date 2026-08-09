@@ -16,10 +16,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from maw.gui_config import ModelConfig
-from maw.local_runtime import managed_runtime_status, prepare_model_in_runtime
+from maw.local_runtime import managed_runtime_status, prepare_model_in_process, prepare_model_in_runtime
 
 
 LocalModelEvent = Callable[[str], None]
+
+_MODEL_WEIGHT_SUFFIXES = frozenset({
+    ".bin", ".ckpt", ".gguf", ".model", ".onnx", ".pb", ".pt", ".pth", ".safetensors",
+})
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +104,20 @@ def inspect_local_model(model: ModelConfig, model_path: str | Path = "") -> Loca
                 False,
                 str(explicit),
                 mismatch,
+                model.required_model_refs,
+                runtime_source,
+                runtime_python,
+            )
+        if not _model_directory_has_file(explicit, require_weight=True):
+            return LocalModelStatus(
+                model.id,
+                model.engine,
+                model.model_ref,
+                "path_invalid",
+                True,
+                False,
+                str(explicit),
+                "模型目录为空，或尚未包含有效模型文件。",
                 model.required_model_refs,
                 runtime_source,
                 runtime_python,
@@ -187,6 +205,7 @@ def prepare_local_model(
     device: str = "auto",
     forced_aligner: str = "",
     on_event: LocalModelEvent | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> LocalModelStatus:
     """Load a local engine once so its upstream runtime prepares model caches.
 
@@ -209,25 +228,14 @@ def prepare_local_model(
             device=device,
             forced_aligner=forced_aligner,
             on_event=on_event,
+            cancel_event=cancel_event,
         )
-
-    from maw.local_asr import create_local_engine
 
     emit = on_event or (lambda _message: None)
     aligner = forced_aligner or (model.required_model_refs[0] if model.required_model_refs else "")
     emit(f"[local] 正在准备 {model.label}；首次运行可能需要下载多个 GB，请保持窗口打开。")
     refs = [model.model_ref, *model.required_model_refs]
     emit(f"[local] 模型组件：{'；'.join(ref for ref in refs if ref)}")
-    engine = create_local_engine(
-        model.engine,
-        model=model.model_ref,
-        model_path=str(model_path).strip() or None,
-        device=device,
-        forced_aligner=aligner or None,
-    )
-    loader = getattr(engine, "_load", None)
-    if not callable(loader):
-        raise RuntimeError("本地模型运行时不支持预加载")
     stop_heartbeat = threading.Event()
     heartbeat = threading.Thread(
         target=_report_prepare_progress,
@@ -238,7 +246,15 @@ def prepare_local_model(
     started = time.monotonic()
     heartbeat.start()
     try:
-        loader(emit)
+        prepare_model_in_process(
+            engine=model.engine,
+            model=model.model_ref,
+            model_path=str(model_path).strip(),
+            device=device,
+            forced_aligner=aligner,
+            on_event=emit,
+            cancel_event=cancel_event,
+        )
     finally:
         stop_heartbeat.set()
         heartbeat.join(timeout=1.0)
@@ -253,6 +269,7 @@ def _prepare_in_managed_runtime(
     device: str,
     forced_aligner: str,
     on_event: LocalModelEvent | None,
+    cancel_event: threading.Event | None,
 ) -> LocalModelStatus:
     emit = on_event or (lambda _message: None)
     refs = [model.model_ref, *model.required_model_refs]
@@ -275,6 +292,7 @@ def _prepare_in_managed_runtime(
             device=device,
             forced_aligner=forced_aligner or (model.required_model_refs[0] if model.required_model_refs else ""),
             on_event=emit,
+            cancel_event=cancel_event,
         )
     finally:
         stop_heartbeat.set()
@@ -424,10 +442,14 @@ def _find_huggingface_model(model_ref: str) -> Path | None:
         return None
     for repo in _huggingface_repo_paths(model_ref):
         snapshot_root = repo / "snapshots"
-        candidates = [path for path in snapshot_root.iterdir() if path.is_dir()] if snapshot_root.is_dir() else []
+        candidates = (
+            [path for path in snapshot_root.iterdir() if path.is_dir() and _model_directory_has_file(path, require_weight=True)]
+            if snapshot_root.is_dir()
+            else []
+        )
         if candidates:
             return max(candidates, key=lambda path: path.stat().st_mtime)
-        if repo.is_dir():
+        if repo.is_dir() and _model_directory_has_file(repo, require_weight=True):
             return repo
     return None
 
@@ -456,7 +478,9 @@ def _find_modelscope_model(model_ref: str) -> Path | None:
             try:
                 for candidate in parent.iterdir():
                     if candidate.is_dir() and model_name.lower() in candidate.name.lower():
-                        return _modelscope_snapshot_dir(candidate) or candidate
+                        resolved = _modelscope_snapshot_dir(candidate)
+                        if resolved is not None:
+                            return resolved
             except OSError:
                 continue
     return None
@@ -479,10 +503,41 @@ def _modelscope_snapshot_dir(candidate: Path) -> Path | None:
         return None
     snapshots = candidate / "snapshots"
     if snapshots.is_dir():
-        revisions = [path for path in snapshots.iterdir() if path.is_dir()]
+        revisions = [
+            path for path in snapshots.iterdir()
+            if path.is_dir() and _model_directory_has_file(path, require_weight=True)
+        ]
         if revisions:
             return max(revisions, key=lambda path: path.stat().st_mtime)
-    return candidate
+    return candidate if _model_directory_has_file(candidate, require_weight=True) else None
+
+
+def _model_directory_has_file(path: Path, *, require_weight: bool = False) -> bool:
+    """Return whether a model directory contains a non-empty usable file."""
+    pending = [path]
+    visited: set[str] = set()
+    while pending:
+        current = pending.pop()
+        try:
+            key = str(current.resolve(strict=False)).casefold()
+            if key in visited:
+                continue
+            visited.add(key)
+            children = list(current.iterdir())
+        except OSError:
+            continue
+        for child in children:
+            try:
+                if child.is_file():
+                    if child.stat().st_size <= 0:
+                        continue
+                    if not require_weight or child.suffix.casefold() in _MODEL_WEIGHT_SUFFIXES:
+                        return True
+                elif child.is_dir():
+                    pending.append(child)
+            except OSError:
+                continue
+    return False
 
 
 def _huggingface_cache_roots() -> list[Path]:

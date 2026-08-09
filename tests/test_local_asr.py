@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+from generate_subtitle_qwen_api import extract_audio
 from generate_subtitle_local import build_parser, default_output_path, load_hotword_files
 from maw.local_asr import (
     FUNASR_DEFAULT_MODEL,
@@ -19,6 +20,7 @@ from maw.local_asr import (
     create_local_engine,
     funasr_output_to_transcription,
     items_from_timestamps,
+    prepared_audio,
     resolve_device,
     write_local_outputs,
 )
@@ -82,6 +84,32 @@ class LocalAsrNormalizationTests(unittest.TestCase):
 
 
 class LocalAsrFlowTests(unittest.TestCase):
+    def test_extract_audio_passes_duration_limit_to_ffmpeg(self) -> None:
+        with mock.patch("generate_subtitle_qwen_api.subprocess.run") as run:
+            extract_audio("clip.mp4", "clip.wav", duration_limit=2.0)
+
+        command = run.call_args.args[0]
+        self.assertEqual(command[command.index("-t") + 1], "2.0")
+
+    def test_length_limit_is_applied_during_initial_audio_extraction(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / "clip.mp4"
+            input_path.write_bytes(b"video")
+            calls: list[tuple[str, str, float | None]] = []
+
+            def fake_extract(source: str, target: str, duration_limit: float | None = None) -> None:
+                calls.append((source, target, duration_limit))
+                Path(target).write_bytes(b"wav")
+
+            with mock.patch("maw.local_asr.extract_audio", side_effect=fake_extract):
+                with mock.patch("maw.local_asr.get_duration_sec", return_value=30.0):
+                    with mock.patch("maw.local_asr.subprocess.run") as ffmpeg:
+                        with prepared_audio(input_path, 2.0) as (_audio_path, duration_ms):
+                            self.assertEqual(duration_ms, 2000)
+
+            self.assertEqual(calls[0][2], 2.0)
+            ffmpeg.assert_not_called()
+
     def test_qwen_seconds_timestamps_are_normalized_to_milliseconds(self) -> None:
         class FakeAlignResult:
             def __init__(self, items):

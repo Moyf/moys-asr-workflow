@@ -27,28 +27,16 @@ datas = [
     (str(ROOT / "maw" / "speaker.py"), "local-runtime/maw"),
 ]
 
-excluded_runtime_paths = [
-    ".env",
-    "*.key",
-    "*.pem",
-    "*.mp4",
-    "*.mov",
-    "*.mkv",
-    "*.avi",
-    "*.wav",
-    "*.mp3",
-    "*.m4a",
-    "*.flac",
-    "*.srt",
-    "*.edit.html",
-    "*.waveform.json",
-    "node_modules",
-    "tests",
-    "test-results",
-    "playwright-report",
-    "ffmpeg",
-    "ffmpeg.exe",
-    "ffprobe.exe",
+excluded_local_modules = [
+    "accelerate",
+    "funasr",
+    "hf_xet",
+    "huggingface_hub",
+    "modelscope",
+    "qwen_asr",
+    "torch",
+    "torchaudio",
+    "transformers",
 ]
 
 a = Analysis(
@@ -75,7 +63,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=excluded_runtime_paths,
+    excludes=excluded_local_modules,
     noarchive=False,
     optimize=0,
 )

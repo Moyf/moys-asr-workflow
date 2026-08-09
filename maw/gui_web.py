@@ -22,7 +22,7 @@ from threading import Event
 from typing import BinaryIO, Final, final
 
 from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, LANGUAGES, MODELS, PROVIDERS, REGIONS, ModelConfig, ProviderConfig, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
-from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, startupinfo
+from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
 from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError, install_local_runtime, managed_runtime_status
 from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
@@ -531,15 +531,14 @@ class LauncherApi:
         _ = self._stop_owned_server()
         self.server_log_file = tempfile.TemporaryFile(mode="w+b")
         try:
-            self.server_process = subprocess.Popen(
+            self.server_process = popen_process_tree(
                 command,
                 stdout=self.server_log_file,
                 stderr=subprocess.STDOUT,
                 text=True,
                 env=_child_environment(os.environ, "", provider=""),
                 cwd=str(self.paths.root),
-                startupinfo=startupinfo(),
-                creationflags=creationflags(),
+                **process_group_kwargs(),
             )
         except OSError as error:
             self._close_server_log()
@@ -595,15 +594,12 @@ class LauncherApi:
         stopped = False
         try:
             if process and process.poll() is None:
-                process.terminate()
-                try:
-                    _ = process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    _ = process.wait(timeout=5)
+                terminate_process_tree(process)
                 stopped = True
             return stopped
         finally:
+            if process is not None:
+                release_process_tree(process)
             self._close_server_log()
 
     def _read_server_log(self) -> str:
@@ -895,6 +891,7 @@ class LauncherApi:
                 device=device,
                 forced_aligner=forced_aligner,
                 on_event=on_event,
+                cancel_event=cancel_event,
             )
             if cancel_event.is_set():
                 return

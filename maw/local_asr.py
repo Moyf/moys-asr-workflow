@@ -627,22 +627,12 @@ def prepared_audio(input_path: Path, length_limit_s: float | None = None) -> Ite
     with tempfile.TemporaryDirectory(prefix="maw-local-") as temp_dir:
         audio_path = Path(temp_dir) / "audio.wav"
         if input_path.suffix.lower() in VIDEO_EXTENSIONS or length_limit_s is not None:
-            extract_audio(str(input_path), str(audio_path))
+            extract_audio(str(input_path), str(audio_path), duration_limit=length_limit_s)
         else:
             shutil.copy2(input_path, audio_path)
         duration_s = get_duration_sec(str(audio_path))
-        if length_limit_s is not None and length_limit_s < duration_s:
-            limited_path = Path(temp_dir) / "audio-limited.wav"
-            subprocess.run(
-                [
-                    "ffmpeg", "-i", str(audio_path), "-t", str(length_limit_s),
-                    "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", "-y", str(limited_path),
-                ],
-                check=True,
-                capture_output=True,
-            )
-            audio_path = limited_path
-            duration_s = length_limit_s
+        if length_limit_s is not None:
+            duration_s = min(duration_s, length_limit_s)
         yield audio_path, max(int(round(duration_s * 1000)), 1)
 
 

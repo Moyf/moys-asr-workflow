@@ -56,8 +56,10 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("onefile=True", spec)
         for bundled_path in ("web", "server-editor", "LICENSE", "THIRD_PARTY_NOTICES.md"):
             self.assertIn(bundled_path, spec)
-        for excluded_path in (".env", "node_modules", "tests", "ffmpeg", "*.mp4", "*.srt"):
-            self.assertIn(excluded_path, spec)
+        for excluded_module in ("funasr", "qwen_asr", "torch", "torchaudio"):
+            self.assertIn(f'"{excluded_module}"', spec)
+        self.assertNotIn('"*.mp4"', spec)
+        self.assertNotIn('"*.srt"', spec)
 
     def test_macos_bundle_uses_the_icns_app_icon(self) -> None:
         """Given a macOS app bundle, When PyInstaller builds it, Then the bundle has the branded ICNS icon."""

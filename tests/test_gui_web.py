@@ -443,6 +443,16 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["url"], "http://127.0.0.1:9876/?lang=zh")
         popen.assert_not_called()
 
+    def test_stop_owned_server_releases_completed_process_tree_handle(self) -> None:
+        process = mock.Mock()
+        process.poll.return_value = 0
+        self.api.server_process = process
+
+        with mock.patch("maw.gui_web.release_process_tree") as release:
+            self.assertFalse(self.api._stop_owned_server())
+
+        release.assert_called_once_with(process)
+
     def test_start_server_restarts_owned_server_for_a_new_project(self) -> None:
         """Given an owned server, When another project opens, Then the server is rebound to that project."""
         project = self.root / "second.json"

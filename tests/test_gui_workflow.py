@@ -28,6 +28,7 @@ from maw.gui_workflow import (  # noqa: E402
     render_editor_html,
     run_transcription,
 )
+from maw.gui_platform import _terminate_registered_job, terminate_process_tree  # noqa: E402
 
 
 class GuiWorkflowTests(unittest.TestCase):
@@ -188,6 +189,10 @@ class GuiWorkflowTests(unittest.TestCase):
         kwargs = popen.call_args.kwargs
         self.assertEqual(kwargs["env"]["DASHSCOPE_API_KEY"], "secret-key")
         self.assertEqual(kwargs["env"]["DASHSCOPE_WORKSPACE_ID"], "workspace-123")
+        if sys.platform == "win32":
+            self.assertTrue(kwargs["creationflags"] & subprocess.CREATE_NEW_PROCESS_GROUP)
+        else:
+            self.assertTrue(kwargs["start_new_session"])
         self.assertNotEqual(os.environ.get("DASHSCOPE_API_KEY"), "secret-key")
         self.assertEqual(events, ["started", "done"])
         self.assertEqual(result.srt_path, self.srt_path)
@@ -199,6 +204,65 @@ class GuiWorkflowTests(unittest.TestCase):
             self.srt_path.with_suffix(".edit.html"),
             "en",
         )
+
+    def test_terminate_process_tree_uses_windows_taskkill_for_descendants(self) -> None:
+        class FakeProcess:
+            pid = 4321
+            returncode: int | None = None
+
+            def poll(self) -> int | None:
+                return self.returncode
+
+            def wait(self, timeout: float | None = None) -> int:
+                self.returncode = 0
+                return 0
+
+            def terminate(self) -> None:
+                self.returncode = -15
+
+            def kill(self) -> None:
+                self.returncode = -9
+
+        fake = FakeProcess()
+        with mock.patch("maw.gui_platform.sys.platform", "win32"):
+            with mock.patch("maw.gui_platform.subprocess.run", return_value=mock.Mock(returncode=0)) as taskkill:
+                terminate_process_tree(fake)
+
+        taskkill.assert_called_once()
+        self.assertEqual(taskkill.call_args.args[0], ["taskkill", "/PID", "4321", "/T", "/F"])
+
+    def test_terminate_process_tree_reaps_an_already_exited_root(self) -> None:
+        class FakeProcess:
+            pid = 4321
+            returncode: int | None = 0
+            waited = False
+
+            def poll(self) -> int | None:
+                return self.returncode
+
+            def wait(self, timeout: float | None = None) -> int:
+                self.waited = True
+                return 0
+
+        fake = FakeProcess()
+        with mock.patch("maw.gui_platform.sys.platform", "win32"):
+            terminate_process_tree(fake)
+
+        self.assertTrue(fake.waited)
+
+    def test_terminate_registered_windows_job_closes_handle_after_kill(self) -> None:
+        fake = mock.Mock()
+        fake._maw_job_handle = 123
+        kernel32 = mock.Mock()
+        kernel32.TerminateJobObject.return_value = 1
+
+        with mock.patch("maw.gui_platform.sys.platform", "win32"):
+            with mock.patch("ctypes.WinDLL", return_value=kernel32, create=True):
+                self.assertTrue(_terminate_registered_job(fake))
+
+        kernel32.TerminateJobObject.assert_called_once_with(123, 1)
+        kernel32.CloseHandle.assert_called_once_with(123)
+        self.assertIsNone(fake._maw_job_handle)
 
     def test_decode_process_output_accepts_utf8_and_bom(self) -> None:
         self.assertEqual(_decode_process_output("已开始\n"), "已开始\n")

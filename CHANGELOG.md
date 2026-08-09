@@ -15,8 +15,14 @@
 
 - 本地模型准备阶段新增组件提示、等待时长、缓存文件数与缓存体积心跳；上游下载器暂时没有输出时，Launcher 仍会持续反馈准备状态。
 - Windows 冻结版本地转录改由独立运行环境 Python 执行，发布包只携带小型 `uv.exe` 安装器和 helper，不捆绑数 GB 的 Torch 或模型权重。
-
 - 暂时移除 Windows `MOSE.exe` 与 macOS `MOSE.app` 的 Release 打包，缩小分发包；Launcher 隐藏「在 MOSE 中打开」入口，默认使用 Server 版或 HTML 编辑器。
+
+### Fixed
+
+- 本地独立运行环境现在安装并验证 `jieba`，避免中文切句缺少分词器时静默退化为按字硬切。
+- Launcher 取消本地安装、模型准备或转写时会回收整个子进程树；模型目录扫描也不再把空目录或无权重缓存误判为已安装。
+- 本地模型的时长限制会传给首次 FFmpeg 提取，避免长视频先完整解码后才二次裁剪。
+- PyInstaller 的 local ASR 依赖改用模块名排除，避免安装了 local extras 的开发机意外把 Torch 等大依赖打进冻结包。
 
 ## [1.3.1] - 2026-08-10
 

@@ -11,11 +11,13 @@ from unittest import mock
 
 
 from maw.local_runtime import (
+    GENERAL_REQUIREMENTS,
     LocalRuntimeError,
     default_model_cache_root,
     install_local_runtime,
     managed_runtime_status,
     model_cache_environment,
+    prepare_model_in_process,
     runtime_python_path,
 )
 
@@ -92,7 +94,7 @@ class LocalRuntimeTests(unittest.TestCase):
                     python.touch()
                 if command[1:3] == ["pip", "install"]:
                     packages = root / "Lib" / "site-packages"
-                    for name in ("funasr", "qwen_asr", "torch", "torchaudio"):
+                    for name in ("funasr", "qwen_asr", "jieba", "torch", "torchaudio"):
                         (packages / name).mkdir(parents=True, exist_ok=True)
                 return 0
 
@@ -108,6 +110,13 @@ class LocalRuntimeTests(unittest.TestCase):
             self.assertTrue((cache / "huggingface" / "hub").is_dir())
             self.assertTrue((cache / "modelscope").is_dir())
 
+            install_command = run_process.call_args_list[1].args[0]
+            verify_command = run_process.call_args_list[2].args[0]
+
+        self.assertIn("jieba>=0.42", GENERAL_REQUIREMENTS)
+        self.assertIn("jieba>=0.42", install_command)
+        self.assertIn("import jieba", verify_command[-1])
+
     def test_install_without_uv_explains_packaged_bootstrap_requirement(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": temp_dir}):
@@ -116,6 +125,23 @@ class LocalRuntimeTests(unittest.TestCase):
                         install_local_runtime()
 
         self.assertIn("uv", str(context.exception))
+
+    def test_source_model_prepare_uses_current_python_and_shared_cache(self) -> None:
+        with mock.patch("maw.local_runtime._run_process", return_value=0) as run_process:
+            result = prepare_model_in_process(
+                engine="qwen-asr",
+                model="Qwen/Qwen3-ASR-0.6B",
+                device="cpu",
+                forced_aligner="Qwen/Qwen3-ForcedAligner-0.6B",
+            )
+
+        self.assertEqual(result, 0)
+        command = run_process.call_args.args[0]
+        self.assertEqual(command[0], sys.executable)
+        self.assertIn("local_runtime_worker.py", command[1])
+        self.assertIn("--forced-aligner", command)
+        environment = run_process.call_args.kwargs["env"]
+        self.assertEqual(environment["HF_HUB_CACHE"], model_cache_environment()["HF_HUB_CACHE"])
 
 
 if __name__ == "__main__":
