@@ -104,6 +104,9 @@
   const ROW_PRESETS = [5, 10, 20, 30];
   const ROW_HEIGHT_PRESETS = [64, 80, 96, 120, 144, 168];
   const ROW_GAP = 10;
+  // 多行波形保留视口前后几行，字幕快捷键跨行时可以直接复用已绘制的行。
+  // 行本身仍按可视区增量创建，不会把整段长媒体一次性放进 DOM。
+  const MULTI_ROW_BUFFER = 4;
   const MIN_CUE_MS = 100;
   const MIN_WAVEFORM_SCALE = 0.25;
   const MAX_WAVEFORM_SCALE = 6;
@@ -197,12 +200,18 @@
   function computeGroupBadges(segments) {
     const badges = new Map();
     const apply = (type, headField, refField) => {
+      // 每个波形行都会使用同一份徽章数据；按 head 建索引，避免每个 head
+      // 再扫描整个字幕数组，长工程或多行缓存下可从 O(N²) 降到 O(N)。
+      const membersByHead = new Map();
       segments.forEach((seg, headIdx) => {
-        if (!seg[headField]) return;
-        const members = [headIdx];
-        segments.forEach((candidate, idx) => {
-          if (candidate[refField]?.headIdx === headIdx) members.push(idx);
-        });
+        if (seg[headField]) membersByHead.set(headIdx, [headIdx]);
+      });
+      segments.forEach((seg, idx) => {
+        const headIdx = seg[refField]?.headIdx;
+        const members = membersByHead.get(headIdx);
+        if (members && headIdx !== idx) members.push(idx);
+      });
+      membersByHead.forEach((members) => {
         if (type === 'color' && members.length < 2) return;
         members.forEach((idx, i) => {
           const cueBadges = badges.get(idx) || [];
@@ -748,6 +757,9 @@
       this.suppressGapClickUntil = 0;
       this.autoScrolling = false;
       this.resizeFrame = 0;
+      // 字幕快捷键会在很短时间内连续请求定位；复用滚动事件已有的
+      // rAF 合并，避免每个按键都强制重建可视行和 Canvas。
+      this.multiVisibleFrame = 0;
       // Shift+滚轮调振幅的 rAF 节流：一帧内的滚动累加方向后只触发一次
       this.pendingScaleDirection = 0;
       this.scaleRafScheduled = false;
@@ -847,7 +859,7 @@
       this.disabledDisplaySelect?.addEventListener('change', () => {
         this.settings.disabledDisplay = this.disabledDisplaySelect.value === 'hidden' ? 'hidden' : 'dim';
         saveSettings(this.settings);
-        this.renderSegments();
+        this.refreshCueOverlay();
       });
       this.layoutEditToggle?.addEventListener('click', () => this.toggleLayoutEditMode());
       this.layoutResetButton?.addEventListener('click', () => this.resetLayout());
@@ -1474,7 +1486,7 @@
     }
 
     updateDisabledVisibility() {
-      this.renderSegments();
+      this.refreshCueOverlay();
     }
 
     revealTime(timeMs, center = true) {
@@ -1513,10 +1525,13 @@
         this.scroll.scrollTo({ top: nextScrollTop, behavior: 'smooth' });
       }
       this.manualFollowUntil = Date.now() + 3000;
-      requestAnimationFrame(() => {
-        this.autoScrolling = false;
-        this.renderMultiVisible(true);
-      });
+      // 目标仍在当前可视行内时，字幕跳转只需要移动播放头；不要因为
+      // revealTime() 被调用就重建整组波形 DOM/Canvas。跨行时由滚动事件
+      // 或这里的合并任务增量补齐可视行。
+      if (rowIndex < this.multiRange[0] || rowIndex > this.multiRange[1] || this.autoScrolling) {
+        this.scheduleMultiVisible();
+      }
+      if (this.autoScrolling) requestAnimationFrame(() => { this.autoScrolling = false; });
     }
 
     changeZoom(direction) {
@@ -1818,7 +1833,8 @@
       const endMs = Math.min(this.durationMs, this.basicWindowStartMs + windowMs);
       this.content.replaceChildren();
       this.content.style.height = '100%';
-      const row = this.createRow(this.basicWindowStartMs, endMs, -1, true);
+      const groupBadges = computeGroupBadges(this.options.getSegments());
+      const row = this.createRow(this.basicWindowStartMs, endMs, -1, true, groupBadges);
       this.content.appendChild(row);
       this.drawRow(row);
       this.updatePlayback(false);
@@ -1837,20 +1853,21 @@
       const rowDurationMs = this.settings.secondsPerRow * 1000;
       const rowCount = Math.max(1, Math.ceil(this.durationMs / rowDurationMs));
       const stride = this.settings.rowHeight + ROW_GAP;
-      const first = clamp(Math.floor(this.scroll.scrollTop / stride) - 2, 0, rowCount - 1);
-      const last = clamp(Math.ceil((this.scroll.scrollTop + this.scroll.clientHeight) / stride) + 2, 0, rowCount - 1);
+      const first = clamp(Math.floor(this.scroll.scrollTop / stride) - MULTI_ROW_BUFFER, 0, rowCount - 1);
+      const last = clamp(Math.ceil((this.scroll.scrollTop + this.scroll.clientHeight) / stride) + MULTI_ROW_BUFFER, 0, rowCount - 1);
       if (!force && first === this.multiRange[0] && last === this.multiRange[1]) {
         this.updatePlayback(false);
         return;
       }
       this.multiRange = [first, last];
       this.content.style.height = `${rowCount * stride - ROW_GAP}px`;
+      const groupBadges = computeGroupBadges(this.options.getSegments());
       if (force) {
         // 全量重建：先完成所有 DOM 变更再统一绘制，避免逐行强制同步布局
         this.content.replaceChildren();
         const rows = [];
         for (let index = first; index <= last; index++) {
-          rows.push(this.content.appendChild(this.createMultiRow(index, rowDurationMs)));
+          rows.push(this.content.appendChild(this.createMultiRow(index, rowDurationMs, groupBadges)));
         }
         for (const row of rows) this.drawRow(row);
         this.updatePlayback(false);
@@ -1868,22 +1885,22 @@
       const created = [];
       for (let index = first; index <= last; index++) {
         if (existing.has(String(index))) continue;
-        created.push(this.content.appendChild(this.createMultiRow(index, rowDurationMs)));
+        created.push(this.content.appendChild(this.createMultiRow(index, rowDurationMs, groupBadges)));
       }
       for (const row of created) this.drawRow(row);
       this.updatePlayback(false);
     }
 
-    createMultiRow(index, rowDurationMs) {
+    createMultiRow(index, rowDurationMs, groupBadges = null) {
       const startMs = index * rowDurationMs;
       const endMs = Math.min(this.durationMs, startMs + rowDurationMs);
-      const row = this.createRow(startMs, endMs, index, false);
+      const row = this.createRow(startMs, endMs, index, false, groupBadges);
       row.style.top = `${index * (this.settings.rowHeight + ROW_GAP)}px`;
       row.style.height = `${this.settings.rowHeight}px`;
       return row;
     }
 
-    createRow(startMs, endMs, rowIndex, basic) {
+    createRow(startMs, endMs, rowIndex, basic, groupBadges = null) {
       const row = document.createElement('div');
       row.className = 'waveform-row';
       row.dataset.startMs = String(startMs);
@@ -1904,6 +1921,69 @@
       playhead.hidden = true;
       row.appendChild(playhead);
 
+      this.appendGapBlocks(row, startMs, endMs);
+
+      this.appendCueBlocks(
+        row,
+        startMs,
+        endMs,
+        groupBadges || computeGroupBadges(this.options.getSegments()),
+      );
+
+      row.addEventListener('pointerdown', (event) => {
+        const gapOperationMode = this.options.getGapOperationMode?.() || 'boundary_drag';
+        if (event.button === 1 && gapOperationMode === 'middle_drag') {
+          this.beginGapRangeDrag(event, row);
+          return;
+        }
+        // Shift+左键在空白处拖动：框选字幕块（追加进现有多选），
+        // 不进入下方的清除选中/seek/播放头拖拽路径
+        if (
+          event.button === 0 &&
+          event.shiftKey &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.altKey &&
+          !event.target.closest('.waveform-cue-block, .waveform-gap-block') &&
+          !this.isCustomLayout()
+        ) {
+          event.preventDefault();
+          this.beginMarqueeDrag(event);
+          return;
+        }
+        if (event.button !== 0 || event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
+        event.preventDefault();
+        // 清除选中会提交当前字幕面板编辑，而提交可能同步重建虚拟行。
+        // 在调用外部回调前保存坐标，后续 seek 不依赖可能已脱离 DOM 的 row。
+        const geometry = this.captureRowGeometry(row);
+        // 普通左键点击空白波形：清除字幕选中并跳转播放头
+        this.options.clearSelection?.();
+        // 「允许拖动指针」开启时，继续按住左键拖动则指针跟随鼠标位置
+        if (this.settings.dragPlayhead) this.beginPlayheadDrag(event, row, geometry);
+        this.seekFromPointer(event, row, false, geometry);
+      });
+      row.addEventListener('auxclick', (event) => {
+        if (
+          event.button === 1
+          && (this.options.getGapOperationMode?.() || 'boundary_drag') === 'middle_drag'
+        ) event.preventDefault();
+      });
+      row.addEventListener('dblclick', (event) => {
+        if (event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
+        event.preventDefault();
+        this.options.togglePlayback();
+      });
+      row.addEventListener('contextmenu', (event) => {
+        if (event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const time = this.timeFromPointer(event, row);
+        this.options.showBlankWaveformMenu?.(time, event.clientX, event.clientY);
+      });
+      return row;
+    }
+
+    appendGapBlocks(row, startMs, endMs) {
       const gaps = this.options.getGapRemoveGaps?.() || [];
       const gapOperationMode = this.options.getGapOperationMode?.() || 'boundary_drag';
       gaps.forEach((gap, index) => {
@@ -1972,11 +2052,14 @@
         });
         row.appendChild(block);
       });
+    }
 
+    // 字幕块是波形 Canvas 上的轻量覆盖层。字幕结构变化时只重建这一层，
+    // 保留已有 row/canvas/gap DOM，避免重新采样和绘制音频峰值。
+    appendCueBlocks(row, startMs, endMs, groupBadges) {
       const segments = this.options.getSegments();
       const selected = this.options.getSelection();
       const now = this.currentTimeMs();
-      const groupBadges = computeGroupBadges(segments);
       segments.forEach((segment, index) => {
         if (segment.end <= startMs || segment.start >= endMs) return;
         if (segment.disabled && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden')) return;
@@ -2039,54 +2122,6 @@
         });
         row.appendChild(block);
       });
-
-      row.addEventListener('pointerdown', (event) => {
-        if (event.button === 1 && gapOperationMode === 'middle_drag') {
-          this.beginGapRangeDrag(event, row);
-          return;
-        }
-        // Shift+左键在空白处拖动：框选字幕块（追加进现有多选），
-        // 不进入下方的清除选中/seek/播放头拖拽路径
-        if (
-          event.button === 0 &&
-          event.shiftKey &&
-          !event.ctrlKey &&
-          !event.metaKey &&
-          !event.altKey &&
-          !event.target.closest('.waveform-cue-block, .waveform-gap-block') &&
-          !this.isCustomLayout()
-        ) {
-          event.preventDefault();
-          this.beginMarqueeDrag(event);
-          return;
-        }
-        if (event.button !== 0 || event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
-        event.preventDefault();
-        // 清除选中会提交当前字幕面板编辑，而提交可能同步重建虚拟行。
-        // 在调用外部回调前保存坐标，后续 seek 不依赖可能已脱离 DOM 的 row。
-        const geometry = this.captureRowGeometry(row);
-        // 普通左键点击空白波形：清除字幕选中并跳转播放头
-        this.options.clearSelection?.();
-        // 「允许拖动指针」开启时，继续按住左键拖动则指针跟随鼠标位置
-        if (this.settings.dragPlayhead) this.beginPlayheadDrag(event, row, geometry);
-        this.seekFromPointer(event, row, false, geometry);
-      });
-      row.addEventListener('auxclick', (event) => {
-        if (event.button === 1 && gapOperationMode === 'middle_drag') event.preventDefault();
-      });
-      row.addEventListener('dblclick', (event) => {
-        if (event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
-        event.preventDefault();
-        this.options.togglePlayback();
-      });
-      row.addEventListener('contextmenu', (event) => {
-        if (event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
-        event.preventDefault();
-        event.stopPropagation();
-        const time = this.timeFromPointer(event, row);
-        this.options.showBlankWaveformMenu?.(time, event.clientX, event.clientY);
-      });
-      return row;
     }
 
     layoutBlock(block, segment, startMs, endMs) {
@@ -2109,6 +2144,32 @@
       block.style.left = `${left}%`;
       block.style.width = `${width}%`;
       block.hidden = visibleEnd <= visibleStart;
+    }
+
+    refreshGapOverlay() {
+      if (!this.payload) return;
+      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+        row.querySelectorAll('.waveform-gap-block').forEach((element) => element.remove());
+        this.appendGapBlocks(row, Number(row.dataset.startMs), Number(row.dataset.endMs));
+      });
+      this.positionPlayheads();
+    }
+
+    refreshCueOverlay() {
+      if (!this.payload) return;
+      const rows = [...this.content.querySelectorAll('.waveform-row')];
+      if (!rows.length) return;
+      const groupBadges = computeGroupBadges(this.options.getSegments());
+      rows.forEach((row) => {
+        row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge').forEach((element) => element.remove());
+        this.appendCueBlocks(
+          row,
+          Number(row.dataset.startMs),
+          Number(row.dataset.endMs),
+          groupBadges,
+        );
+      });
+      this.updatePlayback(false);
     }
 
     refreshCueBlocks() {
@@ -2913,7 +2974,7 @@
       }
       drag.indices.forEach((idx) => { this.options.getSegments()[idx]._dirty = true; });
       this.options.onCommitEdit(drag.indices, drag.kind);
-      this.renderSegments();
+      this.refreshCueOverlay();
     }
 
     updatePlayback(allowFollow = true) {
