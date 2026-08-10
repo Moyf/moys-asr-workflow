@@ -923,7 +923,7 @@ function updateGapRemoveUi() {
     if (gapRemovedExportDropdown.hidden) gapRemovedExportDropdown.classList.remove('open');
   }
   renderGapRemoveList();
-  waveformEditor?.renderSegments();
+  waveformEditor?.refreshGapOverlay();
 }
 
 function scanAndRemoveGaps() {
@@ -1408,13 +1408,20 @@ function isHiddenDisabled(idx) {
   return hideDisabled && !!(DATA.segments[idx] && DATA.segments[idx].disabled);
 }
 
-function clearSelection() {
+function clearSelection({ silent = false } = {}) {
   selectedIdxs.forEach(i => {
     const el = container.querySelector(`.cue[data-idx="${i}"]`);
     if (el) el.classList.remove('selected');
   });
   selectedIdxs.clear();
   selCountEl.textContent = '0';
+  if (silent) {
+    // 结构编辑会马上 renderAll() 并重新选中目标；此时不必先刷新旧波形
+    // 覆盖层和空面板，避免同一次操作产生两轮视觉更新。
+    currentCuePanelIdx = -1;
+    cuePanelUndoPushed = false;
+    return;
+  }
   if (waveformEditor) waveformEditor.updateSelection();
   setCurrentCuePanelIndex(-1);
 }
@@ -1477,7 +1484,8 @@ function addToSelection(idx) {
 }
 // 选中全部字幕（跳过「隐藏禁用项」开启时的禁用条目，与其它选择逻辑一致）。
 function selectAll() {
-  clearSelection();
+  commitCuePanelEdit();
+  clearSelection({ silent: true });
   DATA.segments.forEach((_, idx) => {
     if (isHiddenDisabled(idx)) return;
     selectedIdxs.add(idx);
@@ -1515,7 +1523,8 @@ function selectCueByClick(idx) {
   if (EDITOR_SETTINGS.selectGroupMembers) {
     const members = groupMemberIdxs(idx);
     if (members.length > 1) {
-      clearSelection();
+      commitCuePanelEdit();
+      clearSelection({ silent: true });
       members.forEach((i) => {
         selectedIdxs.add(i);
         const el = container.querySelector(`.cue[data-idx="${i}"]`);
@@ -1553,7 +1562,9 @@ function renderAll() {
     const el = container.querySelector(`.cue[data-idx="${i}"]`);
     if (el) el.classList.add('selected');
   });
-  if (waveformEditor) waveformEditor.renderSegments();
+  // 字幕结构变化只需更新波形上的字幕块覆盖层；媒体峰值和行 Canvas
+  // 没有变化，避免 B/C/删除等操作重新绘制整组波形。
+  if (waveformEditor) waveformEditor.refreshCueOverlay();
   renderCurrentCuePanel();
   syncPlayerPlaceholder();
   updateSubtitleExportUi();
@@ -2163,8 +2174,10 @@ function splitAtCursor() {
   el.classList.remove('editing');
   editingState = null;
 
-  // 拆分会改变 idx，先清选中
-  clearSelection();
+  // 拆分会改变 idx；先提交面板编辑，再静默清选中，等列表和波形块
+  // 覆盖层一次性更新后再选中后半段。
+  commitCuePanelEdit();
+  clearSelection({ silent: true });
   pushUndo('拆分字幕');
   DATA.segments.splice(idx, 1, leftSeg, rightSeg);
 
@@ -2300,7 +2313,8 @@ function mergeSegments(idxs) {
       return;
     }
   }
-  clearSelection();
+  commitCuePanelEdit();
+  clearSelection({ silent: true });
   pushUndo('合并字幕');
   mergeContiguousIndices(sorted);
   renderAll();
@@ -2344,7 +2358,8 @@ function autoMergeSegments() {
     return;
   }
   if (editingState) finishEdit(false);
-  clearSelection();
+  commitCuePanelEdit();
+  clearSelection({ silent: true });
   pushUndo('拼合字幕');
   const snappedCount = window.AsrEditorUtils.applyAutoMergeSnaps(DATA.segments, plan.snaps);
   // 合并从后往前进行，保持靠前组的下标仍然有效
@@ -2499,7 +2514,7 @@ function deleteSegments(idxs) {
   // 同样修正"刚被晋升为新 head 的段中"指向它的 ref：
   // splitGroups 写入的 refField.headIdx 是删除前的 idx，需要同样位移
   // 上面 shiftHeadIdx 已经覆盖（它扫所有 segments 的所有 ref）
-  clearSelection();
+  clearSelection({ silent: true });
   lastActive = -1;
   renderAll();
   flashHint(`已删除 ${sorted.length} 条`);
@@ -6021,6 +6036,7 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY) {
     flashHint('该空白区域不足 100ms，无法新增字幕');
     return;
   }
+  commitCuePanelEdit();
   pushUndo('新增字幕');
   DATA.segments.splice(index, 0, {
     start: safeStart,
@@ -6030,7 +6046,7 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY) {
     _dirty: true,
   });
   window.AsrEditorUtils.shiftGroupReferenceIndices(DATA.segments, index, 1);
-  clearSelection();
+  clearSelection({ silent: true });
   renderAll();
   selectOnly(index);
   const cue = container.querySelector(`.cue[data-idx="${index}"]`);
