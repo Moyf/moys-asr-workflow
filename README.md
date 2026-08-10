@@ -80,6 +80,16 @@ QwenASR 的水平如下：
 所有编辑都在本机完成。  
 转写时，脚本会把待识别媒体直接上传到你选择的阿里云百炼或 Soniox 账户；本项目没有自己的服务器、不会代管你的 API Key 或媒体。
 
+### 命令行与 AI 自动化
+
+Release 包中的 `MAW.exe` 也可以脱离 Launcher 直接转写指定媒体，生成 SRT 和 `.mosp`，并能启动或停止本机 Server：
+
+```powershell
+.\MAW.exe -i "D:\Videos\example.mp3" -o "D:\Output\example.srt" "D:\Output\example.mosp"
+```
+
+它适合脚本、批处理和 AI 自动化调用。给 AI 使用时，请让它先读取 [CLI 专门文档](docs/CLI.md)，使用双引号包住路径，不要把 API Key 放进命令行，先用 `-ll 2m` 做小样本，并依据退出码和输出文件判断是否成功。完整参数表、Qwen/Soniox 选项、Server 管理和 PowerShell 模板都在该文档中。
+
 ## 概览特性
 点击查看：[3分钟速览 MAW 特性](https://www.bilibili.com/video/BV1hXum6yELT) 
 

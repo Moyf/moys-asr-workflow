@@ -35,23 +35,13 @@ py -3.11 -m venv .venv
 
 ## 1.5 使用图形包的 CLI
 
-Windows 图形包中的 `MAW.exe` 不带参数时启动 Launcher；带 `-h` 或 `--help` 时显示公开命令行帮助。可以直接转写指定媒体：
+Windows 图形包中的 `MAW.exe` 不带参数时启动 Launcher；带 `-h` 或 `--help` 时显示公开命令行帮助，也可以直接转写指定媒体：
 
 ```powershell
 .\MAW.exe -i "D:\Videos\example.mp3" -o "D:\Videos\example.srt" "D:\Videos\example.mosp"
 ```
 
-`-o` 后第一个路径是 SRT，第二个可选路径是 `.mosp`；只给一个输出路径时，工程文件按 SRT 同名生成。CLI 默认不生成 `.edit.html`，需要时加 `--html`。供应商、模型、语言、时长上限、说话人、热词、context 和波形等参数可直接查看 `MAW.exe --help`。
-
-Server 也可以通过 CLI 管理：
-
-```powershell
-.\MAW.exe --server 8250
-.\MAW.exe --server --port 8250 "D:\Videos\example.mosp" --no-open
-.\MAW.exe --stop-server 8250
-```
-
-Server 只监听 `127.0.0.1`。停止命令优先使用 MAW Server 的 loopback 控制接口；对未升级的旧 Server，Windows 版会回退到已验证命令行的 MAW 进程。停止前请先保存浏览器中的未保存工程修改。
+完整的参数表、输出规则、Qwen/Soniox 示例、Server 管理、退出码和 AI/自动化调用模板见 [CLI 专门文档](CLI.md)。
 
 ## 1. 配置阿里云百炼 API
 
