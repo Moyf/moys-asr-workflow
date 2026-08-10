@@ -8,85 +8,31 @@
 
 ### Added
 
-- Launcher 增加「调试运行（保存完整返回数据）」选项，额外保存 `<输出文件名>.asr-response.json`，便于排查 ASR 服务端的断句、标点和时间码。
+- 增加7月底最新发布的 [qwen-audio-3] ASR 模型，支持热词（术语表）和提示词
+- 波形区顶部新增「自动拼合」功能，可以将中间只有小空隙的相邻字幕自动拼合为一条字幕
+- 编辑器「帮助」面板从内联展开重构为可拖动浮窗
+- 空白启动的 Server 版编辑器在页面中打开或拖入工程时，服务器会按工程记录的媒体绝对路径定位同目录同名工程文件并校验段落内容（服务器版本编辑器功能拓展）
+- macOS Apple Silicon Release 新增 `MAWxFF-macOS-arm64` 包，内置静态 `ffmpeg` 与 `ffprobe`；普通 `MAW-macOS-arm64` 包继续保留。
+
 
 ### Changed
 
-- 媒体格式错误提示改为描述与后缀列表分两行显示，避免支持格式过多时被截断。
-- Launcher 将「调试运行（保存完整返回数据）」移到「高级选项」底部，并将「测试运行」更名为「快速测试」。
-- 暂时移除 Windows `MOSE.exe` 与 macOS `MOSE.app` 的 Release 打包，缩小分发包；Launcher 隐藏「在 MOSE 中打开」入口，默认使用 Server 版或 HTML 编辑器。
-
-### Fixed
-
-- 修复 Qwen-Audio 文件转写丢失云端句子边界，以及超长无标点句子退化为固定字数硬切的问题；现在会保留服务端句子边界，并在必要时按完整词边界和短语边界整理字幕。
-
-## [1.13.1-beta-6] - 2026-08-06
-
-### Added
-
-- 编辑器「帮助」面板从内联展开重构为可拖动浮窗：复用浮动面板工厂，支持标题栏拖动、位置与尺寸持久化、右下角缩放手柄；内容按字幕操作、波形、播放与编辑分组，容器查询自适应一至三列布局，窄屏退化为单列。
-- 空白启动的 Server 版编辑器在页面中打开或拖入工程时，服务器会按工程记录的媒体绝对路径定位同目录同名工程文件并校验段落内容；一致时接管该工程：关联媒体自动加载（含波形）、「保存工程」（`Ctrl(Cmd)+S`）直接写回工程文件，并记入最近工程。接管失败（媒体已移动、同目录无同名工程或内容不一致）时回退为手动选择媒体的便携流程。
-
-### Changed
-
-- 调整字幕编辑快捷键与帮助面板高度，快捷键说明文档同步更新，并补充编辑器快捷键与面板布局的测试覆盖。
-- 统一「打开字幕编辑器」按钮的 🚀 图标。
+- 优化 Launcher 的按钮布局
+- 修复拆分后字幕过短的问题
+- 修复多彩字幕导出
+- 修复首句字幕时间对齐到0的功能（该选项默认关闭）
+- Launcher 增加「调试运行（保存完整返回数据）」功能，位于「高级选项」底部
+- 勾选「快速测试」时自动添加 `test` 文件名后缀，并支持在文件已存在时自动添加数字后缀
+- 将第四种工作区预设「传统字幕编辑器」调整为「大荧幕」视图
+- MOSE 独立编辑器效果不达预期，暂时撤回；Launcher 默认恢复启动 Server 版字幕编辑器
+- Windows 与 macOS 正式 Release 不再额外上传 `.sha256` 校验文件；构建流程仍会校验下载的第三方 FFmpeg 包。
 
 ### Fixed
 
 - 修复同时拖入工程与媒体时媒体被静默忽略、仍弹窗要求重选的问题；现在媒体随工程自动加载，不再重复提示。
 - 修复字幕服务器在工程切换与停止控制上的若干问题。
-
-## [1.13.1-beta-5] - 2026-08-06
-
-### Changed
-
-- Launcher 默认恢复启动 Server 版字幕编辑器；「在 MOSE 中打开」改为右侧菜单中的显式入口，不再自动跳过 Server 版。
-
-### Fixed
-
-- 改进 macOS `MOSE.app` 的同级应用探测，并在找不到桌面版时把实际检查过的路径写入 Launcher 日志。
-
-## [1.13.1-beta-4] - 2026-08-05
-
-### Fixed
-
-- 修复 Tauri WebView 播放工程关联媒体时使用 `file://` 导致 MP4 等外部文件无法读取的问题；现在改用 asset protocol，并按请求授权实际媒体文件。
-- 补充桌面媒体访问的打包契约检查，确保 Tauri 配置、Rust 权限与前端 URL 转换保持一致。
-
-## [1.13.1-beta-3] - 2026-08-05
-
-### Fixed
-
-- 修复 Windows MOSE 双击 `.mosp` / `.json` 时只打开空白编辑器的问题，并兼容启动参数前附加其他参数的打包启动形式。
-- 修复 Tauri 原生拖放处理器的作用域错误；现在可以把工程或媒体文件拖入 MOSE 窗口。
 - 修复桌面工程加载后的关联媒体自动加载回退路径，避免错误退回浏览器无法读取工程目录的提示。
-
-## [1.13.1-beta-2] - 2026-08-05
-
-### Added
-
-- macOS Apple Silicon Release 新增 `MAWxFF-macOS-arm64` 包，内置静态 `ffmpeg` 与 `ffprobe`；普通 `MAW-macOS-arm64` 包继续保留。
-- macOS 普通版和 `MAWxFF` 版 Release 现在都会同时包含 `MAW.app` 与 `MOSE.app`，Launcher 可以直接把当前工程交给桌面编辑器。
-
-### Changed
-
-- Windows 与 macOS 正式 Release 不再额外上传 `.sha256` 校验文件；构建流程仍会校验下载的第三方 FFmpeg 包。
-- macOS Launcher 现在按 `MOSE.app` 查找并启动其中的编辑器可执行文件，不再把桌面版路径写死为 `MOSE.exe`。
-- MOSE 在 macOS 使用 `~/Library/Application Support/Moy/mose/settings.json` 保存设置；Finder 打开 `.mosp` / `.json` 工程和 MAWxFF 内置 FFmpeg 的桌面编辑路径也已纳入跨平台链路。
-- MOSE 的本地媒体 `file://` URL 现在会编码空格、Unicode 和特殊字符，避免 macOS 文件名在 WebView 中打不开。
-
-## [1.13.1-beta-1] - 2026-08-05
-
-### Added
-
-- MAW Windows beta 包随附 MOSE 桌面编辑器；Launcher 可直接把当前工程交给同目录的 `MOSE.exe` 打开，Server 版编辑器和便携 HTML 仍保留为备用入口。
-- 增加 Windows Pull Request 预览包构建流程，便于在正式发布前测试打包结果。
-
-### Fixed
-
 - 修复 macOS 应用图标资源与构建配置，macOS Release 包现在会包含正确的图标。
-- 修复 Windows Release 打包顺序：在 Tauri 验证前预生成 MOSE 前端页面，避免干净 runner 找不到 `desktop/src/index.html`。
 - 修复 MOSE Windows 构建对未随包提供的 Tauri FFmpeg sidecar 的错误依赖；发布包继续按标准版使用 PATH、MAWxFF 使用同目录 FFmpeg。
 
 ## [1.3.0] - 2026-08-05

@@ -40,6 +40,7 @@ desktop/src/index.html
 /build/
 /dist/
 /dist/MAW/MAW.exe
+*.zip
 *.exe
 *.spec.bak
 !MAW.spec
