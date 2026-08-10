@@ -381,6 +381,23 @@ class ApiClientTests(unittest.TestCase):
         self.assertEqual(req.get.call_count, 3)
         self.assertTrue(any("completed" in s for s in statuses))
 
+    @mock.patch("maw.soniox.time.monotonic", side_effect=[0, 0, 16, 16])
+    def test_poll_transcription_reports_heartbeat_when_status_does_not_change(self, _monotonic: mock.Mock) -> None:
+        with mock.patch("maw.soniox.requests") as req:
+            req.get.side_effect = [
+                _response({"status": "processing"}),
+                _response({"status": "processing"}),
+                _response({"status": "completed"}),
+            ]
+            statuses: list[str] = []
+
+            soniox.poll_transcription(
+                BASE, KEY, "t-heartbeat", interval=0, timeout=60,
+                on_status=statuses.append,
+            )
+
+        self.assertTrue(any("任务仍在处理中" in status for status in statuses))
+
     def test_poll_transcription_raises_on_error_state(self) -> None:
         with mock.patch("maw.soniox.requests") as req:
             req.get.return_value = _response({

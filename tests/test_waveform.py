@@ -210,6 +210,11 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('确定删除第 ${idx + 1} 条字幕', page)
         self.assertNotIn('确定删除选中的 ${targetIdxs.length} 条字幕', page)
         self.assertIn('id="export-start-at-zero"', page)
+        self.assertIn(
+            '<input type="checkbox" id="export-start-at-zero"> SRT 首条从 0 开始',
+            page,
+        )
+        self.assertNotIn('id="export-start-at-zero" checked', page)
         for field in ('index', 'time', 'charcount'):
             self.assertIn(f'id="cue-list-show-{field}" checked', page)
             self.assertIn(f"container.classList.toggle('hide-cue-{field}'", page)
@@ -348,7 +353,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('.layout-wave-right #cue-panel-text { flex:', page)
         self.assertNotIn('.editor-workspace.layout-wave-right > .current-cue-panel {\n  overflow-y: auto;', page)
         self.assertNotIn('id="waveform-side"', page)
-        self.assertIn('getSrtExportOffset(', page)
+        self.assertIn('getSrtExportFirstIndex(', page)
         self.assertNotRegex(page, r"__[A-Z][A-Z0-9_]+__")
 
     def test_blank_editor_does_not_inline_local_stickers(self) -> None:

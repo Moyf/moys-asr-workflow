@@ -1072,16 +1072,16 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn("打开空的 HTML 编辑器", page)
         self.assertIn('event.target.closest(".split-wrap")', script)
 
-    def test_launcher_uses_server_as_default_and_keeps_mose_in_menu(self) -> None:
+    def test_launcher_uses_server_as_default_and_hides_mose_in_menu(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
 
         self.assertIn('id="openMawe" class="ghost split-main" type="button" data-i18n="start_server_editor"', page)
-        self.assertIn('id="openMose" type="button" data-i18n="open_mose"', page)
+        self.assertNotIn('id="openMose"', page)
+        self.assertNotIn("在 MOSE 中打开", page)
         self.assertIn('$("openMawe").addEventListener("click", openServerEditor)', script)
-        self.assertIn('$("openMose").addEventListener("click", openMose)', script)
-        self.assertIn('function openMose()', script)
-        self.assertIn('bridge("open_mose"', script)
+        self.assertNotIn("openMose", script)
+        self.assertNotIn("open_mose", script)
         self.assertIn('function openServerEditor()', script)
         self.assertIn('bridge("start_server"', script)
 

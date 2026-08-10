@@ -487,8 +487,8 @@ __WAVEFORM_CSS__
   </div>
   <div class="editor-settings-group">
     <span class="editor-settings-title">导出</span>
-    <label class="toggle editor-settings-item" title="只影响导出的 SRT，不改动工程或 OTIO 的时间轴">
-      <input type="checkbox" id="export-start-at-zero" checked> SRT 首条从 0 开始
+    <label class="toggle editor-settings-item" title="只把第一条导出字幕的起点拉到 00:00，保留其结束时间和后续字幕时间码；不改动工程或 OTIO 的时间轴">
+      <input type="checkbox" id="export-start-at-zero"> SRT 首条从 0 开始
     </label>
     <label class="toggle editor-settings-item" title="勾选后按颜色导出会先选择一个 SRT 文件名作为前缀，再下载「前缀_颜色.srt」；取消勾选则逐个颜色弹出保存对话框">
       <input type="checkbox" id="export-color-unified" checked> 彩色字幕统一导出
@@ -725,11 +725,15 @@ __WAVEFORM_CSS__
     <label for="sticker-root-input">当前根目录（绝对路径）</label>
     <div class="modal-field-row">
       <input type="text" id="sticker-root-input" placeholder="如 D:/AI/AI音频转录/表情包" autocomplete="off">
-      <button id="sticker-root-pick" title="浏览本地文件夹（同时会重新扫描表情包列表）">📁 浏览…</button>
+      <button id="sticker-root-pick" title="扫描本地文件夹以加载表情包缩略图（浏览器拿不到磁盘路径，需手动填写导出路径）">📁 扫描</button>
     </div>
     <input type="file" id="sticker-root-folder-input" webkitdirectory directory multiple style="display:none">
+    <p id="sticker-root-browser-warn" class="modal-hint" style="display:none; color: #ffc864; font-weight: 600;">
+      ⬆️ 当前是浏览器加载模式，请手动填写真实磁盘路径以导出 OTIO 工程<br>
+      （或在启动器的 ⚙️ 设置中填写表情包路径后，重新启动服务器）
+    </p>
     <div class="modal-hint">
-      支持 OS 路径（D:/foo/bar）或 file:// URL。手动改路径只替换前缀；点 📁 浏览选本地文件夹会重新扫描表情包。
+      支持 OS 路径（D:/foo/bar 或 D:\foo\bar）或 file:// URL。点 📁 扫描只加载缩略图预览，不会自动填入导出路径。
     </div>
     <div class="actions">
       <button id="sticker-root-cancel">取消</button>

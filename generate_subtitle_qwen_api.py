@@ -44,6 +44,23 @@ ENV_FILE = Path(__file__).parent / ".env"
 QWEN_AUDIO_FILETRANS_MODEL = "qwen-audio-3.0-asr-flash-filetrans"
 FILETRANS_MODEL = QWEN_AUDIO_FILETRANS_MODEL
 FUNASR_MODEL = "fun-asr"
+POLL_HEARTBEAT_SECONDS = 15
+
+
+def configure_console_output() -> None:
+    """让直接 CLI 和 GUI 子进程都按行把进度消息交给父进程。"""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(line_buffering=True, write_through=True)
+        except (OSError, TypeError, ValueError):
+            # 某些嵌入式/测试流只接受 line_buffering，或不支持 reconfigure。
+            try:
+                reconfigure(line_buffering=True)
+            except (OSError, TypeError, ValueError):
+                pass
 
 # 本地 language 名 → DashScope language code
 LANGUAGE_MAP = {
@@ -799,10 +816,13 @@ def submit_filetrans(base_url: str, api_key: str, file_url: str,
 
 def poll_task(base_url: str, api_key: str, task_id: str,
               interval: int, timeout: int,
-              model: str = FILETRANS_MODEL) -> tuple[str, dict]:
+              model: str = FILETRANS_MODEL,
+              on_status=print) -> tuple[str, dict]:
     """轮询任务状态，返回 transcription_url。"""
     url = f"{base_url}/api/v1/tasks/{task_id}"
     deadline = time.time() + timeout
+    started_at = time.monotonic()
+    last_report_at = started_at
     last_status = ""
 
     while time.time() < deadline:
@@ -811,10 +831,19 @@ def poll_task(base_url: str, api_key: str, task_id: str,
         body = resp.json()
         output = body.get("output", {})
         status = output.get("task_status", "UNKNOWN")
+        now = time.monotonic()
 
         if status != last_status:
-            print(f"[filetrans] 任务状态: {status}")
+            on_status(f"[filetrans] 任务状态: {status}")
             last_status = status
+            last_report_at = now
+        elif now - last_report_at >= POLL_HEARTBEAT_SECONDS:
+            elapsed = int(now - started_at)
+            on_status(
+                f"[filetrans] 任务仍在处理中（状态: {status}，已等待约 {elapsed}s），"
+                f"下一次检查约 {max(interval, 0)}s 后。"
+            )
+            last_report_at = now
 
         if status == "SUCCEEDED":
             if uses_file_urls(model):
@@ -1014,6 +1043,8 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
             "       API Key 申请：https://help.aliyun.com/zh/model-studio/get-api-key"
         )
 
+    print(f"[准备] 开始云端转写（模型: {model}）")
+
     resolved_vocabulary_id = (vocabulary_id or _configured_vocabulary_id(model, config)).strip()
     resolved_hotword_weight = hotword_weight
     if resolved_hotword_weight is None:
@@ -1111,7 +1142,9 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
               f"计费 {audio_secs}s 音频 ≈ {est_tokens} tokens")
 
     # 4) 下载 + 解析
+    print("[filetrans] 正在下载转写结果...")
     raw = download_transcription(transcription_url)
+    print("[解析] 正在解析云端返回的词级时间戳...")
     result = parse_funasr_transcription_result(raw) if uses_file_urls(model) else parse_transcription_result(raw)
     if not result.get("language") and norm_lang:
         result["language"] = norm_lang
@@ -1216,6 +1249,7 @@ def main():
         help="输出 API 原始结果用于调试",
     )
     args = parser.parse_args()
+    configure_console_output()
     enable_speaker = args.speaker or args.speaker_colors
     if enable_speaker and not supports_speaker_diarization(args.model):
         parser.error("--speaker / --speaker-colors 仅适用于 Qwen-Audio 或 Fun-ASR 模型")
@@ -1234,11 +1268,13 @@ def main():
 
     # 读配置（CLI args 覆盖 .env）
     config = _get_config()
+    print(f"[准备] 已载入转写配置（模型: {args.model}）")
     if args.region:
         config["region"] = args.region.lower()
         config["base_url"] = _compute_base_url(config["region"], config["workspace_id"])
 
     try:
+        print("[准备] 正在读取上下文和热词配置...")
         context_text = args.context
         if context_text is None:
             context_text = load_context_file(args.context_file or config["qwen_audio_context_file"])
@@ -1258,15 +1294,18 @@ def main():
             hotwords.append(normalized)
 
     with tempfile.TemporaryDirectory() as tmpdir:
+        print(f"[媒体] 正在准备输入媒体: {input_path.name}")
         if args.file_url:
             audio_path = ""  # 不需要本地文件
             duration = 0.0
         else:
             if is_video:
                 audio_path = str(Path(tmpdir) / "audio.wav")
+                print("[媒体] 正在读取原始视频时长...")
                 source_duration = get_duration_sec(str(input_path))
                 video_limit = args.length_limit if args.length_limit and args.length_limit < source_duration else None
                 extract_audio(str(input_path), audio_path, duration_limit=video_limit)
+                print("[媒体] 正在读取提取后音频时长...")
                 duration = get_duration_sec(audio_path)
                 if video_limit is not None:
                     lm, ls = divmod(int(video_limit), 60)
@@ -1274,9 +1313,11 @@ def main():
             else:
                 # 复制到 tmpdir 统一处理（避免 length_limit 改原文件）
                 audio_path = str(Path(tmpdir) / input_path.name)
+                print("[媒体] 正在复制音频到临时工作目录...")
                 shutil.copy2(input_path, audio_path)
 
             if not is_video:
+                print("[媒体] 正在读取音频时长...")
                 duration = get_duration_sec(audio_path)
             m, s = divmod(int(duration), 60)
             print(f"[info] 音频总时长: {m}分{s}秒")
@@ -1289,6 +1330,7 @@ def main():
             if args.length_limit and args.length_limit < duration:
                 limit_sec = args.length_limit
                 limited_path = str(Path(tmpdir) / "audio_limited.wav")
+                print("[ffmpeg] 正在为测试模式截取并重新采样音频...")
                 cmd = [
                     "ffmpeg", "-i", audio_path,
                     "-t", str(limit_sec),
@@ -1301,6 +1343,7 @@ def main():
                 lm, ls = divmod(int(limit_sec), 60)
                 print(f"[info] 已截取前 {lm}分{ls}秒用于测试")
 
+        print("[filetrans] 本地媒体准备完成，开始连接云端...")
         t0 = time.perf_counter()
         result = transcribe(
             audio_path, args.language, hotwords, config,
@@ -1317,6 +1360,7 @@ def main():
             print("错误: 未识别到任何内容", file=sys.stderr)
             raise SystemExit(2)
 
+        print(f"[解析] 云端结果已返回，包含 {len(result.get('items', []))} 个时间戳项。")
         print(f"[info] 检测语言: {result.get('language', 'unknown')}")
 
         if args.debug:
@@ -1333,13 +1377,16 @@ def main():
                 [{"start": 0, "end": int(duration * 1000), "text": result["text"]}]
             )
         else:
+            print("[解析] 正在按停顿和字数整理字幕（中文首次运行可能加载 jieba 词典）...")
             segments = build_segments_preserving_speakers(
                 items, max_len=args.max_len, min_len=args.min_len,
                 gap_split_ms=args.gap_split,
             )
+            print(f"[解析] 字幕整理完成：{len(segments)} 条。")
 
         # 兜底：上游可能返回 0 长（甚至倒挂）的词/段时间码，
         # 拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
+        print("[解析] 正在校验和修复时间码...")
         repaired_count = repair_segment_durations(segments)
         if repaired_count:
             print(f"[info] 已兜底修复 {repaired_count} 处 0 长/倒挂时间码（保底 100ms）")
@@ -1366,6 +1413,7 @@ def main():
                         break
                     k -= 1
 
+    print(f"[输出] 正在生成 SRT（{len(segments)} 条字幕）...")
     srt_content = generate_srt(segments)
 
     em, es = divmod(int(elapsed), 60)
@@ -1419,6 +1467,7 @@ def main():
             ],
         }
         if args.with_waveform:
+            print("[waveform] 正在计算并嵌入波形...")
             waveform_result = embed_waveform(json_data, input_path)
             json_data = waveform_result.project
             if waveform_result.error is None:
@@ -1429,6 +1478,7 @@ def main():
                 )
             else:
                 print(f"[waveform] 警告: {waveform_result.error}；已跳过内嵌波形")
+        print("[输出] 正在写入工程文件...")
         json_path.write_text(
             json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8"
         )

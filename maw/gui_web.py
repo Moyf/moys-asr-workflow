@@ -717,7 +717,6 @@ def run_app() -> None:
 
     paths = default_paths()
     api = LauncherApi(paths=paths)
-    _register_mosp_association()
     window = webview.create_window(
         WINDOW_TITLE,
         url=paths.launcher_html.resolve().as_uri(),

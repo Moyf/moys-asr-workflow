@@ -16,7 +16,7 @@ function normalizeClickTarget(value) {
 const DEFAULT_EDITOR_SETTINGS = {
   splitKey: 'ctrl-enter',
   overlayEnabled: true,
-  exportStartAtZero: true,
+  exportStartAtZero: false,
   cueListShowIndex: true,
   cueListShowTime: true,
   cueListShowSticker: true,
@@ -69,7 +69,7 @@ function readEditorSettings() {
     return {
       splitKey: saved.splitKey === 'enter' ? 'enter' : DEFAULT_EDITOR_SETTINGS.splitKey,
       overlayEnabled: saved.overlayEnabled !== false,
-      exportStartAtZero: saved.exportStartAtZero !== false,
+      exportStartAtZero: saved.exportStartAtZero === true,
       cueListShowIndex: saved.cueListShowIndex !== false,
       cueListShowTime: saved.cueListShowTime !== false,
       cueListShowSticker: saved.cueListShowSticker !== false,
@@ -3699,13 +3699,13 @@ let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 
 function buildSrt() {
   const parts = [];
-  const timeOffset = window.AsrEditorUtils.getSrtExportOffset(
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     DATA.segments,
     EDITOR_SETTINGS.exportStartAtZero,
   );
-  const exportTime = (timeMs) => fmtSrtTime(Math.max(0, timeMs - timeOffset));
+  const exportTime = (timeMs) => fmtSrtTime(Math.max(0, Math.round(Number(timeMs) || 0)));
   let n = 0;  // 导出序号：跳过禁用项后重新连续编号
-  DATA.segments.forEach((seg) => {
+  DATA.segments.forEach((seg, index) => {
     if (seg.disabled) {
       if (!EXPORT_KEEP_DISABLED_PLACEHOLDER) return;  // 默认：完全跳过
       // 占位模式：保留时间轴，内容留空（序号不变）
@@ -3718,7 +3718,10 @@ function buildSrt() {
     }
     n++;
     parts.push(String(n));
-    parts.push(`${exportTime(seg.start)} --> ${exportTime(seg.end)}`);
+    const start = EDITOR_SETTINGS.exportStartAtZero && index === firstEnabledIndex
+      ? fmtSrtTime(0)
+      : exportTime(seg.start);
+    parts.push(`${start} --> ${exportTime(seg.end)}`);
     parts.push(seg.text);
     parts.push('');
   });
@@ -3733,10 +3736,17 @@ function buildGapRemovedSrt() {
   }
   const parts = [];
   let number = 0;
-  DATA.segments.forEach((segment) => {
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+    DATA.segments,
+    EDITOR_SETTINGS.exportStartAtZero,
+  );
+  DATA.segments.forEach((segment, index) => {
     if (segment.disabled) return;
     number++;
-    const start = window.AsrEditorUtils.mapGapRemovedTime(segment.start, removed);
+    const mappedStart = window.AsrEditorUtils.mapGapRemovedTime(segment.start, removed);
+    const start = EDITOR_SETTINGS.exportStartAtZero && index === firstEnabledIndex
+      ? 0
+      : mappedStart;
     const end = window.AsrEditorUtils.mapGapRemovedTime(segment.end, removed);
     parts.push(String(number));
     parts.push(`${fmtSrtTime(start)} --> ${fmtSrtTime(Math.max(start + 1, end))}`);
@@ -3777,13 +3787,16 @@ async function downloadColorSrts(gapRemoved = false) {
     flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除');
     return;
   }
-  const timeOffset = gapRemoved
-    ? 0
-    : window.AsrEditorUtils.getSrtExportOffset(DATA.segments, EDITOR_SETTINGS.exportStartAtZero);
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+    DATA.segments,
+    EDITOR_SETTINGS.exportStartAtZero,
+  );
   const gapSuffix = gapRemoved ? '_gap-removed' : '';
   const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
     colorName: color.name,
-    timeOffset,
+    timeOffset: 0,
+    alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
     mapTime: gapRemoved
       ? (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed)
       : undefined,
@@ -4111,7 +4124,9 @@ function stickerOtioName(sticker, absPath) {
 }
 
 function buildStickerOtio() {
-  const collected = collectStickerOtioEntries(null);
+  // 传空数组而非 null：函数体内用 removed.length 判断是否走去空隙映射分支，
+  // 空数组 .length===0（falsy）正确退化为原始时间线，且避免 null.length 崩溃。
+  const collected = collectStickerOtioEntries([]);
   if (collected.error) {
     flashHint(collected.error);
     return null;
@@ -5164,6 +5179,7 @@ async function openProjectFile(file, options = {}) {
     // 先兜底修复 0 长/倒挂时间码（保底 100ms），再校验结构，让旧工程仍能打开。
     if (data && Array.isArray(data.segments)) {
       window.AsrEditorUtils.normalizeSegmentTimings(data.segments);
+      window.AsrEditorUtils.repairGroupReferenceIndices(data.segments);
     }
     if (!isMawProject(data)) {
       flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。');
@@ -5423,16 +5439,24 @@ const stickerRootInput = document.getElementById('sticker-root-input');
 const stickerRootFolderInput = document.getElementById('sticker-root-folder-input');
 
 document.getElementById('sticker-root-btn').addEventListener('click', () => {
-  stickerRootInput.value = STICKER_ROOT || '';
+  // 浏览器加载模式（[本地] 前缀）下不在输入框显示虚拟标识，避免用户误以为是有效导出路径
+  stickerRootInput.value = (STICKER_ROOT && STICKER_ROOT.startsWith('[本地]')) ? '' : (STICKER_ROOT || '');
+  updateStickerRootBrowserWarn();
   stickerRootModal.classList.add('show');
   setTimeout(() => stickerRootInput.focus(), 50);
 });
+
+// 浏览器加载模式（[本地] 前缀）警告横幅显隐：只在 blob 模式下提示用户需手动填写真实磁盘路径
+function updateStickerRootBrowserWarn() {
+  const warn = document.getElementById('sticker-root-browser-warn');
+  if (warn) warn.style.display = (STICKER_ROOT && STICKER_ROOT.startsWith('[本地]')) ? 'block' : 'none';
+}
 document.getElementById('sticker-root-cancel').addEventListener('click', () => stickerRootModal.classList.remove('show'));
 stickerRootModal.addEventListener('click', (e) => { if (e.target === stickerRootModal) stickerRootModal.classList.remove('show'); });
 
-// 「📁 浏览…」按钮：优先用 showDirectoryPicker 选本地文件夹——原生选择器本身就是确认动作，
+// 「📁 扫描」按钮：优先用 showDirectoryPicker 选本地文件夹——原生选择器本身就是确认动作，
 // 不会再弹浏览器的「是否上传 N 个文件到此站点」提示；不支持时回退 webkitdirectory。
-// 浏览器拿不到绝对路径，所以用 blob URL 替换 STICKERS 数组。
+// 浏览器拿不到绝对路径，所以用 blob URL 替换 STICKERS 数组；导出路径需用户手动填写。
 const STICKER_IMG_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
 
 function applyStickerFiles(entries, topDir) {
@@ -5454,11 +5478,12 @@ function applyStickerFiles(entries, topDir) {
       _blobUrl: URL.createObjectURL(file),
     });
   }
-  // 显示一个虚拟根，仅作 UI 提示；导出 OTIO 仍需要用户填写实际表情包根目录。
+  // 显示一个虚拟根，仅作内部状态标识（stickerAbsPath 据此跳过导出）；浏览器拿不到真实磁盘路径。
+  // 不把 [本地] 虚拟标识填入输入框，避免用户误以为是有效导出路径。
   STICKER_ROOT = topDir ? `[本地] ${topDir}` : '[本地]';
-  stickerRootInput.value = STICKER_ROOT;
+  updateStickerRootBrowserWarn();
   renderAll();
-  flashHint(`已加载 ${STICKERS.length} 张表情包（${topDir || '本地'}）`);
+  flashHint(`扫描到 ${STICKERS.length} 个表情包；由于浏览器限制，你需要手动填写本地绝对路径，否则无法导出`);
 }
 
 async function collectStickerEntries(dirHandle, prefix, out) {
@@ -5919,6 +5944,7 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY) {
     items: [],
     _dirty: true,
   });
+  window.AsrEditorUtils.shiftGroupReferenceIndices(DATA.segments, index, 1);
   clearSelection();
   renderAll();
   selectOnly(index);
@@ -6423,6 +6449,7 @@ window.addEventListener('drop', (e) => {
 // === 启动 ===
 // 兜底：工程可能带有上游写入的 0 长/倒挂段、词时间码（旧版工具或异常识别结果），
 // 加载时统一拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
+const repairedGroupReferenceCount = window.AsrEditorUtils.repairGroupReferenceIndices(DATA.segments);
 const repairedTimingCount = window.AsrEditorUtils.normalizeSegmentTimings(DATA.segments);
 cleanPunctuation();
 configureServerSaveControls();
@@ -6437,6 +6464,8 @@ renderAll();
 updateGapRemoveUi();
 if (repairedTimingCount > 0) {
   flashHint(`已自动修复 ${repairedTimingCount} 处 0 长时间码（保底 100ms）`);
+} else if (repairedGroupReferenceCount > 0) {
+  flashHint(`已自动修复 ${repairedGroupReferenceCount} 处分组引用`);
 }
 if (SERVER_CONFIG?.autoLoadedMediaName) {
   flashHint(`已自动加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`);

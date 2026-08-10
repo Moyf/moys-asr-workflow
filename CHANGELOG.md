@@ -11,6 +11,7 @@
 
 ### Changed
 
+- 暂时移除 Windows `MOSE.exe` 与 macOS `MOSE.app` 的 Release 打包，缩小分发包；Launcher 隐藏「在 MOSE 中打开」入口，默认使用 Server 版或 HTML 编辑器。
 - MAWxFF 直接从 CLI 启动时会自动把随包的 `ffmpeg\bin` 加入当前进程环境，和 Launcher 内部转写保持一致。
 
 ## [1.13.1-beta-6] - 2026-08-06

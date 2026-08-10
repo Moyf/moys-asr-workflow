@@ -157,6 +157,42 @@ class QwenAudioAdapterTests(unittest.TestCase):
         self.assertEqual(result_url, "https://result.example/qwen-audio.json")
         self.assertEqual(usage, {"duration": 12})
 
+    @mock.patch("generate_subtitle_qwen_api.time.monotonic", side_effect=[0, 0, 16, 16])
+    @mock.patch("generate_subtitle_qwen_api.requests.get")
+    def test_poll_reports_heartbeat_when_status_does_not_change(self, get: mock.Mock, _monotonic: mock.Mock) -> None:
+        responses = []
+        for status in ("RUNNING", "RUNNING"):
+            response = mock.Mock()
+            response.json.return_value = {"output": {"task_status": status}}
+            responses.append(response)
+        response = mock.Mock()
+        response.json.return_value = {
+            "output": {
+                "task_status": "SUCCEEDED",
+                "results": [{
+                    "subtask_status": "SUCCEEDED",
+                    "transcription_url": "https://result.example/heartbeat.json",
+                }],
+            },
+            "usage": {},
+        }
+        responses.append(response)
+        get.side_effect = responses
+        statuses: list[str] = []
+
+        result_url, _usage = poll_task(
+            "https://dashscope.aliyuncs.com",
+            "secret",
+            "task-heartbeat",
+            interval=0,
+            timeout=1,
+            model=QWEN_AUDIO_FILETRANS_MODEL,
+            on_status=statuses.append,
+        )
+
+        self.assertEqual(result_url, "https://result.example/heartbeat.json")
+        self.assertTrue(any("任务仍在处理中" in status for status in statuses))
+
     def test_parse_maps_qwen_audio_sentence_speaker_to_items(self) -> None:
         result = parse_funasr_transcription_result(
             {

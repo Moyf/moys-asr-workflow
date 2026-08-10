@@ -2325,7 +2325,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-07 09:41</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-10 00:49</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -2788,8 +2788,8 @@
   </div>
   <div class="editor-settings-group">
     <span class="editor-settings-title">导出</span>
-    <label class="toggle editor-settings-item" title="只影响导出的 SRT，不改动工程或 OTIO 的时间轴">
-      <input type="checkbox" id="export-start-at-zero" checked> SRT 首条从 0 开始
+    <label class="toggle editor-settings-item" title="只把第一条导出字幕的起点拉到 00:00，保留其结束时间和后续字幕时间码；不改动工程或 OTIO 的时间轴">
+      <input type="checkbox" id="export-start-at-zero"> SRT 首条从 0 开始
     </label>
     <label class="toggle editor-settings-item" title="勾选后按颜色导出会先选择一个 SRT 文件名作为前缀，再下载「前缀_颜色.srt」；取消勾选则逐个颜色弹出保存对话框">
       <input type="checkbox" id="export-color-unified" checked> 彩色字幕统一导出
@@ -3026,11 +3026,15 @@
     <label for="sticker-root-input">当前根目录（绝对路径）</label>
     <div class="modal-field-row">
       <input type="text" id="sticker-root-input" placeholder="如 D:/AI/AI音频转录/表情包" autocomplete="off">
-      <button id="sticker-root-pick" title="浏览本地文件夹（同时会重新扫描表情包列表）">📁 浏览…</button>
+      <button id="sticker-root-pick" title="扫描本地文件夹以加载表情包缩略图（浏览器拿不到磁盘路径，需手动填写导出路径）">📁 扫描</button>
     </div>
     <input type="file" id="sticker-root-folder-input" webkitdirectory directory multiple style="display:none">
+    <p id="sticker-root-browser-warn" class="modal-hint" style="display:none; color: #ffc864; font-weight: 600;">
+      ⬆️ 当前是浏览器加载模式，请手动填写真实磁盘路径以导出 OTIO 工程<br>
+      （或在启动器的 ⚙️ 设置中填写表情包路径后，重新启动服务器）
+    </p>
     <div class="modal-hint">
-      支持 OS 路径（D:/foo/bar）或 file:// URL。手动改路径只替换前缀；点 📁 浏览选本地文件夹会重新扫描表情包。
+      支持 OS 路径（D:/foo/bar 或 D:\foo\bar）或 file:// URL。点 📁 扫描只加载缩略图预览，不会自动填入导出路径。
     </div>
     <div class="actions">
       <button id="sticker-root-cancel">取消</button>
@@ -3452,12 +3456,18 @@
     };
   }
 
-  function getSrtExportOffset(segments, alignFirstEnabled = true) {
-    if (!alignFirstEnabled || !Array.isArray(segments)) return 0;
-    const firstEnabled = segments.find((segment) => (
+  function getSrtExportFirstIndex(segments, alignFirstEnabled = false) {
+    if (!alignFirstEnabled || !Array.isArray(segments)) return -1;
+    return segments.findIndex((segment) => (
       segment && !segment.disabled && Number.isFinite(Number(segment.start))
     ));
-    return firstEnabled ? Math.max(0, Math.round(Number(firstEnabled.start))) : 0;
+  }
+
+  // 保留这个数值 helper 供已有调用方使用；SRT 导出本身不应把它从所有时间码中扣除。
+  function getSrtExportOffset(segments, alignFirstEnabled = false) {
+    const firstIndex = getSrtExportFirstIndex(segments, alignFirstEnabled);
+    if (firstIndex < 0) return 0;
+    return Math.max(0, Math.round(Number(segments[firstIndex].start)));
   }
 
   function effectiveColorName(segment, segments) {
@@ -3471,6 +3481,54 @@
     return typeof reference?.name === 'string' && reference.name ? reference.name : null;
   }
 
+  // 在字幕数组中插入新段后，所有指向插入点及其后方 head 的引用都右移。
+  // headIdx 是数组下标，不随 Array.splice 自动更新；调用方必须在插入后立即调用。
+  function shiftGroupReferenceIndices(segments, insertionIndex, delta = 1) {
+    if (!Array.isArray(segments)) return 0;
+    const pivot = Number(insertionIndex);
+    const shift = Number(delta);
+    if (!Number.isInteger(pivot) || !Number.isInteger(shift) || shift === 0) return 0;
+    let changed = 0;
+    segments.forEach((segment) => {
+      ['sticker_ref', 'color_ref'].forEach((field) => {
+        const reference = segment?.[field];
+        if (!reference || !Number.isInteger(reference.headIdx) || reference.headIdx < pivot) return;
+        reference.headIdx += shift;
+        changed++;
+      });
+    });
+    return changed;
+  }
+
+  // 兼容旧工程中因插入字幕导致的错位引用：引用自身保留了 head 的名称，
+  // 可用它在当前条目之前寻找最近的同名 head。合法引用不做任何改动。
+  function repairGroupReferenceIndices(segments) {
+    if (!Array.isArray(segments)) return 0;
+    const groups = [
+      { head: 'sticker', reference: 'sticker_ref' },
+      { head: 'color', reference: 'color_ref' },
+    ];
+    let repaired = 0;
+    segments.forEach((segment, index) => {
+      groups.forEach(({ head, reference }) => {
+        const ref = segment?.[reference];
+        if (!ref || !Number.isInteger(ref.headIdx)) return;
+        const currentHead = segments[ref.headIdx]?.[head];
+        if (currentHead && (!ref.name || currentHead.name === ref.name)) return;
+        if (typeof ref.name !== 'string' || !ref.name) return;
+        for (let candidate = index - 1; candidate >= 0; candidate--) {
+          if (segments[candidate]?.[head]?.name !== ref.name) continue;
+          if (ref.headIdx !== candidate) {
+            ref.headIdx = candidate;
+            repaired++;
+          }
+          break;
+        }
+      });
+    });
+    return repaired;
+  }
+
   function buildSrtPayload(segments, options = {}) {
     const source = Array.isArray(segments) ? segments : [];
     const colorName = typeof options.colorName === 'string' ? options.colorName : null;
@@ -3481,21 +3539,29 @@
     const formatTime = typeof options.formatTime === 'function'
       ? options.formatTime
       : (timeMs) => String(timeMs);
+    const alignFirstStart = options.alignFirstStart === true;
+    const firstEnabledIndex = Number.isInteger(options.firstEnabledIndex)
+      ? options.firstEnabledIndex
+      : getSrtExportFirstIndex(source, alignFirstStart);
     const parts = [];
-    source.filter((segment) => {
-      if (!segment || segment.disabled) return false;
-      if (!colorName) return true;
-      const effectiveName = effectiveColorName(segment, source);
-      return colorName === 'default' ? !effectiveName : effectiveName === colorName;
-    }).forEach((segment, index) => {
-      const start = Math.max(0, Math.round(Number(mapTime(segment.start)) || 0));
-      const mappedEnd = Math.max(0, Math.round(Number(mapTime(segment.end)) || 0));
-      const end = options.ensurePositiveDuration ? Math.max(start + 1, mappedEnd) : mappedEnd;
-      parts.push(String(index + 1));
-      parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
-      parts.push(String(segment.text || ''));
-      parts.push('');
-    });
+    source
+      .map((segment, sourceIndex) => ({ segment, sourceIndex }))
+      .filter(({ segment }) => {
+        if (!segment || segment.disabled) return false;
+        if (!colorName) return true;
+        const effectiveName = effectiveColorName(segment, source);
+        return colorName === 'default' ? !effectiveName : effectiveName === colorName;
+      })
+      .forEach(({ segment, sourceIndex }, index) => {
+        const mappedStart = Math.max(0, Math.round(Number(mapTime(segment.start)) || 0));
+        const start = alignFirstStart && sourceIndex === firstEnabledIndex ? 0 : mappedStart;
+        const mappedEnd = Math.max(0, Math.round(Number(mapTime(segment.end)) || 0));
+        const end = options.ensurePositiveDuration ? Math.max(start + 1, mappedEnd) : mappedEnd;
+        parts.push(String(index + 1));
+        parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
+        parts.push(String(segment.text || ''));
+        parts.push('');
+      });
     return parts.join('\n');
   }
 
@@ -3917,8 +3983,11 @@
     findCueNavigationTarget,
     findCueSelectionExtensionTarget,
     resolveMergedGroupInheritance,
+    getSrtExportFirstIndex,
     getSrtExportOffset,
     effectiveColorName,
+    shiftGroupReferenceIndices,
+    repairGroupReferenceIndices,
     buildSrtPayload,
     buildPlainTextPayload,
     fileBasename,
@@ -4112,9 +4181,11 @@
     '设置表情包根目录': 'Set sticker root folder',
     '仅服务器版编辑器可将改动保存回当前工程文件': 'Only the server editor can save changes back to the current project file',
     '所有表情包路径都基于此根目录。修改后页面所有缩略图会立刻按新路径加载。': 'All sticker paths are relative to this root. Thumbnails update immediately after it changes.',
-    '支持 OS 路径（D:/foo/bar）或 file:// URL。手动改路径只替换前缀；点 📁 浏览选本地文件夹会重新扫描表情包。': 'Supports OS paths (D:/foo/bar) and file:// URLs. Editing the path only changes the prefix; Browse rescans the folder.',
+    '支持 OS 路径（D:/foo/bar 或 D:\\foo\\bar）或 file:// URL。点 📁 扫描只加载缩略图预览，不会自动填入导出路径。': 'Supports OS paths (D:/foo/bar or D:\\foo\\bar) and file:// URLs. 📁 Scan only loads thumbnail previews; it does not fill in the export path.',
     '当前根目录（绝对路径）': 'Current root folder (absolute path)',
-    '📁 浏览…': '📁 Browse…', '应用': 'Apply',
+    '📁 扫描': '📁 Scan', '应用': 'Apply',
+    '⬆️ 当前是浏览器加载模式，请手动填写真实磁盘路径以导出 OTIO 工程': '⬆️ Browser mode is active. Manually enter the real disk path to export the OTIO project',
+    '（或在启动器的 ⚙️ 设置中填写表情包路径后，重新启动服务器）': '(or set the sticker path in the Launcher ⚙️ settings and restart the server)',
     '选择关联媒体': 'Choose related media',
     '浏览器无法自动读取工程所在目录的关联媒体。': 'The browser cannot automatically read media from the project folder.',
     '现在选择一次，或稍后点击“加载媒体”。': 'Choose it once now, or click “Load media” later.',
@@ -4185,7 +4256,7 @@
     '选择一条字幕开始编辑…': 'Select a subtitle to start editing…',
     '要查找的内容': 'Text to find', '替换后的内容': 'Replacement text',
     '按文件名过滤...': 'Filter by filename…',
-    '浏览本地文件夹（同时会重新扫描表情包列表）': 'Browse a local folder and rescan stickers',
+    '扫描本地文件夹以加载表情包缩略图（浏览器拿不到磁盘路径，需手动填写导出路径）': 'Scan a local folder to load sticker thumbnails (the browser cannot see the disk path; fill in the export path manually)',
     '如 D:/AI/AI音频转录/表情包': 'e.g. D:/Media/Stickers',
     '下次不带 JSON 路径启动服务器时，自动恢复上次打开的工程': 'Automatically restore the last project when the server starts without a JSON path',
     '只影响导出的 SRT，不改动工程或 OTIO 的时间轴': 'Only affects exported SRT; project and OTIO timelines are unchanged',
@@ -6519,15 +6590,14 @@
         block.title = label.textContent;
         const badges = this.settings.showGroupBadges !== false ? groupBadges.get(index) : null;
         if (badges?.length) {
-          // 徽章挂在行上、块上方（不遮挡块内文字）；单个表情包保留较小的显示阈值，
-          // 让它即使不是分组也能作为提示出现。
+          // 徽章挂在行上、块上方（不遮挡块内文字）；短字幕也保留最小显示空间，
+          // 让分组提示可以正常出现。
           const badgeDuration = Math.max(1, endMs - startMs);
           const badgeVisibleStart = Math.max(startMs, segment.start);
           const badgeVisibleEnd = Math.min(endMs, segment.end);
           // 行创建时还未挂载（clientWidth=0），用容器宽度估算块像素宽（行宽=容器宽）
           const blockWidthPx = ((badgeVisibleEnd - badgeVisibleStart) / badgeDuration) * this.content.clientWidth;
-          const hasSingleSticker = badges.some((badge) => badge.type === 'sticker' && badge.total === 1);
-          if (blockWidthPx >= (hasSingleSticker ? 24 : 56)) badges.forEach((badge, badgeIndex) => {
+          if (blockWidthPx >= 24) badges.forEach((badge, badgeIndex) => {
             const badgeEl = document.createElement('span');
             badgeEl.className = `waveform-cue-badge ${badge.type}`;
             badgeEl.textContent = badge.type === 'sticker' && badge.total === 1
@@ -7543,7 +7613,7 @@ function normalizeClickTarget(value) {
 const DEFAULT_EDITOR_SETTINGS = {
   splitKey: 'ctrl-enter',
   overlayEnabled: true,
-  exportStartAtZero: true,
+  exportStartAtZero: false,
   cueListShowIndex: true,
   cueListShowTime: true,
   cueListShowSticker: true,
@@ -7596,7 +7666,7 @@ function readEditorSettings() {
     return {
       splitKey: saved.splitKey === 'enter' ? 'enter' : DEFAULT_EDITOR_SETTINGS.splitKey,
       overlayEnabled: saved.overlayEnabled !== false,
-      exportStartAtZero: saved.exportStartAtZero !== false,
+      exportStartAtZero: saved.exportStartAtZero === true,
       cueListShowIndex: saved.cueListShowIndex !== false,
       cueListShowTime: saved.cueListShowTime !== false,
       cueListShowSticker: saved.cueListShowSticker !== false,
@@ -11226,13 +11296,13 @@ let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 
 function buildSrt() {
   const parts = [];
-  const timeOffset = window.AsrEditorUtils.getSrtExportOffset(
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     DATA.segments,
     EDITOR_SETTINGS.exportStartAtZero,
   );
-  const exportTime = (timeMs) => fmtSrtTime(Math.max(0, timeMs - timeOffset));
+  const exportTime = (timeMs) => fmtSrtTime(Math.max(0, Math.round(Number(timeMs) || 0)));
   let n = 0;  // 导出序号：跳过禁用项后重新连续编号
-  DATA.segments.forEach((seg) => {
+  DATA.segments.forEach((seg, index) => {
     if (seg.disabled) {
       if (!EXPORT_KEEP_DISABLED_PLACEHOLDER) return;  // 默认：完全跳过
       // 占位模式：保留时间轴，内容留空（序号不变）
@@ -11245,7 +11315,10 @@ function buildSrt() {
     }
     n++;
     parts.push(String(n));
-    parts.push(`${exportTime(seg.start)} --> ${exportTime(seg.end)}`);
+    const start = EDITOR_SETTINGS.exportStartAtZero && index === firstEnabledIndex
+      ? fmtSrtTime(0)
+      : exportTime(seg.start);
+    parts.push(`${start} --> ${exportTime(seg.end)}`);
     parts.push(seg.text);
     parts.push('');
   });
@@ -11260,10 +11333,17 @@ function buildGapRemovedSrt() {
   }
   const parts = [];
   let number = 0;
-  DATA.segments.forEach((segment) => {
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+    DATA.segments,
+    EDITOR_SETTINGS.exportStartAtZero,
+  );
+  DATA.segments.forEach((segment, index) => {
     if (segment.disabled) return;
     number++;
-    const start = window.AsrEditorUtils.mapGapRemovedTime(segment.start, removed);
+    const mappedStart = window.AsrEditorUtils.mapGapRemovedTime(segment.start, removed);
+    const start = EDITOR_SETTINGS.exportStartAtZero && index === firstEnabledIndex
+      ? 0
+      : mappedStart;
     const end = window.AsrEditorUtils.mapGapRemovedTime(segment.end, removed);
     parts.push(String(number));
     parts.push(`${fmtSrtTime(start)} --> ${fmtSrtTime(Math.max(start + 1, end))}`);
@@ -11304,13 +11384,16 @@ async function downloadColorSrts(gapRemoved = false) {
     flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除');
     return;
   }
-  const timeOffset = gapRemoved
-    ? 0
-    : window.AsrEditorUtils.getSrtExportOffset(DATA.segments, EDITOR_SETTINGS.exportStartAtZero);
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+    DATA.segments,
+    EDITOR_SETTINGS.exportStartAtZero,
+  );
   const gapSuffix = gapRemoved ? '_gap-removed' : '';
   const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
     colorName: color.name,
-    timeOffset,
+    timeOffset: 0,
+    alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
     mapTime: gapRemoved
       ? (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed)
       : undefined,
@@ -11638,7 +11721,9 @@ function stickerOtioName(sticker, absPath) {
 }
 
 function buildStickerOtio() {
-  const collected = collectStickerOtioEntries(null);
+  // 传空数组而非 null：函数体内用 removed.length 判断是否走去空隙映射分支，
+  // 空数组 .length===0（falsy）正确退化为原始时间线，且避免 null.length 崩溃。
+  const collected = collectStickerOtioEntries([]);
   if (collected.error) {
     flashHint(collected.error);
     return null;
@@ -12691,6 +12776,7 @@ async function openProjectFile(file, options = {}) {
     // 先兜底修复 0 长/倒挂时间码（保底 100ms），再校验结构，让旧工程仍能打开。
     if (data && Array.isArray(data.segments)) {
       window.AsrEditorUtils.normalizeSegmentTimings(data.segments);
+      window.AsrEditorUtils.repairGroupReferenceIndices(data.segments);
     }
     if (!isMawProject(data)) {
       flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。');
@@ -12950,16 +13036,24 @@ const stickerRootInput = document.getElementById('sticker-root-input');
 const stickerRootFolderInput = document.getElementById('sticker-root-folder-input');
 
 document.getElementById('sticker-root-btn').addEventListener('click', () => {
-  stickerRootInput.value = STICKER_ROOT || '';
+  // 浏览器加载模式（[本地] 前缀）下不在输入框显示虚拟标识，避免用户误以为是有效导出路径
+  stickerRootInput.value = (STICKER_ROOT && STICKER_ROOT.startsWith('[本地]')) ? '' : (STICKER_ROOT || '');
+  updateStickerRootBrowserWarn();
   stickerRootModal.classList.add('show');
   setTimeout(() => stickerRootInput.focus(), 50);
 });
+
+// 浏览器加载模式（[本地] 前缀）警告横幅显隐：只在 blob 模式下提示用户需手动填写真实磁盘路径
+function updateStickerRootBrowserWarn() {
+  const warn = document.getElementById('sticker-root-browser-warn');
+  if (warn) warn.style.display = (STICKER_ROOT && STICKER_ROOT.startsWith('[本地]')) ? 'block' : 'none';
+}
 document.getElementById('sticker-root-cancel').addEventListener('click', () => stickerRootModal.classList.remove('show'));
 stickerRootModal.addEventListener('click', (e) => { if (e.target === stickerRootModal) stickerRootModal.classList.remove('show'); });
 
-// 「📁 浏览…」按钮：优先用 showDirectoryPicker 选本地文件夹——原生选择器本身就是确认动作，
+// 「📁 扫描」按钮：优先用 showDirectoryPicker 选本地文件夹——原生选择器本身就是确认动作，
 // 不会再弹浏览器的「是否上传 N 个文件到此站点」提示；不支持时回退 webkitdirectory。
-// 浏览器拿不到绝对路径，所以用 blob URL 替换 STICKERS 数组。
+// 浏览器拿不到绝对路径，所以用 blob URL 替换 STICKERS 数组；导出路径需用户手动填写。
 const STICKER_IMG_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
 
 function applyStickerFiles(entries, topDir) {
@@ -12981,11 +13075,12 @@ function applyStickerFiles(entries, topDir) {
       _blobUrl: URL.createObjectURL(file),
     });
   }
-  // 显示一个虚拟根，仅作 UI 提示；导出 OTIO 仍需要用户填写实际表情包根目录。
+  // 显示一个虚拟根，仅作内部状态标识（stickerAbsPath 据此跳过导出）；浏览器拿不到真实磁盘路径。
+  // 不把 [本地] 虚拟标识填入输入框，避免用户误以为是有效导出路径。
   STICKER_ROOT = topDir ? `[本地] ${topDir}` : '[本地]';
-  stickerRootInput.value = STICKER_ROOT;
+  updateStickerRootBrowserWarn();
   renderAll();
-  flashHint(`已加载 ${STICKERS.length} 张表情包（${topDir || '本地'}）`);
+  flashHint(`扫描到 ${STICKERS.length} 个表情包；由于浏览器限制，你需要手动填写本地绝对路径，否则无法导出`);
 }
 
 async function collectStickerEntries(dirHandle, prefix, out) {
@@ -13446,6 +13541,7 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY) {
     items: [],
     _dirty: true,
   });
+  window.AsrEditorUtils.shiftGroupReferenceIndices(DATA.segments, index, 1);
   clearSelection();
   renderAll();
   selectOnly(index);
@@ -13950,6 +14046,7 @@ window.addEventListener('drop', (e) => {
 // === 启动 ===
 // 兜底：工程可能带有上游写入的 0 长/倒挂段、词时间码（旧版工具或异常识别结果），
 // 加载时统一拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
+const repairedGroupReferenceCount = window.AsrEditorUtils.repairGroupReferenceIndices(DATA.segments);
 const repairedTimingCount = window.AsrEditorUtils.normalizeSegmentTimings(DATA.segments);
 cleanPunctuation();
 configureServerSaveControls();
@@ -13964,6 +14061,8 @@ renderAll();
 updateGapRemoveUi();
 if (repairedTimingCount > 0) {
   flashHint(`已自动修复 ${repairedTimingCount} 处 0 长时间码（保底 100ms）`);
+} else if (repairedGroupReferenceCount > 0) {
+  flashHint(`已自动修复 ${repairedGroupReferenceCount} 处分组引用`);
 }
 if (SERVER_CONFIG?.autoLoadedMediaName) {
   flashHint(`已自动加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`);

@@ -26,6 +26,7 @@ from pathlib import Path
 from edit import get_default_sticker_dir
 from generate_subtitle_qwen_api import (
     LANGUAGE_MAP,
+    configure_console_output,
     extract_audio,
     generate_srt,
     get_duration_sec,
@@ -117,6 +118,7 @@ def main():
         help="输出 API 解析结果用于调试",
     )
     args = parser.parse_args()
+    configure_console_output()
 
     input_path = Path(args.input)
     if not input_path.exists():
@@ -130,16 +132,20 @@ def main():
 
     enable_speaker = args.speaker or args.speaker_colors
     config = load_config()
+    print(f"[准备] 已载入 Soniox 转写配置（模型: {args.model or config['model']}）")
 
     video_exts = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"}
     is_video = input_path.suffix.lower() in video_exts
 
     with tempfile.TemporaryDirectory() as tmpdir:
+        print(f"[媒体] 正在准备输入媒体: {input_path.name}")
         if is_video:
             audio_path = str(Path(tmpdir) / "audio.wav")
+            print("[媒体] 正在读取原始视频时长...")
             source_duration = get_duration_sec(str(input_path))
             video_limit = args.length_limit if args.length_limit and args.length_limit < source_duration else None
             extract_audio(str(input_path), audio_path, duration_limit=video_limit)
+            print("[媒体] 正在读取提取后音频时长...")
             duration = get_duration_sec(audio_path)
             if video_limit is not None:
                 lm, ls = divmod(int(video_limit), 60)
@@ -147,9 +153,11 @@ def main():
         else:
             # 复制到 tmpdir 统一处理（避免 length_limit 改原文件）
             audio_path = str(Path(tmpdir) / input_path.name)
+            print("[媒体] 正在复制音频到临时工作目录...")
             shutil.copy2(input_path, audio_path)
 
         if not is_video:
+            print("[媒体] 正在读取音频时长...")
             duration = get_duration_sec(audio_path)
         m, s = divmod(int(duration), 60)
         print(f"[info] 音频总时长: {m}分{s}秒")
@@ -163,6 +171,7 @@ def main():
         if args.length_limit and args.length_limit < duration:
             limit_sec = args.length_limit
             limited_path = str(Path(tmpdir) / "audio_limited.wav")
+            print("[ffmpeg] 正在为测试模式截取并重新采样音频...")
             cmd = [
                 "ffmpeg", "-i", audio_path,
                 "-t", str(limit_sec),
@@ -175,6 +184,7 @@ def main():
             lm, ls = divmod(int(limit_sec), 60)
             print(f"[info] 已截取前 {lm}分{ls}秒用于测试")
 
+        print("[soniox] 本地媒体准备完成，开始连接 Soniox...")
         t0 = time.perf_counter()
         result = transcribe(
             audio_path, config,
@@ -188,6 +198,7 @@ def main():
             print("错误: 未识别到任何内容", file=sys.stderr)
             raise SystemExit(2)
 
+        print(f"[解析] 云端结果已返回，包含 {len(result.get('items', []))} 个时间戳项。")
         print(f"[info] 检测语言: {result.get('language', 'unknown')}")
 
         items = result["items"]
@@ -202,13 +213,16 @@ def main():
             print("[警告] 未获得时间戳，输出整段为单条字幕")
             segments = [{"start": 0, "end": int(duration * 1000), "text": result["text"]}]
         else:
+            print("[解析] 正在按停顿和字数整理字幕（中文首次运行可能加载 jieba 词典）...")
             segments = build_segments(
                 items, max_len=args.max_len, min_len=args.min_len,
                 gap_split_ms=args.gap_split,
             )
+            print(f"[解析] 字幕整理完成：{len(segments)} 条。")
 
         # 兜底：缺时间戳/倒挂的 token 会形成 0 长 item，
         # 拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
+        print("[解析] 正在校验和修复时间码...")
         repaired_count = repair_segment_durations(segments)
         if repaired_count:
             print(f"[info] 已兜底修复 {repaired_count} 处 0 长/倒挂时间码（保底 100ms）")
@@ -236,6 +250,7 @@ def main():
                         break
                     k -= 1
 
+    print(f"[输出] 正在生成 SRT（{len(segments)} 条字幕）...")
     srt_content = generate_srt(segments)
 
     em, es = divmod(int(elapsed), 60)
@@ -280,6 +295,7 @@ def main():
             ],
         }
         if args.with_waveform:
+            print("[waveform] 正在计算并嵌入波形...")
             waveform_result = embed_waveform(json_data, input_path)
             json_data = waveform_result.project
             if waveform_result.error is None:
@@ -290,11 +306,13 @@ def main():
                 )
             else:
                 print(f"[waveform] 警告: {waveform_result.error}；已跳过内嵌波形")
+        print("[输出] 正在校验工程文件...")
         check = validate_project(json_data)
         if not check.ok:
             print("[警告] 工程文件未通过契约校验，请把以下内容反馈给开发者：")
             for err in check.errors[:10]:
                 print(f"  {err.path}: {err.message}")
+        print("[输出] 正在写入工程文件...")
         json_path.write_text(
             json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8"
         )

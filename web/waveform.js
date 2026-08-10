@@ -1996,15 +1996,14 @@
         block.title = label.textContent;
         const badges = this.settings.showGroupBadges !== false ? groupBadges.get(index) : null;
         if (badges?.length) {
-          // 徽章挂在行上、块上方（不遮挡块内文字）；单个表情包保留较小的显示阈值，
-          // 让它即使不是分组也能作为提示出现。
+          // 徽章挂在行上、块上方（不遮挡块内文字）；短字幕也保留最小显示空间，
+          // 让分组提示可以正常出现。
           const badgeDuration = Math.max(1, endMs - startMs);
           const badgeVisibleStart = Math.max(startMs, segment.start);
           const badgeVisibleEnd = Math.min(endMs, segment.end);
           // 行创建时还未挂载（clientWidth=0），用容器宽度估算块像素宽（行宽=容器宽）
           const blockWidthPx = ((badgeVisibleEnd - badgeVisibleStart) / badgeDuration) * this.content.clientWidth;
-          const hasSingleSticker = badges.some((badge) => badge.type === 'sticker' && badge.total === 1);
-          if (blockWidthPx >= (hasSingleSticker ? 24 : 56)) badges.forEach((badge, badgeIndex) => {
+          if (blockWidthPx >= 24) badges.forEach((badge, badgeIndex) => {
             const badgeEl = document.createElement('span');
             badgeEl.className = `waveform-cue-badge ${badge.type}`;
             badgeEl.textContent = badge.type === 'sticker' && badge.total === 1
