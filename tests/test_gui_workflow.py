@@ -572,7 +572,8 @@ class GuiWorkflowTests(unittest.TestCase):
         )
 
         self.assertEqual(completed.returncode, 0)
-        self.assertIn("Moy's ASR Workflow GUI", completed.stdout)
+        self.assertIn("MAW 命令行", completed.stdout)
+        self.assertIn("--server", completed.stdout)
 
 
 if __name__ == "__main__":

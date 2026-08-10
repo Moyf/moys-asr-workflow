@@ -33,6 +33,16 @@ py -3.11 -m venv .venv
 
 后文的 `uv run python` 可替换为 `.\.venv\Scripts\python`。
 
+## 1.5 使用图形包的 CLI
+
+Windows 图形包中的 `MAW.exe` 不带参数时启动 Launcher；带 `-h` 或 `--help` 时显示公开命令行帮助，也可以直接转写指定媒体：
+
+```powershell
+.\MAW.exe -i "D:\Videos\example.mp3" -o "D:\Videos\example.srt" "D:\Videos\example.mosp"
+```
+
+完整的参数表、输出规则、Qwen/Soniox 示例、Server 管理、退出码和 AI/自动化调用模板见 [CLI 专门文档](CLI.md)。
+
 ## 1. 配置阿里云百炼 API
 
 Qwen 与 Fun-ASR 共用同一个百炼 API Key。图形版可在遮罩输入框中填写 API Key；它只进入本次子进程环境，不会写回 `.env` 或工程文件。源码命令行方式使用下面的 `.env`：

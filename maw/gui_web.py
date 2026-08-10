@@ -996,8 +996,12 @@ def _maw_server_process_id(port: int) -> int | None:
     if pid is None:
         return None
     command = _process_command_line(pid).lower().replace("/", "\\")
-    is_frozen_maw = "--serve" in command and bool(re.search(r"(?:^|[\\\"\s])maw\.exe(?:[\\\"\s]|$)", command))
-    is_source_maw = "server-editor\\serve.py" in command
+    is_frozen_maw = any(flag in command for flag in ("--serve", "--server")) and bool(
+        re.search(r"(?:^|[\\\"\s])maw\.exe(?:[\\\"\s]|$)", command)
+    )
+    is_source_maw = "server-editor\\serve.py" in command or (
+        "maw_gui.py" in command and "--server" in command
+    )
     return pid if is_frozen_maw or is_source_maw else None
 
 
