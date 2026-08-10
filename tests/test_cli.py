@@ -47,7 +47,7 @@ class CliTests(unittest.TestCase):
 
     def test_html_option_renders_portable_editor_after_generator(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
+            root = Path(temp_dir).resolve()
             media = root / "clip.mp3"
             srt = root / "result.srt"
             media.write_bytes(b"media")
