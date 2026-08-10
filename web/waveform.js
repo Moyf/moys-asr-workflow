@@ -2920,7 +2920,19 @@
       if (!this.payload) return;
       const now = this.currentTimeMs();
       const segments = this.options.getSegments();
-      const activeIndex = segments.findIndex((segment) => !segment.disabled && now >= segment.start && now <= segment.end);
+      let low = 0;
+      let high = segments.length - 1;
+      let activeIndex = -1;
+      while (low <= high) {
+        const middle = (low + high) >> 1;
+        const segment = segments[middle];
+        if (now < segment.start) high = middle - 1;
+        else if (now > segment.end) low = middle + 1;
+        else {
+          activeIndex = segment.disabled ? -1 : middle;
+          break;
+        }
+      }
       if (activeIndex !== this.activeIndex) {
         this.activeIndex = activeIndex;
         this.content.querySelectorAll('.waveform-cue-block').forEach((block) => {

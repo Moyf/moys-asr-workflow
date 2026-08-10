@@ -201,6 +201,8 @@ function getRemovedGapRanges() {
 const container = document.getElementById('cues-container');
 let player = document.getElementById('player');  // 可被「加载媒体」替换为新 <video>/<audio>
 let waveformEditor = null;
+let playbackFrameId = 0;
+let playbackFramePlayer = null;
 // 工程内波形是可直接使用的缓存；加载关联媒体时不要因为媒体签名不同而覆盖它。
 // 媒体生成的波形则不属于工程缓存，切换媒体时仍应重新分析。
 let waveformLoadedFromProject = false;
@@ -2767,17 +2769,64 @@ function syncMediaControls() {
   mediaFullscreen.title = fullscreenLabel;
 }
 
+function stopPlaybackRefresh(mediaElement = null) {
+  if (mediaElement && playbackFramePlayer && playbackFramePlayer !== mediaElement) return;
+  if (playbackFrameId) cancelAnimationFrame(playbackFrameId);
+  playbackFrameId = 0;
+  playbackFramePlayer = null;
+}
+
+function startPlaybackRefresh(mediaElement) {
+  if (!mediaElement || mediaElement !== player || mediaElement.paused || mediaElement.ended) return;
+  if (playbackFramePlayer !== mediaElement) {
+    stopPlaybackRefresh();
+    playbackFramePlayer = mediaElement;
+  }
+  if (playbackFrameId) return;
+  const refresh = () => {
+    playbackFrameId = 0;
+    if (playbackFramePlayer !== mediaElement || player !== mediaElement
+        || mediaElement.paused || mediaElement.ended) {
+      if (playbackFramePlayer === mediaElement) playbackFramePlayer = null;
+      if (player === mediaElement) {
+        update();
+        waveformEditor?.updatePlayback();
+      }
+      return;
+    }
+    // 播放中只更新当前字幕/预览和波形播放头；不重绘波形画布、不重建字幕列表。
+    updatePlaybackFrame();
+    playbackFrameId = requestAnimationFrame(refresh);
+  };
+  playbackFrameId = requestAnimationFrame(refresh);
+}
+
 function bindPlayerEvents(mediaElement) {
   if (!mediaElement) return;
   mediaElement.addEventListener('timeupdate', update);
   mediaElement.addEventListener('seeked', update);
+  mediaElement.addEventListener('play', () => startPlaybackRefresh(mediaElement));
+  mediaElement.addEventListener('playing', () => startPlaybackRefresh(mediaElement));
+  mediaElement.addEventListener('pause', () => {
+    stopPlaybackRefresh(mediaElement);
+    if (player !== mediaElement) return;
+    update();
+    waveformEditor?.updatePlayback();
+  });
+  mediaElement.addEventListener('ended', () => {
+    stopPlaybackRefresh(mediaElement);
+    if (player !== mediaElement) return;
+    update();
+    waveformEditor?.updatePlayback();
+  });
+  mediaElement.addEventListener('emptied', () => stopPlaybackRefresh(mediaElement));
   if (mediaElement.tagName === 'VIDEO') {
     mediaElement.addEventListener('click', (event) => {
       if (event.defaultPrevented) return;
       togglePlayback();
     });
   }
-  ['timeupdate', 'loadedmetadata', 'durationchange', 'play', 'pause', 'volumechange', 'ratechange', 'emptied']
+  ['timeupdate', 'loadedmetadata', 'durationchange', 'play', 'playing', 'pause', 'ended', 'volumechange', 'ratechange', 'emptied']
     .forEach((eventName) => mediaElement.addEventListener(eventName, syncMediaControls));
   syncMediaControls();
 }
@@ -3577,6 +3626,53 @@ function isPreviewingGap(gap, timeMs) {
   return gap.start === gapPreviewRange.start && gap.end === gapPreviewRange.end;
 }
 
+function updateActiveCue(idx) {
+  if (idx === lastActive) return;
+  if (lastActive >= 0) {
+    const prev = container.querySelector(`.cue[data-idx="${lastActive}"]`);
+    if (prev) prev.classList.remove('active');
+  }
+  if (idx >= 0) {
+    const cur = container.querySelector(`.cue[data-idx="${idx}"]`);
+    if (cur) {
+      cur.classList.add('active');
+      if (!editingState && !suppressCueListAutoScroll) scrollCueIntoViewIfNeeded(cur);
+    }
+  }
+  lastActive = idx;
+}
+
+function updateSubtitleOverlay(tMs, idx) {
+  // overlay（禁用项不在画面上显示字幕文本）
+  if (!overlayToggle.checked) return;
+  const seg = idx >= 0 ? DATA.segments[idx] : null;
+  if (seg && !seg.disabled && tMs >= seg.start && tMs <= seg.end) {
+    overlayEl.classList.remove('hidden');
+    if (overlayTextEl.textContent !== seg.text) overlayTextEl.textContent = seg.text;
+  } else {
+    overlayEl.classList.add('hidden');
+  }
+}
+
+function updatePlaybackFrame() {
+  const tMs = player.currentTime * 1000;
+  if (gapPreviewRange && (tMs < gapPreviewRange.start || tMs >= gapPreviewRange.end)) {
+    gapPreviewRange = null;
+  }
+  const gapState = getGapRemoveData(false);
+  const skippedGap = gapState?.skip_playback && !player.paused ? removedGapAt(tMs) : null;
+  if (skippedGap && !isPreviewingGap(skippedGap, tMs)) {
+    player.currentTime = skippedGap.end / 1000;
+    return;
+  }
+  const nowLabel = fmtShort(tMs);
+  if (nowEl.textContent !== nowLabel) nowEl.textContent = nowLabel;
+  const idx = findActive(tMs);
+  updateActiveCue(idx);
+  updateSubtitleOverlay(tMs, idx);
+  waveformEditor?.updatePlayback();
+}
+
 function update() {
   const tMs = player.currentTime * 1000;
   if (gapPreviewRange && (tMs < gapPreviewRange.start || tMs >= gapPreviewRange.end)) {
@@ -3590,30 +3686,8 @@ function update() {
   }
   nowEl.textContent = fmtShort(tMs);
   const idx = findActive(tMs);
-  if (idx !== lastActive) {
-    if (lastActive >= 0) {
-      const prev = container.querySelector(`.cue[data-idx="${lastActive}"]`);
-      if (prev) prev.classList.remove('active');
-    }
-    if (idx >= 0) {
-      const cur = container.querySelector(`.cue[data-idx="${idx}"]`);
-      if (cur) {
-        cur.classList.add('active');
-        if (!editingState && !suppressCueListAutoScroll) scrollCueIntoViewIfNeeded(cur);
-      }
-    }
-    lastActive = idx;
-  }
-  // overlay（禁用项不在画面上显示字幕文本）
-  if (overlayToggle.checked) {
-    const seg = idx >= 0 ? DATA.segments[idx] : null;
-    if (seg && !seg.disabled && tMs >= seg.start && tMs <= seg.end) {
-      overlayEl.classList.remove('hidden');
-      overlayTextEl.textContent = seg.text;
-    } else {
-      overlayEl.classList.add('hidden');
-    }
-  }
+  updateActiveCue(idx);
+  updateSubtitleOverlay(tMs, idx);
   renderStickerOverlay(tMs);
 }
 // === 表情包预览（视频画面内）===
