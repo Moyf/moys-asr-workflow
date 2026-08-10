@@ -30,6 +30,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import edit  # noqa: E402
+import reapeaks  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
 from maw.project import ProjectValidationFailed, normalize_project, repair_segment_durations  # noqa: E402
 from maw.media import MEDIA_EXTENSIONS, MediaConversionError, MediaResolutionError, MediaStatus, convert_media_for_browser, resolve_project_media  # noqa: E402
@@ -262,6 +263,26 @@ def load_project(
         except (edit.WaveformError, ValueError) as error:
             data.pop("waveform", None)
             print(f"[waveform] 警告: {error}；编辑器仍可正常使用")
+
+        # 频谱缓存：媒体旁存在 .ReaPeaks 时读取并内联下发，供波形染色。
+        # 缺失/损坏/无 spectral 层一律静默降级，不影响编辑器。
+        spectral = reapeaks.load_spectral_payload(media_path, peaks_per_second=peaks_per_second)
+        if spectral is not None:
+            data["spectral"] = spectral
+            print(f"[spectral] 已加载 {spectral['peak_count']} 频谱点 (div={spectral['division']})")
+        else:
+            data.pop("spectral", None)
+
+        # ReaPeaks 波形层：最细 wave 层作为可选的波形形状来源（编辑器设置里切换）。
+        reapeaks_wave = reapeaks.load_waveform_payload(media_path)
+        if reapeaks_wave is not None:
+            data["waveform_reapeaks"] = reapeaks_wave
+            print(
+                f"[reapeaks-wave] 已加载 {reapeaks_wave['peak_count']} peaks "
+                f"({reapeaks_wave['peaks_per_second']}/秒)"
+            )
+        else:
+            data.pop("waveform_reapeaks", None)
 
     source = stickers_dir or edit.get_default_sticker_dir()
     sticker_root = Path(source).resolve() if source else None

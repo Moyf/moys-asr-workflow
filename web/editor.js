@@ -65,6 +65,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
   // 界面主题：dark（默认）/ light。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
   theme: 'dark',
+  // 波形形状来源：self（默认，自研 1000Hz 重采样缓存）/ reapeaks（.ReaPeaks 最细 wave 层，防高频欠采样）。
+  waveShapeSource: 'self',
 };
 const SUBTITLE_FONT_SIZE_MIN = 12;
 const SUBTITLE_FONT_SIZE_MAX = 96;
@@ -111,6 +113,7 @@ function readEditorSettings() {
       clickTarget: normalizeClickTarget(saved.clickTarget),
       cueMoveStepMs: clampCueMoveStepMs(saved.cueMoveStepMs),
       theme: saved.theme === 'light' ? 'light' : 'dark',
+      waveShapeSource: saved.waveShapeSource === 'reapeaks' ? 'reapeaks' : 'self',
     };
   } catch (_) {
     return { ...DEFAULT_EDITOR_SETTINGS };
@@ -667,6 +670,15 @@ if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.sticker
 if (clickBehaviorSelect) clickBehaviorSelect.value = EDITOR_SETTINGS.clickBehavior;
 if (clickTargetSelect) clickTargetSelect.value = EDITOR_SETTINGS.clickTarget;
 if (cueMoveStepInput) cueMoveStepInput.value = String(EDITOR_SETTINGS.cueMoveStepMs);
+const waveformShapeSourceSelect = document.getElementById('waveform-shape-source');
+if (waveformShapeSourceSelect) {
+  waveformShapeSourceSelect.value = EDITOR_SETTINGS.waveShapeSource;
+  waveformShapeSourceSelect.addEventListener('change', () => {
+    EDITOR_SETTINGS.waveShapeSource = waveformShapeSourceSelect.value === 'reapeaks' ? 'reapeaks' : 'self';
+    saveEditorSettings(EDITOR_SETTINGS);
+    if (waveformEditor) waveformEditor.render();
+  });
+}
 applyCueListDisplaySettings();
 applyCueEditorDisplaySettings();
 applySubtitleAppearance();
@@ -6912,6 +6924,7 @@ function initWaveformEditor() {
     splitCueAtTime: (idx, timeMs) => splitFromContextMenu(idx, 0, 0, timeMs),
     getClickBehavior: () => EDITOR_SETTINGS.clickBehavior,
     getClickTarget: () => EDITOR_SETTINGS.clickTarget,
+    getWaveShapeSource: () => EDITOR_SETTINGS.waveShapeSource,
     onBeginEdit: (label) => pushUndo(label),
     onLayoutUndo: (label, snapshot) => pushLayoutUndo(label, snapshot),
     onCommitEdit: (idxs, kind) => {
@@ -6934,6 +6947,8 @@ function initWaveformEditor() {
   waveformEditor.attachPlayer(player);
   waveformEditor.setLayoutData(DATA.workspace || null);
   applyEditorDisplaySettings(DATA.workspace?.editorDisplay);
+  waveformEditor.setSpectralPayload(DATA.spectral || null);
+  waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks || null);
   waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform || null);
 }
 

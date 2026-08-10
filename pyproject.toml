@@ -9,6 +9,7 @@ dependencies = [
     "jieba>=0.42",
     "pywebview>=6.2.1",
     "requests>=2.28",
+    "numpy>=2.2,<2.5",
 ]
 
 [project.optional-dependencies]

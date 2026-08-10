@@ -71,6 +71,52 @@
 - Qwen/Soniox 命令行生成器默认不内嵌波形；加 `--with-waveform` 时可在转写生成工程文件时把同一 payload 写入顶层 `waveform`。GUI 转写默认开启该模式。
 - 编辑器首次打开缺少有效 `waveform` 的工程时，仍可能在媒体旁写入 `<媒体名>.waveform.json` sidecar；它使用同一 `source` 签名，可被后续工程复用。sidecar 不属于字幕真源，删除后可重新提取。
 
+### 1.1a spectral 频谱缓存（可选）
+
+`spectral` 同样是媒体派生的性能缓存，只用于编辑器把波形按主频染色。它不是真源，第三方生成 JSON 时可以完全省略；服务器加载媒体时若在媒体旁找到 REAPER 生成的 `<媒体名>.ReaPeaks`，会解析出光谱层并内联下发。
+
+```json
+{
+  "schema": "moy.asr.spectral.v1",
+  "encoding": "u16-freq-density-base64",
+  "sample_rate": 48000,
+  "division": 2400,
+  "peak_count": 72000,
+  "data": "base64 编码的 [freq,density] uint16 对",
+  "source": {
+    "name": "audio.wav",
+    "size": 987654321,
+    "modified_ms": 1784000000000
+  }
+}
+```
+
+- `data` 每个频谱采样占 4 字节：主频 uint16（低 15 位有效，0–32767）、密度 uint16（低 14 位有效，0–16383），整体再做 base64。
+- `division` 是时间对齐用的每采样样本数：`sample_rate / division` 即每秒频谱采样数。`sample_rate`、`source` 与主波形一致。
+- **生成时机**：转写生成工程时（`--with-waveform`，GUI 转写默认开启）在媒体旁自动生成 `<媒体名>.ReaPeaks`（若不存在）；服务器只读取已有的 `.ReaPeaks`，不负责生成。自动生成依赖 `numpy`，缺少 ffmpeg/numpy 时静默跳过。
+- 解析器读取 REAPER 的 `RPKN`/`RPKL` 文件，取匹配 `peaks_per_second` 分辨率的 spectral 层（`-(int)'s'` 标记）；无 spectral 层、文件缺失或损坏时静默降级，不影响编辑器。
+- 未识别的 `schema` / `encoding` 会被忽略。浏览器端在 `decodeSpectralPayload` 校验这两字段与 `data` 长度（`peak_count * 4`）。
+
+### 1.1b waveform_reapeaks 波形层（可选）
+
+`waveform_reapeaks` 是 `.ReaPeaks` 最细 wave 层转成的 `moy.asr.waveform.v1` payload（字段与 §1.1 完全一致）。它作为**可选的波形形状来源**：编辑器默认用自研 `waveform`（1000 Hz 重采样），在「设置 → 音频波形区 → 波形形状来源」切到 ReaPeaks 后改用本字段绘制包络，从而避免高频内容的自研重采样欠采样。
+
+```json
+{
+  "schema": "moy.asr.waveform.v1",
+  "encoding": "i8-minmax-base64",
+  "peaks_per_second": 300,
+  "peak_count": 1500,
+  "duration_ms": 5000,
+  "data": "base64 的 [min,max] int8 对",
+  "source": { "name": "audio.wav", "size": 441044, "modified_ms": 1786328355571 }
+}
+```
+
+- 由服务器加载媒体时从 `find_reapeaks` 找到的 `.ReaPeaks` 解析最细 wave 层得到；`peaks_per_second = sample_rate / division`（约 300 峰/秒）。
+- 缺失 `.ReaPeaks` 或没有 wave 层时该字段不出现，编辑器回退自研波形。
+- 与 `spectral` 同源，均为 `.ReaPeaks` 派生的可丢弃缓存，非真源。
+
 ### 1.2 workspace 工作区
 
 `workspace` 使用独立 schema `moy.asr.editor.workspace.v1`。一个工作区 = **窗口布局**（“视频、当前字幕编辑区、字幕列表、波形”四个功能区的停靠方式与尺寸）+ **显示状态**（波形显示模式与偏好、字幕列表/编辑区的显示开关）。保存或恢复工作区时两部分一起生效。

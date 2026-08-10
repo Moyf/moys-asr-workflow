@@ -506,6 +506,12 @@ __WAVEFORM_CSS__
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
     <span class="editor-settings-title">音频波形区</span>
+    <label class="editor-settings-item" title="波形形状来源：自研缓存默认（1000Hz 重采样）；ReaPeaks 层用媒体旁 .ReaPeaks 的最细 wave 层绘制包络，避免高频欠采样">波形形状来源
+      <select id="waveform-shape-source">
+        <option value="self">自研波形</option>
+        <option value="reapeaks">ReaPeaks 波形层</option>
+      </select>
+    </label>
     <span class="editor-settings-item" id="waveform-window-setting">显示窗口
       <span class="editor-settings-stepper">
         <button type="button" id="waveform-zoom-out" title="缩小时间轴">−</button>

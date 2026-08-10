@@ -550,3 +550,57 @@ test('interpolates neighboring waveform peaks for maximum zoom rendering', () =>
     [-40, 20],
   );
 });
+
+
+function encodeSpectralPayload(samples) {
+  const bytes = Buffer.alloc(samples.length * 4);
+  samples.forEach(([freq, density], i) => {
+    bytes.writeUInt16LE(freq, i * 4);
+    bytes.writeUInt16LE(density, i * 4 + 2);
+  });
+  return {
+    schema: 'moy.asr.spectral.v1',
+    encoding: 'u16-freq-density-base64',
+    sample_rate: 8000,
+    division: 80,
+    peak_count: samples.length,
+    data: bytes.toString('base64'),
+  };
+}
+
+
+test('decodes spectral freq/density payload as u16 pairs', () => {
+  const decoded = helpers.decodeSpectralPayload(encodeSpectralPayload([[300, 16383], [5000, 100]]));
+  assert.ok(decoded);
+  assert.deepEqual(Array.from(decoded.freq), [300, 5000]);
+  assert.deepEqual(Array.from(decoded.density), [16383, 100]);
+  assert.equal(decoded.sample_rate, 8000);
+  assert.equal(decoded.division, 80);
+  assert.equal(decoded.densityMax, 16383);
+});
+
+
+test('rejects unknown or malformed spectral payloads', () => {
+  assert.equal(helpers.decodeSpectralPayload(null), null);
+  assert.equal(helpers.decodeSpectralPayload({}), null);
+  assert.equal(helpers.decodeSpectralPayload({ schema: 'moy.asr.spectral.v1' }), null);
+  const mangled = encodeSpectralPayload([[1, 2]]);
+  mangled.data = 'AAAA'; // 4 bytes, but peak_count=2 needs 4*2=8 bytes
+  mangled.peak_count = 2; // length mismatch
+  assert.equal(helpers.decodeSpectralPayload(mangled), null);
+  const wrongSchema = encodeSpectralPayload([[1, 2]]);
+  wrongSchema.schema = 'moy.asr.waveform.v1';
+  assert.equal(helpers.decodeSpectralPayload(wrongSchema), null);
+});
+
+
+test('maps spectral freq/density to a valid hsl color', () => {
+  const low = helpers.freqColor(50, 16383, 16383);
+  assert.match(low, /^hsl\([\d.]+, [\d.]+%, [\d.]+%\)$/);
+  const high = helpers.freqColor(5000, 100, 16383);
+  assert.match(high, /^hsl\(/);
+  // 噪声（density=0）饱和度最低
+  const noisy = helpers.freqColor(1000, 0, 16383);
+  const tonal = helpers.freqColor(1000, 16383, 16383);
+  assert.ok(parseFloat(tonal.match(/hsl\([^,]+, ([\d.]+)%/)[1]) > parseFloat(noisy.match(/hsl\([^,]+, ([\d.]+)%/)[1]));
+});

@@ -40,6 +40,8 @@ from waveform import (
     load_or_extract_waveform,
 )
 
+import reapeaks
+
 VIDEO_EXTS = set(VIDEO_EXTENSIONS)
 AUDIO_EXTS = set(AUDIO_EXTENSIONS)
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
@@ -306,6 +308,20 @@ def main():
         except (WaveformError, ValueError) as exc:
             data.pop("waveform", None)
             print(f"[waveform] 警告: {exc}；编辑器仍可正常使用")
+
+        # ReaPeaks 频谱染色与波形层（可选缓存，读取媒体旁 .ReaPeaks；缺失静默降级）
+        spectral = reapeaks.load_spectral_payload(
+            media_path, peaks_per_second=args.waveform_peaks_per_second
+        )
+        if spectral is not None:
+            data["spectral"] = spectral
+        else:
+            data.pop("spectral", None)
+        reapeaks_wave = reapeaks.load_waveform_payload(media_path)
+        if reapeaks_wave is not None:
+            data["waveform_reapeaks"] = reapeaks_wave
+        else:
+            data.pop("waveform_reapeaks", None)
 
     output_path = Path(args.output).resolve() if args.output else \
         json_path.with_name(f"{json_path.stem}.edit.html")
