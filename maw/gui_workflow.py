@@ -118,6 +118,25 @@ def raw_response_path(srt_path: Path) -> Path:
     return Path(srt_path).expanduser().resolve().with_suffix(".asr-response.json")
 
 
+def unique_output_path(srt_path: Path) -> Path:
+    """为已有输出及其工程副本选择一个不会覆盖文件的新路径。"""
+    original = Path(srt_path).expanduser()
+
+    def occupied(candidate: Path) -> bool:
+        paths = build_output_paths(candidate)
+        return any(path.exists() for path in (paths.srt, paths.json, paths.html))
+
+    if not occupied(original):
+        return original
+
+    index = 1
+    while True:
+        candidate = original.with_name(f"{original.stem}-{index}{original.suffix}")
+        if not occupied(candidate):
+            return candidate
+        index += 1
+
+
 PROVIDER_SRT_TAGS: Final = {"qwen": ".qwen3-asr-api", "soniox": ".soniox"}
 
 

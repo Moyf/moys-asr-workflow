@@ -21,6 +21,8 @@ from maw.gui_workflow import (  # noqa: E402
     build_serve_command,
     build_output_paths,
     build_transcribe_command,
+    raw_response_path,
+    unique_output_path,
     _child_environment,
     _decode_process_output,
     render_editor_html,
@@ -47,6 +49,14 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(paths.json, self.root / "out.mosp")
         self.assertEqual(paths.html, self.root / "out.edit.html")
 
+    def test_unique_output_path_adds_suffix_for_existing_sidecar(self) -> None:
+        self.srt_path.with_suffix(".mosp").write_text("{}", encoding="utf-8")
+
+        self.assertEqual(unique_output_path(self.srt_path), self.root / "out-1.srt")
+
+        self.srt_path.with_name("out-1.mosp").write_text("{}", encoding="utf-8")
+        self.assertEqual(unique_output_path(self.srt_path), self.root / "out-2.srt")
+
     def test_build_transcribe_command_source_mode_uses_script_and_forces_json_no_html(self) -> None:
         request = TranscriptionRequest(
             media_path=self.media_path,
@@ -68,6 +78,18 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(command[command.index("--language") + 1], "zh")
         self.assertEqual(command.count("--with-waveform"), 1)
         self.assertNotIn("secret-key", " ".join(command))
+
+    def test_build_transcribe_command_debug_raw_saves_full_response(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            debug_raw=True,
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertIn("--debug-raw", command)
+        self.assertEqual(raw_response_path(self.srt_path), self.srt_path.with_suffix(".asr-response.json"))
 
     def test_build_transcribe_command_qwen_audio_passes_one_shot_context_hotwords_and_vocabulary(self) -> None:
         request = TranscriptionRequest(
