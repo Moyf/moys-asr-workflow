@@ -4,12 +4,16 @@
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-08-10
+
 ### Added
 
 - Launcher 增加「调试运行（保存完整返回数据）」选项，额外保存 `<输出文件名>.asr-response.json`，便于排查 ASR 服务端的断句、标点和时间码。
 
 ### Changed
 
+- 媒体格式错误提示改为描述与后缀列表分两行显示，避免支持格式过多时被截断。
+- Launcher 将「调试运行（保存完整返回数据）」移到「高级选项」底部，并将「测试运行」更名为「快速测试」。
 - 暂时移除 Windows `MOSE.exe` 与 macOS `MOSE.app` 的 Release 打包，缩小分发包；Launcher 隐藏「在 MOSE 中打开」入口，默认使用 Server 版或 HTML 编辑器。
 
 ### Fixed
