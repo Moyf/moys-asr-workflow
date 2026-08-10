@@ -215,6 +215,44 @@ test('waveform navigation keeps a cue row in the comfort zone', async ({ page })
   await expect.poll(() => page.evaluate(() => window.__waveformScrollBehaviors)).toContain('smooth');
 });
 
+test('rapid subtitle navigation reuses cached waveform rows', async ({ page }) => {
+  await page.goto(server.url);
+  await expect(page.locator('.cue[data-idx="0"]')).toBeVisible();
+  await page.locator('.cue[data-idx="0"]').click();
+
+  await page.evaluate(() => {
+    // Put all fixture cues inside the cached row band so this test isolates
+    // keyboard navigation from the cross-row incremental-render path.
+    waveformEditor.settings.secondsPerRow = 60;
+    waveformEditor.multiRange = [-1, -1];
+    waveformEditor.render();
+
+    const original = waveformEditor.renderMultiVisible.bind(waveformEditor);
+    window.__keyboardWaveformRenderStats = { calls: 0, forced: 0 };
+    waveformEditor.renderMultiVisible = function wrappedRenderMultiVisible(force = false) {
+      window.__keyboardWaveformRenderStats.calls += 1;
+      if (force) window.__keyboardWaveformRenderStats.forced += 1;
+      return original(force);
+    };
+  });
+
+  await page.evaluate(() => {
+    for (let index = 0; index < 20; index += 1) {
+      document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'd',
+        bubbles: true,
+        repeat: index > 0,
+      }));
+    }
+  });
+  await page.waitForTimeout(100);
+
+  await expect(page.locator('.cue[data-idx="5"]')).toHaveClass(/selected/);
+  const renderStats = await page.evaluate(() => window.__keyboardWaveformRenderStats);
+  expect(renderStats.forced).toBe(0);
+  expect(renderStats.calls).toBeLessThan(20);
+});
+
 test('B does not split when the playhead is in a gap or while editing text', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('.cue[data-idx="0"]').click();

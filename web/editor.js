@@ -1447,13 +1447,24 @@ function selectRange(a, b) {
   setCurrentCuePanelIndex(selectedIdxs.has(b) ? b : (selectedIdxs.values().next().value ?? -1));
 }
 function selectOnly(idx) {
-  clearSelection();
+  // 这是键盘导航的热路径：clearSelection() 会先把面板切到空状态，
+  // 再由下面的 setCurrentCuePanelIndex() 切回目标，导致一次按键触发
+  // 两次面板刷新和两次波形选区刷新。先提交一次待编辑内容，再批量
+  // 更新选区与面板，保持行为不变但只做一次视觉刷新。
+  commitCuePanelEdit();
+  selectedIdxs.forEach((i) => {
+    const previous = container.querySelector(`.cue[data-idx="${i}"]`);
+    if (previous) previous.classList.remove('selected');
+  });
+  selectedIdxs.clear();
   selectedIdxs.add(idx);
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
   if (el) el.classList.add('selected');
   selCountEl.textContent = '1';
   if (waveformEditor) waveformEditor.updateSelection();
-  setCurrentCuePanelIndex(idx);
+  currentCuePanelIdx = DATA.segments[idx] ? idx : -1;
+  cuePanelUndoPushed = false;
+  renderCurrentCuePanel();
 }
 function addToSelection(idx) {
   if (isHiddenDisabled(idx) || selectedIdxs.has(idx)) return;

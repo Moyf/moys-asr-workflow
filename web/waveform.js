@@ -104,6 +104,9 @@
   const ROW_PRESETS = [5, 10, 20, 30];
   const ROW_HEIGHT_PRESETS = [64, 80, 96, 120, 144, 168];
   const ROW_GAP = 10;
+  // 多行波形保留视口前后几行，字幕快捷键跨行时可以直接复用已绘制的行。
+  // 行本身仍按可视区增量创建，不会把整段长媒体一次性放进 DOM。
+  const MULTI_ROW_BUFFER = 4;
   const MIN_CUE_MS = 100;
   const MIN_WAVEFORM_SCALE = 0.25;
   const MAX_WAVEFORM_SCALE = 6;
@@ -748,6 +751,9 @@
       this.suppressGapClickUntil = 0;
       this.autoScrolling = false;
       this.resizeFrame = 0;
+      // 字幕快捷键会在很短时间内连续请求定位；复用滚动事件已有的
+      // rAF 合并，避免每个按键都强制重建可视行和 Canvas。
+      this.multiVisibleFrame = 0;
       // Shift+滚轮调振幅的 rAF 节流：一帧内的滚动累加方向后只触发一次
       this.pendingScaleDirection = 0;
       this.scaleRafScheduled = false;
@@ -1513,10 +1519,13 @@
         this.scroll.scrollTo({ top: nextScrollTop, behavior: 'smooth' });
       }
       this.manualFollowUntil = Date.now() + 3000;
-      requestAnimationFrame(() => {
-        this.autoScrolling = false;
-        this.renderMultiVisible(true);
-      });
+      // 目标仍在当前可视行内时，字幕跳转只需要移动播放头；不要因为
+      // revealTime() 被调用就重建整组波形 DOM/Canvas。跨行时由滚动事件
+      // 或这里的合并任务增量补齐可视行。
+      if (rowIndex < this.multiRange[0] || rowIndex > this.multiRange[1] || this.autoScrolling) {
+        this.scheduleMultiVisible();
+      }
+      if (this.autoScrolling) requestAnimationFrame(() => { this.autoScrolling = false; });
     }
 
     changeZoom(direction) {
@@ -1837,8 +1846,8 @@
       const rowDurationMs = this.settings.secondsPerRow * 1000;
       const rowCount = Math.max(1, Math.ceil(this.durationMs / rowDurationMs));
       const stride = this.settings.rowHeight + ROW_GAP;
-      const first = clamp(Math.floor(this.scroll.scrollTop / stride) - 2, 0, rowCount - 1);
-      const last = clamp(Math.ceil((this.scroll.scrollTop + this.scroll.clientHeight) / stride) + 2, 0, rowCount - 1);
+      const first = clamp(Math.floor(this.scroll.scrollTop / stride) - MULTI_ROW_BUFFER, 0, rowCount - 1);
+      const last = clamp(Math.ceil((this.scroll.scrollTop + this.scroll.clientHeight) / stride) + MULTI_ROW_BUFFER, 0, rowCount - 1);
       if (!force && first === this.multiRange[0] && last === this.multiRange[1]) {
         this.updatePlayback(false);
         return;
