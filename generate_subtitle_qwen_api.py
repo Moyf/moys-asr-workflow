@@ -41,10 +41,14 @@ from waveform import embed_waveform
 HOTWORDS_FILE = Path(__file__).parent / "hotwords.txt"
 ENV_FILE = Path(__file__).parent / ".env"
 
+QWEN3_ASR_FILETRANS_MODEL = "qwen3-asr-flash-filetrans"
 QWEN_AUDIO_FILETRANS_MODEL = "qwen-audio-3.0-asr-flash-filetrans"
 FILETRANS_MODEL = QWEN_AUDIO_FILETRANS_MODEL
 FUNASR_MODEL = "fun-asr"
 POLL_HEARTBEAT_SECONDS = 15
+
+TASK_SUCCESS_STATUSES = frozenset({"SUCCEEDED", "SUCCESS", "COMPLETED", "COMPLETE"})
+TASK_FAILURE_STATUSES = frozenset({"FAILED", "FAILURE", "ERROR"})
 
 
 def configure_console_output() -> None:
@@ -140,6 +144,8 @@ def _normalize_language(lang: str | None) -> str | None:
     if not lang:
         return None
     key = lang.strip().lower()
+    if key in {"auto", "automatic", "detect", "自动", "自动识别"}:
+        return None
     return LANGUAGE_MAP.get(key, key)
 
 
@@ -168,6 +174,10 @@ def is_funasr_model(model: str) -> bool:
 
 def is_qwen_audio_model(model: str) -> bool:
     return model == QWEN_AUDIO_FILETRANS_MODEL
+
+
+def is_qwen3_model(model: str) -> bool:
+    return model == QWEN3_ASR_FILETRANS_MODEL
 
 
 def supports_speaker_diarization(model: str) -> bool:
@@ -976,7 +986,7 @@ def submit_filetrans(base_url: str, api_key: str, file_url: str,
         if vocabulary_id:
             params["vocabulary_id"] = vocabulary_id
         input_payload = {"file_urls": [file_url]}
-    else:
+    elif is_qwen3_model(model):
         params = {
             "channel_id": [0],
             "enable_words": enable_words,
@@ -985,6 +995,8 @@ def submit_filetrans(base_url: str, api_key: str, file_url: str,
         if language:
             params["language"] = language
         input_payload = {"file_url": file_url}
+    else:
+        raise ValueError(f"不支持的 DashScope filetrans 模型: {model}")
 
     resp = requests.post(
         f"{base_url}/api/v1/services/audio/asr/transcription",
@@ -1017,17 +1029,28 @@ def poll_task(base_url: str, api_key: str, task_id: str,
               on_status=print) -> tuple[str, dict]:
     """轮询任务状态，返回 transcription_url。"""
     url = f"{base_url}/api/v1/tasks/{task_id}"
-    deadline = time.time() + timeout
+    deadline = time.monotonic() + max(timeout, 0)
     started_at = time.monotonic()
     last_report_at = started_at
     last_status = ""
 
-    while time.time() < deadline:
-        resp = requests.get(url, headers={"Authorization": f"Bearer {api_key}"}, timeout=30)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(f"ASR 任务超时（{timeout}秒），task_id={task_id}")
+
+        resp = requests.get(
+            url,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=min(30, max(1, remaining)),
+        )
         _raise_for_dashscope_status(resp, "查询 ASR 任务")
         body = resp.json()
         output = body.get("output", {})
-        status = output.get("task_status", "UNKNOWN")
+        status = str(output.get("task_status", "UNKNOWN")).strip().upper()
         now = time.monotonic()
 
         if status != last_status:
@@ -1042,13 +1065,14 @@ def poll_task(base_url: str, api_key: str, task_id: str,
             )
             last_report_at = now
 
-        if status == "SUCCEEDED":
+        if status in TASK_SUCCESS_STATUSES:
             if uses_file_urls(model):
                 results = output.get("results") or []
                 result = next(
                     (
                         item for item in results
-                        if item.get("subtask_status") == "SUCCEEDED"
+                        if str(item.get("subtask_status", "SUCCEEDED")).strip().upper()
+                        in TASK_SUCCESS_STATUSES
                         and item.get("transcription_url")
                     ),
                     None,
@@ -1066,16 +1090,14 @@ def poll_task(base_url: str, api_key: str, task_id: str,
                 raise RuntimeError(f"任务成功但无 transcription_url: {body}")
             usage = body.get("usage", {})
             return turl, usage
-        if status == "FAILED":
+        if status in TASK_FAILURE_STATUSES:
             code = output.get("code", "UNKNOWN")
             msg = output.get("message", "未知错误")
             raise RuntimeError(f"ASR 任务失败 [{code}]: {msg}")
         if status == "UNKNOWN":
             raise RuntimeError(f"任务不存在或已过期: {body}")
 
-        time.sleep(interval)
-
-    raise TimeoutError(f"ASR 任务超时（{timeout}秒），task_id={task_id}")
+        time.sleep(min(max(interval, 0), max(remaining, 0)))
 
 
 def download_transcription(transcription_url: str) -> dict:

@@ -7,7 +7,9 @@ from unittest import mock
 
 from generate_subtitle_qwen_api import (
     FILETRANS_MODEL,
+    QWEN3_ASR_FILETRANS_MODEL,
     QWEN_AUDIO_FILETRANS_MODEL,
+    build_segments_from_api_sentences,
     build_qwen_audio_context,
     is_qwen_audio_model,
     load_hotwords,
@@ -34,6 +36,70 @@ class QwenAudioAdapterTests(unittest.TestCase):
         self.assertTrue(is_qwen_audio_model(QWEN_AUDIO_FILETRANS_MODEL))
         self.assertTrue(supports_speaker_diarization(QWEN_AUDIO_FILETRANS_MODEL))
         self.assertFalse(is_qwen_audio_model("qwen3-asr-flash-filetrans"))
+
+    @mock.patch("generate_subtitle_qwen_api.requests.post")
+    def test_submit_uses_qwen3_file_url_contract(self, post: mock.Mock) -> None:
+        response = mock.Mock()
+        response.json.return_value = {
+            "output": {"task_id": "task-qwen3", "task_status": "PENDING"}
+        }
+        post.return_value = response
+
+        task_id = submit_filetrans(
+            "https://dashscope.aliyuncs.com",
+            "secret",
+            "oss://temporary/audio.wav",
+            language=None,
+            enable_words=True,
+            enable_itn=False,
+            model=QWEN3_ASR_FILETRANS_MODEL,
+        )
+
+        self.assertEqual(task_id, "task-qwen3")
+        payload = post.call_args.kwargs["json"]
+        self.assertEqual(payload["model"], QWEN3_ASR_FILETRANS_MODEL)
+        self.assertEqual(payload["input"], {"file_url": "oss://temporary/audio.wav"})
+        self.assertEqual(
+            payload["parameters"],
+            {"channel_id": [0], "enable_words": True, "enable_itn": False},
+        )
+
+    @mock.patch("generate_subtitle_qwen_api.time.sleep")
+    @mock.patch("generate_subtitle_qwen_api.requests.get")
+    def test_poll_completes_qwen3_after_pending_and_running(
+        self,
+        get: mock.Mock,
+        sleep: mock.Mock,
+    ) -> None:
+        responses = []
+        for status in ("PENDING", "RUNNING"):
+            response = mock.Mock()
+            response.json.return_value = {"output": {"task_status": status}}
+            responses.append(response)
+        response = mock.Mock()
+        response.json.return_value = {
+            "output": {
+                "task_status": "SUCCEEDED",
+                "result": {"transcription_url": "https://result.example/qwen3.json"},
+            },
+            "usage": {"seconds": 179},
+        }
+        responses.append(response)
+        get.side_effect = responses
+
+        result_url, usage = poll_task(
+            "https://dashscope.aliyuncs.com",
+            "secret",
+            "task-qwen3",
+            interval=0,
+            timeout=10,
+            model=QWEN3_ASR_FILETRANS_MODEL,
+        )
+
+        self.assertEqual(result_url, "https://result.example/qwen3.json")
+        self.assertEqual(usage, {"seconds": 179})
+        self.assertEqual(get.call_count, 3)
+        self.assertEqual(sleep.call_count, 2)
 
     def test_hotwords_support_individual_weights_and_filter_invalid_entries(self) -> None:
         entries, issues = parse_qwen_audio_hotwords([
@@ -157,7 +223,10 @@ class QwenAudioAdapterTests(unittest.TestCase):
         self.assertEqual(result_url, "https://result.example/qwen-audio.json")
         self.assertEqual(usage, {"duration": 12})
 
-    @mock.patch("generate_subtitle_qwen_api.time.monotonic", side_effect=[0, 0, 16, 16])
+    @mock.patch(
+        "generate_subtitle_qwen_api.time.monotonic",
+        side_effect=[0, 0, 0, 0, 16, 16, 16, 16],
+    )
     @mock.patch("generate_subtitle_qwen_api.requests.get")
     def test_poll_reports_heartbeat_when_status_does_not_change(self, get: mock.Mock, _monotonic: mock.Mock) -> None:
         responses = []
@@ -185,7 +254,7 @@ class QwenAudioAdapterTests(unittest.TestCase):
             "secret",
             "task-heartbeat",
             interval=0,
-            timeout=1,
+            timeout=100,
             model=QWEN_AUDIO_FILETRANS_MODEL,
             on_status=statuses.append,
         )
