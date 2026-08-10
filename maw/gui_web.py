@@ -16,14 +16,14 @@ import webbrowser
 from urllib.error import URLError
 from urllib.request import urlopen
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import Event
 from typing import BinaryIO, Final, final
 
 from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, LANGUAGES, MODELS, PROVIDERS, REGIONS, ModelConfig, ProviderConfig, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, startupinfo
-from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, build_serve_command, default_srt_path, run_transcription, with_test_suffix
+from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.media import resolve_project_media
 
 
@@ -45,6 +45,8 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "api_key_missing": "API key is required.",
     "workspace_missing": "Workspace ID is required for Singapore region.",
     "output_missing": "SRT output path is required.",
+    "ffmpeg_start_failed": "FFmpeg failed to start.",
+    "transcription_failed": "Transcription failed.",
     "context_too_long": "Qwen-Audio context is limited to 400 characters.",
     "hotwords_file_missing": "Choose an existing UTF-8 .txt hotword file.",
     "server_no_response": "Editor server did not respond.",
@@ -74,6 +76,14 @@ def _is_ffprobe_start_failure(lines: Sequence[str]) -> bool:
     """Recognise the Windows loader failure emitted by a nested ffprobe process."""
     detail = "\n".join(lines).lower()
     return "ffprobe" in detail and any(
+        marker in detail for marker in ("3221225794", "0xc0000142", "c0000142")
+    )
+
+
+def _is_ffmpeg_start_failure(lines: Sequence[str]) -> bool:
+    """Recognise the same Windows loader failure when FFmpeg is the child tool."""
+    detail = "\n".join(lines).lower()
+    return "ffmpeg" in detail and any(
         marker in detail for marker in ("3221225794", "0xc0000142", "c0000142")
     )
 
@@ -356,10 +366,15 @@ class LauncherApi:
         provider_id = str(payload.get("providerId") or "qwen")
         model_id = str(payload.get("modelId") or DEFAULT_MODEL_ID)
         test_run = bool(payload.get("testRun"))
+        requested = (
+            default_srt_path(Path(media_text), provider=provider_id, model=model_id, test_run=test_run)
+            if media_text else Path()
+        )
+        selected = unique_output_path(requested) if media_text else requested
         return {
             "ok": bool(media_text),
-            "path": str(default_srt_path(Path(media_text), provider=provider_id, model=model_id, test_run=test_run))
-            if media_text else "",
+            "path": str(selected) if media_text else "",
+            "renamed": bool(media_text and selected != requested),
         }
 
     def save_settings(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -608,12 +623,21 @@ class LauncherApi:
             request = _request_from_payload(payload, self.paths.env_path)
         except PreflightError as error:
             return error.as_result()
+        selected_output = unique_output_path(request.srt_path)
+        output_renamed = selected_output != request.srt_path
+        if output_renamed:
+            request = replace(request, srt_path=selected_output)
         self.result = None
         self.cancel_event = Event()
         self.pump.start()
         self.worker = threading.Thread(target=self._worker_main, args=(request, self.cancel_event), daemon=True)
         self.worker.start()
-        return {"ok": True}
+        return {
+            "ok": True,
+            "outputPath": str(request.srt_path),
+            "outputRenamed": output_renamed,
+            "rawPath": str(raw_response_path(request.srt_path)) if request.debug_raw else "",
+        }
 
     def cancel_transcription(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         if self.cancel_event:
@@ -689,16 +713,28 @@ class LauncherApi:
                     "code": "ffprobe_start_failed",
                     "detail": str(error),
                 })
+            elif _is_ffmpeg_start_failure(child_output):
+                self._emit({
+                    "type": "error",
+                    "code": "ffmpeg_start_failed",
+                    "detail": str(error),
+                })
             else:
-                self._emit({"type": "error", "message": str(error)})
+                self._emit({"type": "error", "code": "transcription_failed", "detail": str(error)})
+            if self.worker is threading.current_thread():
+                self.worker = None
             self.pump.flush()
             return
         except Exception as error:  # noqa: BROAD_EXCEPT_OK - pywebview worker boundary reports to JS.
-            self._emit({"type": "error", "message": str(error)})
+            self._emit({"type": "error", "code": "transcription_failed", "detail": str(error)})
+            if self.worker is threading.current_thread():
+                self.worker = None
             self.pump.flush()
             return
         self.result = result
-        self._emit({"type": "done", "result": {"srtPath": str(result.srt_path), "jsonPath": str(result.json_path), "htmlPath": str(result.html_path or "")}})
+        self._emit({"type": "done", "result": {"srtPath": str(result.srt_path), "jsonPath": str(result.json_path), "htmlPath": str(result.html_path or ""), "rawPath": str(result.raw_path or "")}})
+        if self.worker is threading.current_thread():
+            self.worker = None
         self.pump.flush()
 
     def _emit(self, event: Mapping[str, object]) -> None:
@@ -829,6 +865,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         speaker_colors=bool(payload.get("speakerColors")) and model.supports_speaker,
         ui_language=_gui_lang(payload),
         generate_html=bool(payload.get("generateHtml")),
+        debug_raw=bool(payload.get("debugRaw")),
     )
 
 

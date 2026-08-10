@@ -16,7 +16,11 @@ from urllib.request import Request, urlopen
 
 from maw.gui_config import DEFAULT_MODEL_ID
 from maw.gui_platform import asset_path
-from maw.gui_workflow import _child_environment, default_srt_path
+from maw.gui_workflow import (
+    _child_environment,
+    default_srt_path,
+    render_editor_html,
+)
 
 
 DEFAULT_SERVER_PORT = 8250
@@ -227,15 +231,27 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
         return 1
     if final_mosp != expected_mosp:
         expected_mosp.replace(final_mosp)
+    if args.html:
+        html_path = srt_path.with_suffix(".edit.html")
+        try:
+            rendered_html = render_editor_html(final_mosp, input_path, html_path)
+        except Exception as error:  # HTML was explicitly requested; report a failing artifact.
+            print(f"便携 HTML 生成失败：{error}", file=sys.stderr)
+            return 1
+        if rendered_html is None or not html_path.is_file():
+            print("便携 HTML 生成失败：没有生成预期的 .edit.html 文件", file=sys.stderr)
+            return 1
     print(f"SRT: {srt_path}")
     print(f"MOSP: {final_mosp}")
+    if args.html:
+        print(f"HTML: {html_path}")
     return 0
 
 
 def _generator_args(args: argparse.Namespace, input_path: Path, srt_path: Path) -> list[str]:
-    result = [str(input_path), "--output", str(srt_path), "--json"]
-    if not args.html:
-        result.append("--no-html")
+    # Render the optional HTML in this process so frozen MAW can use the
+    # bundled editor module and web assets without requiring edit.py on disk.
+    result = [str(input_path), "--output", str(srt_path), "--json", "--no-html"]
     if args.max_len is not None:
         result.extend(["--max-len", str(args.max_len)])
     if args.min_len is not None:

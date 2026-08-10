@@ -16,7 +16,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, _find_mose_executable, _is_ffprobe_start_failure, _port, _register_mosp_association, _request_from_payload, _route_dropped_path  # noqa: E402
+from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _port, _register_mosp_association, _request_from_payload, _route_dropped_path  # noqa: E402
 from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 
 
@@ -738,6 +738,32 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["field"], "srtPath")
         self.assertEqual(result["code"], "output_missing")
 
+    def test_default_output_avoids_existing_srt_and_reports_rename(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+        output = self.root / "clip.qwen-audio.srt"
+        output.write_text("existing", encoding="utf-8")
+
+        result = self.api.default_output({"mediaPath": str(media), "providerId": "qwen", "modelId": "qwen-audio-3.0-asr-flash-filetrans"})
+
+        self.assertTrue(result["renamed"])
+        self.assertEqual(result["path"], str(self.root / "clip.qwen-audio-1.srt"))
+
+    def test_start_transcription_rechecks_output_collision_before_worker(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        output = self.root / "out.srt"
+        output.write_text("existing", encoding="utf-8")
+        result = TranscriptionResult(srt_path=self.root / "out-1.srt", json_path=self.root / "out-1.mosp", html_path=None)
+
+        with mock.patch("maw.gui_web.run_transcription", return_value=result):
+            started = self.api.start_transcription({"mediaPath": str(media), "srtPath": str(output), "apiKey": "sk-test"})
+            self.assertTrue(started["ok"])
+            self.assertTrue(started["outputRenamed"])
+            self.assertEqual(started["outputPath"], str(self.root / "out-1.srt"))
+            if self.api.worker:
+                self.api.worker.join(timeout=1)
+
     def test_request_from_payload_test_run_overrides_manual_length_limit(self) -> None:
         media = self.root / "clip.mp3"
         media.write_bytes(b"media")
@@ -749,12 +775,14 @@ class GuiWebBridgeTests(unittest.TestCase):
             "region": "beijing",
             "lengthLimit": "30m",
             "testRun": True,
+            "debugRaw": True,
             "guiLang": "en",
         }, self.env_path)
 
         self.assertEqual(request.length_limit, "2m")
         self.assertEqual(request.srt_path.name, "out-test.srt")
         self.assertEqual(request.ui_language, "en")
+        self.assertTrue(request.debug_raw)
 
     def test_request_from_payload_without_test_run_uses_manual_length_limit(self) -> None:
         media = self.root / "clip.mp3"
@@ -910,6 +938,16 @@ class GuiWebBridgeTests(unittest.TestCase):
             "returned non-zero exit status 1.",
         ]))
 
+    def test_ffmpeg_start_failure_is_recognised_from_child_output(self) -> None:
+        self.assertTrue(_is_ffmpeg_start_failure([
+            "Traceback: Command ['ffmpeg', '-i', 'clip.mp4']",
+            "returned non-zero exit status 3221225794.",
+        ]))
+        self.assertFalse(_is_ffmpeg_start_failure([
+            "Command ['ffmpeg', ...]",
+            "returned non-zero exit status 1.",
+        ]))
+
     def test_launcher_api_queues_started_event_and_shutdown_flushes(self) -> None:
         self.api._emit({"type": "log", "message": "queued"})
 
@@ -938,6 +976,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('"type": "done"', event_script)
         self.assertIn(str(result.json_path).replace("\\", "\\\\"), event_script)
         self.assertIn('"htmlPath": ""', event_script)
+        self.assertIn('"rawPath": ""', event_script)
 
     def test_worker_emits_retryable_error_for_ffprobe_start_failure(self) -> None:
         request = TranscriptionRequest(
@@ -958,6 +997,27 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(self.window.scripts)
         event_script = self.window.scripts[-1]
         self.assertIn('"code": "ffprobe_start_failed"', event_script)
+        self.assertIn('"detail": "Transcription failed with exit code 1"', event_script)
+
+    def test_worker_emits_retryable_error_for_ffmpeg_start_failure(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.root / "clip.mp4",
+            srt_path=self.root / "clip.srt",
+        )
+
+        def fail_with_ffmpeg_output(*_args: object, **kwargs: object) -> None:
+            callback = kwargs["on_event"]
+            assert callable(callback)
+            callback("Traceback: Command ['ffmpeg', '-i', 'clip.mp4']")
+            callback("returned non-zero exit status 3221225794.")
+            raise TranscriptionProcessError(1)
+
+        with mock.patch("maw.gui_web.run_transcription", side_effect=fail_with_ffmpeg_output):
+            self.api._worker_main(request, threading.Event())
+
+        self.assertTrue(self.window.scripts)
+        event_script = self.window.scripts[-1]
+        self.assertIn('"code": "ffmpeg_start_failed"', event_script)
         self.assertIn('"detail": "Transcription failed with exit code 1"', event_script)
 
     def test_route_dropped_path_routes_json_media_and_hotword_file(self) -> None:
@@ -982,6 +1042,18 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('<div class="hero-brand">', page)
         self.assertIn('<img class="hero-icon" src="../../assets/show.webp"', page)
         self.assertIn(".hero-icon {\n  width: 72px;\n  height: 72px;", stylesheet)
+
+    def test_launcher_reports_media_drop_rejection_and_output_collision(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="srtPathNotice" class="hint warn hidden"', page)
+        self.assertIn("drop_reject_media", script)
+        self.assertIn('drop_reject_media: "仅支持以下媒体文件类型：\\n{extensions}"', script)
+        self.assertIn('function appendMessageText(container, text)', script)
+        self.assertIn('setError("mediaPath", mediaDropError())', script)
+        self.assertIn('output_collision: "检测到同名输出文件', script)
+        self.assertIn("result.outputRenamed", script)
 
     def test_sticker_picker_saves_immediately_without_a_separate_button(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -1010,9 +1082,18 @@ class LauncherAssetContractTests(unittest.TestCase):
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
 
         self.assertIn('id="generateHtml" type="checkbox"', page)
+        self.assertIn('id="debugRaw" type="checkbox"', page)
+        self.assertIn('data-i18n-title="debug_raw_title"', page)
+        self.assertIn('data-i18n="test_run">快速测试', page)
+        self.assertIn('data-i18n="test_run_override">快速测试已限定前 2 分钟', page)
+        self.assertGreater(page.index('id="debugRaw"'), page.index('id="speakerColorsField"'))
+        self.assertGreater(page.index('id="debugRawField"'), page.index('id="advancedCard"'))
         self.assertIn('data-i18n-title="generate_html_title"', page)
         self.assertIn('id="openHtml" class="hidden"', page)
         self.assertIn('generateHtml: $("generateHtml").checked', script)
+        self.assertIn('debugRaw: $("debugRaw").checked', script)
+        self.assertIn('test_run: "快速测试"', script)
+        self.assertIn('test_run: "Quick test"', script)
         self.assertIn('function syncHtmlMenu()', script)
         self.assertIn('$("openHtml").classList.toggle("hidden", !enabled)', script)
         self.assertIn('$("openHtml").disabled = enabled && !state.result?.htmlPath', script)

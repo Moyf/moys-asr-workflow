@@ -45,6 +45,33 @@ class CliTests(unittest.TestCase):
             self.assertIn("--no-html", generator_args)
             self.assertEqual(generator_args[generator_args.index("--output") + 1], str(srt.resolve()))
 
+    def test_html_option_renders_portable_editor_after_generator(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            media = root / "clip.mp3"
+            srt = root / "result.srt"
+            media.write_bytes(b"media")
+
+            def fake_generator(_provider: str, argv: list[str]) -> int:
+                generated_srt = Path(argv[argv.index("--output") + 1])
+                generated_srt.write_text("1\n00:00:00,000 --> 00:00:00,100\nHi\n", encoding="utf-8")
+                generated_srt.with_suffix(".mosp").write_text("{}\n", encoding="utf-8")
+                return 0
+
+            def fake_render(_json_path: Path, _media_path: Path, html_path: Path, _ui_language: str = "zh") -> Path:
+                html_path.write_text("<!doctype html>", encoding="utf-8")
+                return html_path
+
+            with mock.patch("maw.cli._invoke_generator", side_effect=fake_generator) as invoke:
+                with mock.patch("maw.cli.render_editor_html", side_effect=fake_render) as render:
+                    result = cli.main(["-i", str(media), "-o", str(srt), "--html"])
+
+            self.assertEqual(result, 0)
+            html_path = srt.with_suffix(".edit.html")
+            self.assertTrue(html_path.is_file())
+            render.assert_called_once_with(srt.with_suffix(".mosp"), media, html_path)
+            self.assertIn("--no-html", invoke.call_args.args[1])
+
     def test_provider_options_are_forwarded_without_exposing_secrets(self) -> None:
         args = cli.build_parser("MAW.exe").parse_args(
             [
