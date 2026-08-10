@@ -6,18 +6,21 @@
 
 ### Added
 
+- **新增新手快速上手教程** ：首次打开编辑器时提供基础的操作指引
+- **Headless模式/命令行支持** ：`MAW.exe` 新增公开命令行入口：`-h/--help`、`-i/--input`、`-o/--output` 等，详见 CLI.md 文档
 - 增加字幕列表的双击定位功能，当前编辑指针会出现在鼠标所在的字符位置
-- 图形包 `MAW.exe` 新增公开命令行入口：`-h/--help`、`-i/--input`、`-o/--output`、可选 `.mosp` 输出路径、供应商与常用转写参数，以及 `--server` / `--stop-server` 的本机 Server 管理。
-- MAW Server 新增仅限 `127.0.0.1` 的停止接口，CLI 会优先请求该接口；Windows 下仍兼容停止旧版 MAW Server。
 
 ### Fixed
 
-- 修复播放头更新频次过低导致的播放头跳动问题以及字幕预览滞后问题。
+- **大幅优化字幕跳转和拆分/合并操作的响应速度**
+- 修复更新频次过低导致的播放头跳动问题
+- 修复字幕预览滞后问题
 
 ### Changed
 
-- 暂时移除 Windows `MOSE.exe` 与 macOS `MOSE.app` 的 Release 打包，缩小分发包；Launcher 隐藏「在 MOSE 中打开」入口，默认使用 Server 版或 HTML 编辑器。
+- **重构帮助面板** ：重新分组字幕操作、波形区、播放与编辑、显示调整；新增快速上手入口，并用黄色高亮重要快捷键。
 - MAWxFF 直接从 CLI 启动时会自动把随包的 `ffmpeg\bin` 加入当前进程环境，和 Launcher 内部转写保持一致。
+- MAW Server 新增仅限 `127.0.0.1` 的停止接口，CLI 会优先请求该接口；Windows 下仍兼容停止旧版 MAW Server。
 
 ## [1.3.1] - 2026-08-10
 
