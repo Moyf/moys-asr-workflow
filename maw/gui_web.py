@@ -493,7 +493,7 @@ class LauncherApi:
         if ffmpeg is None:
             bundled_directory = _bundled_ffmpeg_directory()
             if bundled_directory is not None:
-                ffmpeg = bundled_directory / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+                ffmpeg = (bundled_directory / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).resolve()
         if ffmpeg is None:
             return {"ok": False, "field": "postprocessFfconcat", "code": "postprocess_failed", "detail": "FFmpeg was not found.", "error": "FFmpeg was not found."}
         try:
