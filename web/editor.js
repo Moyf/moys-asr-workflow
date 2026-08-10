@@ -404,6 +404,7 @@ const helpPanel = document.getElementById('help-panel');
 const helpDragHandle = document.getElementById('help-drag-handle');
 const helpCloseButton = document.getElementById('help-close');
 const helpSplitKey = document.getElementById('help-split-key');
+
 const clickBehaviorSelect = document.getElementById('click-behavior');
 const clickTargetField = document.getElementById('click-target-field');
 const clickTargetSelect = document.getElementById('click-target');
@@ -471,6 +472,7 @@ const gapRemoveList = document.getElementById('gap-remove-list');
 const gapRemoveClearAllButton = document.getElementById('gap-remove-clear-all');
 const HELP_PANEL_POSITION_KEY = 'moy.asr.help.panel.v1';
 const HELP_PANEL_SIZE_KEY = 'moy.asr.help.panel.size.v1';
+
 const AUTO_MERGE_PANEL_POSITION_KEY = 'moy.asr.auto_merge.panel.v2';
 const autoMergePanel = document.getElementById('auto-merge-panel');
 const autoMergeDragHandle = document.getElementById('auto-merge-drag-handle');
@@ -486,6 +488,7 @@ let gapPreviewRange = null;
 let gapRemovePanelDrag = null;
 let currentCuePanelIdx = -1;
 let cuePanelUndoPushed = false;
+let editorSettingsPanelFrame = 0;
 
 function updateEditorSettings(patch) {
   Object.assign(EDITOR_SETTINGS, patch);
@@ -494,9 +497,17 @@ function updateEditorSettings(patch) {
 
 function setEditorSettingsPanelOpen(open) {
   if (!editorSettingsPanel || !editorSettingsToggle) return;
-  editorSettingsPanel.hidden = !open;
   editorSettingsToggle.classList.toggle('active', open);
   editorSettingsToggle.setAttribute('aria-expanded', String(open));
+  // 先让按钮状态绘制出来，再展开/收起文档流中的大面板，避免布局重排把高亮拖后。
+  cancelAnimationFrame(editorSettingsPanelFrame);
+  editorSettingsPanelFrame = requestAnimationFrame(() => {
+    editorSettingsPanelFrame = requestAnimationFrame(() => {
+      editorSettingsPanelFrame = 0;
+      if (editorSettingsToggle.getAttribute('aria-expanded') !== String(open)) return;
+      editorSettingsPanel.hidden = !open;
+    });
+  });
 }
 
 function positionSubtitlePreviewSettingsPanel() {
@@ -662,6 +673,8 @@ const helpFloatingPanel = createFloatingPanel({
   positionKey: HELP_PANEL_POSITION_KEY,
   onOpen: restoreHelpPanelSize,
 });
+// 帮助是非模态浮窗；打开后立即释放入口按钮焦点，让 Enter / Esc 等快捷键回到编辑器。
+helpToggle?.addEventListener('click', () => helpToggle.blur());
 helpCloseButton?.addEventListener('click', () => helpFloatingPanel.close());
 // 浮窗尺寸：仅在用户拖过右下角缩放手柄后持久化；未缩放时保持 CSS 默认宽度/自动高度
 function restoreHelpPanelSize() {
@@ -694,6 +707,8 @@ if (helpPanel) {
     }, 250);
   }).observe(helpPanel);
 }
+
+
 // 明暗主题：令牌全部定义在 CSS（:root 暗色 / [data-theme="light"] 亮色），
 // 这里只负责写 <html data-theme>、持久化、同步按钮，以及通知波形重绘画布。
 // 按钮显示的是「目标主题」（与相邻 🌐 语言按钮同一约定）：暗色时显示 🌖（点击转亮）。
@@ -1568,6 +1583,7 @@ function renderAll() {
   renderCurrentCuePanel();
   syncPlayerPlaceholder();
   updateSubtitleExportUi();
+  window.MAWE_ONBOARDING?.afterRender();
 }
 
 function parsePanelTime(value, fallback) {
@@ -2003,7 +2019,7 @@ document.getElementById('search-clear').addEventListener('click', () => {
 // === 编辑 ===
 let editingState = null;
 
-function startEdit(el, idx, clickX, clickY) {
+function startEdit(el, idx, clickX, clickY, { deferCaret = false } = {}) {
   if (editingState) finishEdit(true);
   const textEl = el.querySelector('.text');
   if (!textEl) return;
@@ -2017,20 +2033,29 @@ function startEdit(el, idx, clickX, clickY) {
   textEl.setAttribute('contenteditable', 'plaintext-only');
   textEl.innerText = seg.text;
   textEl.focus();
-  const sel = window.getSelection();
-  sel.removeAllRanges();
-  if (caretCharOffset !== null && textEl.firstChild) {
-    const range = document.createRange();
-    const node = textEl.firstChild;
-    const pos = Math.max(0, Math.min(caretCharOffset, node.textContent.length));
-    range.setStart(node, pos);
-    range.setEnd(node, pos);
-    sel.addRange(range);
-  } else {
-    const range = document.createRange();
-    range.selectNodeContents(textEl);
-    sel.addRange(range);
-  }
+  const applyCaret = () => {
+    if (!editingState || editingState.el !== el) return;
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    if (caretCharOffset !== null && textEl.firstChild) {
+      const range = document.createRange();
+      const node = textEl.firstChild;
+      const pos = Math.max(0, Math.min(caretCharOffset, node.textContent.length));
+      range.setStart(node, pos);
+      range.setEnd(node, pos);
+      sel.addRange(range);
+    } else {
+      const range = document.createRange();
+      range.selectNodeContents(textEl);
+      sel.addRange(range);
+    }
+  };
+  // 浏览器可能在 dblclick 处理器返回后执行原生的“双击选词”，覆盖刚设置的光标。
+  // 延后一轮事件循环，确保双击编辑最终落在鼠标对应的字符位置。
+  // 先同步放置一次光标，让编辑状态立即可见；双击原生选词可能在事件返回后
+  // 覆盖它，再用下一轮事件循环恢复到鼠标位置。
+  applyCaret();
+  if (deferCaret) setTimeout(applyCaret, 0);
 }
 
 function setEditingCaretOffset(offset) {
@@ -2671,7 +2696,8 @@ function bindCueEvents(el, idx) {
     // 普通双击的第一次 pointerdown 已选中该 cue；只有从特殊子控件触发、且尚未选中时
     // 才补一次选择，避免双击再次提交当前面板并重绘波形布局。
     if (!selectedIdxs.has(idx)) selectOnly(idx);
-    startEdit(el, idx, e.clientX, e.clientY);
+    window.MAWE_ONBOARDING?.beginRealSplit(idx);
+    startEdit(el, idx, e.clientX, e.clientY, { deferCaret: true });
   });
   el.addEventListener('contextmenu', (e) => {
     e.preventDefault();
@@ -3228,6 +3254,7 @@ document.addEventListener('keydown', (e) => {
   e.stopPropagation();
   mergeSegments([...selectedIdxs]);
 });
+
 
 // Ctrl(Cmd)+Z 撤销；Ctrl(Cmd)+Shift+Z 或 Ctrl(Cmd)+Y 重做
 document.addEventListener('keydown', (e) => {
@@ -5124,6 +5151,7 @@ let pendingProjectMediaSelection = null;
 function closeProjectMediaModal(clearPending = false) {
   projectMediaModal.classList.remove('show');
   if (clearPending) pendingProjectMediaSelection = null;
+  setTimeout(() => window.MAWE_ONBOARDING?.scheduleStart(), 0);
 }
 
 function showProjectMediaModal() {
@@ -6561,6 +6589,23 @@ initWaveformEditor();
 configureServerWorkspaceLibrary();
 configureWorkspaceTransfer();
 totalCountEl.textContent = DATA.segments.length;
+// 新手引导通过这个窄桥接访问编辑器核心状态；引导本身在 editor-onboarding.js 中按需初始化。
+window.MAWE_EDITOR_BRIDGE = Object.freeze({
+  get data() { return DATA; },
+  get selectedIdxs() { return selectedIdxs; },
+  get currentCuePanelIdx() { return currentCuePanelIdx; },
+  get container() { return container; },
+  get projectMediaModal() { return projectMediaModal; },
+  selectOnly,
+  performUndo,
+  flashHint,
+  scrollCueToCenter,
+  setEditorSettingsPanelOpen,
+  modKeyLabel,
+  splitKeyLabel,
+  openHelp: () => helpFloatingPanel.open(),
+  closeHelp: () => helpFloatingPanel.close(),
+});
 renderAll();
 updateGapRemoveUi();
 if (repairedTimingCount > 0) {

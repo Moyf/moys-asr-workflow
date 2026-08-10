@@ -164,6 +164,39 @@ test('list cue selects on pointerdown and double-click still enters edit', async
   await expect(cue).toHaveClass(/editing/);
 });
 
+test('double-click places the inline caret at the pointer text position', async ({ page }) => {
+  await page.goto(server.url);
+  const cue = page.locator('.cue[data-idx="0"]');
+  const text = cue.locator('.text');
+  const point = await text.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 2);
+    range.setEnd(node, 3);
+    const rect = range.getBoundingClientRect();
+    return { x: (rect.left + rect.right) / 2, y: rect.top + rect.height / 2 };
+  });
+  const expectedOffset = await page.evaluate(({ x, y }) => {
+    const range = document.caretRangeFromPoint(x, y);
+    return range?.startOffset ?? null;
+  }, point);
+  expect(expectedOffset).not.toBeNull();
+
+  await page.mouse.dblclick(point.x, point.y);
+  await expect(cue).toHaveClass(/editing/);
+  const caret = await page.evaluate(() => {
+    const selection = window.getSelection();
+    return {
+      collapsed: selection?.isCollapsed ?? false,
+      offset: selection?.anchorOffset ?? null,
+      text: selection?.anchorNode?.textContent ?? null,
+    };
+  });
+  expect(caret.collapsed).toBe(true);
+  expect(caret.text).toBe('Alpha');
+  expect(caret.offset).toBe(expectedOffset);
+});
+
 test('current cue panel keeps the same height before and after selection', async ({ page }) => {
   // 高视口让 --layout-row-middle 的百分比下限超过面板内容高度，
   // 才能覆盖「选中后面板被拖到布局高度、空态又缩回内容高度」的跳变回归。

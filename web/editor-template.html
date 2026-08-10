@@ -287,31 +287,25 @@ __WAVEFORM_CSS__
       <span class="gap-remove-eyebrow">MAWE</span>
       <h3 id="help-panel-title">操作帮助</h3>
     </div>
-    <button type="button" id="help-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭帮助窗口">×</button>
+    <div class="help-header-actions">
+      <button type="button" id="help-onboarding" class="help-replay-button" title="重新查看快速上手">快速上手</button>
+      <button type="button" id="help-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭帮助窗口">×</button>
+    </div>
   </header>
   <div class="gap-remove-panel-body help-panel-body">
     <div class="help-group">
       <span class="help-title">字幕操作</span>
       <div class="help-subgroup">
-        <span class="help-subtitle">鼠标</span>
+        <span class="help-subtitle">通用操作</span>
         <span><kbd>单击</kbd> 选中</span>
         <span><kbd>双击</kbd> 编辑</span>
         <span><kbd>右键</kbd> 菜单</span>
-        <span><kbd>Alt+点击</kbd> 切换字幕禁用</span>
-      </div>
-      <div class="help-subgroup">
-        <span class="help-subtitle">多选</span>
+        <span class="help-important"><kbd>Alt+点击</kbd> 启用/禁用字幕</span>
         <span><kbd>Shift+点击</kbd> 连选</span>
         <span><kbd data-mod-key>Ctrl+点击</kbd> 多选</span>
         <span><kbd data-mod-key>Ctrl+A</kbd> 选中所有字幕（非编辑状态）</span>
         <span><kbd data-mod-key>Ctrl+D</kbd> 取消选择</span>
-      </div>
-      <div class="help-subgroup">
-        <span class="help-subtitle">编辑状态</span>
-        <span><kbd>Enter</kbd> 进入字幕编辑区（仅单选时）</span>
-        <span><kbd>Esc</kbd> 退出字幕编辑区（文本编辑时）</span>
-        <span><kbd>Esc</kbd> 清除字幕选择（非编辑状态）</span>
-        <span><kbd id="help-split-key">Ctrl+Enter</kbd>（编辑字幕文本时）在文字光标处拆分</span>
+        <span class="help-important"><kbd>Enter</kbd> 编辑选中字幕（根据最后点击区域）</span>
       </div>
       <div class="help-subgroup">
         <span class="help-subtitle">功能快捷键</span>
@@ -321,7 +315,7 @@ __WAVEFORM_CSS__
       </div>
     </div>
     <div class="help-group">
-      <span class="help-title">波形</span>
+      <span class="help-title">波形区</span>
       <div class="help-subgroup">
         <span class="help-subtitle">鼠标</span>
         <span><kbd>双击波形</kbd> 播放/暂停</span>
@@ -329,12 +323,44 @@ __WAVEFORM_CSS__
         <span><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>
       </div>
       <div class="help-subgroup">
-        <span class="help-subtitle">工具</span>
-        <span><kbd>V</kbd> 选择工具 <kbd>R</kbd> 分割工具</span>
-        <span><kbd id="help-waveform-split-key">B</kbd> 在红色播放指针处拆分字幕</span>
+        <span class="help-subtitle">波形区字幕操作</span>
+        <span class="help-important"><kbd>Enter</kbd> 进入字幕编辑区（仅单选时）</span>
+        <span><kbd>Esc</kbd> 退出字幕编辑区（文本编辑时）</span>
+        <span><kbd>Esc</kbd> 清除字幕选择（非编辑状态）</span>
+        <span><kbd id="help-split-key">Ctrl+Enter</kbd>（编辑字幕文本时）在文字光标处拆分</span>
       </div>
       <div class="help-subgroup">
-        <span class="help-subtitle">滚轮</span>
+        <span class="help-subtitle">工具</span>
+        <span><kbd>V</kbd> 选择工具 <kbd>R</kbd> 分割工具</span>
+        <span class="help-important"><kbd id="help-waveform-split-key">B</kbd> 在红色播放指针处拆分字幕</span>
+      </div>
+    </div>
+    <div class="help-group">
+      <span class="help-title">播放与编辑</span>
+      <div class="help-subgroup">
+        <span class="help-subtitle">播放</span>
+        <span class="help-important"><kbd>空格</kbd> 播放/暂停</span>
+        <span><kbd>←</kbd>/<kbd>→</kbd> 前后跳转 5 秒</span>
+        <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> 倍速 ×0.5/重置/×2</span>
+      </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">字幕导航</span>
+        <span class="help-important"><kbd>WASD</kbd> 选择前后字幕</span>
+        <span class="help-important"><kbd>Shift+WASD</kbd> 连续多选字幕</span>
+        <span class="help-important"><kbd>F</kbd> 跳转并播放选中字幕</span>
+      </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">编辑</span>
+        <span><kbd>Delete</kbd> 删除所选字幕</span>
+        <span class="help-important"><kbd data-mod-key>Ctrl+Z</kbd> 撤销</span>
+        <span><kbd data-mod-key>Ctrl+Shift+Z</kbd> 重做</span>
+      </div>
+    </div>
+    <div class="help-group">
+      <span class="help-title">波形区（拓展）</span>
+      <div class="help-subgroup">
+        <span class="help-subtitle">波形区显示</span>
+        <span class="help-note">点击【🔧 设置】后，可在【音频波形区】调整显示的具体参数</span>
         <span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>
         <span><kbd data-mod-key>Ctrl+滚轮</kbd> 调整时间缩放/每行长度</span>
         <span><kbd data-mod-key>Ctrl+Shift+滚轮</kbd> 调整每行高度</span>
@@ -347,30 +373,37 @@ __WAVEFORM_CSS__
         <span><kbd>Alt+中键拖动</kbd> 增加恢复区段</span>
       </div>
     </div>
-    <div class="help-group">
-      <span class="help-title">播放与编辑</span>
-      <div class="help-subgroup">
-        <span class="help-subtitle">播放</span>
-        <span><kbd>空格</kbd> 播放/暂停</span>
-        <span><kbd>←</kbd>/<kbd>→</kbd> 前后跳转 5 秒</span>
-        <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> 倍速 ×0.5/重置/×2</span>
-      </div>
-      <div class="help-subgroup">
-        <span class="help-subtitle">字幕导航</span>
-        <span><kbd>A</kbd>或<kbd>W</kbd> 上一条字幕 <kbd>D</kbd>或<kbd>S</kbd> 下一条字幕</span>
-        <span><kbd>Shift+A/W</kbd> 向前多选</span>
-        <span><kbd>Shift+D/S</kbd> 向后多选</span>
-        <span><kbd>F</kbd> 跳转并播放选中字幕</span>
-      </div>
-      <div class="help-subgroup">
-        <span class="help-subtitle">编辑</span>
-        <span><kbd>Delete</kbd> 删除所选字幕</span>
-        <span><kbd data-mod-key>Ctrl+Z</kbd> 撤销</span>
-        <span><kbd data-mod-key>Ctrl+Shift+Z</kbd> 重做</span>
-      </div>
-    </div>
   </div>
 </aside>
+
+<!-- 首次打开编辑器的轻量快速上手；不遮挡编辑器，完成或跳过后写入浏览器偏好。 -->
+<div class="onboarding-layer" id="onboarding-layer" hidden aria-hidden="true">
+  <div class="onboarding-spotlight" id="onboarding-spotlight" aria-hidden="true"></div>
+  <section class="onboarding-card" id="onboarding-card" role="dialog" aria-modal="false" aria-labelledby="onboarding-title" aria-describedby="onboarding-description onboarding-extra-tips" tabindex="-1">
+    <div class="onboarding-card-header">
+      <span class="onboarding-progress"><span>快速上手</span><span aria-hidden="true"> · </span><span id="onboarding-step-count">1 / 3</span></span>
+      <button type="button" class="onboarding-skip" id="onboarding-skip">跳过</button>
+    </div>
+    <div class="onboarding-heading">
+      <span class="onboarding-glyph" id="onboarding-glyph" aria-hidden="true">W</span>
+      <div>
+        <span class="onboarding-eyebrow" id="onboarding-eyebrow">像玩游戏一样编辑</span>
+        <h2 id="onboarding-title">使用 WASD 选择前后字幕——就像游戏一样！</h2>
+        <p id="onboarding-description">
+          先选中任意一条字幕，然后用 WASD 在前后字幕之间移动。移动 3 次后点击下一步。
+          <em id="onboarding-description-note" class="onboarding-description-note" hidden>在字幕列表，用 W 和 S 「上下」选择字幕，在波形区，用 A 和 D 「左右」选择字幕——取决于你观看的视角 😏</em>
+        </p>
+      </div>
+    </div>
+    <div class="onboarding-demo" id="onboarding-demo" aria-live="polite"></div>
+    <div class="onboarding-status" id="onboarding-status" aria-live="polite"></div>
+    <div class="onboarding-actions">
+      <button type="button" id="onboarding-secondary" hidden>稍后再试</button>
+      <button type="button" id="onboarding-primary" class="primary" hidden>下一步</button>
+    </div>
+    <p class="onboarding-footnote" id="onboarding-footnote">其余快捷键和波形操作，随时点击 <button type="button" id="onboarding-help">🤔 帮助</button> 查看。</p>
+  </section>
+</div>
 
 <section class="editor-settings-panel" id="editor-settings-panel" aria-label="MAWE 设置" hidden>
   <div class="editor-settings-group">
@@ -753,6 +786,7 @@ __EDITOR_UTILS_JS__
 __EDITOR_I18N_JS__
 __WAVEFORM_JS__
 __EDITOR_JS__
+__EDITOR_ONBOARDING_JS__
 </script>
 
 </body>
