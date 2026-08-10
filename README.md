@@ -90,7 +90,7 @@ Release 包中的 `MAW.exe` 也可以脱离 Launcher 直接转写指定媒体，
 
 它适合脚本、批处理和 AI 自动化调用。给 AI 使用时，请让它先读取 [CLI 专门文档](docs/CLI.md)，使用双引号包住路径，不要把 API Key 放进命令行，先用 `-ll 2m` 做小样本，并依据退出码和输出文件判断是否成功。完整参数表、Qwen/Soniox 选项、Server 管理和 PowerShell 模板都在该文档中。
 
-Launcher 的后处理工具箱可选用 DeepSeek、智谱 Coding Plan、阿里云 Qwen 或自定义 OpenAI-compatible 服务校对、重分句或翻译字幕。该步骤只发送带临时 ID 的字幕文字，不发送时间码、媒体路径或工程元数据；选择供应商即表示字幕文字会按该服务商的条款和隐私政策传输。后处理 Key 只保存在本机 `.env`，不会写入工程、SRT 或日志。
+Launcher 的后处理工具箱第一个工具是「文稿匹配」：可用本地 UTF-8 文稿修正文案、标点和字幕文字，同时保留原字幕时间；也可选用 DeepSeek、智谱 Coding Plan、阿里云 Qwen 或自定义 OpenAI-compatible 服务校对、重分句或翻译字幕。LLM 步骤只发送带临时 ID 的字幕文字，不发送时间码、媒体路径或工程元数据；选择供应商即表示字幕文字会按该服务商的条款和隐私政策传输。LLM Key 可在 Launcher 右上角 `⚙️ 配置` 中管理，只保存在本机 `.env`，不会写入工程、SRT 或日志。
 
 ## 概览特性
 点击查看：[3分钟速览 MAW 特性](https://www.bilibili.com/video/BV1hXum6yELT) 

@@ -239,7 +239,35 @@
       <p class="hint" data-i18n="toolbox_input_hint">默认跟随「工程文件」并在每次处理后更新；手动选择或拖入其他文件后，以这里的文件为准。</p>
       <p id="toolboxInputPathError" class="field-error"></p>
     </div>
-    <section id="toolboxLlmPanel" class="toolbox-panel" role="tabpanel" aria-labelledby="toolboxLlmTab">
+    <div class="toolbox-output-bar">
+      <div class="field toolbox-output-field">
+        <label for="postprocessOutputMode" data-i18n="toolbox_output">输出</label>
+        <select id="postprocessOutputMode">
+          <option value="both" data-i18n="toolbox_output_both">工程 + SRT</option>
+          <option value="json" data-i18n="toolbox_output_project">仅工程</option>
+          <option value="srt" data-i18n="toolbox_output_srt">仅 SRT</option>
+        </select>
+      </div>
+      <p class="hint" data-i18n="toolbox_output_hint">所有字幕工具都会生成新文件，不覆盖原工程。</p>
+    </div>
+
+    <section id="toolboxMatchPanel" class="toolbox-panel" role="tabpanel" aria-labelledby="toolboxMatchTab">
+      <div class="field">
+        <label for="postprocessScriptPath" data-i18n="toolbox_script">文稿文件</label>
+        <div class="path-row">
+          <input id="postprocessScriptPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_script_placeholder" placeholder="UTF-8 .txt / .md 文稿">
+          <button id="pickPostprocessScript" class="ghost" type="button" data-i18n="choose">选择</button>
+        </div>
+        <p class="hint" data-i18n="toolbox_script_hint">文稿文字会替换字幕文字；原字幕时间保持不变。</p>
+        <p id="postprocessScriptPathError" class="field-error"></p>
+      </div>
+      <div class="toolbox-run-row">
+        <span class="hint" data-i18n="toolbox_match_hint">匹配度过低时会停止，不写出可能错配的结果。</span>
+        <button id="runScriptMatch" class="primary" type="button" data-i18n="toolbox_run_match">匹配文稿</button>
+      </div>
+    </section>
+
+    <section id="toolboxLlmPanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxLlmTab">
       <div class="toolbox-grid">
         <div class="field">
           <label for="postprocessProvider" data-i18n="toolbox_provider">供应商</label>
@@ -256,39 +284,13 @@
           </select>
         </div>
       </div>
-      <div class="field">
-        <label for="postprocessApiKey">API Key</label>
-        <div class="path-row">
-          <input id="postprocessApiKey" type="password" autocomplete="off">
-          <button id="savePostprocessSettings" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
-        </div>
-        <p id="postprocessKeyStatus" class="hint"></p>
-        <p id="postprocessApiKeyError" class="field-error"></p>
-      </div>
-      <div class="toolbox-grid">
-        <div class="field">
-          <label for="postprocessBaseUrl">API URL</label>
-          <input id="postprocessBaseUrl" type="url" autocomplete="off">
-        </div>
-        <div class="field">
-          <label for="postprocessModel" data-i18n="model">模型</label>
-          <input id="postprocessModel" type="text" autocomplete="off">
-        </div>
-      </div>
+      <p class="toolbox-settings-hint"><span id="postprocessProviderStatus" class="hint"></span> <button id="openLlmSettings" class="inline-link" type="button" data-i18n="toolbox_open_settings">在 ⚙️ 设置中配置 API Key</button></p>
       <div class="field">
         <label for="postprocessPrompt" data-i18n="toolbox_prompt">附加提示词</label>
         <textarea id="postprocessPrompt" rows="3" autocomplete="off" data-i18n-placeholder="toolbox_prompt_placeholder"></textarea>
         <p class="hint" data-i18n="toolbox_time_hint">模型只处理带 ID 的文字；本地时间槽始终是时间真源。</p>
       </div>
       <div class="toolbox-run-row">
-        <div class="field toolbox-output-field">
-          <label for="postprocessOutputMode" data-i18n="toolbox_output">输出</label>
-          <select id="postprocessOutputMode">
-            <option value="both" data-i18n="toolbox_output_both">工程 + SRT</option>
-            <option value="json" data-i18n="toolbox_output_project">仅工程</option>
-            <option value="srt" data-i18n="toolbox_output_srt">仅 SRT</option>
-          </select>
-        </div>
         <button id="runLlmPostprocess" class="primary" type="button" data-i18n="toolbox_run">运行处理</button>
       </div>
     </section>
@@ -323,7 +325,8 @@
     </section>
 
     <div class="toolbox-tabs" role="tablist" aria-label="post-processing tools">
-      <button id="toolboxLlmTab" class="toolbox-tab active" type="button" role="tab" aria-selected="true" aria-controls="toolboxLlmPanel" data-tool="llm" data-i18n="toolbox_llm">LLM 处理</button>
+      <button id="toolboxMatchTab" class="toolbox-tab active" type="button" role="tab" aria-selected="true" aria-controls="toolboxMatchPanel" data-tool="match" data-i18n="toolbox_match">文稿匹配</button>
+      <button id="toolboxLlmTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxLlmPanel" data-tool="llm" data-i18n="toolbox_llm">LLM 处理</button>
       <button id="toolboxReplaceTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxReplacePanel" data-tool="replace" data-i18n="toolbox_replace">固定替换</button>
       <button id="toolboxFfconcatTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxFfconcatPanel" data-tool="ffconcat" data-i18n="toolbox_ffconcat">媒体重组</button>
     </div>
@@ -345,6 +348,36 @@
           <button type="button" class="segment" id="themeLight" data-i18n="theme_light">明亮模式</button>
           <button type="button" class="segment" id="themeDark" data-i18n="theme_dark">暗色模式</button>
           <button type="button" class="segment" id="themeSystem" data-i18n="theme_system">跟随系统设置</button>
+        </div>
+      </div>
+      <div class="settings-section" id="llmSettingsSection">
+        <h3 data-i18n="settings_llm">LLM 后处理</h3>
+        <p class="hint" data-i18n="settings_llm_hint">文稿匹配之外的 LLM 工具会使用这里保存的供应商配置。密钥只保存在本机环境文件。</p>
+        <div class="toolbox-grid settings-grid">
+          <div class="field">
+            <label for="llmProvider" data-i18n="toolbox_provider">供应商</label>
+            <select id="llmProvider"></select>
+          </div>
+          <div class="field">
+            <label for="llmModel" data-i18n="llm_model">模型</label>
+            <input id="llmModel" type="text" autocomplete="off">
+            <p id="llmModelError" class="field-error"></p>
+          </div>
+        </div>
+        <div class="field">
+          <label for="llmApiKey" data-i18n="llm_api_key">API Key</label>
+          <div class="path-row">
+            <input id="llmApiKey" type="password" autocomplete="off">
+            <button id="saveLlmSettings" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
+          </div>
+          <p id="llmKeyStatus" class="hint"></p>
+          <p id="llmApiKeyError" class="field-error"></p>
+        </div>
+        <div class="field">
+          <label for="llmBaseUrl" data-i18n="llm_base_url">API URL</label>
+          <input id="llmBaseUrl" type="url" autocomplete="off">
+          <p id="llmBaseUrlError" class="field-error"></p>
+          <p class="hint" data-i18n="llm_base_url_hint">远程服务使用 HTTPS；明文 HTTP 只允许本机环回地址。</p>
         </div>
       </div>
       <div class="settings-section">

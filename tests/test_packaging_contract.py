@@ -61,6 +61,7 @@ class PackagingContractTests(unittest.TestCase):
             "maw.postprocess_io",
             "maw.postprocess_llm",
             "maw.postprocess_ffmpeg",
+            "maw.postprocess_match",
         ):
             self.assertIn(module, spec)
         self.assertNotIn("sv_ttk", spec)

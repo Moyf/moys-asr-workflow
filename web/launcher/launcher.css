@@ -855,7 +855,7 @@ textarea::placeholder {
 
 .toolbox-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
   margin-top: 12px;
   padding: 3px;
@@ -894,6 +894,31 @@ textarea::placeholder {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.toolbox-output-bar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 9px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+}
+
+.toolbox-output-bar .hint {
+  padding-bottom: 8px;
+  text-align: right;
+}
+
+.toolbox-settings-hint {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 10px 0 0;
 }
 
 .toolbox-run-row {
@@ -1063,6 +1088,17 @@ code {
   }
   .toolbox-grid {
     grid-template-columns: 1fr;
+  }
+  .toolbox-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .toolbox-output-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .toolbox-output-bar .hint {
+    padding-bottom: 0;
+    text-align: left;
   }
   .toolbox-run-row {
     align-items: stretch;

@@ -2,8 +2,9 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const panels = { llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel" };
+  const panels = { match: "toolboxMatchPanel", llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel" };
   const SUBTITLE_EXTS = new Set([".mosp", ".json", ".srt"]);
+  const SCRIPT_EXTS = new Set([".txt", ".md", ".markdown"]);
   let busy = false;
   let inputManual = false;
 
@@ -19,9 +20,9 @@
     return (String(path || "").match(/\.[^.\\/]+$/u)?.[0] || "").toLowerCase();
   }
 
-  function provider() {
+  function provider(providerId = $("postprocessProvider").value) {
     const providers = window.MAWLauncher.config.postprocessProviders;
-    return providers.find((item) => item.id === $("postprocessProvider").value) || providers[0];
+    return providers.find((item) => item.id === providerId) || providers[0];
   }
 
   function autoSourcePath() {
@@ -33,15 +34,18 @@
     $("toolboxMediaPath").textContent = $("mediaPath").value.trim() || t("toolbox_no_media");
   }
 
-  function renderProvider() {
-    const item = provider();
-    $("postprocessBaseUrl").value = item.baseUrl || "";
-    $("postprocessModel").value = item.model || "";
-    $("postprocessApiKey").value = "";
-    $("postprocessApiKey").placeholder = item.maskedApiKey || "";
-    $("postprocessKeyStatus").textContent = item.maskedApiKey
+  function renderProvider(providerId = $("postprocessProvider").value) {
+    const item = provider(providerId);
+    $("postprocessProvider").value = item.id;
+    $("llmProvider").value = item.id;
+    $("llmBaseUrl").value = item.baseUrl || "";
+    $("llmModel").value = item.model || "";
+    $("llmApiKey").value = "";
+    $("llmApiKey").placeholder = item.maskedApiKey || "";
+    $("llmKeyStatus").textContent = item.maskedApiKey
       ? t("toolbox_key_loaded").replace("{key}", item.maskedApiKey)
       : t("toolbox_key_empty");
+    $("postprocessProviderStatus").textContent = `${item.label} · ${item.maskedApiKey ? t("toolbox_key_loaded").replace("{key}", item.maskedApiKey) : t("toolbox_key_empty")}`;
   }
 
   function setOpen(open) {
@@ -70,7 +74,7 @@
   function setBusy(nextBusy) {
     busy = nextBusy;
     $("toolboxProgress").classList.toggle("hidden", !busy);
-    ["runLlmPostprocess", "runFixedReplacement", "runFfconcatRebuild", "savePostprocessSettings", "toolboxInputPath", "pickToolboxInput"].forEach((id) => {
+    ["runScriptMatch", "runLlmPostprocess", "runFixedReplacement", "runFfconcatRebuild", "saveLlmSettings", "toolboxInputPath", "pickToolboxInput", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel"].forEach((id) => {
       $(id).disabled = busy;
     });
     if (busy) setResult(t("toolbox_running"));
@@ -143,22 +147,47 @@
     }).filter((item) => item?.source);
   }
 
+  async function runScriptMatch() {
+    const paths = resolveInputPaths();
+    if (!paths) return;
+    const scriptPath = $("postprocessScriptPath").value.trim();
+    if (!SCRIPT_EXTS.has(extension(scriptPath))) {
+      setFieldError("postprocessScriptPath", t("toolbox_script_reject"));
+      setResult(t("toolbox_need_script"), "error");
+      return;
+    }
+    setFieldError("postprocessScriptPath", "");
+    setBusy(true);
+    try {
+      const result = await bridge("run_script_match", { ...paths, scriptPath });
+      if (result.ok) applySubtitleResult(result);
+      else setResult(result.error || result.detail || t("failed"), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveSettings() {
     const item = provider();
     const result = await bridge("save_postprocess_settings", {
       providerId: item.id,
-      apiKey: $("postprocessApiKey").value.trim(),
-      baseUrl: $("postprocessBaseUrl").value.trim(),
-      model: $("postprocessModel").value.trim(),
+      apiKey: $("llmApiKey").value.trim(),
+      baseUrl: $("llmBaseUrl").value.trim(),
+      model: $("llmModel").value.trim(),
     });
     if (!result.ok) {
+      const field = result.field === "postprocessApiKey"
+        ? "llmApiKey"
+        : (result.field === "postprocessBaseUrl" ? "llmBaseUrl" : (result.field === "postprocessModel" ? "llmModel" : ""));
+      if (field) setFieldError(field, result.detail || result.error || t("failed"));
       setResult(result.error || result.detail || t("failed"), "error");
       return;
     }
-    item.baseUrl = $("postprocessBaseUrl").value.trim();
-    item.model = $("postprocessModel").value.trim();
+    ["llmApiKey", "llmBaseUrl", "llmModel"].forEach((field) => setFieldError(field, ""));
+    item.baseUrl = $("llmBaseUrl").value.trim();
+    item.model = $("llmModel").value.trim();
     item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
-    renderProvider();
+    renderProvider(item.id);
     setResult(t("toolbox_saved"), "success");
   }
 
@@ -173,9 +202,6 @@
         operation: $("postprocessOperation").value,
         customPrompt: $("postprocessPrompt").value.trim(),
         providerId: item.id,
-        apiKey: $("postprocessApiKey").value.trim(),
-        baseUrl: $("postprocessBaseUrl").value.trim(),
-        model: $("postprocessModel").value.trim(),
       });
       if (result.ok) applySubtitleResult(result);
       else setResult(result.error || result.detail || t("failed"), "error");
@@ -234,11 +260,13 @@
   function initialize() {
     const config = window.MAWLauncher.config;
     if (!config?.postprocessProviders?.length) return;
-    const selected = config.postprocessProviders.find((item) => item.selected)?.id || config.postprocessProviders[0].id;
-    const select = $("postprocessProvider");
-    config.postprocessProviders.forEach((item) => select.add(new Option(item.label, item.id)));
-    select.value = selected;
+    const selectedProvider = config.postprocessProviders.find((item) => item.selected)?.id || config.postprocessProviders[0].id;
+    [$("postprocessProvider"), $("llmProvider")].forEach((select) => {
+      config.postprocessProviders.forEach((item) => select.add(new Option(item.label, item.id)));
+      select.value = selectedProvider;
+    });
     renderProvider();
+    selectTool("match");
     syncPaths();
   }
 
@@ -246,13 +274,22 @@
   $("toolboxClose").addEventListener("click", () => setOpen(false));
   document.querySelectorAll(".toolbox-tab").forEach((tab) => tab.addEventListener("click", () => selectTool(tab.dataset.tool)));
   $("postprocessProvider").addEventListener("change", renderProvider);
-  $("savePostprocessSettings").addEventListener("click", saveSettings);
+  $("llmProvider").addEventListener("change", () => { $("postprocessProvider").value = $("llmProvider").value; renderProvider(); });
+  $("saveLlmSettings").addEventListener("click", saveSettings);
+  $("runScriptMatch").addEventListener("click", runScriptMatch);
   $("runLlmPostprocess").addEventListener("click", runLlm);
   $("runFixedReplacement").addEventListener("click", runReplacement);
   $("runFfconcatRebuild").addEventListener("click", runFfconcat);
   $("pickPostprocessFfconcat").addEventListener("click", async () => {
     const result = await bridge("choose_file", { kind: "ffconcat" });
     if (result.ok) $("postprocessFfconcatPath").value = result.path;
+  });
+  $("pickPostprocessScript").addEventListener("click", async () => {
+    const result = await bridge("choose_file", { kind: "script" });
+    if (result.ok) {
+      $("postprocessScriptPath").value = result.path;
+      setFieldError("postprocessScriptPath", "");
+    }
   });
   $("pickToolboxInput").addEventListener("click", async () => {
     const result = await bridge("choose_file", { kind: "subtitle" });
@@ -270,6 +307,9 @@
     event.preventDefault();
     bridge("open_url", { url: "https://github.com/Moyf/moys-asr-workflow/issues" });
   });
+  $("openLlmSettings").addEventListener("click", () => window.MAWLauncher.openSettings("llmSettingsSection"));
+  $("postprocessScriptPath").addEventListener("input", () => setFieldError("postprocessScriptPath", ""));
+  ["llmApiKey", "llmBaseUrl", "llmModel"].forEach((id) => $(id).addEventListener("input", () => setFieldError(id, "")));
   $("postprocessReplacements").addEventListener("input", () => setFieldError("postprocessReplacements", ""));
   ["jsonPath", "srtPath", "mediaPath"].forEach((id) => $(id).addEventListener("input", syncPaths));
   document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !busy) setOpen(false); });

@@ -59,6 +59,7 @@ a = Analysis(
         "maw.postprocess_io",
         "maw.postprocess_llm",
         "maw.postprocess_ffmpeg",
+        "maw.postprocess_match",
         "maw.project",
         "maw.soniox",
     ],

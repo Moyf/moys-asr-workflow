@@ -217,6 +217,28 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(output_srt.is_file())
         self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["segments"][0]["text"], "正字")
 
+    def test_script_match_bridge_returns_chainable_project_and_srt_paths(self) -> None:
+        project = self.root / "clip.mosp"
+        script = self.root / "script.txt"
+        project.write_text(
+            json.dumps({"segments": [{"start": 0, "end": 1000, "text": "旧句"}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        script.write_text("旧句。", encoding="utf-8")
+
+        result = self.api.run_script_match({
+            "projectPath": str(project),
+            "scriptPath": str(script),
+            "outputMode": "both",
+        })
+
+        self.assertTrue(result["ok"])
+        output_project = Path(str(result["projectPath"]))
+        output_srt = Path(str(result["srtPath"]))
+        self.assertTrue(output_project.is_file())
+        self.assertTrue(output_srt.is_file())
+        self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["segments"][0]["text"], "旧句。")
+
     def test_llm_bridge_uses_stored_key_without_echoing_it(self) -> None:
         project = self.root / "clip.mosp"
         project.write_text(
@@ -1255,23 +1277,33 @@ class LauncherAssetContractTests(unittest.TestCase):
             "toolboxDrawer",
             "toolboxInputPath",
             "pickToolboxInput",
+            "toolboxMatchPanel",
             "toolboxLlmPanel",
             "toolboxReplacePanel",
             "toolboxFfconcatPanel",
+            "postprocessScriptPath",
             "postprocessProvider",
-            "postprocessApiKey",
-            "postprocessBaseUrl",
-            "postprocessModel",
             "postprocessPrompt",
             "postprocessOutputMode",
             "postprocessFfconcatPath",
+            "llmProvider",
+            "llmApiKey",
+            "llmBaseUrl",
+            "llmModel",
+            "openLlmSettings",
         ):
             self.assertIn(f'id="{control}"', page)
+        self.assertNotIn('id="postprocessApiKey"', page)
+        self.assertNotIn('id="postprocessBaseUrl"', page)
+        self.assertNotIn('id="postprocessModel"', page)
+        self.assertIn('bridge("run_script_match"', script)
         self.assertIn('bridge("run_llm_postprocess"', script)
         self.assertIn('bridge("run_fixed_replacement"', script)
         self.assertIn('bridge("run_ffconcat_rebuild"', script)
         self.assertIn('bridge("save_postprocess_settings"', script)
+        self.assertIn('bridge("choose_file", { kind: "script" })', script)
         self.assertIn('bridge("choose_file", { kind: "subtitle" })', script)
+        self.assertIn('openSettings("llmSettingsSection")', script)
         self.assertIn('$("jsonPath").value = result.projectPath', script)
         self.assertIn('$("srtPath").value = result.srtPath', script)
         self.assertIn('$("mediaPath").value = result.mediaPath', script)
@@ -1281,13 +1313,17 @@ class LauncherAssetContractTests(unittest.TestCase):
     def test_toolbox_tabs_follow_the_panels(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
 
+        match_panel = page.index('id="toolboxMatchPanel"')
+        llm_panel = page.index('id="toolboxLlmPanel"')
         ffconcat_panel = page.index('id="toolboxFfconcatPanel"')
         ffconcat_end = page.index("</section>", ffconcat_panel)
         tabs = page.index('<div class="toolbox-tabs"')
         progress = page.index('<div id="toolboxProgress"')
 
+        self.assertLess(match_panel, llm_panel)
         self.assertGreater(tabs, ffconcat_end)
         self.assertLess(tabs, progress)
+        self.assertIn('id="toolboxMatchTab" class="toolbox-tab active"', page)
 
     def test_launcher_hero_shows_the_bundled_brand_icon(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")

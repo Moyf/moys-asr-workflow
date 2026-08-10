@@ -27,6 +27,7 @@ from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, Tr
 from maw.media import find_ffmpeg, resolve_project_media
 from maw.postprocess import LlmPostprocessRequest, OutputMode, Replacement, ReplacementRequest, run_fixed_replacement as process_fixed_replacement, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_ffmpeg import FfconcatRequest, run_ffconcat_rebuild as process_ffconcat_rebuild
+from maw.postprocess_match import ScriptMatchRequest, run_script_match as process_script_match
 from maw.postprocess_llm import LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, preset_by_id
 
 
@@ -459,6 +460,23 @@ class LauncherApi:
             return {"ok": False, "field": "postprocessInput", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
+    def run_script_match(self, payload: Mapping[str, object]) -> dict[str, object]:
+        script_path = _optional_path(payload.get("scriptPath"))
+        if script_path is None:
+            return _error_result("postprocessScriptPath", "postprocess_failed", "A script file is required.")
+        try:
+            result = process_script_match(
+                ScriptMatchRequest(
+                    project_path=_optional_path(payload.get("projectPath")),
+                    srt_path=_optional_path(payload.get("srtPath")),
+                    script_path=script_path,
+                    output_mode=_output_mode(payload.get("outputMode")),
+                )
+            )
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "field": "postprocessScriptPath", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
+        return _subtitle_artifact_result(result)
+
     def run_llm_postprocess(self, payload: Mapping[str, object]) -> dict[str, object]:
         preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
         file_values = _postprocess_values(self.paths.env_path, preset.env_prefix)
@@ -521,6 +539,8 @@ class LauncherApi:
             file_types = ("Subtitle files (*.mosp;*.json;*.srt)",)
         elif kind == "ffconcat":
             file_types = ("FFconcat scripts (*.ffconcat)",)
+        elif kind == "script":
+            file_types = ("Script files (*.txt;*.md;*.markdown)", "All files (*.*)")
         elif kind == "hotwords":
             file_types = ("Text files (*.txt)", "All files (*.*)")
         else:
