@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -13,6 +14,18 @@ def read_text(relative_path: str) -> str:
 
 
 class PackagingContractTests(unittest.TestCase):
+    def test_launcher_version_matches_project_metadata(self) -> None:
+        """Given project metadata, When the Launcher is packaged, Then every displayed fallback version matches it."""
+        project = tomllib.loads(read_text("pyproject.toml"))
+        version = project["project"]["version"]
+        launcher_html = read_text("web/launcher/index.html")
+        launcher_js = read_text("web/launcher/launcher.js")
+        gui = read_text("maw/gui_web.py")
+
+        self.assertIn(f'id="appVersion">v{version}</span>', launcher_html)
+        self.assertIn(f'appVersion: "{version}"', launcher_js)
+        self.assertIn(f'BUNDLED_APP_VERSION = "{version}"', gui)
+
     def test_pyinstaller_build_dependency_is_locked_outside_runtime_dependencies(self) -> None:
         """Given packaging needs PyInstaller, When metadata is read, Then build deps are locked."""
         pyproject = read_text("pyproject.toml")
@@ -91,6 +104,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("codesign --force --deep --sign - dist/MAWxFF.app", workflow)
         self.assertIn("MAW-macOS-arm64-${Version}.zip", workflow)
         self.assertIn("MAWxFF-macOS-arm64-${Version}.zip", workflow)
+        self.assertIn("scripts/sync_launcher_version.py --write", workflow)
+        self.assertIn("scripts/sync_launcher_version.py --check", workflow)
         self.assertIn('StandardStage="build/release/standard"', workflow)
         self.assertIn('XffStage="build/release/xff"', workflow)
         self.assertIn('zip -qry "$GITHUB_WORKSPACE/$StandardArchive" MAW.app', workflow)
@@ -113,6 +128,12 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("MOSE", script)
         self.assertIn("$ErrorActionPreference = 'Stop'", script)
 
+    def test_windows_preview_workflow_verifies_launcher_version(self) -> None:
+        """Given a Windows preview build, When packaging starts, Then stale Launcher versions fail early."""
+        workflow = read_text(".github/workflows/pr-release-windows.yml")
+
+        self.assertIn("scripts/sync_launcher_version.py --check", workflow)
+
     def test_release_workflow_is_tag_triggered_and_publishes_both_windows_packages(self) -> None:
         """Given a v* tag push, When workflow is read, Then it releases standard and MAWxFF builds."""
         workflow = read_text(".github/workflows/release-windows.yml")
@@ -126,6 +147,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("pyproject.toml", workflow)
         self.assertIn("github.ref_name", workflow)
         self.assertIn(r'(?m)^version = "(?<version>[^"]+)"\r?$', workflow)
+        self.assertIn("scripts/sync_launcher_version.py --write", workflow)
+        self.assertIn("scripts/sync_launcher_version.py --check", workflow)
         self.assertIn("PYTHONUTF8: '1'", workflow)
         self.assertIn("dist\\MAW\\MAW.exe", workflow)
         self.assertNotIn("MOSE", workflow)

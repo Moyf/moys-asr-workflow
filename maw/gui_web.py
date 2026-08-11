@@ -34,7 +34,8 @@ WINDOW_TITLE = "MAW Launcher"
 MEDIA_EXTS: Final = frozenset({".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"})
 MOSE_REGISTRY_KEY = r"Software\Moy\MOSE"
 MOSE_FILE_TYPE = "Moy.MOSE.Project"
-# Keep this aligned with desktop/src-tauri/tauri.conf.json until an installer owns it.
+# Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
+BUNDLED_APP_VERSION = "1.3.2"
 MOSE_VERSION = "0.1.0"
 
 
@@ -67,9 +68,9 @@ def _app_version(paths: object) -> str:
     try:
         text = Path(pyproject).read_text(encoding="utf-8")
     except OSError:
-        return "1.13.1-beta-5"
+        return BUNDLED_APP_VERSION
     match = re.search(r'(?m)^version = "([^"]+)"\r?$', text)
-    return match.group(1) if match else "1.13.1-beta-5"
+    return match.group(1) if match else BUNDLED_APP_VERSION
 
 
 def _is_ffprobe_start_failure(lines: Sequence[str]) -> bool:

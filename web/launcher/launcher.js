@@ -200,7 +200,7 @@
         workspaceId: saved.workspaceId,
         guiLang: saved.guiLang,
         showRareLangs: saved.showRareLangs || false,
-        appVersion: "1.13.1-beta-5",
+        appVersion: "1.3.2",
         stickerDir: saved.stickerDir || "",
         providers: [
           {

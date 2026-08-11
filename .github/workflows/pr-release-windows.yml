@@ -37,6 +37,9 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Verify Launcher version
+        run: python scripts/sync_launcher_version.py --check
+
       - name: Install locked dependencies
         run: uv sync --group build --frozen
 
