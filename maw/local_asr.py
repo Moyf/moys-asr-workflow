@@ -612,7 +612,12 @@ def build_local_segments(
 
 
 @contextmanager
-def prepared_audio(input_path: Path, length_limit_s: float | None = None) -> Iterator[tuple[Path, int]]:
+def prepared_audio(
+    input_path: Path,
+    length_limit_s: float | None = None,
+    *,
+    on_event: ProgressCallback | None = None,
+) -> Iterator[tuple[Path, int]]:
     """Provide a local 16 kHz mono WAV for video or limited-length inputs."""
     if not input_path.exists():
         raise FileNotFoundError(f"媒体文件不存在: {input_path}")
@@ -621,6 +626,8 @@ def prepared_audio(input_path: Path, length_limit_s: float | None = None) -> Ite
     needs_temp = input_path.suffix.lower() in VIDEO_EXTENSIONS or length_limit_s is not None
     if not needs_temp:
         duration_ms = max(int(round(get_duration_sec(str(input_path)) * 1000)), 1)
+        if on_event:
+            on_event("[local] 正在准备加载模型……")
         yield input_path, duration_ms
         return
 
@@ -633,6 +640,8 @@ def prepared_audio(input_path: Path, length_limit_s: float | None = None) -> Ite
         duration_s = get_duration_sec(str(audio_path))
         if length_limit_s is not None:
             duration_s = min(duration_s, length_limit_s)
+        if on_event:
+            on_event("[local] 正在准备加载模型……")
         yield audio_path, max(int(round(duration_s * 1000)), 1)
 
 

@@ -110,6 +110,22 @@ class LocalAsrFlowTests(unittest.TestCase):
             self.assertEqual(calls[0][2], 2.0)
             ffmpeg.assert_not_called()
 
+    def test_prepared_audio_reports_model_preparation_after_extraction(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / "clip.mp4"
+            input_path.write_bytes(b"video")
+            events: list[str] = []
+
+            def fake_extract(source: str, target: str, duration_limit: float | None = None) -> None:
+                Path(target).write_bytes(b"wav")
+
+            with mock.patch("maw.local_asr.extract_audio", side_effect=fake_extract):
+                with mock.patch("maw.local_asr.get_duration_sec", return_value=30.0):
+                    with prepared_audio(input_path, 2.0, on_event=events.append):
+                        pass
+
+            self.assertEqual(events, ["[local] 正在准备加载模型……"])
+
     def test_qwen_seconds_timestamps_are_normalized_to_milliseconds(self) -> None:
         class FakeAlignResult:
             def __init__(self, items):

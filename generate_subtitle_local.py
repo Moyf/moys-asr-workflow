@@ -117,7 +117,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     try:
-        with prepared_audio(input_path, args.length_limit) as (audio_path, duration_ms):
+        with prepared_audio(input_path, args.length_limit, on_event=print) as (audio_path, duration_ms):
             result = engine.transcribe(
                 audio_path,
                 language=args.language,
