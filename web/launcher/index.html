@@ -147,10 +147,14 @@
             </div>
             <div id="languageField" class="field">
               <label for="language" data-i18n="language">语言</label>
-              <select id="language"></select>
-              <div class="lang-actions"><button id="languageReset" class="ghost small hidden" type="button" data-i18n="language_reset">重置（自动识别）</button></div>
-              <p id="languageHint" class="hint hidden" data-i18n="language_multi_hint">可多选；不选即自动识别（仅偏向，不限制）。</p>
-              <p id="languageFilterHint" class="hint hidden" data-i18n="language_filter_hint">默认仅显示常用语言，其余可在「配置」中开启。</p>
+              <div class="language-layout">
+                <select id="language"></select>
+                <div class="language-side">
+                  <div class="lang-actions"><button id="languageReset" class="ghost small hidden" type="button" data-i18n="language_reset">重置（自动识别）</button></div>
+                  <p id="languageHint" class="hint hidden" data-i18n="language_multi_hint">可多选；不选即自动识别（仅偏向，不限制）。</p>
+                  <p id="languageFilterHint" class="hint hidden" data-i18n="language_filter_hint">默认仅显示常用语言，其余可在「配置」中开启。</p>
+                </div>
+              </div>
             </div>
           </div>
           <div id="qwenAudioOptions" class="qwen-audio-options hidden">
@@ -205,7 +209,10 @@
           </div>
           <div id="sonioxContextOptions" class="soniox-context-options hidden">
             <h3 data-i18n="soniox_context_title">Soniox 上下文</h3>
-            <p class="hint" data-i18n="soniox_context_hint">可按需填写；四个分区都会直接发送到 Soniox 的 context 对象。</p>
+            <p class="hint soniox-context-hint">
+              <span data-i18n="soniox_context_hint">可按需填写；四个分区都会直接发送到 Soniox 的 context 对象。</span>
+              <a href="https://soniox.com/docs/stt/concepts/context" target="_blank" rel="noopener noreferrer" data-i18n="soniox_context_docs_link">查看 context 文档 ↗</a>
+            </p>
             <div class="soniox-context-options-grid">
               <div class="field">
                 <label for="sonioxContextGeneral" data-i18n="soniox_context_general">General（键值信息）</label>
@@ -216,8 +223,7 @@
               <div class="field">
                 <label for="sonioxContextText" data-i18n="soniox_context_text">Text（背景文本）</label>
                 <textarea id="sonioxContextText" rows="4" autocomplete="off" data-i18n-placeholder="soniox_context_text_placeholder"></textarea>
-                <p class="hint" data-i18n="soniox_context_text_hint">适合会议摘要、脚本或参考文档；四个分区合计约不超过 10000 个字符。</p>
-                <p id="sonioxContextTextCount" class="character-count" aria-live="polite">当前字符数：0/10000</p>
+                <p class="hint" data-i18n="soniox_context_text_hint">适合会议摘要、脚本或参考文档。</p>
                 <p id="sonioxContextTextError" class="field-error"></p>
               </div>
               <div class="field">
@@ -233,6 +239,7 @@
                 <p id="sonioxContextTranslationTermsError" class="field-error"></p>
               </div>
             </div>
+            <p id="sonioxContextCount" class="character-count soniox-context-count" aria-live="polite">当前字符数：0/10000</p>
           </div>
           <div id="speakerColorsField" class="field hidden">
             <label class="check-field" for="speakerColors" data-i18n-title="speaker_colors_title">

@@ -561,6 +561,10 @@ textarea::placeholder {
   margin-top: 10px;
 }
 
+.soniox-context-count {
+  margin-top: 10px;
+}
+
 .qwen-audio-options-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(240px, .8fr);

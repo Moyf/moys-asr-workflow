@@ -148,12 +148,13 @@
     context_too_long: "Qwen-Audio 上下文最多 400 个字符。",
     soniox_context_title: "Soniox 上下文",
     soniox_context_hint: "可按需填写；四个分区会直接发送到 Soniox 的 context 对象。",
+    soniox_context_docs_link: "查看 context 文档 ↗",
     soniox_context_general: "General（键值信息）",
     soniox_context_general_placeholder: "domain=医疗\ntopic=糖尿病管理咨询\norganization=St John's Hospital",
     soniox_context_general_hint: "每行一个 key=value；也可粘贴 general JSON 数组。",
     soniox_context_text: "Text（背景文本）",
     soniox_context_text_placeholder: "补充会议摘要、脚本或参考文档……",
-    soniox_context_text_hint: "适合会议摘要、脚本或参考文档；四个分区合计约不超过 10000 个字符。",
+    soniox_context_text_hint: "适合会议摘要、脚本或参考文档。",
     soniox_context_terms: "Terms（术语）",
     soniox_context_terms_placeholder: "阿莫西林\nQwen\nMoy",
     soniox_context_terms_hint: "领域词、品牌名或人名；每行一个，也支持逗号分隔。",
@@ -194,12 +195,13 @@
     context_too_long: "Qwen-Audio context is limited to 400 characters.",
     soniox_context_title: "Soniox context",
     soniox_context_hint: "Fill in only what is useful; all four sections are sent as Soniox's context object.",
+    soniox_context_docs_link: "View context docs ↗",
     soniox_context_general: "General (key/value information)",
     soniox_context_general_placeholder: "domain=Healthcare\ntopic=Diabetes management consultation\norganization=St John's Hospital",
     soniox_context_general_hint: "One key=value pair per line; a general JSON array can also be pasted.",
     soniox_context_text: "Text (background text)",
     soniox_context_text_placeholder: "Add a meeting summary, script, or reference document…",
-    soniox_context_text_hint: "Use for summaries, scripts, or reference documents; all four sections total about 10,000 characters.",
+    soniox_context_text_hint: "Use for summaries, scripts, or reference documents.",
     soniox_context_terms: "Terms",
     soniox_context_terms_placeholder: "Amoxicillin\nQwen\nMoy",
     soniox_context_terms_hint: "Domain terms, brand names, or people; one per line or comma-separated.",
@@ -597,7 +599,7 @@
   function syncQwenAudioOptions(model) { const enabled = provider().id === "qwen" && Boolean(model?.supportsContext || model?.supportsHotwords); $("qwenAudioOptions").classList.toggle("hidden", !enabled); $("qwenAudioContextField").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsContext)); $("qwenAudioHotwordsSection").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsHotwords)); syncQwenAudioHotwordsMode(); }
   function syncSonioxContextOptions(model) { const enabled = provider().id === "soniox" && Boolean(model?.supportsContext); $("sonioxContextOptions").classList.toggle("hidden", !enabled); }
   function renderPromptCharacterCount() { const count = Array.from($("qwenAudioContext").value).length; const counter = $("qwenAudioContextCount"); counter.textContent = t("qwen_audio_context_count").replace("{count}", String(count)); counter.classList.toggle("over-limit", count > 400); }
-  function renderSonioxContextCharacterCount() { const value = [$("sonioxContextGeneral").value, $("sonioxContextText").value, $("sonioxContextTerms").value, $("sonioxContextTranslationTerms").value].join("\n"); const count = Array.from(value).length; const counter = $("sonioxContextTextCount"); counter.textContent = t("soniox_context_count").replace("{count}", String(count)); counter.classList.toggle("over-limit", count > 10000); }
+  function renderSonioxContextCharacterCount() { const value = [$("sonioxContextGeneral").value, $("sonioxContextText").value, $("sonioxContextTerms").value, $("sonioxContextTranslationTerms").value].join("\n"); const count = Array.from(value).length; const counter = $("sonioxContextCount"); counter.textContent = t("soniox_context_count").replace("{count}", String(count)); counter.classList.toggle("over-limit", count > 10000); }
   function splitHotwordEntries(value, ignoreComments = false) { return String(value || "").split(/[\r\n,，;；]+/u).map((word) => word.trim()).filter((word) => word && (!ignoreComments || !word.startsWith("#"))); }
   function parseHotwordEntry(value, defaultWeight) { const match = value.match(/^(.+?)\s*[:：]\s*(\d+)\s*$/u); const text = (match ? match[1] : value).trim(); if (!text) return { code: "empty" }; const weight = match ? Number(match[2]) : defaultWeight; if (!HOTWORD_WEIGHTS.has(weight)) return { code: "invalid_weight" }; const chars = Array.from(text).length; if (Array.from(text).some((char) => char.codePointAt(0) > 127) && chars > 15) return { code: "text_too_long" }; if (!Array.from(text).some((char) => char.codePointAt(0) > 127) && text.split(/\s+/u).filter(Boolean).length > 7) return { code: "too_many_ascii_words" }; return { text, weight }; }
   function collectHotwordWarnings(value, weight, ignoreComments = false) { const parsed = new Map(); const issues = []; splitHotwordEntries(value, ignoreComments).forEach((raw, index) => { const entry = parseHotwordEntry(raw, weight); if (entry.code) { issues.push({ index: index + 1, code: entry.code, text: raw }); return; } parsed.set(entry.text, { index: index + 1, entry }); }); let validCount = 0; let superCount = 0; Array.from(parsed.values()).sort((left, right) => left.index - right.index).forEach(({ index, entry }) => { if (validCount >= MAX_HOTWORDS) { issues.push({ index, code: "too_many", text: entry.text }); return; } if (entry.weight === 50 && superCount >= MAX_SUPER_HOTWORDS) { issues.push({ index, code: "too_many_super", text: entry.text }); return; } validCount += 1; if (entry.weight === 50) superCount += 1; }); return issues; }

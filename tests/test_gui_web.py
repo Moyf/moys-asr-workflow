@@ -1833,8 +1833,34 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim()', script)
         self.assertIn("soniox_context_count", script)
         self.assertIn("soniox_context_too_long", script)
+        self.assertIn('id="sonioxContextCount"', page)
+        self.assertNotIn('id="sonioxContextTextCount"', page)
+        self.assertNotIn('$("sonioxContextTextCount")', script)
+        self.assertIn('soniox_context_text_hint: "适合会议摘要、脚本或参考文档。"', script)
+        self.assertIn('soniox_context_text_hint: "Use for summaries, scripts, or reference documents."', script)
+        self.assertIn('href="https://soniox.com/docs/stt/concepts/context"', page)
+        self.assertIn('soniox_context_docs_link: "查看 context 文档 ↗"', script)
         self.assertIn(
             ".soniox-context-options-grid > .field:first-child {\n  margin-top: 10px;\n}",
+            stylesheet,
+        )
+        self.assertIn(
+            ".soniox-context-count {\n  margin-top: 10px;\n}",
+            stylesheet,
+        )
+
+    def test_multilanguage_launcher_uses_full_width_language_layout(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        self.assertIn('class="language-layout"', page)
+        self.assertIn('class="language-side"', page)
+        self.assertIn(
+            ".grid-two:not(.single-language) #languageField {\n  grid-column: 1 / -1;\n}",
+            stylesheet,
+        )
+        self.assertIn(
+            ".grid-two:not(.single-language) #languageField #language {\n  height: 132px;\n  max-height: 132px;\n}",
             stylesheet,
         )
 
