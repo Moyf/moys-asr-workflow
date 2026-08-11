@@ -229,6 +229,62 @@ test('Alt-drag moves only the hit side of a shared boundary, leaving the neighbo
 });
 
 
+test('keyboard movement ripples an attached following cue but Alt leaves it fixed', () => {
+  const linked = [
+    { start: 500, end: 1500, items: [{ text: 'A', start: 500, end: 1500 }] },
+    { start: 1500, end: 3000, items: [{ text: 'B', start: 1500, end: 3000 }] },
+  ];
+  const movedAway = helpers.applyMoveStep(linked, [0], -100, 4000, { sticky: true });
+  assert.equal(movedAway.appliedDelta, -100);
+  assert.deepEqual(JSON.parse(JSON.stringify(linked)), [
+    { start: 400, end: 1400, items: [{ text: 'A', start: 400, end: 1400 }] },
+    { start: 1400, end: 3000, items: [{ text: 'B', start: 1400, end: 3000 }] },
+  ]);
+
+  const independent = [
+    { start: 500, end: 1500 },
+    { start: 1500, end: 3000 },
+  ];
+  helpers.applyMoveStep(independent, [0], -100, 4000, { sticky: false });
+  assert.deepEqual(JSON.parse(JSON.stringify(independent)), [
+    { start: 400, end: 1400 },
+    { start: 1500, end: 3000 },
+  ]);
+  const compressed = helpers.applyMoveStep(independent, [0], 100, 4000, { sticky: false });
+  assert.equal(compressed.appliedDelta, 100);
+  assert.deepEqual(JSON.parse(JSON.stringify(independent)), [
+    { start: 500, end: 1500 },
+    { start: 1500, end: 3000 },
+  ]);
+  const blocked = helpers.applyMoveStep(independent, [0], 100, 4000, { sticky: false });
+  assert.equal(blocked.changed, false);
+});
+
+
+test('keyboard boundary adjustment follows the shared boundary and Alt isolates the target', () => {
+  const linked = [
+    { start: 0, end: 1000, items: [{ text: 'A', start: 0, end: 1000 }] },
+    { start: 1000, end: 2200, items: [{ text: 'B', start: 1000, end: 2200 }] },
+  ];
+  helpers.applyBoundaryStep(linked, 0, 'end', 100, 3000, { sticky: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(linked)), [
+    { start: 0, end: 1100, items: [{ text: 'A', start: 0, end: 1100 }] },
+    { start: 1100, end: 2200, items: [{ text: 'B', start: 1100, end: 2200 }] },
+  ]);
+
+  const independent = [
+    { start: 0, end: 1000 },
+    { start: 1000, end: 2200 },
+  ];
+  const plan = helpers.applyBoundaryStep(independent, 0, 'end', 100, 3000, { sticky: false });
+  assert.equal(plan.changed, false);
+  assert.deepEqual(JSON.parse(JSON.stringify(independent)), [
+    { start: 0, end: 1000 },
+    { start: 1000, end: 2200 },
+  ]);
+});
+
+
 test('razor split snaps to the nearest item boundary and refuses 100ms edges', () => {
   const segment = {
     start: 1000, end: 5000, text: 'ABCD',

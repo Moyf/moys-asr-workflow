@@ -8,6 +8,14 @@ import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { randomBytes } from 'node:crypto';
 
+// The editor server and portable HTML generator use only the repository's
+// Python sources and standard library.  Running them directly avoids making
+// browser tests depend on uv's global cache (which may be locked down on a
+// developer machine).  Set MAW_E2E_PYTHON when a specific interpreter is
+// needed.
+const PYTHON_COMMAND = process.env.MAW_E2E_PYTHON
+  || (process.platform === 'win32' ? 'python' : 'python3');
+
 // ---------------------------------------------------------------------------
 // Process cleanup for interrupted E2E runs.
 // ---------------------------------------------------------------------------
@@ -250,8 +258,8 @@ export function generateProjectJson(filePath) {
 // Returns { url, proc, stop } where stop() returns a Promise that resolves
 // when the process has fully exited.
 // ---------------------------------------------------------------------------
-async function launchServerProcess(uvArgs, port, env) {
-  const proc = spawn('uv', uvArgs, {
+async function launchServerProcess(pythonArgs, port, env) {
+  const proc = spawn(PYTHON_COMMAND, pythonArgs, {
     cwd: process.cwd(),
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
@@ -312,15 +320,15 @@ async function launchServerProcess(uvArgs, port, env) {
 export async function startServer(projectJsonPath, mediaPath, port) {
   const settingsRoot = join(dirname(projectJsonPath), '.settings');
   mkdirSync(settingsRoot, { recursive: true });
-  const uvArgs = [
-    'run', 'python', 'server-editor/serve.py',
+  const pythonArgs = [
+    'server-editor/serve.py',
     projectJsonPath,
     '-m', mediaPath,
     '--no-waveform',
     '--port', String(port),
     '--no-open',
   ];
-  return launchServerProcess(uvArgs, port, {
+  return launchServerProcess(pythonArgs, port, {
     ...process.env,
     PYTHONUNBUFFERED: '1',
     LOCALAPPDATA: settingsRoot,
@@ -332,14 +340,14 @@ export async function startServer(projectJsonPath, mediaPath, port) {
 // settingsRoot 隔离本机最近工程记录，保证每次都以空白状态启动。
 export async function startBlankServer(port, settingsRoot) {
   mkdirSync(settingsRoot, { recursive: true });
-  const uvArgs = [
-    'run', 'python', 'server-editor/serve.py',
+  const pythonArgs = [
+    'server-editor/serve.py',
     '--blank',
     '--no-waveform',
     '--port', String(port),
     '--no-open',
   ];
-  return launchServerProcess(uvArgs, port, {
+  return launchServerProcess(pythonArgs, port, {
     ...process.env,
     PYTHONUNBUFFERED: '1',
     LOCALAPPDATA: settingsRoot,
@@ -385,8 +393,8 @@ export async function startStaticServer(filePath, port) {
 // Generate blank-editor.html via edit.py --blank.
 // ---------------------------------------------------------------------------
 export function generateBlankEditor(outputPath) {
-  const args = ['run', 'python', 'edit.py', '--blank', '-o', outputPath];
-  execFileSync('uv', args, {
+  const args = ['edit.py', '--blank', '-o', outputPath];
+  execFileSync(PYTHON_COMMAND, args, {
     cwd: process.cwd(),
     encoding: 'utf-8',
     timeout: 30000,

@@ -340,7 +340,7 @@ __WAVEFORM_CSS__
       <div class="help-subgroup">
         <span class="help-subtitle">播放</span>
         <span class="help-important"><kbd>空格</kbd> 播放/暂停</span>
-        <span><kbd>←</kbd>/<kbd>→</kbd> 前后跳转 5 秒</span>
+        <span><kbd>←</kbd>/<kbd>→</kbd> 无选中时前后跳转 5 秒；有选中时按设置步长移动字幕</span>
         <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> 倍速 ×0.5/重置/×2</span>
       </div>
       <div class="help-subgroup">
@@ -351,6 +351,9 @@ __WAVEFORM_CSS__
       </div>
       <div class="help-subgroup">
         <span class="help-subtitle">编辑</span>
+        <span><kbd data-mod-key>Ctrl+←/→</kbd> 调整选中字幕左边界（起点）</span>
+        <span><kbd data-mod-key>Ctrl+Shift+←/→</kbd> 调整选中字幕右边界（终点）</span>
+        <span><kbd>A</kbd>/<kbd>D</kbd> 按住字幕块或边界时微调；<kbd>Alt</kbd> 取消黏连联动</span>
         <span><kbd>Delete</kbd> 删除所选字幕</span>
         <span class="help-important"><kbd data-mod-key>Ctrl+Z</kbd> 撤销</span>
         <span><kbd data-mod-key>Ctrl+Shift+Z</kbd> 重做</span>
@@ -454,6 +457,14 @@ __WAVEFORM_CSS__
         <option value="pointer">鼠标所在位置</option>
       </select>
     </label>
+    <label class="editor-settings-item" title="选中字幕后，方向键和按住字幕块/边界时的 A/D 每次调整的毫秒数">
+      字幕按键微调步长
+      <span class="gap-remove-number-control">
+        <input type="number" id="cue-move-step" min="10" max="2000" step="10" value="100" inputmode="numeric">
+        <span class="gap-remove-unit">ms</span>
+      </span>
+    </label>
+    <small class="editor-settings-hint">←/→ 移动字幕；Ctrl+←/→ 调整起点；Ctrl+Shift+←/→ 调整终点；A/D 需先按住字幕块或边界。</small>
     <label class="toggle editor-settings-item" title="开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条">
       <input type="checkbox" id="select-group-members"> 同时选中分组内项目
     </label>

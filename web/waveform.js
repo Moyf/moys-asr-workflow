@@ -644,6 +644,187 @@
     return segments;
   }
 
+  function snapshotTiming(segment) {
+    return {
+      start: Number(segment.start),
+      end: Number(segment.end),
+      items: Array.isArray(segment.items)
+        ? segment.items.map((item) => ({ ...item })) : segment.items,
+    };
+  }
+
+  function isAttached(left, right) {
+    return !!left && !!right && Number(left.end) === Number(right.start);
+  }
+
+  function normalizedIndices(segments, indices) {
+    return [...new Set(Array.from(indices || [])
+      .map((idx) => Number(idx))
+      .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < segments.length))]
+      .sort((a, b) => a - b);
+  }
+
+  // Keyboard movement is a small, discrete counterpart to moving a waveform
+  // block. When the selected range is attached to the next cue, the shared
+  // boundary follows the moved range: moving away expands the next cue and
+  // moving toward it compresses the next cue. Alt keeps that following cue
+  // untouched, while the normal no-overlap limit still applies.
+  function planMoveStep(segments, indices, deltaMs, durationMs, {
+    sticky = true,
+    minDuration = MIN_CUE_MS,
+  } = {}) {
+    const selectedIndices = normalizedIndices(segments, indices);
+    if (!selectedIndices.length) {
+      return { changed: false, appliedDelta: 0, indices: [], affectedIndices: [] };
+    }
+    const selected = new Set(selectedIndices);
+    const originals = new Map(selectedIndices.map((idx) => [idx, snapshotTiming(segments[idx])]));
+    const attachments = [];
+    const attachmentOriginals = new Map();
+    let minDelta = -Infinity;
+    let maxDelta = Infinity;
+    const timelineDuration = Number(durationMs);
+
+    for (const idx of selectedIndices) {
+      const original = originals.get(idx);
+      minDelta = Math.max(minDelta, -original.start);
+      if (Number.isFinite(timelineDuration) && timelineDuration > 0) {
+        maxDelta = Math.min(maxDelta, timelineDuration - original.end);
+      }
+      const previous = segments[idx - 1];
+      if (previous && !selected.has(idx - 1)) {
+        minDelta = Math.max(minDelta, Number(previous.end) - original.start);
+      }
+      const next = segments[idx + 1];
+      if (!next || selected.has(idx + 1)) continue;
+      if (sticky && isAttached(segments[idx], next)) {
+        const nextOriginal = snapshotTiming(next);
+        attachments.push({ index: idx, nextIndex: idx + 1 });
+        attachmentOriginals.set(idx + 1, nextOriginal);
+        // The next cue's start follows the selected cue's end, so its end
+        // and minimum duration limit how far the shared boundary can move.
+        maxDelta = Math.min(maxDelta, nextOriginal.end - minDuration - original.end);
+      } else {
+        // An unlinked following cue stays fixed and may not be overlapped.
+        maxDelta = Math.min(maxDelta, Number(next.start) - original.end);
+      }
+    }
+
+    const requested = Number(deltaMs);
+    const rounded = Number.isFinite(requested) ? roundMs(requested) : 0;
+    const appliedDelta = clamp(rounded, minDelta, maxDelta);
+    const affectedIndices = [...selectedIndices];
+    attachments.forEach(({ nextIndex }) => affectedIndices.push(nextIndex));
+    return {
+      changed: appliedDelta !== 0,
+      appliedDelta,
+      indices: selectedIndices,
+      affectedIndices: [...new Set(affectedIndices)].sort((a, b) => a - b),
+      originals,
+      attachments,
+      attachmentOriginals,
+    };
+  }
+
+  function applyMoveStep(segments, indices, deltaMs, durationMs, options = {}) {
+    const plan = planMoveStep(segments, indices, deltaMs, durationMs, options);
+    if (!plan.changed) return plan;
+    const delta = plan.appliedDelta;
+    plan.indices.forEach((idx) => {
+      const original = plan.originals.get(idx);
+      const segment = segments[idx];
+      segment.start = original.start + delta;
+      segment.end = original.end + delta;
+      if (Array.isArray(original.items)) {
+        segment.items = original.items.map((item) => ({
+          ...item,
+          start: item.start + delta,
+          end: item.end + delta,
+        }));
+      }
+    });
+    plan.attachments.forEach(({ nextIndex }) => {
+      const original = plan.attachmentOriginals.get(nextIndex);
+      const segment = segments[nextIndex];
+      segment.start = original.start + delta;
+      segment.items = remapItems(original.items, original.start, original.end, segment.start, segment.end);
+    });
+    return plan;
+  }
+
+  function planBoundaryStep(segments, index, edge, deltaMs, durationMs, {
+    sticky = true,
+    minDuration = MIN_CUE_MS,
+  } = {}) {
+    const target = segments[index];
+    if (!target || (edge !== 'start' && edge !== 'end')) {
+      return { changed: false, appliedDelta: 0, indices: [], affectedIndices: [] };
+    }
+    const previous = segments[index - 1];
+    const next = segments[index + 1];
+    const linkedNeighbor = edge === 'start'
+      ? (sticky && isAttached(previous, target) ? previous : null)
+      : (sticky && isAttached(target, next) ? next : null);
+    const current = edge === 'start' ? Number(target.start) : Number(target.end);
+    const requested = Number(deltaMs);
+    const rounded = Number.isFinite(requested) ? roundMs(requested) : 0;
+    let lower;
+    let upper;
+    if (edge === 'start') {
+      lower = linkedNeighbor ? Number(previous.start) + minDuration : Number(previous?.end ?? 0);
+      upper = Number(target.end) - minDuration;
+    } else {
+      lower = Number(target.start) + minDuration;
+      upper = linkedNeighbor
+        ? Number(next.end) - minDuration
+        : Number(next?.start ?? durationMs);
+      if (!Number.isFinite(upper) || upper <= 0) upper = Infinity;
+    }
+    const appliedDelta = clamp(current + rounded, lower, upper) - current;
+    const affectedIndices = linkedNeighbor
+      ? [index, edge === 'start' ? index - 1 : index + 1].sort((a, b) => a - b)
+      : [index];
+    const snapshots = new Map(affectedIndices.map((idx) => [idx, snapshotTiming(segments[idx])]));
+    return {
+      changed: appliedDelta !== 0,
+      appliedDelta,
+      index,
+      edge,
+      linked: !!linkedNeighbor,
+      neighborIndex: linkedNeighbor ? (edge === 'start' ? index - 1 : index + 1) : -1,
+      affectedIndices,
+      snapshots,
+    };
+  }
+
+  function applyBoundaryStep(segments, index, edge, deltaMs, durationMs, options = {}) {
+    const plan = planBoundaryStep(segments, index, edge, deltaMs, durationMs, options);
+    if (!plan.changed) return plan;
+    const target = segments[plan.index];
+    const oldTarget = plan.snapshots.get(plan.index);
+    const value = (plan.edge === 'start' ? oldTarget.start : oldTarget.end) + plan.appliedDelta;
+    if (plan.edge === 'start') {
+      target.start = value;
+      target.items = remapItems(oldTarget.items, oldTarget.start, oldTarget.end, target.start, target.end);
+      if (plan.linked) {
+        const previous = segments[plan.neighborIndex];
+        const oldPrevious = plan.snapshots.get(plan.neighborIndex);
+        previous.end = value;
+        previous.items = remapItems(oldPrevious.items, oldPrevious.start, oldPrevious.end, previous.start, previous.end);
+      }
+    } else {
+      target.end = value;
+      target.items = remapItems(oldTarget.items, oldTarget.start, oldTarget.end, target.start, target.end);
+      if (plan.linked) {
+        const next = segments[plan.neighborIndex];
+        const oldNext = plan.snapshots.get(plan.neighborIndex);
+        next.start = value;
+        next.items = remapItems(oldNext.items, oldNext.start, oldNext.end, next.start, next.end);
+      }
+    }
+    return plan;
+  }
+
   // Safe split point selection for the razor tool. Given a segment and a
   // pointer time, prefer the nearest item boundary (midpoint between adjacent
   // items' end/start); otherwise fall back to the integer millisecond nearest
@@ -2507,6 +2688,9 @@
       if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
+      // 字幕块会阻止 pointerdown 冒泡到 pane；主动接管焦点，确保按住
+      // 字幕块/边界后，左手 A/D 不会仍被设置输入框等控件拦截。
+      this.focusWaveform();
       // 剃刀工具：无修饰键左键点击字幕块（非手柄）时，在指针位置安全拆分。
       // 修饰键（Alt/Ctrl(Cmd)/Shift）仍走原行为，便于拆分后立即多选/禁用。
       const targetHandle = event.target.closest('.waveform-cue-handle');
@@ -2567,9 +2751,17 @@
         items: Array.isArray(segments[idx].items)
           ? segments[idx].items.map((item) => ({ ...item })) : segments[idx].items,
       }]));
+      const cancelIndices = new Set(dragIndices);
+      if (kind === 'move') {
+        dragIndices.forEach((idx) => {
+          if (segments[idx + 1] && isAttached(segments[idx], segments[idx + 1])) cancelIndices.add(idx + 1);
+        });
+      }
+      const cancelOriginals = new Map([...cancelIndices].map((idx) => [idx, snapshotTiming(segments[idx])]));
       this.drag = {
         pointerId: event.pointerId,
         startClientX: event.clientX,
+        currentClientX: event.clientX,
         rangeMs: geometry.endMs - geometry.startMs,
         rowWidth: geometry.width,
         geometry,
@@ -2578,6 +2770,8 @@
         indices: dragIndices,
         row,
         originals,
+        cancelOriginals,
+        commitIndices: new Set(dragIndices),
         started: false,
         changed: false,
         seekedOnPointerDown: false,
@@ -2625,6 +2819,7 @@
       this.drag = {
         pointerId: event.pointerId,
         startClientX: event.clientX,
+        currentClientX: event.clientX,
         rangeMs: geometry.endMs - geometry.startMs,
         rowWidth: geometry.width,
         geometry,
@@ -2635,6 +2830,8 @@
         indices: [movedIndex],
         row,
         originals,
+        cancelOriginals: new Map([[movedIndex, snapshotTiming(segments[movedIndex])]]),
+        commitIndices: new Set([movedIndex]),
         started: false,
         changed: false,
       };
@@ -2642,6 +2839,129 @@
       window.addEventListener('pointermove', this._dragMove = (moveEvent) => this.moveCueDrag(moveEvent));
       window.addEventListener('pointerup', this._dragEnd = (upEvent) => this.endCueDrag(upEvent), { once: true });
       window.addEventListener('pointercancel', this._dragEnd, { once: true });
+    }
+
+    cueDragDurationMs() {
+      return Number(this.durationMs) > 0 ? Number(this.durationMs) : Infinity;
+    }
+
+    captureCueDragOriginals(drag) {
+      const segments = this.options.getSegments();
+      drag.originals = new Map(drag.indices.map((idx) => [idx, snapshotTiming(segments[idx])]));
+    }
+
+    adjustSelectedByKeyboard(deltaMs, altKey = false) {
+      const indices = normalizedIndices(this.options.getSegments(), this.options.getSelection?.());
+      if (!indices.length) return false;
+      const segments = this.options.getSegments();
+      const plan = planMoveStep(
+        segments,
+        indices,
+        deltaMs,
+        this.cueDragDurationMs(),
+        { sticky: !altKey },
+      );
+      if (!plan.changed) return false;
+      this.options.onBeginEdit?.('移动字幕时间');
+      const result = applyMoveStep(
+        segments,
+        indices,
+        deltaMs,
+        this.cueDragDurationMs(),
+        { sticky: !altKey },
+      );
+      result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
+      this.options.onCommitEdit?.(result.indices, 'move');
+      this.refreshCueOverlay();
+      return true;
+    }
+
+    adjustSelectedBoundaryByKeyboard(deltaMs, edge, altKey = false) {
+      const segments = this.options.getSegments();
+      const indices = normalizedIndices(segments, this.options.getSelection?.());
+      if (!indices.length || (edge !== 'start' && edge !== 'end')) return false;
+      const index = edge === 'start' ? indices[0] : indices[indices.length - 1];
+      const options = { sticky: !altKey };
+      const plan = planBoundaryStep(segments, index, edge, deltaMs, this.cueDragDurationMs(), options);
+      if (!plan.changed) return false;
+      this.options.onBeginEdit?.(`${edge === 'start' ? '调整字幕起点' : '调整字幕终点'}`);
+      const result = applyBoundaryStep(
+        segments,
+        index,
+        edge,
+        deltaMs,
+        this.cueDragDurationMs(),
+        options,
+      );
+      result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
+      this.options.onCommitEdit?.(
+        result.affectedIndices,
+        result.linked ? 'resize-boundary' : 'resize-boundary-independent',
+      );
+      this.refreshCueOverlay();
+      return true;
+    }
+
+    adjustActiveCueDragBy(deltaMs, altKey = false) {
+      const drag = this.drag;
+      if (!drag) return false;
+      const segments = this.options.getSegments();
+      const durationMs = this.cueDragDurationMs();
+      let plan;
+      let apply;
+      if (drag.kind === 'move') {
+        const options = { sticky: !altKey };
+        plan = planMoveStep(segments, drag.indices, deltaMs, durationMs, options);
+        apply = () => applyMoveStep(segments, drag.indices, deltaMs, durationMs, options);
+      } else {
+        const edge = drag.kind === 'resize-left' || drag.kind === 'resize-boundary-independent'
+          ? 'start' : 'end';
+        const options = {
+          sticky: drag.kind !== 'resize-boundary-independent' && !altKey,
+        };
+        plan = planBoundaryStep(segments, drag.index, edge, deltaMs, durationMs, options);
+        apply = () => applyBoundaryStep(segments, drag.index, edge, deltaMs, durationMs, options);
+      }
+      // A held drag consumes A/D even when the current edge is already at a
+      // limit, so the key never falls through to subtitle navigation.
+      if (!plan.changed) return true;
+      if (!drag.started) {
+        drag.started = true;
+        const label = drag.kind === 'move' ? '移动字幕时间'
+          : drag.kind === 'resize-boundary-independent' ? '独立调整字幕边界'
+            : '调整字幕边界';
+        this.options.onBeginEdit?.(label);
+      }
+      const result = apply();
+      result.affectedIndices.forEach((idx) => drag.commitIndices.add(idx));
+      drag.changed = true;
+      this.captureCueDragOriginals(drag);
+      drag.startClientX = drag.currentClientX;
+      this.scheduleRefreshCueBlocks();
+      return true;
+    }
+
+    cancelCueDrag() {
+      const drag = this.drag;
+      if (!drag) return false;
+      window.removeEventListener('pointermove', this._dragMove);
+      window.removeEventListener('pointerup', this._dragEnd);
+      window.removeEventListener('pointercancel', this._dragEnd);
+      const segments = this.options.getSegments();
+      drag.cancelOriginals.forEach((original, idx) => {
+        const segment = segments[idx];
+        if (!segment) return;
+        segment.start = original.start;
+        segment.end = original.end;
+        segment.items = Array.isArray(original.items)
+          ? original.items.map((item) => ({ ...item })) : original.items;
+      });
+      this.content.querySelectorAll('.waveform-cue-block.dragging')
+        .forEach((block) => block.classList.remove('dragging'));
+      this.drag = null;
+      this.refreshCueOverlay();
+      this.setStatus('已取消字幕调整');
+      return true;
     }
 
     applyIndependentBoundaryDrag(drag, rawDelta) {
@@ -2827,6 +3147,7 @@
       const drag = this.drag;
       if (!drag || event.pointerId !== drag.pointerId) return;
       event.preventDefault();
+      drag.currentClientX = event.clientX;
       const deltaMs = ((event.clientX - drag.startClientX) / drag.rowWidth) * drag.rangeMs;
       if (!drag.started && Math.abs(deltaMs) < 2) return;
       if (!drag.started) {
@@ -2964,6 +3285,18 @@
       window.removeEventListener('pointercancel', this._dragEnd);
       this.content.querySelectorAll('.waveform-cue-block.dragging').forEach((block) => block.classList.remove('dragging'));
       this.drag = null;
+      if (event.type === 'pointercancel') {
+        drag.cancelOriginals.forEach((original, idx) => {
+          const segment = this.options.getSegments()[idx];
+          if (!segment) return;
+          segment.start = original.start;
+          segment.end = original.end;
+          segment.items = Array.isArray(original.items)
+            ? original.items.map((item) => ({ ...item })) : original.items;
+        });
+        this.refreshCueOverlay();
+        return;
+      }
       if (!drag.changed) {
         // select-only 只选中；两个跳转模式按设置跳到字幕开头或鼠标位置。
         const clickBehavior = this.options.getClickBehavior?.();
@@ -2972,7 +3305,7 @@
         }
         return;
       }
-      drag.indices.forEach((idx) => { this.options.getSegments()[idx]._dirty = true; });
+      drag.commitIndices.forEach((idx) => { this.options.getSegments()[idx]._dirty = true; });
       this.options.onCommitEdit(drag.indices, drag.kind);
       this.refreshCueOverlay();
     }
@@ -3054,6 +3387,8 @@
       sourceForFile,
       applySharedBoundary,
       applyIndependentEdge,
+      applyMoveStep,
+      applyBoundaryStep,
       splitSegmentAtTime,
       normalizeNewCueRange,
       clampWaveformScale,
