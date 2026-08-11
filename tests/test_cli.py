@@ -138,6 +138,22 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.code, 2)
 
+    def test_soniox_context_json_is_forwarded_to_soniox_generator(self) -> None:
+        args = cli.build_parser("MAW.exe").parse_args(
+            [
+                "--provider",
+                "soniox",
+                "-i",
+                "clip.mp3",
+                "--soniox-context-json",
+                '{"terms":["MRI"]}',
+            ]
+        )
+
+        generated = cli._generator_args(args, Path("clip.mp3"), Path("out.srt"))
+
+        self.assertEqual(generated[generated.index("--context-json") + 1], '{"terms":["MRI"]}')
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -335,6 +335,53 @@ class MajorityLanguageTests(unittest.TestCase):
 
 
 class ApiClientTests(unittest.TestCase):
+    def test_build_soniox_context_supports_all_documented_sections(self) -> None:
+        context = soniox.build_soniox_context(
+            general="domain=Healthcare\ntopic=Diabetes management",
+            text="A consultation about a patient's treatment plan.",
+            terms="MRI\nAmoxicillin, Qwen",
+            translation_terms="MRI => 核磁共振\nSt John's => St John's",
+        )
+
+        self.assertEqual(
+            context,
+            {
+                "general": [
+                    {"key": "domain", "value": "Healthcare"},
+                    {"key": "topic", "value": "Diabetes management"},
+                ],
+                "text": "A consultation about a patient's treatment plan.",
+                "terms": ["MRI", "Amoxicillin", "Qwen"],
+                "translation_terms": [
+                    {"source": "MRI", "target": "核磁共振"},
+                    {"source": "St John's", "target": "St John's"},
+                ],
+            },
+        )
+
+    def test_build_soniox_context_accepts_documented_json_sections(self) -> None:
+        context = soniox.parse_soniox_context_json(
+            '{"general":[{"key":"domain","value":"Healthcare"}],"terms":["MRI"]}'
+        )
+
+        self.assertEqual(
+            context,
+            {"general": [{"key": "domain", "value": "Healthcare"}], "terms": ["MRI"]},
+        )
+
+    def test_build_soniox_context_rejects_malformed_structured_input(self) -> None:
+        with self.assertRaises(soniox.SonioxContextError) as raised:
+            soniox.build_soniox_context(general="domain without separator")
+
+        self.assertEqual(raised.exception.field, "sonioxContextGeneral")
+        self.assertEqual(raised.exception.code, "soniox_context_invalid")
+
+    def test_build_soniox_context_rejects_context_over_documented_approximation(self) -> None:
+        with self.assertRaises(soniox.SonioxContextError) as raised:
+            soniox.build_soniox_context(text="x" * (soniox.SONIOX_CONTEXT_MAX_CHARS + 1))
+
+        self.assertEqual(raised.exception.code, "soniox_context_too_long")
+
     def test_create_transcription_payload(self) -> None:
         with mock.patch("maw.soniox.requests") as req:
             req.post.return_value = _response({"id": "t1"}, status=201)
@@ -353,6 +400,22 @@ class ApiClientTests(unittest.TestCase):
         self.assertEqual(payload["language_hints"], ["zh"])
         self.assertIs(payload["enable_speaker_diarization"], True)
         self.assertIs(payload["enable_language_identification"], True)
+
+    def test_create_transcription_payload_includes_context(self) -> None:
+        context = {"general": [{"key": "domain", "value": "Healthcare"}], "terms": ["MRI"]}
+        with mock.patch("maw.soniox.requests") as req:
+            req.post.return_value = _response({"id": "t1"}, status=201)
+
+            soniox.create_transcription(
+                BASE,
+                KEY,
+                model="stt-async-v5",
+                file_id="f1",
+                context=context,
+            )
+
+        payload = req.post.call_args.kwargs["json"]
+        self.assertEqual(payload["context"], context)
 
     def test_create_transcription_omits_optional_flags_by_default(self) -> None:
         with mock.patch("maw.soniox.requests") as req:

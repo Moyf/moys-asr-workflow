@@ -42,6 +42,7 @@ class TranscriptionRequest:
     qwen_audio_hotwords_file: str = ""
     qwen_audio_vocabulary_id: str = ""
     qwen_audio_hotword_weight: str = ""
+    soniox_context: dict[str, object] | None = None
     region: str = ""
     workspace_id: str = ""
     provider: str = "qwen"
@@ -194,6 +195,12 @@ def build_transcribe_command(
         _append_option(command, "--model", request.model if request.model != DEFAULT_MODEL_ID else "")
         if request.speaker_colors:
             command.append("--speaker-colors")
+        if request.soniox_context:
+            _append_option(
+                command,
+                "--context-json",
+                json.dumps(request.soniox_context, ensure_ascii=False, separators=(",", ":")),
+            )
     else:
         _append_option(command, "--model", request.model or DEFAULT_MODEL_ID)
         _append_option(command, "--region", request.region)

@@ -25,6 +25,7 @@ from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, LANGUAGES, MODELS
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, startupinfo
 from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.media import resolve_project_media
+from maw.soniox import SonioxContextError, build_soniox_context
 
 
 OPEN_DIALOG = 10
@@ -49,6 +50,8 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "ffmpeg_start_failed": "FFmpeg failed to start.",
     "transcription_failed": "Transcription failed.",
     "context_too_long": "Qwen-Audio context is limited to 400 characters.",
+    "soniox_context_too_long": "Soniox context is limited to approximately 10,000 characters.",
+    "soniox_context_invalid": "Soniox context format is invalid.",
     "hotwords_file_missing": "Choose an existing UTF-8 .txt hotword file.",
     "server_no_response": "Editor server did not respond.",
     "server_start_failed": "Editor server failed to start.",
@@ -820,13 +823,27 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         raise PreflightError("apiKey", "api_key_missing", "API key is required.")
     if provider.id == "qwen" and region == "singapore" and not workspace_id:
         raise PreflightError("workspaceId", "workspace_missing", "Workspace ID is required for Singapore region.")
-    qwen_audio_context = str(payload.get("qwenAudioContext") or "").strip() if model.supports_context else ""
+    qwen_audio_context = (
+        str(payload.get("qwenAudioContext") or "").strip()
+        if provider.id == "qwen" and model.supports_context else ""
+    )
     if len(qwen_audio_context) > 400:
         raise PreflightError(
             "qwenAudioContext",
             "context_too_long",
             "Qwen-Audio context is limited to 400 characters.",
         )
+    soniox_context = None
+    if provider.id == "soniox" and model.supports_context:
+        try:
+            soniox_context = build_soniox_context(
+                general=str(payload.get("sonioxContextGeneral") or ""),
+                text=str(payload.get("sonioxContextText") or ""),
+                terms=str(payload.get("sonioxContextTerms") or ""),
+                translation_terms=str(payload.get("sonioxContextTranslationTerms") or ""),
+            )
+        except SonioxContextError as error:
+            raise PreflightError(error.field, error.code, str(error)) from error
     qwen_audio_hotwords_mode = str(payload.get("qwenAudioHotwordsMode") or "text").strip().lower()
     qwen_audio_hotwords_file = ""
     qwen_audio_hotwords = ""
@@ -860,6 +877,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             str(payload.get("qwenAudioHotwordWeight") or "").strip()
             if model.supports_hotwords else ""
         ),
+        soniox_context=soniox_context,
         region=region,
         workspace_id=workspace_id,
         provider=provider.id,

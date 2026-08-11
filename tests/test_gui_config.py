@@ -177,6 +177,7 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual(provider.regions, ())
         self.assertTrue(provider.supports_speaker)
         self.assertTrue(provider.multi_language)
+        self.assertTrue(provider.models[0].supports_context)
 
     def test_qwen_languages_single_select_with_auto_and_documented_28(self) -> None:
         """Given Qwen docs allow exactly one language, When registry read, Then auto + 27 codes are offered."""

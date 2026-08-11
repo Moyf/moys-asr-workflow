@@ -170,7 +170,10 @@ uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" -ll 2m --j
 --speaker-colors     在 --speaker 基础上，把不同说话人一次性映射成 5 种字幕颜色
 --language zh,en     语言提示，逗号分隔；默认自动识别
 --with-waveform      把波形写进工程文件，CLI 默认不内嵌
+--context-json JSON  Soniox context 对象；支持 general/text/terms/translation_terms
 ```
+
+`context` 是 Soniox 官方的可选上下文对象：`general` 用于键值信息，`text` 用于背景文本，`terms` 用于领域术语，`translation_terms` 用于自定义翻译。四个分区合计约不超过 8,000 tokens（约 10,000 个字符）；GUI 高级选项提供了更易填写的文本格式，也可直接粘贴对应 JSON。
 
 颜色写入的是普通 `color` 字段，之后可在编辑器里自由修改；说话人超过 5 个时颜色循环复用并给出警告。
 

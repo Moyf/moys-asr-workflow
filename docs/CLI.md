@@ -156,7 +156,27 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 
 热词文件也支持 `热词: 权重` 或 `热词：权重`，可以对单条热词覆盖全局权重。即时热词和 context 主要由 `qwen-audio-3.0-asr-flash-filetrans` 使用；切换到 Qwen3-ASR 或 Fun-ASR 时，具体能力由模型决定，CLI 不会把它们伪装成通用能力。
 
-### 4.4 Server 参数
+### 4.4 Soniox 专用参数
+
+以下参数只用于 `--provider soniox`：
+
+| 参数 | 说明 |
+| --- | --- |
+| `--soniox-context-json JSON` | 传入 Soniox `context` 对象，支持 `general`、`text`、`terms`、`translation_terms` 四个分区；总量约不超过 8,000 tokens（约 10,000 个字符）。 |
+
+示例：
+
+```powershell
+.\MAW.exe `
+    --provider soniox `
+    -i "D:\Videos\panel.mp4" `
+    -o "D:\Output\panel.srt" `
+    --soniox-context-json '{"general":[{"key":"domain","value":"Healthcare"}],"terms":["MRI","Amoxicillin"]}'
+```
+
+PowerShell 中如果 context JSON 含有空格，请将整个 JSON 放在引号中。Launcher 的「高级选项」会把 `general`、`text`、`terms` 和 `translation_terms` 的文本填写转换成同一对象。
+
+### 4.5 Server 参数
 
 | 参数 | 说明 |
 | --- | --- |

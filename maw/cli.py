@@ -114,6 +114,10 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("--hotword-weight", help="Qwen 即时热词权重（1-5 或 50）")
     parser.add_argument("--context", help="Qwen-Audio context，最多 400 字符")
     parser.add_argument("--context-file", help="从 UTF-8 文件读取 Qwen-Audio context")
+    parser.add_argument(
+        "--soniox-context-json",
+        help="Soniox context JSON（general/text/terms/translation_terms，约 10000 字符以内）",
+    )
     return parser
 
 
@@ -202,6 +206,8 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
         or args.hotword
     ):
         parser.error("--provider soniox 不支持 Qwen 专用的地域、词表、热词、context 或 file-url 参数")
+    if args.provider == "qwen" and args.soniox_context_json is not None:
+        parser.error("--soniox-context-json 仅适用于 --provider soniox")
 
     input_path = Path(args.input).expanduser()
     if args.outputs:
@@ -269,6 +275,7 @@ def _generator_args(args: argparse.Namespace, input_path: Path, srt_path: Path) 
         ("--hotword-weight", args.hotword_weight),
         ("--context", args.context),
         ("--context-file", args.context_file),
+        ("--context-json", args.soniox_context_json),
     ):
         if value is not None and value != "":
             result.extend([flag, str(value)])
@@ -336,6 +343,7 @@ def _run_server(parser: argparse.ArgumentParser, args: argparse.Namespace) -> in
             args.hotword_weight,
             args.context,
             args.context_file,
+            args.soniox_context_json,
         )
     ):
         parser.error("转写参数不能与 --server 混用")
@@ -428,6 +436,7 @@ def _run_stop_server(parser: argparse.ArgumentParser, args: argparse.Namespace) 
             args.hotword_weight,
             args.context,
             args.context_file,
+            args.soniox_context_json,
         )
     ):
         parser.error("转写参数不能与 --stop-server 混用")

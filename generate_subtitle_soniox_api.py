@@ -35,9 +35,11 @@ from generate_subtitle_qwen_api import (
 from maw.project import repair_segment_durations, validate_project
 from maw.soniox import (
     MAX_AUDIO_SECONDS,
+    SonioxContextError,
     apply_speaker_colors,
     build_segments,
     load_config,
+    parse_soniox_context_json,
     transcribe,
 )
 from waveform import embed_waveform
@@ -114,6 +116,10 @@ def main():
         help="覆盖 Soniox 模型（默认读 .env 的 SONIOX_MODEL，兜底 stt-async-v5）",
     )
     parser.add_argument(
+        "--context-json", default=None,
+        help="Soniox context JSON；支持 general/text/terms/translation_terms，最多约 10000 字符",
+    )
+    parser.add_argument(
         "--debug", action="store_true",
         help="输出 API 解析结果用于调试",
     )
@@ -133,6 +139,11 @@ def main():
     enable_speaker = args.speaker or args.speaker_colors
     config = load_config()
     print(f"[准备] 已载入 Soniox 转写配置（模型: {args.model or config['model']}）")
+
+    try:
+        context = parse_soniox_context_json(args.context_json)
+    except SonioxContextError as error:
+        parser.error(str(error))
 
     video_exts = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"}
     is_video = input_path.suffix.lower() in video_exts
@@ -191,6 +202,7 @@ def main():
             language_hints=_language_hints(args.language),
             enable_speaker=enable_speaker,
             model=args.model,
+            context=context,
         )
         elapsed = time.perf_counter() - t0
 
