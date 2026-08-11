@@ -130,12 +130,12 @@ function clampExtensionRange(segment, start, end, duration = waveformEditor?.dur
 }
 
 function syncBoundExtensionForMain(mainSegment, patch = {}) {
-  if (!mainSegment || patch.independent || !multiSubtitleVisible()) return;
+  if (!mainSegment || patch.independent || !multiSubtitleVisible()) return false;
   const binding = MULTI_SUBTITLE_UTILS.bindingForSegment(getMultiSubtitleState(), mainSegment.id, 'main');
   const extension = binding
     ? extensionSegmentById(binding.extension_segment_ids?.[0], getExtensionTrack(binding.track_id))
     : null;
-  if (!extension) return;
+  if (!extension) return false;
   const oldStart = Number(patch.oldStart ?? mainSegment.start);
   const oldEnd = Number(patch.oldEnd ?? mainSegment.end);
   const deltaStart = Number(mainSegment.start) - oldStart;
@@ -148,6 +148,7 @@ function syncBoundExtensionForMain(mainSegment, patch = {}) {
     clampExtensionRange(extension, start, end);
   }
   extension._dirty = true;
+  return true;
 }
 
 function syncBoundMainForExtension(extensionSegment, patch = {}) {
@@ -2427,7 +2428,7 @@ function buildMultiCueColumn(segment, index, track, kind) {
   header.className = 'multi-cue-column-header';
   const indexEl = document.createElement('span');
   indexEl.className = 'index';
-  indexEl.textContent = `${kind === 'main' ? '主' : '次'} ${index + 1}`;
+  indexEl.textContent = `${kind === 'main' ? '主' : '副'} ${index + 1}`;
   header.append(indexEl, buildMultiTimeEl(segment));
   const text = document.createElement('span');
   text.className = 'text';
@@ -3549,13 +3550,21 @@ function mergeContiguousIndices(sorted) {
   const mergeEnd = segs[segs.length - 1]?.end;
   const multi = getMultiSubtitleState();
   const extensionTrack = multiSubtitleVisible() ? getActiveExtensionTrack() : null;
+  const oldMainIds = segs.map((segment) => segment.id).filter(Boolean);
+  const boundExtensionIds = new Set();
+  if (extensionTrack) {
+    oldMainIds.forEach((mainId) => {
+      const binding = MULTI_SUBTITLE_UTILS.bindingForSegment(multi, mainId, 'main');
+      (binding?.extension_segment_ids || []).forEach((extensionId) => boundExtensionIds.add(extensionId));
+    });
+  }
   const extensionMergeIndices = extensionTrack
     ? extensionTrack.segments.map((segment, index) => ({ segment, index }))
-      .filter(({ segment }) => segment.end > mergeStart && segment.start < mergeEnd)
+      .filter(({ segment }) => boundExtensionIds.has(segment.id)
+        || (segment.end > mergeStart && segment.start < mergeEnd))
       .map(({ index }) => index)
     : [];
   const extensionMergeSegments = extensionMergeIndices.map((index) => extensionTrack.segments[index]);
-  const oldMainIds = segs.map((segment) => segment.id).filter(Boolean);
   const oldExtensionIds = extensionMergeSegments.map((segment) => segment.id).filter(Boolean);
   const stickerGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
     DATA.segments, sorted, 'sticker', 'sticker_ref',
@@ -3751,7 +3760,7 @@ function autoMergeSegments() {
   if (editingState) finishEdit(false);
   clearSelection();
   pushUndo('拼合字幕');
-  const snappedCount = window.AsrEditorUtils.applyAutoMergeSnaps(DATA.segments, plan.snaps);
+  const snappedCount = applyAutoMergeSnapsWithBindings(plan.snaps);
   // 合并从后往前进行，保持靠前组的下标仍然有效
   for (let i = plan.groups.length - 1; i >= 0; i--) {
     mergeContiguousIndices(plan.groups[i]);
@@ -3763,6 +3772,33 @@ function autoMergeSegments() {
   if (snappedCount) parts.push(`拼合 ${snappedCount} 处间隔`);
   if (mergedCount) parts.push(`吸收 ${mergedCount} 条短字幕`);
   flashHint(`已拼合字幕：${parts.join('，')}`);
+}
+
+// 「拼合字幕」的自动延展直接修改主轨边界，不能绕过普通时间编辑使用的
+// 绑定同步路径。每个 snap 单独记录旧边界，确保连续间隔同时调整时，副字幕
+// 仍按对应的 start/end offset 跟随；Alt 独立拖动不会进入这里。
+function applyAutoMergeSnapsWithBindings(snaps) {
+  let changed = 0;
+  let linkedChanged = false;
+  (Array.isArray(snaps) ? snaps : []).forEach((snap) => {
+    const segment = DATA.segments[snap?.index];
+    if (!segment || !Number.isFinite(snap?.time)) return;
+    const oldStart = segment.start;
+    const oldEnd = segment.end;
+    const snapChanged = window.AsrEditorUtils.applyAutoMergeSnaps(DATA.segments, [snap]);
+    if (!snapChanged) return;
+    changed += snapChanged;
+    linkedChanged = syncBoundExtensionForMain(segment, {
+      oldStart,
+      oldEnd,
+      edge: snap.edge === 'end' ? 'end' : 'start',
+    }) || linkedChanged;
+  });
+  if (linkedChanged) {
+    markMultiSubtitleDirty();
+    syncBindingOffsets();
+  }
+  return changed;
 }
 
 // === 组拆分 helper（删除 / 清除颜色 / 清除表情包 通用）===
@@ -8230,7 +8266,7 @@ function showExtensionContextMenu(x, y, index, timeMs = null, track = getActiveE
     && selectedExtensionIdxs.size > 1
     && selectedExtensionIdxs.has(index);
   addItem(
-    '合并次要字幕块',
+    '合并副字幕块',
     () => mergeExtensionSegments([...selectedExtensionIdxs], track),
     false,
     !extensionSelectionOnly,

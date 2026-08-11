@@ -525,7 +525,7 @@
   pointer-events: none;
 }
 .waveform-row.multi-subtitle-row {
-  /* 从底部向上排布：次字幕在底部，主字幕在上方并紧贴。 */
+  /* 从底部向上排布：副字幕在底部，主字幕在上方并紧贴。 */
   --multi-subtitle-lane-gap: 0px;
   --multi-subtitle-bottom-inset: 7px;
   --multi-subtitle-label-height: 15px;
@@ -537,7 +537,7 @@
   bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) + ((var(--multi-subtitle-lane-height) - var(--multi-subtitle-label-height)) / 2));
 }
 .waveform-row.multi-subtitle-row::after {
-  content: "次";
+  content: "副";
   bottom: calc(var(--multi-subtitle-bottom-inset) + ((var(--multi-subtitle-lane-height) - var(--multi-subtitle-label-height)) / 2));
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="main"] {
@@ -762,7 +762,7 @@
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="main"],
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"] {
   /* 标签和字幕块都使用同一个 lane 高度；border-box 避免块边框额外撑高，
-     导致右侧“主/次”标记与实际轨道中心错开。 */
+     导致右侧“主/副”标记与实际轨道中心错开。 */
   height: var(--multi-subtitle-lane-height);
   box-sizing: border-box;
   min-height: 0;

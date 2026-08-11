@@ -255,8 +255,8 @@ test('merges selected extension cues from the context menu and C, with undo', as
   await second.click({ modifiers: ['Control'] });
   await expect(page.locator('#sel-count')).toHaveText('2');
   await second.click({ button: 'right' });
-  await expect(page.locator('#ctxmenu .item').filter({ hasText: '合并次要字幕块' })).toBeVisible();
-  await page.locator('#ctxmenu .item').filter({ hasText: '合并次要字幕块' }).click();
+  await expect(page.locator('#ctxmenu .item').filter({ hasText: '合并副字幕块' })).toBeVisible();
+  await page.locator('#ctxmenu .item').filter({ hasText: '合并副字幕块' }).click();
   await expect(page.locator('.multi-cue-column.extension').filter({ hasText: '你好，世界。 / 第二句。' })).toHaveCount(0);
   await expect(page.locator('.multi-cue-column.extension:not(.multi-cue-empty)')).toHaveCount(2);
 
@@ -269,6 +269,89 @@ test('merges selected extension cues from the context menu and C, with undo', as
   await expect(page.locator('.multi-cue-column.extension:not(.multi-cue-empty)')).toHaveCount(2);
   await page.keyboard.press('Control+z');
   await expect(page.locator('.multi-cue-column.extension:not(.multi-cue-empty)')).toHaveCount(3);
+});
+
+test('选中的主字幕与绑定副字幕一起合并并支持撤销', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-extension').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  const first = page.locator('.multi-cue-column.main').filter({ hasText: 'Hello world.' });
+  const second = page.locator('.multi-cue-column.main').filter({ hasText: 'Second line.' });
+  await first.click();
+  await second.click({ modifiers: ['Control'] });
+  await page.keyboard.press('c');
+
+  await expect(page.locator('.multi-dual-cue')).toHaveCount(2);
+  const merged = page.locator('.multi-dual-cue').filter({ hasText: 'Hello world.' });
+  await expect(merged.locator('.multi-cue-column.main .time')).toHaveText('00:00.000 → 00:05.000');
+  await expect(merged.locator('.multi-cue-column.extension .time')).toHaveText('00:00.050 → 00:04.950');
+
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('.multi-dual-cue')).toHaveCount(3);
+  await expect(page.locator('.multi-cue-column.extension').filter({ hasText: '你好，世界。' })).toHaveCount(1);
+  await expect(page.locator('.multi-cue-column.extension').filter({ hasText: '第二句。' })).toHaveCount(1);
+});
+
+test('拼合主字幕时同步延展绑定副字幕并支持撤销', async ({ page }) => {
+  const project = {
+    segments: [
+      { id: 'main-001', start: 0, end: 1000, text: '第一句', items: [] },
+      { id: 'main-002', start: 1100, end: 2000, text: '第二句', items: [] },
+    ],
+    waveform: generateWaveformPayload(3000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-1', role: 'extension', name: 'English', language: 'en', split_mode: 'word',
+        source_name: 'translation.srt',
+        segments: [
+          { id: 'extension-001', start: 50, end: 950, text: 'first' },
+          { id: 'extension-002', start: 1150, end: 1950, text: 'second' },
+        ],
+      }],
+      bindings: [
+        {
+          id: 'binding-001', track_id: 'extension-1',
+          main_segment_ids: ['main-001'], extension_segment_ids: ['extension-001'],
+          start_offset_ms: 50, end_offset_ms: -50,
+        },
+        {
+          id: 'binding-002', track_id: 'extension-1',
+          main_segment_ids: ['main-002'], extension_segment_ids: ['extension-002'],
+          start_offset_ms: 50, end_offset_ms: -50,
+        },
+      ],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'auto-merge-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  await page.locator('#auto-merge-manage').click();
+  await page.locator('#auto-merge-gap-ms').fill('200');
+  await page.locator('#auto-merge-absorb-short').uncheck();
+  await page.locator('#auto-merge-run').click();
+
+  const secondRow = page.locator('.multi-dual-cue').filter({ hasText: '第二句' });
+  await expect(secondRow.locator('.multi-cue-column.main .time')).toHaveText('00:01.000 → 00:02.000');
+  await expect(secondRow.locator('.multi-cue-column.extension .time')).toHaveText('00:01.050 → 00:01.950');
+
+  await page.keyboard.press('Control+z');
+  await expect(secondRow.locator('.multi-cue-column.main .time')).toHaveText('00:01.100 → 00:02.000');
+  await expect(secondRow.locator('.multi-cue-column.extension .time')).toHaveText('00:01.150 → 00:01.950');
+
+  await page.locator('#auto-merge-snap-direction').selectOption('forward');
+  await page.locator('#auto-merge-run').click();
+  const firstRow = page.locator('.multi-dual-cue').filter({ hasText: '第一句' });
+  await expect(firstRow.locator('.multi-cue-column.main .time')).toHaveText('00:00.000 → 00:01.100');
+  await expect(firstRow.locator('.multi-cue-column.extension .time')).toHaveText('00:00.050 → 00:01.050');
+  await page.keyboard.press('Control+z');
 });
 
 test('shows independent extension preview controls with yellow defaults', async ({ page }) => {
@@ -466,7 +549,7 @@ test('keeps one shared waveform background with two lanes, switch visibility, an
       secondary: getComputedStyle(row, '::after').content,
     };
   });
-  expect(laneBadgeContent).toEqual({ main: '"主"', secondary: '"次"' });
+  expect(laneBadgeContent).toEqual({ main: '"主"', secondary: '"副"' });
   const laneStyles = await mainBlock.evaluate((element) => {
     const row = element.closest('.waveform-row');
     const style = getComputedStyle(element);
