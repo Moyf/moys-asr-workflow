@@ -123,6 +123,10 @@ def main():
         "--debug", action="store_true",
         help="输出 API 解析结果用于调试",
     )
+    parser.add_argument(
+        "--debug-raw", action="store_true",
+        help="保存 Soniox transcript API 返回的完整原始 JSON，用于排查解析和时间码",
+    )
     args = parser.parse_args()
     configure_console_output()
 
@@ -203,9 +207,11 @@ def main():
             enable_speaker=enable_speaker,
             model=args.model,
             context=context,
+            capture_raw=args.debug_raw,
         )
         elapsed = time.perf_counter() - t0
 
+        raw_response = result.pop("_raw_response", None)
         if not result or not result.get("text"):
             print("错误: 未识别到任何内容", file=sys.stderr)
             raise SystemExit(2)
@@ -282,6 +288,14 @@ def main():
     output_path.write_text(srt_content, encoding="utf-8")
     print(f"\n字幕已保存到: {output_path}")
     print(f"共 {len(segments)} 条字幕")
+    if args.debug_raw:
+        if raw_response is None:
+            raise RuntimeError("调试模式未获得 Soniox transcript 原始返回数据")
+        raw_path = output_path.with_suffix(".asr-response.json")
+        with raw_path.open("w", encoding="utf-8", newline="\n") as raw_file:
+            json.dump(raw_response, raw_file, ensure_ascii=False, indent=2)
+            raw_file.write("\n")
+        print(f"[调试] Soniox transcript 原始返回已保存到: {raw_path}")
     if duration > 0:
         print(f"处理用时: {em}分{es}秒 | 实际 RTF: {rtf:.3f} ({speed:.1f}x 实时)")
     else:

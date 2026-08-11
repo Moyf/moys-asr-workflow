@@ -582,6 +582,7 @@ def transcribe(audio_path: str, config: dict, *,
                enable_speaker: bool = False,
                model: str | None = None,
                context: dict[str, object] | None = None,
+               capture_raw: bool = False,
                on_status=print) -> dict:
     """完整生命周期：上传 → 创建 → 轮询 → 取 transcript → 清理云端资源。
 
@@ -640,8 +641,11 @@ def transcribe(audio_path: str, config: dict, *,
 
     tokens = transcript.get("tokens", [])
     on_status(f"[soniox] 转写结果下载完成，耗时 {elapsed:.1f}s | tokens={len(tokens)}")
-    return {
+    result = {
         "text": transcript.get("text", ""),
         "language": majority_language(tokens),
         "items": tokens_to_items(merge_word_fragments(tokens)),
     }
+    if capture_raw:
+        result["_raw_response"] = transcript
+    return result

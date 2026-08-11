@@ -576,13 +576,16 @@ class ApiClientTests(unittest.TestCase):
              mock.patch.object(soniox, "poll_transcription", return_value=None), \
              mock.patch.object(soniox, "get_transcript", return_value=transcript), \
              mock.patch.object(soniox, "delete_transcription") as delete:
-            result = soniox.transcribe("audio.wav", config, on_status=lambda _m: None)
+            result = soniox.transcribe(
+                "audio.wav", config, capture_raw=True, on_status=lambda _m: None
+            )
 
         delete.assert_called_once_with(BASE, KEY, "t1", on_status=mock.ANY)
         self.assertEqual(result["text"], "大家好")
         self.assertEqual(result["language"], "zh")
         self.assertEqual(len(result["items"]), 3)
         self.assertEqual(result["items"][0]["speaker"], "1")
+        self.assertEqual(result["_raw_response"], transcript)
 
     def test_delete_transcription_is_best_effort(self) -> None:
         with mock.patch("maw.soniox.requests") as req:

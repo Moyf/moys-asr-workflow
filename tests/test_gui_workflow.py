@@ -129,6 +129,30 @@ class GuiWorkflowTests(unittest.TestCase):
             request.soniox_context,
         )
 
+    def test_build_transcribe_command_soniox_passes_debug_raw(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="soniox",
+            debug_raw=True,
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertIn("--debug-raw", command)
+
+    def test_soniox_generator_help_declares_debug_raw(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "generate_subtitle_soniox_api.py"), "--help"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("--debug-raw", result.stdout)
+
     def test_build_transcribe_command_qwen_audio_uses_hotword_file_mode(self) -> None:
         hotwords_file = self.root / "hotwords.txt"
         hotwords_file.write_text("张三\n阿里云\n", encoding="utf-8")

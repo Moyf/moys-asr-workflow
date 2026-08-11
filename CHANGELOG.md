@@ -8,6 +8,7 @@
 
 - 修复 macOS 从 Finder 启动普通版 `MAW.app` 时未自动检索 Homebrew 的 `/opt/homebrew/bin` 和 `/usr/local/bin`，导致找不到 `ffmpeg` / `ffprobe` 的问题。
 - 修复 macOS 按住 Shift 使用滚轮调整波形振幅时，滚动方向被错误判定为始终增大的问题。
+- 修复 Soniox 在 Launcher 勾选「调试运行」时因入口未声明 `--debug-raw` 参数而立即失败的问题。
 
 ### Added
 
