@@ -57,6 +57,7 @@ a = Analysis(
         "maw.local_models",
         "maw.local_runtime",
         "maw.local_asr",
+        "maw.cli",
         "maw.project",
         "maw.soniox",
     ],

@@ -69,6 +69,12 @@ ProgressCallback = Callable[[str], None]
 ProcessStartCallback = Callable[[int], None]
 
 
+MACOS_FFMPEG_CANDIDATE_DIRECTORIES: Final[tuple[str, ...]] = (
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+)
+
+
 @final
 class TranscriptionCancelledError(Exception):
     """Raised after a user requests cancellation."""
@@ -413,6 +419,9 @@ def _child_environment(parent: Mapping[str, str], api_key: str, workspace_id: st
         bundled_directory = _bundled_ffmpeg_directory()
         if bundled_directory:
             _prepend_ffmpeg_path(env, str(bundled_directory))
+    candidate_path = _ffmpeg_search_path(env.get("PATH", ""))
+    if candidate_path:
+        env["PATH"] = candidate_path
     if provider == "soniox":
         if api_key:
             env["SONIOX_API_KEY"] = api_key
@@ -436,6 +445,17 @@ def _prepend_ffmpeg_path(env: dict[str, str], configured_path: str) -> bool:
     old_path = env.get("PATH", "")
     env["PATH"] = str(directory) if not old_path else str(directory) + os.pathsep + old_path
     return True
+
+
+def _ffmpeg_search_path(path: str | None = None) -> str | None:
+    """Add common macOS Homebrew directories after the inherited PATH."""
+    current = os.environ.get("PATH", "") if path is None else path
+    entries = [entry for entry in current.split(os.pathsep) if entry]
+    if sys.platform == "darwin":
+        for directory in MACOS_FFMPEG_CANDIDATE_DIRECTORIES:
+            if directory not in entries:
+                entries.append(directory)
+    return os.pathsep.join(entries) or None
 
 
 def _bundled_ffmpeg_directory() -> Path | None:

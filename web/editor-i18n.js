@@ -12,7 +12,8 @@
     '撤销': 'Undo', '重做': 'Redo', '↶ 撤销': '↶ Undo', '↷ 重做': '↷ Redo',
     '打开工程': 'Open project',
     '最近工程': 'Recent projects', '自动打开上次工程': 'Automatically open last project',
-    '加载媒体': 'Load media', '加载字幕': 'Load subtitles', '保存工程': 'Save project', '另存为…': 'Save as…', '保存': 'Save', '保存成功！': 'Saved!',
+    '加载媒体': 'Load media', '加载字幕': 'Load subtitles', '保存工程': 'Save project', '另存为…': 'Save as…', '保存': 'Save', '保存成功！': 'Saved!', '保存失败': 'Save failed',
+    'item 内容': 'Item content', '字幕内容': 'Subtitle content', '关闭提示': 'Dismiss notification',
     '📥 松开以加载文件（视频 / 音频 / JSON / SRT）': '📥 Drop to load files (video / audio / JSON / SRT)',
     '自动保存': 'Auto-save', '自动保存间隔（秒）': 'Auto-save interval (seconds)',
     '导出字幕': 'Export subtitles', '导出字幕 ▾': 'Export subtitles ▾',
@@ -28,6 +29,8 @@
     '字幕': 'Subtitles', '字幕预览': 'Subtitle preview', '表情包预览': 'Sticker preview', '字幕列表和编辑区': 'Subtitle list & editor',
     '字体大小': 'Font size', '字幕大小': 'Font size', '自动（响应式）': 'Auto (responsive)', '字体': 'Font', '默认无衬线': 'Default sans-serif',
     '微软雅黑 / 苹方': 'Microsoft YaHei / PingFang', '黑体': 'SimHei', '宋体': 'SimSun', 'Arial / Segoe UI': 'Arial / Segoe UI',
+    '读取本机字体': 'Read local fonts', '点击读取本机字体（首次需要授权）': 'Click to read local fonts (permission required the first time)',
+    '背景色': 'Background color', '不透明度': 'Opacity',
     '样式会保存到工程的 preview.subtitle；旧工程默认使用原来的响应式字号。': 'Styles are saved in preview.subtitle; legacy projects keep the original responsive font size.',
     '媒体': 'Media', '预览字幕': 'Subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
     '播放': 'Play', '暂停': 'Pause', '后退 5 秒': 'Back 5 seconds', '前进 5 秒': 'Forward 5 seconds',
@@ -110,6 +113,7 @@
     '选中时，会将所有不同颜色的字幕按「文件名_颜色」格式统一导出；否则每个颜色都会弹出单独的保存框。': 'When enabled, export all color groups as filename_color; otherwise each color opens its own save dialog.',
     'Oi！检测到你添加了表情包，是否需要帮你打开「设置」中的字幕列表/编辑区的表情包显示开关？   ヾ(´･ω･｀)ﾉ': 'Oi! You added a sticker. Would you like to enable sticker display in the subtitle list and editor under Settings?   ヾ(´･ω･｀)ﾉ',
     'SRT 首条从 0 开始': 'Start first SRT cue at 0',
+    '只把第一条导出字幕的起点拉到 00:00，保留其结束时间和后续字幕时间码；不改动工程或 OTIO 的时间轴': 'Move only the first exported subtitle start to 00:00, preserving its end time and later timecodes; project and OTIO timelines are unchanged',
     '菜单': 'Menu', '显示菜单': 'Show menu', '单击': 'Click',
     'Shift+点击': 'Shift+click', 'Ctrl+点击': 'Ctrl+click',
     'Shift+拖拽空白处': 'Shift+drag blank area', '框选字幕': 'Box-select subtitles',
@@ -125,7 +129,12 @@
     '在鼠标所指的音频位置拆分（波形上；列表外按播放指针）': 'Split at the audio position under the pointer (on the waveform; elsewhere at the playhead)',
     '进入字幕编辑区（仅单选时）': 'Focus subtitle editor (single selection only)', '退出字幕编辑区（文本编辑时）': 'Exit subtitle editor (while editing)', '清除字幕选择（非编辑状态）': 'Clear subtitle selection (when not editing)',
     '选中所有字幕': 'Select all subtitles', '选中所有字幕（非编辑状态）': 'Select all subtitles (when not editing)',
-    '右键': 'Right-click', '字幕操作': 'Subtitle actions',
+    '右键': 'Right-click', '字幕操作': 'Subtitle actions', '波形区': 'Waveform area', '波形区字幕操作': 'Waveform subtitle actions',
+    '波形区（拓展）': 'Waveform area (Advanced)', '波形区显示': 'Waveform display', '显示调整': 'Display adjustments',
+    '启用/禁用字幕': 'Enable/disable subtitle',
+    '编辑选中字幕（根据最后点击区域）': 'Edit the selected subtitle (based on the last clicked area)',
+    '选择前后字幕': 'Select previous/next subtitles', '连续多选字幕': 'Select a continuous range',
+    '点击【🔧 设置】后，可在【音频波形区】调整显示的具体参数': 'Click 🔧 Settings to adjust the display parameters in the Audio waveform area',
     '多选': 'Multi-select', '连选': 'Range select',
     '鼠标': 'Mouse', '编辑状态': 'Editing', '功能快捷键': 'Action shortcuts',
     '工具': 'Tools', '滚轮': 'Wheel', '字幕导航': 'Subtitle navigation',
@@ -203,6 +212,11 @@
     '导出或导入工作区配置': 'Export or import workspace configuration',
     '只影响播放器画面内的字幕预览，不改变字幕文本或时间': 'Only affects subtitle preview in the player; subtitle text and timing are unchanged',
     '选择播放器画面内字幕预览使用的字体族': 'Choose the font family used by the subtitle preview in the player',
+    '读取本机已安装的字体': 'Read fonts installed on this computer',
+    '调整播放器画面内字幕预览的背景色': 'Adjust the subtitle preview background color in the player',
+    '字幕背景色': 'Subtitle background color',
+    '调整播放器画面内字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the subtitle preview background opacity in the player; 0 hides the background',
+    '字幕背景不透明度': 'Subtitle background opacity',
     '字幕预览设置': 'Subtitle preview settings',
     '点击复制工程文件名': 'Click to copy the project file name',
     '点击替换；右键删除': 'Click to replace; right-click to remove',
@@ -247,9 +261,64 @@
     '下次不带 JSON 路径启动服务器时，自动恢复上次打开的工程': 'Automatically restore the last project when the server starts without a JSON path',
     '只影响导出的 SRT，不改动工程或 OTIO 的时间轴': 'Only affects exported SRT; project and OTIO timelines are unchanged',
     'MAWE 设置': 'MAWE settings', '操作帮助': 'Controls help',
+    '快速上手': 'Quick start', '重新查看快速上手': 'Replay quick start', '跳过': 'Skip',
+    '打开工程后开始快速上手': 'Open a project to start the quick start guide',
+    '先打开一个包含字幕的工程；编辑器会用 3 个短练习带你熟悉最常用的操作。': 'Open a project with subtitles first; the editor will use 3 short practices to teach the most common operations.',
+    '打开一个工程后，这里会带你熟悉最常用的字幕操作。': 'Open a project and this space will guide you through the most common subtitle operations.',
+    '像玩游戏一样编辑': 'Edit like a game',
+    '使用 WASD 选择前后字幕——就像游戏一样！': 'Use WASD to move through subtitles — just like a game!',
+    '先选中任意一条字幕，然后用 WASD 在前后字幕之间移动。移动 3 次后点击下一步。': 'Select any subtitle, then move through nearby subtitles with WASD. Move 3 times, then click Next.',
+    '在字幕列表，用 W 和 S 「上下」选择字幕，在波形区，用 A 和 D 「左右」选择字幕——取决于你观看的视角 😏': 'In the subtitle list, use W and S to move “up and down”; in the waveform area, use A and D to move “left and right” — it depends on your point of view 😏',
+    'WASD 键位示意': 'WASD key layout',
+    '开始练习': 'Start practice', '下一步': 'Next', '稍后再试': 'Try later', '继续移动': 'Keep moving',
+    '按住 Shift 选择': 'Hold Shift to select', '等待撤销': 'Waiting for undo', '等待拆分': 'Waiting for split',
+    '已完成，点击下一步': 'Complete — click Next',
+    '其余快捷键和波形操作，随时点击': 'For the remaining shortcuts and waveform controls, click', '查看。': 'to view them.',
+    'Shift + WASD + C：连续多选并合并': 'Shift + WASD + C: select a range and merge it',
+    'Shift + WASD：扩展选择': 'Shift + WASD: extend the selection',
+    '按 C 合并字幕': 'Press C to merge subtitles',
+    '按住 Shift，用 WASD 扩展选择，选中至少两条连续字幕。': 'Hold Shift and use WASD to select at least two adjacent subtitles.',
+    '已选中连续字幕，现在按 C 合并。': 'Adjacent subtitles are selected. Now press C to merge.',
+    '操作已恢复，点击下一步进入拆分。': 'The edit has been undone. Click Next to move on to splitting.',
+    '选中至少两条后按 C': 'select at least two, then press C',
+    '已合并。现在按': 'Merged. Now press', '撤销这次体验。': 'to undo this practice edit.', '撤销刚才的合并': 'undo the merge you just made',
+    '撤销刚才的合并。': 'to undo the merge you just made.', '合并已撤销': 'Merge undone',
+    '撤销后再进入拆分。': 'After undoing, we will move on to splitting.',
+    '最后：在光标处拆分字幕': 'Finally: split a subtitle at the cursor',
+    '快速上手完成': 'Quick start complete', '编辑时间线': 'Edit the timeline', '常见操作': 'Common operations',
+    '其余快捷键、波形和导出功能，可以在【帮助】中随时查看。': 'You can find the remaining shortcuts, waveform, and export controls in Help at any time.',
+    '双击字幕文本，把光标放在中间，再按': 'Double-click the subtitle text, place the cursor in the middle, then press',
+    '拆分。': 'to split.',
+    '先看一个无风险演示；准备好后可以实际试一次。': 'First see a risk-free demo; when ready, try it on a real subtitle.',
+    '开始实际拆分': 'Try a real split', '跳过实际拆分': 'Skip real split',
+    '这次演示不会修改工程。': 'This demo does not modify the project.',
+    '双击字幕文本，光标自动放置在鼠标位置，再按': 'Double-click the subtitle text; the cursor is placed at the mouse position, then press',
+    '这次会修改当前字幕，但可以用': 'This will modify the current subtitle, but you can undo it with',
+    '撤销。': 'Undo.', '双击高亮字幕，在文字中间放置光标，再按': 'Double-click the highlighted subtitle, place the cursor in the middle, then press',
+    '拆分已完成。需要回退时按': 'The split is complete. To roll it back, press',
+    '完成！': 'Done!', '已掌握基础操作。': 'You have learned the basics.',
+    '打开完整帮助': 'Open full help', '结束引导': 'Finish guide',
+    '连续字幕已合并': 'Adjacent subtitles merged', '第一条字幕': 'First subtitle', '第二条字幕': 'Second subtitle', '第三条字幕': 'Third subtitle',
+    '拆分完成': 'Split complete',
+    '高亮字幕': 'Highlighted subtitle', '真实拆分': 'Real split', '以后想回退？': 'Need to go back later?',
+    '今天的天气很好': 'The weather is nice today', '我们去散步吧': 'Let’s go for a walk',
+    '已选择': 'Selected', '次': 'times', '条': 'subtitles',
+    '已合并': 'Merged', '已撤销': 'Undone', '演示不会修改工程': 'The demo does not modify the project',
+    '请先点击“开始练习”': 'Click “Start practice” first', '请按': 'Press',
+    '完成真实拆分': 'to complete the real split', '当前工程没有足够长的字幕可用于拆分练习': 'This project does not have a subtitle long enough for the split practice',
+    '已撤销这次体验，接下来学习拆分': 'The practice edit was undone; next we will learn to split',
+    '已撤销这次体验，请点击下一步学习拆分': 'The practice edit was undone; click Next to learn splitting',
+    '拆分已完成；需要回退时可以使用撤销': 'Split complete; use Undo if you need to roll it back',
+    '你可以点击': 'You can click', '设置': 'Settings', '来更改拆分按键': 'to change the split key',
+    '修改编辑时的拆分按键': 'to change the split key while editing',
+    '同样支持使用右键菜单拆分': 'You can also split from the right-click menu',
+    '在波形区可以根据音频位置拆分': 'In the waveform area, split by audio position',
+    '也可以使用右键菜单拆分': 'You can also split from the right-click menu',
+    '波形区同样支持拆分，详见帮助。': 'The waveform area also supports splitting; see Help for details.',
+    '撤销这次合并': 'Undo this merge',
     '编辑器工具': 'Editor tools', '波形工具': 'Waveform tools',
     '波形模式': 'Waveform mode', '音频波形': 'Audio waveform',
-    '点击替换；右键删除': 'Click to replace; right-click to delete'
+    '点击替换；右键删除': 'Click to replace; right-click to delete', '暂无表情包': 'No stickers yet'
     ,
     '导出完整字幕或按颜色分别导出字幕': 'Export full subtitles or separate files by color',
     '导出应用当前空隙移除结果的字幕、时间线或保留区域计划': 'Export subtitles, timelines, or kept regions using the current gap-removal result',
@@ -295,7 +364,7 @@
   const attributeOriginals = new WeakMap();
   const SKIP_SELECTOR = [
     '#cue-list', '#cue-panel-text', '#overlay', '#sticker-overlay-layer',
-    '#media-name', '#json-name', '#sticker-grid', 'script', 'style'
+    '#media-name', '#json-name', '#sticker-grid', '.hint-project-preview-value', 'script', 'style'
   ].join(',');
   const ATTRIBUTE_SKIP_SELECTOR = [
     // .waveform-cue-block 的 title 是用户字幕原文，不能参与翻译
@@ -414,6 +483,10 @@
     if (match) return `${translateText(match[1])} · manually adjusted`;
     match = /^上次打开：(.+)$/.exec(text);
     if (match) return `Last opened: ${match[1]}`;
+    match = /^第\s*(\d+)\s*条字幕(?:\s*·\s*item\s*(\d+))?$/.exec(text);
+    if (match) return match[2] ? `Subtitle ${match[1]} · item ${match[2]}` : `Subtitle ${match[1]}`;
+    match = /^定位到第\s*(\d+)\s*条字幕$/.exec(text);
+    if (match) return `Go to subtitle ${match[1]}`;
     match = /^保存失败：(.+)$/.exec(text);
     if (match) return `Save failed: ${match[1]}`;
     match = /^打开工程失败：(.+)$/.exec(text);

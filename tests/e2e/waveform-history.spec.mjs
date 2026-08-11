@@ -215,6 +215,44 @@ test('waveform navigation keeps a cue row in the comfort zone', async ({ page })
   await expect.poll(() => page.evaluate(() => window.__waveformScrollBehaviors)).toContain('smooth');
 });
 
+test('rapid subtitle navigation reuses cached waveform rows', async ({ page }) => {
+  await page.goto(server.url);
+  await expect(page.locator('.cue[data-idx="0"]')).toBeVisible();
+  await page.locator('.cue[data-idx="0"]').click();
+
+  await page.evaluate(() => {
+    // Put all fixture cues inside the cached row band so this test isolates
+    // keyboard navigation from the cross-row incremental-render path.
+    waveformEditor.settings.secondsPerRow = 60;
+    waveformEditor.multiRange = [-1, -1];
+    waveformEditor.render();
+
+    const original = waveformEditor.renderMultiVisible.bind(waveformEditor);
+    window.__keyboardWaveformRenderStats = { calls: 0, forced: 0 };
+    waveformEditor.renderMultiVisible = function wrappedRenderMultiVisible(force = false) {
+      window.__keyboardWaveformRenderStats.calls += 1;
+      if (force) window.__keyboardWaveformRenderStats.forced += 1;
+      return original(force);
+    };
+  });
+
+  await page.evaluate(() => {
+    for (let index = 0; index < 20; index += 1) {
+      document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'd',
+        bubbles: true,
+        repeat: index > 0,
+      }));
+    }
+  });
+  await page.waitForTimeout(100);
+
+  await expect(page.locator('.cue[data-idx="5"]')).toHaveClass(/selected/);
+  const renderStats = await page.evaluate(() => window.__keyboardWaveformRenderStats);
+  expect(renderStats.forced).toBe(0);
+  expect(renderStats.calls).toBeLessThan(20);
+});
+
 test('B does not split when the playhead is in a gap or while editing text', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('.cue[data-idx="0"]').click();
@@ -245,6 +283,54 @@ test('B splits at the pointer audio position while hovering the waveform', async
   await page.keyboard.press('b');
   await expect(page.locator('.cue')).toHaveCount(7);
   await expect(page.locator('.cue .text').nth(0)).not.toHaveText('Alpha');
+});
+
+test('B and C refresh cue overlays without redrawing cached waveform canvases', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    waveformEditor.settings.secondsPerRow = 60;
+    waveformEditor.multiRange = [-1, -1];
+    waveformEditor.render();
+    window.__cueOverlayStats = { drawRows: 0, overlayRefreshes: 0 };
+    window.__cachedWaveformCanvas = document.querySelector('.waveform-row canvas');
+    const originalDrawRow = waveformEditor.drawRow.bind(waveformEditor);
+    waveformEditor.drawRow = function wrappedDrawRow(...args) {
+      window.__cueOverlayStats.drawRows += 1;
+      return originalDrawRow(...args);
+    };
+    const originalRefreshCueOverlay = waveformEditor.refreshCueOverlay.bind(waveformEditor);
+    waveformEditor.refreshCueOverlay = function wrappedRefreshCueOverlay(...args) {
+      window.__cueOverlayStats.overlayRefreshes += 1;
+      return originalRefreshCueOverlay(...args);
+    };
+  });
+
+  const firstCueText = page.locator('.cue[data-idx="0"] .text');
+  await page.locator('.cue[data-idx="0"]').click();
+  const splitPoint = await firstCueText.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 2);
+    range.setEnd(node, 2);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.move(splitPoint.x, splitPoint.y);
+  await page.keyboard.press('b');
+  await expect(page.locator('.cue')).toHaveCount(7);
+
+  await page.locator('.cue[data-idx="1"]').click();
+  await page.locator('.cue[data-idx="2"]').click({ modifiers: ['Control'] });
+  await page.keyboard.press('c');
+  await expect(page.locator('.cue')).toHaveCount(6);
+
+  await expect.poll(() => page.evaluate(() => ({
+    canvasReused: document.querySelector('.waveform-row canvas') === window.__cachedWaveformCanvas,
+    stats: window.__cueOverlayStats,
+  }))).toEqual({
+    canvasReused: true,
+    stats: { drawRows: 0, overlayRefreshes: 2 },
+  });
 });
 
 test('help reflects the selected subtitle-edit split key', async ({ page }) => {

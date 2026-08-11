@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import re
 from typing import TypeAlias, TypeGuard
 
 
@@ -12,7 +13,11 @@ JsonDict: TypeAlias = dict[str, JsonValue]
 ValidationIssue: TypeAlias = tuple[str, str]
 SUBTITLE_FONT_SIZE_MIN = 12
 SUBTITLE_FONT_SIZE_MAX = 96
+SUBTITLE_FONT_FAMILY_MAX_LENGTH = 128
 SUBTITLE_FONT_FAMILIES = frozenset({"default", "yahei", "hei", "song", "sans"})
+SUBTITLE_BACKGROUND_ALPHA_MIN = 0.0
+SUBTITLE_BACKGROUND_ALPHA_MAX = 1.0
+SUBTITLE_BACKGROUND_COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 def validate_preview(project: JsonDict) -> tuple[ValidationIssue, ...]:
@@ -45,8 +50,23 @@ def validate_preview(project: JsonDict) -> tuple[ValidationIssue, ...]:
             issues.append(("$.preview.subtitle.font_size", "must be a number in [12, 96]"))
     if "font_family" in subtitle:
         font_family = subtitle.get("font_family")
-        if not isinstance(font_family, str) or font_family not in SUBTITLE_FONT_FAMILIES:
-            issues.append(("$.preview.subtitle.font_family", "must be one of default, yahei, hei, song, sans"))
+        if not _is_valid_subtitle_font_family(font_family):
+            issues.append((
+                "$.preview.subtitle.font_family",
+                "must be a built-in key or a non-empty font family name up to 128 characters",
+            ))
+    if "background_color" in subtitle:
+        background_color = subtitle.get("background_color")
+        if not _is_valid_subtitle_background_color(background_color):
+            issues.append((
+                "$.preview.subtitle.background_color",
+                "must be a 6-digit hexadecimal color such as #000000",
+            ))
+    if "background_alpha" in subtitle:
+        background_alpha = subtitle.get("background_alpha")
+        if (not isinstance(background_alpha, (int, float)) or isinstance(background_alpha, bool)
+                or not SUBTITLE_BACKGROUND_ALPHA_MIN <= float(background_alpha) <= SUBTITLE_BACKGROUND_ALPHA_MAX):
+            issues.append(("$.preview.subtitle.background_alpha", "must be a number in [0, 1]"))
     if len(values) != 4:
         return tuple(issues)
     if values["x"] + values["width"] > 1:
@@ -54,6 +74,18 @@ def validate_preview(project: JsonDict) -> tuple[ValidationIssue, ...]:
     if values["y"] + values["height"] > 1:
         issues.append(("$.preview.subtitle", "y + height must be <= 1"))
     return tuple(issues)
+
+
+def _is_valid_subtitle_font_family(value: JsonValue) -> TypeGuard[str]:
+    if not isinstance(value, str) or not value or len(value) > SUBTITLE_FONT_FAMILY_MAX_LENGTH:
+        return False
+    if value != value.strip():
+        return False
+    return all(0x20 <= ord(char) != 0x7F for char in value)
+
+
+def _is_valid_subtitle_background_color(value: JsonValue) -> TypeGuard[str]:
+    return isinstance(value, str) and SUBTITLE_BACKGROUND_COLOR_PATTERN.fullmatch(value) is not None
 
 
 def clamped_preview(project: JsonDict, duration_ms: int) -> JsonDict:

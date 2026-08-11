@@ -332,6 +332,18 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertEqual(env["PATH"].split(os.pathsep)[0], str(ffmpeg_dir))
 
+    def test_child_environment_appends_macos_candidate_directories(self) -> None:
+        with mock.patch.object(sys, "platform", "darwin"):
+            with mock.patch("maw.gui_workflow.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", ("/opt/homebrew/bin", "/usr/local/bin")):
+                with mock.patch("maw.gui_workflow.load_env", return_value={}):
+                    with mock.patch("maw.gui_workflow._bundled_ffmpeg_directory", return_value=None):
+                        env = _child_environment({"PATH": "/usr/bin"}, "", "")
+
+        self.assertEqual(
+            env["PATH"].split(os.pathsep),
+            ["/usr/bin", "/opt/homebrew/bin", "/usr/local/bin"],
+        )
+
     def test_run_transcription_reports_child_pid_after_popen(self) -> None:
         request = TranscriptionRequest(media_path=self.media_path, srt_path=self.srt_path)
         self.srt_path.write_text("1\n", encoding="utf-8")
@@ -685,7 +697,8 @@ class GuiWorkflowTests(unittest.TestCase):
         )
 
         self.assertEqual(completed.returncode, 0)
-        self.assertIn("Moy's ASR Workflow GUI", completed.stdout)
+        self.assertIn("MAW 命令行", completed.stdout)
+        self.assertIn("--server", completed.stdout)
 
 
 if __name__ == "__main__":

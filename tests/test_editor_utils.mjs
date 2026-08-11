@@ -906,7 +906,7 @@ test('history stack: clear and clearRedo reset the right stacks', () => {
 // === preview.subtitle geometry helpers ===
 
 test('normalizePreviewGeometry returns default geometry for invalid input', () => {
-  const expected = { x: 0.175, y: 0.76, width: 0.65, height: 0.16 };
+  const expected = { x: 0.1, y: 0.76, width: 0.8, height: 0.16 };
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizePreviewGeometry(null))), expected);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizePreviewGeometry('bad'))), expected);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizePreviewGeometry({}))), expected);
