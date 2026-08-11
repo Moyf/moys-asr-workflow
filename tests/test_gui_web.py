@@ -575,7 +575,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         ffmpeg.write_bytes(b"exe")
         ffprobe.write_bytes(b"exe")
 
-        def which(name: str) -> str:
+        def which(name: str, *, path: str | None = None) -> str:
             return str(ffmpeg if name == "ffmpeg" else ffprobe)
 
         with mock.patch("maw.gui_web.shutil.which", side_effect=which):
@@ -599,6 +599,23 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(result["found"])
         self.assertEqual(result["ffmpeg"], str(ffmpeg))
         self.assertEqual(result["ffprobe"], str(ffprobe))
+
+    def test_check_ffmpeg_uses_macos_candidate_directories(self) -> None:
+        ffmpeg_dir = self.root / "homebrew" / "bin"
+        ffmpeg_dir.mkdir(parents=True)
+
+        def which(name: str, *, path: str | None = None) -> str:
+            assert path is not None
+            self.assertIn(str(ffmpeg_dir), path.split(os.pathsep))
+            return str(ffmpeg_dir / ("ffmpeg.exe" if name == "ffmpeg" else "ffprobe.exe"))
+
+        with mock.patch.object(sys, "platform", "darwin"):
+            with mock.patch("maw.gui_workflow.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", (str(ffmpeg_dir),)):
+                with mock.patch("maw.gui_web.shutil.which", side_effect=which):
+                    result = self.api.check_ffmpeg()
+
+        self.assertTrue(result["found"])
+        self.assertEqual(result["directory"], str(ffmpeg_dir))
 
     def test_save_ffmpeg_path_invalid_stays_missing(self) -> None:
         result = self.api.save_ffmpeg_path({"path": str(self.root / "missing")})

@@ -235,7 +235,7 @@ uv run python server-editor\serve.py --blank
 
 安装 FFmpeg 后关闭并重开 PowerShell，再运行 `ffmpeg -version`。不要只把 `ffmpeg.exe` 放在仓库里；更稳妥的是把其 `bin` 目录加入系统 PATH。
 
-macOS 从 Finder 启动 `.app` 时不一定会继承终端里的 PATH。Apple Silicon Homebrew 通常使用 `/opt/homebrew/bin`，Intel Homebrew 通常使用 `/usr/local/bin`；如果 Launcher 仍提示缺少 FFmpeg，可把对应目录填入「配置」中的 FFmpeg 路径，并确认其中同时存在 `ffmpeg` 和 `ffprobe`。macOS GUI 的配置会保存到 `~/Library/Application Support/Moy/MAW/.env`，不写入只读或被 App Translocation 隔离的 `.app` 包。
+macOS 从 Finder 启动 `.app` 时不一定会继承终端里的 PATH。Launcher 会额外尝试 Apple Silicon Homebrew 的 `/opt/homebrew/bin` 和 Intel Homebrew 的 `/usr/local/bin`；如果仍提示缺少 FFmpeg，可把对应目录填入「配置」中的 FFmpeg 路径，并确认其中同时存在 `ffmpeg` 和 `ffprobe`。macOS GUI 的配置会保存到 `~/Library/Application Support/Moy/MAW/.env`，不写入只读或被 App Translocation 隔离的 `.app` 包。
 
 ### 提示未配置 API Key
 

@@ -23,7 +23,7 @@ from typing import BinaryIO, Final, final
 
 from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, LANGUAGES, MODELS, PROVIDERS, REGIONS, ModelConfig, ProviderConfig, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, startupinfo
-from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
+from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.media import resolve_project_media
 
 
@@ -1032,8 +1032,8 @@ def _open_existing_path(path: Path) -> dict[str, object]:
 
 
 def _check_ffmpeg(env_path: Path, override: str = "") -> dict[str, object]:
-    ffmpeg_path = shutil.which("ffmpeg")
-    ffprobe_path = shutil.which("ffprobe")
+    ffmpeg_path = _which_ffmpeg_tool("ffmpeg")
+    ffprobe_path = _which_ffmpeg_tool("ffprobe")
     configured_value = override or os.environ.get("FFMPEG_PATH", "") or effective_config_value(env_path, "FFMPEG_PATH")
     configured_dir = _ffmpeg_directory(configured_value)
     if override and configured_dir is None:
@@ -1052,6 +1052,12 @@ def _check_ffmpeg(env_path: Path, override: str = "") -> dict[str, object]:
     found = bool(ffmpeg_path and ffprobe_path)
     directory = str(Path(ffmpeg_path).parent) if ffmpeg_path else ""
     return {"ok": True, "found": found, "ffmpeg": ffmpeg_path or "", "ffprobe": ffprobe_path or "", "directory": directory}
+
+
+def _which_ffmpeg_tool(name: str) -> str | None:
+    if sys.platform != "darwin":
+        return shutil.which(name)
+    return shutil.which(name, path=_ffmpeg_search_path())
 
 
 def effective_config_value(env_path: Path, key: str) -> str:
