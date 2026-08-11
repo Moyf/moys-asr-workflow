@@ -875,7 +875,7 @@ textarea::placeholder {
 .toolbox-fab {
   position: fixed;
   right: 20px;
-  bottom: 72px;
+  bottom: 78px;
   z-index: 38;
   width: 48px;
   height: 48px;
@@ -913,7 +913,7 @@ textarea::placeholder {
 .toolbox-drawer {
   position: fixed;
   right: 20px;
-  bottom: 128px;
+  bottom: 134px;
   z-index: 36;
   width: min(560px, calc(100vw - 40px));
   block-size: min(560px, calc(100dvh - 156px));
@@ -1037,6 +1037,15 @@ textarea::placeholder {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   background: var(--bg-input);
+}
+
+#toolboxInputPath {
+  direction: ltr;
+  text-align: right;
+}
+
+#toolboxInputPath:placeholder-shown {
+  text-align: left;
 }
 
 .toolbox-input-heading {
@@ -1441,11 +1450,12 @@ code {
   }
 }
 
-@media (max-width:620px) {
-  .grid-two,
-  .qwen-audio-options-grid,
-  .soniox-context-options-grid,
-  .path-row {
+ @media (max-width:620px) {
+   .grid-two,
+   .qwen-audio-options-grid,
+   .soniox-context-options-grid,
+   .language-layout,
+   .path-row {
     grid-template-columns: 1fr;
   }
   .hero,
@@ -1458,11 +1468,11 @@ code {
   }
   .toolbox-fab {
     right: 12px;
-    bottom: 116px;
+    bottom: 122px;
   }
   .toolbox-drawer {
     right: 12px;
-    bottom: 180px;
+    bottom: 186px;
     width: calc(100vw - 24px);
     max-block-size: calc(100dvh - 200px);
   }
@@ -1593,7 +1603,59 @@ select[multiple] option {
   justify-content: flex-start;
 }
 
-/* 单选语言使用常规两列混合布局；多选语言保留独立的右侧长列表。 */
+/* 多语言时隐藏字段容器不占位，让语言设置从左侧开始并跨满两列。 */
+.grid-two:not(.single-language) .advanced-col {
+  display: contents;
+}
+
+.grid-two:not(.single-language) #languageField {
+  grid-column: 1 / -1;
+}
+
+.grid-two:not(.single-language) #languageField .language-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, .8fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.grid-two:not(.single-language) #languageField #language {
+  height: 132px;
+  max-height: 132px;
+}
+
+.grid-two:not(.single-language) #languageField .language-side {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  align-content: start;
+}
+
+.grid-two:not(.single-language) #languageField .lang-actions {
+  min-height: 34px;
+}
+
+.soniox-context-hint {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  align-items: baseline;
+}
+
+.soniox-context-hint a {
+  color: var(--accent-hover);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent-hover) 55%, transparent);
+  text-underline-offset: 2px;
+}
+
+.soniox-context-hint a:hover,
+.soniox-context-hint a:focus-visible {
+  color: var(--text-primary);
+  text-decoration-color: currentColor;
+}
+
+/* 单选语言使用常规两列混合布局。 */
 .grid-two.single-language .advanced-col {
   display: contents;
 }

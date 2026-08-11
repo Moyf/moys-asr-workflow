@@ -25,7 +25,7 @@ function clampCueMoveStepMs(value) {
   );
 }
 const DEFAULT_EDITOR_SETTINGS = {
-  splitKey: 'ctrl-enter',
+  splitKey: 'enter',
   overlayEnabled: true,
   exportStartAtZero: false,
   cueListShowIndex: true,
@@ -85,7 +85,7 @@ function readEditorSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || '{}');
     return {
-      splitKey: saved.splitKey === 'enter' ? 'enter' : DEFAULT_EDITOR_SETTINGS.splitKey,
+      splitKey: saved.splitKey === 'ctrl-enter' ? 'ctrl-enter' : DEFAULT_EDITOR_SETTINGS.splitKey,
       overlayEnabled: saved.overlayEnabled !== false,
       exportStartAtZero: saved.exportStartAtZero === true,
       cueListShowIndex: saved.cueListShowIndex !== false,

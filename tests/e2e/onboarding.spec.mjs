@@ -64,8 +64,8 @@ test('quick start teaches WASD, real merge with undo, then real split', async ({
   await page.locator('#onboarding-primary').click();
   await expect(page.locator('#onboarding-title')).toHaveText('最后：在光标处拆分字幕');
   await expect(page.locator('#onboarding-primary')).toBeHidden();
-  await expect(page.locator('#onboarding-description')).toHaveText('双击字幕列表中的字幕，光标会自动放置在点击位置，按 Ctrl+Enter 即可拆分。');
-  await expect(page.locator('#onboarding-description kbd')).toHaveText('Ctrl+Enter');
+  await expect(page.locator('#onboarding-description')).toHaveText('双击字幕列表中的字幕，光标会自动放置在点击位置，按 Enter 即可拆分。');
+  await expect(page.locator('#onboarding-description kbd')).toHaveText('Enter');
 
   const targetText = page.locator('.cue[data-idx="0"] .text');
   const splitPoint = await targetText.evaluate((element) => {
@@ -81,9 +81,7 @@ test('quick start teaches WASD, real merge with undo, then real split', async ({
     const selection = window.getSelection();
     return Boolean(selection?.isCollapsed && selection.anchorOffset > 0 && selection.anchorOffset < 5);
   });
-  await page.keyboard.down('Control');
   await page.keyboard.press('Enter');
-  await page.keyboard.up('Control');
   await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
   await expect(page.locator('#onboarding-title')).toHaveText('完成！');
   await expect(page.locator('#onboarding-description')).toHaveText('已掌握基础操作。可以在右上角的【🤔 帮助】中随时查看。');

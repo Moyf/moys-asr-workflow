@@ -340,7 +340,7 @@ __WAVEFORM_CSS__
         <span class="help-important"><kbd>Enter</kbd> 进入字幕编辑区（仅单选时）</span>
         <span><kbd>Esc</kbd> 退出字幕编辑区（文本编辑时）</span>
         <span><kbd>Esc</kbd> 清除字幕选择（非编辑状态）</span>
-        <span><kbd id="help-split-key">Ctrl+Enter</kbd>（编辑字幕文本时）在文字光标处拆分</span>
+        <span><kbd id="help-split-key">Enter</kbd>（编辑字幕文本时）在文字光标处拆分</span>
       </div>
       <div class="help-subgroup">
         <span class="help-subtitle">工具</span>
@@ -448,8 +448,8 @@ __WAVEFORM_CSS__
     <label class="editor-settings-item" title="编辑字幕时，选择 Enter 或 Ctrl(Cmd)+Enter 在文字光标处拆分；另一个按键用于保存">
       字幕（编辑状态下）拆分按键
       <select id="split-key">
-        <option value="ctrl-enter" selected>Ctrl+Enter</option>
-      <option value="enter">Enter</option>
+        <option value="enter" selected>Enter</option>
+        <option value="ctrl-enter">Ctrl+Enter</option>
     </select>
   </label>
     <div class="editor-settings-field">
@@ -691,7 +691,7 @@ __WAVEFORM_CSS__
             <input type="text" id="cue-panel-duration" inputmode="decimal" autocomplete="off">
           </label>
         </div>
-        <button type="button" id="cue-panel-split">在光标处拆分（<kbd id="cue-panel-split-key">Ctrl+Enter</kbd>）</button>
+        <button type="button" id="cue-panel-split">在光标处拆分（<kbd id="cue-panel-split-key">Enter</kbd>）</button>
       </div>
       <div class="cue-panel-text-wrap">
         <textarea id="cue-panel-text" rows="3" placeholder="选择一条字幕开始编辑…"></textarea>

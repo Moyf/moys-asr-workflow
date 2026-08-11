@@ -359,7 +359,7 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   const modKey = await page.evaluate(() => (
     /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgentData?.platform || '') ? 'Cmd' : 'Ctrl'
   ));
-  await expect(helpSplitKey).toHaveText(`${modKey}+Enter`);
+  await expect(helpSplitKey).toHaveText('Enter');
   await expect(page.locator('#help-waveform-split-key')).toHaveText('B');
 
   await splitKey.selectOption('enter');
