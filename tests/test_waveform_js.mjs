@@ -29,6 +29,13 @@ test('decodes compact signed min/max peaks', () => {
 });
 
 
+test('uses deltaX when macOS remaps Shift+wheel', () => {
+  assert.equal(helpers.wheelScrollDelta({ deltaY: 0, deltaX: -120 }), -120);
+  assert.equal(helpers.wheelScrollDelta({ deltaY: 0, deltaX: 120 }), 120);
+  assert.equal(helpers.wheelScrollDelta({ deltaY: -120, deltaX: 0 }), -120);
+});
+
+
 test('remaps word timestamps when a cue edge changes', () => {
   const items = [
     { text: 'A', start: 100, end: 300 },

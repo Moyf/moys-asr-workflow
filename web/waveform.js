@@ -563,6 +563,13 @@
     return clamp(Number.isFinite(numeric) ? numeric : 1, MIN_WAVEFORM_SCALE, MAX_WAVEFORM_SCALE);
   }
 
+  function wheelScrollDelta(event) {
+    const deltaY = Number(event?.deltaY) || 0;
+    const deltaX = Number(event?.deltaX) || 0;
+    // macOS may remap Shift+wheel's vertical movement to deltaX.
+    return deltaY || deltaX;
+  }
+
   function waveformScaleAfterStep(value, direction) {
     const current = clampWaveformScale(value);
     // 低于 1 时用 0.25 细步（0.25 / 0.5 / 0.75），否则 0.5
@@ -2655,11 +2662,13 @@
     }
 
     handleWheel(event) {
+      const scrollDelta = wheelScrollDelta(event);
+      if (!scrollDelta) return;
       if (this.isMultiMode() && (event.ctrlKey || event.metaKey) && event.shiftKey) {
         // Ctrl(Cmd)+Shift+滚轮：仅多行模式下循环调整行高预设，向上滚放大，不改变时间映射
         event.preventDefault();
         const current = ROW_HEIGHT_PRESETS.indexOf(this.settings.rowHeight);
-        const next = clamp(current + (event.deltaY > 0 ? -1 : 1), 0, ROW_HEIGHT_PRESETS.length - 1);
+        const next = clamp(current + (scrollDelta > 0 ? -1 : 1), 0, ROW_HEIGHT_PRESETS.length - 1);
         if (next !== current) {
           this.settings.rowHeight = ROW_HEIGHT_PRESETS[next];
       if (this.rowHeightSelect) this.rowHeightSelect.value = String(this.settings.rowHeight);
@@ -2672,19 +2681,19 @@
       if (event.shiftKey) {
         event.preventDefault();
         // 用 rAF 合并高频滚轮：一帧内累加方向，避免每次 wheel 都重渲染导致卡顿
-        this.pendingScaleDirection += event.deltaY > 0 ? -1 : 1;
+        this.pendingScaleDirection += scrollDelta > 0 ? -1 : 1;
         this.scheduleWheelScaleChange();
         return;
       }
       if (this.settings.mode === 'basic') {
         event.preventDefault();
         if (event.ctrlKey || event.metaKey) {
-          this.changeZoom(event.deltaY > 0 ? 1 : -1);
+          this.changeZoom(scrollDelta > 0 ? 1 : -1);
           return;
         }
         const windowMs = this.settings.visibleSeconds * 1000;
         const maxStart = Math.max(0, this.durationMs - windowMs);
-        const delta = Math.sign(event.deltaY || event.deltaX) * windowMs * 0.12;
+        const delta = Math.sign(scrollDelta) * windowMs * 0.12;
         this.basicWindowStartMs = clamp(this.basicWindowStartMs + delta, 0, maxStart);
         this.manualFollowUntil = Date.now() + 3000;
         this.scheduleBasicRender();
@@ -2693,7 +2702,7 @@
       if (this.isMultiMode() && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
         const current = ROW_PRESETS.indexOf(this.settings.secondsPerRow);
-        const next = clamp(current + (event.deltaY > 0 ? 1 : -1), 0, ROW_PRESETS.length - 1);
+        const next = clamp(current + (scrollDelta > 0 ? 1 : -1), 0, ROW_PRESETS.length - 1);
         if (next !== current) {
           this.settings.secondsPerRow = ROW_PRESETS[next];
           this.secondsPerRowSelect.value = String(this.settings.secondsPerRow);
@@ -3497,6 +3506,7 @@
       splitSegmentAtTime,
       normalizeNewCueRange,
       clampWaveformScale,
+      wheelScrollDelta,
       waveformScaleAfterStep,
       waveformAmplitude,
       sampleInterpolatedPeak,
