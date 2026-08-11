@@ -41,6 +41,7 @@ class LlmPostprocessRequest:
     output_mode: OutputMode
     operation: str
     custom_prompt: str
+    task_prompt: str | None = None
 
 
 LlmComplete = Callable[[str, list[dict[str, str]]], Mapping[str, JsonValue]]
@@ -81,7 +82,7 @@ def run_fixed_replacement(request: ReplacementRequest) -> SubtitleArtifact:
 
 def run_llm_postprocess(request: LlmPostprocessRequest, *, complete: LlmComplete) -> SubtitleArtifact:
     project, source_project, source_srt = _load_input(request.project_path, request.srt_path)
-    operation_prompt = PROMPTS.get(request.operation, PROMPTS["custom"])
+    operation_prompt = PROMPTS.get(request.operation, PROMPTS["custom"]) if request.task_prompt is None else request.task_prompt.strip()
     custom = request.custom_prompt.strip()
     system_prompt = _protocol_prompt(operation_prompt, custom)
     cues = _llm_cues(project)
@@ -223,13 +224,14 @@ def _combine_llm_responses(responses: Sequence[Mapping[str, JsonValue]]) -> Json
 
 
 def _protocol_prompt(operation_prompt: str, custom_prompt: str) -> str:
+    task = f"\n任务：{operation_prompt}" if operation_prompt else ""
     custom = f"\n用户附加要求：{custom_prompt}" if custom_prompt else ""
     return (
         "你处理的是字幕，不是普通文章。输入只有按顺序排列的不透明 cue ID 与文字。"
         "不要猜测、输出或修改时间。返回严格 JSON：{\"groups\":[{\"source_ids\":[\"c0001\"],\"text\":\"...\"}]}。"
         "source_ids 必须按输入顺序完整覆盖；合并连续字幕时放入同一组，拆分一条字幕时可让连续多组重复同一个 ID。"
         "不得重排 ID、跳过 ID、添加未知 ID 或返回空文字。"
-        f"\n任务：{operation_prompt}{custom}"
+        f"{task}{custom}"
     )
 
 

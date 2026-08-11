@@ -116,6 +116,27 @@ def complete_subtitle_groups(
     return parsed
 
 
+def test_llm_connection(settings: LlmSettings) -> None:
+    """Send a minimal chat request to verify the current LLM settings."""
+    endpoint = _chat_endpoint(settings.base_url)
+    payload = {
+        "model": settings.model,
+        "messages": [{"role": "user", "content": "Reply with OK."}],
+        "max_tokens": 1,
+    }
+    try:
+        with requests.Session() as session:
+            response = session.post(
+                endpoint,
+                headers={"Authorization": f"Bearer {settings.api_key}"},
+                json=payload,
+                timeout=(10, 30),
+            )
+            response.raise_for_status()
+    except RequestException as error:
+        raise LlmClientError(f"LLM connection test failed: {error}") from error
+
+
 def _chat_endpoint(base_url: str) -> str:
     value = base_url.strip().rstrip("/")
     parsed = urlparse(value)

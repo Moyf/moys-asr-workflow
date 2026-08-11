@@ -222,34 +222,50 @@
     <span aria-hidden="true">🧰</span>
   </button>
   <aside id="toolboxDrawer" class="toolbox-drawer hidden" role="dialog" aria-modal="false" aria-labelledby="toolboxTitle">
-    <header class="toolbox-header">
-      <div>
-        <h2 id="toolboxTitle" data-i18n="toolbox_title">后处理工具箱（Beta）</h2>
-        <p data-i18n="toolbox_chain_hint">每次生成新文件，并自动作为下一步输入。</p>
+    <div class="toolbox-sticky">
+      <header class="toolbox-header">
+        <div class="toolbox-header-copy">
+          <h2 id="toolboxTitle" data-i18n="toolbox_title">后处理工具箱（Beta）</h2>
+          <p data-i18n="toolbox_chain_hint">每次生成新文件，并自动作为下一步输入。</p>
+        </div>
+        <p class="toolbox-beta"><span data-i18n="toolbox_beta_notice">该功能正在开发中，仅供尝鲜</span><br><span data-i18n="toolbox_beta_notice_prefix">遇到问题可前往 </span><a id="toolboxIssuesLink" class="status-link" href="https://github.com/Moyf/moys-asr-workflow/issues">issues</a><span data-i18n="toolbox_beta_notice_tail"> 提反馈</span></p>
+        <button id="toolboxClose" class="ghost small" type="button" aria-label="close">×</button>
+      </header>
+      <div id="toolboxInputDropZone" class="field toolbox-input">
+        <div class="toolbox-input-heading">
+          <label for="toolboxInputPath" data-i18n="toolbox_input">处理文件</label>
+          <span id="toolboxInputName" class="toolbox-input-name empty" aria-live="polite" data-i18n="toolbox_input_empty">未选择文件</span>
+        </div>
+        <div class="path-row">
+          <input id="toolboxInputPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_input_placeholder" placeholder="跟随工程文件自动填入，也可拖入 .mosp / .json / .srt">
+          <button id="pickToolboxInput" class="ghost" type="button" data-i18n="choose">选择</button>
+        </div>
+        <p class="hint" data-i18n="toolbox_input_hint">默认跟随「工程文件」并在每次处理后更新；手动选择或拖入其他文件后，以这里的文件为准。</p>
+        <p id="toolboxInputPathError" class="field-error"></p>
       </div>
-      <button id="toolboxClose" class="ghost small" type="button" aria-label="close">×</button>
-    </header>
-    <p class="toolbox-beta"><span data-i18n="toolbox_beta_notice">该功能正在开发中，可能不太稳定，仅供尝鲜，遇到问题实属正常，可前往 </span><a id="toolboxIssuesLink" class="status-link" href="https://github.com/Moyf/moys-asr-workflow/issues">issues</a><span data-i18n="toolbox_beta_notice_tail"> 提反馈。</span></p>
-    <div class="field toolbox-input">
-      <label for="toolboxInputPath" data-i18n="toolbox_input">处理文件</label>
-      <div class="path-row">
-        <input id="toolboxInputPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_input_placeholder" placeholder="跟随工程文件自动填入，也可拖入 .mosp / .json / .srt">
-        <button id="pickToolboxInput" class="ghost" type="button" data-i18n="choose">选择</button>
+      <div id="toolboxChain" class="toolbox-chain hidden" aria-label="processing artifacts">
+        <p class="toolbox-chain-heading" data-i18n="toolbox_chain_heading">处理产物（点击文件名切换输入）</p>
+        <div id="toolboxChainList" class="toolbox-chain-list"></div>
       </div>
-      <p class="hint" data-i18n="toolbox_input_hint">默认跟随「工程文件」并在每次处理后更新；手动选择或拖入其他文件后，以这里的文件为准。</p>
-      <p id="toolboxInputPathError" class="field-error"></p>
+      <div class="toolbox-tabs" role="tablist" aria-label="post-processing tools">
+        <button id="toolboxMatchTab" class="toolbox-tab active" type="button" role="tab" aria-selected="true" aria-controls="toolboxMatchPanel" data-tool="match" data-i18n="toolbox_match">文稿匹配</button>
+        <button id="toolboxLlmTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxLlmPanel" data-tool="llm" data-i18n="toolbox_llm">LLM 处理</button>
+        <button id="toolboxReplaceTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxReplacePanel" data-tool="replace" data-i18n="toolbox_replace">固定替换</button>
+        <button id="toolboxFfconcatTab" class="toolbox-tab hidden" type="button" role="tab" aria-selected="false" aria-controls="toolboxFfconcatPanel" data-tool="ffconcat" data-i18n="toolbox_ffconcat" aria-hidden="true" tabindex="-1">媒体重组</button>
+      </div>
     </div>
-    <div class="toolbox-output-bar">
-      <div class="field toolbox-output-field">
-        <label for="postprocessOutputMode" data-i18n="toolbox_output">输出</label>
-        <select id="postprocessOutputMode">
-          <option value="both" data-i18n="toolbox_output_both">工程 + SRT</option>
-          <option value="json" data-i18n="toolbox_output_project">仅工程</option>
-          <option value="srt" data-i18n="toolbox_output_srt">仅 SRT</option>
-        </select>
+    <div class="toolbox-content">
+      <div class="toolbox-output-bar">
+        <div class="field toolbox-output-field">
+          <label for="postprocessOutputMode" data-i18n="toolbox_output">输出</label>
+          <select id="postprocessOutputMode">
+            <option value="both" data-i18n="toolbox_output_both">工程 + SRT</option>
+            <option value="json" data-i18n="toolbox_output_project">仅工程</option>
+            <option value="srt" data-i18n="toolbox_output_srt">仅 SRT</option>
+          </select>
+        </div>
+        <p class="hint" data-i18n="toolbox_output_hint">所有字幕工具都会生成新文件，不覆盖原工程。</p>
       </div>
-      <p class="hint" data-i18n="toolbox_output_hint">所有字幕工具都会生成新文件，不覆盖原工程。</p>
-    </div>
 
     <section id="toolboxMatchPanel" class="toolbox-panel" role="tabpanel" aria-labelledby="toolboxMatchTab">
       <div class="field">
@@ -276,18 +292,25 @@
         <div class="field">
           <label for="postprocessOperation" data-i18n="toolbox_operation">任务</label>
           <select id="postprocessOperation">
-            <option value="proofread" data-i18n="toolbox_proofread">校对</option>
+            <option value="proofread" data-i18n="toolbox_proofread">校对文本</option>
+            <option value="translate_zh" data-i18n="toolbox_translate_zh">翻译成中文</option>
+            <option value="translate_en" data-i18n="toolbox_translate_en">翻译成英文</option>
             <option value="resegment" data-i18n="toolbox_resegment">重新断句</option>
-            <option value="translate_en" data-i18n="toolbox_translate_en">翻译为英文</option>
-            <option value="translate_zh" data-i18n="toolbox_translate_zh">翻译为中文</option>
             <option value="custom" data-i18n="toolbox_custom">自定义</option>
           </select>
         </div>
       </div>
       <p class="toolbox-settings-hint"><span id="postprocessProviderStatus" class="hint"></span> <button id="openLlmSettings" class="inline-link" type="button" data-i18n="toolbox_open_settings">在 ⚙️ 设置中配置 API Key</button></p>
+      <div class="field toolbox-preset-prompt">
+        <div class="toolbox-preset-label" data-i18n="toolbox_preset_prompt">预设提示词</div>
+        <div id="postprocessTaskPrompt" class="toolbox-preset-prompt-text" aria-live="polite">（无）</div>
+        <p class="hint" data-i18n="toolbox_preset_prompt_hint">由当前任务决定，不可编辑。</p>
+      </div>
       <div class="field">
-        <label for="postprocessPrompt" data-i18n="toolbox_prompt">附加提示词</label>
-        <textarea id="postprocessPrompt" rows="3" autocomplete="off" data-i18n-placeholder="toolbox_prompt_placeholder"></textarea>
+        <label for="postprocessPrompt" data-i18n="toolbox_prompt">自定义提示词</label>
+        <textarea id="postprocessPrompt" rows="4" autocomplete="off" data-i18n-placeholder="toolbox_prompt_placeholder"></textarea>
+        <p class="hint" data-i18n="toolbox_prompt_hint">可按需追加要求；留空则只使用预设提示词。</p>
+        <p id="postprocessPromptError" class="field-error"></p>
         <p class="hint" data-i18n="toolbox_time_hint">模型只处理带 ID 的文字；本地时间槽始终是时间真源。</p>
       </div>
       <div class="toolbox-run-row">
@@ -324,15 +347,9 @@
       </div>
     </section>
 
-    <div class="toolbox-tabs" role="tablist" aria-label="post-processing tools">
-      <button id="toolboxMatchTab" class="toolbox-tab active" type="button" role="tab" aria-selected="true" aria-controls="toolboxMatchPanel" data-tool="match" data-i18n="toolbox_match">文稿匹配</button>
-      <button id="toolboxLlmTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxLlmPanel" data-tool="llm" data-i18n="toolbox_llm">LLM 处理</button>
-      <button id="toolboxReplaceTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxReplacePanel" data-tool="replace" data-i18n="toolbox_replace">固定替换</button>
-      <button id="toolboxFfconcatTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxFfconcatPanel" data-tool="ffconcat" data-i18n="toolbox_ffconcat">媒体重组</button>
-    </div>
-
     <div id="toolboxProgress" class="progress hidden" aria-hidden="true"><span></span></div>
     <div id="toolboxResult" class="toolbox-result" aria-live="polite" data-i18n="toolbox_ready">选择工具后运行；源文件不会被覆盖。</div>
+    </div>
   </aside>
 
   <div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
@@ -364,12 +381,21 @@
             <p id="llmModelError" class="field-error"></p>
           </div>
         </div>
+        <div id="llmCustomDisplayNameField" class="field hidden">
+          <label for="llmCustomDisplayName" data-i18n="llm_custom_display_name">自定义显示名称</label>
+          <input id="llmCustomDisplayName" type="text" autocomplete="off" data-i18n-placeholder="llm_custom_display_name_placeholder" placeholder="可选">
+          <p id="llmCustomDisplayNameError" class="field-error"></p>
+        </div>
         <div class="field">
           <label for="llmApiKey" data-i18n="llm_api_key">API Key</label>
           <div class="path-row">
             <input id="llmApiKey" type="password" autocomplete="off">
-            <button id="saveLlmSettings" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
+            <div class="settings-actions">
+              <button id="saveLlmSettings" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
+              <button id="testLlmConnection" class="ghost" type="button" data-i18n="llm_test_connection" data-i18n-title="llm_test_connection_title" title="使用当前填写的 API Key、URL 和模型发送最小测试请求">测试连接</button>
+            </div>
           </div>
+          <p id="llmSettingsSaveStatus" class="settings-save-status hint" aria-live="polite"></p>
           <p id="llmKeyStatus" class="hint"></p>
           <p id="llmApiKeyError" class="field-error"></p>
         </div>

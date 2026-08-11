@@ -21,7 +21,7 @@ from maw.postprocess import (
 )
 from maw.postprocess_ffmpeg import FfconcatRequest, parse_ffconcat, run_ffconcat_rebuild
 from maw.postprocess_io import PostprocessFileError, _atomic_write, read_project, read_srt, render_srt
-from maw.postprocess_llm import LlmClientError, _chat_endpoint
+from maw.postprocess_llm import LlmClientError, LlmSettings, _chat_endpoint, test_llm_connection as check_llm_connection
 from maw.project_preview import JsonDict
 
 
@@ -310,6 +310,33 @@ class PostprocessTests(unittest.TestCase):
         with self.assertRaises(LlmClientError):
             _ = _chat_endpoint("http://example.com/v1")
 
+    def test_llm_connection_sends_minimal_request(self) -> None:
+        settings = LlmSettings(
+            provider_id="custom",
+            api_key="sk-test",
+            base_url="https://example.com/v1",
+            model="custom-model",
+        )
+        response = mock.Mock()
+        session = mock.MagicMock()
+        session.__enter__.return_value = session
+        session.post.return_value = response
+
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            check_llm_connection(settings)
+
+        session.post.assert_called_once_with(
+            "https://example.com/v1/chat/completions",
+            headers={"Authorization": "Bearer sk-test"},
+            json={
+                "model": "custom-model",
+                "messages": [{"role": "user", "content": "Reply with OK."}],
+                "max_tokens": 1,
+            },
+            timeout=(10, 30),
+        )
+        response.raise_for_status.assert_called_once_with()
+
     def test_llm_runner_batches_large_projects_before_provider_call(self) -> None:
         project = sample_project(self.media)
         project["segments"] = [
@@ -336,6 +363,52 @@ class PostprocessTests(unittest.TestCase):
 
         self.assertEqual([len(batch) for batch in batches], [300, 1])
         self.assertIn("分批", "".join(result.warnings))
+
+    def test_llm_runner_uses_visible_task_prompt_and_keeps_custom_prompt(self) -> None:
+        prompts: list[str] = []
+
+        def complete(system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
+            prompts.append(system_prompt)
+            return {"groups": [{"id": cue["id"], "text": cue["text"]} for cue in cues]}
+
+        _ = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.JSON,
+                operation="proofread",
+                custom_prompt="保留口语表达。",
+                task_prompt="只修正品牌名，不要翻译。",
+            ),
+            complete=complete,
+        )
+
+        self.assertEqual(len(prompts), 1)
+        self.assertIn("任务：只修正品牌名，不要翻译。", prompts[0])
+        self.assertIn("用户附加要求：保留口语表达。", prompts[0])
+
+    def test_llm_custom_operation_has_no_preset_task_prompt(self) -> None:
+        prompts: list[str] = []
+
+        def complete(system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
+            prompts.append(system_prompt)
+            return {"groups": [{"id": cue["id"], "text": cue["text"]} for cue in cues]}
+
+        _ = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.JSON,
+                operation="custom",
+                custom_prompt="只保留口语表达。",
+                task_prompt="",
+            ),
+            complete=complete,
+        )
+
+        self.assertEqual(len(prompts), 1)
+        self.assertNotIn("\n任务：", prompts[0])
+        self.assertIn("用户附加要求：只保留口语表达。", prompts[0])
 
     def test_llm_runner_writes_project_and_matching_srt(self) -> None:
         def complete(_system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:

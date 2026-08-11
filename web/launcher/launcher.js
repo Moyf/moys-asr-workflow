@@ -114,6 +114,12 @@
     settings_llm_hint: "文稿匹配之外的 LLM 工具会使用这里保存的供应商配置。密钥只保存在本机环境文件。",
     llm_model: "模型",
     llm_api_key: "API Key",
+    llm_custom_display_name: "自定义显示名称",
+    llm_custom_display_name_placeholder: "可选",
+    llm_test_connection: "测试连接",
+    llm_test_connection_title: "使用当前填写的 API Key、URL 和模型发送最小测试请求",
+    llm_connection_testing: "正在测试连接……",
+    llm_connection_success: "连接成功。",
     llm_base_url: "API URL",
     llm_base_url_hint: "远程服务使用 HTTPS；明文 HTTP 只允许本机环回地址。"
   });
@@ -126,28 +132,34 @@
     settings_llm_hint: "LLM tools use the provider configuration saved here. Keys stay in the local environment file.",
     llm_model: "Model",
     llm_api_key: "API Key",
+    llm_custom_display_name: "Custom display name",
+    llm_custom_display_name_placeholder: "Optional",
+    llm_test_connection: "Test connection",
+    llm_test_connection_title: "Send a minimal request using the current API key, URL, and model",
+    llm_connection_testing: "Testing connection…",
+    llm_connection_success: "Connection successful.",
     llm_base_url: "API URL",
     llm_base_url_hint: "Use HTTPS for remote services; plain HTTP is limited to loopback addresses."
   });
   Object.assign(STRINGS.zh, {
-    toolbox_open: "打开后处理工具箱", toolbox_title: "后处理工具箱（Beta）", toolbox_chain_hint: "每次生成新文件，并自动作为下一步输入。", toolbox_beta_notice: "该功能正在开发中，可能不太稳定，仅供尝鲜，遇到问题实属正常，可前往 ", toolbox_beta_notice_tail: " 提反馈。", toolbox_no_media: "未选择媒体",
+    toolbox_open: "打开后处理工具箱", toolbox_title: "后处理工具箱（Beta）", toolbox_chain_hint: "每次生成新文件，并自动作为下一步输入。", toolbox_beta_notice: "该功能正在开发中，仅供尝鲜", toolbox_beta_notice_prefix: "遇到问题可前往 ", toolbox_beta_notice_tail: " 提反馈", toolbox_no_media: "未选择媒体", toolbox_input_empty: "未选择文件", toolbox_chain_heading: "处理产物（点击文件名切换输入）",
     toolbox_input: "处理文件", toolbox_input_placeholder: "跟随工程文件自动填入，也可拖入 .mosp / .json / .srt", toolbox_input_hint: "默认跟随「工程文件」并在每次处理后更新；手动选择或拖入其他文件后，以这里的文件为准。", toolbox_drop_reject: "这里只接受 .mosp / .json / .srt 字幕或工程文件。",
     toolbox_match: "文稿匹配", toolbox_script: "文稿文件", toolbox_script_placeholder: "UTF-8 .txt / .md 文稿", toolbox_script_hint: "文稿文字会替换字幕文字；原字幕时间保持不变。", toolbox_script_reject: "文稿只支持 .txt / .md / .markdown 文件。", toolbox_match_hint: "匹配度过低时会停止，不写出可能错配的结果。", toolbox_run_match: "匹配文稿",
-    toolbox_llm: "LLM 处理", toolbox_replace: "固定替换", toolbox_ffconcat: "媒体重组", toolbox_provider: "供应商", toolbox_operation: "任务", toolbox_proofread: "校对", toolbox_resegment: "重新断句", toolbox_translate_en: "翻译为英文", toolbox_translate_zh: "翻译为中文", toolbox_custom: "自定义",
-    toolbox_open_settings: "在 ⚙️ 设置中配置 API Key", toolbox_prompt: "附加提示词", toolbox_prompt_placeholder: "例如：保留专有名词，不要使用书面腔。", toolbox_time_hint: "模型只处理带 ID 的文字；本地时间槽始终是时间真源。", toolbox_output: "输出", toolbox_output_hint: "所有字幕工具都会生成新文件，不覆盖原工程。", toolbox_output_both: "工程 + SRT", toolbox_output_project: "仅工程", toolbox_output_srt: "仅 SRT", toolbox_run: "运行处理",
+    toolbox_llm: "LLM 处理", toolbox_replace: "固定替换", toolbox_ffconcat: "媒体重组", toolbox_provider: "供应商", toolbox_operation: "任务", toolbox_proofread: "校对文本", toolbox_resegment: "重新断句", toolbox_translate_en: "翻译成英文", toolbox_translate_zh: "翻译成中文", toolbox_custom: "自定义",
+    toolbox_open_settings: "在 ⚙️ 设置中配置 API Key", toolbox_preset_prompt: "预设提示词", toolbox_preset_prompt_hint: "由当前任务决定，不可编辑。", toolbox_prompt: "自定义提示词", toolbox_prompt_placeholder: "例如：保留专有名词，不要使用书面腔。", toolbox_prompt_hint: "可按需追加要求；留空则只使用预设提示词。", toolbox_task_none: "（无）", toolbox_task_proofread: "校对字幕中的错别字、漏字和明显识别错误，不扩写事实。", toolbox_task_resegment: "重新整理句子的字幕拆分。可以合并或拆分连续字幕，但不得删除内容。", toolbox_task_translate_en: "翻译为自然英文。允许在相邻字幕间调整语序，使每句可读。", toolbox_task_translate_zh: "翻译为自然中文。允许在相邻字幕间调整语序，使每句可读。", toolbox_time_hint: "模型只处理带 ID 的文字；本地时间槽始终是时间真源。", toolbox_output: "输出", toolbox_output_hint: "所有字幕工具都会生成新文件，不覆盖原工程。", toolbox_output_both: "工程 + SRT", toolbox_output_project: "仅工程", toolbox_output_srt: "仅 SRT", toolbox_run: "运行处理",
     toolbox_replace_rules: "替换规则", toolbox_replace_placeholder: "错别字 => 正确文字\n旧名称 => 新名称", toolbox_replace_hint: "每行一条：原文 => 新文。修改文本后会移除失真的逐词时间。", toolbox_replace_safe: "分段起止时间保持不变。", toolbox_run_replace: "执行替换",
-    toolbox_ffconcat_warning: "只允许引用当前媒体。重组会生成新媒体，但不会改写字幕时间轴。", toolbox_run_media: "生成新媒体", toolbox_ready: "选择工具后运行；源文件不会被覆盖。", toolbox_running: "处理中……", toolbox_saved: "LLM 设置已保存。", toolbox_key_empty: "未保存此供应商的密钥", toolbox_key_loaded: "已保存密钥 {key}",
-    toolbox_need_source: "请先选择工程或 SRT。", toolbox_need_script: "请选择文稿文件。", toolbox_need_rules: "请至少填写一条有效替换规则。", toolbox_need_ffconcat: "请选择 .ffconcat 文件。", toolbox_need_media: "请先选择当前媒体。", toolbox_done: "处理完成，已切换到新产物：", toolbox_media_done: "媒体重组完成，已切换到新媒体："
+    toolbox_ffconcat_warning: "只允许引用当前媒体。重组会生成新媒体，但不会改写字幕时间轴。", toolbox_run_media: "生成新媒体", toolbox_ready: "选择工具后运行；源文件不会被覆盖。", toolbox_running: "处理中……", toolbox_saved: "LLM 设置已保存。", toolbox_key_empty: "未保存此供应商的密钥", toolbox_key_loaded: "已保存密钥 {key}", toolbox_chain_match: "（文稿匹配）产物", toolbox_chain_replace: "（固定替换）产物", toolbox_chain_llm_proofread: "（LLM 处理/校对）校对产物", toolbox_chain_llm_resegment: "（LLM 处理/重新断句）重新断句产物", toolbox_chain_llm_translate: "（LLM 处理/翻译）翻译产物", toolbox_chain_llm_custom: "（LLM 处理/自定义）自定义产物",
+    toolbox_need_source: "请先选择工程或 SRT。", toolbox_need_script: "请选择文稿文件。", toolbox_need_rules: "请至少填写一条有效替换规则。", toolbox_need_ffconcat: "请选择 .ffconcat 文件。", toolbox_need_media: "请先选择当前媒体。", toolbox_custom_prompt_required: "自定义任务需要填写提示词。", toolbox_done: "处理完成，已切换到新产物：", toolbox_media_done: "媒体重组完成，已切换到新媒体："
   });
   Object.assign(STRINGS.en, {
-    toolbox_open: "Open post-processing toolbox", toolbox_title: "Post-processing toolbox (Beta)", toolbox_chain_hint: "Each run creates a new file and uses it as the next input.", toolbox_beta_notice: "This feature is still in development and may be unstable — issues are expected. Please report them on ", toolbox_beta_notice_tail: ".", toolbox_no_media: "No media selected",
+    toolbox_open: "Open post-processing toolbox", toolbox_title: "Post-processing toolbox (Beta)", toolbox_chain_hint: "Each run creates a new file and uses it as the next input.", toolbox_beta_notice: "This feature is still in development for early access", toolbox_beta_notice_prefix: "If you run into issues, please report them on ", toolbox_beta_notice_tail: ".", toolbox_no_media: "No media selected", toolbox_input_empty: "No file selected", toolbox_chain_heading: "Artifacts (click a filename to use it as input)",
     toolbox_input: "File to process", toolbox_input_placeholder: "Follows the project file, or drop a .mosp / .json / .srt", toolbox_input_hint: "Follows the project file and updates after each run; choosing or dropping another file overrides it.", toolbox_drop_reject: "Only .mosp / .json / .srt subtitle or project files can be dropped here.",
     toolbox_match: "Script match", toolbox_script: "Script file", toolbox_script_placeholder: "UTF-8 .txt / .md script", toolbox_script_hint: "Script text replaces subtitle text; original subtitle timing stays unchanged.", toolbox_script_reject: "Scripts must be .txt, .md, or .markdown files.", toolbox_match_hint: "Runs stop when the match is too low to avoid writing a bad alignment.", toolbox_run_match: "Match script",
-    toolbox_llm: "LLM", toolbox_replace: "Fixed replace", toolbox_ffconcat: "Media rebuild", toolbox_provider: "Provider", toolbox_operation: "Task", toolbox_proofread: "Proofread", toolbox_resegment: "Resegment", toolbox_translate_en: "Translate to English", toolbox_translate_zh: "Translate to Chinese", toolbox_custom: "Custom",
-    toolbox_open_settings: "Configure the API key in ⚙️ Settings", toolbox_prompt: "Additional prompt", toolbox_prompt_placeholder: "Example: preserve product names and use conversational language.", toolbox_time_hint: "The model edits ID-tagged text only; local time slots remain authoritative.", toolbox_output: "Output", toolbox_output_hint: "Every subtitle tool creates new files and never overwrites the source project.", toolbox_output_both: "Project + SRT", toolbox_output_project: "Project only", toolbox_output_srt: "SRT only", toolbox_run: "Run",
+    toolbox_llm: "LLM", toolbox_replace: "Fixed replace", toolbox_ffconcat: "Media rebuild", toolbox_provider: "Provider", toolbox_operation: "Task", toolbox_proofread: "Proofread text", toolbox_resegment: "Resegment", toolbox_translate_en: "Translate into English", toolbox_translate_zh: "Translate into Chinese", toolbox_custom: "Custom",
+    toolbox_open_settings: "Configure the API key in ⚙️ Settings", toolbox_preset_prompt: "Preset prompt", toolbox_preset_prompt_hint: "Determined by the current task and cannot be edited.", toolbox_prompt: "Custom prompt", toolbox_prompt_placeholder: "Example: preserve product names and use conversational language.", toolbox_prompt_hint: "Add extra requirements as needed; leave empty to use only the preset prompt.", toolbox_task_none: "(None)", toolbox_task_proofread: "Proofread subtitle typos, omissions, and obvious recognition errors without expanding facts.", toolbox_task_resegment: "Reorganize subtitle sentence breaks. You may merge or split consecutive subtitles, but do not delete content.", toolbox_task_translate_en: "Translate into natural English. You may adjust word order across adjacent subtitles so each line reads naturally.", toolbox_task_translate_zh: "Translate into natural Chinese. You may adjust word order across adjacent subtitles so each line reads naturally.", toolbox_time_hint: "The model edits ID-tagged text only; local time slots remain authoritative.", toolbox_output: "Output", toolbox_output_hint: "Every subtitle tool creates new files and never overwrites the source project.", toolbox_output_both: "Project + SRT", toolbox_output_project: "Project only", toolbox_output_srt: "SRT only", toolbox_run: "Run",
     toolbox_replace_rules: "Replacement rules", toolbox_replace_placeholder: "old text => new text", toolbox_replace_hint: "One per line: source => target. Stale word timings are removed when text changes.", toolbox_replace_safe: "Segment start and end times stay unchanged.", toolbox_run_replace: "Replace",
-    toolbox_ffconcat_warning: "Only the current media may be referenced. A new media file is created without changing subtitle timing.", toolbox_run_media: "Build media", toolbox_ready: "Choose a tool and run it; source files are never overwritten.", toolbox_running: "Processing…", toolbox_saved: "LLM settings saved.", toolbox_key_empty: "No saved key for this provider", toolbox_key_loaded: "Saved key {key}",
-    toolbox_need_source: "Choose a project or SRT first.", toolbox_need_script: "Choose a script file.", toolbox_need_rules: "Enter at least one valid replacement rule.", toolbox_need_ffconcat: "Choose an .ffconcat file.", toolbox_need_media: "Choose the current media first.", toolbox_done: "Done. Chained to the new artifact:", toolbox_media_done: "Media rebuilt. Chained to the new media:"
+    toolbox_ffconcat_warning: "Only the current media may be referenced. A new media file is created without changing subtitle timing.", toolbox_run_media: "Build media", toolbox_ready: "Choose a tool and run it; source files are never overwritten.", toolbox_running: "Processing…", toolbox_saved: "LLM settings saved.", toolbox_key_empty: "No saved key for this provider", toolbox_key_loaded: "Saved key {key}", toolbox_chain_match: "(Script match) output", toolbox_chain_replace: "(Fixed replace) output", toolbox_chain_llm_proofread: "(LLM / Proofread) proofread output", toolbox_chain_llm_resegment: "(LLM / Resegment) resegment output", toolbox_chain_llm_translate: "(LLM / Translate) translation output", toolbox_chain_llm_custom: "(LLM / Custom) custom output",
+    toolbox_need_source: "Choose a project or SRT first.", toolbox_need_script: "Choose a script file.", toolbox_need_rules: "Enter at least one valid replacement rule.", toolbox_need_ffconcat: "Choose an .ffconcat file.", toolbox_need_media: "Choose the current media first.", toolbox_custom_prompt_required: "Enter a custom prompt before running the Custom task.", toolbox_done: "Done. Chained to the new artifact:", toolbox_media_done: "Media rebuilt. Chained to the new media:"
   });
   const SERVER_STARTING_TEXT = { zh: "启动中……", en: "Starting…" };
   // Launcher 暂时面向国内用户默认北京；地域和 Workspace 仍保留在请求契约中，后续可重新开放。
@@ -219,7 +231,7 @@
   let prefsTimer = 0;
 
   function mockApi() {
-    let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "zh" };
+    let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "zh", customDisplayName: "" };
     const chainedPath = (path, operation, fallback) => path
       ? path.replace(/(\.[^.\\/]+)$/u, `.${operation}$1`)
       : fallback;
@@ -242,7 +254,7 @@
           { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash", maskedApiKey: "", selected: true },
           { id: "zhipu", label: "智谱 Coding Plan", baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", model: "glm-5.2", maskedApiKey: "", selected: false },
           { id: "qwen", label: "阿里云 Qwen", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus", maskedApiKey: "", selected: false },
-          { id: "custom", label: "Custom (OpenAI-compatible)", baseUrl: "", model: "", maskedApiKey: "", selected: false }
+          { id: "custom", label: saved.customDisplayName || "Custom (OpenAI-compatible)", defaultLabel: "Custom (OpenAI-compatible)", displayName: saved.customDisplayName || "", baseUrl: "", model: "", maskedApiKey: "", selected: false }
         ],
         providers: [
           {
@@ -288,7 +300,8 @@
       save_ffmpeg_path: async ({ path }) => ({ ok: Boolean(path), found: Boolean(path), directory: path || "", ffmpeg: path || "", ffprobe: path || "" }),
       choose_folder: async () => ({ ok: true, path: "D:\\Stickers" }),
       save_sticker_dir: async ({ path }) => { saved.stickerDir = path || ""; return { ok: Boolean(path), stickerDir: saved.stickerDir, field: path ? "" : "stickerDir", error: path ? "" : "missing" }; },
-      save_postprocess_settings: async ({ providerId, apiKey }) => ({ ok: true, providerId, maskedApiKey: apiKey ? "sk-…mock" : "" }),
+      save_postprocess_settings: async ({ providerId, apiKey, displayName }) => { if (providerId === "custom") saved.customDisplayName = displayName || ""; return { ok: true, providerId, label: providerId === "custom" ? (displayName || "Custom (OpenAI-compatible)") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")), displayName: providerId === "custom" ? (displayName || "") : "", maskedApiKey: apiKey ? "sk-…mock" : "" }; },
+      test_postprocess_connection: async ({ providerId }) => ({ ok: true, providerId }),
       run_script_match: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "matched", "D:\\Demo\\clip.matched.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "matched", "D:\\Demo\\clip.matched.srt"), warnings: [] }),
       run_llm_postprocess: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "llm", "D:\\Demo\\clip.llm.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "llm", "D:\\Demo\\clip.llm.srt"), warnings: [] }),
       run_fixed_replacement: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "replace", "D:\\Demo\\clip.replace.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "replace", "D:\\Demo\\clip.replace.srt"), warnings: [] }),
@@ -417,7 +430,7 @@
   function renderHotwordWarnings(value = $("qwenAudioHotwords").value, weight = Number($("qwenAudioHotwordWeight").value), ignoreComments = false) { const warning = $("qwenAudioHotwordsWarning"); const issues = collectHotwordWarnings(value, weight, ignoreComments); if (!issues.length) { warning.textContent = ""; warning.classList.remove("visible"); return; } const details = issues.slice(0, 5).map((issue) => t("qwen_audio_hotword_warning_item").replace("{label}", hotwordWarningLabel(issue)).replace("{reason}", t(`qwen_audio_hotword_issue_${issue.code}`))); if (issues.length > details.length) details.push(t("qwen_audio_hotword_warning_more")); warning.textContent = `${t("qwen_audio_hotwords_warning").replace("{count}", String(issues.length))}\n${details.join("\n")}`; warning.classList.add("visible"); }
   function syncQwenAudioHotwordsMode() { const fileMode = $("qwenAudioHotwordsMode").value === "file"; $("qwenAudioHotwordsTextField").classList.toggle("hidden", fileMode); $("qwenAudioHotwordsFileField").classList.toggle("hidden", !fileMode); renderHotwordWarnings(fileMode ? "" : $("qwenAudioHotwords").value, Number($("qwenAudioHotwordWeight").value)); }
   function setHotwordsMode(mode) { $("qwenAudioHotwordsMode").value = mode; $("qwenAudioHotwordsModeText").classList.toggle("active", mode === "text"); $("qwenAudioHotwordsModeFile").classList.toggle("active", mode === "file"); syncQwenAudioHotwordsMode(); }
-  function clearDropState() { dragState.depth = 0; state.dropTarget = ""; setDropHighlight(false); ["qwenAudioHotwords", "qwenAudioHotwordsFile", "jsonPath"].forEach((id) => $(id)?.classList.remove("drag-over")); }
+  function clearDropState() { dragState.depth = 0; state.dropTarget = ""; setDropHighlight(false); ["qwenAudioHotwords", "qwenAudioHotwordsFile", "jsonPath", "toolboxInputDropZone", "postprocessScriptPath"].forEach((id) => $(id)?.classList.remove("drag-over")); }
   function setQwenAudioHotwordsFile(path) { if (ext(path) !== ".txt") { setError("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return false; } $("qwenAudioHotwordsFile").value = path; setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); return true; }
   async function loadHotwordFile(path, appendToText = false) { if (ext(path) !== ".txt") { setError("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); clearDropState(); return; } const result = await bridge("read_hotword_file", { path }); if (!result.ok) { applyErrorResult(result, false); clearDropState(); return; } if (appendToText) { const incoming = String(result.text || "").trim(); if (incoming) { const current = $("qwenAudioHotwords").value.trimEnd(); $("qwenAudioHotwords").value = current ? `${current}\n${incoming}` : incoming; } setHotwordsMode("text"); renderHotwordWarnings($("qwenAudioHotwords").value); setStatus(t("qwen_audio_hotwords_loaded")); } else { setQwenAudioHotwordsFile(result.path || path); renderHotwordWarnings(String(result.text || ""), Number($("qwenAudioHotwordWeight").value), true); } clearDropState(); }
   function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); $("langToggle").textContent = t("other_language"); $("demoBadge").textContent = t("demo_mode"); renderKeyStatus(); renderStickerCurrent(); renderPromptCharacterCount(); renderHotwordWarnings(); renderServerButton(); }
@@ -443,7 +456,7 @@
     const VISIBLE_MS = 900;
     const bind = (target, host) => { let timer = 0; target.addEventListener("scroll", () => { host.classList.add("scrolling"); clearTimeout(timer); timer = setTimeout(() => host.classList.remove("scrolling"), VISIBLE_MS); }, { passive: true }); };
     bind(window, document.documentElement);
-    document.querySelectorAll(".log, .modal-card").forEach((el) => bind(el, el));
+    document.querySelectorAll(".log, .modal-card, .toolbox-content, .toolbox-chain-list").forEach((el) => bind(el, el));
   }
   function expandServer() { $("serverCard").classList.remove("collapsed"); renderChevron("serverCard"); }
   function hasFileDrag(event) { return !event.dataTransfer || Array.from(event.dataTransfer.types || []).includes("Files"); }
@@ -553,7 +566,7 @@
   $("openMawe").addEventListener("click", openServerEditor); $("stopServer").addEventListener("click", stopEditorServer); $("openFolder").addEventListener("click", () => bridge("open_output_folder"));
   $("openMenu").addEventListener("click", () => $("htmlMenu").classList.toggle("hidden")); $("openHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_html"); }); $("openBlankHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_blank_html"); }); document.addEventListener("click", (event) => { if (!event.target.closest(".split-wrap")) $("htmlMenu").classList.add("hidden"); });
   $("mediaCard").addEventListener("dragenter", onDragEnter); $("mediaCard").addEventListener("dragleave", onDragLeave);
-  bindDropField("qwenAudioHotwordsTextField", "text", "qwenAudioHotwords"); bindDropField("qwenAudioHotwordsFileField", "file", "qwenAudioHotwordsFile"); bindDropField("jsonPath", "json"); bindDropField("toolboxInputPath", "toolboxInput"); bindDropField("postprocessScriptPath", "script");
+  bindDropField("qwenAudioHotwordsTextField", "text", "qwenAudioHotwords"); bindDropField("qwenAudioHotwordsFileField", "file", "qwenAudioHotwordsFile"); bindDropField("jsonPath", "json"); bindDropField("toolboxInputDropZone", "toolboxInput", "toolboxInputDropZone"); bindDropField("postprocessScriptPath", "script");
   document.addEventListener("dragover", (event) => { if (hasFileDrag(event)) event.preventDefault(); });
   document.addEventListener("dragend", clearDropState);
   document.addEventListener("dragleave", (event) => { if (!event.relatedTarget && event.target === document.documentElement) clearDropState(); });

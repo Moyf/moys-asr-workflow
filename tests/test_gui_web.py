@@ -181,6 +181,39 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["code"], "config_save_failed")
         self.assertFalse(self.env_path.exists())
 
+    def test_custom_postprocess_display_name_is_saved_and_returned(self) -> None:
+        result = self.api.save_postprocess_settings({
+            "providerId": "custom",
+            "apiKey": "sk-custom",
+            "baseUrl": "https://example.com/v1",
+            "model": "custom-model",
+            "displayName": "本地模型",
+        })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["label"], "本地模型")
+        self.assertIn("MAW_POSTPROCESS_CUSTOM_DISPLAY_NAME=本地模型", self.env_path.read_text(encoding="utf-8"))
+        providers = {item["id"]: item for item in self.api.get_config()["postprocessProviders"]}
+        self.assertEqual(providers["custom"]["label"], "本地模型")
+        self.assertEqual(providers["custom"]["displayName"], "本地模型")
+
+    def test_postprocess_connection_uses_form_values_without_writing_config(self) -> None:
+        with mock.patch("maw.gui_web.test_llm_connection") as check_connection:
+            result = self.api.test_postprocess_connection({
+                "providerId": "custom",
+                "apiKey": "sk-entered",
+                "baseUrl": "https://example.com/v1",
+                "model": "custom-model",
+            })
+
+        self.assertTrue(result["ok"])
+        settings = check_connection.call_args.args[0]
+        self.assertEqual(settings.provider_id, "custom")
+        self.assertEqual(settings.api_key, "sk-entered")
+        self.assertEqual(settings.base_url, "https://example.com/v1")
+        self.assertEqual(settings.model, "custom-model")
+        self.assertFalse(self.env_path.exists())
+
     def test_legacy_setting_bridges_return_structured_errors_for_invalid_values(self) -> None:
         settings = self.api.save_settings({
             "providerId": "qwen",
@@ -263,6 +296,19 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(settings.api_key, "sk-stored-secret")
         self.assertTrue(result["ok"])
         self.assertNotIn("stored-secret", str(result))
+
+    def test_llm_custom_bridge_rejects_empty_prompt_before_provider_call(self) -> None:
+        with mock.patch("maw.gui_web.complete_subtitle_groups") as complete:
+            result = self.api.run_llm_postprocess({
+                "operation": "custom",
+                "providerId": "deepseek",
+                "customPrompt": "  \n",
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["field"], "postprocessPrompt")
+        self.assertEqual(result["code"], "custom_prompt_required")
+        complete.assert_not_called()
 
     def test_ffconcat_bridge_uses_configured_ffmpeg_and_returns_new_media_only(self) -> None:
         media = self.root / "clip.mp4"
@@ -1270,13 +1316,18 @@ class LauncherAssetContractTests(unittest.TestCase):
     def test_launcher_exposes_chainable_postprocess_toolbox(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         for control in (
             "toolboxFab",
             "toolboxDrawer",
+            "toolboxInputDropZone",
+            "toolboxInputName",
             "toolboxInputPath",
             "pickToolboxInput",
+            "toolboxChain",
+            "toolboxChainList",
             "toolboxMatchPanel",
             "toolboxLlmPanel",
             "toolboxReplacePanel",
@@ -1290,9 +1341,13 @@ class LauncherAssetContractTests(unittest.TestCase):
             "llmApiKey",
             "llmBaseUrl",
             "llmModel",
+            "llmCustomDisplayName",
+            "testLlmConnection",
+            "llmSettingsSaveStatus",
             "openLlmSettings",
         ):
             self.assertIn(f'id="{control}"', page)
+        self.assertIn('id="postprocessPromptError"', page)
         self.assertNotIn('id="postprocessApiKey"', page)
         self.assertNotIn('id="postprocessBaseUrl"', page)
         self.assertNotIn('id="postprocessModel"', page)
@@ -1301,6 +1356,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('bridge("run_fixed_replacement"', script)
         self.assertIn('bridge("run_ffconcat_rebuild"', script)
         self.assertIn('bridge("save_postprocess_settings"', script)
+        self.assertIn('bridge("test_postprocess_connection"', script)
+        self.assertIn('displayName: item.id === "custom" ? $("llmCustomDisplayName").value.trim() : ""', script)
         self.assertIn('bridge("choose_file", { kind: "script" })', script)
         self.assertIn('bridge("choose_file", { kind: "subtitle" })', script)
         self.assertIn('openSettings("llmSettingsSection")', script)
@@ -1309,21 +1366,77 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('$("mediaPath").value = result.mediaPath', script)
         self.assertIn(".toolbox-fab", stylesheet)
         self.assertIn(".toolbox-drawer", stylesheet)
+        self.assertIn(".toolbox-content", stylesheet)
+        self.assertIn('bindDropField("toolboxInputDropZone", "toolboxInput", "toolboxInputDropZone")', launcher_script)
+        self.assertIn("addChainResult", script)
+        self.assertIn("selectChainPath", script)
+        self.assertIn('taskPrompt: taskPromptText(operation)', script)
+        self.assertIn('const customPrompt = $("postprocessPrompt").value.trim()', script)
+        self.assertIn("const TASK_PROMPT_KEYS", script)
 
-    def test_toolbox_tabs_follow_the_panels(self) -> None:
+    def test_custom_llm_task_requires_a_prompt(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
 
+        self.assertIn('id="postprocessPromptError"', page)
+        self.assertIn('operation === "custom" && !customPrompt', script)
+        self.assertIn('const message = t("toolbox_custom_prompt_required")', script)
+        self.assertIn('setFieldError("postprocessPrompt", message)', script)
+        self.assertIn('$("postprocessPrompt").addEventListener("input"', script)
+
+    def test_llm_task_prompt_order_and_switch_contract(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        values = ("proofread", "translate_zh", "translate_en", "resegment", "custom")
+        positions = [page.index(f'<option value="{value}"') for value in values]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn('id="postprocessTaskPrompt"', page)
+        self.assertIn('data-i18n="toolbox_preset_prompt"', page)
+        self.assertIn('data-i18n="toolbox_prompt_hint"', page)
+        self.assertIn('$("postprocessOperation").addEventListener("change", () => { renderTaskPrompt(); setFieldError("postprocessPrompt", ""); })', script)
+        self.assertIn("function renderTaskPrompt(operation", script)
+
+    def test_toolbox_tabs_stay_above_scrollable_panels(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        sticky = page.index('class="toolbox-sticky"')
+        input_drop_zone = page.index('id="toolboxInputDropZone"')
+        chain = page.index('id="toolboxChain"')
+        chain_list = page.index('id="toolboxChainList"')
+        tabs = page.index('<div class="toolbox-tabs"')
+        content = page.index('class="toolbox-content"')
+        output = page.index('<div class="toolbox-output-bar"')
         match_panel = page.index('id="toolboxMatchPanel"')
         llm_panel = page.index('id="toolboxLlmPanel"')
         ffconcat_panel = page.index('id="toolboxFfconcatPanel"')
         ffconcat_end = page.index("</section>", ffconcat_panel)
-        tabs = page.index('<div class="toolbox-tabs"')
         progress = page.index('<div id="toolboxProgress"')
 
+        self.assertLess(sticky, input_drop_zone)
+        self.assertLess(input_drop_zone, chain)
+        self.assertLess(chain, chain_list)
+        self.assertLess(chain, tabs)
+        self.assertLess(input_drop_zone, tabs)
+        self.assertLess(tabs, content)
+        self.assertLess(content, output)
         self.assertLess(match_panel, llm_panel)
-        self.assertGreater(tabs, ffconcat_end)
-        self.assertLess(tabs, progress)
+        self.assertGreater(progress, ffconcat_end)
         self.assertIn('id="toolboxMatchTab" class="toolbox-tab active"', page)
+        self.assertIn('id="toolboxFfconcatTab" class="toolbox-tab hidden"', page)
+        self.assertIn("overflow-y: auto", stylesheet)
+        self.assertIn(".toolbox-input.drag-over", stylesheet)
+        self.assertIn("grid-template-columns: repeat(3", stylesheet)
+
+    def test_llm_save_feedback_is_local_and_transient(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="llmSettingsSaveStatus"', page)
+        self.assertIn('setSettingsSaveStatus(t("toolbox_saved"), "success")', script)
+        self.assertNotIn('setResult(t("toolbox_saved"), "success")', script)
+        self.assertIn("window.setTimeout(() => setSettingsSaveStatus(\"\"), timeoutMs)", script)
 
     def test_launcher_hero_shows_the_bundled_brand_icon(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")

@@ -28,7 +28,7 @@ from maw.media import find_ffmpeg, resolve_project_media
 from maw.postprocess import LlmPostprocessRequest, OutputMode, Replacement, ReplacementRequest, run_fixed_replacement as process_fixed_replacement, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_ffmpeg import FfconcatRequest, run_ffconcat_rebuild as process_ffconcat_rebuild
 from maw.postprocess_match import ScriptMatchRequest, run_script_match as process_script_match
-from maw.postprocess_llm import LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, preset_by_id
+from maw.postprocess_llm import LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, preset_by_id, test_llm_connection
 
 
 OPEN_DIALOG = 10
@@ -62,6 +62,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "server_stop_failed": "Unable to stop the MAW editor server.",
     "sticker_dir_invalid": "Sticker directory does not exist.",
     "config_save_failed": "Local configuration could not be saved.",
+    "custom_prompt_required": "A custom prompt is required.",
 }
 
 
@@ -421,12 +422,15 @@ class LauncherApi:
         preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
         file_values = _postprocess_values(self.paths.env_path, preset.env_prefix)
         api_key = str(payload.get("apiKey") or "").strip() or file_values["apiKey"]
+        display_name = str(payload.get("displayName") or "").strip()
         updates = {
             f"{preset.env_prefix}_API_KEY": api_key,
             f"{preset.env_prefix}_BASE_URL": str(payload.get("baseUrl") or preset.base_url).strip(),
             f"{preset.env_prefix}_MODEL": str(payload.get("model") or preset.model).strip(),
             "MAW_POSTPROCESS_LAST_PROVIDER": preset.id,
         }
+        if preset.id == "custom":
+            updates[f"{preset.env_prefix}_DISPLAY_NAME"] = display_name
         try:
             save_env(self.paths.env_path, updates)
         except (OSError, UnicodeError, ValueError) as error:
@@ -435,12 +439,40 @@ class LauncherApi:
                 (f"{preset.env_prefix}_API_KEY", "postprocessApiKey"),
                 (f"{preset.env_prefix}_BASE_URL", "postprocessBaseUrl"),
                 (f"{preset.env_prefix}_MODEL", "postprocessModel"),
+                (f"{preset.env_prefix}_DISPLAY_NAME", "postprocessDisplayName"),
             ):
                 if str(error).startswith(f"{key}:"):
                     field = candidate
                     break
             return _error_result(field, "config_save_failed", f"{self.paths.env_path}: {error}")
-        return {"ok": True, "providerId": preset.id, "maskedApiKey": masked_secret(api_key)}
+        return {
+            "ok": True,
+            "providerId": preset.id,
+            "label": display_name if preset.id == "custom" and display_name else preset.label,
+            "displayName": display_name if preset.id == "custom" else "",
+            "maskedApiKey": masked_secret(api_key),
+        }
+
+    def test_postprocess_connection(self, payload: Mapping[str, object]) -> dict[str, object]:
+        preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
+        file_values = _postprocess_values(self.paths.env_path, preset.env_prefix)
+        settings = LlmSettings(
+            provider_id=preset.id,
+            api_key=str(payload.get("apiKey") or "").strip() or file_values["apiKey"],
+            base_url=str(payload.get("baseUrl") or "").strip() or file_values["baseUrl"] or preset.base_url,
+            model=str(payload.get("model") or "").strip() or file_values["model"] or preset.model,
+        )
+        if not settings.api_key:
+            return _error_result("postprocessApiKey", "api_key_missing", "Post-processing API key is required.")
+        if not settings.base_url or not settings.model:
+            detail = "LLM API URL and model are required."
+            return {"ok": False, "field": "postprocessProvider", "code": "postprocess_connection_failed", "detail": detail, "error": detail}
+        try:
+            test_llm_connection(settings)
+        except LlmClientError as error:
+            detail = str(error)
+            return {"ok": False, "field": "postprocessProvider", "code": "postprocess_connection_failed", "detail": detail, "error": detail}
+        return {"ok": True, "providerId": preset.id}
 
     def run_fixed_replacement(self, payload: Mapping[str, object]) -> dict[str, object]:
         try:
@@ -479,6 +511,10 @@ class LauncherApi:
 
     def run_llm_postprocess(self, payload: Mapping[str, object]) -> dict[str, object]:
         preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
+        operation = str(payload.get("operation") or "proofread")
+        custom_prompt = str(payload.get("customPrompt") or "").strip()
+        if operation == "custom" and not custom_prompt:
+            return _error_result("postprocessPrompt", "custom_prompt_required")
         file_values = _postprocess_values(self.paths.env_path, preset.env_prefix)
         settings = LlmSettings(
             provider_id=preset.id,
@@ -496,8 +532,9 @@ class LauncherApi:
                     project_path=_optional_path(payload.get("projectPath")),
                     srt_path=_optional_path(payload.get("srtPath")),
                     output_mode=_output_mode(payload.get("outputMode")),
-                    operation=str(payload.get("operation") or "proofread"),
-                    custom_prompt=str(payload.get("customPrompt") or ""),
+                    operation=operation,
+                    custom_prompt=custom_prompt,
+                    task_prompt=(str(payload.get("taskPrompt") or "") if "taskPrompt" in payload else None),
                 ),
                 complete=lambda prompt, cues: complete_subtitle_groups(settings, prompt, cues),
             )
@@ -1068,6 +1105,7 @@ def _postprocess_values(env_path: Path, prefix: str) -> dict[str, str]:
         "apiKey": os.environ.get(f"{prefix}_API_KEY") or values.get(f"{prefix}_API_KEY", ""),
         "baseUrl": os.environ.get(f"{prefix}_BASE_URL") or values.get(f"{prefix}_BASE_URL", ""),
         "model": os.environ.get(f"{prefix}_MODEL") or values.get(f"{prefix}_MODEL", ""),
+        "displayName": os.environ.get(f"{prefix}_DISPLAY_NAME") or values.get(f"{prefix}_DISPLAY_NAME", ""),
     }
 
 
@@ -1078,9 +1116,12 @@ def _postprocess_provider_payloads(env_path: Path) -> list[dict[str, object]]:
     providers: list[dict[str, object]] = []
     for preset in POSTPROCESS_PRESETS:
         values = _postprocess_values(env_path, preset.env_prefix)
+        display_name = values["displayName"] if preset.id == "custom" else ""
         providers.append({
             "id": preset.id,
-            "label": preset.label,
+            "label": display_name or preset.label,
+            "defaultLabel": preset.label,
+            "displayName": display_name,
             "baseUrl": values["baseUrl"] or preset.base_url,
             "model": values["model"] or preset.model,
             "maskedApiKey": masked_secret(values["apiKey"]),
