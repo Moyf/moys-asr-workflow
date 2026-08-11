@@ -1,10 +1,10 @@
 # MAWE — Moy's ASR Workflow Editor
 
-MAWE（Moy's ASR Workflow Editor）是 MAW 自带的字幕编辑器，提供两种入口，并共享同一份工程格式与前端代码。工程文件内容是 UTF-8 JSON，主扩展名为 `.mosp`；`.json` 作为旧工程和兼容扩展名继续支持。
+MAWE（Moy's ASR Workflow Editor）是 MAW 自带的字幕编辑器，提供 Server 版和单文件 HTML 两种入口，并共享同一份工程格式与前端代码。当前以 Server 版为主；单文件 HTML 暂时只作为兼容备用入口，不作为新功能的主要更新对象。工程文件内容是 UTF-8 JSON，主扩展名为 `.mosp`；`.json` 作为旧工程和兼容扩展名继续支持。
 
 - 推荐：`uv run python server-editor\serve.py "subtitle-project.mosp"`。它通过 `http://127.0.0.1` 提供媒体 Range 请求，适合日常编辑和大型视频 Seek。
 - 便携：双击转写生成的 `.edit.html`，或打开仓库根目录的 `blank-editor.html` 后单独选择 `.mosp` / `.json` 工程；浏览器无法自动读取关联媒体时会提示选择。它不需要启动服务，适合携带和离线检查。
-- Windows 图形版：双击 Release 压缩包中的 `MAW.exe` 生成工程；完成后可从窗口打开输出目录或便携编辑器 HTML。
+- Windows 图形版：双击 Release 压缩包中的 `MAW.exe` 生成工程；完成后默认使用 Server 版编辑器，便携编辑器 HTML 仅保留兼容入口。
 
 无论用哪种方式，`.mosp` / `.json` 工程文件都是字幕真源；新工程优先使用 `.mosp`，旧 `.json` 工程无需迁移即可继续编辑。SRT 只能保留文本和时间，不能完整保留字/词级时间码、表情包、颜色、波形、工作区与静音空隙决定。
 
