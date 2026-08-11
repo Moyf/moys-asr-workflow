@@ -975,3 +975,88 @@ test('applyPreviewGeometryDelta resize-w keeps right edge fixed at min-size', ()
   // right edge (x + width) should stay at original 0.2 + 0.4 = 0.6
   assert.ok(Math.abs((resized.x + resized.width) - 0.6) < 0.001);
 });
+
+
+// === multi-subtitle helpers ===
+
+test('normalizes legacy multi-subtitle data with stable IDs and clears extension items', () => {
+  const project = {
+    segments: [{ start: 0, end: 1000, text: '主' }],
+    multi_subtitle: {
+      enabled: true,
+      tracks: [{
+        id: 'translation',
+        segments: [{ start: 40, end: 960, text: 'extension', items: [{ start: 40, end: 960 }] }],
+      }],
+      bindings: [],
+    },
+  };
+  helpers.normalizeMultiSubtitleProject(project);
+  assert.equal(project.segments[0].id, 'main-001');
+  assert.equal(project.multi_subtitle.tracks[0].segments[0].id, 'translation-segment-001');
+  assert.equal('items' in project.multi_subtitle.tracks[0].segments[0], false);
+  assert.equal(project.multi_subtitle.display_mode, 'both');
+});
+
+
+test('matches extension cues within the 300ms tolerance and reports unmatched cues', () => {
+  const result = helpers.matchSubtitleSegments(
+    [
+      { start: 0, end: 1000 },
+      { start: 1100, end: 2100 },
+    ],
+    [
+      { start: 250, end: 900 },
+      { start: 1120, end: 2080 },
+      { start: 2500, end: 3000 },
+    ],
+    300,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(result.matches)), [
+    { mainIndex: 1, extensionIndex: 1, startDiff: 20, endDiff: 20, cost: 40 },
+    { mainIndex: 0, extensionIndex: 0, startDiff: 250, endDiff: 100, cost: 350 },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.unmatchedExtension)), [2]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.unmatchedMain)), []);
+  assert.equal(result.tolerance_ms, 300);
+});
+
+
+test('uses character boundaries for continuous text and protects words for word text', () => {
+  assert.ok(helpers.splitSubtitleText('这是一句字幕', 3, 'continuous'));
+  assert.equal(helpers.splitSubtitleText('split a word', 9, 'word'), null);
+  const parts = helpers.splitSubtitleText('split a, sentence', 7, 'word');
+  assert.deepEqual(JSON.parse(JSON.stringify(parts)), {
+    left: 'split a', right: 'sentence', offset: 7,
+  });
+});
+
+
+test('cleans punctuation and whitespace at a linked split point', () => {
+  const parts = helpers.cleanSplitTextParts('这是一句。它是这样', 4);
+  assert.deepEqual(JSON.parse(JSON.stringify(parts)), {
+    left: '这是一句', right: '它是这样', offset: 4,
+  });
+});
+
+
+test('builds bindings with offsets and aligns bound/unbound dual display rows', () => {
+  const main = [
+    { id: 'm1', start: 0, end: 1000 },
+    { id: 'm2', start: 2000, end: 3000 },
+  ];
+  const extension = [
+    { id: 'e1', start: 50, end: 950 },
+    { id: 'e2', start: 1300, end: 1800 },
+  ];
+  const binding = helpers.buildSubtitleBinding(main[0], extension[0], 'translation');
+  assert.equal(binding.start_offset_ms, 50);
+  assert.equal(binding.end_offset_ms, -50);
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.buildMultiDisplayRows(main, extension, [binding]),
+  )), [
+    { mainIndex: 0, extensionIndex: 0 },
+    { mainIndex: 1, extensionIndex: null },
+    { mainIndex: null, extensionIndex: 1 },
+  ]);
+});

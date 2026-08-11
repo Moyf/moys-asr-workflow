@@ -4,6 +4,174 @@ const STICKERS = __STICKERS_JSON__;
 let STICKER_ROOT = __STICKER_ROOT_JSON__;  // 表情包根目录的绝对路径（无尾斜杠）
 let STICKER_URL_PREFIX = __STICKER_URL_PREFIX_JSON__;
 const SERVER_CONFIG = __SERVER_CONFIG_JSON__;
+
+const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
+const MULTI_SUBTITLE_TOLERANCE_MS = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_TOLERANCE_MS || 300;
+let normalizedMultiSubtitleReference = null;
+
+function normalizeMultiSubtitleState() {
+  if (normalizedMultiSubtitleReference === DATA.multi_subtitle) return DATA.multi_subtitle;
+  MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(DATA);
+  normalizedMultiSubtitleReference = DATA.multi_subtitle;
+  return DATA.multi_subtitle;
+}
+
+function getMultiSubtitleState() {
+  return normalizeMultiSubtitleState();
+}
+
+function getExtensionTrack(trackId = null) {
+  const multi = getMultiSubtitleState();
+  return (multi.tracks || []).find((track) => !trackId || track.id === trackId) || null;
+}
+
+function getActiveExtensionTrack() {
+  return getExtensionTrack();
+}
+
+function multiSubtitleVisible() {
+  return getMultiSubtitleState().enabled === true && Boolean(getActiveExtensionTrack());
+}
+
+function multiSubtitleWaveformStructureKey(state = getMultiSubtitleState()) {
+  const trackIds = Array.isArray(state?.tracks)
+    ? state.tracks.map((track) => String(track?.id || '')).join('|')
+    : '';
+  return `${state?.enabled === true ? '1' : '0'}:${trackIds}`;
+}
+
+function mainSegmentById(id) {
+  const target = String(id || '');
+  return DATA.segments.find((segment) => segment?.id === target) || null;
+}
+
+function extensionSegmentById(id, track = getActiveExtensionTrack()) {
+  const target = String(id || '');
+  return track?.segments?.find((segment) => segment?.id === target) || null;
+}
+
+function bindingForMainIndex(index) {
+  const segment = DATA.segments[index];
+  return segment ? MULTI_SUBTITLE_UTILS.bindingForSegment(getMultiSubtitleState(), segment.id, 'main') : null;
+}
+
+function bindingForExtensionIndex(index, track = getActiveExtensionTrack()) {
+  const segment = track?.segments?.[index];
+  return segment ? MULTI_SUBTITLE_UTILS.bindingForSegment(getMultiSubtitleState(), segment.id, 'extension', track.id) : null;
+}
+
+function extensionForMainIndex(index) {
+  const binding = bindingForMainIndex(index);
+  return binding ? extensionSegmentById(binding.extension_segment_ids?.[0], getExtensionTrack(binding.track_id)) : null;
+}
+
+function mainIndexForExtensionIndex(index, track = getActiveExtensionTrack()) {
+  const segment = track?.segments?.[index];
+  if (!segment) return -1;
+  const binding = MULTI_SUBTITLE_UTILS.bindingForSegment(getMultiSubtitleState(), segment.id, 'extension', track.id);
+  const mainId = binding?.main_segment_ids?.[0];
+  return DATA.segments.findIndex((candidate) => candidate.id === mainId);
+}
+
+function removeBindingsForSegmentIds(mainIds = [], extensionIds = []) {
+  const mainSet = new Set(mainIds.filter(Boolean));
+  const extensionSet = new Set(extensionIds.filter(Boolean));
+  const multi = getMultiSubtitleState();
+  MULTI_SUBTITLE_UTILS.removeSubtitleBindings(multi, (binding) => (
+    binding.main_segment_ids?.some((id) => mainSet.has(id))
+      || binding.extension_segment_ids?.some((id) => extensionSet.has(id))
+  ));
+  MULTI_SUBTITLE_UTILS.rebuildBindingOffsets(multi, DATA.segments);
+}
+
+function addSubtitleBinding(mainSegment, extensionSegment, track = getActiveExtensionTrack()) {
+  if (!mainSegment || !extensionSegment || !track) return null;
+  const multi = getMultiSubtitleState();
+  removeBindingsForSegmentIds([mainSegment.id], [extensionSegment.id]);
+  const binding = MULTI_SUBTITLE_UTILS.buildSubtitleBinding(mainSegment, extensionSegment, track.id);
+  multi.bindings.push(binding);
+  multi.enabled = true;
+  MULTI_SUBTITLE_UTILS.rebuildBindingOffsets(multi, DATA.segments);
+  return binding;
+}
+
+function markMultiSubtitleDirty() {
+  const multi = getMultiSubtitleState();
+  if (!multi.enabled && !(multi.tracks || []).length) return;
+  multi._dirty = true;
+  (multi.tracks || []).forEach((track) => track.segments.forEach((segment) => { segment._dirty = true; }));
+}
+
+function markMainSegmentsDirty(segments = DATA.segments) {
+  (Array.isArray(segments) ? segments : []).forEach((segment) => {
+    if (segment) segment._dirty = true;
+  });
+}
+
+function activeExtensionTrackId() {
+  return getActiveExtensionTrack()?.id || null;
+}
+
+function syncBindingOffsets() {
+  MULTI_SUBTITLE_UTILS.rebuildBindingOffsets(getMultiSubtitleState(), DATA.segments);
+}
+
+function clampExtensionRange(segment, start, end, duration = waveformEditor?.durationMs || Infinity) {
+  const safeStart = Math.max(0, Math.round(Number(start) || 0));
+  const safeEnd = Math.max(safeStart + 100, Math.round(Number(end) || safeStart + 100));
+  const maxEnd = Number.isFinite(duration) && duration > 0 ? duration : safeEnd;
+  const nextStart = Math.min(safeStart, Math.max(0, maxEnd - 100));
+  const nextEnd = Math.min(maxEnd, Math.max(nextStart + 100, safeEnd));
+  if (segment) {
+    segment.start = nextStart;
+    segment.end = nextEnd;
+  }
+  return { start: nextStart, end: nextEnd };
+}
+
+function syncBoundExtensionForMain(mainSegment, patch = {}) {
+  if (!mainSegment || patch.independent || !multiSubtitleVisible()) return;
+  const binding = MULTI_SUBTITLE_UTILS.bindingForSegment(getMultiSubtitleState(), mainSegment.id, 'main');
+  const extension = binding
+    ? extensionSegmentById(binding.extension_segment_ids?.[0], getExtensionTrack(binding.track_id))
+    : null;
+  if (!extension) return;
+  const oldStart = Number(patch.oldStart ?? mainSegment.start);
+  const oldEnd = Number(patch.oldEnd ?? mainSegment.end);
+  const deltaStart = Number(mainSegment.start) - oldStart;
+  const deltaEnd = Number(mainSegment.end) - oldEnd;
+  if (patch.mode === 'move') {
+    clampExtensionRange(extension, extension.start + deltaStart, extension.end + deltaStart);
+  } else {
+    const start = patch.edge === 'start' || !patch.edge ? extension.start + deltaStart : extension.start;
+    const end = patch.edge === 'end' || !patch.edge ? extension.end + deltaEnd : extension.end;
+    clampExtensionRange(extension, start, end);
+  }
+  extension._dirty = true;
+}
+
+function syncBoundMainForExtension(extensionSegment, patch = {}) {
+  if (!extensionSegment || patch.independent || !multiSubtitleVisible()) return;
+  const binding = MULTI_SUBTITLE_UTILS.bindingForSegment(
+    getMultiSubtitleState(), extensionSegment.id, 'extension', activeExtensionTrackId(),
+  );
+  const main = binding ? mainSegmentById(binding.main_segment_ids?.[0]) : null;
+  if (!main) return;
+  const oldStart = Number(patch.oldStart ?? extensionSegment.start);
+  const oldEnd = Number(patch.oldEnd ?? extensionSegment.end);
+  const deltaStart = Number(extensionSegment.start) - oldStart;
+  const deltaEnd = Number(extensionSegment.end) - oldEnd;
+  if (patch.mode === 'move') {
+    main.start += deltaStart;
+    main.end += deltaStart;
+  } else {
+    if (patch.edge === 'start') main.start += deltaStart;
+    if (patch.edge === 'end') main.end += deltaEnd;
+  }
+  main._dirty = true;
+}
+
+normalizeMultiSubtitleState();
 const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';
 const CLICK_BEHAVIOR_VALUES = new Set(['select-only', 'select-and-seek', 'select-and-play']);
 const CLICK_TARGET_VALUES = new Set(['cue-start', 'pointer']);
@@ -15,7 +183,10 @@ function normalizeClickTarget(value) {
 }
 const DEFAULT_EDITOR_SETTINGS = {
   splitKey: 'ctrl-enter',
+  splitUseWordTimestamps: true,
   overlayEnabled: true,
+  // 多重字幕开启时，拓展字幕预览默认自动显示。
+  extensionOverlayEnabled: true,
   exportStartAtZero: false,
   cueListShowIndex: true,
   cueListShowTime: true,
@@ -55,6 +226,10 @@ const DEFAULT_EDITOR_SETTINGS = {
 };
 const SUBTITLE_FONT_SIZE_MIN = 12;
 const SUBTITLE_FONT_SIZE_MAX = 96;
+const SUBTITLE_DEFAULT_FONT_SIZE = 18;
+const EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE = 16;
+const DEFAULT_SUBTITLE_COLOR = '#ffffff';
+const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#ffd34d';
 const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
   default: '',
   yahei: '"Microsoft YaHei", "PingFang SC", sans-serif',
@@ -68,7 +243,9 @@ function readEditorSettings() {
     const saved = JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || '{}');
     return {
       splitKey: saved.splitKey === 'enter' ? 'enter' : DEFAULT_EDITOR_SETTINGS.splitKey,
+      splitUseWordTimestamps: saved.splitUseWordTimestamps !== false,
       overlayEnabled: saved.overlayEnabled !== false,
+      extensionOverlayEnabled: saved.extensionOverlayEnabled !== false,
       exportStartAtZero: saved.exportStartAtZero === true,
       cueListShowIndex: saved.cueListShowIndex !== false,
       cueListShowTime: saved.cueListShowTime !== false,
@@ -221,8 +398,12 @@ const UNDO_LIMIT = 100;
 const editorHistory = window.AsrEditorUtils.createHistoryStack(UNDO_LIMIT);
 let gapRemoveDirty = false;
 function snapshotSegments() {
-  // _dirty 也保留，恢复后能再次导出"工程文件"时正确标记
-  return JSON.parse(JSON.stringify(DATA.segments));
+  // _dirty 也保留，恢复后能再次导出"工程文件"时正确标记；多字幕数据与主轨
+  // 必须处于同一条记录中，绑定/成对删除/联动拆分才能原子撤销。
+  return JSON.parse(JSON.stringify({
+    segments: DATA.segments,
+    multi_subtitle: getMultiSubtitleState(),
+  }));
 }
 function pushUndo(label) {
   editorHistory.push({ kind: 'segments', label: label || '编辑', segs: snapshotSegments() });
@@ -250,6 +431,8 @@ function snapshotPreviewState() {
   return {
     overlay: !!overlayToggle.checked,
     subtitle: { ...getPreviewGeometry(), ...getSubtitleAppearance() },
+    extensionOverlay: !!extensionOverlayToggle?.checked,
+    extensionSubtitle: { ...getStoredExtensionSubtitleAppearance() },
     sticker: { ...getStickerGeometry() },
   };
 }
@@ -257,10 +440,15 @@ function applyPreviewState(state) {
   if (!state || typeof state.overlay !== 'boolean') return;
   overlayToggle.checked = state.overlay;
   updateEditorSettings({ overlayEnabled: state.overlay });
-  if (state.subtitle) setPreviewGeometry(state.subtitle, { markDirty: true });
+  if (typeof state.extensionOverlay === 'boolean' && extensionOverlayToggle) {
+    extensionOverlayToggle.checked = state.extensionOverlay && multiSubtitleVisible();
+    updateEditorSettings({ extensionOverlayEnabled: state.extensionOverlay });
+  }
+  if (state.subtitle) setPreviewGeometry(state.subtitle, { markDirty: true, replaceAppearance: true });
+  if (state.extensionSubtitle) restoreExtensionSubtitleAppearance(state.extensionSubtitle, { markDirty: true });
   if (state.sticker) setStickerGeometry(state.sticker, { markDirty: true });
-  if (!state.overlay) overlayEl.classList.add('hidden');
-  else update();
+  refreshPreviewGeometryEditable();
+  update();
 }
 // 按记录 kind 拍下当前状态，作为对端栈的镜像（label 沿用原记录）
 function snapshotCurrentForKind(kind, label) {
@@ -298,15 +486,27 @@ function applyHistoryRecord(record) {
     applyPreviewState(record.preview);
     return true;
   }
+  const snapshot = record.segs && Array.isArray(record.segs.segments)
+    ? record.segs : { segments: record.segs, multi_subtitle: DATA.multi_subtitle };
+  const previousWaveformStructure = multiSubtitleWaveformStructureKey();
   DATA.segments.length = 0;
-  record.segs.forEach(s => DATA.segments.push(s));
+  (snapshot.segments || []).forEach(s => DATA.segments.push(s));
+  DATA.multi_subtitle = snapshot.multi_subtitle || {
+    schema: 'moy.asr.multi_subtitle.v1', enabled: false, display_mode: 'both', tracks: [], bindings: [],
+  };
+  normalizeMultiSubtitleState();
   // 历史恢复会改变下标身份；丢弃旧面板绑定，避免 clearSelection() 把旧面板
   // 内容提交到恢复后占据同一下标的另一条字幕，并因此生成新历史、清空 redo。
   currentCuePanelIdx = -1;
   cuePanelUndoPushed = false;
   clearSelection();
   lastActive = -1;
-  renderAll();
+  const structureChanged = previousWaveformStructure
+    !== multiSubtitleWaveformStructureKey();
+  const bindingOnly = record.label === '绑定多重字幕' || record.label === '解绑多重字幕';
+  renderAll({
+    waveform: bindingOnly ? 'none' : structureChanged ? 'full' : 'overlay',
+  });
   return true;
 }
 function performUndo() {
@@ -366,11 +566,19 @@ const visibleCountEl = document.getElementById('visible-count');
 const totalCountEl = document.getElementById('total-count');
 const selCountEl = document.getElementById('sel-count');
 const overlayEl = document.getElementById('overlay');
-const overlayTextEl = overlayEl.querySelector('span:not(.overlay-handle)');
+const overlayTextEl = document.getElementById('overlay-main-text');
+const overlayExtensionTextEl = document.getElementById('overlay-extension-text');
 const overlayToggle = document.getElementById('overlay-toggle');
+const extensionOverlayToggleWrap = document.getElementById('extension-overlay-toggle-wrap');
+const extensionOverlayToggle = document.getElementById('extension-overlay-toggle');
 const stickerOverlayToggle = document.getElementById('sticker-overlay-toggle');
 const subtitleFontSizeSelect = document.getElementById('subtitle-font-size');
 const subtitleFontFamilySelect = document.getElementById('subtitle-font-family');
+const subtitleColorInput = document.getElementById('subtitle-color');
+const extensionSubtitlePreviewSettings = document.getElementById('extension-subtitle-preview-settings');
+const extensionSubtitleFontSizeSelect = document.getElementById('extension-subtitle-font-size');
+const extensionSubtitleFontFamilySelect = document.getElementById('extension-subtitle-font-family');
+const extensionSubtitleColorInput = document.getElementById('extension-subtitle-color');
 const playerEmpty = document.getElementById('player-empty');
 const playerWrap = document.querySelector('.player-wrap');
 const mediaPlayToggle = document.getElementById('media-play-toggle');
@@ -385,6 +593,7 @@ const mediaFullscreen = document.getElementById('media-fullscreen');
 // 预览层（字幕/表情包）的定位与几何测量都以 stage 为基准，不含顶部媒体工具栏。
 const playerStage = playerWrap?.querySelector('.player-stage') || playerWrap;
 const splitKeySel = document.getElementById('split-key');
+const splitUseWordTimestampsToggle = document.getElementById('split-use-word-timestamps');
 const mergeJoinTextInput = document.getElementById('merge-join-text');
 const cueListShowIndexToggle = document.getElementById('cue-list-show-index');
 const cueListShowTimeToggle = document.getElementById('cue-list-show-time');
@@ -430,7 +639,35 @@ const saveProjectAsButton = document.getElementById('save-project-as');
 const saveProjectDropdown = document.getElementById('save-project-dropdown');
 const gapRemovedExportDropdown = document.getElementById('gap-removed-export-dropdown');
 const downloadSrtButton = document.getElementById('download-srt');
+const downloadMultiSrtButton = document.getElementById('download-multi-srt');
 const subtitleExportDropdown = document.getElementById('subtitle-export-dropdown');
+const multiSubtitleControls = document.getElementById('multi-subtitle-controls');
+const multiSubtitleWaveformControls = document.getElementById('multi-subtitle-waveform-controls');
+const multiSubtitleToggle = document.getElementById('multi-subtitle-toggle');
+const multiSubtitleDisplayMode = document.getElementById('multi-subtitle-display-mode');
+const multiSubtitleSplitMode = document.getElementById('multi-subtitle-split-mode');
+const multiSubtitleBindButton = document.getElementById('multi-subtitle-bind');
+const multiSubtitleUnbindButton = document.getElementById('multi-subtitle-unbind');
+const multiSubtitleImportModal = document.getElementById('multi-subtitle-import-modal');
+const multiSubtitleImportDescription = document.getElementById('multi-subtitle-import-description');
+const multiSubtitleImportPreview = document.getElementById('multi-subtitle-import-preview');
+const multiSubtitleImportChoiceActions = document.getElementById('multi-subtitle-import-choice-actions');
+const multiSubtitleImportResultActions = document.getElementById('multi-subtitle-import-result-actions');
+const multiSubtitleImportReplace = document.getElementById('multi-subtitle-import-replace');
+const multiSubtitleImportExtension = document.getElementById('multi-subtitle-import-extension');
+const multiSubtitleImportResultCancel = document.getElementById('multi-subtitle-import-result-cancel');
+const multiSubtitleImportResultConfirm = document.getElementById('multi-subtitle-import-result-confirm');
+const multiSubtitleSplitModal = document.getElementById('multi-subtitle-split-modal');
+const multiSubtitleSplitTitle = document.getElementById('multi-subtitle-split-title');
+const multiSubtitleSplitMeta = document.getElementById('multi-subtitle-split-meta');
+const multiSubtitleSplitMainLane = document.getElementById('multi-subtitle-split-main-lane');
+const multiSubtitleSplitMainText = document.getElementById('multi-subtitle-split-main-text');
+const multiSubtitleSplitExtensionLane = document.getElementById('multi-subtitle-split-extension-lane');
+const multiSubtitleSplitText = document.getElementById('multi-subtitle-split-text');
+const multiSubtitleSplitPreview = document.getElementById('multi-subtitle-split-preview');
+const multiSubtitleSplitError = document.getElementById('multi-subtitle-split-error');
+const multiSubtitleSplitCancel = document.getElementById('multi-subtitle-split-cancel');
+const multiSubtitleSplitConfirm = document.getElementById('multi-subtitle-split-confirm');
 const editorSettingsToggle = document.getElementById('editor-settings-toggle');
 const editorSettingsPanel = document.getElementById('editor-settings-panel');
 const subtitlePreviewSettings = document.getElementById('subtitle-preview-settings');
@@ -540,6 +777,42 @@ function applyCueListDisplaySettings() {
   container.classList.toggle('hide-cue-charcount', !EDITOR_SETTINGS.cueListShowCharcount);
 }
 
+let previousMultiSubtitlePreviewEnabled = false;
+function updateMultiSubtitleUi() {
+  const track = getActiveExtensionTrack();
+  const hasTrack = Boolean(track && Array.isArray(track.segments));
+  const enabled = hasTrack && getMultiSubtitleState().enabled === true;
+  const enteringEnabled = enabled && !previousMultiSubtitlePreviewEnabled;
+  if (multiSubtitleControls) multiSubtitleControls.hidden = !hasTrack;
+  if (multiSubtitleToggle) {
+    multiSubtitleToggle.checked = enabled;
+    multiSubtitleToggle.disabled = !hasTrack;
+  }
+  if (multiSubtitleDisplayMode) {
+    multiSubtitleDisplayMode.value = getMultiSubtitleState().display_mode || 'both';
+    multiSubtitleDisplayMode.hidden = !enabled;
+  }
+  if (multiSubtitleSplitMode) {
+    multiSubtitleSplitMode.value = track?.split_mode || 'word';
+    multiSubtitleSplitMode.hidden = !enabled;
+  }
+  if (multiSubtitleWaveformControls) multiSubtitleWaveformControls.hidden = !enabled;
+  [multiSubtitleBindButton, multiSubtitleUnbindButton].forEach((button) => {
+    if (button) button.hidden = !enabled;
+  });
+  if (extensionOverlayToggleWrap) extensionOverlayToggleWrap.hidden = !enabled;
+  if (extensionSubtitlePreviewSettings) extensionSubtitlePreviewSettings.hidden = !enabled;
+  if (extensionOverlayToggle) {
+    if (enteringEnabled) updateEditorSettings({ extensionOverlayEnabled: true });
+    extensionOverlayToggle.checked = enabled
+      ? (enteringEnabled || EDITOR_SETTINGS.extensionOverlayEnabled)
+      : false;
+  }
+  previousMultiSubtitlePreviewEnabled = enabled;
+  container.classList.toggle('multi-subtitle-enabled', enabled);
+  container.dataset.multiDisplayMode = enabled ? (getMultiSubtitleState().display_mode || 'both') : 'main';
+}
+
 function bindCueListDisplayToggle(toggle, key) {
   toggle.addEventListener('change', () => {
     updateEditorSettings({ [key]: toggle.checked });
@@ -615,11 +888,13 @@ function refreshSplitKeyHelp() {
 document.addEventListener('mawe:languagechange', () => refreshSplitKeyHelp());
 
 splitKeySel.value = EDITOR_SETTINGS.splitKey;
+if (splitUseWordTimestampsToggle) splitUseWordTimestampsToggle.checked = EDITOR_SETTINGS.splitUseWordTimestamps;
 applyPlatformKeyLabels();
 refreshSplitKeyHelp();
 if (mergeJoinTextInput) mergeJoinTextInput.value = EDITOR_SETTINGS.mergeJoinText;
 syncAutoMergePanelInputs();
 overlayToggle.checked = EDITOR_SETTINGS.overlayEnabled;
+if (extensionOverlayToggle) extensionOverlayToggle.checked = false;
 exportStartAtZeroToggle.checked = EDITOR_SETTINGS.exportStartAtZero;
 if (selectGroupMembersToggle) selectGroupMembersToggle.checked = EDITOR_SETTINGS.selectGroupMembers;
 if (exportColorUnifiedToggle) exportColorUnifiedToggle.checked = EDITOR_SETTINGS.exportColorUnified;
@@ -630,7 +905,41 @@ if (clickBehaviorSelect) clickBehaviorSelect.value = EDITOR_SETTINGS.clickBehavi
 if (clickTargetSelect) clickTargetSelect.value = EDITOR_SETTINGS.clickTarget;
 applyCueListDisplaySettings();
 applyCueEditorDisplaySettings();
+multiSubtitleToggle?.addEventListener('change', () => {
+  const multi = getMultiSubtitleState();
+  const next = multiSubtitleToggle.checked;
+  multi.enabled = !next;
+  pushUndo(next ? '开启多重字幕' : '关闭多重字幕');
+  multi.enabled = next;
+  multi._dirty = true;
+  // 开关会改变波形是否需要拓展 lane，因此这里才执行完整波形重建。
+  renderAll({ waveform: 'full' });
+});
+multiSubtitleDisplayMode?.addEventListener('change', () => {
+  const multi = getMultiSubtitleState();
+  const next = multiSubtitleDisplayMode.value;
+  const previous = multi.display_mode;
+  multi.display_mode = previous;
+  pushUndo('切换多重字幕列表');
+  multi.display_mode = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_DISPLAY_MODES.has(next) ? next : 'both';
+  multi._dirty = true;
+  renderAll({ waveform: 'none' });
+});
+multiSubtitleSplitMode?.addEventListener('change', () => {
+  const track = getActiveExtensionTrack();
+  if (!track) return;
+  const next = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SPLIT_MODES.has(multiSubtitleSplitMode.value)
+    ? multiSubtitleSplitMode.value : 'word';
+  if (track.split_mode === next) return;
+  pushUndo('切换扩展字幕拆分类型');
+  track.split_mode = next;
+  markMultiSubtitleDirty();
+  renderAll({ waveform: 'none' });
+});
+multiSubtitleBindButton?.addEventListener('click', bindSelectedSubtitlePair);
+multiSubtitleUnbindButton?.addEventListener('click', unbindSelectedSubtitlePair);
 applySubtitleAppearance();
+applyExtensionSubtitleAppearance();
 editorSettingsToggle?.addEventListener('click', () => setEditorSettingsPanelOpen(editorSettingsPanel?.hidden));
 subtitlePreviewSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
@@ -722,6 +1031,9 @@ splitKeySel.addEventListener('change', () => {
   updateEditorSettings({ splitKey: splitKeySel.value });
   refreshSplitKeyHelp();
 });
+splitUseWordTimestampsToggle?.addEventListener('change', () => {
+  updateEditorSettings({ splitUseWordTimestamps: splitUseWordTimestampsToggle.checked });
+});
 if (mergeJoinTextInput) mergeJoinTextInput.addEventListener('input', () => {
   updateEditorSettings({ mergeJoinText: mergeJoinTextInput.value });
 });
@@ -808,6 +1120,35 @@ subtitleFontSizeSelect?.addEventListener('change', () => {
 subtitleFontFamilySelect?.addEventListener('change', () => {
   pushPreviewUndo('调整字幕字体', snapshotPreviewState());
   setSubtitleAppearance({ font_family: subtitleFontFamilySelect.value });
+});
+subtitleColorInput?.addEventListener('change', () => {
+  pushPreviewUndo('调整主字幕颜色', snapshotPreviewState());
+  setSubtitleAppearance({ color: subtitleColorInput.value });
+  update();
+});
+extensionSubtitleFontSizeSelect?.addEventListener('change', () => {
+  pushPreviewUndo('调整拓展字幕字号', snapshotPreviewState());
+  const value = extensionSubtitleFontSizeSelect.value;
+  setExtensionSubtitleAppearance({ font_size: value === 'auto' ? null : Number(value) });
+  update();
+});
+extensionSubtitleFontFamilySelect?.addEventListener('change', () => {
+  pushPreviewUndo('调整拓展字幕字体', snapshotPreviewState());
+  setExtensionSubtitleAppearance({ font_family: extensionSubtitleFontFamilySelect.value });
+  update();
+});
+extensionSubtitleColorInput?.addEventListener('change', () => {
+  pushPreviewUndo('调整拓展字幕颜色', snapshotPreviewState());
+  setExtensionSubtitleAppearance({ color: extensionSubtitleColorInput.value });
+  update();
+});
+extensionOverlayToggle?.addEventListener('change', () => {
+  const previous = snapshotPreviewState();
+  previous.extensionOverlay = !extensionOverlayToggle.checked;
+  pushPreviewUndo('切换拓展字幕预览', previous);
+  updateEditorSettings({ extensionOverlayEnabled: extensionOverlayToggle.checked });
+  refreshPreviewGeometryEditable();
+  update();
 });
 const CLICK_BEHAVIOR_HINTS = {
   zh: {
@@ -1398,7 +1739,12 @@ function stickerAbsPath(sticker) {
   return sticker.path || '';
 }
 const selectedIdxs = new Set();
+const selectedExtensionIdxs = new Set();
 let lastClickedIdx = -1;  // 用于 Shift+click 范围选
+let lastClickedExtensionIdx = -1;
+// 右键选择「绑定到主字幕」后的等待状态。使用稳定 ID 而不是数组下标，
+// 这样等待期间即使列表重绘，也不会把另一条扩展字幕误绑定过去。
+let pendingExtensionBinding = null;
 let hideDisabled = false;  // 「隐藏禁用项」开关状态
 const hideDisabledToggle = document.getElementById('hide-disabled-toggle');
 // 隐藏开关开启时，禁用项视为"不可选"（Shift 范围选 / Ctrl 切换都跳过）
@@ -1406,15 +1752,77 @@ function isHiddenDisabled(idx) {
   return hideDisabled && !!(DATA.segments[idx] && DATA.segments[idx].disabled);
 }
 
+function cancelPendingExtensionBinding(message = '已取消绑定扩展字幕') {
+  if (!pendingExtensionBinding) return false;
+  pendingExtensionBinding = null;
+  flashHint(message);
+  return true;
+}
+
 function clearSelection() {
+  cancelPendingExtensionBinding();
   selectedIdxs.forEach(i => {
     const el = container.querySelector(`.cue[data-idx="${i}"]`);
     if (el) el.classList.remove('selected');
   });
   selectedIdxs.clear();
+  selectedExtensionIdxs.forEach((index) => {
+    container.querySelectorAll(`.multi-cue[data-ext-idx="${index}"], .multi-dual-cue[data-ext-idx="${index}"]`)
+      .forEach((el) => el.classList.remove('selected'));
+  });
+  selectedExtensionIdxs.clear();
   selCountEl.textContent = '0';
   if (waveformEditor) waveformEditor.updateSelection();
   setCurrentCuePanelIndex(-1);
+}
+
+function updateMultiSelectionClasses() {
+  container.querySelectorAll('.multi-cue').forEach((element) => {
+    const mainIndex = element.dataset.mainIdx == null ? -1 : Number(element.dataset.mainIdx);
+    const extensionIndex = element.dataset.extIdx == null ? -1 : Number(element.dataset.extIdx);
+    const selected = (Number.isInteger(mainIndex) && selectedIdxs.has(mainIndex))
+      || (Number.isInteger(extensionIndex) && selectedExtensionIdxs.has(extensionIndex));
+    element.classList.toggle('selected', selected);
+  });
+}
+
+function selectOnlyExtension(index) {
+  const track = getActiveExtensionTrack();
+  if (
+    pendingExtensionBinding
+    && track?.id === pendingExtensionBinding.trackId
+    && track.segments?.[index]?.id !== pendingExtensionBinding.extensionId
+  ) {
+    cancelPendingExtensionBinding();
+  }
+  selectedExtensionIdxs.clear();
+  selectedExtensionIdxs.add(index);
+  updateMultiSelectionClasses();
+  selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
+  lastClickedExtensionIdx = index;
+  waveformEditor?.updateSelection();
+}
+
+function toggleExtensionSelection(index) {
+  if (selectedExtensionIdxs.has(index)) selectedExtensionIdxs.delete(index);
+  else selectedExtensionIdxs.add(index);
+  updateMultiSelectionClasses();
+  selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
+  lastClickedExtensionIdx = index;
+  waveformEditor?.updateSelection();
+}
+
+function selectExtensionRange(a, b) {
+  const track = getActiveExtensionTrack();
+  if (!track) return;
+  const lo = Math.min(a, b);
+  const hi = Math.max(a, b);
+  selectedExtensionIdxs.clear();
+  for (let index = lo; index <= hi; index++) selectedExtensionIdxs.add(index);
+  updateMultiSelectionClasses();
+  selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
+  lastClickedExtensionIdx = b;
+  waveformEditor?.updateSelection();
 }
 function toggleSel(idx) {
   if (isHiddenDisabled(idx)) return;  // 隐藏禁用项不参与选择
@@ -1426,8 +1834,9 @@ function toggleSel(idx) {
     selectedIdxs.add(idx);
     if (el) el.classList.add('selected');
   }
-  selCountEl.textContent = String(selectedIdxs.size);
+  selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
   if (waveformEditor) waveformEditor.updateSelection();
+  updateMultiSelectionClasses();
   setCurrentCuePanelIndex(selectedIdxs.has(idx) ? idx : (selectedIdxs.values().next().value ?? -1));
 }
 function selectRange(a, b) {
@@ -1440,8 +1849,9 @@ function selectRange(a, b) {
       if (el) el.classList.add('selected');
     }
   }
-  selCountEl.textContent = String(selectedIdxs.size);
+  selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
   if (waveformEditor) waveformEditor.updateSelection();
+  updateMultiSelectionClasses();
   setCurrentCuePanelIndex(selectedIdxs.has(b) ? b : (selectedIdxs.values().next().value ?? -1));
 }
 function selectOnly(idx) {
@@ -1449,8 +1859,9 @@ function selectOnly(idx) {
   selectedIdxs.add(idx);
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
   if (el) el.classList.add('selected');
-  selCountEl.textContent = '1';
+  selCountEl.textContent = String(1 + selectedExtensionIdxs.size);
   if (waveformEditor) waveformEditor.updateSelection();
+  updateMultiSelectionClasses();
   setCurrentCuePanelIndex(idx);
 }
 function addToSelection(idx) {
@@ -1458,7 +1869,7 @@ function addToSelection(idx) {
   selectedIdxs.add(idx);
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
   if (el) el.classList.add('selected');
-  selCountEl.textContent = String(selectedIdxs.size);
+  selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
   if (waveformEditor) waveformEditor.updateSelection();
   setCurrentCuePanelIndex(idx);
 }
@@ -1499,6 +1910,23 @@ function groupMemberIdxs(idx) {
 }
 // 普通单击字幕时的选择逻辑：开启「同时选中分组内项目」且属于分组时选整组，否则只选本行。
 function selectCueByClick(idx) {
+  if (pendingExtensionBinding) {
+    const pending = pendingExtensionBinding;
+    pendingExtensionBinding = null;
+    const track = getExtensionTrack(pending.trackId);
+    const extensionIndex = track?.segments?.findIndex(
+      (segment) => segment.id === pending.extensionId,
+    ) ?? -1;
+    if (extensionIndex < 0) {
+      flashHint('扩展字幕已不存在，绑定已取消');
+      return;
+    }
+    // selectOnly 会清空扩展轨选择，因此先完成主轨选择，再恢复待绑定的扩展轨选择。
+    selectOnly(idx);
+    selectOnlyExtension(extensionIndex);
+    bindSelectedSubtitlePair();
+    return;
+  }
   if (EDITOR_SETTINGS.selectGroupMembers) {
     const members = groupMemberIdxs(idx);
     if (members.length > 1) {
@@ -1517,8 +1945,93 @@ function selectCueByClick(idx) {
   selectOnly(idx);
 }
 
+function beginPendingExtensionBinding(index, track = getActiveExtensionTrack()) {
+  const extension = track?.segments?.[index];
+  if (!extension || !track) return;
+  pendingExtensionBinding = { trackId: track.id, extensionId: extension.id };
+  selectOnlyExtension(index);
+  flashHint('请点击一条主字幕完成绑定；按 Esc 或点击空白处取消');
+}
+
+function bindSelectedSubtitlePair() {
+  if (!multiSubtitleVisible()) return;
+  if (selectedIdxs.size !== 1 || selectedExtensionIdxs.size !== 1) {
+    flashHint('请分别选中一条主字幕和一条扩展字幕后再绑定');
+    return;
+  }
+  const mainIndex = [...selectedIdxs][0];
+  const extensionIndex = [...selectedExtensionIdxs][0];
+  const track = getActiveExtensionTrack();
+  const main = DATA.segments[mainIndex];
+  const extension = track?.segments?.[extensionIndex];
+  if (!main || !extension) return;
+  pushUndo('绑定多重字幕');
+  addSubtitleBinding(main, extension, track);
+  markMainSegmentsDirty([main]);
+  markMultiSubtitleDirty();
+  // 绑定关系只影响字幕列表，不改变波形块、时间范围或 Canvas。
+  renderAll({ waveform: 'none' });
+  flashHint(`已绑定主字幕 ${mainIndex + 1} 与扩展字幕 ${extensionIndex + 1}`, 'success');
+}
+
+function unbindSelectedSubtitlePair() {
+  const multi = getMultiSubtitleState();
+  const ids = new Set();
+  selectedIdxs.forEach((index) => { if (DATA.segments[index]?.id) ids.add(DATA.segments[index].id); });
+  const track = getActiveExtensionTrack();
+  selectedExtensionIdxs.forEach((index) => { if (track?.segments[index]?.id) ids.add(track.segments[index].id); });
+  if (!ids.size) return;
+  const removed = MULTI_SUBTITLE_UTILS.removeSubtitleBindings(multi, (binding) => (
+    binding.main_segment_ids?.some((id) => ids.has(id))
+      || binding.extension_segment_ids?.some((id) => ids.has(id))
+  ));
+  if (!removed.length) {
+    flashHint('当前选中字幕没有绑定关系');
+    return;
+  }
+  // removeSubtitleBindings 已经返回具体关系；快照必须在真正修改前建立。
+  // 这里把预览关系恢复后再记录，避免解绑动作无法撤销。
+  multi.bindings.push(...removed);
+  pushUndo('解绑多重字幕');
+  MULTI_SUBTITLE_UTILS.removeSubtitleBindings(multi, (binding) => removed.includes(binding));
+  markMultiSubtitleDirty();
+  syncBindingOffsets();
+  // 解绑同样只更新列表关系状态，跳过波形覆盖层重建。
+  renderAll({ waveform: 'none' });
+  flashHint(`已解绑 ${removed.length} 对字幕`, 'success');
+}
+
+function alignExtensionToMainTimeRange(index, track = getActiveExtensionTrack()) {
+  const extension = track?.segments?.[index];
+  const binding = bindingForExtensionIndex(index, track);
+  const main = binding ? mainSegmentById(binding.main_segment_ids?.[0]) : null;
+  if (!extension || !main) {
+    flashHint('请先绑定扩展字幕，才能对齐主字幕时间范围');
+    return false;
+  }
+  const start = Math.round(Number(main.start));
+  const end = Math.round(Number(main.end));
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    flashHint('主字幕时间范围无效，无法对齐');
+    return false;
+  }
+  if (extension.start === start && extension.end === end) {
+    flashHint('扩展字幕已经与主字幕时间范围一致');
+    return false;
+  }
+  pushUndo('对齐扩展字幕时间范围');
+  extension.start = start;
+  extension.end = end;
+  extension._dirty = true;
+  markMultiSubtitleDirty();
+  syncBindingOffsets();
+  renderAll();
+  flashHint('已将扩展字幕对齐到主字幕时间范围', 'success');
+  return true;
+}
+
 // === 渲染 ===
-function renderAll() {
+function renderAll({ waveform = 'overlay' } = {}) {
   // cues-container 同时是字幕列表和停靠模块；重绘列表时不要把布局编辑模式
   // 下的顶部拖拽栏一起清掉。
   const dockHandle = container.querySelector(':scope > .dock-handle');
@@ -1531,18 +2044,41 @@ function renderAll() {
     emptyState.classList.toggle('hidden', DATA.segments.length > 0);
     container.appendChild(emptyState);
   }
-  DATA.segments.forEach((seg, i) => container.appendChild(buildCueEl(seg, i)));
+  const multiVisible = multiSubtitleVisible();
+  const displayMode = getMultiSubtitleState().display_mode || 'both';
+  if (!multiVisible || displayMode === 'main') {
+    DATA.segments.forEach((seg, i) => container.appendChild(buildCueEl(seg, i)));
+  } else if (displayMode === 'extension') {
+    const track = getActiveExtensionTrack();
+    track.segments.forEach((seg, i) => container.appendChild(buildExtensionCueEl(seg, i, track)));
+  } else {
+    const track = getActiveExtensionTrack();
+    const rows = MULTI_SUBTITLE_UTILS.buildMultiDisplayRows(DATA.segments, track.segments, getMultiSubtitleState().bindings);
+    rows.forEach((row) => container.appendChild(buildDualCueEl(row.mainIndex, row.extensionIndex, track)));
+  }
   applyCueListDisplaySettings();
-  totalCountEl.textContent = DATA.segments.length;
+  totalCountEl.textContent = multiVisible && displayMode === 'extension'
+    ? getActiveExtensionTrack()?.segments.length || 0
+    : DATA.segments.length;
   applySearch(searchEl.value);
   // 重新应用选中样式（idx 不变时还有效；如果有 splice 改了顺序就先 clearSelection）
   selectedIdxs.forEach(i => {
     const el = container.querySelector(`.cue[data-idx="${i}"]`);
     if (el) el.classList.add('selected');
   });
-  if (waveformEditor) waveformEditor.renderSegments();
+  updateMultiSelectionClasses();
+  if (waveformEditor) {
+    if (waveform === 'full') waveformEditor.renderSegments();
+    else if (waveform !== 'none') {
+      // 字幕块变化不需要重新创建行和 Canvas；兼容旧版波形对象时才回退到
+      // 原来的完整刷新路径。
+      if (typeof waveformEditor.refreshCueOverlay === 'function') waveformEditor.refreshCueOverlay();
+      else waveformEditor.renderSegments();
+    }
+  }
   renderCurrentCuePanel();
   syncPlayerPlaceholder();
+  updateMultiSubtitleUi();
   updateSubtitleExportUi();
 }
 
@@ -1619,6 +2155,9 @@ function commitCuePanelEdit() {
   }
   seg.items = remapPanelItems(seg.items, oldStart, oldEnd, seg.start, seg.end);
   seg._dirty = true;
+  syncBoundExtensionForMain(seg, { oldStart, oldEnd });
+  syncBindingOffsets();
+  markMultiSubtitleDirty();
   cuePanelUndoPushed = false;
   renderAll();
   update();
@@ -1769,8 +2308,9 @@ cuePanelSplit?.addEventListener('click', splitCuePanelAtCursor);
 
 function buildCueEl(seg, idx) {
   const el = document.createElement('div');
-  el.className = 'cue';
+  el.className = multiSubtitleVisible() ? 'cue multi-cue' : 'cue';
   el.dataset.idx = idx;
+  if (multiSubtitleVisible()) el.dataset.mainIdx = String(idx);
   if (seg._dirty) el.classList.add('dirty');
   if (seg.disabled) el.classList.add('disabled');
 
@@ -1868,6 +2408,76 @@ function buildCueEl(seg, idx) {
   return el;
 }
 
+function buildMultiTimeEl(segment) {
+  const time = document.createElement('span');
+  time.className = 'time';
+  time.textContent = `${fmtShort(segment.start)} → ${fmtShort(segment.end)}`;
+  return time;
+}
+
+function buildMultiCueColumn(segment, index, track, kind) {
+  const column = document.createElement('div');
+  column.className = `multi-cue-column ${kind}`;
+  if (!segment) {
+    column.classList.add('multi-cue-empty');
+    column.textContent = '—';
+    return column;
+  }
+  const header = document.createElement('div');
+  header.className = 'multi-cue-column-header';
+  const indexEl = document.createElement('span');
+  indexEl.className = 'index';
+  indexEl.textContent = `${kind === 'main' ? '主' : '次'} ${index + 1}`;
+  header.append(indexEl, buildMultiTimeEl(segment));
+  const text = document.createElement('span');
+  text.className = 'text';
+  setTextHtml(text, segment.text || '', searchEl.value);
+  column.append(header, text);
+  if (kind === 'extension') {
+    const binding = bindingForExtensionIndex(index, track);
+    if (!binding) column.classList.add('unbound');
+    column.dataset.extIdx = String(index);
+  } else {
+    column.dataset.mainIdx = String(index);
+  }
+  column.dataset.start = String(segment.start);
+  column.dataset.end = String(segment.end);
+  return column;
+}
+
+function buildExtensionCueEl(seg, idx, track) {
+  const el = document.createElement('div');
+  el.className = 'cue multi-cue multi-extension-cue';
+  el.dataset.extIdx = String(idx);
+  const mainIndex = mainIndexForExtensionIndex(idx, track);
+  if (mainIndex >= 0) el.dataset.mainIdx = String(mainIndex);
+  el.appendChild(buildMultiCueColumn(seg, idx, track, 'extension'));
+  bindExtensionCueEvents(el, idx, track);
+  return el;
+}
+
+function buildDualCueEl(mainIndex, extensionIndex, track) {
+  const main = mainIndex == null ? null : DATA.segments[mainIndex];
+  const extension = extensionIndex == null ? null : track.segments[extensionIndex];
+  const el = document.createElement('div');
+  el.className = 'cue multi-cue multi-dual-cue';
+  if (mainIndex != null) {
+    el.dataset.mainIdx = String(mainIndex);
+    el.dataset.idx = String(mainIndex);
+  }
+  if (extensionIndex != null) el.dataset.extIdx = String(extensionIndex);
+  el.append(
+    buildMultiCueColumn(main, mainIndex ?? -1, track, 'main'),
+    buildMultiCueColumn(extension, extensionIndex ?? -1, track, 'extension'),
+  );
+  if (main) bindCueEvents(el, mainIndex);
+  if (extension) {
+    const extensionColumn = el.querySelector('.multi-cue-column.extension');
+    bindExtensionCueEvents(extensionColumn, extensionIndex, track, el);
+  }
+  return el;
+}
+
 function fmtShort(ms) {
   const s = ms / 1000;
   const m = Math.floor(s / 60);
@@ -1929,7 +2539,7 @@ function refreshAllCharCounts() {
   container.querySelectorAll(':scope > .cue').forEach(el => {
     const idx = parseInt(el.dataset.idx);
     const cntEl = el.querySelector('.charcount');
-    if (cntEl) applyCharCount(cntEl, DATA.segments[idx].text);
+    if (cntEl && Number.isInteger(idx) && DATA.segments[idx]) applyCharCount(cntEl, DATA.segments[idx].text);
   });
 }
 
@@ -1943,18 +2553,35 @@ function applySearch(query) {
   // 容器内还有布局拖拽栏和“加载工程后显示字幕列表”占位层；过滤只作用于真实字幕行。
   const cueElements = container.querySelectorAll(':scope > .cue');
   cueElements.forEach(el => {
-    const idx = parseInt(el.dataset.idx);
-    const seg = DATA.segments[idx];
-    let matched = !re || re.test(seg.text);
+    const mainIdx = el.dataset.mainIdx != null
+      ? Number(el.dataset.mainIdx)
+      : (el.dataset.idx != null ? Number(el.dataset.idx) : -1);
+    const extIdx = el.dataset.extIdx != null ? Number(el.dataset.extIdx) : -1;
+    const extensionTrack = getActiveExtensionTrack();
+    const mainSeg = Number.isInteger(mainIdx) && mainIdx >= 0 ? DATA.segments[mainIdx] : null;
+    const extensionSeg = Number.isInteger(extIdx) && extIdx >= 0 && extensionTrack
+      ? extensionTrack.segments[extIdx] : null;
+    const searchableText = [mainSeg?.text, extensionSeg?.text].filter(Boolean).join('\n');
+    if (!searchableText) {
+      el.classList.add('hidden');
+      return;
+    }
+    let matched = !re || re.test(searchableText);
     if (re) re.lastIndex = 0;
     if (matched && filterOver) {
-      matched = calcCharWidth(seg.text) > threshold;
+      matched = calcCharWidth(searchableText) > threshold;
     }
     el.classList.toggle('hidden', !matched);
     if (matched) visible++;
     if (!el.classList.contains('editing')) {
-      const textEl = el.querySelector('.text');
-      if (textEl) setTextHtml(textEl, seg.text, trimmed);
+      const mainTextEl = el.querySelector('.multi-cue-column.main .text');
+      const extensionTextEl = el.querySelector('.multi-cue-column.extension .text');
+      if (mainTextEl && mainSeg) setTextHtml(mainTextEl, mainSeg.text, trimmed);
+      if (extensionTextEl && extensionSeg) setTextHtml(extensionTextEl, extensionSeg.text, trimmed);
+      if (!mainTextEl && !extensionTextEl) {
+        const textEl = el.querySelector('.text');
+        if (textEl) setTextHtml(textEl, searchableText, trimmed);
+      }
     }
   });
   visibleCountEl.textContent = visible;
@@ -1978,6 +2605,79 @@ document.getElementById('search-clear').addEventListener('click', () => {
 
 // === 编辑 ===
 let editingState = null;
+let extensionEditingState = null;
+
+function startExtensionEdit(el, index, track = getActiveExtensionTrack()) {
+  if (!el || !track?.segments?.[index]) return;
+  if (editingState) finishEdit(true);
+  if (extensionEditingState) finishExtensionEdit(true);
+  const textEl = el.querySelector('.text') || el;
+  const segment = track.segments[index];
+  extensionEditingState = { el, index, trackId: track.id, textEl, original: segment.text || '' };
+  el.classList.add('editing');
+  textEl.setAttribute('contenteditable', 'plaintext-only');
+  textEl.innerText = segment.text || '';
+  textEl.focus();
+  const range = document.createRange();
+  range.selectNodeContents(textEl);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function finishExtensionEdit(save) {
+  if (!extensionEditingState) return;
+  const { el, index, trackId, textEl, original } = extensionEditingState;
+  const track = getExtensionTrack(trackId);
+  const segment = track?.segments?.[index];
+  textEl.removeAttribute('contenteditable');
+  el.classList.remove('editing');
+  if (segment && save) {
+    const nextText = textEl.innerText.replace(/\r\n?/g, '\n').trimEnd();
+    if (nextText !== original) {
+      pushUndo('编辑扩展字幕');
+      segment.text = nextText;
+      segment._dirty = true;
+      markMultiSubtitleDirty();
+    }
+  }
+  if (segment) setTextHtml(textEl, segment.text || '', searchEl.value);
+  waveformEditor?.refreshExtensionCueLabel(index, trackId);
+  extensionEditingState = null;
+}
+
+function bindExtensionCueEvents(el, index, track = getActiveExtensionTrack(), dualRow = null) {
+  if (!el || !track?.segments?.[index]) return;
+  let pointerDown = null;
+  el.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || (extensionEditingState?.el === el)) return;
+    event.stopPropagation();
+    pointerDown = { x: event.clientX, y: event.clientY };
+    if (event.shiftKey && lastClickedExtensionIdx >= 0) selectExtensionRange(lastClickedExtensionIdx, index);
+    else if (event.ctrlKey || event.metaKey) toggleExtensionSelection(index);
+    else selectOnlyExtension(index);
+    lastClickedExtensionIdx = index;
+  });
+  el.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (!pointerDown) return;
+    pointerDown = null;
+    const segment = track.segments[index];
+    if (EDITOR_SETTINGS.cueListAutoScrollOnClick) scrollCueToCenter(dualRow || el);
+    waveformEditor?.revealTime(segment.start, true);
+    if (EDITOR_SETTINGS.clickBehavior !== 'select-only') seekFromWaveform(segment.start / 1000);
+  });
+  el.addEventListener('dblclick', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    startExtensionEdit(el, index, track);
+  });
+  el.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    showExtensionContextMenu(event.clientX, event.clientY, index, null, track);
+  });
+}
 
 function startEdit(el, idx, clickX, clickY) {
   if (editingState) finishEdit(true);
@@ -2059,6 +2759,606 @@ function finishEdit(save) {
 }
 
 // === 拆分 ===
+let pendingLinkedSplit = null;
+
+function splitTimeForTextOffset(segment, offset) {
+  const text = String(segment?.text || '');
+  const safeOffset = Math.max(0, Math.min(text.length, Number(offset) || 0));
+  const items = Array.isArray(segment?.items) ? segment.items : [];
+  let cursor = 0;
+  for (const item of items) {
+    const next = cursor + String(item.text || '').length;
+    if (safeOffset === next) return Number(item.end);
+    if (safeOffset < next) return Number(item.start);
+    cursor = next;
+  }
+  return segment.start + ((segment.end - segment.start) * safeOffset) / Math.max(1, text.length);
+}
+
+function buildSplitPair(segment, offset, cutMs, idBase, includeItems = true, splitMode = null) {
+  const text = String(segment?.text || '');
+  const mode = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SPLIT_MODES.has(splitMode)
+    ? splitMode : MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(text);
+  const parts = MULTI_SUBTITLE_UTILS.splitSubtitleText(text, offset, mode);
+  if (!parts) return null;
+  const items = includeItems && Array.isArray(segment.items) ? segment.items : [];
+  const itemParts = splitItemsAtChar(items, parts.offset, text);
+  const cleanItems = (source) => source
+    .map((item) => ({ ...item }))
+    .map((item, index, list) => ({
+      ...item,
+      text: index === list.length - 1
+        ? item.text.replace(/[，。,.!?！？；;：:\s]+$/u, '')
+        : item.text.replace(/^[，。,.!?！？；;：:\s]+/u, ''),
+    }))
+    .filter((item) => item.text);
+  const leftItems = cleanItems(itemParts.leftItems);
+  const rightItems = cleanItems(itemParts.rightItems);
+  const left = {
+    ...segment,
+    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment], `${idBase}-a`, 'segment'),
+    start: segment.start,
+    end: Math.round(cutMs),
+    text: parts.left,
+    items: leftItems.length ? leftItems : null,
+    _dirty: true,
+  };
+  const right = {
+    ...segment,
+    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment, left], `${idBase}-b`, 'segment'),
+    start: Math.round(cutMs),
+    end: segment.end,
+    text: parts.right,
+    items: rightItems.length ? rightItems : null,
+    _dirty: true,
+  };
+  if (segment.sticker) {
+    right.sticker = null;
+    right.sticker_ref = { name: segment.sticker.name, headIdx: 0 };
+  }
+  if (segment.color) {
+    right.color = null;
+    right.color_ref = { name: segment.color.name, headIdx: 0 };
+  }
+  return { left, right, parts };
+}
+
+function linkedSplitState(mainIndex, initial = {}) {
+  const main = DATA.segments[mainIndex];
+  const binding = bindingForMainIndex(mainIndex);
+  const track = binding ? getExtensionTrack(binding.track_id) : null;
+  const extension = binding ? extensionSegmentById(binding.extension_segment_ids?.[0], track) : null;
+  if (!main || !binding || !track || !extension) return null;
+  const mainMode = MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(main.text);
+  const extensionMode = track.split_mode || MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(extension.text);
+  const initialTime = Number.isFinite(initial.timeMs)
+    ? initial.timeMs
+    : splitTimeForTextOffset(main, initial.mainOffset ?? Math.floor(String(main.text || '').length / 2));
+  const timestampOffset = EDITOR_SETTINGS.splitUseWordTimestamps
+    ? window.AsrEditorUtils.splitCharOffsetAtTime(main, initialTime)
+    : null;
+  const initialMainOffset = timestampOffset
+    ?? MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
+      main.text, initialTime, main.start, main.end, mainMode,
+    );
+  const initialMainCutMs = EDITOR_SETTINGS.splitUseWordTimestamps
+    ? splitTimeForTextOffset(main, initialMainOffset)
+    : splitCutTime(main, initialMainOffset, false);
+  const initialOffset = MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
+    extension.text, initialMainCutMs, extension.start, extension.end, extensionMode,
+  );
+  return {
+    kind: 'linked',
+    mainIndex,
+    mainId: main.id,
+    extensionId: extension.id,
+    trackId: track.id,
+    mainMode,
+    mainInteractive: !EDITOR_SETTINGS.splitUseWordTimestamps,
+    mainOffset: initialMainOffset,
+    mainCutMs: initialMainCutMs,
+    offset: initialOffset,
+    // 联动拆分只有一个绝对切点；拓展轨的 offset 只负责选择文字边界。
+    cutMs: initialMainCutMs,
+    extensionCutMs: initialMainCutMs,
+    extensionMode,
+    locked: false,
+  };
+}
+
+function mainWaveformSplitState(mainIndex, initial = {}) {
+  const main = DATA.segments[mainIndex];
+  if (!main) return null;
+  const mainMode = MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(main.text);
+  const initialTime = Number.isFinite(initial.timeMs)
+    ? initial.timeMs
+    : splitTimeForTextOffset(main, initial.mainOffset ?? Math.floor(String(main.text || '').length / 2));
+  const initialOffset = MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
+    main.text, initialTime, main.start, main.end, mainMode,
+  );
+  if (initialOffset == null) return null;
+  return {
+    kind: 'main',
+    mainIndex,
+    mainId: main.id,
+    offset: initialOffset,
+    mainOffset: initialOffset,
+    mainCutMs: splitTimeForTextOffset(main, initialOffset),
+    mainMode,
+    locked: false,
+  };
+}
+
+function extensionOnlySplitState(extensionIndex, track, initial = {}) {
+  const extension = track?.segments?.[extensionIndex];
+  if (!extension || !track) return null;
+  const extensionMode = track.split_mode || MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(extension.text);
+  const initialTime = Number.isFinite(initial.timeMs)
+    ? initial.timeMs
+    : splitTimeForTextOffset(extension, initial.extensionOffset ?? Math.floor(String(extension.text || '').length / 2));
+  const initialOffset = MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
+    extension.text, initialTime, extension.start, extension.end, extensionMode,
+  );
+  if (!Number.isInteger(initialOffset)) return null;
+  return {
+    kind: 'extension',
+    mainIndex: -1,
+    extensionIndex,
+    extensionId: extension.id,
+    trackId: track.id,
+    offset: initialOffset,
+    extensionCutMs: splitTimeForTextOffset(extension, initialOffset),
+    extensionMode,
+    locked: false,
+  };
+}
+
+function splitLaneElements(lane) {
+  return lane === 'main'
+    ? { laneEl: multiSubtitleSplitMainLane, textEl: multiSubtitleSplitMainText }
+    : { laneEl: multiSubtitleSplitExtensionLane, textEl: multiSubtitleSplitText };
+}
+
+function splitLaneLocked(state, lane) {
+  return state?.lockedLanes?.[lane] === true;
+}
+
+function syncLinkedSplitTime(state, activeLane, main, extension) {
+  if (state?.kind !== 'linked' || !main || !extension) return;
+
+  // 默认的主轨字词时间码是固定锚点；关闭该设置后，未锁定的当前 lane
+  // 才能推动共享切点。另一条 lane 的文字 offset 随共享时间吸附到最近合法边界。
+  const mainFixed = !state.mainInteractive || splitLaneLocked(state, 'main');
+  const extensionFixed = splitLaneLocked(state, 'extension');
+  let cutMs = state.cutMs;
+  if (mainFixed) {
+    cutMs = state.mainCutMs;
+  } else if (extensionFixed) {
+    cutMs = state.extensionCutMs;
+  } else {
+    const source = activeLane === 'main' ? main : extension;
+    const sourceOffset = activeLane === 'main' ? state.mainOffset : state.offset;
+    cutMs = splitCutTime(source, sourceOffset, false);
+  }
+  if (!Number.isFinite(cutMs)) return;
+
+  const sharedCutMs = Math.round(cutMs);
+  state.cutMs = sharedCutMs;
+  state.mainCutMs = sharedCutMs;
+  state.extensionCutMs = sharedCutMs;
+
+  if (activeLane === 'main' && !extensionFixed) {
+    const extensionOffset = MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
+      extension.text, sharedCutMs, extension.start, extension.end, state.extensionMode,
+    );
+    if (Number.isInteger(extensionOffset)) state.offset = extensionOffset;
+  } else if (activeLane === 'extension' && !mainFixed) {
+    const mainOffset = MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
+      main.text, sharedCutMs, main.start, main.end, state.mainMode,
+    );
+    if (Number.isInteger(mainOffset)) state.mainOffset = mainOffset;
+  }
+}
+
+function splitCutTime(segment, offset, useWordTimestamps = false) {
+  if (useWordTimestamps) return Math.round(splitTimeForTextOffset(segment, offset));
+  const textLength = Math.max(1, String(segment?.text || '').length);
+  return Math.round(Number(segment?.start || 0)
+    + ((Number(segment?.end || 0) - Number(segment?.start || 0)) * Number(offset || 0)) / textLength);
+}
+
+function setSplitPreviewLine(label, parts) {
+  const row = document.createElement('div');
+  row.className = 'multi-subtitle-split-preview-line';
+  const labelEl = document.createElement('span');
+  labelEl.className = 'multi-subtitle-split-preview-label';
+  labelEl.textContent = `${label}：`;
+  const left = document.createElement('span');
+  left.className = 'multi-subtitle-split-preview-left';
+  left.textContent = parts.left;
+  const separator = document.createElement('span');
+  separator.className = 'multi-subtitle-split-preview-separator';
+  separator.textContent = '✂️';
+  const right = document.createElement('span');
+  right.className = 'multi-subtitle-split-preview-right';
+  right.textContent = parts.right;
+  row.append(labelEl, left, separator, right);
+  multiSubtitleSplitPreview.appendChild(row);
+}
+
+function updateSplitLaneVisual(state, lane) {
+  const { textEl } = splitLaneElements(lane);
+  if (!textEl) return;
+  const offset = lane === 'main' ? state?.mainOffset : state?.offset;
+  textEl.querySelectorAll('.multi-subtitle-split-char').forEach((character) => {
+    const charOffset = Number(character.dataset.offset || 0);
+    character.classList.toggle('split-left', charOffset <= offset);
+    character.classList.toggle('split-right', charOffset > offset);
+  });
+  textEl.querySelectorAll('.multi-subtitle-split-gap').forEach((gap) => {
+    gap.classList.toggle('active', Number(gap.dataset.offset) === offset);
+  });
+}
+
+function renderSplitLane(state, lane) {
+  const { laneEl, textEl } = splitLaneElements(lane);
+  if (!laneEl || !textEl) return;
+  const main = DATA.segments[state?.mainIndex];
+  const track = getExtensionTrack(state?.trackId);
+  const extension = extensionSegmentById(state?.extensionId, track);
+  const isMain = lane === 'main';
+  const displaySegment = isMain ? main : extension;
+  const displayMode = isMain ? state?.mainMode : state?.extensionMode;
+  const visible = Boolean(displaySegment) && (isMain
+    ? state?.kind === 'main' || state?.mainInteractive
+    : state?.kind !== 'main');
+  laneEl.hidden = !visible;
+  if (!visible) return;
+  textEl.replaceChildren();
+  const legalOffsets = new Set(MULTI_SUBTITLE_UTILS.subtitleSplitOffsets(displaySegment.text, displayMode));
+  let offset = 0;
+  Array.from(displaySegment.text || '').forEach((character) => {
+    offset += character.length;
+    const characterSpan = document.createElement('span');
+    characterSpan.className = 'multi-subtitle-split-char';
+    characterSpan.dataset.offset = String(offset);
+    characterSpan.textContent = character;
+    textEl.appendChild(characterSpan);
+    if (!legalOffsets.has(offset)) return;
+    const splitOffset = offset;
+    const gap = document.createElement('span');
+    gap.className = 'multi-subtitle-split-gap';
+    gap.dataset.offset = String(splitOffset);
+    gap.setAttribute('role', 'button');
+    gap.setAttribute('aria-label', `在第 ${splitOffset} 个字符后拆分`);
+    textEl.appendChild(gap);
+  });
+  textEl.setAttribute('aria-label', isMain ? '选择主字幕拆分点' : '选择拓展字幕断点');
+  textEl.title = '鼠标移动选择拆分点，左键点击锁定；再次点击后解锁';
+  textEl.onmousemove = (event) => {
+    if (splitLaneLocked(pendingLinkedSplit, lane)) return;
+    const target = event.target;
+    const gap = target?.closest?.('.multi-subtitle-split-gap');
+    if (gap && textEl.contains(gap)) {
+      updateLinkedSplitPreview(Number(gap.dataset.offset), lane);
+      return;
+    }
+    const rawOffset = caretCharFromPoint(textEl, event.clientX, event.clientY);
+    if (rawOffset != null) updateLinkedSplitPreview(rawOffset, lane);
+  };
+  textEl.onclick = (event) => {
+    const current = pendingLinkedSplit;
+    if (!current) return;
+    if (splitLaneLocked(current, lane)) {
+      current.lockedLanes[lane] = false;
+      updateLinkedSplitLockVisual();
+      return;
+    }
+    const target = event.target;
+    const gap = target?.closest?.('.multi-subtitle-split-gap');
+    const rawOffset = gap && textEl.contains(gap)
+      ? Number(gap.dataset.offset)
+      : caretCharFromPoint(textEl, event.clientX, event.clientY);
+    if (rawOffset != null) updateLinkedSplitPreview(rawOffset, lane);
+    current.lockedLanes[lane] = true;
+    updateLinkedSplitLockVisual();
+  };
+  updateSplitLaneVisual(state, lane);
+}
+
+function renderLinkedSplitText(state) {
+  if (!state) return;
+  state.lockedLanes = { main: false, extension: false };
+  if (multiSubtitleSplitTitle) {
+    multiSubtitleSplitTitle.textContent = state.kind === 'main'
+      ? '选择主字幕拆分点'
+      : state.kind === 'extension'
+        ? '选择拓展字幕拆分点'
+        : state.mainInteractive ? '分别选择主字幕和拓展字幕拆分点' : '选择拓展字幕拆分点';
+  }
+  renderSplitLane(state, 'main');
+  renderSplitLane(state, 'extension');
+  updateLinkedSplitPreview(
+    state.kind === 'main' ? state.mainOffset : state.offset,
+    state.kind === 'main' ? 'main' : 'extension',
+  );
+}
+
+function updateLinkedSplitLockVisual() {
+  const state = pendingLinkedSplit;
+  const mainLocked = splitLaneLocked(state, 'main');
+  const extensionLocked = splitLaneLocked(state, 'extension');
+  multiSubtitleSplitMainText?.classList.toggle('locked', mainLocked);
+  multiSubtitleSplitText?.classList.toggle('locked', extensionLocked);
+  [
+    ['main', multiSubtitleSplitMainText],
+    ['extension', multiSubtitleSplitText],
+  ].forEach(([lane, textEl]) => {
+    if (!textEl) return;
+    textEl.title = splitLaneLocked(state, lane)
+      ? '拆分点已锁定，再次点击后解锁'
+      : '鼠标移动选择拆分点，左键点击锁定；再次点击后解锁';
+    textEl.querySelectorAll('.multi-subtitle-split-gap').forEach((gap) => {
+      gap.classList.toggle('locked', splitLaneLocked(state, lane) && gap.classList.contains('active'));
+    });
+  });
+  multiSubtitleSplitPreview?.classList.toggle('locked', mainLocked || extensionLocked);
+}
+
+function updateLinkedSplitPreview(offset, lane = 'extension') {
+  const state = pendingLinkedSplit;
+  if (!state) return false;
+  const track = getExtensionTrack(state.trackId);
+  const main = state.mainIndex >= 0 ? DATA.segments[state.mainIndex] : null;
+  const extension = extensionSegmentById(state.extensionId, track);
+  const mainOnly = state.kind === 'main';
+  const extensionOnly = state.kind === 'extension';
+  if ((!mainOnly && !extensionOnly && !main) || (!mainOnly && !extension)) return false;
+
+  if (lane === 'main' && main) {
+    const requestedOffset = Math.max(0, Math.min(String(main.text || '').length, Math.round(Number(offset) || 0)));
+    const legalOffsets = MULTI_SUBTITLE_UTILS.subtitleSplitOffsets(main.text, state.mainMode);
+    if (!legalOffsets.length) return false;
+    state.mainOffset = legalOffsets.reduce((best, candidate) => (
+      Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
+    ), legalOffsets[0]);
+    state.mainCutMs = splitCutTime(main, state.mainOffset, state.kind === 'linked' && !state.mainInteractive
+      ? false : EDITOR_SETTINGS.splitUseWordTimestamps);
+  } else if (extension) {
+    const requestedOffset = Math.max(
+      0,
+      Math.min(String(extension.text || '').length, Math.round(Number(offset) || 0)),
+    );
+    const legalOffsets = MULTI_SUBTITLE_UTILS.subtitleSplitOffsets(extension.text, state.extensionMode);
+    if (!legalOffsets.length) return false;
+    state.offset = legalOffsets.reduce((best, candidate) => (
+      Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
+    ), legalOffsets[0]);
+    state.extensionCutMs = splitCutTime(extension, state.offset, false);
+  }
+
+  if (state.kind === 'linked') syncLinkedSplitTime(state, lane, main, extension);
+
+  const mainMode = state.mainMode || (main && MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(main.text));
+  const mainParts = main
+    ? MULTI_SUBTITLE_UTILS.splitSubtitleText(main.text, state.mainOffset, mainMode)
+    : null;
+  const extensionParts = extension
+    ? MULTI_SUBTITLE_UTILS.splitSubtitleText(extension.text, state.offset, state.extensionMode)
+    : null;
+  const mainValid = !main || Boolean(mainParts
+    && state.mainCutMs - main.start >= 100 && main.end - state.mainCutMs >= 100);
+  const extensionValid = !extension || Boolean(extensionParts
+    && state.extensionCutMs - extension.start >= 100
+    && extension.end - state.extensionCutMs >= 100);
+  const valid = mainValid && extensionValid;
+  state.cutMs = extensionOnly ? state.extensionCutMs : state.mainCutMs;
+  state.valid = valid;
+  updateSplitLaneVisual(state, 'main');
+  updateSplitLaneVisual(state, 'extension');
+  if (multiSubtitleSplitMeta) {
+    if (mainOnly) {
+      multiSubtitleSplitMeta.textContent = `主轨：${state.mainMode === 'continuous' ? '连续型' : '单词型'} · 切点 ${fmtShort(state.mainCutMs)} · 字符位置 ${state.mainOffset ?? '—'}`;
+    } else if (extensionOnly) {
+      multiSubtitleSplitMeta.textContent = `拓展轨：${state.extensionMode === 'continuous' ? '连续型' : '单词型'} · 切点 ${fmtShort(state.extensionCutMs)}`;
+    } else {
+      const mainLabel = state.mainInteractive
+        ? `主轨文字断点 ${state.mainOffset ?? '—'}`
+        : `主轨字词锚点 ${fmtShort(state.mainCutMs)}`;
+      multiSubtitleSplitMeta.textContent = `${mainLabel} · 拓展轨文字断点 ${state.offset ?? '—'} · 共用绝对切点 ${fmtShort(state.cutMs)}`;
+    }
+  }
+  if (multiSubtitleSplitPreview) {
+    multiSubtitleSplitPreview.replaceChildren();
+    if (mainParts && !extensionOnly) setSplitPreviewLine('主', mainParts);
+    if (extensionParts && !mainOnly) setSplitPreviewLine('拓', extensionParts);
+    if (!mainValid || !extensionValid) {
+      const error = document.createElement('div');
+      error.textContent = '当前断点无法形成两段合法文本';
+      multiSubtitleSplitPreview.appendChild(error);
+    }
+  }
+  if (multiSubtitleSplitError) {
+    multiSubtitleSplitError.textContent = valid ? '' : (extensionOnly
+      ? '拓展字幕切点必须为两侧各留至少 100ms。'
+      : '主字幕和拓展字幕切点都必须为两侧各留至少 100ms。');
+  }
+  if (multiSubtitleSplitConfirm) multiSubtitleSplitConfirm.disabled = !valid;
+  updateLinkedSplitLockVisual();
+  return valid;
+}
+
+function closeLinkedSplitModal() {
+  multiSubtitleSplitModal?.classList.remove('show');
+  [multiSubtitleSplitMainText, multiSubtitleSplitText].forEach((textEl) => {
+    textEl?.classList.remove('locked');
+    textEl?.removeAttribute('title');
+  });
+  multiSubtitleSplitPreview?.classList.remove('locked');
+  pendingLinkedSplit = null;
+}
+
+function openMainWaveformSplitModal(mainIndex, timeMs) {
+  const state = mainWaveformSplitState(mainIndex, { timeMs });
+  if (!state) {
+    flashHint('这条字幕没有可用的文字边界');
+    return false;
+  }
+  pendingLinkedSplit = state;
+  multiSubtitleSplitModal?.classList.add('show');
+  renderLinkedSplitText(state);
+  return true;
+}
+
+function openExtensionSplitModal(extensionIndex, timeMs, track = getActiveExtensionTrack()) {
+  const state = extensionOnlySplitState(extensionIndex, track, { timeMs });
+  if (!state) {
+    flashHint('这条拓展字幕没有可用的文字边界');
+    return false;
+  }
+  pendingLinkedSplit = state;
+  multiSubtitleSplitModal?.classList.add('show');
+  renderLinkedSplitText(state);
+  return true;
+}
+
+function commitMainWaveformSplit(state) {
+  const mainIndex = state.mainIndex;
+  const main = DATA.segments[mainIndex];
+  if (!main) return false;
+  const pair = buildSplitPair(
+    main,
+    state.mainOffset,
+    state.cutMs,
+    main.id || `main-${mainIndex}`,
+    true,
+    state.mainMode,
+  );
+  if (!pair) return false;
+  const oldMainId = main.id;
+  clearSelection();
+  pushUndo('拆分字幕');
+  removeBindingsForSegmentIds([oldMainId], []);
+  DATA.segments.splice(mainIndex, 1, pair.left, pair.right);
+  for (let index = mainIndex + 2; index < DATA.segments.length; index++) {
+    const segment = DATA.segments[index];
+    if (segment.sticker_ref?.headIdx > mainIndex) segment.sticker_ref.headIdx += 1;
+    if (segment.color_ref?.headIdx > mainIndex) segment.color_ref.headIdx += 1;
+  }
+  if (pair.left.sticker) pair.right.sticker_ref = { name: pair.left.sticker.name, headIdx: mainIndex };
+  if (pair.left.color) pair.right.color_ref = { name: pair.left.color.name, headIdx: mainIndex };
+  markMainSegmentsDirty([pair.left, pair.right]);
+  closeLinkedSplitModal();
+  renderAll();
+  selectOnly(mainIndex + 1);
+  lastClickedIdx = mainIndex + 1;
+  flashHint('已按选择的断点拆分主字幕', 'success');
+  return true;
+}
+
+function commitExtensionSplit(state) {
+  const track = getExtensionTrack(state.trackId);
+  const extensionIndex = track?.segments?.findIndex((segment) => segment.id === state.extensionId) ?? -1;
+  const extension = track?.segments?.[extensionIndex];
+  if (!track || extensionIndex < 0 || !extension) return false;
+  const pair = buildSplitPair(
+    extension,
+    state.offset,
+    state.extensionCutMs,
+    extension.id || `${track.id}-segment-${extensionIndex}`,
+    false,
+    state.extensionMode,
+  );
+  if (!pair) return false;
+
+  const oldExtensionId = extension.id;
+  const wasBound = Boolean(bindingForExtensionIndex(extensionIndex, track));
+  pushUndo('拆分拓展字幕');
+  // 一对一绑定无法让一个主段同时指向拆出的两条拓展段；独立拆分后
+  // 保留两条拓展字幕，但解除旧关系，等待用户按需要重新绑定。
+  removeBindingsForSegmentIds([], [oldExtensionId]);
+  track.segments.splice(extensionIndex, 1, pair.left, pair.right);
+  markMultiSubtitleDirty();
+  closeLinkedSplitModal();
+  clearSelection();
+  renderAll();
+  selectOnlyExtension(extensionIndex + 1);
+  lastClickedExtensionIdx = extensionIndex + 1;
+  flashHint(
+    wasBound
+      ? '已独立拆分拓展字幕并解除原绑定'
+      : '已按选择的断点拆分拓展字幕',
+    'success',
+  );
+  return true;
+}
+
+function confirmLinkedSplit() {
+  const state = pendingLinkedSplit;
+  if (!state) return;
+  const previewLane = state.kind === 'main' ? 'main' : 'extension';
+  const previewOffset = state.kind === 'main' ? state.mainOffset : state.offset;
+  if (!updateLinkedSplitPreview(previewOffset, previewLane)) return;
+  if (state.kind === 'main') {
+    commitMainWaveformSplit(state);
+    return;
+  }
+  if (state.kind === 'extension') {
+    commitExtensionSplit(state);
+    return;
+  }
+  const track = getExtensionTrack(state.trackId);
+  const mainIndex = state.mainIndex;
+  const extensionIndex = track?.segments?.findIndex((segment) => segment.id === state.extensionId) ?? -1;
+  const main = DATA.segments[mainIndex];
+  const extension = track?.segments?.[extensionIndex];
+  const sharedCutMs = Number(state.cutMs);
+  if (!Number.isFinite(sharedCutMs)
+      || sharedCutMs !== Number(state.mainCutMs)
+      || sharedCutMs !== Number(state.extensionCutMs)) {
+    flashHint('主字幕和拓展字幕必须使用同一个绝对切点');
+    return;
+  }
+  const mainPair = buildSplitPair(main, state.mainOffset, sharedCutMs, main.id || `main-${mainIndex}`);
+  const extensionPair = buildSplitPair(
+    extension,
+    state.offset,
+    sharedCutMs,
+    extension.id || `extension-${extensionIndex}`,
+    false,
+    state.extensionMode,
+  );
+  if (!mainPair || !extensionPair || extensionIndex < 0) return;
+  const oldMainId = main.id;
+  const oldExtensionId = extension.id;
+  pushUndo('联动拆分字幕');
+  removeBindingsForSegmentIds([oldMainId], [oldExtensionId]);
+  DATA.segments.splice(mainIndex, 1, mainPair.left, mainPair.right);
+  if (track) track.segments.splice(extensionIndex, 1, extensionPair.left, extensionPair.right);
+  // 主轨数组增加了一项，沿用原有表情包/颜色 headIdx 维护规则。
+  for (let index = mainIndex + 2; index < DATA.segments.length; index++) {
+    const segment = DATA.segments[index];
+    if (segment.sticker_ref?.headIdx > mainIndex) segment.sticker_ref.headIdx += 1;
+    if (segment.color_ref?.headIdx > mainIndex) segment.color_ref.headIdx += 1;
+  }
+  if (mainPair.left.sticker) mainPair.right.sticker_ref.headIdx = mainIndex;
+  if (mainPair.left.color) mainPair.right.color_ref.headIdx = mainIndex;
+  const multi = getMultiSubtitleState();
+  multi.bindings.push(
+    MULTI_SUBTITLE_UTILS.buildSubtitleBinding(mainPair.left, extensionPair.left, track.id),
+    MULTI_SUBTITLE_UTILS.buildSubtitleBinding(mainPair.right, extensionPair.right, track.id),
+  );
+  multi.enabled = true;
+  markMainSegmentsDirty([mainPair.left, mainPair.right]);
+  markMultiSubtitleDirty();
+  closeLinkedSplitModal();
+  clearSelection();
+  renderAll();
+  selectOnly(mainIndex);
+  lastClickedIdx = mainIndex;
+  flashHint('已按同一绝对时间切点联动拆分', 'success');
+}
+
 function splitAtCursor() {
   if (!editingState) return;
   const { el, idx, textEl } = editingState;
@@ -2071,6 +3371,15 @@ function splitAtCursor() {
   const cursorOffset = preRange.toString().length;
   const fullText = textEl.innerText.replace(/\r\n?/g, '\n');
   const seg = DATA.segments[idx];
+
+  if (multiSubtitleVisible() && bindingForMainIndex(idx)) {
+    finishEdit(false);
+    pendingLinkedSplit = linkedSplitState(idx, { mainOffset: cursorOffset });
+    if (!pendingLinkedSplit) return;
+    multiSubtitleSplitModal?.classList.add('show');
+    renderLinkedSplitText(pendingLinkedSplit);
+    return;
+  }
 
   if (cursorOffset <= 0 || cursorOffset >= fullText.length) {
     flashHint('光标必须在词与词之间才能拆分');
@@ -2119,6 +3428,7 @@ function splitAtCursor() {
   }
 
   const leftSeg = {
+    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([seg], `${seg.id || `main-${idx}`}-a`, 'main'),
     start: seg.start, end: leftEnd, text: leftText,
     items: leftItemsClean.length ? leftItemsClean : null,
     sticker: seg.sticker || null,
@@ -2129,6 +3439,7 @@ function splitAtCursor() {
     _dirty: true,
   };
   const rightSeg = {
+    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([seg], `${seg.id || `main-${idx}`}-b`, 'main'),
     start: rightStart, end: seg.end, text: rightText,
     items: rightItemsClean.length ? rightItemsClean : null,
     sticker: null,
@@ -2153,6 +3464,9 @@ function splitAtCursor() {
   // 拆分会改变 idx，先清选中
   clearSelection();
   pushUndo('拆分字幕');
+  // 关闭多字幕模式时，绑定关系仍保存在工程中；拆分主轨后旧 ID 不再存在，
+  // 只移除这条关系，保留隐藏的扩展字幕供用户重新绑定。
+  removeBindingsForSegmentIds([seg.id], []);
   DATA.segments.splice(idx, 1, leftSeg, rightSeg);
 
   // 修正所有 *_ref.headIdx：在 idx 之后的引用都右移 1
@@ -2191,7 +3505,19 @@ function splitItemsAtChar(items, cursorChar) {
 function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
   if (!el) return;
+  if (multiSubtitleVisible() && bindingForMainIndex(idx)) {
+    pendingLinkedSplit = linkedSplitState(idx, Number.isFinite(waveformTimeMs)
+      ? { timeMs: waveformTimeMs } : {});
+    if (!pendingLinkedSplit) return;
+    multiSubtitleSplitModal?.classList.add('show');
+    renderLinkedSplitText(pendingLinkedSplit);
+    return;
+  }
   if (Number.isFinite(waveformTimeMs)) {
+    if (!EDITOR_SETTINGS.splitUseWordTimestamps) {
+      openMainWaveformSplitModal(idx, waveformTimeMs);
+      return;
+    }
     const cursorOffset = window.AsrEditorUtils.splitCharOffsetAtTime(
       DATA.segments[idx],
       waveformTimeMs,
@@ -2219,6 +3545,18 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
 // 不做参数校验、撤销与渲染，由调用方负责（mergeSegments / autoMergeSegments 共用）。
 function mergeContiguousIndices(sorted) {
   const segs = sorted.map(i => DATA.segments[i]);
+  const mergeStart = segs[0]?.start;
+  const mergeEnd = segs[segs.length - 1]?.end;
+  const multi = getMultiSubtitleState();
+  const extensionTrack = multiSubtitleVisible() ? getActiveExtensionTrack() : null;
+  const extensionMergeIndices = extensionTrack
+    ? extensionTrack.segments.map((segment, index) => ({ segment, index }))
+      .filter(({ segment }) => segment.end > mergeStart && segment.start < mergeEnd)
+      .map(({ index }) => index)
+    : [];
+  const extensionMergeSegments = extensionMergeIndices.map((index) => extensionTrack.segments[index]);
+  const oldMainIds = segs.map((segment) => segment.id).filter(Boolean);
+  const oldExtensionIds = extensionMergeSegments.map((segment) => segment.id).filter(Boolean);
   const stickerGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
     DATA.segments, sorted, 'sticker', 'sticker_ref',
   );
@@ -2230,6 +3568,9 @@ function mergeContiguousIndices(sorted) {
     ? segs[0].speaker
     : null;
   const merged = {
+    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
+      DATA.segments, `${segs[0].id || 'main'}-merged`, 'main',
+    ),
     start: segs[0].start,
     end: segs[segs.length - 1].end,
     text: window.AsrEditorUtils.joinSegmentTexts(segs, EDITOR_SETTINGS.mergeJoinText),
@@ -2244,6 +3585,21 @@ function mergeContiguousIndices(sorted) {
   };
   if (merged.items.length === 0) merged.items = null;
 
+  let mergedExtension = null;
+  if (extensionTrack && extensionMergeSegments.length) {
+    mergedExtension = {
+      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
+        extensionTrack.segments, `${extensionMergeSegments[0].id || extensionTrack.id}-merged`, `${extensionTrack.id}-segment`,
+      ),
+      start: Math.min(...extensionMergeSegments.map((segment) => segment.start)),
+      end: Math.max(...extensionMergeSegments.map((segment) => segment.end)),
+      text: window.AsrEditorUtils.joinSegmentTexts(extensionMergeSegments, EDITOR_SETTINGS.mergeJoinText),
+      _dirty: true,
+    };
+  }
+
+  removeBindingsForSegmentIds(oldMainIds, oldExtensionIds);
+
   // 选区并非全部同组时，不继承该组；先按删除切点规则重组外部存活成员，
   // 避免合并掉某个 head 后留下悬空引用。
   const mergeSet = new Set(sorted);
@@ -2255,6 +3611,16 @@ function mergeContiguousIndices(sorted) {
   }
 
   DATA.segments.splice(sorted[0], sorted.length, merged);
+  if (extensionTrack && extensionMergeIndices.length) {
+    for (let i = extensionMergeIndices.length - 1; i >= 0; i--) {
+      extensionTrack.segments.splice(extensionMergeIndices[i], 1);
+    }
+    if (mergedExtension) extensionTrack.segments.splice(extensionMergeIndices[0], 0, mergedExtension);
+    if (mergedExtension) {
+      multi.bindings.push(MULTI_SUBTITLE_UTILS.buildSubtitleBinding(merged, mergedExtension, extensionTrack.id));
+    }
+    markMultiSubtitleDirty();
+  }
   // splice 后统一重映射 group head：选区内继承的 head 移到首项，
   // 选区之后的 head 则按减少的字幕数量左移。
   const removedCount = sorted.length - 1;  // 合并把 sorted.length 条变成 1 条
@@ -2296,6 +3662,58 @@ function mergeSegments(idxs) {
   const el = container.querySelector(`.cue[data-idx="${sorted[0]}"]`);
   if (el) scrollCueToCenter(el);
   flashHint(`已合并 ${sorted.length} 条`);
+}
+
+// 只合并扩展轨连续字幕。扩展字幕没有主轨的 group 引用和 items，
+// 因此这里保留独立轨的文本/时间合并语义；如果被合并段存在一对一绑定，
+// 合并后无法同时指向多个主字幕，旧绑定会被移除并提示用户重新绑定。
+function mergeExtensionSegments(idxs, track = getActiveExtensionTrack()) {
+  if (!track || !idxs?.length) return false;
+  const sorted = [...new Set(idxs)].sort((a, b) => a - b);
+  if (sorted.length < 2) {
+    flashHint('请选择至少两个扩展字幕块！');
+    return false;
+  }
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] !== sorted[i - 1] + 1) {
+      flashHint('选中的扩展字幕必须连续');
+      return false;
+    }
+  }
+  const segments = sorted.map((index) => track.segments[index]).filter(Boolean);
+  if (segments.length !== sorted.length) return false;
+
+  const oldIds = segments.map((segment) => segment.id).filter(Boolean);
+  const merged = {
+    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
+      track.segments,
+      `${segments[0].id || track.id}-merged`,
+      `${track.id}-segment`,
+    ),
+    start: segments[0].start,
+    end: segments[segments.length - 1].end,
+    text: window.AsrEditorUtils.joinSegmentTexts(segments, EDITOR_SETTINGS.mergeJoinText),
+    _dirty: true,
+  };
+  const hadBindings = oldIds.some((id) => MULTI_SUBTITLE_UTILS.bindingForSegment(
+    getMultiSubtitleState(), id, 'extension', track.id,
+  ));
+
+  clearSelection();
+  pushUndo('合并扩展字幕');
+  removeBindingsForSegmentIds([], oldIds);
+  track.segments.splice(sorted[0], sorted.length, merged);
+  markMultiSubtitleDirty();
+  renderAll();
+  selectOnlyExtension(sorted[0]);
+  lastClickedExtensionIdx = sorted[0];
+  flashHint(
+    hadBindings
+      ? `已合并 ${sorted.length} 条扩展字幕，原绑定已解除`
+      : `已合并 ${sorted.length} 条扩展字幕`,
+    'success',
+  );
+  return true;
 }
 
 // === 拼合字幕 ===
@@ -2451,6 +3869,23 @@ function deleteSegments(idxs) {
   currentCuePanelIdx = -1;
   cuePanelUndoPushed = false;
   pushUndo(`删除 ${sorted.length} 条字幕`);
+  const pairedExtensionIndices = new Set();
+  const pairedMainIds = sorted.map((index) => DATA.segments[index]?.id).filter(Boolean);
+  const multi = getMultiSubtitleState();
+  const extensionTrack = multiSubtitleVisible() ? getActiveExtensionTrack() : null;
+  (multi.bindings || []).forEach((binding) => {
+    if (!binding.main_segment_ids?.some((id) => pairedMainIds.includes(id))) return;
+    const extensionId = binding.extension_segment_ids?.[0];
+    const extensionIndex = extensionTrack?.segments?.findIndex((segment) => segment.id === extensionId);
+    if (extensionIndex >= 0) pairedExtensionIndices.add(extensionIndex);
+  });
+  // 关闭多字幕时仍清理已失效的主轨绑定，但不删除隐藏的扩展字幕。
+  removeBindingsForSegmentIds(
+    pairedMainIds,
+    multiSubtitleVisible()
+      ? [...pairedExtensionIndices].map((index) => extensionTrack?.segments[index]?.id)
+      : [],
+  );
   const removeSet = new Set(sorted);
 
   // ---- 用通用 helper 做组拆分（同时清掉被删 idx 的 head/ref 字段）----
@@ -2483,6 +3918,10 @@ function deleteSegments(idxs) {
     if (s.sticker_ref) shiftHeadIdx(s.sticker_ref);
     if (s.color_ref)   shiftHeadIdx(s.color_ref);
   });
+  if (extensionTrack && pairedExtensionIndices.size) {
+    [...pairedExtensionIndices].sort((a, b) => b - a).forEach((index) => extensionTrack.segments.splice(index, 1));
+  }
+  if (pairedExtensionIndices.size) markMultiSubtitleDirty();
   // 同样修正"刚被晋升为新 head 的段中"指向它的 ref：
   // splitGroups 写入的 refField.headIdx 是删除前的 idx，需要同样位移
   // 上面 shiftHeadIdx 已经覆盖（它扫所有 segments 的所有 ref）
@@ -2490,6 +3929,46 @@ function deleteSegments(idxs) {
   lastActive = -1;
   renderAll();
   flashHint(`已删除 ${sorted.length} 条`);
+}
+
+function deleteExtensionSegments(indices, track = getActiveExtensionTrack()) {
+  if (!track || !indices?.length) return;
+  const sorted = [...new Set(indices)].filter((index) => Number.isInteger(index)
+    && index >= 0 && index < track.segments.length).sort((a, b) => a - b);
+  if (!sorted.length) return;
+  const ids = sorted.map((index) => track.segments[index]?.id).filter(Boolean);
+
+  // 删除绑定扩展字幕时沿用主轨删除语义：绑定关系和另一侧字幕一起删除，
+  // 这样从任意 lane 删除都能用同一条撤销记录完整恢复。未绑定的扩展段
+  // 仍允许单独删除；混合选择时两类操作会分别使用各自的历史记录。
+  const pairedMainIndices = new Set();
+  const unboundIds = new Set(ids);
+  ids.forEach((id) => {
+    const binding = MULTI_SUBTITLE_UTILS.bindingForSegment(
+      getMultiSubtitleState(), id, 'extension', track.id,
+    );
+    if (!binding) return;
+    const mainId = binding.main_segment_ids?.[0];
+    const mainIndex = DATA.segments.findIndex((segment) => segment.id === mainId);
+    if (mainIndex >= 0) pairedMainIndices.add(mainIndex);
+    unboundIds.delete(id);
+  });
+  if (pairedMainIndices.size) {
+    deleteSegments([...pairedMainIndices]);
+  }
+
+  const remainingIndices = track.segments
+    .map((segment, index) => unboundIds.has(segment.id) ? index : -1)
+    .filter((index) => index >= 0);
+  if (!remainingIndices.length) return;
+
+  pushUndo(`删除 ${sorted.length} 条扩展字幕`);
+  removeBindingsForSegmentIds([], [...unboundIds]);
+  remainingIndices.reverse().forEach((index) => track.segments.splice(index, 1));
+  markMultiSubtitleDirty();
+  selectedExtensionIdxs.clear();
+  renderAll();
+  flashHint(`已删除 ${remainingIndices.length} 条扩展字幕`);
 }
 
 // === 滚动 ===
@@ -2523,6 +4002,15 @@ let cueListPointer = null;
 // lastPointerPos 提供，两者独立更新、互不替代。
 let lastEditRegion = null;
 let lastPointerPos = null;
+
+// 等待绑定时，点击主/扩展字幕本身交给各自的选择事件处理；其它空白或
+// 非字幕区域视为取消，避免用户进入等待状态后无从退出。
+document.addEventListener('pointerdown', (event) => {
+  if (!pendingExtensionBinding) return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest('.cue, .waveform-cue-block, #ctxmenu')) return;
+  cancelPendingExtensionBinding();
+}, true);
 
 document.addEventListener('pointerdown', (e) => {
   if (e.target instanceof Element && e.target.closest('.cue')) lastEditRegion = 'cue-list';
@@ -2670,9 +4158,29 @@ document.addEventListener('keydown', (e) => {
   else finishEdit(true);
 }, true);
 
+document.addEventListener('keydown', (event) => {
+  if (!extensionEditingState) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    finishExtensionEdit(false);
+  } else if (event.key === 'Enter' && !(event.shiftKey || event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    event.stopPropagation();
+    finishExtensionEdit(true);
+  }
+}, true);
+
 // Esc：非字幕文本编辑状态下清除当前字幕选择；输入框和内联编辑继续保留原生/编辑行为。
 document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape' || editingState || selectedIdxs.size === 0) return;
+  if (e.key !== 'Escape') return;
+  if (pendingExtensionBinding) {
+    e.preventDefault();
+    e.stopPropagation();
+    cancelPendingExtensionBinding();
+    return;
+  }
+  if (editingState || selectedIdxs.size === 0) return;
   const a = document.activeElement;
   if (a && (
     a.tagName === 'INPUT'
@@ -3151,6 +4659,10 @@ document.addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
   e.preventDefault();
   e.stopPropagation();
+  if (selectedIdxs.size === 0 && selectedExtensionIdxs.size > 0) {
+    mergeExtensionSegments([...selectedExtensionIdxs]);
+    return;
+  }
   mergeSegments([...selectedIdxs]);
 });
 
@@ -3182,6 +4694,12 @@ document.addEventListener('keydown', (e) => {
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey) return;
+  if (selectedIdxs.size === 0 && selectedExtensionIdxs.size > 0) {
+    e.preventDefault();
+    e.stopPropagation();
+    deleteExtensionSegments([...selectedExtensionIdxs]);
+    return;
+  }
   if (selectedIdxs.size === 0) return;
   e.preventDefault();
   e.stopPropagation();
@@ -3311,6 +4829,11 @@ let previewGeometryDirty = false;
 function getPreviewGeometry() {
   return GEO_UTILS.normalizePreviewGeometry(DATA.preview?.subtitle);
 }
+function normalizeSubtitleColor(value) {
+  if (typeof value !== 'string') return null;
+  const color = value.trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : null;
+}
 function normalizeSubtitleAppearance(value) {
   const result = {};
   const fontSize = value && typeof value.font_size === 'number' && Number.isFinite(value.font_size)
@@ -3322,28 +4845,62 @@ function normalizeSubtitleAppearance(value) {
       && Object.prototype.hasOwnProperty.call(SUBTITLE_FONT_FAMILY_CSS, value.font_family)) {
     result.font_family = value.font_family;
   }
+  const color = normalizeSubtitleColor(value?.color);
+  if (color) result.color = color;
   return result;
 }
 function getSubtitleAppearance(value = DATA.preview?.subtitle) {
+  const result = normalizeSubtitleAppearance(value);
+  return { ...result, color: result.color || DEFAULT_SUBTITLE_COLOR };
+}
+function getStoredExtensionSubtitleAppearance(value = DATA.preview?.extension_subtitle) {
   return normalizeSubtitleAppearance(value);
 }
-function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
-  if (subtitleFontSizeSelect) {
-    const size = appearance.font_size ? String(appearance.font_size) : 'auto';
-    subtitleFontSizeSelect.querySelectorAll('option[data-generated="true"]').forEach((option) => option.remove());
-    if (size !== 'auto' && !Array.from(subtitleFontSizeSelect.options).some((option) => option.value === size)) {
-      const option = document.createElement('option');
-      option.value = size;
-      option.textContent = `${size} px`;
-      option.dataset.generated = 'true';
-      subtitleFontSizeSelect.append(option);
-    }
-    subtitleFontSizeSelect.value = size;
+function getExtensionSubtitleDefaultFontSize() {
+  const mainSize = getSubtitleAppearance().font_size || SUBTITLE_DEFAULT_FONT_SIZE;
+  return Math.max(SUBTITLE_FONT_SIZE_MIN, mainSize - 2);
+}
+function getExtensionSubtitleAppearance(value = DATA.preview?.extension_subtitle) {
+  const result = getStoredExtensionSubtitleAppearance(value);
+  return {
+    ...result,
+    font_size: result.font_size || getExtensionSubtitleDefaultFontSize(),
+    color: result.color || DEFAULT_EXTENSION_SUBTITLE_COLOR,
+  };
+}
+function syncSubtitleFontSizeSelect(select, sizeValue) {
+  if (!select) return;
+  const size = Number.isFinite(Number(sizeValue)) ? String(Math.round(Number(sizeValue))) : 'auto';
+  select.querySelectorAll('option[data-generated="true"]').forEach((option) => option.remove());
+  if (size !== 'auto' && !Array.from(select.options).some((option) => option.value === size)) {
+    const option = document.createElement('option');
+    option.value = size;
+    option.textContent = `${size} px`;
+    option.dataset.generated = 'true';
+    select.append(option);
   }
+  select.value = size;
+}
+function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
+  syncSubtitleFontSizeSelect(subtitleFontSizeSelect, appearance.font_size);
   if (subtitleFontFamilySelect) {
     subtitleFontFamilySelect.value = appearance.font_family
       && Object.prototype.hasOwnProperty.call(SUBTITLE_FONT_FAMILY_CSS, appearance.font_family)
       ? appearance.font_family : 'default';
+  }
+  if (subtitleColorInput) subtitleColorInput.value = appearance.color || DEFAULT_SUBTITLE_COLOR;
+}
+function syncExtensionSubtitleAppearanceControls() {
+  const stored = getStoredExtensionSubtitleAppearance();
+  const appearance = getExtensionSubtitleAppearance();
+  syncSubtitleFontSizeSelect(extensionSubtitleFontSizeSelect, stored.font_size);
+  if (extensionSubtitleFontFamilySelect) {
+    extensionSubtitleFontFamilySelect.value = stored.font_family
+      && Object.prototype.hasOwnProperty.call(SUBTITLE_FONT_FAMILY_CSS, stored.font_family)
+      ? stored.font_family : 'default';
+  }
+  if (extensionSubtitleColorInput) {
+    extensionSubtitleColorInput.value = appearance.color || DEFAULT_EXTENSION_SUBTITLE_COLOR;
   }
 }
 function applySubtitleAppearance(value = DATA.preview?.subtitle) {
@@ -3351,7 +4908,16 @@ function applySubtitleAppearance(value = DATA.preview?.subtitle) {
   overlayTextEl.style.fontSize = appearance.font_size ? `${appearance.font_size}px` : '';
   overlayTextEl.style.fontFamily = appearance.font_family
     ? SUBTITLE_FONT_FAMILY_CSS[appearance.font_family] : '';
+  overlayTextEl.style.color = appearance.color || DEFAULT_SUBTITLE_COLOR;
   syncSubtitleAppearanceControls(appearance);
+}
+function applyExtensionSubtitleAppearance(value = DATA.preview?.extension_subtitle) {
+  const appearance = getExtensionSubtitleAppearance(value);
+  overlayExtensionTextEl.style.fontSize = `${appearance.font_size}px`;
+  overlayExtensionTextEl.style.fontFamily = appearance.font_family
+    ? SUBTITLE_FONT_FAMILY_CSS[appearance.font_family] : '';
+  overlayExtensionTextEl.style.color = appearance.color || DEFAULT_EXTENSION_SUBTITLE_COLOR;
+  syncExtensionSubtitleAppearanceControls();
 }
 function setSubtitleAppearance(patch, { markDirty = true } = {}) {
   const next = { ...getSubtitleAppearance() };
@@ -3363,16 +4929,51 @@ function setSubtitleAppearance(patch, { markDirty = true } = {}) {
     if (!patch.font_family || patch.font_family === 'default') delete next.font_family;
     else Object.assign(next, normalizeSubtitleAppearance({ font_family: patch.font_family }));
   }
+  if (Object.prototype.hasOwnProperty.call(patch, 'color')) {
+    const color = normalizeSubtitleColor(patch.color);
+    if (color) next.color = color;
+  }
   if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
   DATA.preview.subtitle = { ...getPreviewGeometry(), ...next };
   if (markDirty) previewGeometryDirty = true;
   applySubtitleAppearance(DATA.preview.subtitle);
   return next;
 }
+function setExtensionSubtitleAppearance(patch, { markDirty = true } = {}) {
+  const next = { ...getStoredExtensionSubtitleAppearance() };
+  if (Object.prototype.hasOwnProperty.call(patch, 'font_size')) {
+    if (patch.font_size === null || patch.font_size === 'auto') delete next.font_size;
+    else Object.assign(next, normalizeSubtitleAppearance({ font_size: patch.font_size }));
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'font_family')) {
+    if (!patch.font_family || patch.font_family === 'default') delete next.font_family;
+    else Object.assign(next, normalizeSubtitleAppearance({ font_family: patch.font_family }));
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'color')) {
+    const color = normalizeSubtitleColor(patch.color);
+    if (color) next.color = color;
+  }
+  if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
+  if (Object.keys(next).length) DATA.preview.extension_subtitle = next;
+  else delete DATA.preview.extension_subtitle;
+  if (markDirty) previewGeometryDirty = true;
+  applyExtensionSubtitleAppearance(DATA.preview.extension_subtitle);
+  return next;
+}
+function restoreExtensionSubtitleAppearance(value, { markDirty = true } = {}) {
+  const next = normalizeSubtitleAppearance(value);
+  if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
+  if (Object.keys(next).length) DATA.preview.extension_subtitle = next;
+  else delete DATA.preview.extension_subtitle;
+  if (markDirty) previewGeometryDirty = true;
+  applyExtensionSubtitleAppearance(DATA.preview.extension_subtitle);
+}
 // 写回 DATA.preview.subtitle 并刷新 DOM。markDirty=false 用于初次加载，不弄脏工程。
-function setPreviewGeometry(geo, { markDirty = true } = {}) {
+function setPreviewGeometry(geo, { markDirty = true, replaceAppearance = false } = {}) {
   const clamped = GEO_UTILS.clampPreviewGeometry(GEO_UTILS.normalizePreviewGeometry(geo));
-  const appearance = { ...getSubtitleAppearance(), ...getSubtitleAppearance(geo) };
+  const appearance = replaceAppearance
+    ? getSubtitleAppearance(geo)
+    : { ...getSubtitleAppearance(), ...getSubtitleAppearance(geo) };
   if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
   DATA.preview.subtitle = { ...clamped, ...appearance };
   if (markDirty) previewGeometryDirty = true;
@@ -3416,7 +5017,7 @@ function applyStickerGeometryToDom(geo) {
 }
 // 只有当对应预览开关开启时才允许几何编辑（关闭时字幕盒完全隐藏、表情包盒不拦截指针）。
 function refreshPreviewGeometryEditable() {
-  overlayEl.classList.toggle('geometry-enabled', !!overlayToggle.checked);
+  overlayEl.classList.toggle('geometry-enabled', !!overlayToggle.checked || !!extensionOverlayToggle?.checked);
   stickerOverlayLayer.classList.toggle('geometry-enabled', !!stickerOverlayToggle?.checked);
 }
 
@@ -3424,7 +5025,9 @@ function refreshPreviewGeometryEditable() {
 let previewGesture = null;  // { pointerId, handle, target, startX, startY, startGeo, rect }
 function previewTargetEl(target) { return target === 'sticker' ? stickerOverlayLayer : overlayEl; }
 function previewTargetEnabled(target) {
-  return target === 'sticker' ? !!stickerOverlayToggle?.checked : !!overlayToggle.checked;
+  return target === 'sticker'
+    ? !!stickerOverlayToggle?.checked
+    : (!!overlayToggle.checked || !!extensionOverlayToggle?.checked);
 }
 function getTargetGeometry(target) { return target === 'sticker' ? getStickerGeometry() : getPreviewGeometry(); }
 function setTargetGeometry(target, geo) {
@@ -3552,6 +5155,15 @@ function findActive(tMs) {
   return ans;
 }
 
+function extensionSegmentAtTime(tMs, mainIndex = -1) {
+  if (!multiSubtitleVisible()) return null;
+  const bound = mainIndex >= 0 ? extensionForMainIndex(mainIndex) : null;
+  if (bound && !bound.disabled && tMs >= bound.start && tMs <= bound.end) return bound;
+  return (getActiveExtensionTrack()?.segments || []).find((segment) => (
+    segment && !segment.disabled && tMs >= segment.start && tMs <= segment.end
+  )) || null;
+}
+
 function removedGapAt(timeMs) {
   return getRemovedGapRanges().find((gap) => timeMs >= gap.start && timeMs < gap.end) || null;
 }
@@ -3604,16 +5216,17 @@ function update() {
     }
     lastActive = idx;
   }
-  // overlay（禁用项不在画面上显示字幕文本）
-  if (overlayToggle.checked) {
-    const seg = idx >= 0 ? DATA.segments[idx] : null;
-    if (seg && !seg.disabled && tMs >= seg.start && tMs <= seg.end) {
-      overlayEl.classList.remove('hidden');
-      overlayTextEl.textContent = seg.text;
-    } else {
-      overlayEl.classList.add('hidden');
-    }
-  }
+  // overlay（禁用项不在画面上显示字幕文本；主轨和拓展轨各自受对应开关控制）
+  const seg = idx >= 0 ? DATA.segments[idx] : null;
+  const mainVisible = !!overlayToggle.checked
+    && !!seg && !seg.disabled && tMs >= seg.start && tMs <= seg.end;
+  const extension = extensionSegmentAtTime(tMs, idx);
+  const extensionVisible = !!extensionOverlayToggle?.checked && !!extension;
+  overlayTextEl.classList.toggle('hidden', !mainVisible);
+  overlayExtensionTextEl.classList.toggle('hidden', !extensionVisible);
+  if (mainVisible) overlayTextEl.textContent = seg.text || '';
+  if (extensionVisible) overlayExtensionTextEl.textContent = extension.text || '';
+  overlayEl.classList.toggle('hidden', !mainVisible && !extensionVisible);
   renderStickerOverlay(tMs);
 }
 // === 表情包预览（视频画面内）===
@@ -3682,11 +5295,10 @@ refreshPreviewGeometryEditable();
 
 bindPlayerEvents(player);
 overlayToggle.addEventListener('change', () => {
-  // change 触发时 checked 已是新值；压入改变前的状态（overlay 取反、几何为当前值）作为撤销点
-  pushPreviewUndo('切换字幕预览', {
-    overlay: !overlayToggle.checked,
-    subtitle: { ...getPreviewGeometry() },
-  });
+  // change 触发时 checked 已是新值；其它预览样式和拓展开关仍从当前快照保留。
+  const previous = snapshotPreviewState();
+  previous.overlay = !overlayToggle.checked;
+  pushPreviewUndo('切换字幕预览', previous);
   updateEditorSettings({ overlayEnabled: overlayToggle.checked });
   refreshPreviewGeometryEditable();
   if (!overlayToggle.checked) overlayEl.classList.add('hidden');
@@ -3723,6 +5335,21 @@ function buildSrt() {
       : exportTime(seg.start);
     parts.push(`${start} --> ${exportTime(seg.end)}`);
     parts.push(seg.text);
+    parts.push('');
+  });
+  return parts.join('\n');
+}
+
+function buildExtensionSrt(track = getActiveExtensionTrack()) {
+  if (!track) return '';
+  const parts = [];
+  let number = 0;
+  (track.segments || []).forEach((segment) => {
+    if (!segment || segment.disabled) return;
+    number++;
+    parts.push(String(number));
+    parts.push(`${fmtSrtTime(segment.start)} --> ${fmtSrtTime(segment.end)}`);
+    parts.push(segment.text || '');
     parts.push('');
   });
   return parts.join('\n');
@@ -3772,6 +5399,9 @@ function updateSubtitleExportUi() {
   if (subtitleExportDropdown) {
     subtitleExportDropdown.hidden = !hasColors;
     if (!hasColors) subtitleExportDropdown.classList.remove('open');
+  }
+  if (downloadMultiSrtButton) {
+    downloadMultiSrtButton.hidden = !(multiSubtitleVisible() && getActiveExtensionTrack()?.segments?.length);
   }
 }
 
@@ -3905,6 +5535,7 @@ function buildJson() {
     sticker_root: STICKER_ROOT || '',
     segments: DATA.segments.map(s => {
       const o = {
+        id: s.id,
         start: s.start, end: s.end, text: s.text,
         items: s.items || [],
         sticker: s.sticker || null,
@@ -3919,12 +5550,48 @@ function buildJson() {
       return o;
     }),
   };
+  const multi = getMultiSubtitleState();
+  out.multi_subtitle = {
+    schema: multi.schema || MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SCHEMA,
+    enabled: multi.enabled === true,
+    display_mode: multi.display_mode || 'both',
+    tracks: (multi.tracks || []).map((track) => ({
+      id: track.id,
+      role: 'extension',
+      name: track.name || '扩展字幕',
+      language: track.language || '',
+      split_mode: track.split_mode || 'word',
+      source_name: track.source_name || '',
+      segments: (track.segments || []).map((segment) => {
+        const outSegment = {
+          id: segment.id,
+          start: segment.start,
+          end: segment.end,
+          text: segment.text || '',
+        };
+        if (segment._dirty) outSegment._dirty = true;
+        return outSegment;
+      }),
+    })),
+    bindings: (multi.bindings || []).map((binding) => ({
+      id: binding.id,
+      track_id: binding.track_id,
+      main_segment_ids: [...(binding.main_segment_ids || [])],
+      extension_segment_ids: [...(binding.extension_segment_ids || [])],
+      start_offset_ms: binding.start_offset_ms || 0,
+      end_offset_ms: binding.end_offset_ms || 0,
+    })),
+  };
   if (DATA.waveform) out.waveform = DATA.waveform;
   if (DATA.gap_remove) out.gap_remove = normalizedGapRemoveData(DATA.gap_remove);
   const workspace = buildCurrentWorkspaceData();
   if (workspace) out.workspace = workspace;
   // 预览几何：始终写入归一化后的当前几何，便于跨机/重开保持位置。
-  out.preview = { subtitle: { ...getPreviewGeometry(), ...getSubtitleAppearance() } };
+  const preview = { subtitle: { ...getPreviewGeometry(), ...getSubtitleAppearance() } };
+  if (getActiveExtensionTrack() || DATA.preview?.extension_subtitle) {
+    preview.extension_subtitle = { ...getStoredExtensionSubtitleAppearance() };
+  }
+  out.preview = preview;
   return JSON.stringify(out, null, 2);
 }
 
@@ -4379,7 +6046,11 @@ function configureServerAutoSave() {
 }
 
 function hasUnsavedProjectChanges() {
-  return gapRemoveDirty || previewGeometryDirty || DATA.segments.some((segment) => segment._dirty);
+  const multiDirty = Boolean(DATA.multi_subtitle?._dirty)
+    || (DATA.multi_subtitle?.tracks || []).some((track) => track.segments?.some((segment) => segment._dirty));
+  return gapRemoveDirty || previewGeometryDirty
+    || DATA.segments.some((segment) => segment._dirty)
+    || multiDirty;
 }
 
 async function openRecentProject(project) {
@@ -4783,6 +6454,9 @@ function configureWorkspaceTransfer() {
 
 function markProjectSaved(filename, backupName, { silent = false } = {}) {
   DATA.segments.forEach((segment) => { delete segment._dirty; });
+  const multi = getMultiSubtitleState();
+  delete multi._dirty;
+  (multi.tracks || []).forEach((track) => track.segments.forEach((segment) => { delete segment._dirty; }));
   gapRemoveDirty = false;
   previewGeometryDirty = false;
   FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
@@ -4884,6 +6558,14 @@ document.getElementById('download-srt').addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
     desc: 'SRT 字幕文件', types: { 'text/plain': ['.srt'] }
+  });
+});
+downloadMultiSrtButton?.addEventListener('click', async () => {
+  if (extensionEditingState) finishExtensionEdit(true);
+  const track = getActiveExtensionTrack();
+  if (!track) return;
+  await downloadFile(buildExtensionSrt(track), `${FILENAME_BASE}_extension.srt`, 'text/plain', {
+    desc: '扩展字幕 SRT 文件', types: { 'text/plain': ['.srt'] },
   });
 });
 document.getElementById('download-full-srt').addEventListener('click', async () => {
@@ -5140,31 +6822,208 @@ function parseSrtSegments(text) {
   return segments;
 }
 
+function replaceMainTrack(segments, displayName = '字幕') {
+  // 导入/替换主轨是字幕编辑操作，保留替换前的主轨和多字幕状态，
+  // 这样用户可以用 Ctrl(Cmd)+Z 回到替换前，而不影响后续重做。
+  pushUndo('替换字幕');
+  DATA.segments.length = 0;
+  (segments || []).forEach((segment) => DATA.segments.push({ ...segment }));
+  DATA.multi_subtitle = {
+    schema: MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SCHEMA,
+    enabled: false,
+    display_mode: 'both',
+    tracks: [],
+    bindings: [],
+  };
+  MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(DATA);
+  DATA.gap_remove = null;
+  gapRemoveDirty = false;
+  projectLoadedFromSrt = true;
+  updateUndoRedoButtons();
+  clearSelection();
+  lastActive = -1;
+  updateGapRemoveUi();
+  renderAll();
+  FILENAME_BASE = displayName.replace(/\.[^.]+$/i, '');
+  const jsonEl = document.getElementById('json-name');
+  if (jsonEl) {
+    jsonEl.textContent = `导入字幕：${displayName}`;
+    jsonEl.title = 'SRT 字幕只能通过导出下载保存为工程文件';
+    jsonEl.classList.add('empty');
+  }
+  configureServerSaveControls();
+  scheduleAutoSave();
+  flashHint(`已加载字幕：${displayName}（${DATA.segments.length} 条）`);
+  return true;
+}
+
+async function parseSubtitleImportFile(file) {
+  if (isSrtFile(file)) return parseSrtSegments(await file.text());
+  const data = JSON.parse(await file.text());
+  if (!data || !Array.isArray(data.segments)) throw new Error('缺少有效 segments 数组');
+  const sourceSegments = data.segments.map((segment) => ({
+    start: segment.start,
+    end: segment.end,
+    text: typeof segment.text === 'string' ? segment.text : '',
+  }));
+  window.AsrEditorUtils.normalizeSegmentTimings(sourceSegments);
+  if (!sourceSegments.length || sourceSegments.some((segment) => !segment.text)) {
+    throw new Error('扩展字幕包含空文本或无效时间码');
+  }
+  return sourceSegments;
+}
+
+let pendingMultiImport = null;
+
+function closeMultiSubtitleImportModal() {
+  multiSubtitleImportModal?.classList.remove('show');
+  pendingMultiImport = null;
+  if (multiSubtitleImportChoiceActions) multiSubtitleImportChoiceActions.hidden = false;
+  if (multiSubtitleImportResultActions) multiSubtitleImportResultActions.hidden = false;
+  if (multiSubtitleImportResultConfirm) multiSubtitleImportResultConfirm.disabled = true;
+  [multiSubtitleImportReplace, multiSubtitleImportExtension].forEach((button) => {
+    button?.setAttribute('aria-pressed', 'false');
+  });
+}
+
+function renderMultiImportPreview(match = null, segments = []) {
+  if (!multiSubtitleImportPreview) return;
+  if (!match) {
+    multiSubtitleImportPreview.hidden = true;
+    multiSubtitleImportPreview.innerHTML = `<div class="summary">共 ${segments.length} 条待导入字幕</div>`;
+    return;
+  }
+  multiSubtitleImportPreview.hidden = false;
+  multiSubtitleImportPreview.innerHTML = [
+    `<div class="summary">扩展字幕 ${segments.length} 条 · 自动绑定 ${match.matches.length} 条</div>`,
+    `<div>未绑定 ${match.unmatchedExtension.length} 条 · 主轨未绑定 ${match.unmatchedMain.length} 条 · 冲突 ${match.conflicts} 组</div>`,
+    `<div class="warning">时间容差：${match.tolerance_ms}ms。未绑定字幕会保留，可稍后手动绑定。</div>`,
+  ].join('');
+}
+
+function renderMainImportPreview(pending) {
+  if (!multiSubtitleImportPreview) return;
+  multiSubtitleImportPreview.hidden = false;
+  multiSubtitleImportPreview.innerHTML = [
+    `<div class="summary">将替换当前主字幕</div>`,
+    `<div>${escapeHtml(pending.file.name)} · ${pending.segments.length} 条字幕</div>`,
+    '<div>导入后仍可使用撤销恢复当前字幕。</div>',
+  ].join('');
+}
+
+async function showMultiSubtitleImportChoice(file, segments) {
+  const existingTrack = getActiveExtensionTrack();
+  pendingMultiImport = {
+    file,
+    segments,
+    existingTrackId: existingTrack?.id || null,
+    match: null,
+    choice: null,
+  };
+  if (multiSubtitleImportDescription) multiSubtitleImportDescription.textContent = '请选择你要执行的行为：';
+  if (multiSubtitleImportReplace) multiSubtitleImportReplace.textContent = existingTrack ? '替换扩展轨' : '替换当前字幕';
+  if (multiSubtitleImportExtension) {
+    multiSubtitleImportExtension.hidden = Boolean(existingTrack);
+    multiSubtitleImportExtension.textContent = '作为多重字幕';
+  }
+  if (multiSubtitleImportChoiceActions) multiSubtitleImportChoiceActions.hidden = false;
+  if (multiSubtitleImportResultActions) multiSubtitleImportResultActions.hidden = false;
+  if (multiSubtitleImportResultConfirm) multiSubtitleImportResultConfirm.disabled = true;
+  [multiSubtitleImportReplace, multiSubtitleImportExtension].forEach((button) => {
+    button?.setAttribute('aria-pressed', 'false');
+  });
+  renderMultiImportPreview(null, segments);
+  multiSubtitleImportModal?.classList.add('show');
+  (existingTrack ? multiSubtitleImportReplace : multiSubtitleImportExtension)?.focus();
+}
+
+function prepareMultiSubtitleImport() {
+  const pending = pendingMultiImport;
+  if (!pending) return;
+  pending.choice = pending.existingTrackId ? 'replace-extension' : 'extension';
+  const match = MULTI_SUBTITLE_UTILS.matchSubtitleSegments(
+    DATA.segments,
+    pending.segments,
+    MULTI_SUBTITLE_TOLERANCE_MS,
+  );
+  pending.match = match;
+  renderMultiImportPreview(match, pending.segments);
+  if (multiSubtitleImportReplace) {
+    multiSubtitleImportReplace.setAttribute('aria-pressed', pending.choice === 'replace-extension' ? 'true' : 'false');
+  }
+  if (multiSubtitleImportExtension) {
+    multiSubtitleImportExtension.setAttribute('aria-pressed', pending.choice === 'extension' ? 'true' : 'false');
+  }
+  if (multiSubtitleImportResultConfirm) multiSubtitleImportResultConfirm.disabled = false;
+}
+
+function commitMultiSubtitleImport() {
+  const pending = pendingMultiImport;
+  if (!pending) return false;
+  const match = pending.match || MULTI_SUBTITLE_UTILS.matchSubtitleSegments(
+    DATA.segments, pending.segments, MULTI_SUBTITLE_TOLERANCE_MS,
+  );
+  const multi = getMultiSubtitleState();
+  const replacing = Boolean(pending.existingTrackId);
+  const oldTrack = replacing ? getExtensionTrack(pending.existingTrackId) : null;
+  const trackId = oldTrack?.id || MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
+    multi.tracks || [], 'extension-1', 'extension',
+  );
+  const extensionSegments = pending.segments.map((segment, index) => ({
+    ...segment,
+    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
+      pending.segments.slice(0, index), `${trackId}-segment-${String(index + 1).padStart(3, '0')}`, `${trackId}-segment`,
+    ),
+    items: undefined,
+    _dirty: true,
+  }));
+  const track = {
+    id: trackId,
+    role: 'extension',
+    name: pending.file.name.replace(/\.[^.]+$/i, '') || '扩展字幕',
+    language: '',
+    source_name: pending.file.name,
+    split_mode: MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(
+      extensionSegments.map((segment) => segment.text).join('\n'),
+    ),
+    segments: extensionSegments,
+  };
+  pushUndo(replacing ? '替换扩展字幕' : '导入多重字幕');
+  if (replacing) {
+    const oldIds = new Set(oldTrack?.segments?.map((segment) => segment.id) || []);
+    multi.bindings = (multi.bindings || []).filter((binding) => (
+      binding.track_id !== trackId && !binding.extension_segment_ids?.some((id) => oldIds.has(id))
+    ));
+    const oldIndex = multi.tracks.findIndex((candidate) => candidate.id === trackId);
+    if (oldIndex >= 0) multi.tracks.splice(oldIndex, 1, track);
+    else multi.tracks.push(track);
+  } else {
+    multi.tracks = [track, ...(multi.tracks || []).filter((candidate) => candidate.id !== trackId)];
+  }
+  match.matches.forEach((candidate) => {
+    const main = DATA.segments[candidate.mainIndex];
+    const extension = extensionSegments[candidate.extensionIndex];
+    if (main && extension) multi.bindings.push(
+      MULTI_SUBTITLE_UTILS.buildSubtitleBinding(main, extension, trackId),
+    );
+  });
+  multi.enabled = true;
+  multi.display_mode = multi.display_mode || 'both';
+  markMainSegmentsDirty(DATA.segments.filter((_, index) => match.matches.some((candidate) => candidate.mainIndex === index)));
+  markMultiSubtitleDirty();
+  closeMultiSubtitleImportModal();
+  clearSelection();
+  // 导入可能首次创建拓展 lane，必须重建波形行结构。
+  renderAll({ waveform: 'full' });
+  update();
+  flashHint(`已导入扩展字幕：绑定 ${match.matches.length} 条，未绑定 ${match.unmatchedExtension.length} 条`, 'success');
+  return true;
+}
+
 async function openSrtFile(file) {
   try {
     const segments = parseSrtSegments(await file.text());
-    DATA.segments.length = 0;
-    segments.forEach((segment) => DATA.segments.push(segment));
-    DATA.gap_remove = null;
-    gapRemoveDirty = false;
-    projectLoadedFromSrt = true;
-    editorHistory.clear();
-    updateUndoRedoButtons();
-    clearSelection();
-    lastActive = -1;
-    updateGapRemoveUi();
-    renderAll();
-    FILENAME_BASE = file.name.replace(/\.srt$/i, '');
-    const jsonEl = document.getElementById('json-name');
-    if (jsonEl) {
-      jsonEl.textContent = `导入字幕：${file.name}`;
-      jsonEl.title = 'SRT 字幕只能通过导出下载保存为工程文件';
-      jsonEl.classList.add('empty');
-    }
-    configureServerSaveControls();
-    scheduleAutoSave();
-    flashHint(`已加载字幕：${file.name}（${segments.length} 条）`);
-    return true;
+    return replaceMainTrack(segments, file.name);
   } catch (error) {
     flashHint(`加载字幕失败：${error.message || error}`);
     return false;
@@ -5180,6 +7039,7 @@ async function openProjectFile(file, options = {}) {
     if (data && Array.isArray(data.segments)) {
       window.AsrEditorUtils.normalizeSegmentTimings(data.segments);
       window.AsrEditorUtils.repairGroupReferenceIndices(data.segments);
+      MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(data);
     }
     if (!isMawProject(data)) {
       flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。');
@@ -5197,11 +7057,13 @@ async function openProjectFile(file, options = {}) {
     // 预览几何：归一化后应用；缺失时回退到 legacy 默认，且不弄脏工程。
     DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
     setPreviewGeometry(getPreviewGeometry(), { markDirty: false });
+    applyExtensionSubtitleAppearance(DATA.preview?.extension_subtitle);
     setStickerGeometry(getStickerGeometry(), { markDirty: false });
     refreshPreviewGeometryEditable();
     if (data.sticker_root) STICKER_ROOT = data.sticker_root;
     DATA.segments.length = 0;
     data.segments.forEach((segment) => DATA.segments.push(segment));
+    DATA.multi_subtitle = MULTI_SUBTITLE_UTILS.normalizeMultiSubtitle(data.multi_subtitle, DATA.segments);
     projectLoadedFromSrt = false;
     configureServerSaveControls();
     scheduleAutoSave();
@@ -5217,7 +7079,8 @@ async function openProjectFile(file, options = {}) {
       waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform);
     }
     updateGapRemoveUi();
-    renderAll();
+    // 工程加载可能同时切换多字幕开关和轨道结构。
+    renderAll({ waveform: 'full' });
     updateUnloadedMediaLabel(DATA.media);
 
     FILENAME_BASE = file.name.replace(/\.(json|mosp)$/i, '');
@@ -5296,6 +7159,61 @@ loadSrtFileInput.addEventListener('change', async (event) => {
   const file = event.target.files?.[0];
   if (file) await openSrtFile(file);
 });
+
+multiSubtitleImportResultCancel?.addEventListener('click', closeMultiSubtitleImportModal);
+multiSubtitleImportExtension?.addEventListener('click', prepareMultiSubtitleImport);
+multiSubtitleImportReplace?.addEventListener('click', () => {
+  const pending = pendingMultiImport;
+  if (!pending) return;
+  if (pending.existingTrackId) {
+    prepareMultiSubtitleImport();
+    return;
+  }
+  pending.choice = 'replace-main';
+  pending.match = null;
+  if (multiSubtitleImportReplace) multiSubtitleImportReplace.setAttribute('aria-pressed', 'true');
+  if (multiSubtitleImportExtension) multiSubtitleImportExtension.setAttribute('aria-pressed', 'false');
+  renderMainImportPreview(pending);
+  if (multiSubtitleImportResultConfirm) multiSubtitleImportResultConfirm.disabled = false;
+});
+multiSubtitleImportResultConfirm?.addEventListener('click', () => {
+  const pending = pendingMultiImport;
+  if (!pending?.choice) return;
+  if (pending.choice === 'replace-main') {
+    const { segments, file } = pending;
+    closeMultiSubtitleImportModal();
+    replaceMainTrack(segments, file.name);
+    return;
+  }
+  commitMultiSubtitleImport();
+});
+multiSubtitleImportModal?.addEventListener('click', (event) => {
+  if (event.target === multiSubtitleImportModal) closeMultiSubtitleImportModal();
+});
+multiSubtitleSplitCancel?.addEventListener('click', closeLinkedSplitModal);
+multiSubtitleSplitConfirm?.addEventListener('click', confirmLinkedSplit);
+multiSubtitleSplitModal?.addEventListener('click', (event) => {
+  if (event.target === multiSubtitleSplitModal) closeLinkedSplitModal();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !multiSubtitleImportModal?.classList.contains('show')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeMultiSubtitleImportModal();
+}, true);
+document.addEventListener('keydown', (event) => {
+  if (!multiSubtitleSplitModal?.classList.contains('show')) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    closeLinkedSplitModal();
+  } else if (event.key === 'Enter'
+      && !(event.ctrlKey || event.metaKey || event.altKey || event.shiftKey)) {
+    event.preventDefault();
+    event.stopPropagation();
+    confirmLinkedSplit();
+  }
+}, true);
 
 async function loadMediaFile(file) {
   if (!file) return;
@@ -5938,6 +7856,7 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY) {
   }
   pushUndo('新增字幕');
   DATA.segments.splice(index, 0, {
+    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(DATA.segments, `main-${index + 1}`, 'main'),
     start: safeStart,
     end: safeEnd,
     text: '',
@@ -5979,8 +7898,130 @@ function addCueAtWaveformTime(timeMs, clickX, clickY) {
   addCueRangeFromWaveform(adjustedStart, end, clickX, clickY);
 }
 
+function addExtensionAtWaveformTime(timeMs, clickX, clickY, track = getActiveExtensionTrack()) {
+  const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
+  if (!duration) { flashHint('媒体时长尚未加载'); return; }
+  if (!track || !Array.isArray(track.segments)) {
+    flashHint('当前没有可用的扩展字幕轨');
+    return;
+  }
+  const insertAt = track.segments.findIndex((segment) => Number(segment.start) > timeMs);
+  const index = insertAt < 0 ? track.segments.length : insertAt;
+  const previousEnd = index > 0 ? Number(track.segments[index - 1].end) : 0;
+  const nextStart = index < track.segments.length ? Number(track.segments[index].start) : duration;
+  if (timeMs < previousEnd || timeMs > nextStart) {
+    flashHint('当前位置已有拓展字幕，请先调整相邻字幕时间');
+    return;
+  }
+  const gap = nextStart - previousEnd;
+  if (gap < 100) {
+    flashHint('这里没有足够的空白区域');
+    return;
+  }
+  const start = Math.max(previousEnd, Math.min(Math.round(timeMs / 10) * 10, nextStart - 100));
+  const end = Math.min(nextStart, start + 1000);
+  const adjustedStart = end - start >= 100 ? start : Math.max(previousEnd, nextStart - 1000);
+  if (end - adjustedStart < 100) {
+    flashHint('这里没有足够的空白区域');
+    return;
+  }
+  pushUndo('新增拓展字幕');
+  const segment = {
+    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
+      track.segments,
+      `${track.id}-segment-${index + 1}`,
+      'extension',
+    ),
+    start: adjustedStart,
+    end,
+    text: '',
+    _dirty: true,
+  };
+  track.segments.splice(index, 0, segment);
+  markMultiSubtitleDirty();
+  clearSelection();
+  renderAll();
+  selectOnlyExtension(index);
+  const extensionText = container.querySelector(
+    `.multi-extension-cue[data-ext-idx="${index}"] .multi-cue-column.extension, `
+      + `.multi-dual-cue[data-ext-idx="${index}"] .multi-cue-column.extension`,
+  );
+  if (extensionText) {
+    const cue = extensionText.closest('.cue');
+    if (cue) scrollCueToCenter(cue);
+    setTimeout(() => startExtensionEdit(extensionText, index, track), 0);
+  }
+  waveformEditor?.revealTime(adjustedStart, true);
+  flashHint(`已新增第 ${index + 1} 条拓展字幕`, 'success');
+}
+
+function syncBoundCueDrag(drag) {
+  if (!drag || drag.independent === true || !multiSubtitleVisible()) return;
+  const sourceTrack = drag.track === 'extension' ? getActiveExtensionTrack() : null;
+  const sourceSegments = drag.track === 'extension'
+    ? sourceTrack?.segments || [] : DATA.segments;
+  if (!drag.boundOriginals) drag.boundOriginals = new Map();
+  const getBindingTarget = (index) => {
+    const source = sourceSegments[index];
+    if (!source) return null;
+    const binding = drag.track === 'extension'
+      ? bindingForExtensionIndex(index, sourceTrack)
+      : bindingForMainIndex(index);
+    if (!binding) return null;
+    return drag.track === 'extension'
+      ? mainSegmentById(binding.main_segment_ids?.[0])
+      : extensionSegmentById(binding.extension_segment_ids?.[0], getExtensionTrack(binding.track_id));
+  };
+  drag.indices.forEach((index) => {
+    const target = getBindingTarget(index);
+    const sourceOriginal = drag.originals.get(index);
+    if (!target || !sourceOriginal) return;
+    if (!drag.boundOriginals.has(index)) {
+      drag.boundOriginals.set(index, {
+        target,
+        start: target.start,
+        end: target.end,
+        items: Array.isArray(target.items)
+          ? target.items.map((item) => ({ ...item })) : target.items,
+      });
+    }
+    const targetOriginal = drag.boundOriginals.get(index);
+    const source = sourceSegments[index];
+    let nextStart = targetOriginal.start;
+    let nextEnd = targetOriginal.end;
+    if (drag.kind === 'move') {
+      const delta = source.start - sourceOriginal.start;
+      nextStart = targetOriginal.start + delta;
+      nextEnd = targetOriginal.end + delta;
+    } else if (drag.kind === 'resize-left') {
+      nextStart = targetOriginal.start + (source.start - sourceOriginal.start);
+    } else if (drag.kind === 'resize-right') {
+      nextEnd = targetOriginal.end + (source.end - sourceOriginal.end);
+    } else if (drag.kind === 'resize-boundary') {
+      if (index === drag.index) nextEnd = targetOriginal.end + (source.end - sourceOriginal.end);
+      else nextStart = targetOriginal.start + (source.start - sourceOriginal.start);
+    } else if (drag.kind === 'resize-boundary-independent') {
+      if (drag.edge === 'start') nextStart = targetOriginal.start + (source.start - sourceOriginal.start);
+      else nextEnd = targetOriginal.end + (source.end - sourceOriginal.end);
+    }
+    if (nextEnd <= nextStart) nextEnd = nextStart + 100;
+    const safeRange = clampExtensionRange(null, nextStart, nextEnd);
+    target.start = safeRange.start;
+    target.end = safeRange.end;
+    target.items = remapPanelItems(
+      targetOriginal.items,
+      targetOriginal.start,
+      targetOriginal.end,
+      target.start,
+      target.end,
+    );
+    target._dirty = true;
+  });
+  syncBindingOffsets();
+}
+
 // 右键波形背景：创建字幕，或按右键对应的音频位置拆分命中的字幕。
-function showWaveformBlankMenu(timeMs, clickX, clickY) {
+function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
   ctxmenu.innerHTML = '';
   function addItem(label, kbd, fn, disabled = false) {
     const it = document.createElement('div');
@@ -6000,6 +8041,9 @@ function showWaveformBlankMenu(timeMs, clickX, clickY) {
     timeMs > segment.start && timeMs < segment.end
   ));
   addItem('创建字幕', '', () => addCueAtWaveformTime(timeMs, clickX, clickY));
+  if (track === 'extension' && multiSubtitleVisible()) {
+    addItem('创建拓展字幕', '', () => addExtensionAtWaveformTime(timeMs, clickX, clickY));
+  }
   addItem(
     '按音频位置拆分当前字幕',
     'B',
@@ -6155,6 +8199,66 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
   if (y + rect.height > window.innerHeight) ny = window.innerHeight - rect.height - 4;
   ctxmenu.style.left = nx + 'px';
   ctxmenu.style.top = ny + 'px';
+}
+
+function showExtensionContextMenu(x, y, index, timeMs = null, track = getActiveExtensionTrack()) {
+  const segment = track?.segments?.[index];
+  if (!segment) return;
+  ctxmenu.innerHTML = '';
+  const addItem = (label, fn, danger = false, disabled = false, kbd = '') => {
+    const item = document.createElement('div');
+    item.className = `item${danger ? ' danger' : ''}${disabled ? ' disabled' : ''}`;
+    const text = document.createElement('span');
+    text.textContent = label;
+    item.appendChild(text);
+    const key = document.createElement('kbd');
+    key.textContent = kbd;
+    if (!kbd) key.style.visibility = 'hidden';
+    item.appendChild(key);
+    if (disabled) {
+      item.setAttribute('aria-disabled', 'true');
+      item.title = '请先解绑当前扩展字幕';
+    } else item.addEventListener('click', () => {
+      ctxmenu.classList.remove('show');
+      fn();
+    });
+    ctxmenu.appendChild(item);
+  };
+  const binding = bindingForExtensionIndex(index, track);
+  addItem('在鼠标位置拆分', () => openExtensionSplitModal(index, timeMs, track));
+  const extensionSelectionOnly = selectedIdxs.size === 0
+    && selectedExtensionIdxs.size > 1
+    && selectedExtensionIdxs.has(index);
+  addItem(
+    '合并次要字幕块',
+    () => mergeExtensionSegments([...selectedExtensionIdxs], track),
+    false,
+    !extensionSelectionOnly,
+    'C',
+  );
+  addItem('删除扩展字幕', () => deleteExtensionSegments([index]), true);
+  if (binding) addItem('对齐主字幕时间范围', () => alignExtensionToMainTimeRange(index, track));
+  if (binding) addItem('解绑', () => {
+    selectOnlyExtension(index);
+    unbindSelectedSubtitlePair();
+  });
+  if (binding) {
+    // 一对一关系已经存在时，必须先解绑，避免用户误以为点击后会静默换绑。
+    addItem('重新绑定需先解绑', null, false, true);
+  } else if (selectedIdxs.size === 1) {
+    addItem('与选中的主字幕绑定', () => {
+      // 右键不会触发扩展字幕的普通 pointerdown；先补上扩展选择，
+      // 再复用顶部「绑定」操作。selectOnlyExtension 不会清掉已选的主字幕。
+      selectOnlyExtension(index);
+      bindSelectedSubtitlePair();
+    });
+  } else {
+    addItem('绑定到主字幕', () => beginPendingExtensionBinding(index, track));
+  }
+  ctxmenu.classList.add('show');
+  const rect = ctxmenu.getBoundingClientRect();
+  ctxmenu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - rect.width - 4))}px`;
+  ctxmenu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - rect.height - 4))}px`;
 }
 
 function showGapContextMenu(x, y, index) {
@@ -6323,8 +8427,12 @@ function initWaveformEditor() {
     return;
   }
   waveformEditor = window.AsrWaveform.create({
-    getSegments: () => DATA.segments,
-    getSelection: () => selectedIdxs,
+    getSegments: (track = 'main') => track === 'extension'
+      ? (getActiveExtensionTrack()?.segments || []) : DATA.segments,
+    getExtensionSegments: (trackId = null) => getExtensionTrack(trackId)?.segments || [],
+    getSelection: (track = 'main') => track === 'extension' ? selectedExtensionIdxs : selectedIdxs,
+    getExtensionSelection: () => selectedExtensionIdxs,
+    multiSubtitleVisible: () => multiSubtitleVisible(),
     selectCue: (idx) => {
       selectCueByClick(idx);
       lastClickedIdx = idx;
@@ -6335,6 +8443,19 @@ function initWaveformEditor() {
     toggleCueSelection: (idx) => {
       toggleSel(idx);
       lastClickedIdx = idx;
+    },
+    selectExtensionCue: (idx) => {
+      selectOnlyExtension(idx);
+      lastClickedExtensionIdx = idx;
+    },
+    toggleExtensionSelection: (idx) => {
+      toggleExtensionSelection(idx);
+      lastClickedExtensionIdx = idx;
+    },
+    selectExtensionRange: (idx) => {
+      if (lastClickedExtensionIdx >= 0) selectExtensionRange(lastClickedExtensionIdx, idx);
+      else selectOnlyExtension(idx);
+      lastClickedExtensionIdx = idx;
     },
     selectCueRange: (idx) => {
       if (lastClickedIdx >= 0) selectRange(lastClickedIdx, idx);
@@ -6357,7 +8478,8 @@ function initWaveformEditor() {
     previewGapAt,
     showGapContextMenu: (x, y, index) => showGapContextMenu(x, y, index),
     showContextMenu: (x, y, idx, timeMs) => showContextMenu(x, y, idx, timeMs),
-    showBlankWaveformMenu: (timeMs, x, y) => showWaveformBlankMenu(timeMs, x, y),
+    showExtensionContextMenu: (x, y, idx, timeMs) => showExtensionContextMenu(x, y, idx, timeMs),
+    showBlankWaveformMenu: (timeMs, x, y, track) => showWaveformBlankMenu(timeMs, x, y, track),
     addCueRange: (startMs, endMs, x, y) => addCueRangeFromWaveform(startMs, endMs, x, y),
     // 剃刀工具：在波形指针位置安全拆分字幕。复用右键菜单的波形时间拆分路径，
     // 它会先用 splitCharOffsetAtTime 把指针时间映射到最近的字/词级边界，再
@@ -6366,15 +8488,19 @@ function initWaveformEditor() {
     getClickBehavior: () => EDITOR_SETTINGS.clickBehavior,
     getClickTarget: () => EDITOR_SETTINGS.clickTarget,
     onBeginEdit: (label) => pushUndo(label),
+    syncBoundCueDrag,
     onLayoutUndo: (label, snapshot) => pushLayoutUndo(label, snapshot),
-    onCommitEdit: (idxs, kind) => {
+    onCommitEdit: (idxs, kind, track = 'main', independent = false) => {
       syncTimelineGroupRanges();
+      syncBindingOffsets();
+      markMainSegmentsDirty(track === 'main' ? idxs.map((idx) => DATA.segments[idx]).filter(Boolean) : []);
+      if (multiSubtitleVisible() || track === 'extension') markMultiSubtitleDirty();
       renderAll();
       update();
       flashHint(kind === 'move'
-        ? `已移动 ${idxs.length} 条字幕`
+        ? `已${independent ? '独立' : '联动'}移动 ${idxs.length} 条${track === 'extension' ? '扩展' : ''}字幕`
         : kind === 'resize-boundary'
-          ? `已联动调整第 ${idxs[0] + 1} / ${idxs[1] + 1} 条边界`
+          ? `已${independent ? '独立' : '联动'}调整第 ${idxs[0] + 1} / ${idxs[1] + 1} 条边界`
           : kind === 'resize-boundary-independent'
             ? `已独立调整第 ${idxs[0] + 1} 条字幕边界`
             : `已调整第 ${idxs[0] + 1} 条字幕时间`);
@@ -6408,20 +8534,40 @@ async function handleDroppedFiles(files) {
     flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT）');
     return;
   }
-  // JSON 工程会重置 DATA，先检查未保存改动（与「打开工程」按钮一致）
-  if (jsonFile && hasUnsavedProjectChanges()) {
-    if (!confirm('当前有未保存的改动，是否确定加载新工程？将丢失未保存内容。')) return;
-  }
   if (jsonFile) {
+    // 工程文件（.mosp/.json）始终走“打开新工程”语义；只有 SRT 才是
+    // “替换当前字幕 / 作为多重字幕”的导入来源。之前这里把已有字幕
+    // 时的工程文件也送进了字幕导入弹窗，导致拖入 mosp 时语义错误。
+    if (DATA.segments.length > 0) {
+      const message = hasUnsavedProjectChanges()
+        ? `检测到工程文件「${jsonFile.name}」。当前有未保存的改动，是否打开新的工程？打开后将丢失这些改动。`
+        : `检测到工程文件「${jsonFile.name}」，是否打开新的工程？当前工程将被替换。`;
+      if (!confirm(message)) return;
+    }
+    // 空白编辑器中的 JSON 仍保持原有“打开工程”语义；工程与媒体一起拖入时，
+    // 媒体随工程自动加载，不再弹窗要求重选。
+    if (hasUnsavedProjectChanges()
+        && !confirm('当前有未保存的改动，是否确定加载新工程？将丢失未保存内容。')) return;
     // 工程与媒体一起拖入时，媒体随工程自动加载，不再弹窗要求重选。
     const opened = await openProjectFile(jsonFile, { suppressMediaPrompt: Boolean(mediaFile) });
     if (opened && mediaFile) await loadMediaFile(mediaFile);
     return;
   }
-  if (srtFile && hasUnsavedProjectChanges()
-      && !confirm('当前有未保存的改动，是否确定加载字幕？将替换当前字幕。')) return;
   if (mediaFile) await loadMediaFile(mediaFile);
-  if (srtFile) await openSrtFile(srtFile);
+  if (srtFile) {
+    if (DATA.segments.length > 0) {
+      if (hasUnsavedProjectChanges()
+          && !confirm('当前有未保存的改动，是否继续导入为字幕来源？')) return;
+      try {
+        const segments = await parseSubtitleImportFile(srtFile);
+        await showMultiSubtitleImportChoice(srtFile, segments);
+      } catch (error) {
+        flashHint(`导入字幕失败：${error.message || error}`);
+      }
+    } else {
+      await openSrtFile(srtFile);
+    }
+  }
 }
 let dragCounter = 0;  // dragenter/leave 计数，避免子元素进出导致遮罩闪烁
 window.addEventListener('dragenter', (e) => {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import re
 from typing import TypeAlias, TypeGuard
 
 
@@ -13,46 +14,63 @@ ValidationIssue: TypeAlias = tuple[str, str]
 SUBTITLE_FONT_SIZE_MIN = 12
 SUBTITLE_FONT_SIZE_MAX = 96
 SUBTITLE_FONT_FAMILIES = frozenset({"default", "yahei", "hei", "song", "sans"})
+SUBTITLE_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 def validate_preview(project: JsonDict) -> tuple[ValidationIssue, ...]:
-    """Return path-qualified issues for optional preview subtitle geometry."""
+    """Return path-qualified issues for optional preview geometry and styles."""
     preview = project.get("preview")
     if preview is None:
         return ()
     if not isinstance(preview, dict):
         return (("$.preview", "must be an object or null"),)
-    subtitle = preview.get("subtitle")
-    if subtitle is None:
-        return ()
-    if not isinstance(subtitle, dict):
-        return (("$.preview.subtitle", "must be an object or null"),)
 
     issues: list[ValidationIssue] = []
-    values: dict[str, float] = {}
-    for field in ("x", "y", "width", "height"):
-        value = subtitle.get(field)
-        if not isinstance(value, (int, float)) or isinstance(value, bool):
-            issues.append((f"$.preview.subtitle.{field}", "must be a number in [0, 1]"))
-        elif not 0 <= float(value) <= 1:
-            issues.append((f"$.preview.subtitle.{field}", "must be in [0, 1]"))
+    subtitle = preview.get("subtitle")
+    if subtitle is not None:
+        if not isinstance(subtitle, dict):
+            issues.append(("$.preview.subtitle", "must be an object or null"))
         else:
-            values[field] = float(value)
-    if "font_size" in subtitle:
-        font_size = subtitle.get("font_size")
+            issues.extend(_validate_subtitle_style(subtitle, "$.preview.subtitle"))
+            values: dict[str, float] = {}
+            for field in ("x", "y", "width", "height"):
+                value = subtitle.get(field)
+                if not isinstance(value, (int, float)) or isinstance(value, bool):
+                    issues.append((f"$.preview.subtitle.{field}", "must be a number in [0, 1]"))
+                elif not 0 <= float(value) <= 1:
+                    issues.append((f"$.preview.subtitle.{field}", "must be in [0, 1]"))
+                else:
+                    values[field] = float(value)
+            if len(values) == 4:
+                if values["x"] + values["width"] > 1:
+                    issues.append(("$.preview.subtitle", "x + width must be <= 1"))
+                if values["y"] + values["height"] > 1:
+                    issues.append(("$.preview.subtitle", "y + height must be <= 1"))
+
+    extension_subtitle = preview.get("extension_subtitle")
+    if extension_subtitle is not None:
+        if not isinstance(extension_subtitle, dict):
+            issues.append(("$.preview.extension_subtitle", "must be an object or null"))
+        else:
+            issues.extend(_validate_subtitle_style(extension_subtitle, "$.preview.extension_subtitle"))
+    return tuple(issues)
+
+
+def _validate_subtitle_style(value: JsonDict, path: str) -> tuple[ValidationIssue, ...]:
+    issues: list[ValidationIssue] = []
+    if "font_size" in value:
+        font_size = value.get("font_size")
         if (not isinstance(font_size, (int, float)) or isinstance(font_size, bool)
                 or not SUBTITLE_FONT_SIZE_MIN <= float(font_size) <= SUBTITLE_FONT_SIZE_MAX):
-            issues.append(("$.preview.subtitle.font_size", "must be a number in [12, 96]"))
-    if "font_family" in subtitle:
-        font_family = subtitle.get("font_family")
+            issues.append((f"{path}.font_size", "must be a number in [12, 96]"))
+    if "font_family" in value:
+        font_family = value.get("font_family")
         if not isinstance(font_family, str) or font_family not in SUBTITLE_FONT_FAMILIES:
-            issues.append(("$.preview.subtitle.font_family", "must be one of default, yahei, hei, song, sans"))
-    if len(values) != 4:
-        return tuple(issues)
-    if values["x"] + values["width"] > 1:
-        issues.append(("$.preview.subtitle", "x + width must be <= 1"))
-    if values["y"] + values["height"] > 1:
-        issues.append(("$.preview.subtitle", "y + height must be <= 1"))
+            issues.append((f"{path}.font_family", "must be one of default, yahei, hei, song, sans"))
+    if "color" in value:
+        color = value.get("color")
+        if not isinstance(color, str) or SUBTITLE_COLOR_RE.fullmatch(color) is None:
+            issues.append((f"{path}.color", "must be a six-digit hexadecimal color"))
     return tuple(issues)
 
 

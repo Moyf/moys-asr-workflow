@@ -17,6 +17,76 @@ class ProjectContractTests(unittest.TestCase):
         normalized = normalize_project(project)
 
         self.assertNotIn("items", normalized["segments"][0])
+        self.assertNotIn("id", normalized["segments"][0])
+        self.assertNotIn("multi_subtitle", normalized)
+
+    def test_validate_project_accepts_and_normalizes_multi_subtitle(self) -> None:
+        project = {
+            "segments": [
+                {"start": 1000, "end": 3000, "text": "主字幕"},
+            ],
+            "multi_subtitle": {
+                "enabled": True,
+                "display_mode": "both",
+                "tracks": [{
+                    "id": "translation",
+                    "language": "English",
+                    "split_mode": "word",
+                    "source_name": "translation.srt",
+                    "segments": [{
+                        "id": "translation-a",
+                        "start": 1100,
+                        "end": 2900,
+                        "text": "Extended subtitle",
+                        "items": [{"text": "wrong source", "start": 1100, "end": 2900}],
+                    }],
+                }],
+                "bindings": [{
+                    "id": "binding-a",
+                    "track_id": "translation",
+                    "main_segment_ids": ["main-001"],
+                    "extension_segment_ids": ["translation-a"],
+                }],
+            },
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok)
+        self.assertIsNotNone(result.project)
+        self.assertEqual(result.project["segments"][0]["id"], "main-001")
+        extension = result.project["multi_subtitle"]["tracks"][0]["segments"][0]
+        self.assertNotIn("items", extension)
+        binding = result.project["multi_subtitle"]["bindings"][0]
+        self.assertEqual(binding["start_offset_ms"], 100)
+        self.assertEqual(binding["end_offset_ms"], -100)
+
+    def test_validate_project_reports_multi_subtitle_contract_errors(self) -> None:
+        project = {
+            "segments": [{"id": "main-a", "start": 0, "end": 1000, "text": "主"}],
+            "multi_subtitle": {
+                "enabled": True,
+                "tracks": [{
+                    "id": "translation",
+                    "split_mode": "invalid",
+                    "segments": [{"id": "translation-a", "start": 100, "end": 900, "text": "扩"}],
+                }],
+                "bindings": [{
+                    "track_id": "translation",
+                    "main_segment_ids": ["main-a", "main-extra"],
+                    "extension_segment_ids": ["translation-a"],
+                    "start_offset_ms": 0,
+                    "end_offset_ms": 0,
+                }],
+            },
+        }
+
+        result = validate_project(project)
+        paths = {error.path for error in result.errors}
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.multi_subtitle.tracks[0].split_mode", paths)
+        self.assertIn("$.multi_subtitle.bindings[0].main_segment_ids", paths)
 
     def test_validate_project_accepts_head_refs_speakers_and_preview_clamps(self) -> None:
         project = {
@@ -172,7 +242,8 @@ class ProjectContractTests(unittest.TestCase):
         project = {
             "segments": [{"start": 0, "end": 1000, "text": "hi"}],
             "preview": {"subtitle": {"x": 0.0, "y": 0.76, "width": 1.0, "height": 0.16,
-                                        "font_size": 32, "font_family": "yahei"}},
+                                        "font_size": 32, "font_family": "yahei", "color": "#ffffff"},
+                        "extension_subtitle": {"font_size": 16, "font_family": "sans", "color": "#ffd34d"}},
         }
 
         result = validate_project(project)
@@ -180,6 +251,7 @@ class ProjectContractTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.project["preview"]["subtitle"]["y"], 0.76)
         self.assertEqual(result.project["preview"]["subtitle"]["font_family"], "yahei")
+        self.assertEqual(result.project["preview"]["extension_subtitle"]["color"], "#ffd34d")
 
     def test_validate_project_rejects_preview_subtitle_out_of_range(self) -> None:
         project = {
@@ -245,6 +317,19 @@ class ProjectContractTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertIn("$.preview", {error.path for error in result.errors})
+
+    def test_validate_project_rejects_invalid_extension_subtitle_style(self) -> None:
+        project = {
+            "segments": [{"start": 0, "end": 1000, "text": "hi"}],
+            "preview": {"extension_subtitle": {"font_size": 10, "color": "yellow"}},
+        }
+
+        result = validate_project(project)
+        paths = {error.path for error in result.errors}
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.preview.extension_subtitle.font_size", paths)
+        self.assertIn("$.preview.extension_subtitle.color", paths)
 
 
 if __name__ == "__main__":
