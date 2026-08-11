@@ -34,7 +34,7 @@ const ONBOARDING_STEP_COUNT = 3;
   } = editor;
 // === 首次打开快速上手 ===
 // 快速上手分成三段：WASD 移动 3 次 → Shift+WASD、C、撤销分阶段练习 → 拆分。
-// 前两段直接复用编辑器真实选择/历史逻辑；拆分先给无风险演示，再由用户明确开始真实练习。
+// 前两段直接复用编辑器真实选择/历史逻辑；拆分直接引导用户在实际字幕上完成操作。
 const onboardingState = {
   open: false,
   mode: 'tour', // 'tour' | 'empty'
@@ -155,6 +155,23 @@ function onboardingSentence(parts) {
   return parts.map((part) => onboardingText(part)).join(separator);
 }
 
+function onboardingSplitDescription() {
+  const key = onboardingSplitKey().replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[char]));
+  return onboardingText('双击字幕列表中的字幕，光标会自动放置在点击位置，按 {key} 即可拆分。')
+    .replace('{key}', `<kbd>${key}</kbd>`);
+}
+
+function onboardingSettingsTip() {
+  return onboardingText('编辑字幕时，也可以选择用 Enter 直接拆分——在【设置】中可修改按键')
+    .replace('【设置】', `<button type="button" id="onboarding-split-settings">${onboardingText('设置')}</button>`);
+}
+
 function onboardingSetStatus(parts) {
   if (!onboardingStatus) return;
   if (Array.isArray(parts)) {
@@ -211,9 +228,9 @@ function renderOnboardingDemo() {
   if (onboardingState.phase === 'complete') {
     onboardingDemo.innerHTML = `
       <ul class="onboarding-extra-tips" id="onboarding-extra-tips">
-        <li>${onboardingText('同样支持使用右键菜单拆分')}</li>
-        <li>${onboardingText('在波形区可以根据音频位置拆分')}</li>
-        <li>${onboardingText('你可以点击')} <button type="button" id="onboarding-split-settings">${onboardingText('设置')}</button> ${onboardingText('修改编辑时的拆分按键')}（<span class="onboarding-split-key-options" id="onboarding-split-key-options">Enter / ${onboardingModKey()}+Enter</span>）</li>
+        <li>${onboardingText('你也可以右键点击字幕后选择拆分')}</li>
+        <li>${onboardingText('鼠标在波形区时，可以右键拆分，也可以按B在鼠标位置拆分')}</li>
+        <li>${onboardingSettingsTip()}</li>
       </ul>`;
     return;
   }
@@ -256,7 +273,7 @@ function renderOnboarding() {
     onboardingTitle.textContent = onboardingText('完成！');
     onboardingDescription.textContent = onboardingSentence([
       '已掌握基础操作。',
-      '其余快捷键、波形和导出功能，可以在【帮助】中随时查看。',
+      '可以在右上角的【🤔 帮助】中随时查看。',
     ]);
     onboardingSetStatus('');
     onboardingPrimary.textContent = onboardingText('打开完整帮助');
@@ -324,20 +341,15 @@ function renderOnboarding() {
     onboardingEyebrow.textContent = onboardingText('编辑时间线');
     onboardingTitle.textContent = onboardingText('最后：在光标处拆分字幕');
     if (onboardingState.phase === 'split-live') {
-      onboardingDescription.textContent = onboardingSentence([
-        '双击字幕文本，光标自动放置在鼠标位置，再按', onboardingSplitKey(), '拆分。',
-      ]);
+      onboardingDescription.innerHTML = onboardingSplitDescription();
       onboardingSetStatus(['<span>', onboardingText('请按'), '</span> <b>', onboardingSplitKey(), '</b> <span>', onboardingText('完成真实拆分'), '</span>']);
       onboardingPrimary.hidden = true;
       onboardingPrimary.disabled = true;
       onboardingSecondary.textContent = onboardingText('跳过实际拆分');
       onboardingSecondary.hidden = false;
     } else {
-      onboardingDescription.textContent = onboardingSentence([
-        '双击字幕文本，把光标放在中间，再按', onboardingSplitKey(), '拆分。',
-        '先看一个无风险演示；准备好后可以实际试一次。',
-      ]);
-      onboardingSetStatus(onboardingText('这次演示不会修改工程。'));
+      onboardingDescription.innerHTML = onboardingSplitDescription();
+      onboardingSetStatus('');
       onboardingPrimary.hidden = true;
       onboardingSecondary.textContent = onboardingText('跳过实际拆分');
       onboardingSecondary.hidden = false;

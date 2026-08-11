@@ -909,7 +909,7 @@
   .help-note {
     flex: 0 0 100%; color: var(--text-muted); font-size: 10px;
   }
-  .help-important { color: var(--amber-hover); font-weight: 800; }
+  .help-important { color: var(--amber-hover); font-weight: 500; }
   .help-important kbd {
     color: var(--bg-base); background: var(--amber); border-color: var(--amber-hover);
     box-shadow: 0 1px 0 color-mix(in srgb, var(--amber-hover) 70%, var(--border-strong));
@@ -953,13 +953,13 @@
   .onboarding-card button { pointer-events: auto; }
   .onboarding-card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .onboarding-progress {
-    color: var(--amber-hover); font-size: 10px; font-weight: 800; letter-spacing: .12em;
+    color: var(--amber-hover); font-size: 10px; font-weight: 500; letter-spacing: .12em;
     text-transform: uppercase;
   }
   .onboarding-skip {
     min-height: 26px; padding: 4px 9px; color: var(--bg-base); background: var(--amber);
     border: 1px solid var(--amber-hover); border-radius: var(--radius-sm); cursor: pointer;
-    font-size: 12px; font-weight: 800; letter-spacing: .01em;
+    font-size: 12px; font-weight: 500; letter-spacing: .01em;
     box-shadow: 0 1px 0 color-mix(in srgb, var(--amber-hover) 70%, var(--border-strong));
     transition: background .15s ease, border-color .15s ease, transform .15s ease;
   }
@@ -1002,7 +1002,7 @@
     border: 1px solid var(--btn-border); border-radius: var(--radius-sm); cursor: pointer; font-size: 12px;
   }
   .onboarding-actions button:hover:not(:disabled) { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
-  .onboarding-actions button.primary { color: #1b1710; background: var(--amber); border-color: var(--amber-hover); font-weight: 800; }
+  .onboarding-actions button.primary { color: #1b1710; background: var(--amber); border-color: var(--amber-hover); font-weight: 500; }
   .onboarding-actions button.primary:hover:not(:disabled) { background: var(--amber-hover); }
   .onboarding-actions button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
   .onboarding-actions button:disabled { opacity: .46; cursor: not-allowed; }
@@ -1034,7 +1034,7 @@
   .onboarding-split-piece.right { border-color: var(--amber); }
   .onboarding-split-caret { width: 2px; height: 28px; background: var(--amber); box-shadow: 0 0 8px var(--amber-glow, var(--amber)); animation: onboarding-caret 900ms steps(1) infinite; }
   .onboarding-undo-demo { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 52px; color: var(--text-secondary); font-size: 12px; }
-  .onboarding-undo-demo kbd, .onboarding-split-demo kbd {
+  .onboarding-undo-demo kbd, .onboarding-split-demo kbd, .onboarding-description kbd {
     padding: 3px 7px; color: var(--text-primary); background: var(--bg-raised); border: 1px solid var(--border);
     border-radius: var(--radius-sm); box-shadow: 0 1px 0 var(--border-strong); font-family: var(--font-mono); font-size: 11px;
   }
@@ -2538,7 +2538,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-11 12:19</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-11 12:40</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -4629,13 +4629,9 @@
     '撤销后再进入拆分。': 'After undoing, we will move on to splitting.',
     '最后：在光标处拆分字幕': 'Finally: split a subtitle at the cursor',
     '快速上手完成': 'Quick start complete', '编辑时间线': 'Edit the timeline', '常见操作': 'Common operations',
-    '其余快捷键、波形和导出功能，可以在【帮助】中随时查看。': 'You can find the remaining shortcuts, waveform, and export controls in Help at any time.',
-    '双击字幕文本，把光标放在中间，再按': 'Double-click the subtitle text, place the cursor in the middle, then press',
-    '拆分。': 'to split.',
-    '先看一个无风险演示；准备好后可以实际试一次。': 'First see a risk-free demo; when ready, try it on a real subtitle.',
+    '可以在右上角的【🤔 帮助】中随时查看。': 'You can always check the “🤔 Help” button in the top right.',
+    '双击字幕列表中的字幕，光标会自动放置在点击位置，按 {key} 即可拆分。': 'Double-click a subtitle in the subtitle list; the cursor is placed at the click position, then press {key} to split.',
     '开始实际拆分': 'Try a real split', '跳过实际拆分': 'Skip real split',
-    '这次演示不会修改工程。': 'This demo does not modify the project.',
-    '双击字幕文本，光标自动放置在鼠标位置，再按': 'Double-click the subtitle text; the cursor is placed at the mouse position, then press',
     '这次会修改当前字幕，但可以用': 'This will modify the current subtitle, but you can undo it with',
     '撤销。': 'Undo.', '双击高亮字幕，在文字中间放置光标，再按': 'Double-click the highlighted subtitle, place the cursor in the middle, then press',
     '拆分已完成。需要回退时按': 'The split is complete. To roll it back, press',
@@ -4653,9 +4649,9 @@
     '已撤销这次体验，请点击下一步学习拆分': 'The practice edit was undone; click Next to learn splitting',
     '拆分已完成；需要回退时可以使用撤销': 'Split complete; use Undo if you need to roll it back',
     '你可以点击': 'You can click', '设置': 'Settings', '来更改拆分按键': 'to change the split key',
-    '修改编辑时的拆分按键': 'to change the split key while editing',
-    '同样支持使用右键菜单拆分': 'You can also split from the right-click menu',
-    '在波形区可以根据音频位置拆分': 'In the waveform area, split by audio position',
+    '编辑字幕时，也可以选择用 Enter 直接拆分——在【设置】中可修改按键': 'While editing subtitles, you can also split directly with Enter — you can change the key in 【设置】',
+    '你也可以右键点击字幕后选择拆分': 'You can also right-click a subtitle and choose Split',
+    '鼠标在波形区时，可以右键拆分，也可以按B在鼠标位置拆分': 'When the mouse is over the waveform, right-click to split, or press B to split at the mouse position',
     '也可以使用右键菜单拆分': 'You can also split from the right-click menu',
     '波形区同样支持拆分，详见帮助。': 'The waveform area also supports splitting; see Help for details.',
     '撤销这次合并': 'Undo this merge',
@@ -15619,7 +15615,7 @@ const ONBOARDING_STEP_COUNT = 3;
   } = editor;
 // === 首次打开快速上手 ===
 // 快速上手分成三段：WASD 移动 3 次 → Shift+WASD、C、撤销分阶段练习 → 拆分。
-// 前两段直接复用编辑器真实选择/历史逻辑；拆分先给无风险演示，再由用户明确开始真实练习。
+// 前两段直接复用编辑器真实选择/历史逻辑；拆分直接引导用户在实际字幕上完成操作。
 const onboardingState = {
   open: false,
   mode: 'tour', // 'tour' | 'empty'
@@ -15740,6 +15736,23 @@ function onboardingSentence(parts) {
   return parts.map((part) => onboardingText(part)).join(separator);
 }
 
+function onboardingSplitDescription() {
+  const key = onboardingSplitKey().replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[char]));
+  return onboardingText('双击字幕列表中的字幕，光标会自动放置在点击位置，按 {key} 即可拆分。')
+    .replace('{key}', `<kbd>${key}</kbd>`);
+}
+
+function onboardingSettingsTip() {
+  return onboardingText('编辑字幕时，也可以选择用 Enter 直接拆分——在【设置】中可修改按键')
+    .replace('【设置】', `<button type="button" id="onboarding-split-settings">${onboardingText('设置')}</button>`);
+}
+
 function onboardingSetStatus(parts) {
   if (!onboardingStatus) return;
   if (Array.isArray(parts)) {
@@ -15796,9 +15809,9 @@ function renderOnboardingDemo() {
   if (onboardingState.phase === 'complete') {
     onboardingDemo.innerHTML = `
       <ul class="onboarding-extra-tips" id="onboarding-extra-tips">
-        <li>${onboardingText('同样支持使用右键菜单拆分')}</li>
-        <li>${onboardingText('在波形区可以根据音频位置拆分')}</li>
-        <li>${onboardingText('你可以点击')} <button type="button" id="onboarding-split-settings">${onboardingText('设置')}</button> ${onboardingText('修改编辑时的拆分按键')}（<span class="onboarding-split-key-options" id="onboarding-split-key-options">Enter / ${onboardingModKey()}+Enter</span>）</li>
+        <li>${onboardingText('你也可以右键点击字幕后选择拆分')}</li>
+        <li>${onboardingText('鼠标在波形区时，可以右键拆分，也可以按B在鼠标位置拆分')}</li>
+        <li>${onboardingSettingsTip()}</li>
       </ul>`;
     return;
   }
@@ -15841,7 +15854,7 @@ function renderOnboarding() {
     onboardingTitle.textContent = onboardingText('完成！');
     onboardingDescription.textContent = onboardingSentence([
       '已掌握基础操作。',
-      '其余快捷键、波形和导出功能，可以在【帮助】中随时查看。',
+      '可以在右上角的【🤔 帮助】中随时查看。',
     ]);
     onboardingSetStatus('');
     onboardingPrimary.textContent = onboardingText('打开完整帮助');
@@ -15909,20 +15922,15 @@ function renderOnboarding() {
     onboardingEyebrow.textContent = onboardingText('编辑时间线');
     onboardingTitle.textContent = onboardingText('最后：在光标处拆分字幕');
     if (onboardingState.phase === 'split-live') {
-      onboardingDescription.textContent = onboardingSentence([
-        '双击字幕文本，光标自动放置在鼠标位置，再按', onboardingSplitKey(), '拆分。',
-      ]);
+      onboardingDescription.innerHTML = onboardingSplitDescription();
       onboardingSetStatus(['<span>', onboardingText('请按'), '</span> <b>', onboardingSplitKey(), '</b> <span>', onboardingText('完成真实拆分'), '</span>']);
       onboardingPrimary.hidden = true;
       onboardingPrimary.disabled = true;
       onboardingSecondary.textContent = onboardingText('跳过实际拆分');
       onboardingSecondary.hidden = false;
     } else {
-      onboardingDescription.textContent = onboardingSentence([
-        '双击字幕文本，把光标放在中间，再按', onboardingSplitKey(), '拆分。',
-        '先看一个无风险演示；准备好后可以实际试一次。',
-      ]);
-      onboardingSetStatus(onboardingText('这次演示不会修改工程。'));
+      onboardingDescription.innerHTML = onboardingSplitDescription();
+      onboardingSetStatus('');
       onboardingPrimary.hidden = true;
       onboardingSecondary.textContent = onboardingText('跳过实际拆分');
       onboardingSecondary.hidden = false;

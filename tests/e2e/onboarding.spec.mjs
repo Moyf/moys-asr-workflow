@@ -64,7 +64,8 @@ test('quick start teaches WASD, real merge with undo, then real split', async ({
   await page.locator('#onboarding-primary').click();
   await expect(page.locator('#onboarding-title')).toHaveText('最后：在光标处拆分字幕');
   await expect(page.locator('#onboarding-primary')).toBeHidden();
-  await expect(page.locator('#onboarding-description')).toContainText('先看一个无风险演示；准备好后可以实际试一次。');
+  await expect(page.locator('#onboarding-description')).toHaveText('双击字幕列表中的字幕，光标会自动放置在点击位置，按 Ctrl+Enter 即可拆分。');
+  await expect(page.locator('#onboarding-description kbd')).toHaveText('Ctrl+Enter');
 
   const targetText = page.locator('.cue[data-idx="0"] .text');
   const splitPoint = await targetText.evaluate((element) => {
@@ -85,10 +86,10 @@ test('quick start teaches WASD, real merge with undo, then real split', async ({
   await page.keyboard.up('Control');
   await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
   await expect(page.locator('#onboarding-title')).toHaveText('完成！');
-  await expect(page.locator('#onboarding-extra-tips')).toContainText('同样支持使用右键菜单拆分');
-  await expect(page.locator('#onboarding-extra-tips')).toContainText('在波形区可以根据音频位置拆分');
-  await expect(page.locator('#onboarding-extra-tips')).toContainText('修改编辑时的拆分按键');
-  await expect(page.locator('#onboarding-extra-tips')).toContainText('Enter / Ctrl+Enter');
+  await expect(page.locator('#onboarding-description')).toHaveText('已掌握基础操作。可以在右上角的【🤔 帮助】中随时查看。');
+  await expect(page.locator('#onboarding-extra-tips')).toContainText('你也可以右键点击字幕后选择拆分');
+  await expect(page.locator('#onboarding-extra-tips')).toContainText('鼠标在波形区时，可以右键拆分，也可以按B在鼠标位置拆分');
+  await expect(page.locator('#onboarding-extra-tips')).toContainText('编辑字幕时，也可以选择用 Enter 直接拆分——在设置中可修改按键');
   await page.locator('#onboarding-split-settings').click();
   await expect(page.locator('#editor-settings-panel')).toBeVisible();
   await expect(layer).toBeVisible();
