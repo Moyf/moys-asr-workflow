@@ -709,24 +709,31 @@
   }
   .editor-settings-panel[hidden] { display: none; }
   .editor-settings-group {
-    display: flex; flex-wrap: wrap; align-content: flex-start; align-items: center; gap: 8px;
+    display: flex; flex-direction: column; align-items: stretch; gap: 16px;
     min-width: 0; padding: 8px 10px;
     background: var(--bg-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
   }
   .editor-settings-group[hidden] { display: none; }
+  .editor-settings-sub-group {
+    display: flex; flex-wrap: wrap; align-content: flex-start; align-items: center; gap: 8px;
+    width: 100%; min-width: 0;
+  }
+  .editor-settings-sub-group[hidden] { display: none; }
   .editor-settings-title {
-    flex: 0 0 100%; color: var(--text-secondary); font-size: 11px; font-weight: 600; letter-spacing: .08em;
-    text-transform: uppercase;
+    flex: 0 0 100%; color: var(--text-secondary); font-size: 0.8em; font-weight: 600; letter-spacing: .08em;
+    text-align: center; text-transform: uppercase;
   }
   .editor-settings-item { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; }
   .editor-settings-item[hidden] { display: none; }
-  .editor-settings-group > label.toggle.editor-settings-item { flex: 0 0 100%; }
-  /* 「保存」归入导出分组，但其标题、开关和间隔各占一行。 */
-  #server-auto-save-settings {
-    display: flex; flex: 0 0 100%; flex-direction: column; align-items: flex-start; gap: 8px;
+  .editor-settings-sub-group > label.toggle.editor-settings-item { flex: 0 0 100%; }
+  .editor-settings-field {
+    display: flex; flex: 0 0 100%; flex-direction: column; align-items: flex-start; gap: 3px;
+    min-width: 0;
   }
-  #server-auto-save-settings .editor-settings-title,
-  #server-auto-save-settings .editor-settings-item { width: 100%; }
+  .editor-settings-field[hidden] { display: none; }
+  .editor-settings-field > .editor-settings-item { width: auto; }
+  .editor-settings-field > label.toggle.editor-settings-item { align-self: stretch; width: 100%; }
+  .editor-settings-field > .editor-settings-hint { margin: 0; }
   .editor-settings-list-fields { flex-wrap: wrap; }
   .editor-settings-display-row { flex: 0 0 100%; flex-wrap: nowrap; align-items: flex-start; }
   .editor-settings-list-fields > span { color: var(--text-muted); }
@@ -898,7 +905,7 @@
   .help-replay-button {
     min-height: 26px; padding: 4px 8px; color: var(--bg-base); background: var(--amber);
     border: 1px solid var(--amber-hover); border-radius: var(--radius-sm); cursor: pointer;
-    font-size: 11px; font-weight: 800; transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+    font-size: 11px; font-weight: 500; transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
   }
   .help-replay-button:hover { color: var(--bg-base); background: var(--amber-hover); border-color: var(--amber-hover); }
   .help-replay-button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
@@ -1345,7 +1352,7 @@
   }
   .modal .modal-field-row button:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
   #sticker-root-modal .modal { width: 540px; }
-  .editor-settings-hint { display: block; font-size: 12px; color: var(--text-muted); margin: 2px 0 0; }
+  .editor-settings-hint { display: block; max-width: 100%; font-size: 12px; line-height: 1.35; color: var(--text-muted); margin: 0; }
   .editor-settings-hint[hidden] { display: none; }
   .modal .preview {
     font-size: 12px; color: var(--text-muted); margin-top: 6px; min-height: 16px;

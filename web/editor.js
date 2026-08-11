@@ -7,11 +7,22 @@ const SERVER_CONFIG = __SERVER_CONFIG_JSON__;
 const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';
 const CLICK_BEHAVIOR_VALUES = new Set(['select-only', 'select-and-seek', 'select-and-play']);
 const CLICK_TARGET_VALUES = new Set(['cue-start', 'pointer']);
+const CUE_MOVE_STEP_MIN_MS = 10;
+const CUE_MOVE_STEP_MAX_MS = 2000;
+const DEFAULT_CUE_MOVE_STEP_MS = 50;
 function normalizeClickBehavior(value) {
   return CLICK_BEHAVIOR_VALUES.has(value) ? value : 'select-and-seek';
 }
 function normalizeClickTarget(value) {
   return CLICK_TARGET_VALUES.has(value) ? value : 'cue-start';
+}
+
+function clampCueMoveStepMs(value) {
+  const rounded = Math.round(Number(value));
+  return Math.min(
+    CUE_MOVE_STEP_MAX_MS,
+    Math.max(CUE_MOVE_STEP_MIN_MS, Number.isFinite(rounded) ? rounded : DEFAULT_CUE_MOVE_STEP_MS),
+  );
 }
 const DEFAULT_EDITOR_SETTINGS = {
   splitKey: 'ctrl-enter',
@@ -50,6 +61,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   clickBehavior: 'select-and-seek',
   // 波形字幕块的跳转目标；字幕列表点击始终跳转到字幕开头。
   clickTarget: 'cue-start',
+  // 选中字幕后用方向键 / A-D 微调时间的幅度。
+  cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
   // 界面主题：dark（默认）/ light。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
   theme: 'dark',
 };
@@ -96,6 +109,7 @@ function readEditorSettings() {
       stickerOverlayEnabled: saved.stickerOverlayEnabled === true,
       clickBehavior: normalizeClickBehavior(saved.clickBehavior),
       clickTarget: normalizeClickTarget(saved.clickTarget),
+      cueMoveStepMs: clampCueMoveStepMs(saved.cueMoveStepMs),
       theme: saved.theme === 'light' ? 'light' : 'dark',
     };
   } catch (_) {
@@ -418,6 +432,7 @@ const helpSplitKey = document.getElementById('help-split-key');
 const clickBehaviorSelect = document.getElementById('click-behavior');
 const clickTargetField = document.getElementById('click-target-field');
 const clickTargetSelect = document.getElementById('click-target');
+const cueMoveStepInput = document.getElementById('cue-move-step');
 const replaceModal = document.getElementById('replace-modal');
 const stickerModal = document.getElementById('sticker-modal');
 const stickerPreviewModal = document.getElementById('sticker-preview-modal');
@@ -651,6 +666,7 @@ if (autoSaveIntervalInput) autoSaveIntervalInput.value = String(EDITOR_SETTINGS.
 if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.stickerOverlayEnabled;
 if (clickBehaviorSelect) clickBehaviorSelect.value = EDITOR_SETTINGS.clickBehavior;
 if (clickTargetSelect) clickTargetSelect.value = EDITOR_SETTINGS.clickTarget;
+if (cueMoveStepInput) cueMoveStepInput.value = String(EDITOR_SETTINGS.cueMoveStepMs);
 applyCueListDisplaySettings();
 applyCueEditorDisplaySettings();
 applySubtitleAppearance();
@@ -826,6 +842,11 @@ clickBehaviorSelect?.addEventListener('change', () => {
 });
 clickTargetSelect?.addEventListener('change', () => {
   updateEditorSettings({ clickTarget: normalizeClickTarget(clickTargetSelect.value) });
+});
+cueMoveStepInput?.addEventListener('change', () => {
+  const value = clampCueMoveStepMs(cueMoveStepInput.value);
+  cueMoveStepInput.value = String(value);
+  updateEditorSettings({ cueMoveStepMs: value });
 });
 subtitleFontSizeSelect?.addEventListener('change', () => {
   const value = subtitleFontSizeSelect.value;
@@ -2766,6 +2787,14 @@ document.addEventListener('keydown', (e) => {
   else finishEdit(true);
 }, true);
 
+// 按住字幕块/边界调整时，Esc 取消本次预览并恢复按下前的时间码。
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || editingState) return;
+  if (!waveformEditor?.cancelCueDrag?.()) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+}, true);
+
 // Esc：非字幕文本编辑状态下清除当前字幕选择；输入框和内联编辑继续保留原生/编辑行为。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || editingState || selectedIdxs.size === 0) return;
@@ -2961,18 +2990,35 @@ mediaFullscreen?.addEventListener('click', async () => {
 });
 document.addEventListener('fullscreenchange', syncMediaControls);
 
-// ←/→：复用媒体控制条的 ±5 秒跳转；文本输入、表单控件和预览框保留原生方向键行为。
+// ←/→：无选中字幕时复用媒体控制条的 ±5 秒跳转；选中字幕时改为按设置的
+// 微调幅度调整时间。Ctrl(Cmd)+方向键调整左边界，Ctrl(Cmd)+Shift+方向键调整右边界。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
   if (editingState || isTextEditingTarget(e)) return;
   const target = e.target instanceof Element ? e.target : document.activeElement;
   if (target?.closest?.('.geo-box, input, select, textarea')) return;
-  if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
-  if (!hasLoadedMedia()) return;
   if (!isPlaybackKeyboardTarget(e) && isNativeKeyboardControl(e)) return;
+  if (isPlayerKeyboardTarget(e)) return;
+  const commandKey = e.ctrlKey || e.metaKey;
+  if (e.shiftKey && !commandKey) return;
+  const direction = e.key === 'ArrowLeft' ? -1 : 1;
+  if (selectedIdxs.size > 0 && waveformEditor) {
+    const deltaMs = direction * EDITOR_SETTINGS.cueMoveStepMs;
+    if (commandKey) {
+      if (e.shiftKey) waveformEditor.adjustSelectedBoundaryByKeyboard(deltaMs, 'end', e.altKey);
+      else waveformEditor.adjustSelectedBoundaryByKeyboard(deltaMs, 'start', e.altKey);
+    } else {
+      waveformEditor.adjustSelectedByKeyboard(deltaMs, e.altKey);
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  if (commandKey || e.altKey) return;
+  if (!hasLoadedMedia()) return;
   e.preventDefault();
   e.stopPropagation();
-  seekMediaBy(e.key === 'ArrowLeft' ? -5 : 5);
+  seekMediaBy(direction * 5);
 }, true);
 
 function isSpaceKey(e) {
@@ -3092,9 +3138,23 @@ document.addEventListener('keydown', (e) => {
   if (projectMediaModal.classList.contains('show')) return;
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
-  if (e.ctrlKey || e.altKey || e.metaKey) return;
-
+  if (e.ctrlKey || e.metaKey) return;
   const direction = (key === 'a' || key === 'w') ? -1 : 1;
+  if (e.shiftKey && !e.altKey && (key === 'a' || key === 'd')
+      && waveformEditor?.snapActiveCueBoundaryByKeyboard?.(direction)) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  if (!e.shiftKey && waveformEditor?.adjustActiveCueDragBy?.(
+    direction * EDITOR_SETTINGS.cueMoveStepMs,
+    e.altKey,
+  )) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  if (e.altKey) return;
   const next = e.shiftKey
     ? window.AsrEditorUtils.findCueSelectionExtensionTarget(
       DATA.segments,
@@ -4828,13 +4888,15 @@ function scheduleAutoSave() {
 
 function configureServerAutoSave() {
   if (!serverAutoSaveSettings || !autoSaveProjectToggle || !autoSaveIntervalField || !autoSaveIntervalInput) return;
-  const available = serverProjectSavingEnabled();
+  const available = !!(SERVER_CONFIG && SERVER_CONFIG.saveUrl);
   serverAutoSaveSettings.hidden = !available;
   if (!available) return;
   const sync = () => {
     autoSaveProjectToggle.checked = EDITOR_SETTINGS.autoSaveProject;
     autoSaveIntervalInput.value = String(EDITOR_SETTINGS.autoSaveIntervalSeconds);
     autoSaveIntervalField.hidden = !EDITOR_SETTINGS.autoSaveProject;
+    autoSaveProjectToggle.disabled = false;
+    autoSaveIntervalInput.disabled = !EDITOR_SETTINGS.autoSaveProject;
   };
   sync();
   autoSaveProjectToggle.addEventListener('change', () => {

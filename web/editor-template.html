@@ -308,6 +308,18 @@ __WAVEFORM_CSS__
         <span class="help-important"><kbd>Enter</kbd> 编辑选中字幕（根据最后点击区域）</span>
       </div>
       <div class="help-subgroup">
+        <span class="help-subtitle">按键调整字幕</span>
+        <span class="help-note">选中字幕时：</span>
+        <span><kbd>←</kbd>/<kbd>→</kbd> 微调移动字幕</span>
+        <span><kbd data-mod-key>Ctrl+←/→</kbd> 微调字幕左边界（起点）</span>
+        <span><kbd data-mod-key>Ctrl+Shift+←/→</kbd> 微调字幕右边界（终点）</span>
+        <span class="help-note">按住字幕时：</span>
+        <span><kbd>A</kbd>/<kbd>D</kbd> 向前/后微调移动字幕（按住 <kbd>Alt</kbd> 取消黏连联动）</span>
+        <span><kbd>Shift+A</kbd> 将字幕起点贴到前一条结尾</span>
+        <span><kbd>Shift+D</kbd> 将字幕终点贴到后一条开头</span>
+        <span class="help-note">注：微调幅度可在「设置-&gt;通用操作」中调节，默认 50ms</span>
+      </div>
+      <div class="help-subgroup">
         <span class="help-subtitle">功能快捷键</span>
         <span><kbd>T</kbd> 分配表情包</span>
         <span><kbd>1~5</kbd> 标记颜色 <kbd>0</kbd> 清除颜色</span>
@@ -340,7 +352,7 @@ __WAVEFORM_CSS__
       <div class="help-subgroup">
         <span class="help-subtitle">播放</span>
         <span class="help-important"><kbd>空格</kbd> 播放/暂停</span>
-        <span><kbd>←</kbd>/<kbd>→</kbd> 前后跳转 5 秒</span>
+        <span><kbd>←</kbd>/<kbd>→</kbd> 无选中时前后跳转 5 秒</span>
         <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> 倍速 ×0.5/重置/×2</span>
       </div>
       <div class="help-subgroup">
@@ -407,6 +419,7 @@ __WAVEFORM_CSS__
 
 <section class="editor-settings-panel" id="editor-settings-panel" aria-label="MAWE 设置" hidden>
   <div class="editor-settings-group">
+    <div class="editor-settings-sub-group">
     <span class="editor-settings-title">字幕列表和编辑区</span>
     <div class="editor-settings-item editor-settings-list-fields editor-settings-display-row">
       <span>字幕列表显示</span>
@@ -428,6 +441,9 @@ __WAVEFORM_CSS__
         <label class="toggle"><input type="checkbox" id="cue-editor-show-sticker"> 表情包</label>
       </span>
     </div>
+    </div>
+    <div class="editor-settings-sub-group">
+    <span class="editor-settings-title">拆分与合并</span>
     <label class="editor-settings-item" title="编辑字幕时，选择 Enter 或 Ctrl(Cmd)+Enter 在文字光标处拆分；另一个按键用于保存">
       字幕（编辑状态下）拆分按键
       <select id="split-key">
@@ -435,9 +451,19 @@ __WAVEFORM_CSS__
       <option value="enter">Enter</option>
     </select>
   </label>
+    <div class="editor-settings-field">
+    <label class="editor-settings-item" title="合并两条字幕时，中间插入的字符（如果不需要可以留空）">
+      合并字幕时插入字符
+      <input type="text" id="merge-join-text" placeholder="留空则直接拼接">
+    </label>
+    <small class="editor-settings-hint">合并两条字幕时，中间插入的字符（如果不需要可以留空）</small>
+    </div>
+    </div>
   </div>
   <div class="editor-settings-group">
+    <div class="editor-settings-sub-group">
     <span class="editor-settings-title">通用操作</span>
+    <div class="editor-settings-field">
     <label class="editor-settings-item" title="字幕列表与波形字幕块的普通单击行为；双击编辑不受影响">
       点击字幕块时
       <select id="click-behavior">
@@ -447,6 +473,7 @@ __WAVEFORM_CSS__
       </select>
     </label>
     <small class="editor-settings-hint" id="click-behavior-hint">暂停时只跳转，不自动播放；播放中跳转后继续播放。</small>
+    </div>
     <label class="editor-settings-item" id="click-target-field" title="字幕列表点击始终跳转到字幕开头；此设置只影响波形区点击字幕块">
       跳转目标
       <select id="click-target">
@@ -454,16 +481,29 @@ __WAVEFORM_CSS__
         <option value="pointer">鼠标所在位置</option>
       </select>
     </label>
+    <div class="editor-settings-field">
     <label class="toggle editor-settings-item" title="开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条">
       <input type="checkbox" id="select-group-members"> 同时选中分组内项目
     </label>
-    <label class="editor-settings-item" title="合并两条字幕时，中间插入的字符（如果不需要可以留空）">
-      合并字幕时插入字符
-      <input type="text" id="merge-join-text" placeholder="留空则直接拼接">
+    <small class="editor-settings-hint">选中字幕时，同时选中和它相同颜色/表情包的字幕</small>
+    </div>
+    </div>
+    <div class="editor-settings-sub-group">
+    <span class="editor-settings-title">按键调整字幕</span>
+    <div class="editor-settings-field">
+    <label class="editor-settings-item">
+      字幕按键微调幅度
+      <span class="gap-remove-number-control">
+        <input type="number" id="cue-move-step" min="10" max="2000" step="10" value="50" inputmode="numeric">
+        <span class="gap-remove-unit">ms</span>
+      </span>
     </label>
-    <small class="editor-settings-hint">合并两条字幕时，中间插入的字符（如果不需要可以留空）</small>
+    <small class="editor-settings-hint">具体用法详见帮助的「按键调整」区</small>
+    </div>
+    </div>
   </div>
   <div class="editor-settings-group">
+    <div class="editor-settings-sub-group">
     <span class="editor-settings-title">音频波形区</span>
     <span class="editor-settings-item" id="waveform-window-setting">显示窗口
       <span class="editor-settings-stepper">
@@ -500,12 +540,18 @@ __WAVEFORM_CSS__
     <label class="toggle editor-settings-item" title="在多行波形中，为成组（颜色/表情包）字幕在块上方显示队长皇冠与组内序号">
       <input type="checkbox" id="waveform-show-group-badges" checked> 显示分组标记
     </label>
+    <label class="toggle editor-settings-item" title="启用后，在波形空白区域按住左键拖动时，播放指针会实时跟随鼠标位置">
+      <input type="checkbox" id="waveform-drag-playhead" checked> 允许拖动指针
+    </label>
     <label class="editor-settings-item">禁用波形
       <select id="waveform-disabled-display">
         <option value="dim" selected>淡化</option>
         <option value="hidden">完全隐藏</option>
       </select>
     </label>
+    </div>
+    <div class="editor-settings-sub-group">
+    <span class="editor-settings-title">静音空隙</span>
     <label class="editor-settings-item" title="移除静音空隙的人工修正方式；Alt+左键始终切换整段；中键拖动默认增加静音，按住 Alt 才恢复声音，边界碰到另一空隙时会合并">
       空隙区段操作方式
       <select id="gap-remove-operation-mode">
@@ -514,26 +560,31 @@ __WAVEFORM_CSS__
         <option value="middle_drag">中键拖动</option>
       </select>
     </label>
-    <label class="toggle editor-settings-item" title="启用后，在波形空白区域按住左键拖动时，播放指针会实时跟随鼠标位置">
-      <input type="checkbox" id="waveform-drag-playhead" checked> 允许拖动指针
-    </label>
+    </div>
   </div>
   <div class="editor-settings-group">
+    <div class="editor-settings-sub-group">
     <span class="editor-settings-title">导出</span>
     <label class="toggle editor-settings-item" title="只把第一条导出字幕的起点拉到 00:00，保留其结束时间和后续字幕时间码；不改动工程或 OTIO 的时间轴">
       <input type="checkbox" id="export-start-at-zero"> SRT 首条从 0 开始
     </label>
+    <div class="editor-settings-field">
     <label class="toggle editor-settings-item" title="勾选后按颜色导出会先选择一个 SRT 文件名作为前缀，再下载「前缀_颜色.srt」；取消勾选则逐个颜色弹出保存对话框">
       <input type="checkbox" id="export-color-unified" checked> 彩色字幕统一导出
     </label>
     <small class="editor-settings-hint">选中时，会将所有不同颜色的字幕按「文件名_颜色」格式统一导出；否则每个颜色都会弹出单独的保存框。</small>
-    <div id="server-auto-save-settings" hidden>
+    </div>
+    </div>
+    <div id="server-auto-save-settings" class="editor-settings-sub-group" hidden>
       <span class="editor-settings-title">保存</span>
       <label class="toggle editor-settings-item" title="仅服务器版编辑器可将改动保存回当前工程文件">
         <input type="checkbox" id="auto-save-project" checked> 自动保存
       </label>
-      <label class="editor-settings-item" id="auto-save-interval-field" hidden>自动保存间隔（秒）
-        <input id="auto-save-interval" type="number" min="5" max="3600" step="1" value="30">
+      <label class="editor-settings-item" id="auto-save-interval-field" hidden>自动保存间隔
+        <span class="gap-remove-number-control">
+          <input id="auto-save-interval" type="number" min="5" max="3600" step="1" value="30">
+          <span class="gap-remove-unit">秒</span>
+        </span>
       </label>
     </div>
   </div>

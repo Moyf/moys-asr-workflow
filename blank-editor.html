@@ -727,24 +727,31 @@
   }
   .editor-settings-panel[hidden] { display: none; }
   .editor-settings-group {
-    display: flex; flex-wrap: wrap; align-content: flex-start; align-items: center; gap: 8px;
+    display: flex; flex-direction: column; align-items: stretch; gap: 16px;
     min-width: 0; padding: 8px 10px;
     background: var(--bg-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
   }
   .editor-settings-group[hidden] { display: none; }
+  .editor-settings-sub-group {
+    display: flex; flex-wrap: wrap; align-content: flex-start; align-items: center; gap: 8px;
+    width: 100%; min-width: 0;
+  }
+  .editor-settings-sub-group[hidden] { display: none; }
   .editor-settings-title {
-    flex: 0 0 100%; color: var(--text-secondary); font-size: 11px; font-weight: 600; letter-spacing: .08em;
-    text-transform: uppercase;
+    flex: 0 0 100%; color: var(--text-secondary); font-size: 0.8em; font-weight: 600; letter-spacing: .08em;
+    text-align: center; text-transform: uppercase;
   }
   .editor-settings-item { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; }
   .editor-settings-item[hidden] { display: none; }
-  .editor-settings-group > label.toggle.editor-settings-item { flex: 0 0 100%; }
-  /* 「保存」归入导出分组，但其标题、开关和间隔各占一行。 */
-  #server-auto-save-settings {
-    display: flex; flex: 0 0 100%; flex-direction: column; align-items: flex-start; gap: 8px;
+  .editor-settings-sub-group > label.toggle.editor-settings-item { flex: 0 0 100%; }
+  .editor-settings-field {
+    display: flex; flex: 0 0 100%; flex-direction: column; align-items: flex-start; gap: 3px;
+    min-width: 0;
   }
-  #server-auto-save-settings .editor-settings-title,
-  #server-auto-save-settings .editor-settings-item { width: 100%; }
+  .editor-settings-field[hidden] { display: none; }
+  .editor-settings-field > .editor-settings-item { width: auto; }
+  .editor-settings-field > label.toggle.editor-settings-item { align-self: stretch; width: 100%; }
+  .editor-settings-field > .editor-settings-hint { margin: 0; }
   .editor-settings-list-fields { flex-wrap: wrap; }
   .editor-settings-display-row { flex: 0 0 100%; flex-wrap: nowrap; align-items: flex-start; }
   .editor-settings-list-fields > span { color: var(--text-muted); }
@@ -916,7 +923,7 @@
   .help-replay-button {
     min-height: 26px; padding: 4px 8px; color: var(--bg-base); background: var(--amber);
     border: 1px solid var(--amber-hover); border-radius: var(--radius-sm); cursor: pointer;
-    font-size: 11px; font-weight: 800; transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+    font-size: 11px; font-weight: 500; transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
   }
   .help-replay-button:hover { color: var(--bg-base); background: var(--amber-hover); border-color: var(--amber-hover); }
   .help-replay-button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
@@ -1363,7 +1370,7 @@
   }
   .modal .modal-field-row button:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
   #sticker-root-modal .modal { width: 540px; }
-  .editor-settings-hint { display: block; font-size: 12px; color: var(--text-muted); margin: 2px 0 0; }
+  .editor-settings-hint { display: block; max-width: 100%; font-size: 12px; line-height: 1.35; color: var(--text-muted); margin: 0; }
   .editor-settings-hint[hidden] { display: none; }
   .modal .preview {
     font-size: 12px; color: var(--text-muted); margin-top: 6px; min-height: 16px;
@@ -2531,7 +2538,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-11 12:02</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-11 12:19</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -2815,6 +2822,18 @@
         <span class="help-important"><kbd>Enter</kbd> 编辑选中字幕（根据最后点击区域）</span>
       </div>
       <div class="help-subgroup">
+        <span class="help-subtitle">按键调整字幕</span>
+        <span class="help-note">选中字幕时：</span>
+        <span><kbd>←</kbd>/<kbd>→</kbd> 微调移动字幕</span>
+        <span><kbd data-mod-key>Ctrl+←/→</kbd> 微调字幕左边界（起点）</span>
+        <span><kbd data-mod-key>Ctrl+Shift+←/→</kbd> 微调字幕右边界（终点）</span>
+        <span class="help-note">按住字幕时：</span>
+        <span><kbd>A</kbd>/<kbd>D</kbd> 向前/后微调移动字幕（按住 <kbd>Alt</kbd> 取消黏连联动）</span>
+        <span><kbd>Shift+A</kbd> 将字幕起点贴到前一条结尾</span>
+        <span><kbd>Shift+D</kbd> 将字幕终点贴到后一条开头</span>
+        <span class="help-note">注：微调幅度可在「设置-&gt;通用操作」中调节，默认 50ms</span>
+      </div>
+      <div class="help-subgroup">
         <span class="help-subtitle">功能快捷键</span>
         <span><kbd>T</kbd> 分配表情包</span>
         <span><kbd>1~5</kbd> 标记颜色 <kbd>0</kbd> 清除颜色</span>
@@ -2847,7 +2866,7 @@
       <div class="help-subgroup">
         <span class="help-subtitle">播放</span>
         <span class="help-important"><kbd>空格</kbd> 播放/暂停</span>
-        <span><kbd>←</kbd>/<kbd>→</kbd> 前后跳转 5 秒</span>
+        <span><kbd>←</kbd>/<kbd>→</kbd> 无选中时前后跳转 5 秒</span>
         <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> 倍速 ×0.5/重置/×2</span>
       </div>
       <div class="help-subgroup">
@@ -2914,6 +2933,7 @@
 
 <section class="editor-settings-panel" id="editor-settings-panel" aria-label="MAWE 设置" hidden>
   <div class="editor-settings-group">
+    <div class="editor-settings-sub-group">
     <span class="editor-settings-title">字幕列表和编辑区</span>
     <div class="editor-settings-item editor-settings-list-fields editor-settings-display-row">
       <span>字幕列表显示</span>
@@ -2935,6 +2955,9 @@
         <label class="toggle"><input type="checkbox" id="cue-editor-show-sticker"> 表情包</label>
       </span>
     </div>
+    </div>
+    <div class="editor-settings-sub-group">
+    <span class="editor-settings-title">拆分与合并</span>
     <label class="editor-settings-item" title="编辑字幕时，选择 Enter 或 Ctrl(Cmd)+Enter 在文字光标处拆分；另一个按键用于保存">
       字幕（编辑状态下）拆分按键
       <select id="split-key">
@@ -2942,9 +2965,19 @@
       <option value="enter">Enter</option>
     </select>
   </label>
+    <div class="editor-settings-field">
+    <label class="editor-settings-item" title="合并两条字幕时，中间插入的字符（如果不需要可以留空）">
+      合并字幕时插入字符
+      <input type="text" id="merge-join-text" placeholder="留空则直接拼接">
+    </label>
+    <small class="editor-settings-hint">合并两条字幕时，中间插入的字符（如果不需要可以留空）</small>
+    </div>
+    </div>
   </div>
   <div class="editor-settings-group">
+    <div class="editor-settings-sub-group">
     <span class="editor-settings-title">通用操作</span>
+    <div class="editor-settings-field">
     <label class="editor-settings-item" title="字幕列表与波形字幕块的普通单击行为；双击编辑不受影响">
       点击字幕块时
       <select id="click-behavior">
@@ -2954,6 +2987,7 @@
       </select>
     </label>
     <small class="editor-settings-hint" id="click-behavior-hint">暂停时只跳转，不自动播放；播放中跳转后继续播放。</small>
+    </div>
     <label class="editor-settings-item" id="click-target-field" title="字幕列表点击始终跳转到字幕开头；此设置只影响波形区点击字幕块">
       跳转目标
       <select id="click-target">
@@ -2961,16 +2995,29 @@
         <option value="pointer">鼠标所在位置</option>
       </select>
     </label>
+    <div class="editor-settings-field">
     <label class="toggle editor-settings-item" title="开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条">
       <input type="checkbox" id="select-group-members"> 同时选中分组内项目
     </label>
-    <label class="editor-settings-item" title="合并两条字幕时，中间插入的字符（如果不需要可以留空）">
-      合并字幕时插入字符
-      <input type="text" id="merge-join-text" placeholder="留空则直接拼接">
+    <small class="editor-settings-hint">选中字幕时，同时选中和它相同颜色/表情包的字幕</small>
+    </div>
+    </div>
+    <div class="editor-settings-sub-group">
+    <span class="editor-settings-title">按键调整字幕</span>
+    <div class="editor-settings-field">
+    <label class="editor-settings-item">
+      字幕按键微调幅度
+      <span class="gap-remove-number-control">
+        <input type="number" id="cue-move-step" min="10" max="2000" step="10" value="50" inputmode="numeric">
+        <span class="gap-remove-unit">ms</span>
+      </span>
     </label>
-    <small class="editor-settings-hint">合并两条字幕时，中间插入的字符（如果不需要可以留空）</small>
+    <small class="editor-settings-hint">具体用法详见帮助的「按键调整」区</small>
+    </div>
+    </div>
   </div>
   <div class="editor-settings-group">
+    <div class="editor-settings-sub-group">
     <span class="editor-settings-title">音频波形区</span>
     <span class="editor-settings-item" id="waveform-window-setting">显示窗口
       <span class="editor-settings-stepper">
@@ -3007,12 +3054,18 @@
     <label class="toggle editor-settings-item" title="在多行波形中，为成组（颜色/表情包）字幕在块上方显示队长皇冠与组内序号">
       <input type="checkbox" id="waveform-show-group-badges" checked> 显示分组标记
     </label>
+    <label class="toggle editor-settings-item" title="启用后，在波形空白区域按住左键拖动时，播放指针会实时跟随鼠标位置">
+      <input type="checkbox" id="waveform-drag-playhead" checked> 允许拖动指针
+    </label>
     <label class="editor-settings-item">禁用波形
       <select id="waveform-disabled-display">
         <option value="dim" selected>淡化</option>
         <option value="hidden">完全隐藏</option>
       </select>
     </label>
+    </div>
+    <div class="editor-settings-sub-group">
+    <span class="editor-settings-title">静音空隙</span>
     <label class="editor-settings-item" title="移除静音空隙的人工修正方式；Alt+左键始终切换整段；中键拖动默认增加静音，按住 Alt 才恢复声音，边界碰到另一空隙时会合并">
       空隙区段操作方式
       <select id="gap-remove-operation-mode">
@@ -3021,26 +3074,31 @@
         <option value="middle_drag">中键拖动</option>
       </select>
     </label>
-    <label class="toggle editor-settings-item" title="启用后，在波形空白区域按住左键拖动时，播放指针会实时跟随鼠标位置">
-      <input type="checkbox" id="waveform-drag-playhead" checked> 允许拖动指针
-    </label>
+    </div>
   </div>
   <div class="editor-settings-group">
+    <div class="editor-settings-sub-group">
     <span class="editor-settings-title">导出</span>
     <label class="toggle editor-settings-item" title="只把第一条导出字幕的起点拉到 00:00，保留其结束时间和后续字幕时间码；不改动工程或 OTIO 的时间轴">
       <input type="checkbox" id="export-start-at-zero"> SRT 首条从 0 开始
     </label>
+    <div class="editor-settings-field">
     <label class="toggle editor-settings-item" title="勾选后按颜色导出会先选择一个 SRT 文件名作为前缀，再下载「前缀_颜色.srt」；取消勾选则逐个颜色弹出保存对话框">
       <input type="checkbox" id="export-color-unified" checked> 彩色字幕统一导出
     </label>
     <small class="editor-settings-hint">选中时，会将所有不同颜色的字幕按「文件名_颜色」格式统一导出；否则每个颜色都会弹出单独的保存框。</small>
-    <div id="server-auto-save-settings" hidden>
+    </div>
+    </div>
+    <div id="server-auto-save-settings" class="editor-settings-sub-group" hidden>
       <span class="editor-settings-title">保存</span>
       <label class="toggle editor-settings-item" title="仅服务器版编辑器可将改动保存回当前工程文件">
         <input type="checkbox" id="auto-save-project" checked> 自动保存
       </label>
-      <label class="editor-settings-item" id="auto-save-interval-field" hidden>自动保存间隔（秒）
-        <input id="auto-save-interval" type="number" min="5" max="3600" step="1" value="30">
+      <label class="editor-settings-item" id="auto-save-interval-field" hidden>自动保存间隔
+        <span class="gap-remove-number-control">
+          <input id="auto-save-interval" type="number" min="5" max="3600" step="1" value="30">
+          <span class="gap-remove-unit">秒</span>
+        </span>
       </label>
     </div>
   </div>
@@ -4283,7 +4341,7 @@
     '加载媒体': 'Load media', '加载字幕': 'Load subtitles', '保存工程': 'Save project', '另存为…': 'Save as…', '保存': 'Save', '保存成功！': 'Saved!', '保存失败': 'Save failed',
     'item 内容': 'Item content', '字幕内容': 'Subtitle content', '关闭提示': 'Dismiss notification',
     '📥 松开以加载文件（视频 / 音频 / JSON / SRT）': '📥 Drop to load files (video / audio / JSON / SRT)',
-    '自动保存': 'Auto-save', '自动保存间隔（秒）': 'Auto-save interval (seconds)',
+    '自动保存': 'Auto-save', '自动保存间隔': 'Auto-save interval', '秒': 'sec',
     '导出字幕': 'Export subtitles', '导出字幕 ▾': 'Export subtitles ▾',
     '导出完整字幕': 'Export full subtitles', '导出完整字幕（SRT）': 'Export full subtitles (SRT)',
     '按颜色导出字幕': 'Export by color', '按颜色导出字幕（SRT）': 'Export by color (SRT)',
@@ -4362,7 +4420,7 @@
     '点击字幕列表时自动滚动': 'Auto-scroll when clicking the subtitle list',
     '关闭后，通过字幕列表点击字幕时不会自动滚动列表': 'When disabled, clicking a subtitle in the list will not scroll the list',
     '字幕编辑显示': 'Subtitle editor', '跳转按钮': 'Navigation buttons', '前后跳转': 'Navigation buttons', '时间操作': 'Time actions',
-    '操作': 'Behavior', '通用操作': 'General', '单击行为': 'Click behavior', '点击字幕块时': 'Click subtitle behavior', '仅选中（不跳转）': 'Select only (do not seek)', '选中并跳转（自动播放）': 'Select and seek (autoplay)',
+    '操作': 'Behavior', '通用操作': 'General', '按键调整字幕': 'Keyboard subtitle adjustment', '单击行为': 'Click behavior', '点击字幕块时': 'Click subtitle behavior', '仅选中（不跳转）': 'Select only (do not seek)', '选中并跳转（自动播放）': 'Select and seek (autoplay)',
     '选中并跳转': 'Select and seek', '跳转目标': 'Seek target', '字幕开头': 'Subtitle start', '鼠标所在位置': 'Pointer position',
     '暂停时只跳转，不自动播放；播放中跳转后继续播放。': 'When paused, seek without starting playback; while playing, keep playing after seeking.',
     '跳转到字幕起点，并在暂停时自动开始播放。': 'Seek to the subtitle start and start playback when paused.',
@@ -4371,10 +4429,10 @@
     '合并字幕时插入字符': 'Merge separator', '留空则直接拼接': 'Leave blank to join directly',
     '合并两条字幕时，中间插入的字符（如果不需要可以留空）': 'Characters inserted between merged subtitles (leave blank to join directly)',
     '字幕编辑拆分按键': 'Subtitle split key', '字幕（编辑状态下）拆分按键': 'Subtitle split key (while editing)',
-    '同时选中分组内项目': 'Select all group members', '或': 'or',
+    '同时选中分组内项目': 'Select all group members', '选中字幕时，同时选中和它相同颜色/表情包的字幕': 'When a subtitle is selected, also select subtitles with the same color or sticker', '或': 'or',
     '显示窗口': 'Visible window', '振幅': 'Amplitude',
     '5 秒': '5 sec', '10 秒': '10 sec', '20 秒': '20 sec', '30 秒': '30 sec',
-    '每行长度': 'Seconds per row', '每行高度': 'Row height',
+    '每行长度': 'Seconds per row', '每行高度': 'Row height', '静音空隙': 'Silent gaps',
     '空隙区段操作方式': 'Gap region operation', 'Alt+点击': 'Alt+click',
     '中键拖动': 'Middle-button drag', '显示分组标记': 'Show group markers', '允许拖动指针': 'Drag to move playhead',
     '彩色字幕统一导出': 'Export colored subtitles together',
@@ -4411,6 +4469,20 @@
     '播放与编辑': 'Playback and editing', '空格': 'Space',
     '选择工具': 'Select tool', '分割工具': 'Razor tool',
     '播放/暂停': 'Play/pause', '前后跳转 5 秒': 'Seek back/forward 5 sec',
+    '无选中时前后跳转 5 秒': 'Seek back/forward 5 sec with no selection',
+    '选中字幕时：': 'With subtitles selected:',
+    '微调移动字幕': 'Fine-tune subtitle movement',
+    '微调字幕左边界（起点）': 'Fine-tune the subtitle left edge (start)',
+    '微调字幕右边界（终点）': 'Fine-tune the subtitle right edge (end)',
+    '按住字幕时：': 'While holding a subtitle:',
+    '向前/后微调移动字幕（按住': 'Fine-tune subtitle movement backward/forward (hold',
+    '取消黏连联动': 'disable linked-boundary ripple',
+    '取消黏连联动）': 'to disable linked-boundary ripple)',
+    '将字幕起点贴到前一条结尾': 'Snap the subtitle start to the previous end',
+    '将字幕终点贴到后一条开头': 'Snap the subtitle end to the next start',
+    '注：微调幅度可在「设置->通用操作」中调节，默认 50ms': 'Note: Adjust the fine-tuning amount in “Settings -> General”; the default is 50 ms',
+    '字幕按键微调幅度': 'Subtitle keyboard adjustment amount',
+    '具体用法详见帮助的「按键调整」区': 'See the “Keyboard adjustment” section in Help for details',
     '上一条字幕': 'Previous subtitle', '下一条字幕': 'Next subtitle',
     '向前多选': 'Extend selection backward', '向后多选': 'Extend selection forward',
     '在红色播放指针处拆分字幕': 'Split subtitle at the red playhead',
@@ -4515,6 +4587,7 @@
     '只显示超过阈值的字幕（再次点击关闭）': 'Show only subtitles over the threshold (click again to turn off)',
     '查看鼠标操作与键盘快捷键': 'View mouse and keyboard shortcuts',
     '展开字幕、波形与导出设置': 'Open subtitle, waveform, and export settings',
+    '选中字幕后，方向键和按住字幕块/边界时的 A/D 每次调整的毫秒数': 'Milliseconds adjusted per arrow-key press or A/D press while holding a subtitle block or edge',
     '关闭（Esc）': 'Close (Esc)',
     '关闭帮助窗口': 'Close the help window',
     '关闭移除静音空隙工具窗': 'Close the silent-gap tool',
@@ -4528,6 +4601,7 @@
     '如 D:/AI/AI音频转录/表情包': 'e.g. D:/Media/Stickers',
     '下次不带 JSON 路径启动服务器时，自动恢复上次打开的工程': 'Automatically restore the last project when the server starts without a JSON path',
     '只影响导出的 SRT，不改动工程或 OTIO 的时间轴': 'Only affects exported SRT; project and OTIO timelines are unchanged',
+    '只把第一条导出字幕的起点拉到 00:00，保留其结束时间和后续字幕时间码；不改动工程或 OTIO 的时间轴': 'Move only the first exported subtitle start to 00:00; keep its end time and later subtitle timecodes; project and OTIO timelines are unchanged',
     'MAWE 设置': 'MAWE settings', '操作帮助': 'Controls help',
     '快速上手': 'Quick start', '重新查看快速上手': 'Replay quick start', '跳过': 'Skip',
     '打开工程后开始快速上手': 'Open a project to start the quick start guide',
@@ -5563,6 +5637,206 @@
       right.items = remapItems(right.items, oldStart, right.end, next, right.end);
     }
     return segments;
+  }
+
+  function snapshotTiming(segment) {
+    return {
+      start: Number(segment.start),
+      end: Number(segment.end),
+      items: Array.isArray(segment.items)
+        ? segment.items.map((item) => ({ ...item })) : segment.items,
+    };
+  }
+
+  function isAttached(left, right) {
+    return !!left && !!right && Number(left.end) === Number(right.start);
+  }
+
+  function normalizedIndices(segments, indices) {
+    return [...new Set(Array.from(indices || [])
+      .map((idx) => Number(idx))
+      .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < segments.length))]
+      .sort((a, b) => a - b);
+  }
+
+  // Keyboard movement is a small, discrete counterpart to moving a waveform
+  // block. When the selected range is attached to a neighboring cue, the
+  // shared boundary follows the moved range: moving away expands the neighbor
+  // and moving toward it compresses the neighbor. Alt keeps both neighbors
+  // untouched, while the normal no-overlap and minimum-duration limits still
+  // apply.
+  function planMoveStep(segments, indices, deltaMs, durationMs, {
+    sticky = true,
+    minDuration = MIN_CUE_MS,
+  } = {}) {
+    const selectedIndices = normalizedIndices(segments, indices);
+    if (!selectedIndices.length) {
+      return { changed: false, appliedDelta: 0, indices: [], affectedIndices: [] };
+    }
+    const selected = new Set(selectedIndices);
+    const originals = new Map(selectedIndices.map((idx) => [idx, snapshotTiming(segments[idx])]));
+    const attachments = [];
+    const attachmentOriginals = new Map();
+    const previousAttachments = [];
+    const previousAttachmentOriginals = new Map();
+    let minDelta = -Infinity;
+    let maxDelta = Infinity;
+    const timelineDuration = Number(durationMs);
+
+    for (const idx of selectedIndices) {
+      const original = originals.get(idx);
+      minDelta = Math.max(minDelta, -original.start);
+      if (Number.isFinite(timelineDuration) && timelineDuration > 0) {
+        maxDelta = Math.min(maxDelta, timelineDuration - original.end);
+      }
+      const previous = segments[idx - 1];
+      if (previous && !selected.has(idx - 1)) {
+        if (sticky && isAttached(previous, segments[idx])) {
+          const previousOriginal = snapshotTiming(previous);
+          previousAttachments.push({ index: idx, previousIndex: idx - 1 });
+          previousAttachmentOriginals.set(idx - 1, previousOriginal);
+          minDelta = Math.max(minDelta, previousOriginal.start + minDuration - original.start);
+        } else {
+          minDelta = Math.max(minDelta, Number(previous.end) - original.start);
+        }
+      }
+      const next = segments[idx + 1];
+      if (!next || selected.has(idx + 1)) continue;
+      if (sticky && isAttached(segments[idx], next)) {
+        const nextOriginal = snapshotTiming(next);
+        attachments.push({ index: idx, nextIndex: idx + 1 });
+        attachmentOriginals.set(idx + 1, nextOriginal);
+        // The next cue's start follows the selected cue's end, so its end
+        // and minimum duration limit how far the shared boundary can move.
+        maxDelta = Math.min(maxDelta, nextOriginal.end - minDuration - original.end);
+      } else {
+        // An unlinked following cue stays fixed and may not be overlapped.
+        maxDelta = Math.min(maxDelta, Number(next.start) - original.end);
+      }
+    }
+
+    const requested = Number(deltaMs);
+    const rounded = Number.isFinite(requested) ? roundMs(requested) : 0;
+    const appliedDelta = clamp(rounded, minDelta, maxDelta);
+    const affectedIndices = [...selectedIndices];
+    attachments.forEach(({ nextIndex }) => affectedIndices.push(nextIndex));
+    previousAttachments.forEach(({ previousIndex }) => affectedIndices.push(previousIndex));
+    return {
+      changed: appliedDelta !== 0,
+      appliedDelta,
+      indices: selectedIndices,
+      affectedIndices: [...new Set(affectedIndices)].sort((a, b) => a - b),
+      originals,
+      attachments,
+      attachmentOriginals,
+      previousAttachments,
+      previousAttachmentOriginals,
+    };
+  }
+
+  function applyMoveStep(segments, indices, deltaMs, durationMs, options = {}) {
+    const plan = planMoveStep(segments, indices, deltaMs, durationMs, options);
+    if (!plan.changed) return plan;
+    const delta = plan.appliedDelta;
+    plan.indices.forEach((idx) => {
+      const original = plan.originals.get(idx);
+      const segment = segments[idx];
+      segment.start = original.start + delta;
+      segment.end = original.end + delta;
+      if (Array.isArray(original.items)) {
+        segment.items = original.items.map((item) => ({
+          ...item,
+          start: item.start + delta,
+          end: item.end + delta,
+        }));
+      }
+    });
+    plan.attachments.forEach(({ nextIndex }) => {
+      const original = plan.attachmentOriginals.get(nextIndex);
+      const segment = segments[nextIndex];
+      segment.start = original.start + delta;
+      segment.items = remapItems(original.items, original.start, original.end, segment.start, segment.end);
+    });
+    plan.previousAttachments.forEach(({ previousIndex }) => {
+      const original = plan.previousAttachmentOriginals.get(previousIndex);
+      const segment = segments[previousIndex];
+      segment.end = original.end + delta;
+      segment.items = remapItems(original.items, original.start, original.end, segment.start, segment.end);
+    });
+    return plan;
+  }
+
+  function planBoundaryStep(segments, index, edge, deltaMs, durationMs, {
+    sticky = true,
+    minDuration = MIN_CUE_MS,
+  } = {}) {
+    const target = segments[index];
+    if (!target || (edge !== 'start' && edge !== 'end')) {
+      return { changed: false, appliedDelta: 0, indices: [], affectedIndices: [] };
+    }
+    const previous = segments[index - 1];
+    const next = segments[index + 1];
+    const linkedNeighbor = edge === 'start'
+      ? (sticky && isAttached(previous, target) ? previous : null)
+      : (sticky && isAttached(target, next) ? next : null);
+    const current = edge === 'start' ? Number(target.start) : Number(target.end);
+    const requested = Number(deltaMs);
+    const rounded = Number.isFinite(requested) ? roundMs(requested) : 0;
+    let lower;
+    let upper;
+    if (edge === 'start') {
+      lower = linkedNeighbor ? Number(previous.start) + minDuration : Number(previous?.end ?? 0);
+      upper = Number(target.end) - minDuration;
+    } else {
+      lower = Number(target.start) + minDuration;
+      upper = linkedNeighbor
+        ? Number(next.end) - minDuration
+        : Number(next?.start ?? durationMs);
+      if (!Number.isFinite(upper) || upper <= 0) upper = Infinity;
+    }
+    const appliedDelta = clamp(current + rounded, lower, upper) - current;
+    const affectedIndices = linkedNeighbor
+      ? [index, edge === 'start' ? index - 1 : index + 1].sort((a, b) => a - b)
+      : [index];
+    const snapshots = new Map(affectedIndices.map((idx) => [idx, snapshotTiming(segments[idx])]));
+    return {
+      changed: appliedDelta !== 0,
+      appliedDelta,
+      index,
+      edge,
+      linked: !!linkedNeighbor,
+      neighborIndex: linkedNeighbor ? (edge === 'start' ? index - 1 : index + 1) : -1,
+      affectedIndices,
+      snapshots,
+    };
+  }
+
+  function applyBoundaryStep(segments, index, edge, deltaMs, durationMs, options = {}) {
+    const plan = planBoundaryStep(segments, index, edge, deltaMs, durationMs, options);
+    if (!plan.changed) return plan;
+    const target = segments[plan.index];
+    const oldTarget = plan.snapshots.get(plan.index);
+    const value = (plan.edge === 'start' ? oldTarget.start : oldTarget.end) + plan.appliedDelta;
+    if (plan.edge === 'start') {
+      target.start = value;
+      target.items = remapItems(oldTarget.items, oldTarget.start, oldTarget.end, target.start, target.end);
+      if (plan.linked) {
+        const previous = segments[plan.neighborIndex];
+        const oldPrevious = plan.snapshots.get(plan.neighborIndex);
+        previous.end = value;
+        previous.items = remapItems(oldPrevious.items, oldPrevious.start, oldPrevious.end, previous.start, previous.end);
+      }
+    } else {
+      target.end = value;
+      target.items = remapItems(oldTarget.items, oldTarget.start, oldTarget.end, target.start, target.end);
+      if (plan.linked) {
+        const next = segments[plan.neighborIndex];
+        const oldNext = plan.snapshots.get(plan.neighborIndex);
+        next.start = value;
+        next.items = remapItems(oldNext.items, oldNext.start, oldNext.end, next.start, next.end);
+      }
+    }
+    return plan;
   }
 
   // Safe split point selection for the razor tool. Given a segment and a
@@ -7428,6 +7702,9 @@
       if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
+      // 字幕块会阻止 pointerdown 冒泡到 pane；主动接管焦点，确保按住
+      // 字幕块/边界后，左手 A/D 不会仍被设置输入框等控件拦截。
+      this.focusWaveform();
       // 剃刀工具：无修饰键左键点击字幕块（非手柄）时，在指针位置安全拆分。
       // 修饰键（Alt/Ctrl(Cmd)/Shift）仍走原行为，便于拆分后立即多选/禁用。
       const targetHandle = event.target.closest('.waveform-cue-handle');
@@ -7488,9 +7765,18 @@
         items: Array.isArray(segments[idx].items)
           ? segments[idx].items.map((item) => ({ ...item })) : segments[idx].items,
       }]));
+      const cancelIndices = new Set(dragIndices);
+      if (kind === 'move') {
+        dragIndices.forEach((idx) => {
+          if (segments[idx - 1] && isAttached(segments[idx - 1], segments[idx])) cancelIndices.add(idx - 1);
+          if (segments[idx + 1] && isAttached(segments[idx], segments[idx + 1])) cancelIndices.add(idx + 1);
+        });
+      }
+      const cancelOriginals = new Map([...cancelIndices].map((idx) => [idx, snapshotTiming(segments[idx])]));
       this.drag = {
         pointerId: event.pointerId,
         startClientX: event.clientX,
+        currentClientX: event.clientX,
         rangeMs: geometry.endMs - geometry.startMs,
         rowWidth: geometry.width,
         geometry,
@@ -7499,6 +7785,8 @@
         indices: dragIndices,
         row,
         originals,
+        cancelOriginals,
+        commitIndices: new Set(dragIndices),
         started: false,
         changed: false,
         seekedOnPointerDown: false,
@@ -7546,6 +7834,7 @@
       this.drag = {
         pointerId: event.pointerId,
         startClientX: event.clientX,
+        currentClientX: event.clientX,
         rangeMs: geometry.endMs - geometry.startMs,
         rowWidth: geometry.width,
         geometry,
@@ -7556,6 +7845,8 @@
         indices: [movedIndex],
         row,
         originals,
+        cancelOriginals: new Map([[movedIndex, snapshotTiming(segments[movedIndex])]]),
+        commitIndices: new Set([movedIndex]),
         started: false,
         changed: false,
       };
@@ -7563,6 +7854,175 @@
       window.addEventListener('pointermove', this._dragMove = (moveEvent) => this.moveCueDrag(moveEvent));
       window.addEventListener('pointerup', this._dragEnd = (upEvent) => this.endCueDrag(upEvent), { once: true });
       window.addEventListener('pointercancel', this._dragEnd, { once: true });
+    }
+
+    cueDragDurationMs() {
+      return Number(this.durationMs) > 0 ? Number(this.durationMs) : Infinity;
+    }
+
+    captureCueDragOriginals(drag) {
+      const segments = this.options.getSegments();
+      drag.originals = new Map(drag.indices.map((idx) => [idx, snapshotTiming(segments[idx])]));
+    }
+
+    adjustSelectedByKeyboard(deltaMs, altKey = false) {
+      const indices = normalizedIndices(this.options.getSegments(), this.options.getSelection?.());
+      if (!indices.length) return false;
+      const segments = this.options.getSegments();
+      const plan = planMoveStep(
+        segments,
+        indices,
+        deltaMs,
+        this.cueDragDurationMs(),
+        { sticky: !altKey },
+      );
+      if (!plan.changed) return false;
+      this.options.onBeginEdit?.('移动字幕时间');
+      const result = applyMoveStep(
+        segments,
+        indices,
+        deltaMs,
+        this.cueDragDurationMs(),
+        { sticky: !altKey },
+      );
+      result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
+      this.options.onCommitEdit?.(result.indices, 'move');
+      this.refreshCueOverlay();
+      return true;
+    }
+
+    adjustSelectedBoundaryByKeyboard(deltaMs, edge, altKey = false) {
+      const segments = this.options.getSegments();
+      const indices = normalizedIndices(segments, this.options.getSelection?.());
+      if (!indices.length || (edge !== 'start' && edge !== 'end')) return false;
+      const index = edge === 'start' ? indices[0] : indices[indices.length - 1];
+      const options = { sticky: !altKey };
+      const plan = planBoundaryStep(segments, index, edge, deltaMs, this.cueDragDurationMs(), options);
+      if (!plan.changed) return false;
+      this.options.onBeginEdit?.(`${edge === 'start' ? '调整字幕起点' : '调整字幕终点'}`);
+      const result = applyBoundaryStep(
+        segments,
+        index,
+        edge,
+        deltaMs,
+        this.cueDragDurationMs(),
+        options,
+      );
+      result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
+      this.options.onCommitEdit?.(
+        result.affectedIndices,
+        result.linked ? 'resize-boundary' : 'resize-boundary-independent',
+      );
+      this.refreshCueOverlay();
+      return true;
+    }
+
+    adjustActiveCueDragBy(deltaMs, altKey = false) {
+      const drag = this.drag;
+      if (!drag) return false;
+      const segments = this.options.getSegments();
+      const durationMs = this.cueDragDurationMs();
+      let plan;
+      let apply;
+      if (drag.kind === 'move') {
+        const options = { sticky: !altKey };
+        plan = planMoveStep(segments, drag.indices, deltaMs, durationMs, options);
+        apply = () => applyMoveStep(segments, drag.indices, deltaMs, durationMs, options);
+      } else {
+        const edge = drag.kind === 'resize-left' || drag.kind === 'resize-boundary-independent'
+          ? 'start' : 'end';
+        const options = {
+          sticky: drag.kind !== 'resize-boundary-independent' && !altKey,
+        };
+        plan = planBoundaryStep(segments, drag.index, edge, deltaMs, durationMs, options);
+        apply = () => applyBoundaryStep(segments, drag.index, edge, deltaMs, durationMs, options);
+      }
+      // A held drag consumes A/D even when the current edge is already at a
+      // limit, so the key never falls through to subtitle navigation.
+      if (!plan.changed) return true;
+      if (!drag.started) {
+        drag.started = true;
+        const label = drag.kind === 'move' ? '移动字幕时间'
+          : drag.kind === 'resize-boundary-independent' ? '独立调整字幕边界'
+            : '调整字幕边界';
+        this.options.onBeginEdit?.(label);
+      }
+      const result = apply();
+      result.affectedIndices.forEach((idx) => drag.commitIndices.add(idx));
+      drag.changed = true;
+      this.captureCueDragOriginals(drag);
+      drag.startClientX = drag.currentClientX;
+      this.scheduleRefreshCueBlocks();
+      return true;
+    }
+
+    snapActiveCueBoundaryByKeyboard(direction) {
+      const drag = this.drag;
+      if (!drag || drag.kind !== 'move' || (direction !== -1 && direction !== 1)) return false;
+      const segments = this.options.getSegments();
+      const indices = normalizedIndices(segments, drag.indices);
+      if (!indices.length) return true;
+
+      const index = direction < 0 ? indices[0] : indices[indices.length - 1];
+      const neighborIndex = direction < 0 ? index - 1 : index + 1;
+      const segment = segments[index];
+      const neighbor = segments[neighborIndex];
+      // 与普通 A/D 一样，按住字幕块时即使已经到达边界也要消费按键，
+      // 避免 Shift+A/D 穿透成“选择前后字幕”。
+      if (!segment || !neighbor) return true;
+
+      const edge = direction < 0 ? 'start' : 'end';
+      const current = Number(segment[edge]);
+      const target = roundMs(direction < 0 ? neighbor.end : neighbor.start);
+      const lower = edge === 'start' ? 0 : Number(segment.start) + MIN_CUE_MS;
+      const upper = edge === 'start'
+        ? Number(segment.end) - MIN_CUE_MS
+        : this.cueDragDurationMs();
+      if (!Number.isFinite(current) || !Number.isFinite(target)
+          || target < lower || target > upper || target === current) return true;
+
+      if (!drag.started) {
+        drag.started = true;
+        this.options.onBeginEdit?.('贴近字幕边界');
+      }
+      const original = snapshotTiming(segment);
+      segment[edge] = target;
+      segment.items = remapItems(
+        original.items,
+        original.start,
+        original.end,
+        segment.start,
+        segment.end,
+      );
+      drag.commitIndices.add(index);
+      drag.changed = true;
+      this.captureCueDragOriginals(drag);
+      drag.startClientX = drag.currentClientX;
+      this.scheduleRefreshCueBlocks();
+      return true;
+    }
+
+    cancelCueDrag() {
+      const drag = this.drag;
+      if (!drag) return false;
+      window.removeEventListener('pointermove', this._dragMove);
+      window.removeEventListener('pointerup', this._dragEnd);
+      window.removeEventListener('pointercancel', this._dragEnd);
+      const segments = this.options.getSegments();
+      drag.cancelOriginals.forEach((original, idx) => {
+        const segment = segments[idx];
+        if (!segment) return;
+        segment.start = original.start;
+        segment.end = original.end;
+        segment.items = Array.isArray(original.items)
+          ? original.items.map((item) => ({ ...item })) : original.items;
+      });
+      this.content.querySelectorAll('.waveform-cue-block.dragging')
+        .forEach((block) => block.classList.remove('dragging'));
+      this.drag = null;
+      this.refreshCueOverlay();
+      this.setStatus('已取消字幕调整');
+      return true;
     }
 
     applyIndependentBoundaryDrag(drag, rawDelta) {
@@ -7748,6 +8208,7 @@
       const drag = this.drag;
       if (!drag || event.pointerId !== drag.pointerId) return;
       event.preventDefault();
+      drag.currentClientX = event.clientX;
       const deltaMs = ((event.clientX - drag.startClientX) / drag.rowWidth) * drag.rangeMs;
       if (!drag.started && Math.abs(deltaMs) < 2) return;
       if (!drag.started) {
@@ -7885,6 +8346,18 @@
       window.removeEventListener('pointercancel', this._dragEnd);
       this.content.querySelectorAll('.waveform-cue-block.dragging').forEach((block) => block.classList.remove('dragging'));
       this.drag = null;
+      if (event.type === 'pointercancel') {
+        drag.cancelOriginals.forEach((original, idx) => {
+          const segment = this.options.getSegments()[idx];
+          if (!segment) return;
+          segment.start = original.start;
+          segment.end = original.end;
+          segment.items = Array.isArray(original.items)
+            ? original.items.map((item) => ({ ...item })) : original.items;
+        });
+        this.refreshCueOverlay();
+        return;
+      }
       if (!drag.changed) {
         // select-only 只选中；两个跳转模式按设置跳到字幕开头或鼠标位置。
         const clickBehavior = this.options.getClickBehavior?.();
@@ -7893,7 +8366,7 @@
         }
         return;
       }
-      drag.indices.forEach((idx) => { this.options.getSegments()[idx]._dirty = true; });
+      drag.commitIndices.forEach((idx) => { this.options.getSegments()[idx]._dirty = true; });
       this.options.onCommitEdit(drag.indices, drag.kind);
       this.refreshCueOverlay();
     }
@@ -7975,6 +8448,8 @@
       sourceForFile,
       applySharedBoundary,
       applyIndependentEdge,
+      applyMoveStep,
+      applyBoundaryStep,
       splitSegmentAtTime,
       normalizeNewCueRange,
       clampWaveformScale,
@@ -8004,11 +8479,22 @@ const SERVER_CONFIG = null;
 const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';
 const CLICK_BEHAVIOR_VALUES = new Set(['select-only', 'select-and-seek', 'select-and-play']);
 const CLICK_TARGET_VALUES = new Set(['cue-start', 'pointer']);
+const CUE_MOVE_STEP_MIN_MS = 10;
+const CUE_MOVE_STEP_MAX_MS = 2000;
+const DEFAULT_CUE_MOVE_STEP_MS = 50;
 function normalizeClickBehavior(value) {
   return CLICK_BEHAVIOR_VALUES.has(value) ? value : 'select-and-seek';
 }
 function normalizeClickTarget(value) {
   return CLICK_TARGET_VALUES.has(value) ? value : 'cue-start';
+}
+
+function clampCueMoveStepMs(value) {
+  const rounded = Math.round(Number(value));
+  return Math.min(
+    CUE_MOVE_STEP_MAX_MS,
+    Math.max(CUE_MOVE_STEP_MIN_MS, Number.isFinite(rounded) ? rounded : DEFAULT_CUE_MOVE_STEP_MS),
+  );
 }
 const DEFAULT_EDITOR_SETTINGS = {
   splitKey: 'ctrl-enter',
@@ -8047,6 +8533,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   clickBehavior: 'select-and-seek',
   // 波形字幕块的跳转目标；字幕列表点击始终跳转到字幕开头。
   clickTarget: 'cue-start',
+  // 选中字幕后用方向键 / A-D 微调时间的幅度。
+  cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
   // 界面主题：dark（默认）/ light。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
   theme: 'dark',
 };
@@ -8093,6 +8581,7 @@ function readEditorSettings() {
       stickerOverlayEnabled: saved.stickerOverlayEnabled === true,
       clickBehavior: normalizeClickBehavior(saved.clickBehavior),
       clickTarget: normalizeClickTarget(saved.clickTarget),
+      cueMoveStepMs: clampCueMoveStepMs(saved.cueMoveStepMs),
       theme: saved.theme === 'light' ? 'light' : 'dark',
     };
   } catch (_) {
@@ -8415,6 +8904,7 @@ const helpSplitKey = document.getElementById('help-split-key');
 const clickBehaviorSelect = document.getElementById('click-behavior');
 const clickTargetField = document.getElementById('click-target-field');
 const clickTargetSelect = document.getElementById('click-target');
+const cueMoveStepInput = document.getElementById('cue-move-step');
 const replaceModal = document.getElementById('replace-modal');
 const stickerModal = document.getElementById('sticker-modal');
 const stickerPreviewModal = document.getElementById('sticker-preview-modal');
@@ -8648,6 +9138,7 @@ if (autoSaveIntervalInput) autoSaveIntervalInput.value = String(EDITOR_SETTINGS.
 if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.stickerOverlayEnabled;
 if (clickBehaviorSelect) clickBehaviorSelect.value = EDITOR_SETTINGS.clickBehavior;
 if (clickTargetSelect) clickTargetSelect.value = EDITOR_SETTINGS.clickTarget;
+if (cueMoveStepInput) cueMoveStepInput.value = String(EDITOR_SETTINGS.cueMoveStepMs);
 applyCueListDisplaySettings();
 applyCueEditorDisplaySettings();
 applySubtitleAppearance();
@@ -8823,6 +9314,11 @@ clickBehaviorSelect?.addEventListener('change', () => {
 });
 clickTargetSelect?.addEventListener('change', () => {
   updateEditorSettings({ clickTarget: normalizeClickTarget(clickTargetSelect.value) });
+});
+cueMoveStepInput?.addEventListener('change', () => {
+  const value = clampCueMoveStepMs(cueMoveStepInput.value);
+  cueMoveStepInput.value = String(value);
+  updateEditorSettings({ cueMoveStepMs: value });
 });
 subtitleFontSizeSelect?.addEventListener('change', () => {
   const value = subtitleFontSizeSelect.value;
@@ -10763,6 +11259,14 @@ document.addEventListener('keydown', (e) => {
   else finishEdit(true);
 }, true);
 
+// 按住字幕块/边界调整时，Esc 取消本次预览并恢复按下前的时间码。
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || editingState) return;
+  if (!waveformEditor?.cancelCueDrag?.()) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+}, true);
+
 // Esc：非字幕文本编辑状态下清除当前字幕选择；输入框和内联编辑继续保留原生/编辑行为。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || editingState || selectedIdxs.size === 0) return;
@@ -10958,18 +11462,35 @@ mediaFullscreen?.addEventListener('click', async () => {
 });
 document.addEventListener('fullscreenchange', syncMediaControls);
 
-// ←/→：复用媒体控制条的 ±5 秒跳转；文本输入、表单控件和预览框保留原生方向键行为。
+// ←/→：无选中字幕时复用媒体控制条的 ±5 秒跳转；选中字幕时改为按设置的
+// 微调幅度调整时间。Ctrl(Cmd)+方向键调整左边界，Ctrl(Cmd)+Shift+方向键调整右边界。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
   if (editingState || isTextEditingTarget(e)) return;
   const target = e.target instanceof Element ? e.target : document.activeElement;
   if (target?.closest?.('.geo-box, input, select, textarea')) return;
-  if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
-  if (!hasLoadedMedia()) return;
   if (!isPlaybackKeyboardTarget(e) && isNativeKeyboardControl(e)) return;
+  if (isPlayerKeyboardTarget(e)) return;
+  const commandKey = e.ctrlKey || e.metaKey;
+  if (e.shiftKey && !commandKey) return;
+  const direction = e.key === 'ArrowLeft' ? -1 : 1;
+  if (selectedIdxs.size > 0 && waveformEditor) {
+    const deltaMs = direction * EDITOR_SETTINGS.cueMoveStepMs;
+    if (commandKey) {
+      if (e.shiftKey) waveformEditor.adjustSelectedBoundaryByKeyboard(deltaMs, 'end', e.altKey);
+      else waveformEditor.adjustSelectedBoundaryByKeyboard(deltaMs, 'start', e.altKey);
+    } else {
+      waveformEditor.adjustSelectedByKeyboard(deltaMs, e.altKey);
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  if (commandKey || e.altKey) return;
+  if (!hasLoadedMedia()) return;
   e.preventDefault();
   e.stopPropagation();
-  seekMediaBy(e.key === 'ArrowLeft' ? -5 : 5);
+  seekMediaBy(direction * 5);
 }, true);
 
 function isSpaceKey(e) {
@@ -11089,9 +11610,23 @@ document.addEventListener('keydown', (e) => {
   if (projectMediaModal.classList.contains('show')) return;
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
-  if (e.ctrlKey || e.altKey || e.metaKey) return;
-
+  if (e.ctrlKey || e.metaKey) return;
   const direction = (key === 'a' || key === 'w') ? -1 : 1;
+  if (e.shiftKey && !e.altKey && (key === 'a' || key === 'd')
+      && waveformEditor?.snapActiveCueBoundaryByKeyboard?.(direction)) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  if (!e.shiftKey && waveformEditor?.adjustActiveCueDragBy?.(
+    direction * EDITOR_SETTINGS.cueMoveStepMs,
+    e.altKey,
+  )) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  if (e.altKey) return;
   const next = e.shiftKey
     ? window.AsrEditorUtils.findCueSelectionExtensionTarget(
       DATA.segments,
@@ -12825,13 +13360,15 @@ function scheduleAutoSave() {
 
 function configureServerAutoSave() {
   if (!serverAutoSaveSettings || !autoSaveProjectToggle || !autoSaveIntervalField || !autoSaveIntervalInput) return;
-  const available = serverProjectSavingEnabled();
+  const available = !!(SERVER_CONFIG && SERVER_CONFIG.saveUrl);
   serverAutoSaveSettings.hidden = !available;
   if (!available) return;
   const sync = () => {
     autoSaveProjectToggle.checked = EDITOR_SETTINGS.autoSaveProject;
     autoSaveIntervalInput.value = String(EDITOR_SETTINGS.autoSaveIntervalSeconds);
     autoSaveIntervalField.hidden = !EDITOR_SETTINGS.autoSaveProject;
+    autoSaveProjectToggle.disabled = false;
+    autoSaveIntervalInput.disabled = !EDITOR_SETTINGS.autoSaveProject;
   };
   sync();
   autoSaveProjectToggle.addEventListener('change', () => {
