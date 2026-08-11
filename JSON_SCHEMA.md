@@ -166,7 +166,7 @@
 
 ```json
 {
-  "subtitle": { "x": 0.175, "y": 0.76, "width": 0.65, "height": 0.16, "font_size": 32, "font_family": "yahei" },
+  "subtitle": { "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16, "font_size": 32, "font_family": "yahei" },
   "sticker": { "x": 0.73, "y": 0.04, "width": 0.24, "height": 0.3 }
 }
 ```
@@ -178,15 +178,17 @@
 | `width` | `number` | 是 | 预览框宽度，占播放器宽度的分数，范围 `[0, 1]` |
 | `height` | `number` | 是 | 预览框高度，占播放器高度的分数，范围 `[0, 1]` |
 | `font_size` | `number` | 否 | 字幕预览字号，单位 px，范围 `[12, 96]`；缺失时使用原来的响应式默认字号 |
-| `font_family` | `string` | 否 | 字幕预览字体族键：`default`、`yahei`、`hei`、`song` 或 `sans` |
+| `font_family` | `string` | 否 | 字幕预览字体族：内置键 `default`、`yahei`、`hei`、`song`、`sans`，或本机字体族名称（最长 128 个字符） |
+| `background_color` | `string` | 否 | 字幕预览背景色，6 位十六进制颜色 `#RRGGBB`；缺失时使用黑色 |
+| `background_alpha` | `number` | 否 | 字幕预览背景不透明度，范围 `[0, 1]`；缺失时使用 `0.65`，设为 `0` 时隐藏背景 |
 
 ### 约束
 
 - `x`、`y`、`width`、`height` 四个字段都必须是数字（不接受字符串、布尔），且落在 `[0, 1]`。
-- 若存在 `font_size`，必须是 `[12, 96]` 内的数字；若存在 `font_family`，必须是规定的字体族键。
+- 若存在 `font_size`，必须是 `[12, 96]` 内的数字；若存在 `font_family`，必须是内置字体键或非空本机字体族名称，最长 128 个字符，不能包含控制字符；若存在 `background_color`，必须是 `#RRGGBB` 格式；若存在 `background_alpha`，必须是 `[0, 1]` 内的数字。
 - 盒子必须留在播放器内：`x + width <= 1` 且 `y + height <= 1`。
 - 编辑器额外强制最小可读尺寸 `width >= 0.20`、`height >= 0.08`（这是编辑器 UX 钳制，非数据契约的硬校验；导入时会被编辑器再钳制）。
-- `preview` 缺失或 `preview.subtitle` 缺失时按**旧工程**处理，编辑器使用默认几何 `{ x: 0.175, y: 0.76, width: 0.65, height: 0.16 }`——字幕带占 76%→92%（底部留 8%），宽度 65% 居中。
+- `preview` 缺失或 `preview.subtitle` 缺失时按**旧工程**处理，编辑器使用默认几何 `{ x: 0.1, y: 0.76, width: 0.8, height: 0.16 }`——字幕带占 76%→92%（底部留 8%），宽度 80% 居中。
 - `preview.sticker` 缺失时同样按旧工程处理，使用默认几何 `{ x: 0.73, y: 0.04, width: 0.24, height: 0.3 }`（右上角）。两个几何共用同一套归一化与钳制规则。
 - 该几何只移动/缩放预览框容器；内部文字 `<span>` 仍保持居中与药丸样式，`segments[*].start/end/items[*].start/end` 永不被此几何改动。
 
@@ -470,7 +472,9 @@ uv run python edit.py your_generated.mosp
 | `preview.subtitle.width` | number | ❌ | 归一化 `[0,1]`，编辑器最小 0.20 |
 | `preview.subtitle.height` | number | ❌ | 归一化 `[0,1]`，编辑器最小 0.08 |
 | `preview.subtitle.font_size` | number | ❌ | px，范围 `[12,96]`；缺失时使用响应式默认字号 |
-| `preview.subtitle.font_family` | string | ❌ | `default` / `yahei` / `hei` / `song` / `sans` |
+| `preview.subtitle.font_family` | string | ❌ | 内置字体键，或本机字体族名称；缺少该字体时预览回退到默认无衬线字体 |
+| `preview.subtitle.background_color` | string | ❌ | 6 位十六进制颜色 `#RRGGBB`；缺失时使用黑色 |
+| `preview.subtitle.background_alpha` | number | ❌ | 不透明度 `[0,1]`；缺失时使用 `0.65`，设为 `0` 时隐藏字幕背景 |
 | `preview.sticker.x` | number | ❌ | 归一化 `[0,1]`，`x + width <= 1` |
 | `preview.sticker.y` | number | ❌ | 归一化 `[0,1]`，`y + height <= 1` |
 | `preview.sticker.width` | number | ❌ | 归一化 `[0,1]`，编辑器最小 0.20 |

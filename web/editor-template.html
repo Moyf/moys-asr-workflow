@@ -581,6 +581,21 @@ __WAVEFORM_CSS__
               <option value="sans">Arial / Segoe UI</option>
             </select>
           </label>
+          <div class="subtitle-preview-font-scan">
+            <button type="button" id="subtitle-font-family-scan" title="读取本机已安装的字体">读取本机字体</button>
+            <span id="subtitle-font-family-status" class="subtitle-preview-font-scan-status" role="status" aria-live="polite">点击读取本机字体（首次需要授权）</span>
+          </div>
+          <label class="subtitle-preview-setting-row" title="调整播放器画面内字幕预览的背景色">
+            <span>背景色</span>
+            <input id="subtitle-background-color" type="color" value="#000000" aria-label="字幕背景色">
+          </label>
+          <label class="subtitle-preview-setting-row" title="调整播放器画面内字幕预览背景的不透明度，设为 0 时隐藏背景">
+            <span>不透明度</span>
+            <div class="subtitle-preview-alpha-control">
+              <input id="subtitle-background-alpha" type="range" min="0" max="1" step="0.01" value="0.65" aria-label="字幕背景不透明度">
+              <output id="subtitle-background-alpha-value" for="subtitle-background-alpha">65%</output>
+            </div>
+          </label>
         </div>
       </div>
     </div>
