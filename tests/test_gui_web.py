@@ -1271,6 +1271,51 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(request.qwen_audio_vocabulary_id, "vocab-qwen-audio")
         self.assertEqual(request.qwen_audio_hotword_weight, "50")
 
+    def test_request_from_payload_builds_soniox_context(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        request = _request_from_payload({
+            "providerId": "soniox",
+            "modelId": "stt-async-v5",
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-soniox-test",
+            "sonioxContextGeneral": "domain=Healthcare\ntopic=Diabetes management",
+            "sonioxContextText": "A treatment consultation.",
+            "sonioxContextTerms": "MRI\nAmoxicillin",
+            "sonioxContextTranslationTerms": "MRI => 核磁共振",
+        }, self.env_path)
+
+        self.assertEqual(
+            request.soniox_context,
+            {
+                "general": [
+                    {"key": "domain", "value": "Healthcare"},
+                    {"key": "topic", "value": "Diabetes management"},
+                ],
+                "text": "A treatment consultation.",
+                "terms": ["MRI", "Amoxicillin"],
+                "translation_terms": [{"source": "MRI", "target": "核磁共振"}],
+            },
+        )
+
+    def test_request_from_payload_rejects_invalid_soniox_context(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+
+        with self.assertRaises(PreflightError) as raised:
+            _request_from_payload({
+                "providerId": "soniox",
+                "modelId": "stt-async-v5",
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "out.srt"),
+                "apiKey": "sk-soniox-test",
+                "sonioxContextGeneral": "not a key value pair",
+            }, self.env_path)
+
+        self.assertEqual(raised.exception.field, "sonioxContextGeneral")
+        self.assertEqual(raised.exception.code, "soniox_context_invalid")
+
     def test_request_from_payload_passes_qwen_audio_hotword_file_mode(self) -> None:
         media = self.root / "clip.mp3"
         media.write_bytes(b"media")
@@ -1771,6 +1816,27 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertNotIn('id="qwenAudioVocabularyId"', page)
         self.assertNotIn("qwenAudioVocabularyId", script)
         self.assertIn('supportsContext', script)
+
+    def test_soniox_launcher_exposes_documented_context_sections(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        for field in (
+            "sonioxContextGeneral",
+            "sonioxContextText",
+            "sonioxContextTerms",
+            "sonioxContextTranslationTerms",
+        ):
+            self.assertIn(f'id="{field}"', page)
+        self.assertIn('sonioxContextGeneral: $("sonioxContextGeneral").value.trim()', script)
+        self.assertIn('sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim()', script)
+        self.assertIn("soniox_context_count", script)
+        self.assertIn("soniox_context_too_long", script)
+        self.assertIn(
+            ".soniox-context-options-grid > .field:first-child {\n  margin-top: 10px;\n}",
+            stylesheet,
+        )
 
     def test_regional_fields_are_temporarily_hidden_for_domestic_launcher(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")

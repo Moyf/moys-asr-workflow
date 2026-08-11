@@ -284,9 +284,11 @@ QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
 SONIOX_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
         id="stt-async-v5",
-        label="Soniox Async STT（v5）",
+        label="Soniox Async STT（v5，上下文）",
         env_key="SONIOX_API_KEY",
+        note="支持 general、text、terms 和 translation_terms 上下文",
         supports_speaker=True,
+        supports_context=True,
         languages=SONIOX_LANGUAGES,
     ),
 )

@@ -199,6 +199,7 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual(provider.regions, ())
         self.assertTrue(provider.supports_speaker)
         self.assertTrue(provider.multi_language)
+        self.assertTrue(provider.models[0].supports_context)
 
     def test_provider_registry_contains_local_models_without_api_key(self) -> None:
         provider = gui_config.provider_by_id("local")

@@ -43,6 +43,7 @@ class TranscriptionRequest:
     qwen_audio_hotwords_file: str = ""
     qwen_audio_vocabulary_id: str = ""
     qwen_audio_hotword_weight: str = ""
+    soniox_context: dict[str, object] | None = None
     region: str = ""
     workspace_id: str = ""
     provider: str = "qwen"
@@ -238,6 +239,12 @@ def build_transcribe_command(
         if request.speaker_colors:
             command.append("--speaker-colors")
         _append_option(command, "--language", request.language)
+        if request.soniox_context:
+            _append_option(
+                command,
+                "--context-json",
+                json.dumps(request.soniox_context, ensure_ascii=False, separators=(",", ":")),
+            )
     elif is_bcut:
         # 必剪接口无语言/模型/说话人参数，这里一律不下发
         pass

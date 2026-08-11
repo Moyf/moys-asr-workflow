@@ -23,8 +23,11 @@ token 契约：每个识别 token 必有 text/start_ms/end_ms（整数毫秒）�
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import time
+from collections.abc import Mapping
 from pathlib import Path
 
 import requests
@@ -45,6 +48,10 @@ from maw.speaker import (
 BASE_URL = "https://api.soniox.com"
 DEFAULT_MODEL = "stt-async-v5"
 
+# Soniox documents this as 8,000 tokens (approximately 10,000 characters).
+# The API remains authoritative for the actual token count.
+SONIOX_CONTEXT_MAX_CHARS = 10_000
+
 # Soniox 异步转写单文件上限 300 分钟（官方 limits 文档，不可提升）
 MAX_AUDIO_SECONDS = 300 * 60
 
@@ -59,6 +66,15 @@ class TranscriptionFailedError(RuntimeError):
     """Soniox 任务进入终态失败（error/failed）。
 
     与本地网络错误/超时区分：只有终态任务才可以安全删除云端记录。"""
+
+
+class SonioxContextError(ValueError):
+    """Soniox context input is malformed or exceeds the documented size."""
+
+    def __init__(self, field: str, message: str, *, code: str = "soniox_context_invalid") -> None:
+        self.field = field
+        self.code = code
+        super().__init__(message)
 
 # ===== 配置（.env，与 Qwen 版同样的零依赖解析） =====
 
@@ -89,6 +105,217 @@ def load_config() -> dict:
         "poll_interval": int(pick("SONIOX_POLL_INTERVAL", "3") or "3"),
         "poll_timeout": int(pick("SONIOX_POLL_TIMEOUT", "1800") or "1800"),
     }
+
+
+# ===== context =====
+
+def _context_lines(value: str) -> list[str]:
+    return [
+        line.strip()
+        for line in str(value or "").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+
+
+def _context_error(field: str, message: str) -> SonioxContextError:
+    return SonioxContextError(field, message)
+
+
+def _parse_general_context(value: str) -> list[dict[str, str]]:
+    raw = str(value or "").strip()
+    if not raw:
+        return []
+
+    if raw.startswith(("[", "{")):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise _context_error("sonioxContextGeneral", "Soniox general context JSON 无法解析。") from exc
+        if isinstance(parsed, Mapping):
+            parsed = [{"key": key, "value": item} for key, item in parsed.items()]
+        if not isinstance(parsed, list):
+            raise _context_error("sonioxContextGeneral", "Soniox general context 必须是对象数组。")
+        entries: list[dict[str, str]] = []
+        for index, item in enumerate(parsed, start=1):
+            if not isinstance(item, Mapping):
+                raise _context_error("sonioxContextGeneral", f"Soniox general context 第 {index} 项必须是对象。")
+            key = str(item.get("key") or "").strip()
+            item_value = item.get("value")
+            if not key or item_value is None or not str(item_value).strip():
+                raise _context_error("sonioxContextGeneral", f"Soniox general context 第 {index} 项缺少 key/value。")
+            entries.append({"key": key, "value": str(item_value).strip()})
+        return entries
+
+    entries = []
+    for index, line in enumerate(_context_lines(raw), start=1):
+        if "=" not in line:
+            raise _context_error(
+                "sonioxContextGeneral",
+                f"Soniox general context 第 {index} 行应使用 key=value 格式。",
+            )
+        key, item_value = (part.strip() for part in line.split("=", 1))
+        if not key or not item_value:
+            raise _context_error(
+                "sonioxContextGeneral",
+                f"Soniox general context 第 {index} 行缺少 key 或 value。",
+            )
+        entries.append({"key": key, "value": item_value})
+    return entries
+
+
+def _parse_terms_context(value: str) -> list[str]:
+    raw = str(value or "").strip()
+    if not raw:
+        return []
+    if raw.startswith("["):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise _context_error("sonioxContextTerms", "Soniox terms JSON 无法解析。") from exc
+        if not isinstance(parsed, list) or any(not isinstance(item, str) for item in parsed):
+            raise _context_error("sonioxContextTerms", "Soniox terms 必须是字符串数组。")
+        candidates = [item.strip() for item in parsed]
+    else:
+        candidates = [
+            item.strip()
+            for item in re.split(r"[\r\n,，;；]+", raw)
+        ]
+
+    terms: list[str] = []
+    seen: set[str] = set()
+    for item in candidates:
+        if item and item not in seen:
+            terms.append(item)
+            seen.add(item)
+    return terms
+
+
+def _parse_translation_terms_context(value: str) -> list[dict[str, str]]:
+    raw = str(value or "").strip()
+    if not raw:
+        return []
+    if raw.startswith("["):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise _context_error(
+                "sonioxContextTranslationTerms",
+                "Soniox translation_terms JSON 无法解析。",
+            ) from exc
+        if not isinstance(parsed, list):
+            raise _context_error(
+                "sonioxContextTranslationTerms",
+                "Soniox translation_terms 必须是对象数组。",
+            )
+        entries: list[dict[str, str]] = []
+        for index, item in enumerate(parsed, start=1):
+            if not isinstance(item, Mapping):
+                raise _context_error(
+                    "sonioxContextTranslationTerms",
+                    f"Soniox translation_terms 第 {index} 项必须是对象。",
+                )
+            source = str(item.get("source") or "").strip()
+            target = str(item.get("target") or "").strip()
+            if not source or not target:
+                raise _context_error(
+                    "sonioxContextTranslationTerms",
+                    f"Soniox translation_terms 第 {index} 项缺少 source/target。",
+                )
+            entries.append({"source": source, "target": target})
+        return entries
+
+    entries = []
+    for index, line in enumerate(_context_lines(raw), start=1):
+        if "=>" in line:
+            source, target = (part.strip() for part in line.split("=>", 1))
+        elif "\t" in line:
+            source, target = (part.strip() for part in line.split("\t", 1))
+        else:
+            raise _context_error(
+                "sonioxContextTranslationTerms",
+                f"Soniox translation_terms 第 {index} 行应使用 source => target 格式。",
+            )
+        if not source or not target:
+            raise _context_error(
+                "sonioxContextTranslationTerms",
+                f"Soniox translation_terms 第 {index} 行缺少 source 或 target。",
+            )
+        entries.append({"source": source, "target": target})
+    return entries
+
+
+def _validate_context_size(context: dict[str, object]) -> None:
+    content: list[str] = []
+    for item in context.get("general", []):
+        if isinstance(item, Mapping):
+            content.extend((str(item.get("key") or ""), str(item.get("value") or "")))
+    content.append(str(context.get("text") or ""))
+    content.extend(str(item) for item in context.get("terms", []))
+    for item in context.get("translation_terms", []):
+        if isinstance(item, Mapping):
+            content.extend((str(item.get("source") or ""), str(item.get("target") or "")))
+    size = len("".join(content))
+    if size > SONIOX_CONTEXT_MAX_CHARS:
+        raise SonioxContextError(
+            "sonioxContextText",
+            f"Soniox context 约限制为 {SONIOX_CONTEXT_MAX_CHARS} 个字符，当前序列化长度为 {size}。",
+            code="soniox_context_too_long",
+        )
+
+
+def build_soniox_context(
+    *,
+    general: str = "",
+    text: str = "",
+    terms: str = "",
+    translation_terms: str = "",
+) -> dict[str, object] | None:
+    """Build Soniox's documented context object from Launcher-friendly text fields."""
+    context: dict[str, object] = {}
+    general_entries = _parse_general_context(general)
+    term_entries = _parse_terms_context(terms)
+    translation_entries = _parse_translation_terms_context(translation_terms)
+    if general_entries:
+        context["general"] = general_entries
+    if str(text or "").strip():
+        context["text"] = str(text).strip()
+    if term_entries:
+        context["terms"] = term_entries
+    if translation_entries:
+        context["translation_terms"] = translation_entries
+    if not context:
+        return None
+    _validate_context_size(context)
+    return context
+
+
+def parse_soniox_context_json(value: str) -> dict[str, object] | None:
+    """Validate a serialized Soniox context passed by CLI/internal Launcher calls."""
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SonioxContextError("sonioxContextText", "Soniox context JSON 无法解析。") from exc
+    if not isinstance(parsed, Mapping):
+        raise SonioxContextError("sonioxContextText", "Soniox context 必须是 JSON 对象。")
+    unknown = set(parsed) - {"general", "text", "terms", "translation_terms"}
+    if unknown:
+        names = ", ".join(sorted(str(item) for item in unknown))
+        raise SonioxContextError("sonioxContextText", f"Soniox context 含有未知分区：{names}。")
+    text = parsed.get("text", "")
+    if text is not None and not isinstance(text, str):
+        raise SonioxContextError("sonioxContextText", "Soniox context.text 必须是字符串。")
+    return build_soniox_context(
+        general=json.dumps(parsed["general"], ensure_ascii=False) if "general" in parsed else "",
+        text=text or "",
+        terms=json.dumps(parsed["terms"], ensure_ascii=False) if "terms" in parsed else "",
+        translation_terms=(
+            json.dumps(parsed["translation_terms"], ensure_ascii=False)
+            if "translation_terms" in parsed else ""
+        ),
+    )
 
 
 # ===== REST 客户端 =====
@@ -132,7 +359,8 @@ def create_transcription(base_url: str, api_key: str, *,
                          model: str, file_id: str,
                          language_hints: list[str] | None = None,
                          enable_speaker_diarization: bool = False,
-                         enable_language_identification: bool = True) -> str:
+                         enable_language_identification: bool = True,
+                         context: dict[str, object] | None = None) -> str:
     """创建异步转写任务，返回 transcription_id。
 
     file_id 与 audio_url 二选一（MAW 始终走本地上传，只用 file_id）。
@@ -146,6 +374,8 @@ def create_transcription(base_url: str, api_key: str, *,
         payload["language_hints"] = list(language_hints)
     if enable_speaker_diarization:
         payload["enable_speaker_diarization"] = True
+    if context:
+        payload["context"] = context
     resp = requests.post(
         f"{base_url}/v1/transcriptions",
         headers={**_headers(api_key), "Content-Type": "application/json"},
@@ -351,6 +581,8 @@ def transcribe(audio_path: str, config: dict, *,
                language_hints: list[str] | None = None,
                enable_speaker: bool = False,
                model: str | None = None,
+               context: dict[str, object] | None = None,
+               capture_raw: bool = False,
                on_status=print) -> dict:
     """完整生命周期：上传 → 创建 → 轮询 → 取 transcript → 清理云端资源。
 
@@ -370,13 +602,15 @@ def transcribe(audio_path: str, config: dict, *,
     file_id = upload_file(base_url, api_key, audio_path)
     on_status(f"[soniox] 上传完成: file_id={file_id}")
     on_status(f"[soniox] 正在创建异步转写任务（model={model}）...")
-    transcription_id = create_transcription(
-        base_url, api_key,
-        model=model,
-        file_id=file_id,
-        language_hints=language_hints,
-        enable_speaker_diarization=enable_speaker,
-    )
+    create_kwargs: dict[str, object] = {
+        "model": model,
+        "file_id": file_id,
+        "language_hints": language_hints,
+        "enable_speaker_diarization": enable_speaker,
+    }
+    if context:
+        create_kwargs["context"] = context
+    transcription_id = create_transcription(base_url, api_key, **create_kwargs)
     on_status(f"[soniox] 任务已提交: transcription_id={transcription_id} "
               f"(model={model}, speaker={'on' if enable_speaker else 'off'})")
 
@@ -407,8 +641,11 @@ def transcribe(audio_path: str, config: dict, *,
 
     tokens = transcript.get("tokens", [])
     on_status(f"[soniox] 转写结果下载完成，耗时 {elapsed:.1f}s | tokens={len(tokens)}")
-    return {
+    result = {
         "text": transcript.get("text", ""),
         "language": majority_language(tokens),
         "items": tokens_to_items(merge_word_fragments(tokens)),
     }
+    if capture_raw:
+        result["_raw_response"] = transcript
+    return result

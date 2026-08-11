@@ -9,6 +9,8 @@
 - 修复 macOS 从 Finder 启动普通版 `MAW.app` 时未自动检索 Homebrew 的 `/opt/homebrew/bin` 和 `/usr/local/bin`，导致找不到 `ffmpeg` / `ffprobe` 的问题。
 - 必剪分片上传改为流式读取并校验本地文件与预签名分片地址完整匹配；临时错误只在同一分片地址上重试，提交分片或建任务遇到未知结果不再重新申请资源。
 - 必剪 CLI 在支持的音频格式上使用 `-ll` 时先裁剪再检查单文件时长上限，避免长音频在裁剪前被错误拒绝。
+- 修复 macOS 按住 Shift 使用滚轮调整波形振幅时，滚动方向被错误判定为始终增大的问题。
+- 修复 Soniox 在 Launcher 勾选「调试运行」时因入口未声明 `--debug-raw` 参数而立即失败的问题。
 
 ### Added
 
@@ -23,6 +25,7 @@
 - **预览字幕支持调节背景色和不透明度** ：可通过取色器和不透明度滑块调整字幕背景；不透明度设为 0 时隐藏背景，旧工程继续使用半透明黑色。
 - 新增实验性第三供应商「必剪 ASR」（`generate_subtitle_bcut_api.py`）：B 站必剪的非公开免费接口，无需 API Key，逐字毫秒时间戳写入工程 `items`。Launcher 供应商列表置底展示并标注风险；选中后自动隐藏 API Key、语言、说话人与热词等不适用的选项。
 - 必剪供应商内置上限管理：单文件默认最长 2 小时（`BCUT_MAX_AUDIO_SECONDS`），轮询间隔硬下限 2 秒，申请上传/分片限次退避重试，分片顺序上传不并发。
+- Soniox 在 Launcher「高级选项」中支持 `general`、`text`、`terms` 和 `translation_terms` 上下文，并将其发送到异步转写 API；CLI 同步支持 `--soniox-context-json`。
 
 ### Changed
 

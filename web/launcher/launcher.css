@@ -537,6 +537,30 @@ textarea::placeholder {
   margin-top: 12px;
 }
 
+.soniox-context-options {
+  margin-top: 12px;
+}
+
+.soniox-context-options h3 {
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.soniox-context-options-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.soniox-context-options-grid > .field:first-child {
+  margin-top: 10px;
+}
+
 .qwen-audio-options-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(240px, .8fr);
@@ -1420,6 +1444,7 @@ code {
 @media (max-width:620px) {
   .grid-two,
   .qwen-audio-options-grid,
+  .soniox-context-options-grid,
   .path-row {
     grid-template-columns: 1fr;
   }

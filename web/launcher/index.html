@@ -203,6 +203,37 @@
               </div>
             </div>
           </div>
+          <div id="sonioxContextOptions" class="soniox-context-options hidden">
+            <h3 data-i18n="soniox_context_title">Soniox 上下文</h3>
+            <p class="hint" data-i18n="soniox_context_hint">可按需填写；四个分区都会直接发送到 Soniox 的 context 对象。</p>
+            <div class="soniox-context-options-grid">
+              <div class="field">
+                <label for="sonioxContextGeneral" data-i18n="soniox_context_general">General（键值信息）</label>
+                <textarea id="sonioxContextGeneral" rows="4" autocomplete="off" data-i18n-placeholder="soniox_context_general_placeholder"></textarea>
+                <p class="hint" data-i18n="soniox_context_general_hint">每行一个 key=value；也可粘贴 general JSON 数组。</p>
+                <p id="sonioxContextGeneralError" class="field-error"></p>
+              </div>
+              <div class="field">
+                <label for="sonioxContextText" data-i18n="soniox_context_text">Text（背景文本）</label>
+                <textarea id="sonioxContextText" rows="4" autocomplete="off" data-i18n-placeholder="soniox_context_text_placeholder"></textarea>
+                <p class="hint" data-i18n="soniox_context_text_hint">适合会议摘要、脚本或参考文档；四个分区合计约不超过 10000 个字符。</p>
+                <p id="sonioxContextTextCount" class="character-count" aria-live="polite">当前字符数：0/10000</p>
+                <p id="sonioxContextTextError" class="field-error"></p>
+              </div>
+              <div class="field">
+                <label for="sonioxContextTerms" data-i18n="soniox_context_terms">Terms（术语）</label>
+                <textarea id="sonioxContextTerms" rows="4" autocomplete="off" data-i18n-placeholder="soniox_context_terms_placeholder"></textarea>
+                <p class="hint" data-i18n="soniox_context_terms_hint">领域词、品牌名或人名；每行一个，也支持逗号分隔。</p>
+                <p id="sonioxContextTermsError" class="field-error"></p>
+              </div>
+              <div class="field">
+                <label for="sonioxContextTranslationTerms" data-i18n="soniox_context_translation_terms">Translation terms（翻译术语）</label>
+                <textarea id="sonioxContextTranslationTerms" rows="4" autocomplete="off" data-i18n-placeholder="soniox_context_translation_terms_placeholder"></textarea>
+                <p class="hint" data-i18n="soniox_context_translation_terms_hint">每行一个 source =&gt; target；也可粘贴 translation_terms JSON 数组。</p>
+                <p id="sonioxContextTranslationTermsError" class="field-error"></p>
+              </div>
+            </div>
+          </div>
           <div id="speakerColorsField" class="field hidden">
             <label class="check-field" for="speakerColors" data-i18n-title="speaker_colors_title">
               <input id="speakerColors" type="checkbox">
