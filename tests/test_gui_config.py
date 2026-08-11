@@ -44,6 +44,28 @@ class GuiConfigTests(unittest.TestCase):
 
             self.assertEqual(gui_config.load_env(env_path)["FFMPEG_PATH"], "/opt/homebrew/bin")
 
+    def test_save_env_rejects_control_characters_without_modifying_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            _ = env_path.write_text("KEEP_ME=yes\n", encoding="utf-8")
+
+            separators = ("\r", "\n", "\x00", "\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029")
+            for separator in separators:
+                with self.subTest(separator=ascii(separator)):
+                    with self.assertRaises(ValueError):
+                        gui_config.save_env(env_path, {"MODEL": f"safe{separator}FFMPEG_PATH=payload.exe"})
+
+                    self.assertEqual(env_path.read_text(encoding="utf-8"), "KEEP_ME=yes\n")
+
+    def test_save_env_allows_empty_values(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            _ = env_path.write_text("", encoding="utf-8")
+
+            gui_config.save_env(env_path, {"MAW_GUI_LAST_LANGUAGE": ""})
+
+            self.assertEqual(env_path.read_text(encoding="utf-8"), "MAW_GUI_LAST_LANGUAGE=\n")
+
     def test_save_env_creates_from_example_when_absent(self) -> None:
         """Given no env file, When saving, Then the local example is copied first."""
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -177,6 +199,44 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual(provider.regions, ())
         self.assertTrue(provider.supports_speaker)
         self.assertTrue(provider.multi_language)
+
+    def test_provider_registry_contains_local_models_without_api_key(self) -> None:
+        provider = gui_config.provider_by_id("local")
+
+        self.assertEqual(provider.kind, "local")
+        self.assertFalse(provider.requires_api_key)
+        self.assertEqual(
+            [model.id for model in provider.models],
+            [
+                "qwen3-asr-local",
+                "qwen3-asr-1.7b-local",
+                "fun-asr-nano-local",
+                "funasr-local",
+                "sensevoice-small-local",
+            ],
+        )
+        self.assertEqual(
+            [model.label for model in provider.models],
+            [
+                "Qwen3-ASR 0.6B（推荐）",
+                "Qwen3-ASR 1.7B",
+                "Fun-ASR-Nano 2512（GPU）",
+                "FunASR paraformer-zh",
+                "SenseVoice Small",
+            ],
+        )
+        qwen06 = provider.models[0]
+        self.assertEqual(qwen06.model_ref, "Qwen/Qwen3-ASR-0.6B")
+        self.assertIn("Qwen/Qwen3-ForcedAligner-0.6B", qwen06.required_model_refs)
+        qwen17 = provider.models[1]
+        self.assertEqual(qwen17.model_ref, "Qwen/Qwen3-ASR-1.7B")
+        self.assertIn("Qwen/Qwen3-ForcedAligner-0.6B", qwen17.required_model_refs)
+        nano = provider.models[2]
+        self.assertEqual(nano.model_ref, "FunAudioLLM/Fun-ASR-Nano-2512")
+        sensevoice = provider.models[-1]
+        self.assertEqual(sensevoice.model_ref, "iic/SenseVoiceSmall")
+        self.assertIn("funasr", sensevoice.requires_runtime)
+        self.assertEqual(gui_config.api_key_for_provider("local"), "")
 
     def test_qwen_languages_single_select_with_auto_and_documented_28(self) -> None:
         """Given Qwen docs allow exactly one language, When registry read, Then auto + 27 codes are offered."""

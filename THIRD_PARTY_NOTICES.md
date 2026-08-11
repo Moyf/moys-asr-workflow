@@ -1,6 +1,6 @@
 # Third-party notices
 
-本仓库不打包模型或云端 API 服务。标准 Windows/macOS 包不含 FFmpeg；可选的 `MAWxFF-Windows` 与 `MAWxFF-macOS-arm64` 包会分别附带对应平台的 `ffmpeg` 与 `ffprobe`。运行时可能使用下列外部组件；许可证和服务条款以各项目及服务方的最新文本为准。
+本仓库不打包模型或云端 API 服务。标准 Windows/macOS 包不含 FFmpeg；可选的 `MAWxFF-Windows` 与 `MAWxFF-macOS-arm64` 包会分别附带对应平台的 `ffmpeg` 与 `ffprobe`。Windows 包还会在 `bootstrap/uv.exe` 携带 uv，供用户通过 GUI 创建本地 ASR 运行环境。运行时可能使用下列外部组件；许可证和服务条款以各项目及服务方的最新文本为准。
 
 | Component | Purpose | License / terms |
 |---|---|---|
@@ -10,7 +10,11 @@
 | [PyInstaller](https://pyinstaller.org/) | Build the optional Windows application bundle | GPL-2.0-or-later with a bootloader exception that permits distributing bundled applications |
 | [Python](https://www.python.org/) | Runtime embedded in the optional Windows application bundle | Python Software Foundation License |
 | [FFmpeg](https://ffmpeg.org/) / [Gyan Windows build](https://www.gyan.dev/ffmpeg/builds/) / [OSXExperts macOS build](https://www.osxexperts.net/) | Inspect media, extract audio, and build waveform peaks | Not bundled in standard packages. `MAWxFF-Windows` includes FFmpeg 8.1.2 Essentials executables under GPL-3.0; `MAWxFF-macOS-arm64` includes FFmpeg 8.1 Apple Silicon static `ffmpeg` and `ffprobe` binaries. The bundled `ffmpeg/` directory includes FFmpeg license files and source/provider references. |
+| [uv](https://github.com/astral-sh/uv) | Bootstrap a user-managed Python environment for optional local ASR | MIT or Apache-2.0; the bundled binary is obtained from the uv release used by the Windows build |
+| [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) / `qwen-asr` | Optional local Qwen speech-recognition runtime | Not installed by default and not bundled; runtime code and downloaded model checkpoints remain subject to their upstream licenses and terms |
+| [FunASR](https://github.com/modelscope/FunASR) / `funasr` | Optional local speech-recognition runtime | Not installed by default and not bundled; runtime code and downloaded model checkpoints remain subject to their upstream licenses and terms |
 | Alibaba Cloud Model Studio / Qwen ASR | Speech recognition API | External service; subject to Alibaba Cloud terms, billing, and privacy policy |
 | [Soniox](https://soniox.com/) | Speech recognition API | External service; subject to Soniox terms, billing, and privacy policy |
+| [DeepSeek](https://www.deepseek.com/) / [Zhipu Coding Plan](https://open.bigmodel.cn/) / Alibaba Cloud Model Studio Qwen / custom OpenAI-compatible endpoint | Optional subtitle text post-processing in the Launcher toolbox | External services; subject to the selected provider's terms, billing, and privacy policy |
 
 The `web/` editor, Python scripts, and documentation in this repository are distributed under the repository's `AGPL-3.0-only` license unless a file states otherwise.

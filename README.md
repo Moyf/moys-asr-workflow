@@ -19,6 +19,9 @@ Moy 的 ASR 工作流由两部分组成：
 
 ![launcher](assets/launcher.jpg)  
 
+> 当前支持模型：阿里云百炼 Qwen / Fun-ASR 或 Soniox 云端 ASR API
+
+> Launcher 已提供实验性的本地 Qwen3-ASR / FunASR 识别方式（Beta），见 [docs/LOCAL_ASR.md](docs/LOCAL_ASR.md)。当前为 Beta 版本，未经过充分测试，不保证后续的维护和更新，请谨慎使用。Windows 打包版可通过 GUI 按需安装本地运行环境和模型；安装包本身不携带 Torch 或模型权重。
 
 - **MAWE**：MAW 自带的字幕编辑器，功能有九分甚至十分的强劲：
 
@@ -38,8 +41,7 @@ Windows 下载解压之后点击 `MAW.exe` 并运行；macOS 下载后解压并�
 
 ### 申请 API Key
 
-由于本地模型有一定的配置需求，做起来也更麻烦，因此 MAW 优先提供 API 转写服务。
-本地模型功能尚在[开发中](https://github.com/Moyf/moys-asr-workflow/pull/19)。
+由于本地模型有一定的配置需求，做起来也更麻烦，因此 MAW 优先提供 API 转写服务；本地模型入口目前仍是实验性的 Beta 功能。
 
 QwenASR 的水平如下：
 <img width="1604" height="1055" alt="image" src="https://github.com/user-attachments/assets/6c2f0272-f90b-4f2d-ae84-e2b68b173d02" />
@@ -52,6 +54,8 @@ QwenASR 的水平如下：
 如果你更在意小语种多语言，可以使用 [Soniox Console](https://console.soniox.com) 申请 Key。
 
 **两个 Key 不需要同时配置，用到哪个配哪个即可。**
+
+不想申请任何 Key 时，也可以在 Launcher 供应商列表底部直接选用实验性的「必剪 ASR」（免 Key，仅中文；非官方接口，可能随时失效或限流，详见 [WORKFLOW](docs/WORKFLOW.md) 的风险说明）。
 
 配完之后点击「保存到本地环境」，下次就不用重复配置了。
 
@@ -90,6 +94,17 @@ Release 包中的 `MAW.exe` 也可以脱离 Launcher 直接转写指定媒体，
 
 它适合脚本、批处理和 AI 自动化调用。给 AI 使用时，请让它先读取 [CLI 专门文档](docs/CLI.md)，使用双引号包住路径，不要把 API Key 放进命令行，先用 `-ll 2m` 做小样本，并依据退出码和输出文件判断是否成功。完整参数表、Qwen/Soniox 选项、Server 管理和 PowerShell 模板都在该文档中。
 
+### Launcher 后处理工具箱
+
+Launcher 右下角的 🧰 按钮会打开后处理工具箱。顶部的「处理文件」默认跟随当前工程或 SRT，也可以手动选择或拖入其他 `.mosp` / `.json` / `.srt` 文件；每次字幕处理都会生成新的工程或 SRT，不覆盖源文件，并自动把产物接到下一步。
+
+- **文稿匹配** ：使用本地 UTF-8 `.txt` / `.md` / `.markdown` 文稿修正文案、标点和断句边界，不需要 API Key。
+- **LLM 处理** ：支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 OpenAI-compatible 服务，任务包括校对文本、翻译成中文、翻译成英文、重新断句和自定义。前四项会显示不可编辑的预设提示词，下方仍可追加自己的提示词。
+- **固定替换** ：按 `原文 => 新文` 批量修改固定名称或错别字，不访问网络。
+- **媒体重组** ：使用受限的 FFconcat 配置生成去空隙媒体；它只切换媒体路径，不改写字幕时间轴。
+
+LLM 步骤只发送带临时 ID 的字幕文字，不发送时间码、媒体路径或工程元数据；选择供应商即表示字幕文字会按该服务商的条款和隐私政策传输。LLM Key、URL 和模型可在 Launcher 右上角 `⚙️ 配置` →「LLM 后处理」中管理，只保存在本机 `.env`，不会写入工程、SRT 或日志。完整输入、输出和安全边界见 [工具箱使用说明](docs/WORKFLOW.md#launcher-后处理工具箱) 与 [LLM 字幕协议](docs/LLM_POSTPROCESS_PROTOCOL.md)。
+
 ## 概览特性
 点击查看：[3分钟速览 MAW 特性](https://www.bilibili.com/video/BV1hXum6yELT) 
 
@@ -120,16 +135,18 @@ Release 包中的 `MAW.exe` 也可以脱离 Launcher 直接转写指定媒体，
 
 ## 关于 API
 
-- 这是 **API-first** 工具，不含模型下载和本地推理引擎。
+- 这是 **API-first** 工具；本地模型入口属于实验性可选流程，不改变默认云端路径。
 - API Key 仅读取自环境变量或本机 `.env`；`.env` 已被 Git 忽略，绝不要提交、截图或发给别人。
 - 每次转写会使用你的 Key 调用所选供应商；文件大小、数据保留与账户政策请分别查看[百炼语音识别文档](https://help.aliyun.com/zh/model-studio/asr-model/)或 [Soniox 文档](https://soniox.com/docs)。
 - 百炼 Provider 提供 `qwen3-asr-flash-filetrans`、`qwen-audio-3.0-asr-flash-filetrans` 和 `fun-asr`，支持北京与新加坡地域；北京可选填 Workspace ID 使用推荐的专属域名，新加坡必须填写。Qwen-Audio、Fun-ASR 与 Soniox 均可选说话人分离。配置项说明都在 `.env.example`。
+- 必剪 ASR 为实验性第三供应商：非官方免费接口，无需 Key，仅支持中文，稳定性与可用性不做任何保证，高频调用可能触发限流或封禁。
 
 ### 费用
 
 - 本项目本身是开源项目，可免费使用；默认模型为阿里云百炼最新发布的 Qwen-Audio 3.0，也可以在 GUI 或命令行里改用同 Provider 的 Qwen3-ASR、Fun-ASR 或 Soniox。
 - 阿里云 Qwen ASR 注册后免费赠送 10 小时转录时间，超出额度后按 `0.792 元/小时` 计费，详见 [价格文档](https://help.aliyun.com/zh/model-studio/model-pricing#dbf1305ef4a69)。
 - Soniox 异步文件转写约 `$0.10/小时`，适合需要说话人分离、多语言或小语种的素材，详见 [Soniox Pricing](https://soniox.com/pricing)。
+- 必剪 ASR 免费且无需 Key，但属于非官方接口：没有配额文档与稳定性保证，请把它当作"应急体验"而非生产通道。
 - 如果你有不错的配置，也可以自己本地部署开源的 [QwenASR](https://github.com/QwenLM/Qwen3-ASR) 本地转录，不产生云端费用，只需要一点电费。
 
 😭*我说我只有一台 AMD 显卡的台式机和一台 Mac Mini 所以跑不了本地模型有懂的吗*  
