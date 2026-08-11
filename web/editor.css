@@ -489,7 +489,7 @@
   }
   .player-empty.hidden, .cues-empty.hidden { display: none; }
   .subtitle-overlay {
-    position: absolute; left: 17.5%; right: auto; top: 76%; height: 16%; width: 65%;
+    position: absolute; left: 10%; right: auto; top: 76%; height: 16%; width: 80%;
     display: flex; align-items: center; justify-content: center;
     text-align: center; pointer-events: none;
     z-index: 10; padding: 0 12px; box-sizing: border-box;
@@ -681,6 +681,24 @@
   }
   .subtitle-preview-setting-row > span { color: var(--text-muted); }
   .subtitle-preview-setting-row select { width: 100%; min-width: 0; }
+  .subtitle-preview-setting-row input[type="color"] {
+    width: 100%; height: 24px; min-width: 0; padding: 2px;
+    background: var(--bg-input); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  }
+  .subtitle-preview-alpha-control { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .subtitle-preview-alpha-control input[type="range"] { flex: 1 1 auto; min-width: 0; }
+  .subtitle-preview-alpha-control output {
+    flex: 0 0 3.5em; color: var(--text-muted); font-size: 11px; text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .subtitle-preview-font-scan {
+    display: flex; align-items: flex-start; flex-wrap: wrap; gap: 6px;
+    grid-column: 1 / -1; margin-left: calc(5em + 8px); min-width: 0;
+  }
+  .subtitle-preview-font-scan-status {
+    flex: 1 1 100px; min-width: 0; color: var(--text-faint); font-size: 11px; line-height: 1.35;
+    white-space: normal;
+  }
 
   .editor-settings-panel {
     flex: 0 0 auto; display: grid; grid-template-columns: repeat(4, minmax(190px, 1fr));

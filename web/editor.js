@@ -55,6 +55,11 @@ const DEFAULT_EDITOR_SETTINGS = {
 };
 const SUBTITLE_FONT_SIZE_MIN = 12;
 const SUBTITLE_FONT_SIZE_MAX = 96;
+const SUBTITLE_FONT_FAMILY_MAX_LENGTH = 128;
+const SUBTITLE_BACKGROUND_COLOR_DEFAULT = '#000000';
+const SUBTITLE_BACKGROUND_ALPHA_DEFAULT = 0.65;
+const SUBTITLE_BACKGROUND_ALPHA_MIN = 0;
+const SUBTITLE_BACKGROUND_ALPHA_MAX = 1;
 const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
   default: '',
   yahei: '"Microsoft YaHei", "PingFang SC", sans-serif',
@@ -373,6 +378,11 @@ const overlayToggle = document.getElementById('overlay-toggle');
 const stickerOverlayToggle = document.getElementById('sticker-overlay-toggle');
 const subtitleFontSizeSelect = document.getElementById('subtitle-font-size');
 const subtitleFontFamilySelect = document.getElementById('subtitle-font-family');
+const subtitleFontFamilyScanButton = document.getElementById('subtitle-font-family-scan');
+const subtitleFontFamilyStatus = document.getElementById('subtitle-font-family-status');
+const subtitleBackgroundColorInput = document.getElementById('subtitle-background-color');
+const subtitleBackgroundAlphaInput = document.getElementById('subtitle-background-alpha');
+const subtitleBackgroundAlphaValue = document.getElementById('subtitle-background-alpha-value');
 const playerEmpty = document.getElementById('player-empty');
 const playerWrap = document.querySelector('.player-wrap');
 const mediaPlayToggle = document.getElementById('media-play-toggle');
@@ -826,6 +836,38 @@ subtitleFontFamilySelect?.addEventListener('change', () => {
   pushPreviewUndo('调整字幕字体', snapshotPreviewState());
   setSubtitleAppearance({ font_family: subtitleFontFamilySelect.value });
 });
+let subtitleBackgroundColorUndoPushed = false;
+function applySubtitleBackgroundColorInput({ finalize = false } = {}) {
+  if (!subtitleBackgroundColorInput) return;
+  if (!subtitleBackgroundColorUndoPushed) {
+    pushPreviewUndo('调整字幕背景色', snapshotPreviewState());
+    subtitleBackgroundColorUndoPushed = true;
+  }
+  setSubtitleAppearance({ background_color: subtitleBackgroundColorInput.value });
+  if (finalize) subtitleBackgroundColorUndoPushed = false;
+}
+subtitleBackgroundColorInput?.addEventListener('input', () => applySubtitleBackgroundColorInput());
+subtitleBackgroundColorInput?.addEventListener('change', () => applySubtitleBackgroundColorInput({ finalize: true }));
+let subtitleBackgroundAlphaUndoPushed = false;
+function applySubtitleBackgroundAlphaInput({ finalize = false } = {}) {
+  if (!subtitleBackgroundAlphaInput) return;
+  if (!subtitleBackgroundAlphaUndoPushed) {
+    pushPreviewUndo('调整字幕背景不透明度', snapshotPreviewState());
+    subtitleBackgroundAlphaUndoPushed = true;
+  }
+  const alpha = Number(subtitleBackgroundAlphaInput.value);
+  if (subtitleBackgroundAlphaValue && Number.isFinite(alpha)) {
+    subtitleBackgroundAlphaValue.textContent = `${Math.round(alpha * 100)}%`;
+  }
+  setSubtitleAppearance({ background_alpha: alpha });
+  if (finalize) subtitleBackgroundAlphaUndoPushed = false;
+}
+subtitleBackgroundAlphaInput?.addEventListener('input', () => applySubtitleBackgroundAlphaInput());
+subtitleBackgroundAlphaInput?.addEventListener('change', () => applySubtitleBackgroundAlphaInput({ finalize: true }));
+subtitleFontFamilyScanButton?.addEventListener('click', () => {
+  void scanSubtitleLocalFonts();
+});
+document.addEventListener('mawe:languagechange', renderSubtitleFontFamilyStatus);
 const CLICK_BEHAVIOR_HINTS = {
   zh: {
     'select-and-seek': '暂停时只跳转，不自动播放；播放中跳转后继续播放。',
@@ -3413,6 +3455,78 @@ let previewGeometryDirty = false;
 function getPreviewGeometry() {
   return GEO_UTILS.normalizePreviewGeometry(DATA.preview?.subtitle);
 }
+function normalizeSubtitleFontFamilyName(value) {
+  if (typeof value !== 'string') return null;
+  const family = value.trim();
+  if (!family || family.length > SUBTITLE_FONT_FAMILY_MAX_LENGTH
+      || /[\u0000-\u001f\u007f]/u.test(family)) return null;
+  return family;
+}
+function normalizeSubtitleBackgroundColor(value) {
+  if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/iu.test(value)) return null;
+  return value.toLowerCase();
+}
+function normalizeSubtitleBackgroundAlpha(value) {
+  return typeof value === 'number' && Number.isFinite(value)
+    && SUBTITLE_BACKGROUND_ALPHA_MIN <= value && value <= SUBTITLE_BACKGROUND_ALPHA_MAX
+    ? value : null;
+}
+function subtitleBackgroundCss(appearance) {
+  const color = appearance.background_color || SUBTITLE_BACKGROUND_COLOR_DEFAULT;
+  const channels = [color.slice(1, 3), color.slice(3, 5), color.slice(5, 7)]
+    .map((channel) => Number.parseInt(channel, 16)).join(', ');
+  const alpha = appearance.background_alpha ?? SUBTITLE_BACKGROUND_ALPHA_DEFAULT;
+  return `rgba(${channels}, ${alpha})`;
+}
+function isBuiltInSubtitleFontFamily(value) {
+  return Object.prototype.hasOwnProperty.call(SUBTITLE_FONT_FAMILY_CSS, value);
+}
+function quoteCssString(value) {
+  return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+function subtitleFontFamilyCss(value) {
+  if (!value || value === 'default') return '';
+  if (isBuiltInSubtitleFontFamily(value)) return SUBTITLE_FONT_FAMILY_CSS[value];
+  return `${quoteCssString(value)}, var(--font-sans)`;
+}
+const SUBTITLE_FONT_FAMILY_STATUS_TEXT = Object.freeze({
+  zh: Object.freeze({
+    idle: '点击读取本机字体（首次需要授权）',
+    reading: '正在读取本机字体…',
+    success: (count) => `已读取 ${count} 种本机字体`,
+    empty: '未读取到可用的本机字体',
+    unsupported: '当前环境不支持自动读取本机字体',
+    denied: '未获准读取本机字体',
+    failed: '读取本机字体失败，请重试',
+  }),
+  en: Object.freeze({
+    idle: 'Click to read local fonts (permission required the first time)',
+    reading: 'Reading local fonts…',
+    success: (count) => `Read ${count} local font families`,
+    empty: 'No usable local fonts were returned',
+    unsupported: 'This environment cannot list local fonts automatically',
+    denied: 'Permission to read local fonts was not granted',
+    failed: 'Could not read local fonts; try again',
+  }),
+});
+let subtitleFontFamilyScanState = 'idle';
+let subtitleFontFamilyScanCount = 0;
+function renderSubtitleFontFamilyStatus() {
+  if (!subtitleFontFamilyStatus) return;
+  const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+  const text = SUBTITLE_FONT_FAMILY_STATUS_TEXT[language][subtitleFontFamilyScanState];
+  subtitleFontFamilyStatus.textContent = typeof text === 'function'
+    ? text(subtitleFontFamilyScanCount) : text;
+}
+function setSubtitleFontFamilyScanState(state, count = 0) {
+  subtitleFontFamilyScanState = state;
+  subtitleFontFamilyScanCount = count;
+  renderSubtitleFontFamilyStatus();
+}
+function subtitleFontFamilyOptionExists(value) {
+  return !!subtitleFontFamilySelect
+    && Array.from(subtitleFontFamilySelect.options).some((option) => option.value === value);
+}
 function normalizeSubtitleAppearance(value) {
   const result = {};
   const fontSize = value && typeof value.font_size === 'number' && Number.isFinite(value.font_size)
@@ -3420,10 +3534,12 @@ function normalizeSubtitleAppearance(value) {
   if (fontSize !== null && fontSize >= SUBTITLE_FONT_SIZE_MIN && fontSize <= SUBTITLE_FONT_SIZE_MAX) {
     result.font_size = fontSize;
   }
-  if (value && typeof value.font_family === 'string'
-      && Object.prototype.hasOwnProperty.call(SUBTITLE_FONT_FAMILY_CSS, value.font_family)) {
-    result.font_family = value.font_family;
-  }
+  const fontFamily = normalizeSubtitleFontFamilyName(value?.font_family);
+  if (fontFamily) result.font_family = fontFamily;
+  const backgroundColor = normalizeSubtitleBackgroundColor(value?.background_color);
+  if (backgroundColor) result.background_color = backgroundColor;
+  const backgroundAlpha = normalizeSubtitleBackgroundAlpha(value?.background_alpha);
+  if (backgroundAlpha !== null) result.background_alpha = backgroundAlpha;
   return result;
 }
 function getSubtitleAppearance(value = DATA.preview?.subtitle) {
@@ -3443,16 +3559,38 @@ function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
     subtitleFontSizeSelect.value = size;
   }
   if (subtitleFontFamilySelect) {
-    subtitleFontFamilySelect.value = appearance.font_family
-      && Object.prototype.hasOwnProperty.call(SUBTITLE_FONT_FAMILY_CSS, appearance.font_family)
-      ? appearance.font_family : 'default';
+    subtitleFontFamilySelect.querySelectorAll('option[data-generated="true"]').forEach((option) => option.remove());
+    const family = appearance.font_family || 'default';
+    if (family !== 'default' && !isBuiltInSubtitleFontFamily(family)
+        && !subtitleFontFamilyOptionExists(family)) {
+      const option = document.createElement('option');
+      option.value = family;
+      option.textContent = family;
+      option.dataset.generated = 'true';
+      subtitleFontFamilySelect.append(option);
+    }
+    subtitleFontFamilySelect.value = family;
+    if (subtitleFontFamilySelect.value !== family) subtitleFontFamilySelect.value = 'default';
+  }
+  if (subtitleBackgroundColorInput) {
+    subtitleBackgroundColorInput.value = appearance.background_color
+      || SUBTITLE_BACKGROUND_COLOR_DEFAULT;
+  }
+  if (subtitleBackgroundAlphaInput) {
+    const alpha = appearance.background_alpha ?? SUBTITLE_BACKGROUND_ALPHA_DEFAULT;
+    subtitleBackgroundAlphaInput.value = String(alpha);
+    if (subtitleBackgroundAlphaValue) {
+      subtitleBackgroundAlphaValue.textContent = `${Math.round(alpha * 100)}%`;
+    }
   }
 }
 function applySubtitleAppearance(value = DATA.preview?.subtitle) {
   const appearance = getSubtitleAppearance(value);
   overlayTextEl.style.fontSize = appearance.font_size ? `${appearance.font_size}px` : '';
-  overlayTextEl.style.fontFamily = appearance.font_family
-    ? SUBTITLE_FONT_FAMILY_CSS[appearance.font_family] : '';
+  overlayTextEl.style.fontFamily = subtitleFontFamilyCss(appearance.font_family);
+  const hasCustomBackground = Object.prototype.hasOwnProperty.call(appearance, 'background_color')
+    || Object.prototype.hasOwnProperty.call(appearance, 'background_alpha');
+  overlayTextEl.style.backgroundColor = hasCustomBackground ? subtitleBackgroundCss(appearance) : '';
   syncSubtitleAppearanceControls(appearance);
 }
 function setSubtitleAppearance(patch, { markDirty = true } = {}) {
@@ -3465,12 +3603,102 @@ function setSubtitleAppearance(patch, { markDirty = true } = {}) {
     if (!patch.font_family || patch.font_family === 'default') delete next.font_family;
     else Object.assign(next, normalizeSubtitleAppearance({ font_family: patch.font_family }));
   }
+  if (Object.prototype.hasOwnProperty.call(patch, 'background_color')) {
+    const backgroundColor = normalizeSubtitleBackgroundColor(patch.background_color);
+    if (!backgroundColor || backgroundColor === SUBTITLE_BACKGROUND_COLOR_DEFAULT) {
+      delete next.background_color;
+    } else {
+      next.background_color = backgroundColor;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'background_alpha')) {
+    const backgroundAlpha = normalizeSubtitleBackgroundAlpha(patch.background_alpha);
+    if (backgroundAlpha === null || backgroundAlpha === SUBTITLE_BACKGROUND_ALPHA_DEFAULT) {
+      delete next.background_alpha;
+    } else {
+      next.background_alpha = backgroundAlpha;
+    }
+  }
   if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
   DATA.preview.subtitle = { ...getPreviewGeometry(), ...next };
   if (markDirty) previewGeometryDirty = true;
   applySubtitleAppearance(DATA.preview.subtitle);
   return next;
 }
+function collectSubtitleLocalFontFamilies(fontData) {
+  const families = new Map();
+  for (const entry of Array.isArray(fontData) ? fontData : []) {
+    const family = normalizeSubtitleFontFamilyName(entry?.family);
+    if (!family || isBuiltInSubtitleFontFamily(family)) continue;
+    const key = family.toLocaleLowerCase();
+    if (!families.has(key)) families.set(key, family);
+  }
+  return [...families.values()].sort((left, right) => left.localeCompare(right, undefined, {
+    sensitivity: 'base',
+  }));
+}
+function replaceSubtitleLocalFontOptions(families) {
+  if (!subtitleFontFamilySelect) return;
+  subtitleFontFamilySelect.querySelectorAll(
+    'option[data-local-font="true"], option[data-generated="true"]',
+  ).forEach((option) => option.remove());
+  const existing = new Set(Array.from(subtitleFontFamilySelect.options, (option) => option.value));
+  const fragment = document.createDocumentFragment();
+  families.forEach((family) => {
+    if (existing.has(family)) return;
+    const option = document.createElement('option');
+    option.value = family;
+    option.textContent = family;
+    option.dataset.localFont = 'true';
+    fragment.append(option);
+    existing.add(family);
+  });
+  subtitleFontFamilySelect.append(fragment);
+  syncSubtitleAppearanceControls();
+}
+function initializeSubtitleFontFamilyScanner() {
+  if (!subtitleFontFamilyScanButton) return;
+  if (typeof window.queryLocalFonts !== 'function') {
+    subtitleFontFamilyScanButton.disabled = true;
+    setSubtitleFontFamilyScanState('unsupported');
+    return;
+  }
+  subtitleFontFamilyScanButton.disabled = false;
+  setSubtitleFontFamilyScanState('idle');
+  void restoreGrantedSubtitleLocalFonts();
+}
+async function restoreGrantedSubtitleLocalFonts() {
+  if (typeof window.queryLocalFonts !== 'function' || !window.navigator?.permissions?.query) return;
+  try {
+    const permission = await window.navigator.permissions.query({ name: 'local-fonts' });
+    if (permission.state === 'granted') await scanSubtitleLocalFonts({ silent: true });
+  } catch (_) {
+    // 未知权限名或当前 WebView 不允许静默查询时，保留手动扫描入口。
+  }
+}
+async function scanSubtitleLocalFonts({ silent = false } = {}) {
+  if (typeof window.queryLocalFonts !== 'function') {
+    setSubtitleFontFamilyScanState('unsupported');
+    return;
+  }
+  if (subtitleFontFamilyScanButton) subtitleFontFamilyScanButton.disabled = true;
+  if (!silent) setSubtitleFontFamilyScanState('reading');
+  try {
+    const fontData = await window.queryLocalFonts();
+    const families = collectSubtitleLocalFontFamilies(fontData);
+    replaceSubtitleLocalFontOptions(families);
+    setSubtitleFontFamilyScanState(families.length ? 'success' : 'empty', families.length);
+  } catch (error) {
+    if (!silent) {
+      setSubtitleFontFamilyScanState(
+        error?.name === 'NotAllowedError' || error?.name === 'SecurityError' ? 'denied' : 'failed',
+      );
+    }
+  } finally {
+    if (subtitleFontFamilyScanButton) subtitleFontFamilyScanButton.disabled = false;
+  }
+}
+initializeSubtitleFontFamilyScanner();
 // 写回 DATA.preview.subtitle 并刷新 DOM。markDirty=false 用于初次加载，不弄脏工程。
 function setPreviewGeometry(geo, { markDirty = true } = {}) {
   const clamped = GEO_UTILS.clampPreviewGeometry(GEO_UTILS.normalizePreviewGeometry(geo));
