@@ -288,30 +288,8 @@ SONIOX_MODELS: Final[tuple[ModelConfig, ...]] = (
 
 LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
-        id="sensevoice-small-local",
-        label="SenseVoice Small（本地，推荐）",
-        env_key="",
-        note="多语种本地识别；默认配合 FSMN-VAD，CPU/GPU 都可运行",
-        languages=SENSEVOICE_LANGUAGES,
-        kind="local",
-        engine="funasr",
-        model_ref="iic/SenseVoiceSmall",
-        requires_runtime=("funasr", "torchaudio"),
-    ),
-    ModelConfig(
-        id="fun-asr-nano-local",
-        label="Fun-ASR-Nano 2512（本地，GPU）",
-        env_key="",
-        note="LLM-ASR 路线；默认配合 FSMN-VAD，中英日及中文方言，建议使用 CUDA",
-        languages=FUN_ASR_NANO_LANGUAGES,
-        kind="local",
-        engine="funasr",
-        model_ref="FunAudioLLM/Fun-ASR-Nano-2512",
-        requires_runtime=("funasr", "torchaudio"),
-    ),
-    ModelConfig(
         id="qwen3-asr-local",
-        label="Qwen3-ASR 0.6B（本地）",
+        label="Qwen3-ASR 0.6B（推荐）",
         env_key="",
         note="本地运行；首次准备会加载 Qwen3-ASR 与 Forced Aligner",
         languages=LANGUAGES,
@@ -323,7 +301,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
     ),
     ModelConfig(
         id="qwen3-asr-1.7b-local",
-        label="Qwen3-ASR 1.7B（本地）",
+        label="Qwen3-ASR 1.7B",
         env_key="",
         note="更高识别质量；与 0.6B 共用 Qwen3 Forced Aligner",
         languages=LANGUAGES,
@@ -334,8 +312,19 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         requires_runtime=("qwen_asr", "torch"),
     ),
     ModelConfig(
+        id="fun-asr-nano-local",
+        label="Fun-ASR-Nano 2512（GPU）",
+        env_key="",
+        note="LLM-ASR 路线；默认配合 FSMN-VAD，中英日及中文方言，建议使用 CUDA",
+        languages=FUN_ASR_NANO_LANGUAGES,
+        kind="local",
+        engine="funasr",
+        model_ref="FunAudioLLM/Fun-ASR-Nano-2512",
+        requires_runtime=("funasr", "torchaudio"),
+    ),
+    ModelConfig(
         id="funasr-local",
-        label="FunASR paraformer-zh（本地）",
+        label="FunASR paraformer-zh",
         env_key="",
         note="本地运行；使用 FunASR 上游模型缓存",
         languages=FUNASR_LANGUAGES,
@@ -346,6 +335,17 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         # FunASR model zoo 把 paraformer-zh 解析为这个 ModelScope ID；
         # GUI 不能导入 FunASR，扫描缓存时需要显式的映射。
         cache_refs=("iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",),
+    ),
+    ModelConfig(
+        id="sensevoice-small-local",
+        label="SenseVoice Small",
+        env_key="",
+        note="多语种本地识别；默认配合 FSMN-VAD，CPU/GPU 都可运行",
+        languages=SENSEVOICE_LANGUAGES,
+        kind="local",
+        engine="funasr",
+        model_ref="iic/SenseVoiceSmall",
+        requires_runtime=("funasr", "torchaudio"),
     ),
 )
 

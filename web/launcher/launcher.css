@@ -333,18 +333,6 @@ label {
   overflow-wrap: anywhere;
 }
 
-.local-model-cache-footer {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 10px;
-}
-
-.local-model-cache-footer button {
-  justify-self: end;
-  white-space: nowrap;
-}
-
 .task-progress {
   display: grid;
   gap: 5px;

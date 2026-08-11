@@ -80,9 +80,11 @@ class GuiWebBridgeTests(unittest.TestCase):
         local = next(provider for provider in config["providers"] if provider["id"] == "local")
         self.assertFalse(local["requiresApiKey"])
         self.assertEqual(local["kind"], "local")
-        self.assertEqual(local["models"][0]["id"], "sensevoice-small-local")
-        self.assertEqual(local["models"][1]["id"], "fun-asr-nano-local")
-        self.assertEqual(local["models"][3]["modelRef"], "Qwen/Qwen3-ASR-1.7B")
+        self.assertEqual(local["models"][0]["id"], "qwen3-asr-local")
+        self.assertEqual(local["models"][1]["id"], "qwen3-asr-1.7b-local")
+        self.assertEqual(local["models"][2]["id"], "fun-asr-nano-local")
+        self.assertEqual(local["models"][3]["id"], "funasr-local")
+        self.assertEqual(local["models"][4]["modelRef"], "iic/SenseVoiceSmall")
         self.assertIn(local["models"][0]["localStatus"]["status"], {"runtime_missing", "missing", "installed", "partial", "path_invalid", "broken"})
         self.assertEqual(config["modelCacheRoot"], "")
 
@@ -1415,6 +1417,14 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('event.type === "localRuntimeReady"', script)
         self.assertIn('def install_local_runtime(', backend)
         self.assertIn('def cancel_local_runtime(', backend)
+
+    def test_model_cache_path_saves_without_a_separate_button(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertNotIn('id="saveLocalModelCache"', page)
+        self.assertIn('$("localModelCachePath").addEventListener("change"', script)
+        self.assertIn('saveLocalModelCache($("localModelCachePath").value)', script)
 
     def test_attention_button_keeps_amber_hover_style(self) -> None:
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
