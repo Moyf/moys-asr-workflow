@@ -9,7 +9,7 @@ const CLICK_BEHAVIOR_VALUES = new Set(['select-only', 'select-and-seek', 'select
 const CLICK_TARGET_VALUES = new Set(['cue-start', 'pointer']);
 const CUE_MOVE_STEP_MIN_MS = 10;
 const CUE_MOVE_STEP_MAX_MS = 2000;
-const DEFAULT_CUE_MOVE_STEP_MS = 100;
+const DEFAULT_CUE_MOVE_STEP_MS = 50;
 function normalizeClickBehavior(value) {
   return CLICK_BEHAVIOR_VALUES.has(value) ? value : 'select-and-seek';
 }
@@ -61,7 +61,7 @@ const DEFAULT_EDITOR_SETTINGS = {
   clickBehavior: 'select-and-seek',
   // 波形字幕块的跳转目标；字幕列表点击始终跳转到字幕开头。
   clickTarget: 'cue-start',
-  // 选中字幕后用方向键 / A-D 微调时间的步长。
+  // 选中字幕后用方向键 / A-D 微调时间的幅度。
   cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
   // 界面主题：dark（默认）/ light。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
   theme: 'dark',
@@ -2949,7 +2949,7 @@ mediaFullscreen?.addEventListener('click', async () => {
 document.addEventListener('fullscreenchange', syncMediaControls);
 
 // ←/→：无选中字幕时复用媒体控制条的 ±5 秒跳转；选中字幕时改为按设置的
-// 步长微调时间。Ctrl(Cmd)+方向键调整左边界，Ctrl(Cmd)+Shift+方向键调整右边界。
+// 微调幅度调整时间。Ctrl(Cmd)+方向键调整左边界，Ctrl(Cmd)+Shift+方向键调整右边界。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
   if (editingState || isTextEditingTarget(e)) return;
@@ -3098,6 +3098,12 @@ document.addEventListener('keydown', (e) => {
   if (ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.metaKey) return;
   const direction = (key === 'a' || key === 'w') ? -1 : 1;
+  if (e.shiftKey && !e.altKey && (key === 'a' || key === 'd')
+      && waveformEditor?.snapActiveCueBoundaryByKeyboard?.(direction)) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
   if (!e.shiftKey && waveformEditor?.adjustActiveCueDragBy?.(
     direction * EDITOR_SETTINGS.cueMoveStepMs,
     e.altKey,
@@ -4654,13 +4660,15 @@ function scheduleAutoSave() {
 
 function configureServerAutoSave() {
   if (!serverAutoSaveSettings || !autoSaveProjectToggle || !autoSaveIntervalField || !autoSaveIntervalInput) return;
-  const available = serverProjectSavingEnabled();
+  const available = !!(SERVER_CONFIG && SERVER_CONFIG.saveUrl);
   serverAutoSaveSettings.hidden = !available;
   if (!available) return;
   const sync = () => {
     autoSaveProjectToggle.checked = EDITOR_SETTINGS.autoSaveProject;
     autoSaveIntervalInput.value = String(EDITOR_SETTINGS.autoSaveIntervalSeconds);
     autoSaveIntervalField.hidden = !EDITOR_SETTINGS.autoSaveProject;
+    autoSaveProjectToggle.disabled = false;
+    autoSaveIntervalInput.disabled = !EDITOR_SETTINGS.autoSaveProject;
   };
   sync();
   autoSaveProjectToggle.addEventListener('change', () => {

@@ -261,6 +261,20 @@ test('keyboard movement ripples an attached following cue but Alt leaves it fixe
 });
 
 
+test('keyboard movement ripples an attached preceding cue when moving left', () => {
+  const segments = [
+    { start: 500, end: 1500, items: [{ text: 'A', start: 500, end: 1500 }] },
+    { start: 1500, end: 3000, items: [{ text: 'B', start: 1500, end: 3000 }] },
+  ];
+  const moved = helpers.applyMoveStep(segments, [1], -100, 4000, { sticky: true });
+  assert.equal(moved.appliedDelta, -100);
+  assert.deepEqual(JSON.parse(JSON.stringify(segments)), [
+    { start: 500, end: 1400, items: [{ text: 'A', start: 500, end: 1400 }] },
+    { start: 1400, end: 2900, items: [{ text: 'B', start: 1400, end: 2900 }] },
+  ]);
+});
+
+
 test('keyboard boundary adjustment follows the shared boundary and Alt isolates the target', () => {
   const linked = [
     { start: 0, end: 1000, items: [{ text: 'A', start: 0, end: 1000 }] },

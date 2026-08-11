@@ -62,7 +62,7 @@ test('selected arrow keys move cues, adjust boundaries, and honor the configured
   await loadAttachedCues(page);
   await page.locator('#editor-settings-toggle').click();
   const step = page.locator('#cue-move-step');
-  await expect(step).toHaveValue('100');
+  await expect(step).toHaveValue('50');
   await step.fill('250');
   await step.press('Tab');
   await page.locator('.cue[data-idx="0"]').click();
@@ -134,5 +134,56 @@ test('A/D adjusts a held subtitle block and a held shared boundary', async ({ pa
     { start: 5100, end: 10200 },
     { start: 10200, end: 18000 },
     { start: 25000, end: 30000 },
+  ]);
+});
+
+test('A also compresses an attached preceding cue', async ({ page }) => {
+  await loadAttachedCues(page);
+  await page.locator('#editor-settings-toggle').click();
+  const step = page.locator('#cue-move-step');
+  await step.fill('100');
+  await step.press('Tab');
+
+  const block = page.locator('.waveform-cue-block[data-idx="1"]').first();
+  await expect(block).toBeVisible();
+  const blockBox = await stableBoundingBox(block);
+  await page.mouse.move(blockBox.x + blockBox.width / 2, blockBox.y + blockBox.height / 2);
+  await page.mouse.down();
+  await page.keyboard.press('a');
+  await page.mouse.up();
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 9900 },
+    { start: 9900, end: 17900 },
+    { start: 25000, end: 30000 },
+  ]);
+});
+
+test('Shift+A/D on a held subtitle snaps its outer boundaries to neighbors', async ({ page }) => {
+  await loadAttachedCues(page);
+  await page.evaluate(() => {
+    DATA.segments[0].end = 9000;
+    DATA.segments[1].start = 10000;
+    DATA.segments[1].end = 18000;
+    DATA.segments[2].start = 20000;
+    renderAll();
+  });
+  await page.locator('#editor-settings-toggle').click();
+  const block = page.locator('.waveform-cue-block[data-idx="1"]').first();
+  await expect(block).toBeVisible();
+  const blockBox = await stableBoundingBox(block);
+  await page.mouse.move(blockBox.x + blockBox.width / 2, blockBox.y + blockBox.height / 2);
+  await page.mouse.down();
+  await page.keyboard.press('Shift+a');
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 9000 },
+    { start: 9000, end: 18000 },
+    { start: 20000, end: 30000 },
+  ]);
+  await page.keyboard.press('Shift+d');
+  await page.mouse.up();
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 9000 },
+    { start: 9000, end: 20000 },
+    { start: 20000, end: 30000 },
   ]);
 });

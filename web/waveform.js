@@ -665,10 +665,11 @@
   }
 
   // Keyboard movement is a small, discrete counterpart to moving a waveform
-  // block. When the selected range is attached to the next cue, the shared
-  // boundary follows the moved range: moving away expands the next cue and
-  // moving toward it compresses the next cue. Alt keeps that following cue
-  // untouched, while the normal no-overlap limit still applies.
+  // block. When the selected range is attached to a neighboring cue, the
+  // shared boundary follows the moved range: moving away expands the neighbor
+  // and moving toward it compresses the neighbor. Alt keeps both neighbors
+  // untouched, while the normal no-overlap and minimum-duration limits still
+  // apply.
   function planMoveStep(segments, indices, deltaMs, durationMs, {
     sticky = true,
     minDuration = MIN_CUE_MS,
@@ -681,6 +682,8 @@
     const originals = new Map(selectedIndices.map((idx) => [idx, snapshotTiming(segments[idx])]));
     const attachments = [];
     const attachmentOriginals = new Map();
+    const previousAttachments = [];
+    const previousAttachmentOriginals = new Map();
     let minDelta = -Infinity;
     let maxDelta = Infinity;
     const timelineDuration = Number(durationMs);
@@ -693,7 +696,14 @@
       }
       const previous = segments[idx - 1];
       if (previous && !selected.has(idx - 1)) {
-        minDelta = Math.max(minDelta, Number(previous.end) - original.start);
+        if (sticky && isAttached(previous, segments[idx])) {
+          const previousOriginal = snapshotTiming(previous);
+          previousAttachments.push({ index: idx, previousIndex: idx - 1 });
+          previousAttachmentOriginals.set(idx - 1, previousOriginal);
+          minDelta = Math.max(minDelta, previousOriginal.start + minDuration - original.start);
+        } else {
+          minDelta = Math.max(minDelta, Number(previous.end) - original.start);
+        }
       }
       const next = segments[idx + 1];
       if (!next || selected.has(idx + 1)) continue;
@@ -715,6 +725,7 @@
     const appliedDelta = clamp(rounded, minDelta, maxDelta);
     const affectedIndices = [...selectedIndices];
     attachments.forEach(({ nextIndex }) => affectedIndices.push(nextIndex));
+    previousAttachments.forEach(({ previousIndex }) => affectedIndices.push(previousIndex));
     return {
       changed: appliedDelta !== 0,
       appliedDelta,
@@ -723,6 +734,8 @@
       originals,
       attachments,
       attachmentOriginals,
+      previousAttachments,
+      previousAttachmentOriginals,
     };
   }
 
@@ -747,6 +760,12 @@
       const original = plan.attachmentOriginals.get(nextIndex);
       const segment = segments[nextIndex];
       segment.start = original.start + delta;
+      segment.items = remapItems(original.items, original.start, original.end, segment.start, segment.end);
+    });
+    plan.previousAttachments.forEach(({ previousIndex }) => {
+      const original = plan.previousAttachmentOriginals.get(previousIndex);
+      const segment = segments[previousIndex];
+      segment.end = original.end + delta;
       segment.items = remapItems(original.items, original.start, original.end, segment.start, segment.end);
     });
     return plan;
@@ -2754,6 +2773,7 @@
       const cancelIndices = new Set(dragIndices);
       if (kind === 'move') {
         dragIndices.forEach((idx) => {
+          if (segments[idx - 1] && isAttached(segments[idx - 1], segments[idx])) cancelIndices.add(idx - 1);
           if (segments[idx + 1] && isAttached(segments[idx], segments[idx + 1])) cancelIndices.add(idx + 1);
         });
       }
@@ -2934,6 +2954,52 @@
       }
       const result = apply();
       result.affectedIndices.forEach((idx) => drag.commitIndices.add(idx));
+      drag.changed = true;
+      this.captureCueDragOriginals(drag);
+      drag.startClientX = drag.currentClientX;
+      this.scheduleRefreshCueBlocks();
+      return true;
+    }
+
+    snapActiveCueBoundaryByKeyboard(direction) {
+      const drag = this.drag;
+      if (!drag || drag.kind !== 'move' || (direction !== -1 && direction !== 1)) return false;
+      const segments = this.options.getSegments();
+      const indices = normalizedIndices(segments, drag.indices);
+      if (!indices.length) return true;
+
+      const index = direction < 0 ? indices[0] : indices[indices.length - 1];
+      const neighborIndex = direction < 0 ? index - 1 : index + 1;
+      const segment = segments[index];
+      const neighbor = segments[neighborIndex];
+      // 与普通 A/D 一样，按住字幕块时即使已经到达边界也要消费按键，
+      // 避免 Shift+A/D 穿透成“选择前后字幕”。
+      if (!segment || !neighbor) return true;
+
+      const edge = direction < 0 ? 'start' : 'end';
+      const current = Number(segment[edge]);
+      const target = roundMs(direction < 0 ? neighbor.end : neighbor.start);
+      const lower = edge === 'start' ? 0 : Number(segment.start) + MIN_CUE_MS;
+      const upper = edge === 'start'
+        ? Number(segment.end) - MIN_CUE_MS
+        : this.cueDragDurationMs();
+      if (!Number.isFinite(current) || !Number.isFinite(target)
+          || target < lower || target > upper || target === current) return true;
+
+      if (!drag.started) {
+        drag.started = true;
+        this.options.onBeginEdit?.('贴近字幕边界');
+      }
+      const original = snapshotTiming(segment);
+      segment[edge] = target;
+      segment.items = remapItems(
+        original.items,
+        original.start,
+        original.end,
+        segment.start,
+        segment.end,
+      );
+      drag.commitIndices.add(index);
       drag.changed = true;
       this.captureCueDragOriginals(drag);
       drag.startClientX = drag.currentClientX;
