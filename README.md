@@ -115,7 +115,7 @@ Release 包中的 `MAW.exe` 也可以脱离 Launcher 直接转写指定媒体，
 > [!note]  
 > 多行波形相关特性参考了 [gap-gone](https://github.com/LiRenTech/gap-gone) 项目 ❤️  
 
-详细的使用方法、数据要求、快捷键和导出说明见 [编辑器指南](docs/EDITOR_GUIDE.md)。  
+详细的使用方法、数据要求和导出说明见 [编辑器指南](docs/EDITOR_GUIDE.md)。字幕时间微调快捷键见 [字幕按键调整文档](docs/KEYBOARD_ADJUSTMENT.md)。
 完整步骤、常用参数与排错见 [docs/WORKFLOW.md](docs/WORKFLOW.md)，工程文件的数据结构见 [JSON_SCHEMA.md](JSON_SCHEMA.md)。
 
 ## 关于 API
