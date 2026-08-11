@@ -48,6 +48,7 @@ class TranscriptionRequest:
     speaker_colors: bool = False
     ui_language: str = "zh"
     generate_html: bool = True
+    debug_raw: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,10 +56,17 @@ class TranscriptionResult:
     srt_path: Path
     json_path: Path
     html_path: Path | None
+    raw_path: Path | None = None
 
 
 ProgressCallback = Callable[[str], None]
 ProcessStartCallback = Callable[[int], None]
+
+
+MACOS_FFMPEG_CANDIDATE_DIRECTORIES: Final[tuple[str, ...]] = (
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+)
 
 
 @final
@@ -110,6 +118,29 @@ class MissingOutputError(Exception):
 def build_output_paths(srt_path: Path) -> OutputPaths:
     srt = Path(srt_path).expanduser().resolve()
     return OutputPaths(srt=srt, json=srt.with_suffix(".mosp"), html=srt.with_suffix(".edit.html"))
+
+
+def raw_response_path(srt_path: Path) -> Path:
+    return Path(srt_path).expanduser().resolve().with_suffix(".asr-response.json")
+
+
+def unique_output_path(srt_path: Path) -> Path:
+    """为已有输出及其工程副本选择一个不会覆盖文件的新路径。"""
+    original = Path(srt_path).expanduser()
+
+    def occupied(candidate: Path) -> bool:
+        paths = build_output_paths(candidate)
+        return any(path.exists() for path in (paths.srt, paths.json, paths.html))
+
+    if not occupied(original):
+        return original
+
+    index = 1
+    while True:
+        candidate = original.with_name(f"{original.stem}-{index}{original.suffix}")
+        if not occupied(candidate):
+            return candidate
+        index += 1
 
 
 PROVIDER_SRT_TAGS: Final = {"qwen": ".qwen3-asr-api", "soniox": ".soniox", "bcut": ".bcut"}
@@ -169,6 +200,8 @@ def build_transcribe_command(
         command = [exe, str(script)]
     command.append(str(request.media_path))
     command.extend(["--output", str(build_output_paths(request.srt_path).srt), "--json", "--no-html", "--with-waveform"])
+    if request.debug_raw:
+        command.append("--debug-raw")
     if is_soniox:
         _append_option(command, "--model", request.model if request.model != DEFAULT_MODEL_ID else "")
         if request.speaker_colors:
@@ -259,13 +292,21 @@ def run_transcription(
         raise TranscriptionProcessError(process.returncode, output=collected)
     _require_output(paths.srt, "SRT")
     _require_output(paths.json, "JSON")
+    raw_path = raw_response_path(paths.srt) if request.debug_raw else None
+    if raw_path is not None:
+        _require_output(raw_path, "raw ASR response")
     html_path = None
     if request.generate_html:
         try:
             html_path = render_editor_html(paths.json, request.media_path, paths.html, request.ui_language)
         except Exception as error:  # HTML is optional; preserve successful SRT/JSON outputs.
             (on_event or _ignore)(f"[warning] 编辑器 HTML 生成失败，SRT/JSON 已保留：{error}")
-    return TranscriptionResult(srt_path=paths.srt, json_path=paths.json, html_path=html_path)
+    return TranscriptionResult(
+        srt_path=paths.srt,
+        json_path=paths.json,
+        html_path=html_path,
+        raw_path=raw_path,
+    )
 
 
 def render_editor_html(json_path: Path, media_path: Path, html_path: Path, ui_language: str = "zh") -> Path | None:
@@ -362,6 +403,9 @@ def _child_environment(parent: Mapping[str, str], api_key: str, workspace_id: st
         bundled_directory = _bundled_ffmpeg_directory()
         if bundled_directory:
             _prepend_ffmpeg_path(env, str(bundled_directory))
+    candidate_path = _ffmpeg_search_path(env.get("PATH", ""))
+    if candidate_path:
+        env["PATH"] = candidate_path
     if provider == "soniox":
         if api_key:
             env["SONIOX_API_KEY"] = api_key
@@ -385,6 +429,17 @@ def _prepend_ffmpeg_path(env: dict[str, str], configured_path: str) -> bool:
     old_path = env.get("PATH", "")
     env["PATH"] = str(directory) if not old_path else str(directory) + os.pathsep + old_path
     return True
+
+
+def _ffmpeg_search_path(path: str | None = None) -> str | None:
+    """Add common macOS Homebrew directories after the inherited PATH."""
+    current = os.environ.get("PATH", "") if path is None else path
+    entries = [entry for entry in current.split(os.pathsep) if entry]
+    if sys.platform == "darwin":
+        for directory in MACOS_FFMPEG_CANDIDATE_DIRECTORIES:
+            if directory not in entries:
+                entries.append(directory)
+    return os.pathsep.join(entries) or None
 
 
 def _bundled_ffmpeg_directory() -> Path | None:

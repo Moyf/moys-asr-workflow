@@ -81,9 +81,9 @@ test('overlay starts at the default band and reports normalized geometry', async
   await page.goto(server.url);
   await revealOverlay(page);
   const geo = await readGeometry(page);
-  expect(geo.x).toBeCloseTo(0.175, 5);
+  expect(geo.x).toBeCloseTo(0.1, 5);
   expect(geo.y).toBeCloseTo(0.76, 5);
-  expect(geo.width).toBeCloseTo(0.65, 5);
+  expect(geo.width).toBeCloseTo(0.8, 5);
   expect(geo.height).toBeCloseTo(0.16, 5);
 });
 

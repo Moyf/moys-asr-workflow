@@ -172,7 +172,8 @@ class ProjectContractTests(unittest.TestCase):
         project = {
             "segments": [{"start": 0, "end": 1000, "text": "hi"}],
             "preview": {"subtitle": {"x": 0.0, "y": 0.76, "width": 1.0, "height": 0.16,
-                                        "font_size": 32, "font_family": "yahei"}},
+                                        "font_size": 32, "font_family": "yahei",
+                                        "background_color": "#1A2b3C", "background_alpha": 0}},
         }
 
         result = validate_project(project)
@@ -180,6 +181,20 @@ class ProjectContractTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.project["preview"]["subtitle"]["y"], 0.76)
         self.assertEqual(result.project["preview"]["subtitle"]["font_family"], "yahei")
+        self.assertEqual(result.project["preview"]["subtitle"]["background_color"], "#1A2b3C")
+        self.assertEqual(result.project["preview"]["subtitle"]["background_alpha"], 0)
+
+    def test_validate_project_accepts_custom_preview_subtitle_font_family(self) -> None:
+        project = {
+            "segments": [{"start": 0, "end": 1000, "text": "hi"}],
+            "preview": {"subtitle": {"x": 0.0, "y": 0.76, "width": 1.0, "height": 0.16,
+                                        "font_family": "Noto Sans CJK SC"}},
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.project["preview"]["subtitle"]["font_family"], "Noto Sans CJK SC")
 
     def test_validate_project_rejects_preview_subtitle_out_of_range(self) -> None:
         project = {
@@ -225,7 +240,7 @@ class ProjectContractTests(unittest.TestCase):
             "segments": [{"start": 0, "end": 1000, "text": "hi"}],
             "preview": {"subtitle": {
                 "x": 0.0, "y": 0.76, "width": 1.0, "height": 0.16,
-                "font_size": 100, "font_family": "unknown",
+                "font_size": 100, "font_family": "", "background_color": "black", "background_alpha": 1.1,
             }},
         }
 
@@ -234,6 +249,8 @@ class ProjectContractTests(unittest.TestCase):
 
         self.assertIn("$.preview.subtitle.font_size", paths)
         self.assertIn("$.preview.subtitle.font_family", paths)
+        self.assertIn("$.preview.subtitle.background_color", paths)
+        self.assertIn("$.preview.subtitle.background_alpha", paths)
 
     def test_validate_project_rejects_non_object_preview(self) -> None:
         project = {

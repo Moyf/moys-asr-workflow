@@ -49,6 +49,7 @@
         <label for="srtPath" data-i18n="srt_output">SRT 输出</label>
         <input id="srtPath" type="text" autocomplete="off">
         <p id="srtPathError" class="field-error"></p>
+        <p id="srtPathNotice" class="hint warn hidden" aria-live="polite"></p>
       </div>
       <label class="check-field generate-html" for="generateHtml" data-i18n-title="generate_html_title">
         <input id="generateHtml" type="checkbox">
@@ -65,11 +66,11 @@
         </div>
         <label class="check-field" for="testRun" data-i18n-title="test_run_title">
           <input id="testRun" type="checkbox">
-          <span data-i18n="test_run">测试运行</span>
+          <span data-i18n="test_run">快速测试</span>
         </label>
       </div>
       <p id="providerNote" class="hint warn hidden" aria-live="polite"></p>
-      <p id="testRunHint" class="hint hidden" data-i18n="test_run_override">测试运行已限定前 2 分钟</p>
+      <p id="testRunHint" class="hint hidden" data-i18n="test_run_override">快速测试已限定前 2 分钟</p>
       <div class="field" id="apiKeyField">
         <label for="apiKey" data-i18n="key">API Key</label>
         <div class="path-row key-row">
@@ -160,6 +161,12 @@
             </label>
             <p class="hint" data-i18n="speaker_colors_hint">最多 5 种颜色；说话人超过 5 个时颜色循环复用。</p>
           </div>
+          <div id="debugRawField" class="field">
+            <label class="check-field" for="debugRaw" data-i18n-title="debug_raw_title">
+              <input id="debugRaw" type="checkbox">
+              <span data-i18n="debug_raw">调试运行（保存完整返回数据）</span>
+            </label>
+          </div>
         </div>
       </div>
     </section>
@@ -201,7 +208,6 @@
         <button id="openMawe" class="ghost split-main" type="button" data-i18n="start_server_editor">启动 Server 版字幕编辑器</button>
         <button id="openMenu" class="ghost split-caret" type="button" aria-haspopup="true">▾</button>
         <div id="htmlMenu" class="split-menu hidden">
-          <button id="openMose" type="button" data-i18n="open_mose">在 MOSE 中打开</button>
           <button id="openHtml" class="hidden" type="button" data-i18n="open_html">打开该工程的 HTML 编辑器</button>
           <button id="openBlankHtml" type="button" data-i18n="open_blank_html">打开空的 HTML 编辑器</button>
         </div>

@@ -7,16 +7,27 @@ const SERVER_CONFIG = __SERVER_CONFIG_JSON__;
 const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';
 const CLICK_BEHAVIOR_VALUES = new Set(['select-only', 'select-and-seek', 'select-and-play']);
 const CLICK_TARGET_VALUES = new Set(['cue-start', 'pointer']);
+const CUE_MOVE_STEP_MIN_MS = 10;
+const CUE_MOVE_STEP_MAX_MS = 2000;
+const DEFAULT_CUE_MOVE_STEP_MS = 50;
 function normalizeClickBehavior(value) {
   return CLICK_BEHAVIOR_VALUES.has(value) ? value : 'select-and-seek';
 }
 function normalizeClickTarget(value) {
   return CLICK_TARGET_VALUES.has(value) ? value : 'cue-start';
 }
+
+function clampCueMoveStepMs(value) {
+  const rounded = Math.round(Number(value));
+  return Math.min(
+    CUE_MOVE_STEP_MAX_MS,
+    Math.max(CUE_MOVE_STEP_MIN_MS, Number.isFinite(rounded) ? rounded : DEFAULT_CUE_MOVE_STEP_MS),
+  );
+}
 const DEFAULT_EDITOR_SETTINGS = {
   splitKey: 'ctrl-enter',
   overlayEnabled: true,
-  exportStartAtZero: true,
+  exportStartAtZero: false,
   cueListShowIndex: true,
   cueListShowTime: true,
   cueListShowSticker: true,
@@ -50,11 +61,18 @@ const DEFAULT_EDITOR_SETTINGS = {
   clickBehavior: 'select-and-seek',
   // 波形字幕块的跳转目标；字幕列表点击始终跳转到字幕开头。
   clickTarget: 'cue-start',
+  // 选中字幕后用方向键 / A-D 微调时间的幅度。
+  cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
   // 界面主题：dark（默认）/ light。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
   theme: 'dark',
 };
 const SUBTITLE_FONT_SIZE_MIN = 12;
 const SUBTITLE_FONT_SIZE_MAX = 96;
+const SUBTITLE_FONT_FAMILY_MAX_LENGTH = 128;
+const SUBTITLE_BACKGROUND_COLOR_DEFAULT = '#000000';
+const SUBTITLE_BACKGROUND_ALPHA_DEFAULT = 0.65;
+const SUBTITLE_BACKGROUND_ALPHA_MIN = 0;
+const SUBTITLE_BACKGROUND_ALPHA_MAX = 1;
 const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
   default: '',
   yahei: '"Microsoft YaHei", "PingFang SC", sans-serif',
@@ -69,7 +87,7 @@ function readEditorSettings() {
     return {
       splitKey: saved.splitKey === 'enter' ? 'enter' : DEFAULT_EDITOR_SETTINGS.splitKey,
       overlayEnabled: saved.overlayEnabled !== false,
-      exportStartAtZero: saved.exportStartAtZero !== false,
+      exportStartAtZero: saved.exportStartAtZero === true,
       cueListShowIndex: saved.cueListShowIndex !== false,
       cueListShowTime: saved.cueListShowTime !== false,
       cueListShowSticker: saved.cueListShowSticker !== false,
@@ -91,6 +109,7 @@ function readEditorSettings() {
       stickerOverlayEnabled: saved.stickerOverlayEnabled === true,
       clickBehavior: normalizeClickBehavior(saved.clickBehavior),
       clickTarget: normalizeClickTarget(saved.clickTarget),
+      cueMoveStepMs: clampCueMoveStepMs(saved.cueMoveStepMs),
       theme: saved.theme === 'light' ? 'light' : 'dark',
     };
   } catch (_) {
@@ -201,6 +220,8 @@ function getRemovedGapRanges() {
 const container = document.getElementById('cues-container');
 let player = document.getElementById('player');  // 可被「加载媒体」替换为新 <video>/<audio>
 let waveformEditor = null;
+let playbackFrameId = 0;
+let playbackFramePlayer = null;
 // 工程内波形是可直接使用的缓存；加载关联媒体时不要因为媒体签名不同而覆盖它。
 // 媒体生成的波形则不属于工程缓存，切换媒体时仍应重新分析。
 let waveformLoadedFromProject = false;
@@ -371,6 +392,11 @@ const overlayToggle = document.getElementById('overlay-toggle');
 const stickerOverlayToggle = document.getElementById('sticker-overlay-toggle');
 const subtitleFontSizeSelect = document.getElementById('subtitle-font-size');
 const subtitleFontFamilySelect = document.getElementById('subtitle-font-family');
+const subtitleFontFamilyScanButton = document.getElementById('subtitle-font-family-scan');
+const subtitleFontFamilyStatus = document.getElementById('subtitle-font-family-status');
+const subtitleBackgroundColorInput = document.getElementById('subtitle-background-color');
+const subtitleBackgroundAlphaInput = document.getElementById('subtitle-background-alpha');
+const subtitleBackgroundAlphaValue = document.getElementById('subtitle-background-alpha-value');
 const playerEmpty = document.getElementById('player-empty');
 const playerWrap = document.querySelector('.player-wrap');
 const mediaPlayToggle = document.getElementById('media-play-toggle');
@@ -402,9 +428,11 @@ const helpPanel = document.getElementById('help-panel');
 const helpDragHandle = document.getElementById('help-drag-handle');
 const helpCloseButton = document.getElementById('help-close');
 const helpSplitKey = document.getElementById('help-split-key');
+
 const clickBehaviorSelect = document.getElementById('click-behavior');
 const clickTargetField = document.getElementById('click-target-field');
 const clickTargetSelect = document.getElementById('click-target');
+const cueMoveStepInput = document.getElementById('cue-move-step');
 const replaceModal = document.getElementById('replace-modal');
 const stickerModal = document.getElementById('sticker-modal');
 const stickerPreviewModal = document.getElementById('sticker-preview-modal');
@@ -469,6 +497,7 @@ const gapRemoveList = document.getElementById('gap-remove-list');
 const gapRemoveClearAllButton = document.getElementById('gap-remove-clear-all');
 const HELP_PANEL_POSITION_KEY = 'moy.asr.help.panel.v1';
 const HELP_PANEL_SIZE_KEY = 'moy.asr.help.panel.size.v1';
+
 const AUTO_MERGE_PANEL_POSITION_KEY = 'moy.asr.auto_merge.panel.v2';
 const autoMergePanel = document.getElementById('auto-merge-panel');
 const autoMergeDragHandle = document.getElementById('auto-merge-drag-handle');
@@ -484,6 +513,7 @@ let gapPreviewRange = null;
 let gapRemovePanelDrag = null;
 let currentCuePanelIdx = -1;
 let cuePanelUndoPushed = false;
+let editorSettingsPanelFrame = 0;
 
 function updateEditorSettings(patch) {
   Object.assign(EDITOR_SETTINGS, patch);
@@ -492,9 +522,17 @@ function updateEditorSettings(patch) {
 
 function setEditorSettingsPanelOpen(open) {
   if (!editorSettingsPanel || !editorSettingsToggle) return;
-  editorSettingsPanel.hidden = !open;
   editorSettingsToggle.classList.toggle('active', open);
   editorSettingsToggle.setAttribute('aria-expanded', String(open));
+  // 先让按钮状态绘制出来，再展开/收起文档流中的大面板，避免布局重排把高亮拖后。
+  cancelAnimationFrame(editorSettingsPanelFrame);
+  editorSettingsPanelFrame = requestAnimationFrame(() => {
+    editorSettingsPanelFrame = requestAnimationFrame(() => {
+      editorSettingsPanelFrame = 0;
+      if (editorSettingsToggle.getAttribute('aria-expanded') !== String(open)) return;
+      editorSettingsPanel.hidden = !open;
+    });
+  });
 }
 
 function positionSubtitlePreviewSettingsPanel() {
@@ -628,6 +666,7 @@ if (autoSaveIntervalInput) autoSaveIntervalInput.value = String(EDITOR_SETTINGS.
 if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.stickerOverlayEnabled;
 if (clickBehaviorSelect) clickBehaviorSelect.value = EDITOR_SETTINGS.clickBehavior;
 if (clickTargetSelect) clickTargetSelect.value = EDITOR_SETTINGS.clickTarget;
+if (cueMoveStepInput) cueMoveStepInput.value = String(EDITOR_SETTINGS.cueMoveStepMs);
 applyCueListDisplaySettings();
 applyCueEditorDisplaySettings();
 applySubtitleAppearance();
@@ -660,6 +699,8 @@ const helpFloatingPanel = createFloatingPanel({
   positionKey: HELP_PANEL_POSITION_KEY,
   onOpen: restoreHelpPanelSize,
 });
+// 帮助是非模态浮窗；打开后立即释放入口按钮焦点，让 Enter / Esc 等快捷键回到编辑器。
+helpToggle?.addEventListener('click', () => helpToggle.blur());
 helpCloseButton?.addEventListener('click', () => helpFloatingPanel.close());
 // 浮窗尺寸：仅在用户拖过右下角缩放手柄后持久化；未缩放时保持 CSS 默认宽度/自动高度
 function restoreHelpPanelSize() {
@@ -692,6 +733,8 @@ if (helpPanel) {
     }, 250);
   }).observe(helpPanel);
 }
+
+
 // 明暗主题：令牌全部定义在 CSS（:root 暗色 / [data-theme="light"] 亮色），
 // 这里只负责写 <html data-theme>、持久化、同步按钮，以及通知波形重绘画布。
 // 按钮显示的是「目标主题」（与相邻 🌐 语言按钮同一约定）：暗色时显示 🌖（点击转亮）。
@@ -800,6 +843,11 @@ clickBehaviorSelect?.addEventListener('change', () => {
 clickTargetSelect?.addEventListener('change', () => {
   updateEditorSettings({ clickTarget: normalizeClickTarget(clickTargetSelect.value) });
 });
+cueMoveStepInput?.addEventListener('change', () => {
+  const value = clampCueMoveStepMs(cueMoveStepInput.value);
+  cueMoveStepInput.value = String(value);
+  updateEditorSettings({ cueMoveStepMs: value });
+});
 subtitleFontSizeSelect?.addEventListener('change', () => {
   const value = subtitleFontSizeSelect.value;
   pushPreviewUndo('调整字幕字号', snapshotPreviewState());
@@ -809,6 +857,38 @@ subtitleFontFamilySelect?.addEventListener('change', () => {
   pushPreviewUndo('调整字幕字体', snapshotPreviewState());
   setSubtitleAppearance({ font_family: subtitleFontFamilySelect.value });
 });
+let subtitleBackgroundColorUndoPushed = false;
+function applySubtitleBackgroundColorInput({ finalize = false } = {}) {
+  if (!subtitleBackgroundColorInput) return;
+  if (!subtitleBackgroundColorUndoPushed) {
+    pushPreviewUndo('调整字幕背景色', snapshotPreviewState());
+    subtitleBackgroundColorUndoPushed = true;
+  }
+  setSubtitleAppearance({ background_color: subtitleBackgroundColorInput.value });
+  if (finalize) subtitleBackgroundColorUndoPushed = false;
+}
+subtitleBackgroundColorInput?.addEventListener('input', () => applySubtitleBackgroundColorInput());
+subtitleBackgroundColorInput?.addEventListener('change', () => applySubtitleBackgroundColorInput({ finalize: true }));
+let subtitleBackgroundAlphaUndoPushed = false;
+function applySubtitleBackgroundAlphaInput({ finalize = false } = {}) {
+  if (!subtitleBackgroundAlphaInput) return;
+  if (!subtitleBackgroundAlphaUndoPushed) {
+    pushPreviewUndo('调整字幕背景不透明度', snapshotPreviewState());
+    subtitleBackgroundAlphaUndoPushed = true;
+  }
+  const alpha = Number(subtitleBackgroundAlphaInput.value);
+  if (subtitleBackgroundAlphaValue && Number.isFinite(alpha)) {
+    subtitleBackgroundAlphaValue.textContent = `${Math.round(alpha * 100)}%`;
+  }
+  setSubtitleAppearance({ background_alpha: alpha });
+  if (finalize) subtitleBackgroundAlphaUndoPushed = false;
+}
+subtitleBackgroundAlphaInput?.addEventListener('input', () => applySubtitleBackgroundAlphaInput());
+subtitleBackgroundAlphaInput?.addEventListener('change', () => applySubtitleBackgroundAlphaInput({ finalize: true }));
+subtitleFontFamilyScanButton?.addEventListener('click', () => {
+  void scanSubtitleLocalFonts();
+});
+document.addEventListener('mawe:languagechange', renderSubtitleFontFamilyStatus);
 const CLICK_BEHAVIOR_HINTS = {
   zh: {
     'select-and-seek': '暂停时只跳转，不自动播放；播放中跳转后继续播放。',
@@ -921,7 +1001,7 @@ function updateGapRemoveUi() {
     if (gapRemovedExportDropdown.hidden) gapRemovedExportDropdown.classList.remove('open');
   }
   renderGapRemoveList();
-  waveformEditor?.renderSegments();
+  waveformEditor?.refreshGapOverlay();
 }
 
 function scanAndRemoveGaps() {
@@ -1406,13 +1486,20 @@ function isHiddenDisabled(idx) {
   return hideDisabled && !!(DATA.segments[idx] && DATA.segments[idx].disabled);
 }
 
-function clearSelection() {
+function clearSelection({ silent = false } = {}) {
   selectedIdxs.forEach(i => {
     const el = container.querySelector(`.cue[data-idx="${i}"]`);
     if (el) el.classList.remove('selected');
   });
   selectedIdxs.clear();
   selCountEl.textContent = '0';
+  if (silent) {
+    // 结构编辑会马上 renderAll() 并重新选中目标；此时不必先刷新旧波形
+    // 覆盖层和空面板，避免同一次操作产生两轮视觉更新。
+    currentCuePanelIdx = -1;
+    cuePanelUndoPushed = false;
+    return;
+  }
   if (waveformEditor) waveformEditor.updateSelection();
   setCurrentCuePanelIndex(-1);
 }
@@ -1445,13 +1532,24 @@ function selectRange(a, b) {
   setCurrentCuePanelIndex(selectedIdxs.has(b) ? b : (selectedIdxs.values().next().value ?? -1));
 }
 function selectOnly(idx) {
-  clearSelection();
+  // 这是键盘导航的热路径：clearSelection() 会先把面板切到空状态，
+  // 再由下面的 setCurrentCuePanelIndex() 切回目标，导致一次按键触发
+  // 两次面板刷新和两次波形选区刷新。先提交一次待编辑内容，再批量
+  // 更新选区与面板，保持行为不变但只做一次视觉刷新。
+  commitCuePanelEdit();
+  selectedIdxs.forEach((i) => {
+    const previous = container.querySelector(`.cue[data-idx="${i}"]`);
+    if (previous) previous.classList.remove('selected');
+  });
+  selectedIdxs.clear();
   selectedIdxs.add(idx);
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
   if (el) el.classList.add('selected');
   selCountEl.textContent = '1';
   if (waveformEditor) waveformEditor.updateSelection();
-  setCurrentCuePanelIndex(idx);
+  currentCuePanelIdx = DATA.segments[idx] ? idx : -1;
+  cuePanelUndoPushed = false;
+  renderCurrentCuePanel();
 }
 function addToSelection(idx) {
   if (isHiddenDisabled(idx) || selectedIdxs.has(idx)) return;
@@ -1464,7 +1562,8 @@ function addToSelection(idx) {
 }
 // 选中全部字幕（跳过「隐藏禁用项」开启时的禁用条目，与其它选择逻辑一致）。
 function selectAll() {
-  clearSelection();
+  commitCuePanelEdit();
+  clearSelection({ silent: true });
   DATA.segments.forEach((_, idx) => {
     if (isHiddenDisabled(idx)) return;
     selectedIdxs.add(idx);
@@ -1502,7 +1601,8 @@ function selectCueByClick(idx) {
   if (EDITOR_SETTINGS.selectGroupMembers) {
     const members = groupMemberIdxs(idx);
     if (members.length > 1) {
-      clearSelection();
+      commitCuePanelEdit();
+      clearSelection({ silent: true });
       members.forEach((i) => {
         selectedIdxs.add(i);
         const el = container.querySelector(`.cue[data-idx="${i}"]`);
@@ -1540,10 +1640,13 @@ function renderAll() {
     const el = container.querySelector(`.cue[data-idx="${i}"]`);
     if (el) el.classList.add('selected');
   });
-  if (waveformEditor) waveformEditor.renderSegments();
+  // 字幕结构变化只需更新波形上的字幕块覆盖层；媒体峰值和行 Canvas
+  // 没有变化，避免 B/C/删除等操作重新绘制整组波形。
+  if (waveformEditor) waveformEditor.refreshCueOverlay();
   renderCurrentCuePanel();
   syncPlayerPlaceholder();
   updateSubtitleExportUi();
+  window.MAWE_ONBOARDING?.afterRender();
 }
 
 function parsePanelTime(value, fallback) {
@@ -1979,7 +2082,7 @@ document.getElementById('search-clear').addEventListener('click', () => {
 // === 编辑 ===
 let editingState = null;
 
-function startEdit(el, idx, clickX, clickY) {
+function startEdit(el, idx, clickX, clickY, { deferCaret = false } = {}) {
   if (editingState) finishEdit(true);
   const textEl = el.querySelector('.text');
   if (!textEl) return;
@@ -1993,20 +2096,29 @@ function startEdit(el, idx, clickX, clickY) {
   textEl.setAttribute('contenteditable', 'plaintext-only');
   textEl.innerText = seg.text;
   textEl.focus();
-  const sel = window.getSelection();
-  sel.removeAllRanges();
-  if (caretCharOffset !== null && textEl.firstChild) {
-    const range = document.createRange();
-    const node = textEl.firstChild;
-    const pos = Math.max(0, Math.min(caretCharOffset, node.textContent.length));
-    range.setStart(node, pos);
-    range.setEnd(node, pos);
-    sel.addRange(range);
-  } else {
-    const range = document.createRange();
-    range.selectNodeContents(textEl);
-    sel.addRange(range);
-  }
+  const applyCaret = () => {
+    if (!editingState || editingState.el !== el) return;
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    if (caretCharOffset !== null && textEl.firstChild) {
+      const range = document.createRange();
+      const node = textEl.firstChild;
+      const pos = Math.max(0, Math.min(caretCharOffset, node.textContent.length));
+      range.setStart(node, pos);
+      range.setEnd(node, pos);
+      sel.addRange(range);
+    } else {
+      const range = document.createRange();
+      range.selectNodeContents(textEl);
+      sel.addRange(range);
+    }
+  };
+  // 浏览器可能在 dblclick 处理器返回后执行原生的“双击选词”，覆盖刚设置的光标。
+  // 延后一轮事件循环，确保双击编辑最终落在鼠标对应的字符位置。
+  // 先同步放置一次光标，让编辑状态立即可见；双击原生选词可能在事件返回后
+  // 覆盖它，再用下一轮事件循环恢复到鼠标位置。
+  applyCaret();
+  if (deferCaret) setTimeout(applyCaret, 0);
 }
 
 function setEditingCaretOffset(offset) {
@@ -2150,8 +2262,10 @@ function splitAtCursor() {
   el.classList.remove('editing');
   editingState = null;
 
-  // 拆分会改变 idx，先清选中
-  clearSelection();
+  // 拆分会改变 idx；先提交面板编辑，再静默清选中，等列表和波形块
+  // 覆盖层一次性更新后再选中后半段。
+  commitCuePanelEdit();
+  clearSelection({ silent: true });
   pushUndo('拆分字幕');
   DATA.segments.splice(idx, 1, leftSeg, rightSeg);
 
@@ -2287,7 +2401,8 @@ function mergeSegments(idxs) {
       return;
     }
   }
-  clearSelection();
+  commitCuePanelEdit();
+  clearSelection({ silent: true });
   pushUndo('合并字幕');
   mergeContiguousIndices(sorted);
   renderAll();
@@ -2331,7 +2446,8 @@ function autoMergeSegments() {
     return;
   }
   if (editingState) finishEdit(false);
-  clearSelection();
+  commitCuePanelEdit();
+  clearSelection({ silent: true });
   pushUndo('拼合字幕');
   const snappedCount = window.AsrEditorUtils.applyAutoMergeSnaps(DATA.segments, plan.snaps);
   // 合并从后往前进行，保持靠前组的下标仍然有效
@@ -2486,7 +2602,7 @@ function deleteSegments(idxs) {
   // 同样修正"刚被晋升为新 head 的段中"指向它的 ref：
   // splitGroups 写入的 refField.headIdx 是删除前的 idx，需要同样位移
   // 上面 shiftHeadIdx 已经覆盖（它扫所有 segments 的所有 ref）
-  clearSelection();
+  clearSelection({ silent: true });
   lastActive = -1;
   renderAll();
   flashHint(`已删除 ${sorted.length} 条`);
@@ -2643,7 +2759,8 @@ function bindCueEvents(el, idx) {
     // 普通双击的第一次 pointerdown 已选中该 cue；只有从特殊子控件触发、且尚未选中时
     // 才补一次选择，避免双击再次提交当前面板并重绘波形布局。
     if (!selectedIdxs.has(idx)) selectOnly(idx);
-    startEdit(el, idx, e.clientX, e.clientY);
+    window.MAWE_ONBOARDING?.beginRealSplit(idx);
+    startEdit(el, idx, e.clientX, e.clientY, { deferCaret: true });
   });
   el.addEventListener('contextmenu', (e) => {
     e.preventDefault();
@@ -2668,6 +2785,14 @@ document.addEventListener('keydown', (e) => {
   e.stopPropagation();
   if (action === 'split') splitAtCursor();
   else finishEdit(true);
+}, true);
+
+// 按住字幕块/边界调整时，Esc 取消本次预览并恢复按下前的时间码。
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || editingState) return;
+  if (!waveformEditor?.cancelCueDrag?.()) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
 }, true);
 
 // Esc：非字幕文本编辑状态下清除当前字幕选择；输入框和内联编辑继续保留原生/编辑行为。
@@ -2767,17 +2892,64 @@ function syncMediaControls() {
   mediaFullscreen.title = fullscreenLabel;
 }
 
+function stopPlaybackRefresh(mediaElement = null) {
+  if (mediaElement && playbackFramePlayer && playbackFramePlayer !== mediaElement) return;
+  if (playbackFrameId) cancelAnimationFrame(playbackFrameId);
+  playbackFrameId = 0;
+  playbackFramePlayer = null;
+}
+
+function startPlaybackRefresh(mediaElement) {
+  if (!mediaElement || mediaElement !== player || mediaElement.paused || mediaElement.ended) return;
+  if (playbackFramePlayer !== mediaElement) {
+    stopPlaybackRefresh();
+    playbackFramePlayer = mediaElement;
+  }
+  if (playbackFrameId) return;
+  const refresh = () => {
+    playbackFrameId = 0;
+    if (playbackFramePlayer !== mediaElement || player !== mediaElement
+        || mediaElement.paused || mediaElement.ended) {
+      if (playbackFramePlayer === mediaElement) playbackFramePlayer = null;
+      if (player === mediaElement) {
+        update();
+        waveformEditor?.updatePlayback();
+      }
+      return;
+    }
+    // 播放中只更新当前字幕/预览和波形播放头；不重绘波形画布、不重建字幕列表。
+    updatePlaybackFrame();
+    playbackFrameId = requestAnimationFrame(refresh);
+  };
+  playbackFrameId = requestAnimationFrame(refresh);
+}
+
 function bindPlayerEvents(mediaElement) {
   if (!mediaElement) return;
   mediaElement.addEventListener('timeupdate', update);
   mediaElement.addEventListener('seeked', update);
+  mediaElement.addEventListener('play', () => startPlaybackRefresh(mediaElement));
+  mediaElement.addEventListener('playing', () => startPlaybackRefresh(mediaElement));
+  mediaElement.addEventListener('pause', () => {
+    stopPlaybackRefresh(mediaElement);
+    if (player !== mediaElement) return;
+    update();
+    waveformEditor?.updatePlayback();
+  });
+  mediaElement.addEventListener('ended', () => {
+    stopPlaybackRefresh(mediaElement);
+    if (player !== mediaElement) return;
+    update();
+    waveformEditor?.updatePlayback();
+  });
+  mediaElement.addEventListener('emptied', () => stopPlaybackRefresh(mediaElement));
   if (mediaElement.tagName === 'VIDEO') {
     mediaElement.addEventListener('click', (event) => {
       if (event.defaultPrevented) return;
       togglePlayback();
     });
   }
-  ['timeupdate', 'loadedmetadata', 'durationchange', 'play', 'pause', 'volumechange', 'ratechange', 'emptied']
+  ['timeupdate', 'loadedmetadata', 'durationchange', 'play', 'playing', 'pause', 'ended', 'volumechange', 'ratechange', 'emptied']
     .forEach((eventName) => mediaElement.addEventListener(eventName, syncMediaControls));
   syncMediaControls();
 }
@@ -2818,18 +2990,43 @@ mediaFullscreen?.addEventListener('click', async () => {
 });
 document.addEventListener('fullscreenchange', syncMediaControls);
 
-// ←/→：复用媒体控制条的 ±5 秒跳转；文本输入、表单控件和预览框保留原生方向键行为。
+// ←/→：无选中字幕时复用媒体控制条的 ±5 秒跳转；选中字幕时改为按设置的
+// 微调幅度调整时间。Shift+方向键贴合前后边界；Ctrl(Cmd)+方向键调整左边界，
+// Ctrl(Cmd)+Shift+方向键调整右边界。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
   if (editingState || isTextEditingTarget(e)) return;
   const target = e.target instanceof Element ? e.target : document.activeElement;
   if (target?.closest?.('.geo-box, input, select, textarea')) return;
-  if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
-  if (!hasLoadedMedia()) return;
   if (!isPlaybackKeyboardTarget(e) && isNativeKeyboardControl(e)) return;
+  if (isPlayerKeyboardTarget(e)) return;
+  const commandKey = e.ctrlKey || e.metaKey;
+  const direction = e.key === 'ArrowLeft' ? -1 : 1;
+  if (e.shiftKey && !commandKey) {
+    if (!e.altKey && selectedIdxs.size > 0
+        && waveformEditor?.snapSelectedCueBoundaryByKeyboard?.(direction)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    return;
+  }
+  if (selectedIdxs.size > 0 && waveformEditor) {
+    const deltaMs = direction * EDITOR_SETTINGS.cueMoveStepMs;
+    if (commandKey) {
+      if (e.shiftKey) waveformEditor.adjustSelectedBoundaryByKeyboard(deltaMs, 'end', e.altKey);
+      else waveformEditor.adjustSelectedBoundaryByKeyboard(deltaMs, 'start', e.altKey);
+    } else {
+      waveformEditor.adjustSelectedByKeyboard(deltaMs, e.altKey);
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  if (commandKey || e.altKey) return;
+  if (!hasLoadedMedia()) return;
   e.preventDefault();
   e.stopPropagation();
-  seekMediaBy(e.key === 'ArrowLeft' ? -5 : 5);
+  seekMediaBy(direction * 5);
 }, true);
 
 function isSpaceKey(e) {
@@ -2949,9 +3146,23 @@ document.addEventListener('keydown', (e) => {
   if (projectMediaModal.classList.contains('show')) return;
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
-  if (e.ctrlKey || e.altKey || e.metaKey) return;
-
+  if (e.ctrlKey || e.metaKey) return;
   const direction = (key === 'a' || key === 'w') ? -1 : 1;
+  if (e.shiftKey && !e.altKey && (key === 'a' || key === 'd')
+      && waveformEditor?.snapActiveCueBoundaryByKeyboard?.(direction)) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  if (!e.shiftKey && waveformEditor?.adjustActiveCueDragBy?.(
+    direction * EDITOR_SETTINGS.cueMoveStepMs,
+    e.altKey,
+  )) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  if (e.altKey) return;
   const next = e.shiftKey
     ? window.AsrEditorUtils.findCueSelectionExtensionTarget(
       DATA.segments,
@@ -3154,6 +3365,7 @@ document.addEventListener('keydown', (e) => {
   mergeSegments([...selectedIdxs]);
 });
 
+
 // Ctrl(Cmd)+Z 撤销；Ctrl(Cmd)+Shift+Z 或 Ctrl(Cmd)+Y 重做
 document.addEventListener('keydown', (e) => {
   const isZ = e.key === 'z' || e.key === 'Z';
@@ -3311,6 +3523,78 @@ let previewGeometryDirty = false;
 function getPreviewGeometry() {
   return GEO_UTILS.normalizePreviewGeometry(DATA.preview?.subtitle);
 }
+function normalizeSubtitleFontFamilyName(value) {
+  if (typeof value !== 'string') return null;
+  const family = value.trim();
+  if (!family || family.length > SUBTITLE_FONT_FAMILY_MAX_LENGTH
+      || /[\u0000-\u001f\u007f]/u.test(family)) return null;
+  return family;
+}
+function normalizeSubtitleBackgroundColor(value) {
+  if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/iu.test(value)) return null;
+  return value.toLowerCase();
+}
+function normalizeSubtitleBackgroundAlpha(value) {
+  return typeof value === 'number' && Number.isFinite(value)
+    && SUBTITLE_BACKGROUND_ALPHA_MIN <= value && value <= SUBTITLE_BACKGROUND_ALPHA_MAX
+    ? value : null;
+}
+function subtitleBackgroundCss(appearance) {
+  const color = appearance.background_color || SUBTITLE_BACKGROUND_COLOR_DEFAULT;
+  const channels = [color.slice(1, 3), color.slice(3, 5), color.slice(5, 7)]
+    .map((channel) => Number.parseInt(channel, 16)).join(', ');
+  const alpha = appearance.background_alpha ?? SUBTITLE_BACKGROUND_ALPHA_DEFAULT;
+  return `rgba(${channels}, ${alpha})`;
+}
+function isBuiltInSubtitleFontFamily(value) {
+  return Object.prototype.hasOwnProperty.call(SUBTITLE_FONT_FAMILY_CSS, value);
+}
+function quoteCssString(value) {
+  return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+function subtitleFontFamilyCss(value) {
+  if (!value || value === 'default') return '';
+  if (isBuiltInSubtitleFontFamily(value)) return SUBTITLE_FONT_FAMILY_CSS[value];
+  return `${quoteCssString(value)}, var(--font-sans)`;
+}
+const SUBTITLE_FONT_FAMILY_STATUS_TEXT = Object.freeze({
+  zh: Object.freeze({
+    idle: '点击读取本机字体（首次需要授权）',
+    reading: '正在读取本机字体…',
+    success: (count) => `已读取 ${count} 种本机字体`,
+    empty: '未读取到可用的本机字体',
+    unsupported: '当前环境不支持自动读取本机字体',
+    denied: '未获准读取本机字体',
+    failed: '读取本机字体失败，请重试',
+  }),
+  en: Object.freeze({
+    idle: 'Click to read local fonts (permission required the first time)',
+    reading: 'Reading local fonts…',
+    success: (count) => `Read ${count} local font families`,
+    empty: 'No usable local fonts were returned',
+    unsupported: 'This environment cannot list local fonts automatically',
+    denied: 'Permission to read local fonts was not granted',
+    failed: 'Could not read local fonts; try again',
+  }),
+});
+let subtitleFontFamilyScanState = 'idle';
+let subtitleFontFamilyScanCount = 0;
+function renderSubtitleFontFamilyStatus() {
+  if (!subtitleFontFamilyStatus) return;
+  const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+  const text = SUBTITLE_FONT_FAMILY_STATUS_TEXT[language][subtitleFontFamilyScanState];
+  subtitleFontFamilyStatus.textContent = typeof text === 'function'
+    ? text(subtitleFontFamilyScanCount) : text;
+}
+function setSubtitleFontFamilyScanState(state, count = 0) {
+  subtitleFontFamilyScanState = state;
+  subtitleFontFamilyScanCount = count;
+  renderSubtitleFontFamilyStatus();
+}
+function subtitleFontFamilyOptionExists(value) {
+  return !!subtitleFontFamilySelect
+    && Array.from(subtitleFontFamilySelect.options).some((option) => option.value === value);
+}
 function normalizeSubtitleAppearance(value) {
   const result = {};
   const fontSize = value && typeof value.font_size === 'number' && Number.isFinite(value.font_size)
@@ -3318,10 +3602,12 @@ function normalizeSubtitleAppearance(value) {
   if (fontSize !== null && fontSize >= SUBTITLE_FONT_SIZE_MIN && fontSize <= SUBTITLE_FONT_SIZE_MAX) {
     result.font_size = fontSize;
   }
-  if (value && typeof value.font_family === 'string'
-      && Object.prototype.hasOwnProperty.call(SUBTITLE_FONT_FAMILY_CSS, value.font_family)) {
-    result.font_family = value.font_family;
-  }
+  const fontFamily = normalizeSubtitleFontFamilyName(value?.font_family);
+  if (fontFamily) result.font_family = fontFamily;
+  const backgroundColor = normalizeSubtitleBackgroundColor(value?.background_color);
+  if (backgroundColor) result.background_color = backgroundColor;
+  const backgroundAlpha = normalizeSubtitleBackgroundAlpha(value?.background_alpha);
+  if (backgroundAlpha !== null) result.background_alpha = backgroundAlpha;
   return result;
 }
 function getSubtitleAppearance(value = DATA.preview?.subtitle) {
@@ -3341,16 +3627,38 @@ function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
     subtitleFontSizeSelect.value = size;
   }
   if (subtitleFontFamilySelect) {
-    subtitleFontFamilySelect.value = appearance.font_family
-      && Object.prototype.hasOwnProperty.call(SUBTITLE_FONT_FAMILY_CSS, appearance.font_family)
-      ? appearance.font_family : 'default';
+    subtitleFontFamilySelect.querySelectorAll('option[data-generated="true"]').forEach((option) => option.remove());
+    const family = appearance.font_family || 'default';
+    if (family !== 'default' && !isBuiltInSubtitleFontFamily(family)
+        && !subtitleFontFamilyOptionExists(family)) {
+      const option = document.createElement('option');
+      option.value = family;
+      option.textContent = family;
+      option.dataset.generated = 'true';
+      subtitleFontFamilySelect.append(option);
+    }
+    subtitleFontFamilySelect.value = family;
+    if (subtitleFontFamilySelect.value !== family) subtitleFontFamilySelect.value = 'default';
+  }
+  if (subtitleBackgroundColorInput) {
+    subtitleBackgroundColorInput.value = appearance.background_color
+      || SUBTITLE_BACKGROUND_COLOR_DEFAULT;
+  }
+  if (subtitleBackgroundAlphaInput) {
+    const alpha = appearance.background_alpha ?? SUBTITLE_BACKGROUND_ALPHA_DEFAULT;
+    subtitleBackgroundAlphaInput.value = String(alpha);
+    if (subtitleBackgroundAlphaValue) {
+      subtitleBackgroundAlphaValue.textContent = `${Math.round(alpha * 100)}%`;
+    }
   }
 }
 function applySubtitleAppearance(value = DATA.preview?.subtitle) {
   const appearance = getSubtitleAppearance(value);
   overlayTextEl.style.fontSize = appearance.font_size ? `${appearance.font_size}px` : '';
-  overlayTextEl.style.fontFamily = appearance.font_family
-    ? SUBTITLE_FONT_FAMILY_CSS[appearance.font_family] : '';
+  overlayTextEl.style.fontFamily = subtitleFontFamilyCss(appearance.font_family);
+  const hasCustomBackground = Object.prototype.hasOwnProperty.call(appearance, 'background_color')
+    || Object.prototype.hasOwnProperty.call(appearance, 'background_alpha');
+  overlayTextEl.style.backgroundColor = hasCustomBackground ? subtitleBackgroundCss(appearance) : '';
   syncSubtitleAppearanceControls(appearance);
 }
 function setSubtitleAppearance(patch, { markDirty = true } = {}) {
@@ -3363,12 +3671,102 @@ function setSubtitleAppearance(patch, { markDirty = true } = {}) {
     if (!patch.font_family || patch.font_family === 'default') delete next.font_family;
     else Object.assign(next, normalizeSubtitleAppearance({ font_family: patch.font_family }));
   }
+  if (Object.prototype.hasOwnProperty.call(patch, 'background_color')) {
+    const backgroundColor = normalizeSubtitleBackgroundColor(patch.background_color);
+    if (!backgroundColor || backgroundColor === SUBTITLE_BACKGROUND_COLOR_DEFAULT) {
+      delete next.background_color;
+    } else {
+      next.background_color = backgroundColor;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'background_alpha')) {
+    const backgroundAlpha = normalizeSubtitleBackgroundAlpha(patch.background_alpha);
+    if (backgroundAlpha === null || backgroundAlpha === SUBTITLE_BACKGROUND_ALPHA_DEFAULT) {
+      delete next.background_alpha;
+    } else {
+      next.background_alpha = backgroundAlpha;
+    }
+  }
   if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
   DATA.preview.subtitle = { ...getPreviewGeometry(), ...next };
   if (markDirty) previewGeometryDirty = true;
   applySubtitleAppearance(DATA.preview.subtitle);
   return next;
 }
+function collectSubtitleLocalFontFamilies(fontData) {
+  const families = new Map();
+  for (const entry of Array.isArray(fontData) ? fontData : []) {
+    const family = normalizeSubtitleFontFamilyName(entry?.family);
+    if (!family || isBuiltInSubtitleFontFamily(family)) continue;
+    const key = family.toLocaleLowerCase();
+    if (!families.has(key)) families.set(key, family);
+  }
+  return [...families.values()].sort((left, right) => left.localeCompare(right, undefined, {
+    sensitivity: 'base',
+  }));
+}
+function replaceSubtitleLocalFontOptions(families) {
+  if (!subtitleFontFamilySelect) return;
+  subtitleFontFamilySelect.querySelectorAll(
+    'option[data-local-font="true"], option[data-generated="true"]',
+  ).forEach((option) => option.remove());
+  const existing = new Set(Array.from(subtitleFontFamilySelect.options, (option) => option.value));
+  const fragment = document.createDocumentFragment();
+  families.forEach((family) => {
+    if (existing.has(family)) return;
+    const option = document.createElement('option');
+    option.value = family;
+    option.textContent = family;
+    option.dataset.localFont = 'true';
+    fragment.append(option);
+    existing.add(family);
+  });
+  subtitleFontFamilySelect.append(fragment);
+  syncSubtitleAppearanceControls();
+}
+function initializeSubtitleFontFamilyScanner() {
+  if (!subtitleFontFamilyScanButton) return;
+  if (typeof window.queryLocalFonts !== 'function') {
+    subtitleFontFamilyScanButton.disabled = true;
+    setSubtitleFontFamilyScanState('unsupported');
+    return;
+  }
+  subtitleFontFamilyScanButton.disabled = false;
+  setSubtitleFontFamilyScanState('idle');
+  void restoreGrantedSubtitleLocalFonts();
+}
+async function restoreGrantedSubtitleLocalFonts() {
+  if (typeof window.queryLocalFonts !== 'function' || !window.navigator?.permissions?.query) return;
+  try {
+    const permission = await window.navigator.permissions.query({ name: 'local-fonts' });
+    if (permission.state === 'granted') await scanSubtitleLocalFonts({ silent: true });
+  } catch (_) {
+    // 未知权限名或当前 WebView 不允许静默查询时，保留手动扫描入口。
+  }
+}
+async function scanSubtitleLocalFonts({ silent = false } = {}) {
+  if (typeof window.queryLocalFonts !== 'function') {
+    setSubtitleFontFamilyScanState('unsupported');
+    return;
+  }
+  if (subtitleFontFamilyScanButton) subtitleFontFamilyScanButton.disabled = true;
+  if (!silent) setSubtitleFontFamilyScanState('reading');
+  try {
+    const fontData = await window.queryLocalFonts();
+    const families = collectSubtitleLocalFontFamilies(fontData);
+    replaceSubtitleLocalFontOptions(families);
+    setSubtitleFontFamilyScanState(families.length ? 'success' : 'empty', families.length);
+  } catch (error) {
+    if (!silent) {
+      setSubtitleFontFamilyScanState(
+        error?.name === 'NotAllowedError' || error?.name === 'SecurityError' ? 'denied' : 'failed',
+      );
+    }
+  } finally {
+    if (subtitleFontFamilyScanButton) subtitleFontFamilyScanButton.disabled = false;
+  }
+}
+initializeSubtitleFontFamilyScanner();
 // 写回 DATA.preview.subtitle 并刷新 DOM。markDirty=false 用于初次加载，不弄脏工程。
 function setPreviewGeometry(geo, { markDirty = true } = {}) {
   const clamped = GEO_UTILS.clampPreviewGeometry(GEO_UTILS.normalizePreviewGeometry(geo));
@@ -3577,6 +3975,53 @@ function isPreviewingGap(gap, timeMs) {
   return gap.start === gapPreviewRange.start && gap.end === gapPreviewRange.end;
 }
 
+function updateActiveCue(idx) {
+  if (idx === lastActive) return;
+  if (lastActive >= 0) {
+    const prev = container.querySelector(`.cue[data-idx="${lastActive}"]`);
+    if (prev) prev.classList.remove('active');
+  }
+  if (idx >= 0) {
+    const cur = container.querySelector(`.cue[data-idx="${idx}"]`);
+    if (cur) {
+      cur.classList.add('active');
+      if (!editingState && !suppressCueListAutoScroll) scrollCueIntoViewIfNeeded(cur);
+    }
+  }
+  lastActive = idx;
+}
+
+function updateSubtitleOverlay(tMs, idx) {
+  // overlay（禁用项不在画面上显示字幕文本）
+  if (!overlayToggle.checked) return;
+  const seg = idx >= 0 ? DATA.segments[idx] : null;
+  if (seg && !seg.disabled && tMs >= seg.start && tMs <= seg.end) {
+    overlayEl.classList.remove('hidden');
+    if (overlayTextEl.textContent !== seg.text) overlayTextEl.textContent = seg.text;
+  } else {
+    overlayEl.classList.add('hidden');
+  }
+}
+
+function updatePlaybackFrame() {
+  const tMs = player.currentTime * 1000;
+  if (gapPreviewRange && (tMs < gapPreviewRange.start || tMs >= gapPreviewRange.end)) {
+    gapPreviewRange = null;
+  }
+  const gapState = getGapRemoveData(false);
+  const skippedGap = gapState?.skip_playback && !player.paused ? removedGapAt(tMs) : null;
+  if (skippedGap && !isPreviewingGap(skippedGap, tMs)) {
+    player.currentTime = skippedGap.end / 1000;
+    return;
+  }
+  const nowLabel = fmtShort(tMs);
+  if (nowEl.textContent !== nowLabel) nowEl.textContent = nowLabel;
+  const idx = findActive(tMs);
+  updateActiveCue(idx);
+  updateSubtitleOverlay(tMs, idx);
+  waveformEditor?.updatePlayback();
+}
+
 function update() {
   const tMs = player.currentTime * 1000;
   if (gapPreviewRange && (tMs < gapPreviewRange.start || tMs >= gapPreviewRange.end)) {
@@ -3590,30 +4035,8 @@ function update() {
   }
   nowEl.textContent = fmtShort(tMs);
   const idx = findActive(tMs);
-  if (idx !== lastActive) {
-    if (lastActive >= 0) {
-      const prev = container.querySelector(`.cue[data-idx="${lastActive}"]`);
-      if (prev) prev.classList.remove('active');
-    }
-    if (idx >= 0) {
-      const cur = container.querySelector(`.cue[data-idx="${idx}"]`);
-      if (cur) {
-        cur.classList.add('active');
-        if (!editingState && !suppressCueListAutoScroll) scrollCueIntoViewIfNeeded(cur);
-      }
-    }
-    lastActive = idx;
-  }
-  // overlay（禁用项不在画面上显示字幕文本）
-  if (overlayToggle.checked) {
-    const seg = idx >= 0 ? DATA.segments[idx] : null;
-    if (seg && !seg.disabled && tMs >= seg.start && tMs <= seg.end) {
-      overlayEl.classList.remove('hidden');
-      overlayTextEl.textContent = seg.text;
-    } else {
-      overlayEl.classList.add('hidden');
-    }
-  }
+  updateActiveCue(idx);
+  updateSubtitleOverlay(tMs, idx);
   renderStickerOverlay(tMs);
 }
 // === 表情包预览（视频画面内）===
@@ -3699,13 +4122,13 @@ let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 
 function buildSrt() {
   const parts = [];
-  const timeOffset = window.AsrEditorUtils.getSrtExportOffset(
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     DATA.segments,
     EDITOR_SETTINGS.exportStartAtZero,
   );
-  const exportTime = (timeMs) => fmtSrtTime(Math.max(0, timeMs - timeOffset));
+  const exportTime = (timeMs) => fmtSrtTime(Math.max(0, Math.round(Number(timeMs) || 0)));
   let n = 0;  // 导出序号：跳过禁用项后重新连续编号
-  DATA.segments.forEach((seg) => {
+  DATA.segments.forEach((seg, index) => {
     if (seg.disabled) {
       if (!EXPORT_KEEP_DISABLED_PLACEHOLDER) return;  // 默认：完全跳过
       // 占位模式：保留时间轴，内容留空（序号不变）
@@ -3718,7 +4141,10 @@ function buildSrt() {
     }
     n++;
     parts.push(String(n));
-    parts.push(`${exportTime(seg.start)} --> ${exportTime(seg.end)}`);
+    const start = EDITOR_SETTINGS.exportStartAtZero && index === firstEnabledIndex
+      ? fmtSrtTime(0)
+      : exportTime(seg.start);
+    parts.push(`${start} --> ${exportTime(seg.end)}`);
     parts.push(seg.text);
     parts.push('');
   });
@@ -3733,10 +4159,17 @@ function buildGapRemovedSrt() {
   }
   const parts = [];
   let number = 0;
-  DATA.segments.forEach((segment) => {
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+    DATA.segments,
+    EDITOR_SETTINGS.exportStartAtZero,
+  );
+  DATA.segments.forEach((segment, index) => {
     if (segment.disabled) return;
     number++;
-    const start = window.AsrEditorUtils.mapGapRemovedTime(segment.start, removed);
+    const mappedStart = window.AsrEditorUtils.mapGapRemovedTime(segment.start, removed);
+    const start = EDITOR_SETTINGS.exportStartAtZero && index === firstEnabledIndex
+      ? 0
+      : mappedStart;
     const end = window.AsrEditorUtils.mapGapRemovedTime(segment.end, removed);
     parts.push(String(number));
     parts.push(`${fmtSrtTime(start)} --> ${fmtSrtTime(Math.max(start + 1, end))}`);
@@ -3777,13 +4210,16 @@ async function downloadColorSrts(gapRemoved = false) {
     flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除');
     return;
   }
-  const timeOffset = gapRemoved
-    ? 0
-    : window.AsrEditorUtils.getSrtExportOffset(DATA.segments, EDITOR_SETTINGS.exportStartAtZero);
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+    DATA.segments,
+    EDITOR_SETTINGS.exportStartAtZero,
+  );
   const gapSuffix = gapRemoved ? '_gap-removed' : '';
   const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
     colorName: color.name,
-    timeOffset,
+    timeOffset: 0,
+    alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
     mapTime: gapRemoved
       ? (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed)
       : undefined,
@@ -4111,7 +4547,9 @@ function stickerOtioName(sticker, absPath) {
 }
 
 function buildStickerOtio() {
-  const collected = collectStickerOtioEntries(null);
+  // 传空数组而非 null：函数体内用 removed.length 判断是否走去空隙映射分支，
+  // 空数组 .length===0（falsy）正确退化为原始时间线，且避免 null.length 崩溃。
+  const collected = collectStickerOtioEntries([]);
   if (collected.error) {
     flashHint(collected.error);
     return null;
@@ -4308,6 +4746,123 @@ function serverProjectSavingEnabled() {
   return !!(SERVER_CONFIG && SERVER_CONFIG.saveUrl && SERVER_CONFIG.canSave && !projectLoadedFromSrt);
 }
 
+function parseProjectValidationTarget(detail) {
+  const match = /^\$\.segments\[(\d+)\](?:\.items\[(\d+)\])?(?:\.[A-Za-z_]\w*)?\s*:/.exec(String(detail || ''));
+  if (!match) return null;
+  const segmentIndex = Number(match[1]);
+  const itemIndex = match[2] === undefined ? null : Number(match[2]);
+  const segment = DATA.segments[segmentIndex];
+  if (!segment) return null;
+  const item = itemIndex === null
+    ? null
+    : (Array.isArray(segment.items) ? segment.items[itemIndex] : null);
+  return {
+    segmentIndex,
+    itemIndex,
+    segment,
+    item: item && typeof item === 'object' ? item : null,
+  };
+}
+
+function validationPreviewText(target) {
+  const value = target.item?.text ?? target.segment.text;
+  if (typeof value === 'string') return value || '（空）';
+  try {
+    return JSON.stringify(target.item || target.segment);
+  } catch (_) {
+    return '（无法预览）';
+  }
+}
+
+function focusProjectValidationTarget(target) {
+  const { segmentIndex, segment } = target || {};
+  if (!segment || !DATA.segments[segmentIndex]) return;
+
+  // 校验错误不能因为用户当前的筛选状态而再次变得不可见。
+  if (hideDisabled && segment.disabled) {
+    hideDisabled = false;
+    hideDisabledToggle.checked = false;
+    container.classList.remove('hide-disabled');
+  }
+  const cueBeforeFilter = container.querySelector(`.cue[data-idx="${segmentIndex}"]`);
+  if (cueBeforeFilter?.classList.contains('hidden')) {
+    searchEl.value = '';
+    refreshSearchClearVisibility();
+    const filterOver = document.getElementById('filter-over');
+    if (filterOver?.classList.contains('active')) filterOver.classList.remove('active');
+    applySearch('');
+  }
+
+  selectOnly(segmentIndex);
+  lastClickedIdx = segmentIndex;
+  const cue = container.querySelector(`.cue[data-idx="${segmentIndex}"]`);
+  if (cue) {
+    cue.classList.remove('validation-target');
+    // 重新触发一次短暂的高亮，即使用户连续点击多个错误提示也能看出目标。
+    void cue.offsetWidth;
+    cue.classList.add('validation-target');
+    scrollCueToCenter(cue);
+    window.setTimeout(() => cue.classList.remove('validation-target'), 2200);
+  }
+  waveformEditor?.revealTime(segment.start, true);
+  if (hasLoadedMedia()) seekFromWaveform(segment.start / 1000);
+}
+
+function showProjectSaveError(detail) {
+  const target = parseProjectValidationTarget(detail);
+  if (!target) {
+    flashHint(`保存失败：${detail}`, 'warning');
+    return;
+  }
+
+  flashHint('', 'warning', {
+    durationMs: 12000,
+    contentBuilder: (card) => {
+      card.classList.add('hint-project-error');
+
+      const header = document.createElement('div');
+      header.className = 'hint-project-header';
+      const title = document.createElement('strong');
+      title.textContent = '保存失败';
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'hint-close';
+      close.setAttribute('aria-label', '关闭提示');
+      close.textContent = '×';
+      close.addEventListener('click', () => dismissHintCard(card));
+      header.append(title, close);
+
+      const detailEl = document.createElement('code');
+      detailEl.className = 'hint-project-detail';
+      detailEl.textContent = String(detail || '未知校验错误');
+
+      const location = document.createElement('div');
+      location.className = 'hint-project-location';
+      location.textContent = target.itemIndex === null
+        ? `第 ${target.segmentIndex + 1} 条字幕`
+        : `第 ${target.segmentIndex + 1} 条字幕 · item ${target.itemIndex + 1}`;
+
+      const previewLabel = document.createElement('div');
+      previewLabel.className = 'hint-project-preview-label';
+      previewLabel.textContent = target.itemIndex === null ? '字幕内容' : 'item 内容';
+      const preview = document.createElement('div');
+      preview.className = 'hint-project-preview-value';
+      preview.textContent = validationPreviewText(target);
+
+      const action = document.createElement('button');
+      action.type = 'button';
+      action.className = 'hint-project-action';
+      action.textContent = `定位到第 ${target.segmentIndex + 1} 条字幕`;
+      action.addEventListener('click', () => {
+        focusProjectValidationTarget(target);
+        dismissHintCard(card);
+      });
+
+      card.append(header, detailEl, location, previewLabel, preview, action);
+    },
+  });
+}
+
 function configureServerSaveControls() {
   const hasServer = !!(SERVER_CONFIG && SERVER_CONFIG.saveUrl);
   if (saveProjectDropdown) saveProjectDropdown.hidden = !hasServer;
@@ -4341,13 +4896,15 @@ function scheduleAutoSave() {
 
 function configureServerAutoSave() {
   if (!serverAutoSaveSettings || !autoSaveProjectToggle || !autoSaveIntervalField || !autoSaveIntervalInput) return;
-  const available = serverProjectSavingEnabled();
+  const available = !!(SERVER_CONFIG && SERVER_CONFIG.saveUrl);
   serverAutoSaveSettings.hidden = !available;
   if (!available) return;
   const sync = () => {
     autoSaveProjectToggle.checked = EDITOR_SETTINGS.autoSaveProject;
     autoSaveIntervalInput.value = String(EDITOR_SETTINGS.autoSaveIntervalSeconds);
     autoSaveIntervalField.hidden = !EDITOR_SETTINGS.autoSaveProject;
+    autoSaveProjectToggle.disabled = false;
+    autoSaveIntervalInput.disabled = !EDITOR_SETTINGS.autoSaveProject;
   };
   sync();
   autoSaveProjectToggle.addEventListener('change', () => {
@@ -4805,7 +5362,7 @@ async function saveProjectToServer({ silent = false } = {}) {
     return true;
   } catch (error) {
     const detail = error?.message || error;
-    flashHint(`保存失败：${detail}`);
+    showProjectSaveError(detail);
     // A stale browser tab can outlive the localhost process (the browser reports
     // ERR_CONNECTION_REFUSED). Offer a real file save so Ctrl+S never strands
     // completed edits, while making clear that the bound JSON was not overwritten.
@@ -5009,6 +5566,7 @@ let pendingProjectMediaSelection = null;
 function closeProjectMediaModal(clearPending = false) {
   projectMediaModal.classList.remove('show');
   if (clearPending) pendingProjectMediaSelection = null;
+  setTimeout(() => window.MAWE_ONBOARDING?.scheduleStart(), 0);
 }
 
 function showProjectMediaModal() {
@@ -5164,6 +5722,7 @@ async function openProjectFile(file, options = {}) {
     // 先兜底修复 0 长/倒挂时间码（保底 100ms），再校验结构，让旧工程仍能打开。
     if (data && Array.isArray(data.segments)) {
       window.AsrEditorUtils.normalizeSegmentTimings(data.segments);
+      window.AsrEditorUtils.repairGroupReferenceIndices(data.segments);
     }
     if (!isMawProject(data)) {
       flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。');
@@ -5423,16 +5982,24 @@ const stickerRootInput = document.getElementById('sticker-root-input');
 const stickerRootFolderInput = document.getElementById('sticker-root-folder-input');
 
 document.getElementById('sticker-root-btn').addEventListener('click', () => {
-  stickerRootInput.value = STICKER_ROOT || '';
+  // 浏览器加载模式（[本地] 前缀）下不在输入框显示虚拟标识，避免用户误以为是有效导出路径
+  stickerRootInput.value = (STICKER_ROOT && STICKER_ROOT.startsWith('[本地]')) ? '' : (STICKER_ROOT || '');
+  updateStickerRootBrowserWarn();
   stickerRootModal.classList.add('show');
   setTimeout(() => stickerRootInput.focus(), 50);
 });
+
+// 浏览器加载模式（[本地] 前缀）警告横幅显隐：只在 blob 模式下提示用户需手动填写真实磁盘路径
+function updateStickerRootBrowserWarn() {
+  const warn = document.getElementById('sticker-root-browser-warn');
+  if (warn) warn.style.display = (STICKER_ROOT && STICKER_ROOT.startsWith('[本地]')) ? 'block' : 'none';
+}
 document.getElementById('sticker-root-cancel').addEventListener('click', () => stickerRootModal.classList.remove('show'));
 stickerRootModal.addEventListener('click', (e) => { if (e.target === stickerRootModal) stickerRootModal.classList.remove('show'); });
 
-// 「📁 浏览…」按钮：优先用 showDirectoryPicker 选本地文件夹——原生选择器本身就是确认动作，
+// 「📁 扫描」按钮：优先用 showDirectoryPicker 选本地文件夹——原生选择器本身就是确认动作，
 // 不会再弹浏览器的「是否上传 N 个文件到此站点」提示；不支持时回退 webkitdirectory。
-// 浏览器拿不到绝对路径，所以用 blob URL 替换 STICKERS 数组。
+// 浏览器拿不到绝对路径，所以用 blob URL 替换 STICKERS 数组；导出路径需用户手动填写。
 const STICKER_IMG_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
 
 function applyStickerFiles(entries, topDir) {
@@ -5454,11 +6021,12 @@ function applyStickerFiles(entries, topDir) {
       _blobUrl: URL.createObjectURL(file),
     });
   }
-  // 显示一个虚拟根，仅作 UI 提示；导出 OTIO 仍需要用户填写实际表情包根目录。
+  // 显示一个虚拟根，仅作内部状态标识（stickerAbsPath 据此跳过导出）；浏览器拿不到真实磁盘路径。
+  // 不把 [本地] 虚拟标识填入输入框，避免用户误以为是有效导出路径。
   STICKER_ROOT = topDir ? `[本地] ${topDir}` : '[本地]';
-  stickerRootInput.value = STICKER_ROOT;
+  updateStickerRootBrowserWarn();
   renderAll();
-  flashHint(`已加载 ${STICKERS.length} 张表情包（${topDir || '本地'}）`);
+  flashHint(`扫描到 ${STICKERS.length} 个表情包；由于浏览器限制，你需要手动填写本地绝对路径，否则无法导出`);
 }
 
 async function collectStickerEntries(dirHandle, prefix, out) {
@@ -5911,6 +6479,7 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY) {
     flashHint('该空白区域不足 100ms，无法新增字幕');
     return;
   }
+  commitCuePanelEdit();
   pushUndo('新增字幕');
   DATA.segments.splice(index, 0, {
     start: safeStart,
@@ -5919,7 +6488,8 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY) {
     items: [],
     _dirty: true,
   });
-  clearSelection();
+  window.AsrEditorUtils.shiftGroupReferenceIndices(DATA.segments, index, 1);
+  clearSelection({ silent: true });
   renderAll();
   selectOnly(index);
   const cue = container.querySelector(`.cue[data-idx="${index}"]`);
@@ -6195,7 +6765,7 @@ function dismissHintCard(card) {
   setTimeout(() => card.remove(), HINT_FADE_OUT_MS);
 }
 
-function flashHint(msg, type = 'default') {
+function flashHint(msg, type = 'default', options = {}) {
   let stack = document.getElementById('hint-stack');
   if (!stack) {
     stack = document.createElement('div'); stack.id = 'hint-stack';
@@ -6215,9 +6785,12 @@ function flashHint(msg, type = 'default') {
     : type === 'invalid' ? 'hint-invalid'
     : type === 'warning' ? 'hint-warning' : '';
   card.className = typeClass ? `hint-card ${typeClass}` : 'hint-card';
-  card.textContent = msg;
+  if (typeof options.contentBuilder === 'function') options.contentBuilder(card);
+  else card.textContent = msg;
   stack.appendChild(card);
-  setTimeout(() => dismissHintCard(card), HINT_DURATION_MS);
+  const durationMs = Number.isFinite(options.durationMs) ? options.durationMs : HINT_DURATION_MS;
+  if (durationMs > 0) setTimeout(() => dismissHintCard(card), durationMs);
+  return card;
 }
 
 // 振幅到达上下限时由波形模块派发的事件：rAF 节流后仍可能每帧触发，冷却避免提示闪烁
@@ -6423,6 +6996,7 @@ window.addEventListener('drop', (e) => {
 // === 启动 ===
 // 兜底：工程可能带有上游写入的 0 长/倒挂段、词时间码（旧版工具或异常识别结果），
 // 加载时统一拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
+const repairedGroupReferenceCount = window.AsrEditorUtils.repairGroupReferenceIndices(DATA.segments);
 const repairedTimingCount = window.AsrEditorUtils.normalizeSegmentTimings(DATA.segments);
 cleanPunctuation();
 configureServerSaveControls();
@@ -6433,10 +7007,29 @@ initWaveformEditor();
 configureServerWorkspaceLibrary();
 configureWorkspaceTransfer();
 totalCountEl.textContent = DATA.segments.length;
+// 新手引导通过这个窄桥接访问编辑器核心状态；引导本身在 editor-onboarding.js 中按需初始化。
+window.MAWE_EDITOR_BRIDGE = Object.freeze({
+  get data() { return DATA; },
+  get selectedIdxs() { return selectedIdxs; },
+  get currentCuePanelIdx() { return currentCuePanelIdx; },
+  get container() { return container; },
+  get projectMediaModal() { return projectMediaModal; },
+  selectOnly,
+  performUndo,
+  flashHint,
+  scrollCueToCenter,
+  setEditorSettingsPanelOpen,
+  modKeyLabel,
+  splitKeyLabel,
+  openHelp: () => helpFloatingPanel.open(),
+  closeHelp: () => helpFloatingPanel.close(),
+});
 renderAll();
 updateGapRemoveUi();
 if (repairedTimingCount > 0) {
   flashHint(`已自动修复 ${repairedTimingCount} 处 0 长时间码（保底 100ms）`);
+} else if (repairedGroupReferenceCount > 0) {
+  flashHint(`已自动修复 ${repairedGroupReferenceCount} 处分组引用`);
 }
 if (SERVER_CONFIG?.autoLoadedMediaName) {
   flashHint(`已自动加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`);

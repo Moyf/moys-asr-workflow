@@ -7,7 +7,9 @@ from unittest import mock
 
 from generate_subtitle_qwen_api import (
     FILETRANS_MODEL,
+    QWEN3_ASR_FILETRANS_MODEL,
     QWEN_AUDIO_FILETRANS_MODEL,
+    build_segments_from_api_sentences,
     build_qwen_audio_context,
     is_qwen_audio_model,
     load_hotwords,
@@ -34,6 +36,70 @@ class QwenAudioAdapterTests(unittest.TestCase):
         self.assertTrue(is_qwen_audio_model(QWEN_AUDIO_FILETRANS_MODEL))
         self.assertTrue(supports_speaker_diarization(QWEN_AUDIO_FILETRANS_MODEL))
         self.assertFalse(is_qwen_audio_model("qwen3-asr-flash-filetrans"))
+
+    @mock.patch("generate_subtitle_qwen_api.requests.post")
+    def test_submit_uses_qwen3_file_url_contract(self, post: mock.Mock) -> None:
+        response = mock.Mock()
+        response.json.return_value = {
+            "output": {"task_id": "task-qwen3", "task_status": "PENDING"}
+        }
+        post.return_value = response
+
+        task_id = submit_filetrans(
+            "https://dashscope.aliyuncs.com",
+            "secret",
+            "oss://temporary/audio.wav",
+            language=None,
+            enable_words=True,
+            enable_itn=False,
+            model=QWEN3_ASR_FILETRANS_MODEL,
+        )
+
+        self.assertEqual(task_id, "task-qwen3")
+        payload = post.call_args.kwargs["json"]
+        self.assertEqual(payload["model"], QWEN3_ASR_FILETRANS_MODEL)
+        self.assertEqual(payload["input"], {"file_url": "oss://temporary/audio.wav"})
+        self.assertEqual(
+            payload["parameters"],
+            {"channel_id": [0], "enable_words": True, "enable_itn": False},
+        )
+
+    @mock.patch("generate_subtitle_qwen_api.time.sleep")
+    @mock.patch("generate_subtitle_qwen_api.requests.get")
+    def test_poll_completes_qwen3_after_pending_and_running(
+        self,
+        get: mock.Mock,
+        sleep: mock.Mock,
+    ) -> None:
+        responses = []
+        for status in ("PENDING", "RUNNING"):
+            response = mock.Mock()
+            response.json.return_value = {"output": {"task_status": status}}
+            responses.append(response)
+        response = mock.Mock()
+        response.json.return_value = {
+            "output": {
+                "task_status": "SUCCEEDED",
+                "result": {"transcription_url": "https://result.example/qwen3.json"},
+            },
+            "usage": {"seconds": 179},
+        }
+        responses.append(response)
+        get.side_effect = responses
+
+        result_url, usage = poll_task(
+            "https://dashscope.aliyuncs.com",
+            "secret",
+            "task-qwen3",
+            interval=0,
+            timeout=10,
+            model=QWEN3_ASR_FILETRANS_MODEL,
+        )
+
+        self.assertEqual(result_url, "https://result.example/qwen3.json")
+        self.assertEqual(usage, {"seconds": 179})
+        self.assertEqual(get.call_count, 3)
+        self.assertEqual(sleep.call_count, 2)
 
     def test_hotwords_support_individual_weights_and_filter_invalid_entries(self) -> None:
         entries, issues = parse_qwen_audio_hotwords([
@@ -157,6 +223,45 @@ class QwenAudioAdapterTests(unittest.TestCase):
         self.assertEqual(result_url, "https://result.example/qwen-audio.json")
         self.assertEqual(usage, {"duration": 12})
 
+    @mock.patch(
+        "generate_subtitle_qwen_api.time.monotonic",
+        side_effect=[0, 0, 0, 0, 16, 16, 16, 16],
+    )
+    @mock.patch("generate_subtitle_qwen_api.requests.get")
+    def test_poll_reports_heartbeat_when_status_does_not_change(self, get: mock.Mock, _monotonic: mock.Mock) -> None:
+        responses = []
+        for status in ("RUNNING", "RUNNING"):
+            response = mock.Mock()
+            response.json.return_value = {"output": {"task_status": status}}
+            responses.append(response)
+        response = mock.Mock()
+        response.json.return_value = {
+            "output": {
+                "task_status": "SUCCEEDED",
+                "results": [{
+                    "subtask_status": "SUCCEEDED",
+                    "transcription_url": "https://result.example/heartbeat.json",
+                }],
+            },
+            "usage": {},
+        }
+        responses.append(response)
+        get.side_effect = responses
+        statuses: list[str] = []
+
+        result_url, _usage = poll_task(
+            "https://dashscope.aliyuncs.com",
+            "secret",
+            "task-heartbeat",
+            interval=0,
+            timeout=100,
+            model=QWEN_AUDIO_FILETRANS_MODEL,
+            on_status=statuses.append,
+        )
+
+        self.assertEqual(result_url, "https://result.example/heartbeat.json")
+        self.assertTrue(any("任务仍在处理中" in status for status in statuses))
+
     def test_parse_maps_qwen_audio_sentence_speaker_to_items(self) -> None:
         result = parse_funasr_transcription_result(
             {
@@ -189,6 +294,126 @@ class QwenAudioAdapterTests(unittest.TestCase):
             "end": 300,
             "speaker": "2",
         }])
+        self.assertEqual(result["sentences"], [{
+            "text": "你好。",
+            "start": 100,
+            "end": 300,
+            "items": [{
+                "text": "你好。",
+                "start": 100,
+                "end": 300,
+                "speaker": "2",
+            }],
+            "speaker": "2",
+        }])
+
+    def test_qwen_audio_keeps_sentence_boundaries_without_punctuation(self) -> None:
+        result = parse_funasr_transcription_result(
+            {
+                "transcripts": [{
+                    "text": "受够了AI识别的劣质字幕又不想花那么多钱开会员想给自己的字幕制作省点力气给我3分钟解决你的字幕难题",
+                    "sentences": [
+                        {
+                            "begin_time": 160,
+                            "end_time": 1680,
+                            "text": "受够了AI识别的劣质字幕",
+                            "words": [{
+                                "begin_time": 200,
+                                "end_time": 1600,
+                                "text": "受够了AI识别的劣质字幕",
+                                "punctuation": "",
+                            }],
+                        },
+                        {
+                            "begin_time": 1840,
+                            "end_time": 3760,
+                            "text": "又不想花那么多钱开会员",
+                            "words": [{
+                                "begin_time": 1900,
+                                "end_time": 3700,
+                                "text": "又不想花那么多钱开会员",
+                                "punctuation": "",
+                            }],
+                        },
+                        {
+                            "begin_time": 3840,
+                            "end_time": 5920,
+                            "text": "想给自己的字幕制作省点力气",
+                            "words": [{
+                                "begin_time": 3900,
+                                "end_time": 5860,
+                                "text": "想给自己的字幕制作省点力气",
+                                "punctuation": "",
+                            }],
+                        },
+                        {
+                            "begin_time": 6160,
+                            "end_time": 8080,
+                            "text": "给我3分钟解决你的字幕难题",
+                            "words": [{
+                                "begin_time": 6200,
+                                "end_time": 8020,
+                                "text": "给我3分钟解决你的字幕难题",
+                                "punctuation": "",
+                            }],
+                        },
+                    ],
+                }]
+            }
+        )
+
+        segments = build_segments_from_api_sentences(
+            result["sentences"], max_len=21, min_len=5, gap_split_ms=1500,
+        )
+
+        self.assertEqual(
+            [segment["text"] for segment in segments],
+            [
+                "受够了AI识别的劣质字幕",
+                "又不想花那么多钱开会员",
+                "想给自己的字幕制作省点力气",
+                "给我3分钟解决你的字幕难题",
+            ],
+        )
+        self.assertEqual(
+            [(segment["start"], segment["end"]) for segment in segments],
+            [(160, 1680), (1840, 3760), (3840, 5920), (6160, 8080)],
+        )
+
+    def test_qwen_audio_natural_split_uses_phrase_boundaries(self) -> None:
+        word_texts = [
+            "受", "够了", "AI", "识别", "的", "劣质", "字幕",
+            "又不", "想", "花", "那么多", "钱", "开", "会员",
+            "想", "给自己的", "字幕", "制作", "省", "点", "力气",
+            "给我", "3", "分钟", "解决", "你的", "字幕", "难题",
+        ]
+        items = [
+            {"text": text, "start": index * 100, "end": (index + 1) * 100}
+            for index, text in enumerate(word_texts)
+        ]
+
+        segments = build_segments_from_api_sentences(
+            [{
+                "start": 0,
+                "end": len(word_texts) * 100,
+                "text": "".join(word_texts),
+                "items": items,
+            }],
+            max_len=21,
+            min_len=5,
+            gap_split_ms=1500,
+        )
+
+        self.assertEqual(
+            [segment["text"] for segment in segments],
+            [
+                "受够了AI识别的劣质字幕",
+                "又不想花那么多钱开会员",
+                "想给自己的字幕制作省点力气",
+                "给我3分钟解决你的字幕难题",
+            ],
+        )
+        self.assertTrue(all(len(segment["text"]) <= 21 for segment in segments))
 
 
 if __name__ == "__main__":

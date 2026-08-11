@@ -552,12 +552,14 @@ def _run_non_retryable_stage(action: str, operation):
             ) from exc
         raise
 
-def transcribe(audio_path: str, config: dict, *, on_status=print) -> dict:
+def transcribe(audio_path: str, config: dict, *, capture_raw: bool = False,
+               on_status=print) -> dict:
     """完整生命周期：申请上传 → 分片上传 → 提交 → 建任务 → 轮询 → 解析。
 
     申请上传和单个分片的临时网络错误最多重试 MAX_TRIES 次；提交分片与建任务
     不重复调用，以免网络结果未知时产生重复远端资源；轮询内部自带网络容错。
-    返回 {"text", "language", "items"}，可直接交给 build_segments() 切句。
+    返回 {"text", "language", "items"}，可直接交给 build_segments() 切句；
+    capture_raw=True 时额外带 "raw_response"（解析后的服务端原始负载，调试用）。
     """
     path = Path(audio_path)
     fmt = path.suffix.lower()
@@ -585,5 +587,10 @@ def transcribe(audio_path: str, config: dict, *, on_status=print) -> dict:
     )
     elapsed = time.perf_counter() - t0
     result = parse_result_payload(raw)
+    if capture_raw:
+        try:
+            result["raw_response"] = json.loads(raw)
+        except ValueError:
+            result["raw_response"] = {"unparsed_result": raw}
     on_status(f"[bcut] 转写完成，耗时 {elapsed:.1f}s | items={len(result['items'])}")
     return result

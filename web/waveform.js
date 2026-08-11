@@ -104,6 +104,9 @@
   const ROW_PRESETS = [5, 10, 20, 30];
   const ROW_HEIGHT_PRESETS = [64, 80, 96, 120, 144, 168];
   const ROW_GAP = 10;
+  // 多行波形保留视口前后几行，字幕快捷键跨行时可以直接复用已绘制的行。
+  // 行本身仍按可视区增量创建，不会把整段长媒体一次性放进 DOM。
+  const MULTI_ROW_BUFFER = 4;
   const MIN_CUE_MS = 100;
   const MIN_WAVEFORM_SCALE = 0.25;
   const MAX_WAVEFORM_SCALE = 6;
@@ -197,12 +200,18 @@
   function computeGroupBadges(segments) {
     const badges = new Map();
     const apply = (type, headField, refField) => {
+      // 每个波形行都会使用同一份徽章数据；按 head 建索引，避免每个 head
+      // 再扫描整个字幕数组，长工程或多行缓存下可从 O(N²) 降到 O(N)。
+      const membersByHead = new Map();
       segments.forEach((seg, headIdx) => {
-        if (!seg[headField]) return;
-        const members = [headIdx];
-        segments.forEach((candidate, idx) => {
-          if (candidate[refField]?.headIdx === headIdx) members.push(idx);
-        });
+        if (seg[headField]) membersByHead.set(headIdx, [headIdx]);
+      });
+      segments.forEach((seg, idx) => {
+        const headIdx = seg[refField]?.headIdx;
+        const members = membersByHead.get(headIdx);
+        if (members && headIdx !== idx) members.push(idx);
+      });
+      membersByHead.forEach((members) => {
         if (type === 'color' && members.length < 2) return;
         members.forEach((idx, i) => {
           const cueBadges = badges.get(idx) || [];
@@ -635,6 +644,206 @@
     return segments;
   }
 
+  function snapshotTiming(segment) {
+    return {
+      start: Number(segment.start),
+      end: Number(segment.end),
+      items: Array.isArray(segment.items)
+        ? segment.items.map((item) => ({ ...item })) : segment.items,
+    };
+  }
+
+  function isAttached(left, right) {
+    return !!left && !!right && Number(left.end) === Number(right.start);
+  }
+
+  function normalizedIndices(segments, indices) {
+    return [...new Set(Array.from(indices || [])
+      .map((idx) => Number(idx))
+      .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < segments.length))]
+      .sort((a, b) => a - b);
+  }
+
+  // Keyboard movement is a small, discrete counterpart to moving a waveform
+  // block. When the selected range is attached to a neighboring cue, the
+  // shared boundary follows the moved range: moving away expands the neighbor
+  // and moving toward it compresses the neighbor. Alt keeps both neighbors
+  // untouched, while the normal no-overlap and minimum-duration limits still
+  // apply.
+  function planMoveStep(segments, indices, deltaMs, durationMs, {
+    sticky = true,
+    minDuration = MIN_CUE_MS,
+  } = {}) {
+    const selectedIndices = normalizedIndices(segments, indices);
+    if (!selectedIndices.length) {
+      return { changed: false, appliedDelta: 0, indices: [], affectedIndices: [] };
+    }
+    const selected = new Set(selectedIndices);
+    const originals = new Map(selectedIndices.map((idx) => [idx, snapshotTiming(segments[idx])]));
+    const attachments = [];
+    const attachmentOriginals = new Map();
+    const previousAttachments = [];
+    const previousAttachmentOriginals = new Map();
+    let minDelta = -Infinity;
+    let maxDelta = Infinity;
+    const timelineDuration = Number(durationMs);
+
+    for (const idx of selectedIndices) {
+      const original = originals.get(idx);
+      minDelta = Math.max(minDelta, -original.start);
+      if (Number.isFinite(timelineDuration) && timelineDuration > 0) {
+        maxDelta = Math.min(maxDelta, timelineDuration - original.end);
+      }
+      const previous = segments[idx - 1];
+      if (previous && !selected.has(idx - 1)) {
+        if (sticky && isAttached(previous, segments[idx])) {
+          const previousOriginal = snapshotTiming(previous);
+          previousAttachments.push({ index: idx, previousIndex: idx - 1 });
+          previousAttachmentOriginals.set(idx - 1, previousOriginal);
+          minDelta = Math.max(minDelta, previousOriginal.start + minDuration - original.start);
+        } else {
+          minDelta = Math.max(minDelta, Number(previous.end) - original.start);
+        }
+      }
+      const next = segments[idx + 1];
+      if (!next || selected.has(idx + 1)) continue;
+      if (sticky && isAttached(segments[idx], next)) {
+        const nextOriginal = snapshotTiming(next);
+        attachments.push({ index: idx, nextIndex: idx + 1 });
+        attachmentOriginals.set(idx + 1, nextOriginal);
+        // The next cue's start follows the selected cue's end, so its end
+        // and minimum duration limit how far the shared boundary can move.
+        maxDelta = Math.min(maxDelta, nextOriginal.end - minDuration - original.end);
+      } else {
+        // An unlinked following cue stays fixed and may not be overlapped.
+        maxDelta = Math.min(maxDelta, Number(next.start) - original.end);
+      }
+    }
+
+    const requested = Number(deltaMs);
+    const rounded = Number.isFinite(requested) ? roundMs(requested) : 0;
+    const appliedDelta = clamp(rounded, minDelta, maxDelta);
+    const affectedIndices = [...selectedIndices];
+    attachments.forEach(({ nextIndex }) => affectedIndices.push(nextIndex));
+    previousAttachments.forEach(({ previousIndex }) => affectedIndices.push(previousIndex));
+    return {
+      changed: appliedDelta !== 0,
+      appliedDelta,
+      indices: selectedIndices,
+      affectedIndices: [...new Set(affectedIndices)].sort((a, b) => a - b),
+      originals,
+      attachments,
+      attachmentOriginals,
+      previousAttachments,
+      previousAttachmentOriginals,
+    };
+  }
+
+  function applyMoveStep(segments, indices, deltaMs, durationMs, options = {}) {
+    const plan = planMoveStep(segments, indices, deltaMs, durationMs, options);
+    if (!plan.changed) return plan;
+    const delta = plan.appliedDelta;
+    plan.indices.forEach((idx) => {
+      const original = plan.originals.get(idx);
+      const segment = segments[idx];
+      segment.start = original.start + delta;
+      segment.end = original.end + delta;
+      if (Array.isArray(original.items)) {
+        segment.items = original.items.map((item) => ({
+          ...item,
+          start: item.start + delta,
+          end: item.end + delta,
+        }));
+      }
+    });
+    plan.attachments.forEach(({ nextIndex }) => {
+      const original = plan.attachmentOriginals.get(nextIndex);
+      const segment = segments[nextIndex];
+      segment.start = original.start + delta;
+      segment.items = remapItems(original.items, original.start, original.end, segment.start, segment.end);
+    });
+    plan.previousAttachments.forEach(({ previousIndex }) => {
+      const original = plan.previousAttachmentOriginals.get(previousIndex);
+      const segment = segments[previousIndex];
+      segment.end = original.end + delta;
+      segment.items = remapItems(original.items, original.start, original.end, segment.start, segment.end);
+    });
+    return plan;
+  }
+
+  function planBoundaryStep(segments, index, edge, deltaMs, durationMs, {
+    sticky = true,
+    minDuration = MIN_CUE_MS,
+  } = {}) {
+    const target = segments[index];
+    if (!target || (edge !== 'start' && edge !== 'end')) {
+      return { changed: false, appliedDelta: 0, indices: [], affectedIndices: [] };
+    }
+    const previous = segments[index - 1];
+    const next = segments[index + 1];
+    const linkedNeighbor = edge === 'start'
+      ? (sticky && isAttached(previous, target) ? previous : null)
+      : (sticky && isAttached(target, next) ? next : null);
+    const current = edge === 'start' ? Number(target.start) : Number(target.end);
+    const requested = Number(deltaMs);
+    const rounded = Number.isFinite(requested) ? roundMs(requested) : 0;
+    let lower;
+    let upper;
+    if (edge === 'start') {
+      lower = linkedNeighbor ? Number(previous.start) + minDuration : Number(previous?.end ?? 0);
+      upper = Number(target.end) - minDuration;
+    } else {
+      lower = Number(target.start) + minDuration;
+      upper = linkedNeighbor
+        ? Number(next.end) - minDuration
+        : Number(next?.start ?? durationMs);
+      if (!Number.isFinite(upper) || upper <= 0) upper = Infinity;
+    }
+    const appliedDelta = clamp(current + rounded, lower, upper) - current;
+    const affectedIndices = linkedNeighbor
+      ? [index, edge === 'start' ? index - 1 : index + 1].sort((a, b) => a - b)
+      : [index];
+    const snapshots = new Map(affectedIndices.map((idx) => [idx, snapshotTiming(segments[idx])]));
+    return {
+      changed: appliedDelta !== 0,
+      appliedDelta,
+      index,
+      edge,
+      linked: !!linkedNeighbor,
+      neighborIndex: linkedNeighbor ? (edge === 'start' ? index - 1 : index + 1) : -1,
+      affectedIndices,
+      snapshots,
+    };
+  }
+
+  function applyBoundaryStep(segments, index, edge, deltaMs, durationMs, options = {}) {
+    const plan = planBoundaryStep(segments, index, edge, deltaMs, durationMs, options);
+    if (!plan.changed) return plan;
+    const target = segments[plan.index];
+    const oldTarget = plan.snapshots.get(plan.index);
+    const value = (plan.edge === 'start' ? oldTarget.start : oldTarget.end) + plan.appliedDelta;
+    if (plan.edge === 'start') {
+      target.start = value;
+      target.items = remapItems(oldTarget.items, oldTarget.start, oldTarget.end, target.start, target.end);
+      if (plan.linked) {
+        const previous = segments[plan.neighborIndex];
+        const oldPrevious = plan.snapshots.get(plan.neighborIndex);
+        previous.end = value;
+        previous.items = remapItems(oldPrevious.items, oldPrevious.start, oldPrevious.end, previous.start, previous.end);
+      }
+    } else {
+      target.end = value;
+      target.items = remapItems(oldTarget.items, oldTarget.start, oldTarget.end, target.start, target.end);
+      if (plan.linked) {
+        const next = segments[plan.neighborIndex];
+        const oldNext = plan.snapshots.get(plan.neighborIndex);
+        next.start = value;
+        next.items = remapItems(oldNext.items, oldNext.start, oldNext.end, next.start, next.end);
+      }
+    }
+    return plan;
+  }
+
   // Safe split point selection for the razor tool. Given a segment and a
   // pointer time, prefer the nearest item boundary (midpoint between adjacent
   // items' end/start); otherwise fall back to the integer millisecond nearest
@@ -748,6 +957,9 @@
       this.suppressGapClickUntil = 0;
       this.autoScrolling = false;
       this.resizeFrame = 0;
+      // 字幕快捷键会在很短时间内连续请求定位；复用滚动事件已有的
+      // rAF 合并，避免每个按键都强制重建可视行和 Canvas。
+      this.multiVisibleFrame = 0;
       // Shift+滚轮调振幅的 rAF 节流：一帧内的滚动累加方向后只触发一次
       this.pendingScaleDirection = 0;
       this.scaleRafScheduled = false;
@@ -847,7 +1059,7 @@
       this.disabledDisplaySelect?.addEventListener('change', () => {
         this.settings.disabledDisplay = this.disabledDisplaySelect.value === 'hidden' ? 'hidden' : 'dim';
         saveSettings(this.settings);
-        this.renderSegments();
+        this.refreshCueOverlay();
       });
       this.layoutEditToggle?.addEventListener('click', () => this.toggleLayoutEditMode());
       this.layoutResetButton?.addEventListener('click', () => this.resetLayout());
@@ -1474,7 +1686,7 @@
     }
 
     updateDisabledVisibility() {
-      this.renderSegments();
+      this.refreshCueOverlay();
     }
 
     revealTime(timeMs, center = true) {
@@ -1513,10 +1725,13 @@
         this.scroll.scrollTo({ top: nextScrollTop, behavior: 'smooth' });
       }
       this.manualFollowUntil = Date.now() + 3000;
-      requestAnimationFrame(() => {
-        this.autoScrolling = false;
-        this.renderMultiVisible(true);
-      });
+      // 目标仍在当前可视行内时，字幕跳转只需要移动播放头；不要因为
+      // revealTime() 被调用就重建整组波形 DOM/Canvas。跨行时由滚动事件
+      // 或这里的合并任务增量补齐可视行。
+      if (rowIndex < this.multiRange[0] || rowIndex > this.multiRange[1] || this.autoScrolling) {
+        this.scheduleMultiVisible();
+      }
+      if (this.autoScrolling) requestAnimationFrame(() => { this.autoScrolling = false; });
     }
 
     changeZoom(direction) {
@@ -1818,7 +2033,8 @@
       const endMs = Math.min(this.durationMs, this.basicWindowStartMs + windowMs);
       this.content.replaceChildren();
       this.content.style.height = '100%';
-      const row = this.createRow(this.basicWindowStartMs, endMs, -1, true);
+      const groupBadges = computeGroupBadges(this.options.getSegments());
+      const row = this.createRow(this.basicWindowStartMs, endMs, -1, true, groupBadges);
       this.content.appendChild(row);
       this.drawRow(row);
       this.updatePlayback(false);
@@ -1837,20 +2053,21 @@
       const rowDurationMs = this.settings.secondsPerRow * 1000;
       const rowCount = Math.max(1, Math.ceil(this.durationMs / rowDurationMs));
       const stride = this.settings.rowHeight + ROW_GAP;
-      const first = clamp(Math.floor(this.scroll.scrollTop / stride) - 2, 0, rowCount - 1);
-      const last = clamp(Math.ceil((this.scroll.scrollTop + this.scroll.clientHeight) / stride) + 2, 0, rowCount - 1);
+      const first = clamp(Math.floor(this.scroll.scrollTop / stride) - MULTI_ROW_BUFFER, 0, rowCount - 1);
+      const last = clamp(Math.ceil((this.scroll.scrollTop + this.scroll.clientHeight) / stride) + MULTI_ROW_BUFFER, 0, rowCount - 1);
       if (!force && first === this.multiRange[0] && last === this.multiRange[1]) {
         this.updatePlayback(false);
         return;
       }
       this.multiRange = [first, last];
       this.content.style.height = `${rowCount * stride - ROW_GAP}px`;
+      const groupBadges = computeGroupBadges(this.options.getSegments());
       if (force) {
         // 全量重建：先完成所有 DOM 变更再统一绘制，避免逐行强制同步布局
         this.content.replaceChildren();
         const rows = [];
         for (let index = first; index <= last; index++) {
-          rows.push(this.content.appendChild(this.createMultiRow(index, rowDurationMs)));
+          rows.push(this.content.appendChild(this.createMultiRow(index, rowDurationMs, groupBadges)));
         }
         for (const row of rows) this.drawRow(row);
         this.updatePlayback(false);
@@ -1868,22 +2085,22 @@
       const created = [];
       for (let index = first; index <= last; index++) {
         if (existing.has(String(index))) continue;
-        created.push(this.content.appendChild(this.createMultiRow(index, rowDurationMs)));
+        created.push(this.content.appendChild(this.createMultiRow(index, rowDurationMs, groupBadges)));
       }
       for (const row of created) this.drawRow(row);
       this.updatePlayback(false);
     }
 
-    createMultiRow(index, rowDurationMs) {
+    createMultiRow(index, rowDurationMs, groupBadges = null) {
       const startMs = index * rowDurationMs;
       const endMs = Math.min(this.durationMs, startMs + rowDurationMs);
-      const row = this.createRow(startMs, endMs, index, false);
+      const row = this.createRow(startMs, endMs, index, false, groupBadges);
       row.style.top = `${index * (this.settings.rowHeight + ROW_GAP)}px`;
       row.style.height = `${this.settings.rowHeight}px`;
       return row;
     }
 
-    createRow(startMs, endMs, rowIndex, basic) {
+    createRow(startMs, endMs, rowIndex, basic, groupBadges = null) {
       const row = document.createElement('div');
       row.className = 'waveform-row';
       row.dataset.startMs = String(startMs);
@@ -1904,6 +2121,69 @@
       playhead.hidden = true;
       row.appendChild(playhead);
 
+      this.appendGapBlocks(row, startMs, endMs);
+
+      this.appendCueBlocks(
+        row,
+        startMs,
+        endMs,
+        groupBadges || computeGroupBadges(this.options.getSegments()),
+      );
+
+      row.addEventListener('pointerdown', (event) => {
+        const gapOperationMode = this.options.getGapOperationMode?.() || 'boundary_drag';
+        if (event.button === 1 && gapOperationMode === 'middle_drag') {
+          this.beginGapRangeDrag(event, row);
+          return;
+        }
+        // Shift+左键在空白处拖动：框选字幕块（追加进现有多选），
+        // 不进入下方的清除选中/seek/播放头拖拽路径
+        if (
+          event.button === 0 &&
+          event.shiftKey &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.altKey &&
+          !event.target.closest('.waveform-cue-block, .waveform-gap-block') &&
+          !this.isCustomLayout()
+        ) {
+          event.preventDefault();
+          this.beginMarqueeDrag(event);
+          return;
+        }
+        if (event.button !== 0 || event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
+        event.preventDefault();
+        // 清除选中会提交当前字幕面板编辑，而提交可能同步重建虚拟行。
+        // 在调用外部回调前保存坐标，后续 seek 不依赖可能已脱离 DOM 的 row。
+        const geometry = this.captureRowGeometry(row);
+        // 普通左键点击空白波形：清除字幕选中并跳转播放头
+        this.options.clearSelection?.();
+        // 「允许拖动指针」开启时，继续按住左键拖动则指针跟随鼠标位置
+        if (this.settings.dragPlayhead) this.beginPlayheadDrag(event, row, geometry);
+        this.seekFromPointer(event, row, false, geometry);
+      });
+      row.addEventListener('auxclick', (event) => {
+        if (
+          event.button === 1
+          && (this.options.getGapOperationMode?.() || 'boundary_drag') === 'middle_drag'
+        ) event.preventDefault();
+      });
+      row.addEventListener('dblclick', (event) => {
+        if (event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
+        event.preventDefault();
+        this.options.togglePlayback();
+      });
+      row.addEventListener('contextmenu', (event) => {
+        if (event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const time = this.timeFromPointer(event, row);
+        this.options.showBlankWaveformMenu?.(time, event.clientX, event.clientY);
+      });
+      return row;
+    }
+
+    appendGapBlocks(row, startMs, endMs) {
       const gaps = this.options.getGapRemoveGaps?.() || [];
       const gapOperationMode = this.options.getGapOperationMode?.() || 'boundary_drag';
       gaps.forEach((gap, index) => {
@@ -1972,11 +2252,14 @@
         });
         row.appendChild(block);
       });
+    }
 
+    // 字幕块是波形 Canvas 上的轻量覆盖层。字幕结构变化时只重建这一层，
+    // 保留已有 row/canvas/gap DOM，避免重新采样和绘制音频峰值。
+    appendCueBlocks(row, startMs, endMs, groupBadges) {
       const segments = this.options.getSegments();
       const selected = this.options.getSelection();
       const now = this.currentTimeMs();
-      const groupBadges = computeGroupBadges(segments);
       segments.forEach((segment, index) => {
         if (segment.end <= startMs || segment.start >= endMs) return;
         if (segment.disabled && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden')) return;
@@ -1996,15 +2279,14 @@
         block.title = label.textContent;
         const badges = this.settings.showGroupBadges !== false ? groupBadges.get(index) : null;
         if (badges?.length) {
-          // 徽章挂在行上、块上方（不遮挡块内文字）；单个表情包保留较小的显示阈值，
-          // 让它即使不是分组也能作为提示出现。
+          // 徽章挂在行上、块上方（不遮挡块内文字）；短字幕也保留最小显示空间，
+          // 让分组提示可以正常出现。
           const badgeDuration = Math.max(1, endMs - startMs);
           const badgeVisibleStart = Math.max(startMs, segment.start);
           const badgeVisibleEnd = Math.min(endMs, segment.end);
           // 行创建时还未挂载（clientWidth=0），用容器宽度估算块像素宽（行宽=容器宽）
           const blockWidthPx = ((badgeVisibleEnd - badgeVisibleStart) / badgeDuration) * this.content.clientWidth;
-          const hasSingleSticker = badges.some((badge) => badge.type === 'sticker' && badge.total === 1);
-          if (blockWidthPx >= (hasSingleSticker ? 24 : 56)) badges.forEach((badge, badgeIndex) => {
+          if (blockWidthPx >= 24) badges.forEach((badge, badgeIndex) => {
             const badgeEl = document.createElement('span');
             badgeEl.className = `waveform-cue-badge ${badge.type}`;
             badgeEl.textContent = badge.type === 'sticker' && badge.total === 1
@@ -2040,54 +2322,6 @@
         });
         row.appendChild(block);
       });
-
-      row.addEventListener('pointerdown', (event) => {
-        if (event.button === 1 && gapOperationMode === 'middle_drag') {
-          this.beginGapRangeDrag(event, row);
-          return;
-        }
-        // Shift+左键在空白处拖动：框选字幕块（追加进现有多选），
-        // 不进入下方的清除选中/seek/播放头拖拽路径
-        if (
-          event.button === 0 &&
-          event.shiftKey &&
-          !event.ctrlKey &&
-          !event.metaKey &&
-          !event.altKey &&
-          !event.target.closest('.waveform-cue-block, .waveform-gap-block') &&
-          !this.isCustomLayout()
-        ) {
-          event.preventDefault();
-          this.beginMarqueeDrag(event);
-          return;
-        }
-        if (event.button !== 0 || event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
-        event.preventDefault();
-        // 清除选中会提交当前字幕面板编辑，而提交可能同步重建虚拟行。
-        // 在调用外部回调前保存坐标，后续 seek 不依赖可能已脱离 DOM 的 row。
-        const geometry = this.captureRowGeometry(row);
-        // 普通左键点击空白波形：清除字幕选中并跳转播放头
-        this.options.clearSelection?.();
-        // 「允许拖动指针」开启时，继续按住左键拖动则指针跟随鼠标位置
-        if (this.settings.dragPlayhead) this.beginPlayheadDrag(event, row, geometry);
-        this.seekFromPointer(event, row, false, geometry);
-      });
-      row.addEventListener('auxclick', (event) => {
-        if (event.button === 1 && gapOperationMode === 'middle_drag') event.preventDefault();
-      });
-      row.addEventListener('dblclick', (event) => {
-        if (event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
-        event.preventDefault();
-        this.options.togglePlayback();
-      });
-      row.addEventListener('contextmenu', (event) => {
-        if (event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
-        event.preventDefault();
-        event.stopPropagation();
-        const time = this.timeFromPointer(event, row);
-        this.options.showBlankWaveformMenu?.(time, event.clientX, event.clientY);
-      });
-      return row;
     }
 
     layoutBlock(block, segment, startMs, endMs) {
@@ -2110,6 +2344,32 @@
       block.style.left = `${left}%`;
       block.style.width = `${width}%`;
       block.hidden = visibleEnd <= visibleStart;
+    }
+
+    refreshGapOverlay() {
+      if (!this.payload) return;
+      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+        row.querySelectorAll('.waveform-gap-block').forEach((element) => element.remove());
+        this.appendGapBlocks(row, Number(row.dataset.startMs), Number(row.dataset.endMs));
+      });
+      this.positionPlayheads();
+    }
+
+    refreshCueOverlay() {
+      if (!this.payload) return;
+      const rows = [...this.content.querySelectorAll('.waveform-row')];
+      if (!rows.length) return;
+      const groupBadges = computeGroupBadges(this.options.getSegments());
+      rows.forEach((row) => {
+        row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge').forEach((element) => element.remove());
+        this.appendCueBlocks(
+          row,
+          Number(row.dataset.startMs),
+          Number(row.dataset.endMs),
+          groupBadges,
+        );
+      });
+      this.updatePlayback(false);
     }
 
     refreshCueBlocks() {
@@ -2447,6 +2707,9 @@
       if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
+      // 字幕块会阻止 pointerdown 冒泡到 pane；主动接管焦点，确保按住
+      // 字幕块/边界后，左手 A/D 不会仍被设置输入框等控件拦截。
+      this.focusWaveform();
       // 剃刀工具：无修饰键左键点击字幕块（非手柄）时，在指针位置安全拆分。
       // 修饰键（Alt/Ctrl(Cmd)/Shift）仍走原行为，便于拆分后立即多选/禁用。
       const targetHandle = event.target.closest('.waveform-cue-handle');
@@ -2507,9 +2770,18 @@
         items: Array.isArray(segments[idx].items)
           ? segments[idx].items.map((item) => ({ ...item })) : segments[idx].items,
       }]));
+      const cancelIndices = new Set(dragIndices);
+      if (kind === 'move') {
+        dragIndices.forEach((idx) => {
+          if (segments[idx - 1] && isAttached(segments[idx - 1], segments[idx])) cancelIndices.add(idx - 1);
+          if (segments[idx + 1] && isAttached(segments[idx], segments[idx + 1])) cancelIndices.add(idx + 1);
+        });
+      }
+      const cancelOriginals = new Map([...cancelIndices].map((idx) => [idx, snapshotTiming(segments[idx])]));
       this.drag = {
         pointerId: event.pointerId,
         startClientX: event.clientX,
+        currentClientX: event.clientX,
         rangeMs: geometry.endMs - geometry.startMs,
         rowWidth: geometry.width,
         geometry,
@@ -2518,6 +2790,8 @@
         indices: dragIndices,
         row,
         originals,
+        cancelOriginals,
+        commitIndices: new Set(dragIndices),
         started: false,
         changed: false,
         seekedOnPointerDown: false,
@@ -2565,6 +2839,7 @@
       this.drag = {
         pointerId: event.pointerId,
         startClientX: event.clientX,
+        currentClientX: event.clientX,
         rangeMs: geometry.endMs - geometry.startMs,
         rowWidth: geometry.width,
         geometry,
@@ -2575,6 +2850,8 @@
         indices: [movedIndex],
         row,
         originals,
+        cancelOriginals: new Map([[movedIndex, snapshotTiming(segments[movedIndex])]]),
+        commitIndices: new Set([movedIndex]),
         started: false,
         changed: false,
       };
@@ -2582,6 +2859,214 @@
       window.addEventListener('pointermove', this._dragMove = (moveEvent) => this.moveCueDrag(moveEvent));
       window.addEventListener('pointerup', this._dragEnd = (upEvent) => this.endCueDrag(upEvent), { once: true });
       window.addEventListener('pointercancel', this._dragEnd, { once: true });
+    }
+
+    cueDragDurationMs() {
+      return Number(this.durationMs) > 0 ? Number(this.durationMs) : Infinity;
+    }
+
+    captureCueDragOriginals(drag) {
+      const segments = this.options.getSegments();
+      drag.originals = new Map(drag.indices.map((idx) => [idx, snapshotTiming(segments[idx])]));
+    }
+
+    adjustSelectedByKeyboard(deltaMs, altKey = false) {
+      const indices = normalizedIndices(this.options.getSegments(), this.options.getSelection?.());
+      if (!indices.length) return false;
+      const segments = this.options.getSegments();
+      const plan = planMoveStep(
+        segments,
+        indices,
+        deltaMs,
+        this.cueDragDurationMs(),
+        { sticky: !altKey },
+      );
+      if (!plan.changed) return false;
+      this.options.onBeginEdit?.('移动字幕时间');
+      const result = applyMoveStep(
+        segments,
+        indices,
+        deltaMs,
+        this.cueDragDurationMs(),
+        { sticky: !altKey },
+      );
+      result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
+      this.options.onCommitEdit?.(result.indices, 'move');
+      this.refreshCueOverlay();
+      return true;
+    }
+
+    adjustSelectedBoundaryByKeyboard(deltaMs, edge, altKey = false) {
+      const segments = this.options.getSegments();
+      const indices = normalizedIndices(segments, this.options.getSelection?.());
+      if (!indices.length || (edge !== 'start' && edge !== 'end')) return false;
+      const index = edge === 'start' ? indices[0] : indices[indices.length - 1];
+      const options = { sticky: !altKey };
+      const plan = planBoundaryStep(segments, index, edge, deltaMs, this.cueDragDurationMs(), options);
+      if (!plan.changed) return false;
+      this.options.onBeginEdit?.(`${edge === 'start' ? '调整字幕起点' : '调整字幕终点'}`);
+      const result = applyBoundaryStep(
+        segments,
+        index,
+        edge,
+        deltaMs,
+        this.cueDragDurationMs(),
+        options,
+      );
+      result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
+      this.options.onCommitEdit?.(
+        result.affectedIndices,
+        result.linked ? 'resize-boundary' : 'resize-boundary-independent',
+      );
+      this.refreshCueOverlay();
+      return true;
+    }
+
+    snapSelectedCueBoundaryByKeyboard(direction) {
+      const segments = this.options.getSegments();
+      const indices = normalizedIndices(segments, this.options.getSelection?.());
+      if (!indices.length || (direction !== -1 && direction !== 1)) return false;
+
+      const index = direction < 0 ? indices[0] : indices[indices.length - 1];
+      const neighborIndex = direction < 0 ? index - 1 : index + 1;
+      const segment = segments[index];
+      const neighbor = segments[neighborIndex];
+      // 与按住字幕块时的 Shift+A/D 一样，边界不存在或无法贴合时也消费按键，
+      // 避免 Shift+方向键继续触发浏览器默认行为。
+      if (!segment || !neighbor) return true;
+
+      const edge = direction < 0 ? 'start' : 'end';
+      const current = Number(segment[edge]);
+      const target = roundMs(direction < 0 ? neighbor.end : neighbor.start);
+      const lower = edge === 'start' ? 0 : Number(segment.start) + MIN_CUE_MS;
+      const upper = edge === 'start'
+        ? Number(segment.end) - MIN_CUE_MS
+        : this.cueDragDurationMs();
+      if (!Number.isFinite(current) || !Number.isFinite(target)
+          || target < lower || target > upper || target === current) return true;
+
+      const result = applyBoundaryStep(
+        segments,
+        index,
+        edge,
+        target - current,
+        this.cueDragDurationMs(),
+        { sticky: false },
+      );
+      if (!result.changed) return true;
+      this.options.onBeginEdit?.('贴近字幕边界');
+      result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
+      this.options.onCommitEdit?.(result.affectedIndices, 'resize-boundary-independent');
+      this.refreshCueOverlay();
+      return true;
+    }
+
+    adjustActiveCueDragBy(deltaMs, altKey = false) {
+      const drag = this.drag;
+      if (!drag) return false;
+      const segments = this.options.getSegments();
+      const durationMs = this.cueDragDurationMs();
+      let plan;
+      let apply;
+      if (drag.kind === 'move') {
+        const options = { sticky: !altKey };
+        plan = planMoveStep(segments, drag.indices, deltaMs, durationMs, options);
+        apply = () => applyMoveStep(segments, drag.indices, deltaMs, durationMs, options);
+      } else {
+        const edge = drag.kind === 'resize-left' || drag.kind === 'resize-boundary-independent'
+          ? 'start' : 'end';
+        const options = {
+          sticky: drag.kind !== 'resize-boundary-independent' && !altKey,
+        };
+        plan = planBoundaryStep(segments, drag.index, edge, deltaMs, durationMs, options);
+        apply = () => applyBoundaryStep(segments, drag.index, edge, deltaMs, durationMs, options);
+      }
+      // A held drag consumes A/D even when the current edge is already at a
+      // limit, so the key never falls through to subtitle navigation.
+      if (!plan.changed) return true;
+      if (!drag.started) {
+        drag.started = true;
+        const label = drag.kind === 'move' ? '移动字幕时间'
+          : drag.kind === 'resize-boundary-independent' ? '独立调整字幕边界'
+            : '调整字幕边界';
+        this.options.onBeginEdit?.(label);
+      }
+      const result = apply();
+      result.affectedIndices.forEach((idx) => drag.commitIndices.add(idx));
+      drag.changed = true;
+      this.captureCueDragOriginals(drag);
+      drag.startClientX = drag.currentClientX;
+      this.scheduleRefreshCueBlocks();
+      return true;
+    }
+
+    snapActiveCueBoundaryByKeyboard(direction) {
+      const drag = this.drag;
+      if (!drag || drag.kind !== 'move' || (direction !== -1 && direction !== 1)) return false;
+      const segments = this.options.getSegments();
+      const indices = normalizedIndices(segments, drag.indices);
+      if (!indices.length) return true;
+
+      const index = direction < 0 ? indices[0] : indices[indices.length - 1];
+      const neighborIndex = direction < 0 ? index - 1 : index + 1;
+      const segment = segments[index];
+      const neighbor = segments[neighborIndex];
+      // 与普通 A/D 一样，按住字幕块时即使已经到达边界也要消费按键，
+      // 避免 Shift+A/D 穿透成“选择前后字幕”。
+      if (!segment || !neighbor) return true;
+
+      const edge = direction < 0 ? 'start' : 'end';
+      const current = Number(segment[edge]);
+      const target = roundMs(direction < 0 ? neighbor.end : neighbor.start);
+      const lower = edge === 'start' ? 0 : Number(segment.start) + MIN_CUE_MS;
+      const upper = edge === 'start'
+        ? Number(segment.end) - MIN_CUE_MS
+        : this.cueDragDurationMs();
+      if (!Number.isFinite(current) || !Number.isFinite(target)
+          || target < lower || target > upper || target === current) return true;
+
+      if (!drag.started) {
+        drag.started = true;
+        this.options.onBeginEdit?.('贴近字幕边界');
+      }
+      const original = snapshotTiming(segment);
+      segment[edge] = target;
+      segment.items = remapItems(
+        original.items,
+        original.start,
+        original.end,
+        segment.start,
+        segment.end,
+      );
+      drag.commitIndices.add(index);
+      drag.changed = true;
+      this.captureCueDragOriginals(drag);
+      drag.startClientX = drag.currentClientX;
+      this.scheduleRefreshCueBlocks();
+      return true;
+    }
+
+    cancelCueDrag() {
+      const drag = this.drag;
+      if (!drag) return false;
+      window.removeEventListener('pointermove', this._dragMove);
+      window.removeEventListener('pointerup', this._dragEnd);
+      window.removeEventListener('pointercancel', this._dragEnd);
+      const segments = this.options.getSegments();
+      drag.cancelOriginals.forEach((original, idx) => {
+        const segment = segments[idx];
+        if (!segment) return;
+        segment.start = original.start;
+        segment.end = original.end;
+        segment.items = Array.isArray(original.items)
+          ? original.items.map((item) => ({ ...item })) : original.items;
+      });
+      this.content.querySelectorAll('.waveform-cue-block.dragging')
+        .forEach((block) => block.classList.remove('dragging'));
+      this.drag = null;
+      this.refreshCueOverlay();
+      this.setStatus('已取消字幕调整');
+      return true;
     }
 
     applyIndependentBoundaryDrag(drag, rawDelta) {
@@ -2767,6 +3252,7 @@
       const drag = this.drag;
       if (!drag || event.pointerId !== drag.pointerId) return;
       event.preventDefault();
+      drag.currentClientX = event.clientX;
       const deltaMs = ((event.clientX - drag.startClientX) / drag.rowWidth) * drag.rangeMs;
       if (!drag.started && Math.abs(deltaMs) < 2) return;
       if (!drag.started) {
@@ -2904,6 +3390,18 @@
       window.removeEventListener('pointercancel', this._dragEnd);
       this.content.querySelectorAll('.waveform-cue-block.dragging').forEach((block) => block.classList.remove('dragging'));
       this.drag = null;
+      if (event.type === 'pointercancel') {
+        drag.cancelOriginals.forEach((original, idx) => {
+          const segment = this.options.getSegments()[idx];
+          if (!segment) return;
+          segment.start = original.start;
+          segment.end = original.end;
+          segment.items = Array.isArray(original.items)
+            ? original.items.map((item) => ({ ...item })) : original.items;
+        });
+        this.refreshCueOverlay();
+        return;
+      }
       if (!drag.changed) {
         // select-only 只选中；两个跳转模式按设置跳到字幕开头或鼠标位置。
         const clickBehavior = this.options.getClickBehavior?.();
@@ -2912,16 +3410,28 @@
         }
         return;
       }
-      drag.indices.forEach((idx) => { this.options.getSegments()[idx]._dirty = true; });
+      drag.commitIndices.forEach((idx) => { this.options.getSegments()[idx]._dirty = true; });
       this.options.onCommitEdit(drag.indices, drag.kind);
-      this.renderSegments();
+      this.refreshCueOverlay();
     }
 
     updatePlayback(allowFollow = true) {
       if (!this.payload) return;
       const now = this.currentTimeMs();
       const segments = this.options.getSegments();
-      const activeIndex = segments.findIndex((segment) => !segment.disabled && now >= segment.start && now <= segment.end);
+      let low = 0;
+      let high = segments.length - 1;
+      let activeIndex = -1;
+      while (low <= high) {
+        const middle = (low + high) >> 1;
+        const segment = segments[middle];
+        if (now < segment.start) high = middle - 1;
+        else if (now > segment.end) low = middle + 1;
+        else {
+          activeIndex = segment.disabled ? -1 : middle;
+          break;
+        }
+      }
       if (activeIndex !== this.activeIndex) {
         this.activeIndex = activeIndex;
         this.content.querySelectorAll('.waveform-cue-block').forEach((block) => {
@@ -2982,6 +3492,8 @@
       sourceForFile,
       applySharedBoundary,
       applyIndependentEdge,
+      applyMoveStep,
+      applyBoundaryStep,
       splitSegmentAtTime,
       normalizeNewCueRange,
       clampWaveformScale,

@@ -89,6 +89,10 @@ def main():
         "--debug", action="store_true",
         help="输出 API 解析结果用于调试",
     )
+    parser.add_argument(
+        "--debug-raw", action="store_true",
+        help="保存必剪服务端返回的完整原始 JSON，用于排查断句、标点和时间码",
+    )
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -148,7 +152,7 @@ def main():
             )
 
         t0 = time.perf_counter()
-        result = transcribe(audio_path, config)
+        result = transcribe(audio_path, config, capture_raw=args.debug_raw)
         elapsed = time.perf_counter() - t0
 
         if not result or not result.get("text"):
@@ -212,6 +216,15 @@ def main():
     output_path.write_text(srt_content, encoding="utf-8")
     print(f"\n字幕已保存到: {output_path}")
     print(f"共 {len(segments)} 条字幕")
+    if args.debug_raw:
+        raw_response = result.pop("raw_response", None)
+        if raw_response is None:
+            raise RuntimeError("调试模式未获得 ASR 原始返回数据")
+        raw_path = output_path.with_suffix(".asr-response.json")
+        with raw_path.open("w", encoding="utf-8", newline="\n") as raw_file:
+            json.dump(raw_response, raw_file, ensure_ascii=False, indent=2)
+            raw_file.write("\n")
+        print(f"[调试] ASR 原始返回已保存到: {raw_path}")
     if duration > 0:
         print(f"处理用时: {em}分{es}秒 | 实际 RTF: {rtf:.3f} ({speed:.1f}x 实时)")
     else:

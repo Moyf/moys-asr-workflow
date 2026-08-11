@@ -50,6 +50,7 @@ MAX_AUDIO_SECONDS = 300 * 60
 
 # 轮询时允许的连续网络错误次数（api.soniox.com 在海外，偶发超时属正常）
 MAX_CONSECUTIVE_NETWORK_ERRORS = 5
+POLL_HEARTBEAT_SECONDS = 15
 
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
@@ -167,6 +168,8 @@ def poll_transcription(base_url: str, api_key: str, transcription_id: str, *,
     """
     url = f"{base_url}/v1/transcriptions/{transcription_id}"
     deadline = time.time() + timeout
+    started_at = time.monotonic()
+    last_report_at = started_at
     last_status = ""
     network_errors = 0
 
@@ -189,10 +192,19 @@ def poll_transcription(base_url: str, api_key: str, transcription_id: str, *,
         network_errors = 0
         body = resp.json()
         status = body.get("status", "")
+        now = time.monotonic()
 
         if status != last_status:
             on_status(f"[soniox] 任务状态: {status or 'UNKNOWN'}")
             last_status = status
+            last_report_at = now
+        elif now - last_report_at >= POLL_HEARTBEAT_SECONDS:
+            elapsed = int(now - started_at)
+            on_status(
+                f"[soniox] 任务仍在处理中（状态: {status or 'UNKNOWN'}，"
+                f"已等待约 {elapsed}s），下一次检查约 {max(interval, 0)}s 后。"
+            )
+            last_report_at = now
 
         if status == "completed":
             return
@@ -357,6 +369,7 @@ def transcribe(audio_path: str, config: dict, *,
 
     file_id = upload_file(base_url, api_key, audio_path)
     on_status(f"[soniox] 上传完成: file_id={file_id}")
+    on_status(f"[soniox] 正在创建异步转写任务（model={model}）...")
     transcription_id = create_transcription(
         base_url, api_key,
         model=model,
@@ -375,6 +388,7 @@ def transcribe(audio_path: str, config: dict, *,
             on_status=on_status,
         )
         elapsed = time.perf_counter() - t0
+        on_status("[soniox] 转写完成，正在下载转写结果...")
         transcript = get_transcript(base_url, api_key, transcription_id)
     except TranscriptionFailedError:
         # 任务已是终态失败，云端记录可以安全清理
@@ -392,7 +406,7 @@ def transcribe(audio_path: str, config: dict, *,
     delete_transcription(base_url, api_key, transcription_id, on_status=on_status)
 
     tokens = transcript.get("tokens", [])
-    on_status(f"[soniox] 转写完成，耗时 {elapsed:.1f}s | tokens={len(tokens)}")
+    on_status(f"[soniox] 转写结果下载完成，耗时 {elapsed:.1f}s | tokens={len(tokens)}")
     return {
         "text": transcript.get("text", ""),
         "language": majority_language(tokens),

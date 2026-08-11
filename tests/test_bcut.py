@@ -634,5 +634,97 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertNotIn("SONIOX_API_KEY", env)
 
 
+class PublicCliWiringTests(unittest.TestCase):
+    """maw/cli.py 公开入口的 bcut 接线：choices、参数门控、生成器路由。"""
+
+    def test_parser_accepts_bcut_provider(self) -> None:
+        from maw import cli
+
+        args = cli.build_parser("MAW.exe").parse_args(
+            ["--provider", "bcut", "-i", "clip.mp4"]
+        )
+
+        self.assertEqual(args.provider, "bcut")
+
+    def test_bcut_rejects_language_and_model(self) -> None:
+        from maw import cli
+
+        with self.assertRaises(SystemExit) as raised:
+            cli.main(["--provider", "bcut", "-i", "clip.mp3", "--language", "zh"])
+        self.assertEqual(raised.exception.code, 2)
+
+        with self.assertRaises(SystemExit) as raised:
+            cli.main(["--provider", "bcut", "-i", "clip.mp3", "--model", "x"])
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_bcut_rejects_speaker_and_qwen_only_args(self) -> None:
+        from maw import cli
+
+        for extra in (["--speaker"], ["--speaker-colors"], ["--region", "beijing"], ["--hotword", "词"]):
+            with self.assertRaises(SystemExit, msg=extra) as raised:
+                cli.main(["--provider", "bcut", "-i", "clip.mp3", *extra])
+            self.assertEqual(raised.exception.code, 2, msg=extra)
+
+    def test_bcut_minimal_args_reach_generator(self) -> None:
+        from maw import cli
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            media = root / "clip.mp3"
+            srt = root / "result.srt"
+            media.write_bytes(b"media")
+
+            def fake_generator(_provider: str, argv: list[str]) -> int:
+                generated_srt = Path(argv[argv.index("--output") + 1])
+                generated_srt.write_text("1\n00:00:00,000 --> 00:00:00,100\n好\n", encoding="utf-8")
+                generated_srt.with_suffix(".mosp").write_text("{}\n", encoding="utf-8")
+                return 0
+
+            with mock.patch("maw.cli._invoke_generator", side_effect=fake_generator) as invoke:
+                result = cli.main([
+                    "--provider", "bcut", "-i", str(media), "-o", str(srt), "-ll", "2m",
+                ])
+
+            self.assertEqual(result, 0)
+            provider = invoke.call_args.args[0]
+            generator_args = invoke.call_args.args[1]
+            self.assertEqual(provider, "bcut")
+            self.assertIn("--length-limit", generator_args)
+            self.assertNotIn("--language", generator_args)
+            self.assertNotIn("--model", generator_args)
+
+    def test_invoke_generator_routes_bcut_module(self) -> None:
+        from maw import cli
+
+        with mock.patch("generate_subtitle_bcut_api.main", return_value=None) as main:
+            result = cli._invoke_generator("bcut", ["clip.mp3"])
+
+        self.assertEqual(result, 0)
+        main.assert_called_once_with()
+
+
+class TranscribeRawCaptureTests(unittest.TestCase):
+    def test_capture_raw_includes_parsed_payload(self) -> None:
+        raw = _result_json([_utterance("你好。", 0, 500, [_word("你", 0, 250)])])
+        with mock.patch.object(bcut, "request_upload", return_value={
+            "in_boss_key": "k", "resource_id": "r", "upload_id": "u",
+            "upload_urls": ["https://up/1"], "per_size": 1024,
+        }), \
+             mock.patch.object(bcut, "upload_parts", return_value=["t"]), \
+             mock.patch.object(bcut, "commit_upload", return_value="https://dl/a"), \
+             mock.patch.object(bcut, "create_task", return_value="task-1"), \
+             mock.patch.object(bcut, "poll_task", return_value=raw):
+            result = bcut.transcribe(
+                "a.wav",
+                {"poll_interval": 0, "poll_timeout": 60, "max_audio_seconds": 7200},
+                capture_raw=True,
+                on_status=lambda _m: None,
+            )
+
+        self.assertEqual(result["raw_response"]["utterances"][0]["transcript"], "你好。")
+        # raw_response 不污染工程字段
+        self.assertEqual(set(result) - {"raw_response"}, {"text", "language", "items"})
+
+
 if __name__ == "__main__":
     unittest.main()

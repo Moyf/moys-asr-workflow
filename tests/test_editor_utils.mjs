@@ -419,15 +419,53 @@ test('finds A/D navigation targets from selection or playhead', () => {
 });
 
 
-test('aligns SRT export to the first enabled subtitle when requested', () => {
+test('finds the first enabled subtitle for optional SRT alignment', () => {
   const segments = [
     { start: 1200, disabled: true },
     { start: 2450, disabled: false },
     { start: 4000 },
   ];
+  assert.equal(helpers.getSrtExportFirstIndex(segments, true), 1);
+  assert.equal(helpers.getSrtExportFirstIndex(segments, false), -1);
   assert.equal(helpers.getSrtExportOffset(segments, true), 2450);
   assert.equal(helpers.getSrtExportOffset(segments, false), 0);
+  assert.equal(helpers.getSrtExportOffset(segments), 0);
   assert.equal(helpers.getSrtExportOffset([{ start: 500, disabled: true }], true), 0);
+});
+
+
+test('only extends the first SRT cue to zero without shifting later cues', () => {
+  const segments = [
+    { start: 1200, end: 1800, text: 'first' },
+    { start: 2400, end: 3000, text: 'later' },
+  ];
+  assert.equal(helpers.buildSrtPayload(segments, {
+    alignFirstStart: true,
+    formatTime: (timeMs) => `${timeMs}ms`,
+  }), [
+    '1',
+    '0ms --> 1800ms',
+    'first',
+    '',
+    '2',
+    '2400ms --> 3000ms',
+    'later',
+    '',
+  ].join('\n'));
+});
+
+
+test('keeps the shared timeline when a color export starts after the first cue', () => {
+  const segments = [
+    { start: 1200, end: 1800, text: 'blue', color: { name: 'blue' } },
+    { start: 2400, end: 3000, text: 'red', color: { name: 'red' } },
+  ];
+  assert.equal(helpers.buildSrtPayload(segments, {
+    colorName: 'red',
+    alignFirstStart: true,
+    firstEnabledIndex: 0,
+    formatTime: (timeMs) => `${timeMs}ms`,
+  }), ['1', '2400ms --> 3000ms', 'red', ''].join('\n'));
 });
 
 
@@ -442,6 +480,37 @@ test('resolves referenced subtitle colors from their head when available', () =>
   assert.equal(helpers.effectiveColorName(segments[1], segments), 'red');
   assert.equal(helpers.effectiveColorName(segments[2], segments), 'blue');
   assert.equal(helpers.effectiveColorName(segments[3], segments), null);
+});
+
+
+test('shifts color and sticker references when a subtitle is inserted', () => {
+  const segments = [
+    { color: { name: 'blue' }, sticker: { name: 'blue-sticker' } },
+    { color: { name: 'red' }, sticker: { name: 'red-sticker' } },
+    {
+      color_ref: { name: 'red', headIdx: 1 },
+      sticker_ref: { name: 'red-sticker', headIdx: 1 },
+    },
+  ];
+  segments.splice(0, 0, { start: 0, end: 1000, text: '' });
+
+  assert.equal(helpers.shiftGroupReferenceIndices(segments, 0), 2);
+  assert.equal(segments[3].color_ref.headIdx, 2);
+  assert.equal(segments[3].sticker_ref.headIdx, 2);
+  assert.equal(helpers.effectiveColorName(segments[3], segments), 'red');
+});
+
+
+test('repairs stale group references by the saved head name', () => {
+  const segments = [
+    { color: { name: 'blue' } },
+    { color: { name: 'red' } },
+    { color_ref: { name: 'red', headIdx: 0 } },
+  ];
+
+  assert.equal(helpers.repairGroupReferenceIndices(segments), 1);
+  assert.equal(segments[2].color_ref.headIdx, 1);
+  assert.equal(helpers.effectiveColorName(segments[2], segments), 'red');
 });
 
 
@@ -837,7 +906,7 @@ test('history stack: clear and clearRedo reset the right stacks', () => {
 // === preview.subtitle geometry helpers ===
 
 test('normalizePreviewGeometry returns default geometry for invalid input', () => {
-  const expected = { x: 0.175, y: 0.76, width: 0.65, height: 0.16 };
+  const expected = { x: 0.1, y: 0.76, width: 0.8, height: 0.16 };
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizePreviewGeometry(null))), expected);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizePreviewGeometry('bad'))), expected);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizePreviewGeometry({}))), expected);

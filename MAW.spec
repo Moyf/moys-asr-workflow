@@ -55,6 +55,7 @@ a = Analysis(
         "maw.gui_web",
         "maw.gui_config",
         "maw.gui_workflow",
+        "maw.cli",
         "maw.project",
         "maw.soniox",
         "maw.bcut",

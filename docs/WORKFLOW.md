@@ -4,7 +4,7 @@
 
 ## 0. 安装依赖
 
-如果使用 GitHub Releases 提供的 Windows 或 macOS 图形版，Python 与 uv 已由应用打包，不需要单独安装；普通版的 `ffmpeg` 和 `ffprobe` 仍是外部依赖，`MAWxFF` 版已经随包提供。Windows 解压后双击 `MAW.exe`；macOS 解压后打开 `MAW.app`。Launcher 默认启动 Server 版编辑器；需要桌面版时，从右侧菜单选择「在 MOSE 中打开」。
+如果使用 GitHub Releases 提供的 Windows 或 macOS 图形版，Python 与 uv 已由应用打包，不需要单独安装；普通版的 `ffmpeg` 和 `ffprobe` 仍是外部依赖，`MAWxFF` 版已经随包提供。Windows 解压后双击 `MAW.exe`；macOS 解压后打开 `MAW.app`。Launcher 默认启动 Server 版编辑器，右侧菜单可打开工程 HTML 编辑器或空白 HTML 编辑器；MOSE 桌面版暂不随 Release 分发。
 
 源码方式继续按下列步骤安装：
 
@@ -32,6 +32,16 @@ py -3.11 -m venv .venv
 ```
 
 后文的 `uv run python` 可替换为 `.\.venv\Scripts\python`。
+
+## 1.5 使用图形包的 CLI
+
+Windows 图形包中的 `MAW.exe` 不带参数时启动 Launcher；带 `-h` 或 `--help` 时显示公开命令行帮助，也可以直接转写指定媒体：
+
+```powershell
+.\MAW.exe -i "D:\Videos\example.mp3" -o "D:\Videos\example.srt" "D:\Videos\example.mosp"
+```
+
+完整的参数表、输出规则、Qwen/Soniox 示例、Server 管理、退出码和 AI/自动化调用模板见 [CLI 专门文档](CLI.md)。
 
 ## 1. 配置阿里云百炼 API
 
@@ -71,6 +81,7 @@ CLI 未指定 `--model` 时默认使用 `qwen-audio-3.0-asr-flash-filetrans`；�
 --no-html            只要 SRT 和工程文件，不生成便携 HTML
 --with-waveform      把波形写进工程文件，免去编辑器首次打开的 sidecar 缓存文件
 --debug              输出部分 API 原始结果，便于反馈问题
+--debug-raw          单独保存完整 ASR 原始 JSON（<输出文件名>.asr-response.json）
 ```
 
 CLI 默认不内嵌波形；需要交给编辑器直接打开且不想生成 `<媒体名>.waveform.json` sidecar 时，加 `--with-waveform`。波形提取会额外用 FFmpeg 完整扫一遍媒体，失败时只给警告，不影响字幕与工程文件输出。输入视频会先由 FFmpeg 提取单声道 16kHz WAV；音频输入也会通过 FFprobe 获取时长。没有 FFmpeg/FFprobe 时，这一步无法完成。
@@ -248,7 +259,7 @@ uv run python server-editor\serve.py --blank
 
 安装 FFmpeg 后关闭并重开 PowerShell，再运行 `ffmpeg -version`。不要只把 `ffmpeg.exe` 放在仓库里；更稳妥的是把其 `bin` 目录加入系统 PATH。
 
-macOS 从 Finder 启动 `.app` 时不一定会继承终端里的 PATH。Apple Silicon Homebrew 通常使用 `/opt/homebrew/bin`，Intel Homebrew 通常使用 `/usr/local/bin`；如果 Launcher 仍提示缺少 FFmpeg，可把对应目录填入「配置」中的 FFmpeg 路径，并确认其中同时存在 `ffmpeg` 和 `ffprobe`。macOS GUI 的配置会保存到 `~/Library/Application Support/Moy/MAW/.env`，不写入只读或被 App Translocation 隔离的 `.app` 包。
+macOS 从 Finder 启动 `.app` 时不一定会继承终端里的 PATH。Launcher 会额外尝试 Apple Silicon Homebrew 的 `/opt/homebrew/bin` 和 Intel Homebrew 的 `/usr/local/bin`；如果仍提示缺少 FFmpeg，可把对应目录填入「配置」中的 FFmpeg 路径，并确认其中同时存在 `ffmpeg` 和 `ffprobe`。macOS GUI 的配置会保存到 `~/Library/Application Support/Moy/MAW/.env`，不写入只读或被 App Translocation 隔离的 `.app` 包。
 
 ### 提示未配置 API Key
 
