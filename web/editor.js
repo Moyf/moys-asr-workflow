@@ -4450,6 +4450,123 @@ function serverProjectSavingEnabled() {
   return !!(SERVER_CONFIG && SERVER_CONFIG.saveUrl && SERVER_CONFIG.canSave && !projectLoadedFromSrt);
 }
 
+function parseProjectValidationTarget(detail) {
+  const match = /^\$\.segments\[(\d+)\](?:\.items\[(\d+)\])?(?:\.[A-Za-z_]\w*)?\s*:/.exec(String(detail || ''));
+  if (!match) return null;
+  const segmentIndex = Number(match[1]);
+  const itemIndex = match[2] === undefined ? null : Number(match[2]);
+  const segment = DATA.segments[segmentIndex];
+  if (!segment) return null;
+  const item = itemIndex === null
+    ? null
+    : (Array.isArray(segment.items) ? segment.items[itemIndex] : null);
+  return {
+    segmentIndex,
+    itemIndex,
+    segment,
+    item: item && typeof item === 'object' ? item : null,
+  };
+}
+
+function validationPreviewText(target) {
+  const value = target.item?.text ?? target.segment.text;
+  if (typeof value === 'string') return value || '（空）';
+  try {
+    return JSON.stringify(target.item || target.segment);
+  } catch (_) {
+    return '（无法预览）';
+  }
+}
+
+function focusProjectValidationTarget(target) {
+  const { segmentIndex, segment } = target || {};
+  if (!segment || !DATA.segments[segmentIndex]) return;
+
+  // 校验错误不能因为用户当前的筛选状态而再次变得不可见。
+  if (hideDisabled && segment.disabled) {
+    hideDisabled = false;
+    hideDisabledToggle.checked = false;
+    container.classList.remove('hide-disabled');
+  }
+  const cueBeforeFilter = container.querySelector(`.cue[data-idx="${segmentIndex}"]`);
+  if (cueBeforeFilter?.classList.contains('hidden')) {
+    searchEl.value = '';
+    refreshSearchClearVisibility();
+    const filterOver = document.getElementById('filter-over');
+    if (filterOver?.classList.contains('active')) filterOver.classList.remove('active');
+    applySearch('');
+  }
+
+  selectOnly(segmentIndex);
+  lastClickedIdx = segmentIndex;
+  const cue = container.querySelector(`.cue[data-idx="${segmentIndex}"]`);
+  if (cue) {
+    cue.classList.remove('validation-target');
+    // 重新触发一次短暂的高亮，即使用户连续点击多个错误提示也能看出目标。
+    void cue.offsetWidth;
+    cue.classList.add('validation-target');
+    scrollCueToCenter(cue);
+    window.setTimeout(() => cue.classList.remove('validation-target'), 2200);
+  }
+  waveformEditor?.revealTime(segment.start, true);
+  if (hasLoadedMedia()) seekFromWaveform(segment.start / 1000);
+}
+
+function showProjectSaveError(detail) {
+  const target = parseProjectValidationTarget(detail);
+  if (!target) {
+    flashHint(`保存失败：${detail}`, 'warning');
+    return;
+  }
+
+  flashHint('', 'warning', {
+    durationMs: 12000,
+    contentBuilder: (card) => {
+      card.classList.add('hint-project-error');
+
+      const header = document.createElement('div');
+      header.className = 'hint-project-header';
+      const title = document.createElement('strong');
+      title.textContent = '保存失败';
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'hint-close';
+      close.setAttribute('aria-label', '关闭提示');
+      close.textContent = '×';
+      close.addEventListener('click', () => dismissHintCard(card));
+      header.append(title, close);
+
+      const detailEl = document.createElement('code');
+      detailEl.className = 'hint-project-detail';
+      detailEl.textContent = String(detail || '未知校验错误');
+
+      const location = document.createElement('div');
+      location.className = 'hint-project-location';
+      location.textContent = target.itemIndex === null
+        ? `第 ${target.segmentIndex + 1} 条字幕`
+        : `第 ${target.segmentIndex + 1} 条字幕 · item ${target.itemIndex + 1}`;
+
+      const previewLabel = document.createElement('div');
+      previewLabel.className = 'hint-project-preview-label';
+      previewLabel.textContent = target.itemIndex === null ? '字幕内容' : 'item 内容';
+      const preview = document.createElement('div');
+      preview.className = 'hint-project-preview-value';
+      preview.textContent = validationPreviewText(target);
+
+      const action = document.createElement('button');
+      action.type = 'button';
+      action.className = 'hint-project-action';
+      action.textContent = `定位到第 ${target.segmentIndex + 1} 条字幕`;
+      action.addEventListener('click', () => {
+        focusProjectValidationTarget(target);
+        dismissHintCard(card);
+      });
+
+      card.append(header, detailEl, location, previewLabel, preview, action);
+    },
+  });
+}
+
 function configureServerSaveControls() {
   const hasServer = !!(SERVER_CONFIG && SERVER_CONFIG.saveUrl);
   if (saveProjectDropdown) saveProjectDropdown.hidden = !hasServer;
@@ -4947,7 +5064,7 @@ async function saveProjectToServer({ silent = false } = {}) {
     return true;
   } catch (error) {
     const detail = error?.message || error;
-    flashHint(`保存失败：${detail}`);
+    showProjectSaveError(detail);
     // A stale browser tab can outlive the localhost process (the browser reports
     // ERR_CONNECTION_REFUSED). Offer a real file save so Ctrl+S never strands
     // completed edits, while making clear that the bound JSON was not overwritten.
@@ -6350,7 +6467,7 @@ function dismissHintCard(card) {
   setTimeout(() => card.remove(), HINT_FADE_OUT_MS);
 }
 
-function flashHint(msg, type = 'default') {
+function flashHint(msg, type = 'default', options = {}) {
   let stack = document.getElementById('hint-stack');
   if (!stack) {
     stack = document.createElement('div'); stack.id = 'hint-stack';
@@ -6370,9 +6487,12 @@ function flashHint(msg, type = 'default') {
     : type === 'invalid' ? 'hint-invalid'
     : type === 'warning' ? 'hint-warning' : '';
   card.className = typeClass ? `hint-card ${typeClass}` : 'hint-card';
-  card.textContent = msg;
+  if (typeof options.contentBuilder === 'function') options.contentBuilder(card);
+  else card.textContent = msg;
   stack.appendChild(card);
-  setTimeout(() => dismissHintCard(card), HINT_DURATION_MS);
+  const durationMs = Number.isFinite(options.durationMs) ? options.durationMs : HINT_DURATION_MS;
+  if (durationMs > 0) setTimeout(() => dismissHintCard(card), durationMs);
+  return card;
 }
 
 // 振幅到达上下限时由波形模块派发的事件：rAF 节流后仍可能每帧触发，冷却避免提示闪烁

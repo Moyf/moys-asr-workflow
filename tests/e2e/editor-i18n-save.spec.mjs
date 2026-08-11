@@ -130,6 +130,34 @@ test('Ctrl+S saves and Ctrl+Shift+S invokes save as', async ({ page }) => {
   expect(JSON.parse(saveAsCapture.content).segments).toHaveLength(6);
 });
 
+test('validation save error previews the item and jumps to its subtitle', async ({ page }) => {
+  await page.goto(server.url);
+  await page.route('**/api/project', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ok: false,
+        error: '$.segments[1].items[1].start: must be >= previous item end',
+      }),
+    });
+  });
+
+  await page.keyboard.press('Control+s');
+  const hint = page.locator('.hint-project-error');
+  await expect(hint).toContainText('$.segments[1].items[1].start: must be >= previous item end');
+  await expect(hint.locator('.hint-project-preview-value')).toHaveText('vo');
+  await expect(hint.locator('.hint-project-action')).toHaveText('定位到第 2 条字幕');
+
+  await hint.locator('.hint-project-action').click();
+  await expect(page.locator('.cue[data-idx="1"]')).toHaveClass(/selected/);
+  await expect(page.locator('#cue-panel-text')).toHaveValue('Bravo');
+});
+
 test('a disconnected save endpoint offers a JSON fallback download', async ({ page }) => {
   await page.goto(server.url);
   await page.route('**/api/project', (route) => route.abort('connectionrefused'));
