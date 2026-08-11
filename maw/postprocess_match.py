@@ -1,0 +1,218 @@
+# pyright: reportAny=false, reportImplicitOverride=false, reportUnknownVariableType=false, reportReturnType=false
+
+"""Match an authoritative script to existing subtitle time slots."""
+
+from __future__ import annotations
+
+import copy
+import difflib
+import unicodedata
+from dataclasses import dataclass
+from pathlib import Path
+
+from maw.postprocess import OutputMode
+from maw.postprocess_io import SubtitleArtifact, PostprocessFileError, read_project, read_srt, write_artifacts
+from maw.project import normalize_project
+from maw.project_preview import JsonDict
+
+
+SCRIPT_EXTENSIONS = frozenset({".txt", ".md", ".markdown"})
+MIN_MATCH_COVERAGE = 0.55
+
+
+@dataclass(frozen=True, slots=True)
+class ScriptMatchRequest:
+    project_path: Path | None
+    srt_path: Path | None
+    script_path: Path
+    output_mode: OutputMode
+
+
+@dataclass(frozen=True, slots=True)
+class _CueSpan:
+    segment_index: int
+    normalized_start: int
+    normalized_end: int
+
+
+@dataclass(frozen=True, slots=True)
+class _NormalizedText:
+    value: str
+    original_starts: tuple[int, ...]
+
+    def original_boundary(self, normalized_index: int, original_length: int) -> int:
+        if normalized_index <= 0:
+            return 0
+        if normalized_index >= len(self.original_starts):
+            return original_length
+        return self.original_starts[normalized_index]
+
+
+def run_script_match(request: ScriptMatchRequest) -> SubtitleArtifact:
+    project, source_project, source_srt = _load_input(request.project_path, request.srt_path)
+    script_path, script_text = _read_script(request.script_path)
+    matched, warnings = _match_project(project, script_text)
+    return write_artifacts(
+        matched,
+        source_project_path=source_project,
+        source_srt_path=source_srt,
+        operation="matched",
+        write_project=request.output_mode in {OutputMode.JSON, OutputMode.BOTH},
+        write_srt=request.output_mode in {OutputMode.SRT, OutputMode.BOTH},
+        warnings=(f"文稿来源：{script_path}", *warnings),
+    )
+
+
+def _match_project(project: JsonDict, script_text: str) -> tuple[JsonDict, tuple[str, ...]]:
+    segments = project.get("segments")
+    if not isinstance(segments, list):
+        raise ValueError("project segments must be an array")
+
+    script = _normalize_text(script_text)
+    source_parts: list[str] = []
+    spans: list[_CueSpan] = []
+    offset = 0
+    for index, raw_segment in enumerate(segments):
+        if not isinstance(raw_segment, dict) or raw_segment.get("disabled") is True:
+            continue
+        text = raw_segment.get("text")
+        if not isinstance(text, str):
+            continue
+        normalized = _normalize_text(text)
+        if not normalized.value:
+            continue
+        start = offset
+        source_parts.append(normalized.value)
+        offset += len(normalized.value)
+        spans.append(_CueSpan(index, start, offset))
+    source_text = "".join(source_parts)
+    if not source_text:
+        raise ValueError("no enabled subtitle text is available for matching")
+    if not script.value:
+        raise ValueError("script text is empty")
+
+    matcher = difflib.SequenceMatcher(None, source_text, script.value, autojunk=False)
+    blocks = tuple(block for block in matcher.get_matching_blocks() if block.size)
+    matched_chars = sum(block.size for block in blocks)
+    coverage = matched_chars / max(1, min(len(source_text), len(script.value)))
+    if coverage < MIN_MATCH_COVERAGE:
+        raise ValueError(
+            f"script and subtitle match coverage is too low ({coverage:.0%}); "
+            f"at least {MIN_MATCH_COVERAGE:.0%} of the shorter text must match"
+        )
+
+    boundaries = _alignment_boundaries(len(source_text), len(script.value), blocks)
+    result = copy.deepcopy(project)
+    result_segments = result["segments"]
+    unmatched = 0
+    changed = 0
+    for span in spans:
+        script_start = _map_boundary(span.normalized_start, boundaries)
+        script_end = _map_boundary(span.normalized_end, boundaries)
+        script_start, script_end = sorted((script_start, script_end))
+        source_segment = segments[span.segment_index]
+        target_segment = result_segments[span.segment_index]
+        if not isinstance(source_segment, dict) or not isinstance(target_segment, dict):
+            continue
+        original_text = source_segment.get("text")
+        if not isinstance(original_text, str):
+            continue
+        replacement = _slice_normalized(script_text, script, script_start, script_end)
+        if not replacement:
+            unmatched += 1
+            continue
+        if replacement != original_text:
+            target_segment["text"] = replacement
+            target_segment.pop("items", None)
+            changed += 1
+
+    warnings: list[str] = [f"文稿匹配度：{coverage:.0%}；已更新 {changed} 个字幕段。"]
+    if unmatched:
+        warnings.append(f"{unmatched} 个字幕段未找到对应文稿，已保留原字幕文字。")
+    disabled_count = sum(
+        1
+        for segment in segments
+        if isinstance(segment, dict) and segment.get("disabled") is True
+    )
+    if disabled_count:
+        warnings.append(f"已保留 {disabled_count} 个 disabled 字幕段，未参与文稿匹配。")
+    return normalize_project(result), tuple(warnings)
+
+
+def _alignment_boundaries(
+    source_length: int,
+    script_length: int,
+    blocks: tuple[difflib.Match, ...],
+) -> tuple[tuple[int, int], ...]:
+    points: set[tuple[int, int]] = {(0, 0), (source_length, script_length)}
+    for block in blocks:
+        points.add((block.a, block.b))
+        points.add((block.a + block.size, block.b + block.size))
+    return tuple(sorted(points))
+
+
+def _map_boundary(source_index: int, boundaries: tuple[tuple[int, int], ...]) -> int:
+    if source_index <= boundaries[0][0]:
+        return boundaries[0][1]
+    if source_index >= boundaries[-1][0]:
+        return boundaries[-1][1]
+    for (left_source, left_script), (right_source, right_script) in zip(boundaries, boundaries[1:]):
+        if source_index == left_source:
+            return left_script
+        if source_index <= right_source:
+            source_span = right_source - left_source
+            if source_span <= 0:
+                return left_script
+            distance = source_index - left_source
+            return left_script + round(distance * (right_script - left_script) / source_span)
+    return boundaries[-1][1]
+
+
+def _slice_normalized(
+    original: str,
+    normalized: _NormalizedText,
+    start: int,
+    end: int,
+) -> str:
+    if end <= start:
+        return ""
+    original_start = normalized.original_boundary(start, len(original))
+    original_end = normalized.original_boundary(end, len(original))
+    return original[original_start:original_end].strip()
+
+
+def _normalize_text(value: str) -> _NormalizedText:
+    chars: list[str] = []
+    original_starts: list[int] = []
+    for index, original_char in enumerate(value):
+        normalized_char = unicodedata.normalize("NFKC", original_char).casefold()
+        for char in normalized_char:
+            category = unicodedata.category(char)
+            if category[0] not in {"L", "M", "N"}:
+                continue
+            chars.append(char)
+            original_starts.append(index)
+    return _NormalizedText("".join(chars), tuple(original_starts))
+
+
+def _read_script(path: Path) -> tuple[Path, str]:
+    source = path.expanduser().resolve()
+    if not source.is_file() or source.suffix.lower() not in SCRIPT_EXTENSIONS:
+        raise PostprocessFileError(source, "script must be an existing UTF-8 .txt, .md, or .markdown file")
+    try:
+        text = source.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError) as error:
+        raise PostprocessFileError(source, f"cannot read script: {error}") from error
+    if not text.strip():
+        raise PostprocessFileError(source, "script is empty")
+    return source, text
+
+
+def _load_input(project_path: Path | None, srt_path: Path | None) -> tuple[JsonDict, Path | None, Path | None]:
+    if project_path is not None:
+        resolved = project_path.expanduser().resolve()
+        return read_project(resolved), resolved, srt_path.expanduser().resolve() if srt_path else None
+    if srt_path is not None:
+        resolved = srt_path.expanduser().resolve()
+        return read_srt(resolved), None, resolved
+    raise ValueError("a project or SRT input is required")

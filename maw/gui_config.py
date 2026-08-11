@@ -302,6 +302,9 @@ def load_env(path: Path = DEFAULT_ENV_PATH) -> dict[str, str]:
 
 
 def save_env(path: Path, updates: Mapping[str, str]) -> None:
+    for key, value in updates.items():
+        if "\x00" in value or (value and value.splitlines() != [value]):
+            raise ValueError(f"{key}: value must not contain control characters")
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     text = _initial_env_text(target)
