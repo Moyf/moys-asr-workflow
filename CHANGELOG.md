@@ -15,6 +15,7 @@
 
 ### Changed
 
+- 本地模型列表调整为 Qwen3-ASR 0.6B（推荐）、Qwen3-ASR 1.7B、Fun-ASR-Nano 2512、FunASR paraformer-zh、SenseVoice Small；模型缓存默认使用本地环境路径，修改路径后自动保存，不再需要单独点击保存。
 - 本地模型准备阶段新增组件提示、等待时长、缓存文件数与缓存体积心跳；上游下载器暂时没有输出时，Launcher 仍会持续反馈准备状态。
 - Windows 冻结版本地转录改由独立运行环境 Python 执行，发布包只携带小型 `uv.exe` 安装器和 helper，不捆绑数 GB 的 Torch 或模型权重。
 - 暂时移除 Windows `MOSE.exe` 与 macOS `MOSE.app` 的 Release 打包，缩小分发包；Launcher 隐藏「在 MOSE 中打开」入口，默认使用 Server 版或 HTML 编辑器。
