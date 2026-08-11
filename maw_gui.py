@@ -23,6 +23,11 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--transcribe-local",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--serve",
         action="store_true",
         help=argparse.SUPPRESS,
@@ -44,6 +49,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_internal_transcribe(rest)
     if args.transcribe_soniox:
         return _run_internal_transcribe_soniox(rest)
+    if args.transcribe_local:
+        return _run_internal_transcribe_local(rest)
     if args.serve:
         return _run_internal_serve(rest)
 
@@ -72,6 +79,18 @@ def _run_internal_transcribe_soniox(argv: Sequence[str]) -> int:
     try:
         sys.argv = ["generate_subtitle_soniox_api.py", *argv]
         result = generate_subtitle_soniox_api.main()
+    finally:
+        sys.argv = old_argv
+    return 0 if result is None else int(result)
+
+
+def _run_internal_transcribe_local(argv: Sequence[str]) -> int:
+    import generate_subtitle_local
+
+    old_argv = sys.argv[:]
+    try:
+        sys.argv = ["generate_subtitle_local.py", *argv]
+        result = generate_subtitle_local.main()
     finally:
         sys.argv = old_argv
     return 0 if result is None else int(result)

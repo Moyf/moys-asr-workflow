@@ -22,8 +22,10 @@ from threading import Event
 from typing import BinaryIO, Final, final
 
 from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, LANGUAGES, MODELS, PROVIDERS, REGIONS, ModelConfig, ProviderConfig, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
-from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, startupinfo
+from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
 from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
+from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError, install_local_runtime, managed_runtime_status
+from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
 from maw.media import find_ffmpeg, resolve_project_media
 from maw.postprocess import LlmPostprocessRequest, OutputMode, Replacement, ReplacementRequest, run_fixed_replacement as process_fixed_replacement, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_ffmpeg import FfconcatRequest, run_ffconcat_rebuild as process_ffconcat_rebuild
@@ -48,6 +50,16 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "media_not_found": "Media file does not exist.",
     "server_media_missing": "Project media is missing, unsupported, or ambiguous. Choose media manually.",
     "api_key_missing": "API key is required.",
+    "local_runtime_missing": "本地模型运行时未安装。",
+    "local_runtime_install_failed": "本地模型运行环境安装失败。",
+    "local_runtime_cancelled": "本地模型运行环境安装已取消。",
+    "local_model_missing": "尚未检测到本地模型，请先下载或选择模型目录。",
+    "local_model_incomplete": "本地模型不完整，请先准备所需模型组件。",
+    "local_model_path_invalid": "本地模型目录不存在，或所选路径不是文件夹。",
+    "local_model_path_mismatch": "当前模型目录看起来属于另一种本地模型。",
+    "model_cache_path_invalid": "模型缓存目录不能是一个文件。",
+    "local_prepare_running": "本地模型正在准备中。",
+    "local_prepare_failed": "本地模型准备失败。",
     "workspace_missing": "Workspace ID is required for Singapore region.",
     "output_missing": "SRT output path is required.",
     "ffmpeg_start_failed": "FFmpeg failed to start.",
@@ -339,6 +351,10 @@ class LauncherApi:
         self.window_getter = window_getter or _active_window
         self.cancel_event: Event | None = None
         self.worker: threading.Thread | None = None
+        self.local_prepare_cancel_event: Event | None = None
+        self.local_prepare_worker: threading.Thread | None = None
+        self.local_runtime_cancel_event: Event | None = None
+        self.local_runtime_worker: threading.Thread | None = None
         self.server_process: subprocess.Popen[str] | None = None
         self.server_log_file: BinaryIO | None = None
         self.result: TranscriptionResult | None = None
@@ -346,12 +362,20 @@ class LauncherApi:
 
     def get_config(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         config = effective_config(self.paths.env_path)
-        provider = provider_for_model(MODELS[0].id)
+        remembered_model = config.last_model or MODELS[0].id
+        provider = provider_for_model(remembered_model)
+        selected_model = next(
+            (item for item in provider.models if item.id == remembered_model),
+            MODELS[0],
+        )
+        if selected_model.id != remembered_model:
+            provider = provider_for_model(selected_model.id)
+        selected_api_key = api_key_for_provider(provider.id, self.paths.env_path)
         return {
             "providerId": provider.id,
-            "modelId": MODELS[0].id,
-            "apiKey": config.api_key,
-            "maskedApiKey": masked_secret(config.api_key),
+            "modelId": selected_model.id,
+            "apiKey": selected_api_key,
+            "maskedApiKey": masked_secret(selected_api_key),
             "region": config.region,
             "workspaceId": config.workspace_id,
             "language": config.language,
@@ -361,10 +385,12 @@ class LauncherApi:
             "showRareLangs": config.show_rare_langs,
             "lastModel": config.last_model,
             "lastLanguage": config.last_language,
-            "models": [_model_payload(item) for item in MODELS],
-            "regions": [{"id": value, "label": label} for value, label in REGIONS],
-            "languages": [{"id": value, "label": label} for value, label in LANGUAGES],
-            "providers": [_provider_payload(item, self.paths.env_path) for item in PROVIDERS],
+            "localRuntime": managed_runtime_status(config.model_cache_root).to_payload(),
+            "modelCacheRoot": config.model_cache_root,
+            "models": [_model_payload(item, model_cache_root=config.model_cache_root) for item in provider.models],
+            "regions": [{"id": value, "label": label} for value, label in provider.regions],
+            "languages": [{"id": value, "label": label} for value, label in provider.languages],
+            "providers": [_provider_payload(item, self.paths.env_path, config.model_cache_root) for item in PROVIDERS],
             "postprocessProviders": _postprocess_provider_payloads(self.paths.env_path),
         }
 
@@ -389,10 +415,18 @@ class LauncherApi:
         provider = provider_by_id(str(payload.get("providerId") or "qwen"))
         model_id = str(payload.get("modelId") or "")
         model = next((item for item in provider.models if model_id in (item.id, item.label)), provider.models[0] if provider.models else model_by_label(model_id))
-        updates = {
-            model.env_key: api_key,
-            "MAW_GUI_LANG": _gui_lang(payload),
-        }
+        updates = {"MAW_GUI_LANG": _gui_lang(payload)}
+        if "modelCacheRoot" in payload:
+            model_cache_root = str(payload.get("modelCacheRoot") or "").strip()
+            if model_cache_root:
+                candidate = Path(model_cache_root).expanduser().resolve(strict=False)
+                if candidate.exists() and not candidate.is_dir():
+                    return _error_result("localModelCachePath", "model_cache_path_invalid", str(candidate))
+                updates["MAW_MODEL_CACHE_ROOT"] = str(candidate)
+            else:
+                updates["MAW_MODEL_CACHE_ROOT"] = ""
+        if provider.requires_api_key and model.env_key:
+            updates[model.env_key] = api_key
         if provider.id == "qwen":
             updates["DASHSCOPE_REGION"] = str(payload.get("region") or "beijing")
             updates["DASHSCOPE_DEFAULT_LANGUAGE"] = str(payload.get("language") or "")
@@ -401,7 +435,12 @@ class LauncherApi:
             save_env(self.paths.env_path, updates)
         except (OSError, UnicodeError, ValueError) as error:
             return _error_result("", "config_save_failed", f"{self.paths.env_path}: {error}")
-        return {"ok": True, "maskedApiKey": masked_secret(api_key), "message": "settings saved"}
+        return {
+            "ok": True,
+            "maskedApiKey": masked_secret(api_key),
+            "modelCacheRoot": updates.get("MAW_MODEL_CACHE_ROOT", effective_config(self.paths.env_path).model_cache_root),
+            "message": "settings saved",
+        }
 
     def save_prefs(self, payload: Mapping[str, object]) -> dict[str, object]:
         updates: dict[str, str] = {}
@@ -686,15 +725,14 @@ class LauncherApi:
         _ = self._stop_owned_server()
         self.server_log_file = tempfile.TemporaryFile(mode="w+b")
         try:
-            self.server_process = subprocess.Popen(
+            self.server_process = popen_process_tree(
                 command,
                 stdout=self.server_log_file,
                 stderr=subprocess.STDOUT,
                 text=True,
                 env=_child_environment(os.environ, "", provider=""),
                 cwd=str(self.paths.root),
-                startupinfo=startupinfo(),
-                creationflags=creationflags(),
+                **process_group_kwargs(),
             )
         except OSError as error:
             self._close_server_log()
@@ -750,15 +788,12 @@ class LauncherApi:
         stopped = False
         try:
             if process and process.poll() is None:
-                process.terminate()
-                try:
-                    _ = process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    _ = process.wait(timeout=5)
+                terminate_process_tree(process)
                 stopped = True
             return stopped
         finally:
+            if process is not None:
+                release_process_tree(process)
             self._close_server_log()
 
     def _read_server_log(self) -> str:
@@ -797,6 +832,10 @@ class LauncherApi:
     def start_transcription(self, payload: Mapping[str, object]) -> dict[str, object]:
         if self.worker and self.worker.is_alive():
             return {"ok": False, "error": "Transcription is already running."}
+        if self.local_prepare_worker and self.local_prepare_worker.is_alive():
+            return _error_result("model", "local_prepare_running")
+        if self.local_runtime_worker and self.local_runtime_worker.is_alive():
+            return _error_result("model", "local_runtime_install_failed", "本地运行环境正在安装中。")
         try:
             request = _request_from_payload(payload, self.paths.env_path)
         except PreflightError as error:
@@ -816,6 +855,99 @@ class LauncherApi:
             "outputRenamed": output_renamed,
             "rawPath": str(raw_response_path(request.srt_path)) if request.debug_raw else "",
         }
+
+    def get_local_models(self, payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        provider = provider_by_id("local")
+        model_cache_root = effective_config(self.paths.env_path).model_cache_root
+        selected_id = str((payload or {}).get("modelId") or "")
+        selected_path = str((payload or {}).get("modelPath") or "").strip()
+        return {
+            "ok": True,
+            "runtime": managed_runtime_status(model_cache_root).to_payload(),
+            "models": [
+                _model_payload(
+                    model,
+                    model_path=selected_path if model.id == selected_id else "",
+                    model_cache_root=model_cache_root,
+                )
+                for model in provider.models
+            ],
+        }
+
+    def get_local_runtime(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        model_cache_root = effective_config(self.paths.env_path).model_cache_root
+        return {"ok": True, **managed_runtime_status(model_cache_root).to_payload()}
+
+    def install_local_runtime(self, payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        if self.worker and self.worker.is_alive():
+            return {"ok": False, "error": "Transcription is already running."}
+        if self.local_prepare_worker and self.local_prepare_worker.is_alive():
+            return _error_result("model", "local_prepare_running")
+        if getattr(self, "local_runtime_worker", None) and self.local_runtime_worker.is_alive():
+            return _error_result("model", "local_runtime_install_failed", "本地运行环境正在安装中。")
+        repair = bool((payload or {}).get("repair"))
+        model_cache_root = effective_config(self.paths.env_path).model_cache_root
+        self.local_runtime_cancel_event = Event()
+        self.pump.start()
+        self.local_runtime_worker = threading.Thread(
+            target=self._local_runtime_main,
+            args=(repair, model_cache_root, self.local_runtime_cancel_event),
+            daemon=True,
+        )
+        self.local_runtime_worker.start()
+        return {"ok": True, "installing": True, "repair": repair}
+
+    def cancel_local_runtime(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        event = getattr(self, "local_runtime_cancel_event", None)
+        if event:
+            event.set()
+        return {"ok": True}
+
+    def cancel_local_model(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        event = getattr(self, "local_prepare_cancel_event", None)
+        worker = getattr(self, "local_prepare_worker", None)
+        active = bool(event and worker and worker.is_alive())
+        if active:
+            event.set()
+        return {"ok": True, "cancelling": active}
+
+    def prepare_local_model(self, payload: Mapping[str, object]) -> dict[str, object]:
+        if self.worker and self.worker.is_alive():
+            return {"ok": False, "error": "Transcription is already running."}
+        if self.local_runtime_worker and self.local_runtime_worker.is_alive():
+            return _error_result("model", "local_runtime_install_failed", "本地运行环境正在安装中。")
+        if self.local_prepare_worker and self.local_prepare_worker.is_alive():
+            return _error_result("model", "local_prepare_running")
+        provider = provider_by_id("local")
+        model_cache_root = effective_config(self.paths.env_path).model_cache_root
+        requested_model = str(payload.get("modelId") or "")
+        model = next((item for item in provider.models if requested_model in (item.id, item.label)), provider.models[0])
+        model_path = str(payload.get("modelPath") or "").strip()
+        status = inspect_local_model(model, model_path, model_cache_root=model_cache_root)
+        if status.status == "runtime_missing":
+            return _error_result("model", "local_runtime_missing", status.detail)
+        if status.status == "path_invalid":
+            return _error_result("localModelPath", "local_model_path_invalid", status.detail)
+        if status.status == "path_mismatch":
+            return _error_result("localModelPath", "local_model_path_mismatch", status.detail)
+        if status.status == "installed":
+            return {"ok": True, "alreadyInstalled": True, "modelId": model.id}
+        self.local_prepare_cancel_event = Event()
+        self.pump.start()
+        self.local_prepare_worker = threading.Thread(
+            target=self._local_prepare_main,
+            args=(
+                model,
+                model_path,
+                str(payload.get("device") or "auto"),
+                str(payload.get("forcedAligner") or "").strip(),
+                model_cache_root,
+                self.local_prepare_cancel_event,
+            ),
+            daemon=True,
+        )
+        self.local_prepare_worker.start()
+        return {"ok": True, "preparing": True, "modelId": model.id}
 
     def cancel_transcription(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         if self.cancel_event:
@@ -867,6 +999,10 @@ class LauncherApi:
 
     def shutdown(self) -> None:
         self.cancel_transcription()
+        if self.local_prepare_cancel_event:
+            self.local_prepare_cancel_event.set()
+        if self.local_runtime_cancel_event:
+            self.local_runtime_cancel_event.set()
         _ = self.stop_server()
         self.pump.shutdown()
 
@@ -921,6 +1057,92 @@ class LauncherApi:
         if details:
             event.update(details)
         self._emit(event)
+    def _local_runtime_main(
+        self,
+        repair: bool,
+        model_cache_root: str,
+        cancel_event: Event,
+    ) -> None:
+        def on_progress(message: str, percent: int, stage: str) -> None:
+            if cancel_event.is_set():
+                return
+            self._emit({
+                "type": "localRuntimeProgress",
+                "message": message,
+                "percent": percent,
+                "stage": stage,
+            })
+            self._emit({"type": "log", "message": f"[runtime] {message}"})
+
+        try:
+            status = install_local_runtime(
+                on_event=on_progress,
+                cancel_event=cancel_event,
+                repair=repair,
+                model_cache_root=model_cache_root,
+            )
+            if cancel_event.is_set():
+                return
+            self._emit({"type": "localRuntimeReady", "runtime": status.to_payload()})
+        except LocalRuntimeCancelled as error:
+            if cancel_event.is_set():
+                self._emit({"type": "localRuntimeCancelled"})
+            else:
+                self._emit({"type": "error", "code": "local_runtime_cancelled", "field": "model", "detail": str(error)})
+        except (LocalRuntimeError, OSError) as error:
+            if not cancel_event.is_set():
+                self._emit({"type": "error", "code": "local_runtime_install_failed", "field": "model", "detail": str(error)})
+        finally:
+            self.pump.flush()
+
+    def _local_prepare_main(
+        self,
+        model: ModelConfig,
+        model_path: str,
+        device: str,
+        forced_aligner: str,
+        model_cache_root: str,
+        cancel_event: Event,
+    ) -> None:
+        def on_event(message: str) -> None:
+            if not cancel_event.is_set():
+                self._emit({"type": "log", "message": message})
+                self._emit({"type": "modelProgress", "message": message})
+
+        def on_progress(progress: Mapping[str, object]) -> None:
+            if cancel_event.is_set():
+                return
+            message = str(progress.get("message") or "")
+            self._emit({"type": "modelProgress", **dict(progress)})
+            if message:
+                self._emit({"type": "log", "message": message})
+
+        try:
+            status = prepare_model(
+                model,
+                model_path=model_path,
+                device=device,
+                forced_aligner=forced_aligner,
+                model_cache_root=model_cache_root,
+                on_event=on_event,
+                on_progress=on_progress,
+                cancel_event=cancel_event,
+            )
+            if cancel_event.is_set():
+                self._emit({"type": "localPrepareCancelled", "modelId": model.id})
+                return
+            self._emit({
+                "type": "modelPrepared",
+                "modelId": model.id,
+                "status": local_model_payload(model, model_path, model_cache_root=model_cache_root) | {"status": status.status},
+            })
+        except Exception as error:  # noqa: BROAD_EXCEPT_OK - optional runtime boundary.
+            if cancel_event.is_set():
+                self._emit({"type": "localPrepareCancelled", "modelId": model.id})
+            else:
+                self._emit({"type": "error", "code": "local_prepare_failed", "field": "model", "detail": str(error)})
+        finally:
+            self.pump.flush()
 
     def _emit(self, event: Mapping[str, object]) -> None:
         self.pump.enqueue(event)
@@ -996,11 +1218,35 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     api_key = str(payload.get("apiKey") or "").strip() or api_key_for_provider(provider.id, env_path)
     region = str(payload.get("region") or "beijing") if provider.id == "qwen" else ""
     workspace_id = str(payload.get("workspaceId") or "").strip()
+    runtime_python = ""
     if not media_text or not media.exists():
         raise PreflightError("mediaPath", "media_not_found", "Media file does not exist.")
     if not srt_text or not srt.name:
         raise PreflightError("srtPath", "output_missing", "SRT output path is required.")
-    if not api_key:
+    local_model_path = str(payload.get("localModelPath") or "").strip()
+    device = str(payload.get("device") or "auto").strip().lower()
+    model_cache_root = ""
+    if provider.kind == "local":
+        model_cache_root = effective_config(env_path).model_cache_root
+        local_status = inspect_local_model(
+            model,
+            local_model_path,
+            model_cache_root=model_cache_root,
+        )
+        if local_status.status == "path_invalid":
+            raise PreflightError("localModelPath", "local_model_path_invalid", local_status.detail)
+        if local_status.status == "path_mismatch":
+            raise PreflightError("localModelPath", "local_model_path_mismatch", local_status.detail)
+        if local_status.status == "runtime_missing":
+            raise PreflightError("model", "local_runtime_missing", local_status.detail)
+        if local_status.status == "missing":
+            raise PreflightError("model", "local_model_missing", local_status.detail)
+        if local_status.status == "partial":
+            raise PreflightError("model", "local_model_incomplete", local_status.detail)
+        runtime_python = local_status.runtime_python
+        if device not in {"auto", "cpu", "cuda"}:
+            raise PreflightError("device", "local_model_path_invalid", "设备必须是 auto、cpu 或 cuda。")
+    if provider.requires_api_key and not api_key:
         raise PreflightError("apiKey", "api_key_missing", "API key is required.")
     if provider.id == "qwen" and region == "singapore" and not workspace_id:
         raise PreflightError("workspaceId", "workspace_missing", "Workspace ID is required for Singapore region.")
@@ -1029,7 +1275,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     return TranscriptionRequest(
         media_path=media,
         srt_path=srt,
-        model=model.id,
+        model=model.model_ref or model.id,
         language=str(payload.get("language") or ""),
         api_key=api_key,
         length_limit="2m" if test_run else str(payload.get("lengthLimit") or "").strip(),
@@ -1051,6 +1297,12 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         ui_language=_gui_lang(payload),
         generate_html=bool(payload.get("generateHtml")),
         debug_raw=bool(payload.get("debugRaw")),
+        engine=model.engine if provider.kind == "local" else "",
+        model_path=local_model_path if provider.kind == "local" else "",
+        model_cache_root=model_cache_root,
+        device=device,
+        forced_aligner=str(payload.get("forcedAligner") or "").strip(),
+        runtime_python=runtime_python,
     )
 
 
@@ -1326,25 +1578,39 @@ def _ffmpeg_directory(value: str) -> Path | None:
     return None
 
 
-def _provider_payload(provider: ProviderConfig, env_path: Path) -> dict[str, object]:
+def _provider_payload(
+    provider: ProviderConfig,
+    env_path: Path,
+    model_cache_root: str = "",
+) -> dict[str, object]:
     api_key = api_key_for_provider(provider.id, env_path)
     return {
         "id": provider.id,
         "label": provider.label,
+        "kind": provider.kind,
         "keyUrl": provider.key_url,
+        "requiresApiKey": provider.requires_api_key,
         "apiKey": api_key,
         "maskedApiKey": masked_secret(api_key),
         "supportsSpeaker": provider.supports_speaker,
         "multiLanguage": provider.multi_language,
         "commonLanguages": list(provider.common_languages),
-        "models": [_model_payload(item) for item in provider.models],
+        "models": [
+            _model_payload(item, model_cache_root=model_cache_root)
+            for item in provider.models
+        ],
         "regions": [{"id": value, "label": label} for value, label in provider.regions],
         "languages": [{"id": value, "label": label} for value, label in provider.languages],
     }
 
 
-def _model_payload(model: ModelConfig) -> dict[str, object]:
-    return {
+def _model_payload(
+    model: ModelConfig,
+    *,
+    model_path: str = "",
+    model_cache_root: str = "",
+) -> dict[str, object]:
+    payload: dict[str, object] = {
         "id": model.id,
         "label": model.label,
         "envKey": model.env_key,
@@ -1353,8 +1619,19 @@ def _model_payload(model: ModelConfig) -> dict[str, object]:
         "supportsContext": model.supports_context,
         "supportsHotwords": model.supports_hotwords,
         "supportsVocabulary": model.supports_vocabulary,
+        "kind": model.kind,
+        "engine": model.engine,
+        "modelRef": model.model_ref,
+        "requiredModelRefs": list(model.required_model_refs),
         "languages": [
             {"id": value, "label": label}
             for value, label in model.languages
         ],
     }
+    if model.kind == "local":
+        payload["localStatus"] = local_model_payload(
+            model,
+            model_path,
+            model_cache_root=model_cache_root,
+        )
+    return payload

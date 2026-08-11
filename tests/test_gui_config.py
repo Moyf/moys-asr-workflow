@@ -200,6 +200,44 @@ class GuiConfigTests(unittest.TestCase):
         self.assertTrue(provider.supports_speaker)
         self.assertTrue(provider.multi_language)
 
+    def test_provider_registry_contains_local_models_without_api_key(self) -> None:
+        provider = gui_config.provider_by_id("local")
+
+        self.assertEqual(provider.kind, "local")
+        self.assertFalse(provider.requires_api_key)
+        self.assertEqual(
+            [model.id for model in provider.models],
+            [
+                "qwen3-asr-local",
+                "qwen3-asr-1.7b-local",
+                "fun-asr-nano-local",
+                "funasr-local",
+                "sensevoice-small-local",
+            ],
+        )
+        self.assertEqual(
+            [model.label for model in provider.models],
+            [
+                "Qwen3-ASR 0.6B（推荐）",
+                "Qwen3-ASR 1.7B",
+                "Fun-ASR-Nano 2512（GPU）",
+                "FunASR paraformer-zh",
+                "SenseVoice Small",
+            ],
+        )
+        qwen06 = provider.models[0]
+        self.assertEqual(qwen06.model_ref, "Qwen/Qwen3-ASR-0.6B")
+        self.assertIn("Qwen/Qwen3-ForcedAligner-0.6B", qwen06.required_model_refs)
+        qwen17 = provider.models[1]
+        self.assertEqual(qwen17.model_ref, "Qwen/Qwen3-ASR-1.7B")
+        self.assertIn("Qwen/Qwen3-ForcedAligner-0.6B", qwen17.required_model_refs)
+        nano = provider.models[2]
+        self.assertEqual(nano.model_ref, "FunAudioLLM/Fun-ASR-Nano-2512")
+        sensevoice = provider.models[-1]
+        self.assertEqual(sensevoice.model_ref, "iic/SenseVoiceSmall")
+        self.assertIn("funasr", sensevoice.requires_runtime)
+        self.assertEqual(gui_config.api_key_for_provider("local"), "")
+
     def test_qwen_languages_single_select_with_auto_and_documented_28(self) -> None:
         """Given Qwen docs allow exactly one language, When registry read, Then auto + 27 codes are offered."""
         qwen = gui_config.provider_by_id("qwen")

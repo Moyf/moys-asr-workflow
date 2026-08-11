@@ -39,6 +39,14 @@ class ModelConfig:
     supports_hotwords: bool = False
     supports_vocabulary: bool = False
     languages: tuple[tuple[str, str], ...] = ()
+    kind: str = "cloud"
+    engine: str = ""
+    model_ref: str = ""
+    required_model_refs: tuple[str, ...] = ()
+    requires_runtime: tuple[str, ...] = ()
+    # 上游缓存中的实际模型 ID；当引擎用简写加载（如 FunASR paraformer-zh）
+    # 而缓存目录使用完整 ID 时，扫描器靠它定位已下载的模型。
+    cache_refs: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +62,8 @@ class ProviderConfig:
     # 常用语言代码；为空表示不过滤（全部视为常用）。
     # 开启「显示相对小众的语言」前，GUI 只展示这些。
     common_languages: tuple[str, ...] = ()
+    kind: str = "cloud"
+    requires_api_key: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +77,7 @@ class EffectiveConfig:
     show_rare_langs: bool = False
     last_model: str | None = None
     last_language: str | None = None
+    model_cache_root: str = ""
 
 
 REGIONS: Final[tuple[tuple[str, str], ...]] = (
@@ -141,6 +152,23 @@ FUNASR_LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
     ("bg", "保加利亚语 / Bulgarian"),
     ("hr", "克罗地亚语 / Croatian"),
     ("sk", "斯洛伐克语 / Slovak"),
+)
+
+SENSEVOICE_LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
+    ("", "自动识别"),
+    ("zh", "中文 / Chinese"),
+    ("yue", "粤语 / Cantonese"),
+    ("en", "英语 / English"),
+    ("ja", "日语 / Japanese"),
+    ("ko", "韩语 / Korean"),
+)
+
+FUN_ASR_NANO_LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
+    ("", "自动识别"),
+    ("zh", "中文 / Chinese"),
+    ("yue", "粤语 / Cantonese"),
+    ("en", "英语 / English"),
+    ("ja", "日语 / Japanese"),
 )
 
 # 关闭「显示相对小众的语言」时，Qwen 保留 9 种、Soniox 保留 8 种常用语言。
@@ -258,6 +286,69 @@ SONIOX_MODELS: Final[tuple[ModelConfig, ...]] = (
     ),
 )
 
+LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
+    ModelConfig(
+        id="qwen3-asr-local",
+        label="Qwen3-ASR 0.6B（推荐）",
+        env_key="",
+        note="本地运行；首次准备会加载 Qwen3-ASR 与 Forced Aligner",
+        languages=LANGUAGES,
+        kind="local",
+        engine="qwen-asr",
+        model_ref="Qwen/Qwen3-ASR-0.6B",
+        required_model_refs=("Qwen/Qwen3-ForcedAligner-0.6B",),
+        requires_runtime=("qwen_asr", "torch"),
+    ),
+    ModelConfig(
+        id="qwen3-asr-1.7b-local",
+        label="Qwen3-ASR 1.7B",
+        env_key="",
+        note="更高识别质量；与 0.6B 共用 Qwen3 Forced Aligner",
+        languages=LANGUAGES,
+        kind="local",
+        engine="qwen-asr",
+        model_ref="Qwen/Qwen3-ASR-1.7B",
+        required_model_refs=("Qwen/Qwen3-ForcedAligner-0.6B",),
+        requires_runtime=("qwen_asr", "torch"),
+    ),
+    ModelConfig(
+        id="fun-asr-nano-local",
+        label="Fun-ASR-Nano 2512（GPU）",
+        env_key="",
+        note="LLM-ASR 路线；默认配合 FSMN-VAD，中英日及中文方言，建议使用 CUDA",
+        languages=FUN_ASR_NANO_LANGUAGES,
+        kind="local",
+        engine="funasr",
+        model_ref="FunAudioLLM/Fun-ASR-Nano-2512",
+        requires_runtime=("funasr", "torchaudio"),
+    ),
+    ModelConfig(
+        id="funasr-local",
+        label="FunASR paraformer-zh",
+        env_key="",
+        note="本地运行；使用 FunASR 上游模型缓存",
+        languages=FUNASR_LANGUAGES,
+        kind="local",
+        engine="funasr",
+        model_ref="paraformer-zh",
+        requires_runtime=("funasr", "torchaudio"),
+        # FunASR model zoo 把 paraformer-zh 解析为这个 ModelScope ID；
+        # GUI 不能导入 FunASR，扫描缓存时需要显式的映射。
+        cache_refs=("iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",),
+    ),
+    ModelConfig(
+        id="sensevoice-small-local",
+        label="SenseVoice Small",
+        env_key="",
+        note="多语种本地识别；默认配合 FSMN-VAD，CPU/GPU 都可运行",
+        languages=SENSEVOICE_LANGUAGES,
+        kind="local",
+        engine="funasr",
+        model_ref="iic/SenseVoiceSmall",
+        requires_runtime=("funasr", "torchaudio"),
+    ),
+)
+
 PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
     ProviderConfig(
         id="qwen",
@@ -279,6 +370,18 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         supports_speaker=True,
         multi_language=True,
         common_languages=SONIOX_COMMON_LANGUAGES,
+    ),
+    ProviderConfig(
+        id="local",
+        label="本地模型（Beta）",
+        key_url="",
+        models=LOCAL_MODELS,
+        regions=(),
+        languages=LANGUAGES,
+        supports_speaker=False,
+        common_languages=QWEN_COMMON_LANGUAGES,
+        kind="local",
+        requires_api_key=False,
     ),
 )
 
@@ -348,6 +451,7 @@ def effective_config(path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] |
         show_rare_langs=pick("MAW_GUI_SHOW_RARE_LANGS").strip().lower() in ("1", "true", "yes", "on"),
         last_model=pick_optional("MAW_GUI_LAST_MODEL"),
         last_language=pick_optional("MAW_GUI_LAST_LANGUAGE"),
+        model_cache_root=pick("MAW_MODEL_CACHE_ROOT").strip(),
     )
 
 
@@ -376,6 +480,8 @@ def provider_for_model(model_id: str) -> ProviderConfig:
 def api_key_for_provider(provider_id: str, path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] | None = None) -> str:
     """按供应商读取 API Key（系统环境变量优先，其次 .env）。"""
     provider = provider_by_id(provider_id)
+    if not provider.requires_api_key:
+        return ""
     if not provider.models:
         return ""
     env_key = provider.models[0].env_key

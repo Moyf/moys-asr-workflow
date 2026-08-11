@@ -18,8 +18,9 @@ from threading import Event
 from typing import BinaryIO, Final, TextIO, final
 
 from maw.gui_config import QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, load_env
-from maw.gui_platform import asset_path
+from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
 from maw.qwen_audio import split_qwen_audio_hotwords
+from maw.local_runtime import model_cache_environment
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +50,12 @@ class TranscriptionRequest:
     ui_language: str = "zh"
     generate_html: bool = True
     debug_raw: bool = False
+    engine: str = ""
+    model_path: str = ""
+    model_cache_root: str = ""
+    device: str = "auto"
+    forced_aligner: str = ""
+    runtime_python: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,7 +150,11 @@ def unique_output_path(srt_path: Path) -> Path:
         index += 1
 
 
-PROVIDER_SRT_TAGS: Final = {"qwen": ".qwen3-asr-api", "soniox": ".soniox"}
+PROVIDER_SRT_TAGS: Final = {
+    "qwen": ".qwen3-asr-api",
+    "soniox": ".soniox",
+    "local": ".qwen-asr-local",
+}
 
 
 def with_test_suffix(path: Path) -> Path:
@@ -165,6 +176,16 @@ def default_srt_path(
         tag = ".fun-asr"
     elif provider == "qwen" and model == QWEN_AUDIO_MODEL_ID:
         tag = ".qwen-audio"
+    elif provider == "local":
+        local_model = model.casefold()
+        if "sensevoice" in local_model:
+            tag = ".sensevoice-local"
+        elif "funasr" in local_model or "fun-asr" in local_model:
+            tag = ".funasr-local"
+        elif "qwen3-asr-1.7b" in local_model:
+            tag = ".qwen3-asr-1.7b-local"
+        else:
+            tag = ".qwen-asr-local"
     else:
         tag = PROVIDER_SRT_TAGS.get(provider, PROVIDER_SRT_TAGS["qwen"])
     output = media.with_name(f"{media.stem}{tag}.srt")
@@ -180,17 +201,33 @@ def build_transcribe_command(
     exe = str(executable or sys.executable)
     is_frozen = bool(getattr(sys, "frozen", False) if frozen is None else frozen)
     is_soniox = request.provider == "soniox"
-    script_name = "generate_subtitle_soniox_api.py" if is_soniox else "generate_subtitle_qwen_api.py"
+    is_local = request.provider == "local"
+    if is_local:
+        script_name = "generate_subtitle_local.py"
+    else:
+        script_name = "generate_subtitle_soniox_api.py" if is_soniox else "generate_subtitle_qwen_api.py"
     script = Path(__file__).resolve().parents[1] / script_name
-    if is_frozen:
-        command = [exe, "--transcribe-soniox" if is_soniox else "--transcribe"]
+    if is_local and request.runtime_python:
+        script = asset_path("local-runtime/generate_subtitle_local.py") if is_frozen else script
+        command = [request.runtime_python, str(script)]
+    elif is_frozen:
+        if is_local:
+            command = [exe, "--transcribe-local"]
+        else:
+            command = [exe, "--transcribe-soniox" if is_soniox else "--transcribe"]
     else:
         command = [exe, str(script)]
     command.append(str(request.media_path))
     command.extend(["--output", str(build_output_paths(request.srt_path).srt), "--json", "--no-html", "--with-waveform"])
     if request.debug_raw:
         command.append("--debug-raw")
-    if is_soniox:
+    if is_local:
+        _append_option(command, "--engine", request.engine or "qwen-asr")
+        _append_option(command, "--model", request.model)
+        _append_option(command, "--model-path", request.model_path)
+        _append_option(command, "--device", request.device)
+        _append_option(command, "--forced-aligner", request.forced_aligner)
+    elif is_soniox:
         _append_option(command, "--model", request.model if request.model != DEFAULT_MODEL_ID else "")
         if request.speaker_colors:
             command.append("--speaker-colors")
@@ -253,14 +290,21 @@ def run_transcription(
         raise TranscriptionCancelledError
     paths = build_output_paths(request.srt_path)
     paths.srt.parent.mkdir(parents=True, exist_ok=True)
-    env = _child_environment(os.environ, request.api_key, request.workspace_id, request.provider)
+    env = _child_environment(
+        os.environ,
+        request.api_key,
+        request.workspace_id,
+        request.provider,
+        request.model_cache_root,
+    )
     command = build_transcribe_command(request, executable=executable, frozen=frozen)
-    process = subprocess.Popen(
+    process = popen_process_tree(
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         env=env,
         cwd=str(Path(__file__).resolve().parents[1]),
+        **process_group_kwargs(),
     )
     if on_process_start is not None:
         on_process_start(process.pid)
@@ -271,7 +315,10 @@ def run_transcription(
         if on_event:
             on_event(line)
 
-    _stream_process(process, forward, cancel_event)
+    try:
+        _stream_process(process, forward, cancel_event)
+    finally:
+        release_process_tree(process)
     if process.returncode != 0:
         raise TranscriptionProcessError(process.returncode, output=collected)
     _require_output(paths.srt, "SRT")
@@ -376,7 +423,13 @@ def _read_process_lines(stdout: BinaryIO | TextIO | None, lines: queue.Queue[str
     lines.put(None)
 
 
-def _child_environment(parent: Mapping[str, str], api_key: str, workspace_id: str = "", provider: str = "qwen") -> dict[str, str]:
+def _child_environment(
+    parent: Mapping[str, str],
+    api_key: str,
+    workspace_id: str = "",
+    provider: str = "qwen",
+    model_cache_root: str = "",
+) -> dict[str, str]:
     env = dict(parent)
     env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONUTF8"] = "1"
@@ -398,6 +451,8 @@ def _child_environment(parent: Mapping[str, str], api_key: str, workspace_id: st
             env["DASHSCOPE_API_KEY"] = api_key
         if workspace_id:
             env["DASHSCOPE_WORKSPACE_ID"] = workspace_id
+    if provider == "local":
+        env.update(model_cache_environment(model_cache_root))
     return env
 
 
@@ -437,12 +492,7 @@ def _bundled_ffmpeg_directory() -> Path | None:
 
 
 def _terminate(process: subprocess.Popen[bytes]) -> None:
-    process.terminate()
-    try:
-        process.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait(timeout=5)
+    terminate_process_tree(process)
 
 
 def _require_output(path: Path, label: str) -> None:

@@ -68,6 +68,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("generate_subtitle_qwen_api", spec)
         self.assertIn("generate_subtitle_soniox_api", spec)
         self.assertIn("maw.soniox", spec)
+        self.assertIn("local-runtime", spec)
+        self.assertIn("local_runtime_worker.py", spec)
         self.assertIn("assets", spec)
         self.assertIn("maw.ico", spec)
         self.assertIn("show.webp", spec)
@@ -76,8 +78,10 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("onefile=True", spec)
         for bundled_path in ("web", "server-editor", "LICENSE", "THIRD_PARTY_NOTICES.md"):
             self.assertIn(bundled_path, spec)
-        for excluded_path in (".env", "node_modules", "tests", "ffmpeg", "*.mp4", "*.srt"):
-            self.assertIn(excluded_path, spec)
+        for excluded_module in ("funasr", "qwen_asr", "torch", "torchaudio"):
+            self.assertIn(f'"{excluded_module}"', spec)
+        self.assertNotIn('"*.mp4"', spec)
+        self.assertNotIn('"*.srt"', spec)
 
     def test_macos_bundle_uses_the_icns_app_icon(self) -> None:
         """Given a macOS app bundle, When PyInstaller builds it, Then the bundle has the branded ICNS icon."""
@@ -134,6 +138,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("npm run tauri -- build", script)
         self.assertNotIn("desktop", script)
         self.assertNotIn("MOSE", script)
+        self.assertIn("bootstrap", script)
+        self.assertIn("uv.exe", script)
         self.assertIn("$ErrorActionPreference = 'Stop'", script)
 
     def test_windows_preview_workflow_verifies_launcher_version(self) -> None:
