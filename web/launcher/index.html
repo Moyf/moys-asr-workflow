@@ -51,7 +51,8 @@
         <p id="srtPathError" class="field-error"></p>
         <p id="srtPathNotice" class="hint warn hidden" aria-live="polite"></p>
       </div>
-      <label class="check-field generate-html" for="generateHtml" data-i18n-title="generate_html_title">
+      <!-- 当前以 Server 版编辑器为主；单文件 HTML 入口保留兼容，但暂不在 Launcher 中开放。 -->
+      <label class="check-field generate-html hidden" for="generateHtml" data-i18n-title="generate_html_title" hidden>
         <input id="generateHtml" type="checkbox">
         <span data-i18n="generate_html">同时生成单文件版网页编辑器（html）</span>
       </label>
