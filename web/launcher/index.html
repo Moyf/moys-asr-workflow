@@ -71,13 +71,14 @@
           <span data-i18n="test_run">快速测试</span>
         </label>
       </div>
+      <p id="providerNote" class="hint warn hidden" aria-live="polite"></p>
       <p id="testRunHint" class="hint hidden" data-i18n="test_run_override">快速测试已限定前 2 分钟</p>
       <div id="modelField" class="field">
         <label for="model" data-i18n="model">模型</label>
         <select id="model"></select>
         <p id="modelNote" class="hint"></p>
       </div>
-      <div id="cloudAuthField" class="field">
+      <div class="field" id="apiKeyField">
         <label for="apiKey" data-i18n="key">API Key</label>
         <div class="path-row key-row">
           <input id="apiKey" type="password" autocomplete="off">

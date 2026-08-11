@@ -2,7 +2,7 @@
 
 MAW 的 Release 包除了图形 Launcher，也支持直接用命令行完成转写和本机编辑器 Server 管理。本文以 Windows PowerShell 和 Release 包中的 `MAW.exe` 为例；源码运行时，把示例中的 `MAW.exe` 替换为 `uv run python maw_gui.py` 即可。
 
-> 本文介绍公开 CLI。`--transcribe`、`--transcribe-soniox` 和 `--serve` 是保留给旧 Launcher/内部调用的兼容入口，新脚本应使用本文的参数。
+> 本文介绍公开 CLI。`--transcribe`、`--transcribe-soniox`、`--transcribe-bcut` 和 `--serve` 是保留给旧 Launcher/内部调用的兼容入口，新脚本应使用本文的参数。
 
 ## 1. 能做什么
 
@@ -11,7 +11,7 @@ MAW 的 Release 包除了图形 Launcher，也支持直接用命令行完成转�
 | 模式 | 入口 | 行为 |
 | --- | --- | --- |
 | Launcher | 不带参数 | 启动图形 Launcher，保持原来的双击行为 |
-| 转写 | `-i` / `--input` | 调用 Qwen/Fun-ASR 或 Soniox，生成 SRT 和 `.mosp` |
+| 转写 | `-i` / `--input` | 调用 Qwen/Fun-ASR、Soniox 或必剪（实验性），生成 SRT 和 `.mosp` |
 | Server 管理 | `--server` / `--stop-server` | 启动或停止只监听 `127.0.0.1` 的 MAW 编辑器 Server |
 
 先查看当前版本的帮助：
@@ -114,7 +114,7 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 | `-i PATH`, `--input PATH` | 转写模式下必填；音频或视频路径。Server 模式不能使用。 |
 | `-o PATH [PATH]`, `--output PATH [PATH]` | 第一个路径为 SRT，第二个可选路径为 `.mosp`；最多两个路径。 |
 | `--mosp PATH` | 单独指定 `.mosp` 输出路径；不能和 `-o` 的第二个路径同时使用。 |
-| `--provider qwen\|soniox` | 选择供应商，默认 `qwen`。`qwen` 覆盖 Qwen-Audio、Qwen3-ASR 和 Fun-ASR。 |
+| `--provider qwen\|soniox\|bcut` | 选择供应商，默认 `qwen`。`qwen` 覆盖 Qwen-Audio、Qwen3-ASR 和 Fun-ASR；`bcut` 为免 Key 的实验性非官方接口，仅中文，详见 [WORKFLOW](WORKFLOW.md) 的风险说明。 |
 | `--model MODEL` | 覆盖供应商的模型。Qwen 常用值为 `qwen-audio-3.0-asr-flash-filetrans`、`qwen3-asr-flash-filetrans`、`fun-asr`；Soniox 默认读取 `.env`，否则使用其内置默认模型。 |
 
 ### 4.2 字幕切分、说话人和工程内容
@@ -140,7 +140,7 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 
 ### 4.3 Qwen / 百炼专用参数
 
-以下参数只用于 `--provider qwen`。和 `--provider soniox` 混用时，CLI 会直接报参数错误：
+以下参数只用于 `--provider qwen`。和 `--provider soniox` 或 `--provider bcut` 混用时，CLI 会直接报参数错误（`bcut` 额外还不支持 `--language`、`--model`、`--speaker` / `--speaker-colors`）：
 
 | 参数 | 说明 |
 | --- | --- |
@@ -233,6 +233,18 @@ $server = Start-Process `
     --language zh,en `
     --speaker-colors
 ```
+
+### 必剪：免 Key 快速体验（实验性，仅中文）
+
+```powershell
+.\MAW.exe `
+    --provider bcut `
+    -i "D:\Videos\clip.mp4" `
+    -o "D:\Output\clip.srt" `
+    -ll 2m
+```
+
+必剪是非官方免费接口，无需配置任何 Key；不支持语言、模型和说话人参数，单文件默认上限 2 小时，请勿高频调用。
 
 ### 只生成便携 HTML
 

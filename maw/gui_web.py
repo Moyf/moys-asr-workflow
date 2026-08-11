@@ -1594,6 +1594,8 @@ def _provider_payload(
         "maskedApiKey": masked_secret(api_key),
         "supportsSpeaker": provider.supports_speaker,
         "multiLanguage": provider.multi_language,
+        "supportsLanguage": provider.supports_language,
+        "note": provider.note,
         "commonLanguages": list(provider.common_languages),
         "models": [
             _model_payload(item, model_cache_root=model_cache_root)

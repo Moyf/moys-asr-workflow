@@ -154,6 +154,7 @@ PROVIDER_SRT_TAGS: Final = {
     "qwen": ".qwen3-asr-api",
     "soniox": ".soniox",
     "local": ".qwen-asr-local",
+    "bcut": ".bcut",
 }
 
 
@@ -201,9 +202,12 @@ def build_transcribe_command(
     exe = str(executable or sys.executable)
     is_frozen = bool(getattr(sys, "frozen", False) if frozen is None else frozen)
     is_soniox = request.provider == "soniox"
+    is_bcut = request.provider == "bcut"
     is_local = request.provider == "local"
     if is_local:
         script_name = "generate_subtitle_local.py"
+    elif is_bcut:
+        script_name = "generate_subtitle_bcut_api.py"
     else:
         script_name = "generate_subtitle_soniox_api.py" if is_soniox else "generate_subtitle_qwen_api.py"
     script = Path(__file__).resolve().parents[1] / script_name
@@ -213,6 +217,8 @@ def build_transcribe_command(
     elif is_frozen:
         if is_local:
             command = [exe, "--transcribe-local"]
+        elif is_bcut:
+            command = [exe, "--transcribe-bcut"]
         else:
             command = [exe, "--transcribe-soniox" if is_soniox else "--transcribe"]
     else:
@@ -231,6 +237,10 @@ def build_transcribe_command(
         _append_option(command, "--model", request.model if request.model != DEFAULT_MODEL_ID else "")
         if request.speaker_colors:
             command.append("--speaker-colors")
+        _append_option(command, "--language", request.language)
+    elif is_bcut:
+        # 必剪接口无语言/模型/说话人参数，这里一律不下发
+        pass
     else:
         _append_option(command, "--model", request.model or DEFAULT_MODEL_ID)
         _append_option(command, "--region", request.region)
@@ -239,7 +249,7 @@ def build_transcribe_command(
             or request.model == QWEN_AUDIO_MODEL_ID
         ):
             command.append("--speaker-colors")
-    _append_option(command, "--language", request.language)
+        _append_option(command, "--language", request.language)
     _append_option(command, "--length-limit", request.length_limit)
     if request.provider == "qwen" and request.model == QWEN_AUDIO_MODEL_ID:
         _append_option(command, "--vocabulary-id", request.qwen_audio_vocabulary_id)
@@ -446,6 +456,8 @@ def _child_environment(
     if provider == "soniox":
         if api_key:
             env["SONIOX_API_KEY"] = api_key
+    elif provider == "bcut":
+        pass  # 必剪为非官方免 Key 接口，无需注入凭据
     else:
         if api_key:
             env["DASHSCOPE_API_KEY"] = api_key

@@ -294,6 +294,14 @@ label {
   color: var(--amber);
 }
 
+#providerNote {
+  padding: 8px 12px;
+  margin: 10px 0 2px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--amber) 10%, transparent);
+  line-height: 1.6;
+}
+
 .provider-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

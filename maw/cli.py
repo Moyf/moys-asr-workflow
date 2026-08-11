@@ -88,7 +88,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         help="输出路径：第一个是 SRT，第二个可选路径是 .mosp；省略时按输入自动命名",
     )
     parser.add_argument("--mosp", dest="mosp_output", help="单独指定 .mosp 工程输出路径（等价于 -o SRT MOSP 的第二个路径）")
-    parser.add_argument("--provider", choices=("qwen", "soniox"), default="qwen", help="ASR 供应商（默认 qwen）")
+    parser.add_argument("--provider", choices=("qwen", "soniox", "bcut"), default="qwen", help="ASR 供应商（默认 qwen；bcut 为免 Key 实验性接口，仅中文）")
     parser.add_argument("--model", help="覆盖当前供应商的 ASR 模型")
     parser.add_argument("--max-len", type=int, help="每条字幕最大字数")
     parser.add_argument("--min-len", type=int, help="句号间最短字数")
@@ -202,6 +202,27 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
         or args.hotword
     ):
         parser.error("--provider soniox 不支持 Qwen 专用的地域、词表、热词、context 或 file-url 参数")
+    if args.provider == "bcut" and (
+        any(
+            value is not None
+            for value in (
+                args.region,
+                args.workspace_id,
+                args.file_url,
+                args.vocabulary_id,
+                args.hotword_file,
+                args.hotword_weight,
+                args.context,
+                args.context_file,
+                args.model,
+                args.language,
+            )
+        )
+        or args.hotword
+        or args.speaker
+        or args.speaker_colors
+    ):
+        parser.error("--provider bcut 不支持语言、模型、说话人、地域、词表、热词、context 或 file-url 参数")
 
     input_path = Path(args.input).expanduser()
     if args.outputs:
@@ -292,6 +313,10 @@ def _invoke_generator(provider: str, argv: Sequence[str]) -> int:
         import generate_subtitle_soniox_api as generator
 
         script_name = "generate_subtitle_soniox_api.py"
+    elif provider == "bcut":
+        import generate_subtitle_bcut_api as generator
+
+        script_name = "generate_subtitle_bcut_api.py"
     else:
         import generate_subtitle_qwen_api as generator
 

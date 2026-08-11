@@ -55,6 +55,8 @@ QwenASR 的水平如下：
 
 **两个 Key 不需要同时配置，用到哪个配哪个即可。**
 
+不想申请任何 Key 时，也可以在 Launcher 供应商列表底部直接选用实验性的「必剪 ASR」（免 Key，仅中文；非官方接口，可能随时失效或限流，详见 [WORKFLOW](docs/WORKFLOW.md) 的风险说明）。
+
 配完之后点击「保存到本地环境」，下次就不用重复配置了。
 
 <details>
@@ -137,12 +139,14 @@ LLM 步骤只发送带临时 ID 的字幕文字，不发送时间码、媒体路
 - API Key 仅读取自环境变量或本机 `.env`；`.env` 已被 Git 忽略，绝不要提交、截图或发给别人。
 - 每次转写会使用你的 Key 调用所选供应商；文件大小、数据保留与账户政策请分别查看[百炼语音识别文档](https://help.aliyun.com/zh/model-studio/asr-model/)或 [Soniox 文档](https://soniox.com/docs)。
 - 百炼 Provider 提供 `qwen3-asr-flash-filetrans`、`qwen-audio-3.0-asr-flash-filetrans` 和 `fun-asr`，支持北京与新加坡地域；北京可选填 Workspace ID 使用推荐的专属域名，新加坡必须填写。Qwen-Audio、Fun-ASR 与 Soniox 均可选说话人分离。配置项说明都在 `.env.example`。
+- 必剪 ASR 为实验性第三供应商：非官方免费接口，无需 Key，仅支持中文，稳定性与可用性不做任何保证，高频调用可能触发限流或封禁。
 
 ### 费用
 
 - 本项目本身是开源项目，可免费使用；默认模型为阿里云百炼最新发布的 Qwen-Audio 3.0，也可以在 GUI 或命令行里改用同 Provider 的 Qwen3-ASR、Fun-ASR 或 Soniox。
 - 阿里云 Qwen ASR 注册后免费赠送 10 小时转录时间，超出额度后按 `0.792 元/小时` 计费，详见 [价格文档](https://help.aliyun.com/zh/model-studio/model-pricing#dbf1305ef4a69)。
 - Soniox 异步文件转写约 `$0.10/小时`，适合需要说话人分离、多语言或小语种的素材，详见 [Soniox Pricing](https://soniox.com/pricing)。
+- 必剪 ASR 免费且无需 Key，但属于非官方接口：没有配额文档与稳定性保证，请把它当作"应急体验"而非生产通道。
 - 如果你有不错的配置，也可以自己本地部署开源的 [QwenASR](https://github.com/QwenLM/Qwen3-ASR) 本地转录，不产生云端费用，只需要一点电费。
 
 😭*我说我只有一台 AMD 显卡的台式机和一台 Mac Mini 所以跑不了本地模型有懂的吗*  
