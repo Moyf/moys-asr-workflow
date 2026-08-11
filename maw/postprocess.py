@@ -45,6 +45,7 @@ class LlmPostprocessRequest:
 
 
 LlmComplete = Callable[[str, list[dict[str, str]]], Mapping[str, JsonValue]]
+LlmStatus = Callable[[str, Mapping[str, int]], None]
 
 PROMPTS: Final[dict[str, str]] = {
     "proofread": "校对字幕中的错别字、漏字和明显识别错误，不扩写事实。",
@@ -80,7 +81,13 @@ def run_fixed_replacement(request: ReplacementRequest) -> SubtitleArtifact:
     return _write(project, source_project, source_srt, "replace", request.output_mode)
 
 
-def run_llm_postprocess(request: LlmPostprocessRequest, *, complete: LlmComplete) -> SubtitleArtifact:
+def run_llm_postprocess(
+    request: LlmPostprocessRequest,
+    *,
+    complete: LlmComplete,
+    on_status: LlmStatus | None = None,
+) -> SubtitleArtifact:
+    _notify_status(on_status, "toolbox_status_reading")
     project, source_project, source_srt = _load_input(request.project_path, request.srt_path)
     operation_prompt = PROMPTS.get(request.operation, PROMPTS["custom"]) if request.task_prompt is None else request.task_prompt.strip()
     custom = request.custom_prompt.strip()
@@ -90,12 +97,24 @@ def run_llm_postprocess(request: LlmPostprocessRequest, *, complete: LlmComplete
         cues[index : index + MAX_LLM_CUES_PER_REQUEST]
         for index in range(0, len(cues), MAX_LLM_CUES_PER_REQUEST)
     ] or [cues]
-    responses = [complete(system_prompt, batch) for batch in batches]
+    _notify_status(on_status, "toolbox_status_preparing_llm")
+    responses: list[Mapping[str, JsonValue]] = []
+    for index, batch in enumerate(batches, 1):
+        _notify_status(on_status, "toolbox_status_llm_batch", current=index, total=len(batches))
+        responses.append(complete(system_prompt, batch))
+        _notify_status(on_status, "toolbox_status_llm_batch_done", current=index, total=len(batches))
+    _notify_status(on_status, "toolbox_status_reorganizing")
     response = _combine_llm_responses(responses)
     processed, warnings = _apply_llm_groups_with_warnings(project, response)
     if len(batches) > 1:
         warnings = (f"字幕较长，已分批处理（共 {len(batches)} 批）。",) + warnings
+    _notify_status(on_status, "toolbox_status_writing")
     return _write(processed, source_project, source_srt, request.operation, request.output_mode, warnings)
+
+
+def _notify_status(on_status: LlmStatus | None, key: str, **details: int) -> None:
+    if on_status is not None:
+        on_status(key, details)
 
 
 def apply_llm_groups(project: JsonDict, response: Mapping[str, JsonValue]) -> JsonDict:

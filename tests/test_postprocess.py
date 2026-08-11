@@ -364,6 +364,37 @@ class PostprocessTests(unittest.TestCase):
         self.assertEqual([len(batch) for batch in batches], [300, 1])
         self.assertIn("分批", "".join(result.warnings))
 
+    def test_llm_runner_reports_progress_stages(self) -> None:
+        statuses: list[tuple[str, dict[str, int]]] = []
+
+        def complete(_system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
+            return {"groups": [{"id": cue["id"], "text": cue["text"]} for cue in cues]}
+
+        _ = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.JSON,
+                operation="proofread",
+                custom_prompt="",
+            ),
+            complete=complete,
+            on_status=lambda key, details: statuses.append((key, dict(details))),
+        )
+
+        self.assertEqual(
+            [key for key, _details in statuses],
+            [
+                "toolbox_status_reading",
+                "toolbox_status_preparing_llm",
+                "toolbox_status_llm_batch",
+                "toolbox_status_llm_batch_done",
+                "toolbox_status_reorganizing",
+                "toolbox_status_writing",
+            ],
+        )
+        self.assertEqual(statuses[2][1], {"current": 1, "total": 1})
+
     def test_llm_runner_uses_visible_task_prompt_and_keeps_custom_prompt(self) -> None:
         prompts: list[str] = []
 

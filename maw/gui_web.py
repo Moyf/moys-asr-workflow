@@ -475,11 +475,13 @@ class LauncherApi:
         return {"ok": True, "providerId": preset.id}
 
     def run_fixed_replacement(self, payload: Mapping[str, object]) -> dict[str, object]:
+        self._emit_postprocess_status("toolbox_status_reading")
         try:
             replacements = tuple(
                 Replacement(source=str(item.get("source") or ""), target=str(item.get("target") or ""))
                 for item in _mapping_list(payload.get("replacements"))
             )
+            self._emit_postprocess_status("toolbox_status_replacing")
             result = process_fixed_replacement(
                 ReplacementRequest(
                     project_path=_optional_path(payload.get("projectPath")),
@@ -488,6 +490,7 @@ class LauncherApi:
                     replacements=replacements,
                 )
             )
+            self._emit_postprocess_status("toolbox_status_writing")
         except (OSError, UnicodeError, ValueError) as error:
             return {"ok": False, "field": "postprocessInput", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
@@ -496,7 +499,9 @@ class LauncherApi:
         script_path = _optional_path(payload.get("scriptPath"))
         if script_path is None:
             return _error_result("postprocessScriptPath", "postprocess_failed", "A script file is required.")
+        self._emit_postprocess_status("toolbox_status_reading")
         try:
+            self._emit_postprocess_status("toolbox_status_matching")
             result = process_script_match(
                 ScriptMatchRequest(
                     project_path=_optional_path(payload.get("projectPath")),
@@ -505,6 +510,7 @@ class LauncherApi:
                     output_mode=_output_mode(payload.get("outputMode")),
                 )
             )
+            self._emit_postprocess_status("toolbox_status_writing")
         except (OSError, UnicodeError, ValueError) as error:
             return {"ok": False, "field": "postprocessScriptPath", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
@@ -537,6 +543,7 @@ class LauncherApi:
                     task_prompt=(str(payload.get("taskPrompt") or "") if "taskPrompt" in payload else None),
                 ),
                 complete=lambda prompt, cues: complete_subtitle_groups(settings, prompt, cues),
+                on_status=self._emit_postprocess_status,
             )
         except (OSError, UnicodeError, ValueError, RuntimeError) as error:
             return {"ok": False, "field": "postprocessInput", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
@@ -551,7 +558,9 @@ class LauncherApi:
                 ffmpeg = (bundled_directory / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).resolve()
         if ffmpeg is None:
             return {"ok": False, "field": "postprocessFfconcat", "code": "postprocess_failed", "detail": "FFmpeg was not found.", "error": "FFmpeg was not found."}
+        self._emit_postprocess_status("toolbox_status_validating_media")
         try:
+            self._emit_postprocess_status("toolbox_status_rebuilding_media")
             result = process_ffconcat_rebuild(
                 FfconcatRequest(
                     media_path=Path(str(payload.get("mediaPath") or "")),
@@ -613,6 +622,12 @@ class LauncherApi:
             return {"ok": False, "error": "Invalid URL."}
         webbrowser.open(url)
         return {"ok": True}
+
+    def open_file(self, payload: Mapping[str, object]) -> dict[str, object]:
+        path = Path(str(payload.get("path") or "").strip()).expanduser()
+        if not path.is_file():
+            return {"ok": False, "error": f"File does not exist: {path}"}
+        return _open_existing_path(path)
 
     def open_mose(self, payload: Mapping[str, object]) -> dict[str, object]:
         """Open the packaged MOSE editor and pass it the selected project path."""
@@ -900,6 +915,13 @@ class LauncherApi:
             self.worker = None
         self.pump.flush()
 
+    def _emit_postprocess_status(self, key: str, details: Mapping[str, int] | None = None) -> None:
+        self.pump.start()
+        event: dict[str, object] = {"type": "postprocess_status", "key": key}
+        if details:
+            event.update(details)
+        self._emit(event)
+
     def _emit(self, event: Mapping[str, object]) -> None:
         self.pump.enqueue(event)
 
@@ -921,7 +943,7 @@ def run_app() -> None:
         url=paths.launcher_html.resolve().as_uri(),
         js_api=api,
         width=900,
-        height=780,
+        height=880,
         min_size=(760, 640),
         background_color="#16181d",
         text_select=True,

@@ -256,16 +256,37 @@
     </div>
     <div class="toolbox-content">
       <div class="toolbox-output-bar">
-        <div class="field toolbox-output-field">
-          <label for="postprocessOutputMode" data-i18n="toolbox_output">输出</label>
-          <select id="postprocessOutputMode">
-            <option value="both" data-i18n="toolbox_output_both">工程 + SRT</option>
-            <option value="json" data-i18n="toolbox_output_project">仅工程</option>
-            <option value="srt" data-i18n="toolbox_output_srt">仅 SRT</option>
-          </select>
+        <div class="toolbox-output-main">
+          <div class="field toolbox-output-field">
+            <label for="postprocessOutputMode" data-i18n="toolbox_output">输出</label>
+            <select id="postprocessOutputMode">
+              <option value="both" data-i18n="toolbox_output_both">工程 + SRT</option>
+              <option value="json" data-i18n="toolbox_output_project">仅工程</option>
+              <option value="srt" data-i18n="toolbox_output_srt">仅 SRT</option>
+            </select>
+          </div>
+          <div class="toolbox-output-action">
+            <div class="toolbox-action-slot" data-tool-action="match">
+              <button id="runScriptMatch" class="primary" type="button" data-i18n="toolbox_run_match">匹配文稿</button>
+              <p class="hint" data-i18n="toolbox_match_hint">匹配度过低时会停止，不写出可能错配的结果。</p>
+            </div>
+            <div class="toolbox-action-slot hidden" data-tool-action="llm">
+              <button id="runLlmPostprocess" class="primary" type="button" data-i18n="toolbox_run">运行处理</button>
+            </div>
+            <div class="toolbox-action-slot hidden" data-tool-action="replace">
+              <button id="runFixedReplacement" class="primary" type="button" data-i18n="toolbox_run_replace">执行替换</button>
+              <p class="hint" data-i18n="toolbox_replace_safe">分段起止时间保持不变。</p>
+            </div>
+            <div class="toolbox-action-slot hidden" data-tool-action="ffconcat">
+              <code id="toolboxMediaPath">未选择媒体</code>
+              <button id="runFfconcatRebuild" class="primary" type="button" data-i18n="toolbox_run_media">生成新媒体</button>
+            </div>
+          </div>
         </div>
-        <p class="hint" data-i18n="toolbox_output_hint">所有字幕工具都会生成新文件，不覆盖原工程。</p>
       </div>
+      <p class="hint toolbox-output-hint" data-i18n="toolbox_output_hint">所有字幕工具都会生成新文件，不覆盖原工程。</p>
+      <div id="toolboxProgress" class="progress hidden" aria-hidden="true"><span></span></div>
+      <div id="toolboxResult" class="toolbox-result" aria-live="polite" data-i18n="toolbox_ready">选择工具后运行；源文件不会被覆盖。</div>
 
     <section id="toolboxMatchPanel" class="toolbox-panel" role="tabpanel" aria-labelledby="toolboxMatchTab">
       <div class="field">
@@ -276,10 +297,6 @@
         </div>
         <p class="hint" data-i18n="toolbox_script_hint">文稿文字会替换字幕文字；原字幕时间保持不变。</p>
         <p id="postprocessScriptPathError" class="field-error"></p>
-      </div>
-      <div class="toolbox-run-row">
-        <span class="hint" data-i18n="toolbox_match_hint">匹配度过低时会停止，不写出可能错配的结果。</span>
-        <button id="runScriptMatch" class="primary" type="button" data-i18n="toolbox_run_match">匹配文稿</button>
       </div>
     </section>
 
@@ -311,10 +328,7 @@
         <textarea id="postprocessPrompt" rows="4" autocomplete="off" data-i18n-placeholder="toolbox_prompt_placeholder"></textarea>
         <p class="hint" data-i18n="toolbox_prompt_hint">可按需追加要求；留空则只使用预设提示词。</p>
         <p id="postprocessPromptError" class="field-error"></p>
-        <p class="hint" data-i18n="toolbox_time_hint">模型只处理带 ID 的文字；本地时间槽始终是时间真源。</p>
-      </div>
-      <div class="toolbox-run-row">
-        <button id="runLlmPostprocess" class="primary" type="button" data-i18n="toolbox_run">运行处理</button>
+        <p class="hint toolbox-full-line-hint" data-i18n="toolbox_time_hint">模型只处理带 ID 的文字；本地时间槽始终是时间真源。</p>
       </div>
     </section>
 
@@ -324,10 +338,6 @@
         <textarea id="postprocessReplacements" rows="7" autocomplete="off" data-i18n-placeholder="toolbox_replace_placeholder"></textarea>
         <p class="hint" data-i18n="toolbox_replace_hint">每行一条：原文 =&gt; 新文。修改文本后会移除失真的逐词时间。</p>
         <p id="postprocessReplacementsError" class="field-error"></p>
-      </div>
-      <div class="toolbox-run-row">
-        <span class="hint" data-i18n="toolbox_replace_safe">分段起止时间保持不变。</span>
-        <button id="runFixedReplacement" class="primary" type="button" data-i18n="toolbox_run_replace">执行替换</button>
       </div>
     </section>
 
@@ -341,14 +351,8 @@
         <p id="postprocessFfconcatError" class="field-error"></p>
       </div>
       <p class="toolbox-notice" data-i18n="toolbox_ffconcat_warning">只允许引用当前媒体。重组会生成新媒体，但不会改写字幕时间轴。</p>
-      <div class="toolbox-run-row">
-        <code id="toolboxMediaPath">未选择媒体</code>
-        <button id="runFfconcatRebuild" class="primary" type="button" data-i18n="toolbox_run_media">生成新媒体</button>
-      </div>
     </section>
 
-    <div id="toolboxProgress" class="progress hidden" aria-hidden="true"><span></span></div>
-    <div id="toolboxResult" class="toolbox-result" aria-live="polite" data-i18n="toolbox_ready">选择工具后运行；源文件不会被覆盖。</div>
     </div>
   </aside>
 

@@ -128,6 +128,9 @@
       tab.setAttribute("aria-selected", String(active));
     });
     Object.entries(panels).forEach(([name, id]) => $(id).classList.toggle("hidden", name !== tool));
+    document.querySelectorAll("[data-tool-action]").forEach((action) => {
+      action.classList.toggle("hidden", action.dataset.toolAction !== tool);
+    });
   }
 
   function setResult(message, kind = "") {
@@ -135,6 +138,15 @@
     result.textContent = message;
     result.classList.toggle("success", kind === "success");
     result.classList.toggle("error", kind === "error");
+  }
+
+  function renderPostprocessStatus(event) {
+    if (!busy) return;
+    let message = t(event.key || "toolbox_running");
+    Object.entries(event).forEach(([key, value]) => {
+      message = message.replaceAll(`{${key}}`, String(value));
+    });
+    setResult(message);
   }
 
   function setSettingsSaveStatus(message, kind = "", timeoutMs = 2400) {
@@ -149,13 +161,13 @@
     }
   }
 
-  function setBusy(nextBusy) {
+  function setBusy(nextBusy, statusKey = "toolbox_running") {
     busy = nextBusy;
     $("toolboxProgress").classList.toggle("hidden", !busy);
     ["runScriptMatch", "runLlmPostprocess", "runFixedReplacement", "runFfconcatRebuild", "saveLlmSettings", "testLlmConnection", "toolboxInputPath", "pickToolboxInput", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmCustomDisplayName"].forEach((id) => {
       $(id).disabled = busy;
     });
-    if (busy) setResult(t("toolbox_running"));
+    if (busy) setResult(t(statusKey));
   }
 
   function resolveInputPaths() {
@@ -236,6 +248,12 @@
       button.title = path;
       button.setAttribute("aria-label", `${label.textContent}: ${path}`);
       button.addEventListener("click", () => selectChainPath(path, button));
+      button.addEventListener("dblclick", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const result = await bridge("open_file", { path });
+        if (!result.ok) setResult(result.error || t("failed"), "error");
+      });
       files.append(button);
     });
     item.append(label, files);
@@ -286,7 +304,7 @@
       return;
     }
     setFieldError("postprocessScriptPath", "");
-    setBusy(true);
+    setBusy(true, "toolbox_status_starting");
     try {
       const result = await bridge("run_script_match", { ...paths, scriptPath });
       if (result.ok) applySubtitleResult(result, { kind: "match" });
@@ -359,7 +377,7 @@
       setResult(message, "error");
       return;
     }
-    setBusy(true);
+    setBusy(true, "toolbox_status_starting");
     try {
       const result = await bridge("run_llm_postprocess", {
         ...paths,
@@ -391,7 +409,7 @@
       return;
     }
     setFieldError("postprocessReplacements", "");
-    setBusy(true);
+    setBusy(true, "toolbox_status_starting");
     try {
       const result = await bridge("run_fixed_replacement", { ...paths, replacements });
       if (result.ok) applySubtitleResult(result, { kind: "replace" });
@@ -414,7 +432,7 @@
       return;
     }
     setFieldError("postprocessFfconcat", "");
-    setBusy(true);
+    setBusy(true, "toolbox_status_starting");
     try {
       const result = await bridge("run_ffconcat_rebuild", { mediaPath, ffconcatPath });
       if (result.ok) {
@@ -497,5 +515,6 @@
   ["jsonPath", "srtPath", "mediaPath"].forEach((id) => $(id).addEventListener("input", syncPaths));
   document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !busy) setOpen(false); });
   window.addEventListener("mawlauncherready", initialize, { once: true });
+  window.MAWLauncher.onPostprocessStatus = renderPostprocessStatus;
   if (window.MAWLauncher.config) initialize();
 })();

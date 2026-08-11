@@ -429,6 +429,24 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(popen.call_args.args[0], [str(executable), str(project.resolve())])
         self.assertEqual(popen.call_args.kwargs["cwd"], str(self.root))
 
+    def test_open_file_opens_existing_chain_artifact(self) -> None:
+        artifact = self.root / "clip.llm.mosp"
+        artifact.write_text("{}\n", encoding="utf-8")
+
+        with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as open_path:
+            result = self.api.open_file({"path": str(artifact)})
+
+        self.assertTrue(result["ok"])
+        open_path.assert_called_once_with(artifact)
+
+    def test_open_file_rejects_missing_chain_artifact(self) -> None:
+        with mock.patch("maw.gui_web._open_existing_path") as open_path:
+            result = self.api.open_file({"path": str(self.root / "missing.mosp")})
+
+        self.assertFalse(result["ok"])
+        self.assertIn("File does not exist", result["error"])
+        open_path.assert_not_called()
+
     def test_open_mose_forwards_bundled_ffmpeg_to_sibling_app(self) -> None:
         executable = self.root / "MOSE.exe"
         ffmpeg_dir = self.root / "ffmpeg" / "bin"
@@ -1370,6 +1388,20 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('bindDropField("toolboxInputDropZone", "toolboxInput", "toolboxInputDropZone")', launcher_script)
         self.assertIn("addChainResult", script)
         self.assertIn("selectChainPath", script)
+        self.assertIn('bridge("open_file", { path })', script)
+        self.assertIn('addEventListener("dblclick"', script)
+        self.assertIn('toolbox_chain_llm_translate: "[LLM 处理/翻译]"', launcher_script)
+        self.assertNotIn("toolbox_chain_llm_translate: \"（LLM 处理/翻译）翻译产物\"", launcher_script)
+        self.assertIn('data-tool-action="match"', page)
+        self.assertIn('data-tool-action="llm"', page)
+        self.assertIn('data-tool-action="replace"', page)
+        self.assertIn('class="toolbox-output-main"', page)
+        self.assertIn('class="hint toolbox-output-hint"', page)
+        self.assertIn('class="hint toolbox-full-line-hint"', page)
+        self.assertIn('document.querySelectorAll("[data-tool-action]")', script)
+        self.assertIn('event.type === "postprocess_status"', launcher_script)
+        self.assertIn("onPostprocessStatus", launcher_script)
+        self.assertIn("function renderPostprocessStatus(event)", script)
         self.assertIn('taskPrompt: taskPromptText(operation)', script)
         self.assertIn('const customPrompt = $("postprocessPrompt").value.trim()', script)
         self.assertIn("const TASK_PROMPT_KEYS", script)
@@ -1412,7 +1444,9 @@ class LauncherAssetContractTests(unittest.TestCase):
         llm_panel = page.index('id="toolboxLlmPanel"')
         ffconcat_panel = page.index('id="toolboxFfconcatPanel"')
         ffconcat_end = page.index("</section>", ffconcat_panel)
+        output_hint = page.index('class="hint toolbox-output-hint"')
         progress = page.index('<div id="toolboxProgress"')
+        result = page.index('<div id="toolboxResult"')
 
         self.assertLess(sticky, input_drop_zone)
         self.assertLess(input_drop_zone, chain)
@@ -1421,11 +1455,20 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertLess(input_drop_zone, tabs)
         self.assertLess(tabs, content)
         self.assertLess(content, output)
+        self.assertLess(output, output_hint)
+        self.assertLess(output_hint, progress)
+        self.assertLess(progress, result)
         self.assertLess(match_panel, llm_panel)
-        self.assertGreater(progress, ffconcat_end)
+        self.assertLess(result, match_panel)
+        self.assertGreater(ffconcat_end, output)
         self.assertIn('id="toolboxMatchTab" class="toolbox-tab active"', page)
         self.assertIn('id="toolboxFfconcatTab" class="toolbox-tab hidden"', page)
         self.assertIn("overflow-y: auto", stylesheet)
+        self.assertIn("resize: both", stylesheet)
+        self.assertIn("block-size: min(560px, calc(100dvh - 156px))", stylesheet)
+        self.assertIn("min-inline-size: min(360px, calc(100vw - 24px))", stylesheet)
+        self.assertIn(".toolbox-output-main", stylesheet)
+        self.assertIn(".toolbox-grid > .field", stylesheet)
         self.assertIn(".toolbox-input.drag-over", stylesheet)
         self.assertIn("grid-template-columns: repeat(3", stylesheet)
 
