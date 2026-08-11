@@ -2922,6 +2922,45 @@
       return true;
     }
 
+    snapSelectedCueBoundaryByKeyboard(direction) {
+      const segments = this.options.getSegments();
+      const indices = normalizedIndices(segments, this.options.getSelection?.());
+      if (!indices.length || (direction !== -1 && direction !== 1)) return false;
+
+      const index = direction < 0 ? indices[0] : indices[indices.length - 1];
+      const neighborIndex = direction < 0 ? index - 1 : index + 1;
+      const segment = segments[index];
+      const neighbor = segments[neighborIndex];
+      // 与按住字幕块时的 Shift+A/D 一样，边界不存在或无法贴合时也消费按键，
+      // 避免 Shift+方向键继续触发浏览器默认行为。
+      if (!segment || !neighbor) return true;
+
+      const edge = direction < 0 ? 'start' : 'end';
+      const current = Number(segment[edge]);
+      const target = roundMs(direction < 0 ? neighbor.end : neighbor.start);
+      const lower = edge === 'start' ? 0 : Number(segment.start) + MIN_CUE_MS;
+      const upper = edge === 'start'
+        ? Number(segment.end) - MIN_CUE_MS
+        : this.cueDragDurationMs();
+      if (!Number.isFinite(current) || !Number.isFinite(target)
+          || target < lower || target > upper || target === current) return true;
+
+      const result = applyBoundaryStep(
+        segments,
+        index,
+        edge,
+        target - current,
+        this.cueDragDurationMs(),
+        { sticky: false },
+      );
+      if (!result.changed) return true;
+      this.options.onBeginEdit?.('贴近字幕边界');
+      result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
+      this.options.onCommitEdit?.(result.affectedIndices, 'resize-boundary-independent');
+      this.refreshCueOverlay();
+      return true;
+    }
+
     adjustActiveCueDragBy(deltaMs, altKey = false) {
       const drag = this.drag;
       if (!drag) return false;

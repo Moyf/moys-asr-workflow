@@ -103,6 +103,32 @@ test('selected arrow keys move cues, adjust boundaries, and honor the configured
   ]);
 });
 
+test('Shift+arrow keys snap selected subtitle boundaries to neighbors', async ({ page }) => {
+  await loadAttachedCues(page);
+  await page.evaluate(() => {
+    DATA.segments[0].end = 9000;
+    DATA.segments[1].start = 10000;
+    DATA.segments[1].end = 18000;
+    DATA.segments[2].start = 20000;
+    renderAll();
+  });
+  await page.locator('.cue[data-idx="1"]').click();
+
+  await page.keyboard.press('Shift+ArrowLeft');
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 9000 },
+    { start: 9000, end: 18000 },
+    { start: 20000, end: 30000 },
+  ]);
+
+  await page.keyboard.press('Shift+ArrowRight');
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 9000 },
+    { start: 9000, end: 20000 },
+    { start: 20000, end: 30000 },
+  ]);
+});
+
 test('A/D adjusts a held subtitle block and a held shared boundary', async ({ page }) => {
   await loadAttachedCues(page);
   await page.locator('#editor-settings-toggle').click();

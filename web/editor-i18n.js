@@ -145,7 +145,7 @@
     '播放/暂停': 'Play/pause', '前后跳转 5 秒': 'Seek back/forward 5 sec',
     '无选中时前后跳转 5 秒': 'Seek back/forward 5 sec with no selection',
     '选中字幕时：': 'With subtitles selected:',
-    '微调移动字幕': 'Fine-tune subtitle movement',
+    '微调移动字幕': 'Fine-tune subtitle movement', '将字幕起点/终点贴到前一条结尾/后一条开头': 'Snap the subtitle start/end to the previous end/next start',
     '微调字幕左边界（起点）': 'Fine-tune the subtitle left edge (start)',
     '微调字幕右边界（终点）': 'Fine-tune the subtitle right edge (end)',
     '按住字幕时：': 'While holding a subtitle:',

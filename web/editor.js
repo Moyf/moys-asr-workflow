@@ -2991,7 +2991,8 @@ mediaFullscreen?.addEventListener('click', async () => {
 document.addEventListener('fullscreenchange', syncMediaControls);
 
 // ←/→：无选中字幕时复用媒体控制条的 ±5 秒跳转；选中字幕时改为按设置的
-// 微调幅度调整时间。Ctrl(Cmd)+方向键调整左边界，Ctrl(Cmd)+Shift+方向键调整右边界。
+// 微调幅度调整时间。Shift+方向键贴合前后边界；Ctrl(Cmd)+方向键调整左边界，
+// Ctrl(Cmd)+Shift+方向键调整右边界。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
   if (editingState || isTextEditingTarget(e)) return;
@@ -3000,8 +3001,15 @@ document.addEventListener('keydown', (e) => {
   if (!isPlaybackKeyboardTarget(e) && isNativeKeyboardControl(e)) return;
   if (isPlayerKeyboardTarget(e)) return;
   const commandKey = e.ctrlKey || e.metaKey;
-  if (e.shiftKey && !commandKey) return;
   const direction = e.key === 'ArrowLeft' ? -1 : 1;
+  if (e.shiftKey && !commandKey) {
+    if (!e.altKey && selectedIdxs.size > 0
+        && waveformEditor?.snapSelectedCueBoundaryByKeyboard?.(direction)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    return;
+  }
   if (selectedIdxs.size > 0 && waveformEditor) {
     const deltaMs = direction * EDITOR_SETTINGS.cueMoveStepMs;
     if (commandKey) {
