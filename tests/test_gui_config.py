@@ -183,10 +183,28 @@ class GuiConfigTests(unittest.TestCase):
 
         self.assertEqual(provider.kind, "local")
         self.assertFalse(provider.requires_api_key)
-        self.assertEqual([model.id for model in provider.models], ["qwen3-asr-local", "funasr-local"])
-        self.assertEqual(provider.models[0].model_ref, "Qwen/Qwen3-ASR-0.6B")
-        self.assertIn("Qwen/Qwen3-ForcedAligner-0.6B", provider.models[0].required_model_refs)
-        self.assertIn("torchaudio", provider.models[1].requires_runtime)
+        self.assertEqual(
+            [model.id for model in provider.models],
+            [
+                "sensevoice-small-local",
+                "fun-asr-nano-local",
+                "qwen3-asr-local",
+                "qwen3-asr-1.7b-local",
+                "funasr-local",
+            ],
+        )
+        sensevoice = provider.models[0]
+        self.assertEqual(sensevoice.model_ref, "iic/SenseVoiceSmall")
+        self.assertIn("funasr", sensevoice.requires_runtime)
+        nano = provider.models[1]
+        self.assertEqual(nano.model_ref, "FunAudioLLM/Fun-ASR-Nano-2512")
+        qwen06 = provider.models[2]
+        self.assertEqual(qwen06.model_ref, "Qwen/Qwen3-ASR-0.6B")
+        self.assertIn("Qwen/Qwen3-ForcedAligner-0.6B", qwen06.required_model_refs)
+        qwen17 = provider.models[3]
+        self.assertEqual(qwen17.model_ref, "Qwen/Qwen3-ASR-1.7B")
+        self.assertIn("Qwen/Qwen3-ForcedAligner-0.6B", qwen17.required_model_refs)
+        self.assertIn("torchaudio", provider.models[-1].requires_runtime)
         self.assertEqual(gui_config.api_key_for_provider("local"), "")
 
     def test_qwen_languages_single_select_with_auto_and_documented_28(self) -> None:

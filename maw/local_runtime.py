@@ -26,12 +26,12 @@ from typing import Final, TextIO
 from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
 
 
-RUNTIME_VERSION: Final = "2"
+RUNTIME_VERSION: Final = "3"
 PYTHON_VERSION: Final = "3.11"
 PYTORCH_INDEX: Final = "https://download.pytorch.org/whl/cu130"
 GENERAL_REQUIREMENTS: Final[tuple[str, ...]] = (
     "accelerate>=1.12",
-    "funasr>=1.2.6",
+    "funasr>=1.3.29",
     "hf-xet>=1.5",
     "jieba>=0.42",
     "qwen-asr>=0.0.6",
@@ -99,15 +99,20 @@ def default_runtime_root() -> Path:
 
 
 def default_model_cache_root() -> Path:
-    override = os.environ.get("MAW_MODEL_CACHE_ROOT", "").strip()
+    return resolve_model_cache_root()
+
+
+def resolve_model_cache_root(configured: str | Path | None = None) -> Path:
+    """Resolve an explicit cache root, then the process-level override."""
+    override = str(configured or "").strip() or os.environ.get("MAW_MODEL_CACHE_ROOT", "").strip()
     if override:
         return Path(override).expanduser().resolve(strict=False)
     return default_app_data_root() / "model-cache"
 
 
-def model_cache_environment() -> dict[str, str]:
+def model_cache_environment(model_cache_root: str | Path | None = None) -> dict[str, str]:
     """Return cache variables shared by model preparation and inference."""
-    root = default_model_cache_root()
+    root = resolve_model_cache_root(model_cache_root)
     huggingface = root / "huggingface"
     modelscope = root / "modelscope"
     return {
@@ -126,10 +131,10 @@ def runtime_python_path(root: Path | None = None) -> Path:
     return target / relative
 
 
-def managed_runtime_status() -> LocalRuntimeStatus:
+def managed_runtime_status(model_cache_root: str | Path | None = None) -> LocalRuntimeStatus:
     root = default_runtime_root()
     python = runtime_python_path(root)
-    model_cache = default_model_cache_root()
+    model_cache = resolve_model_cache_root(model_cache_root)
     manifest_path = root / "runtime.json"
     if not root.exists():
         return LocalRuntimeStatus("missing", False, str(root), "", str(model_cache), "本地运行环境尚未安装。")
@@ -182,6 +187,7 @@ def install_local_runtime(
     on_event: RuntimeEvent | None = None,
     cancel_event: Event | None = None,
     repair: bool = False,
+    model_cache_root: str | Path | None = None,
 ) -> LocalRuntimeStatus:
     """Create or repair the user-managed runtime and verify all adapters."""
     emit = on_event or (lambda _message, _percent, _stage: None)
@@ -194,7 +200,7 @@ def install_local_runtime(
             "未找到本地运行环境安装器 uv。请使用官方 Windows 打包版，或在开发环境中确保 uv 已加入 PATH。"
         )
 
-    current = managed_runtime_status()
+    current = managed_runtime_status(model_cache_root)
     if current.ready and not repair:
         emit("本地运行环境已经安装完成。", 100, "ready")
         return current
@@ -206,7 +212,7 @@ def install_local_runtime(
     if root.exists() and not python.exists():
         venv_args.append("--clear")
     venv_args.extend(["--prompt", "MAW-local", str(root)])
-    _run_process(venv_args, env=_runtime_env(), cancel=cancel, on_line=_uv_line(emit, 10, "bootstrap"))
+    _run_process(venv_args, env=_runtime_env(model_cache_root), cancel=cancel, on_line=_uv_line(emit, 10, "bootstrap"))
     _check_cancel(cancel)
     if not python.exists():
         raise LocalRuntimeError(f"Python 运行环境创建失败：未找到 {python}")
@@ -231,7 +237,7 @@ def install_local_runtime(
     ]
     _run_process(
         install_args,
-        env=_runtime_env(),
+        env=_runtime_env(model_cache_root),
         cancel=cancel,
         on_line=_dependency_line(emit),
     )
@@ -243,13 +249,14 @@ def install_local_runtime(
         "-c",
         "from funasr import AutoModel; from qwen_asr import Qwen3ASRModel; import jieba, torch, torchaudio; print('MAW_LOCAL_RUNTIME_READY')",
     ]
-    _run_process(verify_args, env=_runtime_env(), cancel=cancel, on_line=lambda line: emit(line, 94, "verify"))
+    _run_process(verify_args, env=_runtime_env(model_cache_root), cancel=cancel, on_line=lambda line: emit(line, 94, "verify"))
     _check_cancel(cancel)
     _write_manifest(root, {"status": "ready", "runtimeVersion": RUNTIME_VERSION, "pythonVersion": PYTHON_VERSION, "installedAt": int(time.time())})
-    for path in (default_model_cache_root(), Path(model_cache_environment()["HF_HUB_CACHE"]), Path(model_cache_environment()["MODELSCOPE_CACHE"])):
+    cache_environment = model_cache_environment(model_cache_root)
+    for path in (resolve_model_cache_root(model_cache_root), Path(cache_environment["HF_HUB_CACHE"]), Path(cache_environment["MODELSCOPE_CACHE"])):
         path.mkdir(parents=True, exist_ok=True)
     emit("本地运行环境已安装完成。现在可以下载模型。", 100, "ready")
-    return managed_runtime_status()
+    return managed_runtime_status(model_cache_root)
 
 
 def prepare_model_in_runtime(
@@ -259,11 +266,16 @@ def prepare_model_in_runtime(
     model_path: str = "",
     device: str = "auto",
     forced_aligner: str = "",
+    vad_model: str = "",
+    punc_model: str = "",
+    speaker_model: str = "",
+    trust_remote_code: bool = False,
+    model_cache_root: str | Path | None = None,
     on_event: Callable[[str], None] | None = None,
     cancel_event: Event | None = None,
 ) -> int:
     """Run the model loader in the managed environment, not inside MAW.exe."""
-    status = managed_runtime_status()
+    status = managed_runtime_status(model_cache_root)
     if not status.ready:
         raise LocalRuntimeError("本地模型运行时尚未安装，请先安装本地模型支持。")
     helper = _runtime_bundle_path("maw/local_runtime_worker.py")
@@ -274,9 +286,17 @@ def prepare_model_in_runtime(
         command.extend(["--model-path", model_path])
     if forced_aligner:
         command.extend(["--forced-aligner", forced_aligner])
+    if vad_model:
+        command.extend(["--vad-model", vad_model])
+    if punc_model:
+        command.extend(["--punc-model", punc_model])
+    if speaker_model:
+        command.extend(["--speaker-model", speaker_model])
+    if trust_remote_code:
+        command.append("--trust-remote-code")
     return _run_process(
         command,
-        env=_runtime_env(),
+        env=_runtime_env(model_cache_root),
         cancel=cancel_event or Event(),
         on_line=on_event or (lambda _line: None),
     )
@@ -289,6 +309,11 @@ def prepare_model_in_process(
     model_path: str = "",
     device: str = "auto",
     forced_aligner: str = "",
+    vad_model: str = "",
+    punc_model: str = "",
+    speaker_model: str = "",
+    trust_remote_code: bool = False,
+    model_cache_root: str | Path | None = None,
     on_event: Callable[[str], None] | None = None,
     cancel_event: Event | None = None,
 ) -> int:
@@ -307,17 +332,25 @@ def prepare_model_in_process(
         command.extend(["--model-path", model_path])
     if forced_aligner:
         command.extend(["--forced-aligner", forced_aligner])
+    if vad_model:
+        command.extend(["--vad-model", vad_model])
+    if punc_model:
+        command.extend(["--punc-model", punc_model])
+    if speaker_model:
+        command.extend(["--speaker-model", speaker_model])
+    if trust_remote_code:
+        command.append("--trust-remote-code")
     return _run_process(
         command,
-        env=_runtime_env(),
+        env=_runtime_env(model_cache_root),
         cancel=cancel_event or Event(),
         on_line=on_event or (lambda _line: None),
     )
 
 
-def _runtime_env() -> dict[str, str]:
+def _runtime_env(model_cache_root: str | Path | None = None) -> dict[str, str]:
     env = dict(os.environ)
-    env.update(model_cache_environment())
+    env.update(model_cache_environment(model_cache_root))
     env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
@@ -480,6 +513,7 @@ __all__ = [
     "managed_runtime_python",
     "managed_runtime_status",
     "model_cache_environment",
+    "resolve_model_cache_root",
     "prepare_model_in_process",
     "prepare_model_in_runtime",
     "runtime_python_path",

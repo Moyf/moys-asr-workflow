@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -38,7 +39,10 @@ VIDEO_EXTENSIONS = frozenset({
 
 QWEN_DEFAULT_MODEL = "Qwen/Qwen3-ASR-0.6B"
 QWEN_DEFAULT_FORCED_ALIGNER = "Qwen/Qwen3-ForcedAligner-0.6B"
+QWEN_DEFAULT_CHUNK_SECONDS = 30
+QWEN_MAX_NEW_TOKENS = 1024
 FUNASR_DEFAULT_MODEL = "paraformer-zh"
+SENSEVOICE_DEFAULT_MERGE_LENGTH_S = 15
 
 
 class LocalAsrError(RuntimeError):
@@ -234,22 +238,29 @@ def _segment(
 
 
 def _timestamp_pair(value: object) -> tuple[int, int] | None:
+    uses_seconds = False
     if isinstance(value, Mapping):
-        start = value.get(
-            "start",
-            value.get("start_ms", value.get("begin_time", value.get("start_time"))),
-        )
-        end = value.get(
-            "end",
-            value.get("end_ms", value.get("end_time", value.get("end_time_ms"))),
-        )
+        if "start_time" in value or "end_time" in value:
+            start = value.get("start_time")
+            end = value.get("end_time")
+            uses_seconds = True
+        else:
+            start = value.get(
+                "start",
+                value.get("start_ms", value.get("begin_time")),
+            )
+            end = value.get(
+                "end",
+                value.get("end_ms", value.get("end_time_ms")),
+            )
     elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)) and len(value) >= 2:
         start, end = value[0], value[1]
     else:
         return None
     if start is None or end is None:
         return None
-    return _as_ms(start), _as_ms(end)
+    converter = _as_seconds_ms if uses_seconds else _as_ms
+    return converter(start), converter(end)
 
 
 def _text_units(text: str, count: int) -> list[str]:
@@ -274,6 +285,20 @@ def items_from_timestamps(text: str, timestamps: object) -> list[dict[str, Any]]
             return [_item(text, start, end)]
         return []
     valid_pairs = [pair for pair in pairs if pair is not None]
+    if len(valid_pairs) == len(text) and any(char.isspace() for char in text):
+        # Fun-ASR-Nano returns character-level timestamps for western-language
+        # text.  MAW's western splitter works on words, so fold each character
+        # span into a whitespace-preserving word span before splitting cues.
+        word_matches = list(re.finditer(r"\s*\S+", text))
+        if word_matches and "".join(match.group(0) for match in word_matches) == text:
+            return [
+                _item(
+                    match.group(0),
+                    valid_pairs[match.start()][0],
+                    valid_pairs[match.end() - 1][1],
+                )
+                for match in word_matches
+            ]
     units = _text_units(text, len(valid_pairs))
     if not units:
         return []
@@ -297,7 +322,23 @@ def _first_mapping(value: object) -> dict[str, Any]:
     return {}
 
 
-def funasr_output_to_transcription(raw: object, model: str) -> LocalTranscription:
+def _rich_funasr_text(value: object, *, enabled: bool) -> str:
+    text = _as_text(value)
+    if not enabled or not text:
+        return text
+    try:
+        from funasr.utils.postprocess_utils import rich_transcription_postprocess  # type: ignore[import-not-found]
+    except ImportError:
+        return text
+    return _as_text(rich_transcription_postprocess(text))
+
+
+def funasr_output_to_transcription(
+    raw: object,
+    model: str,
+    *,
+    rich_postprocess: bool = False,
+) -> LocalTranscription:
     """Normalize common FunASR ``generate`` result shapes.
 
     FunASR models differ in whether they return ``sentence_info`` and whether
@@ -318,7 +359,10 @@ def funasr_output_to_transcription(raw: object, model: str) -> LocalTranscriptio
     for sentence in sentence_info:
         if not isinstance(sentence, Mapping):
             continue
-        text = _as_text(sentence.get("text"))
+        text = _rich_funasr_text(
+            sentence.get("text") or sentence.get("sentence"),
+            enabled=rich_postprocess,
+        )
         if not text:
             continue
         items = items_from_timestamps(
@@ -341,7 +385,9 @@ def funasr_output_to_transcription(raw: object, model: str) -> LocalTranscriptio
         segments.append(_segment(text, start, end, items, speaker))
         all_items.extend(items)
 
-    text = _as_text(payload.get("text")) or "".join(segment["text"] for segment in segments)
+    text = _rich_funasr_text(payload.get("text"), enabled=rich_postprocess) or "".join(
+        segment["text"] for segment in segments
+    )
     if not segments:
         items = items_from_timestamps(
             text,
@@ -403,7 +449,9 @@ class QwenAsrEngine:
             "dtype": torch.float16 if resolved_device == "cuda" else torch.float32,
             "device_map": device_map,
             "max_inference_batch_size": 1,
-            "max_new_tokens": 256,
+            # Keep each request bounded by the chunk size, while leaving enough
+            # room for timestamp tokens and a dense speech segment.
+            "max_new_tokens": QWEN_MAX_NEW_TOKENS,
         }
         if self.forced_aligner:
             kwargs["forced_aligner"] = self.forced_aligner
@@ -416,17 +464,15 @@ class QwenAsrEngine:
             on_event("[local] QwenASR loaded")
         return self._runtime
 
-    def transcribe(
+    def _transcribe_one(
         self,
+        runtime: Any,
         audio_path: Path,
         *,
-        language: str | None = None,
-        batch_size_s: int = 300,
-        hotwords: Sequence[str] = (),
-        on_event: ProgressCallback | None = None,
+        language: str | None,
+        hotwords: Sequence[str],
+        on_event: ProgressCallback | None,
     ) -> LocalTranscription:
-        del batch_size_s  # Qwen3-ASR currently controls its own chunking.
-        runtime = self._load(on_event)
         if on_event:
             on_event(f"[local] transcribing: {audio_path.name}")
         language_name = _QWEN_LANGUAGE_NAMES.get((language or "").lower(), language or None)
@@ -482,6 +528,176 @@ class QwenAsrEngine:
             on_event(f"[local] detected language: {language_value or 'unknown'}")
         return LocalTranscription(text, language_value, items, [], self.model)
 
+    @staticmethod
+    def _extract_chunk(
+        source_path: Path,
+        target_path: Path,
+        *,
+        start_s: float,
+        duration_s: float,
+    ) -> None:
+        command = [
+            "ffmpeg",
+            "-v", "error",
+            "-ss", f"{start_s:.3f}",
+            "-i", str(source_path),
+            "-t", f"{duration_s:.3f}",
+            "-vn",
+            "-acodec", "pcm_s16le",
+            "-ar", "16000",
+            "-ac", "1",
+            "-y", str(target_path),
+        ]
+        subprocess.run(command, check=True, capture_output=True)
+
+    @staticmethod
+    def _shift_chunk_result(
+        transcription: LocalTranscription,
+        offset_ms: int,
+        *,
+        add_leading_space: bool = False,
+    ) -> LocalTranscription:
+        items: list[dict[str, Any]] = []
+        for item_index, item in enumerate(transcription.items):
+            shifted = dict(item)
+            shifted["start"] = _as_ms(item.get("start")) + offset_ms
+            shifted["end"] = _as_ms(item.get("end")) + offset_ms
+            if (
+                add_leading_space
+                and item_index == 0
+                and shifted.get("text")
+                and not str(shifted["text"]).startswith(" ")
+            ):
+                shifted["text"] = f" {shifted['text']}"
+            items.append(shifted)
+
+        segments: list[dict[str, Any]] = []
+        for segment in transcription.segments:
+            shifted_segment = dict(segment)
+            shifted_segment["start"] = _as_ms(segment.get("start")) + offset_ms
+            shifted_segment["end"] = _as_ms(segment.get("end")) + offset_ms
+            shifted_items: list[dict[str, Any]] = []
+            for item_index, item in enumerate(segment.get("items") or []):
+                shifted_item = dict(item)
+                shifted_item["start"] = _as_ms(item.get("start")) + offset_ms
+                shifted_item["end"] = _as_ms(item.get("end")) + offset_ms
+                if (
+                    add_leading_space
+                    and item_index == 0
+                    and shifted_item.get("text")
+                    and not str(shifted_item["text"]).startswith(" ")
+                ):
+                    shifted_item["text"] = f" {shifted_item['text']}"
+                shifted_items.append(shifted_item)
+            shifted_segment["items"] = shifted_items
+            if (
+                add_leading_space
+                and shifted_segment.get("text")
+                and not str(shifted_segment["text"]).startswith(" ")
+            ):
+                shifted_segment["text"] = f" {shifted_segment['text']}"
+            segments.append(shifted_segment)
+
+        return LocalTranscription(
+            transcription.text,
+            transcription.language,
+            items,
+            segments,
+            transcription.model,
+        )
+
+    def transcribe(
+        self,
+        audio_path: Path,
+        *,
+        language: str | None = None,
+        batch_size_s: int = QWEN_DEFAULT_CHUNK_SECONDS,
+        hotwords: Sequence[str] = (),
+        on_event: ProgressCallback | None = None,
+    ) -> LocalTranscription:
+        if batch_size_s <= 0:
+            raise ValueError("batch_size_s must be greater than 0")
+        runtime = self._load(on_event)
+        if not audio_path.exists():
+            return self._transcribe_one(
+                runtime,
+                audio_path,
+                language=language,
+                hotwords=hotwords,
+                on_event=on_event,
+            )
+
+        duration_s = get_duration_sec(str(audio_path))
+        if not math.isfinite(duration_s) or duration_s <= batch_size_s:
+            return self._transcribe_one(
+                runtime,
+                audio_path,
+                language=language,
+                hotwords=hotwords,
+                on_event=on_event,
+            )
+
+        chunk_count = math.ceil(duration_s / batch_size_s)
+        if on_event:
+            on_event(
+                f"[local] 长音频 {duration_s:.1f}s，将分为 {chunk_count} 段识别"
+                f"（每段不超过 {batch_size_s}s）"
+            )
+
+        chunk_results: list[LocalTranscription] = []
+        with tempfile.TemporaryDirectory(prefix="maw-qwen-chunks-") as temp_dir:
+            for chunk_index in range(chunk_count):
+                start_s = chunk_index * batch_size_s
+                chunk_duration_s = min(batch_size_s, duration_s - start_s)
+                if chunk_duration_s <= 0:
+                    break
+                if on_event:
+                    on_event(
+                        f"[local] 正在识别第 {chunk_index + 1}/{chunk_count} 段"
+                        f"（{start_s:.1f}s - {start_s + chunk_duration_s:.1f}s）"
+                    )
+                chunk_path = Path(temp_dir) / f"chunk-{chunk_index:04d}.wav"
+                self._extract_chunk(
+                    audio_path,
+                    chunk_path,
+                    start_s=start_s,
+                    duration_s=chunk_duration_s,
+                )
+                chunk_result = self._transcribe_one(
+                    runtime,
+                    chunk_path,
+                    language=language,
+                    hotwords=hotwords,
+                    on_event=on_event,
+                )
+                chunk_results.append(
+                    self._shift_chunk_result(
+                        chunk_result,
+                        int(round(start_s * 1000)),
+                    )
+                )
+
+        language_value = next(
+            (result.language for result in chunk_results if result.language),
+            language or "",
+        )
+        uses_spaces = language_value.lower() in _QWEN_SPACE_SEPARATED_LANGUAGES
+        merged_items: list[dict[str, Any]] = []
+        merged_segments: list[dict[str, Any]] = []
+        texts: list[str] = []
+        for chunk_index, result in enumerate(chunk_results):
+            add_leading_space = uses_spaces and chunk_index > 0
+            if add_leading_space:
+                result = self._shift_chunk_result(result, 0, add_leading_space=True)
+            merged_items.extend(result.items)
+            merged_segments.extend(result.segments)
+            if result.text:
+                texts.append(result.text.strip())
+        text = (" ".join(texts) if uses_spaces else "".join(texts)).strip()
+        if on_event:
+            on_event(f"[local] 长音频分块识别完成，共 {len(chunk_results)} 段")
+        return LocalTranscription(text, language_value, merged_items, merged_segments, self.model)
+
 
 class FunAsrEngine:
     """Lazy FunASR ``AutoModel`` adapter."""
@@ -495,13 +711,22 @@ class FunAsrEngine:
         vad_model: str | None = None,
         punc_model: str | None = None,
         speaker_model: str | None = None,
+        trust_remote_code: bool = False,
+        rich_postprocess: bool = False,
     ) -> None:
         self.model = model
         self.model_path = str(model_path) if model_path else model
         self.device = device
-        self.vad_model = vad_model
+        model_key = model.casefold()
+        self.is_sensevoice = "sensevoice" in model_key
+        self.is_fun_asr_nano = "fun-asr-nano" in model_key
+        self.uses_vad = self.is_sensevoice or self.is_fun_asr_nano
+        self.vad_model = vad_model or ("fsmn-vad" if self.uses_vad else None)
         self.punc_model = punc_model
         self.speaker_model = speaker_model
+        self.vad_max_single_segment_time = 30000 if self.uses_vad else 0
+        self.trust_remote_code = trust_remote_code or self.is_fun_asr_nano
+        self.rich_postprocess = rich_postprocess or self.is_sensevoice
         self._runtime: Any = None
 
     def _load(self, on_event: ProgressCallback | None = None) -> Any:
@@ -522,10 +747,16 @@ class FunAsrEngine:
         }
         if self.vad_model:
             kwargs["vad_model"] = self.vad_model
+            if self.vad_max_single_segment_time:
+                kwargs["vad_kwargs"] = {
+                    "max_single_segment_time": self.vad_max_single_segment_time,
+                }
         if self.punc_model:
             kwargs["punc_model"] = self.punc_model
         if self.speaker_model:
             kwargs["spk_model"] = self.speaker_model
+        if self.trust_remote_code:
+            kwargs["trust_remote_code"] = True
         self._runtime = AutoModel(**kwargs)
         if on_event:
             on_event("[local] FunASR loaded")
@@ -549,10 +780,32 @@ class FunAsrEngine:
             "input": str(audio_path),
             "batch_size_s": batch_size_s,
         }
+        if self.is_fun_asr_nano:
+            # Older Nano checkpoints may expose text without timestamps.  The
+            # FunASR pipeline can still return one cue per VAD region when
+            # sentence timestamps are requested.
+            kwargs["sentence_timestamp"] = True
+        if self.is_sensevoice:
+            # SenseVoice does not reliably return ``sentence_info`` unless the
+            # caller asks for sentence timestamps.  Keep VAD regions merged
+            # into manageable chunks so punctuation/AED has enough context,
+            # while retaining the region boundaries for subtitle cues.
+            kwargs.update({
+                "sentence_timestamp": True,
+                "use_itn": True,
+                "merge_vad": bool(self.vad_model),
+                "merge_length_s": SENSEVOICE_DEFAULT_MERGE_LENGTH_S,
+            })
+        if language:
+            kwargs["language"] = language
         if hotwords:
             kwargs["hotword"] = " ".join(hotwords)
         raw = runtime.generate(**kwargs)
-        return funasr_output_to_transcription(raw, self.model)
+        return funasr_output_to_transcription(
+            raw,
+            self.model,
+            rich_postprocess=self.rich_postprocess,
+        )
 
 
 def create_local_engine(
@@ -565,6 +818,8 @@ def create_local_engine(
     vad_model: str | None = None,
     punc_model: str | None = None,
     speaker_model: str | None = None,
+    trust_remote_code: bool = False,
+    rich_postprocess: bool = False,
 ) -> LocalAsrEngine:
     normalized = engine.strip().lower()
     if normalized in {"qwen", "qwen-asr", "qwen3-asr"}:
@@ -582,6 +837,8 @@ def create_local_engine(
             vad_model=vad_model,
             punc_model=punc_model,
             speaker_model=speaker_model,
+            trust_remote_code=trust_remote_code,
+            rich_postprocess=rich_postprocess,
         )
     raise ValueError("engine must be one of: qwen-asr, funasr")
 
@@ -709,6 +966,8 @@ __all__ = [
     "MissingLocalDependency",
     "QWEN_DEFAULT_MODEL",
     "QWEN_DEFAULT_FORCED_ALIGNER",
+    "QWEN_DEFAULT_CHUNK_SECONDS",
+    "QWEN_MAX_NEW_TOKENS",
     "FunAsrEngine",
     "QwenAsrEngine",
     "build_local_segments",

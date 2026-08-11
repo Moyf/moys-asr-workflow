@@ -52,6 +52,7 @@ class TranscriptionRequest:
     debug_raw: bool = False
     engine: str = ""
     model_path: str = ""
+    model_cache_root: str = ""
     device: str = "auto"
     forced_aligner: str = ""
     runtime_python: str = ""
@@ -175,8 +176,16 @@ def default_srt_path(
         tag = ".fun-asr"
     elif provider == "qwen" and model == QWEN_AUDIO_MODEL_ID:
         tag = ".qwen-audio"
-    elif provider == "local" and "funasr" in model.lower():
-        tag = ".funasr-local"
+    elif provider == "local":
+        local_model = model.casefold()
+        if "sensevoice" in local_model:
+            tag = ".sensevoice-local"
+        elif "funasr" in local_model or "fun-asr" in local_model:
+            tag = ".funasr-local"
+        elif "qwen3-asr-1.7b" in local_model:
+            tag = ".qwen3-asr-1.7b-local"
+        else:
+            tag = ".qwen-asr-local"
     else:
         tag = PROVIDER_SRT_TAGS.get(provider, PROVIDER_SRT_TAGS["qwen"])
     output = media.with_name(f"{media.stem}{tag}.srt")
@@ -281,7 +290,13 @@ def run_transcription(
         raise TranscriptionCancelledError
     paths = build_output_paths(request.srt_path)
     paths.srt.parent.mkdir(parents=True, exist_ok=True)
-    env = _child_environment(os.environ, request.api_key, request.workspace_id, request.provider)
+    env = _child_environment(
+        os.environ,
+        request.api_key,
+        request.workspace_id,
+        request.provider,
+        request.model_cache_root,
+    )
     command = build_transcribe_command(request, executable=executable, frozen=frozen)
     process = popen_process_tree(
         command,
@@ -408,7 +423,13 @@ def _read_process_lines(stdout: BinaryIO | TextIO | None, lines: queue.Queue[str
     lines.put(None)
 
 
-def _child_environment(parent: Mapping[str, str], api_key: str, workspace_id: str = "", provider: str = "qwen") -> dict[str, str]:
+def _child_environment(
+    parent: Mapping[str, str],
+    api_key: str,
+    workspace_id: str = "",
+    provider: str = "qwen",
+    model_cache_root: str = "",
+) -> dict[str, str]:
     env = dict(parent)
     env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONUTF8"] = "1"
@@ -431,7 +452,7 @@ def _child_environment(parent: Mapping[str, str], api_key: str, workspace_id: st
         if workspace_id:
             env["DASHSCOPE_WORKSPACE_ID"] = workspace_id
     if provider == "local":
-        env.update(model_cache_environment())
+        env.update(model_cache_environment(model_cache_root))
     return env
 
 

@@ -13,6 +13,7 @@ from typing import Sequence
 
 from maw.local_asr import (
     FUNASR_DEFAULT_MODEL,
+    QWEN_DEFAULT_CHUNK_SECONDS,
     QWEN_DEFAULT_FORCED_ALIGNER,
     QWEN_DEFAULT_MODEL,
     build_local_segments,
@@ -53,7 +54,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--hotword-file", action="append", default=[], metavar="FILE",
         help="UTF-8 热词文件，一行一个词；可重复传入",
     )
-    parser.add_argument("--batch-size-s", type=int, default=300, help="FunASR 分块秒数")
+    parser.add_argument(
+        "--batch-size-s", type=int, default=None,
+        help=f"长音频分块秒数（Qwen 默认 {QWEN_DEFAULT_CHUNK_SECONDS}；FunASR 默认 300）",
+    )
     parser.add_argument("-ll", "--length-limit", type=parse_duration, help="只处理前 N 秒，例如 2m")
     parser.add_argument("-o", "--output", help="输出 SRT 路径（默认与输入同目录）")
     parser.add_argument("--max-len", type=int, default=21, help="中文单条字幕最大字符数")
@@ -88,7 +92,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not input_path.exists() or not input_path.is_file():
         print(f"错误: 输入文件不存在: {input_path}")
         return 2
-    if args.batch_size_s <= 0:
+    if args.batch_size_s is not None and args.batch_size_s <= 0:
         print("错误: --batch-size-s 必须大于 0")
         return 2
     if args.length_limit is not None and args.length_limit <= 0:
@@ -103,6 +107,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"错误: 无法读取热词文件: {error}")
         return 2
     hotwords = list(dict.fromkeys([*args.hotword, *file_hotwords]))
+    batch_size_s = args.batch_size_s
+    if batch_size_s is None:
+        batch_size_s = QWEN_DEFAULT_CHUNK_SECONDS if args.engine == "qwen-asr" else 300
 
     output_srt = Path(args.output).expanduser().resolve() if args.output else default_output_path(input_path, args.engine)
     engine = create_local_engine(
@@ -121,7 +128,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = engine.transcribe(
                 audio_path,
                 language=args.language,
-                batch_size_s=args.batch_size_s,
+                batch_size_s=batch_size_s,
                 hotwords=hotwords,
                 on_event=print,
             )

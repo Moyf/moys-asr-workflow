@@ -105,6 +105,18 @@
         </div>
         <p id="localModelHint" class="hint"></p>
         <div class="field">
+          <label for="localModelCachePath" data-i18n="local_model_cache_path_label">模型保存目录</label>
+          <div class="path-row">
+            <input id="localModelCachePath" type="text" autocomplete="off">
+            <button id="pickLocalModelCachePath" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
+          </div>
+          <p id="localModelCachePathError" class="field-error"></p>
+          <div class="local-model-cache-footer">
+            <p class="hint" data-i18n="local_model_cache_path_hint">模型会保存到这里；运行环境与模型缓存分开管理。</p>
+            <button id="saveLocalModelCache" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
+          </div>
+        </div>
+        <div class="field">
           <label for="localModelPath" data-i18n="local_model_path">已有模型目录（可选）</label>
           <div class="path-row">
             <input id="localModelPath" type="text" autocomplete="off">
@@ -113,7 +125,7 @@
           <p id="localModelPathError" class="field-error"></p>
         </div>
         <div id="localModelProgress" class="task-progress hidden" aria-live="polite">
-          <div class="task-progress-track indeterminate"><span></span></div>
+          <div id="localModelProgressTrack" class="task-progress-track indeterminate"><span id="localModelProgressBar"></span></div>
           <p id="localModelProgressMessage" class="hint"></p>
         </div>
         <button id="prepareLocalModel" class="ghost" type="button" data-i18n="local_prepare">下载模型</button>

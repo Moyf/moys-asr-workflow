@@ -626,6 +626,9 @@ class GuiWorkflowTests(unittest.TestCase):
             "clip.qwen-audio-test.srt",
         )
         self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="qwen3-asr-local").name, "clip.qwen-asr-local.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="qwen3-asr-1.7b-local").name, "clip.qwen3-asr-1.7b-local.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="sensevoice-small-local").name, "clip.sensevoice-local.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="fun-asr-nano-local").name, "clip.funasr-local.srt")
         self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="funasr-local").name, "clip.funasr-local.srt")
 
     def test_entrypoint_transcribe_soniox_help_dispatches_soniox_script(self) -> None:

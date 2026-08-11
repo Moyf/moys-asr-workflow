@@ -27,6 +27,10 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--model-path", default="")
     prepare.add_argument("--device", default="auto")
     prepare.add_argument("--forced-aligner", default="")
+    prepare.add_argument("--vad-model", default="")
+    prepare.add_argument("--punc-model", default="")
+    prepare.add_argument("--speaker-model", default="")
+    prepare.add_argument("--trust-remote-code", action="store_true")
     return parser
 
 
@@ -40,6 +44,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         model_path=args.model_path or None,
         device=args.device,
         forced_aligner=args.forced_aligner or None,
+        vad_model=args.vad_model or None,
+        punc_model=args.punc_model or None,
+        speaker_model=args.speaker_model or None,
+        trust_remote_code=args.trust_remote_code,
     )
     loader = getattr(engine, "_load", None)
     if not callable(loader):

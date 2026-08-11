@@ -11,6 +11,7 @@ from generate_subtitle_qwen_api import extract_audio
 from generate_subtitle_local import build_parser, default_output_path, load_hotword_files
 from maw.local_asr import (
     FUNASR_DEFAULT_MODEL,
+    QWEN_DEFAULT_CHUNK_SECONDS,
     QWEN_DEFAULT_FORCED_ALIGNER,
     QWEN_DEFAULT_MODEL,
     FunAsrEngine,
@@ -63,6 +64,24 @@ class LocalAsrNormalizationTests(unittest.TestCase):
 
         self.assertEqual(result.segments[0]["items"][0]["text"], "hello world")
         self.assertEqual(result.segments[0]["items"][0]["start"], 0)
+
+    def test_sensevoice_sentence_field_is_normalized(self) -> None:
+        result = funasr_output_to_transcription(
+            [{
+                "sentence_info": [{
+                    "sentence": "Hello world.",
+                    "start": 200,
+                    "end": 1200,
+                }],
+                "lang": "en",
+            }],
+            "iic/SenseVoiceSmall",
+        )
+
+        self.assertEqual(result.text, "Hello world.")
+        self.assertEqual(result.language, "en")
+        self.assertEqual(result.segments[0]["text"], "Hello world.")
+        self.assertEqual(result.segments[0]["items"][0]["start"], 200)
 
     def test_items_from_timestamps_supports_word_units_with_spaces(self) -> None:
         items = items_from_timestamps("hello world", [[0, 400], [400, 900]])
@@ -188,6 +207,46 @@ class LocalAsrFlowTests(unittest.TestCase):
             ["Hello, world.", " Next sentence works!"],
         )
 
+    def test_qwen_long_audio_is_split_and_timestamps_are_shifted(self) -> None:
+        class FakeRuntime:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            def transcribe(self, **kwargs):
+                self.calls.append(kwargs["audio"])
+                return [SimpleNamespace(
+                    text="hello",
+                    language="English",
+                    time_stamps=[SimpleNamespace(text="hello", start_time=1.0, end_time=2.0)],
+                )]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "long.wav"
+            audio_path.write_bytes(b"wav")
+            runtime = FakeRuntime()
+            events: list[str] = []
+            engine = QwenAsrEngine(forced_aligner="test-aligner")
+            engine._runtime = runtime
+
+            with mock.patch("maw.local_asr.get_duration_sec", return_value=65.0):
+                with mock.patch("maw.local_asr.subprocess.run") as run:
+                    result = engine.transcribe(
+                        audio_path,
+                        language="en",
+                        batch_size_s=QWEN_DEFAULT_CHUNK_SECONDS,
+                        on_event=events.append,
+                    )
+
+        self.assertEqual(len(runtime.calls), 3)
+        self.assertEqual(run.call_count, 3)
+        self.assertEqual(
+            [(item["start"], item["end"]) for item in result.items],
+            [(1000, 2000), (31000, 32000), (61000, 62000)],
+        )
+        self.assertEqual(result.text, "hello hello hello")
+        self.assertTrue(any("将分为 3 段识别" in event for event in events))
+        self.assertTrue(any("长音频分块识别完成" in event for event in events))
+
     def test_engine_factory_does_not_import_optional_runtime(self) -> None:
         qwen = create_local_engine("qwen-asr")
         funasr = create_local_engine("funasr")
@@ -195,6 +254,83 @@ class LocalAsrFlowTests(unittest.TestCase):
         self.assertEqual(qwen.model, QWEN_DEFAULT_MODEL)
         self.assertEqual(qwen.forced_aligner, QWEN_DEFAULT_FORCED_ALIGNER)
         self.assertEqual(funasr.model, FUNASR_DEFAULT_MODEL)
+
+    def test_engine_factory_supports_qwen_17b_and_funasr_model_defaults(self) -> None:
+        qwen = create_local_engine("qwen-asr", model="Qwen/Qwen3-ASR-1.7B")
+        sensevoice = create_local_engine("funasr", model="iic/SenseVoiceSmall")
+        nano = create_local_engine("funasr", model="FunAudioLLM/Fun-ASR-Nano-2512")
+
+        self.assertEqual(qwen.model, "Qwen/Qwen3-ASR-1.7B")
+        self.assertEqual(qwen.forced_aligner, QWEN_DEFAULT_FORCED_ALIGNER)
+        self.assertEqual(sensevoice.vad_model, "fsmn-vad")
+        self.assertTrue(sensevoice.rich_postprocess)
+        self.assertEqual(sensevoice.vad_max_single_segment_time, 30000)
+        self.assertTrue(nano.trust_remote_code)
+        self.assertEqual(nano.vad_model, "fsmn-vad")
+        self.assertEqual(nano.vad_max_single_segment_time, 30000)
+
+    def test_sensevoice_requests_sentence_timestamps_and_preserves_cues(self) -> None:
+        class FakeRuntime:
+            def generate(self, **kwargs):
+                self.kwargs = kwargs
+                return [{
+                    "text": "First sentence. Second sentence.",
+                    "lang": "en",
+                    "sentence_info": [
+                        {"sentence": "First sentence.", "start": 100, "end": 900},
+                        {"sentence": "Second sentence.", "start": 1100, "end": 2100},
+                    ],
+                }]
+
+        engine = create_local_engine("funasr", model="iic/SenseVoiceSmall")
+        runtime = FakeRuntime()
+        engine._runtime = runtime
+
+        result = engine.transcribe(Path("sample.wav"), language="en")
+
+        self.assertTrue(runtime.kwargs["sentence_timestamp"])
+        self.assertTrue(runtime.kwargs["use_itn"])
+        self.assertTrue(runtime.kwargs["merge_vad"])
+        self.assertEqual(runtime.kwargs["merge_length_s"], 15)
+        self.assertEqual([segment["text"] for segment in result.segments], [
+            "First sentence.",
+            "Second sentence.",
+        ])
+
+    def test_fun_asr_nano_uses_vad_and_splits_character_timestamps(self) -> None:
+        class FakeRuntime:
+            def generate(self, **kwargs):
+                self.kwargs = kwargs
+                text = "First sentence works here. Second sentence works too."
+                return [{
+                    "text": text,
+                    "lang": "en",
+                    "timestamps": [
+                        {
+                            "token": char,
+                            "start_time": index * 0.05,
+                            "end_time": (index + 1) * 0.05,
+                        }
+                        for index, char in enumerate(text)
+                    ],
+                }]
+
+        engine = create_local_engine(
+            "funasr",
+            model="FunAudioLLM/Fun-ASR-Nano-2512",
+        )
+        runtime = FakeRuntime()
+        engine._runtime = runtime
+
+        result = engine.transcribe(Path("sample.wav"), language="en")
+
+        self.assertEqual(runtime.kwargs["batch_size_s"], 300)
+        self.assertTrue(runtime.kwargs["sentence_timestamp"])
+        segments = build_local_segments(result, duration_ms=2000)
+        self.assertEqual([segment["text"] for segment in segments], [
+            "First sentence works here.",
+            " Second sentence works too.",
+        ])
 
     def test_fun_asr_runtime_import_is_lazy(self) -> None:
         engine = FunAsrEngine()

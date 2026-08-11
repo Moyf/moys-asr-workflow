@@ -77,6 +77,7 @@ class EffectiveConfig:
     show_rare_langs: bool = False
     last_model: str | None = None
     last_language: str | None = None
+    model_cache_root: str = ""
 
 
 REGIONS: Final[tuple[tuple[str, str], ...]] = (
@@ -151,6 +152,23 @@ FUNASR_LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
     ("bg", "保加利亚语 / Bulgarian"),
     ("hr", "克罗地亚语 / Croatian"),
     ("sk", "斯洛伐克语 / Slovak"),
+)
+
+SENSEVOICE_LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
+    ("", "自动识别"),
+    ("zh", "中文 / Chinese"),
+    ("yue", "粤语 / Cantonese"),
+    ("en", "英语 / English"),
+    ("ja", "日语 / Japanese"),
+    ("ko", "韩语 / Korean"),
+)
+
+FUN_ASR_NANO_LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
+    ("", "自动识别"),
+    ("zh", "中文 / Chinese"),
+    ("yue", "粤语 / Cantonese"),
+    ("en", "英语 / English"),
+    ("ja", "日语 / Japanese"),
 )
 
 # 关闭「显示相对小众的语言」时，Qwen 保留 9 种、Soniox 保留 8 种常用语言。
@@ -270,6 +288,28 @@ SONIOX_MODELS: Final[tuple[ModelConfig, ...]] = (
 
 LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
+        id="sensevoice-small-local",
+        label="SenseVoice Small（本地，推荐）",
+        env_key="",
+        note="多语种本地识别；默认配合 FSMN-VAD，CPU/GPU 都可运行",
+        languages=SENSEVOICE_LANGUAGES,
+        kind="local",
+        engine="funasr",
+        model_ref="iic/SenseVoiceSmall",
+        requires_runtime=("funasr", "torchaudio"),
+    ),
+    ModelConfig(
+        id="fun-asr-nano-local",
+        label="Fun-ASR-Nano 2512（本地，GPU）",
+        env_key="",
+        note="LLM-ASR 路线；默认配合 FSMN-VAD，中英日及中文方言，建议使用 CUDA",
+        languages=FUN_ASR_NANO_LANGUAGES,
+        kind="local",
+        engine="funasr",
+        model_ref="FunAudioLLM/Fun-ASR-Nano-2512",
+        requires_runtime=("funasr", "torchaudio"),
+    ),
+    ModelConfig(
         id="qwen3-asr-local",
         label="Qwen3-ASR 0.6B（本地）",
         env_key="",
@@ -278,6 +318,18 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         kind="local",
         engine="qwen-asr",
         model_ref="Qwen/Qwen3-ASR-0.6B",
+        required_model_refs=("Qwen/Qwen3-ForcedAligner-0.6B",),
+        requires_runtime=("qwen_asr", "torch"),
+    ),
+    ModelConfig(
+        id="qwen3-asr-1.7b-local",
+        label="Qwen3-ASR 1.7B（本地）",
+        env_key="",
+        note="更高识别质量；与 0.6B 共用 Qwen3 Forced Aligner",
+        languages=LANGUAGES,
+        kind="local",
+        engine="qwen-asr",
+        model_ref="Qwen/Qwen3-ASR-1.7B",
         required_model_refs=("Qwen/Qwen3-ForcedAligner-0.6B",),
         requires_runtime=("qwen_asr", "torch"),
     ),
@@ -396,6 +448,7 @@ def effective_config(path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] |
         show_rare_langs=pick("MAW_GUI_SHOW_RARE_LANGS").strip().lower() in ("1", "true", "yes", "on"),
         last_model=pick_optional("MAW_GUI_LAST_MODEL"),
         last_language=pick_optional("MAW_GUI_LAST_LANGUAGE"),
+        model_cache_root=pick("MAW_MODEL_CACHE_ROOT").strip(),
     )
 
 

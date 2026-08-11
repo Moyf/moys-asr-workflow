@@ -11,7 +11,7 @@ import importlib.util
 import os
 import threading
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +20,25 @@ from maw.local_runtime import managed_runtime_status, prepare_model_in_process, 
 
 
 LocalModelEvent = Callable[[str], None]
+LocalModelProgress = Callable[[Mapping[str, object]], None]
+
+
+# The upstream loaders do not expose a reliable total download size.  These
+# intentionally broad ranges are only a user-facing estimate, not a promise
+# about the exact cache footprint of a particular runtime/library version.
+_ESTIMATED_CACHE_GIB: dict[str, tuple[float, float]] = {
+    "sensevoice-small-local": (1.0, 2.0),
+    "fun-asr-nano-local": (5.0, 10.0),
+    "qwen3-asr-local": (2.5, 4.5),
+    "qwen3-asr-1.7b-local": (5.0, 9.0),
+    "funasr-local": (2.0, 4.0),
+}
+
+
+def _funasr_model_uses_vad(model_ref: str) -> bool:
+    model_key = model_ref.casefold()
+    return "sensevoice" in model_key or "fun-asr-nano" in model_key
+
 
 _MODEL_WEIGHT_SUFFIXES = frozenset({
     ".bin", ".ckpt", ".gguf", ".model", ".onnx", ".pb", ".pt", ".pth", ".safetensors",
@@ -41,10 +60,15 @@ class LocalModelStatus:
     runtime_python: str = ""
 
 
-def inspect_local_model(model: ModelConfig, model_path: str | Path = "") -> LocalModelStatus:
+def inspect_local_model(
+    model: ModelConfig,
+    model_path: str | Path = "",
+    *,
+    model_cache_root: str | Path | None = None,
+) -> LocalModelStatus:
     """Return a UI-safe status without loading an optional model runtime."""
     missing_runtime = _missing_runtime_packages(model.requires_runtime)
-    managed = managed_runtime_status()
+    managed = managed_runtime_status(model_cache_root)
     runtime_source = "current" if not missing_runtime else ("managed" if managed.ready else "missing")
     runtime_python = managed.python_path if runtime_source == "managed" else ""
     runtime_available = not missing_runtime or managed.ready
@@ -136,7 +160,7 @@ def inspect_local_model(model: ModelConfig, model_path: str | Path = "") -> Loca
             runtime_python,
         )
 
-    paths = _find_model_paths(model)
+    paths = _find_model_paths(model, model_cache_root)
     if not paths:
         return LocalModelStatus(
             model.id,
@@ -181,8 +205,13 @@ def inspect_local_model(model: ModelConfig, model_path: str | Path = "") -> Loca
     )
 
 
-def local_model_payload(model: ModelConfig, model_path: str | Path = "") -> dict[str, object]:
-    status = inspect_local_model(model, model_path)
+def local_model_payload(
+    model: ModelConfig,
+    model_path: str | Path = "",
+    *,
+    model_cache_root: str | Path | None = None,
+) -> dict[str, object]:
+    status = inspect_local_model(model, model_path, model_cache_root=model_cache_root)
     return {
         "status": status.status,
         "runtimeAvailable": status.runtime_available,
@@ -204,16 +233,19 @@ def prepare_local_model(
     model_path: str | Path = "",
     device: str = "auto",
     forced_aligner: str = "",
+    model_cache_root: str | Path | None = None,
     on_event: LocalModelEvent | None = None,
+    on_progress: LocalModelProgress | None = None,
     cancel_event: threading.Event | None = None,
 ) -> LocalModelStatus:
     """Load a local engine once so its upstream runtime prepares model caches.
 
-    QwenASR and FunASR currently download through their own loaders.  Keeping
-    this call in a small adapter makes the Launcher flow reusable while we
-    postpone a standalone, resumable model downloader.
+    QwenASR and FunASR currently download through their own loaders.  Their
+    completed cache files are reused on a later attempt, while cancellation
+    stops the child loader process without promising byte-level resume for an
+    individual temporary file.
     """
-    status = inspect_local_model(model, model_path)
+    status = inspect_local_model(model, model_path, model_cache_root=model_cache_root)
     if status.status == "path_invalid":
         raise ValueError(status.detail)
     if not status.runtime_available:
@@ -227,7 +259,9 @@ def prepare_local_model(
             model_path=str(model_path).strip(),
             device=device,
             forced_aligner=forced_aligner,
+            model_cache_root=model_cache_root,
             on_event=on_event,
+            on_progress=on_progress,
             cancel_event=cancel_event,
         )
 
@@ -239,7 +273,7 @@ def prepare_local_model(
     stop_heartbeat = threading.Event()
     heartbeat = threading.Thread(
         target=_report_prepare_progress,
-        args=(model, model_path, stop_heartbeat, emit),
+        args=(model, model_path, model_cache_root, stop_heartbeat, emit, on_progress),
         name="maw-local-model-progress",
         daemon=True,
     )
@@ -252,6 +286,9 @@ def prepare_local_model(
             model_path=str(model_path).strip(),
             device=device,
             forced_aligner=aligner,
+            vad_model="fsmn-vad" if _funasr_model_uses_vad(model.model_ref) else "",
+            trust_remote_code="fun-asr-nano" in model.model_ref.casefold(),
+            model_cache_root=model_cache_root,
             on_event=emit,
             cancel_event=cancel_event,
         )
@@ -259,7 +296,7 @@ def prepare_local_model(
         stop_heartbeat.set()
         heartbeat.join(timeout=1.0)
     emit(f"[local] 模型准备调用已返回，用时 {_format_elapsed(time.monotonic() - started)}。正在重新扫描缓存。")
-    return inspect_local_model(model, model_path)
+    return inspect_local_model(model, model_path, model_cache_root=model_cache_root)
 
 
 def _prepare_in_managed_runtime(
@@ -268,7 +305,9 @@ def _prepare_in_managed_runtime(
     model_path: str,
     device: str,
     forced_aligner: str,
+    model_cache_root: str | Path | None,
     on_event: LocalModelEvent | None,
+    on_progress: LocalModelProgress | None,
     cancel_event: threading.Event | None,
 ) -> LocalModelStatus:
     emit = on_event or (lambda _message: None)
@@ -278,7 +317,7 @@ def _prepare_in_managed_runtime(
     stop_heartbeat = threading.Event()
     heartbeat = threading.Thread(
         target=_report_prepare_progress,
-        args=(model, model_path, stop_heartbeat, emit),
+        args=(model, model_path, model_cache_root, stop_heartbeat, emit, on_progress),
         name="maw-local-model-progress",
         daemon=True,
     )
@@ -291,6 +330,9 @@ def _prepare_in_managed_runtime(
             model_path=model_path,
             device=device,
             forced_aligner=forced_aligner or (model.required_model_refs[0] if model.required_model_refs else ""),
+            vad_model="fsmn-vad" if _funasr_model_uses_vad(model.model_ref) else "",
+            trust_remote_code="fun-asr-nano" in model.model_ref.casefold(),
+            model_cache_root=model_cache_root,
             on_event=emit,
             cancel_event=cancel_event,
         )
@@ -298,45 +340,109 @@ def _prepare_in_managed_runtime(
         stop_heartbeat.set()
         heartbeat.join(timeout=1.0)
     emit(f"[local] 模型准备调用已返回，用时 {_format_elapsed(time.monotonic() - started)}。正在重新扫描缓存。")
-    return inspect_local_model(model, model_path)
+    return inspect_local_model(model, model_path, model_cache_root=model_cache_root)
 
 
 def _report_prepare_progress(
     model: ModelConfig,
     model_path: str | Path,
+    model_cache_root: str | Path | None,
     stop_event: threading.Event,
     on_event: LocalModelEvent,
+    on_progress: LocalModelProgress | None = None,
 ) -> None:
     started = time.monotonic()
-    paths = _model_watch_paths(model, model_path)
+    paths = _model_watch_paths(model, model_path, model_cache_root)
     last_size = -1
     last_files = -1
-    while not stop_event.wait(5.0):
+    while not stop_event.is_set():
         file_count, total_size = _cache_snapshot(paths)
         elapsed = _format_elapsed(time.monotonic() - started)
+        payload = _prepare_progress_payload(model, elapsed, file_count, total_size)
+        message = str(payload["message"])
         if file_count == last_files and total_size == last_size:
-            on_event(f"[local] 仍在准备……已等待 {elapsed}；上游模型加载器尚未报告新的缓存写入。")
+            payload = dict(payload)
+            payload["message"] = f"[local] 仍在准备……已等待 {elapsed}；上游模型加载器尚未报告新的缓存写入。"
+            if payload.get("estimatedMinBytes"):
+                payload["message"] += (
+                    f" 预计总量约 {_format_bytes(int(payload['estimatedMinBytes']))}–"
+                    f"{_format_bytes(int(payload['estimatedMaxBytes']))}，"
+                    f"估算进度约 {_format_percent(float(payload['percentMin']))}–"
+                    f"{_format_percent(float(payload['percentMax']))}。"
+                )
+            message = str(payload["message"])
         else:
-            on_event(
-                f"[local] 仍在准备……已等待 {elapsed}；缓存已写入 "
-                f"{file_count} 个文件 / {_format_bytes(total_size)}。"
-            )
             last_files = file_count
             last_size = total_size
+        if on_progress is not None:
+            on_progress(payload)
+        else:
+            on_event(message)
+        if stop_event.wait(5.0):
+            return
 
 
-def _model_watch_paths(model: ModelConfig, model_path: str | Path) -> list[Path]:
+def _prepare_progress_payload(
+    model: ModelConfig,
+    elapsed: str,
+    file_count: int,
+    total_size: int,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "message": (
+            f"[local] 仍在准备……已等待 {elapsed}；缓存已写入 "
+            f"{file_count} 个文件 / {_format_bytes(total_size)}。"
+        ),
+        "elapsed": elapsed,
+        "fileCount": file_count,
+        "currentBytes": total_size,
+    }
+    estimate = _estimated_cache_bytes(model)
+    if estimate is None:
+        return payload
+    minimum, maximum = estimate
+    percent_min = min(99.0, total_size / maximum * 100) if maximum else 0.0
+    percent_max = min(99.0, total_size / minimum * 100) if minimum else 0.0
+    payload.update({
+        "estimatedMinBytes": minimum,
+        "estimatedMaxBytes": maximum,
+        "percentMin": percent_min,
+        "percentMax": percent_max,
+        "percent": (percent_min + percent_max) / 2,
+    })
+    payload["message"] = (
+        f"[local] 仍在准备……已等待 {elapsed}；缓存已写入 "
+        f"{file_count} 个文件 / {_format_bytes(total_size)}；预计总量约 "
+        f"{_format_bytes(minimum)}–{_format_bytes(maximum)}，估算进度约 "
+        f"{_format_percent(percent_min)}–{_format_percent(percent_max)}。"
+    )
+    return payload
+
+
+def _estimated_cache_bytes(model: ModelConfig) -> tuple[int, int] | None:
+    estimate = _ESTIMATED_CACHE_GIB.get(model.id)
+    if estimate is None:
+        return None
+    gib = 1024**3
+    return int(estimate[0] * gib), int(estimate[1] * gib)
+
+
+def _model_watch_paths(
+    model: ModelConfig,
+    model_path: str | Path,
+    model_cache_root: str | Path | None = None,
+) -> list[Path]:
     explicit = _normalise_directory(model_path)
     paths: list[Path] = [explicit] if explicit is not None else []
     if model.engine in {"qwen-asr", "qwen", "qwen3-asr"}:
         for ref in (model.model_ref, *model.required_model_refs):
-            paths.extend(_huggingface_repo_paths(ref))
+            paths.extend(_huggingface_repo_paths(ref, model_cache_root))
     elif model.engine in {"funasr", "fun-asr"}:
         for ref in (model.model_ref, *model.cache_refs):
             parts = [part for part in ref.split("/") if part]
             if not parts:
                 continue
-            for root in _modelscope_cache_roots():
+            for root in _modelscope_cache_roots(model_cache_root):
                 paths.extend(_modelscope_repo_candidates(root, parts))
     return _unique_paths(paths)
 
@@ -382,6 +488,10 @@ def _format_bytes(value: int) -> str:
     return f"{value} B"
 
 
+def _format_percent(value: float) -> str:
+    return f"{value:.0f}%"
+
+
 def _missing_runtime_packages(packages: Iterable[str]) -> tuple[str, ...]:
     missing: list[str] = []
     for package in packages:
@@ -421,26 +531,35 @@ def _explicit_path_mismatch(model: ModelConfig, path: Path) -> str:
     return ""
 
 
-def _find_model_paths(model: ModelConfig) -> tuple[Path, list[str]] | None:
+def _find_model_paths(
+    model: ModelConfig,
+    model_cache_root: str | Path | None = None,
+) -> tuple[Path, list[str]] | None:
     if model.engine in {"qwen-asr", "qwen", "qwen3-asr"}:
-        main = _find_huggingface_model(model.model_ref)
+        main = _find_huggingface_model(model.model_ref, model_cache_root)
         if main is None:
             return None
-        missing = [ref for ref in model.required_model_refs if _find_huggingface_model(ref) is None]
+        missing = [
+            ref for ref in model.required_model_refs
+            if _find_huggingface_model(ref, model_cache_root) is None
+        ]
         return main, missing
     if model.engine in {"funasr", "fun-asr"}:
         for ref in (model.model_ref, *model.cache_refs):
-            main = _find_modelscope_model(ref)
+            main = _find_modelscope_model(ref, model_cache_root)
             if main is not None:
                 return main, []
         return None
     return None
 
 
-def _find_huggingface_model(model_ref: str) -> Path | None:
+def _find_huggingface_model(
+    model_ref: str,
+    model_cache_root: str | Path | None = None,
+) -> Path | None:
     if not model_ref or "/" not in model_ref:
         return None
-    for repo in _huggingface_repo_paths(model_ref):
+    for repo in _huggingface_repo_paths(model_ref, model_cache_root):
         snapshot_root = repo / "snapshots"
         candidates = (
             [path for path in snapshot_root.iterdir() if path.is_dir() and _model_directory_has_file(path, require_weight=True)]
@@ -454,20 +573,26 @@ def _find_huggingface_model(model_ref: str) -> Path | None:
     return None
 
 
-def _huggingface_repo_paths(model_ref: str) -> list[Path]:
+def _huggingface_repo_paths(
+    model_ref: str,
+    model_cache_root: str | Path | None = None,
+) -> list[Path]:
     if not model_ref or "/" not in model_ref:
         return []
     owner, name = model_ref.split("/", 1)
     repo_dir_name = f"models--{owner}--{name}"
-    return _unique_paths(root / repo_dir_name for root in _huggingface_cache_roots())
+    return _unique_paths(root / repo_dir_name for root in _huggingface_cache_roots(model_cache_root))
 
 
-def _find_modelscope_model(model_ref: str) -> Path | None:
+def _find_modelscope_model(
+    model_ref: str,
+    model_cache_root: str | Path | None = None,
+) -> Path | None:
     model_name = model_ref.strip()
     if not model_name:
         return None
     parts = [part for part in model_name.split("/") if part]
-    for root in _modelscope_cache_roots():
+    for root in _modelscope_cache_roots(model_cache_root):
         for candidate in _modelscope_repo_candidates(root, parts):
             resolved = _modelscope_snapshot_dir(candidate)
             if resolved is not None:
@@ -540,7 +665,7 @@ def _model_directory_has_file(path: Path, *, require_weight: bool = False) -> bo
     return False
 
 
-def _huggingface_cache_roots() -> list[Path]:
+def _huggingface_cache_roots(model_cache_root: str | Path | None = None) -> list[Path]:
     env = os.environ
     roots: list[Path] = []
     for key in ("HF_HUB_CACHE", "HUGGINGFACE_HUB_CACHE"):
@@ -548,20 +673,20 @@ def _huggingface_cache_roots() -> list[Path]:
             roots.append(Path(env[key]).expanduser())
     if env.get("HF_HOME"):
         roots.append(Path(env["HF_HOME"]).expanduser() / "hub")
-    managed_root = managed_runtime_status().model_cache_path
+    managed_root = managed_runtime_status(model_cache_root).model_cache_path
     if managed_root:
         roots.append(Path(managed_root) / "huggingface" / "hub")
     roots.append(Path.home() / ".cache" / "huggingface" / "hub")
     return _unique_paths(roots)
 
 
-def _modelscope_cache_roots() -> list[Path]:
+def _modelscope_cache_roots(model_cache_root: str | Path | None = None) -> list[Path]:
     env = os.environ
     roots: list[Path] = []
     for key in ("MODELSCOPE_CACHE", "MODELSCOPE_HOME"):
         if env.get(key):
             roots.append(Path(env[key]).expanduser())
-    managed_root = managed_runtime_status().model_cache_path
+    managed_root = managed_runtime_status(model_cache_root).model_cache_path
     if managed_root:
         roots.append(Path(managed_root) / "modelscope")
     roots.append(Path.home() / ".cache" / "modelscope" / "hub")

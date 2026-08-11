@@ -80,8 +80,31 @@ class GuiWebBridgeTests(unittest.TestCase):
         local = next(provider for provider in config["providers"] if provider["id"] == "local")
         self.assertFalse(local["requiresApiKey"])
         self.assertEqual(local["kind"], "local")
-        self.assertEqual(local["models"][0]["id"], "qwen3-asr-local")
+        self.assertEqual(local["models"][0]["id"], "sensevoice-small-local")
+        self.assertEqual(local["models"][1]["id"], "fun-asr-nano-local")
+        self.assertEqual(local["models"][3]["modelRef"], "Qwen/Qwen3-ASR-1.7B")
         self.assertIn(local["models"][0]["localStatus"]["status"], {"runtime_missing", "missing", "installed", "partial", "path_invalid", "broken"})
+        self.assertEqual(config["modelCacheRoot"], "")
+
+    def test_save_settings_accepts_custom_model_cache_root(self) -> None:
+        cache_root = self.root / "models"
+
+        result = self.api.save_settings({"modelCacheRoot": str(cache_root)})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["modelCacheRoot"], str(cache_root.resolve()))
+        self.assertEqual(self.api.get_config()["modelCacheRoot"], str(cache_root.resolve()))
+        self.assertIn(f"MAW_MODEL_CACHE_ROOT={cache_root.resolve()}", self.env_path.read_text(encoding="utf-8"))
+
+    def test_save_settings_rejects_file_as_model_cache_root(self) -> None:
+        cache_file = self.root / "models.txt"
+        cache_file.write_text("not a directory", encoding="utf-8")
+
+        result = self.api.save_settings({"modelCacheRoot": str(cache_file)})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["field"], "localModelCachePath")
+        self.assertEqual(result["code"], "model_cache_path_invalid")
 
     def test_save_settings_for_local_provider_does_not_write_a_fake_api_key(self) -> None:
         result = self.api.save_settings({"providerId": "local", "modelId": "qwen3-asr-local", "apiKey": "", "guiLang": "zh"})
@@ -723,6 +746,16 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(self.api.cancel_event.is_set())
         self.assertTrue(result["ok"])
 
+    def test_cancel_local_model_sets_event_for_active_worker(self) -> None:
+        self.api.local_prepare_cancel_event = threading.Event()
+        self.api.local_prepare_worker = mock.Mock(is_alive=mock.Mock(return_value=True))
+
+        result = self.api.cancel_local_model()
+
+        self.assertTrue(self.api.local_prepare_cancel_event.is_set())
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["cancelling"])
+
     def test_start_transcription_rejects_missing_media(self) -> None:
         """Given missing media, When transcription starts, Then validation fails before subprocess."""
         result = self.api.start_transcription({"mediaPath": str(self.root / "missing.mp3"), "srtPath": str(self.root / "out.srt")})
@@ -1352,9 +1385,14 @@ class LauncherAssetContractTests(unittest.TestCase):
         backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
 
         self.assertIn('event.type === "modelProgress"', script)
+        self.assertIn('event.type === "localPrepareCancelled"', script)
         self.assertIn("localProgressMessage", script)
+        self.assertIn('bridge("cancel_local_model"', script)
         self.assertIn("已等待", local_models)
+        self.assertIn("_prepare_progress_payload", local_models)
+        self.assertIn("estimatedMinBytes", local_models)
         self.assertIn('"type": "modelProgress"', backend)
+        self.assertIn('"type": "localPrepareCancelled"', backend)
 
     def test_local_model_paths_are_scoped_to_the_selected_model(self) -> None:
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
@@ -1371,6 +1409,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="installLocalRuntime"', page)
         self.assertIn('id="localRuntimeProgressBar"', page)
         self.assertIn('id="localModelProgress"', page)
+        self.assertIn('id="localModelProgressBar"', page)
         self.assertIn('bridge("install_local_runtime"', script)
         self.assertIn('event.type === "localRuntimeProgress"', script)
         self.assertIn('event.type === "localRuntimeReady"', script)

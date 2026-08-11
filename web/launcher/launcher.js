@@ -32,6 +32,8 @@
     open_editor: "🚀 打开字幕编辑器",
     server_refresh: "刷新",
     local_model_path: "已有模型目录（可选）",
+    local_model_cache_path_label: "模型保存目录",
+    local_model_cache_path_hint: "模型会保存到这里；运行环境与模型缓存分开管理。",
     local_refresh: "重新扫描",
     local_prepare: "下载模型",
     local_device: "设备",
@@ -45,6 +47,9 @@
     local_path_selected: "已使用指定的模型目录",
     local_prepare_hint: "下载/准备会使用 QwenASR 或 FunASR 的上游缓存；模型文件不写入 MAW 工程。",
     local_prepare_running: "正在准备模型……",
+    local_prepare_cancelling: "正在取消模型准备……",
+    local_prepare_cancel: "取消准备",
+    local_prepare_cancelled: "模型准备已取消；已完成的缓存会保留，可切换模型或稍后继续。",
     local_prepare_done: "模型已准备完成",
     local_prepare_again: "重新准备模型",
     local_beta_note: "当前为 beta 版本，未经过充分测试，不保证后续的维护和更新，请谨慎使用。",
@@ -76,6 +81,8 @@
     open_editor: "🚀 Open Subtitle Editor",
     server_refresh: "Refresh",
     local_model_path: "Existing model folder (optional)",
+    local_model_cache_path_label: "Model storage directory",
+    local_model_cache_path_hint: "Models are saved here; the runtime and model cache are managed separately.",
     local_refresh: "Rescan",
     local_prepare: "Download model",
     local_device: "Device",
@@ -89,6 +96,9 @@
     local_path_selected: "Using the selected model folder",
     local_prepare_hint: "Download/preparation uses the QwenASR or FunASR upstream cache; model files are not written into the MAW project.",
     local_prepare_running: "Preparing model…",
+    local_prepare_cancelling: "Cancelling model preparation…",
+    local_prepare_cancel: "Cancel preparation",
+    local_prepare_cancelled: "Model preparation was cancelled. Completed cache files are kept; you can switch models or continue later.",
     local_prepare_done: "Model is ready",
     local_prepare_again: "Prepare model again",
     local_beta_note: "Currently in beta: not fully tested, and ongoing maintenance or updates are not guaranteed. Please use with caution.",
@@ -201,7 +211,8 @@
       local_model_missing: "尚未检测到本地模型，请先点击“下载模型”或选择已有模型目录。",
       local_model_incomplete: "本地模型不完整，请先准备缺少的模型组件。",
       local_model_path_invalid: "本地模型目录不存在，或所选路径不是文件夹。",
-      local_model_path_mismatch: "当前模型目录看起来属于另一种本地模型，请清空后重新选择。",
+    local_model_path_mismatch: "当前模型目录看起来属于另一种本地模型，请清空后重新选择。",
+    model_cache_path_invalid: "模型缓存目录不能是一个文件。",
       local_prepare_running: "本地模型正在准备中，请等待完成。",
       local_prepare_failed: (detail) => `本地模型准备失败：${detail || "请查看日志。"}`,
       workspace_missing: "新加坡地域需要 Workspace ID。",
@@ -229,7 +240,8 @@
       local_model_missing: "No local model was detected. Download it or choose an existing model folder.",
       local_model_incomplete: "The local model is incomplete. Prepare the missing components first.",
       local_model_path_invalid: "The local model folder does not exist or is not a folder.",
-      local_model_path_mismatch: "This model folder appears to belong to a different local model. Clear it and choose the correct folder.",
+    local_model_path_mismatch: "This model folder appears to belong to a different local model. Clear it and choose the correct folder.",
+    model_cache_path_invalid: "The model storage path cannot point to a file.",
       local_prepare_running: "The local model is being prepared. Please wait.",
       local_prepare_failed: (detail) => `Local model preparation failed: ${detail || "check the log."}`,
       workspace_missing: "Singapore region requires a Workspace ID.",
@@ -260,13 +272,14 @@
   const HOTWORD_WEIGHTS = new Set([1, 2, 3, 4, 5, 50]);
   const MAX_HOTWORDS = 2000;
   const MAX_SUPER_HOTWORDS = 50;
-  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverProjectPath: "", running: false, localPreparing: false, localProgressMessage: "", localModelId: "", localModelPaths: {}, localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", lastLogMessage: "", result: null, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system" };
+  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverProjectPath: "", running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", lastLogMessage: "", result: null, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system" };
   const dragState = { depth: 0 };
   let api = null;
   let prefsTimer = 0;
 
   function mockApi() {
     let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "zh" };
+    let modelPrepareTimer = 0;
     return {
       get_config: async () => ({
         apiKey: saved.apiKey,
@@ -282,7 +295,8 @@
         showRareLangs: saved.showRareLangs || false,
         appVersion: "1.13.1-beta-5",
         stickerDir: saved.stickerDir || "",
-        localRuntime: { status: "missing", ready: false, path: "", pythonPath: "", modelCachePath: "", detail: "" },
+        modelCacheRoot: saved.modelCacheRoot || "D:\\Models\\MAW",
+        localRuntime: { status: "missing", ready: false, path: "", pythonPath: "", modelCachePath: saved.modelCacheRoot || "D:\\Models\\MAW", detail: "" },
         providers: [
           {
             id: "qwen",
@@ -326,29 +340,33 @@
             multiLanguage: false,
             commonLanguages: ["", "zh", "en", "ja", "ko", "fr", "de", "es", "ru"],
             models: [
+              { id: "sensevoice-small-local", label: "SenseVoice Small（本地，推荐）", envKey: "", note: "多语种本地识别；默认配合 FSMN-VAD，CPU/GPU 都可运行", supportsSpeaker: false, kind: "local", engine: "funasr", modelRef: "iic/SenseVoiceSmall", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "fun-asr-nano-local", label: "Fun-ASR-Nano 2512（本地，GPU）", envKey: "", note: "LLM-ASR 路线；中英日及中文方言，建议使用 CUDA", supportsSpeaker: false, kind: "local", engine: "funasr", modelRef: "FunAudioLLM/Fun-ASR-Nano-2512", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
               { id: "qwen3-asr-local", label: "Qwen3-ASR 0.6B（本地）", envKey: "", note: "本地运行；首次准备会加载 Qwen3-ASR 与 Forced Aligner", supportsSpeaker: false, kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-0.6B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "funasr-local", label: "FunASR paraformer-zh（本地）", envKey: "", note: "本地运行；使用 FunASR 上游模型缓存", supportsSpeaker: false, kind: "local", engine: "funasr", modelRef: "paraformer-zh", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } }
+              { id: "qwen3-asr-1.7b-local", label: "Qwen3-ASR 1.7B（本地）", envKey: "", note: "更高识别质量；与 0.6B 共用 Qwen3 Forced Aligner", supportsSpeaker: false, kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-1.7B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "funasr-local", label: "FunASR paraformer-zh（本地）", envKey: "", note: "中文向 FunASR 路线；保留作为兼容选项", supportsSpeaker: false, kind: "local", engine: "funasr", modelRef: "paraformer-zh", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } }
             ],
             regions: [],
             languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }]
           }
         ]
       }),
-      default_output: async ({ mediaPath, providerId, modelId, testRun }) => ({ ok: true, path: mediaPath ? mediaPath.replace(/\.[^.\\/]+$/, `${providerId === "soniox" ? ".soniox" : (providerId === "local" ? (modelId === "funasr-local" ? ".funasr-local" : ".qwen-asr-local") : (modelId === "fun-asr" ? ".fun-asr" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio" : ".qwen3-asr-api")))}${testRun ? "-test" : ""}.srt`) : "" }),
+      default_output: async ({ mediaPath, providerId, modelId, testRun }) => ({ ok: true, path: mediaPath ? mediaPath.replace(/\.[^.\\/]+$/, `${providerId === "soniox" ? ".soniox" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))) : (modelId === "fun-asr" ? ".fun-asr" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio" : ".qwen3-asr-api")))}${testRun ? "-test" : ""}.srt`) : "" }),
       choose_file: async ({ kind }) => ({ ok: true, path: kind === "json" ? "D:\\Demo\\project.json" : (kind === "hotwords" ? "D:\\Demo\\hotwords.txt" : "D:\\Demo\\clip.mp4") }),
       read_hotword_file: async () => ({ ok: true, path: "D:\\Demo\\hotwords.txt", text: "张三\n阿里云百炼\n专业术语\n" }),
-      save_settings: async (payload) => { saved = { ...saved, ...payload }; return { ok: true, maskedApiKey: payload.apiKey ? "sk-…mock" : "", message: "mock saved" }; },
+      save_settings: async (payload) => { saved = { ...saved, ...payload }; if (Object.prototype.hasOwnProperty.call(payload, "modelCacheRoot")) { state.config.modelCacheRoot = payload.modelCacheRoot || ""; state.config.localRuntime = { ...(state.config.localRuntime || {}), modelCachePath: payload.modelCacheRoot || "D:\\Models\\MAW" }; } return { ok: true, maskedApiKey: payload.apiKey ? "sk-…mock" : "", modelCacheRoot: Object.prototype.hasOwnProperty.call(payload, "modelCacheRoot") ? (payload.modelCacheRoot || "") : (state.config?.modelCacheRoot || ""), message: "mock saved" }; },
       get_local_runtime: async () => ({ ok: true, ...(state.config?.localRuntime || { status: "missing", ready: false }) }),
       install_local_runtime: async () => { state.config.localRuntime = { status: "ready", ready: true, path: "D:\\Users\\Demo\\AppData\\Local\\MAW\\local-runtime", detail: "本地运行环境已就绪。" }; setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "localRuntimeReady", runtime: state.config.localRuntime }), 400); return { ok: true, installing: true }; },
       cancel_local_runtime: async () => ({ ok: true }),
       get_local_models: async ({ modelId, modelPath }) => ({ ok: true, runtime: state.config?.localRuntime || {}, models: (state.config?.providers.find((item) => item.id === "local")?.models || []).map((model) => ({ ...model, localStatus: { ...(model.localStatus || {}), ...(model.id === modelId && modelPath ? { status: "installed", installed: true, path: modelPath, detail: "已使用指定的模型目录。" } : {}) } })) }),
-      prepare_local_model: async ({ modelId }) => { state.config?.providers.find((item) => item.id === "local")?.models.forEach((model) => { if (model.id === modelId) model.localStatus = { ...(model.localStatus || {}), status: "installed", installed: true, runtimeAvailable: true, canPrepare: false, detail: "已检测到本地模型。" }; }); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "modelPrepared", modelId }), 400); return { ok: true, preparing: true, modelId }; },
+      prepare_local_model: async ({ modelId }) => { clearTimeout(modelPrepareTimer); modelPrepareTimer = setTimeout(() => { state.config?.providers.find((item) => item.id === "local")?.models.forEach((model) => { if (model.id === modelId) model.localStatus = { ...(model.localStatus || {}), status: "installed", installed: true, runtimeAvailable: true, canPrepare: false, detail: "已检测到本地模型。" }; }); window.MAWLauncher.onBackendEvent({ type: "modelPrepared", modelId }); }, 400); return { ok: true, preparing: true, modelId }; },
+      cancel_local_model: async () => { clearTimeout(modelPrepareTimer); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "localPrepareCancelled" }), 80); return { ok: true, cancelling: true }; },
       save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); return { ok: true }; },
       open_url: async ({ url }) => { window.open(url, "_blank"); return { ok: true }; },
       open_blank_html: async () => ({ ok: true }),
       check_ffmpeg: async () => ({ ok: true, found: true, directory: "D:\\FFmpeg\\bin", ffmpeg: "D:\\FFmpeg\\bin\\ffmpeg.exe", ffprobe: "D:\\FFmpeg\\bin\\ffprobe.exe" }),
       save_ffmpeg_path: async ({ path }) => ({ ok: Boolean(path), found: Boolean(path), directory: path || "", ffmpeg: path || "", ffprobe: path || "" }),
-      choose_folder: async () => ({ ok: true, path: "D:\\Stickers" }),
+      choose_folder: async ({ kind } = {}) => ({ ok: true, path: kind === "model-cache" ? "D:\\Models\\MAW" : "D:\\Stickers" }),
       save_sticker_dir: async ({ path }) => { saved.stickerDir = path || ""; return { ok: Boolean(path), stickerDir: saved.stickerDir, field: path ? "" : "stickerDir", error: path ? "" : "missing" }; },
       check_server_media: async ({ jsonPath }) => ({ ok: Boolean(jsonPath), hasMedia: Boolean(jsonPath), mediaPath: "D:\\Demo\\clip.mp4", mediaExists: Boolean(jsonPath) }),
       start_server: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "log", message: "[mock] would open http://127.0.0.1:8250/ after server responds" }), 120); return { ok: true, url: "http://127.0.0.1:8250/" }; },
@@ -443,7 +461,7 @@
   function setError(field, message) { const input = $(field); const hint = $(`${field}Error`); if (input) input.classList.toggle("invalid", Boolean(message)); if (hint) { renderMessage(hint, message); hint.classList.toggle("visible", Boolean(message)); } }
   function setOutputNotice(message) { const notice = $("srtPathNotice"); if (!notice) return; renderMessage(notice, message); notice.classList.toggle("hidden", !message); }
   function mediaDropError() { const separator = state.lang === "zh" ? "、" : ", "; return t("drop_reject_media").replace("{extensions}", Array.from(MEDIA_EXTS).join(separator)); }
-  function clearErrors() { ["mediaPath", "srtPath", "apiKey", "workspaceId", "localModelPath", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => setError(field, "")); }
+  function clearErrors() { ["mediaPath", "srtPath", "apiKey", "workspaceId", "localModelPath", "localModelCachePath", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => setError(field, "")); }
   function formPayload() { return { providerId: $("provider").value, modelId: $("model").value, mediaPath: $("mediaPath").value.trim(), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), device: $("localDevice").value, language: languageValue(), lengthLimit: $("lengthLimit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateHtml: $("generateHtml").checked, guiLang: state.lang }; }
   function serverPayload() { return { jsonPath: $("jsonPath").value.trim(), mediaPath: $("serverMediaPath").value.trim(), port: $("port").value || "8250", guiLang: state.lang }; }
   function renderServerButton() {
@@ -487,6 +505,7 @@
     target.className = `local-status ${installing ? "warn" : (runtime.ready ? "ready" : "warn")}`;
     const location = [runtime.path && `${t("local_runtime_path")}${runtime.path}`, runtime.modelCachePath && `${t("local_model_cache_path")}${runtime.modelCachePath}`].filter(Boolean).join("\n");
     $("localRuntimeHint").textContent = [runtime.detail || (runtime.ready ? t("local_runtime_ready_hint") : t("local_runtime_hint")), location].filter(Boolean).join("\n");
+    $("localModelCachePath").value = state.config.modelCacheRoot || runtime.modelCachePath || $("localModelCachePath").value || "";
     const button = $("installLocalRuntime");
     button.disabled = false;
     button.textContent = installing ? t("local_runtime_cancel") : (runtime.status === "ready" ? t("local_runtime_repair") : t("local_runtime_install"));
@@ -497,19 +516,29 @@
     $("localRuntimeProgressMessage").textContent = state.localRuntimeProgressMessage || "";
   }
   function renderLocalModelStatus() {
-    if (!isLocalProvider()) return;
+    if (!isLocalProvider()) { $("model").disabled = false; return; }
     const status = localStatus();
+    const preparing = state.localPreparing;
     const target = $("localModelStatus");
     const key = status.status === "installed" && status.path ? "local_path_selected" : ({ installed: "local_installed", partial: "local_partial", runtime_missing: "local_runtime_missing", path_mismatch: "local_model_path_mismatch", missing: "local_missing" }[status.status] || "local_missing");
-    target.textContent = state.localPreparing && state.localProgressMessage ? state.localProgressMessage : t(key);
-    target.className = `local-status ${state.localPreparing ? "warn" : (status.status === "installed" ? "ready" : "warn")}`;
+    target.textContent = preparing && state.localProgressMessage ? state.localProgressMessage : t(key);
+    target.className = `local-status ${preparing ? "warn" : (status.status === "installed" ? "ready" : "warn")}`;
     $("localModelHint").textContent = status.detail || t("local_prepare_hint");
     $("localModelPath").value = status.path || $("localModelPath").value || "";
-    const canPrepare = Boolean(status.canPrepare) && !state.localPreparing;
-    $("prepareLocalModel").disabled = !canPrepare;
-    $("prepareLocalModel").classList.toggle("hidden", status.status === "installed");
-    $("prepareLocalModel").textContent = status.status === "installed" ? t("local_prepare_again") : t("local_prepare");
-    $("localModelProgress").classList.toggle("hidden", !state.localPreparing);
+    const canPrepare = Boolean(status.canPrepare) && !preparing;
+    const button = $("prepareLocalModel");
+    button.disabled = preparing ? false : !canPrepare;
+    button.classList.toggle("hidden", !preparing && status.status === "installed");
+    button.textContent = preparing ? t("local_prepare_cancel") : (status.status === "installed" ? t("local_prepare_again") : t("local_prepare"));
+    $("model").disabled = preparing;
+    $("localModelProgress").classList.toggle("hidden", !preparing);
+    const progress = state.localProgress || {};
+    const percent = Number(progress.percent);
+    const determinate = Number.isFinite(percent);
+    const track = $("localModelProgressTrack");
+    const bar = $("localModelProgressBar");
+    track.classList.toggle("indeterminate", !determinate);
+    bar.style.width = determinate ? `${Math.max(0, Math.min(99, percent))}%` : "";
     $("localModelProgressMessage").textContent = state.localProgressMessage || "";
   }
   async function refreshLocalRuntime() {
@@ -517,6 +546,7 @@
     const result = await bridge("get_local_runtime");
     if (!result.ok) { applyErrorResult(result); return result; }
     state.config.localRuntime = result;
+    state.config.modelCacheRoot = result.modelCachePath || state.config.modelCacheRoot || "";
     renderLocalRuntime();
     return result;
   }
@@ -524,7 +554,10 @@
     if (!isLocalProvider()) return;
     const result = await bridge("get_local_models", { modelId: $("model").value, modelPath: $("localModelPath").value.trim() });
     if (!result.ok) { applyErrorResult(result); return result; }
-    if (result.runtime) state.config.localRuntime = result.runtime;
+    if (result.runtime) {
+      state.config.localRuntime = result.runtime;
+      state.config.modelCacheRoot = result.runtime.modelCachePath || state.config.modelCacheRoot || "";
+    }
     const models = result.models || [];
     models.forEach((item) => { const local = provider().models.find((model) => model.id === item.id); if (local && item.localStatus) local.localStatus = item.localStatus; });
     renderLocalModelStatus();
@@ -537,6 +570,21 @@
     $("localModelPath").value = state.localModelPaths[model.id] || "";
     state.localModelId = model.id;
     setError("localModelPath", "");
+  }
+  async function saveLocalModelCache(path) {
+    const value = String(path || "").trim();
+    const result = await bridge("save_settings", { providerId: "local", modelId: $("model").value, apiKey: "", guiLang: state.lang, modelCacheRoot: value });
+    if (!result.ok) {
+      applyErrorResult(result);
+      setStatus(errText(result.code, result.detail || result.error));
+      return result;
+    }
+    state.config.modelCacheRoot = result.modelCacheRoot || value;
+    await refreshLocalRuntime();
+    await refreshLocalModels();
+    setError("localModelCachePath", "");
+    setStatus(t("saved"));
+    return result;
   }
   function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); $("langToggle").textContent = t("other_language"); $("demoBadge").textContent = t("demo_mode"); renderKeyStatus(); renderStickerCurrent(); renderPromptCharacterCount(); renderHotwordWarnings(); renderServerButton(); renderLocalRuntime(); renderLocalModelStatus(); }
   function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); const local = isLocalProvider(); $("cloudAuthField").classList.toggle("hidden", local); $("localRuntimePanel").classList.toggle("hidden", !local); $("localModelPanel").classList.toggle("hidden", !local); $("localDeviceField").classList.toggle("hidden", !local); $("openKeyUrl").classList.toggle("hidden", local); $("apiKey").value = current.apiKey || ""; applySelectedModel(persistReset); $("openKeyUrl").textContent = current.label; $("regionField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || current.regions.length === 0); renderKeyStatus(); syncWorkspace(); if (local) { renderLocalRuntime(); void refreshLocalRuntime(); void refreshLocalModels(); } }
@@ -637,16 +685,27 @@
     if (event.type === "log") appendLog(event.message);
     if (event.type === "modelProgress") {
       state.localProgressMessage = event.message || "";
+      state.localProgress = event;
       renderLocalModelStatus();
     }
     if (event.type === "modelPrepared") {
       state.localPreparing = false;
       state.localProgressMessage = "";
+      state.localProgress = null;
       const model = provider().models.find((item) => item.id === event.modelId);
       if (model && event.status) model.localStatus = event.status;
       renderLocalModelStatus();
       setStatus(t("local_prepare_done"));
       appendLog(t("local_prepare_done"));
+    }
+    if (event.type === "localPrepareCancelled") {
+      state.localPreparing = false;
+      state.localProgressMessage = "";
+      state.localProgress = null;
+      void refreshLocalModels();
+      renderLocalModelStatus();
+      setStatus(t("local_prepare_cancelled"));
+      appendLog(t("local_prepare_cancelled"));
     }
     if (event.type === "localRuntimeProgress") {
       state.localRuntimeInstalling = true;
@@ -675,6 +734,7 @@
     if (event.type === "error" && event.code === "local_prepare_failed") {
       state.localPreparing = false;
       state.localProgressMessage = "";
+      state.localProgress = null;
     }
     if (event.type === "error" && ["local_runtime_install_failed", "local_runtime_cancelled"].includes(event.code)) {
       state.localRuntimeInstalling = false;
@@ -720,12 +780,15 @@
   ["apiKey", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
   $("refreshServerStatus").addEventListener("click", async () => { $("refreshServerStatus").disabled = true; try { await checkExistingServer(); } finally { $("refreshServerStatus").disabled = false; } });
   $("openKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().keyUrl }));
-  $("pickLocalModelPath").addEventListener("click", async () => { const result = await bridge("choose_folder"); if (result.ok) { $("localModelPath").value = result.path; state.localModelPaths[selectedModel().id] = result.path; setError("localModelPath", ""); await refreshLocalModels(); } });
+  $("pickLocalModelPath").addEventListener("click", async () => { const result = await bridge("choose_folder", { kind: "model" }); if (result.ok) { $("localModelPath").value = result.path; state.localModelPaths[selectedModel().id] = result.path; setError("localModelPath", ""); await refreshLocalModels(); } });
+  $("pickLocalModelCachePath").addEventListener("click", async () => { const result = await bridge("choose_folder", { kind: "model-cache" }); if (result.ok) { $("localModelCachePath").value = result.path; await saveLocalModelCache(result.path); } });
+  $("saveLocalModelCache").addEventListener("click", async () => { await saveLocalModelCache($("localModelCachePath").value); });
+  $("localModelCachePath").addEventListener("input", () => setError("localModelCachePath", ""));
   $("localModelPath").addEventListener("input", () => { setError("localModelPath", ""); if (isLocalProvider()) { state.localModelPaths[selectedModel().id] = $("localModelPath").value.trim(); void refreshLocalModels(); } });
   $("refreshLocalRuntime").addEventListener("click", async () => { $("refreshLocalRuntime").disabled = true; try { await refreshLocalRuntime(); await refreshLocalModels(); } finally { $("refreshLocalRuntime").disabled = false; } });
   $("installLocalRuntime").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localRuntimeInstalling) { await bridge("cancel_local_runtime"); return; } state.localRuntimeInstalling = true; state.localRuntimeProgress = 0; state.localRuntimeProgressMessage = t("local_runtime_installing"); renderLocalRuntime(); appendLog(t("local_runtime_installing")); const result = await bridge("install_local_runtime", { repair: state.config.localRuntime?.status === "ready" }); if (!result.ok) { state.localRuntimeInstalling = false; state.localRuntimeProgressMessage = ""; applyErrorResult(result); renderLocalRuntime(); } });
   $("refreshLocalModels").addEventListener("click", async () => { $("refreshLocalModels").disabled = true; try { await refreshLocalModels(); } finally { $("refreshLocalModels").disabled = false; } });
-  $("prepareLocalModel").addEventListener("click", async () => { if (!isLocalProvider()) return; state.localPreparing = true; state.localProgressMessage = t("local_prepare_running"); renderLocalModelStatus(); appendLog(t("local_prepare_running")); const result = await bridge("prepare_local_model", { modelId: $("model").value, modelPath: $("localModelPath").value.trim(), device: $("localDevice").value }); if (!result.ok) { state.localPreparing = false; state.localProgressMessage = ""; applyErrorResult(result); renderLocalModelStatus(); } else if (result.alreadyInstalled) { state.localPreparing = false; state.localProgressMessage = ""; renderLocalModelStatus(); setStatus(t("local_installed")); } });
+  $("prepareLocalModel").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localPreparing) { state.localProgressMessage = t("local_prepare_cancelling"); renderLocalModelStatus(); appendLog(t("local_prepare_cancelling")); const result = await bridge("cancel_local_model"); if (!result.ok) { state.localProgressMessage = t("local_prepare_running"); applyErrorResult(result); renderLocalModelStatus(); } return; } state.localPreparing = true; state.localProgressMessage = t("local_prepare_running"); state.localProgress = null; renderLocalModelStatus(); appendLog(t("local_prepare_running")); const result = await bridge("prepare_local_model", { modelId: $("model").value, modelPath: $("localModelPath").value.trim(), device: $("localDevice").value }); if (!result.ok) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; applyErrorResult(result); renderLocalModelStatus(); } else if (result.alreadyInstalled) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; renderLocalModelStatus(); setStatus(t("local_installed")); } });
   $("ffmpegHelp").addEventListener("click", () => bridge("open_url", { url: "https://ffmpeg.org/download.html" }));
   $("settingsButton").addEventListener("click", openSettings); $("settingsClose").addEventListener("click", closeSettings); $("settingsBackdrop").addEventListener("click", closeSettings); document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeSettings(); });
   $("changeFfmpeg").addEventListener("click", () => $("ffmpegPathBox").classList.remove("hidden"));
