@@ -12,7 +12,8 @@
     '撤销': 'Undo', '重做': 'Redo', '↶ 撤销': '↶ Undo', '↷ 重做': '↷ Redo',
     '打开工程': 'Open project',
     '最近工程': 'Recent projects', '自动打开上次工程': 'Automatically open last project',
-    '加载媒体': 'Load media', '加载字幕': 'Load subtitles', '保存工程': 'Save project', '另存为…': 'Save as…', '保存': 'Save', '保存成功！': 'Saved!',
+    '加载媒体': 'Load media', '加载字幕': 'Load subtitles', '保存工程': 'Save project', '另存为…': 'Save as…', '保存': 'Save', '保存成功！': 'Saved!', '保存失败': 'Save failed',
+    'item 内容': 'Item content', '字幕内容': 'Subtitle content', '关闭提示': 'Dismiss notification',
     '📥 松开以加载文件（视频 / 音频 / JSON / SRT）': '📥 Drop to load files (video / audio / JSON / SRT)',
     '自动保存': 'Auto-save', '自动保存间隔（秒）': 'Auto-save interval (seconds)',
     '导出字幕': 'Export subtitles', '导出字幕 ▾': 'Export subtitles ▾',
@@ -295,7 +296,7 @@
   const attributeOriginals = new WeakMap();
   const SKIP_SELECTOR = [
     '#cue-list', '#cue-panel-text', '#overlay', '#sticker-overlay-layer',
-    '#media-name', '#json-name', '#sticker-grid', 'script', 'style'
+    '#media-name', '#json-name', '#sticker-grid', '.hint-project-preview-value', 'script', 'style'
   ].join(',');
   const ATTRIBUTE_SKIP_SELECTOR = [
     // .waveform-cue-block 的 title 是用户字幕原文，不能参与翻译
@@ -414,6 +415,10 @@
     if (match) return `${translateText(match[1])} · manually adjusted`;
     match = /^上次打开：(.+)$/.exec(text);
     if (match) return `Last opened: ${match[1]}`;
+    match = /^第\s*(\d+)\s*条字幕(?:\s*·\s*item\s*(\d+))?$/.exec(text);
+    if (match) return match[2] ? `Subtitle ${match[1]} · item ${match[2]}` : `Subtitle ${match[1]}`;
+    match = /^定位到第\s*(\d+)\s*条字幕$/.exec(text);
+    if (match) return `Go to subtitle ${match[1]}`;
     match = /^保存失败：(.+)$/.exec(text);
     if (match) return `Save failed: ${match[1]}`;
     match = /^打开工程失败：(.+)$/.exec(text);
