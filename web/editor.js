@@ -2396,17 +2396,12 @@ function beginPendingExtensionBinding(index, track = getActiveExtensionTrack()) 
   if (!extension || !track) return;
   const overlapping = overlappingMainIndexesForExtension(extension);
   const unbound = overlapping.filter((mainIndex) => !bindingForMainIndex(mainIndex));
-  if (unbound.length > 0) {
-    // 多条主字幕重叠时，优先采用时间列表中第一条尚未绑定的主字幕，
-    // 避免用户每次都要手动处理重叠候选；如果所有候选已有绑定，下面仍进入手动替换流程。
+  if (overlapping.length === 1 && unbound.length === 1) {
+    // 只有一个时间重叠且尚未绑定的主字幕时直接完成绑定；多个候选交给用户选择。
     const mainIndex = unbound[0];
     selectOnly(mainIndex);
     selectOnlyExtension(index, track);
-    bindSelectedSubtitlePair(
-      overlapping.length > 1
-        ? `重叠区存在多条主字幕，已自动绑定第一条未绑定的主字幕（主字幕 ${mainIndex + 1}）`
-        : null,
-    );
+    bindSelectedSubtitlePair();
     return;
   }
   pendingExtensionBinding = { trackId: track.id, extensionId: extension.id };
@@ -2420,7 +2415,7 @@ function beginPendingExtensionBinding(index, track = getActiveExtensionTrack()) 
   }
 }
 
-function bindSelectedSubtitlePair(successMessage = null) {
+function bindSelectedSubtitlePair() {
   if (!multiSubtitleVisible()) return;
   if (selectedIdxs.size !== 1 || selectedExtensionIdxs.size !== 1) {
     flashHint('请分别选中一条主字幕和一条扩展字幕后再绑定');
@@ -2441,11 +2436,9 @@ function bindSelectedSubtitlePair(successMessage = null) {
   renderAll({ waveform: 'none' });
   waveformEditor?.updateSelection();
   flashHint(
-    successMessage || (
-      replacedBinding
-        ? `已替换主字幕 ${mainIndex + 1} 的绑定，改为扩展字幕 ${extensionIndex + 1}`
-        : `已绑定主字幕 ${mainIndex + 1} 与扩展字幕 ${extensionIndex + 1}`
-    ),
+    replacedBinding
+      ? `已替换主字幕 ${mainIndex + 1} 的绑定，改为扩展字幕 ${extensionIndex + 1}`
+      : `已绑定主字幕 ${mainIndex + 1} 与扩展字幕 ${extensionIndex + 1}`,
     'success',
   );
 }
@@ -2762,7 +2755,7 @@ function renderCurrentCuePanel() {
     cuePanelTotalLength.textContent = '0';
     cuePanelCharsPerSecond.textContent = '0.00';
     cuePanelSticker.replaceChildren();
-    cuePanelSticker.textContent = '未选择';
+    cuePanelSticker.textContent = window.MAWE_I18N?.translateText?.('未选择') || '未选择';
     return;
   }
   if (document.activeElement !== cuePanelText || !cuePanelUndoPushed) cuePanelText.value = seg.text || '';
