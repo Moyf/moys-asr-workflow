@@ -1,11 +1,46 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
 import sys
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
 
 
 ROOT = Path(SPECPATH).resolve()
+
+binaries = []
+if sys.platform == "linux":
+    # Qt 6.5+ 的 xcb 平台插件需要 libxcb-cursor；部分环境（如 ubuntu-22.04
+    # runner）PyInstaller 的 ldd 分析收集不到它，导致 AppImage 无法启动。
+    # 显式收集，保证 AppImage 自包含。
+    try:
+        import subprocess
+
+        def _ld_so_path(name: str) -> str | None:
+            table = subprocess.check_output(["ldconfig", "-p"], text=True, stderr=subprocess.DEVNULL)
+            for line in table.splitlines():
+                parts = line.split("=>")
+                if len(parts) == 2 and name in parts[0]:
+                    return parts[1].strip()
+            return None
+
+        libxcb_cursor = _ld_so_path("libxcb-cursor.so.0")
+        if libxcb_cursor:
+            # 必须放在 Qt 的 LibrariesPath（_internal/PyQt6/Qt6/lib）：QLibrary
+            # 搜索 xcb-cursor 时走 Qt 库目录，不走 LD_LIBRARY_PATH。
+            binaries.append((libxcb_cursor, "PyQt6/Qt6/lib"))
+            # Qt 用 QLibrary("xcb-cursor") 找无版本 libxcb-cursor.so；
+            # ubuntu 等发行版只提供 .so.0，需复制一份无版本名。
+            unversioned = Path(libxcb_cursor).with_name("libxcb-cursor.so")
+            if not unversioned.exists():
+                import shutil
+                import tempfile
+
+                unversioned = Path(tempfile.mkdtemp(prefix="maw-spec-")) / "libxcb-cursor.so"
+                shutil.copy2(libxcb_cursor, unversioned)
+            binaries.append((str(unversioned), "PyQt6/Qt6/lib"))
+    except Exception:  # noqa: BLE001 - 收集失败时回退 ldd 默认行为
+        pass
 
 datas = [
     (str(ROOT / "web"), "web"),
