@@ -1247,6 +1247,16 @@
   .multi-subtitle-import-preview .summary { color: var(--text-primary); font-weight: 600; }
   .multi-subtitle-import-preview .warning { color: var(--amber-hover); }
   .multi-subtitle-split-modal { width: min(720px, calc(100vw - 32px)); }
+  .multi-subtitle-split-footer {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin-top: 16px; flex-wrap: wrap;
+  }
+  .modal .multi-subtitle-split-auto-submit {
+    display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text-muted);
+    cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  .multi-subtitle-split-auto-submit input { margin: 0; accent-color: var(--accent); }
+  .multi-subtitle-split-footer .actions { margin-top: 0; }
   .multi-subtitle-split-meta { color: var(--text-muted); font: 11px/1.45 var(--font-mono); margin-bottom: 8px; }
   .multi-subtitle-split-lane { display: grid; gap: 5px; margin-top: 10px; }
   .multi-subtitle-split-lane[hidden] { display: none; }

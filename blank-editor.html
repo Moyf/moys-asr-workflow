@@ -1265,6 +1265,16 @@
   .multi-subtitle-import-preview .summary { color: var(--text-primary); font-weight: 600; }
   .multi-subtitle-import-preview .warning { color: var(--amber-hover); }
   .multi-subtitle-split-modal { width: min(720px, calc(100vw - 32px)); }
+  .multi-subtitle-split-footer {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin-top: 16px; flex-wrap: wrap;
+  }
+  .modal .multi-subtitle-split-auto-submit {
+    display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text-muted);
+    cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  .multi-subtitle-split-auto-submit input { margin: 0; accent-color: var(--accent); }
+  .multi-subtitle-split-footer .actions { margin-top: 0; }
   .multi-subtitle-split-meta { color: var(--text-muted); font: 11px/1.45 var(--font-mono); margin-bottom: 8px; }
   .multi-subtitle-split-lane { display: grid; gap: 5px; margin-top: 10px; }
   .multi-subtitle-split-lane[hidden] { display: none; }
@@ -2506,7 +2516,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-12 16:29</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-12 17:25</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -3336,9 +3346,15 @@
     </section>
     <div class="multi-subtitle-split-preview" id="multi-subtitle-split-preview"></div>
     <div class="multi-subtitle-split-error" id="multi-subtitle-split-error" role="status"></div>
-    <div class="actions">
-      <button type="button" id="multi-subtitle-split-cancel">取消（Esc）</button>
-      <button type="button" id="multi-subtitle-split-confirm" class="primary">拆分（Enter）</button>
+    <div class="multi-subtitle-split-footer">
+      <label class="multi-subtitle-split-auto-submit" for="multi-subtitle-split-auto-submit">
+        <input type="checkbox" id="multi-subtitle-split-auto-submit" checked>
+        全部拆分后自动提交
+      </label>
+      <div class="actions">
+        <button type="button" id="multi-subtitle-split-cancel">取消（Esc）</button>
+        <button type="button" id="multi-subtitle-split-confirm" class="primary">拆分（Enter）</button>
+      </div>
     </div>
   </div>
 </div>
@@ -4854,7 +4870,7 @@
     '移动鼠标选择中间的合法断点；左侧用黄色、右侧用绿色表示拆分后的两段。连续型按字符，单词型不会拆碎单词。': 'Move the mouse to choose a valid boundary; the two split parts use yellow and green. Continuous text uses character boundaries, and word text never splits a word.',
     '选择拓展字幕拆分点': 'Choose an extension subtitle split point', '选择扩展字幕断点': 'Choose an extension subtitle split point', '选择拓展字幕断点': 'Choose an extension subtitle split point', '选择主字幕拆分点': 'Choose a main subtitle split point',
     '在鼠标位置拆分': 'Split at pointer position', '拆分拓展字幕': 'Split extension subtitle',
-    '取消（Esc）': 'Cancel (Esc)', '拆分（Enter）': 'Split (Enter)',
+    '取消（Esc）': 'Cancel (Esc)', '拆分（Enter）': 'Split (Enter)', '全部拆分后自动提交': 'Auto-submit after all split points are selected',
     '分割工具（R）：点击字幕块在指针位置安全拆分（默认按字词时间码对齐；没有可用字词时间码或关闭设置后打开拆分点弹窗，拒绝 100ms 以内的边缘拆分）；Esc 切回选择': 'Razor tool (R): click a subtitle block to safely split at the pointer (by default aligned to word timestamps; when no usable word timestamps exist or the setting is disabled, open the split-point dialog; reject splits within 100 ms of an edge); Esc returns to Select',
     '菜单': 'Menu', '显示菜单': 'Show menu', '单击': 'Click',
     'Shift+点击': 'Shift+click', 'Ctrl+点击': 'Ctrl+click',
@@ -8689,6 +8705,8 @@ function normalizeClickTarget(value) {
 const DEFAULT_EDITOR_SETTINGS = {
   splitKey: 'ctrl-enter',
   splitUseWordTimestamps: true,
+  // 拆分弹窗中选完所有需要确认的断点后自动提交。
+  splitAutoSubmit: true,
   overlayEnabled: true,
   // 多重字幕开启时，拓展字幕预览默认自动显示。
   extensionOverlayEnabled: true,
@@ -8751,6 +8769,7 @@ function readEditorSettings() {
     return {
       splitKey: saved.splitKey === 'enter' ? 'enter' : DEFAULT_EDITOR_SETTINGS.splitKey,
       splitUseWordTimestamps: saved.splitUseWordTimestamps !== false,
+      splitAutoSubmit: saved.splitAutoSubmit !== false,
       overlayEnabled: saved.overlayEnabled !== false,
       extensionOverlayEnabled: saved.extensionOverlayEnabled !== false,
       exportStartAtZero: saved.exportStartAtZero === true,
@@ -9178,6 +9197,7 @@ const multiSubtitleSplitPreview = document.getElementById('multi-subtitle-split-
 const multiSubtitleSplitError = document.getElementById('multi-subtitle-split-error');
 const multiSubtitleSplitCancel = document.getElementById('multi-subtitle-split-cancel');
 const multiSubtitleSplitConfirm = document.getElementById('multi-subtitle-split-confirm');
+const multiSubtitleSplitAutoSubmit = document.getElementById('multi-subtitle-split-auto-submit');
 const editorSettingsToggle = document.getElementById('editor-settings-toggle');
 const editorSettingsPanel = document.getElementById('editor-settings-panel');
 const subtitlePreviewSettings = document.getElementById('subtitle-preview-settings');
@@ -9427,6 +9447,7 @@ document.addEventListener('mawe:languagechange', () => refreshSplitKeyHelp());
 
 splitKeySel.value = EDITOR_SETTINGS.splitKey;
 if (splitUseWordTimestampsToggle) splitUseWordTimestampsToggle.checked = EDITOR_SETTINGS.splitUseWordTimestamps;
+if (multiSubtitleSplitAutoSubmit) multiSubtitleSplitAutoSubmit.checked = EDITOR_SETTINGS.splitAutoSubmit;
 applyPlatformKeyLabels();
 refreshSplitKeyHelp();
 if (mergeJoinTextInput) mergeJoinTextInput.value = EDITOR_SETTINGS.mergeJoinText;
@@ -9577,6 +9598,9 @@ splitKeySel.addEventListener('change', () => {
 });
 splitUseWordTimestampsToggle?.addEventListener('change', () => {
   updateEditorSettings({ splitUseWordTimestamps: splitUseWordTimestampsToggle.checked });
+});
+multiSubtitleSplitAutoSubmit?.addEventListener('change', () => {
+  updateEditorSettings({ splitAutoSubmit: multiSubtitleSplitAutoSubmit.checked });
 });
 if (mergeJoinTextInput) mergeJoinTextInput.addEventListener('input', () => {
   updateEditorSettings({ mergeJoinText: mergeJoinTextInput.value });
@@ -11642,6 +11666,7 @@ function renderSplitLane(state, lane) {
     if (rawOffset != null) updateLinkedSplitPreview(rawOffset, lane);
     current.lockedLanes[lane] = true;
     updateLinkedSplitLockVisual();
+    maybeAutoSubmitLinkedSplit(current);
   };
   updateSplitLaneVisual(state, lane);
 }
@@ -11683,6 +11708,29 @@ function updateLinkedSplitLockVisual() {
     });
   });
   multiSubtitleSplitPreview?.classList.toggle('locked', mainLocked || extensionLocked);
+}
+
+function isSplitAutoSubmitEnabled() {
+  return multiSubtitleSplitAutoSubmit
+    ? multiSubtitleSplitAutoSubmit.checked
+    : EDITOR_SETTINGS.splitAutoSubmit;
+}
+
+function splitAutoSubmitReady(state) {
+  if (!state?.valid) return false;
+  if (state.kind === 'main') return splitLaneLocked(state, 'main');
+  if (state.kind === 'extension') return splitLaneLocked(state, 'extension');
+  // 字词时间码已固定主轨切点时，主轨没有可交互的确认步骤。
+  const mainReady = !state.mainInteractive || splitLaneLocked(state, 'main');
+  return mainReady && splitLaneLocked(state, 'extension');
+}
+
+function maybeAutoSubmitLinkedSplit(state) {
+  if (state !== pendingLinkedSplit || !isSplitAutoSubmitEnabled() || !splitAutoSubmitReady(state)) {
+    return false;
+  }
+  confirmLinkedSplit();
+  return true;
 }
 
 function updateLinkedSplitPreview(offset, lane = 'extension') {
@@ -15579,6 +15627,9 @@ async function showMultiSubtitleImportChoice(file, segments) {
   });
   renderMultiImportPreview(null, segments);
   multiSubtitleImportModal?.classList.add('show');
+  // 首次导入扩展字幕时默认选择“作为多重字幕”，同时立即展示绑定预览。
+  // 已存在扩展轨时只有替换路径可用，也沿用同一套默认确认流程。
+  prepareMultiSubtitleImport();
   (existingTrack ? multiSubtitleImportReplace : multiSubtitleImportExtension)?.focus();
 }
 

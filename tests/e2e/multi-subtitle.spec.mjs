@@ -86,13 +86,10 @@ async function openMultiSubtitleSettings(page) {
 test('imports an extension SRT with 300ms preview, dual columns, split dialog, and pair deletion undo', async ({ page }) => {
   await importPair(page);
   await expect(page.locator('#multi-subtitle-import-description')).toHaveText('请选择你要执行的行为：');
-  await expect(page.locator('#multi-subtitle-import-preview')).toBeHidden();
-  await expect(page.locator('#multi-subtitle-import-result-confirm')).toBeDisabled();
-  await expect(page.locator('#multi-subtitle-import-extension')).not.toHaveClass(/primary/);
-  await expect(page.locator('#multi-subtitle-import-extension')).toHaveAttribute('aria-pressed', 'false');
-  await page.locator('#multi-subtitle-import-extension').click();
-  await expect(page.locator('#multi-subtitle-import-extension')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#multi-subtitle-import-preview')).toContainText('自动绑定 2 条');
+  await expect(page.locator('#multi-subtitle-import-result-confirm')).toBeEnabled();
+  await expect(page.locator('#multi-subtitle-import-extension')).not.toHaveClass(/primary/);
+  await expect(page.locator('#multi-subtitle-import-extension')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#multi-subtitle-import-preview')).toContainText('未绑定 1 条');
   await page.locator('#multi-subtitle-import-result-confirm').click();
 
@@ -180,6 +177,35 @@ test('imports an extension SRT with 300ms preview, dual columns, split dialog, a
   await expect(page.locator('#cues-container > .multi-dual-cue')).toHaveCount(3);
   await page.keyboard.press('Control+z');
   await expect(page.locator('#cues-container > .multi-dual-cue')).toHaveCount(4);
+});
+
+test('auto-submits a linked split after both subtitle lanes are confirmed', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  const mainText = page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main .text');
+  await mainText.dblclick();
+  await mainText.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 6);
+    range.setEnd(node, 6);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  await page.keyboard.press('Control+Enter');
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await expect(page.locator('#multi-subtitle-split-auto-submit')).toBeChecked();
+
+  await page.locator('#multi-subtitle-split-main-text .multi-subtitle-split-gap').first()
+    .evaluate((element) => element.click());
+  await expect(page.locator('#multi-subtitle-split-main-text')).toHaveClass(/locked/);
+  await page.locator('#multi-subtitle-split-text .multi-subtitle-split-gap').first()
+    .evaluate((element) => element.click());
+  await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+  await expect(page.locator('.multi-cue-column.main .text')).toHaveCount(3);
+  await expect(page.locator('.multi-cue-column.extension .text')).toHaveCount(4);
 });
 
 test('swaps main and extension subtitles from the gear menu and supports undo', async ({ page }) => {
@@ -541,7 +567,8 @@ test('opens the extension-only split dialog from the waveform context menu and u
   await expect(page.locator('#multi-subtitle-split-main-lane')).toBeHidden();
   await expect(page.locator('#multi-subtitle-split-preview')).toContainText('✂️');
   await expect(page.locator('#multi-subtitle-split-preview')).not.toContainText(' / ');
-  await page.locator('#multi-subtitle-split-confirm').click();
+  await expect(page.locator('#multi-subtitle-split-auto-submit')).toBeChecked();
+  await page.locator('#multi-subtitle-split-text .multi-subtitle-split-gap').first().evaluate((element) => element.click());
   await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
   await expect(page.locator('.waveform-cue-block[data-track="extension"]')).toHaveCount(2);
   await expect(page.locator('.multi-cue-column.extension.unbound')).toHaveCount(2);

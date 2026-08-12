@@ -143,7 +143,7 @@
     '移动鼠标选择中间的合法断点；左侧用黄色、右侧用绿色表示拆分后的两段。连续型按字符，单词型不会拆碎单词。': 'Move the mouse to choose a valid boundary; the two split parts use yellow and green. Continuous text uses character boundaries, and word text never splits a word.',
     '选择拓展字幕拆分点': 'Choose an extension subtitle split point', '选择扩展字幕断点': 'Choose an extension subtitle split point', '选择拓展字幕断点': 'Choose an extension subtitle split point', '选择主字幕拆分点': 'Choose a main subtitle split point',
     '在鼠标位置拆分': 'Split at pointer position', '拆分拓展字幕': 'Split extension subtitle',
-    '取消（Esc）': 'Cancel (Esc)', '拆分（Enter）': 'Split (Enter)',
+    '取消（Esc）': 'Cancel (Esc)', '拆分（Enter）': 'Split (Enter)', '全部拆分后自动提交': 'Auto-submit after all split points are selected',
     '分割工具（R）：点击字幕块在指针位置安全拆分（默认按字词时间码对齐；没有可用字词时间码或关闭设置后打开拆分点弹窗，拒绝 100ms 以内的边缘拆分）；Esc 切回选择': 'Razor tool (R): click a subtitle block to safely split at the pointer (by default aligned to word timestamps; when no usable word timestamps exist or the setting is disabled, open the split-point dialog; reject splits within 100 ms of an edge); Esc returns to Select',
     '菜单': 'Menu', '显示菜单': 'Show menu', '单击': 'Click',
     'Shift+点击': 'Shift+click', 'Ctrl+点击': 'Ctrl+click',

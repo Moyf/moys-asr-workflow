@@ -185,6 +185,8 @@ function normalizeClickTarget(value) {
 const DEFAULT_EDITOR_SETTINGS = {
   splitKey: 'ctrl-enter',
   splitUseWordTimestamps: true,
+  // 拆分弹窗中选完所有需要确认的断点后自动提交。
+  splitAutoSubmit: true,
   overlayEnabled: true,
   // 多重字幕开启时，拓展字幕预览默认自动显示。
   extensionOverlayEnabled: true,
@@ -247,6 +249,7 @@ function readEditorSettings() {
     return {
       splitKey: saved.splitKey === 'enter' ? 'enter' : DEFAULT_EDITOR_SETTINGS.splitKey,
       splitUseWordTimestamps: saved.splitUseWordTimestamps !== false,
+      splitAutoSubmit: saved.splitAutoSubmit !== false,
       overlayEnabled: saved.overlayEnabled !== false,
       extensionOverlayEnabled: saved.extensionOverlayEnabled !== false,
       exportStartAtZero: saved.exportStartAtZero === true,
@@ -674,6 +677,7 @@ const multiSubtitleSplitPreview = document.getElementById('multi-subtitle-split-
 const multiSubtitleSplitError = document.getElementById('multi-subtitle-split-error');
 const multiSubtitleSplitCancel = document.getElementById('multi-subtitle-split-cancel');
 const multiSubtitleSplitConfirm = document.getElementById('multi-subtitle-split-confirm');
+const multiSubtitleSplitAutoSubmit = document.getElementById('multi-subtitle-split-auto-submit');
 const editorSettingsToggle = document.getElementById('editor-settings-toggle');
 const editorSettingsPanel = document.getElementById('editor-settings-panel');
 const subtitlePreviewSettings = document.getElementById('subtitle-preview-settings');
@@ -923,6 +927,7 @@ document.addEventListener('mawe:languagechange', () => refreshSplitKeyHelp());
 
 splitKeySel.value = EDITOR_SETTINGS.splitKey;
 if (splitUseWordTimestampsToggle) splitUseWordTimestampsToggle.checked = EDITOR_SETTINGS.splitUseWordTimestamps;
+if (multiSubtitleSplitAutoSubmit) multiSubtitleSplitAutoSubmit.checked = EDITOR_SETTINGS.splitAutoSubmit;
 applyPlatformKeyLabels();
 refreshSplitKeyHelp();
 if (mergeJoinTextInput) mergeJoinTextInput.value = EDITOR_SETTINGS.mergeJoinText;
@@ -1073,6 +1078,9 @@ splitKeySel.addEventListener('change', () => {
 });
 splitUseWordTimestampsToggle?.addEventListener('change', () => {
   updateEditorSettings({ splitUseWordTimestamps: splitUseWordTimestampsToggle.checked });
+});
+multiSubtitleSplitAutoSubmit?.addEventListener('change', () => {
+  updateEditorSettings({ splitAutoSubmit: multiSubtitleSplitAutoSubmit.checked });
 });
 if (mergeJoinTextInput) mergeJoinTextInput.addEventListener('input', () => {
   updateEditorSettings({ mergeJoinText: mergeJoinTextInput.value });
@@ -3138,6 +3146,7 @@ function renderSplitLane(state, lane) {
     if (rawOffset != null) updateLinkedSplitPreview(rawOffset, lane);
     current.lockedLanes[lane] = true;
     updateLinkedSplitLockVisual();
+    maybeAutoSubmitLinkedSplit(current);
   };
   updateSplitLaneVisual(state, lane);
 }
@@ -3179,6 +3188,29 @@ function updateLinkedSplitLockVisual() {
     });
   });
   multiSubtitleSplitPreview?.classList.toggle('locked', mainLocked || extensionLocked);
+}
+
+function isSplitAutoSubmitEnabled() {
+  return multiSubtitleSplitAutoSubmit
+    ? multiSubtitleSplitAutoSubmit.checked
+    : EDITOR_SETTINGS.splitAutoSubmit;
+}
+
+function splitAutoSubmitReady(state) {
+  if (!state?.valid) return false;
+  if (state.kind === 'main') return splitLaneLocked(state, 'main');
+  if (state.kind === 'extension') return splitLaneLocked(state, 'extension');
+  // 字词时间码已固定主轨切点时，主轨没有可交互的确认步骤。
+  const mainReady = !state.mainInteractive || splitLaneLocked(state, 'main');
+  return mainReady && splitLaneLocked(state, 'extension');
+}
+
+function maybeAutoSubmitLinkedSplit(state) {
+  if (state !== pendingLinkedSplit || !isSplitAutoSubmitEnabled() || !splitAutoSubmitReady(state)) {
+    return false;
+  }
+  confirmLinkedSplit();
+  return true;
 }
 
 function updateLinkedSplitPreview(offset, lane = 'extension') {
@@ -7075,6 +7107,9 @@ async function showMultiSubtitleImportChoice(file, segments) {
   });
   renderMultiImportPreview(null, segments);
   multiSubtitleImportModal?.classList.add('show');
+  // 首次导入扩展字幕时默认选择“作为多重字幕”，同时立即展示绑定预览。
+  // 已存在扩展轨时只有替换路径可用，也沿用同一套默认确认流程。
+  prepareMultiSubtitleImport();
   (existingTrack ? multiSubtitleImportReplace : multiSubtitleImportExtension)?.focus();
 }
 
