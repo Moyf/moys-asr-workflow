@@ -103,8 +103,17 @@
     return VIDEO_EXTS.has(extension(mediaPath)) ? mediaPath : "";
   }
 
+  function ocrSourcePath() {
+    return $("toolboxInputPath").value.trim() || autoSourcePath();
+  }
+
+  function ocrSourceIsProject() {
+    const source = ocrSourcePath();
+    return Boolean(source) && extension(source) !== ".srt";
+  }
+
   function syncOcrVideo() {
-    if (!ocrVideoManual) $("ocrVideoPath").value = autoOcrVideoPath();
+    if (!ocrVideoManual) $("ocrVideoPath").value = ocrSourceIsProject() ? "" : autoOcrVideoPath();
   }
 
   function renderOcrRegion() {
@@ -352,7 +361,8 @@
       setResult(message, "error");
       return;
     }
-    const videoPath = $("ocrVideoPath").value.trim() || autoOcrVideoPath();
+    const videoPath = ocrVideoManual ? $("ocrVideoPath").value.trim() : "";
+    const fallbackVideoPath = !ocrVideoManual && !ocrSourceIsProject() ? autoOcrVideoPath() : "";
     if (videoPath && !VIDEO_EXTS.has(extension(videoPath))) {
       const message = t("toolbox_ocr_video_reject");
       setFieldError("ocrVideoPath", message);
@@ -366,6 +376,7 @@
       const result = await bridge("run_ocr_dedup", {
         ...paths,
         videoPath,
+        fallbackVideoPath,
         threshold,
         report: $("ocrReport").checked,
         ...ocrRegionPayload(),
@@ -574,6 +585,7 @@
     clearChainSelection();
     inputManual = Boolean($("toolboxInputPath").value.trim());
     setFieldError("toolboxInputPath", "");
+    syncOcrVideo();
     syncInputName();
   });
   $("ocrVideoPath").addEventListener("input", () => {

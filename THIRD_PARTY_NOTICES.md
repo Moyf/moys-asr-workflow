@@ -9,7 +9,6 @@
 | [RapidOCR](https://github.com/RapidAI/RapidOCR) / PP-OCRv6 | Local CPU OCR for the 「OCR 字幕去重」 toolbox; the frozen bundle includes the PP-OCRv6 tiny model files | Apache-2.0; bundled model files remain subject to upstream model terms |
 | [ONNX Runtime](https://onnxruntime.ai/) | CPU inference runtime for RapidOCR | MIT |
 | [Pillow](https://python-pillow.github.io/) | Decode, crop, and resize video frames before OCR | HPND |
-| [ImageHash](https://github.com/JohannesBuchner/imagehash) | pHash cache for consecutive OCR frames | BSD-2-Clause |
 | [sv-ttk](https://github.com/rdbende/Sun-Valley-ttk-theme) | Sun Valley themed ttk widgets for the desktop GUI | MIT |
 | [PyInstaller](https://pyinstaller.org/) | Build the optional Windows application bundle | GPL-2.0-or-later with a bootloader exception that permits distributing bundled applications |
 | [Python](https://www.python.org/) | Runtime embedded in the optional Windows application bundle | Python Software Foundation License |

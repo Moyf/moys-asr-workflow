@@ -576,6 +576,7 @@ class LauncherApi:
                     srt_path=_optional_path(payload.get("srtPath")),
                     video_path=_optional_path(payload.get("videoPath")),
                     output_mode=_output_mode(payload.get("outputMode")),
+                    fallback_video_path=_optional_path(payload.get("fallbackVideoPath")),
                     region=_ocr_region(payload),
                     threshold=float(str(raw_threshold if raw_threshold is not None else "0.5")),
                     report=bool(payload.get("report")),

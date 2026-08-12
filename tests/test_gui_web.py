@@ -346,6 +346,7 @@ class GuiWebBridgeTests(unittest.TestCase):
                     "projectPath": str(project),
                     "outputMode": "both",
                     "videoPath": str(video),
+                    "fallbackVideoPath": str(self.root / "current.mp4"),
                     "regionMode": "custom",
                     "regionX1": 5,
                     "regionY1": 60,
@@ -360,6 +361,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         find_ffmpeg.assert_called_once()
         request = process.call_args.args[0]
         self.assertEqual(request.video_path, video)
+        self.assertEqual(request.fallback_video_path, self.root / "current.mp4")
         self.assertEqual(request.region.mode, "custom")
         self.assertEqual(request.region.y1, 0.6)
         self.assertEqual(request.threshold, 0.0)
@@ -1588,6 +1590,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertNotIn('id="postprocessModel"', page)
         self.assertIn('bridge("run_script_match"', script)
         self.assertIn('bridge("run_ocr_dedup"', script)
+        self.assertIn("fallbackVideoPath", script)
         self.assertIn('bridge("run_llm_postprocess"', script)
         self.assertIn('bridge("run_fixed_replacement"', script)
         self.assertIn('bridge("run_ffconcat_rebuild"', script)

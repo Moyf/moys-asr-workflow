@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import csv
 import io
-import re
 import subprocess
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
@@ -28,11 +27,8 @@ if TYPE_CHECKING:
 
 OCR_OPERATION: Final = "ocr-dedup"
 DEFAULT_THRESHOLD: Final = 0.5
-DEFAULT_PHASH_THRESHOLD: Final = 5
 MIN_OCR_DURATION_MS: Final = 300
 OCR_TARGET_WIDTH: Final = 960
-
-_NON_WORD_RE = re.compile(r"[^\u4e00-\u9fffA-Za-z0-9]")
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,16 +69,14 @@ class OcrDedupRequest:
     srt_path: Path | None
     video_path: Path | None
     output_mode: OutputMode
+    fallback_video_path: Path | None = None
     region: OcrRegion = OcrRegion()
     threshold: float = DEFAULT_THRESHOLD
     report: bool = False
-    phash_threshold: int = DEFAULT_PHASH_THRESHOLD
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.threshold <= 1.0:
             raise ValueError("OCR 相似度阈值必须在 0 到 1 之间")
-        if self.phash_threshold < -1:
-            raise ValueError("OCR pHash 阈值不能小于 -1")
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,7 +123,7 @@ def run_ocr_dedup(
     """Detect on-screen duplicates and write the selected subtitle artifacts."""
 
     project, source_project, source_srt = _load_input(request.project_path, request.srt_path)
-    video_path = _resolve_video_path(request.video_path, project, source_project)
+    video_path = _resolve_video_path(request.video_path, request.fallback_video_path, project, source_project)
     if not ffmpeg_path.is_file():
         raise ValueError(f"找不到 FFmpeg：{ffmpeg_path}")
 
@@ -148,9 +142,6 @@ def run_ocr_dedup(
     processed = 0
     skipped = 0
     failed = 0
-    cache_hits = 0
-    last_phash: Any = None
-    last_blocks: list[tuple[str, float]] | None = None
 
     with tempfile.TemporaryDirectory(prefix="maw_ocr_frames_") as temporary_directory:
         frame_directory = Path(temporary_directory)
@@ -184,20 +175,11 @@ def run_ocr_dedup(
             try:
                 with load_image(frame_path) as image:
                     crop = request.region.crop(image)
-                    blocks, ocr_source = _recognize_with_cache(
-                        crop,
-                        recognize,
-                        request.phash_threshold,
-                        last_phash,
-                        last_blocks,
-                    )
-                    if request.phash_threshold >= 0:
-                        current_phash = _phash(crop)
-                        if ocr_source == "cached":
-                            cache_hits += 1
-                        else:
-                            last_phash = current_phash
-                            last_blocks = blocks
+                    blocks = [
+                        (str(text_block), float(score))
+                        for text_block, score in recognize(_prepare_image(crop))
+                        if str(text_block).strip()
+                    ]
                     ocr_text = " ".join(text_block for text_block, _ in blocks)
             except Exception as error:  # noqa: BLE001 - one bad frame must not disable a cue.
                 failed += 1
@@ -207,7 +189,7 @@ def run_ocr_dedup(
             processed += 1
             match_result = match(text, ocr_text)
             similarity = match_result.maximum
-            hit = similarity >= request.threshold
+            hit = bool(normalize(ocr_text)) and similarity >= request.threshold
             if hit:
                 segment["disabled"] = True
                 newly_disabled += 1
@@ -220,7 +202,6 @@ def run_ocr_dedup(
                     status="disabled" if hit else "kept",
                     ocr_text=ocr_text,
                     match_result=match_result,
-                    ocr_source=ocr_source,
                 )
             )
 
@@ -241,8 +222,6 @@ def run_ocr_dedup(
     )
     if failed:
         warnings += (f"有 {failed} 条字幕抽帧或 OCR 失败，已安全保留。",)
-    if cache_hits:
-        warnings += (f"pHash 缓存命中 {cache_hits} 次。",)
     return OcrDedupArtifact(
         source_project_path=artifact.source_project_path,
         source_srt_path=artifact.source_srt_path,
@@ -259,7 +238,9 @@ def run_ocr_dedup(
 
 
 def normalize(text: str) -> str:
-    return _NON_WORD_RE.sub("", text).lower()
+    """Keep letters and numbers from every Unicode script, dropping punctuation."""
+
+    return "".join(character.lower() for character in text if character.isalnum())
 
 
 def match(subtitle_text: str, ocr_text: str) -> MatchResult:
@@ -267,6 +248,8 @@ def match(subtitle_text: str, ocr_text: str) -> MatchResult:
 
     subtitle = normalize(subtitle_text)
     ocr = normalize(ocr_text)
+    if not subtitle or not ocr:
+        return MatchResult(jaccard=0.0, containment=0.0, levenshtein=0.0)
     subtitle_set = set(subtitle)
     ocr_set = set(ocr)
     if not subtitle_set or not ocr_set:
@@ -335,6 +318,7 @@ def _integer_value(value: object) -> int:
 
 def _resolve_video_path(
     explicit_path: Path | None,
+    fallback_path: Path | None,
     project: JsonDict,
     source_project: Path | None,
 ) -> Path:
@@ -347,6 +331,8 @@ def _resolve_video_path(
             if not candidate.is_absolute():
                 candidate = source_project.parent / candidate
             return _validate_video_path(candidate, "工程关联媒体")
+    if fallback_path is not None and str(fallback_path).strip():
+        return _validate_video_path(fallback_path, "Launcher 当前媒体")
     raise ValueError("OCR 字幕去重需要一个视频画面；请在工具中选择视频文件")
 
 
@@ -364,21 +350,6 @@ def _notify(on_status: OcrStatus | None, key: str, **details: int) -> None:
         on_status(key, details)
 
 
-def _recognize_with_cache(
-    crop: Any,
-    recognizer: Recognizer,
-    phash_threshold: int,
-    last_phash: Any,
-    last_blocks: list[tuple[str, float]] | None,
-) -> tuple[list[tuple[str, float]], str]:
-    if phash_threshold >= 0 and last_phash is not None and last_blocks is not None:
-        current_phash = _phash(crop)
-        if current_phash - last_phash <= phash_threshold:
-            return last_blocks, "cached"
-    blocks = [(str(text), float(score)) for text, score in recognizer(_prepare_image(crop)) if str(text).strip()]
-    return blocks, "fresh"
-
-
 def _prepare_image(image: Any) -> Any:
     """Resize by width without distorting a full-frame crop."""
 
@@ -387,12 +358,6 @@ def _prepare_image(image: Any) -> Any:
         return image
     target_height = max(1, round(image.height * OCR_TARGET_WIDTH / image.width))
     return image.resize((OCR_TARGET_WIDTH, target_height))
-
-
-def _phash(image: Any) -> Any:
-    import imagehash
-
-    return imagehash.phash(image)
 
 
 def _open_image(path: Path) -> Any:
@@ -465,7 +430,6 @@ def _report_row(
     status: str,
     ocr_text: str = "",
     match_result: MatchResult | None = None,
-    ocr_source: str = "",
     error: str = "",
 ) -> dict[str, object]:
     return {
@@ -478,7 +442,6 @@ def _report_row(
         "sim_cont": round(match_result.containment, 4) if match_result else "",
         "sim_lev": round(match_result.levenshtein, 4) if match_result else "",
         "sim_max": round(match_result.maximum, 4) if match_result else "",
-        "ocr_source": ocr_source,
         "subtitle": text,
         "ocr_text": ocr_text,
         "error": error,
@@ -500,7 +463,6 @@ def _write_report(rows: Sequence[Mapping[str, object]], source: Path | None) -> 
         "sim_cont",
         "sim_lev",
         "sim_max",
-        "ocr_source",
         "subtitle",
         "ocr_text",
         "error",

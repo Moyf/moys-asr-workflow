@@ -91,7 +91,6 @@ a = Analysis(
         "maw.soniox",
         "maw.bcut",
         "PIL",
-        "imagehash",
         "numpy",
         "rapidocr",
         "onnxruntime",

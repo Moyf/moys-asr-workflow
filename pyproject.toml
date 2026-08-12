@@ -6,7 +6,6 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "AGPL-3.0-only" }
 dependencies = [
-    "imagehash>=4.3",
     "jieba>=0.42",
     "onnxruntime>=1.18",
     "pillow>=10.0.0",
