@@ -734,6 +734,29 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         run_app.assert_not_called()
 
+    def test_entrypoint_debug_aliases_configure_launcher_debug_modes(self) -> None:
+        import maw_gui
+        import maw.gui_web
+
+        for argv, expected in (
+            (["-dbg"], mock.call(debug=True, devtools=False)),
+            (["--debug"], mock.call(debug=True, devtools=False)),
+            (["-dt"], mock.call(debug=True, devtools=True)),
+            (["--devtools"], mock.call(debug=True, devtools=True)),
+        ):
+            with self.subTest(argv=argv), mock.patch("maw.gui_web.run_app") as run_app:
+                self.assertEqual(maw_gui.main(argv), 0)
+                run_app.assert_called_once_with(**expected.kwargs)
+
+    def test_debug_flag_with_transcription_arguments_remains_public_cli(self) -> None:
+        import maw_gui
+
+        with mock.patch("maw.cli.main", return_value=7) as cli_main:
+            exit_code = maw_gui.main(["--debug", "--input", "clip.mp3"])
+
+        self.assertEqual(exit_code, 7)
+        cli_main.assert_called_once_with(["--debug", "--input", "clip.mp3"])
+
     def test_entrypoint_help_subprocess_is_headless_safe(self) -> None:
         completed = subprocess.run(
             [sys.executable, str(ROOT / "maw_gui.py"), "--help"],

@@ -16,7 +16,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _port, _register_mosp_association, _request_from_payload, _route_dropped_path  # noqa: E402
+from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
 
@@ -1493,6 +1493,33 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(mosp_project, {"type": "dropJson", "path": r"D:\Videos\clip.mosp"})
         self.assertEqual(subtitle, {"type": "dropSubtitle", "path": r"D:\Videos\clip.srt"})
         self.assertEqual(hotwords, {"type": "dropHotwordFile", "path": r"D:\Videos\clip.txt"})
+
+
+@final
+class LauncherRuntimeTests(unittest.TestCase):
+    def test_run_app_passes_debug_and_controls_automatic_devtools(self) -> None:
+        paths = LauncherPaths(
+            root=Path("launcher-root"),
+            env_path=Path("launcher-root/.env"),
+            launcher_html=Path("launcher-root/launcher.html"),
+        )
+
+        for debug, devtools in ((False, False), (True, False), (True, True)):
+            fake_webview = mock.Mock()
+            fake_webview.settings = {"OPEN_DEVTOOLS_IN_DEBUG": True}
+            fake_webview.create_window.return_value = None
+            fake_webview.start.return_value = None
+            with (
+                mock.patch.dict(sys.modules, {"webview": fake_webview}),
+                mock.patch("maw.gui_web.default_paths", return_value=paths),
+                mock.patch("maw.gui_web.LauncherApi"),
+                mock.patch("maw.gui_web.asset_path", return_value=Path("missing.ico")),
+            ):
+                run_app(debug=debug, devtools=devtools)
+
+            self.assertEqual(fake_webview.settings["OPEN_DEVTOOLS_IN_DEBUG"], devtools)
+            self.assertEqual(fake_webview.start.call_args.kwargs["debug"], debug or devtools)
+            fake_webview.reset_mock()
 
 
 @final

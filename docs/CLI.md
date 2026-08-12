@@ -11,6 +11,8 @@ MAW 的 Release 包除了图形 Launcher，也支持直接用命令行完成转�
 | 模式 | 入口 | 行为 |
 | --- | --- | --- |
 | Launcher | 不带参数 | 启动图形 Launcher，保持原来的双击行为 |
+| Launcher 调试 | `-dbg` / `--debug` | 启动 Launcher 的 pywebview 调试能力；不自动打开 DevTools |
+| Launcher DevTools | `-dt` / `--devtools` | 启动 Launcher 并自动打开 DevTools |
 | 转写 | `-i` / `--input` | 调用 Qwen/Fun-ASR、Soniox 或必剪（实验性），生成 SRT 和 `.mosp` |
 | Server 管理 | `--server` / `--stop-server` | 启动或停止只监听 `127.0.0.1` 的 MAW 编辑器 Server |
 
@@ -21,6 +23,8 @@ MAW 的 Release 包除了图形 Launcher，也支持直接用命令行完成转�
 ```
 
 `-h` 是 `--help` 的短写法。帮助和参数错误不会调用 ASR API；自动化工具可以先执行它确认实际参数。
+
+开发 Launcher 时，可以使用 `MAW.exe -dbg` 或 `MAW.exe --debug` 开启 pywebview 调试能力，使用 `MAW.exe -dt` 或 `MAW.exe --devtools` 在启动后直接打开 DevTools。由于 `--debug` 也保留为转写模式的 API 调试参数，和 `-i`、`--server` 等 CLI 参数一起使用时仍按原有转写或 Server CLI 处理。
 
 ## 2. 准备工作
 

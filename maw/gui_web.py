@@ -1158,9 +1158,13 @@ class LauncherApi:
                 return
 
 
-def run_app() -> None:
+def run_app(*, debug: bool = False, devtools: bool = False) -> None:
     import webview
 
+    # pywebview opens DevTools automatically in debug mode when this setting is
+    # enabled. Keep debug mode and automatic DevTools opening independently
+    # controllable so normal development does not force an extra window.
+    webview.settings["OPEN_DEVTOOLS_IN_DEBUG"] = devtools
     paths = default_paths()
     api = LauncherApi(paths=paths)
     window = webview.create_window(
@@ -1177,7 +1181,11 @@ def run_app() -> None:
         window.events.closing += lambda: api.shutdown()
         window.events.loaded += lambda: apply_dark_title_bar(WINDOW_TITLE)
     icon = asset_path("assets/maw.ico")
-    webview.start(lambda: bind_launcher_drop(window, api), icon=str(icon) if icon.exists() else None)
+    webview.start(
+        lambda: bind_launcher_drop(window, api),
+        debug=debug or devtools,
+        icon=str(icon) if icon.exists() else None,
+    )
 
 
 def bind_launcher_drop(window: object | None, api: LauncherApi) -> None:
