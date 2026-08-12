@@ -33,9 +33,8 @@ from edit import get_default_sticker_dir
 from maw.project import repair_segment_durations
 from maw.qwen_audio import parse_qwen_audio_hotwords
 from maw.speaker import apply_speaker_colors, split_items_by_speaker
-from waveform import embed_waveform
 
-import reapeaks
+from media_cache import embed_media_caches
 
 
 # ===== 路径与常量 =====
@@ -1815,24 +1814,7 @@ def main():
             ],
         }
         if args.with_waveform:
-            print("[waveform] 正在计算并嵌入波形...")
-            waveform_result = embed_waveform(json_data, input_path)
-            json_data = waveform_result.project
-            if waveform_result.error is None:
-                waveform_payload = json_data["waveform"]
-                print(
-                    f"[waveform] 已嵌入 {waveform_payload['peak_count']} peaks "
-                    f"({waveform_payload['peaks_per_second']}/秒)"
-                )
-            else:
-                print(f"[waveform] 警告: {waveform_result.error}；已跳过内嵌波形")
-            # 频谱缓存：媒体旁没有 .ReaPeaks 时自动生成，供编辑器按主频染色。
-            # 与服务端只读一致，这里负责「生成」这一步。
-            reapeaks_path = reapeaks.generate_for_media(input_path)
-            if reapeaks_path is not None:
-                print(f"[reapeaks] 已生成频谱缓存: {reapeaks_path.name}")
-            else:
-                print("[reapeaks] 已跳过频谱缓存生成（缺少 ffmpeg 或 numpy）")
+            json_data = embed_media_caches(json_data, input_path).project
         print("[输出] 正在写入工程文件...")
         json_path.write_text(
             json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8"

@@ -926,12 +926,9 @@ def write_local_outputs(
         "segments": segments,
     }
     if with_waveform:
-        from waveform import embed_waveform
+        from media_cache import embed_media_caches
 
-        waveform_result = embed_waveform(project, input_path)
-        project = waveform_result.project
-        if waveform_result.error:
-            print(f"[waveform] 警告: {waveform_result.error}；已跳过内嵌波形")
+        project = embed_media_caches(project, input_path).project
     json_path.write_text(
         json.dumps(project, ensure_ascii=False, indent=2),
         encoding="utf-8",

@@ -40,7 +40,7 @@ from maw.bcut import (
     transcribe,
 )
 from maw.project import repair_segment_durations, validate_project
-from waveform import embed_waveform
+from media_cache import embed_media_caches
 
 
 def main():
@@ -247,16 +247,7 @@ def main():
             ],
         }
         if args.with_waveform:
-            waveform_result = embed_waveform(json_data, input_path)
-            json_data = waveform_result.project
-            if waveform_result.error is None:
-                waveform_payload = json_data["waveform"]
-                print(
-                    f"[waveform] 已嵌入 {waveform_payload['peak_count']} peaks "
-                    f"({waveform_payload['peaks_per_second']}/秒)"
-                )
-            else:
-                print(f"[waveform] 警告: {waveform_result.error}；已跳过内嵌波形")
+            json_data = embed_media_caches(json_data, input_path).project
         check = validate_project(json_data)
         if not check.ok:
             print("[警告] 工程文件未通过契约校验，请把以下内容反馈给开发者：")
