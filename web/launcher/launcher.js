@@ -526,7 +526,8 @@
       stop_server: async () => ({ ok: true }),
       start_transcription: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "log", message: "[mock] 上传完成" }), 250); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "done", result: { srtPath: "D:\\Demo\\clip.srt", jsonPath: "D:\\Demo\\clip.json", htmlPath: "D:\\Demo\\clip.edit.html" } }), 900); return { ok: true }; },
       open_output_folder: async () => ({ ok: true }),
-      open_html: async () => ({ ok: true })
+      open_html: async () => ({ ok: true }),
+      get_emoji_font_path: async () => ({ ok: true, path: "" })
     };
   }
 
@@ -586,6 +587,16 @@
   function resolveTheme() { if (state.theme === "light" || state.theme === "dark") return state.theme; return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; }
   function applyTheme() { if (resolveTheme() === "light") document.documentElement.dataset.theme = "light"; else delete document.documentElement.dataset.theme; $("themeLight").classList.toggle("active", state.theme === "light"); $("themeDark").classList.toggle("active", state.theme === "dark"); $("themeSystem").classList.toggle("active", state.theme === "system"); }
   function setTheme(pref) { state.theme = pref; try { localStorage.setItem(THEME_KEY, pref); } catch (error) { /* localStorage 不可用时仅作用于本次会话 */ } applyTheme(); }
+
+  // keycap 表情（1️⃣ 等）依赖彩色 emoji 字体：后端把 Noto Color Emoji 缓存到本机
+  // 后提供 file:// URI，这里注入 @font-face；注入一次即可，重复事件会被跳过。
+  function injectEmojiFont(uri) {
+    if (!uri || document.querySelector("style[data-emoji-font]")) return;
+    const style = document.createElement("style");
+    style.dataset.emojiFont = "1";
+    style.textContent = `@font-face{font-family:"MAW Emoji";src:url("${uri}") format("truetype");font-weight:400;font-display:swap;}`;
+    document.head.appendChild(style);
+  }
 
   async function bridge(method, payload = {}) {
     try {
@@ -836,6 +847,8 @@
     $("demoBadge").classList.toggle("hidden", window.MAWLauncher.backend !== "mock");
     state.config = await bridge("get_config");
     window.MAWLauncher.config = state.config;
+    const emojiFont = await bridge("get_emoji_font_path");
+    if (emojiFont && emojiFont.ok && emojiFont.path) injectEmojiFont(emojiFont.path);
     state.lang = state.config.guiLang || "zh";
     fillSelect("provider", state.config.providers, state.config.providerId || "qwen");
     applyProvider(false);
@@ -845,6 +858,7 @@
   }
 
   function handleBackendEvent(event) {
+    if (event.type === "emojiFontReady" && event.path) injectEmojiFont(event.path);
     if (event.type === "log") appendLog(event.message);
     if (event.type === "postprocess_status") window.MAWLauncher?.onPostprocessStatus?.(event);
     if (event.type === "postprocess_stream") window.MAWLauncher?.onPostprocessStream?.(event);

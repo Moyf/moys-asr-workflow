@@ -39,6 +39,18 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+/* 段落标题里的 keycap 表情（1️⃣ 等）由「数字 + U+FE0F + U+20E3」组成，需要彩色 emoji
+   字体完整覆盖才可正常成型；部分 Linux 发行版（如 SteamOS 自带的 Twemoji）缺少
+   U+FE0F，会把 keycap 渲染成「3x」。@font-face "MAW Emoji" 由 launcher.js 注入：
+   后端把 Noto Color Emoji 缓存到本机后提供 file:// URI（仅 Linux，首次启动联网下载）。
+   Windows/macOS 系统 emoji 字体已覆盖，该字体名未定义时直接回退到 --font-sans。 */
+#mediaTitle,
+#settingsTitle,
+#logTitle,
+#serverTitle {
+  font-family: "MAW Emoji", var(--font-sans);
+}
+
 /* 亮色主题：令牌值与 MAWE（web/editor.css）的 [data-theme="light"] 对齐；
    由 <html data-theme="light"> 激活，launcher.js 根据 localStorage / 系统偏好设置。 */
 [data-theme="light"] {

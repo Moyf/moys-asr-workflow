@@ -7,6 +7,8 @@
 ### Fixed
 
 - 修复 Windows 与 macOS 的 tag 发布工作流并发创建同一个 GitHub Release，导致其中一个平台的资产上传长时间等待的问题。
+- 修复 Linux 上 `uv run maw_gui.py` 因缺少 GUI 后端无法启动 Launcher 的问题：`pywebview` 在 Linux 平台自动安装 Qt6 后端（QtPy + PyQt6 + PyQt6-WebEngine），Windows / macOS 依赖不变。
+- 修复 Linux 上 Launcher 段落标题的 keycap 表情（1️⃣ 等）因系统 emoji 字体（如 SteamOS 自带的 Twemoji）缺少 U+FE0F 变体选择符而渲染成「3x」的问题：Linux 下首次启动由后端按顺序尝试 jsDelivr 各 CDN（可用 `MAW_EMOJI_FONT_URL` 覆盖），把 Noto Color Emoji 下载到用户缓存目录后供页面本地引用，之后离线可用；下载失败或非 Linux 平台回退系统字体，不额外加载。
 
 ## [1.4.0-beta.3] - 2026-08-13
 
