@@ -50,8 +50,21 @@
     return total;
   }
 
-  function cueMetrics(text, start, end) {
-    const totalLength = countTextUnits(text);
+  function countSubtitleUnits(text, mode = null) {
+    const normalized = String(text || '').replace(/\r\n?/g, '').replace(/\n/g, '').trim();
+    if (!normalized) return 0;
+    const resolvedMode = mode === 'continuous' || mode === 'word'
+      ? mode : detectSubtitleSplitMode(normalized);
+    if (resolvedMode === 'continuous') {
+      const matches = normalized.match(/[\p{L}\p{N}]/gu);
+      return matches ? matches.length : 0;
+    }
+    return normalized.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
+  }
+
+  function cueMetrics(text, start, end, mode = null) {
+    const totalLength = mode === 'continuous' || mode === 'word'
+      ? countSubtitleUnits(text, mode) : countTextUnits(text);
     const durationSeconds = Math.max(0, Number(end) - Number(start)) / 1000;
     const charsPerSecond = durationSeconds > 0
       ? Number((totalLength / durationSeconds).toFixed(2)) : 0;
@@ -65,14 +78,7 @@
   // 字幕“字数/词数”计量：含 CJK 字符时按「字」计（只数字母与汉字等文字、数字，
   // 不计空白与标点），否则按空白切分计「词」数（同样要求词内至少一个文字/数字）。
   function subtitleTextLength(text) {
-    const normalized = String(text || '').trim();
-    if (!normalized) return 0;
-    // CJK 判定区间：U+3400–U+4DBF（扩展 A）、U+4E00–U+9FFF（基本区）、U+F900–U+FAFF（兼容表意）。
-    if (/[㐀-䶿一-鿿豈-﫿]/.test(normalized)) {
-      const matches = normalized.match(/[\p{L}\p{N}]/gu);
-      return matches ? matches.length : 0;
-    }
-    return normalized.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
+    return countSubtitleUnits(text);
   }
 
   // 短字幕判定：中文少于 threshold 个字 / 英文少于 threshold 个词。
@@ -326,8 +332,12 @@
 
     const time = Number(timeMs);
     if (!Number.isFinite(time)) return -1;
-    const activeIndex = segments.findIndex((segment) => (
-      segment && Number(segment.start) <= time && Number(segment.end) >= time
+    const activeIndex = segments.findIndex((segment, index) => (
+      segment && Number(segment.start) <= time && (
+        Number(segment.end) > time
+        || index === segments.length - 1
+        || Number(segments[index + 1]?.start) > time
+      )
     ));
     if (activeIndex >= 0) {
       return findAdjacentCueIndex(segments, activeIndex, direction, skipDisabled);
@@ -495,6 +505,10 @@
       enabled: source.enabled === true,
       display_mode: MULTI_SUBTITLE_DISPLAY_MODES.has(source.display_mode)
         ? source.display_mode : 'both',
+      main_split_mode: MULTI_SUBTITLE_SPLIT_MODES.has(source.main_split_mode)
+        ? source.main_split_mode
+        : detectSubtitleSplitMode((Array.isArray(mainSegments) ? mainSegments : [])
+          .map((segment) => segment?.text || '').join('\n')),
       tracks,
       bindings: dedupedBindings,
     };
@@ -518,17 +532,33 @@
   function subtitleSplitOffsets(text, mode = 'word') {
     const value = String(text || '');
     const offsets = [];
-    const isBoundaryPunctuation = (character) => /[，。！？；：、“”‘’（）()\[\]{}.,!?;:'"\-—]/u.test(character);
-    let offset = 0;
     const characters = Array.from(value);
-    for (let index = 0; index < characters.length - 1; index++) {
+    if (mode === 'continuous') {
+      let offset = 0;
+      for (let index = 0; index < characters.length - 1; index++) {
+        offset += characters[index].length;
+        offsets.push(offset);
+      }
+      return offsets;
+    }
+
+    // 单词型只在空格组之后提供一个断点。这样「A B」只会显示为
+    // 「A✂️B」，不会在空格两侧各出现一个候选，也不会让标点成为隐式断点。
+    let offset = 0;
+    for (let index = 0; index < characters.length; index++) {
+      if (!/\s/u.test(characters[index])) {
+        offset += characters[index].length;
+        continue;
+      }
+      while (index + 1 < characters.length && /\s/u.test(characters[index + 1])) {
+        index += 1;
+        offset += characters[index].length;
+      }
       offset += characters[index].length;
-      const previous = characters[index];
-      const next = characters[index + 1];
-      const legal = mode === 'continuous'
-        || /\s/u.test(previous) || /\s/u.test(next)
-        || isBoundaryPunctuation(previous) || isBoundaryPunctuation(next);
-      if (legal && offset > 0 && offset < value.length) offsets.push(offset);
+      if (offset > 0 && offset < value.length
+          && value.slice(0, offset).trim() && value.slice(offset).trim()) {
+        offsets.push(offset);
+      }
     }
     return [...new Set(offsets)];
   }
@@ -619,6 +649,8 @@
 
     const oldMain = cloneJsonValue(project.segments) || [];
     const oldExtension = cloneJsonValue(track.segments) || [];
+    const oldMainSplitMode = multi.main_split_mode;
+    const oldExtensionSplitMode = track.split_mode;
     const nextMain = oldExtension.map((segment) => ({ ...segment }));
     const nextExtension = oldMain.map((segment) => {
       const copy = {
@@ -634,6 +666,8 @@
     project.segments.length = 0;
     nextMain.forEach((segment) => project.segments.push(segment));
     track.segments = nextExtension;
+    multi.main_split_mode = oldExtensionSplitMode;
+    track.split_mode = oldMainSplitMode;
 
     let bindingCount = 0;
     (multi.bindings || []).forEach((binding) => {
@@ -1293,6 +1327,7 @@
   window.AsrEditorUtils = {
     buildReplacementPreview,
     countTextUnits,
+    countSubtitleUnits,
     cueMetrics,
     joinSegmentTexts,
     subtitleTextLength,

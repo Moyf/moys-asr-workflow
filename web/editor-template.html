@@ -64,11 +64,11 @@ __WAVEFORM_CSS__
   <span class="sep"></span>
   <span class="multi-subtitle-controls" id="multi-subtitle-controls" hidden>
     <label class="multi-subtitle-main-toggle" id="multi-subtitle-toggle-label"
-           title="请拖入第二个 srt 字幕以开启多重字幕功能">
-      <input type="checkbox" id="multi-subtitle-toggle" title="请拖入第二个 srt 字幕以开启多重字幕功能">
+           title="当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。">
+      <input type="checkbox" id="multi-subtitle-toggle" title="当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。">
       多重字幕
     </label>
-    <span class="dropdown multi-subtitle-settings-dropdown" id="multi-subtitle-settings-dropdown">
+    <span class="dropdown multi-subtitle-settings-dropdown" id="multi-subtitle-settings-dropdown" hidden>
       <button type="button" id="multi-subtitle-settings-toggle" title="多重字幕设置" aria-label="多重字幕设置" aria-expanded="false" aria-controls="multi-subtitle-settings-menu" aria-haspopup="menu">⚙️</button>
       <div class="dropdown-menu multi-subtitle-settings-menu" id="multi-subtitle-settings-menu" role="menu">
         <div class="multi-subtitle-setting-row">
@@ -80,12 +80,20 @@ __WAVEFORM_CSS__
           </select>
         </div>
         <div class="multi-subtitle-setting-row">
-          <span>拆分类型</span>
-          <select id="multi-subtitle-split-mode" title="扩展字幕近似拆分类型">
-            <option value="continuous">连续型</option>
+          <span>主字幕语言类型</span>
+          <select id="multi-subtitle-main-language-mode" title="主字幕语言类型">
             <option value="word" selected>单词型</option>
+            <option value="continuous">字符型</option>
           </select>
         </div>
+        <div class="multi-subtitle-setting-row">
+          <span>副字幕语言类型</span>
+          <select id="multi-subtitle-extension-language-mode" title="副字幕语言类型">
+            <option value="word" selected>单词型</option>
+            <option value="continuous">字符型</option>
+          </select>
+        </div>
+        <div class="multi-subtitle-setting-hint">英文、西文等按空格拆分请选择「单词型」；中文、日文等按字符拆分请选择「字符型」。</div>
         <div class="multi-subtitle-setting-row" id="multi-subtitle-extension-row-height-setting">
           <span>拓展字幕时波形高度</span>
           <select id="multi-subtitle-extension-row-height" title="启用多重字幕时使用的波形行高度">
@@ -364,6 +372,15 @@ __WAVEFORM_CSS__
         <span><kbd>1~5</kbd> 标记颜色 <kbd>0</kbd> 清除颜色</span>
         <span><kbd>C</kbd> 合并所选字幕</span>
       </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">多重字幕</span>
+        <span><kbd>G</kbd> 单选副字幕后绑定到主字幕（唯一重叠时自动匹配）</span>
+        <span><kbd>Shift+G</kbd> 解绑当前副字幕</span>
+        <span><kbd>H</kbd> 对齐副字幕到主字幕时间轴</span>
+        <span><kbd>B</kbd> 单选副字幕后打开副字幕拆分</span>
+        <span>波形标记：<kbd>1</kbd> 主轨 <kbd>2</kbd> 扩展轨</span>
+        <span>语言类型：单词型适合英语等空格语言，字符型适合中文/日文等</span>
+      </div>
     </div>
     <div class="help-group">
       <span class="help-title">波形</span>
@@ -376,7 +393,7 @@ __WAVEFORM_CSS__
       <div class="help-subgroup">
         <span class="help-subtitle">工具</span>
         <span><kbd>V</kbd> 选择工具 <kbd>R</kbd> 分割工具</span>
-        <span><kbd id="help-waveform-split-key">B</kbd> 在红色播放指针处拆分字幕</span>
+        <span><kbd id="help-waveform-split-key">B</kbd> 按所在区域拆分字幕</span>
       </div>
       <div class="help-subgroup">
         <span class="help-subtitle">滚轮</span>
@@ -682,6 +699,7 @@ __WAVEFORM_CSS__
         <button type="button" id="cue-panel-split">在光标处拆分（<kbd id="cue-panel-split-key">Ctrl+Enter</kbd>）</button>
       </div>
       <div class="cue-panel-text-wrap">
+        <div class="cue-panel-target" id="cue-panel-target">未选择</div>
         <textarea id="cue-panel-text" rows="3" placeholder="选择一条字幕开始编辑…"></textarea>
         <div class="cue-panel-metrics">
           <span>总长度 <b id="cue-panel-total-length">0</b></span>
@@ -855,15 +873,15 @@ __WAVEFORM_CSS__
 <div class="modal-mask" id="multi-subtitle-split-modal">
   <div class="modal multi-subtitle-split-modal" role="dialog" aria-modal="true" aria-labelledby="multi-subtitle-split-title">
     <h3 id="multi-subtitle-split-title">联动拆分扩展字幕</h3>
-    <p class="modal-desc">移动鼠标选择中间的合法断点；左侧用黄色、右侧用绿色表示拆分后的两段。连续型按字符，单词型不会拆碎单词。</p>
+    <p class="modal-desc">移动鼠标并点击选择的拆分断点；字符型语言（中文等）按字符拆分，单词型语言（英语等）只在空格处切分，确保不会拆碎单词。你可以在多重字幕设置中切换语言类型。</p>
     <div class="multi-subtitle-split-meta" id="multi-subtitle-split-meta"></div>
     <section class="multi-subtitle-split-lane" id="multi-subtitle-split-main-lane" hidden>
       <h4>主字幕拆分</h4>
       <div class="multi-subtitle-split-text" id="multi-subtitle-split-main-text" tabindex="0" aria-label="选择主字幕拆分点"></div>
     </section>
     <section class="multi-subtitle-split-lane" id="multi-subtitle-split-extension-lane">
-      <h4>拓展字幕拆分</h4>
-      <div class="multi-subtitle-split-text" id="multi-subtitle-split-text" tabindex="0" aria-label="选择拓展字幕断点"></div>
+      <h4>副字幕拆分</h4>
+      <div class="multi-subtitle-split-text" id="multi-subtitle-split-text" tabindex="0" aria-label="选择副字幕断点"></div>
     </section>
     <div class="multi-subtitle-split-preview" id="multi-subtitle-split-preview"></div>
     <div class="multi-subtitle-split-error" id="multi-subtitle-split-error" role="status"></div>

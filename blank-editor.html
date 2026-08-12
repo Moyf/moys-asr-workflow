@@ -820,7 +820,7 @@
     min-width: 30px; padding: 3px 7px; font-size: 15px; line-height: 1;
   }
   .toolbar .multi-subtitle-settings-menu {
-    left: 0; right: auto; width: max-content; min-width: 220px; max-width: min(300px, calc(100vw - 16px));
+    left: 0; right: auto; width: min(240px, calc(100vw - 16px)); min-width: 0; max-width: min(240px, calc(100vw - 16px));
     padding: 7px;
   }
   .multi-subtitle-setting-toggle {
@@ -830,10 +830,15 @@
   }
   .multi-subtitle-setting-toggle:hover { background: var(--accent-tint); color: var(--text-primary); }
   .multi-subtitle-setting-row {
-    display: grid; grid-template-columns: 5em minmax(120px, 1fr); align-items: center; gap: 8px;
+    display: grid; grid-template-columns: minmax(0, 1fr) 108px; align-items: center; gap: 8px;
     padding: 4px 7px; color: var(--text-muted); font-size: 12px; white-space: nowrap;
   }
-  .multi-subtitle-setting-row select { width: 100%; min-width: 0; }
+  .multi-subtitle-setting-row > span { min-width: 0; white-space: normal; line-height: 1.3; }
+  .multi-subtitle-setting-row select { width: 108px; min-width: 0; }
+  .multi-subtitle-setting-hint {
+    padding: 2px 7px 5px; color: var(--text-faint); font-size: 11px;
+    line-height: 1.4; white-space: normal;
+  }
   .toolbar .multi-subtitle-settings-menu .dropdown-item {
     margin: 4px 0; border: 1px solid var(--btn-border); border-radius: var(--radius-sm);
     background: var(--btn-bg); color: var(--btn-text); text-align: center;
@@ -977,6 +982,11 @@
   .cue-panel-time-fields input:focus,
   #cue-panel-text:focus { outline: none; border-color: var(--amber); box-shadow: var(--focus-ring-amber); }
   .cue-panel-text-wrap { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .cue-panel-target {
+    min-height: 16px; color: var(--text-secondary); font-size: 11px; font-weight: 700;
+    letter-spacing: .04em; text-transform: uppercase;
+  }
+  .cue-panel-target.extension { color: var(--amber-hover); }
   #cue-panel-text {
     width: 100%; min-height: 58px; resize: vertical; padding: 7px 9px;
     background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -993,6 +1003,8 @@
     transition: border-color var(--t-fast), color var(--t-fast);
   }
   .cue-panel-sticker:hover { border-color: var(--amber); color: var(--amber-hover); }
+  .cue-panel-sticker.disabled { cursor: not-allowed; opacity: .48; }
+  .cue-panel-sticker.disabled:hover { border-color: var(--border-strong); color: var(--text-muted); }
   .cue-panel-sticker img { width: 100%; height: 100%; object-fit: contain; }
   .cue-panel-sticker .ref { padding: 4px; color: var(--text-secondary); font-size: 10px; text-align: center; }
   #cue-panel-add-sticker { padding: 4px 7px; font-size: 11px; }
@@ -1198,7 +1210,7 @@
   .cue .text[contenteditable] {
     outline: 1px dashed var(--amber); padding: 2px 4px;
     background: var(--bg-input); min-width: 50%; white-space: pre-wrap;
-    user-select: text;
+    box-sizing: border-box; cursor: text; user-select: text;
   }
   .cue mark { background: var(--amber); color: var(--mark-fg); padding: 0 2px; border-radius: 2px; }
 
@@ -1298,6 +1310,7 @@
   .multi-subtitle-split-auto-submit input { margin: 0; accent-color: var(--accent); }
   .multi-subtitle-split-footer .actions { margin-top: 0; }
   .multi-subtitle-split-meta { color: var(--text-muted); font: 11px/1.45 var(--font-mono); margin-bottom: 8px; }
+  .multi-subtitle-split-cut-hint { margin-left: 8px; color: var(--amber-hover); font-family: var(--font-sans); }
   .multi-subtitle-split-lane { display: grid; gap: 5px; margin-top: 10px; }
   .multi-subtitle-split-lane[hidden] { display: none; }
   .multi-subtitle-split-lane h4 {
@@ -1312,15 +1325,18 @@
   .multi-subtitle-split-text .multi-subtitle-split-char.split-left { color: #ffd34d; }
   .multi-subtitle-split-text .multi-subtitle-split-char.split-right { color: #78e08f; }
   .multi-subtitle-split-gap {
-    display: inline-block; position: relative; width: 0; height: 1.8em;
-    vertical-align: -0.35em; cursor: crosshair;
+    display: inline-block; position: relative; width: auto; height: 1.8em;
+    vertical-align: -0.35em; cursor: crosshair; white-space: pre;
   }
   .multi-subtitle-split-gap::before {
     content: '✂️'; position: absolute; left: 50%; top: 50%;
     transform: translate(-50%, -50%) scale(.76); opacity: 0; pointer-events: none;
-    font-size: .82em; line-height: 1; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .4));
+    color: var(--text-primary); font-size: .82em; line-height: 1;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .4));
   }
-  .multi-subtitle-split-gap.active { width: 1.18em; margin: 0 .08em; }
+  .multi-subtitle-split-gap.active {
+    width: 1.18em; margin: 0 .08em; color: transparent;
+  }
   .multi-subtitle-split-gap.active::before { opacity: 1; }
   .multi-subtitle-split-gap.active::after {
     content: ''; position: absolute; left: 50%; top: 15%; bottom: 15%; width: 2px;
@@ -1341,19 +1357,31 @@
   .multi-subtitle-split-preview-label { color: var(--text-muted); }
   .multi-subtitle-split-preview.locked {
     color: var(--accent-hover); font-weight: 600;
-    padding: 8px 10px; border: 1px solid var(--accent-line); border-radius: var(--radius-sm);
-    background: var(--accent-tint);
   }
   .multi-subtitle-split-error { min-height: 20px; color: var(--red-hover); font-size: 12px; }
   .multi-cue-column { min-width: 0; }
   .multi-cue-column.extension { color: var(--text-secondary); }
   .multi-cue-column.unbound { opacity: .82; }
-  .cue.multi-extension-cue { border-left-color: var(--teal, var(--accent)); }
   .multi-cue-empty { color: var(--text-faint); font-style: italic; }
   .cue.multi-dual-cue { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: center; }
   .cue.multi-dual-cue .multi-cue-column { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cue.multi-dual-cue .multi-cue-column-header {
+    display: flex; align-items: flex-start; gap: 6px; min-width: 0;
+  }
+  .cue.multi-dual-cue .multi-cue-column-header .index {
+    flex: 0 0 auto; min-width: 0; width: auto; text-align: left;
+  }
+  .cue.multi-dual-cue .multi-cue-column-header .time {
+    flex: 1 1 auto; min-width: 0; width: auto;
+  }
   .cue.multi-dual-cue .multi-cue-column.extension { border-left: 1px solid var(--border-subtle); padding-left: 10px; }
-  .multi-cue-column .text[contenteditable] { outline: none; }
+  /* 双列中的文本仍保持与单列相同的编辑框；双列文本原本是 inline，导致
+     背景、内边距和虚线只包住文字，且被列容器的省略样式影响。 */
+  .multi-cue-column .text[contenteditable] {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
   #sticker-root-modal .modal { width: 540px; }
   .editor-settings-hint { display: block; font-size: 12px; color: var(--text-muted); margin: 2px 0 0; }
   .editor-settings-hint[hidden] { display: none; }
@@ -1634,17 +1662,18 @@
   .hint-card.hide { animation: hint-fade-out .2s ease-in forwards; }
   /* 类型化提示卡片：3px 语义左条 + 淡色底 + 匹配色边框。默认卡片维持中性。 */
   .hint-card.hint-success {
-    background: color-mix(in srgb, var(--green-soft), var(--bg-overlay));
+    /* 使用不透明基底，避免提示下方的波形或字幕透出。 */
+    background: color-mix(in srgb, var(--green) 12%, var(--bg-overlay) 88%);
     border-color: color-mix(in srgb, var(--green) 35%, var(--border-strong));
     border-left: 3px solid var(--green);
   }
   .hint-card.hint-invalid {
-    background: color-mix(in srgb, var(--text-muted) 8%, var(--bg-overlay));
+    background: color-mix(in srgb, var(--text-muted) 10%, var(--bg-overlay) 90%);
     border-color: var(--border-strong);
     border-left: 3px solid var(--text-muted);
   }
   .hint-card.hint-warning {
-    background: color-mix(in srgb, var(--red-soft), var(--bg-overlay));
+    background: color-mix(in srgb, var(--red) 12%, var(--bg-overlay) 88%);
     border-color: color-mix(in srgb, var(--red) 35%, var(--border-strong));
     border-left: 3px solid var(--red);
   }
@@ -2256,6 +2285,11 @@
   --multi-subtitle-label-height: 15px;
   --multi-subtitle-lane-height: min(35px, calc((100% - (var(--multi-subtitle-bottom-inset) * 2) - var(--multi-subtitle-lane-gap)) / 2));
 }
+/* 基础波形本身会把单字幕块增高到约 72px；双 lane 也保留适度的增高，
+   但不占满单主字幕的高度，避免两条字幕在共享波形中显得过于拥挤。 */
+.waveform-basic .waveform-row.multi-subtitle-row {
+  --multi-subtitle-lane-height: min(54px, calc((100% - (var(--multi-subtitle-bottom-inset) * 2) - var(--multi-subtitle-lane-gap)) / 2));
+}
 .waveform-row.multi-subtitle-row::before {
   content: "1";
   color: var(--active-cue-fg);
@@ -2265,8 +2299,8 @@
 }
 .waveform-row.multi-subtitle-row::after {
   content: "2";
-  color: var(--active-cue-fg);
-  background: var(--accent-strong);
+  color: var(--mark-fg);
+  background: var(--amber);
   bottom: calc(var(--multi-subtitle-bottom-inset) + ((var(--multi-subtitle-lane-height) - var(--multi-subtitle-label-height)) / 2));
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="main"] {
@@ -2481,6 +2515,24 @@
 .waveform-cue-handle.left { left: 0; border-radius: 3px 0 0 3px; }
 .waveform-cue-handle.right { right: 0; border-radius: 0 3px 3px 0; }
 .waveform-cue-label { pointer-events: none; }
+.waveform-binding-marker {
+  position: absolute;
+  z-index: 3;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", sans-serif;
+  font-size: 12px;
+  line-height: 1;
+  pointer-events: none;
+}
+.waveform-cue-block.has-binding-marker .waveform-cue-label {
+  display: block;
+  max-width: calc(100% - 22px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .waveform-basic .waveform-cue-block {
   height: 72px;
   min-height: 35px;
@@ -2542,7 +2594,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-12 17:56</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-12 21:09</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -2582,11 +2634,11 @@
   <span class="sep"></span>
   <span class="multi-subtitle-controls" id="multi-subtitle-controls" hidden>
     <label class="multi-subtitle-main-toggle" id="multi-subtitle-toggle-label"
-           title="请拖入第二个 srt 字幕以开启多重字幕功能">
-      <input type="checkbox" id="multi-subtitle-toggle" title="请拖入第二个 srt 字幕以开启多重字幕功能">
+           title="当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。">
+      <input type="checkbox" id="multi-subtitle-toggle" title="当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。">
       多重字幕
     </label>
-    <span class="dropdown multi-subtitle-settings-dropdown" id="multi-subtitle-settings-dropdown">
+    <span class="dropdown multi-subtitle-settings-dropdown" id="multi-subtitle-settings-dropdown" hidden>
       <button type="button" id="multi-subtitle-settings-toggle" title="多重字幕设置" aria-label="多重字幕设置" aria-expanded="false" aria-controls="multi-subtitle-settings-menu" aria-haspopup="menu">⚙️</button>
       <div class="dropdown-menu multi-subtitle-settings-menu" id="multi-subtitle-settings-menu" role="menu">
         <div class="multi-subtitle-setting-row">
@@ -2598,12 +2650,20 @@
           </select>
         </div>
         <div class="multi-subtitle-setting-row">
-          <span>拆分类型</span>
-          <select id="multi-subtitle-split-mode" title="扩展字幕近似拆分类型">
-            <option value="continuous">连续型</option>
+          <span>主字幕语言类型</span>
+          <select id="multi-subtitle-main-language-mode" title="主字幕语言类型">
             <option value="word" selected>单词型</option>
+            <option value="continuous">字符型</option>
           </select>
         </div>
+        <div class="multi-subtitle-setting-row">
+          <span>副字幕语言类型</span>
+          <select id="multi-subtitle-extension-language-mode" title="副字幕语言类型">
+            <option value="word" selected>单词型</option>
+            <option value="continuous">字符型</option>
+          </select>
+        </div>
+        <div class="multi-subtitle-setting-hint">英文、西文等按空格拆分请选择「单词型」；中文、日文等按字符拆分请选择「字符型」。</div>
         <div class="multi-subtitle-setting-row" id="multi-subtitle-extension-row-height-setting">
           <span>拓展字幕时波形高度</span>
           <select id="multi-subtitle-extension-row-height" title="启用多重字幕时使用的波形行高度">
@@ -2882,6 +2942,15 @@
         <span><kbd>1~5</kbd> 标记颜色 <kbd>0</kbd> 清除颜色</span>
         <span><kbd>C</kbd> 合并所选字幕</span>
       </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">多重字幕</span>
+        <span><kbd>G</kbd> 单选副字幕后绑定到主字幕（唯一重叠时自动匹配）</span>
+        <span><kbd>Shift+G</kbd> 解绑当前副字幕</span>
+        <span><kbd>H</kbd> 对齐副字幕到主字幕时间轴</span>
+        <span><kbd>B</kbd> 单选副字幕后打开副字幕拆分</span>
+        <span>波形标记：<kbd>1</kbd> 主轨 <kbd>2</kbd> 扩展轨</span>
+        <span>语言类型：单词型适合英语等空格语言，字符型适合中文/日文等</span>
+      </div>
     </div>
     <div class="help-group">
       <span class="help-title">波形</span>
@@ -2894,7 +2963,7 @@
       <div class="help-subgroup">
         <span class="help-subtitle">工具</span>
         <span><kbd>V</kbd> 选择工具 <kbd>R</kbd> 分割工具</span>
-        <span><kbd id="help-waveform-split-key">B</kbd> 在红色播放指针处拆分字幕</span>
+        <span><kbd id="help-waveform-split-key">B</kbd> 按所在区域拆分字幕</span>
       </div>
       <div class="help-subgroup">
         <span class="help-subtitle">滚轮</span>
@@ -3200,6 +3269,7 @@
         <button type="button" id="cue-panel-split">在光标处拆分（<kbd id="cue-panel-split-key">Ctrl+Enter</kbd>）</button>
       </div>
       <div class="cue-panel-text-wrap">
+        <div class="cue-panel-target" id="cue-panel-target">未选择</div>
         <textarea id="cue-panel-text" rows="3" placeholder="选择一条字幕开始编辑…"></textarea>
         <div class="cue-panel-metrics">
           <span>总长度 <b id="cue-panel-total-length">0</b></span>
@@ -3373,15 +3443,15 @@
 <div class="modal-mask" id="multi-subtitle-split-modal">
   <div class="modal multi-subtitle-split-modal" role="dialog" aria-modal="true" aria-labelledby="multi-subtitle-split-title">
     <h3 id="multi-subtitle-split-title">联动拆分扩展字幕</h3>
-    <p class="modal-desc">移动鼠标选择中间的合法断点；左侧用黄色、右侧用绿色表示拆分后的两段。连续型按字符，单词型不会拆碎单词。</p>
+    <p class="modal-desc">移动鼠标并点击选择的拆分断点；字符型语言（中文等）按字符拆分，单词型语言（英语等）只在空格处切分，确保不会拆碎单词。你可以在多重字幕设置中切换语言类型。</p>
     <div class="multi-subtitle-split-meta" id="multi-subtitle-split-meta"></div>
     <section class="multi-subtitle-split-lane" id="multi-subtitle-split-main-lane" hidden>
       <h4>主字幕拆分</h4>
       <div class="multi-subtitle-split-text" id="multi-subtitle-split-main-text" tabindex="0" aria-label="选择主字幕拆分点"></div>
     </section>
     <section class="multi-subtitle-split-lane" id="multi-subtitle-split-extension-lane">
-      <h4>拓展字幕拆分</h4>
-      <div class="multi-subtitle-split-text" id="multi-subtitle-split-text" tabindex="0" aria-label="选择拓展字幕断点"></div>
+      <h4>副字幕拆分</h4>
+      <div class="multi-subtitle-split-text" id="multi-subtitle-split-text" tabindex="0" aria-label="选择副字幕断点"></div>
     </section>
     <div class="multi-subtitle-split-preview" id="multi-subtitle-split-preview"></div>
     <div class="multi-subtitle-split-error" id="multi-subtitle-split-error" role="status"></div>
@@ -3457,8 +3527,21 @@
     return total;
   }
 
-  function cueMetrics(text, start, end) {
-    const totalLength = countTextUnits(text);
+  function countSubtitleUnits(text, mode = null) {
+    const normalized = String(text || '').replace(/\r\n?/g, '').replace(/\n/g, '').trim();
+    if (!normalized) return 0;
+    const resolvedMode = mode === 'continuous' || mode === 'word'
+      ? mode : detectSubtitleSplitMode(normalized);
+    if (resolvedMode === 'continuous') {
+      const matches = normalized.match(/[\p{L}\p{N}]/gu);
+      return matches ? matches.length : 0;
+    }
+    return normalized.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
+  }
+
+  function cueMetrics(text, start, end, mode = null) {
+    const totalLength = mode === 'continuous' || mode === 'word'
+      ? countSubtitleUnits(text, mode) : countTextUnits(text);
     const durationSeconds = Math.max(0, Number(end) - Number(start)) / 1000;
     const charsPerSecond = durationSeconds > 0
       ? Number((totalLength / durationSeconds).toFixed(2)) : 0;
@@ -3472,14 +3555,7 @@
   // 字幕“字数/词数”计量：含 CJK 字符时按「字」计（只数字母与汉字等文字、数字，
   // 不计空白与标点），否则按空白切分计「词」数（同样要求词内至少一个文字/数字）。
   function subtitleTextLength(text) {
-    const normalized = String(text || '').trim();
-    if (!normalized) return 0;
-    // CJK 判定区间：U+3400–U+4DBF（扩展 A）、U+4E00–U+9FFF（基本区）、U+F900–U+FAFF（兼容表意）。
-    if (/[㐀-䶿一-鿿豈-﫿]/.test(normalized)) {
-      const matches = normalized.match(/[\p{L}\p{N}]/gu);
-      return matches ? matches.length : 0;
-    }
-    return normalized.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
+    return countSubtitleUnits(text);
   }
 
   // 短字幕判定：中文少于 threshold 个字 / 英文少于 threshold 个词。
@@ -3733,8 +3809,12 @@
 
     const time = Number(timeMs);
     if (!Number.isFinite(time)) return -1;
-    const activeIndex = segments.findIndex((segment) => (
-      segment && Number(segment.start) <= time && Number(segment.end) >= time
+    const activeIndex = segments.findIndex((segment, index) => (
+      segment && Number(segment.start) <= time && (
+        Number(segment.end) > time
+        || index === segments.length - 1
+        || Number(segments[index + 1]?.start) > time
+      )
     ));
     if (activeIndex >= 0) {
       return findAdjacentCueIndex(segments, activeIndex, direction, skipDisabled);
@@ -3902,6 +3982,10 @@
       enabled: source.enabled === true,
       display_mode: MULTI_SUBTITLE_DISPLAY_MODES.has(source.display_mode)
         ? source.display_mode : 'both',
+      main_split_mode: MULTI_SUBTITLE_SPLIT_MODES.has(source.main_split_mode)
+        ? source.main_split_mode
+        : detectSubtitleSplitMode((Array.isArray(mainSegments) ? mainSegments : [])
+          .map((segment) => segment?.text || '').join('\n')),
       tracks,
       bindings: dedupedBindings,
     };
@@ -3925,17 +4009,33 @@
   function subtitleSplitOffsets(text, mode = 'word') {
     const value = String(text || '');
     const offsets = [];
-    const isBoundaryPunctuation = (character) => /[，。！？；：、“”‘’（）()\[\]{}.,!?;:'"\-—]/u.test(character);
-    let offset = 0;
     const characters = Array.from(value);
-    for (let index = 0; index < characters.length - 1; index++) {
+    if (mode === 'continuous') {
+      let offset = 0;
+      for (let index = 0; index < characters.length - 1; index++) {
+        offset += characters[index].length;
+        offsets.push(offset);
+      }
+      return offsets;
+    }
+
+    // 单词型只在空格组之后提供一个断点。这样「A B」只会显示为
+    // 「A✂️B」，不会在空格两侧各出现一个候选，也不会让标点成为隐式断点。
+    let offset = 0;
+    for (let index = 0; index < characters.length; index++) {
+      if (!/\s/u.test(characters[index])) {
+        offset += characters[index].length;
+        continue;
+      }
+      while (index + 1 < characters.length && /\s/u.test(characters[index + 1])) {
+        index += 1;
+        offset += characters[index].length;
+      }
       offset += characters[index].length;
-      const previous = characters[index];
-      const next = characters[index + 1];
-      const legal = mode === 'continuous'
-        || /\s/u.test(previous) || /\s/u.test(next)
-        || isBoundaryPunctuation(previous) || isBoundaryPunctuation(next);
-      if (legal && offset > 0 && offset < value.length) offsets.push(offset);
+      if (offset > 0 && offset < value.length
+          && value.slice(0, offset).trim() && value.slice(offset).trim()) {
+        offsets.push(offset);
+      }
     }
     return [...new Set(offsets)];
   }
@@ -4026,6 +4126,8 @@
 
     const oldMain = cloneJsonValue(project.segments) || [];
     const oldExtension = cloneJsonValue(track.segments) || [];
+    const oldMainSplitMode = multi.main_split_mode;
+    const oldExtensionSplitMode = track.split_mode;
     const nextMain = oldExtension.map((segment) => ({ ...segment }));
     const nextExtension = oldMain.map((segment) => {
       const copy = {
@@ -4041,6 +4143,8 @@
     project.segments.length = 0;
     nextMain.forEach((segment) => project.segments.push(segment));
     track.segments = nextExtension;
+    multi.main_split_mode = oldExtensionSplitMode;
+    track.split_mode = oldMainSplitMode;
 
     let bindingCount = 0;
     (multi.bindings || []).forEach((binding) => {
@@ -4700,6 +4804,7 @@
   window.AsrEditorUtils = {
     buildReplacementPreview,
     countTextUnits,
+    countSubtitleUnits,
     cueMetrics,
     joinSegmentTexts,
     subtitleTextLength,
@@ -4794,9 +4899,9 @@
     '下载表情包 OTIO 工程': 'Download sticker OTIO project',
     '字幕': 'Subtitles', '字幕预览': 'Subtitle preview', '表情包预览': 'Sticker preview', '字幕列表和编辑区': 'Subtitle list & editor',
     '多重字幕': 'Multiple subtitles', '多重字幕设置': 'Multiple-subtitle settings', '主轨': 'Main track', '扩展轨': 'Extension track', '双列': 'Two columns',
-    '显示方式': 'Display mode', '拆分类型': 'Split type', '拓展字幕时波形高度': 'Waveform height with extension subtitles', '跨轨道吸附': 'Cross-track snapping', '交换主副字幕': 'Swap main and extension subtitles',
+    '显示方式': 'Display mode', '语言类型': 'Language type', '主字幕': 'Main subtitle', '副字幕': 'Secondary subtitle', '主字幕语言类型': 'Main subtitle language type', '副字幕语言类型': 'Secondary subtitle language type', '拓展字幕时波形高度': 'Waveform height with extension subtitles', '跨轨道吸附': 'Cross-track snapping', '交换主副字幕': 'Swap main and extension subtitles',
     '开启后显示扩展字幕轨、双列列表和绑定操作；关闭只隐藏扩展数据，不删除': 'Show the extension track, two-column list, and binding actions; turning it off only hides extension data',
-    '启用多重字幕时使用的波形行高度': 'Waveform row height used when multiple subtitles are enabled', '请拖入第二个 srt 字幕以开启多重字幕功能': 'Drop a second SRT subtitle to enable multiple subtitles',
+    '启用多重字幕时使用的波形行高度': 'Waveform row height used when multiple subtitles are enabled', '请拖入第二个 srt 字幕以开启多重字幕功能': 'Drop a second SRT subtitle to enable multiple subtitles', '是否选择导入第二条字幕以开启多重字幕模式？': 'Import a second subtitle to enable multiple-subtitle mode?', '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。': 'When the current project has more than one subtitle, you can enable multiple-subtitle mode for bilingual subtitle editing and similar workflows.',
     '拖动多重字幕时，允许吸附到另一条字幕轨道的起点和终点': 'Snap multiple subtitles to the start and end boundaries of the other track while dragging',
     '交换主字幕和扩展字幕的文本、时间与绑定关系': 'Swap the text, timing, and bindings between the main and extension subtitles',
     '请先开启多重字幕': 'Enable multiple subtitles first',
@@ -4809,7 +4914,7 @@
     '重叠的主字幕已有绑定，请点击主字幕后替换绑定；按 Esc 取消': 'The overlapping main subtitle is already bound; click a main subtitle to replace it, or press Esc to cancel',
     '有多条主字幕与当前副字幕重叠，请点击要绑定的主字幕': 'Multiple main subtitles overlap this extension subtitle; click the one to bind',
     '未找到与当前副字幕时间重叠的主字幕，请手动选择': 'No main subtitle overlaps this extension subtitle; choose one manually',
-    '连续型': 'Continuous', '单词型': 'Word-based', '绑定': 'Bind', '解绑': 'Unbind',
+    '字符型': 'Character-based', '单词型': 'Word-based', '绑定': 'Bind', '解绑': 'Unbind',
     '字体大小': 'Font size', '字幕大小': 'Font size', '主字幕大小': 'Main subtitle size', '拓展字幕大小': 'Extension subtitle size',
     '自动（响应式）': 'Auto (responsive)', '自动（比主字幕小一号）': 'Auto (two px smaller than main)', '字体': 'Font',
     '主字幕字体': 'Main subtitle font', '拓展字幕字体': 'Extension subtitle font', '默认无衬线': 'Default sans-serif',
@@ -4887,7 +4992,7 @@
     '只选中，不改变播放位置；可用 F 或右键菜单跳转并播放。': 'Select only without changing the playhead; use F or the context menu to seek and play.',
     '字幕列表点击始终跳转到字幕开头；此设置只影响波形区点击字幕块': 'Subtitle-list clicks always seek to the subtitle start; this setting only affects waveform subtitle clicks',
     '开启后显示扩展字幕轨、双列列表和绑定操作；关闭只隐藏扩展数据，不删除': 'When enabled, show the extension track, two-column list, and binding controls; when disabled, hide extension data without deleting it',
-    '多重字幕列表显示方式': 'Multiple-subtitle list display mode', '扩展字幕近似拆分类型': 'Extension subtitle approximate split type',
+    '多重字幕列表显示方式': 'Multiple-subtitle list display mode', '英文、西文等按空格拆分请选择「单词型」；中文、日文等按字符拆分请选择「字符型」。': 'Choose Word-based for English and other space-separated languages; choose Character-based for Chinese, Japanese, and other character-separated languages.',
     '分别选中主轨和扩展轨字幕后建立绑定': 'Select one main-track and one extension-track subtitle to bind them',
     '移除当前选中字幕的绑定关系': 'Remove the binding for the selected subtitle',
     '合并字幕时插入字符': 'Merge separator', '留空则直接拼接': 'Leave blank to join directly',
@@ -4906,9 +5011,10 @@
     '只把第一条导出字幕的起点拉到 00:00，保留其结束时间和后续字幕时间码；不改动工程或 OTIO 的时间轴': 'Only move the first exported subtitle to 00:00; keep its end time and all later timecodes unchanged in the project and OTIO',
     '导入字幕': 'Import subtitles', '请选择你要执行的行为：': 'Choose what to do:',
     '替换当前字幕': 'Replace current subtitles', '作为多重字幕': 'Add as multiple subtitles', '导入': 'Import',
-    '联动拆分扩展字幕': 'Split linked extension subtitle', '主字幕拆分': 'Main subtitle split', '拓展字幕拆分': 'Extension subtitle split',
-    '移动鼠标选择中间的合法断点；左侧用黄色、右侧用绿色表示拆分后的两段。连续型按字符，单词型不会拆碎单词。': 'Move the mouse to choose a valid boundary; the two split parts use yellow and green. Continuous text uses character boundaries, and word text never splits a word.',
-    '选择拓展字幕拆分点': 'Choose an extension subtitle split point', '选择扩展字幕断点': 'Choose an extension subtitle split point', '选择拓展字幕断点': 'Choose an extension subtitle split point', '选择主字幕拆分点': 'Choose a main subtitle split point',
+    '联动拆分扩展字幕': 'Split linked extension subtitle', '主字幕拆分': 'Main subtitle split', '副字幕拆分': 'Secondary subtitle split',
+    '当前切分位置固定为波形指针位置': 'The split position is fixed to the waveform pointer', '当前切分位置由字词时间码推定': 'The split position is inferred from word timestamps',
+    '移动鼠标并点击选择的拆分断点；字符型语言（中文等）按字符拆分，单词型语言（英语等）只在空格处切分，确保不会拆碎单词。你可以在多重字幕设置中切换语言类型。': 'Move the mouse and click to choose a split boundary. Character-based languages such as Chinese split by character; word-based languages such as English split only at spaces so words stay intact. Change the language type in the multiple-subtitle settings.',
+    '选择副字幕拆分点': 'Choose a secondary subtitle split point', '选择副字幕断点': 'Choose a secondary subtitle split point', '选择主字幕拆分点': 'Choose a main subtitle split point',
     '在鼠标位置拆分': 'Split at pointer position', '拆分拓展字幕': 'Split extension subtitle',
     '取消（Esc）': 'Cancel (Esc)', '拆分（Enter）': 'Split (Enter)', '全部拆分后自动提交': 'Auto-submit after all split points are selected',
     '分割工具（R）：点击字幕块在指针位置安全拆分（默认按字词时间码对齐；没有可用字词时间码或关闭设置后打开拆分点弹窗，拒绝 100ms 以内的边缘拆分）；Esc 切回选择': 'Razor tool (R): click a subtitle block to safely split at the pointer (by default aligned to word timestamps; when no usable word timestamps exist or the setting is disabled, open the split-point dialog; reject splits within 100 ms of an edge); Esc returns to Select',
@@ -4933,6 +5039,13 @@
     '工具': 'Tools', '滚轮': 'Wheel', '字幕导航': 'Subtitle navigation',
     '切换字幕禁用': 'Toggle subtitle disabled', '删除所选字幕': 'Delete selected subtitles',
     '合并所选字幕': 'Merge selected subtitles', '合并副字幕块': 'Merge extension subtitle blocks',
+    '按所在区域拆分字幕': 'Split a subtitle based on the pointer area',
+    '单选副字幕后绑定到主字幕（唯一重叠时自动匹配）': 'With one extension subtitle selected, bind it to a main subtitle (auto-match a unique overlap)',
+    '解绑当前副字幕': 'Unbind the current extension subtitle',
+    '对齐副字幕到主字幕时间轴': 'Align the extension subtitle to the main subtitle timeline',
+    '单选副字幕后打开副字幕拆分': 'With one extension subtitle selected, open extension subtitle splitting',
+    '波形标记：': 'Waveform labels:',
+    '语言类型：单词型适合英语等空格语言，字符型适合中文/日文等': 'Language type: Word-based suits English and other space-separated languages; Character-based suits Chinese/Japanese and similar languages',
     '播放与编辑': 'Playback and editing', '空格': 'Space',
     '选择工具': 'Select tool', '分割工具': 'Razor tool',
     '播放/暂停': 'Play/pause', '前后跳转 5 秒': 'Seek back/forward 5 sec',
@@ -5158,7 +5271,9 @@
     if (lang !== EN) return text;
     if (EN_TEXT[text]) return EN_TEXT[text];
     if (EN_ATTR[text]) return EN_ATTR[text];
-    let     match = /^生成时间\s+(.+)$/.exec(text);
+    let match = /^(主字幕|副字幕)\s+(\d+)$/.exec(text);
+    if (match) return `${translateText(match[1], EN)} ${match[2]}`;
+    match = /^生成时间\s+(.+)$/.exec(text);
     if (match) return `Generated ${match[1]}`;
     // 动态 title / 徽标：带变量的属性文案
     match = /^颜色：(.+)$/.exec(text);
@@ -6129,6 +6244,25 @@
       if (end <= start) start = Math.max(newStart, end - 1);
       return { ...item, start, end };
     });
+  }
+
+  // 与字幕列表保持一致：相邻字幕共用边界时，边界属于后一条；间隙和最后一条
+  // 的结束时刻仍沿用当前字幕作为播放头对应项。
+  function isActiveCueAtTime(segments, index, timeMs, skipDisabled = true) {
+    const segment = segments[index];
+    if (!segment || (skipDisabled && segment.disabled) || timeMs < Number(segment.start)) return false;
+    let next = null;
+    for (let nextIndex = index + 1; nextIndex < segments.length; nextIndex += 1) {
+      if (!skipDisabled || !segments[nextIndex]?.disabled) {
+        next = segments[nextIndex];
+        break;
+      }
+    }
+    return timeMs < Number(segment.end) || !next || Number(next.start) > timeMs;
+  }
+
+  function findActiveCueIndex(segments, timeMs, skipDisabled = true) {
+    return segments.findIndex((_, index) => isActiveCueAtTime(segments, index, timeMs, skipDisabled));
   }
 
   class WaveformEditor {
@@ -7461,7 +7595,10 @@
       const multiLane = this.options.multiSubtitleVisible?.() === true;
       const segments = this.options.getSegments('main');
       const selected = this.options.getSelection('main');
+      const bindingMarkerTargets = this.options.getBindingMarkerTargets?.() || {};
+      const mainBindingMarkers = bindingMarkerTargets.main;
       const now = this.currentTimeMs();
+      const activeMainIndex = findActiveCueIndex(segments, now);
       const badgesByIndex = groupBadges || computeGroupBadges(segments);
       segments.forEach((segment, index) => {
         if (segment.end <= startMs || segment.start >= endMs) return;
@@ -7474,12 +7611,13 @@
         block.style.setProperty('--cue-color', colorForSegment(segment));
         if (selected.has(index)) block.classList.add('selected');
         if (segment.disabled) block.classList.add('disabled');
-        if (!segment.disabled && now >= segment.start && now <= segment.end) block.classList.add('active');
+        if (index === activeMainIndex) block.classList.add('active');
 
         const label = document.createElement('span');
         label.className = 'waveform-cue-label';
         label.textContent = segment.text.replace(/\s+/g, ' ');
         block.appendChild(label);
+        this.setBindingMarker(block, mainBindingMarkers?.has?.(index) === true);
         // 短块内文字会被截断，悬浮 title 给出完整字幕文本
         block.title = label.textContent;
         const badges = this.settings.showGroupBadges !== false ? badgesByIndex.get(index) : null;
@@ -7532,6 +7670,8 @@
       if (!multiLane) return;
       const extensionSegments = this.options.getExtensionSegments?.() || [];
       const extensionSelected = this.options.getExtensionSelection?.() || new Set();
+      const extensionBindingMarkers = bindingMarkerTargets.extension;
+      const activeExtensionIndex = findActiveCueIndex(extensionSegments, now, false);
       extensionSegments.forEach((segment, index) => {
         if (segment.end <= startMs || segment.start >= endMs) return;
         const block = document.createElement('div');
@@ -7542,12 +7682,13 @@
           block.dataset.end = String(segment.end);
           block.style.setProperty('--cue-color', '#7a9fc5');
         if (extensionSelected.has(index)) block.classList.add('selected');
-        if (now >= segment.start && now <= segment.end) block.classList.add('active');
+        if (index === activeExtensionIndex) block.classList.add('active');
         const label = document.createElement('span');
         label.className = 'waveform-cue-label';
         label.textContent = String(segment.text || '').replace(/\s+/g, ' ');
         block.title = label.textContent;
         block.appendChild(label);
+        this.setBindingMarker(block, extensionBindingMarkers?.has?.(index) === true);
         if (segment.start >= startMs) {
           const leftHandle = document.createElement('span');
           leftHandle.className = 'waveform-cue-handle left';
@@ -7573,6 +7714,22 @@
         });
         row.appendChild(block);
       });
+    }
+
+    setBindingMarker(block, visible) {
+      block.classList.toggle('has-binding-marker', visible);
+      const marker = block.querySelector('.waveform-binding-marker');
+      if (!visible) {
+        marker?.remove();
+        return;
+      }
+      if (marker) return;
+      const next = document.createElement('span');
+      next.className = 'waveform-binding-marker';
+      next.textContent = '🔗';
+      next.title = '已绑定字幕';
+      next.setAttribute('aria-label', '已绑定字幕');
+      block.appendChild(next);
     }
 
     layoutBlock(block, segment, startMs, endMs) {
@@ -7631,6 +7788,10 @@
         block.classList.toggle('selected', isExtension
           ? this.options.getExtensionSelection?.().has(Number(block.dataset.extIdx))
           : this.options.getSelection('main').has(Number(block.dataset.idx)));
+        const bindingMarkerTargets = this.options.getBindingMarkerTargets?.() || {};
+        this.setBindingMarker(block, isExtension
+          ? bindingMarkerTargets.extension?.has?.(Number(block.dataset.extIdx)) === true
+          : bindingMarkerTargets.main?.has?.(Number(block.dataset.idx)) === true);
       });
       this.positionPlayheads();
     }
@@ -7652,10 +7813,16 @@
     updateSelection() {
       const selected = this.options.getSelection('main');
       const extensionSelected = this.options.getExtensionSelection?.() || new Set();
+      const bindingMarkerTargets = this.options.getBindingMarkerTargets?.() || {};
       this.content.querySelectorAll('.waveform-cue-block').forEach((block) => {
-        block.classList.toggle('selected', block.dataset.track === 'extension'
-          ? extensionSelected.has(Number(block.dataset.extIdx))
-          : selected.has(Number(block.dataset.idx)));
+        const isExtension = block.dataset.track === 'extension';
+        const index = Number(isExtension ? block.dataset.extIdx : block.dataset.idx);
+        block.classList.toggle('selected', isExtension
+          ? extensionSelected.has(index)
+          : selected.has(index));
+        this.setBindingMarker(block, isExtension
+          ? bindingMarkerTargets.extension?.has?.(index) === true
+          : bindingMarkerTargets.main?.has?.(index) === true);
       });
     }
 
@@ -8472,7 +8639,7 @@
       if (!this.payload) return;
       const now = this.currentTimeMs();
       const segments = this.options.getSegments('main');
-      const activeIndex = segments.findIndex((segment) => !segment.disabled && now >= segment.start && now <= segment.end);
+      const activeIndex = findActiveCueIndex(segments, now);
       if (activeIndex !== this.activeIndex) {
         this.activeIndex = activeIndex;
         this.content.querySelectorAll('.waveform-cue-block[data-track="main"]').forEach((block) => {
@@ -8480,9 +8647,9 @@
         });
       }
       const extensionSegments = this.options.getExtensionSegments?.() || [];
+      const activeExtensionIndex = findActiveCueIndex(extensionSegments, now, false);
       this.content.querySelectorAll('.waveform-cue-block[data-track="extension"]').forEach((block) => {
-        const segment = extensionSegments[Number(block.dataset.extIdx)];
-        block.classList.toggle('active', Boolean(segment && now >= segment.start && now <= segment.end));
+        block.classList.toggle('active', Number(block.dataset.extIdx) === activeExtensionIndex);
       });
 
       if (allowFollow && this.settings.mode === 'basic') {
@@ -8569,7 +8736,10 @@ const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
 const MULTI_SUBTITLE_TOLERANCE_MS = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_TOLERANCE_MS || 300;
 const MULTI_SUBTITLE_ROW_HEIGHT_PRESETS = [64, 80, 96, 120, 144, 168];
 const DEFAULT_MULTI_SUBTITLE_ROW_HEIGHT = 168;
+const MULTI_SUBTITLE_IMPORT_PROMPT = '是否选择导入第二条字幕以开启多重字幕模式？';
+const MULTI_SUBTITLE_TOGGLE_TITLE = '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。';
 let normalizedMultiSubtitleReference = null;
+let pendingSrtImportAsExtension = false;
 
 function normalizeMultiSubtitleState() {
   if (normalizedMultiSubtitleReference === DATA.multi_subtitle) return DATA.multi_subtitle;
@@ -8593,6 +8763,29 @@ function getActiveExtensionTrack() {
 
 function multiSubtitleVisible() {
   return getMultiSubtitleState().enabled === true && Boolean(getActiveExtensionTrack());
+}
+
+function isConfiguredSubtitleSplitMode(value) {
+  return MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SPLIT_MODES.has(value);
+}
+
+function getMainSubtitleSplitMode(segment = null) {
+  const multi = getMultiSubtitleState();
+  if (multi.enabled === true && isConfiguredSubtitleSplitMode(multi.main_split_mode)) {
+    return multi.main_split_mode;
+  }
+  const text = segment?.text ?? DATA.segments.map((item) => item?.text || '').join('\n');
+  return MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(text);
+}
+
+function getExtensionSubtitleSplitMode(track = getActiveExtensionTrack(), segment = null) {
+  if (isConfiguredSubtitleSplitMode(track?.split_mode)) return track.split_mode;
+  const text = segment?.text ?? (track?.segments || []).map((item) => item?.text || '').join('\n');
+  return MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(text, track?.language);
+}
+
+function splitModeLabel(mode) {
+  return mode === 'continuous' ? '字符型' : '单词型';
 }
 
 function multiSubtitleWaveformStructureKey(state = getMultiSubtitleState()) {
@@ -8620,6 +8813,28 @@ function bindingForMainIndex(index) {
 function bindingForExtensionIndex(index, track = getActiveExtensionTrack()) {
   const segment = track?.segments?.[index];
   return segment ? MULTI_SUBTITLE_UTILS.bindingForSegment(getMultiSubtitleState(), segment.id, 'extension', track.id) : null;
+}
+
+function getBindingMarkerTargets() {
+  const main = new Set();
+  const extension = new Set();
+  if (!multiSubtitleVisible()) return { main, extension };
+  const track = getActiveExtensionTrack();
+  const addBindingTargets = (binding) => {
+    if (!binding) return;
+    (binding.main_segment_ids || []).forEach((id) => {
+      const index = DATA.segments.findIndex((segment) => segment?.id === id);
+      if (index >= 0) main.add(index);
+    });
+    const bindingTrack = getExtensionTrack(binding.track_id) || track;
+    (binding.extension_segment_ids || []).forEach((id) => {
+      const index = bindingTrack?.segments?.findIndex((segment) => segment?.id === id) ?? -1;
+      if (index >= 0 && bindingTrack === track) extension.add(index);
+    });
+  };
+  selectedIdxs.forEach((index) => addBindingTargets(bindingForMainIndex(index)));
+  selectedExtensionIdxs.forEach((index) => addBindingTargets(bindingForExtensionIndex(index, track)));
+  return { main, extension };
 }
 
 function extensionForMainIndex(index) {
@@ -9076,6 +9291,8 @@ function applyHistoryRecord(record) {
   // 历史恢复会改变下标身份；丢弃旧面板绑定，避免 clearSelection() 把旧面板
   // 内容提交到恢复后占据同一下标的另一条字幕，并因此生成新历史、清空 redo。
   currentCuePanelIdx = -1;
+  currentCuePanelKind = 'main';
+  currentCuePanelTrackId = null;
   cuePanelUndoPushed = false;
   clearSelection();
   lastActive = -1;
@@ -9205,6 +9422,7 @@ const cuePanelNext = document.getElementById('cue-panel-next');
 const cuePanelStart = document.getElementById('cue-panel-start');
 const cuePanelDuration = document.getElementById('cue-panel-duration');
 const cuePanelText = document.getElementById('cue-panel-text');
+const cuePanelTarget = document.getElementById('cue-panel-target');
 const cuePanelTotalLength = document.getElementById('cue-panel-total-length');
 const cuePanelCharsPerSecond = document.getElementById('cue-panel-chars-per-second');
 const cuePanelSticker = document.getElementById('cue-panel-sticker');
@@ -9221,12 +9439,14 @@ const downloadMultiSrtButton = document.getElementById('download-multi-srt');
 const subtitleExportDropdown = document.getElementById('subtitle-export-dropdown');
 const multiSubtitleControls = document.getElementById('multi-subtitle-controls');
 const multiSubtitleToggleLabel = document.getElementById('multi-subtitle-toggle-label');
+const multiSubtitleSettingsDropdown = document.getElementById('multi-subtitle-settings-dropdown');
 const multiSubtitleSwapButton = document.getElementById('multi-subtitle-swap');
 const multiSubtitleCrossTrackSnapToggle = document.getElementById('multi-subtitle-cross-track-snap');
 const multiSubtitleWaveformControls = document.getElementById('multi-subtitle-waveform-controls');
 const multiSubtitleToggle = document.getElementById('multi-subtitle-toggle');
 const multiSubtitleDisplayMode = document.getElementById('multi-subtitle-display-mode');
-const multiSubtitleSplitMode = document.getElementById('multi-subtitle-split-mode');
+const multiSubtitleMainLanguageMode = document.getElementById('multi-subtitle-main-language-mode');
+const multiSubtitleExtensionLanguageMode = document.getElementById('multi-subtitle-extension-language-mode');
 const multiSubtitleExtensionRowHeightSetting = document.getElementById('multi-subtitle-extension-row-height-setting');
 const multiSubtitleExtensionRowHeight = document.getElementById('multi-subtitle-extension-row-height');
 const multiSubtitleBindButton = document.getElementById('multi-subtitle-bind');
@@ -9304,6 +9524,8 @@ const autoMergeAbsorbDirectionSelect = document.getElementById('auto-merge-absor
 let gapPreviewRange = null;
 let gapRemovePanelDrag = null;
 let currentCuePanelIdx = -1;
+let currentCuePanelKind = 'main';
+let currentCuePanelTrackId = null;
 let cuePanelUndoPushed = false;
 
 function updateEditorSettings(patch) {
@@ -9387,25 +9609,35 @@ function updateMultiSubtitleUi() {
   const leavingEnabled = !enabled && previousMultiSubtitlePreviewEnabled;
   syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEnabled);
   if (multiSubtitleControls) multiSubtitleControls.hidden = !hasMainSubtitle;
+  if (multiSubtitleSettingsDropdown) {
+    multiSubtitleSettingsDropdown.hidden = !enabled;
+    if (!enabled) {
+      multiSubtitleSettingsDropdown.classList.remove('open');
+      multiSubtitleSettingsDropdown.querySelector('button[aria-expanded]')
+        ?.setAttribute('aria-expanded', 'false');
+    }
+  }
   if (multiSubtitleToggle) {
     multiSubtitleToggle.checked = enabled;
-    multiSubtitleToggle.disabled = !hasTrack;
+    // 没有扩展轨时仍允许点击，由 change 处理器询问是否选择导入第二条字幕。
+    multiSubtitleToggle.disabled = false;
   }
-  const multiSubtitleToggleTitle = hasTrack
-    ? '开启后显示扩展字幕轨、双列列表和绑定操作；关闭只隐藏扩展数据，不删除'
-    : '请拖入第二个 srt 字幕以开启多重字幕功能';
   if (multiSubtitleToggleLabel) {
-    multiSubtitleToggleLabel.classList.toggle('disabled', !hasTrack);
-    multiSubtitleToggleLabel.title = multiSubtitleToggleTitle;
+    multiSubtitleToggleLabel.classList.remove('disabled');
+    multiSubtitleToggleLabel.title = MULTI_SUBTITLE_TOGGLE_TITLE;
   }
-  if (multiSubtitleToggle) multiSubtitleToggle.title = multiSubtitleToggleTitle;
+  if (multiSubtitleToggle) multiSubtitleToggle.title = MULTI_SUBTITLE_TOGGLE_TITLE;
   if (multiSubtitleDisplayMode) {
     multiSubtitleDisplayMode.value = getMultiSubtitleState().display_mode || 'both';
     multiSubtitleDisplayMode.hidden = !enabled;
   }
-  if (multiSubtitleSplitMode) {
-    multiSubtitleSplitMode.value = track?.split_mode || 'word';
-    multiSubtitleSplitMode.hidden = !enabled;
+  if (multiSubtitleMainLanguageMode) {
+    multiSubtitleMainLanguageMode.value = getMainSubtitleSplitMode(DATA.segments[0]);
+    multiSubtitleMainLanguageMode.hidden = !enabled;
+  }
+  if (multiSubtitleExtensionLanguageMode) {
+    multiSubtitleExtensionLanguageMode.value = getExtensionSubtitleSplitMode(track, track?.segments?.[0]);
+    multiSubtitleExtensionLanguageMode.hidden = !enabled;
   }
   if (multiSubtitleExtensionRowHeight) {
     multiSubtitleExtensionRowHeight.value = String(EDITOR_SETTINGS.multiSubtitleRowHeight);
@@ -9512,8 +9744,11 @@ function refreshSplitKeyHelp() {
   if (cuePanelSplitKey) cuePanelSplitKey.textContent = label;
 }
 
-// 切换语言时 i18n 会重置动态文本节点，需重新套用当前拆分按键提示。
-document.addEventListener('mawe:languagechange', () => refreshSplitKeyHelp());
+// 切换语言时 i18n 会重置动态文本节点，需重新套用当前拆分按键提示和目标轨道标签。
+document.addEventListener('mawe:languagechange', () => {
+  refreshSplitKeyHelp();
+  renderCurrentCuePanel();
+});
 
 splitKeySel.value = EDITOR_SETTINGS.splitKey;
 if (splitUseWordTimestampsToggle) splitUseWordTimestampsToggle.checked = EDITOR_SETTINGS.splitUseWordTimestamps;
@@ -9537,6 +9772,15 @@ applyCueEditorDisplaySettings();
 multiSubtitleToggle?.addEventListener('change', () => {
   const multi = getMultiSubtitleState();
   const next = multiSubtitleToggle.checked;
+  if (next && !getActiveExtensionTrack()) {
+    // 先恢复未选中状态，避免用户取消确认或取消文件选择后留下假开启状态。
+    multiSubtitleToggle.checked = false;
+    if (!confirm(MULTI_SUBTITLE_IMPORT_PROMPT)) return;
+    pendingSrtImportAsExtension = true;
+    loadSrtFileInput.value = '';
+    loadSrtFileInput.click();
+    return;
+  }
   multi.enabled = !next;
   pushUndo(next ? '开启多重字幕' : '关闭多重字幕');
   multi.enabled = next;
@@ -9554,13 +9798,23 @@ multiSubtitleDisplayMode?.addEventListener('change', () => {
   multi._dirty = true;
   renderAll({ waveform: 'none' });
 });
-multiSubtitleSplitMode?.addEventListener('change', () => {
+multiSubtitleMainLanguageMode?.addEventListener('change', () => {
+  const multi = getMultiSubtitleState();
+  const next = isConfiguredSubtitleSplitMode(multiSubtitleMainLanguageMode.value)
+    ? multiSubtitleMainLanguageMode.value : 'word';
+  if (multi.main_split_mode === next) return;
+  pushUndo('切换主字幕语言类型');
+  multi.main_split_mode = next;
+  markMultiSubtitleDirty();
+  renderAll({ waveform: 'none' });
+});
+multiSubtitleExtensionLanguageMode?.addEventListener('change', () => {
   const track = getActiveExtensionTrack();
   if (!track) return;
-  const next = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SPLIT_MODES.has(multiSubtitleSplitMode.value)
-    ? multiSubtitleSplitMode.value : 'word';
+  const next = isConfiguredSubtitleSplitMode(multiSubtitleExtensionLanguageMode.value)
+    ? multiSubtitleExtensionLanguageMode.value : 'word';
   if (track.split_mode === next) return;
-  pushUndo('切换扩展字幕拆分类型');
+  pushUndo('切换副字幕语言类型');
   track.split_mode = next;
   markMultiSubtitleDirty();
   renderAll({ waveform: 'none' });
@@ -10444,6 +10698,7 @@ function selectOnlyExtension(index) {
   selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
   lastClickedExtensionIdx = index;
   waveformEditor?.updateSelection();
+  setCurrentCuePanelExtensionIndex(index, track);
 }
 
 function toggleExtensionSelection(index) {
@@ -10453,6 +10708,7 @@ function toggleExtensionSelection(index) {
   selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
   lastClickedExtensionIdx = index;
   waveformEditor?.updateSelection();
+  setCurrentCuePanelExtensionIndex(index, getActiveExtensionTrack());
 }
 
 function selectExtensionRange(a, b) {
@@ -10466,6 +10722,7 @@ function selectExtensionRange(a, b) {
   selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
   lastClickedExtensionIdx = b;
   waveformEditor?.updateSelection();
+  setCurrentCuePanelExtensionIndex(b, track);
 }
 function toggleSel(idx) {
   if (isHiddenDisabled(idx)) return;  // 隐藏禁用项不参与选择
@@ -10515,6 +10772,14 @@ function addToSelection(idx) {
   selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
   if (waveformEditor) waveformEditor.updateSelection();
   setCurrentCuePanelIndex(idx);
+}
+function addExtensionToSelection(index, track = getActiveExtensionTrack()) {
+  if (!track?.segments?.[index] || selectedExtensionIdxs.has(index)) return;
+  selectedExtensionIdxs.add(index);
+  updateMultiSelectionClasses();
+  selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
+  waveformEditor?.updateSelection();
+  setCurrentCuePanelExtensionIndex(index, track);
 }
 // 选中全部字幕（跳过「隐藏禁用项」开启时的禁用条目，与其它选择逻辑一致）。
 function selectAll() {
@@ -10639,6 +10904,7 @@ function bindSelectedSubtitlePair() {
   markMultiSubtitleDirty();
   // 绑定关系只影响字幕列表，不改变波形块、时间范围或 Canvas。
   renderAll({ waveform: 'none' });
+  waveformEditor?.updateSelection();
   flashHint(
     replacedBinding
       ? `已替换主字幕 ${mainIndex + 1} 的绑定，改为扩展字幕 ${extensionIndex + 1}`
@@ -10671,6 +10937,7 @@ function unbindSelectedSubtitlePair() {
   syncBindingOffsets();
   // 解绑同样只更新列表关系状态，跳过波形覆盖层重建。
   renderAll({ waveform: 'none' });
+  waveformEditor?.updateSelection();
   flashHint(`已解绑 ${removed.length} 对字幕`, 'success');
 }
 
@@ -10781,24 +11048,106 @@ function remapPanelItems(items, oldStart, oldEnd, newStart, newEnd) {
   });
 }
 
-function ensureCuePanelUndo() {
+function getCurrentCuePanelTarget() {
+  const index = currentCuePanelIdx;
+  if (!Number.isInteger(index) || index < 0) return null;
+  if (currentCuePanelKind === 'extension') {
+    const track = getExtensionTrack(currentCuePanelTrackId);
+    const segment = track?.segments?.[index];
+    return segment
+      ? { kind: 'extension', index, trackId: track.id, track, segment }
+      : null;
+  }
+  const segment = DATA.segments[index];
+  return segment ? { kind: 'main', index, trackId: null, track: null, segment } : null;
+}
+
+function getCuePanelTextElement(target) {
+  if (!target) return null;
+  if (target.kind === 'extension') {
+    return container.querySelector(
+      `.multi-dual-cue[data-ext-idx="${target.index}"] .multi-cue-column.extension .text, `
+        + `.multi-extension-cue[data-ext-idx="${target.index}"] > .text`,
+    );
+  }
+  return container.querySelector(
+    `.multi-dual-cue[data-main-idx="${target.index}"] .multi-cue-column.main .text, `
+      + `.cue[data-idx="${target.index}"] > .text`,
+  );
+}
+
+function setCuePanelTarget(kind, index, trackId = null) {
+  const nextKind = kind === 'extension' ? 'extension' : 'main';
+  let nextIndex = Number.isInteger(index) ? index : -1;
+  let nextTrackId = nextKind === 'extension' ? trackId : null;
+  if (nextKind === 'extension') {
+    const track = getExtensionTrack(nextTrackId);
+    if (!track?.segments?.[nextIndex]) {
+      nextIndex = -1;
+      nextTrackId = null;
+    } else {
+      nextTrackId = track.id;
+    }
+  } else if (!DATA.segments[nextIndex]) {
+    nextIndex = -1;
+  }
+  if (
+    currentCuePanelKind === nextKind
+    && currentCuePanelIdx === nextIndex
+    && currentCuePanelTrackId === nextTrackId
+  ) {
+    renderCurrentCuePanel();
+    return;
+  }
+  commitCuePanelEdit();
+  currentCuePanelKind = nextKind;
+  currentCuePanelIdx = nextIndex;
+  currentCuePanelTrackId = nextTrackId;
+  cuePanelUndoPushed = false;
+  renderCurrentCuePanel();
+}
+
+function setCurrentCuePanelIndex(index) {
+  setCuePanelTarget('main', index);
+}
+
+function setCurrentCuePanelExtensionIndex(index, track = getActiveExtensionTrack()) {
+  setCuePanelTarget('extension', index, track?.id || null);
+}
+
+function syncBoundMainForCuePanelExtension(extension, track, oldStart, oldEnd, newStart, newEnd) {
+  if (!extension || !track || !multiSubtitleVisible()) return;
+  const binding = MULTI_SUBTITLE_UTILS.bindingForSegment(
+    getMultiSubtitleState(), extension.id, 'extension', track.id,
+  );
+  const main = binding ? mainSegmentById(binding.main_segment_ids?.[0]) : null;
+  if (!main) return;
+  main.start += Number(newStart) - Number(oldStart);
+  main.end += Number(newEnd) - Number(oldEnd);
+  main._dirty = true;
+}
+
+function ensureCuePanelUndo(label = null) {
   if (!cuePanelUndoPushed) {
-    pushUndo('编辑当前字幕');
+    const target = getCurrentCuePanelTarget();
+    pushUndo(label || (target?.kind === 'extension' ? '编辑副字幕' : '编辑当前字幕'));
     cuePanelUndoPushed = true;
   }
 }
 
 function commitCuePanelEdit() {
-  const idx = currentCuePanelIdx;
-  const seg = DATA.segments[idx];
-  if (!seg) { cuePanelUndoPushed = false; return false; }
+  const target = getCurrentCuePanelTarget();
+  const seg = target?.segment;
+  if (!target || !seg) { cuePanelUndoPushed = false; return false; }
+  const segments = target.kind === 'extension' ? target.track.segments : DATA.segments;
+  const idx = target.index;
   const nextText = cuePanelText.value.replace(/\r\n?/g, '\n');
   const oldStart = seg.start;
   const oldEnd = seg.end;
   const requestedStart = parsePanelTime(cuePanelStart.value, oldStart);
   const requestedDuration = Math.max(100, parsePanelTime(cuePanelDuration.value, oldEnd - oldStart));
-  const previousEnd = idx > 0 ? DATA.segments[idx - 1].end : 0;
-  const nextStart = idx + 1 < DATA.segments.length ? DATA.segments[idx + 1].start : (waveformEditor?.durationMs || oldEnd);
+  const previousEnd = idx > 0 ? segments[idx - 1].end : 0;
+  const nextStart = idx + 1 < segments.length ? segments[idx + 1].start : (waveformEditor?.durationMs || oldEnd);
   if (nextStart - previousEnd < 100) {
     flashHint('相邻字幕之间不足 100ms，无法调整当前字幕');
     renderCurrentCuePanel();
@@ -10826,9 +11175,15 @@ function commitCuePanelEdit() {
     seg.end = nextStart;
     seg.start = Math.max(previousEnd, seg.end - 100);
   }
-  seg.items = remapPanelItems(seg.items, oldStart, oldEnd, seg.start, seg.end);
+  if (target.kind === 'main') {
+    seg.items = remapPanelItems(seg.items, oldStart, oldEnd, seg.start, seg.end);
+  }
   seg._dirty = true;
-  syncBoundExtensionForMain(seg, { oldStart, oldEnd });
+  if (target.kind === 'main') {
+    syncBoundExtensionForMain(seg, { oldStart, oldEnd });
+  } else {
+    syncBoundMainForCuePanelExtension(seg, target.track, oldStart, oldEnd, seg.start, seg.end);
+  }
   syncBindingOffsets();
   markMultiSubtitleDirty();
   cuePanelUndoPushed = false;
@@ -10839,12 +11194,25 @@ function commitCuePanelEdit() {
 
 function renderCurrentCuePanel() {
   if (!cuePanel) return;
-  const idx = currentCuePanelIdx;
-  const seg = DATA.segments[idx];
-  const empty = !seg;
+  const target = getCurrentCuePanelTarget();
+  const idx = target?.index ?? -1;
+  const seg = target?.segment || null;
+  const empty = !target;
   cuePanel.classList.toggle('empty', empty);
+  cuePanel.classList.toggle('extension-target', !empty && target.kind === 'extension');
+  if (cuePanelTarget) {
+    const label = empty ? '未选择' : target.kind === 'extension' ? '副字幕' : '主字幕';
+    cuePanelTarget.textContent = window.MAWE_I18N?.translateText?.(label) || label;
+    cuePanelTarget.classList.toggle('extension', !empty && target.kind === 'extension');
+  }
   [cuePanelPrev, cuePanelNext, cuePanelStart, cuePanelDuration, cuePanelText, cuePanelAddSticker, cuePanelSplit]
     .forEach((element) => { if (element) element.disabled = empty; });
+  const stickersEnabled = !empty && target.kind === 'main';
+  if (cuePanelAddSticker) cuePanelAddSticker.disabled = !stickersEnabled;
+  if (cuePanelSticker) {
+    cuePanelSticker.classList.toggle('disabled', !stickersEnabled);
+    cuePanelSticker.setAttribute('aria-disabled', stickersEnabled ? 'false' : 'true');
+  }
   if (empty) {
     cuePanelText.value = '';
     cuePanelStart.value = '';
@@ -10858,7 +11226,12 @@ function renderCurrentCuePanel() {
   if (document.activeElement !== cuePanelText || !cuePanelUndoPushed) cuePanelText.value = seg.text || '';
   cuePanelStart.value = fmtShort(seg.start);
   cuePanelDuration.value = ((seg.end - seg.start) / 1000).toFixed(3);
-  const metrics = window.AsrEditorUtils.cueMetrics(seg.text || '', seg.start, seg.end);
+  const splitMode = target.kind === 'extension'
+    ? getExtensionSubtitleSplitMode(target.track, seg)
+    : getMainSubtitleSplitMode(seg);
+  const metrics = window.AsrEditorUtils.cueMetrics(
+    seg.text || '', seg.start, seg.end, splitMode,
+  );
   cuePanelTotalLength.textContent = String(metrics.totalLength);
   cuePanelCharsPerSecond.textContent = metrics.charsPerSecond.toFixed(2);
   cuePanelSticker.replaceChildren();
@@ -10878,39 +11251,56 @@ function renderCurrentCuePanel() {
     cuePanelSticker.textContent = '暂无表情包';
     cuePanelSticker.title = '点击添加表情包';
   }
-  const previous = window.AsrEditorUtils.findAdjacentCueIndex(DATA.segments, idx, -1, hideDisabled);
-  const next = window.AsrEditorUtils.findAdjacentCueIndex(DATA.segments, idx, 1, hideDisabled);
+  const segments = target.kind === 'extension' ? target.track.segments : DATA.segments;
+  const previous = window.AsrEditorUtils.findAdjacentCueIndex(segments, idx, -1, hideDisabled);
+  const next = window.AsrEditorUtils.findAdjacentCueIndex(segments, idx, 1, hideDisabled);
   cuePanelPrev.disabled = previous < 0;
   cuePanelNext.disabled = next < 0;
 }
 
-function setCurrentCuePanelIndex(idx) {
-  if (idx === currentCuePanelIdx) {
-    renderCurrentCuePanel();
-    return;
-  }
-  commitCuePanelEdit();
-  currentCuePanelIdx = DATA.segments[idx] ? idx : -1;
-  cuePanelUndoPushed = false;
-  renderCurrentCuePanel();
-}
-
 function navigateCuePanel(direction) {
-  if (currentCuePanelIdx < 0) return;
+  const target = getCurrentCuePanelTarget();
+  if (!target) return;
   commitCuePanelEdit();
-  const next = window.AsrEditorUtils.findAdjacentCueIndex(DATA.segments, currentCuePanelIdx, direction, hideDisabled);
+  const next = window.AsrEditorUtils.findAdjacentCueIndex(
+    target.kind === 'extension' ? target.track.segments : DATA.segments,
+    target.index,
+    direction,
+    hideDisabled,
+  );
   if (next < 0) return;
-  selectOnly(next);
-  lastClickedIdx = next;
-  const cue = container.querySelector(`.cue[data-idx="${next}"]`);
+  const segments = target.kind === 'extension' ? target.track.segments : DATA.segments;
+  if (target.kind === 'extension') {
+    selectOnlyExtension(next);
+    lastClickedExtensionIdx = next;
+  } else {
+    selectOnly(next);
+    lastClickedIdx = next;
+  }
+  const cue = container.querySelector(
+    target.kind === 'extension' ? `.cue[data-ext-idx="${next}"]` : `.cue[data-idx="${next}"]`,
+  );
   if (cue) scrollCueToCenter(cue);
-  waveformEditor?.revealTime(DATA.segments[next].start, true);
+  waveformEditor?.revealTime(segments[next].start, true);
 }
 
 function splitCuePanelAtCursor() {
-  const idx = currentCuePanelIdx;
-  if (!DATA.segments[idx]) return;
+  const target = getCurrentCuePanelTarget();
+  if (!target) return;
   const cursorOffset = cuePanelText.selectionStart;
+  if (target.kind === 'extension') {
+    const splitTime = splitTimeForTextOffset(target.segment, cursorOffset);
+    commitCuePanelEdit();
+    const refreshed = getCurrentCuePanelTarget();
+    if (!refreshed) return;
+    openExtensionSplitModal(
+      refreshed.index,
+      splitTimeForTextOffset(refreshed.segment, cursorOffset) || splitTime,
+      refreshed.track,
+    );
+    return;
+  }
+  const idx = target.index;
   commitCuePanelEdit();
   selectOnly(idx);
   const cue = container.querySelector(`.cue[data-idx="${idx}"]`);
@@ -10946,46 +11336,68 @@ cuePanelText?.addEventListener('keydown', (event) => {
   else commitCuePanelEdit();
 });
 cuePanelText?.addEventListener('input', () => {
-  if (currentCuePanelIdx < 0) return;
-  ensureCuePanelUndo();
-  const seg = DATA.segments[currentCuePanelIdx];
+  const target = getCurrentCuePanelTarget();
+  if (!target) return;
+  ensureCuePanelUndo(target.kind === 'extension' ? '编辑副字幕' : '编辑当前字幕');
+  const seg = target.segment;
   seg.text = cuePanelText.value.replace(/\r\n?/g, '\n');
   seg._dirty = true;
-  const metrics = window.AsrEditorUtils.cueMetrics(seg.text, seg.start, seg.end);
+  if (target.kind === 'extension') markMultiSubtitleDirty();
+  const splitMode = target.kind === 'extension'
+    ? getExtensionSubtitleSplitMode(target.track, seg)
+    : getMainSubtitleSplitMode(seg);
+  const metrics = window.AsrEditorUtils.cueMetrics(
+    seg.text, seg.start, seg.end, splitMode,
+  );
   cuePanelTotalLength.textContent = String(metrics.totalLength);
   cuePanelCharsPerSecond.textContent = metrics.charsPerSecond.toFixed(2);
-  const cue = container.querySelector(`.cue[data-idx="${currentCuePanelIdx}"]`);
-  if (cue) {
-    setTextHtml(cue.querySelector('.text'), seg.text, searchEl.value);
-    applyCharCount(cue.querySelector('.charcount'), seg.text);
+  const textEl = getCuePanelTextElement(target);
+  if (textEl) {
+    setTextHtml(textEl, seg.text, searchEl.value);
+    applyCharCount(textEl.closest('.cue')?.querySelector('.charcount'), seg.text, splitMode);
   }
-  waveformEditor?.refreshCueLabel(currentCuePanelIdx);
+  if (target.kind === 'extension') waveformEditor?.refreshExtensionCueLabel(target.index, target.trackId);
+  else waveformEditor?.refreshCueLabel(target.index);
 });
 cuePanelText?.addEventListener('blur', () => commitCuePanelEdit());
 cuePanelStart?.addEventListener('change', () => commitCuePanelEdit());
 cuePanelDuration?.addEventListener('change', () => commitCuePanelEdit());
 cuePanelAddSticker?.addEventListener('click', () => {
-  if (currentCuePanelIdx >= 0) openStickerPicker([currentCuePanelIdx], false);
+  const target = getCurrentCuePanelTarget();
+  if (target?.kind === 'main') openStickerPicker([target.index], false);
 });
 cuePanelSticker?.addEventListener('click', () => {
-  if (currentCuePanelIdx >= 0) openStickerPicker([currentCuePanelIdx], false);
+  const target = getCurrentCuePanelTarget();
+  if (target?.kind === 'main') openStickerPicker([target.index], false);
 });
 cuePanelSticker?.addEventListener('contextmenu', (event) => {
   event.preventDefault();
-  if (currentCuePanelIdx < 0) return;
-  removeStickerCascade(currentCuePanelIdx);
+  const target = getCurrentCuePanelTarget();
+  if (target?.kind !== 'main') return;
+  removeStickerCascade(target.index);
   renderAll();
   flashHint('已删除当前表情包');
 });
 cuePanelSplit?.addEventListener('click', splitCuePanelAtCursor);
 
-function buildCueEl(seg, idx) {
+function buildCueEl(seg, idx, { extensionTrack = null } = {}) {
+  const isExtension = Boolean(extensionTrack);
   const el = document.createElement('div');
   el.className = multiSubtitleVisible() ? 'cue multi-cue' : 'cue';
-  el.dataset.idx = idx;
-  if (multiSubtitleVisible()) el.dataset.mainIdx = String(idx);
+  if (isExtension) {
+    el.classList.add('multi-extension-cue');
+    el.dataset.extIdx = String(idx);
+  } else {
+    el.dataset.idx = idx;
+    if (multiSubtitleVisible()) el.dataset.mainIdx = String(idx);
+  }
   if (seg._dirty) el.classList.add('dirty');
   if (seg.disabled) el.classList.add('disabled');
+
+  const getCueByIndex = (index) => container.querySelector(
+    isExtension ? `.cue[data-ext-idx="${index}"]` : `.cue[data-idx="${index}"]`,
+  );
+  const selectCueByIndex = isExtension ? selectOnlyExtension : selectOnly;
 
   // 颜色条（最左）
   const colorBar = document.createElement('span');
@@ -11007,8 +11419,8 @@ function buildCueEl(seg, idx) {
     colorBar.style.cursor = 'pointer';
     colorBar.addEventListener('click', (e) => {
       e.stopPropagation();
-      const head = container.querySelector(`.cue[data-idx="${seg.color_ref.headIdx}"]`);
-      if (head) { scrollCueToCenter(head); selectOnly(seg.color_ref.headIdx); }
+      const head = getCueByIndex(seg.color_ref.headIdx);
+      if (head) { scrollCueToCenter(head); selectCueByIndex(seg.color_ref.headIdx); }
     });
   }
 
@@ -11039,7 +11451,7 @@ function buildCueEl(seg, idx) {
     img.title = seg.sticker.name;
     img.addEventListener('click', (e) => {
       e.stopPropagation();
-      openStickerPreview(idx);
+      if (!isExtension) openStickerPreview(idx);
     });
     const nameEl = document.createElement('div');
     nameEl.className = 'sname';
@@ -11056,8 +11468,8 @@ function buildCueEl(seg, idx) {
     refEl.addEventListener('click', (e) => {
       e.stopPropagation();
       // 点击 ref 跳转到 head 行
-      const head = container.querySelector(`.cue[data-idx="${seg.sticker_ref.headIdx}"]`);
-      if (head) { scrollCueToCenter(head); selectOnly(seg.sticker_ref.headIdx); }
+      const head = getCueByIndex(seg.sticker_ref.headIdx);
+      if (head) { scrollCueToCenter(head); selectCueByIndex(seg.sticker_ref.headIdx); }
     });
     slotEl.appendChild(refEl);
   }
@@ -11068,7 +11480,11 @@ function buildCueEl(seg, idx) {
 
   const cntEl = document.createElement('span');
   cntEl.className = 'charcount';
-  applyCharCount(cntEl, seg.text);
+  applyCharCount(
+    cntEl,
+    seg.text,
+    isExtension ? getExtensionSubtitleSplitMode(extensionTrack, seg) : getMainSubtitleSplitMode(seg),
+  );
 
   el.appendChild(colorBar);
   el.appendChild(indexEl);
@@ -11077,7 +11493,8 @@ function buildCueEl(seg, idx) {
   el.appendChild(textEl);
   el.appendChild(cntEl);
 
-  bindCueEvents(el, idx);
+  if (isExtension) bindExtensionCueEvents(el, idx, extensionTrack);
+  else bindCueEvents(el, idx);
   return el;
 }
 
@@ -11100,7 +11517,7 @@ function buildMultiCueColumn(segment, index, track, kind) {
   header.className = 'multi-cue-column-header';
   const indexEl = document.createElement('span');
   indexEl.className = 'index';
-  indexEl.textContent = `${kind === 'main' ? '主' : '副'} ${index + 1}`;
+  indexEl.textContent = `${kind === 'main' ? '主字幕' : '副字幕'} ${index + 1}`;
   header.append(indexEl, buildMultiTimeEl(segment));
   const text = document.createElement('span');
   text.className = 'text';
@@ -11119,14 +11536,7 @@ function buildMultiCueColumn(segment, index, track, kind) {
 }
 
 function buildExtensionCueEl(seg, idx, track) {
-  const el = document.createElement('div');
-  el.className = 'cue multi-cue multi-extension-cue';
-  el.dataset.extIdx = String(idx);
-  const mainIndex = mainIndexForExtensionIndex(idx, track);
-  if (mainIndex >= 0) el.dataset.mainIdx = String(mainIndex);
-  el.appendChild(buildMultiCueColumn(seg, idx, track, 'extension'));
-  bindExtensionCueEvents(el, idx, track);
-  return el;
+  return buildCueEl(seg, idx, { extensionTrack: track });
 }
 
 function buildDualCueEl(mainIndex, extensionIndex, track) {
@@ -11196,23 +11606,34 @@ function buildSearchRegex(query, caseSensitive) {
 }
 
 // === 字数 ===
-function calcCharWidth(text) {
-  return window.AsrEditorUtils.countTextUnits(text);
+function calcCharWidth(text, mode = null) {
+  return mode
+    ? window.AsrEditorUtils.countSubtitleUnits(text, mode)
+    : window.AsrEditorUtils.countTextUnits(text);
 }
 function getCharCountThreshold() {
   const v = parseInt(document.getElementById('charcount-threshold').value, 10);
   return Number.isFinite(v) && v > 0 ? v : 16;
 }
-function applyCharCount(cntEl, text) {
-  const w = calcCharWidth(text);
+function applyCharCount(cntEl, text, mode = null) {
+  if (!cntEl) return;
+  const w = calcCharWidth(text, mode);
   cntEl.textContent = Number.isInteger(w) ? String(w) : w.toFixed(1);
   cntEl.classList.toggle('over', w > getCharCountThreshold());
 }
 function refreshAllCharCounts() {
+  const extensionTrack = getActiveExtensionTrack();
   container.querySelectorAll(':scope > .cue').forEach(el => {
-    const idx = parseInt(el.dataset.idx);
+    const idx = Number.parseInt(el.dataset.idx, 10);
+    const extensionIdx = Number.parseInt(el.dataset.extIdx, 10);
     const cntEl = el.querySelector('.charcount');
-    if (cntEl && Number.isInteger(idx) && DATA.segments[idx]) applyCharCount(cntEl, DATA.segments[idx].text);
+    const segment = Number.isInteger(extensionIdx) && extensionTrack
+      ? extensionTrack.segments[extensionIdx]
+      : (Number.isInteger(idx) ? DATA.segments[idx] : null);
+    const mode = Number.isInteger(extensionIdx) && extensionTrack
+      ? getExtensionSubtitleSplitMode(extensionTrack, segment)
+      : getMainSubtitleSplitMode(segment);
+    if (cntEl && segment) applyCharCount(cntEl, segment.text, mode);
   });
 }
 
@@ -11242,7 +11663,11 @@ function applySearch(query) {
     let matched = !re || re.test(searchableText);
     if (re) re.lastIndex = 0;
     if (matched && filterOver) {
-      matched = calcCharWidth(searchableText) > threshold;
+      const count = (mainSeg ? calcCharWidth(mainSeg.text, getMainSubtitleSplitMode(mainSeg)) : 0)
+        + (extensionSeg
+          ? calcCharWidth(extensionSeg.text, getExtensionSubtitleSplitMode(extensionTrack, extensionSeg))
+          : 0);
+      matched = count > threshold;
     }
     el.classList.toggle('hidden', !matched);
     if (matched) visible++;
@@ -11284,6 +11709,7 @@ function startExtensionEdit(el, index, track = getActiveExtensionTrack()) {
   if (!el || !track?.segments?.[index]) return;
   if (editingState) finishEdit(true);
   if (extensionEditingState) finishExtensionEdit(true);
+  setCurrentCuePanelExtensionIndex(index, track);
   const textEl = el.querySelector('.text') || el;
   const segment = track.segments[index];
   extensionEditingState = { el, index, trackId: track.id, textEl, original: segment.text || '' };
@@ -11314,7 +11740,14 @@ function finishExtensionEdit(save) {
       markMultiSubtitleDirty();
     }
   }
-  if (segment) setTextHtml(textEl, segment.text || '', searchEl.value);
+  if (segment) {
+    setTextHtml(textEl, segment.text || '', searchEl.value);
+    applyCharCount(
+      el.querySelector('.charcount'),
+      segment.text || '',
+      getExtensionSubtitleSplitMode(track, segment),
+    );
+  }
   waveformEditor?.refreshExtensionCueLabel(index, trackId);
   extensionEditingState = null;
 }
@@ -11426,7 +11859,9 @@ function finishEdit(save) {
   }
   setTextHtml(textEl, DATA.segments[idx].text, searchEl.value);
   const cntEl = el.querySelector('.charcount');
-  if (cntEl) applyCharCount(cntEl, DATA.segments[idx].text);
+  if (cntEl) applyCharCount(
+    cntEl, DATA.segments[idx].text, getMainSubtitleSplitMode(DATA.segments[idx]),
+  );
   waveformEditor?.refreshCueLabel(idx);
   editingState = null;
 }
@@ -11507,12 +11942,16 @@ function linkedSplitState(mainIndex, initial = {}) {
   const track = binding ? getExtensionTrack(binding.track_id) : null;
   const extension = binding ? extensionSegmentById(binding.extension_segment_ids?.[0], track) : null;
   if (!main || !binding || !track || !extension) return null;
-  const mainMode = MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(main.text);
-  const extensionMode = track.split_mode || MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(extension.text);
+  const mainMode = getMainSubtitleSplitMode(main);
+  const extensionMode = getExtensionSubtitleSplitMode(track, extension);
   const initialTime = Number.isFinite(initial.timeMs)
     ? initial.timeMs
     : splitTimeForTextOffset(main, initial.mainOffset ?? Math.floor(String(main.text || '').length / 2));
   const useMainWordTimestamps = shouldUseMainSplitTimestamps(main);
+  // 关闭主轨字词时间码或缺少可靠时间码时，波形入口传入的时间就是绝对切点；
+  // 文字断点只负责决定两侧内容，不再用文字位置反推切分时间。
+  const fixedCutMs = !useMainWordTimestamps && Number.isFinite(initial.timeMs)
+    ? Math.round(initial.timeMs) : null;
   const timestampOffset = useMainWordTimestamps
     ? window.AsrEditorUtils.splitCharOffsetAtTime(main, initialTime)
     : null;
@@ -11520,9 +11959,9 @@ function linkedSplitState(mainIndex, initial = {}) {
     ?? MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
       main.text, initialTime, main.start, main.end, mainMode,
     );
-  const initialMainCutMs = useMainWordTimestamps
+  const initialMainCutMs = fixedCutMs ?? (useMainWordTimestamps
     ? splitTimeForTextOffset(main, initialMainOffset)
-    : splitCutTime(main, initialMainOffset, false);
+    : splitCutTime(main, initialMainOffset, false));
   const initialOffset = MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
     extension.text, initialMainCutMs, extension.start, extension.end, extensionMode,
   );
@@ -11541,6 +11980,8 @@ function linkedSplitState(mainIndex, initial = {}) {
     cutMs: initialMainCutMs,
     extensionCutMs: initialMainCutMs,
     extensionMode,
+    fixedCutMs,
+    cutSource: fixedCutMs != null ? 'pointer' : useMainWordTimestamps ? 'word-timestamps' : 'text-estimate',
     locked: false,
   };
 }
@@ -11548,10 +11989,11 @@ function linkedSplitState(mainIndex, initial = {}) {
 function mainWaveformSplitState(mainIndex, initial = {}) {
   const main = DATA.segments[mainIndex];
   if (!main) return null;
-  const mainMode = MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(main.text);
+  const mainMode = getMainSubtitleSplitMode(main);
   const initialTime = Number.isFinite(initial.timeMs)
     ? initial.timeMs
     : splitTimeForTextOffset(main, initial.mainOffset ?? Math.floor(String(main.text || '').length / 2));
+  const fixedCutMs = Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
   const initialOffset = MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
     main.text, initialTime, main.start, main.end, mainMode,
   );
@@ -11562,8 +12004,10 @@ function mainWaveformSplitState(mainIndex, initial = {}) {
     mainId: main.id,
     offset: initialOffset,
     mainOffset: initialOffset,
-    mainCutMs: splitTimeForTextOffset(main, initialOffset),
+    mainCutMs: fixedCutMs ?? splitTimeForTextOffset(main, initialOffset),
     mainMode,
+    fixedCutMs,
+    cutSource: fixedCutMs != null ? 'pointer' : 'text-estimate',
     locked: false,
   };
 }
@@ -11571,10 +12015,11 @@ function mainWaveformSplitState(mainIndex, initial = {}) {
 function extensionOnlySplitState(extensionIndex, track, initial = {}) {
   const extension = track?.segments?.[extensionIndex];
   if (!extension || !track) return null;
-  const extensionMode = track.split_mode || MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(extension.text);
+  const extensionMode = getExtensionSubtitleSplitMode(track, extension);
   const initialTime = Number.isFinite(initial.timeMs)
     ? initial.timeMs
     : splitTimeForTextOffset(extension, initial.extensionOffset ?? Math.floor(String(extension.text || '').length / 2));
+  const fixedCutMs = Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
   const initialOffset = MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
     extension.text, initialTime, extension.start, extension.end, extensionMode,
   );
@@ -11586,8 +12031,10 @@ function extensionOnlySplitState(extensionIndex, track, initial = {}) {
     extensionId: extension.id,
     trackId: track.id,
     offset: initialOffset,
-    extensionCutMs: splitTimeForTextOffset(extension, initialOffset),
+    extensionCutMs: fixedCutMs ?? splitTimeForTextOffset(extension, initialOffset),
     extensionMode,
+    fixedCutMs,
+    cutSource: fixedCutMs != null ? 'pointer' : 'text-estimate',
     locked: false,
   };
 }
@@ -11607,10 +12054,13 @@ function syncLinkedSplitTime(state, activeLane, main, extension) {
 
   // 默认的主轨字词时间码是固定锚点；关闭该设置后，未锁定的当前 lane
   // 才能推动共享切点。另一条 lane 的文字 offset 随共享时间吸附到最近合法边界。
+  const absoluteFixed = Number.isFinite(state.fixedCutMs);
   const mainFixed = !state.mainInteractive || splitLaneLocked(state, 'main');
   const extensionFixed = splitLaneLocked(state, 'extension');
   let cutMs = state.cutMs;
-  if (mainFixed) {
+  if (absoluteFixed) {
+    cutMs = state.fixedCutMs;
+  } else if (mainFixed) {
     cutMs = state.mainCutMs;
   } else if (extensionFixed) {
     cutMs = state.extensionCutMs;
@@ -11626,12 +12076,12 @@ function syncLinkedSplitTime(state, activeLane, main, extension) {
   state.mainCutMs = sharedCutMs;
   state.extensionCutMs = sharedCutMs;
 
-  if (activeLane === 'main' && !extensionFixed) {
+  if (!absoluteFixed && activeLane === 'main' && !extensionFixed) {
     const extensionOffset = MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
       extension.text, sharedCutMs, extension.start, extension.end, state.extensionMode,
     );
     if (Number.isInteger(extensionOffset)) state.offset = extensionOffset;
-  } else if (activeLane === 'extension' && !mainFixed) {
+  } else if (!absoluteFixed && activeLane === 'extension' && !mainFixed) {
     const mainOffset = MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
       main.text, sharedCutMs, main.start, main.end, state.mainMode,
     );
@@ -11657,7 +12107,7 @@ function setSplitPreviewLine(label, parts) {
   left.textContent = parts.left;
   const separator = document.createElement('span');
   separator.className = 'multi-subtitle-split-preview-separator';
-  separator.textContent = '✂️';
+  separator.textContent = ' / ';
   const right = document.createElement('span');
   right.className = 'multi-subtitle-split-preview-right';
   right.textContent = parts.right;
@@ -11695,24 +12145,53 @@ function renderSplitLane(state, lane) {
   if (!visible) return;
   textEl.replaceChildren();
   const legalOffsets = new Set(MULTI_SUBTITLE_UTILS.subtitleSplitOffsets(displaySegment.text, displayMode));
+  const characters = Array.from(displaySegment.text || '');
   let offset = 0;
-  Array.from(displaySegment.text || '').forEach((character) => {
-    offset += character.length;
+  const appendCharacter = (character, characterOffset) => {
     const characterSpan = document.createElement('span');
     characterSpan.className = 'multi-subtitle-split-char';
-    characterSpan.dataset.offset = String(offset);
+    characterSpan.dataset.offset = String(characterOffset);
     characterSpan.textContent = character;
     textEl.appendChild(characterSpan);
-    if (!legalOffsets.has(offset)) return;
-    const splitOffset = offset;
+  };
+  const appendGap = (splitOffset, whitespace = '') => {
     const gap = document.createElement('span');
     gap.className = 'multi-subtitle-split-gap';
     gap.dataset.offset = String(splitOffset);
     gap.setAttribute('role', 'button');
     gap.setAttribute('aria-label', `在第 ${splitOffset} 个字符后拆分`);
+    // 保留原始空白；只有当前选中的断点通过 CSS 将这个空白替换成剪刀。
+    gap.textContent = whitespace;
     textEl.appendChild(gap);
-  });
-  textEl.setAttribute('aria-label', isMain ? '选择主字幕拆分点' : '选择拓展字幕断点');
+  };
+  for (let index = 0; index < characters.length; index += 1) {
+    const character = characters[index];
+    if (displayMode === 'word' && /\s/u.test(character)) {
+      let runEnd = index;
+      let runOffset = offset + character.length;
+      while (runEnd + 1 < characters.length && /\s/u.test(characters[runEnd + 1])) {
+        runEnd += 1;
+        runOffset += characters[runEnd].length;
+      }
+      if (legalOffsets.has(runOffset)) {
+        appendGap(runOffset, characters.slice(index, runEnd + 1).join(''));
+      }
+      else {
+        for (let whitespaceIndex = index; whitespaceIndex <= runEnd; whitespaceIndex += 1) {
+          offset += characters[whitespaceIndex].length;
+          appendCharacter(characters[whitespaceIndex], offset);
+        }
+      }
+      if (legalOffsets.has(runOffset)) offset = runOffset;
+      else offset = runOffset;
+      index = runEnd;
+      continue;
+    }
+    offset += character.length;
+    appendCharacter(character, offset);
+    if (legalOffsets.has(offset)) appendGap(offset);
+  }
+  textEl.setAttribute('aria-label', isMain ? '选择主字幕拆分点' : '选择副字幕断点');
   textEl.title = '鼠标移动选择拆分点，左键点击锁定；再次点击后解锁';
   textEl.onmousemove = (event) => {
     if (splitLaneLocked(pendingLinkedSplit, lane)) return;
@@ -11753,8 +12232,8 @@ function renderLinkedSplitText(state) {
     multiSubtitleSplitTitle.textContent = state.kind === 'main'
       ? '选择主字幕拆分点'
       : state.kind === 'extension'
-        ? '选择拓展字幕拆分点'
-        : state.mainInteractive ? '分别选择主字幕和拓展字幕拆分点' : '选择拓展字幕拆分点';
+        ? '选择副字幕拆分点'
+        : state.mainInteractive ? '分别选择主字幕和副字幕拆分点' : '选择副字幕拆分点';
   }
   renderSplitLane(state, 'main');
   renderSplitLane(state, 'extension');
@@ -11808,6 +12287,25 @@ function maybeAutoSubmitLinkedSplit(state) {
   return true;
 }
 
+function splitCutSourceHint(state) {
+  if (state?.cutSource === 'pointer') return '当前切分位置固定为波形指针位置';
+  if (state?.cutSource === 'word-timestamps') return '当前切分位置由字词时间码推定';
+  return '';
+}
+
+function renderSplitMeta(text, state) {
+  if (!multiSubtitleSplitMeta) return;
+  multiSubtitleSplitMeta.replaceChildren();
+  multiSubtitleSplitMeta.appendChild(document.createTextNode(text));
+  const hint = splitCutSourceHint(state);
+  if (!hint) return;
+  const hintEl = document.createElement('span');
+  hintEl.className = 'multi-subtitle-split-cut-hint';
+  const translatedHint = window.MAWE_I18N?.translateText?.(hint) || hint;
+  hintEl.textContent = `（${translatedHint}）`;
+  multiSubtitleSplitMeta.appendChild(hintEl);
+}
+
 function updateLinkedSplitPreview(offset, lane = 'extension') {
   const state = pendingLinkedSplit;
   if (!state) return false;
@@ -11825,8 +12323,10 @@ function updateLinkedSplitPreview(offset, lane = 'extension') {
     state.mainOffset = legalOffsets.reduce((best, candidate) => (
       Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
     ), legalOffsets[0]);
-    state.mainCutMs = splitCutTime(main, state.mainOffset, state.kind === 'linked' && !state.mainInteractive
-      ? false : EDITOR_SETTINGS.splitUseWordTimestamps);
+    state.mainCutMs = Number.isFinite(state.fixedCutMs)
+      ? state.fixedCutMs
+      : splitCutTime(main, state.mainOffset, state.kind === 'linked' && !state.mainInteractive
+        ? false : EDITOR_SETTINGS.splitUseWordTimestamps);
   } else if (extension) {
     const requestedOffset = Math.max(
       0,
@@ -11837,12 +12337,13 @@ function updateLinkedSplitPreview(offset, lane = 'extension') {
     state.offset = legalOffsets.reduce((best, candidate) => (
       Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
     ), legalOffsets[0]);
-    state.extensionCutMs = splitCutTime(extension, state.offset, false);
+    state.extensionCutMs = Number.isFinite(state.fixedCutMs)
+      ? state.fixedCutMs : splitCutTime(extension, state.offset, false);
   }
 
   if (state.kind === 'linked') syncLinkedSplitTime(state, lane, main, extension);
 
-  const mainMode = state.mainMode || (main && MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(main.text));
+  const mainMode = state.mainMode || (main && getMainSubtitleSplitMode(main));
   const mainParts = main
     ? MULTI_SUBTITLE_UTILS.splitSubtitleText(main.text, state.mainOffset, mainMode)
     : null;
@@ -11861,20 +12362,20 @@ function updateLinkedSplitPreview(offset, lane = 'extension') {
   updateSplitLaneVisual(state, 'extension');
   if (multiSubtitleSplitMeta) {
     if (mainOnly) {
-      multiSubtitleSplitMeta.textContent = `主轨：${state.mainMode === 'continuous' ? '连续型' : '单词型'} · 切点 ${fmtShort(state.mainCutMs)} · 字符位置 ${state.mainOffset ?? '—'}`;
+      renderSplitMeta(`主轨：${splitModeLabel(state.mainMode)} · 切点 ${fmtShort(state.mainCutMs)} · 字符位置 ${state.mainOffset ?? '—'}`, state);
     } else if (extensionOnly) {
-      multiSubtitleSplitMeta.textContent = `拓展轨：${state.extensionMode === 'continuous' ? '连续型' : '单词型'} · 切点 ${fmtShort(state.extensionCutMs)}`;
+      renderSplitMeta(`拓展轨：${splitModeLabel(state.extensionMode)} · 切点 ${fmtShort(state.extensionCutMs)}`, state);
     } else {
       const mainLabel = state.mainInteractive
         ? `主轨文字断点 ${state.mainOffset ?? '—'}`
         : `主轨字词锚点 ${fmtShort(state.mainCutMs)}`;
-      multiSubtitleSplitMeta.textContent = `${mainLabel} · 拓展轨文字断点 ${state.offset ?? '—'} · 共用绝对切点 ${fmtShort(state.cutMs)}`;
+      renderSplitMeta(`${mainLabel} · 拓展轨文字断点 ${state.offset ?? '—'} · 共用绝对切点 ${fmtShort(state.cutMs)}`, state);
     }
   }
   if (multiSubtitleSplitPreview) {
     multiSubtitleSplitPreview.replaceChildren();
     if (mainParts && !extensionOnly) setSplitPreviewLine('主', mainParts);
-    if (extensionParts && !mainOnly) setSplitPreviewLine('拓', extensionParts);
+    if (extensionParts && !mainOnly) setSplitPreviewLine('副', extensionParts);
     if (!mainValid || !extensionValid) {
       const error = document.createElement('div');
       error.textContent = '当前断点无法形成两段合法文本';
@@ -12023,6 +12524,9 @@ function confirmLinkedSplit() {
     return;
   }
   const mainPair = buildSplitPair(main, state.mainOffset, sharedCutMs, main.id || `main-${mainIndex}`);
+  window.__debugLinkedSplit = {
+    pair: [mainPair?.left?.text, mainPair?.right?.text],
+  };
   const extensionPair = buildSplitPair(
     extension,
     state.offset,
@@ -12037,6 +12541,7 @@ function confirmLinkedSplit() {
   pushUndo('联动拆分字幕');
   removeBindingsForSegmentIds([oldMainId], [oldExtensionId]);
   DATA.segments.splice(mainIndex, 1, mainPair.left, mainPair.right);
+  window.__debugLinkedSplit.afterSplice = DATA.segments.map((segment) => segment.text);
   if (track) track.segments.splice(extensionIndex, 1, extensionPair.left, extensionPair.right);
   // 主轨数组增加了一项，沿用原有表情包/颜色 headIdx 维护规则。
   for (let index = mainIndex + 2; index < DATA.segments.length; index++) {
@@ -12051,13 +12556,18 @@ function confirmLinkedSplit() {
     MULTI_SUBTITLE_UTILS.buildSubtitleBinding(mainPair.left, extensionPair.left, track.id),
     MULTI_SUBTITLE_UTILS.buildSubtitleBinding(mainPair.right, extensionPair.right, track.id),
   );
+  window.__debugLinkedSplit.afterBindings = DATA.segments.map((segment) => segment.text);
   multi.enabled = true;
   markMainSegmentsDirty([mainPair.left, mainPair.right]);
   markMultiSubtitleDirty();
+  window.__debugLinkedSplit.afterDirty = DATA.segments.map((segment) => segment.text);
   closeLinkedSplitModal();
   clearSelection();
+  window.__debugLinkedSplit.afterClear = DATA.segments.map((segment) => segment.text);
   renderAll();
+  window.__debugLinkedSplit.afterRender = DATA.segments.map((segment) => segment.text);
   selectOnly(mainIndex);
+  window.__debugLinkedSplit.afterSelect = DATA.segments.map((segment) => segment.text);
   lastClickedIdx = mainIndex;
   flashHint('已按同一绝对时间切点联动拆分', 'success');
 }
@@ -12605,6 +13115,8 @@ function deleteSegments(idxs) {
   // after splice shifts the array — causing wrong-adjacent text overwrites.
   commitCuePanelEdit();
   currentCuePanelIdx = -1;
+  currentCuePanelKind = 'main';
+  currentCuePanelTrackId = null;
   cuePanelUndoPushed = false;
   pushUndo(`删除 ${sorted.length} 条字幕`);
   const pairedExtensionIndices = new Set();
@@ -12674,6 +13186,13 @@ function deleteExtensionSegments(indices, track = getActiveExtensionTrack()) {
   const sorted = [...new Set(indices)].filter((index) => Number.isInteger(index)
     && index >= 0 && index < track.segments.length).sort((a, b) => a - b);
   if (!sorted.length) return;
+  // 先提交并解除编辑区对旧副字幕下标的引用，避免删除前面的段后，
+  // 编辑区下标漂移到另一条副字幕。
+  commitCuePanelEdit();
+  currentCuePanelIdx = -1;
+  currentCuePanelKind = 'main';
+  currentCuePanelTrackId = null;
+  cuePanelUndoPushed = false;
   const ids = sorted.map((index) => track.segments[index]?.id).filter(Boolean);
 
   // 删除绑定扩展字幕时沿用主轨删除语义：绑定关系和另一侧字幕一起删除，
@@ -12817,7 +13336,10 @@ function bindCueEvents(el, idx) {
       || (lastPrimaryPointerDownAt > 0 && now - lastPrimaryPointerDownAt < 500);
     lastPrimaryPointerDownAt = now;
     if (isSecondDoubleClick) {
-      // 第一次 pointerdown 已经完成选中；双击的第二次按下不要再次刷新面板/波形布局。
+      // 第一次 pointerdown 已经完成选中；双击的第二次按下不要再次刷新波形布局。
+      // 但仍要更新当前编辑焦点：主副字幕可以同时保持选中，且前一次主轨点击
+      // 可能与扩展轨点击被隔开，此时不能因为本次字幕仍处于 selected 就停留在副字幕面板。
+      setCurrentCuePanelIndex(idx);
       pointerDownState = { handled: true, suppressClick: true, time: now };
       return;
     }
@@ -13198,18 +13720,22 @@ document.addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.altKey || e.metaKey) return;
 
   const direction = (key === 'a' || key === 'w') ? -1 : 1;
+  const panelTarget = getCurrentCuePanelTarget();
+  const extensionTarget = panelTarget?.kind === 'extension';
+  const extensionTrack = extensionTarget ? panelTarget.track : null;
+  const segments = extensionTarget ? extensionTrack.segments : DATA.segments;
   const next = e.shiftKey
     ? window.AsrEditorUtils.findCueSelectionExtensionTarget(
-      DATA.segments,
-      selectedIdxs,
-      currentCuePanelIdx,
+      segments,
+      extensionTarget ? selectedExtensionIdxs : selectedIdxs,
+      panelTarget?.index ?? -1,
       Math.round(player.currentTime * 1000),
       direction,
       hideDisabled,
     )
     : window.AsrEditorUtils.findCueNavigationTarget(
-      DATA.segments,
-      currentCuePanelIdx,
+      segments,
+      panelTarget?.index ?? -1,
       Math.round(player.currentTime * 1000),
       direction,
       hideDisabled,
@@ -13219,13 +13745,21 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
   e.stopPropagation();
   const wasPlaying = !player.paused;
-  if (e.shiftKey) addToSelection(next);
-  else selectOnly(next);
-  lastClickedIdx = next;
-  const cue = container.querySelector(`.cue[data-idx="${next}"]`);
+  if (extensionTarget) {
+    if (e.shiftKey) addExtensionToSelection(next, extensionTrack);
+    else selectOnlyExtension(next);
+    lastClickedExtensionIdx = next;
+  } else {
+    if (e.shiftKey) addToSelection(next);
+    else selectOnly(next);
+    lastClickedIdx = next;
+  }
+  const cue = container.querySelector(
+    extensionTarget ? `.cue[data-ext-idx="${next}"]` : `.cue[data-idx="${next}"]`,
+  );
   if (cue) scrollCueToCenter(cue);
-  waveformEditor?.revealTime(DATA.segments[next].start, true);
-  seekFromWaveform(DATA.segments[next].start / 1000);
+  waveformEditor?.revealTime(segments[next].start, true);
+  seekFromWaveform(segments[next].start / 1000);
   if (wasPlaying && player.paused) {
     const promise = player.play();
     if (promise && promise.catch) promise.catch(() => {});
@@ -13341,7 +13875,7 @@ document.addEventListener('keydown', (e) => {
 // 并把光标置于末尾。内联编辑态、已聚焦编辑区或模态打开时不触发。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter') return;
-  if (editingState) return;  // 内联编辑态的 Enter 交给 split/commit 处理
+  if (editingState || extensionEditingState) return;  // 内联编辑态的 Enter 交给 split/commit 处理
   if (e.target === cuePanelText) return;  // 已在字幕编辑区
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;  // 仅响应裸 Enter
   const a = document.activeElement;
@@ -13358,8 +13892,23 @@ document.addEventListener('keydown', (e) => {
   if (projectMediaModal.classList.contains('show')) return;
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
-  if (selectedIdxs.size !== 1) return;
+  const mainSingle = selectedIdxs.size === 1 && selectedExtensionIdxs.size === 0;
+  const extensionSingle = selectedIdxs.size === 0 && selectedExtensionIdxs.size === 1;
+  if (!mainSingle && !extensionSingle) return;
   if (lastEditRegion === 'cue-list') {
+    if (extensionSingle) {
+      const index = [...selectedExtensionIdxs][0];
+      const track = getActiveExtensionTrack();
+      const el = container.querySelector(
+        `.multi-dual-cue[data-ext-idx="${index}"] .multi-cue-column.extension, `
+          + `.multi-extension-cue[data-ext-idx="${index}"]`,
+      );
+      if (!track?.segments?.[index] || !el) return;
+      e.preventDefault();
+      scrollCueIntoViewIfNeeded(el.closest('.cue') || el);
+      startExtensionEdit(el, index, track);
+      return;
+    }
     const context = hoveredSelectedCueContext();
     const idx = context ? context.idx : [...selectedIdxs][0];
     if (!DATA.segments[idx]) return;
@@ -13374,8 +13923,7 @@ document.addEventListener('keydown', (e) => {
     }
     return;
   }
-  const idx = currentCuePanelIdx;
-  if (idx < 0 || !DATA.segments[idx]) return;
+  if (!getCurrentCuePanelTarget()) return;
   e.preventDefault();
   cuePanelText.focus();
   const end = cuePanelText.value.length;
@@ -13397,8 +13945,15 @@ document.addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
   e.preventDefault();
   e.stopPropagation();
-  if (selectedIdxs.size === 0 && selectedExtensionIdxs.size > 0) {
-    mergeExtensionSegments([...selectedExtensionIdxs]);
+  const currentTarget = getCurrentCuePanelTarget();
+  if (
+    selectedExtensionIdxs.size > 0
+    && (currentTarget?.kind === 'extension' || selectedIdxs.size === 0)
+  ) {
+    mergeExtensionSegments(
+      [...selectedExtensionIdxs],
+      currentTarget?.kind === 'extension' ? currentTarget.track : getActiveExtensionTrack(),
+    );
     return;
   }
   mergeSegments([...selectedIdxs]);
@@ -13499,6 +14054,79 @@ document.addEventListener('keydown', (e) => {
   if (player.paused) togglePlayback();
 });
 
+// G：绑定当前单选的副字幕。若同时选中一条主字幕则直接绑定，否则沿用
+// 右键「绑定到主字幕」的自动匹配/等待选择流程。
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'g' && e.key !== 'G') return;
+  if (editingState || extensionEditingState || e.repeat) return;
+  const a = document.activeElement;
+  if (a && (
+    a.tagName === 'INPUT'
+    || a.tagName === 'TEXTAREA'
+    || a.tagName === 'SELECT'
+    || a.isContentEditable
+  )) return;
+  if (replaceModal.classList.contains('show')) return;
+  if (stickerModal.classList.contains('show')) return;
+  if (stickerPreviewModal.classList.contains('show')) return;
+  if (projectMediaModal.classList.contains('show')) return;
+  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+  if (ctxmenu.classList.contains('show')) return;
+  if (!multiSubtitleVisible() || selectedExtensionIdxs.size !== 1 || selectedIdxs.size > 1) return;
+  const extensionIndex = [...selectedExtensionIdxs][0];
+  const track = getActiveExtensionTrack();
+  const extension = track?.segments?.[extensionIndex];
+  const binding = bindingForExtensionIndex(extensionIndex, track);
+  if (!extension) return;
+  if (e.shiftKey) {
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!binding) {
+      flashHint('当前副字幕没有绑定关系');
+      return;
+    }
+    unbindSelectedSubtitlePair();
+    return;
+  }
+  if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || binding) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (selectedIdxs.size === 1) {
+    bindSelectedSubtitlePair();
+  } else {
+    beginPendingExtensionBinding(extensionIndex, track);
+  }
+});
+
+// H：把当前单选且已绑定的副字幕对齐到主字幕时间轴。
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'h' && e.key !== 'H') return;
+  if (editingState || extensionEditingState || e.repeat) return;
+  const a = document.activeElement;
+  if (a && (
+    a.tagName === 'INPUT'
+    || a.tagName === 'TEXTAREA'
+    || a.tagName === 'SELECT'
+    || a.isContentEditable
+  )) return;
+  if (replaceModal.classList.contains('show')) return;
+  if (stickerModal.classList.contains('show')) return;
+  if (stickerPreviewModal.classList.contains('show')) return;
+  if (projectMediaModal.classList.contains('show')) return;
+  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+  if (ctxmenu.classList.contains('show')) return;
+  if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+  if (!multiSubtitleVisible() || selectedExtensionIdxs.size !== 1 || selectedIdxs.size > 1) return;
+  const extensionIndex = [...selectedExtensionIdxs][0];
+  const track = getActiveExtensionTrack();
+  const extension = track?.segments?.[extensionIndex];
+  if (!extension || !bindingForExtensionIndex(extensionIndex, track)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  alignExtensionToMainTimeRange(extensionIndex, track);
+});
+
 // B：按指针所在区域分发——
 // 1) 鼠标悬停在已单选的字幕列表行上：按指针对应的文字位置拆分；
 // 2) 鼠标位于波形上：按指针的音频位置拆分（与波形右键「按音频位置拆分」一致）；
@@ -13574,10 +14202,14 @@ document.addEventListener('keydown', (e) => {
   splitAt(idx, 0, 0, timeMs);
 });
 
-// 点击外部 -> 完成编辑
+// 点击输入框外 -> 完成内联编辑。双列时编辑行的容器同时包含主/副两列，
+// 因此不能用整行 contains 判断；只要离开当前 contenteditable 就提交并退出。
 document.addEventListener('mousedown', (e) => {
-  if (!editingState) return;
-  if (!editingState.el.contains(e.target)) finishEdit(true);
+  const target = e.target instanceof Node ? e.target : null;
+  if (editingState && (!target || !editingState.textEl.contains(target))) finishEdit(true);
+  if (extensionEditingState && (
+    !target || !extensionEditingState.textEl.contains(target)
+  )) finishExtensionEdit(true);
 });
 
 // === 字幕预览几何（preview.subtitle）===
@@ -13921,8 +14553,12 @@ function extensionSegmentAtTime(tMs, mainIndex = -1) {
   if (!multiSubtitleVisible()) return null;
   const bound = mainIndex >= 0 ? extensionForMainIndex(mainIndex) : null;
   if (bound && !bound.disabled && tMs >= bound.start && tMs <= bound.end) return bound;
-  return (getActiveExtensionTrack()?.segments || []).find((segment) => (
-    segment && !segment.disabled && tMs >= segment.start && tMs <= segment.end
+  return (getActiveExtensionTrack()?.segments || []).find((segment, index, segments) => (
+    segment && !segment.disabled && tMs >= segment.start && (
+      tMs < segment.end
+      || index === segments.length - 1
+      || segments[index + 1]?.start > tMs
+    )
   )) || null;
 }
 
@@ -14317,6 +14953,8 @@ function buildJson() {
     schema: multi.schema || MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SCHEMA,
     enabled: multi.enabled === true,
     display_mode: multi.display_mode || 'both',
+    main_split_mode: isConfiguredSubtitleSplitMode(multi.main_split_mode)
+      ? multi.main_split_mode : getMainSubtitleSplitMode(DATA.segments[0]),
     tracks: (multi.tracks || []).map((track) => ({
       id: track.id,
       role: 'extension',
@@ -15952,6 +16590,7 @@ document.getElementById('load-media').addEventListener('click', () => {
   loadMediaFileInput.click();
 });
 document.getElementById('load-srt').addEventListener('click', () => {
+  pendingSrtImportAsExtension = false;
   if (hasUnsavedProjectChanges()
       && !confirm('当前有未保存的改动，是否确定加载字幕？将替换当前字幕。')) return;
   loadSrtFileInput.value = '';
@@ -15960,7 +16599,19 @@ document.getElementById('load-srt').addEventListener('click', () => {
 
 loadSrtFileInput.addEventListener('change', async (event) => {
   const file = event.target.files?.[0];
-  if (file) await openSrtFile(file);
+  const importAsExtension = pendingSrtImportAsExtension;
+  pendingSrtImportAsExtension = false;
+  if (!file) return;
+  if (importAsExtension) {
+    try {
+      const segments = await parseSubtitleImportFile(file);
+      await showMultiSubtitleImportChoice(file, segments);
+    } catch (error) {
+      flashHint(`导入字幕失败：${error.message || error}`);
+    }
+    return;
+  }
+  await openSrtFile(file);
 });
 
 multiSubtitleImportResultCancel?.addEventListener('click', closeMultiSubtitleImportModal);
@@ -17028,9 +17679,8 @@ function showExtensionContextMenu(x, y, index, timeMs = null, track = getActiveE
     ctxmenu.appendChild(item);
   };
   const binding = bindingForExtensionIndex(index, track);
-  addItem('在鼠标位置拆分', () => openExtensionSplitModal(index, timeMs, track));
-  const extensionSelectionOnly = selectedIdxs.size === 0
-    && selectedExtensionIdxs.size > 1
+  addItem('在鼠标位置拆分', () => openExtensionSplitModal(index, timeMs, track), false, false, 'B');
+  const extensionSelectionOnly = selectedExtensionIdxs.size > 1
     && selectedExtensionIdxs.has(index);
   addItem(
     '合并副字幕块',
@@ -17040,11 +17690,11 @@ function showExtensionContextMenu(x, y, index, timeMs = null, track = getActiveE
     'C',
   );
   addItem('删除扩展字幕', () => deleteExtensionSegments([index]), true);
-  if (binding) addItem('对齐主字幕时间范围', () => alignExtensionToMainTimeRange(index, track));
+  if (binding) addItem('对齐主字幕时间范围', () => alignExtensionToMainTimeRange(index, track), false, false, 'H');
   if (binding) addItem('解绑', () => {
     selectOnlyExtension(index);
     unbindSelectedSubtitlePair();
-  });
+  }, false, false, 'Shift+G');
   if (binding) {
     // 一对一关系已经存在时，必须先解绑，避免用户误以为点击后会静默换绑。
     addItem('重新绑定需先解绑', null, false, true);
@@ -17054,9 +17704,9 @@ function showExtensionContextMenu(x, y, index, timeMs = null, track = getActiveE
       // 再复用顶部「绑定」操作。selectOnlyExtension 不会清掉已选的主字幕。
       selectOnlyExtension(index);
       bindSelectedSubtitlePair();
-    });
+    }, false, false, 'G');
   } else {
-    addItem('绑定到主字幕', () => beginPendingExtensionBinding(index, track));
+    addItem('绑定到主字幕', () => beginPendingExtensionBinding(index, track), false, false, 'G');
   }
   ctxmenu.classList.add('show');
   const rect = ctxmenu.getBoundingClientRect();
@@ -17243,6 +17893,7 @@ function initWaveformEditor() {
     },
     getSelection: (track = 'main') => track === 'extension' ? selectedExtensionIdxs : selectedIdxs,
     getExtensionSelection: () => selectedExtensionIdxs,
+    getBindingMarkerTargets,
     multiSubtitleVisible: () => multiSubtitleVisible(),
     selectCue: (idx) => {
       selectCueByClick(idx);
@@ -17292,9 +17943,8 @@ function initWaveformEditor() {
     showExtensionContextMenu: (x, y, idx, timeMs) => showExtensionContextMenu(x, y, idx, timeMs),
     showBlankWaveformMenu: (timeMs, x, y, track) => showWaveformBlankMenu(timeMs, x, y, track),
     addCueRange: (startMs, endMs, x, y) => addCueRangeFromWaveform(startMs, endMs, x, y),
-    // 剃刀工具：在波形指针位置安全拆分字幕。复用右键菜单的波形时间拆分路径，
-    // 它会先用 splitCharOffsetAtTime 把指针时间映射到最近的字/词级边界，再
-    // 走 splitAtCursor；这样剃刀与右键拆分行为一致，且保留 items 时间码精度。
+    // 剃刀工具：在波形指针位置安全拆分字幕。复用右键菜单的波形时间拆分路径；
+    // 有可靠主轨字词时间码时沿用字词锚点，否则在弹窗中保留指针的绝对切点。
     splitCueAtTime: (idx, timeMs) => splitFromContextMenu(idx, 0, 0, timeMs),
     getClickBehavior: () => EDITOR_SETTINGS.clickBehavior,
     getClickTarget: () => EDITOR_SETTINGS.clickTarget,

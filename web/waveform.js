@@ -737,6 +737,25 @@
     });
   }
 
+  // 与字幕列表保持一致：相邻字幕共用边界时，边界属于后一条；间隙和最后一条
+  // 的结束时刻仍沿用当前字幕作为播放头对应项。
+  function isActiveCueAtTime(segments, index, timeMs, skipDisabled = true) {
+    const segment = segments[index];
+    if (!segment || (skipDisabled && segment.disabled) || timeMs < Number(segment.start)) return false;
+    let next = null;
+    for (let nextIndex = index + 1; nextIndex < segments.length; nextIndex += 1) {
+      if (!skipDisabled || !segments[nextIndex]?.disabled) {
+        next = segments[nextIndex];
+        break;
+      }
+    }
+    return timeMs < Number(segment.end) || !next || Number(next.start) > timeMs;
+  }
+
+  function findActiveCueIndex(segments, timeMs, skipDisabled = true) {
+    return segments.findIndex((_, index) => isActiveCueAtTime(segments, index, timeMs, skipDisabled));
+  }
+
   class WaveformEditor {
     constructor(options) {
       this.options = options;
@@ -2067,7 +2086,10 @@
       const multiLane = this.options.multiSubtitleVisible?.() === true;
       const segments = this.options.getSegments('main');
       const selected = this.options.getSelection('main');
+      const bindingMarkerTargets = this.options.getBindingMarkerTargets?.() || {};
+      const mainBindingMarkers = bindingMarkerTargets.main;
       const now = this.currentTimeMs();
+      const activeMainIndex = findActiveCueIndex(segments, now);
       const badgesByIndex = groupBadges || computeGroupBadges(segments);
       segments.forEach((segment, index) => {
         if (segment.end <= startMs || segment.start >= endMs) return;
@@ -2080,12 +2102,13 @@
         block.style.setProperty('--cue-color', colorForSegment(segment));
         if (selected.has(index)) block.classList.add('selected');
         if (segment.disabled) block.classList.add('disabled');
-        if (!segment.disabled && now >= segment.start && now <= segment.end) block.classList.add('active');
+        if (index === activeMainIndex) block.classList.add('active');
 
         const label = document.createElement('span');
         label.className = 'waveform-cue-label';
         label.textContent = segment.text.replace(/\s+/g, ' ');
         block.appendChild(label);
+        this.setBindingMarker(block, mainBindingMarkers?.has?.(index) === true);
         // 短块内文字会被截断，悬浮 title 给出完整字幕文本
         block.title = label.textContent;
         const badges = this.settings.showGroupBadges !== false ? badgesByIndex.get(index) : null;
@@ -2138,6 +2161,8 @@
       if (!multiLane) return;
       const extensionSegments = this.options.getExtensionSegments?.() || [];
       const extensionSelected = this.options.getExtensionSelection?.() || new Set();
+      const extensionBindingMarkers = bindingMarkerTargets.extension;
+      const activeExtensionIndex = findActiveCueIndex(extensionSegments, now, false);
       extensionSegments.forEach((segment, index) => {
         if (segment.end <= startMs || segment.start >= endMs) return;
         const block = document.createElement('div');
@@ -2148,12 +2173,13 @@
           block.dataset.end = String(segment.end);
           block.style.setProperty('--cue-color', '#7a9fc5');
         if (extensionSelected.has(index)) block.classList.add('selected');
-        if (now >= segment.start && now <= segment.end) block.classList.add('active');
+        if (index === activeExtensionIndex) block.classList.add('active');
         const label = document.createElement('span');
         label.className = 'waveform-cue-label';
         label.textContent = String(segment.text || '').replace(/\s+/g, ' ');
         block.title = label.textContent;
         block.appendChild(label);
+        this.setBindingMarker(block, extensionBindingMarkers?.has?.(index) === true);
         if (segment.start >= startMs) {
           const leftHandle = document.createElement('span');
           leftHandle.className = 'waveform-cue-handle left';
@@ -2179,6 +2205,22 @@
         });
         row.appendChild(block);
       });
+    }
+
+    setBindingMarker(block, visible) {
+      block.classList.toggle('has-binding-marker', visible);
+      const marker = block.querySelector('.waveform-binding-marker');
+      if (!visible) {
+        marker?.remove();
+        return;
+      }
+      if (marker) return;
+      const next = document.createElement('span');
+      next.className = 'waveform-binding-marker';
+      next.textContent = '🔗';
+      next.title = '已绑定字幕';
+      next.setAttribute('aria-label', '已绑定字幕');
+      block.appendChild(next);
     }
 
     layoutBlock(block, segment, startMs, endMs) {
@@ -2237,6 +2279,10 @@
         block.classList.toggle('selected', isExtension
           ? this.options.getExtensionSelection?.().has(Number(block.dataset.extIdx))
           : this.options.getSelection('main').has(Number(block.dataset.idx)));
+        const bindingMarkerTargets = this.options.getBindingMarkerTargets?.() || {};
+        this.setBindingMarker(block, isExtension
+          ? bindingMarkerTargets.extension?.has?.(Number(block.dataset.extIdx)) === true
+          : bindingMarkerTargets.main?.has?.(Number(block.dataset.idx)) === true);
       });
       this.positionPlayheads();
     }
@@ -2258,10 +2304,16 @@
     updateSelection() {
       const selected = this.options.getSelection('main');
       const extensionSelected = this.options.getExtensionSelection?.() || new Set();
+      const bindingMarkerTargets = this.options.getBindingMarkerTargets?.() || {};
       this.content.querySelectorAll('.waveform-cue-block').forEach((block) => {
-        block.classList.toggle('selected', block.dataset.track === 'extension'
-          ? extensionSelected.has(Number(block.dataset.extIdx))
-          : selected.has(Number(block.dataset.idx)));
+        const isExtension = block.dataset.track === 'extension';
+        const index = Number(isExtension ? block.dataset.extIdx : block.dataset.idx);
+        block.classList.toggle('selected', isExtension
+          ? extensionSelected.has(index)
+          : selected.has(index));
+        this.setBindingMarker(block, isExtension
+          ? bindingMarkerTargets.extension?.has?.(index) === true
+          : bindingMarkerTargets.main?.has?.(index) === true);
       });
     }
 
@@ -3078,7 +3130,7 @@
       if (!this.payload) return;
       const now = this.currentTimeMs();
       const segments = this.options.getSegments('main');
-      const activeIndex = segments.findIndex((segment) => !segment.disabled && now >= segment.start && now <= segment.end);
+      const activeIndex = findActiveCueIndex(segments, now);
       if (activeIndex !== this.activeIndex) {
         this.activeIndex = activeIndex;
         this.content.querySelectorAll('.waveform-cue-block[data-track="main"]').forEach((block) => {
@@ -3086,9 +3138,9 @@
         });
       }
       const extensionSegments = this.options.getExtensionSegments?.() || [];
+      const activeExtensionIndex = findActiveCueIndex(extensionSegments, now, false);
       this.content.querySelectorAll('.waveform-cue-block[data-track="extension"]').forEach((block) => {
-        const segment = extensionSegments[Number(block.dataset.extIdx)];
-        block.classList.toggle('active', Boolean(segment && now >= segment.start && now <= segment.end));
+        block.classList.toggle('active', Number(block.dataset.extIdx) === activeExtensionIndex);
       });
 
       if (allowFollow && this.settings.mode === 'basic') {

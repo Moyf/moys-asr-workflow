@@ -261,6 +261,10 @@ def _normalize_multi_subtitle(
     elif not isinstance(display_mode, str) or display_mode not in MULTI_SUBTITLE_DISPLAY_MODES:
         errors.append(ProjectValidationError("$.multi_subtitle.display_mode", "must be one of main, extension, both"))
 
+    main_split_mode = raw.get("main_split_mode")
+    if main_split_mode is not None and main_split_mode not in MULTI_SUBTITLE_SPLIT_MODES:
+        errors.append(ProjectValidationError("$.multi_subtitle.main_split_mode", "must be continuous or word"))
+
     tracks = raw.get("tracks")
     if tracks is None:
         tracks = []

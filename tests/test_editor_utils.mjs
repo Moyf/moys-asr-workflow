@@ -21,8 +21,10 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('保存成功！', 'en'), 'Saved!');
   assert.equal(i18n.translateText('字幕大小', 'en'), 'Font size');
   assert.equal(i18n.translateText('字幕预览设置', 'en'), 'Subtitle preview settings');
-  assert.equal(i18n.translateText('交换主副字幕', 'en'), 'Swap main and extension subtitles');
-  assert.equal(
+ assert.equal(i18n.translateText('交换主副字幕', 'en'), 'Swap main and extension subtitles');
+  assert.equal(i18n.translateText('主字幕 1', 'en'), 'Main subtitle 1');
+  assert.equal(i18n.translateText('副字幕 1', 'en'), 'Secondary subtitle 1');
+ assert.equal(
     i18n.translateText('已交换主副字幕：主轨 2 条，副轨 3 条', 'en'),
     'Swapped main and extension subtitles: 2 main, 3 extension',
   );
@@ -78,6 +80,16 @@ test('uses one shared text-unit rule for lists and current-cue metrics', () => {
   assert.deepEqual(
     JSON.parse(JSON.stringify(helpers.cueMetrics('猫A\n😀!', 0, 1000))),
     { totalLength: 3, charsPerSecond: 3 },
+  );
+});
+
+test('counts subtitle units according to the configured language type', () => {
+  assert.equal(helpers.countSubtitleUnits('Hello, world!', 'word'), 2);
+  assert.equal(helpers.countSubtitleUnits('Hello, world!', 'continuous'), 10);
+  assert.equal(helpers.countSubtitleUnits('你好，世界。', 'continuous'), 4);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.cueMetrics('Hello, world!', 0, 1000, 'word'))),
+    { totalLength: 2, charsPerSecond: 2 },
   );
 });
 
@@ -425,6 +437,17 @@ test('finds A/D navigation targets from selection or playhead', () => {
   assert.equal(helpers.findCueNavigationTarget(segments, -1, 4000, 1, true), 3);
   assert.equal(helpers.findCueNavigationTarget(segments, -1, 3200, -1, true), 0);
   assert.equal(helpers.findCueNavigationTarget(segments, -1, 3200, 1, true), 2);
+});
+
+test('prefers the later subtitle at a shared playhead boundary', () => {
+  const segments = [
+    { start: 1000, end: 2000 },
+    { start: 2000, end: 3000 },
+    { start: 4000, end: 5000 },
+  ];
+
+  assert.equal(helpers.findCueNavigationTarget(segments, -1, 2000, -1), 0);
+  assert.equal(helpers.findCueNavigationTarget(segments, -1, 2000, 1), 2);
 });
 
 
@@ -1028,6 +1051,7 @@ test('normalizes legacy multi-subtitle data with stable IDs and clears extension
   assert.equal(project.multi_subtitle.tracks[0].segments[0].id, 'translation-segment-001');
   assert.equal('items' in project.multi_subtitle.tracks[0].segments[0], false);
   assert.equal(project.multi_subtitle.display_mode, 'both');
+  assert.equal(project.multi_subtitle.main_split_mode, 'continuous');
 });
 
 
@@ -1039,8 +1063,10 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
     }],
     multi_subtitle: {
       enabled: true,
+      main_split_mode: 'word',
       tracks: [{
         id: 'translation',
+        split_mode: 'continuous',
         segments: [{
           id: 'translation-001', start: 40, end: 960, text: '中文',
           items: [{ start: 40, end: 960, text: '中文' }],
@@ -1058,6 +1084,8 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
   assert.equal(result.swapped, true);
   assert.equal(project.segments[0].text, '中文');
   assert.equal(project.multi_subtitle.tracks[0].segments[0].text, 'English');
+  assert.equal(project.multi_subtitle.main_split_mode, 'continuous');
+  assert.equal(project.multi_subtitle.tracks[0].split_mode, 'word');
   assert.equal('items' in project.multi_subtitle.tracks[0].segments[0], false);
   assert.deepEqual([...project.multi_subtitle.bindings[0].main_segment_ids], ['translation-001']);
   assert.deepEqual([...project.multi_subtitle.bindings[0].extension_segment_ids], ['main-001']);
@@ -1092,9 +1120,11 @@ test('matches extension cues within the 300ms tolerance and reports unmatched cu
 test('uses character boundaries for continuous text and protects words for word text', () => {
   assert.ok(helpers.splitSubtitleText('这是一句字幕', 3, 'continuous'));
   assert.equal(helpers.splitSubtitleText('split a word', 9, 'word'), null);
-  const parts = helpers.splitSubtitleText('split a, sentence', 7, 'word');
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('A B', 'word'))), [2]);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('split a, sentence', 'word'))), [6, 9]);
+  const parts = helpers.splitSubtitleText('split a, sentence', 6, 'word');
   assert.deepEqual(JSON.parse(JSON.stringify(parts)), {
-    left: 'split a', right: 'sentence', offset: 7,
+    left: 'split', right: 'a, sentence', offset: 6,
   });
 });
 

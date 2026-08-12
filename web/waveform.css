@@ -531,6 +531,11 @@
   --multi-subtitle-label-height: 15px;
   --multi-subtitle-lane-height: min(35px, calc((100% - (var(--multi-subtitle-bottom-inset) * 2) - var(--multi-subtitle-lane-gap)) / 2));
 }
+/* 基础波形本身会把单字幕块增高到约 72px；双 lane 也保留适度的增高，
+   但不占满单主字幕的高度，避免两条字幕在共享波形中显得过于拥挤。 */
+.waveform-basic .waveform-row.multi-subtitle-row {
+  --multi-subtitle-lane-height: min(54px, calc((100% - (var(--multi-subtitle-bottom-inset) * 2) - var(--multi-subtitle-lane-gap)) / 2));
+}
 .waveform-row.multi-subtitle-row::before {
   content: "1";
   color: var(--active-cue-fg);
@@ -540,8 +545,8 @@
 }
 .waveform-row.multi-subtitle-row::after {
   content: "2";
-  color: var(--active-cue-fg);
-  background: var(--accent-strong);
+  color: var(--mark-fg);
+  background: var(--amber);
   bottom: calc(var(--multi-subtitle-bottom-inset) + ((var(--multi-subtitle-lane-height) - var(--multi-subtitle-label-height)) / 2));
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="main"] {
@@ -756,6 +761,24 @@
 .waveform-cue-handle.left { left: 0; border-radius: 3px 0 0 3px; }
 .waveform-cue-handle.right { right: 0; border-radius: 0 3px 3px 0; }
 .waveform-cue-label { pointer-events: none; }
+.waveform-binding-marker {
+  position: absolute;
+  z-index: 3;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", sans-serif;
+  font-size: 12px;
+  line-height: 1;
+  pointer-events: none;
+}
+.waveform-cue-block.has-binding-marker .waveform-cue-label {
+  display: block;
+  max-width: calc(100% - 22px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .waveform-basic .waveform-cue-block {
   height: 72px;
   min-height: 35px;

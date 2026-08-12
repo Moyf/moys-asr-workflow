@@ -275,6 +275,11 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   ));
   await expect(helpSplitKey).toHaveText(`${modKey}+Enter`);
   await expect(page.locator('#help-waveform-split-key')).toHaveText('B');
+  await expect(helpPanel).toContainText('单选副字幕后绑定到主字幕');
+  await expect(helpPanel).toContainText('解绑当前副字幕');
+  await expect(helpPanel).toContainText('对齐副字幕到主字幕时间轴');
+  await expect(helpPanel).toContainText('单选副字幕后打开副字幕拆分');
+  await expect(helpPanel).toContainText('波形标记');
 
   await splitKey.selectOption('enter');
   await expect(helpSplitKey).toHaveText('Enter');

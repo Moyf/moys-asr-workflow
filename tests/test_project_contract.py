@@ -28,6 +28,7 @@ class ProjectContractTests(unittest.TestCase):
             "multi_subtitle": {
                 "enabled": True,
                 "display_mode": "both",
+                "main_split_mode": "word",
                 "tracks": [{
                     "id": "translation",
                     "language": "English",
@@ -66,6 +67,7 @@ class ProjectContractTests(unittest.TestCase):
             "segments": [{"id": "main-a", "start": 0, "end": 1000, "text": "主"}],
             "multi_subtitle": {
                 "enabled": True,
+                "main_split_mode": "invalid",
                 "tracks": [{
                     "id": "translation",
                     "split_mode": "invalid",
@@ -86,6 +88,7 @@ class ProjectContractTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertIn("$.multi_subtitle.tracks[0].split_mode", paths)
+        self.assertIn("$.multi_subtitle.main_split_mode", paths)
         self.assertIn("$.multi_subtitle.bindings[0].main_segment_ids", paths)
 
     def test_validate_project_accepts_head_refs_speakers_and_preview_clamps(self) -> None:

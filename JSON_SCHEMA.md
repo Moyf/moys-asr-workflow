@@ -204,6 +204,7 @@
     "schema": "moy.asr.multi_subtitle.v1",
     "enabled": true,
     "display_mode": "both",
+    "main_split_mode": "word",
     "tracks": [{
       "id": "translation",
       "role": "extension",
@@ -235,12 +236,13 @@
 | `multi_subtitle.schema` | string | 否 | 固定为 `moy.asr.multi_subtitle.v1` |
 | `multi_subtitle.enabled` | boolean | 否 | 默认 `false`；关闭只隐藏扩展数据，不删除数据 |
 | `multi_subtitle.display_mode` | string | 否 | `main` / `extension` / `both`，默认 `both` |
+| `multi_subtitle.main_split_mode` | string | 否 | 主字幕语言类型：`continuous`（字符型）或 `word`（单词型）；旧工程缺失时按主字幕文本自动判断 |
 | `multi_subtitle.tracks` | array | 否 | 扩展轨数组；当前 UI 只管理第一条轨道 |
 | `tracks[i].id` | string | 是 | 轨道稳定 ID |
 | `tracks[i].role` | string | 否 | 当前固定为 `extension` |
 | `tracks[i].name` | string | 否 | 用户可见轨道名 |
 | `tracks[i].language` | string | 否 | 语言或语言代码 |
-| `tracks[i].split_mode` | string | 否 | `continuous` 或 `word`；用于近似拆分 |
+| `tracks[i].split_mode` | string | 否 | 副字幕语言类型：`continuous`（字符型）或 `word`（单词型）；用于近似拆分和字数统计 |
 | `tracks[i].source_name` | string | 否 | 来源文件名，不保存绝对路径 |
 | `tracks[i].segments` | array | 是 | 扩展字幕段；每段只有段级时间码和文本 |
 | `tracks[i].segments[j].id` | string | 是 | 扩展字幕稳定 ID |
@@ -259,7 +261,7 @@
 - 当前 MVP 强制每个绑定一对一；数组形式保留给未来一对多关系，但当前校验要求数组长度均为 1，且一个端点不能重复绑定。
 - 自动导入按段级时间码匹配：时间区间有交集，且开始/结束时间差均不超过 `300ms`；冲突选择总差值最小的候选。未匹配段保留，可手动绑定。
 - 扩展 SRT 或 mosp/json 没有可靠的字词音频时间码；扩展段中的 `items` 会被忽略/清除，不参与拆分。
-- `continuous` 允许字符边界，`word` 只允许空格或安全标点附近的边界，禁止拆碎单词。切分时会清理断点两侧相邻的中英文逗号、句号及空白。
+- `continuous`（字符型）允许字符边界，`word`（单词型）只允许空格或安全标点附近的边界，禁止拆碎单词。切分时会清理断点两侧相邻的中英文逗号、句号及空白；两种模式也分别决定字数统计规则。
 - `enabled: false` 时工程仍保留轨道、绑定、语言类型和 ID；主轨 SRT 导出语义不变，扩展轨使用独立 SRT 导出。
 
 ---
