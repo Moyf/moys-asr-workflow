@@ -177,6 +177,49 @@ def test_llm_connection(settings: LlmSettings) -> None:
         raise LlmClientError(f"LLM connection test failed: {error}") from error
 
 
+def list_llm_models(settings: LlmSettings) -> list[str]:
+    """Fetch model IDs from an OpenAI-compatible ``/models`` endpoint."""
+    endpoint = _models_endpoint(settings.base_url)
+    try:
+        with requests.Session() as session:
+            response = session.get(
+                endpoint,
+                headers=_request_headers(settings, streaming=False),
+                timeout=(10, 30),
+            )
+            response.raise_for_status()
+            body = response.json()
+    except (RequestException, JSONDecodeError) as error:
+        raise LlmClientError(f"LLM model list request failed: {error}") from error
+
+    if not isinstance(body, dict):
+        raise LlmClientError("LLM model list must be a JSON object")
+    entries = body.get("data")
+    if not isinstance(entries, list):
+        entries = body.get("models")
+    if not isinstance(entries, list):
+        raise LlmClientError("LLM model list is missing data")
+
+    models: list[str] = []
+    seen: set[str] = set()
+    for entry in entries:
+        model_id = ""
+        if isinstance(entry, str):
+            model_id = entry.strip()
+        elif isinstance(entry, dict):
+            for key in ("id", "model", "name"):
+                candidate = entry.get(key)
+                if isinstance(candidate, str) and candidate.strip():
+                    model_id = candidate.strip()
+                    break
+        if model_id and model_id not in seen:
+            seen.add(model_id)
+            models.append(model_id)
+    if not models:
+        raise LlmClientError("LLM model list is empty")
+    return models[:200]
+
+
 def _chat_endpoint(base_url: str) -> str:
     value = base_url.strip().rstrip("/")
     parsed = urlparse(value)
@@ -187,6 +230,10 @@ def _chat_endpoint(base_url: str) -> str:
     if value.endswith("/chat/completions"):
         return value
     return f"{value}/chat/completions"
+
+
+def _models_endpoint(base_url: str) -> str:
+    return _chat_endpoint(base_url).removesuffix("/chat/completions") + "/models"
 
 
 def normalize_reasoning_mode(value: object) -> str:

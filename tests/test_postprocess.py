@@ -21,7 +21,7 @@ from maw.postprocess import (
 )
 from maw.postprocess_ffmpeg import FfconcatRequest, parse_ffconcat, run_ffconcat_rebuild
 from maw.postprocess_io import PostprocessFileError, _atomic_write, read_project, read_srt, render_srt
-from maw.postprocess_llm import LlmClientError, LlmSettings, _chat_endpoint, _reasoning_parameters, complete_subtitle_groups, normalize_reasoning_mode, test_llm_connection as check_llm_connection
+from maw.postprocess_llm import LlmClientError, LlmSettings, _chat_endpoint, _models_endpoint, _reasoning_parameters, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, test_llm_connection as check_llm_connection
 from maw.project_preview import JsonDict
 
 
@@ -397,6 +397,51 @@ class PostprocessTests(unittest.TestCase):
             timeout=(10, 30),
         )
         response.raise_for_status.assert_called_once_with()
+
+    def test_llm_model_listing_parses_openai_compatible_response(self) -> None:
+        settings = LlmSettings(
+            provider_id="custom",
+            api_key="sk-test",
+            base_url="https://example.com/v1",
+            model="manual-model",
+        )
+        response = mock.Mock()
+        response.json.return_value = {
+            "data": [
+                {"id": "model-b"},
+                {"id": "model-a"},
+                {"id": "model-b"},
+            ]
+        }
+        session = mock.MagicMock()
+        session.__enter__.return_value = session
+        session.get.return_value = response
+
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            models = list_llm_models(settings)
+
+        self.assertEqual(models, ["model-b", "model-a"])
+        self.assertEqual(_models_endpoint("https://example.com/v1"), "https://example.com/v1/models")
+        session.get.assert_called_once_with(
+            "https://example.com/v1/models",
+            headers={"Authorization": "Bearer sk-test"},
+            timeout=(10, 30),
+        )
+        response.raise_for_status.assert_called_once_with()
+
+    def test_llm_model_listing_accepts_models_name_shape_and_rejects_empty(self) -> None:
+        settings = LlmSettings("custom", "sk-test", "https://example.com/v1/chat/completions", "manual-model")
+        response = mock.Mock()
+        response.json.return_value = {"models": [{"name": "named-model"}, "string-model"]}
+        session = mock.MagicMock()
+        session.__enter__.return_value = session
+        session.get.return_value = response
+
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            self.assertEqual(list_llm_models(settings), ["named-model", "string-model"])
+            response.json.return_value = {"data": []}
+            with self.assertRaisesRegex(LlmClientError, "model list is empty"):
+                _ = list_llm_models(settings)
 
     def test_llm_runner_batches_large_projects_before_provider_call(self) -> None:
         project = sample_project(self.media)

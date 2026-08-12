@@ -275,6 +275,24 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(settings.model, "custom-model")
         self.assertFalse(self.env_path.exists())
 
+    def test_postprocess_models_use_form_values_without_writing_config(self) -> None:
+        with mock.patch("maw.gui_web.list_llm_models", return_value=["model-a", "model-b"]) as list_models:
+            result = self.api.get_postprocess_models({
+                "providerId": "custom",
+                "apiKey": "sk-entered",
+                "baseUrl": "https://example.com/v1",
+                "model": "custom-model",
+            })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["models"], ["model-a", "model-b"])
+        settings = list_models.call_args.args[0]
+        self.assertEqual(settings.provider_id, "custom")
+        self.assertEqual(settings.api_key, "sk-entered")
+        self.assertEqual(settings.base_url, "https://example.com/v1")
+        self.assertEqual(settings.model, "custom-model")
+        self.assertFalse(self.env_path.exists())
+
     def test_legacy_setting_bridges_return_structured_errors_for_invalid_values(self) -> None:
         settings = self.api.save_settings({
             "providerId": "qwen",
@@ -1605,9 +1623,13 @@ class LauncherAssetContractTests(unittest.TestCase):
             "llmApiKey",
             "llmBaseUrl",
             "llmModel",
+            "llmModelOptions",
+            "llmModelChoicesToggle",
+            "llmModelStatus",
             "llmReasoningMode",
             "llmCustomDisplayName",
             "testLlmConnection",
+            "getLlmModels",
             "llmSettingsSaveStatus",
             "openLlmSettings",
         ):
@@ -1622,6 +1644,23 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('bridge("run_ffconcat_rebuild"', script)
         self.assertIn('bridge("save_postprocess_settings"', script)
         self.assertIn('bridge("test_postprocess_connection"', script)
+        self.assertIn('bridge("get_postprocess_models"', script)
+        self.assertIn('class="primary"', page)
+        self.assertIn('llm_models_loaded: "已获取 {count} 个模型，可在上方快速选择"', launcher_script)
+        self.assertIn('role="combobox"', page)
+        self.assertIn('role="listbox"', page)
+        self.assertNotIn(">⌄</button>", page)
+        self.assertIn('data-i18n="llm_quick_actions">快捷功能</label>', page)
+        self.assertNotIn('id="llmModelQuick"', page)
+        self.assertNotIn("<datalist", page)
+        self.assertIn('llm_reasoning_mode_hint">默认关闭；自动表示跟随模型默认。</p>', page)
+        settings_grid = page.index('<div class="toolbox-grid settings-grid">')
+        settings_actions = page.index('<div class="field settings-grid-actions">')
+        model_status = page.index('id="llmModelStatus"')
+        api_key = page.index('id="llmApiKey"')
+        self.assertLess(settings_grid, settings_actions)
+        self.assertLess(settings_actions, model_status)
+        self.assertLess(settings_actions, api_key)
         self.assertIn('displayName: item.id === "custom" ? $("llmCustomDisplayName").value.trim() : ""', script)
         self.assertIn('bridge("choose_file", { kind: "script" })', script)
         self.assertIn('bridge("choose_file", { kind: "subtitle" })', script)

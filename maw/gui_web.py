@@ -30,7 +30,7 @@ from maw.media import find_ffmpeg, resolve_project_media
 from maw.postprocess import LlmPostprocessRequest, OutputMode, Replacement, ReplacementRequest, run_fixed_replacement as process_fixed_replacement, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_ffmpeg import FfconcatRequest, run_ffconcat_rebuild as process_ffconcat_rebuild
 from maw.postprocess_match import ScriptMatchRequest, run_script_match as process_script_match
-from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, normalize_reasoning_mode, preset_by_id, test_llm_connection
+from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, preset_by_id, test_llm_connection
 from maw.soniox import SonioxContextError, build_soniox_context
 
 
@@ -528,6 +528,24 @@ class LauncherApi:
             detail = str(error)
             return {"ok": False, "field": "postprocessProvider", "code": "postprocess_connection_failed", "detail": detail, "error": detail}
         return {"ok": True, "providerId": preset.id}
+
+    def get_postprocess_models(self, payload: Mapping[str, object]) -> dict[str, object]:
+        preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
+        file_values = _postprocess_values(self.paths.env_path, preset.env_prefix)
+        settings = LlmSettings(
+            provider_id=preset.id,
+            api_key=str(payload.get("apiKey") or "").strip() or file_values["apiKey"],
+            base_url=str(payload.get("baseUrl") or "").strip() or file_values["baseUrl"] or preset.base_url,
+            model=str(payload.get("model") or "").strip() or file_values["model"] or preset.model,
+        )
+        if not settings.api_key:
+            return _error_result("postprocessApiKey", "api_key_missing", "Post-processing API key is required.")
+        try:
+            models = list_llm_models(settings)
+        except LlmClientError as error:
+            detail = str(error)
+            return {"ok": False, "field": "postprocessModel", "code": "postprocess_models_failed", "detail": detail, "error": detail}
+        return {"ok": True, "providerId": preset.id, "models": models}
 
     def run_fixed_replacement(self, payload: Mapping[str, object]) -> dict[str, object]:
         self._emit_postprocess_status("toolbox_status_reading")

@@ -483,7 +483,11 @@
           </div>
           <div class="field">
             <label for="llmModel" data-i18n="llm_model">模型</label>
-            <input id="llmModel" type="text" autocomplete="off">
+            <div class="llm-model-picker">
+              <input id="llmModel" type="text" autocomplete="off" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="llmModelOptions">
+              <button id="llmModelChoicesToggle" class="llm-model-toggle" type="button" aria-label="展开已获取模型列表" data-i18n-title="llm_model_choices_title" title="展开已获取模型列表"></button>
+              <div id="llmModelOptions" class="llm-model-options hidden" role="listbox"></div>
+            </div>
             <p id="llmModelError" class="field-error"></p>
           </div>
           <div class="field">
@@ -495,8 +499,16 @@
               <option value="medium" data-i18n="llm_reasoning_medium">中</option>
               <option value="high" data-i18n="llm_reasoning_high">高</option>
             </select>
-            <p class="hint" data-i18n="llm_reasoning_mode_hint">默认关闭；自动表示跟随模型默认，不同模型会映射到各自的思考参数。</p>
+            <p class="hint" data-i18n="llm_reasoning_mode_hint">默认关闭；自动表示跟随模型默认。</p>
             <p id="llmReasoningModeError" class="field-error"></p>
+          </div>
+          <div class="field settings-grid-actions">
+            <label class="settings-grid-action-label" data-i18n="llm_quick_actions">快捷功能</label>
+            <div class="settings-actions">
+              <button id="testLlmConnection" class="primary" type="button" data-i18n="llm_test_connection" data-i18n-title="llm_test_connection_title" title="使用当前填写的 API Key、URL 和模型发送最小测试请求">测试连接</button>
+              <button id="getLlmModels" class="primary" type="button" data-i18n="llm_get_models" data-i18n-title="llm_get_models_title" title="使用当前填写的 API Key 获取可用模型列表">获取模型</button>
+            </div>
+            <p id="llmModelStatus" class="hint llm-model-status hidden" aria-live="polite"></p>
           </div>
         </div>
         <div id="llmCustomDisplayNameField" class="field hidden">
@@ -510,7 +522,6 @@
             <input id="llmApiKey" type="password" autocomplete="off">
             <div class="settings-actions">
               <button id="saveLlmSettings" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
-              <button id="testLlmConnection" class="ghost" type="button" data-i18n="llm_test_connection" data-i18n-title="llm_test_connection_title" title="使用当前填写的 API Key、URL 和模型发送最小测试请求">测试连接</button>
             </div>
           </div>
           <p id="llmSettingsSaveStatus" class="settings-save-status hint" aria-live="polite"></p>

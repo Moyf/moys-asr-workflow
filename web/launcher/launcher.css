@@ -477,6 +477,80 @@ label {
   grid-template-columns: 1fr auto;
 }
 
+.llm-model-picker {
+  position: relative;
+}
+
+.llm-model-picker > input {
+  padding-right: 34px;
+}
+
+.llm-model-toggle {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  color: var(--text-muted);
+  background: transparent;
+}
+
+.llm-model-toggle::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.llm-model-toggle:hover:not(:disabled) {
+  color: var(--accent-hover);
+  background: var(--accent-tint);
+}
+
+.llm-model-options {
+  position: absolute;
+  z-index: 12;
+  inset-inline: 0;
+  top: calc(100% + 4px);
+  max-height: min(320px, 40vh);
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-3);
+}
+
+.llm-model-option {
+  display: block;
+  width: 100%;
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: transparent;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.llm-model-option:hover,
+.llm-model-option:focus-visible {
+  color: var(--accent-hover);
+  background: var(--accent-tint-strong);
+}
+
+.llm-model-status {
+  margin-top: 0;
+}
+
 input,
 select,
 textarea {
@@ -1157,6 +1231,14 @@ textarea::placeholder {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.settings-grid-actions {
+  align-self: start;
+}
+
+.settings-grid-action-label {
+  line-height: 1;
 }
 
 .toolbox-action-slot code {

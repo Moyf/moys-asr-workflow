@@ -10,6 +10,8 @@
   let busy = false;
   let inputManual = false;
   let saveStatusTimer = 0;
+  let modelChoices = [];
+  let modelChoicesOpen = false;
 
   function t(key) {
     return window.MAWLauncher.translate(key);
@@ -53,6 +55,54 @@
         if (option) option.textContent = providerLabel(item);
       });
     });
+  }
+
+  function renderModelChoiceList(query = "") {
+    const list = $("llmModelOptions");
+    const normalizedQuery = String(query || "").trim().toLocaleLowerCase();
+    const visibleModels = normalizedQuery
+      ? modelChoices.filter((model) => model.toLocaleLowerCase().includes(normalizedQuery))
+      : modelChoices;
+    list.textContent = "";
+    visibleModels.forEach((model) => {
+      const option = document.createElement("button");
+      option.type = "button";
+      option.className = "llm-model-option";
+      option.setAttribute("role", "option");
+      option.setAttribute("aria-selected", String(model === $("llmModel").value.trim()));
+      option.textContent = model;
+      option.addEventListener("mousedown", (event) => event.preventDefault());
+      option.addEventListener("click", () => {
+        $("llmModel").value = model;
+        setFieldError("llmModel", "");
+        setModelChoicesOpen(false);
+        $("llmModel").focus();
+      });
+      list.append(option);
+    });
+    list.classList.toggle("hidden", !modelChoicesOpen || visibleModels.length === 0);
+  }
+
+  function setModelChoicesOpen(open, query = "") {
+    modelChoicesOpen = Boolean(open && modelChoices.length);
+    $("llmModelChoicesToggle").setAttribute("aria-expanded", String(modelChoicesOpen));
+    $("llmModel").setAttribute("aria-expanded", String(modelChoicesOpen));
+    renderModelChoiceList(query);
+  }
+
+  function renderModelChoices(models = []) {
+    const status = $("llmModelStatus");
+    modelChoices = Array.from(new Set(
+      (Array.isArray(models) ? models : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ));
+    $("llmModelChoicesToggle").classList.toggle("hidden", modelChoices.length === 0);
+    setModelChoicesOpen(false);
+    status.classList.toggle("hidden", modelChoices.length === 0);
+    status.textContent = modelChoices.length
+      ? t("llm_models_loaded").replace("{count}", String(modelChoices.length))
+      : "";
   }
 
   function updateCustomDisplayName(value) {
@@ -102,6 +152,7 @@
     $("llmProvider").value = item.id;
     $("llmBaseUrl").value = item.baseUrl || "";
     $("llmModel").value = item.model || "";
+    renderModelChoices(item.availableModels || []);
     $("llmReasoningMode").value = item.reasoningMode || "off";
     $("llmApiKey").value = "";
     $("llmApiKey").placeholder = item.maskedApiKey || "";
@@ -206,9 +257,10 @@
   function setBusy(nextBusy, statusKey = "toolbox_running") {
     busy = nextBusy;
     $("toolboxProgress").classList.toggle("hidden", !busy);
-    ["runScriptMatch", "runLlmPostprocess", "runFixedReplacement", "runFfconcatRebuild", "saveLlmSettings", "testLlmConnection", "toolboxInputPath", "pickToolboxInput", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmReasoningMode", "llmCustomDisplayName"].forEach((id) => {
+    ["runScriptMatch", "runLlmPostprocess", "runFixedReplacement", "runFfconcatRebuild", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName"].forEach((id) => {
       $(id).disabled = busy;
     });
+    if (busy) setModelChoicesOpen(false);
     if (busy) setResult(t(statusKey));
   }
 
@@ -391,6 +443,7 @@
   async function testConnection() {
     setSettingsSaveStatus(t("llm_connection_testing"), "", 0);
     $("testLlmConnection").disabled = true;
+    $("getLlmModels").disabled = true;
     try {
       const item = provider();
       const result = await bridge("test_postprocess_connection", {
@@ -406,6 +459,47 @@
       setSettingsSaveStatus(String(error?.message || error || t("failed")), "error", 0);
     } finally {
       $("testLlmConnection").disabled = busy;
+      $("getLlmModels").disabled = busy;
+    }
+  }
+
+  async function getModels() {
+    setSettingsSaveStatus(t("llm_models_loading"), "", 0);
+    $("testLlmConnection").disabled = true;
+    $("getLlmModels").disabled = true;
+    try {
+      const item = provider();
+      const result = await bridge("get_postprocess_models", {
+        providerId: item.id,
+        apiKey: $("llmApiKey").value.trim(),
+        baseUrl: $("llmBaseUrl").value.trim(),
+        model: $("llmModel").value.trim(),
+      });
+      if (!result.ok) {
+        const field = result.field === "postprocessApiKey"
+          ? "llmApiKey"
+          : (result.field === "postprocessBaseUrl" ? "llmBaseUrl" : (result.field === "postprocessModel" ? "llmModel" : ""));
+        if (field) setFieldError(field, result.detail || result.error || t("failed"));
+        setSettingsSaveStatus(result.detail || result.error || t("failed"), "error", 0);
+        return;
+      }
+      const models = Array.isArray(result.models)
+        ? result.models.map((value) => String(value || "").trim()).filter(Boolean)
+        : [];
+      if (!models.length) {
+        item.availableModels = [];
+        renderModelChoices([]);
+        setSettingsSaveStatus(t("llm_models_empty"), "error", 0);
+        return;
+      }
+      item.availableModels = models;
+      renderModelChoices(models);
+      setSettingsSaveStatus(t("llm_models_loaded").replace("{count}", String(models.length)), "success", 4200);
+    } catch (error) {
+      setSettingsSaveStatus(String(error?.message || error || t("failed")), "error", 0);
+    } finally {
+      $("testLlmConnection").disabled = busy;
+      $("getLlmModels").disabled = busy;
     }
   }
 
@@ -516,6 +610,9 @@
   $("llmProvider").addEventListener("change", () => { $("postprocessProvider").value = $("llmProvider").value; renderProvider(); });
   $("saveLlmSettings").addEventListener("click", saveSettings);
   $("testLlmConnection").addEventListener("click", testConnection);
+  $("getLlmModels").addEventListener("click", getModels);
+  $("llmModelChoicesToggle").addEventListener("mousedown", (event) => event.preventDefault());
+  $("llmModelChoicesToggle").addEventListener("click", () => setModelChoicesOpen(!modelChoicesOpen));
   $("runScriptMatch").addEventListener("click", runScriptMatch);
   $("runLlmPostprocess").addEventListener("click", runLlm);
   $("runFixedReplacement").addEventListener("click", runReplacement);
@@ -557,13 +654,28 @@
     updateCustomDisplayName($("llmCustomDisplayName").value);
     setFieldError("llmCustomDisplayName", "");
   });
+  $("llmModel").addEventListener("focus", () => setModelChoicesOpen(true));
+  $("llmModel").addEventListener("input", () => {
+    setFieldError("llmModel", "");
+    if (modelChoices.length) setModelChoicesOpen(true, $("llmModel").value);
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target?.closest?.(".llm-model-picker")) setModelChoicesOpen(false);
+  });
   ["llmApiKey", "llmBaseUrl", "llmModel", "llmReasoningMode"].forEach((id) => {
     $(id).addEventListener("input", () => setFieldError(id, ""));
     $(id).addEventListener("change", () => setFieldError(id, ""));
   });
   $("postprocessReplacements").addEventListener("input", () => setFieldError("postprocessReplacements", ""));
   ["jsonPath", "srtPath", "mediaPath"].forEach((id) => $(id).addEventListener("input", syncPaths));
-  document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !busy) setOpen(false); });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || busy) return;
+    if (modelChoicesOpen) {
+      setModelChoicesOpen(false);
+      return;
+    }
+    setOpen(false);
+  });
   window.addEventListener("mawlauncherready", initialize, { once: true });
   window.MAWLauncher.onPostprocessStatus = renderPostprocessStatus;
   window.MAWLauncher.onPostprocessStream = renderPostprocessStream;

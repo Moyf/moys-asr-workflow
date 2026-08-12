@@ -224,6 +224,13 @@
     llm_custom_display_name_placeholder: "可选",
     llm_test_connection: "测试连接",
     llm_test_connection_title: "使用当前填写的 API Key、URL 和模型发送最小测试请求",
+    llm_get_models: "获取模型",
+    llm_get_models_title: "使用当前填写的 API Key 获取可用模型列表",
+    llm_models_loading: "正在获取模型列表……",
+    llm_models_loaded: "已获取 {count} 个模型，可在上方快速选择",
+    llm_models_empty: "供应商没有返回可用模型。",
+    llm_model_choices_title: "展开已获取模型列表",
+    llm_quick_actions: "快捷功能",
     llm_connection_testing: "正在测试连接……",
     llm_connection_success: "连接成功。",
     llm_base_url: "API URL",
@@ -234,7 +241,7 @@
     llm_reasoning_low: "低",
     llm_reasoning_medium: "中",
     llm_reasoning_high: "高",
-    llm_reasoning_mode_hint: "默认关闭；自动表示跟随模型默认，不同模型会映射到各自的思考参数。"
+    llm_reasoning_mode_hint: "默认关闭；自动表示跟随模型默认。"
   });
   Object.assign(STRINGS.en, {
     settings_appearance: "Appearance",
@@ -249,6 +256,13 @@
     llm_custom_display_name_placeholder: "Optional",
     llm_test_connection: "Test connection",
     llm_test_connection_title: "Send a minimal request using the current API key, URL, and model",
+    llm_get_models: "Get models",
+    llm_get_models_title: "Fetch available models using the current API key",
+    llm_models_loading: "Fetching model list…",
+    llm_models_loaded: "Fetched {count} models; choose one above.",
+    llm_models_empty: "The provider returned no usable models.",
+    llm_model_choices_title: "Show fetched model list",
+    llm_quick_actions: "Quick actions",
     llm_connection_testing: "Testing connection…",
     llm_connection_success: "Connection successful.",
     llm_base_url: "API URL",
@@ -259,7 +273,7 @@
     llm_reasoning_low: "Low",
     llm_reasoning_medium: "Medium",
     llm_reasoning_high: "High",
-    llm_reasoning_mode_hint: "Off is the default; Auto follows the model default, and each model maps the levels to its own parameters."
+    llm_reasoning_mode_hint: "Off is the default; Auto follows the model default."
   });
   Object.assign(STRINGS.zh, {
     toolbox_open: "打开后处理工具箱", toolbox_title: "后处理工具箱（Beta）", toolbox_chain_hint: "每次生成新文件，并自动作为下一步输入。", toolbox_beta_notice: "该功能正在开发中，仅供尝鲜", toolbox_beta_notice_prefix: "遇到问题可前往 ", toolbox_beta_notice_tail: " 提反馈", toolbox_no_media: "未选择媒体", toolbox_input_empty: "未选择文件", toolbox_chain_heading: "处理产物（点击文件名切换输入）",
@@ -492,6 +506,7 @@
       save_sticker_dir: async ({ path }) => { saved.stickerDir = path || ""; return { ok: Boolean(path), stickerDir: saved.stickerDir, field: path ? "" : "stickerDir", error: path ? "" : "missing" }; },
       save_postprocess_settings: async ({ providerId, apiKey, displayName, reasoningMode }) => { if (providerId === "custom") saved.customDisplayName = displayName || ""; return { ok: true, providerId, label: providerId === "custom" ? (displayName || "Custom (OpenAI-compatible)") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")), displayName: providerId === "custom" ? (displayName || "") : "", maskedApiKey: apiKey ? "sk-…mock" : "", reasoningMode: reasoningMode || "off" }; },
       test_postprocess_connection: async ({ providerId }) => ({ ok: true, providerId }),
+      get_postprocess_models: async ({ providerId }) => ({ ok: true, providerId, models: providerId === "qwen" ? ["qwen-plus", "qwen3-max"] : (providerId === "zhipu" ? ["glm-5.2", "glm-4.5"] : (providerId === "custom" ? ["local-model"] : ["deepseek-v4-flash", "deepseek-chat"])) }),
       open_file: async ({ path }) => ({ ok: Boolean(path) }),
       run_script_match: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "matched", "D:\\Demo\\clip.matched.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "matched", "D:\\Demo\\clip.matched.srt"), warnings: [] }),
       run_llm_postprocess: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "llm", "D:\\Demo\\clip.llm.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "llm", "D:\\Demo\\clip.llm.srt"), warnings: [] }),
