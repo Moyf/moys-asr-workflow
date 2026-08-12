@@ -18229,10 +18229,6 @@ async function handleDroppedFiles(files) {
         : `检测到工程文件「${jsonFile.name}」，是否打开新的工程？当前工程将被替换。`;
       if (!confirm(message)) return;
     }
-    // 空白编辑器中的 JSON 仍保持原有“打开工程”语义；工程与媒体一起拖入时，
-    // 媒体随工程自动加载，不再弹窗要求重选。
-    if (hasUnsavedProjectChanges()
-        && !confirm('当前有未保存的改动，是否确定加载新工程？将丢失未保存内容。')) return;
     // 工程与媒体一起拖入时，媒体随工程自动加载，不再弹窗要求重选。
     const opened = await openProjectFile(jsonFile, { suppressMediaPrompt: Boolean(mediaFile) });
     if (opened && mediaFile) await loadMediaFile(mediaFile);

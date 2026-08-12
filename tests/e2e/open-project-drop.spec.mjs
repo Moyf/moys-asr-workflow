@@ -69,23 +69,25 @@ test('dropping only a project still prompts to pick the associated media', async
   await expect(page.locator('#project-media-modal')).toHaveClass(/show/);
 });
 
-test('dropping a project over an existing project asks to open it instead of importing subtitles', async ({ page }) => {
+test('dropping a project over an existing project asks once to open it instead of importing subtitles', async ({ page }) => {
   await page.goto(server.url);
   await dropFiles(page, [projectSpec()]);
   await expect(page.locator('#project-media-modal')).toHaveClass(/show/);
   await page.locator('#project-media-later').click();
 
-  const dialogPromise = new Promise((resolve) => {
-    page.once('dialog', async (dialog) => {
-      expect(dialog.type()).toBe('confirm');
-      expect(dialog.message()).toContain('是否打开新的工程');
-      await dialog.accept();
-      resolve(dialog);
-    });
+  await page.locator('.cue[data-idx="0"]').click();
+  await page.locator('#cue-panel-text').fill('未保存改动');
+
+  const dialogs = [];
+  page.on('dialog', async (dialog) => {
+    dialogs.push({ type: dialog.type(), message: dialog.message() });
+    await dialog.accept();
   });
   await dropFiles(page, [projectSpec('replacement.mosp')]);
-  await dialogPromise;
 
+  await expect.poll(() => dialogs.length).toBe(1);
+  expect(dialogs[0].type).toBe('confirm');
+  expect(dialogs[0].message).toContain('是否打开新的工程');
   await expect(page.locator('#multi-subtitle-import-modal')).not.toHaveClass(/show/);
   await expect(page.locator('#project-media-modal')).toHaveClass(/show/);
 });
