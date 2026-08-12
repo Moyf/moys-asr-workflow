@@ -905,6 +905,163 @@ test('aligns a bound extension cue to the main subtitle range from its context m
   await expect(row.locator('.multi-cue-column.extension .time')).toHaveText('00:00.050 → 00:01.950');
 });
 
+test('keeps the main range fixed when H alignment overlaps another extension cue', async ({ page }) => {
+  const project = {
+    segments: [
+      { id: 'main-001', start: 1000, end: 4000, text: '主字幕', items: [] },
+      { id: 'main-002', start: 5000, end: 6000, text: '下一条主字幕', items: [] },
+    ],
+    waveform: generateWaveformPayload(8000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        segments: [
+          { id: 'extension-001', start: 1100, end: 1900, text: 'bound extension' },
+          { id: 'extension-002', start: 2500, end: 3000, text: 'overlapping extension' },
+        ],
+      }],
+      bindings: [{
+        id: 'binding-001', track_id: 'extension-1',
+        main_segment_ids: ['main-001'], extension_segment_ids: ['extension-001'],
+        start_offset_ms: 100, end_offset_ms: -2100,
+      }],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'h-overlap-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const extension = page.locator('.multi-cue-column.extension').filter({ hasText: 'bound extension' });
+  await extension.click();
+  await page.keyboard.press('h');
+  await expect(page.locator('#hint-stack')).toContainText('主字幕时间未改变');
+  expect(await page.evaluate(() => ({
+    main: [DATA.segments[0].start, DATA.segments[0].end],
+    extension: [DATA.multi_subtitle.tracks[0].segments[0].start, DATA.multi_subtitle.tracks[0].segments[0].end],
+  }))).toEqual({ main: [1000, 4000], extension: [1000, 4000] });
+});
+
+test('keeps the main range fixed when its extension follower hits another extension cue', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-001', start: 1000, end: 3000, text: '主字幕', items: [] }],
+    waveform: generateWaveformPayload(6000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        segments: [
+          { id: 'extension-001', start: 1000, end: 2000, text: 'bound extension' },
+          { id: 'extension-002', start: 2500, end: 4000, text: 'blocking extension' },
+        ],
+      }],
+      bindings: [{
+        id: 'binding-001', track_id: 'extension-1',
+        main_segment_ids: ['main-001'], extension_segment_ids: ['extension-001'],
+        start_offset_ms: 0, end_offset_ms: -1000,
+      }],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'main-follower-overlap-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const mainBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
+  const handle = mainBlock.locator('.waveform-cue-handle.right');
+  const row = mainBlock.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const [handleBox, rowBox, rowStart, rowEnd] = await Promise.all([
+    handle.boundingBox(),
+    row.boundingBox(),
+    row.getAttribute('data-start-ms'),
+    row.getAttribute('data-end-ms'),
+  ]);
+  if (!handleBox || !rowBox || rowStart == null || rowEnd == null) {
+    throw new Error('主字幕右边界没有有效波形布局');
+  }
+  const targetMs = 3800;
+  const targetX = rowBox.x + ((targetMs - Number(rowStart)) / (Number(rowEnd) - Number(rowStart))) * rowBox.width;
+  const centerY = handleBox.y + handleBox.height / 2;
+  await page.mouse.move(handleBox.x + handleBox.width / 2, centerY);
+  await page.mouse.down();
+  await page.mouse.move(targetX, centerY, { steps: 4 });
+  await page.mouse.up();
+
+  await expect(page.locator('#hint-stack')).toContainText('主字幕时长未改变');
+  const timing = await page.evaluate(() => ({
+    main: [DATA.segments[0].start, DATA.segments[0].end],
+    extension: [DATA.multi_subtitle.tracks[0].segments[0].start, DATA.multi_subtitle.tracks[0].segments[0].end],
+  }));
+  expect(timing.main[0]).toBe(1000);
+  expect(timing.main[1]).toBeGreaterThan(3000);
+  expect(timing.extension).toEqual([1000, 2500]);
+});
+
+test('limits an extension drag to the available main-track boundary', async ({ page }) => {
+  const project = {
+    segments: [
+      { id: 'main-001', start: 1000, end: 3000, text: '主字幕', items: [] },
+      { id: 'main-002', start: 3200, end: 5000, text: '下一条主字幕', items: [] },
+    ],
+    waveform: generateWaveformPayload(6000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        segments: [{ id: 'extension-001', start: 1000, end: 2000, text: 'bound extension' }],
+      }],
+      bindings: [{
+        id: 'binding-001', track_id: 'extension-1',
+        main_segment_ids: ['main-001'], extension_segment_ids: ['extension-001'],
+        start_offset_ms: 0, end_offset_ms: -1000,
+      }],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'extension-boundary-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const block = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
+  const handle = block.locator('.waveform-cue-handle.right');
+  const row = block.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const [handleBox, rowBox, rowStart, rowEnd] = await Promise.all([
+    handle.boundingBox(),
+    row.boundingBox(),
+    row.getAttribute('data-start-ms'),
+    row.getAttribute('data-end-ms'),
+  ]);
+  if (!handleBox || !rowBox || rowStart == null || rowEnd == null) {
+    throw new Error('副字幕右边界没有有效波形布局');
+  }
+  const targetMs = 4000;
+  const targetX = rowBox.x + ((targetMs - Number(rowStart)) / (Number(rowEnd) - Number(rowStart))) * rowBox.width;
+  const centerY = handleBox.y + handleBox.height / 2;
+  await page.mouse.move(handleBox.x + handleBox.width / 2, centerY);
+  await page.mouse.down();
+  await page.mouse.move(targetX, centerY, { steps: 4 });
+  await page.mouse.up();
+
+  await expect(page.locator('#hint-stack')).toContainText('限制副字幕拖动');
+  expect(await page.evaluate(() => ({
+    main: [DATA.segments[0].start, DATA.segments[0].end],
+    extension: [DATA.multi_subtitle.tracks[0].segments[0].start, DATA.multi_subtitle.tracks[0].segments[0].end],
+  }))).toEqual({ main: [1000, 3200], extension: [1000, 2200] });
+});
+
 test('opens the extension-only split dialog from the waveform context menu and undoes it', async ({ page }) => {
   const project = {
     segments: [
