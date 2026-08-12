@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import struct
 import sys
 import tempfile
 import threading
@@ -19,6 +20,23 @@ assert SPEC and SPEC.loader
 server_editor = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = server_editor
 SPEC.loader.exec_module(server_editor)
+
+
+def _write_reapeaks_for(media_path: Path) -> Path:
+    """Write a synthetic RPKN .ReaPeaks beside media, header carrying its real mtime/size.
+
+    One wave mip (div=80, 2 peaks) + one spectral mip (2 peaks), so both
+    spectral and waveform payloads can be loaded. ``peaks_per_second=100``
+    targets div=80, matching the spectral mip.
+    """
+    src = media_path.stat()
+    header = struct.pack("<4sBBiii", b"RPKN", 1, 2, 8000, int(src.st_mtime), src.st_size)
+    mip_headers = struct.pack("<iiii", 80, 2, -ord("s"), 2)
+    wave_data = struct.pack("<hhhh", 100, -100, 200, -50)
+    spec_data = struct.pack("<ii", (16383 << 15) | 300, (100 << 15) | 5000)
+    path = media_path.with_name(media_path.name + ".ReaPeaks")
+    path.write_bytes(header + mip_headers + wave_data + spec_data)
+    return path
 
 
 class LocalEditorServerTests(unittest.TestCase):
@@ -146,6 +164,43 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertEqual(project.media_path, converted)
         self.assertEqual(project.source_media_path, source.resolve())
         self.assertEqual(project.data["media"], str(source.resolve()))
+
+    def test_flv_conversion_loads_source_reapeaks(self) -> None:
+        """只有 flv（走转换）：.ReaPeaks 在 flv 旁，应按原始请求路径加载。"""
+        source = self.root / "clip.flv"
+        source.write_bytes(b"flv-content")
+        _write_reapeaks_for(source)
+        project_path = self.root / "flv.json"
+        project_path.write_text(json.dumps({"media": str(source), "segments": []}), encoding="utf-8")
+        converted = self.root / "cache" / "clip.mp4"
+        converted.parent.mkdir()
+        converted.write_bytes(b"mp4")
+
+        with mock.patch.object(server_editor, "convert_media_for_browser", return_value=converted):
+            project = server_editor.load_project(
+                project_path, None, str(self.stickers), no_waveform=False, peaks_per_second=100,
+            )
+
+        self.assertIsNotNone(project.data.get("spectral"))
+        self.assertIsNotNone(project.data.get("waveform_reapeaks"))
+
+    def test_flv_paired_mp4_still_loads_source_reapeaks(self) -> None:
+        """flv 旁已有配对 mp4（resolve 会把 resolved_path 升级为 mp4）：仍按原始 flv 找 .ReaPeaks。"""
+        source = self.root / "clip.flv"
+        source.write_bytes(b"flv-content")
+        _write_reapeaks_for(source)
+        paired = source.with_suffix(".mp4")
+        paired.write_bytes(b"mp4-adjacent")
+        project_path = self.root / "flv.json"
+        project_path.write_text(json.dumps({"media": str(source), "segments": []}), encoding="utf-8")
+
+        project = server_editor.load_project(
+            project_path, None, str(self.stickers), no_waveform=False, peaks_per_second=100,
+        )
+
+        self.assertEqual(project.media_path, paired.resolve())
+        self.assertIsNotNone(project.data.get("spectral"))
+        self.assertIsNotNone(project.data.get("waveform_reapeaks"))
 
     def test_mosp_save_backup_keeps_mosp_extension(self) -> None:
         target = self.root / "copy.mosp"

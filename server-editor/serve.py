@@ -252,6 +252,10 @@ def load_project(
         print(f"[media] 已为浏览器准备播放缓存: {media_path}")
     # 保存时应沿用实际被服务器加载的媒体；这也会把 -m 覆盖的路径同步回工程。
     data["media"] = str(source_media_path)
+    # .ReaPeaks 是转写时对"工程 media 字段原始文件"生成的；转换场景下
+    # resolved_path 可能已被 _paired_mp4 升级为配对的 mp4，必须用原始
+    # 请求路径（requested_path）查找，否则会漏读源媒体旁的缓存。
+    reapeaks_base = resolution.requested_path or source_media_path
     if not no_waveform:
         try:
             waveform, extracted = edit.load_or_extract_waveform(
@@ -264,9 +268,9 @@ def load_project(
             data.pop("waveform", None)
             print(f"[waveform] 警告: {error}；编辑器仍可正常使用")
 
-        # 频谱缓存：媒体旁存在 .ReaPeaks 时读取并内联下发，供波形染色。
+        # 频谱缓存：源媒体旁存在 .ReaPeaks 时读取并内联下发，供波形染色。
         # 缺失/损坏/无 spectral 层一律静默降级，不影响编辑器。
-        spectral = reapeaks.load_spectral_payload(media_path, peaks_per_second=peaks_per_second)
+        spectral = reapeaks.load_spectral_payload(reapeaks_base, peaks_per_second=peaks_per_second)
         if spectral is not None:
             data["spectral"] = spectral
             print(f"[spectral] 已加载 {spectral['peak_count']} 频谱点 (div={spectral['division']})")
@@ -274,7 +278,7 @@ def load_project(
             data.pop("spectral", None)
 
         # ReaPeaks 波形层：最细 wave 层作为可选的波形形状来源（编辑器设置里切换）。
-        reapeaks_wave = reapeaks.load_waveform_payload(media_path)
+        reapeaks_wave = reapeaks.load_waveform_payload(reapeaks_base)
         if reapeaks_wave is not None:
             data["waveform_reapeaks"] = reapeaks_wave
             print(
