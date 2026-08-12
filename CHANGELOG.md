@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复 Windows 与 macOS 的 tag 发布工作流并发创建同一个 GitHub Release，导致其中一个平台的资产上传长时间等待的问题。
+
+## [1.4.0-beta.3] - 2026-08-13
+
+### Fixed
+
+- 修复后处理工具箱手动选择工程或 SRT 后 OCR 视频路径显示未及时同步的问题，并校正 OCR 抽帧回调的类型标注。
+
 ### Added
 
 - Launcher LLM 后处理新增统一的「思考强度」设置，默认关闭，并按 DeepSeek、智谱、Qwen 及自定义 OpenAI-compatible 接口映射对应参数。
@@ -28,6 +38,7 @@
 
 ### Fixed
 
+- 修复 Windows 打包版本地模型运行环境漏带 `maw/qwen_audio.py`，导致 Qwen3-ASR / FunASR 模型准备启动时导入失败。
 - 修复播放过程中按 `W`/`A`/`S`/`D` 跳转仍参考上次点击字幕的问题；现在会以播放头所在字幕为参考，位于字幕间隙时取前方或后方相邻字幕。
 
 ### Changed

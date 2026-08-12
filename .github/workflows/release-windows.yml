@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
 
+concurrency:
+  # Windows and macOS both attach assets to the same tag release.
+  group: maw-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 

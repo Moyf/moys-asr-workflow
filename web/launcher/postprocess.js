@@ -710,6 +710,7 @@
       inputManual = true;
       $("toolboxInputPath").value = result.path;
       setFieldError("toolboxInputPath", "");
+      syncOcrVideo();
       syncInputName();
     }
   });

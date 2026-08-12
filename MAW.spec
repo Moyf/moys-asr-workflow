@@ -28,6 +28,7 @@ datas = [
     (str(ROOT / "maw" / "media.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "project.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "project_preview.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "qwen_audio.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "speaker.py"), "local-runtime/maw"),
 ]
 
