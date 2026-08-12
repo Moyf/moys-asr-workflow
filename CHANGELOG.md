@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复 Windows 与 macOS 的 tag 发布工作流并发创建同一个 GitHub Release，导致其中一个平台的资产上传长时间等待的问题。
+
 ## [1.4.0-beta.3] - 2026-08-13
 
 ### Fixed

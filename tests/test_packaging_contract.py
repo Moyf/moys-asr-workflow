@@ -188,6 +188,16 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("actions/setup-node@v4", workflow)
         self.assertNotIn("dtolnay/rust-toolchain@stable", workflow)
         self.assertNotIn("cargo check --manifest-path src-tauri/Cargo.toml", workflow)
+
+    def test_tag_release_workflows_serialize_shared_release_mutations(self) -> None:
+        """Given both platform workflows publish one tag release, When they run, Then they cannot race on its assets."""
+        for workflow_path in (
+            ".github/workflows/release-windows.yml",
+            ".github/workflows/build-macos.yml",
+        ):
+            workflow = read_text(workflow_path)
+            self.assertIn("group: maw-release-${{ github.ref_name }}", workflow)
+            self.assertIn("cancel-in-progress: false", workflow)
         self.assertNotIn("tauri.macos.conf.json", workflow)
         self.assertIn("ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085bb9e8f6fe709598ad", workflow)
         self.assertIn("a6640a77d38a6f0527c5b597e599cb36a3427a6931444ed80bc62542421950a1", workflow)
