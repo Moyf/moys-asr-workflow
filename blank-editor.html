@@ -2257,12 +2257,16 @@
   --multi-subtitle-lane-height: min(35px, calc((100% - (var(--multi-subtitle-bottom-inset) * 2) - var(--multi-subtitle-lane-gap)) / 2));
 }
 .waveform-row.multi-subtitle-row::before {
-  content: "主";
+  content: "1";
+  color: var(--active-cue-fg);
+  background: var(--accent);
   top: auto;
   bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) + ((var(--multi-subtitle-lane-height) - var(--multi-subtitle-label-height)) / 2));
 }
 .waveform-row.multi-subtitle-row::after {
-  content: "副";
+  content: "2";
+  color: var(--active-cue-fg);
+  background: var(--accent-strong);
   bottom: calc(var(--multi-subtitle-bottom-inset) + ((var(--multi-subtitle-lane-height) - var(--multi-subtitle-label-height)) / 2));
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="main"] {
@@ -2538,7 +2542,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-12 17:46</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-12 17:56</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -2583,7 +2587,7 @@
       多重字幕
     </label>
     <span class="dropdown multi-subtitle-settings-dropdown" id="multi-subtitle-settings-dropdown">
-      <button type="button" id="multi-subtitle-settings-toggle" title="多重字幕设置" aria-label="多重字幕设置" aria-expanded="false" aria-controls="multi-subtitle-settings-menu" aria-haspopup="menu">⚙</button>
+      <button type="button" id="multi-subtitle-settings-toggle" title="多重字幕设置" aria-label="多重字幕设置" aria-expanded="false" aria-controls="multi-subtitle-settings-menu" aria-haspopup="menu">⚙️</button>
       <div class="dropdown-menu multi-subtitle-settings-menu" id="multi-subtitle-settings-menu" role="menu">
         <div class="multi-subtitle-setting-row">
           <span>显示方式</span>

@@ -532,12 +532,16 @@
   --multi-subtitle-lane-height: min(35px, calc((100% - (var(--multi-subtitle-bottom-inset) * 2) - var(--multi-subtitle-lane-gap)) / 2));
 }
 .waveform-row.multi-subtitle-row::before {
-  content: "主";
+  content: "1";
+  color: var(--active-cue-fg);
+  background: var(--accent);
   top: auto;
   bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) + ((var(--multi-subtitle-lane-height) - var(--multi-subtitle-label-height)) / 2));
 }
 .waveform-row.multi-subtitle-row::after {
-  content: "副";
+  content: "2";
+  color: var(--active-cue-fg);
+  background: var(--accent-strong);
   bottom: calc(var(--multi-subtitle-bottom-inset) + ((var(--multi-subtitle-lane-height) - var(--multi-subtitle-label-height)) / 2));
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="main"] {

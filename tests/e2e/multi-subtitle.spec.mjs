@@ -89,6 +89,7 @@ test('shows a disabled multiple-subtitle toggle before an extension SRT is impor
 
   await expect(page.locator('#multi-subtitle-controls')).toBeVisible();
   await expect(page.locator('#multi-subtitle-toggle')).toBeDisabled();
+  await expect(page.locator('#multi-subtitle-settings-toggle')).toHaveText('⚙️');
   await expect(page.locator('#multi-subtitle-toggle-label'))
     .toHaveAttribute('title', '请拖入第二个 srt 字幕以开启多重字幕功能');
   expect(await page.locator('#multi-subtitle-toggle-label').evaluate((element) => (
@@ -709,7 +710,20 @@ test('keeps one shared waveform background with two lanes, switch visibility, an
       secondary: getComputedStyle(row, '::after').content,
     };
   });
-  expect(laneBadgeContent).toEqual({ main: '"主"', secondary: '"副"' });
+  expect(laneBadgeContent).toEqual({ main: '"1"', secondary: '"2"' });
+  const laneBadgeColors = await mainBlock.evaluate((element) => {
+    const row = element.closest('.waveform-row');
+    const mainBadge = getComputedStyle(row, '::before');
+    const extensionBadge = getComputedStyle(row, '::after');
+    return {
+      mainBackground: mainBadge.backgroundColor,
+      extensionBackground: extensionBadge.backgroundColor,
+      mainText: mainBadge.color,
+      extensionText: extensionBadge.color,
+    };
+  });
+  expect(laneBadgeColors.mainBackground).not.toBe(laneBadgeColors.extensionBackground);
+  expect(laneBadgeColors.mainText).toBe(laneBadgeColors.extensionText);
   const laneStyles = await mainBlock.evaluate((element) => {
     const row = element.closest('.waveform-row');
     const style = getComputedStyle(element);
