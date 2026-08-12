@@ -71,3 +71,22 @@
 - `temperature: 0.1`。
 
 预设供应商为 DeepSeek、智谱 Coding Plan 和阿里云 Qwen；Custom 可填写 HTTPS 或环回 HTTP 的 OpenAI-compatible URL。API Key、URL、模型和最近供应商只保存在本机配置中，完整 Key 不进入工程、SRT、前端配置响应或任务结果。字幕文字会发送给用户选择的供应商，用户应自行确认其隐私和数据保留政策。
+
+## 7. 思考强度与流式显示
+
+Launcher 使用统一的 `reasoningMode` 设置：`auto`、`off`、`low`、`medium`、`high`。默认值是 `off`，即主动关闭可用的思考模式；只有用户选择 `auto` 时，才省略 reasoning 参数并跟随当前模型的服务商默认行为。不同供应商和模型的参数并不完全相同，客户端会按供应商/模型映射为原生的 `thinking`、`enable_thinking`、`thinking_budget` 或 `reasoning_effort`；Custom 接口无法可靠探测能力，显式设置时只做 OpenAI-compatible 的最佳努力映射。
+
+当前适配器的主要映射如下：
+
+| 供应商 / 模型家族 | `off` | `low` / `medium` / `high` |
+| --- | --- | --- |
+| DeepSeek | `thinking.type=disabled` | `thinking.type=enabled`；V4 额外使用 `reasoning_effort=high` |
+| 智谱 | `thinking.type=disabled` | `thinking.type=enabled`；GLM-5.2 额外传递统一级别 |
+| Qwen3 / QwQ / QvQ | `enable_thinking=false` | `enable_thinking=true`；低 / 中使用 4096 / 16384 thinking budget，高跟随模型上限 |
+| Qwen3.8 | `enable_thinking=false` | `enable_thinking=true` + `reasoning_effort`，高映射为 `xhigh` |
+| 其他 Qwen | `enable_thinking=false` | `enable_thinking=true`，跟随模型自己的思考上限 |
+| Custom | 不发送推理参数，以保持兼容 | 显式尝试传递同名 `reasoning_effort`，由接口自行决定是否接受 |
+
+LLM 工具在有前端回调时使用 SSE 流式请求。流式响应中的 reasoning 增量和正文增量分开传给 Launcher：前者只显示在临时的「思考」区域，后者显示为正在生成的 JSON。思考内容和未完成的 JSON 不写入工程、SRT 或日志。
+
+流式传输不改变最终文件协议。客户端必须先拼接完整正文、解析 `groups`、检查 ID 覆盖和顺序，再一次性原子写出处理产物；任何中途断流、JSON 无效或协议校验失败都不会写出部分结果。不返回独立 reasoning 字段的模型只显示可用的正文；不支持 SSE 的接口会报告请求错误，不会把未完成内容写入文件。

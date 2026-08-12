@@ -102,11 +102,13 @@
     $("llmProvider").value = item.id;
     $("llmBaseUrl").value = item.baseUrl || "";
     $("llmModel").value = item.model || "";
+    $("llmReasoningMode").value = item.reasoningMode || "off";
     $("llmApiKey").value = "";
     $("llmApiKey").placeholder = item.maskedApiKey || "";
     $("llmCustomDisplayNameField").classList.toggle("hidden", item.id !== "custom");
     $("llmCustomDisplayName").value = item.id === "custom" ? item.displayName || "" : "";
     setFieldError("llmCustomDisplayName", "");
+    setFieldError("llmReasoningMode", "");
     setSettingsSaveStatus("");
     $("llmKeyStatus").textContent = item.maskedApiKey
       ? t("toolbox_key_loaded").replace("{key}", item.maskedApiKey)
@@ -149,6 +151,46 @@
     setResult(message);
   }
 
+  function resetStreamOutput() {
+    $("toolboxStreamOutput").classList.add("hidden");
+    $("toolboxThinkingPanel").classList.add("hidden");
+    $("toolboxThinkingOutput").textContent = "";
+    $("toolboxModelOutput").textContent = "";
+    $("toolboxStreamMeta").textContent = "";
+    $("toolboxThinkingCount").textContent = "";
+    $("toolboxModelCount").textContent = "";
+  }
+
+  function beginStreamOutput() {
+    resetStreamOutput();
+    $("toolboxStreamOutput").classList.remove("hidden");
+    $("toolboxModelPanel").open = true;
+  }
+
+  function appendStreamText(element, text) {
+    element.textContent += String(text || "");
+    element.scrollTop = element.scrollHeight;
+  }
+
+  function renderPostprocessStream(event) {
+    if ($("toolboxStreamOutput").classList.contains("hidden")) return;
+    const text = String(event.text || "");
+    if (!text) return;
+    const batch = Number(event.batch || 0);
+    if (batch > 0) {
+      $("toolboxStreamMeta").textContent = t("toolbox_stream_batch").replace("{batch}", String(batch));
+    }
+    if (event.kind === "reasoning") {
+      $("toolboxThinkingPanel").classList.remove("hidden");
+      $("toolboxThinkingPanel").open = true;
+      appendStreamText($("toolboxThinkingOutput"), text);
+      $("toolboxThinkingCount").textContent = t("toolbox_stream_chars").replace("{count}", String($("toolboxThinkingOutput").textContent.length));
+      return;
+    }
+    appendStreamText($("toolboxModelOutput"), text);
+    $("toolboxModelCount").textContent = t("toolbox_stream_chars").replace("{count}", String($("toolboxModelOutput").textContent.length));
+  }
+
   function setSettingsSaveStatus(message, kind = "", timeoutMs = 2400) {
     const status = $("llmSettingsSaveStatus");
     if (!status) return;
@@ -164,7 +206,7 @@
   function setBusy(nextBusy, statusKey = "toolbox_running") {
     busy = nextBusy;
     $("toolboxProgress").classList.toggle("hidden", !busy);
-    ["runScriptMatch", "runLlmPostprocess", "runFixedReplacement", "runFfconcatRebuild", "saveLlmSettings", "testLlmConnection", "toolboxInputPath", "pickToolboxInput", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmCustomDisplayName"].forEach((id) => {
+    ["runScriptMatch", "runLlmPostprocess", "runFixedReplacement", "runFfconcatRebuild", "saveLlmSettings", "testLlmConnection", "toolboxInputPath", "pickToolboxInput", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmReasoningMode", "llmCustomDisplayName"].forEach((id) => {
       $(id).disabled = busy;
     });
     if (busy) setResult(t(statusKey));
@@ -322,20 +364,22 @@
       apiKey: $("llmApiKey").value.trim(),
       baseUrl: $("llmBaseUrl").value.trim(),
       model: $("llmModel").value.trim(),
+      reasoningMode: $("llmReasoningMode").value,
       displayName: item.id === "custom" ? $("llmCustomDisplayName").value.trim() : "",
     });
     if (!result.ok) {
       const field = result.field === "postprocessApiKey"
         ? "llmApiKey"
-        : (result.field === "postprocessBaseUrl" ? "llmBaseUrl" : (result.field === "postprocessModel" ? "llmModel" : (result.field === "postprocessDisplayName" ? "llmCustomDisplayName" : "")));
+        : (result.field === "postprocessBaseUrl" ? "llmBaseUrl" : (result.field === "postprocessModel" ? "llmModel" : (result.field === "postprocessReasoningMode" ? "llmReasoningMode" : (result.field === "postprocessDisplayName" ? "llmCustomDisplayName" : ""))));
       if (field) setFieldError(field, result.detail || result.error || t("failed"));
       setSettingsSaveStatus(result.error || result.detail || t("failed"), "error");
       setResult(result.error || result.detail || t("failed"), "error");
       return;
     }
-    ["llmApiKey", "llmBaseUrl", "llmModel", "llmCustomDisplayName"].forEach((field) => setFieldError(field, ""));
+    ["llmApiKey", "llmBaseUrl", "llmModel", "llmReasoningMode", "llmCustomDisplayName"].forEach((field) => setFieldError(field, ""));
     item.baseUrl = $("llmBaseUrl").value.trim();
     item.model = $("llmModel").value.trim();
+    item.reasoningMode = result.reasoningMode || $("llmReasoningMode").value || "off";
     item.displayName = item.id === "custom" ? $("llmCustomDisplayName").value.trim() : "";
     item.label = result.label || providerLabel(item);
     item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
@@ -354,6 +398,7 @@
         apiKey: $("llmApiKey").value.trim(),
         baseUrl: $("llmBaseUrl").value.trim(),
         model: $("llmModel").value.trim(),
+        reasoningMode: $("llmReasoningMode").value,
       });
       if (result.ok) setSettingsSaveStatus(t("llm_connection_success"), "success");
       else setSettingsSaveStatus(result.detail || result.error || t("failed"), "error", 0);
@@ -377,6 +422,7 @@
       setResult(message, "error");
       return;
     }
+    beginStreamOutput();
     setBusy(true, "toolbox_status_starting");
     try {
       const result = await bridge("run_llm_postprocess", {
@@ -385,6 +431,7 @@
         taskPrompt: taskPromptText(operation),
         customPrompt,
         providerId: item.id,
+        reasoningMode: $("llmReasoningMode").value,
       });
       if (result.ok) applySubtitleResult(result, { kind: "llm", operation });
       else {
@@ -510,11 +557,15 @@
     updateCustomDisplayName($("llmCustomDisplayName").value);
     setFieldError("llmCustomDisplayName", "");
   });
-  ["llmApiKey", "llmBaseUrl", "llmModel"].forEach((id) => $(id).addEventListener("input", () => setFieldError(id, "")));
+  ["llmApiKey", "llmBaseUrl", "llmModel", "llmReasoningMode"].forEach((id) => {
+    $(id).addEventListener("input", () => setFieldError(id, ""));
+    $(id).addEventListener("change", () => setFieldError(id, ""));
+  });
   $("postprocessReplacements").addEventListener("input", () => setFieldError("postprocessReplacements", ""));
   ["jsonPath", "srtPath", "mediaPath"].forEach((id) => $(id).addEventListener("input", syncPaths));
   document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !busy) setOpen(false); });
   window.addEventListener("mawlauncherready", initialize, { once: true });
   window.MAWLauncher.onPostprocessStatus = renderPostprocessStatus;
+  window.MAWLauncher.onPostprocessStream = renderPostprocessStream;
   if (window.MAWLauncher.config) initialize();
 })();

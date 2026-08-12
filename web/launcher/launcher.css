@@ -1348,6 +1348,55 @@ textarea::placeholder {
   background: var(--red-soft);
 }
 
+.toolbox-stream-output {
+  margin-top: 12px;
+  padding: 9px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+}
+
+.toolbox-stream-heading,
+.toolbox-stream-panel summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.toolbox-stream-heading {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.toolbox-stream-panel {
+  margin-top: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+}
+
+.toolbox-stream-panel summary {
+  padding: 7px 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  list-style-position: inside;
+}
+
+.toolbox-stream-text {
+  max-height: 220px;
+  margin: 0;
+  padding: 8px;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font: 11px/1.5 var(--font-mono);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .settings-save-status {
   min-height: 1.4em;
   margin-top: 6px;

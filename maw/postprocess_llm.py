@@ -7,6 +7,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import re
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Final
 from urllib.parse import urlparse
@@ -15,6 +16,9 @@ import requests
 from requests.exceptions import JSONDecodeError, RequestException
 
 from maw.project_preview import JsonValue
+
+
+DEFAULT_REASONING_MODE: Final[str] = "off"
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +36,7 @@ class LlmSettings:
     api_key: str
     base_url: str
     model: str
+    reasoning_mode: str = DEFAULT_REASONING_MODE
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +45,16 @@ class LlmClientError(RuntimeError):
 
     def __str__(self) -> str:
         return self.message
+
+
+LlmDelta = Callable[[str, str], None]
+REASONING_MODES: Final[frozenset[str]] = frozenset({"auto", "off", "low", "medium", "high"})
+_REASONING_ALIASES: Final[dict[str, str]] = {
+    "default": DEFAULT_REASONING_MODE,
+    "disabled": "off",
+    "none": "off",
+    "minimal": "low",
+}
 
 
 PRESETS: Final[tuple[LlmProviderPreset, ...]] = (
@@ -82,8 +97,16 @@ def complete_subtitle_groups(
     settings: LlmSettings,
     system_prompt: str,
     cues: list[dict[str, str]],
+    *,
+    on_delta: LlmDelta | None = None,
 ) -> dict[str, JsonValue]:
-    """Call one OpenAI-compatible chat endpoint and return its JSON object."""
+    """Call one OpenAI-compatible chat endpoint and return its JSON object.
+
+    When ``on_delta`` is provided, the response is consumed as an SSE stream.
+    The callback receives ``("reasoning", text)`` or ``("content", text)``
+    events, while the returned value is still parsed only after the complete
+    JSON content has arrived.
+    """
     endpoint = _chat_endpoint(settings.base_url)
     payload = {
         "model": settings.model,
@@ -94,16 +117,32 @@ def complete_subtitle_groups(
         "response_format": {"type": "json_object"},
         "temperature": 0.1,
     }
+    payload.update(_reasoning_parameters(settings))
+    streaming = on_delta is not None
+    if streaming:
+        payload["stream"] = True
+        if _provider_family(settings) == "qwen":
+            # DashScope can otherwise repeat the full accumulated content in
+            # every chunk, which is not useful for a live text area.
+            payload["incremental_output"] = True
+    headers = _request_headers(settings, streaming=streaming)
     try:
         with requests.Session() as session:
             response = session.post(
                 endpoint,
-                headers={"Authorization": f"Bearer {settings.api_key}"},
+                headers=headers,
                 json=payload,
                 timeout=(10, 180),
+                **({"stream": True} if streaming else {}),
             )
             response.raise_for_status()
-            body = response.json()
+            if streaming:
+                try:
+                    body = _read_stream_response(response, on_delta)
+                finally:
+                    response.close()
+            else:
+                body = response.json()
     except (RequestException, JSONDecodeError) as error:
         raise LlmClientError(f"LLM request failed: {error}") from error
     content = _response_content(body)
@@ -124,11 +163,12 @@ def test_llm_connection(settings: LlmSettings) -> None:
         "messages": [{"role": "user", "content": "Reply with OK."}],
         "max_tokens": 1,
     }
+    payload.update(_reasoning_parameters(settings))
     try:
         with requests.Session() as session:
             response = session.post(
                 endpoint,
-                headers={"Authorization": f"Bearer {settings.api_key}"},
+                headers=_request_headers(settings, streaming=False),
                 json=payload,
                 timeout=(10, 30),
             )
@@ -147,6 +187,156 @@ def _chat_endpoint(base_url: str) -> str:
     if value.endswith("/chat/completions"):
         return value
     return f"{value}/chat/completions"
+
+
+def normalize_reasoning_mode(value: object) -> str:
+    """Return the stable UI value used by provider adapters."""
+    mode = str(value or DEFAULT_REASONING_MODE).strip().lower()
+    mode = _REASONING_ALIASES.get(mode, mode)
+    if mode not in REASONING_MODES:
+        allowed = ", ".join(sorted(REASONING_MODES))
+        raise ValueError(f"reasoning mode must be one of: {allowed}")
+    return mode
+
+
+def _provider_family(settings: LlmSettings) -> str:
+    provider = settings.provider_id.strip().lower()
+    if provider != "custom":
+        return provider
+    url = settings.base_url.lower()
+    if "dashscope.aliyuncs.com" in url or "maas.aliyuncs.com" in url:
+        return "qwen"
+    if "deepseek.com" in url:
+        return "deepseek"
+    if "bigmodel.cn" in url or "zhipuai.cn" in url:
+        return "zhipu"
+    return "custom"
+
+
+def _reasoning_parameters(settings: LlmSettings) -> dict[str, JsonValue]:
+    mode = normalize_reasoning_mode(settings.reasoning_mode)
+    if mode == "auto":
+        return {}
+
+    family = _provider_family(settings)
+    model = settings.model.strip().lower()
+    if family == "qwen":
+        if mode == "off":
+            return {"enable_thinking": False}
+        result: dict[str, JsonValue] = {"enable_thinking": True}
+        if "qwen3.8" in model:
+            result["reasoning_effort"] = "xhigh" if mode == "high" else mode
+        elif "qwen3" in model or "qwq" in model or "qvq" in model:
+            budgets = {"low": 4096, "medium": 16384}
+            if mode in budgets:
+                result["thinking_budget"] = budgets[mode]
+        return result
+
+    if family == "deepseek":
+        result = {"thinking": {"type": "disabled" if mode == "off" else "enabled"}}
+        if mode != "off" and "v4" in model:
+            # Current DeepSeek V4 endpoints expose high/max rather than the
+            # full five-level scale. Keep low/medium conservative and stable.
+            result["reasoning_effort"] = "high"
+        return result
+
+    if family == "zhipu":
+        result = {"thinking": {"type": "disabled" if mode == "off" else "enabled"}}
+        if mode != "off" and "glm-5.2" in model:
+            result["reasoning_effort"] = mode
+        return result
+
+    # Custom OpenAI-compatible endpoints have no reliable capability
+    # discovery. Leaving the parameter out is the safest way to keep the new
+    # default compatible; explicit enabled choices use the common parameter.
+    return {} if mode == "off" else {"reasoning_effort": mode}
+
+
+def _request_headers(settings: LlmSettings, *, streaming: bool) -> dict[str, str]:
+    headers = {"Authorization": f"Bearer {settings.api_key}"}
+    if streaming and _provider_family(settings) == "qwen":
+        headers["X-DashScope-SSE"] = "enable"
+    return headers
+
+
+def _read_stream_response(response: requests.Response, on_delta: LlmDelta | None) -> dict[str, JsonValue]:
+    if on_delta is None:
+        raise AssertionError("stream callback is required for an SSE response")
+    content_parts: list[str] = []
+    reasoning_parts: list[str] = []
+    for data in _iter_sse_data(response.iter_lines(decode_unicode=True)):
+        if data == "[DONE]":
+            break
+        try:
+            chunk = json.loads(data)
+        except json.JSONDecodeError as error:
+            raise LlmClientError(f"LLM stream returned invalid JSON: {error}") from error
+        if not isinstance(chunk, dict):
+            continue
+        error = chunk.get("error")
+        if isinstance(error, dict):
+            message = error.get("message") or error.get("code") or "LLM stream failed"
+            raise LlmClientError(str(message))
+        choice = _first_stream_choice(chunk)
+        if choice is None:
+            continue
+        delta = choice.get("delta") or choice.get("message")
+        if not isinstance(delta, dict):
+            continue
+        reasoning = _stream_text(delta.get("reasoning_content")) or _stream_text(delta.get("reasoning"))
+        content = _stream_text(delta.get("content"))
+        if reasoning:
+            reasoning_parts.append(reasoning)
+            on_delta("reasoning", reasoning)
+        if content:
+            content_parts.append(content)
+            on_delta("content", content)
+    return {
+        "choices": [
+            {
+                "message": {
+                    "content": "".join(content_parts),
+                    "reasoning_content": "".join(reasoning_parts),
+                }
+            }
+        ]
+    }
+
+
+def _iter_sse_data(lines: Iterable[str | bytes]) -> Iterable[str]:
+    for raw_line in lines:
+        line = raw_line.decode("utf-8", errors="replace") if isinstance(raw_line, bytes) else str(raw_line)
+        line = line.strip()
+        if not line or line.startswith(":"):
+            continue
+        if line.startswith("data:"):
+            yield line[5:].strip()
+
+
+def _first_stream_choice(chunk: dict[str, JsonValue]) -> dict[str, JsonValue] | None:
+    choices = chunk.get("choices")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        output = chunk.get("output")
+        if isinstance(output, dict):
+            choices = output.get("choices")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        return None
+    return choices[0]
+
+
+def _stream_text(value: JsonValue) -> str:
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, list):
+        return ""
+    parts: list[str] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        text = item.get("text")
+        if isinstance(text, str):
+            parts.append(text)
+    return "".join(parts)
 
 
 def _is_loopback_host(host: str | None) -> bool:

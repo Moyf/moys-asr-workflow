@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- Launcher LLM 后处理新增统一的「思考强度」设置，默认关闭，并按 DeepSeek、智谱、Qwen 及自定义 OpenAI-compatible 接口映射对应参数。
+- LLM 工具箱支持 SSE 流式显示模型正文和供应商返回的独立思考内容；完整 JSON 仍需通过本地协议校验后才会写出工程和 SRT。
+
 ## [1.4.0-beta.2] - 2026-08-12
 
 ### Fixed

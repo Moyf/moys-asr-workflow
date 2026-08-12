@@ -375,6 +375,20 @@
       <p class="hint toolbox-output-hint" data-i18n="toolbox_output_hint">所有字幕工具都会生成新文件，不覆盖原工程。</p>
       <div id="toolboxProgress" class="progress hidden" aria-hidden="true"><span></span></div>
       <div id="toolboxResult" class="toolbox-result" aria-live="polite" data-i18n="toolbox_ready">选择工具后运行；源文件不会被覆盖。</div>
+      <div id="toolboxStreamOutput" class="toolbox-stream-output hidden" aria-live="polite">
+        <div class="toolbox-stream-heading">
+          <span id="toolboxStreamTitle" data-i18n="toolbox_stream_title">模型实时输出</span>
+          <span id="toolboxStreamMeta" class="hint"></span>
+        </div>
+        <details id="toolboxThinkingPanel" class="toolbox-stream-panel hidden" open>
+          <summary><span data-i18n="toolbox_thinking">思考</span><span id="toolboxThinkingCount" class="hint"></span></summary>
+          <pre id="toolboxThinkingOutput" class="toolbox-stream-text"></pre>
+        </details>
+        <details id="toolboxModelPanel" class="toolbox-stream-panel" open>
+          <summary><span data-i18n="toolbox_model_output">模型输出（JSON）</span><span id="toolboxModelCount" class="hint"></span></summary>
+          <pre id="toolboxModelOutput" class="toolbox-stream-text"></pre>
+        </details>
+      </div>
 
     <section id="toolboxMatchPanel" class="toolbox-panel" role="tabpanel" aria-labelledby="toolboxMatchTab">
       <div class="field">
@@ -471,6 +485,18 @@
             <label for="llmModel" data-i18n="llm_model">模型</label>
             <input id="llmModel" type="text" autocomplete="off">
             <p id="llmModelError" class="field-error"></p>
+          </div>
+          <div class="field">
+            <label for="llmReasoningMode" data-i18n="llm_reasoning_mode">思考强度</label>
+            <select id="llmReasoningMode">
+              <option value="off" data-i18n="llm_reasoning_off" selected>关闭思考</option>
+              <option value="auto" data-i18n="llm_reasoning_auto">自动（跟随模型默认）</option>
+              <option value="low" data-i18n="llm_reasoning_low">低</option>
+              <option value="medium" data-i18n="llm_reasoning_medium">中</option>
+              <option value="high" data-i18n="llm_reasoning_high">高</option>
+            </select>
+            <p class="hint" data-i18n="llm_reasoning_mode_hint">默认关闭；自动表示跟随模型默认，不同模型会映射到各自的思考参数。</p>
+            <p id="llmReasoningModeError" class="field-error"></p>
           </div>
         </div>
         <div id="llmCustomDisplayNameField" class="field hidden">

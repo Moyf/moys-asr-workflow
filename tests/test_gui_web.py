@@ -156,6 +156,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             "apiKey": "sk-qwen-private",
             "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
             "model": "qwen-plus",
+            "reasoningMode": "medium",
         })
 
         raw_providers = config["postprocessProviders"]
@@ -168,6 +169,9 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["maskedApiKey"], "sk-…vate")
         self.assertNotIn("qwen-private", str(result))
         self.assertIn("MAW_POSTPROCESS_QWEN_API_KEY=sk-qwen-private", self.env_path.read_text(encoding="utf-8"))
+        self.assertIn("MAW_POSTPROCESS_QWEN_REASONING_MODE=medium", self.env_path.read_text(encoding="utf-8"))
+        self.assertEqual(result["reasoningMode"], "medium")
+        self.assertEqual(providers["deepseek"]["reasoningMode"], "off")
 
     def test_postprocess_settings_keep_saved_key_when_key_field_is_blank(self) -> None:
         self.env_path.write_text(
@@ -222,6 +226,20 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "postprocessModel")
         self.assertEqual(result["code"], "config_save_failed")
+        self.assertFalse(self.env_path.exists())
+
+    def test_postprocess_settings_reject_invalid_reasoning_mode(self) -> None:
+        result = self.api.save_postprocess_settings({
+            "providerId": "deepseek",
+            "apiKey": "sk-safe",
+            "baseUrl": "https://api.deepseek.com",
+            "model": "deepseek-v4-flash",
+            "reasoningMode": "maximum",
+        })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["field"], "postprocessReasoningMode")
+        self.assertEqual(result["code"], "invalid_reasoning_mode")
         self.assertFalse(self.env_path.exists())
 
     def test_custom_postprocess_display_name_is_saved_and_returned(self) -> None:
@@ -332,13 +350,48 @@ class GuiWebBridgeTests(unittest.TestCase):
                 "apiKey": "",
                 "baseUrl": "https://api.deepseek.com",
                 "model": "deepseek-chat",
+                "reasoningMode": "high",
                 "customPrompt": "",
             })
 
         settings = complete.call_args.args[0]
         self.assertEqual(settings.api_key, "sk-stored-secret")
+        self.assertEqual(settings.reasoning_mode, "high")
         self.assertTrue(result["ok"])
         self.assertNotIn("stored-secret", str(result))
+
+    def test_llm_bridge_forwards_stream_deltas_to_event_pump(self) -> None:
+        project = self.root / "clip.mosp"
+        project.write_text(
+            json.dumps({"segments": [{"start": 0, "end": 1000, "text": "待处理"}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        def complete(_settings, _prompt, _cues, *, on_delta):
+            on_delta("reasoning", "先检查")
+            on_delta("content", '{"groups":[')
+            on_delta("content", '{"id":"c0001","text":"完成"}]}')
+            return {"groups": [{"id": "c0001", "text": "完成"}]}
+
+        with mock.patch("maw.gui_web.complete_subtitle_groups", side_effect=complete):
+            result = self.api.run_llm_postprocess({
+                "projectPath": str(project),
+                "outputMode": "json",
+                "operation": "proofread",
+                "providerId": "deepseek",
+                "apiKey": "sk-test",
+                "baseUrl": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+                "reasoningMode": "medium",
+                "customPrompt": "",
+            })
+
+        self.api.pump.shutdown()
+        scripts = "\n".join(self.window.scripts)
+        self.assertTrue(result["ok"])
+        self.assertIn('"type": "postprocess_stream"', scripts)
+        self.assertIn('"kind": "reasoning"', scripts)
+        self.assertIn('"kind": "content"', scripts)
 
     def test_llm_custom_bridge_rejects_empty_prompt_before_provider_call(self) -> None:
         with mock.patch("maw.gui_web.complete_subtitle_groups") as complete:
@@ -1552,6 +1605,7 @@ class LauncherAssetContractTests(unittest.TestCase):
             "llmApiKey",
             "llmBaseUrl",
             "llmModel",
+            "llmReasoningMode",
             "llmCustomDisplayName",
             "testLlmConnection",
             "llmSettingsSaveStatus",
@@ -1593,7 +1647,12 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('class="hint toolbox-full-line-hint"', page)
         self.assertIn('document.querySelectorAll("[data-tool-action]")', script)
         self.assertIn('event.type === "postprocess_status"', launcher_script)
+        self.assertIn('event.type === "postprocess_stream"', launcher_script)
         self.assertIn("onPostprocessStatus", launcher_script)
+        self.assertIn("onPostprocessStream", script)
+        self.assertIn('id="toolboxStreamOutput"', page)
+        self.assertIn('id="toolboxThinkingOutput"', page)
+        self.assertIn('id="toolboxModelOutput"', page)
         self.assertIn("function renderPostprocessStatus(event)", script)
         self.assertIn('taskPrompt: taskPromptText(operation)', script)
         self.assertIn('const customPrompt = $("postprocessPrompt").value.trim()', script)

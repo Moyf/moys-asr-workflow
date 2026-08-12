@@ -30,7 +30,7 @@ from maw.media import find_ffmpeg, resolve_project_media
 from maw.postprocess import LlmPostprocessRequest, OutputMode, Replacement, ReplacementRequest, run_fixed_replacement as process_fixed_replacement, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_ffmpeg import FfconcatRequest, run_ffconcat_rebuild as process_ffconcat_rebuild
 from maw.postprocess_match import ScriptMatchRequest, run_script_match as process_script_match
-from maw.postprocess_llm import LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, preset_by_id, test_llm_connection
+from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, normalize_reasoning_mode, preset_by_id, test_llm_connection
 from maw.soniox import SonioxContextError, build_soniox_context
 
 
@@ -465,10 +465,17 @@ class LauncherApi:
         file_values = _postprocess_values(self.paths.env_path, preset.env_prefix)
         api_key = str(payload.get("apiKey") or "").strip() or file_values["apiKey"]
         display_name = str(payload.get("displayName") or "").strip()
+        try:
+            reasoning_mode = normalize_reasoning_mode(
+                payload.get("reasoningMode") if "reasoningMode" in payload else file_values["reasoningMode"]
+            )
+        except ValueError as error:
+            return _error_result("postprocessReasoningMode", "invalid_reasoning_mode", str(error))
         updates = {
             f"{preset.env_prefix}_API_KEY": api_key,
             f"{preset.env_prefix}_BASE_URL": str(payload.get("baseUrl") or preset.base_url).strip(),
             f"{preset.env_prefix}_MODEL": str(payload.get("model") or preset.model).strip(),
+            f"{preset.env_prefix}_REASONING_MODE": reasoning_mode,
             "MAW_POSTPROCESS_LAST_PROVIDER": preset.id,
         }
         if preset.id == "custom":
@@ -493,16 +500,22 @@ class LauncherApi:
             "label": display_name if preset.id == "custom" and display_name else preset.label,
             "displayName": display_name if preset.id == "custom" else "",
             "maskedApiKey": masked_secret(api_key),
+            "reasoningMode": reasoning_mode,
         }
 
     def test_postprocess_connection(self, payload: Mapping[str, object]) -> dict[str, object]:
         preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
         file_values = _postprocess_values(self.paths.env_path, preset.env_prefix)
+        try:
+            reasoning_mode = _postprocess_reasoning_mode(payload, file_values)
+        except ValueError as error:
+            return _error_result("postprocessReasoningMode", "invalid_reasoning_mode", str(error))
         settings = LlmSettings(
             provider_id=preset.id,
             api_key=str(payload.get("apiKey") or "").strip() or file_values["apiKey"],
             base_url=str(payload.get("baseUrl") or "").strip() or file_values["baseUrl"] or preset.base_url,
             model=str(payload.get("model") or "").strip() or file_values["model"] or preset.model,
+            reasoning_mode=reasoning_mode,
         )
         if not settings.api_key:
             return _error_result("postprocessApiKey", "api_key_missing", "Post-processing API key is required.")
@@ -564,16 +577,34 @@ class LauncherApi:
         if operation == "custom" and not custom_prompt:
             return _error_result("postprocessPrompt", "custom_prompt_required")
         file_values = _postprocess_values(self.paths.env_path, preset.env_prefix)
+        try:
+            reasoning_mode = _postprocess_reasoning_mode(payload, file_values)
+        except ValueError as error:
+            return _error_result("postprocessReasoningMode", "invalid_reasoning_mode", str(error))
         settings = LlmSettings(
             provider_id=preset.id,
             api_key=str(payload.get("apiKey") or "").strip() or file_values["apiKey"],
             base_url=str(payload.get("baseUrl") or "").strip() or file_values["baseUrl"] or preset.base_url,
             model=str(payload.get("model") or "").strip() or file_values["model"] or preset.model,
+            reasoning_mode=reasoning_mode,
         )
         if not settings.api_key:
             return _error_result("postprocessApiKey", "api_key_missing", "Post-processing API key is required.")
         if not settings.base_url or not settings.model:
             return {"ok": False, "field": "postprocessProvider", "code": "postprocess_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
+        batch_number = 0
+
+        def complete(prompt: str, cues: list[dict[str, str]]) -> dict[str, object]:
+            nonlocal batch_number
+            batch_number += 1
+            current_batch = batch_number
+            return complete_subtitle_groups(
+                settings,
+                prompt,
+                cues,
+                on_delta=lambda kind, text: self._emit_postprocess_stream(kind, text, current_batch),
+            )
+
         try:
             result = process_llm_postprocess(
                 LlmPostprocessRequest(
@@ -584,7 +615,7 @@ class LauncherApi:
                     custom_prompt=custom_prompt,
                     task_prompt=(str(payload.get("taskPrompt") or "") if "taskPrompt" in payload else None),
                 ),
-                complete=lambda prompt, cues: complete_subtitle_groups(settings, prompt, cues),
+                complete=complete,
                 on_status=self._emit_postprocess_status,
             )
         except (OSError, UnicodeError, ValueError, RuntimeError) as error:
@@ -1060,6 +1091,13 @@ class LauncherApi:
         if details:
             event.update(details)
         self._emit(event)
+
+    def _emit_postprocess_stream(self, kind: str, text: str, batch: int) -> None:
+        if not text:
+            return
+        self.pump.start()
+        self._emit({"type": "postprocess_stream", "kind": kind, "text": text, "batch": batch})
+
     def _local_runtime_main(
         self,
         repair: bool,
@@ -1406,7 +1444,13 @@ def _postprocess_values(env_path: Path, prefix: str) -> dict[str, str]:
         "baseUrl": os.environ.get(f"{prefix}_BASE_URL") or values.get(f"{prefix}_BASE_URL", ""),
         "model": os.environ.get(f"{prefix}_MODEL") or values.get(f"{prefix}_MODEL", ""),
         "displayName": os.environ.get(f"{prefix}_DISPLAY_NAME") or values.get(f"{prefix}_DISPLAY_NAME", ""),
+        "reasoningMode": os.environ.get(f"{prefix}_REASONING_MODE") or values.get(f"{prefix}_REASONING_MODE", DEFAULT_REASONING_MODE),
     }
+
+
+def _postprocess_reasoning_mode(payload: Mapping[str, object], file_values: Mapping[str, str]) -> str:
+    value = payload.get("reasoningMode") if "reasoningMode" in payload else file_values.get("reasoningMode")
+    return normalize_reasoning_mode(value)
 
 
 def _postprocess_provider_payloads(env_path: Path) -> list[dict[str, object]]:
@@ -1424,6 +1468,7 @@ def _postprocess_provider_payloads(env_path: Path) -> list[dict[str, object]]:
             "displayName": display_name,
             "baseUrl": values["baseUrl"] or preset.base_url,
             "model": values["model"] or preset.model,
+            "reasoningMode": values["reasoningMode"] or DEFAULT_REASONING_MODE,
             "maskedApiKey": masked_secret(values["apiKey"]),
             "selected": file_values.get("MAW_POSTPROCESS_LAST_PROVIDER", "deepseek") == preset.id,
         })

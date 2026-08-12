@@ -21,7 +21,7 @@ from maw.postprocess import (
 )
 from maw.postprocess_ffmpeg import FfconcatRequest, parse_ffconcat, run_ffconcat_rebuild
 from maw.postprocess_io import PostprocessFileError, _atomic_write, read_project, read_srt, render_srt
-from maw.postprocess_llm import LlmClientError, LlmSettings, _chat_endpoint, test_llm_connection as check_llm_connection
+from maw.postprocess_llm import LlmClientError, LlmSettings, _chat_endpoint, _reasoning_parameters, complete_subtitle_groups, normalize_reasoning_mode, test_llm_connection as check_llm_connection
 from maw.project_preview import JsonDict
 
 
@@ -309,6 +309,67 @@ class PostprocessTests(unittest.TestCase):
         self.assertEqual(_chat_endpoint("http://localhost:11434/v1"), "http://localhost:11434/v1/chat/completions")
         with self.assertRaises(LlmClientError):
             _ = _chat_endpoint("http://example.com/v1")
+
+    def test_reasoning_modes_normalize_and_map_by_provider(self) -> None:
+        self.assertEqual(LlmSettings("custom", "key", "https://example.com", "local").reasoning_mode, "off")
+        self.assertEqual(normalize_reasoning_mode(None), "off")
+        self.assertEqual(normalize_reasoning_mode("default"), "off")
+        self.assertEqual(normalize_reasoning_mode("disabled"), "off")
+        self.assertEqual(
+            _reasoning_parameters(LlmSettings("qwen", "key", "https://example.com", "qwen3.7-plus", "low")),
+            {"enable_thinking": True, "thinking_budget": 4096},
+        )
+        self.assertEqual(
+            _reasoning_parameters(LlmSettings("zhipu", "key", "https://example.com", "glm-5.2", "off")),
+            {"thinking": {"type": "disabled"}},
+        )
+        self.assertEqual(
+            _reasoning_parameters(LlmSettings("deepseek", "key", "https://example.com", "deepseek-v4-flash", "high")),
+            {"thinking": {"type": "enabled"}, "reasoning_effort": "high"},
+        )
+        self.assertEqual(_reasoning_parameters(LlmSettings("custom", "key", "https://example.com", "local", "off")), {})
+        self.assertEqual(_reasoning_parameters(LlmSettings("custom", "key", "https://example.com", "local", "auto")), {})
+        with self.assertRaises(ValueError):
+            _ = normalize_reasoning_mode("maximum")
+
+    def test_llm_streaming_separates_reasoning_and_json_content(self) -> None:
+        settings = LlmSettings(
+            provider_id="qwen",
+            api_key="sk-test",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            model="qwen3.7-plus",
+            reasoning_mode="medium",
+        )
+        response = mock.Mock()
+        response.iter_lines.return_value = [
+            f"data: {json.dumps({'choices': [{'delta': {'reasoning_content': '先检查字幕'}}]}, ensure_ascii=False)}",
+            f"data: {json.dumps({'choices': [{'delta': {'content': '{\"groups\":['}}]}, ensure_ascii=False)}",
+            f"data: {json.dumps({'choices': [{'delta': {'content': '{\"id\":\"c0001\",\"text\":\"完成\"}]'}}]}, ensure_ascii=False)}",
+            f"data: {json.dumps({'choices': [{'delta': {'content': '}'}}]}, ensure_ascii=False)}",
+            "data: [DONE]",
+        ]
+        session = mock.MagicMock()
+        session.__enter__.return_value = session
+        session.post.return_value = response
+        deltas: list[tuple[str, str]] = []
+
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            result = complete_subtitle_groups(
+                settings,
+                "Return JSON.",
+                [{"id": "c0001", "text": "原文"}],
+                on_delta=lambda kind, text: deltas.append((kind, text)),
+            )
+
+        self.assertEqual(result, {"groups": [{"id": "c0001", "text": "完成"}]})
+        self.assertEqual(deltas[0], ("reasoning", "先检查字幕"))
+        self.assertEqual("".join(text for kind, text in deltas if kind == "content"), '{"groups":[{"id":"c0001","text":"完成"}]}')
+        request = session.post.call_args
+        self.assertTrue(request.kwargs["stream"])
+        self.assertEqual(request.kwargs["headers"]["X-DashScope-SSE"], "enable")
+        self.assertTrue(request.kwargs["json"]["stream"])
+        self.assertEqual(request.kwargs["json"]["thinking_budget"], 16384)
+        response.close.assert_called_once_with()
 
     def test_llm_connection_sends_minimal_request(self) -> None:
         settings = LlmSettings(
