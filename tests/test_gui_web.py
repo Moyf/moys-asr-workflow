@@ -9,6 +9,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from typing import final
 from unittest import mock
 
@@ -314,6 +315,57 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(output_project.is_file())
         self.assertTrue(output_srt.is_file())
         self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["segments"][0]["text"], "旧句。")
+
+    def test_ocr_dedup_bridge_forwards_video_region_threshold_and_report(self) -> None:
+        project = self.root / "clip.mosp"
+        video = self.root / "clip.mp4"
+        ffmpeg = self.root / "ffmpeg.exe"
+        video.write_bytes(b"video")
+        ffmpeg.write_bytes(b"ffmpeg")
+        project.write_text(
+            json.dumps({"media": str(video), "segments": [{"start": 0, "end": 1000, "text": "字幕"}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        fake = SimpleNamespace(
+            source_project_path=project,
+            source_srt_path=None,
+            project_path=self.root / "clip.ocr-dedup.mosp",
+            srt_path=self.root / "clip.ocr-dedup.srt",
+            report_path=self.root / "clip.ocr-dedup.csv",
+            warnings=("done",),
+            newly_disabled_count=1,
+            existing_disabled_count=0,
+            processed_count=1,
+            skipped_count=0,
+            failed_count=0,
+        )
+
+        with mock.patch("maw.gui_web.find_ffmpeg", return_value=ffmpeg) as find_ffmpeg:
+            with mock.patch("maw.gui_web.process_ocr_dedup", return_value=fake) as process:
+                result = self.api.run_ocr_dedup({
+                    "projectPath": str(project),
+                    "outputMode": "both",
+                    "videoPath": str(video),
+                    "fallbackVideoPath": str(self.root / "current.mp4"),
+                    "regionMode": "custom",
+                    "regionX1": 5,
+                    "regionY1": 60,
+                    "regionX2": 95,
+                    "regionY2": 100,
+                    "threshold": 0,
+                    "report": True,
+                })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["reportPath"], str(fake.report_path))
+        find_ffmpeg.assert_called_once()
+        request = process.call_args.args[0]
+        self.assertEqual(request.video_path, video)
+        self.assertEqual(request.fallback_video_path, self.root / "current.mp4")
+        self.assertEqual(request.region.mode, "custom")
+        self.assertEqual(request.region.y1, 0.6)
+        self.assertEqual(request.threshold, 0.0)
+        self.assertTrue(request.report)
 
     def test_llm_bridge_uses_stored_key_without_echoing_it(self) -> None:
         project = self.root / "clip.mosp"
@@ -1513,6 +1565,7 @@ class LauncherAssetContractTests(unittest.TestCase):
             "toolboxChain",
             "toolboxChainList",
             "toolboxMatchPanel",
+            "toolboxOcrPanel",
             "toolboxLlmPanel",
             "toolboxReplacePanel",
             "toolboxFfconcatPanel",
@@ -1536,6 +1589,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertNotIn('id="postprocessBaseUrl"', page)
         self.assertNotIn('id="postprocessModel"', page)
         self.assertIn('bridge("run_script_match"', script)
+        self.assertIn('bridge("run_ocr_dedup"', script)
+        self.assertIn("fallbackVideoPath", script)
         self.assertIn('bridge("run_llm_postprocess"', script)
         self.assertIn('bridge("run_fixed_replacement"', script)
         self.assertIn('bridge("run_ffconcat_rebuild"', script)
@@ -1544,6 +1599,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('displayName: item.id === "custom" ? $("llmCustomDisplayName").value.trim() : ""', script)
         self.assertIn('bridge("choose_file", { kind: "script" })', script)
         self.assertIn('bridge("choose_file", { kind: "subtitle" })', script)
+        self.assertIn('bridge("choose_file", { kind: "video" })', script)
         self.assertIn('openSettings("llmSettingsSection")', script)
         self.assertIn('$("jsonPath").value = result.projectPath', script)
         self.assertIn('$("srtPath").value = result.srtPath', script)
@@ -1559,6 +1615,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('toolbox_chain_llm_translate: "[LLM 处理/翻译]"', launcher_script)
         self.assertNotIn("toolbox_chain_llm_translate: \"（LLM 处理/翻译）翻译产物\"", launcher_script)
         self.assertIn('data-tool-action="match"', page)
+        self.assertIn('data-tool-action="ocr"', page)
         self.assertIn('data-tool-action="llm"', page)
         self.assertIn('data-tool-action="replace"', page)
         self.assertIn('class="toolbox-output-main"', page)
@@ -1636,7 +1693,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn(".toolbox-output-main", stylesheet)
         self.assertIn(".toolbox-grid > .field", stylesheet)
         self.assertIn(".toolbox-input.drag-over", stylesheet)
-        self.assertIn("grid-template-columns: repeat(3", stylesheet)
+        self.assertIn("grid-template-columns: repeat(4", stylesheet)
 
     def test_llm_save_feedback_is_local_and_transient(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")

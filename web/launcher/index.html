@@ -337,6 +337,7 @@
       </div>
       <div class="toolbox-tabs" role="tablist" aria-label="post-processing tools">
         <button id="toolboxMatchTab" class="toolbox-tab active" type="button" role="tab" aria-selected="true" aria-controls="toolboxMatchPanel" data-tool="match" data-i18n="toolbox_match">文稿匹配</button>
+        <button id="toolboxOcrTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxOcrPanel" data-tool="ocr" data-i18n="toolbox_ocr_dedup">OCR 字幕去重</button>
         <button id="toolboxLlmTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxLlmPanel" data-tool="llm" data-i18n="toolbox_llm">LLM 处理</button>
         <button id="toolboxReplaceTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxReplacePanel" data-tool="replace" data-i18n="toolbox_replace">固定替换</button>
         <button id="toolboxFfconcatTab" class="toolbox-tab hidden" type="button" role="tab" aria-selected="false" aria-controls="toolboxFfconcatPanel" data-tool="ffconcat" data-i18n="toolbox_ffconcat" aria-hidden="true" tabindex="-1">媒体重组</button>
@@ -357,6 +358,10 @@
             <div class="toolbox-action-slot" data-tool-action="match">
               <button id="runScriptMatch" class="primary" type="button" data-i18n="toolbox_run_match">匹配文稿</button>
               <p class="hint" data-i18n="toolbox_match_hint">匹配度过低时会停止，不写出可能错配的结果。</p>
+            </div>
+            <div class="toolbox-action-slot hidden" data-tool-action="ocr">
+              <button id="runOcrDedup" class="primary" type="button" data-i18n="toolbox_run_ocr">执行 OCR 字幕去重</button>
+              <p class="hint" data-i18n="toolbox_ocr_hint">画面文字与字幕高度相似的段会被禁用或从 SRT 移除。</p>
             </div>
             <div class="toolbox-action-slot hidden" data-tool-action="llm">
               <button id="runLlmPostprocess" class="primary" type="button" data-i18n="toolbox_run">运行处理</button>
@@ -385,6 +390,64 @@
         </div>
         <p class="hint" data-i18n="toolbox_script_hint">文稿文字会替换字幕文字；原字幕时间保持不变。</p>
         <p id="postprocessScriptPathError" class="field-error"></p>
+      </div>
+    </section>
+
+    <section id="toolboxOcrPanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxOcrTab">
+      <div id="ocrVideoPathField" class="field">
+        <label for="ocrVideoPath" data-i18n="toolbox_ocr_video">视频画面</label>
+        <div class="path-row">
+          <input id="ocrVideoPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_ocr_video_placeholder" placeholder="优先使用工程视频，也可选择视频文件">
+          <button id="pickOcrVideo" class="ghost" type="button" data-i18n="choose">选择</button>
+        </div>
+        <p class="hint" data-i18n="toolbox_ocr_video_hint">工程有可用视频时可自动使用；独立 SRT 或当前媒体为音频时必须选择视频。</p>
+        <p id="ocrVideoPathError" class="field-error"></p>
+      </div>
+      <div class="toolbox-grid">
+        <div class="field">
+          <label for="ocrRegionMode" data-i18n="toolbox_ocr_region">画面字幕区</label>
+          <select id="ocrRegionMode">
+            <option value="full" data-i18n="toolbox_ocr_region_full">100% 完整画面</option>
+            <option value="bottom30" data-i18n="toolbox_ocr_region_bottom">底部 30%</option>
+            <option value="custom_region" data-i18n="toolbox_ocr_region_custom">自定义百分比区域</option>
+          </select>
+          <p class="hint" data-i18n="toolbox_ocr_region_hint">默认使用完整画面；底部 30% 可减少 OCR 输入量。</p>
+        </div>
+        <div class="field">
+          <label data-i18n="toolbox_ocr_model">OCR 模型</label>
+          <div class="toolbox-preset-prompt-text" data-i18n="toolbox_ocr_model_tiny">PP-OCRv6 tiny（CPU）</div>
+          <p class="hint" data-i18n="toolbox_ocr_model_hint">small 模型暂不加入 MVP。</p>
+        </div>
+      </div>
+      <div id="ocrCustomRegion" class="toolbox-grid hidden">
+        <div class="field">
+          <label for="ocrRegionX1" data-i18n="toolbox_ocr_x1">左（X1）%</label>
+          <input id="ocrRegionX1" type="number" min="0" max="100" step="1" value="0">
+        </div>
+        <div class="field">
+          <label for="ocrRegionY1" data-i18n="toolbox_ocr_y1">上（Y1）%</label>
+          <input id="ocrRegionY1" type="number" min="0" max="100" step="1" value="70">
+        </div>
+        <div class="field">
+          <label for="ocrRegionX2" data-i18n="toolbox_ocr_x2">右（X2）%</label>
+          <input id="ocrRegionX2" type="number" min="0" max="100" step="1" value="100">
+        </div>
+        <div class="field">
+          <label for="ocrRegionY2" data-i18n="toolbox_ocr_y2">下（Y2）%</label>
+          <input id="ocrRegionY2" type="number" min="0" max="100" step="1" value="100">
+        </div>
+      </div>
+      <div class="toolbox-grid">
+        <div class="field">
+          <label for="ocrThreshold" data-i18n="toolbox_ocr_threshold">相似度阈值</label>
+          <input id="ocrThreshold" type="number" min="0" max="1" step="0.05" value="0.5">
+          <p class="hint" data-i18n="toolbox_ocr_threshold_hint">参考算法取三种相似度的最高值；默认 0.5。</p>
+          <p id="ocrThresholdError" class="field-error"></p>
+        </div>
+        <label class="check-field" for="ocrReport">
+          <input id="ocrReport" type="checkbox">
+          <span data-i18n="toolbox_ocr_report">生成 OCR 判定报告（CSV）</span>
+        </label>
       </div>
     </section>
 
