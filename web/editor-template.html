@@ -63,18 +63,34 @@ __WAVEFORM_CSS__
   </span>
   <span class="sep"></span>
   <span class="multi-subtitle-controls" id="multi-subtitle-controls" hidden>
-    <label class="toggle" title="开启后显示扩展字幕轨、双列列表和绑定操作；关闭只隐藏扩展数据，不删除">
-      <input type="checkbox" id="multi-subtitle-toggle"> 多重字幕
-    </label>
-    <select id="multi-subtitle-display-mode" title="多重字幕列表显示方式">
-      <option value="main">主轨</option>
-      <option value="extension">扩展轨</option>
-      <option value="both" selected>双列</option>
-    </select>
-    <select id="multi-subtitle-split-mode" title="扩展字幕近似拆分类型">
-      <option value="continuous">连续型</option>
-      <option value="word" selected>单词型</option>
-    </select>
+    <span class="dropdown multi-subtitle-settings-dropdown" id="multi-subtitle-settings-dropdown">
+      <button type="button" id="multi-subtitle-settings-toggle" title="多重字幕设置" aria-label="多重字幕设置" aria-expanded="false" aria-controls="multi-subtitle-settings-menu" aria-haspopup="menu">⚙</button>
+      <div class="dropdown-menu multi-subtitle-settings-menu" id="multi-subtitle-settings-menu" role="menu">
+        <label class="multi-subtitle-setting-toggle" title="开启后显示扩展字幕轨、双列列表和绑定操作；关闭只隐藏扩展数据，不删除">
+          <input type="checkbox" id="multi-subtitle-toggle"> 多重字幕
+        </label>
+        <div class="multi-subtitle-setting-row">
+          <span>显示方式</span>
+          <select id="multi-subtitle-display-mode" title="多重字幕列表显示方式">
+            <option value="main">主轨</option>
+            <option value="extension">扩展轨</option>
+            <option value="both" selected>双列</option>
+          </select>
+        </div>
+        <div class="multi-subtitle-setting-row">
+          <span>拆分类型</span>
+          <select id="multi-subtitle-split-mode" title="扩展字幕近似拆分类型">
+            <option value="continuous">连续型</option>
+            <option value="word" selected>单词型</option>
+          </select>
+        </div>
+        <label class="multi-subtitle-setting-toggle" title="拖动多重字幕时，允许吸附到另一条字幕轨道的起点和终点">
+          <input type="checkbox" id="multi-subtitle-cross-track-snap" checked> 跨轨道吸附
+        </label>
+        <div class="dropdown-separator"></div>
+        <div class="dropdown-item" id="multi-subtitle-swap" role="menuitem" tabindex="0" title="交换主字幕和扩展字幕的文本、时间与绑定关系">交换主副字幕</div>
+      </div>
+    </span>
   </span>
 
   <span class="right-group">
@@ -116,7 +132,7 @@ __WAVEFORM_CSS__
       <svg class="toolbar-button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.75 12.25 8 8 9.25 6.25 13.5 3 1.75Z"/><path d="m8.3 9.2 3.2 3.05"/></svg>
       <span>选择</span>
     </button>
-    <button type="button" data-waveform-tool="razor" title="分割工具（R）：点击字幕块在指针位置安全拆分（默认按字词时间码对齐；关闭设置后打开拆分点弹窗，拒绝 100ms 以内的边缘拆分）；Esc 切回选择">
+    <button type="button" data-waveform-tool="razor" title="分割工具（R）：点击字幕块在指针位置安全拆分（默认按字词时间码对齐；没有可用字词时间码或关闭设置后打开拆分点弹窗，拒绝 100ms 以内的边缘拆分）；Esc 切回选择">
       <svg class="toolbar-button-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="4" r="2.25"/><circle cx="4" cy="12" r="2.25"/><path d="m5.8 5.35 7.2 5.4M5.8 10.65 13 5.25"/></svg>
       <span>分割</span>
     </button>
@@ -418,7 +434,7 @@ __WAVEFORM_CSS__
       <option value="enter">Enter</option>
     </select>
   </label>
-    <label class="toggle editor-settings-item" title="开启时，波形拆分优先使用主字幕的字词时间码；关闭后打开拆分弹窗选择字符间断点。字幕列表拆分不受影响">
+    <label class="toggle editor-settings-item" title="开启时，波形拆分优先使用主字幕的字词时间码；没有可用时间码时自动打开拆分弹窗；关闭后始终打开拆分弹窗。字幕列表拆分不受影响">
       <input type="checkbox" id="split-use-word-timestamps" checked> 主字幕拆分使用字词时间码
     </label>
   </div>

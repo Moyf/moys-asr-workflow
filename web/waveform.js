@@ -2925,6 +2925,7 @@
       if (!disableSnap) {
         const candidates = [];
         const playhead = this.currentTimeMs();
+        const crossTrackTargets = this.options.getCrossTrackSnapTargets?.(drag.track) || [];
         for (const idx of drag.indices) {
           const original = drag.originals.get(idx);
           candidates.push(playhead - original.start, playhead - original.end);
@@ -2932,6 +2933,9 @@
           if (idx + 1 < segments.length && !moved.has(idx + 1)) {
             candidates.push(segments[idx + 1].start - original.end);
           }
+          crossTrackTargets.forEach((target) => {
+            candidates.push(target - original.start, target - original.end);
+          });
         }
         const nearest = candidates.reduce((best, value) => (
           Math.abs(value - delta) < Math.abs(best - delta) ? value : best
@@ -2966,7 +2970,9 @@
         const upper = original.end - MIN_CUE_MS;
         newStart = original.start + rawDelta;
         if (!disableSnap) {
-          const targets = [lower, this.currentTimeMs()];
+          const targets = [lower, this.currentTimeMs(), ...(
+            this.options.getCrossTrackSnapTargets?.(drag.track) || []
+          )];
           const nearest = targets.reduce((best, value) => (
             Math.abs(value - newStart) < Math.abs(best - newStart) ? value : best
           ), Infinity);
@@ -2978,7 +2984,9 @@
         const upper = drag.index + 1 < segments.length ? segments[drag.index + 1].start : this.durationMs;
         newEnd = original.end + rawDelta;
         if (!disableSnap) {
-          const targets = [upper, this.currentTimeMs()];
+          const targets = [upper, this.currentTimeMs(), ...(
+            this.options.getCrossTrackSnapTargets?.(drag.track) || []
+          )];
           const nearest = targets.reduce((best, value) => (
             Math.abs(value - newEnd) < Math.abs(best - newEnd) ? value : best
           ), Infinity);
@@ -3001,7 +3009,9 @@
       const lower = left.start + MIN_CUE_MS;
       const upper = right.end - MIN_CUE_MS;
       if (!disableSnap) {
-        const candidates = [this.currentTimeMs()];
+        const candidates = [this.currentTimeMs(), ...(
+          this.options.getCrossTrackSnapTargets?.(drag.track) || []
+        )];
         if (drag.index > 0) candidates.push(segments[drag.index - 1].end);
         if (drag.index + 2 < segments.length) candidates.push(segments[drag.index + 2].start);
         const nearest = candidates.reduce((best, value) => (

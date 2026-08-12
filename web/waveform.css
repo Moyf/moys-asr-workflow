@@ -545,13 +545,15 @@
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"] {
   bottom: var(--multi-subtitle-bottom-inset);
-  border-color: color-mix(in srgb, var(--cue-color) 80%, #fff);
-  background: color-mix(in srgb, var(--cue-color) 30%, var(--wave-cue-mix));
+  border-style: dotted;
+  border-color: color-mix(in srgb, var(--cue-color) 50%, var(--wave-cue-mix));
+  background: color-mix(in srgb, var(--cue-color) 10%, var(--wave-cue-mix));
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"] .waveform-cue-label {
   color: var(--text-secondary);
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"].selected {
+  border-style: solid;
   outline-color: var(--accent-hover);
 }
 .waveform-playhead {

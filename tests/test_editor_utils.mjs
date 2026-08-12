@@ -783,6 +783,29 @@ test('waveform split fallback keeps the caret on a Unicode character boundary', 
 });
 
 
+test('distinguishes usable word timestamps from missing or invalid timing data', () => {
+  assert.equal(helpers.hasUsableSplitTimestamps({ start: 0, end: 1000, text: '没有时间码' }), false);
+  assert.equal(helpers.hasUsableSplitTimestamps({
+    start: 0,
+    end: 1000,
+    text: '有时间码',
+    items: [
+      { start: 0, end: 450, text: '有时' },
+      { start: 550, end: 1000, text: '间码' },
+    ],
+  }), true);
+  assert.equal(helpers.hasUsableSplitTimestamps({
+    start: 0,
+    end: 1000,
+    text: '时间不完整',
+    items: [
+      { text: '时间' },
+      { text: '不完整' },
+    ],
+  }), false);
+});
+
+
 test('shares configured Enter semantics between list editing and current cue editing', () => {
   assert.equal(helpers.configuredEnterAction({ key: 'Enter', ctrlKey: true }, 'ctrl-enter'), 'split');
   assert.equal(helpers.configuredEnterAction({ key: 'Enter' }, 'ctrl-enter'), 'save');
@@ -996,6 +1019,41 @@ test('normalizes legacy multi-subtitle data with stable IDs and clears extension
   assert.equal(project.multi_subtitle.tracks[0].segments[0].id, 'translation-segment-001');
   assert.equal('items' in project.multi_subtitle.tracks[0].segments[0], false);
   assert.equal(project.multi_subtitle.display_mode, 'both');
+});
+
+
+test('swaps main and extension subtitle tracks and rewrites binding offsets', () => {
+  const project = {
+    segments: [{
+      id: 'main-001', start: 0, end: 1000, text: 'English',
+      items: [{ start: 0, end: 1000, text: 'English' }],
+    }],
+    multi_subtitle: {
+      enabled: true,
+      tracks: [{
+        id: 'translation',
+        segments: [{
+          id: 'translation-001', start: 40, end: 960, text: '中文',
+          items: [{ start: 40, end: 960, text: '中文' }],
+        }],
+      }],
+      bindings: [{
+        id: 'binding-001', track_id: 'translation',
+        main_segment_ids: ['main-001'], extension_segment_ids: ['translation-001'],
+        start_offset_ms: 40, end_offset_ms: -40,
+      }],
+    },
+  };
+
+  const result = helpers.swapMainAndExtensionSubtitle(project, 'translation');
+  assert.equal(result.swapped, true);
+  assert.equal(project.segments[0].text, '中文');
+  assert.equal(project.multi_subtitle.tracks[0].segments[0].text, 'English');
+  assert.equal('items' in project.multi_subtitle.tracks[0].segments[0], false);
+  assert.deepEqual([...project.multi_subtitle.bindings[0].main_segment_ids], ['translation-001']);
+  assert.deepEqual([...project.multi_subtitle.bindings[0].extension_segment_ids], ['main-001']);
+  assert.equal(project.multi_subtitle.bindings[0].start_offset_ms, -40);
+  assert.equal(project.multi_subtitle.bindings[0].end_offset_ms, 40);
 });
 
 

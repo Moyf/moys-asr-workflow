@@ -234,10 +234,10 @@
     return `${durationLabel}（占比 ${percentageLabel}%）`;
   }
 
-  function splitCharOffsetAtTime(segment, timeMs) {
+  function timestampedSplitCandidates(segment) {
     const text = String(segment?.text || '');
     const codePoints = Array.from(text);
-    if (codePoints.length < 2) return null;
+    if (codePoints.length < 2) return [];
     const hasContent = (value) => /[\p{L}\p{N}\p{S}]/u.test(value);
 
     const alignedItems = [];
@@ -251,7 +251,6 @@
       searchFrom = start + itemText.length;
     });
 
-    const targetTime = Number(timeMs);
     const candidates = [];
     for (let index = 1; index < alignedItems.length; index++) {
       const left = alignedItems[index - 1];
@@ -261,6 +260,7 @@
       if (!hasContent(text.slice(0, offset)) || !hasContent(text.slice(offset))) continue;
       const leftEnd = Number(left.item.end);
       const rightStart = Number(right.item.start);
+      const hasTimestamp = Number.isFinite(leftEnd) && Number.isFinite(rightStart);
       let boundaryTime = Number.isFinite(leftEnd) && Number.isFinite(rightStart)
         ? (leftEnd + rightStart) / 2
         : Number.isFinite(rightStart) ? rightStart : leftEnd;
@@ -268,8 +268,22 @@
         boundaryTime = Number(segment?.start)
           + ((Number(segment?.end) - Number(segment?.start)) * offset / text.length);
       }
-      candidates.push({ offset, time: boundaryTime });
+      candidates.push({ offset, time: boundaryTime, hasTimestamp });
     }
+    return candidates;
+  }
+
+  function hasUsableSplitTimestamps(segment) {
+    return timestampedSplitCandidates(segment).some((candidate) => candidate.hasTimestamp);
+  }
+
+  function splitCharOffsetAtTime(segment, timeMs) {
+    const text = String(segment?.text || '');
+    const codePoints = Array.from(text);
+    if (codePoints.length < 2) return null;
+    const hasContent = (value) => /[\p{L}\p{N}\p{S}]/u.test(value);
+    const targetTime = Number(timeMs);
+    const candidates = timestampedSplitCandidates(segment);
     if (candidates.length && Number.isFinite(targetTime)) {
       return candidates.reduce((nearest, candidate) => (
         Math.abs(candidate.time - targetTime) < Math.abs(nearest.time - targetTime)
@@ -585,6 +599,58 @@
       binding.end_offset_ms = Math.round(Number(extension.end) - Number(main.end));
     });
     return multiSubtitle;
+  }
+
+  // 交换主轨与当前唯一扩展轨。MVP 的扩展轨只保存文本/时间/稳定 ID，
+  // 因此从主轨降级到扩展轨时不携带 items、表情包和颜色分组等主轨专属字段。
+  // 绑定关系按端点整体交换，并在新主轨写入后重新计算 offset。
+  function swapMainAndExtensionSubtitle(project, trackId = null) {
+    if (!project || typeof project !== 'object' || !Array.isArray(project.segments)) {
+      return { swapped: false, reason: 'invalid-project' };
+    }
+    ensureStableSegmentIds(project.segments, 'main');
+    const multi = normalizeMultiSubtitle(project.multi_subtitle, project.segments);
+    project.multi_subtitle = multi;
+    const tracks = Array.isArray(multi.tracks) ? multi.tracks : [];
+    if (tracks.length !== 1) return { swapped: false, reason: 'unsupported-track-count' };
+    const track = tracks.find((candidate) => !trackId || candidate.id === trackId);
+    if (!track || !Array.isArray(track.segments)) return { swapped: false, reason: 'missing-track' };
+    if (!project.segments.length || !track.segments.length) return { swapped: false, reason: 'empty-track' };
+
+    const oldMain = cloneJsonValue(project.segments) || [];
+    const oldExtension = cloneJsonValue(track.segments) || [];
+    const nextMain = oldExtension.map((segment) => ({ ...segment }));
+    const nextExtension = oldMain.map((segment) => {
+      const copy = {
+        id: stableId(segment.id),
+        start: segment.start,
+        end: segment.end,
+        text: typeof segment.text === 'string' ? segment.text : '',
+      };
+      if (segment._dirty) copy._dirty = true;
+      return copy;
+    });
+
+    project.segments.length = 0;
+    nextMain.forEach((segment) => project.segments.push(segment));
+    track.segments = nextExtension;
+
+    let bindingCount = 0;
+    (multi.bindings || []).forEach((binding) => {
+      if (binding.track_id !== track.id) return;
+      const mainIds = binding.main_segment_ids;
+      binding.main_segment_ids = [...(binding.extension_segment_ids || [])];
+      binding.extension_segment_ids = [...(mainIds || [])];
+      bindingCount++;
+    });
+    rebuildBindingOffsets(multi, project.segments);
+    return {
+      swapped: true,
+      trackId: track.id,
+      mainCount: project.segments.length,
+      extensionCount: track.segments.length,
+      bindingCount,
+    };
   }
 
   function removeSubtitleBindings(multiSubtitle, predicate) {
@@ -1254,9 +1320,11 @@
     cleanSplitTextParts,
     splitSubtitleText,
     nearestSubtitleSplitOffset,
+    hasUsableSplitTimestamps,
     bindingForSegment,
     buildSubtitleBinding,
     rebuildBindingOffsets,
+    swapMainAndExtensionSubtitle,
     removeSubtitleBindings,
     matchSubtitleSegments,
     buildMultiDisplayRows,
