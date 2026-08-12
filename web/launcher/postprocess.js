@@ -2,13 +2,15 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const panels = { match: "toolboxMatchPanel", llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel" };
+  const panels = { match: "toolboxMatchPanel", ocr: "toolboxOcrPanel", llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel" };
   const TASK_PROMPT_KEYS = { proofread: "toolbox_task_proofread", resegment: "toolbox_task_resegment", translate_en: "toolbox_task_translate_en", translate_zh: "toolbox_task_translate_zh" };
   const SUBTITLE_EXTS = new Set([".mosp", ".json", ".srt"]);
+  const VIDEO_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"]);
   const SCRIPT_EXTS = new Set([".txt", ".md", ".markdown"]);
   const CUSTOM_DEFAULT_LABEL = "Custom (OpenAI-compatible)";
   let busy = false;
   let inputManual = false;
+  let ocrVideoManual = false;
   let saveStatusTimer = 0;
 
   function t(key) {
@@ -92,7 +94,21 @@
   function syncPaths() {
     if (!inputManual) $("toolboxInputPath").value = autoSourcePath();
     $("toolboxMediaPath").textContent = $("mediaPath").value.trim() || t("toolbox_no_media");
+    syncOcrVideo();
     syncInputName();
+  }
+
+  function autoOcrVideoPath() {
+    const mediaPath = $("mediaPath").value.trim();
+    return VIDEO_EXTS.has(extension(mediaPath)) ? mediaPath : "";
+  }
+
+  function syncOcrVideo() {
+    if (!ocrVideoManual) $("ocrVideoPath").value = autoOcrVideoPath();
+  }
+
+  function renderOcrRegion() {
+    $("ocrCustomRegion").classList.toggle("hidden", $("ocrRegionMode").value !== "custom_region");
   }
 
   function renderProvider(providerId = $("postprocessProvider").value) {
@@ -164,7 +180,7 @@
   function setBusy(nextBusy, statusKey = "toolbox_running") {
     busy = nextBusy;
     $("toolboxProgress").classList.toggle("hidden", !busy);
-    ["runScriptMatch", "runLlmPostprocess", "runFixedReplacement", "runFfconcatRebuild", "saveLlmSettings", "testLlmConnection", "toolboxInputPath", "pickToolboxInput", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmCustomDisplayName"].forEach((id) => {
+    ["runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedReplacement", "runFfconcatRebuild", "saveLlmSettings", "testLlmConnection", "toolboxInputPath", "pickToolboxInput", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmCustomDisplayName", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport"].forEach((id) => {
       $(id).disabled = busy;
     });
     if (busy) setResult(t(statusKey));
@@ -207,6 +223,7 @@
 
   function chainLabel(kind, operation = "") {
     if (kind === "match") return t("toolbox_chain_match");
+    if (kind === "ocr") return t("toolbox_chain_ocr");
     if (kind === "replace") return t("toolbox_chain_replace");
     const operationKeys = {
       proofread: "toolbox_chain_llm_proofread",
@@ -280,7 +297,8 @@
     inputManual = false;
     syncPaths();
     addChainResult(chain, result);
-    const warnings = Array.isArray(result.warnings) ? result.warnings : [];
+    const warnings = Array.isArray(result.warnings) ? [...result.warnings] : [];
+    if (result.reportPath) warnings.push(`${t("toolbox_ocr_report_path")} ${result.reportPath}`);
     setResult(`${t("toolbox_done")}${warnings.length ? `\n${warnings.join("\n")}` : ""}`, "success");
   }
 
@@ -308,6 +326,51 @@
     try {
       const result = await bridge("run_script_match", { ...paths, scriptPath });
       if (result.ok) applySubtitleResult(result, { kind: "match" });
+      else setResult(result.error || result.detail || t("failed"), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function ocrRegionPayload() {
+    return {
+      regionMode: $("ocrRegionMode").value === "custom_region" ? "custom" : $("ocrRegionMode").value,
+      regionX1: $("ocrRegionX1").value,
+      regionY1: $("ocrRegionY1").value,
+      regionX2: $("ocrRegionX2").value,
+      regionY2: $("ocrRegionY2").value,
+    };
+  }
+
+  async function runOcrDedup() {
+    const paths = resolveInputPaths();
+    if (!paths) return;
+    const threshold = Number($("ocrThreshold").value);
+    if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1) {
+      const message = t("toolbox_ocr_threshold_invalid");
+      setFieldError("ocrThreshold", message);
+      setResult(message, "error");
+      return;
+    }
+    const videoPath = $("ocrVideoPath").value.trim() || autoOcrVideoPath();
+    if (videoPath && !VIDEO_EXTS.has(extension(videoPath))) {
+      const message = t("toolbox_ocr_video_reject");
+      setFieldError("ocrVideoPath", message);
+      setResult(message, "error");
+      return;
+    }
+    setFieldError("ocrVideoPath", "");
+    setFieldError("ocrThreshold", "");
+    setBusy(true, "toolbox_status_starting");
+    try {
+      const result = await bridge("run_ocr_dedup", {
+        ...paths,
+        videoPath,
+        threshold,
+        report: $("ocrReport").checked,
+        ...ocrRegionPayload(),
+      });
+      if (result.ok) applySubtitleResult(result, { kind: "ocr" });
       else setResult(result.error || result.detail || t("failed"), "error");
     } finally {
       setBusy(false);
@@ -457,6 +520,7 @@
     syncProviderOptionLabels();
     renderProvider();
     renderTaskPrompt();
+    renderOcrRegion();
     selectTool("match");
     syncPaths();
   }
@@ -470,6 +534,7 @@
   $("saveLlmSettings").addEventListener("click", saveSettings);
   $("testLlmConnection").addEventListener("click", testConnection);
   $("runScriptMatch").addEventListener("click", runScriptMatch);
+  $("runOcrDedup").addEventListener("click", runOcrDedup);
   $("runLlmPostprocess").addEventListener("click", runLlm);
   $("runFixedReplacement").addEventListener("click", runReplacement);
   $("runFfconcatRebuild").addEventListener("click", runFfconcat);
@@ -493,12 +558,30 @@
       syncInputName();
     }
   });
+  $("pickOcrVideo").addEventListener("click", async () => {
+    const result = await bridge("choose_file", { kind: "video" });
+    if (result.ok) {
+      if (!VIDEO_EXTS.has(extension(result.path))) {
+        setFieldError("ocrVideoPath", t("toolbox_ocr_video_reject"));
+        return;
+      }
+      ocrVideoManual = true;
+      $("ocrVideoPath").value = result.path;
+      setFieldError("ocrVideoPath", "");
+    }
+  });
   $("toolboxInputPath").addEventListener("input", () => {
     clearChainSelection();
     inputManual = Boolean($("toolboxInputPath").value.trim());
     setFieldError("toolboxInputPath", "");
     syncInputName();
   });
+  $("ocrVideoPath").addEventListener("input", () => {
+    ocrVideoManual = Boolean($("ocrVideoPath").value.trim());
+    setFieldError("ocrVideoPath", "");
+  });
+  $("ocrRegionMode").addEventListener("change", renderOcrRegion);
+  $("ocrThreshold").addEventListener("input", () => setFieldError("ocrThreshold", ""));
   $("toolboxIssuesLink").addEventListener("click", (event) => {
     event.preventDefault();
     bridge("open_url", { url: "https://github.com/Moyf/moys-asr-workflow/issues" });

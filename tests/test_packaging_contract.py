@@ -56,12 +56,17 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("upx=False", spec)
         self.assertIn("maw.gui_web", spec)
         self.assertIn("maw.cli", spec)
+        self.assertIn('collect_all("rapidocr")', spec)
+        self.assertIn('collect_all("onnxruntime")', spec)
+        self.assertIn('binaries=binaries', spec)
+        self.assertIn("pp-ocrv6_det_small.onnx", spec.lower())
         for module in (
             "maw.postprocess",
             "maw.postprocess_io",
             "maw.postprocess_llm",
             "maw.postprocess_ffmpeg",
             "maw.postprocess_match",
+            "maw.postprocess_ocr",
         ):
             self.assertIn(module, spec)
         self.assertNotIn("sv_ttk", spec)

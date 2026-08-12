@@ -31,6 +31,7 @@ from maw.postprocess import LlmPostprocessRequest, OutputMode, Replacement, Repl
 from maw.postprocess_ffmpeg import FfconcatRequest, run_ffconcat_rebuild as process_ffconcat_rebuild
 from maw.postprocess_match import ScriptMatchRequest, run_script_match as process_script_match
 from maw.postprocess_llm import LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, preset_by_id, test_llm_connection
+from maw.postprocess_ocr import OcrDedupRequest, OcrRegion, run_ocr_dedup as process_ocr_dedup
 from maw.soniox import SonioxContextError, build_soniox_context
 
 
@@ -557,6 +558,35 @@ class LauncherApi:
             return {"ok": False, "field": "postprocessScriptPath", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
+    def run_ocr_dedup(self, payload: Mapping[str, object]) -> dict[str, object]:
+        configured = effective_config_value(self.paths.env_path, "FFMPEG_PATH")
+        ffmpeg = find_ffmpeg(configured)
+        if ffmpeg is None:
+            bundled_directory = _bundled_ffmpeg_directory()
+            if bundled_directory is not None:
+                ffmpeg = (bundled_directory / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).resolve()
+        if ffmpeg is None:
+            return {"ok": False, "field": "ocrVideoPath", "code": "postprocess_failed", "detail": "找不到 FFmpeg，无法抽取视频画面。", "error": "找不到 FFmpeg，无法抽取视频画面。"}
+        self._emit_postprocess_status("toolbox_status_reading")
+        try:
+            raw_threshold = payload.get("threshold")
+            result = process_ocr_dedup(
+                OcrDedupRequest(
+                    project_path=_optional_path(payload.get("projectPath")),
+                    srt_path=_optional_path(payload.get("srtPath")),
+                    video_path=_optional_path(payload.get("videoPath")),
+                    output_mode=_output_mode(payload.get("outputMode")),
+                    region=_ocr_region(payload),
+                    threshold=float(str(raw_threshold if raw_threshold is not None else "0.5")),
+                    report=bool(payload.get("report")),
+                ),
+                ffmpeg_path=ffmpeg,
+                on_status=self._emit_postprocess_status,
+            )
+        except (OSError, UnicodeError, ValueError, RuntimeError) as error:
+            return {"ok": False, "field": "ocrVideoPath", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
+        return _ocr_artifact_result(result)
+
     def run_llm_postprocess(self, payload: Mapping[str, object]) -> dict[str, object]:
         preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
         operation = str(payload.get("operation") or "proofread")
@@ -625,6 +655,8 @@ class LauncherApi:
             file_types = ("MAW projects (*.mosp;*.json)",)
         elif kind == "subtitle":
             file_types = ("Subtitle files (*.mosp;*.json;*.srt)",)
+        elif kind == "video":
+            file_types = ("Video files (*.mp4;*.mkv;*.avi;*.mov;*.wmv;*.flv;*.webm;*.ts;*.m4v)", "All files (*.*)")
         elif kind == "ffconcat":
             file_types = ("FFconcat scripts (*.ffconcat)",)
         elif kind == "script":
@@ -1383,6 +1415,29 @@ def _output_mode(value: object) -> OutputMode:
         return OutputMode.BOTH
 
 
+def _ocr_region(payload: Mapping[str, object]) -> OcrRegion:
+    mode = str(payload.get("regionMode") or "full")
+    if mode != "custom":
+        return OcrRegion(mode=mode)
+
+    def percent(field: str) -> float:
+        raw = payload.get(field)
+        if raw is None or not str(raw).strip():
+            raise ValueError(f"OCR 自定义区域的 {field} 必须是数字")
+        try:
+            return float(str(raw)) / 100.0
+        except ValueError as error:
+            raise ValueError(f"OCR 自定义区域的 {field} 必须是数字") from error
+
+    return OcrRegion(
+        mode="custom",
+        x1=percent("regionX1"),
+        y1=percent("regionY1"),
+        x2=percent("regionX2"),
+        y2=percent("regionY2"),
+    )
+
+
 def _mapping_list(value: object) -> tuple[Mapping[str, object], ...]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
         return ()
@@ -1430,6 +1485,18 @@ def _subtitle_artifact_result(result: object) -> dict[str, object]:
         "projectPath": str(getattr(result, "project_path", None) or ""),
         "srtPath": str(getattr(result, "srt_path", None) or ""),
         "warnings": list(getattr(result, "warnings", ())),
+    }
+
+
+def _ocr_artifact_result(result: object) -> dict[str, object]:
+    return {
+        **_subtitle_artifact_result(result),
+        "reportPath": str(getattr(result, "report_path", None) or ""),
+        "newlyDisabledCount": int(getattr(result, "newly_disabled_count", 0)),
+        "existingDisabledCount": int(getattr(result, "existing_disabled_count", 0)),
+        "processedCount": int(getattr(result, "processed_count", 0)),
+        "skippedCount": int(getattr(result, "skipped_count", 0)),
+        "failedCount": int(getattr(result, "failed_count", 0)),
     }
 
 

@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Launcher 后处理工具箱新增「OCR 字幕去重」：使用 CPU 版 RapidOCR PP-OCRv6 tiny 检查字幕中点画面，命中高度相似文字时为工程设置 `disabled`，并在 SRT 输出中移除；保留已有 `disabled`，支持完整画面、底部 30% 或自定义画面区、工程/SRT/两者输出、独立 SRT 的视频输入，以及可选 OCR CSV 报告。
+
 ## [1.4.0-beta.2] - 2026-08-12
 
 ### Fixed

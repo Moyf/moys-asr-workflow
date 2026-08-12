@@ -2,6 +2,7 @@
 
 import sys
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_all
 
 
 ROOT = Path(SPECPATH).resolve()
@@ -30,6 +31,24 @@ datas = [
     (str(ROOT / "maw" / "speaker.py"), "local-runtime/maw"),
 ]
 
+rapidocr_datas, rapidocr_binaries, rapidocr_hiddenimports = collect_all("rapidocr")
+onnxruntime_datas, onnxruntime_binaries, onnxruntime_hiddenimports = collect_all("onnxruntime")
+
+# The MVP exposes PP-OCRv6 tiny. Keep the larger small checkpoints out of the
+# frozen bundle until the Launcher offers the small model as a real option.
+_deferred_rapidocr_models = {
+    "pp-ocrv6_det_small.onnx",
+    "pp-ocrv6_rec_small.onnx",
+}
+rapidocr_datas = [
+    (source, target)
+    for source, target in rapidocr_datas
+    if Path(source).name.lower() not in _deferred_rapidocr_models
+]
+datas.extend(rapidocr_datas)
+datas.extend(onnxruntime_datas)
+binaries = [*rapidocr_binaries, *onnxruntime_binaries]
+
 excluded_local_modules = [
     "accelerate",
     "funasr",
@@ -45,7 +64,7 @@ excluded_local_modules = [
 a = Analysis(
     [str(ROOT / "maw_gui.py")],
     pathex=[str(ROOT), str(ROOT / "server-editor")],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=[
         "edit",
@@ -67,9 +86,17 @@ a = Analysis(
         "maw.postprocess_llm",
         "maw.postprocess_ffmpeg",
         "maw.postprocess_match",
+        "maw.postprocess_ocr",
         "maw.project",
         "maw.soniox",
         "maw.bcut",
+        "PIL",
+        "imagehash",
+        "numpy",
+        "rapidocr",
+        "onnxruntime",
+        *rapidocr_hiddenimports,
+        *onnxruntime_hiddenimports,
     ],
     hookspath=[],
     hooksconfig={},
