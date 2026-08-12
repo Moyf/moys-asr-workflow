@@ -342,10 +342,10 @@ class PostprocessTests(unittest.TestCase):
         )
         response = mock.Mock()
         response.iter_lines.return_value = [
-            f"data: {json.dumps({'choices': [{'delta': {'reasoning_content': '先检查字幕'}}]}, ensure_ascii=False)}",
-            f"data: {json.dumps({'choices': [{'delta': {'content': '{\"groups\":['}}]}, ensure_ascii=False)}",
-            f"data: {json.dumps({'choices': [{'delta': {'content': '{\"id\":\"c0001\",\"text\":\"完成\"}]'}}]}, ensure_ascii=False)}",
-            f"data: {json.dumps({'choices': [{'delta': {'content': '}'}}]}, ensure_ascii=False)}",
+            "data: " + json.dumps({'choices': [{'delta': {'reasoning_content': '先检查字幕'}}]}, ensure_ascii=False),
+            "data: " + json.dumps({'choices': [{'delta': {'content': '{\"groups\":['}}]}, ensure_ascii=False),
+            "data: " + json.dumps({'choices': [{'delta': {'content': '{\"id\":\"c0001\",\"text\":\"完成\"}]'}}]}, ensure_ascii=False),
+            "data: " + json.dumps({'choices': [{'delta': {'content': '}'}}]}, ensure_ascii=False),
             "data: [DONE]",
         ]
         session = mock.MagicMock()
