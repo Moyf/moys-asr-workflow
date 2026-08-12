@@ -15,16 +15,21 @@ def asset_path(relative: str) -> Path:
     return base / relative
 
 
-def startupinfo() -> subprocess.STARTUPINFO | None:
+def startupinfo() -> Any | None:
     if sys.platform != "win32":
         return None
-    startup = subprocess.STARTUPINFO()
-    startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startup_info_type = getattr(subprocess, "STARTUPINFO", None)
+    if startup_info_type is None:
+        return None
+    startup = startup_info_type()
+    startup.dwFlags |= getattr(subprocess, "STARTF_USESHOWWINDOW", 0)
     return startup
 
 
 def creationflags() -> int:
-    return subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+    if sys.platform != "win32":
+        return 0
+    return int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
 def process_group_kwargs() -> dict[str, object]:
@@ -35,7 +40,7 @@ def process_group_kwargs() -> dict[str, object]:
         "creationflags": flags,
     }
     if sys.platform == "win32":
-        kwargs["creationflags"] = flags | subprocess.CREATE_NEW_PROCESS_GROUP
+        kwargs["creationflags"] = flags | int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
     else:
         kwargs["start_new_session"] = True
     return kwargs

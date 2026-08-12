@@ -1261,7 +1261,7 @@ wheels = [
 
 [[package]]
 name = "moys-asr-workflow"
-version = "1.4.0-beta.1"
+version = "1.4.0-beta.2"
 source = { virtual = "." }
 dependencies = [
     { name = "jieba" },

@@ -93,7 +93,10 @@ class LocalRuntimeTests(unittest.TestCase):
                     python.parent.mkdir(parents=True, exist_ok=True)
                     python.touch()
                 if command[1:3] == ["pip", "install"]:
-                    packages = root / "Lib" / "site-packages"
+                    if os.name == "nt":
+                        packages = root / "Lib" / "site-packages"
+                    else:
+                        packages = root / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
                     for name in ("funasr", "qwen_asr", "jieba", "torch", "torchaudio"):
                         (packages / name).mkdir(parents=True, exist_ok=True)
                 return 0

@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [1.4.0-beta.2] - 2026-08-12
+
+### Fixed
+
+- 修复 macOS 构建在模拟 Windows 进程回收逻辑的测试中因缺少 Windows 专用 `subprocess` 常量而失败的问题。
+- 修复 macOS 本地运行环境测试对虚拟环境 `site-packages` 路径的错误假设。
+
 ## [1.4.0-beta.1] - 2026-08-12
 
 ### Fixed
