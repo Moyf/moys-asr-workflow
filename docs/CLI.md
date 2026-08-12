@@ -40,7 +40,7 @@ DASHSCOPE_API_KEY=你的百炼密钥
 SONIOX_API_KEY=你的 Soniox 密钥
 ```
 
-Windows Release 包的 `.env` 通常放在 `MAW.exe` 同目录；源码方式放在仓库根目录。环境变量优先于 `.env`。API Key 的申请方式见 [README 的 API 说明](../README.md) 和[阿里云官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)。
+Windows Release 包的 `.env` 通常放在 `MAW.exe` 同目录；源码方式放在仓库根目录。环境变量优先于 `.env`。API Key 的申请方式见 [ASR 服务与配置](PROVIDERS.md) 和[阿里云官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)。
 
 ### PowerShell 路径
 
