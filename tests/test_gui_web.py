@@ -18,7 +18,7 @@ from urllib.error import URLError
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, download_emoji_font, run_app  # noqa: E402
+from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
 
@@ -2136,6 +2136,22 @@ class LauncherAssetContractTests(unittest.TestCase):
 
         self.assertIn(".ghost.attention:hover:not(:disabled)", stylesheet)
         self.assertIn("border-color: var(--amber-hover);", stylesheet)
+
+
+@final
+class DefaultPathsTests(unittest.TestCase):
+    def test_default_paths_resolves_frozen_meipass_root(self) -> None:
+        """Given PyInstaller 冻结环境, When 解析默认路径, Then 资源根为 _MEIPASS。"""
+        with mock.patch.object(sys, "frozen", True, create=True), mock.patch.object(sys, "_MEIPASS", "/opt/app/_internal", create=True):
+            paths = default_paths()
+        self.assertEqual(paths.launcher_html, Path("/opt/app/_internal/web/launcher/index.html"))
+        self.assertEqual(paths.root, Path("/opt/app/_internal"))
+
+    def test_default_paths_uses_repo_root_when_not_frozen(self) -> None:
+        """Given 源码运行, When 解析默认路径, Then 资源根为仓库根。"""
+        self.assertFalse(getattr(sys, "frozen", False))
+        paths = default_paths()
+        self.assertEqual(paths.launcher_html, ROOT / "web" / "launcher" / "index.html")
 
 
 class _FakeUrlResponse:

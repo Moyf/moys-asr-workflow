@@ -17,6 +17,19 @@ def default_env_path() -> Path:
     """Return the writable GUI configuration path for the current platform."""
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / "Moy" / "MAW" / ".env"
+    if sys.platform == "linux" and getattr(sys, "frozen", False):
+        # 冻结（AppImage）后仓库根只读，配置必须放用户目录；~/.config 不可写时回退
+        # ~/.cache（如 SteamOS 只读 /home 环境）。源码运行保持仓库根 .env 不变。
+        for base in (
+            Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))),
+            Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))),
+        ):
+            target = base / "Moy" / "MAW"
+            try:
+                target.mkdir(parents=True, exist_ok=True)
+                return target / ".env"
+            except OSError:
+                continue
     return ROOT / ".env"
 
 

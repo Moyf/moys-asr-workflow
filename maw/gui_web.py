@@ -344,7 +344,9 @@ class LauncherPaths:
 
 
 def default_paths() -> LauncherPaths:
-    root = Path(__file__).resolve().parents[1]
+    # 冻结（PyInstaller / AppImage）时资源在 sys._MEIPASS（如 dist/MAW/_internal），
+    # 源码运行时在仓库根；与 maw.gui_platform.asset_path 的取法保持一致。
+    root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
     return LauncherPaths(root=root, env_path=DEFAULT_ENV_PATH, launcher_html=root / "web" / "launcher" / "index.html")
 
 

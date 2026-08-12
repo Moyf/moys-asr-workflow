@@ -45,3 +45,6 @@ desktop/src/index.html
 *.spec.bak
 !MAW.spec
 .playwright-mcp/
+
+# AppImage 构建产物（scripts/build-appimage.sh）
+build-appimage/
