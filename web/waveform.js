@@ -6,6 +6,8 @@
   const SETTINGS_KEY = 'moy.asr.waveform.settings.v1';
   const SCHEMA = 'moy.asr.waveform.v1';
   const ENCODING = 'i8-minmax-base64';
+  const SPECTRAL_SCHEMA = 'moy.asr.spectral.v1';
+  const SPECTRAL_ENCODING = 'u16-freq-density-base64';
   const WORKSPACE_SCHEMA = 'moy.asr.editor.workspace.v1';
   // 渲染器预设：classic / wave-right 由专属 CSS 网格渲染；custom 由 layoutTree 渲染
   // （大荧幕布局与用户保存的自定义工作区都以树渲染）。
@@ -546,6 +548,64 @@
     return btoa(parts.join(''));
   }
 
+  // Decode a moy.asr.spectral.v1 payload into {freq, density, sample_rate,
+  // division, densityMax}, or null when the payload is absent / unknown.
+  // Each spectral sample is 4 bytes: freq u16 LE, density u16 LE.
+  function decodeSpectralPayload(payload) {
+    if (!payload || payload.schema !== SPECTRAL_SCHEMA || payload.encoding !== SPECTRAL_ENCODING) {
+      return null;
+    }
+    if (!Number.isInteger(payload.peak_count) || payload.peak_count <= 0) return null;
+    if (!Number.isInteger(payload.sample_rate) || payload.sample_rate <= 0) return null;
+    if (!Number.isInteger(payload.division) || payload.division <= 0) return null;
+    if (typeof payload.data !== 'string') return null;
+    let binary;
+    try {
+      binary = atob(payload.data);
+    } catch (_) {
+      return null;
+    }
+    if (binary.length !== payload.peak_count * 4) return null;
+    const freq = new Uint16Array(payload.peak_count);
+    const density = new Uint16Array(payload.peak_count);
+    let densityMax = 1;
+    for (let i = 0; i < payload.peak_count; i++) {
+      const offset = i * 4;
+      freq[i] = binary.charCodeAt(offset) | (binary.charCodeAt(offset + 1) << 8);
+      const d = binary.charCodeAt(offset + 2) | (binary.charCodeAt(offset + 3) << 8);
+      density[i] = d;
+      if (d > densityMax) densityMax = d;
+    }
+    return {
+      freq,
+      density,
+      densityMax,
+      sample_rate: payload.sample_rate,
+      division: payload.division,
+    };
+  }
+
+  // REAPER spectral coloring from the raw 15-bit freq_field (0-32767) and the
+  // 14-bit density (0=noise, 16383=perfect tone). Low→high frequency sweeps
+  // red→pink/green→orange/yellow; saturation & lightness rise with tonality.
+  function freqColor(freq, density, densityMax) {
+    let hue;
+    if (freq < 300) {
+      hue = (freq / 300) * 30; // red (0°) to brown (30°)
+    } else if (freq < 1000) {
+      hue = 300 + ((freq - 300) / 700) * 180; // pink (300°) to green (120°)
+      if (hue >= 360) hue -= 360;
+    } else if (freq < 3000) {
+      hue = 120 - ((freq - 1000) / 2000) * 90; // green (120°) to orange (30°)
+    } else {
+      hue = 30 + Math.min((freq - 3000) / 5000, 1) * 30; // orange (30°) to yellow (60°)
+    }
+    const d = clamp(density / Math.max(1, densityMax), 0, 1);
+    const sat = 0.3 + 0.7 * d;
+    const light = 0.4 + 0.4 * d;
+    return `hsl(${hue.toFixed(1)}, ${(sat * 100).toFixed(1)}%, ${(light * 100).toFixed(1)}%)`;
+  }
+
   function sourceForFile(file) {
     return {
       name: file.name,
@@ -952,6 +1012,9 @@
       this.settings = readSettings();
       this.payload = null;
       this.peaks = null;
+      this.spectral = null;
+      this.reapeaksPayload = null;
+      this.reapeaksPeaks = null;
       this.player = null;
       this.mediaAvailable = false;
       this.basicWindowStartMs = 0;
@@ -1812,6 +1875,19 @@
       return this.payload;
     }
 
+    setSpectralPayload(payload) {
+      this.spectral = decodeSpectralPayload(payload);
+      this.render();
+      return this.spectral != null;
+    }
+
+    setReapeaksWaveform(payload) {
+      this.reapeaksPeaks = decodePayload(payload);
+      this.reapeaksPayload = this.reapeaksPeaks ? payload : null;
+      this.render();
+      return this.reapeaksPayload != null;
+    }
+
     getGapRemoveDetectionData() {
       if (!this.payload || !this.peaks) return null;
       return {
@@ -2442,7 +2518,13 @@
       ctx.lineTo(width, height * 0.46);
       ctx.stroke();
 
-      const peaksPerSecond = this.payload.peaks_per_second;
+      // 波形形状来源：默认自研缓存；设置里切到 ReaPeaks 时用 .ReaPeaks 的最细 wave 层。
+      const shapeSource = this.options.getWaveShapeSource?.() || 'self';
+      const useReapeaksShape = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;
+      const activePeaks = useReapeaksShape ? this.reapeaksPeaks : this.peaks;
+      const activePps = useReapeaksShape ? this.reapeaksPayload.peaks_per_second : this.payload.peaks_per_second;
+      const activeCount = useReapeaksShape ? this.reapeaksPayload.peak_count : this.payload.peak_count;
+      const peaksPerSecond = activePps;
       const useInterpolation = this.settings.mode === 'basic'
         && this.settings.visibleSeconds === ZOOM_PRESETS[0]
         && (rangeMs / 1000) * peaksPerSecond < width;
@@ -2451,9 +2533,13 @@
       const amplitude = waveformAmplitude(height, this.settings.waveformScale);
       const minWaveY = 2;
       const maxWaveY = Math.max(minWaveY, height - 2);
-      ctx.strokeStyle = this.mediaAvailable ? colors.peak : colors.peakDim;
+      const spectral = this.spectral;
+      const defaultColor = this.mediaAvailable ? colors.peak : colors.peakDim;
+      const spectralRate = spectral ? spectral.sample_rate / spectral.division : 0;
       ctx.lineWidth = 1;
-      ctx.beginPath();
+      // 有频谱缓存时逐像素按主频染色（颜色只填充在波形包络内）；
+      // 否则沿用单次批量描边，避免无频谱时的逐像素绘制开销。
+      let pathOpen = false;
       for (let x = 0; x < width; x++) {
         const xStartMs = startMs + (x / width) * rangeMs;
         const xEndMs = startMs + ((x + 1) / width) * rangeMs;
@@ -2463,26 +2549,47 @@
           const centerMs = (xStartMs + xEndMs) / 2;
           const peakPosition = (centerMs / 1000) * peaksPerSecond - 0.5;
           sampleInterpolatedPeak(
-            this.peaks,
+            activePeaks,
             peakPosition,
-            this.payload.peak_count,
+            activeCount,
             interpolatedPeak,
           );
           [low, high] = interpolatedPeak;
         } else {
-          const firstPeak = clamp(Math.floor((xStartMs / 1000) * peaksPerSecond), 0, this.payload.peak_count - 1);
-          const lastPeak = clamp(Math.ceil((xEndMs / 1000) * peaksPerSecond), firstPeak + 1, this.payload.peak_count);
+          const firstPeak = clamp(Math.floor((xStartMs / 1000) * peaksPerSecond), 0, activeCount - 1);
+          const lastPeak = clamp(Math.ceil((xEndMs / 1000) * peaksPerSecond), firstPeak + 1, activeCount);
           low = 127;
           high = -127;
           for (let peak = firstPeak; peak < lastPeak; peak++) {
-            low = Math.min(low, this.peaks[peak * 2]);
-            high = Math.max(high, this.peaks[peak * 2 + 1]);
+            low = Math.min(low, activePeaks[peak * 2]);
+            high = Math.max(high, activePeaks[peak * 2 + 1]);
           }
         }
-        ctx.moveTo(x + 0.5, clamp(center - (high / 127) * amplitude, minWaveY, maxWaveY));
-        ctx.lineTo(x + 0.5, clamp(center - (low / 127) * amplitude, minWaveY, maxWaveY));
+        const yTop = clamp(center - (high / 127) * amplitude, minWaveY, maxWaveY);
+        const yBot = clamp(center - (low / 127) * amplitude, minWaveY, maxWaveY);
+        if (spectral) {
+          const centerMs = xStartMs + rangeMs / width / 2;
+          const specIndex = Math.floor((centerMs / 1000) * spectralRate);
+          let color = defaultColor;
+          if (specIndex >= 0 && specIndex < spectral.freq.length) {
+            const freq = spectral.freq[specIndex];
+            if (freq > 0) {
+              color = freqColor(freq, spectral.density[specIndex], spectral.densityMax);
+            }
+          }
+          ctx.fillStyle = color;
+          ctx.fillRect(x + 0.5, yTop, 1, Math.max(1, yBot - yTop));
+        } else {
+          if (!pathOpen) {
+            ctx.beginPath();
+            ctx.strokeStyle = defaultColor;
+            pathOpen = true;
+          }
+          ctx.moveTo(x + 0.5, yTop);
+          ctx.lineTo(x + 0.5, yBot);
+        }
       }
-      ctx.stroke();
+      if (!spectral && pathOpen) ctx.stroke();
     }
 
     seekFromPointer(event, row, playAfterSeek = false, geometry = null) {
@@ -3496,6 +3603,8 @@
     builtinWorkspaces: BUILTIN_WORKSPACES,
     testing: {
       decodePayload,
+      decodeSpectralPayload,
+      freqColor,
       remapItems,
       roundMs,
       sourceForFile,

@@ -42,7 +42,7 @@ from maw.soniox import (
     parse_soniox_context_json,
     transcribe,
 )
-from waveform import embed_waveform
+from media_cache import embed_media_caches
 
 
 def _language_hints(raw: str | None) -> list[str]:
@@ -321,17 +321,7 @@ def main():
             ],
         }
         if args.with_waveform:
-            print("[waveform] 正在计算并嵌入波形...")
-            waveform_result = embed_waveform(json_data, input_path)
-            json_data = waveform_result.project
-            if waveform_result.error is None:
-                waveform_payload = json_data["waveform"]
-                print(
-                    f"[waveform] 已嵌入 {waveform_payload['peak_count']} peaks "
-                    f"({waveform_payload['peaks_per_second']}/秒)"
-                )
-            else:
-                print(f"[waveform] 警告: {waveform_result.error}；已跳过内嵌波形")
+            json_data = embed_media_caches(json_data, input_path).project
         print("[输出] 正在校验工程文件...")
         check = validate_project(json_data)
         if not check.ok:
