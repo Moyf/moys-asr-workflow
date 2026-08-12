@@ -320,6 +320,7 @@ test('selects bound subtitle pairs without changing the current editor target', 
   await expect(pairToggle).toBeChecked();
   await page.locator('#multi-subtitle-settings-toggle').click();
   const panelTarget = page.locator('#cue-panel-target');
+  const panelText = page.locator('#cue-panel-text');
   const firstRow = page.locator('.multi-dual-cue').first();
   const mainText = firstRow.locator('.multi-cue-column.main .text');
   const extensionText = firstRow.locator('.multi-cue-column.extension .text');
@@ -327,9 +328,17 @@ test('selects bound subtitle pairs without changing the current editor target', 
   await extensionText.click();
   await expect(page.locator('#sel-count')).toHaveText('2');
   await expect(panelTarget).toHaveText('副字幕');
+  await page.locator('#media-controls').hover();
+  await page.keyboard.press('Enter');
+  await expect(panelTarget).toHaveText('副字幕');
+  await expect(panelText).toBeFocused();
   await mainText.click();
   await expect(page.locator('#sel-count')).toHaveText('2');
   await expect(panelTarget).toHaveText('主字幕');
+  await page.locator('#media-controls').hover();
+  await page.keyboard.press('Enter');
+  await expect(panelTarget).toHaveText('主字幕');
+  await expect(panelText).toBeFocused();
 
   await mainText.click();
   await expect(page.locator('#sel-count')).toHaveText('2');
@@ -597,7 +606,8 @@ test('auto-binds an overlapping unbound main cue and asks before replacing an ex
     media: '', language: 'English', model: '',
     segments: [
       { id: 'main-001', start: 1000, end: 2000, text: 'Main one', items: [] },
-      { id: 'main-002', start: 3000, end: 4000, text: 'Main two', items: [] },
+      { id: 'main-002', start: 1500, end: 2500, text: 'Main two', items: [] },
+      { id: 'main-003', start: 3000, end: 4000, text: 'Main three', items: [] },
     ],
     multi_subtitle: {
       schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
@@ -606,8 +616,9 @@ test('auto-binds an overlapping unbound main cue and asks before replacing an ex
         split_mode: 'word',
         segments: [
           { id: 'extension-001', start: 1100, end: 1900, text: 'Already bound' },
-          { id: 'extension-002', start: 1200, end: 1800, text: 'Replace me' },
+          { id: 'extension-002', start: 1200, end: 1400, text: 'Replace me' },
           { id: 'extension-003', start: 3100, end: 3900, text: 'Auto bind me' },
+          { id: 'extension-004', start: 1600, end: 1900, text: 'Multi overlap' },
         ],
       }],
       bindings: [{
@@ -630,6 +641,15 @@ test('auto-binds an overlapping unbound main cue and asks before replacing an ex
   await page.locator('#ctxmenu .item').filter({ hasText: '绑定到主字幕' }).click();
   await expect(autoExtension).not.toHaveClass(/unbound/);
   await page.keyboard.press('Escape');
+
+  const multiOverlapExtension = page.locator('.multi-cue-column.extension').filter({ hasText: 'Multi overlap' });
+  await multiOverlapExtension.click({ button: 'right' });
+  await page.locator('#ctxmenu .item').filter({ hasText: '绑定到主字幕' }).click();
+  await expect(multiOverlapExtension).not.toHaveClass(/unbound/);
+  await expect(
+    multiOverlapExtension.locator('xpath=ancestor::div[contains(@class,"multi-dual-cue")]')
+      .locator('.multi-cue-column.main .text'),
+  ).toHaveText('Main two');
 
   const replaceExtension = page.locator('.multi-cue-column.extension').filter({ hasText: 'Replace me' });
   const mainOne = page.locator('.multi-cue-column.main').filter({ hasText: 'Main one' });

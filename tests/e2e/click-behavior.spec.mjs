@@ -214,26 +214,26 @@ test('list context menu leads with text-position split', async ({ page }) => {
   await expect(page.locator('#ctxmenu .item').first()).toContainText('按文字位置拆分');
 });
 
-test('Enter follows the last clicked region: inline edit after list, panel focus after waveform', async ({ page }) => {
+test('Enter focuses the current subtitle editor after list or waveform clicks', async ({ page }) => {
   await page.goto(server.url);
   const cue = page.locator('.cue[data-idx="0"]');
+  const panelText = page.locator('#cue-panel-text');
   await cue.click();
-  // 最后点击在列表：即使鼠标已移出列表，Enter 仍开始原地编辑
+  // 最后点击在列表：即使鼠标已移出列表，Enter 仍聚焦当前字幕编辑区
   await page.locator('#media-controls').hover();
   await page.keyboard.press('Enter');
-  await expect(cue).toHaveClass(/editing/);
-  await expect(page.locator('#cue-panel-text')).not.toBeFocused();
-  await page.keyboard.press('Escape');
   await expect(cue).not.toHaveClass(/editing/);
+  await expect(panelText).toBeFocused();
+  await page.keyboard.press('Escape');
 
-  // 最后点击在波形背景：Enter 回到旧行为，聚焦字幕编辑区
+  // 最后点击在波形背景：仍聚焦当前字幕编辑区
   const rowBox = await page.locator('.waveform-row').nth(1).boundingBox();
   await page.mouse.click(rowBox.x + rowBox.width * 0.95, rowBox.y + rowBox.height / 2);
   // 空白处点击会清除选择；不经过列表重新选中第一条（区域仍停留在波形）
   await page.evaluate(() => selectOnly(0));
   await page.keyboard.press('Enter');
   await expect(cue).not.toHaveClass(/editing/);
-  await expect(page.locator('#cue-panel-text')).toBeFocused();
+  await expect(panelText).toBeFocused();
 });
 
 test('B splits at the pointer inside the cue list and at the playhead outside it', async ({ page }) => {
