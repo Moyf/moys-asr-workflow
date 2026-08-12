@@ -55,7 +55,7 @@ test('playback refreshes the subtitle preview and playhead without timeupdate', 
     renderAll();
     update();
   });
-  await expect(page.locator('#overlay > span:not(.overlay-handle)')).toHaveText('First');
+  await expect(page.locator('#overlay-main-text')).toHaveText('First');
 
   const before = await page.evaluate(() => {
     const playhead = [...document.querySelectorAll('.waveform-playhead')].find((element) => !element.hidden);
@@ -68,7 +68,7 @@ test('playback refreshes the subtitle preview and playhead without timeupdate', 
     media.playbackRate = 1;
     await media.play();
   });
-  await expect(page.locator('#overlay > span:not(.overlay-handle)')).toHaveText('Second', { timeout: 2000 });
+  await expect(page.locator('#overlay-main-text')).toHaveText('Second', { timeout: 2000 });
 
   const after = await page.evaluate(() => {
     const playhead = [...document.querySelectorAll('.waveform-playhead')].find((element) => !element.hidden);
