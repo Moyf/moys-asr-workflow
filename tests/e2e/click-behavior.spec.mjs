@@ -35,7 +35,7 @@ test('jump target is shown for both jump behaviors and hidden for select-only', 
   const behavior = page.locator('#click-behavior');
   const targetField = page.locator('#click-target-field');
   await expect(targetField).toBeVisible();
-  await expect(page.locator('#click-target')).toHaveValue('cue-start');
+  await expect(page.locator('#click-target')).toHaveValue('pointer');
 
   await behavior.selectOption('select-only');
   await expect(targetField).toBeHidden();
@@ -336,6 +336,21 @@ test('space owns playback in media controls but remains text input in the cue ed
   await cuePanelText.press(' ');
   await expect(cuePanelText).toHaveValue('hello ');
   await expect.poll(() => page.evaluate(() => document.getElementById('player').paused)).toBe(true);
+});
+
+test('mouse-clicked utility buttons release focus for the space playback shortcut', async ({ page }) => {
+  for (const id of ['help-toggle', 'editor-settings-toggle']) {
+    await page.goto(server.url);
+    await page.waitForFunction(() => {
+      const player = document.getElementById('player');
+      return player.readyState >= 1 && Number.isFinite(player.duration) && player.duration > 0;
+    });
+    await page.locator(`#${id}`).click();
+    await expect.poll(() => page.evaluate(() => document.activeElement?.id || '')).not.toBe(id);
+    await page.keyboard.press(' ');
+    await page.waitForFunction(() => !document.getElementById('player').paused);
+    await page.evaluate(() => document.getElementById('player').pause());
+  }
 });
 
 test('left and right arrows seek like the media step buttons', async ({ page }) => {

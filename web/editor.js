@@ -14,7 +14,7 @@ function normalizeClickBehavior(value) {
   return CLICK_BEHAVIOR_VALUES.has(value) ? value : 'select-and-seek';
 }
 function normalizeClickTarget(value) {
-  return CLICK_TARGET_VALUES.has(value) ? value : 'cue-start';
+  return CLICK_TARGET_VALUES.has(value) ? value : 'pointer';
 }
 
 function clampCueMoveStepMs(value) {
@@ -59,8 +59,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   stickerOverlayEnabled: false,
   // 字幕单击行为：默认选中并跳转；select-and-play 额外在暂停时开始播放。
   clickBehavior: 'select-and-seek',
-  // 波形字幕块的跳转目标；字幕列表点击始终跳转到字幕开头。
-  clickTarget: 'cue-start',
+  // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
+  clickTarget: 'pointer',
   // 选中字幕后用方向键 / A-D 微调时间的幅度。
   cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
   // 界面主题：dark（默认）/ light。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
@@ -711,8 +711,7 @@ const helpFloatingPanel = createFloatingPanel({
   positionKey: HELP_PANEL_POSITION_KEY,
   onOpen: restoreHelpPanelSize,
 });
-// 帮助是非模态浮窗；打开后立即释放入口按钮焦点，让 Enter / Esc 等快捷键回到编辑器。
-helpToggle?.addEventListener('click', () => helpToggle.blur());
+// 帮助是非模态浮窗；鼠标点击后的按钮焦点由统一的快捷键焦点处理释放。
 helpCloseButton?.addEventListener('click', () => helpFloatingPanel.close());
 // 浮窗尺寸：仅在用户拖过右下角缩放手柄后持久化；未缩放时保持 CSS 默认宽度/自动高度
 function restoreHelpPanelSize() {
@@ -3078,6 +3077,14 @@ function isNativeKeyboardControl(event) {
   const target = event.target instanceof Element ? event.target : document.activeElement;
   return Boolean(target?.closest?.('button, input, select, textarea, a'));
 }
+
+// 鼠标点击按钮后不保留按钮焦点，否则下一次空格会触发按钮自身的 click。
+// 键盘触发的 click detail 为 0，保留焦点以维持原生键盘可访问性。
+document.addEventListener('click', (event) => {
+  if (event.detail === 0) return;
+  const target = event.target instanceof Element ? event.target : null;
+  target?.closest('button')?.blur();
+}, true);
 
 // 空格播放/暂停。捕获阶段先于原生媒体控件处理，避免控件获得焦点后执行默认行为。
 let interceptedSpace = false;
