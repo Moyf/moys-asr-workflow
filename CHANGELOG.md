@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.4.0-beta.1] - 2026-08-12
+
 ### Fixed
 
 - 修复 macOS 从 Finder 启动普通版 `MAW.app` 时未自动检索 Homebrew 的 `/opt/homebrew/bin` 和 `/usr/local/bin`，导致找不到 `ffmpeg` / `ffprobe` 的问题。

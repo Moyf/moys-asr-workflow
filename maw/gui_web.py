@@ -42,7 +42,7 @@ MEDIA_EXTS: Final = frozenset({".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", "
 MOSE_REGISTRY_KEY = r"Software\Moy\MOSE"
 MOSE_FILE_TYPE = "Moy.MOSE.Project"
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.3.2"
+BUNDLED_APP_VERSION = "1.4.0-beta.1"
 MOSE_VERSION = "0.1.0"
 
 
