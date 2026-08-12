@@ -107,7 +107,7 @@ class MatchResult:
 
 OcrStatus = Callable[[str, Mapping[str, int]], None]
 Recognizer = Callable[[Any], Sequence[tuple[str, float]]]
-FrameExtractor = Callable[[Path, float, Path], bool]
+FrameExtractor = Callable[[Path, Path, float, Path], bool]
 ImageLoader = Callable[[Path], Any]
 
 

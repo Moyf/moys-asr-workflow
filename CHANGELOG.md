@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复后处理工具箱手动选择工程或 SRT 后 OCR 视频路径显示未及时同步的问题，并校正 OCR 抽帧回调的类型标注。
+
 ### Added
 
 - Launcher LLM 后处理新增统一的「思考强度」设置，默认关闭，并按 DeepSeek、智谱、Qwen 及自定义 OpenAI-compatible 接口映射对应参数。

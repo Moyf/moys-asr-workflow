@@ -1720,6 +1720,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('bridge("choose_file", { kind: "script" })', script)
         self.assertIn('bridge("choose_file", { kind: "subtitle" })', script)
         self.assertIn('bridge("choose_file", { kind: "video" })', script)
+        self.assertIn('setFieldError("toolboxInputPath", "");\n      syncOcrVideo();\n      syncInputName();', script)
         self.assertIn('openSettings("llmSettingsSection")', script)
         self.assertIn('$("jsonPath").value = result.projectPath', script)
         self.assertIn('$("srtPath").value = result.srtPath', script)
