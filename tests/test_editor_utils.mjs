@@ -19,6 +19,8 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('自动打开上次工程', 'en'), 'Automatically open last project');
   assert.equal(i18n.translateText('上次打开：demo.json', 'en'), 'Last opened: demo.json');
   assert.equal(i18n.translateText('保存成功！', 'en'), 'Saved!');
+  assert.equal(i18n.translateText('字幕忍者', 'en'), 'Subtitle Ninja');
+  assert.equal(i18n.translateText('显示刀光特效', 'en'), 'Show slash effect');
   assert.equal(i18n.translateText('字幕大小', 'en'), 'Font size');
   assert.equal(i18n.translateText('字幕预览设置', 'en'), 'Subtitle preview settings');
   assert.equal(i18n.translateText('保存工程', 'zh'), '保存工程');
