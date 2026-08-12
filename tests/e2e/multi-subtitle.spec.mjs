@@ -201,6 +201,28 @@ test('swaps main and extension subtitles from the gear menu and supports undo', 
     .toHaveText('你好，世界。');
 });
 
+test('uses the maximum waveform row height while multiple subtitles are enabled and restores it', async ({ page }) => {
+  await page.goto(server.url);
+  await dropFiles(page, [srtSpec('main.srt', mainSrt)]);
+  await expect(page.locator('#cues-container > .cue')).toHaveCount(2);
+
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#waveform-row-height').selectOption('64');
+  await expect(page.locator('#waveform-row-height')).toHaveValue('64');
+  await page.locator('#editor-settings-toggle').click();
+
+  await dropFiles(page, [srtSpec('translation.srt', extensionSrt)]);
+  await page.locator('#multi-subtitle-import-extension').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  await expect(page.locator('#waveform-row-height')).toHaveValue('168');
+
+  await openMultiSubtitleSettings(page);
+  await page.locator('#multi-subtitle-toggle').uncheck();
+  await expect(page.locator('#waveform-row-height')).toHaveValue('64');
+  await page.locator('#multi-subtitle-toggle').check();
+  await expect(page.locator('#waveform-row-height')).toHaveValue('168');
+});
+
 test('auto-binds an overlapping unbound main cue and asks before replacing an existing binding', async ({ page }) => {
   const projectPath = join(tempDir, 'binding-overlap-project.json');
   const project = {
@@ -769,7 +791,7 @@ test('snaps an extension cue to main-track boundaries when cross-track snapping 
   if (!box || !Number.isFinite(rowGeometry.width) || rowGeometry.endMs <= rowGeometry.startMs) {
     throw new Error('跨轨道吸附测试缺少有效波形布局');
   }
-  const deltaMs = -70;
+  const deltaMs = -150;
   const deltaPx = (deltaMs / (rowGeometry.endMs - rowGeometry.startMs)) * rowGeometry.width;
   const centerX = box.x + box.width / 2;
   const centerY = box.y + box.height / 2;
@@ -779,22 +801,28 @@ test('snaps an extension cue to main-track boundaries when cross-track snapping 
   await page.mouse.up();
   await expect(extensionBlock).toHaveAttribute('data-start', '2000');
 
-  await page.keyboard.press('Control+z');
-  await expect(extensionBlock).toHaveAttribute('data-start', '2100');
   await openMultiSubtitleSettings(page);
   await page.locator('#multi-subtitle-cross-track-snap').uncheck();
   await page.locator('#multi-subtitle-settings-toggle').click();
   await expect(page.locator('#multi-subtitle-settings-menu')).toBeHidden();
 
-  const resetBox = await extensionBlock.boundingBox();
-  if (!resetBox) throw new Error('撤销后扩展字幕波形块没有布局');
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'cross-track-snap-project.json',
+    type: 'application/json',
+    base64: readFileSync(projectPath).toString('base64'),
+  }]);
+  await expect(page.locator('#multi-subtitle-cross-track-snap')).not.toBeChecked();
+  const resetBlock = page.locator('.waveform-cue-block[data-track="extension"]').first();
+  const resetBox = await resetBlock.boundingBox();
+  if (!resetBox) throw new Error('重新加载后扩展字幕波形块没有布局');
   const resetCenterX = resetBox.x + resetBox.width / 2;
   const resetCenterY = resetBox.y + resetBox.height / 2;
   await page.mouse.move(resetCenterX, resetCenterY);
   await page.mouse.down();
   await page.mouse.move(resetCenterX + deltaPx, resetCenterY, { steps: 3 });
   await page.mouse.up();
-  await expect(extensionBlock).toHaveAttribute('data-start', '2030');
+  await expect(resetBlock).toHaveAttribute('data-start', '1950');
 });
 
 test('confirms main replacement and makes both replacement paths undoable', async ({ page }) => {

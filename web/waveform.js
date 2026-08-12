@@ -1099,6 +1099,26 @@
       return this.settings.mode === 'multi';
     }
 
+    getRowHeight() {
+      return this.settings.rowHeight;
+    }
+
+    getMaxRowHeight() {
+      return ROW_HEIGHT_PRESETS[ROW_HEIGHT_PRESETS.length - 1];
+    }
+
+    setRowHeight(value) {
+      const next = Number(value);
+      if (!ROW_HEIGHT_PRESETS.includes(next)) return false;
+      if (this.settings.rowHeight === next) return true;
+      this.settings.rowHeight = next;
+      if (this.rowHeightSelect) this.rowHeightSelect.value = String(next);
+      this.multiRange = [-1, -1];
+      saveSettings(this.settings);
+      this.render();
+      return true;
+    }
+
     isCustomLayout() {
       return this.settings.layout === 'custom' && this.settings.layoutEditing;
     }

@@ -32,6 +32,16 @@
     '开启后显示扩展字幕轨、双列列表和绑定操作；关闭只隐藏扩展数据，不删除': 'Show the extension track, two-column list, and binding actions; turning it off only hides extension data',
     '拖动多重字幕时，允许吸附到另一条字幕轨道的起点和终点': 'Snap multiple subtitles to the start and end boundaries of the other track while dragging',
     '交换主字幕和扩展字幕的文本、时间与绑定关系': 'Swap the text, timing, and bindings between the main and extension subtitles',
+    '请先开启多重字幕': 'Enable multiple subtitles first',
+    '当前只支持交换唯一的扩展字幕轨': 'Swapping is currently supported only with one extension track',
+    '主字幕和扩展字幕都不能为空': 'The main and extension subtitles cannot be empty',
+    '交换主副字幕失败': 'Could not swap the main and extension subtitles',
+    '请点击一条主字幕完成绑定': 'Click a main subtitle to complete the binding',
+    '已取消绑定扩展字幕': 'Extension subtitle binding cancelled',
+    '请点击一条主字幕完成绑定；按 Esc 或点击空白处取消': 'Click a main subtitle to complete the binding, or press Esc or click blank space to cancel',
+    '重叠的主字幕已有绑定，请点击主字幕后替换绑定；按 Esc 取消': 'The overlapping main subtitle is already bound; click a main subtitle to replace it, or press Esc to cancel',
+    '有多条主字幕与当前副字幕重叠，请点击要绑定的主字幕': 'Multiple main subtitles overlap this extension subtitle; click the one to bind',
+    '未找到与当前副字幕时间重叠的主字幕，请手动选择': 'No main subtitle overlaps this extension subtitle; choose one manually',
     '连续型': 'Continuous', '单词型': 'Word-based', '绑定': 'Bind', '解绑': 'Unbind',
     '字体大小': 'Font size', '字幕大小': 'Font size', '主字幕大小': 'Main subtitle size', '拓展字幕大小': 'Extension subtitle size',
     '自动（响应式）': 'Auto (responsive)', '自动（比主字幕小一号）': 'Auto (two px smaller than main)', '字体': 'Font',
@@ -463,6 +473,12 @@
     if (match) return `Merge ${match[1]} subtitles`;
     match = /^已合并\s+(\d+)\s+条扩展字幕(，原绑定已解除)?$/.exec(text);
     if (match) return `Merged ${match[1]} extension subtitle${match[1] === '1' ? '' : 's'}${match[2] ? '; previous bindings were removed' : ''}`;
+    match = /^已绑定主字幕\s+(\d+)\s+与扩展字幕\s+(\d+)$/.exec(text);
+    if (match) return `Bound main subtitle ${match[1]} to extension subtitle ${match[2]}`;
+    match = /^已替换主字幕\s+(\d+)\s+的绑定，改为扩展字幕\s+(\d+)$/.exec(text);
+    if (match) return `Replaced the binding for main subtitle ${match[1]} with extension subtitle ${match[2]}`;
+    match = /^已交换主副字幕：主轨\s+(\d+)\s+条，副轨\s+(\d+)\s+条$/.exec(text);
+    if (match) return `Swapped main and extension subtitles: ${match[1]} main, ${match[2]} extension`;
     // flashHint：已拼合字幕：拼合 2 处间隔，吸收 1 条短字幕
     match = /^已拼合字幕：(.+)$/.exec(text);
     if (match) {

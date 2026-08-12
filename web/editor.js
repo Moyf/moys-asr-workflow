@@ -784,11 +784,29 @@ function applyCueListDisplaySettings() {
 }
 
 let previousMultiSubtitlePreviewEnabled = false;
+let waveformRowHeightBeforeMultiSubtitle = null;
+
+function syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEnabled) {
+  if (!waveformEditor?.getRowHeight || !waveformEditor?.setRowHeight) return;
+  if (enteringEnabled) {
+    waveformRowHeightBeforeMultiSubtitle = waveformEditor.getRowHeight();
+    waveformEditor.setRowHeight(waveformEditor.getMaxRowHeight?.() || 168);
+  } else if (leavingEnabled && Number.isFinite(waveformRowHeightBeforeMultiSubtitle)) {
+    const previous = waveformRowHeightBeforeMultiSubtitle;
+    waveformRowHeightBeforeMultiSubtitle = null;
+    waveformEditor.setRowHeight(previous);
+  } else if (!enabled) {
+    waveformRowHeightBeforeMultiSubtitle = null;
+  }
+}
+
 function updateMultiSubtitleUi() {
   const track = getActiveExtensionTrack();
   const hasTrack = Boolean(track && Array.isArray(track.segments));
   const enabled = hasTrack && getMultiSubtitleState().enabled === true;
   const enteringEnabled = enabled && !previousMultiSubtitlePreviewEnabled;
+  const leavingEnabled = !enabled && previousMultiSubtitlePreviewEnabled;
+  syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEnabled);
   if (multiSubtitleControls) multiSubtitleControls.hidden = !hasTrack;
   if (multiSubtitleToggle) {
     multiSubtitleToggle.checked = enabled;
@@ -4878,7 +4896,7 @@ document.addEventListener('keydown', (e) => {
   };
   // 多重字幕下，如果当前只选中一条副字幕，B 直接打开副字幕拆分流程，
   // 不再把同一时间位置错误地分发给主轨。
-  if (selectedExtensionIdxs.size === 1) {
+  if (multiSubtitleVisible() && selectedExtensionIdxs.size === 1) {
     const extensionIndex = [...selectedExtensionIdxs][0];
     const track = getActiveExtensionTrack();
     const extension = track?.segments?.[extensionIndex];

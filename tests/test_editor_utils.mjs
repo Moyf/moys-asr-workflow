@@ -21,6 +21,15 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('保存成功！', 'en'), 'Saved!');
   assert.equal(i18n.translateText('字幕大小', 'en'), 'Font size');
   assert.equal(i18n.translateText('字幕预览设置', 'en'), 'Subtitle preview settings');
+  assert.equal(i18n.translateText('交换主副字幕', 'en'), 'Swap main and extension subtitles');
+  assert.equal(
+    i18n.translateText('已交换主副字幕：主轨 2 条，副轨 3 条', 'en'),
+    'Swapped main and extension subtitles: 2 main, 3 extension',
+  );
+  assert.equal(
+    i18n.translateText('已替换主字幕 1 的绑定，改为扩展字幕 2', 'en'),
+    'Replaced the binding for main subtitle 1 with extension subtitle 2',
+  );
   assert.equal(i18n.translateText('保存工程', 'zh'), '保存工程');
 });
 
