@@ -5,6 +5,7 @@
 输出: ~/.cache/thumbnails/{normal,large}/<uri-md5>.png
 """
 import hashlib
+import os
 import struct
 import sys
 import zlib
@@ -67,7 +68,7 @@ def main() -> int:
         ptr.setsize(img.sizeInBytes())
         rgba = bytes(ptr)
         png = make_png(uri, int(stat.st_mtime), stat.st_size, mimetype, rgba, w, h)
-        out = Path.home() / ".cache" / "thumbnails" / folder / f"{digest}.png"
+        out = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "thumbnails" / folder / f"{digest}.png"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(png)
         print(f"写入: {out} ({len(png)} bytes)")

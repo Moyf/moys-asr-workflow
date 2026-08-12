@@ -11,10 +11,10 @@ APP_DIR="$BUILD_DIR/MAW.AppDir"
 APPIMAGE_TOOL="$BUILD_DIR/appimagetool-x86_64.AppImage"
 APPIMAGE_URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
 
-echo "==> 1/4 PyInstaller 构建 dist/MAW"
+echo "==> 1/5 PyInstaller 构建 dist/MAW"
 uv run --group build pyinstaller --noconfirm --clean MAW.spec
 
-echo "==> 2/4 组装 AppDir"
+echo "==> 2/5 组装 AppDir"
 if [ -d "$APP_DIR" ]; then
     rm -r "$APP_DIR"
 fi
@@ -55,10 +55,16 @@ ffmpeg -y -loglevel error -i assets/show.webp -vf "scale=512:512:flags=lanczos" 
 mkdir -p "$APP_DIR/usr/share/applications"
 cp "$APP_DIR/MAW.desktop" "$APP_DIR/usr/share/applications/MAW.desktop"
 
-echo "==> 3/4 准备 appimagetool"
+echo "==> 3/5 准备 appimagetool"
 if [ ! -x "$APPIMAGE_TOOL" ]; then
     curl -sL --retry 3 --retry-delay 2 -o "$APPIMAGE_TOOL" "$APPIMAGE_URL"
     chmod +x "$APPIMAGE_TOOL"
+    # 校验下载的是 ELF 二进制而非 HTML 错误页
+    if ! file "$APPIMAGE_TOOL" | grep -q 'ELF'; then
+        echo "错误：appimagetool 下载失败（非 ELF 二进制），请检查网络或手动放置。" >&2
+        rm -f "$APPIMAGE_TOOL"
+        exit 1
+    fi
 fi
 
 echo "==> 4/5 打包 AppImage"

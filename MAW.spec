@@ -1,6 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-import os
 import sys
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
@@ -36,11 +35,12 @@ if sys.platform == "linux":
                 import shutil
                 import tempfile
 
-                unversioned = Path(tempfile.mkdtemp(prefix="maw-spec-")) / "libxcb-cursor.so"
+                tmpdir = tempfile.mkdtemp(prefix="maw-spec-")
+                unversioned = Path(tmpdir) / "libxcb-cursor.so"
                 shutil.copy2(libxcb_cursor, unversioned)
             binaries.append((str(unversioned), "PyQt6/Qt6/lib"))
-    except Exception:  # noqa: BLE001 - 收集失败时回退 ldd 默认行为
-        pass
+    except Exception as exc:  # noqa: BLE001 - 收集失败时回退 ldd 默认行为
+        print(f"Warning: libxcb-cursor collection failed: {exc}", file=sys.stderr)
 
 datas = [
     (str(ROOT / "web"), "web"),
@@ -83,7 +83,8 @@ rapidocr_datas = [
 ]
 datas.extend(rapidocr_datas)
 datas.extend(onnxruntime_datas)
-binaries = [*rapidocr_binaries, *onnxruntime_binaries]
+# 保留前面收集的 libxcb-cursor（若有），再并入 rapidocr / onnxruntime 的原生库。
+binaries = [*binaries, *rapidocr_binaries, *onnxruntime_binaries]
 
 excluded_local_modules = [
     "accelerate",

@@ -6,11 +6,6 @@ on:
     tags:
       - 'v*'
 
-concurrency:
-  # Windows and macOS both attach assets to the same tag release.
-  group: maw-release-${{ github.ref_name }}
-  cancel-in-progress: false
-
 permissions:
   contents: write
 
@@ -182,14 +177,19 @@ jobs:
             MAWxFF-macOS-arm64-*.zip
           if-no-files-found: error
 
-      - name: Attach artifacts to GitHub Release
+      - name: Create or update GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        with:
-          target_commitish: ${{ github.sha }}
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          files: |
-            MAW-macOS-arm64-*.zip
-            MAWxFF-macOS-arm64-*.zip
+        run: |
+          set -euo pipefail
+          Tag="${{ github.ref_name }}"
+          case "$Tag" in *-*) Prerelease=true;; *) Prerelease=false;; esac
+          # 并发安全：已存在则跳过创建；create 撞 already_exists 时继续上传
+          if ! gh release view "$Tag" >/dev/null 2>&1; then
+            gh release create "$Tag" \
+              --title "$Tag" \
+              --prerelease="$Prerelease" \
+              --target "${{ github.sha }}" || true
+          fi
+          gh release upload "$Tag" MAW-macOS-arm64-*.zip MAWxFF-macOS-arm64-*.zip --clobber

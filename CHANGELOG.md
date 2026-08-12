@@ -13,6 +13,10 @@
 - 修复 Windows 与 macOS 的 tag 发布工作流并发创建同一个 GitHub Release，导致其中一个平台的资产上传长时间等待的问题。
 - 修复 Linux 上打包（PyInstaller / AppImage）后 Launcher 页面资源路径解析错误的问题：冻结环境改用 `sys._MEIPASS` 定位 `web/` 等资源，源码运行行为不变。
 - 冻结（AppImage）环境下 Linux 的 GUI 配置 `.env` 使用用户目录 `~/.config/Moy/MAW/.env`（尊重 `XDG_CONFIG_HOME`；目录不可写时回退 `~/.cache`），与 macOS 的 Application Support 方案对齐；源码运行保持仓库根 `.env` 不变。
+- `build-appimage.sh` 步骤编号一致化；appimagetool 下载后校验 ELF 二进制。
+- `release-linux.yml` 的 rename / release 步骤加 tag 守卫，`workflow_dispatch` 不再误用分支名。
+- `MAW.spec` 删除未使用的 `import os`；裸 `except` 改为 stderr 警告。
+- `make-appimage-thumbnail.py` 输出路径尊重 `XDG_CACHE_HOME`。
 - 修复 Linux 上 `uv run maw_gui.py` 因缺少 GUI 后端无法启动 Launcher 的问题：`pywebview` 在 Linux 平台自动安装 Qt6 后端（QtPy + PyQt6 + PyQt6-WebEngine），Windows / macOS 依赖不变。
 - 修复 Linux 上 Launcher 段落标题的 keycap 表情（1️⃣ 等）因系统 emoji 字体（如 SteamOS 自带的 Twemoji）缺少 U+FE0F 变体选择符而渲染成「3x」的问题：Linux 下首次启动由后端按顺序尝试 jsDelivr 各 CDN（可用 `MAW_EMOJI_FONT_URL` 覆盖），把 Noto Color Emoji 下载到用户缓存目录后供页面本地引用，之后离线可用；下载失败或非 Linux 平台回退系统字体，不额外加载。
 

@@ -108,6 +108,7 @@ jobs:
           fi
 
       - name: Rename AppImage with version
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           set -euo pipefail
           mv "build-appimage/MAW-x86_64.AppImage" "build-appimage/MAW-x86_64-${{ github.ref_name }}.AppImage"
@@ -116,11 +117,12 @@ jobs:
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MAW-x86_64-${{ github.ref_name }}
-          path: build-appimage/MAW-x86_64-${{ github.ref_name }}.AppImage
+          name: MAW-x86_64-${{ github.ref_name || 'dev' }}
+          path: build-appimage/MAW-x86_64*.AppImage
           if-no-files-found: error
 
       - name: Prepare release notes from CHANGELOG
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
           set -euo pipefail
@@ -150,6 +152,7 @@ jobs:
           PYEOF
 
       - name: Create or update GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
