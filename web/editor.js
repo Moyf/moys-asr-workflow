@@ -2396,11 +2396,17 @@ function beginPendingExtensionBinding(index, track = getActiveExtensionTrack()) 
   if (!extension || !track) return;
   const overlapping = overlappingMainIndexesForExtension(extension);
   const unbound = overlapping.filter((mainIndex) => !bindingForMainIndex(mainIndex));
-  if (overlapping.length === 1 && unbound.length === 1) {
-    // 常见的翻译字幕场景：只有一个时间重叠且尚未绑定的主字幕时直接完成绑定。
-    selectOnly(overlapping[0]);
-    selectOnlyExtension(index);
-    bindSelectedSubtitlePair();
+  if (unbound.length > 0) {
+    // 多条主字幕重叠时，优先采用时间列表中第一条尚未绑定的主字幕，
+    // 避免用户每次都要手动处理重叠候选；如果所有候选已有绑定，下面仍进入手动替换流程。
+    const mainIndex = unbound[0];
+    selectOnly(mainIndex);
+    selectOnlyExtension(index, track);
+    bindSelectedSubtitlePair(
+      overlapping.length > 1
+        ? `重叠区存在多条主字幕，已自动绑定第一条未绑定的主字幕（主字幕 ${mainIndex + 1}）`
+        : null,
+    );
     return;
   }
   pendingExtensionBinding = { trackId: track.id, extensionId: extension.id };
@@ -2414,7 +2420,7 @@ function beginPendingExtensionBinding(index, track = getActiveExtensionTrack()) 
   }
 }
 
-function bindSelectedSubtitlePair() {
+function bindSelectedSubtitlePair(successMessage = null) {
   if (!multiSubtitleVisible()) return;
   if (selectedIdxs.size !== 1 || selectedExtensionIdxs.size !== 1) {
     flashHint('请分别选中一条主字幕和一条扩展字幕后再绑定');
@@ -2435,9 +2441,11 @@ function bindSelectedSubtitlePair() {
   renderAll({ waveform: 'none' });
   waveformEditor?.updateSelection();
   flashHint(
-    replacedBinding
-      ? `已替换主字幕 ${mainIndex + 1} 的绑定，改为扩展字幕 ${extensionIndex + 1}`
-      : `已绑定主字幕 ${mainIndex + 1} 与扩展字幕 ${extensionIndex + 1}`,
+    successMessage || (
+      replacedBinding
+        ? `已替换主字幕 ${mainIndex + 1} 的绑定，改为扩展字幕 ${extensionIndex + 1}`
+        : `已绑定主字幕 ${mainIndex + 1} 与扩展字幕 ${extensionIndex + 1}`
+    ),
     'success',
   );
 }
@@ -5218,6 +5226,10 @@ function isNativeKeyboardControl(event) {
   return Boolean(target?.closest?.('button, input, select, textarea, a'));
 }
 
+function showShortcutBlocked(message) {
+  flashHint(message, 'invalid');
+}
+
 // 空格播放/暂停。捕获阶段先于原生媒体控件处理，避免控件获得焦点后执行默认行为。
 let interceptedSpace = false;
 document.addEventListener('keydown', (e) => {
@@ -5450,9 +5462,8 @@ document.addEventListener('keydown', (e) => {
   if (color) assignColor(idxs, color.name);
 });
 
-// Enter：按「最后激活的编辑区域」分发——最后点击的是字幕列表时，对当前单选
-// 字幕直接开始原地编辑（等同双击该行）；否则回到旧行为，聚焦字幕编辑区文本框
-// 并把光标置于末尾。内联编辑态、已聚焦编辑区或模态打开时不触发。
+// Enter：聚焦最后点击的主/副字幕对应的字幕编辑区，并把光标置于末尾。
+// 绑定字幕同时选中时仍以最后点击的一侧为准；内联编辑态、已聚焦编辑区或模态打开时不触发。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter') return;
   if (editingState || extensionEditingState) return;  // 内联编辑态的 Enter 交给 split/commit 处理
@@ -5472,39 +5483,14 @@ document.addEventListener('keydown', (e) => {
   if (projectMediaModal.classList.contains('show')) return;
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
-  const mainSingle = selectedIdxs.size === 1 && selectedExtensionIdxs.size === 0;
-  const extensionSingle = selectedIdxs.size === 0 && selectedExtensionIdxs.size === 1;
-  if (!mainSingle && !extensionSingle) return;
-  if (lastEditRegion === 'cue-list') {
-    if (extensionSingle) {
-      const index = [...selectedExtensionIdxs][0];
-      const track = getActiveExtensionTrack();
-      const el = container.querySelector(
-        `.multi-dual-cue[data-ext-idx="${index}"] .multi-cue-column.extension, `
-          + `.multi-extension-cue[data-ext-idx="${index}"]`,
-      );
-      if (!track?.segments?.[index] || !el) return;
-      e.preventDefault();
-      scrollCueIntoViewIfNeeded(el.closest('.cue') || el);
-      startExtensionEdit(el, index, track);
-      return;
-    }
-    const context = hoveredSelectedCueContext();
-    const idx = context ? context.idx : [...selectedIdxs][0];
-    if (!DATA.segments[idx]) return;
-    const el = context ? context.el : container.querySelector(`.cue[data-idx="${idx}"]`);
-    if (!el) return;
+  if (!getCurrentCuePanelTarget()) {
     e.preventDefault();
-    // 鼠标仍在行上时按指针位置落光标；否则全选文本，便于直接键入替换。
-    if (context) startEdit(context.el, context.idx, context.x, context.y);
-    else {
-      scrollCueIntoViewIfNeeded(el);
-      startEdit(el, idx);
-    }
+    e.stopPropagation();
+    showShortcutBlocked('请先选中字幕');
     return;
   }
-  if (!getCurrentCuePanelTarget()) return;
   e.preventDefault();
+  e.stopPropagation();
   cuePanelText.focus();
   const end = cuePanelText.value.length;
   cuePanelText.setSelectionRange(end, end);
@@ -5652,14 +5638,31 @@ document.addEventListener('keydown', (e) => {
   if (projectMediaModal.classList.contains('show')) return;
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
-  if (!multiSubtitleVisible() || selectedExtensionIdxs.size !== 1 || selectedIdxs.size > 1) return;
+  if (!multiSubtitleVisible()) return;
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  if (selectedExtensionIdxs.size !== 1) {
+    e.preventDefault();
+    e.stopPropagation();
+    showShortcutBlocked('请先选中一条副字幕');
+    return;
+  }
+  if (selectedIdxs.size > 1) {
+    e.preventDefault();
+    e.stopPropagation();
+    showShortcutBlocked('绑定最多需要一条主字幕');
+    return;
+  }
   const extensionIndex = [...selectedExtensionIdxs][0];
   const track = getActiveExtensionTrack();
   const extension = track?.segments?.[extensionIndex];
   const binding = bindingForExtensionIndex(extensionIndex, track);
-  if (!extension) return;
+  if (!extension) {
+    e.preventDefault();
+    e.stopPropagation();
+    showShortcutBlocked('当前副字幕不存在');
+    return;
+  }
   if (e.shiftKey) {
-    if (e.ctrlKey || e.altKey || e.metaKey) return;
     e.preventDefault();
     e.stopPropagation();
     if (!binding) {
@@ -5669,7 +5672,13 @@ document.addEventListener('keydown', (e) => {
     unbindSelectedSubtitlePair();
     return;
   }
-  if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || binding) return;
+  if (e.shiftKey) return;
+  if (binding) {
+    e.preventDefault();
+    e.stopPropagation();
+    showShortcutBlocked('当前副字幕已绑定，请先解绑后再绑定');
+    return;
+  }
   e.preventDefault();
   e.stopPropagation();
   if (selectedIdxs.size === 1) {
@@ -5697,11 +5706,34 @@ document.addEventListener('keydown', (e) => {
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
-  if (!multiSubtitleVisible() || selectedExtensionIdxs.size !== 1 || selectedIdxs.size > 1) return;
+  if (!multiSubtitleVisible()) return;
+  if (selectedExtensionIdxs.size !== 1) {
+    e.preventDefault();
+    e.stopPropagation();
+    showShortcutBlocked('请先选中一条副字幕');
+    return;
+  }
+  if (selectedIdxs.size > 1) {
+    e.preventDefault();
+    e.stopPropagation();
+    showShortcutBlocked('对齐需要副字幕及其对应的一条主字幕');
+    return;
+  }
   const extensionIndex = [...selectedExtensionIdxs][0];
   const track = getActiveExtensionTrack();
   const extension = track?.segments?.[extensionIndex];
-  if (!extension || !bindingForExtensionIndex(extensionIndex, track)) return;
+  if (!extension) {
+    e.preventDefault();
+    e.stopPropagation();
+    showShortcutBlocked('当前副字幕不存在');
+    return;
+  }
+  if (!bindingForExtensionIndex(extensionIndex, track)) {
+    e.preventDefault();
+    e.stopPropagation();
+    showShortcutBlocked('当前副字幕没有绑定关系');
+    return;
+  }
   e.preventDefault();
   e.stopPropagation();
   alignExtensionToMainTimeRange(extensionIndex, track);
