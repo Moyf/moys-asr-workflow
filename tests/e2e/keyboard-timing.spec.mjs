@@ -45,6 +45,10 @@ function readTimings(page) {
   return page.evaluate(() => DATA.segments.map(({ start, end }) => ({ start, end })));
 }
 
+async function selectedCueIndex(page) {
+  return page.locator('.cue.selected').getAttribute('data-idx');
+}
+
 async function stableBoundingBox(locator) {
   let box = null;
   await expect.poll(async () => {
@@ -57,6 +61,34 @@ async function stableBoundingBox(locator) {
   }).toBe(true);
   return box;
 }
+
+test('WASD during playback follows the playhead instead of the last selected cue', async ({ page }) => {
+  await loadAttachedCues(page);
+  await page.evaluate(() => {
+    DATA.segments[2].start = 100000;
+    DATA.segments[2].end = 110000;
+    DATA.segments[2].items = [{ start: 100000, end: 110000, text: 'Third' }];
+    renderAll();
+  });
+  await page.locator('.cue[data-idx="0"]').click();
+  await page.evaluate(() => { player.currentTime = 101; });
+  await page.locator('#media-play-toggle').click();
+  await expect(page.locator('#media-play-toggle')).toHaveText('⏸');
+
+  await page.keyboard.press('a');
+  await expect.poll(() => selectedCueIndex(page)).toBe('1');
+  await expect.poll(() => page.evaluate(() => player.currentTime)).toBeLessThan(11);
+
+  await page.locator('#media-play-toggle').click();
+  await page.locator('.cue[data-idx="0"]').click();
+  await page.evaluate(() => { player.currentTime = 20; });
+  await page.locator('#media-play-toggle').click();
+  await expect(page.locator('#media-play-toggle')).toHaveText('⏸');
+
+  await page.keyboard.press('d');
+  await expect.poll(() => selectedCueIndex(page)).toBe('2');
+  await expect.poll(() => page.evaluate(() => player.currentTime)).toBeGreaterThan(24);
+});
 
 test('selected arrow keys move cues, adjust boundaries, and honor the configured step', async ({ page }) => {
   await loadAttachedCues(page);

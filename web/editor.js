@@ -3147,7 +3147,8 @@ document.addEventListener('keydown', (e) => {
 
 // A/D（或 W/S）：跳转到上一条/下一条字幕的句首并单选。W/S 与 A/D 等价，对应上下方向。
 // Shift+A/D（或 Shift+W/S）：保留当前选择，并向前/后追加选择一条字幕。
-// 跳转本身不改变播放状态：播放中会从新位置继续播放，暂停中只移动播放指针。
+// 播放中以播放头所在字幕为基准；播放头处于空隙时，按方向选择其前方/后方字幕。
+// 暂停时仍以当前选中字幕为基准。跳转本身不改变播放状态。
 document.addEventListener('keydown', (e) => {
   const key = e.key.toLowerCase();
   if (key !== 'a' && key !== 'd' && key !== 'w' && key !== 's') return;
@@ -3182,18 +3183,20 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (e.altKey) return;
+  const wasPlaying = !player.paused;
+  const navigationIndex = wasPlaying ? -1 : currentCuePanelIdx;
   const next = e.shiftKey
     ? window.AsrEditorUtils.findCueSelectionExtensionTarget(
       DATA.segments,
       selectedIdxs,
-      currentCuePanelIdx,
+      navigationIndex,
       Math.round(player.currentTime * 1000),
       direction,
       hideDisabled,
     )
     : window.AsrEditorUtils.findCueNavigationTarget(
       DATA.segments,
-      currentCuePanelIdx,
+      navigationIndex,
       Math.round(player.currentTime * 1000),
       direction,
       hideDisabled,
@@ -3202,7 +3205,6 @@ document.addEventListener('keydown', (e) => {
 
   e.preventDefault();
   e.stopPropagation();
-  const wasPlaying = !player.paused;
   if (e.shiftKey) addToSelection(next);
   else selectOnly(next);
   lastClickedIdx = next;
