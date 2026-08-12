@@ -2675,6 +2675,10 @@
       if (!selected.has(index)) {
         if (track === 'extension') this.options.selectExtensionCue?.(index);
         else this.options.selectCue(index);
+      } else if (track === 'extension') {
+        this.options.activateExtensionCue?.(index);
+      } else {
+        this.options.activateCue?.(index);
       }
       const liveSelection = this.options.getSelection(track);
       const indices = kind === 'move' && liveSelection.has(index)

@@ -311,6 +311,51 @@ test('shows and edits the last clicked main or extension cue in the current subt
   await expect(panelText).toHaveValue('第二句。');
 });
 
+test('selects bound subtitle pairs without changing the current editor target', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  await openMultiSubtitleSettings(page);
+
+  const pairToggle = page.locator('#multi-subtitle-select-bound-pair');
+  await expect(pairToggle).toBeChecked();
+  await page.locator('#multi-subtitle-settings-toggle').click();
+  const panelTarget = page.locator('#cue-panel-target');
+  const firstRow = page.locator('.multi-dual-cue').first();
+  const mainText = firstRow.locator('.multi-cue-column.main .text');
+  const extensionText = firstRow.locator('.multi-cue-column.extension .text');
+
+  await extensionText.click();
+  await expect(page.locator('#sel-count')).toHaveText('2');
+  await expect(panelTarget).toHaveText('副字幕');
+  await mainText.click();
+  await expect(page.locator('#sel-count')).toHaveText('2');
+  await expect(panelTarget).toHaveText('主字幕');
+
+  await mainText.click();
+  await expect(page.locator('#sel-count')).toHaveText('2');
+  await expect(panelTarget).toHaveText('主字幕');
+
+  await extensionText.click();
+  await expect(page.locator('#sel-count')).toHaveText('2');
+  await expect(panelTarget).toHaveText('副字幕');
+
+  await openMultiSubtitleSettings(page);
+  await pairToggle.uncheck();
+  await page.locator('#multi-subtitle-settings-toggle').click();
+  await page.keyboard.press('Escape');
+  await extensionText.click();
+  await expect(page.locator('#sel-count')).toHaveText('1');
+  await expect(panelTarget).toHaveText('副字幕');
+
+  await openMultiSubtitleSettings(page);
+  await pairToggle.check();
+  await page.locator('#multi-subtitle-settings-toggle').click();
+  await page.keyboard.press('Escape');
+  await extensionText.click();
+  await expect(page.locator('#sel-count')).toHaveText('2');
+  await expect(panelTarget).toHaveText('副字幕');
+});
+
 test('ends dual-column inline editing when clicking outside the text input', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-result-confirm').click();
@@ -331,6 +376,29 @@ test('ends dual-column inline editing when clicking outside the text input', asy
   await row.locator('.multi-cue-column.extension .multi-cue-column-header').click();
   await expect(extensionText).not.toHaveAttribute('contenteditable');
   await expect(row.locator('.multi-cue-column.extension')).not.toHaveClass(/editing/);
+});
+
+test('keeps inline edits after switching to another dual-column subtitle', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  const firstRow = page.locator('.multi-dual-cue').first();
+  const secondRow = page.locator('.multi-dual-cue').nth(1);
+  const mainText = firstRow.locator('.multi-cue-column.main .text');
+  const extensionText = firstRow.locator('.multi-cue-column.extension .text');
+
+  await mainText.dblclick();
+  await mainText.fill('主轨修改后保留');
+  await secondRow.locator('.multi-cue-column.main .text').click();
+  await expect(mainText).toHaveText('主轨修改后保留');
+  expect(await page.evaluate(() => DATA.segments[0].text)).toBe('主轨修改后保留');
+
+  await extensionText.dblclick();
+  await extensionText.fill('副轨修改后保留');
+  await secondRow.locator('.multi-cue-column.extension .text').click();
+  await expect(extensionText).toHaveText('副轨修改后保留');
+  expect(await page.evaluate(() => DATA.multi_subtitle.tracks[0].segments[0].text))
+    .toBe('副轨修改后保留');
 });
 
 test('imports an extension SRT with 300ms preview, dual columns, split dialog, and pair deletion undo', async ({ page }) => {
@@ -597,7 +665,7 @@ test('binds an unbound extension cue directly from its context menu', async ({ p
   await expect(unboundExtension).toHaveCount(1);
   await expect(unboundExtension).toHaveClass(/unbound/);
   await mainCue.click();
-  await expect(page.locator('#sel-count')).toHaveText('1');
+  await expect(page.locator('#sel-count')).toHaveText('2');
   await page.evaluate(() => {
     window.__mawWaveformDraws = 0;
     const contextPrototype = window.CanvasRenderingContext2D.prototype;
@@ -610,7 +678,7 @@ test('binds an unbound extension cue directly from its context menu', async ({ p
     }
   });
   await unboundExtension.click({ button: 'right' });
-  await expect(page.locator('#sel-count')).toHaveText('1');
+  await expect(page.locator('#sel-count')).toHaveText('2');
   await page.locator('#ctxmenu .item').filter({ hasText: '与选中的主字幕绑定' }).click();
 
   await expect(unboundExtension).not.toHaveClass(/unbound/);
@@ -699,7 +767,7 @@ test('merges selected extension cues from the context menu and C, with undo', as
   await page.locator('.multi-cue-column.main').filter({ hasText: 'Hello world.' }).click();
   await first.click();
   await second.click({ modifiers: ['Control'] });
-  await expect(page.locator('#sel-count')).toHaveText('3');
+  await expect(page.locator('#sel-count')).toHaveText('4');
   await second.click({ button: 'right' });
   await expect(page.locator('#ctxmenu .item').filter({ hasText: '合并副字幕块' })).toBeVisible();
   await page.locator('#ctxmenu .item').filter({ hasText: '合并副字幕块' }).click();
@@ -937,6 +1005,146 @@ test('renders one scissors marker per word-space split and trims the split text'
     .toEqual(['A', 'B C']);
 });
 
+test('renders a scissors marker for a symbol-connected word split', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-symbol-001', start: 1000, end: 3000, text: '主字幕' }],
+    waveform: generateWaveformPayload(5000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-symbol-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        source_name: 'translation.srt',
+        segments: [{ id: 'extension-symbol-001', start: 1000, end: 3000, text: 'the story—you' }],
+      }],
+      bindings: [],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'symbol-split-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
+  await extensionBlock.click({ button: 'right', position: { x: 120, y: 10 } });
+  await page.locator('#ctxmenu .item').filter({ hasText: '在鼠标位置拆分' }).click();
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  const splitText = page.locator('#multi-subtitle-split-text');
+  const gaps = splitText.locator('.multi-subtitle-split-gap');
+  await expect(gaps).toHaveCount(3);
+  expect(await splitText.evaluate((element) => element.textContent)).toBe('the story—you');
+  expect(await gaps.evaluateAll((elements) => elements.map((gap) => ({
+    offset: Number(gap.dataset.offset), text: gap.textContent,
+  })))).toEqual([
+    { offset: 4, text: ' ' },
+    { offset: 9, text: '' },
+    { offset: 10, text: '' },
+  ]);
+  const symbolGap = splitText.locator('.multi-subtitle-split-gap[data-offset="10"]');
+  await expect(symbolGap).not.toHaveClass(/active/);
+  const inactiveBox = await symbolGap.boundingBox();
+  await symbolGap.hover();
+  await expect(symbolGap).toHaveClass(/active/);
+  const activeBox = await symbolGap.boundingBox();
+  if (!inactiveBox || !activeBox) throw new Error('连接符断点没有可测量的布局盒子');
+  expect(activeBox.width).toBeGreaterThan(inactiveBox.width * 2);
+  expect(await symbolGap.evaluate((gap) => {
+    const style = getComputedStyle(gap, '::before');
+    return { content: style.content, opacity: style.opacity };
+  })).toEqual({ content: '"✂️"', opacity: '1' });
+
+  await symbolGap.evaluate((element) => element.click());
+  await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+  expect(await page.evaluate(() => DATA.multi_subtitle.tracks[0].segments.map((segment) => segment.text)))
+    .toEqual(['the story—', 'you']);
+});
+
+test('renders a post-period word split without dropping the period', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-period-001', start: 1000, end: 3000, text: '主字幕' }],
+    waveform: generateWaveformPayload(5000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-period-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        source_name: 'translation.srt',
+        segments: [{ id: 'extension-period-001', start: 1000, end: 3000, text: 'quickly.And' }],
+      }],
+      bindings: [],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'period-split-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
+  await extensionBlock.click({ button: 'right', position: { x: 120, y: 10 } });
+  await page.locator('#ctxmenu .item').filter({ hasText: '在鼠标位置拆分' }).click();
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  const splitText = page.locator('#multi-subtitle-split-text');
+  const gaps = splitText.locator('.multi-subtitle-split-gap');
+  await expect(gaps).toHaveCount(1);
+  expect(await gaps.evaluateAll((elements) => elements.map((gap) => Number(gap.dataset.offset))))
+    .toEqual([8]);
+  expect(await splitText.evaluate((element) => element.textContent)).toBe('quickly.And');
+
+  await gaps.first().click();
+  await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+  expect(await page.evaluate(() => DATA.multi_subtitle.tracks[0].segments.map((segment) => segment.text)))
+    .toEqual(['quickly.', 'And']);
+});
+
+test('renders one scissors marker for a continuous split across repeated spaces', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-continuous-001', start: 1000, end: 3000, text: '主字幕' }],
+    waveform: generateWaveformPayload(5000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-continuous-1', role: 'extension', name: '中文', language: 'zh', split_mode: 'continuous',
+        source_name: 'translation.srt',
+        segments: [{ id: 'extension-continuous-001', start: 1000, end: 3000, text: '甲  乙' }],
+      }],
+      bindings: [],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'continuous-split-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
+  await extensionBlock.click({ button: 'right', position: { x: 120, y: 10 } });
+  await page.locator('#ctxmenu .item').filter({ hasText: '在鼠标位置拆分' }).click();
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  const splitText = page.locator('#multi-subtitle-split-text');
+  await expect(splitText.locator('.multi-subtitle-split-gap')).toHaveCount(1);
+  expect(await splitText.evaluate((element) => element.textContent)).toBe('甲  乙');
+  expect(await splitText.locator('.multi-subtitle-split-gap').textContent()).toBe('  ');
+  await expect(splitText.locator('.multi-subtitle-split-gap').first()).toHaveClass(/active/);
+  expect(await splitText.locator('.multi-subtitle-split-gap').first().evaluate((gap) => {
+    const style = getComputedStyle(gap, '::before');
+    return { content: style.content, opacity: style.opacity };
+  })).toEqual({ content: '"✂️"', opacity: '1' });
+
+  await splitText.locator('.multi-subtitle-split-gap').first().evaluate((element) => element.click());
+  await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+  expect(await page.evaluate(() => DATA.multi_subtitle.tracks[0].segments.map((segment) => segment.text)))
+    .toEqual(['甲', '乙']);
+});
+
 test('keeps only the left text in the first main cue after a linked word split', async ({ page }) => {
   const project = {
     segments: [{ id: 'main-word-linked-001', start: 1000, end: 5000, text: '说实话 那是因为确实如此' }],
@@ -972,30 +1180,8 @@ test('keeps only the left text in the first main cue after a linked word split',
   await page.locator('#multi-subtitle-split-auto-submit').uncheck();
   await page.locator('#multi-subtitle-split-main-text .multi-subtitle-split-gap').first().click();
   await page.locator('#multi-subtitle-split-text .multi-subtitle-split-gap').first().click();
-  console.log(await page.evaluate(() => ({
-    state: pendingLinkedSplit ? {
-      mainIndex: pendingLinkedSplit.mainIndex,
-      mainId: pendingLinkedSplit.mainId,
-      mainOffset: pendingLinkedSplit.mainOffset,
-      offset: pendingLinkedSplit.offset,
-      mainMode: pendingLinkedSplit.mainMode,
-      fixedCutMs: pendingLinkedSplit.fixedCutMs,
-      explicitParts: buildSplitPair(
-        DATA.segments[0], pendingLinkedSplit.mainOffset, pendingLinkedSplit.cutMs,
-        'debug', true, pendingLinkedSplit.mainMode,
-      )?.parts,
-      defaultParts: buildSplitPair(
-        DATA.segments[0], pendingLinkedSplit.mainOffset, pendingLinkedSplit.cutMs, 'debug', true,
-      )?.parts,
-    } : null,
-    preview: document.getElementById('multi-subtitle-split-preview')?.textContent,
-  })));
   await page.locator('#multi-subtitle-split-confirm').click();
   await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
-  console.log(await page.evaluate(() => DATA.segments.map((segment) => ({
-    id: segment.id, start: segment.start, end: segment.end, text: segment.text,
-  }))));
-  console.log(await page.evaluate(() => window.__debugLinkedSplit));
   expect(await page.evaluate(() => DATA.segments.map((segment) => segment.text)))
     .toEqual(['说实话', '那是因为确实如此']);
 });
@@ -1100,6 +1286,11 @@ test('keeps one shared waveform background with two lanes, switch visibility, an
   await page.locator('.multi-cue-column.extension .text').first().click();
   await expect(mainBlock.locator('.waveform-binding-marker')).toHaveText('🔗');
   await expect(extensionBlock.locator('.waveform-binding-marker')).toHaveText('🔗');
+
+  await extensionBlock.click();
+  await expect(page.locator('#cue-panel-target')).toHaveText('副字幕');
+  await mainBlock.click();
+  await expect(page.locator('#cue-panel-target')).toHaveText('主字幕');
 
   await openMultiSubtitleSettings(page);
   await page.locator('#multi-subtitle-toggle').uncheck();

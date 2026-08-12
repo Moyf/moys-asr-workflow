@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   cleanupTempDir,
@@ -12,11 +13,12 @@ import {
 
 let tempDir;
 let server;
+let projectPath;
 
 test.beforeAll(async () => {
   tempDir = makeTempDir('editor-i18n-save');
   const mediaPath = join(tempDir, 'synthetic.wav');
-  const projectPath = join(tempDir, 'project.json');
+  projectPath = join(tempDir, 'project.json');
   generateWav(mediaPath, DURATION_MS / 1000);
   generateProjectJson(projectPath);
   server = await startServer(projectPath, mediaPath, await findFreePort());
@@ -128,6 +130,22 @@ test('Ctrl+S saves and Ctrl+Shift+S invokes save as', async ({ page }) => {
   const saveAsCapture = await page.evaluate(() => window.__saveAsCapture);
   expect(saveAsCapture.suggestedName).toBe('project.mosp');
   expect(JSON.parse(saveAsCapture.content).segments).toHaveLength(6);
+});
+
+test('auto-saves a text edit shortly after it loses focus', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('.cue').first().click();
+
+  const saveResponse = page.waitForResponse((response) => (
+    response.url().endsWith('/api/project') && response.request().method() === 'POST'
+  ));
+  const panelText = page.locator('#cue-panel-text');
+  await panelText.fill('Alpha autosaved');
+  await page.locator('#cue-panel-target').click();
+
+  expect((await saveResponse).ok()).toBe(true);
+  const savedProject = JSON.parse(readFileSync(projectPath, 'utf8'));
+  expect(savedProject.segments[0].text).toBe('Alpha autosaved');
 });
 
 test('a disconnected save endpoint offers a JSON fallback download', async ({ page }) => {

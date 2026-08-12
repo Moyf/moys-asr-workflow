@@ -529,6 +529,39 @@
       ? 'continuous' : 'word';
   }
 
+  // 单词型字幕允许在连接两个词的符号处拆分，例如「the story—you」或「state-of-the-art」。
+  // 不包含撇号和句点，避免把 contraction、小数或缩写误判成单词边界。
+  const WORD_SPLIT_CONNECTOR_RE = /^[\p{Pd}\p{Pc}\p{Sm}.,!?;:，。！？；：、…\/／\\&|｜~～·•⋅]+$/u;
+  const WORD_SPLIT_CONTENT_RE = /[\p{L}\p{N}]/u;
+
+  function isWordSplitConnector(character) {
+    return WORD_SPLIT_CONNECTOR_RE.test(String(character || ''));
+  }
+
+  function isWordSplitContent(character) {
+    return WORD_SPLIT_CONTENT_RE.test(String(character || ''));
+  }
+
+  function isLikelyAbbreviationPeriod(characters, index, runEnd) {
+    if (runEnd !== index || characters[index] !== '.') return false;
+    const left = characters[index - 1] || '';
+    const right = characters[runEnd + 1] || '';
+    if (/\d/u.test(left) && /\d/u.test(right)) return true;
+    const previousPrevious = characters[index - 2] || '';
+    const leftIsSingleLetter = isWordSplitContent(left)
+      && !isWordSplitContent(previousPrevious);
+    const rightIsSingleLetter = isWordSplitContent(right)
+      && !isWordSplitContent(characters[runEnd + 2] || '');
+    return leftIsSingleLetter && rightIsSingleLetter;
+  }
+
+  function isWordSplitConnectorBoundary(text, offset) {
+    const value = String(text || '');
+    const left = Array.from(value.slice(0, offset));
+    const right = Array.from(value.slice(offset));
+    return isWordSplitConnector(left[left.length - 1]) || isWordSplitConnector(right[0]);
+  }
+
   function subtitleSplitOffsets(text, mode = 'word') {
     const value = String(text || '');
     const offsets = [];
@@ -537,45 +570,74 @@
       let offset = 0;
       for (let index = 0; index < characters.length - 1; index++) {
         offset += characters[index].length;
+        // 把连续空白当作一个可替换的断点：跳过空白前的候选，
+        // 保留空白后的候选，这样「A  B」只显示一个「✂️」。
+        if (/\s/u.test(characters[index + 1])) continue;
         offsets.push(offset);
       }
       return offsets;
     }
 
-    // 单词型只在空格组之后提供一个断点。这样「A B」只会显示为
-    // 「A✂️B」，不会在空格两侧各出现一个候选，也不会让标点成为隐式断点。
+    // 单词型在空格组之后，或连接两个词的符号两侧提供断点。
+    // 句号只在后侧提供断点：「quickly.✂️And」；连字符仍可两侧断开。
     let offset = 0;
     for (let index = 0; index < characters.length; index++) {
-      if (!/\s/u.test(characters[index])) {
+      if (/\s/u.test(characters[index])) {
+        while (index + 1 < characters.length && /\s/u.test(characters[index + 1])) {
+          index += 1;
+          offset += characters[index].length;
+        }
         offset += characters[index].length;
+        if (offset > 0 && offset < value.length
+            && value.slice(0, offset).trim() && value.slice(offset).trim()) {
+          offsets.push(offset);
+        }
         continue;
       }
-      while (index + 1 < characters.length && /\s/u.test(characters[index + 1])) {
-        index += 1;
-        offset += characters[index].length;
+      if (isWordSplitConnector(characters[index])) {
+        let runEnd = index;
+        let runOffset = offset + characters[index].length;
+        while (runEnd + 1 < characters.length
+            && isWordSplitConnector(characters[runEnd + 1])) {
+          runEnd += 1;
+          runOffset += characters[runEnd].length;
+        }
+        const connectsWords = index > 0
+          && runEnd + 1 < characters.length
+          && isWordSplitContent(characters[index - 1])
+          && isWordSplitContent(characters[runEnd + 1]);
+        if (connectsWords && !isLikelyAbbreviationPeriod(characters, index, runEnd)) {
+          if (characters[index] !== '.') offsets.push(offset);
+          offsets.push(runOffset);
+        }
+        offset = runOffset;
+        index = runEnd;
+        continue;
       }
       offset += characters[index].length;
-      if (offset > 0 && offset < value.length
-          && value.slice(0, offset).trim() && value.slice(offset).trim()) {
-        offsets.push(offset);
-      }
     }
     return [...new Set(offsets)];
   }
 
-  function cleanSplitTextParts(text, offset) {
+  function cleanSplitTextParts(text, offset, preserveWordConnector = false) {
     const value = String(text || '');
     const safeOffset = Math.max(0, Math.min(value.length, Math.round(Number(offset) || 0)));
-    const left = value.slice(0, safeOffset).replace(/[，。,.!?！？；;：:\s]+$/u, '');
-    const right = value.slice(safeOffset).replace(/^[，。,.!?！？；;：:\s]+/u, '');
+    const trimPattern = preserveWordConnector ? /\s+$/u : /[，。,.!?！？；;：:\s]+$/u;
+    const trimStartPattern = preserveWordConnector ? /^\s+/u : /^[，。,.!?！？；;：:\s]+/u;
+    const left = value.slice(0, safeOffset).replace(trimPattern, '');
+    const right = value.slice(safeOffset).replace(trimStartPattern, '');
     return { left, right, offset: safeOffset };
   }
 
   function splitSubtitleText(text, offset, mode = 'word') {
-    const parts = cleanSplitTextParts(text, offset);
+    const value = String(text || '');
+    const safeOffset = Math.max(0, Math.min(value.length, Math.round(Number(offset) || 0)));
+    const offsets = subtitleSplitOffsets(value, mode);
+    if (!offsets.includes(safeOffset)) return null;
+    const preserveWordConnector = mode === 'word'
+      && isWordSplitConnectorBoundary(value, safeOffset);
+    const parts = cleanSplitTextParts(value, safeOffset, preserveWordConnector);
     if (!parts.left || !parts.right) return null;
-    const offsets = subtitleSplitOffsets(text, mode);
-    if (!offsets.includes(parts.offset)) return null;
     return parts;
   }
 
@@ -1351,6 +1413,7 @@
     normalizeMultiSubtitle,
     normalizeMultiSubtitleProject,
     detectSubtitleSplitMode,
+    isWordSplitConnector,
     subtitleSplitOffsets,
     cleanSplitTextParts,
     splitSubtitleText,

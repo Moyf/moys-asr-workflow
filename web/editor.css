@@ -1316,6 +1316,10 @@
     color: var(--text-primary); font-size: .82em; line-height: 1;
     filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .4));
   }
+  /* 连接符前后的空断点需要保留可悬停的热区，但不应改变原文本排版。 */
+  .multi-subtitle-split-gap.connector-gap:not(.active):empty {
+    width: .36em; margin-left: -.18em; margin-right: -.18em; z-index: 1;
+  }
   .multi-subtitle-split-gap.active {
     width: 1.18em; margin: 0 .08em; color: transparent;
   }

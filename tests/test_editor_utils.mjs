@@ -1120,8 +1120,25 @@ test('matches extension cues within the 300ms tolerance and reports unmatched cu
 test('uses character boundaries for continuous text and protects words for word text', () => {
   assert.ok(helpers.splitSubtitleText('这是一句字幕', 3, 'continuous'));
   assert.equal(helpers.splitSubtitleText('split a word', 9, 'word'), null);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('A B', 'continuous'))), [2]);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('A  B', 'continuous'))), [3]);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('A B', 'word'))), [2]);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('split a, sentence', 'word'))), [6, 9]);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('the story—you', 'word'))), [4, 9, 10]);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.splitSubtitleText('the story—you', 9, 'word'))), {
+    left: 'the story', right: '—you', offset: 9,
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.splitSubtitleText('the story—you', 10, 'word'))), {
+    left: 'the story—', right: 'you', offset: 10,
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('quickly.And', 'word'))), [8]);
+  assert.equal(helpers.splitSubtitleText('quickly.And', 7, 'word'), null);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.splitSubtitleText('quickly.And', 8, 'word'))), {
+    left: 'quickly.', right: 'And', offset: 8,
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('3.14', 'word'))), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('U.S.', 'word'))), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets("don't", 'word'))), []);
   const parts = helpers.splitSubtitleText('split a, sentence', 6, 'word');
   assert.deepEqual(JSON.parse(JSON.stringify(parts)), {
     left: 'split', right: 'a, sentence', offset: 6,

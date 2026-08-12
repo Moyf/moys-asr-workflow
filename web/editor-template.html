@@ -108,6 +108,9 @@ __WAVEFORM_CSS__
         <label class="multi-subtitle-setting-toggle" title="拖动多重字幕时，允许吸附到另一条字幕轨道的起点和终点">
           <input type="checkbox" id="multi-subtitle-cross-track-snap" checked> 跨轨道吸附
         </label>
+        <label class="multi-subtitle-setting-toggle" title="点击主字幕或副字幕时，如果存在绑定字幕，同时选中对应字幕">
+          <input type="checkbox" id="multi-subtitle-select-bound-pair" checked> 同时选中主副字幕
+        </label>
         <div class="dropdown-separator"></div>
         <div class="dropdown-item" id="multi-subtitle-swap" role="menuitem" tabindex="0" title="交换主字幕和扩展字幕的文本、时间与绑定关系">交换主副字幕</div>
       </div>
@@ -380,6 +383,7 @@ __WAVEFORM_CSS__
         <span><kbd>B</kbd> 单选副字幕后打开副字幕拆分</span>
         <span>波形标记：<kbd>1</kbd> 主轨 <kbd>2</kbd> 扩展轨</span>
         <span>语言类型：单词型适合英语等空格语言，字符型适合中文/日文等</span>
+        <span>设置中开启「同时选中主副字幕」后，点击已绑定字幕会同时选中两条；编辑区仍以最后点击的字幕为准</span>
       </div>
     </div>
     <div class="help-group">
