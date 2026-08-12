@@ -5883,7 +5883,7 @@ async function loadMediaFile(file) {
     newPlayer.id = 'player';
     newPlayer.preload = 'metadata';
     if (isVideo) {
-      newPlayer.style.cssText = 'width:100%;max-height:40vh;background:#000;display:block;';
+      newPlayer.style.cssText = 'width:100%;background:#000;display:block;';
     } else {
       newPlayer.style.cssText = 'width:100%;display:block;';
     }
