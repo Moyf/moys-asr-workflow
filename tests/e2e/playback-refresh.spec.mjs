@@ -77,3 +77,67 @@ test('playback refreshes the subtitle preview and playhead without timeupdate', 
   expect(after).not.toBeNull();
   expect(after).toBeGreaterThan(before);
 });
+
+test('JKL direction mode drives the timeline backward and forward', async ({ page }) => {
+  await page.goto(server.url);
+  await page.waitForFunction(() => {
+    const media = document.getElementById('player');
+    return media.readyState >= 1 && Number.isFinite(media.duration) && media.duration > 0;
+  });
+
+  await page.locator('#editor-settings-toggle').click();
+  await expect(page.locator('#jkl-playback-mode')).toHaveValue('direction');
+  await expect(page.locator('#jkl-playback-mode-hint')).toContainText('无反向声音');
+
+  await page.evaluate(() => {
+    const media = document.getElementById('player');
+    media.pause();
+    media.currentTime = 20;
+    media.dispatchEvent(new Event('timeupdate'));
+  });
+  await page.keyboard.press('j');
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeLessThan(19.8);
+  await expect(page.locator('#media-playback-rate')).toHaveValue('-1');
+  await expect(page.locator('#media-playback-rate option:checked')).toHaveText('-1×');
+  for (const rate of ['-2', '-4', '-8', '-16']) {
+    await page.keyboard.press('j');
+    await expect(page.locator('#media-playback-rate')).toHaveValue(rate);
+  }
+
+  const stoppedAt = await page.evaluate(() => document.getElementById('player').currentTime);
+  await page.keyboard.press('k');
+  await expect(page.locator('#media-playback-rate')).toHaveValue('1');
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').paused)).toBe(true);
+  await expect.poll(() => page.evaluate((expected) => {
+    return Math.abs(document.getElementById('player').currentTime - expected);
+  }, stoppedAt)).toBeLessThan(0.01);
+
+  await page.keyboard.press('k');
+  await expect(page.locator('#media-playback-rate')).toHaveValue('1');
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').paused)).toBe(false);
+  await expect.poll(() => page.evaluate((expected) => {
+    return document.getElementById('player').currentTime - expected;
+  }, stoppedAt)).toBeGreaterThan(0.1);
+
+  await page.keyboard.press(' ');
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').paused)).toBe(true);
+  const pausedForwardAt = await page.evaluate(() => document.getElementById('player').currentTime);
+  await page.keyboard.press('j');
+  await expect(page.locator('#media-playback-rate')).toHaveValue('-1');
+  await expect.poll(() => page.evaluate((expected) => {
+    return expected - document.getElementById('player').currentTime;
+  }, pausedForwardAt)).toBeGreaterThan(0.1);
+
+  await page.keyboard.press('l');
+  await expect(page.locator('#media-playback-rate')).toHaveValue('1');
+  await expect.poll(() => page.evaluate((expected) => {
+    return document.getElementById('player').currentTime - expected;
+  }, pausedForwardAt)).toBeGreaterThan(0.1);
+
+  await page.keyboard.press('k');
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#jkl-playback-mode').selectOption('speed');
+  await page.locator('#editor-settings-toggle').click();
+  await page.keyboard.press('j');
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').playbackRate)).toBe(0.5);
+});

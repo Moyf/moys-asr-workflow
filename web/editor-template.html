@@ -354,7 +354,7 @@ __WAVEFORM_CSS__
         <span class="help-subtitle">播放</span>
         <span class="help-important"><kbd>空格</kbd> 播放/暂停</span>
         <span><kbd>←</kbd>/<kbd>→</kbd> 无选中时前后跳转 5 秒</span>
-        <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> 倍速 ×0.5/重置/×2</span>
+        <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> <span id="help-jkl-mode">倒放/停止/1×播放</span></span>
       </div>
       <div class="help-subgroup">
         <span class="help-subtitle">字幕导航</span>
@@ -482,6 +482,16 @@ __WAVEFORM_CSS__
         <option value="pointer" selected>鼠标所在位置</option>
       </select>
     </label>
+    <div class="editor-settings-field">
+    <label class="editor-settings-item" title="选择 J/K/L 的播放控制方式">
+      JKL 播放模式
+      <select id="jkl-playback-mode">
+        <option value="speed">慢速和倍速</option>
+        <option value="direction" selected>倒放和正放</option>
+      </select>
+    </label>
+    <small class="editor-settings-hint" id="jkl-playback-mode-hint">J 倒放（无反向声音），K 停止并重置 1×；停止时按 K 以 1×播放。速度档位为 1×、2×、4×、8×、16×。</small>
+    </div>
     <div class="editor-settings-field">
     <label class="toggle editor-settings-item" title="开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条">
       <input type="checkbox" id="select-group-members"> 同时选中分组内项目

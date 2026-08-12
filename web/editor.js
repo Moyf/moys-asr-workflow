@@ -7,6 +7,8 @@ const SERVER_CONFIG = __SERVER_CONFIG_JSON__;
 const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';
 const CLICK_BEHAVIOR_VALUES = new Set(['select-only', 'select-and-seek', 'select-and-play']);
 const CLICK_TARGET_VALUES = new Set(['cue-start', 'pointer']);
+const JKL_PLAYBACK_MODE_VALUES = new Set(['speed', 'direction']);
+const DEFAULT_JKL_PLAYBACK_MODE = 'direction';
 const CUE_MOVE_STEP_MIN_MS = 10;
 const CUE_MOVE_STEP_MAX_MS = 2000;
 const DEFAULT_CUE_MOVE_STEP_MS = 50;
@@ -15,6 +17,9 @@ function normalizeClickBehavior(value) {
 }
 function normalizeClickTarget(value) {
   return CLICK_TARGET_VALUES.has(value) ? value : 'pointer';
+}
+function normalizeJklPlaybackMode(value) {
+  return JKL_PLAYBACK_MODE_VALUES.has(value) ? value : DEFAULT_JKL_PLAYBACK_MODE;
 }
 
 function clampCueMoveStepMs(value) {
@@ -61,6 +66,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   clickBehavior: 'select-and-seek',
   // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
   clickTarget: 'pointer',
+  // J/K/L 播放控制：direction 为倒放/停止/正放，speed 保留旧的慢速/重置/倍速行为。
+  jklPlaybackMode: DEFAULT_JKL_PLAYBACK_MODE,
   // 选中字幕后用方向键 / A-D 微调时间的幅度。
   cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
   // 界面主题：dark（默认）/ light。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
@@ -111,6 +118,7 @@ function readEditorSettings() {
       stickerOverlayEnabled: saved.stickerOverlayEnabled === true,
       clickBehavior: normalizeClickBehavior(saved.clickBehavior),
       clickTarget: normalizeClickTarget(saved.clickTarget),
+      jklPlaybackMode: normalizeJklPlaybackMode(saved.jklPlaybackMode),
       cueMoveStepMs: clampCueMoveStepMs(saved.cueMoveStepMs),
       theme: saved.theme === 'light' ? 'light' : 'dark',
       waveShapeSource: saved.waveShapeSource === 'reapeaks' ? 'reapeaks' : 'self',
@@ -225,6 +233,10 @@ let player = document.getElementById('player');  // 可被「加载媒体」替�
 let waveformEditor = null;
 let playbackFrameId = 0;
 let playbackFramePlayer = null;
+let jklPlaybackRate = 1;
+let jklReversePlaying = false;
+let jklReverseFrameId = 0;
+let jklReverseLastTimestamp = 0;
 // 工程内波形是可直接使用的缓存；加载关联媒体时不要因为媒体签名不同而覆盖它。
 // 媒体生成的波形则不属于工程缓存，切换媒体时仍应重新分析。
 let waveformLoadedFromProject = false;
@@ -435,6 +447,9 @@ const helpSplitKey = document.getElementById('help-split-key');
 const clickBehaviorSelect = document.getElementById('click-behavior');
 const clickTargetField = document.getElementById('click-target-field');
 const clickTargetSelect = document.getElementById('click-target');
+const jklPlaybackModeSelect = document.getElementById('jkl-playback-mode');
+const jklPlaybackModeHint = document.getElementById('jkl-playback-mode-hint');
+const helpJklMode = document.getElementById('help-jkl-mode');
 const cueMoveStepInput = document.getElementById('cue-move-step');
 const replaceModal = document.getElementById('replace-modal');
 const stickerModal = document.getElementById('sticker-modal');
@@ -669,6 +684,7 @@ if (autoSaveIntervalInput) autoSaveIntervalInput.value = String(EDITOR_SETTINGS.
 if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.stickerOverlayEnabled;
 if (clickBehaviorSelect) clickBehaviorSelect.value = EDITOR_SETTINGS.clickBehavior;
 if (clickTargetSelect) clickTargetSelect.value = EDITOR_SETTINGS.clickTarget;
+if (jklPlaybackModeSelect) jklPlaybackModeSelect.value = EDITOR_SETTINGS.jklPlaybackMode;
 if (cueMoveStepInput) cueMoveStepInput.value = String(EDITOR_SETTINGS.cueMoveStepMs);
 const waveformShapeSourceSelect = document.getElementById('waveform-shape-source');
 if (waveformShapeSourceSelect) {
@@ -854,6 +870,16 @@ clickBehaviorSelect?.addEventListener('change', () => {
 clickTargetSelect?.addEventListener('change', () => {
   updateEditorSettings({ clickTarget: normalizeClickTarget(clickTargetSelect.value) });
 });
+jklPlaybackModeSelect?.addEventListener('change', () => {
+  const wasReversePlaying = jklReversePlaying;
+  updateEditorSettings({ jklPlaybackMode: normalizeJklPlaybackMode(jklPlaybackModeSelect.value) });
+  stopJklReversePlayback({ render: false });
+  jklPlaybackRate = 1;
+  player.playbackRate = 1;
+  if (wasReversePlaying) update();
+  syncMediaControls();
+  refreshJklPlaybackModeUi();
+});
 cueMoveStepInput?.addEventListener('change', () => {
   const value = clampCueMoveStepMs(cueMoveStepInput.value);
   cueMoveStepInput.value = String(value);
@@ -925,6 +951,27 @@ function refreshClickBehaviorHint() {
 }
 refreshClickBehaviorHint();
 document.addEventListener('mawe:languagechange', refreshClickBehaviorHint);
+
+const JKL_MODE_UI_TEXT = {
+  zh: {
+    speed: { help: '倍速 ×0.5/重置/×2', hint: 'J 慢放，K 重置 1×，L 加速。' },
+    direction: { help: '倒放/停止/1×播放', hint: 'J 倒放（无反向声音），K 停止并重置 1×；停止时按 K 以 1×播放。速度档位为 1×、2×、4×、8×、16×。' },
+  },
+  en: {
+    speed: { help: 'Speed ×0.5/reset/×2', hint: 'J slows down, K resets to 1×, and L speeds up.' },
+    direction: { help: 'Reverse/stop/1× play', hint: 'J reverses the timeline without reverse audio; K stops and resets to 1×, then plays at 1× when stopped. Speed steps are 1×, 2×, 4×, 8×, and 16×.' },
+  },
+};
+function refreshJklPlaybackModeUi() {
+  const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+  const mode = normalizeJklPlaybackMode(EDITOR_SETTINGS.jklPlaybackMode);
+  const text = JKL_MODE_UI_TEXT[language][mode];
+  if (jklPlaybackModeSelect) jklPlaybackModeSelect.value = mode;
+  if (jklPlaybackModeHint) jklPlaybackModeHint.textContent = text.hint;
+  if (helpJklMode) helpJklMode.textContent = text.help;
+}
+refreshJklPlaybackModeUi();
+document.addEventListener('mawe:languagechange', refreshJklPlaybackModeUi);
 
 function setGapRemoveData(next, { dirty = true } = {}) {
   DATA.gap_remove = normalizedGapRemoveData(next);
@@ -2827,12 +2874,93 @@ document.addEventListener('keydown', (e) => {
   clearSelection();
 });
 
+function isJklDirectionMode() {
+  return EDITOR_SETTINGS.jklPlaybackMode === 'direction';
+}
+
+function stopJklReversePlayback({ render = true } = {}) {
+  if (jklReverseFrameId) cancelAnimationFrame(jklReverseFrameId);
+  jklReverseFrameId = 0;
+  jklReverseLastTimestamp = 0;
+  const wasPlaying = jklReversePlaying;
+  jklReversePlaying = false;
+  if (render && wasPlaying) {
+    update();
+    waveformEditor?.updatePlayback();
+  }
+  if (render) syncMediaControls();
+}
+
+function stepJklReversePlayback(timestamp) {
+  jklReverseFrameId = 0;
+  if (!jklReversePlaying || !player) return;
+  if (!jklReverseLastTimestamp) jklReverseLastTimestamp = timestamp;
+  const elapsed = Math.min(
+    0.1,
+    Math.max(0, (timestamp - jklReverseLastTimestamp) / 1000),
+  );
+  jklReverseLastTimestamp = timestamp;
+  const current = Number(player.currentTime);
+  const rate = Math.max(0.0625, Math.abs(jklPlaybackRate));
+  const next = Number.isFinite(current) ? current - elapsed * rate : 0;
+  if (!Number.isFinite(current) || next <= 0) {
+    player.currentTime = 0;
+    jklReversePlaying = false;
+    jklReverseLastTimestamp = 0;
+    update();
+    waveformEditor?.updatePlayback();
+    syncMediaControls();
+    return;
+  }
+  player.currentTime = next;
+  updatePlaybackFrame();
+  renderStickerOverlay(next * 1000);
+  syncMediaControls();
+  if (jklReversePlaying) jklReverseFrameId = requestAnimationFrame(stepJklReversePlayback);
+}
+
+function startJklReversePlayback() {
+  if (!hasLoadedMedia()) {
+    flashHint('请先加载媒体，然后才能预览');
+    return false;
+  }
+  jklReversePlaying = true;
+  jklReverseLastTimestamp = 0;
+  player.playbackRate = Math.max(0.0625, Math.abs(jklPlaybackRate));
+  if (!player.paused) player.pause();
+  if (!jklReverseFrameId) jklReverseFrameId = requestAnimationFrame(stepJklReversePlayback);
+  syncMediaControls();
+  return true;
+}
+
+function playJklForward() {
+  if (!hasLoadedMedia()) {
+    flashHint('请先加载媒体，然后才能预览');
+    return false;
+  }
+  stopJklReversePlayback({ render: false });
+  player.playbackRate = Math.max(0.0625, Math.abs(jklPlaybackRate));
+  const promise = player.play();
+  if (promise && promise.catch) promise.catch(() => {});
+  syncMediaControls();
+  return true;
+}
+
 function togglePlayback() {
   if (!hasLoadedMedia()) {
     flashHint('请先加载媒体，然后才能预览');
     return;
   }
+  if (jklReversePlaying) {
+    stopJklReversePlayback();
+    return;
+  }
+  if (isJklDirectionMode() && jklPlaybackRate < 0) {
+    startJklReversePlayback();
+    return;
+  }
   if (player.paused) {
+    if (isJklDirectionMode()) player.playbackRate = Math.max(0.0625, Math.abs(jklPlaybackRate));
     const promise = player.play();
     if (promise && promise.catch) promise.catch(() => {});
   } else {
@@ -2878,7 +3006,7 @@ function syncMediaControls() {
   const hasMedia = hasLoadedMedia();
   const duration = Number.isFinite(player.duration) && player.duration > 0 ? player.duration : 0;
   const current = Number.isFinite(player.currentTime) ? Math.max(0, player.currentTime) : 0;
-  const active = hasMedia && !player.paused;
+  const active = hasMedia && (jklReversePlaying || !player.paused);
   mediaPlayToggle.disabled = !hasMedia;
   mediaStepBack.disabled = !hasMedia;
   mediaStepForward.disabled = !hasMedia;
@@ -2896,7 +3024,10 @@ function syncMediaControls() {
   mediaSeek.value = String(duration ? Math.min(duration, current) : 0);
   if (Number.isFinite(player.volume)) mediaVolume.value = String(player.volume);
   if (Number.isFinite(player.playbackRate)) {
-    syncPlaybackRateOption(player.playbackRate);
+    const displayedRate = isJklDirectionMode() && jklPlaybackRate < 0
+      ? jklPlaybackRate
+      : player.playbackRate;
+    syncPlaybackRateOption(displayedRate);
   }
   const fullscreenLabel = document.fullscreenElement ? '退出全屏' : '全屏';
   mediaFullscreen.setAttribute('aria-label', fullscreenLabel);
@@ -2987,7 +3118,13 @@ mediaVolume?.addEventListener('input', () => {
   syncMediaControls();
 });
 mediaPlaybackRate?.addEventListener('change', () => {
-  player.playbackRate = Number(mediaPlaybackRate.value) || 1;
+  const selectedRate = Number(mediaPlaybackRate.value) || 1;
+  const rate = Math.max(0.0625, Math.abs(selectedRate));
+  player.playbackRate = rate;
+  if (isJklDirectionMode()) {
+    const direction = selectedRate < 0 || jklPlaybackRate < 0 ? -1 : 1;
+    jklPlaybackRate = direction * rate;
+  }
   syncMediaControls();
 });
 mediaFullscreen?.addEventListener('click', async () => {
@@ -3113,15 +3250,39 @@ document.addEventListener('keyup', (e) => {
 }, true);
 window.addEventListener('blur', () => { interceptedSpace = false; });
 
-// J/K/L 倍速控制：K=重置 1×；J=×0.5（叠加）；L=×2（叠加）
-// HTML5 playbackRate 多数浏览器钳在 [0.0625, 16]
+// J/K/L 播放控制的两种模式：旧模式是慢速/重置/倍速；新模式是倒放/停止/1×播放。
+// HTML5 playbackRate 多数浏览器钳在 [0.0625, 16]，反向播放由时间轴驱动。
 const PLAYBACK_RATE_MIN = 0.0625;
 const PLAYBACK_RATE_MAX = 16;
+const JKL_PLAYBACK_RATE_STEPS = [1, 2, 4, 8, 16];
 function fmtRate(r) {
   // 保留必要小数位：0.5/2/4 不带小数；0.25/0.0625 带
   if (Number.isInteger(r)) return r + '×';
   // 去掉尾部 0
   return r.toFixed(4).replace(/0+$/, '').replace(/\.$/, '') + '×';
+}
+function nextJklDirectionRate(current, direction) {
+  const rate = Number.isFinite(current) && current !== 0 ? current : 1;
+  const magnitude = Math.abs(rate);
+  let stepIndex = 0;
+  let smallestDistance = Infinity;
+  JKL_PLAYBACK_RATE_STEPS.forEach((step, index) => {
+    const distance = Math.abs(step - magnitude);
+    if (distance < smallestDistance) {
+      smallestDistance = distance;
+      stepIndex = index;
+    }
+  });
+  if (direction < 0) {
+    if (rate < 0) return -JKL_PLAYBACK_RATE_STEPS[Math.min(stepIndex + 1, JKL_PLAYBACK_RATE_STEPS.length - 1)];
+    if (stepIndex === 0) return -1;
+    return JKL_PLAYBACK_RATE_STEPS[stepIndex - 1];
+  }
+  if (rate < 0) {
+    if (stepIndex === 0) return 1;
+    return -JKL_PLAYBACK_RATE_STEPS[stepIndex - 1];
+  }
+  return JKL_PLAYBACK_RATE_STEPS[Math.min(stepIndex + 1, JKL_PLAYBACK_RATE_STEPS.length - 1)];
 }
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'j' && e.key !== 'J' && e.key !== 'k' && e.key !== 'K' && e.key !== 'l' && e.key !== 'L') return;
@@ -3135,8 +3296,37 @@ document.addEventListener('keydown', (e) => {
   // Ctrl/Alt/Meta 别误触发（让浏览器自己处理 Ctrl+L 等）
   if (e.ctrlKey || e.altKey || e.metaKey) return;
   e.preventDefault();
-  let r = player.playbackRate;
   const k = e.key.toLowerCase();
+  if (isJklDirectionMode()) {
+    if (k === 'k') {
+      const wasPlaying = jklReversePlaying || !player.paused;
+      if (!wasPlaying) {
+        jklPlaybackRate = 1;
+        player.playbackRate = 1;
+        if (playJklForward()) flashHint('正放: 1×');
+        return;
+      }
+      stopJklReversePlayback({ render: false });
+      jklPlaybackRate = 1;
+      player.playbackRate = 1;
+      player.pause();
+      update();
+      waveformEditor?.updatePlayback();
+      syncMediaControls();
+      flashHint('已停止');
+      return;
+    }
+    if (!hasLoadedMedia()) {
+      flashHint('请先加载媒体，然后才能预览');
+      return;
+    }
+    jklPlaybackRate = nextJklDirectionRate(jklPlaybackRate, k === 'j' ? -1 : 1);
+    if (jklPlaybackRate < 0) startJklReversePlayback();
+    else playJklForward();
+    flashHint(`${jklPlaybackRate < 0 ? '倒放' : '正放'}: ${fmtRate(jklPlaybackRate)}`);
+    return;
+  }
+  let r = player.playbackRate;
   if (k === 'k') r = 1;
   else if (k === 'j') r = Math.max(PLAYBACK_RATE_MIN, r * 0.5);
   else if (k === 'l') r = Math.min(PLAYBACK_RATE_MAX, r * 2);
@@ -5863,6 +6053,7 @@ loadSrtFileInput.addEventListener('change', async (event) => {
 
 async function loadMediaFile(file) {
   if (!file) return;
+  stopJklReversePlayback({ render: false });
   const preserveProjectWaveform = waveformLoadedFromProject
     && Boolean(waveformEditor?.getPayload?.());
   const url = URL.createObjectURL(file);
