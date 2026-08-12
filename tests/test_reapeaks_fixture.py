@@ -3,12 +3,24 @@
 from __future__ import annotations
 
 import base64
+import importlib.util
+import shutil
 import unittest
 from pathlib import Path
 
 import reapeaks
 
 TEST_DATA_DIR = Path(__file__).resolve().parent / "test_data"
+
+_spec = importlib.util.spec_from_file_location("gen_fixtures", TEST_DATA_DIR / "gen_fixtures.py")
+gen_fixtures = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(gen_fixtures)
+
+try:
+    import numpy  # noqa: F401
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
 
 
 def _fixture_present(name: str) -> bool:
@@ -38,7 +50,29 @@ class FixtureReaPeaksTests(unittest.TestCase):
     fixture 流程：gen_fixtures.py 生成 wav → 用户在 REAPER 打开生成
     .ReaPeaks → 放回 tests/test_data/。文件缺失时这些用例自动 skip，
     不阻塞其余测试；放回后自动启用。内容设计见 FIXTURES.md。
+
+    如果 .ReaPeaks 存在但 wav 不存在（gitignore），测试前自动生成 wav，
+    测试后清理。
     """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        # 生成 wav（如果 .ReaPeaks 存在但 wav 不存在）
+        cls._generated_wavs: list[Path] = []
+        for name in ("tone30", "tone_dual", "tone_48k"):
+            reapeaks_path = TEST_DATA_DIR / f"{name}.wav.ReaPeaks"
+            wav_path = TEST_DATA_DIR / f"{name}.wav"
+            if reapeaks_path.is_file() and not wav_path.is_file():
+                gen_func = getattr(gen_fixtures, f"gen_{name}")
+                gen_func()
+                cls._generated_wavs.append(wav_path)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        # 清理生成的 wav
+        for wav_path in cls._generated_wavs:
+            if wav_path.is_file():
+                wav_path.unlink()
 
     @unittest.skipUnless(_fixture_present("tone30.wav.ReaPeaks"), "REAPER fixture missing: tone30")
     def test_tone30_parses_real_reaper_cache(self) -> None:
@@ -113,6 +147,70 @@ class FixtureReaPeaksTests(unittest.TestCase):
             TEST_DATA_DIR / "tone_48k.wav.ReaPeaks", TEST_DATA_DIR / "tone_48k.wav"
         )
         self.assertGreater(max(amps), 40)
+
+
+class GeneratedFixtureTests(unittest.TestCase):
+    """验证 MAW 生成的 .ReaPeaks 与 REAPER 真机 fixture 二进制极其相似。
+
+    测试流程：gen_fixtures.py 生成 wav → MAW 生成器生成 .ReaPeaks → 对比
+    fixture 目录里的 REAPER 真机 .ReaPeaks。头部（除 src_timestamp/
+    src_filesize 外）和数据段应完全相同。
+    """
+
+    def _compare_reapeaks(self, name: str) -> None:
+        fixture_path = TEST_DATA_DIR / f"{name}.wav.ReaPeaks"
+        fixture_data = fixture_path.read_bytes()
+        try:
+            # 生成 wav
+            gen_func = getattr(gen_fixtures, f"gen_{name}")
+            gen_func()
+            wav = TEST_DATA_DIR / f"{name}.wav"
+            # MAW 生成 .ReaPeaks
+            maw_reapeaks = reapeaks.generate_for_media(wav)
+            self.assertIsNotNone(maw_reapeaks, f"MAW 生成 {name}.wav.ReaPeaks 失败")
+            maw_data = maw_reapeaks.read_bytes()
+            # 写 .maw 供调试
+            (TEST_DATA_DIR / f"{name}.wav.ReaPeaks.maw").write_bytes(maw_data)
+            # 对比头部（除 src_timestamp 外）
+            self.assertEqual(maw_data[:10], fixture_data[:10], f"{name} 头部前 10 字节不同")
+            self.assertEqual(maw_data[14:18], fixture_data[14:18], f"{name} src_filesize 不同")
+            # 对比 mipmap headers 的 div（npeak 允许差异）
+            mipmap_count = maw_data[5]
+            import struct
+            for i in range(mipmap_count):
+                maw_div = struct.unpack_from("<i", maw_data, 18 + i * 8)[0]
+                fixture_div = struct.unpack_from("<i", fixture_data, 18 + i * 8)[0]
+                self.assertEqual(maw_div, fixture_div, f"{name} mip{i} div 不同")
+            # 数据段长度差异 < 10%
+            data_start = 18 + mipmap_count * 8
+            maw_data_len = len(maw_data) - data_start
+            fixture_data_len = len(fixture_data) - data_start
+            diff_ratio = abs(maw_data_len - fixture_data_len) / max(maw_data_len, fixture_data_len)
+            self.assertLess(diff_ratio, 0.1, f"{name} 数据段长度差异 {diff_ratio:.2%} > 10%")
+        finally:
+            # 清理
+            wav = TEST_DATA_DIR / f"{name}.wav"
+            if wav.exists():
+                wav.unlink()
+            fixture_path.write_bytes(fixture_data)
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    @unittest.skipUnless(HAS_NUMPY, "numpy is required")
+    @unittest.skipUnless(_fixture_present("tone30.wav.ReaPeaks"), "REAPER fixture missing: tone30")
+    def test_tone30_generated_matches_fixture(self) -> None:
+        self._compare_reapeaks("tone30")
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    @unittest.skipUnless(HAS_NUMPY, "numpy is required")
+    @unittest.skipUnless(_fixture_present("tone_dual.wav.ReaPeaks"), "REAPER fixture missing: tone_dual")
+    def test_tone_dual_generated_matches_fixture(self) -> None:
+        self._compare_reapeaks("tone_dual")
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    @unittest.skipUnless(HAS_NUMPY, "numpy is required")
+    @unittest.skipUnless(_fixture_present("tone_48k.wav.ReaPeaks"), "REAPER fixture missing: tone_48k")
+    def test_tone_48k_generated_matches_fixture(self) -> None:
+        self._compare_reapeaks("tone_48k")
 
 
 if __name__ == "__main__":
