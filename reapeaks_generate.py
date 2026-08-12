@@ -161,8 +161,13 @@ def _loudness(samples, peak_index, div):
     return rms
 
 
-def generate_reapeaks_bytes(sr, channels, samples, divs=None):
-    """Assemble the full .ReaPeaks byte payload from PCM samples."""
+def generate_reapeaks_bytes(sr, channels, samples, divs=None,
+                            src_timestamp=0, src_filesize=0):
+    """Assemble the full .ReaPeaks byte payload from PCM samples.
+
+    ``src_timestamp`` / ``src_filesize`` record the source media's mtime and
+    size in the header, letting consumers detect stale caches.
+    """
     if divs is None:
         divs = choose_division_factors(sr)
 
@@ -218,8 +223,8 @@ def generate_reapeaks_bytes(sr, channels, samples, divs=None):
     out += bytes([channels])
     out += bytes([len(all_headers)])
     out += struct.pack("<i", sr)
-    out += struct.pack("<i", 0)  # source timestamp
-    out += struct.pack("<i", 0)  # source filesize
+    out += struct.pack("<i", src_timestamp)  # source timestamp
+    out += struct.pack("<i", src_filesize)  # source filesize
     for div, npeak in all_headers:
         out += struct.pack("<ii", div, npeak)
     for v in wave_data:
@@ -231,10 +236,14 @@ def generate_reapeaks_bytes(sr, channels, samples, divs=None):
     return bytes(out)
 
 
-def write_reapeaks(path, sr, channels, samples, divs=None) -> Path:
+def write_reapeaks(path, sr, channels, samples, divs=None,
+                   src_timestamp=0, src_filesize=0) -> Path:
     """Generate and write a .ReaPeaks file next to a media path."""
     path = Path(path)
-    path.write_bytes(generate_reapeaks_bytes(sr, channels, samples, divs=divs))
+    path.write_bytes(generate_reapeaks_bytes(
+        sr, channels, samples, divs=divs,
+        src_timestamp=src_timestamp, src_filesize=src_filesize,
+    ))
     return path
 
 
@@ -243,5 +252,7 @@ if __name__ == "__main__":
         print(f"Usage: {sys.argv[0]} <input.wav> <output.reapeaks>")
         sys.exit(1)
     sr, ch, samples = read_wav_slices(sys.argv[1])
-    write_reapeaks(sys.argv[2], sr, ch, samples)
+    src = Path(sys.argv[1]).stat()
+    write_reapeaks(sys.argv[2], sr, ch, samples,
+                   src_timestamp=int(src.st_mtime), src_filesize=src.st_size)
     print(f"wrote {sys.argv[2]}: {ch}ch {sr}Hz")

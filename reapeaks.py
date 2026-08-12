@@ -332,10 +332,30 @@ def extract_waveform_payload(
     }
 
 
+def _reapeaks_matches_media(reapeaks_path: Path | str, media_path: Path | str) -> bool:
+    """True when a .ReaPeaks cache was generated for the *current* media.
+
+    The header stores the generating media's mtime and size; a zero pair means a
+    legacy MAW cache with no provenance, which is treated as stale so it gets
+    rebuilt instead of silently reused.
+    """
+    try:
+        ra = ReaPeaksFile(str(reapeaks_path))
+    except (OSError, struct.error, ValueError, IndexError):
+        return False
+    if ra.src_timestamp == 0 and ra.src_filesize == 0:
+        return False
+    try:
+        st = Path(media_path).stat()
+    except OSError:
+        return False
+    return ra.src_filesize == st.st_size and ra.src_timestamp == int(st.st_mtime)
+
+
 def load_waveform_payload(media_path: Path) -> dict | None:
     """Return a waveform payload from the media's .ReaPeaks, or None."""
     reapeaks_path = find_reapeaks(media_path)
-    if reapeaks_path is None:
+    if reapeaks_path is None or not _reapeaks_matches_media(reapeaks_path, media_path):
         return None
     try:
         return extract_waveform_payload(reapeaks_path, media_path)
@@ -346,11 +366,11 @@ def load_waveform_payload(media_path: Path) -> dict | None:
 def load_spectral_payload(media_path: Path, *, peaks_per_second: int = 100) -> dict | None:
     """Find the media's .ReaPeaks and return a spectral payload, or None.
 
-    Any missing / unreadable / non-spectral .ReaPeaks degrades to None so the
-    editor keeps working without spectral coloring.
+    Any missing / unreadable / non-spectral / stale .ReaPeaks degrades to None
+    so the editor keeps working without spectral coloring.
     """
     reapeaks_path = find_reapeaks(media_path)
-    if reapeaks_path is None:
+    if reapeaks_path is None or not _reapeaks_matches_media(reapeaks_path, media_path):
         return None
     try:
         return extract_spectral_payload(
@@ -442,20 +462,32 @@ def generate_for_media(
 ) -> Path | None:
     """Best-effort .ReaPeaks generation for a media file, or the existing path.
 
-    Returns the .ReaPeaks path when a file already existed or was generated,
-    else None (missing ffmpeg or decode failure). The file is written next to
-    the media so the server only ever reads it.
+    Returns the .ReaPeaks path when a matching cache already existed or was
+    generated, else None (missing ffmpeg or decode failure). An existing cache
+    is only reused when its header matches the current media; stale caches are
+    rebuilt. The file is written next to the media so the server only ever
+    reads it.
     """
+    media_path = Path(media_path)
     existing = find_reapeaks(media_path)
-    if existing is not None:
+    if existing is not None and _reapeaks_matches_media(existing, media_path):
         return existing
     decoded = decode_media_to_pcm(media_path, ffmpeg_bin=ffmpeg_bin)
     if decoded is None:
         return None
     sample_rate, channels, samples = decoded
-    target = Path(media_path).with_name(Path(media_path).name + ".ReaPeaks")
+    target = media_path.with_name(media_path.name + ".ReaPeaks")
     try:
-        reapeaks_generate.write_reapeaks(target, sample_rate, channels, samples)
+        src = media_path.stat()
+        src_timestamp = int(src.st_mtime)
+        src_filesize = src.st_size
+        if src_timestamp > 0x7FFFFFFF or src_filesize > 0x7FFFFFFF:
+            # 超出 .ReaPeaks 头部 int32 字段范围，无法可靠记录来源，跳过生成。
+            return None
+        reapeaks_generate.write_reapeaks(
+            target, sample_rate, channels, samples,
+            src_timestamp=src_timestamp, src_filesize=src_filesize,
+        )
     except Exception:
         # 生成是兜底：任何失败（含 numpy 缺失）都不阻断转写/启动流程。
         return None
