@@ -83,6 +83,19 @@ async function openMultiSubtitleSettings(page) {
   await expect(page.locator('#multi-subtitle-settings-menu')).toBeVisible();
 }
 
+test('shows a disabled multiple-subtitle toggle before an extension SRT is imported', async ({ page }) => {
+  await page.goto(server.url);
+  await dropFiles(page, [srtSpec('main.srt', mainSrt)]);
+
+  await expect(page.locator('#multi-subtitle-controls')).toBeVisible();
+  await expect(page.locator('#multi-subtitle-toggle')).toBeDisabled();
+  await expect(page.locator('#multi-subtitle-toggle-label'))
+    .toHaveAttribute('title', '请拖入第二个 srt 字幕以开启多重字幕功能');
+  expect(await page.locator('#multi-subtitle-toggle-label').evaluate((element) => (
+    element.nextElementSibling?.id
+  ))).toBe('multi-subtitle-settings-dropdown');
+});
+
 test('imports an extension SRT with 300ms preview, dual columns, split dialog, and pair deletion undo', async ({ page }) => {
   await importPair(page);
   await expect(page.locator('#multi-subtitle-import-description')).toHaveText('请选择你要执行的行为：');
@@ -214,6 +227,8 @@ test('swaps main and extension subtitles from the gear menu and supports undo', 
   await page.locator('#multi-subtitle-import-result-confirm').click();
 
   await openMultiSubtitleSettings(page);
+  await expect(page.locator('#multi-subtitle-swap')).toHaveCSS('border-style', 'solid');
+  await expect(page.locator('#multi-subtitle-swap')).toHaveCSS('border-top-width', '1px');
   await page.locator('#multi-subtitle-swap').click();
   await expect(page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main .text'))
     .toHaveText('你好，世界。');
@@ -240,13 +255,17 @@ test('uses the maximum waveform row height while multiple subtitles are enabled 
   await dropFiles(page, [srtSpec('translation.srt', extensionSrt)]);
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
+  await expect(page.locator('#multi-subtitle-extension-row-height')).toHaveValue('168');
   await expect(page.locator('#waveform-row-height')).toHaveValue('168');
 
   await openMultiSubtitleSettings(page);
+  await page.locator('#multi-subtitle-extension-row-height').selectOption('144');
+  await expect(page.locator('#waveform-row-height')).toHaveValue('144');
+
   await page.locator('#multi-subtitle-toggle').uncheck();
   await expect(page.locator('#waveform-row-height')).toHaveValue('64');
   await page.locator('#multi-subtitle-toggle').check();
-  await expect(page.locator('#waveform-row-height')).toHaveValue('168');
+  await expect(page.locator('#waveform-row-height')).toHaveValue('144');
 });
 
 test('auto-binds an overlapping unbound main cue and asks before replacing an existing binding', async ({ page }) => {
@@ -674,7 +693,6 @@ test('keeps one shared waveform background with two lanes, switch visibility, an
   await expect(page.locator('#download-multi-srt')).toBeHidden();
   await page.locator('#multi-subtitle-toggle').check();
   await expect(page.locator('.waveform-row.multi-subtitle-row')).not.toHaveCount(0);
-  await page.locator('#multi-subtitle-settings-toggle').click();
   await expect(page.locator('#multi-subtitle-settings-menu')).toBeHidden();
 
   const mainBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
@@ -878,7 +896,10 @@ test('confirms main replacement and makes both replacement paths undoable', asyn
   await page.locator('#multi-subtitle-import-result-confirm').click();
   await expect(page.locator('#multi-subtitle-toggle')).toBeChecked();
   await page.keyboard.press('Control+z');
-  await expect(page.locator('#multi-subtitle-controls')).toBeHidden();
+  await expect(page.locator('#multi-subtitle-controls')).toBeVisible();
+  await expect(page.locator('#multi-subtitle-toggle')).toBeDisabled();
+  await expect(page.locator('#multi-subtitle-toggle-label'))
+    .toHaveAttribute('title', '请拖入第二个 srt 字幕以开启多重字幕功能');
   await expect(page.locator('#cues-container .multi-dual-cue')).toHaveCount(0);
   await expect(page.locator('#cues-container .cue .text').first()).toHaveText('Hello world.');
 });

@@ -834,7 +834,16 @@
     padding: 4px 7px; color: var(--text-muted); font-size: 12px; white-space: nowrap;
   }
   .multi-subtitle-setting-row select { width: 100%; min-width: 0; }
-  .toolbar .multi-subtitle-settings-menu .dropdown-item { border-radius: var(--radius-sm); }
+  .toolbar .multi-subtitle-settings-menu .dropdown-item {
+    margin: 4px 0; border: 1px solid var(--btn-border); border-radius: var(--radius-sm);
+    background: var(--btn-bg); color: var(--btn-text); text-align: center;
+  }
+  .toolbar .multi-subtitle-settings-menu .dropdown-item:hover {
+    background: var(--btn-bg-hover); border-color: var(--btn-border-hover); color: var(--text-primary);
+  }
+  .toolbar .multi-subtitle-settings-menu .dropdown-item.disabled {
+    background: var(--btn-bg); border-color: var(--border-subtle); color: var(--text-faint);
+  }
   .toolbar .dropdown-item {
     padding: 7px 14px; cursor: pointer; user-select: none;
     color: var(--text-secondary); font-size: 13px;
@@ -1245,6 +1254,19 @@
   .multi-subtitle-controls[hidden] { display: none; }
   .multi-subtitle-controls select { min-height: var(--control-h); }
   .multi-subtitle-controls button { min-height: var(--control-h); }
+  .multi-subtitle-main-toggle {
+    display: inline-flex; align-items: center; gap: 6px; min-height: var(--control-h);
+    padding: 3px 8px; border: 1px solid var(--btn-border); border-radius: var(--radius-sm);
+    background: var(--btn-bg); color: var(--btn-text); font-size: 12px;
+    cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  .multi-subtitle-main-toggle:hover {
+    background: var(--btn-bg-hover); border-color: var(--btn-border-hover); color: var(--text-primary);
+  }
+  .multi-subtitle-main-toggle.disabled {
+    background: var(--btn-bg); border-color: var(--border-subtle); color: var(--text-muted); cursor: not-allowed;
+  }
+  .multi-subtitle-main-toggle input { margin: 0; }
   .multi-subtitle-import-modal { width: min(620px, calc(100vw - 32px)); }
   .multi-subtitle-import-choice-actions {
     justify-content: center;
@@ -2516,7 +2538,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-12 17:25</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-12 17:46</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -2555,12 +2577,14 @@
   </span>
   <span class="sep"></span>
   <span class="multi-subtitle-controls" id="multi-subtitle-controls" hidden>
+    <label class="multi-subtitle-main-toggle" id="multi-subtitle-toggle-label"
+           title="请拖入第二个 srt 字幕以开启多重字幕功能">
+      <input type="checkbox" id="multi-subtitle-toggle" title="请拖入第二个 srt 字幕以开启多重字幕功能">
+      多重字幕
+    </label>
     <span class="dropdown multi-subtitle-settings-dropdown" id="multi-subtitle-settings-dropdown">
       <button type="button" id="multi-subtitle-settings-toggle" title="多重字幕设置" aria-label="多重字幕设置" aria-expanded="false" aria-controls="multi-subtitle-settings-menu" aria-haspopup="menu">⚙</button>
       <div class="dropdown-menu multi-subtitle-settings-menu" id="multi-subtitle-settings-menu" role="menu">
-        <label class="multi-subtitle-setting-toggle" title="开启后显示扩展字幕轨、双列列表和绑定操作；关闭只隐藏扩展数据，不删除">
-          <input type="checkbox" id="multi-subtitle-toggle"> 多重字幕
-        </label>
         <div class="multi-subtitle-setting-row">
           <span>显示方式</span>
           <select id="multi-subtitle-display-mode" title="多重字幕列表显示方式">
@@ -2574,6 +2598,17 @@
           <select id="multi-subtitle-split-mode" title="扩展字幕近似拆分类型">
             <option value="continuous">连续型</option>
             <option value="word" selected>单词型</option>
+          </select>
+        </div>
+        <div class="multi-subtitle-setting-row" id="multi-subtitle-extension-row-height-setting">
+          <span>拓展字幕时波形高度</span>
+          <select id="multi-subtitle-extension-row-height" title="启用多重字幕时使用的波形行高度">
+            <option value="64">64 px</option>
+            <option value="80">80 px</option>
+            <option value="96">96 px</option>
+            <option value="120">120 px</option>
+            <option value="144">144 px</option>
+            <option value="168" selected>168 px</option>
           </select>
         </div>
         <label class="multi-subtitle-setting-toggle" title="拖动多重字幕时，允许吸附到另一条字幕轨道的起点和终点">
@@ -4755,8 +4790,9 @@
     '下载表情包 OTIO 工程': 'Download sticker OTIO project',
     '字幕': 'Subtitles', '字幕预览': 'Subtitle preview', '表情包预览': 'Sticker preview', '字幕列表和编辑区': 'Subtitle list & editor',
     '多重字幕': 'Multiple subtitles', '多重字幕设置': 'Multiple-subtitle settings', '主轨': 'Main track', '扩展轨': 'Extension track', '双列': 'Two columns',
-    '显示方式': 'Display mode', '拆分类型': 'Split type', '跨轨道吸附': 'Cross-track snapping', '交换主副字幕': 'Swap main and extension subtitles',
+    '显示方式': 'Display mode', '拆分类型': 'Split type', '拓展字幕时波形高度': 'Waveform height with extension subtitles', '跨轨道吸附': 'Cross-track snapping', '交换主副字幕': 'Swap main and extension subtitles',
     '开启后显示扩展字幕轨、双列列表和绑定操作；关闭只隐藏扩展数据，不删除': 'Show the extension track, two-column list, and binding actions; turning it off only hides extension data',
+    '启用多重字幕时使用的波形行高度': 'Waveform row height used when multiple subtitles are enabled', '请拖入第二个 srt 字幕以开启多重字幕功能': 'Drop a second SRT subtitle to enable multiple subtitles',
     '拖动多重字幕时，允许吸附到另一条字幕轨道的起点和终点': 'Snap multiple subtitles to the start and end boundaries of the other track while dragging',
     '交换主字幕和扩展字幕的文本、时间与绑定关系': 'Swap the text, timing, and bindings between the main and extension subtitles',
     '请先开启多重字幕': 'Enable multiple subtitles first',
@@ -8527,6 +8563,8 @@ const SERVER_CONFIG = null;
 
 const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
 const MULTI_SUBTITLE_TOLERANCE_MS = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_TOLERANCE_MS || 300;
+const MULTI_SUBTITLE_ROW_HEIGHT_PRESETS = [64, 80, 96, 120, 144, 168];
+const DEFAULT_MULTI_SUBTITLE_ROW_HEIGHT = 168;
 let normalizedMultiSubtitleReference = null;
 
 function normalizeMultiSubtitleState() {
@@ -8632,6 +8670,12 @@ function activeExtensionTrackId() {
   return getActiveExtensionTrack()?.id || null;
 }
 
+function normalizeMultiSubtitleRowHeight(value) {
+  const next = Number(value);
+  return MULTI_SUBTITLE_ROW_HEIGHT_PRESETS.includes(next)
+    ? next : DEFAULT_MULTI_SUBTITLE_ROW_HEIGHT;
+}
+
 function syncBindingOffsets() {
   MULTI_SUBTITLE_UTILS.rebuildBindingOffsets(getMultiSubtitleState(), DATA.segments);
 }
@@ -8710,6 +8754,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   overlayEnabled: true,
   // 多重字幕开启时，拓展字幕预览默认自动显示。
   extensionOverlayEnabled: true,
+  // 多重字幕开启时使用的波形行高度；关闭多重字幕后恢复「配置」中的高度。
+  multiSubtitleRowHeight: DEFAULT_MULTI_SUBTITLE_ROW_HEIGHT,
   exportStartAtZero: false,
   cueListShowIndex: true,
   cueListShowTime: true,
@@ -8772,6 +8818,7 @@ function readEditorSettings() {
       splitAutoSubmit: saved.splitAutoSubmit !== false,
       overlayEnabled: saved.overlayEnabled !== false,
       extensionOverlayEnabled: saved.extensionOverlayEnabled !== false,
+      multiSubtitleRowHeight: normalizeMultiSubtitleRowHeight(saved.multiSubtitleRowHeight),
       exportStartAtZero: saved.exportStartAtZero === true,
       cueListShowIndex: saved.cueListShowIndex !== false,
       cueListShowTime: saved.cueListShowTime !== false,
@@ -9169,12 +9216,15 @@ const downloadSrtButton = document.getElementById('download-srt');
 const downloadMultiSrtButton = document.getElementById('download-multi-srt');
 const subtitleExportDropdown = document.getElementById('subtitle-export-dropdown');
 const multiSubtitleControls = document.getElementById('multi-subtitle-controls');
+const multiSubtitleToggleLabel = document.getElementById('multi-subtitle-toggle-label');
 const multiSubtitleSwapButton = document.getElementById('multi-subtitle-swap');
 const multiSubtitleCrossTrackSnapToggle = document.getElementById('multi-subtitle-cross-track-snap');
 const multiSubtitleWaveformControls = document.getElementById('multi-subtitle-waveform-controls');
 const multiSubtitleToggle = document.getElementById('multi-subtitle-toggle');
 const multiSubtitleDisplayMode = document.getElementById('multi-subtitle-display-mode');
 const multiSubtitleSplitMode = document.getElementById('multi-subtitle-split-mode');
+const multiSubtitleExtensionRowHeightSetting = document.getElementById('multi-subtitle-extension-row-height-setting');
+const multiSubtitleExtensionRowHeight = document.getElementById('multi-subtitle-extension-row-height');
 const multiSubtitleBindButton = document.getElementById('multi-subtitle-bind');
 const multiSubtitleUnbindButton = document.getElementById('multi-subtitle-unbind');
 const multiSubtitleImportModal = document.getElementById('multi-subtitle-import-modal');
@@ -9314,7 +9364,7 @@ function syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEna
   if (!waveformEditor?.getRowHeight || !waveformEditor?.setRowHeight) return;
   if (enteringEnabled) {
     waveformRowHeightBeforeMultiSubtitle = waveformEditor.getRowHeight();
-    waveformEditor.setRowHeight(waveformEditor.getMaxRowHeight?.() || 168);
+    waveformEditor.setRowHeight(EDITOR_SETTINGS.multiSubtitleRowHeight);
   } else if (leavingEnabled && Number.isFinite(waveformRowHeightBeforeMultiSubtitle)) {
     const previous = waveformRowHeightBeforeMultiSubtitle;
     waveformRowHeightBeforeMultiSubtitle = null;
@@ -9328,14 +9378,23 @@ function updateMultiSubtitleUi() {
   const track = getActiveExtensionTrack();
   const hasTrack = Boolean(track && Array.isArray(track.segments));
   const enabled = hasTrack && getMultiSubtitleState().enabled === true;
+  const hasMainSubtitle = DATA.segments.length > 0;
   const enteringEnabled = enabled && !previousMultiSubtitlePreviewEnabled;
   const leavingEnabled = !enabled && previousMultiSubtitlePreviewEnabled;
   syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEnabled);
-  if (multiSubtitleControls) multiSubtitleControls.hidden = !hasTrack;
+  if (multiSubtitleControls) multiSubtitleControls.hidden = !hasMainSubtitle;
   if (multiSubtitleToggle) {
     multiSubtitleToggle.checked = enabled;
     multiSubtitleToggle.disabled = !hasTrack;
   }
+  const multiSubtitleToggleTitle = hasTrack
+    ? '开启后显示扩展字幕轨、双列列表和绑定操作；关闭只隐藏扩展数据，不删除'
+    : '请拖入第二个 srt 字幕以开启多重字幕功能';
+  if (multiSubtitleToggleLabel) {
+    multiSubtitleToggleLabel.classList.toggle('disabled', !hasTrack);
+    multiSubtitleToggleLabel.title = multiSubtitleToggleTitle;
+  }
+  if (multiSubtitleToggle) multiSubtitleToggle.title = multiSubtitleToggleTitle;
   if (multiSubtitleDisplayMode) {
     multiSubtitleDisplayMode.value = getMultiSubtitleState().display_mode || 'both';
     multiSubtitleDisplayMode.hidden = !enabled;
@@ -9343,6 +9402,13 @@ function updateMultiSubtitleUi() {
   if (multiSubtitleSplitMode) {
     multiSubtitleSplitMode.value = track?.split_mode || 'word';
     multiSubtitleSplitMode.hidden = !enabled;
+  }
+  if (multiSubtitleExtensionRowHeight) {
+    multiSubtitleExtensionRowHeight.value = String(EDITOR_SETTINGS.multiSubtitleRowHeight);
+    multiSubtitleExtensionRowHeight.disabled = !enabled;
+  }
+  if (multiSubtitleExtensionRowHeightSetting) {
+    multiSubtitleExtensionRowHeightSetting.hidden = !enabled;
   }
   if (multiSubtitleCrossTrackSnapToggle) {
     multiSubtitleCrossTrackSnapToggle.checked = EDITOR_SETTINGS.crossTrackSnap;
@@ -9494,6 +9560,11 @@ multiSubtitleSplitMode?.addEventListener('change', () => {
   track.split_mode = next;
   markMultiSubtitleDirty();
   renderAll({ waveform: 'none' });
+});
+multiSubtitleExtensionRowHeight?.addEventListener('change', () => {
+  const next = normalizeMultiSubtitleRowHeight(multiSubtitleExtensionRowHeight.value);
+  updateEditorSettings({ multiSubtitleRowHeight: next });
+  if (multiSubtitleVisible()) waveformEditor?.setRowHeight(next);
 });
 multiSubtitleCrossTrackSnapToggle?.addEventListener('change', () => {
   updateEditorSettings({ crossTrackSnap: multiSubtitleCrossTrackSnapToggle.checked });

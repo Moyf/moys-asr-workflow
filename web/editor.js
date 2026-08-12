@@ -7,6 +7,8 @@ const SERVER_CONFIG = __SERVER_CONFIG_JSON__;
 
 const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
 const MULTI_SUBTITLE_TOLERANCE_MS = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_TOLERANCE_MS || 300;
+const MULTI_SUBTITLE_ROW_HEIGHT_PRESETS = [64, 80, 96, 120, 144, 168];
+const DEFAULT_MULTI_SUBTITLE_ROW_HEIGHT = 168;
 let normalizedMultiSubtitleReference = null;
 
 function normalizeMultiSubtitleState() {
@@ -112,6 +114,12 @@ function activeExtensionTrackId() {
   return getActiveExtensionTrack()?.id || null;
 }
 
+function normalizeMultiSubtitleRowHeight(value) {
+  const next = Number(value);
+  return MULTI_SUBTITLE_ROW_HEIGHT_PRESETS.includes(next)
+    ? next : DEFAULT_MULTI_SUBTITLE_ROW_HEIGHT;
+}
+
 function syncBindingOffsets() {
   MULTI_SUBTITLE_UTILS.rebuildBindingOffsets(getMultiSubtitleState(), DATA.segments);
 }
@@ -190,6 +198,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   overlayEnabled: true,
   // 多重字幕开启时，拓展字幕预览默认自动显示。
   extensionOverlayEnabled: true,
+  // 多重字幕开启时使用的波形行高度；关闭多重字幕后恢复「配置」中的高度。
+  multiSubtitleRowHeight: DEFAULT_MULTI_SUBTITLE_ROW_HEIGHT,
   exportStartAtZero: false,
   cueListShowIndex: true,
   cueListShowTime: true,
@@ -252,6 +262,7 @@ function readEditorSettings() {
       splitAutoSubmit: saved.splitAutoSubmit !== false,
       overlayEnabled: saved.overlayEnabled !== false,
       extensionOverlayEnabled: saved.extensionOverlayEnabled !== false,
+      multiSubtitleRowHeight: normalizeMultiSubtitleRowHeight(saved.multiSubtitleRowHeight),
       exportStartAtZero: saved.exportStartAtZero === true,
       cueListShowIndex: saved.cueListShowIndex !== false,
       cueListShowTime: saved.cueListShowTime !== false,
@@ -649,12 +660,15 @@ const downloadSrtButton = document.getElementById('download-srt');
 const downloadMultiSrtButton = document.getElementById('download-multi-srt');
 const subtitleExportDropdown = document.getElementById('subtitle-export-dropdown');
 const multiSubtitleControls = document.getElementById('multi-subtitle-controls');
+const multiSubtitleToggleLabel = document.getElementById('multi-subtitle-toggle-label');
 const multiSubtitleSwapButton = document.getElementById('multi-subtitle-swap');
 const multiSubtitleCrossTrackSnapToggle = document.getElementById('multi-subtitle-cross-track-snap');
 const multiSubtitleWaveformControls = document.getElementById('multi-subtitle-waveform-controls');
 const multiSubtitleToggle = document.getElementById('multi-subtitle-toggle');
 const multiSubtitleDisplayMode = document.getElementById('multi-subtitle-display-mode');
 const multiSubtitleSplitMode = document.getElementById('multi-subtitle-split-mode');
+const multiSubtitleExtensionRowHeightSetting = document.getElementById('multi-subtitle-extension-row-height-setting');
+const multiSubtitleExtensionRowHeight = document.getElementById('multi-subtitle-extension-row-height');
 const multiSubtitleBindButton = document.getElementById('multi-subtitle-bind');
 const multiSubtitleUnbindButton = document.getElementById('multi-subtitle-unbind');
 const multiSubtitleImportModal = document.getElementById('multi-subtitle-import-modal');
@@ -794,7 +808,7 @@ function syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEna
   if (!waveformEditor?.getRowHeight || !waveformEditor?.setRowHeight) return;
   if (enteringEnabled) {
     waveformRowHeightBeforeMultiSubtitle = waveformEditor.getRowHeight();
-    waveformEditor.setRowHeight(waveformEditor.getMaxRowHeight?.() || 168);
+    waveformEditor.setRowHeight(EDITOR_SETTINGS.multiSubtitleRowHeight);
   } else if (leavingEnabled && Number.isFinite(waveformRowHeightBeforeMultiSubtitle)) {
     const previous = waveformRowHeightBeforeMultiSubtitle;
     waveformRowHeightBeforeMultiSubtitle = null;
@@ -808,14 +822,23 @@ function updateMultiSubtitleUi() {
   const track = getActiveExtensionTrack();
   const hasTrack = Boolean(track && Array.isArray(track.segments));
   const enabled = hasTrack && getMultiSubtitleState().enabled === true;
+  const hasMainSubtitle = DATA.segments.length > 0;
   const enteringEnabled = enabled && !previousMultiSubtitlePreviewEnabled;
   const leavingEnabled = !enabled && previousMultiSubtitlePreviewEnabled;
   syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEnabled);
-  if (multiSubtitleControls) multiSubtitleControls.hidden = !hasTrack;
+  if (multiSubtitleControls) multiSubtitleControls.hidden = !hasMainSubtitle;
   if (multiSubtitleToggle) {
     multiSubtitleToggle.checked = enabled;
     multiSubtitleToggle.disabled = !hasTrack;
   }
+  const multiSubtitleToggleTitle = hasTrack
+    ? '开启后显示扩展字幕轨、双列列表和绑定操作；关闭只隐藏扩展数据，不删除'
+    : '请拖入第二个 srt 字幕以开启多重字幕功能';
+  if (multiSubtitleToggleLabel) {
+    multiSubtitleToggleLabel.classList.toggle('disabled', !hasTrack);
+    multiSubtitleToggleLabel.title = multiSubtitleToggleTitle;
+  }
+  if (multiSubtitleToggle) multiSubtitleToggle.title = multiSubtitleToggleTitle;
   if (multiSubtitleDisplayMode) {
     multiSubtitleDisplayMode.value = getMultiSubtitleState().display_mode || 'both';
     multiSubtitleDisplayMode.hidden = !enabled;
@@ -823,6 +846,13 @@ function updateMultiSubtitleUi() {
   if (multiSubtitleSplitMode) {
     multiSubtitleSplitMode.value = track?.split_mode || 'word';
     multiSubtitleSplitMode.hidden = !enabled;
+  }
+  if (multiSubtitleExtensionRowHeight) {
+    multiSubtitleExtensionRowHeight.value = String(EDITOR_SETTINGS.multiSubtitleRowHeight);
+    multiSubtitleExtensionRowHeight.disabled = !enabled;
+  }
+  if (multiSubtitleExtensionRowHeightSetting) {
+    multiSubtitleExtensionRowHeightSetting.hidden = !enabled;
   }
   if (multiSubtitleCrossTrackSnapToggle) {
     multiSubtitleCrossTrackSnapToggle.checked = EDITOR_SETTINGS.crossTrackSnap;
@@ -974,6 +1004,11 @@ multiSubtitleSplitMode?.addEventListener('change', () => {
   track.split_mode = next;
   markMultiSubtitleDirty();
   renderAll({ waveform: 'none' });
+});
+multiSubtitleExtensionRowHeight?.addEventListener('change', () => {
+  const next = normalizeMultiSubtitleRowHeight(multiSubtitleExtensionRowHeight.value);
+  updateEditorSettings({ multiSubtitleRowHeight: next });
+  if (multiSubtitleVisible()) waveformEditor?.setRowHeight(next);
 });
 multiSubtitleCrossTrackSnapToggle?.addEventListener('change', () => {
   updateEditorSettings({ crossTrackSnap: multiSubtitleCrossTrackSnapToggle.checked });

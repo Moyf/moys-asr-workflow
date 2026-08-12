@@ -816,7 +816,16 @@
     padding: 4px 7px; color: var(--text-muted); font-size: 12px; white-space: nowrap;
   }
   .multi-subtitle-setting-row select { width: 100%; min-width: 0; }
-  .toolbar .multi-subtitle-settings-menu .dropdown-item { border-radius: var(--radius-sm); }
+  .toolbar .multi-subtitle-settings-menu .dropdown-item {
+    margin: 4px 0; border: 1px solid var(--btn-border); border-radius: var(--radius-sm);
+    background: var(--btn-bg); color: var(--btn-text); text-align: center;
+  }
+  .toolbar .multi-subtitle-settings-menu .dropdown-item:hover {
+    background: var(--btn-bg-hover); border-color: var(--btn-border-hover); color: var(--text-primary);
+  }
+  .toolbar .multi-subtitle-settings-menu .dropdown-item.disabled {
+    background: var(--btn-bg); border-color: var(--border-subtle); color: var(--text-faint);
+  }
   .toolbar .dropdown-item {
     padding: 7px 14px; cursor: pointer; user-select: none;
     color: var(--text-secondary); font-size: 13px;
@@ -1227,6 +1236,19 @@
   .multi-subtitle-controls[hidden] { display: none; }
   .multi-subtitle-controls select { min-height: var(--control-h); }
   .multi-subtitle-controls button { min-height: var(--control-h); }
+  .multi-subtitle-main-toggle {
+    display: inline-flex; align-items: center; gap: 6px; min-height: var(--control-h);
+    padding: 3px 8px; border: 1px solid var(--btn-border); border-radius: var(--radius-sm);
+    background: var(--btn-bg); color: var(--btn-text); font-size: 12px;
+    cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  .multi-subtitle-main-toggle:hover {
+    background: var(--btn-bg-hover); border-color: var(--btn-border-hover); color: var(--text-primary);
+  }
+  .multi-subtitle-main-toggle.disabled {
+    background: var(--btn-bg); border-color: var(--border-subtle); color: var(--text-muted); cursor: not-allowed;
+  }
+  .multi-subtitle-main-toggle input { margin: 0; }
   .multi-subtitle-import-modal { width: min(620px, calc(100vw - 32px)); }
   .multi-subtitle-import-choice-actions {
     justify-content: center;
