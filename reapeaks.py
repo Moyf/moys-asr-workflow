@@ -17,8 +17,6 @@ import os
 import shutil
 import struct
 import subprocess
-import tempfile
-import wave
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -396,25 +394,47 @@ def resolve_ffmpeg(ffmpeg_bin: str | None = None) -> str | None:
     return shutil.which("ffmpeg")
 
 
-def decode_media_to_pcm(
-    media_path: Path,
+def _parse_wav_header(header: bytes) -> tuple[int, int, int] | None:
+    """(channels, sample_rate, data_offset) from an ffmpeg WAV pipe header."""
+    if len(header) < 12 or header[0:4] != b"RIFF" or header[8:12] != b"WAVE":
+        return None
+    channels = 0
+    sample_rate = 0
+    off = 12
+    while off + 8 <= len(header):
+        cid = header[off : off + 4]
+        size = struct.unpack_from("<I", header, off + 4)[0]
+        if cid == b"fmt ":
+            if off + 16 > len(header):
+                return None
+            channels = struct.unpack_from("<H", header, off + 10)[0]
+            sample_rate = struct.unpack_from("<I", header, off + 12)[0]
+        elif cid == b"data":
+            if channels <= 0 or sample_rate <= 0:
+                return None
+            return channels, sample_rate, off + 8
+        off += 8 + size + (size & 1)
+    return None
+
+
+def generate_reapeaks_stream_bytes(
+    media_path: Path | str,
     *,
     ffmpeg_bin: str | None = None,
-) -> tuple[int, int, list] | None:
-    """Decode a media file to int16 PCM sample arrays via ffmpeg.
+    src_timestamp: int = 0,
+    src_filesize: int = 0,
+) -> bytes | None:
+    """Stream .ReaPeaks bytes straight from ffmpeg's WAV pipe.
 
-    Returns (sample_rate, channels, samples) where samples is a list of numpy
-    int16 arrays (one per channel), or None when ffmpeg is missing or the media
-    has no decodable audio.
+    Only the current ffmpeg chunk and the generator's bounded accumulators are
+    in memory; the full PCM never materializes. Returns None when ffmpeg is
+    missing, the media has no decodable audio, or generation fails.
     """
     ffmpeg = resolve_ffmpeg(ffmpeg_bin)
     if not ffmpeg:
         return None
-    media_path = Path(media_path)
-    fd, tmp = tempfile.mkstemp(suffix=".wav")
-    os.close(fd)
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             [
                 ffmpeg,
                 "-nostdin",
@@ -426,33 +446,42 @@ def decode_media_to_pcm(
                 "-vn",
                 "-acodec",
                 "pcm_s16le",
-                "-y",
-                tmp,
+                "-f",
+                "wav",
+                "pipe:1",
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
-        if proc.returncode != 0:
+        assert proc.stdout is not None
+        assert proc.stderr is not None
+        header = proc.stdout.read(4096)
+        parsed = _parse_wav_header(header)
+        if parsed is None:
+            proc.kill()
+            proc.stdout.close()
+            proc.stderr.close()
+            proc.wait()
             return None
-        import numpy as np
-
-        with wave.open(tmp, "rb") as wf:
-            sample_rate = wf.getframerate()
-            channels = wf.getnchannels()
-            frames = wf.getnframes()
-            raw = wf.readframes(frames)
-        data = np.frombuffer(raw, dtype="<i2")
-        if channels == 1:
-            samples = [data]
-        else:
-            samples = [data[c::channels] for c in range(channels)]
-        return sample_rate, channels, samples
+        channels, sample_rate, data_off = parsed
+        streamer = reapeaks_generate._ReaPeaksStreamer(sample_rate, channels)
+        if data_off < len(header):
+            streamer.feed(header[data_off:])
+        while True:
+            chunk = proc.stdout.read(64 * 1024)
+            if not chunk:
+                break
+            streamer.feed(chunk)
+        stderr = proc.stderr.read().decode("utf-8", errors="replace").strip()
+        proc.stdout.close()
+        proc.stderr.close()
+        if proc.wait() != 0:
+            return None
+        if stderr:
+            return None
+        return streamer.finish(src_timestamp=src_timestamp, src_filesize=src_filesize)
     except Exception:
         return None
-    finally:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
 
 
 def generate_for_media(
@@ -472,10 +501,6 @@ def generate_for_media(
     existing = find_reapeaks(media_path)
     if existing is not None and _reapeaks_matches_media(existing, media_path):
         return existing
-    decoded = decode_media_to_pcm(media_path, ffmpeg_bin=ffmpeg_bin)
-    if decoded is None:
-        return None
-    sample_rate, channels, samples = decoded
     target = media_path.with_name(media_path.name + ".ReaPeaks")
     try:
         src = media_path.stat()
@@ -484,10 +509,15 @@ def generate_for_media(
         if src_timestamp > 0x7FFFFFFF or src_filesize > 0x7FFFFFFF:
             # 超出 .ReaPeaks 头部 int32 字段范围，无法可靠记录来源，跳过生成。
             return None
-        reapeaks_generate.write_reapeaks(
-            target, sample_rate, channels, samples,
-            src_timestamp=src_timestamp, src_filesize=src_filesize,
+        data = generate_reapeaks_stream_bytes(
+            media_path,
+            ffmpeg_bin=ffmpeg_bin,
+            src_timestamp=src_timestamp,
+            src_filesize=src_filesize,
         )
+        if data is None:
+            return None
+        target.write_bytes(data)
     except Exception:
         # 生成是兜底：任何失败（含 numpy 缺失）都不阻断转写/启动流程。
         return None
