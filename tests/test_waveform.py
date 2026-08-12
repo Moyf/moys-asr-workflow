@@ -161,8 +161,11 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('value="select-only">仅选中（不跳转）', page)
         self.assertIn('value="select-and-play">选中并跳转（自动播放）', page)
         self.assertIn('id="click-target-field"', page)
-        self.assertIn('value="cue-start" selected>字幕开头', page)
-        self.assertIn('value="pointer">鼠标所在位置', page)
+        self.assertIn('value="cue-start">字幕开头', page)
+        self.assertTrue(
+            'value="pointer" selected>鼠标所在位置' in page,
+            '点击字幕块的默认跳转目标应为鼠标所在位置',
+        )
         self.assertIn('id="cues-empty"', page)
         self.assertIn('加载工程后显示字幕列表', page)
         self.assertIn('id="workspace-preset"', page)
@@ -259,7 +262,9 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("rows: [42, 16, 42], tree: DEFAULT_RIGHT_LAYOUT_TREE", page)
         self.assertIn('const projectHasStickers = DATA.segments.some(segment => segment.sticker || segment.sticker_ref);', page)
         self.assertIn('!EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', page)
-        self.assertIn('DATA.segments.forEach((seg, i) => container.appendChild(buildCueEl(seg, i)));\n  applyCueListDisplaySettings();', page)
+        self.assertIn("DATA.segments.forEach((seg, i) => container.appendChild(buildCueEl(seg, i)));", page)
+        self.assertIn("const multiVisible = multiSubtitleVisible();", page)
+        self.assertIn('id="multi-subtitle-toggle"', page)
         self.assertIn("cuePanelText?.addEventListener('keydown'", page)
         self.assertIn('const action = getConfiguredEnterAction(event);', page)
         self.assertIn("if (action === 'split') splitCuePanelAtCursor();", page)

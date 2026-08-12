@@ -50,8 +50,21 @@
     return total;
   }
 
-  function cueMetrics(text, start, end) {
-    const totalLength = countTextUnits(text);
+  function countSubtitleUnits(text, mode = null) {
+    const normalized = String(text || '').replace(/\r\n?/g, '').replace(/\n/g, '').trim();
+    if (!normalized) return 0;
+    const resolvedMode = mode === 'continuous' || mode === 'word'
+      ? mode : detectSubtitleSplitMode(normalized);
+    if (resolvedMode === 'continuous') {
+      const matches = normalized.match(/[\p{L}\p{N}]/gu);
+      return matches ? matches.length : 0;
+    }
+    return normalized.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
+  }
+
+  function cueMetrics(text, start, end, mode = null) {
+    const totalLength = mode === 'continuous' || mode === 'word'
+      ? countSubtitleUnits(text, mode) : countTextUnits(text);
     const durationSeconds = Math.max(0, Number(end) - Number(start)) / 1000;
     const charsPerSecond = durationSeconds > 0
       ? Number((totalLength / durationSeconds).toFixed(2)) : 0;
@@ -65,14 +78,7 @@
   // 字幕“字数/词数”计量：含 CJK 字符时按「字」计（只数字母与汉字等文字、数字，
   // 不计空白与标点），否则按空白切分计「词」数（同样要求词内至少一个文字/数字）。
   function subtitleTextLength(text) {
-    const normalized = String(text || '').trim();
-    if (!normalized) return 0;
-    // CJK 判定区间：U+3400–U+4DBF（扩展 A）、U+4E00–U+9FFF（基本区）、U+F900–U+FAFF（兼容表意）。
-    if (/[㐀-䶿一-鿿豈-﫿]/.test(normalized)) {
-      const matches = normalized.match(/[\p{L}\p{N}]/gu);
-      return matches ? matches.length : 0;
-    }
-    return normalized.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
+    return countSubtitleUnits(text);
   }
 
   // 短字幕判定：中文少于 threshold 个字 / 英文少于 threshold 个词。
@@ -234,10 +240,10 @@
     return `${durationLabel}（占比 ${percentageLabel}%）`;
   }
 
-  function splitCharOffsetAtTime(segment, timeMs) {
+  function timestampedSplitCandidates(segment) {
     const text = String(segment?.text || '');
     const codePoints = Array.from(text);
-    if (codePoints.length < 2) return null;
+    if (codePoints.length < 2) return [];
     const hasContent = (value) => /[\p{L}\p{N}\p{S}]/u.test(value);
 
     const alignedItems = [];
@@ -251,7 +257,6 @@
       searchFrom = start + itemText.length;
     });
 
-    const targetTime = Number(timeMs);
     const candidates = [];
     for (let index = 1; index < alignedItems.length; index++) {
       const left = alignedItems[index - 1];
@@ -261,6 +266,7 @@
       if (!hasContent(text.slice(0, offset)) || !hasContent(text.slice(offset))) continue;
       const leftEnd = Number(left.item.end);
       const rightStart = Number(right.item.start);
+      const hasTimestamp = Number.isFinite(leftEnd) && Number.isFinite(rightStart);
       let boundaryTime = Number.isFinite(leftEnd) && Number.isFinite(rightStart)
         ? (leftEnd + rightStart) / 2
         : Number.isFinite(rightStart) ? rightStart : leftEnd;
@@ -268,8 +274,22 @@
         boundaryTime = Number(segment?.start)
           + ((Number(segment?.end) - Number(segment?.start)) * offset / text.length);
       }
-      candidates.push({ offset, time: boundaryTime });
+      candidates.push({ offset, time: boundaryTime, hasTimestamp });
     }
+    return candidates;
+  }
+
+  function hasUsableSplitTimestamps(segment) {
+    return timestampedSplitCandidates(segment).some((candidate) => candidate.hasTimestamp);
+  }
+
+  function splitCharOffsetAtTime(segment, timeMs) {
+    const text = String(segment?.text || '');
+    const codePoints = Array.from(text);
+    if (codePoints.length < 2) return null;
+    const hasContent = (value) => /[\p{L}\p{N}\p{S}]/u.test(value);
+    const targetTime = Number(timeMs);
+    const candidates = timestampedSplitCandidates(segment);
     if (candidates.length && Number.isFinite(targetTime)) {
       return candidates.reduce((nearest, candidate) => (
         Math.abs(candidate.time - targetTime) < Math.abs(nearest.time - targetTime)
@@ -312,8 +332,12 @@
 
     const time = Number(timeMs);
     if (!Number.isFinite(time)) return -1;
-    const activeIndex = segments.findIndex((segment) => (
-      segment && Number(segment.start) <= time && Number(segment.end) >= time
+    const activeIndex = segments.findIndex((segment, index) => (
+      segment && Number(segment.start) <= time && (
+        Number(segment.end) > time
+        || index === segments.length - 1
+        || Number(segments[index + 1]?.start) > time
+      )
     ));
     if (activeIndex >= 0) {
       return findAdjacentCueIndex(segments, activeIndex, direction, skipDisabled);
@@ -359,6 +383,454 @@
 
   function cloneJsonValue(value) {
     return value == null ? null : JSON.parse(JSON.stringify(value));
+  }
+
+  // === 多重字幕（双语字幕）===
+  // 这组 helper 刻意不依赖 DOM，便携 HTML、localhost 编辑器和 Node 测试共用同一套
+  // 数据/匹配/近似拆分规则。主轨仍然是顶层 segments；扩展轨的 items 不参与拆分。
+  const MULTI_SUBTITLE_SCHEMA = 'moy.asr.multi_subtitle.v1';
+  const MULTI_SUBTITLE_TOLERANCE_MS = 300;
+  const MULTI_SUBTITLE_DISPLAY_MODES = new Set(['main', 'extension', 'both']);
+  const MULTI_SUBTITLE_SPLIT_MODES = new Set(['continuous', 'word']);
+
+  function stableId(value) {
+    const id = String(value == null ? '' : value).trim();
+    return id && id.length <= 160 ? id : '';
+  }
+
+  function ensureStableSegmentIds(segments, prefix = 'segment') {
+    const source = Array.isArray(segments) ? segments : [];
+    const used = new Set();
+    let changed = 0;
+    source.forEach((segment, index) => {
+      if (!segment || typeof segment !== 'object') return;
+      let id = stableId(segment.id);
+      if (!id || used.has(id)) {
+        const base = `${prefix}-${String(index + 1).padStart(3, '0')}`;
+        id = base;
+        let suffix = 2;
+        while (used.has(id)) id = `${base}-${suffix++}`;
+        segment.id = id;
+        changed++;
+      } else if (segment.id !== id) {
+        segment.id = id;
+        changed++;
+      }
+      used.add(id);
+    });
+    return changed;
+  }
+
+  function uniqueStableSegmentId(segments, baseId, fallbackPrefix = 'segment') {
+    const used = new Set((Array.isArray(segments) ? segments : [])
+      .map((segment) => stableId(segment?.id)).filter(Boolean));
+    const base = stableId(baseId) || `${fallbackPrefix}-new`;
+    if (!used.has(base)) return base;
+    let suffix = 2;
+    let candidate = `${base}-${suffix}`;
+    while (used.has(candidate)) candidate = `${base}-${suffix++}`;
+    return candidate;
+  }
+
+  function normalizeMultiSubtitle(value, mainSegments = []) {
+    const source = value && typeof value === 'object' ? value : {};
+    const rawTracks = Array.isArray(source.tracks) ? source.tracks : [];
+    const tracks = rawTracks.map((rawTrack, trackIndex) => {
+      const track = rawTrack && typeof rawTrack === 'object' ? rawTrack : {};
+      const id = stableId(track.id) || `extension-${trackIndex + 1}`;
+      const rawSegments = Array.isArray(track.segments) ? track.segments : [];
+      const segments = rawSegments
+        .filter((segment) => segment && typeof segment === 'object')
+        .map((segment) => {
+          const copy = { ...segment };
+          // Extension SRT has no reliable word timestamps. Do not accidentally
+          // treat an imported mosp item's timestamps as audio-aligned data.
+          delete copy.items;
+          return copy;
+        });
+      ensureStableSegmentIds(segments, `${id}-segment`);
+      return {
+        id,
+        role: 'extension',
+        name: typeof track.name === 'string' && track.name.trim() ? track.name : '扩展字幕',
+        language: typeof track.language === 'string' ? track.language : '',
+        source_name: typeof track.source_name === 'string' ? track.source_name : '',
+        split_mode: MULTI_SUBTITLE_SPLIT_MODES.has(track.split_mode)
+          ? track.split_mode : detectSubtitleSplitMode(segments.map((s) => s.text).join('\n'), track.language),
+        segments,
+      };
+    });
+    const mainIds = new Set((Array.isArray(mainSegments) ? mainSegments : [])
+      .map((segment) => stableId(segment?.id)).filter(Boolean));
+    const extensionIds = new Map(tracks.map((track) => [track.id, new Set(track.segments.map((s) => s.id))]));
+    const bindings = Array.isArray(source.bindings) ? source.bindings : [];
+    const normalizedBindings = bindings.map((rawBinding, index) => {
+      const binding = rawBinding && typeof rawBinding === 'object' ? rawBinding : {};
+      const trackId = stableId(binding.track_id) || tracks[0]?.id || 'extension-1';
+      const trackIds = extensionIds.get(trackId) || new Set();
+      const mainSegmentIds = (Array.isArray(binding.main_segment_ids)
+        ? binding.main_segment_ids : binding.main_segment_id ? [binding.main_segment_id] : [])
+        .map(stableId).filter((id) => mainIds.has(id));
+      const extensionSegmentIds = (Array.isArray(binding.extension_segment_ids)
+        ? binding.extension_segment_ids : binding.extension_segment_id ? [binding.extension_segment_id] : [])
+        .map(stableId).filter((id) => trackIds.has(id));
+      if (!mainSegmentIds.length || !extensionSegmentIds.length) return null;
+      return {
+        id: stableId(binding.id) || `binding-${String(index + 1).padStart(3, '0')}`,
+        track_id: trackId,
+        main_segment_ids: [...new Set(mainSegmentIds)],
+        extension_segment_ids: [...new Set(extensionSegmentIds)],
+        start_offset_ms: Number.isFinite(Number(binding.start_offset_ms))
+          ? Math.round(Number(binding.start_offset_ms)) : 0,
+        end_offset_ms: Number.isFinite(Number(binding.end_offset_ms))
+          ? Math.round(Number(binding.end_offset_ms)) : 0,
+      };
+    }).filter(Boolean);
+    const dedupedBindings = [];
+    const seenMain = new Set();
+    const seenExtension = new Set();
+    normalizedBindings.forEach((binding) => {
+      // MVP editing is one-to-one. Keep the first valid relation when a malformed
+      // imported project contains duplicate endpoints, while retaining arrays for
+      // a future one-to-many binding model.
+      const mainKey = binding.main_segment_ids.join('|');
+      const extensionKey = `${binding.track_id}:${binding.extension_segment_ids.join('|')}`;
+      if (seenMain.has(mainKey) || seenExtension.has(extensionKey)) return;
+      seenMain.add(mainKey);
+      seenExtension.add(extensionKey);
+      dedupedBindings.push(binding);
+    });
+    const normalized = {
+      schema: MULTI_SUBTITLE_SCHEMA,
+      enabled: source.enabled === true,
+      display_mode: MULTI_SUBTITLE_DISPLAY_MODES.has(source.display_mode)
+        ? source.display_mode : 'both',
+      main_split_mode: MULTI_SUBTITLE_SPLIT_MODES.has(source.main_split_mode)
+        ? source.main_split_mode
+        : detectSubtitleSplitMode((Array.isArray(mainSegments) ? mainSegments : [])
+          .map((segment) => segment?.text || '').join('\n')),
+      tracks,
+      bindings: dedupedBindings,
+    };
+    rebuildBindingOffsets(normalized, mainSegments);
+    return normalized;
+  }
+
+  function normalizeMultiSubtitleProject(project) {
+    if (!project || typeof project !== 'object') return project;
+    ensureStableSegmentIds(project.segments, 'main');
+    project.multi_subtitle = normalizeMultiSubtitle(project.multi_subtitle, project.segments);
+    return project;
+  }
+
+  function detectSubtitleSplitMode(text, language = '') {
+    const value = `${String(language || '')} ${String(text || '')}`;
+    return /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/u.test(value)
+      ? 'continuous' : 'word';
+  }
+
+  // 单词型字幕允许在连接两个词的符号处拆分，例如「the story—you」或「state-of-the-art」。
+  // 不包含撇号和句点，避免把 contraction、小数或缩写误判成单词边界。
+  const WORD_SPLIT_CONNECTOR_RE = /^[\p{Pd}\p{Pc}\p{Sm}.,!?;:，。！？；：、…\/／\\&|｜~～·•⋅]+$/u;
+  const WORD_SPLIT_CONTENT_RE = /[\p{L}\p{N}]/u;
+
+  function isWordSplitConnector(character) {
+    return WORD_SPLIT_CONNECTOR_RE.test(String(character || ''));
+  }
+
+  function isWordSplitContent(character) {
+    return WORD_SPLIT_CONTENT_RE.test(String(character || ''));
+  }
+
+  function isLikelyAbbreviationPeriod(characters, index, runEnd) {
+    if (runEnd !== index || characters[index] !== '.') return false;
+    const left = characters[index - 1] || '';
+    const right = characters[runEnd + 1] || '';
+    if (/\d/u.test(left) && /\d/u.test(right)) return true;
+    const previousPrevious = characters[index - 2] || '';
+    const leftIsSingleLetter = isWordSplitContent(left)
+      && !isWordSplitContent(previousPrevious);
+    const rightIsSingleLetter = isWordSplitContent(right)
+      && !isWordSplitContent(characters[runEnd + 2] || '');
+    return leftIsSingleLetter && rightIsSingleLetter;
+  }
+
+  function isWordSplitConnectorBoundary(text, offset) {
+    const value = String(text || '');
+    const left = Array.from(value.slice(0, offset));
+    const right = Array.from(value.slice(offset));
+    return isWordSplitConnector(left[left.length - 1]) || isWordSplitConnector(right[0]);
+  }
+
+  function subtitleSplitOffsets(text, mode = 'word') {
+    const value = String(text || '');
+    const offsets = [];
+    const characters = Array.from(value);
+    if (mode === 'continuous') {
+      let offset = 0;
+      for (let index = 0; index < characters.length - 1; index++) {
+        offset += characters[index].length;
+        // 把连续空白当作一个可替换的断点：跳过空白前的候选，
+        // 保留空白后的候选，这样「A  B」只显示一个「✂️」。
+        if (/\s/u.test(characters[index + 1])) continue;
+        offsets.push(offset);
+      }
+      return offsets;
+    }
+
+    // 单词型在空格组之后，或连接两个词的符号两侧提供断点。
+    // 句号只在后侧提供断点：「quickly.✂️And」；连字符仍可两侧断开。
+    let offset = 0;
+    for (let index = 0; index < characters.length; index++) {
+      if (/\s/u.test(characters[index])) {
+        while (index + 1 < characters.length && /\s/u.test(characters[index + 1])) {
+          index += 1;
+          offset += characters[index].length;
+        }
+        offset += characters[index].length;
+        if (offset > 0 && offset < value.length
+            && value.slice(0, offset).trim() && value.slice(offset).trim()) {
+          offsets.push(offset);
+        }
+        continue;
+      }
+      if (isWordSplitConnector(characters[index])) {
+        let runEnd = index;
+        let runOffset = offset + characters[index].length;
+        while (runEnd + 1 < characters.length
+            && isWordSplitConnector(characters[runEnd + 1])) {
+          runEnd += 1;
+          runOffset += characters[runEnd].length;
+        }
+        const connectsWords = index > 0
+          && runEnd + 1 < characters.length
+          && isWordSplitContent(characters[index - 1])
+          && isWordSplitContent(characters[runEnd + 1]);
+        if (connectsWords && !isLikelyAbbreviationPeriod(characters, index, runEnd)) {
+          if (characters[index] !== '.') offsets.push(offset);
+          offsets.push(runOffset);
+        }
+        offset = runOffset;
+        index = runEnd;
+        continue;
+      }
+      offset += characters[index].length;
+    }
+    return [...new Set(offsets)];
+  }
+
+  function cleanSplitTextParts(text, offset, preserveWordConnector = false) {
+    const value = String(text || '');
+    const safeOffset = Math.max(0, Math.min(value.length, Math.round(Number(offset) || 0)));
+    const trimPattern = preserveWordConnector ? /\s+$/u : /[，。,.!?！？；;：:\s]+$/u;
+    const trimStartPattern = preserveWordConnector ? /^\s+/u : /^[，。,.!?！？；;：:\s]+/u;
+    const left = value.slice(0, safeOffset).replace(trimPattern, '');
+    const right = value.slice(safeOffset).replace(trimStartPattern, '');
+    return { left, right, offset: safeOffset };
+  }
+
+  function splitSubtitleText(text, offset, mode = 'word') {
+    const value = String(text || '');
+    const safeOffset = Math.max(0, Math.min(value.length, Math.round(Number(offset) || 0)));
+    const offsets = subtitleSplitOffsets(value, mode);
+    if (!offsets.includes(safeOffset)) return null;
+    const preserveWordConnector = mode === 'word'
+      && isWordSplitConnectorBoundary(value, safeOffset);
+    const parts = cleanSplitTextParts(value, safeOffset, preserveWordConnector);
+    if (!parts.left || !parts.right) return null;
+    return parts;
+  }
+
+  function nearestSubtitleSplitOffset(text, timeMs, segmentStart, segmentEnd, mode = 'word') {
+    const offsets = subtitleSplitOffsets(text, mode);
+    if (!offsets.length) return null;
+    const start = Number(segmentStart);
+    const end = Number(segmentEnd);
+    const target = Number(timeMs);
+    const ratio = Number.isFinite(target) && Number.isFinite(start) && Number.isFinite(end) && end > start
+      ? Math.max(0, Math.min(1, (target - start) / (end - start))) : 0.5;
+    const desired = ratio * String(text || '').length;
+    return offsets.reduce((best, offset) => Math.abs(offset - desired) < Math.abs(best - desired) ? offset : best, offsets[0]);
+  }
+
+  function bindingForSegment(multiSubtitle, segmentId, side = 'either', trackId = null) {
+    const id = stableId(segmentId);
+    if (!id || !multiSubtitle) return null;
+    return (Array.isArray(multiSubtitle.bindings) ? multiSubtitle.bindings : []).find((binding) => {
+      if (trackId && binding.track_id !== trackId) return false;
+      const inMain = binding.main_segment_ids?.includes(id);
+      const inExtension = binding.extension_segment_ids?.includes(id);
+      return side === 'main' ? inMain : side === 'extension' ? inExtension : inMain || inExtension;
+    }) || null;
+  }
+
+  function buildSubtitleBinding(mainSegment, extensionSegment, trackId, id = null) {
+    const main = mainSegment || {};
+    const extension = extensionSegment || {};
+    return {
+      id: stableId(id) || `binding-${stableId(main.id) || 'main'}-${stableId(extension.id) || 'extension'}`,
+      track_id: stableId(trackId) || 'extension-1',
+      main_segment_ids: stableId(main.id) ? [main.id] : [],
+      extension_segment_ids: stableId(extension.id) ? [extension.id] : [],
+      start_offset_ms: Math.round(Number(extension.start) - Number(main.start)) || 0,
+      end_offset_ms: Math.round(Number(extension.end) - Number(main.end)) || 0,
+    };
+  }
+
+  function rebuildBindingOffsets(multiSubtitle, mainSegments) {
+    if (!multiSubtitle) return multiSubtitle;
+    const mainById = new Map((Array.isArray(mainSegments) ? mainSegments : [])
+      .map((segment) => [stableId(segment?.id), segment]));
+    const trackById = new Map((multiSubtitle.tracks || []).map((track) => [track.id, track]));
+    (multiSubtitle.bindings || []).forEach((binding) => {
+      const main = mainById.get(binding.main_segment_ids?.[0]);
+      const track = trackById.get(binding.track_id);
+      const extension = track?.segments?.find((segment) => segment.id === binding.extension_segment_ids?.[0]);
+      if (!main || !extension) return;
+      binding.start_offset_ms = Math.round(Number(extension.start) - Number(main.start));
+      binding.end_offset_ms = Math.round(Number(extension.end) - Number(main.end));
+    });
+    return multiSubtitle;
+  }
+
+  // 交换主轨与当前唯一扩展轨。MVP 的扩展轨只保存文本/时间/稳定 ID，
+  // 因此从主轨降级到扩展轨时不携带 items、表情包和颜色分组等主轨专属字段。
+  // 绑定关系按端点整体交换，并在新主轨写入后重新计算 offset。
+  function swapMainAndExtensionSubtitle(project, trackId = null) {
+    if (!project || typeof project !== 'object' || !Array.isArray(project.segments)) {
+      return { swapped: false, reason: 'invalid-project' };
+    }
+    ensureStableSegmentIds(project.segments, 'main');
+    const multi = normalizeMultiSubtitle(project.multi_subtitle, project.segments);
+    project.multi_subtitle = multi;
+    const tracks = Array.isArray(multi.tracks) ? multi.tracks : [];
+    if (tracks.length !== 1) return { swapped: false, reason: 'unsupported-track-count' };
+    const track = tracks.find((candidate) => !trackId || candidate.id === trackId);
+    if (!track || !Array.isArray(track.segments)) return { swapped: false, reason: 'missing-track' };
+    if (!project.segments.length || !track.segments.length) return { swapped: false, reason: 'empty-track' };
+
+    const oldMain = cloneJsonValue(project.segments) || [];
+    const oldExtension = cloneJsonValue(track.segments) || [];
+    const oldMainSplitMode = multi.main_split_mode;
+    const oldExtensionSplitMode = track.split_mode;
+    const nextMain = oldExtension.map((segment) => ({ ...segment }));
+    const nextExtension = oldMain.map((segment) => {
+      const copy = {
+        id: stableId(segment.id),
+        start: segment.start,
+        end: segment.end,
+        text: typeof segment.text === 'string' ? segment.text : '',
+      };
+      if (segment._dirty) copy._dirty = true;
+      return copy;
+    });
+
+    project.segments.length = 0;
+    nextMain.forEach((segment) => project.segments.push(segment));
+    track.segments = nextExtension;
+    multi.main_split_mode = oldExtensionSplitMode;
+    track.split_mode = oldMainSplitMode;
+
+    let bindingCount = 0;
+    (multi.bindings || []).forEach((binding) => {
+      if (binding.track_id !== track.id) return;
+      const mainIds = binding.main_segment_ids;
+      binding.main_segment_ids = [...(binding.extension_segment_ids || [])];
+      binding.extension_segment_ids = [...(mainIds || [])];
+      bindingCount++;
+    });
+    rebuildBindingOffsets(multi, project.segments);
+    return {
+      swapped: true,
+      trackId: track.id,
+      mainCount: project.segments.length,
+      extensionCount: track.segments.length,
+      bindingCount,
+    };
+  }
+
+  function removeSubtitleBindings(multiSubtitle, predicate) {
+    if (!multiSubtitle || !Array.isArray(multiSubtitle.bindings)) return [];
+    const removed = [];
+    multiSubtitle.bindings = multiSubtitle.bindings.filter((binding) => {
+      if (!predicate(binding)) return true;
+      removed.push(binding);
+      return false;
+    });
+    return removed;
+  }
+
+  function matchSubtitleSegments(mainSegments, extensionSegments, toleranceMs = MULTI_SUBTITLE_TOLERANCE_MS) {
+    const main = Array.isArray(mainSegments) ? mainSegments : [];
+    const extension = Array.isArray(extensionSegments) ? extensionSegments : [];
+    const tolerance = Math.max(0, Math.round(Number(toleranceMs) || MULTI_SUBTITLE_TOLERANCE_MS));
+    const candidates = [];
+    const byExtension = extension.map(() => []);
+    const byMain = main.map(() => []);
+    extension.forEach((candidateExtension, extensionIndex) => {
+      main.forEach((candidateMain, mainIndex) => {
+        const startDiff = Math.abs(Number(candidateExtension?.start) - Number(candidateMain?.start));
+        const endDiff = Math.abs(Number(candidateExtension?.end) - Number(candidateMain?.end));
+        const overlaps = Number(candidateExtension?.start) <= Number(candidateMain?.end)
+          && Number(candidateExtension?.end) >= Number(candidateMain?.start);
+        if (!overlaps || startDiff > tolerance || endDiff > tolerance) return;
+        const candidate = { mainIndex, extensionIndex, startDiff, endDiff, cost: startDiff + endDiff };
+        candidates.push(candidate);
+        byExtension[extensionIndex].push(candidate);
+        byMain[mainIndex].push(candidate);
+      });
+    });
+    candidates.sort((left, right) => left.cost - right.cost || left.startDiff - right.startDiff
+      || left.extensionIndex - right.extensionIndex || left.mainIndex - right.mainIndex);
+    const usedMain = new Set();
+    const usedExtension = new Set();
+    const matches = [];
+    candidates.forEach((candidate) => {
+      if (usedMain.has(candidate.mainIndex) || usedExtension.has(candidate.extensionIndex)) return;
+      usedMain.add(candidate.mainIndex);
+      usedExtension.add(candidate.extensionIndex);
+      matches.push(candidate);
+    });
+    const conflictExtensions = byExtension.filter((items) => items.length > 1).length;
+    const conflictMains = byMain.filter((items) => items.length > 1).length;
+    return {
+      matches,
+      unmatchedMain: main.map((_, index) => index).filter((index) => !usedMain.has(index)),
+      unmatchedExtension: extension.map((_, index) => index).filter((index) => !usedExtension.has(index)),
+      candidates,
+      conflicts: Math.max(conflictExtensions, conflictMains),
+      tolerance_ms: tolerance,
+    };
+  }
+
+  function buildMultiDisplayRows(mainSegments, extensionSegments, bindings = []) {
+    const main = Array.isArray(mainSegments) ? mainSegments : [];
+    const extension = Array.isArray(extensionSegments) ? extensionSegments : [];
+    const extensionById = new Map(extension.map((segment, index) => [stableId(segment?.id), index]));
+    const mainToExtension = new Map();
+    const extensionBound = new Set();
+    bindings.forEach((binding) => {
+      const mainId = binding.main_segment_ids?.[0];
+      const extensionId = binding.extension_segment_ids?.[0];
+      const extensionIndex = extensionById.get(extensionId);
+      if (!Number.isInteger(extensionIndex) || mainToExtension.has(mainId)) return;
+      mainToExtension.set(mainId, extensionIndex);
+      extensionBound.add(extensionIndex);
+    });
+    const rows = [];
+    let extensionCursor = 0;
+    main.forEach((segment, mainIndex) => {
+      while (extensionCursor < extension.length && !extensionBound.has(extensionCursor)
+          && Number(extension[extensionCursor]?.start) <= Number(segment?.start)) {
+        rows.push({ mainIndex: null, extensionIndex: extensionCursor++ });
+      }
+      rows.push({ mainIndex, extensionIndex: mainToExtension.get(segment.id) ?? null });
+    });
+    while (extensionCursor < extension.length) {
+      if (!extensionBound.has(extensionCursor)) rows.push({ mainIndex: null, extensionIndex: extensionCursor });
+      extensionCursor++;
+    }
+    return rows;
   }
 
   // 合并选区只有在每条字幕都指向同一个有效 group head 时才继承该 group。
@@ -917,6 +1389,7 @@
   window.AsrEditorUtils = {
     buildReplacementPreview,
     countTextUnits,
+    countSubtitleUnits,
     cueMetrics,
     joinSegmentTexts,
     subtitleTextLength,
@@ -931,6 +1404,28 @@
     findCueNavigationTarget,
     findCueSelectionExtensionTarget,
     resolveMergedGroupInheritance,
+    MULTI_SUBTITLE_SCHEMA,
+    MULTI_SUBTITLE_TOLERANCE_MS,
+    MULTI_SUBTITLE_DISPLAY_MODES,
+    MULTI_SUBTITLE_SPLIT_MODES,
+    ensureStableSegmentIds,
+    uniqueStableSegmentId,
+    normalizeMultiSubtitle,
+    normalizeMultiSubtitleProject,
+    detectSubtitleSplitMode,
+    isWordSplitConnector,
+    subtitleSplitOffsets,
+    cleanSplitTextParts,
+    splitSubtitleText,
+    nearestSubtitleSplitOffset,
+    hasUsableSplitTimestamps,
+    bindingForSegment,
+    buildSubtitleBinding,
+    rebuildBindingOffsets,
+    swapMainAndExtensionSubtitle,
+    removeSubtitleBindings,
+    matchSubtitleSegments,
+    buildMultiDisplayRows,
     getSrtExportFirstIndex,
     getSrtExportOffset,
     effectiveColorName,
