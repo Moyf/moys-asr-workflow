@@ -1261,10 +1261,11 @@ wheels = [
 
 [[package]]
 name = "moys-asr-workflow"
-version = "1.4.0-beta.2"
+version = "1.4.0b2"
 source = { virtual = "." }
 dependencies = [
     { name = "jieba" },
+    { name = "numpy" },
     { name = "pywebview" },
     { name = "requests" },
 ]
@@ -1292,6 +1293,7 @@ requires-dist = [
     { name = "funasr", marker = "extra == 'local'", specifier = ">=1.2.6" },
     { name = "hf-xet", marker = "extra == 'local'", specifier = ">=1.5" },
     { name = "jieba", specifier = ">=0.42" },
+    { name = "numpy", specifier = ">=2.2,<2.5" },
     { name = "pywebview", specifier = ">=6.2.1" },
     { name = "qwen-asr", marker = "extra == 'local'", specifier = ">=0.0.6" },
     { name = "requests", specifier = ">=2.28" },
