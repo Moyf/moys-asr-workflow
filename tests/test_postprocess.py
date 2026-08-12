@@ -418,6 +418,63 @@ class PostprocessTests(unittest.TestCase):
         self.assertIn("任务：只修正品牌名，不要翻译。", prompts[0])
         self.assertIn("用户附加要求：保留口语表达。", prompts[0])
 
+    def test_llm_translation_preserves_source_boundaries(self) -> None:
+        prompts: list[str] = []
+
+        def complete(system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
+            prompts.append(system_prompt)
+            return {
+                "groups": [
+                    {"id": cues[0]["id"], "text": "The wine is delicious."},
+                    {"id": cues[1]["id"], "text": "The next sentence."},
+                ]
+            }
+
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.BOTH,
+                operation="translate_en",
+                custom_prompt="",
+            ),
+            complete=complete,
+        )
+
+        if result.project_path is None or result.srt_path is None:
+            self.fail("both output mode must create project and SRT files")
+        source_segments = project_segments(read_project(self.project_path))
+        translated_segments = project_segments(read_project(result.project_path))
+        self.assertEqual(len(translated_segments), len(source_segments))
+        self.assertEqual(
+            [(segment["start"], segment["end"]) for segment in translated_segments],
+            [(segment["start"], segment["end"]) for segment in source_segments],
+        )
+        self.assertEqual(
+            [segment["text"] for segment in translated_segments],
+            ["The wine is delicious.", "The next sentence."],
+        )
+        self.assertNotIn("items", translated_segments[0])
+        self.assertEqual(translated_segments[0]["speaker"], "speaker-1")
+        self.assertEqual(translated_segments[1]["color"], source_segments[1]["color"])
+        self.assertIn("每组只能包含一个 source ID", prompts[0])
+
+    def test_llm_translation_rejects_regrouping(self) -> None:
+        def complete(_system_prompt: str, _cues: list[dict[str, str]]) -> JsonDict:
+            return {"groups": [{"source_ids": ["c0001", "c0002"], "text": "Merged translation"}]}
+
+        with self.assertRaisesRegex(ValueError, "translation output must preserve"):
+            _ = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.JSON,
+                    operation="translate_zh",
+                    custom_prompt="",
+                ),
+                complete=complete,
+            )
+
     def test_llm_custom_operation_has_no_preset_task_prompt(self) -> None:
         prompts: list[str] = []
 

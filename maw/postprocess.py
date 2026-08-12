@@ -50,8 +50,8 @@ LlmStatus = Callable[[str, Mapping[str, int]], None]
 PROMPTS: Final[dict[str, str]] = {
     "proofread": "校对字幕中的错别字、漏字和明显识别错误，不扩写事实。",
     "resegment": "重新整理句子的字幕拆分。可以合并或拆分连续字幕，但不得删除内容。",
-    "translate_en": "翻译为自然英文。允许在相邻字幕间调整语序，使每句可读。",
-    "translate_zh": "翻译为自然中文。允许在相邻字幕间调整语序，使每句可读。",
+    "translate_en": "翻译为自然英文。必须保持原字幕的段数、顺序和每段时间范围，一条输入字幕只能对应一条输出字幕；不得合并、拆分或重排相邻字幕。",
+    "translate_zh": "翻译为自然中文。必须保持原字幕的段数、顺序和每段时间范围，一条输入字幕只能对应一条输出字幕；不得合并、拆分或重排相邻字幕。",
     "custom": "按照用户指令处理字幕文本。",
 }
 
@@ -59,6 +59,7 @@ SAFE_SCALARS: Final = ("speaker", "disabled")
 VISUAL_FIELDS: Final = ("sticker", "sticker_ref", "color", "color_ref")
 MAX_LLM_CUES_PER_REQUEST: Final = 300
 TIMING_FIELDS: Final = ("start", "end", "text", "items")
+ONE_TO_ONE_TRANSLATION_OPERATIONS: Final = frozenset({"translate_en", "translate_zh"})
 
 
 def run_fixed_replacement(request: ReplacementRequest) -> SubtitleArtifact:
@@ -91,7 +92,8 @@ def run_llm_postprocess(
     project, source_project, source_srt = _load_input(request.project_path, request.srt_path)
     operation_prompt = PROMPTS.get(request.operation, PROMPTS["custom"]) if request.task_prompt is None else request.task_prompt.strip()
     custom = request.custom_prompt.strip()
-    system_prompt = _protocol_prompt(operation_prompt, custom)
+    strict_translation = request.operation in ONE_TO_ONE_TRANSLATION_OPERATIONS
+    system_prompt = _protocol_prompt(operation_prompt, custom, strict_translation=strict_translation)
     cues = _llm_cues(project)
     batches = [
         cues[index : index + MAX_LLM_CUES_PER_REQUEST]
@@ -105,7 +107,7 @@ def run_llm_postprocess(
         _notify_status(on_status, "toolbox_status_llm_batch_done", current=index, total=len(batches))
     _notify_status(on_status, "toolbox_status_reorganizing")
     response = _combine_llm_responses(responses)
-    processed, warnings = _apply_llm_groups_with_warnings(project, response)
+    processed, warnings = _apply_llm_groups_with_warnings(project, response, strict_translation=strict_translation)
     if len(batches) > 1:
         warnings = (f"字幕较长，已分批处理（共 {len(batches)} 批）。",) + warnings
     _notify_status(on_status, "toolbox_status_writing")
@@ -125,6 +127,8 @@ def apply_llm_groups(project: JsonDict, response: Mapping[str, JsonValue]) -> Js
 def _apply_llm_groups_with_warnings(
     project: JsonDict,
     response: Mapping[str, JsonValue],
+    *,
+    strict_translation: bool = False,
 ) -> tuple[JsonDict, tuple[str, ...]]:
     source_segments = _segments(project)
     raw_groups = response.get("groups")
@@ -147,6 +151,11 @@ def _apply_llm_groups_with_warnings(
             raise ValueError("LLM groups cannot repeat a source ID inside one group")
         parsed.append((source_ids, text.strip()))
     expected = [f"c{index:04d}" for index in range(1, len(source_segments) + 1)]
+    if strict_translation and (
+        len(parsed) != len(expected)
+        or any(source_ids != (expected_id,) for (source_ids, _text), expected_id in zip(parsed, expected))
+    ):
+        raise ValueError("translation output must preserve one source cue per group in order")
     flattened = [cue_id for source_ids, _text in parsed for cue_id in source_ids]
     collapsed = [cue_id for index, cue_id in enumerate(flattened) if index == 0 or cue_id != flattened[index - 1]]
     if collapsed != expected:
@@ -242,13 +251,18 @@ def _combine_llm_responses(responses: Sequence[Mapping[str, JsonValue]]) -> Json
     return {"groups": groups}
 
 
-def _protocol_prompt(operation_prompt: str, custom_prompt: str) -> str:
+def _protocol_prompt(operation_prompt: str, custom_prompt: str, *, strict_translation: bool = False) -> str:
     task = f"\n任务：{operation_prompt}" if operation_prompt else ""
     custom = f"\n用户附加要求：{custom_prompt}" if custom_prompt else ""
+    grouping = (
+        "source_ids 必须按输入顺序完整覆盖；每组只能包含一个 source ID，且每个 ID 只能出现一次；不得合并、拆分或重排相邻字幕。"
+        if strict_translation
+        else "source_ids 必须按输入顺序完整覆盖；合并连续字幕时放入同一组，拆分一条字幕时可让连续多组重复同一个 ID。"
+    )
     return (
         "你处理的是字幕，不是普通文章。输入只有按顺序排列的不透明 cue ID 与文字。"
         "不要猜测、输出或修改时间。返回严格 JSON：{\"groups\":[{\"source_ids\":[\"c0001\"],\"text\":\"...\"}]}。"
-        "source_ids 必须按输入顺序完整覆盖；合并连续字幕时放入同一组，拆分一条字幕时可让连续多组重复同一个 ID。"
+        f"{grouping}"
         "不得重排 ID、跳过 ID、添加未知 ID 或返回空文字。"
         f"{task}{custom}"
     )
