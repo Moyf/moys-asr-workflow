@@ -13904,10 +13904,12 @@ function findActive(tMs) {
     const mid = (lo + hi) >> 1;
     const s = DATA.segments[mid];
     if (s.start <= tMs) {
-      if (s.end >= tMs || mid === DATA.segments.length - 1 ||
+      // 相邻字幕共用边界时，边界时刻属于后一条字幕；否则点击后一条的起点
+      // 后，播放指针仍会把前一条标记为 active。
+      if (s.end > tMs || mid === DATA.segments.length - 1 ||
           DATA.segments[mid + 1].start > tMs) {
         ans = mid;
-        if (s.end >= tMs) return mid;
+        if (s.end > tMs) return mid;
       }
       lo = mid + 1;
     } else hi = mid - 1;
