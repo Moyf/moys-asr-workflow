@@ -106,6 +106,7 @@
   const ROW_PRESETS = [5, 10, 20, 30];
   const ROW_HEIGHT_PRESETS = [64, 80, 96, 120, 144, 168];
   const ROW_GAP = 10;
+  const SPLIT_FLASH_DURATION_MS = 720;
   // 多行波形保留视口前后几行，字幕快捷键跨行时可以直接复用已绘制的行。
   // 行本身仍按可视区增量创建，不会把整段长媒体一次性放进 DOM。
   const MULTI_ROW_BUFFER = 4;
@@ -1085,7 +1086,6 @@
         rowTop: document.getElementById('layout-resizer-h1'),
         rowMiddle: document.getElementById('layout-resizer-h2'),
       };
-
       this._onPlayerTime = () => this.updatePlayback();
       this._onResize = () => this.scheduleRender();
       this.bindControls();
@@ -1160,6 +1160,18 @@
       });
       this.bindDivider();
       this.bindLayoutResizers();
+    }
+
+    showPointerLine(event, row, marker) {
+      if (!row || !marker) return;
+      const rect = row.getBoundingClientRect();
+      const left = clamp(event.clientX - rect.left, 0, rect.width);
+      marker.style.left = `${left}px`;
+      marker.hidden = false;
+    }
+
+    hidePointerLine(marker) {
+      if (marker) marker.hidden = true;
     }
 
     bindDivider() {
@@ -2245,6 +2257,17 @@
       playhead.hidden = true;
       row.appendChild(playhead);
 
+      const pointerLine = document.createElement('div');
+      pointerLine.className = 'waveform-pointer-line';
+      pointerLine.hidden = true;
+      pointerLine.setAttribute('aria-hidden', 'true');
+      row.appendChild(pointerLine);
+
+      const splitFlash = document.createElement('div');
+      splitFlash.className = 'waveform-split-flash';
+      splitFlash.hidden = true;
+      row.appendChild(splitFlash);
+
       this.appendGapBlocks(row, startMs, endMs);
       this.appendCueBlocks(row, startMs, endMs, groupBadges || computeGroupBadges(this.options.getSegments('main')));
 
@@ -2280,6 +2303,9 @@
         if (this.settings.dragPlayhead) this.beginPlayheadDrag(event, row, geometry);
         this.seekFromPointer(event, row, false, geometry);
       });
+      row.addEventListener('pointerenter', (event) => this.showPointerLine(event, row, pointerLine));
+      row.addEventListener('pointermove', (event) => this.showPointerLine(event, row, pointerLine));
+      row.addEventListener('pointerleave', () => this.hidePointerLine(pointerLine));
       row.addEventListener('auxclick', (event) => {
         if (event.button === 1 && gapOperationMode === 'middle_drag') event.preventDefault();
       });
@@ -2786,6 +2812,37 @@
       const startMs = geometry?.startMs ?? Number(row.dataset.startMs);
       const endMs = geometry?.endMs ?? Number(row.dataset.endMs);
       return startMs + ratio * (endMs - startMs);
+    }
+
+    // 在波形指针拆分成功后短暂显示黄色定位光条，帮助用户确认实际操作位置。
+    // 光条只覆盖波形行，不参与鼠标命中，也不影响红色播放头。
+    flashSplitAtTime(timeMs) {
+      if (!Number.isFinite(timeMs)) return false;
+      const rows = [...this.content.querySelectorAll('.waveform-row')];
+      const row = rows.find((candidate) => {
+        const startMs = Number(candidate.dataset.startMs);
+        const endMs = Number(candidate.dataset.endMs);
+        return timeMs >= startMs && timeMs <= endMs;
+      });
+      if (!row) return false;
+
+      const startMs = Number(row.dataset.startMs);
+      const endMs = Number(row.dataset.endMs);
+      const marker = row.querySelector('.waveform-split-flash');
+      if (!marker) return false;
+      if (marker._hideTimer) window.clearTimeout(marker._hideTimer);
+      marker.hidden = false;
+      marker.style.left = `${((timeMs - startMs) / Math.max(1, endMs - startMs)) * 100}%`;
+      marker.classList.remove('is-active');
+      // 强制重新计算布局，让连续两次 B 也能重启动画。
+      void marker.offsetWidth;
+      marker.classList.add('is-active');
+      marker._hideTimer = window.setTimeout(() => {
+        marker.classList.remove('is-active');
+        marker.hidden = true;
+        marker._hideTimer = 0;
+      }, SPLIT_FLASH_DURATION_MS);
+      return true;
     }
 
     // 屏幕坐标 -> 波形时间：命中某个波形行时返回该行内的时间（毫秒），否则返回 null。

@@ -308,11 +308,54 @@ test('B splits at the pointer inside the cue list and at the playhead outside it
     return { x: rect.x, y: rect.y + rect.height / 2 };
   });
   await page.mouse.move(splitPoint.x, splitPoint.y);
+  await expect(page.locator('.cue-split-preview')).toHaveCount(1);
+  const previewBox = await page.locator('.cue-split-preview').boundingBox();
+  expect(previewBox).not.toBeNull();
+  expect(Math.abs(previewBox.x + previewBox.width / 2 - splitPoint.x)).toBeLessThan(1.5);
   await page.keyboard.press('b');
 
   await expect(page.locator('.cue')).toHaveCount(7);
   await expect(page.locator('.cue .text').nth(0)).toHaveText('Alpha');
   await expect(page.locator('.cue .text').nth(1)).toHaveText('Bravo');
+  await expect(page.locator('.cue-split-flash.is-active')).toHaveCount(1);
+  await expect(page.locator('.cue-split-flash.is-active')).toHaveCount(0);
+});
+
+test('B flashes a yellow marker after splitting at the waveform pointer without a selection', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => clearSelection());
+  await expect(page.locator('.cue.selected')).toHaveCount(0);
+
+  const waveformCue = page.locator('.waveform-cue-block[data-idx="0"]').first();
+  await waveformCue.scrollIntoViewIfNeeded();
+  const box = await waveformCue.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.keyboard.press('b');
+
+  await expect(page.locator('.waveform-split-flash.is-active')).toHaveCount(1);
+  await expect(page.locator('.waveform-split-flash.is-active')).toHaveCount(0);
+});
+
+test('waveform hover mirrors the pointer position in the row', async ({ page }) => {
+  await page.goto(server.url);
+  const row = page.locator('.waveform-row').first();
+  await row.scrollIntoViewIfNeeded();
+
+  const rowBox = await row.boundingBox();
+  expect(rowBox).not.toBeNull();
+
+  const pointerX = rowBox.x + rowBox.width * 0.65;
+  await page.mouse.move(pointerX, rowBox.y + rowBox.height / 2);
+
+  const indicator = row.locator('.waveform-pointer-line');
+  await expect(indicator).toBeVisible();
+  const indicatorBox = await indicator.boundingBox();
+  expect(indicatorBox).not.toBeNull();
+  expect(Math.abs(indicatorBox.x + indicatorBox.width / 2 - pointerX)).toBeLessThan(1.5);
+
+  await page.locator('#media-controls').hover();
+  await expect(indicator).toBeHidden();
 });
 
 test('space owns playback in media controls but remains text input in the cue editor', async ({ page }) => {

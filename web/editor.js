@@ -2523,6 +2523,7 @@ function cancelPendingExtensionBinding(message = '已取消绑定扩展字幕') 
 }
 
 function clearSelection({ silent = false, commitCuePanel = true } = {}) {
+  hideCueSplitPreview();
   cancelPendingExtensionBinding();
   selectedIdxs.forEach(i => {
     const el = container.querySelector(`.cue[data-idx="${i}"]`);
@@ -2659,6 +2660,7 @@ function selectExtensionRange(a, b) {
 }
 function toggleSel(idx) {
   if (isHiddenDisabled(idx)) return;  // 隐藏禁用项不参与选择
+  hideCueSplitPreview();
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
   if (selectedIdxs.has(idx)) {
     selectedIdxs.delete(idx);
@@ -2674,6 +2676,7 @@ function toggleSel(idx) {
   setCurrentCuePanelIndex(selectedIdxs.has(idx) ? idx : (selectedIdxs.values().next().value ?? -1));
 }
 function selectRange(a, b) {
+  hideCueSplitPreview();
   const lo = Math.min(a, b), hi = Math.max(a, b);
   for (let i = lo; i <= hi; i++) {
     if (isHiddenDisabled(i)) continue;  // 跳过隐藏禁用项
@@ -2690,6 +2693,7 @@ function selectRange(a, b) {
   setCurrentCuePanelIndex(selectedIdxs.has(b) ? b : (selectedIdxs.values().next().value ?? -1));
 }
 function selectOnly(idx, syncPair = true) {
+  hideCueSplitPreview();
   // 这是键盘导航的热路径：clearSelection() 会先把面板切到空状态，
   // 再由下面的 setCurrentCuePanelIndex() 切回目标，导致一次按键触发
   // 两次面板刷新和两次波形选区刷新。先提交一次待编辑内容，再批量
@@ -2708,6 +2712,7 @@ function selectOnly(idx, syncPair = true) {
 }
 function addToSelection(idx) {
   if (isHiddenDisabled(idx) || selectedIdxs.has(idx)) return;
+  hideCueSplitPreview();
   selectedIdxs.add(idx);
   syncBoundSelection('main', idx);
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
@@ -3828,7 +3833,8 @@ function setEditingCaretOffset(offset) {
   return true;
 }
 
-function caretCharFromPoint(root, x, y) {
+function caretInfoFromPoint(root, x, y) {
+  if (!root) return null;
   let range = null;
   if (document.caretRangeFromPoint) range = document.caretRangeFromPoint(x, y);
   else if (document.caretPositionFromPoint) {
@@ -3839,7 +3845,11 @@ function caretCharFromPoint(root, x, y) {
   const pre = document.createRange();
   pre.selectNodeContents(root);
   pre.setEnd(range.startContainer, range.startOffset);
-  return pre.toString().length;
+  return { offset: pre.toString().length, rect: range.getBoundingClientRect() };
+}
+
+function caretCharFromPoint(root, x, y) {
+  return caretInfoFromPoint(root, x, y)?.offset ?? null;
 }
 
 function finishEdit(save) {
@@ -4686,10 +4696,10 @@ function confirmLinkedSplit() {
 }
 
 function splitAtCursor() {
-  if (!editingState) return;
+  if (!editingState) return false;
   const { el, idx, textEl } = editingState;
   const sel = window.getSelection();
-  if (!sel.rangeCount) return;
+  if (!sel.rangeCount) return false;
   const range = sel.getRangeAt(0);
   const preRange = range.cloneRange();
   preRange.selectNodeContents(textEl);
@@ -4709,7 +4719,7 @@ function splitAtCursor() {
 
   if (cursorOffset <= 0 || cursorOffset >= fullText.length) {
     flashHint('光标必须在词与词之间才能拆分');
-    return;
+    return false;
   }
 
   let leftText = fullText.slice(0, cursorOffset)
@@ -4718,13 +4728,13 @@ function splitAtCursor() {
     .replace(/^[，。,. \t]+/, '').replace(/[ \t]+$/, '');
   if (!leftText || !rightText) {
     flashHint('拆分后任一段为空，已取消');
-    return;
+    return false;
   }
 
   // 拆分后任一侧都不能短于 100ms（与波形分割工具同规则），否则拒绝拆分。
   if (seg.end - seg.start < 200) {
     flashHint('字幕时长不足 200ms，无法拆分');
-    return;
+    return false;
   }
 
   const rightStartChar = fullText.length - rightText.length;
@@ -4814,6 +4824,7 @@ function splitAtCursor() {
   lastClickedIdx = idx + 1;
   triggerNinjaSplitFeedback();
   update();
+  return true;
 }
 
 function splitItemsAtChar(items, cursorChar) {
@@ -4832,23 +4843,50 @@ function splitItemsAtChar(items, cursorChar) {
   return { leftItems: items.slice(), rightItems: [] };
 }
 
+function flashCueSplitAt(idx, clientX) {
+  if (!Number.isFinite(clientX)) return false;
+  const cue = container.querySelector(`.cue[data-idx="${idx}"]`);
+  if (!cue) return false;
+  const rect = cue.getBoundingClientRect();
+  const marker = document.createElement('span');
+  marker.className = 'cue-split-flash';
+  // .cue 的绝对定位子元素以 padding box 为坐标原点；rect.left 是 border box，
+  // 还要扣掉左边的 3px 状态边框，否则光条会向右压进字形。
+  marker.style.left = `${Math.max(0, Math.min(rect.width, clientX - rect.left - cue.clientLeft))}px`;
+  cue.appendChild(marker);
+  // 先触发布局，再加动画类，确保连续拆分时每个光条都能独立播放。
+  void marker.offsetWidth;
+  marker.classList.add('is-active');
+  let removed = false;
+  let timer = 0;
+  const cleanup = () => {
+    if (removed) return;
+    removed = true;
+    if (timer) window.clearTimeout(timer);
+    marker.remove();
+  };
+  marker.addEventListener('animationend', cleanup, { once: true });
+  timer = window.setTimeout(cleanup, 800);
+  return true;
+}
+
 function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
-  if (!el) return;
+  if (!el) return false;
   if (multiSubtitleVisible() && bindingForMainIndex(idx)) {
     notifyMainSplitTimestampFallback(DATA.segments[idx]);
     pendingLinkedSplit = linkedSplitState(idx, Number.isFinite(waveformTimeMs)
       ? { timeMs: waveformTimeMs } : {});
-    if (!pendingLinkedSplit) return;
+    if (!pendingLinkedSplit) return false;
     multiSubtitleSplitModal?.classList.add('show');
     renderLinkedSplitText(pendingLinkedSplit);
-    return;
+    return false;
   }
   if (Number.isFinite(waveformTimeMs)) {
     if (!shouldUseMainSplitTimestamps(DATA.segments[idx])) {
       notifyMainSplitTimestampFallback(DATA.segments[idx]);
       openMainWaveformSplitModal(idx, waveformTimeMs);
-      return;
+      return false;
     }
     const segment = DATA.segments[idx];
     const cursorOffset = splitOffsetNearTime(
@@ -4858,20 +4896,25 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
     );
     if (!Number.isInteger(cursorOffset)) {
       flashHint('这条字幕没有可拆分的文字边界');
-      return;
+      return false;
     }
     startEdit(el, idx);
     if (!setEditingCaretOffset(cursorOffset)) {
       finishEdit(false);
       flashHint('无法定位波形中的拆分位置');
-      return;
+      return false;
     }
-    splitAtCursor();
-    return;
+    const didSplit = splitAtCursor();
+    if (didSplit) waveformEditor?.flashSplitAtTime?.(waveformTimeMs);
+    return didSplit;
   }
   // 字幕列表：在指定位置进入编辑，光标定位到 (x,y) 后立即拆分
+  const caretInfo = caretInfoFromPoint(el.querySelector('.text'), x, y);
+  const markerX = Number.isFinite(caretInfo?.rect?.left) ? caretInfo.rect.left : x;
   startEdit(el, idx, x, y);
-  splitAtCursor();
+  const didSplit = splitAtCursor();
+  if (didSplit) flashCueSplitAt(idx, markerX);
+  return didSplit;
 }
 
 // === 合并 ===
@@ -5402,6 +5445,9 @@ let cueListPointer = null;
 // lastPointerPos 提供，两者独立更新、互不替代。
 let lastEditRegion = null;
 let lastPointerPos = null;
+let cueSplitPreviewEl = null;
+let cueSplitPreviewFrame = 0;
+let cueSplitPreviewRequest = null;
 
 // 等待绑定时，点击主/扩展字幕本身交给各自的选择事件处理；其它空白或
 // 非字幕区域视为取消，避免用户进入等待状态后无从退出。
@@ -5419,6 +5465,55 @@ document.addEventListener('pointerdown', (e) => {
 document.addEventListener('pointermove', (e) => {
   lastPointerPos = { x: e.clientX, y: e.clientY };
 }, true);
+
+function hideCueSplitPreview() {
+  if (cueSplitPreviewFrame) {
+    cancelAnimationFrame(cueSplitPreviewFrame);
+    cueSplitPreviewFrame = 0;
+  }
+  cueSplitPreviewRequest = null;
+  cueSplitPreviewEl?.remove();
+  cueSplitPreviewEl = null;
+}
+
+function scheduleCueSplitPreview(idx, clientX, clientY) {
+  cueSplitPreviewRequest = { idx, clientX, clientY };
+  if (cueSplitPreviewFrame) return;
+  cueSplitPreviewFrame = requestAnimationFrame(() => {
+    cueSplitPreviewFrame = 0;
+    const request = cueSplitPreviewRequest;
+    cueSplitPreviewRequest = null;
+    if (!request || selectedIdxs.size !== 1 || !selectedIdxs.has(request.idx)) {
+      hideCueSplitPreview();
+      return;
+    }
+    const cue = container.querySelector(`.cue[data-idx="${request.idx}"]`);
+    const segment = DATA.segments[request.idx];
+    const textEl = cue?.querySelector('.text');
+    const text = String(segment?.text || '');
+    if (!cue || !segment || !textEl || text.length < 2 || segment.end - segment.start < 200) {
+      hideCueSplitPreview();
+      return;
+    }
+    const info = caretInfoFromPoint(textEl, request.clientX, request.clientY);
+    if (!info || info.offset <= 0 || info.offset >= text.length) {
+      hideCueSplitPreview();
+      return;
+    }
+    const cueRect = cue.getBoundingClientRect();
+    // 光条挂在 .cue 上，而 caret 的坐标是 viewport 坐标；扣除 .cue 的左边框，
+    // 才能把 marker 的中心放回真正的字符边界。
+    const left = Math.max(0, Math.min(cueRect.width, info.rect.left - cueRect.left - cue.clientLeft));
+    if (!cueSplitPreviewEl || cueSplitPreviewEl.parentElement !== cue) {
+      cueSplitPreviewEl?.remove();
+      cueSplitPreviewEl = document.createElement('span');
+      cueSplitPreviewEl.className = 'cue-split-preview';
+      cueSplitPreviewEl.setAttribute('aria-hidden', 'true');
+      cue.appendChild(cueSplitPreviewEl);
+    }
+    cueSplitPreviewEl.style.left = `${left}px`;
+  });
+}
 
 function hoveredSelectedCueContext() {
   if (!cueListPointer || !selectedIdxs.has(cueListPointer.idx)) return null;
@@ -5496,9 +5591,13 @@ function bindCueEvents(el, idx) {
   });
   el.addEventListener('pointermove', (e) => {
     cueListPointer = { idx, x: e.clientX, y: e.clientY };
+    scheduleCueSplitPreview(idx, e.clientX, e.clientY);
   });
   el.addEventListener('pointerleave', () => {
-    if (cueListPointer?.idx === idx) cueListPointer = null;
+    if (cueListPointer?.idx === idx) {
+      cueListPointer = null;
+      hideCueSplitPreview();
+    }
   });
 
   el.addEventListener('click', (e) => {
