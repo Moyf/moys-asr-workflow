@@ -136,6 +136,9 @@
     --wave-badge-sticker:   #b8d9ff;
     --wave-playhead:        #ff5d67;
     --wave-playhead-glow:   rgba(255, 70, 82, 0.72);
+    --wave-pointer-line:    rgba(205, 214, 223, 0.78);
+    --wave-split-flash:     #ffd43b;
+    --wave-split-flash-glow: rgba(255, 212, 59, 0.85);
     --wave-disabled-text:   #89939b;
     --wave-disabled-border: #66717a;
     --wave-disabled-a:      rgba(84, 94, 104, 0.68);
@@ -328,6 +331,9 @@
     --wave-badge-sticker:   #2f6bb8;
     --wave-playhead:        #e63946;
     --wave-playhead-glow:   rgba(230, 57, 70, 0.55);
+    --wave-pointer-line:    rgba(108, 118, 132, 0.72);
+    --wave-split-flash:     #c48700;
+    --wave-split-flash-glow: rgba(213, 154, 0, 0.72);
     --wave-disabled-text:   #8a93a3;
     --wave-disabled-border: #c2c8d2;
     --wave-disabled-a:      rgba(120, 128, 140, 0.55);
@@ -1234,12 +1240,39 @@
     border-radius: 0;
   }
   .cue {
+    position: relative;
     display: flex; align-items: flex-start; gap: 8px;
     padding: 6px 10px; margin: 2px 0; border-radius: var(--radius-sm);
     cursor: pointer; font-size: 14px; line-height: 1.5;
     border-left: 3px solid transparent;
     transition: background var(--t-fast), border-color var(--t-fast);
     user-select: none;
+  }
+  .cue-split-flash {
+    position: absolute;
+    z-index: 3;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--wave-split-flash, #ffd43b);
+    box-shadow: 0 0 8px var(--wave-split-flash-glow, rgba(255, 212, 59, 0.85));
+    pointer-events: none;
+    transform: translateX(-1.5px);
+    opacity: 0;
+  }
+  .cue-split-flash.is-active {
+    animation: split-flash-once 720ms ease-out both;
+  }
+  .cue-split-preview {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    border-left: 2px dashed var(--wave-split-flash, #ffd43b);
+    opacity: .72;
+    pointer-events: none;
+    transform: translateX(-1px);
   }
   .cue.has-color { background: color-mix(in srgb, var(--color-bar, #777) 30%, transparent); }
   .cue.has-color:hover { background: color-mix(in srgb, var(--color-bar, #777) 30%, var(--bg-raised)); }
@@ -2606,6 +2639,50 @@
   pointer-events: none;
   transform: translateX(-1px);
 }
+.waveform-pointer-line {
+  position: absolute;
+  z-index: 8;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--wave-pointer-line, rgba(205, 214, 223, 0.78));
+  pointer-events: none;
+  transform: translateX(-0.5px);
+}
+.waveform-pointer-line[hidden] { display: none; }
+.waveform-split-flash {
+  position: absolute;
+  z-index: 10;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--wave-split-flash, #ffd43b);
+  box-shadow: 0 0 8px var(--wave-split-flash-glow, rgba(255, 212, 59, 0.85));
+  pointer-events: none;
+  transform: translateX(-1.5px);
+  opacity: 0;
+}
+.waveform-split-flash.is-active {
+  animation: split-flash-once 720ms ease-out both;
+}
+@keyframes split-flash-once {
+  0% {
+    opacity: 0;
+    box-shadow: 0 0 2px transparent;
+  }
+  12% {
+    opacity: 1;
+    box-shadow: 0 0 11px var(--wave-split-flash-glow, rgba(255, 212, 59, 0.85));
+  }
+  30% {
+    opacity: 0.3;
+    box-shadow: 0 0 4px var(--wave-split-flash-glow, rgba(255, 212, 59, 0.85));
+  }
+  100% {
+    opacity: 0;
+    box-shadow: 0 0 2px transparent;
+  }
+}
 .waveform-gap-block {
   position: absolute;
   z-index: 4;
@@ -2836,6 +2913,22 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Ctrl(Cmd)+左键拖动空白处：使用和正式字幕块一致的几何形状，
+   以半透明虚影预览将要创建的时间范围。 */
+.waveform-cue-block.waveform-create-preview {
+  z-index: 12;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--cue-color) 80%, white);
+  background: color-mix(in srgb, var(--cue-color) 28%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--cue-color) 30%, transparent);
+  cursor: grabbing;
+  opacity: 0.62;
+  pointer-events: none;
+}
+.waveform-cue-block.waveform-create-preview > .waveform-cue-label {
+  color: var(--wave-cue-text);
 }
 
 @media (max-width: 820px) {
@@ -3252,6 +3345,8 @@
         <span class="help-subtitle">鼠标</span>
         <span><kbd>双击波形</kbd> 播放/暂停</span>
         <span><kbd>右键波形背景</kbd> 显示菜单</span>
+        <span class="help-important"><kbd>N</kbd> 在鼠标位置创建字幕（仅波形）</span>
+        <span><kbd data-mod-key>Ctrl+拖拽空白处</kbd> 拖动创建指定时长字幕</span>
         <span><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>
       </div>
       <div class="help-subgroup">
@@ -5657,6 +5752,14 @@
     '跳转并播放选中字幕': 'Seek to and play selected subtitle',
     '倍速 ×0.5/重置/×2': 'Speed ×0.5/reset/×2',
     '双击波形': 'Double-click waveform', '右键波形背景': 'Right-click waveform background',
+    '在鼠标位置创建字幕（仅波形）': 'Create a subtitle at the pointer (waveform only)',
+    'Ctrl+拖拽空白处': 'Ctrl+drag blank area', '拖动创建指定时长字幕': 'Drag to create a subtitle with a specified duration',
+    '创建字幕': 'Create subtitle', '新增字幕': 'Create subtitle',
+    '该空白区域不足 100ms，无法新增字幕': 'The blank range is shorter than 100 ms; cannot create a subtitle',
+    '这里没有足够的空白区域': 'There is not enough blank space here',
+    '该位置已有字幕，无法新增字幕': 'A subtitle already exists at this position; cannot create another one',
+    '拖动范围包含已有字幕，无法新增字幕': 'The dragged range contains an existing subtitle; cannot create a new one',
+    '已取消新增字幕': 'Subtitle creation canceled',
     '选择工具': 'Select tool', '分割工具': 'Razor tool',
     '增加静音区段': 'Add silent region',
     '空隙区段操作方式设为「中键拖动」时：': 'When gap region operation is “Middle-button drag”:',
@@ -6052,6 +6155,8 @@
     // flashHint：已自动修复 2 处 0 长时间码（保底 100ms）
     match = /^已自动修复\s*(\d+)\s*处\s*0\s*长时间码（保底\s*100ms）$/.exec(text);
     if (match) return `Auto-repaired ${match[1]} zero-length timings (100 ms minimum)`;
+    match = /^已新增第\s*(\d+)\s*条字幕$/.exec(text);
+    if (match) return `Created subtitle ${match[1]}`;
     match = /^删除\s+(\d+)\s+条字幕$/.exec(text);
     if (match) return `Delete ${match[1]} subtitles`;
     match = /^已将关联字幕统一设为「(.+)」$/.exec(text);
@@ -6293,6 +6398,7 @@
   const ROW_PRESETS = [5, 10, 20, 30];
   const ROW_HEIGHT_PRESETS = [64, 80, 96, 120, 144, 168];
   const ROW_GAP = 10;
+  const SPLIT_FLASH_DURATION_MS = 720;
   // 多行波形保留视口前后几行，字幕快捷键跨行时可以直接复用已绘制的行。
   // 行本身仍按可视区增量创建，不会把整段长媒体一次性放进 DOM。
   const MULTI_ROW_BUFFER = 4;
@@ -7228,6 +7334,7 @@
       this.multiRange = [-1, -1];
       this.activeIndex = -1;
       this.drag = null;
+      this.createCueDrag = null;
       this.gapRangeDrag = null;
       this.gapBoundaryDrag = null;
       this.suppressGapClickUntil = 0;
@@ -7272,7 +7379,6 @@
         rowTop: document.getElementById('layout-resizer-h1'),
         rowMiddle: document.getElementById('layout-resizer-h2'),
       };
-
       this._onPlayerTime = () => this.updatePlayback();
       this._onResize = () => this.scheduleRender();
       this.bindControls();
@@ -7347,6 +7453,18 @@
       });
       this.bindDivider();
       this.bindLayoutResizers();
+    }
+
+    showPointerLine(event, row, marker) {
+      if (!row || !marker) return;
+      const rect = row.getBoundingClientRect();
+      const left = clamp(event.clientX - rect.left, 0, rect.width);
+      marker.style.left = `${left}px`;
+      marker.hidden = false;
+    }
+
+    hidePointerLine(marker) {
+      if (marker) marker.hidden = true;
     }
 
     bindDivider() {
@@ -8432,6 +8550,17 @@
       playhead.hidden = true;
       row.appendChild(playhead);
 
+      const pointerLine = document.createElement('div');
+      pointerLine.className = 'waveform-pointer-line';
+      pointerLine.hidden = true;
+      pointerLine.setAttribute('aria-hidden', 'true');
+      row.appendChild(pointerLine);
+
+      const splitFlash = document.createElement('div');
+      splitFlash.className = 'waveform-split-flash';
+      splitFlash.hidden = true;
+      row.appendChild(splitFlash);
+
       this.appendGapBlocks(row, startMs, endMs);
       this.appendCueBlocks(row, startMs, endMs, groupBadges || computeGroupBadges(this.options.getSegments('main')));
 
@@ -8439,6 +8568,26 @@
       row.addEventListener('pointerdown', (event) => {
         if (event.button === 1 && gapOperationMode === 'middle_drag') {
           this.beginGapRangeDrag(event, row);
+          return;
+        }
+        // Ctrl(Cmd)+左键拖动空白处：按拖动范围创建一条指定时长字幕。
+        // 命中字幕块或静音空隙时保留各自已有的选择/边界操作。
+        if (
+          event.button === 0 &&
+          (event.ctrlKey || event.metaKey) &&
+          !event.shiftKey &&
+          !event.altKey &&
+          !event.target.closest('.waveform-cue-block, .waveform-gap-block')
+        ) {
+          if (this.isCueTimeOccupied(this.timeFromPointer(event, row))) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.options.onCueCreateRejected?.('occupied');
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          this.beginCreateCueDrag(event, row);
           return;
         }
         // Shift+左键在空白处拖动：框选字幕块（追加进现有多选），
@@ -8467,6 +8616,9 @@
         if (this.settings.dragPlayhead) this.beginPlayheadDrag(event, row, geometry);
         this.seekFromPointer(event, row, false, geometry);
       });
+      row.addEventListener('pointerenter', (event) => this.showPointerLine(event, row, pointerLine));
+      row.addEventListener('pointermove', (event) => this.showPointerLine(event, row, pointerLine));
+      row.addEventListener('pointerleave', () => this.hidePointerLine(pointerLine));
       row.addEventListener('auxclick', (event) => {
         if (event.button === 1 && gapOperationMode === 'middle_drag') event.preventDefault();
       });
@@ -8957,6 +9109,106 @@
       if (playAfterSeek && this.player?.paused) this.options.togglePlayback?.();
     }
 
+    // Ctrl(Cmd)+左键拖动空白波形：显示字幕块虚影，松开后交给编辑器
+    // 创建字幕。时间映射固定使用按下时的行几何，避免虚拟行重建或拖出行边界
+    // 后把终点错误地映射到另一行。
+    beginCreateCueDrag(event, row) {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.focusWaveform();
+      const geometry = this.captureRowGeometry(row);
+      const startMs = this.timeFromPointer(event, row, geometry);
+      if (this.isCueTimeOccupied(startMs)) {
+        this.options.onCueCreateRejected?.('occupied');
+        return;
+      }
+      const drag = {
+        pointerId: event.pointerId,
+        row,
+        geometry,
+        startMs,
+        currentMs: startMs,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        lastEvent: event,
+        preview: null,
+        frame: 0,
+        finish: null,
+      };
+      this.createCueDrag = drag;
+
+      const updatePosition = (nextEvent) => {
+        if (!nextEvent) return;
+        drag.lastEvent = nextEvent;
+        const requestedMs = this.timeFromPointer(nextEvent, row, geometry);
+        // 起点在空白时，拖入已有字幕只把终点挡在字幕边界，
+        // 保留之前的“边界阻挡后仍可创建”行为。
+        drag.currentMs = this.clampCreateCueTime(drag.startMs, requestedMs);
+      };
+      const updatePreview = () => {
+        drag.frame = 0;
+        if (this.createCueDrag !== drag) return;
+        const start = Math.min(drag.startMs, drag.currentMs);
+        const end = Math.max(drag.startMs, drag.currentMs);
+        if (!drag.preview) {
+          drag.preview = document.createElement('div');
+          drag.preview.className = 'waveform-cue-block waveform-create-preview';
+          const label = document.createElement('span');
+          label.className = 'waveform-cue-label';
+          drag.preview.appendChild(label);
+          row.appendChild(drag.preview);
+        }
+        const duration = Math.max(1, geometry.endMs - geometry.startMs);
+        drag.preview.style.left = `${clamp(((start - geometry.startMs) / duration) * 100, 0, 100)}%`;
+        drag.preview.style.width = `${Math.max(0.25, clamp(((end - start) / duration) * 100, 0, 100))}%`;
+        drag.preview.firstElementChild.textContent = `${formatCompact(roundMs(start))} → ${formatCompact(roundMs(end))} · ${formatCompact(roundMs(end - start))}`;
+      };
+      const cleanup = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onCancel);
+        if (drag.frame) {
+          cancelAnimationFrame(drag.frame);
+          drag.frame = 0;
+        }
+        try { row.releasePointerCapture?.(drag.pointerId); } catch (_) {}
+        drag.preview?.remove();
+        drag.preview = null;
+      };
+      const finish = (commit, finalEvent = null) => {
+        if (this.createCueDrag !== drag) return;
+        if (finalEvent) updatePosition(finalEvent);
+        const start = roundMs(Math.min(drag.startMs, drag.currentMs));
+        const end = roundMs(Math.max(drag.startMs, drag.currentMs));
+        cleanup();
+        this.createCueDrag = null;
+        if (!commit) return;
+        if (end - start < MIN_CUE_MS) {
+          this.options.onCueCreateRejected?.('too-short', start, end);
+          return;
+        }
+        this.options.addCueRange?.(start, end, drag.startClientX, drag.startClientY);
+      };
+      drag.finish = finish;
+      try { row.setPointerCapture?.(drag.pointerId); } catch (_) {}
+
+      const onMove = (moveEvent) => {
+        if (this.createCueDrag !== drag) return;
+        if (!(moveEvent.buttons & 1)) {
+          finish(true, moveEvent);
+          return;
+        }
+        updatePosition(moveEvent);
+        if (!drag.frame) drag.frame = requestAnimationFrame(updatePreview);
+      };
+      const onUp = (upEvent) => finish(true, upEvent);
+      const onCancel = () => finish(false);
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onCancel);
+    }
+
     captureRowGeometry(row) {
       const rect = row.getBoundingClientRect();
       return {
@@ -8967,12 +9219,119 @@
       };
     }
 
+    isCueTimeOccupied(timeMs) {
+      const time = Number(timeMs);
+      if (!Number.isFinite(time)) return false;
+      const segments = this.options.getSegments?.() || [];
+      return segments.some((segment) => {
+        const start = Number(segment?.start);
+        const end = Number(segment?.end);
+        return Number.isFinite(start) && Number.isFinite(end)
+          && start < time && time < end;
+      });
+    }
+
+    // 创建字幕的拖动不能跨过已有字幕；沿拖动方向把当前端点夹到遇到的
+    // 第一个字幕边界。这样预览和最终提交使用同一组无重叠时间范围。
+    clampCreateCueTime(anchorMs, requestedMs) {
+      if (!Number.isFinite(anchorMs) || !Number.isFinite(requestedMs) || anchorMs === requestedMs) {
+        return requestedMs;
+      }
+      const segments = this.options.getSegments?.() || [];
+      if (segments.some((segment) => {
+        const start = Number(segment?.start);
+        const end = Number(segment?.end);
+        return Number.isFinite(start) && Number.isFinite(end)
+          && start < anchorMs && anchorMs < end;
+      })) return anchorMs;
+      const movingRight = requestedMs > anchorMs;
+      let boundary = movingRight ? Infinity : -Infinity;
+      for (const segment of segments) {
+        const start = Number(segment?.start);
+        const end = Number(segment?.end);
+        if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+        if (movingRight) {
+          if (start >= anchorMs && start <= requestedMs) boundary = Math.min(boundary, start);
+        } else if (end <= anchorMs && end >= requestedMs) {
+          boundary = Math.max(boundary, end);
+        }
+      }
+      return Number.isFinite(boundary) ? boundary : requestedMs;
+    }
+
+    beginBlockedCueCreateDrag(event, index) {
+      const target = event.currentTarget;
+      const pointerId = event.pointerId;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      let finished = false;
+      let moved = false;
+      const cleanup = () => {
+        if (finished) return;
+        finished = true;
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onCancel);
+        try { target.releasePointerCapture?.(pointerId); } catch (_) {}
+      };
+      const onMove = (moveEvent) => {
+        if (finished || moveEvent.pointerId !== pointerId) return;
+        const dx = moveEvent.clientX - startX;
+        const dy = moveEvent.clientY - startY;
+        if (dx * dx + dy * dy < 16) return;
+        moved = true;
+        cleanup();
+        this.options.onCueCreateRejected?.('occupied');
+      };
+      const onUp = () => {
+        if (finished) return;
+        cleanup();
+        if (!moved) this.options.toggleCueSelection?.(index);
+      };
+      const onCancel = () => cleanup();
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onCancel);
+      try { target.setPointerCapture?.(pointerId); } catch (_) {}
+    }
+
     timeFromPointer(event, row, geometry = null) {
       const rect = geometry || row.getBoundingClientRect();
       const ratio = clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
       const startMs = geometry?.startMs ?? Number(row.dataset.startMs);
       const endMs = geometry?.endMs ?? Number(row.dataset.endMs);
       return startMs + ratio * (endMs - startMs);
+    }
+
+    // 在波形指针拆分成功后短暂显示黄色定位光条，帮助用户确认实际操作位置。
+    // 光条只覆盖波形行，不参与鼠标命中，也不影响红色播放头。
+    flashSplitAtTime(timeMs) {
+      if (!Number.isFinite(timeMs)) return false;
+      const rows = [...this.content.querySelectorAll('.waveform-row')];
+      const row = rows.find((candidate) => {
+        const startMs = Number(candidate.dataset.startMs);
+        const endMs = Number(candidate.dataset.endMs);
+        return timeMs >= startMs && timeMs <= endMs;
+      });
+      if (!row) return false;
+
+      const startMs = Number(row.dataset.startMs);
+      const endMs = Number(row.dataset.endMs);
+      const marker = row.querySelector('.waveform-split-flash');
+      if (!marker) return false;
+      if (marker._hideTimer) window.clearTimeout(marker._hideTimer);
+      marker.hidden = false;
+      marker.style.left = `${((timeMs - startMs) / Math.max(1, endMs - startMs)) * 100}%`;
+      marker.classList.remove('is-active');
+      // 强制重新计算布局，让连续两次 B 也能重启动画。
+      void marker.offsetWidth;
+      marker.classList.add('is-active');
+      marker._hideTimer = window.setTimeout(() => {
+        marker.classList.remove('is-active');
+        marker.hidden = true;
+        marker._hideTimer = 0;
+      }, SPLIT_FLASH_DURATION_MS);
+      return true;
     }
 
     // 屏幕坐标 -> 波形时间：命中某个波形行时返回该行内的时间（毫秒），否则返回 null。
@@ -9174,6 +9533,11 @@
       // 字幕块会阻止 pointerdown 冒泡到 pane；主动接管焦点，确保按住
       // 字幕块/边界后，左手 A/D 不会仍被设置输入框等控件拦截。
       this.focusWaveform();
+      // Ctrl(Cmd)+点击字幕仍保留多选；只有真正移动形成拖动时才视为
+      // “在已有字幕上创建”，并直接拒绝，不启动普通字幕拖动或创建预览。
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey) {
+        return this.beginBlockedCueCreateDrag(event, index);
+      }
       // 剃刀工具：无修饰键左键点击字幕块（非手柄）时，在指针位置安全拆分。
       // 修饰键（Alt/Ctrl(Cmd)/Shift）仍走原行为，便于拆分后立即多选/禁用。
       const targetHandle = event.target.closest('.waveform-cue-handle');
@@ -9542,6 +9906,11 @@
     }
 
     cancelCueDrag() {
+      if (this.createCueDrag?.finish) {
+        this.createCueDrag.finish(false);
+        this.setStatus('已取消新增字幕');
+        return true;
+      }
       const drag = this.drag;
       if (!drag) return false;
       window.removeEventListener('pointermove', this._dragMove);
@@ -12556,6 +12925,7 @@ function cancelPendingExtensionBinding(message = '已取消绑定扩展字幕') 
 }
 
 function clearSelection({ silent = false, commitCuePanel = true } = {}) {
+  hideCueSplitPreview();
   cancelPendingExtensionBinding();
   selectedIdxs.forEach(i => {
     const el = container.querySelector(`.cue[data-idx="${i}"]`);
@@ -12692,6 +13062,7 @@ function selectExtensionRange(a, b) {
 }
 function toggleSel(idx) {
   if (isHiddenDisabled(idx)) return;  // 隐藏禁用项不参与选择
+  hideCueSplitPreview();
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
   if (selectedIdxs.has(idx)) {
     selectedIdxs.delete(idx);
@@ -12707,6 +13078,7 @@ function toggleSel(idx) {
   setCurrentCuePanelIndex(selectedIdxs.has(idx) ? idx : (selectedIdxs.values().next().value ?? -1));
 }
 function selectRange(a, b) {
+  hideCueSplitPreview();
   const lo = Math.min(a, b), hi = Math.max(a, b);
   for (let i = lo; i <= hi; i++) {
     if (isHiddenDisabled(i)) continue;  // 跳过隐藏禁用项
@@ -12723,6 +13095,7 @@ function selectRange(a, b) {
   setCurrentCuePanelIndex(selectedIdxs.has(b) ? b : (selectedIdxs.values().next().value ?? -1));
 }
 function selectOnly(idx, syncPair = true) {
+  hideCueSplitPreview();
   // 这是键盘导航的热路径：clearSelection() 会先把面板切到空状态，
   // 再由下面的 setCurrentCuePanelIndex() 切回目标，导致一次按键触发
   // 两次面板刷新和两次波形选区刷新。先提交一次待编辑内容，再批量
@@ -12741,6 +13114,7 @@ function selectOnly(idx, syncPair = true) {
 }
 function addToSelection(idx) {
   if (isHiddenDisabled(idx) || selectedIdxs.has(idx)) return;
+  hideCueSplitPreview();
   selectedIdxs.add(idx);
   syncBoundSelection('main', idx);
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
@@ -13267,6 +13641,13 @@ function renderCurrentCuePanel() {
   cuePanelNext.disabled = next < 0;
 }
 
+function focusCuePanelText(idx = currentCuePanelIdx) {
+  if (!cuePanelText || idx < 0 || currentCuePanelIdx !== idx || !DATA.segments[idx]) return false;
+  cuePanelText.focus();
+  const end = cuePanelText.value.length;
+  cuePanelText.setSelectionRange(end, end);
+  return true;
+}
 function navigateCuePanel(direction) {
   const target = getCurrentCuePanelTarget();
   if (!target) return;
@@ -13861,7 +14242,8 @@ function setEditingCaretOffset(offset) {
   return true;
 }
 
-function caretCharFromPoint(root, x, y) {
+function caretInfoFromPoint(root, x, y) {
+  if (!root) return null;
   let range = null;
   if (document.caretRangeFromPoint) range = document.caretRangeFromPoint(x, y);
   else if (document.caretPositionFromPoint) {
@@ -13872,7 +14254,11 @@ function caretCharFromPoint(root, x, y) {
   const pre = document.createRange();
   pre.selectNodeContents(root);
   pre.setEnd(range.startContainer, range.startOffset);
-  return pre.toString().length;
+  return { offset: pre.toString().length, rect: range.getBoundingClientRect() };
+}
+
+function caretCharFromPoint(root, x, y) {
+  return caretInfoFromPoint(root, x, y)?.offset ?? null;
 }
 
 function finishEdit(save) {
@@ -14719,10 +15105,10 @@ function confirmLinkedSplit() {
 }
 
 function splitAtCursor() {
-  if (!editingState) return;
+  if (!editingState) return false;
   const { el, idx, textEl } = editingState;
   const sel = window.getSelection();
-  if (!sel.rangeCount) return;
+  if (!sel.rangeCount) return false;
   const range = sel.getRangeAt(0);
   const preRange = range.cloneRange();
   preRange.selectNodeContents(textEl);
@@ -14742,7 +15128,7 @@ function splitAtCursor() {
 
   if (cursorOffset <= 0 || cursorOffset >= fullText.length) {
     flashHint('光标必须在词与词之间才能拆分');
-    return;
+    return false;
   }
 
   let leftText = fullText.slice(0, cursorOffset)
@@ -14751,13 +15137,13 @@ function splitAtCursor() {
     .replace(/^[，。,. \t]+/, '').replace(/[ \t]+$/, '');
   if (!leftText || !rightText) {
     flashHint('拆分后任一段为空，已取消');
-    return;
+    return false;
   }
 
   // 拆分后任一侧都不能短于 100ms（与波形分割工具同规则），否则拒绝拆分。
   if (seg.end - seg.start < 200) {
     flashHint('字幕时长不足 200ms，无法拆分');
-    return;
+    return false;
   }
 
   const rightStartChar = fullText.length - rightText.length;
@@ -14847,6 +15233,7 @@ function splitAtCursor() {
   lastClickedIdx = idx + 1;
   triggerNinjaSplitFeedback();
   update();
+  return true;
 }
 
 function splitItemsAtChar(items, cursorChar) {
@@ -14865,23 +15252,50 @@ function splitItemsAtChar(items, cursorChar) {
   return { leftItems: items.slice(), rightItems: [] };
 }
 
+function flashCueSplitAt(idx, clientX) {
+  if (!Number.isFinite(clientX)) return false;
+  const cue = container.querySelector(`.cue[data-idx="${idx}"]`);
+  if (!cue) return false;
+  const rect = cue.getBoundingClientRect();
+  const marker = document.createElement('span');
+  marker.className = 'cue-split-flash';
+  // .cue 的绝对定位子元素以 padding box 为坐标原点；rect.left 是 border box，
+  // 还要扣掉左边的 3px 状态边框，否则光条会向右压进字形。
+  marker.style.left = `${Math.max(0, Math.min(rect.width, clientX - rect.left - cue.clientLeft))}px`;
+  cue.appendChild(marker);
+  // 先触发布局，再加动画类，确保连续拆分时每个光条都能独立播放。
+  void marker.offsetWidth;
+  marker.classList.add('is-active');
+  let removed = false;
+  let timer = 0;
+  const cleanup = () => {
+    if (removed) return;
+    removed = true;
+    if (timer) window.clearTimeout(timer);
+    marker.remove();
+  };
+  marker.addEventListener('animationend', cleanup, { once: true });
+  timer = window.setTimeout(cleanup, 800);
+  return true;
+}
+
 function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
-  if (!el) return;
+  if (!el) return false;
   if (multiSubtitleVisible() && bindingForMainIndex(idx)) {
     notifyMainSplitTimestampFallback(DATA.segments[idx]);
     pendingLinkedSplit = linkedSplitState(idx, Number.isFinite(waveformTimeMs)
       ? { timeMs: waveformTimeMs } : {});
-    if (!pendingLinkedSplit) return;
+    if (!pendingLinkedSplit) return false;
     multiSubtitleSplitModal?.classList.add('show');
     renderLinkedSplitText(pendingLinkedSplit);
-    return;
+    return false;
   }
   if (Number.isFinite(waveformTimeMs)) {
     if (!shouldUseMainSplitTimestamps(DATA.segments[idx])) {
       notifyMainSplitTimestampFallback(DATA.segments[idx]);
       openMainWaveformSplitModal(idx, waveformTimeMs);
-      return;
+      return false;
     }
     const segment = DATA.segments[idx];
     const cursorOffset = splitOffsetNearTime(
@@ -14891,20 +15305,25 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
     );
     if (!Number.isInteger(cursorOffset)) {
       flashHint('这条字幕没有可拆分的文字边界');
-      return;
+      return false;
     }
     startEdit(el, idx);
     if (!setEditingCaretOffset(cursorOffset)) {
       finishEdit(false);
       flashHint('无法定位波形中的拆分位置');
-      return;
+      return false;
     }
-    splitAtCursor();
-    return;
+    const didSplit = splitAtCursor();
+    if (didSplit) waveformEditor?.flashSplitAtTime?.(waveformTimeMs);
+    return didSplit;
   }
   // 字幕列表：在指定位置进入编辑，光标定位到 (x,y) 后立即拆分
+  const caretInfo = caretInfoFromPoint(el.querySelector('.text'), x, y);
+  const markerX = Number.isFinite(caretInfo?.rect?.left) ? caretInfo.rect.left : x;
   startEdit(el, idx, x, y);
-  splitAtCursor();
+  const didSplit = splitAtCursor();
+  if (didSplit) flashCueSplitAt(idx, markerX);
+  return didSplit;
 }
 
 // === 合并 ===
@@ -15435,6 +15854,9 @@ let cueListPointer = null;
 // lastPointerPos 提供，两者独立更新、互不替代。
 let lastEditRegion = null;
 let lastPointerPos = null;
+let cueSplitPreviewEl = null;
+let cueSplitPreviewFrame = 0;
+let cueSplitPreviewRequest = null;
 
 // 等待绑定时，点击主/扩展字幕本身交给各自的选择事件处理；其它空白或
 // 非字幕区域视为取消，避免用户进入等待状态后无从退出。
@@ -15452,6 +15874,62 @@ document.addEventListener('pointerdown', (e) => {
 document.addEventListener('pointermove', (e) => {
   lastPointerPos = { x: e.clientX, y: e.clientY };
 }, true);
+
+function hideCueSplitPreview() {
+  if (cueSplitPreviewFrame) {
+    cancelAnimationFrame(cueSplitPreviewFrame);
+    cueSplitPreviewFrame = 0;
+  }
+  cueSplitPreviewRequest = null;
+  cueSplitPreviewEl?.remove();
+  cueSplitPreviewEl = null;
+}
+
+function scheduleCueSplitPreview(idx, clientX, clientY) {
+  cueSplitPreviewRequest = { idx, clientX, clientY };
+  if (cueSplitPreviewFrame) return;
+  cueSplitPreviewFrame = requestAnimationFrame(() => {
+    cueSplitPreviewFrame = 0;
+    const request = cueSplitPreviewRequest;
+    cueSplitPreviewRequest = null;
+    if (!request || selectedIdxs.size !== 1 || !selectedIdxs.has(request.idx)) {
+      hideCueSplitPreview();
+      return;
+    }
+    const cue = container.querySelector(`.cue[data-idx="${request.idx}"]`);
+    const segment = DATA.segments[request.idx];
+    const textEl = cue?.querySelector('.text');
+    const text = String(segment?.text || '');
+    if (!cue || !segment || !textEl || text.length < 2 || segment.end - segment.start < 200) {
+      hideCueSplitPreview();
+      return;
+    }
+    const info = caretInfoFromPoint(textEl, request.clientX, request.clientY);
+    if (!info || info.offset <= 0 || info.offset >= text.length) {
+      hideCueSplitPreview();
+      return;
+    }
+    const cueRect = cue.getBoundingClientRect();
+    // 光条挂在 .cue 上，而 caret 的坐标是 viewport 坐标；扣除 .cue 的左边框，
+    // 才能把 marker 的中心放回真正的字符边界。
+    const left = Math.max(0, Math.min(cueRect.width, info.rect.left - cueRect.left - cue.clientLeft));
+    if (!cueSplitPreviewEl || cueSplitPreviewEl.parentElement !== cue) {
+      cueSplitPreviewEl?.remove();
+      cueSplitPreviewEl = document.createElement('span');
+      cueSplitPreviewEl.className = 'cue-split-preview';
+      cueSplitPreviewEl.setAttribute('aria-hidden', 'true');
+      cue.appendChild(cueSplitPreviewEl);
+    }
+    cueSplitPreviewEl.style.left = `${left}px`;
+  });
+}
+
+function waveformPointerContext() {
+  if (!lastPointerPos) return null;
+  const timeMs = waveformEditor?.timeMsAtPoint?.(lastPointerPos.x, lastPointerPos.y);
+  if (!Number.isFinite(timeMs)) return null;
+  return { ...lastPointerPos, timeMs };
+}
 
 function hoveredSelectedCueContext() {
   if (!cueListPointer || !selectedIdxs.has(cueListPointer.idx)) return null;
@@ -15529,9 +16007,13 @@ function bindCueEvents(el, idx) {
   });
   el.addEventListener('pointermove', (e) => {
     cueListPointer = { idx, x: e.clientX, y: e.clientY };
+    scheduleCueSplitPreview(idx, e.clientX, e.clientY);
   });
   el.addEventListener('pointerleave', () => {
-    if (cueListPointer?.idx === idx) cueListPointer = null;
+    if (cueListPointer?.idx === idx) {
+      cueListPointer = null;
+      hideCueSplitPreview();
+    }
   });
 
   el.addEventListener('click', (e) => {
@@ -16459,6 +16941,28 @@ document.addEventListener('keydown', (e) => {
   const first = Math.min(...selectedIdxs);
   seekFromWaveform(DATA.segments[first].start / 1000);
   if (player.paused) togglePlayback();
+});
+
+// N：仅在鼠标位于波形行时，从指针音频位置创建字幕；创建后单选新字幕，
+// 切换当前字幕面板并聚焦面板文本框。
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'n' && e.key !== 'N') return;
+  if (editingState || e.repeat || isTextEditingTarget(e)) return;
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
+  if (replaceModal.classList.contains('show')) return;
+  if (stickerModal.classList.contains('show')) return;
+  if (stickerPreviewModal.classList.contains('show')) return;
+  if (projectMediaModal.classList.contains('show')) return;
+  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+  if (ctxmenu.classList.contains('show')) return;
+  if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+  const context = waveformPointerContext();
+  if (!context) return;
+  e.preventDefault();
+  e.stopPropagation();
+  lastEditRegion = 'waveform';
+  addCueAtWaveformTime(context.timeMs, context.x, context.y);
 });
 
 // G：绑定当前单选的副字幕。若同时选中一条主字幕则直接绑定，否则沿用
@@ -20128,6 +20632,11 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY) {
   if (!duration) { flashHint('媒体时长尚未加载'); return; }
   const start = Math.min(requestedStart, requestedEnd);
   const end = Math.max(requestedStart, requestedEnd);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+  if (DATA.segments.some((segment) => start < segment.end && end > segment.start)) {
+    flashHint('拖动范围包含已有字幕，无法新增字幕', 'warning');
+    return;
+  }
   const insertAt = DATA.segments.findIndex((segment) => segment.start > start);
   const index = insertAt < 0 ? DATA.segments.length : insertAt;
   const previousEnd = index > 0 ? DATA.segments[index - 1].end : 0;
@@ -20135,7 +20644,7 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY) {
   const safeStart = Math.max(previousEnd, Math.min(duration, Math.round(start / 10) * 10));
   const safeEnd = Math.min(nextStart, Math.max(safeStart, Math.round(end / 10) * 10));
   if (safeEnd - safeStart < 100) {
-    flashHint('该空白区域不足 100ms，无法新增字幕');
+    flashHint('该空白区域不足 100ms，无法新增字幕', 'warning');
     return;
   }
   commitCuePanelEdit();
@@ -20155,8 +20664,8 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY) {
   const cue = container.querySelector(`.cue[data-idx="${index}"]`);
   if (cue) {
     scrollCueToCenter(cue);
-    setTimeout(() => startEdit(cue, index, clickX, clickY), 0);
   }
+  setTimeout(() => focusCuePanelText(index), 0);
   waveformEditor?.revealTime(safeStart, true);
   flashHint(`已新增第 ${index + 1} 条字幕`);
 }
@@ -20164,6 +20673,10 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY) {
 function addCueAtWaveformTime(timeMs, clickX, clickY) {
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
   if (!duration) { flashHint('媒体时长尚未加载'); return; }
+  if (findWaveformCueAtTime(timeMs) >= 0) {
+    flashHint('当前位置已有字幕，请使用“按音频位置拆分当前字幕”');
+    return;
+  }
   const insertAt = DATA.segments.findIndex((segment) => segment.start > timeMs);
   const index = insertAt < 0 ? DATA.segments.length : insertAt;
   const previousEnd = index > 0 ? DATA.segments[index - 1].end : 0;
@@ -20174,7 +20687,7 @@ function addCueAtWaveformTime(timeMs, clickX, clickY) {
   }
   const gap = nextStart - previousEnd;
   if (gap < 100) {
-    flashHint('这里没有足够的空白区域');
+    flashHint('这里没有足够的空白区域', 'warning');
     return;
   }
   const start = Math.max(previousEnd, Math.min(Math.round(timeMs / 10) * 10, nextStart - 100));
@@ -20450,6 +20963,17 @@ function syncBoundCueDrag(drag) {
   syncBindingOffsets();
 }
 
+function findWaveformCueAtTime(timeMs, segments = DATA.segments) {
+  const time = Number(timeMs);
+  if (!Number.isFinite(time)) return -1;
+  const list = Array.isArray(segments) ? segments : DATA.segments;
+  return list.findIndex((segment) => {
+    const start = Number(segment?.start);
+    const end = Number(segment?.end);
+    return Number.isFinite(start) && Number.isFinite(end) && start < time && time < end;
+  });
+}
+
 // 右键波形背景：创建字幕，或按右键对应的音频位置拆分命中的字幕。
 function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
   ctxmenu.innerHTML = '';
@@ -20470,13 +20994,23 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
     }
     ctxmenu.appendChild(it);
   }
-  const splitIdx = effectiveTrack === 'main'
-    ? DATA.segments.findIndex((segment) => timeMs > segment.start && timeMs < segment.end)
-    : -1;
+  const splitIdx = effectiveTrack === 'main' ? findWaveformCueAtTime(timeMs) : -1;
   if (effectiveTrack === 'extension') {
-    addItem('创建副字幕', '', () => addExtensionAtWaveformTime(timeMs, clickX, clickY));
+    const extensionTrack = getActiveExtensionTrack();
+    const extensionIdx = findWaveformCueAtTime(timeMs, extensionTrack?.segments);
+    addItem(
+      '创建副字幕',
+      '',
+      () => addExtensionAtWaveformTime(timeMs, clickX, clickY, extensionTrack),
+      extensionIdx >= 0,
+    );
   } else {
-    addItem('创建字幕', '', () => addCueAtWaveformTime(timeMs, clickX, clickY));
+    addItem(
+      '创建字幕',
+      '',
+      () => addCueAtWaveformTime(timeMs, clickX, clickY),
+      splitIdx >= 0,
+    );
     addItem(
       '按音频位置拆分当前字幕',
       'B',
@@ -20933,6 +21467,10 @@ function initWaveformEditor() {
     showExtensionContextMenu: (x, y, idx, timeMs) => showExtensionContextMenu(x, y, idx, timeMs),
     showBlankWaveformMenu: (timeMs, x, y, track) => showWaveformBlankMenu(timeMs, x, y, track),
     addCueRange: (startMs, endMs, x, y) => addCueRangeFromWaveform(startMs, endMs, x, y),
+    onCueCreateRejected: (reason) => {
+      if (reason === 'too-short') flashHint('该空白区域不足 100ms，无法新增字幕', 'warning');
+      if (reason === 'occupied') flashHint('该位置已有字幕，无法新增字幕', 'warning');
+    },
     // 剃刀工具：在波形指针位置安全拆分字幕。复用右键菜单的波形时间拆分路径；
     // 有可靠主轨字词时间码时沿用字词锚点，否则在弹窗中保留指针的绝对切点。
     splitCueAtTime: (idx, timeMs) => splitFromContextMenu(idx, 0, 0, timeMs),

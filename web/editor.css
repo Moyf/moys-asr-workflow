@@ -118,6 +118,9 @@
     --wave-badge-sticker:   #b8d9ff;
     --wave-playhead:        #ff5d67;
     --wave-playhead-glow:   rgba(255, 70, 82, 0.72);
+    --wave-pointer-line:    rgba(205, 214, 223, 0.78);
+    --wave-split-flash:     #ffd43b;
+    --wave-split-flash-glow: rgba(255, 212, 59, 0.85);
     --wave-disabled-text:   #89939b;
     --wave-disabled-border: #66717a;
     --wave-disabled-a:      rgba(84, 94, 104, 0.68);
@@ -310,6 +313,9 @@
     --wave-badge-sticker:   #2f6bb8;
     --wave-playhead:        #e63946;
     --wave-playhead-glow:   rgba(230, 57, 70, 0.55);
+    --wave-pointer-line:    rgba(108, 118, 132, 0.72);
+    --wave-split-flash:     #c48700;
+    --wave-split-flash-glow: rgba(213, 154, 0, 0.72);
     --wave-disabled-text:   #8a93a3;
     --wave-disabled-border: #c2c8d2;
     --wave-disabled-a:      rgba(120, 128, 140, 0.55);
@@ -1216,12 +1222,39 @@
     border-radius: 0;
   }
   .cue {
+    position: relative;
     display: flex; align-items: flex-start; gap: 8px;
     padding: 6px 10px; margin: 2px 0; border-radius: var(--radius-sm);
     cursor: pointer; font-size: 14px; line-height: 1.5;
     border-left: 3px solid transparent;
     transition: background var(--t-fast), border-color var(--t-fast);
     user-select: none;
+  }
+  .cue-split-flash {
+    position: absolute;
+    z-index: 3;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--wave-split-flash, #ffd43b);
+    box-shadow: 0 0 8px var(--wave-split-flash-glow, rgba(255, 212, 59, 0.85));
+    pointer-events: none;
+    transform: translateX(-1.5px);
+    opacity: 0;
+  }
+  .cue-split-flash.is-active {
+    animation: split-flash-once 720ms ease-out both;
+  }
+  .cue-split-preview {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    border-left: 2px dashed var(--wave-split-flash, #ffd43b);
+    opacity: .72;
+    pointer-events: none;
+    transform: translateX(-1px);
   }
   .cue.has-color { background: color-mix(in srgb, var(--color-bar, #777) 30%, transparent); }
   .cue.has-color:hover { background: color-mix(in srgb, var(--color-bar, #777) 30%, var(--bg-raised)); }
