@@ -134,146 +134,155 @@
         <button id="advancedToggle" class="accordion-header" type="button"><span class="chevron">▸</span><span data-i18n="advanced">高级选项</span></button>
         <div class="collapse-body">
           <div id="advancedOptionsGrid" class="grid-two">
-            <div class="advanced-col">
-              <div id="localDeviceField" class="field hidden"><label for="localDevice" data-i18n="local_device">设备</label><select id="localDevice"><option value="auto" data-i18n="device_auto">自动</option><option value="cpu" data-i18n="device_cpu">CPU</option><option value="cuda" data-i18n="device_cuda">CUDA</option></select></div>
-              <div id="regionField" class="field hidden"><label for="region" data-i18n="region">地域</label><select id="region"></select></div>
-              <div id="workspaceField" class="field hidden">
-                <label for="workspaceId" data-i18n="workspace">工作空间 ID</label>
-                <input id="workspaceId" type="text" autocomplete="off">
-                <p class="hint" data-i18n="workspace_hint">北京地域选填（推荐），新加坡地域必填。</p>
-                <p id="workspaceIdError" class="field-error"></p>
+            <div id="advancedParamsGroup" class="adv-group">
+              <h3 data-i18n="advanced_params">识别参数</h3>
+              <div class="advanced-col">
+                <div id="localDeviceField" class="field hidden"><label for="localDevice" data-i18n="local_device">设备</label><select id="localDevice"><option value="auto" data-i18n="device_auto">自动</option><option value="cpu" data-i18n="device_cpu">CPU</option><option value="cuda" data-i18n="device_cuda">CUDA</option></select></div>
+                <div id="regionField" class="field hidden"><label for="region" data-i18n="region">地域</label><select id="region"></select></div>
+                <div id="workspaceField" class="field hidden">
+                  <label for="workspaceId" data-i18n="workspace">工作空间 ID</label>
+                  <input id="workspaceId" type="text" autocomplete="off">
+                  <p class="hint" data-i18n="workspace_hint">北京地域选填（推荐），新加坡地域必填。</p>
+                  <p id="workspaceIdError" class="field-error"></p>
+                </div>
+                <div id="lengthLimitField" class="field"><label for="lengthLimit" data-i18n="length_limit">时长上限</label><input id="lengthLimit" type="text" placeholder="2m / 30s / 1h" autocomplete="off"></div>
               </div>
-              <div id="lengthLimitField" class="field"><label for="lengthLimit" data-i18n="length_limit">时长上限</label><input id="lengthLimit" type="text" placeholder="2m / 30s / 1h" autocomplete="off"></div>
             </div>
-            <div id="languageField" class="field">
-              <label for="language" data-i18n="language">语言</label>
-              <div class="language-layout">
-                <select id="language"></select>
-                <div class="language-side">
-                  <div class="lang-actions"><button id="languageReset" class="ghost small hidden" type="button" data-i18n="language_reset">重置（自动识别）</button></div>
-                  <p id="languageHint" class="hint hidden" data-i18n="language_multi_hint">可多选；不选即自动识别（仅偏向，不限制）。</p>
-                  <p id="languageFilterHint" class="hint hidden" data-i18n="language_filter_hint">默认仅显示常用语言，其余可在「配置」中开启。</p>
+            <div id="languageGroup" class="adv-group">
+              <h3 id="languageGroupTitle" data-i18n="language">语言</h3>
+              <div id="languageField" class="field">
+                <div class="language-layout">
+                  <select id="language" aria-labelledby="languageGroupTitle"></select>
+                  <div class="language-side">
+                    <div class="lang-actions"><button id="languageReset" class="ghost small hidden" type="button" data-i18n="language_reset">重置（自动识别）</button></div>
+                    <p id="languageHint" class="hint hidden" data-i18n="language_multi_hint">可多选；不选即自动识别（仅偏向，不限制）。</p>
+                    <p id="languageFilterHint" class="hint hidden" data-i18n="language_filter_hint">默认仅显示常用语言，其余可在「配置」中开启。</p>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-          <div id="segmentationField" class="field segmentation-field">
-            <label data-i18n="segmentation">字幕切句</label>
-            <div class="segmentation-row">
-              <div class="segmentation-control">
-                <label for="maxLen" data-i18n="max_len">最大字数</label>
-                <input id="maxLen" type="number" min="1" step="1" inputmode="numeric" data-i18n-placeholder="max_len_placeholder" placeholder="21" autocomplete="off">
-                <p id="maxLenError" class="field-error"></p>
+            <div id="segmentationField" class="adv-group segmentation-field">
+              <h3 data-i18n="segmentation">字幕切句</h3>
+              <div class="segmentation-row">
+                <div class="segmentation-control">
+                  <label for="maxLen" data-i18n="max_len">最大字数</label>
+                  <input id="maxLen" type="number" min="1" step="1" inputmode="numeric" data-i18n-placeholder="max_len_placeholder" placeholder="21" autocomplete="off">
+                  <p id="maxLenError" class="field-error"></p>
+                </div>
+                <div class="segmentation-control">
+                  <label for="minLen" data-i18n="min_len">短句合并阈值</label>
+                  <input id="minLen" type="number" min="1" step="1" inputmode="numeric" data-i18n-placeholder="min_len_placeholder" placeholder="5" autocomplete="off">
+                  <p id="minLenError" class="field-error"></p>
+                </div>
+                <div class="segmentation-control">
+                  <label for="gapSplit" data-i18n="gap_split">停顿切句（毫秒）</label>
+                  <input id="gapSplit" type="number" min="0" step="1" inputmode="numeric" data-i18n-placeholder="gap_split_placeholder" placeholder="1500" autocomplete="off">
+                  <p id="gapSplitError" class="field-error"></p>
+                </div>
               </div>
-              <div class="segmentation-control">
-                <label for="minLen" data-i18n="min_len">短句合并阈值</label>
-                <input id="minLen" type="number" min="1" step="1" inputmode="numeric" data-i18n-placeholder="min_len_placeholder" placeholder="5" autocomplete="off">
-                <p id="minLenError" class="field-error"></p>
-              </div>
-              <div class="segmentation-control">
-                <label for="gapSplit" data-i18n="gap_split">停顿切句（毫秒）</label>
-                <input id="gapSplit" type="number" min="0" step="1" inputmode="numeric" data-i18n-placeholder="gap_split_placeholder" placeholder="1500" autocomplete="off">
-                <p id="gapSplitError" class="field-error"></p>
-              </div>
+              <p class="hint" data-i18n="segmentation_hint">留空使用模型默认值（停顿切句：云端 1500ms，本地 1000ms）；最大/最小字数主要作用于中文，停顿阈值单位为毫秒。</p>
             </div>
-            <p class="hint" data-i18n="segmentation_hint">留空使用当前模型默认值；最大/最小字数主要作用于中文，停顿阈值单位为毫秒。</p>
-          </div>
-          <div id="qwenAudioOptions" class="qwen-audio-options hidden">
-            <div id="qwenAudioContextField" class="field">
-              <label for="qwenAudioContext" data-i18n="qwen_audio_context">附加上下文（Prompt）</label>
-              <textarea id="qwenAudioContext" rows="3" autocomplete="off" data-i18n-placeholder="qwen_audio_context_placeholder"></textarea>
-              <p class="hint" data-i18n="qwen_audio_context_hint">领域词表或前文提示；本次任务最多发送 400 个字符，不是通用系统指令。</p>
-              <p id="qwenAudioContextCount" class="character-count" aria-live="polite">当前字符数：0/400</p>
-              <p id="qwenAudioContextError" class="field-error"></p>
-            </div>
-            <div id="qwenAudioHotwordsSection">
-              <h3 data-i18n="qwen_audio_hotwords">即时热词</h3>
-              <div class="qwen-audio-options-grid">
-                <div id="qwenAudioHotwordsField" class="field">
-                  <input type="hidden" id="qwenAudioHotwordsMode" value="text">
-                  <div class="segmented" role="group">
-                    <button type="button" class="segment active" id="qwenAudioHotwordsModeText" data-i18n="qwen_audio_hotwords_mode_text">直接输入</button>
-                    <button type="button" class="segment" id="qwenAudioHotwordsModeFile" data-i18n="qwen_audio_hotwords_mode_file">从文件读取</button>
-                  </div>
-                  <div id="qwenAudioHotwordsTextField" class="qwen-audio-hotwords-source">
-                    <textarea id="qwenAudioHotwords" rows="3" autocomplete="off" data-i18n-placeholder="qwen_audio_hotwords_placeholder"></textarea>
-                    <p class="hint" data-i18n="qwen_audio_hotwords_hint">每行一个，也支持逗号分隔；可直接拖入 .txt 文本文件自动填入；只作用于本次 Qwen-Audio 转写。</p>
-                    <p id="qwenAudioHotwordsError" class="field-error"></p>
-                  </div>
-                  <div id="qwenAudioHotwordsFileField" class="qwen-audio-hotwords-source hidden">
-                    <div class="path-row">
-                      <input id="qwenAudioHotwordsFile" type="text" autocomplete="off" data-i18n-placeholder="qwen_audio_hotwords_file_placeholder">
-                      <button id="pickQwenAudioHotwordsFile" class="ghost" type="button" data-i18n="choose">选择</button>
+            <div id="qwenAudioOptions" class="adv-group qwen-audio-options hidden">
+              <h3 data-i18n="qwen_audio_options_title">Qwen 上下文与热词</h3>
+              <div id="qwenAudioContextField" class="field">
+                <label for="qwenAudioContext" data-i18n="qwen_audio_context">附加上下文（Prompt）</label>
+                <textarea id="qwenAudioContext" rows="3" autocomplete="off" data-i18n-placeholder="qwen_audio_context_placeholder"></textarea>
+                <p class="hint" data-i18n="qwen_audio_context_hint">领域词表或前文提示；本次任务最多发送 400 个字符，不是通用系统指令。</p>
+                <p id="qwenAudioContextCount" class="character-count" aria-live="polite">当前字符数：0/400</p>
+                <p id="qwenAudioContextError" class="field-error"></p>
+              </div>
+              <div id="qwenAudioHotwordsSection">
+                <h3 data-i18n="qwen_audio_hotwords">即时热词</h3>
+                <div class="qwen-audio-options-grid">
+                  <div id="qwenAudioHotwordsField" class="field">
+                    <input type="hidden" id="qwenAudioHotwordsMode" value="text">
+                    <div class="segmented" role="group">
+                      <button type="button" class="segment active" id="qwenAudioHotwordsModeText" data-i18n="qwen_audio_hotwords_mode_text">直接输入</button>
+                      <button type="button" class="segment" id="qwenAudioHotwordsModeFile" data-i18n="qwen_audio_hotwords_mode_file">从文件读取</button>
                     </div>
-                    <p class="hint" data-i18n="qwen_audio_hotwords_file_hint">支持 UTF-8 编码的 .txt 文件，每行一个热词。</p>
-                    <p id="qwenAudioHotwordsFileError" class="field-error"></p>
+                    <div id="qwenAudioHotwordsTextField" class="qwen-audio-hotwords-source">
+                      <textarea id="qwenAudioHotwords" rows="3" autocomplete="off" data-i18n-placeholder="qwen_audio_hotwords_placeholder"></textarea>
+                      <p class="hint" data-i18n="qwen_audio_hotwords_hint">每行一个，也支持逗号分隔；可直接拖入 .txt 文本文件自动填入；只作用于本次 Qwen-Audio 转写。</p>
+                      <p id="qwenAudioHotwordsError" class="field-error"></p>
+                    </div>
+                    <div id="qwenAudioHotwordsFileField" class="qwen-audio-hotwords-source hidden">
+                      <div class="path-row">
+                        <input id="qwenAudioHotwordsFile" type="text" autocomplete="off" data-i18n-placeholder="qwen_audio_hotwords_file_placeholder">
+                        <button id="pickQwenAudioHotwordsFile" class="ghost" type="button" data-i18n="choose">选择</button>
+                      </div>
+                      <p class="hint" data-i18n="qwen_audio_hotwords_file_hint">支持 UTF-8 编码的 .txt 文件，每行一个热词。</p>
+                      <p id="qwenAudioHotwordsFileError" class="field-error"></p>
+                    </div>
+                    <p id="qwenAudioHotwordsWarning" class="field-warning" aria-live="polite"></p>
                   </div>
-                  <p id="qwenAudioHotwordsWarning" class="field-warning" aria-live="polite"></p>
-                </div>
-                <div class="qwen-audio-options-side">
-                  <div id="qwenAudioHotwordWeightField" class="field">
-                    <label for="qwenAudioHotwordWeight" data-i18n="qwen_audio_hotword_weight">默认热词权重</label>
-                    <select id="qwenAudioHotwordWeight">
-                      <option value="1">1（较弱）</option>
-                      <option value="2">2</option>
-                      <option value="3">3</option>
-                      <option value="4">4</option>
-                      <option value="5" selected>5（较强）</option>
-                      <option value="50">50（超级热词）</option>
-                    </select>
-                    <p class="hint" data-i18n="qwen_audio_hotword_weight_hint">权重 50 适合少量必须命中的词，最多 50 个。</p>
-                    <p class="hint" data-i18n="qwen_audio_hotwords_weight_override_hint">支持用“热词: 权重”单独指定某个词的权重，如“obsidian: 5”（中英文冒号皆可）；未指定的热词使用默认权重。</p>
+                  <div class="qwen-audio-options-side">
+                    <div id="qwenAudioHotwordWeightField" class="field">
+                      <label for="qwenAudioHotwordWeight" data-i18n="qwen_audio_hotword_weight">默认热词权重</label>
+                      <select id="qwenAudioHotwordWeight">
+                        <option value="1">1（较弱）</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5" selected>5（较强）</option>
+                        <option value="50">50（超级热词）</option>
+                      </select>
+                      <p class="hint" data-i18n="qwen_audio_hotword_weight_hint">权重 50 适合少量必须命中的词，最多 50 个。</p>
+                      <p class="hint" data-i18n="qwen_audio_hotwords_weight_override_hint">支持用“热词: 权重”单独指定某个词的权重，如“obsidian: 5”（中英文冒号皆可）；未指定的热词使用默认权重。</p>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-          <div id="sonioxContextOptions" class="soniox-context-options hidden">
-            <h3 data-i18n="soniox_context_title">Soniox 上下文</h3>
-            <p class="hint soniox-context-hint">
-              <span data-i18n="soniox_context_hint">可按需填写；四个分区都会直接发送到 Soniox 的 context 对象。</span>
-              <a href="https://soniox.com/docs/stt/concepts/context" target="_blank" rel="noopener noreferrer" data-i18n="soniox_context_docs_link">查看 context 文档 ↗</a>
-            </p>
-            <div class="soniox-context-options-grid">
-              <div class="field">
-                <label for="sonioxContextGeneral" data-i18n="soniox_context_general">General（键值信息）</label>
-                <textarea id="sonioxContextGeneral" rows="4" autocomplete="off" data-i18n-placeholder="soniox_context_general_placeholder"></textarea>
-                <p class="hint" data-i18n="soniox_context_general_hint">每行一个 key=value；也可粘贴 general JSON 数组。</p>
-                <p id="sonioxContextGeneralError" class="field-error"></p>
+            <div id="sonioxContextOptions" class="adv-group soniox-context-options hidden">
+              <h3 data-i18n="soniox_context_title">Soniox 上下文</h3>
+              <p class="hint soniox-context-hint">
+                <span data-i18n="soniox_context_hint">可按需填写；四个分区都会直接发送到 Soniox 的 context 对象。</span>
+                <a href="https://soniox.com/docs/stt/concepts/context" target="_blank" rel="noopener noreferrer" data-i18n="soniox_context_docs_link">查看 context 文档 ↗</a>
+              </p>
+              <div class="soniox-context-options-grid">
+                <div class="field">
+                  <label for="sonioxContextGeneral" data-i18n="soniox_context_general">General（键值信息）</label>
+                  <textarea id="sonioxContextGeneral" rows="4" autocomplete="off" data-i18n-placeholder="soniox_context_general_placeholder"></textarea>
+                  <p class="hint" data-i18n="soniox_context_general_hint">每行一个 key=value；也可粘贴 general JSON 数组。</p>
+                  <p id="sonioxContextGeneralError" class="field-error"></p>
+                </div>
+                <div class="field">
+                  <label for="sonioxContextText" data-i18n="soniox_context_text">Text（背景文本）</label>
+                  <textarea id="sonioxContextText" rows="4" autocomplete="off" data-i18n-placeholder="soniox_context_text_placeholder"></textarea>
+                  <p class="hint" data-i18n="soniox_context_text_hint">适合会议摘要、脚本或参考文档。</p>
+                  <p id="sonioxContextTextError" class="field-error"></p>
+                </div>
+                <div class="field">
+                  <label for="sonioxContextTerms" data-i18n="soniox_context_terms">Terms（术语）</label>
+                  <textarea id="sonioxContextTerms" rows="4" autocomplete="off" data-i18n-placeholder="soniox_context_terms_placeholder"></textarea>
+                  <p class="hint" data-i18n="soniox_context_terms_hint">领域词、品牌名或人名；每行一个，也支持逗号分隔。</p>
+                  <p id="sonioxContextTermsError" class="field-error"></p>
+                </div>
+                <div class="field">
+                  <label for="sonioxContextTranslationTerms" data-i18n="soniox_context_translation_terms">Translation terms（翻译术语）</label>
+                  <textarea id="sonioxContextTranslationTerms" rows="4" autocomplete="off" data-i18n-placeholder="soniox_context_translation_terms_placeholder"></textarea>
+                  <p class="hint" data-i18n="soniox_context_translation_terms_hint">每行一个 source =&gt; target；也可粘贴 translation_terms JSON 数组。</p>
+                  <p id="sonioxContextTranslationTermsError" class="field-error"></p>
+                </div>
               </div>
-              <div class="field">
-                <label for="sonioxContextText" data-i18n="soniox_context_text">Text（背景文本）</label>
-                <textarea id="sonioxContextText" rows="4" autocomplete="off" data-i18n-placeholder="soniox_context_text_placeholder"></textarea>
-                <p class="hint" data-i18n="soniox_context_text_hint">适合会议摘要、脚本或参考文档。</p>
-                <p id="sonioxContextTextError" class="field-error"></p>
+              <p id="sonioxContextCount" class="character-count soniox-context-count" aria-live="polite">当前字符数：0/10000</p>
+            </div>
+            <div class="adv-group">
+              <h3 data-i18n="advanced_misc">其他</h3>
+              <div id="speakerColorsField" class="field hidden">
+                <label class="check-field" for="speakerColors" data-i18n-title="speaker_colors_title">
+                  <input id="speakerColors" type="checkbox">
+                  <span data-i18n="speaker_colors">给不同说话人分配字幕颜色</span>
+                </label>
+                <p class="hint" data-i18n="speaker_colors_hint">最多 5 种颜色；说话人超过 5 个时颜色循环复用。</p>
               </div>
-              <div class="field">
-                <label for="sonioxContextTerms" data-i18n="soniox_context_terms">Terms（术语）</label>
-                <textarea id="sonioxContextTerms" rows="4" autocomplete="off" data-i18n-placeholder="soniox_context_terms_placeholder"></textarea>
-                <p class="hint" data-i18n="soniox_context_terms_hint">领域词、品牌名或人名；每行一个，也支持逗号分隔。</p>
-                <p id="sonioxContextTermsError" class="field-error"></p>
-              </div>
-              <div class="field">
-                <label for="sonioxContextTranslationTerms" data-i18n="soniox_context_translation_terms">Translation terms（翻译术语）</label>
-                <textarea id="sonioxContextTranslationTerms" rows="4" autocomplete="off" data-i18n-placeholder="soniox_context_translation_terms_placeholder"></textarea>
-                <p class="hint" data-i18n="soniox_context_translation_terms_hint">每行一个 source =&gt; target；也可粘贴 translation_terms JSON 数组。</p>
-                <p id="sonioxContextTranslationTermsError" class="field-error"></p>
+              <div id="debugRawField" class="field">
+                <label class="check-field" for="debugRaw" data-i18n-title="debug_raw_title">
+                  <input id="debugRaw" type="checkbox">
+                  <span data-i18n="debug_raw">调试运行（保存完整返回数据）</span>
+                </label>
               </div>
             </div>
-            <p id="sonioxContextCount" class="character-count soniox-context-count" aria-live="polite">当前字符数：0/10000</p>
-          </div>
-          <div id="speakerColorsField" class="field hidden">
-            <label class="check-field" for="speakerColors" data-i18n-title="speaker_colors_title">
-              <input id="speakerColors" type="checkbox">
-              <span data-i18n="speaker_colors">给不同说话人分配字幕颜色</span>
-            </label>
-            <p class="hint" data-i18n="speaker_colors_hint">最多 5 种颜色；说话人超过 5 个时颜色循环复用。</p>
-          </div>
-          <div id="debugRawField" class="field">
-            <label class="check-field" for="debugRaw" data-i18n-title="debug_raw_title">
-              <input id="debugRaw" type="checkbox">
-              <span data-i18n="debug_raw">调试运行（保存完整返回数据）</span>
-            </label>
           </div>
         </div>
       </div>
@@ -337,7 +346,7 @@
           <h2 id="toolboxTitle" data-i18n="toolbox_title">后处理工具箱（Beta）</h2>
           <p data-i18n="toolbox_chain_hint">每次生成新文件，并自动作为下一步输入。</p>
         </div>
-        <p class="toolbox-beta"><span data-i18n="toolbox_beta_notice">该功能正在开发中，仅供尝鲜</span><br><span data-i18n="toolbox_beta_notice_prefix">遇到问题可前往 </span><a id="toolboxIssuesLink" class="status-link" href="https://github.com/Moyf/moys-asr-workflow/issues">issues</a><span data-i18n="toolbox_beta_notice_tail"> 提反馈</span></p>
+        <p class="toolbox-beta"><span data-i18n="toolbox_beta_notice">该功能正在开发中，仅供尝鲜；遇到问题可前往 </span><a id="toolboxIssuesLink" class="status-link" href="https://github.com/Moyf/moys-asr-workflow/issues">issues</a><span data-i18n="toolbox_beta_notice_tail"> 提反馈</span></p>
         <button id="toolboxClose" class="ghost small" type="button" aria-label="close">×</button>
       </header>
       <div id="toolboxInputDropZone" class="field toolbox-input">
@@ -346,10 +355,10 @@
           <span id="toolboxInputName" class="toolbox-input-name empty" aria-live="polite" data-i18n="toolbox_input_empty">未选择文件</span>
         </div>
         <div class="path-row">
-          <input id="toolboxInputPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_input_placeholder" placeholder="跟随工程文件自动填入，也可拖入 .mosp / .json / .srt">
+          <input id="toolboxInputPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_input_placeholder" placeholder="跟随工程文件，也可拖入 .mosp / .json / .srt">
           <button id="pickToolboxInput" class="ghost" type="button" data-i18n="choose">选择</button>
         </div>
-        <p class="hint" data-i18n="toolbox_input_hint">默认跟随「工程文件」并在每次处理后更新；手动选择或拖入其他文件后，以这里的文件为准。</p>
+        <p class="hint" data-i18n="toolbox_input_hint">默认跟随「工程文件」并随每次处理更新；手动选择或拖入后以这里为准。</p>
         <p id="toolboxInputPathError" class="field-error"></p>
       </div>
       <div id="toolboxChain" class="toolbox-chain hidden" aria-label="processing artifacts">
@@ -365,42 +374,8 @@
       </div>
     </div>
     <div class="toolbox-content">
-      <div class="toolbox-output-bar">
-        <div class="toolbox-output-main">
-          <div class="field toolbox-output-field">
-            <label for="postprocessOutputMode" data-i18n="toolbox_output">输出</label>
-            <select id="postprocessOutputMode">
-              <option value="both" data-i18n="toolbox_output_both">工程 + SRT</option>
-              <option value="json" data-i18n="toolbox_output_project">仅工程</option>
-              <option value="srt" data-i18n="toolbox_output_srt">仅 SRT</option>
-            </select>
-          </div>
-          <div class="toolbox-output-action">
-            <div class="toolbox-action-slot" data-tool-action="match">
-              <button id="runScriptMatch" class="primary" type="button" data-i18n="toolbox_run_match">匹配文稿</button>
-              <p class="hint" data-i18n="toolbox_match_hint">匹配度过低时会停止，不写出可能错配的结果。</p>
-            </div>
-            <div class="toolbox-action-slot hidden" data-tool-action="ocr">
-              <button id="runOcrDedup" class="primary" type="button" data-i18n="toolbox_run_ocr">执行 OCR 字幕去重</button>
-              <p class="hint" data-i18n="toolbox_ocr_hint">画面文字与字幕高度相似的段会被禁用或从 SRT 移除。</p>
-            </div>
-            <div class="toolbox-action-slot hidden" data-tool-action="llm">
-              <button id="runLlmPostprocess" class="primary" type="button" data-i18n="toolbox_run">运行处理</button>
-            </div>
-            <div class="toolbox-action-slot hidden" data-tool-action="replace">
-              <button id="runFixedReplacement" class="primary" type="button" data-i18n="toolbox_run_replace">执行替换</button>
-              <p class="hint" data-i18n="toolbox_replace_safe">分段起止时间保持不变。</p>
-            </div>
-            <div class="toolbox-action-slot hidden" data-tool-action="ffconcat">
-              <code id="toolboxMediaPath">未选择媒体</code>
-              <button id="runFfconcatRebuild" class="primary" type="button" data-i18n="toolbox_run_media">生成新媒体</button>
-            </div>
-          </div>
-        </div>
-      </div>
-      <p class="hint toolbox-output-hint" data-i18n="toolbox_output_hint">所有字幕工具都会生成新文件，不覆盖原工程。</p>
       <div id="toolboxProgress" class="progress hidden" aria-hidden="true"><span></span></div>
-      <div id="toolboxResult" class="toolbox-result" aria-live="polite" data-i18n="toolbox_ready">选择工具后运行；源文件不会被覆盖。</div>
+      <div id="toolboxResult" class="toolbox-result" aria-live="polite" data-i18n="toolbox_ready">选择工具后运行；始终生成新文件，不覆盖源文件。</div>
       <div id="toolboxStreamOutput" class="toolbox-stream-output hidden" aria-live="polite">
         <div class="toolbox-stream-heading">
           <span id="toolboxStreamTitle" data-i18n="toolbox_stream_title">模型实时输出</span>
@@ -417,6 +392,7 @@
       </div>
 
     <section id="toolboxMatchPanel" class="toolbox-panel" role="tabpanel" aria-labelledby="toolboxMatchTab">
+      <p class="hint toolbox-panel-hint" data-i18n="toolbox_match_hint">匹配度过低时会停止，不写出可能错配的结果。</p>
       <div class="field">
         <label for="postprocessScriptPath" data-i18n="toolbox_script">文稿文件</label>
         <div class="path-row">
@@ -429,96 +405,116 @@
     </section>
 
     <section id="toolboxOcrPanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxOcrTab">
-      <div id="ocrVideoPathField" class="field">
-        <label for="ocrVideoPath" data-i18n="toolbox_ocr_video">视频画面</label>
-        <div class="path-row">
-          <input id="ocrVideoPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_ocr_video_placeholder" placeholder="优先使用工程视频，也可选择视频文件">
-          <button id="pickOcrVideo" class="ghost" type="button" data-i18n="choose">选择</button>
-        </div>
-        <p class="hint" data-i18n="toolbox_ocr_video_hint">工程有可用视频时可自动使用；独立 SRT 或当前媒体为音频时必须选择视频。</p>
-        <p id="ocrVideoPathError" class="field-error"></p>
-      </div>
-      <div class="toolbox-grid">
-        <div class="field">
-          <label for="ocrRegionMode" data-i18n="toolbox_ocr_region">画面字幕区</label>
-          <select id="ocrRegionMode">
-            <option value="full" data-i18n="toolbox_ocr_region_full">100% 完整画面</option>
-            <option value="bottom30" data-i18n="toolbox_ocr_region_bottom">底部 30%</option>
-            <option value="custom_region" data-i18n="toolbox_ocr_region_custom">自定义百分比区域</option>
-          </select>
-          <p class="hint" data-i18n="toolbox_ocr_region_hint">默认使用完整画面；底部 30% 可减少 OCR 输入量。</p>
-        </div>
-        <div class="field">
-          <label data-i18n="toolbox_ocr_model">OCR 模型</label>
-          <div class="toolbox-preset-prompt-text" data-i18n="toolbox_ocr_model_tiny">PP-OCRv6 tiny（CPU）</div>
-          <p class="hint" data-i18n="toolbox_ocr_model_hint">small 模型暂不加入 MVP。</p>
+      <p class="hint toolbox-panel-hint" data-i18n="toolbox_ocr_hint">画面文字与字幕高度相似的段会被禁用或从 SRT 移除。</p>
+      <div class="adv-group">
+        <h3 data-i18n="toolbox_group_ocr_video">视频来源</h3>
+        <div id="ocrVideoPathField" class="field">
+          <label for="ocrVideoPath" data-i18n="toolbox_ocr_video">视频画面</label>
+          <div class="path-row">
+            <input id="ocrVideoPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_ocr_video_placeholder" placeholder="优先使用工程视频，也可选择视频文件">
+            <button id="pickOcrVideo" class="ghost" type="button" data-i18n="choose">选择</button>
+          </div>
+          <p class="hint" data-i18n="toolbox_ocr_video_hint">工程有可用视频时可自动使用；独立 SRT 或当前媒体为音频时必须选择视频。</p>
+          <p id="ocrVideoPathError" class="field-error"></p>
         </div>
       </div>
-      <div id="ocrCustomRegion" class="toolbox-grid hidden">
-        <div class="field">
-          <label for="ocrRegionX1" data-i18n="toolbox_ocr_x1">左（X1）%</label>
-          <input id="ocrRegionX1" type="number" min="0" max="100" step="1" value="0">
+      <div class="adv-group">
+        <h3 data-i18n="toolbox_group_ocr_region">识别区域与模型</h3>
+        <div class="toolbox-grid">
+          <div class="field">
+            <label for="ocrRegionMode" data-i18n="toolbox_ocr_region">画面字幕区</label>
+            <select id="ocrRegionMode">
+              <option value="full" data-i18n="toolbox_ocr_region_full">100% 完整画面</option>
+              <option value="bottom30" data-i18n="toolbox_ocr_region_bottom">底部 30%</option>
+              <option value="custom_region" data-i18n="toolbox_ocr_region_custom">自定义百分比区域</option>
+            </select>
+            <p class="hint" data-i18n="toolbox_ocr_region_hint">缩小处理区域可减少 OCR 输入量。</p>
+          </div>
+          <div class="field">
+            <label data-i18n="toolbox_ocr_model">OCR 模型</label>
+            <div class="toolbox-static-value" data-i18n="toolbox_ocr_model_tiny">PP-OCRv6 tiny（CPU）</div>
+            <p class="hint" data-i18n="toolbox_ocr_model_hint">small 模型暂不加入 MVP。</p>
+          </div>
         </div>
-        <div class="field">
-          <label for="ocrRegionY1" data-i18n="toolbox_ocr_y1">上（Y1）%</label>
-          <input id="ocrRegionY1" type="number" min="0" max="100" step="1" value="70">
-        </div>
-        <div class="field">
-          <label for="ocrRegionX2" data-i18n="toolbox_ocr_x2">右（X2）%</label>
-          <input id="ocrRegionX2" type="number" min="0" max="100" step="1" value="100">
-        </div>
-        <div class="field">
-          <label for="ocrRegionY2" data-i18n="toolbox_ocr_y2">下（Y2）%</label>
-          <input id="ocrRegionY2" type="number" min="0" max="100" step="1" value="100">
+        <div id="ocrCustomRegion" class="toolbox-grid hidden">
+          <div class="field">
+            <label for="ocrRegionX1" data-i18n="toolbox_ocr_x1">左（X1）%</label>
+            <input id="ocrRegionX1" type="number" min="0" max="100" step="1" value="0">
+          </div>
+          <div class="field">
+            <label for="ocrRegionY1" data-i18n="toolbox_ocr_y1">上（Y1）%</label>
+            <input id="ocrRegionY1" type="number" min="0" max="100" step="1" value="70">
+          </div>
+          <div class="field">
+            <label for="ocrRegionX2" data-i18n="toolbox_ocr_x2">右（X2）%</label>
+            <input id="ocrRegionX2" type="number" min="0" max="100" step="1" value="100">
+          </div>
+          <div class="field">
+            <label for="ocrRegionY2" data-i18n="toolbox_ocr_y2">下（Y2）%</label>
+            <input id="ocrRegionY2" type="number" min="0" max="100" step="1" value="100">
+          </div>
         </div>
       </div>
-      <div class="toolbox-grid">
-        <div class="field">
-          <label for="ocrThreshold" data-i18n="toolbox_ocr_threshold">相似度阈值</label>
-          <input id="ocrThreshold" type="number" min="0" max="1" step="0.05" value="0.5">
-          <p class="hint" data-i18n="toolbox_ocr_threshold_hint">参考算法取三种相似度的最高值；默认 0.5。</p>
-          <p id="ocrThresholdError" class="field-error"></p>
+      <div class="adv-group">
+        <h3 data-i18n="toolbox_group_ocr_output">判定与输出</h3>
+        <div class="toolbox-grid">
+          <div class="field">
+            <label for="ocrThreshold" data-i18n="toolbox_ocr_threshold">相似度阈值</label>
+            <input id="ocrThreshold" type="number" min="0" max="1" step="0.05" value="0.5">
+            <p class="hint" data-i18n="toolbox_ocr_threshold_hint">参考算法取三种相似度的最高值；默认 0.5。</p>
+            <p id="ocrThresholdError" class="field-error"></p>
+          </div>
+          <div class="field">
+            <label class="field-spacer" aria-hidden="true">&nbsp;</label>
+            <label class="check-field" for="ocrReport">
+              <input id="ocrReport" type="checkbox">
+              <span data-i18n="toolbox_ocr_report">生成 OCR 判定报告（CSV）</span>
+            </label>
+          </div>
         </div>
-        <label class="check-field" for="ocrReport">
-          <input id="ocrReport" type="checkbox">
-          <span data-i18n="toolbox_ocr_report">生成 OCR 判定报告（CSV）</span>
-        </label>
       </div>
     </section>
 
     <section id="toolboxLlmPanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxLlmTab">
-      <div class="toolbox-grid">
-        <div class="field">
-          <label for="postprocessProvider" data-i18n="toolbox_provider">供应商</label>
-          <select id="postprocessProvider"></select>
+      <div class="adv-group">
+        <h3 data-i18n="toolbox_group_llm_model">模型</h3>
+        <div class="toolbox-grid">
+          <div class="field">
+            <label for="postprocessProvider" data-i18n="toolbox_provider">供应商</label>
+            <select id="postprocessProvider"></select>
+          </div>
+          <div class="field">
+            <label for="postprocessOperation" data-i18n="toolbox_operation">任务</label>
+            <select id="postprocessOperation">
+              <option value="proofread" data-i18n="toolbox_proofread">校对文本</option>
+              <option value="translate_zh" data-i18n="toolbox_translate_zh">翻译成中文</option>
+              <option value="translate_en" data-i18n="toolbox_translate_en">翻译成英文</option>
+              <option value="resegment" data-i18n="toolbox_resegment">重新断句</option>
+              <option value="custom" data-i18n="toolbox_custom">自定义</option>
+            </select>
+          </div>
+        </div>
+        <p class="toolbox-settings-hint"><span id="postprocessProviderStatus" class="hint"></span> <button id="openLlmSettings" class="inline-link" type="button" data-i18n="toolbox_open_settings">在 ⚙️ 设置中配置 API Key</button></p>
+      </div>
+      <div class="adv-group">
+        <h3 data-i18n="toolbox_group_llm_prompt">提示词</h3>
+        <div class="field toolbox-preset-prompt">
+          <div class="toolbox-preset-label" data-i18n="toolbox_preset_prompt">预设提示词</div>
+          <div id="postprocessTaskPrompt" class="toolbox-preset-prompt-text" aria-live="polite">（无）</div>
+          <p class="hint" data-i18n="toolbox_preset_prompt_hint">由当前任务决定，不可编辑。</p>
         </div>
         <div class="field">
-          <label for="postprocessOperation" data-i18n="toolbox_operation">任务</label>
-          <select id="postprocessOperation">
-            <option value="proofread" data-i18n="toolbox_proofread">校对文本</option>
-            <option value="translate_zh" data-i18n="toolbox_translate_zh">翻译成中文</option>
-            <option value="translate_en" data-i18n="toolbox_translate_en">翻译成英文</option>
-            <option value="resegment" data-i18n="toolbox_resegment">重新断句</option>
-            <option value="custom" data-i18n="toolbox_custom">自定义</option>
-          </select>
+          <label for="postprocessPrompt" data-i18n="toolbox_prompt">自定义提示词</label>
+          <textarea id="postprocessPrompt" rows="4" autocomplete="off" data-i18n-placeholder="toolbox_prompt_placeholder"></textarea>
+          <p class="hint" data-i18n="toolbox_prompt_hint">可按需追加要求；留空则只使用预设提示词。</p>
+          <p id="postprocessPromptError" class="field-error"></p>
+          <p class="hint toolbox-full-line-hint" data-i18n="toolbox_time_hint">模型只处理带 ID 的文字；本地时间槽始终是时间真源。</p>
         </div>
-      </div>
-      <p class="toolbox-settings-hint"><span id="postprocessProviderStatus" class="hint"></span> <button id="openLlmSettings" class="inline-link" type="button" data-i18n="toolbox_open_settings">在 ⚙️ 设置中配置 API Key</button></p>
-      <div class="field toolbox-preset-prompt">
-        <div class="toolbox-preset-label" data-i18n="toolbox_preset_prompt">预设提示词</div>
-        <div id="postprocessTaskPrompt" class="toolbox-preset-prompt-text" aria-live="polite">（无）</div>
-        <p class="hint" data-i18n="toolbox_preset_prompt_hint">由当前任务决定，不可编辑。</p>
-      </div>
-      <div class="field">
-        <label for="postprocessPrompt" data-i18n="toolbox_prompt">自定义提示词</label>
-        <textarea id="postprocessPrompt" rows="4" autocomplete="off" data-i18n-placeholder="toolbox_prompt_placeholder"></textarea>
-        <p class="hint" data-i18n="toolbox_prompt_hint">可按需追加要求；留空则只使用预设提示词。</p>
-        <p id="postprocessPromptError" class="field-error"></p>
-        <p class="hint toolbox-full-line-hint" data-i18n="toolbox_time_hint">模型只处理带 ID 的文字；本地时间槽始终是时间真源。</p>
       </div>
     </section>
 
     <section id="toolboxReplacePanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxReplaceTab">
+      <p class="hint toolbox-panel-hint" data-i18n="toolbox_replace_safe">分段起止时间保持不变。</p>
       <div class="field">
         <label for="postprocessReplacements" data-i18n="toolbox_replace_rules">替换规则</label>
         <textarea id="postprocessReplacements" rows="7" autocomplete="off" data-i18n-placeholder="toolbox_replace_placeholder"></textarea>
@@ -540,6 +536,36 @@
     </section>
 
     </div>
+    <div class="toolbox-footer">
+      <div class="field toolbox-output-field">
+        <label for="postprocessOutputMode" data-i18n="toolbox_output">输出</label>
+        <select id="postprocessOutputMode">
+          <option value="both" data-i18n="toolbox_output_both">工程 + SRT</option>
+          <option value="json" data-i18n="toolbox_output_project">仅工程</option>
+          <option value="srt" data-i18n="toolbox_output_srt">仅 SRT</option>
+        </select>
+      </div>
+      <div class="toolbox-output-action">
+        <div class="toolbox-action-slot" data-tool-action="match">
+          <button id="runScriptMatch" class="primary" type="button" data-i18n="toolbox_run_match">匹配文稿</button>
+        </div>
+        <div class="toolbox-action-slot hidden" data-tool-action="ocr">
+          <button id="runOcrDedup" class="primary" type="button" data-i18n="toolbox_run_ocr">执行 OCR 字幕去重</button>
+        </div>
+        <div class="toolbox-action-slot hidden" data-tool-action="llm">
+          <button id="runLlmPostprocess" class="primary" type="button" data-i18n="toolbox_run">运行处理</button>
+        </div>
+        <div class="toolbox-action-slot hidden" data-tool-action="replace">
+          <button id="runFixedReplacement" class="primary" type="button" data-i18n="toolbox_run_replace">执行替换</button>
+        </div>
+        <div class="toolbox-action-slot hidden" data-tool-action="ffconcat">
+          <code id="toolboxMediaPath">未选择媒体</code>
+          <button id="runFfconcatRebuild" class="primary" type="button" data-i18n="toolbox_run_media">生成新媒体</button>
+        </div>
+      </div>
+    </div>
+    <div id="toolboxResizeY" class="toolbox-resize-y" role="separator" aria-orientation="horizontal" tabindex="0" data-i18n-title="toolbox_resize_height" title="调整工具箱高度"></div>
+    <div id="toolboxResizeX" class="toolbox-resize-x" role="separator" aria-orientation="vertical" tabindex="0" data-i18n-title="toolbox_resize_width" title="调整工具箱宽度"></div>
   </aside>
 
   <div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
