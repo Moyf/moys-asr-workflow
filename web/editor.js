@@ -4896,6 +4896,7 @@ function mergeSegments(idxs) {
   pushUndo('合并字幕');
   mergeContiguousIndices(sorted);
   renderAll();
+  update();
   // 合并完成后选中合并结果，方便继续对这句新字幕操作
   selectOnly(sorted[0]);
   const el = container.querySelector(`.cue[data-idx="${sorted[0]}"]`);
@@ -4944,6 +4945,7 @@ function mergeExtensionSegments(idxs, track = getActiveExtensionTrack()) {
   track.segments.splice(sorted[0], sorted.length, merged);
   markMultiSubtitleDirty();
   renderAll();
+  update();
   selectOnlyExtension(sorted[0]);
   lastClickedExtensionIdx = sorted[0];
   flashHint(
@@ -10305,12 +10307,9 @@ function syncBoundCueDrag(drag) {
 // 右键波形背景：创建字幕，或按右键对应的音频位置拆分命中的字幕。
 function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
   ctxmenu.innerHTML = '';
-  // 空白波形没有明确的字幕块目标：默认仍操作主轨。只有用户最近明确选中了
-  // 副字幕（副字幕面板/列表成为当前编辑对象）时，空白处才切换为副轨语义。
-  // 实际点击已有字幕块时由主轨/副轨各自的 contextmenu handler 直接处理，不经过这里。
-  const effectiveTrack = currentCuePanelKind === 'extension'
-    && selectedExtensionIdxs.size > 0
-    ? 'extension' : 'main';
+  // 空白波形按鼠标实际落入的 lane 决定操作轨道；实际点击已有字幕块时，
+  // 由主轨/副轨各自的 contextmenu handler 直接处理，不经过这里。
+  const effectiveTrack = track === 'extension' ? 'extension' : 'main';
   const extensionTrack = effectiveTrack === 'extension' ? getActiveExtensionTrack() : null;
   const splitSegments = effectiveTrack === 'extension'
     ? extensionTrack?.segments || [] : DATA.segments;
