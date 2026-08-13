@@ -879,8 +879,8 @@ test('merges selected extension cues from the context menu and C, with undo', as
   await second.click({ button: 'right' });
   await expect(page.locator('#ctxmenu .item').filter({ hasText: '合并副字幕块' })).toBeVisible();
   await page.locator('#ctxmenu .item').filter({ hasText: '合并副字幕块' }).click();
-  await expect(page.locator('#overlay-extension-text')).toHaveText('你好，世界。 / 第二句。');
-  await expect(page.locator('.multi-cue-column.extension').filter({ hasText: '你好，世界。 / 第二句。' })).toHaveCount(0);
+  await expect(page.locator('#overlay-extension-text')).toHaveText('你好，世界。第二句。');
+  await expect(page.locator('.multi-cue-column.extension').filter({ hasText: '你好，世界。第二句。' })).toHaveCount(1);
   await expect(page.locator('.multi-cue-column.extension:not(.multi-cue-empty)')).toHaveCount(2);
 
   await page.keyboard.press('Control+z');
@@ -1632,16 +1632,13 @@ test('uses the waveform lane to choose blank-area context-menu semantics', async
   const x = box.x + ((2000 - rowStart) / (rowEnd - rowStart)) * box.width;
   const extensionY = extensionBlock.y + extensionBlock.height / 2;
 
-  // 右键落在副字幕 lane 的空白处时，只按副轨查找目标；没有命中副字幕时不能回落主轨。
+  // 右键落在副字幕 lane 的空白处时，只提供创建副字幕；拆分入口属于副字幕块菜单。
   await page.mouse.click(x, extensionY, { button: 'right' });
-  const splitItem = page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分当前字幕' });
   await expect(page.locator('#ctxmenu .item').filter({ hasText: '创建副字幕' })).toBeVisible();
-  await expect(splitItem).toHaveClass(/disabled/);
-  await splitItem.click({ force: true });
-  await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+  await expect(page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分当前字幕' })).toHaveCount(0);
   await page.keyboard.press('Escape');
 
-  // 同一行的主字幕 lane 空白处按主轨处理。
+  // 同一行的主字幕 lane 空白处仍按主轨处理，并保留主轨拆分入口。
   const mainBlankX = box.x + ((3500 - rowStart) / (rowEnd - rowStart)) * box.width;
   const mainY = mainBlock.y + mainBlock.height / 2;
   await page.mouse.click(mainBlankX, mainY, { button: 'right' });

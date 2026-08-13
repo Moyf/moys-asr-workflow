@@ -10310,9 +10310,6 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
   // 空白波形按鼠标实际落入的 lane 决定操作轨道；实际点击已有字幕块时，
   // 由主轨/副轨各自的 contextmenu handler 直接处理，不经过这里。
   const effectiveTrack = track === 'extension' ? 'extension' : 'main';
-  const extensionTrack = effectiveTrack === 'extension' ? getActiveExtensionTrack() : null;
-  const splitSegments = effectiveTrack === 'extension'
-    ? extensionTrack?.segments || [] : DATA.segments;
   function addItem(label, kbd, fn, disabled = false) {
     const it = document.createElement('div');
     it.className = `item${disabled ? ' disabled' : ''}`;
@@ -10327,26 +10324,20 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
     }
     ctxmenu.appendChild(it);
   }
-  const splitIdx = splitSegments.findIndex((segment) => (
-    timeMs > segment.start && timeMs < segment.end
-  ));
+  const splitIdx = effectiveTrack === 'main'
+    ? DATA.segments.findIndex((segment) => timeMs > segment.start && timeMs < segment.end)
+    : -1;
   if (effectiveTrack === 'extension') {
     addItem('创建副字幕', '', () => addExtensionAtWaveformTime(timeMs, clickX, clickY));
   } else {
     addItem('创建字幕', '', () => addCueAtWaveformTime(timeMs, clickX, clickY));
+    addItem(
+      '按音频位置拆分当前字幕',
+      'B',
+      () => splitFromContextMenu(splitIdx, clickX, clickY, timeMs),
+      splitIdx < 0,
+    );
   }
-  addItem(
-    '按音频位置拆分当前字幕',
-    'B',
-    () => {
-      if (effectiveTrack === 'extension') {
-        openExtensionSplitModal(splitIdx, timeMs, extensionTrack);
-      } else {
-        splitFromContextMenu(splitIdx, clickX, clickY, timeMs);
-      }
-    },
-    splitIdx < 0,
-  );
 
   ctxmenu.classList.add('show');
   const rect = ctxmenu.getBoundingClientRect();
