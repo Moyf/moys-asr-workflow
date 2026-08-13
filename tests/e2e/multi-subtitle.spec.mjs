@@ -627,8 +627,8 @@ test('auto-binds the earliest unbound main cue when an extension overlaps severa
         segments: [
           { id: 'extension-001', start: 1050, end: 1150, text: 'Already bound' },
           { id: 'extension-002', start: 1200, end: 1400, text: 'Replace me' },
-          { id: 'extension-003', start: 3100, end: 3900, text: 'Auto bind me' },
           { id: 'extension-004', start: 1600, end: 2800, text: 'Multi overlap' },
+          { id: 'extension-003', start: 3100, end: 3900, text: 'Auto bind me' },
         ],
       }],
       bindings: [{
@@ -645,6 +645,9 @@ test('auto-binds the earliest unbound main cue when an extension overlaps severa
     type: 'application/json',
     base64: readFileSync(projectPath).toString('base64'),
   }]);
+  await openMultiSubtitleSettings(page);
+  await page.locator('#multi-subtitle-auto-sync-duration').uncheck();
+  await page.locator('#multi-subtitle-settings-toggle').click();
   await page.keyboard.press('Control+d');
 
   const autoExtension = page.locator('.multi-cue-column.extension').filter({ hasText: 'Auto bind me' });
@@ -1691,18 +1694,23 @@ test('uses the waveform lane to choose blank-area context-menu semantics', async
   const x = box.x + ((2000 - rowStart) / (rowEnd - rowStart)) * box.width;
   const extensionY = extensionBlock.y + extensionBlock.height / 2;
 
-  // 右键落在副字幕 lane 的空白处时，只提供创建副字幕；拆分入口属于副字幕块菜单。
+  // 右键落在副字幕 lane 的空白处时，创建动作按当前 lane 判定；两条轨道
+  // 的拆分入口则按鼠标时间分别显示，当前没有对应字幕时置灰。
   await page.mouse.click(x, extensionY, { button: 'right' });
   await expect(page.locator('#ctxmenu .item').filter({ hasText: '创建副字幕' })).toBeVisible();
-  await expect(page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分当前字幕' })).toHaveCount(0);
+  await expect(page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分主字幕' })).toBeVisible();
+  await expect(page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分主字幕' })).not.toHaveClass(/disabled/);
+  await expect(page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分副字幕' })).toHaveClass(/disabled/);
   await page.keyboard.press('Escape');
 
-  // 同一行的主字幕 lane 空白处仍按主轨处理，并保留主轨拆分入口。
+  // 同一行的主字幕 lane 空白处仍按主轨处理；两条轨道仍保留拆分入口，
+  // 但当前位置没有字幕时不可用。
   const mainBlankX = box.x + ((3500 - rowStart) / (rowEnd - rowStart)) * box.width;
   const mainY = mainBlock.y + mainBlock.height / 2;
   await page.mouse.click(mainBlankX, mainY, { button: 'right' });
-  const mainSplitItem = page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分当前字幕' });
+  const mainSplitItem = page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分主字幕' });
   await expect(mainSplitItem).toHaveClass(/disabled/);
+  await expect(page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分副字幕' })).toHaveClass(/disabled/);
   await expect(page.locator('#ctxmenu .item').filter({ hasText: '创建字幕' })).toBeVisible();
   await page.keyboard.press('Escape');
   expect(await page.evaluate(() => DATA.segments.length)).toBe(1);
@@ -1890,7 +1898,8 @@ test('keeps one shared waveform background with two lanes, switch visibility, an
   expect(afterNormal[0]).toBeGreaterThan(before[0]);
   expect(afterNormal[1]).toBeGreaterThan(before[1]);
 
-  // Alt 有位移时只调整当前主轨，绑定关系仍在；没有位移的 Alt 点击则切换禁用。
+  // Alt 拖动临时允许挤压相邻字幕；主字幕拖动仍带着绑定的副字幕一起移动，
+  // 没有位移的 Alt 点击则切换禁用。
   const beforeAlt = await Promise.all([
     mainBlock.evaluate((element) => parseFloat(element.style.left)),
     extensionBlock.evaluate((element) => parseFloat(element.style.left)),
@@ -1908,7 +1917,7 @@ test('keeps one shared waveform background with two lanes, switch visibility, an
     extensionBlock.evaluate((element) => parseFloat(element.style.left)),
   ]);
   expect(afterAlt[0]).toBeGreaterThan(beforeAlt[0]);
-  expect(Math.abs(afterAlt[1] - beforeAlt[1])).toBeLessThan(0.01);
+  expect(afterAlt[1]).toBeGreaterThan(beforeAlt[1]);
 
   const clickBox = await mainBlock.boundingBox();
   if (!clickBox) throw new Error('主字幕 waveform block 没有布局');

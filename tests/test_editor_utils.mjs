@@ -23,7 +23,7 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('显示刀光特效', 'en'), 'Show slash effect');
   assert.equal(i18n.translateText('字幕大小', 'en'), 'Font size');
   assert.equal(i18n.translateText('字幕预览设置', 'en'), 'Subtitle preview settings');
- assert.equal(i18n.translateText('交换主副字幕', 'en'), 'Swap main and extension subtitles');
+  assert.equal(i18n.translateText('交换主副字幕', 'en'), 'Swap main and secondary subtitles');
   assert.equal(i18n.translateText('主字幕 1', 'en'), 'Main subtitle 1');
   assert.equal(i18n.translateText('副字幕 1', 'en'), 'Secondary subtitle 1');
  assert.equal(
@@ -325,6 +325,35 @@ test('widens inverted items without touching genuine short timings', () => {
   // 倒挂 item 拉齐到 100ms，段 end 随之延伸
   assert.deepEqual([segments[1].items[0].start, segments[1].items[0].end], [460, 560]);
   assert.equal(segments[1].end, 560);
+});
+
+test('repairs a one-ms rounded item overlap before persistence', () => {
+  const segments = [{
+    start: 65000,
+    end: 67000,
+    text: '非常',
+    items: [
+      { text: '非', start: 65000, end: 66051 },
+      { text: '常', start: 66050, end: 66130 },
+    ],
+  }];
+
+  const fixed = helpers.normalizeSegmentTimings(segments);
+
+  assert.equal(fixed, 1);
+  assert.equal(segments[0].items[1].start, 66051);
+});
+
+test('repairs item overlap without hiding a real subtitle-segment overlap', () => {
+  const segments = [
+    { start: 0, end: 1000, text: '第一句', items: [{ start: 0, end: 600 }] },
+    { start: 900, end: 1800, text: '第二句', items: [{ start: 900, end: 1200 }] },
+  ];
+
+  const fixed = helpers.normalizeItemTimingRanges(segments);
+
+  assert.equal(fixed, 0);
+  assert.deepEqual(segments.map(({ start, end }) => [start, end]), [[0, 1000], [900, 1800]]);
 });
 
 test('translates timing-repair flash hints to English', () => {

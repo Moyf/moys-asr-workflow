@@ -39,7 +39,11 @@ mimetypes.add_type("audio/ogg", ".opus")
 import edit  # noqa: E402
 import reapeaks  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
-from maw.project import ProjectValidationFailed, normalize_project, repair_segment_durations  # noqa: E402
+from maw.project import (  # noqa: E402
+    ProjectValidationFailed,
+    normalize_project,
+    repair_project_timing_ranges,
+)
 from maw.media import MEDIA_EXTENSIONS, MediaConversionError, MediaResolutionError, MediaStatus, convert_media_for_browser, resolve_project_media  # noqa: E402
 
 
@@ -236,11 +240,9 @@ def load_project(
     raw_data = json.loads(json_path.read_text(encoding="utf-8"))
     # 兜底：上游（或旧版工具）可能写入 0 长/倒挂的段、词时间码，
     # 加载时先拉齐到至少 100ms，避免编辑器里出现看不见的字幕块、保存被校验拒绝。
-    raw_segments = raw_data.get("segments") if isinstance(raw_data, dict) else None
-    if isinstance(raw_segments, list):
-        repaired_count = repair_segment_durations(raw_segments)
-        if repaired_count:
-            print(f"[project] 已兜底修复 {repaired_count} 处 0 长/倒挂时间码（保底 100ms）")
+    repaired_count = repair_project_timing_ranges(raw_data)
+    if repaired_count:
+        print(f"[project] 已兜底修复 {repaired_count} 处异常时间码（保底 100ms）")
     data = normalize_project(raw_data)
 
     resolution = resolve_project_media(json_path, data, explicit_media)
@@ -523,9 +525,7 @@ class EditorServer(ThreadingHTTPServer):
 
         # 防止同目录同名旧文件掉包：段落内容与浏览器打开的副本一致才接管。
         browser_data = copy.deepcopy(browser_project)
-        browser_segments = browser_data.get("segments")
-        if isinstance(browser_segments, list):
-            repair_segment_durations(browser_segments)
+        repair_project_timing_ranges(browser_data)
         try:
             normalized_browser = normalize_project(browser_data)
         except ProjectValidationFailed as error:
@@ -549,7 +549,11 @@ class EditorServer(ThreadingHTTPServer):
         if not self.project.json_path:
             raise SaveProjectError("空白服务器没有绑定工程路径；请使用“导出工程”")
         try:
-            normalized_project = normalize_project(project_data)
+            repaired_project = copy.deepcopy(project_data)
+            # 保存时只自动修复字/词级取整冲突；真正的字幕段重叠仍交给严格校验，
+            # 避免把用户有意或误操作造成的段落重叠静默改写。
+            repair_project_timing_ranges(repaired_project, repair_segment_ranges=False)
+            normalized_project = normalize_project(repaired_project)
         except ProjectValidationFailed as error:
             raise SaveProjectError(str(error)) from error
 

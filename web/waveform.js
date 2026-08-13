@@ -135,6 +135,7 @@
     disabledDisplay: 'dim',
     showGroupBadges: true,
     dragPlayhead: true,
+    spectralColor: false,
   };
   // 内置工作区默认的列表/编辑区显示开关：列表默认显示表情包列。
   const DEFAULT_EDITOR_DISPLAY = {
@@ -507,6 +508,7 @@
         disabledDisplay: parsed.disabledDisplay === 'hidden' ? 'hidden' : 'dim',
         showGroupBadges: parsed.showGroupBadges !== false,
         dragPlayhead: parsed.dragPlayhead !== false,
+        spectralColor: parsed.spectralColor === true,
       };
     } catch (_) {
       return {
@@ -1077,6 +1079,7 @@
       this.rowHeightSelect = document.getElementById('waveform-row-height');
       this.showGroupBadgesToggle = document.getElementById('waveform-show-group-badges');
       this.dragPlayheadToggle = document.getElementById('waveform-drag-playhead');
+      this.spectralColorToggle = document.getElementById('waveform-spectral-color');
       this.sideSelect = document.getElementById('waveform-side');
       this.disabledDisplaySelect = document.getElementById('waveform-disabled-display');
       this.layoutEditToggle = document.getElementById('layout-edit-toggle');
@@ -1139,6 +1142,12 @@
       this.dragPlayheadToggle?.addEventListener('change', () => {
         this.settings.dragPlayhead = this.dragPlayheadToggle.checked;
         saveSettings(this.settings);
+      });
+      if (this.spectralColorToggle) this.spectralColorToggle.checked = this.settings.spectralColor === true;
+      this.spectralColorToggle?.addEventListener('change', () => {
+        this.settings.spectralColor = this.spectralColorToggle.checked;
+        saveSettings(this.settings);
+        this.render();
       });
       this.sideSelect?.addEventListener('change', () => {
         this.settings.side = this.sideSelect.value === 'right' ? 'right' : 'left';
@@ -2287,7 +2296,8 @@
           !event.altKey &&
           !event.target.closest('.waveform-cue-block, .waveform-gap-block')
         ) {
-          if (this.isCueTimeOccupied(this.timeFromPointer(event, row))) {
+          const track = this.trackAtPoint(event.clientX, event.clientY, row);
+          if (this.isCueTimeOccupied(this.timeFromPointer(event, row), track)) {
             event.preventDefault();
             event.stopPropagation();
             this.options.onCueCreateRejected?.('occupied');
@@ -2295,7 +2305,7 @@
           }
           event.preventDefault();
           event.stopPropagation();
-          this.beginCreateCueDrag(event, row);
+          this.beginCreateCueDrag(event, row, track);
           return;
         }
         // Shift+左键在空白处拖动：框选字幕块（追加进现有多选），
@@ -2340,35 +2350,7 @@
         event.preventDefault();
         event.stopPropagation();
         const time = this.timeFromPointer(event, row);
-        const rowRect = row.getBoundingClientRect();
-        // 双 lane 的高度会随基础/多行波形模式变化（基础波形可到 54px），
-        // 必须读取实际 lane 的像素高度，否则副轨上半段空白会被误判为主轨。
-        const rowStyle = getComputedStyle(row);
-        const parsePx = (value, fallback) => {
-          const parsed = Number.parseFloat(value);
-          return Number.isFinite(parsed) ? parsed : fallback;
-        };
-        const bottomInset = parsePx(rowStyle.getPropertyValue('--multi-subtitle-bottom-inset'), 7);
-        const visibleCue = row.querySelector(
-          '.waveform-cue-block[data-track="main"], .waveform-cue-block[data-track="extension"]',
-        );
-        const visibleCueHeight = visibleCue?.getBoundingClientRect().height || 0;
-        const markerStyle = getComputedStyle(row, '::after');
-        const markerHeight = parsePx(markerStyle.height, 15);
-        const markerBottom = parsePx(markerStyle.bottom, NaN);
-        // ::after 是副轨标记，bottom = bottomInset + (laneHeight - labelHeight) / 2。
-        // 这能解析出 CSS 自定义属性仍保留 min(...) 表达式时的真实像素高度。
-        const markerLaneHeight = Number.isFinite(markerBottom)
-          ? 2 * (markerBottom - bottomInset) + markerHeight : 0;
-        const laneHeight = visibleCueHeight > 0
-          ? visibleCueHeight
-          : markerLaneHeight > 0
-            ? markerLaneHeight
-            : Math.min(35, Math.max(0, (rowRect.height - bottomInset * 2) / 2));
-        const extensionTop = rowRect.height - bottomInset - laneHeight;
-        const currentMultiLane = row.classList.contains('multi-subtitle-row');
-        const track = currentMultiLane && event.clientY - rowRect.top >= extensionTop
-          ? 'extension' : 'main';
+        const track = this.trackAtPoint(event.clientX, event.clientY, row);
         this.options.showBlankWaveformMenu?.(time, event.clientX, event.clientY, track);
       });
       return row;
@@ -2743,7 +2725,7 @@
       const amplitude = waveformAmplitude(height, this.settings.waveformScale);
       const minWaveY = 2;
       const maxWaveY = Math.max(minWaveY, height - 2);
-      const spectral = this.spectral;
+      const spectral = this.settings.spectralColor === true ? this.spectral : null;
       const defaultColor = this.mediaAvailable ? colors.peak : colors.peakDim;
       const spectralRate = spectral ? spectral.sample_rate / spectral.division : 0;
       ctx.lineWidth = 1;
@@ -2822,14 +2804,14 @@
     // Ctrl(Cmd)+左键拖动空白波形：显示字幕块虚影，松开后交给编辑器
     // 创建字幕。时间映射固定使用按下时的行几何，避免虚拟行重建或拖出行边界
     // 后把终点错误地映射到另一行。
-    beginCreateCueDrag(event, row) {
+    beginCreateCueDrag(event, row, track = 'main') {
       if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
       this.focusWaveform();
       const geometry = this.captureRowGeometry(row);
       const startMs = this.timeFromPointer(event, row, geometry);
-      if (this.isCueTimeOccupied(startMs)) {
+      if (this.isCueTimeOccupied(startMs, track)) {
         this.options.onCueCreateRejected?.('occupied');
         return;
       }
@@ -2854,7 +2836,7 @@
         const requestedMs = this.timeFromPointer(nextEvent, row, geometry);
         // 起点在空白时，拖入已有字幕只把终点挡在字幕边界，
         // 保留之前的“边界阻挡后仍可创建”行为。
-        drag.currentMs = this.clampCreateCueTime(drag.startMs, requestedMs);
+        drag.currentMs = this.clampCreateCueTime(drag.startMs, requestedMs, track);
       };
       const updatePreview = () => {
         drag.frame = 0;
@@ -2864,6 +2846,8 @@
         if (!drag.preview) {
           drag.preview = document.createElement('div');
           drag.preview.className = 'waveform-cue-block waveform-create-preview';
+          drag.preview.dataset.track = track;
+          if (track === 'extension') drag.preview.style.setProperty('--cue-color', '#7a9fc5');
           const label = document.createElement('span');
           label.className = 'waveform-cue-label';
           drag.preview.appendChild(label);
@@ -2898,7 +2882,7 @@
           this.options.onCueCreateRejected?.('too-short', start, end);
           return;
         }
-        this.options.addCueRange?.(start, end, drag.startClientX, drag.startClientY);
+        this.options.addCueRange?.(start, end, drag.startClientX, drag.startClientY, track);
       };
       drag.finish = finish;
       try { row.setPointerCapture?.(drag.pointerId); } catch (_) {}
@@ -2929,10 +2913,42 @@
       };
     }
 
-    isCueTimeOccupied(timeMs) {
+    trackAtPoint(clientX, clientY, row = null) {
+      const hit = document.elementFromPoint(clientX, clientY);
+      const hitRow = row || hit?.closest?.('.waveform-row');
+      if (!hitRow || !this.pane?.contains(hitRow)) return 'main';
+      const block = hit?.closest?.('.waveform-cue-block');
+      if (block?.dataset.track === 'extension') return 'extension';
+      if (!hitRow.classList.contains('multi-subtitle-row')) return 'main';
+      const rowRect = hitRow.getBoundingClientRect();
+      const rowStyle = getComputedStyle(hitRow);
+      const parsePx = (value, fallback) => {
+        const parsed = Number.parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : fallback;
+      };
+      const bottomInset = parsePx(rowStyle.getPropertyValue('--multi-subtitle-bottom-inset'), 7);
+      const visibleCue = hitRow.querySelector(
+        '.waveform-cue-block[data-track="main"], .waveform-cue-block[data-track="extension"]',
+      );
+      const visibleCueHeight = visibleCue?.getBoundingClientRect().height || 0;
+      const markerStyle = getComputedStyle(hitRow, '::after');
+      const markerHeight = parsePx(markerStyle.height, 15);
+      const markerBottom = parsePx(markerStyle.bottom, NaN);
+      const markerLaneHeight = Number.isFinite(markerBottom)
+        ? 2 * (markerBottom - bottomInset) + markerHeight : 0;
+      const laneHeight = visibleCueHeight > 0
+        ? visibleCueHeight
+        : markerLaneHeight > 0
+          ? markerLaneHeight
+          : Math.min(35, Math.max(0, (rowRect.height - bottomInset * 2) / 2));
+      const extensionTop = rowRect.height - bottomInset - laneHeight;
+      return clientY - rowRect.top >= extensionTop ? 'extension' : 'main';
+    }
+
+    isCueTimeOccupied(timeMs, track = 'main') {
       const time = Number(timeMs);
       if (!Number.isFinite(time)) return false;
-      const segments = this.options.getSegments?.() || [];
+      const segments = this.options.getSegments?.(track) || [];
       return segments.some((segment) => {
         const start = Number(segment?.start);
         const end = Number(segment?.end);
@@ -2943,11 +2959,11 @@
 
     // 创建字幕的拖动不能跨过已有字幕；沿拖动方向把当前端点夹到遇到的
     // 第一个字幕边界。这样预览和最终提交使用同一组无重叠时间范围。
-    clampCreateCueTime(anchorMs, requestedMs) {
+    clampCreateCueTime(anchorMs, requestedMs, track = 'main') {
       if (!Number.isFinite(anchorMs) || !Number.isFinite(requestedMs) || anchorMs === requestedMs) {
         return requestedMs;
       }
-      const segments = this.options.getSegments?.() || [];
+      const segments = this.options.getSegments?.(track) || [];
       if (segments.some((segment) => {
         const start = Number(segment?.start);
         const end = Number(segment?.end);
@@ -3320,7 +3336,13 @@
           if (segments[idx + 1] && isAttached(segments[idx], segments[idx + 1])) cancelIndices.add(idx + 1);
         });
       }
+      const allOriginals = kind === 'move'
+        ? new Map(segments.map((segment, idx) => [idx, snapshotTiming(segment)]))
+        : null;
       const cancelOriginals = new Map([...cancelIndices].map((idx) => [idx, snapshotTiming(segments[idx])]));
+      if (allOriginals) {
+        allOriginals.forEach((original, idx) => cancelOriginals.set(idx, original));
+      }
       this.drag = {
         pointerId: event.pointerId,
         startClientX: event.clientX,
@@ -3338,10 +3360,11 @@
         commitIndices: new Set(dragIndices),
         started: false,
         changed: false,
-        // Alt 在拖动过程中代表“临时解除绑定”。主字幕的 Alt+普通点击
-        // 仍需保留原有的禁用快捷操作，因此把它延迟到 pointerup 判断：
-        // 没有位移时切换禁用，有位移时只编辑当前字幕。
-        independent: Boolean(event.altKey),
+        // Alt+副字幕拖动临时解除主副联动；Alt+主字幕拖动仍带着绑定的
+        // 副字幕一起走，但允许先挤压主轨相邻字幕。
+        independent: Boolean(event.altKey && track === 'extension'),
+        allowSqueeze: false,
+        squeezeOriginals: allOriginals,
         altToggleDisabledOnClick: Boolean(
           event.altKey && !targetHandle
             && !event.shiftKey && !event.ctrlKey && !event.metaKey,
@@ -3840,8 +3863,10 @@
       }
       // 一旦在本次拖动中进入 Alt 独立模式，松开 Alt 也不要把已经独立
       // 调整过的字幕重新吸回绑定对象；关系仍保留，下一次普通拖动再联动。
-      drag.independent = drag.independent === true || event.altKey;
-      if (drag.kind === 'move') this.applyMoveDrag(drag, deltaMs, drag.independent);
+      if (drag.kind === 'move' && event.altKey) drag.allowSqueeze = true;
+      if (drag.track === 'extension' && event.altKey) drag.independent = true;
+      const disableSnap = drag.independent === true || drag.allowSqueeze === true;
+      if (drag.kind === 'move') this.applyMoveDrag(drag, deltaMs, disableSnap, drag.allowSqueeze);
       else if (drag.kind === 'resize-boundary') this.applyBoundaryDrag(drag, deltaMs, drag.independent);
       else if (drag.kind === 'resize-boundary-independent') this.applyIndependentBoundaryDrag(drag, deltaMs);
       else this.applyResizeDrag(drag, deltaMs, drag.independent);
@@ -3850,18 +3875,48 @@
       this.scheduleRefreshCueBlocks();
     }
 
-    applyMoveDrag(drag, rawDelta, disableSnap) {
+    applyMoveDrag(drag, rawDelta, disableSnap, allowSqueeze = false) {
       const segments = this.options.getSegments(drag.track);
       const moved = new Set(drag.indices);
+      const originalFor = (idx) => drag.squeezeOriginals?.get(idx)
+        || drag.originals.get(idx) || snapshotTiming(segments[idx]);
+      const restoreSegment = (idx, original) => {
+        const segment = segments[idx];
+        if (!segment || !original) return;
+        segment.start = original.start;
+        segment.end = original.end;
+        segment.items = Array.isArray(original.items)
+          ? original.items.map((item) => ({ ...item })) : original.items;
+      };
+      if (allowSqueeze && drag.squeezeOriginals) {
+        drag.squeezeOriginals.forEach((original, idx) => {
+          if (!moved.has(idx)) restoreSegment(idx, original);
+        });
+      }
       let minDelta = -Infinity;
       let maxDelta = Infinity;
       for (const idx of drag.indices) {
         const original = drag.originals.get(idx);
         minDelta = Math.max(minDelta, -original.start);
         maxDelta = Math.min(maxDelta, this.durationMs - original.end);
-        if (idx > 0 && !moved.has(idx - 1)) minDelta = Math.max(minDelta, segments[idx - 1].end - original.start);
-        if (idx + 1 < segments.length && !moved.has(idx + 1)) {
-          maxDelta = Math.min(maxDelta, segments[idx + 1].start - original.end);
+        if (allowSqueeze) {
+          let previousIndex = idx - 1;
+          while (previousIndex >= 0 && moved.has(previousIndex)) previousIndex -= 1;
+          if (previousIndex >= 0) {
+            const previous = originalFor(previousIndex);
+            minDelta = Math.max(minDelta, previous.start + MIN_CUE_MS - original.start);
+          }
+          let nextIndex = idx + 1;
+          while (nextIndex < segments.length && moved.has(nextIndex)) nextIndex += 1;
+          if (nextIndex < segments.length) {
+            const next = originalFor(nextIndex);
+            maxDelta = Math.min(maxDelta, next.end - MIN_CUE_MS - original.end);
+          }
+        } else {
+          if (idx > 0 && !moved.has(idx - 1)) minDelta = Math.max(minDelta, segments[idx - 1].end - original.start);
+          if (idx + 1 < segments.length && !moved.has(idx + 1)) {
+            maxDelta = Math.min(maxDelta, segments[idx + 1].start - original.end);
+          }
         }
       }
       let delta = rawDelta;
@@ -3899,7 +3954,52 @@
           }));
         }
       }
-      this.setStatus(`移动 ${drag.indices.length} 条 · ${delta >= 0 ? '+' : ''}${delta} ms`);
+      if (allowSqueeze) {
+        for (const idx of drag.indices) {
+          const segment = segments[idx];
+          let previousIndex = idx - 1;
+          while (previousIndex >= 0 && moved.has(previousIndex)) previousIndex -= 1;
+          if (previousIndex >= 0) {
+            const previous = segments[previousIndex];
+            const previousOriginal = originalFor(previousIndex);
+            if (previous && previous.end > segment.start) {
+              const nextEnd = Math.max(previousOriginal.start + MIN_CUE_MS, segment.start);
+              if (nextEnd < previous.end) {
+                previous.end = nextEnd;
+                previous.items = remapItems(
+                  previousOriginal.items,
+                  previousOriginal.start,
+                  previousOriginal.end,
+                  previous.start,
+                  previous.end,
+                );
+                drag.commitIndices.add(previousIndex);
+              }
+            }
+          }
+          let nextIndex = idx + 1;
+          while (nextIndex < segments.length && moved.has(nextIndex)) nextIndex += 1;
+          if (nextIndex < segments.length) {
+            const next = segments[nextIndex];
+            const nextOriginal = originalFor(nextIndex);
+            if (next && segment.end > next.start) {
+              const nextStart = Math.min(nextOriginal.end - MIN_CUE_MS, segment.end);
+              if (nextStart > next.start) {
+                next.start = nextStart;
+                next.items = remapItems(
+                  nextOriginal.items,
+                  nextOriginal.start,
+                  nextOriginal.end,
+                  next.start,
+                  next.end,
+                );
+                drag.commitIndices.add(nextIndex);
+              }
+            }
+          }
+        }
+      }
+      this.setStatus(`${allowSqueeze ? '挤压移动' : '移动'} ${drag.indices.length} 条 · ${delta >= 0 ? '+' : ''}${delta} ms`);
     }
 
     applyResizeDrag(drag, rawDelta, disableSnap) {

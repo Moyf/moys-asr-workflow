@@ -79,6 +79,75 @@ def repair_segment_durations(
     return fixed
 
 
+def repair_item_timing_ranges(
+    segments: list[JsonValue],
+    min_ms: int = MIN_SEGMENT_DURATION_MS,
+) -> int:
+    """Repair only word/item ranges, preserving the enclosing segment ranges."""
+    floor = max(1, int(min_ms))
+    fixed = 0
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        segment_start = segment.get("start")
+        previous_item_end = segment_start if type(segment_start) is int else 0
+        items = segment.get("items")
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            item_start = item.get("start")
+            item_end = item.get("end")
+            if type(item_start) is not int:
+                item_start = previous_item_end
+                fixed += 1
+            if type(item_end) is not int:
+                item_end = item_start
+                fixed += 1
+            if item_start < previous_item_end:
+                item_start = previous_item_end
+                fixed += 1
+            if item_end <= item_start:
+                item_end = item_start + floor
+                fixed += 1
+            item["start"] = item_start
+            item["end"] = item_end
+            previous_item_end = item_end
+    return fixed
+
+
+def repair_project_timing_ranges(
+    project: JsonValue,
+    *,
+    repair_segment_ranges: bool = True,
+) -> int:
+    """Repair main and multi-subtitle track timings before strict validation.
+
+    The browser and older clients can carry a locally edited project whose
+    word timestamps overlap by a rounded millisecond.  Apply the same repair
+    sweep to every subtitle track so the server save boundary is defensive as
+    well, while leaving valid short timings untouched.
+    """
+    if not isinstance(project, dict):
+        return 0
+    main_segments = project.get("segments")
+    repair = repair_segment_durations if repair_segment_ranges else repair_item_timing_ranges
+    fixed = repair(main_segments) if isinstance(main_segments, list) else 0
+    multi = project.get("multi_subtitle")
+    if not isinstance(multi, dict):
+        return fixed
+    tracks = multi.get("tracks")
+    if not isinstance(tracks, list):
+        return fixed
+    for track in tracks:
+        if isinstance(track, dict):
+            segments = track.get("segments")
+            if isinstance(segments, list):
+                fixed += repair(segments)
+    return fixed
+
+
 @dataclass(frozen=True, slots=True)
 class ProjectValidationError:
     path: str

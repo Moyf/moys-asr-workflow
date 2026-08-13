@@ -75,7 +75,7 @@ __WAVEFORM_CSS__
           <span>显示方式</span>
           <select id="multi-subtitle-display-mode" title="多重字幕列表显示方式">
             <option value="main">主轨</option>
-            <option value="extension">扩展轨</option>
+            <option value="extension">副轨</option>
             <option value="both" selected>双列</option>
           </select>
         </div>
@@ -98,7 +98,7 @@ __WAVEFORM_CSS__
           <div>字符型：中文、日文等按字符拆分</div>
         </div>
         <div class="multi-subtitle-setting-row" id="multi-subtitle-extension-row-height-setting">
-          <span>拓展字幕时波形高度</span>
+          <span>副字幕时波形高度</span>
           <select id="multi-subtitle-extension-row-height" title="启用多重字幕时使用的波形行高度">
             <option value="64">64 px</option>
             <option value="80">80 px</option>
@@ -114,8 +114,11 @@ __WAVEFORM_CSS__
         <label class="multi-subtitle-setting-toggle" title="普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕">
           <input type="checkbox" id="multi-subtitle-select-bound-pair" checked> 同时选中主副字幕
         </label>
+        <label class="multi-subtitle-setting-toggle" title="绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H">
+          <input type="checkbox" id="multi-subtitle-auto-sync-duration" checked> 绑定时自动同步时长
+        </label>
         <div class="dropdown-separator"></div>
-        <div class="dropdown-item" id="multi-subtitle-swap" role="menuitem" tabindex="0" title="交换主字幕和扩展字幕的文本、时间与绑定关系">交换主副字幕</div>
+        <div class="dropdown-item" id="multi-subtitle-swap" role="menuitem" tabindex="0" title="交换主字幕和副字幕的文本、时间与绑定关系">交换主副字幕</div>
       </div>
     </span>
   </span>
@@ -600,6 +603,9 @@ __WAVEFORM_CSS__
         <option value="reapeaks">ReaPeaks 波形层</option>
       </select>
     </label>
+    <label class="toggle editor-settings-item" title="使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形">
+      <input type="checkbox" id="waveform-spectral-color"> 频谱颜色
+    </label>
     <span class="editor-settings-item" id="waveform-window-setting">显示窗口
       <span class="editor-settings-stepper">
         <button type="button" id="waveform-zoom-out" title="缩小时间轴">−</button>
@@ -706,7 +712,7 @@ __WAVEFORM_CSS__
     <div class="toolbar player-toolbar">
       <span class="info layout-toolbar-label">媒体</span>
       <label class="toggle"><input type="checkbox" id="overlay-toggle" checked> 预览字幕</label>
-      <label class="toggle" id="extension-overlay-toggle-wrap" hidden><input type="checkbox" id="extension-overlay-toggle" checked> 预览拓展字幕</label>
+      <label class="toggle" id="extension-overlay-toggle-wrap" hidden><input type="checkbox" id="extension-overlay-toggle" checked> 预览副字幕</label>
       <label class="toggle" title="在视频画面右上角预览当前时间的表情包"><input type="checkbox" id="sticker-overlay-toggle"> 预览表情包</label>
       <div class="subtitle-preview-settings" id="subtitle-preview-settings">
         <button type="button" id="subtitle-preview-settings-toggle" class="subtitle-preview-settings-toggle" title="字幕预览设置" aria-label="字幕预览设置" aria-expanded="false" aria-controls="subtitle-preview-settings-panel" aria-haspopup="dialog">⚙️</button>
@@ -760,8 +766,8 @@ __WAVEFORM_CSS__
             <input type="color" id="subtitle-color" value="#ffffff" aria-label="主字幕颜色">
           </label>
           <div class="subtitle-preview-extension-settings" id="extension-subtitle-preview-settings" hidden>
-            <label class="subtitle-preview-setting-row" title="只影响播放器画面内的拓展字幕预览">
-              <span>拓展字幕大小</span>
+            <label class="subtitle-preview-setting-row" title="只影响播放器画面内的副字幕预览">
+              <span>副字幕大小</span>
               <select id="extension-subtitle-font-size">
                 <option value="auto" selected>自动（比主字幕小一号）</option>
                 <option value="12">12 px</option>
@@ -779,8 +785,8 @@ __WAVEFORM_CSS__
                 <option value="96">96 px</option>
               </select>
             </label>
-            <label class="subtitle-preview-setting-row" title="选择播放器画面内拓展字幕预览使用的字体族">
-              <span>拓展字幕字体</span>
+            <label class="subtitle-preview-setting-row" title="选择播放器画面内副字幕预览使用的字体族">
+              <span>副字幕字体</span>
               <select id="extension-subtitle-font-family">
                 <option value="default" selected>默认无衬线</option>
                 <option value="yahei">微软雅黑 / 苹方</option>
@@ -789,9 +795,9 @@ __WAVEFORM_CSS__
                 <option value="sans">Arial / Segoe UI</option>
               </select>
             </label>
-            <label class="subtitle-preview-setting-row" title="选择播放器画面内拓展字幕预览的颜色">
-              <span>拓展字幕颜色</span>
-              <input type="color" id="extension-subtitle-color" value="#ffd34d" aria-label="拓展字幕颜色">
+            <label class="subtitle-preview-setting-row" title="选择播放器画面内副字幕预览的颜色">
+              <span>副字幕颜色</span>
+              <input type="color" id="extension-subtitle-color" value="#ffd34d" aria-label="副字幕颜色">
             </label>
           </div>
         </div>
@@ -1048,6 +1054,17 @@ __WAVEFORM_CSS__
 
 <!-- 拖拽加载遮罩 -->
 <div class="drag-overlay" id="drag-overlay"><div class="drag-hint">📥 松开以加载文件（视频 / 音频 / JSON / SRT）</div></div>
+
+<!-- 文件读取/媒体解码进度 -->
+<div class="editor-loading" id="editor-loading" hidden aria-live="polite" aria-busy="true">
+  <div class="editor-loading-card">
+    <div class="editor-loading-label" id="editor-loading-label">正在加载…</div>
+    <div class="editor-loading-progress-row">
+      <progress id="editor-loading-progress" max="100" value="0"></progress>
+      <span id="editor-loading-progress-value">0%</span>
+    </div>
+  </div>
+</div>
 
 <!-- 字幕忍者刀光：默认不参与布局与鼠标交互，仅在成功拆分时短暂显示。 -->
 <div id="ninja-slash-flash" aria-hidden="true"></div>
