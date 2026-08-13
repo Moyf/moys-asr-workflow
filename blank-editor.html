@@ -1583,9 +1583,21 @@
     color: var(--accent-hover); font-weight: 600;
   }
   .multi-subtitle-split-error { min-height: 20px; color: var(--red-hover); font-size: 12px; }
-  .multi-cue-column { min-width: 0; }
+  .multi-cue-column { min-width: 0; position: relative; }
   .multi-cue-column.extension { color: var(--text-secondary); }
   .multi-cue-column.unbound { opacity: .82; }
+  .multi-cue-column.disabled {
+    color: var(--text-muted);
+    background: repeating-linear-gradient(
+      135deg,
+      var(--wave-disabled-a) 0 5px,
+      var(--wave-disabled-b) 5px 10px
+    );
+    border-radius: var(--radius-sm);
+  }
+  .multi-cue-column.disabled .index,
+  .multi-cue-column.disabled .time,
+  .multi-cue-column.disabled .text { color: var(--text-muted); }
   .multi-cue-empty { color: var(--text-faint); font-style: italic; }
   .cue.multi-dual-cue { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: center; }
   .cue.multi-dual-cue .multi-cue-column { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2622,14 +2634,14 @@
 .waveform-basic .waveform-row.multi-subtitle-row {
   --multi-subtitle-lane-height: min(54px, calc((100% - (var(--multi-subtitle-bottom-inset) * 2) - var(--multi-subtitle-lane-gap)) / 2));
 }
-.waveform-row.multi-subtitle-row::before {
+.waveform-row.multi-subtitle-row.show-track-badges::before {
   content: "1";
   color: var(--active-cue-fg);
   background: var(--accent);
   top: auto;
   bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) + ((var(--multi-subtitle-lane-height) - var(--multi-subtitle-label-height)) / 2));
 }
-.waveform-row.multi-subtitle-row::after {
+.waveform-row.multi-subtitle-row.show-track-badges::after {
   content: "2";
   color: var(--mark-fg);
   background: var(--amber);
@@ -2986,7 +2998,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.4.0-beta.3</span>
+  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.4.0-beta.4</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -3078,6 +3090,9 @@
         </label>
         <label class="multi-subtitle-setting-toggle" title="绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H">
           <input type="checkbox" id="multi-subtitle-auto-sync-duration" checked> 绑定时自动同步时长
+        </label>
+        <label class="multi-subtitle-setting-toggle" title="在多重字幕波形中显示主字幕和副字幕的轨道编号徽标">
+          <input type="checkbox" id="multi-subtitle-show-track-badges"> 显示轨道徽标
         </label>
         <div class="dropdown-separator"></div>
         <div class="dropdown-item" id="multi-subtitle-swap" role="menuitem" tabindex="0" title="交换主字幕和副字幕的文本、时间与绑定关系">交换主副字幕</div>
@@ -3357,7 +3372,7 @@
         <span><kbd>Shift+G</kbd> 解绑当前副字幕</span>
         <span><kbd>H</kbd> 对齐副字幕到主字幕时间轴</span>
         <span><kbd>B</kbd> 单选副字幕后打开副字幕拆分</span>
-        <span>波形标记：<kbd>1</kbd> 主轨 <kbd>2</kbd> 扩展轨</span>
+        <span>波形轨道徽标（开启后）：<kbd>1</kbd> 主轨 <kbd>2</kbd> 副轨</span>
         <span>语言类型：单词型适合英语等空格语言，字符型适合中文/日文等</span>
         <span>主字幕自动使用时间码拆分：单轨可直接拆分；联动弹窗中主轨显示为不可交互的时间码锚点</span>
         <span>主字幕调整时副字幕只跟随；冲突时优先限制副字幕，不会缩短主字幕</span>
@@ -3495,6 +3510,7 @@
     <label class="toggle editor-settings-item" title="开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置">
       <input type="checkbox" id="split-use-word-timestamps" checked> 主字幕自动使用时间码拆分
     </label>
+    <small class="editor-settings-hint">启用后，可在右上角「🔧 设置 → 拆分与合并」中配置是否使用时间码拆分。</small>
     <div class="editor-settings-field">
     <label class="editor-settings-item" title="合并两条字幕时，中间插入的字符（如果不需要可以留空）">
       合并字幕时插入字符
@@ -5640,7 +5656,7 @@
     '字幕': 'Subtitles', '字幕预览': 'Subtitle preview', '表情包预览': 'Sticker preview', '字幕列表和编辑区': 'Subtitle list & editor',
     '多重字幕': 'Multiple subtitles', '多重字幕设置': 'Multiple-subtitle settings', '主轨': 'Main track', '扩展轨': 'Extension track', '副轨': 'Secondary track', '双列': 'Two columns',
     '拆分与合并': 'Split and merge', '波形形状来源': 'Waveform shape source', '自研波形': 'Self-built waveform', 'ReaPeaks 波形层': 'ReaPeaks waveform layer',
-    '显示方式': 'Display mode', '语言类型': 'Language type', '主字幕': 'Main subtitle', '副字幕': 'Secondary subtitle', '主字幕语言类型': 'Main subtitle language type', '副字幕语言类型': 'Secondary subtitle language type', '拓展字幕时波形高度': 'Waveform height with extension subtitles', '副字幕时波形高度': 'Waveform height with secondary subtitles', '跨轨道吸附': 'Cross-track snapping', '同时选中主副字幕': 'Select main and secondary subtitles together', '绑定时自动同步时长': 'Automatically sync duration when binding', '交换主副字幕': 'Swap main and secondary subtitles', '普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕': 'Normal clicks follow the last clicked track; clicking a bound subtitle only adds the other subtitle actually bound to it',
+    '显示方式': 'Display mode', '语言类型': 'Language type', '主字幕': 'Main subtitle', '副字幕': 'Secondary subtitle', '主字幕语言类型': 'Main subtitle language type', '副字幕语言类型': 'Secondary subtitle language type', '拓展字幕时波形高度': 'Waveform height with extension subtitles', '副字幕时波形高度': 'Waveform height with secondary subtitles', '跨轨道吸附': 'Cross-track snapping', '同时选中主副字幕': 'Select main and secondary subtitles together', '绑定时自动同步时长': 'Automatically sync duration when binding', '显示轨道徽标': 'Show track badges', '在多重字幕波形中显示主字幕和副字幕的轨道编号徽标': 'Show main and secondary track number badges in the multiple-subtitle waveform', '交换主副字幕': 'Swap main and secondary subtitles', '普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕': 'Normal clicks follow the last clicked track; clicking a bound subtitle only adds the other subtitle actually bound to it',
     '开启后显示扩展字幕轨、双列列表和绑定操作；关闭只隐藏扩展数据，不删除': 'Show the extension track, two-column list, and binding actions; turning it off only hides extension data',
     '启用多重字幕时使用的波形行高度': 'Waveform row height used when multiple subtitles are enabled', '请拖入第二个 srt 字幕以开启多重字幕功能': 'Drop a second SRT subtitle to enable multiple subtitles', '是否选择导入第二条字幕以开启多重字幕模式？': 'Import a second subtitle to enable multiple-subtitle mode?', '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。': 'When the current project has more than one subtitle, you can enable multiple-subtitle mode for bilingual subtitle editing and similar workflows.',
     '拖动多重字幕时，允许吸附到另一条字幕轨道的起点和终点': 'Snap multiple subtitles to the start and end boundaries of the other track while dragging',
@@ -5748,6 +5764,7 @@
     '已勾选“主字幕自动使用时间码拆分”，但当前主字幕没有可用的字词时间码，本次设置不生效，已改用拆分面板。': '“Automatically split the main subtitle using timecodes” is enabled, but this subtitle has no usable word timestamps, so the setting does not apply here. The split dialog is used instead.',
     '开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置': 'When enabled, main subtitles with usable word timestamps split automatically by timecode; in linked splits, the main subtitle appears as a non-interactive timecode anchor. When disabled, main subtitles also open the split dialog, initially positioned at the timecode location',
     '主字幕自动使用时间码拆分：单轨可直接拆分；联动弹窗中主轨显示为不可交互的时间码锚点': 'Automatically split the main subtitle using timecodes: single-track splits can be direct; linked dialogs show the main track as a non-interactive timecode anchor',
+    '启用后，可在右上角「🔧 设置 → 拆分与合并」中配置是否使用时间码拆分。': 'When enabled, configure whether to use timecode splitting from the top-right “🔧 Settings → Split and merge”.',
     '主字幕拆分使用字词时间码': 'Use word timestamps when splitting the main subtitle',
     '开启时，波形拆分优先使用主字幕的字词时间码；没有可用时间码时自动打开拆分弹窗；关闭后始终打开拆分弹窗。字幕列表拆分不受影响': 'When enabled, waveform splits prefer the main subtitle\'s word timestamps; when no usable timestamps exist, open the split dialog automatically; when disabled, always open the split dialog. Subtitle-list splits are unchanged',
     '暂停时只跳转，不自动播放；播放中跳转后继续播放。': 'When paused, seek without starting playback; while playing, keep playing after seeking.',
@@ -8640,7 +8657,10 @@
       const row = document.createElement('div');
       row.className = 'waveform-row';
       const multiLane = this.options.multiSubtitleVisible?.() === true;
-      if (multiLane) row.classList.add('multi-subtitle-row');
+      if (multiLane) {
+        row.classList.add('multi-subtitle-row');
+        if (this.options.showTrackBadges?.() === true) row.classList.add('show-track-badges');
+      }
       row.dataset.startMs = String(startMs);
       row.dataset.endMs = String(endMs);
       row.dataset.rowIndex = String(rowIndex);
@@ -9514,7 +9534,7 @@
       let overlay = null;
       let frame = 0;
       let drawing = false;
-      let hits = new Set();
+      let hits = { main: new Set(), extension: new Set() };
 
       const clearPreview = () => {
         content.querySelectorAll('.waveform-cue-block.marquee-preview').forEach((block) => {
@@ -9545,8 +9565,8 @@
         overlay.style.width = `${Math.abs(current.x - start.x)}px`;
         overlay.style.height = `${Math.abs(current.y - start.y)}px`;
         const marqueeRect = overlay.getBoundingClientRect();
-        const next = new Set();
-        content.querySelectorAll('.waveform-cue-block[data-track="main"]').forEach((block) => {
+        const next = { main: new Set(), extension: new Set() };
+        content.querySelectorAll('.waveform-cue-block[data-track="main"], .waveform-cue-block[data-track="extension"]').forEach((block) => {
           const blockRect = block.getBoundingClientRect();
           const hit =
             !block.hidden &&
@@ -9555,7 +9575,11 @@
             blockRect.bottom > marqueeRect.top &&
             blockRect.top < marqueeRect.bottom;
           block.classList.toggle('marquee-preview', hit);
-          if (hit) next.add(Number(block.dataset.idx));
+          if (!hit) return;
+          const track = block.dataset.track === 'extension' ? 'extension' : 'main';
+          const rawIndex = track === 'extension' ? block.dataset.extIdx : block.dataset.idx;
+          const index = Number(rawIndex);
+          if (Number.isInteger(index)) next[track].add(index);
         });
         hits = next;
       };
@@ -9571,8 +9595,13 @@
         if (commit) update();
         clearPreview();
         removeOverlay();
-        if (commit && drawing && hits.size > 0) {
-          this.options.addCueSelection?.([...hits].sort((a, b) => a - b));
+        if (commit && drawing) {
+          if (hits.main.size > 0) {
+            this.options.addCueSelection?.([...hits.main].sort((a, b) => a - b));
+          }
+          if (hits.extension.size > 0) {
+            this.options.addExtensionSelection?.([...hits.extension].sort((a, b) => a - b));
+          }
         }
       };
       const onMove = (moveEvent) => {
@@ -11253,6 +11282,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   selectBoundSubtitlePair: true,
   // G 绑定后是否自动把副字幕时间范围同步到主字幕（等同随后按 H）。
   multiSubtitleAutoSyncDuration: true,
+  // 多重字幕波形是否显示主/副轨道编号徽标。
+  multiSubtitleShowTrackBadges: false,
   // 界面主题：dark（默认）/ light。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
   theme: 'dark',
   // 波形形状来源：reapeaks（默认，.ReaPeaks 最细 wave 层）/ self（自研 1000Hz 重采样缓存）。
@@ -11316,6 +11347,7 @@ function readEditorSettings() {
       crossTrackSnap: saved.crossTrackSnap !== false,
       selectBoundSubtitlePair: saved.selectBoundSubtitlePair !== false,
       multiSubtitleAutoSyncDuration: saved.multiSubtitleAutoSyncDuration !== false,
+      multiSubtitleShowTrackBadges: saved.multiSubtitleShowTrackBadges === true,
       theme: saved.theme === 'light' ? 'light' : 'dark',
       waveShapeSource: saved.waveShapeSource === 'self' ? 'self' : 'reapeaks',
     };
@@ -11724,6 +11756,7 @@ const multiSubtitleSwapButton = document.getElementById('multi-subtitle-swap');
 const multiSubtitleCrossTrackSnapToggle = document.getElementById('multi-subtitle-cross-track-snap');
 const multiSubtitleSelectBoundPairToggle = document.getElementById('multi-subtitle-select-bound-pair');
 const multiSubtitleAutoSyncDurationToggle = document.getElementById('multi-subtitle-auto-sync-duration');
+const multiSubtitleShowTrackBadgesToggle = document.getElementById('multi-subtitle-show-track-badges');
 const multiSubtitleWaveformControls = document.getElementById('multi-subtitle-waveform-controls');
 const multiSubtitleToggle = document.getElementById('multi-subtitle-toggle');
 const multiSubtitleDisplayMode = document.getElementById('multi-subtitle-display-mode');
@@ -12037,6 +12070,10 @@ function updateMultiSubtitleUi() {
     multiSubtitleAutoSyncDurationToggle.checked = EDITOR_SETTINGS.multiSubtitleAutoSyncDuration;
     multiSubtitleAutoSyncDurationToggle.disabled = !enabled;
   }
+  if (multiSubtitleShowTrackBadgesToggle) {
+    multiSubtitleShowTrackBadgesToggle.checked = EDITOR_SETTINGS.multiSubtitleShowTrackBadges;
+    multiSubtitleShowTrackBadgesToggle.disabled = !enabled;
+  }
   if (multiSubtitleSwapButton) {
     const canSwap = enabled && (getMultiSubtitleState().tracks || []).length === 1
       && DATA.segments.length > 0 && (track?.segments || []).length > 0;
@@ -12231,6 +12268,10 @@ multiSubtitleSelectBoundPairToggle?.addEventListener('change', () => {
 });
 multiSubtitleAutoSyncDurationToggle?.addEventListener('change', () => {
   updateEditorSettings({ multiSubtitleAutoSyncDuration: multiSubtitleAutoSyncDurationToggle.checked });
+});
+multiSubtitleShowTrackBadgesToggle?.addEventListener('change', () => {
+  updateEditorSettings({ multiSubtitleShowTrackBadges: multiSubtitleShowTrackBadgesToggle.checked });
+  waveformEditor?.render?.();
 });
 multiSubtitleSwapButton?.addEventListener('click', () => {
   swapMainAndExtensionSubtitles();
@@ -14446,6 +14487,25 @@ function bindExtensionCueEvents(el, index, track = getActiveExtensionTrack(), du
     waveformEditor?.revealTime(segment.start, true);
     if (EDITOR_SETTINGS.clickBehavior !== 'select-only') seekFromWaveform(segment.start / 1000);
   });
+  el.addEventListener('pointermove', (event) => {
+    event.stopPropagation();
+    cueListPointer = {
+      kind: 'extension',
+      idx: index,
+      trackId: track.id,
+      x: event.clientX,
+      y: event.clientY,
+    };
+    scheduleCueSplitPreview(index, event.clientX, event.clientY, 'extension', track.id);
+  });
+  el.addEventListener('pointerleave', () => {
+    if (cueListPointer?.kind === 'extension'
+        && cueListPointer.idx === index
+        && cueListPointer.trackId === track.id) {
+      cueListPointer = null;
+      hideCueSplitPreview();
+    }
+  });
   el.addEventListener('dblclick', (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -14748,13 +14808,16 @@ function extensionOnlySplitState(extensionIndex, track, initial = {}) {
   const extension = track?.segments?.[extensionIndex];
   if (!extension || !track) return null;
   const extensionMode = getExtensionSubtitleSplitMode(track, extension);
+  const hasInitialTextPosition = Number.isFinite(initial.extensionOffset);
   const initialTime = Number.isFinite(initial.timeMs)
     ? initial.timeMs
     : splitTimeForTextOffset(extension, initial.extensionOffset ?? Math.floor(String(extension.text || '').length / 2));
   const fixedCutMs = Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
-  const initialOffset = MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
-    extension.text, initialTime, extension.start, extension.end, extensionMode,
-  );
+  const initialOffset = hasInitialTextPosition
+    ? splitOffsetNearTextPosition(extension.text, initial.extensionOffset, extensionMode)
+    : MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
+      extension.text, initialTime, extension.start, extension.end, extensionMode,
+    );
   if (!Number.isInteger(initialOffset)) return null;
   return {
     kind: 'extension',
@@ -15237,10 +15300,15 @@ function openMainWaveformSplitModal(mainIndex, timeMs) {
   return true;
 }
 
-function openExtensionSplitModal(extensionIndex, timeMs, track = getActiveExtensionTrack()) {
-  const state = extensionOnlySplitState(extensionIndex, track, { timeMs });
+function openExtensionSplitModal(
+  extensionIndex,
+  timeMs,
+  track = getActiveExtensionTrack(),
+  initial = {},
+) {
+  const state = extensionOnlySplitState(extensionIndex, track, { timeMs, ...initial });
   if (!state) {
-    flashHint('这条拓展字幕没有可用的文字边界');
+    flashHint('这条副字幕没有可用的文字边界');
     return false;
   }
   pendingLinkedSplit = state;
@@ -16184,19 +16252,27 @@ function hideCueSplitPreview() {
   cueSplitPreviewEl = null;
 }
 
-function scheduleCueSplitPreview(idx, clientX, clientY) {
-  cueSplitPreviewRequest = { idx, clientX, clientY };
+function scheduleCueSplitPreview(idx, clientX, clientY, kind = 'main', trackId = null) {
+  cueSplitPreviewRequest = { idx, clientX, clientY, kind, trackId };
   if (cueSplitPreviewFrame) return;
   cueSplitPreviewFrame = requestAnimationFrame(() => {
     cueSplitPreviewFrame = 0;
     const request = cueSplitPreviewRequest;
     cueSplitPreviewRequest = null;
-    if (!request || selectedIdxs.size !== 1 || !selectedIdxs.has(request.idx)) {
+    const isExtension = request?.kind === 'extension';
+    const selected = isExtension ? selectedExtensionIdxs : selectedIdxs;
+    if (!request || selected.size !== 1 || !selected.has(request.idx)) {
       hideCueSplitPreview();
       return;
     }
-    const cue = container.querySelector(`.cue[data-idx="${request.idx}"]`);
-    const segment = DATA.segments[request.idx];
+    const track = isExtension ? getExtensionTrack(request.trackId) : null;
+    const cue = isExtension
+      ? container.querySelector(
+        `.multi-cue-column.extension[data-ext-idx="${request.idx}"], `
+          + `.multi-extension-cue[data-ext-idx="${request.idx}"]`,
+      )
+      : container.querySelector(`.cue[data-idx="${request.idx}"]`);
+    const segment = isExtension ? track?.segments?.[request.idx] : DATA.segments[request.idx];
     const textEl = cue?.querySelector('.text');
     const text = String(segment?.text || '');
     if (!cue || !segment || !textEl || text.length < 2 || segment.end - segment.start < 200) {
@@ -16232,10 +16308,20 @@ function waveformPointerContext() {
 }
 
 function hoveredSelectedCueContext() {
-  if (!cueListPointer || !selectedIdxs.has(cueListPointer.idx)) return null;
-  const el = container.querySelector(`.cue[data-idx="${cueListPointer.idx}"]`);
+  if (!cueListPointer) return null;
+  const isExtension = cueListPointer.kind === 'extension';
+  const selected = isExtension ? selectedExtensionIdxs : selectedIdxs;
+  if (!selected.has(cueListPointer.idx)) return null;
+  const track = isExtension ? getExtensionTrack(cueListPointer.trackId) : null;
+  const el = isExtension
+    ? container.querySelector(
+      `.multi-cue-column.extension[data-ext-idx="${cueListPointer.idx}"], `
+        + `.multi-extension-cue[data-ext-idx="${cueListPointer.idx}"]`,
+    )
+    : container.querySelector(`.cue[data-idx="${cueListPointer.idx}"]`);
   if (!el || !el.matches(':hover')) return null;
-  return { ...cueListPointer, el };
+  const caret = caretInfoFromPoint(el.querySelector('.text'), cueListPointer.x, cueListPointer.y);
+  return { ...cueListPointer, el, track, offset: caret?.offset ?? null };
 }
 
 // === 单击/双击/Shift/Ctrl ===
@@ -16274,7 +16360,7 @@ function bindCueEvents(el, idx) {
 
   el.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || (editingState && editingState.el === el)) return;
-    cueListPointer = { idx, x: e.clientX, y: e.clientY };
+    cueListPointer = { kind: 'main', idx, x: e.clientX, y: e.clientY };
 
     // 这些子控件有自己的 click 行为；不要在父 cue 的 pointerdown 阶段抢先选中。
     const target = e.target instanceof Element ? e.target : null;
@@ -16306,8 +16392,8 @@ function bindCueEvents(el, idx) {
     };
   });
   el.addEventListener('pointermove', (e) => {
-    cueListPointer = { idx, x: e.clientX, y: e.clientY };
-    scheduleCueSplitPreview(idx, e.clientX, e.clientY);
+    cueListPointer = { kind: 'main', idx, x: e.clientX, y: e.clientY };
+    scheduleCueSplitPreview(idx, e.clientX, e.clientY, 'main');
   });
   el.addEventListener('pointerleave', () => {
     if (cueListPointer?.idx === idx) {
@@ -16775,6 +16861,95 @@ function isNativeKeyboardControl(event) {
   const target = event.target instanceof Element ? event.target : document.activeElement;
   return Boolean(target?.closest?.('button, input, select, textarea, a'));
 }
+
+function subtitleTemporalOverlap(left, right) {
+  if (!left || !right) return 0;
+  return Math.max(0, Math.min(Number(left.end), Number(right.end))
+    - Math.max(Number(left.start), Number(right.start)));
+}
+
+function nearestSubtitleIndex(segments, source, track = 'main') {
+  const candidates = (segments || [])
+    .map((segment, index) => ({ segment, index }))
+    .filter(({ segment, index }) => segment && !isHiddenDisabled(index, track));
+  candidates.sort((left, right) => {
+    const leftOverlap = subtitleTemporalOverlap(left.segment, source);
+    const rightOverlap = subtitleTemporalOverlap(right.segment, source);
+    const leftHasOverlap = leftOverlap > 0 ? 0 : 1;
+    const rightHasOverlap = rightOverlap > 0 ? 0 : 1;
+    if (leftHasOverlap !== rightHasOverlap) return leftHasOverlap - rightHasOverlap;
+    if (leftOverlap !== rightOverlap) return rightOverlap - leftOverlap;
+    const leftDistance = Math.abs(Number(left.segment.start) - Number(source.start));
+    const rightDistance = Math.abs(Number(right.segment.start) - Number(source.start));
+    return leftDistance - rightDistance || left.index - right.index;
+  });
+  return candidates[0]?.index ?? -1;
+}
+
+function boundSegmentIndex(binding, ids, segments) {
+  for (const id of ids || []) {
+    const index = (segments || []).findIndex((segment) => segment?.id === id);
+    if (index >= 0) return index;
+  }
+  return -1;
+}
+
+function switchMultiSubtitleTrack(direction) {
+  if (!multiSubtitleVisible()) return false;
+  const current = getCurrentCuePanelTarget();
+  if (!current) return false;
+  const wantMain = direction < 0;
+  if ((wantMain && current.kind === 'main') || (!wantMain && current.kind === 'extension')) return false;
+
+  const extensionTrack = getActiveExtensionTrack();
+  let nextIndex = -1;
+  if (wantMain) {
+    const binding = bindingForExtensionIndex(current.index, current.track);
+    nextIndex = boundSegmentIndex(binding, binding?.main_segment_ids, DATA.segments);
+    if (nextIndex < 0) nextIndex = nearestSubtitleIndex(DATA.segments, current.segment, 'main');
+  } else {
+    const binding = bindingForMainIndex(current.index);
+    const bindingTrack = binding ? getExtensionTrack(binding.track_id) : null;
+    if (bindingTrack?.id === extensionTrack?.id) {
+      nextIndex = boundSegmentIndex(binding, binding?.extension_segment_ids, extensionTrack.segments);
+    }
+    if (nextIndex < 0) {
+      nextIndex = nearestSubtitleIndex(extensionTrack?.segments, current.segment, 'extension');
+    }
+  }
+  if (nextIndex < 0) return false;
+
+  if (wantMain) {
+    selectOnly(nextIndex);
+    lastClickedIdx = nextIndex;
+  } else {
+    selectOnlyExtension(nextIndex, extensionTrack);
+    lastClickedExtensionIdx = nextIndex;
+  }
+  const cue = container.querySelector(
+    wantMain
+      ? `.cue[data-idx="${nextIndex}"], .multi-dual-cue[data-main-idx="${nextIndex}"]`
+      : `.multi-dual-cue[data-ext-idx="${nextIndex}"], .multi-extension-cue[data-ext-idx="${nextIndex}"]`,
+  );
+  if (cue) scrollCueIntoViewIfNeeded(cue);
+  return true;
+}
+
+// 多重字幕下，上/下只切换当前操作轨道；优先使用绑定关系，没有绑定时
+// 选择时间范围重叠最多、否则距离最近的另一轨字幕，不改变播放头位置。
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+  if (editingState || extensionEditingState || isTextEditingTarget(e)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+  if (isNativeKeyboardControl(e) || isPlayerKeyboardTarget(e)) return;
+  if (replaceModal.classList.contains('show') || stickerModal.classList.contains('show')
+      || stickerPreviewModal.classList.contains('show') || projectMediaModal.classList.contains('show')
+      || document.getElementById('sticker-root-modal').classList.contains('show')
+      || ctxmenu.classList.contains('show')) return;
+  if (!switchMultiSubtitleTrack(e.key === 'ArrowUp' ? -1 : 1)) return;
+  e.preventDefault();
+  e.stopPropagation();
+}, true);
 
 // 鼠标点击按钮后不保留按钮焦点，否则下一次空格会触发按钮自身的 click。
 // 键盘触发的 click detail 为 0，保留焦点以维持原生键盘可访问性。
@@ -17481,6 +17656,17 @@ document.addEventListener('keydown', (e) => {
   const pointerContext = waveformPointerContext();
   const pointerMainIndex = pointerContext
     ? findWaveformCueAtTime(pointerContext.timeMs, DATA.segments) : -1;
+  if (selectedExtensionIdxs.size === 1) {
+    const context = hoveredSelectedCueContext();
+    if (context?.kind === 'extension' && context.track?.segments?.[context.idx]) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const initial = Number.isFinite(context.offset)
+        ? { extensionOffset: context.offset } : {};
+      openExtensionSplitModal(context.idx, null, context.track, initial);
+      return;
+    }
+  }
   const extensionIsActive = multiSubtitleVisible()
     && activeCuePanel?.kind === 'extension'
     && selectedExtensionIdxs.size === 1
@@ -22137,6 +22323,10 @@ function initWaveformEditor() {
     addCueSelection: (idxs) => {
       idxs.forEach((idx) => addToSelection(idx));
     },
+    addExtensionSelection: (idxs) => {
+      const track = getActiveExtensionTrack();
+      idxs.forEach((idx) => addExtensionToSelection(idx, track));
+    },
     seek: seekFromWaveform,
     togglePlayback,
     toggleDisabled: (idxs, track = 'main') => toggleDisabled(idxs, track),
@@ -22164,6 +22354,7 @@ function initWaveformEditor() {
     getClickBehavior: () => EDITOR_SETTINGS.clickBehavior,
     getClickTarget: () => EDITOR_SETTINGS.clickTarget,
     getWaveShapeSource: () => EDITOR_SETTINGS.waveShapeSource,
+    showTrackBadges: () => EDITOR_SETTINGS.multiSubtitleShowTrackBadges,
     onBeginEdit: (label) => pushUndo(label),
     syncBoundCueDrag,
     onLayoutUndo: (label, snapshot) => pushLayoutUndo(label, snapshot),

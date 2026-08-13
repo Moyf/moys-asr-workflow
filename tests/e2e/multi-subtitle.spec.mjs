@@ -98,6 +98,13 @@ test('defaults the waveform shape source to ReaPeaks', async ({ page }) => {
   await expect(page.locator('#waveform-shape-source')).toHaveValue('reapeaks');
 });
 
+test('explains where to configure automatic timecode splitting', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('#editor-settings-toggle').click();
+  await expect(page.locator('.editor-settings-hint').filter({ hasText: '右上角「🔧 设置 → 拆分与合并」' }))
+    .toContainText('右上角「🔧 设置 → 拆分与合并」');
+});
+
 test('offers importing a second SRT when enabling multiple subtitles without an extension track', async ({ page }) => {
   await page.goto(server.url);
   await dropFiles(page, [srtSpec('main.srt', mainSrt)]);
@@ -295,6 +302,130 @@ test('keeps main and secondary language types independent and reuses them for co
   await expect(page.locator('#cues-container > .cue').first().locator('.charcount')).toHaveText('4');
   await page.locator('#multi-subtitle-extension-language-mode').selectOption('word');
   await expect(page.locator('#cues-container > .cue').first().locator('.charcount')).toHaveText('1');
+});
+
+test('switches the active subtitle track with the up and down arrows', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  const firstRow = page.locator('.multi-dual-cue').first();
+  await firstRow.locator('.multi-cue-column.main .text').click();
+  await expect(page.locator('#cue-panel-target')).toHaveText('主字幕');
+
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('#cue-panel-target')).toHaveText('副字幕');
+  await expect(page.locator('#sel-count')).toHaveText('2');
+
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('#cue-panel-target')).toHaveText('主字幕');
+  await expect(firstRow).toHaveClass(/selected/);
+});
+
+test('keeps track badges optional and uses striped disabled styling for secondary cues', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-badge-001', start: 1000, end: 2000, text: 'main cue' }],
+    waveform: generateWaveformPayload(7000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-badge-1', role: 'extension', name: 'English', language: 'English',
+        split_mode: 'word', source_name: 'translation.srt',
+        segments: [{ id: 'extension-badge-001', start: 1000, end: 2000, text: 'secondary cue' }],
+      }],
+      bindings: [],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'badge-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+  const firstRow = page.locator('.multi-dual-cue').first();
+  const firstWaveformRow = page.locator('.waveform-row.multi-subtitle-row').first();
+
+  await openMultiSubtitleSettings(page);
+  await expect(page.locator('#multi-subtitle-show-track-badges')).not.toBeChecked();
+  await expect(firstWaveformRow).not.toHaveClass(/show-track-badges/);
+  await page.locator('#multi-subtitle-show-track-badges').check();
+  await expect(firstWaveformRow).toHaveClass(/show-track-badges/);
+  await page.locator('#multi-subtitle-show-track-badges').uncheck();
+  await expect(firstWaveformRow).not.toHaveClass(/show-track-badges/);
+  await page.locator('#multi-subtitle-settings-toggle').click();
+
+  await firstRow.locator('.multi-cue-column.extension').click({ modifiers: ['Alt'] });
+  await expect(firstRow.locator('.multi-cue-column.extension')).toHaveClass(/disabled/);
+  await expect(firstRow.locator('.multi-cue-column.extension')).toHaveCSS(
+    'background-image',
+    /repeating-linear-gradient/,
+  );
+});
+
+test('uses the secondary language split mode and caret position for list B splitting', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-extension').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  await openMultiSubtitleSettings(page);
+  await page.locator('#multi-subtitle-extension-language-mode').selectOption('continuous');
+  await page.locator('#multi-subtitle-settings-toggle').click();
+
+  const extensionText = page.locator('.multi-dual-cue').first().locator('.multi-cue-column.extension .text');
+  await extensionText.click();
+  const splitPoint = await extensionText.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 3);
+    range.setEnd(node, 3);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.move(splitPoint.x, splitPoint.y);
+  await page.keyboard.press('b');
+
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await expect(page.locator('#multi-subtitle-split-title')).toHaveText('选择副字幕拆分点');
+  await expect(page.locator('#multi-subtitle-split-main-lane')).toBeHidden();
+  await expect(page.locator('#multi-subtitle-split-text .multi-subtitle-split-gap.active'))
+    .toHaveAttribute('data-offset', '3');
+  await page.keyboard.press('Escape');
+});
+
+test('marquee selection includes secondary waveform cues', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-marquee-001', start: 1000, end: 2000, text: 'main cue' }],
+    waveform: generateWaveformPayload(7000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-marquee-1', role: 'extension', name: 'English', language: 'English',
+        split_mode: 'word', source_name: 'translation.srt',
+        segments: [{ id: 'extension-marquee-001', start: 4000, end: 5000, text: 'secondary cue' }],
+      }],
+      bindings: [],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'marquee-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
+  const extensionBox = await waitForLayoutBox(extensionBlock, '副字幕波形块没有布局');
+  const row = extensionBlock.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const rowBox = await waitForLayoutBox(row, '多重字幕波形行没有布局');
+  await page.keyboard.down('Shift');
+  await page.mouse.move(Math.max(rowBox.x + 4, extensionBox.x - 32), extensionBox.y + extensionBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(extensionBox.x + extensionBox.width / 2, extensionBox.y + extensionBox.height / 2);
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+  await expect(extensionBlock).toHaveClass(/selected/);
 });
 
 test('shows and edits the last clicked main or extension cue in the current subtitle editor', async ({ page }) => {
@@ -1871,6 +2002,7 @@ test('keeps one shared waveform background with two lanes, switch visibility, an
   await expect(page.locator('#cue-panel-target')).toHaveText('主字幕');
 
   await openMultiSubtitleSettings(page);
+  await page.locator('#multi-subtitle-show-track-badges').check();
   await page.locator('#multi-subtitle-toggle').uncheck();
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeChecked();
   await expect(page.locator('.waveform-row.multi-subtitle-row')).toHaveCount(0);

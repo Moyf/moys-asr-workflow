@@ -2248,7 +2248,10 @@
       const row = document.createElement('div');
       row.className = 'waveform-row';
       const multiLane = this.options.multiSubtitleVisible?.() === true;
-      if (multiLane) row.classList.add('multi-subtitle-row');
+      if (multiLane) {
+        row.classList.add('multi-subtitle-row');
+        if (this.options.showTrackBadges?.() === true) row.classList.add('show-track-badges');
+      }
       row.dataset.startMs = String(startMs);
       row.dataset.endMs = String(endMs);
       row.dataset.rowIndex = String(rowIndex);
@@ -3122,7 +3125,7 @@
       let overlay = null;
       let frame = 0;
       let drawing = false;
-      let hits = new Set();
+      let hits = { main: new Set(), extension: new Set() };
 
       const clearPreview = () => {
         content.querySelectorAll('.waveform-cue-block.marquee-preview').forEach((block) => {
@@ -3153,8 +3156,8 @@
         overlay.style.width = `${Math.abs(current.x - start.x)}px`;
         overlay.style.height = `${Math.abs(current.y - start.y)}px`;
         const marqueeRect = overlay.getBoundingClientRect();
-        const next = new Set();
-        content.querySelectorAll('.waveform-cue-block[data-track="main"]').forEach((block) => {
+        const next = { main: new Set(), extension: new Set() };
+        content.querySelectorAll('.waveform-cue-block[data-track="main"], .waveform-cue-block[data-track="extension"]').forEach((block) => {
           const blockRect = block.getBoundingClientRect();
           const hit =
             !block.hidden &&
@@ -3163,7 +3166,11 @@
             blockRect.bottom > marqueeRect.top &&
             blockRect.top < marqueeRect.bottom;
           block.classList.toggle('marquee-preview', hit);
-          if (hit) next.add(Number(block.dataset.idx));
+          if (!hit) return;
+          const track = block.dataset.track === 'extension' ? 'extension' : 'main';
+          const rawIndex = track === 'extension' ? block.dataset.extIdx : block.dataset.idx;
+          const index = Number(rawIndex);
+          if (Number.isInteger(index)) next[track].add(index);
         });
         hits = next;
       };
@@ -3179,8 +3186,13 @@
         if (commit) update();
         clearPreview();
         removeOverlay();
-        if (commit && drawing && hits.size > 0) {
-          this.options.addCueSelection?.([...hits].sort((a, b) => a - b));
+        if (commit && drawing) {
+          if (hits.main.size > 0) {
+            this.options.addCueSelection?.([...hits.main].sort((a, b) => a - b));
+          }
+          if (hits.extension.size > 0) {
+            this.options.addExtensionSelection?.([...hits.extension].sort((a, b) => a - b));
+          }
         }
       };
       const onMove = (moveEvent) => {

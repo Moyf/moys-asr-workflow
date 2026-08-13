@@ -117,6 +117,9 @@ __WAVEFORM_CSS__
         <label class="multi-subtitle-setting-toggle" title="绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H">
           <input type="checkbox" id="multi-subtitle-auto-sync-duration" checked> 绑定时自动同步时长
         </label>
+        <label class="multi-subtitle-setting-toggle" title="在多重字幕波形中显示主字幕和副字幕的轨道编号徽标">
+          <input type="checkbox" id="multi-subtitle-show-track-badges"> 显示轨道徽标
+        </label>
         <div class="dropdown-separator"></div>
         <div class="dropdown-item" id="multi-subtitle-swap" role="menuitem" tabindex="0" title="交换主字幕和副字幕的文本、时间与绑定关系">交换主副字幕</div>
       </div>
@@ -395,7 +398,7 @@ __WAVEFORM_CSS__
         <span><kbd>Shift+G</kbd> 解绑当前副字幕</span>
         <span><kbd>H</kbd> 对齐副字幕到主字幕时间轴</span>
         <span><kbd>B</kbd> 单选副字幕后打开副字幕拆分</span>
-        <span>波形标记：<kbd>1</kbd> 主轨 <kbd>2</kbd> 扩展轨</span>
+        <span>波形轨道徽标（开启后）：<kbd>1</kbd> 主轨 <kbd>2</kbd> 副轨</span>
         <span>语言类型：单词型适合英语等空格语言，字符型适合中文/日文等</span>
         <span>主字幕自动使用时间码拆分：单轨可直接拆分；联动弹窗中主轨显示为不可交互的时间码锚点</span>
         <span>主字幕调整时副字幕只跟随；冲突时优先限制副字幕，不会缩短主字幕</span>
@@ -533,6 +536,7 @@ __WAVEFORM_CSS__
     <label class="toggle editor-settings-item" title="开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置">
       <input type="checkbox" id="split-use-word-timestamps" checked> 主字幕自动使用时间码拆分
     </label>
+    <small class="editor-settings-hint">启用后，可在右上角「🔧 设置 → 拆分与合并」中配置是否使用时间码拆分。</small>
     <div class="editor-settings-field">
     <label class="editor-settings-item" title="合并两条字幕时，中间插入的字符（如果不需要可以留空）">
       合并字幕时插入字符
