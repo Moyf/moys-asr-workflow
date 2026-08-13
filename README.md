@@ -24,6 +24,7 @@ MAW 是一个以 API 转写为主的字幕生成与编辑工作流。它提供 W
 
 - 使用 Qwen / Fun-ASR / Soniox 转写，生成 SRT 与 `.mosp` 工程。
 - MAWE Server 编辑器支持波形定位、拆分合并、静音空隙处理、画面预览和多种导出格式。
+- MAWE 支持可选的多重字幕：拖入第二条字幕作为副轨，支持主副字幕交换、绑定/解绑、联动编辑、跨轨道吸附，以及 `G` / `Shift+G` / `H` / `B` 快捷操作。
 - 公开 CLI 可用于批处理和 AI 自动化，详见[命令行文档](docs/CLI.md)。
 - [本地 Qwen3-ASR / FunASR](docs/LOCAL_ASR.md) 和免 Key 的必剪 ASR 均属于实验性入口，仅适合体验。
 

@@ -106,11 +106,11 @@ test('clicking a waveform subtitle while paused seeks to the pointer position', 
   }, expectedTime);
 });
 
-test('the default waveform subtitle target is the subtitle start', async ({ page }) => {
+test('the default waveform subtitle target follows the pointer', async ({ page }) => {
   await page.goto(server.url);
   await waitForMedia(page);
   await page.locator('#editor-settings-toggle').click();
-  await expect(page.locator('#click-target')).toHaveValue('cue-start');
+  await expect(page.locator('#click-target')).toHaveValue('pointer');
   await expect(page.locator('#click-target-field')).toBeVisible();
   await page.evaluate(() => {
     document.getElementById('waveform-scroll').scrollTop = 5 * (120 + 10);
@@ -127,7 +127,7 @@ test('the default waveform subtitle target is the subtitle start', async ({ page
 
   await page.waitForFunction(() => {
     const player = document.getElementById('player');
-    return Math.abs(player.currentTime - 50) < 0.5 && player.paused;
+    return Math.abs(player.currentTime - 55.2) < 0.5 && player.paused;
   });
 });
 
