@@ -1,0 +1,200 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { sitePath } from '../lib/site-path';
+
+const repoUrl = 'https://github.com/Moyf/moys-asr-workflow';
+const releasesUrl = `${repoUrl}/releases/latest`;
+const docsUrl = sitePath('docs/');
+const editorUrl = sitePath('editor/');
+---
+
+<BaseLayout>
+  <header class="site-header">
+    <div class="site-header-inner shell">
+      <a class="brand" href="#top" aria-label="MAW 首页">
+        <span class="brand-mark" aria-hidden="true">M</span>
+        <span>
+          <strong>MAW</strong>
+          <small>Moy's ASR Workflow</small>
+        </span>
+      </a>
+      <nav class="main-nav" aria-label="主导航">
+        <a href="#workflow">工作流</a>
+        <a href="#editor">编辑器</a>
+        <a href="#privacy">本地优先</a>
+        <a href={docsUrl}>文档</a>
+        <a href={editorUrl}>在线编辑器</a>
+        <a href={repoUrl}>GitHub ↗</a>
+      </nav>
+      <a class="button button-small button-outline" href={releasesUrl}>下载</a>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero shell">
+      <div class="hero-copy">
+        <p class="eyebrow">开源 · 本地优先 · API-FIRST</p>
+        <h1>把声音变成<br />可继续编辑的<br /><em>字幕工程</em></h1>
+        <p class="hero-lede">
+          MAW 把本地音视频交给云端 ASR，拿回带字级时间戳的字幕工程，再在浏览器里的 MAWE 编辑器继续精修。
+        </p>
+        <div class="hero-actions">
+          <a class="button button-primary" href={editorUrl}>在线编辑器 ↗</a>
+          <a class="button button-ghost" href={releasesUrl}>下载 Windows 版 ↗</a>
+        </div>
+        <p class="hero-meta mono">本地媒体 → ASR API → .mosp 工程 → MAWE 编辑 → SRT</p>
+      </div>
+      <figure class="hero-figure">
+        <img src={sitePath('launcher.jpg')} alt="MAW Launcher：拖入媒体文件，选择供应商并填入 API Key，一键生成字幕和工程" width="884" height="771" fetchpriority="high" />
+        <figcaption class="mono">MAW Launcher —— 拖入媒体，填入 Key，生成工程</figcaption>
+      </figure>
+    </section>
+
+    <section class="section shell" id="workflow">
+      <div class="section-heading">
+        <p class="eyebrow">01 —— 工作流</p>
+        <h2>三步，每一步都在明处。</h2>
+      </div>
+      <div class="flow-grid">
+        <article class="flow-step">
+          <span class="step-num mono">01</span>
+          <h3>选择媒体</h3>
+          <p>在 Launcher 里拖入音视频，选阿里云百炼（Qwen / Fun-ASR）或 Soniox，填入自己的 Key。</p>
+          <code>example.mp4</code>
+        </article>
+        <article class="flow-step">
+          <span class="step-num mono">02</span>
+          <h3>云端转写</h3>
+          <p>媒体直接上传到你选择的 ASR 服务，返回字幕文本和字/词级时间戳。</p>
+          <code>Qwen · Fun-ASR · Soniox</code>
+        </article>
+        <article class="flow-step">
+          <span class="step-num mono">03</span>
+          <h3>本地编辑</h3>
+          <p>在 MAWE 里修文字、调时间、去空隙，导出 SRT，或保留整个工程。</p>
+          <code>.srt · .mosp · .edit.html</code>
+        </article>
+      </div>
+    </section>
+
+    <section class="section shell" id="editor">
+      <div class="section-heading split-heading">
+        <div>
+          <p class="eyebrow">02 —— MAWE 编辑器</p>
+          <h2>SRT 只是出口，<br />工程才是源头。</h2>
+        </div>
+        <p>.mosp 工程保留字级时间戳、波形缓存、布局和可逆的编辑决策。识别完成后，从工程继续工作，而不是重新开始。</p>
+      </div>
+      <figure class="editor-figure">
+        <img src={sitePath('editor-screenshot.jpg')} alt="MAWE 字幕编辑器：左侧是视频与字幕列表，右侧是多行波形和带说话人颜色的字幕块" loading="lazy" />
+        <figcaption class="mono">MAWE —— 多行波形 · 说话人颜色 · 可逆空隙移除</figcaption>
+      </figure>
+      <div class="feature-grid">
+        <div>
+          <h3>拆分 / 合并</h3>
+          <p>按字级时间码分配两侧时间，拆分后依然准确。</p>
+        </div>
+        <div>
+          <h3>静音空隙移除</h3>
+          <p>可逆的压缩时间线，不改写原始媒体。</p>
+        </div>
+        <div>
+          <h3>画面内预览</h3>
+          <p>直接拖拽、缩放字幕位置，存进工程。</p>
+        </div>
+        <div>
+          <h3>说话人颜色</h3>
+          <p>说话人分离映射为字幕颜色，可附表情包。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section shell" id="privacy">
+      <div class="privacy-copy">
+        <p class="eyebrow">03 —— 边界</p>
+        <h2>本地优先，边界清楚。</h2>
+        <p>MAW 没有自己的服务器，不代管 Key 和媒体。转写时媒体直接发给你选择的 ASR；之后的编辑、保存、导出都在本机完成。</p>
+        <a class="text-link" href={`${repoUrl}#关于-api`}>API 与费用说明 ↗</a>
+      </div>
+      <div class="privacy-diagram" aria-label="数据边界示意图">
+        <div class="diagram-node local">
+          <span class="mono">本地电脑</span>
+          <strong>媒体 · Key · 工程</strong>
+        </div>
+        <div class="diagram-line"><span class="mono">只在转写时上传</span></div>
+        <div class="diagram-node api">
+          <span class="mono">你选择的 ASR</span>
+          <strong>阿里云百炼 / Soniox</strong>
+        </div>
+        <div class="diagram-return mono">识别结果回到本地</div>
+      </div>
+    </section>
+
+    <section class="section shell" id="start">
+      <div class="section-heading">
+        <p class="eyebrow">04 —— 上手</p>
+        <h2>先试两分钟。</h2>
+      </div>
+      <div class="start-grid">
+        <div class="start-col">
+          <h3 class="start-title">图形版<span class="mono start-tag">Windows 10/11</span></h3>
+          <dl class="spec-list">
+            <div><dt class="mono">MAWxFF</dt><dd>内置 FFmpeg，解压即用，推荐</dd></div>
+            <div><dt class="mono">MAW</dt><dd>体积更小，需系统已有 FFmpeg</dd></div>
+          </dl>
+          <a class="button button-primary" href={releasesUrl}>前往 Releases ↗</a>
+        </div>
+        <div class="start-col">
+          <h3 class="start-title">命令行<span class="mono start-tag">Python 3.11+ · uv</span></h3>
+          <div class="code-block mono">
+            <span class="code-prompt">PS&gt;</span> uv run python generate_subtitle_qwen_api.py<br />
+            <span class="code-indent">"D:\Videos\example.mp4" -ll 2m --json</span>
+          </div>
+          <p class="start-note"><code>-ll 2m</code> 只处理前两分钟，确认无误再跑全量。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section shell" id="faq">
+      <div class="section-heading">
+        <p class="eyebrow">05 —— 常见问题</p>
+        <h2>开始之前。</h2>
+      </div>
+      <div class="faq-grid">
+        <details open>
+          <summary>需要 GPU 吗？</summary>
+          <p>不需要。识别在云端 API 完成，你的电脑只负责上传媒体和运行编辑器。</p>
+        </details>
+        <details>
+          <summary>转写要花多少钱？</summary>
+          <p>MAW 免费（AGPL-3.0），费用取决于你的 API 账户：百炼 Qwen ASR 注册赠 10 小时，超出约 ¥0.792/小时；Soniox 约 $0.10/小时。</p>
+        </details>
+        <details>
+          <summary>MAW 是在线字幕网站吗？</summary>
+          <p>不是。它没有后端，不代管媒体和 Key，所有编辑都在本机浏览器完成。</p>
+        </details>
+        <details>
+          <summary>为什么要保留 .mosp 工程？</summary>
+          <p>SRT 只有文本和段落时间；.mosp 还保留字级时间戳、布局和编辑决策，是继续编辑的源头。</p>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer shell">
+    <a class="brand" href="#top">
+      <span class="brand-mark" aria-hidden="true">M</span>
+      <span>
+        <strong>MAW</strong>
+        <small>Moy's ASR Workflow</small>
+      </span>
+    </a>
+    <div class="footer-links">
+      <a href={editorUrl}>在线编辑器</a>
+      <a href={docsUrl}>文档</a>
+      <a href={repoUrl}>GitHub</a>
+      <a href={`${repoUrl}/blob/main/LICENSE`}>AGPL-3.0</a>
+      <a href={`${repoUrl}/blob/main/docs/MOSE.md`}>MOSE 方向</a>
+    </div>
+  </footer>
+</BaseLayout>

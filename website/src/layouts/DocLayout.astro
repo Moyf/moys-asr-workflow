@@ -1,0 +1,75 @@
+---
+import BaseLayout from './BaseLayout.astro';
+import { sitePath } from '../lib/site-path';
+import '../styles/docs.css';
+
+const { frontmatter = {} } = Astro.props;
+const title = frontmatter.title ?? Astro.props.title ?? 'MAW 文档';
+const description = frontmatter.description ?? Astro.props.description ?? 'MAW 官方使用与工程文档。';
+const source = frontmatter.source ?? Astro.props.source;
+const currentPath = Astro.url.pathname;
+const repoUrl = 'https://github.com/Moyf/moys-asr-workflow';
+
+const navigation = [
+  ['getting-started', '开始使用'],
+  ['workflow', '完整工作流'],
+  ['providers', 'ASR 服务与配置'],
+  ['editor-guide', '编辑器指南'],
+  ['cli', '命令行 CLI'],
+  ['json-schema', '工程文件规范'],
+  ['keyboard-adjustment', '按键调整'],
+  ['local-asr', '实验性本地 ASR'],
+  ['llm-postprocess', 'LLM 字幕后处理'],
+  ['ocr-subtitle-dedup', 'OCR 字幕去重'],
+  ['mose', '与 MOSE 的关系'],
+  ['provider-research', 'ASR 供应商调研'],
+  ['development', '开发概览'],
+];
+---
+
+<BaseLayout title={`${title} — MAW 文档`} description={description}>
+  <header class="docs-header">
+    <div class="docs-topbar shell">
+      <a class="docs-wordmark" href={sitePath('docs/')}>MAW / DOCS</a>
+      <nav aria-label="文档导航">
+        <a href={sitePath()}>返回首页</a>
+        <a href={repoUrl}>GitHub ↗</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="docs-shell shell">
+    <div class="docs-intro">
+      <p class="docs-kicker">MAW documentation</p>
+      <h1>{title}</h1>
+      <p>{description}</p>
+    </div>
+
+    <div class="docs-layout">
+      <aside class="docs-sidebar" aria-label="文档目录">
+        <p class="docs-sidebar-label">目录</p>
+        <nav>
+          {navigation.map(([slug, label]) => (
+            <a href={sitePath(`docs/${slug}/`)} aria-current={currentPath === sitePath(`docs/${slug}/`) ? 'page' : undefined}>{label}</a>
+          ))}
+        </nav>
+        {source && (
+          <a class="docs-source" href={`${repoUrl}/blob/main/${source}`}>
+            来源：{source}<br />在 GitHub 查看原文 ↗
+          </a>
+        )}
+      </aside>
+
+      <article class="docs-content">
+        {source && <p class="docs-source-note">本文同步自 MAW 原始仓库的 <a href={`${repoUrl}/blob/main/${source}`}>{source}</a>。</p>}
+        <slot />
+      </article>
+    </div>
+  </main>
+
+  <footer class="docs-footer">
+    <div class="shell">
+      文档随 MAW 原始仓库维护 · <a href={repoUrl}>GitHub ↗</a>
+    </div>
+  </footer>
+</BaseLayout>
