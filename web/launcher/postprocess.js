@@ -249,6 +249,10 @@
   }
 
   function renderPostprocessStream(event) {
+    if (event.kind === "reset") {
+      beginStreamOutput();
+      return;
+    }
     if ($("toolboxStreamOutput").classList.contains("hidden")) return;
     const text = String(event.text || "");
     if (!text) return;

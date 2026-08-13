@@ -10,6 +10,7 @@ import {
   generateWav,
   makeFirstCueWordSplittable,
   makeTempDir,
+  disableOnboarding,
   startServer,
 } from './helpers.mjs';
 
@@ -28,6 +29,10 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await server?.stop();
   cleanupTempDir(tempDir);
+});
+
+test.beforeEach(async ({ page }) => {
+  await disableOnboarding(page);
 });
 
 test('jump target is shown for both jump behaviors and hidden for select-only', async ({ page }) => {

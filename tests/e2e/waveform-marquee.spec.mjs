@@ -14,6 +14,7 @@ import {
   generateBlankEditor,
   startServer,
   startStaticServer,
+  disableOnboarding,
 } from './helpers.mjs';
 
 // ---------------------------------------------------------------------------
@@ -111,6 +112,10 @@ async function finishDrag(page) {
   await page.mouse.up();
   await page.keyboard.up('Shift');
 }
+
+test.beforeEach(async ({ page }) => {
+  await disableOnboarding(page);
+});
 
 // Wait for the marquee commit to land: blocks 1+2 selected in the cue list.
 async function expectMarqueeSelection(page, expectedIdxs) {

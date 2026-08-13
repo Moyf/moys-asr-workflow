@@ -438,6 +438,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         )
 
         def complete(_settings, _prompt, _cues, *, on_delta):
+            on_delta("reset", "")
             on_delta("reasoning", "先检查")
             on_delta("content", '{"groups":[')
             on_delta("content", '{"id":"c0001","text":"完成"}]}')
@@ -460,6 +461,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         scripts = "\n".join(self.window.scripts)
         self.assertTrue(result["ok"])
         self.assertIn('"type": "postprocess_stream"', scripts)
+        self.assertIn('"kind": "reset"', scripts)
         self.assertIn('"kind": "reasoning"', scripts)
         self.assertIn('"kind": "content"', scripts)
 
@@ -1783,6 +1785,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="toolboxThinkingOutput"', page)
         self.assertIn('id="toolboxModelOutput"', page)
         self.assertIn("function renderPostprocessStatus(event)", script)
+        self.assertIn('event.kind === "reset"', script)
         self.assertIn('taskPrompt: taskPromptText(operation)', script)
         self.assertIn('const customPrompt = $("postprocessPrompt").value.trim()', script)
         self.assertIn("const TASK_PROMPT_KEYS", script)

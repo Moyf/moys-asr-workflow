@@ -1145,7 +1145,7 @@ class LauncherApi:
         self._emit(event)
 
     def _emit_postprocess_stream(self, kind: str, text: str, batch: int) -> None:
-        if not text:
+        if kind != "reset" and not text:
             return
         self.pump.start()
         self._emit({"type": "postprocess_stream", "kind": kind, "text": text, "batch": batch})

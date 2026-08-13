@@ -258,6 +258,17 @@ export async function makeFirstCueWordSplittable(page) {
   });
 }
 
+// Generic editor E2E tests should start with a neutral selection.  The real
+// first-open onboarding intentionally selects the first cue, which changes
+// arrow-key behavior and leaves no Shift-selection anchor for tests that are
+// exercising the editor itself.  Onboarding has its own dedicated spec, so
+// only callers that opt into this helper skip it.
+export async function disableOnboarding(page) {
+  await page.addInitScript(() => {
+    localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed');
+  });
+}
+
 export function generateProjectJson(filePath) {
   const project = {
     media: 'synthetic.wav',
