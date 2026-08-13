@@ -9,6 +9,8 @@
 
 > 本地媒体 → AI 转写 → SRT + `.mosp` 工程 → MAWE 编辑 → 导出。
 
+官网：[MAW 官网](https://moyf.github.io/moys-asr-workflow/) · [在线编辑器](https://moyf.github.io/moys-asr-workflow/editor/)
+
 MAW 是一个以 API 转写为主的字幕生成与编辑工作流。它提供 Windows/macOS 图形版、公开 CLI 和本机 Server 编辑器；字幕编辑与工程保存都在本机完成。
 
 ## 快速开始

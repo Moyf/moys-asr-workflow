@@ -1,0 +1,85 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { sitePath } from '../../lib/site-path';
+import '../../styles/docs.css';
+
+const repoUrl = 'https://github.com/Moyf/moys-asr-workflow';
+const groups = [
+  {
+    label: '开始使用',
+    docs: [
+      ['getting-started', '开始使用 MAW', '产品简介、安装方式和第一次转写的完整入口。'],
+      ['workflow', '从零完成一次字幕工程', '从依赖、API Key 到转写、编辑和导出的完整工作流。'],
+      ['providers', 'ASR 服务与配置', '服务商选择、Key、费用和隐私边界。'],
+      ['cli', '命令行 CLI', 'Release 包的转写参数、Server 管理和自动化调用模板。'],
+    ],
+  },
+  {
+    label: '编辑与工程',
+    docs: [
+      ['editor-guide', 'MAWE 编辑器指南', '字幕编辑、波形操作、拆分合并、导出和工程文件。'],
+      ['json-schema', '字幕工程文件规范', '定义 .mosp / .json 工程的字段和数据边界。'],
+      ['keyboard-adjustment', '字幕按键调整', '用快捷键微调字幕整体位置、起点和终点。'],
+    ],
+  },
+  {
+    label: '方向与维护',
+    docs: [
+      ['mose', '与 MOSE 的关系', 'MAW、MAWE 和未来 MOSE 之间的定位与格式边界。'],
+      ['local-asr', '实验性本地 ASR', '本地模型入口、安装方式和 Beta 使用边界。'],
+      ['llm-postprocess', 'LLM 字幕后处理协议', '后处理输入、输出与安全边界。'],
+      ['ocr-subtitle-dedup', 'OCR 字幕去重', '画面字幕识别、去重规则和报告说明。'],
+      ['provider-research', 'ASR 供应商调研', 'Fun-ASR、Qwen 和豆包录音识别的能力对照。'],
+      ['development', '开发概览', '维护者使用的代码边界、数据持久化和发布检查。'],
+    ],
+  },
+];
+---
+
+<BaseLayout title="MAW 文档" description="MAW 的使用、编辑器、工程格式和开发文档。">
+  <header class="docs-header">
+    <div class="docs-topbar shell">
+      <a class="docs-wordmark" href={sitePath('docs/')}>MAW / DOCS</a>
+      <nav aria-label="文档导航">
+        <a href={sitePath()}>返回首页</a>
+        <a href={repoUrl}>GitHub ↗</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="docs-shell shell">
+    <div class="docs-intro">
+      <p class="docs-kicker">MAW documentation</p>
+      <h1>把文档放在<br /><em>工作流旁边。</em></h1>
+      <p>这里的内容直接同步自 MAW 原始仓库，覆盖从第一次转写到编辑器快捷键、工程格式和维护者信息。</p>
+    </div>
+
+    {groups.map((group) => (
+      <section class="docs-group">
+        <p class="docs-kicker">{group.label}</p>
+        <div class="docs-card-grid">
+          {group.docs.map(([slug, title, description]) => (
+            <a class="docs-card" href={sitePath(`docs/${slug}/`)}>
+              <div>
+                <small>MAW / DOCS</small>
+                <h2>{title}</h2>
+                <p>{description}</p>
+              </div>
+              <span class="docs-card-arrow" aria-hidden="true">↗</span>
+            </a>
+          ))}
+        </div>
+      </section>
+    ))}
+
+    <p class="docs-source-note" style="margin-top: 48px;">
+      文档源文件来自 <a href={`${repoUrl}/tree/main/docs`}>MAW 原始仓库的 docs 目录</a>；工程规范来自仓库根目录的 <a href={`${repoUrl}/blob/main/JSON_SCHEMA.md`}>JSON_SCHEMA.md</a>。在网站仓库运行 <code>npm run sync:docs</code> 可刷新内容。
+    </p>
+  </main>
+
+  <footer class="docs-footer">
+    <div class="shell">
+      文档随 MAW 原始仓库维护 · <a href={repoUrl}>GitHub ↗</a>
+    </div>
+  </footer>
+</BaseLayout>

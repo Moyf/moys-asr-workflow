@@ -1,0 +1,29 @@
+---
+import '../styles/global.css';
+import { sitePath } from '../lib/site-path';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = "MAW — Moy's ASR Workflow",
+  description = 'MAW（Moy\'s ASR Workflow）：本地音视频交给 Qwen / Fun-ASR / Soniox 转写，得到可继续编辑的字幕工程，并在浏览器里的 MAWE 编辑器精修导出。',
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#0d1319" />
+    <link rel="icon" href={sitePath('favicon.ico')} />
+    <title>{title}</title>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>
