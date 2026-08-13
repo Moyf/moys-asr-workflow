@@ -365,7 +365,7 @@ def run_transcription(
 
 def render_editor_html(json_path: Path, media_path: Path, html_path: Path, ui_language: str = "zh") -> Path | None:
     try:
-        from edit import media_tag, render_editor_page
+        from edit import get_app_version, media_tag, render_editor_page
         from maw.project import normalize_project
     except ImportError:
         return None
@@ -385,7 +385,7 @@ def render_editor_html(json_path: Path, media_path: Path, html_path: Path, ui_la
         stickers_json="[]",
         sticker_root_json="null",
         ui_language_json=json.dumps("en" if ui_language == "en" else "zh"),
-        generated_at=time.strftime("%Y-%m-%d %H:%M:%S"),
+        app_version=html.escape(f"v{get_app_version()}"),
         json_display=html.escape(Path(json_path).name),
         json_name_class="",
         media_name_display=html.escape(media.name),

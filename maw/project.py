@@ -147,6 +147,12 @@ def _normalize_copy(project: JsonValue, errors: list[ProjectValidationError]) ->
         normalized["segments"] = []
         return normalized
 
+    # Stable main-segment IDs are part of the current project contract.  Fill
+    # them before any consumer-specific normalization so a browser-opened
+    # legacy project and the server-loaded copy compare identically during
+    # media takeover.
+    _normalize_stable_ids(segments, "main", "$.segments", errors)
+
     previous_end: int | None = None
     for index, segment in enumerate(segments):
         path = f"$.segments[{index}]"
@@ -230,13 +236,9 @@ def _normalize_multi_subtitle(
     main_segments: list[JsonValue],
     errors: list[ProjectValidationError],
 ) -> None:
-    """Validate the optional bilingual track while keeping legacy projects valid."""
-    # Keep the serialized shape of legacy projects untouched. The browser
-    # editor supplies the closed empty structure when it loads such a project;
-    # the Python boundary must not rewrite an otherwise valid old save.
+    """Validate the optional bilingual track while keeping its shape optional."""
     if "multi_subtitle" not in project or project.get("multi_subtitle") is None:
         return
-    _normalize_stable_ids(main_segments, "main", "$.segments", errors)
     raw = project.get("multi_subtitle")
     if not isinstance(raw, dict):
         errors.append(ProjectValidationError("$.multi_subtitle", "must be an object"))

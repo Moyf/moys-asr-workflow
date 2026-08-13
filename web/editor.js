@@ -5360,26 +5360,38 @@ function deleteExtensionSegments(indices, track = getActiveExtensionTrack()) {
 }
 
 // === 滚动 ===
+function cueListVisibleBounds() {
+  const containerRect = container.getBoundingClientRect();
+  const toolbar = container.querySelector(':scope > .cue-list-toolbar');
+  const toolbarRect = toolbar?.getBoundingClientRect();
+  const top = toolbarRect
+    ? Math.min(containerRect.bottom, Math.max(containerRect.top, toolbarRect.bottom))
+    : containerRect.top;
+  return { containerRect, top, bottom: containerRect.bottom };
+}
+
 function scrollCueToCenter(cueEl) {
   if (!cueEl || cueEl.classList.contains('hidden')) return;
-  const cRect = container.getBoundingClientRect();
+  const { containerRect: cRect, top: visibleTop, bottom: visibleBottom } = cueListVisibleBounds();
   const eRect = cueEl.getBoundingClientRect();
+  const visibleHeight = Math.max(1, visibleBottom - visibleTop);
+  const comfortInset = Math.min(120, Math.max(48, visibleHeight * 0.2));
   // 目标已经处于列表中间的舒适区域时，不再制造一次多余的滚动动画。
-  // 留出上下约 20% 的缓冲；只有接近顶部/底部时才把字幕移到中央。
-  const comfortInset = Math.min(120, Math.max(48, cRect.height * 0.2));
+  // 顶部从 sticky 工具栏底部开始计算，避免把字幕滚到工具栏下面。
   if (
-    eRect.top >= cRect.top + comfortInset
-    && eRect.bottom <= cRect.bottom - comfortInset
+    eRect.top >= visibleTop + comfortInset
+    && eRect.bottom <= visibleBottom - comfortInset
   ) return;
   const offsetTop = (eRect.top - cRect.top) + container.scrollTop;
-  const target = offsetTop + eRect.height / 2 - container.clientHeight / 2;
+  const visibleTopOffset = visibleTop - cRect.top;
+  const target = offsetTop + eRect.height / 2 - visibleTopOffset - visibleHeight / 2;
   container.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
 }
 function scrollCueIntoViewIfNeeded(cueEl) {
   if (!cueEl || cueEl.classList.contains('hidden')) return;
-  const cRect = container.getBoundingClientRect();
+  const { top, bottom } = cueListVisibleBounds();
   const eRect = cueEl.getBoundingClientRect();
-  if (eRect.top < cRect.top || eRect.bottom > cRect.bottom) scrollCueToCenter(cueEl);
+  if (eRect.top < top || eRect.bottom > bottom) scrollCueToCenter(cueEl);
 }
 
 // === seek ===
@@ -6094,16 +6106,14 @@ document.addEventListener('keydown', (e) => {
   const extensionTrack = extensionTarget ? panelTarget.track : null;
   const segments = extensionTarget ? extensionTrack.segments : DATA.segments;
   const wasPlaying = !player.paused;
-  if (!extensionTarget && e.shiftKey && !e.altKey && (key === 'a' || key === 'd')
-      && waveformEditor?.snapActiveCueBoundaryByKeyboard?.(direction)) {
-    e.preventDefault();
-    e.stopPropagation();
-    return;
-  }
-  if (!extensionTarget && !e.shiftKey && waveformEditor?.adjustActiveCueDragBy?.(
-    direction * EDITOR_SETTINGS.cueMoveStepMs,
-    e.altKey,
-  )) {
+  const heldCueKey = !extensionTarget
+    && (!e.shiftKey || key === 'a' || key === 'd')
+    && waveformEditor?.handleHeldCueKey?.(
+      direction,
+      direction * EDITOR_SETTINGS.cueMoveStepMs,
+      { shiftKey: e.shiftKey, altKey: e.altKey, snap: key === 'a' || key === 'd' },
+    );
+  if (heldCueKey) {
     e.preventDefault();
     e.stopPropagation();
     return;
@@ -9325,13 +9335,6 @@ async function openProjectFile(file, options = {}) {
       jsonEl.classList.remove('empty');
       jsonEl.onclick = () => copyText(file.name, `已复制：${file.name}`);
     }
-    const timeEl = document.getElementById('gen-time');
-    if (timeEl) {
-      const now = new Date();
-      const pad = (value) => String(value).padStart(2, '0');
-      timeEl.textContent = `打开时间 ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    }
-
     const expectedName = window.AsrEditorUtils.fileBasename(DATA.media);
     // 服务器版：浏览器拿不到工程真实路径，但工程记录的媒体是绝对路径。
     // 先让服务器按它定位同目录同名工程并接管（自动加载媒体、允许 Ctrl(Cmd)+S 保存）；

@@ -12,6 +12,19 @@ fn read(path: &Path) -> String {
         .unwrap_or_else(|error| panic!("无法读取 {}：{}", path.display(), error))
 }
 
+fn project_version(repository_root: &Path) -> String {
+    let pyproject = read(&repository_root.join("pyproject.toml"));
+    let prefix = "version = \"";
+    for line in pyproject.lines() {
+        if let Some(rest) = line.strip_prefix(prefix) {
+            if let Some(version) = rest.strip_suffix('"') {
+                return format!("v{}", version);
+            }
+        }
+    }
+    panic!("无法从 pyproject.toml 读取 project.version");
+}
+
 fn replace_all(page: &mut String, replacements: &[(&str, &str)]) {
     for (token, value) in replacements {
         *page = page.replace(token, value);
@@ -71,6 +84,7 @@ fn render_frontend() {
         .and_then(Path::parent)
         .expect("无法定位 MAW 仓库根目录");
     let web_dir = repository_root.join("web");
+    let app_version = project_version(&repository_root);
     let mut page = read(&web_dir.join("editor-template.html"));
     let bridge = read(&manifest_dir.join("src").join("tauri_bridge.js"));
     let editor_css = read(&web_dir.join("editor.css"));
@@ -92,7 +106,7 @@ fn render_frontend() {
             ("__UI_LANGUAGE_JSON__", "null"),
             ("__TITLE__", "MOSE — Moy's Open Subtitle Editor"),
             ("__MEDIA_HTML__", BLANK_MEDIA_HTML),
-            ("__GENERATED_AT__", ""),
+            ("__APP_VERSION__", app_version.as_str()),
             ("__JSON_DISPLAY__", "未加载工程"),
             ("__JSON_NAME_CLASS__", "empty"),
             ("__MEDIA_NAME_DISPLAY__", "未加载媒体"),
@@ -120,6 +134,10 @@ fn render_frontend() {
     println!(
         "cargo:rerun-if-changed={}",
         manifest_dir.join("src").join("tauri_bridge.js").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        repository_root.join("pyproject.toml").display()
     );
 }
 

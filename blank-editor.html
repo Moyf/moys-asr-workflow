@@ -432,7 +432,7 @@
   }
   h1 .media-name:hover { color: var(--text-primary); }
   h1 .media-name.empty { color: var(--text-faint); cursor: default; }
-  h1 .gen-time { flex: 0 0 auto; font-size: 12px; color: var(--text-muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+  h1 .app-version { flex: 0 0 auto; font-size: 12px; color: var(--text-muted); font-weight: 400; font-variant-numeric: tabular-nums; }
   h1 .json-name {
     flex: 0 0 auto; margin-left: auto; font-size: 12px; font-weight: 400;
     color: var(--accent); cursor: pointer;
@@ -1215,6 +1215,8 @@
     background: var(--bg-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
     /* 顶部不留 padding：sticky 工具栏直接顶到容器边缘，避免上方露出空隙。 */
     padding: 0 4px 4px;
+    /* 浏览器/Playwright 自动滚动字幕行时，为 sticky 工具栏保留命中空间。 */
+    scroll-padding-top: calc(var(--panel-toolbar-h) + 4px);
   }
   /* 字幕列表顶部工具栏：sticky 固定在滚动区顶部；负边距拉通到容器边框；
      布局编辑模式下让出 dock-handle 高度。 */
@@ -2868,7 +2870,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-13 14:18</span>
+  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.4.0-beta.3</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -3418,15 +3420,6 @@
     </label>
     <small class="editor-settings-hint">选中字幕时，同时选中和它相同颜色/表情包的字幕</small>
     </div>
-    <div class="editor-settings-field">
-    <label class="toggle editor-settings-item" title="开启后，分割工具改用 🔪 图标，成功拆分时播放刀光音效">
-      <input type="checkbox" id="ninja-mode"> 字幕忍者
-    </label>
-    <label class="toggle editor-settings-item" id="ninja-slash-effect-field" title="开启后，成功拆分时在屏幕上显示一道白色刀光" hidden>
-      <input type="checkbox" id="ninja-slash-effect" checked> 显示刀光特效
-    </label>
-    <small class="editor-settings-hint">打开字幕忍者模式，让拆分字幕变得更加有趣</small>
-    </div>
     </div>
     <div class="editor-settings-sub-group">
     <span class="editor-settings-title">按键调整字幕</span>
@@ -3532,6 +3525,18 @@
           <span class="gap-remove-unit">秒</span>
         </span>
       </label>
+    </div>
+    <div class="editor-settings-sub-group">
+      <span class="editor-settings-title">🥷🏻</span>
+      <div class="editor-settings-field">
+      <label class="toggle editor-settings-item" title="开启后，分割工具改用 🔪 图标，成功拆分时播放刀光音效">
+        <input type="checkbox" id="ninja-mode"> 字幕忍者
+      </label>
+      <label class="toggle editor-settings-item" id="ninja-slash-effect-field" title="开启后，成功拆分时在屏幕上显示一道白色刀光" hidden>
+        <input type="checkbox" id="ninja-slash-effect" checked> 显示刀光特效
+      </label>
+      <small class="editor-settings-hint">打开字幕忍者模式，让拆分字幕变得更加有趣</small>
+      </div>
     </div>
   </div>
 </section>
@@ -4346,6 +4351,12 @@
 
   function ensureStableSegmentIds(segments, prefix = 'segment') {
     const source = Array.isArray(segments) ? segments : [];
+    // Reserve every valid explicit ID first. This keeps the browser's repair
+    // result identical to maw.project._normalize_stable_ids when a generated
+    // ID would otherwise collide with a later explicit one.
+    const reserved = new Set(source
+      .map((segment) => stableId(segment?.id))
+      .filter(Boolean));
     const used = new Set();
     let changed = 0;
     source.forEach((segment, index) => {
@@ -4355,7 +4366,16 @@
         const base = `${prefix}-${String(index + 1).padStart(3, '0')}`;
         id = base;
         let suffix = 2;
-        while (used.has(id)) id = `${base}-${suffix++}`;
+        while (used.has(id) || (id !== base && reserved.has(id))) {
+          id = `${base}-${suffix++}`;
+        }
+        if (reserved.has(id)) {
+          id = `${base}-generated`;
+          suffix = 2;
+          while (used.has(id) || reserved.has(id)) {
+            id = `${base}-generated-${suffix++}`;
+          }
+        }
         segment.id = id;
         changed++;
       } else if (segment.id !== id) {
@@ -5914,8 +5934,8 @@
     if (EN_ATTR[text]) return EN_ATTR[text];
     let match = /^(主字幕|副字幕)\s+(\d+)$/.exec(text);
     if (match) return `${translateText(match[1], EN)} ${match[2]}`;
-    match = /^生成时间\s+(.+)$/.exec(text);
-    if (match) return `Generated ${match[1]}`;
+    match = /^版本号\s+(.+)$/.exec(text);
+    if (match) return `Version ${match[1]}`;
     // 动态 title / 徽标：带变量的属性文案
     match = /^颜色：(.+)$/.exec(text);
     if (match) {
@@ -9255,6 +9275,8 @@
         seekedOnPointerDown: false,
       };
       event.currentTarget.classList.add('dragging');
+      this.pane.classList.add('cue-drag-active');
+      try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
       window.addEventListener('pointermove', this._dragMove = (moveEvent) => this.moveCueDrag(moveEvent));
       window.addEventListener('pointerup', this._dragEnd = (upEvent) => this.endCueDrag(upEvent), { once: true });
       window.addEventListener('pointercancel', this._dragEnd, { once: true });
@@ -9316,6 +9338,8 @@
         independent: true,
       };
       event.currentTarget.classList.add('dragging');
+      this.pane.classList.add('cue-drag-active');
+      try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
       window.addEventListener('pointermove', this._dragMove = (moveEvent) => this.moveCueDrag(moveEvent));
       window.addEventListener('pointerup', this._dragEnd = (upEvent) => this.endCueDrag(upEvent), { once: true });
       window.addEventListener('pointercancel', this._dragEnd, { once: true });
@@ -9460,6 +9484,17 @@
       return true;
     }
 
+    handleHeldCueKey(direction, deltaMs, { shiftKey = false, altKey = false, snap = false } = {}) {
+      if (!this.drag) return false;
+      if (shiftKey) {
+        if (snap && !altKey) this.snapActiveCueBoundaryByKeyboard(direction);
+        // 按住字幕块时即使吸附不可用也要消费按键，不能穿透成普通导航。
+        return true;
+      }
+      this.adjustActiveCueDragBy(deltaMs, altKey);
+      return true;
+    }
+
     snapActiveCueBoundaryByKeyboard(direction) {
       const drag = this.drag;
       if (!drag || drag.kind !== 'move' || (direction !== -1 && direction !== 1)) return false;
@@ -9523,6 +9558,7 @@
       });
       this.content.querySelectorAll('.waveform-cue-block.dragging')
         .forEach((block) => block.classList.remove('dragging'));
+      this.pane.classList.remove('cue-drag-active');
       this.drag = null;
       this.refreshCueOverlay();
       this.setStatus('已取消字幕调整');
@@ -9863,6 +9899,7 @@
       window.removeEventListener('pointerup', this._dragEnd);
       window.removeEventListener('pointercancel', this._dragEnd);
       this.content.querySelectorAll('.waveform-cue-block.dragging').forEach((block) => block.classList.remove('dragging'));
+      this.pane.classList.remove('cue-drag-active');
       this.drag = null;
       if (event.type === 'pointercancel') {
         drag.cancelOriginals.forEach((original, idx) => {
@@ -15356,26 +15393,38 @@ function deleteExtensionSegments(indices, track = getActiveExtensionTrack()) {
 }
 
 // === 滚动 ===
+function cueListVisibleBounds() {
+  const containerRect = container.getBoundingClientRect();
+  const toolbar = container.querySelector(':scope > .cue-list-toolbar');
+  const toolbarRect = toolbar?.getBoundingClientRect();
+  const top = toolbarRect
+    ? Math.min(containerRect.bottom, Math.max(containerRect.top, toolbarRect.bottom))
+    : containerRect.top;
+  return { containerRect, top, bottom: containerRect.bottom };
+}
+
 function scrollCueToCenter(cueEl) {
   if (!cueEl || cueEl.classList.contains('hidden')) return;
-  const cRect = container.getBoundingClientRect();
+  const { containerRect: cRect, top: visibleTop, bottom: visibleBottom } = cueListVisibleBounds();
   const eRect = cueEl.getBoundingClientRect();
+  const visibleHeight = Math.max(1, visibleBottom - visibleTop);
+  const comfortInset = Math.min(120, Math.max(48, visibleHeight * 0.2));
   // 目标已经处于列表中间的舒适区域时，不再制造一次多余的滚动动画。
-  // 留出上下约 20% 的缓冲；只有接近顶部/底部时才把字幕移到中央。
-  const comfortInset = Math.min(120, Math.max(48, cRect.height * 0.2));
+  // 顶部从 sticky 工具栏底部开始计算，避免把字幕滚到工具栏下面。
   if (
-    eRect.top >= cRect.top + comfortInset
-    && eRect.bottom <= cRect.bottom - comfortInset
+    eRect.top >= visibleTop + comfortInset
+    && eRect.bottom <= visibleBottom - comfortInset
   ) return;
   const offsetTop = (eRect.top - cRect.top) + container.scrollTop;
-  const target = offsetTop + eRect.height / 2 - container.clientHeight / 2;
+  const visibleTopOffset = visibleTop - cRect.top;
+  const target = offsetTop + eRect.height / 2 - visibleTopOffset - visibleHeight / 2;
   container.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
 }
 function scrollCueIntoViewIfNeeded(cueEl) {
   if (!cueEl || cueEl.classList.contains('hidden')) return;
-  const cRect = container.getBoundingClientRect();
+  const { top, bottom } = cueListVisibleBounds();
   const eRect = cueEl.getBoundingClientRect();
-  if (eRect.top < cRect.top || eRect.bottom > cRect.bottom) scrollCueToCenter(cueEl);
+  if (eRect.top < top || eRect.bottom > bottom) scrollCueToCenter(cueEl);
 }
 
 // === seek ===
@@ -16090,16 +16139,14 @@ document.addEventListener('keydown', (e) => {
   const extensionTrack = extensionTarget ? panelTarget.track : null;
   const segments = extensionTarget ? extensionTrack.segments : DATA.segments;
   const wasPlaying = !player.paused;
-  if (!extensionTarget && e.shiftKey && !e.altKey && (key === 'a' || key === 'd')
-      && waveformEditor?.snapActiveCueBoundaryByKeyboard?.(direction)) {
-    e.preventDefault();
-    e.stopPropagation();
-    return;
-  }
-  if (!extensionTarget && !e.shiftKey && waveformEditor?.adjustActiveCueDragBy?.(
-    direction * EDITOR_SETTINGS.cueMoveStepMs,
-    e.altKey,
-  )) {
+  const heldCueKey = !extensionTarget
+    && (!e.shiftKey || key === 'a' || key === 'd')
+    && waveformEditor?.handleHeldCueKey?.(
+      direction,
+      direction * EDITOR_SETTINGS.cueMoveStepMs,
+      { shiftKey: e.shiftKey, altKey: e.altKey, snap: key === 'a' || key === 'd' },
+    );
+  if (heldCueKey) {
     e.preventDefault();
     e.stopPropagation();
     return;
@@ -19321,13 +19368,6 @@ async function openProjectFile(file, options = {}) {
       jsonEl.classList.remove('empty');
       jsonEl.onclick = () => copyText(file.name, `已复制：${file.name}`);
     }
-    const timeEl = document.getElementById('gen-time');
-    if (timeEl) {
-      const now = new Date();
-      const pad = (value) => String(value).padStart(2, '0');
-      timeEl.textContent = `打开时间 ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    }
-
     const expectedName = window.AsrEditorUtils.fileBasename(DATA.media);
     // 服务器版：浏览器拿不到工程真实路径，但工程记录的媒体是绝对路径。
     // 先让服务器按它定位同目录同名工程并接管（自动加载媒体、允许 Ctrl(Cmd)+S 保存）；

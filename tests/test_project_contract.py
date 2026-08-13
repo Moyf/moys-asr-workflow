@@ -11,14 +11,30 @@ from maw.project import (
 
 
 class ProjectContractTests(unittest.TestCase):
-    def test_normalize_project_accepts_legacy_optional_omissions(self) -> None:
+    def test_normalize_project_generates_stable_main_ids_for_legacy_projects(self) -> None:
         project = {"segments": [{"start": 0, "end": 1000, "text": "hello"}]}
 
         normalized = normalize_project(project)
 
         self.assertNotIn("items", normalized["segments"][0])
-        self.assertNotIn("id", normalized["segments"][0])
+        self.assertEqual(normalized["segments"][0]["id"], "main-001")
         self.assertNotIn("multi_subtitle", normalized)
+
+    def test_generated_main_ids_reserve_later_explicit_ids(self) -> None:
+        project = {
+            "segments": [
+                {"start": 0, "end": 1000, "text": "generated"},
+                {"id": "main-001", "start": 1000, "end": 2000, "text": "explicit"},
+                {"start": 2000, "end": 3000, "text": "next"},
+            ],
+        }
+
+        normalized = normalize_project(project)
+
+        self.assertEqual(
+            [segment["id"] for segment in normalized["segments"]],
+            ["main-001-generated", "main-001", "main-003"],
+        )
 
     def test_validate_project_accepts_and_normalizes_multi_subtitle(self) -> None:
         project = {

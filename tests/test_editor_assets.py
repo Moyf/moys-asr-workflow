@@ -56,6 +56,11 @@ class EditorAssetContractTests(unittest.TestCase):
     def test_generated_page_contains_registered_modules_in_order(self) -> None:
         page = edit.build_blank_html()
         self.assertNotRegex(page, r"__[A-Z][A-Z0-9_]+__")
+        self.assertIn(
+            f'<span class="app-version" id="app-version" data-label="版本号">版本号 v{edit.get_app_version()}</span>',
+            page,
+        )
+        self.assertNotIn("生成时间", page)
         markers = (
             "// Shared frontend runtime registry.",
             "window.AsrEditorUtils = {",

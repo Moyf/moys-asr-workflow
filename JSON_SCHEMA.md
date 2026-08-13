@@ -261,7 +261,7 @@
       "split_mode": "word",
       "source_name": "translation.srt",
       "segments": [{
-        "id": "translation-001",
+        "id": "translation-segment-001",
         "start": 1100,
         "end": 2900,
         "text": "Extended subtitle"
@@ -271,7 +271,7 @@
       "id": "binding-001",
       "track_id": "translation",
       "main_segment_ids": ["main-001"],
-      "extension_segment_ids": ["translation-001"],
+      "extension_segment_ids": ["translation-segment-001"],
       "start_offset_ms": 100,
       "end_offset_ms": -100
     }]
@@ -305,7 +305,7 @@
 
 约束：
 
-- 主轨和扩展轨段均使用不重复的稳定字符串 ID；缺失 ID 的旧工程会在规范化时补齐。
+- 主轨和扩展轨段均使用不重复的稳定字符串 ID；当前规范化会为缺失 ID 的输入补齐，并在导出/保存时写入。主轨按 `main-001`、扩展轨按 `<track-id>-segment-001` 的顺序生成；如果生成值与后续显式 ID 冲突，会使用确定性的 `-generated` 后缀。浏览器与 Python 服务端使用同一规则。
 - 当前 MVP 强制每个绑定一对一；数组形式保留给未来一对多关系，但当前校验要求数组长度均为 1，且一个端点不能重复绑定。
 - 自动导入按段级时间码匹配：时间区间有交集，且开始/结束时间差均不超过 `300ms`；冲突选择总差值最小的候选。未匹配段保留，可手动绑定。
 - 扩展 SRT 或 mosp/json 没有可靠的字词音频时间码；扩展段中的 `items` 会被忽略/清除，不参与拆分。
@@ -320,6 +320,7 @@
 
 ```json
 {
+  "id": "main-001",
   "start": 1234,
   "end": 5678,
   "text": "字幕文本",
@@ -335,6 +336,7 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
+| `id` | `string` | **必填** | 主字幕稳定 ID；输入缺失时规范化为 `main-001`、`main-002` 等确定性 ID |
 | `start` | `int` | **必填** | 段起始时间，**单位毫秒** |
 | `end` | `int` | **必填** | 段结束时间，**单位毫秒**，要求 `end > start` |
 | `text` | `string` | **必填** | 字幕显示文本。可含 `\n` 表示换行（在编辑器里渲染为 `<br>`） |

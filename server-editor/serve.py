@@ -17,7 +17,6 @@ import tempfile
 import threading
 import webbrowser
 from dataclasses import dataclass, field, replace
-from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -325,7 +324,6 @@ def load_blank_project(stickers_dir: str | None) -> ServerProject:
 def build_server_page(project: ServerProject, settings: ServerSettings | None = None) -> bytes:
     """Render with current web/ assets on every page request to prevent UI drift."""
     settings = settings or ServerSettings()
-    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
     if project.media_path:
         media_html = edit.media_tag(project.media_path, "/media")
         source_media = project.source_media_path or project.media_path
@@ -375,7 +373,7 @@ def build_server_page(project: ServerProject, settings: ServerSettings | None = 
             "presetWorkspaces": settings.preset_workspaces,
             "activeWorkspaceName": settings.active_workspace_name,
         }, ensure_ascii=False),
-        generated_at=html.escape(generated_at),
+        app_version=html.escape(f"v{edit.get_app_version()}"),
         json_display=html.escape(json_display),
         json_name_class=json_class,
         media_name_display=html.escape(media_display),

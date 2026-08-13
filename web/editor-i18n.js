@@ -501,8 +501,8 @@
     if (EN_ATTR[text]) return EN_ATTR[text];
     let match = /^(主字幕|副字幕)\s+(\d+)$/.exec(text);
     if (match) return `${translateText(match[1], EN)} ${match[2]}`;
-    match = /^生成时间\s+(.+)$/.exec(text);
-    if (match) return `Generated ${match[1]}`;
+    match = /^版本号\s+(.+)$/.exec(text);
+    if (match) return `Version ${match[1]}`;
     // 动态 title / 徽标：带变量的属性文案
     match = /^颜色：(.+)$/.exec(text);
     if (match) {

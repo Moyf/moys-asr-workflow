@@ -416,7 +416,7 @@ class EditorAssetTests(unittest.TestCase):
             filename_base_json='"untitled"',
             stickers_json="[]",
             sticker_root_json='""',
-            generated_at="now",
+            app_version="vtest",
             json_display="project.json",
             json_name_class="",
             media_name_display="audio.wav",

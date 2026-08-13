@@ -3088,6 +3088,8 @@
         seekedOnPointerDown: false,
       };
       event.currentTarget.classList.add('dragging');
+      this.pane.classList.add('cue-drag-active');
+      try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
       window.addEventListener('pointermove', this._dragMove = (moveEvent) => this.moveCueDrag(moveEvent));
       window.addEventListener('pointerup', this._dragEnd = (upEvent) => this.endCueDrag(upEvent), { once: true });
       window.addEventListener('pointercancel', this._dragEnd, { once: true });
@@ -3149,6 +3151,8 @@
         independent: true,
       };
       event.currentTarget.classList.add('dragging');
+      this.pane.classList.add('cue-drag-active');
+      try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
       window.addEventListener('pointermove', this._dragMove = (moveEvent) => this.moveCueDrag(moveEvent));
       window.addEventListener('pointerup', this._dragEnd = (upEvent) => this.endCueDrag(upEvent), { once: true });
       window.addEventListener('pointercancel', this._dragEnd, { once: true });
@@ -3293,6 +3297,17 @@
       return true;
     }
 
+    handleHeldCueKey(direction, deltaMs, { shiftKey = false, altKey = false, snap = false } = {}) {
+      if (!this.drag) return false;
+      if (shiftKey) {
+        if (snap && !altKey) this.snapActiveCueBoundaryByKeyboard(direction);
+        // 按住字幕块时即使吸附不可用也要消费按键，不能穿透成普通导航。
+        return true;
+      }
+      this.adjustActiveCueDragBy(deltaMs, altKey);
+      return true;
+    }
+
     snapActiveCueBoundaryByKeyboard(direction) {
       const drag = this.drag;
       if (!drag || drag.kind !== 'move' || (direction !== -1 && direction !== 1)) return false;
@@ -3356,6 +3371,7 @@
       });
       this.content.querySelectorAll('.waveform-cue-block.dragging')
         .forEach((block) => block.classList.remove('dragging'));
+      this.pane.classList.remove('cue-drag-active');
       this.drag = null;
       this.refreshCueOverlay();
       this.setStatus('已取消字幕调整');
@@ -3696,6 +3712,7 @@
       window.removeEventListener('pointerup', this._dragEnd);
       window.removeEventListener('pointercancel', this._dragEnd);
       this.content.querySelectorAll('.waveform-cue-block.dragging').forEach((block) => block.classList.remove('dragging'));
+      this.pane.classList.remove('cue-drag-active');
       this.drag = null;
       if (event.type === 'pointercancel') {
         drag.cancelOriginals.forEach((original, idx) => {

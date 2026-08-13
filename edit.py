@@ -28,7 +28,6 @@ import html
 import json
 import os
 import re
-from datetime import datetime
 from pathlib import Path
 from typing import TypedDict
 
@@ -45,12 +44,25 @@ import reapeaks
 VIDEO_EXTS = set(VIDEO_EXTENSIONS)
 AUDIO_EXTS = set(AUDIO_EXTENSIONS)
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+# Keep this aligned with pyproject.toml; release workflows synchronize it.
+BUNDLED_EDITOR_VERSION = "1.4.0-beta.3"
 
 
 class Sticker(TypedDict):
     name: str
     filename: str
     rel: str
+
+
+def get_app_version() -> str:
+    """Read the project version, falling back to the packaged editor version."""
+    pyproject = Path(__file__).resolve().parent / "pyproject.toml"
+    try:
+        text = pyproject.read_text(encoding="utf-8")
+    except OSError:
+        return BUNDLED_EDITOR_VERSION
+    match = re.search(r'(?m)^version = "([^"]+)"\r?$', text)
+    return match.group(1) if match else BUNDLED_EDITOR_VERSION
 
 
 def media_tag(media_path: Path, media_url: str) -> str:
@@ -196,7 +208,7 @@ def render_editor_page(**context: str) -> str:
         "__SERVER_CONFIG_JSON__": context.get("server_config_json", "null"),
         "__NINJA_SFX_BASE_URL_JSON__": context.get("ninja_sfx_base_url_json", '"web/sfx/"'),
         "__UI_LANGUAGE_JSON__": context.get("ui_language_json", "null"),
-        "__GENERATED_AT__": context["generated_at"],
+        "__APP_VERSION__": context["app_version"],
         "__JSON_DISPLAY__": context["json_display"],
         "__JSON_NAME_CLASS__": context["json_name_class"],
         "__MEDIA_NAME_DISPLAY__": context["media_name_display"],
@@ -229,8 +241,6 @@ def build_blank_html(ninja_sfx_base_url_json: str | None = None) -> str:
         '<audio id="player" preload="metadata" '
         'style="width:100%;display:block;"></audio>'
     )
-    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
-
     return render_editor_page(
         title=html.escape("MAWE — Moy's ASR Workflow Editor · 用「打开工程」加载工程文件"),
         media_html=media_html,
@@ -239,7 +249,7 @@ def build_blank_html(ninja_sfx_base_url_json: str | None = None) -> str:
         stickers_json="[]",
         sticker_root_json='""',
         ninja_sfx_base_url_json=ninja_sfx_base_url_json or '"web/sfx/"',
-        generated_at=html.escape(generated_at),
+        app_version=html.escape(f"v{get_app_version()}"),
         json_display=html.escape("未加载工程"),
         json_name_class="empty",
         media_name_display=html.escape("未加载媒体"),
@@ -381,9 +391,6 @@ def main():
 
     filename_base = json_path.stem
 
-    # 生成时间
-    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
-
     page = render_editor_page(
         title=html.escape(f"MAWE — {media_path.name}"),
         media_html=media_tag(media_path, media_url),
@@ -394,7 +401,7 @@ def main():
         ninja_sfx_base_url_json=json.dumps(
             ninja_sfx_base_url(output_path), ensure_ascii=False,
         ),
-        generated_at=html.escape(generated_at),
+        app_version=html.escape(f"v{get_app_version()}"),
         json_display=html.escape(json_path.name),
         json_name_class="",
         media_name_display=html.escape(media_path.name),
