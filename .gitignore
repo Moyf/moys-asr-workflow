@@ -9,6 +9,7 @@ __pycache__/
 *.json.bak
 *.edit.html
 !blank-editor.html
+*.ReaPeaks.maw
 
 # Local media and subtitle outputs
 /examples/
