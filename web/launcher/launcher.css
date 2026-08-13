@@ -422,6 +422,11 @@ label {
   accent-color: var(--accent);
 }
 
+/* 两列网格中无标签单元格的占位标签：与相邻列的 label 同度量，保证控件基线对齐。 */
+.field-spacer {
+  visibility: hidden;
+}
+
 .ffmpeg-line {
   display: flex;
   align-items: center;
@@ -466,8 +471,35 @@ label {
   gap: 12px;
 }
 
-.segmentation-field {
+/* 高级选项分组卡片：与配置弹窗 .settings-section 同一视觉语言（细边框 + 面板底 + 小号大写标题）。 */
+.adv-group {
   grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  padding: 12px 14px 14px;
+}
+
+.adv-group > h3 {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.adv-group .field {
+  margin-top: 0;
+}
+
+.advanced-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: start;
 }
 
 .segmentation-row {
@@ -623,23 +655,6 @@ textarea::placeholder {
   color: var(--text-faint);
 }
 
-.qwen-audio-options {
-  margin-top: 12px;
-}
-
-.soniox-context-options {
-  margin-top: 12px;
-}
-
-.soniox-context-options h3 {
-  margin: 0 0 6px;
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
-
 .soniox-context-options-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -673,7 +688,7 @@ textarea::placeholder {
 }
 
 #qwenAudioHotwordsSection {
-  margin-top: 13px;
+  margin-top: 2px;
   padding-top: 12px;
   border-top: 1px solid var(--border-subtle);
 }
@@ -1012,18 +1027,82 @@ textarea::placeholder {
   width: min(560px, calc(100vw - 40px));
   block-size: min(560px, calc(100dvh - 156px));
   min-inline-size: min(360px, calc(100vw - 24px));
+  max-inline-size: calc(100vw - 40px);
   min-block-size: 320px;
   max-block-size: min(680px, calc(100dvh - 156px));
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  resize: both;
   padding: 16px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   color: var(--text-primary);
   background: linear-gradient(160deg, var(--accent-tint), transparent 42%), var(--bg-overlay);
   box-shadow: var(--shadow-3);
+}
+
+/* 自定义拖拽把手：抽屉右下锚定，顶边拉高、左边拉宽（见 postprocess.js）。 */
+.toolbox-resize-y,
+.toolbox-resize-x {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+
+.toolbox-resize-y {
+  top: 0;
+  right: 0;
+  left: 10px;
+  block-size: 10px;
+  cursor: n-resize;
+}
+
+.toolbox-resize-x {
+  top: 10px;
+  bottom: 0;
+  left: 0;
+  inline-size: 10px;
+  cursor: w-resize;
+}
+
+.toolbox-resize-y::after,
+.toolbox-resize-x::after {
+  content: "";
+  border-radius: var(--radius-sm);
+  background: var(--text-faint);
+  opacity: 0;
+  transition: opacity var(--t-fast), background var(--t-fast);
+}
+
+.toolbox-resize-y::after {
+  inline-size: 44px;
+  block-size: 4px;
+}
+
+.toolbox-resize-x::after {
+  inline-size: 4px;
+  block-size: 44px;
+}
+
+.toolbox-resize-y:hover::after,
+.toolbox-resize-x:hover::after,
+.toolbox-resize-y.dragging::after,
+.toolbox-resize-x.dragging::after {
+  opacity: 1;
+}
+
+.toolbox-resize-y:focus-visible,
+.toolbox-resize-x:focus-visible {
+  outline: none;
+}
+
+.toolbox-resize-y:focus-visible::after,
+.toolbox-resize-x:focus-visible::after {
+  background: var(--accent);
+  opacity: 1;
 }
 
 .toolbox-sticky {
@@ -1108,17 +1187,17 @@ textarea::placeholder {
 }
 
 .toolbox-beta {
-  flex: 0 1 220px;
-  max-width: 230px;
+  flex: 0 1 auto;
+  max-width: 320px;
   min-width: 0;
-  margin: 0 0 8px;
-  padding: 8px 10px;
+  margin: 0 0 6px;
+  padding: 4px 8px;
   border: 1px dashed var(--amber);
   border-radius: var(--radius-md);
   background: var(--bg-input);
   color: var(--amber);
   font-size: 11px;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 
 .toolbox-beta .status-link {
@@ -1303,43 +1382,63 @@ textarea::placeholder {
   padding-top: 2px;
 }
 
+.toolbox-panel-hint {
+  margin: 0 0 10px;
+}
+
 .toolbox-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  align-items: start;
 }
 
-.toolbox-output-bar {
-  display: grid;
-  gap: 6px;
-  margin-top: 12px;
-  padding: 9px 10px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--bg-input);
+/* 工具箱面板内的分组卡片（与高级选项共用 .adv-group 视觉语言）。 */
+.toolbox-panel .adv-group {
+  margin-top: 10px;
 }
 
-.toolbox-output-main {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.toolbox-output-field {
-  width: 180px;
-  flex: 0 1 180px;
+.toolbox-panel .adv-group:first-of-type {
   margin-top: 0;
 }
 
-.toolbox-output-hint,
+.adv-group .toolbox-settings-hint {
+  margin-top: 0;
+}
+
+/* 输出与执行固定在抽屉底部，不随面板滚动。 */
+.toolbox-footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 12px;
+  margin: 12px -16px -16px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-panel);
+}
+
+.toolbox-output-field {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  margin-top: 0;
+}
+
+.toolbox-output-field label {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.toolbox-output-field select {
+  min-width: 132px;
+}
+
 .toolbox-full-line-hint {
   margin: 0;
   text-align: left;
-}
-
-.toolbox-output-hint {
-  margin: 6px 10px 0;
 }
 
 .toolbox-output-action {
@@ -1351,18 +1450,14 @@ textarea::placeholder {
 
 .toolbox-action-slot {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 5px;
-  padding-top: 18px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
   min-width: 0;
 }
 
-.toolbox-action-slot .hint {
-  max-width: 280px;
-  margin: 0;
-  padding: 0;
-  text-align: right;
+.toolbox-content > .toolbox-result {
+  margin-top: 0;
 }
 
 .toolbox-settings-hint {
@@ -1401,6 +1496,20 @@ textarea::placeholder {
 .toolbox-preset-prompt-text.empty {
   color: var(--text-faint);
   font-style: italic;
+}
+
+/* 只读取值（如固定的 OCR 模型）：与输入控件同高同底，两列网格行内对齐。 */
+.toolbox-static-value {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  background: var(--bg-input);
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .toolbox-preset-prompt .hint {
@@ -1605,15 +1714,19 @@ code {
 
  @media (max-width:620px) {
    .grid-two,
+   .advanced-col,
    .qwen-audio-options-grid,
    .soniox-context-options-grid,
    .language-layout,
    .segmentation-row,
    .path-row {
-    grid-template-columns: 1fr;
-  }
-  .hero,
-  .actions {
+     grid-template-columns: 1fr;
+   }
+   .field-spacer {
+     display: none;
+   }
+   .hero,
+   .actions {
     flex-direction: column;
     align-items: stretch;
   }
@@ -1628,6 +1741,7 @@ code {
     right: 12px;
     bottom: 186px;
     width: calc(100vw - 24px);
+    max-inline-size: calc(100vw - 24px);
     max-block-size: calc(100dvh - 200px);
   }
   .toolbox-grid {
@@ -1636,22 +1750,21 @@ code {
   .toolbox-tabs {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .toolbox-output-bar {
-    align-items: stretch;
-  }
-  .toolbox-output-main {
+  .toolbox-footer {
     align-items: stretch;
     flex-direction: column;
   }
-  .toolbox-output-field,
-  .toolbox-output-action {
+  .toolbox-output-field {
+    align-items: stretch;
+    flex-direction: column;
     width: 100%;
   }
-  .toolbox-output-action {
-    justify-content: flex-end;
-  }
+  .toolbox-output-action,
   .toolbox-action-slot {
-    padding-top: 0;
+    width: 100%;
+  }
+  .toolbox-action-slot .primary {
+    width: 100%;
   }
 }
 
@@ -1757,15 +1870,7 @@ select[multiple] option {
   justify-content: flex-start;
 }
 
-/* 多语言时隐藏字段容器不占位，让语言设置从左侧开始并跨满两列。 */
-.grid-two:not(.single-language) .advanced-col {
-  display: contents;
-}
-
-.grid-two:not(.single-language) #languageField {
-  grid-column: 1 / -1;
-}
-
+/* 多语言时语言卡片整行铺开：左侧多选列表，右侧操作与提示。 */
 .grid-two:not(.single-language) #languageField .language-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, .8fr);
@@ -1809,36 +1914,7 @@ select[multiple] option {
   text-decoration-color: currentColor;
 }
 
-/* 单选语言使用常规两列混合布局。 */
-.grid-two.single-language .advanced-col {
-  display: contents;
-}
-
-.grid-two.single-language .field {
-  align-self: start;
-  align-content: start;
-  margin-top: 0;
-}
-
-.grid-two.single-language #modelField {
-  order: 1;
-}
-
-.grid-two.single-language #languageField {
-  order: 2;
-}
-
-.grid-two.single-language #regionField {
-  order: 3;
-}
-
-.grid-two.single-language #workspaceField {
-  order: 4;
-}
-
-.grid-two.single-language #lengthLimitField {
-  order: 5;
-}
+/* 单语言时字段按 DOM 顺序排列在各自分组卡片内（识别参数两列网格，语言整行）。 */
 
 /* 转写完成后的橙色引导在 hover 时继续保持同一视觉语义。 */
 .ghost.attention:hover:not(:disabled) {

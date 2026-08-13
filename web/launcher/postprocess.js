@@ -7,6 +7,10 @@
   const SUBTITLE_EXTS = new Set([".mosp", ".json", ".srt"]);
   const VIDEO_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"]);
   const SCRIPT_EXTS = new Set([".txt", ".md", ".markdown"]);
+  const TOOLBOX_SIZE_KEY = "maw.launcher.toolbox.size";
+  const TOOLBOX_MIN_WIDTH = 360;
+  const TOOLBOX_MIN_HEIGHT = 320;
+  const TOOLBOX_MAX_HEIGHT = 680;
   const CUSTOM_DEFAULT_LABEL = "Custom (OpenAI-compatible)";
   let busy = false;
   let inputManual = false;
@@ -209,6 +213,87 @@
     document.querySelectorAll("[data-tool-action]").forEach((action) => {
       action.classList.toggle("hidden", action.dataset.toolAction !== tool);
     });
+  }
+
+  function clampToolboxSize(width, height) {
+    const maxWidth = Math.max(TOOLBOX_MIN_WIDTH, window.innerWidth - 40);
+    const maxHeight = Math.max(TOOLBOX_MIN_HEIGHT, Math.min(TOOLBOX_MAX_HEIGHT, window.innerHeight - 156));
+    return {
+      width: Math.round(Math.min(Math.max(width, TOOLBOX_MIN_WIDTH), maxWidth)),
+      height: Math.round(Math.min(Math.max(height, TOOLBOX_MIN_HEIGHT), maxHeight)),
+    };
+  }
+
+  function applyToolboxSize(width, height) {
+    const size = clampToolboxSize(width, height);
+    const drawer = $("toolboxDrawer");
+    drawer.style.width = `${size.width}px`;
+    drawer.style.blockSize = `${size.height}px`;
+    return size;
+  }
+
+  function persistToolboxSize(size) {
+    try {
+      localStorage.setItem(TOOLBOX_SIZE_KEY, JSON.stringify(size));
+    } catch (error) { /* localStorage 不可用时仅本次会话生效 */ }
+  }
+
+  function restoreToolboxSize() {
+    let stored = null;
+    try {
+      stored = JSON.parse(localStorage.getItem(TOOLBOX_SIZE_KEY) || "null");
+    } catch (error) {
+      stored = null;
+    }
+    if (!stored || !Number.isFinite(stored.width) || !Number.isFinite(stored.height)) return;
+    applyToolboxSize(stored.width, stored.height);
+  }
+
+  // 抽屉右下锚定：顶边把手向上拉高、左边把手向左拉宽，拖拽结束写入 localStorage。
+  function bindToolboxResize(handle, axis) {
+    handle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      const rect = $("toolboxDrawer").getBoundingClientRect();
+      const start = { x: event.clientX, y: event.clientY, width: rect.width, height: rect.height };
+      let size = { width: rect.width, height: rect.height };
+      handle.setPointerCapture(event.pointerId);
+      handle.classList.add("dragging");
+      const onMove = (moveEvent) => {
+        size = axis === "y"
+          ? applyToolboxSize(start.width, start.height + start.y - moveEvent.clientY)
+          : applyToolboxSize(start.width + start.x - moveEvent.clientX, start.height);
+      };
+      const onEnd = () => {
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", onEnd);
+        handle.removeEventListener("pointercancel", onEnd);
+        handle.classList.remove("dragging");
+        persistToolboxSize(size);
+      };
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", onEnd);
+      handle.addEventListener("pointercancel", onEnd);
+    });
+    handle.addEventListener("keydown", (event) => {
+      const keys = axis === "y" ? ["ArrowUp", "ArrowDown"] : ["ArrowLeft", "ArrowRight"];
+      if (!keys.includes(event.key)) return;
+      event.preventDefault();
+      const step = event.shiftKey ? 96 : 24;
+      const grow = event.key === "ArrowUp" || event.key === "ArrowLeft";
+      const rect = $("toolboxDrawer").getBoundingClientRect();
+      const size = axis === "y"
+        ? applyToolboxSize(rect.width, rect.height + (grow ? step : -step))
+        : applyToolboxSize(rect.width + (grow ? step : -step), rect.height);
+      persistToolboxSize(size);
+    });
+  }
+
+  function setupToolboxResize() {
+    bindToolboxResize($("toolboxResizeY"), "y");
+    bindToolboxResize($("toolboxResizeX"), "x");
+    restoreToolboxSize();
+    window.addEventListener("resize", restoreToolboxSize);
   }
 
   function setResult(message, kind = "") {
@@ -776,6 +861,7 @@
     }
     setOpen(false);
   });
+  setupToolboxResize();
   window.addEventListener("mawlauncherready", initialize, { once: true });
   window.MAWLauncher.onPostprocessStatus = renderPostprocessStatus;
   window.MAWLauncher.onPostprocessStream = renderPostprocessStream;

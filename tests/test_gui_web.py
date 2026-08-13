@@ -1775,8 +1775,10 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('data-tool-action="ocr"', page)
         self.assertIn('data-tool-action="llm"', page)
         self.assertIn('data-tool-action="replace"', page)
-        self.assertIn('class="toolbox-output-main"', page)
-        self.assertIn('class="hint toolbox-output-hint"', page)
+        self.assertIn('class="toolbox-footer"', page)
+        self.assertNotIn("toolbox-output-hint", page)
+        self.assertNotIn("toolbox_beta_notice_prefix", page)
+        self.assertIn('class="hint toolbox-panel-hint"', page)
         self.assertIn('class="hint toolbox-full-line-hint"', page)
         self.assertIn('document.querySelectorAll("[data-tool-action]")', script)
         self.assertIn('event.type === "postprocess_status"', launcher_script)
@@ -1817,6 +1819,7 @@ class LauncherAssetContractTests(unittest.TestCase):
 
     def test_toolbox_tabs_stay_above_scrollable_panels(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         sticky = page.index('class="toolbox-sticky"')
@@ -1825,14 +1828,14 @@ class LauncherAssetContractTests(unittest.TestCase):
         chain_list = page.index('id="toolboxChainList"')
         tabs = page.index('<div class="toolbox-tabs"')
         content = page.index('class="toolbox-content"')
-        output = page.index('<div class="toolbox-output-bar"')
+        progress = page.index('<div id="toolboxProgress"')
+        result = page.index('<div id="toolboxResult"')
         match_panel = page.index('id="toolboxMatchPanel"')
         llm_panel = page.index('id="toolboxLlmPanel"')
         ffconcat_panel = page.index('id="toolboxFfconcatPanel"')
         ffconcat_end = page.index("</section>", ffconcat_panel)
-        output_hint = page.index('class="hint toolbox-output-hint"')
-        progress = page.index('<div id="toolboxProgress"')
-        result = page.index('<div id="toolboxResult"')
+        footer = page.index('class="toolbox-footer"')
+        drawer_end = page.index("</aside>")
 
         self.assertLess(sticky, input_drop_zone)
         self.assertLess(input_drop_zone, chain)
@@ -1840,23 +1843,69 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertLess(chain, tabs)
         self.assertLess(input_drop_zone, tabs)
         self.assertLess(tabs, content)
-        self.assertLess(content, output)
-        self.assertLess(output, output_hint)
-        self.assertLess(output_hint, progress)
+        self.assertLess(content, progress)
         self.assertLess(progress, result)
-        self.assertLess(match_panel, llm_panel)
         self.assertLess(result, match_panel)
-        self.assertGreater(ffconcat_end, output)
+        self.assertLess(match_panel, llm_panel)
+        self.assertLess(ffconcat_end, footer)
+        self.assertLess(footer, drawer_end)
+
+        # 输出选择与各工具执行按钮固定在抽屉底部，不随面板滚动。
+        footer_html = page[footer:drawer_end]
+        self.assertIn('id="postprocessOutputMode"', footer_html)
+        for tool in ("match", "ocr", "llm", "replace", "ffconcat"):
+            self.assertIn(f'data-tool-action="{tool}"', footer_html)
+        for button in ("runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedReplacement", "runFfconcatRebuild"):
+            self.assertIn(f'id="{button}"', footer_html)
+        self.assertIn('id="toolboxMediaPath"', footer_html)
+
+        # 自定义顶边 / 左边拖拽把手替代原生 resize。
+        self.assertIn('id="toolboxResizeY" class="toolbox-resize-y" role="separator" aria-orientation="horizontal"', page)
+        self.assertIn('id="toolboxResizeX" class="toolbox-resize-x" role="separator" aria-orientation="vertical"', page)
         self.assertIn('id="toolboxMatchTab" class="toolbox-tab active"', page)
         self.assertIn('id="toolboxFfconcatTab" class="toolbox-tab hidden"', page)
         self.assertIn("overflow-y: auto", stylesheet)
-        self.assertIn("resize: both", stylesheet)
+        self.assertNotIn("resize: both", stylesheet)
         self.assertIn("block-size: min(560px, calc(100dvh - 156px))", stylesheet)
         self.assertIn("min-inline-size: min(360px, calc(100vw - 24px))", stylesheet)
-        self.assertIn(".toolbox-output-main", stylesheet)
+        self.assertIn(".toolbox-footer", stylesheet)
+        self.assertIn(".toolbox-resize-y", stylesheet)
+        self.assertIn(".toolbox-resize-x", stylesheet)
+        self.assertIn("cursor: n-resize", stylesheet)
+        self.assertIn("cursor: w-resize", stylesheet)
         self.assertIn(".toolbox-grid > .field", stylesheet)
         self.assertIn(".toolbox-input.drag-over", stylesheet)
         self.assertIn("grid-template-columns: repeat(4", stylesheet)
+        self.assertIn("setPointerCapture", script)
+        self.assertIn("maw.launcher.toolbox.size", script)
+        self.assertIn("restoreToolboxSize", script)
+
+    def test_toolbox_panels_are_grouped_into_titled_cards(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        for key in (
+            "toolbox_group_ocr_video",
+            "toolbox_group_ocr_region",
+            "toolbox_group_ocr_output",
+            "toolbox_group_llm_model",
+            "toolbox_group_llm_prompt",
+        ):
+            self.assertIn(f'data-i18n="{key}"', page)
+        self.assertIn('toolbox_group_ocr_video: "视频来源"', launcher_script)
+        self.assertIn('toolbox_group_ocr_output: "判定与输出"', launcher_script)
+        self.assertIn('toolbox_group_llm_prompt: "Prompts"', launcher_script)
+        self.assertIn('class="toolbox-static-value" data-i18n="toolbox_ocr_model_tiny"', page)
+        self.assertIn('class="field-spacer"', page)
+        self.assertIn(".toolbox-static-value {\n  height: 34px;", stylesheet)
+        self.assertIn(".field-spacer {\n  visibility: hidden;", stylesheet)
+        self.assertIn(".toolbox-grid {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 10px;\n  align-items: start;\n}", stylesheet)
+        # 单字段的文稿匹配 / 固定替换面板不套分组卡片。
+        match_panel = page[page.index('id="toolboxMatchPanel"'):page.index('id="toolboxOcrPanel"')]
+        replace_panel = page[page.index('id="toolboxReplacePanel"'):page.index('id="toolboxFfconcatPanel"')]
+        self.assertNotIn("adv-group", match_panel)
+        self.assertNotIn("adv-group", replace_panel)
 
     def test_llm_save_feedback_is_local_and_transient(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -2088,14 +2137,44 @@ class LauncherAssetContractTests(unittest.TestCase):
 
         self.assertIn('class="language-layout"', page)
         self.assertIn('class="language-side"', page)
+        self.assertIn('id="languageGroup" class="adv-group"', page)
         self.assertIn(
-            ".grid-two:not(.single-language) #languageField {\n  grid-column: 1 / -1;\n}",
+            ".adv-group {\n  grid-column: 1 / -1;\n  display: grid;",
+            stylesheet,
+        )
+        self.assertIn(
+            ".grid-two:not(.single-language) #languageField .language-layout {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) minmax(220px, .8fr);",
             stylesheet,
         )
         self.assertIn(
             ".grid-two:not(.single-language) #languageField #language {\n  height: 132px;\n  max-height: 132px;\n}",
             stylesheet,
         )
+
+    def test_advanced_options_are_grouped_into_titled_cards(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        self.assertIn('id="segmentationField" class="adv-group segmentation-field"', page)
+        self.assertIn('id="advancedParamsGroup" class="adv-group"', page)
+        self.assertIn("function syncAdvancedParamsGroup()", script)
+        self.assertIn("syncWorkspace(); syncAdvancedParamsGroup();", script)
+        self.assertIn('id="qwenAudioOptions" class="adv-group qwen-audio-options hidden"', page)
+        self.assertIn('id="sonioxContextOptions" class="adv-group soniox-context-options hidden"', page)
+        self.assertIn('data-i18n="advanced_params"', page)
+        self.assertIn('data-i18n="advanced_misc"', page)
+        self.assertIn('data-i18n="qwen_audio_options_title"', page)
+        self.assertIn('advanced_params: "识别参数"', script)
+        self.assertIn('advanced_misc: "其他"', script)
+        self.assertIn('qwen_audio_options_title: "Qwen 上下文与热词"', script)
+        self.assertIn('gap_split_placeholder: "默认 1500"', script)
+        self.assertIn('gap_split_placeholder: "Default: 1500"', script)
+        self.assertIn("停顿切句：云端 1500ms，本地 1000ms", script)
+        self.assertIn("pause split: cloud 1500 ms, local 1000 ms", script)
+        self.assertIn('$("languageGroup").classList.toggle("hidden", current.supportsLanguage === false)', script)
+        self.assertIn(".advanced-col {\n  display: grid;\n  grid-template-columns: 1fr 1fr;", stylesheet)
+        self.assertNotIn("display: contents", stylesheet)
 
     def test_regional_fields_are_temporarily_hidden_for_domestic_launcher(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")

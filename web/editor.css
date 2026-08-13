@@ -1907,39 +1907,92 @@
   }
 
   /* === 字幕忍者刀光 ===
-     全屏层只在拆分成功且用户开启特效时短暂存在，不捕获指针事件。 */
+     全屏层只在拆分成功且用户开启特效时短暂存在，不捕获指针事件。
+     ::before 是扫过的锋利刃光，::after 是刃光经过后短暂滞留的发光切痕；
+     角度、方向、时长、高度与色调全部由 JS 在触发时随机写入 CSS 变量。 */
   #ninja-slash-flash {
     position: fixed; inset: 0; z-index: 1000; overflow: hidden;
     pointer-events: none; visibility: hidden; opacity: 0;
-    background: rgba(255, 255, 255, 0.08);
+    /* JS 未写入变量时的兜底默认值。 */
+    --slash-angle: 22deg;
+    --slash-from: -125vw;
+    --slash-to: 160vw;
+    --slash-dur: 220ms;
+    --slash-linger: 200ms;
+    --slash-y: 50%;
+    --slash-tint: 200;
   }
+  /* 刃光：细窄高亮刃芯 + 青色辉光，不再使用大半径模糊。 */
   #ninja-slash-flash::before {
-    content: ""; position: absolute; top: -45%; left: -35%;
-    width: 24vw; height: 190%; min-width: 150px;
-    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.18) 32%,
-      rgba(255,255,255,0.98) 50%, rgba(255,255,255,0.18) 68%, transparent 100%);
-    filter: blur(5px); transform: translateX(-120vw) rotate(22deg);
+    content: ""; position: absolute; left: 0;
+    top: calc(var(--slash-y) - 95%);
+    width: 3px; height: 190%;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      hsl(var(--slash-tint) 100% 78% / 0.55) 28%,
+      #ffffff 50%,
+      hsl(var(--slash-tint) 100% 78% / 0.55) 72%,
+      transparent 100%);
+    box-shadow:
+      0 0 10px 1px hsl(var(--slash-tint) 100% 72% / 0.65),
+      0 0 30px 5px hsl(var(--slash-tint) 100% 66% / 0.35);
+    opacity: 0;
+    transform: translateX(var(--slash-from)) rotate(var(--slash-angle));
+    will-change: transform, opacity;
   }
+  /* 切痕：与刃光同角度、同高度的全屏细发线，刃光扫过后闪现并滞留。 */
+  #ninja-slash-flash::after {
+    content: ""; position: absolute; left: 50%; margin-left: -1px;
+    top: calc(var(--slash-y) - 100%);
+    width: 2px; height: 200%;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      hsl(var(--slash-tint) 100% 80% / 0.6) 30%,
+      #ffffff 50%,
+      hsl(var(--slash-tint) 100% 80% / 0.6) 70%,
+      transparent 100%);
+    box-shadow:
+      0 0 8px 1px hsl(var(--slash-tint) 100% 75% / 0.5),
+      0 0 22px 4px hsl(var(--slash-tint) 100% 70% / 0.28);
+    opacity: 0;
+    transform: rotate(var(--slash-angle));
+  }
+  /* 不再有全屏白纱；只在斩击中心留一团很快熄灭的微弱径向闪光。 */
   #ninja-slash-flash.show {
     visibility: visible;
-    animation: ninja-slash-flash-in 220ms ease-out forwards;
+    background: radial-gradient(ellipse 46% 22% at 50% var(--slash-y),
+      hsl(var(--slash-tint) 100% 88% / 0.09), transparent 72%);
+    animation: ninja-slash-flash-in calc(var(--slash-dur) + var(--slash-linger) + 60ms) linear forwards;
   }
   #ninja-slash-flash.show::before {
-    animation: ninja-slash-beam 220ms cubic-bezier(.2,.7,.25,1) forwards;
+    animation: ninja-slash-beam var(--slash-dur) cubic-bezier(.2,.7,.25,1) forwards;
+  }
+  /* 切痕在刃光扫到约四成处亮起，随后在滞留期内淡去。 */
+  #ninja-slash-flash.show::after {
+    animation: ninja-slash-cut calc(var(--slash-linger) + 60ms) ease-out forwards;
+    animation-delay: calc(var(--slash-dur) * 0.38);
   }
   @keyframes ninja-slash-flash-in {
     0% { opacity: 0; }
-    18% { opacity: 0.92; }
+    3% { opacity: 1; }
+    78% { opacity: 1; }
     100% { opacity: 0; visibility: hidden; }
   }
   @keyframes ninja-slash-beam {
-    0% { opacity: 0; transform: translateX(-120vw) rotate(22deg); }
-    14% { opacity: 1; }
-    100% { opacity: 0; transform: translateX(155vw) rotate(22deg); }
+    0% { opacity: 0; transform: translateX(var(--slash-from)) rotate(var(--slash-angle)); }
+    12% { opacity: 1; }
+    82% { opacity: 1; }
+    100% { opacity: 0; transform: translateX(var(--slash-to)) rotate(var(--slash-angle)); }
+  }
+  @keyframes ninja-slash-cut {
+    0% { opacity: 0; }
+    16% { opacity: 1; }
+    100% { opacity: 0; }
   }
   @media (prefers-reduced-motion: reduce) {
-    #ninja-slash-flash.show { animation-duration: 80ms; }
-    #ninja-slash-flash.show::before { animation-duration: 80ms; }
+    #ninja-slash-flash.show { animation-duration: 90ms; }
+    #ninja-slash-flash.show::before { animation-duration: 90ms; }
+    #ninja-slash-flash.show::after { animation-duration: 60ms; animation-delay: 0ms; }
   }
   .hint-project-header { display: flex; align-items: center; gap: 10px; }
   .hint-project-header strong { flex: 1 1 auto; color: var(--red-hover); font-size: 15px; }

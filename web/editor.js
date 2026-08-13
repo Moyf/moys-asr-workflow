@@ -1282,12 +1282,35 @@ function triggerNinjaSplitFeedback() {
   if (!EDITOR_SETTINGS.ninjaMode) return;
   playNinjaSplitSound();
   if (!EDITOR_SETTINGS.ninjaSlashEffect || !ninjaSlashFlash) return;
+  // 每次触发都随机化刀光参数，避免连续拆分看起来一模一样。
+  const slashAngle = 14 + Math.random() * 16; // [14, 30] 度，再随机取正负决定 \ 或 / 方向
+  const slashDur = 180 + Math.random() * 80; // 刃光扫过时长 [180, 260] ms
+  const slashLinger = 150 + Math.random() * 100; // 切痕滞留时长 [150, 250] ms
+  const slashY = 30 + Math.random() * 40; // 斩击高度 [30%, 70%] 视口
+  const slashTint = 190 + Math.random() * 20; // 青白色相 [190, 210]
+  const slashStyle = ninjaSlashFlash.style;
+  slashStyle.setProperty('--slash-angle', `${(Math.random() < 0.5 ? -1 : 1) * slashAngle}deg`);
+  if (Math.random() < 0.5) {
+    slashStyle.setProperty('--slash-from', '-125vw');
+    slashStyle.setProperty('--slash-to', '160vw');
+  } else {
+    slashStyle.setProperty('--slash-from', '160vw');
+    slashStyle.setProperty('--slash-to', '-125vw');
+  }
+  slashStyle.setProperty('--slash-dur', `${slashDur}ms`);
+  slashStyle.setProperty('--slash-linger', `${slashLinger}ms`);
+  slashStyle.setProperty('--slash-y', `${slashY}%`);
+  slashStyle.setProperty('--slash-tint', String(slashTint));
   ninjaSlashFlash.classList.remove('show');
   // 强制重排，让连续快速拆分也能重新播放 CSS 动画。
   void ninjaSlashFlash.offsetWidth;
   ninjaSlashFlash.classList.add('show');
   clearTimeout(ninjaSlashFlashTimer);
-  ninjaSlashFlashTimer = setTimeout(() => ninjaSlashFlash.classList.remove('show'), 260);
+  // 清理时间必须覆盖刃光扫过与切痕滞留，否则动画放到一半 .show 就被摘掉。
+  ninjaSlashFlashTimer = setTimeout(
+    () => ninjaSlashFlash.classList.remove('show'),
+    slashDur + slashLinger + 120,
+  );
 }
 
 function applyNinjaSettings() {
