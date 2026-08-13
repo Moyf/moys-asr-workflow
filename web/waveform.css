@@ -852,6 +852,22 @@
   white-space: nowrap;
 }
 
+/* Ctrl(Cmd)+左键拖动空白处：使用和正式字幕块一致的几何形状，
+   以半透明虚影预览将要创建的时间范围。 */
+.waveform-cue-block.waveform-create-preview {
+  z-index: 12;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--cue-color) 80%, white);
+  background: color-mix(in srgb, var(--cue-color) 28%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--cue-color) 30%, transparent);
+  cursor: grabbing;
+  opacity: 0.62;
+  pointer-events: none;
+}
+.waveform-cue-block.waveform-create-preview > .waveform-cue-label {
+  color: var(--wave-cue-text);
+}
+
 @media (max-width: 820px) {
   .waveform-status { display: none; }
   .editor-workspace.layout-classic.waveform-multi {
