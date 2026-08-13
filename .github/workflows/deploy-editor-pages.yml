@@ -1,0 +1,59 @@
+name: Deploy MAWE editor to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "edit.py"
+      - "web/**"
+      - "waveform.py"
+      - "reapeaks.py"
+      - "maw/**"
+      - ".github/workflows/deploy-editor-pages.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: editor-pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    name: Build and deploy editor
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Generate portable editor page
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          python edit.py --blank -o _site/index.html
+          touch _site/.nojekyll
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+      - name: Deploy Pages artifact
+        id: deployment
+        uses: actions/deploy-pages@v4
