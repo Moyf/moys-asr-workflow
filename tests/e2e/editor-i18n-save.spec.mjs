@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   cleanupTempDir,
@@ -12,11 +13,12 @@ import {
 
 let tempDir;
 let server;
+let projectPath;
 
 test.beforeAll(async () => {
   tempDir = makeTempDir('editor-i18n-save');
   const mediaPath = join(tempDir, 'synthetic.wav');
-  const projectPath = join(tempDir, 'project.json');
+  projectPath = join(tempDir, 'project.json');
   generateWav(mediaPath, DURATION_MS / 1000);
   generateProjectJson(projectPath);
   server = await startServer(projectPath, mediaPath, await findFreePort());
@@ -71,7 +73,9 @@ test('English locale covers the editor shell and recent-project setting stays fi
   });
   expect(untranslatedUiStrings).toEqual([]);
 
-  await page.locator('.cue').first().click({ button: 'right' });
+  // Sticky 工具栏在部分 Chromium 版本中会被 actionability 检测误判为拦截层；
+  // DOM 命中点仍在字幕行，强制派发右键只验证菜单行为。
+  await page.locator('.cue').first().click({ button: 'right', force: true });
   expect(await page.locator('#ctxmenu').innerText()).not.toMatch(/[\u3400-\u9fff]/u);
   await page.keyboard.press('Escape');
 
@@ -156,6 +160,22 @@ test('validation save error previews the item and jumps to its subtitle', async 
   await hint.locator('.hint-project-action').click();
   await expect(page.locator('.cue[data-idx="1"]')).toHaveClass(/selected/);
   await expect(page.locator('#cue-panel-text')).toHaveValue('Bravo');
+});
+
+test('auto-saves a text edit shortly after it loses focus', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('.cue').first().click();
+
+  const saveResponse = page.waitForResponse((response) => (
+    response.url().endsWith('/api/project') && response.request().method() === 'POST'
+  ));
+  const panelText = page.locator('#cue-panel-text');
+  await panelText.fill('Alpha autosaved');
+  await page.locator('#cue-panel-target').click();
+
+  expect((await saveResponse).ok()).toBe(true);
+  const savedProject = JSON.parse(readFileSync(projectPath, 'utf8'));
+  expect(savedProject.segments[0].text).toBe('Alpha autosaved');
 });
 
 test('a disconnected save endpoint offers a JSON fallback download', async ({ page }) => {

@@ -400,6 +400,72 @@ class LocalEditorServerTests(unittest.TestCase):
                 server.shutdown()
                 thread.join(timeout=2)
 
+    def test_server_accepts_reconciled_extension_ranges_but_rejects_overlap(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+                def post(payload: dict) -> tuple[int, dict]:
+                    request = urllib.request.Request(
+                        f"{base_url}/api/project",
+                        data=json.dumps({"project": payload}).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    try:
+                        with urllib.request.urlopen(request) as response:
+                            return response.status, json.loads(response.read())
+                    except urllib.error.HTTPError as error:
+                        return error.code, json.loads(error.read())
+
+                valid_project = {
+                    "media": str(self.media),
+                    "segments": [{"id": "main-1", "start": 1000, "end": 4000, "text": "主字幕"}],
+                    "multi_subtitle": {
+                        "schema": "moy.asr.multi_subtitle.v1",
+                        "enabled": True,
+                        "display_mode": "both",
+                        "tracks": [{
+                            "id": "extension-1",
+                            "role": "extension",
+                            "name": "English",
+                            "language": "English",
+                            "split_mode": "word",
+                            "source_name": "translation.srt",
+                            "segments": [
+                                {"id": "extension-1", "start": 1000, "end": 3000, "text": "前半"},
+                                {"id": "extension-2", "start": 3000, "end": 4000, "text": "后半"},
+                            ],
+                        }],
+                        "bindings": [{
+                            "id": "binding-1",
+                            "track_id": "extension-1",
+                            "main_segment_ids": ["main-1"],
+                            "extension_segment_ids": ["extension-1"],
+                            "start_offset_ms": 0,
+                            "end_offset_ms": -1000,
+                        }],
+                    },
+                }
+                status, result = post(valid_project)
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+
+                invalid_project = json.loads(json.dumps(valid_project))
+                invalid_project["multi_subtitle"]["tracks"][0]["segments"][1]["start"] = 2999
+                status, result = post(invalid_project)
+                self.assertEqual(status, 400)
+                self.assertFalse(result["ok"])
+                self.assertIn("must be >= previous segment end", result["error"])
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
 
     def test_attach_endpoint_binds_browser_opened_project_and_enables_save(self) -> None:
         blank_project = server_editor.load_blank_project(str(self.stickers))

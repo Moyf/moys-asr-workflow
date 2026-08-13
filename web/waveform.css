@@ -507,6 +507,64 @@
   pointer-events: none;
   font-variant-numeric: tabular-nums;
 }
+.waveform-row.multi-subtitle-row::before,
+.waveform-row.multi-subtitle-row::after {
+  position: absolute;
+  z-index: 8;
+  right: 6px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  color: var(--text-faint);
+  background: var(--wave-badge-bg);
+  font: 9px/1.25 var(--font-mono);
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--multi-subtitle-label-height);
+  padding: 0 4px;
+  pointer-events: none;
+}
+.waveform-row.multi-subtitle-row {
+  /* 从底部向上排布：副字幕在底部，主字幕在上方并紧贴。 */
+  --multi-subtitle-lane-gap: 0px;
+  --multi-subtitle-bottom-inset: 7px;
+  --multi-subtitle-label-height: 15px;
+  --multi-subtitle-lane-height: min(35px, calc((100% - (var(--multi-subtitle-bottom-inset) * 2) - var(--multi-subtitle-lane-gap)) / 2));
+}
+/* 基础波形本身会把单字幕块增高到约 72px；双 lane 也保留适度的增高，
+   但不占满单主字幕的高度，避免两条字幕在共享波形中显得过于拥挤。 */
+.waveform-basic .waveform-row.multi-subtitle-row {
+  --multi-subtitle-lane-height: min(54px, calc((100% - (var(--multi-subtitle-bottom-inset) * 2) - var(--multi-subtitle-lane-gap)) / 2));
+}
+.waveform-row.multi-subtitle-row::before {
+  content: "1";
+  color: var(--active-cue-fg);
+  background: var(--accent);
+  top: auto;
+  bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) + ((var(--multi-subtitle-lane-height) - var(--multi-subtitle-label-height)) / 2));
+}
+.waveform-row.multi-subtitle-row::after {
+  content: "2";
+  color: var(--mark-fg);
+  background: var(--amber);
+  bottom: calc(var(--multi-subtitle-bottom-inset) + ((var(--multi-subtitle-lane-height) - var(--multi-subtitle-label-height)) / 2));
+}
+.waveform-row.multi-subtitle-row .waveform-cue-block[data-track="main"] {
+  bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) + var(--multi-subtitle-lane-gap));
+}
+.waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"] {
+  bottom: var(--multi-subtitle-bottom-inset);
+  border-style: dotted;
+  border-color: color-mix(in srgb, var(--cue-color) 50%, var(--wave-cue-mix));
+  background: color-mix(in srgb, var(--cue-color) 10%, var(--wave-cue-mix));
+}
+.waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"] .waveform-cue-label {
+  color: var(--text-secondary);
+}
+.waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"].selected {
+  border-style: solid;
+  outline-color: var(--accent-hover);
+}
 .waveform-playhead {
   position: absolute;
   z-index: 9;
@@ -703,6 +761,24 @@
 .waveform-cue-handle.left { left: 0; border-radius: 3px 0 0 3px; }
 .waveform-cue-handle.right { right: 0; border-radius: 0 3px 3px 0; }
 .waveform-cue-label { pointer-events: none; }
+.waveform-binding-marker {
+  position: absolute;
+  z-index: 3;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", sans-serif;
+  font-size: 12px;
+  line-height: 1;
+  pointer-events: none;
+}
+.waveform-cue-block.has-binding-marker .waveform-cue-label {
+  display: block;
+  max-width: calc(100% - 22px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .waveform-basic .waveform-cue-block {
   height: 72px;
   min-height: 35px;
@@ -711,6 +787,25 @@
   align-items: center;
   font-size: 13px;
   line-height: 1.35;
+}
+.waveform-row.multi-subtitle-row .waveform-cue-block[data-track="main"],
+.waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"] {
+  /* 标签和字幕块都使用同一个 lane 高度；border-box 避免块边框额外撑高，
+     导致右侧“主/副”标记与实际轨道中心错开。 */
+  height: var(--multi-subtitle-lane-height);
+  box-sizing: border-box;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.waveform-row.multi-subtitle-row .waveform-cue-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 820px) {

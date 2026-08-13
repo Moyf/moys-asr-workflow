@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import re
 import tomllib
 import unittest
@@ -11,6 +12,64 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def read_text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
+
+
+def _local_module_path(module_name: str) -> Path | None:
+    module_path = ROOT / (module_name.replace(".", "/") + ".py")
+    if module_path.is_file():
+        return module_path
+    package_path = ROOT / module_name.replace(".", "/") / "__init__.py"
+    return package_path if package_path.is_file() else None
+
+
+def _local_import_modules(path: Path, module_name: str) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if _local_module_path(alias.name):
+                    imported.add(alias.name)
+            continue
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if node.level:
+            base = module_name.split(".")[:-node.level]
+            if node.module:
+                base.extend(node.module.split("."))
+            candidate = ".".join(base)
+        else:
+            candidate = node.module or ""
+        if candidate and _local_module_path(candidate):
+            imported.add(candidate)
+            continue
+        for alias in node.names:
+            child = f"{candidate}.{alias.name}" if candidate else alias.name
+            if _local_module_path(child):
+                imported.add(child)
+    return imported
+
+
+def _local_runtime_import_graph() -> set[str]:
+    modules = {"maw.local_runtime_worker", "generate_subtitle_local"}
+    pending = list(modules)
+    while pending:
+        module_name = pending.pop()
+        path = _local_module_path(module_name)
+        if path is None:
+            continue
+        for imported in _local_import_modules(path, module_name):
+            if imported not in modules:
+                modules.add(imported)
+                pending.append(imported)
+    return modules
+
+
+def _local_runtime_spec_entry(relative_path: str) -> str:
+    parts = Path(relative_path).parts
+    expression = " / ".join(["ROOT", *(f'"{part}"' for part in parts)])
+    target = "local-runtime/maw" if parts[0] == "maw" else "local-runtime"
+    return f"(str({expression}), \"{target}\")"
 
 
 class PackagingContractTests(unittest.TestCase):
@@ -90,6 +149,19 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn('"*.mp4"', spec)
         self.assertNotIn('"*.srt"', spec)
 
+    def test_local_runtime_bundles_every_local_import_dependency(self) -> None:
+        """Given local ASR entrypoints, When packaging is read, Then their local imports are copied beside them."""
+        spec = read_text("MAW.spec")
+        bundled_paths = {
+            str(_local_module_path(module).relative_to(ROOT)).replace("\\", "/")
+            for module in _local_runtime_import_graph()
+            if _local_module_path(module) is not None
+        }
+
+        self.assertIn("maw/qwen_audio.py", bundled_paths)
+        for relative_path in sorted(bundled_paths):
+            self.assertIn(_local_runtime_spec_entry(relative_path), spec)
+
     def test_macos_bundle_uses_the_icns_app_icon(self) -> None:
         """Given a macOS app bundle, When PyInstaller builds it, Then the bundle has the branded ICNS icon."""
         spec = read_text("MAW.spec")
@@ -116,6 +188,16 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("actions/setup-node@v4", workflow)
         self.assertNotIn("dtolnay/rust-toolchain@stable", workflow)
         self.assertNotIn("cargo check --manifest-path src-tauri/Cargo.toml", workflow)
+
+    def test_tag_release_workflows_serialize_shared_release_mutations(self) -> None:
+        """Given both platform workflows publish one tag release, When they run, Then they cannot race on its assets."""
+        for workflow_path in (
+            ".github/workflows/release-windows.yml",
+            ".github/workflows/build-macos.yml",
+        ):
+            workflow = read_text(workflow_path)
+            self.assertIn("group: maw-release-${{ github.ref_name }}", workflow)
+            self.assertIn("cancel-in-progress: false", workflow)
         self.assertNotIn("tauri.macos.conf.json", workflow)
         self.assertIn("ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085bb9e8f6fe709598ad", workflow)
         self.assertIn("a6640a77d38a6f0527c5b597e599cb36a3427a6931444ed80bc62542421950a1", workflow)
