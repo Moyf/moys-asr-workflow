@@ -316,8 +316,6 @@ def _normalize_multi_subtitle(
             if not isinstance(segment, dict):
                 errors.append(ProjectValidationError(segment_path, "must be an object"))
                 continue
-            # Extension SRT/mosp text has no trustworthy word-level timings.
-            segment.pop("items", None)
             _validate_extension_segment(segment, segment_path, previous_end, errors)
             segment_id = segment.get("id")
             if isinstance(track_id, str) and _is_stable_id(segment_id):
@@ -447,6 +445,10 @@ def _validate_extension_segment(
             errors.append(ProjectValidationError(f"{path}.start", "must be >= previous segment end"))
     if not isinstance(segment.get("text"), str):
         errors.append(ProjectValidationError(f"{path}.text", "must be a string"))
+    # Extension subtitles may come from a project or from a main-track swap.
+    # Items are optional, but when present they must follow the same timing
+    # contract as main-track items so the data survives a later swap back.
+    _validate_items(segment, path, errors)
 
 
 def _validate_segment(

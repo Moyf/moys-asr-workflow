@@ -36,7 +36,7 @@ class ProjectContractTests(unittest.TestCase):
             ["main-001-generated", "main-001", "main-003"],
         )
 
-    def test_validate_project_accepts_and_normalizes_multi_subtitle(self) -> None:
+    def test_validate_project_accepts_optional_multi_subtitle_items(self) -> None:
         project = {
             "segments": [
                 {"start": 1000, "end": 3000, "text": "主字幕"},
@@ -73,7 +73,10 @@ class ProjectContractTests(unittest.TestCase):
         self.assertIsNotNone(result.project)
         self.assertEqual(result.project["segments"][0]["id"], "main-001")
         extension = result.project["multi_subtitle"]["tracks"][0]["segments"][0]
-        self.assertNotIn("items", extension)
+        self.assertEqual(
+            extension["items"],
+            [{"text": "wrong source", "start": 1100, "end": 2900}],
+        )
         binding = result.project["multi_subtitle"]["bindings"][0]
         self.assertEqual(binding["start_offset_ms"], 100)
         self.assertEqual(binding["end_offset_ms"], -100)

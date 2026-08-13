@@ -2511,8 +2511,11 @@ let pendingExtensionBinding = null;
 let hideDisabled = false;  // 「隐藏禁用项」开关状态
 const hideDisabledToggle = document.getElementById('hide-disabled-toggle');
 // 隐藏开关开启时，禁用项视为"不可选"（Shift 范围选 / Ctrl 切换都跳过）
-function isHiddenDisabled(idx) {
-  return hideDisabled && !!(DATA.segments[idx] && DATA.segments[idx].disabled);
+function isHiddenDisabled(idx, track = 'main') {
+  const segments = track === 'extension'
+    ? (getActiveExtensionTrack()?.segments || [])
+    : (track?.segments || DATA.segments);
+  return hideDisabled && !!(segments[idx] && segments[idx].disabled);
 }
 
 function cancelPendingExtensionBinding(message = '已取消绑定扩展字幕') {
@@ -2572,7 +2575,7 @@ function addMainIndexToSelection(index) {
 }
 
 function addExtensionIndexToSelection(index, track = getActiveExtensionTrack()) {
-  if (!track?.segments?.[index]) return;
+  if (!track?.segments?.[index] || isHiddenDisabled(index, track)) return;
   selectedExtensionIdxs.add(index);
 }
 
@@ -2604,6 +2607,7 @@ function selectOnlyExtension(
   syncPair = true,
   preserveMainSelection = false,
 ) {
+  if (!track?.segments?.[index] || isHiddenDisabled(index, track)) return;
   if (
     pendingExtensionBinding
     && track?.id === pendingExtensionBinding.trackId
@@ -2628,17 +2632,18 @@ function selectOnlyExtension(
   setCurrentCuePanelExtensionIndex(index, track);
 }
 
-function toggleExtensionSelection(index) {
+function toggleExtensionSelection(index, track = getActiveExtensionTrack()) {
+  if (!track?.segments?.[index] || isHiddenDisabled(index, track)) return;
   if (selectedExtensionIdxs.has(index)) selectedExtensionIdxs.delete(index);
   else {
     selectedExtensionIdxs.add(index);
-    syncBoundSelection('extension', index, getActiveExtensionTrack());
+    syncBoundSelection('extension', index, track);
   }
   updateMultiSelectionClasses();
   selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
   lastClickedExtensionIdx = index;
   waveformEditor?.updateSelection();
-  setCurrentCuePanelExtensionIndex(index, getActiveExtensionTrack());
+  setCurrentCuePanelExtensionIndex(index, track);
 }
 
 function selectExtensionRange(a, b) {
@@ -2647,15 +2652,19 @@ function selectExtensionRange(a, b) {
   const lo = Math.min(a, b);
   const hi = Math.max(a, b);
   selectedExtensionIdxs.clear();
+  let lastSelected = -1;
   for (let index = lo; index <= hi; index++) {
+    if (!track.segments[index] || isHiddenDisabled(index, track)) continue;
     selectedExtensionIdxs.add(index);
     syncBoundSelection('extension', index, track);
+    lastSelected = index;
   }
   updateMultiSelectionClasses();
   selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
-  lastClickedExtensionIdx = b;
+  if (lastSelected < 0) return;
+  lastClickedExtensionIdx = lastSelected;
   waveformEditor?.updateSelection();
-  setCurrentCuePanelExtensionIndex(b, track);
+  setCurrentCuePanelExtensionIndex(lastSelected, track);
 }
 function toggleSel(idx) {
   if (isHiddenDisabled(idx)) return;  // 隐藏禁用项不参与选择
@@ -2717,7 +2726,7 @@ function addToSelection(idx) {
   setCurrentCuePanelIndex(idx);
 }
 function addExtensionToSelection(index, track = getActiveExtensionTrack()) {
-  if (!track?.segments?.[index] || selectedExtensionIdxs.has(index)) return;
+  if (!track?.segments?.[index] || isHiddenDisabled(index, track) || selectedExtensionIdxs.has(index)) return;
   selectedExtensionIdxs.add(index);
   syncBoundSelection('extension', index, track);
   updateMultiSelectionClasses();
@@ -2736,10 +2745,36 @@ function selectAll() {
     const el = container.querySelector(`.cue[data-idx="${idx}"]`);
     if (el) el.classList.add('selected');
   });
-  selCountEl.textContent = String(selectedIdxs.size);
+  const extensionTrack = getActiveExtensionTrack();
+  extensionTrack?.segments.forEach((_, idx) => {
+    if (isHiddenDisabled(idx, extensionTrack)) return;
+    selectedExtensionIdxs.add(idx);
+    syncBoundSelection('extension', idx, extensionTrack);
+  });
+  updateMultiSelectionClasses();
+  selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
   if (waveformEditor) waveformEditor.updateSelection();
   const last = DATA.segments.length - 1;
-  setCurrentCuePanelIndex(last >= 0 && selectedIdxs.has(last) ? last : (selectedIdxs.values().next().value ?? -1));
+  if (last >= 0 && selectedIdxs.has(last)) {
+    setCurrentCuePanelIndex(last);
+    return;
+  }
+  const firstMain = selectedIdxs.values().next().value;
+  if (firstMain !== undefined) {
+    setCurrentCuePanelIndex(firstMain);
+    return;
+  }
+  if (!extensionTrack) {
+    setCurrentCuePanelIndex(-1);
+    return;
+  }
+  const lastExtension = extensionTrack.segments.length - 1;
+  if (lastExtension >= 0 && selectedExtensionIdxs.has(lastExtension)) {
+    setCurrentCuePanelExtensionIndex(lastExtension, extensionTrack);
+    return;
+  }
+  const firstExtension = selectedExtensionIdxs.values().next().value;
+  setCurrentCuePanelExtensionIndex(firstExtension ?? -1, extensionTrack);
 }
 // 返回与 idx 同属一个表情包/颜色分组的全部字幕下标（含 idx 自身）。
 // head 持有 sticker/color，成员持 sticker_ref/color_ref 指向 head。
@@ -3491,6 +3526,7 @@ function buildMultiCueColumn(segment, index, track, kind) {
     column.textContent = '—';
     return column;
   }
+  if (segment.disabled) column.classList.add('disabled');
   const header = document.createElement('div');
   header.className = 'multi-cue-column-header';
   const indexEl = document.createElement('span');
@@ -3748,6 +3784,12 @@ function bindExtensionCueEvents(el, index, track = getActiveExtensionTrack(), du
   el.addEventListener('pointerdown', (event) => {
     if (event.button !== 0 || (extensionEditingState?.el === el)) return;
     event.stopPropagation();
+    if (event.altKey) {
+      event.preventDefault();
+      toggleDisabled([index], track);
+      pointerDown = null;
+      return;
+    }
     pointerDown = { x: event.clientX, y: event.clientY };
     if (event.shiftKey && lastClickedExtensionIdx >= 0) selectExtensionRange(lastClickedExtensionIdx, index);
     else if (event.ctrlKey || event.metaKey) toggleExtensionSelection(index);
@@ -4590,7 +4632,7 @@ function commitExtensionSplit(state) {
     state.offset,
     state.extensionCutMs,
     extension.id || `${track.id}-segment-${extensionIndex}`,
-    false,
+    true,
     state.extensionMode,
   );
   if (!pair) return false;
@@ -4650,7 +4692,7 @@ function confirmLinkedSplit() {
     state.offset,
     sharedCutMs,
     extension.id || `extension-${extensionIndex}`,
-    false,
+    true,
     state.extensionMode,
   );
   if (!mainPair || !extensionPair || extensionIndex < 0) return;
@@ -4944,6 +4986,9 @@ function mergeContiguousIndices(sorted) {
       text: window.AsrEditorUtils.joinSegmentTexts(extensionMergeSegments, EDITOR_SETTINGS.mergeJoinText),
       _dirty: true,
     };
+    if (extensionMergeSegments.some((segment) => Array.isArray(segment.items))) {
+      mergedExtension.items = extensionMergeSegments.flatMap((segment) => segment.items || []);
+    }
   }
 
   removeBindingsForSegmentIds(oldMainIds, oldExtensionIds);
@@ -5594,7 +5639,7 @@ document.addEventListener('keydown', (e) => {
     cancelPendingExtensionBinding();
     return;
   }
-  if (editingState || selectedIdxs.size === 0) return;
+  if (editingState || (selectedIdxs.size === 0 && selectedExtensionIdxs.size === 0)) return;
   const a = document.activeElement;
   if (a && (
     a.tagName === 'INPUT'
@@ -5889,21 +5934,28 @@ document.addEventListener('keydown', (e) => {
   if (isPlayerKeyboardTarget(e)) return;
   const commandKey = e.ctrlKey || e.metaKey;
   const direction = e.key === 'ArrowLeft' ? -1 : 1;
+  const panelTarget = getCurrentCuePanelTarget();
+  const extensionTarget = panelTarget?.kind === 'extension';
+  const activeTrack = extensionTarget ? 'extension' : 'main';
+  const selected = extensionTarget ? selectedExtensionIdxs : selectedIdxs;
   if (e.shiftKey && !commandKey) {
-    if (!e.altKey && selectedIdxs.size > 0
-        && waveformEditor?.snapSelectedCueBoundaryByKeyboard?.(direction)) {
+    if (!e.altKey && selected.size > 0
+        && waveformEditor?.snapSelectedCueBoundaryByKeyboard?.(direction, activeTrack)) {
       e.preventDefault();
       e.stopPropagation();
     }
     return;
   }
-  if (selectedIdxs.size > 0 && waveformEditor) {
+  if (selected.size > 0 && waveformEditor) {
     const deltaMs = direction * EDITOR_SETTINGS.cueMoveStepMs;
     if (commandKey) {
-      if (e.shiftKey) waveformEditor.adjustSelectedBoundaryByKeyboard(deltaMs, 'end', e.altKey);
-      else waveformEditor.adjustSelectedBoundaryByKeyboard(deltaMs, 'start', e.altKey);
+      if (e.shiftKey) {
+        waveformEditor.adjustSelectedBoundaryByKeyboard(deltaMs, 'end', e.altKey, activeTrack);
+      } else {
+        waveformEditor.adjustSelectedBoundaryByKeyboard(deltaMs, 'start', e.altKey, activeTrack);
+      }
     } else {
-      waveformEditor.adjustSelectedByKeyboard(deltaMs, e.altKey);
+      waveformEditor.adjustSelectedByKeyboard(deltaMs, e.altKey, activeTrack);
     }
     e.preventDefault();
     e.stopPropagation();
@@ -6106,8 +6158,7 @@ document.addEventListener('keydown', (e) => {
   const extensionTrack = extensionTarget ? panelTarget.track : null;
   const segments = extensionTarget ? extensionTrack.segments : DATA.segments;
   const wasPlaying = !player.paused;
-  const heldCueKey = !extensionTarget
-    && (!e.shiftKey || key === 'a' || key === 'd')
+  const heldCueKey = (!e.shiftKey || key === 'a' || key === 'd')
     && waveformEditor?.handleHeldCueKey?.(
       direction,
       direction * EDITOR_SETTINGS.cueMoveStepMs,
@@ -6122,7 +6173,7 @@ document.addEventListener('keydown', (e) => {
   const navigationIndex = wasPlaying
     ? -1
     : (extensionTarget ? panelTarget?.index ?? -1 : currentCuePanelIdx);
-  const next = e.shiftKey
+  let next = e.shiftKey
     ? window.AsrEditorUtils.findCueSelectionExtensionTarget(
       segments,
       extensionTarget ? selectedExtensionIdxs : selectedIdxs,
@@ -6138,6 +6189,14 @@ document.addEventListener('keydown', (e) => {
       direction,
       hideDisabled,
     );
+  if (next < 0) {
+    const eligible = segments
+      .map((segment, index) => ({ segment, index }))
+      .filter(({ segment }) => segment && (!hideDisabled || !segment.disabled));
+    next = direction < 0
+      ? (eligible[0]?.index ?? -1)
+      : (eligible[eligible.length - 1]?.index ?? -1);
+  }
   if (next < 0) return;
 
   e.preventDefault();
@@ -6211,7 +6270,7 @@ document.addEventListener('keydown', (e) => {
   if (projectMediaModal.classList.contains('show')) return;
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
-  if (selectedIdxs.size === 0) return;
+  if (selectedIdxs.size === 0 && selectedExtensionIdxs.size === 0) return;
   e.preventDefault();
   clearSelection();
 });
@@ -6422,9 +6481,15 @@ document.addEventListener('keydown', (e) => {
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
-  if (!selectedIdxs.size) return;
-  const first = Math.min(...selectedIdxs);
-  seekFromWaveform(DATA.segments[first].start / 1000);
+  const target = getCurrentCuePanelTarget();
+  const extensionTarget = target?.kind === 'extension';
+  const selected = extensionTarget ? selectedExtensionIdxs : selectedIdxs;
+  const segments = extensionTarget ? target.track.segments : DATA.segments;
+  if (!selected.size) return;
+  const first = Math.min(...selected);
+  const segment = segments[first];
+  if (!segment) return;
+  seekFromWaveform(segment.start / 1000);
   if (player.paused) togglePlayback();
 });
 
@@ -7165,17 +7230,19 @@ function findActive(tMs) {
   return ans;
 }
 
+function isSubtitlePreviewActive(segment, tMs) {
+  if (!segment || segment.disabled) return false;
+  const start = Number(segment.start);
+  const end = Number(segment.end);
+  return Number.isFinite(start) && Number.isFinite(end) && tMs >= start && tMs < end;
+}
+
 function extensionSegmentAtTime(tMs, mainIndex = -1) {
   if (!multiSubtitleVisible()) return null;
   const bound = mainIndex >= 0 ? extensionForMainIndex(mainIndex) : null;
-  if (bound && !bound.disabled && tMs >= bound.start && tMs <= bound.end) return bound;
-  return (getActiveExtensionTrack()?.segments || []).find((segment, index, segments) => (
-    segment && !segment.disabled && tMs >= segment.start && (
-      tMs < segment.end
-      || index === segments.length - 1
-      || segments[index + 1]?.start > tMs
-    )
-  )) || null;
+  if (isSubtitlePreviewActive(bound, tMs)) return bound;
+  return (getActiveExtensionTrack()?.segments || [])
+    .find((segment) => isSubtitlePreviewActive(segment, tMs)) || null;
 }
 
 function removedGapAt(timeMs) {
@@ -7219,18 +7286,6 @@ function updateActiveCue(idx) {
   lastActive = idx;
 }
 
-function updateSubtitleOverlay(tMs, idx) {
-  // overlay（禁用项不在画面上显示字幕文本）
-  if (!overlayToggle.checked) return;
-  const seg = idx >= 0 ? DATA.segments[idx] : null;
-  if (seg && !seg.disabled && tMs >= seg.start && tMs <= seg.end) {
-    overlayEl.classList.remove('hidden');
-    if (overlayTextEl.textContent !== seg.text) overlayTextEl.textContent = seg.text;
-  } else {
-    overlayEl.classList.add('hidden');
-  }
-}
-
 function updatePlaybackFrame() {
   const tMs = player.currentTime * 1000;
   if (gapPreviewRange && (tMs < gapPreviewRange.start || tMs >= gapPreviewRange.end)) {
@@ -7246,15 +7301,14 @@ function updatePlaybackFrame() {
   if (nowEl.textContent !== nowLabel) nowEl.textContent = nowLabel;
   const idx = findActive(tMs);
   updateActiveCue(idx);
-  updateSubtitleOverlay(tMs, idx);
+  refreshSubtitlePreview(tMs, idx);
   waveformEditor?.updatePlayback();
 }
 
 function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActive(tMs)) {
   // 编辑字幕文本时只刷新播放器预览，避免每输入一个字都触发字幕列表的自动滚动。
   const seg = idx >= 0 ? DATA.segments[idx] : null;
-  const mainVisible = !!overlayToggle.checked
-    && !!seg && !seg.disabled && tMs >= seg.start && tMs <= seg.end;
+  const mainVisible = !!overlayToggle.checked && isSubtitlePreviewActive(seg, tMs);
   const extension = extensionSegmentAtTime(tMs, idx);
   const extensionVisible = !!extensionOverlayToggle?.checked && !!extension;
   overlayTextEl.classList.toggle('hidden', !mainVisible);
@@ -7623,6 +7677,7 @@ function buildJson() {
           end: segment.end,
           text: segment.text || '',
         };
+        if (Array.isArray(segment.items)) outSegment.items = segment.items;
         if (segment._dirty) outSegment._dirty = true;
         return outSegment;
       }),
@@ -9072,11 +9127,17 @@ async function parseSubtitleImportFile(file) {
   if (isSrtFile(file)) return parseSrtSegments(await file.text());
   const data = JSON.parse(await file.text());
   if (!data || !Array.isArray(data.segments)) throw new Error('缺少有效 segments 数组');
-  const sourceSegments = data.segments.map((segment) => ({
-    start: segment.start,
-    end: segment.end,
-    text: typeof segment.text === 'string' ? segment.text : '',
-  }));
+  const sourceSegments = data.segments.map((segment) => {
+    const copy = {
+      start: segment.start,
+      end: segment.end,
+      text: typeof segment.text === 'string' ? segment.text : '',
+    };
+    if (Array.isArray(segment.items)) {
+      copy.items = segment.items.map((item) => ({ ...item }));
+    }
+    return copy;
+  });
   window.AsrEditorUtils.normalizeSegmentTimings(sourceSegments);
   if (!sourceSegments.length || sourceSegments.some((segment) => !segment.text)) {
     throw new Error('扩展字幕包含空文本或无效时间码');
@@ -9122,20 +9183,42 @@ function renderMainImportPreview(pending) {
   ].join('');
 }
 
-async function showMultiSubtitleImportChoice(file, segments) {
+function renderProjectImportPreview(pending) {
+  if (!multiSubtitleImportPreview) return;
+  const itemCount = pending.segments.reduce((count, segment) => (
+    count + (Array.isArray(segment.items) ? segment.items.length : 0)
+  ), 0);
+  multiSubtitleImportPreview.hidden = false;
+  multiSubtitleImportPreview.innerHTML = [
+    `<div class="summary">工程字幕 ${pending.segments.length} 条${itemCount ? ` · 字词时间码 ${itemCount} 项` : ''}</div>`,
+    `<div>${escapeHtml(pending.file.name)}</div>`,
+    '<div>打开工程会替换当前工程；使用工程字幕作为副字幕只导入字幕和可选字词时间码。</div>',
+  ].join('');
+}
+
+async function showMultiSubtitleImportChoice(file, segments, options = {}) {
   const existingTrack = getActiveExtensionTrack();
+  const projectFile = options.projectFile || null;
+  const projectImport = Boolean(projectFile);
   pendingMultiImport = {
     file,
     segments,
     existingTrackId: existingTrack?.id || null,
     match: null,
     choice: null,
+    projectFile,
+    projectMediaFile: options.projectMediaFile || null,
+    projectImport,
   };
   if (multiSubtitleImportDescription) multiSubtitleImportDescription.textContent = '请选择你要执行的行为：';
-  if (multiSubtitleImportReplace) multiSubtitleImportReplace.textContent = existingTrack ? '替换扩展轨' : '替换当前字幕';
+  if (multiSubtitleImportReplace) {
+    multiSubtitleImportReplace.textContent = projectImport
+      ? '打开工程' : (existingTrack ? '替换扩展轨' : '替换当前字幕');
+  }
   if (multiSubtitleImportExtension) {
-    multiSubtitleImportExtension.hidden = Boolean(existingTrack);
-    multiSubtitleImportExtension.textContent = '作为多重字幕';
+    multiSubtitleImportExtension.hidden = projectImport ? false : Boolean(existingTrack);
+    multiSubtitleImportExtension.textContent = projectImport
+      ? '使用工程字幕作为副字幕' : '作为多重字幕';
   }
   if (multiSubtitleImportChoiceActions) multiSubtitleImportChoiceActions.hidden = false;
   if (multiSubtitleImportResultActions) multiSubtitleImportResultActions.hidden = false;
@@ -9143,12 +9226,13 @@ async function showMultiSubtitleImportChoice(file, segments) {
   [multiSubtitleImportReplace, multiSubtitleImportExtension].forEach((button) => {
     button?.setAttribute('aria-pressed', 'false');
   });
-  renderMultiImportPreview(null, segments);
+  if (projectImport) renderProjectImportPreview(pending);
+  else renderMultiImportPreview(null, segments);
   multiSubtitleImportModal?.classList.add('show');
-  // 首次导入扩展字幕时默认选择“作为多重字幕”，同时立即展示绑定预览。
-  // 已存在扩展轨时只有替换路径可用，也沿用同一套默认确认流程。
-  prepareMultiSubtitleImport();
-  (existingTrack ? multiSubtitleImportReplace : multiSubtitleImportExtension)?.focus();
+  // 工程文件必须明确选择“打开”或“作为副字幕”；SRT 保持原有默认导入路径。
+  if (!projectImport) prepareMultiSubtitleImport();
+  (projectImport ? multiSubtitleImportReplace
+    : (existingTrack ? multiSubtitleImportReplace : multiSubtitleImportExtension))?.focus();
 }
 
 function prepareMultiSubtitleImport() {
@@ -9188,7 +9272,6 @@ function commitMultiSubtitleImport() {
     id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
       pending.segments.slice(0, index), `${trackId}-segment-${String(index + 1).padStart(3, '0')}`, `${trackId}-segment`,
     ),
-    items: undefined,
     _dirty: true,
   }));
   const track = {
@@ -9415,6 +9498,15 @@ multiSubtitleImportExtension?.addEventListener('click', prepareMultiSubtitleImpo
 multiSubtitleImportReplace?.addEventListener('click', () => {
   const pending = pendingMultiImport;
   if (!pending) return;
+  if (pending.projectImport) {
+    pending.choice = 'open-project';
+    pending.match = null;
+    multiSubtitleImportReplace?.setAttribute('aria-pressed', 'true');
+    multiSubtitleImportExtension?.setAttribute('aria-pressed', 'false');
+    renderProjectImportPreview(pending);
+    if (multiSubtitleImportResultConfirm) multiSubtitleImportResultConfirm.disabled = false;
+    return;
+  }
   if (pending.existingTrackId) {
     prepareMultiSubtitleImport();
     return;
@@ -9426,9 +9518,16 @@ multiSubtitleImportReplace?.addEventListener('click', () => {
   renderMainImportPreview(pending);
   if (multiSubtitleImportResultConfirm) multiSubtitleImportResultConfirm.disabled = false;
 });
-multiSubtitleImportResultConfirm?.addEventListener('click', () => {
+multiSubtitleImportResultConfirm?.addEventListener('click', async () => {
   const pending = pendingMultiImport;
   if (!pending?.choice) return;
+  if (pending.choice === 'open-project') {
+    const { projectFile, projectMediaFile } = pending;
+    closeMultiSubtitleImportModal();
+    const opened = await openProjectFile(projectFile, { suppressMediaPrompt: Boolean(projectMediaFile) });
+    if (opened && projectMediaFile) await loadMediaFile(projectMediaFile);
+    return;
+  }
   if (pending.choice === 'replace-main') {
     const { segments, file } = pending;
     closeMultiSubtitleImportModal();
@@ -10069,24 +10168,39 @@ function clearColorOnTargets(idxs) {
 // === 禁用/启用 ===
 // 统一切换语义：目标全部禁用 → 全部启用；否则全部禁用
 // 单条时即"切换这一条的状态"（Alt+点击 / 右键菜单均走这里）
-function toggleDisabled(idxs) {
-  if (!idxs.length) return;
+function toggleDisabled(idxs, track = 'main') {
+  const extensionTrack = track === 'extension'
+    ? getActiveExtensionTrack()
+    : (track?.segments ? track : null);
+  const isExtension = Boolean(extensionTrack);
+  const segments = isExtension ? extensionTrack.segments : DATA.segments;
+  const validIdxs = idxs.filter((index) => Number.isInteger(index) && segments[index]);
+  if (!validIdxs.length) return;
   pushUndo('切换禁用');
-  const allDisabled = idxs.every(i => DATA.segments[i]?.disabled);
-  idxs.forEach(i => { if (DATA.segments[i]) DATA.segments[i].disabled = !allDisabled; });
+  const allDisabled = validIdxs.every((index) => segments[index].disabled);
+  validIdxs.forEach((index) => {
+    segments[index].disabled = !allDisabled;
+    segments[index]._dirty = true;
+  });
+  if (isExtension) markMultiSubtitleDirty();
   renderAll();
   // 隐藏开关开启时，刚禁用的项需从选中集移除（保持状态一致）
   if (hideDisabled && !allDisabled) {
-    [...selectedIdxs].forEach(i => {
-      if (DATA.segments[i]?.disabled) {
-        selectedIdxs.delete(i);
-        const el = container.querySelector(`.cue[data-idx="${i}"]`);
+    const selection = isExtension ? selectedExtensionIdxs : selectedIdxs;
+    [...selection].forEach((index) => {
+      if (segments[index]?.disabled) {
+        selection.delete(index);
+        const selector = isExtension
+          ? `.cue[data-ext-idx="${index}"], .multi-dual-cue[data-ext-idx="${index}"]`
+          : `.cue[data-idx="${index}"]`;
+        const el = container.querySelector(selector);
         if (el) el.classList.remove('selected');
       }
     });
-    selCountEl.textContent = String(selectedIdxs.size);
+    updateMultiSelectionClasses();
+    selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
   }
-  flashHint(allDisabled ? `已启用 ${idxs.length} 条` : `已禁用 ${idxs.length} 条`);
+  flashHint(allDisabled ? `已启用 ${validIdxs.length} 条` : `已禁用 ${validIdxs.length} 条`);
 }
 
 // === 从波形空白处新增字幕 ===
@@ -10636,6 +10750,13 @@ function showExtensionContextMenu(x, y, index, timeMs = null, track = getActiveE
     !extensionSelectionOnly,
     'C',
   );
+  addItem(
+    segment.disabled ? '启用副字幕' : '禁用副字幕',
+    () => toggleDisabled([index], track),
+    false,
+    false,
+    'Alt+点击',
+  );
   addItem('删除扩展字幕', () => deleteExtensionSegments([index]), true);
   if (binding) addItem('对齐主字幕时间范围', () => alignExtensionToMainTimeRange(index, track), false, false, 'H');
   if (binding) addItem('解绑', () => {
@@ -10868,7 +10989,7 @@ function initWaveformEditor() {
       lastClickedExtensionIdx = idx;
     },
     toggleExtensionSelection: (idx) => {
-      toggleExtensionSelection(idx);
+      toggleExtensionSelection(idx, getActiveExtensionTrack());
       lastClickedExtensionIdx = idx;
     },
     selectExtensionRange: (idx) => {
@@ -10887,7 +11008,7 @@ function initWaveformEditor() {
     },
     seek: seekFromWaveform,
     togglePlayback,
-    toggleDisabled: (idxs) => toggleDisabled(idxs),
+    toggleDisabled: (idxs, track = 'main') => toggleDisabled(idxs, track),
     getHideDisabled: () => hideDisabled,
     getGapRemoveGaps,
     getGapOperationMode: getGapRemoveOperationMode,
@@ -10959,14 +11080,19 @@ async function handleDroppedFiles(files) {
     return;
   }
   if (jsonFile) {
-    // 工程文件（.mosp/.json）始终走“打开新工程”语义；只有 SRT 才是
-    // “替换当前字幕 / 作为多重字幕”的导入来源。之前这里把已有字幕
-    // 时的工程文件也送进了字幕导入弹窗，导致拖入 mosp 时语义错误。
     if (DATA.segments.length > 0) {
-      const message = hasUnsavedProjectChanges()
-        ? `检测到工程文件「${jsonFile.name}」。当前有未保存的改动，是否打开新的工程？打开后将丢失这些改动。`
-        : `检测到工程文件「${jsonFile.name}」，是否打开新的工程？当前工程将被替换。`;
-      if (!confirm(message)) return;
+      if (hasUnsavedProjectChanges()
+          && !confirm('当前有未保存的改动，是否继续处理此工程文件？选择“打开工程”仍会替换当前工程。')) return;
+      try {
+        const segments = await parseSubtitleImportFile(jsonFile);
+        await showMultiSubtitleImportChoice(jsonFile, segments, {
+          projectFile: jsonFile,
+          projectMediaFile: mediaFile,
+        });
+      } catch (error) {
+        flashHint(`导入工程字幕失败：${error.message || error}`);
+      }
+      return;
     }
     // 工程与媒体一起拖入时，媒体随工程自动加载，不再弹窗要求重选。
     const opened = await openProjectFile(jsonFile, { suppressMediaPrompt: Boolean(mediaFile) });
@@ -11073,7 +11199,7 @@ hideDisabledToggle.addEventListener('change', () => {
   hideDisabled = hideDisabledToggle.checked;
   container.classList.toggle('hide-disabled', hideDisabled);
   if (hideDisabled) {
-    // 清理选中集中的禁用项（隐藏了但还留在 selectedIdxs 会造成状态不一致）
+    // 清理选中集中的禁用项（隐藏了但还留在选中集会造成状态不一致）
     [...selectedIdxs].forEach(i => {
       if (DATA.segments[i]?.disabled) {
         selectedIdxs.delete(i);
@@ -11081,7 +11207,12 @@ hideDisabledToggle.addEventListener('change', () => {
         if (el) el.classList.remove('selected');
       }
     });
-    selCountEl.textContent = String(selectedIdxs.size);
+    const extensionTrack = getActiveExtensionTrack();
+    [...selectedExtensionIdxs].forEach((index) => {
+      if (extensionTrack?.segments[index]?.disabled) selectedExtensionIdxs.delete(index);
+    });
+    updateMultiSelectionClasses();
+    selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
     if (waveformEditor) waveformEditor.updateSelection();
   }
   if (waveformEditor) waveformEditor.updateDisabledVisibility();

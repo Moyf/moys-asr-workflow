@@ -50,12 +50,32 @@ test('playback refreshes the subtitle preview and playhead without timeupdate', 
       { start: 0, end: 100, text: 'First', items: [] },
       { start: 100, end: 10000, text: 'Second', items: [] },
     );
+    DATA.multi_subtitle = {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-1',
+        role: 'extension',
+        name: 'Extension',
+        language: 'English',
+        split_mode: 'word',
+        source_name: 'extension.srt',
+        segments: [
+          { start: 0, end: 100, text: 'First extension' },
+          { start: 100, end: 10000, text: 'Second extension' },
+        ],
+      }],
+      bindings: [],
+    };
     const media = document.getElementById('player');
     media.currentTime = 0.02;
     renderAll();
+    document.getElementById('extension-overlay-toggle').checked = true;
     update();
   });
   await expect(page.locator('#overlay-main-text')).toHaveText('First');
+  await expect(page.locator('#overlay-extension-text')).toHaveText('First extension');
 
   const before = await page.evaluate(() => {
     const playhead = [...document.querySelectorAll('.waveform-playhead')].find((element) => !element.hidden);
@@ -69,6 +89,7 @@ test('playback refreshes the subtitle preview and playhead without timeupdate', 
     await media.play();
   });
   await expect(page.locator('#overlay-main-text')).toHaveText('Second', { timeout: 2000 });
+  await expect(page.locator('#overlay-extension-text')).toHaveText('Second extension', { timeout: 2000 });
 
   const after = await page.evaluate(() => {
     const playhead = [...document.querySelectorAll('.waveform-playhead')].find((element) => !element.hidden);
