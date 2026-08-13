@@ -600,14 +600,14 @@ test('uses the maximum waveform row height while multiple subtitles are enabled 
   await expect(page.locator('#waveform-row-height')).toHaveValue('144');
 });
 
-test('auto-binds a unique overlap and asks before choosing or replacing a binding', async ({ page }) => {
+test('auto-binds the earliest unbound main cue when an extension overlaps several cues', async ({ page }) => {
   const projectPath = join(tempDir, 'binding-overlap-project.json');
   const project = {
     media: '', language: 'English', model: '',
     segments: [
-      { id: 'main-001', start: 1000, end: 2000, text: 'Main one', items: [] },
+      { id: 'main-001', start: 1000, end: 1400, text: 'Main one', items: [] },
       { id: 'main-002', start: 1500, end: 2500, text: 'Main two', items: [] },
-      { id: 'main-003', start: 3000, end: 4000, text: 'Main three', items: [] },
+      { id: 'main-003', start: 2600, end: 3200, text: 'Main three', items: [] },
     ],
     multi_subtitle: {
       schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
@@ -615,10 +615,10 @@ test('auto-binds a unique overlap and asks before choosing or replacing a bindin
         id: 'extension-1', role: 'extension', name: 'Translation', language: '', source_name: 'translation.srt',
         split_mode: 'word',
         segments: [
-          { id: 'extension-001', start: 1100, end: 1900, text: 'Already bound' },
+          { id: 'extension-001', start: 1050, end: 1150, text: 'Already bound' },
           { id: 'extension-002', start: 1200, end: 1400, text: 'Replace me' },
           { id: 'extension-003', start: 3100, end: 3900, text: 'Auto bind me' },
-          { id: 'extension-004', start: 1600, end: 2200, text: 'Multi overlap' },
+          { id: 'extension-004', start: 1600, end: 2800, text: 'Multi overlap' },
         ],
       }],
       bindings: [{
@@ -647,10 +647,8 @@ test('auto-binds a unique overlap and asks before choosing or replacing a bindin
   const multiOverlapExtension = page.locator('.multi-cue-column.extension').filter({ hasText: 'Multi overlap' });
   await multiOverlapExtension.click({ button: 'right' });
   await page.locator('#ctxmenu .item').filter({ hasText: '绑定到主字幕' }).click();
-  await expect(multiOverlapExtension).toHaveClass(/unbound/);
-  await expect(page.locator('#hint-stack')).toContainText('有多条主字幕与当前副字幕重叠');
-  await page.locator('.multi-cue-column.main').filter({ hasText: 'Main two' }).click();
   await expect(multiOverlapExtension).not.toHaveClass(/unbound/);
+  await expect(page.locator('#hint-stack')).toContainText('时间最早的未绑定主字幕');
   await expect(
     multiOverlapExtension.locator('xpath=ancestor::div[contains(@class,"multi-dual-cue")]')
       .locator('.multi-cue-column.main .text'),
@@ -677,8 +675,15 @@ test('uses B on a single selected extension cue to open the extension split dial
   await page.keyboard.press('b');
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
   await expect(page.locator('#multi-subtitle-split-title')).toHaveText('选择副字幕拆分点');
+  await expect(page.locator('#multi-subtitle-split-confirm')).toHaveText('拆分（Enter / B）');
   await expect(page.locator('#multi-subtitle-split-main-lane')).toBeHidden();
-  await page.keyboard.press('Escape');
+  await expect(page.locator('.multi-cue-column.extension:not(.multi-cue-empty)')).toHaveCount(3);
+  await page.locator('#multi-subtitle-split-auto-submit').uncheck();
+  await page.locator('#multi-subtitle-split-text .multi-subtitle-split-gap').first()
+    .evaluate((element) => element.click());
+  await page.keyboard.press('b');
+  await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+  await expect(page.locator('.multi-cue-column.extension:not(.multi-cue-empty)')).toHaveCount(4);
 });
 
 test('binds an unbound extension cue directly from its context menu', async ({ page }) => {
@@ -931,7 +936,7 @@ test('aligns a bound extension cue to the main subtitle range from its context m
   await expect(row.locator('.multi-cue-column.extension .time')).toHaveText('00:00.050 → 00:01.950');
 });
 
-test('keeps the main range fixed when H alignment overlaps another extension cue', async ({ page }) => {
+test('keeps the main range fixed and removes a fully covered extension cue on H alignment', async ({ page }) => {
   const project = {
     segments: [
       { id: 'main-001', start: 1000, end: 4000, text: '主字幕', items: [] },
@@ -966,11 +971,16 @@ test('keeps the main range fixed when H alignment overlaps another extension cue
   const extension = page.locator('.multi-cue-column.extension').filter({ hasText: 'bound extension' });
   await extension.click();
   await page.keyboard.press('h');
-  await expect(page.locator('#hint-stack')).toContainText('主字幕时间未改变');
+  await expect(page.locator('#hint-stack')).toContainText('删除 1 条副字幕');
   expect(await page.evaluate(() => ({
     main: [DATA.segments[0].start, DATA.segments[0].end],
-    extension: [DATA.multi_subtitle.tracks[0].segments[0].start, DATA.multi_subtitle.tracks[0].segments[0].end],
-  }))).toEqual({ main: [1000, 4000], extension: [1000, 4000] });
+    extension: DATA.multi_subtitle.tracks[0].segments.map((segment) => [segment.start, segment.end]),
+    bindings: DATA.multi_subtitle.bindings.map((binding) => binding.extension_segment_ids),
+  }))).toEqual({
+    main: [1000, 4000],
+    extension: [[1000, 4000]],
+    bindings: [['extension-001']],
+  });
 });
 
 test('keeps the main range fixed when its extension follower hits another extension cue', async ({ page }) => {
@@ -1022,14 +1032,14 @@ test('keeps the main range fixed when its extension follower hits another extens
   await page.mouse.move(targetX, centerY, { steps: 4 });
   await page.mouse.up();
 
-  await expect(page.locator('#hint-stack')).toContainText('主字幕时长未改变');
+  await expect(page.locator('#hint-stack')).toContainText('挤压 1 条副字幕');
   const timing = await page.evaluate(() => ({
     main: [DATA.segments[0].start, DATA.segments[0].end],
-    extension: [DATA.multi_subtitle.tracks[0].segments[0].start, DATA.multi_subtitle.tracks[0].segments[0].end],
+    extension: DATA.multi_subtitle.tracks[0].segments.map((segment) => [segment.start, segment.end]),
   }));
   expect(timing.main[0]).toBe(1000);
   expect(timing.main[1]).toBeGreaterThan(3000);
-  expect(timing.extension).toEqual([1000, 2500]);
+  expect(timing.extension).toEqual([[1000, 2800], [2800, 4000]]);
 });
 
 test('limits an extension drag to the available main-track boundary', async ({ page }) => {
@@ -1394,6 +1404,7 @@ test('offers extension cue creation on the empty extension lane and makes it und
     base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
   }]);
 
+  await page.locator('.multi-cue-column.extension').filter({ hasText: 'translation' }).click();
   const row = page.locator('.waveform-row.multi-subtitle-row').first();
   const box = await row.boundingBox();
   if (!box) throw new Error('双 lane 波形行没有布局');
@@ -1404,6 +1415,56 @@ test('offers extension cue creation on the empty extension lane and makes it und
   await page.keyboard.press('Escape');
   await page.keyboard.press('Control+z');
   await expect(page.locator('.waveform-cue-block[data-track="extension"]')).toHaveCount(1);
+});
+
+test('uses main-track semantics on blank waveform unless an extension cue is selected', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-001', start: 1000, end: 3000, text: '主字幕', items: [] }],
+    waveform: generateWaveformPayload(7000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        source_name: 'translation.srt',
+        segments: [{ id: 'extension-001', start: 4000, end: 5000, text: '副字幕' }],
+      }],
+      bindings: [],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'blank-lane-semantics-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const row = page.locator('.waveform-row.multi-subtitle-row').first();
+  const box = await row.boundingBox();
+  const rowStart = Number(await row.getAttribute('data-start-ms'));
+  const rowEnd = Number(await row.getAttribute('data-end-ms'));
+  if (!box || !Number.isFinite(rowStart) || !Number.isFinite(rowEnd)) {
+    throw new Error('双 lane 波形行没有有效布局');
+  }
+  const x = box.x + ((2000 - rowStart) / (rowEnd - rowStart)) * box.width;
+  const blankY = box.y + box.height - 2;
+
+  // 没有选中副字幕时，即使右键落在下半 lane，仍然按主轨处理。
+  await page.mouse.click(x, blankY, { button: 'right' });
+  const splitItem = page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分当前字幕' });
+  await expect(splitItem).not.toHaveClass(/disabled/);
+  await splitItem.click();
+  await expect(page.locator('#multi-subtitle-split-title')).toHaveText('选择主字幕拆分点');
+  await page.keyboard.press('Escape');
+
+  // 明确选中副字幕后，空白点没有命中副字幕，不能再回落拆分主字幕。
+  await page.locator('.multi-cue-column.extension').filter({ hasText: '副字幕' }).click();
+  await page.mouse.click(x, blankY, { button: 'right' });
+  await expect(splitItem).toHaveClass(/disabled/);
+  await splitItem.click({ force: true });
+  await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+  expect(await page.evaluate(() => DATA.segments.length)).toBe(1);
 });
 
 test('keeps one shared waveform background with two lanes, switch visibility, and Alt drag semantics', async ({ page }) => {

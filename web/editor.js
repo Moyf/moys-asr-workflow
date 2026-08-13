@@ -272,8 +272,148 @@ function extensionRangeOverlapsNeighbors(segment, start, end, track, movedSegmen
   ));
 }
 
-// 主字幕驱动副字幕时，先尽量把副字幕放回同轨空白区；如果空白区不足以容纳
-// 最短字幕，则保留目标范围造成的重叠。无论哪一种兜底，都不反向改写主字幕。
+function setExtensionSegmentRange(segment, start, end) {
+  if (!segment) return { start, end, changed: false };
+  const oldStart = Number(segment.start);
+  const oldEnd = Number(segment.end);
+  const safe = clampExtensionRange(null, start, end);
+  segment.start = safe.start;
+  segment.end = safe.end;
+  segment.items = remapPanelItems(
+    segment.items,
+    Number.isFinite(oldStart) ? oldStart : safe.start,
+    Number.isFinite(oldEnd) ? oldEnd : safe.end,
+    safe.start,
+    safe.end,
+  );
+  segment._dirty = true;
+  return {
+    ...safe,
+    changed: oldStart !== safe.start || oldEnd !== safe.end,
+  };
+}
+
+function extensionTrackSelectionSnapshot(track) {
+  if (!track) return null;
+  const selectedIds = new Set([...selectedExtensionIdxs]
+    .map((index) => track.segments[index]?.id)
+    .filter(Boolean));
+  const currentId = currentCuePanelKind === 'extension'
+    && currentCuePanelTrackId === track.id
+    ? track.segments[currentCuePanelIdx]?.id : null;
+  const lastClickedId = track.segments[lastClickedExtensionIdx]?.id || null;
+  return { selectedIds, currentId, lastClickedId };
+}
+
+function restoreExtensionTrackSelection(track, snapshot) {
+  if (!track || !snapshot) return;
+  selectedExtensionIdxs.clear();
+  snapshot.selectedIds.forEach((id) => {
+    const index = track.segments.findIndex((segment) => segment?.id === id);
+    if (index >= 0) selectedExtensionIdxs.add(index);
+  });
+  if (snapshot.currentId && currentCuePanelKind === 'extension'
+      && currentCuePanelTrackId === track.id) {
+    currentCuePanelIdx = track.segments.findIndex((segment) => segment?.id === snapshot.currentId);
+    if (currentCuePanelIdx < 0) {
+      currentCuePanelKind = 'main';
+      currentCuePanelTrackId = null;
+    }
+  }
+  lastClickedExtensionIdx = snapshot.lastClickedId
+    ? track.segments.findIndex((segment) => segment?.id === snapshot.lastClickedId) : -1;
+  selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
+}
+
+function reconcileExtensionTrack(track, preferredSegments = []) {
+  const empty = { changed: false, squeezedCount: 0, removedCount: 0, unboundCount: 0 };
+  if (!track?.segments?.length) return empty;
+
+  const preferred = preferredSegments.filter((segment) => track.segments.includes(segment));
+  const preferredSet = new Set(preferred);
+  const removed = new Set();
+  const snapshot = extensionTrackSelectionSnapshot(track);
+  const result = { ...empty };
+
+  // 优先保护正在对齐/联动的字幕；主字幕轨的时间范围不能被副字幕反向修改。
+  const orderedPreferred = preferred.slice().sort((left, right) => (
+    Number(left.start) - Number(right.start)
+      || Number(left.end) - Number(right.end)
+      || track.segments.indexOf(left) - track.segments.indexOf(right)
+  ));
+  let previousPreferred = null;
+  orderedPreferred.forEach((segment) => {
+    if (removed.has(segment)) return;
+    if (previousPreferred && Number(segment.start) < Number(previousPreferred.end)) {
+      const nextStart = Number(previousPreferred.end);
+      if (Number(segment.end) - nextStart < SUBTITLE_MIN_DURATION_MS) {
+        removed.add(segment);
+        return;
+      }
+      const changed = setExtensionSegmentRange(segment, nextStart, segment.end).changed;
+      if (changed) result.changed = true;
+    }
+    if (!previousPreferred || Number(segment.end) > Number(previousPreferred.end)) {
+      previousPreferred = segment;
+    }
+  });
+
+  const protectedRanges = orderedPreferred
+    .filter((segment) => !removed.has(segment))
+    .sort((left, right) => Number(left.start) - Number(right.start));
+
+  // 一个旧字幕被目标范围穿过时，保留未被覆盖的最长连续一侧；如果没有达到最短时长，
+  // 就删除它并解除绑定。这样既保持副轨不重叠，也不会凭空复制一条相同文本字幕。
+  track.segments.forEach((candidate) => {
+    if (preferredSet.has(candidate) || removed.has(candidate)) return;
+    const candidateStart = Number(candidate.start);
+    const candidateEnd = Number(candidate.end);
+    if (!Number.isFinite(candidateStart) || !Number.isFinite(candidateEnd)) return;
+    const pieces = [];
+    let cursor = candidateStart;
+    protectedRanges.forEach((range) => {
+      const rangeStart = Number(range.start);
+      const rangeEnd = Number(range.end);
+      if (rangeEnd <= cursor || rangeStart >= candidateEnd) return;
+      if (rangeStart > cursor) pieces.push([cursor, Math.min(rangeStart, candidateEnd)]);
+      cursor = Math.max(cursor, rangeEnd);
+    });
+    if (cursor < candidateEnd) pieces.push([cursor, candidateEnd]);
+    const viable = pieces.filter(([start, end]) => end - start >= SUBTITLE_MIN_DURATION_MS);
+    if (!viable.length) {
+      removed.add(candidate);
+      return;
+    }
+    viable.sort((left, right) => (right[1] - right[0]) - (left[1] - left[0]) || left[0] - right[0]);
+    const [nextStart, nextEnd] = viable[0];
+    if (nextStart !== candidateStart || nextEnd !== candidateEnd) {
+      setExtensionSegmentRange(candidate, nextStart, nextEnd);
+      result.squeezedCount += 1;
+      result.changed = true;
+    }
+  });
+
+  if (removed.size) {
+    const removedIds = new Set([...removed].map((segment) => segment.id).filter(Boolean));
+    const multi = getMultiSubtitleState();
+    const removedBindings = MULTI_SUBTITLE_UTILS.removeSubtitleBindings(multi, (binding) => (
+      binding.extension_segment_ids?.some((id) => removedIds.has(id))
+    ));
+    track.segments = track.segments.filter((segment) => !removed.has(segment));
+    result.removedCount = removed.size;
+    result.unboundCount = removedBindings.length;
+    result.changed = true;
+    restoreExtensionTrackSelection(track, snapshot);
+  }
+  if (result.changed) {
+    track._dirty = true;
+    syncBindingOffsets();
+  }
+  return result;
+}
+
+// 主字幕驱动副字幕时，目标范围优先；其它副字幕会被裁剪到目标范围之外，
+// 完全被覆盖或无法保留最短时长的字幕会被删除。主字幕时间始终不反向改变。
 function resolveExtensionFollowerRange(
   segment,
   start,
@@ -282,45 +422,24 @@ function resolveExtensionFollowerRange(
   track,
   movedSegments = new Set(),
 ) {
-  const safe = clampExtensionRange(null, start, end);
-  const bounds = getTrackNeighborBounds(segment, track?.segments || [], movedSegments);
-  if (!bounds) return { ...safe, adjusted: false, conflict: false };
-  const overlaps = extensionRangeOverlapsNeighbors(segment, safe.start, safe.end, track, movedSegments);
-  if (!overlaps) return { ...safe, adjusted: false, conflict: false };
-
-  const gapStart = Math.max(0, bounds.previousEnd);
-  const gapEnd = Math.min(getSubtitleTimelineDuration(), bounds.nextStart);
-  const gapDuration = gapEnd - gapStart;
-  if (mode === 'start' && safe.end <= gapEnd && safe.end - SUBTITLE_MIN_DURATION_MS >= gapStart) {
-    const nextStart = clampNumber(safe.start, gapStart, safe.end - SUBTITLE_MIN_DURATION_MS);
-    return {
-      start: nextStart,
-      end: safe.end,
-      adjusted: nextStart !== safe.start,
-      conflict: false,
-    };
+  if (!track?.segments?.includes(segment)) {
+    const safe = clampExtensionRange(null, start, end);
+    return { ...safe, adjusted: false, conflict: false, squeezedCount: 0, removedCount: 0 };
   }
-  if (mode === 'end' && safe.start >= gapStart && gapEnd >= safe.start + SUBTITLE_MIN_DURATION_MS) {
-    const nextEnd = clampNumber(safe.end, safe.start + SUBTITLE_MIN_DURATION_MS, gapEnd);
-    return {
-      start: safe.start,
-      end: nextEnd,
-      adjusted: nextEnd !== safe.end,
-      conflict: false,
-    };
-  }
-  if ((mode === 'move' || mode === 'range') && gapDuration >= SUBTITLE_MIN_DURATION_MS) {
-    const duration = Math.min(safe.end - safe.start, gapDuration);
-    const nextStart = clampNumber(safe.start, gapStart, gapEnd - duration);
-    const nextEnd = nextStart + duration;
-    return {
-      start: nextStart,
-      end: nextEnd,
-      adjusted: nextStart !== safe.start || nextEnd !== safe.end,
-      conflict: false,
-    };
-  }
-  return { ...safe, adjusted: false, conflict: true };
+  const safe = setExtensionSegmentRange(segment, start, end);
+  const protectedSegments = movedSegments.size
+    ? track.segments.filter((candidate) => movedSegments.has(candidate) && candidate !== segment)
+    : [];
+  const result = reconcileExtensionTrack(track, [segment, ...protectedSegments]);
+  return {
+    start: segment.start,
+    end: segment.end,
+    adjusted: safe.changed,
+    conflict: false,
+    squeezedCount: result.squeezedCount,
+    removedCount: result.removedCount,
+    unboundCount: result.unboundCount,
+  };
 }
 
 function constrainCueRangeToTrack(segment, desiredStart, desiredEnd, segments) {
@@ -374,17 +493,11 @@ function syncBoundExtensionForMain(mainSegment, patch = {}) {
     nextEnd = patch.edge === 'start' ? extension.end : extension.end + deltaEnd;
   }
   const resolved = resolveExtensionFollowerRange(extension, nextStart, nextEnd, mode, getExtensionTrack(binding.track_id));
-  patch.syncConflict = resolved.adjusted || resolved.conflict;
-  extension.items = remapPanelItems(
-    extension.items,
-    extension.start,
-    extension.end,
-    resolved.start,
-    resolved.end,
-  );
-  extension.start = resolved.start;
-  extension.end = resolved.end;
-  extension._dirty = true;
+  patch.syncConflict = resolved.adjusted || resolved.conflict
+    || resolved.squeezedCount > 0 || resolved.removedCount > 0;
+  patch.syncSqueezedCount = (patch.syncSqueezedCount || 0) + (resolved.squeezedCount || 0);
+  patch.syncRemovedCount = (patch.syncRemovedCount || 0) + (resolved.removedCount || 0);
+  patch.syncUnboundCount = (patch.syncUnboundCount || 0) + (resolved.unboundCount || 0);
   return true;
 }
 
@@ -2548,26 +2661,30 @@ function beginPendingExtensionBinding(index, track = getActiveExtensionTrack()) 
   if (!extension || !track) return;
   const overlapping = overlappingMainIndexesForExtension(extension);
   const unbound = overlapping.filter((mainIndex) => !bindingForMainIndex(mainIndex));
-  if (overlapping.length === 1 && unbound.length === 1) {
-    // 只有一个时间重叠且尚未绑定的主字幕时直接完成绑定；多个候选交给用户选择。
-    const mainIndex = unbound[0];
+  if (unbound.length) {
+    // 有多个候选时仍优先选择时间最早且尚未绑定的主字幕，避免每次绑定都要手动点选。
+    const mainIndex = unbound.slice().sort((left, right) => (
+      Number(DATA.segments[left]?.start) - Number(DATA.segments[right]?.start) || left - right
+    ))[0];
     selectOnly(mainIndex);
     selectOnlyExtension(index, track);
-    bindSelectedSubtitlePair();
+    bindSelectedSubtitlePair({
+      successMessage: overlapping.length > 1
+        ? `有多条主字幕与当前副字幕重叠，已自动绑定时间最早的未绑定主字幕（第 ${mainIndex + 1} 条）`
+        : null,
+    });
     return;
   }
   pendingExtensionBinding = { trackId: track.id, extensionId: extension.id };
-  selectOnlyExtension(index);
-  if (overlapping.length === 1 && unbound.length === 0) {
+  selectOnlyExtension(index, track);
+  if (overlapping.length) {
     flashHint('重叠的主字幕已有绑定，请点击主字幕后替换绑定；按 Esc 取消');
-  } else if (overlapping.length > 1) {
-    flashHint('有多条主字幕与当前副字幕重叠，请点击要绑定的主字幕');
   } else {
     flashHint('请点击一条主字幕完成绑定；按 Esc 或点击空白处取消');
   }
 }
 
-function bindSelectedSubtitlePair() {
+function bindSelectedSubtitlePair({ successMessage = null } = {}) {
   if (!multiSubtitleVisible()) return;
   if (selectedIdxs.size !== 1 || selectedExtensionIdxs.size !== 1) {
     flashHint('请分别选中一条主字幕和一条扩展字幕后再绑定');
@@ -2588,9 +2705,10 @@ function bindSelectedSubtitlePair() {
   renderAll({ waveform: 'none' });
   waveformEditor?.updateSelection();
   flashHint(
-    replacedBinding
+    successMessage
+      || (replacedBinding
       ? `已替换主字幕 ${mainIndex + 1} 的绑定，改为扩展字幕 ${extensionIndex + 1}`
-      : `已绑定主字幕 ${mainIndex + 1} 与扩展字幕 ${extensionIndex + 1}`,
+      : `已绑定主字幕 ${mainIndex + 1} 与扩展字幕 ${extensionIndex + 1}`),
     'success',
   );
 }
@@ -2637,23 +2755,27 @@ function alignExtensionToMainTimeRange(index, track = getActiveExtensionTrack())
     flashHint('主字幕时间范围无效，无法对齐');
     return false;
   }
-  if (extension.start === start && extension.end === end) {
+  const alreadyAligned = extension.start === start && extension.end === end;
+  const hasOverlap = extensionRangeOverlapsNeighbors(extension, start, end, track);
+  if (alreadyAligned && !hasOverlap) {
     flashHint('扩展字幕已经与主字幕时间范围一致');
     return false;
   }
-  const overlaps = extensionRangeOverlapsNeighbors(extension, start, end, track);
   pushUndo('对齐扩展字幕时间范围');
-  extension.start = start;
-  extension.end = end;
-  extension._dirty = true;
+  // 先写入目标范围，再统一处理其它副字幕的冲突；主字幕范围不会被改写。
+  setExtensionSegmentRange(extension, start, end);
+  const resolved = reconcileExtensionTrack(track, [extension]);
   markMultiSubtitleDirty();
   syncBindingOffsets();
   renderAll();
+  const details = [];
+  if (resolved.squeezedCount) details.push(`挤压 ${resolved.squeezedCount} 条副字幕`);
+  if (resolved.removedCount) details.push(`删除 ${resolved.removedCount} 条副字幕`);
   flashHint(
-    overlaps
-      ? '已对齐到主字幕范围，但副字幕之间存在重叠；主字幕时间未改变'
+    details.length
+      ? `已对齐到主字幕范围，${details.join('，')}${resolved.unboundCount ? '并解除绑定' : ''}`
       : '已将扩展字幕对齐到主字幕时间范围',
-    overlaps ? 'warning' : 'success',
+    details.length ? 'warning' : 'success',
   );
   return true;
 }
@@ -2864,7 +2986,17 @@ function commitCuePanelEdit() {
       const syncPatch = { oldStart, oldEnd, mode: 'range' };
       syncBoundExtensionForMain(seg, syncPatch);
       if (syncPatch.syncConflict) {
-        flashHint('副字幕发生冲突，已限制副字幕范围；主字幕时长未改变', 'warning');
+        const details = [];
+        if (syncPatch.syncSqueezedCount) details.push(`挤压 ${syncPatch.syncSqueezedCount} 条副字幕`);
+        if (syncPatch.syncRemovedCount) {
+          details.push(`删除 ${syncPatch.syncRemovedCount} 条副字幕`);
+        }
+        flashHint(
+          details.length
+            ? `副字幕已联动调整，${details.join('，')}${syncPatch.syncUnboundCount ? '并解除绑定' : ''}`
+            : '副字幕已随主字幕联动调整',
+          details.length ? 'warning' : 'success',
+        );
       }
     }
   } else {
@@ -6174,7 +6306,9 @@ document.addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
   const splitAt = (idx, x, y, timeMs) => {
     e.preventDefault();
-    e.stopPropagation();
+    // B 打开弹窗后，事件仍会继续传播到后面注册的弹窗快捷键监听器；
+    // 立即停止同一事件，避免“按 B 打开”被误当成“按 B 确认”。
+    e.stopImmediatePropagation();
     splitFromContextMenu(idx, x, y, timeMs);
   };
   // 多重字幕下，如果当前只选中一条副字幕，B 直接打开副字幕拆分流程，
@@ -6195,7 +6329,8 @@ document.addEventListener('keydown', (e) => {
       }
     }
     e.preventDefault();
-    e.stopPropagation();
+    // 同上：首次 B 只负责打开副字幕拆分弹窗。
+    e.stopImmediatePropagation();
     openExtensionSplitModal(extensionIndex, timeMs, track);
     return;
   }
@@ -9063,7 +9198,7 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     event.stopPropagation();
     closeLinkedSplitModal();
-  } else if (event.key === 'Enter'
+  } else if ((event.key === 'Enter' || event.key === 'b' || event.key === 'B')
       && !(event.ctrlKey || event.metaKey || event.altKey || event.shiftKey)) {
     event.preventDefault();
     event.stopPropagation();
@@ -9999,12 +10134,13 @@ function syncBoundCueDrag(drag) {
         movedFollowerSegments,
       )
       : clampExtensionRange(null, nextStart, nextEnd);
-    if (drag.track === 'main' && (resolved.adjusted || resolved.conflict)) {
+    if (drag.track === 'main' && (resolved.squeezedCount > 0 || resolved.removedCount > 0)) {
+      const details = [];
+      if (resolved.squeezedCount) details.push(`挤压 ${resolved.squeezedCount} 条副字幕`);
+      if (resolved.removedCount) details.push(`删除 ${resolved.removedCount} 条副字幕`);
       notifyBoundSyncWarning(
         drag,
-        resolved.conflict
-          ? '副字幕无法避开重叠，已保留主字幕时长'
-          : '副字幕发生冲突，已限制副字幕范围；主字幕时长未改变',
+        `副字幕发生冲突，已${details.join('，')}${resolved.unboundCount ? '并解除绑定' : ''}`,
       );
     }
     target.start = resolved.start;
@@ -10024,6 +10160,15 @@ function syncBoundCueDrag(drag) {
 // 右键波形背景：创建字幕，或按右键对应的音频位置拆分命中的字幕。
 function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
   ctxmenu.innerHTML = '';
+  // 空白波形没有明确的字幕块目标：默认仍操作主轨。只有用户最近明确选中了
+  // 副字幕（副字幕面板/列表成为当前编辑对象）时，空白处才切换为副轨语义。
+  // 实际点击已有字幕块时由主轨/副轨各自的 contextmenu handler 直接处理，不经过这里。
+  const effectiveTrack = currentCuePanelKind === 'extension'
+    && selectedExtensionIdxs.size > 0
+    ? 'extension' : 'main';
+  const extensionTrack = effectiveTrack === 'extension' ? getActiveExtensionTrack() : null;
+  const splitSegments = effectiveTrack === 'extension'
+    ? extensionTrack?.segments || [] : DATA.segments;
   function addItem(label, kbd, fn, disabled = false) {
     const it = document.createElement('div');
     it.className = `item${disabled ? ' disabled' : ''}`;
@@ -10038,17 +10183,24 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
     }
     ctxmenu.appendChild(it);
   }
-  const splitIdx = DATA.segments.findIndex((segment) => (
+  const splitIdx = splitSegments.findIndex((segment) => (
     timeMs > segment.start && timeMs < segment.end
   ));
-  addItem('创建字幕', '', () => addCueAtWaveformTime(timeMs, clickX, clickY));
-  if (track === 'extension' && multiSubtitleVisible()) {
+  if (effectiveTrack === 'extension' && multiSubtitleVisible()) {
     addItem('创建拓展字幕', '', () => addExtensionAtWaveformTime(timeMs, clickX, clickY));
+  } else {
+    addItem('创建字幕', '', () => addCueAtWaveformTime(timeMs, clickX, clickY));
   }
   addItem(
     '按音频位置拆分当前字幕',
     'B',
-    () => splitFromContextMenu(splitIdx, clickX, clickY, timeMs),
+    () => {
+      if (effectiveTrack === 'extension') {
+        openExtensionSplitModal(splitIdx, timeMs, extensionTrack);
+      } else {
+        splitFromContextMenu(splitIdx, clickX, clickY, timeMs);
+      }
+    },
     splitIdx < 0,
   );
 
