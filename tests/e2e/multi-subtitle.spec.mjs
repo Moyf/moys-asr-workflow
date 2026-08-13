@@ -870,9 +870,16 @@ test('merges selected extension cues from the context menu and C, with undo', as
   await first.click();
   await second.click({ modifiers: ['Control'] });
   await expect(page.locator('#sel-count')).toHaveText('4');
+  await page.evaluate(() => {
+    const player = document.getElementById('player');
+    player.currentTime = 0.5;
+    player.dispatchEvent(new Event('timeupdate'));
+  });
+  await expect(page.locator('#overlay-extension-text')).toHaveText('你好，世界。');
   await second.click({ button: 'right' });
   await expect(page.locator('#ctxmenu .item').filter({ hasText: '合并副字幕块' })).toBeVisible();
   await page.locator('#ctxmenu .item').filter({ hasText: '合并副字幕块' }).click();
+  await expect(page.locator('#overlay-extension-text')).toHaveText('你好，世界。 / 第二句。');
   await expect(page.locator('.multi-cue-column.extension').filter({ hasText: '你好，世界。 / 第二句。' })).toHaveCount(0);
   await expect(page.locator('.multi-cue-column.extension:not(.multi-cue-empty)')).toHaveCount(2);
 
@@ -1584,7 +1591,7 @@ test('offers extension cue creation on the empty extension lane and makes it und
   await expect(page.locator('.waveform-cue-block[data-track="extension"]')).toHaveCount(1);
 });
 
-test('uses main-track semantics on blank waveform until an extension cue is selected', async ({ page }) => {
+test('uses the waveform lane to choose blank-area context-menu semantics', async ({ page }) => {
   const project = {
     segments: [{ id: 'main-001', start: 1000, end: 3000, text: '主字幕', items: [] }],
     waveform: generateWaveformPayload(7000),
@@ -1611,28 +1618,36 @@ test('uses main-track semantics on blank waveform until an extension cue is sele
   const box = await waitForLayoutBox(row, '双 lane 波形行没有布局');
   const rowStart = Number(await row.getAttribute('data-start-ms'));
   const rowEnd = Number(await row.getAttribute('data-end-ms'));
+  const extensionBlock = await waitForLayoutBox(
+    row.locator('.waveform-cue-block[data-track="extension"]').first(),
+    '副字幕波形块没有布局',
+  );
+  const mainBlock = await waitForLayoutBox(
+    row.locator('.waveform-cue-block[data-track="main"]').first(),
+    '主字幕波形块没有布局',
+  );
   if (!Number.isFinite(rowStart) || !Number.isFinite(rowEnd)) {
     throw new Error('双 lane 波形行没有有效布局');
   }
   const x = box.x + ((2000 - rowStart) / (rowEnd - rowStart)) * box.width;
-  const blankY = box.y + box.height - 2;
+  const extensionY = extensionBlock.y + extensionBlock.height / 2;
 
-  // 没有选中副字幕时，即使右键落在下半 lane，空白处仍按主轨处理。
-  await page.mouse.click(x, blankY, { button: 'right' });
+  // 右键落在副字幕 lane 的空白处时，只按副轨查找目标；没有命中副字幕时不能回落主轨。
+  await page.mouse.click(x, extensionY, { button: 'right' });
   const splitItem = page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分当前字幕' });
-  await expect(page.locator('#ctxmenu .item').filter({ hasText: '创建字幕' })).toBeVisible();
-  await splitItem.click();
-  await expect(page.locator('#multi-subtitle-split-title')).toHaveText('选择主字幕拆分点');
-  await page.keyboard.press('Escape');
-
-  // 明确选中副字幕后，空白点没有命中副字幕，不能再回落拆分主字幕。
-  await page.locator('.multi-cue-column.extension').filter({ hasText: '副字幕' }).click();
-  await expect(page.locator('#cue-panel-target')).toHaveText('副字幕');
-  await page.mouse.click(x, blankY, { button: 'right' });
   await expect(page.locator('#ctxmenu .item').filter({ hasText: '创建副字幕' })).toBeVisible();
   await expect(splitItem).toHaveClass(/disabled/);
   await splitItem.click({ force: true });
   await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+  await page.keyboard.press('Escape');
+
+  // 同一行的主字幕 lane 空白处按主轨处理。
+  const mainBlankX = box.x + ((3500 - rowStart) / (rowEnd - rowStart)) * box.width;
+  const mainY = mainBlock.y + mainBlock.height / 2;
+  await page.mouse.click(mainBlankX, mainY, { button: 'right' });
+  const mainSplitItem = page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分当前字幕' });
+  await expect(mainSplitItem).toHaveClass(/disabled/);
+  await expect(page.locator('#ctxmenu .item').filter({ hasText: '创建字幕' })).toBeVisible();
   await page.keyboard.press('Escape');
   expect(await page.evaluate(() => DATA.segments.length)).toBe(1);
 });

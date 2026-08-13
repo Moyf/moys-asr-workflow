@@ -2826,7 +2826,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-13 12:53</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-13 12:56</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -20183,12 +20183,9 @@ function syncBoundCueDrag(drag) {
 // 右键波形背景：创建字幕，或按右键对应的音频位置拆分命中的字幕。
 function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
   ctxmenu.innerHTML = '';
-  // 空白波形没有明确的字幕块目标：默认仍操作主轨。只有用户最近明确选中了
-  // 副字幕（副字幕面板/列表成为当前编辑对象）时，空白处才切换为副轨语义。
-  // 实际点击已有字幕块时由主轨/副轨各自的 contextmenu handler 直接处理，不经过这里。
-  const effectiveTrack = currentCuePanelKind === 'extension'
-    && selectedExtensionIdxs.size > 0
-    ? 'extension' : 'main';
+  // 空白波形按鼠标实际落入的 lane 决定操作轨道；实际点击已有字幕块时，
+  // 由主轨/副轨各自的 contextmenu handler 直接处理，不经过这里。
+  const effectiveTrack = track === 'extension' ? 'extension' : 'main';
   const extensionTrack = effectiveTrack === 'extension' ? getActiveExtensionTrack() : null;
   const splitSegments = effectiveTrack === 'extension'
     ? extensionTrack?.segments || [] : DATA.segments;
