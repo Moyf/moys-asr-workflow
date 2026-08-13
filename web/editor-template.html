@@ -24,7 +24,7 @@ __WAVEFORM_CSS__
 
 <h1>
   <span class="media-name __MEDIA_NAME_CLASS__" id="media-name" title="__MEDIA_NAME_TITLE__">__MEDIA_NAME_DISPLAY__</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 __GENERATED_AT__</span>
+  <span class="app-version" id="app-version" data-label="版本号">版本号 __APP_VERSION__</span>
   <span class="json-name __JSON_NAME_CLASS__" id="json-name" title="点击复制工程文件名">__JSON_DISPLAY__</span>
 </h1>
 <div class="toolbar row-actions">
@@ -576,15 +576,6 @@ __WAVEFORM_CSS__
     </label>
     <small class="editor-settings-hint">选中字幕时，同时选中和它相同颜色/表情包的字幕</small>
     </div>
-    <div class="editor-settings-field">
-    <label class="toggle editor-settings-item" title="开启后，分割工具改用 🔪 图标，成功拆分时播放刀光音效">
-      <input type="checkbox" id="ninja-mode"> 字幕忍者
-    </label>
-    <label class="toggle editor-settings-item" id="ninja-slash-effect-field" title="开启后，成功拆分时在屏幕上显示一道白色刀光" hidden>
-      <input type="checkbox" id="ninja-slash-effect" checked> 显示刀光特效
-    </label>
-    <small class="editor-settings-hint">打开字幕忍者模式，让拆分字幕变得更加有趣</small>
-    </div>
     </div>
     <div class="editor-settings-sub-group">
     <span class="editor-settings-title">按键调整字幕</span>
@@ -690,6 +681,18 @@ __WAVEFORM_CSS__
           <span class="gap-remove-unit">秒</span>
         </span>
       </label>
+    </div>
+    <div class="editor-settings-sub-group">
+      <span class="editor-settings-title">🥷🏻</span>
+      <div class="editor-settings-field">
+      <label class="toggle editor-settings-item" title="开启后，分割工具改用 🔪 图标，成功拆分时播放刀光音效">
+        <input type="checkbox" id="ninja-mode"> 字幕忍者
+      </label>
+      <label class="toggle editor-settings-item" id="ninja-slash-effect-field" title="开启后，成功拆分时在屏幕上显示一道白色刀光" hidden>
+        <input type="checkbox" id="ninja-slash-effect" checked> 显示刀光特效
+      </label>
+      <small class="editor-settings-hint">打开字幕忍者模式，让拆分字幕变得更加有趣</small>
+      </div>
     </div>
   </div>
 </section>
@@ -1050,11 +1053,7 @@ __WAVEFORM_CSS__
 <div id="ninja-slash-flash" aria-hidden="true"></div>
 
 <script>
-__EDITOR_UTILS_JS__
-__EDITOR_I18N_JS__
-__WAVEFORM_JS__
-__EDITOR_JS__
-__EDITOR_ONBOARDING_JS__
+__EDITOR_SCRIPTS_JS__
 </script>
 
 </body>

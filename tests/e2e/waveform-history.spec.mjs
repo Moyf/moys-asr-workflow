@@ -6,6 +6,7 @@ import {
   findFreePort,
   generateProjectJson,
   generateWav,
+  makeFirstCueWordSplittable,
   makeTempDir,
   startServer,
 } from './helpers.mjs';
@@ -209,6 +210,7 @@ test('Ctrl+dragging from blank space stops at an existing cue boundary', async (
 
 test('waveform background split supports undo and redo', async ({ page }) => {
   await page.goto(server.url);
+  await makeFirstCueWordSplittable(page);
   const row = page.locator('.waveform-row').filter({ has: page.locator('[data-idx="0"]') }).first();
   await expect(row).toBeVisible();
 
@@ -220,20 +222,20 @@ test('waveform background split supports undo and redo', async ({ page }) => {
   await splitItem.click();
   await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
   await expect.poll(() => page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => segment.text))).toEqual([
-    'Al',
-    'pha',
+    'Alpha',
+    'Bravo',
   ]);
 
   await page.getByRole('button', { name: /撤销/ }).click();
   await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(6);
-  await expect.poll(() => page.evaluate(() => DATA.segments[0].text)).toBe('Alpha');
+  await expect.poll(() => page.evaluate(() => DATA.segments[0].text)).toBe('Alpha Bravo');
   await expect(page.getByRole('button', { name: /重做/ })).toBeEnabled();
 
   await page.getByRole('button', { name: /重做/ }).click();
   await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
   await expect.poll(() => page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => segment.text))).toEqual([
-    'Al',
-    'pha',
+    'Alpha',
+    'Bravo',
   ]);
 });
 
@@ -298,6 +300,7 @@ test('C merge refreshes the paused main subtitle preview', async ({ page }) => {
 
 test('B splits the selected subtitle under the cue-list pointer and supports undo and redo', async ({ page }) => {
   await page.goto(server.url);
+  await makeFirstCueWordSplittable(page);
   const text = page.locator('.cue[data-idx="0"] .text');
   await page.locator('#overlay-toggle').check();
   await page.evaluate(() => {
@@ -305,13 +308,13 @@ test('B splits the selected subtitle under the cue-list pointer and supports und
     player.currentTime = 1;
     player.dispatchEvent(new Event('timeupdate'));
   });
-  await expect(page.locator('#overlay-main-text')).toHaveText('Alpha');
+  await expect(page.locator('#overlay-main-text')).toHaveText('Alpha Bravo');
   await page.locator('.cue[data-idx="0"]').click();
   const splitPoint = await text.evaluate((element) => {
     const node = element.firstChild;
     const range = document.createRange();
-    range.setStart(node, 2);
-    range.setEnd(node, 2);
+    range.setStart(node, 6);
+    range.setEnd(node, 6);
     const rect = range.getBoundingClientRect();
     return { x: rect.x, y: rect.y + rect.height / 2 };
   });
@@ -319,30 +322,31 @@ test('B splits the selected subtitle under the cue-list pointer and supports und
 
   await page.keyboard.press('b');
   await expect.poll(() => page.locator('.cue').count()).toBe(7);
-  await expect(page.locator('.cue .text').nth(0)).toHaveText('Al');
-  await expect(page.locator('.cue .text').nth(1)).toHaveText('pha');
-  await expect(page.locator('#overlay-main-text')).toHaveText('Al');
+  await expect(page.locator('.cue .text').nth(0)).toHaveText('Alpha');
+  await expect(page.locator('.cue .text').nth(1)).toHaveText('Bravo');
+  await expect(page.locator('#overlay-main-text')).toHaveText('Alpha');
 
   await page.getByRole('button', { name: /撤销/ }).click();
   await expect.poll(() => page.locator('.cue').count()).toBe(6);
-  await expect(page.locator('.cue .text').first()).toHaveText('Alpha');
+  await expect(page.locator('.cue .text').first()).toHaveText('Alpha Bravo');
 
   await page.getByRole('button', { name: /重做/ }).click();
   await expect.poll(() => page.locator('.cue').count()).toBe(7);
-  await expect(page.locator('.cue .text').nth(0)).toHaveText('Al');
-  await expect(page.locator('.cue .text').nth(1)).toHaveText('pha');
+  await expect(page.locator('.cue .text').nth(0)).toHaveText('Alpha');
+  await expect(page.locator('.cue .text').nth(1)).toHaveText('Bravo');
 });
 
 test('B split makes the selected latter half the Shift+click anchor', async ({ page }) => {
   await page.goto(server.url);
+  await makeFirstCueWordSplittable(page);
   const cues = page.locator('.cue');
 
   await cues.nth(0).click();
   const splitPoint = await cues.nth(0).locator('.text').evaluate((element) => {
     const node = element.firstChild;
     const range = document.createRange();
-    range.setStart(node, 2);
-    range.setEnd(node, 2);
+    range.setStart(node, 6);
+    range.setEnd(node, 6);
     const rect = range.getBoundingClientRect();
     return { x: rect.x, y: rect.y + rect.height / 2 };
   });
@@ -467,17 +471,20 @@ test('B does not split when the playhead is in a gap or while editing text', asy
 
 test('B splits at the pointer audio position while hovering the waveform', async ({ page }) => {
   await page.goto(server.url);
+  await makeFirstCueWordSplittable(page);
   const row = page.locator('.waveform-row').first();
   const box = await row.boundingBox();
   // 第一行覆盖 0–5s；40% 处约 2s，落在第一条字幕（0–8s）内部
   await page.mouse.move(box.x + box.width * 0.4, box.y + box.height / 2);
   await page.keyboard.press('b');
   await expect(page.locator('.cue')).toHaveCount(7);
-  await expect(page.locator('.cue .text').nth(0)).not.toHaveText('Alpha');
+  await expect(page.locator('.cue .text').nth(0)).toHaveText('Alpha');
+  await expect(page.locator('.cue .text').nth(1)).toHaveText('Bravo');
 });
 
 test('B and C refresh cue overlays without redrawing cached waveform canvases', async ({ page }) => {
   await page.goto(server.url);
+  await makeFirstCueWordSplittable(page);
   await page.evaluate(() => {
     waveformEditor.settings.secondsPerRow = 60;
     waveformEditor.multiRange = [-1, -1];
@@ -501,8 +508,8 @@ test('B and C refresh cue overlays without redrawing cached waveform canvases', 
   const splitPoint = await firstCueText.evaluate((element) => {
     const node = element.firstChild;
     const range = document.createRange();
-    range.setStart(node, 2);
-    range.setEnd(node, 2);
+    range.setStart(node, 6);
+    range.setEnd(node, 6);
     const rect = range.getBoundingClientRect();
     return { x: rect.x, y: rect.y + rect.height / 2 };
   });

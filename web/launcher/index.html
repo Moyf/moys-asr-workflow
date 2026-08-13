@@ -157,6 +157,27 @@
               </div>
             </div>
           </div>
+          <div id="segmentationField" class="field segmentation-field">
+            <label data-i18n="segmentation">字幕切句</label>
+            <div class="segmentation-row">
+              <div class="segmentation-control">
+                <label for="maxLen" data-i18n="max_len">最大字数</label>
+                <input id="maxLen" type="number" min="1" step="1" inputmode="numeric" data-i18n-placeholder="max_len_placeholder" placeholder="21" autocomplete="off">
+                <p id="maxLenError" class="field-error"></p>
+              </div>
+              <div class="segmentation-control">
+                <label for="minLen" data-i18n="min_len">短句合并阈值</label>
+                <input id="minLen" type="number" min="1" step="1" inputmode="numeric" data-i18n-placeholder="min_len_placeholder" placeholder="5" autocomplete="off">
+                <p id="minLenError" class="field-error"></p>
+              </div>
+              <div class="segmentation-control">
+                <label for="gapSplit" data-i18n="gap_split">停顿切句（毫秒）</label>
+                <input id="gapSplit" type="number" min="0" step="1" inputmode="numeric" data-i18n-placeholder="gap_split_placeholder" placeholder="1500" autocomplete="off">
+                <p id="gapSplitError" class="field-error"></p>
+              </div>
+            </div>
+            <p class="hint" data-i18n="segmentation_hint">留空使用当前模型默认值；最大/最小字数主要作用于中文，停顿阈值单位为毫秒。</p>
+          </div>
           <div id="qwenAudioOptions" class="qwen-audio-options hidden">
             <div id="qwenAudioContextField" class="field">
               <label for="qwenAudioContext" data-i18n="qwen_audio_context">附加上下文（Prompt）</label>

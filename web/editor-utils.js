@@ -400,6 +400,12 @@
 
   function ensureStableSegmentIds(segments, prefix = 'segment') {
     const source = Array.isArray(segments) ? segments : [];
+    // Reserve every valid explicit ID first. This keeps the browser's repair
+    // result identical to maw.project._normalize_stable_ids when a generated
+    // ID would otherwise collide with a later explicit one.
+    const reserved = new Set(source
+      .map((segment) => stableId(segment?.id))
+      .filter(Boolean));
     const used = new Set();
     let changed = 0;
     source.forEach((segment, index) => {
@@ -409,7 +415,16 @@
         const base = `${prefix}-${String(index + 1).padStart(3, '0')}`;
         id = base;
         let suffix = 2;
-        while (used.has(id)) id = `${base}-${suffix++}`;
+        while (used.has(id) || (id !== base && reserved.has(id))) {
+          id = `${base}-${suffix++}`;
+        }
+        if (reserved.has(id)) {
+          id = `${base}-generated`;
+          suffix = 2;
+          while (used.has(id) || reserved.has(id)) {
+            id = `${base}-generated-${suffix++}`;
+          }
+        }
         segment.id = id;
         changed++;
       } else if (segment.id !== id) {
@@ -1460,4 +1475,7 @@
     previewGeometryToCss,
     applyPreviewGeometryDelta,
   };
+  if (window.MAWE?.register) {
+    window.MAWE.register('editor-utils', () => window.AsrEditorUtils);
+  }
 })();

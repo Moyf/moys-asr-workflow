@@ -8,6 +8,7 @@ import {
   findFreePort,
   generateProjectJson,
   generateWav,
+  makeFirstCueWordSplittable,
   makeTempDir,
   startServer,
 } from './helpers.mjs';
@@ -271,6 +272,7 @@ test('Enter focuses the current subtitle editor after list or waveform clicks', 
 
 test('B splits at the pointer inside the cue list and at the playhead outside it', async ({ page }) => {
   await page.goto(server.url);
+  await makeFirstCueWordSplittable(page);
   const cue = page.locator('.cue[data-idx="0"]');
   await cue.click();
   // 列表外：播放头位于空隙（20s）时不拆分
@@ -300,8 +302,8 @@ test('B splits at the pointer inside the cue list and at the playhead outside it
   const splitPoint = await text.evaluate((element) => {
     const node = element.firstChild;
     const range = document.createRange();
-    range.setStart(node, 2);
-    range.setEnd(node, 2);
+    range.setStart(node, 6);
+    range.setEnd(node, 6);
     const rect = range.getBoundingClientRect();
     return { x: rect.x, y: rect.y + rect.height / 2 };
   });
@@ -309,7 +311,8 @@ test('B splits at the pointer inside the cue list and at the playhead outside it
   await page.keyboard.press('b');
 
   await expect(page.locator('.cue')).toHaveCount(7);
-  await expect(page.locator('.cue .text').nth(0)).not.toHaveText('Alpha');
+  await expect(page.locator('.cue .text').nth(0)).toHaveText('Alpha');
+  await expect(page.locator('.cue .text').nth(1)).toHaveText('Bravo');
 });
 
 test('space owns playback in media controls but remains text input in the cue editor', async ({ page }) => {

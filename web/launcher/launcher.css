@@ -466,6 +466,22 @@ label {
   gap: 12px;
 }
 
+.segmentation-field {
+  grid-column: 1 / -1;
+}
+
+.segmentation-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.segmentation-control {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
 .path-row,
 .port-row {
   display: grid;
@@ -1590,6 +1606,7 @@ code {
    .qwen-audio-options-grid,
    .soniox-context-options-grid,
    .language-layout,
+   .segmentation-row,
    .path-row {
     grid-template-columns: 1fr;
   }

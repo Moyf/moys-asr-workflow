@@ -1,9 +1,13 @@
-name: Deploy MAWE editor to GitHub Pages
+name: Deploy MAW website to GitHub Pages
 
 on:
   push:
     branches: [main]
     paths:
+      - "website/**"
+      - "README.md"
+      - "JSON_SCHEMA.md"
+      - "docs/**"
       - "edit.py"
       - "web/**"
       - "waveform.py"
@@ -23,7 +27,7 @@ permissions:
 
 jobs:
   deploy:
-    name: Build and deploy editor
+    name: Build and deploy website
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -38,13 +42,35 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Generate portable editor page
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install website dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Sync MAW documentation
+        working-directory: website
+        run: npm run sync:docs
+
+      - name: Build website
+        working-directory: website
+        env:
+          SITE_URL: https://moyf.github.io/moys-asr-workflow
+          BASE_PATH: /moys-asr-workflow
+        run: npm run build
+
+      - name: Add portable editor page
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p _site
-          python edit.py --blank -o _site/index.html
-          touch _site/.nojekyll
+          mkdir -p website/dist/editor
+          python edit.py --blank -o website/dist/editor/index.html
+          touch website/dist/.nojekyll
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -54,7 +80,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: _site
+          path: website/dist
 
       - name: Deploy Pages artifact
         id: deployment
