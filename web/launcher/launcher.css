@@ -1430,6 +1430,8 @@ textarea::placeholder {
   background: var(--bg-input);
   font-size: 12px;
   line-height: 1.5;
+  max-height: 360px;
+  overflow-y: auto;
   overflow-wrap: anywhere;
   white-space: pre-line;
 }

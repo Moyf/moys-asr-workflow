@@ -519,8 +519,60 @@ class PostprocessTests(unittest.TestCase):
             complete=complete,
         )
 
-        self.assertEqual([len(batch) for batch in batches], [300, 1])
+        self.assertEqual([len(batch) for batch in batches], [80, 80, 80, 61])
         self.assertIn("分批", "".join(result.warnings))
+        self.assertIn("4 批", "".join(result.warnings))
+
+    def test_llm_runner_splits_batches_by_input_text_length(self) -> None:
+        project = sample_project(self.media)
+        project["segments"] = [
+            {"start": index * 1000, "end": (index + 1) * 1000, "text": "字" * 2500}
+            for index in range(3)
+        ]
+        _ = self.project_path.write_text(json.dumps(project), encoding="utf-8")
+        batches: list[list[dict[str, str]]] = []
+
+        def complete(_system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
+            batches.append(cues)
+            return {"groups": [{"id": cue["id"], "text": cue["text"]} for cue in cues]}
+
+        _ = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.JSON,
+                operation="proofread",
+                custom_prompt="",
+            ),
+            complete=complete,
+        )
+
+        self.assertEqual([len(batch) for batch in batches], [1, 1, 1])
+
+    def test_llm_runner_adds_batch_range_to_completion_error(self) -> None:
+        project = sample_project(self.media)
+        project["segments"] = [
+            {"start": index * 1000, "end": (index + 1) * 1000, "text": "字" * 3000}
+            for index in range(2)
+        ]
+        _ = self.project_path.write_text(json.dumps(project), encoding="utf-8")
+
+        def complete(_system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
+            if cues[0]["id"] == "c0002":
+                raise LlmClientError("LLM returned invalid JSON after retry: char 4408")
+            return {"groups": [{"id": cue["id"], "text": cue["text"]} for cue in cues]}
+
+        with self.assertRaisesRegex(RuntimeError, r"第 2/2 批（c0002–c0002）处理失败：.*char 4408"):
+            _ = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.JSON,
+                    operation="proofread",
+                    custom_prompt="",
+                ),
+                complete=complete,
+            )
 
     def test_llm_runner_reports_progress_stages(self) -> None:
         statuses: list[tuple[str, dict[str, int]]] = []
@@ -622,7 +674,7 @@ class PostprocessTests(unittest.TestCase):
             return {"groups": [{"source_ids": ["c0001", "c0002"], "text": "Merged translation"}]}
 
         before = set(self.root.iterdir())
-        with self.assertRaisesRegex(ValueError, "没有生成可用字幕"):
+        with self.assertRaisesRegex(ValueError, "没有生成可用字幕") as raised:
             _ = run_llm_postprocess(
                 LlmPostprocessRequest(
                     project_path=self.project_path,
@@ -633,6 +685,9 @@ class PostprocessTests(unittest.TestCase):
                 ),
                 complete=complete,
             )
+        self.assertIn("翻译结果必须一条输入对应一条输出", str(raised.exception))
+        self.assertIn("c0001", str(raised.exception))
+        self.assertIn("c0002", str(raised.exception))
         self.assertEqual(set(self.root.iterdir()), before)
 
     def test_llm_translation_skips_empty_group_and_writes_remaining_cues(self) -> None:
@@ -660,8 +715,11 @@ class PostprocessTests(unittest.TestCase):
         segments = project_segments(read_project(result.project_path))
         self.assertEqual([segment["text"] for segment in segments], ["保留这一句"])
         self.assertEqual([(segment["start"], segment["end"]) for segment in segments], [(1200, 2200)])
-        self.assertIn("text 为空", "".join(result.warnings))
-        self.assertIn("跳过 1 条不合规字幕", "".join(result.warnings))
+        warning_text = "\n".join(result.warnings)
+        self.assertIn("text 为空", warning_text)
+        self.assertIn("跳过 1 条不合规字幕", warning_text)
+        self.assertIn("第 1 条（c0001，第 1 批，模型第 1 组）", warning_text)
+        self.assertIn("原文：酒很好喝", warning_text)
 
     def test_llm_custom_operation_has_no_preset_task_prompt(self) -> None:
         prompts: list[str] = []

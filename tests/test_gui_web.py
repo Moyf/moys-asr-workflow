@@ -1762,6 +1762,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn(".toolbox-fab", stylesheet)
         self.assertIn(".toolbox-drawer", stylesheet)
         self.assertIn(".toolbox-content", stylesheet)
+        self.assertIn("max-height: 360px", stylesheet)
+        self.assertIn("overflow-y: auto", stylesheet)
         self.assertIn('bindDropField("toolboxInputDropZone", "toolboxInput", "toolboxInputDropZone")', launcher_script)
         self.assertIn("addChainResult", script)
         self.assertIn("selectChainPath", script)

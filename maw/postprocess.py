@@ -57,7 +57,9 @@ PROMPTS: Final[dict[str, str]] = {
 
 SAFE_SCALARS: Final = ("speaker", "disabled")
 VISUAL_FIELDS: Final = ("sticker", "sticker_ref", "color", "color_ref")
-MAX_LLM_CUES_PER_REQUEST: Final = 300
+MAX_LLM_CUES_PER_REQUEST: Final = 80
+MAX_LLM_INPUT_CHARS_PER_REQUEST: Final = 4000
+MAX_LLM_WARNING_TEXT_CHARS: Final = 240
 TIMING_FIELDS: Final = ("start", "end", "text", "items")
 ONE_TO_ONE_TRANSLATION_OPERATIONS: Final = frozenset({"translate_en", "translate_zh"})
 
@@ -95,20 +97,25 @@ def run_llm_postprocess(
     strict_translation = request.operation in ONE_TO_ONE_TRANSLATION_OPERATIONS
     system_prompt = _protocol_prompt(operation_prompt, custom, strict_translation=strict_translation)
     cues = _llm_cues(project)
-    batches = [
-        cues[index : index + MAX_LLM_CUES_PER_REQUEST]
-        for index in range(0, len(cues), MAX_LLM_CUES_PER_REQUEST)
-    ] or [cues]
+    batches = _llm_batches(cues)
     _notify_status(on_status, "toolbox_status_preparing_llm")
     responses: list[Mapping[str, JsonValue]] = []
     skipped_source_ids: set[str] = set()
     response_warnings: list[str] = []
     for index, batch in enumerate(batches, 1):
         _notify_status(on_status, "toolbox_status_llm_batch", current=index, total=len(batches))
-        response = complete(system_prompt, batch)
+        try:
+            response = complete(system_prompt, batch)
+        except RuntimeError as error:
+            first_id = batch[0]["id"] if batch else "?"
+            last_id = batch[-1]["id"] if batch else "?"
+            raise RuntimeError(
+                f"第 {index}/{len(batches)} 批（{first_id}–{last_id}）处理失败：{error}"
+            ) from error
         clean_response, batch_skipped, batch_warnings = _sanitize_llm_response(
             response,
             batch,
+            batch_number=index,
             strict_translation=strict_translation,
         )
         responses.append(clean_response)
@@ -117,7 +124,9 @@ def run_llm_postprocess(
         _notify_status(on_status, "toolbox_status_llm_batch_done", current=index, total=len(batches))
     source_ids = {cue["id"] for cue in cues}
     if source_ids and skipped_source_ids >= source_ids:
-        raise ValueError("LLM 没有生成可用字幕，未写出输出产物。")
+        report = _format_skip_report(skipped_source_ids, response_warnings)
+        detail = f"\n{report}" if report else ""
+        raise ValueError(f"LLM 没有生成可用字幕，未写出输出产物。{detail}")
     _notify_status(on_status, "toolbox_status_reorganizing")
     response = _combine_llm_responses(responses)
     processed, warnings = _apply_llm_groups_with_warnings(
@@ -126,7 +135,14 @@ def run_llm_postprocess(
         strict_translation=strict_translation,
         skipped_source_ids=skipped_source_ids,
     )
-    warnings = tuple(response_warnings) + warnings
+    if skipped_source_ids:
+        warnings = (
+            _format_skip_summary(skipped_source_ids),
+            *_format_skip_report_lines(response_warnings),
+            *warnings,
+        )
+    else:
+        warnings = tuple(warnings)
     if len(batches) > 1:
         warnings = (f"字幕较长，已分批处理（共 {len(batches)} 批）。",) + warnings
     _notify_status(on_status, "toolbox_status_writing")
@@ -143,10 +159,75 @@ def apply_llm_groups(project: JsonDict, response: Mapping[str, JsonValue]) -> Js
     return processed
 
 
+def _llm_batches(cues: list[dict[str, str]]) -> list[list[dict[str, str]]]:
+    batches: list[list[dict[str, str]]] = []
+    current: list[dict[str, str]] = []
+    current_chars = 0
+    for cue in cues:
+        cue_chars = len(cue["text"])
+        if current and (
+            len(current) >= MAX_LLM_CUES_PER_REQUEST
+            or current_chars + cue_chars > MAX_LLM_INPUT_CHARS_PER_REQUEST
+        ):
+            batches.append(current)
+            current = []
+            current_chars = 0
+        current.append(cue)
+        current_chars += cue_chars
+    if current or not batches:
+        batches.append(current)
+    return batches
+
+
+def _cue_number(source_id: str) -> str:
+    try:
+        return str(int(source_id.removeprefix("c")))
+    except ValueError:
+        return "?"
+
+
+def _cue_text_preview(text: str) -> str:
+    value = " ".join(text.split())
+    if len(value) <= MAX_LLM_WARNING_TEXT_CHARS:
+        return value or "（空）"
+    return f"{value[:MAX_LLM_WARNING_TEXT_CHARS - 1]}…"
+
+
+def _format_skip_detail(
+    cue: dict[str, str],
+    *,
+    batch_number: int,
+    group_index: int | None,
+    reason: str,
+) -> str:
+    source_id = cue["id"]
+    group_label = f"，模型第 {group_index} 组" if group_index is not None else ""
+    return (
+        f"第 {_cue_number(source_id)} 条（{source_id}，第 {batch_number} 批{group_label}）："
+        f"{reason}；原文：{_cue_text_preview(cue['text'])}"
+    )
+
+
+def _format_skip_summary(skipped_source_ids: Sequence[str]) -> str:
+    return f"已跳过 {len(set(skipped_source_ids))} 条不合规字幕，未写入输出产物。"
+
+
+def _format_skip_report_lines(details: Sequence[str]) -> tuple[str, ...]:
+    if not details:
+        return ()
+    return ("不合规字幕明细：", *(f"- {detail}" for detail in details))
+
+
+def _format_skip_report(skipped_source_ids: Sequence[str], details: Sequence[str]) -> str:
+    lines = (_format_skip_summary(skipped_source_ids), *_format_skip_report_lines(details))
+    return "\n".join(lines)
+
+
 def _sanitize_llm_response(
     response: Mapping[str, JsonValue],
     batch: Sequence[dict[str, str]],
     *,
+    batch_number: int,
     strict_translation: bool,
 ) -> tuple[JsonDict, frozenset[str], tuple[str, ...]]:
     """Keep valid groups and mark source cues with unusable model output.
@@ -161,23 +242,25 @@ def _sanitize_llm_response(
     expected_ids = tuple(cue["id"] for cue in batch)
     expected_set = set(expected_ids)
     index_by_id = {cue_id: index for index, cue_id in enumerate(expected_ids)}
+    cue_by_id = {cue["id"]: cue for cue in batch}
     accepted_groups: list[JsonValue] = []
     accepted_sequence: list[str] = []
     accepted_ids: set[str] = set()
-    skipped_ids: set[str] = set()
-    warning_details: list[str] = []
-    rejected_count = 0
+    skipped_details: dict[str, str] = {}
     last_group_ids: tuple[str, ...] = ()
 
     def reject(group_index: int, reason: str, ids: Sequence[str]) -> None:
-        nonlocal rejected_count
-        rejected_count += 1
         known_ids = tuple(cue_id for cue_id in ids if cue_id in expected_set)
-        skipped_ids.update(known_ids)
-        if len(warning_details) >= 5:
-            return
-        shown_ids = ", ".join(known_ids) or "未知 ID"
-        warning_details.append(f"已跳过模型第 {group_index} 组（{shown_ids}）：{reason}")
+        for cue_id in known_ids:
+            skipped_details.setdefault(
+                cue_id,
+                _format_skip_detail(
+                    cue_by_id[cue_id],
+                    batch_number=batch_number,
+                    group_index=group_index,
+                    reason=reason,
+                ),
+            )
 
     for group_index, raw_group in enumerate(raw_groups, start=1):
         if not isinstance(raw_group, dict):
@@ -226,14 +309,24 @@ def _sanitize_llm_response(
         accepted_groups.append({"source_ids": list(candidate_ids), "text": text.strip()})
         accepted_sequence.extend(candidate_ids)
         accepted_ids.update(candidate_ids)
-        skipped_ids.difference_update(candidate_ids)
+        for cue_id in candidate_ids:
+            skipped_details.pop(cue_id, None)
         last_group_ids = candidate_ids
 
     missing_ids = [cue_id for cue_id in expected_ids if cue_id not in accepted_ids]
-    skipped_ids.update(missing_ids)
-    if rejected_count > len(warning_details):
-        warning_details.append(f"另有 {rejected_count - len(warning_details)} 组不合规结果已跳过。")
-    return {"groups": accepted_groups}, frozenset(skipped_ids), tuple(warning_details)
+    for cue_id in missing_ids:
+        skipped_details.setdefault(
+            cue_id,
+            _format_skip_detail(
+                cue_by_id[cue_id],
+                batch_number=batch_number,
+                group_index=None,
+                reason="模型未返回该字幕的可用 group（可能因输出遗漏、截断或 group 格式错误）",
+            ),
+        )
+    skipped_ids = frozenset(skipped_details)
+    details = tuple(skipped_details[cue_id] for cue_id in expected_ids if cue_id in skipped_details)
+    return {"groups": accepted_groups}, skipped_ids, details
 
 
 def _apply_llm_groups_with_warnings(
@@ -288,8 +381,6 @@ def _apply_llm_groups_with_warnings(
     result = copy.deepcopy(project)
     result["segments"] = new_segments
     warnings: list[str] = []
-    if skipped:
-        warnings.append(f"已跳过 {len(skipped)} 条不合规字幕，未写入输出产物。")
     if regrouped:
         warnings.append("重分句后已移除逐词时间和贴纸/颜色引用，避免产生错误对齐。")
     return normalize_project(result), tuple(warnings)
