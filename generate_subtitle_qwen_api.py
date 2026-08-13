@@ -1752,6 +1752,8 @@ def main():
                         break
                     k -= 1
 
+    # 轉換成繁體
+
     print(f"[输出] 正在生成 SRT（{len(segments)} 条字幕）...")
     srt_content = generate_srt(segments)
 

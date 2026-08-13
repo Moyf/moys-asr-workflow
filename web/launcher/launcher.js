@@ -9,6 +9,11 @@
     test_run: "快速测试",
     test_run_title: "仅截取前2分钟内容，用于快速测试功能和 API",
     test_run_override: "快速测试已限定前 2 分钟",
+    settings_s2t: "简繁词汇转换",
+    s2t_hint: "把模型输出转成在地用语",
+    s2t_off: "关闭",
+    s2t_taiwan: "台湾用语",
+    s2t_standard: "标准",
     drop_reject_media: "仅支持以下媒体文件类型：\n{extensions}",
     output_collision: "检测到同名输出文件，为避免覆盖，生成的新文件已自动添加后缀。"
   });
@@ -16,6 +21,11 @@
     test_run: "Quick test",
     test_run_title: "Trim to the first 2 minutes for a quick workflow and API test",
     test_run_override: "Quick test is limited to the first 2 minutes",
+    settings_s2t: "Simplified/traditional conversion",
+    s2t_hint: "Convert model output to local terminology",
+    s2t_off: "Off",
+    s2t_taiwan: "Taiwan terms",
+    s2t_standard: "Standard",
     drop_reject_media: "Only the following media file types are supported:\n{extensions}",
     output_collision: "An output file with the same name already exists. To avoid overwriting it, the new output has been given a suffix."
   });
@@ -419,6 +429,7 @@
   const HOME_URL = "https://github.com/Moyf/moys-asr-workflow";
   const LAST_MODEL_KEY = "MAW_GUI_LAST_MODEL";
   const LAST_LANGUAGE_KEY = "MAW_GUI_LAST_LANGUAGE";
+  const S2T_MODE_KEY = "MAW_GUI_S2T_MODE";
   const THEME_KEY = "MAW_GUI_THEME";
   const $ = (id) => document.getElementById(id);
   const HOTWORD_WEIGHTS = new Set([1, 2, 3, 4, 5, 50]);
@@ -620,6 +631,8 @@
   function resolveTheme() { if (state.theme === "light" || state.theme === "dark") return state.theme; return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; }
   function applyTheme() { if (resolveTheme() === "light") document.documentElement.dataset.theme = "light"; else delete document.documentElement.dataset.theme; $("themeLight").classList.toggle("active", state.theme === "light"); $("themeDark").classList.toggle("active", state.theme === "dark"); $("themeSystem").classList.toggle("active", state.theme === "system"); }
   function setTheme(pref) { state.theme = pref; try { localStorage.setItem(THEME_KEY, pref); } catch (error) { /* localStorage 不可用时仅作用于本次会话 */ } applyTheme(); }
+  function renderS2tMode() { [["off", "s2tOff"], ["taiwan", "s2tTaiwan"], ["standard", "s2tStandard"]].forEach(([mode, id]) => $(id).classList.toggle("active", state.s2tMode === mode)); }
+  function setS2tMode(mode) { state.s2tMode = mode; try { localStorage.setItem(S2T_MODE_KEY, mode); } catch (error) { /* localStorage 不可用时仅作用于本次会话 */ } renderS2tMode(); }
 
   async function bridge(method, payload = {}) {
     try {
@@ -648,7 +661,7 @@
   function setOutputNotice(message) { const notice = $("srtPathNotice"); if (!notice) return; renderMessage(notice, message); notice.classList.toggle("hidden", !message); }
   function mediaDropError() { const separator = state.lang === "zh" ? "、" : ", "; return t("drop_reject_media").replace("{extensions}", Array.from(MEDIA_EXTS).join(separator)); }
   function clearErrors() { ["mediaPath", "srtPath", "apiKey", "workspaceId", "localModelPath", "localModelCachePath", "maxLen", "minLen", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => setError(field, "")); }
-  function formPayload() { return { providerId: $("provider").value, modelId: $("model").value, mediaPath: $("mediaPath").value.trim(), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), device: $("localDevice").value, language: languageValue(), lengthLimit: $("lengthLimit").value.trim(), maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateHtml: $("generateHtml").checked, guiLang: state.lang }; }
+  function formPayload() { return { providerId: $("provider").value, modelId: $("model").value, mediaPath: $("mediaPath").value.trim(), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), device: $("localDevice").value, language: languageValue(), s2tMode: state.s2tMode, lengthLimit: $("lengthLimit").value.trim(), maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateHtml: $("generateHtml").checked, guiLang: state.lang }; }
   function serverPayload() { return { jsonPath: $("jsonPath").value.trim(), mediaPath: $("serverMediaPath").value.trim(), port: $("port").value || "8250", guiLang: state.lang }; }
   function renderServerButton() {
     const button = $("openMawe");
@@ -867,7 +880,10 @@
     window.MAWLauncher.backend = realApi ? "real" : "mock";
     const savedTheme = localStorage.getItem(THEME_KEY);
     state.theme = savedTheme === "light" || savedTheme === "dark" || savedTheme === "system" ? savedTheme : "system";
+    const savedS2tMode = localStorage.getItem(S2T_MODE_KEY);
+    state.s2tMode = savedS2tMode === "taiwan" || savedS2tMode === "standard" ? savedS2tMode : "off";
     applyTheme();
+    renderS2tMode();
     $("lengthLimitField").classList.toggle("hidden", !SHOW_LENGTH_LIMIT_FIELD);
     $("demoBadge").classList.toggle("hidden", window.MAWLauncher.backend !== "mock");
     state.config = await bridge("get_config");
@@ -968,6 +984,7 @@
 
   $("langToggle").addEventListener("click", async () => { state.lang = state.lang === "zh" ? "en" : "zh"; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (!result.ok) applyErrorResult(result); });
   $("themeLight").addEventListener("click", () => setTheme("light")); $("themeDark").addEventListener("click", () => setTheme("dark")); $("themeSystem").addEventListener("click", () => setTheme("system"));
+  $("s2tOff").addEventListener("click", () => setS2tMode("off")); $("s2tTaiwan").addEventListener("click", () => setS2tMode("taiwan")); $("s2tStandard").addEventListener("click", () => setS2tMode("standard"));
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme(); });
   $("homeLink").addEventListener("click", () => bridge("open_url", { url: HOME_URL }));
   $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => applySelectedModel(true)); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("region").addEventListener("change", syncWorkspace); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
