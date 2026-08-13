@@ -175,6 +175,13 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('data-waveform-tool="select"', page)
         self.assertIn('data-waveform-tool="razor"', page)
         self.assertIn('<span>分割</span>', page)
+        self.assertIn('class="ninja-razor-icon"', page)
+        self.assertIn('id="ninja-mode"', page)
+        self.assertIn('id="ninja-slash-effect"', page)
+        self.assertIn('id="ninja-slash-effect-field"', page)
+        self.assertIn('const NINJA_SFX_BASE_URL = "web/sfx/";', page)
+        self.assertIn('const NINJA_SFX_HISTORY = [];', page)
+        self.assertIn('function triggerNinjaSplitFeedback()', page)
         # 帮助按钮改用 🤔 文本图标后，SVG 工具图标只剩选择/分割两个
         self.assertEqual(page.count('class="toolbar-button-icon"'), 2)
         self.assertIn('.waveform-cue-block.selected {', page)
@@ -385,6 +392,21 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('let STICKER_ROOT = "";', page)
         self.assertNotIn("private-sticker.png", page)
         self.assertNotIn(Path(sticker_dir).resolve().as_posix(), page)
+
+    def test_ninja_settings_and_split_feedback_are_rendered(self) -> None:
+        page = edit.build_blank_html()
+        for marker in (
+            'id="ninja-mode"',
+            'id="ninja-slash-effect"',
+            'id="ninja-slash-effect-field"',
+            'const NINJA_SFX_BASE_URL = "web/sfx/";',
+            'const NINJA_SFX_HISTORY = [];',
+            'function triggerNinjaSplitFeedback()',
+            'sfx_katana_slash_01.ogg',
+            'sfx_katana_slash_01.opus',
+            '打开字幕忍者模式，让拆分字幕变得更加有趣',
+        ):
+            self.assertIn(marker, page)
 
     def test_user_text_that_looks_like_a_template_token_is_preserved(self) -> None:
         page = edit.render_editor_page(

@@ -4,6 +4,7 @@ const STICKERS = __STICKERS_JSON__;
 let STICKER_ROOT = __STICKER_ROOT_JSON__;  // 表情包根目录的绝对路径（无尾斜杠）
 let STICKER_URL_PREFIX = __STICKER_URL_PREFIX_JSON__;
 const SERVER_CONFIG = __SERVER_CONFIG_JSON__;
+const NINJA_SFX_BASE_URL = __NINJA_SFX_BASE_URL_JSON__;
 
 const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
 const MULTI_SUBTITLE_TOLERANCE_MS = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_TOLERANCE_MS || 300;
@@ -637,6 +638,10 @@ const DEFAULT_EDITOR_SETTINGS = {
   jklPlaybackMode: DEFAULT_JKL_PLAYBACK_MODE,
   // 选中字幕后用方向键 / A-D 微调时间的幅度。
   cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
+  // 娱乐彩蛋：成功拆分时播放刀光音效，并把分割工具图标换成 🔪。
+  ninjaMode: false,
+  // 字幕忍者的可选视觉反馈；忍者开关开启后才在设置中显示。
+  ninjaSlashEffect: true,
   // 多重字幕拖动时是否把另一条轨道的起止边界加入吸附目标。
   crossTrackSnap: true,
   // 选中主/副字幕时，是否同时选中绑定的另一条字幕。
@@ -699,6 +704,8 @@ function readEditorSettings() {
       clickTarget: normalizeClickTarget(saved.clickTarget),
       jklPlaybackMode: normalizeJklPlaybackMode(saved.jklPlaybackMode),
       cueMoveStepMs: clampCueMoveStepMs(saved.cueMoveStepMs),
+      ninjaMode: saved.ninjaMode === true,
+      ninjaSlashEffect: saved.ninjaSlashEffect !== false,
       crossTrackSnap: saved.crossTrackSnap !== false,
       selectBoundSubtitlePair: saved.selectBoundSubtitlePair !== false,
       theme: saved.theme === 'light' ? 'light' : 'dark',
@@ -1051,6 +1058,13 @@ const cueEditorShowNavigationToggle = document.getElementById('cue-editor-show-n
 const cueEditorShowTimeActionsToggle = document.getElementById('cue-editor-show-time-actions');
 const cueEditorShowStickerToggle = document.getElementById('cue-editor-show-sticker');
 const selectGroupMembersToggle = document.getElementById('select-group-members');
+const ninjaModeToggle = document.getElementById('ninja-mode');
+const ninjaSlashEffectToggle = document.getElementById('ninja-slash-effect');
+const ninjaSlashEffectField = document.getElementById('ninja-slash-effect-field');
+const razorToolButton = document.querySelector('[data-waveform-tool="razor"]');
+const razorToolSvg = razorToolButton?.querySelector('svg');
+const ninjaRazorIcon = razorToolButton?.querySelector('.ninja-razor-icon');
+const ninjaSlashFlash = document.getElementById('ninja-slash-flash');
 const exportColorUnifiedToggle = document.getElementById('export-color-unified');
 const helpToggle = document.getElementById('help-toggle');
 const themeToggle = document.getElementById('theme-toggle');
@@ -1191,6 +1205,93 @@ let editorSettingsPanelFrame = 0;
 function updateEditorSettings(patch) {
   Object.assign(EDITOR_SETTINGS, patch);
   saveEditorSettings(EDITOR_SETTINGS);
+}
+
+const NINJA_SFX_VARIANTS = Object.freeze([
+  Object.freeze(['sfx_katana_slash_01.ogg', 'sfx_katana_slash_01.opus']),
+  Object.freeze(['sfx_katana_slash_02.ogg', 'sfx_katana_slash_02.opus']),
+  Object.freeze(['sfx_katana_slash_03.ogg', 'sfx_katana_slash_03.opus']),
+  Object.freeze(['sfx_katana_slash_04.ogg', 'sfx_katana_slash_04.opus']),
+]);
+const NINJA_SFX_PLAYERS = new Map();
+const NINJA_SFX_HISTORY = [];
+let ninjaSlashFlashTimer = 0;
+
+function ninjaSfxUrl(fileName) {
+  const baseUrl = NINJA_SFX_BASE_URL || SERVER_CONFIG?.ninjaSfxBaseUrl || 'web/sfx/';
+  try {
+    return new URL(`${baseUrl}${encodeURIComponent(fileName)}`, document.baseURI).href;
+  } catch (_) {
+    return `${baseUrl}${encodeURIComponent(fileName)}`;
+  }
+}
+
+function ninjaSfxType(fileName) {
+  if (fileName.endsWith('.opus')) return 'audio/ogg; codecs=opus';
+  return 'audio/ogg';
+}
+
+function createNinjaSfxPlayer(variant) {
+  if (typeof Audio !== 'function') return null;
+  const player = new Audio();
+  player.preload = 'auto';
+  player.volume = 0.65;
+  variant.forEach((fileName) => {
+    const source = document.createElement('source');
+    source.src = ninjaSfxUrl(fileName);
+    source.type = ninjaSfxType(fileName);
+    player.appendChild(source);
+  });
+  return player;
+}
+
+function playNinjaSplitSound() {
+  if (!EDITOR_SETTINGS.ninjaMode || typeof Audio !== 'function') return;
+  const recent = new Set(NINJA_SFX_HISTORY.slice(-2));
+  const available = NINJA_SFX_VARIANTS.map((_, index) => index)
+    .filter((index) => !recent.has(index));
+  const candidates = available.length ? available : NINJA_SFX_VARIANTS.map((_, index) => index);
+  const variantIndex = candidates[Math.floor(Math.random() * candidates.length)];
+  NINJA_SFX_HISTORY.push(variantIndex);
+  if (NINJA_SFX_HISTORY.length > 2) NINJA_SFX_HISTORY.shift();
+  let player = NINJA_SFX_PLAYERS.get(variantIndex);
+  if (!player) {
+    player = createNinjaSfxPlayer(NINJA_SFX_VARIANTS[variantIndex]);
+    if (!player) return;
+    NINJA_SFX_PLAYERS.set(variantIndex, player);
+  }
+  try {
+    player.currentTime = 0;
+  } catch (_) {
+    // 尚未完成解码时 currentTime 可能暂时不可写；播放本身仍可继续尝试。
+  }
+  const playback = player.play();
+  if (playback && typeof playback.catch === 'function') playback.catch(() => {});
+}
+
+function triggerNinjaSplitFeedback() {
+  if (!EDITOR_SETTINGS.ninjaMode) return;
+  playNinjaSplitSound();
+  if (!EDITOR_SETTINGS.ninjaSlashEffect || !ninjaSlashFlash) return;
+  ninjaSlashFlash.classList.remove('show');
+  // 强制重排，让连续快速拆分也能重新播放 CSS 动画。
+  void ninjaSlashFlash.offsetWidth;
+  ninjaSlashFlash.classList.add('show');
+  clearTimeout(ninjaSlashFlashTimer);
+  ninjaSlashFlashTimer = setTimeout(() => ninjaSlashFlash.classList.remove('show'), 260);
+}
+
+function applyNinjaSettings() {
+  const enabled = EDITOR_SETTINGS.ninjaMode === true;
+  if (ninjaModeToggle) ninjaModeToggle.checked = enabled;
+  if (ninjaSlashEffectToggle) ninjaSlashEffectToggle.checked = EDITOR_SETTINGS.ninjaSlashEffect !== false;
+  if (ninjaSlashEffectField) ninjaSlashEffectField.hidden = !enabled;
+  // SVGElement 不一定实现 HTMLElement.hidden；用属性切换才能真正隐藏原剪刀图标。
+  if (razorToolSvg) {
+    if (enabled) razorToolSvg.setAttribute('hidden', '');
+    else razorToolSvg.removeAttribute('hidden');
+  }
+  if (ninjaRazorIcon) ninjaRazorIcon.hidden = !enabled;
 }
 
 function setEditorSettingsPanelOpen(open) {
@@ -1441,6 +1542,7 @@ if (clickBehaviorSelect) clickBehaviorSelect.value = EDITOR_SETTINGS.clickBehavi
 if (clickTargetSelect) clickTargetSelect.value = EDITOR_SETTINGS.clickTarget;
 if (jklPlaybackModeSelect) jklPlaybackModeSelect.value = EDITOR_SETTINGS.jklPlaybackMode;
 if (cueMoveStepInput) cueMoveStepInput.value = String(EDITOR_SETTINGS.cueMoveStepMs);
+applyNinjaSettings();
 const waveformShapeSourceSelect = document.getElementById('waveform-shape-source');
 if (waveformShapeSourceSelect) {
   waveformShapeSourceSelect.value = EDITOR_SETTINGS.waveShapeSource;
@@ -1712,6 +1814,13 @@ cueMoveStepInput?.addEventListener('change', () => {
   const value = clampCueMoveStepMs(cueMoveStepInput.value);
   cueMoveStepInput.value = String(value);
   updateEditorSettings({ cueMoveStepMs: value });
+});
+ninjaModeToggle?.addEventListener('change', () => {
+  updateEditorSettings({ ninjaMode: ninjaModeToggle.checked });
+  applyNinjaSettings();
+});
+ninjaSlashEffectToggle?.addEventListener('change', () => {
+  updateEditorSettings({ ninjaSlashEffect: ninjaSlashEffectToggle.checked });
 });
 subtitleFontSizeSelect?.addEventListener('change', () => {
   const value = subtitleFontSizeSelect.value;
@@ -4703,6 +4812,7 @@ function splitAtCursor() {
   selectOnly(idx + 1);
   // 拆分后后半段是新的视觉选中项，也必须成为 Shift+点击的范围锚点。
   lastClickedIdx = idx + 1;
+  triggerNinjaSplitFeedback();
   update();
 }
 

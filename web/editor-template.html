@@ -161,6 +161,7 @@ __WAVEFORM_CSS__
     </button>
     <button type="button" data-waveform-tool="razor" title="分割工具（R）：点击字幕块在指针位置安全拆分（默认按字词时间码对齐；没有可用字词时间码或关闭设置后打开拆分点弹窗，拒绝 100ms 以内的边缘拆分）；Esc 切回选择">
       <svg class="toolbar-button-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="4" r="2.25"/><circle cx="4" cy="12" r="2.25"/><path d="m5.8 5.35 7.2 5.4M5.8 10.65 13 5.25"/></svg>
+      <span class="ninja-razor-icon" aria-hidden="true" hidden>🔪</span>
       <span>分割</span>
     </button>
   </span>
@@ -572,6 +573,15 @@ __WAVEFORM_CSS__
       <input type="checkbox" id="select-group-members"> 同时选中分组内项目
     </label>
     <small class="editor-settings-hint">选中字幕时，同时选中和它相同颜色/表情包的字幕</small>
+    </div>
+    <div class="editor-settings-field">
+    <label class="toggle editor-settings-item" title="开启后，分割工具改用 🔪 图标，成功拆分时播放刀光音效">
+      <input type="checkbox" id="ninja-mode"> 字幕忍者
+    </label>
+    <label class="toggle editor-settings-item" id="ninja-slash-effect-field" title="开启后，成功拆分时在屏幕上显示一道白色刀光" hidden>
+      <input type="checkbox" id="ninja-slash-effect" checked> 显示刀光特效
+    </label>
+    <small class="editor-settings-hint">打开字幕忍者模式，让拆分字幕变得更加有趣</small>
     </div>
     </div>
     <div class="editor-settings-sub-group">
@@ -1033,6 +1043,9 @@ __WAVEFORM_CSS__
 
 <!-- 拖拽加载遮罩 -->
 <div class="drag-overlay" id="drag-overlay"><div class="drag-hint">📥 松开以加载文件（视频 / 音频 / JSON / SRT）</div></div>
+
+<!-- 字幕忍者刀光：默认不参与布局与鼠标交互，仅在成功拆分时短暂显示。 -->
+<div id="ninja-slash-flash" aria-hidden="true"></div>
 
 <script>
 __EDITOR_UTILS_JS__

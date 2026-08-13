@@ -615,6 +615,12 @@
     width: 14px; height: 14px; flex: 0 0 auto;
     fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
   }
+  .toolbar-button-icon[hidden], .ninja-razor-icon[hidden] { display: none !important; }
+  .ninja-razor-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 14px; height: 14px; flex: 0 0 auto;
+    font-size: 14px; line-height: 1;
+  }
   .toolbar button:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
   .toolbar button:active { background: var(--btn-bg-active); }
   .toolbar button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
@@ -1844,6 +1850,42 @@
     display: grid;
     gap: 7px;
     padding: 12px 14px 14px;
+  }
+
+  /* === 字幕忍者刀光 ===
+     全屏层只在拆分成功且用户开启特效时短暂存在，不捕获指针事件。 */
+  #ninja-slash-flash {
+    position: fixed; inset: 0; z-index: 1000; overflow: hidden;
+    pointer-events: none; visibility: hidden; opacity: 0;
+    background: rgba(255, 255, 255, 0.08);
+  }
+  #ninja-slash-flash::before {
+    content: ""; position: absolute; top: -45%; left: -35%;
+    width: 24vw; height: 190%; min-width: 150px;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.18) 32%,
+      rgba(255,255,255,0.98) 50%, rgba(255,255,255,0.18) 68%, transparent 100%);
+    filter: blur(5px); transform: translateX(-120vw) rotate(22deg);
+  }
+  #ninja-slash-flash.show {
+    visibility: visible;
+    animation: ninja-slash-flash-in 220ms ease-out forwards;
+  }
+  #ninja-slash-flash.show::before {
+    animation: ninja-slash-beam 220ms cubic-bezier(.2,.7,.25,1) forwards;
+  }
+  @keyframes ninja-slash-flash-in {
+    0% { opacity: 0; }
+    18% { opacity: 0.92; }
+    100% { opacity: 0; visibility: hidden; }
+  }
+  @keyframes ninja-slash-beam {
+    0% { opacity: 0; transform: translateX(-120vw) rotate(22deg); }
+    14% { opacity: 1; }
+    100% { opacity: 0; transform: translateX(155vw) rotate(22deg); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #ninja-slash-flash.show { animation-duration: 80ms; }
+    #ninja-slash-flash.show::before { animation-duration: 80ms; }
   }
   .hint-project-header { display: flex; align-items: center; gap: 10px; }
   .hint-project-header strong { flex: 1 1 auto; color: var(--red-hover); font-size: 15px; }
