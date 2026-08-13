@@ -38,6 +38,9 @@ class TranscriptionRequest:
     language: str = ""
     api_key: str = ""
     length_limit: str = ""
+    max_len: str = ""
+    min_len: str = ""
+    gap_split: str = ""
     qwen_audio_context: str = ""
     qwen_audio_hotwords: str = ""
     qwen_audio_hotwords_file: str = ""
@@ -258,6 +261,9 @@ def build_transcribe_command(
             command.append("--speaker-colors")
         _append_option(command, "--language", request.language)
     _append_option(command, "--length-limit", request.length_limit)
+    _append_option(command, "--max-len", request.max_len)
+    _append_option(command, "--min-len", request.min_len)
+    _append_option(command, "--gap-split", request.gap_split)
     if request.provider == "qwen" and request.model == QWEN_AUDIO_MODEL_ID:
         _append_option(command, "--vocabulary-id", request.qwen_audio_vocabulary_id)
         _append_option(command, "--hotword-weight", request.qwen_audio_hotword_weight)

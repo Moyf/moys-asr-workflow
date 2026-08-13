@@ -1337,6 +1337,38 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertEqual(request.length_limit, "30m")
 
+    def test_request_from_payload_passes_segmentation_options(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+
+        request = _request_from_payload({
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+            "maxLen": "14",
+            "minLen": "3",
+            "gapSplit": "800",
+        }, self.env_path)
+
+        self.assertEqual(request.max_len, "14")
+        self.assertEqual(request.min_len, "3")
+        self.assertEqual(request.gap_split, "800")
+
+    def test_request_from_payload_rejects_invalid_segmentation_options(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        base = {
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+        }
+
+        with self.assertRaises(PreflightError) as raised:
+            _request_from_payload({**base, "maxLen": "2", "minLen": "3"}, self.env_path)
+
+        self.assertEqual(raised.exception.field, "maxLen")
+        self.assertEqual(raised.exception.code, "segmentation_invalid")
+
     def test_request_from_payload_only_generates_html_when_requested(self) -> None:
         media = self.root / "clip.mp3"
         media.write_bytes(b"media")
@@ -1849,6 +1881,19 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('setError("mediaPath", mediaDropError())', script)
         self.assertIn('output_collision: "检测到同名输出文件', script)
         self.assertIn("result.outputRenamed", script)
+
+    def test_launcher_exposes_segmentation_controls_and_payload_fields(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        for control in ("segmentationField", "maxLen", "minLen", "gapSplit"):
+            self.assertIn(f'id="{control}"', page)
+        self.assertIn('maxLen: $("maxLen").value.trim()', script)
+        self.assertIn('minLen: $("minLen").value.trim()', script)
+        self.assertIn('gapSplit: $("gapSplit").value.trim()', script)
+        self.assertIn('segmentation: "字幕切句"', script)
+        self.assertIn(".segmentation-row", stylesheet)
 
     def test_sticker_picker_saves_immediately_without_a_separate_button(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
