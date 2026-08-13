@@ -388,6 +388,7 @@ class LauncherApi:
             "appVersion": _app_version(self.paths),
             "stickerDir": config.sticker_dir,
             "showRareLangs": config.show_rare_langs,
+            "s2tMode": config.s2t_mode,
             "lastModel": config.last_model,
             "lastLanguage": config.last_language,
             "localRuntime": managed_runtime_status(config.model_cache_root).to_payload(),
@@ -455,6 +456,9 @@ class LauncherApi:
             updates["MAW_GUI_LAST_LANGUAGE"] = str(payload.get("language") or "")
         if "showRareLangs" in payload:
             updates["MAW_GUI_SHOW_RARE_LANGS"] = "true" if payload.get("showRareLangs") else "false"
+        if "s2tMode" in payload:
+            mode = str(payload.get("s2tMode") or "off").strip().lower()
+            updates["MAW_GUI_S2T_MODE"] = mode if mode in {"off", "taiwan", "standard"} else "off"
         if updates:
             try:
                 save_env(self.paths.env_path, updates)

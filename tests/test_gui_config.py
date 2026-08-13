@@ -300,6 +300,19 @@ class GuiConfigTests(unittest.TestCase):
             with mock.patch.dict(os.environ, {}, clear=True):
                 self.assertFalse(gui_config.effective_config(env_path).show_rare_langs)
 
+    def test_effective_config_parses_s2t_mode(self) -> None:
+        """Given the S2T mode in .env, When resolved, Then only supported modes are exposed."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            _ = env_path.write_text("MAW_GUI_S2T_MODE=taiwan\n", encoding="utf-8")
+
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(gui_config.effective_config(env_path).s2t_mode, "taiwan")
+
+            _ = env_path.write_text("MAW_GUI_S2T_MODE=unexpected\n", encoding="utf-8")
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(gui_config.effective_config(env_path).s2t_mode, "off")
+
     def test_model_by_label_searches_all_providers(self) -> None:
         """Given a Soniox model id, When resolved, Then its env key comes from the Soniox entry."""
         model = gui_config.model_by_label("stt-async-v5")

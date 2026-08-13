@@ -144,6 +144,13 @@ class GuiWebBridgeTests(unittest.TestCase):
             "# keep\nDASHSCOPE_REGION=beijing\nSTICKER_DIR=stickers\nMAW_GUI_LAST_MODEL=stt-async-v5\nMAW_GUI_LAST_LANGUAGE=\n",
         )
 
+    def test_save_prefs_persists_s2t_mode(self) -> None:
+        result = self.api.save_prefs({"s2tMode": "taiwan"})
+
+        self.assertTrue(result["ok"])
+        self.assertIn("MAW_GUI_S2T_MODE=taiwan\n", self.env_path.read_text(encoding="utf-8"))
+        self.assertEqual(self.api.get_config()["s2tMode"], "taiwan")
+
     def test_postprocess_config_masks_keys_and_saves_provider_settings(self) -> None:
         self.env_path.write_text(
             "MAW_POSTPROCESS_DEEPSEEK_API_KEY=sk-deepseek-secret\n"

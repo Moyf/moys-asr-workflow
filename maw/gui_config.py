@@ -80,6 +80,7 @@ class EffectiveConfig:
     gui_lang: str
     sticker_dir: str
     show_rare_langs: bool = False
+    s2t_mode: str = "off"
     last_model: str | None = None
     last_language: str | None = None
     model_cache_root: str = ""
@@ -487,6 +488,7 @@ def effective_config(path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] |
         gui_lang=_gui_language(pick("MAW_GUI_LANG", "zh")),
         sticker_dir=pick("STICKER_DIR"),
         show_rare_langs=pick("MAW_GUI_SHOW_RARE_LANGS").strip().lower() in ("1", "true", "yes", "on"),
+        s2t_mode=_s2t_mode(pick("MAW_GUI_S2T_MODE", "off")),
         last_model=pick_optional("MAW_GUI_LAST_MODEL"),
         last_language=pick_optional("MAW_GUI_LAST_LANGUAGE"),
         model_cache_root=pick("MAW_MODEL_CACHE_ROOT").strip(),
@@ -578,3 +580,7 @@ def _env_key(line: str) -> str | None:
 
 def _gui_language(value: str) -> str:
     return "en" if value.strip().lower() == "en" else "zh"
+
+
+def _s2t_mode(value: str) -> str:
+    return value.strip().lower() if value.strip().lower() in {"off", "taiwan", "standard"} else "off"

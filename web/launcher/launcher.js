@@ -429,7 +429,6 @@
   const HOME_URL = "https://github.com/Moyf/moys-asr-workflow";
   const LAST_MODEL_KEY = "MAW_GUI_LAST_MODEL";
   const LAST_LANGUAGE_KEY = "MAW_GUI_LAST_LANGUAGE";
-  const S2T_MODE_KEY = "MAW_GUI_S2T_MODE";
   const THEME_KEY = "MAW_GUI_THEME";
   const $ = (id) => document.getElementById(id);
   const HOTWORD_WEIGHTS = new Set([1, 2, 3, 4, 5, 50]);
@@ -459,6 +458,7 @@
         workspaceId: saved.workspaceId,
         guiLang: saved.guiLang,
         showRareLangs: saved.showRareLangs || false,
+        s2tMode: saved.s2tMode || "off",
         appVersion: "1.4.0-beta.4",
         stickerDir: saved.stickerDir || "",
         postprocessProviders: [
@@ -549,7 +549,7 @@
       get_local_models: async ({ modelId, modelPath }) => ({ ok: true, runtime: state.config?.localRuntime || {}, models: (state.config?.providers.find((item) => item.id === "local")?.models || []).map((model) => ({ ...model, localStatus: { ...(model.localStatus || {}), ...(model.id === modelId && modelPath ? { status: "installed", installed: true, path: modelPath, detail: "已使用指定的模型目录。" } : {}) } })) }),
       prepare_local_model: async ({ modelId }) => { clearTimeout(modelPrepareTimer); modelPrepareTimer = setTimeout(() => { state.config?.providers.find((item) => item.id === "local")?.models.forEach((model) => { if (model.id === modelId) model.localStatus = { ...(model.localStatus || {}), status: "installed", installed: true, runtimeAvailable: true, canPrepare: false, detail: "已检测到本地模型。" }; }); window.MAWLauncher.onBackendEvent({ type: "modelPrepared", modelId }); }, 400); return { ok: true, preparing: true, modelId }; },
       cancel_local_model: async () => { clearTimeout(modelPrepareTimer); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "localPrepareCancelled" }), 80); return { ok: true, cancelling: true }; },
-      save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); return { ok: true }; },
+      save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); if (Object.prototype.hasOwnProperty.call(payload, "s2tMode")) saved.s2tMode = payload.s2tMode || "off"; return { ok: true }; },
       open_url: async ({ url }) => { window.open(url, "_blank"); return { ok: true }; },
       open_blank_html: async () => ({ ok: true }),
       check_ffmpeg: async () => ({ ok: true, found: true, directory: "D:\\FFmpeg\\bin", ffmpeg: "D:\\FFmpeg\\bin\\ffmpeg.exe", ffprobe: "D:\\FFmpeg\\bin\\ffprobe.exe" }),
@@ -632,7 +632,7 @@
   function applyTheme() { if (resolveTheme() === "light") document.documentElement.dataset.theme = "light"; else delete document.documentElement.dataset.theme; $("themeLight").classList.toggle("active", state.theme === "light"); $("themeDark").classList.toggle("active", state.theme === "dark"); $("themeSystem").classList.toggle("active", state.theme === "system"); }
   function setTheme(pref) { state.theme = pref; try { localStorage.setItem(THEME_KEY, pref); } catch (error) { /* localStorage 不可用时仅作用于本次会话 */ } applyTheme(); }
   function renderS2tMode() { [["off", "s2tOff"], ["taiwan", "s2tTaiwan"], ["standard", "s2tStandard"]].forEach(([mode, id]) => $(id).classList.toggle("active", state.s2tMode === mode)); }
-  function setS2tMode(mode) { state.s2tMode = mode; try { localStorage.setItem(S2T_MODE_KEY, mode); } catch (error) { /* localStorage 不可用时仅作用于本次会话 */ } renderS2tMode(); }
+  async function setS2tMode(mode) { state.s2tMode = mode; renderS2tMode(); const result = await bridge("save_prefs", { s2tMode: mode }); if (result.ok) { state.config.s2tMode = mode; setStatus(t("saved")); } else applyErrorResult(result); }
 
   async function bridge(method, payload = {}) {
     try {
@@ -880,14 +880,13 @@
     window.MAWLauncher.backend = realApi ? "real" : "mock";
     const savedTheme = localStorage.getItem(THEME_KEY);
     state.theme = savedTheme === "light" || savedTheme === "dark" || savedTheme === "system" ? savedTheme : "system";
-    const savedS2tMode = localStorage.getItem(S2T_MODE_KEY);
-    state.s2tMode = savedS2tMode === "taiwan" || savedS2tMode === "standard" ? savedS2tMode : "off";
     applyTheme();
-    renderS2tMode();
     $("lengthLimitField").classList.toggle("hidden", !SHOW_LENGTH_LIMIT_FIELD);
     $("demoBadge").classList.toggle("hidden", window.MAWLauncher.backend !== "mock");
     state.config = await bridge("get_config");
     window.MAWLauncher.config = state.config;
+    state.s2tMode = ["taiwan", "standard"].includes(state.config.s2tMode) ? state.config.s2tMode : "off";
+    renderS2tMode();
     state.lang = state.config.guiLang || "zh";
     fillSelect("provider", state.config.providers, state.config.providerId || "qwen");
     applyProvider(false);
@@ -984,7 +983,7 @@
 
   $("langToggle").addEventListener("click", async () => { state.lang = state.lang === "zh" ? "en" : "zh"; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (!result.ok) applyErrorResult(result); });
   $("themeLight").addEventListener("click", () => setTheme("light")); $("themeDark").addEventListener("click", () => setTheme("dark")); $("themeSystem").addEventListener("click", () => setTheme("system"));
-  $("s2tOff").addEventListener("click", () => setS2tMode("off")); $("s2tTaiwan").addEventListener("click", () => setS2tMode("taiwan")); $("s2tStandard").addEventListener("click", () => setS2tMode("standard"));
+  $("s2tOff").addEventListener("click", () => { void setS2tMode("off"); }); $("s2tTaiwan").addEventListener("click", () => { void setS2tMode("taiwan"); }); $("s2tStandard").addEventListener("click", () => { void setS2tMode("standard"); });
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme(); });
   $("homeLink").addEventListener("click", () => bridge("open_url", { url: HOME_URL }));
   $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => applySelectedModel(true)); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("region").addEventListener("change", syncWorkspace); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
