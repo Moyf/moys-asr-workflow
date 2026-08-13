@@ -719,6 +719,46 @@ test('uses the linked split dialog when the main cue is active with its bound ex
   await page.keyboard.press('Escape');
 });
 
+test('keeps the subtitle-list caret position as the linked main split point', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#split-use-word-timestamps').uncheck();
+  await page.locator('#editor-settings-toggle').click();
+
+  await page.evaluate(() => {
+    const main = DATA.segments[0];
+    main.text = '那更加离谱的就是这颗卫星上搭载了一颗';
+    main.items = [
+      { text: '那更加离谱的就是这', start: main.start, end: 1000 },
+      { text: '颗卫星上搭载了一颗', start: 1000, end: main.end },
+    ];
+    DATA.multi_subtitle.main_split_mode = 'continuous';
+    renderAll({ waveform: 'none' });
+  });
+
+  const mainText = page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main .text');
+  await mainText.click();
+  const splitPoint = await mainText.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 8); // 「就是｜这颗」
+    range.setEnd(node, 8);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.move(splitPoint.x, splitPoint.y);
+  await page.keyboard.press('b');
+
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  const activeGap = page.locator('#multi-subtitle-split-main-text .multi-subtitle-split-gap.active');
+  await expect(activeGap).toHaveAttribute('data-offset', '8');
+  await expect(activeGap).toHaveCSS('opacity', '1');
+  expect(await activeGap.evaluate((gap) => getComputedStyle(gap, '::before').content)).toBe('"✂️"');
+  await expect(page.locator('#multi-subtitle-split-main-text')).not.toHaveClass(/timestamp-locked/);
+  await page.keyboard.press('Escape');
+});
+
 test('binds an unbound extension cue directly from its context menu', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-extension').click();

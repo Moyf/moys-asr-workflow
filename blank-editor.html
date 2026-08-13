@@ -14573,6 +14573,15 @@ function splitOffsetNearTime(segment, timeMs, splitMode) {
   );
 }
 
+function splitOffsetNearTextPosition(text, offset, splitMode) {
+  const legalOffsets = MULTI_SUBTITLE_UTILS.subtitleSplitOffsets(text || '', splitMode);
+  if (!legalOffsets.length) return null;
+  const requested = Math.max(0, Math.min(String(text || '').length, Math.round(Number(offset) || 0)));
+  return legalOffsets.reduce((best, candidate) => (
+    Math.abs(candidate - requested) < Math.abs(best - requested) ? candidate : best
+  ), legalOffsets[0]);
+}
+
 function buildSplitPair(segment, offset, cutMs, idBase, includeItems = true, splitMode = null) {
   const text = String(segment?.text || '');
   const mode = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SPLIT_MODES.has(splitMode)
@@ -14638,7 +14647,13 @@ function linkedSplitState(mainIndex, initial = {}) {
   // 有可用时间码就把初始断点定位到最近的字词边界，但之后仍允许用户自由调整。
   const fixedCutMs = !useMainWordTimestamps && Number.isFinite(initial.timeMs)
     ? Math.round(initial.timeMs) : null;
-  const initialMainOffset = splitOffsetNearTime(main, initialTime, mainMode);
+  // 字幕列表传入的是用户实际指向的文字位置；即使工程有字词时间码，
+  // 也不能再用时间反推一次文字位置，否则「就是｜这颗」可能漂移成「就是这｜颗」。
+  // 没有列表文字位置时（例如波形/播放头入口）才按时间寻找最近合法断点。
+  const hasInitialTextPosition = Number.isFinite(initial.mainOffset);
+  const initialMainOffset = hasInitialTextPosition
+    ? splitOffsetNearTextPosition(main.text, initial.mainOffset, mainMode)
+    : splitOffsetNearTime(main, initialTime, mainMode);
   const initialMainCutMs = fixedCutMs ?? (hasMainWordTimestamps
     ? splitTimeForTextOffset(main, initialMainOffset)
     : splitCutTime(main, initialMainOffset, false));
@@ -14667,6 +14682,7 @@ function linkedSplitState(mainIndex, initial = {}) {
       : useMainWordTimestamps
         ? 'word-timestamps'
         : hasMainWordTimestamps ? 'word-timestamps-default' : 'text-estimate',
+    initialLane: hasInitialTextPosition ? 'main' : null,
     locked: false,
   };
 }
@@ -14998,11 +15014,11 @@ function renderLinkedSplitText(state) {
   }
   renderSplitLane(state, 'main');
   renderSplitLane(state, 'extension');
-  const initialLane = state.kind === 'main'
+  const initialLane = state.initialLane || (state.kind === 'main'
     ? 'main'
     : state.kind === 'extension'
       ? 'extension'
-      : state.cutSource === 'word-timestamps-default' ? 'main' : 'extension';
+      : state.cutSource === 'word-timestamps-default' ? 'main' : 'extension');
   updateLinkedSplitPreview(
     state.kind === 'main' ? state.mainOffset
       : state.kind === 'extension' ? state.offset : state.mainOffset,
@@ -15523,10 +15539,15 @@ function flashCueSplitAt(idx, clientX) {
 function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
   if (!el) return false;
+  const listCaretInfo = Number.isFinite(waveformTimeMs)
+    ? null : caretInfoFromPoint(el.querySelector('.text'), x, y);
   if (multiSubtitleVisible() && bindingForMainIndex(idx)) {
     notifyMainSplitTimestampFallback(DATA.segments[idx]);
-    pendingLinkedSplit = linkedSplitState(idx, Number.isFinite(waveformTimeMs)
-      ? { timeMs: waveformTimeMs } : {});
+    const initial = Number.isFinite(waveformTimeMs)
+      ? { timeMs: waveformTimeMs }
+      : Number.isFinite(listCaretInfo?.offset)
+        ? { mainOffset: listCaretInfo.offset } : {};
+    pendingLinkedSplit = linkedSplitState(idx, initial);
     if (!pendingLinkedSplit) return false;
     multiSubtitleSplitModal?.classList.add('show');
     renderLinkedSplitText(pendingLinkedSplit);
@@ -15559,9 +15580,12 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
     return didSplit;
   }
   // 字幕列表：在指定位置进入编辑，光标定位到 (x,y) 后立即拆分
-  const caretInfo = caretInfoFromPoint(el.querySelector('.text'), x, y);
+  const caretInfo = listCaretInfo || caretInfoFromPoint(el.querySelector('.text'), x, y);
   const markerX = Number.isFinite(caretInfo?.rect?.left) ? caretInfo.rect.left : x;
-  startEdit(el, idx, x, y);
+  // 先在非编辑态记录文字偏移；进入 contenteditable 后字体/边界可能变化，
+  // 再次用同一坐标命中会把「就是｜这颗」漂移到下一个字符。
+  startEdit(el, idx);
+  if (Number.isFinite(caretInfo?.offset)) setEditingCaretOffset(caretInfo.offset);
   const didSplit = splitAtCursor();
   if (didSplit) flashCueSplitAt(idx, markerX);
   return didSplit;
