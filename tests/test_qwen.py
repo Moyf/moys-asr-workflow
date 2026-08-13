@@ -5,6 +5,7 @@ import unittest
 from unittest import mock
 
 from generate_subtitle_qwen_api import (
+    convert_segments_to_traditional,
     extract_audio,
     main,
     repair_nonpositive_duration_segments,
@@ -46,6 +47,45 @@ class QwenMediaExtractionTests(unittest.TestCase):
         self.assertEqual(command[:4], ["ffmpeg", "-i", "input.mp4", "-t"])
         self.assertEqual(command[4], "120")
         self.assertEqual(command[-1], "output.wav")
+
+
+class QwenTraditionalConversionTests(unittest.TestCase):
+    def test_taiwan_mode_converts_segments_and_items_with_taiwan_terms(self) -> None:
+        segments = [{"text": "软件里面的鼠标", "items": [
+            {"text": "软件", "start": 0, "end": 100},
+            {"text": "里面", "start": 100, "end": 200},
+            {"text": "的", "start": 200, "end": 300},
+            {"text": "鼠标", "start": 300, "end": 400},
+        ]}]
+
+        convert_segments_to_traditional(segments, "taiwan")
+
+        self.assertEqual(segments[0]["text"], "軟體裡面的滑鼠")
+        self.assertEqual([item["text"] for item in segments[0]["items"]], ["軟體", "裡面", "的", "滑鼠"])
+
+    def test_standard_mode_uses_standard_traditional_without_taiwan_terms(self) -> None:
+        segments = [{"text": "软件里面的鼠标", "items": []}]
+
+        convert_segments_to_traditional(segments, "standard")
+
+        self.assertEqual(segments[0]["text"], "軟件裏面的鼠標")
+
+    def test_off_mode_leaves_segments_unchanged(self) -> None:
+        segments = [{"text": "软件", "items": [{"text": "软件"}]}]
+
+        convert_segments_to_traditional(segments, "off")
+
+        self.assertEqual(segments, [{"text": "软件", "items": [{"text": "软件"}]}])
+
+    def test_item_text_mismatch_falls_back_to_single_character_conversion(self) -> None:
+        segments = [{"text": "软件里面的鼠标", "items": [{"text": "软件", "start": 0, "end": 100}]}]
+
+        with mock.patch("builtins.print") as printed:
+            convert_segments_to_traditional(segments, "taiwan")
+
+        self.assertEqual(segments[0]["text"], "軟件裏面的鼠標")
+        self.assertEqual(segments[0]["items"][0]["text"], "軟件")
+        self.assertIn("无法逐字对齐", printed.call_args.args[0])
 
 
 class QwenTimestampRepairTests(unittest.TestCase):

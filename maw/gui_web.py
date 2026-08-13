@@ -1419,11 +1419,15 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         qwen_audio_hotwords_file = str(hotwords_file)
     elif model.supports_hotwords:
         qwen_audio_hotwords = str(payload.get("qwenAudioHotwords") or "").strip()
+    s2t_mode = str(payload.get("s2tMode") or "off").strip().lower()
+    if s2t_mode not in {"off", "taiwan", "standard"}:
+        s2t_mode = "off"
     return TranscriptionRequest(
         media_path=media,
         srt_path=srt,
         model=model.model_ref or model.id,
         language=str(payload.get("language") or ""),
+        s2t_mode=s2t_mode,
         api_key=api_key,
         length_limit="2m" if test_run else str(payload.get("lengthLimit") or "").strip(),
         max_len=max_len,

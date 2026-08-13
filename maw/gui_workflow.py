@@ -36,6 +36,7 @@ class TranscriptionRequest:
     srt_path: Path
     model: str = DEFAULT_MODEL_ID
     language: str = ""
+    s2t_mode: str = "off"
     api_key: str = ""
     length_limit: str = ""
     max_len: str = ""
@@ -260,6 +261,7 @@ def build_transcribe_command(
         ):
             command.append("--speaker-colors")
         _append_option(command, "--language", request.language)
+        _append_option(command, "--s2t-mode", request.s2t_mode if request.s2t_mode != "off" else "")
     _append_option(command, "--length-limit", request.length_limit)
     _append_option(command, "--max-len", request.max_len)
     _append_option(command, "--min-len", request.min_len)

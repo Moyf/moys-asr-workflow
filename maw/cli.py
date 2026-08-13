@@ -94,6 +94,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("--min-len", type=int, help="句号间最短字数")
     parser.add_argument("--language", help="语言提示；Soniox 可写逗号分隔的多个语言")
     parser.add_argument("--keep-punct", action="store_true", help="保留字幕末尾的逗号和句号")
+    parser.add_argument("--s2t-mode", choices=("off", "taiwan", "standard"), default="off", help="Qwen：简体转繁体模式")
     parser.add_argument("--gap-split", type=int, help="静音切句阈值（毫秒）")
     parser.add_argument("--speaker", action="store_true", help="开启说话人分离")
     parser.add_argument("--speaker-colors", action="store_true", help="开启说话人分离并写入字幕颜色快照")
@@ -201,6 +202,7 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
                 args.hotword_weight,
                 args.context,
                 args.context_file,
+                args.s2t_mode if args.s2t_mode != "off" else None,
             )
         )
         or args.hotword
@@ -220,6 +222,7 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
                 args.context_file,
                 args.model,
                 args.language,
+                args.s2t_mode if args.s2t_mode != "off" else None,
             )
         )
         or args.hotword
@@ -296,6 +299,7 @@ def _generator_args(args: argparse.Namespace, input_path: Path, srt_path: Path) 
         ("--hotword-weight", args.hotword_weight),
         ("--context", args.context),
         ("--context-file", args.context_file),
+        ("--s2t-mode", args.s2t_mode if args.provider == "qwen" and args.s2t_mode != "off" else None),
         ("--context-json", args.soniox_context_json),
     ):
         if value is not None and value != "":

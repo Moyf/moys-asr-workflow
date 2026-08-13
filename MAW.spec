@@ -34,6 +34,7 @@ datas = [
 
 rapidocr_datas, rapidocr_binaries, rapidocr_hiddenimports = collect_all("rapidocr")
 onnxruntime_datas, onnxruntime_binaries, onnxruntime_hiddenimports = collect_all("onnxruntime")
+opencc_datas, opencc_binaries, opencc_hiddenimports = collect_all("opencc")
 
 # The MVP exposes PP-OCRv6 tiny. Keep the larger small checkpoints out of the
 # frozen bundle until the Launcher offers the small model as a real option.
@@ -48,7 +49,8 @@ rapidocr_datas = [
 ]
 datas.extend(rapidocr_datas)
 datas.extend(onnxruntime_datas)
-binaries = [*rapidocr_binaries, *onnxruntime_binaries]
+datas.extend(opencc_datas)
+binaries = [*rapidocr_binaries, *onnxruntime_binaries, *opencc_binaries]
 
 excluded_local_modules = [
     "accelerate",
@@ -95,8 +97,10 @@ a = Analysis(
         "numpy",
         "rapidocr",
         "onnxruntime",
+        "opencc",
         *rapidocr_hiddenimports,
         *onnxruntime_hiddenimports,
+        *opencc_hiddenimports,
     ],
     hookspath=[],
     hooksconfig={},

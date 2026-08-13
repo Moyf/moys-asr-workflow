@@ -95,6 +95,17 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(command[command.index("--min-len") + 1], "3")
         self.assertEqual(command[command.index("--gap-split") + 1], "800")
 
+    def test_build_transcribe_command_passes_qwen_s2t_mode(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            s2t_mode="taiwan",
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertEqual(command[command.index("--s2t-mode") + 1], "taiwan")
+
     def test_build_transcribe_command_debug_raw_saves_full_response(self) -> None:
         request = TranscriptionRequest(
             media_path=self.media_path,

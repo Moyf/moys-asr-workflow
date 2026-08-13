@@ -78,6 +78,7 @@ CLI 未指定 `--model` 时默认使用 `qwen-audio-3.0-asr-flash-filetrans`；�
 --language zh        已知纯中文时指定；中英日韩混说时不要指定
 --gap-split 1000     相邻字间隔超过 N 毫秒时强制切句
 --keep-punct         保留每条字幕末尾的逗号和句号
+--s2t-mode taiwan    用 OpenCC 转成繁体和台湾用语；改为 standard 则只转标准繁体
 --no-html            只要 SRT 和工程文件，不生成便携 HTML
 --with-waveform      把波形写进工程文件，免去编辑器首次打开的 sidecar 缓存文件
 --debug              输出部分 API 原始结果，便于反馈问题
