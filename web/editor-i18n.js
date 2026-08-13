@@ -224,6 +224,14 @@
     '跳转并播放选中字幕': 'Seek to and play selected subtitle',
     '倍速 ×0.5/重置/×2': 'Speed ×0.5/reset/×2',
     '双击波形': 'Double-click waveform', '右键波形背景': 'Right-click waveform background',
+    '在鼠标位置创建字幕（仅波形）': 'Create a subtitle at the pointer (waveform only)',
+    'Ctrl+拖拽空白处': 'Ctrl+drag blank area', '拖动创建指定时长字幕': 'Drag to create a subtitle with a specified duration',
+    '创建字幕': 'Create subtitle', '新增字幕': 'Create subtitle',
+    '该空白区域不足 100ms，无法新增字幕': 'The blank range is shorter than 100 ms; cannot create a subtitle',
+    '这里没有足够的空白区域': 'There is not enough blank space here',
+    '该位置已有字幕，无法新增字幕': 'A subtitle already exists at this position; cannot create another one',
+    '拖动范围包含已有字幕，无法新增字幕': 'The dragged range contains an existing subtitle; cannot create a new one',
+    '已取消新增字幕': 'Subtitle creation canceled',
     '选择工具': 'Select tool', '分割工具': 'Razor tool',
     '增加静音区段': 'Add silent region',
     '空隙区段操作方式设为「中键拖动」时：': 'When gap region operation is “Middle-button drag”:',
@@ -619,6 +627,8 @@
     // flashHint：已自动修复 2 处 0 长时间码（保底 100ms）
     match = /^已自动修复\s*(\d+)\s*处\s*0\s*长时间码（保底\s*100ms）$/.exec(text);
     if (match) return `Auto-repaired ${match[1]} zero-length timings (100 ms minimum)`;
+    match = /^已新增第\s*(\d+)\s*条字幕$/.exec(text);
+    if (match) return `Created subtitle ${match[1]}`;
     match = /^删除\s+(\d+)\s+条字幕$/.exec(text);
     if (match) return `Delete ${match[1]} subtitles`;
     match = /^已将关联字幕统一设为「(.+)」$/.exec(text);
