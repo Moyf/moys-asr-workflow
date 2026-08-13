@@ -83,10 +83,13 @@ def run_ffconcat_rebuild(
     media = request.media_path.expanduser().resolve()
     concat = request.ffconcat_path.expanduser().resolve()
     parse_ffconcat(concat, media)
+    ffmpeg = Path(ffmpeg_path).expanduser().resolve()
+    if not ffmpeg.is_file():
+        raise FfconcatError(f"ffmpeg executable not found: {ffmpeg_path}")
     output = _available_media_output(media)
     temporary = output.with_name(f"{output.stem}.part{output.suffix}")
     command = [
-        str(ffmpeg_path),
+        str(ffmpeg),
         "-y",
         "-nostdin",
         "-hide_banner",
@@ -107,6 +110,7 @@ def run_ffconcat_rebuild(
     try:
         completed = subprocess.run(
             command,
+            shell=False,
             capture_output=True,
             text=True,
             encoding="utf-8",
