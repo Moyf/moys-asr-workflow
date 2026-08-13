@@ -2710,7 +2710,7 @@
       ctx.lineTo(width, height * 0.46);
       ctx.stroke();
 
-      // 波形形状来源：默认自研缓存；设置里切到 ReaPeaks 时用 .ReaPeaks 的最细 wave 层。
+      // 波形形状来源：默认使用 .ReaPeaks 的最细 wave 层；没有时回退到自研缓存。
       const shapeSource = this.options.getWaveShapeSource?.() || 'self';
       const useReapeaksShape = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;
       const activePeaks = useReapeaksShape ? this.reapeaksPeaks : this.peaks;

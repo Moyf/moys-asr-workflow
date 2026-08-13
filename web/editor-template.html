@@ -279,18 +279,18 @@ __WAVEFORM_CSS__
   </div>
 </aside>
 
-<!-- 可拖动的非模态拼合字幕工具窗 -->
+<!-- 可拖动的非模态拼接/合并字幕工具窗 -->
 <aside class="gap-remove-panel auto-merge-panel" id="auto-merge-panel" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="auto-merge-panel-title">
   <header class="gap-remove-panel-header" id="auto-merge-drag-handle">
     <div class="gap-remove-heading">
       <span class="gap-remove-eyebrow">波形处理</span>
-      <h3 id="auto-merge-panel-title">拼合字幕</h3>
+      <h3 id="auto-merge-panel-title">拼接/合并字幕</h3>
     </div>
-    <button type="button" id="auto-merge-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭拼合字幕工具窗">×</button>
+    <button type="button" id="auto-merge-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭拼接/合并字幕工具窗">×</button>
   </header>
   <div class="gap-remove-panel-body">
     <div class="gap-remove-parameters-heading">
-      <span>拼合参数</span>
+      <span>拼接/合并参数</span>
       <small>直接修改字幕时间轴，整个操作一次撤销</small>
     </div>
     <div class="gap-remove-fields">
@@ -300,21 +300,21 @@ __WAVEFORM_CSS__
           <input type="number" id="auto-merge-gap-ms" min="0" max="10000" step="50" value="200" inputmode="numeric">
           <span class="gap-remove-unit">ms</span>
         </span>
-        <small>相邻字幕间隔在此范围内时，拓展字幕长度把它们拼在一起；0 表示不处理</small>
+        <small>将间隔过短的前后字幕直接吸附在一起，去除中间的短暂空白；0 表示不处理</small>
       </label>
       <label class="gap-remove-field">
-        <span class="gap-remove-field-label">拓展方向</span>
+        <span class="gap-remove-field-label">吸附方向</span>
         <select id="auto-merge-snap-direction">
-          <option value="backward" selected>向前拓展</option>
-          <option value="forward">向后拓展</option>
+          <option value="backward" selected>向前吸附</option>
+          <option value="forward">向后吸附</option>
         </select>
-        <small>向前：后方字幕的起点前拓；向后：前方字幕的终点后延</small>
+        <small>向前：后方字幕的起点吸附到前方字幕的终点；向后：前方字幕的终点吸附到后方字幕的起点</small>
       </label>
     </div>
-    <label class="gap-remove-field auto-merge-absorb-field" title="关闭后只拼合间隔，不合并任何字幕">
+    <label class="gap-remove-field auto-merge-absorb-field" title="关闭后只吸附间隔，不合并任何字幕">
       <span class="gap-remove-field-label">吸收过短字幕</span>
       <input type="checkbox" id="auto-merge-absorb-short" checked>
-      <small>过短字幕也必须与相邻字幕间隔在上方阈值内才会吸收；关闭后只拼合间隔</small>
+      <small>过短字幕也必须与相邻字幕间隔在上方阈值内才会吸收；关闭后只吸附间隔</small>
     </label>
     <div class="gap-remove-fields">
       <label class="gap-remove-field">
@@ -334,7 +334,7 @@ __WAVEFORM_CSS__
       </label>
     </div>
     <button type="button" id="auto-merge-run" class="gap-remove-scan">
-      <span>拼合字幕</span>
+      <span>拼接/合并字幕</span>
       <small>按当前参数处理整段工程</small>
     </button>
     <footer class="gap-remove-panel-footer">
@@ -597,10 +597,10 @@ __WAVEFORM_CSS__
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
     <span class="editor-settings-title">音频波形区</span>
-    <label class="editor-settings-item" title="波形形状来源：自研缓存默认（1000Hz 重采样）；ReaPeaks 层用媒体旁 .ReaPeaks 的最细 wave 层绘制包络，避免高频欠采样">波形形状来源
+    <label class="editor-settings-item" title="波形形状来源：默认使用媒体旁 .ReaPeaks 的最细 wave 层；没有时回退到自研 1000Hz 重采样缓存">波形形状来源
       <select id="waveform-shape-source">
         <option value="self">自研波形</option>
-        <option value="reapeaks">ReaPeaks 波形层</option>
+        <option value="reapeaks" selected>ReaPeaks 波形层</option>
       </select>
     </label>
     <label class="toggle editor-settings-item" title="使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形">
@@ -799,6 +799,10 @@ __WAVEFORM_CSS__
               <span>副字幕颜色</span>
               <input type="color" id="extension-subtitle-color" value="#ffd34d" aria-label="副字幕颜色">
             </label>
+            <label class="subtitle-preview-setting-row" title="调整播放器画面内副字幕预览的背景色">
+              <span>副字幕背景色</span>
+              <input type="color" id="extension-subtitle-background-color" value="#000000" aria-label="副字幕背景色">
+            </label>
           </div>
         </div>
       </div>
@@ -871,7 +875,7 @@ __WAVEFORM_CSS__
       <label class="toggle gap-skip-toggle" title="播放时跳过已移除的静音空隙；左键定位到空隙内时可临时预览"><input type="checkbox" id="gap-skip-playback" checked> 播放时跳过空隙</label>
       <span class="gap-remove-summary" id="gap-remove-summary">未扫描空隙</span>
       <span class="sep"></span>
-      <button type="button" id="auto-merge-manage" title="打开可拖动的拼合字幕工具窗" aria-expanded="false" aria-controls="auto-merge-panel">拼合字幕</button>
+      <button type="button" id="auto-merge-manage" title="将间隔过短的前后字幕直接吸附在一起，去除中间的短暂空白（可直接吸收短字幕）" aria-expanded="false" aria-controls="auto-merge-panel">拼接/合并字幕</button>
       <span class="sep"></span>
       <span class="multi-subtitle-controls multi-subtitle-waveform-controls" id="multi-subtitle-waveform-controls" hidden>
         <button type="button" id="multi-subtitle-bind" title="分别选中主轨和扩展轨字幕后建立绑定">绑定</button>

@@ -650,8 +650,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   multiSubtitleAutoSyncDuration: true,
   // 界面主题：dark（默认）/ light。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
   theme: 'dark',
-  // 波形形状来源：self（默认，自研 1000Hz 重采样缓存）/ reapeaks（.ReaPeaks 最细 wave 层，防高频欠采样）。
-  waveShapeSource: 'self',
+  // 波形形状来源：reapeaks（默认，.ReaPeaks 最细 wave 层）/ self（自研 1000Hz 重采样缓存）。
+  waveShapeSource: 'reapeaks',
 };
 const SUBTITLE_FONT_SIZE_MIN = 12;
 const SUBTITLE_FONT_SIZE_MAX = 96;
@@ -712,7 +712,7 @@ function readEditorSettings() {
       selectBoundSubtitlePair: saved.selectBoundSubtitlePair !== false,
       multiSubtitleAutoSyncDuration: saved.multiSubtitleAutoSyncDuration !== false,
       theme: saved.theme === 'light' ? 'light' : 'dark',
-      waveShapeSource: saved.waveShapeSource === 'reapeaks' ? 'reapeaks' : 'self',
+      waveShapeSource: saved.waveShapeSource === 'self' ? 'self' : 'reapeaks',
     };
   } catch (_) {
     return { ...DEFAULT_EDITOR_SETTINGS };
@@ -1036,6 +1036,7 @@ const extensionSubtitlePreviewSettings = document.getElementById('extension-subt
 const extensionSubtitleFontSizeSelect = document.getElementById('extension-subtitle-font-size');
 const extensionSubtitleFontFamilySelect = document.getElementById('extension-subtitle-font-family');
 const extensionSubtitleColorInput = document.getElementById('extension-subtitle-color');
+const extensionSubtitleBackgroundColorInput = document.getElementById('extension-subtitle-background-color');
 const playerEmpty = document.getElementById('player-empty');
 const playerWrap = document.querySelector('.player-wrap');
 const mediaPlayToggle = document.getElementById('media-play-toggle');
@@ -1880,25 +1881,30 @@ subtitleColorInput?.addEventListener('change', () => {
   update();
 });
 extensionSubtitleFontSizeSelect?.addEventListener('change', () => {
-  pushPreviewUndo('调整拓展字幕字号', snapshotPreviewState());
+  pushPreviewUndo('调整副字幕字号', snapshotPreviewState());
   const value = extensionSubtitleFontSizeSelect.value;
   setExtensionSubtitleAppearance({ font_size: value === 'auto' ? null : Number(value) });
   update();
 });
 extensionSubtitleFontFamilySelect?.addEventListener('change', () => {
-  pushPreviewUndo('调整拓展字幕字体', snapshotPreviewState());
+  pushPreviewUndo('调整副字幕字体', snapshotPreviewState());
   setExtensionSubtitleAppearance({ font_family: extensionSubtitleFontFamilySelect.value });
   update();
 });
 extensionSubtitleColorInput?.addEventListener('change', () => {
-  pushPreviewUndo('调整拓展字幕颜色', snapshotPreviewState());
+  pushPreviewUndo('调整副字幕颜色', snapshotPreviewState());
   setExtensionSubtitleAppearance({ color: extensionSubtitleColorInput.value });
+  update();
+});
+extensionSubtitleBackgroundColorInput?.addEventListener('change', () => {
+  pushPreviewUndo('调整副字幕背景色', snapshotPreviewState());
+  setExtensionSubtitleAppearance({ background_color: extensionSubtitleBackgroundColorInput.value });
   update();
 });
 extensionOverlayToggle?.addEventListener('change', () => {
   const previous = snapshotPreviewState();
   previous.extensionOverlay = !extensionOverlayToggle.checked;
-  pushPreviewUndo('切换拓展字幕预览', previous);
+  pushPreviewUndo('切换副字幕预览', previous);
   updateEditorSettings({ extensionOverlayEnabled: extensionOverlayToggle.checked });
   refreshPreviewGeometryEditable();
   update();
@@ -4669,6 +4675,7 @@ function commitMainWaveformSplit(state) {
   selectOnly(mainIndex + 1);
   lastClickedIdx = mainIndex + 1;
   update();
+  triggerNinjaSplitFeedback();
   flashHint('已按选择的断点拆分主字幕', 'success');
   return true;
 }
@@ -4702,6 +4709,7 @@ function commitExtensionSplit(state) {
   selectOnlyExtension(extensionIndex + 1);
   lastClickedExtensionIdx = extensionIndex + 1;
   update();
+  triggerNinjaSplitFeedback();
   flashHint(
     wasBound
       ? '已独立拆分拓展字幕并解除原绑定'
@@ -4775,6 +4783,7 @@ function confirmLinkedSplit() {
   selectOnly(mainIndex);
   lastClickedIdx = mainIndex;
   update();
+  triggerNinjaSplitFeedback();
   flashHint('已按同一绝对时间切点联动拆分', 'success');
 }
 
@@ -5222,7 +5231,7 @@ function syncAutoMergeAbsorbFields() {
   autoMergePanel?.classList.toggle('absorb-disabled', !enabled);
 }
 
-// 一键处理整段工程：相邻间隔不超过 autoMergeGapMs 时按拓展方向拼合；
+// 一键处理整段工程：相邻间隔不超过 autoMergeGapMs 时按吸附方向拼接；
 // 过短的字幕（中文 < N 字 / 英文 < N 词）按吸收方向并入相邻字幕。
 function autoMergeSegments() {
   const plan = window.AsrEditorUtils.planAutoMerge(DATA.segments, {
@@ -5233,13 +5242,13 @@ function autoMergeSegments() {
     absorbDirection: EDITOR_SETTINGS.autoMergeAbsorbDirection,
   });
   if (!plan.snaps.length && !plan.groups.length) {
-    flashHint('没有需要拼合的间隔或过短字幕');
+    flashHint('没有需要拼接/合并的间隔或过短字幕');
     return;
   }
   if (editingState) finishEdit(false);
   commitCuePanelEdit();
   clearSelection({ silent: true });
-  pushUndo('拼合字幕');
+  pushUndo('拼接/合并字幕');
   const snappedCount = applyAutoMergeSnapsWithBindings(plan.snaps);
   // 合并从后往前进行，保持靠前组的下标仍然有效
   for (let i = plan.groups.length - 1; i >= 0; i--) {
@@ -5249,9 +5258,9 @@ function autoMergeSegments() {
   update();
   const mergedCount = plan.groups.reduce((sum, group) => sum + group.length - 1, 0);
   const parts = [];
-  if (snappedCount) parts.push(`拼合 ${snappedCount} 处间隔`);
+  if (snappedCount) parts.push(`吸附 ${snappedCount} 处间隔`);
   if (mergedCount) parts.push(`吸收 ${mergedCount} 条短字幕`);
-  flashHint(`已拼合字幕：${parts.join('，')}`);
+  flashHint(`已拼接/合并字幕：${parts.join('，')}`);
 }
 
 // 「拼合字幕」的自动延展直接修改主轨边界，不能绕过普通时间编辑使用的
@@ -7126,6 +7135,10 @@ function syncExtensionSubtitleAppearanceControls() {
   if (extensionSubtitleColorInput) {
     extensionSubtitleColorInput.value = appearance.color || DEFAULT_EXTENSION_SUBTITLE_COLOR;
   }
+  if (extensionSubtitleBackgroundColorInput) {
+    extensionSubtitleBackgroundColorInput.value = appearance.background_color
+      || SUBTITLE_BACKGROUND_COLOR_DEFAULT;
+  }
 }
 function applySubtitleAppearance(value = DATA.preview?.subtitle) {
   const appearance = getSubtitleAppearance(value);
@@ -7142,6 +7155,10 @@ function applyExtensionSubtitleAppearance(value = DATA.preview?.extension_subtit
   overlayExtensionTextEl.style.fontSize = `${appearance.font_size}px`;
   overlayExtensionTextEl.style.fontFamily = appearance.font_family
     ? SUBTITLE_FONT_FAMILY_CSS[appearance.font_family] : '';
+  const hasCustomBackground = Object.prototype.hasOwnProperty.call(appearance, 'background_color')
+    || Object.prototype.hasOwnProperty.call(appearance, 'background_alpha');
+  overlayExtensionTextEl.style.backgroundColor = hasCustomBackground
+    ? subtitleBackgroundCss(appearance) : '';
   overlayExtensionTextEl.style.color = appearance.color || DEFAULT_EXTENSION_SUBTITLE_COLOR;
   syncExtensionSubtitleAppearanceControls();
 }
@@ -7264,6 +7281,14 @@ function setExtensionSubtitleAppearance(patch, { markDirty = true } = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, 'font_family')) {
     if (!patch.font_family || patch.font_family === 'default') delete next.font_family;
     else Object.assign(next, normalizeSubtitleAppearance({ font_family: patch.font_family }));
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'background_color')) {
+    const backgroundColor = normalizeSubtitleBackgroundColor(patch.background_color);
+    if (!backgroundColor || backgroundColor === SUBTITLE_BACKGROUND_COLOR_DEFAULT) {
+      delete next.background_color;
+    } else {
+      next.background_color = backgroundColor;
+    }
   }
   if (Object.prototype.hasOwnProperty.call(patch, 'color')) {
     const color = normalizeSubtitleColor(patch.color);
@@ -10763,6 +10788,50 @@ function ensureBoundDragOriginal(drag, index, target) {
   return drag.boundOriginals.get(index);
 }
 
+function snapshotBoundDragTrack(track) {
+  return {
+    track,
+    segments: (track?.segments || []).map((segment) => ({
+      segment,
+      start: segment.start,
+      end: segment.end,
+      items: Array.isArray(segment.items)
+        ? segment.items.map((item) => ({ ...item })) : segment.items,
+    })),
+    dirty: track?._dirty,
+  };
+}
+
+// Alt 主字幕拖动中的副字幕挤压是临时预览：同一次拖动把主字幕拉回去时，
+// 副字幕轨也必须从拖动开始时的完整快照恢复，而不能只恢复当前绑定的跟随字幕。
+function ensureBoundDragTimelineOriginals(drag) {
+  if (drag?.track !== 'main' || drag.boundDragTimelineOriginals) return;
+  const multi = getMultiSubtitleState();
+  drag.boundDragTimelineOriginals = {
+    tracks: (multi.tracks || []).map((track) => snapshotBoundDragTrack(track)),
+    bindings: JSON.parse(JSON.stringify(multi.bindings || [])),
+  };
+}
+
+function restoreBoundDragTimelineOriginals(drag) {
+  const snapshot = drag?.boundDragTimelineOriginals;
+  if (!snapshot) return;
+  snapshot.tracks.forEach(({ track, segments, dirty }) => {
+    if (!track) return;
+    track.segments = segments.map((entry) => {
+      entry.segment.start = entry.start;
+      entry.segment.end = entry.end;
+      entry.segment.items = Array.isArray(entry.items)
+        ? entry.items.map((item) => ({ ...item })) : entry.items;
+      return entry.segment;
+    });
+    track._dirty = track._dirty || dirty;
+  });
+  const multi = getMultiSubtitleState();
+  multi.bindings = JSON.parse(JSON.stringify(snapshot.bindings));
+  syncBindingOffsets();
+}
+
 function getBoundDragEdge(drag, index) {
   if (drag.kind === 'move') return { mode: 'move', edge: null };
   if (drag.kind === 'resize-left') return { mode: 'edge', edge: 'start' };
@@ -10869,6 +10938,8 @@ function limitExtensionDragByBoundMain(drag, sourceSegments, sourceTrack) {
 
 function syncBoundCueDrag(drag) {
   if (!drag || drag.independent === true || !multiSubtitleVisible()) return;
+  ensureBoundDragTimelineOriginals(drag);
+  if (drag.track === 'main' && drag.allowSqueeze) restoreBoundDragTimelineOriginals(drag);
   const sourceTrack = drag.track === 'extension' ? getActiveExtensionTrack() : null;
   const sourceSegments = drag.track === 'extension'
     ? sourceTrack?.segments || [] : DATA.segments;
@@ -11125,6 +11196,12 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
     addItem('删除字幕', 'Delete', () => {
       deleteSegments([idx]);
     }, { danger: true });
+    if (bindingForMainIndex(idx)) {
+      addItem('解绑', 'Shift+G', () => {
+        selectOnly(idx);
+        unbindSelectedSubtitlePair();
+      });
+    }
   } else {
     // 组 1：合并与批量文本操作
     addItem(`合并 ${targetIdxs.length} 条字幕`, 'C', () => mergeSegments(targetIdxs));

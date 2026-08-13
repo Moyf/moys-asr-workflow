@@ -57,6 +57,8 @@
     '微软雅黑 / 苹方': 'Microsoft YaHei / PingFang', '黑体': 'SimHei', '宋体': 'SimSun', 'Arial / Segoe UI': 'Arial / Segoe UI',
     '读取本机字体': 'Read local fonts', '点击读取本机字体（首次需要授权）': 'Click to read local fonts (permission required the first time)',
     '背景色': 'Background color', '不透明度': 'Opacity',
+    '副字幕背景色': 'Secondary subtitle background color',
+    '只影响播放器画面内的副字幕预览': 'Only affects the secondary subtitle preview in the player',
     '样式会保存到工程的 preview.subtitle；旧工程默认使用原来的响应式字号。': 'Styles are saved in preview.subtitle; legacy projects keep the original responsive font size.',
     '媒体': 'Media', '预览字幕': 'Subtitle preview', '预览拓展字幕': 'Extension subtitle preview', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
     '频谱颜色': 'Spectral colors',
@@ -70,27 +72,35 @@
     '选择': 'Select', '分割': 'Razor', '移除静音空隙': 'Remove silent gaps',
     '跳过空隙': 'Skip gaps', '播放时跳过空隙': 'Skip gaps during playback', '未扫描空隙': 'Gaps not scanned', '工作区': 'Workspace',
     '拼合字幕': 'Snap subtitles', '拼合参数': 'Snap parameters',
+    '拼接/合并字幕': 'Join / merge subtitles', '拼接/合并参数': 'Join / merge parameters',
     '直接修改字幕时间轴，整个操作一次撤销': 'Edits the subtitle timeline directly; the whole run is one undo step',
-    '间隔阈值': 'Interval threshold', '拓展方向': 'Snap direction',
+    '间隔阈值': 'Interval threshold', '拓展方向': 'Snap direction', '吸附方向': 'Snap direction',
     '向前拓展': 'Extend earlier', '向后拓展': 'Extend later',
+    '向前吸附': 'Snap earlier', '向后吸附': 'Snap later',
     '相邻字幕间隔在此范围内时，拓展字幕长度把它们拼在一起；0 表示不处理':
       'When adjacent subtitle intervals are within this threshold, extend their timing to snap them together; 0 disables it',
+    '将间隔过短的前后字幕直接吸附在一起，去除中间的短暂空白；0 表示不处理':
+      'Snap nearby subtitles together to remove the brief gap between them; 0 disables it',
     '吸收过短字幕': 'Absorb short subtitles', '短字幕阈值': 'Short-subtitle threshold', '吸收方向': 'Absorb direction',
     '向前吸收': 'Into previous', '向后吸收': 'Into next',
     '相邻字幕间隔小于此值时，拓展字幕长度把它们拼在一起；0 表示不处理':
       'When the interval between adjacent subtitles is below this value, extend their lengths to snap them together; 0 disables it',
     '向前：后方字幕的起点前拓；向后：前方字幕的终点后延':
       'Earlier: the later subtitle extends its start backward; Later: the earlier subtitle extends its end forward',
+    '向前：后方字幕的起点吸附到前方字幕的终点；向后：前方字幕的终点吸附到后方字幕的起点':
+      'Earlier: snap the later subtitle start to the earlier subtitle end; Later: snap the earlier subtitle end to the later subtitle start',
     '中文少于 N 个字 / 英文少于 N 个词即视为过短字幕':
       'Fewer than N Chinese characters or N English words counts as a short subtitle',
     '向前：过短字幕并入上一条；向后：并入下一条':
       'Into previous: a short subtitle merges into the previous one; Into next: into the next one',
     '过短的字幕直接并入相邻字幕；关闭后只拼合间隔':
       'Short subtitles merge into a neighbor; when off, only intervals are snapped',
-    '过短字幕也必须与相邻字幕间隔在上方阈值内才会吸收；关闭后只拼合间隔':
+    '过短字幕也必须与相邻字幕间隔在上方阈值内才会吸收；关闭后只吸附间隔':
       'Short subtitles are absorbed only when the adjacent interval is within the threshold above; when off, only intervals are snapped',
+    '关闭后只吸附间隔，不合并任何字幕': 'When off, only intervals are snapped and no subtitles are merged',
     '按当前参数处理整段工程': 'Process the whole project with these parameters',
     '没有需要拼合的间隔或过短字幕': 'No intervals or short subtitles to snap',
+    '没有需要拼接/合并的间隔或过短字幕': 'No intervals or short subtitles to join / merge',
     '字幕时长不足 200ms，无法拆分': 'Subtitles shorter than 200 ms cannot be split',
     '字幕列表编辑': 'Subtitle list editor', '右侧整列波形': 'Waveform column right',
     '三折叠布局': 'Three-fold layout', '大荧幕布局': 'Cinema screen layout',
@@ -304,10 +314,13 @@
     '调整播放器画面内字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the subtitle preview background opacity in the player; 0 hides the background',
     '字幕背景不透明度': 'Subtitle background opacity',
     '只影响播放器画面内的拓展字幕预览': 'Only affects extension subtitle preview in the player',
-    '波形形状来源：自研缓存默认（1000Hz 重采样）；ReaPeaks 层用媒体旁 .ReaPeaks 的最细 wave 层绘制包络，避免高频欠采样': 'Waveform shape source: the self-built cache is the default (1000 Hz resampling); the ReaPeaks layer uses the finest wave layer beside the media to draw the envelope and avoid high-frequency undersampling',
+    '波形形状来源：默认使用媒体旁 .ReaPeaks 的最细 wave 层；没有时回退到自研 1000Hz 重采样缓存': 'Waveform shape source: use the finest wave layer beside the media from .ReaPeaks by default; fall back to the self-built 1000 Hz resampled cache when unavailable',
     '选择播放器画面内拓展字幕预览使用的字体族': 'Choose the font family used by the extension subtitle preview in the player',
+    '选择播放器画面内副字幕预览使用的字体族': 'Choose the font family used by the secondary subtitle preview in the player',
     '选择播放器画面内主字幕预览的颜色': 'Choose the color of the main subtitle preview in the player',
     '选择播放器画面内拓展字幕预览的颜色': 'Choose the color of the extension subtitle preview in the player',
+    '调整播放器画面内副字幕预览的背景色': 'Adjust the secondary subtitle preview background color in the player',
+    '选择播放器画面内副字幕预览的颜色': 'Choose the color of the secondary subtitle preview in the player',
     '字幕预览设置': 'Subtitle preview settings',
     '点击复制工程文件名': 'Click to copy the project file name',
     '点击替换；右键删除': 'Click to replace; right-click to remove',
@@ -426,6 +439,8 @@
     '打开可拖动的移除静音空隙工具窗': 'Open the draggable silent-gap tool',
     '打开可拖动的拼合字幕工具窗': 'Open the draggable snap-subtitles tool',
     '关闭拼合字幕工具窗': 'Close the snap-subtitles tool',
+    '将间隔过短的前后字幕直接吸附在一起，去除中间的短暂空白（可直接吸收短字幕）': 'Snap nearby subtitles together to remove the brief gap between them (short subtitles can also be absorbed)',
+    '关闭拼接/合并字幕工具窗': 'Close the join / merge subtitles tool',
     '关闭后只拼合间隔，不合并任何字幕': 'When off, only intervals are snapped and no subtitles are merged',
     '播放时跳过已移除的静音空隙；左键定位到空隙内时可临时预览': 'Skip removed silent gaps during playback; clicking inside a gap previews it temporarily',
     '工作区：窗口布局与显示状态（列表显示项、波形模式等）': 'Workspace: window layout and display state (list fields, waveform mode, etc.)',
@@ -615,17 +630,17 @@
     if (text === '副字幕已随主字幕联动调整') return 'Extension subtitle followed the main subtitle';
     match = /^已交换主副字幕：主轨\s+(\d+)\s+条，副轨\s+(\d+)\s+条$/.exec(text);
     if (match) return `Swapped main and extension subtitles: ${match[1]} main, ${match[2]} extension`;
-    // flashHint：已拼合字幕：拼合 2 处间隔，吸收 1 条短字幕
-    match = /^已拼合字幕：(.+)$/.exec(text);
+    // flashHint：已拼接/合并字幕：吸附 2 处间隔，吸收 1 条短字幕
+    match = /^(已拼接\/合并字幕|已拼合字幕)：(.+)$/.exec(text);
     if (match) {
-      const parts = match[1].split('，').map((part) => {
-        let inner = /^拼合\s*(\d+)\s*处间隔$/.exec(part);
-        if (inner) return `snapped ${inner[1]} intervals`;
+      const parts = match[2].split('，').map((part) => {
+        let inner = /^(吸附|拼合|拼接)\s*(\d+)\s*处间隔$/.exec(part);
+        if (inner) return `snapped ${inner[2]} intervals`;
         inner = /^吸收\s*(\d+)\s*条短字幕$/.exec(part);
         if (inner) return `absorbed ${inner[1]} short subtitles`;
         return translateText(part, EN);
       });
-      return `Snap subtitles: ${parts.join(', ')}`;
+      return `${match[1] === '已拼接/合并字幕' ? 'Join / merge subtitles' : 'Snap subtitles'}: ${parts.join(', ')}`;
     }
     // flashHint：已自动修复 2 处 0 长时间码（保底 100ms）
     match = /^已自动修复\s*(\d+)\s*处\s*0\s*长时间码（保底\s*100ms）$/.exec(text);

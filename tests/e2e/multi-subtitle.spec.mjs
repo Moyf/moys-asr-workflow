@@ -93,6 +93,11 @@ async function waitForLayoutBox(locator, message) {
   return latestBox;
 }
 
+test('defaults the waveform shape source to ReaPeaks', async ({ page }) => {
+  await page.goto(server.url);
+  await expect(page.locator('#waveform-shape-source')).toHaveValue('reapeaks');
+});
+
 test('offers importing a second SRT when enabling multiple subtitles without an extension track', async ({ page }) => {
   await page.goto(server.url);
   await dropFiles(page, [srtSpec('main.srt', mainSrt)]);
@@ -719,6 +724,39 @@ test('uses the linked split dialog when the main cue is active with its bound ex
   await page.keyboard.press('Escape');
 });
 
+test('shows unbind in a bound main subtitle context menu', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  const main = page.locator('.multi-cue-column.main').filter({ hasText: 'Hello world.' });
+  await main.click({ button: 'right' });
+  const unbind = page.locator('#ctxmenu .item > span').filter({ hasText: /^解绑$/ }).locator('..');
+  await expect(unbind).toBeVisible();
+  await expect(unbind.locator('kbd')).toHaveText('Shift+G');
+  await unbind.click();
+  await expect(page.locator('.waveform-binding-marker')).toHaveCount(0);
+  expect(await page.evaluate(() => DATA.multi_subtitle.bindings)).toHaveLength(1);
+});
+
+test('applies Subtitle Ninja feedback after a linked split-modal split', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ ninjaMode: true }));
+  });
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  await page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main').click();
+  await page.keyboard.press('b');
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await page.locator('#multi-subtitle-split-auto-submit').uncheck();
+  await page.locator('#multi-subtitle-split-main-text .multi-subtitle-split-gap').first()
+    .evaluate((element) => element.click());
+  await page.locator('#multi-subtitle-split-text .multi-subtitle-split-gap').first()
+    .evaluate((element) => element.click());
+  await page.locator('#multi-subtitle-split-confirm').click();
+  await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+  await expect(page.locator('#ninja-slash-flash')).toHaveClass(/show/);
+});
+
 test('keeps the subtitle-list caret position as the linked main split point', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-result-confirm').click();
@@ -1142,8 +1180,14 @@ test('shows independent extension preview controls with yellow defaults', async 
   await expect(page.locator('#extension-subtitle-preview-settings')).toBeVisible();
   await expect(page.locator('#subtitle-color')).toHaveValue('#ffffff');
   await expect(page.locator('#extension-subtitle-color')).toHaveValue('#ffd34d');
+  await expect(page.locator('#extension-subtitle-background-color')).toHaveValue('#000000');
   await page.locator('#extension-subtitle-font-size').selectOption('14');
   await expect(page.locator('#overlay-extension-text')).toHaveCSS('font-size', '14px');
+  await page.locator('#extension-subtitle-background-color').evaluate((element) => {
+    element.value = '#123456';
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await expect(page.locator('#overlay-extension-text')).toHaveCSS('background-color', 'rgba(18, 52, 86, 0.65)');
   await page.locator('#extension-overlay-toggle').uncheck();
   await expect(page.locator('#extension-overlay-toggle')).not.toBeChecked();
 });
@@ -1965,6 +2009,79 @@ test('keeps one shared waveform background with two lanes, switch visibility, an
   await page.mouse.click(clickBox.x + clickBox.width / 2, clickBox.y + clickBox.height / 2);
   await page.keyboard.up('Alt');
   await expect(mainBlock).toHaveClass(/disabled/);
+});
+
+test('restores squeezed bound extension subtitles when an Alt drag is pulled back', async ({ page }) => {
+  const project = {
+    segments: [
+      { id: 'main-squeeze-1', start: 1000, end: 3000, text: '主字幕一', items: [] },
+      { id: 'main-squeeze-2', start: 3200, end: 5000, text: '主字幕二', items: [] },
+    ],
+    waveform: generateWaveformPayload(10000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-squeeze', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        source_name: 'translation.srt',
+        segments: [
+          { id: 'extension-squeeze-1', start: 1000, end: 3000, text: 'first', items: [] },
+          { id: 'extension-squeeze-2', start: 3200, end: 5000, text: 'second', items: [] },
+        ],
+      }],
+      bindings: [
+        {
+          id: 'binding-squeeze-1', track_id: 'extension-squeeze',
+          main_segment_ids: ['main-squeeze-1'], extension_segment_ids: ['extension-squeeze-1'],
+        },
+        {
+          id: 'binding-squeeze-2', track_id: 'extension-squeeze',
+          main_segment_ids: ['main-squeeze-2'], extension_segment_ids: ['extension-squeeze-2'],
+        },
+      ],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'squeeze-restore-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const mainBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
+  const row = mainBlock.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const box = await waitForLayoutBox(mainBlock, '主字幕挤压恢复测试没有波形块');
+  const rowGeometry = await row.evaluate((element) => ({
+    width: element.getBoundingClientRect().width,
+    startMs: Number(element.dataset.startMs),
+    endMs: Number(element.dataset.endMs),
+  }));
+  const deltaPx = (500 / (rowGeometry.endMs - rowGeometry.startMs)) * rowGeometry.width;
+  const centerX = box.x + box.width / 2;
+  const centerY = box.y + box.height / 2;
+  await page.keyboard.down('Alt');
+  await page.mouse.move(centerX, centerY);
+  await page.mouse.down();
+  await page.mouse.move(centerX + deltaPx, centerY, { steps: 4 });
+  await page.mouse.move(centerX, centerY, { steps: 4 });
+  await page.waitForTimeout(50);
+  await page.mouse.up();
+  await page.keyboard.up('Alt');
+
+  expect(await page.evaluate(() => ({
+    main: DATA.segments.map(({ id, start, end }) => ({ id, start, end })),
+    extension: DATA.multi_subtitle.tracks[0].segments.map(({ id, start, end }) => ({ id, start, end })),
+  }))).toEqual({
+    main: [
+      { id: 'main-squeeze-1', start: 1000, end: 3000 },
+      { id: 'main-squeeze-2', start: 3200, end: 5000 },
+    ],
+    extension: [
+      { id: 'extension-squeeze-1', start: 1000, end: 3000 },
+      { id: 'extension-squeeze-2', start: 3200, end: 5000 },
+    ],
+  });
 });
 
 test('snaps an extension cue to main-track boundaries when cross-track snapping is enabled', async ({ page }) => {

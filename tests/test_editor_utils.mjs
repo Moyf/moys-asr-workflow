@@ -258,7 +258,13 @@ test('never shortens a subtitle when applying snaps', () => {
 
 test('translates snap-subtitles flash hints to English', () => {
   assert.equal(i18n.translateText('拼合字幕', 'en'), 'Snap subtitles');
+  assert.equal(i18n.translateText('拼接/合并字幕', 'en'), 'Join / merge subtitles');
+  assert.equal(i18n.translateText('吸附方向', 'en'), 'Snap direction');
   assert.equal(i18n.translateText('没有需要拼合的间隔或过短字幕', 'en'), 'No intervals or short subtitles to snap');
+  assert.equal(
+    i18n.translateText('没有需要拼接/合并的间隔或过短字幕', 'en'),
+    'No intervals or short subtitles to join / merge',
+  );
   assert.equal(
     i18n.translateText('已拼合字幕：拼合 2 处间隔，吸收 1 条短字幕', 'en'),
     'Snap subtitles: snapped 2 intervals, absorbed 1 short subtitles',
@@ -266,6 +272,10 @@ test('translates snap-subtitles flash hints to English', () => {
   assert.equal(
     i18n.translateText('已拼合字幕：吸收 3 条短字幕', 'en'),
     'Snap subtitles: absorbed 3 short subtitles',
+  );
+  assert.equal(
+    i18n.translateText('已拼接/合并字幕：吸附 2 处间隔，吸收 1 条短字幕', 'en'),
+    'Join / merge subtitles: snapped 2 intervals, absorbed 1 short subtitles',
   );
 });
 
