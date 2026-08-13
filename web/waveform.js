@@ -2294,9 +2294,33 @@
         event.stopPropagation();
         const time = this.timeFromPointer(event, row);
         const rowRect = row.getBoundingClientRect();
-        const laneHeight = Math.min(35, Math.max(0, (rowRect.height - 14) / 2));
-        const extensionTop = rowRect.height - 7 - laneHeight;
-        const track = multiLane && event.clientY - rowRect.top >= extensionTop
+        // 双 lane 的高度会随基础/多行波形模式变化（基础波形可到 54px），
+        // 必须读取实际 lane 的像素高度，否则副轨上半段空白会被误判为主轨。
+        const rowStyle = getComputedStyle(row);
+        const parsePx = (value, fallback) => {
+          const parsed = Number.parseFloat(value);
+          return Number.isFinite(parsed) ? parsed : fallback;
+        };
+        const bottomInset = parsePx(rowStyle.getPropertyValue('--multi-subtitle-bottom-inset'), 7);
+        const visibleCue = row.querySelector(
+          '.waveform-cue-block[data-track="main"], .waveform-cue-block[data-track="extension"]',
+        );
+        const visibleCueHeight = visibleCue?.getBoundingClientRect().height || 0;
+        const markerStyle = getComputedStyle(row, '::after');
+        const markerHeight = parsePx(markerStyle.height, 15);
+        const markerBottom = parsePx(markerStyle.bottom, NaN);
+        // ::after 是副轨标记，bottom = bottomInset + (laneHeight - labelHeight) / 2。
+        // 这能解析出 CSS 自定义属性仍保留 min(...) 表达式时的真实像素高度。
+        const markerLaneHeight = Number.isFinite(markerBottom)
+          ? 2 * (markerBottom - bottomInset) + markerHeight : 0;
+        const laneHeight = visibleCueHeight > 0
+          ? visibleCueHeight
+          : markerLaneHeight > 0
+            ? markerLaneHeight
+            : Math.min(35, Math.max(0, (rowRect.height - bottomInset * 2) / 2));
+        const extensionTop = rowRect.height - bottomInset - laneHeight;
+        const currentMultiLane = row.classList.contains('multi-subtitle-row');
+        const track = currentMultiLane && event.clientY - rowRect.top >= extensionTop
           ? 'extension' : 'main';
         this.options.showBlankWaveformMenu?.(time, event.clientX, event.clientY, track);
       });

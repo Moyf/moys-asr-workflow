@@ -93,7 +93,10 @@ __WAVEFORM_CSS__
             <option value="continuous">字符型</option>
           </select>
         </div>
-        <div class="multi-subtitle-setting-hint">英文、西文等按空格拆分请选择「单词型」；中文、日文等按字符拆分请选择「字符型」。</div>
+        <div class="multi-subtitle-setting-hint" role="note" aria-label="语言类型提示">
+          <div>单词型：英语、西文等按空格拆分</div>
+          <div>字符型：中文、日文等按字符拆分</div>
+        </div>
         <div class="multi-subtitle-setting-row" id="multi-subtitle-extension-row-height-setting">
           <span>拓展字幕时波形高度</span>
           <select id="multi-subtitle-extension-row-height" title="启用多重字幕时使用的波形行高度">
@@ -108,7 +111,7 @@ __WAVEFORM_CSS__
         <label class="multi-subtitle-setting-toggle" title="拖动多重字幕时，允许吸附到另一条字幕轨道的起点和终点">
           <input type="checkbox" id="multi-subtitle-cross-track-snap" checked> 跨轨道吸附
         </label>
-        <label class="multi-subtitle-setting-toggle" title="点击主字幕或副字幕时，如果存在绑定字幕，同时选中对应字幕">
+        <label class="multi-subtitle-setting-toggle" title="普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕">
           <input type="checkbox" id="multi-subtitle-select-bound-pair" checked> 同时选中主副字幕
         </label>
         <div class="dropdown-separator"></div>
@@ -384,15 +387,16 @@ __WAVEFORM_CSS__
       </div>
       <div class="help-subgroup">
         <span class="help-subtitle">多重字幕</span>
-        <span><kbd>G</kbd> 单选副字幕后绑定到主字幕（唯一重叠时自动匹配）</span>
+        <span><kbd>G</kbd> 单选副字幕后绑定到主字幕（自动匹配时间最早的未绑定主字幕）</span>
         <span><kbd>Shift+G</kbd> 解绑当前副字幕</span>
         <span><kbd>H</kbd> 对齐副字幕到主字幕时间轴</span>
         <span><kbd>B</kbd> 单选副字幕后打开副字幕拆分</span>
         <span>波形标记：<kbd>1</kbd> 主轨 <kbd>2</kbd> 扩展轨</span>
         <span>语言类型：单词型适合英语等空格语言，字符型适合中文/日文等</span>
-        <span>主字幕调整时副字幕只跟随；冲突时优先限制副字幕，必要时保留重叠，不会缩短主字幕</span>
+        <span>主字幕自动使用时间码拆分：单轨可直接拆分；联动弹窗中主轨显示为不可交互的时间码锚点</span>
+        <span>主字幕调整时副字幕只跟随；冲突时优先限制副字幕，不会缩短主字幕</span>
         <span>副字幕调整时受主字幕轨道边界限制，主字幕没有可用空间时无法继续拖动</span>
-        <span>设置中开启「同时选中主副字幕」后，点击已绑定字幕会同时选中两条；编辑区仍以最后点击的字幕为准</span>
+        <span>普通点击以最后点击的轨道为准；未绑定副字幕不会保留旧主字幕选区。开启「同时选中主副字幕」时，仅补选当前字幕实际绑定的另一条；编辑区仍以最后点击的字幕为准</span>
       </div>
     </div>
     <div class="help-group">
@@ -520,8 +524,8 @@ __WAVEFORM_CSS__
         <option value="ctrl-enter">Ctrl+Enter</option>
     </select>
   </label>
-    <label class="toggle editor-settings-item" title="开启时，波形拆分优先使用主字幕的字词时间码；没有可用时间码时自动打开拆分弹窗；关闭后始终打开拆分弹窗。字幕列表拆分不受影响">
-      <input type="checkbox" id="split-use-word-timestamps" checked> 主字幕拆分使用字词时间码
+    <label class="toggle editor-settings-item" title="开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置">
+      <input type="checkbox" id="split-use-word-timestamps" checked> 主字幕自动使用时间码拆分
     </label>
     <div class="editor-settings-field">
     <label class="editor-settings-item" title="合并两条字幕时，中间插入的字符（如果不需要可以留空）">
@@ -995,7 +999,11 @@ __WAVEFORM_CSS__
 <div class="modal-mask" id="multi-subtitle-split-modal">
   <div class="modal multi-subtitle-split-modal" role="dialog" aria-modal="true" aria-labelledby="multi-subtitle-split-title">
     <h3 id="multi-subtitle-split-title">联动拆分扩展字幕</h3>
-    <p class="modal-desc">移动鼠标并点击选择的拆分断点；字符型语言（中文等）按字符拆分，单词型语言（英语等）只在空格处切分，确保不会拆碎单词。你可以在多重字幕设置中切换语言类型。</p>
+    <p class="modal-desc">移动鼠标并点击选择拆分断点。</p>
+    <div class="multi-subtitle-split-language-hint" role="note" aria-label="语言类型提示">
+      <div>字符型语言（中文等）按字符拆分。</div>
+      <div>单词型语言（英语等）只在空格处切分，确保不会拆碎单词；可在多重字幕 ⚙️ 设置中切换语言类型。</div>
+    </div>
     <div class="multi-subtitle-split-meta" id="multi-subtitle-split-meta"></div>
     <section class="multi-subtitle-split-lane" id="multi-subtitle-split-main-lane" hidden>
       <h4>主字幕拆分</h4>

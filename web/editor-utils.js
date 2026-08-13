@@ -566,6 +566,12 @@
     const value = String(text || '');
     const offsets = [];
     const characters = Array.from(value);
+    const isValidOffset = (candidate) => {
+      const preserveWordConnector = mode === 'word'
+        && isWordSplitConnectorBoundary(value, candidate);
+      const parts = cleanSplitTextParts(value, candidate, preserveWordConnector);
+      return Boolean(parts.left && parts.right);
+    };
     if (mode === 'continuous') {
       let offset = 0;
       for (let index = 0; index < characters.length - 1; index++) {
@@ -575,7 +581,7 @@
         if (/\s/u.test(characters[index + 1])) continue;
         offsets.push(offset);
       }
-      return offsets;
+      return offsets.filter(isValidOffset);
     }
 
     // 单词型在空格组之后，或连接两个词的符号两侧提供断点。
@@ -616,7 +622,7 @@
       }
       offset += characters[index].length;
     }
-    return [...new Set(offsets)];
+    return [...new Set(offsets)].filter(isValidOffset);
   }
 
   function cleanSplitTextParts(text, offset, preserveWordConnector = false) {

@@ -1122,6 +1122,8 @@ test('uses character boundaries for continuous text and protects words for word 
   assert.equal(helpers.splitSubtitleText('split a word', 9, 'word'), null);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('A B', 'continuous'))), [2]);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('A  B', 'continuous'))), [3]);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('你好，世界。', 'continuous'))), [1, 2, 3, 4]);
+  assert.equal(helpers.splitSubtitleText('你好，世界。', 5, 'continuous'), null);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('A B', 'word'))), [2]);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('split a, sentence', 'word'))), [6, 9]);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('the story—you', 'word'))), [4, 9, 10]);
