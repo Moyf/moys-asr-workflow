@@ -617,5 +617,6 @@ document.addEventListener('keydown', (event) => {
     scheduleStart: scheduleOnboardingAfterRender,
     beginRealSplit: beginOnboardingRealSplit,
   });
+  window.MAWE?.register('onboarding', () => window.MAWE_ONBOARDING);
   scheduleOnboardingAfterRender();
 })();

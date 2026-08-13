@@ -3632,4 +3632,7 @@
       computeGroupBadges,
     },
   };
+  if (window.MAWE?.register) {
+    window.MAWE.register('waveform', () => window.AsrWaveform);
+  }
 })();

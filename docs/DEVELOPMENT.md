@@ -11,11 +11,13 @@ MAW（Moy's ASR Workflow）是一个收窄的本地工作流：本地媒体经�
 - `maw/gui_web.py`、`maw/gui_workflow.py` 与 `web/launcher/`：Launcher 图形界面及其后端桥接。
 - `edit.py`：读取 `.mosp` / `.json` 工程，渲染单文件 `.edit.html`；也生成 `blank-editor.html`。
 - `server-editor/serve.py`：仅监听 `127.0.0.1` 的编辑器服务器，负责媒体 Range 响应、工程安全保存与本机设置。
-- `web/`：唯一前端源码。`editor-template.html` 组合 `editor.css`、`waveform.css`、`editor.js`、`waveform.js` 与 i18n；禁止手改生成后的 `blank-editor.html`。
+- `web/`：唯一前端源码。`editor-template.html` 组合 `editor.css`、`waveform.css` 与 `editor-scripts.txt` 中按顺序列出的脚本；禁止手改生成后的 `blank-editor.html`。
 
 ### 当前编辑器维护重点
 
 当前产品流程以 `server-editor/serve.py` 提供的 Server 版编辑器为主。Launcher 暂时隐藏“同时生成单文件版网页编辑器（html）”选项；单文件 HTML 和 `blank-editor.html` 仍保留用于兼容既有使用方式，但暂不作为新功能的主要更新和验收对象，后续重新启用时再统一评估维护范围。
+
+前端代码边界的渐进式整理方案见 [`dev/MAWE 前端渐进式重构企划案.md`](dev/MAWE%20前端渐进式重构企划案.md)，当前 Phase 0–1 的依赖、状态和装配快照见 [`dev/MAWE 前端重构基线.md`](dev/MAWE%20前端重构基线.md)。该企划当前不采用 React，不改变编辑器行为或工程契约。
 
 修改 `web/`、模板或内联资源后，必须执行：
 

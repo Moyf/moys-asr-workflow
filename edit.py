@@ -134,6 +134,7 @@ def scan_stickers(dir_path: Path, max_depth: int = 3, max_items: int = 500) -> t
 
 
 WEB_DIR = Path(__file__).parent / "web"
+EDITOR_SCRIPT_MANIFEST = "editor-scripts.txt"
 
 
 def read_web_asset(name: str) -> str:
@@ -141,16 +142,37 @@ def read_web_asset(name: str) -> str:
     return (WEB_DIR / name).read_text(encoding="utf-8")
 
 
+def read_editor_script_manifest() -> tuple[str, ...]:
+    """Read and validate the ordered list of scripts in the editor page."""
+    entries: list[str] = []
+    for line_number, raw_line in enumerate(read_web_asset(EDITOR_SCRIPT_MANIFEST).splitlines(), start=1):
+        entry = raw_line.split("#", 1)[0].strip()
+        if not entry:
+            continue
+        path = Path(entry)
+        if path.name != entry or path.suffix.lower() != ".js":
+            raise ValueError(f"Invalid editor script manifest entry at line {line_number}: {entry!r}")
+        if entry in entries:
+            raise ValueError(f"Duplicate editor script manifest entry at line {line_number}: {entry!r}")
+        if not (WEB_DIR / path).is_file():
+            raise ValueError(f"Editor script manifest entry does not exist: {entry!r}")
+        entries.append(entry)
+    if not entries:
+        raise ValueError("Editor script manifest is empty")
+    return tuple(entries)
+
+
+def build_editor_scripts() -> str:
+    """Inline editor scripts using the single shared source order."""
+    return "\n\n".join(read_web_asset(name).rstrip() for name in read_editor_script_manifest())
+
+
 def render_editor_page(**context: str) -> str:
     """Render the modular web sources back into one portable HTML file."""
     replacements = {
         "__EDITOR_CSS__": read_web_asset("editor.css").rstrip(),
         "__WAVEFORM_CSS__": read_web_asset("waveform.css").rstrip(),
-        "__EDITOR_UTILS_JS__": read_web_asset("editor-utils.js").rstrip(),
-        "__EDITOR_I18N_JS__": read_web_asset("editor-i18n.js").rstrip(),
-        "__WAVEFORM_JS__": read_web_asset("waveform.js").rstrip(),
-        "__EDITOR_JS__": read_web_asset("editor.js").rstrip(),
-        "__EDITOR_ONBOARDING_JS__": read_web_asset("editor-onboarding.js").rstrip(),
+        "__EDITOR_SCRIPTS_JS__": build_editor_scripts(),
         "__TITLE__": context["title"],
         "__MEDIA_HTML__": context["media_html"],
         "__DATA_JSON__": context["data_json"],

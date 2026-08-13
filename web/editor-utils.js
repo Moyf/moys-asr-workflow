@@ -959,4 +959,7 @@
     previewGeometryToCss,
     applyPreviewGeometryDelta,
   };
+  if (window.MAWE?.register) {
+    window.MAWE.register('editor-utils', () => window.AsrEditorUtils);
+  }
 })();

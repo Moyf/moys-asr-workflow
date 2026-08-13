@@ -2538,7 +2538,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-11 23:44</span>
+  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 2026-08-13 11:46</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -2868,7 +2868,7 @@
         <span class="help-subtitle">播放</span>
         <span class="help-important"><kbd>空格</kbd> 播放/暂停</span>
         <span><kbd>←</kbd>/<kbd>→</kbd> 无选中时前后跳转 5 秒</span>
-        <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> 倍速 ×0.5/重置/×2</span>
+        <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> <span id="help-jkl-mode">倒放/停止/1×播放</span></span>
       </div>
       <div class="help-subgroup">
         <span class="help-subtitle">字幕导航</span>
@@ -2992,10 +2992,20 @@
     <label class="editor-settings-item" id="click-target-field" title="字幕列表点击始终跳转到字幕开头；此设置只影响波形区点击字幕块">
       跳转目标
       <select id="click-target">
-        <option value="cue-start" selected>字幕开头</option>
-        <option value="pointer">鼠标所在位置</option>
+        <option value="cue-start">字幕开头</option>
+        <option value="pointer" selected>鼠标所在位置</option>
       </select>
     </label>
+    <div class="editor-settings-field">
+    <label class="editor-settings-item" title="选择 J/K/L 的播放控制方式">
+      JKL 播放模式
+      <select id="jkl-playback-mode">
+        <option value="speed">慢速和倍速</option>
+        <option value="direction" selected>倒放和正放</option>
+      </select>
+    </label>
+    <small class="editor-settings-hint" id="jkl-playback-mode-hint">J 倒放（无反向声音），K 停止并重置 1×；停止时按 K 以 1×播放。速度档位为 1×、2×、4×、8×、16×。</small>
+    </div>
     <div class="editor-settings-field">
     <label class="toggle editor-settings-item" title="开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条">
       <input type="checkbox" id="select-group-members"> 同时选中分组内项目
@@ -3020,6 +3030,12 @@
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
     <span class="editor-settings-title">音频波形区</span>
+    <label class="editor-settings-item" title="波形形状来源：自研缓存默认（1000Hz 重采样）；ReaPeaks 层用媒体旁 .ReaPeaks 的最细 wave 层绘制包络，避免高频欠采样">波形形状来源
+      <select id="waveform-shape-source">
+        <option value="self">自研波形</option>
+        <option value="reapeaks">ReaPeaks 波形层</option>
+      </select>
+    </label>
     <span class="editor-settings-item" id="waveform-window-setting">显示窗口
       <span class="editor-settings-stepper">
         <button type="button" id="waveform-zoom-out" title="缩小时间轴">−</button>
@@ -3363,6 +3379,58 @@
 <div class="drag-overlay" id="drag-overlay"><div class="drag-hint">📥 松开以加载文件（视频 / 音频 / JSON / SRT）</div></div>
 
 <script>
+// Shared frontend runtime registry.
+//
+// This is deliberately small: it owns module factories only, not editor
+// state. Existing window.AsrEditorUtils / window.AsrWaveform and MAWE_*
+// exports remain compatibility APIs until later refactor phases migrate their
+// consumers.
+(function (global) {
+  'use strict';
+
+  if (global.MAWE?.version === 1 && typeof global.MAWE.register === 'function') return;
+
+  const factories = new Map();
+
+  function moduleName(name) {
+    if (typeof name !== 'string' || !/^[a-z][a-z0-9-]*$/.test(name)) {
+      throw new TypeError(`Invalid MAWE module name: ${String(name)}`);
+    }
+    return name;
+  }
+
+  function register(name, factory) {
+    const normalized = moduleName(name);
+    if (typeof factory !== 'function') {
+      throw new TypeError(`MAWE module ${normalized} must register a factory`);
+    }
+    if (factories.has(normalized)) {
+      throw new Error(`MAWE module already registered: ${normalized}`);
+    }
+    factories.set(normalized, factory);
+  }
+
+  function resolve(name, ...args) {
+    const factory = factories.get(moduleName(name));
+    return factory ? factory(...args) : undefined;
+  }
+
+  const api = Object.freeze({
+    version: 1,
+    register,
+    has: (name) => factories.has(moduleName(name)),
+    list: () => [...factories.keys()],
+    resolve,
+  });
+
+  Object.defineProperty(global, 'MAWE', {
+    configurable: false,
+    enumerable: false,
+    value: api,
+    writable: false,
+  });
+})(window);
+
 // Pure editor helpers kept separate so replacement behavior can be tested
 // without constructing the full browser editor DOM.
 (function () {
@@ -4324,7 +4392,11 @@
     previewGeometryToCss,
     applyPreviewGeometryDelta,
   };
+  if (window.MAWE?.register) {
+    window.MAWE.register('editor-utils', () => window.AsrEditorUtils);
+  }
 })();
+
 (function initMaweI18n(global) {
   'use strict';
 
@@ -4421,7 +4493,7 @@
     '点击字幕列表时自动滚动': 'Auto-scroll when clicking the subtitle list',
     '关闭后，通过字幕列表点击字幕时不会自动滚动列表': 'When disabled, clicking a subtitle in the list will not scroll the list',
     '字幕编辑显示': 'Subtitle editor', '跳转按钮': 'Navigation buttons', '前后跳转': 'Navigation buttons', '时间操作': 'Time actions',
-    '操作': 'Behavior', '通用操作': 'General', '按键调整字幕': 'Keyboard subtitle adjustment', '单击行为': 'Click behavior', '点击字幕块时': 'Click subtitle behavior', '仅选中（不跳转）': 'Select only (do not seek)', '选中并跳转（自动播放）': 'Select and seek (autoplay)',
+    '操作': 'Behavior', '通用操作': 'General', '按键调整字幕': 'Keyboard subtitle adjustment', '单击行为': 'Click behavior', '点击字幕块时': 'Click subtitle behavior', '仅选中（不跳转）': 'Select only (do not seek)', '选中并跳转（自动播放）': 'Select and seek (autoplay)', 'JKL 播放模式': 'JKL playback mode', '慢速和倍速': 'Slower and faster', '倒放和正放': 'Reverse and forward', '倒放/停止/正放': 'Reverse/stop/forward', '倒放/停止/1×播放': 'Reverse/stop/1× play', '选择 J/K/L 的播放控制方式': 'Choose how J/K/L control playback', 'J 倒放（无反向声音），K 停止并重置 1×；停止时按 K 以 1×播放。速度档位为 1×、2×、4×、8×、16×。': 'J reverses the timeline without reverse audio; K stops and resets to 1×, then plays at 1× when stopped. Speed steps are 1×, 2×, 4×, 8×, and 16×.',
     '选中并跳转': 'Select and seek', '跳转目标': 'Seek target', '字幕开头': 'Subtitle start', '鼠标所在位置': 'Pointer position',
     '暂停时只跳转，不自动播放；播放中跳转后继续播放。': 'When paused, seek without starting playback; while playing, keep playing after seeking.',
     '跳转到字幕起点，并在暂停时自动开始播放。': 'Seek to the subtitle start and start playback when paused.',
@@ -4982,6 +5054,7 @@
     start,
     translateText,
   };
+  global.MAWE?.register('i18n', () => global.MAWE_I18N);
 
   if (typeof document === 'undefined') return;
   if (document.readyState === 'loading') {
@@ -4990,6 +5063,7 @@
     start();
   }
 })(window);
+
 // Framework-neutral waveform runtime. Browser/Tauri-specific file access is
 // isolated behind setPayload/processFile and callbacks supplied by editor.js.
 (function () {
@@ -4998,6 +5072,8 @@
   const SETTINGS_KEY = 'moy.asr.waveform.settings.v1';
   const SCHEMA = 'moy.asr.waveform.v1';
   const ENCODING = 'i8-minmax-base64';
+  const SPECTRAL_SCHEMA = 'moy.asr.spectral.v1';
+  const SPECTRAL_ENCODING = 'u16-freq-density-base64';
   const WORKSPACE_SCHEMA = 'moy.asr.editor.workspace.v1';
   // 渲染器预设：classic / wave-right 由专属 CSS 网格渲染；custom 由 layoutTree 渲染
   // （大荧幕布局与用户保存的自定义工作区都以树渲染）。
@@ -5538,6 +5614,64 @@
     return btoa(parts.join(''));
   }
 
+  // Decode a moy.asr.spectral.v1 payload into {freq, density, sample_rate,
+  // division, densityMax}, or null when the payload is absent / unknown.
+  // Each spectral sample is 4 bytes: freq u16 LE, density u16 LE.
+  function decodeSpectralPayload(payload) {
+    if (!payload || payload.schema !== SPECTRAL_SCHEMA || payload.encoding !== SPECTRAL_ENCODING) {
+      return null;
+    }
+    if (!Number.isInteger(payload.peak_count) || payload.peak_count <= 0) return null;
+    if (!Number.isInteger(payload.sample_rate) || payload.sample_rate <= 0) return null;
+    if (!Number.isInteger(payload.division) || payload.division <= 0) return null;
+    if (typeof payload.data !== 'string') return null;
+    let binary;
+    try {
+      binary = atob(payload.data);
+    } catch (_) {
+      return null;
+    }
+    if (binary.length !== payload.peak_count * 4) return null;
+    const freq = new Uint16Array(payload.peak_count);
+    const density = new Uint16Array(payload.peak_count);
+    let densityMax = 1;
+    for (let i = 0; i < payload.peak_count; i++) {
+      const offset = i * 4;
+      freq[i] = binary.charCodeAt(offset) | (binary.charCodeAt(offset + 1) << 8);
+      const d = binary.charCodeAt(offset + 2) | (binary.charCodeAt(offset + 3) << 8);
+      density[i] = d;
+      if (d > densityMax) densityMax = d;
+    }
+    return {
+      freq,
+      density,
+      densityMax,
+      sample_rate: payload.sample_rate,
+      division: payload.division,
+    };
+  }
+
+  // REAPER spectral coloring from the raw 15-bit freq_field (0-32767) and the
+  // 14-bit density (0=noise, 16383=perfect tone). Low→high frequency sweeps
+  // red→pink/green→orange/yellow; saturation & lightness rise with tonality.
+  function freqColor(freq, density, densityMax) {
+    let hue;
+    if (freq < 300) {
+      hue = (freq / 300) * 30; // red (0°) to brown (30°)
+    } else if (freq < 1000) {
+      hue = 300 + ((freq - 300) / 700) * 180; // pink (300°) to green (120°)
+      if (hue >= 360) hue -= 360;
+    } else if (freq < 3000) {
+      hue = 120 - ((freq - 1000) / 2000) * 90; // green (120°) to orange (30°)
+    } else {
+      hue = 30 + Math.min((freq - 3000) / 5000, 1) * 30; // orange (30°) to yellow (60°)
+    }
+    const d = clamp(density / Math.max(1, densityMax), 0, 1);
+    const sat = 0.3 + 0.7 * d;
+    const light = 0.4 + 0.4 * d;
+    return `hsl(${hue.toFixed(1)}, ${(sat * 100).toFixed(1)}%, ${(light * 100).toFixed(1)}%)`;
+  }
+
   function sourceForFile(file) {
     return {
       name: file.name,
@@ -5944,6 +6078,9 @@
       this.settings = readSettings();
       this.payload = null;
       this.peaks = null;
+      this.spectral = null;
+      this.reapeaksPayload = null;
+      this.reapeaksPeaks = null;
       this.player = null;
       this.mediaAvailable = false;
       this.basicWindowStartMs = 0;
@@ -6804,6 +6941,19 @@
       return this.payload;
     }
 
+    setSpectralPayload(payload) {
+      this.spectral = decodeSpectralPayload(payload);
+      this.render();
+      return this.spectral != null;
+    }
+
+    setReapeaksWaveform(payload) {
+      this.reapeaksPeaks = decodePayload(payload);
+      this.reapeaksPayload = this.reapeaksPeaks ? payload : null;
+      this.render();
+      return this.reapeaksPayload != null;
+    }
+
     getGapRemoveDetectionData() {
       if (!this.payload || !this.peaks) return null;
       return {
@@ -7434,7 +7584,13 @@
       ctx.lineTo(width, height * 0.46);
       ctx.stroke();
 
-      const peaksPerSecond = this.payload.peaks_per_second;
+      // 波形形状来源：默认自研缓存；设置里切到 ReaPeaks 时用 .ReaPeaks 的最细 wave 层。
+      const shapeSource = this.options.getWaveShapeSource?.() || 'self';
+      const useReapeaksShape = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;
+      const activePeaks = useReapeaksShape ? this.reapeaksPeaks : this.peaks;
+      const activePps = useReapeaksShape ? this.reapeaksPayload.peaks_per_second : this.payload.peaks_per_second;
+      const activeCount = useReapeaksShape ? this.reapeaksPayload.peak_count : this.payload.peak_count;
+      const peaksPerSecond = activePps;
       const useInterpolation = this.settings.mode === 'basic'
         && this.settings.visibleSeconds === ZOOM_PRESETS[0]
         && (rangeMs / 1000) * peaksPerSecond < width;
@@ -7443,9 +7599,13 @@
       const amplitude = waveformAmplitude(height, this.settings.waveformScale);
       const minWaveY = 2;
       const maxWaveY = Math.max(minWaveY, height - 2);
-      ctx.strokeStyle = this.mediaAvailable ? colors.peak : colors.peakDim;
+      const spectral = this.spectral;
+      const defaultColor = this.mediaAvailable ? colors.peak : colors.peakDim;
+      const spectralRate = spectral ? spectral.sample_rate / spectral.division : 0;
       ctx.lineWidth = 1;
-      ctx.beginPath();
+      // 有频谱缓存时逐像素按主频染色（颜色只填充在波形包络内）；
+      // 否则沿用单次批量描边，避免无频谱时的逐像素绘制开销。
+      let pathOpen = false;
       for (let x = 0; x < width; x++) {
         const xStartMs = startMs + (x / width) * rangeMs;
         const xEndMs = startMs + ((x + 1) / width) * rangeMs;
@@ -7455,26 +7615,47 @@
           const centerMs = (xStartMs + xEndMs) / 2;
           const peakPosition = (centerMs / 1000) * peaksPerSecond - 0.5;
           sampleInterpolatedPeak(
-            this.peaks,
+            activePeaks,
             peakPosition,
-            this.payload.peak_count,
+            activeCount,
             interpolatedPeak,
           );
           [low, high] = interpolatedPeak;
         } else {
-          const firstPeak = clamp(Math.floor((xStartMs / 1000) * peaksPerSecond), 0, this.payload.peak_count - 1);
-          const lastPeak = clamp(Math.ceil((xEndMs / 1000) * peaksPerSecond), firstPeak + 1, this.payload.peak_count);
+          const firstPeak = clamp(Math.floor((xStartMs / 1000) * peaksPerSecond), 0, activeCount - 1);
+          const lastPeak = clamp(Math.ceil((xEndMs / 1000) * peaksPerSecond), firstPeak + 1, activeCount);
           low = 127;
           high = -127;
           for (let peak = firstPeak; peak < lastPeak; peak++) {
-            low = Math.min(low, this.peaks[peak * 2]);
-            high = Math.max(high, this.peaks[peak * 2 + 1]);
+            low = Math.min(low, activePeaks[peak * 2]);
+            high = Math.max(high, activePeaks[peak * 2 + 1]);
           }
         }
-        ctx.moveTo(x + 0.5, clamp(center - (high / 127) * amplitude, minWaveY, maxWaveY));
-        ctx.lineTo(x + 0.5, clamp(center - (low / 127) * amplitude, minWaveY, maxWaveY));
+        const yTop = clamp(center - (high / 127) * amplitude, minWaveY, maxWaveY);
+        const yBot = clamp(center - (low / 127) * amplitude, minWaveY, maxWaveY);
+        if (spectral) {
+          const centerMs = xStartMs + rangeMs / width / 2;
+          const specIndex = Math.floor((centerMs / 1000) * spectralRate);
+          let color = defaultColor;
+          if (specIndex >= 0 && specIndex < spectral.freq.length) {
+            const freq = spectral.freq[specIndex];
+            if (freq > 0) {
+              color = freqColor(freq, spectral.density[specIndex], spectral.densityMax);
+            }
+          }
+          ctx.fillStyle = color;
+          ctx.fillRect(x + 0.5, yTop, 1, Math.max(1, yBot - yTop));
+        } else {
+          if (!pathOpen) {
+            ctx.beginPath();
+            ctx.strokeStyle = defaultColor;
+            pathOpen = true;
+          }
+          ctx.moveTo(x + 0.5, yTop);
+          ctx.lineTo(x + 0.5, yBot);
+        }
       }
-      ctx.stroke();
+      if (!spectral && pathOpen) ctx.stroke();
     }
 
     seekFromPointer(event, row, playAfterSeek = false, geometry = null) {
@@ -8488,6 +8669,8 @@
     builtinWorkspaces: BUILTIN_WORKSPACES,
     testing: {
       decodePayload,
+      decodeSpectralPayload,
+      freqColor,
       remapItems,
       roundMs,
       sourceForFile,
@@ -8515,7 +8698,11 @@
       computeGroupBadges,
     },
   };
+  if (window.MAWE?.register) {
+    window.MAWE.register('waveform', () => window.AsrWaveform);
+  }
 })();
+
 const DATA = {"segments": [], "media": "", "language": "", "model": ""};
 let FILENAME_BASE = "untitled";
 const STICKERS = [];
@@ -8525,6 +8712,8 @@ const SERVER_CONFIG = null;
 const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';
 const CLICK_BEHAVIOR_VALUES = new Set(['select-only', 'select-and-seek', 'select-and-play']);
 const CLICK_TARGET_VALUES = new Set(['cue-start', 'pointer']);
+const JKL_PLAYBACK_MODE_VALUES = new Set(['speed', 'direction']);
+const DEFAULT_JKL_PLAYBACK_MODE = 'direction';
 const CUE_MOVE_STEP_MIN_MS = 10;
 const CUE_MOVE_STEP_MAX_MS = 2000;
 const DEFAULT_CUE_MOVE_STEP_MS = 50;
@@ -8532,7 +8721,10 @@ function normalizeClickBehavior(value) {
   return CLICK_BEHAVIOR_VALUES.has(value) ? value : 'select-and-seek';
 }
 function normalizeClickTarget(value) {
-  return CLICK_TARGET_VALUES.has(value) ? value : 'cue-start';
+  return CLICK_TARGET_VALUES.has(value) ? value : 'pointer';
+}
+function normalizeJklPlaybackMode(value) {
+  return JKL_PLAYBACK_MODE_VALUES.has(value) ? value : DEFAULT_JKL_PLAYBACK_MODE;
 }
 
 function clampCueMoveStepMs(value) {
@@ -8577,12 +8769,16 @@ const DEFAULT_EDITOR_SETTINGS = {
   stickerOverlayEnabled: false,
   // 字幕单击行为：默认选中并跳转；select-and-play 额外在暂停时开始播放。
   clickBehavior: 'select-and-seek',
-  // 波形字幕块的跳转目标；字幕列表点击始终跳转到字幕开头。
-  clickTarget: 'cue-start',
+  // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
+  clickTarget: 'pointer',
+  // J/K/L 播放控制：direction 为倒放/停止/正放，speed 保留旧的慢速/重置/倍速行为。
+  jklPlaybackMode: DEFAULT_JKL_PLAYBACK_MODE,
   // 选中字幕后用方向键 / A-D 微调时间的幅度。
   cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
   // 界面主题：dark（默认）/ light。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
   theme: 'dark',
+  // 波形形状来源：self（默认，自研 1000Hz 重采样缓存）/ reapeaks（.ReaPeaks 最细 wave 层，防高频欠采样）。
+  waveShapeSource: 'self',
 };
 const SUBTITLE_FONT_SIZE_MIN = 12;
 const SUBTITLE_FONT_SIZE_MAX = 96;
@@ -8627,8 +8823,10 @@ function readEditorSettings() {
       stickerOverlayEnabled: saved.stickerOverlayEnabled === true,
       clickBehavior: normalizeClickBehavior(saved.clickBehavior),
       clickTarget: normalizeClickTarget(saved.clickTarget),
+      jklPlaybackMode: normalizeJklPlaybackMode(saved.jklPlaybackMode),
       cueMoveStepMs: clampCueMoveStepMs(saved.cueMoveStepMs),
       theme: saved.theme === 'light' ? 'light' : 'dark',
+      waveShapeSource: saved.waveShapeSource === 'reapeaks' ? 'reapeaks' : 'self',
     };
   } catch (_) {
     return { ...DEFAULT_EDITOR_SETTINGS };
@@ -8740,6 +8938,10 @@ let player = document.getElementById('player');  // 可被「加载媒体」替�
 let waveformEditor = null;
 let playbackFrameId = 0;
 let playbackFramePlayer = null;
+let jklPlaybackRate = 1;
+let jklReversePlaying = false;
+let jklReverseFrameId = 0;
+let jklReverseLastTimestamp = 0;
 // 工程内波形是可直接使用的缓存；加载关联媒体时不要因为媒体签名不同而覆盖它。
 // 媒体生成的波形则不属于工程缓存，切换媒体时仍应重新分析。
 let waveformLoadedFromProject = false;
@@ -8950,6 +9152,9 @@ const helpSplitKey = document.getElementById('help-split-key');
 const clickBehaviorSelect = document.getElementById('click-behavior');
 const clickTargetField = document.getElementById('click-target-field');
 const clickTargetSelect = document.getElementById('click-target');
+const jklPlaybackModeSelect = document.getElementById('jkl-playback-mode');
+const jklPlaybackModeHint = document.getElementById('jkl-playback-mode-hint');
+const helpJklMode = document.getElementById('help-jkl-mode');
 const cueMoveStepInput = document.getElementById('cue-move-step');
 const replaceModal = document.getElementById('replace-modal');
 const stickerModal = document.getElementById('sticker-modal');
@@ -9184,7 +9389,17 @@ if (autoSaveIntervalInput) autoSaveIntervalInput.value = String(EDITOR_SETTINGS.
 if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.stickerOverlayEnabled;
 if (clickBehaviorSelect) clickBehaviorSelect.value = EDITOR_SETTINGS.clickBehavior;
 if (clickTargetSelect) clickTargetSelect.value = EDITOR_SETTINGS.clickTarget;
+if (jklPlaybackModeSelect) jklPlaybackModeSelect.value = EDITOR_SETTINGS.jklPlaybackMode;
 if (cueMoveStepInput) cueMoveStepInput.value = String(EDITOR_SETTINGS.cueMoveStepMs);
+const waveformShapeSourceSelect = document.getElementById('waveform-shape-source');
+if (waveformShapeSourceSelect) {
+  waveformShapeSourceSelect.value = EDITOR_SETTINGS.waveShapeSource;
+  waveformShapeSourceSelect.addEventListener('change', () => {
+    EDITOR_SETTINGS.waveShapeSource = waveformShapeSourceSelect.value === 'reapeaks' ? 'reapeaks' : 'self';
+    saveEditorSettings(EDITOR_SETTINGS);
+    if (waveformEditor) waveformEditor.render();
+  });
+}
 applyCueListDisplaySettings();
 applyCueEditorDisplaySettings();
 applySubtitleAppearance();
@@ -9217,8 +9432,7 @@ const helpFloatingPanel = createFloatingPanel({
   positionKey: HELP_PANEL_POSITION_KEY,
   onOpen: restoreHelpPanelSize,
 });
-// 帮助是非模态浮窗；打开后立即释放入口按钮焦点，让 Enter / Esc 等快捷键回到编辑器。
-helpToggle?.addEventListener('click', () => helpToggle.blur());
+// 帮助是非模态浮窗；鼠标点击后的按钮焦点由统一的快捷键焦点处理释放。
 helpCloseButton?.addEventListener('click', () => helpFloatingPanel.close());
 // 浮窗尺寸：仅在用户拖过右下角缩放手柄后持久化；未缩放时保持 CSS 默认宽度/自动高度
 function restoreHelpPanelSize() {
@@ -9361,6 +9575,16 @@ clickBehaviorSelect?.addEventListener('change', () => {
 clickTargetSelect?.addEventListener('change', () => {
   updateEditorSettings({ clickTarget: normalizeClickTarget(clickTargetSelect.value) });
 });
+jklPlaybackModeSelect?.addEventListener('change', () => {
+  const wasReversePlaying = jklReversePlaying;
+  updateEditorSettings({ jklPlaybackMode: normalizeJklPlaybackMode(jklPlaybackModeSelect.value) });
+  stopJklReversePlayback({ render: false });
+  jklPlaybackRate = 1;
+  player.playbackRate = 1;
+  if (wasReversePlaying) update();
+  syncMediaControls();
+  refreshJklPlaybackModeUi();
+});
 cueMoveStepInput?.addEventListener('change', () => {
   const value = clampCueMoveStepMs(cueMoveStepInput.value);
   cueMoveStepInput.value = String(value);
@@ -9432,6 +9656,27 @@ function refreshClickBehaviorHint() {
 }
 refreshClickBehaviorHint();
 document.addEventListener('mawe:languagechange', refreshClickBehaviorHint);
+
+const JKL_MODE_UI_TEXT = {
+  zh: {
+    speed: { help: '倍速 ×0.5/重置/×2', hint: 'J 慢放，K 重置 1×，L 加速。' },
+    direction: { help: '倒放/停止/1×播放', hint: 'J 倒放（无反向声音），K 停止并重置 1×；停止时按 K 以 1×播放。速度档位为 1×、2×、4×、8×、16×。' },
+  },
+  en: {
+    speed: { help: 'Speed ×0.5/reset/×2', hint: 'J slows down, K resets to 1×, and L speeds up.' },
+    direction: { help: 'Reverse/stop/1× play', hint: 'J reverses the timeline without reverse audio; K stops and resets to 1×, then plays at 1× when stopped. Speed steps are 1×, 2×, 4×, 8×, and 16×.' },
+  },
+};
+function refreshJklPlaybackModeUi() {
+  const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+  const mode = normalizeJklPlaybackMode(EDITOR_SETTINGS.jklPlaybackMode);
+  const text = JKL_MODE_UI_TEXT[language][mode];
+  if (jklPlaybackModeSelect) jklPlaybackModeSelect.value = mode;
+  if (jklPlaybackModeHint) jklPlaybackModeHint.textContent = text.hint;
+  if (helpJklMode) helpJklMode.textContent = text.help;
+}
+refreshJklPlaybackModeUi();
+document.addEventListener('mawe:languagechange', refreshJklPlaybackModeUi);
 
 function setGapRemoveData(next, { dirty = true } = {}) {
   DATA.gap_remove = normalizedGapRemoveData(next);
@@ -11334,12 +11579,93 @@ document.addEventListener('keydown', (e) => {
   clearSelection();
 });
 
+function isJklDirectionMode() {
+  return EDITOR_SETTINGS.jklPlaybackMode === 'direction';
+}
+
+function stopJklReversePlayback({ render = true } = {}) {
+  if (jklReverseFrameId) cancelAnimationFrame(jklReverseFrameId);
+  jklReverseFrameId = 0;
+  jklReverseLastTimestamp = 0;
+  const wasPlaying = jklReversePlaying;
+  jklReversePlaying = false;
+  if (render && wasPlaying) {
+    update();
+    waveformEditor?.updatePlayback();
+  }
+  if (render) syncMediaControls();
+}
+
+function stepJklReversePlayback(timestamp) {
+  jklReverseFrameId = 0;
+  if (!jklReversePlaying || !player) return;
+  if (!jklReverseLastTimestamp) jklReverseLastTimestamp = timestamp;
+  const elapsed = Math.min(
+    0.1,
+    Math.max(0, (timestamp - jklReverseLastTimestamp) / 1000),
+  );
+  jklReverseLastTimestamp = timestamp;
+  const current = Number(player.currentTime);
+  const rate = Math.max(0.0625, Math.abs(jklPlaybackRate));
+  const next = Number.isFinite(current) ? current - elapsed * rate : 0;
+  if (!Number.isFinite(current) || next <= 0) {
+    player.currentTime = 0;
+    jklReversePlaying = false;
+    jklReverseLastTimestamp = 0;
+    update();
+    waveformEditor?.updatePlayback();
+    syncMediaControls();
+    return;
+  }
+  player.currentTime = next;
+  updatePlaybackFrame();
+  renderStickerOverlay(next * 1000);
+  syncMediaControls();
+  if (jklReversePlaying) jklReverseFrameId = requestAnimationFrame(stepJklReversePlayback);
+}
+
+function startJklReversePlayback() {
+  if (!hasLoadedMedia()) {
+    flashHint('请先加载媒体，然后才能预览');
+    return false;
+  }
+  jklReversePlaying = true;
+  jklReverseLastTimestamp = 0;
+  player.playbackRate = Math.max(0.0625, Math.abs(jklPlaybackRate));
+  if (!player.paused) player.pause();
+  if (!jklReverseFrameId) jklReverseFrameId = requestAnimationFrame(stepJklReversePlayback);
+  syncMediaControls();
+  return true;
+}
+
+function playJklForward() {
+  if (!hasLoadedMedia()) {
+    flashHint('请先加载媒体，然后才能预览');
+    return false;
+  }
+  stopJklReversePlayback({ render: false });
+  player.playbackRate = Math.max(0.0625, Math.abs(jklPlaybackRate));
+  const promise = player.play();
+  if (promise && promise.catch) promise.catch(() => {});
+  syncMediaControls();
+  return true;
+}
+
 function togglePlayback() {
   if (!hasLoadedMedia()) {
     flashHint('请先加载媒体，然后才能预览');
     return;
   }
+  if (jklReversePlaying) {
+    stopJklReversePlayback();
+    return;
+  }
+  if (isJklDirectionMode() && jklPlaybackRate < 0) {
+    startJklReversePlayback();
+    return;
+  }
   if (player.paused) {
+    if (isJklDirectionMode()) player.playbackRate = Math.max(0.0625, Math.abs(jklPlaybackRate));
     const promise = player.play();
     if (promise && promise.catch) promise.catch(() => {});
   } else {
@@ -11385,7 +11711,7 @@ function syncMediaControls() {
   const hasMedia = hasLoadedMedia();
   const duration = Number.isFinite(player.duration) && player.duration > 0 ? player.duration : 0;
   const current = Number.isFinite(player.currentTime) ? Math.max(0, player.currentTime) : 0;
-  const active = hasMedia && !player.paused;
+  const active = hasMedia && (jklReversePlaying || !player.paused);
   mediaPlayToggle.disabled = !hasMedia;
   mediaStepBack.disabled = !hasMedia;
   mediaStepForward.disabled = !hasMedia;
@@ -11403,7 +11729,10 @@ function syncMediaControls() {
   mediaSeek.value = String(duration ? Math.min(duration, current) : 0);
   if (Number.isFinite(player.volume)) mediaVolume.value = String(player.volume);
   if (Number.isFinite(player.playbackRate)) {
-    syncPlaybackRateOption(player.playbackRate);
+    const displayedRate = isJklDirectionMode() && jklPlaybackRate < 0
+      ? jklPlaybackRate
+      : player.playbackRate;
+    syncPlaybackRateOption(displayedRate);
   }
   const fullscreenLabel = document.fullscreenElement ? '退出全屏' : '全屏';
   mediaFullscreen.setAttribute('aria-label', fullscreenLabel);
@@ -11494,7 +11823,13 @@ mediaVolume?.addEventListener('input', () => {
   syncMediaControls();
 });
 mediaPlaybackRate?.addEventListener('change', () => {
-  player.playbackRate = Number(mediaPlaybackRate.value) || 1;
+  const selectedRate = Number(mediaPlaybackRate.value) || 1;
+  const rate = Math.max(0.0625, Math.abs(selectedRate));
+  player.playbackRate = rate;
+  if (isJklDirectionMode()) {
+    const direction = selectedRate < 0 || jklPlaybackRate < 0 ? -1 : 1;
+    jklPlaybackRate = direction * rate;
+  }
   syncMediaControls();
 });
 mediaFullscreen?.addEventListener('click', async () => {
@@ -11585,6 +11920,14 @@ function isNativeKeyboardControl(event) {
   return Boolean(target?.closest?.('button, input, select, textarea, a'));
 }
 
+// 鼠标点击按钮后不保留按钮焦点，否则下一次空格会触发按钮自身的 click。
+// 键盘触发的 click detail 为 0，保留焦点以维持原生键盘可访问性。
+document.addEventListener('click', (event) => {
+  if (event.detail === 0) return;
+  const target = event.target instanceof Element ? event.target : null;
+  target?.closest('button')?.blur();
+}, true);
+
 // 空格播放/暂停。捕获阶段先于原生媒体控件处理，避免控件获得焦点后执行默认行为。
 let interceptedSpace = false;
 document.addEventListener('keydown', (e) => {
@@ -11612,15 +11955,39 @@ document.addEventListener('keyup', (e) => {
 }, true);
 window.addEventListener('blur', () => { interceptedSpace = false; });
 
-// J/K/L 倍速控制：K=重置 1×；J=×0.5（叠加）；L=×2（叠加）
-// HTML5 playbackRate 多数浏览器钳在 [0.0625, 16]
+// J/K/L 播放控制的两种模式：旧模式是慢速/重置/倍速；新模式是倒放/停止/1×播放。
+// HTML5 playbackRate 多数浏览器钳在 [0.0625, 16]，反向播放由时间轴驱动。
 const PLAYBACK_RATE_MIN = 0.0625;
 const PLAYBACK_RATE_MAX = 16;
+const JKL_PLAYBACK_RATE_STEPS = [1, 2, 4, 8, 16];
 function fmtRate(r) {
   // 保留必要小数位：0.5/2/4 不带小数；0.25/0.0625 带
   if (Number.isInteger(r)) return r + '×';
   // 去掉尾部 0
   return r.toFixed(4).replace(/0+$/, '').replace(/\.$/, '') + '×';
+}
+function nextJklDirectionRate(current, direction) {
+  const rate = Number.isFinite(current) && current !== 0 ? current : 1;
+  const magnitude = Math.abs(rate);
+  let stepIndex = 0;
+  let smallestDistance = Infinity;
+  JKL_PLAYBACK_RATE_STEPS.forEach((step, index) => {
+    const distance = Math.abs(step - magnitude);
+    if (distance < smallestDistance) {
+      smallestDistance = distance;
+      stepIndex = index;
+    }
+  });
+  if (direction < 0) {
+    if (rate < 0) return -JKL_PLAYBACK_RATE_STEPS[Math.min(stepIndex + 1, JKL_PLAYBACK_RATE_STEPS.length - 1)];
+    if (stepIndex === 0) return -1;
+    return JKL_PLAYBACK_RATE_STEPS[stepIndex - 1];
+  }
+  if (rate < 0) {
+    if (stepIndex === 0) return 1;
+    return -JKL_PLAYBACK_RATE_STEPS[stepIndex - 1];
+  }
+  return JKL_PLAYBACK_RATE_STEPS[Math.min(stepIndex + 1, JKL_PLAYBACK_RATE_STEPS.length - 1)];
 }
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'j' && e.key !== 'J' && e.key !== 'k' && e.key !== 'K' && e.key !== 'l' && e.key !== 'L') return;
@@ -11634,8 +12001,37 @@ document.addEventListener('keydown', (e) => {
   // Ctrl/Alt/Meta 别误触发（让浏览器自己处理 Ctrl+L 等）
   if (e.ctrlKey || e.altKey || e.metaKey) return;
   e.preventDefault();
-  let r = player.playbackRate;
   const k = e.key.toLowerCase();
+  if (isJklDirectionMode()) {
+    if (k === 'k') {
+      const wasPlaying = jklReversePlaying || !player.paused;
+      if (!wasPlaying) {
+        jklPlaybackRate = 1;
+        player.playbackRate = 1;
+        if (playJklForward()) flashHint('正放: 1×');
+        return;
+      }
+      stopJklReversePlayback({ render: false });
+      jklPlaybackRate = 1;
+      player.playbackRate = 1;
+      player.pause();
+      update();
+      waveformEditor?.updatePlayback();
+      syncMediaControls();
+      flashHint('已停止');
+      return;
+    }
+    if (!hasLoadedMedia()) {
+      flashHint('请先加载媒体，然后才能预览');
+      return;
+    }
+    jklPlaybackRate = nextJklDirectionRate(jklPlaybackRate, k === 'j' ? -1 : 1);
+    if (jklPlaybackRate < 0) startJklReversePlayback();
+    else playJklForward();
+    flashHint(`${jklPlaybackRate < 0 ? '倒放' : '正放'}: ${fmtRate(jklPlaybackRate)}`);
+    return;
+  }
+  let r = player.playbackRate;
   if (k === 'k') r = 1;
   else if (k === 'j') r = Math.max(PLAYBACK_RATE_MIN, r * 0.5);
   else if (k === 'l') r = Math.min(PLAYBACK_RATE_MAX, r * 2);
@@ -11646,7 +12042,8 @@ document.addEventListener('keydown', (e) => {
 
 // A/D（或 W/S）：跳转到上一条/下一条字幕的句首并单选。W/S 与 A/D 等价，对应上下方向。
 // Shift+A/D（或 Shift+W/S）：保留当前选择，并向前/后追加选择一条字幕。
-// 跳转本身不改变播放状态：播放中会从新位置继续播放，暂停中只移动播放指针。
+// 播放中以播放头所在字幕为基准；播放头处于空隙时，按方向选择其前方/后方字幕。
+// 暂停时仍以当前选中字幕为基准。跳转本身不改变播放状态。
 document.addEventListener('keydown', (e) => {
   const key = e.key.toLowerCase();
   if (key !== 'a' && key !== 'd' && key !== 'w' && key !== 's') return;
@@ -11681,18 +12078,20 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (e.altKey) return;
+  const wasPlaying = !player.paused;
+  const navigationIndex = wasPlaying ? -1 : currentCuePanelIdx;
   const next = e.shiftKey
     ? window.AsrEditorUtils.findCueSelectionExtensionTarget(
       DATA.segments,
       selectedIdxs,
-      currentCuePanelIdx,
+      navigationIndex,
       Math.round(player.currentTime * 1000),
       direction,
       hideDisabled,
     )
     : window.AsrEditorUtils.findCueNavigationTarget(
       DATA.segments,
-      currentCuePanelIdx,
+      navigationIndex,
       Math.round(player.currentTime * 1000),
       direction,
       hideDisabled,
@@ -11701,7 +12100,6 @@ document.addEventListener('keydown', (e) => {
 
   e.preventDefault();
   e.stopPropagation();
-  const wasPlaying = !player.paused;
   if (e.shiftKey) addToSelection(next);
   else selectOnly(next);
   lastClickedIdx = next;
@@ -14360,6 +14758,7 @@ loadSrtFileInput.addEventListener('change', async (event) => {
 
 async function loadMediaFile(file) {
   if (!file) return;
+  stopJklReversePlayback({ render: false });
   const preserveProjectWaveform = waveformLoadedFromProject
     && Boolean(waveformEditor?.getPayload?.());
   const url = URL.createObjectURL(file);
@@ -14382,7 +14781,7 @@ async function loadMediaFile(file) {
     newPlayer.id = 'player';
     newPlayer.preload = 'metadata';
     if (isVideo) {
-      newPlayer.style.cssText = 'width:100%;max-height:40vh;background:#000;display:block;';
+      newPlayer.style.cssText = 'width:100%;background:#000;display:block;';
     } else {
       newPlayer.style.cssText = 'width:100%;display:block;';
     }
@@ -15430,6 +15829,7 @@ function initWaveformEditor() {
     splitCueAtTime: (idx, timeMs) => splitFromContextMenu(idx, 0, 0, timeMs),
     getClickBehavior: () => EDITOR_SETTINGS.clickBehavior,
     getClickTarget: () => EDITOR_SETTINGS.clickTarget,
+    getWaveShapeSource: () => EDITOR_SETTINGS.waveShapeSource,
     onBeginEdit: (label) => pushUndo(label),
     onLayoutUndo: (label, snapshot) => pushLayoutUndo(label, snapshot),
     onCommitEdit: (idxs, kind) => {
@@ -15452,6 +15852,8 @@ function initWaveformEditor() {
   waveformEditor.attachPlayer(player);
   waveformEditor.setLayoutData(DATA.workspace || null);
   applyEditorDisplaySettings(DATA.workspace?.editorDisplay);
+  waveformEditor.setSpectralPayload(DATA.spectral || null);
+  waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks || null);
   waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform || null);
 }
 
@@ -15542,6 +15944,7 @@ window.MAWE_EDITOR_BRIDGE = Object.freeze({
   openHelp: () => helpFloatingPanel.open(),
   closeHelp: () => helpFloatingPanel.close(),
 });
+window.MAWE?.register('editor-bridge', () => window.MAWE_EDITOR_BRIDGE);
 renderAll();
 updateGapRemoveUi();
 if (repairedTimingCount > 0) {
@@ -15589,6 +15992,7 @@ hideDisabledToggle.addEventListener('change', () => {
 window.addEventListener('beforeunload', (e) => {
   if (hasUnsavedProjectChanges()) { e.preventDefault(); e.returnValue = ''; }
 });
+
 (() => {
 const helpOnboardingButton = document.getElementById('help-onboarding');
 const onboardingLayer = document.getElementById('onboarding-layer');
@@ -16208,6 +16612,7 @@ document.addEventListener('keydown', (event) => {
     scheduleStart: scheduleOnboardingAfterRender,
     beginRealSplit: beginOnboardingRealSplit,
   });
+  window.MAWE?.register('onboarding', () => window.MAWE_ONBOARDING);
   scheduleOnboardingAfterRender();
 })();
 </script>

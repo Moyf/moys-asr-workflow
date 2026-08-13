@@ -7239,6 +7239,7 @@ window.MAWE_EDITOR_BRIDGE = Object.freeze({
   openHelp: () => helpFloatingPanel.open(),
   closeHelp: () => helpFloatingPanel.close(),
 });
+window.MAWE?.register('editor-bridge', () => window.MAWE_EDITOR_BRIDGE);
 renderAll();
 updateGapRemoveUi();
 if (repairedTimingCount > 0) {
