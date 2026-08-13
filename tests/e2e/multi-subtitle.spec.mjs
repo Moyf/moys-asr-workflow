@@ -93,6 +93,18 @@ async function waitForLayoutBox(locator, message) {
   return latestBox;
 }
 
+test('defaults the waveform shape source to ReaPeaks', async ({ page }) => {
+  await page.goto(server.url);
+  await expect(page.locator('#waveform-shape-source')).toHaveValue('reapeaks');
+});
+
+test('explains where to configure automatic timecode splitting', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('#editor-settings-toggle').click();
+  await expect(page.locator('.editor-settings-hint').filter({ hasText: '右上角「🔧 设置 → 拆分与合并」' }))
+    .toContainText('右上角「🔧 设置 → 拆分与合并」');
+});
+
 test('offers importing a second SRT when enabling multiple subtitles without an extension track', async ({ page }) => {
   await page.goto(server.url);
   await dropFiles(page, [srtSpec('main.srt', mainSrt)]);
@@ -290,6 +302,130 @@ test('keeps main and secondary language types independent and reuses them for co
   await expect(page.locator('#cues-container > .cue').first().locator('.charcount')).toHaveText('4');
   await page.locator('#multi-subtitle-extension-language-mode').selectOption('word');
   await expect(page.locator('#cues-container > .cue').first().locator('.charcount')).toHaveText('1');
+});
+
+test('switches the active subtitle track with the up and down arrows', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  const firstRow = page.locator('.multi-dual-cue').first();
+  await firstRow.locator('.multi-cue-column.main .text').click();
+  await expect(page.locator('#cue-panel-target')).toHaveText('主字幕');
+
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('#cue-panel-target')).toHaveText('副字幕');
+  await expect(page.locator('#sel-count')).toHaveText('2');
+
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('#cue-panel-target')).toHaveText('主字幕');
+  await expect(firstRow).toHaveClass(/selected/);
+});
+
+test('keeps track badges optional and uses striped disabled styling for secondary cues', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-badge-001', start: 1000, end: 2000, text: 'main cue' }],
+    waveform: generateWaveformPayload(7000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-badge-1', role: 'extension', name: 'English', language: 'English',
+        split_mode: 'word', source_name: 'translation.srt',
+        segments: [{ id: 'extension-badge-001', start: 1000, end: 2000, text: 'secondary cue' }],
+      }],
+      bindings: [],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'badge-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+  const firstRow = page.locator('.multi-dual-cue').first();
+  const firstWaveformRow = page.locator('.waveform-row.multi-subtitle-row').first();
+
+  await openMultiSubtitleSettings(page);
+  await expect(page.locator('#multi-subtitle-show-track-badges')).not.toBeChecked();
+  await expect(firstWaveformRow).not.toHaveClass(/show-track-badges/);
+  await page.locator('#multi-subtitle-show-track-badges').check();
+  await expect(firstWaveformRow).toHaveClass(/show-track-badges/);
+  await page.locator('#multi-subtitle-show-track-badges').uncheck();
+  await expect(firstWaveformRow).not.toHaveClass(/show-track-badges/);
+  await page.locator('#multi-subtitle-settings-toggle').click();
+
+  await firstRow.locator('.multi-cue-column.extension').click({ modifiers: ['Alt'] });
+  await expect(firstRow.locator('.multi-cue-column.extension')).toHaveClass(/disabled/);
+  await expect(firstRow.locator('.multi-cue-column.extension')).toHaveCSS(
+    'background-image',
+    /repeating-linear-gradient/,
+  );
+});
+
+test('uses the secondary language split mode and caret position for list B splitting', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-extension').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  await openMultiSubtitleSettings(page);
+  await page.locator('#multi-subtitle-extension-language-mode').selectOption('continuous');
+  await page.locator('#multi-subtitle-settings-toggle').click();
+
+  const extensionText = page.locator('.multi-dual-cue').first().locator('.multi-cue-column.extension .text');
+  await extensionText.click();
+  const splitPoint = await extensionText.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 3);
+    range.setEnd(node, 3);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.move(splitPoint.x, splitPoint.y);
+  await page.keyboard.press('b');
+
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await expect(page.locator('#multi-subtitle-split-title')).toHaveText('选择副字幕拆分点');
+  await expect(page.locator('#multi-subtitle-split-main-lane')).toBeHidden();
+  await expect(page.locator('#multi-subtitle-split-text .multi-subtitle-split-gap.active'))
+    .toHaveAttribute('data-offset', '3');
+  await page.keyboard.press('Escape');
+});
+
+test('marquee selection includes secondary waveform cues', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-marquee-001', start: 1000, end: 2000, text: 'main cue' }],
+    waveform: generateWaveformPayload(7000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-marquee-1', role: 'extension', name: 'English', language: 'English',
+        split_mode: 'word', source_name: 'translation.srt',
+        segments: [{ id: 'extension-marquee-001', start: 4000, end: 5000, text: 'secondary cue' }],
+      }],
+      bindings: [],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'marquee-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
+  const extensionBox = await waitForLayoutBox(extensionBlock, '副字幕波形块没有布局');
+  const row = extensionBlock.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const rowBox = await waitForLayoutBox(row, '多重字幕波形行没有布局');
+  await page.keyboard.down('Shift');
+  await page.mouse.move(Math.max(rowBox.x + 4, extensionBox.x - 32), extensionBox.y + extensionBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(extensionBox.x + extensionBox.width / 2, extensionBox.y + extensionBox.height / 2);
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+  await expect(extensionBlock).toHaveClass(/selected/);
 });
 
 test('shows and edits the last clicked main or extension cue in the current subtitle editor', async ({ page }) => {
@@ -627,8 +763,8 @@ test('auto-binds the earliest unbound main cue when an extension overlaps severa
         segments: [
           { id: 'extension-001', start: 1050, end: 1150, text: 'Already bound' },
           { id: 'extension-002', start: 1200, end: 1400, text: 'Replace me' },
-          { id: 'extension-003', start: 3100, end: 3900, text: 'Auto bind me' },
           { id: 'extension-004', start: 1600, end: 2800, text: 'Multi overlap' },
+          { id: 'extension-003', start: 3100, end: 3900, text: 'Auto bind me' },
         ],
       }],
       bindings: [{
@@ -645,6 +781,9 @@ test('auto-binds the earliest unbound main cue when an extension overlaps severa
     type: 'application/json',
     base64: readFileSync(projectPath).toString('base64'),
   }]);
+  await openMultiSubtitleSettings(page);
+  await page.locator('#multi-subtitle-auto-sync-duration').uncheck();
+  await page.locator('#multi-subtitle-settings-toggle').click();
   await page.keyboard.press('Control+d');
 
   const autoExtension = page.locator('.multi-cue-column.extension').filter({ hasText: 'Auto bind me' });
@@ -713,6 +852,79 @@ test('uses the linked split dialog when the main cue is active with its bound ex
   await expect(page.locator('#multi-subtitle-split-title')).toHaveText('分别选择主字幕和副字幕拆分点');
   await expect(page.locator('#multi-subtitle-split-main-lane')).toBeVisible();
   await expect(page.locator('#multi-subtitle-split-extension-lane')).toBeVisible();
+  await page.keyboard.press('Escape');
+});
+
+test('shows unbind in a bound main subtitle context menu', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  const main = page.locator('.multi-cue-column.main').filter({ hasText: 'Hello world.' });
+  await main.click({ button: 'right' });
+  const unbind = page.locator('#ctxmenu .item > span').filter({ hasText: /^解绑$/ }).locator('..');
+  await expect(unbind).toBeVisible();
+  await expect(unbind.locator('kbd')).toHaveText('Shift+G');
+  await unbind.click();
+  await expect(page.locator('.waveform-binding-marker')).toHaveCount(0);
+  expect(await page.evaluate(() => DATA.multi_subtitle.bindings)).toHaveLength(1);
+});
+
+test('applies Subtitle Ninja feedback after a linked split-modal split', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ ninjaMode: true }));
+  });
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  await page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main').click();
+  await page.keyboard.press('b');
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await page.locator('#multi-subtitle-split-auto-submit').uncheck();
+  await page.locator('#multi-subtitle-split-main-text .multi-subtitle-split-gap').first()
+    .evaluate((element) => element.click());
+  await page.locator('#multi-subtitle-split-text .multi-subtitle-split-gap').first()
+    .evaluate((element) => element.click());
+  await page.locator('#multi-subtitle-split-confirm').click();
+  await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+  await expect(page.locator('#ninja-slash-flash')).toHaveClass(/show/);
+});
+
+test('keeps the subtitle-list caret position as the linked main split point', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#split-use-word-timestamps').uncheck();
+  await page.locator('#editor-settings-toggle').click();
+
+  await page.evaluate(() => {
+    const main = DATA.segments[0];
+    main.text = '那更加离谱的就是这颗卫星上搭载了一颗';
+    main.items = [
+      { text: '那更加离谱的就是这', start: main.start, end: 1000 },
+      { text: '颗卫星上搭载了一颗', start: 1000, end: main.end },
+    ];
+    DATA.multi_subtitle.main_split_mode = 'continuous';
+    renderAll({ waveform: 'none' });
+  });
+
+  const mainText = page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main .text');
+  await mainText.click();
+  const splitPoint = await mainText.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 8); // 「就是｜这颗」
+    range.setEnd(node, 8);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.move(splitPoint.x, splitPoint.y);
+  await page.keyboard.press('b');
+
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  const activeGap = page.locator('#multi-subtitle-split-main-text .multi-subtitle-split-gap.active');
+  await expect(activeGap).toHaveAttribute('data-offset', '8');
+  await expect(activeGap).toHaveCSS('opacity', '1');
+  expect(await activeGap.evaluate((gap) => getComputedStyle(gap, '::before').content)).toBe('"✂️"');
+  await expect(page.locator('#multi-subtitle-split-main-text')).not.toHaveClass(/timestamp-locked/);
   await page.keyboard.press('Escape');
 });
 
@@ -1099,8 +1311,14 @@ test('shows independent extension preview controls with yellow defaults', async 
   await expect(page.locator('#extension-subtitle-preview-settings')).toBeVisible();
   await expect(page.locator('#subtitle-color')).toHaveValue('#ffffff');
   await expect(page.locator('#extension-subtitle-color')).toHaveValue('#ffd34d');
+  await expect(page.locator('#extension-subtitle-background-color')).toHaveValue('#000000');
   await page.locator('#extension-subtitle-font-size').selectOption('14');
   await expect(page.locator('#overlay-extension-text')).toHaveCSS('font-size', '14px');
+  await page.locator('#extension-subtitle-background-color').evaluate((element) => {
+    element.value = '#123456';
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await expect(page.locator('#overlay-extension-text')).toHaveCSS('background-color', 'rgba(18, 52, 86, 0.65)');
   await page.locator('#extension-overlay-toggle').uncheck();
   await expect(page.locator('#extension-overlay-toggle')).not.toBeChecked();
 });
@@ -1691,18 +1909,23 @@ test('uses the waveform lane to choose blank-area context-menu semantics', async
   const x = box.x + ((2000 - rowStart) / (rowEnd - rowStart)) * box.width;
   const extensionY = extensionBlock.y + extensionBlock.height / 2;
 
-  // 右键落在副字幕 lane 的空白处时，只提供创建副字幕；拆分入口属于副字幕块菜单。
+  // 右键落在副字幕 lane 的空白处时，创建动作按当前 lane 判定；两条轨道
+  // 的拆分入口则按鼠标时间分别显示，当前没有对应字幕时置灰。
   await page.mouse.click(x, extensionY, { button: 'right' });
   await expect(page.locator('#ctxmenu .item').filter({ hasText: '创建副字幕' })).toBeVisible();
-  await expect(page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分当前字幕' })).toHaveCount(0);
+  await expect(page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分主字幕' })).toBeVisible();
+  await expect(page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分主字幕' })).not.toHaveClass(/disabled/);
+  await expect(page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分副字幕' })).toHaveClass(/disabled/);
   await page.keyboard.press('Escape');
 
-  // 同一行的主字幕 lane 空白处仍按主轨处理，并保留主轨拆分入口。
+  // 同一行的主字幕 lane 空白处仍按主轨处理；两条轨道仍保留拆分入口，
+  // 但当前位置没有字幕时不可用。
   const mainBlankX = box.x + ((3500 - rowStart) / (rowEnd - rowStart)) * box.width;
   const mainY = mainBlock.y + mainBlock.height / 2;
   await page.mouse.click(mainBlankX, mainY, { button: 'right' });
-  const mainSplitItem = page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分当前字幕' });
+  const mainSplitItem = page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分主字幕' });
   await expect(mainSplitItem).toHaveClass(/disabled/);
+  await expect(page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分副字幕' })).toHaveClass(/disabled/);
   await expect(page.locator('#ctxmenu .item').filter({ hasText: '创建字幕' })).toBeVisible();
   await page.keyboard.press('Escape');
   expect(await page.evaluate(() => DATA.segments.length)).toBe(1);
@@ -1779,6 +2002,7 @@ test('keeps one shared waveform background with two lanes, switch visibility, an
   await expect(page.locator('#cue-panel-target')).toHaveText('主字幕');
 
   await openMultiSubtitleSettings(page);
+  await page.locator('#multi-subtitle-show-track-badges').check();
   await page.locator('#multi-subtitle-toggle').uncheck();
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeChecked();
   await expect(page.locator('.waveform-row.multi-subtitle-row')).toHaveCount(0);
@@ -1890,7 +2114,8 @@ test('keeps one shared waveform background with two lanes, switch visibility, an
   expect(afterNormal[0]).toBeGreaterThan(before[0]);
   expect(afterNormal[1]).toBeGreaterThan(before[1]);
 
-  // Alt 有位移时只调整当前主轨，绑定关系仍在；没有位移的 Alt 点击则切换禁用。
+  // Alt 拖动临时允许挤压相邻字幕；主字幕拖动仍带着绑定的副字幕一起移动，
+  // 没有位移的 Alt 点击则切换禁用。
   const beforeAlt = await Promise.all([
     mainBlock.evaluate((element) => parseFloat(element.style.left)),
     extensionBlock.evaluate((element) => parseFloat(element.style.left)),
@@ -1908,7 +2133,7 @@ test('keeps one shared waveform background with two lanes, switch visibility, an
     extensionBlock.evaluate((element) => parseFloat(element.style.left)),
   ]);
   expect(afterAlt[0]).toBeGreaterThan(beforeAlt[0]);
-  expect(Math.abs(afterAlt[1] - beforeAlt[1])).toBeLessThan(0.01);
+  expect(afterAlt[1]).toBeGreaterThan(beforeAlt[1]);
 
   const clickBox = await mainBlock.boundingBox();
   if (!clickBox) throw new Error('主字幕 waveform block 没有布局');
@@ -1916,6 +2141,79 @@ test('keeps one shared waveform background with two lanes, switch visibility, an
   await page.mouse.click(clickBox.x + clickBox.width / 2, clickBox.y + clickBox.height / 2);
   await page.keyboard.up('Alt');
   await expect(mainBlock).toHaveClass(/disabled/);
+});
+
+test('restores squeezed bound extension subtitles when an Alt drag is pulled back', async ({ page }) => {
+  const project = {
+    segments: [
+      { id: 'main-squeeze-1', start: 1000, end: 3000, text: '主字幕一', items: [] },
+      { id: 'main-squeeze-2', start: 3200, end: 5000, text: '主字幕二', items: [] },
+    ],
+    waveform: generateWaveformPayload(10000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-squeeze', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        source_name: 'translation.srt',
+        segments: [
+          { id: 'extension-squeeze-1', start: 1000, end: 3000, text: 'first', items: [] },
+          { id: 'extension-squeeze-2', start: 3200, end: 5000, text: 'second', items: [] },
+        ],
+      }],
+      bindings: [
+        {
+          id: 'binding-squeeze-1', track_id: 'extension-squeeze',
+          main_segment_ids: ['main-squeeze-1'], extension_segment_ids: ['extension-squeeze-1'],
+        },
+        {
+          id: 'binding-squeeze-2', track_id: 'extension-squeeze',
+          main_segment_ids: ['main-squeeze-2'], extension_segment_ids: ['extension-squeeze-2'],
+        },
+      ],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'squeeze-restore-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const mainBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
+  const row = mainBlock.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const box = await waitForLayoutBox(mainBlock, '主字幕挤压恢复测试没有波形块');
+  const rowGeometry = await row.evaluate((element) => ({
+    width: element.getBoundingClientRect().width,
+    startMs: Number(element.dataset.startMs),
+    endMs: Number(element.dataset.endMs),
+  }));
+  const deltaPx = (500 / (rowGeometry.endMs - rowGeometry.startMs)) * rowGeometry.width;
+  const centerX = box.x + box.width / 2;
+  const centerY = box.y + box.height / 2;
+  await page.keyboard.down('Alt');
+  await page.mouse.move(centerX, centerY);
+  await page.mouse.down();
+  await page.mouse.move(centerX + deltaPx, centerY, { steps: 4 });
+  await page.mouse.move(centerX, centerY, { steps: 4 });
+  await page.waitForTimeout(50);
+  await page.mouse.up();
+  await page.keyboard.up('Alt');
+
+  expect(await page.evaluate(() => ({
+    main: DATA.segments.map(({ id, start, end }) => ({ id, start, end })),
+    extension: DATA.multi_subtitle.tracks[0].segments.map(({ id, start, end }) => ({ id, start, end })),
+  }))).toEqual({
+    main: [
+      { id: 'main-squeeze-1', start: 1000, end: 3000 },
+      { id: 'main-squeeze-2', start: 3200, end: 5000 },
+    ],
+    extension: [
+      { id: 'extension-squeeze-1', start: 1000, end: 3000 },
+      { id: 'extension-squeeze-2', start: 3200, end: 5000 },
+    ],
+  });
 });
 
 test('snaps an extension cue to main-track boundaries when cross-track snapping is enabled', async ({ page }) => {

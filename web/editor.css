@@ -686,7 +686,7 @@
   }
   .subtitle-preview-settings-panel {
     position: fixed; z-index: 260;
-    display: grid; gap: 8px; width: min(250px, calc(100vw - 16px));
+    display: grid; gap: 8px; width: min(320px, calc(100vw - 16px));
     padding: 9px 10px;
     background: var(--bg-overlay); border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md); box-shadow: var(--shadow-3);
@@ -717,7 +717,10 @@
     flex: 1 1 100px; min-width: 0; color: var(--text-faint); font-size: 11px; line-height: 1.35;
     white-space: normal;
   }
-  .subtitle-preview-extension-settings { display: grid; gap: 8px; }
+  .subtitle-preview-extension-settings {
+    display: grid; gap: 8px; margin-top: 2px; padding-top: 10px;
+    border-top: 1px solid var(--border-subtle);
+  }
   .subtitle-preview-extension-settings[hidden] { display: none; }
 
   .editor-settings-panel {
@@ -1562,9 +1565,21 @@
     color: var(--accent-hover); font-weight: 600;
   }
   .multi-subtitle-split-error { min-height: 20px; color: var(--red-hover); font-size: 12px; }
-  .multi-cue-column { min-width: 0; }
+  .multi-cue-column { min-width: 0; position: relative; }
   .multi-cue-column.extension { color: var(--text-secondary); }
   .multi-cue-column.unbound { opacity: .82; }
+  .multi-cue-column.disabled {
+    color: var(--text-muted);
+    background: repeating-linear-gradient(
+      135deg,
+      var(--wave-disabled-a) 0 5px,
+      var(--wave-disabled-b) 5px 10px
+    );
+    border-radius: var(--radius-sm);
+  }
+  .multi-cue-column.disabled .index,
+  .multi-cue-column.disabled .time,
+  .multi-cue-column.disabled .text { color: var(--text-muted); }
   .multi-cue-empty { color: var(--text-faint); font-style: italic; }
   .cue.multi-dual-cue { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: center; }
   .cue.multi-dual-cue .multi-cue-column { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1630,8 +1645,11 @@
   .gap-remove-summary { color: var(--amber-hover); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .gap-skip-toggle { white-space: nowrap; }
 
-  /* 拼合字幕 —— 复用 .gap-remove-panel 家族样式，只补充自有差异 */
-  .auto-merge-absorb-field { margin: 8px 0; }
+  /* 拼接/合并字幕 —— 复用 .gap-remove-panel 家族样式，只补充自有差异 */
+  .auto-merge-panel .gap-remove-fields { row-gap: 12px; }
+  .auto-merge-panel .gap-remove-field { row-gap: 8px; }
+  .auto-merge-panel .gap-remove-field small { font-size: 11px; line-height: 1.45; }
+  .auto-merge-absorb-field { margin: 12px 0; }
   .auto-merge-absorb-field input[type=checkbox] { justify-self: end; width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
   .auto-merge-panel select {
     justify-self: end; max-width: 120px; padding: 4px 6px;
@@ -2044,6 +2062,22 @@
     background: rgba(0,0,0,0.75); padding: 24px 48px; border-radius: var(--radius-md);
     border: 2px dashed var(--accent);
   }
+
+  .editor-loading {
+    position: fixed; inset: 0; z-index: 510;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(8, 11, 18, .48);
+  }
+  .editor-loading[hidden] { display: none; }
+  .editor-loading-card {
+    width: min(420px, calc(100vw - 32px)); padding: 18px 20px;
+    background: var(--bg-overlay); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md); box-shadow: var(--shadow-3);
+  }
+  .editor-loading-label { color: var(--text-primary); font-size: 13px; margin-bottom: 10px; }
+  .editor-loading-progress-row { display: flex; align-items: center; gap: 10px; }
+  .editor-loading-progress-row progress { flex: 1 1 auto; min-width: 0; height: 8px; accent-color: var(--accent); }
+  .editor-loading-progress-row span { flex: 0 0 3em; color: var(--text-muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
 
   /* === 统一细滚动条（字幕列表 / 波形 / 面板工具栏 / 模态预览 / 空隙面板 / 表情网格）=== */
   .cues-container,

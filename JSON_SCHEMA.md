@@ -99,7 +99,7 @@
 
 ### 1.1b waveform_reapeaks 波形层（可选）
 
-`waveform_reapeaks` 是 `.ReaPeaks` 最细 wave 层转成的 `moy.asr.waveform.v1` payload（字段与 §1.1 完全一致）。它作为**可选的波形形状来源**：编辑器默认用自研 `waveform`（1000 Hz 重采样），在「设置 → 音频波形区 → 波形形状来源」切到 ReaPeaks 后改用本字段绘制包络，从而避免高频内容的自研重采样欠采样。
+`waveform_reapeaks` 是 `.ReaPeaks` 最细 wave 层转成的 `moy.asr.waveform.v1` payload（字段与 §1.1 完全一致）。它作为**可选的波形形状来源**：编辑器默认使用本字段绘制包络；没有可用 `.ReaPeaks` 时回退到自研 `waveform`（1000 Hz 重采样），从而避免高频内容的自研重采样欠采样。
 
 ```json
 {

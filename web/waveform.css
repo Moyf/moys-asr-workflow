@@ -536,14 +536,14 @@
 .waveform-basic .waveform-row.multi-subtitle-row {
   --multi-subtitle-lane-height: min(54px, calc((100% - (var(--multi-subtitle-bottom-inset) * 2) - var(--multi-subtitle-lane-gap)) / 2));
 }
-.waveform-row.multi-subtitle-row::before {
+.waveform-row.multi-subtitle-row.show-track-badges::before {
   content: "1";
   color: var(--active-cue-fg);
   background: var(--accent);
   top: auto;
   bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) + ((var(--multi-subtitle-lane-height) - var(--multi-subtitle-label-height)) / 2));
 }
-.waveform-row.multi-subtitle-row::after {
+.waveform-row.multi-subtitle-row.show-track-badges::after {
   content: "2";
   color: var(--mark-fg);
   background: var(--amber);

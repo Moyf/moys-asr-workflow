@@ -5,6 +5,7 @@ import unittest
 from maw.project import (
     ProjectValidationFailed,
     normalize_project,
+    repair_project_timing_ranges,
     repair_segment_durations,
     validate_project,
 )
@@ -236,6 +237,39 @@ class ProjectContractTests(unittest.TestCase):
         self.assertEqual(fixed, 0)
         self.assertEqual(segments[0]["items"][0]["end"], 60)
         self.assertEqual((segments[1]["start"], segments[1]["end"]), (400, 460))
+
+    def test_repair_project_timing_ranges_fixes_one_ms_item_overlap_in_all_tracks(self) -> None:
+        project = {
+            "segments": [{
+                "start": 65000,
+                "end": 67000,
+                "text": "非常",
+                "items": [
+                    {"text": "非", "start": 65000, "end": 66051},
+                    {"text": "常", "start": 66050, "end": 66130},
+                ],
+            }],
+            "multi_subtitle": {
+                "tracks": [{
+                    "segments": [{
+                        "start": 65000,
+                        "end": 67000,
+                        "text": "very",
+                        "items": [
+                            {"text": "very", "start": 65000, "end": 66001},
+                            {"text": "", "start": 66000, "end": 66100},
+                        ],
+                    }],
+                }],
+            },
+        }
+
+        fixed = repair_project_timing_ranges(project)
+
+        self.assertEqual(fixed, 2)
+        self.assertEqual(project["segments"][0]["items"][1]["start"], 66051)
+        self.assertEqual(project["multi_subtitle"]["tracks"][0]["segments"][0]["items"][1]["start"], 66001)
+        normalize_project(project)
 
     def test_validate_project_rejects_forward_head_refs_and_name_mismatch(self) -> None:
         project = {

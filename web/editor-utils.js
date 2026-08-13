@@ -129,6 +129,35 @@
     return fixed;
   }
 
+  // 保存前只修复段内 item 的顺序和零时长，不改动字幕段本身的范围。
+  // 这样可以自动处理波形取整造成的 1ms 字/词时间码重叠，同时把真正的
+  // 字幕段重叠交给服务端严格校验。
+  function normalizeItemTimingRanges(segments, minMs = 100) {
+    const floor = Math.max(1, Math.round(Number(minMs) || 100));
+    const source = Array.isArray(segments) ? segments : [];
+    let fixed = 0;
+    source.forEach((segment) => {
+      if (!segment || typeof segment !== 'object') return;
+      let previousItemEnd = Math.round(Number(segment.start));
+      if (!Number.isFinite(previousItemEnd)) previousItemEnd = 0;
+      const items = Array.isArray(segment.items) ? segment.items : null;
+      if (!items) return;
+      items.forEach((item) => {
+        if (!item || typeof item !== 'object') return;
+        let itemStart = Math.round(Number(item.start));
+        let itemEnd = Math.round(Number(item.end));
+        if (!Number.isFinite(itemStart)) { itemStart = previousItemEnd; fixed++; }
+        if (!Number.isFinite(itemEnd)) { itemEnd = itemStart; fixed++; }
+        if (itemStart < previousItemEnd) { itemStart = previousItemEnd; fixed++; }
+        if (itemEnd <= itemStart) { itemEnd = itemStart + floor; fixed++; }
+        item.start = itemStart;
+        item.end = itemEnd;
+        previousItemEnd = itemEnd;
+      });
+    });
+    return fixed;
+  }
+
   // 拼合字幕计划（纯函数，不改动输入）。返回：
   // - snaps: [{ index, edge, time }]，相邻间隔在 (0, gapMs] 时：
   //   snapDirection 'backward'（向前拓展，默认）把后方字幕 start 前拓到前一条 end；
@@ -1424,6 +1453,7 @@
     subtitleTextLength,
     isShortSubtitleText,
     normalizeSegmentTimings,
+    normalizeItemTimingRanges,
     planAutoMerge,
     applyAutoMergeSnaps,
     formatHumanDuration,

@@ -108,7 +108,7 @@ source: "JSON_SCHEMA.md"
 
 ### 1.1b waveform_reapeaks 波形层（可选）
 
-`waveform_reapeaks` 是 `.ReaPeaks` 最细 wave 层转成的 `moy.asr.waveform.v1` payload（字段与 §1.1 完全一致）。它作为**可选的波形形状来源**：编辑器默认用自研 `waveform`（1000 Hz 重采样），在「设置 → 音频波形区 → 波形形状来源」切到 ReaPeaks 后改用本字段绘制包络，从而避免高频内容的自研重采样欠采样。
+`waveform_reapeaks` 是 `.ReaPeaks` 最细 wave 层转成的 `moy.asr.waveform.v1` payload（字段与 §1.1 完全一致）。它作为**可选的波形形状来源**：编辑器默认使用本字段绘制包络；没有可用 `.ReaPeaks` 时回退到自研 `waveform`（1000 Hz 重采样），从而避免高频内容的自研重采样欠采样。
 
 ```json
 {
@@ -270,17 +270,18 @@ source: "JSON_SCHEMA.md"
       "split_mode": "word",
       "source_name": "translation.srt",
       "segments": [{
-        "id": "translation-001",
+        "id": "translation-segment-001",
         "start": 1100,
         "end": 2900,
-        "text": "Extended subtitle"
+        "text": "Extended subtitle",
+        "items": [{"text": "Extended subtitle", "start": 1100, "end": 2900}]
       }]
     }],
     "bindings": [{
       "id": "binding-001",
       "track_id": "translation",
       "main_segment_ids": ["main-001"],
-      "extension_segment_ids": ["translation-001"],
+      "extension_segment_ids": ["translation-segment-001"],
       "start_offset_ms": 100,
       "end_offset_ms": -100
     }]
@@ -301,10 +302,12 @@ source: "JSON_SCHEMA.md"
 | `tracks[i].language` | string | 否 | 语言或语言代码 |
 | `tracks[i].split_mode` | string | 否 | 副字幕语言类型：`continuous`（字符型）或 `word`（单词型）；用于近似拆分和字数统计 |
 | `tracks[i].source_name` | string | 否 | 来源文件名，不保存绝对路径 |
-| `tracks[i].segments` | array | 是 | 扩展字幕段；每段只有段级时间码和文本 |
+| `tracks[i].segments` | array | 是 | 扩展字幕段；每段至少有段级时间码和文本，`items` 可选 |
 | `tracks[i].segments[j].id` | string | 是 | 扩展字幕稳定 ID |
 | `tracks[i].segments[j].start/end` | int | 是 | 非负整数毫秒，`start < end` |
 | `tracks[i].segments[j].text` | string | 是 | 扩展字幕文本 |
+| `tracks[i].segments[j].items` | array | 否 | 可选字词时间码；结构和主轨 `segments[i].items` 相同 |
+| `tracks[i].segments[j].disabled` | bool | 否 | 禁用该扩展字幕；预览、隐藏禁用项和扩展 SRT 导出会跳过它 |
 | `bindings` | array | 否 | 主轨与扩展轨的绑定关系 |
 | `bindings[i].track_id` | string | 是 | 指向扩展轨 ID |
 | `bindings[i].main_segment_ids` | array | 是 | MVP 必须恰好一个主轨 ID |
@@ -314,10 +317,10 @@ source: "JSON_SCHEMA.md"
 
 约束：
 
-- 主轨和扩展轨段均使用不重复的稳定字符串 ID；缺失 ID 的旧工程会在规范化时补齐。
+- 主轨和扩展轨段均使用不重复的稳定字符串 ID；当前规范化会为缺失 ID 的输入补齐，并在导出/保存时写入。主轨按 `main-001`、扩展轨按 `<track-id>-segment-001` 的顺序生成；如果生成值与后续显式 ID 冲突，会使用确定性的 `-generated` 后缀。浏览器与 Python 服务端使用同一规则。
 - 当前 MVP 强制每个绑定一对一；数组形式保留给未来一对多关系，但当前校验要求数组长度均为 1，且一个端点不能重复绑定。
 - 自动导入按段级时间码匹配：时间区间有交集，且开始/结束时间差均不超过 `300ms`；冲突选择总差值最小的候选。未匹配段保留，可手动绑定。
-- 扩展 SRT 或 mosp/json 没有可靠的字词音频时间码；扩展段中的 `items` 会被忽略/清除，不参与拆分。
+- SRT 导入没有字词时间码，因此扩展段通常不带 `items`；mosp/json 导入和主副交换可以带上可选 `items`，保存、加载和再次交换时保留它们。
 - `continuous`（字符型）允许字符边界，`word`（单词型）只允许空格或安全标点附近的边界，禁止拆碎单词。切分时会清理断点两侧相邻的中英文逗号、句号及空白；两种模式也分别决定字数统计规则。
 - `enabled: false` 时工程仍保留轨道、绑定、语言类型和 ID；主轨 SRT 导出语义不变，扩展轨使用独立 SRT 导出。
 
@@ -329,6 +332,7 @@ source: "JSON_SCHEMA.md"
 
 ```json
 {
+  "id": "main-001",
   "start": 1234,
   "end": 5678,
   "text": "字幕文本",
@@ -344,10 +348,12 @@ source: "JSON_SCHEMA.md"
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
+| `id` | `string` | **必填** | 主字幕稳定 ID；输入缺失时规范化为 `main-001`、`main-002` 等确定性 ID |
 | `start` | `int` | **必填** | 段起始时间，**单位毫秒** |
 | `end` | `int` | **必填** | 段结束时间，**单位毫秒**，要求 `end > start` |
 | `text` | `string` | **必填** | 字幕显示文本。可含 `\n` 表示换行（在编辑器里渲染为 `<br>`） |
 | `items` | `array<object>` | 推荐填 | 字级时间戳数组。用于「双击拆分时按字分配时间」。可填 `[]`，此时拆分会按字符比例估算时间点 |
+| `disabled` | `bool` | 否 | 禁用该字幕；预览、隐藏禁用项和默认导出会跳过它 |
 | `speaker` | `string` | 否 | 说话人标签（非空字符串）。保存供应商返回的 opaque ID（如 Soniox 的 `"1"`/`"2"`），不转换为整数或姓名。仅当该段所有带语音 items 都是同一 speaker 时才写入；缺少该字段的旧工程继续有效 |
 | `sticker` | `object\|null` | 否 | 表情包 head 信息。见第四节 |
 | `sticker_ref` | `object\|null` | 否 | 引用上方 head 的表情包（跨多句用） |
@@ -579,6 +585,7 @@ uv run python edit.py your_generated.mosp
 | `segments[i].end` | int | ✅ | 毫秒 |
 | `segments[i].text` | string | ✅ | 显示文本 |
 | `segments[i].items` | array | 推荐 | 字级时间戳，可 `[]` |
+| `segments[i].disabled` | bool | ❌ | 禁用该字幕 |
 | `segments[i].items[k].text` | string | ✅ | 单字/词 |
 | `segments[i].items[k].start` | int | ✅ | 毫秒 |
 | `segments[i].items[k].end` | int | ✅ | 毫秒 |
