@@ -53,6 +53,161 @@ test('undoing a waveform-created subtitle keeps redo available', async ({ page }
   await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
 });
 
+test('blank waveform context menu disables subtitle creation over an existing cue', async ({ page }) => {
+  await page.goto(server.url);
+  const row = page.locator('.waveform-row').first();
+  await expect(row).toBeVisible();
+  const box = await row.boundingBox();
+  expect(box).not.toBeNull();
+
+  await page.mouse.click(box.x + box.width * 0.4, box.y + 20, { button: 'right' });
+  const createItem = page.locator('#ctxmenu .item', { hasText: '创建字幕' });
+  await expect(createItem).toHaveClass(/disabled/);
+  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(6);
+});
+
+test('N creates a subtitle at the waveform pointer and focuses the new cue', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('.player-stage').hover();
+  await page.keyboard.press('n');
+  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(6);
+
+  const row = page.locator('.waveform-row').first();
+  await expect(row).toBeVisible();
+  const box = await row.boundingBox();
+  expect(box).not.toBeNull();
+  const pointer = { x: box.x + box.width * 0.85, y: box.y + 20 };
+  await page.mouse.move(pointer.x, pointer.y);
+  await page.keyboard.press('n');
+
+  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
+  await expect(page.locator('.cue[data-idx="1"]')).toHaveClass(/selected/);
+  await expect.poll(() => page.evaluate(() => window.MAWE_EDITOR_BRIDGE.currentCuePanelIdx)).toBe(1);
+  await expect(page.locator('#cue-panel-text')).toHaveValue('');
+  await expect(page.locator('#cue-panel-text')).toBeFocused();
+  await expect(page.locator('.cue[data-idx="1"] .text')).not.toHaveAttribute('contenteditable', 'plaintext-only');
+  const created = await page.evaluate(() => DATA.segments[1]);
+  expect(created.start).toBeGreaterThanOrEqual(8000);
+  expect(created.end - created.start).toBe(1000);
+});
+
+test('Ctrl+dragging blank waveform creates the dragged duration and focuses the new cue', async ({ page }) => {
+  await page.goto(server.url);
+  const row = page.locator('.waveform-row').first();
+  await expect(row).toBeVisible();
+  const box = await row.boundingBox();
+  expect(box).not.toBeNull();
+  const startX = box.x + box.width * 0.84;
+  const endX = box.x + box.width * 0.94;
+  const y = box.y + 20;
+
+  await page.keyboard.down('Control');
+  await page.mouse.move(startX, y);
+  await page.mouse.down();
+  await page.mouse.move(endX, y, { steps: 6 });
+  const preview = page.locator('.waveform-create-preview');
+  await expect(preview).toBeVisible();
+  await expect(preview).toHaveClass(/waveform-cue-block/);
+  const previewStyle = await preview.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      opacity: Number(style.opacity),
+      height: Number.parseFloat(style.height),
+      borderStyle: style.borderTopStyle,
+      bottom: style.bottom,
+    };
+  });
+  expect(previewStyle.opacity).toBeLessThan(1);
+  expect(previewStyle.height).toBeLessThan(box.height);
+  expect(previewStyle.borderStyle).toBe('dashed');
+  expect(previewStyle.bottom).toBe('7px');
+  await page.mouse.up();
+  await page.keyboard.up('Control');
+
+  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
+  await expect(page.locator('.cue[data-idx="1"]')).toHaveClass(/selected/);
+  await expect.poll(() => page.evaluate(() => window.MAWE_EDITOR_BRIDGE.currentCuePanelIdx)).toBe(1);
+  await expect(page.locator('#cue-panel-text')).toBeFocused();
+  await expect(page.locator('.cue[data-idx="1"] .text')).not.toHaveAttribute('contenteditable', 'plaintext-only');
+  const created = await page.evaluate(() => DATA.segments[1]);
+  const expectedDuration = Math.round((((endX - startX) / box.width) * 10000) / 10) * 10;
+  expect(Math.abs((created.end - created.start) - expectedDuration)).toBeLessThanOrEqual(10);
+});
+
+test('Ctrl+dragging a too-short range shows a warning toast', async ({ page }) => {
+  await page.goto(server.url);
+  const row = page.locator('.waveform-row').first();
+  await expect(row).toBeVisible();
+  const box = await row.boundingBox();
+  expect(box).not.toBeNull();
+  const rowStart = Number(await row.getAttribute('data-start-ms'));
+  const rowEnd = Number(await row.getAttribute('data-end-ms'));
+  const startX = box.x + box.width * 0.84;
+  const endX = startX + Math.max(2, box.width * (80 / (rowEnd - rowStart)));
+  const y = box.y + 20;
+
+  await page.keyboard.down('Control');
+  await page.mouse.move(startX, y);
+  await page.mouse.down();
+  await page.mouse.move(endX, y, { steps: 2 });
+  await page.mouse.up();
+  await page.keyboard.up('Control');
+
+  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(6);
+  const warning = page.locator('#hint-stack .hint-card.hint-warning', {
+    hasText: '该空白区域不足 100ms，无法新增字幕',
+  });
+  await expect(warning).toBeVisible();
+});
+
+test('Ctrl+dragging an existing cue is rejected without a preview', async ({ page }) => {
+  await page.goto(server.url);
+  const cue = page.locator('.waveform-cue-block[data-idx="0"]').first();
+  await expect(cue).toBeVisible();
+  const box = await cue.boundingBox();
+  expect(box).not.toBeNull();
+
+  await page.keyboard.down('Control');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 20, box.y + box.height / 2, { steps: 2 });
+  await expect(page.locator('.waveform-create-preview')).toHaveCount(0);
+  await page.mouse.up();
+  await page.keyboard.up('Control');
+
+  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(6);
+  await expect(page.locator('#hint-stack .hint-card.hint-warning', {
+    hasText: '该位置已有字幕，无法新增字幕',
+  })).toBeVisible();
+});
+
+test('Ctrl+dragging from blank space stops at an existing cue boundary', async ({ page }) => {
+  await page.goto(server.url);
+  const row = page.locator('.waveform-row').first();
+  await expect(row).toBeVisible();
+  const box = await row.boundingBox();
+  expect(box).not.toBeNull();
+  const anchorX = box.x + box.width * 0.9;
+  const crossedX = box.x + box.width * 0.6;
+  const y = box.y + 20;
+
+  await page.keyboard.down('Control');
+  await page.mouse.move(anchorX, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.85, y, { steps: 2 });
+
+  const preview = page.locator('.waveform-create-preview');
+  await expect(preview).toBeVisible();
+  await page.mouse.move(crossedX, y, { steps: 6 });
+  await expect(preview).toBeVisible();
+  await page.mouse.up();
+  await page.keyboard.up('Control');
+  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
+  const created = await page.evaluate(() => DATA.segments[1]);
+  expect(created.start).toBe(8000);
+  expect(created.end).toBe(9000);
+});
+
 test('waveform background split supports undo and redo', async ({ page }) => {
   await page.goto(server.url);
   await makeFirstCueWordSplittable(page);

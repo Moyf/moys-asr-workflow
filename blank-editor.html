@@ -2838,6 +2838,22 @@
   white-space: nowrap;
 }
 
+/* Ctrl(Cmd)+左键拖动空白处：使用和正式字幕块一致的几何形状，
+   以半透明虚影预览将要创建的时间范围。 */
+.waveform-cue-block.waveform-create-preview {
+  z-index: 12;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--cue-color) 80%, white);
+  background: color-mix(in srgb, var(--cue-color) 28%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--cue-color) 30%, transparent);
+  cursor: grabbing;
+  opacity: 0.62;
+  pointer-events: none;
+}
+.waveform-cue-block.waveform-create-preview > .waveform-cue-label {
+  color: var(--wave-cue-text);
+}
+
 @media (max-width: 820px) {
   .waveform-status { display: none; }
   .editor-workspace.layout-classic.waveform-multi {
@@ -3252,6 +3268,8 @@
         <span class="help-subtitle">鼠标</span>
         <span><kbd>双击波形</kbd> 播放/暂停</span>
         <span><kbd>右键波形背景</kbd> 显示菜单</span>
+        <span class="help-important"><kbd>N</kbd> 在鼠标位置创建字幕（仅波形）</span>
+        <span><kbd data-mod-key>Ctrl+拖拽空白处</kbd> 拖动创建指定时长字幕</span>
         <span><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>
       </div>
       <div class="help-subgroup">
@@ -5657,6 +5675,14 @@
     '跳转并播放选中字幕': 'Seek to and play selected subtitle',
     '倍速 ×0.5/重置/×2': 'Speed ×0.5/reset/×2',
     '双击波形': 'Double-click waveform', '右键波形背景': 'Right-click waveform background',
+    '在鼠标位置创建字幕（仅波形）': 'Create a subtitle at the pointer (waveform only)',
+    'Ctrl+拖拽空白处': 'Ctrl+drag blank area', '拖动创建指定时长字幕': 'Drag to create a subtitle with a specified duration',
+    '创建字幕': 'Create subtitle', '新增字幕': 'Create subtitle',
+    '该空白区域不足 100ms，无法新增字幕': 'The blank range is shorter than 100 ms; cannot create a subtitle',
+    '这里没有足够的空白区域': 'There is not enough blank space here',
+    '该位置已有字幕，无法新增字幕': 'A subtitle already exists at this position; cannot create another one',
+    '拖动范围包含已有字幕，无法新增字幕': 'The dragged range contains an existing subtitle; cannot create a new one',
+    '已取消新增字幕': 'Subtitle creation canceled',
     '选择工具': 'Select tool', '分割工具': 'Razor tool',
     '增加静音区段': 'Add silent region',
     '空隙区段操作方式设为「中键拖动」时：': 'When gap region operation is “Middle-button drag”:',
@@ -6052,6 +6078,8 @@
     // flashHint：已自动修复 2 处 0 长时间码（保底 100ms）
     match = /^已自动修复\s*(\d+)\s*处\s*0\s*长时间码（保底\s*100ms）$/.exec(text);
     if (match) return `Auto-repaired ${match[1]} zero-length timings (100 ms minimum)`;
+    match = /^已新增第\s*(\d+)\s*条字幕$/.exec(text);
+    if (match) return `Created subtitle ${match[1]}`;
     match = /^删除\s+(\d+)\s+条字幕$/.exec(text);
     if (match) return `Delete ${match[1]} subtitles`;
     match = /^已将关联字幕统一设为「(.+)」$/.exec(text);
@@ -7228,6 +7256,7 @@
       this.multiRange = [-1, -1];
       this.activeIndex = -1;
       this.drag = null;
+      this.createCueDrag = null;
       this.gapRangeDrag = null;
       this.gapBoundaryDrag = null;
       this.suppressGapClickUntil = 0;
@@ -8441,6 +8470,26 @@
           this.beginGapRangeDrag(event, row);
           return;
         }
+        // Ctrl(Cmd)+左键拖动空白处：按拖动范围创建一条指定时长字幕。
+        // 命中字幕块或静音空隙时保留各自已有的选择/边界操作。
+        if (
+          event.button === 0 &&
+          (event.ctrlKey || event.metaKey) &&
+          !event.shiftKey &&
+          !event.altKey &&
+          !event.target.closest('.waveform-cue-block, .waveform-gap-block')
+        ) {
+          if (this.isCueTimeOccupied(this.timeFromPointer(event, row))) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.options.onCueCreateRejected?.('occupied');
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          this.beginCreateCueDrag(event, row);
+          return;
+        }
         // Shift+左键在空白处拖动：框选字幕块（追加进现有多选），
         // 不进入下方的清除选中/seek/播放头拖拽路径
         if (
@@ -8957,6 +9006,106 @@
       if (playAfterSeek && this.player?.paused) this.options.togglePlayback?.();
     }
 
+    // Ctrl(Cmd)+左键拖动空白波形：显示字幕块虚影，松开后交给编辑器
+    // 创建字幕。时间映射固定使用按下时的行几何，避免虚拟行重建或拖出行边界
+    // 后把终点错误地映射到另一行。
+    beginCreateCueDrag(event, row) {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.focusWaveform();
+      const geometry = this.captureRowGeometry(row);
+      const startMs = this.timeFromPointer(event, row, geometry);
+      if (this.isCueTimeOccupied(startMs)) {
+        this.options.onCueCreateRejected?.('occupied');
+        return;
+      }
+      const drag = {
+        pointerId: event.pointerId,
+        row,
+        geometry,
+        startMs,
+        currentMs: startMs,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        lastEvent: event,
+        preview: null,
+        frame: 0,
+        finish: null,
+      };
+      this.createCueDrag = drag;
+
+      const updatePosition = (nextEvent) => {
+        if (!nextEvent) return;
+        drag.lastEvent = nextEvent;
+        const requestedMs = this.timeFromPointer(nextEvent, row, geometry);
+        // 起点在空白时，拖入已有字幕只把终点挡在字幕边界，
+        // 保留之前的“边界阻挡后仍可创建”行为。
+        drag.currentMs = this.clampCreateCueTime(drag.startMs, requestedMs);
+      };
+      const updatePreview = () => {
+        drag.frame = 0;
+        if (this.createCueDrag !== drag) return;
+        const start = Math.min(drag.startMs, drag.currentMs);
+        const end = Math.max(drag.startMs, drag.currentMs);
+        if (!drag.preview) {
+          drag.preview = document.createElement('div');
+          drag.preview.className = 'waveform-cue-block waveform-create-preview';
+          const label = document.createElement('span');
+          label.className = 'waveform-cue-label';
+          drag.preview.appendChild(label);
+          row.appendChild(drag.preview);
+        }
+        const duration = Math.max(1, geometry.endMs - geometry.startMs);
+        drag.preview.style.left = `${clamp(((start - geometry.startMs) / duration) * 100, 0, 100)}%`;
+        drag.preview.style.width = `${Math.max(0.25, clamp(((end - start) / duration) * 100, 0, 100))}%`;
+        drag.preview.firstElementChild.textContent = `${formatCompact(roundMs(start))} → ${formatCompact(roundMs(end))} · ${formatCompact(roundMs(end - start))}`;
+      };
+      const cleanup = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onCancel);
+        if (drag.frame) {
+          cancelAnimationFrame(drag.frame);
+          drag.frame = 0;
+        }
+        try { row.releasePointerCapture?.(drag.pointerId); } catch (_) {}
+        drag.preview?.remove();
+        drag.preview = null;
+      };
+      const finish = (commit, finalEvent = null) => {
+        if (this.createCueDrag !== drag) return;
+        if (finalEvent) updatePosition(finalEvent);
+        const start = roundMs(Math.min(drag.startMs, drag.currentMs));
+        const end = roundMs(Math.max(drag.startMs, drag.currentMs));
+        cleanup();
+        this.createCueDrag = null;
+        if (!commit) return;
+        if (end - start < MIN_CUE_MS) {
+          this.options.onCueCreateRejected?.('too-short', start, end);
+          return;
+        }
+        this.options.addCueRange?.(start, end, drag.startClientX, drag.startClientY);
+      };
+      drag.finish = finish;
+      try { row.setPointerCapture?.(drag.pointerId); } catch (_) {}
+
+      const onMove = (moveEvent) => {
+        if (this.createCueDrag !== drag) return;
+        if (!(moveEvent.buttons & 1)) {
+          finish(true, moveEvent);
+          return;
+        }
+        updatePosition(moveEvent);
+        if (!drag.frame) drag.frame = requestAnimationFrame(updatePreview);
+      };
+      const onUp = (upEvent) => finish(true, upEvent);
+      const onCancel = () => finish(false);
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onCancel);
+    }
+
     captureRowGeometry(row) {
       const rect = row.getBoundingClientRect();
       return {
@@ -8965,6 +9114,82 @@
         startMs: Number(row.dataset.startMs),
         endMs: Number(row.dataset.endMs),
       };
+    }
+
+    isCueTimeOccupied(timeMs) {
+      const time = Number(timeMs);
+      if (!Number.isFinite(time)) return false;
+      const segments = this.options.getSegments?.() || [];
+      return segments.some((segment) => {
+        const start = Number(segment?.start);
+        const end = Number(segment?.end);
+        return Number.isFinite(start) && Number.isFinite(end)
+          && start < time && time < end;
+      });
+    }
+
+    // 创建字幕的拖动不能跨过已有字幕；沿拖动方向把当前端点夹到遇到的
+    // 第一个字幕边界。这样预览和最终提交使用同一组无重叠时间范围。
+    clampCreateCueTime(anchorMs, requestedMs) {
+      if (!Number.isFinite(anchorMs) || !Number.isFinite(requestedMs) || anchorMs === requestedMs) {
+        return requestedMs;
+      }
+      const segments = this.options.getSegments?.() || [];
+      if (segments.some((segment) => {
+        const start = Number(segment?.start);
+        const end = Number(segment?.end);
+        return Number.isFinite(start) && Number.isFinite(end)
+          && start < anchorMs && anchorMs < end;
+      })) return anchorMs;
+      const movingRight = requestedMs > anchorMs;
+      let boundary = movingRight ? Infinity : -Infinity;
+      for (const segment of segments) {
+        const start = Number(segment?.start);
+        const end = Number(segment?.end);
+        if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+        if (movingRight) {
+          if (start >= anchorMs && start <= requestedMs) boundary = Math.min(boundary, start);
+        } else if (end <= anchorMs && end >= requestedMs) {
+          boundary = Math.max(boundary, end);
+        }
+      }
+      return Number.isFinite(boundary) ? boundary : requestedMs;
+    }
+
+    beginBlockedCueCreateDrag(event, index) {
+      const target = event.currentTarget;
+      const pointerId = event.pointerId;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      let finished = false;
+      let moved = false;
+      const cleanup = () => {
+        if (finished) return;
+        finished = true;
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onCancel);
+        try { target.releasePointerCapture?.(pointerId); } catch (_) {}
+      };
+      const onMove = (moveEvent) => {
+        if (finished || moveEvent.pointerId !== pointerId) return;
+        const dx = moveEvent.clientX - startX;
+        const dy = moveEvent.clientY - startY;
+        if (dx * dx + dy * dy < 16) return;
+        moved = true;
+        cleanup();
+        this.options.onCueCreateRejected?.('occupied');
+      };
+      const onUp = () => {
+        if (finished) return;
+        cleanup();
+        if (!moved) this.options.toggleCueSelection?.(index);
+      };
+      const onCancel = () => cleanup();
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onCancel);
+      try { target.setPointerCapture?.(pointerId); } catch (_) {}
     }
 
     timeFromPointer(event, row, geometry = null) {
@@ -9174,6 +9399,11 @@
       // 字幕块会阻止 pointerdown 冒泡到 pane；主动接管焦点，确保按住
       // 字幕块/边界后，左手 A/D 不会仍被设置输入框等控件拦截。
       this.focusWaveform();
+      // Ctrl(Cmd)+点击字幕仍保留多选；只有真正移动形成拖动时才视为
+      // “在已有字幕上创建”，并直接拒绝，不启动普通字幕拖动或创建预览。
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey) {
+        return this.beginBlockedCueCreateDrag(event, index);
+      }
       // 剃刀工具：无修饰键左键点击字幕块（非手柄）时，在指针位置安全拆分。
       // 修饰键（Alt/Ctrl(Cmd)/Shift）仍走原行为，便于拆分后立即多选/禁用。
       const targetHandle = event.target.closest('.waveform-cue-handle');
@@ -9542,6 +9772,11 @@
     }
 
     cancelCueDrag() {
+      if (this.createCueDrag?.finish) {
+        this.createCueDrag.finish(false);
+        this.setStatus('已取消新增字幕');
+        return true;
+      }
       const drag = this.drag;
       if (!drag) return false;
       window.removeEventListener('pointermove', this._dragMove);
@@ -13267,6 +13502,13 @@ function renderCurrentCuePanel() {
   cuePanelNext.disabled = next < 0;
 }
 
+function focusCuePanelText(idx = currentCuePanelIdx) {
+  if (!cuePanelText || idx < 0 || currentCuePanelIdx !== idx || !DATA.segments[idx]) return false;
+  cuePanelText.focus();
+  const end = cuePanelText.value.length;
+  cuePanelText.setSelectionRange(end, end);
+  return true;
+}
 function navigateCuePanel(direction) {
   const target = getCurrentCuePanelTarget();
   if (!target) return;
@@ -15453,6 +15695,13 @@ document.addEventListener('pointermove', (e) => {
   lastPointerPos = { x: e.clientX, y: e.clientY };
 }, true);
 
+function waveformPointerContext() {
+  if (!lastPointerPos) return null;
+  const timeMs = waveformEditor?.timeMsAtPoint?.(lastPointerPos.x, lastPointerPos.y);
+  if (!Number.isFinite(timeMs)) return null;
+  return { ...lastPointerPos, timeMs };
+}
+
 function hoveredSelectedCueContext() {
   if (!cueListPointer || !selectedIdxs.has(cueListPointer.idx)) return null;
   const el = container.querySelector(`.cue[data-idx="${cueListPointer.idx}"]`);
@@ -16461,6 +16710,28 @@ document.addEventListener('keydown', (e) => {
   if (player.paused) togglePlayback();
 });
 
+// N：仅在鼠标位于波形行时，从指针音频位置创建字幕；创建后单选新字幕，
+// 切换当前字幕面板并聚焦面板文本框。
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'n' && e.key !== 'N') return;
+  if (editingState || e.repeat || isTextEditingTarget(e)) return;
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
+  if (replaceModal.classList.contains('show')) return;
+  if (stickerModal.classList.contains('show')) return;
+  if (stickerPreviewModal.classList.contains('show')) return;
+  if (projectMediaModal.classList.contains('show')) return;
+  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+  if (ctxmenu.classList.contains('show')) return;
+  if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+  const context = waveformPointerContext();
+  if (!context) return;
+  e.preventDefault();
+  e.stopPropagation();
+  lastEditRegion = 'waveform';
+  addCueAtWaveformTime(context.timeMs, context.x, context.y);
+});
+
 // G：绑定当前单选的副字幕。若同时选中一条主字幕则直接绑定，否则沿用
 // 右键「绑定到主字幕」的自动匹配/等待选择流程。
 document.addEventListener('keydown', (e) => {
@@ -16642,17 +16913,15 @@ document.addEventListener('keydown', (e) => {
     }
   }
   // 2) 波形：指针音频位置
-  if (lastPointerPos) {
-    const pointerTimeMs = waveformEditor?.timeMsAtPoint?.(lastPointerPos.x, lastPointerPos.y);
-    if (Number.isFinite(pointerTimeMs)) {
-      const idx = DATA.segments.findIndex((segment) => pointerTimeMs > segment.start && pointerTimeMs < segment.end);
-      if (idx < 0) {
-        flashHint('指针位置没有可拆分字幕');
-        return;
-      }
-      splitAt(idx, 0, 0, pointerTimeMs);
+  const waveformContext = waveformPointerContext();
+  if (waveformContext) {
+    const idx = DATA.segments.findIndex((segment) => waveformContext.timeMs > segment.start && waveformContext.timeMs < segment.end);
+    if (idx < 0) {
+      flashHint('指针位置没有可拆分字幕');
       return;
     }
+    splitAt(idx, 0, 0, waveformContext.timeMs);
+    return;
   }
   // 3) 播放头位置
   const timeMs = Math.round(player.currentTime * 1000);
@@ -20128,6 +20397,11 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY) {
   if (!duration) { flashHint('媒体时长尚未加载'); return; }
   const start = Math.min(requestedStart, requestedEnd);
   const end = Math.max(requestedStart, requestedEnd);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+  if (DATA.segments.some((segment) => start < segment.end && end > segment.start)) {
+    flashHint('拖动范围包含已有字幕，无法新增字幕', 'warning');
+    return;
+  }
   const insertAt = DATA.segments.findIndex((segment) => segment.start > start);
   const index = insertAt < 0 ? DATA.segments.length : insertAt;
   const previousEnd = index > 0 ? DATA.segments[index - 1].end : 0;
@@ -20135,7 +20409,7 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY) {
   const safeStart = Math.max(previousEnd, Math.min(duration, Math.round(start / 10) * 10));
   const safeEnd = Math.min(nextStart, Math.max(safeStart, Math.round(end / 10) * 10));
   if (safeEnd - safeStart < 100) {
-    flashHint('该空白区域不足 100ms，无法新增字幕');
+    flashHint('该空白区域不足 100ms，无法新增字幕', 'warning');
     return;
   }
   commitCuePanelEdit();
@@ -20155,8 +20429,8 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY) {
   const cue = container.querySelector(`.cue[data-idx="${index}"]`);
   if (cue) {
     scrollCueToCenter(cue);
-    setTimeout(() => startEdit(cue, index, clickX, clickY), 0);
   }
+  setTimeout(() => focusCuePanelText(index), 0);
   waveformEditor?.revealTime(safeStart, true);
   flashHint(`已新增第 ${index + 1} 条字幕`);
 }
@@ -20164,6 +20438,10 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY) {
 function addCueAtWaveformTime(timeMs, clickX, clickY) {
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
   if (!duration) { flashHint('媒体时长尚未加载'); return; }
+  if (findWaveformCueAtTime(timeMs) >= 0) {
+    flashHint('当前位置已有字幕，请使用“按音频位置拆分当前字幕”');
+    return;
+  }
   const insertAt = DATA.segments.findIndex((segment) => segment.start > timeMs);
   const index = insertAt < 0 ? DATA.segments.length : insertAt;
   const previousEnd = index > 0 ? DATA.segments[index - 1].end : 0;
@@ -20174,7 +20452,7 @@ function addCueAtWaveformTime(timeMs, clickX, clickY) {
   }
   const gap = nextStart - previousEnd;
   if (gap < 100) {
-    flashHint('这里没有足够的空白区域');
+    flashHint('这里没有足够的空白区域', 'warning');
     return;
   }
   const start = Math.max(previousEnd, Math.min(Math.round(timeMs / 10) * 10, nextStart - 100));
@@ -20450,6 +20728,17 @@ function syncBoundCueDrag(drag) {
   syncBindingOffsets();
 }
 
+function findWaveformCueAtTime(timeMs, segments = DATA.segments) {
+  const time = Number(timeMs);
+  if (!Number.isFinite(time)) return -1;
+  const list = Array.isArray(segments) ? segments : DATA.segments;
+  return list.findIndex((segment) => {
+    const start = Number(segment?.start);
+    const end = Number(segment?.end);
+    return Number.isFinite(start) && Number.isFinite(end) && start < time && time < end;
+  });
+}
+
 // 右键波形背景：创建字幕，或按右键对应的音频位置拆分命中的字幕。
 function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
   ctxmenu.innerHTML = '';
@@ -20470,13 +20759,23 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
     }
     ctxmenu.appendChild(it);
   }
-  const splitIdx = effectiveTrack === 'main'
-    ? DATA.segments.findIndex((segment) => timeMs > segment.start && timeMs < segment.end)
-    : -1;
+  const splitIdx = effectiveTrack === 'main' ? findWaveformCueAtTime(timeMs) : -1;
   if (effectiveTrack === 'extension') {
-    addItem('创建副字幕', '', () => addExtensionAtWaveformTime(timeMs, clickX, clickY));
+    const extensionTrack = getActiveExtensionTrack();
+    const extensionIdx = findWaveformCueAtTime(timeMs, extensionTrack?.segments);
+    addItem(
+      '创建副字幕',
+      '',
+      () => addExtensionAtWaveformTime(timeMs, clickX, clickY, extensionTrack),
+      extensionIdx >= 0,
+    );
   } else {
-    addItem('创建字幕', '', () => addCueAtWaveformTime(timeMs, clickX, clickY));
+    addItem(
+      '创建字幕',
+      '',
+      () => addCueAtWaveformTime(timeMs, clickX, clickY),
+      splitIdx >= 0,
+    );
     addItem(
       '按音频位置拆分当前字幕',
       'B',
@@ -20933,6 +21232,10 @@ function initWaveformEditor() {
     showExtensionContextMenu: (x, y, idx, timeMs) => showExtensionContextMenu(x, y, idx, timeMs),
     showBlankWaveformMenu: (timeMs, x, y, track) => showWaveformBlankMenu(timeMs, x, y, track),
     addCueRange: (startMs, endMs, x, y) => addCueRangeFromWaveform(startMs, endMs, x, y),
+    onCueCreateRejected: (reason) => {
+      if (reason === 'too-short') flashHint('该空白区域不足 100ms，无法新增字幕', 'warning');
+      if (reason === 'occupied') flashHint('该位置已有字幕，无法新增字幕', 'warning');
+    },
     // 剃刀工具：在波形指针位置安全拆分字幕。复用右键菜单的波形时间拆分路径；
     // 有可靠主轨字词时间码时沿用字词锚点，否则在弹窗中保留指针的绝对切点。
     splitCueAtTime: (idx, timeMs) => splitFromContextMenu(idx, 0, 0, timeMs),
