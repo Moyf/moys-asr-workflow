@@ -89,17 +89,26 @@ test('current-cue text keeps the list and waveform labels in sync through undo a
   const waveformLabel = waveformCue.locator('.waveform-cue-label');
   const listText = page.locator('.cue[data-idx="0"] .text');
   const panelText = page.locator('#cue-panel-text');
+  const overlayText = page.locator('#overlay-main-text');
   const undo = page.getByRole('button', { name: /撤销/ });
   const redo = page.getByRole('button', { name: /重做/ });
 
   await waveformCue.click();
+  await page.locator('#overlay-toggle').check();
+  await page.evaluate(() => {
+    const player = document.getElementById('player');
+    player.currentTime = 1;
+    player.dispatchEvent(new Event('timeupdate'));
+  });
   await expect(panelText).toHaveValue('Alpha');
   await expect(listText).toHaveText('Alpha');
   await expect(waveformLabel).toHaveText('Alpha');
+  await expect(overlayText).toHaveText('Alpha');
 
   await panelText.fill('Alpha revised');
   await expect(listText).toHaveText('Alpha revised');
   await expect(waveformLabel).toHaveText('Alpha revised');
+  await expect(overlayText).toHaveText('Alpha revised');
 
   await panelText.blur();
   await expect(undo).toBeEnabled();
@@ -113,9 +122,35 @@ test('current-cue text keeps the list and waveform labels in sync through undo a
   await expect(waveformLabel).toHaveText('Alpha revised');
 });
 
+test('C merge refreshes the paused main subtitle preview', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('#overlay-toggle').check();
+  await page.evaluate(() => {
+    const player = document.getElementById('player');
+    player.currentTime = 1;
+    player.dispatchEvent(new Event('timeupdate'));
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveText('Alpha');
+
+  const cues = page.locator('.cue');
+  await cues.nth(0).click();
+  await cues.nth(1).click({ modifiers: ['Control'] });
+  await page.keyboard.press('c');
+
+  await expect(page.locator('.cue .text').first()).toHaveText('AlphaBravo');
+  await expect(page.locator('#overlay-main-text')).toHaveText('AlphaBravo');
+});
+
 test('B splits the selected subtitle under the cue-list pointer and supports undo and redo', async ({ page }) => {
   await page.goto(server.url);
   const text = page.locator('.cue[data-idx="0"] .text');
+  await page.locator('#overlay-toggle').check();
+  await page.evaluate(() => {
+    const player = document.getElementById('player');
+    player.currentTime = 1;
+    player.dispatchEvent(new Event('timeupdate'));
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveText('Alpha');
   await page.locator('.cue[data-idx="0"]').click();
   const splitPoint = await text.evaluate((element) => {
     const node = element.firstChild;
@@ -131,6 +166,7 @@ test('B splits the selected subtitle under the cue-list pointer and supports und
   await expect.poll(() => page.locator('.cue').count()).toBe(7);
   await expect(page.locator('.cue .text').nth(0)).toHaveText('Al');
   await expect(page.locator('.cue .text').nth(1)).toHaveText('pha');
+  await expect(page.locator('#overlay-main-text')).toHaveText('Al');
 
   await page.getByRole('button', { name: /撤销/ }).click();
   await expect.poll(() => page.locator('.cue').count()).toBe(6);
@@ -361,6 +397,11 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   ));
   await expect(helpSplitKey).toHaveText('Enter');
   await expect(page.locator('#help-waveform-split-key')).toHaveText('B');
+  await expect(helpPanel).toContainText('单选副字幕后绑定到主字幕');
+  await expect(helpPanel).toContainText('解绑当前副字幕');
+  await expect(helpPanel).toContainText('对齐副字幕到主字幕时间轴');
+  await expect(helpPanel).toContainText('单选副字幕后打开副字幕拆分');
+  await expect(helpPanel).toContainText('波形标记');
 
   await splitKey.selectOption('enter');
   await expect(helpSplitKey).toHaveText('Enter');

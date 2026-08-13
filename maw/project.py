@@ -13,6 +13,10 @@ from maw.project_preview import JsonDict, JsonValue, clamped_preview, validate_p
 # pyright: reportImplicitOverride=false
 
 MIN_SEGMENT_DURATION_MS = 100
+MULTI_SUBTITLE_SCHEMA = "moy.asr.multi_subtitle.v1"
+MULTI_SUBTITLE_DISPLAY_MODES = frozenset({"main", "extension", "both"})
+MULTI_SUBTITLE_SPLIT_MODES = frozenset({"continuous", "word"})
+MAX_STABLE_ID_LENGTH = 160
 
 
 def repair_segment_durations(
@@ -154,8 +158,293 @@ def _normalize_copy(project: JsonValue, errors: list[ProjectValidationError]) ->
         if _valid_segment_time(segment) and _is_int_ms(end):
             previous_end = end
     _validate_head_refs(segments, errors)
+    _normalize_multi_subtitle(normalized, segments, errors)
     errors.extend(ProjectValidationError(path, message) for path, message in validate_preview(normalized))
     return normalized
+
+
+def _is_stable_id(value: JsonValue) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value.strip())
+        and len(value.strip()) <= MAX_STABLE_ID_LENGTH
+    )
+
+
+def _normalize_stable_ids(
+    values: list[JsonValue],
+    prefix: str,
+    path_prefix: str,
+    errors: list[ProjectValidationError],
+) -> None:
+    """Fill IDs omitted by legacy projects and validate explicit IDs.
+
+    IDs are intentionally opaque strings. Missing IDs are the one legacy case we
+    repair because old MAW projects did not have them; malformed or duplicate
+    explicit IDs are reported rather than silently retargeting bindings.
+    """
+    reserved = {
+        value.strip()
+        for value in (
+            item.get("id") for item in values if isinstance(item, dict)
+        )
+        if _is_stable_id(value)
+    }
+    used: set[str] = set()
+    for index, item in enumerate(values):
+        if not isinstance(item, dict):
+            continue
+        path = f"{path_prefix}[{index}].id"
+        if "id" not in item:
+            base = f"{prefix}-{index + 1:03d}"
+            candidate = base
+            suffix = 2
+            while candidate in used or (candidate in reserved and candidate != base):
+                candidate = f"{base}-{suffix}"
+                suffix += 1
+            # If the generated base itself is reserved by a later explicit ID,
+            # use a deterministic suffixed value instead of creating a duplicate.
+            if candidate in reserved:
+                candidate = f"{base}-generated"
+                suffix = 2
+                while candidate in used or candidate in reserved:
+                    candidate = f"{base}-generated-{suffix}"
+                    suffix += 1
+            item["id"] = candidate
+            used.add(candidate)
+            continue
+        value = item.get("id")
+        if not _is_stable_id(value):
+            errors.append(ProjectValidationError(path, "must be a non-empty string of at most 160 characters"))
+            continue
+        normalized = value.strip()
+        if normalized in used:
+            errors.append(ProjectValidationError(path, "must be unique within its collection"))
+            continue
+        item["id"] = normalized
+        used.add(normalized)
+
+
+def _normalize_multi_subtitle(
+    project: JsonDict,
+    main_segments: list[JsonValue],
+    errors: list[ProjectValidationError],
+) -> None:
+    """Validate the optional bilingual track while keeping legacy projects valid."""
+    # Keep the serialized shape of legacy projects untouched. The browser
+    # editor supplies the closed empty structure when it loads such a project;
+    # the Python boundary must not rewrite an otherwise valid old save.
+    if "multi_subtitle" not in project or project.get("multi_subtitle") is None:
+        return
+    _normalize_stable_ids(main_segments, "main", "$.segments", errors)
+    raw = project.get("multi_subtitle")
+    if not isinstance(raw, dict):
+        errors.append(ProjectValidationError("$.multi_subtitle", "must be an object"))
+        raw = {}
+        project["multi_subtitle"] = raw
+
+    schema = raw.get("schema")
+    if schema is None:
+        raw["schema"] = MULTI_SUBTITLE_SCHEMA
+    elif schema != MULTI_SUBTITLE_SCHEMA:
+        errors.append(ProjectValidationError("$.multi_subtitle.schema", f"must be {MULTI_SUBTITLE_SCHEMA}"))
+
+    enabled = raw.get("enabled")
+    if enabled is None:
+        raw["enabled"] = False
+    elif not isinstance(enabled, bool):
+        errors.append(ProjectValidationError("$.multi_subtitle.enabled", "must be a boolean"))
+
+    display_mode = raw.get("display_mode")
+    if display_mode is None:
+        raw["display_mode"] = "both"
+    elif not isinstance(display_mode, str) or display_mode not in MULTI_SUBTITLE_DISPLAY_MODES:
+        errors.append(ProjectValidationError("$.multi_subtitle.display_mode", "must be one of main, extension, both"))
+
+    main_split_mode = raw.get("main_split_mode")
+    if main_split_mode is not None and main_split_mode not in MULTI_SUBTITLE_SPLIT_MODES:
+        errors.append(ProjectValidationError("$.multi_subtitle.main_split_mode", "must be continuous or word"))
+
+    tracks = raw.get("tracks")
+    if tracks is None:
+        tracks = []
+        raw["tracks"] = tracks
+    elif not isinstance(tracks, list):
+        errors.append(ProjectValidationError("$.multi_subtitle.tracks", "must be an array"))
+        tracks = []
+        raw["tracks"] = tracks
+
+    _normalize_stable_ids(tracks, "extension", "$.multi_subtitle.tracks", errors)
+    track_by_id: dict[str, JsonDict] = {}
+    extension_ids: dict[str, set[str]] = {}
+    for track_index, track in enumerate(tracks):
+        path = f"$.multi_subtitle.tracks[{track_index}]"
+        if not isinstance(track, dict):
+            errors.append(ProjectValidationError(path, "must be an object"))
+            continue
+        role = track.get("role")
+        if role is None:
+            track["role"] = "extension"
+        elif role != "extension":
+            errors.append(ProjectValidationError(f"{path}.role", "must be extension"))
+        for field in ("name", "language", "source_name"):
+            if field in track and not isinstance(track[field], str):
+                errors.append(ProjectValidationError(f"{path}.{field}", "must be a string"))
+        split_mode = track.get("split_mode")
+        if split_mode is None:
+            track["split_mode"] = "word"
+        elif split_mode not in MULTI_SUBTITLE_SPLIT_MODES:
+            errors.append(ProjectValidationError(f"{path}.split_mode", "must be continuous or word"))
+        raw_segments = track.get("segments")
+        if raw_segments is None:
+            raw_segments = []
+            track["segments"] = raw_segments
+        elif not isinstance(raw_segments, list):
+            errors.append(ProjectValidationError(f"{path}.segments", "must be an array"))
+            raw_segments = []
+            track["segments"] = raw_segments
+        _normalize_stable_ids(raw_segments, f"{track.get('id', 'extension')}-segment", f"{path}.segments", errors)
+        track_id = track.get("id")
+        if isinstance(track_id, str):
+            track_by_id[track_id] = track
+            extension_ids[track_id] = set()
+        previous_end: int | None = None
+        for segment_index, segment in enumerate(raw_segments):
+            segment_path = f"{path}.segments[{segment_index}]"
+            if not isinstance(segment, dict):
+                errors.append(ProjectValidationError(segment_path, "must be an object"))
+                continue
+            # Extension SRT/mosp text has no trustworthy word-level timings.
+            segment.pop("items", None)
+            _validate_extension_segment(segment, segment_path, previous_end, errors)
+            segment_id = segment.get("id")
+            if isinstance(track_id, str) and _is_stable_id(segment_id):
+                extension_ids[track_id].add(segment_id.strip())
+            if _valid_segment_time(segment):
+                previous_end = segment.get("end")
+
+    main_ids = {
+        segment.get("id").strip()
+        for segment in main_segments
+        if isinstance(segment, dict) and _is_stable_id(segment.get("id"))
+    }
+    bindings = raw.get("bindings")
+    if bindings is None:
+        bindings = []
+        raw["bindings"] = bindings
+    elif not isinstance(bindings, list):
+        errors.append(ProjectValidationError("$.multi_subtitle.bindings", "must be an array"))
+        bindings = []
+        raw["bindings"] = bindings
+
+    _normalize_stable_ids(bindings, "binding", "$.multi_subtitle.bindings", errors)
+    used_main: set[str] = set()
+    used_extension: set[tuple[str, str]] = set()
+    for binding_index, binding in enumerate(bindings):
+        path = f"$.multi_subtitle.bindings[{binding_index}]"
+        if not isinstance(binding, dict):
+            errors.append(ProjectValidationError(path, "must be an object"))
+            continue
+        track_id = binding.get("track_id")
+        if track_id is None and len(track_by_id) == 1:
+            track_id = next(iter(track_by_id))
+            binding["track_id"] = track_id
+        if not _is_stable_id(track_id):
+            errors.append(ProjectValidationError(f"{path}.track_id", "must reference an extension track"))
+            continue
+        track_key = track_id.strip()
+        binding["track_id"] = track_key
+        if track_key not in track_by_id:
+            errors.append(ProjectValidationError(f"{path}.track_id", "must reference an existing extension track"))
+            continue
+        main_ids_value = binding.get("main_segment_ids")
+        extension_ids_value = binding.get("extension_segment_ids")
+        if main_ids_value is None and "main_segment_id" in binding:
+            main_ids_value = [binding.get("main_segment_id")]
+            binding["main_segment_ids"] = main_ids_value
+        if extension_ids_value is None and "extension_segment_id" in binding:
+            extension_ids_value = [binding.get("extension_segment_id")]
+            binding["extension_segment_ids"] = extension_ids_value
+        main_id = _single_binding_id(main_ids_value, f"{path}.main_segment_ids", errors)
+        extension_id = _single_binding_id(extension_ids_value, f"{path}.extension_segment_ids", errors)
+        if main_id is None or extension_id is None:
+            continue
+        if main_id not in main_ids:
+            errors.append(ProjectValidationError(f"{path}.main_segment_ids[0]", "must reference an existing main segment"))
+            continue
+        if extension_id not in extension_ids.get(track_key, set()):
+            errors.append(ProjectValidationError(f"{path}.extension_segment_ids[0]", "must reference an existing extension segment"))
+            continue
+        if main_id in used_main:
+            errors.append(ProjectValidationError(f"{path}.main_segment_ids[0]", "must be one-to-one in the MVP"))
+        if (track_key, extension_id) in used_extension:
+            errors.append(ProjectValidationError(f"{path}.extension_segment_ids[0]", "must be one-to-one in the MVP"))
+        used_main.add(main_id)
+        used_extension.add((track_key, extension_id))
+
+        main = next(
+            segment for segment in main_segments
+            if isinstance(segment, dict) and segment.get("id") == main_id
+        )
+        extension = next(
+            segment for segment in track_by_id[track_key].get("segments", [])
+            if isinstance(segment, dict) and segment.get("id") == extension_id
+        )
+        if not (
+            _is_int_ms(main.get("start"))
+            and _is_int_ms(main.get("end"))
+            and _is_int_ms(extension.get("start"))
+            and _is_int_ms(extension.get("end"))
+        ):
+            continue
+        expected_start = extension.get("start") - main.get("start")
+        expected_end = extension.get("end") - main.get("end")
+        for field, expected in (("start_offset_ms", expected_start), ("end_offset_ms", expected_end)):
+            value = binding.get(field)
+            if value is None:
+                binding[field] = expected
+            elif not _is_int_ms(value):
+                errors.append(ProjectValidationError(f"{path}.{field}", "must be integer milliseconds"))
+            elif value != expected:
+                errors.append(ProjectValidationError(f"{path}.{field}", "must equal the segment time offset"))
+
+
+def _single_binding_id(
+    value: JsonValue,
+    path: str,
+    errors: list[ProjectValidationError],
+) -> str | None:
+    if not isinstance(value, list):
+        errors.append(ProjectValidationError(path, "must be an array with exactly one ID in the MVP"))
+        return None
+    if len(value) != 1 or not _is_stable_id(value[0]):
+        errors.append(ProjectValidationError(path, "must contain exactly one stable ID in the MVP"))
+        return None
+    value[0] = value[0].strip()
+    return value[0]
+
+
+def _validate_extension_segment(
+    segment: JsonDict,
+    path: str,
+    previous_end: int | None,
+    errors: list[ProjectValidationError],
+) -> None:
+    start = segment.get("start")
+    end = segment.get("end")
+    if not _is_int_ms(start):
+        errors.append(ProjectValidationError(f"{path}.start", "must be integer milliseconds"))
+    if not _is_int_ms(end):
+        errors.append(ProjectValidationError(f"{path}.end", "must be integer milliseconds"))
+    if _is_int_ms(start) and start < 0:
+        errors.append(ProjectValidationError(f"{path}.start", "must be non-negative"))
+    if _is_int_ms(start) and _is_int_ms(end):
+        if end <= start:
+            errors.append(ProjectValidationError(f"{path}.end", "must be greater than start"))
+        if previous_end is not None and start < previous_end:
+            errors.append(ProjectValidationError(f"{path}.start", "must be >= previous segment end"))
+    if not isinstance(segment.get("text"), str):
+        errors.append(ProjectValidationError(f"{path}.text", "must be a string"))
 
 
 def _validate_segment(

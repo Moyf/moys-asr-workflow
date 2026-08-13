@@ -137,6 +137,19 @@ WEB_DIR = Path(__file__).parent / "web"
 EDITOR_SCRIPT_MANIFEST = "editor-scripts.txt"
 
 
+def ninja_sfx_base_url(output_path: Path) -> str:
+    """Return a URL from a generated page to the source tree's slash sounds."""
+    source_dir = (WEB_DIR / "sfx").resolve()
+    output_dir = output_path.parent.resolve()
+    try:
+        relative = os.path.relpath(source_dir, output_dir)
+    except ValueError:
+        # Windows cannot make a relative path across drives; an absolute file URL
+        # still works for the local generated page and keeps the sound optional.
+        return f"{source_dir.as_uri().rstrip('/')}/"
+    return f"{Path(relative).as_posix().rstrip('/')}/"
+
+
 def read_web_asset(name: str) -> str:
     """Read a source web asset that will be inlined into generated HTML."""
     return (WEB_DIR / name).read_text(encoding="utf-8")
@@ -181,6 +194,7 @@ def render_editor_page(**context: str) -> str:
         "__STICKER_ROOT_JSON__": context["sticker_root_json"],
         "__STICKER_URL_PREFIX_JSON__": context.get("sticker_url_prefix_json", '""'),
         "__SERVER_CONFIG_JSON__": context.get("server_config_json", "null"),
+        "__NINJA_SFX_BASE_URL_JSON__": context.get("ninja_sfx_base_url_json", '"web/sfx/"'),
         "__UI_LANGUAGE_JSON__": context.get("ui_language_json", "null"),
         "__GENERATED_AT__": context["generated_at"],
         "__JSON_DISPLAY__": context["json_display"],
@@ -199,7 +213,7 @@ def render_editor_page(**context: str) -> str:
     return page
 
 
-def build_blank_html() -> str:
+def build_blank_html(ninja_sfx_base_url_json: str | None = None) -> str:
     """生成一个空壳全功能编辑器 HTML（不预先自包含任何工程数据）。
 
     页面功能与 .edit.html 完全一致（始终是最新模板），但初始没有字幕 / 媒体。
@@ -224,6 +238,7 @@ def build_blank_html() -> str:
         filename_base_json=json.dumps("untitled", ensure_ascii=False),
         stickers_json="[]",
         sticker_root_json='""',
+        ninja_sfx_base_url_json=ninja_sfx_base_url_json or '"web/sfx/"',
         generated_at=html.escape(generated_at),
         json_display=html.escape("未加载工程"),
         json_name_class="empty",
@@ -272,7 +287,9 @@ def main():
         output_path = Path(args.output).resolve() if args.output else \
             (Path(__file__).parent / "blank-editor.html").resolve()
         # Path.write_text() 在 Windows 上会把换行转换成 CRLF；HTML 资产统一保持 LF。
-        output_path.write_bytes(build_blank_html().encode("utf-8"))
+        output_path.write_bytes(build_blank_html(
+            json.dumps(ninja_sfx_base_url(output_path), ensure_ascii=False),
+        ).encode("utf-8"))
         print(f"MAWE 空壳编辑器已生成: {output_path}")
         print("用法: file:// 打开 → 点「打开工程」选择 .mosp/.json（需要时按提示选择关联媒体）")
         return 0
@@ -374,6 +391,9 @@ def main():
         filename_base_json=json.dumps(filename_base, ensure_ascii=False),
         stickers_json=json.dumps(stickers, ensure_ascii=False),
         sticker_root_json=json.dumps(sticker_root, ensure_ascii=False),
+        ninja_sfx_base_url_json=json.dumps(
+            ninja_sfx_base_url(output_path), ensure_ascii=False,
+        ),
         generated_at=html.escape(generated_at),
         json_display=html.escape(json_path.name),
         json_name_class="",
