@@ -895,6 +895,65 @@ test('merges selected extension cues from the context menu and C, with undo', as
   await expect(page.locator('.multi-cue-column.extension:not(.multi-cue-empty)')).toHaveCount(3);
 });
 
+test('hides the extension preview while the playhead is in its timing gap', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-extension').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  await page.evaluate(() => {
+    const player = document.getElementById('player');
+    player.currentTime = 0.5;
+    player.dispatchEvent(new Event('timeupdate'));
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveText('Hello world.');
+  await expect(page.locator('#overlay-extension-text')).toHaveText('你好，世界。');
+
+  await page.evaluate(() => {
+    const player = document.getElementById('player');
+    player.currentTime = 2.5;
+    player.dispatchEvent(new Event('timeupdate'));
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveClass(/hidden/);
+  await expect(page.locator('#overlay-extension-text')).toHaveClass(/hidden/);
+  await expect(page.locator('#overlay')).toHaveClass(/hidden/);
+});
+
+test('keeps extension selection, timing, disabled, and hide shortcuts in parity with main cues', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-extension').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  const extensionColumn = page.locator('.multi-dual-cue').first().locator('.multi-cue-column.extension');
+  await extensionColumn.click();
+  const originalStart = await page.evaluate(() => (
+    DATA.multi_subtitle.tracks[0].segments[0].start
+  ));
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => page.evaluate(() => (
+    DATA.multi_subtitle.tracks[0].segments[0].start
+  ))).toBe(originalStart + 50);
+  await page.keyboard.press('Control+ArrowLeft');
+  await expect.poll(() => page.evaluate(() => (
+    DATA.multi_subtitle.tracks[0].segments[0].start
+  ))).toBe(originalStart);
+
+  await page.keyboard.press('Control+a');
+  await expect(page.locator('#sel-count')).toHaveText('5');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#sel-count')).toHaveText('0');
+
+  await extensionColumn.click({ modifiers: ['Alt'] });
+  await expect(extensionColumn).toHaveClass(/disabled/);
+  const saved = await page.evaluate(() => JSON.parse(buildJson()));
+  expect(saved.multi_subtitle.tracks[0].segments[0].disabled).toBe(true);
+
+  await page.locator('#hide-disabled-toggle').check();
+  await expect(extensionColumn).toBeHidden();
+  await page.locator('#hide-disabled-toggle').uncheck();
+  await extensionColumn.click({ modifiers: ['Alt'] });
+  await expect(extensionColumn).not.toHaveClass(/disabled/);
+});
+
 test('选中的主字幕与绑定副字幕一起合并并支持撤销', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-extension').click();

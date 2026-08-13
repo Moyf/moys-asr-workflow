@@ -458,9 +458,14 @@
         .filter((segment) => segment && typeof segment === 'object')
         .map((segment) => {
           const copy = { ...segment };
-          // Extension SRT has no reliable word timestamps. Do not accidentally
-          // treat an imported mosp item's timestamps as audio-aligned data.
-          delete copy.items;
+          // Extension SRT has no items, while an imported mosp/project or a
+          // swapped-down main track may carry optional word timestamps. Keep
+          // them when present so a later swap can restore the main track.
+          if (Array.isArray(copy.items)) {
+            copy.items = copy.items.map((item) => ({ ...item }));
+          } else {
+            delete copy.items;
+          }
           return copy;
         });
       ensureStableSegmentIds(segments, `${id}-segment`);
@@ -714,8 +719,8 @@
     return multiSubtitle;
   }
 
-  // 交换主轨与当前唯一扩展轨。MVP 的扩展轨只保存文本/时间/稳定 ID，
-  // 因此从主轨降级到扩展轨时不携带 items、表情包和颜色分组等主轨专属字段。
+  // 交换主轨与当前唯一扩展轨。扩展轨保留可选的 items，
+  // 但不携带表情包和颜色分组等主轨专属字段。
   // 绑定关系按端点整体交换，并在新主轨写入后重新计算 offset。
   function swapMainAndExtensionSubtitle(project, trackId = null) {
     if (!project || typeof project !== 'object' || !Array.isArray(project.segments)) {
@@ -742,6 +747,9 @@
         end: segment.end,
         text: typeof segment.text === 'string' ? segment.text : '',
       };
+      if (Array.isArray(segment.items)) {
+        copy.items = segment.items.map((item) => ({ ...item }));
+      }
       if (segment._dirty) copy._dirty = true;
       return copy;
     });

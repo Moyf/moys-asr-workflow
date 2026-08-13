@@ -95,6 +95,51 @@ test('WASD during playback follows the playhead instead of the last selected cue
   await expect.poll(() => page.evaluate(() => player.currentTime)).toBeGreaterThan(24);
 });
 
+test('A/D at the outer cue boundaries still seeks the boundary cue', async ({ page }) => {
+  await loadAttachedCues(page);
+
+  await page.locator('.cue[data-idx="0"]').click();
+  await page.evaluate(() => { player.currentTime = 20; });
+  await page.keyboard.press('a');
+  await expect.poll(() => page.evaluate(() => player.currentTime)).toBeLessThan(6);
+
+  await page.locator('.cue[data-idx="2"]').click();
+  await page.evaluate(() => { player.currentTime = 1; });
+  await page.keyboard.press('d');
+  await expect.poll(() => page.evaluate(() => player.currentTime)).toBeGreaterThan(24);
+});
+
+test('F seeks and plays a selected extension cue', async ({ page }) => {
+  await loadAttachedCues(page);
+  await page.evaluate(() => {
+    DATA.multi_subtitle = {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-1',
+        role: 'extension',
+        name: 'English',
+        language: 'English',
+        split_mode: 'word',
+        segments: [{ id: 'extension-001', start: 12000, end: 16000, text: 'Extension' }],
+      }],
+      bindings: [],
+    };
+    renderAll({ waveform: 'full' });
+  });
+
+  const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"]').first();
+  await expect(extensionBlock).toBeVisible();
+  await extensionBlock.click();
+  await page.evaluate(() => { player.currentTime = 1; });
+  await page.keyboard.press('f');
+  await page.waitForFunction(() => {
+    const media = document.getElementById('player');
+    return media.currentTime >= 12 && media.currentTime < 13 && !media.paused;
+  });
+});
+
 test('selected arrow keys move cues, adjust boundaries, and honor the configured step', async ({ page }) => {
   await loadAttachedCues(page);
   await page.locator('#editor-settings-toggle').click();

@@ -1036,7 +1036,7 @@ test('applyPreviewGeometryDelta resize-w keeps right edge fixed at min-size', ()
 
 // === multi-subtitle helpers ===
 
-test('normalizes legacy multi-subtitle data with stable IDs and clears extension items', () => {
+test('normalizes legacy multi-subtitle data with stable IDs and preserves optional extension items', () => {
   const project = {
     segments: [{ start: 0, end: 1000, text: '主' }],
     multi_subtitle: {
@@ -1051,7 +1051,9 @@ test('normalizes legacy multi-subtitle data with stable IDs and clears extension
   helpers.normalizeMultiSubtitleProject(project);
   assert.equal(project.segments[0].id, 'main-001');
   assert.equal(project.multi_subtitle.tracks[0].segments[0].id, 'translation-segment-001');
-  assert.equal('items' in project.multi_subtitle.tracks[0].segments[0], false);
+  assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks[0].segments[0].items)), [
+    { start: 40, end: 960 },
+  ]);
   assert.equal(project.multi_subtitle.display_mode, 'both');
   assert.equal(project.multi_subtitle.main_split_mode, 'continuous');
 });
@@ -1102,14 +1104,30 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
   const result = helpers.swapMainAndExtensionSubtitle(project, 'translation');
   assert.equal(result.swapped, true);
   assert.equal(project.segments[0].text, '中文');
+  assert.deepEqual(JSON.parse(JSON.stringify(project.segments[0].items)), [
+    { start: 40, end: 960, text: '中文' },
+  ]);
   assert.equal(project.multi_subtitle.tracks[0].segments[0].text, 'English');
+  assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks[0].segments[0].items)), [
+    { start: 0, end: 1000, text: 'English' },
+  ]);
   assert.equal(project.multi_subtitle.main_split_mode, 'continuous');
   assert.equal(project.multi_subtitle.tracks[0].split_mode, 'word');
-  assert.equal('items' in project.multi_subtitle.tracks[0].segments[0], false);
   assert.deepEqual([...project.multi_subtitle.bindings[0].main_segment_ids], ['translation-001']);
   assert.deepEqual([...project.multi_subtitle.bindings[0].extension_segment_ids], ['main-001']);
   assert.equal(project.multi_subtitle.bindings[0].start_offset_ms, -40);
   assert.equal(project.multi_subtitle.bindings[0].end_offset_ms, 40);
+
+  const secondResult = helpers.swapMainAndExtensionSubtitle(project, 'translation');
+  assert.equal(secondResult.swapped, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(project.segments)), [{
+    id: 'main-001', start: 0, end: 1000, text: 'English',
+    items: [{ start: 0, end: 1000, text: 'English' }],
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks[0].segments)), [{
+    id: 'translation-001', start: 40, end: 960, text: '中文',
+    items: [{ start: 40, end: 960, text: '中文' }],
+  }]);
 });
 
 

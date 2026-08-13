@@ -1384,6 +1384,7 @@
   .cue.disabled.active .text { color: var(--text-secondary); }
   /* 隐藏禁用项开关：开启后禁用项从列表移除，不参与选择 */
   .cues-container.hide-disabled .cue.disabled { display: none; }
+  .cues-container.hide-disabled .multi-cue-column.disabled { display: none; }
   .cues-container.hide-cue-index .cue .index,
   .cues-container.hide-cue-time .cue .time,
   .cues-container.hide-cue-sticker .cue .sticker-slot,

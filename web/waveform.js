@@ -2525,9 +2525,10 @@
       const extensionSegments = this.options.getExtensionSegments?.() || [];
       const extensionSelected = this.options.getExtensionSelection?.() || new Set();
       const extensionBindingMarkers = bindingMarkerTargets.extension;
-      const activeExtensionIndex = findActiveCueIndex(extensionSegments, now, false);
+      const activeExtensionIndex = findActiveCueIndex(extensionSegments, now);
       extensionSegments.forEach((segment, index) => {
         if (segment.end <= startMs || segment.start >= endMs) return;
+        if (segment.disabled && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden')) return;
         const block = document.createElement('div');
           block.className = 'waveform-cue-block';
           block.dataset.track = 'extension';
@@ -2536,6 +2537,7 @@
           block.dataset.end = String(segment.end);
           block.style.setProperty('--cue-color', '#7a9fc5');
         if (extensionSelected.has(index)) block.classList.add('selected');
+        if (segment.disabled) block.classList.add('disabled');
         if (index === activeExtensionIndex) block.classList.add('active');
         const label = document.createElement('span');
         label.className = 'waveform-cue-label';
@@ -3341,7 +3343,7 @@
         // 没有位移时切换禁用，有位移时只编辑当前字幕。
         independent: Boolean(event.altKey),
         altToggleDisabledOnClick: Boolean(
-          event.altKey && track === 'main' && !targetHandle
+          event.altKey && !targetHandle
             && !event.shiftKey && !event.ctrlKey && !event.metaKey,
         ),
         seekedOnPointerDown: false,
@@ -3422,14 +3424,14 @@
     }
 
     captureCueDragOriginals(drag) {
-      const segments = this.options.getSegments();
+      const segments = this.options.getSegments(drag.track || 'main');
       drag.originals = new Map(drag.indices.map((idx) => [idx, snapshotTiming(segments[idx])]));
     }
 
-    adjustSelectedByKeyboard(deltaMs, altKey = false) {
-      const indices = normalizedIndices(this.options.getSegments(), this.options.getSelection?.());
+    adjustSelectedByKeyboard(deltaMs, altKey = false, track = 'main') {
+      const segments = this.options.getSegments(track);
+      const indices = normalizedIndices(segments, this.options.getSelection?.(track));
       if (!indices.length) return false;
-      const segments = this.options.getSegments();
       const plan = planMoveStep(
         segments,
         indices,
@@ -3447,14 +3449,14 @@
         { sticky: !altKey },
       );
       result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
-      this.options.onCommitEdit?.(result.indices, 'move');
+      this.options.onCommitEdit?.(result.indices, 'move', track);
       this.refreshCueOverlay();
       return true;
     }
 
-    adjustSelectedBoundaryByKeyboard(deltaMs, edge, altKey = false) {
-      const segments = this.options.getSegments();
-      const indices = normalizedIndices(segments, this.options.getSelection?.());
+    adjustSelectedBoundaryByKeyboard(deltaMs, edge, altKey = false, track = 'main') {
+      const segments = this.options.getSegments(track);
+      const indices = normalizedIndices(segments, this.options.getSelection?.(track));
       if (!indices.length || (edge !== 'start' && edge !== 'end')) return false;
       const index = edge === 'start' ? indices[0] : indices[indices.length - 1];
       const options = { sticky: !altKey };
@@ -3473,14 +3475,15 @@
       this.options.onCommitEdit?.(
         result.affectedIndices,
         result.linked ? 'resize-boundary' : 'resize-boundary-independent',
+        track,
       );
       this.refreshCueOverlay();
       return true;
     }
 
-    snapSelectedCueBoundaryByKeyboard(direction) {
-      const segments = this.options.getSegments();
-      const indices = normalizedIndices(segments, this.options.getSelection?.());
+    snapSelectedCueBoundaryByKeyboard(direction, track = 'main') {
+      const segments = this.options.getSegments(track);
+      const indices = normalizedIndices(segments, this.options.getSelection?.(track));
       if (!indices.length || (direction !== -1 && direction !== 1)) return false;
 
       const index = direction < 0 ? indices[0] : indices[indices.length - 1];
@@ -3512,7 +3515,7 @@
       if (!result.changed) return true;
       this.options.onBeginEdit?.('贴近字幕边界');
       result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
-      this.options.onCommitEdit?.(result.affectedIndices, 'resize-boundary-independent');
+      this.options.onCommitEdit?.(result.affectedIndices, 'resize-boundary-independent', track);
       this.refreshCueOverlay();
       return true;
     }
@@ -3520,7 +3523,7 @@
     adjustActiveCueDragBy(deltaMs, altKey = false) {
       const drag = this.drag;
       if (!drag) return false;
-      const segments = this.options.getSegments();
+      const segments = this.options.getSegments(drag.track || 'main');
       const durationMs = this.cueDragDurationMs();
       let plan;
       let apply;
@@ -3570,7 +3573,7 @@
     snapActiveCueBoundaryByKeyboard(direction) {
       const drag = this.drag;
       if (!drag || drag.kind !== 'move' || (direction !== -1 && direction !== 1)) return false;
-      const segments = this.options.getSegments();
+      const segments = this.options.getSegments(drag.track || 'main');
       const indices = normalizedIndices(segments, drag.indices);
       if (!indices.length) return true;
 
@@ -3624,7 +3627,7 @@
       window.removeEventListener('pointermove', this._dragMove);
       window.removeEventListener('pointerup', this._dragEnd);
       window.removeEventListener('pointercancel', this._dragEnd);
-      const segments = this.options.getSegments();
+      const segments = this.options.getSegments(drag.track || 'main');
       drag.cancelOriginals.forEach((original, idx) => {
         const segment = segments[idx];
         if (!segment) return;
@@ -3980,7 +3983,7 @@
       this.drag = null;
       if (event.type === 'pointercancel') {
         drag.cancelOriginals.forEach((original, idx) => {
-          const segment = this.options.getSegments()[idx];
+          const segment = this.options.getSegments(drag.track || 'main')[idx];
           if (!segment) return;
           segment.start = original.start;
           segment.end = original.end;
@@ -3992,7 +3995,7 @@
       }
       if (!drag.changed) {
         if (drag.altToggleDisabledOnClick) {
-          this.options.toggleDisabled?.([drag.index]);
+          this.options.toggleDisabled?.([drag.index], drag.track || 'main');
           return;
         }
         // select-only 只选中；两个跳转模式按设置跳到字幕开头或鼠标位置。
@@ -4021,7 +4024,7 @@
         });
       }
       const extensionSegments = this.options.getExtensionSegments?.() || [];
-      const activeExtensionIndex = findActiveCueIndex(extensionSegments, now, false);
+      const activeExtensionIndex = findActiveCueIndex(extensionSegments, now);
       this.content.querySelectorAll('.waveform-cue-block[data-track="extension"]').forEach((block) => {
         block.classList.toggle('active', Number(block.dataset.extIdx) === activeExtensionIndex);
       });
