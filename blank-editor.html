@@ -14774,6 +14774,7 @@ function mergeSegments(idxs) {
   pushUndo('合并字幕');
   mergeContiguousIndices(sorted);
   renderAll();
+  update();
   // 合并完成后选中合并结果，方便继续对这句新字幕操作
   selectOnly(sorted[0]);
   const el = container.querySelector(`.cue[data-idx="${sorted[0]}"]`);
@@ -14822,6 +14823,7 @@ function mergeExtensionSegments(idxs, track = getActiveExtensionTrack()) {
   track.segments.splice(sorted[0], sorted.length, merged);
   markMultiSubtitleDirty();
   renderAll();
+  update();
   selectOnlyExtension(sorted[0]);
   lastClickedExtensionIdx = sorted[0];
   flashHint(
