@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- Launcher 高级选项增加字幕切句参数：最大字数、短句合并阈值和停顿切句阈值；留空时沿用所选模型默认值，并在 GUI 与 CLI 边界校验参数关系。
+- 新增 Astro 官网与在线编辑器发布入口，文档页面从仓库文档同步生成。
+
+### Changed
+
+- 统一 MAWE Server、便携 HTML 与 Tauri 的前端脚本装配清单，保留现有兼容出口，不改变工程 schema、DOM 合同和编辑器操作。
+
 ### Fixed
 
 - 修复 Windows 与 macOS 的 tag 发布工作流并发创建同一个 GitHub Release，导致其中一个平台的资产上传长时间等待的问题。
