@@ -157,7 +157,7 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 | `--hotword-weight VALUE` | 设置即时热词权重，可用 `1` 到 `5` 或 `50`。 |
 | `--context TEXT` | 提供 Qwen-Audio 的领域背景或前文，最多发送 400 字符。 |
 | `--context-file PATH` | 从 UTF-8 文件读取 context；和 `--context` 二选一。 |
-| `--s2t-mode off\|taiwan\|standard` | 使用 OpenCC 在写入 SRT 和 `.mosp` 前转换文字；`taiwan` 为繁体与台湾词汇，`standard` 为标准繁体，默认 `off`。 |
+| `--s2t-mode off\|taiwan\|standard` | 使用 OpenCC 在写入 SRT 和 `.mosp` 前转换文字；适用于 Qwen、Soniox、必剪和本地 ASR。`taiwan` 为繁体与台湾词汇，`standard` 为标准繁体，默认 `off`。 |
 
 热词文件也支持 `热词: 权重` 或 `热词：权重`，可以对单条热词覆盖全局权重。即时热词和 context 主要由 `qwen-audio-3.0-asr-flash-filetrans` 使用；切换到 Qwen3-ASR 或 Fun-ASR 时，具体能力由模型决定，CLI 不会把它们伪装成通用能力。
 

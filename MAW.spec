@@ -30,6 +30,7 @@ datas = [
     (str(ROOT / "maw" / "project_preview.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "qwen_audio.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "speaker.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "text_conversion.py"), "local-runtime/maw"),
 ]
 
 rapidocr_datas, rapidocr_binaries, rapidocr_hiddenimports = collect_all("rapidocr")

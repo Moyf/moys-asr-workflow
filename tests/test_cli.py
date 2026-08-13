@@ -157,6 +157,17 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(generated[generated.index("--context-json") + 1], '{"terms":["MRI"]}')
 
+    def test_s2t_mode_is_forwarded_for_every_provider(self) -> None:
+        for provider in ("qwen", "soniox", "bcut"):
+            with self.subTest(provider=provider):
+                args = cli.build_parser("MAW.exe").parse_args([
+                    "--provider", provider, "-i", "clip.mp3", "--s2t-mode", "taiwan",
+                ])
+
+                generated = cli._generator_args(args, Path("clip.mp3"), Path("out.srt"))
+
+                self.assertEqual(generated[generated.index("--s2t-mode") + 1], "taiwan")
+
 
 if __name__ == "__main__":
     unittest.main()

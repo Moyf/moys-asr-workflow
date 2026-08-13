@@ -261,7 +261,7 @@ def build_transcribe_command(
         ):
             command.append("--speaker-colors")
         _append_option(command, "--language", request.language)
-        _append_option(command, "--s2t-mode", request.s2t_mode if request.s2t_mode != "off" else "")
+    _append_option(command, "--s2t-mode", request.s2t_mode if request.s2t_mode != "off" else "")
     _append_option(command, "--length-limit", request.length_limit)
     _append_option(command, "--max-len", request.max_len)
     _append_option(command, "--min-len", request.min_len)

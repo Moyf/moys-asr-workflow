@@ -22,6 +22,7 @@ from maw.local_asr import (
     prepared_audio,
     write_local_outputs,
 )
+from maw.text_conversion import convert_segments_to_traditional
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -63,6 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-len", type=int, default=21, help="中文单条字幕最大字符数")
     parser.add_argument("--min-len", type=int, default=5, help="中文短句合并阈值")
     parser.add_argument("--gap-split", type=int, default=1000, help="静音超过多少毫秒时切句")
+    parser.add_argument("--s2t-mode", choices=("off", "taiwan", "standard"), default="off", help="简体转繁体模式")
     parser.add_argument("--json", action="store_true", help="同时生成 .mosp 工程")
     parser.add_argument("--with-waveform", action="store_true", help="把波形缓存嵌入 .mosp")
     parser.add_argument("--no-html", action="store_true", help="不生成便携 HTML 编辑器")
@@ -142,6 +144,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not segments:
             print("错误: 本地模型没有返回可用的转写文本")
             return 1
+        if args.s2t_mode != "off":
+            convert_segments_to_traditional(segments, args.s2t_mode)
+            print(f"[转换] 已使用 OpenCC 转换为{'台湾用语' if args.s2t_mode == 'taiwan' else '标准繁体'}。")
         outputs = write_local_outputs(
             input_path=input_path,
             output_srt=output_srt,

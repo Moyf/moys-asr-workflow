@@ -33,6 +33,7 @@ from generate_subtitle_qwen_api import (
     parse_duration,
 )
 from maw.project import repair_segment_durations, validate_project
+from maw.text_conversion import convert_segments_to_traditional
 from maw.soniox import (
     MAX_AUDIO_SECONDS,
     SonioxContextError,
@@ -79,6 +80,7 @@ def main():
         "--keep-punct", action="store_true",
         help="保留每条字幕末尾的逗号和句号（默认去除）",
     )
+    parser.add_argument("--s2t-mode", choices=("off", "taiwan", "standard"), default="off", help="简体转繁体模式")
     parser.add_argument(
         "--gap-split", type=int, default=1500,
         help="静音切句阈值（毫秒），相邻字停顿超过此值则切句（默认 1500）",
@@ -268,6 +270,9 @@ def main():
                         break
                     k -= 1
 
+    if args.s2t_mode != "off":
+        convert_segments_to_traditional(segments, args.s2t_mode)
+        print(f"[转换] 已使用 OpenCC 转换为{'台湾用语' if args.s2t_mode == 'taiwan' else '标准繁体'}。")
     print(f"[输出] 正在生成 SRT（{len(segments)} 条字幕）...")
     srt_content = generate_srt(segments)
 

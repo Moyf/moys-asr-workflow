@@ -202,7 +202,6 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
                 args.hotword_weight,
                 args.context,
                 args.context_file,
-                args.s2t_mode if args.s2t_mode != "off" else None,
             )
         )
         or args.hotword
@@ -222,7 +221,6 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
                 args.context_file,
                 args.model,
                 args.language,
-                args.s2t_mode if args.s2t_mode != "off" else None,
             )
         )
         or args.hotword
@@ -299,7 +297,7 @@ def _generator_args(args: argparse.Namespace, input_path: Path, srt_path: Path) 
         ("--hotword-weight", args.hotword_weight),
         ("--context", args.context),
         ("--context-file", args.context_file),
-        ("--s2t-mode", args.s2t_mode if args.provider == "qwen" and args.s2t_mode != "off" else None),
+        ("--s2t-mode", args.s2t_mode if args.s2t_mode != "off" else None),
         ("--context-json", args.soniox_context_json),
     ):
         if value is not None and value != "":

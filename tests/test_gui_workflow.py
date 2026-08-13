@@ -106,6 +106,20 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertEqual(command[command.index("--s2t-mode") + 1], "taiwan")
 
+    def test_build_transcribe_command_passes_s2t_mode_to_soniox_and_local(self) -> None:
+        for provider in ("soniox", "local"):
+            with self.subTest(provider=provider):
+                request = TranscriptionRequest(
+                    media_path=self.media_path,
+                    srt_path=self.srt_path,
+                    provider=provider,
+                    s2t_mode="standard",
+                )
+
+                command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+                self.assertEqual(command[command.index("--s2t-mode") + 1], "standard")
+
     def test_build_transcribe_command_debug_raw_saves_full_response(self) -> None:
         request = TranscriptionRequest(
             media_path=self.media_path,

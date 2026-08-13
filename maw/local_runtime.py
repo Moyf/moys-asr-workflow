@@ -26,7 +26,7 @@ from typing import Final, TextIO
 from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
 
 
-RUNTIME_VERSION: Final = "3"
+RUNTIME_VERSION: Final = "4"
 PYTHON_VERSION: Final = "3.11"
 PYTORCH_INDEX: Final = "https://download.pytorch.org/whl/cu130"
 GENERAL_REQUIREMENTS: Final[tuple[str, ...]] = (
@@ -34,6 +34,7 @@ GENERAL_REQUIREMENTS: Final[tuple[str, ...]] = (
     "funasr>=1.3.29",
     "hf-xet>=1.5",
     "jieba>=0.42",
+    "opencc-python-reimplemented>=0.1.7",
     "qwen-asr>=0.0.6",
     "requests>=2.28",
 )
@@ -217,7 +218,7 @@ def install_local_runtime(
     if not python.exists():
         raise LocalRuntimeError(f"Python 运行环境创建失败：未找到 {python}")
 
-    emit("正在安装本地 ASR 依赖（Torch、FunASR、QwenASR）……", 25, "dependencies")
+    emit("正在安装本地 ASR 依赖（Torch、FunASR、QwenASR、OpenCC）……", 25, "dependencies")
     requirements = (
         *GENERAL_REQUIREMENTS,
         *(WINDOWS_TORCH_REQUIREMENTS if os.name == "nt" else OTHER_TORCH_REQUIREMENTS),
@@ -247,7 +248,7 @@ def install_local_runtime(
     verify_args = [
         str(python),
         "-c",
-        "from funasr import AutoModel; from qwen_asr import Qwen3ASRModel; import jieba, torch, torchaudio; print('MAW_LOCAL_RUNTIME_READY')",
+        "from funasr import AutoModel; from qwen_asr import Qwen3ASRModel; import jieba; import opencc; import torch; import torchaudio; print('MAW_LOCAL_RUNTIME_READY')",
     ]
     _run_process(verify_args, env=_runtime_env(model_cache_root), cancel=cancel, on_line=lambda line: emit(line, 94, "verify"))
     _check_cancel(cancel)
@@ -393,7 +394,7 @@ def _uv_line(emit: RuntimeEvent, percent: int, stage: str) -> Callable[[str], No
 def _dependency_line(emit: RuntimeEvent) -> Callable[[str], None]:
     """Turn uv's package log into a coarse but honest install progress signal."""
     markers = {
-        "accelerate", "funasr", "hf-xet", "jieba", "qwen-asr", "requests", "torch", "torchaudio",
+        "accelerate", "funasr", "hf-xet", "jieba", "opencc", "qwen-asr", "requests", "torch", "torchaudio",
     }
     seen: set[str] = set()
 
@@ -491,7 +492,7 @@ def _runtime_package_dirs_present(root: Path) -> bool:
     if os.name != "nt":
         candidates = list(site_packages.glob("python*/site-packages"))
         site_packages = candidates[0] if candidates else site_packages
-    return all((site_packages / name).exists() for name in ("funasr", "qwen_asr", "jieba", "torch", "torchaudio"))
+    return all((site_packages / name).exists() for name in ("funasr", "qwen_asr", "jieba", "opencc", "torch", "torchaudio"))
 
 
 def _write_manifest(root: Path, values: Mapping[str, object]) -> None:
