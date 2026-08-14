@@ -5,11 +5,6 @@ on:
     tags:
       - 'v*'
 
-concurrency:
-  # Windows and macOS both attach assets to the same tag release.
-  group: maw-release-${{ github.ref_name }}
-  cancel-in-progress: false
-
 permissions:
   contents: write
 
@@ -205,14 +200,19 @@ jobs:
           $Body = $DownloadGuide.Trim() + "`r`n`r`n" + $Match.Value.Trim()
           Set-Content -LiteralPath 'release-notes.md' -Value $Body -Encoding utf8
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Create or update GitHub Release
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        with:
-          target_commitish: ${{ github.sha }}
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          body_path: release-notes.md
-          files: |
-            MAW-Windows-x64-${{ github.ref_name }}.zip
-            MAWxFF-Windows-x64-${{ github.ref_name }}.zip
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Tag = '${{ github.ref_name }}'
+          $Prerelease = if ($Tag -match '-') { 'true' } else { 'false' }
+          # 并发安全：已存在则跳过创建；create 撞 already_exists 时继续上传
+          gh release view $Tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $Tag --title $Tag --notes-file release-notes.md --prerelease $Prerelease --target '${{ github.sha }}' *> $null
+            if ($LASTEXITCODE -ne 0) { Write-Host 'Release already exists; uploading assets only.' }
+          }
+          gh release upload $Tag "MAW-Windows-x64-$Tag.zip" "MAWxFF-Windows-x64-$Tag.zip" --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

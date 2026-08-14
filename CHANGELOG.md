@@ -9,11 +9,25 @@
 - Launcher 增加「转写后自动处理」：可按固定顺序串接文稿匹配、固定替换、LLM 校对、重新断句、OCR 字幕去重和中英翻译；翻译目标互斥，默认选择中文。
 - 自动处理增加统一预检、配置页面定位、LLM 实际连接验证、阶段日志、失败步骤重试，以及失败或取消时保留中间产物；原始转写结果始终保留，中间文件统一放入媒体目录下的 `MAW-Postprocess` 子目录。
 
+- 新增 Linux AppImage 构建与发布工具：`scripts/build-appimage.sh` 负责打包（PyInstaller → AppDir 组装 → appimagetool，打包后自动生成缩略图缓存）；`.github/workflows/release-linux.yml` 在打 `v*` 标签时自动构建并上传 `MAW-x86_64-*.AppImage` 到 GitHub Release（暂未发布任何 Linux 版本）。系统缺少 `libappimage` 时可用 `scripts/make-appimage-thumbnail.py` 为文件管理器生成图标缓存。
+
 ### Changed
 
 - 自动处理计划保存为用户级配置并在每次转写开始时生成运行快照；API Key 只保存在 `.env`，不写入计划、工程或 Launcher 主日志。
 - 翻译步骤的 `.mosp` 保留翻译前主字幕和翻译后副字幕，并额外输出翻译前后的两个 SRT 文件。
 - 修复工程字幕导入预览和初始产物中空字幕段的兼容性问题。
+
+### Fixed
+
+- 修复 Windows 与 macOS 的 tag 发布工作流并发创建同一个 GitHub Release，导致其中一个平台的资产上传长时间等待的问题。
+- 修复 Linux 上打包（PyInstaller / AppImage）后 Launcher 页面资源路径解析错误的问题：冻结环境改用 `sys._MEIPASS` 定位 `web/` 等资源，源码运行行为不变。
+- 冻结（AppImage）环境下 Linux 的 GUI 配置 `.env` 使用用户目录 `~/.config/Moy/MAW/.env`（尊重 `XDG_CONFIG_HOME`；目录不可写时回退 `~/.cache`），与 macOS 的 Application Support 方案对齐；源码运行保持仓库根 `.env` 不变。
+- `build-appimage.sh` 步骤编号一致化；appimagetool 下载后校验 ELF 二进制。
+- `release-linux.yml` 的 rename / release 步骤加 tag 守卫，`workflow_dispatch` 不再误用分支名。
+- `MAW.spec` 删除未使用的 `import os`；裸 `except` 改为 stderr 警告。
+- `make-appimage-thumbnail.py` 输出路径尊重 `XDG_CACHE_HOME`。
+- 修复 Linux 上 `uv run maw_gui.py` 因缺少 GUI 后端无法启动 Launcher 的问题：`pywebview` 在 Linux 平台自动安装 Qt6 后端（QtPy + PyQt6 + PyQt6-WebEngine），Windows / macOS 依赖不变。
+- 修复 Linux 上 Launcher 段落标题的 keycap 表情（1️⃣ 等）因系统 emoji 字体（如 SteamOS 自带的 Twemoji）缺少 U+FE0F 变体选择符而渲染成「3x」的问题：Linux 下首次启动由后端按顺序尝试 jsDelivr 各 CDN（可用 `MAW_EMOJI_FONT_URL` 覆盖），把 Noto Color Emoji 下载到用户缓存目录后供页面本地引用，之后离线可用；下载失败或非 Linux 平台回退系统字体，不额外加载。
 
 ## [1.4.0-beta.5] - 2026-08-14
 
