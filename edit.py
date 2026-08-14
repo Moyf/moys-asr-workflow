@@ -70,7 +70,7 @@ def media_tag(media_path: Path, media_url: str) -> str:
     if ext in VIDEO_EXTS:
         return (
             f'<video id="player" preload="metadata" '
-            f'style="width:100%;max-height:40vh;background:#000;display:block;">'
+            f'style="width:100%;background:#000;display:block;">'
             f'<source src="{html.escape(media_url)}"></video>'
         )
     return (

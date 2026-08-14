@@ -364,6 +364,129 @@ test('keeps track badges optional and uses striped disabled styling for secondar
   );
 });
 
+test('disabling a main cue disables its bound extension cue, while extension disabling stays independent', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-disable-001', start: 1000, end: 3000, text: 'main cue' }],
+    waveform: generateWaveformPayload(7000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-disable-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        segments: [{ id: 'extension-disable-001', start: 1000, end: 3000, text: 'extension cue' }],
+      }],
+      bindings: [{
+        id: 'binding-disable-001',
+        track_id: 'extension-disable-1',
+        main_segment_ids: ['main-disable-001'],
+        extension_segment_ids: ['extension-disable-001'],
+      }],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'disable-bound-pair.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+  const firstRow = page.locator('.multi-dual-cue').first();
+  const main = firstRow.locator('.multi-cue-column.main');
+  const extension = firstRow.locator('.multi-cue-column.extension');
+
+  await main.click({ modifiers: ['Alt'] });
+  await expect(main).toHaveClass(/disabled/);
+  await expect(extension).toHaveClass(/disabled/);
+  const disabledBackground = await page.locator('.waveform-cue-block[data-track="extension"]').first()
+    .evaluate((element) => getComputedStyle(element).backgroundImage);
+  expect(disabledBackground).toMatch(/repeating-linear-gradient/);
+
+  await extension.click({ modifiers: ['Alt'] });
+  await expect(main).toHaveClass(/disabled/);
+  await expect(extension).not.toHaveClass(/disabled/);
+});
+
+test('Ctrl-clicking an extension waveform cue keeps the extension as the active editor target', async ({ page }) => {
+  const project = {
+    segments: [
+      { id: 'main-001', start: 0, end: 2000, text: 'main one' },
+      { id: 'main-002', start: 3000, end: 5000, text: 'main two' },
+    ],
+    waveform: generateWaveformPayload(6000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        segments: [
+          { id: 'extension-001', start: 0, end: 2000, text: 'extension one' },
+          { id: 'extension-002', start: 3000, end: 5000, text: 'extension two' },
+        ],
+      }],
+      bindings: [
+        { id: 'binding-001', track_id: 'extension-1', main_segment_ids: ['main-001'], extension_segment_ids: ['extension-001'] },
+        { id: 'binding-002', track_id: 'extension-1', main_segment_ids: ['main-002'], extension_segment_ids: ['extension-002'] },
+      ],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'ctrl-extension.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+  const main = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first();
+  const extension = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="1"]').first();
+  await expect(main).toBeVisible();
+  await expect(extension).toBeVisible();
+  await main.click();
+  await extension.click({ modifiers: ['Control'] });
+  await expect(page.locator('#cue-panel-target')).toHaveText('副字幕');
+  expect(await page.evaluate(() => DATA.multi_subtitle.tracks[0].segments[1].id))
+    .toBe('extension-002');
+});
+
+test('undoing an auto-synced binding restores the extension timing as well as the binding', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-bind-001', start: 1000, end: 3000, text: 'main cue' }],
+    waveform: generateWaveformPayload(5000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-bind-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        segments: [{ id: 'extension-bind-001', start: 1200, end: 2200, text: 'extension cue' }],
+      }],
+      bindings: [],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'binding-auto-sync-undo.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+  const main = page.locator('.multi-cue-column.main').first();
+  const extension = page.locator('.multi-cue-column.extension[data-ext-idx="0"]').first();
+  await main.click();
+  await expect(page.locator('#sel-count')).toHaveText('1');
+  await extension.click({ button: 'right' });
+  await expect(page.locator('#ctxmenu')).toHaveClass(/show/);
+  await page.locator('#ctxmenu .item').filter({ hasText: '与选中的主字幕绑定' }).click();
+  expect(await page.evaluate(() => ({
+    range: [DATA.multi_subtitle.tracks[0].segments[0].start, DATA.multi_subtitle.tracks[0].segments[0].end],
+    bindings: DATA.multi_subtitle.bindings.length,
+  }))).toEqual({ range: [1000, 3000], bindings: 1 });
+
+  await page.keyboard.press('Control+z');
+  expect(await page.evaluate(() => ({
+    range: [DATA.multi_subtitle.tracks[0].segments[0].start, DATA.multi_subtitle.tracks[0].segments[0].end],
+    bindings: DATA.multi_subtitle.bindings.length,
+  }))).toEqual({ range: [1200, 2200], bindings: 0 });
+});
+
 test('uses the secondary language split mode and caret position for list B splitting', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-extension').click();
