@@ -22,6 +22,7 @@ class SubtitleArtifact:
     project_path: Path | None
     srt_path: Path | None
     warnings: tuple[str, ...] = ()
+    translated_srt_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,13 +87,15 @@ def write_artifacts(
     write_project: bool,
     write_srt: bool,
     warnings: tuple[str, ...] = (),
+    output_directory: Path | None = None,
 ) -> SubtitleArtifact:
     normalized = normalize_project(project)
     base = source_project_path or source_srt_path
     if base is None:
         raise PostprocessFileError(Path("."), "an input project or SRT is required")
-    project_path = _available_output(base, operation, base.suffix if source_project_path else ".mosp") if write_project else None
-    srt_path = _available_output(base, operation, ".srt") if write_srt else None
+    output_directory = output_directory.expanduser().resolve() if output_directory is not None else None
+    project_path = _available_output(base, operation, base.suffix if source_project_path else ".mosp", output_directory=output_directory) if write_project else None
+    srt_path = _available_output(base, operation, ".srt", output_directory=output_directory) if write_srt else None
     if project_path is not None:
         _atomic_write(project_path, json.dumps(normalized, ensure_ascii=False, indent=2) + "\n")
     if srt_path is not None:
@@ -144,12 +147,13 @@ def _format_srt_time(milliseconds: int) -> str:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d},{millis:03d}"
 
 
-def _available_output(source: Path, operation: str, suffix: str) -> Path:
+def _available_output(source: Path, operation: str, suffix: str, *, output_directory: Path | None = None) -> Path:
     safe_operation = re.sub(r"[^a-z0-9-]+", "-", operation.lower()).strip("-") or "processed"
-    candidate = source.with_name(f"{source.stem}.{safe_operation}{suffix}")
+    directory = output_directory or source.parent
+    candidate = directory / f"{source.stem}.{safe_operation}{suffix}"
     counter = 2
     while candidate.exists():
-        candidate = source.with_name(f"{source.stem}.{safe_operation}-{counter}{suffix}")
+        candidate = directory / f"{source.stem}.{safe_operation}-{counter}{suffix}"
         counter += 1
     return candidate.resolve()
 

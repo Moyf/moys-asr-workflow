@@ -1814,7 +1814,16 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="postprocessTaskPrompt"', page)
         self.assertIn('data-i18n="toolbox_preset_prompt"', page)
         self.assertIn('data-i18n="toolbox_prompt_hint"', page)
-        self.assertIn('$("postprocessOperation").addEventListener("change", () => { renderTaskPrompt(); setFieldError("postprocessPrompt", ""); })', script)
+        self.assertIn('id="autoPostprocessOptions" class="auto-postprocess-options hidden"', page)
+        self.assertIn('id="autoPostprocessStepsCard" class="sub-accordion collapsed"', page)
+        self.assertIn('id="autoPostprocessStepsToggle"', page)
+        for step_id in ("Match", "Replace", "Proofread", "Resegment", "Ocr", "Translate"):
+            self.assertIn(f'id="autoStep{step_id}Hint"', page)
+        self.assertIn('$("postprocessOperation").addEventListener("change", () => switchLlmOperation($("postprocessOperation").value))', script)
+        self.assertIn("const LLM_PROMPTS_KEY", script)
+        self.assertIn("function getLlmPrompt", script)
+        self.assertIn("customPrompt: getLlmPrompt(\"resegment\")", script)
+        self.assertIn("customPrompt: getLlmPrompt(autoLlmOperation(\"translate\"))", script)
         self.assertIn("function renderTaskPrompt(operation", script)
 
     def test_toolbox_tabs_stay_above_scrollable_panels(self) -> None:
@@ -1845,6 +1854,9 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertLess(tabs, content)
         self.assertLess(content, progress)
         self.assertLess(progress, result)
+        self.assertIn('data-i18n="toolbox_chain_hint">每次生成新文件，并自动作为下一步输入；选择工具后运行。</p>', page)
+        self.assertIn('id="toolboxResult" class="toolbox-result hidden"', page)
+        self.assertIn('result.classList.remove("hidden")', script)
         self.assertLess(result, match_panel)
         self.assertLess(match_panel, llm_panel)
         self.assertLess(ffconcat_end, footer)
@@ -2201,7 +2213,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
-        for expected in ("1️⃣ 媒体与输出", "2️⃣ 识别设置", "3️⃣ 日志", "4️⃣ 字幕编辑器设置"):
+        for expected in ("1️⃣ 媒体与输出", "2️⃣ 识别设置", "3️⃣ 转写后自动处理", "4️⃣ 日志", "5️⃣ 字幕编辑器设置"):
             self.assertIn(expected, page)
         self.assertIn(".card h2 {\n  margin: 0 0 12px;\n  color: var(--text-secondary);\n  font-size: 16px;", stylesheet)
 

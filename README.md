@@ -39,6 +39,7 @@ MAW 是一个以 API 转写为主的字幕生成与编辑工作流。它提供 W
 - [命令行与自动化](docs/CLI.md) ：完整参数、范例、Server 管理和退出码。
 - [LLM 字幕后处理协议](docs/LLM_POSTPROCESS_PROTOCOL.md) ：后处理的输入输出与安全边界。
 - [OCR 字幕去重](docs/OCR_SUBTITLE_DEDUP.md) ：画面字幕识别、禁用规则、视频输入、报告和性能说明。
+- [转写后自动处理](docs/POSTPROCESS_PIPELINE.md) ：固定步骤、配置预检、LLM 验证、中间产物和失败恢复。
 - [JSON 工程文件规范](JSON_SCHEMA.md) ：`.mosp` / `.json` 数据契约。
 - [开发说明](docs/DEVELOPMENT.md) ：产品边界、数据契约和开发检查。
 

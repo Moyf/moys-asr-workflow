@@ -290,6 +290,10 @@ label {
   font-size: 12px;
 }
 
+.hint-top-spaced {
+  padding-top: 6px;
+}
+
 .warn {
   color: var(--amber);
 }
@@ -420,6 +424,82 @@ label {
   width: auto;
   height: auto;
   accent-color: var(--accent);
+}
+
+.auto-postprocess-toggle {
+  width: max-content;
+  max-width: 100%;
+  margin: 10px 0;
+}
+
+.auto-postprocess-options {
+  margin-top: 10px;
+}
+
+.auto-postprocess-steps {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.auto-step-row {
+  display: grid;
+  grid-template-columns: minmax(150px, auto) minmax(76px, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+}
+
+.auto-step-row .check-field {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.auto-step-status.ready {
+  color: #8ecf9b;
+}
+
+.auto-step-status.invalid {
+  color: var(--amber-hover);
+}
+
+.auto-step-hint {
+  color: var(--text-faint);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auto-translate-target {
+  max-width: 240px;
+  margin: 10px 0;
+}
+
+.auto-postprocess-summary {
+  margin-top: 10px;
+  white-space: pre-line;
+}
+
+@media (max-width: 560px) {
+  .auto-step-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .auto-step-status {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .auto-step-hint {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
 }
 
 /* 两列网格中无标签单元格的占位标签：与相邻列的 label 同度量，保证控件基线对齐。 */

@@ -8,16 +8,32 @@
   const VIDEO_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"]);
   const SCRIPT_EXTS = new Set([".txt", ".md", ".markdown"]);
   const TOOLBOX_SIZE_KEY = "maw.launcher.toolbox.size";
+  const LLM_PROMPTS_KEY = "maw.launcher.llm.prompts";
   const TOOLBOX_MIN_WIDTH = 360;
   const TOOLBOX_MIN_HEIGHT = 320;
   const TOOLBOX_MAX_HEIGHT = 680;
   const CUSTOM_DEFAULT_LABEL = "Custom (OpenAI-compatible)";
+  const AUTO_STEP_ORDER = ["match", "replace", "proofread", "resegment", "ocr", "translate"];
+  const AUTO_STEP_CHECKBOXES = {
+    match: "autoStepMatch",
+    replace: "autoStepReplace",
+    proofread: "autoStepProofread",
+    resegment: "autoStepResegment",
+    ocr: "autoStepOcr",
+    translate: "autoStepTranslate",
+  };
+  const AUTO_STEP_TOOLS = { match: "match", replace: "replace", proofread: "llm", resegment: "llm", ocr: "ocr", translate: "llm" };
+  const AUTO_LLM_OPERATIONS = { proofread: "proofread", resegment: "resegment" };
+  let autoPlanSaveTimer = 0;
+  let pendingAutoStep = "";
   let busy = false;
   let inputManual = false;
   let ocrVideoManual = false;
   let saveStatusTimer = 0;
   let modelChoices = [];
   let modelChoicesOpen = false;
+  let llmPrompts = {};
+  let activeLlmOperation = "";
 
   function t(key) {
     return window.MAWLauncher.translate(key);
@@ -35,12 +51,80 @@
     display.classList.toggle("empty", !prompt);
   }
 
+  function loadLlmPrompts() {
+    try {
+      const raw = window.localStorage?.getItem(LLM_PROMPTS_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch (error) {
+      return {};
+    }
+  }
+
+  function saveLlmPrompts() {
+    try {
+      window.localStorage?.setItem(LLM_PROMPTS_KEY, JSON.stringify(llmPrompts));
+    } catch (error) {
+      // 某些嵌入式浏览器会禁用 localStorage；内存中的提示词仍可在本次运行中使用。
+    }
+  }
+
+  function getLlmPrompt(operation = $("postprocessOperation").value) {
+    return String(llmPrompts[operation] || "");
+  }
+
+  function persistLlmPrompt(operation = activeLlmOperation || $("postprocessOperation").value) {
+    const field = $("postprocessPrompt");
+    if (!operation || !field) return;
+    llmPrompts[operation] = field.value;
+    saveLlmPrompts();
+  }
+
+  function loadLlmPrompt(operation = $("postprocessOperation").value) {
+    $("postprocessPrompt").value = getLlmPrompt(operation);
+  }
+
+  function switchLlmOperation(operation = $("postprocessOperation").value) {
+    const next = String(operation || "");
+    if (!next) return;
+    persistLlmPrompt(activeLlmOperation || $("postprocessOperation").value);
+    $("postprocessOperation").value = next;
+    activeLlmOperation = next;
+    loadLlmPrompt(next);
+    renderTaskPrompt(next);
+    setFieldError("postprocessPrompt", "");
+    renderAutoPostprocessState();
+    persistAutoPlanSoon();
+  }
+
+  function initializeLlmPrompts() {
+    llmPrompts = loadLlmPrompts();
+    activeLlmOperation = $("postprocessOperation").value;
+    loadLlmPrompt(activeLlmOperation);
+  }
+
   function bridge(method, payload = {}) {
     return window.MAWLauncher.callBackend(method, payload);
   }
 
   function extension(path) {
     return (String(path || "").match(/\.[^.\\/]+$/u)?.[0] || "").toLowerCase();
+  }
+
+  function defaultAutoPlan() {
+    return {
+      version: 1,
+      enabled: false,
+      retainIntermediate: false,
+      steps: [
+        { id: "match", enabled: false, scriptPath: "" },
+        { id: "replace", enabled: false, replacements: [] },
+        { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
+        { id: "resegment", enabled: false, providerId: "deepseek", customPrompt: "" },
+        { id: "ocr", enabled: false, videoPath: "", regionMode: "full", regionX1: 0, regionY1: 0, regionX2: 100, regionY2: 100, threshold: 0.5, report: false },
+        { id: "translate", enabled: false, providerId: "deepseek", target: "zh", customPrompt: "" },
+      ],
+    };
   }
 
   function provider(providerId = $("postprocessProvider").value) {
@@ -298,6 +382,7 @@
 
   function setResult(message, kind = "") {
     const result = $("toolboxResult");
+    result.classList.remove("hidden");
     result.textContent = message;
     result.classList.toggle("success", kind === "success");
     result.classList.toggle("error", kind === "error");
@@ -504,6 +589,257 @@
     }).filter((item) => item?.source);
   }
 
+  function autoLlmOperation(stepId) {
+    if (stepId === "translate") return $("autoTranslateTarget").value === "en" ? "translate_en" : "translate_zh";
+    return AUTO_LLM_OPERATIONS[stepId] || stepId;
+  }
+
+  function selectAutoLlmOperation(stepId) {
+    if (!["proofread", "resegment", "translate"].includes(stepId)) return;
+    switchLlmOperation(autoLlmOperation(stepId));
+  }
+
+  function truncateHint(value, maxLength = 42) {
+    const text = String(value || "").replace(/\s+/gu, " ").trim();
+    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+  }
+
+  function autoStepHint(stepId) {
+    if (stepId === "match") {
+      const path = $("postprocessScriptPath").value.trim();
+      return path ? fileName(path) : t("auto_step_hint_no_file");
+    }
+    if (stepId === "replace") {
+      const count = parseReplacements().length;
+      return count ? t("auto_step_hint_rules").replace("{count}", String(count)) : t("auto_step_hint_no_rules");
+    }
+    if (["proofread", "resegment", "translate"].includes(stepId)) {
+      const operation = autoLlmOperation(stepId);
+      return truncateHint(getLlmPrompt(operation) || taskPromptText(operation)) || t("toolbox_task_none");
+    }
+    if (stepId === "ocr") {
+      const video = $("ocrVideoPath").value.trim() || autoOcrVideoPath();
+      return video ? fileName(video) : t("auto_step_hint_no_video");
+    }
+    return "";
+  }
+
+  function autoPlanFromControls() {
+    const providerId = $("postprocessProvider").value || "deepseek";
+    const ocr = ocrRegionPayload();
+    return {
+      version: 1,
+      enabled: Boolean($("autoPostprocessEnabled")?.checked),
+      retainIntermediate: Boolean($("autoPostprocessRetain")?.checked),
+      steps: [
+        { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim() },
+        { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements() },
+        { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId, customPrompt: getLlmPrompt("proofread") },
+        { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId, customPrompt: getLlmPrompt("resegment") },
+        { id: "ocr", enabled: Boolean($("autoStepOcr")?.checked), videoPath: $("ocrVideoPath").value.trim(), ...ocr, threshold: Number($("ocrThreshold").value), report: Boolean($("ocrReport").checked) },
+        { id: "translate", enabled: Boolean($("autoStepTranslate")?.checked), providerId, target: $("autoTranslateTarget").value || "zh", customPrompt: getLlmPrompt(autoLlmOperation("translate")) },
+      ],
+    };
+  }
+
+  function autoLlmReady(providerId) {
+    const item = provider(providerId);
+    return Boolean(item?.verified && item?.hasApiKey !== false && item?.hasBaseUrl !== false && item?.hasModel !== false);
+  }
+
+  function autoStepReady(stepId) {
+    if (stepId === "match") {
+      const path = $("postprocessScriptPath").value.trim();
+      return Boolean(path && SCRIPT_EXTS.has(extension(path)));
+    }
+    if (stepId === "replace") return parseReplacements().length > 0;
+    if (["proofread", "resegment", "translate"].includes(stepId)) return autoLlmReady($("postprocessProvider").value);
+    if (stepId === "ocr") {
+      const threshold = Number($("ocrThreshold").value);
+      const video = $("ocrVideoPath").value.trim() || autoOcrVideoPath();
+      if (!video || !VIDEO_EXTS.has(extension(video)) || !Number.isFinite(threshold) || threshold < 0 || threshold > 1) return false;
+      if ($("ocrRegionMode").value === "custom_region") {
+        const x1 = Number($("ocrRegionX1").value); const y1 = Number($("ocrRegionY1").value);
+        const x2 = Number($("ocrRegionX2").value); const y2 = Number($("ocrRegionY2").value);
+        if (![x1, y1, x2, y2].every((value) => Number.isFinite(value) && value >= 0 && value <= 100) || x2 <= x1 || y2 <= y1) return false;
+      }
+      return true;
+    }
+    return false;
+  }
+
+  function autoStepLabel(stepId) {
+    return t({ match: "auto_step_match", replace: "auto_step_replace", proofread: "auto_step_proofread", resegment: "auto_step_resegment", ocr: "auto_step_ocr", translate: "auto_step_translate" }[stepId] || stepId);
+  }
+
+  function renderAutoPostprocessState() {
+    const selected = [];
+    const invalid = [];
+    AUTO_STEP_ORDER.forEach((stepId) => {
+      const checkbox = $(AUTO_STEP_CHECKBOXES[stepId]);
+      const status = $(`autoStep${stepId[0].toUpperCase()}${stepId.slice(1)}Status`);
+      const row = document.querySelector(`[data-auto-step-row="${stepId}"]`);
+      const enabled = Boolean(checkbox?.checked);
+      const ready = autoStepReady(stepId);
+      if (enabled) selected.push(stepId);
+      if (enabled && !ready) invalid.push(stepId);
+      if (status) {
+        status.textContent = enabled ? t(ready ? "auto_status_ready" : "auto_status_config") : t("auto_status_disabled");
+        status.classList.toggle("ready", enabled && ready);
+        status.classList.toggle("invalid", enabled && !ready);
+      }
+      const hint = $(`autoStep${stepId[0].toUpperCase()}${stepId.slice(1)}Hint`);
+      if (hint) {
+        hint.textContent = autoStepHint(stepId);
+        hint.title = hint.textContent;
+      }
+      row?.classList.toggle("needs-config", enabled && !ready);
+    });
+    const enabled = Boolean($("autoPostprocessEnabled")?.checked);
+    $("autoPostprocessOptions")?.classList.toggle("hidden", !enabled);
+    $("autoTranslateTargetField")?.classList.toggle("hidden", !$("autoStepTranslate")?.checked);
+    const summary = $("autoPostprocessSummary");
+    if (!summary) return;
+    if (!enabled) {
+      summary.textContent = t("auto_summary_disabled");
+    } else if (invalid.length) {
+      summary.textContent = t("auto_summary_invalid").replace("{steps}", invalid.map(autoStepLabel).join(stateLangSeparator()));
+    } else {
+      summary.textContent = t("auto_summary_steps").replace("{count}", String(selected.length)).replace("{steps}", selected.map(autoStepLabel).join(stateLangSeparator()));
+    }
+  }
+
+  function stateLangSeparator() {
+    return window.MAWLauncher?.translate("auto_postprocess_title")?.includes("Post-") ? ", " : "、";
+  }
+
+  function persistAutoPlanSoon() {
+    window.clearTimeout(autoPlanSaveTimer);
+    autoPlanSaveTimer = window.setTimeout(async () => {
+      const result = await bridge("save_postprocess_plan", { plan: autoPlanFromControls() });
+      if (result.ok && window.MAWLauncher.config) window.MAWLauncher.config.postprocessAutoPlan = result.plan;
+    }, 180);
+  }
+
+  function focusAutoField(fieldId) {
+    requestAnimationFrame(() => {
+      const field = $(fieldId);
+      field?.scrollIntoView({ behavior: "smooth", block: "center" });
+      field?.focus();
+    });
+  }
+
+  function setAutoStepsExpanded(expanded) {
+    const card = $("autoPostprocessStepsCard");
+    const toggle = $("autoPostprocessStepsToggle");
+    if (!card || !toggle) return;
+    card.classList.toggle("collapsed", !expanded);
+    toggle.setAttribute("aria-expanded", String(Boolean(expanded)));
+    const chevron = toggle.querySelector(".chevron");
+    if (chevron) chevron.textContent = expanded ? "▾" : "▸";
+  }
+
+  function autoStepFocusField(stepId) {
+    if (stepId === "match") return "postprocessScriptPath";
+    if (stepId === "replace") return "postprocessReplacements";
+    if (["proofread", "resegment", "translate"].includes(stepId)) return "postprocessPrompt";
+    if (stepId !== "ocr") return "";
+    const video = $("ocrVideoPath").value.trim() || autoOcrVideoPath();
+    if (!video || !VIDEO_EXTS.has(extension(video))) return "ocrVideoPath";
+    if ($("ocrRegionMode").value === "custom_region") {
+      const x1 = Number($("ocrRegionX1").value); const y1 = Number($("ocrRegionY1").value);
+      const x2 = Number($("ocrRegionX2").value); const y2 = Number($("ocrRegionY2").value);
+      if (!Number.isFinite(x1) || x1 < 0 || x1 > 100) return "ocrRegionX1";
+      if (!Number.isFinite(y1) || y1 < 0 || y1 > 100) return "ocrRegionY1";
+      if (!Number.isFinite(x2) || x2 < 0 || x2 > 100 || x2 <= x1) return "ocrRegionX2";
+      if (!Number.isFinite(y2) || y2 < 0 || y2 > 100 || y2 <= y1) return "ocrRegionY2";
+    }
+    return "ocrThreshold";
+  }
+
+  function openAutoStep(stepId, invalidField = "") {
+    pendingAutoStep = stepId;
+    const llmStep = ["proofread", "resegment", "translate"].includes(stepId);
+    if (llmStep && !autoLlmReady($("postprocessProvider").value)) {
+      const item = provider();
+      const focusId = ["llmApiKey", "llmBaseUrl", "llmModel"].includes(invalidField)
+        ? invalidField
+        : (item?.hasApiKey === false ? "llmApiKey" : (item?.hasBaseUrl === false ? "llmBaseUrl" : "llmModel"));
+      window.MAWLauncher.openSettings("llmSettingsSection", focusId);
+      return;
+    }
+    setOpen(true);
+    selectTool(AUTO_STEP_TOOLS[stepId] || "match");
+    setAutoStepsExpanded(true);
+    selectAutoLlmOperation(stepId);
+    const fieldId = invalidField || autoStepFocusField(stepId);
+    focusAutoField(fieldId);
+  }
+
+  function maybeEnablePendingAutoStep() {
+    const stepId = pendingAutoStep;
+    if (!stepId || !autoStepReady(stepId)) return false;
+    const checkbox = $(AUTO_STEP_CHECKBOXES[stepId]);
+    if (!checkbox) return false;
+    checkbox.checked = true;
+    pendingAutoStep = "";
+    renderAutoPostprocessState();
+    persistAutoPlanSoon();
+    if (["proofread", "resegment", "translate"].includes(stepId)) {
+      window.MAWLauncher.closeSettings?.();
+      setOpen(true);
+      selectTool("llm");
+      setAutoStepsExpanded(true);
+      selectAutoLlmOperation(stepId);
+      focusAutoField("postprocessPrompt");
+    }
+    return true;
+  }
+
+  function applyAutoPostprocessPlan(rawPlan) {
+    const plan = rawPlan && typeof rawPlan === "object" ? rawPlan : defaultAutoPlan();
+    $("autoPostprocessEnabled").checked = Boolean(plan.enabled);
+    $("autoPostprocessRetain").checked = Boolean(plan.retainIntermediate);
+    const byId = new Map(Array.isArray(plan.steps) ? plan.steps.map((step) => [step.id, step]) : []);
+    AUTO_STEP_ORDER.forEach((stepId) => { $(AUTO_STEP_CHECKBOXES[stepId]).checked = Boolean(byId.get(stepId)?.enabled); });
+    const match = byId.get("match") || {};
+    $("postprocessScriptPath").value = String(match.scriptPath || "");
+    const replace = byId.get("replace") || {};
+    $("postprocessReplacements").value = (Array.isArray(replace.replacements) ? replace.replacements : []).map((item) => `${item.source || ""} => ${item.target || ""}`).join("\n");
+    ["proofread", "resegment"].forEach((stepId) => {
+      const prompt = byId.get(stepId)?.customPrompt;
+      if (typeof prompt === "string" && prompt) llmPrompts[autoLlmOperation(stepId)] = prompt;
+    });
+    const ocr = byId.get("ocr") || {};
+    $("ocrVideoPath").value = String(ocr.videoPath || "");
+    ocrVideoManual = Boolean($("ocrVideoPath").value.trim());
+    $("ocrRegionMode").value = ocr.regionMode === "custom" ? "custom_region" : String(ocr.regionMode || "full");
+    $("ocrRegionX1").value = String(ocr.regionX1 ?? 0);
+    $("ocrRegionY1").value = String(ocr.regionY1 ?? 0);
+    $("ocrRegionX2").value = String(ocr.regionX2 ?? 100);
+    $("ocrRegionY2").value = String(ocr.regionY2 ?? 100);
+    $("ocrThreshold").value = String(ocr.threshold ?? 0.5);
+    $("ocrReport").checked = Boolean(ocr.report);
+    $("autoTranslateTarget").value = String((byId.get("translate") || {}).target || "zh");
+    const translatePrompt = byId.get("translate")?.customPrompt;
+    if (typeof translatePrompt === "string" && translatePrompt) llmPrompts[autoLlmOperation("translate")] = translatePrompt;
+    saveLlmPrompts();
+    loadLlmPrompt(activeLlmOperation || $("postprocessOperation").value);
+    renderOcrRegion();
+    renderAutoPostprocessState();
+  }
+
+  function initializeAutoPostprocess() {
+    const plan = window.MAWLauncher.config?.postprocessAutoPlan || defaultAutoPlan();
+    applyAutoPostprocessPlan(plan);
+    const providerId = (plan.steps || []).find((step) => step.enabled && step.providerId)?.providerId;
+    if (providerId && provider(providerId)) {
+      $("postprocessProvider").value = providerId;
+      renderProvider(providerId);
+    }
+    renderAutoPostprocessState();
+  }
+
   async function runScriptMatch() {
     const paths = resolveInputPaths();
     if (!paths) return;
@@ -589,18 +925,24 @@
       if (field) setFieldError(field, result.detail || result.error || t("failed"));
       setSettingsSaveStatus(result.error || result.detail || t("failed"), "error");
       setResult(result.error || result.detail || t("failed"), "error");
-      return;
+      return result;
     }
     ["llmApiKey", "llmBaseUrl", "llmModel", "llmReasoningMode", "llmCustomDisplayName"].forEach((field) => setFieldError(field, ""));
     item.baseUrl = $("llmBaseUrl").value.trim();
     item.model = $("llmModel").value.trim();
+    item.hasApiKey = Boolean(result.maskedApiKey || item.maskedApiKey || $("llmApiKey").value.trim());
+    item.hasBaseUrl = Boolean(item.baseUrl);
+    item.hasModel = Boolean(item.model);
     item.reasoningMode = result.reasoningMode || $("llmReasoningMode").value || "off";
     item.displayName = item.id === "custom" ? $("llmCustomDisplayName").value.trim() : "";
     item.label = result.label || providerLabel(item);
     item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
+    item.verified = Boolean(result.verified);
     syncProviderOptionLabels();
     renderProvider(item.id);
+    renderAutoPostprocessState();
     setSettingsSaveStatus(t("toolbox_saved"), "success");
+    return result;
   }
 
   async function testConnection() {
@@ -608,6 +950,8 @@
     $("testLlmConnection").disabled = true;
     $("getLlmModels").disabled = true;
     try {
+      const saved = await saveSettings();
+      if (!saved?.ok) return;
       const item = provider();
       const result = await bridge("test_postprocess_connection", {
         providerId: item.id,
@@ -616,7 +960,12 @@
         model: $("llmModel").value.trim(),
         reasoningMode: $("llmReasoningMode").value,
       });
-      if (result.ok) setSettingsSaveStatus(t("llm_connection_success"), "success");
+      if (result.ok) {
+        item.verified = Boolean(result.verified);
+        setSettingsSaveStatus(t("llm_connection_success"), "success");
+        renderAutoPostprocessState();
+        maybeEnablePendingAutoStep();
+      }
       else setSettingsSaveStatus(result.detail || result.error || t("failed"), "error", 0);
     } catch (error) {
       setSettingsSaveStatus(String(error?.message || error || t("failed")), "error", 0);
@@ -760,18 +1109,20 @@
     });
     syncProviderOptionLabels();
     renderProvider();
+    initializeLlmPrompts();
     renderTaskPrompt();
     renderOcrRegion();
     selectTool("match");
     syncPaths();
+    initializeAutoPostprocess();
   }
 
   $("toolboxFab").addEventListener("click", () => setOpen($("toolboxDrawer").classList.contains("hidden")));
   $("toolboxClose").addEventListener("click", () => setOpen(false));
   document.querySelectorAll(".toolbox-tab").forEach((tab) => tab.addEventListener("click", () => selectTool(tab.dataset.tool)));
-  $("postprocessProvider").addEventListener("change", () => renderProvider());
-  $("postprocessOperation").addEventListener("change", () => { renderTaskPrompt(); setFieldError("postprocessPrompt", ""); });
-  $("llmProvider").addEventListener("change", () => { $("postprocessProvider").value = $("llmProvider").value; renderProvider(); });
+  $("postprocessProvider").addEventListener("change", () => { renderProvider(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
+  $("postprocessOperation").addEventListener("change", () => switchLlmOperation($("postprocessOperation").value));
+  $("llmProvider").addEventListener("change", () => { $("postprocessProvider").value = $("llmProvider").value; renderProvider(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("saveLlmSettings").addEventListener("click", saveSettings);
   $("testLlmConnection").addEventListener("click", testConnection);
   $("getLlmModels").addEventListener("click", getModels);
@@ -790,6 +1141,7 @@
     const result = await bridge("choose_file", { kind: "script" });
     if (result.ok) {
       $("postprocessScriptPath").value = result.path;
+      $("postprocessScriptPath").dispatchEvent(new Event("input", { bubbles: true }));
       setFieldError("postprocessScriptPath", "");
     }
   });
@@ -812,6 +1164,7 @@
       }
       ocrVideoManual = true;
       $("ocrVideoPath").value = result.path;
+      $("ocrVideoPath").dispatchEvent(new Event("input", { bubbles: true }));
       setFieldError("ocrVideoPath", "");
     }
   });
@@ -832,9 +1185,14 @@
     event.preventDefault();
     bridge("open_url", { url: "https://github.com/Moyf/moys-asr-workflow/issues" });
   });
-  $("openLlmSettings").addEventListener("click", () => window.MAWLauncher.openSettings("llmSettingsSection"));
-  $("postprocessScriptPath").addEventListener("input", () => setFieldError("postprocessScriptPath", ""));
-  $("postprocessPrompt").addEventListener("input", () => setFieldError("postprocessPrompt", ""));
+  $("openLlmSettings").addEventListener("click", () => { window.MAWLauncher.openSettings("llmSettingsSection"); requestAnimationFrame(() => $("llmApiKey")?.focus()); });
+  $("postprocessScriptPath").addEventListener("input", () => { setFieldError("postprocessScriptPath", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
+  $("postprocessPrompt").addEventListener("input", () => {
+    persistLlmPrompt();
+    setFieldError("postprocessPrompt", "");
+    renderAutoPostprocessState();
+    persistAutoPlanSoon();
+  });
   $("llmCustomDisplayName").addEventListener("input", () => {
     updateCustomDisplayName($("llmCustomDisplayName").value);
     setFieldError("llmCustomDisplayName", "");
@@ -851,7 +1209,35 @@
     $(id).addEventListener("input", () => setFieldError(id, ""));
     $(id).addEventListener("change", () => setFieldError(id, ""));
   });
-  $("postprocessReplacements").addEventListener("input", () => setFieldError("postprocessReplacements", ""));
+  $("postprocessReplacements").addEventListener("input", () => { setFieldError("postprocessReplacements", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
+  $("ocrVideoPath").addEventListener("input", () => { ocrVideoManual = Boolean($("ocrVideoPath").value.trim()); setFieldError("ocrVideoPath", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
+  ["ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "autoTranslateTarget"].forEach((id) => {
+    $(id).addEventListener("input", () => { renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
+    $(id).addEventListener("change", () => { renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
+  });
+  $("autoPostprocessEnabled").addEventListener("change", () => { renderAutoPostprocessState(); persistAutoPlanSoon(); });
+  $("autoPostprocessRetain").addEventListener("change", () => { renderAutoPostprocessState(); persistAutoPlanSoon(); });
+  $("autoPostprocessStepsToggle").addEventListener("click", () => {
+    const expanded = $("autoPostprocessStepsCard").classList.contains("collapsed");
+    setAutoStepsExpanded(expanded);
+  });
+  $("autoTranslateTarget").addEventListener("change", () => {
+    if (["translate_zh", "translate_en"].includes(activeLlmOperation)) switchLlmOperation(autoLlmOperation("translate"));
+  });
+  AUTO_STEP_ORDER.forEach((stepId) => {
+    const checkbox = $(AUTO_STEP_CHECKBOXES[stepId]);
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked && !autoStepReady(stepId)) {
+        checkbox.checked = false;
+        renderAutoPostprocessState();
+        openAutoStep(stepId);
+        return;
+      }
+      renderAutoPostprocessState();
+      persistAutoPlanSoon();
+    });
+    $(`configureAuto${stepId[0].toUpperCase()}${stepId.slice(1)}`).addEventListener("click", () => openAutoStep(stepId));
+  });
   ["jsonPath", "srtPath", "mediaPath"].forEach((id) => $(id).addEventListener("input", syncPaths));
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape" || busy) return;
@@ -865,5 +1251,11 @@
   window.addEventListener("mawlauncherready", initialize, { once: true });
   window.MAWLauncher.onPostprocessStatus = renderPostprocessStatus;
   window.MAWLauncher.onPostprocessStream = renderPostprocessStream;
+  window.MAWLauncher.onPostprocessPipeline = (event) => {
+    if (event.stage === "step_start") setResult(`${autoStepLabel(event.step)}：${t("toolbox_running")}`);
+    if (event.stage === "step_done") setResult(`${autoStepLabel(event.step)}：${t("toolbox_done")}`, "success");
+  };
+  window.MAWLauncher.getAutoPostprocessPayload = autoPlanFromControls;
+  window.MAWLauncher.openAutoPostprocessStep = openAutoStep;
   if (window.MAWLauncher.config) initialize();
 })();
