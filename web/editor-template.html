@@ -536,7 +536,7 @@ __WAVEFORM_CSS__
     <label class="toggle editor-settings-item" title="开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置">
       <input type="checkbox" id="split-use-word-timestamps" checked> 主字幕自动使用时间码拆分
     </label>
-    <small class="editor-settings-hint">启用后，可在右上角「🔧 设置 → 拆分与合并」中配置是否使用时间码拆分。</small>
+    <small class="editor-settings-hint" id="split-use-word-timestamps-hint">开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置。</small>
     <div class="editor-settings-field">
     <label class="editor-settings-item" title="合并两条字幕时，中间插入的字符（如果不需要可以留空）">
       合并字幕时插入字符
@@ -694,14 +694,14 @@ __WAVEFORM_CSS__
     </div>
     <div class="editor-settings-sub-group">
       <span class="editor-settings-title">🥷🏻</span>
-      <div class="editor-settings-field">
-      <label class="toggle editor-settings-item" title="开启后，分割工具改用 🔪 图标，成功拆分时播放刀光音效">
-        <input type="checkbox" id="ninja-mode"> 字幕忍者
-      </label>
-      <label class="toggle editor-settings-item" id="ninja-slash-effect-field" title="开启后，成功拆分时在屏幕上显示一道白色刀光" hidden>
-        <input type="checkbox" id="ninja-slash-effect" checked> 显示刀光特效
-      </label>
-      <small class="editor-settings-hint">打开字幕忍者模式，让拆分字幕变得更加有趣</small>
+      <div class="editor-settings-toggle-group ninja-toggle-group">
+        <label class="toggle editor-settings-item" title="开启后，分割工具改用 🔪 图标，成功拆分时播放刀光音效">
+          <input type="checkbox" id="ninja-mode"> 字幕忍者
+        </label>
+        <label class="toggle editor-settings-item" id="ninja-slash-effect-field" title="开启后，成功拆分时在屏幕上显示一道白色刀光" hidden>
+          <input type="checkbox" id="ninja-slash-effect" checked> 显示刀光特效
+        </label>
+        <small class="editor-settings-hint">打开字幕忍者模式，让拆分字幕变得更加有趣</small>
       </div>
     </div>
   </div>
@@ -1032,6 +1032,9 @@ __WAVEFORM_CSS__
     <div class="multi-subtitle-split-language-hint" role="note" aria-label="语言类型提示">
       <div>字符型语言（中文等）按字符拆分。</div>
       <div>单词型语言（英语等）只在空格处切分，确保不会拆碎单词；可在多重字幕 ⚙️ 设置中切换语言类型。</div>
+    </div>
+    <div class="multi-subtitle-split-timestamp-hint" id="multi-subtitle-split-timestamp-hint" role="note" hidden>
+      启用后，可在右上角「🔧 设置 → 拆分与合并」中配置是否使用时间码拆分。
     </div>
     <div class="multi-subtitle-split-meta" id="multi-subtitle-split-meta"></div>
     <section class="multi-subtitle-split-lane" id="multi-subtitle-split-main-lane" hidden>

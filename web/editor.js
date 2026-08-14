@@ -1148,6 +1148,7 @@ const multiSubtitleSplitMainLane = document.getElementById('multi-subtitle-split
 const multiSubtitleSplitMainText = document.getElementById('multi-subtitle-split-main-text');
 const multiSubtitleSplitExtensionLane = document.getElementById('multi-subtitle-split-extension-lane');
 const multiSubtitleSplitText = document.getElementById('multi-subtitle-split-text');
+const multiSubtitleSplitTimestampHint = document.getElementById('multi-subtitle-split-timestamp-hint');
 const multiSubtitleSplitPreview = document.getElementById('multi-subtitle-split-preview');
 const multiSubtitleSplitError = document.getElementById('multi-subtitle-split-error');
 const multiSubtitleSplitCancel = document.getElementById('multi-subtitle-split-cancel');
@@ -1278,29 +1279,78 @@ function playNinjaSplitSound() {
   if (playback && typeof playback.catch === 'function') playback.catch(() => {});
 }
 
-function triggerNinjaSplitFeedback() {
+function ninjaSplitPointFromRect(rect) {
+  if (!rect) return null;
+  const clientX = Number(rect.left) + Number(rect.width || 0) / 2;
+  const clientY = Number(rect.top) + Number(rect.height || 0) / 2;
+  return Number.isFinite(clientX) && Number.isFinite(clientY) ? { clientX, clientY } : null;
+}
+
+function ninjaSplitPointFromRange(range, root, offset = 0, textLength = 1) {
+  if (range) {
+    try {
+      const collapsed = range.cloneRange();
+      collapsed.collapse(true);
+      const rect = collapsed.getBoundingClientRect();
+      if (rect && (rect.width || rect.height)) return ninjaSplitPointFromRect(rect);
+      const rects = collapsed.getClientRects();
+      if (rects.length) return ninjaSplitPointFromRect(rects[0]);
+    } catch (_) {
+      // 被重绘或脱离 DOM 的 Range 不能再读取几何信息，继续使用元素回退值。
+    }
+  }
+  const rootRect = root?.getBoundingClientRect?.();
+  if (!rootRect) return null;
+  const safeLength = Math.max(1, Number(textLength) || 1);
+  const ratio = Math.max(0, Math.min(1, (Number(offset) || 0) / safeLength));
+  return {
+    clientX: rootRect.left + rootRect.width * ratio,
+    clientY: rootRect.top + rootRect.height / 2,
+  };
+}
+
+function ninjaFeedbackPointForSplit(state) {
+  if (state?.feedbackPoint) return state.feedbackPoint;
+  const cutMs = Number.isFinite(state?.cutMs)
+    ? state.cutMs
+    : Number.isFinite(state?.mainCutMs) ? state.mainCutMs : state?.extensionCutMs;
+  if (!Number.isFinite(cutMs)) return null;
+  const track = state?.kind === 'extension' ? 'extension' : 'main';
+  return waveformEditor?.getSplitPointAtTime?.(cutMs, track) || null;
+}
+
+function ninjaSplitPointFromLane(state, lane) {
+  const { textEl } = splitLaneElements(lane);
+  if (!textEl) return null;
+  const activeGap = textEl.querySelector('.multi-subtitle-split-gap.active');
+  if (activeGap) return ninjaSplitPointFromRect(activeGap.getBoundingClientRect());
+  const offset = lane === 'main' ? state?.mainOffset : state?.offset;
+  const text = lane === 'main'
+    ? DATA.segments[state?.mainIndex]?.text
+    : extensionSegmentById(state?.extensionId, getExtensionTrack(state?.trackId))?.text;
+  return ninjaSplitPointFromRange(null, textEl, offset, String(text || '').length);
+}
+
+function triggerNinjaSplitFeedback(splitPoint = null) {
   if (!EDITOR_SETTINGS.ninjaMode) return;
   playNinjaSplitSound();
   if (!EDITOR_SETTINGS.ninjaSlashEffect || !ninjaSlashFlash) return;
   // 每次触发都随机化刀光参数，避免连续拆分看起来一模一样。
-  const slashAngle = 14 + Math.random() * 16; // [14, 30] 度，再随机取正负决定 \ 或 / 方向
-  const slashDur = 180 + Math.random() * 80; // 刃光扫过时长 [180, 260] ms
-  const slashLinger = 150 + Math.random() * 100; // 切痕滞留时长 [150, 250] ms
-  const slashY = 30 + Math.random() * 40; // 斩击高度 [30%, 70%] 视口
-  const slashTint = 190 + Math.random() * 20; // 青白色相 [190, 210]
+  const slashAngle = 7 + Math.random() * 12; // [7, 19] 度，再随机取正负决定倾斜方向
+  const slashDur = 160 + Math.random() * 70; // 刀光持续时长 [160, 230] ms
+  const slashLinger = 100 + Math.random() * 70; // 刀光淡出余韵 [100, 170] ms
+  const viewportWidth = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
+  const viewportHeight = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
+  const point = ninjaSplitPointFromRect({
+    left: Number(splitPoint?.clientX),
+    top: Number(splitPoint?.clientY),
+  }) || { clientX: viewportWidth / 2, clientY: viewportHeight / 2 };
   const slashStyle = ninjaSlashFlash.style;
   slashStyle.setProperty('--slash-angle', `${(Math.random() < 0.5 ? -1 : 1) * slashAngle}deg`);
-  if (Math.random() < 0.5) {
-    slashStyle.setProperty('--slash-from', '-125vw');
-    slashStyle.setProperty('--slash-to', '160vw');
-  } else {
-    slashStyle.setProperty('--slash-from', '160vw');
-    slashStyle.setProperty('--slash-to', '-125vw');
-  }
   slashStyle.setProperty('--slash-dur', `${slashDur}ms`);
   slashStyle.setProperty('--slash-linger', `${slashLinger}ms`);
-  slashStyle.setProperty('--slash-y', `${slashY}%`);
-  slashStyle.setProperty('--slash-tint', String(slashTint));
+  slashStyle.setProperty('--slash-x', `${Math.max(0, Math.min(100, point.clientX / viewportWidth * 100))}%`);
+  slashStyle.setProperty('--slash-y', `${Math.max(0, Math.min(100, point.clientY / viewportHeight * 100))}%`);
   ninjaSlashFlash.classList.remove('show');
   // 强制重排，让连续快速拆分也能重新播放 CSS 动画。
   void ninjaSlashFlash.offsetWidth;
@@ -4009,17 +4059,12 @@ function finishEdit(save) {
 let pendingLinkedSplit = null;
 
 function splitTimeForTextOffset(segment, offset) {
+  const timing = splitItemsAtChar(segment, offset);
+  if (Number.isFinite(timing.splitMs)) return timing.splitMs;
   const text = String(segment?.text || '');
   const safeOffset = Math.max(0, Math.min(text.length, Number(offset) || 0));
-  const items = Array.isArray(segment?.items) ? segment.items : [];
-  let cursor = 0;
-  for (const item of items) {
-    const next = cursor + String(item.text || '').length;
-    if (safeOffset === next) return Number(item.end);
-    if (safeOffset < next) return Number(item.start);
-    cursor = next;
-  }
-  return segment.start + ((segment.end - segment.start) * safeOffset) / Math.max(1, text.length);
+  return Number(segment?.start)
+    + ((Number(segment?.end) - Number(segment?.start)) * safeOffset) / Math.max(1, text.length);
 }
 
 function shouldUseMainSplitTimestamps(segment) {
@@ -4059,30 +4104,193 @@ function splitOffsetNearTextPosition(text, offset, splitMode) {
   ), legalOffsets[0]);
 }
 
-function buildSplitPair(segment, offset, cutMs, idBase, includeItems = true, splitMode = null) {
+function cleanSplitItems(items, side) {
+  const source = Array.isArray(items) ? items : [];
+  return source
+    .map((item) => ({ ...item, text: String(item?.text || '') }))
+    .map((item, index, list) => ({
+      ...item,
+      text: side === 'left' && index === list.length - 1
+        ? item.text.replace(/[，。,.!?！？；;：:\s]+$/u, '')
+        : side === 'right' && index === 0
+          ? item.text.replace(/^[，。,.!?！？；;：:\s]+/u, '')
+          : item.text,
+    }))
+    .filter((item) => item.text && Number.isFinite(item.start)
+      && Number.isFinite(item.end) && item.end > item.start);
+}
+
+function splitItemsAtChar(
+  segment,
+  cursorChar,
+  requestedCutMs = null,
+  { preserveCutMs = false } = {},
+) {
+  const text = String(segment?.text || '');
+  const safeOffset = Math.max(0, Math.min(text.length, Math.round(Number(cursorChar) || 0)));
+  const segmentStart = Number(segment?.start);
+  const segmentEnd = Number(segment?.end);
+  const safeSegmentStart = Number.isFinite(segmentStart) ? segmentStart : 0;
+  const safeSegmentEnd = Number.isFinite(segmentEnd) && segmentEnd >= safeSegmentStart
+    ? segmentEnd : safeSegmentStart;
+  const items = Array.isArray(segment?.items) ? segment.items : [];
+  const hasItems = items.some((item) => String(item?.text || ''));
+
+  // 用原文查找 item 文本，处理 item 不包含词间空格的常见工程格式。
+  // 如果上游 item 文本无法和字幕原文对齐，则退回旧的顺序长度映射，
+  // 但后面的时间钳制和副本分组仍然保持一致。
+  let searchFrom = 0;
+  let aligned = true;
+  const records = [];
+  for (const item of items) {
+    const itemText = String(item?.text || '');
+    if (!itemText) continue;
+    const textStart = text.indexOf(itemText, searchFrom);
+    if (textStart < 0) {
+      aligned = false;
+      break;
+    }
+    records.push({ item, textStart, textEnd: textStart + itemText.length, itemText });
+    searchFrom = textStart + itemText.length;
+  }
+  if (!aligned) {
+    records.length = 0;
+    let textStart = 0;
+    for (const item of items) {
+      const itemText = String(item?.text || '');
+      if (!itemText) continue;
+      records.push({ item, textStart, textEnd: textStart + itemText.length, itemText });
+      textStart += itemText.length;
+    }
+  }
+
+  const timeRangeFor = (item) => {
+    const rawStart = Number(item?.start);
+    const rawEnd = Number(item?.end);
+    const start = Math.max(
+      safeSegmentStart,
+      Number.isFinite(rawStart) ? rawStart : safeSegmentStart,
+    );
+    const end = Math.min(
+      safeSegmentEnd,
+      Number.isFinite(rawEnd) ? rawEnd : safeSegmentEnd,
+    );
+    return { start, end };
+  };
+  const previous = [...records].reverse().find((record) => record.textEnd <= safeOffset);
+  const next = records.find((record) => record.textStart >= safeOffset);
+  const inside = records.find((record) => (
+    safeOffset > record.textStart && safeOffset < record.textEnd
+  ));
+  const requested = Number(requestedCutMs);
+  let splitMs = Number.isFinite(requested) ? Math.round(requested) : null;
+
+  if (inside) {
+    const range = timeRangeFor(inside.item);
+    const fraction = (safeOffset - inside.textStart) / Math.max(1, inside.textEnd - inside.textStart);
+    const interpolated = Math.round(range.start + (range.end - range.start) * fraction);
+    if (!preserveCutMs || !Number.isFinite(splitMs) || splitMs < range.start || splitMs > range.end) {
+      splitMs = interpolated;
+    }
+  } else {
+    if (!records.length && Number.isFinite(splitMs)) {
+      splitMs = Math.round(splitMs);
+    }
+    // 文字切点在 item 边界或词间空白时，优先落在对应 item 的真实边界。
+    // 这会把“模型”后的手工切点从 26526 吸附到“模型”的 end 26680，
+    // 避免左字幕范围先于完整 item 结束。
+    const previousRange = previous ? timeRangeFor(previous.item) : null;
+    const nextRange = next ? timeRangeFor(next.item) : null;
+    const lower = previousRange?.end ?? safeSegmentStart;
+    const upper = nextRange?.start ?? safeSegmentEnd;
+    if (records.length && (!preserveCutMs || !Number.isFinite(splitMs))) {
+      splitMs = nextRange?.start ?? previousRange?.end ?? null;
+    }
+  }
+
+  if (!Number.isFinite(splitMs)) {
+    const ratio = safeOffset / Math.max(1, text.length);
+    splitMs = Math.round(safeSegmentStart + (safeSegmentEnd - safeSegmentStart) * ratio);
+  }
+  splitMs = Math.max(safeSegmentStart, Math.min(safeSegmentEnd, Math.round(splitMs)));
+
+  const leftItems = [];
+  const rightItems = [];
+  for (const record of records) {
+    const range = timeRangeFor(record.item);
+    if (range.end <= range.start) continue;
+    const { itemText, textStart, textEnd } = record;
+    if (inside === record) {
+      const localOffset = Math.max(0, Math.min(itemText.length, safeOffset - textStart));
+      const leftText = itemText.slice(0, localOffset);
+      const rightText = itemText.slice(localOffset);
+      const itemSplitMs = preserveCutMs && splitMs >= range.start && splitMs <= range.end
+        ? splitMs
+        : Math.round(range.start + (range.end - range.start)
+          * localOffset / Math.max(1, itemText.length));
+      if (leftText && rightText && itemSplitMs > range.start && itemSplitMs < range.end) {
+        leftItems.push({ ...record.item, text: leftText, start: range.start, end: itemSplitMs });
+        rightItems.push({ ...record.item, text: rightText, start: itemSplitMs, end: range.end });
+      } else if (leftText && rightText) {
+        // 取整后不足以给两侧各留出一个毫秒时，保留完整 item 到更接近
+        // 光标的一侧，避免为了制造 0 长 item 而丢失词文本。
+        const keepLeft = splitMs >= range.end || localOffset >= itemText.length / 2;
+        if (keepLeft) {
+          leftItems.push({ ...record.item, text: itemText, start: range.start, end: range.end });
+        } else {
+          rightItems.push({ ...record.item, text: itemText, start: range.start, end: range.end });
+        }
+      } else if (leftText && itemSplitMs > range.start) {
+        leftItems.push({ ...record.item, text: leftText, start: range.start, end: itemSplitMs });
+      } else if (rightText && range.end > itemSplitMs) {
+        rightItems.push({ ...record.item, text: rightText, start: itemSplitMs, end: range.end });
+      }
+      continue;
+    }
+    if (textEnd <= safeOffset) {
+      const end = Math.min(range.end, splitMs);
+      if (end > range.start) leftItems.push({ ...record.item, start: range.start, end });
+    } else if (textStart >= safeOffset) {
+      const start = Math.max(range.start, splitMs);
+      if (range.end > start) rightItems.push({ ...record.item, start, end: range.end });
+    } else if (splitMs >= range.start && splitMs <= range.end) {
+      // 退回顺序映射或异常 item 文本对齐时，仍不得让 item 穿过字幕边界。
+      const end = Math.min(range.end, splitMs);
+      if (end > range.start) leftItems.push({ ...record.item, start: range.start, end });
+    }
+  }
+  return { leftItems, rightItems, splitMs, hasItems };
+}
+
+function buildSplitPair(
+  segment,
+  offset,
+  cutMs,
+  idBase,
+  includeItems = true,
+  splitMode = null,
+  { preserveCutMs = false } = {},
+) {
   const text = String(segment?.text || '');
   const mode = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SPLIT_MODES.has(splitMode)
     ? splitMode : MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(text);
   const parts = MULTI_SUBTITLE_UTILS.splitSubtitleText(text, offset, mode);
   if (!parts) return null;
-  const items = includeItems && Array.isArray(segment.items) ? segment.items : [];
-  const itemParts = splitItemsAtChar(items, parts.offset, text);
-  const cleanItems = (source) => source
-    .map((item) => ({ ...item }))
-    .map((item, index, list) => ({
-      ...item,
-      text: index === list.length - 1
-        ? item.text.replace(/[，。,.!?！？；;：:\s]+$/u, '')
-        : item.text.replace(/^[，。,.!?！？；;：:\s]+/u, ''),
-    }))
-    .filter((item) => item.text);
-  const leftItems = cleanItems(itemParts.leftItems);
-  const rightItems = cleanItems(itemParts.rightItems);
+  const itemParts = splitItemsAtChar(
+    includeItems ? segment : { ...segment, items: [] },
+    parts.offset,
+    cutMs,
+    { preserveCutMs },
+  );
+  const leftItems = cleanSplitItems(itemParts.leftItems, 'left');
+  const rightItems = cleanSplitItems(itemParts.rightItems, 'right');
+  const splitMs = Number.isFinite(itemParts.splitMs) ? itemParts.splitMs : Math.round(cutMs);
+  if (!Number.isFinite(splitMs)) return null;
   const left = {
     ...segment,
     id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment], `${idBase}-a`, 'segment'),
     start: segment.start,
-    end: Math.round(cutMs),
+    end: splitMs,
     text: parts.left,
     items: leftItems.length ? leftItems : null,
     _dirty: true,
@@ -4090,7 +4298,7 @@ function buildSplitPair(segment, offset, cutMs, idBase, includeItems = true, spl
   const right = {
     ...segment,
     id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment, left], `${idBase}-b`, 'segment'),
-    start: Math.round(cutMs),
+    start: splitMs,
     end: segment.end,
     text: parts.right,
     items: rightItems.length ? rightItems : null,
@@ -4104,7 +4312,7 @@ function buildSplitPair(segment, offset, cutMs, idBase, includeItems = true, spl
     right.color = null;
     right.color_ref = { name: segment.color.name, headIdx: 0 };
   }
-  return { left, right, parts };
+  return { left, right, parts, splitMs };
 }
 
 function linkedSplitState(mainIndex, initial = {}) {
@@ -4154,6 +4362,7 @@ function linkedSplitState(mainIndex, initial = {}) {
     extensionCutMs: initialMainCutMs,
     extensionMode,
     fixedCutMs,
+    feedbackPoint: initial.feedbackPoint || null,
     cutSource: fixedCutMs != null
       ? 'pointer'
       : useMainWordTimestamps
@@ -4184,6 +4393,7 @@ function mainWaveformSplitState(mainIndex, initial = {}) {
     mainCutMs: fixedCutMs ?? (hasMainWordTimestamps
       ? splitTimeForTextOffset(main, initialOffset)
       : splitCutTime(main, initialOffset, false)),
+    feedbackPoint: initial.feedbackPoint || null,
     mainMode,
     fixedCutMs,
     cutSource: fixedCutMs != null
@@ -4216,6 +4426,7 @@ function extensionOnlySplitState(extensionIndex, track, initial = {}) {
     trackId: track.id,
     offset: initialOffset,
     extensionCutMs: fixedCutMs ?? splitTimeForTextOffset(extension, initialOffset),
+    feedbackPoint: initial.feedbackPoint || null,
     extensionMode,
     fixedCutMs,
     cutSource: fixedCutMs != null ? 'pointer' : 'text-estimate',
@@ -4483,6 +4694,9 @@ function renderSplitLane(state, lane) {
 function renderLinkedSplitText(state) {
   if (!state) return;
   state.lockedLanes = { main: false, extension: false };
+  if (multiSubtitleSplitTimestampHint) {
+    multiSubtitleSplitTimestampHint.hidden = state.mainTimestampLocked !== true;
+  }
   if (multiSubtitleSplitTitle) {
     multiSubtitleSplitTitle.textContent = state.kind === 'main'
       ? '选择主字幕拆分点'
@@ -4683,6 +4897,7 @@ function openMainWaveformSplitModal(mainIndex, timeMs) {
     flashHint('这条字幕没有可用的文字边界');
     return false;
   }
+  state.feedbackPoint = waveformEditor?.getSplitPointAtTime?.(timeMs, 'main') || null;
   pendingLinkedSplit = state;
   multiSubtitleSplitModal?.classList.add('show');
   renderLinkedSplitText(state);
@@ -4700,6 +4915,8 @@ function openExtensionSplitModal(
     flashHint('这条副字幕没有可用的文字边界');
     return false;
   }
+  state.feedbackPoint = state.feedbackPoint
+    || waveformEditor?.getSplitPointAtTime?.(timeMs, 'extension') || null;
   pendingLinkedSplit = state;
   multiSubtitleSplitModal?.classList.add('show');
   renderLinkedSplitText(state);
@@ -4707,6 +4924,9 @@ function openExtensionSplitModal(
 }
 
 function commitMainWaveformSplit(state) {
+  // 波形入口可能是在当前字幕面板仍有未提交编辑时触发；先完成面板编辑，
+  // 再为“拆分”建立快照，确保一次撤销能回到拆分前的完整字幕状态。
+  commitCuePanelEdit();
   const mainIndex = state.mainIndex;
   const main = DATA.segments[mainIndex];
   if (!main) return false;
@@ -4717,11 +4937,12 @@ function commitMainWaveformSplit(state) {
     main.id || `main-${mainIndex}`,
     true,
     state.mainMode,
+    { preserveCutMs: Number.isFinite(state.fixedCutMs) },
   );
   if (!pair) return false;
   const oldMainId = main.id;
-  clearSelection();
   pushUndo('拆分字幕');
+  clearSelection({ commitCuePanel: false });
   removeBindingsForSegmentIds([oldMainId], []);
   DATA.segments.splice(mainIndex, 1, pair.left, pair.right);
   for (let index = mainIndex + 2; index < DATA.segments.length; index++) {
@@ -4737,7 +4958,7 @@ function commitMainWaveformSplit(state) {
   selectOnly(mainIndex + 1);
   lastClickedIdx = mainIndex + 1;
   update();
-  triggerNinjaSplitFeedback();
+  triggerNinjaSplitFeedback(ninjaFeedbackPointForSplit(state));
   flashHint('已按选择的断点拆分主字幕', 'success');
   return true;
 }
@@ -4754,6 +4975,7 @@ function commitExtensionSplit(state) {
     extension.id || `${track.id}-segment-${extensionIndex}`,
     true,
     state.extensionMode,
+    { preserveCutMs: Number.isFinite(state.fixedCutMs) },
   );
   if (!pair) return false;
 
@@ -4771,7 +4993,7 @@ function commitExtensionSplit(state) {
   selectOnlyExtension(extensionIndex + 1);
   lastClickedExtensionIdx = extensionIndex + 1;
   update();
-  triggerNinjaSplitFeedback();
+  triggerNinjaSplitFeedback(ninjaFeedbackPointForSplit(state));
   flashHint(
     wasBound
       ? '已独立拆分拓展字幕并解除原绑定'
@@ -4787,6 +5009,7 @@ function confirmLinkedSplit() {
   const previewLane = state.kind === 'main' ? 'main' : 'extension';
   const previewOffset = state.kind === 'main' ? state.mainOffset : state.offset;
   if (!updateLinkedSplitPreview(previewOffset, previewLane)) return;
+  state.feedbackPoint = ninjaSplitPointFromLane(state, previewLane) || state.feedbackPoint;
   if (state.kind === 'main') {
     commitMainWaveformSplit(state);
     return;
@@ -4807,7 +5030,15 @@ function confirmLinkedSplit() {
     flashHint('主字幕和拓展字幕必须使用同一个绝对切点');
     return;
   }
-  const mainPair = buildSplitPair(main, state.mainOffset, sharedCutMs, main.id || `main-${mainIndex}`);
+  const mainPair = buildSplitPair(
+    main,
+    state.mainOffset,
+    sharedCutMs,
+    main.id || `main-${mainIndex}`,
+    true,
+    state.mainMode,
+    { preserveCutMs: true },
+  );
   const extensionPair = buildSplitPair(
     extension,
     state.offset,
@@ -4815,6 +5046,7 @@ function confirmLinkedSplit() {
     extension.id || `extension-${extensionIndex}`,
     true,
     state.extensionMode,
+    { preserveCutMs: true },
   );
   if (!mainPair || !extensionPair || extensionIndex < 0) return;
   const oldMainId = main.id;
@@ -4845,11 +5077,11 @@ function confirmLinkedSplit() {
   selectOnly(mainIndex);
   lastClickedIdx = mainIndex;
   update();
-  triggerNinjaSplitFeedback();
+  triggerNinjaSplitFeedback(ninjaFeedbackPointForSplit(state));
   flashHint('已按同一绝对时间切点联动拆分', 'success');
 }
 
-function splitAtCursor() {
+function splitAtCursor(feedbackPoint = null) {
   if (!editingState) return false;
   const { el, idx, textEl } = editingState;
   const sel = window.getSelection();
@@ -4860,11 +5092,17 @@ function splitAtCursor() {
   preRange.setEnd(range.startContainer, range.startOffset);
   const cursorOffset = preRange.toString().length;
   const fullText = textEl.innerText.replace(/\r\n?/g, '\n');
+  const ninjaFeedbackPoint = feedbackPoint || ninjaSplitPointFromRange(
+    range, textEl, cursorOffset, fullText.length,
+  );
   const seg = DATA.segments[idx];
 
   if (multiSubtitleVisible() && bindingForMainIndex(idx)) {
     finishEdit(false);
-    pendingLinkedSplit = linkedSplitState(idx, { mainOffset: cursorOffset });
+    pendingLinkedSplit = linkedSplitState(idx, {
+      mainOffset: cursorOffset,
+      feedbackPoint: ninjaFeedbackPoint,
+    });
     if (!pendingLinkedSplit) return;
     multiSubtitleSplitModal?.classList.add('show');
     renderLinkedSplitText(pendingLinkedSplit);
@@ -4891,31 +5129,20 @@ function splitAtCursor() {
     return false;
   }
 
-  const rightStartChar = fullText.length - rightText.length;
-  const items = seg.items || [];
-  const { leftItems, rightItems } = splitItemsAtChar(items, rightStartChar, fullText);
-  if (leftItems.length) {
-    const last = leftItems[leftItems.length - 1];
-    last.text = last.text.replace(/[，。,. \t]+$/, '');
-  }
-  if (rightItems.length) {
-    const first = rightItems[0];
-    first.text = first.text.replace(/^[，。,. \t]+/, '');
-  }
-  const leftItemsClean = leftItems.filter(it => it.text.length > 0);
-  const rightItemsClean = rightItems.filter(it => it.text.length > 0);
-
-  let leftEnd, rightStart;
-  if (leftItemsClean.length && rightItemsClean.length) {
-    leftEnd = leftItemsClean[leftItemsClean.length - 1].end;
-    rightStart = rightItemsClean[0].start;
-  } else {
+  const itemSplit = splitItemsAtChar(seg, cursorOffset);
+  let splitMs = itemSplit.splitMs;
+  if (!itemSplit.hasItems || !Number.isFinite(splitMs)) {
     const ratio = cursorOffset / fullText.length;
     const t = seg.start + (seg.end - seg.start) * ratio;
     // 无词级时间码时按光标位置拆分；钳制边界保证两侧都至少 100ms。
-    const clamped = Math.min(Math.max(Math.round(t), seg.start + 100), seg.end - 100);
-    leftEnd = clamped; rightStart = clamped;
+    splitMs = Math.min(Math.max(Math.round(t), seg.start + 100), seg.end - 100);
   }
+  // 字幕列表手工拆分允许用户指定任意字符位置，但时间码必须落在实际 item
+  // 的安全范围内；当切点在 item 内时，splitItemsAtChar 已为两侧生成 item 副本。
+  const leftItemsClean = cleanSplitItems(itemSplit.leftItems, 'left');
+  const rightItemsClean = cleanSplitItems(itemSplit.rightItems, 'right');
+  const leftEnd = splitMs;
+  const rightStart = splitMs;
 
   const leftSeg = {
     id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([seg], `${seg.id || `main-${idx}`}-a`, 'main'),
@@ -4951,11 +5178,10 @@ function splitAtCursor() {
   el.classList.remove('editing');
   editingState = null;
 
-  // 拆分会改变 idx；先提交面板编辑，再静默清选中，等列表和波形块
-  // 覆盖层一次性更新后再选中后半段。
-  commitCuePanelEdit();
-  clearSelection({ silent: true });
+  // 拆分会改变 idx；先在任何写入前保存完整快照，再静默清选中，等列表
+  // 和波形块覆盖层一次性更新后再选中后半段。这样撤销会恢复原 item 时间。
   pushUndo('拆分字幕');
+  clearSelection({ silent: true });
   // 关闭多字幕模式时，绑定关系仍保存在工程中；拆分主轨后旧 ID 不再存在，
   // 只移除这条关系，保留隐藏的扩展字幕供用户重新绑定。
   removeBindingsForSegmentIds([seg.id], []);
@@ -4976,25 +5202,9 @@ function splitAtCursor() {
   selectOnly(idx + 1);
   // 拆分后后半段是新的视觉选中项，也必须成为 Shift+点击的范围锚点。
   lastClickedIdx = idx + 1;
-  triggerNinjaSplitFeedback();
+  triggerNinjaSplitFeedback(ninjaFeedbackPoint);
   update();
   return true;
-}
-
-function splitItemsAtChar(items, cursorChar) {
-  let acc = 0;
-  for (let i = 0; i < items.length; i++) {
-    const len = items[i].text.length;
-    if (acc + len >= cursorChar) {
-      if (acc === cursorChar) return { leftItems: items.slice(0, i), rightItems: items.slice(i) };
-      if (acc + len === cursorChar) return { leftItems: items.slice(0, i + 1), rightItems: items.slice(i + 1) };
-      const distLeft = cursorChar - acc, distRight = (acc + len) - cursorChar;
-      if (distLeft <= distRight) return { leftItems: items.slice(0, i), rightItems: items.slice(i) };
-      else return { leftItems: items.slice(0, i + 1), rightItems: items.slice(i + 1) };
-    }
-    acc += len;
-  }
-  return { leftItems: items.slice(), rightItems: [] };
 }
 
 function flashCueSplitAt(idx, clientX) {
@@ -5027,6 +5237,9 @@ function flashCueSplitAt(idx, clientX) {
 function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
   if (!el) return false;
+  const waveformFeedbackPoint = Number.isFinite(waveformTimeMs)
+    ? waveformEditor?.getSplitPointAtTime?.(waveformTimeMs, 'main') || null
+    : null;
   const listCaretInfo = Number.isFinite(waveformTimeMs)
     ? null : caretInfoFromPoint(el.querySelector('.text'), x, y);
   if (multiSubtitleVisible() && bindingForMainIndex(idx)) {
@@ -5034,7 +5247,9 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
     const initial = Number.isFinite(waveformTimeMs)
       ? { timeMs: waveformTimeMs }
       : Number.isFinite(listCaretInfo?.offset)
-        ? { mainOffset: listCaretInfo.offset } : {};
+        ? { mainOffset: listCaretInfo.offset, feedbackPoint: ninjaSplitPointFromRect(listCaretInfo.rect) }
+        : {};
+    if (waveformFeedbackPoint) initial.feedbackPoint = waveformFeedbackPoint;
     pendingLinkedSplit = linkedSplitState(idx, initial);
     if (!pendingLinkedSplit) return false;
     multiSubtitleSplitModal?.classList.add('show');
@@ -5063,7 +5278,7 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
       flashHint('无法定位波形中的拆分位置');
       return false;
     }
-    const didSplit = splitAtCursor();
+    const didSplit = splitAtCursor(waveformFeedbackPoint);
     if (didSplit) waveformEditor?.flashSplitAtTime?.(waveformTimeMs);
     return didSplit;
   }

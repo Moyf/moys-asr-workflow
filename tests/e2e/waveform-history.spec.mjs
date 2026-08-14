@@ -239,6 +239,90 @@ test('waveform background split supports undo and redo', async ({ page }) => {
   ]);
 });
 
+test('manual text split keeps malformed item timing inside both cues and restores it with undo', async ({ page }) => {
+  await page.goto(server.url);
+  const original = {
+    id: 'manual-item-split',
+    start: 25160,
+    end: 26526,
+    text: '有这么多新的模型来',
+    items: [
+      { text: '有', start: 25200, end: 25400 },
+      { text: '这么多', start: 25400, end: 25760 },
+      { text: '新的', start: 25760, end: 26000 },
+      { text: '模型', start: 26000, end: 26680 },
+      { text: '来', start: 26680, end: 26960 },
+    ],
+  };
+  await page.evaluate((segment) => {
+    DATA.segments[0] = segment;
+    renderAll({ waveform: 'full' });
+  }, original);
+
+  const text = page.locator('.cue[data-idx="0"] .text');
+  await text.dblclick();
+  await text.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    // 在“模型”内部切开，覆盖 item.end 早于原始 item.end 的情况。
+    range.setStart(node, 7);
+    range.setEnd(node, 7);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.cue[data-idx="0"]')).toHaveCount(1);
+  await expect(page.locator('.cue[data-idx="1"]')).toHaveCount(1);
+
+  const splitState = await page.evaluate(() => ({
+    segments: DATA.segments.slice(0, 2).map((segment) => ({
+      start: segment.start,
+      end: segment.end,
+      text: segment.text,
+      items: segment.items,
+    })),
+  }));
+  expect(splitState.segments.map((segment) => segment.text)).toEqual([
+    '有这么多新的模',
+    '型来',
+  ]);
+  for (const segment of splitState.segments) {
+    for (const item of segment.items || []) {
+      expect(item.start).toBeGreaterThanOrEqual(segment.start);
+      expect(item.end).toBeLessThanOrEqual(segment.end);
+      expect(item.end).toBeGreaterThan(item.start);
+    }
+  }
+  expect(splitState.segments.flatMap((segment) => segment.items || []).map((item) => item.text))
+    .toEqual(['有', '这么多', '新的', '模', '型', '来']);
+
+  const saveResponse = page.waitForResponse((response) => (
+    response.url().endsWith('/api/project') && response.request().method() === 'POST'
+  ));
+  await page.keyboard.press('Control+s');
+  expect((await saveResponse).ok()).toBe(true);
+
+  await page.getByRole('button', { name: /撤销/ }).click();
+  await expect.poll(() => page.evaluate(() => JSON.stringify(DATA.segments[0]))).toBe(JSON.stringify(original));
+  await expect(page.getByRole('button', { name: /重做/ })).toBeEnabled();
+
+  await page.getByRole('button', { name: /重做/ }).click();
+  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
+  const redone = await page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => ({
+    start: segment.start,
+    end: segment.end,
+    items: segment.items,
+  })));
+  for (const segment of redone) {
+    for (const item of segment.items || []) {
+      expect(item.start).toBeGreaterThanOrEqual(segment.start);
+      expect(item.end).toBeLessThanOrEqual(segment.end);
+      expect(item.end).toBeGreaterThan(item.start);
+    }
+  }
+});
+
 test('current-cue text keeps the list and waveform labels in sync through undo and redo', async ({ page }) => {
   await page.goto(server.url);
 

@@ -3063,6 +3063,33 @@
       return true;
     }
 
+    // 返回波形字幕切点的屏幕坐标，供全屏反馈动画把中心落在实际切分位置。
+    getSplitPointAtTime(timeMs, track = 'main') {
+      if (!Number.isFinite(timeMs)) return null;
+      const rows = [...this.content.querySelectorAll('.waveform-row')];
+      const row = rows.find((candidate) => {
+        const startMs = Number(candidate.dataset.startMs);
+        const endMs = Number(candidate.dataset.endMs);
+        return timeMs >= startMs && timeMs <= endMs;
+      });
+      if (!row) return null;
+      const rowStart = Number(row.dataset.startMs);
+      const rowEnd = Number(row.dataset.endMs);
+      const rowRect = row.getBoundingClientRect();
+      const ratio = clamp((timeMs - rowStart) / Math.max(1, rowEnd - rowStart), 0, 1);
+      const selector = `.waveform-cue-block[data-track="${track === 'extension' ? 'extension' : 'main'}"]`;
+      const block = [...row.querySelectorAll(selector)].find((candidate) => {
+        const startMs = Number(candidate.dataset.start);
+        const endMs = Number(candidate.dataset.end);
+        return timeMs >= startMs && timeMs <= endMs;
+      });
+      const blockRect = block?.getBoundingClientRect?.();
+      return {
+        clientX: rowRect.left + rowRect.width * ratio,
+        clientY: blockRect ? blockRect.top + blockRect.height / 2 : rowRect.top + rowRect.height / 2,
+      };
+    }
+
     // 屏幕坐标 -> 波形时间：命中某个波形行时返回该行内的时间（毫秒），否则返回 null。
     // 供键盘快捷键（如 B 按指针音频位置拆分）在不构造指针事件的情况下复用行内映射。
     timeMsAtPoint(clientX, clientY) {

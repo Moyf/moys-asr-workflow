@@ -785,6 +785,14 @@
     display: inline-flex; flex-wrap: wrap; align-items: center;
     gap: 3px 12px; flex: 1 1 auto; min-width: 140px;
   }
+  .editor-settings-toggle-group > .editor-settings-hint {
+    flex: 0 0 100%; margin-top: 2px;
+  }
+  .ninja-toggle-group {
+    display: grid; grid-template-columns: max-content max-content;
+    flex: 0 0 100%; gap: 3px 12px; align-items: center;
+  }
+  .ninja-toggle-group > .editor-settings-hint { grid-column: 1 / -1; }
   .editor-settings-panel select {
     background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);
     border-radius: var(--radius-sm); padding: 4px 6px; font-size: 12px; cursor: pointer;
@@ -1520,6 +1528,12 @@
     background: var(--accent-tint); color: var(--text-secondary); font-size: 12px;
     line-height: 1.5;
   }
+  .multi-subtitle-split-timestamp-hint {
+    margin: 8px 0 7px; padding: 7px 10px;
+    border-left: 3px solid var(--amber-hover); border-radius: var(--radius-sm);
+    background: var(--amber-tint); color: var(--text-secondary); font-size: 12px;
+    line-height: 1.5;
+  }
   .multi-subtitle-split-lane { display: grid; gap: 5px; margin-top: 10px; }
   .multi-subtitle-split-lane[hidden] { display: none; }
   .multi-subtitle-split-lane.timestamp-locked-lane h4 { color: var(--amber-hover); }
@@ -1926,69 +1940,52 @@
 
   /* === 字幕忍者刀光 ===
      全屏层只在拆分成功且用户开启特效时短暂存在，不捕获指针事件。
-     ::before 是扫过的锋利刃光，::after 是刃光经过后短暂滞留的发光切痕；
-     角度、方向、时长、高度与色调全部由 JS 在触发时随机写入 CSS 变量。 */
+     刀光以实际拆分点为中心，采用纵向渐变细线；位置、角度与时长由 JS 在触发时写入。 */
   #ninja-slash-flash {
     position: fixed; inset: 0; z-index: 1000; overflow: hidden;
     pointer-events: none; visibility: hidden; opacity: 0;
     /* JS 未写入变量时的兜底默认值。 */
-    --slash-angle: 22deg;
-    --slash-from: -125vw;
-    --slash-to: 160vw;
-    --slash-dur: 220ms;
-    --slash-linger: 200ms;
+    --slash-angle: 12deg;
+    --slash-dur: 210ms;
+    --slash-linger: 120ms;
+    --slash-x: 50%;
     --slash-y: 50%;
-    --slash-tint: 200;
+    --slash-height: 190%;
   }
-  /* 刃光：细窄高亮刃芯 + 青色辉光，不再使用大半径模糊。 */
-  #ninja-slash-flash::before {
-    content: ""; position: absolute; left: 0;
-    top: calc(var(--slash-y) - 95%);
-    width: 3px; height: 190%;
-    background: linear-gradient(90deg,
-      transparent 0%,
-      hsl(var(--slash-tint) 100% 78% / 0.55) 28%,
-      #ffffff 50%,
-      hsl(var(--slash-tint) 100% 78% / 0.55) 72%,
-      transparent 100%);
-    box-shadow:
-      0 0 10px 1px hsl(var(--slash-tint) 100% 72% / 0.65),
-      0 0 30px 5px hsl(var(--slash-tint) 100% 66% / 0.35);
+  /* 锋利刃芯：参考横向渐变线改为纵向，边缘淡出，中段保持纯白。 */
+  #ninja-slash-flash::before,
+  #ninja-slash-flash::after {
+    content: ""; position: absolute;
+    top: var(--slash-y); left: var(--slash-x);
+    width: 3px; height: var(--slash-height);
+    background: linear-gradient(to bottom,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 1) 15%,
+      rgba(255, 255, 255, 1) 80%,
+      rgba(255, 255, 255, 0) 100%);
+    transform: translate(-50%, -50%) rotate(var(--slash-angle));
+    transform-origin: center;
     opacity: 0;
-    transform: translateX(var(--slash-from)) rotate(var(--slash-angle));
     will-change: transform, opacity;
   }
-  /* 切痕：与刃光同角度、同高度的全屏细发线，刃光扫过后闪现并滞留。 */
-  #ninja-slash-flash::after {
-    content: ""; position: absolute; left: 50%; margin-left: -1px;
-    top: calc(var(--slash-y) - 100%);
-    width: 2px; height: 200%;
-    background: linear-gradient(90deg,
-      transparent 0%,
-      hsl(var(--slash-tint) 100% 80% / 0.6) 30%,
-      #ffffff 50%,
-      hsl(var(--slash-tint) 100% 80% / 0.6) 70%,
-      transparent 100%);
+  #ninja-slash-flash::before {
     box-shadow:
-      0 0 8px 1px hsl(var(--slash-tint) 100% 75% / 0.5),
-      0 0 22px 4px hsl(var(--slash-tint) 100% 70% / 0.28);
-    opacity: 0;
-    transform: rotate(var(--slash-angle));
+      0 0 7px 1px rgba(255, 255, 255, 0.58),
+      0 0 20px 3px rgba(255, 255, 255, 0.24);
   }
-  /* 不再有全屏白纱；只在斩击中心留一团很快熄灭的微弱径向闪光。 */
+  #ninja-slash-flash::after {
+    width: 12px;
+    filter: blur(4px);
+  }
   #ninja-slash-flash.show {
     visibility: visible;
-    background: radial-gradient(ellipse 46% 22% at 50% var(--slash-y),
-      hsl(var(--slash-tint) 100% 88% / 0.09), transparent 72%);
     animation: ninja-slash-flash-in calc(var(--slash-dur) + var(--slash-linger) + 60ms) linear forwards;
   }
   #ninja-slash-flash.show::before {
-    animation: ninja-slash-beam var(--slash-dur) cubic-bezier(.2,.7,.25,1) forwards;
+    animation: ninja-slash-beam var(--slash-dur) ease-out forwards;
   }
-  /* 切痕在刃光扫到约四成处亮起，随后在滞留期内淡去。 */
   #ninja-slash-flash.show::after {
-    animation: ninja-slash-cut calc(var(--slash-linger) + 60ms) ease-out forwards;
-    animation-delay: calc(var(--slash-dur) * 0.38);
+    animation: ninja-slash-glow calc(var(--slash-dur) + var(--slash-linger)) ease-out forwards;
   }
   @keyframes ninja-slash-flash-in {
     0% { opacity: 0; }
@@ -1997,20 +1994,21 @@
     100% { opacity: 0; visibility: hidden; }
   }
   @keyframes ninja-slash-beam {
-    0% { opacity: 0; transform: translateX(var(--slash-from)) rotate(var(--slash-angle)); }
-    12% { opacity: 1; }
-    82% { opacity: 1; }
-    100% { opacity: 0; transform: translateX(var(--slash-to)) rotate(var(--slash-angle)); }
-  }
-  @keyframes ninja-slash-cut {
     0% { opacity: 0; }
-    16% { opacity: 1; }
+    14% { opacity: 0.95; }
+    68% { opacity: 0.95; }
+    100% { opacity: 0; }
+  }
+  @keyframes ninja-slash-glow {
+    0% { opacity: 0; }
+    14% { opacity: 0.38; }
+    58% { opacity: 0.26; }
     100% { opacity: 0; }
   }
   @media (prefers-reduced-motion: reduce) {
     #ninja-slash-flash.show { animation-duration: 90ms; }
     #ninja-slash-flash.show::before { animation-duration: 90ms; }
-    #ninja-slash-flash.show::after { animation-duration: 60ms; animation-delay: 0ms; }
+    #ninja-slash-flash.show::after { animation-duration: 60ms; }
   }
   .hint-project-header { display: flex; align-items: center; gap: 10px; }
   .hint-project-header strong { flex: 1 1 auto; color: var(--red-hover); font-size: 15px; }
@@ -3563,7 +3561,7 @@
     <label class="toggle editor-settings-item" title="开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置">
       <input type="checkbox" id="split-use-word-timestamps" checked> 主字幕自动使用时间码拆分
     </label>
-    <small class="editor-settings-hint">启用后，可在右上角「🔧 设置 → 拆分与合并」中配置是否使用时间码拆分。</small>
+    <small class="editor-settings-hint" id="split-use-word-timestamps-hint">开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置。</small>
     <div class="editor-settings-field">
     <label class="editor-settings-item" title="合并两条字幕时，中间插入的字符（如果不需要可以留空）">
       合并字幕时插入字符
@@ -3721,14 +3719,14 @@
     </div>
     <div class="editor-settings-sub-group">
       <span class="editor-settings-title">🥷🏻</span>
-      <div class="editor-settings-field">
-      <label class="toggle editor-settings-item" title="开启后，分割工具改用 🔪 图标，成功拆分时播放刀光音效">
-        <input type="checkbox" id="ninja-mode"> 字幕忍者
-      </label>
-      <label class="toggle editor-settings-item" id="ninja-slash-effect-field" title="开启后，成功拆分时在屏幕上显示一道白色刀光" hidden>
-        <input type="checkbox" id="ninja-slash-effect" checked> 显示刀光特效
-      </label>
-      <small class="editor-settings-hint">打开字幕忍者模式，让拆分字幕变得更加有趣</small>
+      <div class="editor-settings-toggle-group ninja-toggle-group">
+        <label class="toggle editor-settings-item" title="开启后，分割工具改用 🔪 图标，成功拆分时播放刀光音效">
+          <input type="checkbox" id="ninja-mode"> 字幕忍者
+        </label>
+        <label class="toggle editor-settings-item" id="ninja-slash-effect-field" title="开启后，成功拆分时在屏幕上显示一道白色刀光" hidden>
+          <input type="checkbox" id="ninja-slash-effect" checked> 显示刀光特效
+        </label>
+        <small class="editor-settings-hint">打开字幕忍者模式，让拆分字幕变得更加有趣</small>
       </div>
     </div>
   </div>
@@ -4059,6 +4057,9 @@
     <div class="multi-subtitle-split-language-hint" role="note" aria-label="语言类型提示">
       <div>字符型语言（中文等）按字符拆分。</div>
       <div>单词型语言（英语等）只在空格处切分，确保不会拆碎单词；可在多重字幕 ⚙️ 设置中切换语言类型。</div>
+    </div>
+    <div class="multi-subtitle-split-timestamp-hint" id="multi-subtitle-split-timestamp-hint" role="note" hidden>
+      启用后，可在右上角「🔧 设置 → 拆分与合并」中配置是否使用时间码拆分。
     </div>
     <div class="multi-subtitle-split-meta" id="multi-subtitle-split-meta"></div>
     <section class="multi-subtitle-split-lane" id="multi-subtitle-split-main-lane" hidden>
@@ -5815,7 +5816,7 @@
     '选中并跳转': 'Select and seek', '跳转目标': 'Seek target', '字幕开头': 'Subtitle start', '鼠标所在位置': 'Pointer position',
     '主字幕自动使用时间码拆分': 'Automatically split the main subtitle using timecodes',
     '已勾选“主字幕自动使用时间码拆分”，但当前主字幕没有可用的字词时间码，本次设置不生效，已改用拆分面板。': '“Automatically split the main subtitle using timecodes” is enabled, but this subtitle has no usable word timestamps, so the setting does not apply here. The split dialog is used instead.',
-    '开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置': 'When enabled, main subtitles with usable word timestamps split automatically by timecode; in linked splits, the main subtitle appears as a non-interactive timecode anchor. When disabled, main subtitles also open the split dialog, initially positioned at the timecode location',
+    '开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置。': 'When enabled, main subtitles with usable word timestamps split automatically by timecode; in linked splits, the main subtitle appears as a non-interactive timecode anchor. When disabled, main subtitles also open the split dialog, initially positioned at the timecode location.',
     '主字幕自动使用时间码拆分：单轨可直接拆分；联动弹窗中主轨显示为不可交互的时间码锚点': 'Automatically split the main subtitle using timecodes: single-track splits can be direct; linked dialogs show the main track as a non-interactive timecode anchor',
     '启用后，可在右上角「🔧 设置 → 拆分与合并」中配置是否使用时间码拆分。': 'When enabled, configure whether to use timecode splitting from the top-right “🔧 Settings → Split and merge”.',
     '主字幕拆分使用字词时间码': 'Use word timestamps when splitting the main subtitle',
@@ -9525,6 +9526,33 @@
       return true;
     }
 
+    // 返回波形字幕切点的屏幕坐标，供全屏反馈动画把中心落在实际切分位置。
+    getSplitPointAtTime(timeMs, track = 'main') {
+      if (!Number.isFinite(timeMs)) return null;
+      const rows = [...this.content.querySelectorAll('.waveform-row')];
+      const row = rows.find((candidate) => {
+        const startMs = Number(candidate.dataset.startMs);
+        const endMs = Number(candidate.dataset.endMs);
+        return timeMs >= startMs && timeMs <= endMs;
+      });
+      if (!row) return null;
+      const rowStart = Number(row.dataset.startMs);
+      const rowEnd = Number(row.dataset.endMs);
+      const rowRect = row.getBoundingClientRect();
+      const ratio = clamp((timeMs - rowStart) / Math.max(1, rowEnd - rowStart), 0, 1);
+      const selector = `.waveform-cue-block[data-track="${track === 'extension' ? 'extension' : 'main'}"]`;
+      const block = [...row.querySelectorAll(selector)].find((candidate) => {
+        const startMs = Number(candidate.dataset.start);
+        const endMs = Number(candidate.dataset.end);
+        return timeMs >= startMs && timeMs <= endMs;
+      });
+      const blockRect = block?.getBoundingClientRect?.();
+      return {
+        clientX: rowRect.left + rowRect.width * ratio,
+        clientY: blockRect ? blockRect.top + blockRect.height / 2 : rowRect.top + rowRect.height / 2,
+      };
+    }
+
     // 屏幕坐标 -> 波形时间：命中某个波形行时返回该行内的时间（毫秒），否则返回 null。
     // 供键盘快捷键（如 B 按指针音频位置拆分）在不构造指针事件的情况下复用行内映射。
     timeMsAtPoint(clientX, clientY) {
@@ -11835,6 +11863,7 @@ const multiSubtitleSplitMainLane = document.getElementById('multi-subtitle-split
 const multiSubtitleSplitMainText = document.getElementById('multi-subtitle-split-main-text');
 const multiSubtitleSplitExtensionLane = document.getElementById('multi-subtitle-split-extension-lane');
 const multiSubtitleSplitText = document.getElementById('multi-subtitle-split-text');
+const multiSubtitleSplitTimestampHint = document.getElementById('multi-subtitle-split-timestamp-hint');
 const multiSubtitleSplitPreview = document.getElementById('multi-subtitle-split-preview');
 const multiSubtitleSplitError = document.getElementById('multi-subtitle-split-error');
 const multiSubtitleSplitCancel = document.getElementById('multi-subtitle-split-cancel');
@@ -11965,29 +11994,78 @@ function playNinjaSplitSound() {
   if (playback && typeof playback.catch === 'function') playback.catch(() => {});
 }
 
-function triggerNinjaSplitFeedback() {
+function ninjaSplitPointFromRect(rect) {
+  if (!rect) return null;
+  const clientX = Number(rect.left) + Number(rect.width || 0) / 2;
+  const clientY = Number(rect.top) + Number(rect.height || 0) / 2;
+  return Number.isFinite(clientX) && Number.isFinite(clientY) ? { clientX, clientY } : null;
+}
+
+function ninjaSplitPointFromRange(range, root, offset = 0, textLength = 1) {
+  if (range) {
+    try {
+      const collapsed = range.cloneRange();
+      collapsed.collapse(true);
+      const rect = collapsed.getBoundingClientRect();
+      if (rect && (rect.width || rect.height)) return ninjaSplitPointFromRect(rect);
+      const rects = collapsed.getClientRects();
+      if (rects.length) return ninjaSplitPointFromRect(rects[0]);
+    } catch (_) {
+      // 被重绘或脱离 DOM 的 Range 不能再读取几何信息，继续使用元素回退值。
+    }
+  }
+  const rootRect = root?.getBoundingClientRect?.();
+  if (!rootRect) return null;
+  const safeLength = Math.max(1, Number(textLength) || 1);
+  const ratio = Math.max(0, Math.min(1, (Number(offset) || 0) / safeLength));
+  return {
+    clientX: rootRect.left + rootRect.width * ratio,
+    clientY: rootRect.top + rootRect.height / 2,
+  };
+}
+
+function ninjaFeedbackPointForSplit(state) {
+  if (state?.feedbackPoint) return state.feedbackPoint;
+  const cutMs = Number.isFinite(state?.cutMs)
+    ? state.cutMs
+    : Number.isFinite(state?.mainCutMs) ? state.mainCutMs : state?.extensionCutMs;
+  if (!Number.isFinite(cutMs)) return null;
+  const track = state?.kind === 'extension' ? 'extension' : 'main';
+  return waveformEditor?.getSplitPointAtTime?.(cutMs, track) || null;
+}
+
+function ninjaSplitPointFromLane(state, lane) {
+  const { textEl } = splitLaneElements(lane);
+  if (!textEl) return null;
+  const activeGap = textEl.querySelector('.multi-subtitle-split-gap.active');
+  if (activeGap) return ninjaSplitPointFromRect(activeGap.getBoundingClientRect());
+  const offset = lane === 'main' ? state?.mainOffset : state?.offset;
+  const text = lane === 'main'
+    ? DATA.segments[state?.mainIndex]?.text
+    : extensionSegmentById(state?.extensionId, getExtensionTrack(state?.trackId))?.text;
+  return ninjaSplitPointFromRange(null, textEl, offset, String(text || '').length);
+}
+
+function triggerNinjaSplitFeedback(splitPoint = null) {
   if (!EDITOR_SETTINGS.ninjaMode) return;
   playNinjaSplitSound();
   if (!EDITOR_SETTINGS.ninjaSlashEffect || !ninjaSlashFlash) return;
   // 每次触发都随机化刀光参数，避免连续拆分看起来一模一样。
-  const slashAngle = 14 + Math.random() * 16; // [14, 30] 度，再随机取正负决定 \ 或 / 方向
-  const slashDur = 180 + Math.random() * 80; // 刃光扫过时长 [180, 260] ms
-  const slashLinger = 150 + Math.random() * 100; // 切痕滞留时长 [150, 250] ms
-  const slashY = 30 + Math.random() * 40; // 斩击高度 [30%, 70%] 视口
-  const slashTint = 190 + Math.random() * 20; // 青白色相 [190, 210]
+  const slashAngle = 7 + Math.random() * 12; // [7, 19] 度，再随机取正负决定倾斜方向
+  const slashDur = 160 + Math.random() * 70; // 刀光持续时长 [160, 230] ms
+  const slashLinger = 100 + Math.random() * 70; // 刀光淡出余韵 [100, 170] ms
+  const viewportWidth = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
+  const viewportHeight = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
+  const point = ninjaSplitPointFromRect({
+    left: Number(splitPoint?.clientX),
+    top: Number(splitPoint?.clientY),
+  }) || { clientX: viewportWidth / 2, clientY: viewportHeight / 2 };
   const slashStyle = ninjaSlashFlash.style;
   slashStyle.setProperty('--slash-angle', `${(Math.random() < 0.5 ? -1 : 1) * slashAngle}deg`);
-  if (Math.random() < 0.5) {
-    slashStyle.setProperty('--slash-from', '-125vw');
-    slashStyle.setProperty('--slash-to', '160vw');
-  } else {
-    slashStyle.setProperty('--slash-from', '160vw');
-    slashStyle.setProperty('--slash-to', '-125vw');
-  }
   slashStyle.setProperty('--slash-dur', `${slashDur}ms`);
   slashStyle.setProperty('--slash-linger', `${slashLinger}ms`);
-  slashStyle.setProperty('--slash-y', `${slashY}%`);
-  slashStyle.setProperty('--slash-tint', String(slashTint));
+  slashStyle.setProperty('--slash-x', `${Math.max(0, Math.min(100, point.clientX / viewportWidth * 100))}%`);
+  slashStyle.setProperty('--slash-y', `${Math.max(0, Math.min(100, point.clientY / viewportHeight * 100))}%`);
   ninjaSlashFlash.classList.remove('show');
   // 强制重排，让连续快速拆分也能重新播放 CSS 动画。
   void ninjaSlashFlash.offsetWidth;
@@ -14696,17 +14774,12 @@ function finishEdit(save) {
 let pendingLinkedSplit = null;
 
 function splitTimeForTextOffset(segment, offset) {
+  const timing = splitItemsAtChar(segment, offset);
+  if (Number.isFinite(timing.splitMs)) return timing.splitMs;
   const text = String(segment?.text || '');
   const safeOffset = Math.max(0, Math.min(text.length, Number(offset) || 0));
-  const items = Array.isArray(segment?.items) ? segment.items : [];
-  let cursor = 0;
-  for (const item of items) {
-    const next = cursor + String(item.text || '').length;
-    if (safeOffset === next) return Number(item.end);
-    if (safeOffset < next) return Number(item.start);
-    cursor = next;
-  }
-  return segment.start + ((segment.end - segment.start) * safeOffset) / Math.max(1, text.length);
+  return Number(segment?.start)
+    + ((Number(segment?.end) - Number(segment?.start)) * safeOffset) / Math.max(1, text.length);
 }
 
 function shouldUseMainSplitTimestamps(segment) {
@@ -14746,30 +14819,193 @@ function splitOffsetNearTextPosition(text, offset, splitMode) {
   ), legalOffsets[0]);
 }
 
-function buildSplitPair(segment, offset, cutMs, idBase, includeItems = true, splitMode = null) {
+function cleanSplitItems(items, side) {
+  const source = Array.isArray(items) ? items : [];
+  return source
+    .map((item) => ({ ...item, text: String(item?.text || '') }))
+    .map((item, index, list) => ({
+      ...item,
+      text: side === 'left' && index === list.length - 1
+        ? item.text.replace(/[，。,.!?！？；;：:\s]+$/u, '')
+        : side === 'right' && index === 0
+          ? item.text.replace(/^[，。,.!?！？；;：:\s]+/u, '')
+          : item.text,
+    }))
+    .filter((item) => item.text && Number.isFinite(item.start)
+      && Number.isFinite(item.end) && item.end > item.start);
+}
+
+function splitItemsAtChar(
+  segment,
+  cursorChar,
+  requestedCutMs = null,
+  { preserveCutMs = false } = {},
+) {
+  const text = String(segment?.text || '');
+  const safeOffset = Math.max(0, Math.min(text.length, Math.round(Number(cursorChar) || 0)));
+  const segmentStart = Number(segment?.start);
+  const segmentEnd = Number(segment?.end);
+  const safeSegmentStart = Number.isFinite(segmentStart) ? segmentStart : 0;
+  const safeSegmentEnd = Number.isFinite(segmentEnd) && segmentEnd >= safeSegmentStart
+    ? segmentEnd : safeSegmentStart;
+  const items = Array.isArray(segment?.items) ? segment.items : [];
+  const hasItems = items.some((item) => String(item?.text || ''));
+
+  // 用原文查找 item 文本，处理 item 不包含词间空格的常见工程格式。
+  // 如果上游 item 文本无法和字幕原文对齐，则退回旧的顺序长度映射，
+  // 但后面的时间钳制和副本分组仍然保持一致。
+  let searchFrom = 0;
+  let aligned = true;
+  const records = [];
+  for (const item of items) {
+    const itemText = String(item?.text || '');
+    if (!itemText) continue;
+    const textStart = text.indexOf(itemText, searchFrom);
+    if (textStart < 0) {
+      aligned = false;
+      break;
+    }
+    records.push({ item, textStart, textEnd: textStart + itemText.length, itemText });
+    searchFrom = textStart + itemText.length;
+  }
+  if (!aligned) {
+    records.length = 0;
+    let textStart = 0;
+    for (const item of items) {
+      const itemText = String(item?.text || '');
+      if (!itemText) continue;
+      records.push({ item, textStart, textEnd: textStart + itemText.length, itemText });
+      textStart += itemText.length;
+    }
+  }
+
+  const timeRangeFor = (item) => {
+    const rawStart = Number(item?.start);
+    const rawEnd = Number(item?.end);
+    const start = Math.max(
+      safeSegmentStart,
+      Number.isFinite(rawStart) ? rawStart : safeSegmentStart,
+    );
+    const end = Math.min(
+      safeSegmentEnd,
+      Number.isFinite(rawEnd) ? rawEnd : safeSegmentEnd,
+    );
+    return { start, end };
+  };
+  const previous = [...records].reverse().find((record) => record.textEnd <= safeOffset);
+  const next = records.find((record) => record.textStart >= safeOffset);
+  const inside = records.find((record) => (
+    safeOffset > record.textStart && safeOffset < record.textEnd
+  ));
+  const requested = Number(requestedCutMs);
+  let splitMs = Number.isFinite(requested) ? Math.round(requested) : null;
+
+  if (inside) {
+    const range = timeRangeFor(inside.item);
+    const fraction = (safeOffset - inside.textStart) / Math.max(1, inside.textEnd - inside.textStart);
+    const interpolated = Math.round(range.start + (range.end - range.start) * fraction);
+    if (!preserveCutMs || !Number.isFinite(splitMs) || splitMs < range.start || splitMs > range.end) {
+      splitMs = interpolated;
+    }
+  } else {
+    if (!records.length && Number.isFinite(splitMs)) {
+      splitMs = Math.round(splitMs);
+    }
+    // 文字切点在 item 边界或词间空白时，优先落在对应 item 的真实边界。
+    // 这会把“模型”后的手工切点从 26526 吸附到“模型”的 end 26680，
+    // 避免左字幕范围先于完整 item 结束。
+    const previousRange = previous ? timeRangeFor(previous.item) : null;
+    const nextRange = next ? timeRangeFor(next.item) : null;
+    const lower = previousRange?.end ?? safeSegmentStart;
+    const upper = nextRange?.start ?? safeSegmentEnd;
+    if (records.length && (!preserveCutMs || !Number.isFinite(splitMs))) {
+      splitMs = nextRange?.start ?? previousRange?.end ?? null;
+    }
+  }
+
+  if (!Number.isFinite(splitMs)) {
+    const ratio = safeOffset / Math.max(1, text.length);
+    splitMs = Math.round(safeSegmentStart + (safeSegmentEnd - safeSegmentStart) * ratio);
+  }
+  splitMs = Math.max(safeSegmentStart, Math.min(safeSegmentEnd, Math.round(splitMs)));
+
+  const leftItems = [];
+  const rightItems = [];
+  for (const record of records) {
+    const range = timeRangeFor(record.item);
+    if (range.end <= range.start) continue;
+    const { itemText, textStart, textEnd } = record;
+    if (inside === record) {
+      const localOffset = Math.max(0, Math.min(itemText.length, safeOffset - textStart));
+      const leftText = itemText.slice(0, localOffset);
+      const rightText = itemText.slice(localOffset);
+      const itemSplitMs = preserveCutMs && splitMs >= range.start && splitMs <= range.end
+        ? splitMs
+        : Math.round(range.start + (range.end - range.start)
+          * localOffset / Math.max(1, itemText.length));
+      if (leftText && rightText && itemSplitMs > range.start && itemSplitMs < range.end) {
+        leftItems.push({ ...record.item, text: leftText, start: range.start, end: itemSplitMs });
+        rightItems.push({ ...record.item, text: rightText, start: itemSplitMs, end: range.end });
+      } else if (leftText && rightText) {
+        // 取整后不足以给两侧各留出一个毫秒时，保留完整 item 到更接近
+        // 光标的一侧，避免为了制造 0 长 item 而丢失词文本。
+        const keepLeft = splitMs >= range.end || localOffset >= itemText.length / 2;
+        if (keepLeft) {
+          leftItems.push({ ...record.item, text: itemText, start: range.start, end: range.end });
+        } else {
+          rightItems.push({ ...record.item, text: itemText, start: range.start, end: range.end });
+        }
+      } else if (leftText && itemSplitMs > range.start) {
+        leftItems.push({ ...record.item, text: leftText, start: range.start, end: itemSplitMs });
+      } else if (rightText && range.end > itemSplitMs) {
+        rightItems.push({ ...record.item, text: rightText, start: itemSplitMs, end: range.end });
+      }
+      continue;
+    }
+    if (textEnd <= safeOffset) {
+      const end = Math.min(range.end, splitMs);
+      if (end > range.start) leftItems.push({ ...record.item, start: range.start, end });
+    } else if (textStart >= safeOffset) {
+      const start = Math.max(range.start, splitMs);
+      if (range.end > start) rightItems.push({ ...record.item, start, end: range.end });
+    } else if (splitMs >= range.start && splitMs <= range.end) {
+      // 退回顺序映射或异常 item 文本对齐时，仍不得让 item 穿过字幕边界。
+      const end = Math.min(range.end, splitMs);
+      if (end > range.start) leftItems.push({ ...record.item, start: range.start, end });
+    }
+  }
+  return { leftItems, rightItems, splitMs, hasItems };
+}
+
+function buildSplitPair(
+  segment,
+  offset,
+  cutMs,
+  idBase,
+  includeItems = true,
+  splitMode = null,
+  { preserveCutMs = false } = {},
+) {
   const text = String(segment?.text || '');
   const mode = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SPLIT_MODES.has(splitMode)
     ? splitMode : MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(text);
   const parts = MULTI_SUBTITLE_UTILS.splitSubtitleText(text, offset, mode);
   if (!parts) return null;
-  const items = includeItems && Array.isArray(segment.items) ? segment.items : [];
-  const itemParts = splitItemsAtChar(items, parts.offset, text);
-  const cleanItems = (source) => source
-    .map((item) => ({ ...item }))
-    .map((item, index, list) => ({
-      ...item,
-      text: index === list.length - 1
-        ? item.text.replace(/[，。,.!?！？；;：:\s]+$/u, '')
-        : item.text.replace(/^[，。,.!?！？；;：:\s]+/u, ''),
-    }))
-    .filter((item) => item.text);
-  const leftItems = cleanItems(itemParts.leftItems);
-  const rightItems = cleanItems(itemParts.rightItems);
+  const itemParts = splitItemsAtChar(
+    includeItems ? segment : { ...segment, items: [] },
+    parts.offset,
+    cutMs,
+    { preserveCutMs },
+  );
+  const leftItems = cleanSplitItems(itemParts.leftItems, 'left');
+  const rightItems = cleanSplitItems(itemParts.rightItems, 'right');
+  const splitMs = Number.isFinite(itemParts.splitMs) ? itemParts.splitMs : Math.round(cutMs);
+  if (!Number.isFinite(splitMs)) return null;
   const left = {
     ...segment,
     id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment], `${idBase}-a`, 'segment'),
     start: segment.start,
-    end: Math.round(cutMs),
+    end: splitMs,
     text: parts.left,
     items: leftItems.length ? leftItems : null,
     _dirty: true,
@@ -14777,7 +15013,7 @@ function buildSplitPair(segment, offset, cutMs, idBase, includeItems = true, spl
   const right = {
     ...segment,
     id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment, left], `${idBase}-b`, 'segment'),
-    start: Math.round(cutMs),
+    start: splitMs,
     end: segment.end,
     text: parts.right,
     items: rightItems.length ? rightItems : null,
@@ -14791,7 +15027,7 @@ function buildSplitPair(segment, offset, cutMs, idBase, includeItems = true, spl
     right.color = null;
     right.color_ref = { name: segment.color.name, headIdx: 0 };
   }
-  return { left, right, parts };
+  return { left, right, parts, splitMs };
 }
 
 function linkedSplitState(mainIndex, initial = {}) {
@@ -14841,6 +15077,7 @@ function linkedSplitState(mainIndex, initial = {}) {
     extensionCutMs: initialMainCutMs,
     extensionMode,
     fixedCutMs,
+    feedbackPoint: initial.feedbackPoint || null,
     cutSource: fixedCutMs != null
       ? 'pointer'
       : useMainWordTimestamps
@@ -14871,6 +15108,7 @@ function mainWaveformSplitState(mainIndex, initial = {}) {
     mainCutMs: fixedCutMs ?? (hasMainWordTimestamps
       ? splitTimeForTextOffset(main, initialOffset)
       : splitCutTime(main, initialOffset, false)),
+    feedbackPoint: initial.feedbackPoint || null,
     mainMode,
     fixedCutMs,
     cutSource: fixedCutMs != null
@@ -14903,6 +15141,7 @@ function extensionOnlySplitState(extensionIndex, track, initial = {}) {
     trackId: track.id,
     offset: initialOffset,
     extensionCutMs: fixedCutMs ?? splitTimeForTextOffset(extension, initialOffset),
+    feedbackPoint: initial.feedbackPoint || null,
     extensionMode,
     fixedCutMs,
     cutSource: fixedCutMs != null ? 'pointer' : 'text-estimate',
@@ -15170,6 +15409,9 @@ function renderSplitLane(state, lane) {
 function renderLinkedSplitText(state) {
   if (!state) return;
   state.lockedLanes = { main: false, extension: false };
+  if (multiSubtitleSplitTimestampHint) {
+    multiSubtitleSplitTimestampHint.hidden = state.mainTimestampLocked !== true;
+  }
   if (multiSubtitleSplitTitle) {
     multiSubtitleSplitTitle.textContent = state.kind === 'main'
       ? '选择主字幕拆分点'
@@ -15370,6 +15612,7 @@ function openMainWaveformSplitModal(mainIndex, timeMs) {
     flashHint('这条字幕没有可用的文字边界');
     return false;
   }
+  state.feedbackPoint = waveformEditor?.getSplitPointAtTime?.(timeMs, 'main') || null;
   pendingLinkedSplit = state;
   multiSubtitleSplitModal?.classList.add('show');
   renderLinkedSplitText(state);
@@ -15387,6 +15630,8 @@ function openExtensionSplitModal(
     flashHint('这条副字幕没有可用的文字边界');
     return false;
   }
+  state.feedbackPoint = state.feedbackPoint
+    || waveformEditor?.getSplitPointAtTime?.(timeMs, 'extension') || null;
   pendingLinkedSplit = state;
   multiSubtitleSplitModal?.classList.add('show');
   renderLinkedSplitText(state);
@@ -15394,6 +15639,9 @@ function openExtensionSplitModal(
 }
 
 function commitMainWaveformSplit(state) {
+  // 波形入口可能是在当前字幕面板仍有未提交编辑时触发；先完成面板编辑，
+  // 再为“拆分”建立快照，确保一次撤销能回到拆分前的完整字幕状态。
+  commitCuePanelEdit();
   const mainIndex = state.mainIndex;
   const main = DATA.segments[mainIndex];
   if (!main) return false;
@@ -15404,11 +15652,12 @@ function commitMainWaveformSplit(state) {
     main.id || `main-${mainIndex}`,
     true,
     state.mainMode,
+    { preserveCutMs: Number.isFinite(state.fixedCutMs) },
   );
   if (!pair) return false;
   const oldMainId = main.id;
-  clearSelection();
   pushUndo('拆分字幕');
+  clearSelection({ commitCuePanel: false });
   removeBindingsForSegmentIds([oldMainId], []);
   DATA.segments.splice(mainIndex, 1, pair.left, pair.right);
   for (let index = mainIndex + 2; index < DATA.segments.length; index++) {
@@ -15424,7 +15673,7 @@ function commitMainWaveformSplit(state) {
   selectOnly(mainIndex + 1);
   lastClickedIdx = mainIndex + 1;
   update();
-  triggerNinjaSplitFeedback();
+  triggerNinjaSplitFeedback(ninjaFeedbackPointForSplit(state));
   flashHint('已按选择的断点拆分主字幕', 'success');
   return true;
 }
@@ -15441,6 +15690,7 @@ function commitExtensionSplit(state) {
     extension.id || `${track.id}-segment-${extensionIndex}`,
     true,
     state.extensionMode,
+    { preserveCutMs: Number.isFinite(state.fixedCutMs) },
   );
   if (!pair) return false;
 
@@ -15458,7 +15708,7 @@ function commitExtensionSplit(state) {
   selectOnlyExtension(extensionIndex + 1);
   lastClickedExtensionIdx = extensionIndex + 1;
   update();
-  triggerNinjaSplitFeedback();
+  triggerNinjaSplitFeedback(ninjaFeedbackPointForSplit(state));
   flashHint(
     wasBound
       ? '已独立拆分拓展字幕并解除原绑定'
@@ -15474,6 +15724,7 @@ function confirmLinkedSplit() {
   const previewLane = state.kind === 'main' ? 'main' : 'extension';
   const previewOffset = state.kind === 'main' ? state.mainOffset : state.offset;
   if (!updateLinkedSplitPreview(previewOffset, previewLane)) return;
+  state.feedbackPoint = ninjaSplitPointFromLane(state, previewLane) || state.feedbackPoint;
   if (state.kind === 'main') {
     commitMainWaveformSplit(state);
     return;
@@ -15494,7 +15745,15 @@ function confirmLinkedSplit() {
     flashHint('主字幕和拓展字幕必须使用同一个绝对切点');
     return;
   }
-  const mainPair = buildSplitPair(main, state.mainOffset, sharedCutMs, main.id || `main-${mainIndex}`);
+  const mainPair = buildSplitPair(
+    main,
+    state.mainOffset,
+    sharedCutMs,
+    main.id || `main-${mainIndex}`,
+    true,
+    state.mainMode,
+    { preserveCutMs: true },
+  );
   const extensionPair = buildSplitPair(
     extension,
     state.offset,
@@ -15502,6 +15761,7 @@ function confirmLinkedSplit() {
     extension.id || `extension-${extensionIndex}`,
     true,
     state.extensionMode,
+    { preserveCutMs: true },
   );
   if (!mainPair || !extensionPair || extensionIndex < 0) return;
   const oldMainId = main.id;
@@ -15532,11 +15792,11 @@ function confirmLinkedSplit() {
   selectOnly(mainIndex);
   lastClickedIdx = mainIndex;
   update();
-  triggerNinjaSplitFeedback();
+  triggerNinjaSplitFeedback(ninjaFeedbackPointForSplit(state));
   flashHint('已按同一绝对时间切点联动拆分', 'success');
 }
 
-function splitAtCursor() {
+function splitAtCursor(feedbackPoint = null) {
   if (!editingState) return false;
   const { el, idx, textEl } = editingState;
   const sel = window.getSelection();
@@ -15547,11 +15807,17 @@ function splitAtCursor() {
   preRange.setEnd(range.startContainer, range.startOffset);
   const cursorOffset = preRange.toString().length;
   const fullText = textEl.innerText.replace(/\r\n?/g, '\n');
+  const ninjaFeedbackPoint = feedbackPoint || ninjaSplitPointFromRange(
+    range, textEl, cursorOffset, fullText.length,
+  );
   const seg = DATA.segments[idx];
 
   if (multiSubtitleVisible() && bindingForMainIndex(idx)) {
     finishEdit(false);
-    pendingLinkedSplit = linkedSplitState(idx, { mainOffset: cursorOffset });
+    pendingLinkedSplit = linkedSplitState(idx, {
+      mainOffset: cursorOffset,
+      feedbackPoint: ninjaFeedbackPoint,
+    });
     if (!pendingLinkedSplit) return;
     multiSubtitleSplitModal?.classList.add('show');
     renderLinkedSplitText(pendingLinkedSplit);
@@ -15578,31 +15844,20 @@ function splitAtCursor() {
     return false;
   }
 
-  const rightStartChar = fullText.length - rightText.length;
-  const items = seg.items || [];
-  const { leftItems, rightItems } = splitItemsAtChar(items, rightStartChar, fullText);
-  if (leftItems.length) {
-    const last = leftItems[leftItems.length - 1];
-    last.text = last.text.replace(/[，。,. \t]+$/, '');
-  }
-  if (rightItems.length) {
-    const first = rightItems[0];
-    first.text = first.text.replace(/^[，。,. \t]+/, '');
-  }
-  const leftItemsClean = leftItems.filter(it => it.text.length > 0);
-  const rightItemsClean = rightItems.filter(it => it.text.length > 0);
-
-  let leftEnd, rightStart;
-  if (leftItemsClean.length && rightItemsClean.length) {
-    leftEnd = leftItemsClean[leftItemsClean.length - 1].end;
-    rightStart = rightItemsClean[0].start;
-  } else {
+  const itemSplit = splitItemsAtChar(seg, cursorOffset);
+  let splitMs = itemSplit.splitMs;
+  if (!itemSplit.hasItems || !Number.isFinite(splitMs)) {
     const ratio = cursorOffset / fullText.length;
     const t = seg.start + (seg.end - seg.start) * ratio;
     // 无词级时间码时按光标位置拆分；钳制边界保证两侧都至少 100ms。
-    const clamped = Math.min(Math.max(Math.round(t), seg.start + 100), seg.end - 100);
-    leftEnd = clamped; rightStart = clamped;
+    splitMs = Math.min(Math.max(Math.round(t), seg.start + 100), seg.end - 100);
   }
+  // 字幕列表手工拆分允许用户指定任意字符位置，但时间码必须落在实际 item
+  // 的安全范围内；当切点在 item 内时，splitItemsAtChar 已为两侧生成 item 副本。
+  const leftItemsClean = cleanSplitItems(itemSplit.leftItems, 'left');
+  const rightItemsClean = cleanSplitItems(itemSplit.rightItems, 'right');
+  const leftEnd = splitMs;
+  const rightStart = splitMs;
 
   const leftSeg = {
     id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([seg], `${seg.id || `main-${idx}`}-a`, 'main'),
@@ -15638,11 +15893,10 @@ function splitAtCursor() {
   el.classList.remove('editing');
   editingState = null;
 
-  // 拆分会改变 idx；先提交面板编辑，再静默清选中，等列表和波形块
-  // 覆盖层一次性更新后再选中后半段。
-  commitCuePanelEdit();
-  clearSelection({ silent: true });
+  // 拆分会改变 idx；先在任何写入前保存完整快照，再静默清选中，等列表
+  // 和波形块覆盖层一次性更新后再选中后半段。这样撤销会恢复原 item 时间。
   pushUndo('拆分字幕');
+  clearSelection({ silent: true });
   // 关闭多字幕模式时，绑定关系仍保存在工程中；拆分主轨后旧 ID 不再存在，
   // 只移除这条关系，保留隐藏的扩展字幕供用户重新绑定。
   removeBindingsForSegmentIds([seg.id], []);
@@ -15663,25 +15917,9 @@ function splitAtCursor() {
   selectOnly(idx + 1);
   // 拆分后后半段是新的视觉选中项，也必须成为 Shift+点击的范围锚点。
   lastClickedIdx = idx + 1;
-  triggerNinjaSplitFeedback();
+  triggerNinjaSplitFeedback(ninjaFeedbackPoint);
   update();
   return true;
-}
-
-function splitItemsAtChar(items, cursorChar) {
-  let acc = 0;
-  for (let i = 0; i < items.length; i++) {
-    const len = items[i].text.length;
-    if (acc + len >= cursorChar) {
-      if (acc === cursorChar) return { leftItems: items.slice(0, i), rightItems: items.slice(i) };
-      if (acc + len === cursorChar) return { leftItems: items.slice(0, i + 1), rightItems: items.slice(i + 1) };
-      const distLeft = cursorChar - acc, distRight = (acc + len) - cursorChar;
-      if (distLeft <= distRight) return { leftItems: items.slice(0, i), rightItems: items.slice(i) };
-      else return { leftItems: items.slice(0, i + 1), rightItems: items.slice(i + 1) };
-    }
-    acc += len;
-  }
-  return { leftItems: items.slice(), rightItems: [] };
 }
 
 function flashCueSplitAt(idx, clientX) {
@@ -15714,6 +15952,9 @@ function flashCueSplitAt(idx, clientX) {
 function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
   if (!el) return false;
+  const waveformFeedbackPoint = Number.isFinite(waveformTimeMs)
+    ? waveformEditor?.getSplitPointAtTime?.(waveformTimeMs, 'main') || null
+    : null;
   const listCaretInfo = Number.isFinite(waveformTimeMs)
     ? null : caretInfoFromPoint(el.querySelector('.text'), x, y);
   if (multiSubtitleVisible() && bindingForMainIndex(idx)) {
@@ -15721,7 +15962,9 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
     const initial = Number.isFinite(waveformTimeMs)
       ? { timeMs: waveformTimeMs }
       : Number.isFinite(listCaretInfo?.offset)
-        ? { mainOffset: listCaretInfo.offset } : {};
+        ? { mainOffset: listCaretInfo.offset, feedbackPoint: ninjaSplitPointFromRect(listCaretInfo.rect) }
+        : {};
+    if (waveformFeedbackPoint) initial.feedbackPoint = waveformFeedbackPoint;
     pendingLinkedSplit = linkedSplitState(idx, initial);
     if (!pendingLinkedSplit) return false;
     multiSubtitleSplitModal?.classList.add('show');
@@ -15750,7 +15993,7 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
       flashHint('无法定位波形中的拆分位置');
       return false;
     }
-    const didSplit = splitAtCursor();
+    const didSplit = splitAtCursor(waveformFeedbackPoint);
     if (didSplit) waveformEditor?.flashSplitAtTime?.(waveformTimeMs);
     return didSplit;
   }

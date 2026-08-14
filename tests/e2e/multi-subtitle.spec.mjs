@@ -101,8 +101,9 @@ test('defaults the waveform shape source to ReaPeaks', async ({ page }) => {
 test('explains where to configure automatic timecode splitting', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('#editor-settings-toggle').click();
-  await expect(page.locator('.editor-settings-hint').filter({ hasText: '右上角「🔧 设置 → 拆分与合并」' }))
-    .toContainText('右上角「🔧 设置 → 拆分与合并」');
+  const hint = page.locator('#split-use-word-timestamps-hint');
+  await expect(hint).toContainText('开启时，有可用字词时间码的主字幕会自动按时间码拆分');
+  await expect(hint).not.toContainText('右上角「🔧 设置 → 拆分与合并」');
 });
 
 test('offers importing a second SRT when enabling multiple subtitles without an extension track', async ({ page }) => {
@@ -2564,6 +2565,10 @@ test('labels a linked split time inferred from main word timestamps', async ({ p
     .toHaveAttribute('aria-readonly', 'true');
   await expect(page.locator('#multi-subtitle-split-main-lane h4'))
     .toHaveText('⌚️ 主字幕按时间码会拆在这里');
+  await expect(page.locator('#multi-subtitle-split-timestamp-hint'))
+    .toBeVisible();
+  await expect(page.locator('#multi-subtitle-split-timestamp-hint'))
+    .toContainText('右上角「🔧 设置 → 拆分与合并」');
   await page.keyboard.press('Escape');
 
   await page.locator('#editor-settings-toggle').click();
@@ -2578,5 +2583,6 @@ test('labels a linked split time inferred from main word timestamps', async ({ p
     .toContainText('共用绝对切点 00:03.200');
   await expect(page.locator('#multi-subtitle-split-main-lane'))
     .not.toHaveClass(/timestamp-locked-lane/);
+  await expect(page.locator('#multi-subtitle-split-timestamp-hint')).toBeHidden();
   await page.keyboard.press('Escape');
 });

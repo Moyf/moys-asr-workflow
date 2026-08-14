@@ -181,7 +181,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="ninja-slash-effect-field"', page)
         self.assertIn('const NINJA_SFX_BASE_URL = "web/sfx/";', page)
         self.assertIn('const NINJA_SFX_HISTORY = [];', page)
-        self.assertIn('function triggerNinjaSplitFeedback()', page)
+        self.assertIn('function triggerNinjaSplitFeedback(', page)
         # 帮助按钮改用 🤔 文本图标后，SVG 工具图标只剩选择/分割两个
         self.assertEqual(page.count('class="toolbar-button-icon"'), 2)
         self.assertIn('.waveform-cue-block.selected {', page)
@@ -405,7 +405,7 @@ class EditorAssetTests(unittest.TestCase):
             'id="ninja-slash-effect-field"',
             'const NINJA_SFX_BASE_URL = "web/sfx/";',
             'const NINJA_SFX_HISTORY = [];',
-            'function triggerNinjaSplitFeedback()',
+            'function triggerNinjaSplitFeedback(',
             'sfx_katana_slash_01.ogg',
             'sfx_katana_slash_01.opus',
             '打开字幕忍者模式，让拆分字幕变得更加有趣',
