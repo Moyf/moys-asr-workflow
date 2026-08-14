@@ -33,6 +33,7 @@ MAW 是一个以 API 转写为主的字幕生成与编辑工作流。它提供 W
 ## 文档
 
 - [完整工作流](docs/WORKFLOW.md) ：安装、配置、转写、编辑、导出和排错。
+- [常见问题](docs/FAQ.md) ：Windows 下载解压、启动故障与问题反馈。
 - [ASR 服务与配置](docs/PROVIDERS.md) ：服务商选择、Key、费用和隐私边界。
 - [编辑器指南](docs/EDITOR_GUIDE.md) ：MAWE 的编辑、保存和导出。
 - [字幕按键调整](docs/KEYBOARD_ADJUSTMENT.md) ：快捷键和时间微调规则。

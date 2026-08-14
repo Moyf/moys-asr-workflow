@@ -26,25 +26,21 @@ def extract_release_section(changelog: str, tag: str) -> str:
 
 
 def build_release_notes(changelog: str, tag: str) -> str:
-    """Build the shared download guide followed by the matching release notes."""
+    """Build the shared download and usage guide followed by release notes."""
     guide = f"""## 下载哪个版本？
 
 **如果你不知道 `FFMpeg` 是什么** ： 根据自己的平台，下载 `MAWxFF` 开头的版本。它内置了我们需要的视频处理模块。
 **如果你本机环境装有 `ffmpeg`** ： 可以选择下载体积更小的纯 `MAW` 版本。
 
-### 📦 Windows x64
+## 如何使用
 
-- `MAWxFF-Windows-x64-{tag}.zip` ： 内置 `ffmpeg.exe` 和 `ffprobe.exe`。
-- `MAW-Windows-x64-{tag}.zip` ： 需要系统 `ffmpeg` 和 `ffprobe` 已加入 PATH。
+1. 下载安装包后解压
+2. 双击对应的 `MAW` 可执行文件，打开启动器
+3. 在启动器中，可以执行字幕转写、生成工程等操作
+4. 完成后，启动字幕编辑器，进行字幕精修
 
-### 📦 macOS arm64
-
-- `MAWxFF-macOS-arm64-{tag}.zip` ： 内置 FFmpeg。
-- `MAW-macOS-arm64-{tag}.zip` ： 需要系统 FFmpeg。
-
-### 📦 Linux x86_64
-
-- `MAW-x86_64-{tag}.AppImage` ： 当前 Linux 包需要系统 `ffmpeg` / `ffprobe` 在 PATH 中；赋予执行权限后运行。
+详细文档参阅：[完整使用文档](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/WORKFLOW.md)
+遇到问题可以参见：[常见问题](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/FAQ.md)
 """
     return guide.strip() + "\n\n" + extract_release_section(changelog, tag) + "\n"
 

@@ -23,13 +23,19 @@ class ReleaseNotesTests(unittest.TestCase):
         self.assertIn("- current", section)
         self.assertNotIn("- older", section)
 
-    def test_builds_shared_platform_guide(self) -> None:
+    def test_builds_shared_download_and_usage_guide(self) -> None:
         notes = build_release_notes("## [1.0.0] - today\n\n### ✨ 新增\n\n- feature\n", "v1.0.0")
 
         self.assertIn("## 下载哪个版本？", notes)
         self.assertIn("如果你不知道 `FFMpeg` 是什么", notes)
-        self.assertIn("MAWxFF-Windows-x64-v1.0.0.zip", notes)
-        self.assertIn("MAW-x86_64-v1.0.0.AppImage", notes)
+        self.assertNotIn("### 📦", notes)
+        self.assertIn("## 如何使用", notes)
+        self.assertIn("1. 下载安装包后解压", notes)
+        self.assertIn("2. 双击对应的 `MAW` 可执行文件，打开启动器", notes)
+        self.assertIn("3. 在启动器中，可以执行字幕转写、生成工程等操作", notes)
+        self.assertIn("4. 完成后，启动字幕编辑器，进行字幕精修", notes)
+        self.assertIn("[完整使用文档](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/WORKFLOW.md)", notes)
+        self.assertIn("[常见问题](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/FAQ.md)", notes)
         self.assertIn("### ✨ 新增", notes)
 
     def test_rejects_non_tag_input(self) -> None:
