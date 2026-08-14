@@ -174,6 +174,30 @@
     $("ocrCustomRegion").classList.toggle("hidden", $("ocrRegionMode").value !== "custom_region");
   }
 
+  function renderOcrModel() {
+    const config = window.MAWLauncher.config || {};
+    const models = Array.isArray(config.ocrModels) && config.ocrModels.length
+      ? config.ocrModels
+      : [
+        { id: "pp-ocrv6-tiny", label: "PP-OCRv6 tiny（CPU）", installed: false, status: "missing" },
+        { id: "pp-ocrv6-small", label: "PP-OCRv6 small（CPU）", installed: false, status: "missing" }
+      ];
+    const select = $("ocrModel");
+    const selected = select.value || config.ocrModelId || models[0].id;
+    select.textContent = "";
+    models.forEach((model) => select.add(new Option(
+      model.id === "pp-ocrv6-tiny" ? t("toolbox_ocr_model_tiny") : (model.id === "pp-ocrv6-small" ? t("toolbox_ocr_model_small") : (model.label || model.id)),
+      model.id,
+    )));
+    select.value = models.some((model) => model.id === selected) ? selected : models[0].id;
+    const model = models.find((item) => item.id === select.value) || models[0];
+    const runtime = config.ocrRuntime || {};
+    const ready = Boolean(runtime.ready && model.installed);
+    $("ocrModelStatus").textContent = ready ? t("toolbox_ocr_model_ready") : t("toolbox_ocr_model_missing");
+    $("ocrModelStatus").classList.toggle("error", !ready);
+    $("runOcrDedup").disabled = busy || !ready;
+  }
+
   function renderProvider(providerId = $("postprocessProvider").value) {
     const item = provider(providerId);
     syncProviderOptionLabels();
@@ -371,9 +395,10 @@
   function setBusy(nextBusy, statusKey = "toolbox_running") {
     busy = nextBusy;
     $("toolboxProgress").classList.toggle("hidden", !busy);
-    ["runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedReplacement", "runFfconcatRebuild", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport"].forEach((id) => {
+    ["runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedReplacement", "runFfconcatRebuild", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport"].forEach((id) => {
       $(id).disabled = busy;
     });
+    renderOcrModel();
     if (busy) setModelChoicesOpen(false);
     if (busy) setResult(t(statusKey));
   }
@@ -558,6 +583,7 @@
     try {
       const result = await bridge("run_ocr_dedup", {
         ...paths,
+        modelId: $("ocrModel").value,
         videoPath,
         fallbackVideoPath,
         threshold,
@@ -762,6 +788,7 @@
     renderProvider();
     renderTaskPrompt();
     renderOcrRegion();
+    renderOcrModel();
     selectTool("match");
     syncPaths();
   }
@@ -779,6 +806,8 @@
   $("llmModelChoicesToggle").addEventListener("click", () => setModelChoicesOpen(!modelChoicesOpen));
   $("runScriptMatch").addEventListener("click", runScriptMatch);
   $("runOcrDedup").addEventListener("click", runOcrDedup);
+  $("ocrModel").addEventListener("change", renderOcrModel);
+  $("openOcrSettings").addEventListener("click", () => window.MAWLauncher.openSettings("ocrSettingsSection"));
   $("runLlmPostprocess").addEventListener("click", runLlm);
   $("runFixedReplacement").addEventListener("click", runReplacement);
   $("runFfconcatRebuild").addEventListener("click", runFfconcat);
@@ -865,5 +894,6 @@
   window.addEventListener("mawlauncherready", initialize, { once: true });
   window.MAWLauncher.onPostprocessStatus = renderPostprocessStatus;
   window.MAWLauncher.onPostprocessStream = renderPostprocessStream;
+  window.MAWLauncher.onOcrRuntimeChanged = renderOcrModel;
   if (window.MAWLauncher.config) initialize();
 })();

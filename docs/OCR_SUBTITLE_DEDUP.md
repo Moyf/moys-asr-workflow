@@ -7,10 +7,11 @@
 ## 快速使用
 
 1. 打开 Launcher 右下角的「后处理工具箱」，选择「OCR 字幕去重」。
-2. 在「处理文件」中选择工程或 SRT。默认会跟随 Launcher 当前工程或 SRT，也可以手动选择其他 `.mosp`、`.json` 或 `.srt` 文件。
-3. 确认「视频画面」输入。工程关联的是视频时会自动使用；独立 SRT 会自动回退到 Launcher 当前视频；如果当前媒体是音频或没有可用视频，必须额外选择一个视频。
-4. 选择画面字幕区和相似度阈值，点击「执行 OCR 字幕去重」。
-5. 在「输出」中选择「工程 + SRT」「仅工程」或「仅 SRT」。原文件不会被覆盖，结果会使用 `ocr-dedup` 操作后缀。
+2. 如果工具箱提示尚未安装 OCR 支持，点击提示中的「设置」链接，在「OCR 模型」设置中选择运行环境目录并点击「安装 OCR 支持」。
+3. 回到工具箱，在「处理文件」中选择工程或 SRT。默认会跟随 Launcher 当前工程或 SRT，也可以手动选择其他 `.mosp`、`.json` 或 `.srt` 文件。
+4. 确认「视频画面」输入。工程关联的是视频时会自动使用；独立 SRT 会自动回退到 Launcher 当前视频；如果当前媒体是音频或没有可用视频，必须额外选择一个视频。
+5. 选择 OCR 模型（tiny 更快，small 对复杂画面更稳）、画面字幕区和相似度阈值，点击「执行 OCR 字幕去重」。
+6. 在「输出」中选择「工程 + SRT」「仅工程」或「仅 SRT」。原文件不会被覆盖，结果会使用 `ocr-dedup` 操作后缀。
 
 例如，输入 `clip.mosp` 和 `clip.srt` 后，默认会生成：
 
@@ -83,16 +84,19 @@ clip.ocr-dedup.csv
 
 ## 模型和运行时
 
-OCR 使用 [RapidOCR](https://github.com/RapidAI/RapidOCR) 的 PP-OCRv6 tiny 模型与 [ONNX Runtime](https://onnxruntime.ai/) CPU 推理，不需要 CUDA。模型由 RapidOCR Python 包提供：
+OCR 使用 [RapidOCR](https://github.com/RapidAI/RapidOCR) 的 PP-OCRv6 tiny 或 small 模型与 [ONNX Runtime](https://onnxruntime.ai/) CPU 推理，不需要 CUDA。tiny 更快、占用更低；small 对较小或复杂的画面文字通常更稳，但会占用更多 CPU 和内存。正式打包版不会把这些依赖放进主程序，而是在 Launcher 设置中按需安装独立运行环境。运行环境和模型保存在设置中的「OCR 运行环境目录」，可改到其他磁盘。
 
-- 开发环境：`.venv/Lib/site-packages/rapidocr/models/`；
-- PyInstaller 冻结包：`MAW/_internal/rapidocr/models/`。
+开发环境如果需要在主 Python 环境直接运行 OCR，需要安装可选依赖：
 
-当前使用的模型文件是 `PP-OCRv6_det_tiny.onnx` 和 `PP-OCRv6_rec_tiny.onnx`。small 模型暂未加入 Launcher 选项，也未放入冻结包，后续如需要再单独评估包体积和速度。
+```powershell
+uv sync --extra ocr
+```
+
+tiny 使用 `PP-OCRv6_det_tiny.onnx` 和 `PP-OCRv6_rec_tiny.onnx`；small 使用 `PP-OCRv6_det_small.onnx` 和 `PP-OCRv6_rec_small.onnx`。两种模型都只在独立 OCR 运行环境中按需获取，不进入冻结包。
 
 ## 当前限制和后续方向
 
 - 当前只检查视频画面，不根据音频内容做去重。
 - 每条字幕只取一个中点画面；如果字幕只在时间段的一部分出现，可能需要后续增加多点抽帧策略。
 - OCR 误识别、画面中的其他文字与字幕文字相似时，可能产生误判；建议配合 CSV 报告检查结果并调整阈值或区域。
-- tiny 模型是当前 MVP 的唯一模型；small 模型和更细的 OCR 配置留待后续版本。
+- 当前提供 tiny 和 small 两种模型；更细的 OCR 配置留待后续版本。

@@ -61,6 +61,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIsNone(config["lastLanguage"])
         self.assertEqual(config["stickerDir"], "")
         self.assertIn(config["localRuntime"]["status"], {"missing", "broken", "ready"})
+        self.assertIn(config["ocrRuntime"]["status"], {"missing", "broken", "ready"})
+        self.assertEqual([model["id"] for model in config["ocrModels"]], ["pp-ocrv6-tiny", "pp-ocrv6-small"])
         self.assertEqual(config["providers"][0]["keyUrl"], "https://help.aliyun.com/zh/model-studio/get-api-key")
         self.assertEqual(len(config["providers"][0]["commonLanguages"]), 10)
         self.assertEqual(len(config["providers"][1]["commonLanguages"]), 8)
@@ -98,6 +100,26 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["modelCacheRoot"], str(cache_root.resolve()))
         self.assertEqual(self.api.get_config()["modelCacheRoot"], str(cache_root.resolve()))
         self.assertIn(f"MAW_MODEL_CACHE_ROOT={cache_root.resolve()}", self.env_path.read_text(encoding="utf-8"))
+
+    def test_ocr_settings_save_runtime_path_and_report_status(self) -> None:
+        runtime_root = self.root / "ocr-runtime"
+
+        result = self.api.save_ocr_settings({"runtimePath": str(runtime_root)})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["runtimePath"], str(runtime_root.resolve()))
+        self.assertIn(f"MAW_OCR_RUNTIME_ROOT={runtime_root.resolve()}", self.env_path.read_text(encoding="utf-8"))
+        self.assertEqual(self.api.get_ocr_runtime()["path"], str(runtime_root.resolve()))
+
+    def test_ocr_settings_reject_file_runtime_path(self) -> None:
+        runtime_file = self.root / "ocr-runtime.txt"
+        runtime_file.write_text("not a directory", encoding="utf-8")
+
+        result = self.api.save_ocr_settings({"runtimePath": str(runtime_file)})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["field"], "ocrRuntimePath")
+        self.assertEqual(result["code"], "ocr_runtime_path_invalid")
 
     def test_save_settings_rejects_file_as_model_cache_root(self) -> None:
         cache_file = self.root / "models.txt"
@@ -376,21 +398,36 @@ class GuiWebBridgeTests(unittest.TestCase):
             failed_count=0,
         )
 
-        with mock.patch("maw.gui_web.find_ffmpeg", return_value=ffmpeg) as find_ffmpeg:
-            with mock.patch("maw.gui_web.process_ocr_dedup", return_value=fake) as process:
-                result = self.api.run_ocr_dedup({
-                    "projectPath": str(project),
-                    "outputMode": "both",
-                    "videoPath": str(video),
-                    "fallbackVideoPath": str(self.root / "current.mp4"),
-                    "regionMode": "custom",
-                    "regionX1": 5,
-                    "regionY1": 60,
-                    "regionX2": 95,
-                    "regionY2": 100,
-                    "threshold": 0,
-                    "report": True,
-                })
+        runtime = SimpleNamespace(ready=True, path=str(self.root / "ocr-runtime"), detail="")
+        with mock.patch("maw.gui_web.managed_ocr_runtime_status", return_value=runtime):
+            with mock.patch("maw.gui_web.find_ffmpeg", return_value=ffmpeg) as find_ffmpeg:
+                with mock.patch("maw.gui_web.run_ocr_in_runtime", return_value={
+                    "sourceProjectPath": str(project),
+                    "sourceSrtPath": "",
+                    "projectPath": str(fake.project_path),
+                    "srtPath": str(fake.srt_path),
+                    "reportPath": str(fake.report_path),
+                    "warnings": list(fake.warnings),
+                    "newlyDisabledCount": fake.newly_disabled_count,
+                    "existingDisabledCount": fake.existing_disabled_count,
+                    "processedCount": fake.processed_count,
+                    "skippedCount": fake.skipped_count,
+                    "failedCount": fake.failed_count,
+                }) as process:
+                    result = self.api.run_ocr_dedup({
+                        "projectPath": str(project),
+                        "outputMode": "both",
+                        "modelId": "pp-ocrv6-small",
+                        "videoPath": str(video),
+                        "fallbackVideoPath": str(self.root / "current.mp4"),
+                        "regionMode": "custom",
+                        "regionX1": 5,
+                        "regionY1": 60,
+                        "regionX2": 95,
+                        "regionY2": 100,
+                        "threshold": 0,
+                        "report": True,
+                    })
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["reportPath"], str(fake.report_path))
@@ -402,6 +439,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(request.region.y1, 0.6)
         self.assertEqual(request.threshold, 0.0)
         self.assertTrue(request.report)
+        self.assertEqual(process.call_args.kwargs["model_id"], "pp-ocrv6-small")
 
     def test_llm_bridge_uses_stored_key_without_echoing_it(self) -> None:
         project = self.root / "clip.mosp"
@@ -1896,7 +1934,9 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('toolbox_group_ocr_video: "视频来源"', launcher_script)
         self.assertIn('toolbox_group_ocr_output: "判定与输出"', launcher_script)
         self.assertIn('toolbox_group_llm_prompt: "Prompts"', launcher_script)
-        self.assertIn('class="toolbox-static-value" data-i18n="toolbox_ocr_model_tiny"', page)
+        self.assertIn('id="ocrModel"', page)
+        self.assertIn('toolbox_ocr_model_small: "PP-OCRv6 small（CPU）"', launcher_script)
+        self.assertIn('id="openOcrSettings"', page)
         self.assertIn('class="field-spacer"', page)
         self.assertIn(".toolbox-static-value {\n  height: 34px;", stylesheet)
         self.assertIn(".field-spacer {\n  visibility: hidden;", stylesheet)

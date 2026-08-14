@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+## [1.4.0-beta.6] - 2026-08-14
+
+### Added
+
+- 将 OCR 字幕去重改为可选的独立运行环境，Launcher 设置支持路径、安装、修复、取消与扫描，并提供 PP-OCRv6 tiny / small 模型选择。
+- 工具箱增加 OCR 模型状态和设置入口，引导用户在需要时完成运行环境与模型安装。
+
+### Changed
+
+- 主程序及冻结包不再携带 RapidOCR、ONNX Runtime、Pillow 和 OCR 模型文件；OCR 相关内容仅在用户需要时下载。
+
 ## [1.4.0-beta.5] - 2026-08-14
 
 ### Changed

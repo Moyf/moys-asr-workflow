@@ -22,7 +22,7 @@
       <div class="hero-brand">
         <img class="hero-icon" src="../../assets/show.webp" alt="" aria-hidden="true">
         <div class="hero-copy">
-          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.4.0-beta.5</span></div>
+          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.4.0-beta.6</span></div>
           <p data-i18n="hero_desc">📺 本地媒体 ➜  🤖 AI 转写 ➜ ✨ 可编辑字幕工程</p>
           <span id="demoBadge" class="demo-badge hidden" data-i18n="demo_mode">演示模式</span>
         </div>
@@ -431,9 +431,10 @@
             <p class="hint" data-i18n="toolbox_ocr_region_hint">缩小处理区域可减少 OCR 输入量。</p>
           </div>
           <div class="field">
-            <label data-i18n="toolbox_ocr_model">OCR 模型</label>
-            <div class="toolbox-static-value" data-i18n="toolbox_ocr_model_tiny">PP-OCRv6 tiny（CPU）</div>
-            <p class="hint" data-i18n="toolbox_ocr_model_hint">small 模型暂不加入 MVP。</p>
+            <label for="ocrModel" data-i18n="toolbox_ocr_model">OCR 模型</label>
+            <select id="ocrModel"></select>
+            <p id="ocrModelStatus" class="hint" aria-live="polite"></p>
+            <p class="hint"><button id="openOcrSettings" class="inline-link" type="button" data-i18n="toolbox_ocr_open_settings">在 ⚙️ 设置中下载安装 OCR 支持</button></p>
           </div>
         </div>
         <div id="ocrCustomRegion" class="toolbox-grid hidden">
@@ -644,6 +645,34 @@
           <p id="llmBaseUrlError" class="field-error"></p>
           <p class="hint" data-i18n="llm_base_url_hint">远程服务使用 HTTPS；明文 HTTP 只允许本机环回地址。</p>
         </div>
+      </div>
+      <div class="settings-section" id="ocrSettingsSection">
+        <h3 data-i18n="settings_ocr">OCR 模型</h3>
+        <p class="hint" data-i18n="settings_ocr_hint">OCR 是可选功能。主程序不预装 OCR 依赖，首次使用时在这里下载独立运行环境。</p>
+        <div class="field">
+          <label for="ocrRuntimePath" data-i18n="ocr_runtime_path">OCR 运行环境目录</label>
+          <div class="path-row">
+            <input id="ocrRuntimePath" type="text" autocomplete="off">
+            <button id="pickOcrRuntimePath" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
+          </div>
+          <p id="ocrRuntimePathError" class="field-error"></p>
+          <p class="hint" data-i18n="ocr_runtime_path_hint">默认安装到用户目录；可改到空间更充足的磁盘。运行环境和模型随这里保存。</p>
+        </div>
+        <div class="field">
+          <label data-i18n="ocr_runtime_model">OCR 模型</label>
+          <p id="ocrSettingsModel" class="toolbox-static-value"></p>
+          <p id="ocrSettingsModelStatus" class="hint" aria-live="polite"></p>
+        </div>
+        <div class="local-status-row">
+          <p id="ocrRuntimeStatus" class="local-status" aria-live="polite"></p>
+          <button id="refreshOcrRuntime" class="ghost small" type="button" data-i18n="ocr_runtime_refresh">重新扫描</button>
+        </div>
+        <div id="ocrRuntimeProgress" class="task-progress hidden" aria-live="polite">
+          <div class="task-progress-track"><span id="ocrRuntimeProgressBar"></span></div>
+          <p id="ocrRuntimeProgressMessage" class="hint"></p>
+        </div>
+        <p id="ocrRuntimeHint" class="hint"></p>
+        <button id="installOcrRuntime" class="primary small" type="button" data-i18n="ocr_runtime_install">安装 OCR 支持</button>
       </div>
       <div class="settings-section">
         <h3 data-i18n="settings_ffmpeg">FFmpeg</h3>

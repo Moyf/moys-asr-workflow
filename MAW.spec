@@ -2,7 +2,6 @@
 
 import sys
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_all
 
 
 ROOT = Path(SPECPATH).resolve()
@@ -30,25 +29,17 @@ datas = [
     (str(ROOT / "maw" / "project_preview.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "qwen_audio.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "speaker.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "__init__.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "media.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "postprocess.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "postprocess_io.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "postprocess_ocr.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "project.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "project_preview.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "ocr_runtime_worker.py"), "ocr-runtime/maw"),
 ]
 
-rapidocr_datas, rapidocr_binaries, rapidocr_hiddenimports = collect_all("rapidocr")
-onnxruntime_datas, onnxruntime_binaries, onnxruntime_hiddenimports = collect_all("onnxruntime")
-
-# The MVP exposes PP-OCRv6 tiny. Keep the larger small checkpoints out of the
-# frozen bundle until the Launcher offers the small model as a real option.
-_deferred_rapidocr_models = {
-    "pp-ocrv6_det_small.onnx",
-    "pp-ocrv6_rec_small.onnx",
-}
-rapidocr_datas = [
-    (source, target)
-    for source, target in rapidocr_datas
-    if Path(source).name.lower() not in _deferred_rapidocr_models
-]
-datas.extend(rapidocr_datas)
-datas.extend(onnxruntime_datas)
-binaries = [*rapidocr_binaries, *onnxruntime_binaries]
+binaries = []
 
 excluded_local_modules = [
     "accelerate",
@@ -57,6 +48,9 @@ excluded_local_modules = [
     "huggingface_hub",
     "modelscope",
     "qwen_asr",
+    "onnxruntime",
+    "PIL",
+    "rapidocr",
     "torch",
     "torchaudio",
     "transformers",
@@ -81,6 +75,7 @@ a = Analysis(
         "maw.local_models",
         "maw.local_runtime",
         "maw.local_asr",
+        "maw.ocr_runtime",
         "maw.cli",
         "maw.postprocess",
         "maw.postprocess_io",
@@ -91,12 +86,7 @@ a = Analysis(
         "maw.project",
         "maw.soniox",
         "maw.bcut",
-        "PIL",
         "numpy",
-        "rapidocr",
-        "onnxruntime",
-        *rapidocr_hiddenimports,
-        *onnxruntime_hiddenimports,
     ],
     hookspath=[],
     hooksconfig={},

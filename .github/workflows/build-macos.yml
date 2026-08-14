@@ -68,6 +68,16 @@ jobs:
       - name: Build MAW GUI bundle
         run: uv run --group build pyinstaller --noconfirm --clean MAW.spec
 
+      - name: Bundle uv bootstrap for optional runtimes
+        shell: bash
+        run: |
+          set -euo pipefail
+          UvCommand="$(command -v uv)"
+          BootstrapDirectory="dist/MAW.app/Contents/Resources/bootstrap"
+          mkdir -p "$BootstrapDirectory"
+          cp "$UvCommand" "$BootstrapDirectory/uv"
+          chmod +x "$BootstrapDirectory/uv"
+
       - name: Smoke MAW executable
         shell: bash
         run: |
