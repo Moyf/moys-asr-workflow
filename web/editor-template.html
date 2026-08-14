@@ -346,6 +346,48 @@ __WAVEFORM_CSS__
   </div>
 </aside>
 
+<!-- 可拖动的非模态延长字幕工具窗 -->
+<aside class="gap-remove-panel subtitle-extend-panel" id="subtitle-extend-panel" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="subtitle-extend-panel-title">
+  <header class="gap-remove-panel-header" id="subtitle-extend-drag-handle">
+    <div class="gap-remove-heading">
+      <span class="gap-remove-eyebrow">波形处理</span>
+      <h3 id="subtitle-extend-panel-title">延长字幕</h3>
+    </div>
+    <button type="button" id="subtitle-extend-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭延长字幕工具窗">×</button>
+  </header>
+  <div class="gap-remove-panel-body">
+    <div class="gap-remove-parameters-heading">
+      <span>延长参数</span>
+      <small>先向前、再向后；整个操作一次撤销</small>
+    </div>
+    <div class="gap-remove-fields">
+      <label class="gap-remove-field">
+        <span class="gap-remove-field-label">向前延长</span>
+        <span class="gap-remove-number-control">
+          <input type="number" id="subtitle-extend-forward-ms" min="0" max="60000" step="50" value="250" inputmode="numeric">
+          <span class="gap-remove-unit">ms</span>
+        </span>
+        <small>向字幕起点前延长，不越过前一条字幕边界；0 表示不处理</small>
+      </label>
+      <label class="gap-remove-field">
+        <span class="gap-remove-field-label">向后延长</span>
+        <span class="gap-remove-number-control">
+          <input type="number" id="subtitle-extend-backward-ms" min="0" max="60000" step="50" value="200" inputmode="numeric">
+          <span class="gap-remove-unit">ms</span>
+        </span>
+        <small>向字幕终点后延长，不越过后一条字幕边界；0 表示不处理</small>
+      </label>
+    </div>
+    <button type="button" id="subtitle-extend-run" class="gap-remove-scan">
+      <span>执行</span>
+      <small>有选中字幕时只处理选中项，否则处理全部字幕</small>
+    </button>
+    <footer class="gap-remove-panel-footer">
+      <span>滚轮可调数值 · Esc 关闭</span>
+    </footer>
+  </div>
+</aside>
+
 <!-- 可拖动的非模态帮助窗口 -->
 <aside class="gap-remove-panel help-panel" id="help-panel" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="help-panel-title">
   <header class="gap-remove-panel-header" id="help-drag-handle">
@@ -994,6 +1036,7 @@ __WAVEFORM_CSS__
       <span class="gap-remove-summary" id="gap-remove-summary">未扫描空隙</span>
       <span class="sep"></span>
       <button type="button" id="auto-merge-manage" title="将间隔过短的前后字幕直接吸附在一起，去除中间的短暂空白（可直接吸收短字幕）" aria-expanded="false" aria-controls="auto-merge-panel">拼接/合并字幕</button>
+      <button type="button" id="subtitle-extend-manage" title="打开可拖动的延长字幕工具窗" aria-expanded="false" aria-controls="subtitle-extend-panel">延长字幕</button>
       <span class="sep"></span>
       <span class="multi-subtitle-controls multi-subtitle-waveform-controls" id="multi-subtitle-waveform-controls" hidden>
         <button type="button" id="multi-subtitle-bind" title="分别选中主轨和扩展轨字幕后建立绑定">绑定</button>

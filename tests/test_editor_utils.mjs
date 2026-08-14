@@ -241,6 +241,47 @@ test('applies forward snaps by extending the earlier subtitle end later', () => 
   assert.deepEqual([segments[0].start, segments[0].end], [0, 1150]);
 });
 
+test('extends all subtitles in two phases and keeps items at absolute times', () => {
+  const segments = [
+    { start: 0, end: 1000, text: '第一句', items: [{ text: '一', start: 200, end: 500 }] },
+    { start: 1200, end: 2000, text: '第二句', items: [{ text: '二', start: 1300, end: 1600 }] },
+    { start: 2300, end: 3000, text: '第三句', items: [{ text: '三', start: 2400, end: 2600 }] },
+  ];
+  const originalItems = JSON.parse(JSON.stringify(segments.map((segment) => segment.items)));
+  const plan = helpers.applySubtitleExtension(segments, [], {
+    forwardMs: 250,
+    backwardMs: 200,
+    durationMs: 3200,
+  });
+  assert.deepEqual(
+    segments.map((segment) => [segment.start, segment.end]),
+    [[0, 1000], [1000, 2050], [2050, 3200]],
+  );
+  assert.deepEqual(segments.map((segment) => segment.items), originalItems);
+  assert.deepEqual(Array.from(plan.changedIndices), [1, 2]);
+  assert.equal(plan.fullCount, 1);
+  assert.equal(plan.partialCount, 1);
+  assert.equal(plan.unchangedCount, 1);
+});
+
+test('extends only selected subtitles and stops at neighboring boundaries', () => {
+  const segments = [
+    { start: 0, end: 1000, text: '第一句' },
+    { start: 1200, end: 2000, text: '第二句', items: [{ text: '二', start: 1400, end: 1700 }] },
+    { start: 2300, end: 3000, text: '第三句' },
+  ];
+  const originalItems = JSON.parse(JSON.stringify(segments[1].items));
+  const plan = helpers.applySubtitleExtension(segments, [1], { forwardMs: 500, backwardMs: 500 });
+  assert.deepEqual([segments[1].start, segments[1].end], [1000, 2300]);
+  assert.deepEqual([segments[0].start, segments[0].end], [0, 1000]);
+  assert.deepEqual([segments[2].start, segments[2].end], [2300, 3000]);
+  assert.deepEqual(segments[1].items, originalItems);
+  assert.deepEqual(Array.from(plan.changedIndices), [1]);
+  assert.equal(plan.fullCount, 0);
+  assert.equal(plan.partialCount, 1);
+  assert.equal(plan.unchangedCount, 0);
+});
+
 test('never shortens a subtitle when applying snaps', () => {
   const segments = [
     { start: 100, end: 1000, text: '前一句字幕' },
@@ -276,6 +317,11 @@ test('translates snap-subtitles flash hints to English', () => {
   assert.equal(
     i18n.translateText('已拼接/合并字幕：吸附 2 处间隔，吸收 1 条短字幕', 'en'),
     'Join / merge subtitles: snapped 2 intervals, absorbed 1 short subtitles',
+  );
+  assert.equal(i18n.translateText('延长字幕', 'en'), 'Extend subtitles');
+  assert.equal(
+    i18n.translateText('已处理 3 个选中字幕：完整延长 1 条，部分延长 1 条，未延长 1 条', 'en'),
+    'Processed 3 selected subtitles: 1 fully extended, 1 partially extended, 1 unchanged',
   );
 });
 

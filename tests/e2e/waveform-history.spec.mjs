@@ -785,6 +785,48 @@ test('waveform toolbar exposes grouped icon controls and selected cues use a yel
   await expect(cue).toHaveCSS('outline-color', 'rgb(255, 213, 74)');
 });
 
+test('extends selected subtitles without remapping items and undoes the batch in one step', async ({ page }) => {
+  await page.goto(server.url);
+  const cues = page.locator('.cue');
+  await cues.nth(0).click();
+  await page.keyboard.down('Control');
+  await cues.nth(1).click();
+  await page.keyboard.up('Control');
+  await expect(page.locator('.cue.selected')).toHaveCount(2);
+
+  const before = await page.evaluate(() => JSON.parse(JSON.stringify({
+    segments: DATA.segments.slice(0, 2),
+  })));
+  await page.locator('#subtitle-extend-manage').click();
+  await expect(page.locator('#subtitle-extend-panel')).toHaveClass(/show/);
+  await expect(page.locator('#subtitle-extend-forward-ms')).toHaveValue('250');
+  await expect(page.locator('#subtitle-extend-backward-ms')).toHaveValue('200');
+
+  await page.locator('#subtitle-extend-forward-ms').fill('-1');
+  await page.locator('#subtitle-extend-run').click();
+  await expect(page.locator('#hint-stack .hint-card.hint-invalid', {
+    hasText: '向前延长时长必须是大于等于 0 的数字',
+  })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => DATA.segments.slice(0, 2))).toEqual(before.segments);
+
+  await page.locator('#subtitle-extend-forward-ms').fill('250');
+  await page.locator('#subtitle-extend-run').click();
+  await expect.poll(() => page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => ({
+    start: segment.start,
+    end: segment.end,
+    items: segment.items,
+  })))).toEqual([
+    { start: 0, end: 8200, items: before.segments[0].items },
+    { start: 49750, end: 58200, items: before.segments[1].items },
+  ]);
+  await expect(page.locator('#hint-stack .hint-card.hint-success', {
+    hasText: '已处理 2 个选中字幕：完整延长 1 条，部分延长 1 条，未延长 0 条',
+  })).toBeVisible();
+
+  await page.getByRole('button', { name: /撤销/ }).click();
+  await expect.poll(() => page.evaluate(() => DATA.segments.slice(0, 2))).toEqual(before.segments);
+});
+
 test('C merges a common group and Shift+A/D extends the subtitle selection', async ({ page }) => {
   await page.goto(server.url);
   const cues = page.locator('.cue');

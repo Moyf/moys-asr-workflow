@@ -249,6 +249,117 @@
     return changed;
   }
 
+  // 延长字幕计划（纯函数，不改动输入）：先把选中字幕的起点向前延长，
+  // 再把终点向后延长。两侧都只使用相邻字幕当前的边界和媒体时长作为上限，
+  // 因而不会越过其它字幕或媒体末尾；延长时不触碰段内 items 的绝对时间码。
+  // 返回每条字幕的实际前/后延长量，供 UI 统计“完整 / 部分 / 未延长”。
+  function planSubtitleExtension(segments, indices, options = {}) {
+    const source = Array.isArray(segments) ? segments : [];
+    const requestedIndices = indices == null
+      ? []
+      : Array.from(indices || []);
+    const targetIndices = (requestedIndices.length ? requestedIndices : source.map((_, index) => index))
+      .map((index) => Number(index))
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < source.length)
+      .filter((index, position, values) => values.indexOf(index) === position)
+      .sort((a, b) => a - b);
+    const normalizeMs = (value) => {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) && numeric >= 0 ? Math.round(numeric) : 0;
+    };
+    const forwardMs = normalizeMs(options.forwardMs);
+    const backwardMs = normalizeMs(options.backwardMs);
+    const duration = Number(options.durationMs);
+    const durationMs = Number.isFinite(duration) && duration > 0 ? duration : Infinity;
+    const planned = new Map();
+
+    targetIndices.forEach((index) => {
+      const segment = source[index];
+      const start = Number(segment?.start);
+      const end = Number(segment?.end);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return;
+      planned.set(index, {
+        index,
+        start,
+        end,
+        forwardAppliedMs: 0,
+        backwardAppliedMs: 0,
+      });
+    });
+
+    // 向前延长优先：先统一处理所有字幕起点，避免同一次执行的后延改变前拓上限。
+    targetIndices.forEach((index) => {
+      const change = planned.get(index);
+      if (!change || forwardMs <= 0) return;
+      const previousEnd = index > 0 ? Number(source[index - 1]?.end) : 0;
+      const lowerBound = Number.isFinite(previousEnd) ? Math.max(0, previousEnd) : 0;
+      // 已经与前句重叠时不反向缩短当前字幕，只报告为未延长。
+      const available = Math.max(0, change.start - lowerBound);
+      const applied = Math.min(forwardMs, available);
+      if (applied > 0) {
+        change.start -= applied;
+        change.forwardAppliedMs = applied;
+      }
+    });
+
+    targetIndices.forEach((index) => {
+      const change = planned.get(index);
+      if (!change || backwardMs <= 0) return;
+      const nextChange = planned.get(index + 1);
+      const nextStart = nextChange
+        ? nextChange.start
+        : index + 1 < source.length
+          ? Number(source[index + 1]?.start)
+          : durationMs;
+      const upperBound = Number.isFinite(nextStart) ? nextStart : durationMs;
+      // 已经与后句重叠时不反向缩短当前字幕，只报告为未延长。
+      const available = Math.max(0, upperBound - change.end);
+      const applied = Math.min(backwardMs, available);
+      if (applied > 0) {
+        change.end += applied;
+        change.backwardAppliedMs = applied;
+      }
+    });
+
+    const changes = [...planned.values()].filter((change) => (
+      change.start !== Number(source[change.index]?.start)
+      || change.end !== Number(source[change.index]?.end)
+    )).map((change) => {
+      const forwardPartial = forwardMs > 0 && change.forwardAppliedMs < forwardMs;
+      const backwardPartial = backwardMs > 0 && change.backwardAppliedMs < backwardMs;
+      const partial = forwardPartial || backwardPartial;
+      return {
+        ...change,
+        changed: change.forwardAppliedMs > 0 || change.backwardAppliedMs > 0,
+        partial,
+      };
+    });
+    const changedIndices = changes.filter((change) => change.changed).map((change) => change.index);
+    return {
+      indices: targetIndices,
+      changes,
+      changedIndices,
+      fullCount: changes.filter((change) => change.changed && !change.partial).length,
+      partialCount: changes.filter((change) => change.changed && change.partial).length,
+      unchangedCount: targetIndices.length - changedIndices.length,
+      forwardMs,
+      backwardMs,
+    };
+  }
+
+  function applySubtitleExtension(segments, indices, options = {}) {
+    const source = Array.isArray(segments) ? segments : [];
+    const plan = planSubtitleExtension(source, indices, options);
+    plan.changes.forEach((change) => {
+      const segment = source[change.index];
+      if (!segment || !change.changed) return;
+      segment.start = change.start;
+      segment.end = change.end;
+      segment._dirty = true;
+    });
+    return plan;
+  }
+
   function formatHumanDuration(durationMs) {
     const totalSeconds = Math.max(0, Math.floor(Number(durationMs) / 1000) || 0);
     const seconds = totalSeconds % 60;
@@ -1456,6 +1567,8 @@
     normalizeItemTimingRanges,
     planAutoMerge,
     applyAutoMergeSnaps,
+    planSubtitleExtension,
+    applySubtitleExtension,
     formatHumanDuration,
     formatGapRemoveDuration,
     splitCharOffsetAtTime,

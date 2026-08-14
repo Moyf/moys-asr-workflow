@@ -3278,7 +3278,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.4.0-beta.5</span>
+  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.4.0-beta.6</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -3593,6 +3593,48 @@
     <button type="button" id="auto-merge-run" class="gap-remove-scan">
       <span>拼接/合并字幕</span>
       <small>按当前参数处理整段工程</small>
+    </button>
+    <footer class="gap-remove-panel-footer">
+      <span>滚轮可调数值 · Esc 关闭</span>
+    </footer>
+  </div>
+</aside>
+
+<!-- 可拖动的非模态延长字幕工具窗 -->
+<aside class="gap-remove-panel subtitle-extend-panel" id="subtitle-extend-panel" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="subtitle-extend-panel-title">
+  <header class="gap-remove-panel-header" id="subtitle-extend-drag-handle">
+    <div class="gap-remove-heading">
+      <span class="gap-remove-eyebrow">波形处理</span>
+      <h3 id="subtitle-extend-panel-title">延长字幕</h3>
+    </div>
+    <button type="button" id="subtitle-extend-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭延长字幕工具窗">×</button>
+  </header>
+  <div class="gap-remove-panel-body">
+    <div class="gap-remove-parameters-heading">
+      <span>延长参数</span>
+      <small>先向前、再向后；整个操作一次撤销</small>
+    </div>
+    <div class="gap-remove-fields">
+      <label class="gap-remove-field">
+        <span class="gap-remove-field-label">向前延长</span>
+        <span class="gap-remove-number-control">
+          <input type="number" id="subtitle-extend-forward-ms" min="0" max="60000" step="50" value="250" inputmode="numeric">
+          <span class="gap-remove-unit">ms</span>
+        </span>
+        <small>向字幕起点前延长，不越过前一条字幕边界；0 表示不处理</small>
+      </label>
+      <label class="gap-remove-field">
+        <span class="gap-remove-field-label">向后延长</span>
+        <span class="gap-remove-number-control">
+          <input type="number" id="subtitle-extend-backward-ms" min="0" max="60000" step="50" value="200" inputmode="numeric">
+          <span class="gap-remove-unit">ms</span>
+        </span>
+        <small>向字幕终点后延长，不越过后一条字幕边界；0 表示不处理</small>
+      </label>
+    </div>
+    <button type="button" id="subtitle-extend-run" class="gap-remove-scan">
+      <span>执行</span>
+      <small>有选中字幕时只处理选中项，否则处理全部字幕</small>
     </button>
     <footer class="gap-remove-panel-footer">
       <span>滚轮可调数值 · Esc 关闭</span>
@@ -4248,6 +4290,7 @@
       <span class="gap-remove-summary" id="gap-remove-summary">未扫描空隙</span>
       <span class="sep"></span>
       <button type="button" id="auto-merge-manage" title="将间隔过短的前后字幕直接吸附在一起，去除中间的短暂空白（可直接吸收短字幕）" aria-expanded="false" aria-controls="auto-merge-panel">拼接/合并字幕</button>
+      <button type="button" id="subtitle-extend-manage" title="打开可拖动的延长字幕工具窗" aria-expanded="false" aria-controls="subtitle-extend-panel">延长字幕</button>
       <span class="sep"></span>
       <span class="multi-subtitle-controls multi-subtitle-waveform-controls" id="multi-subtitle-waveform-controls" hidden>
         <button type="button" id="multi-subtitle-bind" title="分别选中主轨和扩展轨字幕后建立绑定">绑定</button>
@@ -4777,6 +4820,117 @@
       }
     });
     return changed;
+  }
+
+  // 延长字幕计划（纯函数，不改动输入）：先把选中字幕的起点向前延长，
+  // 再把终点向后延长。两侧都只使用相邻字幕当前的边界和媒体时长作为上限，
+  // 因而不会越过其它字幕或媒体末尾；延长时不触碰段内 items 的绝对时间码。
+  // 返回每条字幕的实际前/后延长量，供 UI 统计“完整 / 部分 / 未延长”。
+  function planSubtitleExtension(segments, indices, options = {}) {
+    const source = Array.isArray(segments) ? segments : [];
+    const requestedIndices = indices == null
+      ? []
+      : Array.from(indices || []);
+    const targetIndices = (requestedIndices.length ? requestedIndices : source.map((_, index) => index))
+      .map((index) => Number(index))
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < source.length)
+      .filter((index, position, values) => values.indexOf(index) === position)
+      .sort((a, b) => a - b);
+    const normalizeMs = (value) => {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) && numeric >= 0 ? Math.round(numeric) : 0;
+    };
+    const forwardMs = normalizeMs(options.forwardMs);
+    const backwardMs = normalizeMs(options.backwardMs);
+    const duration = Number(options.durationMs);
+    const durationMs = Number.isFinite(duration) && duration > 0 ? duration : Infinity;
+    const planned = new Map();
+
+    targetIndices.forEach((index) => {
+      const segment = source[index];
+      const start = Number(segment?.start);
+      const end = Number(segment?.end);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return;
+      planned.set(index, {
+        index,
+        start,
+        end,
+        forwardAppliedMs: 0,
+        backwardAppliedMs: 0,
+      });
+    });
+
+    // 向前延长优先：先统一处理所有字幕起点，避免同一次执行的后延改变前拓上限。
+    targetIndices.forEach((index) => {
+      const change = planned.get(index);
+      if (!change || forwardMs <= 0) return;
+      const previousEnd = index > 0 ? Number(source[index - 1]?.end) : 0;
+      const lowerBound = Number.isFinite(previousEnd) ? Math.max(0, previousEnd) : 0;
+      // 已经与前句重叠时不反向缩短当前字幕，只报告为未延长。
+      const available = Math.max(0, change.start - lowerBound);
+      const applied = Math.min(forwardMs, available);
+      if (applied > 0) {
+        change.start -= applied;
+        change.forwardAppliedMs = applied;
+      }
+    });
+
+    targetIndices.forEach((index) => {
+      const change = planned.get(index);
+      if (!change || backwardMs <= 0) return;
+      const nextChange = planned.get(index + 1);
+      const nextStart = nextChange
+        ? nextChange.start
+        : index + 1 < source.length
+          ? Number(source[index + 1]?.start)
+          : durationMs;
+      const upperBound = Number.isFinite(nextStart) ? nextStart : durationMs;
+      // 已经与后句重叠时不反向缩短当前字幕，只报告为未延长。
+      const available = Math.max(0, upperBound - change.end);
+      const applied = Math.min(backwardMs, available);
+      if (applied > 0) {
+        change.end += applied;
+        change.backwardAppliedMs = applied;
+      }
+    });
+
+    const changes = [...planned.values()].filter((change) => (
+      change.start !== Number(source[change.index]?.start)
+      || change.end !== Number(source[change.index]?.end)
+    )).map((change) => {
+      const forwardPartial = forwardMs > 0 && change.forwardAppliedMs < forwardMs;
+      const backwardPartial = backwardMs > 0 && change.backwardAppliedMs < backwardMs;
+      const partial = forwardPartial || backwardPartial;
+      return {
+        ...change,
+        changed: change.forwardAppliedMs > 0 || change.backwardAppliedMs > 0,
+        partial,
+      };
+    });
+    const changedIndices = changes.filter((change) => change.changed).map((change) => change.index);
+    return {
+      indices: targetIndices,
+      changes,
+      changedIndices,
+      fullCount: changes.filter((change) => change.changed && !change.partial).length,
+      partialCount: changes.filter((change) => change.changed && change.partial).length,
+      unchangedCount: targetIndices.length - changedIndices.length,
+      forwardMs,
+      backwardMs,
+    };
+  }
+
+  function applySubtitleExtension(segments, indices, options = {}) {
+    const source = Array.isArray(segments) ? segments : [];
+    const plan = planSubtitleExtension(source, indices, options);
+    plan.changes.forEach((change) => {
+      const segment = source[change.index];
+      if (!segment || !change.changed) return;
+      segment.start = change.start;
+      segment.end = change.end;
+      segment._dirty = true;
+    });
+    return plan;
   }
 
   function formatHumanDuration(durationMs) {
@@ -5986,6 +6140,8 @@
     normalizeItemTimingRanges,
     planAutoMerge,
     applyAutoMergeSnaps,
+    planSubtitleExtension,
+    applySubtitleExtension,
     formatHumanDuration,
     formatGapRemoveDuration,
     splitCharOffsetAtTime,
@@ -6135,7 +6291,17 @@
     '跳过空隙': 'Skip gaps', '播放时跳过空隙': 'Skip gaps during playback', '未扫描空隙': 'Gaps not scanned', '工作区': 'Workspace',
     '拼合字幕': 'Snap subtitles', '拼合参数': 'Snap parameters',
     '拼接/合并字幕': 'Join / merge subtitles', '拼接/合并参数': 'Join / merge parameters',
+    '延长字幕': 'Extend subtitles', '延长参数': 'Extension parameters',
     '直接修改字幕时间轴，整个操作一次撤销': 'Edits the subtitle timeline directly; the whole run is one undo step',
+    '先向前、再向后；整个操作一次撤销': 'Extends earlier first, then later; the whole run is one undo step',
+    '向前延长': 'Extend earlier', '向后延长': 'Extend later', '执行': 'Run',
+    '向字幕起点前延长，不越过前一条字幕边界；0 表示不处理': 'Extend the subtitle start earlier without crossing the previous subtitle; 0 disables it',
+    '向字幕终点后延长，不越过后一条字幕边界；0 表示不处理': 'Extend the subtitle end later without crossing the next subtitle; 0 disables it',
+    '有选中字幕时只处理选中项，否则处理全部字幕': 'Process selected subtitles when any are selected; otherwise process all subtitles',
+    '打开可拖动的延长字幕工具窗': 'Open the draggable subtitle-extension tool',
+    '关闭延长字幕工具窗': 'Close the subtitle-extension tool',
+    '向前延长时长必须是大于等于 0 的数字': 'The earlier-extension duration must be a number greater than or equal to 0',
+    '向后延长时长必须是大于等于 0 的数字': 'The later-extension duration must be a number greater than or equal to 0',
     '间隔阈值': 'Interval threshold', '拓展方向': 'Snap direction', '吸附方向': 'Snap direction',
     '向前拓展': 'Extend earlier', '向后拓展': 'Extend later',
     '向前吸附': 'Snap earlier', '向后吸附': 'Snap later',
@@ -6685,6 +6851,11 @@
     if (match) return `Total length ${match[1]}`;
     match = /^字\/秒\s+(.+)$/.exec(text);
     if (match) return `chars/s ${match[1]}`;
+    match = /^已处理\s*(\d+)\s*个(选中字幕|字幕)：完整延长\s*(\d+)\s*条，部分延长\s*(\d+)\s*条，未延长\s*(\d+)\s*条$/.exec(text);
+    if (match) {
+      const target = match[2] === '选中字幕' ? 'selected subtitles' : 'subtitles';
+      return `Processed ${match[1]} ${target}: ${match[3]} fully extended, ${match[4]} partially extended, ${match[5]} unchanged`;
+    }
     match = /^合并\s+(\d+)\s+条字幕$/.exec(text);
     if (match) return `Merge ${match[1]} subtitles`;
     match = /^已合并\s+(\d+)\s+条扩展字幕(，原绑定已解除)?$/.exec(text);
@@ -12380,6 +12551,14 @@ const autoMergeSnapDirectionSelect = document.getElementById('auto-merge-snap-di
 const autoMergeAbsorbShortToggle = document.getElementById('auto-merge-absorb-short');
 const autoMergeShortCountInput = document.getElementById('auto-merge-short-count');
 const autoMergeAbsorbDirectionSelect = document.getElementById('auto-merge-absorb-direction');
+const SUBTITLE_EXTEND_PANEL_POSITION_KEY = 'moy.asr.subtitle_extend.panel.v1';
+const subtitleExtendPanel = document.getElementById('subtitle-extend-panel');
+const subtitleExtendDragHandle = document.getElementById('subtitle-extend-drag-handle');
+const subtitleExtendCloseButton = document.getElementById('subtitle-extend-close');
+const subtitleExtendManageButton = document.getElementById('subtitle-extend-manage');
+const subtitleExtendRunButton = document.getElementById('subtitle-extend-run');
+const subtitleExtendForwardInput = document.getElementById('subtitle-extend-forward-ms');
+const subtitleExtendBackwardInput = document.getElementById('subtitle-extend-backward-ms');
 let gapPreviewRange = null;
 let gapRemovePanelDrag = null;
 let currentCuePanelIdx = -1;
@@ -13224,6 +13403,28 @@ autoMergePanel?.querySelectorAll('input[type="number"]').forEach((input) => {
       return;
     }
     input.dispatchEvent(new Event('input', { bubbles: true }));
+  }, { passive: false });
+});
+const subtitleExtendFloatingPanel = createFloatingPanel({
+  panel: subtitleExtendPanel,
+  dragHandle: subtitleExtendDragHandle,
+  manageButton: subtitleExtendManageButton,
+  anchorButton: subtitleExtendManageButton,
+  positionKey: SUBTITLE_EXTEND_PANEL_POSITION_KEY,
+});
+subtitleExtendCloseButton?.addEventListener('click', () => subtitleExtendFloatingPanel.close());
+subtitleExtendRunButton?.addEventListener('click', extendSubtitleRanges);
+subtitleExtendPanel?.querySelectorAll('input[type="number"]').forEach((input) => {
+  input.addEventListener('wheel', (event) => {
+    if (!event.deltaY) return;
+    event.preventDefault();
+    input.focus({ preventScroll: true });
+    try {
+      if (event.deltaY < 0) input.stepUp();
+      else input.stepDown();
+    } catch (_) {
+      return;
+    }
   }, { passive: false });
 });
 bindCueListDisplayToggle(cueListShowIndexToggle, 'cueListShowIndex');
@@ -17201,6 +17402,64 @@ function mergeExtensionSegments(idxs, track = getActiveExtensionTrack()) {
     'success',
   );
   return true;
+}
+
+function parseSubtitleExtendMs(input) {
+  const raw = String(input?.value ?? '').trim();
+  const value = Number(raw);
+  if (!raw || !Number.isFinite(value) || value < 0) return null;
+  return Math.round(value);
+}
+
+function extendSubtitleRanges() {
+  const forwardMs = parseSubtitleExtendMs(subtitleExtendForwardInput);
+  if (forwardMs === null) {
+    flashHint('向前延长时长必须是大于等于 0 的数字', 'invalid');
+    return;
+  }
+  const backwardMs = parseSubtitleExtendMs(subtitleExtendBackwardInput);
+  if (backwardMs === null) {
+    flashHint('向后延长时长必须是大于等于 0 的数字', 'invalid');
+    return;
+  }
+
+  const hasSelection = selectedIdxs.size > 0;
+  const indices = hasSelection ? [...selectedIdxs] : [];
+  if (editingState) finishEdit(false);
+  commitCuePanelEdit();
+  const plan = window.AsrEditorUtils.planSubtitleExtension(DATA.segments, indices, {
+    forwardMs,
+    backwardMs,
+    durationMs: getSubtitleTimelineDuration(),
+  });
+  if (plan.changedIndices.length) {
+    pushUndo('延长字幕');
+    let linkedChanged = false;
+    const changedSegments = [];
+    plan.changes.forEach((change) => {
+      const segment = DATA.segments[change.index];
+      if (!segment || !change.changed) return;
+      const syncPatch = { oldStart: segment.start, oldEnd: segment.end, mode: 'range' };
+      // 这里的 items 绝对时间码保持原样，延长只改变字幕段的外壳范围。
+      segment.start = change.start;
+      segment.end = change.end;
+      segment._dirty = true;
+      changedSegments.push(segment);
+      linkedChanged = syncBoundExtensionForMain(segment, syncPatch) || linkedChanged;
+    });
+    markMainSegmentsDirty(changedSegments);
+    syncTimelineGroupRanges();
+    if (linkedChanged || multiSubtitleVisible()) markMultiSubtitleDirty();
+    syncBindingOffsets();
+    scheduleAutoSaveFlush();
+    renderAll();
+    update();
+  }
+  const scope = hasSelection ? `已处理 ${plan.indices.length} 个选中字幕` : `已处理 ${plan.indices.length} 个字幕`;
+  flashHint(
+    `${scope}：完整延长 ${plan.fullCount} 条，部分延长 ${plan.partialCount} 条，未延长 ${plan.unchangedCount} 条`,
+    plan.changedIndices.length ? 'success' : 'warning',
+  );
 }
 
 // === 拼合字幕 ===
