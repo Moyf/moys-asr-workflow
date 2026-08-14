@@ -36,6 +36,7 @@ from maw.postprocess_llm import (
 )
 from maw.postprocess_match import ScriptMatchRequest, run_script_match
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion, run_ocr_dedup
+from maw.project_preview import JsonValue
 
 
 POSTPROCESS_PLAN_VERSION: Final[int] = 1
@@ -543,7 +544,7 @@ def _run_step(
         model=values["model"],
         reasoning_mode=normalize_reasoning_mode(values.get("reasoningMode", DEFAULT_REASONING_MODE)),
     )
-    def complete(prompt: str, cues: list[dict[str, str]]) -> Mapping[str, object]:
+    def complete(prompt: str, cues: list[dict[str, JsonValue]]) -> Mapping[str, JsonValue]:
         _check_cancel(cancel_event)
         return complete_subtitle_groups(settings, prompt, cues)
 

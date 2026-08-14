@@ -143,6 +143,26 @@ class PostprocessTests(unittest.TestCase):
         self.assertIn("茶很好喝", second.srt_path.read_text(encoding="utf-8"))
         self.assertNotIn("酒很好喝", second.srt_path.read_text(encoding="utf-8"))
 
+    def test_fixed_replacement_reuses_word_timings_for_equal_length_edit(self) -> None:
+        result = run_fixed_replacement(
+            ReplacementRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.JSON,
+                replacements=(Replacement(source="酒", target="洒"),),
+            )
+        )
+
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project file")
+        segment = project_segments(read_project(result.project_path))[0]
+        self.assertEqual(segment["text"], "洒很好喝")
+        self.assertEqual([item["text"] for item in segment["items"]], ["洒", "很好喝"])
+        self.assertEqual(
+            [(item["start"], item["end"]) for item in segment["items"]],
+            [(100, 300), (300, 900)],
+        )
+
     def test_llm_groups_can_redistribute_text_but_not_timing(self) -> None:
         project = sample_project(self.media)
         groups: JsonDict = {
@@ -209,6 +229,69 @@ class PostprocessTests(unittest.TestCase):
         result = project_segments(processed)[0]
         self.assertEqual(result["note"], "keep this")
         self.assertNotIn("items", result)
+
+    def test_llm_equal_length_text_edit_reuses_word_timings(self) -> None:
+        project = sample_project(self.media)
+        processed = apply_llm_groups(project, {
+            "groups": [
+                {"id": "c0001", "text": "洒很好喝"},
+                {"id": "c0002", "text": "下一句"},
+            ]
+        })
+
+        result = project_segments(processed)[0]
+        self.assertEqual([item["text"] for item in result["items"]], ["洒", "很好喝"])
+        self.assertEqual(
+            [(item["start"], item["end"]) for item in result["items"]],
+            [(100, 300), (300, 900)],
+        )
+
+    def test_mosp_resegment_uses_atom_boundaries_and_preserves_word_timings(self) -> None:
+        project = sample_project(self.media)
+        project_segments(project)[1]["items"] = [
+            {"start": 1200, "end": 1600, "text": "下"},
+            {"start": 1600, "end": 2200, "text": "一句"},
+        ]
+        _ = self.project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+        received: list[tuple[str, list[dict[str, object]]]] = []
+
+        def complete(system_prompt: str, cues: list[dict[str, object]]) -> JsonDict:
+            received.append((system_prompt, cues))
+            return {
+                "groups": [
+                    {"atom_ids": ["c0001a0001"]},
+                    {"atom_ids": ["c0001a0002", "c0002a0001"]},
+                    {"atom_ids": ["c0002a0002"]},
+                ]
+            }
+
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.JSON,
+                operation="resegment",
+                custom_prompt="",
+            ),
+            complete=complete,
+        )
+
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project file")
+        output_segments = project_segments(read_project(result.project_path))
+        self.assertEqual([segment["text"] for segment in output_segments], ["酒", "很好喝下", "一句"])
+        self.assertEqual(
+            [(segment["start"], segment["end"]) for segment in output_segments],
+            [(100, 300), (300, 1600), (1600, 2200)],
+        )
+        self.assertEqual(
+            [[item["text"] for item in segment["items"]] for segment in output_segments],
+            [["酒"], ["很好喝", "下"], ["一句"]],
+        )
+        self.assertIn("字词时间码", "\n".join(result.warnings))
+        self.assertEqual(len(received), 1)
+        self.assertIn("atom ID", received[0][0])
+        self.assertEqual(received[0][1][0]["items"][0]["id"], "c0001a0001")
 
     def test_llm_regroup_removes_all_positional_visual_refs_and_word_timings(self) -> None:
         project = sample_project(self.media)
@@ -383,6 +466,31 @@ class PostprocessTests(unittest.TestCase):
 
         self.assertEqual(result, {"groups": [{"id": "c0001", "text": "完成"}]})
         self.assertEqual(session.post.call_count, 2)
+
+    def test_llm_completion_accepts_atom_boundary_response(self) -> None:
+        settings = LlmSettings(
+            provider_id="custom",
+            api_key="sk-test",
+            base_url="https://example.com/v1",
+            model="custom-model",
+        )
+        response = mock.Mock()
+        response.json.return_value = {
+            "choices": [{"message": {"content": '{"groups":[{"atom_ids":["c0001a0001"]}]}'}}]
+        }
+        session = mock.MagicMock()
+        session.__enter__.return_value = session
+        session.post.return_value = response
+
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            result = complete_subtitle_groups(
+                settings,
+                "Return atom boundaries.",
+                [{"id": "c0001", "text": "原文", "items": [{"id": "c0001a0001", "text": "原文"}]}],
+            )
+
+        self.assertEqual(result, {"groups": [{"atom_ids": ["c0001a0001"]}]})
+        self.assertEqual(session.post.call_count, 1)
 
     def test_llm_streaming_separates_reasoning_and_json_content(self) -> None:
         settings = LlmSettings(

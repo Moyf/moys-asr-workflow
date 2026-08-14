@@ -46,6 +46,7 @@ from maw.postprocess_pipeline import (
     validate_plan,
 )
 from maw.postprocess_pipeline import PostprocessPipelineError
+from maw.project_preview import JsonValue
 from maw.soniox import SonioxContextError, build_soniox_context
 
 
@@ -708,7 +709,7 @@ class LauncherApi:
             return {"ok": False, "field": "postprocessProvider", "code": "postprocess_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
         batch_number = 0
 
-        def complete(prompt: str, cues: list[dict[str, str]]) -> dict[str, object]:
+        def complete(prompt: str, cues: list[dict[str, JsonValue]]) -> dict[str, JsonValue]:
             nonlocal batch_number
             batch_number += 1
             current_batch = batch_number
