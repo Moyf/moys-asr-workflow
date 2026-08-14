@@ -8,7 +8,9 @@ import {
   findFreePort,
   generateProjectJson,
   generateWav,
+  makeFirstCueWordSplittable,
   makeTempDir,
+  disableOnboarding,
   startServer,
 } from './helpers.mjs';
 
@@ -27,6 +29,10 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await server?.stop();
   cleanupTempDir(tempDir);
+});
+
+test.beforeEach(async ({ page }) => {
+  await disableOnboarding(page);
 });
 
 test('jump target is shown for both jump behaviors and hidden for select-only', async ({ page }) => {
@@ -247,30 +253,31 @@ test('list context menu leads with text-position split', async ({ page }) => {
   await expect(page.locator('#ctxmenu .item').first()).toContainText('按文字位置拆分');
 });
 
-test('Enter follows the last clicked region: inline edit after list, panel focus after waveform', async ({ page }) => {
+test('Enter focuses the current subtitle editor after list or waveform clicks', async ({ page }) => {
   await page.goto(server.url);
   const cue = page.locator('.cue[data-idx="0"]');
+  const panelText = page.locator('#cue-panel-text');
   await cue.click();
-  // 最后点击在列表：即使鼠标已移出列表，Enter 仍开始原地编辑
+  // 最后点击在列表：即使鼠标已移出列表，Enter 仍聚焦当前字幕编辑区
   await page.locator('#media-controls').hover();
   await page.keyboard.press('Enter');
-  await expect(cue).toHaveClass(/editing/);
-  await expect(page.locator('#cue-panel-text')).not.toBeFocused();
-  await page.keyboard.press('Escape');
   await expect(cue).not.toHaveClass(/editing/);
+  await expect(panelText).toBeFocused();
+  await page.keyboard.press('Escape');
 
-  // 最后点击在波形背景：Enter 回到旧行为，聚焦字幕编辑区
+  // 最后点击在波形背景：仍聚焦当前字幕编辑区
   const rowBox = await page.locator('.waveform-row').nth(1).boundingBox();
   await page.mouse.click(rowBox.x + rowBox.width * 0.95, rowBox.y + rowBox.height / 2);
   // 空白处点击会清除选择；不经过列表重新选中第一条（区域仍停留在波形）
   await page.evaluate(() => selectOnly(0));
   await page.keyboard.press('Enter');
   await expect(cue).not.toHaveClass(/editing/);
-  await expect(page.locator('#cue-panel-text')).toBeFocused();
+  await expect(panelText).toBeFocused();
 });
 
 test('B splits at the pointer inside the cue list and at the playhead outside it', async ({ page }) => {
   await page.goto(server.url);
+  await makeFirstCueWordSplittable(page);
   const cue = page.locator('.cue[data-idx="0"]');
   await cue.click();
   // 列表外：播放头位于空隙（20s）时不拆分
@@ -300,16 +307,60 @@ test('B splits at the pointer inside the cue list and at the playhead outside it
   const splitPoint = await text.evaluate((element) => {
     const node = element.firstChild;
     const range = document.createRange();
-    range.setStart(node, 2);
-    range.setEnd(node, 2);
+    range.setStart(node, 6);
+    range.setEnd(node, 6);
     const rect = range.getBoundingClientRect();
     return { x: rect.x, y: rect.y + rect.height / 2 };
   });
   await page.mouse.move(splitPoint.x, splitPoint.y);
+  await expect(page.locator('.cue-split-preview')).toHaveCount(1);
+  const previewBox = await page.locator('.cue-split-preview').boundingBox();
+  expect(previewBox).not.toBeNull();
+  expect(Math.abs(previewBox.x + previewBox.width / 2 - splitPoint.x)).toBeLessThan(1.5);
   await page.keyboard.press('b');
 
   await expect(page.locator('.cue')).toHaveCount(7);
-  await expect(page.locator('.cue .text').nth(0)).not.toHaveText('Alpha');
+  await expect(page.locator('.cue .text').nth(0)).toHaveText('Alpha');
+  await expect(page.locator('.cue .text').nth(1)).toHaveText('Bravo');
+  await expect(page.locator('.cue-split-flash.is-active')).toHaveCount(1);
+  await expect(page.locator('.cue-split-flash.is-active')).toHaveCount(0);
+});
+
+test('B flashes a yellow marker after splitting at the waveform pointer without a selection', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => clearSelection());
+  await expect(page.locator('.cue.selected')).toHaveCount(0);
+
+  const waveformCue = page.locator('.waveform-cue-block[data-idx="0"]').first();
+  await waveformCue.scrollIntoViewIfNeeded();
+  const box = await waveformCue.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.keyboard.press('b');
+
+  await expect(page.locator('.waveform-split-flash.is-active')).toHaveCount(1);
+  await expect(page.locator('.waveform-split-flash.is-active')).toHaveCount(0);
+});
+
+test('waveform hover mirrors the pointer position in the row', async ({ page }) => {
+  await page.goto(server.url);
+  const row = page.locator('.waveform-row').first();
+  await row.scrollIntoViewIfNeeded();
+
+  const rowBox = await row.boundingBox();
+  expect(rowBox).not.toBeNull();
+
+  const pointerX = rowBox.x + rowBox.width * 0.65;
+  await page.mouse.move(pointerX, rowBox.y + rowBox.height / 2);
+
+  const indicator = row.locator('.waveform-pointer-line');
+  await expect(indicator).toBeVisible();
+  const indicatorBox = await indicator.boundingBox();
+  expect(indicatorBox).not.toBeNull();
+  expect(Math.abs(indicatorBox.x + indicatorBox.width / 2 - pointerX)).toBeLessThan(1.5);
+
+  await page.locator('#media-controls').hover();
+  await expect(indicator).toBeHidden();
 });
 
 test('space owns playback in media controls but remains text input in the cue editor', async ({ page }) => {

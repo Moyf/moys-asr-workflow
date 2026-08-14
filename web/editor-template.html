@@ -24,7 +24,7 @@ __WAVEFORM_CSS__
 
 <h1>
   <span class="media-name __MEDIA_NAME_CLASS__" id="media-name" title="__MEDIA_NAME_TITLE__">__MEDIA_NAME_DISPLAY__</span>
-  <span class="gen-time" id="gen-time" data-label="生成时间">生成时间 __GENERATED_AT__</span>
+  <span class="app-version" id="app-version" data-label="版本号">版本号 __APP_VERSION__</span>
   <span class="json-name __JSON_NAME_CLASS__" id="json-name" title="点击复制工程文件名">__JSON_DISPLAY__</span>
 </h1>
 <div class="toolbar row-actions">
@@ -61,9 +61,74 @@ __WAVEFORM_CSS__
     <button type="button" id="undo-btn" title="撤销 (Ctrl(Cmd)+Z)" disabled>↶ 撤销</button>
     <button type="button" id="redo-btn" title="重做 (Ctrl(Cmd)+Shift+Z)" disabled>↷ 重做</button>
   </span>
+  <span class="sep"></span>
+  <span class="multi-subtitle-controls" id="multi-subtitle-controls" hidden>
+    <label class="multi-subtitle-main-toggle" id="multi-subtitle-toggle-label"
+           title="当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。">
+      <input type="checkbox" id="multi-subtitle-toggle" title="当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。">
+      多重字幕
+    </label>
+    <span class="dropdown multi-subtitle-settings-dropdown" id="multi-subtitle-settings-dropdown" hidden>
+      <button type="button" id="multi-subtitle-settings-toggle" title="多重字幕设置" aria-label="多重字幕设置" aria-expanded="false" aria-controls="multi-subtitle-settings-menu" aria-haspopup="menu">⚙️</button>
+      <div class="dropdown-menu multi-subtitle-settings-menu" id="multi-subtitle-settings-menu" role="menu">
+        <div class="multi-subtitle-setting-row">
+          <span>显示方式</span>
+          <select id="multi-subtitle-display-mode" title="多重字幕列表显示方式">
+            <option value="main">主轨</option>
+            <option value="extension">副轨</option>
+            <option value="both" selected>双列</option>
+          </select>
+        </div>
+        <div class="multi-subtitle-setting-row">
+          <span>主字幕语言类型</span>
+          <select id="multi-subtitle-main-language-mode" title="主字幕语言类型">
+            <option value="word" selected>单词型</option>
+            <option value="continuous">字符型</option>
+          </select>
+        </div>
+        <div class="multi-subtitle-setting-row">
+          <span>副字幕语言类型</span>
+          <select id="multi-subtitle-extension-language-mode" title="副字幕语言类型">
+            <option value="word" selected>单词型</option>
+            <option value="continuous">字符型</option>
+          </select>
+        </div>
+        <div class="multi-subtitle-setting-hint" role="note" aria-label="语言类型提示">
+          <div>单词型：英语、西文等按空格拆分</div>
+          <div>字符型：中文、日文等按字符拆分</div>
+        </div>
+        <div class="multi-subtitle-setting-row" id="multi-subtitle-extension-row-height-setting">
+          <span>副字幕时波形高度</span>
+          <select id="multi-subtitle-extension-row-height" title="启用多重字幕时使用的波形行高度">
+            <option value="64">64 px</option>
+            <option value="80">80 px</option>
+            <option value="96">96 px</option>
+            <option value="120">120 px</option>
+            <option value="144">144 px</option>
+            <option value="168" selected>168 px</option>
+          </select>
+        </div>
+        <label class="multi-subtitle-setting-toggle" title="拖动多重字幕时，允许吸附到另一条字幕轨道的起点和终点">
+          <input type="checkbox" id="multi-subtitle-cross-track-snap" checked> 跨轨道吸附
+        </label>
+        <label class="multi-subtitle-setting-toggle" title="普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕">
+          <input type="checkbox" id="multi-subtitle-select-bound-pair" checked> 同时选中主副字幕
+        </label>
+        <label class="multi-subtitle-setting-toggle" title="绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H">
+          <input type="checkbox" id="multi-subtitle-auto-sync-duration" checked> 绑定时自动同步时长
+        </label>
+        <label class="multi-subtitle-setting-toggle" title="在多重字幕波形中显示主字幕和副字幕的轨道编号徽标">
+          <input type="checkbox" id="multi-subtitle-show-track-badges"> 显示轨道徽标
+        </label>
+        <div class="dropdown-separator"></div>
+        <div class="dropdown-item" id="multi-subtitle-swap" role="menuitem" tabindex="0" title="交换主字幕和副字幕的文本、时间与绑定关系">交换主副字幕</div>
+      </div>
+    </span>
+  </span>
 
   <span class="right-group">
-    <button id="download-srt">导出字幕</button>
+      <button id="download-srt">导出字幕</button>
+    <button type="button" id="download-multi-srt" hidden title="导出当前扩展字幕轨（SRT）">导出扩展字幕</button>
     <span class="dropdown" id="subtitle-export-dropdown" hidden>
       <button id="subtitle-export-btn" title="导出完整字幕或按颜色分别导出字幕">导出字幕 ▾</button>
       <div class="dropdown-menu" id="subtitle-export-menu">
@@ -100,8 +165,9 @@ __WAVEFORM_CSS__
       <svg class="toolbar-button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.75 12.25 8 8 9.25 6.25 13.5 3 1.75Z"/><path d="m8.3 9.2 3.2 3.05"/></svg>
       <span>选择</span>
     </button>
-    <button type="button" data-waveform-tool="razor" title="分割工具（R）：点击字幕块在指针位置安全拆分（按词/字级时间码对齐，拒绝 100ms 以内的边缘拆分）；Esc 切回选择">
+    <button type="button" data-waveform-tool="razor" title="分割工具（R）：点击字幕块在指针位置安全拆分（默认按字词时间码对齐；没有可用字词时间码或关闭设置后打开拆分点弹窗，拒绝 100ms 以内的边缘拆分）；Esc 切回选择">
       <svg class="toolbar-button-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="4" r="2.25"/><circle cx="4" cy="12" r="2.25"/><path d="m5.8 5.35 7.2 5.4M5.8 10.65 13 5.25"/></svg>
+      <span class="ninja-razor-icon" aria-hidden="true" hidden>🔪</span>
       <span>分割</span>
     </button>
   </span>
@@ -216,18 +282,18 @@ __WAVEFORM_CSS__
   </div>
 </aside>
 
-<!-- 可拖动的非模态拼合字幕工具窗 -->
+<!-- 可拖动的非模态拼接/合并字幕工具窗 -->
 <aside class="gap-remove-panel auto-merge-panel" id="auto-merge-panel" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="auto-merge-panel-title">
   <header class="gap-remove-panel-header" id="auto-merge-drag-handle">
     <div class="gap-remove-heading">
       <span class="gap-remove-eyebrow">波形处理</span>
-      <h3 id="auto-merge-panel-title">拼合字幕</h3>
+      <h3 id="auto-merge-panel-title">拼接/合并字幕</h3>
     </div>
-    <button type="button" id="auto-merge-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭拼合字幕工具窗">×</button>
+    <button type="button" id="auto-merge-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭拼接/合并字幕工具窗">×</button>
   </header>
   <div class="gap-remove-panel-body">
     <div class="gap-remove-parameters-heading">
-      <span>拼合参数</span>
+      <span>拼接/合并参数</span>
       <small>直接修改字幕时间轴，整个操作一次撤销</small>
     </div>
     <div class="gap-remove-fields">
@@ -237,21 +303,21 @@ __WAVEFORM_CSS__
           <input type="number" id="auto-merge-gap-ms" min="0" max="10000" step="50" value="200" inputmode="numeric">
           <span class="gap-remove-unit">ms</span>
         </span>
-        <small>相邻字幕间隔在此范围内时，拓展字幕长度把它们拼在一起；0 表示不处理</small>
+        <small>将间隔过短的前后字幕直接吸附在一起，去除中间的短暂空白；0 表示不处理</small>
       </label>
       <label class="gap-remove-field">
-        <span class="gap-remove-field-label">拓展方向</span>
+        <span class="gap-remove-field-label">吸附方向</span>
         <select id="auto-merge-snap-direction">
-          <option value="backward" selected>向前拓展</option>
-          <option value="forward">向后拓展</option>
+          <option value="backward" selected>向前吸附</option>
+          <option value="forward">向后吸附</option>
         </select>
-        <small>向前：后方字幕的起点前拓；向后：前方字幕的终点后延</small>
+        <small>向前：后方字幕的起点吸附到前方字幕的终点；向后：前方字幕的终点吸附到后方字幕的起点</small>
       </label>
     </div>
-    <label class="gap-remove-field auto-merge-absorb-field" title="关闭后只拼合间隔，不合并任何字幕">
+    <label class="gap-remove-field auto-merge-absorb-field" title="关闭后只吸附间隔，不合并任何字幕">
       <span class="gap-remove-field-label">吸收过短字幕</span>
       <input type="checkbox" id="auto-merge-absorb-short" checked>
-      <small>过短字幕也必须与相邻字幕间隔在上方阈值内才会吸收；关闭后只拼合间隔</small>
+      <small>过短字幕也必须与相邻字幕间隔在上方阈值内才会吸收；关闭后只吸附间隔</small>
     </label>
     <div class="gap-remove-fields">
       <label class="gap-remove-field">
@@ -271,7 +337,7 @@ __WAVEFORM_CSS__
       </label>
     </div>
     <button type="button" id="auto-merge-run" class="gap-remove-scan">
-      <span>拼合字幕</span>
+      <span>拼接/合并字幕</span>
       <small>按当前参数处理整段工程</small>
     </button>
     <footer class="gap-remove-panel-footer">
@@ -326,6 +392,19 @@ __WAVEFORM_CSS__
         <span><kbd>1~5</kbd> 标记颜色 <kbd>0</kbd> 清除颜色</span>
         <span><kbd>C</kbd> 合并所选字幕</span>
       </div>
+      <div class="help-subgroup">
+        <span class="help-subtitle">多重字幕</span>
+        <span><kbd>G</kbd> 单选副字幕后绑定到主字幕（自动匹配时间最早的未绑定主字幕）</span>
+        <span><kbd>Shift+G</kbd> 解绑当前副字幕</span>
+        <span><kbd>H</kbd> 对齐副字幕到主字幕时间轴</span>
+        <span><kbd>B</kbd> 单选副字幕后打开副字幕拆分</span>
+        <span>波形轨道徽标（开启后）：<kbd>1</kbd> 主轨 <kbd>2</kbd> 副轨</span>
+        <span>语言类型：单词型适合英语等空格语言，字符型适合中文/日文等</span>
+        <span>主字幕自动使用时间码拆分：单轨可直接拆分；联动弹窗中主轨显示为不可交互的时间码锚点</span>
+        <span>主字幕调整时副字幕只跟随；冲突时优先限制副字幕，不会缩短主字幕</span>
+        <span>副字幕调整时受主字幕轨道边界限制，主字幕没有可用空间时无法继续拖动</span>
+        <span>普通点击以最后点击的轨道为准；未绑定副字幕不会保留旧主字幕选区。开启「同时选中主副字幕」时，仅补选当前字幕实际绑定的另一条；编辑区仍以最后点击的字幕为准</span>
+      </div>
     </div>
     <div class="help-group">
       <span class="help-title">波形区</span>
@@ -333,6 +412,8 @@ __WAVEFORM_CSS__
         <span class="help-subtitle">鼠标</span>
         <span><kbd>双击波形</kbd> 播放/暂停</span>
         <span><kbd>右键波形背景</kbd> 显示菜单</span>
+        <span class="help-important"><kbd>N</kbd> 在鼠标位置创建字幕（仅波形）</span>
+        <span><kbd data-mod-key>Ctrl+拖拽空白处</kbd> 拖动创建指定时长字幕</span>
         <span><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>
       </div>
       <div class="help-subgroup">
@@ -452,6 +533,10 @@ __WAVEFORM_CSS__
         <option value="ctrl-enter">Ctrl+Enter</option>
     </select>
   </label>
+    <label class="toggle editor-settings-item" title="开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置">
+      <input type="checkbox" id="split-use-word-timestamps" checked> 主字幕自动使用时间码拆分
+    </label>
+    <small class="editor-settings-hint" id="split-use-word-timestamps-hint">开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置。</small>
     <div class="editor-settings-field">
     <label class="editor-settings-item" title="合并两条字幕时，中间插入的字符（如果不需要可以留空）">
       合并字幕时插入字符
@@ -516,11 +601,14 @@ __WAVEFORM_CSS__
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
     <span class="editor-settings-title">音频波形区</span>
-    <label class="editor-settings-item" title="波形形状来源：自研缓存默认（1000Hz 重采样）；ReaPeaks 层用媒体旁 .ReaPeaks 的最细 wave 层绘制包络，避免高频欠采样">波形形状来源
+    <label class="editor-settings-item" title="波形形状来源：默认使用媒体旁 .ReaPeaks 的最细 wave 层；没有时回退到自研 1000Hz 重采样缓存">波形形状来源
       <select id="waveform-shape-source">
         <option value="self">自研波形</option>
-        <option value="reapeaks">ReaPeaks 波形层</option>
+        <option value="reapeaks" selected>ReaPeaks 波形层</option>
       </select>
+    </label>
+    <label class="toggle editor-settings-item" title="使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形">
+      <input type="checkbox" id="waveform-spectral-color"> 频谱颜色
     </label>
     <span class="editor-settings-item" id="waveform-window-setting">显示窗口
       <span class="editor-settings-stepper">
@@ -604,6 +692,18 @@ __WAVEFORM_CSS__
         </span>
       </label>
     </div>
+    <div class="editor-settings-sub-group">
+      <span class="editor-settings-title">🥷🏻</span>
+      <div class="editor-settings-toggle-group ninja-toggle-group">
+        <label class="toggle editor-settings-item" title="开启后，分割工具改用 🔪 图标，成功拆分时播放刀光音效">
+          <input type="checkbox" id="ninja-mode"> 字幕忍者
+        </label>
+        <label class="toggle editor-settings-item" id="ninja-slash-effect-field" title="开启后，成功拆分时在屏幕上显示一道白色刀光" hidden>
+          <input type="checkbox" id="ninja-slash-effect" checked> 显示刀光特效
+        </label>
+        <small class="editor-settings-hint">打开字幕忍者模式，让拆分字幕变得更加有趣</small>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -616,12 +716,13 @@ __WAVEFORM_CSS__
     <div class="toolbar player-toolbar">
       <span class="info layout-toolbar-label">媒体</span>
       <label class="toggle"><input type="checkbox" id="overlay-toggle" checked> 预览字幕</label>
+      <label class="toggle" id="extension-overlay-toggle-wrap" hidden><input type="checkbox" id="extension-overlay-toggle" checked> 预览副字幕</label>
       <label class="toggle" title="在视频画面右上角预览当前时间的表情包"><input type="checkbox" id="sticker-overlay-toggle"> 预览表情包</label>
       <div class="subtitle-preview-settings" id="subtitle-preview-settings">
         <button type="button" id="subtitle-preview-settings-toggle" class="subtitle-preview-settings-toggle" title="字幕预览设置" aria-label="字幕预览设置" aria-expanded="false" aria-controls="subtitle-preview-settings-panel" aria-haspopup="dialog">⚙️</button>
         <div class="subtitle-preview-settings-panel" id="subtitle-preview-settings-panel" role="dialog" aria-label="字幕预览设置" hidden>
           <label class="subtitle-preview-setting-row" title="只影响播放器画面内的字幕预览，不改变字幕文本或时间">
-            <span>字幕大小</span>
+            <span>主字幕大小</span>
             <select id="subtitle-font-size">
               <option value="auto" selected>自动（响应式）</option>
               <option value="12">12 px</option>
@@ -640,7 +741,7 @@ __WAVEFORM_CSS__
             </select>
           </label>
           <label class="subtitle-preview-setting-row" title="选择播放器画面内字幕预览使用的字体族">
-            <span>字体</span>
+            <span>主字幕字体</span>
             <select id="subtitle-font-family">
               <option value="default" selected>默认无衬线</option>
               <option value="yahei">微软雅黑 / 苹方</option>
@@ -664,13 +765,56 @@ __WAVEFORM_CSS__
               <output id="subtitle-background-alpha-value" for="subtitle-background-alpha">65%</output>
             </div>
           </label>
+          <label class="subtitle-preview-setting-row" title="选择播放器画面内主字幕预览的颜色">
+            <span>主字幕颜色</span>
+            <input type="color" id="subtitle-color" value="#ffffff" aria-label="主字幕颜色">
+          </label>
+          <div class="subtitle-preview-extension-settings" id="extension-subtitle-preview-settings" hidden>
+            <label class="subtitle-preview-setting-row" title="只影响播放器画面内的副字幕预览">
+              <span>副字幕大小</span>
+              <select id="extension-subtitle-font-size">
+                <option value="auto" selected>自动（比主字幕小一号）</option>
+                <option value="12">12 px</option>
+                <option value="14">14 px</option>
+                <option value="18">18 px</option>
+                <option value="22">22 px</option>
+                <option value="26">26 px</option>
+                <option value="32">32 px</option>
+                <option value="40">40 px</option>
+                <option value="48">48 px</option>
+                <option value="56">56 px</option>
+                <option value="64">64 px</option>
+                <option value="72">72 px</option>
+                <option value="84">84 px</option>
+                <option value="96">96 px</option>
+              </select>
+            </label>
+            <label class="subtitle-preview-setting-row" title="选择播放器画面内副字幕预览使用的字体族">
+              <span>副字幕字体</span>
+              <select id="extension-subtitle-font-family">
+                <option value="default" selected>默认无衬线</option>
+                <option value="yahei">微软雅黑 / 苹方</option>
+                <option value="hei">黑体</option>
+                <option value="song">宋体</option>
+                <option value="sans">Arial / Segoe UI</option>
+              </select>
+            </label>
+            <label class="subtitle-preview-setting-row" title="选择播放器画面内副字幕预览的颜色">
+              <span>副字幕颜色</span>
+              <input type="color" id="extension-subtitle-color" value="#ffd34d" aria-label="副字幕颜色">
+            </label>
+            <label class="subtitle-preview-setting-row" title="调整播放器画面内副字幕预览的背景色">
+              <span>副字幕背景色</span>
+              <input type="color" id="extension-subtitle-background-color" value="#000000" aria-label="副字幕背景色">
+            </label>
+          </div>
         </div>
       </div>
     </div>
     <div class="player-stage">
       __MEDIA_HTML__
       <div class="player-empty" id="player-empty">加载媒体后显示视频</div>
-      <div id="overlay" class="subtitle-overlay geo-box hidden" tabindex="0" role="group" aria-label="字幕预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 显示控制点，Esc 退出。"><span></span><span class="overlay-handle" data-handle="nw" aria-hidden="true"></span><span class="overlay-handle" data-handle="n" aria-hidden="true"></span><span class="overlay-handle" data-handle="ne" aria-hidden="true"></span><span class="overlay-handle" data-handle="e" aria-hidden="true"></span><span class="overlay-handle" data-handle="se" aria-hidden="true"></span><span class="overlay-handle" data-handle="s" aria-hidden="true"></span><span class="overlay-handle" data-handle="sw" aria-hidden="true"></span><span class="overlay-handle" data-handle="w" aria-hidden="true"></span></div>
+      <div id="overlay" class="subtitle-overlay geo-box hidden" tabindex="0" role="group" aria-label="字幕预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 显示控制点，Esc 退出。"><span id="overlay-main-text"></span><span id="overlay-extension-text" class="subtitle-extension-text hidden"></span><span class="overlay-handle" data-handle="nw" aria-hidden="true"></span><span class="overlay-handle" data-handle="n" aria-hidden="true"></span><span class="overlay-handle" data-handle="ne" aria-hidden="true"></span><span class="overlay-handle" data-handle="e" aria-hidden="true"></span><span class="overlay-handle" data-handle="se" aria-hidden="true"></span><span class="overlay-handle" data-handle="s" aria-hidden="true"></span><span class="overlay-handle" data-handle="sw" aria-hidden="true"></span><span class="overlay-handle" data-handle="w" aria-hidden="true"></span></div>
     </div>
     <div class="media-controls" id="media-controls" role="group" aria-label="媒体播放控制">
       <button type="button" id="media-play-toggle" aria-label="播放" title="播放">▶</button>
@@ -710,6 +854,7 @@ __WAVEFORM_CSS__
         <button type="button" id="cue-panel-split">在光标处拆分（<kbd id="cue-panel-split-key">Enter</kbd>）</button>
       </div>
       <div class="cue-panel-text-wrap">
+        <div class="cue-panel-target" id="cue-panel-target">未选择</div>
         <textarea id="cue-panel-text" rows="3" placeholder="选择一条字幕开始编辑…"></textarea>
         <div class="cue-panel-metrics">
           <span>总长度 <b id="cue-panel-total-length">0</b></span>
@@ -734,8 +879,12 @@ __WAVEFORM_CSS__
       <label class="toggle gap-skip-toggle" title="播放时跳过已移除的静音空隙；左键定位到空隙内时可临时预览"><input type="checkbox" id="gap-skip-playback" checked> 播放时跳过空隙</label>
       <span class="gap-remove-summary" id="gap-remove-summary">未扫描空隙</span>
       <span class="sep"></span>
-      <button type="button" id="auto-merge-manage" title="打开可拖动的拼合字幕工具窗" aria-expanded="false" aria-controls="auto-merge-panel">拼合字幕</button>
+      <button type="button" id="auto-merge-manage" title="将间隔过短的前后字幕直接吸附在一起，去除中间的短暂空白（可直接吸收短字幕）" aria-expanded="false" aria-controls="auto-merge-panel">拼接/合并字幕</button>
       <span class="sep"></span>
+      <span class="multi-subtitle-controls multi-subtitle-waveform-controls" id="multi-subtitle-waveform-controls" hidden>
+        <button type="button" id="multi-subtitle-bind" title="分别选中主轨和扩展轨字幕后建立绑定">绑定</button>
+        <button type="button" id="multi-subtitle-unbind" title="移除当前选中字幕的绑定关系">解绑</button>
+      </span>
       <span class="waveform-status" id="waveform-status">等待波形数据</span>
     </div>
     <div class="waveform-scroll" id="waveform-scroll">
@@ -858,18 +1007,81 @@ __WAVEFORM_CSS__
   </div>
 </div>
 
+<!-- 导入扩展字幕时的语义选择/匹配预览 -->
+<div class="modal-mask" id="multi-subtitle-import-modal">
+  <div class="modal multi-subtitle-import-modal" role="dialog" aria-modal="true" aria-labelledby="multi-subtitle-import-title">
+    <h3 id="multi-subtitle-import-title">导入字幕</h3>
+    <p class="modal-desc" id="multi-subtitle-import-description">请选择你要执行的行为：</p>
+    <div id="multi-subtitle-import-preview" class="multi-subtitle-import-preview"></div>
+    <div class="actions multi-subtitle-import-choice-actions" id="multi-subtitle-import-choice-actions">
+      <button type="button" id="multi-subtitle-import-replace">替换当前字幕</button>
+      <button type="button" id="multi-subtitle-import-extension">作为多重字幕</button>
+    </div>
+    <div class="actions multi-subtitle-import-result-actions" id="multi-subtitle-import-result-actions">
+      <button type="button" id="multi-subtitle-import-result-cancel">取消</button>
+      <button type="button" id="multi-subtitle-import-result-confirm" class="primary" disabled>导入</button>
+    </div>
+  </div>
+</div>
+
+<!-- 绑定字幕的近似联动拆分弹窗 -->
+<div class="modal-mask" id="multi-subtitle-split-modal">
+  <div class="modal multi-subtitle-split-modal" role="dialog" aria-modal="true" aria-labelledby="multi-subtitle-split-title">
+    <h3 id="multi-subtitle-split-title">联动拆分扩展字幕</h3>
+    <p class="modal-desc">移动鼠标并点击选择拆分断点。</p>
+    <div class="multi-subtitle-split-language-hint" role="note" aria-label="语言类型提示">
+      <div>字符型语言（中文等）按字符拆分。</div>
+      <div>单词型语言（英语等）只在空格处切分，确保不会拆碎单词；可在多重字幕 ⚙️ 设置中切换语言类型。</div>
+    </div>
+    <div class="multi-subtitle-split-timestamp-hint" id="multi-subtitle-split-timestamp-hint" role="note" hidden>
+      启用后，可在右上角「🔧 设置 → 拆分与合并」中配置是否使用时间码拆分。
+    </div>
+    <div class="multi-subtitle-split-meta" id="multi-subtitle-split-meta"></div>
+    <section class="multi-subtitle-split-lane" id="multi-subtitle-split-main-lane" hidden>
+      <h4>主字幕拆分</h4>
+      <div class="multi-subtitle-split-text" id="multi-subtitle-split-main-text" tabindex="0" aria-label="选择主字幕拆分点"></div>
+    </section>
+    <section class="multi-subtitle-split-lane" id="multi-subtitle-split-extension-lane">
+      <h4>副字幕拆分</h4>
+      <div class="multi-subtitle-split-text" id="multi-subtitle-split-text" tabindex="0" aria-label="选择副字幕断点"></div>
+    </section>
+    <div class="multi-subtitle-split-preview" id="multi-subtitle-split-preview"></div>
+    <div class="multi-subtitle-split-error" id="multi-subtitle-split-error" role="status"></div>
+    <div class="multi-subtitle-split-footer">
+      <label class="multi-subtitle-split-auto-submit" for="multi-subtitle-split-auto-submit">
+        <input type="checkbox" id="multi-subtitle-split-auto-submit" checked>
+        全部拆分后自动提交
+      </label>
+      <div class="actions">
+        <button type="button" id="multi-subtitle-split-cancel">取消（Esc）</button>
+        <button type="button" id="multi-subtitle-split-confirm" class="primary">拆分（Enter / B）</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- 右键菜单 -->
 <div class="ctxmenu" id="ctxmenu"></div>
 
 <!-- 拖拽加载遮罩 -->
 <div class="drag-overlay" id="drag-overlay"><div class="drag-hint">📥 松开以加载文件（视频 / 音频 / JSON / SRT）</div></div>
 
+<!-- 文件读取/媒体解码进度 -->
+<div class="editor-loading" id="editor-loading" hidden aria-live="polite" aria-busy="true">
+  <div class="editor-loading-card">
+    <div class="editor-loading-label" id="editor-loading-label">正在加载…</div>
+    <div class="editor-loading-progress-row">
+      <progress id="editor-loading-progress" max="100" value="0"></progress>
+      <span id="editor-loading-progress-value">0%</span>
+    </div>
+  </div>
+</div>
+
+<!-- 字幕忍者刀光：默认不参与布局与鼠标交互，仅在成功拆分时短暂显示。 -->
+<div id="ninja-slash-flash" aria-hidden="true"></div>
+
 <script>
-__EDITOR_UTILS_JS__
-__EDITOR_I18N_JS__
-__WAVEFORM_JS__
-__EDITOR_JS__
-__EDITOR_ONBOARDING_JS__
+__EDITOR_SCRIPTS_JS__
 </script>
 
 </body>

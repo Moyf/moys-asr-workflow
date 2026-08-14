@@ -332,6 +332,58 @@ class PostprocessTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             _ = normalize_reasoning_mode("maximum")
 
+    def test_llm_completion_retries_invalid_json_once(self) -> None:
+        settings = LlmSettings(
+            provider_id="custom",
+            api_key="sk-test",
+            base_url="https://example.com/v1",
+            model="custom-model",
+        )
+        first = mock.Mock()
+        first.json.return_value = {
+            "choices": [{"message": {"content": '{"groups":[{"id":"c0001","text":"坏",}]}'}}]
+        }
+        second = mock.Mock()
+        second.json.return_value = {
+            "choices": [{"message": {"content": '{"groups":[{"id":"c0001","text":"完成"}]}'}}]
+        }
+        session = mock.MagicMock()
+        session.__enter__.return_value = session
+        session.post.side_effect = [first, second]
+
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            result = complete_subtitle_groups(settings, "Return JSON.", [{"id": "c0001", "text": "原文"}])
+
+        self.assertEqual(result, {"groups": [{"id": "c0001", "text": "完成"}]})
+        self.assertEqual(session.post.call_count, 2)
+        retry_prompt = session.post.call_args_list[1].kwargs["json"]["messages"][0]["content"]
+        self.assertIn("上一次输出未通过本地协议校验", retry_prompt)
+
+    def test_llm_completion_retries_empty_group_once(self) -> None:
+        settings = LlmSettings(
+            provider_id="custom",
+            api_key="sk-test",
+            base_url="https://example.com/v1",
+            model="custom-model",
+        )
+        first = mock.Mock()
+        first.json.return_value = {
+            "choices": [{"message": {"content": '{"groups":[{"id":"c0001","text":""}]}'}}]
+        }
+        second = mock.Mock()
+        second.json.return_value = {
+            "choices": [{"message": {"content": '{"groups":[{"id":"c0001","text":"完成"}]}'}}]
+        }
+        session = mock.MagicMock()
+        session.__enter__.return_value = session
+        session.post.side_effect = [first, second]
+
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            result = complete_subtitle_groups(settings, "Return JSON.", [{"id": "c0001", "text": "原文"}])
+
+        self.assertEqual(result, {"groups": [{"id": "c0001", "text": "完成"}]})
+        self.assertEqual(session.post.call_count, 2)
+
     def test_llm_streaming_separates_reasoning_and_json_content(self) -> None:
         settings = LlmSettings(
             provider_id="qwen",
@@ -467,8 +519,60 @@ class PostprocessTests(unittest.TestCase):
             complete=complete,
         )
 
-        self.assertEqual([len(batch) for batch in batches], [300, 1])
+        self.assertEqual([len(batch) for batch in batches], [80, 80, 80, 61])
         self.assertIn("分批", "".join(result.warnings))
+        self.assertIn("4 批", "".join(result.warnings))
+
+    def test_llm_runner_splits_batches_by_input_text_length(self) -> None:
+        project = sample_project(self.media)
+        project["segments"] = [
+            {"start": index * 1000, "end": (index + 1) * 1000, "text": "字" * 2500}
+            for index in range(3)
+        ]
+        _ = self.project_path.write_text(json.dumps(project), encoding="utf-8")
+        batches: list[list[dict[str, str]]] = []
+
+        def complete(_system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
+            batches.append(cues)
+            return {"groups": [{"id": cue["id"], "text": cue["text"]} for cue in cues]}
+
+        _ = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.JSON,
+                operation="proofread",
+                custom_prompt="",
+            ),
+            complete=complete,
+        )
+
+        self.assertEqual([len(batch) for batch in batches], [1, 1, 1])
+
+    def test_llm_runner_adds_batch_range_to_completion_error(self) -> None:
+        project = sample_project(self.media)
+        project["segments"] = [
+            {"start": index * 1000, "end": (index + 1) * 1000, "text": "字" * 3000}
+            for index in range(2)
+        ]
+        _ = self.project_path.write_text(json.dumps(project), encoding="utf-8")
+
+        def complete(_system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
+            if cues[0]["id"] == "c0002":
+                raise LlmClientError("LLM returned invalid JSON after retry: char 4408")
+            return {"groups": [{"id": cue["id"], "text": cue["text"]} for cue in cues]}
+
+        with self.assertRaisesRegex(RuntimeError, r"第 2/2 批（c0002–c0002）处理失败：.*char 4408"):
+            _ = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.JSON,
+                    operation="proofread",
+                    custom_prompt="",
+                ),
+                complete=complete,
+            )
 
     def test_llm_runner_reports_progress_stages(self) -> None:
         statuses: list[tuple[str, dict[str, int]]] = []
@@ -565,11 +669,12 @@ class PostprocessTests(unittest.TestCase):
         self.assertEqual(translated_segments[1]["color"], source_segments[1]["color"])
         self.assertIn("每组只能包含一个 source ID", prompts[0])
 
-    def test_llm_translation_rejects_regrouping(self) -> None:
+    def test_llm_translation_does_not_write_when_every_group_is_invalid(self) -> None:
         def complete(_system_prompt: str, _cues: list[dict[str, str]]) -> JsonDict:
             return {"groups": [{"source_ids": ["c0001", "c0002"], "text": "Merged translation"}]}
 
-        with self.assertRaisesRegex(ValueError, "translation output must preserve"):
+        before = set(self.root.iterdir())
+        with self.assertRaisesRegex(ValueError, "没有生成可用字幕") as raised:
             _ = run_llm_postprocess(
                 LlmPostprocessRequest(
                     project_path=self.project_path,
@@ -580,6 +685,41 @@ class PostprocessTests(unittest.TestCase):
                 ),
                 complete=complete,
             )
+        self.assertIn("翻译结果必须一条输入对应一条输出", str(raised.exception))
+        self.assertIn("c0001", str(raised.exception))
+        self.assertIn("c0002", str(raised.exception))
+        self.assertEqual(set(self.root.iterdir()), before)
+
+    def test_llm_translation_skips_empty_group_and_writes_remaining_cues(self) -> None:
+        def complete(_system_prompt: str, _cues: list[dict[str, str]]) -> JsonDict:
+            return {
+                "groups": [
+                    {"source_ids": ["c0001"], "text": ""},
+                    {"source_ids": ["c0002"], "text": "保留这一句"},
+                ]
+            }
+
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.BOTH,
+                operation="translate_zh",
+                custom_prompt="",
+            ),
+            complete=complete,
+        )
+
+        if result.project_path is None or result.srt_path is None:
+            self.fail("both output mode must create project and SRT files")
+        segments = project_segments(read_project(result.project_path))
+        self.assertEqual([segment["text"] for segment in segments], ["保留这一句"])
+        self.assertEqual([(segment["start"], segment["end"]) for segment in segments], [(1200, 2200)])
+        warning_text = "\n".join(result.warnings)
+        self.assertIn("text 为空", warning_text)
+        self.assertIn("跳过 1 条不合规字幕", warning_text)
+        self.assertIn("第 1 条（c0001，第 1 批，模型第 1 组）", warning_text)
+        self.assertIn("原文：酒很好喝", warning_text)
 
     def test_llm_custom_operation_has_no_preset_task_prompt(self) -> None:
         prompts: list[str] = []

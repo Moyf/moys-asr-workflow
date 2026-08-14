@@ -44,8 +44,8 @@ function dropFiles(page, files) {
   }, files).then((dataTransfer) => page.dispatchEvent('body', 'drop', { dataTransfer }));
 }
 
-function projectSpec() {
-  return { name: 'project.json', type: 'application/json', base64: readFileSync(projectPath).toString('base64') };
+function projectSpec(name = 'project.json') {
+  return { name, type: 'application/json', base64: readFileSync(projectPath).toString('base64') };
 }
 
 function mediaSpec() {
@@ -67,4 +67,78 @@ test('dropping only a project still prompts to pick the associated media', async
   await dropFiles(page, [projectSpec()]);
 
   await expect(page.locator('#project-media-modal')).toHaveClass(/show/);
+});
+
+test('dropping a project over an existing project asks before offering open or extension choices', async ({ page }) => {
+  await page.goto(server.url);
+  await dropFiles(page, [projectSpec()]);
+  await expect(page.locator('#project-media-modal')).toHaveClass(/show/);
+  await page.locator('#project-media-later').click();
+
+  await page.locator('.cue[data-idx="0"]').click();
+  await page.locator('#cue-panel-text').fill('未保存改动');
+
+  const dialogs = [];
+  page.on('dialog', async (dialog) => {
+    dialogs.push({ type: dialog.type(), message: dialog.message() });
+    await dialog.accept();
+  });
+  await dropFiles(page, [projectSpec('replacement.mosp')]);
+
+  await expect.poll(() => dialogs.length).toBe(1);
+  expect(dialogs[0].type).toBe('confirm');
+  expect(dialogs[0].message).toContain('是否继续处理此工程文件');
+  await expect(page.locator('#multi-subtitle-import-modal')).toHaveClass(/show/);
+  await expect(page.locator('#multi-subtitle-import-replace')).toHaveText('打开工程');
+  await expect(page.locator('#multi-subtitle-import-extension'))
+    .toHaveText('使用工程字幕作为副字幕');
+  await expect(page.locator('#multi-subtitle-import-result-confirm')).toBeDisabled();
+  await page.locator('#multi-subtitle-import-replace').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  await expect(page.locator('#multi-subtitle-import-modal')).not.toHaveClass(/show/);
+  await expect(page.locator('#project-media-modal')).toHaveClass(/show/);
+});
+
+test('can use a dropped project subtitle as an extension and preserve optional items through a swap round trip', async ({ page }) => {
+  const sourceProject = {
+    media: '',
+    segments: [{
+      id: 'source-main-001',
+      start: 100,
+      end: 1900,
+      text: '带字词时间码的副字幕',
+      items: [{ text: '带字词时间码的副字幕', start: 100, end: 1900 }],
+    }],
+  };
+  const sourceSpec = {
+    name: 'translation.mosp',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(sourceProject), 'utf8').toString('base64'),
+  };
+
+  await page.goto(server.url);
+  await dropFiles(page, [projectSpec()]);
+  await expect(page.locator('#project-media-modal')).toHaveClass(/show/);
+  await page.locator('#project-media-later').click();
+
+  await dropFiles(page, [sourceSpec]);
+  await expect(page.locator('#multi-subtitle-import-modal')).toHaveClass(/show/);
+  await expect(page.locator('#multi-subtitle-import-result-confirm')).toBeDisabled();
+  await page.locator('#multi-subtitle-import-extension').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  const imported = await page.evaluate(() => JSON.parse(buildJson()));
+  expect(imported.multi_subtitle.tracks[0].segments[0].items).toEqual([
+    { text: '带字词时间码的副字幕', start: 100, end: 1900 },
+  ]);
+
+  await page.locator('#multi-subtitle-settings-toggle').click();
+  await page.locator('#multi-subtitle-settings-menu').waitFor({ state: 'visible' });
+  await page.locator('#multi-subtitle-swap').click();
+  await page.locator('#multi-subtitle-swap').click();
+
+  const roundTripped = await page.evaluate(() => JSON.parse(buildJson()));
+  expect(roundTripped.multi_subtitle.tracks[0].segments[0].items).toEqual([
+    { text: '带字词时间码的副字幕', start: 100, end: 1900 },
+  ]);
 });

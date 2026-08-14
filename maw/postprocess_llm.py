@@ -49,6 +49,7 @@ class LlmClientError(RuntimeError):
 
 LlmDelta = Callable[[str, str], None]
 REASONING_MODES: Final[frozenset[str]] = frozenset({"auto", "off", "low", "medium", "high"})
+MAX_RESPONSE_ATTEMPTS: Final[int] = 2
 _REASONING_ALIASES: Final[dict[str, str]] = {
     "default": DEFAULT_REASONING_MODE,
     "disabled": "off",
@@ -107,6 +108,47 @@ def complete_subtitle_groups(
     events, while the returned value is still parsed only after the complete
     JSON content has arrived.
     """
+    _chat_endpoint(settings.base_url)
+    last_error = "LLM response did not pass the local JSON protocol."
+    for attempt in range(MAX_RESPONSE_ATTEMPTS):
+        if attempt:
+            if on_delta is not None:
+                # The first streamed attempt may contain malformed JSON. Do
+                # not let the UI append the corrected retry to that content.
+                on_delta("reset", "")
+            prompt = _retry_prompt(system_prompt, last_error)
+        else:
+            prompt = system_prompt
+        body = _request_completion(settings, prompt, cues, on_delta=on_delta)
+        content = _response_content(body)
+        try:
+            parsed = json.loads(_strip_json_fence(content))
+        except json.JSONDecodeError as error:
+            last_error = f"JSON syntax error: {error.msg} at character {error.pos}"
+            if attempt + 1 < MAX_RESPONSE_ATTEMPTS:
+                continue
+            raise LlmClientError(f"LLM returned invalid JSON after retry: {error}") from error
+        protocol_error = _response_protocol_error(parsed)
+        if protocol_error is not None:
+            last_error = protocol_error
+            if attempt + 1 < MAX_RESPONSE_ATTEMPTS:
+                continue
+            # Keep a structurally valid object so the subtitle layer can
+            # discard only malformed groups and still write compliant cues.
+            if isinstance(parsed, dict):
+                return parsed
+            raise LlmClientError(f"LLM response violates the JSON protocol after retry: {protocol_error}")
+        return parsed
+    raise AssertionError("LLM response retry loop did not return or raise")
+
+
+def _request_completion(
+    settings: LlmSettings,
+    system_prompt: str,
+    cues: list[dict[str, str]],
+    *,
+    on_delta: LlmDelta | None,
+) -> dict[str, JsonValue]:
     endpoint = _chat_endpoint(settings.base_url)
     payload = {
         "model": settings.model,
@@ -145,14 +187,39 @@ def complete_subtitle_groups(
                 body = response.json()
     except (RequestException, JSONDecodeError) as error:
         raise LlmClientError(f"LLM request failed: {error}") from error
-    content = _response_content(body)
-    try:
-        parsed = json.loads(_strip_json_fence(content))
-    except json.JSONDecodeError as error:
-        raise LlmClientError(f"LLM returned invalid JSON: {error}") from error
+    if not isinstance(body, dict):
+        raise LlmClientError("LLM response must be a JSON object")
+    return body
+
+
+def _retry_prompt(system_prompt: str, reason: str) -> str:
+    return (
+        f"{system_prompt}\n\n"
+        f"上一次输出未通过本地协议校验（{reason}）。请重新处理同一批输入并完整返回结果。"
+        "只输出一个严格有效的 JSON 对象，不要 Markdown 代码块、注释、解释或额外文字。"
+        "顶层必须是 groups 数组；每个 group 必须包含 source_ids 数组和非空 text 字符串。"
+        "text 中的双引号、反斜杠和换行必须按 JSON 规则转义；不得返回空 text。"
+    )
+
+
+def _response_protocol_error(parsed: object) -> str | None:
     if not isinstance(parsed, dict):
-        raise LlmClientError("LLM response content must be a JSON object")
-    return parsed
+        return "LLM response content must be a JSON object"
+    groups = parsed.get("groups")
+    if not isinstance(groups, list):
+        return "LLM response must contain a groups array"
+    for index, group in enumerate(groups, start=1):
+        if not isinstance(group, dict):
+            return f"LLM group {index} must be an object"
+        raw_ids = group.get("source_ids")
+        if raw_ids is None and isinstance(group.get("id"), str):
+            raw_ids = [group["id"]]
+        if not isinstance(raw_ids, list) or not raw_ids or not all(isinstance(value, str) and value for value in raw_ids):
+            return f"LLM group {index} must contain source_ids"
+        text = group.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return f"LLM group {index} must contain non-empty text"
+    return None
 
 
 def test_llm_connection(settings: LlmSettings) -> None:

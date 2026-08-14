@@ -243,6 +243,32 @@ export function testSegments() {
   ];
 }
 
+// A word-mode split must land between words rather than in the middle of an
+// item. Keep the shared identity fixture unchanged for the other tests and
+// opt into this two-word shape only in split-specific scenarios.
+export async function makeFirstCueWordSplittable(page) {
+  await page.evaluate(() => {
+    const segment = DATA.segments[0];
+    segment.text = 'Alpha Bravo';
+    segment.items = [
+      { start: segment.start, end: 4000, text: 'Alpha' },
+      { start: 4000, end: segment.end, text: 'Bravo' },
+    ];
+    renderAll({ waveform: 'full' });
+  });
+}
+
+// Generic editor E2E tests should start with a neutral selection.  The real
+// first-open onboarding intentionally selects the first cue, which changes
+// arrow-key behavior and leaves no Shift-selection anchor for tests that are
+// exercising the editor itself.  Onboarding has its own dedicated spec, so
+// only callers that opt into this helper skip it.
+export async function disableOnboarding(page) {
+  await page.addInitScript(() => {
+    localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed');
+  });
+}
+
 export function generateProjectJson(filePath) {
   const project = {
     media: 'synthetic.wav',

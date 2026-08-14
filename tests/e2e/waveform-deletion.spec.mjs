@@ -13,6 +13,7 @@ import {
   startServer,
   startStaticServer,
   DURATION_MS,
+  disableOnboarding,
 } from './helpers.mjs';
 import { join } from 'node:path';
 
@@ -178,6 +179,10 @@ function attachErrorCollector(page) {
 // Localhost server adapter
 // ===========================================================================
 let localhostDir, localhostServer, localhostPort, wavPath, projectPath;
+
+test.beforeEach(async ({ page }) => {
+  await disableOnboarding(page);
+});
 
 test.beforeAll(async () => {
   localhostDir = makeTempDir('localhost');

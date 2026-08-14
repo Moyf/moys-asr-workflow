@@ -6,6 +6,7 @@ import {
   findFreePort,
   generateProjectJson,
   generateWav,
+  makeFirstCueWordSplittable,
   makeTempDir,
   startServer,
 } from './helpers.mjs';
@@ -52,8 +53,164 @@ test('undoing a waveform-created subtitle keeps redo available', async ({ page }
   await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
 });
 
+test('blank waveform context menu disables subtitle creation over an existing cue', async ({ page }) => {
+  await page.goto(server.url);
+  const row = page.locator('.waveform-row').first();
+  await expect(row).toBeVisible();
+  const box = await row.boundingBox();
+  expect(box).not.toBeNull();
+
+  await page.mouse.click(box.x + box.width * 0.4, box.y + 20, { button: 'right' });
+  const createItem = page.locator('#ctxmenu .item', { hasText: '创建字幕' });
+  await expect(createItem).toHaveClass(/disabled/);
+  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(6);
+});
+
+test('N creates a subtitle at the waveform pointer and focuses the new cue', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('.player-stage').hover();
+  await page.keyboard.press('n');
+  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(6);
+
+  const row = page.locator('.waveform-row').first();
+  await expect(row).toBeVisible();
+  const box = await row.boundingBox();
+  expect(box).not.toBeNull();
+  const pointer = { x: box.x + box.width * 0.85, y: box.y + 20 };
+  await page.mouse.move(pointer.x, pointer.y);
+  await page.keyboard.press('n');
+
+  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
+  await expect(page.locator('.cue[data-idx="1"]')).toHaveClass(/selected/);
+  await expect.poll(() => page.evaluate(() => window.MAWE_EDITOR_BRIDGE.currentCuePanelIdx)).toBe(1);
+  await expect(page.locator('#cue-panel-text')).toHaveValue('');
+  await expect(page.locator('#cue-panel-text')).toBeFocused();
+  await expect(page.locator('.cue[data-idx="1"] .text')).not.toHaveAttribute('contenteditable', 'plaintext-only');
+  const created = await page.evaluate(() => DATA.segments[1]);
+  expect(created.start).toBeGreaterThanOrEqual(8000);
+  expect(created.end - created.start).toBe(1000);
+});
+
+test('Ctrl+dragging blank waveform creates the dragged duration and focuses the new cue', async ({ page }) => {
+  await page.goto(server.url);
+  const row = page.locator('.waveform-row').first();
+  await expect(row).toBeVisible();
+  const box = await row.boundingBox();
+  expect(box).not.toBeNull();
+  const startX = box.x + box.width * 0.84;
+  const endX = box.x + box.width * 0.94;
+  const y = box.y + 20;
+
+  await page.keyboard.down('Control');
+  await page.mouse.move(startX, y);
+  await page.mouse.down();
+  await page.mouse.move(endX, y, { steps: 6 });
+  const preview = page.locator('.waveform-create-preview');
+  await expect(preview).toBeVisible();
+  await expect(preview).toHaveClass(/waveform-cue-block/);
+  const previewStyle = await preview.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      opacity: Number(style.opacity),
+      height: Number.parseFloat(style.height),
+      borderStyle: style.borderTopStyle,
+      bottom: style.bottom,
+    };
+  });
+  expect(previewStyle.opacity).toBeLessThan(1);
+  expect(previewStyle.height).toBeLessThan(box.height);
+  expect(previewStyle.borderStyle).toBe('dashed');
+  expect(previewStyle.bottom).toBe('7px');
+  await page.mouse.up();
+  await page.keyboard.up('Control');
+
+  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
+  await expect(page.locator('.cue[data-idx="1"]')).toHaveClass(/selected/);
+  await expect.poll(() => page.evaluate(() => window.MAWE_EDITOR_BRIDGE.currentCuePanelIdx)).toBe(1);
+  await expect(page.locator('#cue-panel-text')).toBeFocused();
+  await expect(page.locator('.cue[data-idx="1"] .text')).not.toHaveAttribute('contenteditable', 'plaintext-only');
+  const created = await page.evaluate(() => DATA.segments[1]);
+  const expectedDuration = Math.round((((endX - startX) / box.width) * 10000) / 10) * 10;
+  expect(Math.abs((created.end - created.start) - expectedDuration)).toBeLessThanOrEqual(10);
+});
+
+test('Ctrl+dragging a too-short range shows a warning toast', async ({ page }) => {
+  await page.goto(server.url);
+  const row = page.locator('.waveform-row').first();
+  await expect(row).toBeVisible();
+  const box = await row.boundingBox();
+  expect(box).not.toBeNull();
+  const rowStart = Number(await row.getAttribute('data-start-ms'));
+  const rowEnd = Number(await row.getAttribute('data-end-ms'));
+  const startX = box.x + box.width * 0.84;
+  const endX = startX + Math.max(2, box.width * (80 / (rowEnd - rowStart)));
+  const y = box.y + 20;
+
+  await page.keyboard.down('Control');
+  await page.mouse.move(startX, y);
+  await page.mouse.down();
+  await page.mouse.move(endX, y, { steps: 2 });
+  await page.mouse.up();
+  await page.keyboard.up('Control');
+
+  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(6);
+  const warning = page.locator('#hint-stack .hint-card.hint-warning', {
+    hasText: '该空白区域不足 100ms，无法新增字幕',
+  });
+  await expect(warning).toBeVisible();
+});
+
+test('Ctrl+dragging an existing cue is rejected without a preview', async ({ page }) => {
+  await page.goto(server.url);
+  const cue = page.locator('.waveform-cue-block[data-idx="0"]').first();
+  await expect(cue).toBeVisible();
+  const box = await cue.boundingBox();
+  expect(box).not.toBeNull();
+
+  await page.keyboard.down('Control');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 20, box.y + box.height / 2, { steps: 2 });
+  await expect(page.locator('.waveform-create-preview')).toHaveCount(0);
+  await page.mouse.up();
+  await page.keyboard.up('Control');
+
+  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(6);
+  await expect(page.locator('#hint-stack .hint-card.hint-warning', {
+    hasText: '该位置已有字幕，无法新增字幕',
+  })).toBeVisible();
+});
+
+test('Ctrl+dragging from blank space stops at an existing cue boundary', async ({ page }) => {
+  await page.goto(server.url);
+  const row = page.locator('.waveform-row').first();
+  await expect(row).toBeVisible();
+  const box = await row.boundingBox();
+  expect(box).not.toBeNull();
+  const anchorX = box.x + box.width * 0.9;
+  const crossedX = box.x + box.width * 0.6;
+  const y = box.y + 20;
+
+  await page.keyboard.down('Control');
+  await page.mouse.move(anchorX, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.85, y, { steps: 2 });
+
+  const preview = page.locator('.waveform-create-preview');
+  await expect(preview).toBeVisible();
+  await page.mouse.move(crossedX, y, { steps: 6 });
+  await expect(preview).toBeVisible();
+  await page.mouse.up();
+  await page.keyboard.up('Control');
+  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
+  const created = await page.evaluate(() => DATA.segments[1]);
+  expect(created.start).toBe(8000);
+  expect(created.end).toBe(9000);
+});
+
 test('waveform background split supports undo and redo', async ({ page }) => {
   await page.goto(server.url);
+  await makeFirstCueWordSplittable(page);
   const row = page.locator('.waveform-row').filter({ has: page.locator('[data-idx="0"]') }).first();
   await expect(row).toBeVisible();
 
@@ -65,21 +222,105 @@ test('waveform background split supports undo and redo', async ({ page }) => {
   await splitItem.click();
   await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
   await expect.poll(() => page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => segment.text))).toEqual([
-    'Al',
-    'pha',
+    'Alpha',
+    'Bravo',
   ]);
 
   await page.getByRole('button', { name: /撤销/ }).click();
   await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(6);
-  await expect.poll(() => page.evaluate(() => DATA.segments[0].text)).toBe('Alpha');
+  await expect.poll(() => page.evaluate(() => DATA.segments[0].text)).toBe('Alpha Bravo');
   await expect(page.getByRole('button', { name: /重做/ })).toBeEnabled();
 
   await page.getByRole('button', { name: /重做/ }).click();
   await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
   await expect.poll(() => page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => segment.text))).toEqual([
-    'Al',
-    'pha',
+    'Alpha',
+    'Bravo',
   ]);
+});
+
+test('manual text split keeps malformed item timing inside both cues and restores it with undo', async ({ page }) => {
+  await page.goto(server.url);
+  const original = {
+    id: 'manual-item-split',
+    start: 25160,
+    end: 26526,
+    text: '有这么多新的模型来',
+    items: [
+      { text: '有', start: 25200, end: 25400 },
+      { text: '这么多', start: 25400, end: 25760 },
+      { text: '新的', start: 25760, end: 26000 },
+      { text: '模型', start: 26000, end: 26680 },
+      { text: '来', start: 26680, end: 26960 },
+    ],
+  };
+  await page.evaluate((segment) => {
+    DATA.segments[0] = segment;
+    renderAll({ waveform: 'full' });
+  }, original);
+
+  const text = page.locator('.cue[data-idx="0"] .text');
+  await text.dblclick();
+  await text.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    // 在“模型”内部切开，覆盖 item.end 早于原始 item.end 的情况。
+    range.setStart(node, 7);
+    range.setEnd(node, 7);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.cue[data-idx="0"]')).toHaveCount(1);
+  await expect(page.locator('.cue[data-idx="1"]')).toHaveCount(1);
+
+  const splitState = await page.evaluate(() => ({
+    segments: DATA.segments.slice(0, 2).map((segment) => ({
+      start: segment.start,
+      end: segment.end,
+      text: segment.text,
+      items: segment.items,
+    })),
+  }));
+  expect(splitState.segments.map((segment) => segment.text)).toEqual([
+    '有这么多新的模',
+    '型来',
+  ]);
+  for (const segment of splitState.segments) {
+    for (const item of segment.items || []) {
+      expect(item.start).toBeGreaterThanOrEqual(segment.start);
+      expect(item.end).toBeLessThanOrEqual(segment.end);
+      expect(item.end).toBeGreaterThan(item.start);
+    }
+  }
+  expect(splitState.segments.flatMap((segment) => segment.items || []).map((item) => item.text))
+    .toEqual(['有', '这么多', '新的', '模', '型', '来']);
+
+  const saveResponse = page.waitForResponse((response) => (
+    response.url().endsWith('/api/project') && response.request().method() === 'POST'
+  ));
+  await page.keyboard.press('Control+s');
+  expect((await saveResponse).ok()).toBe(true);
+
+  await page.getByRole('button', { name: /撤销/ }).click();
+  await expect.poll(() => page.evaluate(() => JSON.stringify(DATA.segments[0]))).toBe(JSON.stringify(original));
+  await expect(page.getByRole('button', { name: /重做/ })).toBeEnabled();
+
+  await page.getByRole('button', { name: /重做/ }).click();
+  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
+  const redone = await page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => ({
+    start: segment.start,
+    end: segment.end,
+    items: segment.items,
+  })));
+  for (const segment of redone) {
+    for (const item of segment.items || []) {
+      expect(item.start).toBeGreaterThanOrEqual(segment.start);
+      expect(item.end).toBeLessThanOrEqual(segment.end);
+      expect(item.end).toBeGreaterThan(item.start);
+    }
+  }
 });
 
 test('current-cue text keeps the list and waveform labels in sync through undo and redo', async ({ page }) => {
@@ -89,17 +330,26 @@ test('current-cue text keeps the list and waveform labels in sync through undo a
   const waveformLabel = waveformCue.locator('.waveform-cue-label');
   const listText = page.locator('.cue[data-idx="0"] .text');
   const panelText = page.locator('#cue-panel-text');
+  const overlayText = page.locator('#overlay-main-text');
   const undo = page.getByRole('button', { name: /撤销/ });
   const redo = page.getByRole('button', { name: /重做/ });
 
   await waveformCue.click();
+  await page.locator('#overlay-toggle').check();
+  await page.evaluate(() => {
+    const player = document.getElementById('player');
+    player.currentTime = 1;
+    player.dispatchEvent(new Event('timeupdate'));
+  });
   await expect(panelText).toHaveValue('Alpha');
   await expect(listText).toHaveText('Alpha');
   await expect(waveformLabel).toHaveText('Alpha');
+  await expect(overlayText).toHaveText('Alpha');
 
   await panelText.fill('Alpha revised');
   await expect(listText).toHaveText('Alpha revised');
   await expect(waveformLabel).toHaveText('Alpha revised');
+  await expect(overlayText).toHaveText('Alpha revised');
 
   await panelText.blur();
   await expect(undo).toBeEnabled();
@@ -113,15 +363,42 @@ test('current-cue text keeps the list and waveform labels in sync through undo a
   await expect(waveformLabel).toHaveText('Alpha revised');
 });
 
+test('C merge refreshes the paused main subtitle preview', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('#overlay-toggle').check();
+  await page.evaluate(() => {
+    const player = document.getElementById('player');
+    player.currentTime = 1;
+    player.dispatchEvent(new Event('timeupdate'));
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveText('Alpha');
+
+  const cues = page.locator('.cue');
+  await cues.nth(0).click();
+  await cues.nth(1).click({ modifiers: ['Control'] });
+  await page.keyboard.press('c');
+
+  await expect(page.locator('.cue .text').first()).toHaveText('AlphaBravo');
+  await expect(page.locator('#overlay-main-text')).toHaveText('AlphaBravo');
+});
+
 test('B splits the selected subtitle under the cue-list pointer and supports undo and redo', async ({ page }) => {
   await page.goto(server.url);
+  await makeFirstCueWordSplittable(page);
   const text = page.locator('.cue[data-idx="0"] .text');
+  await page.locator('#overlay-toggle').check();
+  await page.evaluate(() => {
+    const player = document.getElementById('player');
+    player.currentTime = 1;
+    player.dispatchEvent(new Event('timeupdate'));
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveText('Alpha Bravo');
   await page.locator('.cue[data-idx="0"]').click();
   const splitPoint = await text.evaluate((element) => {
     const node = element.firstChild;
     const range = document.createRange();
-    range.setStart(node, 2);
-    range.setEnd(node, 2);
+    range.setStart(node, 6);
+    range.setEnd(node, 6);
     const rect = range.getBoundingClientRect();
     return { x: rect.x, y: rect.y + rect.height / 2 };
   });
@@ -129,29 +406,31 @@ test('B splits the selected subtitle under the cue-list pointer and supports und
 
   await page.keyboard.press('b');
   await expect.poll(() => page.locator('.cue').count()).toBe(7);
-  await expect(page.locator('.cue .text').nth(0)).toHaveText('Al');
-  await expect(page.locator('.cue .text').nth(1)).toHaveText('pha');
+  await expect(page.locator('.cue .text').nth(0)).toHaveText('Alpha');
+  await expect(page.locator('.cue .text').nth(1)).toHaveText('Bravo');
+  await expect(page.locator('#overlay-main-text')).toHaveText('Alpha');
 
   await page.getByRole('button', { name: /撤销/ }).click();
   await expect.poll(() => page.locator('.cue').count()).toBe(6);
-  await expect(page.locator('.cue .text').first()).toHaveText('Alpha');
+  await expect(page.locator('.cue .text').first()).toHaveText('Alpha Bravo');
 
   await page.getByRole('button', { name: /重做/ }).click();
   await expect.poll(() => page.locator('.cue').count()).toBe(7);
-  await expect(page.locator('.cue .text').nth(0)).toHaveText('Al');
-  await expect(page.locator('.cue .text').nth(1)).toHaveText('pha');
+  await expect(page.locator('.cue .text').nth(0)).toHaveText('Alpha');
+  await expect(page.locator('.cue .text').nth(1)).toHaveText('Bravo');
 });
 
 test('B split makes the selected latter half the Shift+click anchor', async ({ page }) => {
   await page.goto(server.url);
+  await makeFirstCueWordSplittable(page);
   const cues = page.locator('.cue');
 
   await cues.nth(0).click();
   const splitPoint = await cues.nth(0).locator('.text').evaluate((element) => {
     const node = element.firstChild;
     const range = document.createRange();
-    range.setStart(node, 2);
-    range.setEnd(node, 2);
+    range.setStart(node, 6);
+    range.setEnd(node, 6);
     const rect = range.getBoundingClientRect();
     return { x: rect.x, y: rect.y + rect.height / 2 };
   });
@@ -276,17 +555,20 @@ test('B does not split when the playhead is in a gap or while editing text', asy
 
 test('B splits at the pointer audio position while hovering the waveform', async ({ page }) => {
   await page.goto(server.url);
+  await makeFirstCueWordSplittable(page);
   const row = page.locator('.waveform-row').first();
   const box = await row.boundingBox();
   // 第一行覆盖 0–5s；40% 处约 2s，落在第一条字幕（0–8s）内部
   await page.mouse.move(box.x + box.width * 0.4, box.y + box.height / 2);
   await page.keyboard.press('b');
   await expect(page.locator('.cue')).toHaveCount(7);
-  await expect(page.locator('.cue .text').nth(0)).not.toHaveText('Alpha');
+  await expect(page.locator('.cue .text').nth(0)).toHaveText('Alpha');
+  await expect(page.locator('.cue .text').nth(1)).toHaveText('Bravo');
 });
 
 test('B and C refresh cue overlays without redrawing cached waveform canvases', async ({ page }) => {
   await page.goto(server.url);
+  await makeFirstCueWordSplittable(page);
   await page.evaluate(() => {
     waveformEditor.settings.secondsPerRow = 60;
     waveformEditor.multiRange = [-1, -1];
@@ -310,8 +592,8 @@ test('B and C refresh cue overlays without redrawing cached waveform canvases', 
   const splitPoint = await firstCueText.evaluate((element) => {
     const node = element.firstChild;
     const range = document.createRange();
-    range.setStart(node, 2);
-    range.setEnd(node, 2);
+    range.setStart(node, 6);
+    range.setEnd(node, 6);
     const rect = range.getBoundingClientRect();
     return { x: rect.x, y: rect.y + rect.height / 2 };
   });
@@ -361,6 +643,11 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   ));
   await expect(helpSplitKey).toHaveText('Enter');
   await expect(page.locator('#help-waveform-split-key')).toHaveText('B');
+  await expect(helpPanel).toContainText('单选副字幕后绑定到主字幕');
+  await expect(helpPanel).toContainText('解绑当前副字幕');
+  await expect(helpPanel).toContainText('对齐副字幕到主字幕时间轴');
+  await expect(helpPanel).toContainText('单选副字幕后打开副字幕拆分');
+  await expect(helpPanel).toContainText('波形标记');
 
   await splitKey.selectOption('enter');
   await expect(helpSplitKey).toHaveText('Enter');

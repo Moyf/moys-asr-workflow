@@ -43,7 +43,7 @@ MEDIA_EXTS: Final = frozenset({".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", "
 MOSE_REGISTRY_KEY = r"Software\Moy\MOSE"
 MOSE_FILE_TYPE = "Moy.MOSE.Project"
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.4.0-beta.3"
+BUNDLED_APP_VERSION = "1.4.0-beta.4"
 MOSE_VERSION = "0.1.0"
 
 
@@ -64,6 +64,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "local_prepare_failed": "本地模型准备失败。",
     "workspace_missing": "Workspace ID is required for Singapore region.",
     "output_missing": "SRT output path is required.",
+    "segmentation_invalid": "Subtitle segmentation settings are invalid.",
     "ffmpeg_start_failed": "FFmpeg failed to start.",
     "transcription_failed": "Transcription failed.",
     "context_too_long": "Qwen-Audio context is limited to 400 characters.",
@@ -1253,7 +1254,7 @@ class LauncherApi:
         self._emit(event)
 
     def _emit_postprocess_stream(self, kind: str, text: str, batch: int) -> None:
-        if not text:
+        if kind != "reset" and not text:
             return
         self.pump.start()
         self._emit({"type": "postprocess_stream", "kind": kind, "text": text, "batch": batch})
@@ -1410,6 +1411,25 @@ class PreflightError(Exception):
         return _error_result(self.field, self.code, self.message)
 
 
+def _segmentation_option(
+    payload: Mapping[str, object],
+    *,
+    field: str,
+    label: str,
+    minimum: int,
+) -> str:
+    text = str(payload.get(field) or "").strip()
+    if not text:
+        return ""
+    try:
+        value = int(text)
+    except (TypeError, ValueError) as error:
+        raise PreflightError(field, "segmentation_invalid", f"{label}必须是整数。") from error
+    if value < minimum:
+        raise PreflightError(field, "segmentation_invalid", f"{label}不能小于 {minimum}。")
+    return str(value)
+
+
 def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> TranscriptionRequest:
     media_text = str(payload.get("mediaPath") or "").strip()
     srt_text = str(payload.get("srtPath") or "").strip()
@@ -1432,6 +1452,15 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         raise PreflightError("mediaPath", "media_not_found", "Media file does not exist.")
     if not srt_text or not srt.name:
         raise PreflightError("srtPath", "output_missing", "SRT output path is required.")
+    max_len = _segmentation_option(payload, field="maxLen", label="最大字数", minimum=1)
+    min_len = _segmentation_option(payload, field="minLen", label="短句合并阈值", minimum=1)
+    gap_split = _segmentation_option(payload, field="gapSplit", label="停顿切句阈值", minimum=0)
+    if max_len and min_len and int(max_len) < int(min_len):
+        raise PreflightError(
+            "maxLen",
+            "segmentation_invalid",
+            "最大字数不能小于短句合并阈值。",
+        )
     local_model_path = str(payload.get("localModelPath") or "").strip()
     device = str(payload.get("device") or "auto").strip().lower()
     model_cache_root = ""
@@ -1502,6 +1531,9 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         language=str(payload.get("language") or ""),
         api_key=api_key,
         length_limit="2m" if test_run else str(payload.get("lengthLimit") or "").strip(),
+        max_len=max_len,
+        min_len=min_len,
+        gap_split=gap_split,
         qwen_audio_context=qwen_audio_context,
         qwen_audio_hotwords=qwen_audio_hotwords,
         qwen_audio_hotwords_file=qwen_audio_hotwords_file,

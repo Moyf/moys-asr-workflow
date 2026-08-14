@@ -62,9 +62,11 @@ test('a same-named project with different content is not swapped in', async ({ p
   await expect(page.locator('#save-project')).toBeDisabled();
 });
 
-test('dropping a project lets the blank server take over media loading and saving', async ({ page }) => {
+test('dropping a legacy project lets the blank server take over after ID normalization', async ({ page }) => {
   await page.goto(server.url);
+  const reload = page.waitForEvent('load');
   await dropProject(page, 'project.json', readFileSync(projectPath, 'utf-8'));
+  await reload;
 
   // 接管成功：整页刷新为服务器渲染状态，媒体与保存同时恢复。
   await expect(page.locator('#media-name')).toHaveText('synthetic.wav');
@@ -74,9 +76,27 @@ test('dropping a project lets the blank server take over media loading and savin
   expect(playerSrc).toContain('/media');
 
   await page.evaluate(() => {
-    DATA.segments[0].text = 'AttachedSave';
-    DATA.segments[0]._dirty = true;
+    updateEditorSettings({ autoSaveProject: false });
+    scheduleAutoSave();
+    scheduleAutoSaveFlush();
   });
+  await page.locator('.cue').first().click();
+  await page.locator('#cue-panel-text').fill('AttachedSave');
+  await page.locator('#cue-panel-target').click();
+  expect(await page.evaluate(() => ({
+    text: DATA.segments[0].text,
+    dirty: DATA.segments[0]._dirty,
+    canSave: SERVER_CONFIG.canSave,
+  }))).toEqual({ text: 'AttachedSave', dirty: true, canSave: true });
+  const saveRequest = page.waitForRequest((request) => (
+    request.url().endsWith('/api/project') && request.method() === 'POST'
+  ));
+  const saveResponse = page.waitForResponse((response) => (
+    response.url().endsWith('/api/project') && response.request().method() === 'POST'
+  ));
   await page.keyboard.press('Control+s');
+  expect(JSON.parse((await saveRequest).postData()).project.segments[0].text).toBe('AttachedSave');
+  expect((await saveResponse).ok()).toBe(true);
   await expect.poll(() => readFileSync(projectPath, 'utf-8')).toContain('AttachedSave');
+  expect(JSON.parse(readFileSync(projectPath, 'utf-8')).segments[0].id).toBe('main-001');
 });

@@ -38,6 +38,9 @@ class TranscriptionRequest:
     language: str = ""
     api_key: str = ""
     length_limit: str = ""
+    max_len: str = ""
+    min_len: str = ""
+    gap_split: str = ""
     qwen_audio_context: str = ""
     qwen_audio_hotwords: str = ""
     qwen_audio_hotwords_file: str = ""
@@ -258,6 +261,9 @@ def build_transcribe_command(
             command.append("--speaker-colors")
         _append_option(command, "--language", request.language)
     _append_option(command, "--length-limit", request.length_limit)
+    _append_option(command, "--max-len", request.max_len)
+    _append_option(command, "--min-len", request.min_len)
+    _append_option(command, "--gap-split", request.gap_split)
     if request.provider == "qwen" and request.model == QWEN_AUDIO_MODEL_ID:
         _append_option(command, "--vocabulary-id", request.qwen_audio_vocabulary_id)
         _append_option(command, "--hotword-weight", request.qwen_audio_hotword_weight)
@@ -359,7 +365,7 @@ def run_transcription(
 
 def render_editor_html(json_path: Path, media_path: Path, html_path: Path, ui_language: str = "zh") -> Path | None:
     try:
-        from edit import media_tag, render_editor_page
+        from edit import get_app_version, media_tag, render_editor_page
         from maw.project import normalize_project
     except ImportError:
         return None
@@ -379,7 +385,7 @@ def render_editor_html(json_path: Path, media_path: Path, html_path: Path, ui_la
         stickers_json="[]",
         sticker_root_json="null",
         ui_language_json=json.dumps("en" if ui_language == "en" else "zh"),
-        generated_at=time.strftime("%Y-%m-%d %H:%M:%S"),
+        app_version=html.escape(f"v{get_app_version()}"),
         json_display=html.escape(Path(json_path).name),
         json_name_class="",
         media_name_display=html.escape(media.name),

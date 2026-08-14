@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import importlib.util
 import shutil
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -160,6 +161,7 @@ class GeneratedFixtureTests(unittest.TestCase):
     def _compare_reapeaks(self, name: str) -> None:
         fixture_path = TEST_DATA_DIR / f"{name}.wav.ReaPeaks"
         fixture_data = fixture_path.read_bytes()
+        debug_dir = tempfile.TemporaryDirectory(prefix="maw-reapeaks-")
         try:
             # 生成 wav
             gen_func = getattr(gen_fixtures, f"gen_{name}")
@@ -169,8 +171,8 @@ class GeneratedFixtureTests(unittest.TestCase):
             maw_reapeaks = reapeaks.generate_for_media(wav)
             self.assertIsNotNone(maw_reapeaks, f"MAW 生成 {name}.wav.ReaPeaks 失败")
             maw_data = maw_reapeaks.read_bytes()
-            # 写 .maw 供调试
-            (TEST_DATA_DIR / f"{name}.wav.ReaPeaks.maw").write_bytes(maw_data)
+            # 写临时 .maw 供调试，避免把测试产物留在 fixture 目录。
+            (Path(debug_dir.name) / f"{name}.wav.ReaPeaks.maw").write_bytes(maw_data)
             # 对比头部（除 src_timestamp 外）
             self.assertEqual(maw_data[:10], fixture_data[:10], f"{name} 头部前 10 字节不同")
             self.assertEqual(maw_data[14:18], fixture_data[14:18], f"{name} src_filesize 不同")
@@ -189,6 +191,7 @@ class GeneratedFixtureTests(unittest.TestCase):
             self.assertLess(diff_ratio, 0.1, f"{name} 数据段长度差异 {diff_ratio:.2%} > 10%")
         finally:
             # 清理
+            debug_dir.cleanup()
             wav = TEST_DATA_DIR / f"{name}.wav"
             if wav.exists():
                 wav.unlink()

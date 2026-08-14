@@ -9,6 +9,7 @@ __pycache__/
 *.json.bak
 *.edit.html
 !blank-editor.html
+*.ReaPeaks.maw
 
 # Local media and subtitle outputs
 /examples/
@@ -25,6 +26,8 @@ __pycache__/
 
 # Dev-only browser test tooling (Playwright)
 node_modules/
+.astro/
+website/dist/
 playwright-report/
 test-results/
 

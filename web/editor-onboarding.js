@@ -578,7 +578,14 @@ function scheduleOnboardingAfterRender() {
 // 快速上手在打开时就接管自己的练习阶段；普通首次打开不会影响现有快捷键。
 // 这个监听器放在 WASD / C 的真实快捷键之后，确保读取到已经更新的选区。
 document.addEventListener('keydown', (event) => {
-  if (!onboardingIsOpen() || onboardingState.mode !== 'tour' || !onboardingState.started) return;
+  if (!onboardingIsOpen()) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    finishOnboarding('skipped');
+    return;
+  }
+  if (onboardingState.mode !== 'tour' || !onboardingState.started) return;
   const key = event.key.toLowerCase();
   const wasd = key === 'w' || key === 'a' || key === 's' || key === 'd';
   if (onboardingState.step === 0 && onboardingState.phase === 'navigation'
@@ -617,5 +624,6 @@ document.addEventListener('keydown', (event) => {
     scheduleStart: scheduleOnboardingAfterRender,
     beginRealSplit: beginOnboardingRealSplit,
   });
+  window.MAWE?.register('onboarding', () => window.MAWE_ONBOARDING);
   scheduleOnboardingAfterRender();
 })();

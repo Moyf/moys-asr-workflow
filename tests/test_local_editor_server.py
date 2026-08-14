@@ -97,6 +97,7 @@ class LocalEditorServerTests(unittest.TestCase):
         page = server_editor.build_server_page(project, settings).decode("utf-8")
         self.assertIn('src="/media"', page)
         self.assertIn('let STICKER_URL_PREFIX = "/stickers";', page)
+        self.assertIn('const NINJA_SFX_BASE_URL = "/sfx/";', page)
         self.assertIn('const SERVER_CONFIG = {"saveUrl": "/api/project", "canSave": true, ', page)
         self.assertIn('"autoLoadedMediaName": "clip.mp3", "recentProjectsUrl": "/api/recent-projects/open", ', page)
         self.assertIn('"attachUrl": "/api/project/attach", "settingsUrl": "/api/settings", ', page)
@@ -372,6 +373,10 @@ class LocalEditorServerTests(unittest.TestCase):
                     "media": str(self.media),
                     "segments": [{"start": 0, "end": 1000, "text": "保存后的字幕"}],
                 }
+                normalized_saved_project = {
+                    "media": str(self.media),
+                    "segments": [{"id": "main-001", "start": 0, "end": 1000, "text": "保存后的字幕"}],
+                }
                 status, result = post({"project": saved_project, "filename": None})
                 self.assertEqual(status, 200)
                 self.assertTrue(result["ok"])
@@ -381,20 +386,86 @@ class LocalEditorServerTests(unittest.TestCase):
                 saved_bytes = self.project_path.read_bytes()
                 self.assertNotIn(b"\r\n", saved_bytes)
                 self.assertTrue(saved_bytes.endswith(b"\n"))
-                self.assertEqual(json.loads(saved_bytes), saved_project)
+                self.assertEqual(json.loads(saved_bytes), normalized_saved_project)
 
                 status, result = post({"project": saved_project, "filename": "copy.json"})
                 copied_path = self.root / "copy.json"
                 self.assertEqual(status, 200)
                 self.assertEqual(result["filename"], "copy.json")
                 self.assertIsNone(result["backup"])
-                self.assertEqual(json.loads(copied_path.read_text(encoding="utf-8")), saved_project)
+                self.assertEqual(json.loads(copied_path.read_text(encoding="utf-8")), normalized_saved_project)
                 self.assertEqual(server.project.json_path, copied_path)
 
                 status, result = post({"project": saved_project, "filename": "../outside.json"})
                 self.assertEqual(status, 400)
                 self.assertFalse(result["ok"])
                 self.assertFalse((self.root.parent / "outside.json").exists())
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_server_accepts_reconciled_extension_ranges_but_rejects_overlap(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+                def post(payload: dict) -> tuple[int, dict]:
+                    request = urllib.request.Request(
+                        f"{base_url}/api/project",
+                        data=json.dumps({"project": payload}).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    try:
+                        with urllib.request.urlopen(request) as response:
+                            return response.status, json.loads(response.read())
+                    except urllib.error.HTTPError as error:
+                        return error.code, json.loads(error.read())
+
+                valid_project = {
+                    "media": str(self.media),
+                    "segments": [{"id": "main-1", "start": 1000, "end": 4000, "text": "主字幕"}],
+                    "multi_subtitle": {
+                        "schema": "moy.asr.multi_subtitle.v1",
+                        "enabled": True,
+                        "display_mode": "both",
+                        "tracks": [{
+                            "id": "extension-1",
+                            "role": "extension",
+                            "name": "English",
+                            "language": "English",
+                            "split_mode": "word",
+                            "source_name": "translation.srt",
+                            "segments": [
+                                {"id": "extension-1", "start": 1000, "end": 3000, "text": "前半"},
+                                {"id": "extension-2", "start": 3000, "end": 4000, "text": "后半"},
+                            ],
+                        }],
+                        "bindings": [{
+                            "id": "binding-1",
+                            "track_id": "extension-1",
+                            "main_segment_ids": ["main-1"],
+                            "extension_segment_ids": ["extension-1"],
+                            "start_offset_ms": 0,
+                            "end_offset_ms": -1000,
+                        }],
+                    },
+                }
+                status, result = post(valid_project)
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+
+                invalid_project = json.loads(json.dumps(valid_project))
+                invalid_project["multi_subtitle"]["tracks"][0]["segments"][1]["start"] = 2999
+                status, result = post(invalid_project)
+                self.assertEqual(status, 400)
+                self.assertFalse(result["ok"])
+                self.assertIn("must be >= previous segment end", result["error"])
             finally:
                 server.shutdown()
                 thread.join(timeout=2)
@@ -430,10 +501,16 @@ class LocalEditorServerTests(unittest.TestCase):
                     except urllib.error.HTTPError as error:
                         return error.code, json.loads(error.read())
 
-                browser_project = {
+                legacy_project = {
                     "media": str(self.media),
                     "segments": [{"start": 0, "end": 1000, "text": "浏览器打开的字幕"}],
                 }
+                # The browser normalizes a legacy project before asking the
+                # server to take it over, while the on-disk copy still has no
+                # IDs. The server must apply the same deterministic repair to
+                # both copies before comparing their subtitle content.
+                browser_project = json.loads(json.dumps(legacy_project))
+                browser_project["segments"][0]["id"] = "main-001"
 
                 # 失败矩阵：任何一项不满足都不得绑定工程路径。
                 notes = self.root / "notes.txt"
@@ -470,7 +547,7 @@ class LocalEditorServerTests(unittest.TestCase):
                         self.assertIsNone(server.project.json_path)
 
                 # 磁盘上的同名工程与浏览器副本一致：接管并恢复媒体与保存。
-                self.project_path.write_text(json.dumps(browser_project), encoding="utf-8")
+                self.project_path.write_text(json.dumps(legacy_project), encoding="utf-8")
                 status, result = post("/api/project/attach", {"fileName": "clip.json", "project": browser_project})
                 self.assertEqual(status, 200)
                 self.assertTrue(result["ok"])
@@ -489,7 +566,13 @@ class LocalEditorServerTests(unittest.TestCase):
                 status, result = post("/api/project", {"project": edited, "filename": None})
                 self.assertEqual(status, 200)
                 self.assertTrue(result["ok"])
-                self.assertEqual(json.loads(self.project_path.read_text(encoding="utf-8")), edited)
+                self.assertEqual(
+                    json.loads(self.project_path.read_text(encoding="utf-8")),
+                    {
+                        "media": str(self.media.resolve()),
+                        "segments": [{"id": "main-001", "start": 0, "end": 1000, "text": "接管后保存"}],
+                    },
+                )
             finally:
                 server.shutdown()
                 thread.join(timeout=2)

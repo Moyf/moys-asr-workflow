@@ -96,7 +96,7 @@ test('quick start teaches WASD, real merge with undo, then real split', async ({
 
 test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await page.goto(server.url);
-  await page.locator('#onboarding-skip').click();
+  await page.keyboard.press('Escape');
   await expect(page.locator('#onboarding-layer')).toBeHidden();
   expect(await page.evaluate(() => localStorage.getItem('moy.asr.editor.onboarding.v1'))).toBe('skipped');
 

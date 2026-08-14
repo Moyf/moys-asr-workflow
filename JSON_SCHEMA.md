@@ -34,7 +34,7 @@
 | `waveform` | `object` | 否 | 可丢弃的紧凑波形缓存。由 `edit.py` 或浏览器自动生成；不影响字幕语义 |
 | `gap_remove` | `object` | 否 | 可逆的空隙移除决定。保留原始媒体/字幕时间，仅描述导出与跳过播放时使用的派生时间轴 |
 | `workspace` | `object` | 否 | 编辑器工作区：四个功能区的窗口布局与显示状态；不影响字幕和波形缓存。服务器版也可使用独立的本机命名工作区库跨工程复用 |
-| `preview` | `object` | 否 | 预览呈现设置。含 `preview.subtitle`（字幕预览框、可选字号与字体）与 `preview.sticker`（表情包预览层）两个归一化几何。不影响字幕时间与文本 |
+| `preview` | `object` | 否 | 预览呈现设置。含 `preview.subtitle`（主字幕预览框与样式）、可选的 `preview.extension_subtitle`（拓展字幕样式）和 `preview.sticker`（表情包预览层）。不影响字幕时间与文本 |
 
 ### 1.0 工程文件扩展名
 
@@ -99,7 +99,7 @@
 
 ### 1.1b waveform_reapeaks 波形层（可选）
 
-`waveform_reapeaks` 是 `.ReaPeaks` 最细 wave 层转成的 `moy.asr.waveform.v1` payload（字段与 §1.1 完全一致）。它作为**可选的波形形状来源**：编辑器默认用自研 `waveform`（1000 Hz 重采样），在「设置 → 音频波形区 → 波形形状来源」切到 ReaPeaks 后改用本字段绘制包络，从而避免高频内容的自研重采样欠采样。
+`waveform_reapeaks` 是 `.ReaPeaks` 最细 wave 层转成的 `moy.asr.waveform.v1` payload（字段与 §1.1 完全一致）。它作为**可选的波形形状来源**：编辑器默认使用本字段绘制包络；没有可用 `.ReaPeaks` 时回退到自研 `waveform`（1000 Hz 重采样），从而避免高频内容的自研重采样欠采样。
 
 ```json
 {
@@ -212,7 +212,8 @@
 
 ```json
 {
-  "subtitle": { "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16, "font_size": 32, "font_family": "yahei" },
+  "subtitle": { "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16, "font_size": 32, "font_family": "yahei", "color": "#ffffff" },
+  "extension_subtitle": { "font_size": 30, "font_family": "yahei", "color": "#ffd34d" },
   "sticker": { "x": 0.73, "y": 0.04, "width": 0.24, "height": 0.3 }
 }
 ```
@@ -227,16 +228,92 @@
 | `font_family` | `string` | 否 | 字幕预览字体族：内置键 `default`、`yahei`、`hei`、`song`、`sans`，或本机字体族名称（最长 128 个字符） |
 | `background_color` | `string` | 否 | 字幕预览背景色，6 位十六进制颜色 `#RRGGBB`；缺失时使用黑色 |
 | `background_alpha` | `number` | 否 | 字幕预览背景不透明度，范围 `[0, 1]`；缺失时使用 `0.65`，设为 `0` 时隐藏背景 |
+| `color` | `string` | 否 | 六位十六进制颜色，如 `#ffffff`；主字幕默认白色，拓展字幕默认黄色 `#ffd34d` |
+| `preview.extension_subtitle` | `object` | 否 | 拓展字幕样式；同样支持 `font_size`、`font_family`、`color`，没有字号时默认比主字幕小 2px |
 
 ### 约束
 
 - `x`、`y`、`width`、`height` 四个字段都必须是数字（不接受字符串、布尔），且落在 `[0, 1]`。
 - 若存在 `font_size`，必须是 `[12, 96]` 内的数字；若存在 `font_family`，必须是内置字体键或非空本机字体族名称，最长 128 个字符，不能包含控制字符；若存在 `background_color`，必须是 `#RRGGBB` 格式；若存在 `background_alpha`，必须是 `[0, 1]` 内的数字。
+- 若存在 `color`，必须是 `#RRGGBB` 六位十六进制颜色；拓展字幕样式不包含独立几何，沿用 `preview.subtitle` 的预览框。
 - 盒子必须留在播放器内：`x + width <= 1` 且 `y + height <= 1`。
 - 编辑器额外强制最小可读尺寸 `width >= 0.20`、`height >= 0.08`（这是编辑器 UX 钳制，非数据契约的硬校验；导入时会被编辑器再钳制）。
 - `preview` 缺失或 `preview.subtitle` 缺失时按**旧工程**处理，编辑器使用默认几何 `{ x: 0.1, y: 0.76, width: 0.8, height: 0.16 }`——字幕带占 76%→92%（底部留 8%），宽度 80% 居中。
 - `preview.sticker` 缺失时同样按旧工程处理，使用默认几何 `{ x: 0.73, y: 0.04, width: 0.24, height: 0.3 }`（右上角）。两个几何共用同一套归一化与钳制规则。
 - 该几何只移动/缩放预览框容器；内部文字 `<span>` 仍保持居中与药丸样式，`segments[*].start/end/items[*].start/end` 永不被此几何改动。
+
+### 1.5 multi_subtitle 多重字幕
+
+`multi_subtitle` 是可选的双语字幕扩展结构。旧工程缺失该字段时，编辑器按关闭状态加载；保存时会补写关闭的空结构。顶层 `segments` 始终是主轨真源，扩展字幕只放在 `tracks[*].segments` 中。
+
+```json
+{
+  "multi_subtitle": {
+    "schema": "moy.asr.multi_subtitle.v1",
+    "enabled": true,
+    "display_mode": "both",
+    "main_split_mode": "word",
+    "tracks": [{
+      "id": "translation",
+      "role": "extension",
+      "name": "English",
+      "language": "English",
+      "split_mode": "word",
+      "source_name": "translation.srt",
+      "segments": [{
+        "id": "translation-segment-001",
+        "start": 1100,
+        "end": 2900,
+        "text": "Extended subtitle",
+        "items": [{"text": "Extended subtitle", "start": 1100, "end": 2900}]
+      }]
+    }],
+    "bindings": [{
+      "id": "binding-001",
+      "track_id": "translation",
+      "main_segment_ids": ["main-001"],
+      "extension_segment_ids": ["translation-segment-001"],
+      "start_offset_ms": 100,
+      "end_offset_ms": -100
+    }]
+  }
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `multi_subtitle.schema` | string | 否 | 固定为 `moy.asr.multi_subtitle.v1` |
+| `multi_subtitle.enabled` | boolean | 否 | 默认 `false`；关闭只隐藏扩展数据，不删除数据 |
+| `multi_subtitle.display_mode` | string | 否 | `main` / `extension` / `both`，默认 `both` |
+| `multi_subtitle.main_split_mode` | string | 否 | 主字幕语言类型：`continuous`（字符型）或 `word`（单词型）；旧工程缺失时按主字幕文本自动判断 |
+| `multi_subtitle.tracks` | array | 否 | 扩展轨数组；当前 UI 只管理第一条轨道 |
+| `tracks[i].id` | string | 是 | 轨道稳定 ID |
+| `tracks[i].role` | string | 否 | 当前固定为 `extension` |
+| `tracks[i].name` | string | 否 | 用户可见轨道名 |
+| `tracks[i].language` | string | 否 | 语言或语言代码 |
+| `tracks[i].split_mode` | string | 否 | 副字幕语言类型：`continuous`（字符型）或 `word`（单词型）；用于近似拆分和字数统计 |
+| `tracks[i].source_name` | string | 否 | 来源文件名，不保存绝对路径 |
+| `tracks[i].segments` | array | 是 | 扩展字幕段；每段至少有段级时间码和文本，`items` 可选 |
+| `tracks[i].segments[j].id` | string | 是 | 扩展字幕稳定 ID |
+| `tracks[i].segments[j].start/end` | int | 是 | 非负整数毫秒，`start < end` |
+| `tracks[i].segments[j].text` | string | 是 | 扩展字幕文本 |
+| `tracks[i].segments[j].items` | array | 否 | 可选字词时间码；结构和主轨 `segments[i].items` 相同 |
+| `tracks[i].segments[j].disabled` | bool | 否 | 禁用该扩展字幕；预览、隐藏禁用项和扩展 SRT 导出会跳过它 |
+| `bindings` | array | 否 | 主轨与扩展轨的绑定关系 |
+| `bindings[i].track_id` | string | 是 | 指向扩展轨 ID |
+| `bindings[i].main_segment_ids` | array | 是 | MVP 必须恰好一个主轨 ID |
+| `bindings[i].extension_segment_ids` | array | 是 | MVP 必须恰好一个扩展轨 ID |
+| `bindings[i].start_offset_ms` | int | 是 | `extension.start - main.start` |
+| `bindings[i].end_offset_ms` | int | 是 | `extension.end - main.end` |
+
+约束：
+
+- 主轨和扩展轨段均使用不重复的稳定字符串 ID；当前规范化会为缺失 ID 的输入补齐，并在导出/保存时写入。主轨按 `main-001`、扩展轨按 `<track-id>-segment-001` 的顺序生成；如果生成值与后续显式 ID 冲突，会使用确定性的 `-generated` 后缀。浏览器与 Python 服务端使用同一规则。
+- 当前 MVP 强制每个绑定一对一；数组形式保留给未来一对多关系，但当前校验要求数组长度均为 1，且一个端点不能重复绑定。
+- 自动导入按段级时间码匹配：时间区间有交集，且开始/结束时间差均不超过 `300ms`；冲突选择总差值最小的候选。未匹配段保留，可手动绑定。
+- SRT 导入没有字词时间码，因此扩展段通常不带 `items`；mosp/json 导入和主副交换可以带上可选 `items`，保存、加载和再次交换时保留它们。
+- `continuous`（字符型）允许字符边界，`word`（单词型）只允许空格或安全标点附近的边界，禁止拆碎单词。切分时会清理断点两侧相邻的中英文逗号、句号及空白；两种模式也分别决定字数统计规则。
+- `enabled: false` 时工程仍保留轨道、绑定、语言类型和 ID；主轨 SRT 导出语义不变，扩展轨使用独立 SRT 导出。
 
 ---
 
@@ -246,6 +323,7 @@
 
 ```json
 {
+  "id": "main-001",
   "start": 1234,
   "end": 5678,
   "text": "字幕文本",
@@ -261,10 +339,12 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
+| `id` | `string` | **必填** | 主字幕稳定 ID；输入缺失时规范化为 `main-001`、`main-002` 等确定性 ID |
 | `start` | `int` | **必填** | 段起始时间，**单位毫秒** |
 | `end` | `int` | **必填** | 段结束时间，**单位毫秒**，要求 `end > start` |
 | `text` | `string` | **必填** | 字幕显示文本。可含 `\n` 表示换行（在编辑器里渲染为 `<br>`） |
 | `items` | `array<object>` | 推荐填 | 字级时间戳数组。用于「双击拆分时按字分配时间」。可填 `[]`，此时拆分会按字符比例估算时间点 |
+| `disabled` | `bool` | 否 | 禁用该字幕；预览、隐藏禁用项和默认导出会跳过它 |
 | `speaker` | `string` | 否 | 说话人标签（非空字符串）。保存供应商返回的 opaque ID（如 Soniox 的 `"1"`/`"2"`），不转换为整数或姓名。仅当该段所有带语音 items 都是同一 speaker 时才写入；缺少该字段的旧工程继续有效 |
 | `sticker` | `object\|null` | 否 | 表情包 head 信息。见第四节 |
 | `sticker_ref` | `object\|null` | 否 | 引用上方 head 的表情包（跨多句用） |
@@ -496,6 +576,7 @@ uv run python edit.py your_generated.mosp
 | `segments[i].end` | int | ✅ | 毫秒 |
 | `segments[i].text` | string | ✅ | 显示文本 |
 | `segments[i].items` | array | 推荐 | 字级时间戳，可 `[]` |
+| `segments[i].disabled` | bool | ❌ | 禁用该字幕 |
 | `segments[i].items[k].text` | string | ✅ | 单字/词 |
 | `segments[i].items[k].start` | int | ✅ | 毫秒 |
 | `segments[i].items[k].end` | int | ✅ | 毫秒 |
@@ -512,6 +593,7 @@ uv run python edit.py your_generated.mosp
 | `sticker_root` | string | ❌ | 表情包根目录 |
 | `waveform` | object | ❌ | 可丢弃的 `moy.asr.waveform.v1` 峰值缓存 |
 | `gap_remove` | object | ❌ | 可逆的 `moy.asr.gap_remove.v1` 空隙移除决定 |
+| `multi_subtitle` | object | ❌ | 可选的 `moy.asr.multi_subtitle.v1` 主轨/扩展轨与绑定 |
 | `preview` | object | ❌ | 预览呈现设置容器 |
 | `preview.subtitle.x` | number | ❌ | 归一化 `[0,1]`，`x + width <= 1` |
 | `preview.subtitle.y` | number | ❌ | 归一化 `[0,1]`，`y + height <= 1` |
@@ -521,6 +603,11 @@ uv run python edit.py your_generated.mosp
 | `preview.subtitle.font_family` | string | ❌ | 内置字体键，或本机字体族名称；缺少该字体时预览回退到默认无衬线字体 |
 | `preview.subtitle.background_color` | string | ❌ | 6 位十六进制颜色 `#RRGGBB`；缺失时使用黑色 |
 | `preview.subtitle.background_alpha` | number | ❌ | 不透明度 `[0,1]`；缺失时使用 `0.65`，设为 `0` 时隐藏字幕背景 |
+| `preview.subtitle.color` | string | ❌ | `#RRGGBB` 六位十六进制颜色，默认 `#ffffff` |
+| `preview.extension_subtitle` | object | ❌ | 拓展字幕样式；沿用主字幕预览框 |
+| `preview.extension_subtitle.font_size` | number | ❌ | px，范围 `[12,96]`；缺失时默认比主字幕小 2px |
+| `preview.extension_subtitle.font_family` | string | ❌ | `default` / `yahei` / `hei` / `song` / `sans` |
+| `preview.extension_subtitle.color` | string | ❌ | `#RRGGBB` 六位十六进制颜色，默认 `#ffd34d` |
 | `preview.sticker.x` | number | ❌ | 归一化 `[0,1]`，`x + width <= 1` |
 | `preview.sticker.y` | number | ❌ | 归一化 `[0,1]`，`y + height <= 1` |
 | `preview.sticker.width` | number | ❌ | 归一化 `[0,1]`，编辑器最小 0.20 |

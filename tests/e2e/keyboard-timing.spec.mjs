@@ -49,15 +49,20 @@ async function selectedCueIndex(page) {
   return page.locator('.cue.selected').getAttribute('data-idx');
 }
 
-async function stableBoundingBox(locator) {
+async function stableVisibleBoundingBox(page, locator) {
   let box = null;
   await expect.poll(async () => {
     try {
+      await locator.scrollIntoViewIfNeeded();
       box = await locator.boundingBox();
     } catch (_) {
       box = null;
     }
-    return Boolean(box && box.width > 0 && box.height > 0);
+    if (!box || box.width <= 0 || box.height <= 0) return false;
+    return page.evaluate(({ x, y }) => {
+      const hit = document.elementFromPoint(x, y);
+      return Boolean(hit?.closest('.waveform-cue-block'));
+    }, { x: box.x + box.width / 2, y: box.y + box.height / 2 });
   }).toBe(true);
   return box;
 }
@@ -88,6 +93,51 @@ test('WASD during playback follows the playhead instead of the last selected cue
   await page.keyboard.press('d');
   await expect.poll(() => selectedCueIndex(page)).toBe('2');
   await expect.poll(() => page.evaluate(() => player.currentTime)).toBeGreaterThan(24);
+});
+
+test('A/D at the outer cue boundaries still seeks the boundary cue', async ({ page }) => {
+  await loadAttachedCues(page);
+
+  await page.locator('.cue[data-idx="0"]').click();
+  await page.evaluate(() => { player.currentTime = 20; });
+  await page.keyboard.press('a');
+  await expect.poll(() => page.evaluate(() => player.currentTime)).toBeLessThan(6);
+
+  await page.locator('.cue[data-idx="2"]').click();
+  await page.evaluate(() => { player.currentTime = 1; });
+  await page.keyboard.press('d');
+  await expect.poll(() => page.evaluate(() => player.currentTime)).toBeGreaterThan(24);
+});
+
+test('F seeks and plays a selected extension cue', async ({ page }) => {
+  await loadAttachedCues(page);
+  await page.evaluate(() => {
+    DATA.multi_subtitle = {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-1',
+        role: 'extension',
+        name: 'English',
+        language: 'English',
+        split_mode: 'word',
+        segments: [{ id: 'extension-001', start: 12000, end: 16000, text: 'Extension' }],
+      }],
+      bindings: [],
+    };
+    renderAll({ waveform: 'full' });
+  });
+
+  const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"]').first();
+  await expect(extensionBlock).toBeVisible();
+  await extensionBlock.click();
+  await page.evaluate(() => { player.currentTime = 1; });
+  await page.keyboard.press('f');
+  await page.waitForFunction(() => {
+    const media = document.getElementById('player');
+    return media.currentTime >= 12 && media.currentTime < 13 && !media.paused;
+  });
 });
 
 test('selected arrow keys move cues, adjust boundaries, and honor the configured step', async ({ page }) => {
@@ -170,9 +220,10 @@ test('A/D adjusts a held subtitle block and a held shared boundary', async ({ pa
 
   const block = page.locator('.waveform-cue-block[data-idx="0"]').first();
   await expect(block).toBeVisible();
-  const blockBox = await stableBoundingBox(block);
+  const blockBox = await stableVisibleBoundingBox(page, block);
   await page.mouse.move(blockBox.x + blockBox.width / 2, blockBox.y + blockBox.height / 2);
   await page.mouse.down();
+  await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);
   await page.keyboard.press('d');
   await page.mouse.up();
   await expect.poll(() => readTimings(page)).toEqual([
@@ -183,9 +234,10 @@ test('A/D adjusts a held subtitle block and a held shared boundary', async ({ pa
 
   const boundary = page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-handle.right').first();
   await expect(boundary).toBeVisible();
-  const boundaryBox = await stableBoundingBox(boundary);
+  const boundaryBox = await stableVisibleBoundingBox(page, boundary);
   await page.mouse.move(boundaryBox.x + boundaryBox.width / 2, boundaryBox.y + boundaryBox.height / 2);
   await page.mouse.down();
+  await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);
   await page.keyboard.press('d');
   await page.mouse.up();
   await expect.poll(() => readTimings(page)).toEqual([
@@ -204,9 +256,10 @@ test('A also compresses an attached preceding cue', async ({ page }) => {
 
   const block = page.locator('.waveform-cue-block[data-idx="1"]').first();
   await expect(block).toBeVisible();
-  const blockBox = await stableBoundingBox(block);
+  const blockBox = await stableVisibleBoundingBox(page, block);
   await page.mouse.move(blockBox.x + blockBox.width / 2, blockBox.y + blockBox.height / 2);
   await page.mouse.down();
+  await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);
   await page.keyboard.press('a');
   await page.mouse.up();
   await expect.poll(() => readTimings(page)).toEqual([
@@ -228,9 +281,10 @@ test('Shift+A/D on a held subtitle snaps its outer boundaries to neighbors', asy
   await page.locator('#editor-settings-toggle').click();
   const block = page.locator('.waveform-cue-block[data-idx="1"]').first();
   await expect(block).toBeVisible();
-  const blockBox = await stableBoundingBox(block);
+  const blockBox = await stableVisibleBoundingBox(page, block);
   await page.mouse.move(blockBox.x + blockBox.width / 2, blockBox.y + blockBox.height / 2);
   await page.mouse.down();
+  await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);
   await page.keyboard.press('Shift+a');
   await expect.poll(() => readTimings(page)).toEqual([
     { start: 5000, end: 9000 },

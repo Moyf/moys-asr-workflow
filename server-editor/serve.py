@@ -17,7 +17,6 @@ import tempfile
 import threading
 import webbrowser
 from dataclasses import dataclass, field, replace
-from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -29,10 +28,22 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+NINJA_SFX_ROOT = ROOT / "web" / "sfx"
+NINJA_SFX_NAMES = frozenset(
+    f"sfx_katana_slash_{index:02d}.{extension}"
+    for index in range(1, 5)
+    for extension in ("ogg", "opus")
+)
+mimetypes.add_type("audio/ogg", ".opus")
+
 import edit  # noqa: E402
 import reapeaks  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
-from maw.project import ProjectValidationFailed, normalize_project, repair_segment_durations  # noqa: E402
+from maw.project import (  # noqa: E402
+    ProjectValidationFailed,
+    normalize_project,
+    repair_project_timing_ranges,
+)
 from maw.media import MEDIA_EXTENSIONS, MediaConversionError, MediaResolutionError, MediaStatus, convert_media_for_browser, resolve_project_media  # noqa: E402
 
 
@@ -229,11 +240,9 @@ def load_project(
     raw_data = json.loads(json_path.read_text(encoding="utf-8"))
     # 兜底：上游（或旧版工具）可能写入 0 长/倒挂的段、词时间码，
     # 加载时先拉齐到至少 100ms，避免编辑器里出现看不见的字幕块、保存被校验拒绝。
-    raw_segments = raw_data.get("segments") if isinstance(raw_data, dict) else None
-    if isinstance(raw_segments, list):
-        repaired_count = repair_segment_durations(raw_segments)
-        if repaired_count:
-            print(f"[project] 已兜底修复 {repaired_count} 处 0 长/倒挂时间码（保底 100ms）")
+    repaired_count = repair_project_timing_ranges(raw_data)
+    if repaired_count:
+        print(f"[project] 已兜底修复 {repaired_count} 处异常时间码（保底 100ms）")
     data = normalize_project(raw_data)
 
     resolution = resolve_project_media(json_path, data, explicit_media)
@@ -317,7 +326,6 @@ def load_blank_project(stickers_dir: str | None) -> ServerProject:
 def build_server_page(project: ServerProject, settings: ServerSettings | None = None) -> bytes:
     """Render with current web/ assets on every page request to prevent UI drift."""
     settings = settings or ServerSettings()
-    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
     if project.media_path:
         media_html = edit.media_tag(project.media_path, "/media")
         source_media = project.source_media_path or project.media_path
@@ -353,6 +361,7 @@ def build_server_page(project: ServerProject, settings: ServerSettings | None = 
         stickers_json=json.dumps(project.stickers, ensure_ascii=False),
         sticker_root_json=json.dumps(project.sticker_root.as_posix() if project.sticker_root else "", ensure_ascii=False),
         sticker_url_prefix_json=json.dumps("/stickers", ensure_ascii=False),
+        ninja_sfx_base_url_json=json.dumps("/sfx/", ensure_ascii=False),
         server_config_json=json.dumps({
             "saveUrl": "/api/project",
             "canSave": project.json_path is not None,
@@ -366,7 +375,7 @@ def build_server_page(project: ServerProject, settings: ServerSettings | None = 
             "presetWorkspaces": settings.preset_workspaces,
             "activeWorkspaceName": settings.active_workspace_name,
         }, ensure_ascii=False),
-        generated_at=html.escape(generated_at),
+        app_version=html.escape(f"v{edit.get_app_version()}"),
         json_display=html.escape(json_display),
         json_name_class=json_class,
         media_name_display=html.escape(media_display),
@@ -516,9 +525,7 @@ class EditorServer(ThreadingHTTPServer):
 
         # 防止同目录同名旧文件掉包：段落内容与浏览器打开的副本一致才接管。
         browser_data = copy.deepcopy(browser_project)
-        browser_segments = browser_data.get("segments")
-        if isinstance(browser_segments, list):
-            repair_segment_durations(browser_segments)
+        repair_project_timing_ranges(browser_data)
         try:
             normalized_browser = normalize_project(browser_data)
         except ProjectValidationFailed as error:
@@ -542,7 +549,11 @@ class EditorServer(ThreadingHTTPServer):
         if not self.project.json_path:
             raise SaveProjectError("空白服务器没有绑定工程路径；请使用“导出工程”")
         try:
-            normalized_project = normalize_project(project_data)
+            repaired_project = copy.deepcopy(project_data)
+            # 保存时只自动修复字/词级取整冲突；真正的字幕段重叠仍交给严格校验，
+            # 避免把用户有意或误操作造成的段落重叠静默改写。
+            repair_project_timing_ranges(repaired_project, repair_segment_ranges=False)
+            normalized_project = normalize_project(repaired_project)
         except ProjectValidationFailed as error:
             raise SaveProjectError(str(error)) from error
 
@@ -781,6 +792,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             else:
                 self.send_error(HTTPStatus.NOT_FOUND, "没有预加载媒体")
             return
+        if path.startswith("/sfx/"):
+            sfx_path = self.ninja_sfx_path(path[len("/sfx/"):])
+            if sfx_path:
+                self.send_file(sfx_path, include_body)
+            else:
+                self.send_error(HTTPStatus.NOT_FOUND, "刀光音效不存在")
+            return
         if path.startswith("/stickers/"):
             sticker_path = self.sticker_path(path[len("/stickers/"):])
             if sticker_path:
@@ -811,6 +829,18 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         try:
             candidate.relative_to(root)
         except ValueError:
+            return None
+        return candidate if candidate.is_file() else None
+
+    def ninja_sfx_path(self, relative_url: str) -> Path | None:
+        """Resolve one bundled slash sound without exposing arbitrary project files."""
+        root = NINJA_SFX_ROOT.resolve()
+        candidate = (root / unquote(relative_url)).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            return None
+        if candidate.name not in NINJA_SFX_NAMES:
             return None
         return candidate if candidate.is_file() else None
 
