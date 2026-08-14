@@ -668,6 +668,28 @@ test('builds the default-color SRT from enabled subtitles without a color', () =
   }), ['1', '0ms --> 500ms', 'plain', ''].join('\n'));
 });
 
+test('keeps disabled subtitle placeholders only when explicitly requested', () => {
+  const segments = [
+    { start: 0, end: 500, text: 'visible' },
+    { start: 500, end: 1000, text: 'hidden', disabled: true },
+    { start: 1000, end: 1500, text: 'next' },
+  ];
+  assert.equal(helpers.buildSrtPayload(segments, {
+    keepDisabledPlaceholder: true,
+    formatTime: (timeMs) => `${timeMs}ms`,
+  }), [
+    '1', '0ms --> 500ms', 'visible', '',
+    '2', '500ms --> 1000ms', '', '',
+    '3', '1000ms --> 1500ms', 'next', '',
+  ].join('\n'));
+  assert.equal(helpers.buildSrtPayload(segments, {
+    formatTime: (timeMs) => `${timeMs}ms`,
+  }), [
+    '1', '0ms --> 500ms', 'visible', '',
+    '2', '1000ms --> 1500ms', 'next', '',
+  ].join('\n'));
+});
+
 test('builds plain text as enabled subtitle lines', () => {
   assert.equal(helpers.buildPlainTextPayload([
     { text: '第一行' },
@@ -870,6 +892,59 @@ test('builds an ffconcat plan from kept media intervals', () => {
 });
 
 
+test('normalizes gap removal settings without mutating persisted input', () => {
+  const saved = {
+    detector: 'legacy_subtitle_gap',
+    minimum_ms: 999999,
+    threshold_db: -120,
+    hysteresis_db: 50,
+    lead_in_ms: -2,
+    lead_out_ms: 9999,
+    skip_playback: false,
+    manual_corrections: true,
+    operation_mode: 'invalid',
+    gaps: [
+      { start: 900, end: 1200, removed: true },
+      { start: 900.4, end: 1200.2, removed: true },
+      { start: 200, end: 100, removed: true },
+    ],
+  };
+  const normalized = helpers.normalizeGapRemoveData(saved);
+  assert.equal(normalized.schema, 'moy.asr.gap_remove.v1');
+  assert.equal(normalized.detector, 'legacy_subtitle_gap');
+  assert.equal(normalized.minimum_ms, 60000);
+  assert.equal(normalized.threshold_db, -96);
+  assert.equal(normalized.hysteresis_db, 30);
+  assert.equal(normalized.lead_in_ms, 0);
+  assert.equal(normalized.lead_out_ms, 2000);
+  assert.equal(normalized.skip_playback, false);
+  assert.equal(normalized.manual_corrections, true);
+  assert.equal(normalized.operation_mode, 'boundary_drag');
+  assert.deepEqual(JSON.parse(JSON.stringify(normalized.gaps)), [
+    { start: 900, end: 1200, removed: true },
+  ]);
+  assert.equal(saved.minimum_ms, 999999);
+  assert.equal(saved.gaps.length, 3);
+});
+
+
+test('normalizes empty gap removal data to audio-gate defaults', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeGapRemoveData(null))), {
+    schema: 'moy.asr.gap_remove.v1',
+    detector: 'audio_gate',
+    minimum_ms: 500,
+    threshold_db: -24,
+    hysteresis_db: 2,
+    lead_in_ms: 40,
+    lead_out_ms: 80,
+    skip_playback: true,
+    manual_corrections: false,
+    operation_mode: 'boundary_drag',
+    gaps: [],
+  });
+});
+
+
 test('maps a waveform click to the nearest timestamped word boundary', () => {
   const segment = {
     start: 0,
@@ -950,6 +1025,77 @@ test('isMacPlatform detects macOS while other platforms do not', () => {
   assert.equal(helpers.isMacPlatform({ platform: 'Linux x86_64' }), false);
   // 无 navigator 环境（如 node 测试）安全降级为 false
   assert.equal(helpers.isMacPlatform(null), false);
+});
+
+
+test('normalizes editor settings to the persisted compatibility contract', () => {
+  const settings = helpers.normalizeEditorSettings({
+    splitKey: 'ctrl-enter',
+    multiSubtitleRowHeight: 96,
+    clickBehavior: 'select-and-play',
+    clickTarget: 'cue-start',
+    jklPlaybackMode: 'speed',
+    mediaSeekStepSeconds: 1.5,
+    cueMoveStepMs: 400,
+    theme: 'light',
+    waveShapeSource: 'self',
+  });
+  assert.equal(settings.splitKey, 'ctrl-enter');
+  assert.equal(settings.multiSubtitleRowHeight, 96);
+  assert.equal(settings.clickBehavior, 'select-and-play');
+  assert.equal(settings.clickTarget, 'cue-start');
+  assert.equal(settings.jklPlaybackMode, 'speed');
+  assert.equal(settings.mediaSeekStepMs, 1500);
+  assert.equal(settings.cueMoveStepMs, 400);
+  assert.equal(settings.theme, 'light');
+  assert.equal(settings.waveShapeSource, 'self');
+  assert.equal(settings.overlayEnabled, true);
+  assert.equal(settings.autoSaveProject, true);
+});
+
+
+test('clamps invalid editor settings without mutating the saved object', () => {
+  const saved = {
+    splitKey: 'invalid',
+    multiSubtitleRowHeight: 999,
+    cueListCharcountThreshold: -2,
+    autoMergeGapMs: 50000,
+    autoMergeShortCount: 0,
+    autoSaveIntervalSeconds: 1,
+    mediaSeekStepMs: 70000,
+    cueMoveStepMs: 1,
+    clickBehavior: 'invalid',
+    clickTarget: 'invalid',
+    jklPlaybackMode: 'invalid',
+    theme: 'invalid',
+    waveShapeSource: 'invalid',
+  };
+  const before = JSON.parse(JSON.stringify(saved));
+  const settings = helpers.normalizeEditorSettings(saved);
+  assert.deepEqual(saved, before);
+  assert.equal(settings.splitKey, 'enter');
+  assert.equal(settings.multiSubtitleRowHeight, 168);
+  assert.equal(settings.cueListCharcountThreshold, 1);
+  assert.equal(settings.autoMergeGapMs, 10000);
+  assert.equal(settings.autoMergeShortCount, 1);
+  assert.equal(settings.autoSaveIntervalSeconds, 5);
+  assert.equal(settings.mediaSeekStepMs, 60000);
+  assert.equal(settings.cueMoveStepMs, 10);
+  assert.equal(settings.clickBehavior, 'select-and-seek');
+  assert.equal(settings.clickTarget, 'pointer');
+  assert.equal(settings.jklPlaybackMode, 'direction');
+  assert.equal(settings.theme, 'dark');
+  assert.equal(settings.waveShapeSource, 'reapeaks');
+});
+
+
+test('normalizes missing or malformed editor settings to safe defaults', () => {
+  const fromNull = helpers.normalizeEditorSettings(null);
+  const fromArray = helpers.normalizeEditorSettings([]);
+  assert.equal(fromNull.mediaSeekStepMs, 1000);
+  assert.equal(fromNull.cueMoveStepMs, 50);
+  assert.equal(fromNull.multiSubtitleRowHeight, 168);
+  assert.deepEqual(JSON.parse(JSON.stringify(fromArray)), JSON.parse(JSON.stringify(fromNull)));
 });
 
 
@@ -1042,6 +1188,48 @@ test('history stack: clear and clearRedo reset the right stacks', () => {
   h.clear();
   assert.equal(h.undoLength(), 0);
   assert.equal(h.redoLength(), 0);
+});
+
+
+test('builds immutable segment history snapshots and records', () => {
+  const segments = [{ start: 0, end: 1000, text: '原文' }];
+  const multi = { enabled: true, tracks: [] };
+  const snapshot = helpers.buildSegmentsHistorySnapshot(segments, multi);
+  const record = helpers.buildHistoryRecord('segments', '编辑字幕', snapshot);
+  segments[0].text = '后来';
+  multi.enabled = false;
+  snapshot.segments[0].text = '快照变更';
+  assert.equal(record.kind, 'segments');
+  assert.equal(record.label, '编辑字幕');
+  assert.equal(record.segs.segments[0].text, '原文');
+  assert.equal(record.segs.multi_subtitle.enabled, true);
+});
+
+
+test('builds typed history records with safe defaults', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.buildHistoryRecord('gap_remove', '', {
+    gapRemove: { gaps: [{ start: 10, end: 20 }] },
+    gapRemoveDirty: true,
+  }))), {
+    kind: 'gap_remove',
+    label: '空隙移除',
+    gapRemove: { gaps: [{ start: 10, end: 20 }] },
+    gapRemoveDirty: true,
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.buildHistoryRecord('preview', null, {
+    overlay: true,
+  }))), {
+    kind: 'preview',
+    label: '预览',
+    preview: { overlay: true },
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.buildHistoryRecord('unknown', null, {
+    value: 1,
+  }))), {
+    kind: 'segments',
+    label: '编辑',
+    segs: { value: 1 },
+  });
 });
 
 

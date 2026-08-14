@@ -525,6 +525,38 @@
     return value == null ? null : JSON.parse(JSON.stringify(value));
   }
 
+  const HISTORY_RECORD_DEFAULT_LABELS = Object.freeze({
+    segments: '编辑',
+    layout: '调整工作区',
+    gap_remove: '空隙移除',
+    preview: '预览',
+  });
+
+  // 历史记录的快照只负责值和记录形状，不触碰编辑器状态或 DOM。
+  function buildSegmentsHistorySnapshot(segments, multiSubtitle) {
+    return {
+      segments: cloneJsonValue(segments),
+      multi_subtitle: cloneJsonValue(multiSubtitle),
+    };
+  }
+
+  function buildHistoryRecord(kind, label, payload) {
+    const recordKind = Object.prototype.hasOwnProperty.call(HISTORY_RECORD_DEFAULT_LABELS, kind)
+      ? kind : 'segments';
+    const record = {
+      kind: recordKind,
+      label: label || HISTORY_RECORD_DEFAULT_LABELS[recordKind],
+    };
+    if (recordKind === 'segments') record.segs = cloneJsonValue(payload);
+    if (recordKind === 'layout') record.layout = payload || null;
+    if (recordKind === 'gap_remove') {
+      record.gapRemove = cloneJsonValue(payload?.gapRemove ?? null);
+      record.gapRemoveDirty = payload?.gapRemoveDirty === true;
+    }
+    if (recordKind === 'preview') record.preview = cloneJsonValue(payload);
+    return record;
+  }
+
   // === 多重字幕（双语字幕）===
   // 这组 helper 刻意不依赖 DOM，便携 HTML、localhost 编辑器和 Node 测试共用同一套
   // 数据/匹配/近似拆分规则。主轨仍然是顶层 segments；扩展轨的 items 不参与拆分。
@@ -1132,25 +1164,28 @@
     const firstEnabledIndex = Number.isInteger(options.firstEnabledIndex)
       ? options.firstEnabledIndex
       : getSrtExportFirstIndex(source, alignFirstStart);
+    const keepDisabledPlaceholder = options.keepDisabledPlaceholder === true && !colorName;
     const parts = [];
-    source
-      .map((segment, sourceIndex) => ({ segment, sourceIndex }))
-      .filter(({ segment }) => {
-        if (!segment || segment.disabled) return false;
-        if (!colorName) return true;
+    let outputIndex = 0;
+    source.forEach((segment, sourceIndex) => {
+      if (!segment) return;
+      const disabled = segment.disabled === true;
+      if (disabled && !keepDisabledPlaceholder) return;
+      if (!disabled && colorName) {
         const effectiveName = effectiveColorName(segment, source);
-        return colorName === 'default' ? !effectiveName : effectiveName === colorName;
-      })
-      .forEach(({ segment, sourceIndex }, index) => {
-        const mappedStart = Math.max(0, Math.round(Number(mapTime(segment.start)) || 0));
-        const start = alignFirstStart && sourceIndex === firstEnabledIndex ? 0 : mappedStart;
-        const mappedEnd = Math.max(0, Math.round(Number(mapTime(segment.end)) || 0));
-        const end = options.ensurePositiveDuration ? Math.max(start + 1, mappedEnd) : mappedEnd;
-        parts.push(String(index + 1));
-        parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
-        parts.push(String(segment.text || ''));
-        parts.push('');
-      });
+        const matches = colorName === 'default' ? !effectiveName : effectiveName === colorName;
+        if (!matches) return;
+      }
+      const mappedStart = Math.max(0, Math.round(Number(mapTime(segment.start)) || 0));
+      const start = alignFirstStart && !disabled && sourceIndex === firstEnabledIndex ? 0 : mappedStart;
+      const mappedEnd = Math.max(0, Math.round(Number(mapTime(segment.end)) || 0));
+      const end = options.ensurePositiveDuration ? Math.max(start + 1, mappedEnd) : mappedEnd;
+      outputIndex += 1;
+      parts.push(String(outputIndex));
+      parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
+      parts.push(disabled ? '' : String(segment.text || ''));
+      parts.push('');
+    });
     return parts.join('\n');
   }
 
@@ -1186,6 +1221,55 @@
         seen.add(key);
         return true;
       });
+  }
+
+  const GAP_REMOVE_SCHEMA = 'moy.asr.gap_remove.v1';
+  const GAP_REMOVE_OPERATION_MODES = new Set(['none', 'boundary_drag', 'middle_drag']);
+  const DEFAULT_GAP_REMOVE_MIN_MS = 500;
+  const DEFAULT_GAP_REMOVE_THRESHOLD_DB = -24;
+  const DEFAULT_GAP_REMOVE_HYSTERESIS_DB = 2;
+  const DEFAULT_GAP_REMOVE_LEAD_IN_MS = 40;
+  const DEFAULT_GAP_REMOVE_LEAD_OUT_MS = 80;
+  const DEFAULT_GAP_REMOVE_OPERATION_MODE = 'boundary_drag';
+
+  function clampGapRemoveMinimum(value) {
+    const rounded = Math.round(Number(value));
+    return Math.min(60000, Math.max(100, Number.isFinite(rounded) ? rounded : DEFAULT_GAP_REMOVE_MIN_MS));
+  }
+
+  function clampGapRemoveThreshold(value) {
+    const numeric = Number(value);
+    return Math.min(0, Math.max(-96, Number.isFinite(numeric) ? numeric : DEFAULT_GAP_REMOVE_THRESHOLD_DB));
+  }
+
+  function clampGapRemoveHysteresis(value) {
+    const numeric = Number(value);
+    return Math.min(30, Math.max(0, Number.isFinite(numeric) ? numeric : DEFAULT_GAP_REMOVE_HYSTERESIS_DB));
+  }
+
+  function clampGapRemoveLeadMs(value, fallback) {
+    const rounded = Math.round(Number(value));
+    return Math.min(2000, Math.max(0, Number.isFinite(rounded) ? rounded : fallback));
+  }
+
+  // 空隙移除设置只做数据归一化，不读写 DATA、DOM 或 localStorage。
+  function normalizeGapRemoveData(value) {
+    const source = value && typeof value === 'object' ? value : {};
+    const gaps = normalizeGapRemoveGaps(source.gaps);
+    return {
+      schema: GAP_REMOVE_SCHEMA,
+      detector: source.detector === 'audio_gate' || !gaps.length ? 'audio_gate' : 'legacy_subtitle_gap',
+      minimum_ms: clampGapRemoveMinimum(source.minimum_ms),
+      threshold_db: clampGapRemoveThreshold(source.threshold_db),
+      hysteresis_db: clampGapRemoveHysteresis(source.hysteresis_db),
+      lead_in_ms: clampGapRemoveLeadMs(source.lead_in_ms, DEFAULT_GAP_REMOVE_LEAD_IN_MS),
+      lead_out_ms: clampGapRemoveLeadMs(source.lead_out_ms, DEFAULT_GAP_REMOVE_LEAD_OUT_MS),
+      skip_playback: source.skip_playback !== false,
+      manual_corrections: source.manual_corrections === true,
+      operation_mode: GAP_REMOVE_OPERATION_MODES.has(source.operation_mode)
+        ? source.operation_mode : DEFAULT_GAP_REMOVE_OPERATION_MODE,
+      gaps,
+    };
   }
 
   function coalesceGapRemoveGaps(gaps) {
@@ -1414,6 +1498,160 @@
     return splitKey === 'enter' ? 'split' : 'save';
   }
 
+  // 编辑器设置归一化：只处理值，不触碰 localStorage、DOM 或页面状态。
+  // 持久化读写仍由 editor.js 负责，保证便携页面和 Server 页面共用同一份规则。
+  const EDITOR_SETTING_CLICK_BEHAVIORS = new Set([
+    'select-only', 'select-and-seek', 'select-and-play',
+  ]);
+  const EDITOR_SETTING_CLICK_TARGETS = new Set(['cue-start', 'pointer']);
+  const EDITOR_SETTING_JKL_MODES = new Set(['speed', 'direction']);
+  const EDITOR_SETTING_ROW_HEIGHTS = [64, 80, 96, 120, 144, 168];
+  const DEFAULT_EDITOR_ROW_HEIGHT = 168;
+  const DEFAULT_EDITOR_SETTINGS = Object.freeze({
+    splitKey: 'enter',
+    splitUseWordTimestamps: true,
+    splitAutoSubmit: true,
+    overlayEnabled: true,
+    extensionOverlayEnabled: true,
+    multiSubtitleRowHeight: DEFAULT_EDITOR_ROW_HEIGHT,
+    exportStartAtZero: false,
+    cueListShowIndex: true,
+    cueListShowTime: true,
+    cueListShowSticker: true,
+    cueListShowCharcount: true,
+    cueListAutoScrollOnClick: true,
+    cueListKeepSplitVisible: true,
+    cueListHideDisabled: false,
+    cueListCharcountThreshold: 16,
+    cueEditorShowNavigation: false,
+    cueEditorShowTimeActions: false,
+    cueEditorShowSticker: false,
+    selectGroupMembers: false,
+    mergeJoinText: '',
+    autoMergeGapMs: 200,
+    autoMergeSnapDirection: 'backward',
+    autoMergeShortCount: 3,
+    autoMergeAbsorbShort: true,
+    autoMergeAbsorbDirection: 'previous',
+    exportColorUnified: true,
+    autoSaveProject: true,
+    autoSaveIntervalSeconds: 30,
+    stickerOverlayEnabled: false,
+    clickBehavior: 'select-and-seek',
+    clickTarget: 'pointer',
+    jklPlaybackMode: 'direction',
+    mediaSeekStepMs: 1000,
+    cueMoveStepMs: 50,
+    ninjaMode: false,
+    ninjaSlashEffect: true,
+    crossTrackSnap: true,
+    selectBoundSubtitlePair: true,
+    multiSubtitleAutoSyncDuration: true,
+    multiSubtitleShowTrackBadges: false,
+    theme: 'dark',
+    waveShapeSource: 'reapeaks',
+  });
+
+  function normalizeMultiSubtitleRowHeight(value) {
+    const next = Number(value);
+    return EDITOR_SETTING_ROW_HEIGHTS.includes(next) ? next : DEFAULT_EDITOR_ROW_HEIGHT;
+  }
+
+  function normalizeClickBehavior(value) {
+    return EDITOR_SETTING_CLICK_BEHAVIORS.has(value) ? value : 'select-and-seek';
+  }
+
+  function normalizeClickTarget(value) {
+    return EDITOR_SETTING_CLICK_TARGETS.has(value) ? value : 'pointer';
+  }
+
+  function normalizeJklPlaybackMode(value) {
+    return EDITOR_SETTING_JKL_MODES.has(value) ? value : 'direction';
+  }
+
+  function clampEditorMediaSeekStepMs(value) {
+    const rounded = Math.round(Number(value));
+    return Math.min(60000, Math.max(100, Number.isFinite(rounded) ? rounded : 1000));
+  }
+
+  function clampEditorCueMoveStepMs(value) {
+    const rounded = Math.round(Number(value));
+    return Math.min(2000, Math.max(10, Number.isFinite(rounded) ? rounded : 50));
+  }
+
+  function clampEditorAutoSaveInterval(value) {
+    const seconds = Math.round(Number(value));
+    return Math.min(3600, Math.max(5, Number.isFinite(seconds) ? seconds : 30));
+  }
+
+  function clampEditorCharcountThreshold(value) {
+    const threshold = Math.round(Number(value));
+    return Math.min(200, Math.max(1, Number.isFinite(threshold) ? threshold : 16));
+  }
+
+  function clampEditorAutoMergeGapMs(value) {
+    const ms = Math.round(Number(value));
+    return Math.min(10000, Math.max(0, Number.isFinite(ms) ? ms : 200));
+  }
+
+  function clampEditorAutoMergeShortCount(value) {
+    const count = Math.round(Number(value));
+    return Math.min(20, Math.max(1, Number.isFinite(count) ? count : 3));
+  }
+
+  function normalizeEditorSettings(saved = {}) {
+    const source = saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
+    const legacySeekStepSeconds = Number(source.mediaSeekStepSeconds);
+    const savedMediaSeekStepMs = source.mediaSeekStepMs !== undefined
+      ? source.mediaSeekStepMs
+      : Number.isFinite(legacySeekStepSeconds) ? legacySeekStepSeconds * 1000 : undefined;
+    return {
+      splitKey: source.splitKey === 'ctrl-enter' ? 'ctrl-enter' : DEFAULT_EDITOR_SETTINGS.splitKey,
+      splitUseWordTimestamps: source.splitUseWordTimestamps !== false,
+      splitAutoSubmit: source.splitAutoSubmit !== false,
+      overlayEnabled: source.overlayEnabled !== false,
+      extensionOverlayEnabled: source.extensionOverlayEnabled !== false,
+      multiSubtitleRowHeight: normalizeMultiSubtitleRowHeight(source.multiSubtitleRowHeight),
+      exportStartAtZero: source.exportStartAtZero === true,
+      cueListShowIndex: source.cueListShowIndex !== false,
+      cueListShowTime: source.cueListShowTime !== false,
+      cueListShowSticker: source.cueListShowSticker !== false,
+      cueListShowCharcount: source.cueListShowCharcount !== false,
+      cueListAutoScrollOnClick: source.cueListAutoScrollOnClick !== false,
+      cueListKeepSplitVisible: source.cueListKeepSplitVisible !== false,
+      cueListHideDisabled: source.cueListHideDisabled === true,
+      cueListCharcountThreshold: clampEditorCharcountThreshold(source.cueListCharcountThreshold),
+      cueEditorShowNavigation: source.cueEditorShowNavigation === true,
+      cueEditorShowTimeActions: source.cueEditorShowTimeActions === true,
+      cueEditorShowSticker: source.cueEditorShowSticker === true,
+      selectGroupMembers: source.selectGroupMembers === true,
+      mergeJoinText: typeof source.mergeJoinText === 'string'
+        ? source.mergeJoinText : DEFAULT_EDITOR_SETTINGS.mergeJoinText,
+      autoMergeGapMs: clampEditorAutoMergeGapMs(source.autoMergeGapMs),
+      autoMergeSnapDirection: source.autoMergeSnapDirection === 'forward' ? 'forward' : 'backward',
+      autoMergeShortCount: clampEditorAutoMergeShortCount(source.autoMergeShortCount),
+      autoMergeAbsorbShort: source.autoMergeAbsorbShort !== false,
+      autoMergeAbsorbDirection: source.autoMergeAbsorbDirection === 'next' ? 'next' : 'previous',
+      exportColorUnified: source.exportColorUnified !== false,
+      autoSaveProject: source.autoSaveProject !== false,
+      autoSaveIntervalSeconds: clampEditorAutoSaveInterval(source.autoSaveIntervalSeconds),
+      stickerOverlayEnabled: source.stickerOverlayEnabled === true,
+      clickBehavior: normalizeClickBehavior(source.clickBehavior),
+      clickTarget: normalizeClickTarget(source.clickTarget),
+      jklPlaybackMode: normalizeJklPlaybackMode(source.jklPlaybackMode),
+      mediaSeekStepMs: clampEditorMediaSeekStepMs(savedMediaSeekStepMs),
+      cueMoveStepMs: clampEditorCueMoveStepMs(source.cueMoveStepMs),
+      ninjaMode: source.ninjaMode === true,
+      ninjaSlashEffect: source.ninjaSlashEffect !== false,
+      crossTrackSnap: source.crossTrackSnap !== false,
+      selectBoundSubtitlePair: source.selectBoundSubtitlePair !== false,
+      multiSubtitleAutoSyncDuration: source.multiSubtitleAutoSyncDuration !== false,
+      multiSubtitleShowTrackBadges: source.multiSubtitleShowTrackBadges === true,
+      theme: source.theme === 'light' ? 'light' : 'dark',
+      waveShapeSource: source.waveShapeSource === 'self' ? 'self' : 'reapeaks',
+    };
+  }
+
   // === 字幕预览几何（preview.subtitle）===
   // preview.subtitle 以 player-wrap 归一化分数存储 {x, y, width, height}。
   // 这些纯函数不触碰 DOM，可在 node:test 下直接验证。
@@ -1607,6 +1845,7 @@
     buildPlainTextPayload,
     fileBasename,
     normalizeGapRemoveGaps,
+    normalizeGapRemoveData,
     applyGapRemoveRange,
     resizeGapRemoveBoundary,
     detectAudioGapRemoveGaps,
@@ -1616,7 +1855,20 @@
     buildFfconcat,
     configuredEnterAction,
     isMacPlatform,
+    normalizeEditorSettings,
+    normalizeMultiSubtitleRowHeight,
+    normalizeClickBehavior,
+    normalizeClickTarget,
+    normalizeJklPlaybackMode,
+    clampMediaSeekStepMs: clampEditorMediaSeekStepMs,
+    clampCueMoveStepMs: clampEditorCueMoveStepMs,
+    clampAutoSaveInterval: clampEditorAutoSaveInterval,
+    clampCharcountThreshold: clampEditorCharcountThreshold,
+    clampAutoMergeGapMs: clampEditorAutoMergeGapMs,
+    clampAutoMergeShortCount: clampEditorAutoMergeShortCount,
     createHistoryStack,
+    buildSegmentsHistorySnapshot,
+    buildHistoryRecord,
     PREVIEW_MIN_WIDTH,
     PREVIEW_MIN_HEIGHT,
   DEFAULT_PREVIEW_GEOMETRY,
