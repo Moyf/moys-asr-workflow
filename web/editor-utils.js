@@ -1188,6 +1188,55 @@
       });
   }
 
+  const GAP_REMOVE_SCHEMA = 'moy.asr.gap_remove.v1';
+  const GAP_REMOVE_OPERATION_MODES = new Set(['none', 'boundary_drag', 'middle_drag']);
+  const DEFAULT_GAP_REMOVE_MIN_MS = 500;
+  const DEFAULT_GAP_REMOVE_THRESHOLD_DB = -24;
+  const DEFAULT_GAP_REMOVE_HYSTERESIS_DB = 2;
+  const DEFAULT_GAP_REMOVE_LEAD_IN_MS = 40;
+  const DEFAULT_GAP_REMOVE_LEAD_OUT_MS = 80;
+  const DEFAULT_GAP_REMOVE_OPERATION_MODE = 'boundary_drag';
+
+  function clampGapRemoveMinimum(value) {
+    const rounded = Math.round(Number(value));
+    return Math.min(60000, Math.max(100, Number.isFinite(rounded) ? rounded : DEFAULT_GAP_REMOVE_MIN_MS));
+  }
+
+  function clampGapRemoveThreshold(value) {
+    const numeric = Number(value);
+    return Math.min(0, Math.max(-96, Number.isFinite(numeric) ? numeric : DEFAULT_GAP_REMOVE_THRESHOLD_DB));
+  }
+
+  function clampGapRemoveHysteresis(value) {
+    const numeric = Number(value);
+    return Math.min(30, Math.max(0, Number.isFinite(numeric) ? numeric : DEFAULT_GAP_REMOVE_HYSTERESIS_DB));
+  }
+
+  function clampGapRemoveLeadMs(value, fallback) {
+    const rounded = Math.round(Number(value));
+    return Math.min(2000, Math.max(0, Number.isFinite(rounded) ? rounded : fallback));
+  }
+
+  // 空隙移除设置只做数据归一化，不读写 DATA、DOM 或 localStorage。
+  function normalizeGapRemoveData(value) {
+    const source = value && typeof value === 'object' ? value : {};
+    const gaps = normalizeGapRemoveGaps(source.gaps);
+    return {
+      schema: GAP_REMOVE_SCHEMA,
+      detector: source.detector === 'audio_gate' || !gaps.length ? 'audio_gate' : 'legacy_subtitle_gap',
+      minimum_ms: clampGapRemoveMinimum(source.minimum_ms),
+      threshold_db: clampGapRemoveThreshold(source.threshold_db),
+      hysteresis_db: clampGapRemoveHysteresis(source.hysteresis_db),
+      lead_in_ms: clampGapRemoveLeadMs(source.lead_in_ms, DEFAULT_GAP_REMOVE_LEAD_IN_MS),
+      lead_out_ms: clampGapRemoveLeadMs(source.lead_out_ms, DEFAULT_GAP_REMOVE_LEAD_OUT_MS),
+      skip_playback: source.skip_playback !== false,
+      manual_corrections: source.manual_corrections === true,
+      operation_mode: GAP_REMOVE_OPERATION_MODES.has(source.operation_mode)
+        ? source.operation_mode : DEFAULT_GAP_REMOVE_OPERATION_MODE,
+      gaps,
+    };
+  }
+
   function coalesceGapRemoveGaps(gaps) {
     const result = [];
     normalizeGapRemoveGaps(gaps).forEach((gap) => {
@@ -1761,6 +1810,7 @@
     buildPlainTextPayload,
     fileBasename,
     normalizeGapRemoveGaps,
+    normalizeGapRemoveData,
     applyGapRemoveRange,
     resizeGapRemoveBoundary,
     detectAudioGapRemoveGaps,

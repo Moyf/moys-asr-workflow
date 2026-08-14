@@ -870,6 +870,59 @@ test('builds an ffconcat plan from kept media intervals', () => {
 });
 
 
+test('normalizes gap removal settings without mutating persisted input', () => {
+  const saved = {
+    detector: 'legacy_subtitle_gap',
+    minimum_ms: 999999,
+    threshold_db: -120,
+    hysteresis_db: 50,
+    lead_in_ms: -2,
+    lead_out_ms: 9999,
+    skip_playback: false,
+    manual_corrections: true,
+    operation_mode: 'invalid',
+    gaps: [
+      { start: 900, end: 1200, removed: true },
+      { start: 900.4, end: 1200.2, removed: true },
+      { start: 200, end: 100, removed: true },
+    ],
+  };
+  const normalized = helpers.normalizeGapRemoveData(saved);
+  assert.equal(normalized.schema, 'moy.asr.gap_remove.v1');
+  assert.equal(normalized.detector, 'legacy_subtitle_gap');
+  assert.equal(normalized.minimum_ms, 60000);
+  assert.equal(normalized.threshold_db, -96);
+  assert.equal(normalized.hysteresis_db, 30);
+  assert.equal(normalized.lead_in_ms, 0);
+  assert.equal(normalized.lead_out_ms, 2000);
+  assert.equal(normalized.skip_playback, false);
+  assert.equal(normalized.manual_corrections, true);
+  assert.equal(normalized.operation_mode, 'boundary_drag');
+  assert.deepEqual(JSON.parse(JSON.stringify(normalized.gaps)), [
+    { start: 900, end: 1200, removed: true },
+  ]);
+  assert.equal(saved.minimum_ms, 999999);
+  assert.equal(saved.gaps.length, 3);
+});
+
+
+test('normalizes empty gap removal data to audio-gate defaults', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeGapRemoveData(null))), {
+    schema: 'moy.asr.gap_remove.v1',
+    detector: 'audio_gate',
+    minimum_ms: 500,
+    threshold_db: -24,
+    hysteresis_db: 2,
+    lead_in_ms: 40,
+    lead_out_ms: 80,
+    skip_playback: true,
+    manual_corrections: false,
+    operation_mode: 'boundary_drag',
+    gaps: [],
+  });
+});
+
+
 test('maps a waveform click to the nearest timestamped word boundary', () => {
   const segment = {
     start: 0,
