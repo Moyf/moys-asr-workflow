@@ -203,6 +203,12 @@ uv run python generate_subtitle_bcut_api.py "D:\Videos\example.mp4" -ll 2m --jso
 
 接口只直接接收 `flac / aac / m4a / mp3 / wav`；视频和其他音频格式会先经 ffmpeg 转成 16k 单声道 wav 再上传。不支持语言指定（面向中文）、说话人分离与热词。
 
+## 2.5 转写后自动处理
+
+Launcher 可以在转写成功后自动串接文稿匹配、固定替换、LLM 校对、重新断句、OCR 字幕去重和翻译。功能默认关闭；配置、LLM 连接验证、中间产物目录、失败恢复和安全边界见[转写后自动处理](POSTPROCESS_PIPELINE.md)。
+
+自动处理会保留原始转写结果，最终结果另写为带 `.postprocess` 后缀的 `.mosp` 和 `.srt`。失败或取消不会影响原始结果，并会保留中间目录供恢复。
+
 ## 3. 理解三个输出文件
 
 | File | Use it for | Keep it? |

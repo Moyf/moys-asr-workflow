@@ -288,15 +288,69 @@
       </div>
     </section>
 
+    <section id="autoPostprocessCard" class="card" aria-labelledby="autoPostprocessTitle">
+      <h2 id="autoPostprocessTitle" data-i18n="auto_postprocess_title">3️⃣ 转写后自动处理</h2>
+      <p class="hint" data-i18n="auto_postprocess_hint">转写完成后按固定顺序处理字幕；首次启用某一步前，请先在工具箱中完成配置。</p>
+      <label class="check-field auto-postprocess-toggle" for="autoPostprocessEnabled">
+        <input id="autoPostprocessEnabled" type="checkbox">
+        <span data-i18n="auto_postprocess_enable">启用转写后自动处理</span>
+      </label>
+      <div id="autoPostprocessSteps" class="auto-postprocess-steps">
+        <div class="auto-step-row" data-auto-step-row="match">
+          <label class="check-field" for="autoStepMatch"><input id="autoStepMatch" type="checkbox"><span data-i18n="auto_step_match">文稿匹配</span></label>
+          <span id="autoStepMatchStatus" class="auto-step-status hint"></span>
+          <button id="configureAutoMatch" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
+        </div>
+        <div class="auto-step-row" data-auto-step-row="replace">
+          <label class="check-field" for="autoStepReplace"><input id="autoStepReplace" type="checkbox"><span data-i18n="auto_step_replace">固定替换</span></label>
+          <span id="autoStepReplaceStatus" class="auto-step-status hint"></span>
+          <button id="configureAutoReplace" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
+        </div>
+        <div class="auto-step-row" data-auto-step-row="proofread">
+          <label class="check-field" for="autoStepProofread"><input id="autoStepProofread" type="checkbox"><span data-i18n="auto_step_proofread">LLM 校对</span></label>
+          <span id="autoStepProofreadStatus" class="auto-step-status hint"></span>
+          <button id="configureAutoProofread" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
+        </div>
+        <div class="auto-step-row" data-auto-step-row="resegment">
+          <label class="check-field" for="autoStepResegment"><input id="autoStepResegment" type="checkbox"><span data-i18n="auto_step_resegment">重新断句</span></label>
+          <span id="autoStepResegmentStatus" class="auto-step-status hint"></span>
+          <button id="configureAutoResegment" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
+        </div>
+        <div class="auto-step-row" data-auto-step-row="ocr">
+          <label class="check-field" for="autoStepOcr"><input id="autoStepOcr" type="checkbox"><span data-i18n="auto_step_ocr">OCR 字幕去重</span></label>
+          <span id="autoStepOcrStatus" class="auto-step-status hint"></span>
+          <button id="configureAutoOcr" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
+        </div>
+        <div class="auto-step-row" data-auto-step-row="translate">
+          <label class="check-field" for="autoStepTranslate"><input id="autoStepTranslate" type="checkbox"><span data-i18n="auto_step_translate">翻译</span></label>
+          <span id="autoStepTranslateStatus" class="auto-step-status hint"></span>
+          <button id="configureAutoTranslate" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
+        </div>
+      </div>
+      <div id="autoTranslateTargetField" class="field auto-translate-target hidden">
+        <label for="autoTranslateTarget" data-i18n="auto_translate_target">翻译目标</label>
+        <select id="autoTranslateTarget">
+          <option value="zh" data-i18n="auto_translate_zh">中文</option>
+          <option value="en" data-i18n="auto_translate_en">英文</option>
+        </select>
+      </div>
+      <label class="check-field" for="autoPostprocessRetain">
+        <input id="autoPostprocessRetain" type="checkbox">
+        <span data-i18n="auto_retain_intermediate">保留中间产物</span>
+      </label>
+      <p class="hint" data-i18n="auto_retain_hint">默认不保留；中间文件统一放在媒体目录的 MAW-Postprocess 子文件夹中。失败或取消时会保留以便排查。</p>
+      <p id="autoPostprocessSummary" class="hint auto-postprocess-summary" aria-live="polite"></p>
+    </section>
+
     <section class="card" aria-labelledby="logTitle">
-      <h2 id="logTitle" data-i18n="logs">3️⃣ 日志</h2>
+      <h2 id="logTitle" data-i18n="logs">4️⃣ 日志</h2>
       <div id="progress" class="progress hidden" aria-hidden="true"><span></span></div>
       <p id="logLatest" class="log-latest hidden" aria-live="polite"></p>
       <pre id="log" class="log" aria-live="polite"></pre>
     </section>
 
     <section id="serverCard" class="card" aria-labelledby="serverTitle">
-      <h2 id="serverTitle" data-i18n="server">4️⃣ 字幕编辑器设置</h2>
+      <h2 id="serverTitle" data-i18n="server">5️⃣ 字幕编辑器设置</h2>
       <div id="serverBody">
         <div class="field">
           <label for="jsonPath" data-i18n="json_project">工程 JSON</label>
@@ -332,6 +386,8 @@
       </div>
       <button id="stopServer" class="ghost server-stop hidden" type="button" data-i18n="server_stop">停止服务器</button>
       <button id="openFolder" class="ghost hidden" type="button" data-i18n="open_folder">打开输出文件夹</button>
+      <button id="openPostprocessFolder" class="ghost hidden" type="button" data-i18n="open_postprocess_folder">打开自动处理中间产物</button>
+      <button id="retryPostprocess" class="ghost hidden" type="button" data-i18n="retry_postprocess">从失败步骤重试后处理</button>
     </footer>
     <div id="status" class="status">就绪</div>
   </main>

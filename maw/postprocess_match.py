@@ -26,6 +26,7 @@ class ScriptMatchRequest:
     srt_path: Path | None
     script_path: Path
     output_mode: OutputMode
+    output_directory: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +61,7 @@ def run_script_match(request: ScriptMatchRequest) -> SubtitleArtifact:
         write_project=request.output_mode in {OutputMode.JSON, OutputMode.BOTH},
         write_srt=request.output_mode in {OutputMode.SRT, OutputMode.BOTH},
         warnings=(f"文稿来源：{script_path}", *warnings),
+        output_directory=request.output_directory,
     )
 
 

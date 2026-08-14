@@ -32,6 +32,20 @@ from maw.postprocess_ffmpeg import FfconcatRequest, run_ffconcat_rebuild as proc
 from maw.postprocess_match import ScriptMatchRequest, run_script_match as process_script_match
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion, run_ocr_dedup as process_ocr_dedup
 from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, preset_by_id, test_llm_connection
+from maw.postprocess_pipeline import (
+    PostprocessCancelled,
+    default_postprocess_plan,
+    enabled_steps,
+    invalidate_llm_verification_if_changed,
+    is_llm_verified,
+    load_postprocess_plan,
+    postprocess_provider_status,
+    run_postprocess_pipeline,
+    save_postprocess_plan,
+    snapshot_postprocess_llm_settings,
+    validate_plan,
+)
+from maw.postprocess_pipeline import PostprocessPipelineError
 from maw.soniox import SonioxContextError, build_soniox_context
 
 
@@ -80,6 +94,9 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "sticker_dir_invalid": "Sticker directory does not exist.",
     "config_save_failed": "Local configuration could not be saved.",
     "custom_prompt_required": "A custom prompt is required.",
+    "postprocess_config_invalid": "自动后处理配置不完整。",
+    "postprocess_failed": "转写已完成，但自动后处理失败。",
+    "postprocess_cancelled": "自动后处理已取消，原始转写产物仍然保留。",
 }
 
 
@@ -363,6 +380,9 @@ class LauncherApi:
         self.server_process: subprocess.Popen[str] | None = None
         self.server_log_file: BinaryIO | None = None
         self.result: TranscriptionResult | None = None
+        self.postprocess_retry_context: dict[str, object] | None = None
+        self.postprocess_workspace_directory: Path | None = None
+        self._last_postprocess_progress_at = 0.0
         self.pump = EventPump(window_getter=self.window_getter)
 
     def get_config(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
@@ -397,6 +417,7 @@ class LauncherApi:
             "languages": [{"id": value, "label": label} for value, label in provider.languages],
             "providers": [_provider_payload(item, self.paths.env_path, config.model_cache_root) for item in PROVIDERS],
             "postprocessProviders": _postprocess_provider_payloads(self.paths.env_path),
+            "postprocessAutoPlan": load_postprocess_plan(self.paths.env_path),
         }
 
     def default_output(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -465,6 +486,11 @@ class LauncherApi:
     def save_postprocess_settings(self, payload: Mapping[str, object]) -> dict[str, object]:
         preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
         file_values = _postprocess_values(self.paths.env_path, preset.env_prefix)
+        previous_values = {
+            "apiKey": file_values["apiKey"],
+            "baseUrl": file_values["baseUrl"] or preset.base_url,
+            "model": file_values["model"] or preset.model,
+        }
         api_key = str(payload.get("apiKey") or "").strip() or file_values["apiKey"]
         display_name = str(payload.get("displayName") or "").strip()
         try:
@@ -475,8 +501,8 @@ class LauncherApi:
             return _error_result("postprocessReasoningMode", "invalid_reasoning_mode", str(error))
         updates = {
             f"{preset.env_prefix}_API_KEY": api_key,
-            f"{preset.env_prefix}_BASE_URL": str(payload.get("baseUrl") or preset.base_url).strip(),
-            f"{preset.env_prefix}_MODEL": str(payload.get("model") or preset.model).strip(),
+            f"{preset.env_prefix}_BASE_URL": str(payload.get("baseUrl") or file_values["baseUrl"] or preset.base_url).strip(),
+            f"{preset.env_prefix}_MODEL": str(payload.get("model") or file_values["model"] or preset.model).strip(),
             f"{preset.env_prefix}_REASONING_MODE": reasoning_mode,
             "MAW_POSTPROCESS_LAST_PROVIDER": preset.id,
         }
@@ -496,6 +522,16 @@ class LauncherApi:
                     field = candidate
                     break
             return _error_result(field, "config_save_failed", f"{self.paths.env_path}: {error}")
+        invalidate_llm_verification_if_changed(
+            self.paths.env_path,
+            preset.id,
+            previous_values,
+            {
+                "apiKey": api_key,
+                "baseUrl": updates[f"{preset.env_prefix}_BASE_URL"],
+                "model": updates[f"{preset.env_prefix}_MODEL"],
+            },
+        )
         return {
             "ok": True,
             "providerId": preset.id,
@@ -503,7 +539,22 @@ class LauncherApi:
             "displayName": display_name if preset.id == "custom" else "",
             "maskedApiKey": masked_secret(api_key),
             "reasoningMode": reasoning_mode,
+            "verified": is_llm_verified(self.paths.env_path, preset.id),
         }
+
+    def save_postprocess_plan(self, payload: Mapping[str, object]) -> dict[str, object]:
+        try:
+            plan = save_postprocess_plan(self.paths.env_path, payload.get("plan"))
+        except (OSError, UnicodeError, ValueError) as error:
+            return _error_result("autoPostprocess", "config_save_failed", str(error))
+        return {"ok": True, "plan": plan}
+
+    def validate_postprocess_plan(self, payload: Mapping[str, object]) -> dict[str, object]:
+        media = Path(str(payload.get("mediaPath") or "")).expanduser()
+        plan = payload.get("plan", default_postprocess_plan())
+        ffmpeg = _postprocess_ffmpeg(self.paths.env_path)
+        normalized, errors = validate_plan(plan, env_path=self.paths.env_path, media_path=media, ffmpeg_path=ffmpeg)
+        return {"ok": not errors, "plan": normalized, "errors": list(errors)}
 
     def test_postprocess_connection(self, payload: Mapping[str, object]) -> dict[str, object]:
         preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
@@ -529,7 +580,20 @@ class LauncherApi:
         except LlmClientError as error:
             detail = str(error)
             return {"ok": False, "field": "postprocessProvider", "code": "postprocess_connection_failed", "detail": detail, "error": detail}
-        return {"ok": True, "providerId": preset.id}
+        stored = _postprocess_values(self.paths.env_path, preset.env_prefix)
+        if (
+            stored["apiKey"] == settings.api_key
+            and (stored["baseUrl"] or preset.base_url) == settings.base_url
+            and (stored["model"] or preset.model) == settings.model
+        ):
+            from maw.postprocess_pipeline import record_llm_verification
+
+            record_llm_verification(self.paths.env_path, preset.id, {
+                "apiKey": settings.api_key,
+                "baseUrl": settings.base_url,
+                "model": settings.model,
+            })
+        return {"ok": True, "providerId": preset.id, "verified": is_llm_verified(self.paths.env_path, preset.id)}
 
     def get_postprocess_models(self, payload: Mapping[str, object]) -> dict[str, object]:
         preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
@@ -932,6 +996,8 @@ class LauncherApi:
             request = replace(request, srt_path=selected_output)
         self.result = None
         self.cancel_event = Event()
+        self.postprocess_workspace_directory = None
+        self._last_postprocess_progress_at = 0.0
         self.pump.start()
         self.worker = threading.Thread(target=self._worker_main, args=(request, self.cancel_event), daemon=True)
         self.worker.start()
@@ -1040,10 +1106,37 @@ class LauncherApi:
             self.cancel_event.set()
         return {"ok": True}
 
+    def retry_postprocess(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        context = self.postprocess_retry_context
+        if not context:
+            return {"ok": False, "error": "没有可恢复的自动后处理任务。"}
+        if self.worker and self.worker.is_alive():
+            return {"ok": False, "error": "任务仍在运行中。"}
+        self.cancel_event = Event()
+        self._last_postprocess_progress_at = 0.0
+        self.pump.start()
+        self.worker = threading.Thread(
+            target=self._retry_postprocess_main,
+            args=(context, self.cancel_event),
+            daemon=True,
+        )
+        self.worker.start()
+        return {"ok": True, "retrying": True}
+
     def open_output_folder(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         if self.result:
             return _open_existing_path(self.result.srt_path.parent)
         return {"ok": False, "error": "No result yet."}
+
+    def open_postprocess_folder(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        directory = self.postprocess_workspace_directory
+        if directory is None and self.postprocess_retry_context:
+            value = self.postprocess_retry_context.get("runDirectory")
+            if value:
+                directory = Path(str(value)).expanduser().resolve()
+        if directory is None:
+            return {"ok": False, "error": "没有可打开的自动后处理中间产物。"}
+        return _open_existing_path(directory)
 
     def open_html(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         if self.result and self.result.html_path and self.result.html_path.exists():
@@ -1132,7 +1225,120 @@ class LauncherApi:
             self.pump.flush()
             return
         self.result = result
-        self._emit({"type": "done", "result": {"srtPath": str(result.srt_path), "jsonPath": str(result.json_path), "htmlPath": str(result.html_path or ""), "rawPath": str(result.raw_path or "")}})
+        self.postprocess_retry_context = None
+        self._last_postprocess_progress_at = 0.0
+        auto_run_directory: Path | None = None
+        if request.postprocess_plan:
+            try:
+                auto_result = run_postprocess_pipeline(
+                    request.postprocess_plan,
+                    media_path=request.media_path,
+                    project_path=result.json_path,
+                    srt_path=result.srt_path,
+                    env_path=self.paths.env_path,
+                    ffmpeg_path=_postprocess_ffmpeg(self.paths.env_path),
+                    cancel_event=cancel_event,
+                    on_event=self._handle_postprocess_pipeline_event,
+                    llm_settings=request.postprocess_llm_settings,
+                )
+                auto_run_directory = auto_result.run_directory
+                self.result = replace(result, srt_path=auto_result.srt_path, json_path=auto_result.project_path)
+            except PostprocessCancelled as error:
+                self._emit({"type": "error", "code": "postprocess_cancelled", "detail": str(error), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")})
+                if self.worker is threading.current_thread():
+                    self.worker = None
+                self.pump.flush()
+                return
+            except PostprocessPipelineError as error:
+                self.postprocess_retry_context = {
+                    "plan": request.postprocess_plan,
+                    "mediaPath": str(request.media_path),
+                    "sourceProjectPath": str(result.json_path),
+                    "sourceSrtPath": str(result.srt_path),
+                    "runDirectory": str(error.run_directory),
+                    "failedIndex": error.failed_index,
+                    "currentProject": str(error.current_project),
+                    "currentSrt": str(error.current_srt),
+                    "llmSettings": request.postprocess_llm_settings,
+                }
+                self._emit({
+                    "type": "error",
+                    "code": "postprocess_failed",
+                    "detail": str(error),
+                    "canRetry": True,
+                    "postprocessRunDirectory": str(error.run_directory),
+                })
+                if self.worker is threading.current_thread():
+                    self.worker = None
+                self.pump.flush()
+                return
+            except Exception as error:  # noqa: BLE001 - postprocess boundary reports separately from ASR.
+                self._emit({"type": "error", "code": "postprocess_failed", "detail": str(error), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")})
+                if self.worker is threading.current_thread():
+                    self.worker = None
+                self.pump.flush()
+                return
+        result = self.result
+        assert result is not None
+        self.postprocess_workspace_directory = auto_run_directory if auto_run_directory and auto_run_directory.is_dir() else None
+        self._emit({"type": "done", "result": {"srtPath": str(result.srt_path), "jsonPath": str(result.json_path), "htmlPath": str(result.html_path or ""), "rawPath": str(result.raw_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
+        if self.worker is threading.current_thread():
+            self.worker = None
+        self.pump.flush()
+
+    def _retry_postprocess_main(self, context: Mapping[str, object], cancel_event: Event) -> None:
+        result = self.result
+        if result is None:
+            self._emit({"type": "error", "code": "postprocess_failed", "detail": "原始转写结果已不可用。"})
+            if self.worker is threading.current_thread():
+                self.worker = None
+            self.pump.flush()
+            return
+        try:
+            auto_result = run_postprocess_pipeline(
+                context.get("plan") if isinstance(context.get("plan"), Mapping) else default_postprocess_plan(),
+                media_path=Path(str(context.get("mediaPath") or "")),
+                project_path=Path(str(context.get("sourceProjectPath") or result.json_path)),
+                srt_path=Path(str(context.get("sourceSrtPath") or result.srt_path)),
+                env_path=self.paths.env_path,
+                ffmpeg_path=_postprocess_ffmpeg(self.paths.env_path),
+                cancel_event=cancel_event,
+                on_event=self._handle_postprocess_pipeline_event,
+                llm_settings=context.get("llmSettings") if isinstance(context.get("llmSettings"), Mapping) else None,
+                resume_directory=Path(str(context.get("runDirectory") or "")),
+                resume_from=int(context.get("failedIndex") or 0),
+                resume_project_path=Path(str(context.get("currentProject") or result.json_path)),
+                resume_srt_path=Path(str(context.get("currentSrt") or result.srt_path)),
+            )
+        except PostprocessCancelled as error:
+            self._emit({"type": "error", "code": "postprocess_cancelled", "detail": str(error), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")})
+            if self.worker is threading.current_thread():
+                self.worker = None
+            self.pump.flush()
+            return
+        except PostprocessPipelineError as error:
+            self.postprocess_retry_context = {
+                **dict(context),
+                "runDirectory": str(error.run_directory),
+                "failedIndex": error.failed_index,
+                "currentProject": str(error.current_project),
+                "currentSrt": str(error.current_srt),
+            }
+            self._emit({"type": "error", "code": "postprocess_failed", "detail": str(error), "canRetry": True, "postprocessRunDirectory": str(error.run_directory)})
+            if self.worker is threading.current_thread():
+                self.worker = None
+            self.pump.flush()
+            return
+        except Exception as error:  # noqa: BLE001 - retry boundary reports to the Launcher.
+            self._emit({"type": "error", "code": "postprocess_failed", "detail": str(error), "canRetry": True, "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")})
+            if self.worker is threading.current_thread():
+                self.worker = None
+            self.pump.flush()
+            return
+        self.result = replace(result, srt_path=auto_result.srt_path, json_path=auto_result.project_path)
+        self.postprocess_retry_context = None
+        self.postprocess_workspace_directory = auto_result.run_directory if auto_result.run_directory.is_dir() else None
+        self._emit({"type": "done", "result": {"srtPath": str(self.result.srt_path), "jsonPath": str(self.result.json_path), "htmlPath": str(self.result.html_path or ""), "rawPath": str(self.result.raw_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
         if self.worker is threading.current_thread():
             self.worker = None
         self.pump.flush()
@@ -1149,6 +1355,48 @@ class LauncherApi:
             return
         self.pump.start()
         self._emit({"type": "postprocess_stream", "kind": kind, "text": text, "batch": batch})
+
+    def _handle_postprocess_pipeline_event(self, event: Mapping[str, object]) -> None:
+        run_directory = str(event.get("runDirectory") or "").strip()
+        if run_directory:
+            self.postprocess_workspace_directory = Path(run_directory).expanduser().resolve()
+        payload = {"type": "postprocess_pipeline", **dict(event)}
+        self._emit(payload)
+        stage = str(event.get("stage") or "")
+        labels = {
+            "match": "文稿匹配",
+            "replace": "固定替换",
+            "proofread": "LLM 校对",
+            "resegment": "重新断句",
+            "ocr": "OCR 字幕去重",
+            "translate": "翻译",
+        }
+        step = labels.get(str(event.get("step") or ""), str(event.get("step") or "后处理"))
+        if stage == "start":
+            self._emit({"type": "log", "message": f"[后处理] 已开始，共 {event.get('total', 0)} 步"})
+        elif stage == "step_start":
+            self._emit({"type": "log", "message": f"[后处理 {event.get('index', '?')}/{event.get('total', '?')}] {step}：开始"})
+        elif stage == "step_done":
+            artifacts = " / ".join(
+                name
+                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""))
+                if name
+            )
+            suffix = f"（{artifacts}）" if artifacts else ""
+            self._emit({"type": "log", "message": f"[后处理 {event.get('index', '?')}/{event.get('total', '?')}] {step}：完成{suffix}"})
+        elif stage == "done":
+            self._emit({"type": "log", "message": f"[后处理] 全部完成：{event.get('srtName', '')}"})
+        elif stage == "cancelled":
+            self._emit({"type": "log", "message": "[后处理] 已取消；原始转写产物仍然保留。"})
+        elif stage == "failed":
+            self._emit({"type": "log", "message": "[后处理] 失败；原始转写产物和中间产物已保留。"})
+        elif stage == "detail" and str(event.get("key") or "") in {"toolbox_status_llm_batch", "toolbox_status_ocr_frame"}:
+            now = time.monotonic()
+            current = event.get("current")
+            total = event.get("total")
+            if now - self._last_postprocess_progress_at >= 1.0 or current == total:
+                self._last_postprocess_progress_at = now
+                self._emit({"type": "log", "message": f"[后处理] {step} 进度 {current}/{total}"})
 
     def _local_runtime_main(
         self,
@@ -1297,9 +1545,13 @@ class PreflightError(Exception):
     field: str
     code: str
     message: str
+    postprocess_step: str = ""
 
     def as_result(self) -> dict[str, object]:
-        return _error_result(self.field, self.code, self.message)
+        result = _error_result(self.field, self.code, self.message)
+        if self.postprocess_step:
+            result["postprocessStep"] = self.postprocess_step
+        return result
 
 
 def _segmentation_option(
@@ -1415,6 +1667,28 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         qwen_audio_hotwords_file = str(hotwords_file)
     elif model.supports_hotwords:
         qwen_audio_hotwords = str(payload.get("qwenAudioHotwords") or "").strip()
+    auto_plan: dict[str, object] | None = None
+    auto_llm_settings: dict[str, dict[str, str]] | None = None
+    raw_auto_plan = payload.get("autoPostprocess")
+    if isinstance(raw_auto_plan, Mapping):
+        candidate_plan, plan_errors = validate_plan(
+            raw_auto_plan,
+            env_path=env_path,
+            media_path=media,
+            ffmpeg_path=_postprocess_ffmpeg(env_path),
+        )
+        if bool(candidate_plan.get("enabled")):
+            if plan_errors:
+                first_error = plan_errors[0]
+                raise PreflightError(
+                    str(first_error.get("field") or "autoPostprocess"),
+                    "postprocess_config_invalid",
+                    str(first_error.get("message") or "自动后处理配置不完整。"),
+                    str(first_error.get("step") or ""),
+                )
+            if enabled_steps(candidate_plan):
+                auto_plan = candidate_plan
+                auto_llm_settings = snapshot_postprocess_llm_settings(env_path, candidate_plan)
     return TranscriptionRequest(
         media_path=media,
         srt_path=srt,
@@ -1450,6 +1724,8 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         device=device,
         forced_aligner=str(payload.get("forcedAligner") or "").strip(),
         runtime_python=runtime_python,
+        postprocess_plan=auto_plan,
+        postprocess_llm_settings=auto_llm_settings,
     )
 
 
@@ -1577,6 +1853,10 @@ def _postprocess_provider_payloads(env_path: Path) -> list[dict[str, object]]:
             "reasoningMode": values["reasoningMode"] or DEFAULT_REASONING_MODE,
             "maskedApiKey": masked_secret(values["apiKey"]),
             "selected": file_values.get("MAW_POSTPROCESS_LAST_PROVIDER", "deepseek") == preset.id,
+            "verified": is_llm_verified(env_path, preset.id),
+            "hasApiKey": bool(values["apiKey"]),
+            "hasBaseUrl": bool(values["baseUrl"] or preset.base_url),
+            "hasModel": bool(values["model"] or preset.model),
         })
     return providers
 
@@ -1719,6 +1999,18 @@ def _open_existing_path(path: Path) -> dict[str, object]:
     else:
         webbrowser.open(target.resolve().as_uri())
     return {"ok": True}
+
+
+def _postprocess_ffmpeg(env_path: Path) -> Path | None:
+    configured = effective_config_value(env_path, "FFMPEG_PATH")
+    ffmpeg = find_ffmpeg(configured)
+    if ffmpeg is None:
+        bundled_directory = _bundled_ffmpeg_directory()
+        if bundled_directory is not None:
+            candidate = bundled_directory / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+            if candidate.is_file():
+                return candidate.resolve()
+    return ffmpeg.resolve() if ffmpeg is not None else None
 
 
 def _check_ffmpeg(env_path: Path, override: str = "") -> dict[str, object]:

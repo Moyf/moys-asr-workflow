@@ -60,6 +60,8 @@ class TranscriptionRequest:
     device: str = "auto"
     forced_aligner: str = ""
     runtime_python: str = ""
+    postprocess_plan: dict[str, object] | None = None
+    postprocess_llm_settings: dict[str, dict[str, str]] | None = None
 
 
 @dataclass(frozen=True, slots=True)

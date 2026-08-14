@@ -73,6 +73,7 @@ class OcrDedupRequest:
     region: OcrRegion = OcrRegion()
     threshold: float = DEFAULT_THRESHOLD
     report: bool = False
+    output_directory: Path | None = None
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.threshold <= 1.0:
@@ -213,9 +214,10 @@ def run_ocr_dedup(
         operation=OCR_OPERATION,
         write_project=request.output_mode in {OutputMode.JSON, OutputMode.BOTH},
         write_srt=request.output_mode in {OutputMode.SRT, OutputMode.BOTH},
+        output_directory=request.output_directory,
     )
 
-    report_path = _write_report(rows, source_project or source_srt) if request.report else None
+    report_path = _write_report(rows, source_project or source_srt, request.output_directory) if request.report else None
     warnings = (
         f"OCR 字幕去重完成：新增禁用 {newly_disabled} 条，已有禁用 {existing_disabled} 条，"
         f"实际 OCR {processed} 条，跳过 {skipped} 条。",
@@ -448,10 +450,10 @@ def _report_row(
     }
 
 
-def _write_report(rows: Sequence[Mapping[str, object]], source: Path | None) -> Path:
+def _write_report(rows: Sequence[Mapping[str, object]], source: Path | None, output_directory: Path | None = None) -> Path:
     if source is None:
         raise ValueError("生成 OCR 报告需要一个输入文件")
-    report_path = _available_report_path(source)
+    report_path = _available_report_path(source, output_directory)
     output = io.StringIO(newline="")
     fieldnames = (
         "idx",
@@ -475,10 +477,11 @@ def _write_report(rows: Sequence[Mapping[str, object]], source: Path | None) -> 
     return report_path
 
 
-def _available_report_path(source: Path) -> Path:
-    candidate = source.with_name(f"{source.stem}.{OCR_OPERATION}.csv")
+def _available_report_path(source: Path, output_directory: Path | None = None) -> Path:
+    directory = output_directory.expanduser().resolve() if output_directory is not None else source.parent
+    candidate = directory / f"{source.stem}.{OCR_OPERATION}.csv"
     counter = 2
     while candidate.exists():
-        candidate = source.with_name(f"{source.stem}.{OCR_OPERATION}-{counter}.csv")
+        candidate = directory / f"{source.stem}.{OCR_OPERATION}-{counter}.csv"
         counter += 1
     return candidate.resolve()
