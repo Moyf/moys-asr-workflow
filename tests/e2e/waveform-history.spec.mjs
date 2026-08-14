@@ -723,11 +723,19 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   ));
   await expect(helpSplitKey).toHaveText('Enter');
   await expect(page.locator('#help-waveform-split-key')).toHaveText('B');
-  await expect(helpPanel).toContainText('单选副字幕后绑定到主字幕');
+  await expect(helpPanel).toContainText('绑定到主副字幕（自动匹配）');
   await expect(helpPanel).toContainText('解绑当前副字幕');
   await expect(helpPanel).toContainText('对齐副字幕到主字幕时间轴');
-  await expect(helpPanel).toContainText('单选副字幕后打开副字幕拆分');
-  await expect(helpPanel).toContainText('波形轨道徽标');
+  await expect(helpPanel).not.toContainText('波形轨道徽标');
+  await expect(helpPanel).not.toContainText('语言类型：单词型适合英语等空格语言，字符型适合中文/日文等');
+  await expect(helpPanel).not.toContainText('主字幕自动使用时间码拆分：单轨可直接拆分');
+  await expect(helpPanel).not.toContainText('主字幕调整时副字幕只跟随');
+  await expect(helpPanel).not.toContainText('副字幕调整时受主字幕轨道边界限制');
+  await expect(helpPanel).not.toContainText('普通点击以最后点击的轨道为准；未绑定副字幕不会保留旧主字幕选区');
+
+  const multiSubtitleHelp = helpPanel.locator('.help-subgroup').filter({ hasText: '绑定到主副字幕（自动匹配）' });
+  await expect(multiSubtitleHelp.locator('.help-subtitle')).toHaveText('多重字幕');
+  await expect(multiSubtitleHelp).toHaveCount(1);
 
   await splitKey.selectOption('enter');
   await expect(helpSplitKey).toHaveText('Enter');
