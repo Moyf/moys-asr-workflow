@@ -45,7 +45,7 @@ VIDEO_EXTS = set(VIDEO_EXTENSIONS)
 AUDIO_EXTS = set(AUDIO_EXTENSIONS)
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 # Keep this aligned with pyproject.toml; release workflows synchronize it.
-BUNDLED_EDITOR_VERSION = "1.4.0-beta.6"
+BUNDLED_EDITOR_VERSION = "1.4.0-beta.7"
 
 
 class Sticker(TypedDict):

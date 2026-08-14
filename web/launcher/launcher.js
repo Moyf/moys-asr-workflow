@@ -560,7 +560,7 @@
         workspaceId: saved.workspaceId,
         guiLang: saved.guiLang,
         showRareLangs: saved.showRareLangs || false,
-        appVersion: "1.4.0-beta.6",
+        appVersion: "1.4.0-beta.7",
         stickerDir: saved.stickerDir || "",
         postprocessProviders: [
           { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
