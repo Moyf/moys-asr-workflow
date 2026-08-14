@@ -1,7 +1,7 @@
 ---
 title: MAWE 前端渐进式重构企划案
 created_at: 2026-08-13
-updated_at: 2026-08-13
+updated_at: 2026-08-14
 status: in_progress
 ---
 
@@ -27,9 +27,10 @@ status: in_progress
 这是一个长期路线图，不要求一次性投入全部预算，也不设置一次性“重写完成”日期。每个阶段先形成可回滚的代码和验证结果，再决定是否进入下一阶段。
 
 - 当前分支：`refactor/mawe-p2-pure-logic`
-- 当前范围：Phase 2 第一刀（编辑器设置归一化纯逻辑）
-- 当前状态：P0–1 已进入 `main`；本分支从 `main` `62c674ab` 创建，设置归一化已移入 `editor-utils.js`，选择/导航与历史栈保持既有纯函数边界并继续由 Node 测试覆盖，待 PR 验收
-- 当前预算：本切片预计 12–20 工时；PR 合并后再评估 Phase 2 下一刀
+- 当前范围：Phase 2 三个纯逻辑切片 + Phase 3 的 `settings`、`downloads`、`server-api` 初始边界
+- 当前状态：P0–1 已进入 `main`；本分支已同步 `main` 的 `cc3795bd`，设置与空隙移除归一化、历史快照/记录、SRT payload 均已移入 `editor-utils.js`；浏览器能力和 Server JSON POST 已集中到 `editor-services.js`，待 PR 验收
+- 当前验证：Node 纯逻辑/服务测试 91/91，编辑器资产契约 13/13，便携 HTML 已重新生成；完整浏览器交互仍需阶段出口 smoke test
+- 当前预算：本批次按小切片推进，不锁定总工时；剩余 Phase 3 仅继续拆工程 I/O 与浏览器运行时边界
 - 长期预算：Phase 2–3 约 60–100 工时；Phase 4–6 只有在维护压力和验证结果证明值得时才启动
 - 当前不做：React 迁移、Store 全量改造、功能改版和无关 bug 修复
 
@@ -41,9 +42,10 @@ status: in_progress
 
 | 文件 | 行数 | 当前主要职责 |
 | --- | ---: | --- |
-| `web/editor.js` | 7288 | 编辑器设置、状态、历史、字幕列表、播放、预览、导入导出、Server 交互、快捷键及启动装配 |
+| `web/editor.js` | 12635 | 编辑器状态、历史恢复、字幕列表、播放、预览、导入导出、快捷键及启动装配；设置、下载和 Server JSON 请求通过服务边界注入 |
 | `web/waveform.js` | 3635 | 波形数据、Canvas 绘制、虚拟化、布局树、拖拽、边界调整及波形交互 |
-| `web/editor-utils.js` | 962 | 可在 Node 中测试的纯函数与历史栈 |
+| `web/editor-utils.js` | 1884 | 可在 Node 中测试的纯函数、导出 payload、归一化和历史记录构造 |
+| `web/editor-services.js` | 161 | 设置持久化、文件保存/下载和 Server JSON POST 的能力适配器 |
 | `web/editor-i18n.js` | 665 | 中英文界面翻译与动态 DOM 文本处理 |
 | `web/editor-onboarding.js` | 621 | 新手引导及其与编辑器的窄桥接 |
 | `web/editor-template.html` | 876 | 页面 DOM 骨架与内联资源占位符 |
@@ -282,8 +284,8 @@ web/
 本轮盘点（2026-08-14）：
 
 - 选择、相邻字幕和命令目标的计算，以及历史栈，已经在 `web/editor-utils.js` 中并由 Node 测试覆盖；本轮不重复搬迁，避免制造平行实现。
-- 首个切片抽取编辑器设置的默认值、旧版 `mediaSeekStepSeconds` 兼容迁移、枚举归一化和数值钳制；`editor.js` 暂时只保留 `localStorage` 读写和设置状态装配。
-- 第一刀不改变 DOM、设置键名、默认值或持久化格式；生成的 `blank-editor.html` 与 Server 资产继续由同一源码装配。
+- 本批次追加三个切片：空隙移除设置归一化、历史快照/记录构造、普通/扩展/去空隙 SRT payload；`editor.js` 只保留状态恢复、提示与导出调用编排。
+- 第一刀及追加切片均不改变 DOM、设置键名、默认值、历史类型或导出格式；生成的 `blank-editor.html` 与 Server 资产继续由同一源码装配。
 
 实施规则：
 
@@ -311,6 +313,12 @@ web/
 5. `browser-runtime`：计时器、URL、权限查询、目录/文件选择器等浏览器能力。
 
 所有服务通过显式参数接收 `SERVER_CONFIG`、运行时对象和提示/确认接口。业务模块不直接拼 Server URL，也不直接判断运行形态。
+
+本轮进度（2026-08-14）：
+
+- `editor-services.js` 已提供设置存取、普通/另存为下载、Blob 多文件下载和统一 `postJson`；`editor.js` 已迁移对应调用。
+- `editor-services` 的 Node 测试覆盖 localStorage 不可用、保存框取消/失败、Blob 降级下载、相对 URL 解析和结构化 Server 错误。
+- 工程/SRT/媒体打开、拖放分流、计时器、URL、权限和目录选择仍保留兼容桥接；这些完成后才宣称 Phase 3 完整出口。
 
 阶段出口：
 
@@ -498,8 +506,8 @@ git diff --check
 推荐交付节奏：
 
 1. 已完成批次：Phase 0–1，基线清单、统一资产清单、模块命名空间和生成契约，已进入 `main`。
-2. 当前批次：Phase 2 第一刀，设置归一化纯逻辑；选择/导航与历史栈沿用已测试的工具边界。
-3. 下一检查点：Phase 2–3 的其余纯逻辑与运行环境服务，预算约 60–100 工时，按小 PR 逐刀评估。
+2. 当前检查点：Phase 2 三个纯逻辑切片 + Phase 3 `settings`、`downloads`、`server-api` 初始边界，集中在本分支 draft PR 验收。
+3. 下一检查点：从最新 `main` 继续 Phase 3 的工程 I/O 与浏览器运行时；若 file://、Server 和便携 HTML 验收不完整，就停在当前边界。
 4. 条件批次：Phase 4，Store、命令、历史和渲染协调器。
 5. 条件批次：Phase 5–6，按功能控制器逐个迁移、兼容层清理、完整验收和 React 复评估结论。
 
