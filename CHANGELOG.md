@@ -28,6 +28,16 @@
 - `make-appimage-thumbnail.py` 输出路径尊重 `XDG_CACHE_HOME`。
 - 修复 Linux 上 `uv run maw_gui.py` 因缺少 GUI 后端无法启动 Launcher 的问题：`pywebview` 在 Linux 平台自动安装 Qt6 后端（QtPy + PyQt6 + PyQt6-WebEngine），Windows / macOS 依赖不变。
 - 修复 Linux 上 Launcher 段落标题的 keycap 表情（1️⃣ 等）因系统 emoji 字体（如 SteamOS 自带的 Twemoji）缺少 U+FE0F 变体选择符而渲染成「3x」的问题：Linux 下首次启动由后端按顺序尝试 jsDelivr 各 CDN（可用 `MAW_EMOJI_FONT_URL` 覆盖），把 Noto Color Emoji 下载到用户缓存目录后供页面本地引用，之后离线可用；下载失败或非 Linux 平台回退系统字体，不额外加载。
+## [1.4.0-beta.6] - 2026-08-14
+
+### Added
+
+- 将 OCR 字幕去重改为可选的独立运行环境，Launcher 设置支持路径、安装、修复、取消与扫描，并提供 PP-OCRv6 tiny / small 模型选择。
+- 工具箱增加 OCR 模型状态和设置入口，引导用户在需要时完成运行环境与模型安装。
+
+### Changed
+
+- 主程序及冻结包不再携带 RapidOCR、ONNX Runtime、Pillow 和 OCR 模型文件；OCR 相关内容仅在用户需要时下载。
 
 ## [1.4.0-beta.5] - 2026-08-14
 

@@ -116,6 +116,7 @@ def run_ocr_dedup(
     request: OcrDedupRequest,
     *,
     ffmpeg_path: Path,
+    model_type: str = "tiny",
     on_status: OcrStatus | None = None,
     recognizer: Recognizer | None = None,
     frame_extractor: FrameExtractor | None = None,
@@ -133,7 +134,7 @@ def run_ocr_dedup(
         raise ValueError("工程没有可处理的字幕段")
 
     _notify(on_status, "toolbox_status_ocr_initializing")
-    recognize = recognizer or _RapidOcrRecognizer().recognize
+    recognize = recognizer or _RapidOcrRecognizer(model_type).recognize
     extract = frame_extractor or _extract_frame
     load_image = image_loader or _open_image
 
@@ -397,20 +398,25 @@ def _extract_frame(ffmpeg_path: Path, video_path: Path, timestamp: float, output
 
 
 class _RapidOcrRecognizer:
-    def __init__(self) -> None:
+    def __init__(self, model_type: str = "tiny") -> None:
         try:
             from rapidocr import ModelType, OCRVersion, RapidOCR
         except ImportError as error:
-            raise RuntimeError("OCR 依赖未安装，请先运行 uv sync") from error
+            raise RuntimeError("OCR 依赖未安装，请先运行 uv sync --extra ocr；打包版请在 Launcher 设置中安装 OCR 支持。") from error
+
+        try:
+            selected_model_type = ModelType(model_type)
+        except ValueError as error:
+            raise ValueError(f"不支持的 OCR 模型类型：{model_type}") from error
 
         self._ocr = RapidOCR(
             params={
                 "Det.ocr_version": OCRVersion.PPOCRV6,
-                "Det.model_type": ModelType.TINY,
+                "Det.model_type": selected_model_type,
                 "Det.limit_side_len": OCR_TARGET_WIDTH,
                 "Det.limit_type": "max",
                 "Rec.ocr_version": OCRVersion.PPOCRV6,
-                "Rec.model_type": ModelType.TINY,
+                "Rec.model_type": selected_model_type,
             }
         )
 

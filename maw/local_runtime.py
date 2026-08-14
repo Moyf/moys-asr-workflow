@@ -364,7 +364,9 @@ def _find_uv() -> Path | None:
         candidates.append(Path(configured).expanduser())
     candidates.extend([
         asset_path("bootstrap/uv.exe"),
+        asset_path("bootstrap/uv"),
         Path(sys.executable).resolve().parent / "bootstrap" / "uv.exe",
+        Path(sys.executable).resolve().parent / "bootstrap" / "uv",
     ])
     found = shutil.which("uv")
     if found:

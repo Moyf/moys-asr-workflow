@@ -382,10 +382,50 @@
     toolbox_need_source: "Choose a project or SRT first.", toolbox_need_script: "Choose a script file.", toolbox_need_rules: "Enter at least one valid replacement rule.", toolbox_need_ffconcat: "Choose an .ffconcat file.", toolbox_need_media: "Choose the current media first.", toolbox_custom_prompt_required: "Enter a custom prompt before running the Custom task.", toolbox_done: "Done. Chained to the new artifact:", toolbox_media_done: "Media rebuilt. Chained to the new media:"
   });
   Object.assign(STRINGS.zh, {
-    toolbox_ocr_dedup: "OCR 字幕去重", toolbox_ocr_video: "视频画面", toolbox_ocr_video_placeholder: "优先使用工程视频，也可选择视频文件", toolbox_ocr_video_hint: "工程有可用视频时自动使用；独立 SRT 会回退到当前 Launcher 视频；如果当前媒体是音频或无视频，必须选择视频。", toolbox_ocr_video_reject: "请选择支持的视频文件。", toolbox_ocr_region: "画面字幕区", toolbox_ocr_region_full: "100% 完整画面", toolbox_ocr_region_bottom: "底部 30%", toolbox_ocr_region_custom: "自定义百分比区域", toolbox_ocr_region_hint: "缩小处理区域可减少 OCR 输入量。", toolbox_ocr_model: "OCR 模型", toolbox_ocr_model_tiny: "PP-OCRv6 tiny（CPU）", toolbox_ocr_model_hint: "small 模型暂不加入 MVP。", toolbox_ocr_x1: "左（X1）%", toolbox_ocr_y1: "上（Y1）%", toolbox_ocr_x2: "右（X2）%", toolbox_ocr_y2: "下（Y2）%", toolbox_ocr_threshold: "相似度阈值", toolbox_ocr_threshold_hint: "参考算法取三种相似度的最高值；默认 0.5。", toolbox_ocr_threshold_invalid: "相似度阈值必须是 0 到 1 之间的数字。", toolbox_ocr_report: "生成 OCR 判定报告（CSV）", toolbox_ocr_hint: "画面文字与字幕高度相似的段会被禁用或从 SRT 移除。", toolbox_run_ocr: "执行 OCR 字幕去重", toolbox_status_ocr_initializing: "正在初始化 OCR 模型……", toolbox_status_ocr_frame: "正在识别第 {current}/{total} 条字幕画面……", toolbox_ocr_report_path: "OCR 报告：", toolbox_chain_ocr: "[OCR 字幕去重]"
+    toolbox_ocr_dedup: "OCR 字幕去重", toolbox_ocr_video: "视频画面", toolbox_ocr_video_placeholder: "优先使用工程视频，也可选择视频文件", toolbox_ocr_video_hint: "工程有可用视频时自动使用；独立 SRT 会回退到当前 Launcher 视频；如果当前媒体是音频或无视频，必须选择视频。", toolbox_ocr_video_reject: "请选择支持的视频文件。", toolbox_ocr_region: "画面字幕区", toolbox_ocr_region_full: "100% 完整画面", toolbox_ocr_region_bottom: "底部 30%", toolbox_ocr_region_custom: "自定义百分比区域", toolbox_ocr_region_hint: "缩小处理区域可减少 OCR 输入量。", toolbox_ocr_model: "OCR 模型", toolbox_ocr_model_tiny: "PP-OCRv6 tiny（CPU）", toolbox_ocr_model_small: "PP-OCRv6 small（CPU）", toolbox_ocr_model_hint: "tiny 更快；small 对复杂画面更稳，但会占用更多 CPU 和内存。", toolbox_ocr_x1: "左（X1）%", toolbox_ocr_y1: "上（Y1）%", toolbox_ocr_x2: "右（X2）%", toolbox_ocr_y2: "下（Y2）%", toolbox_ocr_threshold: "相似度阈值", toolbox_ocr_threshold_hint: "参考算法取三种相似度的最高值；默认 0.5。", toolbox_ocr_threshold_invalid: "相似度阈值必须是 0 到 1 之间的数字。", toolbox_ocr_report: "生成 OCR 判定报告（CSV）", toolbox_ocr_hint: "画面文字与字幕高度相似的段会被禁用或从 SRT 移除。", toolbox_run_ocr: "执行 OCR 字幕去重", toolbox_status_ocr_initializing: "正在初始化 OCR 模型……", toolbox_status_ocr_frame: "正在识别第 {current}/{total} 条字幕画面……", toolbox_ocr_report_path: "OCR 报告：", toolbox_chain_ocr: "[OCR 字幕去重]"
   });
   Object.assign(STRINGS.en, {
-    toolbox_ocr_dedup: "OCR subtitle deduplication", toolbox_ocr_video: "Video source", toolbox_ocr_video_placeholder: "Uses the project video first; you can also choose a video", toolbox_ocr_video_hint: "A project video is used automatically; an external SRT falls back to the current Launcher video. Choose a video when the current media is audio-only or unavailable.", toolbox_ocr_video_reject: "Choose a supported video file.", toolbox_ocr_region: "On-screen text region", toolbox_ocr_region_full: "Full frame (100%)", toolbox_ocr_region_bottom: "Bottom 30%", toolbox_ocr_region_custom: "Custom percentage region", toolbox_ocr_region_hint: "A smaller region reduces OCR input.", toolbox_ocr_model: "OCR model", toolbox_ocr_model_tiny: "PP-OCRv6 tiny (CPU)", toolbox_ocr_model_hint: "The small model is deferred beyond the MVP.", toolbox_ocr_x1: "Left (X1)%", toolbox_ocr_y1: "Top (Y1)%", toolbox_ocr_x2: "Right (X2)%", toolbox_ocr_y2: "Bottom (Y2)%", toolbox_ocr_threshold: "Similarity threshold", toolbox_ocr_threshold_hint: "Uses the highest of the three reference similarities; default 0.5.", toolbox_ocr_threshold_invalid: "Similarity threshold must be a number from 0 to 1.", toolbox_ocr_report: "Generate OCR decision report (CSV)", toolbox_ocr_hint: "Cues highly similar to on-screen text are disabled or removed from SRT.", toolbox_run_ocr: "Run OCR subtitle deduplication", toolbox_status_ocr_initializing: "Initializing the OCR model…", toolbox_status_ocr_frame: "Recognizing subtitle frame {current}/{total}…", toolbox_ocr_report_path: "OCR report:", toolbox_chain_ocr: "[OCR subtitle deduplication]"
+    toolbox_ocr_dedup: "OCR subtitle deduplication", toolbox_ocr_video: "Video source", toolbox_ocr_video_placeholder: "Uses the project video first; you can also choose a video", toolbox_ocr_video_hint: "A project video is used automatically; an external SRT falls back to the current Launcher video. Choose a video when the current media is audio-only or unavailable.", toolbox_ocr_video_reject: "Choose a supported video file.", toolbox_ocr_region: "On-screen text region", toolbox_ocr_region_full: "Full frame (100%)", toolbox_ocr_region_bottom: "Bottom 30%", toolbox_ocr_region_custom: "Custom percentage region", toolbox_ocr_region_hint: "A smaller region reduces OCR input.", toolbox_ocr_model: "OCR model", toolbox_ocr_model_tiny: "PP-OCRv6 tiny (CPU)", toolbox_ocr_model_small: "PP-OCRv6 small (CPU)", toolbox_ocr_model_hint: "tiny is faster; small is more robust on complex frames but uses more CPU and memory.", toolbox_ocr_x1: "Left (X1)%", toolbox_ocr_y1: "Top (Y1)%", toolbox_ocr_x2: "Right (X2)%", toolbox_ocr_y2: "Bottom (Y2)%", toolbox_ocr_threshold: "Similarity threshold", toolbox_ocr_threshold_hint: "Uses the highest of the three reference similarities; default 0.5.", toolbox_ocr_threshold_invalid: "Similarity threshold must be a number from 0 to 1.", toolbox_ocr_report: "Generate OCR decision report (CSV)", toolbox_ocr_hint: "Cues highly similar to on-screen text are disabled or removed from SRT.", toolbox_run_ocr: "Run OCR subtitle deduplication", toolbox_status_ocr_initializing: "Initializing the OCR model…", toolbox_status_ocr_frame: "Recognizing subtitle frame {current}/{total}…", toolbox_ocr_report_path: "OCR report:", toolbox_chain_ocr: "[OCR subtitle deduplication]"
+  });
+  Object.assign(STRINGS.zh, {
+    settings_ocr: "OCR 模型",
+    settings_ocr_hint: "OCR 是可选功能。主程序不预装 OCR 依赖，首次使用时在这里下载独立运行环境。",
+    ocr_runtime_path: "OCR 运行环境目录",
+    ocr_runtime_path_hint: "默认安装到用户目录；可改到空间更充足的磁盘。运行环境和模型随这里保存。",
+    ocr_runtime_model: "OCR 模型",
+    ocr_runtime_refresh: "重新扫描",
+    ocr_runtime_install: "安装 OCR 支持",
+    ocr_runtime_repair: "修复 OCR 支持",
+    ocr_runtime_cancel: "取消安装",
+    ocr_runtime_missing: "OCR 支持未安装",
+    ocr_runtime_installing: "正在安装 OCR 支持……",
+    ocr_runtime_ready: "OCR 支持已就绪",
+    ocr_runtime_broken: "OCR 支持需要修复",
+    ocr_runtime_install_done: "OCR 支持已安装完成",
+    ocr_runtime_cancelled: "OCR 支持安装已取消",
+    toolbox_ocr_open_settings: "在 ⚙️ 设置中下载安装 OCR 支持",
+    toolbox_ocr_model_ready: "已安装，可直接使用",
+    toolbox_ocr_model_missing: "尚未安装，请打开设置下载安装",
+  });
+  Object.assign(STRINGS.en, {
+    settings_ocr: "OCR model",
+    settings_ocr_hint: "OCR is optional. The main app does not preinstall OCR dependencies; download its separate runtime here when needed.",
+    ocr_runtime_path: "OCR runtime directory",
+    ocr_runtime_path_hint: "Installed in your user directory by default; move it to a drive with more space if needed. The runtime and model are kept here.",
+    ocr_runtime_model: "OCR model",
+    ocr_runtime_refresh: "Rescan",
+    ocr_runtime_install: "Install OCR support",
+    ocr_runtime_repair: "Repair OCR support",
+    ocr_runtime_cancel: "Cancel installation",
+    ocr_runtime_missing: "OCR support is not installed",
+    ocr_runtime_installing: "Installing OCR support…",
+    ocr_runtime_ready: "OCR support is ready",
+    ocr_runtime_broken: "OCR support needs repair",
+    ocr_runtime_install_done: "OCR support is installed",
+    ocr_runtime_cancelled: "OCR support installation was cancelled",
+    toolbox_ocr_open_settings: "Download OCR support in ⚙️ Settings",
+    toolbox_ocr_model_ready: "Installed and ready",
+    toolbox_ocr_model_missing: "Not installed; open Settings to download it",
   });
   const SERVER_STARTING_TEXT = { zh: "启动中……", en: "Starting…" };
   // Launcher 暂时面向国内用户默认北京；地域和 Workspace 仍保留在请求契约中，后续可重新开放。
@@ -415,6 +455,11 @@
     model_cache_path_invalid: "模型缓存目录不能是一个文件。",
       local_prepare_running: "本地模型正在准备中，请等待完成。",
       local_prepare_failed: (detail) => `本地模型准备失败：${detail || "请查看日志。"}`,
+      ocr_runtime_missing: "OCR 支持尚未安装。请打开设置下载安装。",
+      ocr_runtime_install_failed: (detail) => `OCR 运行环境安装失败：${detail || "请查看日志后重试。"}`,
+      ocr_runtime_cancelled: "OCR 运行环境安装已取消。",
+      ocr_model_missing: "OCR 模型尚未安装。请打开设置下载安装。",
+      ocr_runtime_path_invalid: "OCR 运行环境路径不能是一个文件。",
       workspace_missing: "新加坡地域需要 Workspace ID。",
       context_too_long: "Qwen-Audio 上下文最多 400 个字符。",
       soniox_context_too_long: "Soniox 上下文约限制为 10000 个字符。",
@@ -450,6 +495,11 @@
     model_cache_path_invalid: "The model storage path cannot point to a file.",
       local_prepare_running: "The local model is being prepared. Please wait.",
       local_prepare_failed: (detail) => `Local model preparation failed: ${detail || "check the log."}`,
+      ocr_runtime_missing: "OCR support is not installed. Open Settings to download it.",
+      ocr_runtime_install_failed: (detail) => `OCR runtime installation failed: ${detail || "check the log and retry."}`,
+      ocr_runtime_cancelled: "OCR runtime installation was cancelled.",
+      ocr_model_missing: "The OCR model is not installed. Open Settings to download it.",
+      ocr_runtime_path_invalid: "The OCR runtime path cannot point to a file.",
       workspace_missing: "Singapore region requires a Workspace ID.",
       context_too_long: "Qwen-Audio context is limited to 400 characters.",
       soniox_context_too_long: "Soniox context is limited to approximately 10,000 characters.",
@@ -486,7 +536,7 @@
   const HOTWORD_WEIGHTS = new Set([1, 2, 3, 4, 5, 50]);
   const MAX_HOTWORDS = 2000;
   const MAX_SUPER_HOTWORDS = 50;
-  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", lastLogMessage: "", result: null, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false };
+  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false };
   const dragState = { depth: 0 };
   let api = null;
   let prefsTimer = 0;
@@ -510,7 +560,7 @@
         workspaceId: saved.workspaceId,
         guiLang: saved.guiLang,
         showRareLangs: saved.showRareLangs || false,
-        appVersion: "1.4.0-beta.5",
+        appVersion: "1.4.0-beta.6",
         stickerDir: saved.stickerDir || "",
         postprocessProviders: [
           { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
@@ -521,6 +571,12 @@
         postprocessAutoPlan: saved.postprocessAutoPlan || { version: 1, enabled: false, retainIntermediate: false, steps: [] },
         modelCacheRoot: saved.modelCacheRoot || "D:\\Models\\MAW",
         localRuntime: { status: "missing", ready: false, path: "", pythonPath: "", modelCachePath: saved.modelCacheRoot || "D:\\Models\\MAW", detail: "" },
+        ocrRuntime: { status: "missing", ready: false, path: "D:\\Users\\Demo\\AppData\\Local\\MAW\\ocr-runtime", pythonPath: "", modelId: "pp-ocrv6-tiny", modelLabel: "PP-OCRv6 tiny（CPU）", detail: "" },
+        ocrModels: [
+          { id: "pp-ocrv6-tiny", label: "PP-OCRv6 tiny（CPU）", installed: false, status: "missing", detail: "" },
+          { id: "pp-ocrv6-small", label: "PP-OCRv6 small（CPU）", installed: false, status: "missing", detail: "" }
+        ],
+        ocrModelId: "pp-ocrv6-tiny",
         providers: [
           {
             id: "qwen",
@@ -598,6 +654,10 @@
       get_local_runtime: async () => ({ ok: true, ...(state.config?.localRuntime || { status: "missing", ready: false }) }),
       install_local_runtime: async () => { state.config.localRuntime = { status: "ready", ready: true, path: "D:\\Users\\Demo\\AppData\\Local\\MAW\\local-runtime", detail: "本地运行环境已就绪。" }; setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "localRuntimeReady", runtime: state.config.localRuntime }), 400); return { ok: true, installing: true }; },
       cancel_local_runtime: async () => ({ ok: true }),
+      get_ocr_runtime: async () => ({ ok: true, ...(state.config?.ocrRuntime || { status: "missing", ready: false }), models: state.config?.ocrModels || [] }),
+      save_ocr_settings: async ({ runtimePath }) => { state.config.ocrRuntime = { ...(state.config.ocrRuntime || {}), path: runtimePath || "D:\\Users\\Demo\\AppData\\Local\\MAW\\ocr-runtime" }; return { ok: true, runtimePath: state.config.ocrRuntime.path, runtime: state.config.ocrRuntime }; },
+      install_ocr_runtime: async () => { state.config.ocrRuntime = { ...(state.config.ocrRuntime || {}), status: "ready", ready: true, modelInstalled: true, detail: "OCR 模型已安装，可以在工具箱中使用。" }; state.config.ocrModels = (state.config.ocrModels || []).map((model) => ({ ...model, installed: true, status: "installed", detail: state.config.ocrRuntime.detail })); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "ocrRuntimeReady", runtime: state.config.ocrRuntime, models: state.config.ocrModels }), 400); return { ok: true, installing: true }; },
+      cancel_ocr_runtime: async () => ({ ok: true }),
       get_local_models: async ({ modelId, modelPath }) => ({ ok: true, runtime: state.config?.localRuntime || {}, models: (state.config?.providers.find((item) => item.id === "local")?.models || []).map((model) => ({ ...model, localStatus: { ...(model.localStatus || {}), ...(model.id === modelId && modelPath ? { status: "installed", installed: true, path: modelPath, detail: "已使用指定的模型目录。" } : {}) } })) }),
       prepare_local_model: async ({ modelId }) => { clearTimeout(modelPrepareTimer); modelPrepareTimer = setTimeout(() => { state.config?.providers.find((item) => item.id === "local")?.models.forEach((model) => { if (model.id === modelId) model.localStatus = { ...(model.localStatus || {}), status: "installed", installed: true, runtimeAvailable: true, canPrepare: false, detail: "已检测到本地模型。" }; }); window.MAWLauncher.onBackendEvent({ type: "modelPrepared", modelId }); }, 400); return { ok: true, preparing: true, modelId }; },
       cancel_local_model: async () => { clearTimeout(modelPrepareTimer); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "localPrepareCancelled" }), 80); return { ok: true, cancelling: true }; },
@@ -606,7 +666,7 @@
       open_blank_html: async () => ({ ok: true }),
       check_ffmpeg: async () => ({ ok: true, found: true, directory: "D:\\FFmpeg\\bin", ffmpeg: "D:\\FFmpeg\\bin\\ffmpeg.exe", ffprobe: "D:\\FFmpeg\\bin\\ffprobe.exe" }),
       save_ffmpeg_path: async ({ path }) => ({ ok: Boolean(path), found: Boolean(path), directory: path || "", ffmpeg: path || "", ffprobe: path || "" }),
-      choose_folder: async ({ kind } = {}) => ({ ok: true, path: kind === "model-cache" ? "D:\\Models\\MAW" : "D:\\Stickers" }),
+      choose_folder: async ({ kind } = {}) => ({ ok: true, path: kind === "model-cache" ? "D:\\Models\\MAW" : (kind === "ocr-runtime" ? "D:\\Models\\MAW\\ocr-runtime" : "D:\\Stickers") }),
       save_sticker_dir: async ({ path }) => { saved.stickerDir = path || ""; return { ok: Boolean(path), stickerDir: saved.stickerDir, field: path ? "" : "stickerDir", error: path ? "" : "missing" }; },
       save_postprocess_settings: async ({ providerId, apiKey, displayName, reasoningMode }) => { if (providerId === "custom") saved.customDisplayName = displayName || ""; return { ok: true, providerId, label: providerId === "custom" ? (displayName || "Custom (OpenAI-compatible)") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")), displayName: providerId === "custom" ? (displayName || "") : "", maskedApiKey: apiKey ? "sk-…mock" : "", reasoningMode: reasoningMode || "off", verified: false }; },
       test_postprocess_connection: async ({ providerId }) => ({ ok: true, providerId, verified: true }),
@@ -780,6 +840,52 @@
     $("localRuntimeProgressBar").style.width = `${Math.max(0, Math.min(100, state.localRuntimeProgress))}%`;
     $("localRuntimeProgressMessage").textContent = state.localRuntimeProgressMessage || "";
   }
+  function renderOcrRuntime() {
+    const runtime = state.config?.ocrRuntime || {};
+    const models = Array.isArray(state.config?.ocrModels) ? state.config.ocrModels : [];
+    const labels = models.map((item) => item.id === "pp-ocrv6-tiny" ? t("toolbox_ocr_model_tiny") : (item.id === "pp-ocrv6-small" ? t("toolbox_ocr_model_small") : (item.label || item.id)));
+    const installing = state.ocrRuntimeInstalling;
+    const key = installing ? "ocr_runtime_installing" : ({ ready: "ocr_runtime_ready", broken: "ocr_runtime_broken", missing: "ocr_runtime_missing" }[runtime.status] || "ocr_runtime_missing");
+    const target = $("ocrRuntimeStatus");
+    target.textContent = installing && state.ocrRuntimeProgressMessage ? state.ocrRuntimeProgressMessage : t(key);
+    target.className = `local-status ${installing ? "warn" : (runtime.ready ? "ready" : "warn")}`;
+    $("ocrRuntimePath").value = runtime.path || $("ocrRuntimePath").value || "";
+    $("ocrSettingsModel").textContent = labels.length ? labels.join(" / ") : t("toolbox_ocr_model_tiny");
+    $("ocrSettingsModelStatus").textContent = runtime.detail || (runtime.ready ? t("toolbox_ocr_model_ready") : t("toolbox_ocr_model_missing"));
+    const location = runtime.path ? `${t("ocr_runtime_path")}: ${runtime.path}` : "";
+    $("ocrRuntimeHint").textContent = [runtime.detail || (runtime.ready ? t("ocr_runtime_ready") : t("settings_ocr_hint")), location].filter(Boolean).join("\n");
+    const button = $("installOcrRuntime");
+    button.disabled = false;
+    button.textContent = installing ? t("ocr_runtime_cancel") : (["ready", "broken"].includes(runtime.status) ? t("ocr_runtime_repair") : t("ocr_runtime_install"));
+    $("refreshOcrRuntime").disabled = installing;
+    const progress = $("ocrRuntimeProgress");
+    progress.classList.toggle("hidden", !installing);
+    $("ocrRuntimeProgressBar").style.width = `${Math.max(0, Math.min(100, state.ocrRuntimeProgress))}%`;
+    $("ocrRuntimeProgressMessage").textContent = state.ocrRuntimeProgressMessage || "";
+    window.MAWLauncher?.onOcrRuntimeChanged?.();
+  }
+  async function refreshOcrRuntime() {
+    const result = await bridge("get_ocr_runtime");
+    if (!result.ok) { applyErrorResult(result); return result; }
+    state.config.ocrRuntime = result;
+    state.config.ocrModels = result.models || state.config.ocrModels || [];
+    renderOcrRuntime();
+    return result;
+  }
+  async function saveOcrRuntimePath(path) {
+    const value = String(path || "").trim();
+    const result = await bridge("save_ocr_settings", { runtimePath: value });
+    if (!result.ok) {
+      applyErrorResult(result);
+      return result;
+    }
+    state.config.ocrRuntime = result.runtime || state.config.ocrRuntime || {};
+    state.config.ocrRuntime.path = result.runtimePath || value;
+    renderOcrRuntime();
+    setError("ocrRuntimePath", "");
+    setStatus(t("saved"));
+    return result;
+  }
   function renderLocalModelStatus() {
     if (!isLocalProvider()) { $("model").disabled = false; return; }
     const status = localStatus();
@@ -851,7 +957,7 @@
     setStatus(t("saved"));
     return result;
   }
-  function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); $("langToggle").textContent = t("other_language"); $("demoBadge").textContent = t("demo_mode"); renderKeyStatus(); renderStickerCurrent(); renderPromptCharacterCount(); renderSonioxContextCharacterCount(); renderHotwordWarnings(); renderServerButton(); renderLocalRuntime(); renderLocalModelStatus(); }
+  function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); $("langToggle").textContent = t("other_language"); $("demoBadge").textContent = t("demo_mode"); renderKeyStatus(); renderStickerCurrent(); renderPromptCharacterCount(); renderSonioxContextCharacterCount(); renderHotwordWarnings(); renderServerButton(); renderLocalRuntime(); renderOcrRuntime(); renderLocalModelStatus(); }
   function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); const local = isLocalProvider(); $("apiKeyField").classList.toggle("hidden", local || current.requiresApiKey === false); $("localRuntimePanel").classList.toggle("hidden", !local); $("localModelPanel").classList.toggle("hidden", !local); $("localDeviceField").classList.toggle("hidden", !local); $("openKeyUrl").classList.toggle("hidden", local || current.requiresApiKey === false); $("apiKey").value = current.apiKey || ""; $("openKeyUrl").textContent = current.label; $("providerNote").textContent = current.note || ""; $("providerNote").classList.toggle("hidden", !current.note); applySelectedModel(persistReset); $("regionField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || current.regions.length === 0); renderKeyStatus(); syncWorkspace(); syncAdvancedParamsGroup(); if (local) { renderLocalRuntime(); void refreshLocalRuntime(); void refreshLocalModels(); } }
   function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); syncLocalModelPath(model); $("modelNote").textContent = model.note || ""; applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncSonioxContextOptions(model); renderLocalModelStatus(); syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
   function applyProviderLanguages(current, model, persistReset = false) { const el = $("language"); $("languageGroup").classList.toggle("hidden", current.supportsLanguage === false); const previous = el.multiple ? Array.from(el.selectedOptions).map((o) => o.value) : (el.value ? [el.value] : []); const remembered = state.config.lastLanguage; const wanted = previous.length && persistReset ? previous : (remembered !== null && remembered !== undefined ? (remembered ? remembered.split(",") : []) : [state.config.language].filter(Boolean)); el.multiple = Boolean(current.multiLanguage); $("advancedOptionsGrid").classList.toggle("single-language", !current.multiLanguage); if (current.multiLanguage) el.size = 6; else el.removeAttribute("size"); const showRare = Boolean(state.config.showRareLangs); const commons = current.commonLanguages || []; const available = model.languages?.length ? model.languages : current.languages; const visible = !showRare && commons.length ? available.filter((item) => commons.includes(item.id)) : available; fillSelect("language", visible, ""); const codes = new Set(visible.map((item) => item.id)); const restored = wanted.filter((code) => code && codes.has(code)); if (current.multiLanguage) { Array.from(el.options).forEach((o) => { o.selected = restored.includes(o.value); }); } else { el.value = restored[0] || ""; } $("languageHint").classList.toggle("hidden", !current.multiLanguage); $("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0); $("languageReset").classList.toggle("hidden", !current.multiLanguage); }
@@ -894,6 +1000,7 @@
   function openSettings(sectionId = "", focusId = "") {
     $("settingsModal").classList.remove("hidden");
     refreshFfmpeg();
+    void refreshOcrRuntime();
     renderStickerCurrent();
     $("showRareLangs").checked = Boolean(state.config.showRareLangs);
     if (sectionId) {
@@ -1016,6 +1123,30 @@
       setStatus(t("local_runtime_cancelled"));
       appendLog(t("local_runtime_cancelled"));
     }
+    if (event.type === "ocrRuntimeProgress") {
+      state.ocrRuntimeInstalling = true;
+      state.ocrRuntimeProgress = Number(event.percent || 0);
+      state.ocrRuntimeProgressMessage = event.message || "";
+      renderOcrRuntime();
+    }
+    if (event.type === "ocrRuntimeReady") {
+      state.ocrRuntimeInstalling = false;
+      state.ocrRuntimeProgress = 100;
+      state.ocrRuntimeProgressMessage = "";
+      state.config.ocrRuntime = event.runtime || { status: "ready", ready: true };
+      state.config.ocrModels = event.models || state.config.ocrModels || [];
+      renderOcrRuntime();
+      setStatus(t("ocr_runtime_install_done"));
+      appendLog(t("ocr_runtime_install_done"));
+    }
+    if (event.type === "ocrRuntimeCancelled") {
+      state.ocrRuntimeInstalling = false;
+      state.ocrRuntimeProgressMessage = "";
+      void refreshOcrRuntime();
+      renderOcrRuntime();
+      setStatus(t("ocr_runtime_cancelled"));
+      appendLog(t("ocr_runtime_cancelled"));
+    }
     if (event.type === "error" && event.code === "local_prepare_failed") {
       state.localPreparing = false;
       state.localProgressMessage = "";
@@ -1026,6 +1157,12 @@
       state.localRuntimeProgressMessage = "";
       void refreshLocalRuntime();
       renderLocalRuntime();
+    }
+    if (event.type === "error" && ["ocr_runtime_install_failed", "ocr_runtime_cancelled"].includes(event.code)) {
+      state.ocrRuntimeInstalling = false;
+      state.ocrRuntimeProgressMessage = "";
+      void refreshOcrRuntime();
+      renderOcrRuntime();
     }
     if (event.type === "error") {
       setRunning(false);
@@ -1072,6 +1209,11 @@
   $("pickLocalModelCachePath").addEventListener("click", async () => { const result = await bridge("choose_folder", { kind: "model-cache" }); if (result.ok) { $("localModelCachePath").value = result.path; await saveLocalModelCache(result.path); } });
   $("localModelCachePath").addEventListener("input", () => setError("localModelCachePath", ""));
   $("localModelCachePath").addEventListener("change", async () => { await saveLocalModelCache($("localModelCachePath").value); });
+  $("pickOcrRuntimePath").addEventListener("click", async () => { const result = await bridge("choose_folder", { kind: "ocr-runtime" }); if (result.ok) { $("ocrRuntimePath").value = result.path; await saveOcrRuntimePath(result.path); } });
+  $("ocrRuntimePath").addEventListener("input", () => setError("ocrRuntimePath", ""));
+  $("ocrRuntimePath").addEventListener("change", async () => { await saveOcrRuntimePath($("ocrRuntimePath").value); });
+  $("refreshOcrRuntime").addEventListener("click", async () => { $("refreshOcrRuntime").disabled = true; try { await refreshOcrRuntime(); } finally { $("refreshOcrRuntime").disabled = false; } });
+  $("installOcrRuntime").addEventListener("click", async () => { if (state.ocrRuntimeInstalling) { await bridge("cancel_ocr_runtime"); return; } state.ocrRuntimeInstalling = true; state.ocrRuntimeProgress = 0; state.ocrRuntimeProgressMessage = t("ocr_runtime_installing"); renderOcrRuntime(); appendLog(t("ocr_runtime_installing")); const result = await bridge("install_ocr_runtime", { repair: ["ready", "broken"].includes(state.config.ocrRuntime?.status) }); if (!result.ok) { state.ocrRuntimeInstalling = false; state.ocrRuntimeProgressMessage = ""; applyErrorResult(result); renderOcrRuntime(); } });
   $("localModelPath").addEventListener("input", () => { setError("localModelPath", ""); if (isLocalProvider()) { state.localModelPaths[selectedModel().id] = $("localModelPath").value.trim(); void refreshLocalModels(); } });
   $("refreshLocalRuntime").addEventListener("click", async () => { $("refreshLocalRuntime").disabled = true; try { await refreshLocalRuntime(); await refreshLocalModels(); } finally { $("refreshLocalRuntime").disabled = false; } });
   $("installLocalRuntime").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localRuntimeInstalling) { await bridge("cancel_local_runtime"); return; } state.localRuntimeInstalling = true; state.localRuntimeProgress = 0; state.localRuntimeProgressMessage = t("local_runtime_installing"); renderLocalRuntime(); appendLog(t("local_runtime_installing")); const result = await bridge("install_local_runtime", { repair: state.config.localRuntime?.status === "ready" }); if (!result.ok) { state.localRuntimeInstalling = false; state.localRuntimeProgressMessage = ""; applyErrorResult(result); renderLocalRuntime(); } });

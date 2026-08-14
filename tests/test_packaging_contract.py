@@ -117,10 +117,12 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("upx=False", spec)
         self.assertIn("maw.gui_web", spec)
         self.assertIn("maw.cli", spec)
-        self.assertIn('collect_all("rapidocr")', spec)
-        self.assertIn('collect_all("onnxruntime")', spec)
+        self.assertNotIn('collect_all("rapidocr")', spec)
+        self.assertNotIn('collect_all("onnxruntime")', spec)
         self.assertIn('binaries=binaries', spec)
-        self.assertIn("pp-ocrv6_det_small.onnx", spec.lower())
+        self.assertIn("binaries = []", spec)
+        self.assertNotIn("rapidocr_datas", spec)
+        self.assertNotIn("onnxruntime_datas", spec)
         for module in (
             "maw.postprocess",
             "maw.postprocess_io",
@@ -137,6 +139,10 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("maw.soniox", spec)
         self.assertIn("local-runtime", spec)
         self.assertIn("local_runtime_worker.py", spec)
+        self.assertIn("ocr-runtime", spec)
+        self.assertIn("ocr_runtime_worker.py", spec)
+        for module in ("media.py", "postprocess.py", "postprocess_io.py", "postprocess_ocr.py", "project.py", "project_preview.py"):
+            self.assertIn(f'"{module}"), "ocr-runtime/maw"', spec)
         self.assertIn("maw.bcut", spec)
         self.assertIn("assets", spec)
         self.assertIn("maw.ico", spec)
@@ -146,10 +152,33 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("onefile=True", spec)
         for bundled_path in ("web", "server-editor", "LICENSE", "THIRD_PARTY_NOTICES.md"):
             self.assertIn(bundled_path, spec)
-        for excluded_module in ("funasr", "qwen_asr", "torch", "torchaudio"):
+        for excluded_module in ("funasr", "qwen_asr", "onnxruntime", "PIL", "rapidocr", "torch", "torchaudio"):
             self.assertIn(f'"{excluded_module}"', spec)
         self.assertNotIn('"*.mp4"', spec)
         self.assertNotIn('"*.srt"', spec)
+
+    def test_ocr_dependencies_are_optional_and_runtime_worker_is_bundled_purely(self) -> None:
+        """Given optional OCR support, When metadata and the frozen spec are read, Then the main package stays OCR-free."""
+        project = tomllib.loads(read_text("pyproject.toml"))
+        dependencies = set(project["project"]["dependencies"])
+        ocr_dependencies = set(project["project"]["optional-dependencies"]["ocr"])
+        self.assertNotIn("onnxruntime>=1.18", dependencies)
+        self.assertNotIn("pillow>=10.0.0", dependencies)
+        self.assertNotIn("rapidocr>=3.9.0", dependencies)
+        self.assertEqual(
+            ocr_dependencies,
+            {"onnxruntime>=1.18", "pillow>=10.0.0", "rapidocr>=3.9.0"},
+        )
+        lockfile = read_text("uv.lock")
+        self.assertIn('ocr = [', lockfile)
+        self.assertIn('marker = "extra == \'ocr\'"', lockfile)
+        spec = read_text("MAW.spec")
+        for relative in (
+            "maw/ocr_runtime_worker.py",
+            "maw/postprocess_ocr.py",
+            "maw/postprocess_io.py",
+        ):
+            self.assertIn(f'(str(ROOT / "{relative.split("/")[0]}" / "{relative.split("/")[1]}"), "ocr-runtime/maw")', spec)
 
     def test_local_runtime_bundles_every_local_import_dependency(self) -> None:
         """Given local ASR entrypoints, When packaging is read, Then their local imports are copied beside them."""

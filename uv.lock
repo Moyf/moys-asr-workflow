@@ -1285,16 +1285,13 @@ wheels = [
 
 [[package]]
 name = "moys-asr-workflow"
-version = "1.4.0b5"
+version = "1.4.0b6"
 source = { virtual = "." }
 dependencies = [
     { name = "jieba" },
     { name = "numpy" },
-    { name = "onnxruntime" },
-    { name = "pillow" },
     { name = "pywebview" },
     { name = "pywebview", extra = ["qt"], marker = "sys_platform == 'linux'" },
-    { name = "rapidocr" },
     { name = "requests" },
 ]
 
@@ -1309,6 +1306,11 @@ local = [
     { name = "torchaudio", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'win32'" },
     { name = "torchaudio", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'win32'" },
 ]
+ocr = [
+    { name = "onnxruntime" },
+    { name = "pillow" },
+    { name = "rapidocr" },
+]
 
 [package.dev-dependencies]
 build = [
@@ -1322,19 +1324,19 @@ requires-dist = [
     { name = "hf-xet", marker = "extra == 'local'", specifier = ">=1.5" },
     { name = "jieba", specifier = ">=0.42" },
     { name = "numpy", specifier = ">=2.2,<2.5" },
-    { name = "onnxruntime", specifier = ">=1.18" },
-    { name = "pillow", specifier = ">=10.0.0" },
+    { name = "onnxruntime", marker = "extra == 'ocr'", specifier = ">=1.18" },
+    { name = "pillow", marker = "extra == 'ocr'", specifier = ">=10.0.0" },
     { name = "pywebview", marker = "sys_platform != 'linux'", specifier = ">=6.2.1" },
     { name = "pywebview", extras = ["qt"], marker = "sys_platform == 'linux'", specifier = ">=6.2.1" },
     { name = "qwen-asr", marker = "extra == 'local'", specifier = ">=0.0.6" },
-    { name = "rapidocr", specifier = ">=3.9.0" },
+    { name = "rapidocr", marker = "extra == 'ocr'", specifier = ">=3.9.0" },
     { name = "requests", specifier = ">=2.28" },
     { name = "torch", marker = "sys_platform == 'win32' and extra == 'local'", specifier = ">=2.13.0", index = "https://download.pytorch.org/whl/cu130" },
     { name = "torch", marker = "sys_platform != 'win32' and extra == 'local'", specifier = ">=2.13.0" },
     { name = "torchaudio", marker = "sys_platform == 'win32' and extra == 'local'", specifier = ">=2.11.0", index = "https://download.pytorch.org/whl/cu130" },
     { name = "torchaudio", marker = "sys_platform != 'win32' and extra == 'local'", specifier = ">=2.11.0" },
 ]
-provides-extras = ["local"]
+provides-extras = ["local", "ocr"]
 
 [package.metadata.requires-dev]
 build = [{ name = "pyinstaller", specifier = "==6.16.0" }]
