@@ -2443,6 +2443,41 @@ class EmojiFontTests(unittest.TestCase):
 
         self.assertTrue(api.pump.events.empty())
 
+    def test_emoji_font_event_delivered_on_first_launch_when_pump_starts_after_download(self) -> None:
+        """Given 首次启动时字体下载在 pump 启动前完成, When pump 启动, Then 事件被送达页面。
+
+        这覆盖了首次 Linux 启动的场景：window loaded 事件触发前字体下载已完成，
+        事件进入队列但 pump 尚未启动；loaded 触发后 pump.start() 被调用，
+        队列中的事件应立即 flush 到前端。
+        """
+        window = FakeWindow()
+        api = LauncherApi(window_getter=lambda: window)
+        dest = self.root / "cache" / "NotoColorEmoji.ttf"
+
+        # 模拟下载在 pump 启动前完成
+        with mock.patch("maw.gui_web.download_emoji_font", return_value=dest):
+            api._download_emoji_font_worker(dest)
+
+        # 此时事件在队列中，但未送达页面
+        self.assertFalse(api.pump.events.empty())
+        self.assertEqual(len(window.scripts), 0)
+
+        # 模拟 window.events.loaded 触发，启动 pump
+        api.pump.start()
+
+        # 等待 pump flush（pump 每 0.1 秒 flush 一次）
+        import time
+        deadline = time.time() + 2.0
+        while time.time() < deadline and len(window.scripts) == 0:
+            time.sleep(0.05)
+
+        api.pump.shutdown()
+
+        # 验证事件已送达页面
+        self.assertGreater(len(window.scripts), 0)
+        self.assertIn("emojiFontReady", window.scripts[-1])
+        self.assertIn(dest.as_uri(), window.scripts[-1])
+
 
 if __name__ == "__main__":
     unittest.main()

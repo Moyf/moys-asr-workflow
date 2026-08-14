@@ -1378,7 +1378,12 @@ def run_app(*, debug: bool = False, devtools: bool = False) -> None:
     )
     if window is not None:
         window.events.closing += lambda: api.shutdown()
-        window.events.loaded += lambda: apply_dark_title_bar(WINDOW_TITLE)
+
+        def _on_loaded() -> None:
+            api.pump.start()
+            apply_dark_title_bar(WINDOW_TITLE)
+
+        window.events.loaded += _on_loaded
     icon = asset_path("assets/maw.ico")
     webview.start(
         lambda: bind_launcher_drop(window, api),
