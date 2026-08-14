@@ -23,6 +23,7 @@
     auto_postprocess_title: "3️⃣ 转写后自动处理",
     auto_postprocess_hint: "转写完成后按固定顺序处理字幕；首次启用某一步前，请先在工具箱中完成配置。",
     auto_postprocess_enable: "启用转写后自动处理",
+    auto_postprocess_steps: "后处理步骤",
     auto_configure: "配置",
     auto_status_disabled: "未启用",
     auto_status_config: "需要配置",
@@ -41,8 +42,11 @@
     auto_summary_disabled: "自动处理未启用。",
     auto_summary_steps: "已选择 {count} 步：{steps}",
     auto_summary_invalid: "仍有步骤需要配置：{steps}",
+    auto_step_hint_no_file: "未选择文稿",
+    auto_step_hint_no_rules: "未配置替换规则",
+    auto_step_hint_rules: "{count} 条替换规则",
+    auto_step_hint_no_video: "未选择视频",
     retry_postprocess: "从失败步骤重试后处理",
-    open_postprocess_folder: "打开自动处理中间产物",
     generate_html: "同时生成单文件版网页编辑器（html）",
     generate_html_title: "单文件版编辑器直接在浏览器打开就能用，优势是便携，但是会缺少保存功能（只能通过导出下载）",
     open_html: "📝 打开该工程的 HTML 编辑器",
@@ -95,6 +99,7 @@
     auto_postprocess_title: "3️⃣ Post-transcription processing",
     auto_postprocess_hint: "Process subtitles in a fixed order after transcription. Configure a step in the toolbox before enabling it.",
     auto_postprocess_enable: "Enable automatic post-processing",
+    auto_postprocess_steps: "Post-processing steps",
     auto_configure: "Configure",
     auto_status_disabled: "Not enabled",
     auto_status_config: "Needs configuration",
@@ -113,8 +118,11 @@
     auto_summary_disabled: "Automatic processing is disabled.",
     auto_summary_steps: "{count} selected step(s): {steps}",
     auto_summary_invalid: "Steps still need configuration: {steps}",
+    auto_step_hint_no_file: "No script selected",
+    auto_step_hint_no_rules: "No replacement rules",
+    auto_step_hint_rules: "{count} replacement rule(s)",
+    auto_step_hint_no_video: "No video selected",
     retry_postprocess: "Retry post-processing from the failed step",
-    open_postprocess_folder: "Open automatic-processing artifacts",
     generate_html: "Also generate a single-file web editor (HTML)",
     generate_html_title: "The single-file editor works directly in a browser and is portable, but cannot save changes locally; export/download instead.",
     open_html: "📝 Open this project's HTML editor",
@@ -463,9 +471,11 @@
   };
   Object.assign(STRINGS.zh, {
     start_server_editor: "🚀 启动字幕编辑器",
+    toolbox_chain_hint: "每次生成新文件，并自动作为下一步输入；选择工具后运行。",
   });
   Object.assign(STRINGS.en, {
     start_server_editor: "🚀 Start Editor",
+    toolbox_chain_hint: "Choose a tool to run; each run creates a new file and uses it as the next input.",
   });
 
   const HOME_URL = "https://github.com/Moyf/moys-asr-workflow";
@@ -616,7 +626,6 @@
       stop_server: async () => ({ ok: true }),
       start_transcription: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "log", message: "[mock] 上传完成" }), 250); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "done", result: { srtPath: "D:\\Demo\\clip.srt", jsonPath: "D:\\Demo\\clip.json", htmlPath: "D:\\Demo\\clip.edit.html" } }), 900); return { ok: true }; },
       open_output_folder: async () => ({ ok: true }),
-      open_postprocess_folder: async () => ({ ok: true }),
       open_html: async () => ({ ok: true })
     };
   }
@@ -1007,7 +1016,6 @@
     if (event.type === "error") {
       setRunning(false);
       $("retryPostprocess")?.classList.toggle("hidden", !event.canRetry);
-      $("openPostprocessFolder")?.classList.toggle("hidden", !event.postprocessRunDirectory);
       const detail = event.detail || event.message || "";
       const message = event.code ? errText(event.code, detail) : detail || t("failed");
       setStatus(message);
@@ -1019,7 +1027,6 @@
       state.result = event.result;
       setRunning(false);
       $("retryPostprocess")?.classList.add("hidden");
-      $("openPostprocessFolder")?.classList.toggle("hidden", !event.result?.postprocessRunDirectory);
       if (event.result?.srtPath) $("srtPath").value = event.result.srtPath;
       setJsonPath(event.result?.jsonPath || "");
       $("openMawe").classList.add("attention");
@@ -1065,9 +1072,9 @@
   $("showRareLangs").addEventListener("change", async () => { state.config.showRareLangs = $("showRareLangs").checked; applyProviderLanguages(provider(), selectedModel()); const result = await bridge("save_prefs", { showRareLangs: state.config.showRareLangs }); if (result.ok) setStatus(t("saved")); else applyErrorResult(result); });
   $("languageReset").addEventListener("click", () => { const el = $("language"); Array.from(el.options).forEach((o) => { o.selected = false; }); savePrefsDebounced({ language: "" }); });
   $("saveSettings").addEventListener("click", async () => { const result = await bridge("save_settings", formPayload()); if (result.ok) { const current = provider(); current.apiKey = $("apiKey").value.trim(); current.maskedApiKey = result.maskedApiKey; state.config.apiKey = current.apiKey; state.config.maskedApiKey = result.maskedApiKey; renderKeyStatus(); setStatus(t("saved")); } else applyErrorResult(result); });
-  $("start").addEventListener("click", async () => { if (!validateLocal()) return; $("retryPostprocess")?.classList.add("hidden"); $("openPostprocessFolder")?.classList.add("hidden"); $("log").textContent = ""; state.lastLogMessage = ""; const latest = $("logLatest"); latest.textContent = ""; latest.classList.add("hidden"); setRunning(true); $("logTitle").scrollIntoView({ behavior: "smooth", block: "start" }); const result = await bridge("start_transcription", formPayload()); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } else if (result.outputPath) { $("srtPath").value = result.outputPath; if (result.outputRenamed) setOutputNotice(t("output_collision")); } });
+  $("start").addEventListener("click", async () => { if (!validateLocal()) return; $("retryPostprocess")?.classList.add("hidden"); $("log").textContent = ""; state.lastLogMessage = ""; const latest = $("logLatest"); latest.textContent = ""; latest.classList.add("hidden"); setRunning(true); $("logTitle").scrollIntoView({ behavior: "smooth", block: "start" }); const result = await bridge("start_transcription", formPayload()); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } else if (result.outputPath) { $("srtPath").value = result.outputPath; if (result.outputRenamed) setOutputNotice(t("output_collision")); } });
   $("retryPostprocess").addEventListener("click", async () => { $("retryPostprocess").classList.add("hidden"); setRunning(true); const result = await bridge("retry_postprocess"); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } });
-  $("openMawe").addEventListener("click", openServerEditor); $("stopServer").addEventListener("click", stopEditorServer); $("openFolder").addEventListener("click", () => bridge("open_output_folder")); $("openPostprocessFolder").addEventListener("click", () => bridge("open_postprocess_folder"));
+  $("openMawe").addEventListener("click", openServerEditor); $("stopServer").addEventListener("click", stopEditorServer); $("openFolder").addEventListener("click", () => bridge("open_output_folder"));
   $("openMenu").addEventListener("click", () => $("htmlMenu").classList.toggle("hidden")); $("openHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_html"); }); $("openBlankHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_blank_html"); }); document.addEventListener("click", (event) => { if (!event.target.closest(".split-wrap")) $("htmlMenu").classList.add("hidden"); });
   $("mediaCard").addEventListener("dragenter", onDragEnter); $("mediaCard").addEventListener("dragleave", onDragLeave);
   bindDropField("qwenAudioHotwordsTextField", "text", "qwenAudioHotwords"); bindDropField("qwenAudioHotwordsFileField", "file", "qwenAudioHotwordsFile"); bindDropField("jsonPath", "json"); bindDropField("toolboxInputDropZone", "toolboxInput", "toolboxInputDropZone"); bindDropField("ocrVideoPathField", "ocrVideo", "ocrVideoPathField"); bindDropField("postprocessScriptPath", "script");

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -26,7 +27,7 @@ from maw.postprocess import (
     run_fixed_replacement,
     run_llm_postprocess,
 )
-from maw.postprocess_io import SubtitleArtifact
+from maw.postprocess_io import SubtitleArtifact, read_project, write_artifacts
 from maw.postprocess_llm import (
     DEFAULT_REASONING_MODE,
     LlmSettings,
@@ -325,6 +326,7 @@ class PipelineResult:
     run_directory: Path
     completed_steps: tuple[str, ...]
     warnings: tuple[str, ...] = ()
+    translated_srt_path: Path | None = None
 
 
 class PostprocessCancelled(RuntimeError):
@@ -396,6 +398,22 @@ def run_postprocess_pipeline(
     _emit(on_event, {"stage": "start", "total": len(steps), "resumed": resume_directory is not None, "runDirectory": str(run_directory)})
     current_project = resume_project_path or project_path
     current_srt = resume_srt_path or srt_path
+    current_translated_srt: Path | None = None
+    translation_target: str | None = None
+    resume_count = max(0, resume_from)
+    manifest_steps = manifest.get("steps")
+    for previous_index, previous_step in enumerate(steps[:resume_count]):
+        if str(previous_step.get("id") or "") == "translate":
+            translation_target = str(previous_step.get("target") or "zh")
+            previous_manifest_step = (
+                manifest_steps[previous_index]
+                if isinstance(manifest_steps, list) and previous_index < len(manifest_steps)
+                else None
+            )
+            if isinstance(previous_manifest_step, Mapping):
+                previous_path = str(previous_manifest_step.get("translatedSrtPath") or "").strip()
+                if previous_path:
+                    current_translated_srt = Path(previous_path).expanduser().resolve()
     completed: list[str] = [str(step["id"]) for step in steps[:max(0, resume_from)]]
     warnings: list[str] = []
     try:
@@ -420,6 +438,15 @@ def run_postprocess_pipeline(
                     on_event=on_event,
                     llm_settings=llm_settings,
                 )
+                if step_id == "translate":
+                    translation_target = str(step.get("target") or "zh")
+                    artifact = _attach_translation_track(
+                        source_project_path=current_project,
+                        source_srt_path=current_srt,
+                        translated_artifact=artifact,
+                        target=str(step.get("target") or "zh"),
+                        output_directory=run_directory,
+                    )
             except PostprocessCancelled:
                 raise
             except Exception as error:
@@ -434,11 +461,15 @@ def run_postprocess_pipeline(
             _check_cancel(cancel_event)
             current_project = artifact.project_path or current_project
             current_srt = artifact.srt_path or current_srt
+            if artifact.translated_srt_path is not None:
+                current_translated_srt = artifact.translated_srt_path
             completed.append(step_id)
             warnings.extend(artifact.warnings)
             manifest_steps[index - 1]["status"] = "done"
             manifest_steps[index - 1]["projectPath"] = str(current_project)
             manifest_steps[index - 1]["srtPath"] = str(current_srt)
+            if current_translated_srt is not None:
+                manifest_steps[index - 1]["translatedSrtPath"] = str(current_translated_srt)
             _write_manifest(run_directory, manifest)
             _emit(on_event, {
                 "stage": "step_done",
@@ -447,14 +478,30 @@ def run_postprocess_pipeline(
                 "step": step_id,
                 "projectName": current_project.name,
                 "srtName": current_srt.name,
+                "translatedSrtName": current_translated_srt.name if current_translated_srt is not None else "",
             })
-        final_project, final_srt = _publish_final(project_path, srt_path, current_project, current_srt)
+        final_project, final_srt, final_translated_srt = _publish_final(
+            project_path,
+            srt_path,
+            current_project,
+            current_srt,
+            translated_srt=current_translated_srt,
+            translation_target=translation_target,
+        )
         manifest["status"] = "done"
         manifest["finalProjectPath"] = str(final_project)
         manifest["finalSrtPath"] = str(final_srt)
+        if final_translated_srt is not None:
+            manifest["finalTranslatedSrtPath"] = str(final_translated_srt)
         _write_manifest(run_directory, manifest)
-        _emit(on_event, {"stage": "done", "total": len(steps), "projectName": final_project.name, "srtName": final_srt.name})
-        result = PipelineResult(final_project, final_srt, run_directory, tuple(completed), tuple(warnings))
+        _emit(on_event, {
+            "stage": "done",
+            "total": len(steps),
+            "projectName": final_project.name,
+            "srtName": final_srt.name,
+            "translatedSrtName": final_translated_srt.name if final_translated_srt is not None else "",
+        })
+        result = PipelineResult(final_project, final_srt, run_directory, tuple(completed), tuple(warnings), final_translated_srt)
         if not bool(normalized.get("retainIntermediate")):
             shutil.rmtree(run_directory, ignore_errors=True)
         return result
@@ -561,6 +608,139 @@ def _run_step(
     ), complete=complete, on_status=on_status)
 
 
+def _attach_translation_track(
+    *,
+    source_project_path: Path,
+    source_srt_path: Path,
+    translated_artifact: SubtitleArtifact,
+    target: str,
+    output_directory: Path,
+) -> SubtitleArtifact:
+    """Keep the pre-translation main track and add the translation as an extension track."""
+
+    if translated_artifact.project_path is None or translated_artifact.srt_path is None:
+        raise ValueError("翻译步骤没有生成完整的工程和 SRT 产物。")
+    source_project = read_project(source_project_path)
+    translated_project = read_project(translated_artifact.project_path)
+    source_segments = source_project.get("segments")
+    translated_segments = translated_project.get("segments")
+    if not isinstance(source_segments, list) or not isinstance(translated_segments, list):
+        raise ValueError("翻译前后的工程缺少有效字幕段。")
+    if len(source_segments) != len(translated_segments):
+        raise ValueError("翻译结果未保持原字幕段数，无法生成主副字幕工程。")
+
+    for index, (source, translated) in enumerate(zip(source_segments, translated_segments, strict=True), 1):
+        if not isinstance(source, dict) or not isinstance(translated, dict):
+            raise ValueError(f"第 {index} 条翻译结果不是有效字幕段。")
+        if (
+            source.get("start") != translated.get("start")
+            or source.get("end") != translated.get("end")
+            or source.get("id") != translated.get("id")
+        ):
+            raise ValueError(f"第 {index} 条翻译结果未保持原字幕时间范围或稳定 ID。")
+        if not isinstance(translated.get("text"), str) or not translated["text"].strip():
+            raise ValueError(f"第 {index} 条翻译结果为空。")
+
+    combined = copy.deepcopy(source_project)
+    multi = combined.get("multi_subtitle")
+    if not isinstance(multi, dict):
+        multi = {}
+        combined["multi_subtitle"] = multi
+    multi["schema"] = str(multi.get("schema") or "moy.asr.multi_subtitle.v1")
+    multi["enabled"] = True
+    multi["display_mode"] = str(multi.get("display_mode") or "both")
+    tracks = multi.get("tracks")
+    if not isinstance(tracks, list):
+        tracks = []
+        multi["tracks"] = tracks
+    bindings = multi.get("bindings")
+    if not isinstance(bindings, list):
+        bindings = []
+        multi["bindings"] = bindings
+
+    used_track_ids = {str(track.get("id")) for track in tracks if isinstance(track, dict) and track.get("id")}
+    base_track_id = f"translation-{target if target in TRANSLATION_TARGETS else 'zh'}"
+    track_id = base_track_id
+    track_suffix = 2
+    while track_id in used_track_ids:
+        track_id = f"{base_track_id}-{track_suffix}"
+        track_suffix += 1
+
+    extension_segments: list[dict[str, object]] = []
+    for index, translated in enumerate(translated_segments, 1):
+        assert isinstance(translated, dict)
+        extension_segment: dict[str, object] = {
+            "id": f"{track_id}-segment-{index:03d}",
+            "start": translated["start"],
+            "end": translated["end"],
+            "text": translated["text"],
+        }
+        if translated.get("disabled") is True:
+            extension_segment["disabled"] = True
+        extension_segments.append(extension_segment)
+
+    tracks.append({
+        "id": track_id,
+        "role": "extension",
+        "name": "中文翻译" if target == "zh" else "英文翻译",
+        "language": target,
+        "split_mode": "continuous" if target == "zh" else "word",
+        "source_name": f"translation-{target}.srt",
+        "segments": extension_segments,
+    })
+
+    used_main_ids = {
+        str(main_id)
+        for binding in bindings
+        if isinstance(binding, dict)
+        for main_id in (binding.get("main_segment_ids") or [])
+    }
+    used_binding_ids = {str(binding.get("id")) for binding in bindings if isinstance(binding, dict) and binding.get("id")}
+    for index, (source, extension) in enumerate(zip(source_segments, extension_segments, strict=True), 1):
+        assert isinstance(source, dict)
+        main_id = str(source["id"])
+        if main_id in used_main_ids:
+            continue
+        binding_id = f"translation-binding-{index:03d}"
+        binding_suffix = 2
+        while binding_id in used_binding_ids:
+            binding_id = f"translation-binding-{index:03d}-{binding_suffix}"
+            binding_suffix += 1
+        used_binding_ids.add(binding_id)
+        bindings.append({
+            "id": binding_id,
+            "track_id": track_id,
+            "main_segment_ids": [main_id],
+            "extension_segment_ids": [extension["id"]],
+            "start_offset_ms": int(extension["start"]) - int(source["start"]),
+            "end_offset_ms": int(extension["end"]) - int(source["end"]),
+        })
+        used_main_ids.add(main_id)
+
+    warnings = (
+        *translated_artifact.warnings,
+        "翻译结果已作为副字幕保存，主字幕保留翻译前版本。",
+    )
+    combined_artifact = write_artifacts(
+        combined,
+        source_project_path=source_project_path,
+        source_srt_path=source_srt_path,
+        operation=f"translate-{target}-combined",
+        write_project=True,
+        write_srt=True,
+        warnings=warnings,
+        output_directory=output_directory,
+    )
+    return SubtitleArtifact(
+        source_project_path=combined_artifact.source_project_path,
+        source_srt_path=combined_artifact.source_srt_path,
+        project_path=combined_artifact.project_path,
+        srt_path=combined_artifact.srt_path,
+        warnings=combined_artifact.warnings,
+        translated_srt_path=translated_artifact.srt_path,
+    )
+
+
 def _create_run_directory(media_path: Path) -> Path:
     root = media_path.expanduser().resolve().parent / POSTPROCESS_WORKSPACE_NAME
     root.mkdir(parents=True, exist_ok=True)
@@ -578,7 +758,15 @@ def _create_run_directory(media_path: Path) -> Path:
             counter += 1
 
 
-def _publish_final(source_project: Path, source_srt: Path, project: Path, srt: Path) -> tuple[Path, Path]:
+def _publish_final(
+    source_project: Path,
+    source_srt: Path,
+    project: Path,
+    srt: Path,
+    *,
+    translated_srt: Path | None = None,
+    translation_target: str | None = None,
+) -> tuple[Path, Path, Path | None]:
     source_srt = source_srt.expanduser().resolve()
     source_project = source_project.expanduser().resolve()
     suffix = source_project.suffix.lower() if source_project.suffix.lower() in {".mosp", ".json"} else ".mosp"
@@ -588,10 +776,17 @@ def _publish_final(source_project: Path, source_srt: Path, project: Path, srt: P
         marker = "" if counter == 1 else f"-{counter}"
         final_srt = base.with_name(f"{base.name}{marker}.srt")
         final_project = base.with_name(f"{base.name}{marker}{suffix}")
-        if not final_srt.exists() and not final_project.exists():
+        final_translated_srt = None
+        if translated_srt is not None:
+            target = translation_target if translation_target in TRANSLATION_TARGETS else "zh"
+            final_translated_srt = base.with_name(f"{base.name}{marker}.translate-{target}.srt")
+        destinations = (final_project, final_srt, final_translated_srt)
+        if all(not path.exists() for path in destinations if path is not None):
             _copy_atomic(srt, final_srt)
             _copy_atomic(project, final_project)
-            return final_project.resolve(), final_srt.resolve()
+            if translated_srt is not None and final_translated_srt is not None:
+                _copy_atomic(translated_srt, final_translated_srt)
+            return final_project.resolve(), final_srt.resolve(), final_translated_srt.resolve() if final_translated_srt is not None else None
         counter += 1
 
 

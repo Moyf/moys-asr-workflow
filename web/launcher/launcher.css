@@ -290,6 +290,10 @@ label {
   font-size: 12px;
 }
 
+.hint-top-spaced {
+  padding-top: 6px;
+}
+
 .warn {
   color: var(--amber);
 }
@@ -428,6 +432,10 @@ label {
   margin: 10px 0;
 }
 
+.auto-postprocess-options {
+  margin-top: 10px;
+}
+
 .auto-postprocess-steps {
   display: grid;
   gap: 6px;
@@ -436,7 +444,7 @@ label {
 
 .auto-step-row {
   display: grid;
-  grid-template-columns: minmax(150px, auto) 1fr auto;
+  grid-template-columns: minmax(150px, auto) minmax(76px, auto) minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   min-height: 36px;
@@ -460,6 +468,14 @@ label {
   color: var(--amber-hover);
 }
 
+.auto-step-hint {
+  color: var(--text-faint);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .auto-translate-target {
   max-width: 240px;
   margin: 10px 0;
@@ -476,8 +492,13 @@ label {
   }
 
   .auto-step-status {
-    grid-column: 1 / -1;
+    grid-column: 1;
     grid-row: 2;
+  }
+
+  .auto-step-hint {
+    grid-column: 1 / -1;
+    grid-row: 3;
   }
 }
 

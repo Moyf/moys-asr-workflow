@@ -9884,10 +9884,11 @@ async function parseSubtitleImportFile(file) {
       return copy;
     });
     window.AsrEditorUtils.normalizeSegmentTimings(sourceSegments);
-    if (!sourceSegments.length || sourceSegments.some((segment) => !segment.text)) {
-      throw new Error('扩展字幕包含空文本或无效时间码');
+    const validSegments = sourceSegments.filter((segment) => segment.text.trim());
+    if (!validSegments.length) {
+      throw new Error('扩展字幕没有可导入的有效文本或时间码');
     }
-    return sourceSegments;
+    return validSegments;
   } finally {
     finishLoading();
   }
@@ -9974,7 +9975,7 @@ async function showMultiSubtitleImportChoice(file, segments, options = {}) {
   [multiSubtitleImportReplace, multiSubtitleImportExtension].forEach((button) => {
     button?.setAttribute('aria-pressed', 'false');
   });
-  if (projectImport) renderProjectImportPreview(pending);
+  if (projectImport) renderProjectImportPreview(pendingMultiImport);
   else renderMultiImportPreview(null, segments);
   multiSubtitleImportModal?.classList.add('show');
   // 工程文件必须明确选择“打开”或“作为副字幕”；SRT 保持原有默认导入路径。

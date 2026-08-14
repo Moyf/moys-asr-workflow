@@ -8,6 +8,7 @@ from threading import Event
 from unittest import mock
 
 from maw.gui_web import LauncherApi, LauncherPaths, _request_from_payload
+from maw.postprocess_io import SubtitleArtifact
 from maw.postprocess_pipeline import (
     PostprocessCancelled,
     PostprocessPipelineError,
@@ -18,6 +19,8 @@ from maw.postprocess_pipeline import (
     run_postprocess_pipeline,
     save_postprocess_plan,
     snapshot_postprocess_llm_settings,
+    _publish_final,
+    _attach_translation_track,
     validate_plan,
 )
 
@@ -62,6 +65,61 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertFalse(plan["enabled"])
         self.assertFalse(plan["retainIntermediate"])
         self.assertEqual([step["id"] for step in plan["steps"]], ["match", "replace", "proofread", "resegment", "ocr", "translate"])
+
+    def test_translation_keeps_main_track_and_adds_extension_track(self) -> None:
+        source_payload = {
+            "segments": [
+                {"id": "main-001", "start": 0, "end": 1000, "text": "原文一", "items": [{"text": "原文一", "start": 0, "end": 1000}]},
+                {"id": "main-002", "start": 1100, "end": 2000, "text": "原文二"},
+            ],
+        }
+        translated_payload = {
+            "segments": [
+                {"id": "main-001", "start": 0, "end": 1000, "text": "Translation one"},
+                {"id": "main-002", "start": 1100, "end": 2000, "text": "Translation two"},
+            ],
+        }
+        self.project.write_text(json.dumps(source_payload, ensure_ascii=False), encoding="utf-8")
+        translated_project = self.root / "translated.mosp"
+        translated_srt = self.root / "translated.srt"
+        translated_project.write_text(json.dumps(translated_payload, ensure_ascii=False), encoding="utf-8")
+        translated_srt.write_text(
+            "1\n00:00:00,000 --> 00:00:01,000\nTranslation one\n\n2\n00:00:01,100 --> 00:00:02,000\nTranslation two\n",
+            encoding="utf-8",
+        )
+
+        result = _attach_translation_track(
+            source_project_path=self.project,
+            source_srt_path=self.srt,
+            translated_artifact=SubtitleArtifact(self.project, self.srt, translated_project, translated_srt),
+            target="en",
+            output_directory=self.root / "run",
+        )
+        combined = json.loads(result.project_path.read_text(encoding="utf-8"))
+
+        self.assertEqual([segment["text"] for segment in combined["segments"]], ["原文一", "原文二"])
+        self.assertEqual(combined["segments"][0]["items"][0]["text"], "原文一")
+        self.assertTrue(combined["multi_subtitle"]["enabled"])
+        track = combined["multi_subtitle"]["tracks"][0]
+        self.assertEqual(track["language"], "en")
+        self.assertEqual([segment["text"] for segment in track["segments"]], ["Translation one", "Translation two"])
+        self.assertEqual(len(combined["multi_subtitle"]["bindings"]), 2)
+        self.assertIn("原文一", result.srt_path.read_text(encoding="utf-8"))
+        self.assertNotIn("Translation one", result.srt_path.read_text(encoding="utf-8"))
+        self.assertEqual(result.translated_srt_path.read_text(encoding="utf-8").count("Translation"), 2)
+
+        final_project, final_srt, final_translated_srt = _publish_final(
+            self.project,
+            self.srt,
+            result.project_path,
+            result.srt_path,
+            translated_srt=result.translated_srt_path,
+            translation_target="en",
+        )
+        self.assertEqual(final_project.name, "clip.postprocess.mosp")
+        self.assertEqual(final_srt.name, "clip.postprocess.srt")
+        self.assertEqual(final_translated_srt.name, "clip.postprocess.translate-en.srt")
+        self.assertIn("Translation one", final_translated_srt.read_text(encoding="utf-8"))
 
     def test_validation_requires_a_step_and_checks_ocr_dependencies(self) -> None:
         empty_plan = default_postprocess_plan()
@@ -154,6 +212,7 @@ class PostprocessPipelineTests(unittest.TestCase):
 
         self.assertTrue(result.project_path.is_file())
         self.assertTrue(result.srt_path.is_file())
+        self.assertIsNone(result.translated_srt_path)
         self.assertFalse(result.run_directory.exists())
         self.assertIn('"text": "错字"', self.project.read_text(encoding="utf-8"))
         self.assertIn("正字", result.srt_path.read_text(encoding="utf-8"))

@@ -382,6 +382,7 @@ class LauncherApi:
         self.result: TranscriptionResult | None = None
         self.postprocess_retry_context: dict[str, object] | None = None
         self.postprocess_workspace_directory: Path | None = None
+        self.postprocess_translation_srt_path: Path | None = None
         self._last_postprocess_progress_at = 0.0
         self.pump = EventPump(window_getter=self.window_getter)
 
@@ -997,6 +998,7 @@ class LauncherApi:
         self.result = None
         self.cancel_event = Event()
         self.postprocess_workspace_directory = None
+        self.postprocess_translation_srt_path = None
         self._last_postprocess_progress_at = 0.0
         self.pump.start()
         self.worker = threading.Thread(target=self._worker_main, args=(request, self.cancel_event), daemon=True)
@@ -1242,6 +1244,7 @@ class LauncherApi:
                     llm_settings=request.postprocess_llm_settings,
                 )
                 auto_run_directory = auto_result.run_directory
+                self.postprocess_translation_srt_path = auto_result.translated_srt_path
                 self.result = replace(result, srt_path=auto_result.srt_path, json_path=auto_result.project_path)
             except PostprocessCancelled as error:
                 self._emit({"type": "error", "code": "postprocess_cancelled", "detail": str(error), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")})
@@ -1281,7 +1284,7 @@ class LauncherApi:
         result = self.result
         assert result is not None
         self.postprocess_workspace_directory = auto_run_directory if auto_run_directory and auto_run_directory.is_dir() else None
-        self._emit({"type": "done", "result": {"srtPath": str(result.srt_path), "jsonPath": str(result.json_path), "htmlPath": str(result.html_path or ""), "rawPath": str(result.raw_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
+        self._emit({"type": "done", "result": {"srtPath": str(result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(result.json_path), "htmlPath": str(result.html_path or ""), "rawPath": str(result.raw_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
         if self.worker is threading.current_thread():
             self.worker = None
         self.pump.flush()
@@ -1336,9 +1339,10 @@ class LauncherApi:
             self.pump.flush()
             return
         self.result = replace(result, srt_path=auto_result.srt_path, json_path=auto_result.project_path)
+        self.postprocess_translation_srt_path = auto_result.translated_srt_path
         self.postprocess_retry_context = None
         self.postprocess_workspace_directory = auto_result.run_directory if auto_result.run_directory.is_dir() else None
-        self._emit({"type": "done", "result": {"srtPath": str(self.result.srt_path), "jsonPath": str(self.result.json_path), "htmlPath": str(self.result.html_path or ""), "rawPath": str(self.result.raw_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
+        self._emit({"type": "done", "result": {"srtPath": str(self.result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(self.result.json_path), "htmlPath": str(self.result.html_path or ""), "rawPath": str(self.result.raw_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
         if self.worker is threading.current_thread():
             self.worker = None
         self.pump.flush()
@@ -1379,13 +1383,18 @@ class LauncherApi:
         elif stage == "step_done":
             artifacts = " / ".join(
                 name
-                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""))
+                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""))
                 if name
             )
             suffix = f"（{artifacts}）" if artifacts else ""
             self._emit({"type": "log", "message": f"[后处理 {event.get('index', '?')}/{event.get('total', '?')}] {step}：完成{suffix}"})
         elif stage == "done":
-            self._emit({"type": "log", "message": f"[后处理] 全部完成：{event.get('srtName', '')}"})
+            artifacts = " / ".join(
+                name
+                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""))
+                if name
+            )
+            self._emit({"type": "log", "message": f"[后处理] 全部完成：{artifacts}"})
         elif stage == "cancelled":
             self._emit({"type": "log", "message": "[后处理] 已取消；原始转写产物仍然保留。"})
         elif stage == "failed":
@@ -1868,6 +1877,7 @@ def _subtitle_artifact_result(result: object) -> dict[str, object]:
         "sourceSrtPath": str(getattr(result, "source_srt_path", None) or ""),
         "projectPath": str(getattr(result, "project_path", None) or ""),
         "srtPath": str(getattr(result, "srt_path", None) or ""),
+        "translatedSrtPath": str(getattr(result, "translated_srt_path", None) or ""),
         "warnings": list(getattr(result, "warnings", ())),
     }
 
