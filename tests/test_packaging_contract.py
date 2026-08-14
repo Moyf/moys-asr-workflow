@@ -191,31 +191,34 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("dtolnay/rust-toolchain@stable", workflow)
         self.assertNotIn("cargo check --manifest-path src-tauri/Cargo.toml", workflow)
 
-    def test_tag_release_workflows_serialize_shared_release_mutations(self) -> None:
-        """Given both platform workflows publish one tag release, When they run, Then they cannot race on its assets."""
+    def test_tag_release_workflows_use_idempotent_release_uploads(self) -> None:
+        """Given all platform workflows publish one tag release, When they run, Then they use idempotent gh CLI uploads."""
         for workflow_path in (
             ".github/workflows/release-windows.yml",
             ".github/workflows/build-macos.yml",
+            ".github/workflows/release-linux.yml",
         ):
             workflow = read_text(workflow_path)
-            self.assertIn("group: maw-release-${{ github.ref_name }}", workflow)
-            self.assertIn("cancel-in-progress: false", workflow)
-        self.assertNotIn("tauri.macos.conf.json", workflow)
-        self.assertIn("ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085bb9e8f6fe709598ad", workflow)
-        self.assertIn("a6640a77d38a6f0527c5b597e599cb36a3427a6931444ed80bc62542421950a1", workflow)
-        self.assertIn("MAWxFF.app/Contents/MacOS/ffmpeg/bin", workflow)
-        self.assertIn("codesign --force --deep --sign - dist/MAWxFF.app", workflow)
-        self.assertIn("MAW-macOS-arm64-${Version}.zip", workflow)
-        self.assertIn("MAWxFF-macOS-arm64-${Version}.zip", workflow)
-        self.assertIn("scripts/sync_launcher_version.py --write", workflow)
-        self.assertIn("scripts/sync_launcher_version.py --check", workflow)
-        self.assertIn('StandardStage="build/release/standard"', workflow)
-        self.assertIn('XffStage="build/release/xff"', workflow)
-        self.assertIn('zip -qry "$GITHUB_WORKSPACE/$StandardArchive" MAW.app', workflow)
-        self.assertIn('zip -qry "$GITHUB_WORKSPACE/$XffArchive" MAWxFF.app', workflow)
-        self.assertNotIn("MOSE.app", workflow)
-        self.assertIn("MAWxFF-macOS-arm64-*.zip", workflow)
-        self.assertNotIn(".zip.sha256", workflow)
+            self.assertIn("gh release upload", workflow)
+            self.assertIn("--clobber", workflow)
+        # macOS-specific assertions
+        macos_workflow = read_text(".github/workflows/build-macos.yml")
+        self.assertNotIn("tauri.macos.conf.json", macos_workflow)
+        self.assertIn("ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085bb9e8f6fe709598ad", macos_workflow)
+        self.assertIn("a6640a77d38a6f0527c5b597e599cb36a3427a6931444ed80bc62542421950a1", macos_workflow)
+        self.assertIn("MAWxFF.app/Contents/MacOS/ffmpeg/bin", macos_workflow)
+        self.assertIn("codesign --force --deep --sign - dist/MAWxFF.app", macos_workflow)
+        self.assertIn("MAW-macOS-arm64-${Version}.zip", macos_workflow)
+        self.assertIn("MAWxFF-macOS-arm64-${Version}.zip", macos_workflow)
+        self.assertIn("scripts/sync_launcher_version.py --write", macos_workflow)
+        self.assertIn("scripts/sync_launcher_version.py --check", macos_workflow)
+        self.assertIn('StandardStage="build/release/standard"', macos_workflow)
+        self.assertIn('XffStage="build/release/xff"', macos_workflow)
+        self.assertIn('zip -qry "$GITHUB_WORKSPACE/$StandardArchive" MAW.app', macos_workflow)
+        self.assertIn('zip -qry "$GITHUB_WORKSPACE/$XffArchive" MAWxFF.app', macos_workflow)
+        self.assertNotIn("MOSE.app", macos_workflow)
+        self.assertIn("MAWxFF-macOS-arm64-*.zip", macos_workflow)
+        self.assertNotIn(".zip.sha256", macos_workflow)
 
     def test_local_build_script_invokes_uv_and_pyinstaller_for_maw_onedir(self) -> None:
         """Given a Windows developer build, When the script is read, Then it builds dist/MAW/MAW.exe."""
@@ -271,8 +274,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("ffplay.exe", workflow)
         self.assertIn("MAWxFF-Windows-x64-${{ github.ref_name }}.zip", workflow)
         self.assertIn("actions/upload-artifact@v4", workflow)
-        self.assertIn("softprops/action-gh-release@v2", workflow)
-        self.assertIn("target_commitish: ${{ github.sha }}", workflow)
+        self.assertIn("gh release upload", workflow)
+        self.assertIn("--target '${{ github.sha }}'", workflow)
         self.assertIn("GITHUB_TOKEN: ${{ github.token }}", workflow)
         self.assertNotIn(".zip.sha256", workflow)
 

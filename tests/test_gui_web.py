@@ -12,12 +12,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import final
 from unittest import mock
+from urllib.error import URLError
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, run_app  # noqa: E402
+from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
 
@@ -2264,6 +2265,218 @@ class LauncherAssetContractTests(unittest.TestCase):
 
         self.assertIn(".ghost.attention:hover:not(:disabled)", stylesheet)
         self.assertIn("border-color: var(--amber-hover);", stylesheet)
+
+
+@final
+class DefaultPathsTests(unittest.TestCase):
+    def test_default_paths_resolves_frozen_meipass_root(self) -> None:
+        """Given PyInstaller 冻结环境, When 解析默认路径, Then 资源根为 _MEIPASS。"""
+        with mock.patch.object(sys, "frozen", True, create=True), mock.patch.object(sys, "_MEIPASS", "/opt/app/_internal", create=True):
+            paths = default_paths()
+        self.assertEqual(paths.launcher_html, Path("/opt/app/_internal/web/launcher/index.html"))
+        self.assertEqual(paths.root, Path("/opt/app/_internal"))
+
+    def test_default_paths_uses_repo_root_when_not_frozen(self) -> None:
+        """Given 源码运行, When 解析默认路径, Then 资源根为仓库根。"""
+        self.assertFalse(getattr(sys, "frozen", False))
+        paths = default_paths()
+        self.assertEqual(paths.launcher_html, ROOT / "web" / "launcher" / "index.html")
+
+
+class _FakeUrlResponse:
+    def __init__(self, status: int, body: bytes) -> None:
+        self.status = status
+        self._body = body
+        self._offset = 0
+
+    def read(self, size: int = -1) -> bytes:
+        if size is None or size < 0:
+            chunk = self._body[self._offset :]
+        else:
+            chunk = self._body[self._offset : self._offset + size]
+        self._offset += len(chunk)
+        return chunk
+
+    def __enter__(self) -> _FakeUrlResponse:
+        return self
+
+    def __exit__(self, *exc_info: object) -> bool:
+        return False
+
+
+@final
+class EmojiFontTests(unittest.TestCase):
+    """Linux keycap 表情字体（Noto Color Emoji）的下载、校验与 API 契约。"""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def _write(self, name: str, data: bytes) -> Path:
+        path = self.root / name
+        path.write_bytes(data)
+        return path
+
+    def test_valid_emoji_font_accepts_true_type_magic(self) -> None:
+        """Given 足够大且带 TrueType 魔数的文件, When 校验, Then 判定为有效缓存。"""
+        path = self._write("ok.ttf", b"\x00\x01\x00\x00" + b"\0" * 2_000_000)
+
+        self.assertTrue(_valid_emoji_font(path))
+
+    def test_valid_emoji_font_rejects_small_garbage_and_missing(self) -> None:
+        """Given 过小 / HTML 错误页 / 不存在的文件, When 校验, Then 全部判定无效。"""
+        small = self._write("small.ttf", b"\x00\x01\x00\x00" + b"\0" * 10)
+        html = self._write("html.ttf", b"<html>error</html>" + b"\0" * 2_000_000)
+
+        self.assertFalse(_valid_emoji_font(small))
+        self.assertFalse(_valid_emoji_font(html))
+        self.assertFalse(_valid_emoji_font(self.root / "missing.ttf"))
+
+    def test_emoji_font_urls_default_order_and_env_override(self) -> None:
+        """Given 默认配置, When 取下载地址, Then 主 CDN 在前；MAW_EMOJI_FONT_URL 可整体覆盖。"""
+        with mock.patch.dict(os.environ, {}, clear=True):
+            urls = _emoji_font_urls()
+            self.assertIn("https://cdn.jsdelivr.net/gh/googlefonts/noto-emoji@main/fonts/NotoColorEmoji.ttf", urls)
+            self.assertEqual(urls[0], "https://cdn.jsdelivr.net/gh/googlefonts/noto-emoji@main/fonts/NotoColorEmoji.ttf")
+
+        with mock.patch.dict(os.environ, {"MAW_EMOJI_FONT_URL": "https://mirror.example/font.ttf"}, clear=True):
+            urls = _emoji_font_urls()
+            self.assertEqual(urls[0], "https://mirror.example/font.ttf")
+            self.assertIn("https://cdn.jsdelivr.net/gh/googlefonts/noto-emoji@main/fonts/NotoColorEmoji.ttf", urls)
+
+    def test_download_emoji_font_success_writes_cache(self) -> None:
+        """Given 第一个 URL 返回 200 且体积足够, When 下载, Then 写入 dest 且清理 .part。"""
+        dest = self.root / "cache" / "NotoColorEmoji.ttf"
+        payload = b"\x00\x01\x00\x00" + b"\0" * 2_000_000
+
+        with mock.patch("maw.gui_web.urlopen", side_effect=[_FakeUrlResponse(200, payload)]):
+            result = download_emoji_font(["https://ok.example/font.ttf"], dest, timeout=1)
+
+        self.assertEqual(result, dest)
+        self.assertEqual(dest.read_bytes(), payload)
+        self.assertFalse((self.root / "cache" / "NotoColorEmoji.ttf.part").exists())
+
+    def test_download_emoji_font_falls_through_failed_urls(self) -> None:
+        """Given 首个 URL 抛异常 / 404 / 体积不足, When 下载, Then 依次回退到可用 URL。"""
+        dest = self.root / "cache" / "NotoColorEmoji.ttf"
+        payload = b"\x00\x01\x00\x00" + b"\0" * 2_000_000
+
+        with mock.patch(
+            "maw.gui_web.urlopen",
+            side_effect=[URLError("blocked"), _FakeUrlResponse(404, b"nope"), _FakeUrlResponse(200, payload)],
+        ):
+            result = download_emoji_font(
+                ["https://a.example/font.ttf", "https://b.example/font.ttf", "https://c.example/font.ttf"],
+                dest,
+                timeout=1,
+            )
+
+        self.assertEqual(result, dest)
+        self.assertEqual(dest.read_bytes(), payload)
+
+    def test_download_emoji_font_all_fail_cleans_partial(self) -> None:
+        """Given 所有 URL 都失败, When 下载, Then 返回 None 且不留 .part 残留。"""
+        dest = self.root / "cache" / "NotoColorEmoji.ttf"
+
+        with mock.patch("maw.gui_web.urlopen", side_effect=[URLError("blocked"), _FakeUrlResponse(404, b"nope")]):
+            result = download_emoji_font(["https://a.example/font.ttf", "https://b.example/font.ttf"], dest, timeout=1)
+
+        self.assertIsNone(result)
+        self.assertFalse((self.root / "cache" / "NotoColorEmoji.ttf.part").exists())
+
+    def test_get_emoji_font_path_non_linux_returns_empty(self) -> None:
+        """Given Windows/macOS, When 询问字体路径, Then 返回空且不下载。"""
+        api = LauncherApi()
+
+        with mock.patch("maw.gui_web.sys.platform", "win32"), mock.patch.object(api, "_start_emoji_font_download") as start:
+            result = api.get_emoji_font_path()
+
+        self.assertEqual(result, {"ok": True, "path": ""})
+        start.assert_not_called()
+
+    def test_get_emoji_font_path_linux_with_cache_returns_uri(self) -> None:
+        """Given Linux 且缓存已存在, When 询问字体路径, Then 直接返回 file:// URI。"""
+        api = LauncherApi()
+        dest = self.root / "cache" / "NotoColorEmoji.ttf"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"\x00\x01\x00\x00" + b"\0" * 2_000_000)
+
+        with mock.patch("maw.gui_web.sys.platform", "linux"), mock.patch("maw.gui_web._emoji_font_cache_path", return_value=dest):
+            result = api.get_emoji_font_path()
+
+        self.assertEqual(result, {"ok": True, "path": dest.as_uri()})
+
+    def test_get_emoji_font_path_linux_missing_starts_background_download(self) -> None:
+        """Given Linux 且缓存缺失, When 询问字体路径, Then 返回空并启动后台下载。"""
+        api = LauncherApi()
+        dest = self.root / "cache" / "NotoColorEmoji.ttf"
+
+        with mock.patch("maw.gui_web.sys.platform", "linux"), mock.patch(
+            "maw.gui_web._emoji_font_cache_path", return_value=dest
+        ), mock.patch.object(api, "_start_emoji_font_download") as start:
+            result = api.get_emoji_font_path()
+
+        self.assertEqual(result, {"ok": True, "path": ""})
+        start.assert_called_once_with(dest)
+
+    def test_download_worker_enqueues_ready_event_on_success(self) -> None:
+        """Given 下载成功, When 后台线程收尾, Then 向页面推送 emojiFontReady 事件。"""
+        api = LauncherApi()
+        dest = self.root / "cache" / "NotoColorEmoji.ttf"
+
+        with mock.patch("maw.gui_web.download_emoji_font", return_value=dest):
+            api._download_emoji_font_worker(dest)
+
+        event = api.pump.events.get_nowait()
+        self.assertEqual(event["type"], "emojiFontReady")
+        self.assertEqual(event["path"], dest.as_uri())
+
+    def test_download_worker_is_silent_on_failure(self) -> None:
+        """Given 下载失败, When 后台线程收尾, Then 不推送事件（页面回退系统字体）。"""
+        api = LauncherApi()
+
+        with mock.patch("maw.gui_web.download_emoji_font", return_value=None):
+            api._download_emoji_font_worker(self.root / "missing.ttf")
+
+        self.assertTrue(api.pump.events.empty())
+
+    def test_emoji_font_event_delivered_on_first_launch_when_pump_starts_after_download(self) -> None:
+        """Given 首次启动时字体下载在 pump 启动前完成, When pump 启动, Then 事件被送达页面。
+
+        这覆盖了首次 Linux 启动的场景：window loaded 事件触发前字体下载已完成，
+        事件进入队列但 pump 尚未启动；loaded 触发后 pump.start() 被调用，
+        队列中的事件应立即 flush 到前端。
+        """
+        window = FakeWindow()
+        api = LauncherApi(window_getter=lambda: window)
+        dest = self.root / "cache" / "NotoColorEmoji.ttf"
+
+        # 模拟下载在 pump 启动前完成
+        with mock.patch("maw.gui_web.download_emoji_font", return_value=dest):
+            api._download_emoji_font_worker(dest)
+
+        # 此时事件在队列中，但未送达页面
+        self.assertFalse(api.pump.events.empty())
+        self.assertEqual(len(window.scripts), 0)
+
+        # 模拟 window.events.loaded 触发，启动 pump
+        api.pump.start()
+
+        # 等待 pump flush（pump 每 0.1 秒 flush 一次）
+        import time
+        deadline = time.time() + 2.0
+        while time.time() < deadline and len(window.scripts) == 0:
+            time.sleep(0.05)
+
+        api.pump.shutdown()
+
+        # 验证事件已送达页面
+        self.assertGreater(len(window.scripts), 0)
+        self.assertIn("emojiFontReady", window.scripts[-1])
+        self.assertIn(dest.as_uri(), window.scripts[-1])
 
 
 if __name__ == "__main__":
