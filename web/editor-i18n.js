@@ -85,7 +85,17 @@
     '跳过空隙': 'Skip gaps', '播放时跳过空隙': 'Skip gaps during playback', '未扫描空隙': 'Gaps not scanned', '工作区': 'Workspace',
     '拼合字幕': 'Snap subtitles', '拼合参数': 'Snap parameters',
     '拼接/合并字幕': 'Join / merge subtitles', '拼接/合并参数': 'Join / merge parameters',
+    '延长字幕': 'Extend subtitles', '延长参数': 'Extension parameters',
     '直接修改字幕时间轴，整个操作一次撤销': 'Edits the subtitle timeline directly; the whole run is one undo step',
+    '先向前、再向后；整个操作一次撤销': 'Extends earlier first, then later; the whole run is one undo step',
+    '向前延长': 'Extend earlier', '向后延长': 'Extend later', '执行': 'Run',
+    '向字幕起点前延长，不越过前一条字幕边界；0 表示不处理': 'Extend the subtitle start earlier without crossing the previous subtitle; 0 disables it',
+    '向字幕终点后延长，不越过后一条字幕边界；0 表示不处理': 'Extend the subtitle end later without crossing the next subtitle; 0 disables it',
+    '有选中字幕时只处理选中项，否则处理全部字幕': 'Process selected subtitles when any are selected; otherwise process all subtitles',
+    '打开可拖动的延长字幕工具窗': 'Open the draggable subtitle-extension tool',
+    '关闭延长字幕工具窗': 'Close the subtitle-extension tool',
+    '向前延长时长必须是大于等于 0 的数字': 'The earlier-extension duration must be a number greater than or equal to 0',
+    '向后延长时长必须是大于等于 0 的数字': 'The later-extension duration must be a number greater than or equal to 0',
     '间隔阈值': 'Interval threshold', '拓展方向': 'Snap direction', '吸附方向': 'Snap direction',
     '向前拓展': 'Extend earlier', '向后拓展': 'Extend later',
     '向前吸附': 'Snap earlier', '向后吸附': 'Snap later',
@@ -635,6 +645,11 @@
     if (match) return `Total length ${match[1]}`;
     match = /^字\/秒\s+(.+)$/.exec(text);
     if (match) return `chars/s ${match[1]}`;
+    match = /^已处理\s*(\d+)\s*个(选中字幕|字幕)：完整延长\s*(\d+)\s*条，部分延长\s*(\d+)\s*条，未延长\s*(\d+)\s*条$/.exec(text);
+    if (match) {
+      const target = match[2] === '选中字幕' ? 'selected subtitles' : 'subtitles';
+      return `Processed ${match[1]} ${target}: ${match[3]} fully extended, ${match[4]} partially extended, ${match[5]} unchanged`;
+    }
     match = /^合并\s+(\d+)\s+条字幕$/.exec(text);
     if (match) return `Merge ${match[1]} subtitles`;
     match = /^已合并\s+(\d+)\s+条扩展字幕(，原绑定已解除)?$/.exec(text);

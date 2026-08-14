@@ -1262,6 +1262,14 @@ const autoMergeSnapDirectionSelect = document.getElementById('auto-merge-snap-di
 const autoMergeAbsorbShortToggle = document.getElementById('auto-merge-absorb-short');
 const autoMergeShortCountInput = document.getElementById('auto-merge-short-count');
 const autoMergeAbsorbDirectionSelect = document.getElementById('auto-merge-absorb-direction');
+const SUBTITLE_EXTEND_PANEL_POSITION_KEY = 'moy.asr.subtitle_extend.panel.v1';
+const subtitleExtendPanel = document.getElementById('subtitle-extend-panel');
+const subtitleExtendDragHandle = document.getElementById('subtitle-extend-drag-handle');
+const subtitleExtendCloseButton = document.getElementById('subtitle-extend-close');
+const subtitleExtendManageButton = document.getElementById('subtitle-extend-manage');
+const subtitleExtendRunButton = document.getElementById('subtitle-extend-run');
+const subtitleExtendForwardInput = document.getElementById('subtitle-extend-forward-ms');
+const subtitleExtendBackwardInput = document.getElementById('subtitle-extend-backward-ms');
 let gapPreviewRange = null;
 let gapRemovePanelDrag = null;
 let currentCuePanelIdx = -1;
@@ -2106,6 +2114,28 @@ autoMergePanel?.querySelectorAll('input[type="number"]').forEach((input) => {
       return;
     }
     input.dispatchEvent(new Event('input', { bubbles: true }));
+  }, { passive: false });
+});
+const subtitleExtendFloatingPanel = createFloatingPanel({
+  panel: subtitleExtendPanel,
+  dragHandle: subtitleExtendDragHandle,
+  manageButton: subtitleExtendManageButton,
+  anchorButton: subtitleExtendManageButton,
+  positionKey: SUBTITLE_EXTEND_PANEL_POSITION_KEY,
+});
+subtitleExtendCloseButton?.addEventListener('click', () => subtitleExtendFloatingPanel.close());
+subtitleExtendRunButton?.addEventListener('click', extendSubtitleRanges);
+subtitleExtendPanel?.querySelectorAll('input[type="number"]').forEach((input) => {
+  input.addEventListener('wheel', (event) => {
+    if (!event.deltaY) return;
+    event.preventDefault();
+    input.focus({ preventScroll: true });
+    try {
+      if (event.deltaY < 0) input.stepUp();
+      else input.stepDown();
+    } catch (_) {
+      return;
+    }
   }, { passive: false });
 });
 bindCueListDisplayToggle(cueListShowIndexToggle, 'cueListShowIndex');
@@ -6083,6 +6113,64 @@ function mergeExtensionSegments(idxs, track = getActiveExtensionTrack()) {
     'success',
   );
   return true;
+}
+
+function parseSubtitleExtendMs(input) {
+  const raw = String(input?.value ?? '').trim();
+  const value = Number(raw);
+  if (!raw || !Number.isFinite(value) || value < 0) return null;
+  return Math.round(value);
+}
+
+function extendSubtitleRanges() {
+  const forwardMs = parseSubtitleExtendMs(subtitleExtendForwardInput);
+  if (forwardMs === null) {
+    flashHint('向前延长时长必须是大于等于 0 的数字', 'invalid');
+    return;
+  }
+  const backwardMs = parseSubtitleExtendMs(subtitleExtendBackwardInput);
+  if (backwardMs === null) {
+    flashHint('向后延长时长必须是大于等于 0 的数字', 'invalid');
+    return;
+  }
+
+  const hasSelection = selectedIdxs.size > 0;
+  const indices = hasSelection ? [...selectedIdxs] : [];
+  if (editingState) finishEdit(false);
+  commitCuePanelEdit();
+  const plan = window.AsrEditorUtils.planSubtitleExtension(DATA.segments, indices, {
+    forwardMs,
+    backwardMs,
+    durationMs: getSubtitleTimelineDuration(),
+  });
+  if (plan.changedIndices.length) {
+    pushUndo('延长字幕');
+    let linkedChanged = false;
+    const changedSegments = [];
+    plan.changes.forEach((change) => {
+      const segment = DATA.segments[change.index];
+      if (!segment || !change.changed) return;
+      const syncPatch = { oldStart: segment.start, oldEnd: segment.end, mode: 'range' };
+      // 这里的 items 绝对时间码保持原样，延长只改变字幕段的外壳范围。
+      segment.start = change.start;
+      segment.end = change.end;
+      segment._dirty = true;
+      changedSegments.push(segment);
+      linkedChanged = syncBoundExtensionForMain(segment, syncPatch) || linkedChanged;
+    });
+    markMainSegmentsDirty(changedSegments);
+    syncTimelineGroupRanges();
+    if (linkedChanged || multiSubtitleVisible()) markMultiSubtitleDirty();
+    syncBindingOffsets();
+    scheduleAutoSaveFlush();
+    renderAll();
+    update();
+  }
+  const scope = hasSelection ? `已处理 ${plan.indices.length} 个选中字幕` : `已处理 ${plan.indices.length} 个字幕`;
+  flashHint(
+    `${scope}：完整延长 ${plan.fullCount} 条，部分延长 ${plan.partialCount} 条，未延长 ${plan.unchangedCount} 条`,
+    plan.changedIndices.length ? 'success' : 'warning',
+  );
 }
 
 // === 拼合字幕 ===
