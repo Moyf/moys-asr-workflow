@@ -679,7 +679,8 @@
      额外固定高度、单行不换行 + 横向滚动，避免与波形 scroll 的 padding 错位。 */
   .toolbar.player-toolbar,
   .toolbar.cue-list-toolbar,
-  .toolbar.waveform-toolbar {
+  .toolbar.waveform-toolbar,
+  .toolbar.cue-editor-toolbar {
     height: var(--panel-toolbar-h);
     margin: 0;
     padding: 6px 8px;
@@ -694,22 +695,131 @@
   }
   .toolbar.player-toolbar > *,
   .toolbar.cue-list-toolbar > *,
-  .toolbar.waveform-toolbar > * { flex: 0 0 auto; }
+  .toolbar.waveform-toolbar > *,
+  .toolbar.cue-editor-toolbar > * { flex: 0 0 auto; }
   .toolbar.cue-list-toolbar .input-clear input[type=text] { min-width: 140px; width: 20ch; }
-  .subtitle-preview-settings {
+  .settings-anchor {
     display: inline-flex; align-items: center;
+    order: 99; margin-left: auto;
   }
-  .toolbar .subtitle-preview-settings-toggle {
+  .toolbar .settings-anchor > button {
     min-width: 30px; padding: 3px 7px; font-size: 14px; line-height: 1;
   }
-  .subtitle-preview-settings-panel {
-    position: fixed; z-index: 260;
-    display: grid; gap: 8px; width: min(320px, calc(100vw - 16px));
-    padding: 9px 10px;
+  .toolbar .settings-anchor > button.active {
+    position: relative; z-index: 421;
+  }
+  .settings-panel {
+    position: fixed; z-index: 420;
+    display: flex; flex-direction: column; gap: 12px;
+    width: min(360px, calc(100vw - 16px)); max-height: min(560px, calc(100vh - 16px));
+    padding: 10px; overflow-y: auto;
     background: var(--bg-overlay); border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md); box-shadow: var(--shadow-3);
   }
-  .subtitle-preview-settings-panel[hidden] { display: none; }
+  .settings-panel[hidden] { display: none; }
+  .settings-panel-owner-open {
+    position: relative; z-index: 80;
+  }
+  .settings-panel-section {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    min-width: 0; padding: 8px 10px;
+    background: var(--bg-raised); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+  }
+  .settings-panel-title {
+    flex: 0 0 100%; color: var(--text-secondary); font-size: 12px; font-weight: 600;
+    letter-spacing: .08em; text-align: center;
+  }
+  .settings-panel-item {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--text-secondary); font-size: 12px;
+  }
+  .settings-panel-item[hidden] { display: none; }
+  .settings-panel-field {
+    display: flex; flex: 0 0 100%; flex-direction: column; align-items: flex-start; gap: 3px;
+    min-width: 0;
+  }
+  .settings-panel-hint {
+    flex: 0 0 100%; margin: 0; color: var(--text-muted); font-size: 10px; line-height: 1.35;
+  }
+  .settings-panel-section select {
+    background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 4px 6px; font-size: 12px; cursor: pointer;
+    transition: border-color var(--t-fast), box-shadow var(--t-fast);
+  }
+  .settings-panel-section select:focus {
+    outline: none; border-color: var(--accent); box-shadow: var(--focus-ring);
+  }
+  .settings-panel-section select:disabled { opacity: .42; cursor: not-allowed; }
+  .settings-panel-section input[type="text"],
+  .settings-panel-section input[type="number"] {
+    background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 4px 6px; min-height: var(--control-h);
+    transition: border-color var(--t-fast), box-shadow var(--t-fast);
+  }
+  .settings-panel-section input[type="text"]:focus,
+  .settings-panel-section input[type="number"]:focus {
+    outline: none; border-color: var(--accent); box-shadow: var(--focus-ring);
+  }
+  .settings-panel-section button {
+    min-width: 26px; padding: 3px 7px; color: var(--btn-text); background: var(--btn-bg);
+    border: 1px solid var(--btn-border); border-radius: var(--radius-sm); font-size: 13px; cursor: pointer;
+  }
+  .settings-panel-section button:hover:not(:disabled) {
+    background: var(--btn-bg-hover); border-color: var(--btn-border-hover);
+  }
+  .settings-panel-section button:focus-visible {
+    outline: 2px solid var(--accent-line); outline-offset: 1px;
+  }
+  .settings-panel-section button:disabled { opacity: .42; cursor: not-allowed; }
+  .subtitle-preview-settings-panel { width: min(400px, calc(100vw - 16px)); }
+  .cue-list-settings-panel { width: min(340px, calc(100vw - 16px)); }
+  .cue-editor-settings-panel { width: min(300px, calc(100vw - 16px)); }
+  .subtitle-preview-settings-fields {
+    display: grid; gap: 8px; width: 100%; min-width: 0;
+  }
+  .subtitle-preview-settings-section { display: block; }
+  .cue-list-settings-section,
+  .cue-editor-settings-section { display: grid; }
+  .cue-list-setting-row input[type="number"] {
+    width: 7em; min-width: 0; box-sizing: border-box;
+  }
+  .cue-list-settings-display-group {
+    display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .cue-list-settings-display-group .settings-panel-item {
+    white-space: nowrap;
+  }
+  .cue-editor-settings-display-group {
+    display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .cue-editor-settings-display-group .settings-panel-item {
+    white-space: nowrap;
+  }
+  .waveform-settings-section { width: 100%; }
+  .waveform-settings-title { text-transform: none; }
+  .waveform-settings-section .editor-settings-item {
+    flex: 0 0 auto; color: var(--text-secondary); font-size: 12px;
+  }
+  .waveform-settings-section select {
+    background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 4px 6px; font-size: 12px; cursor: pointer;
+  }
+  .waveform-settings-section select:focus {
+    outline: none; border-color: var(--accent); box-shadow: var(--focus-ring);
+  }
+  .waveform-settings-section select:disabled { opacity: .42; cursor: not-allowed; }
+  .waveform-settings-section button {
+    min-width: 26px; padding: 3px 7px; color: var(--btn-text); background: var(--btn-bg);
+    border: 1px solid var(--btn-border); border-radius: var(--radius-sm); font-size: 13px; cursor: pointer;
+  }
+  .waveform-settings-section button:hover:not(:disabled) {
+    background: var(--btn-bg-hover); border-color: var(--btn-border-hover);
+  }
+  .waveform-settings-section button:focus-visible {
+    outline: 2px solid var(--accent-line); outline-offset: 1px;
+  }
+  .waveform-settings-section button:disabled { opacity: .42; cursor: not-allowed; }
   .subtitle-preview-setting-row {
     display: grid; grid-template-columns: 5em minmax(0, 1fr); align-items: center; gap: 8px;
     color: var(--text-secondary); font-size: 12px; white-space: nowrap;
@@ -776,9 +886,7 @@
   .editor-settings-field > label.toggle.editor-settings-item { align-self: stretch; width: 100%; }
   .editor-settings-field > .editor-settings-hint { margin: 0; }
   .editor-settings-list-fields { flex-wrap: wrap; }
-  .editor-settings-display-row { flex: 0 0 100%; flex-wrap: nowrap; align-items: flex-start; }
   .editor-settings-list-fields > span { color: var(--text-muted); }
-  .editor-settings-display-row > span,
   .editor-settings-toggle-group > .toggle { white-space: nowrap; }
   /* 显示开关分组：空间够时与标题同行，不够时整组折到下一行，组内按宽度继续换行。 */
   .editor-settings-toggle-group {
@@ -829,7 +937,6 @@
     .editor-settings-panel { grid-template-columns: 1fr; }
   }
   @media (max-width: 420px) {
-    .editor-settings-display-row { gap: 3px; font-size: 11px; }
     .editor-settings-toggle-group > .toggle { gap: 2px; }
   }
 
@@ -1130,6 +1237,18 @@
     background: var(--bg-panel);
     border: 1px solid var(--border-subtle); border-left: 3px solid var(--amber); border-radius: var(--radius-md);
     box-shadow: var(--shadow-2);
+  }
+  .current-cue-panel > .cue-editor-toolbar {
+    height: var(--panel-toolbar-h);
+    margin: -10px -12px 10px;
+    padding: 6px 8px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    align-items: center;
+    background: var(--panel-toolbar-bg);
+    border-bottom: 1px solid var(--border-subtle);
+    box-shadow: 0 1px 0 var(--panel-toolbar-shadow);
   }
   .cue-panel-layout {
     display: grid; width: 100%; min-width: 0;
@@ -3222,7 +3341,7 @@
   <span class="info">已选 <b id="sel-count">0</b></span>
   <span class="toolbar-utility-group" role="group" aria-label="编辑器工具">
     <button type="button" id="language-toggle" class="language-toggle" title="Switch to English">🌐English</button>
-    <button type="button" id="editor-settings-toggle" title="展开字幕、波形与导出设置" aria-expanded="false" aria-controls="editor-settings-panel">🔧 设置</button>
+    <button type="button" id="editor-settings-toggle" title="展开编辑器通用设置" aria-expanded="false" aria-controls="editor-settings-panel">🔧 设置</button>
     <button type="button" id="help-toggle" title="查看鼠标操作与键盘快捷键" aria-expanded="false" aria-controls="help-panel">🤔 帮助</button>
     <button type="button" id="theme-toggle" title="切换到亮色主题" aria-label="切换到亮色主题">🌖</button>
   </span>
@@ -3479,7 +3598,7 @@
       <span class="help-title">波形区（拓展）</span>
       <div class="help-subgroup">
         <span class="help-subtitle">波形区显示</span>
-        <span class="help-note">点击【🔧 设置】后，可在【音频波形区】调整显示的具体参数</span>
+        <span class="help-note">点击波形区 header 右侧的【⚙️】后，可调整【音频波形区】的具体参数</span>
         <span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>
         <span><kbd data-mod-key>Ctrl+滚轮</kbd> 调整时间缩放/每行长度</span>
         <span><kbd data-mod-key>Ctrl+Shift+滚轮</kbd> 调整每行高度</span>
@@ -3527,29 +3646,6 @@
 <section class="editor-settings-panel" id="editor-settings-panel" aria-label="MAWE 设置" hidden>
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
-    <span class="editor-settings-title">字幕列表和编辑区</span>
-    <div class="editor-settings-item editor-settings-list-fields editor-settings-display-row">
-      <span>字幕列表显示</span>
-      <span class="editor-settings-toggle-group">
-        <label class="toggle"><input type="checkbox" id="cue-list-show-index" checked> 序号</label>
-        <label class="toggle"><input type="checkbox" id="cue-list-show-time" checked> 时间码</label>
-        <label class="toggle"><input type="checkbox" id="cue-list-show-sticker" checked> 表情包</label>
-        <label class="toggle"><input type="checkbox" id="cue-list-show-charcount" checked> 字数</label>
-      </span>
-    </div>
-    <label class="toggle editor-settings-item" title="关闭后，通过字幕列表点击字幕时不会自动滚动列表">
-      <input type="checkbox" id="cue-list-auto-scroll-on-click" checked> 点击字幕列表时自动滚动
-    </label>
-    <div class="editor-settings-item editor-settings-list-fields editor-settings-display-row">
-      <span>字幕编辑显示</span>
-      <span class="editor-settings-toggle-group">
-        <label class="toggle"><input type="checkbox" id="cue-editor-show-navigation"> 跳转按钮</label>
-        <label class="toggle"><input type="checkbox" id="cue-editor-show-time-actions"> 时间操作</label>
-        <label class="toggle"><input type="checkbox" id="cue-editor-show-sticker"> 表情包</label>
-      </span>
-    </div>
-    </div>
-    <div class="editor-settings-sub-group">
     <span class="editor-settings-title">拆分与合并</span>
     <label class="editor-settings-item" title="编辑字幕时，选择 Enter 或 Ctrl(Cmd)+Enter 在文字光标处拆分；另一个按键用于保存">
       字幕（编辑状态下）拆分按键
@@ -3593,16 +3689,6 @@
       </select>
     </label>
     <div class="editor-settings-field">
-    <label class="editor-settings-item" title="选择 J/K/L 的播放控制方式">
-      JKL 播放模式
-      <select id="jkl-playback-mode">
-        <option value="speed">慢速和倍速</option>
-        <option value="direction" selected>倒放和正放</option>
-      </select>
-    </label>
-    <small class="editor-settings-hint" id="jkl-playback-mode-hint">J 倒放（无反向声音），K 停止并重置 1×；停止时按 K 以 1×播放。速度档位为 1×、2×、4×、8×、16×。</small>
-    </div>
-    <div class="editor-settings-field">
     <label class="toggle editor-settings-item" title="开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条">
       <input type="checkbox" id="select-group-members"> 同时选中分组内项目
     </label>
@@ -3621,75 +3707,6 @@
     </label>
     <small class="editor-settings-hint">具体用法详见帮助的「按键调整」区</small>
     </div>
-    </div>
-  </div>
-  <div class="editor-settings-group">
-    <div class="editor-settings-sub-group">
-    <span class="editor-settings-title">音频波形区</span>
-    <label class="editor-settings-item" title="波形形状来源：默认使用媒体旁 .ReaPeaks 的最细 wave 层；没有时回退到自研 1000Hz 重采样缓存">波形形状来源
-      <select id="waveform-shape-source">
-        <option value="self">自研波形</option>
-        <option value="reapeaks" selected>ReaPeaks 波形层</option>
-      </select>
-    </label>
-    <label class="toggle editor-settings-item" title="使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形">
-      <input type="checkbox" id="waveform-spectral-color"> 频谱颜色
-    </label>
-    <span class="editor-settings-item" id="waveform-window-setting">显示窗口
-      <span class="editor-settings-stepper">
-        <button type="button" id="waveform-zoom-out" title="缩小时间轴">−</button>
-        <b id="waveform-window-label">20 秒</b>
-        <button type="button" id="waveform-zoom-in" title="放大时间轴">＋</button>
-      </span>
-    </span>
-    <span class="editor-settings-item">振幅
-      <span class="editor-settings-stepper">
-        <button type="button" id="waveform-scale-down" title="减小波形振幅">−</button>
-        <b id="waveform-scale-label">×1.0</b>
-        <button type="button" id="waveform-scale-up" title="增大波形振幅">＋</button>
-      </span>
-    </span>
-    <label class="editor-settings-item" id="waveform-seconds-per-row-setting">每行长度
-      <select id="waveform-seconds-per-row">
-        <option value="5">5 秒</option>
-        <option value="10" selected>10 秒</option>
-        <option value="20">20 秒</option>
-        <option value="30">30 秒</option>
-      </select>
-    </label>
-    <label class="editor-settings-item" id="waveform-row-height-setting" title="多行波形每一行的高度；也可用 Ctrl(Cmd)+Shift+滚轮 在波形上直接调节">每行高度
-      <select id="waveform-row-height">
-        <option value="64">64 px</option>
-        <option value="80">80 px</option>
-        <option value="96">96 px</option>
-        <option value="120" selected>120 px</option>
-        <option value="144">144 px</option>
-        <option value="168">168 px</option>
-      </select>
-    </label>
-    <label class="toggle editor-settings-item" title="在多行波形中，为成组（颜色/表情包）字幕在块上方显示队长皇冠与组内序号">
-      <input type="checkbox" id="waveform-show-group-badges" checked> 显示分组标记
-    </label>
-    <label class="toggle editor-settings-item" title="启用后，在波形空白区域按住左键拖动时，播放指针会实时跟随鼠标位置">
-      <input type="checkbox" id="waveform-drag-playhead" checked> 允许拖动指针
-    </label>
-    <label class="editor-settings-item">禁用波形
-      <select id="waveform-disabled-display">
-        <option value="dim" selected>淡化</option>
-        <option value="hidden">完全隐藏</option>
-      </select>
-    </label>
-    </div>
-    <div class="editor-settings-sub-group">
-    <span class="editor-settings-title">静音空隙</span>
-    <label class="editor-settings-item" title="移除静音空隙的人工修正方式；Alt+左键始终切换整段；中键拖动默认增加静音，按住 Alt 才恢复声音，边界碰到另一空隙时会合并">
-      空隙区段操作方式
-      <select id="gap-remove-operation-mode">
-        <option value="none">无</option>
-        <option value="boundary_drag" selected>拖动边界</option>
-        <option value="middle_drag">中键拖动</option>
-      </select>
-    </label>
     </div>
   </div>
   <div class="editor-settings-group">
@@ -3743,9 +3760,25 @@
       <label class="toggle"><input type="checkbox" id="overlay-toggle" checked> 预览字幕</label>
       <label class="toggle" id="extension-overlay-toggle-wrap" hidden><input type="checkbox" id="extension-overlay-toggle" checked> 预览副字幕</label>
       <label class="toggle" title="在视频画面右上角预览当前时间的表情包"><input type="checkbox" id="sticker-overlay-toggle"> 预览表情包</label>
-      <div class="subtitle-preview-settings" id="subtitle-preview-settings">
-        <button type="button" id="subtitle-preview-settings-toggle" class="subtitle-preview-settings-toggle" title="字幕预览设置" aria-label="字幕预览设置" aria-expanded="false" aria-controls="subtitle-preview-settings-panel" aria-haspopup="dialog">⚙️</button>
-        <div class="subtitle-preview-settings-panel" id="subtitle-preview-settings-panel" role="dialog" aria-label="字幕预览设置" hidden>
+      <div class="settings-anchor subtitle-preview-settings" id="subtitle-preview-settings">
+        <button type="button" id="subtitle-preview-settings-toggle" class="subtitle-preview-settings-toggle" title="媒体设置" aria-label="媒体设置" aria-expanded="false" aria-controls="subtitle-preview-settings-panel" aria-haspopup="dialog">⚙️</button>
+        <div class="settings-panel subtitle-preview-settings-panel" id="subtitle-preview-settings-panel" role="dialog" aria-label="媒体设置" hidden>
+          <div class="settings-panel-section media-playback-settings-section">
+            <span class="settings-panel-title">JKL 播放模式</span>
+            <div class="settings-panel-field">
+              <label class="settings-panel-item" title="选择 J/K/L 的播放控制方式">
+                <span>播放模式</span>
+                <select id="jkl-playback-mode">
+                  <option value="speed">慢速和倍速</option>
+                  <option value="direction" selected>倒放和正放</option>
+                </select>
+              </label>
+              <small class="settings-panel-hint" id="jkl-playback-mode-hint">J 倒放（无反向声音），K 停止并重置 1×；停止时按 K 以 1×播放。速度档位为 1×、2×、4×、8×、16×。</small>
+            </div>
+          </div>
+          <div class="settings-panel-section subtitle-preview-settings-section">
+            <span class="settings-panel-title">预览字幕样式</span>
+            <div class="subtitle-preview-settings-fields">
           <label class="subtitle-preview-setting-row" title="只影响播放器画面内的字幕预览，不改变字幕文本或时间">
             <span>主字幕大小</span>
             <select id="subtitle-font-size">
@@ -3833,6 +3866,8 @@
               <input type="color" id="extension-subtitle-background-color" value="#000000" aria-label="副字幕背景色">
             </label>
           </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -3862,6 +3897,22 @@
     </div>
   </div>
   <section class="current-cue-panel" id="current-cue-panel" aria-label="当前字幕编辑区">
+    <div class="toolbar cue-editor-toolbar">
+      <span class="info layout-toolbar-label">编辑</span>
+      <div class="settings-anchor cue-editor-settings" id="cue-editor-settings">
+        <button type="button" id="cue-editor-settings-toggle" class="cue-editor-settings-toggle" title="编辑设置" aria-label="编辑设置" aria-expanded="false" aria-controls="cue-editor-settings-panel" aria-haspopup="dialog">⚙️</button>
+        <div class="settings-panel cue-editor-settings-panel" id="cue-editor-settings-panel" role="dialog" aria-label="编辑设置" hidden>
+          <div class="settings-panel-section cue-editor-settings-section">
+            <span class="settings-panel-title">显示</span>
+            <div class="cue-editor-settings-display-group">
+              <label class="toggle settings-panel-item"><input type="checkbox" id="cue-editor-show-navigation"> 跳转按钮</label>
+              <label class="toggle settings-panel-item"><input type="checkbox" id="cue-editor-show-time-actions"> 时间操作</label>
+              <label class="toggle settings-panel-item"><input type="checkbox" id="cue-editor-show-sticker"> 表情包</label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="cue-panel-layout">
       <div class="cue-panel-navigation">
         <button type="button" id="cue-panel-prev">‹ 前一条</button>
@@ -3895,6 +3946,78 @@
   <section class="waveform-pane" id="waveform-pane" aria-label="音频波形" tabindex="-1">
     <div class="toolbar waveform-toolbar">
       <span class="info layout-toolbar-label">波形</span>
+      <div class="settings-anchor waveform-settings" id="waveform-settings">
+        <button type="button" id="waveform-settings-toggle" class="waveform-settings-toggle" title="波形设置" aria-label="波形设置" aria-expanded="false" aria-controls="waveform-settings-panel" aria-haspopup="dialog">⚙️</button>
+        <div class="settings-panel waveform-settings-panel" id="waveform-settings-panel" role="dialog" aria-label="波形设置" hidden>
+          <div class="settings-panel-section waveform-settings-section">
+            <span class="settings-panel-title waveform-settings-title">音频波形区</span>
+            <label class="editor-settings-item" title="波形形状来源：默认使用媒体旁 .ReaPeaks 的最细 wave 层；没有时回退到自研 1000Hz 重采样缓存">波形形状来源
+              <select id="waveform-shape-source">
+                <option value="self">自研波形</option>
+                <option value="reapeaks" selected>ReaPeaks 波形层</option>
+              </select>
+            </label>
+            <label class="toggle editor-settings-item" title="使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形">
+              <input type="checkbox" id="waveform-spectral-color"> 频谱颜色
+            </label>
+            <span class="editor-settings-item" id="waveform-window-setting">显示窗口
+              <span class="editor-settings-stepper">
+                <button type="button" id="waveform-zoom-out" title="缩小时间轴">−</button>
+                <b id="waveform-window-label">20 秒</b>
+                <button type="button" id="waveform-zoom-in" title="放大时间轴">＋</button>
+              </span>
+            </span>
+            <span class="editor-settings-item">振幅
+              <span class="editor-settings-stepper">
+                <button type="button" id="waveform-scale-down" title="减小波形振幅">−</button>
+                <b id="waveform-scale-label">×1.0</b>
+                <button type="button" id="waveform-scale-up" title="增大波形振幅">＋</button>
+              </span>
+            </span>
+            <label class="editor-settings-item" id="waveform-seconds-per-row-setting">每行长度
+              <select id="waveform-seconds-per-row">
+                <option value="5">5 秒</option>
+                <option value="10" selected>10 秒</option>
+                <option value="20">20 秒</option>
+                <option value="30">30 秒</option>
+              </select>
+            </label>
+            <label class="editor-settings-item" id="waveform-row-height-setting" title="多行波形每一行的高度；也可用 Ctrl(Cmd)+Shift+滚轮 在波形上直接调节">每行高度
+              <select id="waveform-row-height">
+                <option value="64">64 px</option>
+                <option value="80">80 px</option>
+                <option value="96">96 px</option>
+                <option value="120" selected>120 px</option>
+                <option value="144">144 px</option>
+                <option value="168">168 px</option>
+              </select>
+            </label>
+            <label class="toggle editor-settings-item" title="在多行波形中，为成组（颜色/表情包）字幕在块上方显示队长皇冠与组内序号">
+              <input type="checkbox" id="waveform-show-group-badges" checked> 显示分组标记
+            </label>
+            <label class="toggle editor-settings-item" title="启用后，在波形空白区域按住左键拖动时，播放指针会实时跟随鼠标位置">
+              <input type="checkbox" id="waveform-drag-playhead" checked> 允许拖动指针
+            </label>
+            <label class="editor-settings-item">禁用波形
+              <select id="waveform-disabled-display">
+                <option value="dim" selected>淡化</option>
+                <option value="hidden">完全隐藏</option>
+              </select>
+            </label>
+          </div>
+          <div class="settings-panel-section waveform-settings-section">
+            <span class="settings-panel-title waveform-settings-title">静音空隙</span>
+            <label class="editor-settings-item" title="移除静音空隙的人工修正方式；Alt+左键始终切换整段；中键拖动默认增加静音，按住 Alt 才恢复声音，边界碰到另一空隙时会合并">
+              空隙区段操作方式
+              <select id="gap-remove-operation-mode">
+                <option value="none">无</option>
+                <option value="boundary_drag" selected>拖动边界</option>
+                <option value="middle_drag">中键拖动</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </div>
       <span class="waveform-mode-switch" role="group" aria-label="波形显示模式">
         <button type="button" data-waveform-mode="multi">多行</button>
         <button type="button" data-waveform-mode="basic">基础</button>
@@ -3926,17 +4049,44 @@
   <div class="cues-container" id="cues-container">
     <div class="toolbar cue-list-toolbar">
       <span class="info layout-toolbar-label">字幕</span>
+      <div class="settings-anchor cue-list-settings" id="cue-list-settings">
+        <button type="button" id="cue-list-settings-toggle" class="cue-list-settings-toggle" title="字幕列表设置" aria-label="字幕列表设置" aria-expanded="false" aria-controls="cue-list-settings-panel" aria-haspopup="dialog">⚙️</button>
+        <div class="settings-panel cue-list-settings-panel" id="cue-list-settings-panel" role="dialog" aria-label="字幕列表设置" hidden>
+          <div class="settings-panel-section cue-list-settings-section">
+            <span class="settings-panel-title">筛选</span>
+            <label class="settings-panel-item subtitle-preview-setting-row cue-list-setting-row" title="仅影响“仅看超长”筛选和字幕字数标记">
+              <span>字数阈值</span>
+              <input type="number" id="charcount-threshold" min="1" max="200" value="16">
+            </label>
+            <label class="toggle settings-panel-item cue-list-setting-toggle" title="开启后，在“仅看超长”筛选中拆分出的字幕会暂时保留，直到点击其他字幕、波形或空白处">
+              <input type="checkbox" id="cue-list-keep-split-visible" checked> 拆分后临时保留显示
+            </label>
+            <label class="toggle settings-panel-item cue-list-setting-toggle" title="关闭后，通过字幕列表点击字幕时不会自动滚动列表">
+              <input type="checkbox" id="cue-list-auto-scroll-on-click" checked> 点击字幕后自动滚动
+            </label>
+            <label class="toggle settings-panel-item cue-list-setting-toggle">
+              <input type="checkbox" id="hide-disabled-toggle"> 隐藏禁用字幕
+            </label>
+          </div>
+          <div class="settings-panel-section cue-list-settings-section">
+            <span class="settings-panel-title">显示</span>
+            <div class="cue-list-settings-display-group">
+              <label class="toggle settings-panel-item"><input type="checkbox" id="cue-list-show-index" checked> 序号</label>
+              <label class="toggle settings-panel-item"><input type="checkbox" id="cue-list-show-time" checked> 时间码</label>
+              <label class="toggle settings-panel-item"><input type="checkbox" id="cue-list-show-sticker" checked> 表情包</label>
+              <label class="toggle settings-panel-item"><input type="checkbox" id="cue-list-show-charcount" checked> 字数</label>
+            </div>
+          </div>
+        </div>
+      </div>
       <span class="input-clear" id="search-wrap">
         <input type="text" id="search" placeholder="过滤字幕…" autocomplete="off">
         <span class="clear-x" id="search-clear" title="清空">×</span>
       </span>
       <span class="info">显示 <b id="visible-count">0</b> / <b id="total-count">0</b></span>
-      <label class="toggle"><input type="checkbox" id="hide-disabled-toggle"> 隐藏禁用</label>
       <span class="sep"></span>
       <button id="replace-btn">批量替换…</button>
       <span class="sep"></span>
-      <span class="info">字数阈值</span>
-      <input type="number" id="charcount-threshold" min="1" max="200" value="16">
       <button id="filter-over" title="只显示超过阈值的字幕（再次点击关闭）">仅看超长</button>
     </div>
     <div class="cues-empty" id="cues-empty">加载工程后显示字幕列表</div>
@@ -5707,8 +5857,8 @@
     '表情包 OTIO': 'Sticker OTIO', '导出表情包时间线 ▾': 'Export sticker timeline ▾',
     '下载 Resolve JSON': 'Download Resolve JSON',
     '下载表情包 OTIO 工程': 'Download sticker OTIO project',
-    '字幕': 'Subtitles', '字幕预览': 'Subtitle preview', '表情包预览': 'Sticker preview', '字幕列表和编辑区': 'Subtitle list & editor',
-    '多重字幕': 'Multiple subtitles', '多重字幕设置': 'Multiple-subtitle settings', '主轨': 'Main track', '扩展轨': 'Extension track', '副轨': 'Secondary track', '双列': 'Two columns',
+    '字幕': 'Subtitles', '字幕预览': 'Subtitle preview', '表情包预览': 'Sticker preview', '字幕列表和编辑区': 'Subtitle list & editor', '字幕编辑区': 'Subtitle editor',
+    '多重字幕': 'Multiple subtitles', '多重字幕设置': 'Multiple-subtitle settings', '主轨': 'Main track', '扩展轨': 'Extension track', '副轨': 'Secondary track', '双列': 'Two columns', '绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H': 'After binding, sync the secondary subtitle start and end to the main subtitle, equivalent to pressing H', '交换主字幕和副字幕的文本、时间与绑定关系': 'Swap the main and secondary subtitle text, timing, and bindings',
     '拆分与合并': 'Split and merge', '波形形状来源': 'Waveform shape source', '自研波形': 'Self-built waveform', 'ReaPeaks 波形层': 'ReaPeaks waveform layer',
     '显示方式': 'Display mode', '语言类型': 'Language type', '主字幕': 'Main subtitle', '副字幕': 'Secondary subtitle', '主字幕语言类型': 'Main subtitle language type', '副字幕语言类型': 'Secondary subtitle language type', '拓展字幕时波形高度': 'Waveform height with extension subtitles', '副字幕时波形高度': 'Waveform height with secondary subtitles', '跨轨道吸附': 'Cross-track snapping', '同时选中主副字幕': 'Select main and secondary subtitles together', '绑定时自动同步时长': 'Automatically sync duration when binding', '显示轨道徽标': 'Show track badges', '在多重字幕波形中显示主字幕和副字幕的轨道编号徽标': 'Show main and secondary track number badges in the multiple-subtitle waveform', '交换主副字幕': 'Swap main and secondary subtitles', '普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕': 'Normal clicks follow the last clicked track; clicking a bound subtitle only adds the other subtitle actually bound to it',
     '开启后显示扩展字幕轨、双列列表和绑定操作；关闭只隐藏扩展数据，不删除': 'Show the extension track, two-column list, and binding actions; turning it off only hides extension data',
@@ -5740,14 +5890,15 @@
     '副字幕背景色': 'Secondary subtitle background color',
     '只影响播放器画面内的副字幕预览': 'Only affects the secondary subtitle preview in the player',
     '样式会保存到工程的 preview.subtitle；旧工程默认使用原来的响应式字号。': 'Styles are saved in preview.subtitle; legacy projects keep the original responsive font size.',
-    '媒体': 'Media', '预览字幕': 'Subtitle preview', '预览拓展字幕': 'Extension subtitle preview', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
+    '媒体': 'Media', '媒体设置': 'Media settings', '预览字幕': 'Subtitle preview', '预览字幕样式': 'Subtitle preview style', '预览拓展字幕': 'Extension subtitle preview', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
     '频谱颜色': 'Spectral colors',
     '播放': 'Play', '暂停': 'Pause', '后退 5 秒': 'Back 5 seconds', '前进 5 秒': 'Forward 5 seconds',
     '媒体进度': 'Media progress', '音量': 'Volume', '速度': 'Speed', '播放速度': 'Playback speed',
     '全屏': 'Fullscreen', '退出全屏': 'Exit fullscreen',
-    '显示': 'Showing', '隐藏禁用': 'Hide disabled', '批量替换…': 'Batch replace…',
-    '字数阈值': 'Character threshold', '仅看超长': 'Long only',
-    '当前': 'Current', '已选': 'Selected', '波形': 'Waveform', '音频波形区': 'Audio waveform',
+    '显示': 'Display', '筛选': 'Filter', '隐藏禁用': 'Hide disabled', '隐藏禁用字幕': 'Hide disabled subtitles', '批量替换…': 'Batch replace…',
+    '字数阈值': 'Character threshold', '仅看超长': 'Long only', '字幕列表设置': 'Subtitle list settings',
+    '拆分后临时保留显示': 'Temporarily keep split results visible', '点击字幕后自动滚动': 'Auto-scroll after clicking a subtitle', '显示内容': 'Displayed content',
+    '当前': 'Current', '已选': 'Selected', '波形': 'Waveform', '音频波形区': 'Audio waveform', '波形设置': 'Waveform settings', '波形轨道徽标（开启后）：': 'Waveform track badges (when enabled):', '使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形': 'Color the waveform using the spectral cache by dominant frequency; when disabled, use the original solid-color waveform',
     '多行': 'Multi-row', '基础': 'Basic', '隐藏': 'Hidden',
     '选择': 'Select', '分割': 'Razor', '移除静音空隙': 'Remove silent gaps',
     '跳过空隙': 'Skip gaps', '播放时跳过空隙': 'Skip gaps during playback', '未扫描空隙': 'Gaps not scanned', '工作区': 'Workspace',
@@ -5809,16 +5960,20 @@
     '全部清理': 'Clear all', '字幕列表显示': 'Subtitle list',
     '序号': 'Index', '时间码': 'Timecode', '表情包': 'Stickers', '字数': 'Characters',
     '点击字幕列表时自动滚动': 'Auto-scroll when clicking the subtitle list',
+    '仅影响“仅看超长”筛选和字幕字数标记': 'Only affects the “Long only” filter and subtitle character markers',
+    '开启后，在“仅看超长”筛选中拆分出的字幕会暂时保留，直到点击其他字幕、波形或空白处': 'When enabled, split subtitles stay visible in the “Long only” filter until another subtitle, the waveform, or blank space is clicked',
     '关闭后，通过字幕列表点击字幕时不会自动滚动列表': 'When disabled, clicking a subtitle in the list will not scroll the list',
-    '字幕编辑显示': 'Subtitle editor', '跳转按钮': 'Navigation buttons', '前后跳转': 'Navigation buttons', '时间操作': 'Time actions',
-    '操作': 'Behavior', '通用操作': 'General', '按键调整字幕': 'Keyboard subtitle adjustment', '单击行为': 'Click behavior', '点击字幕块时': 'Click subtitle behavior', '仅选中（不跳转）': 'Select only (do not seek)', '选中并跳转（自动播放）': 'Select and seek (autoplay)', 'JKL 播放模式': 'JKL playback mode', '慢速和倍速': 'Slower and faster', '倒放和正放': 'Reverse and forward', '倒放/停止/正放': 'Reverse/stop/forward', '倒放/停止/1×播放': 'Reverse/stop/1× play', '选择 J/K/L 的播放控制方式': 'Choose how J/K/L control playback', 'J 倒放（无反向声音），K 停止并重置 1×；停止时按 K 以 1×播放。速度档位为 1×、2×、4×、8×、16×。': 'J reverses the timeline without reverse audio; K stops and resets to 1×, then plays at 1× when stopped. Speed steps are 1×, 2×, 4×, 8×, and 16×.',
+    '字幕编辑显示': 'Subtitle editor', '编辑': 'Edit', '编辑设置': 'Editor settings', '跳转按钮': 'Navigation buttons', '前后跳转': 'Navigation buttons', '时间操作': 'Time actions',
+    '操作': 'Behavior', '通用操作': 'General', '按键调整字幕': 'Keyboard subtitle adjustment', '单击行为': 'Click behavior', '点击字幕块时': 'Click subtitle behavior', '仅选中（不跳转）': 'Select only (do not seek)', '选中并跳转（自动播放）': 'Select and seek (autoplay)', 'JKL 播放模式': 'JKL playback mode', '播放模式': 'Playback mode', '慢速和倍速': 'Slower and faster', '倒放和正放': 'Reverse and forward', '倒放/停止/正放': 'Reverse/stop/forward', '倒放/停止/1×播放': 'Reverse/stop/1× play', '选择 J/K/L 的播放控制方式': 'Choose how J/K/L control playback', 'J 倒放（无反向声音），K 停止并重置 1×；停止时按 K 以 1×播放。速度档位为 1×、2×、4×、8×、16×。': 'J reverses the timeline without reverse audio; K stops and resets to 1×, then plays at 1× when stopped. Speed steps are 1×, 2×, 4×, 8×, and 16×.',
     '字幕忍者': 'Subtitle Ninja', '开启后，分割工具改用 🔪 图标，成功拆分时播放刀光音效': 'When enabled, the Razor tool uses a 🔪 icon and successful splits play a slash sound', '显示刀光特效': 'Show slash effect', '开启后，成功拆分时在屏幕上显示一道白色刀光': 'Show a white slash across the screen after a successful split', '打开字幕忍者模式，让拆分字幕变得更加有趣': 'Open Subtitle Ninja mode to make splitting subtitles more fun',
     '选中并跳转': 'Select and seek', '跳转目标': 'Seek target', '字幕开头': 'Subtitle start', '鼠标所在位置': 'Pointer position',
     '主字幕自动使用时间码拆分': 'Automatically split the main subtitle using timecodes',
     '已勾选“主字幕自动使用时间码拆分”，但当前主字幕没有可用的字词时间码，本次设置不生效，已改用拆分面板。': '“Automatically split the main subtitle using timecodes” is enabled, but this subtitle has no usable word timestamps, so the setting does not apply here. The split dialog is used instead.',
+    '开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置': 'When enabled, main subtitles with usable word timestamps split automatically by timecode; in linked splits, the main subtitle appears as a non-interactive timecode anchor. When disabled, main subtitles also open the split dialog, initially positioned at the timecode location',
     '开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置。': 'When enabled, main subtitles with usable word timestamps split automatically by timecode; in linked splits, the main subtitle appears as a non-interactive timecode anchor. When disabled, main subtitles also open the split dialog, initially positioned at the timecode location.',
     '主字幕自动使用时间码拆分：单轨可直接拆分；联动弹窗中主轨显示为不可交互的时间码锚点': 'Automatically split the main subtitle using timecodes: single-track splits can be direct; linked dialogs show the main track as a non-interactive timecode anchor',
     '启用后，可在右上角「🔧 设置 → 拆分与合并」中配置是否使用时间码拆分。': 'When enabled, configure whether to use timecode splitting from the top-right “🔧 Settings → Split and merge”.',
+    '点击波形区 header 右侧的【⚙️】后，可调整【音频波形区】的具体参数': 'Click the 【⚙️】 on the right side of the waveform header to adjust the Audio waveform area parameters',
     '主字幕拆分使用字词时间码': 'Use word timestamps when splitting the main subtitle',
     '开启时，波形拆分优先使用主字幕的字词时间码；没有可用时间码时自动打开拆分弹窗；关闭后始终打开拆分弹窗。字幕列表拆分不受影响': 'When enabled, waveform splits prefer the main subtitle\'s word timestamps; when no usable timestamps exist, open the split dialog automatically; when disabled, always open the split dialog. Subtitle-list splits are unchanged',
     '暂停时只跳转，不自动播放；播放中跳转后继续播放。': 'When paused, seek without starting playback; while playing, keep playing after seeking.',
@@ -6028,10 +6183,10 @@
     '选择本地媒体文件并加载到播放器': 'Choose a local media file and load it in the player',
     '单独打开工程；浏览器无法自动读取关联媒体时会提示选择': 'Open a project by itself; the browser will prompt when it cannot read related media automatically',
     '设置表情包根目录': 'Set sticker root folder',
-    '过滤字幕…': 'Filter subtitles…', '清空': 'Clear',
+    '过滤字幕…': 'Filter subtitles…', '清空': 'Clear', '正在加载…': 'Loading…',
     '只显示超过阈值的字幕（再次点击关闭）': 'Show only subtitles over the threshold (click again to turn off)',
     '查看鼠标操作与键盘快捷键': 'View mouse and keyboard shortcuts',
-    '展开字幕、波形与导出设置': 'Open subtitle, waveform, and export settings',
+    '展开编辑器通用设置': 'Open editor general settings', '展开字幕、波形与导出设置': 'Open subtitle, waveform, and export settings',
     '选中字幕后，方向键和按住字幕块/边界时的 A/D 每次调整的毫秒数': 'Milliseconds adjusted per arrow-key press or A/D press while holding a subtitle block or edge',
     '关闭（Esc）': 'Close (Esc)',
     '关闭帮助窗口': 'Close the help window',
@@ -11322,6 +11477,12 @@ const DEFAULT_EDITOR_SETTINGS = {
   cueListShowCharcount: true,
   // 字幕列表普通点击是否把目标字幕滚动到列表中央。
   cueListAutoScrollOnClick: true,
+  // “仅看超长”开启时，拆分结果是否暂时保留在列表中，直到焦点离开。
+  cueListKeepSplitVisible: true,
+  // 字幕列表是否隐藏禁用字幕。
+  cueListHideDisabled: false,
+  // “仅看超长”与字数标记使用的字符阈值。
+  cueListCharcountThreshold: 16,
   cueEditorShowNavigation: false,
   cueEditorShowTimeActions: false,
   cueEditorShowSticker: false,
@@ -11405,6 +11566,9 @@ function readEditorSettings() {
       cueListShowSticker: saved.cueListShowSticker !== false,
       cueListShowCharcount: saved.cueListShowCharcount !== false,
       cueListAutoScrollOnClick: saved.cueListAutoScrollOnClick !== false,
+      cueListKeepSplitVisible: saved.cueListKeepSplitVisible !== false,
+      cueListHideDisabled: saved.cueListHideDisabled === true,
+      cueListCharcountThreshold: clampCharcountThreshold(saved.cueListCharcountThreshold),
       cueEditorShowNavigation: saved.cueEditorShowNavigation === true,
       cueEditorShowTimeActions: saved.cueEditorShowTimeActions === true,
       cueEditorShowSticker: saved.cueEditorShowSticker === true,
@@ -11440,6 +11604,11 @@ function readEditorSettings() {
 function clampAutoSaveInterval(value) {
   const seconds = Math.round(Number(value));
   return Math.min(3600, Math.max(5, Number.isFinite(seconds) ? seconds : 30));
+}
+
+function clampCharcountThreshold(value) {
+  const threshold = Math.round(Number(value));
+  return Math.min(200, Math.max(1, Number.isFinite(threshold) ? threshold : 16));
 }
 
 function clampAutoMergeGapMs(value) {
@@ -11776,6 +11945,13 @@ const cueListShowTimeToggle = document.getElementById('cue-list-show-time');
 const cueListShowStickerToggle = document.getElementById('cue-list-show-sticker');
 const cueListShowCharcountToggle = document.getElementById('cue-list-show-charcount');
 const cueListAutoScrollOnClickToggle = document.getElementById('cue-list-auto-scroll-on-click');
+const cueListKeepSplitVisibleToggle = document.getElementById('cue-list-keep-split-visible');
+const cueListCharcountThresholdInput = document.getElementById('charcount-threshold');
+const cueListSettings = document.getElementById('cue-list-settings');
+const cueListSettingsToggle = document.getElementById('cue-list-settings-toggle');
+const cueListSettingsPanel = document.getElementById('cue-list-settings-panel');
+const hideDisabledToggle = document.getElementById('hide-disabled-toggle');
+let hideDisabled = false;  // 「隐藏禁用项」开关状态
 const cueEditorShowNavigationToggle = document.getElementById('cue-editor-show-navigation');
 const cueEditorShowTimeActionsToggle = document.getElementById('cue-editor-show-time-actions');
 const cueEditorShowStickerToggle = document.getElementById('cue-editor-show-sticker');
@@ -11874,6 +12050,12 @@ const editorSettingsPanel = document.getElementById('editor-settings-panel');
 const subtitlePreviewSettings = document.getElementById('subtitle-preview-settings');
 const subtitlePreviewSettingsToggle = document.getElementById('subtitle-preview-settings-toggle');
 const subtitlePreviewSettingsPanel = document.getElementById('subtitle-preview-settings-panel');
+const cueEditorSettings = document.getElementById('cue-editor-settings');
+const cueEditorSettingsToggle = document.getElementById('cue-editor-settings-toggle');
+const cueEditorSettingsPanel = document.getElementById('cue-editor-settings-panel');
+const waveformSettings = document.getElementById('waveform-settings');
+const waveformSettingsToggle = document.getElementById('waveform-settings-toggle');
+const waveformSettingsPanel = document.getElementById('waveform-settings-panel');
 const exportStartAtZeroToggle = document.getElementById('export-start-at-zero');
 const serverAutoSaveSettings = document.getElementById('server-auto-save-settings');
 const autoSaveProjectToggle = document.getElementById('auto-save-project');
@@ -12106,30 +12288,83 @@ function setEditorSettingsPanelOpen(open) {
   });
 }
 
-function positionSubtitlePreviewSettingsPanel() {
-  if (!subtitlePreviewSettingsPanel || subtitlePreviewSettingsPanel.hidden || !subtitlePreviewSettingsToggle) return;
-  const buttonRect = subtitlePreviewSettingsToggle.getBoundingClientRect();
-  const panelWidth = subtitlePreviewSettingsPanel.offsetWidth;
-  const panelHeight = subtitlePreviewSettingsPanel.offsetHeight;
+function positionAnchoredSettingsPanel(panel, toggle) {
+  if (!panel || panel.hidden || !toggle) return;
+  const buttonRect = toggle.getBoundingClientRect();
+  const panelWidth = panel.offsetWidth;
+  const panelHeight = panel.offsetHeight;
   const margin = 8;
   const left = Math.min(
     Math.max(margin, buttonRect.right - panelWidth),
     Math.max(margin, window.innerWidth - panelWidth - margin),
   );
-  const top = Math.min(
-    buttonRect.bottom + 6,
-    Math.max(margin, window.innerHeight - panelHeight - margin),
-  );
-  subtitlePreviewSettingsPanel.style.left = `${left}px`;
-  subtitlePreviewSettingsPanel.style.top = `${top}px`;
+  const belowTop = buttonRect.bottom + 6;
+  const aboveTop = buttonRect.top - panelHeight - 6;
+  let top = belowTop;
+  if (belowTop + panelHeight > window.innerHeight - margin && aboveTop >= margin) {
+    top = aboveTop;
+  } else if (belowTop + panelHeight > window.innerHeight - margin) {
+    top = Math.max(margin, window.innerHeight - panelHeight - margin);
+  }
+  panel.style.left = String(left) + 'px';
+  panel.style.top = String(top) + 'px';
+}
+
+function setSettingsPanelOwnerOpen(panel, open) {
+  const owner = panel?.closest('.player-wrap, .current-cue-panel, .cues-container, .waveform-pane');
+  owner?.classList.toggle('settings-panel-owner-open', open);
+}
+
+function positionSubtitlePreviewSettingsPanel() {
+  positionAnchoredSettingsPanel(subtitlePreviewSettingsPanel, subtitlePreviewSettingsToggle);
 }
 
 function setSubtitlePreviewSettingsPanelOpen(open) {
   if (!subtitlePreviewSettingsPanel || !subtitlePreviewSettingsToggle) return;
   subtitlePreviewSettingsPanel.hidden = !open;
+  setSettingsPanelOwnerOpen(subtitlePreviewSettingsPanel, open);
   subtitlePreviewSettingsToggle.classList.toggle('active', open);
   subtitlePreviewSettingsToggle.setAttribute('aria-expanded', String(open));
   if (open) positionSubtitlePreviewSettingsPanel();
+}
+
+function positionCueListSettingsPanel() {
+  positionAnchoredSettingsPanel(cueListSettingsPanel, cueListSettingsToggle);
+}
+
+function setCueListSettingsPanelOpen(open) {
+  if (!cueListSettingsPanel || !cueListSettingsToggle) return;
+  cueListSettingsPanel.hidden = !open;
+  setSettingsPanelOwnerOpen(cueListSettingsPanel, open);
+  cueListSettingsToggle.classList.toggle('active', open);
+  cueListSettingsToggle.setAttribute('aria-expanded', String(open));
+  if (open) positionCueListSettingsPanel();
+}
+
+function positionCueEditorSettingsPanel() {
+  positionAnchoredSettingsPanel(cueEditorSettingsPanel, cueEditorSettingsToggle);
+}
+
+function setCueEditorSettingsPanelOpen(open) {
+  if (!cueEditorSettingsPanel || !cueEditorSettingsToggle) return;
+  cueEditorSettingsPanel.hidden = !open;
+  setSettingsPanelOwnerOpen(cueEditorSettingsPanel, open);
+  cueEditorSettingsToggle.classList.toggle('active', open);
+  cueEditorSettingsToggle.setAttribute('aria-expanded', String(open));
+  if (open) positionCueEditorSettingsPanel();
+}
+
+function positionWaveformSettingsPanel() {
+  positionAnchoredSettingsPanel(waveformSettingsPanel, waveformSettingsToggle);
+}
+
+function setWaveformSettingsPanelOpen(open) {
+  if (!waveformSettingsPanel || !waveformSettingsToggle) return;
+  waveformSettingsPanel.hidden = !open;
+  setSettingsPanelOwnerOpen(waveformSettingsPanel, open);
+  waveformSettingsToggle.classList.toggle('active', open);
+  waveformSettingsToggle.setAttribute('aria-expanded', String(open));
+  if (open) positionWaveformSettingsPanel();
 }
 
 function applyCueListDisplaySettings() {
@@ -12138,6 +12373,11 @@ function applyCueListDisplaySettings() {
   cueListShowStickerToggle.checked = EDITOR_SETTINGS.cueListShowSticker;
   cueListShowCharcountToggle.checked = EDITOR_SETTINGS.cueListShowCharcount;
   cueListAutoScrollOnClickToggle.checked = EDITOR_SETTINGS.cueListAutoScrollOnClick;
+  cueListKeepSplitVisibleToggle.checked = EDITOR_SETTINGS.cueListKeepSplitVisible;
+  cueListCharcountThresholdInput.value = String(EDITOR_SETTINGS.cueListCharcountThreshold);
+  hideDisabled = EDITOR_SETTINGS.cueListHideDisabled;
+  hideDisabledToggle.checked = hideDisabled;
+  container.classList.toggle('hide-disabled', hideDisabled);
   container.classList.toggle('hide-cue-index', !EDITOR_SETTINGS.cueListShowIndex);
   container.classList.toggle('hide-cue-time', !EDITOR_SETTINGS.cueListShowTime);
   // 设置保留用户的显示偏好；当前工程完全没有表情包时，整列仍自动收起，
@@ -12439,20 +12679,77 @@ subtitlePreviewSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   setSubtitlePreviewSettingsPanelOpen(subtitlePreviewSettingsPanel?.hidden);
 });
+cueListSettingsToggle?.addEventListener('click', (event) => {
+  event.stopPropagation();
+  setCueListSettingsPanelOpen(cueListSettingsPanel?.hidden);
+});
+waveformSettingsToggle?.addEventListener('click', (event) => {
+  event.stopPropagation();
+  setWaveformSettingsPanelOpen(waveformSettingsPanel?.hidden);
+});
+cueEditorSettingsToggle?.addEventListener('click', (event) => {
+  event.stopPropagation();
+  setCueEditorSettingsPanelOpen(cueEditorSettingsPanel?.hidden);
+});
 document.addEventListener('pointerdown', (event) => {
-  if (subtitlePreviewSettingsPanel?.hidden) return;
-  if (subtitlePreviewSettings?.contains(event.target)) return;
-  setSubtitlePreviewSettingsPanelOpen(false);
+  if (temporaryVisibleSplitCueKeys.size) {
+    const targetCue = event.target instanceof Element ? event.target.closest('.cue') : null;
+    if (!cueElementHasTemporarySplitVisibility(targetCue)) {
+      clearTemporaryVisibleSplitCues();
+      applySearch(searchEl.value);
+    }
+  }
+  if (!subtitlePreviewSettingsPanel?.hidden && !subtitlePreviewSettings?.contains(event.target)) {
+    setSubtitlePreviewSettingsPanelOpen(false);
+  }
+  if (!cueListSettingsPanel?.hidden && !cueListSettings?.contains(event.target)) {
+    setCueListSettingsPanelOpen(false);
+  }
+  if (!waveformSettingsPanel?.hidden && !waveformSettings?.contains(event.target)) {
+    setWaveformSettingsPanelOpen(false);
+  }
+  if (!cueEditorSettingsPanel?.hidden && !cueEditorSettings?.contains(event.target)) {
+    setCueEditorSettingsPanelOpen(false);
+  }
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || subtitlePreviewSettingsPanel?.hidden) return;
-  setSubtitlePreviewSettingsPanelOpen(false);
-  subtitlePreviewSettingsToggle?.focus();
+  if (event.key !== 'Escape') return;
+  if (!subtitlePreviewSettingsPanel?.hidden) {
+    setSubtitlePreviewSettingsPanelOpen(false);
+    subtitlePreviewSettingsToggle?.focus();
+  }
+  if (!cueListSettingsPanel?.hidden) {
+    setCueListSettingsPanelOpen(false);
+    cueListSettingsToggle?.focus();
+  }
+  if (!waveformSettingsPanel?.hidden) {
+    setWaveformSettingsPanelOpen(false);
+    waveformSettingsToggle?.focus();
+  }
+  if (!cueEditorSettingsPanel?.hidden) {
+    setCueEditorSettingsPanelOpen(false);
+    cueEditorSettingsToggle?.focus();
+  }
 });
 window.addEventListener('resize', positionSubtitlePreviewSettingsPanel);
 window.addEventListener('scroll', positionSubtitlePreviewSettingsPanel, true);
+window.addEventListener('resize', positionCueListSettingsPanel);
+window.addEventListener('scroll', positionCueListSettingsPanel, true);
+window.addEventListener('resize', positionWaveformSettingsPanel);
+window.addEventListener('scroll', positionWaveformSettingsPanel, true);
+window.addEventListener('resize', positionCueEditorSettingsPanel);
+window.addEventListener('scroll', positionCueEditorSettingsPanel, true);
 subtitlePreviewSettings?.closest('.player-toolbar')?.addEventListener(
   'scroll', positionSubtitlePreviewSettingsPanel,
+);
+cueListSettings?.closest('.cue-list-toolbar')?.addEventListener(
+  'scroll', positionCueListSettingsPanel,
+);
+waveformSettings?.closest('.waveform-toolbar')?.addEventListener(
+  'scroll', positionWaveformSettingsPanel,
+);
+cueEditorSettings?.closest('.cue-editor-toolbar')?.addEventListener(
+  'scroll', positionCueEditorSettingsPanel,
 );
 // 帮助浮窗：与拼合字幕共用 createFloatingPanel（拖动、位置持久化、Esc 关闭）
 const helpFloatingPanel = createFloatingPanel({
@@ -12593,6 +12890,24 @@ bindCueListDisplayToggle(cueListShowTimeToggle, 'cueListShowTime');
 bindCueListDisplayToggle(cueListShowStickerToggle, 'cueListShowSticker');
 bindCueListDisplayToggle(cueListShowCharcountToggle, 'cueListShowCharcount');
 bindCueListDisplayToggle(cueListAutoScrollOnClickToggle, 'cueListAutoScrollOnClick');
+cueListKeepSplitVisibleToggle?.addEventListener('change', () => {
+  updateEditorSettings({ cueListKeepSplitVisible: cueListKeepSplitVisibleToggle.checked });
+  if (!cueListKeepSplitVisibleToggle.checked) clearTemporaryVisibleSplitCues();
+  applySearch(searchEl.value);
+});
+cueListCharcountThresholdInput?.addEventListener('input', () => {
+  const value = Number(cueListCharcountThresholdInput.value);
+  if (Number.isFinite(value) && value >= 1 && value <= 200) {
+    updateEditorSettings({ cueListCharcountThreshold: clampCharcountThreshold(value) });
+  }
+  refreshAllCharCounts();
+  if (document.getElementById('filter-over').classList.contains('active')) {
+    applySearch(searchEl.value);
+  }
+});
+cueListCharcountThresholdInput?.addEventListener('change', () => {
+  cueListCharcountThresholdInput.value = String(getCharCountThreshold());
+});
 bindCueEditorDisplayToggle(cueEditorShowNavigationToggle, 'cueEditorShowNavigation');
 bindCueEditorDisplayToggle(cueEditorShowTimeActionsToggle, 'cueEditorShowTimeActions');
 bindCueEditorDisplayToggle(cueEditorShowStickerToggle, 'cueEditorShowSticker');
@@ -13327,11 +13642,11 @@ const selectedIdxs = new Set();
 const selectedExtensionIdxs = new Set();
 let lastClickedIdx = -1;  // 用于 Shift+click 范围选
 let lastClickedExtensionIdx = -1;
+// “仅看超长”开启时，刚拆出的字幕临时绕过字数过滤；使用稳定 ID，避免 splice 后下标错位。
+const temporaryVisibleSplitCueKeys = new Set();
 // 右键选择「绑定到主字幕」后的等待状态。使用稳定 ID 而不是数组下标，
 // 这样等待期间即使列表重绘，也不会把另一条扩展字幕误绑定过去。
 let pendingExtensionBinding = null;
-let hideDisabled = false;  // 「隐藏禁用项」开关状态
-const hideDisabledToggle = document.getElementById('hide-disabled-toggle');
 // 隐藏开关开启时，禁用项视为"不可选"（Shift 范围选 / Ctrl 切换都跳过）
 function isHiddenDisabled(idx, track = 'main') {
   const segments = track === 'extension'
@@ -13431,6 +13746,7 @@ function selectOnlyExtension(
   preserveMainSelection = false,
 ) {
   if (!track?.segments?.[index] || isHiddenDisabled(index, track)) return;
+  releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
   if (
     pendingExtensionBinding
     && track?.id === pendingExtensionBinding.trackId
@@ -13457,6 +13773,7 @@ function selectOnlyExtension(
 
 function toggleExtensionSelection(index, track = getActiveExtensionTrack()) {
   if (!track?.segments?.[index] || isHiddenDisabled(index, track)) return;
+  releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
   if (selectedExtensionIdxs.has(index)) selectedExtensionIdxs.delete(index);
   else {
     selectedExtensionIdxs.add(index);
@@ -13472,6 +13789,7 @@ function toggleExtensionSelection(index, track = getActiveExtensionTrack()) {
 function selectExtensionRange(a, b) {
   const track = getActiveExtensionTrack();
   if (!track) return;
+  releaseTemporaryVisibleSplitCuesUnless('extension', b, track);
   const lo = Math.min(a, b);
   const hi = Math.max(a, b);
   selectedExtensionIdxs.clear();
@@ -13491,6 +13809,7 @@ function selectExtensionRange(a, b) {
 }
 function toggleSel(idx) {
   if (isHiddenDisabled(idx)) return;  // 隐藏禁用项不参与选择
+  releaseTemporaryVisibleSplitCuesUnless('main', idx);
   hideCueSplitPreview();
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
   if (selectedIdxs.has(idx)) {
@@ -13508,6 +13827,7 @@ function toggleSel(idx) {
 }
 function selectRange(a, b) {
   hideCueSplitPreview();
+  releaseTemporaryVisibleSplitCuesUnless('main', b);
   const lo = Math.min(a, b), hi = Math.max(a, b);
   for (let i = lo; i <= hi; i++) {
     if (isHiddenDisabled(i)) continue;  // 跳过隐藏禁用项
@@ -13525,6 +13845,7 @@ function selectRange(a, b) {
 }
 function selectOnly(idx, syncPair = true) {
   hideCueSplitPreview();
+  releaseTemporaryVisibleSplitCuesUnless('main', idx);
   // 这是键盘导航的热路径：clearSelection() 会先把面板切到空状态，
   // 再由下面的 setCurrentCuePanelIndex() 切回目标，导致一次按键触发
   // 两次面板刷新和两次波形选区刷新。先提交一次待编辑内容，再批量
@@ -13543,6 +13864,7 @@ function selectOnly(idx, syncPair = true) {
 }
 function addToSelection(idx) {
   if (isHiddenDisabled(idx) || selectedIdxs.has(idx)) return;
+  releaseTemporaryVisibleSplitCuesUnless('main', idx);
   hideCueSplitPreview();
   selectedIdxs.add(idx);
   syncBoundSelection('main', idx);
@@ -13554,6 +13876,7 @@ function addToSelection(idx) {
 }
 function addExtensionToSelection(index, track = getActiveExtensionTrack()) {
   if (!track?.segments?.[index] || isHiddenDisabled(index, track) || selectedExtensionIdxs.has(index)) return;
+  releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
   selectedExtensionIdxs.add(index);
   syncBoundSelection('extension', index, track);
   updateMultiSelectionClasses();
@@ -13626,6 +13949,7 @@ function groupMemberIdxs(idx) {
 }
 // 普通单击字幕时的选择逻辑：开启「同时选中分组内项目」且属于分组时选整组，否则只选本行。
 function selectCueByClick(idx) {
+  releaseTemporaryVisibleSplitCuesUnless('main', idx);
   if (pendingExtensionBinding) {
     const pending = pendingExtensionBinding;
     pendingExtensionBinding = null;
@@ -14467,8 +14791,8 @@ function calcCharWidth(text, mode = null) {
     : window.AsrEditorUtils.countTextUnits(text);
 }
 function getCharCountThreshold() {
-  const v = parseInt(document.getElementById('charcount-threshold').value, 10);
-  return Number.isFinite(v) && v > 0 ? v : 16;
+  const v = parseInt(cueListCharcountThresholdInput?.value, 10);
+  return Number.isFinite(v) && v > 0 ? v : EDITOR_SETTINGS.cueListCharcountThreshold;
 }
 function applyCharCount(cntEl, text, mode = null) {
   if (!cntEl) return;
@@ -14476,6 +14800,74 @@ function applyCharCount(cntEl, text, mode = null) {
   cntEl.textContent = Number.isInteger(w) ? String(w) : w.toFixed(1);
   cntEl.classList.toggle('over', w > getCharCountThreshold());
 }
+
+function splitCueVisibilityKey(kind, segment, trackId = null) {
+  const id = segment?.id;
+  if (!id) return null;
+  return kind === 'extension'
+    ? `extension:${trackId || ''}:${id}`
+    : `main:${id}`;
+}
+
+function temporaryVisibleSplitCueKeysForElement(element) {
+  if (!element) return [];
+  const keys = [];
+  const mainIndex = element.dataset.mainIdx != null
+    ? Number(element.dataset.mainIdx)
+    : (element.dataset.idx != null ? Number(element.dataset.idx) : -1);
+  const extensionIndex = element.dataset.extIdx != null ? Number(element.dataset.extIdx) : -1;
+  if (Number.isInteger(mainIndex) && mainIndex >= 0) {
+    const key = splitCueVisibilityKey('main', DATA.segments[mainIndex]);
+    if (key) keys.push(key);
+  }
+  const extensionTrack = getActiveExtensionTrack();
+  if (Number.isInteger(extensionIndex) && extensionIndex >= 0 && extensionTrack) {
+    const key = splitCueVisibilityKey(
+      'extension', extensionTrack.segments[extensionIndex], extensionTrack.id,
+    );
+    if (key) keys.push(key);
+  }
+  return keys;
+}
+
+function cueElementHasTemporarySplitVisibility(element) {
+  return temporaryVisibleSplitCueKeysForElement(element)
+    .some((key) => temporaryVisibleSplitCueKeys.has(key));
+}
+
+function clearTemporaryVisibleSplitCues() {
+  temporaryVisibleSplitCueKeys.clear();
+}
+
+function rememberTemporaryVisibleSplitCues({
+  mainSegments = [],
+  extensionSegments = [],
+  extensionTrackId = null,
+} = {}) {
+  if (!EDITOR_SETTINGS.cueListKeepSplitVisible) return;
+  if (!document.getElementById('filter-over')?.classList.contains('active')) return;
+  mainSegments.forEach((segment) => {
+    const key = splitCueVisibilityKey('main', segment);
+    if (key) temporaryVisibleSplitCueKeys.add(key);
+  });
+  extensionSegments.forEach((segment) => {
+    const key = splitCueVisibilityKey('extension', segment, extensionTrackId);
+    if (key) temporaryVisibleSplitCueKeys.add(key);
+  });
+}
+
+function releaseTemporaryVisibleSplitCuesUnless(kind, index, track = null) {
+  if (!temporaryVisibleSplitCueKeys.size) return;
+  const segments = kind === 'extension'
+    ? (track?.segments || getActiveExtensionTrack()?.segments || [])
+    : DATA.segments;
+  const segment = segments[index];
+  const key = splitCueVisibilityKey(kind, segment, kind === 'extension' ? track?.id : null);
+  if (key && temporaryVisibleSplitCueKeys.has(key)) return;
+  clearTemporaryVisibleSplitCues();
+  applySearch(searchEl.value);
+}
+
 function refreshAllCharCounts() {
   const extensionTrack = getActiveExtensionTrack();
   container.querySelectorAll(':scope > .cue').forEach(el => {
@@ -14517,7 +14909,10 @@ function applySearch(query) {
     }
     let matched = !re || re.test(searchableText);
     if (re) re.lastIndex = 0;
-    if (matched && filterOver) {
+    const keepTemporaryVisible = filterOver
+      && EDITOR_SETTINGS.cueListKeepSplitVisible
+      && cueElementHasTemporarySplitVisibility(el);
+    if (matched && filterOver && !keepTemporaryVisible) {
       const count = (mainSeg ? calcCharWidth(mainSeg.text, getMainSubtitleSplitMode(mainSeg)) : 0)
         + (extensionSeg
           ? calcCharWidth(extensionSeg.text, getExtensionSubtitleSplitMode(extensionTrack, extensionSeg))
@@ -15673,6 +16068,7 @@ function commitMainWaveformSplit(state) {
   if (pair.left.sticker) pair.right.sticker_ref = { name: pair.left.sticker.name, headIdx: mainIndex };
   if (pair.left.color) pair.right.color_ref = { name: pair.left.color.name, headIdx: mainIndex };
   markMainSegmentsDirty([pair.left, pair.right]);
+  rememberTemporaryVisibleSplitCues({ mainSegments: [pair.left, pair.right] });
   closeLinkedSplitModal();
   renderAll();
   selectOnly(mainIndex + 1);
@@ -15707,6 +16103,10 @@ function commitExtensionSplit(state) {
   removeBindingsForSegmentIds([], [oldExtensionId]);
   track.segments.splice(extensionIndex, 1, pair.left, pair.right);
   markMultiSubtitleDirty();
+  rememberTemporaryVisibleSplitCues({
+    extensionSegments: [pair.left, pair.right],
+    extensionTrackId: track.id,
+  });
   closeLinkedSplitModal();
   clearSelection({ commitCuePanel: false });
   renderAll();
@@ -15791,6 +16191,11 @@ function confirmLinkedSplit() {
   multi.enabled = true;
   markMainSegmentsDirty([mainPair.left, mainPair.right]);
   markMultiSubtitleDirty();
+  rememberTemporaryVisibleSplitCues({
+    mainSegments: [mainPair.left, mainPair.right],
+    extensionSegments: [extensionPair.left, extensionPair.right],
+    extensionTrackId: track.id,
+  });
   closeLinkedSplitModal();
   clearSelection({ commitCuePanel: false });
   renderAll();
@@ -15916,6 +16321,7 @@ function splitAtCursor(feedbackPoint = null) {
     if (cref && cref.headIdx > idx) cref.headIdx += 1;
   }
 
+  rememberTemporaryVisibleSplitCues({ mainSegments: [leftSeg, rightSeg] });
   renderAll();
   const rightEl = container.querySelector(`.cue[data-idx="${idx + 1}"]`);
   if (rightEl) scrollCueToCenter(rightEl);
@@ -22839,22 +23245,18 @@ if (SERVER_CONFIG?.autoLoadedMediaName) {
   flashHint(`已自动加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`, 'success');
 }
 
-document.getElementById('charcount-threshold').addEventListener('input', () => {
-  refreshAllCharCounts();
-  // 如果"仅看超长"开着，阈值变化要重新过滤
-  if (document.getElementById('filter-over').classList.contains('active')) {
-    applySearch(searchEl.value);
-  }
-});
-
 document.getElementById('filter-over').addEventListener('click', (e) => {
   e.currentTarget.classList.toggle('active');
+  if (!e.currentTarget.classList.contains('active')) {
+    clearTemporaryVisibleSplitCues();
+  }
   applySearch(searchEl.value);
 });
 
 // 「隐藏禁用项」开关：开启后禁用项 display:none，并从选中集移除
 hideDisabledToggle.addEventListener('change', () => {
   hideDisabled = hideDisabledToggle.checked;
+  updateEditorSettings({ cueListHideDisabled: hideDisabled });
   container.classList.toggle('hide-disabled', hideDisabled);
   if (hideDisabled) {
     // 清理选中集中的禁用项（隐藏了但还留在选中集会造成状态不一致）

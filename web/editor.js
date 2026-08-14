@@ -607,6 +607,12 @@ const DEFAULT_EDITOR_SETTINGS = {
   cueListShowCharcount: true,
   // 字幕列表普通点击是否把目标字幕滚动到列表中央。
   cueListAutoScrollOnClick: true,
+  // “仅看超长”开启时，拆分结果是否暂时保留在列表中，直到焦点离开。
+  cueListKeepSplitVisible: true,
+  // 字幕列表是否隐藏禁用字幕。
+  cueListHideDisabled: false,
+  // “仅看超长”与字数标记使用的字符阈值。
+  cueListCharcountThreshold: 16,
   cueEditorShowNavigation: false,
   cueEditorShowTimeActions: false,
   cueEditorShowSticker: false,
@@ -690,6 +696,9 @@ function readEditorSettings() {
       cueListShowSticker: saved.cueListShowSticker !== false,
       cueListShowCharcount: saved.cueListShowCharcount !== false,
       cueListAutoScrollOnClick: saved.cueListAutoScrollOnClick !== false,
+      cueListKeepSplitVisible: saved.cueListKeepSplitVisible !== false,
+      cueListHideDisabled: saved.cueListHideDisabled === true,
+      cueListCharcountThreshold: clampCharcountThreshold(saved.cueListCharcountThreshold),
       cueEditorShowNavigation: saved.cueEditorShowNavigation === true,
       cueEditorShowTimeActions: saved.cueEditorShowTimeActions === true,
       cueEditorShowSticker: saved.cueEditorShowSticker === true,
@@ -725,6 +734,11 @@ function readEditorSettings() {
 function clampAutoSaveInterval(value) {
   const seconds = Math.round(Number(value));
   return Math.min(3600, Math.max(5, Number.isFinite(seconds) ? seconds : 30));
+}
+
+function clampCharcountThreshold(value) {
+  const threshold = Math.round(Number(value));
+  return Math.min(200, Math.max(1, Number.isFinite(threshold) ? threshold : 16));
 }
 
 function clampAutoMergeGapMs(value) {
@@ -1061,6 +1075,13 @@ const cueListShowTimeToggle = document.getElementById('cue-list-show-time');
 const cueListShowStickerToggle = document.getElementById('cue-list-show-sticker');
 const cueListShowCharcountToggle = document.getElementById('cue-list-show-charcount');
 const cueListAutoScrollOnClickToggle = document.getElementById('cue-list-auto-scroll-on-click');
+const cueListKeepSplitVisibleToggle = document.getElementById('cue-list-keep-split-visible');
+const cueListCharcountThresholdInput = document.getElementById('charcount-threshold');
+const cueListSettings = document.getElementById('cue-list-settings');
+const cueListSettingsToggle = document.getElementById('cue-list-settings-toggle');
+const cueListSettingsPanel = document.getElementById('cue-list-settings-panel');
+const hideDisabledToggle = document.getElementById('hide-disabled-toggle');
+let hideDisabled = false;  // 「隐藏禁用项」开关状态
 const cueEditorShowNavigationToggle = document.getElementById('cue-editor-show-navigation');
 const cueEditorShowTimeActionsToggle = document.getElementById('cue-editor-show-time-actions');
 const cueEditorShowStickerToggle = document.getElementById('cue-editor-show-sticker');
@@ -1159,6 +1180,12 @@ const editorSettingsPanel = document.getElementById('editor-settings-panel');
 const subtitlePreviewSettings = document.getElementById('subtitle-preview-settings');
 const subtitlePreviewSettingsToggle = document.getElementById('subtitle-preview-settings-toggle');
 const subtitlePreviewSettingsPanel = document.getElementById('subtitle-preview-settings-panel');
+const cueEditorSettings = document.getElementById('cue-editor-settings');
+const cueEditorSettingsToggle = document.getElementById('cue-editor-settings-toggle');
+const cueEditorSettingsPanel = document.getElementById('cue-editor-settings-panel');
+const waveformSettings = document.getElementById('waveform-settings');
+const waveformSettingsToggle = document.getElementById('waveform-settings-toggle');
+const waveformSettingsPanel = document.getElementById('waveform-settings-panel');
 const exportStartAtZeroToggle = document.getElementById('export-start-at-zero');
 const serverAutoSaveSettings = document.getElementById('server-auto-save-settings');
 const autoSaveProjectToggle = document.getElementById('auto-save-project');
@@ -1391,30 +1418,83 @@ function setEditorSettingsPanelOpen(open) {
   });
 }
 
-function positionSubtitlePreviewSettingsPanel() {
-  if (!subtitlePreviewSettingsPanel || subtitlePreviewSettingsPanel.hidden || !subtitlePreviewSettingsToggle) return;
-  const buttonRect = subtitlePreviewSettingsToggle.getBoundingClientRect();
-  const panelWidth = subtitlePreviewSettingsPanel.offsetWidth;
-  const panelHeight = subtitlePreviewSettingsPanel.offsetHeight;
+function positionAnchoredSettingsPanel(panel, toggle) {
+  if (!panel || panel.hidden || !toggle) return;
+  const buttonRect = toggle.getBoundingClientRect();
+  const panelWidth = panel.offsetWidth;
+  const panelHeight = panel.offsetHeight;
   const margin = 8;
   const left = Math.min(
     Math.max(margin, buttonRect.right - panelWidth),
     Math.max(margin, window.innerWidth - panelWidth - margin),
   );
-  const top = Math.min(
-    buttonRect.bottom + 6,
-    Math.max(margin, window.innerHeight - panelHeight - margin),
-  );
-  subtitlePreviewSettingsPanel.style.left = `${left}px`;
-  subtitlePreviewSettingsPanel.style.top = `${top}px`;
+  const belowTop = buttonRect.bottom + 6;
+  const aboveTop = buttonRect.top - panelHeight - 6;
+  let top = belowTop;
+  if (belowTop + panelHeight > window.innerHeight - margin && aboveTop >= margin) {
+    top = aboveTop;
+  } else if (belowTop + panelHeight > window.innerHeight - margin) {
+    top = Math.max(margin, window.innerHeight - panelHeight - margin);
+  }
+  panel.style.left = String(left) + 'px';
+  panel.style.top = String(top) + 'px';
+}
+
+function setSettingsPanelOwnerOpen(panel, open) {
+  const owner = panel?.closest('.player-wrap, .current-cue-panel, .cues-container, .waveform-pane');
+  owner?.classList.toggle('settings-panel-owner-open', open);
+}
+
+function positionSubtitlePreviewSettingsPanel() {
+  positionAnchoredSettingsPanel(subtitlePreviewSettingsPanel, subtitlePreviewSettingsToggle);
 }
 
 function setSubtitlePreviewSettingsPanelOpen(open) {
   if (!subtitlePreviewSettingsPanel || !subtitlePreviewSettingsToggle) return;
   subtitlePreviewSettingsPanel.hidden = !open;
+  setSettingsPanelOwnerOpen(subtitlePreviewSettingsPanel, open);
   subtitlePreviewSettingsToggle.classList.toggle('active', open);
   subtitlePreviewSettingsToggle.setAttribute('aria-expanded', String(open));
   if (open) positionSubtitlePreviewSettingsPanel();
+}
+
+function positionCueListSettingsPanel() {
+  positionAnchoredSettingsPanel(cueListSettingsPanel, cueListSettingsToggle);
+}
+
+function setCueListSettingsPanelOpen(open) {
+  if (!cueListSettingsPanel || !cueListSettingsToggle) return;
+  cueListSettingsPanel.hidden = !open;
+  setSettingsPanelOwnerOpen(cueListSettingsPanel, open);
+  cueListSettingsToggle.classList.toggle('active', open);
+  cueListSettingsToggle.setAttribute('aria-expanded', String(open));
+  if (open) positionCueListSettingsPanel();
+}
+
+function positionCueEditorSettingsPanel() {
+  positionAnchoredSettingsPanel(cueEditorSettingsPanel, cueEditorSettingsToggle);
+}
+
+function setCueEditorSettingsPanelOpen(open) {
+  if (!cueEditorSettingsPanel || !cueEditorSettingsToggle) return;
+  cueEditorSettingsPanel.hidden = !open;
+  setSettingsPanelOwnerOpen(cueEditorSettingsPanel, open);
+  cueEditorSettingsToggle.classList.toggle('active', open);
+  cueEditorSettingsToggle.setAttribute('aria-expanded', String(open));
+  if (open) positionCueEditorSettingsPanel();
+}
+
+function positionWaveformSettingsPanel() {
+  positionAnchoredSettingsPanel(waveformSettingsPanel, waveformSettingsToggle);
+}
+
+function setWaveformSettingsPanelOpen(open) {
+  if (!waveformSettingsPanel || !waveformSettingsToggle) return;
+  waveformSettingsPanel.hidden = !open;
+  setSettingsPanelOwnerOpen(waveformSettingsPanel, open);
+  waveformSettingsToggle.classList.toggle('active', open);
+  waveformSettingsToggle.setAttribute('aria-expanded', String(open));
+  if (open) positionWaveformSettingsPanel();
 }
 
 function applyCueListDisplaySettings() {
@@ -1423,6 +1503,11 @@ function applyCueListDisplaySettings() {
   cueListShowStickerToggle.checked = EDITOR_SETTINGS.cueListShowSticker;
   cueListShowCharcountToggle.checked = EDITOR_SETTINGS.cueListShowCharcount;
   cueListAutoScrollOnClickToggle.checked = EDITOR_SETTINGS.cueListAutoScrollOnClick;
+  cueListKeepSplitVisibleToggle.checked = EDITOR_SETTINGS.cueListKeepSplitVisible;
+  cueListCharcountThresholdInput.value = String(EDITOR_SETTINGS.cueListCharcountThreshold);
+  hideDisabled = EDITOR_SETTINGS.cueListHideDisabled;
+  hideDisabledToggle.checked = hideDisabled;
+  container.classList.toggle('hide-disabled', hideDisabled);
   container.classList.toggle('hide-cue-index', !EDITOR_SETTINGS.cueListShowIndex);
   container.classList.toggle('hide-cue-time', !EDITOR_SETTINGS.cueListShowTime);
   // 设置保留用户的显示偏好；当前工程完全没有表情包时，整列仍自动收起，
@@ -1724,20 +1809,77 @@ subtitlePreviewSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   setSubtitlePreviewSettingsPanelOpen(subtitlePreviewSettingsPanel?.hidden);
 });
+cueListSettingsToggle?.addEventListener('click', (event) => {
+  event.stopPropagation();
+  setCueListSettingsPanelOpen(cueListSettingsPanel?.hidden);
+});
+waveformSettingsToggle?.addEventListener('click', (event) => {
+  event.stopPropagation();
+  setWaveformSettingsPanelOpen(waveformSettingsPanel?.hidden);
+});
+cueEditorSettingsToggle?.addEventListener('click', (event) => {
+  event.stopPropagation();
+  setCueEditorSettingsPanelOpen(cueEditorSettingsPanel?.hidden);
+});
 document.addEventListener('pointerdown', (event) => {
-  if (subtitlePreviewSettingsPanel?.hidden) return;
-  if (subtitlePreviewSettings?.contains(event.target)) return;
-  setSubtitlePreviewSettingsPanelOpen(false);
+  if (temporaryVisibleSplitCueKeys.size) {
+    const targetCue = event.target instanceof Element ? event.target.closest('.cue') : null;
+    if (!cueElementHasTemporarySplitVisibility(targetCue)) {
+      clearTemporaryVisibleSplitCues();
+      applySearch(searchEl.value);
+    }
+  }
+  if (!subtitlePreviewSettingsPanel?.hidden && !subtitlePreviewSettings?.contains(event.target)) {
+    setSubtitlePreviewSettingsPanelOpen(false);
+  }
+  if (!cueListSettingsPanel?.hidden && !cueListSettings?.contains(event.target)) {
+    setCueListSettingsPanelOpen(false);
+  }
+  if (!waveformSettingsPanel?.hidden && !waveformSettings?.contains(event.target)) {
+    setWaveformSettingsPanelOpen(false);
+  }
+  if (!cueEditorSettingsPanel?.hidden && !cueEditorSettings?.contains(event.target)) {
+    setCueEditorSettingsPanelOpen(false);
+  }
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || subtitlePreviewSettingsPanel?.hidden) return;
-  setSubtitlePreviewSettingsPanelOpen(false);
-  subtitlePreviewSettingsToggle?.focus();
+  if (event.key !== 'Escape') return;
+  if (!subtitlePreviewSettingsPanel?.hidden) {
+    setSubtitlePreviewSettingsPanelOpen(false);
+    subtitlePreviewSettingsToggle?.focus();
+  }
+  if (!cueListSettingsPanel?.hidden) {
+    setCueListSettingsPanelOpen(false);
+    cueListSettingsToggle?.focus();
+  }
+  if (!waveformSettingsPanel?.hidden) {
+    setWaveformSettingsPanelOpen(false);
+    waveformSettingsToggle?.focus();
+  }
+  if (!cueEditorSettingsPanel?.hidden) {
+    setCueEditorSettingsPanelOpen(false);
+    cueEditorSettingsToggle?.focus();
+  }
 });
 window.addEventListener('resize', positionSubtitlePreviewSettingsPanel);
 window.addEventListener('scroll', positionSubtitlePreviewSettingsPanel, true);
+window.addEventListener('resize', positionCueListSettingsPanel);
+window.addEventListener('scroll', positionCueListSettingsPanel, true);
+window.addEventListener('resize', positionWaveformSettingsPanel);
+window.addEventListener('scroll', positionWaveformSettingsPanel, true);
+window.addEventListener('resize', positionCueEditorSettingsPanel);
+window.addEventListener('scroll', positionCueEditorSettingsPanel, true);
 subtitlePreviewSettings?.closest('.player-toolbar')?.addEventListener(
   'scroll', positionSubtitlePreviewSettingsPanel,
+);
+cueListSettings?.closest('.cue-list-toolbar')?.addEventListener(
+  'scroll', positionCueListSettingsPanel,
+);
+waveformSettings?.closest('.waveform-toolbar')?.addEventListener(
+  'scroll', positionWaveformSettingsPanel,
+);
+cueEditorSettings?.closest('.cue-editor-toolbar')?.addEventListener(
+  'scroll', positionCueEditorSettingsPanel,
 );
 // 帮助浮窗：与拼合字幕共用 createFloatingPanel（拖动、位置持久化、Esc 关闭）
 const helpFloatingPanel = createFloatingPanel({
@@ -1878,6 +2020,24 @@ bindCueListDisplayToggle(cueListShowTimeToggle, 'cueListShowTime');
 bindCueListDisplayToggle(cueListShowStickerToggle, 'cueListShowSticker');
 bindCueListDisplayToggle(cueListShowCharcountToggle, 'cueListShowCharcount');
 bindCueListDisplayToggle(cueListAutoScrollOnClickToggle, 'cueListAutoScrollOnClick');
+cueListKeepSplitVisibleToggle?.addEventListener('change', () => {
+  updateEditorSettings({ cueListKeepSplitVisible: cueListKeepSplitVisibleToggle.checked });
+  if (!cueListKeepSplitVisibleToggle.checked) clearTemporaryVisibleSplitCues();
+  applySearch(searchEl.value);
+});
+cueListCharcountThresholdInput?.addEventListener('input', () => {
+  const value = Number(cueListCharcountThresholdInput.value);
+  if (Number.isFinite(value) && value >= 1 && value <= 200) {
+    updateEditorSettings({ cueListCharcountThreshold: clampCharcountThreshold(value) });
+  }
+  refreshAllCharCounts();
+  if (document.getElementById('filter-over').classList.contains('active')) {
+    applySearch(searchEl.value);
+  }
+});
+cueListCharcountThresholdInput?.addEventListener('change', () => {
+  cueListCharcountThresholdInput.value = String(getCharCountThreshold());
+});
 bindCueEditorDisplayToggle(cueEditorShowNavigationToggle, 'cueEditorShowNavigation');
 bindCueEditorDisplayToggle(cueEditorShowTimeActionsToggle, 'cueEditorShowTimeActions');
 bindCueEditorDisplayToggle(cueEditorShowStickerToggle, 'cueEditorShowSticker');
@@ -2612,11 +2772,11 @@ const selectedIdxs = new Set();
 const selectedExtensionIdxs = new Set();
 let lastClickedIdx = -1;  // 用于 Shift+click 范围选
 let lastClickedExtensionIdx = -1;
+// “仅看超长”开启时，刚拆出的字幕临时绕过字数过滤；使用稳定 ID，避免 splice 后下标错位。
+const temporaryVisibleSplitCueKeys = new Set();
 // 右键选择「绑定到主字幕」后的等待状态。使用稳定 ID 而不是数组下标，
 // 这样等待期间即使列表重绘，也不会把另一条扩展字幕误绑定过去。
 let pendingExtensionBinding = null;
-let hideDisabled = false;  // 「隐藏禁用项」开关状态
-const hideDisabledToggle = document.getElementById('hide-disabled-toggle');
 // 隐藏开关开启时，禁用项视为"不可选"（Shift 范围选 / Ctrl 切换都跳过）
 function isHiddenDisabled(idx, track = 'main') {
   const segments = track === 'extension'
@@ -2716,6 +2876,7 @@ function selectOnlyExtension(
   preserveMainSelection = false,
 ) {
   if (!track?.segments?.[index] || isHiddenDisabled(index, track)) return;
+  releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
   if (
     pendingExtensionBinding
     && track?.id === pendingExtensionBinding.trackId
@@ -2742,6 +2903,7 @@ function selectOnlyExtension(
 
 function toggleExtensionSelection(index, track = getActiveExtensionTrack()) {
   if (!track?.segments?.[index] || isHiddenDisabled(index, track)) return;
+  releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
   if (selectedExtensionIdxs.has(index)) selectedExtensionIdxs.delete(index);
   else {
     selectedExtensionIdxs.add(index);
@@ -2757,6 +2919,7 @@ function toggleExtensionSelection(index, track = getActiveExtensionTrack()) {
 function selectExtensionRange(a, b) {
   const track = getActiveExtensionTrack();
   if (!track) return;
+  releaseTemporaryVisibleSplitCuesUnless('extension', b, track);
   const lo = Math.min(a, b);
   const hi = Math.max(a, b);
   selectedExtensionIdxs.clear();
@@ -2776,6 +2939,7 @@ function selectExtensionRange(a, b) {
 }
 function toggleSel(idx) {
   if (isHiddenDisabled(idx)) return;  // 隐藏禁用项不参与选择
+  releaseTemporaryVisibleSplitCuesUnless('main', idx);
   hideCueSplitPreview();
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
   if (selectedIdxs.has(idx)) {
@@ -2793,6 +2957,7 @@ function toggleSel(idx) {
 }
 function selectRange(a, b) {
   hideCueSplitPreview();
+  releaseTemporaryVisibleSplitCuesUnless('main', b);
   const lo = Math.min(a, b), hi = Math.max(a, b);
   for (let i = lo; i <= hi; i++) {
     if (isHiddenDisabled(i)) continue;  // 跳过隐藏禁用项
@@ -2810,6 +2975,7 @@ function selectRange(a, b) {
 }
 function selectOnly(idx, syncPair = true) {
   hideCueSplitPreview();
+  releaseTemporaryVisibleSplitCuesUnless('main', idx);
   // 这是键盘导航的热路径：clearSelection() 会先把面板切到空状态，
   // 再由下面的 setCurrentCuePanelIndex() 切回目标，导致一次按键触发
   // 两次面板刷新和两次波形选区刷新。先提交一次待编辑内容，再批量
@@ -2828,6 +2994,7 @@ function selectOnly(idx, syncPair = true) {
 }
 function addToSelection(idx) {
   if (isHiddenDisabled(idx) || selectedIdxs.has(idx)) return;
+  releaseTemporaryVisibleSplitCuesUnless('main', idx);
   hideCueSplitPreview();
   selectedIdxs.add(idx);
   syncBoundSelection('main', idx);
@@ -2839,6 +3006,7 @@ function addToSelection(idx) {
 }
 function addExtensionToSelection(index, track = getActiveExtensionTrack()) {
   if (!track?.segments?.[index] || isHiddenDisabled(index, track) || selectedExtensionIdxs.has(index)) return;
+  releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
   selectedExtensionIdxs.add(index);
   syncBoundSelection('extension', index, track);
   updateMultiSelectionClasses();
@@ -2911,6 +3079,7 @@ function groupMemberIdxs(idx) {
 }
 // 普通单击字幕时的选择逻辑：开启「同时选中分组内项目」且属于分组时选整组，否则只选本行。
 function selectCueByClick(idx) {
+  releaseTemporaryVisibleSplitCuesUnless('main', idx);
   if (pendingExtensionBinding) {
     const pending = pendingExtensionBinding;
     pendingExtensionBinding = null;
@@ -3752,8 +3921,8 @@ function calcCharWidth(text, mode = null) {
     : window.AsrEditorUtils.countTextUnits(text);
 }
 function getCharCountThreshold() {
-  const v = parseInt(document.getElementById('charcount-threshold').value, 10);
-  return Number.isFinite(v) && v > 0 ? v : 16;
+  const v = parseInt(cueListCharcountThresholdInput?.value, 10);
+  return Number.isFinite(v) && v > 0 ? v : EDITOR_SETTINGS.cueListCharcountThreshold;
 }
 function applyCharCount(cntEl, text, mode = null) {
   if (!cntEl) return;
@@ -3761,6 +3930,74 @@ function applyCharCount(cntEl, text, mode = null) {
   cntEl.textContent = Number.isInteger(w) ? String(w) : w.toFixed(1);
   cntEl.classList.toggle('over', w > getCharCountThreshold());
 }
+
+function splitCueVisibilityKey(kind, segment, trackId = null) {
+  const id = segment?.id;
+  if (!id) return null;
+  return kind === 'extension'
+    ? `extension:${trackId || ''}:${id}`
+    : `main:${id}`;
+}
+
+function temporaryVisibleSplitCueKeysForElement(element) {
+  if (!element) return [];
+  const keys = [];
+  const mainIndex = element.dataset.mainIdx != null
+    ? Number(element.dataset.mainIdx)
+    : (element.dataset.idx != null ? Number(element.dataset.idx) : -1);
+  const extensionIndex = element.dataset.extIdx != null ? Number(element.dataset.extIdx) : -1;
+  if (Number.isInteger(mainIndex) && mainIndex >= 0) {
+    const key = splitCueVisibilityKey('main', DATA.segments[mainIndex]);
+    if (key) keys.push(key);
+  }
+  const extensionTrack = getActiveExtensionTrack();
+  if (Number.isInteger(extensionIndex) && extensionIndex >= 0 && extensionTrack) {
+    const key = splitCueVisibilityKey(
+      'extension', extensionTrack.segments[extensionIndex], extensionTrack.id,
+    );
+    if (key) keys.push(key);
+  }
+  return keys;
+}
+
+function cueElementHasTemporarySplitVisibility(element) {
+  return temporaryVisibleSplitCueKeysForElement(element)
+    .some((key) => temporaryVisibleSplitCueKeys.has(key));
+}
+
+function clearTemporaryVisibleSplitCues() {
+  temporaryVisibleSplitCueKeys.clear();
+}
+
+function rememberTemporaryVisibleSplitCues({
+  mainSegments = [],
+  extensionSegments = [],
+  extensionTrackId = null,
+} = {}) {
+  if (!EDITOR_SETTINGS.cueListKeepSplitVisible) return;
+  if (!document.getElementById('filter-over')?.classList.contains('active')) return;
+  mainSegments.forEach((segment) => {
+    const key = splitCueVisibilityKey('main', segment);
+    if (key) temporaryVisibleSplitCueKeys.add(key);
+  });
+  extensionSegments.forEach((segment) => {
+    const key = splitCueVisibilityKey('extension', segment, extensionTrackId);
+    if (key) temporaryVisibleSplitCueKeys.add(key);
+  });
+}
+
+function releaseTemporaryVisibleSplitCuesUnless(kind, index, track = null) {
+  if (!temporaryVisibleSplitCueKeys.size) return;
+  const segments = kind === 'extension'
+    ? (track?.segments || getActiveExtensionTrack()?.segments || [])
+    : DATA.segments;
+  const segment = segments[index];
+  const key = splitCueVisibilityKey(kind, segment, kind === 'extension' ? track?.id : null);
+  if (key && temporaryVisibleSplitCueKeys.has(key)) return;
+  clearTemporaryVisibleSplitCues();
+  applySearch(searchEl.value);
+}
+
 function refreshAllCharCounts() {
   const extensionTrack = getActiveExtensionTrack();
   container.querySelectorAll(':scope > .cue').forEach(el => {
@@ -3802,7 +4039,10 @@ function applySearch(query) {
     }
     let matched = !re || re.test(searchableText);
     if (re) re.lastIndex = 0;
-    if (matched && filterOver) {
+    const keepTemporaryVisible = filterOver
+      && EDITOR_SETTINGS.cueListKeepSplitVisible
+      && cueElementHasTemporarySplitVisibility(el);
+    if (matched && filterOver && !keepTemporaryVisible) {
       const count = (mainSeg ? calcCharWidth(mainSeg.text, getMainSubtitleSplitMode(mainSeg)) : 0)
         + (extensionSeg
           ? calcCharWidth(extensionSeg.text, getExtensionSubtitleSplitMode(extensionTrack, extensionSeg))
@@ -4958,6 +5198,7 @@ function commitMainWaveformSplit(state) {
   if (pair.left.sticker) pair.right.sticker_ref = { name: pair.left.sticker.name, headIdx: mainIndex };
   if (pair.left.color) pair.right.color_ref = { name: pair.left.color.name, headIdx: mainIndex };
   markMainSegmentsDirty([pair.left, pair.right]);
+  rememberTemporaryVisibleSplitCues({ mainSegments: [pair.left, pair.right] });
   closeLinkedSplitModal();
   renderAll();
   selectOnly(mainIndex + 1);
@@ -4992,6 +5233,10 @@ function commitExtensionSplit(state) {
   removeBindingsForSegmentIds([], [oldExtensionId]);
   track.segments.splice(extensionIndex, 1, pair.left, pair.right);
   markMultiSubtitleDirty();
+  rememberTemporaryVisibleSplitCues({
+    extensionSegments: [pair.left, pair.right],
+    extensionTrackId: track.id,
+  });
   closeLinkedSplitModal();
   clearSelection({ commitCuePanel: false });
   renderAll();
@@ -5076,6 +5321,11 @@ function confirmLinkedSplit() {
   multi.enabled = true;
   markMainSegmentsDirty([mainPair.left, mainPair.right]);
   markMultiSubtitleDirty();
+  rememberTemporaryVisibleSplitCues({
+    mainSegments: [mainPair.left, mainPair.right],
+    extensionSegments: [extensionPair.left, extensionPair.right],
+    extensionTrackId: track.id,
+  });
   closeLinkedSplitModal();
   clearSelection({ commitCuePanel: false });
   renderAll();
@@ -5201,6 +5451,7 @@ function splitAtCursor(feedbackPoint = null) {
     if (cref && cref.headIdx > idx) cref.headIdx += 1;
   }
 
+  rememberTemporaryVisibleSplitCues({ mainSegments: [leftSeg, rightSeg] });
   renderAll();
   const rightEl = container.querySelector(`.cue[data-idx="${idx + 1}"]`);
   if (rightEl) scrollCueToCenter(rightEl);
@@ -12124,22 +12375,18 @@ if (SERVER_CONFIG?.autoLoadedMediaName) {
   flashHint(`已自动加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`, 'success');
 }
 
-document.getElementById('charcount-threshold').addEventListener('input', () => {
-  refreshAllCharCounts();
-  // 如果"仅看超长"开着，阈值变化要重新过滤
-  if (document.getElementById('filter-over').classList.contains('active')) {
-    applySearch(searchEl.value);
-  }
-});
-
 document.getElementById('filter-over').addEventListener('click', (e) => {
   e.currentTarget.classList.toggle('active');
+  if (!e.currentTarget.classList.contains('active')) {
+    clearTemporaryVisibleSplitCues();
+  }
   applySearch(searchEl.value);
 });
 
 // 「隐藏禁用项」开关：开启后禁用项 display:none，并从选中集移除
 hideDisabledToggle.addEventListener('change', () => {
   hideDisabled = hideDisabledToggle.checked;
+  updateEditorSettings({ cueListHideDisabled: hideDisabled });
   container.classList.toggle('hide-disabled', hideDisabled);
   if (hideDisabled) {
     // 清理选中集中的禁用项（隐藏了但还留在选中集会造成状态不一致）

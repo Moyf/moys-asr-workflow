@@ -106,7 +106,7 @@ test('JKL direction mode drives the timeline backward and forward', async ({ pag
     return media.readyState >= 1 && Number.isFinite(media.duration) && media.duration > 0;
   });
 
-  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#subtitle-preview-settings-toggle').click();
   await expect(page.locator('#jkl-playback-mode')).toHaveValue('direction');
   await expect(page.locator('#jkl-playback-mode-hint')).toContainText('无反向声音');
 
@@ -156,9 +156,9 @@ test('JKL direction mode drives the timeline backward and forward', async ({ pag
   }, pausedForwardAt)).toBeGreaterThan(0.1);
 
   await page.keyboard.press('k');
-  await page.locator('#editor-settings-toggle').click();
+  await expect(page.locator('#subtitle-preview-settings-panel')).toBeVisible();
   await page.locator('#jkl-playback-mode').selectOption('speed');
-  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#subtitle-preview-settings-toggle').click();
   await page.keyboard.press('j');
   await expect.poll(() => page.evaluate(() => document.getElementById('player').playbackRate)).toBe(0.5);
 });

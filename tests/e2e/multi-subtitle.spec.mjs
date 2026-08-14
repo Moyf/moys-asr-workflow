@@ -95,6 +95,8 @@ async function waitForLayoutBox(locator, message) {
 
 test('defaults the waveform shape source to ReaPeaks', async ({ page }) => {
   await page.goto(server.url);
+  await page.locator('#waveform-settings-toggle').click();
+  await expect(page.locator('#waveform-settings-panel')).toBeVisible();
   await expect(page.locator('#waveform-shape-source')).toHaveValue('reapeaks');
 });
 
@@ -726,10 +728,10 @@ test('uses the maximum waveform row height while multiple subtitles are enabled 
   await dropFiles(page, [srtSpec('main.srt', mainSrt)]);
   await expect(page.locator('#cues-container > .cue')).toHaveCount(2);
 
-  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#waveform-settings-toggle').click();
   await page.locator('#waveform-row-height').selectOption('64');
   await expect(page.locator('#waveform-row-height')).toHaveValue('64');
-  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#waveform-settings-toggle').click();
 
   await dropFiles(page, [srtSpec('translation.srt', extensionSrt)]);
   await page.locator('#multi-subtitle-import-extension').click();
@@ -1160,9 +1162,11 @@ test('keeps extension selection, timing, disabled, and hide shortcuts in parity 
   const saved = await page.evaluate(() => JSON.parse(buildJson()));
   expect(saved.multi_subtitle.tracks[0].segments[0].disabled).toBe(true);
 
+  await page.locator('#cue-list-settings-toggle').click();
   await page.locator('#hide-disabled-toggle').check();
   await expect(extensionColumn).toBeHidden();
   await page.locator('#hide-disabled-toggle').uncheck();
+  await page.locator('#cue-list-settings-toggle').click();
   await extensionColumn.click({ modifiers: ['Alt'] });
   await expect(extensionColumn).not.toHaveClass(/disabled/);
 });
