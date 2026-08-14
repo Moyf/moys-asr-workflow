@@ -3621,7 +3621,7 @@ function splitCuePanelAtCursor() {
   const selection = window.getSelection();
   selection.removeAllRanges();
   selection.addRange(range);
-  splitAtCursor();
+  splitAtCursor(null, { listFeedback: false });
 }
 
 cuePanelPrev?.addEventListener('click', () => navigateCuePanel(-1));
@@ -5204,6 +5204,13 @@ function commitMainWaveformSplit(state) {
   selectOnly(mainIndex + 1);
   lastClickedIdx = mainIndex + 1;
   update();
+  flashSplitFeedback({
+    index: mainIndex,
+    track: 'main',
+    splitMs: state.cutMs,
+    feedbackPoint: null,
+    listFeedback: false,
+  });
   triggerNinjaSplitFeedback(ninjaFeedbackPointForSplit(state));
   flashHint('已按选择的断点拆分主字幕', 'success');
   return true;
@@ -5243,6 +5250,13 @@ function commitExtensionSplit(state) {
   selectOnlyExtension(extensionIndex + 1);
   lastClickedExtensionIdx = extensionIndex + 1;
   update();
+  flashSplitFeedback({
+    index: extensionIndex,
+    track: 'extension',
+    splitMs: state.extensionCutMs,
+    feedbackPoint: null,
+    listFeedback: false,
+  });
   triggerNinjaSplitFeedback(ninjaFeedbackPointForSplit(state));
   flashHint(
     wasBound
@@ -5332,11 +5346,25 @@ function confirmLinkedSplit() {
   selectOnly(mainIndex);
   lastClickedIdx = mainIndex;
   update();
+  flashSplitFeedback({
+    index: mainIndex,
+    track: 'main',
+    splitMs: sharedCutMs,
+    feedbackPoint: null,
+    listFeedback: false,
+  });
+  flashSplitFeedback({
+    index: extensionIndex,
+    track: 'extension',
+    splitMs: sharedCutMs,
+    feedbackPoint: null,
+    listFeedback: false,
+  });
   triggerNinjaSplitFeedback(ninjaFeedbackPointForSplit(state));
   flashHint('已按同一绝对时间切点联动拆分', 'success');
 }
 
-function splitAtCursor(feedbackPoint = null) {
+function splitAtCursor(feedbackPoint = null, { listFeedback = true } = {}) {
   if (!editingState) return false;
   const { el, idx, textEl } = editingState;
   const sel = window.getSelection();
@@ -5460,12 +5488,25 @@ function splitAtCursor(feedbackPoint = null) {
   lastClickedIdx = idx + 1;
   triggerNinjaSplitFeedback(ninjaFeedbackPoint);
   update();
+  flashSplitFeedback({
+    index: idx,
+    track: 'main',
+    splitMs,
+    feedbackPoint: listFeedback ? (feedbackPoint || ninjaFeedbackPoint) : null,
+    listFeedback,
+  });
   return true;
 }
 
-function flashCueSplitAt(idx, clientX) {
+function flashCueSplitAt(idx, clientX, track = 'main') {
   if (!Number.isFinite(clientX)) return false;
-  const cue = container.querySelector(`.cue[data-idx="${idx}"]`);
+  const cue = track === 'extension'
+    ? container.querySelector(
+      `.multi-cue-column.extension[data-ext-idx="${idx}"], .cue[data-ext-idx="${idx}"]`,
+    )
+    : container.querySelector(
+      `.multi-cue-column.main[data-main-idx="${idx}"], .cue[data-idx="${idx}"]`,
+    );
   if (!cue) return false;
   const rect = cue.getBoundingClientRect();
   const marker = document.createElement('span');
@@ -5488,6 +5529,18 @@ function flashCueSplitAt(idx, clientX) {
   marker.addEventListener('animationend', cleanup, { once: true });
   timer = window.setTimeout(cleanup, 800);
   return true;
+}
+
+// 拆分来源可能是字幕列表、当前编辑区或弹窗；只有列表来源有可靠的列表坐标，
+// 其它来源统一回退到波形时间位置。波形反馈只创建一个短暂标记，不参与播放帧刷新。
+function flashSplitFeedback({ index, track = 'main', splitMs, feedbackPoint = null, listFeedback = false } = {}) {
+  const timeMs = Number(splitMs);
+  const hasListMarker = listFeedback
+    && Number.isFinite(feedbackPoint?.clientX)
+    && flashCueSplitAt(index, feedbackPoint.clientX, track);
+  if (!hasListMarker && Number.isFinite(timeMs)) {
+    waveformEditor?.flashSplitAtTime?.(timeMs, track);
+  }
 }
 
 function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
@@ -5534,8 +5587,7 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
       flashHint('无法定位波形中的拆分位置', 'warning');
       return false;
     }
-    const didSplit = splitAtCursor(waveformFeedbackPoint);
-    if (didSplit) waveformEditor?.flashSplitAtTime?.(waveformTimeMs);
+    const didSplit = splitAtCursor(waveformFeedbackPoint, { listFeedback: false });
     return didSplit;
   }
   // 字幕列表：在指定位置进入编辑，光标定位到 (x,y) 后立即拆分
@@ -5545,9 +5597,10 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
   // 再次用同一坐标命中会把「就是｜这颗」漂移到下一个字符。
   startEdit(el, idx);
   if (Number.isFinite(caretInfo?.offset)) setEditingCaretOffset(caretInfo.offset);
-  const didSplit = splitAtCursor();
-  if (didSplit) flashCueSplitAt(idx, markerX);
-  return didSplit;
+  return splitAtCursor(
+    { clientX: markerX, clientY: caretInfo?.rect?.top ?? y },
+    { listFeedback: true },
+  );
 }
 
 // === 合并 ===
@@ -11196,33 +11249,63 @@ function toggleDisabled(idxs, track = 'main') {
     : (track?.segments ? track : null);
   const isExtension = Boolean(extensionTrack);
   const segments = isExtension ? extensionTrack.segments : DATA.segments;
-  const validIdxs = idxs.filter((index) => Number.isInteger(index) && segments[index]);
+  const validIdxs = [...new Set(idxs.filter((index) => Number.isInteger(index) && segments[index]))];
   if (!validIdxs.length) return;
   pushUndo('切换禁用');
   const allDisabled = validIdxs.every((index) => segments[index].disabled);
+  const nextDisabled = !allDisabled;
+  const boundExtensionTargets = new Map();
   validIdxs.forEach((index) => {
-    segments[index].disabled = !allDisabled;
+    segments[index].disabled = nextDisabled;
     segments[index]._dirty = true;
   });
-  if (isExtension) markMultiSubtitleDirty();
+  if (!isExtension) {
+    // 主字幕是绑定关系的控制端：禁用/启用时同步同一绑定的副字幕；
+    // 副字幕自身的操作不反向修改主字幕，保持它可以单独禁用。
+    validIdxs.forEach((index) => {
+      const binding = bindingForMainIndex(index);
+      const boundTrack = binding ? getExtensionTrack(binding.track_id) : null;
+      if (!boundTrack) return;
+      const targets = boundExtensionTargets.get(boundTrack) || new Set();
+      (binding.extension_segment_ids || []).forEach((id) => {
+        const extensionIndex = boundTrack.segments.findIndex((segment) => segment?.id === id);
+        if (extensionIndex < 0) return;
+        const extension = boundTrack.segments[extensionIndex];
+        extension.disabled = nextDisabled;
+        extension._dirty = true;
+        targets.add(extensionIndex);
+      });
+      if (targets.size) boundExtensionTargets.set(boundTrack, targets);
+    });
+  }
+  if (isExtension || boundExtensionTargets.size) markMultiSubtitleDirty();
   renderAll();
   // 隐藏开关开启时，刚禁用的项需从选中集移除（保持状态一致）
   if (hideDisabled && !allDisabled) {
-    const selection = isExtension ? selectedExtensionIdxs : selectedIdxs;
-    [...selection].forEach((index) => {
-      if (segments[index]?.disabled) {
-        selection.delete(index);
-        const selector = isExtension
-          ? `.cue[data-ext-idx="${index}"], .multi-dual-cue[data-ext-idx="${index}"]`
-          : `.cue[data-idx="${index}"]`;
-        const el = container.querySelector(selector);
-        if (el) el.classList.remove('selected');
-      }
+    const mainDisabled = isExtension ? new Set() : new Set(validIdxs);
+    const extensionDisabled = isExtension
+      ? new Map([[extensionTrack, new Set(validIdxs)]])
+      : boundExtensionTargets;
+    mainDisabled.forEach((index) => {
+      selectedIdxs.delete(index);
+      container.querySelector(`.cue[data-idx="${index}"]`)?.classList.remove('selected');
     });
+    extensionDisabled.forEach((indexes) => indexes.forEach((index) => {
+      selectedExtensionIdxs.delete(index);
+      container.querySelectorAll(
+        `.multi-cue[data-ext-idx="${index}"], .multi-extension-cue[data-ext-idx="${index}"]`,
+      ).forEach((el) => el.classList.remove('selected'));
+    }));
     updateMultiSelectionClasses();
     selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
   }
-  flashHint(allDisabled ? `已启用 ${validIdxs.length} 条` : `已禁用 ${validIdxs.length} 条`, 'success');
+  const action = allDisabled ? '启用' : '禁用';
+  const extensionCount = [...boundExtensionTargets.values()]
+    .reduce((total, indexes) => total + indexes.size, 0);
+  const detail = !isExtension && extensionCount
+    ? `主字幕 ${validIdxs.length} 条及副字幕 ${extensionCount} 条`
+    : `${validIdxs.length} 条`;
+  flashHint(`已${action} ${detail}`, 'success');
   // 禁用状态同时决定当前时间的预览可见性；列表重绘不会自动触发播放头刷新。
   update();
 }
