@@ -7,10 +7,21 @@ const SERVER_CONFIG = __SERVER_CONFIG_JSON__;
 const NINJA_SFX_BASE_URL = __NINJA_SFX_BASE_URL_JSON__;
 
 const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
+const EDITOR_SETTINGS_UTILS = window.AsrEditorUtils;
+const {
+  normalizeMultiSubtitleRowHeight,
+  normalizeClickBehavior,
+  normalizeClickTarget,
+  normalizeJklPlaybackMode,
+  clampMediaSeekStepMs,
+  clampCueMoveStepMs,
+  clampAutoSaveInterval,
+  clampCharcountThreshold,
+  clampAutoMergeGapMs,
+  clampAutoMergeShortCount,
+} = EDITOR_SETTINGS_UTILS;
 const MULTI_SUBTITLE_TOLERANCE_MS = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_TOLERANCE_MS || 300;
 const MULTI_SUBTITLE_MERGE_OVERLAP_TOLERANCE_MS = 500;
-const MULTI_SUBTITLE_ROW_HEIGHT_PRESETS = [64, 80, 96, 120, 144, 168];
-const DEFAULT_MULTI_SUBTITLE_ROW_HEIGHT = 168;
 const SUBTITLE_MIN_DURATION_MS = 100;
 const MULTI_SUBTITLE_IMPORT_PROMPT = '是否选择导入第二条字幕以开启多重字幕模式？';
 const MULTI_SUBTITLE_TOGGLE_TITLE = '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。';
@@ -159,12 +170,6 @@ function markMainSegmentsDirty(segments = DATA.segments) {
   (Array.isArray(segments) ? segments : []).forEach((segment) => {
     if (segment) segment._dirty = true;
   });
-}
-
-function normalizeMultiSubtitleRowHeight(value) {
-  const next = Number(value);
-  return MULTI_SUBTITLE_ROW_HEIGHT_PRESETS.includes(next)
-    ? next : DEFAULT_MULTI_SUBTITLE_ROW_HEIGHT;
 }
 
 function syncBindingOffsets() {
@@ -566,117 +571,6 @@ function constrainBoundExtensionPanelEdit(extension, track, oldStart, oldEnd) {
 
 normalizeMultiSubtitleState();
 const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';
-const CLICK_BEHAVIOR_VALUES = new Set(['select-only', 'select-and-seek', 'select-and-play']);
-const CLICK_TARGET_VALUES = new Set(['cue-start', 'pointer']);
-const JKL_PLAYBACK_MODE_VALUES = new Set(['speed', 'direction']);
-const DEFAULT_JKL_PLAYBACK_MODE = 'direction';
-const MEDIA_SEEK_STEP_MIN_MS = 100;
-const MEDIA_SEEK_STEP_MAX_MS = 60000;
-const DEFAULT_MEDIA_SEEK_STEP_MS = 1000;
-const CUE_MOVE_STEP_MIN_MS = 10;
-const CUE_MOVE_STEP_MAX_MS = 2000;
-const DEFAULT_CUE_MOVE_STEP_MS = 50;
-function normalizeClickBehavior(value) {
-  return CLICK_BEHAVIOR_VALUES.has(value) ? value : 'select-and-seek';
-}
-function normalizeClickTarget(value) {
-  return CLICK_TARGET_VALUES.has(value) ? value : 'pointer';
-}
-function normalizeJklPlaybackMode(value) {
-  return JKL_PLAYBACK_MODE_VALUES.has(value) ? value : DEFAULT_JKL_PLAYBACK_MODE;
-}
-
-function clampMediaSeekStepMs(value) {
-  const rounded = Math.round(Number(value));
-  return Math.min(
-    MEDIA_SEEK_STEP_MAX_MS,
-    Math.max(
-      MEDIA_SEEK_STEP_MIN_MS,
-      Number.isFinite(rounded) ? rounded : DEFAULT_MEDIA_SEEK_STEP_MS,
-    ),
-  );
-}
-
-function clampCueMoveStepMs(value) {
-  const rounded = Math.round(Number(value));
-  return Math.min(
-    CUE_MOVE_STEP_MAX_MS,
-    Math.max(CUE_MOVE_STEP_MIN_MS, Number.isFinite(rounded) ? rounded : DEFAULT_CUE_MOVE_STEP_MS),
-  );
-}
-const DEFAULT_EDITOR_SETTINGS = {
-  splitKey: 'enter',
-  splitUseWordTimestamps: true,
-  // 拆分弹窗中选完所有需要确认的断点后自动提交。
-  splitAutoSubmit: true,
-  overlayEnabled: true,
-  // 多重字幕开启时，拓展字幕预览默认自动显示。
-  extensionOverlayEnabled: true,
-  // 多重字幕开启时使用的波形行高度；关闭多重字幕后恢复「配置」中的高度。
-  multiSubtitleRowHeight: DEFAULT_MULTI_SUBTITLE_ROW_HEIGHT,
-  exportStartAtZero: false,
-  cueListShowIndex: true,
-  cueListShowTime: true,
-  cueListShowSticker: true,
-  cueListShowCharcount: true,
-  // 字幕列表普通点击是否把目标字幕滚动到列表中央。
-  cueListAutoScrollOnClick: true,
-  // “仅看超长”开启时，拆分结果是否暂时保留在列表中，直到焦点离开。
-  cueListKeepSplitVisible: true,
-  // 字幕列表是否隐藏禁用字幕。
-  cueListHideDisabled: false,
-  // “仅看超长”与字数标记使用的字符阈值。
-  cueListCharcountThreshold: 16,
-  cueEditorShowNavigation: false,
-  cueEditorShowTimeActions: false,
-  cueEditorShowSticker: false,
-  selectGroupMembers: false,
-  // 合并字幕时各段文本之间插入的连接符（默认两个空格；留空则直接拼接）。
-  mergeJoinText: '',
-  // 拼合字幕：相邻间隔不超过该毫秒值时拓展字幕长度拼合（0 表示不处理间隔）。
-  autoMergeGapMs: 200,
-  // 拼合字幕：backward 向前拓展（默认，后方字幕起点前拓）/ forward 向后拓展（前方字幕终点后延）。
-  autoMergeSnapDirection: 'backward',
-  // 拼合字幕：中文少于 N 个字 / 英文少于 N 个词的字幕并入相邻字幕。
-  autoMergeShortCount: 3,
-  // 拼合字幕：是否吸收过短字幕（默认开启；关闭后只拼合间隔）。
-  autoMergeAbsorbShort: true,
-  // 拼合字幕：previous 向前吸收（默认，并入上一条）/ next 向后吸收（并入下一条）。
-  autoMergeAbsorbDirection: 'previous',
-  // 按颜色导出 SRT：统一导出先选择一个 SRT 文件名作为前缀。
-  exportColorUnified: true,
-  // 自动保存仅对绑定工程的 localhost 服务器版生效。
-  autoSaveProject: true,
-  autoSaveIntervalSeconds: 30,
-  // 表情包预览：在视频画面内渲染当前时间的表情包（默认关闭）。
-  stickerOverlayEnabled: false,
-  // 字幕单击行为：默认选中并跳转；select-and-play 额外在暂停时开始播放。
-  clickBehavior: 'select-and-seek',
-  // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
-  clickTarget: 'pointer',
-  // J/K/L 播放控制：direction 为倒放/停止/正放，speed 保留旧的慢速/重置/倍速行为。
-  jklPlaybackMode: DEFAULT_JKL_PLAYBACK_MODE,
-  // 媒体控制按钮与无选中字幕时左右方向键的跳转幅度。
-  mediaSeekStepMs: DEFAULT_MEDIA_SEEK_STEP_MS,
-  // 选中字幕后用方向键 / A-D 微调时间的幅度。
-  cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
-  // 娱乐彩蛋：成功拆分时播放刀光音效，并把分割工具图标换成 🔪。
-  ninjaMode: false,
-  // 字幕忍者的可选视觉反馈；忍者开关开启后才在设置中显示。
-  ninjaSlashEffect: true,
-  // 多重字幕拖动时是否把另一条轨道的起止边界加入吸附目标。
-  crossTrackSnap: true,
-  // 选中主/副字幕时，是否同时选中绑定的另一条字幕。
-  selectBoundSubtitlePair: true,
-  // G 绑定后是否自动把副字幕时间范围同步到主字幕（等同随后按 H）。
-  multiSubtitleAutoSyncDuration: true,
-  // 多重字幕波形是否显示主/副轨道编号徽标。
-  multiSubtitleShowTrackBadges: false,
-  // 界面主题：dark（默认）/ light。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
-  theme: 'dark',
-  // 波形形状来源：reapeaks（默认，.ReaPeaks 最细 wave 层）/ self（自研 1000Hz 重采样缓存）。
-  waveShapeSource: 'reapeaks',
-};
 const SUBTITLE_FONT_SIZE_MIN = 12;
 const SUBTITLE_FONT_SIZE_MAX = 96;
 const SUBTITLE_FONT_FAMILY_MAX_LENGTH = 128;
@@ -699,77 +593,10 @@ const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
 function readEditorSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || '{}');
-    const legacySeekStepSeconds = Number(saved.mediaSeekStepSeconds);
-    const savedMediaSeekStepMs = saved.mediaSeekStepMs !== undefined
-      ? saved.mediaSeekStepMs
-      : Number.isFinite(legacySeekStepSeconds) ? legacySeekStepSeconds * 1000 : undefined;
-    return {
-      splitKey: saved.splitKey === 'ctrl-enter' ? 'ctrl-enter' : DEFAULT_EDITOR_SETTINGS.splitKey,
-      splitUseWordTimestamps: saved.splitUseWordTimestamps !== false,
-      splitAutoSubmit: saved.splitAutoSubmit !== false,
-      overlayEnabled: saved.overlayEnabled !== false,
-      extensionOverlayEnabled: saved.extensionOverlayEnabled !== false,
-      multiSubtitleRowHeight: normalizeMultiSubtitleRowHeight(saved.multiSubtitleRowHeight),
-      exportStartAtZero: saved.exportStartAtZero === true,
-      cueListShowIndex: saved.cueListShowIndex !== false,
-      cueListShowTime: saved.cueListShowTime !== false,
-      cueListShowSticker: saved.cueListShowSticker !== false,
-      cueListShowCharcount: saved.cueListShowCharcount !== false,
-      cueListAutoScrollOnClick: saved.cueListAutoScrollOnClick !== false,
-      cueListKeepSplitVisible: saved.cueListKeepSplitVisible !== false,
-      cueListHideDisabled: saved.cueListHideDisabled === true,
-      cueListCharcountThreshold: clampCharcountThreshold(saved.cueListCharcountThreshold),
-      cueEditorShowNavigation: saved.cueEditorShowNavigation === true,
-      cueEditorShowTimeActions: saved.cueEditorShowTimeActions === true,
-      cueEditorShowSticker: saved.cueEditorShowSticker === true,
-      selectGroupMembers: saved.selectGroupMembers === true,
-      mergeJoinText: typeof saved.mergeJoinText === 'string' ? saved.mergeJoinText : DEFAULT_EDITOR_SETTINGS.mergeJoinText,
-      autoMergeGapMs: clampAutoMergeGapMs(saved.autoMergeGapMs),
-      autoMergeSnapDirection: saved.autoMergeSnapDirection === 'forward' ? 'forward' : 'backward',
-      autoMergeShortCount: clampAutoMergeShortCount(saved.autoMergeShortCount),
-      autoMergeAbsorbShort: saved.autoMergeAbsorbShort !== false,
-      autoMergeAbsorbDirection: saved.autoMergeAbsorbDirection === 'next' ? 'next' : 'previous',
-      exportColorUnified: saved.exportColorUnified !== false,
-      autoSaveProject: saved.autoSaveProject !== false,
-      autoSaveIntervalSeconds: clampAutoSaveInterval(saved.autoSaveIntervalSeconds),
-      stickerOverlayEnabled: saved.stickerOverlayEnabled === true,
-      clickBehavior: normalizeClickBehavior(saved.clickBehavior),
-      clickTarget: normalizeClickTarget(saved.clickTarget),
-      jklPlaybackMode: normalizeJklPlaybackMode(saved.jklPlaybackMode),
-      mediaSeekStepMs: clampMediaSeekStepMs(savedMediaSeekStepMs),
-      cueMoveStepMs: clampCueMoveStepMs(saved.cueMoveStepMs),
-      ninjaMode: saved.ninjaMode === true,
-      ninjaSlashEffect: saved.ninjaSlashEffect !== false,
-      crossTrackSnap: saved.crossTrackSnap !== false,
-      selectBoundSubtitlePair: saved.selectBoundSubtitlePair !== false,
-      multiSubtitleAutoSyncDuration: saved.multiSubtitleAutoSyncDuration !== false,
-      multiSubtitleShowTrackBadges: saved.multiSubtitleShowTrackBadges === true,
-      theme: saved.theme === 'light' ? 'light' : 'dark',
-      waveShapeSource: saved.waveShapeSource === 'self' ? 'self' : 'reapeaks',
-    };
+    return EDITOR_SETTINGS_UTILS.normalizeEditorSettings(saved);
   } catch (_) {
-    return { ...DEFAULT_EDITOR_SETTINGS };
+    return EDITOR_SETTINGS_UTILS.normalizeEditorSettings();
   }
-}
-
-function clampAutoSaveInterval(value) {
-  const seconds = Math.round(Number(value));
-  return Math.min(3600, Math.max(5, Number.isFinite(seconds) ? seconds : 30));
-}
-
-function clampCharcountThreshold(value) {
-  const threshold = Math.round(Number(value));
-  return Math.min(200, Math.max(1, Number.isFinite(threshold) ? threshold : 16));
-}
-
-function clampAutoMergeGapMs(value) {
-  const ms = Math.round(Number(value));
-  return Math.min(10000, Math.max(0, Number.isFinite(ms) ? ms : DEFAULT_EDITOR_SETTINGS.autoMergeGapMs));
-}
-
-function clampAutoMergeShortCount(value) {
-  const count = Math.round(Number(value));
-  return Math.min(20, Math.max(1, Number.isFinite(count) ? count : DEFAULT_EDITOR_SETTINGS.autoMergeShortCount));
 }
 
 function saveEditorSettings(settings) {

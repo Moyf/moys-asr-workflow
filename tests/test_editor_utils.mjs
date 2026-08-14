@@ -953,6 +953,77 @@ test('isMacPlatform detects macOS while other platforms do not', () => {
 });
 
 
+test('normalizes editor settings to the persisted compatibility contract', () => {
+  const settings = helpers.normalizeEditorSettings({
+    splitKey: 'ctrl-enter',
+    multiSubtitleRowHeight: 96,
+    clickBehavior: 'select-and-play',
+    clickTarget: 'cue-start',
+    jklPlaybackMode: 'speed',
+    mediaSeekStepSeconds: 1.5,
+    cueMoveStepMs: 400,
+    theme: 'light',
+    waveShapeSource: 'self',
+  });
+  assert.equal(settings.splitKey, 'ctrl-enter');
+  assert.equal(settings.multiSubtitleRowHeight, 96);
+  assert.equal(settings.clickBehavior, 'select-and-play');
+  assert.equal(settings.clickTarget, 'cue-start');
+  assert.equal(settings.jklPlaybackMode, 'speed');
+  assert.equal(settings.mediaSeekStepMs, 1500);
+  assert.equal(settings.cueMoveStepMs, 400);
+  assert.equal(settings.theme, 'light');
+  assert.equal(settings.waveShapeSource, 'self');
+  assert.equal(settings.overlayEnabled, true);
+  assert.equal(settings.autoSaveProject, true);
+});
+
+
+test('clamps invalid editor settings without mutating the saved object', () => {
+  const saved = {
+    splitKey: 'invalid',
+    multiSubtitleRowHeight: 999,
+    cueListCharcountThreshold: -2,
+    autoMergeGapMs: 50000,
+    autoMergeShortCount: 0,
+    autoSaveIntervalSeconds: 1,
+    mediaSeekStepMs: 70000,
+    cueMoveStepMs: 1,
+    clickBehavior: 'invalid',
+    clickTarget: 'invalid',
+    jklPlaybackMode: 'invalid',
+    theme: 'invalid',
+    waveShapeSource: 'invalid',
+  };
+  const before = JSON.parse(JSON.stringify(saved));
+  const settings = helpers.normalizeEditorSettings(saved);
+  assert.deepEqual(saved, before);
+  assert.equal(settings.splitKey, 'enter');
+  assert.equal(settings.multiSubtitleRowHeight, 168);
+  assert.equal(settings.cueListCharcountThreshold, 1);
+  assert.equal(settings.autoMergeGapMs, 10000);
+  assert.equal(settings.autoMergeShortCount, 1);
+  assert.equal(settings.autoSaveIntervalSeconds, 5);
+  assert.equal(settings.mediaSeekStepMs, 60000);
+  assert.equal(settings.cueMoveStepMs, 10);
+  assert.equal(settings.clickBehavior, 'select-and-seek');
+  assert.equal(settings.clickTarget, 'pointer');
+  assert.equal(settings.jklPlaybackMode, 'direction');
+  assert.equal(settings.theme, 'dark');
+  assert.equal(settings.waveShapeSource, 'reapeaks');
+});
+
+
+test('normalizes missing or malformed editor settings to safe defaults', () => {
+  const fromNull = helpers.normalizeEditorSettings(null);
+  const fromArray = helpers.normalizeEditorSettings([]);
+  assert.equal(fromNull.mediaSeekStepMs, 1000);
+  assert.equal(fromNull.cueMoveStepMs, 50);
+  assert.equal(fromNull.multiSubtitleRowHeight, 168);
+  assert.deepEqual(JSON.parse(JSON.stringify(fromArray)), JSON.parse(JSON.stringify(fromNull)));
+});
+
+
 test('history stack: push clears redo and peek reports top without popping', () => {
   const h = helpers.createHistoryStack(100);
   assert.equal(h.canUndo(), false);
