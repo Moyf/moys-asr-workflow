@@ -96,6 +96,7 @@ test('quick start teaches WASD, real merge with undo, then real split', async ({
 
 test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await page.goto(server.url);
+  await expect(page.locator('#onboarding-skip')).toHaveText('跳过 (ESC)');
   await page.keyboard.press('Escape');
   await expect(page.locator('#onboarding-layer')).toBeHidden();
   expect(await page.evaluate(() => localStorage.getItem('moy.asr.editor.onboarding.v1'))).toBe('skipped');
@@ -104,9 +105,25 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   expect(await page.evaluate(() => document.activeElement?.id)).not.toBe('help-toggle');
   const helpPanel = page.locator('#help-panel');
   await expect(helpPanel).toHaveClass(/show/);
-  await expect(helpPanel.locator('.help-title')).toHaveText(['字幕操作', '波形区', '播放与编辑', '波形区（拓展）']);
+  await expect(helpPanel.getByRole('tab')).toHaveText(['通用', '波形区', '播放与编辑']);
+  await expect(helpPanel.getByRole('tab').first()).toHaveCSS('font-size', '13px');
+  await expect(helpPanel.getByRole('tab', { name: '通用' })).toHaveAttribute('aria-selected', 'true');
+  const generalPanel = helpPanel.locator('#help-tab-panel-general');
+  await expect(generalPanel.locator('.help-subtitle')).toHaveText(['鼠标操作', '选择操作', '编辑操作', '快捷功能', '切换工具']);
+  await expect(generalPanel.locator('.help-wasd')).toHaveCount(1);
+  await expect(generalPanel.locator('.help-tip-callout')).toContainText('其实就是用 WASD 啦，从字幕列表看是上下跳，从波形区看是左右跳 : P');
+  await expect(generalPanel.locator('.help-tip-callout')).toHaveCSS('margin-top', '8px');
+  await expect(generalPanel.locator('.help-tip-text')).toHaveCSS('font-size', '11px');
+  await expect(helpPanel.locator('#help-tab-panel-waveform')).toBeHidden();
+  await helpPanel.getByRole('tab', { name: '波形区', exact: true }).click();
+  const waveformPanel = helpPanel.locator('#help-tab-panel-waveform');
+  await expect(waveformPanel).toBeVisible();
+  await expect(helpPanel.getByRole('tab', { name: '波形区', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(waveformPanel.locator('.help-subtitle')).toHaveText(['空白波形区', '波形区字幕操作', '选中字幕', '按住字幕']);
+  await expect(helpPanel.locator('.help-title')).toHaveText(['通用', '波形区操作', '按键微调字幕', '多重字幕', '波形外观调整', '静音空隙操作', '播放与编辑']);
   await expect(helpPanel).toContainText('波形区字幕操作');
-  await expect(helpPanel).toContainText('波形区显示');
+  await expect(helpPanel).toContainText('波形外观调整');
+  await expect(helpPanel).toContainText('静音空隙操作');
   await page.locator('#help-onboarding').click();
   await expect(page.locator('#onboarding-layer')).toBeVisible();
   await expect(page.locator('#onboarding-title')).toHaveText('使用 WASD 选择前后字幕——就像游戏一样！');

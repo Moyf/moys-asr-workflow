@@ -2503,7 +2503,8 @@
           event.preventDefault();
           event.stopPropagation();
           if (event.ctrlKey || event.metaKey) return;
-          this.options.activateCue?.(index);
+          if (this.options.enterCueEditor) this.options.enterCueEditor(index);
+          else this.options.activateCue?.(index);
         });
         row.appendChild(block);
       });
@@ -2554,7 +2555,8 @@
           event.preventDefault();
           event.stopPropagation();
           if (event.ctrlKey || event.metaKey) return;
-          this.options.activateExtensionCue?.(index);
+          if (this.options.enterExtensionCueEditor) this.options.enterExtensionCueEditor(index);
+          else this.options.activateExtensionCue?.(index);
         });
         row.appendChild(block);
       });

@@ -1,6 +1,7 @@
 // 「选中并跳转」单击行为回归：播放过程中点击字幕列表，
 // 播放头必须跳到该条开头并继续播放（等价于 F 键操作）。
 import { expect, test } from '@playwright/test';
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   cleanupTempDir,
@@ -16,11 +17,12 @@ import {
 
 let tempDir;
 let server;
+let projectPath;
 
 test.beforeAll(async () => {
   tempDir = makeTempDir('clickseek');
   const mediaPath = join(tempDir, 'synthetic.wav');
-  const projectPath = join(tempDir, 'project.json');
+  projectPath = join(tempDir, 'project.json');
   generateWav(mediaPath, DURATION_MS / 1000);
   generateProjectJson(projectPath);
   server = await startServer(projectPath, mediaPath, await findFreePort());
@@ -49,6 +51,60 @@ test('jump target is shown for both jump behaviors and hidden for select-only', 
   await behavior.selectOption('select-and-play');
   await expect(targetField).toBeVisible();
   await expect(behavior).toHaveValue('select-and-play');
+});
+
+test('media seek buttons and arrow keys use the configured seek duration', async ({ page }) => {
+  await page.goto(server.url);
+  await page.waitForFunction(() => {
+    const media = document.getElementById('player');
+    return media.readyState >= 1 && Number.isFinite(media.duration) && media.duration > 0;
+  });
+
+  const step = page.locator('#media-seek-step');
+  await expect(step).toHaveValue('1000');
+  await page.locator('#subtitle-preview-settings-toggle').click();
+  await step.fill('7000');
+  await step.press('Tab');
+  await expect(step).toHaveValue('7000');
+  await page.locator('#subtitle-preview-settings-toggle').click();
+  await expect.poll(() => page.evaluate(() => JSON.parse(
+    localStorage.getItem('moy.asr.editor.settings.v1') || '{}',
+  ).mediaSeekStepMs)).toBe(7000);
+
+  await page.evaluate(() => { document.getElementById('player').currentTime = 20; });
+  await expect(page.locator('#media-step-back')).toHaveAttribute('aria-label', '后退 7000ms');
+  await page.locator('#media-step-back').click();
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeGreaterThan(12.85);
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeLessThan(13.15);
+
+  await page.locator('#media-step-forward').click();
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeGreaterThan(19.85);
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeLessThan(20.15);
+
+  await page.locator('#waveform-pane').focus();
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeGreaterThan(12.85);
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeLessThan(13.15);
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeGreaterThan(19.85);
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeLessThan(20.15);
+});
+
+test('marks a recent project as missing after the server detects a deleted file', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('#recent-projects-toggle').click();
+  const item = page.locator('#recent-projects-list .dropdown-item').first();
+  await expect(item).not.toHaveClass(/is-missing/);
+
+  rmSync(projectPath);
+  try {
+    await item.click();
+
+    await expect(item).toHaveClass(/is-missing/);
+    await expect(item).toContainText('已失效');
+  } finally {
+    generateProjectJson(projectPath);
+  }
 });
 
 test('context menu closes on pointerdown over blank waveform', async ({ page }) => {
@@ -170,12 +226,37 @@ test('list cue selects on pointerdown and double-click still enters edit', async
   await expect(cue).toHaveClass(/editing/);
 });
 
+test('list double-click hides the split preview while editing', async ({ page }) => {
+  await page.goto(server.url);
+  const cue = page.locator('.cue[data-idx="0"]');
+  const text = cue.locator('.text');
+  await cue.click();
+  const point = await text.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 2);
+    range.setEnd(node, 2);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+
+  await page.mouse.move(point.x, point.y);
+  await expect(page.locator('.cue-split-preview')).toHaveCount(1);
+  await page.mouse.dblclick(point.x, point.y);
+  await expect(cue).toHaveClass(/editing/);
+  await expect(page.locator('.cue-split-preview')).toHaveCount(0);
+
+  await page.mouse.move(point.x + 2, point.y);
+  await expect(page.locator('.cue-split-preview')).toHaveCount(0);
+});
+
 test('waveform cue double-click activates its subtitle editor while blank double-click still toggles playback', async ({ page }) => {
   await page.goto(server.url);
   const cue = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first();
   await cue.scrollIntoViewIfNeeded();
   await cue.dblclick();
   await expect(page.locator('#cue-panel-target')).toHaveText('主字幕');
+  await expect(page.locator('#cue-panel-text')).toBeFocused();
   expect(await page.locator('#player').evaluate((element) => element.paused)).toBe(true);
 
   const blankRow = page.locator('.waveform-row:not(:has(.waveform-cue-block))').first();
@@ -183,6 +264,66 @@ test('waveform cue double-click activates its subtitle editor while blank double
   if (!rowBox) throw new Error('波形行没有布局');
   await page.mouse.dblclick(rowBox.x + rowBox.width / 2, rowBox.y + rowBox.height / 2);
   await expect.poll(() => page.locator('#player').evaluate((element) => element.paused)).toBe(false);
+});
+
+test('the unconfigured Enter shortcut commits and exits cue-panel editing', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('#editor-settings-toggle').click();
+  const splitKey = page.locator('#split-key');
+  const panel = page.locator('#cue-panel-text');
+  await splitKey.selectOption('enter');
+
+  await page.locator('.cue[data-idx="0"]').click();
+  await panel.fill('Alpha committed by Ctrl Enter');
+  await panel.press('Control+Enter');
+  await expect(panel).not.toBeFocused();
+  await expect.poll(() => page.evaluate(() => DATA.segments[0].text))
+    .toBe('Alpha committed by Ctrl Enter');
+
+  await splitKey.selectOption('ctrl-enter');
+  await panel.focus();
+  await panel.fill('Alpha committed by Enter');
+  await panel.press('Enter');
+  await expect(panel).not.toBeFocused();
+  await expect.poll(() => page.evaluate(() => DATA.segments[0].text))
+    .toBe('Alpha committed by Enter');
+});
+
+test('Escape exits cue-panel editing without saving the text', async ({ page }) => {
+  await page.goto(server.url);
+  const cue = page.locator('.cue[data-idx="0"]');
+  const panel = page.locator('#cue-panel-text');
+
+  await cue.click();
+  const original = await panel.inputValue();
+  await panel.focus();
+  await panel.fill('This edit is cancelled');
+  await expect(page.locator('#undo-btn')).toBeEnabled();
+  await panel.press('Escape');
+
+  await expect(panel).not.toBeFocused();
+  await expect(panel).toHaveValue(original);
+  await expect.poll(() => page.evaluate(() => DATA.segments[0].text)).toBe(original);
+  await expect(cue).not.toHaveClass(/dirty/);
+  await expect(page.locator('#undo-btn')).toBeDisabled();
+});
+
+test('Escape exits inline cue editing without saving the text', async ({ page }) => {
+  await page.goto(server.url);
+  const cue = page.locator('.cue[data-idx="0"]');
+  const text = cue.locator('.text');
+  const original = await text.innerText();
+
+  await text.dblclick();
+  await expect(cue).toHaveClass(/editing/);
+  await text.fill('This inline edit is cancelled');
+  await page.keyboard.press('Escape');
+
+  await expect(cue).not.toHaveClass(/editing/);
+  await expect(text).toHaveText(original);
+  await expect.poll(() => page.evaluate(() => DATA.segments[0].text)).toBe(original);
+  await expect(cue).not.toHaveClass(/dirty/);
+  await expect(page.locator('#undo-btn')).toBeDisabled();
 });
 
 test('cue-panel Enter split falls back to a waveform split marker', async ({ page }) => {

@@ -142,11 +142,12 @@ test('F seeks and plays a selected extension cue', async ({ page }) => {
 
 test('selected arrow keys move cues, adjust boundaries, and honor the configured step', async ({ page }) => {
   await loadAttachedCues(page);
-  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#waveform-settings-toggle').click();
   const step = page.locator('#cue-move-step');
   await expect(step).toHaveValue('50');
   await step.fill('250');
   await step.press('Tab');
+  await page.keyboard.press('Escape');
   await page.locator('.cue[data-idx="0"]').click();
 
   await page.keyboard.press('ArrowRight');
@@ -213,10 +214,11 @@ test('Shift+arrow keys snap selected subtitle boundaries to neighbors', async ({
 
 test('A/D adjusts a held subtitle block and a held shared boundary', async ({ page }) => {
   await loadAttachedCues(page);
-  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#waveform-settings-toggle').click();
   const step = page.locator('#cue-move-step');
   await step.fill('100');
   await step.press('Tab');
+  await page.keyboard.press('Escape');
 
   const block = page.locator('.waveform-cue-block[data-idx="0"]').first();
   await expect(block).toBeVisible();
@@ -249,10 +251,11 @@ test('A/D adjusts a held subtitle block and a held shared boundary', async ({ pa
 
 test('A also compresses an attached preceding cue', async ({ page }) => {
   await loadAttachedCues(page);
-  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#waveform-settings-toggle').click();
   const step = page.locator('#cue-move-step');
   await step.fill('100');
   await step.press('Tab');
+  await page.keyboard.press('Escape');
 
   const block = page.locator('.waveform-cue-block[data-idx="1"]').first();
   await expect(block).toBeVisible();

@@ -74,8 +74,11 @@ class RecentProject:
     path: Path
     name: str
 
-    def to_json(self) -> dict[str, str]:
-        return {"path": str(self.path), "name": self.name}
+    def to_json(self) -> dict[str, object]:
+        payload: dict[str, object] = {"path": str(self.path), "name": self.name}
+        if not self.path.is_file():
+            payload["exists"] = False
+        return payload
 
 
 @dataclass(frozen=True)
@@ -672,7 +675,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             if not isinstance(project_path, str) or not project_path:
                 raise RecentProjectError("工程路径格式不正确")
             project = self.editor_server.open_recent_project(project_path)
-        except (UnicodeDecodeError, json.JSONDecodeError, FileNotFoundError, ValueError, RecentProjectError) as error:
+        except FileNotFoundError as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error), "missing": True})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecentProjectError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
         except OSError as error:

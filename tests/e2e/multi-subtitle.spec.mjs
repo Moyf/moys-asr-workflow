@@ -147,6 +147,129 @@ test('offers importing a second SRT when enabling multiple subtitles without an 
   await expect(page.locator('#multi-subtitle-settings-toggle')).toBeVisible();
 });
 
+test('waveform extension cue double-click focuses the extension editor', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
+    waveform: generateWaveformPayload(3000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        segments: [{ id: 'extension-001', start: 0, end: 2000, text: 'extension cue' }],
+      }],
+      bindings: [],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'waveform-extension-focus.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const cue = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]').first();
+  await expect(cue).toBeVisible();
+  await cue.scrollIntoViewIfNeeded();
+  await cue.dblclick();
+  await expect(page.locator('#cue-panel-target')).toHaveText('副字幕');
+  await expect(page.locator('#cue-panel-text')).toBeFocused();
+});
+
+test('extension list clicks auto-scroll and double-click places the caret at the pointer', async ({ page }) => {
+  const segments = Array.from({ length: 30 }, (_, index) => ({
+    id: `main-${index + 1}`,
+    start: index * 10000,
+    end: index * 10000 + 5000,
+    text: `main ${index + 1}`,
+    items: [],
+  }));
+  const extensionSegments = segments.map((segment, index) => ({
+    id: `extension-${index + 1}`,
+    start: segment.start,
+    end: segment.end,
+    text: `extension ${index + 1}`,
+    items: [],
+  }));
+  const project = {
+    segments,
+    waveform: generateWaveformPayload(300000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        segments: extensionSegments,
+      }],
+      bindings: [],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'extension-list-edit-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const autoScroll = page.locator('#cue-list-auto-scroll-on-click');
+  await page.locator('#editor-settings-toggle').click();
+  await autoScroll.check();
+  const list = page.locator('#cues-container');
+  const target = page.locator('.multi-dual-cue[data-ext-idx="20"] .multi-cue-column.extension');
+  const targetRow = page.locator('.multi-dual-cue[data-ext-idx="20"]');
+  const mainRow = page.locator('.multi-dual-cue[data-main-idx="20"]');
+  await expect(target).toHaveCount(1);
+  await list.evaluate((element) => { element.scrollTop = 0; });
+  const before = await list.evaluate((element) => element.scrollTop);
+
+  // dispatchEvent 不会先替 Playwright 自动滚动目标，能验证应用自己的点击滚动逻辑。
+  await target.dispatchEvent('pointerdown', { bubbles: true, button: 0, clientX: 120, clientY: 120 });
+  await target.dispatchEvent('click', { bubbles: true, clientX: 120, clientY: 120 });
+  await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(before);
+  await expect.poll(async () => {
+    const [listBox, targetBox, mainBox] = await Promise.all([
+      list.boundingBox(), targetRow.boundingBox(), mainRow.boundingBox(),
+    ]);
+    if (!listBox || !targetBox || !mainBox) return false;
+    const listCenter = listBox.y + listBox.height / 2;
+    const targetDistance = Math.abs(targetBox.y + targetBox.height / 2 - listCenter);
+    const mainDistance = Math.abs(mainBox.y + mainBox.height / 2 - listCenter);
+    return targetDistance < mainDistance;
+  }).toBe(true);
+  await expect.poll(async () => {
+    const box = await target.boundingBox();
+    const viewportHeight = await page.evaluate(() => innerHeight);
+    return Boolean(box && box.y >= 0 && box.y + box.height <= viewportHeight);
+  }).toBe(true);
+  await target.scrollIntoViewIfNeeded();
+
+  const text = target.locator('.text');
+  const point = await text.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 5);
+    range.setEnd(node, 5);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.dblclick(point.x, point.y);
+  await expect(target).toHaveClass(/editing/);
+  await expect.poll(() => page.evaluate(() => {
+    const element = document.querySelector(
+      '.multi-dual-cue[data-ext-idx="20"] .multi-cue-column.extension .text',
+    );
+    const selection = window.getSelection();
+    if (!element || !selection?.rangeCount || !selection.anchorNode) return null;
+    if (!element.contains(selection.anchorNode)) return null;
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    range.setEnd(selection.anchorNode, selection.anchorOffset);
+    return selection.isCollapsed ? range.toString().length : -1;
+  })).toBe(5);
+});
+
 test('uses the same text editor box styling in single and dual-column modes', async ({ page }) => {
   await page.goto(server.url);
   await dropFiles(page, [srtSpec('main.srt', mainSrt)]);

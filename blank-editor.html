@@ -480,6 +480,8 @@
   .media-controls select:focus-visible,
   .media-controls input:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
   .media-controls button:disabled { opacity: .42; cursor: not-allowed; }
+  .media-controls .media-step-button { width: 32px; padding: 3px 6px; }
+  .media-seek-icon { display: block; width: 16px; height: 16px; margin: auto; fill: currentColor; }
   .media-clock { min-width: 92px; text-align: center; color: var(--text-secondary); }
   .media-controls #media-seek { flex: 1 1 180px; min-width: 120px; accent-color: var(--accent); }
   .media-volume-control,
@@ -778,7 +780,34 @@
   .subtitle-preview-settings-fields {
     display: grid; gap: 8px; width: 100%; min-width: 0;
   }
-  .subtitle-preview-settings-section { display: block; }
+  .subtitle-preview-settings-section { display: grid; gap: 10px; }
+  .subtitle-preview-settings-section > .settings-panel-title {
+    display: block; width: 100%; text-align: center;
+  }
+  .subtitle-preview-track-settings {
+    display: grid; gap: 8px; width: 100%; min-width: 0; box-sizing: border-box;
+    padding: 8px 10px; background: var(--bg-panel); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+  }
+  .subtitle-preview-track-settings[hidden] { display: none; }
+  .subtitle-preview-track-title {
+    margin: 0; color: var(--text-secondary); font-size: 12px; font-weight: 600;
+    letter-spacing: .06em;
+  }
+  .subtitle-preview-setting-pair {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0;
+  }
+  .subtitle-preview-setting-cell {
+    display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px;
+    min-width: 0; color: var(--text-secondary); font-size: 12px; white-space: nowrap;
+  }
+  .subtitle-preview-setting-cell > span { color: var(--text-muted); }
+  .subtitle-preview-setting-cell select { width: 100%; min-width: 0; }
+  .subtitle-preview-setting-cell input[type="color"] {
+    width: 100%; height: 24px; min-width: 0; padding: 2px;
+    background: var(--bg-input); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm); cursor: pointer;
+  }
   .cue-list-settings-section,
   .cue-editor-settings-section { display: grid; }
   .cue-list-setting-row input[type="number"] {
@@ -821,7 +850,7 @@
   }
   .waveform-settings-section button:disabled { opacity: .42; cursor: not-allowed; }
   .subtitle-preview-setting-row {
-    display: grid; grid-template-columns: 5em minmax(0, 1fr); align-items: center; gap: 8px;
+    display: grid; grid-template-columns: 8em minmax(0, 1fr); align-items: center; gap: 8px;
     color: var(--text-secondary); font-size: 12px; white-space: nowrap;
   }
   .subtitle-preview-setting-row > span { color: var(--text-muted); }
@@ -839,17 +868,19 @@
   }
   .subtitle-preview-font-scan {
     display: flex; align-items: flex-start; flex-wrap: wrap; gap: 6px;
-    grid-column: 1 / -1; margin-left: calc(5em + 8px); min-width: 0;
+    grid-column: 1 / -1; margin-left: 0; min-width: 0;
   }
   .subtitle-preview-font-scan-status {
     flex: 1 1 100px; min-width: 0; color: var(--text-faint); font-size: 11px; line-height: 1.35;
     white-space: normal;
   }
   .subtitle-preview-extension-settings {
-    display: grid; gap: 8px; margin-top: 2px; padding-top: 10px;
-    border-top: 1px solid var(--border-subtle);
+    margin-top: 0; padding-top: 8px;
   }
   .subtitle-preview-extension-settings[hidden] { display: none; }
+  @media (max-width: 380px) {
+    .subtitle-preview-setting-pair { grid-template-columns: 1fr; }
+  }
 
   .editor-settings-panel {
     flex: 0 0 auto; display: grid; grid-template-columns: repeat(4, minmax(190px, 1fr));
@@ -1061,37 +1092,102 @@
     resize: both;
     container: help-panel / inline-size;
   }
-  .help-panel-body { flex: 1 1 auto; display: grid; grid-template-columns: 1fr; gap: 8px; align-content: start; }
+  .help-tabs {
+    flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 4px 6px; align-content: flex-start;
+    padding: 9px 14px 0; overflow: hidden; border-bottom: 1px solid var(--border-subtle);
+  }
+  .help-tab {
+    flex: 0 0 auto; min-height: 35px; padding: 7px 13px;
+    color: var(--text-muted); background: transparent;
+    border: 1px solid transparent; border-bottom: 0; border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    cursor: pointer; font-size: 13px; white-space: nowrap;
+    transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast);
+  }
+  .help-tab:hover { color: var(--text-primary); background: var(--bg-raised); }
+  .help-tab[aria-selected="true"] {
+    color: var(--text-primary); background: var(--bg-raised);
+    border-color: var(--border-subtle); border-bottom-color: var(--bg-raised);
+    margin-bottom: -1px;
+  }
+  .help-tab:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .help-panel-body { flex: 1 1 auto; display: block; }
+  .help-tab-panel[hidden] { display: none; }
+  .help-tab-panel { width: 100%; box-sizing: border-box; }
   .help-group {
-    display: flex; flex-wrap: wrap; align-content: flex-start; gap: 10px 12px;
-    padding: 12px; color: var(--text-secondary); font-size: 12px;
-    background: var(--bg-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+    display: grid; grid-template-columns: 1fr; align-content: flex-start; gap: 8px;
+    width: 100%; min-width: 0; box-sizing: border-box; color: var(--text-secondary); font-size: 12px;
   }
   .help-title {
-    flex: 0 0 100%; color: var(--text-secondary); font-weight: 600; letter-spacing: .08em;
+    margin: 0 4px 2px; color: var(--text-secondary); font-weight: 600; letter-spacing: .08em;
     text-transform: uppercase; font-size: 12px;
   }
   .help-subgroup {
-    flex: 0 0 100%; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px 12px;
+    display: grid; grid-template-columns: 1fr; align-content: flex-start; gap: 8px;
+    width: 100%; min-width: 0; box-sizing: border-box; padding: 10px 12px;
+    background: var(--bg-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
   }
   .help-subtitle {
-    flex: 0 0 100%; margin-top: 2px; color: var(--text-muted);
-    font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+    margin: 0; color: var(--text-muted);
+    font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
   }
-  .help-subgroup:first-of-type .help-subtitle { margin-top: 0; }
+  .help-category {
+    display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px 12px; min-width: 0;
+  }
+  .help-break { flex: 0 0 100%; width: 0; height: 0; }
+  .help-category + .help-category {
+    padding-top: 8px; border-top: 1px solid var(--border-subtle);
+  }
+  .help-category-title {
+    flex: 0 0 100%; margin: 0; color: var(--text-secondary);
+    font-size: 11px; font-weight: 600; letter-spacing: .04em;
+  }
   .help-note {
-    flex: 0 0 100%; color: var(--text-muted); font-size: 10px;
+    flex: 0 0 100%; color: var(--text-muted); font-size: 11px; line-height: 1.5;
   }
   .help-important { color: var(--amber-hover); font-weight: 500; }
   .help-important kbd {
     color: var(--bg-base); background: var(--amber); border-color: var(--amber-hover);
     box-shadow: 0 1px 0 color-mix(in srgb, var(--amber-hover) 70%, var(--border-strong));
   }
-  .help-panel kbd {
+  .help-panel kbd,
+  .cue-editor-key-hints kbd {
     background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm);
     padding: 2px 6px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);
     box-shadow: 0 1px 0 var(--border-subtle);
   }
+  .waveform-status.cue-editor-key-hints {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    max-width: none;
+    overflow: visible;
+  }
+  .cue-editor-key-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .help-tip-callout {
+    display: flex; align-items: center; gap: 12px; min-width: 0; margin-top: 8px; padding: 8px 10px;
+    border-left: 3px solid var(--accent); border-radius: var(--radius-sm);
+    background: var(--accent-tint); color: var(--text-secondary);
+  }
+  .help-tip-text {
+    flex: 1 1 auto; min-width: 0; color: var(--text-secondary); font-size: 11px; line-height: 1.5;
+  }
+  .help-wasd {
+    display: grid; grid-template-columns: repeat(3, 30px); grid-template-rows: repeat(2, 30px);
+    gap: 3px; flex: 0 0 auto;
+  }
+  .help-wasd kbd {
+    display: flex; width: 30px; height: 30px; box-sizing: border-box; padding: 2px;
+    flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+    font-size: 11px; line-height: 1;
+  }
+  .help-wasd [data-wasd-direction="up"] { grid-column: 2; grid-row: 1; }
+  .help-wasd [data-wasd-direction="left"] { grid-column: 1; grid-row: 2; }
+  .help-wasd [data-wasd-direction="down"] { grid-column: 2; grid-row: 2; }
+  .help-wasd [data-wasd-direction="right"] { grid-column: 3; grid-row: 2; }
   .help-header-actions { display: flex; align-items: center; gap: 6px; }
   .help-replay-button {
     min-height: 26px; padding: 4px 8px; color: var(--bg-base); background: var(--amber);
@@ -2334,7 +2430,7 @@
   color: var(--text-muted);
 }
 .waveform-status {
-  margin-left: auto;
+  margin-left: 1em;
   color: var(--text-muted);
   max-width: 36vw;
   overflow: hidden;
@@ -3516,108 +3612,183 @@
       <button type="button" id="help-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭帮助窗口">×</button>
     </div>
   </header>
+  <div class="help-tabs" role="tablist" aria-label="帮助分类">
+    <button type="button" class="help-tab" id="help-tab-general" role="tab" aria-selected="true" aria-controls="help-tab-panel-general" data-help-tab="general">通用</button>
+    <button type="button" class="help-tab" id="help-tab-waveform" role="tab" aria-selected="false" aria-controls="help-tab-panel-waveform" data-help-tab="waveform" tabindex="-1">波形区</button>
+    <button type="button" class="help-tab" id="help-tab-playback" role="tab" aria-selected="false" aria-controls="help-tab-panel-playback" data-help-tab="playback" tabindex="-1">播放与编辑</button>
+  </div>
   <div class="gap-remove-panel-body help-panel-body">
-    <div class="help-group">
-      <span class="help-title">字幕操作</span>
-      <div class="help-subgroup">
-        <span class="help-subtitle">通用操作</span>
-        <span><kbd>单击</kbd> 选中</span>
-        <span><kbd>双击</kbd> 编辑</span>
-        <span><kbd>右键</kbd> 菜单</span>
-        <span class="help-important"><kbd>Alt+点击</kbd> 启用/禁用字幕</span>
-        <span><kbd>Shift+点击</kbd> 连选</span>
-        <span><kbd data-mod-key>Ctrl+点击</kbd> 多选</span>
-        <span><kbd data-mod-key>Ctrl+A</kbd> 选中所有字幕（非编辑状态）</span>
-        <span><kbd data-mod-key>Ctrl+D</kbd> 取消选择</span>
-        <span class="help-important"><kbd>Enter</kbd> 编辑选中字幕（根据最后点击区域）</span>
-      </div>
-      <div class="help-subgroup">
-        <span class="help-subtitle">按键调整字幕</span>
-        <span class="help-note">选中字幕时：</span>
-        <span><kbd>←</kbd>/<kbd>→</kbd> 微调移动字幕</span>
-        <span><kbd>Shift+←/→</kbd> 将字幕起点/终点贴到前一条结尾/后一条开头</span>
-        <span><kbd data-mod-key>Ctrl+←/→</kbd> 微调字幕左边界（起点）</span>
-        <span><kbd data-mod-key>Ctrl+Shift+←/→</kbd> 微调字幕右边界（终点）</span>
-        <span class="help-note">按住字幕时：</span>
-        <span><kbd>A</kbd>/<kbd>D</kbd> 向前/后微调移动字幕（按住 <kbd>Alt</kbd> 取消黏连联动）</span>
-        <span><kbd>Shift+A</kbd> 将字幕起点贴到前一条结尾</span>
-        <span><kbd>Shift+D</kbd> 将字幕终点贴到后一条开头</span>
-        <span class="help-note">注：微调幅度可在「设置-&gt;通用操作」中调节，默认 50ms</span>
-      </div>
-      <div class="help-subgroup">
-        <span class="help-subtitle">功能快捷键</span>
-        <span><kbd>T</kbd> 分配表情包</span>
-        <span><kbd>1~5</kbd> 标记颜色 <kbd>0</kbd> 清除颜色</span>
-        <span><kbd>C</kbd> 合并所选字幕</span>
-      </div>
-    </div>
-    <div class="help-group">
-      <span class="help-title">波形区</span>
-      <div class="help-subgroup">
-        <span class="help-subtitle">鼠标</span>
-        <span><kbd>双击波形</kbd> 播放/暂停</span>
-        <span><kbd>右键波形背景</kbd> 显示菜单</span>
-        <span class="help-important"><kbd>N</kbd> 在鼠标位置创建字幕（仅波形）</span>
-        <span><kbd data-mod-key>Ctrl+拖拽空白处</kbd> 拖动创建指定时长字幕</span>
-        <span><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>
-      </div>
-      <div class="help-subgroup">
-        <span class="help-subtitle">波形区字幕操作</span>
-        <span class="help-important"><kbd>Enter</kbd> 进入字幕编辑区（仅单选时）</span>
-        <span><kbd>Esc</kbd> 退出字幕编辑区（文本编辑时）</span>
-        <span><kbd>Esc</kbd> 清除字幕选择（非编辑状态）</span>
-        <span><kbd id="help-split-key">Enter</kbd>（编辑字幕文本时）在文字光标处拆分</span>
-      </div>
-      <div class="help-subgroup">
-        <span class="help-subtitle">工具</span>
-        <span><kbd>V</kbd> 选择工具 <kbd>R</kbd> 分割工具</span>
-        <span class="help-important"><kbd id="help-waveform-split-key">B</kbd> 在红色播放指针处拆分字幕</span>
-      </div>
-      <div class="help-subgroup">
-        <span class="help-subtitle">多重字幕</span>
-        <span><kbd>G</kbd> 绑定到主副字幕（自动匹配）</span>
-        <span><kbd>Shift+G</kbd> 解绑当前副字幕</span>
-        <span><kbd>H</kbd> 对齐副字幕到主字幕时间轴</span>
-      </div>
-    </div>
-    <div class="help-group">
-      <span class="help-title">播放与编辑</span>
-      <div class="help-subgroup">
-        <span class="help-subtitle">播放</span>
-        <span class="help-important"><kbd>空格</kbd> 播放/暂停</span>
-        <span><kbd>←</kbd>/<kbd>→</kbd> 无选中时前后跳转 5 秒</span>
-        <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> <span id="help-jkl-mode">倒放/停止/1×播放</span></span>
-      </div>
-      <div class="help-subgroup">
-        <span class="help-subtitle">字幕导航</span>
-        <span class="help-important"><kbd>WASD</kbd> 选择前后字幕</span>
-        <span class="help-important"><kbd>Shift+WASD</kbd> 连续多选字幕</span>
-        <span class="help-important"><kbd>F</kbd> 跳转并播放选中字幕</span>
-      </div>
-      <div class="help-subgroup">
-        <span class="help-subtitle">编辑</span>
-        <span><kbd>Delete</kbd> 删除所选字幕</span>
-        <span class="help-important"><kbd data-mod-key>Ctrl+Z</kbd> 撤销</span>
-        <span><kbd data-mod-key>Ctrl+Shift+Z</kbd> 重做</span>
-      </div>
-    </div>
-    <div class="help-group">
-      <span class="help-title">波形区（拓展）</span>
-      <div class="help-subgroup">
-        <span class="help-subtitle">波形区显示</span>
-        <span class="help-note">点击波形区 header 右侧的【⚙️】后，可调整【音频波形区】的具体参数</span>
-        <span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>
-        <span><kbd data-mod-key>Ctrl+滚轮</kbd> 调整时间缩放/每行长度</span>
-        <span><kbd data-mod-key>Ctrl+Shift+滚轮</kbd> 调整每行高度</span>
-      </div>
-      <div class="help-subgroup">
-        <span class="help-subtitle">静音空隙</span>
-        <span><kbd>Alt+点击静音空隙区段</kbd> 切换移除/保留</span>
-        <span class="help-note">空隙区段操作方式设为「中键拖动」时：</span>
-        <span><kbd>中键拖动</kbd> 增加静音区段</span>
-        <span><kbd>Alt+中键拖动</kbd> 增加恢复区段</span>
-      </div>
-    </div>
+    <section class="help-group help-tab-panel" id="help-tab-panel-general" role="tabpanel" aria-labelledby="help-tab-general" data-help-tab-panel="general" tabindex="0">
+      <h4 class="help-title">通用</h4>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">鼠标操作</h5>
+        <div class="help-category">
+          <span><kbd>单击</kbd> 选中</span>
+          <span><kbd>双击</kbd> 编辑</span>
+          <span><kbd>右键</kbd> 菜单</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">选择操作</h5>
+        <div class="help-category">
+          <span><kbd data-mod-key>Ctrl+点击</kbd> 多选</span>
+          <span><kbd>Shift+点击</kbd> 连选</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd data-mod-key>Ctrl+A</kbd> 选中所有字幕（非编辑状态）</span>
+          <span><kbd data-mod-key>Ctrl+D</kbd> 取消选择</span>
+        </div>
+        <div class="help-category">
+          <h6 class="help-category-title">字幕列表</h6>
+          <span><kbd>W</kbd>/<kbd>S</kbd> 选择前/后字幕</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Shift+W</kbd>/<kbd>Shift+S</kbd> 连选前/后字幕</span>
+        </div>
+        <div class="help-category">
+          <h6 class="help-category-title">波形区</h6>
+          <span><kbd>A</kbd>/<kbd>D</kbd> 选择前/后字幕</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Shift+A</kbd>/<kbd>Shift+D</kbd> 连选前/后字幕</span>
+        </div>
+        <aside class="help-tip-callout" role="note">
+          <span class="help-wasd" role="img" aria-label="WASD 方向键">
+            <kbd data-wasd-direction="up" aria-hidden="true">W</kbd>
+            <kbd data-wasd-direction="left" aria-hidden="true">A</kbd>
+            <kbd data-wasd-direction="down" aria-hidden="true">S</kbd>
+            <kbd data-wasd-direction="right" aria-hidden="true">D</kbd>
+          </span>
+          <span class="help-tip-text">其实就是用 WASD 啦，从字幕列表看是上下跳，从波形区看是左右跳 : P</span>
+        </aside>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">编辑操作</h5>
+        <div class="help-category">
+          <span class="help-important"><kbd>B</kbd> 拆分字幕（取决于鼠标位置）</span>
+          <span class="help-important"><kbd>C</kbd> 合并所选字幕</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span class="help-important"><kbd>Alt+点击</kbd> 启用/禁用字幕</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span class="help-important"><kbd>Enter</kbd> 编辑选中字幕（根据最后点击区域）</span>
+          <span><kbd>Esc</kbd> 退出字幕编辑区（文本编辑时）</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span class="help-important"><kbd>Delete</kbd>/<kbd>Backspace</kbd> 删除字幕</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">快捷功能</h5>
+        <div class="help-category">
+          <span><kbd>1~5</kbd> 标记颜色 <kbd>0</kbd> 清除颜色</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>T</kbd> 分配表情包</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">切换工具</h5>
+        <div class="help-category">
+          <span><kbd>V</kbd> 选择工具</span>
+          <span><kbd>R</kbd> 分割工具</span>
+          <span><kbd>Esc</kbd> 切回选择工具</span>
+        </div>
+      </section>
+    </section>
+    <section class="help-group help-tab-panel" id="help-tab-panel-waveform" role="tabpanel" aria-labelledby="help-tab-waveform" data-help-tab-panel="waveform" tabindex="0" hidden>
+      <h4 class="help-title">波形区操作</h4>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">空白波形区</h5>
+        <div class="help-category">
+          <span><kbd>双击波形</kbd> 播放/暂停</span>
+          <span><kbd>右键波形背景</kbd> 显示菜单</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span class="help-important"><kbd>N</kbd> 在鼠标位置创建字幕（仅波形）</span>
+          <span><kbd data-mod-key>Ctrl+拖拽空白处</kbd> 拖动创建指定时长字幕</span>
+          <span><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">波形区字幕操作</h5>
+        <div class="help-category">
+          <span class="help-important"><kbd>Enter</kbd> 编辑选中字幕（激活编辑区）</span>
+          <span><kbd>Esc</kbd> 退出字幕编辑区（文本编辑时）</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Esc</kbd> 清除字幕选择（非编辑状态）</span>
+          <span><kbd id="help-split-key">Enter</kbd>（编辑字幕文本时）在文字光标处拆分</span>
+          <span class="help-important"><kbd id="help-waveform-split-key">B</kbd> 在红色播放指针处拆分字幕</span>
+        </div>
+      </section>
+      <h4 class="help-title">按键微调字幕</h4>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">选中字幕</h5>
+        <div class="help-category">
+          <span><kbd>←</kbd>/<kbd>→</kbd> 微调移动字幕</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Shift+←/→</kbd> 将字幕起点/终点贴到前一条结尾/后一条开头</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd data-mod-key>Ctrl+←/→</kbd> 微调字幕左边界（起点）</span>
+          <span><kbd data-mod-key>Ctrl+Shift+←/→</kbd> 微调字幕右边界（终点）</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">按住字幕</h5>
+        <div class="help-category">
+          <span><kbd>A</kbd>/<kbd>D</kbd> 向前/后微调移动字幕（按住 <kbd>Alt</kbd> 取消黏连联动）</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Shift+A</kbd> 将字幕起点贴到前一条结尾</span>
+          <span><kbd>Shift+D</kbd> 将字幕终点贴到后一条开头</span>
+        </div>
+        <span class="help-note">注：微调幅度可在「设置-&gt;波形区」中调节，默认 50ms</span>
+      </section>
+      <h4 class="help-title">多重字幕</h4>
+      <section class="help-subgroup">
+        <div class="help-category">
+          <span><kbd>G</kbd> 绑定到主副字幕（自动匹配）</span>
+          <span><kbd>Shift+G</kbd> 解绑当前副字幕</span>
+          <span><kbd>H</kbd> 对齐副字幕到主字幕时间轴</span>
+        </div>
+      </section>
+      <h4 class="help-title">波形外观调整</h4>
+      <section class="help-subgroup">
+        <div class="help-category">
+          <span class="help-note">点击波形区 header 右侧的【⚙️】后，可调整【音频波形区】的具体参数</span>
+          <span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>
+          <span><kbd data-mod-key>Ctrl+滚轮</kbd> 调整时间缩放/每行长度</span>
+          <span><kbd data-mod-key>Ctrl+Shift+滚轮</kbd> 调整每行高度</span>
+        </div>
+      </section>
+      <h4 class="help-title">静音空隙操作</h4>
+      <section class="help-subgroup">
+        <div class="help-category">
+          <span><kbd>Alt+点击静音空隙区段</kbd> 切换移除/保留</span>
+          <span class="help-note">空隙区段操作方式设为「中键拖动」时：</span>
+          <span><kbd>中键拖动</kbd> 增加静音区段</span>
+          <span><kbd>Alt+中键拖动</kbd> 增加恢复区段</span>
+        </div>
+      </section>
+    </section>
+    <section class="help-group help-tab-panel" id="help-tab-panel-playback" role="tabpanel" aria-labelledby="help-tab-playback" data-help-tab-panel="playback" tabindex="0" hidden>
+      <h4 class="help-title">播放与编辑</h4>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">播放</h5>
+        <div class="help-category">
+          <span class="help-important"><kbd>空格</kbd> 播放/暂停</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>←</kbd>/<kbd>→</kbd> 无选中时前后跳转 <span id="help-media-seek-step">1000ms</span></span>
+          <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> <span id="help-jkl-mode">倒放/停止/1×播放</span></span>
+          <span class="help-note">提示：可在「媒体」设置中切换 J/K/L 的「慢放/快放」或「倒放/正放」，也可调整跳转时长。</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">字幕导航</h5>
+        <div class="help-category">
+          <span class="help-important"><kbd>F</kbd> 跳转并播放选中字幕</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">编辑</h5>
+        <div class="help-category">
+          <span class="help-important"><kbd data-mod-key>Ctrl+Z</kbd> 撤销</span>
+          <span><kbd data-mod-key>Ctrl+Shift+Z</kbd> 重做</span>
+        </div>
+      </section>
+    </section>
   </div>
 </aside>
 
@@ -3627,7 +3798,7 @@
   <section class="onboarding-card" id="onboarding-card" role="dialog" aria-modal="false" aria-labelledby="onboarding-title" aria-describedby="onboarding-description onboarding-extra-tips" tabindex="-1">
     <div class="onboarding-card-header">
       <span class="onboarding-progress"><span>快速上手</span><span aria-hidden="true"> · </span><span id="onboarding-step-count">1 / 3</span></span>
-      <button type="button" class="onboarding-skip" id="onboarding-skip">跳过</button>
+      <button type="button" class="onboarding-skip" id="onboarding-skip">跳过 (ESC)</button>
     </div>
     <div class="onboarding-heading">
       <span class="onboarding-glyph" id="onboarding-glyph" aria-hidden="true">W</span>
@@ -3702,19 +3873,6 @@
     <small class="editor-settings-hint">选中字幕时，同时选中和它相同颜色/表情包的字幕</small>
     </div>
     </div>
-    <div class="editor-settings-sub-group">
-    <span class="editor-settings-title">按键调整字幕</span>
-    <div class="editor-settings-field">
-    <label class="editor-settings-item">
-      字幕按键微调幅度
-      <span class="gap-remove-number-control">
-        <input type="number" id="cue-move-step" min="10" max="2000" step="10" value="50" inputmode="numeric">
-        <span class="gap-remove-unit">ms</span>
-      </span>
-    </label>
-    <small class="editor-settings-hint">具体用法详见帮助的「按键调整」区</small>
-    </div>
-    </div>
   </div>
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
@@ -3741,8 +3899,10 @@
         </span>
       </label>
     </div>
+  </div>
+  <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
-      <span class="editor-settings-title">🥷🏻</span>
+      <span class="editor-settings-title">其他</span>
       <div class="editor-settings-toggle-group ninja-toggle-group">
         <label class="toggle editor-settings-item" title="开启后，分割工具改用 🔪 图标，成功拆分时播放刀光音效">
           <input type="checkbox" id="ninja-mode"> 字幕忍者
@@ -3780,100 +3940,132 @@
                   <option value="direction" selected>倒放和正放</option>
                 </select>
               </label>
-              <small class="settings-panel-hint" id="jkl-playback-mode-hint">J 倒放（无反向声音），K 停止并重置 1×；停止时按 K 以 1×播放。速度档位为 1×、2×、4×、8×、16×。</small>
+              <small class="settings-panel-hint" id="jkl-playback-mode-hint">J 倒放，K 停止（重置播放速度），K 播放。多次按 J/K 可以倍增速度。</small>
             </div>
+          </div>
+          <div class="settings-panel-section media-seek-settings-section">
+            <span class="settings-panel-title">跳转时长</span>
+            <label class="settings-panel-item" title="媒体控制按钮和左右方向键每次跳转的毫秒数">
+              <span>每次跳转</span>
+              <span class="gap-remove-number-control">
+                <input type="number" id="media-seek-step" min="100" max="60000" step="100" value="1000" inputmode="numeric" aria-label="跳转时长">
+                <span class="gap-remove-unit">ms</span>
+              </span>
+            </label>
+            <small class="settings-panel-hint">控制按钮和左右方向键的每次跳转时长（单位：ms）</small>
           </div>
           <div class="settings-panel-section subtitle-preview-settings-section">
             <span class="settings-panel-title">预览字幕样式</span>
-            <div class="subtitle-preview-settings-fields">
-          <label class="subtitle-preview-setting-row" title="只影响播放器画面内的字幕预览，不改变字幕文本或时间">
-            <span>主字幕大小</span>
-            <select id="subtitle-font-size">
-              <option value="auto" selected>自动（响应式）</option>
-              <option value="12">12 px</option>
-              <option value="14">14 px</option>
-              <option value="18">18 px</option>
-              <option value="22">22 px</option>
-              <option value="26">26 px</option>
-              <option value="32">32 px</option>
-              <option value="40">40 px</option>
-              <option value="48">48 px</option>
-              <option value="56">56 px</option>
-              <option value="64">64 px</option>
-              <option value="72">72 px</option>
-              <option value="84">84 px</option>
-              <option value="96">96 px</option>
-            </select>
-          </label>
-          <label class="subtitle-preview-setting-row" title="选择播放器画面内字幕预览使用的字体族">
-            <span>主字幕字体</span>
-            <select id="subtitle-font-family">
-              <option value="default" selected>默认无衬线</option>
-              <option value="yahei">微软雅黑 / 苹方</option>
-              <option value="hei">黑体</option>
-              <option value="song">宋体</option>
-              <option value="sans">Arial / Segoe UI</option>
-            </select>
-          </label>
-          <div class="subtitle-preview-font-scan">
-            <button type="button" id="subtitle-font-family-scan" title="读取本机已安装的字体">读取本机字体</button>
-            <span id="subtitle-font-family-status" class="subtitle-preview-font-scan-status" role="status" aria-live="polite">点击读取本机字体（首次需要授权）</span>
-          </div>
-          <label class="subtitle-preview-setting-row" title="调整播放器画面内字幕预览的背景色">
-            <span>背景色</span>
-            <input id="subtitle-background-color" type="color" value="#000000" aria-label="字幕背景色">
-          </label>
-          <label class="subtitle-preview-setting-row" title="调整播放器画面内字幕预览背景的不透明度，设为 0 时隐藏背景">
-            <span>不透明度</span>
-            <div class="subtitle-preview-alpha-control">
-              <input id="subtitle-background-alpha" type="range" min="0" max="1" step="0.01" value="0.65" aria-label="字幕背景不透明度">
-              <output id="subtitle-background-alpha-value" for="subtitle-background-alpha">65%</output>
-            </div>
-          </label>
-          <label class="subtitle-preview-setting-row" title="选择播放器画面内主字幕预览的颜色">
-            <span>主字幕颜色</span>
-            <input type="color" id="subtitle-color" value="#ffffff" aria-label="主字幕颜色">
-          </label>
-          <div class="subtitle-preview-extension-settings" id="extension-subtitle-preview-settings" hidden>
-            <label class="subtitle-preview-setting-row" title="只影响播放器画面内的副字幕预览">
-              <span>副字幕大小</span>
-              <select id="extension-subtitle-font-size">
-                <option value="auto" selected>自动（比主字幕小一号）</option>
-                <option value="12">12 px</option>
-                <option value="14">14 px</option>
-                <option value="18">18 px</option>
-                <option value="22">22 px</option>
-                <option value="26">26 px</option>
-                <option value="32">32 px</option>
-                <option value="40">40 px</option>
-                <option value="48">48 px</option>
-                <option value="56">56 px</option>
-                <option value="64">64 px</option>
-                <option value="72">72 px</option>
-                <option value="84">84 px</option>
-                <option value="96">96 px</option>
-              </select>
-            </label>
-            <label class="subtitle-preview-setting-row" title="选择播放器画面内副字幕预览使用的字体族">
-              <span>副字幕字体</span>
-              <select id="extension-subtitle-font-family">
-                <option value="default" selected>默认无衬线</option>
-                <option value="yahei">微软雅黑 / 苹方</option>
-                <option value="hei">黑体</option>
-                <option value="song">宋体</option>
-                <option value="sans">Arial / Segoe UI</option>
-              </select>
-            </label>
-            <label class="subtitle-preview-setting-row" title="选择播放器画面内副字幕预览的颜色">
-              <span>副字幕颜色</span>
-              <input type="color" id="extension-subtitle-color" value="#ffd34d" aria-label="副字幕颜色">
-            </label>
-            <label class="subtitle-preview-setting-row" title="调整播放器画面内副字幕预览的背景色">
-              <span>副字幕背景色</span>
-              <input type="color" id="extension-subtitle-background-color" value="#000000" aria-label="副字幕背景色">
-            </label>
-          </div>
-            </div>
+            <section class="subtitle-preview-track-settings" id="main-subtitle-preview-settings">
+              <h5 class="subtitle-preview-track-title">主字幕</h5>
+              <div class="subtitle-preview-settings-fields">
+                <div class="subtitle-preview-setting-pair">
+                  <label class="subtitle-preview-setting-cell" title="只影响播放器画面内的字幕预览，不改变字幕文本或时间">
+                    <span>字幕大小</span>
+                    <select id="subtitle-font-size">
+                      <option value="auto" selected>自动（响应式）</option>
+                      <option value="12">12 px</option>
+                      <option value="14">14 px</option>
+                      <option value="18">18 px</option>
+                      <option value="22">22 px</option>
+                      <option value="26">26 px</option>
+                      <option value="32">32 px</option>
+                      <option value="40">40 px</option>
+                      <option value="48">48 px</option>
+                      <option value="56">56 px</option>
+                      <option value="64">64 px</option>
+                      <option value="72">72 px</option>
+                      <option value="84">84 px</option>
+                      <option value="96">96 px</option>
+                    </select>
+                  </label>
+                  <label class="subtitle-preview-setting-cell" title="选择播放器画面内字幕预览使用的字体族">
+                    <span>字体</span>
+                    <select id="subtitle-font-family">
+                      <option value="default" selected>默认无衬线</option>
+                      <option value="yahei">微软雅黑 / 苹方</option>
+                      <option value="hei">黑体</option>
+                      <option value="song">宋体</option>
+                      <option value="sans">Arial / Segoe UI</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="subtitle-preview-font-scan">
+                  <button type="button" id="subtitle-font-family-scan" title="读取本机已安装的字体">读取本机字体</button>
+                  <span id="subtitle-font-family-status" class="subtitle-preview-font-scan-status" role="status" aria-live="polite">点击读取本机字体（首次需要授权）</span>
+                </div>
+                <div class="subtitle-preview-setting-pair">
+                  <label class="subtitle-preview-setting-cell" title="选择播放器画面内字幕预览的文字颜色">
+                    <span>文字颜色</span>
+                    <input type="color" id="subtitle-color" value="#ffffff" aria-label="文字颜色">
+                  </label>
+                  <label class="subtitle-preview-setting-cell" title="调整播放器画面内字幕预览的背景色">
+                    <span>背景颜色</span>
+                    <input id="subtitle-background-color" type="color" value="#000000" aria-label="背景颜色">
+                  </label>
+                </div>
+                <label class="subtitle-preview-setting-row" title="调整播放器画面内字幕预览背景的不透明度，设为 0 时隐藏背景">
+                  <span>背景不透明度</span>
+                  <div class="subtitle-preview-alpha-control">
+                    <input id="subtitle-background-alpha" type="range" min="0" max="1" step="0.01" value="0.65" aria-label="背景不透明度">
+                    <output id="subtitle-background-alpha-value" for="subtitle-background-alpha">65%</output>
+                  </div>
+                </label>
+              </div>
+            </section>
+            <section class="subtitle-preview-track-settings subtitle-preview-extension-settings" id="extension-subtitle-preview-settings" hidden>
+              <h5 class="subtitle-preview-track-title">副字幕</h5>
+              <div class="subtitle-preview-settings-fields">
+                <div class="subtitle-preview-setting-pair">
+                  <label class="subtitle-preview-setting-cell" title="只影响播放器画面内的副字幕预览">
+                    <span>字幕大小</span>
+                    <select id="extension-subtitle-font-size">
+                      <option value="auto" selected>自动（比主字幕小一号）</option>
+                      <option value="12">12 px</option>
+                      <option value="14">14 px</option>
+                      <option value="18">18 px</option>
+                      <option value="22">22 px</option>
+                      <option value="26">26 px</option>
+                      <option value="32">32 px</option>
+                      <option value="40">40 px</option>
+                      <option value="48">48 px</option>
+                      <option value="56">56 px</option>
+                      <option value="64">64 px</option>
+                      <option value="72">72 px</option>
+                      <option value="84">84 px</option>
+                      <option value="96">96 px</option>
+                    </select>
+                  </label>
+                  <label class="subtitle-preview-setting-cell" title="选择播放器画面内副字幕预览使用的字体族">
+                    <span>字体</span>
+                    <select id="extension-subtitle-font-family">
+                      <option value="default" selected>默认无衬线</option>
+                      <option value="yahei">微软雅黑 / 苹方</option>
+                      <option value="hei">黑体</option>
+                      <option value="song">宋体</option>
+                      <option value="sans">Arial / Segoe UI</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="subtitle-preview-setting-pair">
+                  <label class="subtitle-preview-setting-cell" title="选择播放器画面内副字幕预览的文字颜色">
+                    <span>文字颜色</span>
+                    <input type="color" id="extension-subtitle-color" value="#ffd34d" aria-label="文字颜色">
+                  </label>
+                  <label class="subtitle-preview-setting-cell" title="调整播放器画面内副字幕预览的背景色">
+                    <span>背景颜色</span>
+                    <input type="color" id="extension-subtitle-background-color" value="#000000" aria-label="背景颜色">
+                  </label>
+                </div>
+                <label class="subtitle-preview-setting-row" title="调整播放器画面内副字幕预览背景的不透明度，设为 0 时隐藏背景">
+                  <span>背景不透明度</span>
+                  <div class="subtitle-preview-alpha-control">
+                    <input id="extension-subtitle-background-alpha" type="range" min="0" max="1" step="0.01" value="0.65" aria-label="背景不透明度">
+                    <output id="extension-subtitle-background-alpha-value" for="extension-subtitle-background-alpha">65%</output>
+                  </div>
+                </label>
+              </div>
+            </section>
           </div>
         </div>
       </div>
@@ -3885,8 +4077,12 @@
     </div>
     <div class="media-controls" id="media-controls" role="group" aria-label="媒体播放控制">
       <button type="button" id="media-play-toggle" aria-label="播放" title="播放">▶</button>
-      <button type="button" id="media-step-back" aria-label="后退 5 秒" title="后退 5 秒">−5</button>
-      <button type="button" id="media-step-forward" aria-label="前进 5 秒" title="前进 5 秒">+5</button>
+      <button type="button" id="media-step-back" class="media-step-button" aria-label="后退 1000ms" title="后退 1000ms">
+        <svg class="media-seek-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"></path></svg>
+      </button>
+      <button type="button" id="media-step-forward" class="media-step-button" aria-label="前进 1000ms" title="前进 1000ms">
+        <svg class="media-seek-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 11h12.17l-5.59-5.59L12 4l8 8-8 8-1.41-1.41L16.17 13H4v-2z"></path></svg>
+      </button>
       <span class="media-clock"><span id="media-current-time">00:00</span> / <span id="media-duration">00:00</span></span>
       <input type="range" id="media-seek" min="0" max="0" step="0.01" value="0" aria-label="媒体进度">
       <label class="media-volume-control" title="音量">🔊 <input type="range" id="media-volume" min="0" max="1" step="0.01" value="1" aria-label="音量"></label>
@@ -3906,6 +4102,12 @@
   <section class="current-cue-panel" id="current-cue-panel" aria-label="当前字幕编辑区">
     <div class="toolbar cue-editor-toolbar">
       <span class="info layout-toolbar-label">编辑</span>
+      <span class="waveform-status cue-editor-key-hints" id="cue-editor-key-hints" aria-label="字幕编辑快捷键">
+        <span class="cue-editor-key-hint"><kbd id="cue-editor-split-key">Enter</kbd> 拆分</span>
+        <span class="cue-editor-key-hint"><kbd id="cue-editor-confirm-key">Ctrl+Enter</kbd> 确认</span>
+        <span class="cue-editor-key-hint"><kbd>Esc</kbd> 退出编辑</span>
+        <span class="cue-editor-key-hint"><kbd>Shift+Enter</kbd> 换行</span>
+      </span>
       <div class="settings-anchor cue-editor-settings" id="cue-editor-settings">
         <button type="button" id="cue-editor-settings-toggle" class="cue-editor-settings-toggle" title="编辑设置" aria-label="编辑设置" aria-expanded="false" aria-controls="cue-editor-settings-panel" aria-haspopup="dialog">⚙️</button>
         <div class="settings-panel cue-editor-settings-panel" id="cue-editor-settings-panel" role="dialog" aria-label="编辑设置" hidden>
@@ -4011,6 +4213,17 @@
                 <option value="hidden">完全隐藏</option>
               </select>
             </label>
+          </div>
+          <div class="settings-panel-section waveform-settings-section">
+            <span class="settings-panel-title waveform-settings-title">按键调整字幕</span>
+            <label class="editor-settings-item" title="选中字幕时，方向键和按住字幕块/边界时的 A/D 每次调整的毫秒数">
+              字幕按键微调幅度
+              <span class="gap-remove-number-control">
+                <input type="number" id="cue-move-step" min="10" max="2000" step="10" value="50" inputmode="numeric">
+                <span class="gap-remove-unit">ms</span>
+              </span>
+            </label>
+            <small class="settings-panel-hint">具体用法详见帮助的「按键调整」区</small>
           </div>
           <div class="settings-panel-section waveform-settings-section">
             <span class="settings-panel-title waveform-settings-title">静音空隙</span>
@@ -5893,13 +6106,24 @@
     '主字幕颜色': 'Main subtitle color', '拓展字幕颜色': 'Extension subtitle color', '副字幕颜色': 'Secondary subtitle color',
     '微软雅黑 / 苹方': 'Microsoft YaHei / PingFang', '黑体': 'SimHei', '宋体': 'SimSun', 'Arial / Segoe UI': 'Arial / Segoe UI',
     '读取本机字体': 'Read local fonts', '点击读取本机字体（首次需要授权）': 'Click to read local fonts (permission required the first time)',
+    '文字颜色': 'Text color', '背景颜色': 'Background color', '背景不透明度': 'Background opacity',
     '背景色': 'Background color', '不透明度': 'Opacity',
     '副字幕背景色': 'Secondary subtitle background color',
+    '只影响播放器画面内的字幕预览，不改变字幕文本或时间': 'Only affects subtitle preview in the player; it does not change subtitle text or timing',
+    '选择播放器画面内字幕预览使用的字体族': 'Choose the font family used by the subtitle preview in the player',
+    '选择播放器画面内字幕预览的文字颜色': 'Choose the text color used by the subtitle preview in the player',
+    '调整播放器画面内字幕预览的背景色': 'Adjust the background color used by the subtitle preview in the player',
+    '调整播放器画面内字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the subtitle preview background opacity in the player; set it to 0 to hide the background',
     '只影响播放器画面内的副字幕预览': 'Only affects the secondary subtitle preview in the player',
+    '选择播放器画面内副字幕预览使用的字体族': 'Choose the font family used by the secondary subtitle preview in the player',
+    '选择播放器画面内副字幕预览的文字颜色': 'Choose the text color used by the secondary subtitle preview in the player',
+    '调整播放器画面内副字幕预览的背景色': 'Adjust the background color used by the secondary subtitle preview in the player',
+    '调整播放器画面内副字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the secondary subtitle preview background opacity in the player; set it to 0 to hide the background',
     '样式会保存到工程的 preview.subtitle；旧工程默认使用原来的响应式字号。': 'Styles are saved in preview.subtitle; legacy projects keep the original responsive font size.',
     '媒体': 'Media', '媒体设置': 'Media settings', '预览字幕': 'Subtitle preview', '预览字幕样式': 'Subtitle preview style', '预览拓展字幕': 'Extension subtitle preview', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
+    '跳转时长': 'Seek duration', '每次跳转': 'Each jump', '媒体控制按钮和左右方向键每次跳转的毫秒数': 'Milliseconds to jump with the media controls and left/right arrow keys', '控制按钮和左右方向键的每次跳转时长（单位：ms）': 'Duration for each jump from the controls and left/right arrow keys (unit: ms)',
     '频谱颜色': 'Spectral colors',
-    '播放': 'Play', '暂停': 'Pause', '后退 5 秒': 'Back 5 seconds', '前进 5 秒': 'Forward 5 seconds',
+    '播放': 'Play', '暂停': 'Pause', '后退 1000ms': 'Back 1000ms', '前进 1000ms': 'Forward 1000ms',
     '媒体进度': 'Media progress', '音量': 'Volume', '速度': 'Speed', '播放速度': 'Playback speed',
     '全屏': 'Fullscreen', '退出全屏': 'Exit fullscreen',
     '显示': 'Display', '筛选': 'Filter', '隐藏禁用': 'Hide disabled', '隐藏禁用字幕': 'Hide disabled subtitles', '批量替换…': 'Batch replace…',
@@ -5971,7 +6195,7 @@
     '开启后，在“仅看超长”筛选中拆分出的字幕会暂时保留，直到点击其他字幕、波形或空白处': 'When enabled, split subtitles stay visible in the “Long only” filter until another subtitle, the waveform, or blank space is clicked',
     '关闭后，通过字幕列表点击字幕时不会自动滚动列表': 'When disabled, clicking a subtitle in the list will not scroll the list',
     '字幕编辑显示': 'Subtitle editor', '编辑': 'Edit', '编辑设置': 'Editor settings', '跳转按钮': 'Navigation buttons', '前后跳转': 'Navigation buttons', '时间操作': 'Time actions',
-    '操作': 'Behavior', '通用操作': 'General', '按键调整字幕': 'Keyboard subtitle adjustment', '单击行为': 'Click behavior', '点击字幕块时': 'Click subtitle behavior', '仅选中（不跳转）': 'Select only (do not seek)', '选中并跳转（自动播放）': 'Select and seek (autoplay)', 'JKL 播放模式': 'JKL playback mode', '播放模式': 'Playback mode', '慢速和倍速': 'Slower and faster', '倒放和正放': 'Reverse and forward', '倒放/停止/正放': 'Reverse/stop/forward', '倒放/停止/1×播放': 'Reverse/stop/1× play', '选择 J/K/L 的播放控制方式': 'Choose how J/K/L control playback', 'J 倒放（无反向声音），K 停止并重置 1×；停止时按 K 以 1×播放。速度档位为 1×、2×、4×、8×、16×。': 'J reverses the timeline without reverse audio; K stops and resets to 1×, then plays at 1× when stopped. Speed steps are 1×, 2×, 4×, 8×, and 16×.',
+    '操作': 'Behavior', '通用操作': 'General', '按键调整字幕': 'Keyboard subtitle adjustment', '单击行为': 'Click behavior', '点击字幕块时': 'Click subtitle behavior', '仅选中（不跳转）': 'Select only (do not seek)', '选中并跳转（自动播放）': 'Select and seek (autoplay)', 'JKL 播放模式': 'JKL playback mode', '播放模式': 'Playback mode', '慢速和倍速': 'Slower and faster', '倒放和正放': 'Reverse and forward', '倒放/停止/正放': 'Reverse/stop/forward', '倒放/停止/1×播放': 'Reverse/stop/1× play', '选择 J/K/L 的播放控制方式': 'Choose how J/K/L control playback', 'J 倒放，K 停止（重置播放速度），K 播放。多次按 J/K 可以倍增速度。': 'J reverses; K stops (resetting playback speed), and K plays. Press J/K repeatedly to multiply the speed.',
     '字幕忍者': 'Subtitle Ninja', '开启后，分割工具改用 🔪 图标，成功拆分时播放刀光音效': 'When enabled, the Razor tool uses a 🔪 icon and successful splits play a slash sound', '显示刀光特效': 'Show slash effect', '开启后，成功拆分时在屏幕上显示一道白色刀光': 'Show a white slash across the screen after a successful split', '打开字幕忍者模式，让拆分字幕变得更加有趣': 'Open Subtitle Ninja mode to make splitting subtitles more fun',
     '选中并跳转': 'Select and seek', '跳转目标': 'Seek target', '字幕开头': 'Subtitle start', '鼠标所在位置': 'Pointer position',
     '主字幕自动使用时间码拆分': 'Automatically split the main subtitle using timecodes',
@@ -5996,6 +6220,7 @@
     '合并字幕时插入字符': 'Merge separator', '留空则直接拼接': 'Leave blank to join directly',
     '合并两条字幕时，中间插入的字符（如果不需要可以留空）': 'Characters inserted between merged subtitles (leave blank to join directly)',
     '字幕编辑拆分按键': 'Subtitle split key', '字幕（编辑状态下）拆分按键': 'Subtitle split key (while editing)',
+    '拆分': 'Split', '确认': 'Confirm', '退出编辑': 'Exit editing', '换行': 'Newline',
     '同时选中分组内项目': 'Select all group members', '选中字幕时，同时选中和它相同颜色/表情包的字幕': 'When a subtitle is selected, also select subtitles with the same color or sticker', '或': 'or',
     '显示窗口': 'Visible window', '振幅': 'Amplitude',
     '5 秒': '5 sec', '10 秒': '10 sec', '20 秒': '20 sec', '30 秒': '30 sec',
@@ -6034,10 +6259,15 @@
     '在鼠标所指的音频位置拆分（波形上；列表外按播放指针）': 'Split at the audio position under the pointer (on the waveform; elsewhere at the playhead)',
     '进入字幕编辑区（仅单选时）': 'Focus subtitle editor (single selection only)', '退出字幕编辑区（文本编辑时）': 'Exit subtitle editor (while editing)', '清除字幕选择（非编辑状态）': 'Clear subtitle selection (when not editing)',
     '选中所有字幕': 'Select all subtitles', '选中所有字幕（非编辑状态）': 'Select all subtitles (when not editing)',
-    '右键': 'Right-click', '字幕操作': 'Subtitle actions', '波形区': 'Waveform area', '波形区字幕操作': 'Waveform subtitle actions',
-    '波形区（拓展）': 'Waveform area (Advanced)', '波形区显示': 'Waveform display', '显示调整': 'Display adjustments',
+    '右键': 'Right-click', '通用': 'General', '字幕操作': 'Subtitle actions', '波形区': 'Waveform area', '波形区字幕操作': 'Waveform subtitle actions',
+    '鼠标操作': 'Mouse actions', '选择操作': 'Selection', '编辑操作': 'Editing actions', '快捷功能': 'Quick actions', '切换工具': 'Switch tools',
+    '波形区操作': 'Waveform actions', '空白波形区': 'Blank waveform area', '波形外观调整': 'Waveform appearance', '静音空隙操作': 'Silent-gap operations', '字幕列表': 'Subtitle list',
+    'WASD 方向键': 'WASD directional keys', '选择前/后字幕': 'Select previous/next subtitle', '连选前/后字幕': 'Extend selection backward/forward',
+    '其实就是用 WASD 啦，从字幕列表看是上下跳，从波形区看是左右跳 : P': 'It is just WASD: jump up and down in the subtitle list, and left and right in the waveform area : P',
+    '波形区显示': 'Waveform display', '显示调整': 'Display adjustments',
     '启用/禁用字幕': 'Enable/disable subtitle',
     '编辑选中字幕（根据最后点击区域）': 'Edit the selected subtitle (based on the last clicked area)',
+    '编辑选中字幕（激活编辑区）': 'Edit the selected subtitle (activate the editor)', '按光标所在文字位置拆分字幕': 'Split the subtitle at the text cursor position', '拆分字幕（取决于鼠标位置）': 'Split the subtitle based on the mouse position', '切回选择工具': 'Return to the Select tool',
     '选择前后字幕': 'Select previous/next subtitles', '连续多选字幕': 'Select a continuous range',
     '点击【🔧 设置】后，可在【音频波形区】调整显示的具体参数': 'Click 🔧 Settings to adjust the display parameters in the Audio waveform area',
     '多选': 'Multi-select', '连选': 'Range select',
@@ -6057,19 +6287,21 @@
     '普通点击以最后点击的轨道为准；未绑定副字幕不会保留旧主字幕选区。开启「同时选中主副字幕」时，仅补选当前字幕实际绑定的另一条；编辑区仍以最后点击的字幕为准': 'Normal clicks follow the last clicked track; an unbound extension subtitle does not keep an old main selection. When “Select main and secondary subtitles together” is enabled, only the subtitle actually bound to the clicked cue is added; the editor still follows the last clicked subtitle',
     '播放与编辑': 'Playback and editing', '空格': 'Space',
     '选择工具': 'Select tool', '分割工具': 'Razor tool',
-    '播放/暂停': 'Play/pause', '前后跳转 5 秒': 'Seek back/forward 5 sec',
-    '无选中时前后跳转 5 秒': 'Seek back/forward 5 sec with no selection',
-    '选中字幕时：': 'With subtitles selected:',
+    '播放/暂停': 'Play/pause',
+    '无选中时前后跳转': 'Seek back/forward with no selection',
+    '提示：可在「媒体」设置中切换 J/K/L 的「慢放/快放」或「倒放/正放」，也可调整跳转时长。': 'Tip: In Media settings, switch J/K/L between “slow/fast” and “reverse/forward”, and adjust the seek duration.',
+    '选中字幕时': 'With subtitles selected:', '选中字幕时：': 'With subtitles selected:',
     '微调移动字幕': 'Fine-tune subtitle movement', '将字幕起点/终点贴到前一条结尾/后一条开头': 'Snap the subtitle start/end to the previous end/next start',
     '微调字幕左边界（起点）': 'Fine-tune the subtitle left edge (start)',
     '微调字幕右边界（终点）': 'Fine-tune the subtitle right edge (end)',
-    '按住字幕时：': 'While holding a subtitle:',
+    '按住字幕时': 'While holding a subtitle:', '按住字幕时：': 'While holding a subtitle:',
     '向前/后微调移动字幕（按住': 'Fine-tune subtitle movement backward/forward (hold',
     '取消黏连联动': 'disable linked-boundary ripple',
     '取消黏连联动）': 'to disable linked-boundary ripple)',
     '将字幕起点贴到前一条结尾': 'Snap the subtitle start to the previous end',
     '将字幕终点贴到后一条开头': 'Snap the subtitle end to the next start',
-    '注：微调幅度可在「设置->通用操作」中调节，默认 50ms': 'Note: Adjust the fine-tuning amount in “Settings -> General”; the default is 50 ms',
+    '注：微调幅度可在「设置->波形区」中调节，默认 50ms': 'Note: Adjust the fine-tuning amount in “Settings -> Waveform area”; the default is 50 ms',
+    '其他': 'Other',
     '字幕按键微调幅度': 'Subtitle keyboard adjustment amount',
     '具体用法详见帮助的「按键调整」区': 'See the “Keyboard adjustment” section in Help for details',
     '上一条字幕': 'Previous subtitle', '下一条字幕': 'Next subtitle',
@@ -6210,7 +6442,8 @@
     '只影响导出的 SRT，不改动工程或 OTIO 的时间轴': 'Only affects exported SRT; project and OTIO timelines are unchanged',
     '只把第一条导出字幕的起点拉到 00:00，保留其结束时间和后续字幕时间码；不改动工程或 OTIO 的时间轴': 'Move only the first exported subtitle start to 00:00; keep its end time and later subtitle timecodes; project and OTIO timelines are unchanged',
     'MAWE 设置': 'MAWE settings', '操作帮助': 'Controls help',
-    '快速上手': 'Quick start', '重新查看快速上手': 'Replay quick start', '跳过': 'Skip',
+    '快速上手': 'Quick start', '重新查看快速上手': 'Replay quick start', '跳过': 'Skip', '跳过 (ESC)': 'Skip (ESC)',
+    '帮助分类': 'Help categories',
     '打开工程后开始快速上手': 'Open a project to start the quick start guide',
     '先打开一个包含字幕的工程；编辑器会用 3 个短练习带你熟悉最常用的操作。': 'Open a project with subtitles first; the editor will use 3 short practices to teach the most common operations.',
     '打开一个工程后，这里会带你熟悉最常用的字幕操作。': 'Open a project and this space will guide you through the most common subtitle operations.',
@@ -9128,7 +9361,8 @@
           event.preventDefault();
           event.stopPropagation();
           if (event.ctrlKey || event.metaKey) return;
-          this.options.activateCue?.(index);
+          if (this.options.enterCueEditor) this.options.enterCueEditor(index);
+          else this.options.activateCue?.(index);
         });
         row.appendChild(block);
       });
@@ -9179,7 +9413,8 @@
           event.preventDefault();
           event.stopPropagation();
           if (event.ctrlKey || event.metaKey) return;
-          this.options.activateExtensionCue?.(index);
+          if (this.options.enterExtensionCueEditor) this.options.enterExtensionCueEditor(index);
+          else this.options.activateExtensionCue?.(index);
         });
         row.appendChild(block);
       });
@@ -11453,6 +11688,9 @@ const CLICK_BEHAVIOR_VALUES = new Set(['select-only', 'select-and-seek', 'select
 const CLICK_TARGET_VALUES = new Set(['cue-start', 'pointer']);
 const JKL_PLAYBACK_MODE_VALUES = new Set(['speed', 'direction']);
 const DEFAULT_JKL_PLAYBACK_MODE = 'direction';
+const MEDIA_SEEK_STEP_MIN_MS = 100;
+const MEDIA_SEEK_STEP_MAX_MS = 60000;
+const DEFAULT_MEDIA_SEEK_STEP_MS = 1000;
 const CUE_MOVE_STEP_MIN_MS = 10;
 const CUE_MOVE_STEP_MAX_MS = 2000;
 const DEFAULT_CUE_MOVE_STEP_MS = 50;
@@ -11464,6 +11702,17 @@ function normalizeClickTarget(value) {
 }
 function normalizeJklPlaybackMode(value) {
   return JKL_PLAYBACK_MODE_VALUES.has(value) ? value : DEFAULT_JKL_PLAYBACK_MODE;
+}
+
+function clampMediaSeekStepMs(value) {
+  const rounded = Math.round(Number(value));
+  return Math.min(
+    MEDIA_SEEK_STEP_MAX_MS,
+    Math.max(
+      MEDIA_SEEK_STEP_MIN_MS,
+      Number.isFinite(rounded) ? rounded : DEFAULT_MEDIA_SEEK_STEP_MS,
+    ),
+  );
 }
 
 function clampCueMoveStepMs(value) {
@@ -11525,6 +11774,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   clickTarget: 'pointer',
   // J/K/L 播放控制：direction 为倒放/停止/正放，speed 保留旧的慢速/重置/倍速行为。
   jklPlaybackMode: DEFAULT_JKL_PLAYBACK_MODE,
+  // 媒体控制按钮与无选中字幕时左右方向键的跳转幅度。
+  mediaSeekStepMs: DEFAULT_MEDIA_SEEK_STEP_MS,
   // 选中字幕后用方向键 / A-D 微调时间的幅度。
   cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
   // 娱乐彩蛋：成功拆分时播放刀光音效，并把分割工具图标换成 🔪。
@@ -11566,6 +11817,10 @@ const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
 function readEditorSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || '{}');
+    const legacySeekStepSeconds = Number(saved.mediaSeekStepSeconds);
+    const savedMediaSeekStepMs = saved.mediaSeekStepMs !== undefined
+      ? saved.mediaSeekStepMs
+      : Number.isFinite(legacySeekStepSeconds) ? legacySeekStepSeconds * 1000 : undefined;
     return {
       splitKey: saved.splitKey === 'ctrl-enter' ? 'ctrl-enter' : DEFAULT_EDITOR_SETTINGS.splitKey,
       splitUseWordTimestamps: saved.splitUseWordTimestamps !== false,
@@ -11599,6 +11854,7 @@ function readEditorSettings() {
       clickBehavior: normalizeClickBehavior(saved.clickBehavior),
       clickTarget: normalizeClickTarget(saved.clickTarget),
       jklPlaybackMode: normalizeJklPlaybackMode(saved.jklPlaybackMode),
+      mediaSeekStepMs: clampMediaSeekStepMs(savedMediaSeekStepMs),
       cueMoveStepMs: clampCueMoveStepMs(saved.cueMoveStepMs),
       ninjaMode: saved.ninjaMode === true,
       ninjaSlashEffect: saved.ninjaSlashEffect !== false,
@@ -11756,8 +12012,10 @@ function snapshotSegments() {
   }));
 }
 function pushUndo(label) {
-  editorHistory.push({ kind: 'segments', label: label || '编辑', segs: snapshotSegments() });
+  const record = { kind: 'segments', label: label || '编辑', segs: snapshotSegments() };
+  editorHistory.push(record);
   updateUndoRedoButtons();
+  return record;
 }
 function pushLayoutUndo(label, snapshot) {
   if (!snapshot) return;
@@ -11850,7 +12108,7 @@ function applyHistoryRecord(record) {
   currentCuePanelIdx = -1;
   currentCuePanelKind = 'main';
   currentCuePanelTrackId = null;
-  cuePanelUndoPushed = false;
+  resetCuePanelEditState();
   clearSelection();
   lastActive = -1;
   const structureChanged = previousWaveformStructure
@@ -11937,11 +12195,14 @@ const extensionSubtitleFontSizeSelect = document.getElementById('extension-subti
 const extensionSubtitleFontFamilySelect = document.getElementById('extension-subtitle-font-family');
 const extensionSubtitleColorInput = document.getElementById('extension-subtitle-color');
 const extensionSubtitleBackgroundColorInput = document.getElementById('extension-subtitle-background-color');
+const extensionSubtitleBackgroundAlphaInput = document.getElementById('extension-subtitle-background-alpha');
+const extensionSubtitleBackgroundAlphaValue = document.getElementById('extension-subtitle-background-alpha-value');
 const playerEmpty = document.getElementById('player-empty');
 const playerWrap = document.querySelector('.player-wrap');
 const mediaPlayToggle = document.getElementById('media-play-toggle');
 const mediaStepBack = document.getElementById('media-step-back');
 const mediaStepForward = document.getElementById('media-step-forward');
+const mediaSeekStepInput = document.getElementById('media-seek-step');
 const mediaCurrentTime = document.getElementById('media-current-time');
 const mediaDuration = document.getElementById('media-duration');
 const mediaSeek = document.getElementById('media-seek');
@@ -11983,6 +12244,11 @@ const helpPanel = document.getElementById('help-panel');
 const helpDragHandle = document.getElementById('help-drag-handle');
 const helpCloseButton = document.getElementById('help-close');
 const helpSplitKey = document.getElementById('help-split-key');
+const cueEditorSplitKey = document.getElementById('cue-editor-split-key');
+const cueEditorConfirmKey = document.getElementById('cue-editor-confirm-key');
+const helpTabButtons = Array.from(document.querySelectorAll('[data-help-tab]'));
+const helpTabPanels = Array.from(document.querySelectorAll('[data-help-tab-panel]'));
+const helpMediaSeekStep = document.getElementById('help-media-seek-step');
 
 const clickBehaviorSelect = document.getElementById('click-behavior');
 const clickTargetField = document.getElementById('click-target-field');
@@ -12120,7 +12386,16 @@ let currentCuePanelIdx = -1;
 let currentCuePanelKind = 'main';
 let currentCuePanelTrackId = null;
 let cuePanelUndoPushed = false;
+let cuePanelUndoRecord = null;
+let cuePanelTextEditSnapshot = null;
+let cuePanelCanceling = false;
 let editorSettingsPanelFrame = 0;
+
+function resetCuePanelEditState() {
+  cuePanelUndoPushed = false;
+  cuePanelUndoRecord = null;
+  cuePanelTextEditSnapshot = null;
+}
 
 function updateEditorSettings(patch) {
   Object.assign(EDITOR_SETTINGS, patch);
@@ -12557,6 +12832,10 @@ function splitKeyLabel() {
   return splitKeySel.value === 'enter' ? 'Enter' : `${modKeyLabel()}+Enter`;
 }
 
+function confirmKeyLabel() {
+  return splitKeySel.value === 'enter' ? `${modKeyLabel()}+Enter` : 'Enter';
+}
+
 // 把帮助面板等静态 <kbd data-mod-key> 与「拆分按键」下拉选项文本按平台替换。
 function applyPlatformKeyLabels() {
   if (modKeyLabel() === 'Ctrl') return;
@@ -12573,12 +12852,16 @@ function refreshSplitKeyHelp() {
   const label = splitKeyLabel();
   if (helpSplitKey) helpSplitKey.textContent = label;
   if (cuePanelSplitKey) cuePanelSplitKey.textContent = label;
+  if (cueEditorSplitKey) cueEditorSplitKey.textContent = label;
+  if (cueEditorConfirmKey) cueEditorConfirmKey.textContent = confirmKeyLabel();
 }
 
 // 切换语言时 i18n 会重置动态文本节点，需重新套用当前拆分按键提示和目标轨道标签。
 document.addEventListener('mawe:languagechange', () => {
   refreshSplitKeyHelp();
   renderCurrentCuePanel();
+  refreshMediaSeekStepHelp();
+  refreshMediaSeekControlLabels();
 });
 
 splitKeySel.value = EDITOR_SETTINGS.splitKey;
@@ -12599,7 +12882,10 @@ if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.sticker
 if (clickBehaviorSelect) clickBehaviorSelect.value = EDITOR_SETTINGS.clickBehavior;
 if (clickTargetSelect) clickTargetSelect.value = EDITOR_SETTINGS.clickTarget;
 if (jklPlaybackModeSelect) jklPlaybackModeSelect.value = EDITOR_SETTINGS.jklPlaybackMode;
+if (mediaSeekStepInput) mediaSeekStepInput.value = String(EDITOR_SETTINGS.mediaSeekStepMs);
 if (cueMoveStepInput) cueMoveStepInput.value = String(EDITOR_SETTINGS.cueMoveStepMs);
+refreshMediaSeekStepHelp();
+refreshMediaSeekControlLabels();
 applyNinjaSettings();
 const waveformShapeSourceSelect = document.getElementById('waveform-shape-source');
 if (waveformShapeSourceSelect) {
@@ -12775,6 +13061,48 @@ const helpFloatingPanel = createFloatingPanel({
 });
 // 帮助是非模态浮窗；鼠标点击后的按钮焦点由统一的快捷键焦点处理释放。
 helpCloseButton?.addEventListener('click', () => helpFloatingPanel.close());
+function selectHelpTab(tabName, { focus = false } = {}) {
+  const activeButton = helpTabButtons.find((button) => button.dataset.helpTab === tabName);
+  if (!activeButton) return;
+  helpTabButtons.forEach((button) => {
+    const active = button === activeButton;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-selected', String(active));
+    button.tabIndex = active ? 0 : -1;
+  });
+  helpTabPanels.forEach((panel) => {
+    const active = panel.dataset.helpTabPanel === tabName;
+    panel.hidden = !active;
+    panel.setAttribute('aria-hidden', String(!active));
+  });
+  if (focus) activeButton.focus();
+}
+
+helpTabButtons.forEach((button) => {
+  button.addEventListener('click', () => selectHelpTab(button.dataset.helpTab));
+  button.addEventListener('keydown', (event) => {
+    const index = helpTabButtons.indexOf(button);
+    if (index < 0) return;
+    let nextIndex = index;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      nextIndex = (index + 1) % helpTabButtons.length;
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      nextIndex = (index - 1 + helpTabButtons.length) % helpTabButtons.length;
+    } else if (event.key === 'Home') {
+      nextIndex = 0;
+    } else if (event.key === 'End') {
+      nextIndex = helpTabButtons.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    selectHelpTab(helpTabButtons[nextIndex].dataset.helpTab, { focus: true });
+  });
+});
+if (helpTabButtons.length && helpTabPanels.length) {
+  selectHelpTab(helpTabButtons.find((button) => button.getAttribute('aria-selected') === 'true')?.dataset.helpTab || helpTabButtons[0].dataset.helpTab);
+}
 // 浮窗尺寸：仅在用户拖过右下角缩放手柄后持久化；未缩放时保持 CSS 默认宽度/自动高度
 function restoreHelpPanelSize() {
   if (!helpPanel) return;
@@ -12950,6 +13278,21 @@ jklPlaybackModeSelect?.addEventListener('change', () => {
   syncMediaControls();
   refreshJklPlaybackModeUi();
 });
+mediaSeekStepInput?.addEventListener('input', () => {
+  const raw = mediaSeekStepInput.value.trim();
+  if (!raw) return;
+  const value = clampMediaSeekStepMs(raw);
+  updateEditorSettings({ mediaSeekStepMs: value });
+  refreshMediaSeekStepHelp();
+  refreshMediaSeekControlLabels();
+});
+mediaSeekStepInput?.addEventListener('change', () => {
+  const value = clampMediaSeekStepMs(mediaSeekStepInput.value);
+  mediaSeekStepInput.value = String(value);
+  updateEditorSettings({ mediaSeekStepMs: value });
+  refreshMediaSeekStepHelp();
+  refreshMediaSeekControlLabels();
+});
 cueMoveStepInput?.addEventListener('change', () => {
   const value = clampCueMoveStepMs(cueMoveStepInput.value);
   cueMoveStepInput.value = String(value);
@@ -13029,6 +13372,22 @@ extensionSubtitleBackgroundColorInput?.addEventListener('change', () => {
   setExtensionSubtitleAppearance({ background_color: extensionSubtitleBackgroundColorInput.value });
   update();
 });
+let extensionSubtitleBackgroundAlphaUndoPushed = false;
+function applyExtensionSubtitleBackgroundAlphaInput({ finalize = false } = {}) {
+  if (!extensionSubtitleBackgroundAlphaInput) return;
+  if (!extensionSubtitleBackgroundAlphaUndoPushed) {
+    pushPreviewUndo('调整副字幕背景不透明度', snapshotPreviewState());
+    extensionSubtitleBackgroundAlphaUndoPushed = true;
+  }
+  const alpha = Number(extensionSubtitleBackgroundAlphaInput.value);
+  if (extensionSubtitleBackgroundAlphaValue && Number.isFinite(alpha)) {
+    extensionSubtitleBackgroundAlphaValue.textContent = `${Math.round(alpha * 100)}%`;
+  }
+  setExtensionSubtitleAppearance({ background_alpha: alpha });
+  if (finalize) extensionSubtitleBackgroundAlphaUndoPushed = false;
+}
+extensionSubtitleBackgroundAlphaInput?.addEventListener('input', () => applyExtensionSubtitleBackgroundAlphaInput());
+extensionSubtitleBackgroundAlphaInput?.addEventListener('change', () => applyExtensionSubtitleBackgroundAlphaInput({ finalize: true }));
 extensionOverlayToggle?.addEventListener('change', () => {
   const previous = snapshotPreviewState();
   previous.extensionOverlay = !extensionOverlayToggle.checked;
@@ -13066,11 +13425,11 @@ document.addEventListener('mawe:languagechange', refreshClickBehaviorHint);
 const JKL_MODE_UI_TEXT = {
   zh: {
     speed: { help: '倍速 ×0.5/重置/×2', hint: 'J 慢放，K 重置 1×，L 加速。' },
-    direction: { help: '倒放/停止/1×播放', hint: 'J 倒放（无反向声音），K 停止并重置 1×；停止时按 K 以 1×播放。速度档位为 1×、2×、4×、8×、16×。' },
+    direction: { help: '倒放/停止/1×播放', hint: 'J 倒放，K 停止（重置播放速度），K 播放。多次按 J/K 可以倍增速度。' },
   },
   en: {
     speed: { help: 'Speed ×0.5/reset/×2', hint: 'J slows down, K resets to 1×, and L speeds up.' },
-    direction: { help: 'Reverse/stop/1× play', hint: 'J reverses the timeline without reverse audio; K stops and resets to 1×, then plays at 1× when stopped. Speed steps are 1×, 2×, 4×, 8×, and 16×.' },
+    direction: { help: 'Reverse/stop/1× play', hint: 'J reverses; K stops (resetting playback speed), and K plays. Press J/K repeatedly to multiply the speed.' },
   },
 };
 function refreshJklPlaybackModeUi() {
@@ -13693,7 +14052,7 @@ function clearSelection({ silent = false, commitCuePanel = true } = {}) {
     // 结构编辑会马上 renderAll() 并重新选中目标；此时不必先刷新旧波形
     // 覆盖层和空面板，避免同一次操作产生两轮视觉更新。
     currentCuePanelIdx = -1;
-    cuePanelUndoPushed = false;
+    resetCuePanelEditState();
     return;
   }
   if (waveformEditor) waveformEditor.updateSelection();
@@ -13703,7 +14062,7 @@ function clearSelection({ silent = false, commitCuePanel = true } = {}) {
     currentCuePanelKind = 'main';
     currentCuePanelIdx = -1;
     currentCuePanelTrackId = null;
-    cuePanelUndoPushed = false;
+    resetCuePanelEditState();
     renderCurrentCuePanel();
   }
 }
@@ -14276,7 +14635,7 @@ function setCuePanelTarget(kind, index, trackId = null) {
   currentCuePanelKind = nextKind;
   currentCuePanelIdx = nextIndex;
   currentCuePanelTrackId = nextTrackId;
-  cuePanelUndoPushed = false;
+  resetCuePanelEditState();
   renderCurrentCuePanel();
 }
 
@@ -14291,7 +14650,9 @@ function setCurrentCuePanelExtensionIndex(index, track = getActiveExtensionTrack
 function ensureCuePanelUndo(label = null) {
   if (!cuePanelUndoPushed) {
     const target = getCurrentCuePanelTarget();
-    pushUndo(label || (target?.kind === 'extension' ? '编辑副字幕' : '编辑当前字幕'));
+    cuePanelUndoRecord = pushUndo(
+      label || (target?.kind === 'extension' ? '编辑副字幕' : '编辑当前字幕'),
+    );
     cuePanelUndoPushed = true;
   }
 }
@@ -14299,7 +14660,7 @@ function ensureCuePanelUndo(label = null) {
 function commitCuePanelEdit() {
   const target = getCurrentCuePanelTarget();
   const seg = target?.segment;
-  if (!target || !seg) { cuePanelUndoPushed = false; return false; }
+  if (!target || !seg) { resetCuePanelEditState(); return false; }
   const segments = target.kind === 'extension' ? target.track.segments : DATA.segments;
   const idx = target.index;
   const nextText = cuePanelText.value.replace(/\r\n?/g, '\n');
@@ -14312,7 +14673,7 @@ function commitCuePanelEdit() {
   if (nextStart - previousEnd < 100) {
     flashHint('相邻字幕之间不足 100ms，无法调整当前字幕', 'warning');
     renderCurrentCuePanel();
-    cuePanelUndoPushed = false;
+    resetCuePanelEditState();
     return false;
   }
   const newStart = Math.max(previousEnd, Math.min(requestedStart, nextStart - 100));
@@ -14320,12 +14681,12 @@ function commitCuePanelEdit() {
   if (newEnd - newStart < 100) {
     flashHint('字幕时长不能小于 100ms', 'warning');
     renderCurrentCuePanel();
-    cuePanelUndoPushed = false;
+    resetCuePanelEditState();
     return false;
   }
   const changed = nextText !== seg.text || newStart !== oldStart || newEnd !== oldEnd;
   if (!changed) {
-    cuePanelUndoPushed = false;
+    resetCuePanelEditState();
     return false;
   }
   ensureCuePanelUndo();
@@ -14368,7 +14729,7 @@ function commitCuePanelEdit() {
   syncBindingOffsets();
   markMultiSubtitleDirty();
   scheduleAutoSaveFlush();
-  cuePanelUndoPushed = false;
+  resetCuePanelEditState();
   renderAll();
   update();
   return true;
@@ -14440,12 +14801,110 @@ function renderCurrentCuePanel() {
   cuePanelNext.disabled = next < 0;
 }
 
-function focusCuePanelText(idx = currentCuePanelIdx) {
-  if (!cuePanelText || idx < 0 || currentCuePanelIdx !== idx || !DATA.segments[idx]) return false;
+function focusCuePanelText(idx = currentCuePanelIdx, kind = currentCuePanelKind) {
+  const target = getCurrentCuePanelTarget();
+  if (!cuePanelText || !target || target.index !== idx || target.kind !== kind) return false;
   cuePanelText.focus();
   const end = cuePanelText.value.length;
   cuePanelText.setSelectionRange(end, end);
   return true;
+}
+
+function dirtyFlagSnapshot(value) {
+  return value && Object.prototype.hasOwnProperty.call(value, '_dirty') ? value._dirty : null;
+}
+
+function restoreDirtyFlag(target, value) {
+  if (!target) return;
+  if (value === null) delete target._dirty;
+  else target._dirty = value;
+}
+
+function captureCuePanelTextEditSnapshot() {
+  const target = getCurrentCuePanelTarget();
+  if (!target || !cuePanelText) {
+    cuePanelTextEditSnapshot = null;
+    return;
+  }
+  const multi = getMultiSubtitleState();
+  cuePanelTextEditSnapshot = {
+    kind: target.kind,
+    index: target.index,
+    trackId: target.trackId,
+    text: target.segment.text || '',
+    dirty: dirtyFlagSnapshot(target.segment),
+    multiDirty: target.kind === 'extension' ? {
+      state: dirtyFlagSnapshot(multi),
+      tracks: (multi.tracks || []).map((track) => ({
+        state: dirtyFlagSnapshot(track),
+        segments: (track.segments || []).map((segment) => dirtyFlagSnapshot(segment)),
+      })),
+    } : null,
+  };
+}
+
+function restoreCuePanelTextEditSnapshot() {
+  const snapshot = cuePanelTextEditSnapshot;
+  const target = getCurrentCuePanelTarget();
+  if (!snapshot || !target
+      || snapshot.kind !== target.kind
+      || snapshot.index !== target.index
+      || snapshot.trackId !== target.trackId) return false;
+  target.segment.text = snapshot.text;
+  restoreDirtyFlag(target.segment, snapshot.dirty);
+  if (snapshot.multiDirty) {
+    const multi = getMultiSubtitleState();
+    restoreDirtyFlag(multi, snapshot.multiDirty.state);
+    snapshot.multiDirty.tracks.forEach((trackSnapshot, trackIndex) => {
+      const track = multi.tracks?.[trackIndex];
+      if (!track) return;
+      restoreDirtyFlag(track, trackSnapshot.state);
+      trackSnapshot.segments.forEach((dirty, segmentIndex) => {
+        restoreDirtyFlag(track.segments?.[segmentIndex], dirty);
+      });
+    });
+  }
+  return true;
+}
+
+function discardPendingCuePanelUndo() {
+  const record = cuePanelUndoRecord;
+  if (cuePanelUndoPushed && record && editorHistory.peekUndo() === record) {
+    editorHistory.popUndo({
+      kind: 'segments',
+      label: record.label,
+      segs: snapshotSegments(),
+    });
+    // 这条记录本来就清空了 redo；popUndo 临时生成的镜像也不能留下。
+    editorHistory.clearRedo();
+    updateUndoRedoButtons();
+  }
+  resetCuePanelEditState();
+}
+
+function cancelCuePanelTextEdit() {
+  const restored = restoreCuePanelTextEditSnapshot();
+  discardPendingCuePanelUndo();
+  if (restored) {
+    renderAll();
+    update();
+  }
+  if (document.activeElement === cuePanelText) {
+    cuePanelCanceling = true;
+    cuePanelText.blur();
+    cuePanelCanceling = false;
+  }
+  return restored;
+}
+
+function exitCuePanelEdit() {
+  if (!cuePanelText) return false;
+  if (document.activeElement === cuePanelText) {
+    // blur 事件负责提交，和 Esc 的行为保持一致。
+    cuePanelText.blur();
+    return true;
+  }
+  return commitCuePanelEdit();
 }
 function navigateCuePanel(direction) {
   const target = getCurrentCuePanelTarget();
@@ -14509,12 +14968,13 @@ function splitCuePanelAtCursor() {
 
 cuePanelPrev?.addEventListener('click', () => navigateCuePanel(-1));
 cuePanelNext?.addEventListener('click', () => navigateCuePanel(1));
+cuePanelText?.addEventListener('focus', captureCuePanelTextEditSnapshot);
 cuePanelText?.addEventListener('keydown', (event) => {
-  // Esc：退出字幕编辑区（失焦并提交），之后即可用 A/D 等快捷键跳转字幕。
+  // Esc：取消本次字幕文本编辑并退出，不保存输入内容。
   if (event.key === 'Escape') {
     event.preventDefault();
     event.stopPropagation();
-    cuePanelText.blur();
+    cancelCuePanelTextEdit();
     return;
   }
   const action = getConfiguredEnterAction(event);
@@ -14522,7 +14982,7 @@ cuePanelText?.addEventListener('keydown', (event) => {
   event.preventDefault();
   event.stopPropagation();
   if (action === 'split') splitCuePanelAtCursor();
-  else commitCuePanelEdit();
+  else exitCuePanelEdit();
 });
 cuePanelText?.addEventListener('input', () => {
   const target = getCurrentCuePanelTarget();
@@ -14550,7 +15010,10 @@ cuePanelText?.addEventListener('input', () => {
   else waveformEditor?.refreshCueLabel(target.index);
   refreshSubtitlePreview();
 });
-cuePanelText?.addEventListener('blur', () => commitCuePanelEdit());
+cuePanelText?.addEventListener('blur', () => {
+  if (cuePanelCanceling) return;
+  commitCuePanelEdit();
+});
 cuePanelStart?.addEventListener('change', () => commitCuePanelEdit());
 cuePanelDuration?.addEventListener('change', () => commitCuePanelEdit());
 cuePanelAddSticker?.addEventListener('click', () => {
@@ -14968,23 +15431,51 @@ document.getElementById('search-clear').addEventListener('click', () => {
 let editingState = null;
 let extensionEditingState = null;
 
-function startExtensionEdit(el, index, track = getActiveExtensionTrack()) {
+function startExtensionEdit(
+  el,
+  index,
+  track = getActiveExtensionTrack(),
+  clickX,
+  clickY,
+  { deferCaret = false } = {},
+) {
   if (!el || !track?.segments?.[index]) return;
+  hideCueSplitPreview();
   if (editingState) finishEdit(true);
   if (extensionEditingState) finishExtensionEdit(true);
   setCurrentCuePanelExtensionIndex(index, track);
   const textEl = el.querySelector('.text') || el;
   const segment = track.segments[index];
-  extensionEditingState = { el, index, trackId: track.id, textEl, original: segment.text || '' };
+  let caretCharOffset = null;
+  if (typeof clickX === 'number' && typeof clickY === 'number') {
+    caretCharOffset = caretCharFromPoint(textEl, clickX, clickY);
+  }
+  extensionEditingState = {
+    el, index, trackId: track.id, textEl, original: segment.text || '', caretCharOffset,
+  };
   el.classList.add('editing');
   textEl.setAttribute('contenteditable', 'plaintext-only');
   textEl.innerText = segment.text || '';
   textEl.focus();
-  const range = document.createRange();
-  range.selectNodeContents(textEl);
-  const selection = window.getSelection();
-  selection.removeAllRanges();
-  selection.addRange(range);
+  const applyCaret = () => {
+    if (!extensionEditingState || extensionEditingState.el !== el) return;
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    if (caretCharOffset !== null && textEl.firstChild) {
+      const range = document.createRange();
+      const node = textEl.firstChild;
+      const pos = Math.max(0, Math.min(caretCharOffset, node.textContent.length));
+      range.setStart(node, pos);
+      range.setEnd(node, pos);
+      selection.addRange(range);
+      return;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(textEl);
+    selection.addRange(range);
+  };
+  applyCaret();
+  if (deferCaret) setTimeout(applyCaret, 0);
 }
 
 function syncCuePanelAfterInlineEdit(kind, index, trackId = null) {
@@ -15050,12 +15541,29 @@ function bindExtensionCueEvents(el, index, track = getActiveExtensionTrack(), du
     if (!pointerDown) return;
     pointerDown = null;
     const segment = track.segments[index];
-    if (EDITOR_SETTINGS.cueListAutoScrollOnClick) scrollCueToCenter(dualRow || el);
-    waveformEditor?.revealTime(segment.start, true);
-    if (EDITOR_SETTINGS.clickBehavior !== 'select-only') seekFromWaveform(segment.start / 1000);
+    const previousSuppress = suppressCueListAutoScroll;
+    // 副字幕点击后 seek 会同步刷新主字幕 active 状态；这次刷新不能把
+    // 列表从刚点击的副字幕行再次滚到对应的主字幕行。
+    suppressCueListAutoScroll = true;
+    try {
+      waveformEditor?.revealTime(segment.start, true);
+      if (EDITOR_SETTINGS.clickBehavior !== 'select-only') seekFromWaveform(segment.start / 1000);
+    } finally {
+      suppressCueListAutoScroll = previousSuppress;
+    }
+    if (EDITOR_SETTINGS.cueListAutoScrollOnClick) {
+      const currentRow = container.querySelector(
+        `.multi-dual-cue[data-ext-idx="${index}"], .multi-extension-cue[data-ext-idx="${index}"]`,
+      );
+      scrollCueToCenter(currentRow || dualRow || el);
+    }
   });
   el.addEventListener('pointermove', (event) => {
     event.stopPropagation();
+    if (extensionEditingState?.el === el) {
+      hideCueSplitPreview();
+      return;
+    }
     cueListPointer = {
       kind: 'extension',
       idx: index,
@@ -15076,7 +15584,7 @@ function bindExtensionCueEvents(el, index, track = getActiveExtensionTrack(), du
   el.addEventListener('dblclick', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    startExtensionEdit(el, index, track);
+    startExtensionEdit(el, index, track, event.clientX, event.clientY, { deferCaret: true });
   });
   el.addEventListener('contextmenu', (event) => {
     event.preventDefault();
@@ -15087,6 +15595,7 @@ function bindExtensionCueEvents(el, index, track = getActiveExtensionTrack(), du
 
 function startEdit(el, idx, clickX, clickY, { deferCaret = false } = {}) {
   if (editingState) finishEdit(true);
+  hideCueSplitPreview();
   const textEl = el.querySelector('.text');
   if (!textEl) return;
   const seg = DATA.segments[idx];
@@ -15136,6 +15645,18 @@ function setEditingCaretOffset(offset) {
   selection.removeAllRanges();
   selection.addRange(range);
   return true;
+}
+
+function caretOffsetInText(textEl) {
+  if (!textEl) return null;
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return null;
+  const range = selection.getRangeAt(0);
+  if (!textEl.contains(range.startContainer) && range.startContainer !== textEl) return null;
+  const preRange = range.cloneRange();
+  preRange.selectNodeContents(textEl);
+  preRange.setEnd(range.startContainer, range.startOffset);
+  return preRange.toString().length;
 }
 
 function caretInfoFromPoint(root, x, y) {
@@ -16863,7 +17384,7 @@ function deleteSegments(idxs) {
   currentCuePanelIdx = -1;
   currentCuePanelKind = 'main';
   currentCuePanelTrackId = null;
-  cuePanelUndoPushed = false;
+  resetCuePanelEditState();
   pushUndo(`删除 ${sorted.length} 条字幕`);
   const pairedExtensionIndices = new Set();
   const pairedMainIds = sorted.map((index) => DATA.segments[index]?.id).filter(Boolean);
@@ -16938,7 +17459,7 @@ function deleteExtensionSegments(indices, track = getActiveExtensionTrack()) {
   currentCuePanelIdx = -1;
   currentCuePanelKind = 'main';
   currentCuePanelTrackId = null;
-  cuePanelUndoPushed = false;
+  resetCuePanelEditState();
   const ids = sorted.map((index) => track.segments[index]?.id).filter(Boolean);
 
   // 删除绑定扩展字幕时沿用主轨删除语义：绑定关系和另一侧字幕一起删除，
@@ -17188,6 +17709,10 @@ function bindCueEvents(el, idx) {
     };
   });
   el.addEventListener('pointermove', (e) => {
+    if (editingState?.el === el) {
+      hideCueSplitPreview();
+      return;
+    }
     cueListPointer = { kind: 'main', idx, x: e.clientX, y: e.clientY };
     scheduleCueSplitPreview(idx, e.clientX, e.clientY, 'main');
   });
@@ -17275,11 +17800,25 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     event.stopPropagation();
     finishExtensionEdit(false);
-  } else if (event.key === 'Enter' && !(event.shiftKey || event.ctrlKey || event.metaKey)) {
-    event.preventDefault();
-    event.stopPropagation();
-    finishExtensionEdit(true);
+    return;
   }
+  const action = getConfiguredEnterAction(event);
+  if (!action || action === 'newline') return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if (action === 'save') {
+    finishExtensionEdit(true);
+    return;
+  }
+  const state = extensionEditingState;
+  const offset = caretOffsetInText(state.textEl);
+  const track = getExtensionTrack(state.trackId);
+  if (!Number.isFinite(offset) || !track?.segments?.[state.index]) {
+    flashHint('无法定位副字幕的文字光标', 'warning');
+    return;
+  }
+  finishExtensionEdit(true);
+  openExtensionSplitModal(state.index, null, track, { extensionOffset: offset });
 }, true);
 
 // Esc：非字幕文本编辑状态下清除当前字幕选择；输入框和内联编辑继续保留原生/编辑行为。
@@ -17422,6 +17961,29 @@ function formatMediaTime(seconds) {
   return hours ? `${hours}:${pad(minutes)}:${pad(remaining)}` : `${pad(minutes)}:${pad(remaining)}`;
 }
 
+function mediaSeekStepLabel(milliseconds) {
+  return `${milliseconds}ms`;
+}
+
+function refreshMediaSeekStepHelp() {
+  if (helpMediaSeekStep) helpMediaSeekStep.textContent = mediaSeekStepLabel(EDITOR_SETTINGS.mediaSeekStepMs);
+}
+
+function refreshMediaSeekControlLabels() {
+  const milliseconds = EDITOR_SETTINGS.mediaSeekStepMs;
+  const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+  const backLabel = language === 'en' ? `Back ${milliseconds}ms` : `后退 ${milliseconds}ms`;
+  const forwardLabel = language === 'en' ? `Forward ${milliseconds}ms` : `前进 ${milliseconds}ms`;
+  if (mediaStepBack) {
+    mediaStepBack.setAttribute('aria-label', backLabel);
+    mediaStepBack.title = backLabel;
+  }
+  if (mediaStepForward) {
+    mediaStepForward.setAttribute('aria-label', forwardLabel);
+    mediaStepForward.title = forwardLabel;
+  }
+}
+
 function syncPlaybackRateOption(rate) {
   if (!mediaPlaybackRate || !Number.isFinite(rate)) return;
   mediaPlaybackRate.querySelectorAll('option[data-generated="true"]').forEach((option) => option.remove());
@@ -17438,6 +18000,7 @@ function syncPlaybackRateOption(rate) {
 }
 
 function syncMediaControls() {
+  refreshMediaSeekControlLabels();
   if (!mediaPlayToggle || !player) return;
   const hasMedia = hasLoadedMedia();
   const duration = Number.isFinite(player.duration) && player.duration > 0 ? player.duration : 0;
@@ -17541,8 +18104,8 @@ function seekMediaBy(deltaSeconds) {
 }
 
 mediaPlayToggle?.addEventListener('click', togglePlayback);
-mediaStepBack?.addEventListener('click', () => seekMediaBy(-5));
-mediaStepForward?.addEventListener('click', () => seekMediaBy(5));
+mediaStepBack?.addEventListener('click', () => seekMediaBy(-EDITOR_SETTINGS.mediaSeekStepMs / 1000));
+mediaStepForward?.addEventListener('click', () => seekMediaBy(EDITOR_SETTINGS.mediaSeekStepMs / 1000));
 mediaSeek?.addEventListener('input', () => {
   if (!hasLoadedMedia()) return;
   player.currentTime = Number(mediaSeek.value) || 0;
@@ -17574,7 +18137,7 @@ mediaFullscreen?.addEventListener('click', async () => {
 });
 document.addEventListener('fullscreenchange', syncMediaControls);
 
-// ←/→：无选中字幕时复用媒体控制条的 ±5 秒跳转；选中字幕时改为按设置的
+// ←/→：无选中字幕时复用媒体控制条的跳转时长；选中字幕时改为按设置的
 // 微调幅度调整时间。Shift+方向键贴合前后边界；Ctrl(Cmd)+方向键调整左边界，
 // Ctrl(Cmd)+Shift+方向键调整右边界。
 document.addEventListener('keydown', (e) => {
@@ -17617,7 +18180,7 @@ document.addEventListener('keydown', (e) => {
   if (!hasLoadedMedia()) return;
   e.preventDefault();
   e.stopPropagation();
-  seekMediaBy(direction * 5);
+  seekMediaBy(direction * EDITOR_SETTINGS.mediaSeekStepMs / 1000);
 }, true);
 
 function isSpaceKey(e) {
@@ -18140,9 +18703,7 @@ document.addEventListener('keydown', (e) => {
   }
   e.preventDefault();
   e.stopPropagation();
-  cuePanelText.focus();
-  const end = cuePanelText.value.length;
-  cuePanelText.setSelectionRange(end, end);
+  focusCuePanelText();
 });
 
 // C：合并连续选中的字幕块。少于两条时只提示，不改动工程。
@@ -18726,6 +19287,13 @@ function syncExtensionSubtitleAppearanceControls() {
     extensionSubtitleBackgroundColorInput.value = appearance.background_color
       || SUBTITLE_BACKGROUND_COLOR_DEFAULT;
   }
+  if (extensionSubtitleBackgroundAlphaInput) {
+    const alpha = appearance.background_alpha ?? SUBTITLE_BACKGROUND_ALPHA_DEFAULT;
+    extensionSubtitleBackgroundAlphaInput.value = String(alpha);
+    if (extensionSubtitleBackgroundAlphaValue) {
+      extensionSubtitleBackgroundAlphaValue.textContent = `${Math.round(alpha * 100)}%`;
+    }
+  }
 }
 function applySubtitleAppearance(value = DATA.preview?.subtitle) {
   const appearance = getSubtitleAppearance(value);
@@ -18875,6 +19443,14 @@ function setExtensionSubtitleAppearance(patch, { markDirty = true } = {}) {
       delete next.background_color;
     } else {
       next.background_color = backgroundColor;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'background_alpha')) {
+    const backgroundAlpha = normalizeSubtitleBackgroundAlpha(patch.background_alpha);
+    if (backgroundAlpha === null || backgroundAlpha === SUBTITLE_BACKGROUND_ALPHA_DEFAULT) {
+      delete next.background_alpha;
+    } else {
+      next.background_alpha = backgroundAlpha;
     }
   }
   if (Object.prototype.hasOwnProperty.call(patch, 'color')) {
@@ -20201,10 +20777,16 @@ async function openRecentProject(project) {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) {
-      throw new Error(result.error || `服务器返回 ${response.status}`);
+      const error = new Error(result.error || `服务器返回 ${response.status}`);
+      error.missing = result.missing === true;
+      throw error;
     }
     window.location.reload();
   } catch (error) {
+    if (error?.missing) {
+      project.exists = false;
+      markRecentProjectMissing(project);
+    }
     flashHint(`打开工程失败：${error.message || error}`, 'warning');
   }
 }
@@ -20229,6 +20811,28 @@ async function attachProjectToServer(fileName, projectData) {
   }
 }
 
+function renderMissingRecentProjectItem(item, project) {
+  item.className = 'dropdown-item is-missing';
+  item.style.cursor = 'not-allowed';
+  item.replaceChildren();
+  const label = document.createElement('span');
+  label.className = 'recent-project-name';
+  label.textContent = project.name;
+  item.appendChild(label);
+  const badge = document.createElement('span');
+  badge.className = 'recent-project-badge is-missing';
+  badge.textContent = '已失效';
+  item.appendChild(badge);
+  item.title = `工程路径失效：${project.path}`;
+}
+
+function markRecentProjectMissing(project) {
+  if (!recentProjectsList || !project || typeof project.path !== 'string') return;
+  const item = Array.from(recentProjectsList.children)
+    .find((candidate) => candidate.dataset.projectPath === project.path);
+  if (item) renderMissingRecentProjectItem(item, project);
+}
+
 function configureRecentProjects() {
   if (!SERVER_CONFIG?.recentProjectsUrl || !recentProjectsEl || !recentProjectsToggle
       || !recentProjectsMenu || !recentProjectsList) {
@@ -20241,22 +20845,9 @@ function configureRecentProjects() {
   projects.forEach((project, index) => {
     if (!project || typeof project.path !== 'string' || typeof project.name !== 'string') return;
     const item = document.createElement('div');
+    item.dataset.projectPath = project.path;
     if (project.exists === false) {
-      item.className = 'dropdown-item is-missing';
-      item.style.cursor = 'not-allowed';
-      const label = document.createElement('span');
-      label.className = 'recent-project-name';
-      label.textContent = project.name;
-      item.appendChild(label);
-      const badge = document.createElement('span');
-      badge.className = 'recent-project-badge is-missing';
-      badge.textContent = '已失效';
-      item.appendChild(badge);
-      item.title = `工程路径失效：${project.path}`;
-      item.addEventListener('click', () => {
-        recentProjectsEl.classList.remove('open');
-        flashHint('工程路径失效，文件可能已被移动或删除', 'warning');
-      });
+      renderMissingRecentProjectItem(item, project);
     } else {
       item.className = 'dropdown-item';
       // 工程名与其它项一致占正文；「上次打开」只作为右侧徽标标记，不写进名字
@@ -20271,11 +20862,15 @@ function configureRecentProjects() {
         item.appendChild(badge);
       }
       item.title = project.path;
-      item.addEventListener('click', () => {
-        recentProjectsEl.classList.remove('open');
-        openRecentProject(project);
-      });
     }
+    item.addEventListener('click', () => {
+      recentProjectsEl.classList.remove('open');
+      if (item.classList.contains('is-missing')) {
+        flashHint('工程路径失效，文件可能已被移动或删除', 'warning');
+        return;
+      }
+      openRecentProject(project);
+    });
     recentProjectsList.appendChild(item);
   });
   if (recentProjectsEl.dataset.listenersBound !== 'true') {
@@ -20978,7 +21573,7 @@ function replaceMainTrack(segments, displayName = '字幕') {
   currentCuePanelIdx = -1;
   currentCuePanelKind = 'main';
   currentCuePanelTrackId = null;
-  cuePanelUndoPushed = false;
+  resetCuePanelEditState();
   pushUndo('替换字幕');
   DATA.segments.length = 0;
   (segments || []).forEach((segment) => DATA.segments.push({ ...segment }));
@@ -23110,11 +23705,19 @@ function initWaveformEditor() {
     getExtensionSelection: () => selectedExtensionIdxs,
     getBindingMarkerTargets,
     multiSubtitleVisible: () => multiSubtitleVisible(),
-    // 波形上已经选中的块不会再次调用 selectCue；单独提供焦点激活回调，
+    // 波形上已经选中的块不会再次调用 selectCue；单独提供激活回调，
     // 避免联动选中主副字幕后点击另一条字幕时编辑区不切换。
     activateCue: (idx) => setCurrentCuePanelIndex(idx),
+    enterCueEditor: (idx) => {
+      setCurrentCuePanelIndex(idx);
+      focusCuePanelText(idx, 'main');
+    },
     activateExtensionCue: (idx) => {
       setCurrentCuePanelExtensionIndex(idx, getActiveExtensionTrack());
+    },
+    enterExtensionCueEditor: (idx) => {
+      setCurrentCuePanelExtensionIndex(idx, getActiveExtensionTrack());
+      focusCuePanelText(idx, 'extension');
     },
     selectCue: (idx) => {
       selectCueByClick(idx);

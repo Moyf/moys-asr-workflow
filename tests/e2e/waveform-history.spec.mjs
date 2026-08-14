@@ -711,11 +711,17 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   const helpPanel = page.locator('#help-panel');
   await expect(helpPanel).toHaveClass(/show/);
   await expect(helpPanel).toHaveAttribute('aria-hidden', 'false');
+  await helpPanel.getByRole('tab', { name: '波形区', exact: true }).click();
 
   const settingsPanel = page.locator('#editor-settings-panel');
   const displayRows = settingsPanel.locator('.editor-settings-display-row');
   const splitKey = page.locator('#split-key');
   const helpSplitKey = page.locator('#help-split-key');
+  const editorSplitKey = page.locator('#cue-editor-split-key');
+  const editorConfirmKey = page.locator('#cue-editor-confirm-key');
+  await expect(page.locator('#cue-editor-key-hints')).toHaveClass(/waveform-status/);
+  await expect(page.locator('.cue-editor-key-hint')).toHaveCount(4);
+  await expect(page.locator('#cue-editor-key-hints')).toHaveCSS('gap', '14px');
   await expect(settingsPanel).not.toContainText('波形区拆分按键');
   await expect(displayRows).toHaveCount(0);
   const modKey = await page.evaluate(() => (
@@ -734,14 +740,18 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   await expect(helpPanel).not.toContainText('普通点击以最后点击的轨道为准；未绑定副字幕不会保留旧主字幕选区');
 
   const multiSubtitleHelp = helpPanel.locator('.help-subgroup').filter({ hasText: '绑定到主副字幕（自动匹配）' });
-  await expect(multiSubtitleHelp.locator('.help-subtitle')).toHaveText('多重字幕');
   await expect(multiSubtitleHelp).toHaveCount(1);
+  await expect(helpPanel.locator('#help-tab-panel-waveform .help-title').filter({ hasText: '多重字幕' })).toHaveCount(1);
 
   await splitKey.selectOption('enter');
   await expect(helpSplitKey).toHaveText('Enter');
+  await expect(editorSplitKey).toHaveText('Enter');
+  await expect(editorConfirmKey).toHaveText('Ctrl+Enter');
 
   await splitKey.selectOption('ctrl-enter');
   await expect(helpSplitKey).toHaveText(`${modKey}+Enter`);
+  await expect(editorSplitKey).toHaveText(`${modKey}+Enter`);
+  await expect(editorConfirmKey).toHaveText('Enter');
 
   await page.keyboard.press('Escape');
   await expect(helpPanel).not.toHaveClass(/show/);

@@ -570,6 +570,9 @@ const CLICK_BEHAVIOR_VALUES = new Set(['select-only', 'select-and-seek', 'select
 const CLICK_TARGET_VALUES = new Set(['cue-start', 'pointer']);
 const JKL_PLAYBACK_MODE_VALUES = new Set(['speed', 'direction']);
 const DEFAULT_JKL_PLAYBACK_MODE = 'direction';
+const MEDIA_SEEK_STEP_MIN_MS = 100;
+const MEDIA_SEEK_STEP_MAX_MS = 60000;
+const DEFAULT_MEDIA_SEEK_STEP_MS = 1000;
 const CUE_MOVE_STEP_MIN_MS = 10;
 const CUE_MOVE_STEP_MAX_MS = 2000;
 const DEFAULT_CUE_MOVE_STEP_MS = 50;
@@ -581,6 +584,17 @@ function normalizeClickTarget(value) {
 }
 function normalizeJklPlaybackMode(value) {
   return JKL_PLAYBACK_MODE_VALUES.has(value) ? value : DEFAULT_JKL_PLAYBACK_MODE;
+}
+
+function clampMediaSeekStepMs(value) {
+  const rounded = Math.round(Number(value));
+  return Math.min(
+    MEDIA_SEEK_STEP_MAX_MS,
+    Math.max(
+      MEDIA_SEEK_STEP_MIN_MS,
+      Number.isFinite(rounded) ? rounded : DEFAULT_MEDIA_SEEK_STEP_MS,
+    ),
+  );
 }
 
 function clampCueMoveStepMs(value) {
@@ -642,6 +656,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   clickTarget: 'pointer',
   // J/K/L 播放控制：direction 为倒放/停止/正放，speed 保留旧的慢速/重置/倍速行为。
   jklPlaybackMode: DEFAULT_JKL_PLAYBACK_MODE,
+  // 媒体控制按钮与无选中字幕时左右方向键的跳转幅度。
+  mediaSeekStepMs: DEFAULT_MEDIA_SEEK_STEP_MS,
   // 选中字幕后用方向键 / A-D 微调时间的幅度。
   cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
   // 娱乐彩蛋：成功拆分时播放刀光音效，并把分割工具图标换成 🔪。
@@ -683,6 +699,10 @@ const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
 function readEditorSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || '{}');
+    const legacySeekStepSeconds = Number(saved.mediaSeekStepSeconds);
+    const savedMediaSeekStepMs = saved.mediaSeekStepMs !== undefined
+      ? saved.mediaSeekStepMs
+      : Number.isFinite(legacySeekStepSeconds) ? legacySeekStepSeconds * 1000 : undefined;
     return {
       splitKey: saved.splitKey === 'ctrl-enter' ? 'ctrl-enter' : DEFAULT_EDITOR_SETTINGS.splitKey,
       splitUseWordTimestamps: saved.splitUseWordTimestamps !== false,
@@ -716,6 +736,7 @@ function readEditorSettings() {
       clickBehavior: normalizeClickBehavior(saved.clickBehavior),
       clickTarget: normalizeClickTarget(saved.clickTarget),
       jklPlaybackMode: normalizeJklPlaybackMode(saved.jklPlaybackMode),
+      mediaSeekStepMs: clampMediaSeekStepMs(savedMediaSeekStepMs),
       cueMoveStepMs: clampCueMoveStepMs(saved.cueMoveStepMs),
       ninjaMode: saved.ninjaMode === true,
       ninjaSlashEffect: saved.ninjaSlashEffect !== false,
@@ -873,8 +894,10 @@ function snapshotSegments() {
   }));
 }
 function pushUndo(label) {
-  editorHistory.push({ kind: 'segments', label: label || '编辑', segs: snapshotSegments() });
+  const record = { kind: 'segments', label: label || '编辑', segs: snapshotSegments() };
+  editorHistory.push(record);
   updateUndoRedoButtons();
+  return record;
 }
 function pushLayoutUndo(label, snapshot) {
   if (!snapshot) return;
@@ -967,7 +990,7 @@ function applyHistoryRecord(record) {
   currentCuePanelIdx = -1;
   currentCuePanelKind = 'main';
   currentCuePanelTrackId = null;
-  cuePanelUndoPushed = false;
+  resetCuePanelEditState();
   clearSelection();
   lastActive = -1;
   const structureChanged = previousWaveformStructure
@@ -1054,11 +1077,14 @@ const extensionSubtitleFontSizeSelect = document.getElementById('extension-subti
 const extensionSubtitleFontFamilySelect = document.getElementById('extension-subtitle-font-family');
 const extensionSubtitleColorInput = document.getElementById('extension-subtitle-color');
 const extensionSubtitleBackgroundColorInput = document.getElementById('extension-subtitle-background-color');
+const extensionSubtitleBackgroundAlphaInput = document.getElementById('extension-subtitle-background-alpha');
+const extensionSubtitleBackgroundAlphaValue = document.getElementById('extension-subtitle-background-alpha-value');
 const playerEmpty = document.getElementById('player-empty');
 const playerWrap = document.querySelector('.player-wrap');
 const mediaPlayToggle = document.getElementById('media-play-toggle');
 const mediaStepBack = document.getElementById('media-step-back');
 const mediaStepForward = document.getElementById('media-step-forward');
+const mediaSeekStepInput = document.getElementById('media-seek-step');
 const mediaCurrentTime = document.getElementById('media-current-time');
 const mediaDuration = document.getElementById('media-duration');
 const mediaSeek = document.getElementById('media-seek');
@@ -1100,6 +1126,11 @@ const helpPanel = document.getElementById('help-panel');
 const helpDragHandle = document.getElementById('help-drag-handle');
 const helpCloseButton = document.getElementById('help-close');
 const helpSplitKey = document.getElementById('help-split-key');
+const cueEditorSplitKey = document.getElementById('cue-editor-split-key');
+const cueEditorConfirmKey = document.getElementById('cue-editor-confirm-key');
+const helpTabButtons = Array.from(document.querySelectorAll('[data-help-tab]'));
+const helpTabPanels = Array.from(document.querySelectorAll('[data-help-tab-panel]'));
+const helpMediaSeekStep = document.getElementById('help-media-seek-step');
 
 const clickBehaviorSelect = document.getElementById('click-behavior');
 const clickTargetField = document.getElementById('click-target-field');
@@ -1237,7 +1268,16 @@ let currentCuePanelIdx = -1;
 let currentCuePanelKind = 'main';
 let currentCuePanelTrackId = null;
 let cuePanelUndoPushed = false;
+let cuePanelUndoRecord = null;
+let cuePanelTextEditSnapshot = null;
+let cuePanelCanceling = false;
 let editorSettingsPanelFrame = 0;
+
+function resetCuePanelEditState() {
+  cuePanelUndoPushed = false;
+  cuePanelUndoRecord = null;
+  cuePanelTextEditSnapshot = null;
+}
 
 function updateEditorSettings(patch) {
   Object.assign(EDITOR_SETTINGS, patch);
@@ -1674,6 +1714,10 @@ function splitKeyLabel() {
   return splitKeySel.value === 'enter' ? 'Enter' : `${modKeyLabel()}+Enter`;
 }
 
+function confirmKeyLabel() {
+  return splitKeySel.value === 'enter' ? `${modKeyLabel()}+Enter` : 'Enter';
+}
+
 // 把帮助面板等静态 <kbd data-mod-key> 与「拆分按键」下拉选项文本按平台替换。
 function applyPlatformKeyLabels() {
   if (modKeyLabel() === 'Ctrl') return;
@@ -1690,12 +1734,16 @@ function refreshSplitKeyHelp() {
   const label = splitKeyLabel();
   if (helpSplitKey) helpSplitKey.textContent = label;
   if (cuePanelSplitKey) cuePanelSplitKey.textContent = label;
+  if (cueEditorSplitKey) cueEditorSplitKey.textContent = label;
+  if (cueEditorConfirmKey) cueEditorConfirmKey.textContent = confirmKeyLabel();
 }
 
 // 切换语言时 i18n 会重置动态文本节点，需重新套用当前拆分按键提示和目标轨道标签。
 document.addEventListener('mawe:languagechange', () => {
   refreshSplitKeyHelp();
   renderCurrentCuePanel();
+  refreshMediaSeekStepHelp();
+  refreshMediaSeekControlLabels();
 });
 
 splitKeySel.value = EDITOR_SETTINGS.splitKey;
@@ -1716,7 +1764,10 @@ if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.sticker
 if (clickBehaviorSelect) clickBehaviorSelect.value = EDITOR_SETTINGS.clickBehavior;
 if (clickTargetSelect) clickTargetSelect.value = EDITOR_SETTINGS.clickTarget;
 if (jklPlaybackModeSelect) jklPlaybackModeSelect.value = EDITOR_SETTINGS.jklPlaybackMode;
+if (mediaSeekStepInput) mediaSeekStepInput.value = String(EDITOR_SETTINGS.mediaSeekStepMs);
 if (cueMoveStepInput) cueMoveStepInput.value = String(EDITOR_SETTINGS.cueMoveStepMs);
+refreshMediaSeekStepHelp();
+refreshMediaSeekControlLabels();
 applyNinjaSettings();
 const waveformShapeSourceSelect = document.getElementById('waveform-shape-source');
 if (waveformShapeSourceSelect) {
@@ -1892,6 +1943,48 @@ const helpFloatingPanel = createFloatingPanel({
 });
 // 帮助是非模态浮窗；鼠标点击后的按钮焦点由统一的快捷键焦点处理释放。
 helpCloseButton?.addEventListener('click', () => helpFloatingPanel.close());
+function selectHelpTab(tabName, { focus = false } = {}) {
+  const activeButton = helpTabButtons.find((button) => button.dataset.helpTab === tabName);
+  if (!activeButton) return;
+  helpTabButtons.forEach((button) => {
+    const active = button === activeButton;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-selected', String(active));
+    button.tabIndex = active ? 0 : -1;
+  });
+  helpTabPanels.forEach((panel) => {
+    const active = panel.dataset.helpTabPanel === tabName;
+    panel.hidden = !active;
+    panel.setAttribute('aria-hidden', String(!active));
+  });
+  if (focus) activeButton.focus();
+}
+
+helpTabButtons.forEach((button) => {
+  button.addEventListener('click', () => selectHelpTab(button.dataset.helpTab));
+  button.addEventListener('keydown', (event) => {
+    const index = helpTabButtons.indexOf(button);
+    if (index < 0) return;
+    let nextIndex = index;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      nextIndex = (index + 1) % helpTabButtons.length;
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      nextIndex = (index - 1 + helpTabButtons.length) % helpTabButtons.length;
+    } else if (event.key === 'Home') {
+      nextIndex = 0;
+    } else if (event.key === 'End') {
+      nextIndex = helpTabButtons.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    selectHelpTab(helpTabButtons[nextIndex].dataset.helpTab, { focus: true });
+  });
+});
+if (helpTabButtons.length && helpTabPanels.length) {
+  selectHelpTab(helpTabButtons.find((button) => button.getAttribute('aria-selected') === 'true')?.dataset.helpTab || helpTabButtons[0].dataset.helpTab);
+}
 // 浮窗尺寸：仅在用户拖过右下角缩放手柄后持久化；未缩放时保持 CSS 默认宽度/自动高度
 function restoreHelpPanelSize() {
   if (!helpPanel) return;
@@ -2067,6 +2160,21 @@ jklPlaybackModeSelect?.addEventListener('change', () => {
   syncMediaControls();
   refreshJklPlaybackModeUi();
 });
+mediaSeekStepInput?.addEventListener('input', () => {
+  const raw = mediaSeekStepInput.value.trim();
+  if (!raw) return;
+  const value = clampMediaSeekStepMs(raw);
+  updateEditorSettings({ mediaSeekStepMs: value });
+  refreshMediaSeekStepHelp();
+  refreshMediaSeekControlLabels();
+});
+mediaSeekStepInput?.addEventListener('change', () => {
+  const value = clampMediaSeekStepMs(mediaSeekStepInput.value);
+  mediaSeekStepInput.value = String(value);
+  updateEditorSettings({ mediaSeekStepMs: value });
+  refreshMediaSeekStepHelp();
+  refreshMediaSeekControlLabels();
+});
 cueMoveStepInput?.addEventListener('change', () => {
   const value = clampCueMoveStepMs(cueMoveStepInput.value);
   cueMoveStepInput.value = String(value);
@@ -2146,6 +2254,22 @@ extensionSubtitleBackgroundColorInput?.addEventListener('change', () => {
   setExtensionSubtitleAppearance({ background_color: extensionSubtitleBackgroundColorInput.value });
   update();
 });
+let extensionSubtitleBackgroundAlphaUndoPushed = false;
+function applyExtensionSubtitleBackgroundAlphaInput({ finalize = false } = {}) {
+  if (!extensionSubtitleBackgroundAlphaInput) return;
+  if (!extensionSubtitleBackgroundAlphaUndoPushed) {
+    pushPreviewUndo('调整副字幕背景不透明度', snapshotPreviewState());
+    extensionSubtitleBackgroundAlphaUndoPushed = true;
+  }
+  const alpha = Number(extensionSubtitleBackgroundAlphaInput.value);
+  if (extensionSubtitleBackgroundAlphaValue && Number.isFinite(alpha)) {
+    extensionSubtitleBackgroundAlphaValue.textContent = `${Math.round(alpha * 100)}%`;
+  }
+  setExtensionSubtitleAppearance({ background_alpha: alpha });
+  if (finalize) extensionSubtitleBackgroundAlphaUndoPushed = false;
+}
+extensionSubtitleBackgroundAlphaInput?.addEventListener('input', () => applyExtensionSubtitleBackgroundAlphaInput());
+extensionSubtitleBackgroundAlphaInput?.addEventListener('change', () => applyExtensionSubtitleBackgroundAlphaInput({ finalize: true }));
 extensionOverlayToggle?.addEventListener('change', () => {
   const previous = snapshotPreviewState();
   previous.extensionOverlay = !extensionOverlayToggle.checked;
@@ -2183,11 +2307,11 @@ document.addEventListener('mawe:languagechange', refreshClickBehaviorHint);
 const JKL_MODE_UI_TEXT = {
   zh: {
     speed: { help: '倍速 ×0.5/重置/×2', hint: 'J 慢放，K 重置 1×，L 加速。' },
-    direction: { help: '倒放/停止/1×播放', hint: 'J 倒放（无反向声音），K 停止并重置 1×；停止时按 K 以 1×播放。速度档位为 1×、2×、4×、8×、16×。' },
+    direction: { help: '倒放/停止/1×播放', hint: 'J 倒放，K 停止（重置播放速度），K 播放。多次按 J/K 可以倍增速度。' },
   },
   en: {
     speed: { help: 'Speed ×0.5/reset/×2', hint: 'J slows down, K resets to 1×, and L speeds up.' },
-    direction: { help: 'Reverse/stop/1× play', hint: 'J reverses the timeline without reverse audio; K stops and resets to 1×, then plays at 1× when stopped. Speed steps are 1×, 2×, 4×, 8×, and 16×.' },
+    direction: { help: 'Reverse/stop/1× play', hint: 'J reverses; K stops (resetting playback speed), and K plays. Press J/K repeatedly to multiply the speed.' },
   },
 };
 function refreshJklPlaybackModeUi() {
@@ -2810,7 +2934,7 @@ function clearSelection({ silent = false, commitCuePanel = true } = {}) {
     // 结构编辑会马上 renderAll() 并重新选中目标；此时不必先刷新旧波形
     // 覆盖层和空面板，避免同一次操作产生两轮视觉更新。
     currentCuePanelIdx = -1;
-    cuePanelUndoPushed = false;
+    resetCuePanelEditState();
     return;
   }
   if (waveformEditor) waveformEditor.updateSelection();
@@ -2820,7 +2944,7 @@ function clearSelection({ silent = false, commitCuePanel = true } = {}) {
     currentCuePanelKind = 'main';
     currentCuePanelIdx = -1;
     currentCuePanelTrackId = null;
-    cuePanelUndoPushed = false;
+    resetCuePanelEditState();
     renderCurrentCuePanel();
   }
 }
@@ -3393,7 +3517,7 @@ function setCuePanelTarget(kind, index, trackId = null) {
   currentCuePanelKind = nextKind;
   currentCuePanelIdx = nextIndex;
   currentCuePanelTrackId = nextTrackId;
-  cuePanelUndoPushed = false;
+  resetCuePanelEditState();
   renderCurrentCuePanel();
 }
 
@@ -3408,7 +3532,9 @@ function setCurrentCuePanelExtensionIndex(index, track = getActiveExtensionTrack
 function ensureCuePanelUndo(label = null) {
   if (!cuePanelUndoPushed) {
     const target = getCurrentCuePanelTarget();
-    pushUndo(label || (target?.kind === 'extension' ? '编辑副字幕' : '编辑当前字幕'));
+    cuePanelUndoRecord = pushUndo(
+      label || (target?.kind === 'extension' ? '编辑副字幕' : '编辑当前字幕'),
+    );
     cuePanelUndoPushed = true;
   }
 }
@@ -3416,7 +3542,7 @@ function ensureCuePanelUndo(label = null) {
 function commitCuePanelEdit() {
   const target = getCurrentCuePanelTarget();
   const seg = target?.segment;
-  if (!target || !seg) { cuePanelUndoPushed = false; return false; }
+  if (!target || !seg) { resetCuePanelEditState(); return false; }
   const segments = target.kind === 'extension' ? target.track.segments : DATA.segments;
   const idx = target.index;
   const nextText = cuePanelText.value.replace(/\r\n?/g, '\n');
@@ -3429,7 +3555,7 @@ function commitCuePanelEdit() {
   if (nextStart - previousEnd < 100) {
     flashHint('相邻字幕之间不足 100ms，无法调整当前字幕', 'warning');
     renderCurrentCuePanel();
-    cuePanelUndoPushed = false;
+    resetCuePanelEditState();
     return false;
   }
   const newStart = Math.max(previousEnd, Math.min(requestedStart, nextStart - 100));
@@ -3437,12 +3563,12 @@ function commitCuePanelEdit() {
   if (newEnd - newStart < 100) {
     flashHint('字幕时长不能小于 100ms', 'warning');
     renderCurrentCuePanel();
-    cuePanelUndoPushed = false;
+    resetCuePanelEditState();
     return false;
   }
   const changed = nextText !== seg.text || newStart !== oldStart || newEnd !== oldEnd;
   if (!changed) {
-    cuePanelUndoPushed = false;
+    resetCuePanelEditState();
     return false;
   }
   ensureCuePanelUndo();
@@ -3485,7 +3611,7 @@ function commitCuePanelEdit() {
   syncBindingOffsets();
   markMultiSubtitleDirty();
   scheduleAutoSaveFlush();
-  cuePanelUndoPushed = false;
+  resetCuePanelEditState();
   renderAll();
   update();
   return true;
@@ -3557,12 +3683,110 @@ function renderCurrentCuePanel() {
   cuePanelNext.disabled = next < 0;
 }
 
-function focusCuePanelText(idx = currentCuePanelIdx) {
-  if (!cuePanelText || idx < 0 || currentCuePanelIdx !== idx || !DATA.segments[idx]) return false;
+function focusCuePanelText(idx = currentCuePanelIdx, kind = currentCuePanelKind) {
+  const target = getCurrentCuePanelTarget();
+  if (!cuePanelText || !target || target.index !== idx || target.kind !== kind) return false;
   cuePanelText.focus();
   const end = cuePanelText.value.length;
   cuePanelText.setSelectionRange(end, end);
   return true;
+}
+
+function dirtyFlagSnapshot(value) {
+  return value && Object.prototype.hasOwnProperty.call(value, '_dirty') ? value._dirty : null;
+}
+
+function restoreDirtyFlag(target, value) {
+  if (!target) return;
+  if (value === null) delete target._dirty;
+  else target._dirty = value;
+}
+
+function captureCuePanelTextEditSnapshot() {
+  const target = getCurrentCuePanelTarget();
+  if (!target || !cuePanelText) {
+    cuePanelTextEditSnapshot = null;
+    return;
+  }
+  const multi = getMultiSubtitleState();
+  cuePanelTextEditSnapshot = {
+    kind: target.kind,
+    index: target.index,
+    trackId: target.trackId,
+    text: target.segment.text || '',
+    dirty: dirtyFlagSnapshot(target.segment),
+    multiDirty: target.kind === 'extension' ? {
+      state: dirtyFlagSnapshot(multi),
+      tracks: (multi.tracks || []).map((track) => ({
+        state: dirtyFlagSnapshot(track),
+        segments: (track.segments || []).map((segment) => dirtyFlagSnapshot(segment)),
+      })),
+    } : null,
+  };
+}
+
+function restoreCuePanelTextEditSnapshot() {
+  const snapshot = cuePanelTextEditSnapshot;
+  const target = getCurrentCuePanelTarget();
+  if (!snapshot || !target
+      || snapshot.kind !== target.kind
+      || snapshot.index !== target.index
+      || snapshot.trackId !== target.trackId) return false;
+  target.segment.text = snapshot.text;
+  restoreDirtyFlag(target.segment, snapshot.dirty);
+  if (snapshot.multiDirty) {
+    const multi = getMultiSubtitleState();
+    restoreDirtyFlag(multi, snapshot.multiDirty.state);
+    snapshot.multiDirty.tracks.forEach((trackSnapshot, trackIndex) => {
+      const track = multi.tracks?.[trackIndex];
+      if (!track) return;
+      restoreDirtyFlag(track, trackSnapshot.state);
+      trackSnapshot.segments.forEach((dirty, segmentIndex) => {
+        restoreDirtyFlag(track.segments?.[segmentIndex], dirty);
+      });
+    });
+  }
+  return true;
+}
+
+function discardPendingCuePanelUndo() {
+  const record = cuePanelUndoRecord;
+  if (cuePanelUndoPushed && record && editorHistory.peekUndo() === record) {
+    editorHistory.popUndo({
+      kind: 'segments',
+      label: record.label,
+      segs: snapshotSegments(),
+    });
+    // 这条记录本来就清空了 redo；popUndo 临时生成的镜像也不能留下。
+    editorHistory.clearRedo();
+    updateUndoRedoButtons();
+  }
+  resetCuePanelEditState();
+}
+
+function cancelCuePanelTextEdit() {
+  const restored = restoreCuePanelTextEditSnapshot();
+  discardPendingCuePanelUndo();
+  if (restored) {
+    renderAll();
+    update();
+  }
+  if (document.activeElement === cuePanelText) {
+    cuePanelCanceling = true;
+    cuePanelText.blur();
+    cuePanelCanceling = false;
+  }
+  return restored;
+}
+
+function exitCuePanelEdit() {
+  if (!cuePanelText) return false;
+  if (document.activeElement === cuePanelText) {
+    // blur 事件负责提交，和 Esc 的行为保持一致。
+    cuePanelText.blur();
+    return true;
+  }
+  return commitCuePanelEdit();
 }
 function navigateCuePanel(direction) {
   const target = getCurrentCuePanelTarget();
@@ -3626,12 +3850,13 @@ function splitCuePanelAtCursor() {
 
 cuePanelPrev?.addEventListener('click', () => navigateCuePanel(-1));
 cuePanelNext?.addEventListener('click', () => navigateCuePanel(1));
+cuePanelText?.addEventListener('focus', captureCuePanelTextEditSnapshot);
 cuePanelText?.addEventListener('keydown', (event) => {
-  // Esc：退出字幕编辑区（失焦并提交），之后即可用 A/D 等快捷键跳转字幕。
+  // Esc：取消本次字幕文本编辑并退出，不保存输入内容。
   if (event.key === 'Escape') {
     event.preventDefault();
     event.stopPropagation();
-    cuePanelText.blur();
+    cancelCuePanelTextEdit();
     return;
   }
   const action = getConfiguredEnterAction(event);
@@ -3639,7 +3864,7 @@ cuePanelText?.addEventListener('keydown', (event) => {
   event.preventDefault();
   event.stopPropagation();
   if (action === 'split') splitCuePanelAtCursor();
-  else commitCuePanelEdit();
+  else exitCuePanelEdit();
 });
 cuePanelText?.addEventListener('input', () => {
   const target = getCurrentCuePanelTarget();
@@ -3667,7 +3892,10 @@ cuePanelText?.addEventListener('input', () => {
   else waveformEditor?.refreshCueLabel(target.index);
   refreshSubtitlePreview();
 });
-cuePanelText?.addEventListener('blur', () => commitCuePanelEdit());
+cuePanelText?.addEventListener('blur', () => {
+  if (cuePanelCanceling) return;
+  commitCuePanelEdit();
+});
 cuePanelStart?.addEventListener('change', () => commitCuePanelEdit());
 cuePanelDuration?.addEventListener('change', () => commitCuePanelEdit());
 cuePanelAddSticker?.addEventListener('click', () => {
@@ -4085,23 +4313,51 @@ document.getElementById('search-clear').addEventListener('click', () => {
 let editingState = null;
 let extensionEditingState = null;
 
-function startExtensionEdit(el, index, track = getActiveExtensionTrack()) {
+function startExtensionEdit(
+  el,
+  index,
+  track = getActiveExtensionTrack(),
+  clickX,
+  clickY,
+  { deferCaret = false } = {},
+) {
   if (!el || !track?.segments?.[index]) return;
+  hideCueSplitPreview();
   if (editingState) finishEdit(true);
   if (extensionEditingState) finishExtensionEdit(true);
   setCurrentCuePanelExtensionIndex(index, track);
   const textEl = el.querySelector('.text') || el;
   const segment = track.segments[index];
-  extensionEditingState = { el, index, trackId: track.id, textEl, original: segment.text || '' };
+  let caretCharOffset = null;
+  if (typeof clickX === 'number' && typeof clickY === 'number') {
+    caretCharOffset = caretCharFromPoint(textEl, clickX, clickY);
+  }
+  extensionEditingState = {
+    el, index, trackId: track.id, textEl, original: segment.text || '', caretCharOffset,
+  };
   el.classList.add('editing');
   textEl.setAttribute('contenteditable', 'plaintext-only');
   textEl.innerText = segment.text || '';
   textEl.focus();
-  const range = document.createRange();
-  range.selectNodeContents(textEl);
-  const selection = window.getSelection();
-  selection.removeAllRanges();
-  selection.addRange(range);
+  const applyCaret = () => {
+    if (!extensionEditingState || extensionEditingState.el !== el) return;
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    if (caretCharOffset !== null && textEl.firstChild) {
+      const range = document.createRange();
+      const node = textEl.firstChild;
+      const pos = Math.max(0, Math.min(caretCharOffset, node.textContent.length));
+      range.setStart(node, pos);
+      range.setEnd(node, pos);
+      selection.addRange(range);
+      return;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(textEl);
+    selection.addRange(range);
+  };
+  applyCaret();
+  if (deferCaret) setTimeout(applyCaret, 0);
 }
 
 function syncCuePanelAfterInlineEdit(kind, index, trackId = null) {
@@ -4167,12 +4423,29 @@ function bindExtensionCueEvents(el, index, track = getActiveExtensionTrack(), du
     if (!pointerDown) return;
     pointerDown = null;
     const segment = track.segments[index];
-    if (EDITOR_SETTINGS.cueListAutoScrollOnClick) scrollCueToCenter(dualRow || el);
-    waveformEditor?.revealTime(segment.start, true);
-    if (EDITOR_SETTINGS.clickBehavior !== 'select-only') seekFromWaveform(segment.start / 1000);
+    const previousSuppress = suppressCueListAutoScroll;
+    // 副字幕点击后 seek 会同步刷新主字幕 active 状态；这次刷新不能把
+    // 列表从刚点击的副字幕行再次滚到对应的主字幕行。
+    suppressCueListAutoScroll = true;
+    try {
+      waveformEditor?.revealTime(segment.start, true);
+      if (EDITOR_SETTINGS.clickBehavior !== 'select-only') seekFromWaveform(segment.start / 1000);
+    } finally {
+      suppressCueListAutoScroll = previousSuppress;
+    }
+    if (EDITOR_SETTINGS.cueListAutoScrollOnClick) {
+      const currentRow = container.querySelector(
+        `.multi-dual-cue[data-ext-idx="${index}"], .multi-extension-cue[data-ext-idx="${index}"]`,
+      );
+      scrollCueToCenter(currentRow || dualRow || el);
+    }
   });
   el.addEventListener('pointermove', (event) => {
     event.stopPropagation();
+    if (extensionEditingState?.el === el) {
+      hideCueSplitPreview();
+      return;
+    }
     cueListPointer = {
       kind: 'extension',
       idx: index,
@@ -4193,7 +4466,7 @@ function bindExtensionCueEvents(el, index, track = getActiveExtensionTrack(), du
   el.addEventListener('dblclick', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    startExtensionEdit(el, index, track);
+    startExtensionEdit(el, index, track, event.clientX, event.clientY, { deferCaret: true });
   });
   el.addEventListener('contextmenu', (event) => {
     event.preventDefault();
@@ -4204,6 +4477,7 @@ function bindExtensionCueEvents(el, index, track = getActiveExtensionTrack(), du
 
 function startEdit(el, idx, clickX, clickY, { deferCaret = false } = {}) {
   if (editingState) finishEdit(true);
+  hideCueSplitPreview();
   const textEl = el.querySelector('.text');
   if (!textEl) return;
   const seg = DATA.segments[idx];
@@ -4253,6 +4527,18 @@ function setEditingCaretOffset(offset) {
   selection.removeAllRanges();
   selection.addRange(range);
   return true;
+}
+
+function caretOffsetInText(textEl) {
+  if (!textEl) return null;
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return null;
+  const range = selection.getRangeAt(0);
+  if (!textEl.contains(range.startContainer) && range.startContainer !== textEl) return null;
+  const preRange = range.cloneRange();
+  preRange.selectNodeContents(textEl);
+  preRange.setEnd(range.startContainer, range.startOffset);
+  return preRange.toString().length;
 }
 
 function caretInfoFromPoint(root, x, y) {
@@ -5980,7 +6266,7 @@ function deleteSegments(idxs) {
   currentCuePanelIdx = -1;
   currentCuePanelKind = 'main';
   currentCuePanelTrackId = null;
-  cuePanelUndoPushed = false;
+  resetCuePanelEditState();
   pushUndo(`删除 ${sorted.length} 条字幕`);
   const pairedExtensionIndices = new Set();
   const pairedMainIds = sorted.map((index) => DATA.segments[index]?.id).filter(Boolean);
@@ -6055,7 +6341,7 @@ function deleteExtensionSegments(indices, track = getActiveExtensionTrack()) {
   currentCuePanelIdx = -1;
   currentCuePanelKind = 'main';
   currentCuePanelTrackId = null;
-  cuePanelUndoPushed = false;
+  resetCuePanelEditState();
   const ids = sorted.map((index) => track.segments[index]?.id).filter(Boolean);
 
   // 删除绑定扩展字幕时沿用主轨删除语义：绑定关系和另一侧字幕一起删除，
@@ -6305,6 +6591,10 @@ function bindCueEvents(el, idx) {
     };
   });
   el.addEventListener('pointermove', (e) => {
+    if (editingState?.el === el) {
+      hideCueSplitPreview();
+      return;
+    }
     cueListPointer = { kind: 'main', idx, x: e.clientX, y: e.clientY };
     scheduleCueSplitPreview(idx, e.clientX, e.clientY, 'main');
   });
@@ -6392,11 +6682,25 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     event.stopPropagation();
     finishExtensionEdit(false);
-  } else if (event.key === 'Enter' && !(event.shiftKey || event.ctrlKey || event.metaKey)) {
-    event.preventDefault();
-    event.stopPropagation();
-    finishExtensionEdit(true);
+    return;
   }
+  const action = getConfiguredEnterAction(event);
+  if (!action || action === 'newline') return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if (action === 'save') {
+    finishExtensionEdit(true);
+    return;
+  }
+  const state = extensionEditingState;
+  const offset = caretOffsetInText(state.textEl);
+  const track = getExtensionTrack(state.trackId);
+  if (!Number.isFinite(offset) || !track?.segments?.[state.index]) {
+    flashHint('无法定位副字幕的文字光标', 'warning');
+    return;
+  }
+  finishExtensionEdit(true);
+  openExtensionSplitModal(state.index, null, track, { extensionOffset: offset });
 }, true);
 
 // Esc：非字幕文本编辑状态下清除当前字幕选择；输入框和内联编辑继续保留原生/编辑行为。
@@ -6539,6 +6843,29 @@ function formatMediaTime(seconds) {
   return hours ? `${hours}:${pad(minutes)}:${pad(remaining)}` : `${pad(minutes)}:${pad(remaining)}`;
 }
 
+function mediaSeekStepLabel(milliseconds) {
+  return `${milliseconds}ms`;
+}
+
+function refreshMediaSeekStepHelp() {
+  if (helpMediaSeekStep) helpMediaSeekStep.textContent = mediaSeekStepLabel(EDITOR_SETTINGS.mediaSeekStepMs);
+}
+
+function refreshMediaSeekControlLabels() {
+  const milliseconds = EDITOR_SETTINGS.mediaSeekStepMs;
+  const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+  const backLabel = language === 'en' ? `Back ${milliseconds}ms` : `后退 ${milliseconds}ms`;
+  const forwardLabel = language === 'en' ? `Forward ${milliseconds}ms` : `前进 ${milliseconds}ms`;
+  if (mediaStepBack) {
+    mediaStepBack.setAttribute('aria-label', backLabel);
+    mediaStepBack.title = backLabel;
+  }
+  if (mediaStepForward) {
+    mediaStepForward.setAttribute('aria-label', forwardLabel);
+    mediaStepForward.title = forwardLabel;
+  }
+}
+
 function syncPlaybackRateOption(rate) {
   if (!mediaPlaybackRate || !Number.isFinite(rate)) return;
   mediaPlaybackRate.querySelectorAll('option[data-generated="true"]').forEach((option) => option.remove());
@@ -6555,6 +6882,7 @@ function syncPlaybackRateOption(rate) {
 }
 
 function syncMediaControls() {
+  refreshMediaSeekControlLabels();
   if (!mediaPlayToggle || !player) return;
   const hasMedia = hasLoadedMedia();
   const duration = Number.isFinite(player.duration) && player.duration > 0 ? player.duration : 0;
@@ -6658,8 +6986,8 @@ function seekMediaBy(deltaSeconds) {
 }
 
 mediaPlayToggle?.addEventListener('click', togglePlayback);
-mediaStepBack?.addEventListener('click', () => seekMediaBy(-5));
-mediaStepForward?.addEventListener('click', () => seekMediaBy(5));
+mediaStepBack?.addEventListener('click', () => seekMediaBy(-EDITOR_SETTINGS.mediaSeekStepMs / 1000));
+mediaStepForward?.addEventListener('click', () => seekMediaBy(EDITOR_SETTINGS.mediaSeekStepMs / 1000));
 mediaSeek?.addEventListener('input', () => {
   if (!hasLoadedMedia()) return;
   player.currentTime = Number(mediaSeek.value) || 0;
@@ -6691,7 +7019,7 @@ mediaFullscreen?.addEventListener('click', async () => {
 });
 document.addEventListener('fullscreenchange', syncMediaControls);
 
-// ←/→：无选中字幕时复用媒体控制条的 ±5 秒跳转；选中字幕时改为按设置的
+// ←/→：无选中字幕时复用媒体控制条的跳转时长；选中字幕时改为按设置的
 // 微调幅度调整时间。Shift+方向键贴合前后边界；Ctrl(Cmd)+方向键调整左边界，
 // Ctrl(Cmd)+Shift+方向键调整右边界。
 document.addEventListener('keydown', (e) => {
@@ -6734,7 +7062,7 @@ document.addEventListener('keydown', (e) => {
   if (!hasLoadedMedia()) return;
   e.preventDefault();
   e.stopPropagation();
-  seekMediaBy(direction * 5);
+  seekMediaBy(direction * EDITOR_SETTINGS.mediaSeekStepMs / 1000);
 }, true);
 
 function isSpaceKey(e) {
@@ -7257,9 +7585,7 @@ document.addEventListener('keydown', (e) => {
   }
   e.preventDefault();
   e.stopPropagation();
-  cuePanelText.focus();
-  const end = cuePanelText.value.length;
-  cuePanelText.setSelectionRange(end, end);
+  focusCuePanelText();
 });
 
 // C：合并连续选中的字幕块。少于两条时只提示，不改动工程。
@@ -7843,6 +8169,13 @@ function syncExtensionSubtitleAppearanceControls() {
     extensionSubtitleBackgroundColorInput.value = appearance.background_color
       || SUBTITLE_BACKGROUND_COLOR_DEFAULT;
   }
+  if (extensionSubtitleBackgroundAlphaInput) {
+    const alpha = appearance.background_alpha ?? SUBTITLE_BACKGROUND_ALPHA_DEFAULT;
+    extensionSubtitleBackgroundAlphaInput.value = String(alpha);
+    if (extensionSubtitleBackgroundAlphaValue) {
+      extensionSubtitleBackgroundAlphaValue.textContent = `${Math.round(alpha * 100)}%`;
+    }
+  }
 }
 function applySubtitleAppearance(value = DATA.preview?.subtitle) {
   const appearance = getSubtitleAppearance(value);
@@ -7992,6 +8325,14 @@ function setExtensionSubtitleAppearance(patch, { markDirty = true } = {}) {
       delete next.background_color;
     } else {
       next.background_color = backgroundColor;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'background_alpha')) {
+    const backgroundAlpha = normalizeSubtitleBackgroundAlpha(patch.background_alpha);
+    if (backgroundAlpha === null || backgroundAlpha === SUBTITLE_BACKGROUND_ALPHA_DEFAULT) {
+      delete next.background_alpha;
+    } else {
+      next.background_alpha = backgroundAlpha;
     }
   }
   if (Object.prototype.hasOwnProperty.call(patch, 'color')) {
@@ -9318,10 +9659,16 @@ async function openRecentProject(project) {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) {
-      throw new Error(result.error || `服务器返回 ${response.status}`);
+      const error = new Error(result.error || `服务器返回 ${response.status}`);
+      error.missing = result.missing === true;
+      throw error;
     }
     window.location.reload();
   } catch (error) {
+    if (error?.missing) {
+      project.exists = false;
+      markRecentProjectMissing(project);
+    }
     flashHint(`打开工程失败：${error.message || error}`, 'warning');
   }
 }
@@ -9346,6 +9693,28 @@ async function attachProjectToServer(fileName, projectData) {
   }
 }
 
+function renderMissingRecentProjectItem(item, project) {
+  item.className = 'dropdown-item is-missing';
+  item.style.cursor = 'not-allowed';
+  item.replaceChildren();
+  const label = document.createElement('span');
+  label.className = 'recent-project-name';
+  label.textContent = project.name;
+  item.appendChild(label);
+  const badge = document.createElement('span');
+  badge.className = 'recent-project-badge is-missing';
+  badge.textContent = '已失效';
+  item.appendChild(badge);
+  item.title = `工程路径失效：${project.path}`;
+}
+
+function markRecentProjectMissing(project) {
+  if (!recentProjectsList || !project || typeof project.path !== 'string') return;
+  const item = Array.from(recentProjectsList.children)
+    .find((candidate) => candidate.dataset.projectPath === project.path);
+  if (item) renderMissingRecentProjectItem(item, project);
+}
+
 function configureRecentProjects() {
   if (!SERVER_CONFIG?.recentProjectsUrl || !recentProjectsEl || !recentProjectsToggle
       || !recentProjectsMenu || !recentProjectsList) {
@@ -9358,22 +9727,9 @@ function configureRecentProjects() {
   projects.forEach((project, index) => {
     if (!project || typeof project.path !== 'string' || typeof project.name !== 'string') return;
     const item = document.createElement('div');
+    item.dataset.projectPath = project.path;
     if (project.exists === false) {
-      item.className = 'dropdown-item is-missing';
-      item.style.cursor = 'not-allowed';
-      const label = document.createElement('span');
-      label.className = 'recent-project-name';
-      label.textContent = project.name;
-      item.appendChild(label);
-      const badge = document.createElement('span');
-      badge.className = 'recent-project-badge is-missing';
-      badge.textContent = '已失效';
-      item.appendChild(badge);
-      item.title = `工程路径失效：${project.path}`;
-      item.addEventListener('click', () => {
-        recentProjectsEl.classList.remove('open');
-        flashHint('工程路径失效，文件可能已被移动或删除', 'warning');
-      });
+      renderMissingRecentProjectItem(item, project);
     } else {
       item.className = 'dropdown-item';
       // 工程名与其它项一致占正文；「上次打开」只作为右侧徽标标记，不写进名字
@@ -9388,11 +9744,15 @@ function configureRecentProjects() {
         item.appendChild(badge);
       }
       item.title = project.path;
-      item.addEventListener('click', () => {
-        recentProjectsEl.classList.remove('open');
-        openRecentProject(project);
-      });
     }
+    item.addEventListener('click', () => {
+      recentProjectsEl.classList.remove('open');
+      if (item.classList.contains('is-missing')) {
+        flashHint('工程路径失效，文件可能已被移动或删除', 'warning');
+        return;
+      }
+      openRecentProject(project);
+    });
     recentProjectsList.appendChild(item);
   });
   if (recentProjectsEl.dataset.listenersBound !== 'true') {
@@ -10095,7 +10455,7 @@ function replaceMainTrack(segments, displayName = '字幕') {
   currentCuePanelIdx = -1;
   currentCuePanelKind = 'main';
   currentCuePanelTrackId = null;
-  cuePanelUndoPushed = false;
+  resetCuePanelEditState();
   pushUndo('替换字幕');
   DATA.segments.length = 0;
   (segments || []).forEach((segment) => DATA.segments.push({ ...segment }));
@@ -12227,11 +12587,19 @@ function initWaveformEditor() {
     getExtensionSelection: () => selectedExtensionIdxs,
     getBindingMarkerTargets,
     multiSubtitleVisible: () => multiSubtitleVisible(),
-    // 波形上已经选中的块不会再次调用 selectCue；单独提供焦点激活回调，
+    // 波形上已经选中的块不会再次调用 selectCue；单独提供激活回调，
     // 避免联动选中主副字幕后点击另一条字幕时编辑区不切换。
     activateCue: (idx) => setCurrentCuePanelIndex(idx),
+    enterCueEditor: (idx) => {
+      setCurrentCuePanelIndex(idx);
+      focusCuePanelText(idx, 'main');
+    },
     activateExtensionCue: (idx) => {
       setCurrentCuePanelExtensionIndex(idx, getActiveExtensionTrack());
+    },
+    enterExtensionCueEditor: (idx) => {
+      setCurrentCuePanelExtensionIndex(idx, getActiveExtensionTrack());
+      focusCuePanelText(idx, 'extension');
     },
     selectCue: (idx) => {
       selectCueByClick(idx);
