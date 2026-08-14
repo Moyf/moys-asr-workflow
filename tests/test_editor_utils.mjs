@@ -668,6 +668,28 @@ test('builds the default-color SRT from enabled subtitles without a color', () =
   }), ['1', '0ms --> 500ms', 'plain', ''].join('\n'));
 });
 
+test('keeps disabled subtitle placeholders only when explicitly requested', () => {
+  const segments = [
+    { start: 0, end: 500, text: 'visible' },
+    { start: 500, end: 1000, text: 'hidden', disabled: true },
+    { start: 1000, end: 1500, text: 'next' },
+  ];
+  assert.equal(helpers.buildSrtPayload(segments, {
+    keepDisabledPlaceholder: true,
+    formatTime: (timeMs) => `${timeMs}ms`,
+  }), [
+    '1', '0ms --> 500ms', 'visible', '',
+    '2', '500ms --> 1000ms', '', '',
+    '3', '1000ms --> 1500ms', 'next', '',
+  ].join('\n'));
+  assert.equal(helpers.buildSrtPayload(segments, {
+    formatTime: (timeMs) => `${timeMs}ms`,
+  }), [
+    '1', '0ms --> 500ms', 'visible', '',
+    '2', '1000ms --> 1500ms', 'next', '',
+  ].join('\n'));
+});
+
 test('builds plain text as enabled subtitle lines', () => {
   assert.equal(helpers.buildPlainTextPayload([
     { text: '第一行' },

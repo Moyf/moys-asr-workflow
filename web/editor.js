@@ -8595,49 +8595,22 @@ overlayToggle.addEventListener('change', () => {
 let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 
 function buildSrt() {
-  const parts = [];
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     DATA.segments,
     EDITOR_SETTINGS.exportStartAtZero,
   );
-  const exportTime = (timeMs) => fmtSrtTime(Math.max(0, Math.round(Number(timeMs) || 0)));
-  let n = 0;  // 导出序号：跳过禁用项后重新连续编号
-  DATA.segments.forEach((seg, index) => {
-    if (seg.disabled) {
-      if (!EXPORT_KEEP_DISABLED_PLACEHOLDER) return;  // 默认：完全跳过
-      // 占位模式：保留时间轴，内容留空（序号不变）
-      n++;
-      parts.push(String(n));
-      parts.push(`${exportTime(seg.start)} --> ${exportTime(seg.end)}`);
-      parts.push('');
-      parts.push('');
-      return;
-    }
-    n++;
-    parts.push(String(n));
-    const start = EDITOR_SETTINGS.exportStartAtZero && index === firstEnabledIndex
-      ? fmtSrtTime(0)
-      : exportTime(seg.start);
-    parts.push(`${start} --> ${exportTime(seg.end)}`);
-    parts.push(seg.text);
-    parts.push('');
+  return window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
+    alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
+    keepDisabledPlaceholder: EXPORT_KEEP_DISABLED_PLACEHOLDER,
+    formatTime: fmtSrtTime,
   });
-  return parts.join('\n');
 }
 
 function buildExtensionSrt(track = getActiveExtensionTrack()) {
-  if (!track) return '';
-  const parts = [];
-  let number = 0;
-  (track.segments || []).forEach((segment) => {
-    if (!segment || segment.disabled) return;
-    number++;
-    parts.push(String(number));
-    parts.push(`${fmtSrtTime(segment.start)} --> ${fmtSrtTime(segment.end)}`);
-    parts.push(segment.text || '');
-    parts.push('');
+  return window.AsrEditorUtils.buildSrtPayload(track?.segments || [], {
+    formatTime: fmtSrtTime,
   });
-  return parts.join('\n');
 }
 
 function buildGapRemovedSrt() {
@@ -8646,26 +8619,17 @@ function buildGapRemovedSrt() {
     flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
     return null;
   }
-  const parts = [];
-  let number = 0;
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     DATA.segments,
     EDITOR_SETTINGS.exportStartAtZero,
   );
-  DATA.segments.forEach((segment, index) => {
-    if (segment.disabled) return;
-    number++;
-    const mappedStart = window.AsrEditorUtils.mapGapRemovedTime(segment.start, removed);
-    const start = EDITOR_SETTINGS.exportStartAtZero && index === firstEnabledIndex
-      ? 0
-      : mappedStart;
-    const end = window.AsrEditorUtils.mapGapRemovedTime(segment.end, removed);
-    parts.push(String(number));
-    parts.push(`${fmtSrtTime(start)} --> ${fmtSrtTime(Math.max(start + 1, end))}`);
-    parts.push(segment.text);
-    parts.push('');
+  return window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
+    alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
+    mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
+    ensurePositiveDuration: true,
+    formatTime: fmtSrtTime,
   });
-  return parts.join('\n');
 }
 
 function usedSubtitleColors() {

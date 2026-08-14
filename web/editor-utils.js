@@ -1164,25 +1164,28 @@
     const firstEnabledIndex = Number.isInteger(options.firstEnabledIndex)
       ? options.firstEnabledIndex
       : getSrtExportFirstIndex(source, alignFirstStart);
+    const keepDisabledPlaceholder = options.keepDisabledPlaceholder === true && !colorName;
     const parts = [];
-    source
-      .map((segment, sourceIndex) => ({ segment, sourceIndex }))
-      .filter(({ segment }) => {
-        if (!segment || segment.disabled) return false;
-        if (!colorName) return true;
+    let outputIndex = 0;
+    source.forEach((segment, sourceIndex) => {
+      if (!segment) return;
+      const disabled = segment.disabled === true;
+      if (disabled && !keepDisabledPlaceholder) return;
+      if (!disabled && colorName) {
         const effectiveName = effectiveColorName(segment, source);
-        return colorName === 'default' ? !effectiveName : effectiveName === colorName;
-      })
-      .forEach(({ segment, sourceIndex }, index) => {
-        const mappedStart = Math.max(0, Math.round(Number(mapTime(segment.start)) || 0));
-        const start = alignFirstStart && sourceIndex === firstEnabledIndex ? 0 : mappedStart;
-        const mappedEnd = Math.max(0, Math.round(Number(mapTime(segment.end)) || 0));
-        const end = options.ensurePositiveDuration ? Math.max(start + 1, mappedEnd) : mappedEnd;
-        parts.push(String(index + 1));
-        parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
-        parts.push(String(segment.text || ''));
-        parts.push('');
-      });
+        const matches = colorName === 'default' ? !effectiveName : effectiveName === colorName;
+        if (!matches) return;
+      }
+      const mappedStart = Math.max(0, Math.round(Number(mapTime(segment.start)) || 0));
+      const start = alignFirstStart && !disabled && sourceIndex === firstEnabledIndex ? 0 : mappedStart;
+      const mappedEnd = Math.max(0, Math.round(Number(mapTime(segment.end)) || 0));
+      const end = options.ensurePositiveDuration ? Math.max(start + 1, mappedEnd) : mappedEnd;
+      outputIndex += 1;
+      parts.push(String(outputIndex));
+      parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
+      parts.push(disabled ? '' : String(segment.text || ''));
+      parts.push('');
+    });
     return parts.join('\n');
   }
 
