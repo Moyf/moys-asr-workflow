@@ -452,7 +452,7 @@ function startOnboardingMerge() {
 function prepareOnboardingSplit() {
   const targetIdx = findOnboardingSplitTarget();
   if (targetIdx < 0) {
-    flashHint(onboardingText('当前工程没有足够长的字幕可用于拆分练习'));
+    flashHint(onboardingText('当前工程没有足够长的字幕可用于拆分练习'), 'invalid');
     finishOnboarding('completed');
     return;
   }

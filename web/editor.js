@@ -923,7 +923,7 @@ function snapshotCurrentForKind(kind, label) {
 function applyHistoryRecord(record) {
   if (record.kind === 'layout') {
     if (!waveformEditor?.restoreLayoutHistorySnapshot?.(record.layout)) {
-      flashHint('工作区恢复失败：波形模块尚未加载');
+      flashHint('工作区恢复失败：波形模块尚未加载', 'warning');
       return false;
     }
     DATA.workspace = waveformEditor.getLayoutData();
@@ -966,9 +966,9 @@ function applyHistoryRecord(record) {
 }
 function performUndo() {
   const top = editorHistory.peekUndo();
-  if (!top) { flashHint('没有可撤销的操作'); return; }
+  if (!top) { flashHint('没有可撤销的操作', 'invalid'); return; }
   if (top.kind === 'layout' && typeof waveformEditor?.restoreLayoutHistorySnapshot !== 'function') {
-    flashHint('工作区撤销失败：波形模块尚未加载');
+    flashHint('工作区撤销失败：波形模块尚未加载', 'warning');
     return;
   }
   if (editingState) finishEdit(false);  // 撤销前丢弃当前编辑（保持快照前后一致）
@@ -976,14 +976,14 @@ function performUndo() {
   const record = editorHistory.popUndo(current);
   if (!record) return;
   applyHistoryRecord(record);
-  flashHint(`已撤销：${record.label}（剩 ${editorHistory.undoLength()} 步）`);
+  flashHint(`已撤销：${record.label}（剩 ${editorHistory.undoLength()} 步）`, 'success');
   updateUndoRedoButtons();
 }
 function performRedo() {
   const top = editorHistory.peekRedo();
-  if (!top) { flashHint('没有可重做的操作'); return; }
+  if (!top) { flashHint('没有可重做的操作', 'invalid'); return; }
   if (top.kind === 'layout' && typeof waveformEditor?.restoreLayoutHistorySnapshot !== 'function') {
-    flashHint('工作区重做失败：波形模块尚未加载');
+    flashHint('工作区重做失败：波形模块尚未加载', 'warning');
     return;
   }
   if (editingState) finishEdit(false);
@@ -991,7 +991,7 @@ function performRedo() {
   const record = editorHistory.popRedo(current);
   if (!record) return;
   applyHistoryRecord(record);
-  flashHint(`已重做：${record.label}（剩 ${editorHistory.redoLength()} 步）`);
+  flashHint(`已重做：${record.label}（剩 ${editorHistory.redoLength()} 步）`, 'success');
   updateUndoRedoButtons();
 }
 // modal 或文本输入聚焦时不触发全局撤销/重做（让浏览器/输入框自己处理）
@@ -2138,7 +2138,7 @@ function scanAndRemoveGaps() {
   const leadOutMs = clampGapRemoveLeadMs(gapRemoveLeadOut?.value, DEFAULT_GAP_REMOVE_LEAD_OUT_MS);
   const waveform = waveformEditor?.getGapRemoveDetectionData?.();
   if (!waveform) {
-    flashHint('波形数据尚不可用，无法按音量判断空隙；请先加载媒体。');
+    flashHint('波形数据尚不可用，无法按音量判断空隙；请先加载媒体。', 'invalid');
     return;
   }
   const previousState = getGapRemoveData(false);
@@ -2165,7 +2165,12 @@ function scanAndRemoveGaps() {
     operation_mode: previousState?.operation_mode,
     gaps,
   });
-  flashHint(gaps.length ? `已移除 ${gaps.length} 段音量空隙，共 ${formatGapRemoveTotal(gapRemoveTotalMs(gaps))}` : '没有达到门限的音量空隙');
+  flashHint(
+    gaps.length
+      ? `已移除 ${gaps.length} 段音量空隙，共 ${formatGapRemoveTotal(gapRemoveTotalMs(gaps))}`
+      : '没有达到门限的音量空隙',
+    gaps.length ? 'success' : 'invalid',
+  );
 }
 
 function toggleGapRemoved(index) {
@@ -2177,7 +2182,7 @@ function toggleGapRemoved(index) {
   state.gaps = window.AsrEditorUtils.applyGapRemoveRange(state.gaps, gap.start, gap.end, removed);
   state.manual_corrections = true;
   setGapRemoveData(state);
-  flashHint(removed ? '已人工移除静音空隙' : '已人工恢复静音空隙');
+  flashHint(removed ? '已人工移除静音空隙' : '已人工恢复静音空隙', 'success');
 }
 
 function clearGap(index) {
@@ -2188,7 +2193,7 @@ function clearGap(index) {
   state.gaps = state.gaps.filter((_, gapIndex) => gapIndex !== index);
   state.manual_corrections = state.gaps.length > 0;
   setGapRemoveData(state);
-  flashHint('已清理空隙区段');
+  flashHint('已清理空隙区段', 'success');
 }
 
 function applyManualGapRange(startMs, endMs, removed) {
@@ -2196,7 +2201,7 @@ function applyManualGapRange(startMs, endMs, removed) {
   const sourceGaps = state.detector === 'audio_gate' ? state.gaps : [];
   const nextGaps = window.AsrEditorUtils.applyGapRemoveRange(sourceGaps, startMs, endMs, removed);
   if (JSON.stringify(nextGaps) === JSON.stringify(sourceGaps)) {
-    flashHint(removed ? '所选范围已经处于移除状态' : '所选范围内没有已移除的静音空隙');
+    flashHint(removed ? '所选范围已经处于移除状态' : '所选范围内没有已移除的静音空隙', 'invalid');
     return;
   }
   pushGapRemoveUndo(removed ? '人工移除范围' : '人工恢复范围');
@@ -2204,7 +2209,7 @@ function applyManualGapRange(startMs, endMs, removed) {
   state.gaps = nextGaps;
   state.manual_corrections = true;
   setGapRemoveData(state);
-  flashHint(removed ? '已人工移除所选范围' : '已人工恢复所选范围');
+  flashHint(removed ? '已人工移除所选范围' : '已人工恢复所选范围', 'success');
 }
 
 function resizeManualGapBoundary(index, edge, valueMs) {
@@ -2216,7 +2221,7 @@ function resizeManualGapBoundary(index, edge, valueMs) {
   state.gaps = nextGaps;
   state.manual_corrections = true;
   setGapRemoveData(state);
-  flashHint('已人工调整空隙边界');
+  flashHint('已人工调整空隙边界', 'success');
 }
 
 function clearAllGaps() {
@@ -2229,7 +2234,7 @@ function clearAllGaps() {
   state.gaps = [];
   state.manual_corrections = false;
   setGapRemoveData(state);
-  flashHint('已清理全部空隙区段');
+  flashHint('已清理全部空隙区段', 'success');
 }
 
 // 可拖动非模态工具窗（移除静音空隙 / 拼合字幕共用模式）：
@@ -2914,7 +2919,7 @@ function selectCueByClick(idx) {
       (segment) => segment.id === pending.extensionId,
     ) ?? -1;
     if (extensionIndex < 0) {
-      flashHint('扩展字幕已不存在，绑定已取消');
+      flashHint('扩展字幕已不存在，绑定已取消', 'warning');
       return;
     }
     // selectOnly 会清空扩展轨选择，因此先完成主轨选择，再恢复待绑定的扩展轨选择。
@@ -2974,7 +2979,7 @@ function beginPendingExtensionBinding(index, track = getActiveExtensionTrack()) 
   pendingExtensionBinding = { trackId: track.id, extensionId: extension.id };
   selectOnlyExtension(index, track);
   if (overlapping.length) {
-    flashHint('重叠的主字幕已有绑定，请点击主字幕后替换绑定；按 Esc 取消');
+    flashHint('重叠的主字幕已有绑定，请点击主字幕后替换绑定；按 Esc 取消', 'warning');
   } else {
     flashHint('请点击一条主字幕完成绑定；按 Esc 或点击空白处取消');
   }
@@ -2983,7 +2988,7 @@ function beginPendingExtensionBinding(index, track = getActiveExtensionTrack()) 
 function bindSelectedSubtitlePair({ successMessage = null } = {}) {
   if (!multiSubtitleVisible()) return;
   if (selectedIdxs.size !== 1 || selectedExtensionIdxs.size !== 1) {
-    flashHint('请分别选中一条主字幕和一条扩展字幕后再绑定');
+    flashHint('请分别选中一条主字幕和一条扩展字幕后再绑定', 'invalid');
     return;
   }
   const mainIndex = [...selectedIdxs][0];
@@ -3021,7 +3026,7 @@ function unbindSelectedSubtitlePair() {
       || binding.extension_segment_ids?.some((id) => ids.has(id))
   ));
   if (!removed.length) {
-    flashHint('当前选中字幕没有绑定关系');
+    flashHint('当前选中字幕没有绑定关系', 'invalid');
     return;
   }
   // removeSubtitleBindings 已经返回具体关系；快照必须在真正修改前建立。
@@ -3046,13 +3051,13 @@ function alignExtensionToMainTimeRange(
   const binding = bindingForExtensionIndex(index, track);
   const main = binding ? mainSegmentById(binding.main_segment_ids?.[0]) : null;
   if (!extension || !main) {
-    if (showHint) flashHint('请先绑定副字幕，才能对齐主字幕时间范围');
+    if (showHint) flashHint('请先绑定副字幕，才能对齐主字幕时间范围', 'invalid');
     return false;
   }
   const start = Math.round(Number(main.start));
   const end = Math.round(Number(main.end));
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
-    if (showHint) flashHint('主字幕时间范围无效，无法对齐');
+    if (showHint) flashHint('主字幕时间范围无效，无法对齐', 'warning');
     return false;
   }
   const alreadyAligned = extension.start === start && extension.end === end;
@@ -3253,7 +3258,7 @@ function commitCuePanelEdit() {
   const previousEnd = idx > 0 ? segments[idx - 1].end : 0;
   const nextStart = idx + 1 < segments.length ? segments[idx + 1].start : (waveformEditor?.durationMs || oldEnd);
   if (nextStart - previousEnd < 100) {
-    flashHint('相邻字幕之间不足 100ms，无法调整当前字幕');
+    flashHint('相邻字幕之间不足 100ms，无法调整当前字幕', 'warning');
     renderCurrentCuePanel();
     cuePanelUndoPushed = false;
     return false;
@@ -3261,7 +3266,7 @@ function commitCuePanelEdit() {
   const newStart = Math.max(previousEnd, Math.min(requestedStart, nextStart - 100));
   const newEnd = Math.min(nextStart, newStart + requestedDuration);
   if (newEnd - newStart < 100) {
-    flashHint('字幕时长不能小于 100ms');
+    flashHint('字幕时长不能小于 100ms', 'warning');
     renderCurrentCuePanel();
     cuePanelUndoPushed = false;
     return false;
@@ -3510,7 +3515,7 @@ cuePanelSticker?.addEventListener('contextmenu', (event) => {
   if (target?.kind !== 'main') return;
   removeStickerCascade(target.index);
   renderAll();
-  flashHint('已删除当前表情包');
+  flashHint('已删除当前表情包', 'success');
 });
 cuePanelSplit?.addEventListener('click', splitCuePanelAtCursor);
 
@@ -4894,7 +4899,7 @@ function closeLinkedSplitModal() {
 function openMainWaveformSplitModal(mainIndex, timeMs) {
   const state = mainWaveformSplitState(mainIndex, { timeMs });
   if (!state) {
-    flashHint('这条字幕没有可用的文字边界');
+    flashHint('这条字幕没有可用的文字边界', 'invalid');
     return false;
   }
   state.feedbackPoint = waveformEditor?.getSplitPointAtTime?.(timeMs, 'main') || null;
@@ -4912,7 +4917,7 @@ function openExtensionSplitModal(
 ) {
   const state = extensionOnlySplitState(extensionIndex, track, { timeMs, ...initial });
   if (!state) {
-    flashHint('这条副字幕没有可用的文字边界');
+    flashHint('这条副字幕没有可用的文字边界', 'invalid');
     return false;
   }
   state.feedbackPoint = state.feedbackPoint
@@ -5027,7 +5032,7 @@ function confirmLinkedSplit() {
   if (!Number.isFinite(sharedCutMs)
       || sharedCutMs !== Number(state.mainCutMs)
       || sharedCutMs !== Number(state.extensionCutMs)) {
-    flashHint('主字幕和拓展字幕必须使用同一个绝对切点');
+    flashHint('主字幕和拓展字幕必须使用同一个绝对切点', 'warning');
     return;
   }
   const mainPair = buildSplitPair(
@@ -5110,7 +5115,7 @@ function splitAtCursor(feedbackPoint = null) {
   }
 
   if (cursorOffset <= 0 || cursorOffset >= fullText.length) {
-    flashHint('光标必须在词与词之间才能拆分');
+    flashHint('光标必须在词与词之间才能拆分', 'invalid');
     return false;
   }
 
@@ -5119,13 +5124,13 @@ function splitAtCursor(feedbackPoint = null) {
   let rightText = fullText.slice(cursorOffset)
     .replace(/^[，。,. \t]+/, '').replace(/[ \t]+$/, '');
   if (!leftText || !rightText) {
-    flashHint('拆分后任一段为空，已取消');
+    flashHint('拆分后任一段为空，已取消', 'warning');
     return false;
   }
 
   // 拆分后任一侧都不能短于 100ms（与波形分割工具同规则），否则拒绝拆分。
   if (seg.end - seg.start < 200) {
-    flashHint('字幕时长不足 200ms，无法拆分');
+    flashHint('字幕时长不足 200ms，无法拆分', 'warning');
     return false;
   }
 
@@ -5269,13 +5274,13 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
       getMainSubtitleSplitMode(segment),
     );
     if (!Number.isInteger(cursorOffset)) {
-      flashHint('这条字幕没有可拆分的文字边界');
+      flashHint('这条字幕没有可拆分的文字边界', 'invalid');
       return false;
     }
     startEdit(el, idx);
     if (!setEditingCaretOffset(cursorOffset)) {
       finishEdit(false);
-      flashHint('无法定位波形中的拆分位置');
+      flashHint('无法定位波形中的拆分位置', 'warning');
       return false;
     }
     const didSplit = splitAtCursor(waveformFeedbackPoint);
@@ -5414,13 +5419,13 @@ function mergeContiguousIndices(sorted) {
 }
 
 function mergeSegments(idxs) {
-  if (idxs.length < 2) { flashHint('请选择至少两个字幕块！'); return; }
+  if (idxs.length < 2) { flashHint('请选择至少两个字幕块！', 'invalid'); return; }
   const sorted = [...new Set(idxs)].sort((a, b) => a - b);
-  if (sorted.length < 2) { flashHint('请选择至少两个字幕块！'); return; }
+  if (sorted.length < 2) { flashHint('请选择至少两个字幕块！', 'invalid'); return; }
   // 确保连续
   for (let i = 1; i < sorted.length; i++) {
     if (sorted[i] !== sorted[i - 1] + 1) {
-      flashHint('选中的字幕必须连续');
+      flashHint('选中的字幕必须连续', 'invalid');
       return;
     }
   }
@@ -5434,7 +5439,7 @@ function mergeSegments(idxs) {
   selectOnly(sorted[0]);
   const el = container.querySelector(`.cue[data-idx="${sorted[0]}"]`);
   if (el) scrollCueToCenter(el);
-  flashHint(`已合并 ${sorted.length} 条`);
+  flashHint(`已合并 ${sorted.length} 条`, 'success');
 }
 
 // 只合并扩展轨连续字幕。扩展字幕没有主轨的 group 引用和 items，
@@ -5444,12 +5449,12 @@ function mergeExtensionSegments(idxs, track = getActiveExtensionTrack()) {
   if (!track || !idxs?.length) return false;
   const sorted = [...new Set(idxs)].sort((a, b) => a - b);
   if (sorted.length < 2) {
-    flashHint('请选择至少两个扩展字幕块！');
+    flashHint('请选择至少两个扩展字幕块！', 'invalid');
     return false;
   }
   for (let i = 1; i < sorted.length; i++) {
     if (sorted[i] !== sorted[i - 1] + 1) {
-      flashHint('选中的扩展字幕必须连续');
+      flashHint('选中的扩展字幕必须连续', 'invalid');
       return false;
     }
   }
@@ -5519,7 +5524,7 @@ function autoMergeSegments() {
     absorbDirection: EDITOR_SETTINGS.autoMergeAbsorbDirection,
   });
   if (!plan.snaps.length && !plan.groups.length) {
-    flashHint('没有需要拼接/合并的间隔或过短字幕');
+    flashHint('没有需要拼接/合并的间隔或过短字幕', 'invalid');
     return;
   }
   if (editingState) finishEdit(false);
@@ -5537,7 +5542,7 @@ function autoMergeSegments() {
   const parts = [];
   if (snappedCount) parts.push(`吸附 ${snappedCount} 处间隔`);
   if (mergedCount) parts.push(`吸收 ${mergedCount} 条短字幕`);
-  flashHint(`已拼接/合并字幕：${parts.join('，')}`);
+  flashHint(`已拼接/合并字幕：${parts.join('，')}`, 'success');
 }
 
 // 「拼合字幕」的自动延展直接修改主轨边界，不能绕过普通时间编辑使用的
@@ -5660,7 +5665,7 @@ function deleteSegments(idxs) {
   if (!idxs.length) return;
   const sorted = [...new Set(idxs)].sort((a, b) => a - b);
   if (sorted.length === DATA.segments.length) {
-    flashHint('不能删除全部字幕');
+    flashHint('不能删除全部字幕', 'warning');
     return;
   }
   // Commit any pending cue-panel edit and reset panel state BEFORE splicing.
@@ -5732,7 +5737,7 @@ function deleteSegments(idxs) {
   clearSelection({ silent: true });
   lastActive = -1;
   renderAll();
-  flashHint(`已删除 ${sorted.length} 条`);
+  flashHint(`已删除 ${sorted.length} 条`, 'success');
 }
 
 function deleteExtensionSegments(indices, track = getActiveExtensionTrack()) {
@@ -5779,7 +5784,7 @@ function deleteExtensionSegments(indices, track = getActiveExtensionTrack()) {
   markMultiSubtitleDirty();
   selectedExtensionIdxs.clear();
   renderAll();
-  flashHint(`已删除 ${remainingIndices.length} 条扩展字幕`);
+  flashHint(`已删除 ${remainingIndices.length} 条扩展字幕`, 'success');
 }
 
 // === 滚动 ===
@@ -6165,7 +6170,7 @@ function stepJklReversePlayback(timestamp) {
 
 function startJklReversePlayback() {
   if (!hasLoadedMedia()) {
-    flashHint('请先加载媒体，然后才能预览');
+    flashHint('请先加载媒体，然后才能预览', 'invalid');
     return false;
   }
   jklReversePlaying = true;
@@ -6179,7 +6184,7 @@ function startJklReversePlayback() {
 
 function playJklForward() {
   if (!hasLoadedMedia()) {
-    flashHint('请先加载媒体，然后才能预览');
+    flashHint('请先加载媒体，然后才能预览', 'invalid');
     return false;
   }
   stopJklReversePlayback({ render: false });
@@ -6192,7 +6197,7 @@ function playJklForward() {
 
 function togglePlayback() {
   if (!hasLoadedMedia()) {
-    flashHint('请先加载媒体，然后才能预览');
+    flashHint('请先加载媒体，然后才能预览', 'invalid');
     return;
   }
   if (jklReversePlaying) {
@@ -6376,7 +6381,7 @@ mediaFullscreen?.addEventListener('click', async () => {
     if (document.fullscreenElement) await document.exitFullscreen();
     else await playerWrap?.requestFullscreen?.();
   } catch (error) {
-    flashHint(`无法切换全屏：${error.message || error}`);
+    flashHint(`无法切换全屏：${error.message || error}`, 'warning');
   }
   syncMediaControls();
 });
@@ -6661,7 +6666,7 @@ document.addEventListener('keydown', (e) => {
       return;
     }
     if (!hasLoadedMedia()) {
-      flashHint('请先加载媒体，然后才能预览');
+      flashHint('请先加载媒体，然后才能预览', 'invalid');
       return;
     }
     jklPlaybackRate = nextJklDirectionRate(jklPlaybackRate, k === 'j' ? -1 : 1);
@@ -7156,7 +7161,7 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (!binding) {
-      flashHint('当前副字幕没有绑定关系');
+      flashHint('当前副字幕没有绑定关系', 'invalid');
       return;
     }
     unbindSelectedSubtitlePair();
@@ -7321,7 +7326,7 @@ document.addEventListener('keydown', (e) => {
       openExtensionSplitModal(extensionIndex, pointerContext.timeMs, extensionTrack);
       return;
     }
-    flashHint('指针位置没有可拆分字幕');
+    flashHint('指针位置没有可拆分字幕', 'invalid');
     return;
   }
   // 3) 播放头位置
@@ -7340,7 +7345,7 @@ document.addEventListener('keydown', (e) => {
     openExtensionSplitModal(extensionIndex, timeMs, extensionTrack);
     return;
   }
-  flashHint('播放头位置没有可拆分字幕');
+  flashHint('播放头位置没有可拆分字幕', 'invalid');
 });
 
 // 点击输入框外 -> 完成内联编辑。使用 pointerdown 捕获阶段，确保字幕行、
@@ -8127,7 +8132,7 @@ function buildExtensionSrt(track = getActiveExtensionTrack()) {
 function buildGapRemovedSrt() {
   const removed = getRemovedGapRanges();
   if (!removed.length) {
-    flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除');
+    flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
     return null;
   }
   const parts = [];
@@ -8179,11 +8184,11 @@ async function downloadColorSrts(gapRemoved = false) {
   const colors = usedSubtitleColors();
   const removed = gapRemoved ? getRemovedGapRanges() : [];
   if (!colors.length) {
-    flashHint('没有可导出的彩色字幕');
+    flashHint('没有可导出的彩色字幕', 'invalid');
     return;
   }
   if (gapRemoved && !removed.length) {
-    flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除');
+    flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
     return;
   }
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
@@ -8237,23 +8242,23 @@ async function downloadColorSrts(gapRemoved = false) {
       if (!saved) return;
     }
   }
-  flashHint(`已按颜色导出 ${colors.length} 份字幕`);
+  flashHint(`已按颜色导出 ${colors.length} 份字幕`, 'success');
 }
 
 function gapRemovedExportContext() {
   const removed = getRemovedGapRanges();
   if (!removed.length) {
-    flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除');
+    flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
     return null;
   }
   const durationMs = waveformEditor?.durationMs || Math.round(Number(player?.duration) * 1000) || 0;
   if (!durationMs) {
-    flashHint('媒体时长尚不可用；请先加载媒体后再导出');
+    flashHint('媒体时长尚不可用；请先加载媒体后再导出', 'invalid');
     return null;
   }
   const intervals = window.AsrEditorUtils.buildGapRemovedIntervals(durationMs, removed);
   if (!intervals.length) {
-    flashHint('移除静音空隙后没有剩余媒体，无法导出');
+    flashHint('移除静音空隙后没有剩余媒体，无法导出', 'warning');
     return null;
   }
   return { durationMs, intervals, removed };
@@ -8268,7 +8273,7 @@ function buildGapRemovedFfconcat() {
   if (!context) return null;
   const media = gapRemovedMediaReference();
   if (!media) {
-    flashHint('无法获得媒体文件名；请先加载媒体后再导出 FFconcat');
+    flashHint('无法获得媒体文件名；请先加载媒体后再导出 FFconcat', 'invalid');
     return null;
   }
   return window.AsrEditorUtils.buildFfconcat(media, context.intervals);
@@ -8437,7 +8442,7 @@ function buildResolveJson() {
   const colorCount = segments.filter(s => s.resolve_color).length;
   const stickerCount = segments.filter(s => s.sticker).length;
   if (!colorCount && !stickerCount) {
-    flashHint('没有颜色或表情包配置，无法导出 Resolve JSON');
+    flashHint('没有颜色或表情包配置，无法导出 Resolve JSON', 'invalid');
     return null;
   }
   return JSON.stringify({
@@ -8531,22 +8536,22 @@ function buildGapRemovedMediaClip(interval, index, kind, targetUrl) {
 function buildGapRemovedOtio() {
   const removed = getRemovedGapRanges();
   if (!removed.length) {
-    flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除');
+    flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
     return null;
   }
   const durationMs = waveformEditor?.durationMs || Math.round(Number(player?.duration) * 1000) || 0;
   if (!durationMs) {
-    flashHint('媒体时长尚不可用；请先加载媒体后再导出 OTIO');
+    flashHint('媒体时长尚不可用；请先加载媒体后再导出 OTIO', 'invalid');
     return null;
   }
   const targetUrl = mediaTargetUrl();
   if (!targetUrl) {
-    flashHint('无法获得媒体绝对路径；请用 edit.py / server-editor 打开工程后再导出 OTIO');
+    flashHint('无法获得媒体绝对路径；请用 edit.py / server-editor 打开工程后再导出 OTIO', 'invalid');
     return null;
   }
   const intervals = window.AsrEditorUtils.buildGapRemovedIntervals(durationMs, removed);
   if (!intervals.length) {
-    flashHint('移除静音空隙后没有剩余媒体，无法导出 OTIO');
+    flashHint('移除静音空隙后没有剩余媒体，无法导出 OTIO', 'warning');
     return null;
   }
   const trackSpecs = player?.tagName === 'AUDIO'
@@ -8600,16 +8605,16 @@ function buildStickerOtio() {
   // 空数组 .length===0（falsy）正确退化为原始时间线，且避免 null.length 崩溃。
   const collected = collectStickerOtioEntries([]);
   if (collected.error) {
-    flashHint(collected.error);
+    flashHint(collected.error, 'warning');
     return null;
   }
   if (!collected.entries.length) {
-    flashHint('没有任何表情包，无法导出 OTIO');
+    flashHint('没有任何表情包，无法导出 OTIO', 'invalid');
     return null;
   }
   const result = buildStickerOtioTimeline(collected.entries, `${FILENAME_BASE}_表情包`);
   if (result.error) {
-    flashHint(result.error);
+    flashHint(result.error, 'warning');
     return null;
   }
   return result.json;
@@ -8733,21 +8738,21 @@ function buildStickerOtioTimeline(stickers, timelineName) {
 function buildGapRemovedStickerOtio() {
   const removed = getRemovedGapRanges();
   if (!removed.length) {
-    flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除');
+    flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
     return null;
   }
   const collected = collectStickerOtioEntries(removed);
   if (collected.error) {
-    flashHint(collected.error);
+    flashHint(collected.error, 'warning');
     return null;
   }
   if (!collected.entries.length) {
-    flashHint('没有落在保留区间内的表情包，无法导出去空隙表情包 OTIO');
+    flashHint('没有落在保留区间内的表情包，无法导出去空隙表情包 OTIO', 'invalid');
     return null;
   }
   const result = buildStickerOtioTimeline(collected.entries, `${FILENAME_BASE}_去空隙表情包`);
   if (result.error) {
-    flashHint(result.error);
+    flashHint(result.error, 'warning');
     return null;
   }
   return result.json;
@@ -8784,8 +8789,8 @@ async function downloadFile(content, filename, mime, accept) {
 // === 标题区：媒体名点击复制 / 工程文件名点击复制 ===
 function copyText(text, hint) {
   navigator.clipboard.writeText(text).then(
-    () => flashHint(hint || `已复制：${text}`),
-    () => { /* 降级：exec */ document.execCommand('copy'); flashHint(hint || `已复制：${text}`); }
+    () => flashHint(hint || `已复制：${text}`, 'success'),
+    () => { /* 降级：exec */ document.execCommand('copy'); flashHint(hint || `已复制：${text}`, 'success'); }
   );
 }
 
@@ -9013,7 +9018,7 @@ async function openRecentProject(project) {
     }
     window.location.reload();
   } catch (error) {
-    flashHint(`打开工程失败：${error.message || error}`);
+    flashHint(`打开工程失败：${error.message || error}`, 'warning');
   }
 }
 
@@ -9119,7 +9124,7 @@ function configureServerProjectSettings() {
         SERVER_CONFIG.autoOpenLastProject = result.autoOpenLastProject;
       } catch (error) {
         autoOpenLastProjectToggle.checked = SERVER_CONFIG.autoOpenLastProject !== false;
-        flashHint(`保存设置失败：${error.message || error}`);
+        flashHint(`保存设置失败：${error.message || error}`, 'warning');
       } finally {
         autoOpenLastProjectToggle.disabled = false;
       }
@@ -9238,9 +9243,9 @@ async function saveCurrentWorkspace({ saveAs }) {
     }
     refreshWorkspaceSelect();
     syncWorkspaceControls();
-    flashHint(saveAs ? `已另存工作区：${displayName}` : `已保存工作区：${displayName}`);
+    flashHint(saveAs ? `已另存工作区：${displayName}` : `已保存工作区：${displayName}`, 'success');
   } catch (error) {
-    flashHint(`保存工作区失败：${error.message || error}`);
+    flashHint(`保存工作区失败：${error.message || error}`, 'warning');
   } finally {
     if (button) button.disabled = false;
   }
@@ -9255,9 +9260,9 @@ async function deleteCurrentServerWorkspace() {
     currentServerWorkspaceName = '';
     refreshWorkspaceSelect();
     syncWorkspaceControls();
-    flashHint(`已删除工作区：${name}`);
+    flashHint(`已删除工作区：${name}`, 'success');
   } catch (error) {
-    flashHint(`删除工作区失败：${error.message || error}`);
+    flashHint(`删除工作区失败：${error.message || error}`, 'warning');
   } finally {
     deleteWorkspaceButton.disabled = false;
   }
@@ -9277,9 +9282,9 @@ function applyWorkspaceSelection(preset) {
     refreshWorkspaceSelect();
     syncWorkspaceControls();
     void updateServerWorkspaceSettings({ activeWorkspaceName: name }).catch((error) => {
-      flashHint(`记住工作区失败：${error.message || error}`);
+      flashHint(`记住工作区失败：${error.message || error}`, 'warning');
     });
-    flashHint(`已应用工作区：${name}`);
+    flashHint(`已应用工作区：${name}`, 'success');
     return;
   }
   if (!BUILTIN_WORKSPACE_IDS.includes(preset)) return;
@@ -9295,7 +9300,7 @@ function applyWorkspaceSelection(preset) {
   refreshWorkspaceSelect();
   syncWorkspaceControls();
   void updateServerWorkspaceSettings({ activeWorkspaceName: '' }).catch((error) => {
-    flashHint(`记住工作区失败：${error.message || error}`);
+    flashHint(`记住工作区失败：${error.message || error}`, 'warning');
   });
 }
 
@@ -9330,9 +9335,9 @@ function configureServerWorkspaceLibrary() {
       if (preset) {
         waveformEditor.setLayout(preset);
         void updateServerWorkspaceSettings({ resetPresetWorkspace: preset }).then(() => {
-          flashHint(`已恢复「${preset}」默认工作区`);
+          flashHint(`已恢复「${preset}」默认工作区`, 'success');
         }).catch((error) => {
-          flashHint(`重置工作区失败：${error.message || error}`);
+          flashHint(`重置工作区失败：${error.message || error}`, 'warning');
         });
       }
       syncWorkspaceControls();
@@ -9373,9 +9378,9 @@ function configureWorkspaceTransfer() {
       waveformEditor.setLayoutData(workspace);
       applyEditorDisplaySettings(workspace?.editorDisplay);
       DATA.workspace = waveformEditor.getLayoutData();
-      flashHint(`已导入工作区：${file.name}`);
+      flashHint(`已导入工作区：${file.name}`, 'success');
     } catch (error) {
-      flashHint(`工作区导入失败：${error.message || error}`);
+      flashHint(`工作区导入失败：${error.message || error}`, 'warning');
     }
   });
   if (SERVER_CONFIG?.settingsUrl) return;  // 服务器版的下拉选择由工作区库接管
@@ -9409,12 +9414,12 @@ function markProjectSaved(filename, backupName, { silent = false } = {}) {
     jsonEl.classList.remove('empty');
   }
   renderAll();
-  if (!silent) flashHint('保存成功！');
+  if (!silent) flashHint('保存成功！', 'success');
 }
 
 async function saveProjectToServer({ silent = false } = {}) {
   if (!serverProjectSavingEnabled()) {
-    if (!silent) flashHint('此服务器没有绑定可保存的工程；请使用“导出工程”或带工程文件路径重新启动服务器');
+    if (!silent) flashHint('此服务器没有绑定可保存的工程；请使用“导出工程”或带工程文件路径重新启动服务器', 'invalid');
     return false;
   }
   if (projectSaveInFlight) return false;
@@ -9447,7 +9452,7 @@ async function saveProjectToServer({ silent = false } = {}) {
       const saved = await downloadFile(projectJson, `${FILENAME_BASE}.mosp`, 'application/json', {
         desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
       });
-      if (saved) flashHint('服务器未连接；工程已另存为工程文件，请重新启动本地编辑器后继续');
+      if (saved) flashHint('服务器未连接；工程已另存为工程文件，请重新启动本地编辑器后继续', 'success');
     }
     return false;
   } finally {
@@ -9480,7 +9485,7 @@ async function saveProjectAsToFile() {
     markProjectSaved(handle.name, null);
   } catch (error) {
     if (error && error.name === 'AbortError') return;  // 用户取消保存对话框
-    flashHint(`保存失败：${error?.message || error}`);
+    flashHint(`保存失败：${error?.message || error}`, 'warning');
   }
 }
 
@@ -9676,7 +9681,7 @@ projectMediaSelectButton.addEventListener('click', () => {
 
 projectMediaLaterButton.addEventListener('click', () => {
   closeProjectMediaModal(true);
-  flashHint('可稍后点击“加载媒体”选择关联媒体');
+  flashHint('可稍后点击“加载媒体”选择关联媒体', 'invalid');
 });
 
 projectMediaModal.addEventListener('click', (event) => {
@@ -9815,7 +9820,7 @@ function replaceMainTrack(segments, displayName = '字幕') {
   }
   configureServerSaveControls();
   scheduleAutoSave();
-  flashHint(`已加载字幕：${displayName}（${DATA.segments.length} 条）`);
+  flashHint(`已加载字幕：${displayName}（${DATA.segments.length} 条）`, 'success');
   return true;
 }
 
@@ -10069,21 +10074,21 @@ function swapMainAndExtensionSubtitles() {
   const multi = getMultiSubtitleState();
   const track = getActiveExtensionTrack();
   if (!multi.enabled) {
-    flashHint('请先开启多重字幕');
+    flashHint('请先开启多重字幕', 'invalid');
     return false;
   }
   if ((multi.tracks || []).length !== 1) {
-    flashHint('当前只支持交换唯一的扩展字幕轨');
+    flashHint('当前只支持交换唯一的扩展字幕轨', 'invalid');
     return false;
   }
   if (!track?.segments?.length || !DATA.segments.length) {
-    flashHint('主字幕和扩展字幕都不能为空');
+    flashHint('主字幕和扩展字幕都不能为空', 'invalid');
     return false;
   }
   pushUndo('交换主副字幕');
   const result = MULTI_SUBTITLE_UTILS.swapMainAndExtensionSubtitle(DATA, track.id);
   if (!result.swapped) {
-    flashHint('交换主副字幕失败');
+    flashHint('交换主副字幕失败', 'warning');
     return false;
   }
   markMainSegmentsDirty(DATA.segments);
@@ -10102,7 +10107,7 @@ async function openSrtFile(file) {
     updateEditorLoading(75, `正在载入字幕 ${file.name}…`);
     return replaceMainTrack(segments, file.name);
   } catch (error) {
-    flashHint(`加载字幕失败：${error.message || error}`);
+    flashHint(`加载字幕失败：${error.message || error}`, 'warning');
     return false;
   } finally {
     finishLoading();
@@ -10124,7 +10129,7 @@ async function openProjectFile(file, options = {}) {
       normalizeProjectTimings(data);
     }
     if (!isMawProject(data)) {
-      flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。');
+      flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。', 'warning');
       return false;
     }
     // 单独选 JSON 时，浏览器没有授权访问它所在目录；先清理旧媒体，避免旧音轨配上新字幕。
@@ -10193,7 +10198,7 @@ async function openProjectFile(file, options = {}) {
     pendingProjectMediaSelection = null;
     flashHint(error instanceof SyntaxError
       ? '打开了错误的文件，请使用 MAW 生成的工程文件。'
-      : `加载失败：${error.message}`);
+      : `加载失败：${error.message}`, 'warning');
     console.error(error);
     return false;
   } finally {
@@ -10212,7 +10217,7 @@ document.getElementById('open-project').addEventListener('click', () => {
 openProjectFileInput.addEventListener('change', async (e) => {
   const file = e.target.files?.[0];
   if (!file || !isJsonFile(file)) {
-    flashHint('请选择一个 .mosp 或 .json 工程文件。');
+    flashHint('请选择一个 .mosp 或 .json 工程文件。', 'invalid');
     return;
   }
   await openProjectFile(file);
@@ -10244,7 +10249,7 @@ loadSrtFileInput.addEventListener('change', async (event) => {
       const segments = await parseSubtitleImportFile(file);
       await showMultiSubtitleImportChoice(file, segments);
     } catch (error) {
-      flashHint(`导入字幕失败：${error.message || error}`);
+      flashHint(`导入字幕失败：${error.message || error}`, 'warning');
     }
     return;
   }
@@ -10382,7 +10387,7 @@ async function loadMediaFile(file) {
     }
     URL.revokeObjectURL(url);
     syncPlayerPlaceholder();
-    flashHint(error.message || `媒体加载失败：${file.name}`);
+    flashHint(error.message || `媒体加载失败：${file.name}`, 'warning');
     return false;
   }
 
@@ -10408,13 +10413,13 @@ async function loadMediaFile(file) {
   }
 
   lastActive = -1;
-  flashHint(`已加载媒体：${file.name}`);
+  flashHint(`已加载媒体：${file.name}`, 'success');
   if (waveformEditor && !preserveProjectWaveform) {
     try {
       updateEditorLoading(75, `正在生成波形 ${file.name}…`);
       await waveformEditor.processFile(file);
     } catch (error) {
-      flashHint(error.message || String(error));
+      flashHint(error.message || String(error), 'warning');
     }
   }
   updateEditorLoading(100, `媒体加载完成：${file.name}`);
@@ -10496,7 +10501,7 @@ const STICKER_IMG_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
 function applyStickerFiles(entries, topDir) {
   // entries: [{ file, rel }]，rel 为相对所选文件夹的路径
   if (!entries.length) {
-    flashHint('选中的文件夹里没有图片文件');
+    flashHint('选中的文件夹里没有图片文件', 'invalid');
     return;
   }
   // 释放旧 STICKERS 的 blob URL（如果有）
@@ -10568,7 +10573,7 @@ document.getElementById('sticker-root-confirm').addEventListener('click', () => 
   stickerRootModal.classList.remove('show');
   // 重新渲染所有 cue 让 sticker URL 用新根目录拼接
   renderAll();
-  flashHint(newRoot ? `根目录已更新` : '已清空根目录');
+  flashHint(newRoot ? `根目录已更新` : '已清空根目录', 'success');
 });
 
 // === 批量替换 ===
@@ -10686,7 +10691,7 @@ document.getElementById('replace-confirm').addEventListener('click', () => {
   });
   if (willChange === 0) {
     replaceModal.classList.remove('show');
-    flashHint('没有匹配的内容');
+    flashHint('没有匹配的内容', 'invalid');
     return;
   }
   pushUndo('批量替换');
@@ -10698,7 +10703,7 @@ document.getElementById('replace-confirm').addEventListener('click', () => {
   });
   replaceModal.classList.remove('show');
   renderAll();
-  flashHint(`已修改 ${changedRows} 行`);
+  flashHint(`已修改 ${changedRows} 行`, 'success');
 });
 
 // === 表情包 ===
@@ -10707,7 +10712,7 @@ let stickerTargetIdxs = [];     // 要分配的 segment indexes
 
 function openStickerPicker(idxs, isMulti) {
   if (!STICKERS.length) {
-    flashHint('没有可用的表情包，请先用🦊按钮配置表情包文件夹');
+    flashHint('没有可用的表情包，请先用🦊按钮配置表情包文件夹', 'invalid');
     return;
   }
   stickerTargetMode = isMulti ? 'multi' : 'single';
@@ -10775,7 +10780,7 @@ function assignSticker(sticker) {
     applyCueEditorDisplaySettings();
   }
   renderAll();
-  flashHint(`已分配「${sticker.name}」`);
+  flashHint(`已分配「${sticker.name}」`, 'success');
 }
 
 function clearStickerOnTargets() {
@@ -10784,7 +10789,7 @@ function clearStickerOnTargets() {
   splitGroupsAtCutPoints(new Set(stickerTargetIdxs), 'sticker', 'sticker_ref');
   stickerModal.classList.remove('show');
   renderAll();
-  flashHint('已清除');
+  flashHint('已清除', 'success');
 }
 
 document.getElementById('sticker-filter').addEventListener('input', (e) => {
@@ -10812,7 +10817,7 @@ document.getElementById('sticker-preview-delete').addEventListener('click', () =
   removeStickerCascade(previewIdx);
   stickerPreviewModal.classList.remove('show');
   renderAll();
-  flashHint('已删除');
+  flashHint('已删除', 'success');
 });
 
 // 删除表情包时级联清理引用：
@@ -10851,7 +10856,7 @@ function expandStickerTime(idxs) {
     }
   }
   if (!sourceSticker) {
-    flashHint('选中范围内没有表情包');
+    flashHint('选中范围内没有表情包', 'invalid');
     return;
   }
   pushUndo('拓展表情包时长');
@@ -10870,7 +10875,7 @@ function expandStickerTime(idxs) {
     DATA.segments[sorted[k]].sticker_ref = { name: sticker.name, headIdx };
   }
   renderAll();
-  flashHint(`已拓展到 ${sorted.length} 条`);
+  flashHint(`已拓展到 ${sorted.length} 条`, 'success');
 }
 
 // === 标记颜色 ===
@@ -10912,7 +10917,7 @@ function assignColor(idxs, colorName) {
   renderAll();
   flashHint(isUnifiedGroup
     ? `已将关联字幕统一设为「${def.label}色」`
-    : `已将字幕设为「${def.label}色」`);
+    : `已将字幕设为「${def.label}色」`, 'success');
 }
 
 // 删除颜色（级联清理）：
@@ -10928,7 +10933,7 @@ function clearColorOnTargets(idxs) {
   // 一次性切除所有目标 idx，触发组拆分
   splitGroupsAtCutPoints(new Set(idxs), 'color', 'color_ref');
   renderAll();
-  flashHint('已清除颜色');
+  flashHint('已清除颜色', 'success');
 }
 
 // === 禁用/启用 ===
@@ -10966,7 +10971,7 @@ function toggleDisabled(idxs, track = 'main') {
     updateMultiSelectionClasses();
     selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
   }
-  flashHint(allDisabled ? `已启用 ${validIdxs.length} 条` : `已禁用 ${validIdxs.length} 条`);
+  flashHint(allDisabled ? `已启用 ${validIdxs.length} 条` : `已禁用 ${validIdxs.length} 条`, 'success');
   // 禁用状态同时决定当前时间的预览可见性；列表重绘不会自动触发播放头刷新。
   update();
 }
@@ -10980,8 +10985,8 @@ function addExtensionRangeFromWaveform(
   track = getActiveExtensionTrack(),
 ) {
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
-  if (!duration) { flashHint('媒体时长尚未加载'); return; }
-  if (!track?.segments) { flashHint('当前没有可用的副字幕轨'); return; }
+  if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
+  if (!track?.segments) { flashHint('当前没有可用的副字幕轨', 'invalid'); return; }
   const start = Math.min(requestedStart, requestedEnd);
   const end = Math.max(requestedStart, requestedEnd);
   if (!Number.isFinite(start) || !Number.isFinite(end)) return;
@@ -11032,7 +11037,7 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY, t
     return;
   }
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
-  if (!duration) { flashHint('媒体时长尚未加载'); return; }
+  if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
   const start = Math.min(requestedStart, requestedEnd);
   const end = Math.max(requestedStart, requestedEnd);
   if (!Number.isFinite(start) || !Number.isFinite(end)) return;
@@ -11070,14 +11075,14 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY, t
   }
   setTimeout(() => focusCuePanelText(index), 0);
   waveformEditor?.revealTime(safeStart, true);
-  flashHint(`已新增第 ${index + 1} 条字幕`);
+  flashHint(`已新增第 ${index + 1} 条字幕`, 'success');
 }
 
 function addCueAtWaveformTime(timeMs, clickX, clickY) {
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
-  if (!duration) { flashHint('媒体时长尚未加载'); return; }
+  if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
   if (findWaveformCueAtTime(timeMs) >= 0) {
-    flashHint('当前位置已有字幕，请使用“按音频位置拆分当前字幕”');
+    flashHint('当前位置已有字幕，请使用“按音频位置拆分当前字幕”', 'invalid');
     return;
   }
   const insertAt = DATA.segments.findIndex((segment) => segment.start > timeMs);
@@ -11085,7 +11090,7 @@ function addCueAtWaveformTime(timeMs, clickX, clickY) {
   const previousEnd = index > 0 ? DATA.segments[index - 1].end : 0;
   const nextStart = index < DATA.segments.length ? DATA.segments[index].start : duration;
   if (timeMs < previousEnd) {
-    flashHint('当前位置已有字幕，请使用“按音频位置拆分当前字幕”');
+    flashHint('当前位置已有字幕，请使用“按音频位置拆分当前字幕”', 'invalid');
     return;
   }
   const gap = nextStart - previousEnd;
@@ -11101,9 +11106,9 @@ function addCueAtWaveformTime(timeMs, clickX, clickY) {
 
 function addExtensionAtWaveformTime(timeMs, clickX, clickY, track = getActiveExtensionTrack()) {
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
-  if (!duration) { flashHint('媒体时长尚未加载'); return; }
+  if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
   if (!track || !Array.isArray(track.segments)) {
-    flashHint('当前没有可用的扩展字幕轨');
+    flashHint('当前没有可用的扩展字幕轨', 'invalid');
     return;
   }
   const insertAt = track.segments.findIndex((segment) => Number(segment.start) > timeMs);
@@ -11111,19 +11116,19 @@ function addExtensionAtWaveformTime(timeMs, clickX, clickY, track = getActiveExt
   const previousEnd = index > 0 ? Number(track.segments[index - 1].end) : 0;
   const nextStart = index < track.segments.length ? Number(track.segments[index].start) : duration;
   if (timeMs < previousEnd || timeMs > nextStart) {
-    flashHint('当前位置已有拓展字幕，请先调整相邻字幕时间');
+    flashHint('当前位置已有拓展字幕，请先调整相邻字幕时间', 'invalid');
     return;
   }
   const gap = nextStart - previousEnd;
   if (gap < 100) {
-    flashHint('这里没有足够的空白区域');
+    flashHint('这里没有足够的空白区域', 'warning');
     return;
   }
   const start = Math.max(previousEnd, Math.min(Math.round(timeMs / 10) * 10, nextStart - 100));
   const end = Math.min(nextStart, start + 1000);
   const adjustedStart = end - start >= 100 ? start : Math.max(previousEnd, nextStart - 1000);
   if (end - adjustedStart < 100) {
-    flashHint('这里没有足够的空白区域');
+    flashHint('这里没有足够的空白区域', 'warning');
     return;
   }
   pushUndo('新增拓展字幕');
@@ -11577,7 +11582,7 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
       addItem('删除表情包', '', () => {
         removeStickerCascade(idx);
         renderAll();
-        flashHint('已删除');
+        flashHint('已删除', 'success');
       }, { danger: true });
     }
     addColorSubmenu(targetIdxs);
@@ -11854,7 +11859,7 @@ function seekFromWaveform(timeSec) {
   const seekableEnd = player.seekable.length ? player.seekable.end(player.seekable.length - 1) : 0;
   if (seekableEnd <= 0 && !seekWarned) {
     seekWarned = true;
-    flashHint('媒体尚不可 seek；请等待加载完成或用 file:// 直接打开 HTML');
+    flashHint('媒体尚不可 seek；请等待加载完成或用 file:// 直接打开 HTML', 'warning');
   }
   try {
     player.currentTime = Math.max(0, timeSec);
@@ -11863,13 +11868,13 @@ function seekFromWaveform(timeSec) {
     // 避免字幕已选中但红色播放头要等下一拍才移动。
     waveformEditor?.updatePlayback();
   } catch (error) {
-    flashHint(`跳转失败：${error.message}`);
+    flashHint(`跳转失败：${error.message}`, 'warning');
   }
 }
 
 function initWaveformEditor() {
   if (!window.AsrWaveform) {
-    flashHint('波形模块加载失败，字幕编辑仍可使用');
+    flashHint('波形模块加载失败，字幕编辑仍可使用', 'warning');
     return;
   }
   waveformEditor = window.AsrWaveform.create({
@@ -12010,7 +12015,7 @@ async function handleDroppedFiles(files) {
   const jsonFile = files.find(isJsonFile);
   const srtFile = files.find(isSrtFile);
   if (!mediaFile && !jsonFile && !srtFile) {
-    flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT）');
+    flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT）', 'warning');
     return;
   }
   if (jsonFile) {
@@ -12024,7 +12029,7 @@ async function handleDroppedFiles(files) {
           projectMediaFile: mediaFile,
         });
       } catch (error) {
-        flashHint(`导入工程字幕失败：${error.message || error}`);
+        flashHint(`导入工程字幕失败：${error.message || error}`, 'warning');
       }
       return;
     }
@@ -12042,7 +12047,7 @@ async function handleDroppedFiles(files) {
         const segments = await parseSubtitleImportFile(srtFile);
         await showMultiSubtitleImportChoice(srtFile, segments);
       } catch (error) {
-        flashHint(`导入字幕失败：${error.message || error}`);
+        flashHint(`导入字幕失败：${error.message || error}`, 'warning');
       }
     } else {
       await openSrtFile(srtFile);
@@ -12111,12 +12116,12 @@ window.MAWE?.register('editor-bridge', () => window.MAWE_EDITOR_BRIDGE);
 renderAll();
 updateGapRemoveUi();
 if (repairedTimingCount > 0) {
-  flashHint(`已自动修复 ${repairedTimingCount} 处异常时间码（保底 100ms）`);
+  flashHint(`已自动修复 ${repairedTimingCount} 处异常时间码（保底 100ms）`, 'warning');
 } else if (repairedGroupReferenceCount > 0) {
-  flashHint(`已自动修复 ${repairedGroupReferenceCount} 处分组引用`);
+  flashHint(`已自动修复 ${repairedGroupReferenceCount} 处分组引用`, 'warning');
 }
 if (SERVER_CONFIG?.autoLoadedMediaName) {
-  flashHint(`已自动加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`);
+  flashHint(`已自动加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`, 'success');
 }
 
 document.getElementById('charcount-threshold').addEventListener('input', () => {
