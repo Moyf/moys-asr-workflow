@@ -230,6 +230,9 @@ class PackagingContractTests(unittest.TestCase):
             workflow = read_text(workflow_path)
             self.assertIn("gh release upload", workflow)
             self.assertIn("--clobber", workflow)
+            self.assertIn("scripts/prepare_release_notes.py", workflow)
+            self.assertIn("gh release edit", workflow)
+            self.assertIn("--notes-file release-notes.md", workflow)
         # macOS-specific assertions
         macos_workflow = read_text(".github/workflows/build-macos.yml")
         self.assertNotIn("tauri.macos.conf.json", macos_workflow)

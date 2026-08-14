@@ -187,6 +187,10 @@ jobs:
             MAWxFF-macOS-arm64-*.zip
           if-no-files-found: error
 
+      - name: Prepare release notes from CHANGELOG
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: python3 scripts/prepare_release_notes.py --tag "${{ github.ref_name }}" --output release-notes.md
+
       - name: Create or update GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
@@ -199,7 +203,9 @@ jobs:
           if ! gh release view "$Tag" >/dev/null 2>&1; then
             gh release create "$Tag" \
               --title "$Tag" \
+              --notes-file release-notes.md \
               --prerelease="$Prerelease" \
               --target "${{ github.sha }}" || true
           fi
+          gh release edit "$Tag" --title "$Tag" --notes-file release-notes.md
           gh release upload "$Tag" MAW-macOS-arm64-*.zip MAWxFF-macOS-arm64-*.zip --clobber
