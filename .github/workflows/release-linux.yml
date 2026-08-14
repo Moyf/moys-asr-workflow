@@ -81,6 +81,18 @@ jobs:
           test -x "$AppImage"
           file "$AppImage" | grep -q 'ELF 64-bit'
 
+      - name: Verify no bundled C++ runtime in AppImage
+        run: |
+          set -euo pipefail
+          cd build-appimage
+          ./MAW-x86_64.AppImage --appimage-extract >/dev/null 2>&1
+          if [ -e squashfs-root/_internal/libstdc++.so.6 ] || [ -e squashfs-root/_internal/libgcc_s.so.1 ] || [ -e squashfs-root/_internal/libgbm.so.1 ]; then
+            echo "FAIL: AppImage 内置了 libstdc++/libgcc_s/libgbm，会污染系统 Mesa 驱动加载"
+            exit 1
+          fi
+          echo "OK: 未内置 libstdc++/libgcc_s/libgbm"
+          rm -r squashfs-root
+
       - name: Diagnose AppImage libraries
         if: always()
         run: |
@@ -90,6 +102,23 @@ jobs:
           ls squashfs-root/_internal/PyQt6/Qt6/lib/ 2>/dev/null | grep -i xcb || echo "(无)"
           echo "=== libqxcb.so 缺失依赖:"
           ldd squashfs-root/_internal/PyQt6/Qt6/plugins/platforms/libqxcb.so 2>&1 | grep "not found" || echo "(依赖完整)"
+          rm -r squashfs-root
+
+      - name: Verify bundled static ffmpeg under polluted environment
+        run: |
+          set -euo pipefail
+          cd build-appimage
+          ./MAW-x86_64.AppImage --appimage-extract >/dev/null 2>&1
+          BIN="squashfs-root/ffmpeg/bin"
+          test -x "$BIN/ffmpeg"
+          test -x "$BIN/ffprobe"
+          # 模拟 PyInstaller bootloader：LD_LIBRARY_PATH 指向 _internal（含旧 libstdc++）。
+          # 静态 ffmpeg 必须自包含，在此污染环境下仍能正常运行；动态版会
+          # 在这里报 GLIBCXX_3.4.32 not found。
+          export LD_LIBRARY_PATH="$PWD/squashfs-root/_internal"
+          "$BIN/ffmpeg" -version >/dev/null
+          "$BIN/ffprobe" -version >/dev/null
+          echo "OK: 静态 ffmpeg 在污染 LD_LIBRARY_PATH 下正常运行"
           rm -r squashfs-root
 
       - name: Smoke AppImage (headless)
@@ -114,10 +143,20 @@ jobs:
           mv "build-appimage/MAW-x86_64.AppImage" "build-appimage/MAW-x86_64-${{ github.ref_name }}.AppImage"
           test -f "build-appimage/MAW-x86_64-${{ github.ref_name }}.AppImage"
 
+      - name: Compute artifact name
+        id: artifact-name
+        shell: bash
+        run: |
+          RefName="${GITHUB_REF_NAME:-dev}"
+          # upload-artifact 禁止 / \ * ? " < > | : 等字符；dispatch 触发时
+          # ref_name 是分支名（含 /），统一清洗成合法 artifact 名。
+          CleanName="${RefName//[^a-zA-Z0-9._-]/-}"
+          echo "name=MAW-x86_64-${CleanName}" >> "$GITHUB_OUTPUT"
+
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MAW-x86_64-${{ github.ref_name || 'dev' }}
+          name: ${{ steps.artifact-name.outputs.name }}
           path: build-appimage/MAW-x86_64*.AppImage
           if-no-files-found: error
 

@@ -252,6 +252,16 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("MAWxFF-macOS-arm64-*.zip", macos_workflow)
         self.assertNotIn(".zip.sha256", macos_workflow)
 
+    def test_appimage_build_drops_bundled_cpp_runtime(self) -> None:
+        """Given the AppImage build script and workflow, When the AppDir is assembled, Then bundled libstdc++/libgcc_s/libgbm are removed and CI forbids them."""
+        script = read_text("scripts/build-appimage.sh")
+        workflow = read_text(".github/workflows/release-linux.yml")
+
+        self.assertIn('rm -f "$APP_DIR/_internal/libstdc++.so.6" "$APP_DIR/_internal/libgcc_s.so.1"', script)
+        self.assertIn('"$APP_DIR/_internal/libgbm.so.1"', script)
+        self.assertIn("Verify no bundled C++ runtime in AppImage", workflow)
+        self.assertIn("_internal/libgbm.so.1", workflow)
+
     def test_local_build_script_invokes_uv_and_pyinstaller_for_maw_onedir(self) -> None:
         """Given a Windows developer build, When the script is read, Then it builds dist/MAW/MAW.exe."""
         script = read_text("scripts/build-windows.ps1")
