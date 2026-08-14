@@ -76,7 +76,7 @@ test('context menu closes on pointerdown over blank waveform', async ({ page }) 
 
 test('list click auto-scroll can be disabled without disabling seek', async ({ page }) => {
   await page.goto(server.url);
-  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#cue-list-settings-toggle').click();
   const autoScroll = page.locator('#cue-list-auto-scroll-on-click');
   await expect(autoScroll).toBeChecked();
   await autoScroll.uncheck();
