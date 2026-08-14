@@ -126,6 +126,7 @@ test('Ctrl+S saves and Ctrl+Shift+S invokes save as', async ({ page }) => {
   await page.keyboard.press('Control+s');
   expect((await saveResponse).ok()).toBe(true);
   await expect(page.locator('.hint-card').last()).toContainText('Saved!');
+  await expect(page.locator('.hint-card').last()).toHaveClass(/hint-success/);
 
   await page.keyboard.press('Control+Shift+s');
   await expect.poll(() => page.evaluate(() => window.__saveAsCapture)).not.toBeNull();
