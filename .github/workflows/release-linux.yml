@@ -123,33 +123,7 @@ jobs:
 
       - name: Prepare release notes from CHANGELOG
         if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        run: |
-          set -euo pipefail
-          Version="${{ github.ref_name }}"
-          Version="${Version#v}"
-          python3 - "$Version" <<'PYEOF'
-          import re
-          import sys
-
-          version = sys.argv[1]
-          changelog = open("CHANGELOG.md", encoding="utf-8").read()
-          pattern = re.compile(
-              r"(?ms)^## \[%s\][^\r\n]*\r?\n.*?(?=^## \[|\Z)" % re.escape(version)
-          )
-          match = pattern.search(changelog)
-          if not match:
-              raise SystemExit(f"CHANGELOG.md does not contain a release section for {version}.")
-
-          guide = """## 下载哪个？
-
-          - **Linux x86_64** ： 下载 ``MAW-x86_64-${{ github.ref_name }}.AppImage`` ，赋予执行权限后直接运行（``chmod +x``）。
-
-          AppImage 依赖系统安装的 ``ffmpeg`` / ``ffprobe`` （需在 PATH 中）。首次启动会在用户目录缓存 Noto Color Emoji 字体，之后离线可用；Launcher 配置保存在用户目录（``~/.config/Moy/MAW/.env`` ，目录不可写时回退 ``~/.cache`` ）。若系统缺少 ``libappimage`` ，Dolphin 等文件管理器不会为 AppImage 文件生成图标，可安装 ``libappimage`` 或使用仓库内的 ``scripts/make-appimage-thumbnail.py`` 生成缩略图缓存。
-          """
-          body = guide.strip() + "\n\n" + match.group(0).strip() + "\n"
-          open("release-notes.md", "w", encoding="utf-8").write(body)
-          PYEOF
+        run: python3 scripts/prepare_release_notes.py --tag "${{ github.ref_name }}" --output release-notes.md
 
       - name: Create or update GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -167,4 +141,5 @@ jobs:
               --prerelease="$Prerelease" \
               --target "${{ github.sha }}" || true
           fi
+          gh release edit "$Tag" --title "$Tag" --notes-file release-notes.md
           gh release upload "$Tag" "build-appimage/MAW-x86_64-$Tag.AppImage" --clobber
