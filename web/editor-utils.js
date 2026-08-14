@@ -525,6 +525,38 @@
     return value == null ? null : JSON.parse(JSON.stringify(value));
   }
 
+  const HISTORY_RECORD_DEFAULT_LABELS = Object.freeze({
+    segments: '编辑',
+    layout: '调整工作区',
+    gap_remove: '空隙移除',
+    preview: '预览',
+  });
+
+  // 历史记录的快照只负责值和记录形状，不触碰编辑器状态或 DOM。
+  function buildSegmentsHistorySnapshot(segments, multiSubtitle) {
+    return {
+      segments: cloneJsonValue(segments),
+      multi_subtitle: cloneJsonValue(multiSubtitle),
+    };
+  }
+
+  function buildHistoryRecord(kind, label, payload) {
+    const recordKind = Object.prototype.hasOwnProperty.call(HISTORY_RECORD_DEFAULT_LABELS, kind)
+      ? kind : 'segments';
+    const record = {
+      kind: recordKind,
+      label: label || HISTORY_RECORD_DEFAULT_LABELS[recordKind],
+    };
+    if (recordKind === 'segments') record.segs = cloneJsonValue(payload);
+    if (recordKind === 'layout') record.layout = payload || null;
+    if (recordKind === 'gap_remove') {
+      record.gapRemove = cloneJsonValue(payload?.gapRemove ?? null);
+      record.gapRemoveDirty = payload?.gapRemoveDirty === true;
+    }
+    if (recordKind === 'preview') record.preview = cloneJsonValue(payload);
+    return record;
+  }
+
   // === 多重字幕（双语字幕）===
   // 这组 helper 刻意不依赖 DOM，便携 HTML、localhost 编辑器和 Node 测试共用同一套
   // 数据/匹配/近似拆分规则。主轨仍然是顶层 segments；扩展轨的 items 不参与拆分。
@@ -1832,6 +1864,8 @@
     clampAutoMergeGapMs: clampEditorAutoMergeGapMs,
     clampAutoMergeShortCount: clampEditorAutoMergeShortCount,
     createHistoryStack,
+    buildSegmentsHistorySnapshot,
+    buildHistoryRecord,
     PREVIEW_MIN_WIDTH,
     PREVIEW_MIN_HEIGHT,
   DEFAULT_PREVIEW_GEOMETRY,

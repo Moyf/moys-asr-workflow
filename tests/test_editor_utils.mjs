@@ -1169,6 +1169,48 @@ test('history stack: clear and clearRedo reset the right stacks', () => {
 });
 
 
+test('builds immutable segment history snapshots and records', () => {
+  const segments = [{ start: 0, end: 1000, text: '原文' }];
+  const multi = { enabled: true, tracks: [] };
+  const snapshot = helpers.buildSegmentsHistorySnapshot(segments, multi);
+  const record = helpers.buildHistoryRecord('segments', '编辑字幕', snapshot);
+  segments[0].text = '后来';
+  multi.enabled = false;
+  snapshot.segments[0].text = '快照变更';
+  assert.equal(record.kind, 'segments');
+  assert.equal(record.label, '编辑字幕');
+  assert.equal(record.segs.segments[0].text, '原文');
+  assert.equal(record.segs.multi_subtitle.enabled, true);
+});
+
+
+test('builds typed history records with safe defaults', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.buildHistoryRecord('gap_remove', '', {
+    gapRemove: { gaps: [{ start: 10, end: 20 }] },
+    gapRemoveDirty: true,
+  }))), {
+    kind: 'gap_remove',
+    label: '空隙移除',
+    gapRemove: { gaps: [{ start: 10, end: 20 }] },
+    gapRemoveDirty: true,
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.buildHistoryRecord('preview', null, {
+    overlay: true,
+  }))), {
+    kind: 'preview',
+    label: '预览',
+    preview: { overlay: true },
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.buildHistoryRecord('unknown', null, {
+    value: 1,
+  }))), {
+    kind: 'segments',
+    label: '编辑',
+    segs: { value: 1 },
+  });
+});
+
+
 // === preview.subtitle geometry helpers ===
 
 test('normalizePreviewGeometry returns default geometry for invalid input', () => {

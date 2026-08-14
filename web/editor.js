@@ -670,33 +670,28 @@ let gapRemoveDirty = false;
 function snapshotSegments() {
   // _dirty 也保留，恢复后能再次导出"工程文件"时正确标记；多字幕数据与主轨
   // 必须处于同一条记录中，绑定/成对删除/联动拆分才能原子撤销。
-  return JSON.parse(JSON.stringify({
-    segments: DATA.segments,
-    multi_subtitle: getMultiSubtitleState(),
-  }));
+  return EDITOR_SETTINGS_UTILS.buildSegmentsHistorySnapshot(DATA.segments, getMultiSubtitleState());
 }
 function pushUndo(label) {
-  const record = { kind: 'segments', label: label || '编辑', segs: snapshotSegments() };
+  const record = EDITOR_SETTINGS_UTILS.buildHistoryRecord('segments', label, snapshotSegments());
   editorHistory.push(record);
   updateUndoRedoButtons();
   return record;
 }
 function pushLayoutUndo(label, snapshot) {
   if (!snapshot) return;
-  editorHistory.push({ kind: 'layout', label: label || '调整工作区', layout: snapshot });
+  editorHistory.push(EDITOR_SETTINGS_UTILS.buildHistoryRecord('layout', label, snapshot));
   updateUndoRedoButtons();
 }
 function pushGapRemoveUndo(label) {
-  editorHistory.push({
-    kind: 'gap_remove',
-    label: label || '空隙移除',
-    gapRemove: DATA.gap_remove ? JSON.parse(JSON.stringify(DATA.gap_remove)) : null,
+  editorHistory.push(EDITOR_SETTINGS_UTILS.buildHistoryRecord('gap_remove', label, {
+    gapRemove: DATA.gap_remove,
     gapRemoveDirty,
-  });
+  }));
   updateUndoRedoButtons();
 }
 function pushPreviewUndo(label, preview) {
-  editorHistory.push({ kind: 'preview', label: label || '预览', preview });
+  editorHistory.push(EDITOR_SETTINGS_UTILS.buildHistoryRecord('preview', label, preview));
   updateUndoRedoButtons();
 }
 function snapshotPreviewState() {
@@ -725,19 +720,20 @@ function applyPreviewState(state) {
 // 按记录 kind 拍下当前状态，作为对端栈的镜像（label 沿用原记录）
 function snapshotCurrentForKind(kind, label) {
   if (kind === 'layout') {
-    return { kind: 'layout', label: label || '调整工作区', layout: waveformEditor?.getLayoutHistorySnapshot?.() || null };
+    return EDITOR_SETTINGS_UTILS.buildHistoryRecord(
+      'layout', label, waveformEditor?.getLayoutHistorySnapshot?.() || null,
+    );
   }
   if (kind === 'gap_remove') {
-    return {
-      kind: 'gap_remove', label: label || '空隙移除',
+    return EDITOR_SETTINGS_UTILS.buildHistoryRecord('gap_remove', label, {
       gapRemove: DATA.gap_remove ? JSON.parse(JSON.stringify(DATA.gap_remove)) : null,
       gapRemoveDirty,
-    };
+    });
   }
   if (kind === 'preview') {
-    return { kind: 'preview', label: label || '预览', preview: snapshotPreviewState() };
+    return EDITOR_SETTINGS_UTILS.buildHistoryRecord('preview', label, snapshotPreviewState());
   }
-  return { kind: 'segments', label: label || '编辑', segs: snapshotSegments() };
+  return EDITOR_SETTINGS_UTILS.buildHistoryRecord('segments', label, snapshotSegments());
 }
 function applyHistoryRecord(record) {
   if (record.kind === 'layout') {
