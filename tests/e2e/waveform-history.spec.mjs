@@ -420,6 +420,40 @@ test('B splits the selected subtitle under the cue-list pointer and supports und
   await expect(page.locator('.cue .text').nth(1)).toHaveText('Bravo');
 });
 
+test('long-only filtering temporarily keeps split results visible until focus leaves', async ({ page }) => {
+  await page.goto(server.url);
+  await makeFirstCueWordSplittable(page);
+
+  await page.locator('#cue-list-settings-toggle').click();
+  await page.locator('#charcount-threshold').fill('1');
+  await expect(page.locator('#cue-list-keep-split-visible')).toBeChecked();
+  await page.locator('#filter-over').click();
+  await expect(page.locator('.cue:not(.hidden)')).toHaveCount(1);
+
+  const text = page.locator('.cue[data-idx="0"] .text');
+  await page.locator('.cue[data-idx="0"]').click();
+  const splitPoint = await text.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 6);
+    range.setEnd(node, 6);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.move(splitPoint.x, splitPoint.y);
+  await page.keyboard.press('b');
+
+  await expect.poll(() => page.locator('.cue').count()).toBe(7);
+  await expect(page.locator('.cue:not(.hidden)')).toHaveCount(2);
+  await expect(page.locator('#visible-count')).toHaveText('2');
+  await expect(page.locator('.cue[data-idx="0"] .text')).toHaveText('Alpha');
+  await expect(page.locator('.cue[data-idx="1"] .text')).toHaveText('Bravo');
+
+  await page.locator('#search').click();
+  await expect(page.locator('.cue:not(.hidden)')).toHaveCount(0);
+  await expect(page.locator('#visible-count')).toHaveText('0');
+});
+
 test('B split makes the selected latter half the Shift+click anchor', async ({ page }) => {
   await page.goto(server.url);
   await makeFirstCueWordSplittable(page);
@@ -448,15 +482,16 @@ test('B split makes the selected latter half the Shift+click anchor', async ({ p
 
 test('waveform navigation keeps a cue row in the comfort zone', async ({ page }) => {
   await page.goto(server.url);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#waveform-seconds-per-row').selectOption('30');
+  await page.locator('#waveform-settings-toggle').click();
+  await page.locator('#waveform-seconds-per-row').selectOption('20');
   await page.locator('#waveform-row-height').selectOption('64');
+  await page.locator('#waveform-settings-toggle').click();
 
   // 让下一条字幕所在行处于舒适区但不要正好居中，验证 A/D 不会强制重定位。
   await page.locator('.cue[data-idx="1"]').click();
   const before = await page.evaluate(() => {
     const scroll = document.getElementById('waveform-scroll');
-    const rowIndex = Math.floor(DATA.segments[2].start / (30 * 1000));
+    const rowIndex = Math.floor(DATA.segments[2].start / (20 * 1000));
     const stride = 64 + 10;
     const comfortInset = Math.min(120, Math.max(48, scroll.clientHeight * 0.2));
     scroll.scrollTop = Math.max(0, rowIndex * stride - comfortInset - 8);
@@ -615,6 +650,60 @@ test('B and C refresh cue overlays without redrawing cached waveform canvases', 
   });
 });
 
+test('settings gears stay at the end of their headers and rise above dividers', async ({ page }) => {
+  await page.goto(server.url);
+  const settings = [
+    ['#subtitle-preview-settings-toggle', '.player-toolbar', '#subtitle-preview-settings-panel'],
+    ['#cue-editor-settings-toggle', '.cue-editor-toolbar', '#cue-editor-settings-panel'],
+    ['#waveform-settings-toggle', '.waveform-toolbar', '#waveform-settings-panel'],
+    ['#cue-list-settings-toggle', '.cue-list-toolbar', '#cue-list-settings-panel'],
+  ];
+
+  for (const [toggleSelector, toolbarSelector, panelSelector] of settings) {
+    const layout = await page.evaluate(({ toggleSelector: buttonSelector, toolbarSelector: headerSelector }) => {
+      const button = document.querySelector(buttonSelector);
+      const toolbar = document.querySelector(headerSelector);
+      if (!button || !toolbar) return null;
+      const children = [...toolbar.children]
+        .filter((element) => getComputedStyle(element).display !== 'none')
+        .map((element, index) => ({
+          element,
+          index,
+          order: Number.parseInt(getComputedStyle(element).order, 10) || 0,
+        }))
+        .sort((left, right) => left.order - right.order || left.index - right.index);
+      return {
+        gearIsLast: children.at(-1)?.element.contains(button) === true,
+        gearOrder: getComputedStyle(button.parentElement).order,
+      };
+    }, { toggleSelector, toolbarSelector });
+    expect(layout).not.toBeNull();
+    expect(layout.gearIsLast).toBe(true);
+    expect(layout.gearOrder).toBe('99');
+
+    await page.locator(toggleSelector).click();
+    await expect(page.locator(panelSelector)).toBeVisible();
+    await page.locator(toggleSelector).click();
+    await expect(page.locator(panelSelector)).toBeHidden();
+  }
+
+  await page.locator('#waveform-settings-toggle').click();
+  const layering = await page.evaluate(() => {
+    const panel = document.getElementById('waveform-settings-panel');
+    const owner = document.getElementById('waveform-pane');
+    const dividerZIndexes = [...document.querySelectorAll(
+      '.workspace-divider, .layout-split-divider, .layout-resizer',
+    )].map((element) => Number.parseInt(getComputedStyle(element).zIndex, 10) || 0);
+    return {
+      panelZIndex: Number.parseInt(getComputedStyle(panel).zIndex, 10),
+      ownerZIndex: Number.parseInt(getComputedStyle(owner).zIndex, 10),
+      dividerZIndex: Math.max(0, ...dividerZIndexes),
+    };
+  });
+  expect(layering.panelZIndex).toBeGreaterThan(layering.dividerZIndex);
+  expect(layering.ownerZIndex).toBeGreaterThan(layering.dividerZIndex);
+});
+
 test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('#editor-settings-toggle').click();
@@ -628,26 +717,25 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   const splitKey = page.locator('#split-key');
   const helpSplitKey = page.locator('#help-split-key');
   await expect(settingsPanel).not.toContainText('波形区拆分按键');
-  await expect(displayRows).toHaveCount(2);
-  const rowBoxes = await displayRows.evaluateAll((rows) => rows.map((row) => {
-    const rect = row.getBoundingClientRect();
-    const childTops = [...row.children].map((child) => child.getBoundingClientRect().top);
-    return { top: rect.top, height: rect.height, childTops };
-  }));
-  expect(rowBoxes[1].top).toBeGreaterThanOrEqual(rowBoxes[0].top + rowBoxes[0].height);
-  for (const row of rowBoxes) {
-    expect(Math.max(...row.childTops) - Math.min(...row.childTops)).toBeLessThan(3);
-  }
+  await expect(displayRows).toHaveCount(0);
   const modKey = await page.evaluate(() => (
     /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgentData?.platform || '') ? 'Cmd' : 'Ctrl'
   ));
   await expect(helpSplitKey).toHaveText('Enter');
   await expect(page.locator('#help-waveform-split-key')).toHaveText('B');
-  await expect(helpPanel).toContainText('单选副字幕后绑定到主字幕');
+  await expect(helpPanel).toContainText('绑定到主副字幕（自动匹配）');
   await expect(helpPanel).toContainText('解绑当前副字幕');
   await expect(helpPanel).toContainText('对齐副字幕到主字幕时间轴');
-  await expect(helpPanel).toContainText('单选副字幕后打开副字幕拆分');
-  await expect(helpPanel).toContainText('波形标记');
+  await expect(helpPanel).not.toContainText('波形轨道徽标');
+  await expect(helpPanel).not.toContainText('语言类型：单词型适合英语等空格语言，字符型适合中文/日文等');
+  await expect(helpPanel).not.toContainText('主字幕自动使用时间码拆分：单轨可直接拆分');
+  await expect(helpPanel).not.toContainText('主字幕调整时副字幕只跟随');
+  await expect(helpPanel).not.toContainText('副字幕调整时受主字幕轨道边界限制');
+  await expect(helpPanel).not.toContainText('普通点击以最后点击的轨道为准；未绑定副字幕不会保留旧主字幕选区');
+
+  const multiSubtitleHelp = helpPanel.locator('.help-subgroup').filter({ hasText: '绑定到主副字幕（自动匹配）' });
+  await expect(multiSubtitleHelp.locator('.help-subtitle')).toHaveText('多重字幕');
+  await expect(multiSubtitleHelp).toHaveCount(1);
 
   await splitKey.selectOption('enter');
   await expect(helpSplitKey).toHaveText('Enter');

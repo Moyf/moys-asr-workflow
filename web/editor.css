@@ -661,7 +661,8 @@
      额外固定高度、单行不换行 + 横向滚动，避免与波形 scroll 的 padding 错位。 */
   .toolbar.player-toolbar,
   .toolbar.cue-list-toolbar,
-  .toolbar.waveform-toolbar {
+  .toolbar.waveform-toolbar,
+  .toolbar.cue-editor-toolbar {
     height: var(--panel-toolbar-h);
     margin: 0;
     padding: 6px 8px;
@@ -676,22 +677,131 @@
   }
   .toolbar.player-toolbar > *,
   .toolbar.cue-list-toolbar > *,
-  .toolbar.waveform-toolbar > * { flex: 0 0 auto; }
+  .toolbar.waveform-toolbar > *,
+  .toolbar.cue-editor-toolbar > * { flex: 0 0 auto; }
   .toolbar.cue-list-toolbar .input-clear input[type=text] { min-width: 140px; width: 20ch; }
-  .subtitle-preview-settings {
+  .settings-anchor {
     display: inline-flex; align-items: center;
+    order: 99; margin-left: auto;
   }
-  .toolbar .subtitle-preview-settings-toggle {
+  .toolbar .settings-anchor > button {
     min-width: 30px; padding: 3px 7px; font-size: 14px; line-height: 1;
   }
-  .subtitle-preview-settings-panel {
-    position: fixed; z-index: 260;
-    display: grid; gap: 8px; width: min(320px, calc(100vw - 16px));
-    padding: 9px 10px;
+  .toolbar .settings-anchor > button.active {
+    position: relative; z-index: 421;
+  }
+  .settings-panel {
+    position: fixed; z-index: 420;
+    display: flex; flex-direction: column; gap: 12px;
+    width: min(360px, calc(100vw - 16px)); max-height: min(560px, calc(100vh - 16px));
+    padding: 10px; overflow-y: auto;
     background: var(--bg-overlay); border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md); box-shadow: var(--shadow-3);
   }
-  .subtitle-preview-settings-panel[hidden] { display: none; }
+  .settings-panel[hidden] { display: none; }
+  .settings-panel-owner-open {
+    position: relative; z-index: 80;
+  }
+  .settings-panel-section {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    min-width: 0; padding: 8px 10px;
+    background: var(--bg-raised); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+  }
+  .settings-panel-title {
+    flex: 0 0 100%; color: var(--text-secondary); font-size: 12px; font-weight: 600;
+    letter-spacing: .08em; text-align: center;
+  }
+  .settings-panel-item {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--text-secondary); font-size: 12px;
+  }
+  .settings-panel-item[hidden] { display: none; }
+  .settings-panel-field {
+    display: flex; flex: 0 0 100%; flex-direction: column; align-items: flex-start; gap: 3px;
+    min-width: 0;
+  }
+  .settings-panel-hint {
+    flex: 0 0 100%; margin: 0; color: var(--text-muted); font-size: 10px; line-height: 1.35;
+  }
+  .settings-panel-section select {
+    background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 4px 6px; font-size: 12px; cursor: pointer;
+    transition: border-color var(--t-fast), box-shadow var(--t-fast);
+  }
+  .settings-panel-section select:focus {
+    outline: none; border-color: var(--accent); box-shadow: var(--focus-ring);
+  }
+  .settings-panel-section select:disabled { opacity: .42; cursor: not-allowed; }
+  .settings-panel-section input[type="text"],
+  .settings-panel-section input[type="number"] {
+    background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 4px 6px; min-height: var(--control-h);
+    transition: border-color var(--t-fast), box-shadow var(--t-fast);
+  }
+  .settings-panel-section input[type="text"]:focus,
+  .settings-panel-section input[type="number"]:focus {
+    outline: none; border-color: var(--accent); box-shadow: var(--focus-ring);
+  }
+  .settings-panel-section button {
+    min-width: 26px; padding: 3px 7px; color: var(--btn-text); background: var(--btn-bg);
+    border: 1px solid var(--btn-border); border-radius: var(--radius-sm); font-size: 13px; cursor: pointer;
+  }
+  .settings-panel-section button:hover:not(:disabled) {
+    background: var(--btn-bg-hover); border-color: var(--btn-border-hover);
+  }
+  .settings-panel-section button:focus-visible {
+    outline: 2px solid var(--accent-line); outline-offset: 1px;
+  }
+  .settings-panel-section button:disabled { opacity: .42; cursor: not-allowed; }
+  .subtitle-preview-settings-panel { width: min(400px, calc(100vw - 16px)); }
+  .cue-list-settings-panel { width: min(340px, calc(100vw - 16px)); }
+  .cue-editor-settings-panel { width: min(300px, calc(100vw - 16px)); }
+  .subtitle-preview-settings-fields {
+    display: grid; gap: 8px; width: 100%; min-width: 0;
+  }
+  .subtitle-preview-settings-section { display: block; }
+  .cue-list-settings-section,
+  .cue-editor-settings-section { display: grid; }
+  .cue-list-setting-row input[type="number"] {
+    width: 7em; min-width: 0; box-sizing: border-box;
+  }
+  .cue-list-settings-display-group {
+    display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .cue-list-settings-display-group .settings-panel-item {
+    white-space: nowrap;
+  }
+  .cue-editor-settings-display-group {
+    display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .cue-editor-settings-display-group .settings-panel-item {
+    white-space: nowrap;
+  }
+  .waveform-settings-section { width: 100%; }
+  .waveform-settings-title { text-transform: none; }
+  .waveform-settings-section .editor-settings-item {
+    flex: 0 0 auto; color: var(--text-secondary); font-size: 12px;
+  }
+  .waveform-settings-section select {
+    background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 4px 6px; font-size: 12px; cursor: pointer;
+  }
+  .waveform-settings-section select:focus {
+    outline: none; border-color: var(--accent); box-shadow: var(--focus-ring);
+  }
+  .waveform-settings-section select:disabled { opacity: .42; cursor: not-allowed; }
+  .waveform-settings-section button {
+    min-width: 26px; padding: 3px 7px; color: var(--btn-text); background: var(--btn-bg);
+    border: 1px solid var(--btn-border); border-radius: var(--radius-sm); font-size: 13px; cursor: pointer;
+  }
+  .waveform-settings-section button:hover:not(:disabled) {
+    background: var(--btn-bg-hover); border-color: var(--btn-border-hover);
+  }
+  .waveform-settings-section button:focus-visible {
+    outline: 2px solid var(--accent-line); outline-offset: 1px;
+  }
+  .waveform-settings-section button:disabled { opacity: .42; cursor: not-allowed; }
   .subtitle-preview-setting-row {
     display: grid; grid-template-columns: 5em minmax(0, 1fr); align-items: center; gap: 8px;
     color: var(--text-secondary); font-size: 12px; white-space: nowrap;
@@ -758,9 +868,7 @@
   .editor-settings-field > label.toggle.editor-settings-item { align-self: stretch; width: 100%; }
   .editor-settings-field > .editor-settings-hint { margin: 0; }
   .editor-settings-list-fields { flex-wrap: wrap; }
-  .editor-settings-display-row { flex: 0 0 100%; flex-wrap: nowrap; align-items: flex-start; }
   .editor-settings-list-fields > span { color: var(--text-muted); }
-  .editor-settings-display-row > span,
   .editor-settings-toggle-group > .toggle { white-space: nowrap; }
   /* 显示开关分组：空间够时与标题同行，不够时整组折到下一行，组内按宽度继续换行。 */
   .editor-settings-toggle-group {
@@ -811,7 +919,6 @@
     .editor-settings-panel { grid-template-columns: 1fr; }
   }
   @media (max-width: 420px) {
-    .editor-settings-display-row { gap: 3px; font-size: 11px; }
     .editor-settings-toggle-group > .toggle { gap: 2px; }
   }
 
@@ -1112,6 +1219,18 @@
     background: var(--bg-panel);
     border: 1px solid var(--border-subtle); border-left: 3px solid var(--amber); border-radius: var(--radius-md);
     box-shadow: var(--shadow-2);
+  }
+  .current-cue-panel > .cue-editor-toolbar {
+    height: var(--panel-toolbar-h);
+    margin: -10px -12px 10px;
+    padding: 6px 8px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    align-items: center;
+    background: var(--panel-toolbar-bg);
+    border-bottom: 1px solid var(--border-subtle);
+    box-shadow: 0 1px 0 var(--panel-toolbar-shadow);
   }
   .cue-panel-layout {
     display: grid; width: 100%; min-width: 0;

@@ -851,6 +851,20 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 多字幕轨道的主/副背景选择器与通用 disabled 选择器同样具体；
+   disabled 放在这里确保条纹背景和禁用文字不会被轨道底色盖掉。 */
+.waveform-row.multi-subtitle-row .waveform-cue-block.disabled {
+  opacity: 0.48;
+  color: var(--wave-disabled-text);
+  border-style: dashed;
+  border-color: var(--wave-disabled-border);
+  background: repeating-linear-gradient(
+    135deg,
+    var(--wave-disabled-a) 0 5px,
+    var(--wave-disabled-b) 5px 10px
+  );
+}
+.waveform-row.multi-subtitle-row .waveform-cue-block.disabled:hover { opacity: 0.7; }
 
 /* Ctrl(Cmd)+左键拖动空白处：使用和正式字幕块一致的几何形状，
    以半透明虚影预览将要创建的时间范围。 */

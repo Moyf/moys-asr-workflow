@@ -45,7 +45,7 @@ VIDEO_EXTS = set(VIDEO_EXTENSIONS)
 AUDIO_EXTS = set(AUDIO_EXTENSIONS)
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 # Keep this aligned with pyproject.toml; release workflows synchronize it.
-BUNDLED_EDITOR_VERSION = "1.4.0-beta.4"
+BUNDLED_EDITOR_VERSION = "1.4.0-beta.5"
 
 
 class Sticker(TypedDict):
@@ -70,7 +70,7 @@ def media_tag(media_path: Path, media_url: str) -> str:
     if ext in VIDEO_EXTS:
         return (
             f'<video id="player" preload="metadata" '
-            f'style="width:100%;max-height:40vh;background:#000;display:block;">'
+            f'style="width:100%;background:#000;display:block;">'
             f'<source src="{html.escape(media_url)}"></video>'
         )
     return (

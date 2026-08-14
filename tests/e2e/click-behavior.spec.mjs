@@ -76,7 +76,7 @@ test('context menu closes on pointerdown over blank waveform', async ({ page }) 
 
 test('list click auto-scroll can be disabled without disabling seek', async ({ page }) => {
   await page.goto(server.url);
-  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#cue-list-settings-toggle').click();
   const autoScroll = page.locator('#cue-list-auto-scroll-on-click');
   await expect(autoScroll).toBeChecked();
   await autoScroll.uncheck();
@@ -168,6 +168,36 @@ test('list cue selects on pointerdown and double-click still enters edit', async
 
   await cue.dblclick();
   await expect(cue).toHaveClass(/editing/);
+});
+
+test('waveform cue double-click activates its subtitle editor while blank double-click still toggles playback', async ({ page }) => {
+  await page.goto(server.url);
+  const cue = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first();
+  await cue.scrollIntoViewIfNeeded();
+  await cue.dblclick();
+  await expect(page.locator('#cue-panel-target')).toHaveText('主字幕');
+  expect(await page.locator('#player').evaluate((element) => element.paused)).toBe(true);
+
+  const blankRow = page.locator('.waveform-row:not(:has(.waveform-cue-block))').first();
+  const rowBox = await blankRow.boundingBox();
+  if (!rowBox) throw new Error('波形行没有布局');
+  await page.mouse.dblclick(rowBox.x + rowBox.width / 2, rowBox.y + rowBox.height / 2);
+  await expect.poll(() => page.locator('#player').evaluate((element) => element.paused)).toBe(false);
+});
+
+test('cue-panel Enter split falls back to a waveform split marker', async ({ page }) => {
+  await page.goto(server.url);
+  await makeFirstCueWordSplittable(page);
+  await page.locator('.cue[data-idx="0"]').click();
+  const panel = page.locator('#cue-panel-text');
+  await expect(panel).toHaveValue('Alpha Bravo');
+  await panel.focus();
+  await panel.evaluate((element) => element.setSelectionRange(5, 5));
+  await panel.press('Enter');
+
+  await expect(page.locator('.waveform-split-flash.is-active')).toHaveCount(1);
+  await expect(page.locator('.cue')).toHaveCount(7);
+  await expect(page.locator('.cue-split-flash')).toHaveCount(0);
 });
 
 test('double-click places the inline caret at the pointer text position', async ({ page }) => {
