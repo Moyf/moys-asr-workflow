@@ -8,6 +8,8 @@ const NINJA_SFX_BASE_URL = __NINJA_SFX_BASE_URL_JSON__;
 
 const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
 const EDITOR_SETTINGS_UTILS = window.AsrEditorUtils;
+const EDITOR_SERVICES = window.MAWE?.resolve?.('editor-services');
+if (!EDITOR_SERVICES) throw new Error('MAWE editor services are unavailable');
 const {
   normalizeMultiSubtitleRowHeight,
   normalizeClickBehavior,
@@ -571,6 +573,18 @@ function constrainBoundExtensionPanelEdit(extension, track, oldStart, oldEnd) {
 
 normalizeMultiSubtitleState();
 const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';
+const editorSettingsStore = EDITOR_SERVICES.createSettingsStore({
+  key: EDITOR_SETTINGS_KEY,
+  normalize: EDITOR_SETTINGS_UTILS.normalizeEditorSettings,
+});
+const editorDownloadService = EDITOR_SERVICES.createDownloadService({
+  windowRef: window,
+  documentRef: document,
+});
+const editorServerApi = EDITOR_SERVICES.createServerApi({
+  fetchRef: (...args) => window.fetch(...args),
+  baseUrl: window.location.href,
+});
 const SUBTITLE_FONT_SIZE_MIN = 12;
 const SUBTITLE_FONT_SIZE_MAX = 96;
 const SUBTITLE_FONT_FAMILY_MAX_LENGTH = 128;
@@ -591,20 +605,11 @@ const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
 });
 
 function readEditorSettings() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || '{}');
-    return EDITOR_SETTINGS_UTILS.normalizeEditorSettings(saved);
-  } catch (_) {
-    return EDITOR_SETTINGS_UTILS.normalizeEditorSettings();
-  }
+  return editorSettingsStore.read();
 }
 
 function saveEditorSettings(settings) {
-  try {
-    localStorage.setItem(EDITOR_SETTINGS_KEY, JSON.stringify(settings));
-  } catch (_) {
-    // file:// 隐私模式可能拒绝 localStorage；本次页面仍保持可用。
-  }
+  editorSettingsStore.write(settings);
 }
 
 const EDITOR_SETTINGS = readEditorSettings();
@@ -8685,30 +8690,19 @@ async function downloadColorSrts(gapRemoved = false) {
   let filenameBase = `${FILENAME_BASE}${gapSuffix}`;
   // 浏览器不允许从一个文件句柄取得其父目录，因此不再请求文件夹权限。
   // 先让用户选择一个 SRT 文件名，并把该名称（不含 .srt）作为所有颜色文件的前缀。
-  if (EDITOR_SETTINGS.exportColorUnified && window.showSaveFilePicker) {
-    try {
-      const handle = await window.showSaveFilePicker({
-        id: 'maw-color-srt-export-prefix',
-        suggestedName: `${filenameBase}.srt`,
-        types: [{ description: 'SRT 字幕文件（作为导出前缀）', accept: { 'text/plain': ['.srt'] } }],
-      });
-      filenameBase = handle.name.replace(/\.srt$/i, '') || filenameBase;
-    } catch (e) {
-      // 用户取消文件名选择 — 静默退出，不回退
-      if (e && e.name === 'AbortError') return;
-      // 其他错误（如安全限制）：回退到默认文件名前缀。
-    }
+  if (EDITOR_SETTINGS.exportColorUnified) {
+    const picked = await editorDownloadService.pickFilename(
+      `${filenameBase}.srt`,
+      { desc: 'SRT 字幕文件（作为导出前缀）', types: { 'text/plain': ['.srt'] } },
+      { id: 'maw-color-srt-export-prefix' },
+    );
+    if (picked.cancelled) return;
+    if (picked.ok) filenameBase = picked.name.replace(/\.srt$/i, '') || filenameBase;
   }
   for (const color of colors) {
     const filename = `${filenameBase}_${color.name}.srt`;
     if (EDITOR_SETTINGS.exportColorUnified) {
-      const blob = new Blob([buildPayload(color)], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = filename;
-      document.body.appendChild(anchor); anchor.click(); document.body.removeChild(anchor);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      editorDownloadService.downloadBlob(buildPayload(color), filename, 'text/plain');
     } else {
       const saved = await downloadFile(
         buildPayload(color), filename, 'text/plain',
@@ -9234,31 +9228,7 @@ function buildGapRemovedStickerOtio() {
 }
 
 async function downloadFile(content, filename, mime, accept) {
-  // 优先尝试 File System Access API（弹出保存路径选择对话框）
-  if (window.showSaveFilePicker) {
-    try {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: filename,
-        types: accept ? [{ description: accept.desc, accept: accept.types }] : undefined,
-      });
-      const w = await handle.createWritable();
-      await w.write(new Blob([content], { type: mime + ';charset=utf-8' }));
-      await w.close();
-      return true;
-    } catch (e) {
-      // 用户取消保存对话框 — 静默退出，不回退
-      if (e && e.name === 'AbortError') return false;
-      // 其他错误（如安全限制、unsupported 文件类型）：回退到 anchor 下载
-    }
-  }
-  // 兜底：传统 anchor 下载（不弹路径选择）
-  const blob = new Blob([content], { type: mime + ';charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  return true;
+  return (await editorDownloadService.save(content, filename, mime, accept)).ok;
 }
 
 // === 标题区：媒体名点击复制 / 工程文件名点击复制 ===
@@ -9482,17 +9452,7 @@ async function openRecentProject(project) {
     return;
   }
   try {
-    const response = await fetch(SERVER_CONFIG.recentProjectsUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: project.path }),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.ok) {
-      const error = new Error(result.error || `服务器返回 ${response.status}`);
-      error.missing = result.missing === true;
-      throw error;
-    }
+    await editorServerApi.postJson(SERVER_CONFIG.recentProjectsUrl, { path: project.path });
     window.location.reload();
   } catch (error) {
     if (error?.missing) {
@@ -9509,13 +9469,7 @@ async function openRecentProject(project) {
 // 任何失败都静默回退为「手动选择媒体」的便携流程。
 async function attachProjectToServer(fileName, projectData) {
   try {
-    const response = await fetch(SERVER_CONFIG.attachUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileName, project: projectData }),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.ok) return false;
+    await editorServerApi.postJson(SERVER_CONFIG.attachUrl, { fileName, project: projectData });
     window.location.reload();
     return true;
   } catch {
@@ -9606,15 +9560,10 @@ function configureServerProjectSettings() {
       const enabled = autoOpenLastProjectToggle.checked;
       autoOpenLastProjectToggle.disabled = true;
       try {
-        const response = await fetch(SERVER_CONFIG.settingsUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ autoOpenLastProject: enabled }),
-        });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok || !result.ok) {
-          throw new Error(result.error || `服务器返回 ${response.status}`);
-        }
+        const result = await editorServerApi.postJson(
+          SERVER_CONFIG.settingsUrl,
+          { autoOpenLastProject: enabled },
+        );
         SERVER_CONFIG.autoOpenLastProject = result.autoOpenLastProject;
       } catch (error) {
         autoOpenLastProjectToggle.checked = SERVER_CONFIG.autoOpenLastProject !== false;
@@ -9698,11 +9647,7 @@ function restoreWorkspaceSelection() {
 }
 
 async function updateServerWorkspaceSettings(payload) {
-  const response = await fetch(SERVER_CONFIG.settingsUrl, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-  });
-  const result = await response.json();
-  if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
+  const result = await editorServerApi.postJson(SERVER_CONFIG.settingsUrl, payload);
   SERVER_CONFIG.savedWorkspaces = result.savedWorkspaces || {};
   SERVER_CONFIG.presetWorkspaces = result.presetWorkspaces || {};
   SERVER_CONFIG.activeWorkspaceName = result.activeWorkspaceName || '';
@@ -9923,16 +9868,10 @@ async function saveProjectToServer({ silent = false } = {}) {
   const projectJson = buildJson();
   projectSaveInFlight = true;
   try {
-    const saveUrl = new URL(SERVER_CONFIG.saveUrl, window.location.href);
-    const response = await fetch(saveUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project: JSON.parse(projectJson), filename: null }),
+    const result = await editorServerApi.postJson(SERVER_CONFIG.saveUrl, {
+      project: JSON.parse(projectJson),
+      filename: null,
     });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.ok) {
-      throw new Error(result.error || `服务器返回 ${response.status}`);
-    }
     markProjectSaved(result.filename, result.backup, { silent });
     return true;
   } catch (error) {
@@ -9962,25 +9901,25 @@ async function saveProjectAsToFile() {
   commitCuePanelEdit();
   const suggested = `${FILENAME_BASE}.mosp`;
   // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
-  if (!window.showSaveFilePicker) {
-    await downloadFile(buildJson(), suggested, 'application/json', {
+  const projectJson = buildJson();
+  const pickerResult = await editorDownloadService.saveWithPicker(
+    projectJson,
+    suggested,
+    'application/json',
+    { desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] } },
+  );
+  if (pickerResult.unsupported) {
+    await downloadFile(projectJson, suggested, 'application/json', {
       desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
     });
     return;
   }
-  try {
-    const handle = await window.showSaveFilePicker({
-      suggestedName: suggested,
-      types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
-    });
-    const writable = await handle.createWritable();
-    await writable.write(new Blob([buildJson()], { type: 'application/json;charset=utf-8' }));
-    await writable.close();
-    markProjectSaved(handle.name, null);
-  } catch (error) {
-    if (error && error.name === 'AbortError') return;  // 用户取消保存对话框
-    flashHint(`保存失败：${error?.message || error}`, 'warning');
+  if (pickerResult.cancelled) return;
+  if (!pickerResult.ok) {
+    flashHint(`保存失败：${pickerResult.error?.message || pickerResult.error}`, 'warning');
+    return;
   }
+  markProjectSaved(pickerResult.name, null);
 }
 
 const mediaNameEl = document.getElementById('media-name');

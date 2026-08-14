@@ -18,6 +18,7 @@ class EditorAssetContractTests(unittest.TestCase):
             (
                 "editor-runtime.js",
                 "editor-utils.js",
+                "editor-services.js",
                 "editor-i18n.js",
                 "waveform.js",
                 "editor.js",
@@ -31,6 +32,7 @@ class EditorAssetContractTests(unittest.TestCase):
         markers = (
             "// Shared frontend runtime registry.",
             "// Pure editor helpers kept separate",
+            "// Browser capability services kept separate",
             "(function initMaweI18n(global) {",
             "// Framework-neutral waveform runtime.",
             "const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';",
@@ -64,6 +66,7 @@ class EditorAssetContractTests(unittest.TestCase):
         markers = (
             "// Shared frontend runtime registry.",
             "window.AsrEditorUtils = {",
+            "// Browser capability services kept separate",
             "global.MAWE_I18N = {",
             "window.AsrWaveform = {",
             "window.MAWE_EDITOR_BRIDGE = Object.freeze({",

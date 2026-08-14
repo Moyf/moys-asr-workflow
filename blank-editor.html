@@ -5098,6 +5098,38 @@
     return value == null ? null : JSON.parse(JSON.stringify(value));
   }
 
+  const HISTORY_RECORD_DEFAULT_LABELS = Object.freeze({
+    segments: '编辑',
+    layout: '调整工作区',
+    gap_remove: '空隙移除',
+    preview: '预览',
+  });
+
+  // 历史记录的快照只负责值和记录形状，不触碰编辑器状态或 DOM。
+  function buildSegmentsHistorySnapshot(segments, multiSubtitle) {
+    return {
+      segments: cloneJsonValue(segments),
+      multi_subtitle: cloneJsonValue(multiSubtitle),
+    };
+  }
+
+  function buildHistoryRecord(kind, label, payload) {
+    const recordKind = Object.prototype.hasOwnProperty.call(HISTORY_RECORD_DEFAULT_LABELS, kind)
+      ? kind : 'segments';
+    const record = {
+      kind: recordKind,
+      label: label || HISTORY_RECORD_DEFAULT_LABELS[recordKind],
+    };
+    if (recordKind === 'segments') record.segs = cloneJsonValue(payload);
+    if (recordKind === 'layout') record.layout = payload || null;
+    if (recordKind === 'gap_remove') {
+      record.gapRemove = cloneJsonValue(payload?.gapRemove ?? null);
+      record.gapRemoveDirty = payload?.gapRemoveDirty === true;
+    }
+    if (recordKind === 'preview') record.preview = cloneJsonValue(payload);
+    return record;
+  }
+
   // === 多重字幕（双语字幕）===
   // 这组 helper 刻意不依赖 DOM，便携 HTML、localhost 编辑器和 Node 测试共用同一套
   // 数据/匹配/近似拆分规则。主轨仍然是顶层 segments；扩展轨的 items 不参与拆分。
@@ -5705,25 +5737,28 @@
     const firstEnabledIndex = Number.isInteger(options.firstEnabledIndex)
       ? options.firstEnabledIndex
       : getSrtExportFirstIndex(source, alignFirstStart);
+    const keepDisabledPlaceholder = options.keepDisabledPlaceholder === true && !colorName;
     const parts = [];
-    source
-      .map((segment, sourceIndex) => ({ segment, sourceIndex }))
-      .filter(({ segment }) => {
-        if (!segment || segment.disabled) return false;
-        if (!colorName) return true;
+    let outputIndex = 0;
+    source.forEach((segment, sourceIndex) => {
+      if (!segment) return;
+      const disabled = segment.disabled === true;
+      if (disabled && !keepDisabledPlaceholder) return;
+      if (!disabled && colorName) {
         const effectiveName = effectiveColorName(segment, source);
-        return colorName === 'default' ? !effectiveName : effectiveName === colorName;
-      })
-      .forEach(({ segment, sourceIndex }, index) => {
-        const mappedStart = Math.max(0, Math.round(Number(mapTime(segment.start)) || 0));
-        const start = alignFirstStart && sourceIndex === firstEnabledIndex ? 0 : mappedStart;
-        const mappedEnd = Math.max(0, Math.round(Number(mapTime(segment.end)) || 0));
-        const end = options.ensurePositiveDuration ? Math.max(start + 1, mappedEnd) : mappedEnd;
-        parts.push(String(index + 1));
-        parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
-        parts.push(String(segment.text || ''));
-        parts.push('');
-      });
+        const matches = colorName === 'default' ? !effectiveName : effectiveName === colorName;
+        if (!matches) return;
+      }
+      const mappedStart = Math.max(0, Math.round(Number(mapTime(segment.start)) || 0));
+      const start = alignFirstStart && !disabled && sourceIndex === firstEnabledIndex ? 0 : mappedStart;
+      const mappedEnd = Math.max(0, Math.round(Number(mapTime(segment.end)) || 0));
+      const end = options.ensurePositiveDuration ? Math.max(start + 1, mappedEnd) : mappedEnd;
+      outputIndex += 1;
+      parts.push(String(outputIndex));
+      parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
+      parts.push(disabled ? '' : String(segment.text || ''));
+      parts.push('');
+    });
     return parts.join('\n');
   }
 
@@ -5759,6 +5794,55 @@
         seen.add(key);
         return true;
       });
+  }
+
+  const GAP_REMOVE_SCHEMA = 'moy.asr.gap_remove.v1';
+  const GAP_REMOVE_OPERATION_MODES = new Set(['none', 'boundary_drag', 'middle_drag']);
+  const DEFAULT_GAP_REMOVE_MIN_MS = 500;
+  const DEFAULT_GAP_REMOVE_THRESHOLD_DB = -24;
+  const DEFAULT_GAP_REMOVE_HYSTERESIS_DB = 2;
+  const DEFAULT_GAP_REMOVE_LEAD_IN_MS = 40;
+  const DEFAULT_GAP_REMOVE_LEAD_OUT_MS = 80;
+  const DEFAULT_GAP_REMOVE_OPERATION_MODE = 'boundary_drag';
+
+  function clampGapRemoveMinimum(value) {
+    const rounded = Math.round(Number(value));
+    return Math.min(60000, Math.max(100, Number.isFinite(rounded) ? rounded : DEFAULT_GAP_REMOVE_MIN_MS));
+  }
+
+  function clampGapRemoveThreshold(value) {
+    const numeric = Number(value);
+    return Math.min(0, Math.max(-96, Number.isFinite(numeric) ? numeric : DEFAULT_GAP_REMOVE_THRESHOLD_DB));
+  }
+
+  function clampGapRemoveHysteresis(value) {
+    const numeric = Number(value);
+    return Math.min(30, Math.max(0, Number.isFinite(numeric) ? numeric : DEFAULT_GAP_REMOVE_HYSTERESIS_DB));
+  }
+
+  function clampGapRemoveLeadMs(value, fallback) {
+    const rounded = Math.round(Number(value));
+    return Math.min(2000, Math.max(0, Number.isFinite(rounded) ? rounded : fallback));
+  }
+
+  // 空隙移除设置只做数据归一化，不读写 DATA、DOM 或 localStorage。
+  function normalizeGapRemoveData(value) {
+    const source = value && typeof value === 'object' ? value : {};
+    const gaps = normalizeGapRemoveGaps(source.gaps);
+    return {
+      schema: GAP_REMOVE_SCHEMA,
+      detector: source.detector === 'audio_gate' || !gaps.length ? 'audio_gate' : 'legacy_subtitle_gap',
+      minimum_ms: clampGapRemoveMinimum(source.minimum_ms),
+      threshold_db: clampGapRemoveThreshold(source.threshold_db),
+      hysteresis_db: clampGapRemoveHysteresis(source.hysteresis_db),
+      lead_in_ms: clampGapRemoveLeadMs(source.lead_in_ms, DEFAULT_GAP_REMOVE_LEAD_IN_MS),
+      lead_out_ms: clampGapRemoveLeadMs(source.lead_out_ms, DEFAULT_GAP_REMOVE_LEAD_OUT_MS),
+      skip_playback: source.skip_playback !== false,
+      manual_corrections: source.manual_corrections === true,
+      operation_mode: GAP_REMOVE_OPERATION_MODES.has(source.operation_mode)
+        ? source.operation_mode : DEFAULT_GAP_REMOVE_OPERATION_MODE,
+      gaps,
+    };
   }
 
   function coalesceGapRemoveGaps(gaps) {
@@ -6334,6 +6418,7 @@
     buildPlainTextPayload,
     fileBasename,
     normalizeGapRemoveGaps,
+    normalizeGapRemoveData,
     applyGapRemoveRange,
     resizeGapRemoveBoundary,
     detectAudioGapRemoveGaps,
@@ -6355,6 +6440,8 @@
     clampAutoMergeGapMs: clampEditorAutoMergeGapMs,
     clampAutoMergeShortCount: clampEditorAutoMergeShortCount,
     createHistoryStack,
+    buildSegmentsHistorySnapshot,
+    buildHistoryRecord,
     PREVIEW_MIN_WIDTH,
     PREVIEW_MIN_HEIGHT,
   DEFAULT_PREVIEW_GEOMETRY,
@@ -6368,6 +6455,168 @@
     window.MAWE.register('editor-utils', () => window.AsrEditorUtils);
   }
 })();
+
+// Browser capability services kept separate from editor state and commands.
+(function initMaweEditorServices(global) {
+  'use strict';
+
+  function createSettingsStore({ key, storage, normalize } = {}) {
+    const normalizeValue = typeof normalize === 'function' ? normalize : (value) => value;
+    const getStorage = () => {
+      try {
+        return storage === undefined ? global.localStorage : storage;
+      } catch (_) {
+        return null;
+      }
+    };
+
+    function read() {
+      let saved = {};
+      try {
+        const raw = getStorage()?.getItem?.(key);
+        saved = raw ? JSON.parse(raw) : {};
+      } catch (_) {
+        saved = {};
+      }
+      return normalizeValue(saved);
+    }
+
+    function write(value) {
+      try {
+        const target = getStorage();
+        if (!target?.setItem) return false;
+        target.setItem(key, JSON.stringify(value));
+        return true;
+      } catch (_) {
+        // file://、隐私模式或配额不足时，编辑器仍应保持可用。
+        return false;
+      }
+    }
+
+    return Object.freeze({ read, write });
+  }
+
+  function createDownloadService({ windowRef = global, documentRef = global.document } = {}) {
+    const runtime = windowRef || global;
+    const documentObject = documentRef || runtime.document;
+    const BlobCtor = runtime.Blob || global.Blob;
+    const urlApi = runtime.URL || global.URL;
+    const schedule = typeof runtime.setTimeout === 'function'
+      ? runtime.setTimeout.bind(runtime)
+      : global.setTimeout;
+
+    function pickerTypes(accept) {
+      return accept ? [{ description: accept.desc, accept: accept.types }] : undefined;
+    }
+
+    async function pickSaveFile(suggestedName, accept, options = {}) {
+      if (typeof runtime.showSaveFilePicker !== 'function') return null;
+      return runtime.showSaveFilePicker({
+        ...options,
+        suggestedName,
+        types: pickerTypes(accept),
+      });
+    }
+
+    async function writeHandle(handle, content, mime) {
+      const writable = await handle.createWritable();
+      await writable.write(new BlobCtor([content], { type: `${mime};charset=utf-8` }));
+      await writable.close();
+    }
+
+    function downloadBlob(content, filename, mime) {
+      const blob = new BlobCtor([content], { type: `${mime};charset=utf-8` });
+      const url = urlApi.createObjectURL(blob);
+      const anchor = documentObject.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      documentObject.body.appendChild(anchor);
+      anchor.click();
+      documentObject.body.removeChild(anchor);
+      schedule(() => urlApi.revokeObjectURL(url), 1000);
+      return true;
+    }
+
+    // 普通下载：优先系统保存框，失败后回退为传统 Blob 下载。
+    async function save(content, filename, mime, accept) {
+      if (typeof runtime.showSaveFilePicker === 'function') {
+        try {
+          const handle = await pickSaveFile(filename, accept);
+          await writeHandle(handle, content, mime);
+          return { ok: true, method: 'picker', name: handle.name || filename };
+        } catch (error) {
+          if (error?.name === 'AbortError') return { ok: false, cancelled: true };
+          // 不支持当前 MIME 或安全上下文受限时，继续走传统下载。
+        }
+      }
+      try {
+        downloadBlob(content, filename, mime);
+        return { ok: true, method: 'download', name: filename };
+      } catch (error) {
+        return { ok: false, error };
+      }
+    }
+
+    // 另存为需要知道系统文件名；系统保存框不可用时交给调用方决定降级行为。
+    async function saveWithPicker(content, filename, mime, accept, options = {}) {
+      if (typeof runtime.showSaveFilePicker !== 'function') {
+        return { ok: false, unsupported: true };
+      }
+      try {
+        const handle = await pickSaveFile(filename, accept, options);
+        await writeHandle(handle, content, mime);
+        return { ok: true, name: handle.name || filename };
+      } catch (error) {
+        if (error?.name === 'AbortError') return { ok: false, cancelled: true };
+        return { ok: false, error };
+      }
+    }
+
+    // 多文件导出先选一个前缀，再用传统下载逐个触发，避免请求目录权限。
+    async function pickFilename(suggestedName, accept, options = {}) {
+      if (typeof runtime.showSaveFilePicker !== 'function') return { unsupported: true };
+      try {
+        const handle = await pickSaveFile(suggestedName, accept, options);
+        return { ok: true, name: handle.name || suggestedName };
+      } catch (error) {
+        if (error?.name === 'AbortError') return { cancelled: true };
+        return { error };
+      }
+    }
+
+    return Object.freeze({ save, saveWithPicker, pickFilename, downloadBlob });
+  }
+
+  function createServerApi({ fetchRef = global.fetch, baseUrl = global.location?.href } = {}) {
+    async function postJson(url, payload) {
+      if (typeof fetchRef !== 'function') throw new Error('当前运行环境不支持 fetch');
+      const target = new URL(String(url), baseUrl || undefined);
+      const response = await fetchRef(target, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      let result = {};
+      try {
+        result = await response.json();
+      } catch (_) {
+        result = {};
+      }
+      if (!response.ok || !result.ok) {
+        const error = new Error(result.error || `服务器返回 ${response.status}`);
+        error.status = response.status;
+        Object.assign(error, result);
+        throw error;
+      }
+      return result;
+    }
+
+    return Object.freeze({ postJson });
+  }
+
+  const api = Object.freeze({ createSettingsStore, createDownloadService, createServerApi });
+  if (global.MAWE?.register) global.MAWE.register('editor-services', () => api);
+})(window);
 
 (function initMaweI18n(global) {
   'use strict';
@@ -11462,6 +11711,8 @@ const NINJA_SFX_BASE_URL = "web/sfx/";
 
 const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
 const EDITOR_SETTINGS_UTILS = window.AsrEditorUtils;
+const EDITOR_SERVICES = window.MAWE?.resolve?.('editor-services');
+if (!EDITOR_SERVICES) throw new Error('MAWE editor services are unavailable');
 const {
   normalizeMultiSubtitleRowHeight,
   normalizeClickBehavior,
@@ -12025,6 +12276,18 @@ function constrainBoundExtensionPanelEdit(extension, track, oldStart, oldEnd) {
 
 normalizeMultiSubtitleState();
 const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';
+const editorSettingsStore = EDITOR_SERVICES.createSettingsStore({
+  key: EDITOR_SETTINGS_KEY,
+  normalize: EDITOR_SETTINGS_UTILS.normalizeEditorSettings,
+});
+const editorDownloadService = EDITOR_SERVICES.createDownloadService({
+  windowRef: window,
+  documentRef: document,
+});
+const editorServerApi = EDITOR_SERVICES.createServerApi({
+  fetchRef: (...args) => window.fetch(...args),
+  baseUrl: window.location.href,
+});
 const SUBTITLE_FONT_SIZE_MIN = 12;
 const SUBTITLE_FONT_SIZE_MAX = 96;
 const SUBTITLE_FONT_FAMILY_MAX_LENGTH = 128;
@@ -12045,20 +12308,11 @@ const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
 });
 
 function readEditorSettings() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || '{}');
-    return EDITOR_SETTINGS_UTILS.normalizeEditorSettings(saved);
-  } catch (_) {
-    return EDITOR_SETTINGS_UTILS.normalizeEditorSettings();
-  }
+  return editorSettingsStore.read();
 }
 
 function saveEditorSettings(settings) {
-  try {
-    localStorage.setItem(EDITOR_SETTINGS_KEY, JSON.stringify(settings));
-  } catch (_) {
-    // file:// 隐私模式可能拒绝 localStorage；本次页面仍保持可用。
-  }
+  editorSettingsStore.write(settings);
 }
 
 const EDITOR_SETTINGS = readEditorSettings();
@@ -12076,53 +12330,8 @@ const COLOR_BY_NAME = Object.fromEntries(COLOR_PALETTE.map(c => [c.name, c]));
 function colorValue(name) { return COLOR_BY_NAME[name]?.value || '#777'; }
 
 const GAP_REMOVE_SCHEMA = 'moy.asr.gap_remove.v1';
-const GAP_REMOVE_OPERATION_MODES = new Set(['none', 'boundary_drag', 'middle_drag']);
-const DEFAULT_GAP_REMOVE_MIN_MS = 500;
-const DEFAULT_GAP_REMOVE_THRESHOLD_DB = -24;
-const DEFAULT_GAP_REMOVE_HYSTERESIS_DB = 2;
-const DEFAULT_GAP_REMOVE_LEAD_IN_MS = 40;
-const DEFAULT_GAP_REMOVE_LEAD_OUT_MS = 80;
-const DEFAULT_GAP_REMOVE_OPERATION_MODE = 'boundary_drag';
 const GAP_REMOVE_ADVANCED_OPEN_KEY = 'moy.asr.gap_remove.advanced_open.v1';
-
-function clampGapRemoveMinimum(value) {
-  const rounded = Math.round(Number(value));
-  return Math.min(60000, Math.max(100, Number.isFinite(rounded) ? rounded : DEFAULT_GAP_REMOVE_MIN_MS));
-}
-
-function clampGapRemoveThreshold(value) {
-  const numeric = Number(value);
-  return Math.min(0, Math.max(-96, Number.isFinite(numeric) ? numeric : DEFAULT_GAP_REMOVE_THRESHOLD_DB));
-}
-
-function clampGapRemoveHysteresis(value) {
-  const numeric = Number(value);
-  return Math.min(30, Math.max(0, Number.isFinite(numeric) ? numeric : DEFAULT_GAP_REMOVE_HYSTERESIS_DB));
-}
-
-function clampGapRemoveLeadMs(value, fallback) {
-  const rounded = Math.round(Number(value));
-  return Math.min(2000, Math.max(0, Number.isFinite(rounded) ? rounded : fallback));
-}
-
-function normalizedGapRemoveData(value) {
-  const source = value && typeof value === 'object' ? value : {};
-  const gaps = window.AsrEditorUtils.normalizeGapRemoveGaps(source.gaps);
-  return {
-    schema: GAP_REMOVE_SCHEMA,
-    detector: source.detector === 'audio_gate' || !gaps.length ? 'audio_gate' : 'legacy_subtitle_gap',
-    minimum_ms: clampGapRemoveMinimum(source.minimum_ms),
-    threshold_db: clampGapRemoveThreshold(source.threshold_db),
-    hysteresis_db: clampGapRemoveHysteresis(source.hysteresis_db),
-    lead_in_ms: clampGapRemoveLeadMs(source.lead_in_ms, DEFAULT_GAP_REMOVE_LEAD_IN_MS),
-    lead_out_ms: clampGapRemoveLeadMs(source.lead_out_ms, DEFAULT_GAP_REMOVE_LEAD_OUT_MS),
-    skip_playback: source.skip_playback !== false,
-    manual_corrections: source.manual_corrections === true,
-    operation_mode: GAP_REMOVE_OPERATION_MODES.has(source.operation_mode)
-      ? source.operation_mode : DEFAULT_GAP_REMOVE_OPERATION_MODE,
-    gaps,
-  };
-}
+const normalizedGapRemoveData = EDITOR_SETTINGS_UTILS.normalizeGapRemoveData;
 
 function getGapRemoveData(create = false) {
   if (!DATA.gap_remove && !create) return null;
@@ -12169,33 +12378,28 @@ let gapRemoveDirty = false;
 function snapshotSegments() {
   // _dirty 也保留，恢复后能再次导出"工程文件"时正确标记；多字幕数据与主轨
   // 必须处于同一条记录中，绑定/成对删除/联动拆分才能原子撤销。
-  return JSON.parse(JSON.stringify({
-    segments: DATA.segments,
-    multi_subtitle: getMultiSubtitleState(),
-  }));
+  return EDITOR_SETTINGS_UTILS.buildSegmentsHistorySnapshot(DATA.segments, getMultiSubtitleState());
 }
 function pushUndo(label) {
-  const record = { kind: 'segments', label: label || '编辑', segs: snapshotSegments() };
+  const record = EDITOR_SETTINGS_UTILS.buildHistoryRecord('segments', label, snapshotSegments());
   editorHistory.push(record);
   updateUndoRedoButtons();
   return record;
 }
 function pushLayoutUndo(label, snapshot) {
   if (!snapshot) return;
-  editorHistory.push({ kind: 'layout', label: label || '调整工作区', layout: snapshot });
+  editorHistory.push(EDITOR_SETTINGS_UTILS.buildHistoryRecord('layout', label, snapshot));
   updateUndoRedoButtons();
 }
 function pushGapRemoveUndo(label) {
-  editorHistory.push({
-    kind: 'gap_remove',
-    label: label || '空隙移除',
-    gapRemove: DATA.gap_remove ? JSON.parse(JSON.stringify(DATA.gap_remove)) : null,
+  editorHistory.push(EDITOR_SETTINGS_UTILS.buildHistoryRecord('gap_remove', label, {
+    gapRemove: DATA.gap_remove,
     gapRemoveDirty,
-  });
+  }));
   updateUndoRedoButtons();
 }
 function pushPreviewUndo(label, preview) {
-  editorHistory.push({ kind: 'preview', label: label || '预览', preview });
+  editorHistory.push(EDITOR_SETTINGS_UTILS.buildHistoryRecord('preview', label, preview));
   updateUndoRedoButtons();
 }
 function snapshotPreviewState() {
@@ -12224,19 +12428,20 @@ function applyPreviewState(state) {
 // 按记录 kind 拍下当前状态，作为对端栈的镜像（label 沿用原记录）
 function snapshotCurrentForKind(kind, label) {
   if (kind === 'layout') {
-    return { kind: 'layout', label: label || '调整工作区', layout: waveformEditor?.getLayoutHistorySnapshot?.() || null };
+    return EDITOR_SETTINGS_UTILS.buildHistoryRecord(
+      'layout', label, waveformEditor?.getLayoutHistorySnapshot?.() || null,
+    );
   }
   if (kind === 'gap_remove') {
-    return {
-      kind: 'gap_remove', label: label || '空隙移除',
+    return EDITOR_SETTINGS_UTILS.buildHistoryRecord('gap_remove', label, {
       gapRemove: DATA.gap_remove ? JSON.parse(JSON.stringify(DATA.gap_remove)) : null,
       gapRemoveDirty,
-    };
+    });
   }
   if (kind === 'preview') {
-    return { kind: 'preview', label: label || '预览', preview: snapshotPreviewState() };
+    return EDITOR_SETTINGS_UTILS.buildHistoryRecord('preview', label, snapshotPreviewState());
   }
-  return { kind: 'segments', label: label || '编辑', segs: snapshotSegments() };
+  return EDITOR_SETTINGS_UTILS.buildHistoryRecord('segments', label, snapshotSegments());
 }
 function applyHistoryRecord(record) {
   if (record.kind === 'layout') {
@@ -20098,49 +20303,22 @@ overlayToggle.addEventListener('change', () => {
 let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 
 function buildSrt() {
-  const parts = [];
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     DATA.segments,
     EDITOR_SETTINGS.exportStartAtZero,
   );
-  const exportTime = (timeMs) => fmtSrtTime(Math.max(0, Math.round(Number(timeMs) || 0)));
-  let n = 0;  // 导出序号：跳过禁用项后重新连续编号
-  DATA.segments.forEach((seg, index) => {
-    if (seg.disabled) {
-      if (!EXPORT_KEEP_DISABLED_PLACEHOLDER) return;  // 默认：完全跳过
-      // 占位模式：保留时间轴，内容留空（序号不变）
-      n++;
-      parts.push(String(n));
-      parts.push(`${exportTime(seg.start)} --> ${exportTime(seg.end)}`);
-      parts.push('');
-      parts.push('');
-      return;
-    }
-    n++;
-    parts.push(String(n));
-    const start = EDITOR_SETTINGS.exportStartAtZero && index === firstEnabledIndex
-      ? fmtSrtTime(0)
-      : exportTime(seg.start);
-    parts.push(`${start} --> ${exportTime(seg.end)}`);
-    parts.push(seg.text);
-    parts.push('');
+  return window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
+    alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
+    keepDisabledPlaceholder: EXPORT_KEEP_DISABLED_PLACEHOLDER,
+    formatTime: fmtSrtTime,
   });
-  return parts.join('\n');
 }
 
 function buildExtensionSrt(track = getActiveExtensionTrack()) {
-  if (!track) return '';
-  const parts = [];
-  let number = 0;
-  (track.segments || []).forEach((segment) => {
-    if (!segment || segment.disabled) return;
-    number++;
-    parts.push(String(number));
-    parts.push(`${fmtSrtTime(segment.start)} --> ${fmtSrtTime(segment.end)}`);
-    parts.push(segment.text || '');
-    parts.push('');
+  return window.AsrEditorUtils.buildSrtPayload(track?.segments || [], {
+    formatTime: fmtSrtTime,
   });
-  return parts.join('\n');
 }
 
 function buildGapRemovedSrt() {
@@ -20149,26 +20327,17 @@ function buildGapRemovedSrt() {
     flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
     return null;
   }
-  const parts = [];
-  let number = 0;
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     DATA.segments,
     EDITOR_SETTINGS.exportStartAtZero,
   );
-  DATA.segments.forEach((segment, index) => {
-    if (segment.disabled) return;
-    number++;
-    const mappedStart = window.AsrEditorUtils.mapGapRemovedTime(segment.start, removed);
-    const start = EDITOR_SETTINGS.exportStartAtZero && index === firstEnabledIndex
-      ? 0
-      : mappedStart;
-    const end = window.AsrEditorUtils.mapGapRemovedTime(segment.end, removed);
-    parts.push(String(number));
-    parts.push(`${fmtSrtTime(start)} --> ${fmtSrtTime(Math.max(start + 1, end))}`);
-    parts.push(segment.text);
-    parts.push('');
+  return window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
+    alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
+    mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
+    ensurePositiveDuration: true,
+    formatTime: fmtSrtTime,
   });
-  return parts.join('\n');
 }
 
 function usedSubtitleColors() {
@@ -20224,30 +20393,19 @@ async function downloadColorSrts(gapRemoved = false) {
   let filenameBase = `${FILENAME_BASE}${gapSuffix}`;
   // 浏览器不允许从一个文件句柄取得其父目录，因此不再请求文件夹权限。
   // 先让用户选择一个 SRT 文件名，并把该名称（不含 .srt）作为所有颜色文件的前缀。
-  if (EDITOR_SETTINGS.exportColorUnified && window.showSaveFilePicker) {
-    try {
-      const handle = await window.showSaveFilePicker({
-        id: 'maw-color-srt-export-prefix',
-        suggestedName: `${filenameBase}.srt`,
-        types: [{ description: 'SRT 字幕文件（作为导出前缀）', accept: { 'text/plain': ['.srt'] } }],
-      });
-      filenameBase = handle.name.replace(/\.srt$/i, '') || filenameBase;
-    } catch (e) {
-      // 用户取消文件名选择 — 静默退出，不回退
-      if (e && e.name === 'AbortError') return;
-      // 其他错误（如安全限制）：回退到默认文件名前缀。
-    }
+  if (EDITOR_SETTINGS.exportColorUnified) {
+    const picked = await editorDownloadService.pickFilename(
+      `${filenameBase}.srt`,
+      { desc: 'SRT 字幕文件（作为导出前缀）', types: { 'text/plain': ['.srt'] } },
+      { id: 'maw-color-srt-export-prefix' },
+    );
+    if (picked.cancelled) return;
+    if (picked.ok) filenameBase = picked.name.replace(/\.srt$/i, '') || filenameBase;
   }
   for (const color of colors) {
     const filename = `${filenameBase}_${color.name}.srt`;
     if (EDITOR_SETTINGS.exportColorUnified) {
-      const blob = new Blob([buildPayload(color)], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = filename;
-      document.body.appendChild(anchor); anchor.click(); document.body.removeChild(anchor);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      editorDownloadService.downloadBlob(buildPayload(color), filename, 'text/plain');
     } else {
       const saved = await downloadFile(
         buildPayload(color), filename, 'text/plain',
@@ -20773,31 +20931,7 @@ function buildGapRemovedStickerOtio() {
 }
 
 async function downloadFile(content, filename, mime, accept) {
-  // 优先尝试 File System Access API（弹出保存路径选择对话框）
-  if (window.showSaveFilePicker) {
-    try {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: filename,
-        types: accept ? [{ description: accept.desc, accept: accept.types }] : undefined,
-      });
-      const w = await handle.createWritable();
-      await w.write(new Blob([content], { type: mime + ';charset=utf-8' }));
-      await w.close();
-      return true;
-    } catch (e) {
-      // 用户取消保存对话框 — 静默退出，不回退
-      if (e && e.name === 'AbortError') return false;
-      // 其他错误（如安全限制、unsupported 文件类型）：回退到 anchor 下载
-    }
-  }
-  // 兜底：传统 anchor 下载（不弹路径选择）
-  const blob = new Blob([content], { type: mime + ';charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  return true;
+  return (await editorDownloadService.save(content, filename, mime, accept)).ok;
 }
 
 // === 标题区：媒体名点击复制 / 工程文件名点击复制 ===
@@ -21021,17 +21155,7 @@ async function openRecentProject(project) {
     return;
   }
   try {
-    const response = await fetch(SERVER_CONFIG.recentProjectsUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: project.path }),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.ok) {
-      const error = new Error(result.error || `服务器返回 ${response.status}`);
-      error.missing = result.missing === true;
-      throw error;
-    }
+    await editorServerApi.postJson(SERVER_CONFIG.recentProjectsUrl, { path: project.path });
     window.location.reload();
   } catch (error) {
     if (error?.missing) {
@@ -21048,13 +21172,7 @@ async function openRecentProject(project) {
 // 任何失败都静默回退为「手动选择媒体」的便携流程。
 async function attachProjectToServer(fileName, projectData) {
   try {
-    const response = await fetch(SERVER_CONFIG.attachUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileName, project: projectData }),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.ok) return false;
+    await editorServerApi.postJson(SERVER_CONFIG.attachUrl, { fileName, project: projectData });
     window.location.reload();
     return true;
   } catch {
@@ -21145,15 +21263,10 @@ function configureServerProjectSettings() {
       const enabled = autoOpenLastProjectToggle.checked;
       autoOpenLastProjectToggle.disabled = true;
       try {
-        const response = await fetch(SERVER_CONFIG.settingsUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ autoOpenLastProject: enabled }),
-        });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok || !result.ok) {
-          throw new Error(result.error || `服务器返回 ${response.status}`);
-        }
+        const result = await editorServerApi.postJson(
+          SERVER_CONFIG.settingsUrl,
+          { autoOpenLastProject: enabled },
+        );
         SERVER_CONFIG.autoOpenLastProject = result.autoOpenLastProject;
       } catch (error) {
         autoOpenLastProjectToggle.checked = SERVER_CONFIG.autoOpenLastProject !== false;
@@ -21237,11 +21350,7 @@ function restoreWorkspaceSelection() {
 }
 
 async function updateServerWorkspaceSettings(payload) {
-  const response = await fetch(SERVER_CONFIG.settingsUrl, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-  });
-  const result = await response.json();
-  if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
+  const result = await editorServerApi.postJson(SERVER_CONFIG.settingsUrl, payload);
   SERVER_CONFIG.savedWorkspaces = result.savedWorkspaces || {};
   SERVER_CONFIG.presetWorkspaces = result.presetWorkspaces || {};
   SERVER_CONFIG.activeWorkspaceName = result.activeWorkspaceName || '';
@@ -21462,16 +21571,10 @@ async function saveProjectToServer({ silent = false } = {}) {
   const projectJson = buildJson();
   projectSaveInFlight = true;
   try {
-    const saveUrl = new URL(SERVER_CONFIG.saveUrl, window.location.href);
-    const response = await fetch(saveUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project: JSON.parse(projectJson), filename: null }),
+    const result = await editorServerApi.postJson(SERVER_CONFIG.saveUrl, {
+      project: JSON.parse(projectJson),
+      filename: null,
     });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.ok) {
-      throw new Error(result.error || `服务器返回 ${response.status}`);
-    }
     markProjectSaved(result.filename, result.backup, { silent });
     return true;
   } catch (error) {
@@ -21501,25 +21604,25 @@ async function saveProjectAsToFile() {
   commitCuePanelEdit();
   const suggested = `${FILENAME_BASE}.mosp`;
   // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
-  if (!window.showSaveFilePicker) {
-    await downloadFile(buildJson(), suggested, 'application/json', {
+  const projectJson = buildJson();
+  const pickerResult = await editorDownloadService.saveWithPicker(
+    projectJson,
+    suggested,
+    'application/json',
+    { desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] } },
+  );
+  if (pickerResult.unsupported) {
+    await downloadFile(projectJson, suggested, 'application/json', {
       desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
     });
     return;
   }
-  try {
-    const handle = await window.showSaveFilePicker({
-      suggestedName: suggested,
-      types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
-    });
-    const writable = await handle.createWritable();
-    await writable.write(new Blob([buildJson()], { type: 'application/json;charset=utf-8' }));
-    await writable.close();
-    markProjectSaved(handle.name, null);
-  } catch (error) {
-    if (error && error.name === 'AbortError') return;  // 用户取消保存对话框
-    flashHint(`保存失败：${error?.message || error}`, 'warning');
+  if (pickerResult.cancelled) return;
+  if (!pickerResult.ok) {
+    flashHint(`保存失败：${pickerResult.error?.message || pickerResult.error}`, 'warning');
+    return;
   }
+  markProjectSaved(pickerResult.name, null);
 }
 
 const mediaNameEl = document.getElementById('media-name');

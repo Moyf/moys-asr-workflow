@@ -2,6 +2,7 @@
 # Keep runtime/bootstrap modules before the modules that consume their exports.
 editor-runtime.js
 editor-utils.js
+editor-services.js
 editor-i18n.js
 waveform.js
 editor.js
