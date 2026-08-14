@@ -2064,7 +2064,10 @@ class LauncherAssetContractTests(unittest.TestCase):
         script = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
 
         self.assertIn('async function updateServerWorkspaceSettings(payload)', script)
-        self.assertIn('body: JSON.stringify(payload)', script)
+        self.assertIn(
+            'const result = await editorServerApi.postJson(SERVER_CONFIG.settingsUrl, payload);',
+            script,
+        )
         self.assertIn('SERVER_CONFIG.savedWorkspaces = result.savedWorkspaces || {};', script)
         self.assertIn("SERVER_CONFIG.activeWorkspaceName = result.activeWorkspaceName || '';", script)
         self.assertIn('SERVER_CONFIG.autoOpenLastProject = result.autoOpenLastProject !== false;', script)
