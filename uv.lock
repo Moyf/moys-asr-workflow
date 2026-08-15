@@ -1435,7 +1435,7 @@ requires-dist = [
     { name = "pywebview", extras = ["qt"], marker = "sys_platform == 'linux'", specifier = ">=6.2.1" },
     { name = "qwen-asr", marker = "extra == 'local'", specifier = ">=0.0.6" },
     { name = "rapidocr", marker = "extra == 'ocr'", specifier = ">=3.9.0" },
-    { name = "reapeaks", specifier = ">=0.2" },
+    { name = "reapeaks", specifier = ">=0.3" },
     { name = "requests", specifier = ">=2.28" },
     { name = "torch", marker = "sys_platform == 'win32' and extra == 'local'", specifier = ">=2.13.0", index = "https://download.pytorch.org/whl/cu130" },
     { name = "torch", marker = "sys_platform != 'win32' and extra == 'local'", specifier = ">=2.13.0" },
@@ -2963,13 +2963,13 @@ wheels = [
 
 [[package]]
 name = "reapeaks"
-version = "0.2.0"
+version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/90/4e/166eb57c68a61bf9d542c2a656639d9c387f47ee87e035e0940f1c75d91e/reapeaks-0.2.0.tar.gz", hash = "sha256:c7279d821bcf44768f9768acd492c0b4ecf286aed7b5d3bdd6d20c32a0ae4f2e", size = 1085681, upload-time = "2026-08-15T14:58:12.403Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5b/4c/a48be35362ef55a89f999e64a4dac286977eec5aca9d1b2e5fcd9b046049/reapeaks-0.3.0.tar.gz", hash = "sha256:53080c767064e5cbbc727fbf66e67556f984974f0d69b82467f0c9b569406a11", size = 1089975, upload-time = "2026-08-15T17:05:49.173Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/77/56/b8af29362bc32ec3ffb3665d10880fb026d083878ba2d4d275e45d757f84/reapeaks-0.2.0-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:7f1b2e89655f81694a97d8c35d1ee9c9809ee60686c0168483aacc44238c9cba", size = 377450, upload-time = "2026-08-15T14:58:08.217Z" },
-    { url = "https://files.pythonhosted.org/packages/ef/43/045a1e4e362add375767ad52cd91a7d5793fca2a22b2489b0c73c538827d/reapeaks-0.2.0-cp38-abi3-manylinux_2_35_x86_64.whl", hash = "sha256:c1ee3c3b692bad07f7f9352572c92584427e0d40022635d8af2dc459864c4183", size = 658488, upload-time = "2026-08-15T14:58:09.546Z" },
-    { url = "https://files.pythonhosted.org/packages/6d/0a/c6f1107fd7dedb483296f567f4eac340e20e8840afcb2352f6b11bddf388/reapeaks-0.2.0-cp38-abi3-win_amd64.whl", hash = "sha256:440f2855e22b1a3ec7e9f0abcdc39e4153f06c7a5a2976a18e2b9d95e46ea46e", size = 521035, upload-time = "2026-08-15T14:58:10.762Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/2c/f9211390fc1c0ae5673e9bca2bb8e8390eb7c6e34d9572f2085af88f90c5/reapeaks-0.3.0-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:874c6f71147fba2f714e242a97214784d792607b27c14732eba3b6e34c47aeac", size = 378831, upload-time = "2026-08-15T17:05:44.964Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/a6/3075cd31e6d00d5ba4d6f8a2fbbfc89158ef5553a8b6e2ecb7a255addd5c/reapeaks-0.3.0-cp38-abi3-manylinux_2_35_x86_64.whl", hash = "sha256:34b73d885a71a5e7dd0d7b3f6800c103379eec79fc52dc93afc68bfe1f93280a", size = 660103, upload-time = "2026-08-15T17:05:46.392Z" },
+    { url = "https://files.pythonhosted.org/packages/53/d2/bc020cd12085deba49f37a523a3dc09728d1b47a59133b491887a1f25007/reapeaks-0.3.0-cp38-abi3-win_amd64.whl", hash = "sha256:2f7a577e33fa72e38047ef01b93d76cfae990be60e6260be2ab852456a239ade", size = 522830, upload-time = "2026-08-15T17:05:47.787Z" },
 ]
 
 [[package]]

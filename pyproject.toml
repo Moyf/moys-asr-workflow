@@ -16,7 +16,7 @@ dependencies = [
     "numpy>=2.2,<2.5",
     # Rust .ReaPeaks 生成内核（MIT/Apache-2.0，独立仓库）；唯一生成路径，
     # 无 Python 参考实现回退，缺失或版本不符时直接暴露 ImportError。
-    "reapeaks>=0.2"
+    "reapeaks>=0.3"
 ]
 
 [project.optional-dependencies]
