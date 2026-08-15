@@ -63,6 +63,26 @@ class MediaCacheTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     @unittest.skipUnless(HAS_NUMPY, "numpy is required")
+    def test_test_mode_cache_uses_limited_media_but_keeps_source_signature(self) -> None:
+        source = self.root / "source.mp4"
+        cache_media = self.root / "limited.wav"
+        # 测试模式把实际生成缓存的媒体放在临时文件，工程仍需记录原始媒体签名。
+        shutil.copy2(self.wav, cache_media)
+        source.write_bytes(b"original-media")
+
+        result = media_cache.embed_media_caches(
+            self.project,
+            cache_media,
+            source_media_path=source,
+        )
+
+        self.assertEqual(result.project["waveform"]["source"], media_cache.media_signature(source))
+        self.assertEqual(result.project["spectral"]["source"], media_cache.media_signature(source))
+        self.assertEqual(result.project["waveform_reapeaks"]["source"], media_cache.media_signature(source))
+        self.assertGreater(result.project["waveform"]["duration_ms"], 0)
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    @unittest.skipUnless(HAS_NUMPY, "numpy is required")
     def test_missing_media_degrades_to_warning(self) -> None:
         missing = self.root / "missing.mp3"
         result = media_cache.embed_media_caches(self.project, missing)

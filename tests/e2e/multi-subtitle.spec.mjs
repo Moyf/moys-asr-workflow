@@ -1104,6 +1104,59 @@ test('uses the linked split dialog when the main cue is active with its bound ex
   await page.keyboard.press('Escape');
 });
 
+test('retries a short linked split with B before forcing both tracks to 100ms', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  await page.evaluate(() => {
+    const main = DATA.segments[0];
+    main.start = 1000;
+    main.end = 5000;
+    main.text = 'Alpha Bravo';
+    main.items = [
+      { start: 1000, end: 1050, text: 'Alpha' },
+      { start: 1050, end: 5000, text: 'Bravo' },
+    ];
+    const extension = DATA.multi_subtitle.tracks[0].segments[0];
+    extension.start = 1000;
+    extension.end = 5000;
+    extension.text = 'One Two';
+    extension.items = [
+      { start: 1000, end: 1050, text: 'One' },
+      { start: 1050, end: 5000, text: 'Two' },
+    ];
+    renderAll({ waveform: 'none' });
+  });
+
+  const mainText = page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main .text');
+  await mainText.dblclick();
+  await mainText.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 5);
+    range.setEnd(node, 5);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+
+  await page.keyboard.press('b');
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(2);
+  await expect(page.locator('.hint-card.hint-warning', {
+    hasText: '请再次按 B 或 Enter 强制拆分',
+  })).toBeVisible();
+
+  await page.keyboard.press('b');
+  await expect.poll(() => page.locator('.multi-dual-cue').count()).toBe(4);
+  expect(await page.evaluate(() => ({
+    main: DATA.segments.slice(0, 2).map((segment) => segment.end - segment.start),
+    extension: DATA.multi_subtitle.tracks[0].segments.slice(0, 2)
+      .map((segment) => segment.end - segment.start),
+  }))).toEqual({ main: [100, 3900], extension: [100, 3900] });
+});
+
 test('shows unbind in a bound main subtitle context menu', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-result-confirm').click();
@@ -1574,6 +1627,34 @@ test('shows independent extension preview controls with yellow defaults', async 
   await expect(page.locator('#extension-overlay-toggle')).not.toBeChecked();
 });
 
+test('refreshes local font options for both main and extension subtitles', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.queryLocalFonts = async () => [
+      { family: 'MAW Test Sans' },
+      { family: 'MAW Test Serif' },
+    ];
+  });
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-extension').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  await page.locator('#subtitle-preview-settings-toggle').click();
+
+  const scanButton = page.locator('#subtitle-font-family-scan');
+  await expect(scanButton).toBeEnabled();
+  await scanButton.click();
+  await expect(page.locator('#subtitle-font-family option[value="MAW Test Sans"]')).toHaveCount(1);
+  await expect(page.locator('#extension-subtitle-font-family option[value="MAW Test Sans"]')).toHaveCount(1);
+
+  await page.locator('#subtitle-font-family').selectOption('MAW Test Sans');
+  await page.locator('#extension-subtitle-font-family').selectOption('MAW Test Serif');
+  const fontFamilies = await page.evaluate(() => ({
+    main: document.getElementById('overlay-main-text').style.fontFamily,
+    extension: document.getElementById('overlay-extension-text').style.fontFamily,
+  }));
+  expect(fontFamilies.main).toContain('MAW Test Sans');
+  expect(fontFamilies.extension).toContain('MAW Test Serif');
+});
+
 test('aligns a bound extension cue to the main subtitle range from its context menu', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-extension').click();
@@ -1588,6 +1669,26 @@ test('aligns a bound extension cue to the main subtitle range from its context m
 
   await page.keyboard.press('Control+z');
   await expect(row.locator('.multi-cue-column.extension .time')).toHaveText('00:00.050 → 00:01.950');
+});
+
+test('aligns multiple selected extension cues with H and undoes the batch once', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  const first = page.locator('.multi-cue-column.extension').filter({ hasText: '你好，世界。' });
+  const second = page.locator('.multi-cue-column.extension').filter({ hasText: '第二句。' });
+  await first.click();
+  await second.click({ modifiers: ['Control'] });
+  await expect(page.locator('#sel-count')).toHaveText('4');
+
+  await page.keyboard.press('h');
+  await expect(page.locator('#hint-stack')).toContainText('已批量对齐 2 条副字幕');
+  await expect(first.locator('.time')).toHaveText('00:00.000 → 00:02.000');
+  await expect(second.locator('.time')).toHaveText('00:03.000 → 00:05.000');
+
+  await page.keyboard.press('Control+z');
+  await expect(first.locator('.time')).toHaveText('00:00.050 → 00:01.950');
+  await expect(second.locator('.time')).toHaveText('00:03.050 → 00:04.950');
 });
 
 test('keeps the main range fixed and removes a fully covered extension cue on H alignment', async ({ page }) => {

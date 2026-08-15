@@ -133,6 +133,15 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("if (waveformEditor && !preserveProjectWaveform)", editor)
         self.assertIn("getPayload()", waveform)
 
+    def test_self_waveform_is_the_default_shape_source(self) -> None:
+        editor = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
+        template = (ROOT / "web" / "editor-template.html").read_text(encoding="utf-8")
+        waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
+        self.assertIn("waveShapeSource: 'self'", editor)
+        self.assertIn('<option value="self" selected>自研波形</option>', template)
+        self.assertNotIn('<option value="reapeaks" selected>', template)
+        self.assertIn("shapeSource === 'reapeaks'", waveform)
+
     def test_blank_editor_inlines_modular_assets(self) -> None:
         page = edit.build_blank_html()
         self.assertIn('class="waveform-mode-switch"', page)
@@ -317,8 +326,8 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="sticker-overlay-toggle"> 预览表情包', page)
         self.assertIn('id="merge-join-text"', page)
         self.assertIn('id="subtitle-extend-manage"', page)
-        self.assertIn('id="subtitle-extend-forward-ms" min="0" max="60000" step="50" value="250"', page)
-        self.assertIn('id="subtitle-extend-backward-ms" min="0" max="60000" step="50" value="200"', page)
+        self.assertIn('id="subtitle-extend-forward-ms" min="0" max="60000" step="50" value="120"', page)
+        self.assertIn('id="subtitle-extend-backward-ms" min="0" max="60000" step="50" value="60"', page)
         self.assertIn('id="subtitle-extend-run"', page)
         self.assertIn('id="waveform-drag-playhead"', page)
         self.assertIn('播放时跳过空隙', page)
@@ -416,6 +425,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn("confirm('是否同时选择该工程关联的媒体文件？", page)
         self.assertIn("flashHint('请先加载媒体，然后才能预览', 'invalid');", page)
         self.assertIn("flashHint('保存成功！', 'success');", page)
+        self.assertIn("当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件", page)
         self.assertIn('event.composedPath?.().includes(player)', page)
         self.assertIn('function isTextEditingTarget(event)', page)
         self.assertIn('function isPlaybackKeyboardTarget(event)', page)

@@ -559,10 +559,13 @@
     label.textContent = chainLabel(chain.kind, chain.operation);
     const files = document.createElement("div");
     files.className = "toolbox-chain-files";
+    const activePath = result.projectPath || result.srtPath || "";
+    if (activePath) clearChainSelection();
     paths.forEach((path) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "toolbox-chain-file";
+      button.classList.toggle("selected", path === activePath);
       button.textContent = fileName(path);
       button.title = path;
       button.setAttribute("aria-label", `${label.textContent}: ${path}`);
@@ -680,6 +683,10 @@
     if (stepId === "replace") return parseReplacements().length > 0;
     if (["proofread", "resegment", "translate"].includes(stepId)) return autoLlmReady($("postprocessProvider").value);
     if (stepId === "ocr") {
+      const config = window.MAWLauncher.config || {};
+      const ocrModel = (Array.isArray(config.ocrModels) ? config.ocrModels : [])
+        .find((item) => item.id === $("ocrModel").value);
+      if (!config.ocrRuntime?.ready || !ocrModel?.installed) return false;
       const threshold = Number($("ocrThreshold").value);
       const video = $("ocrVideoPath").value.trim() || autoOcrVideoPath();
       if (!video || !VIDEO_EXTS.has(extension(video)) || !Number.isFinite(threshold) || threshold < 0 || threshold > 1) return false;
@@ -933,9 +940,10 @@
     }
   }
 
-  async function saveSettings() {
+  async function saveSettings({ autoTest = false } = {}) {
     setSettingsSaveStatus("");
     const item = provider();
+    const enteredApiKey = $("llmApiKey").value.trim();
     const result = await bridge("save_postprocess_settings", {
       providerId: item.id,
       apiKey: $("llmApiKey").value.trim(),
@@ -967,17 +975,23 @@
     syncProviderOptionLabels();
     renderProvider(item.id);
     renderAutoPostprocessState();
-    setSettingsSaveStatus(t("toolbox_saved"), "success");
+    if (autoTest && enteredApiKey) {
+      await testConnection({ alreadySaved: true });
+    } else {
+      setSettingsSaveStatus(t("toolbox_saved_test_hint"), "success");
+    }
     return result;
   }
 
-  async function testConnection() {
+  async function testConnection({ alreadySaved = false } = {}) {
     setSettingsSaveStatus(t("llm_connection_testing"), "", 0);
     $("testLlmConnection").disabled = true;
     $("getLlmModels").disabled = true;
     try {
-      const saved = await saveSettings();
-      if (!saved?.ok) return;
+      if (!alreadySaved) {
+        const saved = await saveSettings({ autoTest: false });
+        if (!saved?.ok) return saved;
+      }
       const item = provider();
       const result = await bridge("test_postprocess_connection", {
         providerId: item.id,
@@ -993,6 +1007,7 @@
         maybeEnablePendingAutoStep();
       }
       else setSettingsSaveStatus(result.detail || result.error || t("failed"), "error", 0);
+      return result;
     } catch (error) {
       setSettingsSaveStatus(String(error?.message || error || t("failed")), "error", 0);
     } finally {
@@ -1150,7 +1165,7 @@
   $("postprocessProvider").addEventListener("change", () => { renderProvider(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("postprocessOperation").addEventListener("change", () => switchLlmOperation($("postprocessOperation").value));
   $("llmProvider").addEventListener("change", () => { $("postprocessProvider").value = $("llmProvider").value; renderProvider(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
-  $("saveLlmSettings").addEventListener("click", saveSettings);
+  $("saveLlmSettings").addEventListener("click", () => { void saveSettings({ autoTest: true }); });
   $("testLlmConnection").addEventListener("click", testConnection);
   $("getLlmModels").addEventListener("click", getModels);
   $("llmModelChoicesToggle").addEventListener("mousedown", (event) => event.preventDefault());

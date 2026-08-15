@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import sys
 import subprocess
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
@@ -402,7 +403,12 @@ class _RapidOcrRecognizer:
         try:
             from rapidocr import ModelType, OCRVersion, RapidOCR
         except ImportError as error:
-            raise RuntimeError("OCR 依赖未安装，请先运行 uv sync --extra ocr；打包版请在 Launcher 设置中安装 OCR 支持。") from error
+            message = (
+                "OCR 依赖未安装，请在 Launcher 设置中安装 OCR 支持。"
+                if getattr(sys, "frozen", False)
+                else "OCR 依赖未安装，请在开发环境中运行 `uv sync --extra ocr`。"
+            )
+            raise RuntimeError(message) from error
 
         try:
             selected_model_type = ModelType(model_type)

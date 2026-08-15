@@ -166,8 +166,11 @@ def _llm_values(env_path: Path, provider_id: str) -> dict[str, str]:
     preset = preset_by_id(provider_id)
     values = load_env(env_path)
     prefix = preset.env_prefix
+    api_key = os.environ.get(f"{prefix}_API_KEY") or values.get(f"{prefix}_API_KEY", "")
+    if provider_id == "qwen" and not api_key:
+        api_key = os.environ.get("DASHSCOPE_API_KEY") or values.get("DASHSCOPE_API_KEY", "")
     return {
-        "apiKey": os.environ.get(f"{prefix}_API_KEY") or values.get(f"{prefix}_API_KEY", ""),
+        "apiKey": api_key,
         "baseUrl": os.environ.get(f"{prefix}_BASE_URL") or values.get(f"{prefix}_BASE_URL", "") or preset.base_url,
         "model": os.environ.get(f"{prefix}_MODEL") or values.get(f"{prefix}_MODEL", "") or preset.model,
     }

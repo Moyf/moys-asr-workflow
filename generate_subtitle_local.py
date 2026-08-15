@@ -132,25 +132,26 @@ def main(argv: Sequence[str] | None = None) -> int:
                 hotwords=hotwords,
                 on_event=print,
             )
-        segments = build_local_segments(
-            result,
-            duration_ms=duration_ms,
-            max_len=args.max_len,
-            min_len=args.min_len,
-            gap_split_ms=args.gap_split,
-        )
-        if not segments:
-            print("错误: 本地模型没有返回可用的转写文本")
-            return 1
-        outputs = write_local_outputs(
-            input_path=input_path,
-            output_srt=output_srt,
-            transcription=result,
-            segments=segments,
-            write_json=args.json,
-            generate_html=args.json and not args.no_html,
-            with_waveform=args.with_waveform,
-        )
+            segments = build_local_segments(
+                result,
+                duration_ms=duration_ms,
+                max_len=args.max_len,
+                min_len=args.min_len,
+                gap_split_ms=args.gap_split,
+            )
+            if not segments:
+                print("错误: 本地模型没有返回可用的转写文本")
+                return 1
+            outputs = write_local_outputs(
+                input_path=input_path,
+                cache_media_path=audio_path,
+                output_srt=output_srt,
+                transcription=result,
+                segments=segments,
+                write_json=args.json,
+                generate_html=args.json and not args.no_html,
+                with_waveform=args.with_waveform,
+            )
     except Exception as error:  # noqa: BLE001 - CLI boundary prints actionable error.
         print(f"错误: {error}")
         return 1

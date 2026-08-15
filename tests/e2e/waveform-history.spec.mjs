@@ -420,6 +420,62 @@ test('B splits the selected subtitle under the cue-list pointer and supports und
   await expect(page.locator('.cue .text').nth(1)).toHaveText('Bravo');
 });
 
+test('retries an inline split with B or Enter and clamps both halves to 100ms', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    const segment = DATA.segments[0];
+    segment.text = 'Alpha Bravo';
+    segment.items = [
+      { start: segment.start, end: segment.start + 50, text: 'Alpha' },
+      { start: segment.start + 50, end: segment.end, text: 'Bravo' },
+    ];
+    renderAll({ waveform: 'full' });
+  });
+
+  const cue = page.locator('.cue[data-idx="0"]');
+  await cue.click();
+  const text = cue.locator('.text');
+  await text.dblclick();
+  await text.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 5);
+    range.setEnd(node, 5);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+
+  // The first attempt leaves the editor open and only arms the forced retry.
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.cue')).toHaveCount(6);
+  await expect(text).toHaveAttribute('contenteditable', 'plaintext-only');
+  await expect(page.locator('.hint-card.hint-warning', {
+    hasText: '请再次按 B 或 Enter 强制拆分',
+  })).toBeVisible();
+
+  // B/Enter is accepted only for this armed retry while the inline editor is open.
+  await page.keyboard.press('Enter');
+  await expect.poll(() => page.locator('.cue').count()).toBe(7);
+  const splitTiming = await page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => ({
+    text: segment.text,
+    duration: segment.end - segment.start,
+  })));
+  expect(splitTiming).toEqual([
+    { text: 'Alpha', duration: 100 },
+    { text: 'Bravo', duration: 7900 },
+  ]);
+  await expect(page.locator('.cue[data-idx="1"]')).toHaveClass(/selected/);
+
+  // The split history restores the original text, timing, selection and panel target.
+  await page.getByRole('button', { name: /撤销/ }).click();
+  await expect.poll(() => page.locator('.cue').count()).toBe(6);
+  await expect(page.locator('.cue[data-idx="0"]')).toHaveClass(/selected/);
+  await expect.poll(() => page.evaluate(() => window.MAWE_EDITOR_BRIDGE.currentCuePanelIdx)).toBe(0);
+  await expect(page.locator('.cue[data-idx="0"] .text')).toHaveText('Alpha Bravo');
+  expect(await page.evaluate(() => DATA.segments[0].end - DATA.segments[0].start)).toBe(8000);
+});
+
 test('long-only filtering temporarily keeps split results visible until focus leaves', async ({ page }) => {
   await page.goto(server.url);
   await makeFirstCueWordSplittable(page);
@@ -601,6 +657,115 @@ test('B splits at the pointer audio position while hovering the waveform', async
   await expect(page.locator('.cue .text').nth(1)).toHaveText('Bravo');
 });
 
+test('Home and End seek the player to the media boundaries', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    const media = document.getElementById('player');
+    media.currentTime = 123;
+    media.dispatchEvent(new Event('timeupdate'));
+  });
+
+  await page.keyboard.press('Home');
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBe(0);
+
+  await page.keyboard.press('End');
+  await expect.poll(() => page.evaluate(() => {
+    const media = document.getElementById('player');
+    return Math.abs(media.currentTime - media.duration);
+  })).toBeLessThan(0.01);
+});
+
+test('hovering a selected subtitle shows the B split hint', async ({ page }) => {
+  await page.goto(server.url);
+  const cue = page.locator('.cue[data-idx="0"]');
+  await cue.click();
+  const text = cue.locator('.text');
+  const splitPoint = await text.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 2);
+    range.setEnd(node, 2);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.move(splitPoint.x, splitPoint.y);
+
+  const preview = cue.locator('.cue-split-preview');
+  await expect(preview).toBeVisible();
+  expect(await preview.evaluate((element) => getComputedStyle(element, '::after').content)).toBe('"B"');
+});
+
+test('the last multi-row waveform uses the media remainder width', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    waveformEditor.settings.mode = 'multi';
+    waveformEditor.settings.secondsPerRow = 64;
+    waveformEditor.settings.rowHeight = 72;
+    waveformEditor.render();
+    const scroll = document.getElementById('waveform-scroll');
+    scroll.scrollTop = scroll.scrollHeight;
+    waveformEditor.renderMultiVisible(true);
+  });
+
+  const lastRow = page.locator('.waveform-row[data-row-index="4"]');
+  await expect(lastRow).toBeVisible();
+  await expect(lastRow).toHaveAttribute('style', /width: 68\.75%/);
+  await expect(lastRow).toHaveAttribute('data-end-ms', '300000');
+});
+
+test('requires a second B in the split dialog before forcing a short-side cut', async ({ page }) => {
+  await page.addInitScript(() => {
+    const key = 'moy.asr.editor.settings.v1';
+    const settings = JSON.parse(localStorage.getItem(key) || '{}');
+    localStorage.setItem(key, JSON.stringify({
+      ...settings,
+      autoSaveProject: false,
+      splitUseWordTimestamps: false,
+    }));
+  });
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    const segment = DATA.segments[0];
+    segment.text = 'Alpha Bravo';
+    segment.items = [
+      { start: segment.start, end: segment.start + 50, text: 'Alpha' },
+      { start: segment.start + 50, end: segment.end, text: 'Bravo' },
+    ];
+    renderAll({ waveform: 'full' });
+  });
+
+  const row = page.locator('.waveform-row').first();
+  const box = await row.boundingBox();
+  const rowStart = Number(await row.getAttribute('data-start-ms'));
+  const rowEnd = Number(await row.getAttribute('data-end-ms'));
+  if (!box || !Number.isFinite(rowStart) || !Number.isFinite(rowEnd)) {
+    throw new Error('波形行没有有效时间范围');
+  }
+  const pointerTime = 50;
+  const pointerX = box.x + ((pointerTime - rowStart) / (rowEnd - rowStart)) * box.width;
+  await page.mouse.move(pointerX, box.y + box.height / 2);
+  await page.keyboard.press('b');
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+
+  // The first confirmation only arms the retry and keeps the dialog open.
+  await page.keyboard.press('b');
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await expect(page.locator('.cue')).toHaveCount(6);
+  await expect(page.locator('.hint-card.hint-warning', {
+    hasText: '请再次按 B 或 Enter 强制拆分',
+  })).toBeVisible();
+
+  await page.keyboard.press('b');
+  await expect.poll(() => page.locator('.cue').count()).toBe(7);
+  expect(await page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => [
+    segment.text,
+    segment.end - segment.start,
+  ]))).toEqual([
+    ['Alpha', 100],
+    ['Bravo', 7900],
+  ]);
+});
+
 test('B and C refresh cue overlays without redrawing cached waveform canvases', async ({ page }) => {
   await page.goto(server.url);
   await makeFirstCueWordSplittable(page);
@@ -660,6 +825,7 @@ test('settings gears stay at the end of their headers and rise above dividers', 
   ];
 
   for (const [toggleSelector, toolbarSelector, panelSelector] of settings) {
+    await expect(page.locator(toggleSelector)).toHaveText('⚙️');
     const layout = await page.evaluate(({ toggleSelector: buttonSelector, toolbarSelector: headerSelector }) => {
       const button = document.querySelector(buttonSelector);
       const toolbar = document.querySelector(headerSelector);
@@ -799,8 +965,8 @@ test('extends selected subtitles without remapping items and undoes the batch in
   })));
   await page.locator('#subtitle-extend-manage').click();
   await expect(page.locator('#subtitle-extend-panel')).toHaveClass(/show/);
-  await expect(page.locator('#subtitle-extend-forward-ms')).toHaveValue('250');
-  await expect(page.locator('#subtitle-extend-backward-ms')).toHaveValue('200');
+  await expect(page.locator('#subtitle-extend-forward-ms')).toHaveValue('120');
+  await expect(page.locator('#subtitle-extend-backward-ms')).toHaveValue('60');
 
   await page.locator('#subtitle-extend-forward-ms').fill('-1');
   await page.locator('#subtitle-extend-run').click();

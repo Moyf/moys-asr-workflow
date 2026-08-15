@@ -100,6 +100,7 @@ body {
   min-height: 100vh;
   background: radial-gradient(circle at top, rgba(108, 165, 232, .08), transparent 34rem), var(--bg-base);
   font-family: var(--font-sans);
+  font-size: 14px;
 }
 
 button,
@@ -173,7 +174,7 @@ button:disabled {
 }
 
 .wordmark .version {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   letter-spacing: .02em;
   color: var(--text-muted);
@@ -194,7 +195,7 @@ button:disabled {
   border-radius: 999px;
   color: var(--amber);
   background: var(--amber-soft);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .hero-links {
@@ -227,7 +228,7 @@ button:disabled {
   background: transparent;
   color: var(--accent);
   padding: 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .text-link:hover, .inline-link:hover {
@@ -264,7 +265,7 @@ button:disabled {
   border-radius: var(--radius-md);
   background: var(--accent-tint);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
   padding: 10px;
   margin-bottom: 10px;
   text-align: center;
@@ -292,14 +293,14 @@ button:disabled {
 
 label {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1;
 }
 
 .hint {
   margin: 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .hint-top-spaced {
@@ -391,9 +392,12 @@ label {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  min-width: 0;
 }
 
 .local-status {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
   color: var(--accent-hover);
   font-size: 13px;
@@ -407,6 +411,12 @@ label {
 
 .local-status.warn {
   color: var(--amber-hover);
+}
+
+.local-status-row > button {
+  flex: 0 0 auto;
+  min-width: 76px;
+  white-space: nowrap;
 }
 
 .local-model-panel > .ghost {
@@ -525,7 +535,7 @@ label {
   gap: 7px;
   margin-top: 10px;
   color: #8ecf9b;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .ffmpeg-line span:first-child {
@@ -543,7 +553,7 @@ label {
   display: none;
   margin: 0;
   color: var(--red);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
@@ -577,7 +587,7 @@ label {
 .adv-group > h3 {
   margin: 0;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -788,7 +798,7 @@ textarea::placeholder {
 #qwenAudioHotwordsSection h3 {
   margin: 0 0 10px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -812,7 +822,7 @@ textarea::placeholder {
   background: transparent;
   color: var(--text-muted);
   padding: 0 12px;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
   transition: background var(--t-fast), color var(--t-fast), box-shadow var(--t-fast);
 }
@@ -839,7 +849,7 @@ textarea::placeholder {
 .character-count {
   margin: 0;
   color: var(--text-faint);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .character-count.over-limit {
@@ -850,7 +860,7 @@ textarea::placeholder {
   display: none;
   margin: 0;
   color: var(--amber);
-  font-size: 12px;
+  font-size: 13px;
   white-space: pre-line;
 }
 
@@ -898,7 +908,7 @@ textarea::placeholder {
 
 .small {
   height: 30px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .sub-accordion {
@@ -1275,7 +1285,7 @@ textarea::placeholder {
   margin: 5px 0 0;
   padding-bottom: 7px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .toolbox-beta {
@@ -1288,7 +1298,7 @@ textarea::placeholder {
   border-radius: var(--radius-md);
   background: var(--bg-input);
   color: var(--amber);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -1322,7 +1332,7 @@ textarea::placeholder {
 }
 
 .toolbox-input label {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .toolbox-input-name {
@@ -1330,7 +1340,7 @@ textarea::placeholder {
   overflow: hidden;
   color: var(--accent-hover);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1342,7 +1352,7 @@ textarea::placeholder {
 }
 
 .toolbox-input .hint {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .toolbox-chain {
@@ -1356,7 +1366,7 @@ textarea::placeholder {
 .toolbox-chain-heading {
   margin: 0 0 6px;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .toolbox-chain-list {
@@ -1378,7 +1388,7 @@ textarea::placeholder {
   flex: 0 1 auto;
   min-width: 0;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.35;
 }
 
@@ -1400,7 +1410,7 @@ textarea::placeholder {
   color: var(--accent);
   background: transparent;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.3;
   text-align: left;
   text-overflow: ellipsis;
@@ -1454,7 +1464,7 @@ textarea::placeholder {
   border-radius: var(--radius-sm);
   color: var(--text-muted);
   background: transparent;
-  font-size: 12px;
+  font-size: 13px;
   transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast);
 }
 
@@ -1570,7 +1580,7 @@ textarea::placeholder {
 
 .toolbox-preset-label {
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .toolbox-preset-prompt-text {
@@ -1579,7 +1589,7 @@ textarea::placeholder {
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   background: var(--bg-panel);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -1605,7 +1615,7 @@ textarea::placeholder {
 }
 
 .toolbox-preset-prompt .hint {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .toolbox-grid > .field {
@@ -1618,18 +1628,18 @@ textarea::placeholder {
   border-left: 2px solid var(--amber);
   color: var(--text-secondary);
   background: var(--amber-soft);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
 .toolbox-result {
-  margin-top: 12px;
-  padding: 9px 10px;
+  margin-top: 16px;
+  padding: 12px 10px 10px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   color: var(--text-muted);
   background: var(--bg-input);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
   max-height: 360px;
   overflow-y: auto;
@@ -1667,7 +1677,7 @@ textarea::placeholder {
 
 .toolbox-stream-heading {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -1682,7 +1692,7 @@ textarea::placeholder {
   padding: 7px 8px;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
   list-style-position: inside;
 }
 
@@ -1692,7 +1702,7 @@ textarea::placeholder {
   padding: 8px;
   border-top: 1px solid var(--border-subtle);
   color: var(--text-primary);
-  font: 11px/1.5 var(--font-mono);
+  font: 12px/1.5 var(--font-mono);
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1779,7 +1789,7 @@ textarea::placeholder {
 code {
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
   word-break: break-all;
 }
 
@@ -2036,7 +2046,7 @@ select[multiple] option {
 .modal-card .settings-section h3 {
   margin: 0 0 10px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: .08em;
   text-transform: uppercase;

@@ -1482,6 +1482,22 @@
     pointer-events: none;
     transform: translateX(-1px);
   }
+  .cue-split-preview::after {
+    content: "B";
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    min-width: 14px;
+    padding: 2px 4px;
+    border: 1px solid var(--accent-line);
+    border-radius: 3px;
+    color: var(--active-cue-fg);
+    background: var(--accent);
+    box-shadow: var(--shadow-1);
+    font: 700 10px/1 var(--font-mono);
+    text-align: center;
+    white-space: nowrap;
+  }
   .cue.has-color { background: color-mix(in srgb, var(--color-bar, #777) 30%, transparent); }
   .cue.has-color:hover { background: color-mix(in srgb, var(--color-bar, #777) 30%, var(--bg-raised)); }
   /* 悬停反馈与下拉/右键菜单一致：accent 淡蓝 + 中性内描边；选中（琥珀）与激活（蓝）行仍各自优先。 */

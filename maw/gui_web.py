@@ -57,8 +57,10 @@ WINDOW_TITLE = "MAW Launcher"
 MEDIA_EXTS: Final = frozenset({".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"})
 MOSE_REGISTRY_KEY = r"Software\Moy\MOSE"
 MOSE_FILE_TYPE = "Moy.MOSE.Project"
+# 工程恢复会同步准备自研波形；大型工程可能需要超过默认的网络探测窗口。
+SERVER_START_TIMEOUT: Final = 30.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.4.0-beta.7"
+BUNDLED_APP_VERSION = "1.4.0-beta.8"
 MOSE_VERSION = "0.1.0"
 
 
@@ -1027,7 +1029,7 @@ class LauncherApi:
         except OSError as error:
             self._close_server_log()
             return _error_result("port", "server_start_failed", f"{url} | {error}")
-        if not _wait_for_server(url, timeout=5.0):
+        if not _wait_for_server(url, timeout=SERVER_START_TIMEOUT):
             exit_code = self.server_process.poll() if self.server_process else None
             if exit_code is not None:
                 detail = self._read_server_log()
@@ -2059,8 +2061,11 @@ def _postprocess_values(env_path: Path, prefix: str) -> dict[str, str]:
     from maw.gui_config import load_env
 
     values = load_env(env_path)
+    api_key = os.environ.get(f"{prefix}_API_KEY") or values.get(f"{prefix}_API_KEY", "")
+    if prefix == "MAW_POSTPROCESS_QWEN" and not api_key:
+        api_key = os.environ.get("DASHSCOPE_API_KEY") or values.get("DASHSCOPE_API_KEY", "")
     return {
-        "apiKey": os.environ.get(f"{prefix}_API_KEY") or values.get(f"{prefix}_API_KEY", ""),
+        "apiKey": api_key,
         "baseUrl": os.environ.get(f"{prefix}_BASE_URL") or values.get(f"{prefix}_BASE_URL", ""),
         "model": os.environ.get(f"{prefix}_MODEL") or values.get(f"{prefix}_MODEL", ""),
         "displayName": os.environ.get(f"{prefix}_DISPLAY_NAME") or values.get(f"{prefix}_DISPLAY_NAME", ""),

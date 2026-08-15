@@ -542,6 +542,151 @@
     }
   }
 
+  // 浏览器端只读解析 REAPER 的 .ReaPeaks 文件。桌面/服务器版会在
+  // 生成页面时预先内联同一份 payload；便携版拖入 sidecar 时则走这里，
+  // 因此两种编辑器得到完全相同的 wave/spectral 缓存契约。
+  function decodeReapeaksFile(arrayBuffer, source = null) {
+    if (!(arrayBuffer instanceof ArrayBuffer)) return null;
+    const bytes = new Uint8Array(arrayBuffer);
+    if (bytes.length < 18) return null;
+    const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+    if (!['RPKM', 'RPKN', 'RPKL'].includes(magic)) return null;
+    const channels = bytes[4];
+    const mipmapCount = bytes[5];
+    if (!channels || !mipmapCount) return null;
+    const view = new DataView(arrayBuffer);
+    const sampleRate = view.getInt32(6, true);
+    if (!Number.isFinite(sampleRate) || sampleRate <= 0) return null;
+    const headerEnd = 18 + mipmapCount * 8;
+    if (headerEnd > bytes.length) return null;
+    const mipmaps = [];
+    let headerOffset = 18;
+    for (let i = 0; i < mipmapCount; i++) {
+      const division = view.getInt32(headerOffset, true);
+      const peakCount = view.getInt32(headerOffset + 4, true);
+      if (peakCount < 0) return null;
+      const kind = division === -'s'.charCodeAt(0)
+        ? 'spectral'
+        : division === -'g'.charCodeAt(0)
+          ? 'spectrogram'
+          : division === -'r'.charCodeAt(0) || division === -'l'.charCodeAt(0)
+            ? 'loudness' : 'wave';
+      mipmaps.push({ division, peakCount, kind });
+      headerOffset += 8;
+    }
+
+    const munge = (value) => {
+      if (value >= -24576 && value <= 24576) return value / 24576;
+      if (value > 24576) return 2 ** ((value - 24576) / 1024);
+      return -(2 ** ((-value - 24576) / 1024));
+    };
+    const quantize = (value) => {
+      const numeric = magic === 'RPKL' ? munge(value) : value / 32768;
+      return clamp(Math.round(clamp(numeric, -1, 1) * 127), -127, 127);
+    };
+    const waveMips = [];
+    const spectralMips = [];
+    let offset = headerEnd;
+    const need = (count) => {
+      if (count < 0 || offset + count > bytes.length) throw new Error('短文件');
+    };
+    try {
+      for (const mip of mipmaps) {
+        if (mip.kind === 'wave') {
+          const encoded = new Uint8Array(mip.peakCount * 2);
+          for (let peak = 0; peak < mip.peakCount; peak++) {
+            let low = 127;
+            let high = -127;
+            for (let channel = 0; channel < channels; channel++) {
+              need(magic === 'RPKL' ? 4 : magic === 'RPKM' ? 2 : 4);
+              const maxRaw = view.getInt16(offset, true);
+              offset += 2;
+              const minRaw = magic === 'RPKM' ? -maxRaw : view.getInt16(offset, true);
+              if (magic !== 'RPKM') offset += 2;
+              const maxValue = quantize(maxRaw);
+              const minValue = quantize(minRaw);
+              low = Math.min(low, minValue);
+              high = Math.max(high, maxValue);
+            }
+            encoded[peak * 2] = low & 0xff;
+            encoded[peak * 2 + 1] = high & 0xff;
+          }
+          waveMips.push({ mip, data: encoded });
+          continue;
+        }
+        if (mip.kind === 'spectral') {
+          const spectral = new Uint16Array(mip.peakCount * 2);
+          for (let peak = 0; peak < mip.peakCount; peak++) {
+            let freq = 0;
+            let density = 0;
+            for (let channel = 0; channel < channels; channel++) {
+              need(4);
+              const packed = view.getUint32(offset, true);
+              offset += 4;
+              if (channel === 0) {
+                freq = packed & 0x7fff;
+                density = (packed >>> 15) & 0x3fff;
+              }
+            }
+            spectral[peak * 2] = freq;
+            spectral[peak * 2 + 1] = density;
+          }
+          spectralMips.push({ mip, data: spectral });
+          continue;
+        }
+        // 跳过当前编辑器不显示的 spectrogram/loudness 层，但仍准确推进
+        // offset，避免后面的 wave/spectral 层被错误解释。
+        const bytesPerValue = mip.kind === 'spectrogram' ? 192 : 4;
+        need(mip.peakCount * channels * bytesPerValue);
+        offset += mip.peakCount * channels * bytesPerValue;
+      }
+    } catch (_) {
+      return null;
+    }
+    if (!waveMips.length) return null;
+    const finest = waveMips[0];
+    const division = Math.abs(finest.mip.division);
+    if (!division) return null;
+    const baseSource = source && typeof source === 'object' ? source : undefined;
+    const waveform = {
+      schema: SCHEMA,
+      encoding: ENCODING,
+      peaks_per_second: Math.round(sampleRate / division),
+      peak_count: finest.mip.peakCount,
+      duration_ms: Math.round(finest.mip.peakCount * division / sampleRate * 1000),
+      ...(baseSource ? { source: baseSource } : {}),
+      data: bytesToBase64(finest.data),
+    };
+    let spectral = null;
+    if (spectralMips.length) {
+      const targetDivision = Math.max(1, Math.round(sampleRate / 100));
+      const paired = spectralMips.map((entry, index) => ({
+        ...entry,
+        division: Math.abs(waveMips[index]?.mip.division || division),
+      }));
+      const selected = paired.reduce((best, entry) => (
+        Math.abs(entry.division - targetDivision) < Math.abs(best.division - targetDivision)
+          ? entry : best
+      ), paired[0]);
+      const payloadBytes = new Uint8Array(selected.data.length * 2);
+      selected.data.forEach((value, index) => {
+        payloadBytes[index * 2] = value & 0xff;
+        payloadBytes[index * 2 + 1] = value >>> 8;
+      });
+      spectral = {
+        schema: SPECTRAL_SCHEMA,
+        encoding: SPECTRAL_ENCODING,
+        sample_rate: sampleRate,
+        division: selected.division,
+        peak_count: selected.mip.peakCount,
+        duration_ms: Math.round(selected.mip.peakCount * selected.division / sampleRate * 1000),
+        ...(baseSource ? { source: baseSource } : {}),
+        data: bytesToBase64(payloadBytes),
+      };
+    }
+    return { waveform, spectral };
+  }
+
   function bytesToBase64(bytes) {
     const chunkSize = 0x8000;
     const parts = [];
@@ -1102,6 +1247,14 @@
       } else {
         window.addEventListener('resize', this._onResize);
       }
+    }
+
+    isAltSnapActive(altKey = false) {
+      return Boolean(altKey) && this.options.getAltSnapReversal?.() !== false;
+    }
+
+    hasCueDrag() {
+      return Boolean(this.drag || this.createCueDrag);
     }
 
     bindControls() {
@@ -2241,6 +2394,10 @@
       const row = this.createRow(startMs, endMs, index, false, groupBadges);
       row.style.top = `${index * (this.settings.rowHeight + ROW_GAP)}px`;
       row.style.height = `${this.settings.rowHeight}px`;
+      // 最后一行只代表媒体剩余的真实时长；缩短容器不会减少采样量，
+      // 但能避免把不存在的尾部时间误画成整行波形。
+      row.style.right = 'auto';
+      row.style.width = `${Math.max(0.01, Math.min(1, (endMs - startMs) / rowDurationMs) * 100)}%`;
       return row;
     }
 
@@ -2718,7 +2875,7 @@
       ctx.lineTo(width, height * 0.46);
       ctx.stroke();
 
-      // 波形形状来源：默认使用 .ReaPeaks 的最细 wave 层；没有时回退到自研缓存。
+      // 波形形状来源：默认使用自研缓存；用户切换后才使用 .ReaPeaks 的最细 wave 层。
       const shapeSource = this.options.getWaveShapeSource?.() || 'self';
       const useReapeaksShape = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;
       const activePeaks = useReapeaksShape ? this.reapeaksPeaks : this.peaks;
@@ -3314,6 +3471,7 @@
       // 剃刀工具：无修饰键左键点击字幕块（非手柄）时，在指针位置安全拆分。
       // 修饰键（Alt/Ctrl(Cmd)/Shift）仍走原行为，便于拆分后立即多选/禁用。
       const targetHandle = event.target.closest('.waveform-cue-handle');
+      const altSnapActive = this.isAltSnapActive(event.altKey);
       if (track === 'main' && this.tool === 'razor' && !targetHandle
           && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
         const timeMs = this.timeFromPointer(event, row);
@@ -3322,7 +3480,7 @@
       }
       // Alt 行为分裂：命中共享边界手柄时拆开为单侧独立拖动；否则保持
       // Alt+点击字幕块切换禁用的既有行为。
-      if (event.altKey && targetHandle) {
+      if (altSnapActive && targetHandle) {
         const sharedLeft = targetHandle.classList.contains('left')
           && index > 0 && this.isSharedBoundary(event, index - 1, index, row, track);
         const sharedRight = targetHandle.classList.contains('right')
@@ -3409,7 +3567,7 @@
         changed: false,
         // Alt+副字幕拖动临时解除主副联动；Alt+主字幕拖动仍带着绑定的
         // 副字幕一起走，但允许先挤压主轨相邻字幕。
-        independent: Boolean(event.altKey && track === 'extension'),
+        independent: Boolean(altSnapActive && track === 'extension'),
         allowSqueeze: false,
         squeezeOriginals: allOriginals,
         altToggleDisabledOnClick: Boolean(
@@ -3507,7 +3665,7 @@
         indices,
         deltaMs,
         this.cueDragDurationMs(),
-        { sticky: !altKey },
+        { sticky: !this.isAltSnapActive(altKey) },
       );
       if (!plan.changed) return false;
       this.options.onBeginEdit?.('移动字幕时间');
@@ -3516,7 +3674,7 @@
         indices,
         deltaMs,
         this.cueDragDurationMs(),
-        { sticky: !altKey },
+        { sticky: !this.isAltSnapActive(altKey) },
       );
       result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
       this.options.onCommitEdit?.(result.indices, 'move', track);
@@ -3529,7 +3687,7 @@
       const indices = normalizedIndices(segments, this.options.getSelection?.(track));
       if (!indices.length || (edge !== 'start' && edge !== 'end')) return false;
       const index = edge === 'start' ? indices[0] : indices[indices.length - 1];
-      const options = { sticky: !altKey };
+      const options = { sticky: !this.isAltSnapActive(altKey) };
       const plan = planBoundaryStep(segments, index, edge, deltaMs, this.cueDragDurationMs(), options);
       if (!plan.changed) return false;
       this.options.onBeginEdit?.(`${edge === 'start' ? '调整字幕起点' : '调整字幕终点'}`);
@@ -3598,14 +3756,14 @@
       let plan;
       let apply;
       if (drag.kind === 'move') {
-        const options = { sticky: !altKey };
+        const options = { sticky: !this.isAltSnapActive(altKey) };
         plan = planMoveStep(segments, drag.indices, deltaMs, durationMs, options);
         apply = () => applyMoveStep(segments, drag.indices, deltaMs, durationMs, options);
       } else {
         const edge = drag.kind === 'resize-left' || drag.kind === 'resize-boundary-independent'
           ? 'start' : 'end';
         const options = {
-          sticky: drag.kind !== 'resize-boundary-independent' && !altKey,
+          sticky: drag.kind !== 'resize-boundary-independent' && !this.isAltSnapActive(altKey),
         };
         plan = planBoundaryStep(segments, drag.index, edge, deltaMs, durationMs, options);
         apply = () => applyBoundaryStep(segments, drag.index, edge, deltaMs, durationMs, options);
@@ -3632,7 +3790,7 @@
     handleHeldCueKey(direction, deltaMs, { shiftKey = false, altKey = false, snap = false } = {}) {
       if (!this.drag) return false;
       if (shiftKey) {
-        if (snap && !altKey) this.snapActiveCueBoundaryByKeyboard(direction);
+        if (snap && !this.isAltSnapActive(altKey)) this.snapActiveCueBoundaryByKeyboard(direction);
         // 按住字幕块时即使吸附不可用也要消费按键，不能穿透成普通导航。
         return true;
       }
@@ -3910,8 +4068,9 @@
       }
       // 一旦在本次拖动中进入 Alt 独立模式，松开 Alt 也不要把已经独立
       // 调整过的字幕重新吸回绑定对象；关系仍保留，下一次普通拖动再联动。
-      if (drag.kind === 'move' && event.altKey) drag.allowSqueeze = true;
-      if (drag.track === 'extension' && event.altKey) drag.independent = true;
+      const altSnapActive = this.isAltSnapActive(event.altKey);
+      if (drag.kind === 'move' && altSnapActive) drag.allowSqueeze = true;
+      if (drag.track === 'extension' && altSnapActive) drag.independent = true;
       const disableSnap = drag.independent === true || drag.allowSqueeze === true;
       if (drag.kind === 'move') this.applyMoveDrag(drag, deltaMs, disableSnap, drag.allowSqueeze);
       else if (drag.kind === 'resize-boundary') this.applyBoundaryDrag(drag, deltaMs, drag.independent);
@@ -4224,6 +4383,7 @@
     builtinWorkspaces: BUILTIN_WORKSPACES,
     testing: {
       decodePayload,
+      decodeReapeaksFile,
       decodeSpectralPayload,
       freqColor,
       remapItems,

@@ -321,7 +321,11 @@ def main():
             ],
         }
         if args.with_waveform:
-            json_data = embed_media_caches(json_data, input_path).project
+            json_data = embed_media_caches(
+                json_data,
+                Path(audio_path),
+                source_media_path=input_path,
+            ).project
         print("[输出] 正在校验工程文件...")
         check = validate_project(json_data)
         if not check.ok:

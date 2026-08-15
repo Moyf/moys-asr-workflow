@@ -18,7 +18,7 @@ from urllib.error import URLError
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
+from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
 
@@ -196,6 +196,27 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn("MAW_POSTPROCESS_QWEN_REASONING_MODE=medium", self.env_path.read_text(encoding="utf-8"))
         self.assertEqual(result["reasoningMode"], "medium")
         self.assertEqual(providers["deepseek"]["reasoningMode"], "off")
+
+    def test_qwen_postprocess_reuses_dashscope_api_key(self) -> None:
+        self.env_path.write_text("DASHSCOPE_API_KEY=sk-dashscope-shared\n", encoding="utf-8")
+
+        with mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": ""}, clear=False):
+            config = self.api.get_config()
+            providers = {item["id"]: item for item in config["postprocessProviders"]}
+            self.assertEqual(providers["qwen"]["maskedApiKey"], "sk-…ared")
+            self.assertTrue(providers["qwen"]["hasApiKey"])
+
+            with mock.patch("maw.gui_web.test_llm_connection") as check_connection:
+                result = self.api.test_postprocess_connection({
+                    "providerId": "qwen",
+                    "apiKey": "",
+                    "baseUrl": "",
+                    "model": "",
+                })
+
+        self.assertTrue(result["ok"])
+        settings = check_connection.call_args.args[0]
+        self.assertEqual(settings.api_key, "sk-dashscope-shared")
 
     def test_postprocess_settings_keep_saved_key_when_key_field_is_blank(self) -> None:
         self.env_path.write_text(
@@ -616,7 +637,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             wait_for_server.call_args_list,
             [
                 mock.call("http://127.0.0.1:9876/", timeout=0.25),
-                mock.call("http://127.0.0.1:9876/", timeout=5.0),
+                mock.call("http://127.0.0.1:9876/", timeout=SERVER_START_TIMEOUT),
             ],
         )
         self.assertNotIn("serverAlreadyRunning", result)
@@ -1963,11 +1984,28 @@ class LauncherAssetContractTests(unittest.TestCase):
     def test_llm_save_feedback_is_local_and_transient(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn('id="llmSettingsSaveStatus"', page)
-        self.assertIn('setSettingsSaveStatus(t("toolbox_saved"), "success")', script)
-        self.assertNotIn('setResult(t("toolbox_saved"), "success")', script)
+        self.assertIn('setSettingsSaveStatus(t("toolbox_saved_test_hint"), "success")', script)
+        self.assertNotIn('setResult(t("toolbox_saved_test_hint"), "success")', script)
         self.assertIn("window.setTimeout(() => setSettingsSaveStatus(\"\"), timeoutMs)", script)
+        self.assertIn('toolbox_saved_test_hint: "LLM 设置已保存，请点击“测试连接”确认配置。"', launcher_script)
+        self.assertIn("if (autoTest && enteredApiKey)", script)
+        self.assertIn('await testConnection({ alreadySaved: true });', script)
+        self.assertIn('$("saveLlmSettings").addEventListener("click", () => { void saveSettings({ autoTest: true }); });', script)
+        self.assertIn("font-size: 14px;", stylesheet)
+        self.assertIn("font-size: 13px;", stylesheet)
+        self.assertNotIn("font-size: 11px", stylesheet)
+        self.assertNotIn("font: 11px", stylesheet)
+        self.assertIn(".local-status-row > button", stylesheet)
+
+    def test_launcher_message_url_stops_before_closing_punctuation(self) -> None:
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        expected = r'''const urlPattern = /https?:\/\/[^\s<>"'|)\]}，。；：！？）】》」』]+/gi;'''
+        self.assertIn(expected, script)
 
     def test_launcher_hero_shows_the_bundled_brand_icon(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")

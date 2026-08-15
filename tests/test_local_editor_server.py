@@ -126,7 +126,7 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('src="/media"', page)
         self.assertIn('let STICKER_URL_PREFIX = "/stickers";', page)
         self.assertIn('const NINJA_SFX_BASE_URL = "/sfx/";', page)
-        self.assertIn('const SERVER_CONFIG = {"saveUrl": "/api/project", "canSave": true, ', page)
+        self.assertIn('const SERVER_CONFIG = {"saveUrl": "/api/project", "waveformUrl": "/api/waveform", "canSave": true, ', page)
         self.assertIn('"autoLoadedMediaName": "clip.mp3", "recentProjectsUrl": "/api/recent-projects/open", ', page)
         self.assertIn('"attachUrl": "/api/project/attach", "settingsUrl": "/api/settings", ', page)
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
@@ -172,6 +172,88 @@ class LocalEditorServerTests(unittest.TestCase):
                 with urllib.request.urlopen(f"{base_url}/stickers/nested/cat.png") as response:
                     self.assertEqual(response.read(), b"png")
             finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_reapeaks_loading_is_deferred_until_server_is_serving(self) -> None:
+        self_waveform = {
+            "schema": "moy.asr.waveform.v1",
+            "encoding": "i8-minmax-base64",
+            "peaks_per_second": 1000,
+            "peak_count": 1,
+            "duration_ms": 1,
+            "data": "AIA=",
+        }
+        with (
+            mock.patch.object(server_editor.edit, "load_or_extract_waveform", return_value=(self_waveform, False)) as waveform_load,
+            mock.patch.object(server_editor.reapeaks, "load_spectral_payload") as spectral_load,
+            mock.patch.object(server_editor.reapeaks, "load_waveform_payload") as reapeaks_wave_load,
+        ):
+            project = server_editor.load_project(
+                self.project_path,
+                None,
+                str(self.stickers),
+                no_waveform=False,
+                load_reapeaks=False,
+                peaks_per_second=100,
+            )
+
+        waveform_load.assert_called_once()
+        spectral_load.assert_not_called()
+        reapeaks_wave_load.assert_not_called()
+        self.assertIs(project.data["waveform"], self_waveform)
+        self.assertNotIn("spectral", project.data)
+        self.assertNotIn("waveform_reapeaks", project.data)
+
+        spectral_payload = {"peak_count": 2, "division": 80}
+        reapeaks_wave_payload = {"peak_count": 4, "peaks_per_second": 1000}
+        loader_started = threading.Event()
+        release_loader = threading.Event()
+
+        def blocking_spectral_load(*_args: object, **_kwargs: object) -> dict:
+            loader_started.set()
+            release_loader.wait(timeout=3)
+            return spectral_payload
+
+        def waveform_reapeaks_load(*_args: object, **_kwargs: object) -> dict:
+            return reapeaks_wave_payload
+
+        with (
+            mock.patch.object(server_editor.reapeaks, "load_spectral_payload", side_effect=blocking_spectral_load),
+            mock.patch.object(server_editor.reapeaks, "load_waveform_payload", side_effect=waveform_reapeaks_load),
+            server_editor.EditorServer(
+                ("127.0.0.1", 0),
+                project,
+                stickers_dir=str(self.stickers),
+                no_waveform=False,
+                defer_reapeaks=True,
+                peaks_per_second=100,
+            ) as server,
+        ):
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            base_url = f"http://127.0.0.1:{server.server_address[1]}"
+            try:
+                self.assertTrue(loader_started.wait(timeout=2))
+
+                # If ReaPeaks were still on the request/startup path, this
+                # request would wait for release_loader instead of returning.
+                with urllib.request.urlopen(f"{base_url}/", timeout=1) as response:
+                    self.assertEqual(response.status, 200)
+                with urllib.request.urlopen(f"{base_url}/api/waveform", timeout=1) as response:
+                    self.assertEqual(json.loads(response.read())["status"], "loading")
+
+                release_loader.set()
+                assert server.reapeaks_thread is not None
+                server.reapeaks_thread.join(timeout=2)
+                self.assertFalse(server.reapeaks_thread.is_alive())
+                with urllib.request.urlopen(f"{base_url}/api/waveform", timeout=1) as response:
+                    result = json.loads(response.read())
+                self.assertEqual(result["status"], "ready")
+                self.assertEqual(result["spectral"], spectral_payload)
+                self.assertEqual(result["waveform_reapeaks"], reapeaks_wave_payload)
+            finally:
+                release_loader.set()
                 server.shutdown()
                 thread.join(timeout=2)
 

@@ -1814,7 +1814,12 @@ def main():
             ],
         }
         if args.with_waveform:
-            json_data = embed_media_caches(json_data, input_path).project
+            cache_media_path = Path(audio_path) if audio_path else input_path
+            json_data = embed_media_caches(
+                json_data,
+                cache_media_path,
+                source_media_path=input_path,
+            ).project
         print("[输出] 正在写入工程文件...")
         json_path.write_text(
             json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8"

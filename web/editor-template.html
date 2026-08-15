@@ -197,7 +197,7 @@ __WAVEFORM_CSS__
   <span class="info">已选 <b id="sel-count">0</b></span>
   <span class="toolbar-utility-group" role="group" aria-label="编辑器工具">
     <button type="button" id="language-toggle" class="language-toggle" title="Switch to English">🌐English</button>
-    <button type="button" id="editor-settings-toggle" title="展开编辑器通用设置" aria-expanded="false" aria-controls="editor-settings-panel">🔧 设置</button>
+    <button type="button" id="editor-settings-toggle" title="展开编辑器通用设置" aria-expanded="false" aria-controls="editor-settings-panel">⚙️ 全局设置</button>
     <button type="button" id="help-toggle" title="查看鼠标操作与键盘快捷键" aria-expanded="false" aria-controls="help-panel">🤔 帮助</button>
     <button type="button" id="theme-toggle" title="切换到亮色主题" aria-label="切换到亮色主题">🌖</button>
   </span>
@@ -364,7 +364,7 @@ __WAVEFORM_CSS__
       <label class="gap-remove-field">
         <span class="gap-remove-field-label">向前延长</span>
         <span class="gap-remove-number-control">
-          <input type="number" id="subtitle-extend-forward-ms" min="0" max="60000" step="50" value="250" inputmode="numeric">
+          <input type="number" id="subtitle-extend-forward-ms" min="0" max="60000" step="50" value="120" inputmode="numeric">
           <span class="gap-remove-unit">ms</span>
         </span>
         <small>向字幕起点前延长，不越过前一条字幕边界；0 表示不处理</small>
@@ -372,7 +372,7 @@ __WAVEFORM_CSS__
       <label class="gap-remove-field">
         <span class="gap-remove-field-label">向后延长</span>
         <span class="gap-remove-number-control">
-          <input type="number" id="subtitle-extend-backward-ms" min="0" max="60000" step="50" value="200" inputmode="numeric">
+          <input type="number" id="subtitle-extend-backward-ms" min="0" max="60000" step="50" value="60" inputmode="numeric">
           <span class="gap-remove-unit">ms</span>
         </span>
         <small>向字幕终点后延长，不越过后一条字幕边界；0 表示不处理</small>
@@ -529,7 +529,7 @@ __WAVEFORM_CSS__
         <div class="help-category">
           <span><kbd>G</kbd> 绑定到主副字幕（自动匹配）</span>
           <span><kbd>Shift+G</kbd> 解绑当前副字幕</span>
-          <span><kbd>H</kbd> 对齐副字幕到主字幕时间轴</span>
+          <span><kbd>H</kbd> 批量对齐选中的副字幕到各自主字幕时间轴</span>
         </div>
       </section>
       <h4 class="help-title">波形外观调整</h4>
@@ -659,6 +659,15 @@ __WAVEFORM_CSS__
       <input type="checkbox" id="select-group-members"> 同时选中分组内项目
     </label>
     <small class="editor-settings-hint">选中字幕时，同时选中和它相同颜色/表情包的字幕</small>
+    </div>
+    <div class="editor-settings-sub-group">
+      <span class="editor-settings-title">快捷键行为</span>
+      <label class="toggle editor-settings-item" title="开启后，拖动字幕时按住 Alt 会反转吸附与联动；关闭后 Alt 不改变吸附方式">
+        <input type="checkbox" id="alt-snap-reversal" checked> Alt 反转吸附 / 联动
+      </label>
+      <label class="toggle editor-settings-item" title="开启后，波形字幕拖动中按 Esc 会恢复到拖动开始前的时间码">
+        <input type="checkbox" id="cancel-subtitle-drag-on-escape"> Esc 取消字幕拖动
+      </label>
     </div>
     </div>
   </div>
@@ -948,10 +957,10 @@ __WAVEFORM_CSS__
         <div class="settings-panel waveform-settings-panel" id="waveform-settings-panel" role="dialog" aria-label="波形设置" hidden>
           <div class="settings-panel-section waveform-settings-section">
             <span class="settings-panel-title waveform-settings-title">音频波形区</span>
-            <label class="editor-settings-item" title="波形形状来源：默认使用媒体旁 .ReaPeaks 的最细 wave 层；没有时回退到自研 1000Hz 重采样缓存">波形形状来源
+            <label class="editor-settings-item" title="波形形状来源：默认使用自研 1000Hz 重采样缓存；需要时可切换到媒体旁 .ReaPeaks 的最细 wave 层">波形形状来源
               <select id="waveform-shape-source">
-                <option value="self">自研波形</option>
-                <option value="reapeaks" selected>ReaPeaks 波形层</option>
+                <option value="self" selected>自研波形</option>
+                <option value="reapeaks">ReaPeaks 波形层</option>
               </select>
             </label>
             <label class="toggle editor-settings-item" title="使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形">
@@ -992,6 +1001,9 @@ __WAVEFORM_CSS__
             <label class="toggle editor-settings-item" title="在多行波形中，为成组（颜色/表情包）字幕在块上方显示队长皇冠与组内序号">
               <input type="checkbox" id="waveform-show-group-badges" checked> 显示分组标记
             </label>
+          </div>
+          <div class="settings-panel-section waveform-settings-section">
+            <span class="settings-panel-title waveform-settings-title">操作</span>
             <label class="toggle editor-settings-item" title="启用后，在波形空白区域按住左键拖动时，播放指针会实时跟随鼠标位置">
               <input type="checkbox" id="waveform-drag-playhead" checked> 允许拖动指针
             </label>
@@ -1039,8 +1051,7 @@ __WAVEFORM_CSS__
       <button type="button" id="subtitle-extend-manage" title="打开可拖动的延长字幕工具窗" aria-expanded="false" aria-controls="subtitle-extend-panel">延长字幕</button>
       <span class="sep"></span>
       <span class="multi-subtitle-controls multi-subtitle-waveform-controls" id="multi-subtitle-waveform-controls" hidden>
-        <button type="button" id="multi-subtitle-bind" title="分别选中主轨和扩展轨字幕后建立绑定">绑定</button>
-        <button type="button" id="multi-subtitle-unbind" title="移除当前选中字幕的绑定关系">解绑</button>
+        <button type="button" id="multi-subtitle-align" title="将当前选中的副字幕批量对齐到各自绑定的主字幕时间范围">批量对齐</button>
       </span>
       <span class="waveform-status" id="waveform-status">等待波形数据</span>
     </div>

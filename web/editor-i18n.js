@@ -43,10 +43,17 @@
     '请点击一条主字幕完成绑定': 'Click a main subtitle to complete the binding',
     '已取消绑定扩展字幕': 'Extension subtitle binding cancelled',
     '请点击一条主字幕完成绑定；按 Esc 或点击空白处取消': 'Click a main subtitle to complete the binding, or press Esc or click blank space to cancel',
+    '请先选中至少一条副字幕': 'Select at least one secondary subtitle first',
+    '选中的副字幕中没有可对齐的绑定关系': 'None of the selected secondary subtitles has a binding to align',
+    '选中的副字幕已经与各自主字幕时间范围一致': 'The selected secondary subtitles already match their main-subtitle ranges',
+    '拆分后两侧都必须至少保留 100ms，已取消': 'A split must leave at least 100 ms on both sides; cancelled',
+    '当前切点会产生不足 100ms 的一侧；请再次按 B 或 Enter 强制拆分，切点将调整为两侧各至少 100ms': 'The current cut would leave one side shorter than 100 ms; press B or Enter again to force the split, moving the cut so both sides are at least 100 ms',
+    '字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms': 'The subtitle is shorter than 200 ms, so both split sides cannot be at least 100 ms',
+    '当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件': 'The current server has no bound project; export a .mosp file and reopen it',
     '重叠的主字幕已有绑定，请点击主字幕后替换绑定；按 Esc 取消': 'The overlapping main subtitle is already bound; click a main subtitle to replace it, or press Esc to cancel',
     '有多条主字幕与当前副字幕重叠，请点击要绑定的主字幕': 'Multiple main subtitles overlap this extension subtitle; click the one to bind',
     '未找到与当前副字幕时间重叠的主字幕，请手动选择': 'No main subtitle overlaps this extension subtitle; choose one manually',
-    '字符型': 'Character-based', '单词型': 'Word-based', '绑定': 'Bind', '解绑': 'Unbind',
+    '字符型': 'Character-based', '单词型': 'Word-based', '绑定': 'Bind', '解绑': 'Unbind', '批量对齐': 'Batch align',
     '主字幕调整时副字幕只跟随；冲突时优先限制副字幕，必要时保留重叠，不会缩短主字幕': 'When the main subtitle changes, the secondary subtitle only follows; conflicts limit the secondary subtitle first without shortening the main subtitle',
     '主字幕调整时副字幕只跟随；冲突时优先限制副字幕，不会缩短主字幕': 'When the main subtitle changes, the secondary subtitle only follows; conflicts limit the secondary subtitle first without shortening the main subtitle',
     '副字幕调整时受主字幕轨道边界限制，主字幕没有可用空间时无法继续拖动': 'When the secondary subtitle changes, the main-track boundaries limit the operation; dragging stops when the main track has no room',
@@ -130,7 +137,7 @@
     '已保存工作区': 'Saved workspaces',
     '保存工作区': 'Save workspace', '另存为工作区': 'Save workspace as', '删除工作区': 'Delete workspace',
     '工作区配置 ▾': 'Workspace configuration ▾', '导出工作区配置': 'Export workspace configuration', '导入工作区配置': 'Import workspace configuration',
-    '🔧 设置': '🔧 Settings', '🤔 帮助': '🤔 Help',
+    '🔧 设置': '🔧 Settings', '⚙️ 全局设置': '⚙️ Global settings', '快捷键行为': 'Keyboard behavior', 'Alt 反转吸附 / 联动': 'Alt reverses snapping / linking', 'Esc 取消字幕拖动': 'Esc cancels subtitle dragging', '操作': 'Behavior', '🤔 帮助': '🤔 Help',
     '等待波形数据': 'Waiting for waveform data', '波形处理': 'Waveform processing',
     '扫描参数': 'Scan parameters',
     '按波形音量扫描内部空隙，不改写原时间轴': 'Scan internal gaps from waveform volume without changing the original timeline',
@@ -177,6 +184,8 @@
     '字符型：中文、日文等按字符拆分': 'Character-based: Chinese, Japanese, and other character-separated languages',
     '分别选中主轨和扩展轨字幕后建立绑定': 'Select one main-track and one extension-track subtitle to bind them',
     '移除当前选中字幕的绑定关系': 'Remove the binding for the selected subtitle',
+    '批量对齐选中的副字幕到各自主字幕时间轴': 'Batch-align selected secondary subtitles to their main-subtitle timelines',
+    '将当前选中的副字幕批量对齐到各自绑定的主字幕时间范围': 'Batch-align the selected secondary subtitles to their bound main-subtitle ranges',
     '合并字幕时插入字符': 'Merge separator', '留空则直接拼接': 'Leave blank to join directly',
     '合并两条字幕时，中间插入的字符（如果不需要可以留空）': 'Characters inserted between merged subtitles (leave blank to join directly)',
     '字幕编辑拆分按键': 'Subtitle split key', '字幕（编辑状态下）拆分按键': 'Subtitle split key (while editing)',
@@ -349,7 +358,7 @@
     '调整播放器画面内字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the subtitle preview background opacity in the player; 0 hides the background',
     '字幕背景不透明度': 'Subtitle background opacity',
     '只影响播放器画面内的拓展字幕预览': 'Only affects extension subtitle preview in the player',
-    '波形形状来源：默认使用媒体旁 .ReaPeaks 的最细 wave 层；没有时回退到自研 1000Hz 重采样缓存': 'Waveform shape source: use the finest wave layer beside the media from .ReaPeaks by default; fall back to the self-built 1000 Hz resampled cache when unavailable',
+    '波形形状来源：默认使用自研 1000Hz 重采样缓存；需要时可切换到媒体旁 .ReaPeaks 的最细 wave 层': 'Waveform shape source: use the self-built 1000 Hz resampled cache by default; switch to the finest wave layer beside the media from .ReaPeaks when needed',
     '选择播放器画面内拓展字幕预览使用的字体族': 'Choose the font family used by the extension subtitle preview in the player',
     '选择播放器画面内副字幕预览使用的字体族': 'Choose the font family used by the secondary subtitle preview in the player',
     '选择播放器画面内主字幕预览的颜色': 'Choose the color of the main subtitle preview in the player',
@@ -660,6 +669,8 @@
     if (match) return `Replaced the binding for main subtitle ${match[1]} with extension subtitle ${match[2]}`;
     match = /^有多条主字幕与当前副字幕重叠，已自动绑定时间最早的未绑定主字幕（第\s*(\d+)\s*条）$/.exec(text);
     if (match) return `Multiple main subtitles overlap this extension subtitle; automatically bound the earliest unbound main subtitle (subtitle ${match[1]})`;
+    match = /^已批量对齐\s*(\d+)\s*条副字幕(?:，跳过\s*(\d+)\s*条未绑定副字幕)?$/.exec(text);
+    if (match) return `Batch-aligned ${match[1]} secondary subtitle${match[1] === '1' ? '' : 's'}${match[2] ? `; skipped ${match[2]} unbound` : ''}`;
     match = /^(已对齐到主字幕范围|副字幕发生冲突，已)(?:，)?(?:挤压\s*(\d+)\s*条副字幕)?(?:，删除\s*(\d+)\s*条副字幕)?(并解除绑定)?$/.exec(text);
     if (match && (match[2] || match[3])) {
       const parts = [];

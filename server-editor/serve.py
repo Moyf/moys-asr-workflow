@@ -12,6 +12,7 @@ import html
 import json
 import mimetypes
 import os
+import struct
 import sys
 import tempfile
 import threading
@@ -65,6 +66,7 @@ class ServerProject:
     sticker_root: Path | None
     stickers: list[dict]
     source_media_path: Path | None = None
+    reapeaks_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -235,6 +237,7 @@ def load_project(
     stickers_dir: str | None,
     *,
     no_waveform: bool,
+    load_reapeaks: bool = True,
     peaks_per_second: int,
 ) -> ServerProject:
     json_path = json_path.resolve()
@@ -280,25 +283,22 @@ def load_project(
             data.pop("waveform", None)
             print(f"[waveform] 警告: {error}；编辑器仍可正常使用")
 
-        # 频谱缓存：源媒体旁存在 .ReaPeaks 时读取并内联下发，供波形染色。
-        # 缺失/损坏/无 spectral 层一律静默降级，不影响编辑器。
-        spectral = reapeaks.load_spectral_payload(reapeaks_base, peaks_per_second=peaks_per_second)
-        if spectral is not None:
-            data["spectral"] = spectral
-            print(f"[spectral] 已加载 {spectral['peak_count']} 频谱点 (div={spectral['division']})")
-        else:
-            data.pop("spectral", None)
+        if load_reapeaks:
+            # 频谱缓存：源媒体旁存在 .ReaPeaks 时读取并内联下发，供波形染色。
+            # 缺失/损坏/无 spectral 层一律静默降级，不影响编辑器。
+            spectral = reapeaks.load_spectral_payload(reapeaks_base, peaks_per_second=peaks_per_second)
+            if spectral is not None:
+                data["spectral"] = spectral
+                print(f"[spectral] 已加载 {spectral['peak_count']} 频谱点 (div={spectral['division']})")
 
-        # ReaPeaks 波形层：最细 wave 层作为可选的波形形状来源（编辑器设置里切换）。
-        reapeaks_wave = reapeaks.load_waveform_payload(reapeaks_base)
-        if reapeaks_wave is not None:
-            data["waveform_reapeaks"] = reapeaks_wave
-            print(
-                f"[reapeaks-wave] 已加载 {reapeaks_wave['peak_count']} peaks "
-                f"({reapeaks_wave['peaks_per_second']}/秒)"
-            )
-        else:
-            data.pop("waveform_reapeaks", None)
+            # ReaPeaks 波形层：最细 wave 层作为可选的波形形状来源（编辑器设置里切换）。
+            reapeaks_wave = reapeaks.load_waveform_payload(reapeaks_base)
+            if reapeaks_wave is not None:
+                data["waveform_reapeaks"] = reapeaks_wave
+                print(
+                    f"[reapeaks-wave] 已加载 {reapeaks_wave['peak_count']} peaks "
+                    f"({reapeaks_wave['peaks_per_second']}/秒)"
+                )
 
     source = stickers_dir or edit.get_default_sticker_dir()
     sticker_root = Path(source).resolve() if source else None
@@ -310,6 +310,7 @@ def load_project(
         Path(root_text) if root_text else None,
         stickers,
         source_media_path=source_media_path,
+        reapeaks_path=reapeaks_base,
     )
 
 
@@ -323,7 +324,21 @@ def load_blank_project(stickers_dir: str | None) -> ServerProject:
         None,
         Path(root_text) if root_text else None,
         stickers,
+        reapeaks_path=None,
     )
+
+
+def without_deferred_reapeaks(project: ServerProject) -> ServerProject:
+    """Keep the self-generated waveform while omitting optional ReaPeaks layers.
+
+    ReaPeaks can contain millions of decoded points.  The editor must be able
+    to render the project before those optional layers are parsed; they are
+    fetched from ``/api/waveform`` after the server starts listening.
+    """
+    data = dict(project.data)
+    data.pop("spectral", None)
+    data.pop("waveform_reapeaks", None)
+    return replace(project, data=data)
 
 
 def build_server_page(project: ServerProject, settings: ServerSettings | None = None) -> bytes:
@@ -367,6 +382,7 @@ def build_server_page(project: ServerProject, settings: ServerSettings | None = 
         ninja_sfx_base_url_json=json.dumps("/sfx/", ensure_ascii=False),
         server_config_json=json.dumps({
             "saveUrl": "/api/project",
+            "waveformUrl": "/api/waveform",
             "canSave": project.json_path is not None,
             "autoLoadedMediaName": (project.source_media_path or project.media_path).name if project.media_path else None,
             "recentProjectsUrl": "/api/recent-projects/open",
@@ -401,8 +417,12 @@ class EditorServer(ThreadingHTTPServer):
         settings_path: Path | None = None,
         stickers_dir: str | None = None,
         no_waveform: bool = False,
+        defer_reapeaks: bool = True,
         peaks_per_second: int = edit.DEFAULT_PEAKS_PER_SECOND,
     ):
+        self.defer_reapeaks = defer_reapeaks and not no_waveform
+        if self.defer_reapeaks:
+            project = without_deferred_reapeaks(project)
         self.project = project
         self.settings = settings or ServerSettings()
         self.settings_path = settings_path
@@ -411,11 +431,109 @@ class EditorServer(ThreadingHTTPServer):
         self.peaks_per_second = peaks_per_second
         self.save_lock = threading.Lock()
         self.settings_lock = threading.Lock()
+        self.reapeaks_lock = threading.Lock()
+        self.reapeaks_generation = 0
+        self.reapeaks_status = "pending" if self.defer_reapeaks else "disabled"
+        self.reapeaks_payload: dict[str, dict] = {}
+        self.reapeaks_thread: threading.Thread | None = None
+        self.reapeaks_project: ServerProject | None = None
         super().__init__(address, EditorRequestHandler)
 
     def persist_settings(self) -> None:
         if self.settings_path:
             write_server_settings(self.settings_path, self.settings)
+
+    def persist_settings_async(self) -> None:
+        """Persist startup settings without delaying the listening server."""
+        if not self.settings_path:
+            return
+        settings = self.settings
+        path = self.settings_path
+
+        def persist() -> None:
+            try:
+                write_server_settings(path, settings)
+            except OSError as error:
+                print(f"[settings] 后台保存失败: {error}", file=sys.stderr)
+
+        threading.Thread(target=persist, daemon=True, name="maw-save-settings").start()
+
+    def start_deferred_reapeaks_load(self) -> None:
+        """Load optional ReaPeaks layers after the HTTP server is available."""
+        if not self.defer_reapeaks:
+            return
+        with self.reapeaks_lock:
+            project = self.project
+            if self.reapeaks_project is project:
+                return
+            self.reapeaks_generation += 1
+            generation = self.reapeaks_generation
+            self.reapeaks_project = project
+            self.reapeaks_status = "loading"
+            self.reapeaks_payload = {}
+        thread = threading.Thread(
+            target=self._load_deferred_reapeaks,
+            args=(project, generation),
+            daemon=True,
+            name="maw-load-reapeaks",
+        )
+        self.reapeaks_thread = thread
+        thread.start()
+
+    def _load_deferred_reapeaks(self, project: ServerProject, generation: int) -> None:
+        spectral = None
+        reapeaks_wave = None
+        try:
+            reapeaks_base = project.reapeaks_path or project.source_media_path or project.media_path
+            if reapeaks_base is not None:
+                spectral = reapeaks.load_spectral_payload(
+                    reapeaks_base, peaks_per_second=self.peaks_per_second,
+                )
+                if spectral is not None:
+                    print(f"[spectral] 后台加载 {spectral['peak_count']} 频谱点 (div={spectral['division']})")
+                reapeaks_wave = reapeaks.load_waveform_payload(reapeaks_base)
+                if reapeaks_wave is not None:
+                    print(
+                        f"[reapeaks-wave] 后台加载 {reapeaks_wave['peak_count']} peaks "
+                        f"({reapeaks_wave['peaks_per_second']}/秒)"
+                    )
+        except (OSError, ValueError, IndexError, struct.error) as error:
+            print(f"[reapeaks] 后台加载失败: {error}", file=sys.stderr)
+
+        with self.reapeaks_lock:
+            if generation != self.reapeaks_generation:
+                return
+            current_project = self.project
+            data = dict(current_project.data)
+            if spectral is None:
+                data.pop("spectral", None)
+            else:
+                data["spectral"] = spectral
+            if reapeaks_wave is None:
+                data.pop("waveform_reapeaks", None)
+            else:
+                data["waveform_reapeaks"] = reapeaks_wave
+            self.project = replace(current_project, data=data)
+            self.reapeaks_payload = {
+                key: value for key, value in {
+                    "spectral": spectral,
+                    "waveform_reapeaks": reapeaks_wave,
+                }.items() if value is not None
+            }
+            self.reapeaks_status = "ready"
+
+    def serve_forever(self, poll_interval: float = 0.5) -> None:
+        """Start optional cache loading immediately before serving requests."""
+        self.start_deferred_reapeaks_load()
+        super().serve_forever(poll_interval)
+
+    def reapeaks_status_payload(self) -> dict[str, object]:
+        with self.reapeaks_lock:
+            return {
+                "ok": True,
+                "status": self.reapeaks_status,
+                **self.reapeaks_payload,
+            }
 
     def remember_project(self, project_path: Path) -> None:
         with self.settings_lock:
@@ -487,11 +605,15 @@ class EditorServer(ThreadingHTTPServer):
                 None,
                 self.stickers_dir,
                 no_waveform=self.no_waveform,
+                load_reapeaks=not self.defer_reapeaks,
                 peaks_per_second=self.peaks_per_second,
             )
+            if self.defer_reapeaks:
+                project = without_deferred_reapeaks(project)
             self.project = project
             self.settings = remember_project(self.settings, project.json_path)
             self.persist_settings()
+            self.start_deferred_reapeaks_load()
             return project
 
     def attach_project(self, file_name: str, browser_project: dict) -> ServerProject:
@@ -538,19 +660,23 @@ class EditorServer(ThreadingHTTPServer):
             None,
             self.stickers_dir,
             no_waveform=self.no_waveform,
+            load_reapeaks=not self.defer_reapeaks,
             peaks_per_second=self.peaks_per_second,
         )
+        if self.defer_reapeaks:
+            project = without_deferred_reapeaks(project)
         if project.data.get("segments") != normalized_browser.get("segments"):
             raise AttachProjectError("媒体同目录的同名工程与打开的副本内容不一致，未接管")
         with self.settings_lock:
             self.project = project
             self.settings = remember_project(self.settings, project.json_path)
             self.persist_settings()
+        self.start_deferred_reapeaks_load()
         return project
 
     def save_project(self, project_data: dict, filename: str | None = None) -> tuple[Path, Path | None]:
         if not self.project.json_path:
-            raise SaveProjectError("空白服务器没有绑定工程路径；请使用“导出工程”")
+            raise SaveProjectError("当前服务器没有绑定工程文件；请先导出 .mosp 工程，再重新打开该文件")
         try:
             repaired_project = copy.deepcopy(project_data)
             # 保存时只自动修复字/词级取整冲突；真正的字幕段重叠仍交给严格校验，
@@ -785,6 +911,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
 
     def handle_request(self, *, include_body: bool) -> None:
         path = urlsplit(self.path).path
+        if path == "/api/waveform":
+            self.send_json(HTTPStatus.OK, self.editor_server.reapeaks_status_payload())
+            return
         if path == "/":
             page = build_server_page(self.editor_server.project, self.editor_server.settings)
             self.send_response(HTTPStatus.OK)
@@ -917,6 +1046,8 @@ def main() -> int:
 
     settings_path = default_settings_path()
     settings = read_server_settings(settings_path)
+    defer_reapeaks = not args.no_waveform
+    startup_settings_dirty = False
 
     try:
         if args.blank:
@@ -925,24 +1056,30 @@ def main() -> int:
             project = load_project(
                 Path(args.json_path), args.media, args.stickers,
                 no_waveform=args.no_waveform,
+                load_reapeaks=not defer_reapeaks,
                 peaks_per_second=args.waveform_peaks_per_second,
             )
+            if defer_reapeaks:
+                project = without_deferred_reapeaks(project)
             settings = remember_project(settings, project.json_path)
-            write_server_settings(settings_path, settings)
+            startup_settings_dirty = True
         elif settings.auto_open_last_project and settings.recent_projects:
             last_project = settings.recent_projects[0]
             try:
                 project = load_project(
                     last_project.path, None, args.stickers,
                     no_waveform=args.no_waveform,
+                    load_reapeaks=not defer_reapeaks,
                     peaks_per_second=args.waveform_peaks_per_second,
                 )
+                if defer_reapeaks:
+                    project = without_deferred_reapeaks(project)
             except (FileNotFoundError, ValueError, json.JSONDecodeError) as error:
                 print(f"无法恢复上次打开的工程：{error}；已启动空白编辑器", file=sys.stderr)
                 project = load_blank_project(args.stickers)
             else:
                 settings = remember_project(settings, project.json_path)
-                write_server_settings(settings_path, settings)
+                startup_settings_dirty = True
                 print(f"已恢复上次打开的工程: {project.json_path}")
         else:
             project = load_blank_project(args.stickers)
@@ -956,10 +1093,13 @@ def main() -> int:
         settings_path=settings_path,
         stickers_dir=args.stickers,
         no_waveform=args.no_waveform,
+        defer_reapeaks=defer_reapeaks,
         peaks_per_second=args.waveform_peaks_per_second,
     ) as server:
         host, port = server.server_address[:2]
         url = f"http://{host}:{port}/"
+        if startup_settings_dirty:
+            server.persist_settings_async()
         print("MAWE 已启动（仅本机可访问）")
         print(f"地址: {url}")
         print("按 Ctrl+C 停止服务；修改 web/ 下源码后刷新页面即可看到最新界面。")
