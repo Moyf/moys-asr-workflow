@@ -1955,6 +1955,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         workspace_id=workspace_id,
         provider=provider.id,
         speaker_colors=bool(payload.get("speakerColors")) and model.supports_speaker,
+        generate_spectral=bool(payload.get("generateSpectral")),
         ui_language=_gui_lang(payload),
         generate_html=bool(payload.get("generateHtml")),
         debug_raw=bool(payload.get("debugRaw")),

@@ -89,6 +89,7 @@ class CliTests(unittest.TestCase):
                 "MAW",
                 "--speaker-colors",
                 "--with-waveform",
+                "--with-spectral",
             ]
         )
 
@@ -96,6 +97,7 @@ class CliTests(unittest.TestCase):
 
         self.assertIn("--speaker-colors", generated)
         self.assertIn("--with-waveform", generated)
+        self.assertIn("--with-spectral", generated)
         self.assertEqual(
             [generated[index + 1] for index, value in enumerate(generated) if value == "--hotword"],
             ["Moy", "MAW"],

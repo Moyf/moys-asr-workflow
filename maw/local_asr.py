@@ -912,6 +912,7 @@ def write_local_outputs(
     write_json: bool,
     generate_html: bool,
     with_waveform: bool,
+    generate_spectral: bool = False,
 ) -> LocalOutputPaths:
     """Write SRT and optional MAW project/portable editor outputs."""
     output_srt.parent.mkdir(parents=True, exist_ok=True)
@@ -933,6 +934,7 @@ def write_local_outputs(
             project,
             cache_media_path or input_path,
             source_media_path=input_path,
+            generate_spectral=generate_spectral,
         ).project
     json_path.write_text(
         json.dumps(project, ensure_ascii=False, indent=2),

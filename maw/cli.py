@@ -100,6 +100,11 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("-ll", "--length-limit", help="只处理媒体前 N 时长，例如 2m、20s、1h")
     parser.add_argument("--json", dest="json_output", action="store_true", help="兼容旧 CLI；MAW CLI 默认总是生成 .mosp")
     parser.add_argument("--with-waveform", action="store_true", help="把波形峰值写入 .mosp 工程")
+    parser.add_argument(
+        "--with-spectral",
+        action="store_true",
+        help="在 .ReaPeaks 波形缓存中额外生成频谱数据（需要 --with-waveform）",
+    )
     html_group = parser.add_mutually_exclusive_group()
     html_group.add_argument("--html", action="store_true", help="额外生成便携 .edit.html（默认不生成）")
     html_group.add_argument("--no-html", dest="no_html", action="store_true", help="兼容旧 CLI；默认行为就是不生成 HTML")
@@ -189,6 +194,8 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
         parser.error("-o/--output 最多接受两个路径：SRT 和 MOSP")
     if args.outputs and args.mosp_output:
         parser.error("请在 -o/--output 的第二个路径和 --mosp 中选择一个工程输出路径")
+    if args.with_spectral and not args.with_waveform:
+        parser.error("--with-spectral 需要同时指定 --with-waveform")
     if args.provider == "soniox" and (
         any(
             value is not None
@@ -308,6 +315,8 @@ def _generator_args(args: argparse.Namespace, input_path: Path, srt_path: Path) 
         result.append("--speaker-colors")
     if args.with_waveform:
         result.append("--with-waveform")
+    if args.with_spectral:
+        result.append("--with-spectral")
     if args.debug:
         result.append("--debug")
     for hotword in args.hotword or []:
@@ -356,6 +365,7 @@ def _run_server(parser: argparse.ArgumentParser, args: argparse.Namespace) -> in
             args.length_limit,
             args.json_output,
             args.with_waveform,
+            args.with_spectral,
             args.html,
             args.no_html,
             args.debug,
@@ -449,6 +459,7 @@ def _run_stop_server(parser: argparse.ArgumentParser, args: argparse.Namespace) 
             args.length_limit,
             args.json_output,
             args.with_waveform,
+            args.with_spectral,
             args.html,
             args.no_html,
             args.debug,

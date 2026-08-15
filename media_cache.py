@@ -1,4 +1,4 @@
-"""媒体派生缓存生成编排：波形嵌入 + ReaPeaks 频谱缓存。
+"""媒体派生缓存生成编排：波形嵌入 + 可选 ReaPeaks 频谱缓存。
 
 各 provider CLI 的 ``--with-waveform`` 统一走这里，避免逐个 CLI 重复
 ``waveform.embed_waveform`` / ``reapeaks.generate_for_media`` 的调用与
@@ -32,14 +32,17 @@ def embed_media_caches(
     media_path: Path | str,
     *,
     source_media_path: Path | str | None = None,
+    generate_spectral: bool = False,
 ) -> MediaCacheResult:
-    """嵌入波形缓存并生成 .ReaPeaks 频谱缓存（best-effort）。
+    """嵌入波形缓存并生成 .ReaPeaks 缓存（best-effort）。
 
     ``media_path`` 是实际用于解码和生成缓存的文件；``source_media_path``
     是工程中记录的原始媒体。测试模式会把前者指向临时的 2 分钟音频，
     但缓存的来源签名仍指向后者，避免工程加载时被误判为缓存失效。
 
     波形失败仅警告、ReaPeaks 失败仅跳过，与既有降级语义一致。
+    ``generate_spectral`` 关闭时仍生成 ReaPeaks wave 层，但跳过频谱 FFT
+    与工程内的 spectral payload。
     """
     cache_path = Path(media_path)
     source_path = Path(source_media_path) if source_media_path is not None else cache_path
@@ -56,17 +59,26 @@ def embed_media_caches(
     else:
         print(f"[waveform] 警告: {waveform_result.error}；已跳过内嵌波形")
 
-    print("[reapeaks] 正在生成频谱缓存（可能需要一些时间）……")
-    reapeaks_path = reapeaks.generate_for_media(cache_path)
+    project.pop("spectral", None)
+    if generate_spectral:
+        print("[reapeaks] 正在生成波形和频谱缓存（可能需要一些时间）……")
+    else:
+        print("[reapeaks] 正在生成波形缓存（已跳过频谱计算）……")
+    reapeaks_path = reapeaks.generate_for_media(
+        cache_path,
+        include_spectral=generate_spectral,
+    )
     if reapeaks_path is not None:
-        print(f"[reapeaks] 已生成频谱缓存: {reapeaks_path.name}")
+        cache_kind = "波形和频谱缓存" if generate_spectral else "波形缓存"
+        print(f"[reapeaks] 已生成{cache_kind}: {reapeaks_path.name}")
         try:
-            spectral = reapeaks.extract_spectral_payload(
-                reapeaks_path, source_path,
-            )
-            if spectral is not None:
-                project["spectral"] = spectral
-                print(f"[spectral] 已嵌入 {spectral['peak_count']} 频谱点")
+            if generate_spectral:
+                spectral = reapeaks.extract_spectral_payload(
+                    reapeaks_path, source_path,
+                )
+                if spectral is not None:
+                    project["spectral"] = spectral
+                    print(f"[spectral] 已嵌入 {spectral['peak_count']} 频谱点")
             reapeaks_wave = reapeaks.extract_waveform_payload(reapeaks_path, source_path)
             if reapeaks_wave is not None:
                 project["waveform_reapeaks"] = reapeaks_wave
@@ -74,7 +86,7 @@ def embed_media_caches(
         except (OSError, ValueError, IndexError, struct.error) as error:
             print(f"[reapeaks] 警告: 无法读取已生成缓存: {error}")
     else:
-        print("[reapeaks] 已跳过频谱缓存生成（缺少 ffmpeg 或 numpy）")
+        print("[reapeaks] 已跳过 ReaPeaks 缓存生成（缺少 ffmpeg 或 numpy）")
     return MediaCacheResult(
         project=project,
         waveform_error=waveform_result.error,

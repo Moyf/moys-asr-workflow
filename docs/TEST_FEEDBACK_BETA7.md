@@ -20,6 +20,9 @@
 | 12 | 播放器 | 当前源码、模板、`edit.py` 和便携版均未发现 `40vh` 播放器限制 | 说明 | 仅说明 |
 | 13 | Launcher / 字幕编辑器启动 | 恢复大型最近工程时 5 秒内未响应，连续更换端口仍无法启动；启动不能等待波形，默认继续使用自研波形，`.ReaPeaks` 改为后台增强 | 修改 | 已修复 |
 | 14 | Launcher / 错误提示 | URL 后的中文右括号及说明文字被一起放入链接，导致链接异常 | 修改 | 已修复 |
+| 15 | 生成 / ReaPeaks 频谱 | 生成 ReaPeaks 时希望保留波形层、按开关决定是否计算频谱；没有频谱数据时编辑器禁用频谱颜色 | 修改 | 已修复 |
+| 16 | 编辑器 / 长音轨提示 | 浏览器无法整段解码时仍提示用户运行 `edit.py`，应改为 GUI 入口 | 修改 | 已修复 |
+| 17 | 波形缓存 / 重构询问 | 希望把 ReaPeaks 与自研波形封装为同一个独立缓存文件，拖入长视频时按媒体尝试复用 | 说明 | 仅说明 |
 
 ## 修复与验证记录
 
@@ -35,10 +38,12 @@
 | 9 | 已修复 | Qwen 复用 `DASHSCOPE_API_KEY`、保存后的测试连接提示、保存新 Key 自动测试和 Launcher 字号调整均已完成；`.venv\\Scripts\\python.exe -m unittest tests.test_gui_web tests.test_postprocess_pipeline`（160/160 通过），Launcher JS 语法、Python 编译和 `git diff --check` 通过。 |
 | 13 | 已修复 | 服务器启动路径同步读取自研波形，跳过启动阶段的 `.ReaPeaks` 解析；服务器开始提供请求后由后台线程加载频谱和 ReaPeaks 波形，并通过 `/api/waveform` 返回 `loading` / `ready` 状态，编辑器轮询后动态增强显示。`.venv\\Scripts\\python.exe -m unittest tests.test_local_editor_server`（17/17 通过，其中新增阻塞后台解析时首页仍返回 200、状态最终变为 `ready` 的回归）；`.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（14/14）；`.venv\\Scripts\\python.exe edit.py --blank`；`node --check web\\editor.js`、`node --check web\\waveform.js`、`node --check web\\editor-i18n.js` 通过。 |
 | 14 | 已修复 | Launcher 消息中的 URL 正则在中文右括号、书名号、引号及常见句末标点前停止，不再把后续说明文字并入链接；`.venv\\Scripts\\python.exe -m unittest tests.test_gui_web.LauncherAssetContractTests.test_launcher_message_url_stops_before_closing_punctuation`（1/1）；`node --check web\\launcher\\launcher.js` 通过。 |
+| 15 | 已修复 | `--with-waveform` / Launcher 默认生成并嵌入 ReaPeaks wave 层，`--with-spectral` 或勾选“生成 ReaPeaks 频谱数据”才执行 FFT 并嵌入 spectral；只有波形层时编辑器自动取消并禁用频谱颜色，后台补齐频谱后恢复可用。`.venv\\Scripts\\python.exe -m unittest tests.test_reapeaks tests.test_media_cache tests.test_cli tests.test_gui_workflow tests.test_gui_web tests.test_local_asr`（250/250）；`node --test tests\\test_waveform_js.mjs tests\\test_editor_utils.mjs`（114/114）；相关 Python/JS 语法检查、`.venv\\Scripts\\python.exe edit.py --blank`、`git diff --check` 均通过。 |
 
 ## 询问项结论
 
-- 任务 2：频谱颜色只影响显示；本轮不增加“完全不生成频谱”开关，结论见下方“频谱是否可以完全不生成”。
+- 任务 2：频谱颜色只影响显示；关于是否可以完全不生成频谱的询问已转为任务 15 的独立开关实现，结论见下方“频谱是否可以完全不生成”。
+- 任务 15：将任务 2 的询问转为实际修改项，保留 ReaPeaks 波形层，频谱计算由独立开关控制；无频谱数据时编辑器不允许启用频谱颜色。
 - 任务 10：没有字词时间码时仍允许按字符位置估算切点，本轮只补边界和最短时长。
 - 任务 11：末行波形缩短只改变显示宽度，不增加音频解码或采样计算。
 - 任务 12：当前源码、模板、`edit.py` 和便携版均未发现播放器 `40vh` 限制。
@@ -47,7 +52,7 @@
 
 - 已完成第 1、3、5、8、9 项。第 1 项用限长缓存媒体生成波形/频谱，但写回原始媒体签名，并增加频谱生成提示；第 3 项收紧 OCR 就绪判断、安装后刷新、按钮布局、识别结果间距和产物高亮；第 5 项补齐全局设置、Alt/ESC 行为、波形“操作”分类和延长默认值；第 8、9 项的播放/波形与 Launcher/LLM 反馈也已完成。
 - 已验证：编辑器/波形/i18n/Launcher/后处理脚本语法通过；Node 113/113 通过；Python 相关批次 210/210 通过；便携版已重新生成。`uv run` 因本机 uv 缓存权限失败，使用仓库 `.venv` 完成 Python 验证。
-- 当前剩余修改项：无。第 13、14 项已完成；第 2、10、11、12 项为说明项，无需修改。
+- 当前剩余修改项：无。第 13、14、16 项已完成；第 2、10、11、12、17 项为说明项，无需修改。
 
 ## 增量记录（任务 13、14：启动解耦与链接范围）
 
@@ -65,7 +70,16 @@
 
 ### 频谱是否可以完全不生成
 
-频谱颜色目前只控制显示。频谱缓存与普通波形缓存是独立步骤，当前暂不增加“完全不生成频谱”开关；本轮只补充频谱生成进度提示，并确保工程内已有缓存不会在旁路缓存缺失时被误删。
+可以。`--with-waveform` 默认只生成并嵌入 `.ReaPeaks` wave 层；只有额外使用 `--with-spectral`（Launcher 中勾选“生成 ReaPeaks 频谱数据”）才计算并写入 spectral mipmap。编辑器仍可选择 ReaPeaks 波形，但没有频谱数据时会自动关闭并禁用“频谱颜色”。
+
+## 增量记录（任务 15：可选 ReaPeaks 频谱）
+
+- 生成器新增 `include_spectral` 开关：wave-only 文件保留 wave + loudness 层并跳过 FFT；完整文件继续支持 wave + spectral + loudness。已有完整缓存不会被删除，勾选频谱时如果发现匹配的缓存只有 wave 层会自动重建。
+- `media_cache`、四个 provider CLI、MAW CLI、Launcher 请求和本地 ASR 输出链路已贯通；默认 `generate_spectral=false`，显式 `--with-spectral` 必须同时使用 `--with-waveform`。
+- 编辑器的“频谱颜色”在没有合法 spectral payload 时显示为未勾选且禁用；服务器后台补齐频谱后重新启用，并保留用户此前的显示偏好。默认波形形状仍是自研波形。
+- 已重新生成 `blank-editor.html`，并同步更新 `JSON_SCHEMA.md`、`docs/WORKFLOW.md` 和 `CHANGELOG.md`。
+
+已验证：Python 相关回归 250/250；排除只读 REAPER fixture 后全量 Python 回归 572/572；Node 波形与编辑器工具回归 114/114；`node --check web\\waveform.js`、`node --check web\\launcher\\launcher.js`、相关 Python `py_compile`、便携版生成和 `git diff --check` 均通过。5 秒 16kHz 单声道合成音频的本机短样本对照为 wave-only 0.124s、wave+spectral 0.198s，频谱额外约 0.074s（约 1.6 倍；仅作量级参考）。未执行真实 API、长媒体全量性能基准或桌面打包验证。
 
 ## 增量记录（任务 7：二次按键强制拆分）
 
@@ -111,3 +125,10 @@
 - 已重新生成 `blank-editor.html`，并确认源码、便携版与测试一致。
 
 已验证：相关浏览器回归 6/6 通过；Node 113/113 通过；`edit.py` 编译通过；`git diff --check` 通过。
+
+## 增量记录（任务 16、17：长音轨提示与波形缓存重构询问）
+
+- 任务 16 已将浏览器无法整段解码、浏览器不支持 Web Audio、音轨解析失败等路径统一改为提示使用 MAW GUI 预生成波形；英文界面同步提供对应提示。`blank-editor.html` 由 `web/` 源码重新生成。
+- 任务 17 当前只记录设计结论：统一媒体旁缓存是可行的，建议使用带媒体 `name / size / modified_ms` 签名的独立容器，内部放自研波形、ReaPeaks wave 层和可选 spectral 层；Server/桌面 GUI 可按媒体路径自动查找，单文件浏览器只能在用户同时提供缓存文件或工程内已有缓存时复用，不能绕过浏览器对相邻文件的访问限制。旧 `.ReaPeaks` 与 `.waveform.json` 应保留只读兼容后再迁移，避免一次性改写已有缓存协议。
+
+已验证：`node --check web\\waveform.js`；`node --test tests\\test_waveform_js.mjs`（36/36）；`.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（15/15）；`.venv\\Scripts\\python.exe edit.py --blank`；`git diff --check`。未实施任务 17 的缓存协议重构，因此没有宣称拖入长视频已支持自动读取统一缓存。

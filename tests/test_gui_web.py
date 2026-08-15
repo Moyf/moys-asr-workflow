@@ -1443,6 +1443,20 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertFalse(_request_from_payload(payload, self.env_path).generate_html)
         self.assertTrue(_request_from_payload({**payload, "generateHtml": True}, self.env_path).generate_html)
 
+    def test_request_from_payload_controls_spectral_generation(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        payload = {
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+        }
+
+        self.assertFalse(_request_from_payload(payload, self.env_path).generate_spectral)
+        self.assertTrue(
+            _request_from_payload({**payload, "generateSpectral": True}, self.env_path).generate_spectral
+        )
+
     def test_request_from_payload_enables_speaker_colors_only_for_selected_model(self) -> None:
         media = self.root / "clip.mp3"
         media.write_bytes(b"media")
@@ -1886,6 +1900,15 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn("customPrompt: getLlmPrompt(autoLlmOperation(\"translate\"))", script)
         self.assertIn("function renderTaskPrompt(operation", script)
 
+    def test_empty_auto_postprocess_plan_guides_step_selection(self) -> None:
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertIn('auto_summary_empty: "请在下方「后处理步骤」中勾选需要的工序。"', launcher_script)
+        self.assertIn('summary.textContent = t("auto_summary_empty")', script)
+        self.assertIn('if ($("autoPostprocessEnabled").checked) setAutoStepsExpanded(true);', script)
+        self.assertIn('if (plan.enabled && !AUTO_STEP_ORDER.some((stepId) => $(AUTO_STEP_CHECKBOXES[stepId]).checked)) setAutoStepsExpanded(true);', script)
+
     def test_toolbox_tabs_stay_above_scrollable_panels(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
@@ -2034,9 +2057,14 @@ class LauncherAssetContractTests(unittest.TestCase):
 
         for control in ("segmentationField", "maxLen", "minLen", "gapSplit"):
             self.assertIn(f'id="{control}"', page)
+        self.assertIn('id="generateSpectral" type="checkbox"', page)
+        self.assertIn('id="generateSpectralField"', page)
         self.assertIn('maxLen: $("maxLen").value.trim()', script)
         self.assertIn('minLen: $("minLen").value.trim()', script)
         self.assertIn('gapSplit: $("gapSplit").value.trim()', script)
+        self.assertIn('generateSpectral: $("generateSpectral").checked', script)
+        self.assertIn('generate_spectral: "生成 ReaPeaks 频谱数据"', script)
+        self.assertIn('generate_spectral: "Generate ReaPeaks spectral data"', script)
         self.assertIn('segmentation: "字幕切句"', script)
         self.assertIn(".segmentation-row", stylesheet)
 

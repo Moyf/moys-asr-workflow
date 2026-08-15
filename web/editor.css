@@ -121,6 +121,9 @@
     --wave-pointer-line:    rgba(205, 214, 223, 0.78);
     --wave-split-flash:     #ffd43b;
     --wave-split-flash-glow: rgba(255, 212, 59, 0.85);
+    --wave-split-preview-bg:     #8d6a02;
+    --wave-split-preview-border: #ffd43b;
+    --wave-split-preview-fg:     #ffffff;
     --wave-disabled-text:   #89939b;
     --wave-disabled-border: #66717a;
     --wave-disabled-a:      rgba(84, 94, 104, 0.68);
@@ -316,6 +319,9 @@
     --wave-pointer-line:    rgba(108, 118, 132, 0.72);
     --wave-split-flash:     #c48700;
     --wave-split-flash-glow: rgba(213, 154, 0, 0.72);
+    --wave-split-preview-bg:     #fff0b8;
+    --wave-split-preview-border: #9a6a1e;
+    --wave-split-preview-fg:     #5a4100;
     --wave-disabled-text:   #8a93a3;
     --wave-disabled-border: #c2c8d2;
     --wave-disabled-a:      rgba(120, 128, 140, 0.55);
@@ -1489,10 +1495,10 @@
     left: 4px;
     min-width: 14px;
     padding: 2px 4px;
-    border: 1px solid var(--accent-line);
+    border: 1px solid var(--wave-split-preview-border);
     border-radius: 3px;
-    color: var(--active-cue-fg);
-    background: var(--accent);
+    color: var(--wave-split-preview-fg);
+    background: var(--wave-split-preview-bg);
     box-shadow: var(--shadow-1);
     font: 700 10px/1 var(--font-mono);
     text-align: center;

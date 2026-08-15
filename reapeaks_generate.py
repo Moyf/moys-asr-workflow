@@ -1,4 +1,4 @@
-"""REAPER .ReaPeaks 生成器（RPKN v1.1）：wave + spectral + loudness 三层 mipmap。
+"""REAPER .ReaPeaks 生成器（RPKN v1.1）：wave + optional spectral + loudness。
 
 流式实现：`_ReaPeaksStreamer` 逐块消费交错 int16 PCM，内存只保留
 当前 bucket 累加器与 2048 样本的频谱滑动窗口，不再驻留完整 PCM 或
@@ -129,12 +129,20 @@ class _ReaPeaksStreamer:
     the accumulated output bytearrays are retained.
     """
 
-    def __init__(self, sample_rate: int, channels: int, divs=None) -> None:
+    def __init__(
+        self,
+        sample_rate: int,
+        channels: int,
+        divs=None,
+        *,
+        include_spectral: bool = True,
+    ) -> None:
         if channels < 1:
             raise ValueError("channels must be >= 1")
         self.sr = sample_rate
         self.channels = channels
         self.divs = list(divs or choose_division_factors(sample_rate))
+        self.include_spectral = bool(include_spectral)
         # wave: 每层每声道部分 bucket 累积 (maxs, mins, count)
         self._w_acc: list[tuple | None] = [None] * len(self.divs)
         self._w_out = [bytearray() for _ in self.divs]
@@ -275,7 +283,8 @@ class _ReaPeaksStreamer:
             return
         block = data[: n * self.channels].reshape(n, self.channels)
         self._feed_wave(block)
-        self._feed_spec(block)
+        if self.include_spectral:
+            self._feed_spec(block)
         self._feed_loud(block)
         self._total += n
         rem = len(data) - n * self.channels
@@ -292,7 +301,8 @@ class _ReaPeaksStreamer:
         # loudness：层1 残留入尾并 pad 到 npeak；层2 残留丢弃
         self._finish_loudness()
         # spectral 截断到 C//div（header 与旧实现一致，可为负）
-        self._trim_spectral()
+        if self.include_spectral:
+            self._trim_spectral()
         return self._assemble(src_timestamp, src_filesize)
 
     def _finish_loudness(self) -> None:
@@ -327,7 +337,11 @@ class _ReaPeaksStreamer:
         ]
         finest_div, finest_npeak = wave_headers[0]
         c_total = finest_div * finest_npeak - 1280
-        spec_headers = [(-ord("s"), c_total // div) for div in self.divs]
+        spec_headers = (
+            [(-ord("s"), c_total // div) for div in self.divs]
+            if self.include_spectral
+            else []
+        )
         loud_divs = (max(1, self.sr // 40), max(1, self.sr // 2))
         loud_headers = [
             (-ord("r"), (self._total + loud_divs[0] - 1) // loud_divs[0] + 1),
@@ -345,8 +359,9 @@ class _ReaPeaksStreamer:
             out += struct.pack("<ii", div, npeak)
         for buf in self._w_out:
             out += buf
-        for buf in self._spec_out:
-            out += buf
+        if self.include_spectral:
+            for buf in self._spec_out:
+                out += buf
         for buf in self._loud_out:
             out += buf
         return bytes(out)
@@ -364,17 +379,31 @@ def np_minimum(a, b):
     return np.minimum(a, b)
 
 
-def generate_reapeaks_bytes(sr, channels, samples, divs=None,
-                            src_timestamp=0, src_filesize=0):
+def generate_reapeaks_bytes(
+    sr,
+    channels,
+    samples,
+    divs=None,
+    src_timestamp=0,
+    src_filesize=0,
+    *,
+    include_spectral: bool = True,
+):
     """Assemble the full .ReaPeaks byte payload from PCM samples.
 
     ``samples`` is a list of per-channel int16 sequences (as before).  The
     payload is produced by the streaming core, so its bytes are identical to
-    the pipe-fed path.
+    the pipe-fed path. Set ``include_spectral=False`` to retain the wave layer
+    while skipping spectral FFT/mipmaps.
     """
     import numpy as np
 
-    streamer = _ReaPeaksStreamer(sr, channels, divs=divs)
+    streamer = _ReaPeaksStreamer(
+        sr,
+        channels,
+        divs=divs,
+        include_spectral=include_spectral,
+    )
     if channels == 1:
         interleaved = np.asarray(samples[0], dtype="<i2").tobytes()
     else:
@@ -383,13 +412,23 @@ def generate_reapeaks_bytes(sr, channels, samples, divs=None,
     return streamer.finish(src_timestamp=src_timestamp, src_filesize=src_filesize)
 
 
-def write_reapeaks(path, sr, channels, samples, divs=None,
-                   src_timestamp=0, src_filesize=0) -> Path:
+def write_reapeaks(
+    path,
+    sr,
+    channels,
+    samples,
+    divs=None,
+    src_timestamp=0,
+    src_filesize=0,
+    *,
+    include_spectral: bool = True,
+) -> Path:
     """Generate and write a .ReaPeaks file next to a media path."""
     path = Path(path)
     path.write_bytes(generate_reapeaks_bytes(
         sr, channels, samples, divs=divs,
         src_timestamp=src_timestamp, src_filesize=src_filesize,
+        include_spectral=include_spectral,
     ))
     return path
 

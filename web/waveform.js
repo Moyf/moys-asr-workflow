@@ -9,6 +9,11 @@
   const SPECTRAL_SCHEMA = 'moy.asr.spectral.v1';
   const SPECTRAL_ENCODING = 'u16-freq-density-base64';
   const WORKSPACE_SCHEMA = 'moy.asr.editor.workspace.v1';
+
+  function localizedWaveformMessage(zh, en) {
+    return window.MAWE_I18N?.language === 'en' ? en : zh;
+  }
+
   // 渲染器预设：classic / wave-right 由专属 CSS 网格渲染；custom 由 layoutTree 渲染
   // （大荧幕布局与用户保存的自定义工作区都以树渲染）。
   const RENDERER_PRESETS = ['classic', 'wave-right', 'custom'];
@@ -1173,6 +1178,16 @@
     return segments.findIndex((_, index) => isActiveCueAtTime(segments, index, timeMs, skipDisabled));
   }
 
+  function syncSpectralColorToggle(toggle, available, preferred) {
+    if (!toggle) return;
+    const hasSpectral = Boolean(available);
+    toggle.disabled = !hasSpectral;
+    toggle.checked = hasSpectral && preferred === true;
+    if (typeof toggle.setAttribute === 'function') {
+      toggle.setAttribute('aria-disabled', String(!hasSpectral));
+    }
+  }
+
   class WaveformEditor {
     constructor(options) {
       this.options = options;
@@ -1296,7 +1311,9 @@
         this.settings.dragPlayhead = this.dragPlayheadToggle.checked;
         saveSettings(this.settings);
       });
-      if (this.spectralColorToggle) this.spectralColorToggle.checked = this.settings.spectralColor === true;
+      if (this.spectralColorToggle) {
+        syncSpectralColorToggle(this.spectralColorToggle, false, this.settings.spectralColor);
+      }
       this.spectralColorToggle?.addEventListener('change', () => {
         this.settings.spectralColor = this.spectralColorToggle.checked;
         saveSettings(this.settings);
@@ -2091,6 +2108,10 @@
 
     setSpectralPayload(payload) {
       this.spectral = decodeSpectralPayload(payload);
+      // Without spectral data the feature is visibly and functionally off.
+      // Keep the stored preference intact so a deferred server payload can
+      // restore the user's choice when it becomes available.
+      syncSpectralColorToggle(this.spectralColorToggle, this.spectral != null, this.settings.spectralColor);
       this.render();
       return this.spectral != null;
     }
@@ -2120,20 +2141,29 @@
       this.options.onPayload(null);
       this.setPayload(null);
       if (file.size > BROWSER_DECODE_LIMIT) {
-        const message = '媒体过大，浏览器不会整段解码；请用 edit.py 预生成波形';
+        const message = localizedWaveformMessage(
+          '媒体过大，浏览器不会整段解码；请使用 MAW GUI 预生成波形',
+          'The media is too large for full browser decoding; use the MAW GUI to pre-generate the waveform',
+        );
         this.setStatus(message, 'error');
         throw new Error(message);
       }
       const durationSeconds = await this.waitForPlayerDuration();
       const estimatedPcmBytes = durationSeconds * 48000 * 2 * 4;
       if (durationSeconds > 0 && estimatedPcmBytes > BROWSER_PCM_ESTIMATE_LIMIT) {
-        const message = '音轨较长，浏览器整段解码可能耗尽内存；请用 edit.py 预生成波形';
+        const message = localizedWaveformMessage(
+          '音轨较长，浏览器整段解码可能耗尽内存；请使用 MAW GUI 预生成波形',
+          'The audio track is long and full browser decoding may exhaust memory; use the MAW GUI to pre-generate the waveform',
+        );
         this.setStatus(message, 'error');
         throw new Error(message);
       }
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!AudioContextClass) {
-        const message = '当前浏览器不支持 Web Audio；请用 edit.py 预生成波形';
+        const message = localizedWaveformMessage(
+          '当前浏览器不支持 Web Audio；请使用 MAW GUI 预生成波形',
+          'This browser does not support Web Audio; use the MAW GUI to pre-generate the waveform',
+        );
         this.setStatus(message, 'error');
         throw new Error(message);
       }
@@ -2187,7 +2217,11 @@
         this.setPayload(payload);
         return payload;
       } catch (error) {
-        const message = `浏览器无法解析音轨：${error.message || error}；请用 edit.py 预生成波形`;
+        const detail = error.message || error;
+        const message = localizedWaveformMessage(
+          `浏览器无法解析音轨：${detail}；请使用 MAW GUI 预生成波形`,
+          `The browser could not decode the audio track: ${detail}; use the MAW GUI to pre-generate the waveform`,
+        );
         this.setStatus(message, 'error');
         throw new Error(message);
       } finally {
@@ -4385,6 +4419,7 @@
       decodePayload,
       decodeReapeaksFile,
       decodeSpectralPayload,
+      syncSpectralColorToggle,
       freqColor,
       remapItems,
       roundMs,

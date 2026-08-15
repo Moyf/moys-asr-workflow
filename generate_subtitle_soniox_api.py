@@ -100,6 +100,10 @@ def main():
         help="将波形峰值数据嵌入工程文件（GUI 转写默认开启）",
     )
     parser.add_argument(
+        "--with-spectral", action="store_true",
+        help="在 .ReaPeaks 波形缓存中额外生成频谱数据（需要 --with-waveform）",
+    )
+    parser.add_argument(
         "-s", "--stickers", default=get_default_sticker_dir(),
         help="表情包文件夹路径，传给 edit.py（默认读 .env 的 STICKER_DIR）",
     )
@@ -129,6 +133,8 @@ def main():
     )
     args = parser.parse_args()
     configure_console_output()
+    if args.with_spectral and not args.with_waveform:
+        parser.error("--with-spectral 需要同时指定 --with-waveform")
 
     input_path = Path(args.input)
     if not input_path.exists():
@@ -325,6 +331,7 @@ def main():
                 json_data,
                 Path(audio_path),
                 source_media_path=input_path,
+                generate_spectral=args.with_spectral,
             ).project
         print("[输出] 正在校验工程文件...")
         check = validate_project(json_data)

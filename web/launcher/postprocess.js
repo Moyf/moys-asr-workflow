@@ -734,6 +734,8 @@
     if (!summary) return;
     if (!enabled) {
       summary.textContent = t("auto_summary_disabled");
+    } else if (!selected.length) {
+      summary.textContent = t("auto_summary_empty");
     } else if (invalid.length) {
       summary.textContent = t("auto_summary_invalid").replace("{steps}", invalid.map(autoStepLabel).join(stateLangSeparator()));
     } else {
@@ -858,6 +860,7 @@
     saveLlmPrompts();
     loadLlmPrompt(activeLlmOperation || $("postprocessOperation").value);
     renderOcrRegion();
+    if (plan.enabled && !AUTO_STEP_ORDER.some((stepId) => $(AUTO_STEP_CHECKBOXES[stepId]).checked)) setAutoStepsExpanded(true);
     renderAutoPostprocessState();
   }
 
@@ -1259,7 +1262,11 @@
     $(id).addEventListener("input", () => { renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
     $(id).addEventListener("change", () => { renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
   });
-  $("autoPostprocessEnabled").addEventListener("change", () => { renderAutoPostprocessState(); persistAutoPlanSoon(); });
+  $("autoPostprocessEnabled").addEventListener("change", () => {
+    if ($("autoPostprocessEnabled").checked) setAutoStepsExpanded(true);
+    renderAutoPostprocessState();
+    persistAutoPlanSoon();
+  });
   $("autoPostprocessRetain").addEventListener("change", () => { renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("autoPostprocessStepsToggle").addEventListener("click", () => {
     const expanded = $("autoPostprocessStepsCard").classList.contains("collapsed");

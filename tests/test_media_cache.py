@@ -47,19 +47,33 @@ class MediaCacheTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     @unittest.skipUnless(HAS_NUMPY, "numpy is required")
-    def test_embeds_waveform_and_reapeaks(self) -> None:
+    def test_embeds_waveform_and_wave_only_reapeaks_by_default(self) -> None:
         result = media_cache.embed_media_caches(self.project, self.wav)
         # 波形已嵌入工程
         self.assertIsNone(result.waveform_error)
         self.assertIn("waveform", result.project)
         self.assertGreater(result.project["waveform"]["peak_count"], 0)
-        # ReaPeaks 频谱缓存已生成在媒体旁
+        # 默认只生成 ReaPeaks 波形层，不计算频谱。
         self.assertIsNotNone(result.reapeaks_path)
         self.assertTrue(Path(result.reapeaks_path).exists())
         self.assertEqual(Path(result.reapeaks_path).name, "tone.wav.ReaPeaks")
-        # 可被只读路径解析
-        payload = reapeaks.load_spectral_payload(self.wav)
-        self.assertIsNotNone(payload)
+        self.assertNotIn("spectral", result.project)
+        parsed = reapeaks.ReaPeaksFile(str(result.reapeaks_path))
+        self.assertFalse(parsed.spectral_mipmaps())
+        self.assertIn("wave", [m.kind for m in parsed.mipmaps])
+        self.assertIsNotNone(reapeaks.load_waveform_payload(self.wav))
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    @unittest.skipUnless(HAS_NUMPY, "numpy is required")
+    def test_embeds_spectral_when_explicitly_requested(self) -> None:
+        result = media_cache.embed_media_caches(
+            self.project,
+            self.wav,
+            generate_spectral=True,
+        )
+
+        self.assertIn("spectral", result.project)
+        self.assertIsNotNone(reapeaks.load_spectral_payload(self.wav))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     @unittest.skipUnless(HAS_NUMPY, "numpy is required")
@@ -74,6 +88,7 @@ class MediaCacheTests(unittest.TestCase):
             self.project,
             cache_media,
             source_media_path=source,
+            generate_spectral=True,
         )
 
         self.assertEqual(result.project["waveform"]["source"], media_cache.media_signature(source))

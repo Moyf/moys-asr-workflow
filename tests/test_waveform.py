@@ -142,6 +142,14 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('<option value="reapeaks" selected>', template)
         self.assertIn("shapeSource === 'reapeaks'", waveform)
 
+    def test_long_media_waveform_hint_points_to_maw_gui(self) -> None:
+        waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
+        self.assertIn("请使用 MAW GUI 预生成波形", waveform)
+        self.assertIn("use the MAW GUI to pre-generate the waveform", waveform)
+        self.assertNotIn("请用 edit.py 预生成波形", waveform)
+        page = edit.build_blank_html()
+        self.assertIn("请使用 MAW GUI 预生成波形", page)
+
     def test_blank_editor_inlines_modular_assets(self) -> None:
         page = edit.build_blank_html()
         self.assertIn('class="waveform-mode-switch"', page)

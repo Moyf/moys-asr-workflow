@@ -65,6 +65,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gap-split", type=int, default=1000, help="静音超过多少毫秒时切句")
     parser.add_argument("--json", action="store_true", help="同时生成 .mosp 工程")
     parser.add_argument("--with-waveform", action="store_true", help="把波形缓存嵌入 .mosp")
+    parser.add_argument(
+        "--with-spectral", action="store_true",
+        help="在 .ReaPeaks 波形缓存中额外生成频谱数据（需要 --with-waveform）",
+    )
     parser.add_argument("--no-html", action="store_true", help="不生成便携 HTML 编辑器")
     return parser
 
@@ -100,6 +104,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     if args.with_waveform and not args.json:
         print("错误: --with-waveform 需要同时指定 --json")
+        return 2
+    if args.with_spectral and not args.with_waveform:
+        print("错误: --with-spectral 需要同时指定 --with-waveform")
         return 2
     try:
         file_hotwords = load_hotword_files(args.hotword_file)
@@ -151,6 +158,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 write_json=args.json,
                 generate_html=args.json and not args.no_html,
                 with_waveform=args.with_waveform,
+                generate_spectral=args.with_spectral,
             )
     except Exception as error:  # noqa: BLE001 - CLI boundary prints actionable error.
         print(f"错误: {error}")

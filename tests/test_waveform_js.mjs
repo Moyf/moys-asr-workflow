@@ -594,6 +594,26 @@ test('rejects unknown or malformed spectral payloads', () => {
 });
 
 
+test('disables spectral colors when spectral data is unavailable', () => {
+  const toggle = {
+    disabled: false,
+    checked: true,
+    attributes: {},
+    setAttribute(name, value) { this.attributes[name] = value; },
+  };
+
+  helpers.syncSpectralColorToggle(toggle, false, true);
+  assert.equal(toggle.disabled, true);
+  assert.equal(toggle.checked, false);
+  assert.equal(toggle.attributes['aria-disabled'], 'true');
+
+  helpers.syncSpectralColorToggle(toggle, true, true);
+  assert.equal(toggle.disabled, false);
+  assert.equal(toggle.checked, true);
+  assert.equal(toggle.attributes['aria-disabled'], 'false');
+});
+
+
 test('maps spectral freq/density to a valid hsl color', () => {
   const low = helpers.freqColor(50, 16383, 16383);
   assert.match(low, /^hsl\([\d.]+, [\d.]+%, [\d.]+%\)$/);
