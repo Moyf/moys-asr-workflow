@@ -240,6 +240,15 @@ test('skips disabled cues while finding the active waveform cue', () => {
 });
 
 
+test('follows a multi-row playhead using the actual viewport comfort zone', () => {
+  // 390px 视口的上下舒适区各为 78px；第二行仍在虚拟化缓冲内，
+  // 但已经超出实际可视舒适区，播放时应触发跟随。
+  assert.equal(helpers.isMultiRowInComfortZone(1, 0, 390, 120), true);
+  assert.equal(helpers.isMultiRowInComfortZone(2, 0, 390, 120), false);
+  assert.equal(helpers.isMultiRowInComfortZone(1, 100, 390, 120), false);
+});
+
+
 test('locates the first cue overlapping a waveform row without scanning earlier cues', () => {
   const segments = [
     { start: 0, end: 900 },

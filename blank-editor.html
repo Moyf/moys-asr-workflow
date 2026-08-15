@@ -7196,9 +7196,9 @@
   const ROW_HEIGHT_PRESETS = [64, 80, 96, 120, 144, 168];
   const ROW_GAP = 10;
   const SPLIT_FLASH_DURATION_MS = 720;
-  // 多行波形保留视口前后几行，字幕快捷键跨行时可以直接复用已绘制的行。
+  // 多行波形保留视口前后少量行，字幕快捷键跨行时可以直接复用已绘制的行。
   // 行本身仍按可视区增量创建，不会把整段长媒体一次性放进 DOM。
-  const MULTI_ROW_BUFFER = 4;
+  const MULTI_ROW_BUFFER = 2;
   const MIN_CUE_MS = 100;
   const MIN_WAVEFORM_SCALE = 0.25;
   const MAX_WAVEFORM_SCALE = 6;
@@ -7286,6 +7286,16 @@
 
   function clamp(value, low, high) {
     return Math.max(low, Math.min(high, value));
+  }
+
+  function isMultiRowInComfortZone(rowIndex, scrollTop, viewportHeight, rowHeight) {
+    const safeRowHeight = Math.max(1, Number(rowHeight) || 0);
+    const safeViewportHeight = Math.max(1, Number(viewportHeight) || 0);
+    const safeScrollTop = Number.isFinite(Number(scrollTop)) ? Number(scrollTop) : 0;
+    const rowTop = Number(rowIndex) * (safeRowHeight + ROW_GAP) - safeScrollTop;
+    const comfortInset = Math.min(120, Math.max(48, safeViewportHeight * 0.2));
+    return rowTop >= comfortInset
+      && rowTop + safeRowHeight <= safeViewportHeight - comfortInset;
   }
 
   // 组序号徽章：颜色与表情包分组彼此独立，因此同一条字幕可同时拥有两枚徽章。
@@ -8329,6 +8339,9 @@
       this.gapBoundaryDrag = null;
       this.suppressGapClickUntil = 0;
       this.autoScrolling = false;
+      this.autoScrollTarget = null;
+      this.multiFollowRowIndex = -1;
+      this.multiFollowCheckPending = true;
       this.resizeFrame = 0;
       // 字幕快捷键会在很短时间内连续请求定位；复用滚动事件已有的
       // rAF 合并，避免每个按键都强制重建可视行和 Canvas。
@@ -8417,7 +8430,12 @@
       document.getElementById('waveform-zoom-out').addEventListener('click', () => this.changeZoom(1));
       this.waveformScaleDownButton?.addEventListener('click', () => this.changeWaveformScale(-1));
       this.waveformScaleUpButton?.addEventListener('click', () => this.changeWaveformScale(1));
-      this.pane.addEventListener('pointerdown', () => this.focusWaveform());
+      this.pane.addEventListener('pointerdown', () => {
+        this.autoScrolling = false;
+        this.autoScrollTarget = null;
+        this.multiFollowCheckPending = true;
+        this.focusWaveform();
+      });
       this.secondsPerRowSelect.addEventListener('change', () => {
         this.settings.secondsPerRow = Number(this.secondsPerRowSelect.value);
         saveSettings(this.settings);
@@ -8459,9 +8477,23 @@
       this.layoutEditToggle?.addEventListener('click', () => this.toggleLayoutEditMode());
       this.layoutResetButton?.addEventListener('click', () => this.resetLayout());
       this.scroll.addEventListener('wheel', (event) => this.handleWheel(event), { passive: false });
+      this.scroll.addEventListener('pointerdown', () => {
+        this.autoScrolling = false;
+        this.autoScrollTarget = null;
+        this.multiFollowCheckPending = true;
+      });
       this.scroll.addEventListener('scroll', (event) => {
         if (!this.isMultiMode()) return;
-        if (event.isTrusted && !this.autoScrolling) this.manualFollowUntil = Date.now() + 3000;
+        const wasAutoScroll = this.autoScrolling || this.autoScrollTarget !== null;
+        if (this.autoScrollTarget !== null
+            && Math.abs(this.scroll.scrollTop - this.autoScrollTarget) <= 0.5) {
+          this.autoScrolling = false;
+          this.autoScrollTarget = null;
+        }
+        if (event.isTrusted && !wasAutoScroll) {
+          this.manualFollowUntil = Date.now() + 3000;
+          this.multiFollowCheckPending = true;
+        }
         this.scheduleMultiVisible();
       });
       this.bindDivider();
@@ -8651,6 +8683,8 @@
     setMode(mode) {
       if (!['basic', 'multi'].includes(mode) || mode === this.settings.mode) return;
       this.settings.mode = mode;
+      this.multiFollowRowIndex = -1;
+      this.multiFollowCheckPending = true;
       saveSettings(this.settings);
       this.applyLayout();
       if (mode === 'basic') this.centerBasicOnCurrentTime();
@@ -9141,6 +9175,9 @@
 
     revealTime(timeMs, center = true) {
       if (!this.payload) return;
+      this.autoScrolling = false;
+      this.autoScrollTarget = null;
+      this.multiFollowCheckPending = true;
       if (this.settings.mode === 'basic') {
         const windowMs = this.settings.visibleSeconds * 1000;
         const maxStart = Math.max(0, this.durationMs - windowMs);
@@ -9158,11 +9195,8 @@
       const rowIndex = clamp(Math.floor(timeMs / rowDurationMs), 0, Math.max(0, Math.ceil(this.durationMs / rowDurationMs) - 1));
       const stride = this.settings.rowHeight + ROW_GAP;
       const currentScrollTop = this.scroll.scrollTop;
-      const rowTop = rowIndex * stride - currentScrollTop;
-      const comfortInset = Math.min(120, Math.max(48, this.scroll.clientHeight * 0.2));
-      const rowInComfortZone = (
-        rowTop >= comfortInset
-        && rowTop + this.settings.rowHeight <= this.scroll.clientHeight - comfortInset
+      const rowInComfortZone = isMultiRowInComfortZone(
+        rowIndex, currentScrollTop, this.scroll.clientHeight, this.settings.rowHeight,
       );
       const scrollTop = center && rowInComfortZone
         ? currentScrollTop
@@ -9515,6 +9549,7 @@
         this.render();
         return;
       }
+      this.multiFollowCheckPending = true;
       const rowDurationMs = this.settings.secondsPerRow * 1000;
       const rowCount = Math.max(1, Math.ceil(this.durationMs / rowDurationMs));
       const stride = this.settings.rowHeight + ROW_GAP;
@@ -9570,6 +9605,7 @@
       const rowCount = Math.max(1, Math.ceil(this.durationMs / rowDurationMs));
       this.content.style.height = `${rowCount * (this.settings.rowHeight + ROW_GAP) - ROW_GAP}px`;
       this.multiRange = [-1, -1];
+      this.multiFollowCheckPending = true;
       this.renderMultiVisible(true);
     }
 
@@ -10649,6 +10685,9 @@
     handleWheel(event) {
       const scrollDelta = wheelScrollDelta(event);
       if (!scrollDelta) return;
+      this.autoScrolling = false;
+      this.autoScrollTarget = null;
+      this.multiFollowCheckPending = true;
       if (this.isMultiMode() && (event.ctrlKey || event.metaKey) && event.shiftKey) {
         // Ctrl(Cmd)+Shift+滚轮：仅多行模式下循环调整行高预设，向上滚放大，不改变时间映射
         event.preventDefault();
@@ -11593,10 +11632,32 @@
 
       if (allowFollow && this.isMultiMode() && this.player && !this.player.paused && Date.now() > this.manualFollowUntil) {
         const rowIndex = Math.floor(now / (this.settings.secondsPerRow * 1000));
-        if (rowIndex < this.multiRange[0] || rowIndex > this.multiRange[1]) {
+        const shouldCheckFollow = this.multiFollowCheckPending || rowIndex !== this.multiFollowRowIndex;
+        if (!shouldCheckFollow) {
+          this.positionPlayheads();
+          return;
+        }
+        this.multiFollowRowIndex = rowIndex;
+        this.multiFollowCheckPending = false;
+        const viewportHeight = this.scroll.clientHeight;
+        const rowInComfortZone = viewportHeight > 0 && isMultiRowInComfortZone(
+          rowIndex, this.scroll.scrollTop, viewportHeight, this.settings.rowHeight,
+        );
+        const stride = this.settings.rowHeight + ROW_GAP;
+        const targetScrollTop = clamp(
+          rowIndex * stride - viewportHeight * 0.35,
+          0,
+          Math.max(0, this.scroll.scrollHeight - viewportHeight),
+        );
+        const currentScrollTop = this.scroll.scrollTop;
+        const targetChanged = this.autoScrollTarget === null
+          || Math.abs(targetScrollTop - this.autoScrollTarget) > 0.5;
+        const needsScroll = Math.abs(targetScrollTop - currentScrollTop) > 0.5;
+        if (!rowInComfortZone && needsScroll && targetChanged) {
           this.autoScrolling = true;
+          this.autoScrollTarget = targetScrollTop;
           this.scroll.scrollTo({
-            top: Math.max(0, rowIndex * (this.settings.rowHeight + ROW_GAP) - this.scroll.clientHeight * 0.35),
+            top: targetScrollTop,
             behavior: 'smooth',
           });
           requestAnimationFrame(() => { this.autoScrolling = false; });
@@ -11604,6 +11665,7 @@
           // 每次跨行时强制重建当前整组 DOM/Canvas。
           this.scheduleMultiVisible();
         }
+        if (!needsScroll) this.autoScrollTarget = null;
       }
       this.positionPlayheads();
     }
@@ -11661,6 +11723,7 @@
       layoutDropIntent,
       layoutRootDropIntent,
       layoutDropPreviewRect,
+      isMultiRowInComfortZone,
       computeGroupBadges,
     },
   };
