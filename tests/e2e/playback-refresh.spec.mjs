@@ -108,7 +108,7 @@ test('JKL direction mode drives the timeline backward and forward', async ({ pag
 
   await page.locator('#subtitle-preview-settings-toggle').click();
   await expect(page.locator('#jkl-playback-mode')).toHaveValue('direction');
-  await expect(page.locator('#jkl-playback-mode-hint')).toContainText('无反向声音');
+  await expect(page.locator('#jkl-playback-mode-hint')).toContainText('J 倒放');
 
   await page.evaluate(() => {
     const media = document.getElementById('player');

@@ -34,7 +34,7 @@
 | 1 | 已修复 | `.venv\\Scripts\\python.exe -m unittest tests.test_media_cache`（3/3 通过，含“测试模式使用限长缓存但保留原始媒体签名”）；`media_cache.py` 输出频谱生成进度，并在缓存旁路缺失时保留工程已有缓存。 |
 | 3 | 已修复 | `.venv\\Scripts\\python.exe -m unittest tests.test_gui_web tests.test_ocr_runtime tests.test_postprocess_ocr`（相关测试包含在 210/210 通过批次）；`node --check web\\launcher\\launcher.js`; `node --check web\\launcher\\postprocess.js`; `git diff --check` 均通过。 |
 | 4 | 已修复 | `node --check web\\editor.js`; `.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（13/13 通过）；`.venv\\Scripts\\python.exe edit.py --blank`; `blank-editor.html` 已扫描确认 ReaPeaks 解析/拖入入口，以及无绑定服务器提示“导出 .mosp，再重新打开该文件”；`git diff --check` 通过。 |
-| 5 | 已修复 | `node --check web\\editor.js`; `node --check web\\waveform.js`; `node --check web\\editor-i18n.js`; `node --test tests\\test_waveform_js.mjs tests\\test_editor_utils.mjs`（116/116 通过）；current-cue-panel Esc 回归 1/1；自动吸附/键盘回归 5/5；`.venv\\Scripts\\python.exe edit.py --blank`; `.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（15/15 通过）；`git diff --check` 通过。 |
+| 5 | 已修复 | `node --check web\\editor.js`; `node --check web\\waveform.js`; `node --check web\\editor-i18n.js`; `node --test tests\\test_waveform_js.mjs tests\\test_editor_utils.mjs`（当前批次 119/119 通过）；current-cue-panel Esc 回归 1/1；自动吸附/键盘回归 5/5；`.venv\\Scripts\\python.exe edit.py --blank`; `.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（15/15 通过）；`git diff --check` 通过。 |
 | 6 | 已修复 | `npx playwright test tests/e2e/multi-subtitle.spec.mjs --grep "aligns multiple selected extension cues" --project=chromium`（1/1 通过）；`npx playwright test tests/e2e/multi-subtitle.spec.mjs --grep "auto-synced binding|merges selected extension|选中的主字幕与绑定副字幕|拼合主字幕" --project=chromium`（4/4 通过）；`node --check web\\editor.js`; `node --check web\\editor-i18n.js`; 源码与便携版已同步。 |
 | 7 | 已修复 | `node --check web\\editor.js`; `node --check web\\editor-i18n.js`; `npx playwright test tests/e2e/waveform-history.spec.mjs --grep \"retries an inline split with B or Enter|requires a second B\" --project=chromium`（2/2 通过，内联路径明确验证第二次 Enter）；`npx playwright test tests/e2e/multi-subtitle.spec.mjs --grep \"uses B on a single selected extension|uses the linked split dialog|retries a short linked split|imports an extension SRT\" --project=chromium`（4/4 通过）；`.venv\\Scripts\\python.exe edit.py --blank`; `git diff --check`。 |
 | 8 | 已修复 | `node --check web\\editor.js`; `node --check web\\waveform.js`; `npx playwright test tests/e2e/waveform-history.spec.mjs --grep \"B splits the selected subtitle under|retries an inline split with B or Enter|Home and End|hovering a selected subtitle|last multi-row waveform|requires a second B\" --project=chromium`（6/6 通过）；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（113/113 通过）；`.venv\\Scripts\\python.exe edit.py --blank`; `python -m py_compile edit.py`; `git diff --check`。 |
@@ -56,7 +56,7 @@
 ## 阶段汇总（设置、缓存、Launcher/OCR）
 
 - 已完成第 1、3、5、8、9、19 项。第 1 项用限长缓存媒体生成波形/频谱，但写回原始媒体签名，并增加频谱生成提示；第 3 项收紧 OCR 就绪判断、安装后刷新、按钮布局、识别结果间距和产物高亮；第 5 项补齐全局自动吸附设置、current-cue-panel 的 Esc 操作设置和延长默认值；第 19 项补齐多重字幕主轨/副轨的 `Shift+←/→` 显式边界贴合；第 8、9 项的播放/波形与 Launcher/LLM 反馈也已完成。
-- 已验证：编辑器/波形/i18n/Launcher/后处理脚本语法通过；当前编辑器 Node 回归 116/116 通过，`tests.test_waveform` 15/15 通过；便携版已重新生成。`uv run` 因本机 uv 缓存权限失败，使用仓库 `.venv` 完成 Python 验证。
+- 已验证：编辑器/波形/i18n/Launcher/后处理脚本语法通过；当前编辑器 Node 回归 119/119 通过，`tests.test_waveform` 15/15 通过；便携版已重新生成。`uv run` 因本机 uv 缓存权限失败，使用仓库 `.venv` 完成 Python 验证。
 - 当前剩余修改项：无。第 13、14、16 项已完成；第 2、10、11、12、17 项为说明项，无需修改。
 
 ## 增量记录（任务 13、14：启动解耦与链接范围）
@@ -152,7 +152,7 @@
 - `Esc` 设置已从全局设置和波形拖动移除，放入 `current-cue-panel` 齿轮的「操作」类别；「Esc 取消编辑」默认关闭。关闭时 `Esc` 提交文本改动并退出，开启时恢复进入编辑前的文本。
 - `Shift+←/→` 是显式的直接边界贴合操作，不受自动吸附开关影响；多重字幕模式下根据当前字幕面板目标分别操作主轨或副轨，左/右方向分别贴合前一条结尾或后一条开头，不移动邻居。
 
-已验证：`node --test tests\\test_waveform_js.mjs tests\\test_editor_utils.mjs`（116/116）；`.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（15/15）；自动吸附与键盘回归 5/5；current-cue-panel Esc 回归 1/1；多重字幕 `Shift+←/→` 主轨/副轨回归 1/1；`npm run sync:docs` 已同步网站文档；`git diff --check` 通过。网站 `npm run check` 因本机 `website/node_modules` 缺少 `astro` 未能执行，文档类型检查未验证。
+已验证：`node --test tests\\test_waveform_js.mjs tests\\test_editor_utils.mjs`（119/119）；`.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（15/15）；自动吸附与键盘回归 5/5；current-cue-panel Esc 回归 1/1；多重字幕 `Shift+←/→` 主轨/副轨回归 1/1；`npm run sync:docs` 已同步网站文档；`git diff --check` 通过。网站 `npm run check` 因本机 `website/node_modules` 缺少 `astro` 未能执行，文档类型检查未验证。
 
 ## 增量记录（任务 20：独立共享边界反向拖动）
 
