@@ -251,6 +251,7 @@ class GenerateReaPeaksTests(unittest.TestCase):
         self.assertIn("wave", [m.kind for m in parsed.mipmaps])
         self.assertNotIn("spectral", [m.kind for m in parsed.mipmaps])
         self.assertIsNone(reapeaks.extract_spectral_payload(target, self.tone_path))
+
     def test_extract_waveform_payload_has_amplitude(self) -> None:
         sr, ch, frames = _read_wav_pcm(self.tone_path)
         streamer = rust_generate.ReapeaksStreamer(
@@ -297,7 +298,6 @@ class GenerateReaPeaksTests(unittest.TestCase):
         self.assertIsNotNone(payload)
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
-    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_generate_for_media_rebuilds_wave_only_cache_when_spectral_is_requested(self) -> None:
         target = self.root / "tone.wav.ReaPeaks"
         reapeaks.generate_for_media(self.tone_path, include_spectral=False)
@@ -305,6 +305,8 @@ class GenerateReaPeaksTests(unittest.TestCase):
 
         reapeaks.generate_for_media(self.tone_path, include_spectral=True)
         self.assertTrue(reapeaks.ReaPeaksFile(str(target)).spectral_mipmaps())
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_generate_for_media_handles_non_wav_media(self) -> None:
         mp3 = self.root / "tone.mp3"
         subprocess_run(["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
