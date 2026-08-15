@@ -25,6 +25,7 @@
 | 17 | 波形缓存 / 重构询问 | 希望把 ReaPeaks 与自研波形封装为同一个独立缓存文件，拖入长视频时按媒体尝试复用 | 说明 | 仅说明 |
 | 18 | Launcher / 自动后处理 | OCR 作为最后一步时自动后处理失败；从 SRT 或缺少媒体字段的工程进入翻译等步骤后，输出工程丢失 `media` | 修改 | 已修复 |
 | 19 | 编辑器 / 多字幕快捷键 | 选中字幕时 `Shift+←/→` 应贴合前后字幕边界，但在多重字幕模式下不生效 | 修改 | 已修复 |
+| 20 | 编辑器 / 边界拖动 | 独立拉开原本贴合的相邻字幕边界后，反向拖动会被当前边界错误限制，无法拖回 | 修改 | 已修复 |
 
 ## 修复与验证记录
 
@@ -42,6 +43,7 @@
 | 14 | 已修复 | Launcher 消息中的 URL 正则在中文右括号、书名号、引号及常见句末标点前停止，不再把后续说明文字并入链接；`.venv\\Scripts\\python.exe -m unittest tests.test_gui_web.LauncherAssetContractTests.test_launcher_message_url_stops_before_closing_punctuation`（1/1）；`node --check web\\launcher\\launcher.js` 通过。 |
 | 15 | 已修复 | `--with-waveform` / Launcher 默认生成并嵌入 ReaPeaks wave 层，`--with-spectral` 或勾选“生成 ReaPeaks 频谱数据”才执行 FFT 并嵌入 spectral；只有波形层时编辑器自动取消并禁用频谱颜色，后台补齐频谱后恢复可用。`.venv\\Scripts\\python.exe -m unittest tests.test_reapeaks tests.test_media_cache tests.test_cli tests.test_gui_workflow tests.test_gui_web tests.test_local_asr`（250/250）；`node --test tests\\test_waveform_js.mjs tests\\test_editor_utils.mjs`（114/114）；相关 Python/JS 语法检查、`.venv\\Scripts\\python.exe edit.py --blank`、`git diff --check` 均通过。 |
 | 19 | 已修复 | `npx playwright test tests/e2e/multi-subtitle.spec.mjs --grep "Shift\\+arrow snaps selected main and secondary cues" --project=chromium`（1/1）；同时覆盖主字幕 `Shift+←`、副字幕 `Shift+→` 的贴合，并确认 current-cue-panel 的轨道目标正确。 |
+| 20 | 已修复 | `npx playwright test tests/e2e/keyboard-timing.spec.mjs --grep "independent shared-boundary drag can reverse before release" --project=chromium`（1/1）；`node --test tests\\test_waveform_js.mjs`（40/40）；覆盖共享边界独立拉开后反向拖回，以及起点/终点两种方向。 |
 
 ## 询问项结论
 
@@ -151,3 +153,11 @@
 - `Shift+←/→` 是显式的直接边界贴合操作，不受自动吸附开关影响；多重字幕模式下根据当前字幕面板目标分别操作主轨或副轨，左/右方向分别贴合前一条结尾或后一条开头，不移动邻居。
 
 已验证：`node --test tests\\test_waveform_js.mjs tests\\test_editor_utils.mjs`（116/116）；`.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（15/15）；自动吸附与键盘回归 5/5；current-cue-panel Esc 回归 1/1；多重字幕 `Shift+←/→` 主轨/副轨回归 1/1；`npm run sync:docs` 已同步网站文档；`git diff --check` 通过。网站 `npm run check` 因本机 `website/node_modules` 缺少 `astro` 未能执行，文档类型检查未验证。
+
+## 增量记录（任务 20：独立共享边界反向拖动）
+
+- 修复独立拖动共享边界时的钳制逻辑：左字幕终点以右字幕起点为固定上限，右字幕起点以左字幕终点为固定下限，不再把已移动的当前边界当成单向限制。
+- 现在相邻字幕从贴合状态拉开后，可以在同一次拖动中反向拖回，也支持之后继续双向调整；邻字幕仍保持不动，最小时长和不重叠限制不变。
+- 已重新生成 `blank-editor.html`，源码与便携版共用同一修复。
+
+已验证：边界反向拖动浏览器回归 1/1；波形 Node 回归 40/40；`node --check web\\waveform.js` 通过。
