@@ -20,7 +20,7 @@
     output_collision: "An output file with the same name already exists. To avoid overwriting it, the new output has been given a suffix."
   });
   Object.assign(STRINGS.zh, {
-    auto_postprocess_title: "3️⃣ 转写后自动处理",
+    auto_postprocess_title: "3️⃣ 转写后自动处理 （Beta）",
     auto_postprocess_hint: "转写完成后按固定顺序处理字幕；首次启用某一步前，请先在工具箱中完成配置。",
     auto_postprocess_enable: "启用转写后自动处理",
     auto_postprocess_steps: "后处理步骤",
@@ -97,7 +97,7 @@
     local_runtime_cancelled: "本地运行环境安装已取消"
   });
   Object.assign(STRINGS.en, {
-    auto_postprocess_title: "3️⃣ Post-transcription processing",
+    auto_postprocess_title: "3️⃣ Post-transcription processing (Beta)",
     auto_postprocess_hint: "Process subtitles in a fixed order after transcription. Configure a step in the toolbox before enabling it.",
     auto_postprocess_enable: "Enable automatic post-processing",
     auto_postprocess_steps: "Post-processing steps",
@@ -568,7 +568,7 @@
         workspaceId: saved.workspaceId,
         guiLang: saved.guiLang,
         showRareLangs: saved.showRareLangs || false,
-        appVersion: "1.4.0-beta.8",
+        appVersion: "1.4.0",
         stickerDir: saved.stickerDir || "",
         postprocessProviders: [
           { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
