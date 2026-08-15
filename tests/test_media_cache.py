@@ -11,7 +11,7 @@ import wave
 from pathlib import Path
 
 import media_cache
-import reapeaks
+import reapeaks_io as reapeaks
 
 try:
     import numpy  # noqa: F401

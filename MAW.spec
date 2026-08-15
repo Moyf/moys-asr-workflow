@@ -58,7 +58,7 @@ datas = [
     (str(ROOT / "generate_subtitle_qwen_api.py"), "local-runtime"),
     (str(ROOT / "edit.py"), "local-runtime"),
     (str(ROOT / "waveform.py"), "local-runtime"),
-    (str(ROOT / "reapeaks.py"), "local-runtime"),
+    (str(ROOT / "reapeaks_io.py"), "local-runtime"),
     (str(ROOT / "reapeaks_generate.py"), "local-runtime"),
     (str(ROOT / "media_cache.py"), "local-runtime"),
     (str(ROOT / "maw" / "__init__.py"), "local-runtime/maw"),

@@ -23,6 +23,13 @@ from pathlib import Path
 import reapeaks_generate
 import waveform as waveform_module
 
+try:
+    import reapeaks as rust_generate  # noqa: F401
+
+    HAS_RUST = True
+except ImportError:
+    HAS_RUST = False
+
 MAGIC_V10 = b"RPKM"  # v1.0: min == -max (mirrored)
 MAGIC_V11 = b"RPKN"  # v1.1: explicit min/max
 MAGIC_V12 = b"RPKL"  # v1.2: float-range peaks
@@ -473,15 +480,31 @@ def generate_reapeaks_stream_bytes(
             proc.wait()
             return None
         channels, sample_rate, data_off = parsed
-        streamer = reapeaks_generate._ReaPeaksStreamer(
-            sample_rate,
-            channels,
-            include_spectral=include_spectral,
-        )
+        # Rust 内核优先（1-4MB 块内并行 + GIL 释放），Python 参考回退。
+        # 与 reapeaks_generate 全量输出对齐：wave+spectral+loudness 三层。
+        if HAS_RUST:
+            features = (
+                ["wave", "spectral", "loudness"]
+                if include_spectral
+                else ["wave", "loudness"]
+            )
+            streamer = rust_generate.ReapeaksStreamer(
+                sample_rate, channels,
+                features=features,
+                mipmap_levels=3,
+            )
+            read_size = 1 * 1024 * 1024
+        else:
+            streamer = reapeaks_generate._ReaPeaksStreamer(
+                sample_rate,
+                channels,
+                include_spectral=include_spectral,
+            )
+            read_size = 64 * 1024
         if data_off < len(header):
             streamer.feed(header[data_off:])
         while True:
-            chunk = proc.stdout.read(64 * 1024)
+            chunk = proc.stdout.read(read_size)
             if not chunk:
                 break
             streamer.feed(chunk)

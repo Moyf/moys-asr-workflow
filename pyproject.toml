@@ -12,6 +12,9 @@ dependencies = [
     "pywebview[qt]>=6.2.1; sys_platform == 'linux'",
     "requests>=2.28",
     "numpy>=2.2,<2.5",
+    # Rust .ReaPeaks 生成内核（MIT/Apache-2.0，独立仓库）；缺失时回退到
+    # reapeaks_generate 的 Python 参考实现。
+    "reapeaks>=0.1"
 ]
 
 [project.optional-dependencies]

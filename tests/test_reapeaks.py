@@ -12,7 +12,7 @@ import unittest
 import wave
 from pathlib import Path
 
-import reapeaks
+import reapeaks_io as reapeaks
 import reapeaks_generate
 import waveform
 

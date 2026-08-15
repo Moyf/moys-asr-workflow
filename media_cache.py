@@ -11,7 +11,7 @@ from pathlib import Path
 import struct
 from typing import Any
 
-import reapeaks
+import reapeaks_io as reapeaks
 from waveform import embed_waveform, media_signature
 
 
