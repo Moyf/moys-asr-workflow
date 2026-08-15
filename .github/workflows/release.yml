@@ -525,7 +525,7 @@ jobs:
         run: python3 scripts/prepare_release_notes.py --tag "${{ github.ref_name }}" --output release-notes.md
 
       - name: Append incomplete-build warning
-        if: ${{ contains(needs.build-aux.results, 'failure') }}
+        if: ${{ needs.build-aux.result == 'failure' }}
         shell: bash
         run: |
           set -euo pipefail

@@ -230,6 +230,10 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("--notes-file release-notes.md", workflow)
         # publish 必须同时满足 tag 触发 + Windows 构建成功，否则 dispatch 会误发 Release
         self.assertIn("startsWith(github.ref, 'refs/tags/v') && !cancelled() && needs.build-windows.result == 'success'", workflow)
+        # 不完整构建警告：needs 上下文只提供单数 result（矩阵 job 的聚合结果），
+        # 复数 results 不是有效属性，会让警告永不触发
+        self.assertIn("needs.build-aux.result == 'failure'", workflow)
+        self.assertNotIn("needs.build-aux.results", workflow)
         # macOS-specific assertions
         macos_workflow = read_text(".github/workflows/release.yml")
         self.assertNotIn("tauri.macos.conf.json", macos_workflow)
