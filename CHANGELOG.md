@@ -8,10 +8,11 @@
 
 - 发布 CI 合并：三个平台发布 workflow（`release-windows.yml` / `build-macos.yml` / `release-linux.yml`）合并为单一矩阵 workflow `release.yml`。Windows 构建是发布门禁（失败则本次不发布），macOS / Linux 构建失败只追加警告提示、不阻断发布；Release 资产文件名与既有下载链接不变。顺带修复 dispatch 触发时 macOS 分支名含 `/` 会导致上传 artifact 失败的隐患。
 - Linux AppImage 的 headless smoke 验证从 60 秒缩短到 20 秒：启动数秒即进入事件循环，原 60 秒超时是多余的等待，可减少 Linux 发布 job 耗时。
+- Linux AppImage 打包随附静态 ffmpeg 的 GPLv3 许可文本（`GPLv3.txt`）与来源说明（`SOURCE.txt`），补齐 GPL 分发合规要求。
 
 ### 🐛 问题修复
 
-- 修复 Linux AppImage 在系统 libstdc++ 较新的发行版（如 SteamOS 的 GCC 14）上启动即崩溃的问题：打包时剔除 PyInstaller 收集的旧版 `libstdc++.so.6` / `libgcc_s.so.1` / `libgbm.so.1`（构建机 GCC 11 / Mesa 22），避免其抢先于系统库被加载、导致系统 Mesa 驱动链（EGL / Vulkan / VA-API）初始化失败使 QtWebEngine 无渲染后端而 abort；`release-linux.yml` 增加包内不得内置这三把库的回归断言。审计 `_internal/` 全部运行库后确认，`libgbm`（被 Chromium 直接链接）是除 libstdc++/libgcc_s 外唯一与系统组件撞名的库，其余库无同类风险。
+- 修复 Linux AppImage 在系统 libstdc++ 较新的发行版（如 SteamOS 的 GCC 14）上启动即崩溃的问题：打包时剔除 PyInstaller 收集的旧版 `libstdc++.so.6` / `libgcc_s.so.1` / `libgbm.so.1`（构建机 GCC 11 / Mesa 22），避免其抢先于系统库被加载、导致系统 Mesa 驱动链（EGL / Vulkan / VA-API）初始化失败使 QtWebEngine 无渲染后端而 abort；`release.yml` 增加包内不得内置这三把库的回归断言。审计 `_internal/` 全部运行库后确认，`libgbm`（被 Chromium 直接链接）是除 libstdc++/libgcc_s 外唯一与系统组件撞名的库，其余库无同类风险。
 - Linux 静态 ffmpeg 换源为 BtbN FFmpeg-Builds 并固定版本与校验和：johnvansickle 源偶发返回非 xz 内容（`xz: File format not recognized`）导致构建失败，且已被 ffmpeg.org 标记为 unmaintained；改用固定 `autobuild-2026-08-14-13-16` 构建（`N-126134-gc48230eb86`），下载后比对写死的 SHA256（版本与校验双固定、完全可复现），并适配 BtbN 包的 `bin/` 子目录布局。
 - Launcher 段落标题 keycap 表情改为通用选择器并补全 Linux 中文字体链：emoji 字体应用从逐个 id 白名单改为 `h2[data-i18n]` 属性选择器，新增模块标题无需再维护 CSS 匹配（此前 `3️⃣ 转写后自动处理` 漏匹配，SteamOS 上渲染成 `3x`）；`--font-sans` 末尾追加 Noto Sans CJK SC / Source Han Sans SC / WenQuanYi Micro Hei，Linux 汉字渲染不再失控落到 fontconfig 兜底，Windows / macOS 行为不变。
 
