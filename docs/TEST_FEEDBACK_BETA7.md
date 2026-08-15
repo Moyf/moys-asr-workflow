@@ -14,7 +14,7 @@
 | 6 | 编辑器 / 多字幕 | 绑定同步支持撤销；“绑定/解绑”改为“批量对齐”；副字幕支持 B/Enter 拆分；主字幕合并同步副字幕；绑定时自动同步时长；多选副字幕按 H 批量对齐 | 修改 | 已修复 |
 | 7 | 编辑器 / 切分 | 强制切分两侧至少保留 100ms；首次时长不足时保留编辑/弹窗，第二次按 B/Enter 强制钳制切点；撤销恢复切分前选中状态 | 修改 | 已修复 |
 | 8 | 编辑器 / 播放 | 去掉播放器高度限制；Home/End 跳转首尾；字幕悬停显示 B 提示；最后一行波形按真实剩余时长缩短 | 修改 | 已修复 |
-| 9 | Launcher / LLM | 配置 LLM 后提示测试连接；保存 API Key 自动测试；整体字号放大；Qwen LLM 复用已填写的 `DASHSCOPE_API_KEY` | 修改 | 已修复 |
+| 9 | Launcher / LLM | 保存 API Key 自动测试并在设置区反馈结果；整体字号放大；Qwen LLM 复用已填写的 `DASHSCOPE_API_KEY` | 修改 | 已修复 |
 | 10 | 切分 | 没有字词时间码时已有按字符位置估算切点路径，本次只修复边界和最短时长 | 说明 | 仅说明 |
 | 11 | 播放 / 波形 | 最后一行缩短只改变显示宽度，不会明显增加性能成本 | 说明 | 仅说明 |
 | 12 | 播放器 | 当前源码、模板、`edit.py` 和便携版均未发现 `40vh` 播放器限制 | 说明 | 仅说明 |
@@ -101,10 +101,10 @@
 ## 增量记录（任务 9：LLM 配置与 Qwen 密钥复用）
 
 - Qwen 后处理配置没有专用 Key 时，复用已有的 `DASHSCOPE_API_KEY`；Launcher 显示脱敏状态，测试连接和后处理管线读取同一有效 Key。
-- 保存 LLM 配置后显示“请点击测试连接”提示；输入新 API Key 点击保存时自动执行测试连接，成功或失败结果仍显示在设置区的状态位，不写入通用结果区。
-- 已验证：`.venv\\Scripts\\python.exe -m unittest tests.test_gui_web.GuiWebBridgeTests.test_qwen_postprocess_reuses_dashscope_api_key tests.test_gui_web.LauncherAssetContractTests.test_llm_save_feedback_is_local_and_transient`（2/2 通过）；`node --check web\\launcher\\postprocess.js`、`node --check web\\launcher\\launcher.js` 通过。
+- 输入新 API Key 点击保存时自动执行测试连接，成功或失败结果显示在设置区的状态位；普通保存只显示短暂的保存成功反馈，不再重复提示点击测试连接，也不写入通用结果区。
+- 已验证：`.venv\\Scripts\\python.exe -m unittest tests.test_gui_web tests.test_postprocess_pipeline`（163/163 通过）；`node --check web\\launcher\\postprocess.js`、`node --check web\\launcher\\launcher.js` 通过，保存成功不再提示点击测试连接，测试成功不改变当前窗口。
 - 已完成字号核对：Launcher 原先 11px 的文本已提升到至少 12px，常规 12px 文本已提升到 13px；工具箱、设置弹窗、状态提示和日志均覆盖。
-- 最终验证：`.venv\\Scripts\\python.exe -m unittest tests.test_gui_web tests.test_postprocess_pipeline`（160/160）；`node --check web\\launcher\\launcher.js`、`node --check web\\launcher\\postprocess.js`、`.venv\\Scripts\\python.exe -m py_compile maw\\gui_web.py tests\\test_gui_web.py`、`git diff --check` 均通过。
+- 最终验证：`.venv\\Scripts\\python.exe -m unittest tests.test_gui_web tests.test_postprocess_pipeline`（163/163）；`node --check web\\launcher\\launcher.js`、`node --check web\\launcher\\postprocess.js`、`.venv\\Scripts\\python.exe -m py_compile maw\\gui_web.py tests\\test_gui_web.py`、`git diff --check` 均通过。
 
 ### 没有字词时间码时是否允许切分
 

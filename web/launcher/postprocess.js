@@ -819,14 +819,6 @@
     pendingAutoStep = "";
     renderAutoPostprocessState();
     persistAutoPlanSoon();
-    if (["proofread", "resegment", "translate"].includes(stepId)) {
-      window.MAWLauncher.closeSettings?.();
-      setOpen(true);
-      selectTool("llm");
-      setAutoStepsExpanded(true);
-      selectAutoLlmOperation(stepId);
-      focusAutoField("postprocessPrompt");
-    }
     return true;
   }
 
@@ -981,7 +973,7 @@
     if (autoTest && enteredApiKey) {
       await testConnection({ alreadySaved: true });
     } else {
-      setSettingsSaveStatus(t("toolbox_saved_test_hint"), "success");
+      setSettingsSaveStatus(t("toolbox_saved"), "success");
     }
     return result;
   }
