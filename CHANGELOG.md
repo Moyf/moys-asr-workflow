@@ -4,17 +4,196 @@
 
 ## [Unreleased]
 
-### 🔄 变更
+## [1.4.0] - 2026-08-15
 
-- 发布 CI 合并：三个平台发布 workflow（`release-windows.yml` / `build-macos.yml` / `release-linux.yml`）合并为单一矩阵 workflow `release.yml`。Windows 构建是发布门禁（失败则本次不发布），macOS / Linux 构建失败只追加警告提示、不阻断发布；Release 资产文件名与既有下载链接不变。顺带修复 dispatch 触发时 macOS 分支名含 `/` 会导致上传 artifact 失败的隐患。
-- Linux AppImage 的 headless smoke 验证从 60 秒缩短到 20 秒：启动数秒即进入事件循环，原 60 秒超时是多余的等待，可减少 Linux 发布 job 耗时。
-- Linux AppImage 打包随附静态 ffmpeg 的 GPLv3 许可文本（`GPLv3.txt`）与来源说明（`SOURCE.txt`），补齐 GPL 分发合规要求。
+本版本汇总多重字幕、后处理工具链、本地 ASR、ReaPeaks 波形、编辑器交互优化和跨平台发布能力。
 
-### 🐛 问题修复
+### 🚀 崭新特性
 
-- 修复 Linux AppImage 在系统 libstdc++ 较新的发行版（如 SteamOS 的 GCC 14）上启动即崩溃的问题：打包时剔除 PyInstaller 收集的旧版 `libstdc++.so.6` / `libgcc_s.so.1` / `libgbm.so.1`（构建机 GCC 11 / Mesa 22），避免其抢先于系统库被加载、导致系统 Mesa 驱动链（EGL / Vulkan / VA-API）初始化失败使 QtWebEngine 无渲染后端而 abort；`release.yml` 增加包内不得内置这三把库的回归断言。审计 `_internal/` 全部运行库后确认，`libgbm`（被 Chromium 直接链接）是除 libstdc++/libgcc_s 外唯一与系统组件撞名的库，其余库无同类风险。
-- Linux 静态 ffmpeg 换源为 BtbN FFmpeg-Builds 并固定版本与校验和：johnvansickle 源偶发返回非 xz 内容（`xz: File format not recognized`）导致构建失败，且已被 ffmpeg.org 标记为 unmaintained；改用固定 `autobuild-2026-08-14-13-16` 构建（`N-126134-gc48230eb86`），下载后比对写死的 SHA256（版本与校验双固定、完全可复现），并适配 BtbN 包的 `bin/` 子目录布局。
-- Launcher 段落标题 keycap 表情改为通用选择器并补全 Linux 中文字体链：emoji 字体应用从逐个 id 白名单改为 `h2[data-i18n]` 属性选择器，新增模块标题无需再维护 CSS 匹配（此前 `3️⃣ 转写后自动处理` 漏匹配，SteamOS 上渲染成 `3x`）；`--font-sans` 末尾追加 Noto Sans CJK SC / Source Han Sans SC / WenQuanYi Micro Hei，Linux 汉字渲染不再失控落到 fontconfig 兜底，Windows / macOS 行为不变。
+### 🌐 多重字幕
+
+大家想要的双语字幕功能终于来啦——左上角点击「多重字幕」后启用，导入第二条 SRT 字幕即可开始双重字幕编辑。
+
+![多重字幕编辑](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/133916.webp)
+
+多重字幕支持双字幕同时拆分面板：
+
+![双字幕拆分面板](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/133949.webp)
+
+可以同时查看和编辑双语字幕：
+
+![双语字幕编辑](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/134029.webp)
+
+> 提示：可以直接使用下面的「后处理工具箱」生成翻译后的字幕。
+
+### 🧰 后处理工具箱
+
+Launcher 新增可链式后处理工具箱：支持文稿匹配、固定文字替换、OCR 识别屏幕文字并去重字幕、LLM 校对文本、重新断句、中英翻译和自定义文字任务。
+
+点击右下角的工具箱按钮使用：
+
+![后处理工具箱](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/132842.webp)
+
+> LLM 供应商目前支持：DeepSeek / 智谱 Coding Plan / 阿里云 Qwen / 自定义 OpenAI-compatible 服务；支持设置思考强度（默认关闭）。
+> 处理过程中显示流式输出内容。
+
+同时，可以在转写前直接勾选「3️⃣ 转写后自动处理 （Beta）」中的步骤，工具会在转写完毕后自动执行后续工序。
+
+![转写后自动处理](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/132819.webp)
+
+后处理配置支持复用 Qwen 密钥；新密钥保存后会自动测试，并在设置区反馈连接结果。OCR 运行时安装完成后也会自动刷新状态。
+
+例如，可以配置好后，在字幕生成后依次匹配写好的文稿、替换特定词语，然后交给 AI 校对（可以自己附加提示词），完毕之后翻译，最后获得精修后的双语字幕工程。
+
+### OCR 去重功能
+
+- Launcher 后处理工具箱新增「OCR 字幕去重」：使用 CPU 版 RapidOCR PP-OCRv6 tiny 检查字幕中画面，命中高度相似文字时为工程设置 `disabled`，并在 SRT 输出中移除。
+
+可以用于游戏实况中，避免主播配音和画面台词双重字幕的情况。
+
+![OCR 字幕去重](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/133346.webp)
+
+> 使用 PP-OCRv6 tiny / small 模型，纯 CPU 运行。
+> OCR 相关模块为可选下载。
+
+### 🖥️ 本地模型
+
+新增实验性的本地 Qwen3-ASR / FunASR CLI 流程，本地模型依赖保持为可选安装。Launcher 内增加「安装本地模型支持」：GUI 会在用户目录创建独立运行环境并自动安装本地 ASR 依赖。
+
+![本地模型支持](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/133426.webp)
+
+### 🆓️ 免费 API
+
+新增实验性第三供应商「必剪 ASR」：B 站必剪的非公开免费接口，无需 API Key，逐字毫秒时间戳写入工程 `items`。仅支持中文，断句质量一般。
+
+![必剪 ASR](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/133445.webp)
+
+> 不对免费 API 的效果做任何保证。仅供少量低频试用，将来随时可能下线。
+
+### ReaPeaks 波形文件
+
+新增 ReaPeaks 波形文件的生成和预览功能。编辑器默认使用自研波形；媒体旁存在 `.ReaPeaks` 时，服务器响应后会在后台加载对应波形，避免大型工程启动被解析过程阻塞。
+
+![ReaPeaks 波形](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/133218.webp)
+
+> 感谢 @量子猫 的 PR！
+
+同时增加了频谱显示模式，在波形不好判断的时候，可以借助频谱更好地区分音频内容。Launcher 可选生成 ReaPeaks 频谱；没有频谱数据时，编辑器会禁用频谱颜色选项。
+
+![频谱显示](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/133134.webp)
+
+### 其他
+
+#### 字幕忍者
+
+全局设置增加字幕忍者彩蛋功能，可以在拆分字幕的时候播放音效和酷炫刀光。
+
+![字幕忍者](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/133706.webp)
+
+#### 在线编辑器
+
+当前纯 HTML 编辑器可以在线使用：[MAWE 在线编辑器](https://moyf.github.io/moys-asr-workflow/editor/)
+
+> 如果想简单尝试 MAW 编辑器，可以直接打开链接，拖入视频和 SRT 字幕并开始编辑。
+> ⚠️ 注意：HTML 没有保存工程的能力，编辑后记得用「导出工程」将工程下载到本地。
+
+### ✨ 体验提升
+
+#### 快速上手
+
+首次打开时会显示快速上手教学。
+
+![快速上手教学](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/111711.webp)
+
+#### 界面重构
+
+- Launcher 高级选项改为分组卡片（识别参数 / 语言 / 字幕切句 / 上下文与热词 / 其他），改善交互体验。
+
+![高级选项分组](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/112342.webp)
+
+- 重构帮助窗口，布局更清晰，支持拖动和调整大小。
+
+![帮助窗口](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/111855.webp)
+
+- 设置界面重构：四个分区的设置放入对应顶部的「⚙️」按钮中，右上角仅保留「⚙️ 全局设置」。
+
+![设置界面](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/114810.webp)
+
+#### 转写服务
+
+- Soniox 在 Launcher「高级选项」中支持 `general`、`text`、`terms` 和 `translation_terms` 上下文配置。
+- Launcher 高级选项增加字幕切句参数：最大字数、短句合并阈值和停顿切句阈值；留空时沿用所选模型默认值，并在 GUI 与 CLI 边界校验参数关系。
+
+![转写服务高级选项](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/112433.webp)
+
+#### 字幕预览
+
+- **预览字幕支持读取本机字体** ：点击字体设置中的「读取本机字体」后，可将当前电脑已安装的字体族加入下拉框并选择；工程只保存字体名称，其他电脑缺少该字体时预览自动回退到默认无衬线字体。
+- **预览字幕支持调节背景色和不透明度** ：可通过取色器和不透明度滑块调整字幕背景；不透明度设为 0 时隐藏背景，旧工程继续使用半透明黑色。
+- **字幕预览默认宽度调整为 80%** ：缺少预览几何的工程使用 80% 宽度、左右各留 10% 的默认字幕选框；已保存几何的工程不受影响。
+
+![字幕预览设置](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/133827.webp)
+
+#### 字幕编辑
+
+- 波形区新增「**延长字幕**」工具：支持按选中字幕或全部主字幕向前、向后延长字幕，可用于让字幕提前出现、晚点消失。
+
+![延长字幕工具](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/115727.webp)
+
+> 可以搭配原有的「拼接/合并字幕」工具使用。
+
+- 新增切分位置预览以及切分动效，更好地把握切分位置。
+
+![切分位置预览](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/115647.webp)
+
+- 增加编辑器 `Ctrl/Cmd+Shift+A/D` 粘合前后字幕等按键，详见帮助。
+- 增加 `Z/X` 按键来快速设置字幕的边界。
+- 增加「按键微调」系列快捷键，用于少量调节字幕。
+- 多字幕批量对齐、主副字幕绑定联动、合并同步和 `B` / `Enter` 二次强制拆分统一保留可撤销的编辑状态。
+- 多行波形自动跟随改用实际可视舒适区判断，减少播放热路径中的布局读取；波形振幅与行高连续调整采用节流，并在滚动结束后收敛，降低长视频编辑时的卡顿。
+- 播放头位于波形区下方时会自动跟随滚动；`Home` / `End` 跳转到首尾时也会自动滚动到目标位置。
+
+#### 播放
+
+- 编辑器新增可配置的 JKL 播放模式，默认使用「倒放和正放」：支持 `1×`、`2×`、`4×`、`8×`、`16×` 五档速度；播放中按 `K` 停止并重置为 `1×`，停止后再次按 `K` 以 `1×` 播放。倒放时速度控件显示对应负值且不播放反向声音；原「慢速和倍速」模式继续保留。
+- 可自定义左右方向键跳转的时长。
+
+![播放设置](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/v1.4.0/docs/assets/1.4.0/115811.webp)
+
+- 此前播放过程中按 `W` / `A` / `S` / `D` 跳转仍参考上次点击字幕，现在会以播放头所在字幕为参考。
+
+#### 平台支持
+
+- 新增 Linux AppImage 构建与发布——是的，这下全平台了（笑）。
+- 发布 CI 合并：三个平台发布 workflow（`release-windows.yml` / `build-macos.yml` / `release-linux.yml`）合并为单一矩阵 workflow `release.yml`。Windows 构建是发布门禁，macOS / Linux 构建失败只追加警告提示、不阻断发布；Release 资产文件名与既有下载链接不变。
+- 修复 Windows 与 macOS 的 tag 发布工作流并发创建同一个 GitHub Release，导致其中一个平台的资产上传长时间等待的问题。
+- Linux AppImage 的 headless smoke 验证从 60 秒缩短到 20 秒，减少 Linux 发布 job 耗时。
+- Linux AppImage 随包附带静态 ffmpeg 的 GPLv3 许可文本（`GPLv3.txt`）与来源说明（`SOURCE.txt`）。
+
+> 感谢 @量子猫 的 PR！
+
+### 🔧 问题修复
+
+- 修复 macOS 从 Finder 启动普通版 `MAW.app` 时未自动检索 Homebrew 的 `/opt/homebrew/bin` 和 `/usr/local/bin`，导致找不到 `ffmpeg` / `ffprobe` 的问题。
+- 修复 macOS 按住 Shift 使用滚轮调整波形振幅时，滚动方向被错误判定为始终增大的问题。
+- 本地独立运行环境现在安装并验证 `jieba`，避免中文切句缺少分词器时静默退化为按字硬切。
+- 本地模型的时长限制会传给首次 FFmpeg 提取，避免长视频先完整解码后才二次裁剪。
+- 修复波形取整造成的 1ms 字 / 词时间码重叠：打开、保存和服务端接管前自动修复字词级异常时间范围，避免正常编辑后的工程保存失败；真正的字幕段重叠仍由严格校验提示。
+- 修复 Windows 打包版本地模型运行环境漏带 `maw/qwen_audio.py`，导致 Qwen3-ASR / FunASR 模型准备启动时导入失败。
+- 修复大型工程恢复时 `.ReaPeaks` 解析阻塞字幕编辑器启动的问题：首页可先启动，后台缓存完成后通过 `/api/waveform` 动态增强。
+- 修复 Linux AppImage 在系统 libstdc++ 较新的发行版（如 SteamOS 的 GCC 14）上启动即崩溃的问题：打包时剔除可能抢先加载的旧版 `libstdc++.so.6` / `libgcc_s.so.1` / `libgbm.so.1`，并增加包内回归断言。
+- Linux 静态 ffmpeg 换源为 BtbN FFmpeg-Builds 并固定版本与校验和，适配 BtbN 包的 `bin/` 子目录布局。
+- Launcher 段落标题 keycap 表情改为通用选择器并补全 Linux 中文字体链；新增模块标题无需再维护 CSS 匹配，Windows / macOS 行为不变。
+- 修复 Launcher 错误消息中 URL 将中文右括号及后续说明文字一起识别为链接的问题。
+- 修复工程加载提示重复、OCR 后媒体路径丢失、无绑定工程保存提示不清晰，以及 LLM / OCR / 波形相关反馈中的边界问题。
+- 修复多字幕主字幕禁用状态误使用斜纹背景的问题；主字幕禁用后保持普通背景显示。
+- 频谱颜色切换会先显示忙碌状态，异步生成完成后再同步实际产物，避免用户因等待无反馈而重复点击。
+
+### 🔄 发生变动
+
+- 暂时移除 Windows `MOSE.exe` 与 macOS `MOSE.app` 的 Release 打包，缩小分发包；Launcher 隐藏「在 MOSE 中打开」入口，默认使用 Server 版或 HTML 编辑器。
+- 暂时隐藏 Launcher 的“同时生成单文件版网页编辑器（html）”选项，单文件 HTML 继续保留兼容；默认使用 Server 版或在线编辑器。
+- HTML 编辑器顶部由生成时间改为显示版本号，并与 Launcher 版本号保持一致，在线编辑器也使用当前版本。
 
 ## [1.4.0-beta.8] - 2026-08-15
 
