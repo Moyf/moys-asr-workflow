@@ -681,8 +681,22 @@ test('B splits at the pointer audio position while hovering the waveform', async
   await expect(page.locator('.cue .text').nth(1)).toHaveText('Bravo');
 });
 
-test('Home and End seek the player to the media boundaries', async ({ page }) => {
+test('Home and End seek the player and reveal the media boundaries', async ({ page }) => {
   await page.goto(server.url);
+  await expect.poll(() => page.evaluate(() => {
+    const scroll = document.getElementById('waveform-scroll');
+    return scroll.scrollHeight > scroll.clientHeight;
+  })).toBe(true);
+  await page.evaluate(() => {
+    waveformEditor.settings.mode = 'multi';
+    waveformEditor.settings.secondsPerRow = 10;
+    waveformEditor.render();
+    const scroll = document.getElementById('waveform-scroll');
+    scroll.scrollTop = scroll.scrollHeight;
+  });
+  await expect.poll(() => page.evaluate(
+    () => document.getElementById('waveform-scroll').scrollTop,
+  )).toBeGreaterThan(0);
   await page.evaluate(() => {
     const media = document.getElementById('player');
     media.currentTime = 123;
@@ -691,12 +705,19 @@ test('Home and End seek the player to the media boundaries', async ({ page }) =>
 
   await page.keyboard.press('Home');
   await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBe(0);
+  await expect.poll(() => page.evaluate(
+    () => document.getElementById('waveform-scroll').scrollTop,
+  )).toBeLessThan(1);
 
   await page.keyboard.press('End');
   await expect.poll(() => page.evaluate(() => {
     const media = document.getElementById('player');
     return Math.abs(media.currentTime - media.duration);
   })).toBeLessThan(0.01);
+  await expect.poll(() => page.evaluate(() => {
+    const scroll = document.getElementById('waveform-scroll');
+    return scroll.scrollTop - (scroll.scrollHeight - scroll.clientHeight);
+  })).toBeGreaterThan(-1);
 });
 
 test('hovering a selected subtitle shows the B split hint', async ({ page }) => {

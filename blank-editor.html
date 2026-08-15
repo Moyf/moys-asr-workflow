@@ -19105,8 +19105,10 @@ function seekMediaTo(timeSeconds) {
     ? player.duration : null;
   if (!Number.isFinite(duration)) return false;
   stopJklReversePlayback({ render: false });
-  player.currentTime = Math.max(0, Math.min(duration, Number(timeSeconds) || 0));
+  const targetSeconds = Math.max(0, Math.min(duration, Number(timeSeconds) || 0));
+  player.currentTime = targetSeconds;
   update();
+  waveformEditor?.revealTime(targetSeconds * 1000, true);
   waveformEditor?.updatePlayback();
   syncMediaControls();
   return true;
