@@ -76,6 +76,12 @@
 }
 .waveform-status.error { color: var(--red-hover); }
 .waveform-status.busy { color: var(--amber-hover); }
+.waveform-spectral-status {
+  color: var(--amber-hover);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.waveform-spectral-status[hidden] { display: none; }
 
 .editor-workspace {
   --waveform-split: 60%;

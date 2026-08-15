@@ -36,7 +36,9 @@ from maw.postprocess_llm import (
     preset_by_id,
 )
 from maw.postprocess_match import ScriptMatchRequest, run_script_match
-from maw.postprocess_ocr import OcrDedupRequest, OcrRegion, run_ocr_dedup
+from maw.postprocess_ocr import OcrDedupArtifact, OcrDedupRequest, OcrRegion, run_ocr_dedup
+from maw.ocr_runtime import OCR_MODEL_ID, run_ocr_in_runtime
+from maw.project_preview import JsonValue
 
 
 POSTPROCESS_PLAN_VERSION: Final[int] = 1
@@ -368,6 +370,7 @@ def run_postprocess_pipeline(
     srt_path: Path,
     env_path: Path,
     ffmpeg_path: Path | None,
+    ocr_runtime_root: str | Path | None = None,
     cancel_event: Event,
     on_event: PipelineEvent | None = None,
     llm_settings: Mapping[str, Mapping[str, str]] | None = None,
@@ -436,6 +439,7 @@ def run_postprocess_pipeline(
                     media_path=media_path,
                     env_path=env_path,
                     ffmpeg_path=ffmpeg_path,
+                    ocr_runtime_root=ocr_runtime_root,
                     output_directory=run_directory,
                     cancel_event=cancel_event,
                     on_event=on_event,
@@ -530,6 +534,7 @@ def _run_step(
     media_path: Path,
     env_path: Path,
     ffmpeg_path: Path | None,
+    ocr_runtime_root: str | Path | None,
     output_directory: Path,
     cancel_event: Event,
     on_event: PipelineEvent | None,
@@ -574,7 +579,7 @@ def _run_step(
         def on_status(key: str, details: Mapping[str, int]) -> None:
             _check_cancel(cancel_event)
             _emit(on_event, {"stage": "detail", "step": step_id, "key": key, **dict(details)})
-        return run_ocr_dedup(OcrDedupRequest(
+        request = OcrDedupRequest(
             project_path=project_path,
             srt_path=srt_path,
             video_path=Path(str(step.get("videoPath") or "")).expanduser() if str(step.get("videoPath") or "").strip() else None,
@@ -585,7 +590,17 @@ def _run_step(
             report=bool(step.get("report")),
             output_directory=output_directory,
             media_path=media_path,
-        ), ffmpeg_path=ffmpeg_path, on_status=on_status)
+        )
+        if ocr_runtime_root is not None:
+            return _ocr_artifact_from_runtime_result(run_ocr_in_runtime(
+                request,
+                ffmpeg_path=ffmpeg_path,
+                runtime_root=ocr_runtime_root,
+                model_id=str(step.get("modelId") or OCR_MODEL_ID),
+                on_status=on_status,
+                cancel_event=cancel_event,
+            ))
+        return run_ocr_dedup(request, ffmpeg_path=ffmpeg_path, on_status=on_status)
     operation = "translate_zh" if step_id == "translate" and str(step.get("target") or "zh") == "zh" else (
         "translate_en" if step_id == "translate" else step_id
     )
@@ -598,7 +613,7 @@ def _run_step(
         model=values["model"],
         reasoning_mode=normalize_reasoning_mode(values.get("reasoningMode", DEFAULT_REASONING_MODE)),
     )
-    def complete(prompt: str, cues: list[dict[str, str]]) -> Mapping[str, object]:
+    def complete(prompt: str, cues: list[dict[str, JsonValue]]) -> Mapping[str, JsonValue]:
         _check_cancel(cancel_event)
         return complete_subtitle_groups(settings, prompt, cues)
 
@@ -615,6 +630,41 @@ def _run_step(
         output_directory=output_directory,
         media_path=media_path,
     ), complete=complete, on_status=on_status)
+
+
+def _ocr_artifact_from_runtime_result(result: Mapping[str, object]) -> OcrDedupArtifact:
+    """Adapt the managed OCR worker payload to the pipeline artifact contract."""
+
+    raw_warnings = result.get("warnings")
+    warnings = (
+        tuple(str(item) for item in raw_warnings if str(item).strip())
+        if isinstance(raw_warnings, Sequence) and not isinstance(raw_warnings, (str, bytes))
+        else ()
+    )
+
+    def path_value(key: str) -> Path | None:
+        value = str(result.get(key) or "").strip()
+        return Path(value).expanduser().resolve() if value else None
+
+    def count_value(key: str) -> int:
+        try:
+            return int(result.get(key) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    return OcrDedupArtifact(
+        source_project_path=path_value("sourceProjectPath"),
+        source_srt_path=path_value("sourceSrtPath"),
+        project_path=path_value("projectPath"),
+        srt_path=path_value("srtPath"),
+        report_path=path_value("reportPath"),
+        warnings=warnings,
+        newly_disabled_count=count_value("newlyDisabledCount"),
+        existing_disabled_count=count_value("existingDisabledCount"),
+        processed_count=count_value("processedCount"),
+        skipped_count=count_value("skippedCount"),
+        failed_count=count_value("failedCount"),
+    )
 
 
 def _attach_translation_track(

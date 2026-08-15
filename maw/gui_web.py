@@ -47,6 +47,7 @@ from maw.postprocess_pipeline import (
 )
 from maw.postprocess_pipeline import PostprocessPipelineError
 from maw.ocr_runtime import OCR_MODEL_ID, OcrRuntimeCancelled, OcrRuntimeError, install_ocr_runtime, managed_ocr_runtime_status, ocr_model_type, ocr_models_payload, run_ocr_in_runtime
+from maw.project_preview import JsonValue
 from maw.soniox import SonioxContextError, build_soniox_context
 
 
@@ -853,7 +854,7 @@ class LauncherApi:
             return {"ok": False, "field": "postprocessProvider", "code": "postprocess_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
         batch_number = 0
 
-        def complete(prompt: str, cues: list[dict[str, str]]) -> dict[str, object]:
+        def complete(prompt: str, cues: list[dict[str, JsonValue]]) -> dict[str, JsonValue]:
             nonlocal batch_number
             batch_number += 1
             current_batch = batch_number
@@ -1427,6 +1428,7 @@ class LauncherApi:
                     srt_path=result.srt_path,
                     env_path=self.paths.env_path,
                     ffmpeg_path=_postprocess_ffmpeg(self.paths.env_path),
+                    ocr_runtime_root=self._ocr_runtime_status().path,
                     cancel_event=cancel_event,
                     on_event=self._handle_postprocess_pipeline_event,
                     llm_settings=request.postprocess_llm_settings,
@@ -1493,6 +1495,7 @@ class LauncherApi:
                 srt_path=Path(str(context.get("sourceSrtPath") or result.srt_path)),
                 env_path=self.paths.env_path,
                 ffmpeg_path=_postprocess_ffmpeg(self.paths.env_path),
+                ocr_runtime_root=self._ocr_runtime_status().path,
                 cancel_event=cancel_event,
                 on_event=self._handle_postprocess_pipeline_event,
                 llm_settings=context.get("llmSettings") if isinstance(context.get("llmSettings"), Mapping) else None,

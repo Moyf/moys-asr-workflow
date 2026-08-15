@@ -29,6 +29,20 @@ test('decodes compact signed min/max peaks', () => {
 });
 
 
+test('builds a reusable pixel envelope from waveform peaks', () => {
+  const envelope = helpers.buildWaveformEnvelope(
+    Int8Array.from([-10, 10, -20, 20, -30, 30, -40, 40]),
+    2,
+    4,
+    0,
+    2000,
+    2,
+  );
+  assert.deepEqual(Array.from(envelope.low), [-20, -40]);
+  assert.deepEqual(Array.from(envelope.high), [20, 40]);
+});
+
+
 test('uses deltaX when macOS remaps Shift+wheel', () => {
   assert.equal(helpers.wheelScrollDelta({ deltaY: 0, deltaX: -120 }), -120);
   assert.equal(helpers.wheelScrollDelta({ deltaY: 0, deltaX: 120 }), 120);
@@ -690,6 +704,13 @@ test('disables spectral colors when spectral data is unavailable', () => {
   assert.equal(toggle.disabled, false);
   assert.equal(toggle.checked, true);
   assert.equal(toggle.attributes['aria-disabled'], 'false');
+  assert.equal(toggle.attributes['aria-busy'], 'false');
+
+  helpers.syncSpectralColorToggle(toggle, true, true, true);
+  assert.equal(toggle.disabled, true);
+  assert.equal(toggle.checked, true);
+  assert.equal(toggle.attributes['aria-disabled'], 'true');
+  assert.equal(toggle.attributes['aria-busy'], 'true');
 });
 
 

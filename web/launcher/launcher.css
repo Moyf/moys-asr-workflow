@@ -885,7 +885,8 @@ textarea::placeholder {
   color: var(--text-primary);
 }
 
-.ghost.attention {
+.ghost.attention,
+.primary.attention {
   border-color: var(--amber);
   background: var(--amber-soft);
   color: var(--amber-hover);
@@ -1135,6 +1136,7 @@ textarea::placeholder {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  overscroll-behavior: contain;
   padding: 16px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
@@ -1240,6 +1242,7 @@ textarea::placeholder {
   flex: 1 1 auto;
   block-size: auto;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding-inline-end: 2px;
   --toolbox-top-fade: 0px;
   --toolbox-bottom-fade: 18px;
@@ -1265,10 +1268,12 @@ textarea::placeholder {
 }
 
 .toolbox-header {
+  position: relative;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+  padding-inline-end: 44px;
 }
 
 .toolbox-header-copy {
@@ -1286,6 +1291,38 @@ textarea::placeholder {
   padding-bottom: 7px;
   color: var(--text-muted);
   font-size: 13px;
+}
+
+#toolboxClose,
+#settingsClose {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  padding: 0;
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-1);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+#toolboxClose {
+  position: absolute;
+  top: -3px;
+  right: 0;
+}
+
+#toolboxClose:hover:not(:disabled),
+#settingsClose:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-hover);
+  background: var(--accent-tint-strong);
+  box-shadow: var(--focus-ring);
+  transform: translateY(-1px);
 }
 
 .toolbox-beta {
@@ -1748,7 +1785,9 @@ textarea::placeholder {
   position: relative;
   width: min(620px, calc(100vw - 32px));
   max-height: calc(100vh - 36px);
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--bg-overlay);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
@@ -1757,16 +1796,27 @@ textarea::placeholder {
 }
 
 .modal-header {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .modal-header h2 {
   margin: 0;
   color: var(--text-primary);
   font-size: 16px;
+}
+
+.settings-scroll {
+  min-block-size: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-inline-end: 2px;
 }
 
 .settings-section {
@@ -1896,6 +1946,7 @@ html[data-theme="light"] {
 html,
 .log,
 .modal-card,
+.settings-scroll,
 .toolbox-content,
 .toolbox-chain-list {
   scrollbar-width: thin;
@@ -1905,6 +1956,7 @@ html,
 html.scrolling,
 .log.scrolling,
 .modal-card.scrolling,
+.settings-scroll.scrolling,
 .toolbox-content.scrolling,
 .toolbox-chain-list.scrolling {
   scrollbar-color: var(--text-muted) transparent;
@@ -2019,7 +2071,8 @@ select[multiple] option {
 /* 单语言时字段按 DOM 顺序排列在各自分组卡片内（识别参数两列网格，语言整行）。 */
 
 /* 转写完成后的橙色引导在 hover 时继续保持同一视觉语义。 */
-.ghost.attention:hover:not(:disabled) {
+.ghost.attention:hover:not(:disabled),
+.primary.attention:hover:not(:disabled) {
   border-color: var(--amber-hover);
   background: rgba(212, 154, 74, .24);
   color: #f0bc70;

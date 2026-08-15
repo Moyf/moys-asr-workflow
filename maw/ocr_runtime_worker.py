@@ -34,6 +34,7 @@ def main(argv: list[str] | None = None) -> int:
             video_path=_path(args.video_path),
             fallback_video_path=_path(args.fallback_video_path),
             media_path=_path(args.media_path),
+            output_directory=_path(args.output_directory),
             output_mode=OutputMode(args.output_mode),
             region=OcrRegion(
                 mode=args.region_mode,
@@ -95,6 +96,7 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--video-path", default="")
     run.add_argument("--fallback-video-path", default="")
     run.add_argument("--media-path", default="")
+    run.add_argument("--output-directory", default="")
     run.add_argument("--output-mode", choices=[mode.value for mode in OutputMode], required=True)
     run.add_argument("--ffmpeg-path", required=True)
     run.add_argument("--region-mode", choices=("full", "bottom30", "custom"), default="full")

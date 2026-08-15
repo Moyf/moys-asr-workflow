@@ -120,6 +120,7 @@
   const MAX_WAVEFORM_SCALE = 6;
   const SNAP_MS = 80;
   const ROUND_MS = 10;
+  const WAVEFORM_ADJUST_DEBOUNCE_MS = 160;
   const BROWSER_DECODE_LIMIT = 512 * 1024 * 1024;
   const BROWSER_PCM_ESTIMATE_LIMIT = 768 * 1024 * 1024;
   // 右侧整列波形布局：当前字幕编辑区略收紧，把空间让给字幕列表。
@@ -819,6 +820,50 @@
     return target;
   }
 
+  function buildWaveformEnvelope(
+    peaks,
+    peaksPerSecond,
+    peakCount,
+    startMs,
+    endMs,
+    width,
+    useInterpolation = false,
+  ) {
+    const numericWidth = Number(width);
+    const safeWidth = Number.isFinite(numericWidth)
+      ? Math.max(1, Math.round(numericWidth)) : 1;
+    const low = new Float32Array(safeWidth);
+    const high = new Float32Array(safeWidth);
+    if (!peaks || peakCount <= 0 || !Number.isFinite(peaksPerSecond) || peaksPerSecond <= 0) {
+      return { low, high };
+    }
+    const rangeMs = Math.max(1, Number(endMs) - Number(startMs));
+    const interpolatedPeak = [0, 0];
+    for (let x = 0; x < safeWidth; x++) {
+      const xStartMs = startMs + (x / safeWidth) * rangeMs;
+      const xEndMs = startMs + ((x + 1) / safeWidth) * rangeMs;
+      if (useInterpolation) {
+        const centerMs = (xStartMs + xEndMs) / 2;
+        const peakPosition = (centerMs / 1000) * peaksPerSecond - 0.5;
+        sampleInterpolatedPeak(peaks, peakPosition, peakCount, interpolatedPeak);
+        low[x] = interpolatedPeak[0];
+        high[x] = interpolatedPeak[1];
+        continue;
+      }
+      const firstPeak = clamp(Math.floor((xStartMs / 1000) * peaksPerSecond), 0, peakCount - 1);
+      const lastPeak = clamp(Math.ceil((xEndMs / 1000) * peaksPerSecond), firstPeak + 1, peakCount);
+      let min = 127;
+      let max = -127;
+      for (let peak = firstPeak; peak < lastPeak; peak++) {
+        min = Math.min(min, peaks[peak * 2]);
+        max = Math.max(max, peaks[peak * 2 + 1]);
+      }
+      low[x] = min;
+      high[x] = max;
+    }
+    return { low, high };
+  }
+
   function colorForSegment(segment) {
     if (segment.color?.name && PALETTE[segment.color.name]) return PALETTE[segment.color.name];
     if (segment.color_ref?.name && PALETTE[segment.color_ref.name]) return PALETTE[segment.color_ref.name];
@@ -1223,13 +1268,15 @@
       ? index : -1;
   }
 
-  function syncSpectralColorToggle(toggle, available, preferred) {
+  function syncSpectralColorToggle(toggle, available, preferred, busy = false) {
     if (!toggle) return;
     const hasSpectral = Boolean(available);
-    toggle.disabled = !hasSpectral;
+    const isBusy = Boolean(busy);
+    toggle.disabled = !hasSpectral || isBusy;
     toggle.checked = hasSpectral && preferred === true;
     if (typeof toggle.setAttribute === 'function') {
-      toggle.setAttribute('aria-disabled', String(!hasSpectral));
+      toggle.setAttribute('aria-disabled', String(!hasSpectral || isBusy));
+      toggle.setAttribute('aria-busy', String(isBusy));
     }
   }
 
@@ -1244,6 +1291,8 @@
       this.reapeaksPeaks = null;
       this.player = null;
       this.mediaAvailable = false;
+      this.spectralColorBusy = false;
+      this.spectralColorRenderToken = 0;
       this.basicWindowStartMs = 0;
       this.manualFollowUntil = 0;
       this.multiRange = [-1, -1];
@@ -1262,13 +1311,13 @@
       // 字幕快捷键会在很短时间内连续请求定位；复用滚动事件已有的
       // rAF 合并，避免每个按键都强制重建可视行和 Canvas。
       this.multiVisibleFrame = 0;
-      // Shift+滚轮调振幅的 rAF 节流：一帧内的滚动累加方向后只触发一次
+      // Shift+滚轮调振幅的 debounce：滚动期间只累计净步数，停止后一次性重绘
       this.pendingScaleDirection = 0;
-      this.scaleRafScheduled = false;
-      // 行高预设也可能由高回报率滚轮连续触发；合并到下一帧，避免每个
-      // wheel 事件都重排并重绘整组可视行。
+      this.scaleDebounceTimer = 0;
+      // 行高预设也可能由高回报率滚轮连续触发；等待滚动停止后一次性重排，
+      // 避免每个 wheel 事件都重绘整组可视行。
       this.pendingRowHeightDirection = 0;
-      this.rowHeightRafScheduled = false;
+      this.rowHeightDebounceTimer = 0;
       this.renderedRows = [];
       // 波形交互工具：'select'（默认，保留 Ctrl/Shift/分组多选与拖动）或
       // 'razor'（左键点击字幕块即在指针位置安全拆分）。Alt 行为不随工具变化。
@@ -1283,6 +1332,7 @@
       this.content = document.getElementById('waveform-content');
       this.empty = document.getElementById('waveform-empty');
       this.status = document.getElementById('waveform-status');
+      this.spectralColorStatus = document.getElementById('waveform-spectral-status');
       this.divider = document.getElementById('workspace-divider');
       this.secondaryDivider = document.getElementById('workspace-divider-secondary');
       this.windowLabel = document.getElementById('waveform-window-label');
@@ -1375,9 +1425,7 @@
         syncSpectralColorToggle(this.spectralColorToggle, false, this.settings.spectralColor);
       }
       this.spectralColorToggle?.addEventListener('change', () => {
-        this.settings.spectralColor = this.spectralColorToggle.checked;
-        saveSettings(this.settings);
-        this.render();
+        this.scheduleSpectralColorRender();
       });
       this.sideSelect?.addEventListener('change', () => {
         this.settings.side = this.sideSelect.value === 'right' ? 'right' : 'left';
@@ -1671,13 +1719,21 @@
 
     setRowHeight(value) {
       const next = Number(value);
+      if (this.rowHeightDebounceTimer) {
+        window.clearTimeout(this.rowHeightDebounceTimer);
+        this.rowHeightDebounceTimer = 0;
+        this.pendingRowHeightDirection = 0;
+      }
       if (!ROW_HEIGHT_PRESETS.includes(next)) return false;
       if (this.settings.rowHeight === next) return true;
       this.settings.rowHeight = next;
       if (this.rowHeightSelect) this.rowHeightSelect.value = String(next);
       saveSettings(this.settings);
-      if (this.isMultiMode() && this.payload) this.updateMultiRowLayout();
-      else this.render();
+      if (this.isMultiMode() && this.payload) {
+        this.updateMultiRowLayout();
+      } else {
+        this.render();
+      }
       return true;
     }
 
@@ -2034,12 +2090,29 @@
     }
 
     changeWaveformScale(direction) {
+      if (this.scaleDebounceTimer) {
+        window.clearTimeout(this.scaleDebounceTimer);
+        this.scaleDebounceTimer = 0;
+        this.pendingScaleDirection = 0;
+      }
+      this.applyWaveformScaleSteps(Math.sign(direction));
+    }
+
+    applyWaveformScaleSteps(steps) {
       const current = this.settings.waveformScale;
-      const next = waveformScaleAfterStep(current, direction);
+      const numericSteps = Math.trunc(Number(steps));
+      if (!numericSteps) return;
+      const stepDirection = numericSteps > 0 ? 1 : -1;
+      let next = current;
+      for (let index = 0; index < Math.abs(numericSteps); index += 1) {
+        const candidate = waveformScaleAfterStep(next, stepDirection);
+        if (candidate === next) break;
+        next = candidate;
+      }
       if (next === current) {
         // 已到边界：减不下去/加不上去，通知编辑器给出提示
         document.dispatchEvent(new CustomEvent('asr:waveform-scale-limit', {
-          detail: { atMin: direction < 0, atMax: direction > 0 },
+          detail: { atMin: stepDirection < 0, atMax: stepDirection > 0 },
         }));
         return;
       }
@@ -2048,41 +2121,31 @@
       if (this.waveformScaleLabel) {
         this.waveformScaleLabel.textContent = `×${parseFloat(next.toFixed(2))}`;
       }
-      // 振幅只影响 Canvas 像素，不影响字幕块、行结构或时间映射；复用
-      // 已有可视行，避免批量调节时反复创建 DOM 和事件监听器。
+      // peak 包络按行缓存；连续滚轮由上层 debounce 合并后，这里只清晰重绘一次。
       this.redrawWaveformCanvases();
     }
 
     scheduleWheelScaleChange() {
-      if (this.scaleRafScheduled) return;
-      this.scaleRafScheduled = true;
-      requestAnimationFrame(() => {
-        this.scaleRafScheduled = false;
-        if (this.pendingScaleDirection === 0) return;
-        // 一帧内的滚动合并为单次方向；触摸板惯性抖动产生的正反向会互相抵消
-        const direction = this.pendingScaleDirection > 0 ? 1 : -1;
+      if (this.scaleDebounceTimer) window.clearTimeout(this.scaleDebounceTimer);
+      this.scaleDebounceTimer = window.setTimeout(() => {
+        this.scaleDebounceTimer = 0;
+        const steps = this.pendingScaleDirection;
         this.pendingScaleDirection = 0;
-        this.changeWaveformScale(direction);
-      });
+        this.applyWaveformScaleSteps(steps);
+      }, WAVEFORM_ADJUST_DEBOUNCE_MS);
     }
 
     scheduleRowHeightChange(direction) {
       this.pendingRowHeightDirection += direction > 0 ? 1 : -1;
-      if (this.rowHeightRafScheduled) return;
-      this.rowHeightRafScheduled = true;
-      requestAnimationFrame(() => {
-        this.rowHeightRafScheduled = false;
-        if (this.pendingRowHeightDirection === 0) return;
-        const directionToApply = this.pendingRowHeightDirection > 0 ? 1 : -1;
+      if (this.rowHeightDebounceTimer) window.clearTimeout(this.rowHeightDebounceTimer);
+      this.rowHeightDebounceTimer = window.setTimeout(() => {
+        this.rowHeightDebounceTimer = 0;
+        const steps = this.pendingRowHeightDirection;
         this.pendingRowHeightDirection = 0;
         const current = ROW_HEIGHT_PRESETS.indexOf(this.settings.rowHeight);
-        const next = clamp(current + directionToApply, 0, ROW_HEIGHT_PRESETS.length - 1);
-        if (next === current) return;
-        this.settings.rowHeight = ROW_HEIGHT_PRESETS[next];
-        if (this.rowHeightSelect) this.rowHeightSelect.value = String(this.settings.rowHeight);
-        saveSettings(this.settings);
-        this.updateMultiRowLayout();
-      });
+        const next = clamp(current + steps, 0, ROW_HEIGHT_PRESETS.length - 1);
+        if (next !== current) this.setRowHeight(ROW_HEIGHT_PRESETS[next]);
+      }, WAVEFORM_ADJUST_DEBOUNCE_MS);
     }
 
     updateDisabledVisibility() {
@@ -2151,6 +2214,63 @@
       this.status.classList.toggle('busy', kind === 'busy');
     }
 
+    setSpectralColorStatus(message = '') {
+      if (!this.spectralColorStatus) return;
+      const visible = Boolean(message);
+      this.spectralColorStatus.hidden = !visible;
+      this.spectralColorStatus.textContent = visible ? message : '';
+    }
+
+    scheduleSpectralColorRender() {
+      const toggle = this.spectralColorToggle;
+      if (!toggle || !this.spectral) {
+        syncSpectralColorToggle(toggle, this.spectral != null, this.settings.spectralColor, this.spectralColorBusy);
+        return;
+      }
+      // Native disabled controls already block normal repeated clicks. Keep a
+      // guard as well for synthetic change events and automation code.
+      if (this.spectralColorBusy) {
+        toggle.checked = this.settings.spectralColor === true;
+        return;
+      }
+
+      const enabled = toggle.checked === true;
+      this.settings.spectralColor = enabled;
+      saveSettings(this.settings);
+      this.spectralColorBusy = true;
+      this.setSpectralColorStatus(localizedWaveformMessage(
+        enabled ? '正在应用频谱颜色…' : '正在关闭频谱颜色…',
+        enabled ? 'Applying spectral colors…' : 'Removing spectral colors…',
+      ));
+      syncSpectralColorToggle(toggle, true, enabled, true);
+
+      const token = ++this.spectralColorRenderToken;
+      const renderAfterPaint = () => {
+        // Let the browser paint the disabled control and live status before
+        // the synchronous Canvas redraw occupies the main thread.
+        window.setTimeout(() => {
+          if (token !== this.spectralColorRenderToken) return;
+          try {
+            this.render();
+          } finally {
+            this.spectralColorBusy = false;
+            syncSpectralColorToggle(
+              toggle,
+              this.spectral != null,
+              this.settings.spectralColor,
+              false,
+            );
+            this.setSpectralColorStatus();
+          }
+        }, 0);
+      };
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(renderAfterPaint);
+      } else {
+        window.setTimeout(renderAfterPaint, 0);
+      }
+    }
+
     attachPlayer(player) {
       if (this.player) {
         this.player.removeEventListener('timeupdate', this._onPlayerTime);
@@ -2210,7 +2330,12 @@
       // Without spectral data the feature is visibly and functionally off.
       // Keep the stored preference intact so a deferred server payload can
       // restore the user's choice when it becomes available.
-      syncSpectralColorToggle(this.spectralColorToggle, this.spectral != null, this.settings.spectralColor);
+      syncSpectralColorToggle(
+        this.spectralColorToggle,
+        this.spectral != null,
+        this.settings.spectralColor,
+        this.spectralColorBusy,
+      );
       if (render) this.render();
       return this.spectral != null;
     }
@@ -2444,19 +2569,21 @@
     stretchWaveformCanvases() {
       // 字幕块/空隙块/播放头均为百分比定位，会随行宽自动跟随；
       // 只有 canvas 位图需要按新尺寸临时拉伸
-      this.content.querySelectorAll('.waveform-row canvas').forEach((canvas) => {
+      this.renderedRows.forEach((row) => {
+        const canvas = row.querySelector('canvas');
+        if (!canvas) return;
         canvas.style.width = '100%';
         canvas.style.height = '100%';
       });
     }
 
-    redrawWaveformCanvases() {
+    redrawWaveformCanvases({ measure = true } = {}) {
       if (!this.payload || !this.peaks) return;
       if (!this.renderedRows.length) {
         this.renderSegments();
         return;
       }
-      this.renderedRows.forEach((row) => this.drawRow(row));
+      this.renderedRows.forEach((row) => this.drawRow(row, { measure }));
       this.updatePlayback(false);
     }
 
@@ -3031,17 +3158,62 @@
       });
     }
 
-    drawRow(row) {
+    getWaveformEnvelope(row, width, startMs, endMs, activePeaks, peaksPerSecond, activeCount, useInterpolation) {
+      const key = row._waveformEnvelopeKey;
+      if (row._waveformEnvelope && key
+          && key.width === width
+          && key.startMs === startMs
+          && key.endMs === endMs
+          && key.source === activePeaks
+          && key.peaksPerSecond === peaksPerSecond
+          && key.peakCount === activeCount
+          && key.useInterpolation === useInterpolation) {
+        return row._waveformEnvelope;
+      }
+      const envelope = buildWaveformEnvelope(
+        activePeaks,
+        peaksPerSecond,
+        activeCount,
+        startMs,
+        endMs,
+        width,
+        useInterpolation,
+      );
+      row._waveformEnvelopeKey = {
+        width,
+        startMs,
+        endMs,
+        source: activePeaks,
+        peaksPerSecond,
+        peakCount: activeCount,
+        useInterpolation,
+      };
+      row._waveformEnvelope = envelope;
+      return envelope;
+    }
+
+    drawRow(row, { measure = true } = {}) {
       const canvas = row.querySelector('canvas');
-      const rect = row.getBoundingClientRect();
-      if (!canvas || rect.width <= 0 || rect.height <= 0 || !this.peaks) return;
+      if (!canvas || !this.peaks) return;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
-      const width = Math.max(1, Math.round(rect.width));
-      const height = Math.max(1, Math.round(rect.height));
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
+      let width = Number(row._waveformCanvasWidth);
+      let height = Number(row._waveformCanvasHeight);
+      if (measure || !Number.isFinite(width) || !Number.isFinite(height)) {
+        const rect = row.getBoundingClientRect();
+        width = Math.max(1, Math.round(rect.width));
+        height = Math.max(1, Math.round(rect.height));
+      }
+      if (width <= 0 || height <= 0) return;
+      const pixelWidth = Math.round(width * dpr);
+      const pixelHeight = Math.round(height * dpr);
+      if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+      if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+      const cssWidth = `${width}px`;
+      const cssHeight = `${height}px`;
+      if (canvas.style.width !== cssWidth) canvas.style.width = cssWidth;
+      if (canvas.style.height !== cssHeight) canvas.style.height = cssHeight;
+      row._waveformCanvasWidth = width;
+      row._waveformCanvasHeight = height;
       const ctx = canvas.getContext('2d', { alpha: false });
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const colors = this._getWaveColors();
@@ -3078,7 +3250,16 @@
       const useInterpolation = this.settings.mode === 'basic'
         && this.settings.visibleSeconds === ZOOM_PRESETS[0]
         && (rangeMs / 1000) * peaksPerSecond < width;
-      const interpolatedPeak = [0, 0];
+      const envelope = this.getWaveformEnvelope(
+        row,
+        width,
+        startMs,
+        endMs,
+        activePeaks,
+        peaksPerSecond,
+        activeCount,
+        useInterpolation,
+      );
       const center = height * 0.46;
       const amplitude = waveformAmplitude(height, this.settings.waveformScale);
       const minWaveY = 2;
@@ -3092,29 +3273,8 @@
       let pathOpen = false;
       for (let x = 0; x < width; x++) {
         const xStartMs = startMs + (x / width) * rangeMs;
-        const xEndMs = startMs + ((x + 1) / width) * rangeMs;
-        let low;
-        let high;
-        if (useInterpolation) {
-          const centerMs = (xStartMs + xEndMs) / 2;
-          const peakPosition = (centerMs / 1000) * peaksPerSecond - 0.5;
-          sampleInterpolatedPeak(
-            activePeaks,
-            peakPosition,
-            activeCount,
-            interpolatedPeak,
-          );
-          [low, high] = interpolatedPeak;
-        } else {
-          const firstPeak = clamp(Math.floor((xStartMs / 1000) * peaksPerSecond), 0, activeCount - 1);
-          const lastPeak = clamp(Math.ceil((xEndMs / 1000) * peaksPerSecond), firstPeak + 1, activeCount);
-          low = 127;
-          high = -127;
-          for (let peak = firstPeak; peak < lastPeak; peak++) {
-            low = Math.min(low, activePeaks[peak * 2]);
-            high = Math.max(high, activePeaks[peak * 2 + 1]);
-          }
-        }
+        const low = envelope.low[x];
+        const high = envelope.high[x];
         const yTop = clamp(center - (high / 127) * amplitude, minWaveY, maxWaveY);
         const yBot = clamp(center - (low / 127) * amplitude, minWaveY, maxWaveY);
         if (spectral) {
@@ -3901,6 +4061,67 @@
       return true;
     }
 
+    // 把单条字幕的一个边界直接定位到波形指针时间。与方向键微调一样，
+    // 保留最短时长和同轨不重叠约束，但不联动同轨邻居；跨轨绑定由编辑器
+    // 的提交回调处理。targetIndex 用于“当前没有选中字幕但指针命中字幕”的路径。
+    setCueBoundaryToTime(timeMs, edge, track = 'main', targetIndex = null) {
+      const segments = this.options.getSegments(track);
+      const selectedIndices = normalizedIndices(segments, this.options.getSelection?.(track));
+      const hasExplicitTarget = targetIndex !== null && targetIndex !== undefined;
+      const index = hasExplicitTarget ? Number(targetIndex)
+        : selectedIndices.length === 1 ? selectedIndices[0] : -1;
+      if (!Number.isInteger(index) || !segments[index]
+          || (!hasExplicitTarget && selectedIndices.length !== 1)
+          || (edge !== 'start' && edge !== 'end')) return false;
+
+      const segment = segments[index];
+      const current = Number(segment[edge]);
+      const requested = Number(timeMs);
+      if (!Number.isFinite(current) || !Number.isFinite(requested)) return false;
+
+      const previous = segments[index - 1];
+      const next = segments[index + 1];
+      let lower;
+      let upper;
+      if (edge === 'start') {
+        lower = Number(previous?.end ?? 0);
+        upper = Number(segment.end) - MIN_CUE_MS;
+      } else {
+        lower = Number(segment.start) + MIN_CUE_MS;
+        upper = Number(next?.start ?? this.cueDragDurationMs());
+        if (!Number.isFinite(upper) || upper <= 0) upper = Infinity;
+      }
+      if (!Number.isFinite(lower) || lower > upper) return true;
+
+      const target = clamp(roundMs(requested), lower, upper);
+      if (!Number.isFinite(target) || target === current) return true;
+
+      const original = snapshotTiming(segment);
+      this.options.onBeginEdit?.(edge === 'start' ? '定位字幕起点' : '定位字幕终点');
+      if (edge === 'start') {
+        segment.start = target;
+      } else {
+        segment.end = target;
+      }
+      segment.items = remapItems(
+        original.items,
+        original.start,
+        original.end,
+        segment.start,
+        segment.end,
+      );
+      segment._dirty = true;
+      this.options.onCommitEdit?.(
+        [index],
+        'resize-boundary-pointer',
+        track,
+        false,
+        { edge, targetIndex: index, targetTimeMs: target, original },
+      );
+      this.refreshCueOverlay();
+      return true;
+    }
+
     snapSelectedCueBoundaryByKeyboard(direction, track = 'main') {
       const segments = this.options.getSegments(track);
       const indices = normalizedIndices(segments, this.options.getSelection?.(track));
@@ -4267,7 +4488,7 @@
       if (drag.kind === 'move' && adjacentCueAdjustmentIndependent) drag.allowSqueeze = true;
       // 主字幕/副字幕绑定的独立调整仍只由 Alt 临时触发，不受同轨自动吸附开关影响。
       if (drag.track === 'extension' && event.altKey) drag.independent = true;
-      const disableSnap = drag.independent === true || drag.allowSqueeze === true;
+      const disableSnap = drag.independent === true;
       if (drag.kind === 'move') this.applyMoveDrag(drag, deltaMs, disableSnap, drag.allowSqueeze);
       else if (drag.kind === 'resize-boundary') this.applyBoundaryDrag(drag, deltaMs, drag.independent);
       else if (drag.kind === 'resize-boundary-independent') this.applyIndependentBoundaryDrag(drag, deltaMs);
@@ -4329,9 +4550,11 @@
         for (const idx of drag.indices) {
           const original = drag.originals.get(idx);
           candidates.push(playhead - original.start, playhead - original.end);
-          if (idx > 0 && !moved.has(idx - 1)) candidates.push(segments[idx - 1].end - original.start);
-          if (idx + 1 < segments.length && !moved.has(idx + 1)) {
-            candidates.push(segments[idx + 1].start - original.end);
+          if (!allowSqueeze) {
+            if (idx > 0 && !moved.has(idx - 1)) candidates.push(segments[idx - 1].end - original.start);
+            if (idx + 1 < segments.length && !moved.has(idx + 1)) {
+              candidates.push(segments[idx + 1].start - original.end);
+            }
           }
           crossTrackTargets.forEach((target) => {
             candidates.push(target - original.start, target - original.end);
@@ -4628,6 +4851,7 @@
       wheelScrollDelta,
       waveformScaleAfterStep,
       waveformAmplitude,
+      buildWaveformEnvelope,
       sampleInterpolatedPeak,
       normalizeLayoutData,
       swapLayoutModuleOrder,

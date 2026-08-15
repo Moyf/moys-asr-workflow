@@ -217,54 +217,6 @@ function getTrackNeighborBounds(segment, segments, movedSegments = new Set()) {
   };
 }
 
-function getCueDeltaLimits(
-  segment,
-  segments,
-  mode,
-  edge = null,
-  movedSegments = new Set(),
-  baseline = segment,
-) {
-  const bounds = getTrackNeighborBounds(segment, segments, movedSegments);
-  if (!bounds) return null;
-  const start = Number(baseline.start);
-  const end = Number(baseline.end);
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
-  if (mode === 'move') {
-    return {
-      min: Math.max(-start, bounds.previousEnd - start),
-      max: Math.min(getSubtitleTimelineDuration() - end, bounds.nextStart - end),
-    };
-  }
-  if (edge === 'start') {
-    return {
-      min: bounds.previousEnd - start,
-      max: Math.min(end - SUBTITLE_MIN_DURATION_MS - start, getSubtitleTimelineDuration() - start),
-    };
-  }
-  if (edge === 'end') {
-    return {
-      min: start + SUBTITLE_MIN_DURATION_MS - end,
-      max: Math.min(getSubtitleTimelineDuration() - end, bounds.nextStart - end),
-    };
-  }
-  return null;
-}
-
-function intersectCueDeltaLimits(limits) {
-  const valid = limits.filter((limit) => (
-    limit
-      && typeof limit.min === 'number'
-      && typeof limit.max === 'number'
-      && !Number.isNaN(limit.min)
-      && !Number.isNaN(limit.max)
-  ));
-  if (!valid.length) return null;
-  const min = Math.max(...valid.map((limit) => limit.min));
-  const max = Math.min(...valid.map((limit) => limit.max));
-  return min <= max ? { min, max } : null;
-}
-
 function extensionRangeOverlapsNeighbors(segment, start, end, track, movedSegments = new Set()) {
   return (track?.segments || []).some((candidate) => (
     candidate !== segment
@@ -570,8 +522,11 @@ const CLICK_BEHAVIOR_VALUES = new Set(['select-only', 'select-and-seek', 'select
 const CLICK_TARGET_VALUES = new Set(['cue-start', 'pointer']);
 const JKL_PLAYBACK_MODE_VALUES = new Set(['speed', 'direction']);
 const DEFAULT_JKL_PLAYBACK_MODE = 'direction';
-const MEDIA_SEEK_STEP_MIN_MS = 100;
+const MEDIA_SEEK_STEP_MIN_MS = 10;
 const MEDIA_SEEK_STEP_MAX_MS = 60000;
+const MEDIA_SEEK_STEP_FINE_THRESHOLD_MS = 100;
+const MEDIA_SEEK_STEP_FINE_MS = 10;
+const MEDIA_SEEK_STEP_COARSE_MS = 100;
 const DEFAULT_MEDIA_SEEK_STEP_MS = 1000;
 const CUE_MOVE_STEP_MIN_MS = 10;
 const CUE_MOVE_STEP_MAX_MS = 2000;
@@ -595,6 +550,42 @@ function clampMediaSeekStepMs(value) {
       Number.isFinite(rounded) ? rounded : DEFAULT_MEDIA_SEEK_STEP_MS,
     ),
   );
+}
+
+function mediaSeekStepForValue(value) {
+  return clampMediaSeekStepMs(value) <= MEDIA_SEEK_STEP_FINE_THRESHOLD_MS
+    ? MEDIA_SEEK_STEP_FINE_MS
+    : MEDIA_SEEK_STEP_COARSE_MS;
+}
+
+function nextMediaSeekStepValue(value, direction) {
+  const current = clampMediaSeekStepMs(value);
+  if (!direction) return current;
+  const sign = direction < 0 ? -1 : 1;
+  const step = sign < 0
+    ? (current <= MEDIA_SEEK_STEP_FINE_THRESHOLD_MS
+      ? MEDIA_SEEK_STEP_FINE_MS : MEDIA_SEEK_STEP_COARSE_MS)
+    : (current < MEDIA_SEEK_STEP_FINE_THRESHOLD_MS
+      ? MEDIA_SEEK_STEP_FINE_MS : MEDIA_SEEK_STEP_COARSE_MS);
+  return clampMediaSeekStepMs(current + sign * step);
+}
+
+// 原生 number 输入框以 min=10、step=100 计算大于 100 的向下步进时，
+// 会把 200 算成 110。把这个浏览器步进结果还原为用户看到的 100ms 档位，
+// 同时保留 100ms 向下 90ms、向上 200ms 的边界行为。
+function normalizeNativeMediaSeekStepValue(value, previousValue) {
+  const numeric = Math.round(Number(value));
+  if (!Number.isFinite(numeric)) return null;
+  const previous = clampMediaSeekStepMs(previousValue);
+  const delta = numeric - previous;
+  const step = mediaSeekStepForValue(previous);
+  const nativeDownDelta = previous > MEDIA_SEEK_STEP_FINE_THRESHOLD_MS
+    ? -(step - MEDIA_SEEK_STEP_MIN_MS)
+    : -step;
+  if (delta === step || delta === nativeDownDelta) {
+    return nextMediaSeekStepValue(previous, delta < 0 ? -1 : 1);
+  }
+  return clampMediaSeekStepMs(numeric);
 }
 
 function clampCueMoveStepMs(value) {
@@ -1102,9 +1093,8 @@ function applyHistoryRecord(record) {
   lastActive = -1;
   const structureChanged = previousWaveformStructure
     !== multiSubtitleWaveformStructureKey();
-  const bindingOnly = record.label === '绑定多重字幕' || record.label === '解绑多重字幕';
   renderAll({
-    waveform: bindingOnly ? 'none' : structureChanged ? 'full' : 'overlay',
+    waveform: structureChanged ? 'full' : 'overlay',
   });
   if (record.view) restoreEditorSelection(record.view);
   return true;
@@ -1193,6 +1183,7 @@ const mediaPlayToggle = document.getElementById('media-play-toggle');
 const mediaStepBack = document.getElementById('media-step-back');
 const mediaStepForward = document.getElementById('media-step-forward');
 const mediaSeekStepInput = document.getElementById('media-seek-step');
+let mediaSeekInputLastValue = EDITOR_SETTINGS.mediaSeekStepMs;
 const mediaCurrentTime = document.getElementById('media-current-time');
 const mediaDuration = document.getElementById('media-duration');
 const mediaSeek = document.getElementById('media-seek');
@@ -1888,6 +1879,7 @@ if (cueEditorCancelOnEscapeToggle) {
   cueEditorCancelOnEscapeToggle.checked = EDITOR_SETTINGS.cueEditorCancelOnEscape;
 }
 refreshMediaSeekStepHelp();
+refreshMediaSeekInputStep();
 refreshMediaSeekControlLabels();
 applyNinjaSettings();
 const waveformShapeSourceSelect = document.getElementById('waveform-shape-source');
@@ -2304,20 +2296,48 @@ jklPlaybackModeSelect?.addEventListener('change', () => {
   syncMediaControls();
   refreshJklPlaybackModeUi();
 });
+function refreshMediaSeekInputStep(value = EDITOR_SETTINGS.mediaSeekStepMs) {
+  if (mediaSeekStepInput) mediaSeekStepInput.step = String(mediaSeekStepForValue(value));
+}
+
+function commitMediaSeekStepInput(value, { rewriteInput = true } = {}) {
+  const normalized = clampMediaSeekStepMs(value);
+  if (rewriteInput && mediaSeekStepInput) mediaSeekStepInput.value = String(normalized);
+  mediaSeekInputLastValue = normalized;
+  updateEditorSettings({ mediaSeekStepMs: normalized });
+  refreshMediaSeekInputStep(normalized);
+  refreshMediaSeekStepHelp();
+  refreshMediaSeekControlLabels();
+}
+
+function adjustMediaSeekStepInput(direction) {
+  if (!mediaSeekStepInput) return;
+  const current = clampMediaSeekStepMs(mediaSeekStepInput.value);
+  commitMediaSeekStepInput(nextMediaSeekStepValue(current, direction));
+}
+
+mediaSeekStepInput?.addEventListener('keydown', (event) => {
+  if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+  event.preventDefault();
+  event.stopPropagation();
+  adjustMediaSeekStepInput(event.key === 'ArrowUp' ? 1 : -1);
+});
+mediaSeekStepInput?.addEventListener('wheel', (event) => {
+  if (!event.deltaY) return;
+  event.preventDefault();
+  event.stopPropagation();
+  mediaSeekStepInput.focus({ preventScroll: true });
+  adjustMediaSeekStepInput(event.deltaY < 0 ? 1 : -1);
+}, { passive: false });
 mediaSeekStepInput?.addEventListener('input', () => {
   const raw = mediaSeekStepInput.value.trim();
   if (!raw) return;
-  const value = clampMediaSeekStepMs(raw);
-  updateEditorSettings({ mediaSeekStepMs: value });
-  refreshMediaSeekStepHelp();
-  refreshMediaSeekControlLabels();
+  const value = normalizeNativeMediaSeekStepValue(raw, mediaSeekInputLastValue);
+  if (value === null) return;
+  commitMediaSeekStepInput(value, { rewriteInput: value !== Number(raw) });
 });
 mediaSeekStepInput?.addEventListener('change', () => {
-  const value = clampMediaSeekStepMs(mediaSeekStepInput.value);
-  mediaSeekStepInput.value = String(value);
-  updateEditorSettings({ mediaSeekStepMs: value });
-  refreshMediaSeekStepHelp();
-  refreshMediaSeekControlLabels();
+  commitMediaSeekStepInput(mediaSeekStepInput.value);
 });
 cueMoveStepInput?.addEventListener('change', () => {
   const value = clampCueMoveStepMs(cueMoveStepInput.value);
@@ -3447,8 +3467,9 @@ function bindSelectedSubtitlePair({ successMessage = null } = {}) {
     && alignExtensionToMainTimeRange(extensionIndex, track, { pushHistory: false, showHint: false });
   markMainSegmentsDirty([main]);
   markMultiSubtitleDirty();
-  // 绑定关系通常只影响字幕列表；启用自动同步时，上面的 H 等价操作会同时更新副轨时间。
-  renderAll({ waveform: 'none' });
+  // 绑定会更新波形上的绑定标记；自动同步时也会改变副字幕范围，
+  // 因此列表与波形都需要同步刷新。
+  renderAll({ waveform: 'overlay' });
   waveformEditor?.updateSelection();
   const bindingMessage = successMessage
     || (replacedBinding
@@ -3479,8 +3500,8 @@ function unbindSelectedSubtitlePair() {
   MULTI_SUBTITLE_UTILS.removeSubtitleBindings(multi, (binding) => removed.includes(binding));
   markMultiSubtitleDirty();
   syncBindingOffsets();
-  // 解绑同样只更新列表关系状态，跳过波形覆盖层重建。
-  renderAll({ waveform: 'none' });
+  // 解绑会移除波形上的绑定标记，也需要刷新字幕块覆盖层。
+  renderAll({ waveform: 'overlay' });
   waveformEditor?.updateSelection();
   flashHint(`已解绑 ${removed.length} 对字幕`, 'success');
 }
@@ -6308,6 +6329,13 @@ function mergeContiguousIndices(sorted) {
     if (mergedExtension) extensionTrack.segments.splice(extensionMergeIndices[0], 0, mergedExtension);
     if (mergedExtension) {
       multi.bindings.push(MULTI_SUBTITLE_UTILS.buildSubtitleBinding(merged, mergedExtension, extensionTrack.id));
+      if (EDITOR_SETTINGS.multiSubtitleAutoSyncDuration) {
+        // C 合并会重新创建一对绑定字幕；与手动绑定保持一致，按开关
+        // 将新副字幕的时间范围同步到合并后的主字幕，并整理副轨冲突。
+        setExtensionSegmentRange(mergedExtension, merged.start, merged.end);
+        reconcileExtensionTrack(extensionTrack, [mergedExtension]);
+        syncBindingOffsets();
+      }
     }
     markMultiSubtitleDirty();
   }
@@ -6888,6 +6916,89 @@ function waveformPointerContext() {
   return { ...lastPointerPos, timeMs, track };
 }
 
+// Z/X 只接受一个“逻辑字幕”作为目标：点击主字幕时，绑定副字幕是它的
+// 联动对象；点击副字幕时，即使界面同时选中了主字幕，也仍只改副字幕。
+// 其它多选或来自不同绑定组的混合选择直接不处理。
+function getPointerBoundaryEditTarget(context) {
+  if (!context) return null;
+  const mainIndices = [...selectedIdxs];
+  const extensionIndices = [...selectedExtensionIdxs];
+
+  if (!mainIndices.length && !extensionIndices.length) {
+    const extension = context.track === 'extension' && multiSubtitleVisible();
+    const track = extension ? getActiveExtensionTrack() : null;
+    const segments = extension ? track?.segments : DATA.segments;
+    const index = findWaveformCueAtTime(context.timeMs, segments);
+    if (index < 0 || !segments?.[index]) return null;
+    return {
+      kind: extension ? 'extension' : 'main',
+      index,
+      trackId: track?.id || null,
+      track,
+      segment: segments[index],
+    };
+  }
+
+  const panelTarget = getCurrentCuePanelTarget();
+  if (!panelTarget) return null;
+  if (panelTarget.kind === 'main') {
+    if (mainIndices.length !== 1 || mainIndices[0] !== panelTarget.index) return null;
+    const binding = bindingForMainIndex(panelTarget.index);
+    const bindingTrack = binding ? getExtensionTrack(binding.track_id) : null;
+    const boundExtensionIndices = (binding?.extension_segment_ids || [])
+      .map((id) => bindingTrack?.segments?.findIndex((segment) => segment?.id === id) ?? -1)
+      .filter((index) => index >= 0);
+    const extensionMatchesBinding = extensionIndices.length === 0
+      || (boundExtensionIndices.length === 1
+        && extensionIndices.length === 1
+        && extensionIndices[0] === boundExtensionIndices[0]);
+    if (!extensionMatchesBinding) return null;
+    return panelTarget;
+  }
+
+  if (extensionIndices.length !== 1 || extensionIndices[0] !== panelTarget.index) return null;
+  const binding = bindingForExtensionIndex(panelTarget.index, panelTarget.track);
+  const boundMainIndices = (binding?.main_segment_ids || [])
+    .map((id) => DATA.segments.findIndex((segment) => segment?.id === id))
+    .filter((index) => index >= 0);
+  const mainMatchesBinding = mainIndices.length === 0
+    || (boundMainIndices.length === 1
+      && mainIndices.length === 1
+      && mainIndices[0] === boundMainIndices[0]);
+  return mainMatchesBinding ? panelTarget : null;
+}
+
+// Z：起点定位；X：终点定位。无选中时使用波形指针命中的字幕；有选中时
+// 只允许一个逻辑字幕，避免把多选误当成批量边界调整。
+function handlePointerBoundaryShortcut(event, edge) {
+  if (event.key !== (edge === 'start' ? 'z' : 'x')
+      && event.key !== (edge === 'start' ? 'Z' : 'X')) return;
+  if (event.repeat || editingState || extensionEditingState || isTextEditingTarget(event)) return;
+  const active = document.activeElement;
+  if (active && (
+    active.tagName === 'INPUT' || active.tagName === 'TEXTAREA'
+      || active.tagName === 'SELECT' || active.isContentEditable
+  )) return;
+  if (replaceModal.classList.contains('show') || stickerModal.classList.contains('show')
+      || stickerPreviewModal.classList.contains('show') || projectMediaModal.classList.contains('show')
+      || multiSubtitleSplitModal?.classList.contains('show')
+      || multiSubtitleImportModal?.classList.contains('show')
+      || document.getElementById('sticker-root-modal').classList.contains('show')
+      || ctxmenu.classList.contains('show')) return;
+  if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+
+  const context = waveformPointerContext();
+  const target = getPointerBoundaryEditTarget(context);
+  if (!context || !target || !waveformEditor?.setCueBoundaryToTime) return;
+  const track = target.kind === 'extension' ? 'extension' : 'main';
+  if (!waveformEditor.setCueBoundaryToTime(context.timeMs, edge, track, target.index)) return;
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+document.addEventListener('keydown', (event) => handlePointerBoundaryShortcut(event, 'start'));
+document.addEventListener('keydown', (event) => handlePointerBoundaryShortcut(event, 'end'));
+
 function hoveredSelectedCueContext() {
   if (!cueListPointer) return null;
   const isExtension = cueListPointer.kind === 'extension';
@@ -7262,6 +7373,7 @@ function syncPlaybackRateOption(rate) {
 }
 
 function syncMediaControls() {
+  playerWrap?.classList.toggle('fullscreen-preview', document.fullscreenElement === playerWrap);
   refreshMediaSeekControlLabels();
   if (!mediaPlayToggle || !player) return;
   const hasMedia = hasLoadedMedia();
@@ -8315,6 +8427,9 @@ document.addEventListener('keydown', (e) => {
   const pointerContext = waveformPointerContext();
   const pointerMainIndex = pointerContext
     ? findWaveformCueAtTime(pointerContext.timeMs, DATA.segments) : -1;
+  const activeExtensionTrack = getActiveExtensionTrack();
+  const pointerExtensionIndex = pointerContext?.track === 'extension'
+    ? findWaveformCueAtTime(pointerContext.timeMs, activeExtensionTrack?.segments) : -1;
   if (selectedExtensionIdxs.size === 1) {
     const context = hoveredSelectedCueContext();
     if (context?.kind === 'extension' && context.track?.segments?.[context.idx]) {
@@ -8326,14 +8441,23 @@ document.addEventListener('keydown', (e) => {
       return;
     }
   }
+  // 波形区点击副字幕后，绑定关系可能同时选中主字幕；但只要当前面板和
+  // 波形指针都明确落在这条单选副字幕上，B 就应拆分副字幕，而不是被重叠
+  // 的主字幕时间范围抢走目标。主字幕面板仍不会进入这个例外分支。
+  const waveformExtensionIsActive = multiSubtitleVisible()
+    && activeCuePanel?.kind === 'extension'
+    && selectedExtensionIdxs.size === 1
+    && selectedExtensionIdxs.has(activeCuePanel.index)
+    && pointerContext?.track === 'extension'
+    && pointerExtensionIndex === activeCuePanel.index;
   const extensionIsActive = multiSubtitleVisible()
     && activeCuePanel?.kind === 'extension'
     && selectedExtensionIdxs.size === 1
     && selectedExtensionIdxs.has(activeCuePanel.index)
-    && (!pointerContext || pointerMainIndex < 0);
+    && (!pointerContext || pointerMainIndex < 0 || waveformExtensionIsActive);
   if (extensionIsActive) {
     const extensionIndex = [...selectedExtensionIdxs][0];
-    const track = getActiveExtensionTrack();
+    const track = activeExtensionTrack;
     const extension = track?.segments?.[extensionIndex];
     if (!extension) return;
     let timeMs = null;
@@ -8608,7 +8732,10 @@ function syncExtensionSubtitleAppearanceControls() {
 }
 function applySubtitleAppearance(value = DATA.preview?.subtitle) {
   const appearance = getSubtitleAppearance(value);
-  overlayTextEl.style.fontSize = appearance.font_size ? `${appearance.font_size}px` : '';
+  overlayTextEl.style.setProperty(
+    '--subtitle-preview-font-size',
+    `${appearance.font_size || SUBTITLE_DEFAULT_FONT_SIZE}px`,
+  );
   overlayTextEl.style.fontFamily = subtitleFontFamilyCss(appearance.font_family);
   const hasCustomBackground = Object.prototype.hasOwnProperty.call(appearance, 'background_color')
     || Object.prototype.hasOwnProperty.call(appearance, 'background_alpha');
@@ -8618,7 +8745,10 @@ function applySubtitleAppearance(value = DATA.preview?.subtitle) {
 }
 function applyExtensionSubtitleAppearance(value = DATA.preview?.extension_subtitle) {
   const appearance = getExtensionSubtitleAppearance(value);
-  overlayExtensionTextEl.style.fontSize = `${appearance.font_size}px`;
+  overlayExtensionTextEl.style.setProperty(
+    '--subtitle-preview-font-size',
+    `${appearance.font_size || EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE}px`,
+  );
   overlayExtensionTextEl.style.fontFamily = subtitleFontFamilyCss(appearance.font_family);
   const hasCustomBackground = Object.prototype.hasOwnProperty.call(appearance, 'background_color')
     || Object.prototype.hasOwnProperty.call(appearance, 'background_alpha');
@@ -12411,16 +12541,12 @@ function addExtensionAtWaveformTime(timeMs, clickX, clickY, track = getActiveExt
   flashHint(`已新增第 ${index + 1} 条拓展字幕`, 'success');
 }
 
-function getBoundDragTarget(drag, index, sourceSegments, sourceTrack) {
+function getBoundDragTarget(index, sourceSegments) {
   const source = sourceSegments[index];
   if (!source) return null;
-  const binding = drag.track === 'extension'
-    ? bindingForExtensionIndex(index, sourceTrack)
-    : bindingForMainIndex(index);
+  const binding = bindingForMainIndex(index);
   if (!binding) return null;
-  const target = drag.track === 'extension'
-    ? mainSegmentById(binding.main_segment_ids?.[0])
-    : extensionSegmentById(binding.extension_segment_ids?.[0], getExtensionTrack(binding.track_id));
+  const target = extensionSegmentById(binding.extension_segment_ids?.[0], getExtensionTrack(binding.track_id));
   return target ? { target, binding } : null;
 }
 
@@ -12489,124 +12615,29 @@ function getBoundDragEdge(drag, index) {
   if (drag.kind === 'resize-boundary') {
     return { mode: 'edge', edge: index === drag.index ? 'end' : 'start' };
   }
+  if (drag.kind === 'resize-boundary-independent') {
+    return { mode: 'edge', edge: drag.edge };
+  }
   return null;
 }
 
-function getBoundDragDelta(drag, sourceSegments) {
-  if (drag.kind === 'move') {
-    const index = drag.indices[0];
-    const source = sourceSegments[index];
-    const original = drag.originals.get(index);
-    return source && original ? source.start - original.start : 0;
-  }
-  if (drag.kind === 'resize-left') {
-    const source = sourceSegments[drag.index];
-    const original = drag.originals.get(drag.index);
-    return source && original ? source.start - original.start : 0;
-  }
-  if (drag.kind === 'resize-right') {
-    const source = sourceSegments[drag.index];
-    const original = drag.originals.get(drag.index);
-    return source && original ? source.end - original.end : 0;
-  }
-  if (drag.kind === 'resize-boundary') {
-    const source = sourceSegments[drag.index];
-    const original = drag.originals.get(drag.index);
-    return source && original ? source.end - original.end : 0;
-  }
-  return 0;
-}
-
-function applyBoundDragDelta(drag, sourceSegments, delta) {
-  const setRange = (index, start, end) => {
-    const source = sourceSegments[index];
-    const original = drag.originals.get(index);
-    if (!source || !original) return;
-    source.start = Math.round(start);
-    source.end = Math.max(source.start + SUBTITLE_MIN_DURATION_MS, Math.round(end));
-    source.items = remapPanelItems(
-      original.items,
-      original.start,
-      original.end,
-      source.start,
-      source.end,
-    );
-    source._dirty = true;
-  };
-  if (drag.kind === 'move') {
-    drag.indices.forEach((index) => {
-      const original = drag.originals.get(index);
-      if (original) setRange(index, original.start + delta, original.end + delta);
-    });
-  } else if (drag.kind === 'resize-left') {
-    const original = drag.originals.get(drag.index);
-    if (original) setRange(drag.index, original.start + delta, original.end);
-  } else if (drag.kind === 'resize-right') {
-    const original = drag.originals.get(drag.index);
-    if (original) setRange(drag.index, original.start, original.end + delta);
-  } else if (drag.kind === 'resize-boundary') {
-    const leftOriginal = drag.originals.get(drag.index);
-    const rightOriginal = drag.originals.get(drag.index + 1);
-    if (leftOriginal) setRange(drag.index, leftOriginal.start, leftOriginal.end + delta);
-    if (rightOriginal) setRange(drag.index + 1, rightOriginal.start + delta, rightOriginal.end);
-  }
-}
-
-// 副字幕直接拖动时，把主字幕轨的可用边界作为额外限制。这样主字幕无法继续
-// 延长时，副字幕也会停在同一个边界，不再先改副字幕再反向缩短主字幕。
-function limitExtensionDragByBoundMain(drag, sourceSegments, sourceTrack) {
-  const entries = drag.indices.map((index) => {
-    const bound = getBoundDragTarget(drag, index, sourceSegments, sourceTrack);
-    if (!bound) return null;
-    return {
-      index,
-      target: bound.target,
-      targetOriginal: ensureBoundDragOriginal(drag, index, bound.target),
-      edge: getBoundDragEdge(drag, index),
-    };
-  }).filter(Boolean);
-  if (!entries.length) return false;
-  const movedTargets = new Set(entries.map((entry) => entry.target));
-  const limits = entries.map((entry) => {
-    if (!entry.edge) return null;
-    return getCueDeltaLimits(
-      entry.target,
-      DATA.segments,
-      entry.edge.mode,
-      entry.edge.edge,
-      movedTargets,
-      entry.targetOriginal,
-    );
-  });
-  const allowed = intersectCueDeltaLimits(limits) || { min: 0, max: 0 };
-  const currentDelta = getBoundDragDelta(drag, sourceSegments);
-  const nextDelta = clampNumber(currentDelta, allowed.min, allowed.max);
-  if (nextDelta === currentDelta) return false;
-  applyBoundDragDelta(drag, sourceSegments, nextDelta);
-  return true;
-}
-
 function syncBoundCueDrag(drag) {
-  if (!drag || drag.independent === true || !multiSubtitleVisible()) return;
+  // 副字幕拖动只调整副字幕自身；绑定关系保留，但新的时间范围通过
+  // binding offset 记录，不再反向改动主字幕或被主字幕轨道边界限制。
+  // 主字幕即使因为“自动吸附调整相邻字幕”关闭而走
+  // resize-boundary-independent，也仍需带着绑定副字幕一起调整。
+  if (!drag || drag.track !== 'main' || !multiSubtitleVisible()) return;
   ensureBoundDragTimelineOriginals(drag);
-  if (drag.track === 'main' && drag.allowSqueeze) restoreBoundDragTimelineOriginals(drag);
-  const sourceTrack = drag.track === 'extension' ? getActiveExtensionTrack() : null;
-  const sourceSegments = drag.track === 'extension'
-    ? sourceTrack?.segments || [] : DATA.segments;
+  if (drag.allowSqueeze) restoreBoundDragTimelineOriginals(drag);
+  const sourceSegments = DATA.segments;
   if (!drag.boundOriginals) drag.boundOriginals = new Map();
-
-  if (drag.track === 'extension'
-      && limitExtensionDragByBoundMain(drag, sourceSegments, sourceTrack)) {
-    notifyBoundSyncWarning(drag, '主字幕轨道已无可用空间，已限制副字幕拖动');
-  }
 
   const boundEntries = drag.indices.map((index) => ({
     index,
-    bound: getBoundDragTarget(drag, index, sourceSegments, sourceTrack),
+    bound: getBoundDragTarget(index, sourceSegments),
     sourceOriginal: drag.originals.get(index),
   })).filter((entry) => entry.bound && entry.sourceOriginal);
-  const movedFollowerSegments = drag.track === 'main'
-    ? new Set(boundEntries.map((entry) => entry.bound.target)) : new Set();
+  const movedFollowerSegments = new Set(boundEntries.map((entry) => entry.bound.target));
   boundEntries.forEach(({ index, bound, sourceOriginal }) => {
     const { target, binding } = bound;
     const targetOriginal = ensureBoundDragOriginal(drag, index, target);
@@ -12630,21 +12661,18 @@ function syncBoundCueDrag(drag) {
     }
     if (nextEnd <= nextStart) nextEnd = nextStart + SUBTITLE_MIN_DURATION_MS;
 
-    const targetTrack = drag.track === 'main'
-      ? getExtensionTrack(binding.track_id) : null;
+    const targetTrack = getExtensionTrack(binding.track_id);
     const dragEdge = getBoundDragEdge(drag, index);
-    const resolved = drag.track === 'main'
-      ? resolveExtensionFollowerRange(
-        target,
-        nextStart,
-        nextEnd,
-        dragEdge?.mode === 'edge' ? dragEdge.edge : dragEdge?.mode,
-        targetTrack,
-        movedFollowerSegments,
-        { sortSegments: false },
-      )
-      : clampExtensionRange(null, nextStart, nextEnd);
-    if (drag.track === 'main' && (resolved.squeezedCount > 0 || resolved.removedCount > 0)) {
+    const resolved = resolveExtensionFollowerRange(
+      target,
+      nextStart,
+      nextEnd,
+      dragEdge?.mode === 'edge' ? dragEdge.edge : dragEdge?.mode,
+      targetTrack,
+      movedFollowerSegments,
+      { sortSegments: false },
+    );
+    if (resolved.squeezedCount > 0 || resolved.removedCount > 0) {
       const details = [];
       if (resolved.squeezedCount) details.push(`挤压 ${resolved.squeezedCount} 条副字幕`);
       if (resolved.removedCount) details.push(`删除 ${resolved.removedCount} 条副字幕`);
@@ -13226,18 +13254,36 @@ function initWaveformEditor() {
     onBeginEdit: (label) => pushUndo(label),
     syncBoundCueDrag,
     onLayoutUndo: (label, snapshot) => pushLayoutUndo(label, snapshot),
-    onCommitEdit: (idxs, kind, track = 'main', independent = false) => {
+    onCommitEdit: (idxs, kind, track = 'main', independent = false, details = null) => {
+      let linkedChanged = false;
+      if (kind === 'resize-boundary-pointer' && track === 'main' && !independent) {
+        const targetIndex = Number.isInteger(details?.targetIndex) ? details.targetIndex : idxs[0];
+        const main = DATA.segments[targetIndex];
+        const original = details?.original;
+        if (main && original) {
+          linkedChanged = syncBoundExtensionForMain(main, {
+            oldStart: original.start,
+            oldEnd: original.end,
+            edge: details.edge,
+            mode: 'range',
+          });
+        }
+      }
       syncTimelineGroupRanges();
       // 拖动预览期间保持下标稳定；提交时再整理副轨数组，避免冲突裁剪后
       // 原本位于目标前面的字幕保留右侧区间而落到目标之后，保存时违反顺序契约。
       if (multiSubtitleVisible()) sortExtensionTrackSegments(getActiveExtensionTrack());
       syncBindingOffsets();
       markMainSegmentsDirty(track === 'main' ? idxs.map((idx) => DATA.segments[idx]).filter(Boolean) : []);
-      if (multiSubtitleVisible() || track === 'extension') markMultiSubtitleDirty();
+      if (linkedChanged || multiSubtitleVisible() || track === 'extension') markMultiSubtitleDirty();
       renderAll();
       update();
       flashHint(kind === 'move'
-        ? `已${independent ? '独立' : '联动'}移动 ${idxs.length} 条${track === 'extension' ? '扩展' : ''}字幕`
+        ? track === 'extension'
+          ? `已移动 ${idxs.length} 条副字幕`
+          : `已${independent ? '独立' : '联动'}移动 ${idxs.length} 条字幕`
+        : kind === 'resize-boundary-pointer'
+          ? `已将${track === 'extension' ? '副字幕' : '字幕'}${details?.edge === 'start' ? '起点' : '终点'}定位到鼠标位置`
         : kind === 'resize-boundary'
           ? `已${independent ? '独立' : '联动'}调整第 ${idxs[0] + 1} / ${idxs[1] + 1} 条边界`
           : kind === 'resize-boundary-independent'

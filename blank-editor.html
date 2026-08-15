@@ -532,14 +532,19 @@
     background: rgba(0,0,0,0.65);
     color: #fff;
     padding: 6px 14px; border-radius: var(--radius-sm);
-    font-size: 18px;
+    --subtitle-preview-font-size: 18px;
+    font-size: var(--subtitle-preview-font-size);
     line-height: 1.3; white-space: pre-wrap; word-break: break-word;
     text-shadow: 0 1px 2px rgba(0,0,0,0.8);
     pointer-events: none;
   }
+  .player-wrap.fullscreen-preview .subtitle-overlay span {
+    font-size: calc(var(--subtitle-preview-font-size) + var(--subtitle-preview-font-size));
+  }
   .subtitle-overlay span.hidden { display: none; }
   .subtitle-overlay .subtitle-extension-text {
-    font-size: 16px;
+    --subtitle-preview-font-size: 16px;
+    font-size: var(--subtitle-preview-font-size);
     color: #ffd34d;
   }
   .subtitle-overlay.hidden { display: none; }
@@ -1357,7 +1362,6 @@
     grid-template-columns: auto auto minmax(220px, 1fr) auto;
     gap: 10px; align-items: stretch;
   }
-  .current-cue-panel.empty { opacity: 0.62; }
   .current-cue-panel.hide-cue-editor-navigation .cue-panel-navigation,
   .current-cue-panel.hide-cue-editor-time-actions .cue-panel-time-actions,
   .current-cue-panel.hide-cue-editor-sticker .cue-panel-sticker-wrap { display: none; }
@@ -1845,12 +1849,14 @@
   .multi-cue-column.unbound { opacity: .82; }
   .multi-cue-column.disabled {
     color: var(--text-muted);
+    border-radius: var(--radius-sm);
+  }
+  .multi-cue-column.extension.disabled {
     background: repeating-linear-gradient(
       135deg,
       var(--wave-disabled-a) 0 5px,
       var(--wave-disabled-b) 5px 10px
     );
-    border-radius: var(--radius-sm);
   }
   .multi-cue-column.disabled .index,
   .multi-cue-column.disabled .time,
@@ -2468,6 +2474,12 @@
 }
 .waveform-status.error { color: var(--red-hover); }
 .waveform-status.busy { color: var(--amber-hover); }
+.waveform-spectral-status {
+  color: var(--amber-hover);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.waveform-spectral-status[hidden] { display: none; }
 
 .editor-workspace {
   --waveform-split: 60%;
@@ -3792,9 +3804,12 @@
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd>Shift+←/→</kbd> 将字幕起点/终点贴到前一条结尾/后一条开头</span>
           <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Z</kbd>/<kbd>X</kbd> 将字幕起点/终点定位到鼠标位置</span>
+          <span class="help-break" aria-hidden="true"></span>
           <span><kbd data-mod-key>Ctrl+←/→</kbd> 微调字幕左边界（起点）</span>
           <span><kbd data-mod-key>Ctrl+Shift+←/→</kbd> 微调字幕右边界（终点）</span>
         </div>
+        <span class="help-note">无选中时作用于鼠标所在字幕；主字幕会联动绑定副字幕，副字幕只调整自身；多选不生效</span>
       </section>
       <section class="help-subgroup">
         <h5 class="help-subtitle">按住字幕</h5>
@@ -4025,7 +4040,7 @@
             <label class="settings-panel-item" title="媒体控制按钮和左右方向键每次跳转的毫秒数">
               <span>每次跳转</span>
               <span class="gap-remove-number-control">
-                <input type="number" id="media-seek-step" min="100" max="60000" step="100" value="1000" inputmode="numeric" aria-label="跳转时长">
+                <input type="number" id="media-seek-step" min="10" max="60000" step="100" value="1000" inputmode="numeric" aria-label="跳转时长">
                 <span class="gap-remove-unit">ms</span>
               </span>
             </label>
@@ -4251,7 +4266,8 @@
               </select>
             </label>
             <label class="toggle editor-settings-item" title="使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形">
-              <input type="checkbox" id="waveform-spectral-color"> 频谱颜色
+              <input type="checkbox" id="waveform-spectral-color" aria-describedby="waveform-spectral-status"> 频谱颜色
+              <span class="waveform-spectral-status" id="waveform-spectral-status" role="status" aria-live="polite" aria-atomic="true" hidden></span>
             </label>
             <span class="editor-settings-item" id="waveform-window-setting">显示窗口
               <span class="editor-settings-stepper">
@@ -6329,7 +6345,7 @@
     '样式会保存到工程的 preview.subtitle；旧工程默认使用原来的响应式字号。': 'Styles are saved in preview.subtitle; legacy projects keep the original responsive font size.',
     '媒体': 'Media', '媒体设置': 'Media settings', '预览字幕': 'Subtitle preview', '预览字幕样式': 'Subtitle preview style', '预览拓展字幕': 'Extension subtitle preview', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
     '跳转时长': 'Seek duration', '每次跳转': 'Each jump', '媒体控制按钮和左右方向键每次跳转的毫秒数': 'Milliseconds to jump with the media controls and left/right arrow keys', '控制按钮和左右方向键的每次跳转时长（单位：ms）': 'Duration for each jump from the controls and left/right arrow keys (unit: ms)',
-    '频谱颜色': 'Spectral colors',
+    '频谱颜色': 'Spectral colors', '正在应用频谱颜色…': 'Applying spectral colors…', '正在关闭频谱颜色…': 'Removing spectral colors…',
     '播放': 'Play', '暂停': 'Pause', '后退 1000ms': 'Back 1000ms', '前进 1000ms': 'Forward 1000ms',
     '媒体进度': 'Media progress', '音量': 'Volume', '速度': 'Speed', '播放速度': 'Playback speed',
     '全屏': 'Fullscreen', '退出全屏': 'Exit fullscreen',
@@ -6511,6 +6527,8 @@
     '提示：可在「媒体」设置中切换 J/K/L 的「慢放/快放」或「倒放/正放」，也可调整跳转时长。': 'Tip: In Media settings, switch J/K/L between “slow/fast” and “reverse/forward”, and adjust the seek duration.',
     '选中字幕时': 'With subtitles selected:', '选中字幕时：': 'With subtitles selected:',
     '微调移动字幕': 'Fine-tune subtitle movement', '将字幕起点/终点贴到前一条结尾/后一条开头': 'Snap the subtitle start/end to the previous end/next start',
+    'Z/X 将字幕起点/终点定位到鼠标位置': 'Z/X place the subtitle start/end at the pointer',
+    '无选中时作用于鼠标所在字幕；主字幕会联动绑定副字幕，副字幕只调整自身；多选不生效': 'With no selection, operate on the subtitle under the pointer; main subtitles move their bound secondary subtitle, while secondary subtitles move alone; no effect on multi-selection',
     '微调字幕左边界（起点）': 'Fine-tune the subtitle left edge (start)',
     '微调字幕右边界（终点）': 'Fine-tune the subtitle right edge (end)',
     '按住字幕时': 'While holding a subtitle:', '按住字幕时：': 'While holding a subtitle:',
@@ -7204,6 +7222,7 @@
   const MAX_WAVEFORM_SCALE = 6;
   const SNAP_MS = 80;
   const ROUND_MS = 10;
+  const WAVEFORM_ADJUST_DEBOUNCE_MS = 160;
   const BROWSER_DECODE_LIMIT = 512 * 1024 * 1024;
   const BROWSER_PCM_ESTIMATE_LIMIT = 768 * 1024 * 1024;
   // 右侧整列波形布局：当前字幕编辑区略收紧，把空间让给字幕列表。
@@ -7903,6 +7922,50 @@
     return target;
   }
 
+  function buildWaveformEnvelope(
+    peaks,
+    peaksPerSecond,
+    peakCount,
+    startMs,
+    endMs,
+    width,
+    useInterpolation = false,
+  ) {
+    const numericWidth = Number(width);
+    const safeWidth = Number.isFinite(numericWidth)
+      ? Math.max(1, Math.round(numericWidth)) : 1;
+    const low = new Float32Array(safeWidth);
+    const high = new Float32Array(safeWidth);
+    if (!peaks || peakCount <= 0 || !Number.isFinite(peaksPerSecond) || peaksPerSecond <= 0) {
+      return { low, high };
+    }
+    const rangeMs = Math.max(1, Number(endMs) - Number(startMs));
+    const interpolatedPeak = [0, 0];
+    for (let x = 0; x < safeWidth; x++) {
+      const xStartMs = startMs + (x / safeWidth) * rangeMs;
+      const xEndMs = startMs + ((x + 1) / safeWidth) * rangeMs;
+      if (useInterpolation) {
+        const centerMs = (xStartMs + xEndMs) / 2;
+        const peakPosition = (centerMs / 1000) * peaksPerSecond - 0.5;
+        sampleInterpolatedPeak(peaks, peakPosition, peakCount, interpolatedPeak);
+        low[x] = interpolatedPeak[0];
+        high[x] = interpolatedPeak[1];
+        continue;
+      }
+      const firstPeak = clamp(Math.floor((xStartMs / 1000) * peaksPerSecond), 0, peakCount - 1);
+      const lastPeak = clamp(Math.ceil((xEndMs / 1000) * peaksPerSecond), firstPeak + 1, peakCount);
+      let min = 127;
+      let max = -127;
+      for (let peak = firstPeak; peak < lastPeak; peak++) {
+        min = Math.min(min, peaks[peak * 2]);
+        max = Math.max(max, peaks[peak * 2 + 1]);
+      }
+      low[x] = min;
+      high[x] = max;
+    }
+    return { low, high };
+  }
+
   function colorForSegment(segment) {
     if (segment.color?.name && PALETTE[segment.color.name]) return PALETTE[segment.color.name];
     if (segment.color_ref?.name && PALETTE[segment.color_ref.name]) return PALETTE[segment.color_ref.name];
@@ -8307,13 +8370,15 @@
       ? index : -1;
   }
 
-  function syncSpectralColorToggle(toggle, available, preferred) {
+  function syncSpectralColorToggle(toggle, available, preferred, busy = false) {
     if (!toggle) return;
     const hasSpectral = Boolean(available);
-    toggle.disabled = !hasSpectral;
+    const isBusy = Boolean(busy);
+    toggle.disabled = !hasSpectral || isBusy;
     toggle.checked = hasSpectral && preferred === true;
     if (typeof toggle.setAttribute === 'function') {
-      toggle.setAttribute('aria-disabled', String(!hasSpectral));
+      toggle.setAttribute('aria-disabled', String(!hasSpectral || isBusy));
+      toggle.setAttribute('aria-busy', String(isBusy));
     }
   }
 
@@ -8328,6 +8393,8 @@
       this.reapeaksPeaks = null;
       this.player = null;
       this.mediaAvailable = false;
+      this.spectralColorBusy = false;
+      this.spectralColorRenderToken = 0;
       this.basicWindowStartMs = 0;
       this.manualFollowUntil = 0;
       this.multiRange = [-1, -1];
@@ -8346,13 +8413,13 @@
       // 字幕快捷键会在很短时间内连续请求定位；复用滚动事件已有的
       // rAF 合并，避免每个按键都强制重建可视行和 Canvas。
       this.multiVisibleFrame = 0;
-      // Shift+滚轮调振幅的 rAF 节流：一帧内的滚动累加方向后只触发一次
+      // Shift+滚轮调振幅的 debounce：滚动期间只累计净步数，停止后一次性重绘
       this.pendingScaleDirection = 0;
-      this.scaleRafScheduled = false;
-      // 行高预设也可能由高回报率滚轮连续触发；合并到下一帧，避免每个
-      // wheel 事件都重排并重绘整组可视行。
+      this.scaleDebounceTimer = 0;
+      // 行高预设也可能由高回报率滚轮连续触发；等待滚动停止后一次性重排，
+      // 避免每个 wheel 事件都重绘整组可视行。
       this.pendingRowHeightDirection = 0;
-      this.rowHeightRafScheduled = false;
+      this.rowHeightDebounceTimer = 0;
       this.renderedRows = [];
       // 波形交互工具：'select'（默认，保留 Ctrl/Shift/分组多选与拖动）或
       // 'razor'（左键点击字幕块即在指针位置安全拆分）。Alt 行为不随工具变化。
@@ -8367,6 +8434,7 @@
       this.content = document.getElementById('waveform-content');
       this.empty = document.getElementById('waveform-empty');
       this.status = document.getElementById('waveform-status');
+      this.spectralColorStatus = document.getElementById('waveform-spectral-status');
       this.divider = document.getElementById('workspace-divider');
       this.secondaryDivider = document.getElementById('workspace-divider-secondary');
       this.windowLabel = document.getElementById('waveform-window-label');
@@ -8459,9 +8527,7 @@
         syncSpectralColorToggle(this.spectralColorToggle, false, this.settings.spectralColor);
       }
       this.spectralColorToggle?.addEventListener('change', () => {
-        this.settings.spectralColor = this.spectralColorToggle.checked;
-        saveSettings(this.settings);
-        this.render();
+        this.scheduleSpectralColorRender();
       });
       this.sideSelect?.addEventListener('change', () => {
         this.settings.side = this.sideSelect.value === 'right' ? 'right' : 'left';
@@ -8755,13 +8821,21 @@
 
     setRowHeight(value) {
       const next = Number(value);
+      if (this.rowHeightDebounceTimer) {
+        window.clearTimeout(this.rowHeightDebounceTimer);
+        this.rowHeightDebounceTimer = 0;
+        this.pendingRowHeightDirection = 0;
+      }
       if (!ROW_HEIGHT_PRESETS.includes(next)) return false;
       if (this.settings.rowHeight === next) return true;
       this.settings.rowHeight = next;
       if (this.rowHeightSelect) this.rowHeightSelect.value = String(next);
       saveSettings(this.settings);
-      if (this.isMultiMode() && this.payload) this.updateMultiRowLayout();
-      else this.render();
+      if (this.isMultiMode() && this.payload) {
+        this.updateMultiRowLayout();
+      } else {
+        this.render();
+      }
       return true;
     }
 
@@ -9118,12 +9192,29 @@
     }
 
     changeWaveformScale(direction) {
+      if (this.scaleDebounceTimer) {
+        window.clearTimeout(this.scaleDebounceTimer);
+        this.scaleDebounceTimer = 0;
+        this.pendingScaleDirection = 0;
+      }
+      this.applyWaveformScaleSteps(Math.sign(direction));
+    }
+
+    applyWaveformScaleSteps(steps) {
       const current = this.settings.waveformScale;
-      const next = waveformScaleAfterStep(current, direction);
+      const numericSteps = Math.trunc(Number(steps));
+      if (!numericSteps) return;
+      const stepDirection = numericSteps > 0 ? 1 : -1;
+      let next = current;
+      for (let index = 0; index < Math.abs(numericSteps); index += 1) {
+        const candidate = waveformScaleAfterStep(next, stepDirection);
+        if (candidate === next) break;
+        next = candidate;
+      }
       if (next === current) {
         // 已到边界：减不下去/加不上去，通知编辑器给出提示
         document.dispatchEvent(new CustomEvent('asr:waveform-scale-limit', {
-          detail: { atMin: direction < 0, atMax: direction > 0 },
+          detail: { atMin: stepDirection < 0, atMax: stepDirection > 0 },
         }));
         return;
       }
@@ -9132,41 +9223,31 @@
       if (this.waveformScaleLabel) {
         this.waveformScaleLabel.textContent = `×${parseFloat(next.toFixed(2))}`;
       }
-      // 振幅只影响 Canvas 像素，不影响字幕块、行结构或时间映射；复用
-      // 已有可视行，避免批量调节时反复创建 DOM 和事件监听器。
+      // peak 包络按行缓存；连续滚轮由上层 debounce 合并后，这里只清晰重绘一次。
       this.redrawWaveformCanvases();
     }
 
     scheduleWheelScaleChange() {
-      if (this.scaleRafScheduled) return;
-      this.scaleRafScheduled = true;
-      requestAnimationFrame(() => {
-        this.scaleRafScheduled = false;
-        if (this.pendingScaleDirection === 0) return;
-        // 一帧内的滚动合并为单次方向；触摸板惯性抖动产生的正反向会互相抵消
-        const direction = this.pendingScaleDirection > 0 ? 1 : -1;
+      if (this.scaleDebounceTimer) window.clearTimeout(this.scaleDebounceTimer);
+      this.scaleDebounceTimer = window.setTimeout(() => {
+        this.scaleDebounceTimer = 0;
+        const steps = this.pendingScaleDirection;
         this.pendingScaleDirection = 0;
-        this.changeWaveformScale(direction);
-      });
+        this.applyWaveformScaleSteps(steps);
+      }, WAVEFORM_ADJUST_DEBOUNCE_MS);
     }
 
     scheduleRowHeightChange(direction) {
       this.pendingRowHeightDirection += direction > 0 ? 1 : -1;
-      if (this.rowHeightRafScheduled) return;
-      this.rowHeightRafScheduled = true;
-      requestAnimationFrame(() => {
-        this.rowHeightRafScheduled = false;
-        if (this.pendingRowHeightDirection === 0) return;
-        const directionToApply = this.pendingRowHeightDirection > 0 ? 1 : -1;
+      if (this.rowHeightDebounceTimer) window.clearTimeout(this.rowHeightDebounceTimer);
+      this.rowHeightDebounceTimer = window.setTimeout(() => {
+        this.rowHeightDebounceTimer = 0;
+        const steps = this.pendingRowHeightDirection;
         this.pendingRowHeightDirection = 0;
         const current = ROW_HEIGHT_PRESETS.indexOf(this.settings.rowHeight);
-        const next = clamp(current + directionToApply, 0, ROW_HEIGHT_PRESETS.length - 1);
-        if (next === current) return;
-        this.settings.rowHeight = ROW_HEIGHT_PRESETS[next];
-        if (this.rowHeightSelect) this.rowHeightSelect.value = String(this.settings.rowHeight);
-        saveSettings(this.settings);
-        this.updateMultiRowLayout();
-      });
+        const next = clamp(current + steps, 0, ROW_HEIGHT_PRESETS.length - 1);
+        if (next !== current) this.setRowHeight(ROW_HEIGHT_PRESETS[next]);
+      }, WAVEFORM_ADJUST_DEBOUNCE_MS);
     }
 
     updateDisabledVisibility() {
@@ -9235,6 +9316,63 @@
       this.status.classList.toggle('busy', kind === 'busy');
     }
 
+    setSpectralColorStatus(message = '') {
+      if (!this.spectralColorStatus) return;
+      const visible = Boolean(message);
+      this.spectralColorStatus.hidden = !visible;
+      this.spectralColorStatus.textContent = visible ? message : '';
+    }
+
+    scheduleSpectralColorRender() {
+      const toggle = this.spectralColorToggle;
+      if (!toggle || !this.spectral) {
+        syncSpectralColorToggle(toggle, this.spectral != null, this.settings.spectralColor, this.spectralColorBusy);
+        return;
+      }
+      // Native disabled controls already block normal repeated clicks. Keep a
+      // guard as well for synthetic change events and automation code.
+      if (this.spectralColorBusy) {
+        toggle.checked = this.settings.spectralColor === true;
+        return;
+      }
+
+      const enabled = toggle.checked === true;
+      this.settings.spectralColor = enabled;
+      saveSettings(this.settings);
+      this.spectralColorBusy = true;
+      this.setSpectralColorStatus(localizedWaveformMessage(
+        enabled ? '正在应用频谱颜色…' : '正在关闭频谱颜色…',
+        enabled ? 'Applying spectral colors…' : 'Removing spectral colors…',
+      ));
+      syncSpectralColorToggle(toggle, true, enabled, true);
+
+      const token = ++this.spectralColorRenderToken;
+      const renderAfterPaint = () => {
+        // Let the browser paint the disabled control and live status before
+        // the synchronous Canvas redraw occupies the main thread.
+        window.setTimeout(() => {
+          if (token !== this.spectralColorRenderToken) return;
+          try {
+            this.render();
+          } finally {
+            this.spectralColorBusy = false;
+            syncSpectralColorToggle(
+              toggle,
+              this.spectral != null,
+              this.settings.spectralColor,
+              false,
+            );
+            this.setSpectralColorStatus();
+          }
+        }, 0);
+      };
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(renderAfterPaint);
+      } else {
+        window.setTimeout(renderAfterPaint, 0);
+      }
+    }
+
     attachPlayer(player) {
       if (this.player) {
         this.player.removeEventListener('timeupdate', this._onPlayerTime);
@@ -9294,7 +9432,12 @@
       // Without spectral data the feature is visibly and functionally off.
       // Keep the stored preference intact so a deferred server payload can
       // restore the user's choice when it becomes available.
-      syncSpectralColorToggle(this.spectralColorToggle, this.spectral != null, this.settings.spectralColor);
+      syncSpectralColorToggle(
+        this.spectralColorToggle,
+        this.spectral != null,
+        this.settings.spectralColor,
+        this.spectralColorBusy,
+      );
       if (render) this.render();
       return this.spectral != null;
     }
@@ -9528,19 +9671,21 @@
     stretchWaveformCanvases() {
       // 字幕块/空隙块/播放头均为百分比定位，会随行宽自动跟随；
       // 只有 canvas 位图需要按新尺寸临时拉伸
-      this.content.querySelectorAll('.waveform-row canvas').forEach((canvas) => {
+      this.renderedRows.forEach((row) => {
+        const canvas = row.querySelector('canvas');
+        if (!canvas) return;
         canvas.style.width = '100%';
         canvas.style.height = '100%';
       });
     }
 
-    redrawWaveformCanvases() {
+    redrawWaveformCanvases({ measure = true } = {}) {
       if (!this.payload || !this.peaks) return;
       if (!this.renderedRows.length) {
         this.renderSegments();
         return;
       }
-      this.renderedRows.forEach((row) => this.drawRow(row));
+      this.renderedRows.forEach((row) => this.drawRow(row, { measure }));
       this.updatePlayback(false);
     }
 
@@ -10115,17 +10260,62 @@
       });
     }
 
-    drawRow(row) {
+    getWaveformEnvelope(row, width, startMs, endMs, activePeaks, peaksPerSecond, activeCount, useInterpolation) {
+      const key = row._waveformEnvelopeKey;
+      if (row._waveformEnvelope && key
+          && key.width === width
+          && key.startMs === startMs
+          && key.endMs === endMs
+          && key.source === activePeaks
+          && key.peaksPerSecond === peaksPerSecond
+          && key.peakCount === activeCount
+          && key.useInterpolation === useInterpolation) {
+        return row._waveformEnvelope;
+      }
+      const envelope = buildWaveformEnvelope(
+        activePeaks,
+        peaksPerSecond,
+        activeCount,
+        startMs,
+        endMs,
+        width,
+        useInterpolation,
+      );
+      row._waveformEnvelopeKey = {
+        width,
+        startMs,
+        endMs,
+        source: activePeaks,
+        peaksPerSecond,
+        peakCount: activeCount,
+        useInterpolation,
+      };
+      row._waveformEnvelope = envelope;
+      return envelope;
+    }
+
+    drawRow(row, { measure = true } = {}) {
       const canvas = row.querySelector('canvas');
-      const rect = row.getBoundingClientRect();
-      if (!canvas || rect.width <= 0 || rect.height <= 0 || !this.peaks) return;
+      if (!canvas || !this.peaks) return;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
-      const width = Math.max(1, Math.round(rect.width));
-      const height = Math.max(1, Math.round(rect.height));
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
+      let width = Number(row._waveformCanvasWidth);
+      let height = Number(row._waveformCanvasHeight);
+      if (measure || !Number.isFinite(width) || !Number.isFinite(height)) {
+        const rect = row.getBoundingClientRect();
+        width = Math.max(1, Math.round(rect.width));
+        height = Math.max(1, Math.round(rect.height));
+      }
+      if (width <= 0 || height <= 0) return;
+      const pixelWidth = Math.round(width * dpr);
+      const pixelHeight = Math.round(height * dpr);
+      if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+      if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+      const cssWidth = `${width}px`;
+      const cssHeight = `${height}px`;
+      if (canvas.style.width !== cssWidth) canvas.style.width = cssWidth;
+      if (canvas.style.height !== cssHeight) canvas.style.height = cssHeight;
+      row._waveformCanvasWidth = width;
+      row._waveformCanvasHeight = height;
       const ctx = canvas.getContext('2d', { alpha: false });
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const colors = this._getWaveColors();
@@ -10162,7 +10352,16 @@
       const useInterpolation = this.settings.mode === 'basic'
         && this.settings.visibleSeconds === ZOOM_PRESETS[0]
         && (rangeMs / 1000) * peaksPerSecond < width;
-      const interpolatedPeak = [0, 0];
+      const envelope = this.getWaveformEnvelope(
+        row,
+        width,
+        startMs,
+        endMs,
+        activePeaks,
+        peaksPerSecond,
+        activeCount,
+        useInterpolation,
+      );
       const center = height * 0.46;
       const amplitude = waveformAmplitude(height, this.settings.waveformScale);
       const minWaveY = 2;
@@ -10176,29 +10375,8 @@
       let pathOpen = false;
       for (let x = 0; x < width; x++) {
         const xStartMs = startMs + (x / width) * rangeMs;
-        const xEndMs = startMs + ((x + 1) / width) * rangeMs;
-        let low;
-        let high;
-        if (useInterpolation) {
-          const centerMs = (xStartMs + xEndMs) / 2;
-          const peakPosition = (centerMs / 1000) * peaksPerSecond - 0.5;
-          sampleInterpolatedPeak(
-            activePeaks,
-            peakPosition,
-            activeCount,
-            interpolatedPeak,
-          );
-          [low, high] = interpolatedPeak;
-        } else {
-          const firstPeak = clamp(Math.floor((xStartMs / 1000) * peaksPerSecond), 0, activeCount - 1);
-          const lastPeak = clamp(Math.ceil((xEndMs / 1000) * peaksPerSecond), firstPeak + 1, activeCount);
-          low = 127;
-          high = -127;
-          for (let peak = firstPeak; peak < lastPeak; peak++) {
-            low = Math.min(low, activePeaks[peak * 2]);
-            high = Math.max(high, activePeaks[peak * 2 + 1]);
-          }
-        }
+        const low = envelope.low[x];
+        const high = envelope.high[x];
         const yTop = clamp(center - (high / 127) * amplitude, minWaveY, maxWaveY);
         const yBot = clamp(center - (low / 127) * amplitude, minWaveY, maxWaveY);
         if (spectral) {
@@ -10985,6 +11163,67 @@
       return true;
     }
 
+    // 把单条字幕的一个边界直接定位到波形指针时间。与方向键微调一样，
+    // 保留最短时长和同轨不重叠约束，但不联动同轨邻居；跨轨绑定由编辑器
+    // 的提交回调处理。targetIndex 用于“当前没有选中字幕但指针命中字幕”的路径。
+    setCueBoundaryToTime(timeMs, edge, track = 'main', targetIndex = null) {
+      const segments = this.options.getSegments(track);
+      const selectedIndices = normalizedIndices(segments, this.options.getSelection?.(track));
+      const hasExplicitTarget = targetIndex !== null && targetIndex !== undefined;
+      const index = hasExplicitTarget ? Number(targetIndex)
+        : selectedIndices.length === 1 ? selectedIndices[0] : -1;
+      if (!Number.isInteger(index) || !segments[index]
+          || (!hasExplicitTarget && selectedIndices.length !== 1)
+          || (edge !== 'start' && edge !== 'end')) return false;
+
+      const segment = segments[index];
+      const current = Number(segment[edge]);
+      const requested = Number(timeMs);
+      if (!Number.isFinite(current) || !Number.isFinite(requested)) return false;
+
+      const previous = segments[index - 1];
+      const next = segments[index + 1];
+      let lower;
+      let upper;
+      if (edge === 'start') {
+        lower = Number(previous?.end ?? 0);
+        upper = Number(segment.end) - MIN_CUE_MS;
+      } else {
+        lower = Number(segment.start) + MIN_CUE_MS;
+        upper = Number(next?.start ?? this.cueDragDurationMs());
+        if (!Number.isFinite(upper) || upper <= 0) upper = Infinity;
+      }
+      if (!Number.isFinite(lower) || lower > upper) return true;
+
+      const target = clamp(roundMs(requested), lower, upper);
+      if (!Number.isFinite(target) || target === current) return true;
+
+      const original = snapshotTiming(segment);
+      this.options.onBeginEdit?.(edge === 'start' ? '定位字幕起点' : '定位字幕终点');
+      if (edge === 'start') {
+        segment.start = target;
+      } else {
+        segment.end = target;
+      }
+      segment.items = remapItems(
+        original.items,
+        original.start,
+        original.end,
+        segment.start,
+        segment.end,
+      );
+      segment._dirty = true;
+      this.options.onCommitEdit?.(
+        [index],
+        'resize-boundary-pointer',
+        track,
+        false,
+        { edge, targetIndex: index, targetTimeMs: target, original },
+      );
+      this.refreshCueOverlay();
+      return true;
+    }
+
     snapSelectedCueBoundaryByKeyboard(direction, track = 'main') {
       const segments = this.options.getSegments(track);
       const indices = normalizedIndices(segments, this.options.getSelection?.(track));
@@ -11351,7 +11590,7 @@
       if (drag.kind === 'move' && adjacentCueAdjustmentIndependent) drag.allowSqueeze = true;
       // 主字幕/副字幕绑定的独立调整仍只由 Alt 临时触发，不受同轨自动吸附开关影响。
       if (drag.track === 'extension' && event.altKey) drag.independent = true;
-      const disableSnap = drag.independent === true || drag.allowSqueeze === true;
+      const disableSnap = drag.independent === true;
       if (drag.kind === 'move') this.applyMoveDrag(drag, deltaMs, disableSnap, drag.allowSqueeze);
       else if (drag.kind === 'resize-boundary') this.applyBoundaryDrag(drag, deltaMs, drag.independent);
       else if (drag.kind === 'resize-boundary-independent') this.applyIndependentBoundaryDrag(drag, deltaMs);
@@ -11413,9 +11652,11 @@
         for (const idx of drag.indices) {
           const original = drag.originals.get(idx);
           candidates.push(playhead - original.start, playhead - original.end);
-          if (idx > 0 && !moved.has(idx - 1)) candidates.push(segments[idx - 1].end - original.start);
-          if (idx + 1 < segments.length && !moved.has(idx + 1)) {
-            candidates.push(segments[idx + 1].start - original.end);
+          if (!allowSqueeze) {
+            if (idx > 0 && !moved.has(idx - 1)) candidates.push(segments[idx - 1].end - original.start);
+            if (idx + 1 < segments.length && !moved.has(idx + 1)) {
+              candidates.push(segments[idx + 1].start - original.end);
+            }
           }
           crossTrackTargets.forEach((target) => {
             candidates.push(target - original.start, target - original.end);
@@ -11712,6 +11953,7 @@
       wheelScrollDelta,
       waveformScaleAfterStep,
       waveformAmplitude,
+      buildWaveformEnvelope,
       sampleInterpolatedPeak,
       normalizeLayoutData,
       swapLayoutModuleOrder,
@@ -11949,54 +12191,6 @@ function getTrackNeighborBounds(segment, segments, movedSegments = new Set()) {
     nextStart: nextIndex < segments.length
       ? Number(segments[nextIndex]?.start) : getSubtitleTimelineDuration(),
   };
-}
-
-function getCueDeltaLimits(
-  segment,
-  segments,
-  mode,
-  edge = null,
-  movedSegments = new Set(),
-  baseline = segment,
-) {
-  const bounds = getTrackNeighborBounds(segment, segments, movedSegments);
-  if (!bounds) return null;
-  const start = Number(baseline.start);
-  const end = Number(baseline.end);
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
-  if (mode === 'move') {
-    return {
-      min: Math.max(-start, bounds.previousEnd - start),
-      max: Math.min(getSubtitleTimelineDuration() - end, bounds.nextStart - end),
-    };
-  }
-  if (edge === 'start') {
-    return {
-      min: bounds.previousEnd - start,
-      max: Math.min(end - SUBTITLE_MIN_DURATION_MS - start, getSubtitleTimelineDuration() - start),
-    };
-  }
-  if (edge === 'end') {
-    return {
-      min: start + SUBTITLE_MIN_DURATION_MS - end,
-      max: Math.min(getSubtitleTimelineDuration() - end, bounds.nextStart - end),
-    };
-  }
-  return null;
-}
-
-function intersectCueDeltaLimits(limits) {
-  const valid = limits.filter((limit) => (
-    limit
-      && typeof limit.min === 'number'
-      && typeof limit.max === 'number'
-      && !Number.isNaN(limit.min)
-      && !Number.isNaN(limit.max)
-  ));
-  if (!valid.length) return null;
-  const min = Math.max(...valid.map((limit) => limit.min));
-  const max = Math.min(...valid.map((limit) => limit.max));
-  return min <= max ? { min, max } : null;
 }
 
 function extensionRangeOverlapsNeighbors(segment, start, end, track, movedSegments = new Set()) {
@@ -12304,8 +12498,11 @@ const CLICK_BEHAVIOR_VALUES = new Set(['select-only', 'select-and-seek', 'select
 const CLICK_TARGET_VALUES = new Set(['cue-start', 'pointer']);
 const JKL_PLAYBACK_MODE_VALUES = new Set(['speed', 'direction']);
 const DEFAULT_JKL_PLAYBACK_MODE = 'direction';
-const MEDIA_SEEK_STEP_MIN_MS = 100;
+const MEDIA_SEEK_STEP_MIN_MS = 10;
 const MEDIA_SEEK_STEP_MAX_MS = 60000;
+const MEDIA_SEEK_STEP_FINE_THRESHOLD_MS = 100;
+const MEDIA_SEEK_STEP_FINE_MS = 10;
+const MEDIA_SEEK_STEP_COARSE_MS = 100;
 const DEFAULT_MEDIA_SEEK_STEP_MS = 1000;
 const CUE_MOVE_STEP_MIN_MS = 10;
 const CUE_MOVE_STEP_MAX_MS = 2000;
@@ -12329,6 +12526,42 @@ function clampMediaSeekStepMs(value) {
       Number.isFinite(rounded) ? rounded : DEFAULT_MEDIA_SEEK_STEP_MS,
     ),
   );
+}
+
+function mediaSeekStepForValue(value) {
+  return clampMediaSeekStepMs(value) <= MEDIA_SEEK_STEP_FINE_THRESHOLD_MS
+    ? MEDIA_SEEK_STEP_FINE_MS
+    : MEDIA_SEEK_STEP_COARSE_MS;
+}
+
+function nextMediaSeekStepValue(value, direction) {
+  const current = clampMediaSeekStepMs(value);
+  if (!direction) return current;
+  const sign = direction < 0 ? -1 : 1;
+  const step = sign < 0
+    ? (current <= MEDIA_SEEK_STEP_FINE_THRESHOLD_MS
+      ? MEDIA_SEEK_STEP_FINE_MS : MEDIA_SEEK_STEP_COARSE_MS)
+    : (current < MEDIA_SEEK_STEP_FINE_THRESHOLD_MS
+      ? MEDIA_SEEK_STEP_FINE_MS : MEDIA_SEEK_STEP_COARSE_MS);
+  return clampMediaSeekStepMs(current + sign * step);
+}
+
+// 原生 number 输入框以 min=10、step=100 计算大于 100 的向下步进时，
+// 会把 200 算成 110。把这个浏览器步进结果还原为用户看到的 100ms 档位，
+// 同时保留 100ms 向下 90ms、向上 200ms 的边界行为。
+function normalizeNativeMediaSeekStepValue(value, previousValue) {
+  const numeric = Math.round(Number(value));
+  if (!Number.isFinite(numeric)) return null;
+  const previous = clampMediaSeekStepMs(previousValue);
+  const delta = numeric - previous;
+  const step = mediaSeekStepForValue(previous);
+  const nativeDownDelta = previous > MEDIA_SEEK_STEP_FINE_THRESHOLD_MS
+    ? -(step - MEDIA_SEEK_STEP_MIN_MS)
+    : -step;
+  if (delta === step || delta === nativeDownDelta) {
+    return nextMediaSeekStepValue(previous, delta < 0 ? -1 : 1);
+  }
+  return clampMediaSeekStepMs(numeric);
 }
 
 function clampCueMoveStepMs(value) {
@@ -12836,9 +13069,8 @@ function applyHistoryRecord(record) {
   lastActive = -1;
   const structureChanged = previousWaveformStructure
     !== multiSubtitleWaveformStructureKey();
-  const bindingOnly = record.label === '绑定多重字幕' || record.label === '解绑多重字幕';
   renderAll({
-    waveform: bindingOnly ? 'none' : structureChanged ? 'full' : 'overlay',
+    waveform: structureChanged ? 'full' : 'overlay',
   });
   if (record.view) restoreEditorSelection(record.view);
   return true;
@@ -12927,6 +13159,7 @@ const mediaPlayToggle = document.getElementById('media-play-toggle');
 const mediaStepBack = document.getElementById('media-step-back');
 const mediaStepForward = document.getElementById('media-step-forward');
 const mediaSeekStepInput = document.getElementById('media-seek-step');
+let mediaSeekInputLastValue = EDITOR_SETTINGS.mediaSeekStepMs;
 const mediaCurrentTime = document.getElementById('media-current-time');
 const mediaDuration = document.getElementById('media-duration');
 const mediaSeek = document.getElementById('media-seek');
@@ -13622,6 +13855,7 @@ if (cueEditorCancelOnEscapeToggle) {
   cueEditorCancelOnEscapeToggle.checked = EDITOR_SETTINGS.cueEditorCancelOnEscape;
 }
 refreshMediaSeekStepHelp();
+refreshMediaSeekInputStep();
 refreshMediaSeekControlLabels();
 applyNinjaSettings();
 const waveformShapeSourceSelect = document.getElementById('waveform-shape-source');
@@ -14038,20 +14272,48 @@ jklPlaybackModeSelect?.addEventListener('change', () => {
   syncMediaControls();
   refreshJklPlaybackModeUi();
 });
+function refreshMediaSeekInputStep(value = EDITOR_SETTINGS.mediaSeekStepMs) {
+  if (mediaSeekStepInput) mediaSeekStepInput.step = String(mediaSeekStepForValue(value));
+}
+
+function commitMediaSeekStepInput(value, { rewriteInput = true } = {}) {
+  const normalized = clampMediaSeekStepMs(value);
+  if (rewriteInput && mediaSeekStepInput) mediaSeekStepInput.value = String(normalized);
+  mediaSeekInputLastValue = normalized;
+  updateEditorSettings({ mediaSeekStepMs: normalized });
+  refreshMediaSeekInputStep(normalized);
+  refreshMediaSeekStepHelp();
+  refreshMediaSeekControlLabels();
+}
+
+function adjustMediaSeekStepInput(direction) {
+  if (!mediaSeekStepInput) return;
+  const current = clampMediaSeekStepMs(mediaSeekStepInput.value);
+  commitMediaSeekStepInput(nextMediaSeekStepValue(current, direction));
+}
+
+mediaSeekStepInput?.addEventListener('keydown', (event) => {
+  if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+  event.preventDefault();
+  event.stopPropagation();
+  adjustMediaSeekStepInput(event.key === 'ArrowUp' ? 1 : -1);
+});
+mediaSeekStepInput?.addEventListener('wheel', (event) => {
+  if (!event.deltaY) return;
+  event.preventDefault();
+  event.stopPropagation();
+  mediaSeekStepInput.focus({ preventScroll: true });
+  adjustMediaSeekStepInput(event.deltaY < 0 ? 1 : -1);
+}, { passive: false });
 mediaSeekStepInput?.addEventListener('input', () => {
   const raw = mediaSeekStepInput.value.trim();
   if (!raw) return;
-  const value = clampMediaSeekStepMs(raw);
-  updateEditorSettings({ mediaSeekStepMs: value });
-  refreshMediaSeekStepHelp();
-  refreshMediaSeekControlLabels();
+  const value = normalizeNativeMediaSeekStepValue(raw, mediaSeekInputLastValue);
+  if (value === null) return;
+  commitMediaSeekStepInput(value, { rewriteInput: value !== Number(raw) });
 });
 mediaSeekStepInput?.addEventListener('change', () => {
-  const value = clampMediaSeekStepMs(mediaSeekStepInput.value);
-  mediaSeekStepInput.value = String(value);
-  updateEditorSettings({ mediaSeekStepMs: value });
-  refreshMediaSeekStepHelp();
-  refreshMediaSeekControlLabels();
+  commitMediaSeekStepInput(mediaSeekStepInput.value);
 });
 cueMoveStepInput?.addEventListener('change', () => {
   const value = clampCueMoveStepMs(cueMoveStepInput.value);
@@ -15181,8 +15443,9 @@ function bindSelectedSubtitlePair({ successMessage = null } = {}) {
     && alignExtensionToMainTimeRange(extensionIndex, track, { pushHistory: false, showHint: false });
   markMainSegmentsDirty([main]);
   markMultiSubtitleDirty();
-  // 绑定关系通常只影响字幕列表；启用自动同步时，上面的 H 等价操作会同时更新副轨时间。
-  renderAll({ waveform: 'none' });
+  // 绑定会更新波形上的绑定标记；自动同步时也会改变副字幕范围，
+  // 因此列表与波形都需要同步刷新。
+  renderAll({ waveform: 'overlay' });
   waveformEditor?.updateSelection();
   const bindingMessage = successMessage
     || (replacedBinding
@@ -15213,8 +15476,8 @@ function unbindSelectedSubtitlePair() {
   MULTI_SUBTITLE_UTILS.removeSubtitleBindings(multi, (binding) => removed.includes(binding));
   markMultiSubtitleDirty();
   syncBindingOffsets();
-  // 解绑同样只更新列表关系状态，跳过波形覆盖层重建。
-  renderAll({ waveform: 'none' });
+  // 解绑会移除波形上的绑定标记，也需要刷新字幕块覆盖层。
+  renderAll({ waveform: 'overlay' });
   waveformEditor?.updateSelection();
   flashHint(`已解绑 ${removed.length} 对字幕`, 'success');
 }
@@ -18042,6 +18305,13 @@ function mergeContiguousIndices(sorted) {
     if (mergedExtension) extensionTrack.segments.splice(extensionMergeIndices[0], 0, mergedExtension);
     if (mergedExtension) {
       multi.bindings.push(MULTI_SUBTITLE_UTILS.buildSubtitleBinding(merged, mergedExtension, extensionTrack.id));
+      if (EDITOR_SETTINGS.multiSubtitleAutoSyncDuration) {
+        // C 合并会重新创建一对绑定字幕；与手动绑定保持一致，按开关
+        // 将新副字幕的时间范围同步到合并后的主字幕，并整理副轨冲突。
+        setExtensionSegmentRange(mergedExtension, merged.start, merged.end);
+        reconcileExtensionTrack(extensionTrack, [mergedExtension]);
+        syncBindingOffsets();
+      }
     }
     markMultiSubtitleDirty();
   }
@@ -18622,6 +18892,89 @@ function waveformPointerContext() {
   return { ...lastPointerPos, timeMs, track };
 }
 
+// Z/X 只接受一个“逻辑字幕”作为目标：点击主字幕时，绑定副字幕是它的
+// 联动对象；点击副字幕时，即使界面同时选中了主字幕，也仍只改副字幕。
+// 其它多选或来自不同绑定组的混合选择直接不处理。
+function getPointerBoundaryEditTarget(context) {
+  if (!context) return null;
+  const mainIndices = [...selectedIdxs];
+  const extensionIndices = [...selectedExtensionIdxs];
+
+  if (!mainIndices.length && !extensionIndices.length) {
+    const extension = context.track === 'extension' && multiSubtitleVisible();
+    const track = extension ? getActiveExtensionTrack() : null;
+    const segments = extension ? track?.segments : DATA.segments;
+    const index = findWaveformCueAtTime(context.timeMs, segments);
+    if (index < 0 || !segments?.[index]) return null;
+    return {
+      kind: extension ? 'extension' : 'main',
+      index,
+      trackId: track?.id || null,
+      track,
+      segment: segments[index],
+    };
+  }
+
+  const panelTarget = getCurrentCuePanelTarget();
+  if (!panelTarget) return null;
+  if (panelTarget.kind === 'main') {
+    if (mainIndices.length !== 1 || mainIndices[0] !== panelTarget.index) return null;
+    const binding = bindingForMainIndex(panelTarget.index);
+    const bindingTrack = binding ? getExtensionTrack(binding.track_id) : null;
+    const boundExtensionIndices = (binding?.extension_segment_ids || [])
+      .map((id) => bindingTrack?.segments?.findIndex((segment) => segment?.id === id) ?? -1)
+      .filter((index) => index >= 0);
+    const extensionMatchesBinding = extensionIndices.length === 0
+      || (boundExtensionIndices.length === 1
+        && extensionIndices.length === 1
+        && extensionIndices[0] === boundExtensionIndices[0]);
+    if (!extensionMatchesBinding) return null;
+    return panelTarget;
+  }
+
+  if (extensionIndices.length !== 1 || extensionIndices[0] !== panelTarget.index) return null;
+  const binding = bindingForExtensionIndex(panelTarget.index, panelTarget.track);
+  const boundMainIndices = (binding?.main_segment_ids || [])
+    .map((id) => DATA.segments.findIndex((segment) => segment?.id === id))
+    .filter((index) => index >= 0);
+  const mainMatchesBinding = mainIndices.length === 0
+    || (boundMainIndices.length === 1
+      && mainIndices.length === 1
+      && mainIndices[0] === boundMainIndices[0]);
+  return mainMatchesBinding ? panelTarget : null;
+}
+
+// Z：起点定位；X：终点定位。无选中时使用波形指针命中的字幕；有选中时
+// 只允许一个逻辑字幕，避免把多选误当成批量边界调整。
+function handlePointerBoundaryShortcut(event, edge) {
+  if (event.key !== (edge === 'start' ? 'z' : 'x')
+      && event.key !== (edge === 'start' ? 'Z' : 'X')) return;
+  if (event.repeat || editingState || extensionEditingState || isTextEditingTarget(event)) return;
+  const active = document.activeElement;
+  if (active && (
+    active.tagName === 'INPUT' || active.tagName === 'TEXTAREA'
+      || active.tagName === 'SELECT' || active.isContentEditable
+  )) return;
+  if (replaceModal.classList.contains('show') || stickerModal.classList.contains('show')
+      || stickerPreviewModal.classList.contains('show') || projectMediaModal.classList.contains('show')
+      || multiSubtitleSplitModal?.classList.contains('show')
+      || multiSubtitleImportModal?.classList.contains('show')
+      || document.getElementById('sticker-root-modal').classList.contains('show')
+      || ctxmenu.classList.contains('show')) return;
+  if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+
+  const context = waveformPointerContext();
+  const target = getPointerBoundaryEditTarget(context);
+  if (!context || !target || !waveformEditor?.setCueBoundaryToTime) return;
+  const track = target.kind === 'extension' ? 'extension' : 'main';
+  if (!waveformEditor.setCueBoundaryToTime(context.timeMs, edge, track, target.index)) return;
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+document.addEventListener('keydown', (event) => handlePointerBoundaryShortcut(event, 'start'));
+document.addEventListener('keydown', (event) => handlePointerBoundaryShortcut(event, 'end'));
+
 function hoveredSelectedCueContext() {
   if (!cueListPointer) return null;
   const isExtension = cueListPointer.kind === 'extension';
@@ -18996,6 +19349,7 @@ function syncPlaybackRateOption(rate) {
 }
 
 function syncMediaControls() {
+  playerWrap?.classList.toggle('fullscreen-preview', document.fullscreenElement === playerWrap);
   refreshMediaSeekControlLabels();
   if (!mediaPlayToggle || !player) return;
   const hasMedia = hasLoadedMedia();
@@ -20049,6 +20403,9 @@ document.addEventListener('keydown', (e) => {
   const pointerContext = waveformPointerContext();
   const pointerMainIndex = pointerContext
     ? findWaveformCueAtTime(pointerContext.timeMs, DATA.segments) : -1;
+  const activeExtensionTrack = getActiveExtensionTrack();
+  const pointerExtensionIndex = pointerContext?.track === 'extension'
+    ? findWaveformCueAtTime(pointerContext.timeMs, activeExtensionTrack?.segments) : -1;
   if (selectedExtensionIdxs.size === 1) {
     const context = hoveredSelectedCueContext();
     if (context?.kind === 'extension' && context.track?.segments?.[context.idx]) {
@@ -20060,14 +20417,23 @@ document.addEventListener('keydown', (e) => {
       return;
     }
   }
+  // 波形区点击副字幕后，绑定关系可能同时选中主字幕；但只要当前面板和
+  // 波形指针都明确落在这条单选副字幕上，B 就应拆分副字幕，而不是被重叠
+  // 的主字幕时间范围抢走目标。主字幕面板仍不会进入这个例外分支。
+  const waveformExtensionIsActive = multiSubtitleVisible()
+    && activeCuePanel?.kind === 'extension'
+    && selectedExtensionIdxs.size === 1
+    && selectedExtensionIdxs.has(activeCuePanel.index)
+    && pointerContext?.track === 'extension'
+    && pointerExtensionIndex === activeCuePanel.index;
   const extensionIsActive = multiSubtitleVisible()
     && activeCuePanel?.kind === 'extension'
     && selectedExtensionIdxs.size === 1
     && selectedExtensionIdxs.has(activeCuePanel.index)
-    && (!pointerContext || pointerMainIndex < 0);
+    && (!pointerContext || pointerMainIndex < 0 || waveformExtensionIsActive);
   if (extensionIsActive) {
     const extensionIndex = [...selectedExtensionIdxs][0];
-    const track = getActiveExtensionTrack();
+    const track = activeExtensionTrack;
     const extension = track?.segments?.[extensionIndex];
     if (!extension) return;
     let timeMs = null;
@@ -20342,7 +20708,10 @@ function syncExtensionSubtitleAppearanceControls() {
 }
 function applySubtitleAppearance(value = DATA.preview?.subtitle) {
   const appearance = getSubtitleAppearance(value);
-  overlayTextEl.style.fontSize = appearance.font_size ? `${appearance.font_size}px` : '';
+  overlayTextEl.style.setProperty(
+    '--subtitle-preview-font-size',
+    `${appearance.font_size || SUBTITLE_DEFAULT_FONT_SIZE}px`,
+  );
   overlayTextEl.style.fontFamily = subtitleFontFamilyCss(appearance.font_family);
   const hasCustomBackground = Object.prototype.hasOwnProperty.call(appearance, 'background_color')
     || Object.prototype.hasOwnProperty.call(appearance, 'background_alpha');
@@ -20352,7 +20721,10 @@ function applySubtitleAppearance(value = DATA.preview?.subtitle) {
 }
 function applyExtensionSubtitleAppearance(value = DATA.preview?.extension_subtitle) {
   const appearance = getExtensionSubtitleAppearance(value);
-  overlayExtensionTextEl.style.fontSize = `${appearance.font_size}px`;
+  overlayExtensionTextEl.style.setProperty(
+    '--subtitle-preview-font-size',
+    `${appearance.font_size || EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE}px`,
+  );
   overlayExtensionTextEl.style.fontFamily = subtitleFontFamilyCss(appearance.font_family);
   const hasCustomBackground = Object.prototype.hasOwnProperty.call(appearance, 'background_color')
     || Object.prototype.hasOwnProperty.call(appearance, 'background_alpha');
@@ -24145,16 +24517,12 @@ function addExtensionAtWaveformTime(timeMs, clickX, clickY, track = getActiveExt
   flashHint(`已新增第 ${index + 1} 条拓展字幕`, 'success');
 }
 
-function getBoundDragTarget(drag, index, sourceSegments, sourceTrack) {
+function getBoundDragTarget(index, sourceSegments) {
   const source = sourceSegments[index];
   if (!source) return null;
-  const binding = drag.track === 'extension'
-    ? bindingForExtensionIndex(index, sourceTrack)
-    : bindingForMainIndex(index);
+  const binding = bindingForMainIndex(index);
   if (!binding) return null;
-  const target = drag.track === 'extension'
-    ? mainSegmentById(binding.main_segment_ids?.[0])
-    : extensionSegmentById(binding.extension_segment_ids?.[0], getExtensionTrack(binding.track_id));
+  const target = extensionSegmentById(binding.extension_segment_ids?.[0], getExtensionTrack(binding.track_id));
   return target ? { target, binding } : null;
 }
 
@@ -24223,124 +24591,29 @@ function getBoundDragEdge(drag, index) {
   if (drag.kind === 'resize-boundary') {
     return { mode: 'edge', edge: index === drag.index ? 'end' : 'start' };
   }
+  if (drag.kind === 'resize-boundary-independent') {
+    return { mode: 'edge', edge: drag.edge };
+  }
   return null;
 }
 
-function getBoundDragDelta(drag, sourceSegments) {
-  if (drag.kind === 'move') {
-    const index = drag.indices[0];
-    const source = sourceSegments[index];
-    const original = drag.originals.get(index);
-    return source && original ? source.start - original.start : 0;
-  }
-  if (drag.kind === 'resize-left') {
-    const source = sourceSegments[drag.index];
-    const original = drag.originals.get(drag.index);
-    return source && original ? source.start - original.start : 0;
-  }
-  if (drag.kind === 'resize-right') {
-    const source = sourceSegments[drag.index];
-    const original = drag.originals.get(drag.index);
-    return source && original ? source.end - original.end : 0;
-  }
-  if (drag.kind === 'resize-boundary') {
-    const source = sourceSegments[drag.index];
-    const original = drag.originals.get(drag.index);
-    return source && original ? source.end - original.end : 0;
-  }
-  return 0;
-}
-
-function applyBoundDragDelta(drag, sourceSegments, delta) {
-  const setRange = (index, start, end) => {
-    const source = sourceSegments[index];
-    const original = drag.originals.get(index);
-    if (!source || !original) return;
-    source.start = Math.round(start);
-    source.end = Math.max(source.start + SUBTITLE_MIN_DURATION_MS, Math.round(end));
-    source.items = remapPanelItems(
-      original.items,
-      original.start,
-      original.end,
-      source.start,
-      source.end,
-    );
-    source._dirty = true;
-  };
-  if (drag.kind === 'move') {
-    drag.indices.forEach((index) => {
-      const original = drag.originals.get(index);
-      if (original) setRange(index, original.start + delta, original.end + delta);
-    });
-  } else if (drag.kind === 'resize-left') {
-    const original = drag.originals.get(drag.index);
-    if (original) setRange(drag.index, original.start + delta, original.end);
-  } else if (drag.kind === 'resize-right') {
-    const original = drag.originals.get(drag.index);
-    if (original) setRange(drag.index, original.start, original.end + delta);
-  } else if (drag.kind === 'resize-boundary') {
-    const leftOriginal = drag.originals.get(drag.index);
-    const rightOriginal = drag.originals.get(drag.index + 1);
-    if (leftOriginal) setRange(drag.index, leftOriginal.start, leftOriginal.end + delta);
-    if (rightOriginal) setRange(drag.index + 1, rightOriginal.start + delta, rightOriginal.end);
-  }
-}
-
-// 副字幕直接拖动时，把主字幕轨的可用边界作为额外限制。这样主字幕无法继续
-// 延长时，副字幕也会停在同一个边界，不再先改副字幕再反向缩短主字幕。
-function limitExtensionDragByBoundMain(drag, sourceSegments, sourceTrack) {
-  const entries = drag.indices.map((index) => {
-    const bound = getBoundDragTarget(drag, index, sourceSegments, sourceTrack);
-    if (!bound) return null;
-    return {
-      index,
-      target: bound.target,
-      targetOriginal: ensureBoundDragOriginal(drag, index, bound.target),
-      edge: getBoundDragEdge(drag, index),
-    };
-  }).filter(Boolean);
-  if (!entries.length) return false;
-  const movedTargets = new Set(entries.map((entry) => entry.target));
-  const limits = entries.map((entry) => {
-    if (!entry.edge) return null;
-    return getCueDeltaLimits(
-      entry.target,
-      DATA.segments,
-      entry.edge.mode,
-      entry.edge.edge,
-      movedTargets,
-      entry.targetOriginal,
-    );
-  });
-  const allowed = intersectCueDeltaLimits(limits) || { min: 0, max: 0 };
-  const currentDelta = getBoundDragDelta(drag, sourceSegments);
-  const nextDelta = clampNumber(currentDelta, allowed.min, allowed.max);
-  if (nextDelta === currentDelta) return false;
-  applyBoundDragDelta(drag, sourceSegments, nextDelta);
-  return true;
-}
-
 function syncBoundCueDrag(drag) {
-  if (!drag || drag.independent === true || !multiSubtitleVisible()) return;
+  // 副字幕拖动只调整副字幕自身；绑定关系保留，但新的时间范围通过
+  // binding offset 记录，不再反向改动主字幕或被主字幕轨道边界限制。
+  // 主字幕即使因为“自动吸附调整相邻字幕”关闭而走
+  // resize-boundary-independent，也仍需带着绑定副字幕一起调整。
+  if (!drag || drag.track !== 'main' || !multiSubtitleVisible()) return;
   ensureBoundDragTimelineOriginals(drag);
-  if (drag.track === 'main' && drag.allowSqueeze) restoreBoundDragTimelineOriginals(drag);
-  const sourceTrack = drag.track === 'extension' ? getActiveExtensionTrack() : null;
-  const sourceSegments = drag.track === 'extension'
-    ? sourceTrack?.segments || [] : DATA.segments;
+  if (drag.allowSqueeze) restoreBoundDragTimelineOriginals(drag);
+  const sourceSegments = DATA.segments;
   if (!drag.boundOriginals) drag.boundOriginals = new Map();
-
-  if (drag.track === 'extension'
-      && limitExtensionDragByBoundMain(drag, sourceSegments, sourceTrack)) {
-    notifyBoundSyncWarning(drag, '主字幕轨道已无可用空间，已限制副字幕拖动');
-  }
 
   const boundEntries = drag.indices.map((index) => ({
     index,
-    bound: getBoundDragTarget(drag, index, sourceSegments, sourceTrack),
+    bound: getBoundDragTarget(index, sourceSegments),
     sourceOriginal: drag.originals.get(index),
   })).filter((entry) => entry.bound && entry.sourceOriginal);
-  const movedFollowerSegments = drag.track === 'main'
-    ? new Set(boundEntries.map((entry) => entry.bound.target)) : new Set();
+  const movedFollowerSegments = new Set(boundEntries.map((entry) => entry.bound.target));
   boundEntries.forEach(({ index, bound, sourceOriginal }) => {
     const { target, binding } = bound;
     const targetOriginal = ensureBoundDragOriginal(drag, index, target);
@@ -24364,21 +24637,18 @@ function syncBoundCueDrag(drag) {
     }
     if (nextEnd <= nextStart) nextEnd = nextStart + SUBTITLE_MIN_DURATION_MS;
 
-    const targetTrack = drag.track === 'main'
-      ? getExtensionTrack(binding.track_id) : null;
+    const targetTrack = getExtensionTrack(binding.track_id);
     const dragEdge = getBoundDragEdge(drag, index);
-    const resolved = drag.track === 'main'
-      ? resolveExtensionFollowerRange(
-        target,
-        nextStart,
-        nextEnd,
-        dragEdge?.mode === 'edge' ? dragEdge.edge : dragEdge?.mode,
-        targetTrack,
-        movedFollowerSegments,
-        { sortSegments: false },
-      )
-      : clampExtensionRange(null, nextStart, nextEnd);
-    if (drag.track === 'main' && (resolved.squeezedCount > 0 || resolved.removedCount > 0)) {
+    const resolved = resolveExtensionFollowerRange(
+      target,
+      nextStart,
+      nextEnd,
+      dragEdge?.mode === 'edge' ? dragEdge.edge : dragEdge?.mode,
+      targetTrack,
+      movedFollowerSegments,
+      { sortSegments: false },
+    );
+    if (resolved.squeezedCount > 0 || resolved.removedCount > 0) {
       const details = [];
       if (resolved.squeezedCount) details.push(`挤压 ${resolved.squeezedCount} 条副字幕`);
       if (resolved.removedCount) details.push(`删除 ${resolved.removedCount} 条副字幕`);
@@ -24960,18 +25230,36 @@ function initWaveformEditor() {
     onBeginEdit: (label) => pushUndo(label),
     syncBoundCueDrag,
     onLayoutUndo: (label, snapshot) => pushLayoutUndo(label, snapshot),
-    onCommitEdit: (idxs, kind, track = 'main', independent = false) => {
+    onCommitEdit: (idxs, kind, track = 'main', independent = false, details = null) => {
+      let linkedChanged = false;
+      if (kind === 'resize-boundary-pointer' && track === 'main' && !independent) {
+        const targetIndex = Number.isInteger(details?.targetIndex) ? details.targetIndex : idxs[0];
+        const main = DATA.segments[targetIndex];
+        const original = details?.original;
+        if (main && original) {
+          linkedChanged = syncBoundExtensionForMain(main, {
+            oldStart: original.start,
+            oldEnd: original.end,
+            edge: details.edge,
+            mode: 'range',
+          });
+        }
+      }
       syncTimelineGroupRanges();
       // 拖动预览期间保持下标稳定；提交时再整理副轨数组，避免冲突裁剪后
       // 原本位于目标前面的字幕保留右侧区间而落到目标之后，保存时违反顺序契约。
       if (multiSubtitleVisible()) sortExtensionTrackSegments(getActiveExtensionTrack());
       syncBindingOffsets();
       markMainSegmentsDirty(track === 'main' ? idxs.map((idx) => DATA.segments[idx]).filter(Boolean) : []);
-      if (multiSubtitleVisible() || track === 'extension') markMultiSubtitleDirty();
+      if (linkedChanged || multiSubtitleVisible() || track === 'extension') markMultiSubtitleDirty();
       renderAll();
       update();
       flashHint(kind === 'move'
-        ? `已${independent ? '独立' : '联动'}移动 ${idxs.length} 条${track === 'extension' ? '扩展' : ''}字幕`
+        ? track === 'extension'
+          ? `已移动 ${idxs.length} 条副字幕`
+          : `已${independent ? '独立' : '联动'}移动 ${idxs.length} 条字幕`
+        : kind === 'resize-boundary-pointer'
+          ? `已将${track === 'extension' ? '副字幕' : '字幕'}${details?.edge === 'start' ? '起点' : '终点'}定位到鼠标位置`
         : kind === 'resize-boundary'
           ? `已${independent ? '独立' : '联动'}调整第 ${idxs[0] + 1} / ${idxs[1] + 1} 条边界`
           : kind === 'resize-boundary-independent'

@@ -510,9 +510,12 @@ __WAVEFORM_CSS__
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd>Shift+←/→</kbd> 将字幕起点/终点贴到前一条结尾/后一条开头</span>
           <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Z</kbd>/<kbd>X</kbd> 将字幕起点/终点定位到鼠标位置</span>
+          <span class="help-break" aria-hidden="true"></span>
           <span><kbd data-mod-key>Ctrl+←/→</kbd> 微调字幕左边界（起点）</span>
           <span><kbd data-mod-key>Ctrl+Shift+←/→</kbd> 微调字幕右边界（终点）</span>
         </div>
+        <span class="help-note">无选中时作用于鼠标所在字幕；主字幕会联动绑定副字幕，副字幕只调整自身；多选不生效</span>
       </section>
       <section class="help-subgroup">
         <h5 class="help-subtitle">按住字幕</h5>
@@ -743,7 +746,7 @@ __WAVEFORM_CSS__
             <label class="settings-panel-item" title="媒体控制按钮和左右方向键每次跳转的毫秒数">
               <span>每次跳转</span>
               <span class="gap-remove-number-control">
-                <input type="number" id="media-seek-step" min="100" max="60000" step="100" value="1000" inputmode="numeric" aria-label="跳转时长">
+                <input type="number" id="media-seek-step" min="10" max="60000" step="100" value="1000" inputmode="numeric" aria-label="跳转时长">
                 <span class="gap-remove-unit">ms</span>
               </span>
             </label>
@@ -969,7 +972,8 @@ __WAVEFORM_CSS__
               </select>
             </label>
             <label class="toggle editor-settings-item" title="使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形">
-              <input type="checkbox" id="waveform-spectral-color"> 频谱颜色
+              <input type="checkbox" id="waveform-spectral-color" aria-describedby="waveform-spectral-status"> 频谱颜色
+              <span class="waveform-spectral-status" id="waveform-spectral-status" role="status" aria-live="polite" aria-atomic="true" hidden></span>
             </label>
             <span class="editor-settings-item" id="waveform-window-setting">显示窗口
               <span class="editor-settings-stepper">

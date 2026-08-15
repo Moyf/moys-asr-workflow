@@ -860,6 +860,147 @@ test('B and C refresh cue overlays without redrawing cached waveform canvases', 
   });
 });
 
+test('waveform appearance wheel adjustments wait for input to settle', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    waveformEditor.settings.mode = 'multi';
+    waveformEditor.settings.secondsPerRow = 300;
+    waveformEditor.settings.rowHeight = 96;
+    waveformEditor.settings.waveformScale = 1;
+    waveformEditor.multiRange = [-1, -1];
+    waveformEditor.render();
+
+    const row = document.querySelector('.waveform-row[data-row-index="0"]');
+    const canvas = row?.querySelector('canvas');
+    if (!row || !canvas) throw new Error('没有可测试的波形 Canvas');
+    window.__waveformAppearanceStats = { drawRows: 0, canvas };
+    const originalDrawRow = waveformEditor.drawRow.bind(waveformEditor);
+    waveformEditor.drawRow = function wrappedDrawRow(...args) {
+      window.__waveformAppearanceStats.drawRows += 1;
+      return originalDrawRow(...args);
+    };
+  });
+
+  const scaleBefore = await page.evaluate(() => {
+    const scroll = document.getElementById('waveform-scroll');
+    for (let index = 0; index < 3; index += 1) {
+      scroll.dispatchEvent(new WheelEvent('wheel', {
+        deltaY: -120,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }));
+    }
+    return {
+      scale: waveformEditor.settings.waveformScale,
+      drawRows: window.__waveformAppearanceStats.drawRows,
+    };
+  });
+  expect(scaleBefore).toEqual({ scale: 1, drawRows: 0 });
+  await expect.poll(() => page.evaluate(() => waveformEditor.settings.waveformScale)).toBe(2.5);
+  await expect.poll(() => page.evaluate(() => window.__waveformAppearanceStats.drawRows > 0)).toBe(true);
+
+  await page.evaluate(() => {
+    window.__waveformAppearanceStats.drawRows = 0;
+    const scroll = document.getElementById('waveform-scroll');
+    for (let index = 0; index < 2; index += 1) {
+      scroll.dispatchEvent(new WheelEvent('wheel', {
+        deltaY: -120,
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }));
+    }
+  });
+  expect(await page.evaluate(() => ({
+    rowHeight: waveformEditor.settings.rowHeight,
+    drawRows: window.__waveformAppearanceStats.drawRows,
+  }))).toEqual({ rowHeight: 96, drawRows: 0 });
+  await expect.poll(() => page.evaluate(() => waveformEditor.settings.rowHeight)).toBe(144);
+  await expect.poll(() => page.evaluate(() => window.__waveformAppearanceStats.drawRows > 0)).toBe(true);
+});
+
+test('spectral color toggle shows pending state and ignores repeated clicks', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    waveformEditor.settings.mode = 'multi';
+    waveformEditor.settings.secondsPerRow = 10;
+    waveformEditor.settings.spectralColor = false;
+    waveformEditor.multiRange = [-1, -1];
+    waveformEditor.render();
+
+    const peakCount = 1000;
+    const bytes = new Uint8Array(peakCount * 4);
+    for (let index = 0; index < peakCount; index += 1) {
+      bytes[index * 4] = 232;
+      bytes[index * 4 + 1] = 3;
+      bytes[index * 4 + 2] = 255;
+      bytes[index * 4 + 3] = 63;
+    }
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    waveformEditor.setSpectralPayload({
+      schema: 'moy.asr.spectral.v1',
+      encoding: 'u16-freq-density-base64',
+      sample_rate: 8000,
+      division: 80,
+      peak_count: peakCount,
+      data: btoa(binary),
+    }, { render: false });
+    waveformEditor.spectralColorToggle.checked = false;
+
+    window.__spectralColorStats = { renders: 0 };
+    const originalRender = waveformEditor.render.bind(waveformEditor);
+    waveformEditor.render = function wrappedRender(...args) {
+      window.__spectralColorStats.renders += 1;
+      return originalRender(...args);
+    };
+  });
+
+  const immediate = await page.evaluate(() => {
+    const toggle = document.getElementById('waveform-spectral-color');
+    toggle.click();
+    toggle.click();
+    const status = document.getElementById('waveform-spectral-status');
+    return {
+      checked: toggle.checked,
+      disabled: toggle.disabled,
+      ariaBusy: toggle.getAttribute('aria-busy'),
+      statusHidden: status.hidden,
+      statusText: status.textContent,
+      renders: window.__spectralColorStats.renders,
+    };
+  });
+  expect(immediate).toMatchObject({
+    checked: true,
+    disabled: true,
+    ariaBusy: 'true',
+    statusHidden: false,
+    renders: 0,
+  });
+  expect(immediate.statusText).toMatch(/应用频谱颜色|Applying spectral colors/);
+
+  await expect.poll(() => page.evaluate(() => {
+    const toggle = document.getElementById('waveform-spectral-color');
+    return {
+      checked: toggle.checked,
+      disabled: toggle.disabled,
+      ariaBusy: toggle.getAttribute('aria-busy'),
+      statusHidden: document.getElementById('waveform-spectral-status').hidden,
+      renders: window.__spectralColorStats.renders,
+      setting: waveformEditor.settings.spectralColor,
+    };
+  })).toEqual({
+    checked: true,
+    disabled: false,
+    ariaBusy: 'false',
+    statusHidden: true,
+    renders: 1,
+    setting: true,
+  });
+});
+
 test('settings gears stay at the end of their headers and rise above dividers', async ({ page }) => {
   await page.goto(server.url);
   const settings = [

@@ -26,6 +26,15 @@
 | 18 | Launcher / 自动后处理 | OCR 作为最后一步时自动后处理失败；从 SRT 或缺少媒体字段的工程进入翻译等步骤后，输出工程丢失 `media` | 修改 | 已修复 |
 | 19 | 编辑器 / 多字幕快捷键 | 选中字幕时 `Shift+←/→` 应贴合前后字幕边界，但在多重字幕模式下不生效 | 修改 | 已修复 |
 | 20 | 编辑器 / 边界拖动 | 独立拉开原本贴合的相邻字幕边界后，反向拖动会被当前边界错误限制，无法拖回 | 修改 | 已修复 |
+| 21 | Launcher / 自动后处理 LLM | 勾选 LLM 相关自动处理步骤后弹出的配置中，高亮「测试连接」按钮；测试完成后取消引导 | 修改 | 已修复 |
+| 22 | Launcher / 后处理工具箱 | 增强右上角关闭按钮；鼠标在工具箱内滚轮时不应滚动后面的 Launcher | 修改 | 已修复 |
+| 23 | Launcher / 配置弹窗 | 配置顶部的标题和关闭按钮在内容滚动时应常驻，关闭按钮视觉增强 | 修改 | 已修复 |
+| 24 | 编辑器 / 多字幕快捷键 | 波形区选中一个副字幕后按 `B`，应拆分选中的副字幕，不应因上方重叠主字幕而改拆主字幕 | 修改 | 已修复 |
+| 26 | 编辑器 / 多字幕合并 | 开启「绑定时自动同步时长」后，多选主字幕按 `C` 合并所新建的绑定副字幕也应匹配合并后主字幕的时长 | 修改 | 已修复 |
+| 27 | Launcher / 自动后处理 OCR | 首次安装 OCR 后状态和自动后处理没有同步，重新勾选 OCR 仍提示未安装依赖 | 修改 | 已修复 |
+| 30 | 编辑器 / 波形性能 | 连续调节波形振幅、行高时反复重绘导致编辑器卡顿 | 修改 | 已修复 |
+| 29 | 编辑器 / 波形快捷键 | 增加 `Z/X`，将单个字幕的起点/终点定位到鼠标位置；主字幕联动绑定副字幕，副字幕只调整自身，多选不生效；无选中时作用于鼠标命中的字幕 | 修改 | 已修复 |
+| 32 | 编辑器 / 波形性能 | 频谱颜色切换重绘反馈延迟，用户可能误以为没有响应而重复点击 | 修改 | 已修复 |
 
 ## 修复与验证记录
 
@@ -44,6 +53,12 @@
 | 15 | 已修复 | `--with-waveform` / Launcher 默认生成并嵌入 ReaPeaks wave 层，`--with-spectral` 或勾选“生成 ReaPeaks 频谱数据”才执行 FFT 并嵌入 spectral；只有波形层时编辑器自动取消并禁用频谱颜色，后台补齐频谱后恢复可用。`.venv\\Scripts\\python.exe -m unittest tests.test_reapeaks tests.test_media_cache tests.test_cli tests.test_gui_workflow tests.test_gui_web tests.test_local_asr`（250/250）；`node --test tests\\test_waveform_js.mjs tests\\test_editor_utils.mjs`（114/114）；相关 Python/JS 语法检查、`.venv\\Scripts\\python.exe edit.py --blank`、`git diff --check` 均通过。 |
 | 19 | 已修复 | `npx playwright test tests/e2e/multi-subtitle.spec.mjs --grep "Shift\\+arrow snaps selected main and secondary cues" --project=chromium`（1/1）；同时覆盖主字幕 `Shift+←`、副字幕 `Shift+→` 的贴合，并确认 current-cue-panel 的轨道目标正确。 |
 | 20 | 已修复 | `npx playwright test tests/e2e/keyboard-timing.spec.mjs --grep "independent shared-boundary drag can reverse before release" --project=chromium`（1/1）；`node --test tests\\test_waveform_js.mjs`（40/40）；覆盖共享边界独立拉开后反向拖回，以及起点/终点两种方向。 |
+| 21 | 已修复 | `openAutoStep()` 仅在自动步骤勾选触发配置弹窗时为「测试连接」增加 attention 引导；测试成功、失败、保存前置失败和异常均在一次测试尝试结束后清除；Launcher 静态契约测试 38/38 通过。 |
+| 22 | 已修复 | 工具箱关闭按钮使用更高对比度的固定图标按钮；工具箱 wheel 事件隔离背景滚动，内容区保留自身滚动；Launcher 静态契约测试 38/38 通过。 |
+| 23 | 已修复 | 配置弹窗改为固定顶部操作区和独立设置滚动区，标题/关闭按钮不会随设置内容离开顶部；Launcher 静态契约测试 38/38 通过。 |
+| 24 | 已修复 | 新增绑定和未绑定、且与主字幕时间重叠的波形区回归；`B` 均打开「选择副字幕拆分点」，主字幕时间不变。相关 Playwright 回归 4/4 通过；`node --check`、Node 119/119、便携版生成和 `git diff --check` 通过。 |
+| 26 | 已修复 | `C` 合并后新建的绑定副字幕在开关开启时同步到合并后的主字幕范围，并重算绑定 offset；关闭开关时保留原副字幕范围。相关 Playwright 回归 3/3 通过；`node --check web\\editor.js`、便携版生成和 `git diff --check` 通过。 |
+| 27 | 已修复 | 自动后处理 OCR 改为复用已安装的 managed runtime，并把运行结果转换回流水线产物契约；安装完成事件同时刷新 OCR 控件和自动步骤状态，自动步骤可在运行时状态就绪后恢复。OCR runtime / OCR 后处理 / 自动后处理 / Launcher GUI 回归分别纳入 64/64 和 154/154 通过批次；相关 MAW Python 模块、Launcher JS 和编辑器 JS 语法检查，以及 `git diff --check` 通过。 |
 
 ## 询问项结论
 
@@ -57,7 +72,7 @@
 
 - 已完成第 1、3、5、8、9、19 项。第 1 项用限长缓存媒体生成波形/频谱，但写回原始媒体签名，并增加频谱生成提示；第 3 项收紧 OCR 就绪判断、安装后刷新、按钮布局、识别结果间距和产物高亮；第 5 项补齐全局自动吸附设置、current-cue-panel 的 Esc 操作设置和延长默认值；第 19 项补齐多重字幕主轨/副轨的 `Shift+←/→` 显式边界贴合；第 8、9 项的播放/波形与 Launcher/LLM 反馈也已完成。
 - 已验证：编辑器/波形/i18n/Launcher/后处理脚本语法通过；当前编辑器 Node 回归 119/119 通过，`tests.test_waveform` 15/15 通过；便携版已重新生成。`uv run` 因本机 uv 缓存权限失败，使用仓库 `.venv` 完成 Python 验证。
-- 当前剩余修改项：无。第 13、14、16 项已完成；第 2、10、11、12、17 项为说明项，无需修改。
+- 当前剩余修改项：无。第 13、14、16、26、27 项已完成；第 2、10、11、12、17 项为说明项，无需修改。
 
 ## 增量记录（任务 13、14：启动解耦与链接范围）
 
@@ -161,3 +176,67 @@
 - 已重新生成 `blank-editor.html`，源码与便携版共用同一修复。
 
 已验证：边界反向拖动浏览器回归 1/1；波形 Node 回归 40/40；`node --check web\\waveform.js` 通过。
+
+## 增量记录（任务 21-23：Launcher LLM 引导与固定操作区）
+
+- 自动勾选 `proofread`、`resegment` 或 `translate` 且 LLM 配置未就绪时，打开 `llmSettingsSection` 并高亮「测试连接」；手动点击「配置」或普通打开设置不会额外触发高亮。测试连接的成功、失败、保存前置失败和异常路径统一清除高亮。
+- 后处理工具箱关闭按钮改为更高对比度的方形图标按钮；工具箱 `wheel` 事件不再冒泡到 Launcher，标题/底部区域拦截背景滚动，内容滚动区保留滚动并用 `overscroll-behavior: contain` 防止滚动链穿透。
+- 配置弹窗使用固定标题操作区和独立 `.settings-scroll` 内容区，配置标题与关闭按钮在内容滚动时保持顶部可见；设置滚动区纳入滚动条提示逻辑。
+- 本次只涉及 `web/launcher` 资源，不会被 `edit.py --blank` 内联到 `blank-editor.html`；共享工作区已有的编辑器与便携版 WIP 保持原样，未覆盖生成。
+
+已验证：`node --check web\\launcher\\launcher.js`、`node --check web\\launcher\\postprocess.js`、`python -m py_compile tests\\test_gui_web.py`；`.venv\\Scripts\\python.exe -m unittest tests.test_gui_web.LauncherAssetContractTests`（38/38）；相关后处理桥接与预检测试（5/5）；`git diff --check` 通过。完整 `tests.test_gui_web tests.test_postprocess_pipeline` 共 166 个测试，其中 4 个错误来自共享工作区并行修改的 `maw/postprocess.py`（缺少 `_reconcile_fixed_replacements`、`_protocol_prompt()` 参数不匹配），本次未修改该文件。未完成浏览器级截图/滚轮实测：本机 `agent-browser` 报告未找到 Chrome/Chromium，未下载安装浏览器运行时。
+
+## 增量记录（任务 24：波形副字幕 B 拆分目标）
+
+- 波形区单击副字幕块后，若当前面板仍指向这条单选副字幕，即使绑定关系同时选中了主字幕，也按副字幕目标处理 `B`；同时覆盖未绑定但与主字幕重叠的副字幕。
+- 只有主字幕面板明确处于当前目标时，绑定副字幕仍保留原有联动拆分弹窗；列表区单选副字幕的文字位置拆分路径不变。
+
+已验证：`npx playwright test --grep "waveform-selected.*extension cue|uses B on a single selected extension|uses the linked split dialog" --project=chromium`（4/4）；`node --check web\\editor.js`、`node --check web\\waveform.js`、`node --check web\\editor-i18n.js`；`node --test tests\\test_waveform_js.mjs tests\\test_editor_utils.mjs`（119/119）；`.venv\\Scripts\\python.exe edit.py --blank`；`git diff --check`。
+
+同批次单独重跑既有「从波形右键菜单打开副字幕拆分并撤销」用例时，点击首个拆分间隙后弹窗未自动关闭（重复失败 1/1）；该路径不经过本次 `B` 快捷键分发，未将其归因于任务 24。
+
+## 增量记录（任务 26：C 合并后的绑定副字幕自动同步时长）
+
+- `mergeContiguousIndices()` 创建新的合并副字幕并建立绑定后，复用「绑定时自动同步时长」开关；开启时将副字幕范围调整为合并后主字幕的 `start/end`，并同步重算 `start_offset_ms/end_offset_ms`。
+- 自动同步沿用副轨冲突整理逻辑；关闭开关时保留合并前副字幕范围。已有微小边界重叠用例显式关闭该开关，继续验证原有“忽略微小重叠”语义。
+
+已验证：`npx playwright test --grep "选中的主字幕与绑定副字幕一起合并并支持撤销|ignores a tiny unbound extension overlap at the main merge boundary|拼合主字幕时同步延展绑定副字幕并支持撤销" --project=chromium`（3/3）；`node --check web\\editor.js`；`.venv\\Scripts\\python.exe edit.py --blank`；`git diff --check`。
+
+## 增量记录（任务 27：自动后处理 OCR 运行环境与状态同步）
+
+- 根因是手动 OCR 工具调用 `run_ocr_in_runtime`，而转写完成后的自动后处理仍直接调用主进程中的 `run_ocr_dedup`；打包版主环境没有 `rapidocr`，因此首次安装 managed OCR 后自动链路仍会提示“OCR 依赖未安装”。
+- 自动后处理现在从 Launcher 传入当前 OCR runtime 路径，OCR 步骤通过 managed worker 执行，并把 worker 结果恢复为原有 `OcrDedupArtifact`；同时转发中间产物输出目录，避免第一步 OCR 将产物写回原始媒体目录。
+- `ocrRuntimeReady` 事件触发后，Launcher 除了刷新 OCR 模型控件，也刷新自动后处理步骤状态并恢复等待配置的步骤；因此安装完成后无需重新加载 Launcher。
+
+已验证：`.venv\\Scripts\\python.exe -m unittest tests.test_ocr_runtime tests.test_postprocess_ocr tests.test_postprocess_pipeline tests.test_gui_web.LauncherAssetContractTests`（64/64）；`.venv\\Scripts\\python.exe -m unittest tests.test_gui_web`（154/154）；`.venv\\Scripts\\python.exe -m py_compile maw\\gui_web.py maw\\ocr_runtime.py maw\\ocr_runtime_worker.py maw\\postprocess_pipeline.py`；`node --check web\\launcher\\launcher.js`、`node --check web\\launcher\\postprocess.js`、`node --check web\\editor.js`；`git diff --check`。一次合并式 `py_compile` 还尝试写入共享工作区的 `tests\\__pycache__`，因权限被拒绝，随后改为仅编译相关 MAW 模块并通过。
+
+## 增量记录（任务 25：绑定自动同步时长的撤销显示）
+
+- 原因：绑定时自动同步会改变副字幕的时间范围，但绑定、解绑及其撤销/重做使用 `renderAll({ waveform: 'none' })`，只重绘字幕列表，波形覆盖层仍保留旧的时间范围。
+- 修复：绑定关系变化统一刷新波形覆盖层；撤销/重做恢复绑定快照后也刷新覆盖层。数据快照本身继续同时保存主字幕、副字幕和绑定关系。
+
+已验证：绑定撤销浏览器回归同时检查 `DATA` 与波形块 `data-start/data-end`（1/1）；绑定相关多字幕回归 6/6；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（120/120）；`node --check web\\editor.js`；`.venv\\Scripts\\python.exe edit.py --blank`；`git diff --check` 通过。完整多字幕回归 71 个用例中 68 个通过，3 个既有拆分/跨轨吸附用例仍失败，未归因于本次修改。
+
+## 增量记录（任务 29：Z/X 波形指针边界定位）
+
+- 新增 `Z` / `X`：将单条字幕的起点 / 终点定位到当前波形鼠标位置；保留 100ms 最短时长和同轨不重叠边界约束。
+- 当前面板为主字幕时，主字幕边界变化按原有绑定偏移联动副字幕；当前面板为副字幕时，只调整副字幕自身。主副绑定造成的成对选中按一个逻辑字幕处理，不同字幕的多选不执行。
+- 没有选中字幕时，按波形指针所在轨道命中字幕并执行；指针在空白波形或无法确定唯一逻辑目标时不处理。帮助面板已补充快捷键说明，中英文资源与 `blank-editor.html` 已同步。
+
+已验证：`npx playwright test tests\\e2e\\keyboard-timing.spec.mjs --grep "Z/X place selected or pointer-hit subtitle boundaries" --project=chromium`（1/1）；`npx playwright test tests\\e2e\\multi-subtitle.spec.mjs --grep "Z/X adjust one main or extension cue" --project=chromium`（1/1）；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（121/121）；`node --check web\\editor.js`、`node --check web\\waveform.js`、`node --check web\\editor-i18n.js`、两个 E2E 测试文件；`python edit.py --blank`；`git diff --check` 均通过。
+
+## 增量记录（任务 30：波形调节交互性能）
+
+- 移除振幅/行高调节期间的 Canvas 位图变形预览，改为 160ms debounce：滚动期间只累计净步数，停止后一次性调整并只重绘一次。
+- 每行缓存按当前像素宽度计算的 min/max peak 包络，后续振幅/行高重绘直接复用；Canvas 只有在物理尺寸确实变化时才更新 `width/height`，避免触发位图重新分配。
+- 已增加包络单元测试和振幅/行高预览浏览器回归；`blank-editor.html` 已从 `web/` 源码重新生成。未执行用户长媒体的基准录制，真实测试工程仅完成页面、波形接口和媒体 Range smoke。
+
+已验证：`node --check web\\waveform.js`；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（121/121）；`npx playwright test waveform-history.spec.mjs --grep "appearance wheel adjustments" --project=chromium`（1/1）；`.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（14/15，剩余 1 个既有便携版资源字符串契约失败）；`.venv\\Scripts\\python.exe edit.py --blank`；`git diff --check`。
+
+## 增量记录（任务 31：主副字幕波形边界联动方向）
+
+- 根因是关闭「自动吸附调整相邻字幕」时，主字幕共享边界会走 `resize-boundary-independent`；该标记被错误地当成了“解除主副绑定”，所以绑定副字幕没有跟随主字幕边界。
+- 主字幕拖动现在始终联动绑定副字幕；同轨相邻字幕仍按自动吸附设置独立或联动。副字幕拖动改为只调整副字幕自身，不再被主字幕轨道边界限制，也不再弹出“主字幕轨道已无可用空间，已限制副字幕拖动”的警告；绑定偏移会按新范围重算。
+- 同轨相邻吸附与跨轨道吸附拆开处理：关闭前者时，副字幕移动仍可按「跨轨道吸附」设置贴合主字幕边界。已补充主字幕共享边界左右手柄、副字幕越过主轨边界和跨轨吸附回归。
+
+已验证：主副字幕相关浏览器回归 3/3；自动吸附、独立共享边界和 Shift 贴合回归 4/4；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（121/121）；`node --check web\\editor.js`、`node --check web\\waveform.js`；`python edit.py --blank`；`git diff --check` 均通过。

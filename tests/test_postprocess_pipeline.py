@@ -262,6 +262,59 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertTrue(result.project_path.is_file())
         self.assertTrue(result.srt_path.is_file())
 
+    def test_pipeline_uses_managed_ocr_runtime_when_runtime_root_is_supplied(self) -> None:
+        video = self.root / "clip.mp4"
+        ffmpeg = self.root / "ffmpeg.exe"
+        video.write_bytes(b"video")
+        ffmpeg.write_bytes(b"ffmpeg")
+        ocr_project = self.root / "managed-ocr-output.mosp"
+        ocr_srt = self.root / "managed-ocr-output.srt"
+        ocr_project.write_text(self.project.read_text(encoding="utf-8"), encoding="utf-8")
+        ocr_srt.write_text(self.srt.read_text(encoding="utf-8"), encoding="utf-8")
+        plan = self.plan({
+            "id": "ocr",
+            "enabled": True,
+            "videoPath": str(video),
+            "regionMode": "full",
+            "threshold": 0.5,
+        })
+        worker_result = {
+            "sourceProjectPath": str(self.project),
+            "sourceSrtPath": str(self.srt),
+            "projectPath": str(ocr_project),
+            "srtPath": str(ocr_srt),
+            "reportPath": "",
+            "warnings": ["managed OCR"],
+            "newlyDisabledCount": 1,
+            "existingDisabledCount": 0,
+            "processedCount": 2,
+            "skippedCount": 0,
+            "failedCount": 0,
+        }
+
+        with (
+            mock.patch("maw.postprocess_pipeline.run_ocr_in_runtime", return_value=worker_result) as run_runtime,
+            mock.patch("maw.postprocess_pipeline.run_ocr_dedup") as run_direct,
+        ):
+            result = run_postprocess_pipeline(
+                plan,
+                media_path=self.media,
+                project_path=self.project,
+                srt_path=self.srt,
+                env_path=self.env_path,
+                ffmpeg_path=ffmpeg,
+                ocr_runtime_root=self.root / "ocr-runtime",
+                cancel_event=Event(),
+            )
+
+        run_runtime.assert_called_once()
+        self.assertEqual(run_runtime.call_args.kwargs["runtime_root"], self.root / "ocr-runtime")
+        run_direct.assert_not_called()
+        self.assertEqual(result.completed_steps, ("ocr",))
+        self.assertEqual(result.warnings, ("managed OCR",))
+        self.assertTrue(result.project_path.is_file())
+        self.assertTrue(result.srt_path.is_file())
+
     def test_pipeline_accepts_legacy_ocr_artifact_without_translation_field(self) -> None:
         video = self.root / "clip.mp4"
         ffmpeg = self.root / "ffmpeg.exe"

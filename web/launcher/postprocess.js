@@ -311,6 +311,10 @@
     if (open) $("toolboxClose").focus();
   }
 
+  function setTestConnectionAttention(attention) {
+    $("testLlmConnection")?.classList.toggle("attention", Boolean(attention));
+  }
+
   function selectTool(tool) {
     document.querySelectorAll(".toolbox-tab").forEach((tab) => {
       const active = tab.dataset.tool === tool;
@@ -792,7 +796,7 @@
     return "ocrThreshold";
   }
 
-  function openAutoStep(stepId, invalidField = "") {
+  function openAutoStep(stepId, invalidField = "", { highlightConnection = false } = {}) {
     pendingAutoStep = stepId;
     const llmStep = ["proofread", "resegment", "translate"].includes(stepId);
     if (llmStep && !autoLlmReady($("postprocessProvider").value)) {
@@ -800,6 +804,7 @@
       const focusId = ["llmApiKey", "llmBaseUrl", "llmModel"].includes(invalidField)
         ? invalidField
         : (item?.hasApiKey === false ? "llmApiKey" : (item?.hasBaseUrl === false ? "llmBaseUrl" : "llmModel"));
+      if (highlightConnection) setTestConnectionAttention(true);
       window.MAWLauncher.openSettings("llmSettingsSection", focusId);
       return;
     }
@@ -1007,6 +1012,7 @@
     } catch (error) {
       setSettingsSaveStatus(String(error?.message || error || t("failed")), "error", 0);
     } finally {
+      setTestConnectionAttention(false);
       $("testLlmConnection").disabled = busy;
       $("getLlmModels").disabled = busy;
     }
@@ -1157,6 +1163,10 @@
 
   $("toolboxFab").addEventListener("click", () => setOpen($("toolboxDrawer").classList.contains("hidden")));
   $("toolboxClose").addEventListener("click", () => setOpen(false));
+  $("toolboxDrawer").addEventListener("wheel", (event) => {
+    event.stopPropagation();
+    if (!event.target?.closest?.(".toolbox-content")) event.preventDefault();
+  }, { passive: false });
   document.querySelectorAll(".toolbox-tab").forEach((tab) => tab.addEventListener("click", () => selectTool(tab.dataset.tool)));
   $("postprocessProvider").addEventListener("change", () => { renderProvider(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("postprocessOperation").addEventListener("change", () => switchLlmOperation($("postprocessOperation").value));
@@ -1274,7 +1284,7 @@
       if (checkbox.checked && !autoStepReady(stepId)) {
         checkbox.checked = false;
         renderAutoPostprocessState();
-        openAutoStep(stepId);
+        openAutoStep(stepId, "", { highlightConnection: true });
         return;
       }
       renderAutoPostprocessState();
@@ -1301,6 +1311,10 @@
   };
   window.MAWLauncher.getAutoPostprocessPayload = autoPlanFromControls;
   window.MAWLauncher.openAutoPostprocessStep = openAutoStep;
-  window.MAWLauncher.onOcrRuntimeChanged = renderOcrModel;
+  window.MAWLauncher.onOcrRuntimeChanged = () => {
+    renderOcrModel();
+    renderAutoPostprocessState();
+    maybeEnablePendingAutoStep();
+  };
   if (window.MAWLauncher.config) initialize();
 })();

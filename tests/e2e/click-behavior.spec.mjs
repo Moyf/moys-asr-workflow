@@ -63,9 +63,46 @@ test('media seek buttons and arrow keys use the configured seek duration', async
   const step = page.locator('#media-seek-step');
   await expect(step).toHaveValue('1000');
   await page.locator('#subtitle-preview-settings-toggle').click();
+  await step.fill('100');
+  await step.press('Tab');
+  await expect(step).toHaveValue('100');
+  await expect(step).toHaveAttribute('min', '10');
+  await expect(step).toHaveAttribute('step', '10');
+  await step.focus();
+  await step.press('ArrowDown');
+  await expect(step).toHaveValue('90');
+  await step.press('ArrowDown');
+  await expect(step).toHaveValue('80');
+  await step.press('ArrowUp');
+  await expect(step).toHaveValue('90');
+  await step.press('ArrowUp');
+  await expect(step).toHaveValue('100');
+  await step.press('ArrowUp');
+  await expect(step).toHaveValue('200');
+  await expect(step).toHaveAttribute('step', '100');
+  await step.press('ArrowDown');
+  await expect(step).toHaveValue('100');
+  await expect(step).toHaveAttribute('step', '10');
+  await step.fill('200');
+  await step.press('Tab');
+  await page.evaluate(() => {
+    const input = document.getElementById('media-seek-step');
+    input.stepDown();
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect(step).toHaveValue('100');
+  await expect(step).toHaveAttribute('step', '10');
+  await page.evaluate(() => {
+    const input = document.getElementById('media-seek-step');
+    input.stepUp();
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect(step).toHaveValue('200');
+  await expect(step).toHaveAttribute('step', '100');
   await step.fill('7000');
   await step.press('Tab');
   await expect(step).toHaveValue('7000');
+  await expect(step).toHaveAttribute('step', '100');
   await page.locator('#subtitle-preview-settings-toggle').click();
   await expect.poll(() => page.evaluate(() => JSON.parse(
     localStorage.getItem('moy.asr.editor.settings.v1') || '{}',

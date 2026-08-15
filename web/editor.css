@@ -514,14 +514,19 @@
     background: rgba(0,0,0,0.65);
     color: #fff;
     padding: 6px 14px; border-radius: var(--radius-sm);
-    font-size: 18px;
+    --subtitle-preview-font-size: 18px;
+    font-size: var(--subtitle-preview-font-size);
     line-height: 1.3; white-space: pre-wrap; word-break: break-word;
     text-shadow: 0 1px 2px rgba(0,0,0,0.8);
     pointer-events: none;
   }
+  .player-wrap.fullscreen-preview .subtitle-overlay span {
+    font-size: calc(var(--subtitle-preview-font-size) + var(--subtitle-preview-font-size));
+  }
   .subtitle-overlay span.hidden { display: none; }
   .subtitle-overlay .subtitle-extension-text {
-    font-size: 16px;
+    --subtitle-preview-font-size: 16px;
+    font-size: var(--subtitle-preview-font-size);
     color: #ffd34d;
   }
   .subtitle-overlay.hidden { display: none; }
@@ -1339,7 +1344,6 @@
     grid-template-columns: auto auto minmax(220px, 1fr) auto;
     gap: 10px; align-items: stretch;
   }
-  .current-cue-panel.empty { opacity: 0.62; }
   .current-cue-panel.hide-cue-editor-navigation .cue-panel-navigation,
   .current-cue-panel.hide-cue-editor-time-actions .cue-panel-time-actions,
   .current-cue-panel.hide-cue-editor-sticker .cue-panel-sticker-wrap { display: none; }
@@ -1827,12 +1831,14 @@
   .multi-cue-column.unbound { opacity: .82; }
   .multi-cue-column.disabled {
     color: var(--text-muted);
+    border-radius: var(--radius-sm);
+  }
+  .multi-cue-column.extension.disabled {
     background: repeating-linear-gradient(
       135deg,
       var(--wave-disabled-a) 0 5px,
       var(--wave-disabled-b) 5px 10px
     );
-    border-radius: var(--radius-sm);
   }
   .multi-cue-column.disabled .index,
   .multi-cue-column.disabled .time,

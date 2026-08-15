@@ -75,6 +75,21 @@ async function stableVisibleBoundingBox(page, locator) {
   return box;
 }
 
+async function moveWaveformPointerToTime(page, blockLocator, timeMs) {
+  const blockBox = await stableVisibleBoundingBox(page, blockLocator);
+  const row = blockLocator.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
+  const rowBox = await row.boundingBox();
+  const rowStart = Number(await row.getAttribute('data-start-ms'));
+  const rowEnd = Number(await row.getAttribute('data-end-ms'));
+  expect(rowBox).not.toBeNull();
+  expect(rowEnd).toBeGreaterThan(rowStart);
+  const ratio = (timeMs - rowStart) / (rowEnd - rowStart);
+  await page.mouse.move(
+    rowBox.x + rowBox.width * Math.max(0, Math.min(1, ratio)),
+    blockBox.y + blockBox.height / 2,
+  );
+}
+
 test('WASD during playback follows the playhead instead of the last selected cue', async ({ page }) => {
   await loadAttachedCues(page);
   await page.evaluate(() => {
@@ -418,5 +433,44 @@ test('Shift+A/D on a held subtitle snaps its outer boundaries to neighbors', asy
     { start: 5000, end: 9000 },
     { start: 9000, end: 20000 },
     { start: 20000, end: 30000 },
+  ]);
+});
+
+test('Z/X place selected or pointer-hit subtitle boundaries at the waveform pointer', async ({ page }) => {
+  await loadAttachedCues(page);
+  const block = page.locator('.waveform-cue-block[data-idx="0"]').first();
+
+  await page.locator('.cue[data-idx="0"]').click();
+  await moveWaveformPointerToTime(page, block, 7000);
+  await page.keyboard.press('z');
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 7000, end: 10000 },
+    { start: 10000, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+
+  await moveWaveformPointerToTime(page, block, 9000);
+  await page.keyboard.press('x');
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 7000, end: 9000 },
+    { start: 10000, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+
+  await page.evaluate(() => clearSelection());
+  await moveWaveformPointerToTime(page, block, 7500);
+  await page.keyboard.press('z');
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 7500, end: 9000 },
+    { start: 10000, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+
+  await moveWaveformPointerToTime(page, block, 8500);
+  await page.keyboard.press('x');
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 7500, end: 8500 },
+    { start: 10000, end: 18000 },
+    { start: 25000, end: 30000 },
   ]);
 });

@@ -2395,6 +2395,43 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn(".ghost.attention:hover:not(:disabled)", stylesheet)
         self.assertIn("border-color: var(--amber-hover);", stylesheet)
 
+    def test_launcher_guides_auto_llm_setup_to_test_connection(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        self.assertIn('openAutoStep(stepId, "", { highlightConnection: true });', script)
+        self.assertIn('function setTestConnectionAttention(attention)', script)
+        self.assertIn('setTestConnectionAttention(true);', script)
+        self.assertIn('setTestConnectionAttention(false);', script)
+        self.assertIn('id="testLlmConnection"', page)
+        self.assertIn('.primary.attention', stylesheet)
+
+    def test_launcher_refreshes_auto_postprocess_state_after_ocr_install(self) -> None:
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        self.assertIn('window.MAWLauncher.onOcrRuntimeChanged = () => {', script)
+        self.assertIn('renderAutoPostprocessState();', script)
+        self.assertIn('maybeEnablePendingAutoStep();', script)
+
+    def test_launcher_keeps_settings_actions_visible_and_isolates_toolbox_wheel(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        self.assertIn('<div class="settings-scroll">', page)
+        self.assertIn('id="toolboxClose"', page)
+        self.assertIn('id="settingsClose"', page)
+        self.assertIn('$("toolboxDrawer").addEventListener("wheel"', script)
+        self.assertIn('event.stopPropagation();', script)
+        self.assertIn('event.preventDefault();', script)
+        self.assertIn('settings-scroll', launcher_script)
+        self.assertIn('.settings-scroll {', stylesheet)
+        self.assertIn('overscroll-behavior: contain;', stylesheet)
+        self.assertIn('#toolboxClose,', stylesheet)
+        self.assertIn('#settingsClose {', stylesheet)
+
 
 @final
 class DefaultPathsTests(unittest.TestCase):
