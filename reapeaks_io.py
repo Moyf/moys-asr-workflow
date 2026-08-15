@@ -17,6 +17,7 @@ import os
 import shutil
 import struct
 import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -444,6 +445,7 @@ def generate_reapeaks_stream_bytes(
     if not ffmpeg:
         print("[reapeaks] 缺少 ffmpeg，跳过 .ReaPeaks 生成")
         return None
+    stderr_file = tempfile.TemporaryFile()
     try:
         proc = subprocess.Popen(
             [
@@ -462,13 +464,13 @@ def generate_reapeaks_stream_bytes(
                 "pipe:1",
             ],
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=stderr_file,
         )
     except OSError as exc:
+        stderr_file.close()
         print(f"[reapeaks] 启动 ffmpeg 失败: {exc}")
         return None
     assert proc.stdout is not None
-    assert proc.stderr is not None
     try:
         header = proc.stdout.read(4096)
         parsed = _parse_wav_header(header)
@@ -498,9 +500,11 @@ def generate_reapeaks_stream_bytes(
             if not chunk:
                 break
             streamer.feed(chunk)
-        stderr = proc.stderr.read().decode("utf-8", errors="replace").strip()
-        if proc.wait() != 0:
-            print(f"[reapeaks] 解码失败：ffmpeg 退出码 {proc.returncode}"
+        retcode = proc.wait()
+        stderr_file.seek(0)
+        stderr = stderr_file.read().decode("utf-8", errors="replace").strip()
+        if retcode != 0:
+            print(f"[reapeaks] 解码失败：ffmpeg 退出码 {retcode}"
                   + (f"（{stderr}）" if stderr else ""))
             return None
         if stderr:
@@ -516,7 +520,7 @@ def generate_reapeaks_stream_bytes(
         return None
     finally:
         proc.stdout.close()
-        proc.stderr.close()
+        stderr_file.close()
         if proc.poll() is None:
             proc.kill()
             proc.wait()
