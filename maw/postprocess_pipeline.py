@@ -465,8 +465,9 @@ def run_postprocess_pipeline(
             _check_cancel(cancel_event)
             current_project = artifact.project_path or current_project
             current_srt = artifact.srt_path or current_srt
-            if artifact.translated_srt_path is not None:
-                current_translated_srt = artifact.translated_srt_path
+            translated_srt_path = getattr(artifact, "translated_srt_path", None)
+            if isinstance(translated_srt_path, Path):
+                current_translated_srt = translated_srt_path
             completed.append(step_id)
             warnings.extend(artifact.warnings)
             manifest_steps[index - 1]["status"] = "done"

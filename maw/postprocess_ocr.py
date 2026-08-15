@@ -241,6 +241,7 @@ def run_ocr_dedup(
         processed_count=processed,
         skipped_count=skipped,
         failed_count=failed,
+        translated_srt_path=None,
     )
 
 
