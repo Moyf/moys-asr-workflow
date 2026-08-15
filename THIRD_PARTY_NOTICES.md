@@ -1,6 +1,6 @@
 # Third-party notices
 
-本仓库不打包模型或云端 API 服务。标准 Windows/macOS 包不含 FFmpeg；可选的 `MAWxFF-Windows` 与 `MAWxFF-macOS-arm64` 包会分别附带对应平台的 `ffmpeg` 与 `ffprobe`。Windows 包还会在 `bootstrap/uv.exe` 携带 uv，供用户通过 GUI 创建本地 ASR 运行环境。运行时可能使用下列外部组件；许可证和服务条款以各项目及服务方的最新文本为准。
+本仓库不打包模型或云端 API 服务。标准 Windows/macOS 包不含 FFmpeg；可选的 `MAWxFF-Windows` 与 `MAWxFF-macOS-arm64` 包会分别附带对应平台的 `ffmpeg` 与 `ffprobe`；Linux 的 `MAW-x86_64.AppImage` 始终内置静态 `ffmpeg`/`ffprobe`（BtbN 构建）。Windows 包还会在 `bootstrap/uv.exe` 携带 uv，供用户通过 GUI 创建本地 ASR 运行环境。运行时可能使用下列外部组件；许可证和服务条款以各项目及服务方的最新文本为准。
 
 | Component | Purpose | License / terms |
 |---|---|---|
@@ -14,7 +14,7 @@
 | [Noto Color Emoji](https://github.com/googlefonts/noto-emoji) | Color emoji font for the Linux launcher keycap headers (1️⃣ etc.). On first launch the app downloads it to the user cache directory (`MAW_EMOJI_FONT_URL` can override the source), then the page references it locally; subsequent runs are offline. Not bundled or shipped. File sha256 at integration time: `72a635cb3d2f3524c51620cdde406b217204e8a6a06c6a096ff8ed4b5fd6e27b` | SIL OFL 1.1 |
 | [PyInstaller](https://pyinstaller.org/) | Build the optional Windows application bundle | GPL-2.0-or-later with a bootloader exception that permits distributing bundled applications |
 | [Python](https://www.python.org/) | Runtime embedded in the optional Windows application bundle | Python Software Foundation License |
-| [FFmpeg](https://ffmpeg.org/) / [Gyan Windows build](https://www.gyan.dev/ffmpeg/builds/) / [OSXExperts macOS build](https://www.osxexperts.net/) | Inspect media, extract audio, and build waveform peaks | Not bundled in standard packages. `MAWxFF-Windows` includes FFmpeg 8.1.2 Essentials executables under GPL-3.0; `MAWxFF-macOS-arm64` includes FFmpeg 8.1 Apple Silicon static `ffmpeg` and `ffprobe` binaries. The bundled `ffmpeg/` directory includes FFmpeg license files and source/provider references. |
+| [FFmpeg](https://ffmpeg.org/) / [Gyan Windows build](https://www.gyan.dev/ffmpeg/builds/) / [OSXExperts macOS build](https://www.osxexperts.net/) / [BtbN Linux build](https://github.com/BtbN/FFmpeg-Builds) | Inspect media, extract audio, and build waveform peaks | Not bundled in standard Windows/macOS packages. `MAWxFF-Windows` includes FFmpeg 8.1.2 Essentials executables under GPL-3.0; `MAWxFF-macOS-arm64` includes FFmpeg 8.1 Apple Silicon static `ffmpeg` and `ffprobe` binaries; the Linux `MAW-x86_64.AppImage` bundles the BtbN `linux64-gpl` static `ffmpeg`/`ffprobe` build. The bundled `ffmpeg/` directory includes FFmpeg license files and source/provider references. |
 | [uv](https://github.com/astral-sh/uv) | Bootstrap a user-managed Python environment for optional local ASR | MIT or Apache-2.0; the bundled binary is obtained from the uv release used by the Windows build |
 | [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) / `qwen-asr` | Optional local Qwen speech-recognition runtime | Not installed by default and not bundled; runtime code and downloaded model checkpoints remain subject to their upstream licenses and terms |
 | [FunASR](https://github.com/modelscope/FunASR) / `funasr` | Optional local speech-recognition runtime | Not installed by default and not bundled; runtime code and downloaded model checkpoints remain subject to their upstream licenses and terms |

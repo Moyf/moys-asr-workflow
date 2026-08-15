@@ -228,8 +228,9 @@
     --gap-scan-inset:       rgba(255, 220, 176, 0.2);
     --gap-scan-shadow:      rgba(77, 39, 17, 0.28);
 
-    /* 字体栈 */
-    --font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    /* 字体栈：末尾追加 Linux 系 CJK 字体，避免 Linux 上汉字失控地落到
+       fontconfig 兜底；Windows/macOS 的系统字体在前面先命中，行为不变 */
+    --font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
 

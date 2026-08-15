@@ -35,7 +35,7 @@
   --t-fast: 130ms ease-out;
   --control-h: 30px;
   --focus-ring: 0 0 0 2px var(--accent-soft);
-  --font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
@@ -43,11 +43,11 @@
    字体完整覆盖才可正常成型；部分 Linux 发行版（如 SteamOS 自带的 Twemoji）缺少
    U+FE0F，会把 keycap 渲染成「3x」。@font-face "MAW Emoji" 由 launcher.js 注入：
    后端把 Noto Color Emoji 缓存到本机后提供 file:// URI（仅 Linux，首次启动联网下载）。
-   Windows/macOS 系统 emoji 字体已覆盖，该字体名未定义时直接回退到 --font-sans。 */
-#mediaTitle,
-#settingsTitle,
-#logTitle,
-#serverTitle {
+   Windows/macOS 系统 emoji 字体已覆盖，该字体名未定义时直接回退到 --font-sans。
+   用 h2[data-i18n] 属性选择器而非逐个 id 匹配：带 keycap 的段落标题全部是
+   h2 + data-i18n，新模块标题无需再维护 CSS 白名单。emoji 字体只含表情字形，
+   普通汉字/数字按字体回退逐字符落到 --font-sans，互不影响（CSS Fonts 标准行为）。 */
+h2[data-i18n] {
   font-family: "MAW Emoji", var(--font-sans);
 }
 
