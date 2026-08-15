@@ -259,6 +259,16 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("Verify no bundled C++ runtime in AppImage", workflow)
         self.assertIn("_internal/libgbm.so.1", workflow)
 
+    def test_appimage_build_ships_ffmpeg_gpl_license_and_source_notice(self) -> None:
+        """Given the AppImage build script, When the BtbN GPL ffmpeg build is bundled, Then the GPLv3 license text and a source notice are written into the bundle."""
+        script = read_text("scripts/build-appimage.sh")
+
+        self.assertIn('dist/MAW/ffmpeg/GPLv3.txt', script)
+        self.assertIn('dist/MAW/ffmpeg/SOURCE.txt', script)
+        self.assertIn('https://www.gnu.org/licenses/gpl-3.0.txt', script)
+        self.assertIn('Build provider: https://github.com/BtbN/FFmpeg-Builds', script)
+        self.assertIn('Archive SHA-256: $FFMPEG_SHA256', script)
+
     def test_local_build_script_invokes_uv_and_pyinstaller_for_maw_onedir(self) -> None:
         """Given a Windows developer build, When the script is read, Then it builds dist/MAW/MAW.exe."""
         script = read_text("scripts/build-windows.ps1")

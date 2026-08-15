@@ -46,6 +46,21 @@ fi
 # 二进制位于解压根目录的 bin/ 子目录（与 johnvansickle 的根目录布局不同）。
 mkdir -p "dist/MAW/ffmpeg/bin"
 cp "$FFMPEG_DIR/bin/ffmpeg" "$FFMPEG_DIR/bin/ffprobe" "dist/MAW/ffmpeg/bin/"
+# GPL 合规：BtbN linux64-gpl 是 GPL 构建，分发须随附许可证文本与对应源码
+# 获取方式（GPLv3 §4 传递许可证副本、§6 提供源码书面要约）。GPLv3 全文从
+# gnu.org 拉取，SOURCE.txt 记录构建来源、归档地址与校验和。
+curl --fail --location --retry 3 --silent --show-error \
+    -o "dist/MAW/ffmpeg/GPLv3.txt" \
+    "https://www.gnu.org/licenses/gpl-3.0.txt"
+cat > "dist/MAW/ffmpeg/SOURCE.txt" <<EOF
+FFmpeg $FFMPEG_VERSION — BtbN FFmpeg-Builds linux64-gpl static build
+Build provider: https://github.com/BtbN/FFmpeg-Builds
+Original archive: $FFMPEG_URL
+Archive SHA-256: $FFMPEG_SHA256
+License: GPL-3.0 (full text in GPLv3.txt)
+Upstream FFmpeg source: https://github.com/FFmpeg/FFmpeg
+This MAW package includes only ffmpeg and ffprobe from the original build.
+EOF
 echo "    静态 ffmpeg: $("$FFMPEG_DIR/bin/ffmpeg" -version 2>&1 | head -n 1)"
 
 echo "==> 3/6 组装 AppDir"
