@@ -3183,8 +3183,11 @@
   outline-offset: 1px;
 }
 .waveform-cue-block.active {
-  outline: solid 1px var(--wave-playhead);
   color: var(--active-cue-fg);
+}
+/* 播放中块的轮廓让位于选中轮廓，避免覆盖 .selected 的黄色 outline。 */
+.waveform-cue-block.active:not(.selected) {
+  outline: solid 1px var(--wave-playhead);
 }
 .waveform-cue-block.disabled {
   opacity: 0.48;
