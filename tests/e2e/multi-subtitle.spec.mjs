@@ -1470,6 +1470,33 @@ test('keeps extension selection, timing, disabled, and hide shortcuts in parity 
   await expect(extensionColumn).not.toHaveClass(/disabled/);
 });
 
+test('Shift+arrow snaps selected main and secondary cues in multiple-subtitle mode', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-extension').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  await page.evaluate(() => {
+    DATA.segments[0].end = 2500;
+    DATA.segments[1].start = 3000;
+    const extension = DATA.multi_subtitle.tracks[0].segments;
+    extension[0].end = 2400;
+    extension[1].start = 3000;
+    renderAll();
+  });
+
+  await page.locator('.multi-cue-column.main').filter({ hasText: 'Second line.' }).click();
+  await expect(page.locator('#cue-panel-target')).toHaveText('主字幕');
+  await page.keyboard.press('Shift+ArrowLeft');
+  await expect.poll(() => page.evaluate(() => DATA.segments[1].start)).toBe(2500);
+
+  await page.locator('.multi-cue-column.extension').filter({ hasText: '你好，世界。' }).click();
+  await expect(page.locator('#cue-panel-target')).toHaveText('副字幕');
+  await page.keyboard.press('Shift+ArrowRight');
+  await expect.poll(() => page.evaluate(() => (
+    DATA.multi_subtitle.tracks[0].segments[0].end
+  ))).toBe(3000);
+});
+
 test('选中的主字幕与绑定副字幕一起合并并支持撤销', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-extension').click();

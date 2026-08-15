@@ -363,6 +363,30 @@ test('current-cue text keeps the list and waveform labels in sync through undo a
   await expect(waveformLabel).toHaveText('Alpha revised');
 });
 
+test('current-cue Escape behavior follows the operation setting', async ({ page }) => {
+  await page.goto(server.url);
+  const panelText = page.locator('#cue-panel-text');
+  const listText = page.locator('.cue[data-idx="0"] .text');
+  await page.locator('.waveform-cue-block[data-idx="0"]').first().click();
+  await expect(panelText).toHaveValue('Alpha');
+
+  await panelText.fill('Alpha kept');
+  await panelText.press('Escape');
+  await expect(panelText).toHaveValue('Alpha kept');
+  await expect(listText).toHaveText('Alpha kept');
+
+  await page.locator('#cue-editor-settings-toggle').click();
+  const cancelOnEscape = page.locator('#cue-editor-cancel-on-escape');
+  await expect(cancelOnEscape).not.toBeChecked();
+  await cancelOnEscape.check();
+  await page.locator('#cue-editor-settings-toggle').click();
+
+  await panelText.fill('Alpha reverted');
+  await panelText.press('Escape');
+  await expect(panelText).toHaveValue('Alpha kept');
+  await expect(listText).toHaveText('Alpha kept');
+});
+
 test('C merge refreshes the paused main subtitle preview', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('#overlay-toggle').check();

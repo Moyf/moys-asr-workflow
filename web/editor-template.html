@@ -161,7 +161,7 @@ __WAVEFORM_CSS__
 
 <div class="toolbar main-toolbar">
   <span class="waveform-tool-switch" role="group" aria-label="波形工具">
-    <button type="button" data-waveform-tool="select" class="active" title="选择工具（V，默认）：点击选中、拖动移动、拖动边界调整；Ctrl(Cmd)/Shift 多选，Shift+空白拖拽框选，Alt 切换禁用，Alt 拖共享边界只动一侧">
+    <button type="button" data-waveform-tool="select" class="active" title="选择工具（V，默认）：点击选中、拖动移动、拖动边界调整；Ctrl(Cmd)/Shift 多选，Shift+空白拖拽框选，Alt 临时反转相邻字幕联动，Alt+点击切换禁用">
       <svg class="toolbar-button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.75 12.25 8 8 9.25 6.25 13.5 3 1.75Z"/><path d="m8.3 9.2 3.2 3.05"/></svg>
       <span>选择</span>
     </button>
@@ -517,7 +517,7 @@ __WAVEFORM_CSS__
       <section class="help-subgroup">
         <h5 class="help-subtitle">按住字幕</h5>
         <div class="help-category">
-          <span><kbd>A</kbd>/<kbd>D</kbd> 向前/后微调移动字幕（按住 <kbd>Alt</kbd> 取消黏连联动）</span>
+          <span><kbd>A</kbd>/<kbd>D</kbd> 向前/后微调移动字幕（按住 <kbd>Alt</kbd> 临时反转相邻字幕联动）</span>
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd>Shift+A</kbd> 将字幕起点贴到前一条结尾</span>
           <span><kbd>Shift+D</kbd> 将字幕终点贴到后一条开头</span>
@@ -661,13 +661,11 @@ __WAVEFORM_CSS__
     <small class="editor-settings-hint">选中字幕时，同时选中和它相同颜色/表情包的字幕</small>
     </div>
     <div class="editor-settings-sub-group">
-      <span class="editor-settings-title">快捷键行为</span>
-      <label class="toggle editor-settings-item" title="开启后，拖动字幕时按住 Alt 会反转吸附与联动；关闭后 Alt 不改变吸附方式">
-        <input type="checkbox" id="alt-snap-reversal" checked> Alt 反转吸附 / 联动
+      <span class="editor-settings-title">字幕时间调整</span>
+      <label class="toggle editor-settings-item" title="开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动">
+        <input type="checkbox" id="auto-snap-adjacent-cues"> 自动吸附调整相邻字幕
       </label>
-      <label class="toggle editor-settings-item" title="开启后，波形字幕拖动中按 Esc 会恢复到拖动开始前的时间码">
-        <input type="checkbox" id="cancel-subtitle-drag-on-escape"> Esc 取消字幕拖动
-      </label>
+      <small class="editor-settings-hint">关闭后默认独立调整相邻字幕；按住 Alt 临时反转为联动。开启后默认吸附联动；按住 Alt 临时解除。</small>
     </div>
     </div>
   </div>
@@ -915,6 +913,13 @@ __WAVEFORM_CSS__
               <label class="toggle settings-panel-item"><input type="checkbox" id="cue-editor-show-time-actions"> 时间操作</label>
               <label class="toggle settings-panel-item"><input type="checkbox" id="cue-editor-show-sticker"> 表情包</label>
             </div>
+          </div>
+          <div class="settings-panel-section cue-editor-settings-section">
+            <span class="settings-panel-title">操作</span>
+            <label class="toggle settings-panel-item" title="开启后，按 Esc 会恢复当前字幕编辑前的文本；关闭后按 Esc 保留文本改动并退出编辑">
+              <input type="checkbox" id="cue-editor-cancel-on-escape"> Esc 取消编辑
+            </label>
+            <small class="settings-panel-hint">关闭后按 Esc 保留文本改动；开启后恢复编辑前的文本。</small>
           </div>
         </div>
       </div>

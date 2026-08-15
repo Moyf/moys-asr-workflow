@@ -72,6 +72,7 @@ class OcrRuntimeTests(unittest.TestCase):
             srt_path=None,
             video_path=self.root.parent / "clip.mp4",
             fallback_video_path=self.root.parent / "fallback.mp4",
+            media_path=self.root.parent / "source.mp4",
             output_mode=OutputMode.BOTH,
             region=OcrRegion(mode="custom", x1=0.05, y1=0.6, x2=0.95, y2=1.0),
             threshold=0.25,
@@ -104,6 +105,7 @@ class OcrRuntimeTests(unittest.TestCase):
         self.assertIn("0.25", command)
         self.assertIn("--report", command)
         self.assertIn("--fallback-video-path", command)
+        self.assertIn("--media-path", command)
 
     def _make_ready_runtime(self) -> None:
         python = self.root / ("Scripts/python.exe" if os.name == "nt" else "bin/python")

@@ -42,12 +42,14 @@ MAW 是一个以 API 转写为主的字幕生成与编辑工作流。它提供 W
 ## 文档
 
 - [完整工作流](../workflow/) ：安装、配置、转写、编辑、导出和排错。
+- [常见问题](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/FAQ.md) ：Windows 下载解压、启动故障与问题反馈。
 - [ASR 服务与配置](../providers/) ：服务商选择、Key、费用和隐私边界。
 - [编辑器指南](../editor-guide/) ：MAWE 的编辑、保存和导出。
 - [字幕按键调整](../keyboard-adjustment/) ：快捷键和时间微调规则。
 - [命令行与自动化](../cli/) ：完整参数、范例、Server 管理和退出码。
 - [LLM 字幕后处理协议](../llm-postprocess/) ：后处理的输入输出与安全边界。
 - [OCR 字幕去重](../ocr-subtitle-dedup/) ：画面字幕识别、禁用规则、视频输入、报告和性能说明。
+- [转写后自动处理](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/POSTPROCESS_PIPELINE.md) ：固定步骤、配置预检、LLM 验证、中间产物和失败恢复。
 - [JSON 工程文件规范](../json-schema/) ：`.mosp` / `.json` 数据契约。
 - [开发说明](../development/) ：产品边界、数据契约和开发检查。
 

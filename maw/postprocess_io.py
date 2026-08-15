@@ -88,8 +88,16 @@ def write_artifacts(
     write_srt: bool,
     warnings: tuple[str, ...] = (),
     output_directory: Path | None = None,
+    media_path: Path | None = None,
 ) -> SubtitleArtifact:
     normalized = normalize_project(project)
+    raw_media = normalized.get("media")
+    if media_path is not None and str(media_path).strip() and (
+        not isinstance(raw_media, str) or not raw_media.strip()
+    ):
+        # The active media is a fallback for SRT or media-less project input;
+        # never overwrite a project that already carries its own media.
+        normalized["media"] = str(media_path.expanduser().resolve(strict=False))
     base = source_project_path or source_srt_path
     if base is None:
         raise PostprocessFileError(Path("."), "an input project or SRT is required")

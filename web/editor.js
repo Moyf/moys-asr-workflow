@@ -630,6 +630,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   cueEditorShowNavigation: false,
   cueEditorShowTimeActions: false,
   cueEditorShowSticker: false,
+  // 当前字幕编辑区按 Esc 时，是否放弃文本改动并恢复编辑前内容。
+  cueEditorCancelOnEscape: false,
   selectGroupMembers: false,
   // 合并字幕时各段文本之间插入的连接符（默认两个空格；留空则直接拼接）。
   mergeJoinText: '',
@@ -660,10 +662,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   mediaSeekStepMs: DEFAULT_MEDIA_SEEK_STEP_MS,
   // 选中字幕后用方向键 / A-D 微调时间的幅度。
   cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
-  // Alt 是否反转波形拖动的吸附 / 联动行为；关闭后 Alt 不改变吸附方式。
-  altSnapReversal: true,
-  // 波形字幕拖动中按 Esc 是否恢复按下前的时间码。
-  cancelSubtitleDragOnEscape: false,
+  // 是否默认让同轨相邻字幕随边界调整一起联动；Alt 始终临时反转该行为。
+  autoSnapAdjacentCues: false,
   // 娱乐彩蛋：成功拆分时播放刀光音效，并把分割工具图标换成 🔪。
   ninjaMode: false,
   // 字幕忍者的可选视觉反馈；忍者开关开启后才在设置中显示。
@@ -726,6 +726,7 @@ function readEditorSettings() {
       cueEditorShowNavigation: saved.cueEditorShowNavigation === true,
       cueEditorShowTimeActions: saved.cueEditorShowTimeActions === true,
       cueEditorShowSticker: saved.cueEditorShowSticker === true,
+      cueEditorCancelOnEscape: saved.cueEditorCancelOnEscape === true,
       selectGroupMembers: saved.selectGroupMembers === true,
       mergeJoinText: typeof saved.mergeJoinText === 'string' ? saved.mergeJoinText : DEFAULT_EDITOR_SETTINGS.mergeJoinText,
       autoMergeGapMs: clampAutoMergeGapMs(saved.autoMergeGapMs),
@@ -742,8 +743,7 @@ function readEditorSettings() {
       jklPlaybackMode: normalizeJklPlaybackMode(saved.jklPlaybackMode),
       mediaSeekStepMs: clampMediaSeekStepMs(savedMediaSeekStepMs),
       cueMoveStepMs: clampCueMoveStepMs(saved.cueMoveStepMs),
-      altSnapReversal: saved.altSnapReversal !== false,
-      cancelSubtitleDragOnEscape: saved.cancelSubtitleDragOnEscape === true,
+      autoSnapAdjacentCues: saved.autoSnapAdjacentCues === true,
       ninjaMode: saved.ninjaMode === true,
       ninjaSlashEffect: saved.ninjaSlashEffect !== false,
       crossTrackSnap: saved.crossTrackSnap !== false,
@@ -849,9 +849,28 @@ function normalizedGapRemoveData(value) {
   };
 }
 
+let normalizedGapRemoveReference = null;
+let normalizedGapRemoveCache = null;
+let removedGapRangesCacheState = null;
+let removedGapRangesCache = [];
+
 function getGapRemoveData(create = false) {
-  if (!DATA.gap_remove && !create) return null;
-  return normalizedGapRemoveData(DATA.gap_remove);
+  const source = DATA.gap_remove;
+  if (!source && !create) {
+    normalizedGapRemoveReference = null;
+    normalizedGapRemoveCache = null;
+    removedGapRangesCacheState = null;
+    removedGapRangesCache = [];
+    return null;
+  }
+  if (!source && create) return normalizedGapRemoveData(null);
+  if (source !== normalizedGapRemoveReference) {
+    normalizedGapRemoveReference = source;
+    normalizedGapRemoveCache = normalizedGapRemoveData(source);
+    removedGapRangesCacheState = null;
+    removedGapRangesCache = [];
+  }
+  return normalizedGapRemoveCache;
 }
 
 function getGapRemoveGaps() {
@@ -860,7 +879,13 @@ function getGapRemoveGaps() {
 }
 
 function getRemovedGapRanges() {
-  return window.AsrEditorUtils.getRemovedGapRanges(getGapRemoveGaps());
+  const state = getGapRemoveData(false);
+  if (!state) return [];
+  if (removedGapRangesCacheState !== state) {
+    removedGapRangesCacheState = state;
+    removedGapRangesCache = window.AsrEditorUtils.getRemovedGapRanges(state.gaps);
+  }
+  return removedGapRangesCache;
 }
 
 const container = document.getElementById('cues-container');
@@ -1194,6 +1219,7 @@ let hideDisabled = false;  // 「隐藏禁用项」开关状态
 const cueEditorShowNavigationToggle = document.getElementById('cue-editor-show-navigation');
 const cueEditorShowTimeActionsToggle = document.getElementById('cue-editor-show-time-actions');
 const cueEditorShowStickerToggle = document.getElementById('cue-editor-show-sticker');
+const cueEditorCancelOnEscapeToggle = document.getElementById('cue-editor-cancel-on-escape');
 const selectGroupMembersToggle = document.getElementById('select-group-members');
 const ninjaModeToggle = document.getElementById('ninja-mode');
 const ninjaSlashEffectToggle = document.getElementById('ninja-slash-effect');
@@ -1222,8 +1248,7 @@ const jklPlaybackModeSelect = document.getElementById('jkl-playback-mode');
 const jklPlaybackModeHint = document.getElementById('jkl-playback-mode-hint');
 const helpJklMode = document.getElementById('help-jkl-mode');
 const cueMoveStepInput = document.getElementById('cue-move-step');
-const altSnapReversalToggle = document.getElementById('alt-snap-reversal');
-const cancelSubtitleDragOnEscapeToggle = document.getElementById('cancel-subtitle-drag-on-escape');
+const autoSnapAdjacentCuesToggle = document.getElementById('auto-snap-adjacent-cues');
 const replaceModal = document.getElementById('replace-modal');
 const stickerModal = document.getElementById('sticker-modal');
 const stickerPreviewModal = document.getElementById('sticker-preview-modal');
@@ -1856,9 +1881,11 @@ if (clickTargetSelect) clickTargetSelect.value = EDITOR_SETTINGS.clickTarget;
 if (jklPlaybackModeSelect) jklPlaybackModeSelect.value = EDITOR_SETTINGS.jklPlaybackMode;
 if (mediaSeekStepInput) mediaSeekStepInput.value = String(EDITOR_SETTINGS.mediaSeekStepMs);
 if (cueMoveStepInput) cueMoveStepInput.value = String(EDITOR_SETTINGS.cueMoveStepMs);
-if (altSnapReversalToggle) altSnapReversalToggle.checked = EDITOR_SETTINGS.altSnapReversal;
-if (cancelSubtitleDragOnEscapeToggle) {
-  cancelSubtitleDragOnEscapeToggle.checked = EDITOR_SETTINGS.cancelSubtitleDragOnEscape;
+if (autoSnapAdjacentCuesToggle) {
+  autoSnapAdjacentCuesToggle.checked = EDITOR_SETTINGS.autoSnapAdjacentCues;
+}
+if (cueEditorCancelOnEscapeToggle) {
+  cueEditorCancelOnEscapeToggle.checked = EDITOR_SETTINGS.cueEditorCancelOnEscape;
 }
 refreshMediaSeekStepHelp();
 refreshMediaSeekControlLabels();
@@ -2297,11 +2324,11 @@ cueMoveStepInput?.addEventListener('change', () => {
   cueMoveStepInput.value = String(value);
   updateEditorSettings({ cueMoveStepMs: value });
 });
-altSnapReversalToggle?.addEventListener('change', () => {
-  updateEditorSettings({ altSnapReversal: altSnapReversalToggle.checked });
+autoSnapAdjacentCuesToggle?.addEventListener('change', () => {
+  updateEditorSettings({ autoSnapAdjacentCues: autoSnapAdjacentCuesToggle.checked });
 });
-cancelSubtitleDragOnEscapeToggle?.addEventListener('change', () => {
-  updateEditorSettings({ cancelSubtitleDragOnEscape: cancelSubtitleDragOnEscapeToggle.checked });
+cueEditorCancelOnEscapeToggle?.addEventListener('change', () => {
+  updateEditorSettings({ cueEditorCancelOnEscape: cueEditorCancelOnEscapeToggle.checked });
 });
 ninjaModeToggle?.addEventListener('change', () => {
   updateEditorSettings({ ninjaMode: ninjaModeToggle.checked });
@@ -3549,6 +3576,7 @@ function alignSelectedExtensionSubtitleRanges() {
 
 // === 渲染 ===
 function renderAll({ waveform = 'overlay' } = {}) {
+  stickerOverlayDataVersion += 1;
   // cues-container 同时是字幕列表和停靠模块；重绘列表时不要把布局编辑模式
   // 下的顶部拖拽栏一起清掉。
   const dockHandle = container.querySelector(':scope > .dock-handle');
@@ -3561,23 +3589,27 @@ function renderAll({ waveform = 'overlay' } = {}) {
     emptyState.classList.toggle('hidden', DATA.segments.length > 0);
     container.appendChild(emptyState);
   }
+  const cueFragment = document.createDocumentFragment();
   const multiVisible = multiSubtitleVisible();
   const displayMode = getMultiSubtitleState().display_mode || 'both';
   if (!multiVisible || displayMode === 'main') {
-    DATA.segments.forEach((seg, i) => container.appendChild(buildCueEl(seg, i)));
+    DATA.segments.forEach((seg, i) => cueFragment.appendChild(buildCueEl(seg, i)));
   } else if (displayMode === 'extension') {
     const track = getActiveExtensionTrack();
-    track.segments.forEach((seg, i) => container.appendChild(buildExtensionCueEl(seg, i, track)));
+    track.segments.forEach((seg, i) => cueFragment.appendChild(buildExtensionCueEl(seg, i, track)));
   } else {
     const track = getActiveExtensionTrack();
     const rows = MULTI_SUBTITLE_UTILS.buildMultiDisplayRows(DATA.segments, track.segments, getMultiSubtitleState().bindings);
-    rows.forEach((row) => container.appendChild(buildDualCueEl(row.mainIndex, row.extensionIndex, track)));
+    rows.forEach((row) => cueFragment.appendChild(buildDualCueEl(row.mainIndex, row.extensionIndex, track)));
   }
+  container.appendChild(cueFragment);
   applyCueListDisplaySettings();
   totalCountEl.textContent = multiVisible && displayMode === 'extension'
     ? getActiveExtensionTrack()?.segments.length || 0
     : DATA.segments.length;
-  applySearch(searchEl.value);
+  // buildCueEl/buildMultiCueColumn 已经按当前搜索词生成了文本；这里仅
+  // 计算隐藏状态和数量，避免长工程 renderAll() 再逐行重建一遍文本节点。
+  applySearch(searchEl.value, { refreshText: false });
   // 重新应用选中样式（idx 不变时还有效；如果有 splice 改了顺序就先 clearSelection）
   selectedIdxs.forEach(i => {
     const el = container.querySelector(`.cue[data-idx="${i}"]`);
@@ -4018,11 +4050,12 @@ cuePanelPrev?.addEventListener('click', () => navigateCuePanel(-1));
 cuePanelNext?.addEventListener('click', () => navigateCuePanel(1));
 cuePanelText?.addEventListener('focus', captureCuePanelTextEditSnapshot);
 cuePanelText?.addEventListener('keydown', (event) => {
-  // Esc：取消本次字幕文本编辑并退出，不保存输入内容。
+  // Esc：按当前字幕编辑区设置决定取消还是提交文本编辑。
   if (event.key === 'Escape') {
     event.preventDefault();
     event.stopPropagation();
-    cancelCuePanelTextEdit();
+    if (EDITOR_SETTINGS.cueEditorCancelOnEscape) cancelCuePanelTextEdit();
+    else exitCuePanelEdit();
     return;
   }
   const action = getConfiguredEnterAction(event);
@@ -4409,12 +4442,13 @@ function refreshAllCharCounts() {
 }
 
 // === 搜索 ===
-function applySearch(query) {
+function applySearch(query, { refreshText = true } = {}) {
   const trimmed = query.trim();
   let visible = 0;
   const re = buildSearchRegex(trimmed, false);
   const filterOver = document.getElementById('filter-over').classList.contains('active');
   const threshold = getCharCountThreshold();
+  const extensionTrack = getActiveExtensionTrack();
   // 容器内还有布局拖拽栏和“加载工程后显示字幕列表”占位层；过滤只作用于真实字幕行。
   const cueElements = container.querySelectorAll(':scope > .cue');
   cueElements.forEach(el => {
@@ -4422,7 +4456,6 @@ function applySearch(query) {
       ? Number(el.dataset.mainIdx)
       : (el.dataset.idx != null ? Number(el.dataset.idx) : -1);
     const extIdx = el.dataset.extIdx != null ? Number(el.dataset.extIdx) : -1;
-    const extensionTrack = getActiveExtensionTrack();
     const mainSeg = Number.isInteger(mainIdx) && mainIdx >= 0 ? DATA.segments[mainIdx] : null;
     const extensionSeg = Number.isInteger(extIdx) && extIdx >= 0 && extensionTrack
       ? extensionTrack.segments[extIdx] : null;
@@ -4445,7 +4478,7 @@ function applySearch(query) {
     }
     el.classList.toggle('hidden', !matched);
     if (matched) visible++;
-    if (!el.classList.contains('editing')) {
+    if (refreshText && !el.classList.contains('editing')) {
       const mainTextEl = el.querySelector('.multi-cue-column.main .text');
       const extensionTextEl = el.querySelector('.multi-cue-column.extension .text');
       if (mainTextEl && mainSeg) setTextHtml(mainTextEl, mainSeg.text, trimmed);
@@ -7017,14 +7050,6 @@ document.addEventListener('keydown', (e) => {
   else finishEdit(true);
 }, true);
 
-// 按住字幕块/边界调整时，Esc 取消本次预览并恢复按下前的时间码。
-document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape' || editingState || !EDITOR_SETTINGS.cancelSubtitleDragOnEscape) return;
-  if (!waveformEditor?.cancelCueDrag?.()) return;
-  e.preventDefault();
-  e.stopImmediatePropagation();
-}, true);
-
 document.addEventListener('keydown', (event) => {
   if (!extensionEditingState) return;
   if (event.key === 'Escape') {
@@ -7076,8 +7101,7 @@ document.addEventListener('keydown', (e) => {
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
   if (waveformEditor?.hasCueDrag?.()) {
-    // 未开启“Esc 取消拖动”时也消费按键，避免清空选区后让进行中的拖动
-    // 继续提交；拖动仍由 pointerup 正常完成。
+    // 拖动中的 Esc 不取消拖动，也不清空选区；拖动仍由 pointerup 正常完成。
     e.preventDefault();
     e.stopPropagation();
     return;
@@ -7405,7 +7429,9 @@ document.addEventListener('keydown', (e) => {
   const activeTrack = extensionTarget ? 'extension' : 'main';
   const selected = extensionTarget ? selectedExtensionIdxs : selectedIdxs;
   if (e.shiftKey && !commandKey) {
-    if (!waveformEditor?.isAltSnapActive?.(e.altKey) && selected.size > 0
+    // Shift 是显式的边界贴合命令，不受自动吸附默认值影响；Alt 只反转
+    // 普通移动/边界微调的自动联动模式。
+    if (selected.size > 0
         && waveformEditor?.snapSelectedCueBoundaryByKeyboard?.(direction, activeTrack)) {
       e.preventDefault();
       e.stopPropagation();
@@ -8928,23 +8954,28 @@ if (typeof ResizeObserver === 'function') {
 let lastActive = -1;
 // 列表点击关闭自动滚动时，避免这次 seek 的同步 active 更新再次滚动列表。
 let suppressCueListAutoScroll = false;
-function findActive(tMs) {
-  let lo = 0, hi = DATA.segments.length - 1, ans = -1;
-  while (lo <= hi) {
+function findActiveSegmentIndex(segments, tMs, skipDisabled = false) {
+  if (!Array.isArray(segments) || !segments.length || !Number.isFinite(Number(tMs))) return -1;
+  let lo = 0;
+  let hi = segments.length;
+  const time = Number(tMs);
+  while (lo < hi) {
     const mid = (lo + hi) >> 1;
-    const s = DATA.segments[mid];
-    if (s.start <= tMs) {
-      // 相邻字幕共用边界时，边界时刻属于后一条字幕；否则点击后一条的起点
-      // 后，播放指针仍会把前一条标记为 active。
-      if (s.end > tMs || mid === DATA.segments.length - 1 ||
-          DATA.segments[mid + 1].start > tMs) {
-        ans = mid;
-        if (s.end > tMs) return mid;
-      }
-      lo = mid + 1;
-    } else hi = mid - 1;
+    const start = Number(segments[mid]?.start);
+    if (Number.isFinite(start) && start <= time) lo = mid + 1;
+    else hi = mid;
   }
-  return ans;
+  let index = lo - 1;
+  if (skipDisabled) {
+    while (index >= 0 && segments[index]?.disabled) index -= 1;
+  }
+  return index;
+}
+
+function findActive(tMs) {
+  // 相邻字幕共用边界时，右侧字幕的 start 优先；处于时间间隙时保留
+  // 前一条字幕作为当前项，和原有列表高亮语义一致。
+  return findActiveSegmentIndex(DATA.segments, tMs);
 }
 
 function isSubtitlePreviewActive(segment, tMs) {
@@ -8958,12 +8989,23 @@ function extensionSegmentAtTime(tMs, mainIndex = -1) {
   if (!multiSubtitleVisible()) return null;
   const bound = mainIndex >= 0 ? extensionForMainIndex(mainIndex) : null;
   if (isSubtitlePreviewActive(bound, tMs)) return bound;
-  return (getActiveExtensionTrack()?.segments || [])
-    .find((segment) => isSubtitlePreviewActive(segment, tMs)) || null;
+  const segments = getActiveExtensionTrack()?.segments || [];
+  const index = findActiveSegmentIndex(segments, tMs, true);
+  const segment = index >= 0 ? segments[index] : null;
+  return isSubtitlePreviewActive(segment, tMs) ? segment : null;
 }
 
 function removedGapAt(timeMs) {
-  return getRemovedGapRanges().find((gap) => timeMs >= gap.start && timeMs < gap.end) || null;
+  const ranges = getRemovedGapRanges();
+  let low = 0;
+  let high = ranges.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (Number(ranges[middle]?.end) <= timeMs) low = middle + 1;
+    else high = middle;
+  }
+  const gap = ranges[low];
+  return gap && timeMs >= gap.start && timeMs < gap.end ? gap : null;
 }
 
 function previewGapAt(index, timeMs) {
@@ -9028,11 +9070,24 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   const mainVisible = !!overlayToggle.checked && isSubtitlePreviewActive(seg, tMs);
   const extension = extensionSegmentAtTime(tMs, idx);
   const extensionVisible = !!extensionOverlayToggle?.checked && !!extension;
-  overlayTextEl.classList.toggle('hidden', !mainVisible);
-  overlayExtensionTextEl.classList.toggle('hidden', !extensionVisible);
-  if (mainVisible) overlayTextEl.textContent = seg.text || '';
-  if (extensionVisible) overlayExtensionTextEl.textContent = extension.text || '';
-  overlayEl.classList.toggle('hidden', !mainVisible && !extensionVisible);
+  // 播放刷新每帧都会经过这里；只在可见状态或文字真的变化时触碰 DOM，
+  // 避免连续 textContent/classList 写入触发不必要的样式和绘制工作。
+  if (overlayTextEl.classList.contains('hidden') === mainVisible) {
+    overlayTextEl.classList.toggle('hidden', !mainVisible);
+  }
+  if (overlayExtensionTextEl.classList.contains('hidden') === extensionVisible) {
+    overlayExtensionTextEl.classList.toggle('hidden', !extensionVisible);
+  }
+  const mainText = mainVisible ? (seg.text || '') : '';
+  const extensionText = extensionVisible ? (extension.text || '') : '';
+  if (mainVisible && overlayTextEl.textContent !== mainText) overlayTextEl.textContent = mainText;
+  if (extensionVisible && overlayExtensionTextEl.textContent !== extensionText) {
+    overlayExtensionTextEl.textContent = extensionText;
+  }
+  const overlayHidden = !mainVisible && !extensionVisible;
+  if (overlayEl.classList.contains('hidden') !== overlayHidden) {
+    overlayEl.classList.toggle('hidden', overlayHidden);
+  }
   renderStickerOverlay(tMs);
 }
 
@@ -9073,36 +9128,95 @@ playerStage.appendChild(stickerOverlayLayer);
 bindPreviewBoxPointerEvents(stickerOverlayLayer, 'sticker');
 stickerOverlayLayer.addEventListener('keydown', (event) => handlePreviewBoxKeydown(event, 'sticker'));
 
-function activeStickersAt(tMs) {
-  const found = new Map();  // 同组 head/ref 去重，按文件名键
+let stickerOverlayDataVersion = 0;
+let stickerIntervalCacheVersion = -1;
+let stickerIntervals = [];
+let stickerIntervalBoundaries = [];
+let activeStickerCacheVersion = -1;
+let activeStickerCacheTime = -Infinity;
+let activeStickerCacheUntil = -Infinity;
+let activeStickerCache = [];
+let renderedStickerSignature = null;
+let renderedStickerOverlayEnabled = false;
+
+function rebuildStickerIntervals() {
+  if (stickerIntervalCacheVersion === stickerOverlayDataVersion) return;
+  const intervals = [];
+  const boundaries = new Set();
   DATA.segments.forEach((seg) => {
     if (seg.disabled) return;
-    if (seg.sticker) {
-      const start = seg.sticker.start ?? seg.start;
-      const end = seg.sticker.end ?? seg.end;
-      if (tMs >= start && tMs <= end) found.set(seg.sticker.filename || seg.sticker.name, seg.sticker);
-      return;
-    }
-    const ref = seg.sticker_ref;
-    if (!ref) return;
-    const headSeg = DATA.segments[ref.headIdx];
-    const source = headSeg?.sticker;
-    if (source && tMs >= (source.start ?? headSeg.start) && tMs <= (source.end ?? headSeg.end)) {
-      found.set(source.filename || source.name, source);
-    }
+    const source = seg.sticker || DATA.segments[seg.sticker_ref?.headIdx]?.sticker;
+    if (!source) return;
+    const head = DATA.segments[seg.sticker_ref?.headIdx] || seg;
+    const start = Number(source.start ?? head.start);
+    const end = Number(source.end ?? head.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return;
+    intervals.push({ start, end, source, key: source.filename || source.name });
+    boundaries.add(start);
+    boundaries.add(end);
   });
-  return [...found.values()];
+  stickerIntervals = intervals;
+  stickerIntervalBoundaries = [...boundaries].sort((a, b) => a - b);
+  stickerIntervalCacheVersion = stickerOverlayDataVersion;
+  activeStickerCacheVersion = -1;
+  activeStickerCacheTime = -Infinity;
+  activeStickerCacheUntil = -Infinity;
+  activeStickerCache = [];
+}
+
+function activeStickersAt(tMs) {
+  rebuildStickerIntervals();
+  const time = Number(tMs);
+  if (
+    activeStickerCacheVersion === stickerOverlayDataVersion
+    && time >= activeStickerCacheTime
+    && time < activeStickerCacheUntil
+  ) return activeStickerCache;
+
+  const found = new Map();  // 同组 head/ref 去重，按文件名键
+  stickerIntervals.forEach((interval) => {
+    if (time >= interval.start && time <= interval.end) found.set(interval.key, interval.source);
+  });
+  // 播放时间单调前进时，缓存只需保留到下一个边界；二分定位避免每次
+  // 表情包切换都再次扫描全部边界。边界采用半开缓存区间，确保切换帧
+  // 立刻显示新表情包，而不是多停留一帧旧内容。
+  let low = 0;
+  let high = stickerIntervalBoundaries.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (stickerIntervalBoundaries[middle] <= time) low = middle + 1;
+    else high = middle;
+  }
+  const nextChange = stickerIntervalBoundaries[low] ?? Infinity;
+  activeStickerCacheVersion = stickerOverlayDataVersion;
+  activeStickerCacheTime = time;
+  activeStickerCacheUntil = nextChange;
+  activeStickerCache = [...found.values()];
+  return activeStickerCache;
 }
 
 function renderStickerOverlay(tMs) {
-  if (!stickerOverlayToggle?.checked) { stickerOverlayContent.replaceChildren(); return; }
-  stickerOverlayContent.replaceChildren(...activeStickersAt(tMs).map((sticker) => {
+  const enabled = Boolean(stickerOverlayToggle?.checked);
+  if (!enabled) {
+    if (renderedStickerOverlayEnabled || stickerOverlayContent.childElementCount) {
+      stickerOverlayContent.replaceChildren();
+    }
+    renderedStickerOverlayEnabled = false;
+    renderedStickerSignature = null;
+    return;
+  }
+  const stickers = activeStickersAt(tMs);
+  const signature = stickers.map((sticker) => sticker.filename || sticker.name).join('\u0001');
+  if (renderedStickerOverlayEnabled && renderedStickerSignature === signature) return;
+  stickerOverlayContent.replaceChildren(...stickers.map((sticker) => {
     const img = document.createElement('img');
     img.src = stickerUrl(sticker);
     img.alt = sticker.name;
     img.title = sticker.name;
     return img;
   }));
+  renderedStickerOverlayEnabled = true;
+  renderedStickerSignature = signature;
 }
 
 stickerOverlayToggle?.addEventListener('change', () => {
@@ -11232,13 +11346,15 @@ async function openProjectFile(file, options = {}) {
     clearSelection();
     lastActive = -1;
     if (waveformEditor) {
-      waveformEditor.setLayoutData(DATA.workspace);
+      // 工程加载会同时更新布局、主波形、频谱和 ReaPeaks；先只写入状态，
+      // 由下面一次 renderAll({ waveform: 'full' }) 统一创建可视行和 Canvas。
+      waveformEditor.setLayoutData(DATA.workspace, { render: false });
       applyEditorDisplaySettings(DATA.workspace?.editorDisplay);
       restoreWorkspaceSelection();
       syncWorkspaceControls();
-      waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform);
-      waveformEditor.setSpectralPayload(DATA.spectral);
-      waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks);
+      waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform, { render: false });
+      waveformEditor.setSpectralPayload(DATA.spectral, { render: false });
+      waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks, { render: false });
     }
     updateGapRemoveUi();
     // 工程加载可能同时切换多字幕开关和轨道结构。
@@ -13102,7 +13218,7 @@ function initWaveformEditor() {
     splitCueAtTime: (idx, timeMs) => splitFromContextMenu(idx, 0, 0, timeMs),
     getClickBehavior: () => EDITOR_SETTINGS.clickBehavior,
     getClickTarget: () => EDITOR_SETTINGS.clickTarget,
-    getAltSnapReversal: () => EDITOR_SETTINGS.altSnapReversal,
+    getAutoSnapAdjacentCues: () => EDITOR_SETTINGS.autoSnapAdjacentCues,
     getWaveShapeSource: () => EDITOR_SETTINGS.waveShapeSource,
     showTrackBadges: () => EDITOR_SETTINGS.multiSubtitleShowTrackBadges,
     onBeginEdit: (label) => pushUndo(label),
@@ -13132,11 +13248,11 @@ function initWaveformEditor() {
     },
   });
   waveformEditor.attachPlayer(player);
-  waveformEditor.setLayoutData(DATA.workspace || null);
+  waveformEditor.setLayoutData(DATA.workspace || null, { render: false });
   applyEditorDisplaySettings(DATA.workspace?.editorDisplay);
-  waveformEditor.setSpectralPayload(DATA.spectral || null);
-  waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks || null);
-  waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform || null);
+  waveformEditor.setSpectralPayload(DATA.spectral || null, { render: false });
+  waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks || null, { render: false });
+  waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform || null, { render: false });
 }
 
 async function loadDeferredReapeaks() {
@@ -13155,8 +13271,8 @@ async function loadDeferredReapeaks() {
     if (!hasPayload) return;
     DATA.spectral = result.spectral || null;
     DATA.waveform_reapeaks = result.waveform_reapeaks || null;
-    waveformEditor.setSpectralPayload(DATA.spectral);
-    waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks);
+    waveformEditor.setSpectralPayload(DATA.spectral, { render: false });
+    waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks, { render: false });
     renderAll({ waveform: 'full' });
   } catch (_error) {
     window.setTimeout(() => { void loadDeferredReapeaks(); }, 1000);
@@ -13283,7 +13399,7 @@ window.MAWE_EDITOR_BRIDGE = Object.freeze({
   closeHelp: () => helpFloatingPanel.close(),
 });
 window.MAWE?.register('editor-bridge', () => window.MAWE_EDITOR_BRIDGE);
-renderAll();
+renderAll({ waveform: 'full' });
 updateGapRemoveUi();
 if (repairedTimingCount > 0) {
   flashHint(`已自动修复 ${repairedTimingCount} 处异常时间码（保底 100ms）`, 'warning');

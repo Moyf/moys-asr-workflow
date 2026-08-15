@@ -143,6 +143,49 @@ class PostprocessTests(unittest.TestCase):
         self.assertIn("茶很好喝", second.srt_path.read_text(encoding="utf-8"))
         self.assertNotIn("酒很好喝", second.srt_path.read_text(encoding="utf-8"))
 
+    def test_llm_srt_input_preserves_the_active_media_path_in_project_output(self) -> None:
+        srt_path = self.root / "captions.srt"
+        srt_path.write_text(
+            "1\n00:00:00,000 --> 00:00:00,900\n原文\n",
+            encoding="utf-8",
+        )
+
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=None,
+                srt_path=srt_path,
+                output_mode=OutputMode.JSON,
+                operation="translate_en",
+                custom_prompt="",
+                media_path=self.media,
+            ),
+            complete=lambda _prompt, _cues: {"groups": [{"id": "c0001", "text": "Source"}]},
+        )
+
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project")
+        self.assertEqual(read_project(result.project_path)["media"], str(self.media.resolve()))
+
+    def test_media_path_fallback_does_not_override_existing_project_media(self) -> None:
+        other_media = self.root / "other.mp4"
+        other_media.write_bytes(b"other")
+
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.JSON,
+                operation="proofread",
+                custom_prompt="",
+                media_path=other_media,
+            ),
+            complete=lambda _prompt, _cues: {"groups": [{"id": "c0001", "text": "酒很好喝"}, {"id": "c0002", "text": "下一句"}]},
+        )
+
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project")
+        self.assertEqual(read_project(result.project_path)["media"], str(self.media))
+
     def test_llm_groups_can_redistribute_text_but_not_timing(self) -> None:
         project = sample_project(self.media)
         groups: JsonDict = {

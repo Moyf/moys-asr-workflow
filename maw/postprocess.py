@@ -33,6 +33,7 @@ class ReplacementRequest:
     output_mode: OutputMode
     replacements: tuple[Replacement, ...]
     output_directory: Path | None = None
+    media_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +45,7 @@ class LlmPostprocessRequest:
     custom_prompt: str
     task_prompt: str | None = None
     output_directory: Path | None = None
+    media_path: Path | None = None
 
 
 LlmComplete = Callable[[str, list[dict[str, str]]], Mapping[str, JsonValue]]
@@ -83,7 +85,15 @@ def run_fixed_replacement(request: ReplacementRequest) -> SubtitleArtifact:
             if replaced != original:
                 segment["text"] = replaced
                 _ = segment.pop("items", None)
-    return _write(project, source_project, source_srt, "replace", request.output_mode, output_directory=request.output_directory)
+    return _write(
+        project,
+        source_project,
+        source_srt,
+        "replace",
+        request.output_mode,
+        output_directory=request.output_directory,
+        media_path=request.media_path,
+    )
 
 
 def run_llm_postprocess(
@@ -148,7 +158,16 @@ def run_llm_postprocess(
     if len(batches) > 1:
         warnings = (f"字幕较长，已分批处理（共 {len(batches)} 批）。",) + warnings
     _notify_status(on_status, "toolbox_status_writing")
-    return _write(processed, source_project, source_srt, request.operation, request.output_mode, warnings, output_directory=request.output_directory)
+    return _write(
+        processed,
+        source_project,
+        source_srt,
+        request.operation,
+        request.output_mode,
+        warnings,
+        output_directory=request.output_directory,
+        media_path=request.media_path,
+    )
 
 
 def _notify_status(on_status: LlmStatus | None, key: str, **details: int) -> None:
@@ -508,6 +527,7 @@ def _write(
     mode: OutputMode,
     warnings: tuple[str, ...] = (),
     output_directory: Path | None = None,
+    media_path: Path | None = None,
 ) -> SubtitleArtifact:
     return write_artifacts(
         project,
@@ -518,6 +538,7 @@ def _write(
         write_srt=mode in {OutputMode.SRT, OutputMode.BOTH},
         warnings=warnings,
         output_directory=output_directory,
+        media_path=media_path,
     )
 
 

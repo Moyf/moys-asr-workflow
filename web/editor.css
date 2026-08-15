@@ -1462,6 +1462,12 @@
     transition: background var(--t-fast), border-color var(--t-fast);
     user-select: none;
   }
+  /* 长工程仍保留列表语义和可搜索 DOM，但让浏览器跳过视口外字幕的
+     布局/绘制；滚动到该行时再按真实内容补算尺寸。 */
+  .cues-container > .cue {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 56px;
+  }
   .cue-split-flash {
     position: absolute;
     z-index: 3;

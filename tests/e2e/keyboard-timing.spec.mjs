@@ -27,7 +27,15 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
-async function loadAttachedCues(page) {
+async function loadAttachedCues(page, autoSnapAdjacentCues) {
+  if (typeof autoSnapAdjacentCues === 'boolean') {
+    await page.addInitScript((enabled) => {
+      localStorage.setItem(
+        'moy.asr.editor.settings.v1',
+        JSON.stringify({ autoSnapAdjacentCues: enabled }),
+      );
+    }, autoSnapAdjacentCues);
+  }
   await page.goto(server.url);
   await page.evaluate(() => {
     DATA.segments.splice(
@@ -141,7 +149,7 @@ test('F seeks and plays a selected extension cue', async ({ page }) => {
 });
 
 test('selected arrow keys move cues, adjust boundaries, and honor the configured step', async ({ page }) => {
-  await loadAttachedCues(page);
+  await loadAttachedCues(page, true);
   await page.locator('#waveform-settings-toggle').click();
   const step = page.locator('#cue-move-step');
   await expect(step).toHaveValue('50');
@@ -186,6 +194,85 @@ test('selected arrow keys move cues, adjust boundaries, and honor the configured
   ]);
 });
 
+test('automatic adjacent snapping is off by default and Alt temporarily enables it', async ({ page }) => {
+  await loadAttachedCues(page);
+  await expect(page.locator('#auto-snap-adjacent-cues')).not.toBeChecked();
+  await page.locator('.cue[data-idx="0"]').click();
+  await page.keyboard.press('Control+Shift+ArrowRight');
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 10000 },
+    { start: 10000, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+
+  await page.keyboard.press('Alt+Control+Shift+ArrowRight');
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 10050 },
+    { start: 10050, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+});
+
+test('automatic adjacent snapping controls shared-boundary dragging and Alt reverses it', async ({ page }) => {
+  await loadAttachedCues(page);
+  const dragSharedBoundary = async (altKey = false) => {
+    const handle = page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-handle.right').first();
+    const handleBox = await stableVisibleBoundingBox(page, handle);
+    const row = handle.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
+    const rowBox = await row.boundingBox();
+    const rowStart = Number(await row.getAttribute('data-start-ms'));
+    const rowEnd = Number(await row.getAttribute('data-end-ms'));
+    expect(rowBox).not.toBeNull();
+    expect(rowEnd).toBeGreaterThan(rowStart);
+    const deltaMs = -500;
+    const deltaX = (rowBox.width * deltaMs) / (rowEnd - rowStart);
+    const startX = handleBox.x + handleBox.width / 2;
+    const y = handleBox.y + handleBox.height / 2;
+    if (altKey) await page.keyboard.down('Alt');
+    await page.mouse.move(startX, y);
+    await page.mouse.down();
+    await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);
+    await page.mouse.move(startX + deltaX, y, { steps: 5 });
+    await page.mouse.up();
+    if (altKey) await page.keyboard.up('Alt');
+  };
+
+  await dragSharedBoundary();
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 9500 },
+    { start: 10000, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+
+  await page.evaluate(() => {
+    DATA.segments[0].end = 10000;
+    DATA.segments[1].start = 10000;
+    renderAll();
+  });
+  await dragSharedBoundary(true);
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 9500 },
+    { start: 9500, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+});
+
+test('explicit Shift snapping remains available when automatic adjacent snapping is off', async ({ page }) => {
+  await loadAttachedCues(page);
+  await page.evaluate(() => {
+    DATA.segments[0].end = 9000;
+    DATA.segments[1].start = 10000;
+    renderAll();
+  });
+  await page.locator('.cue[data-idx="1"]').click();
+  await page.keyboard.press('Shift+ArrowLeft');
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 9000 },
+    { start: 9000, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+});
+
 test('Shift+arrow keys snap selected subtitle boundaries to neighbors', async ({ page }) => {
   await loadAttachedCues(page);
   await page.evaluate(() => {
@@ -213,7 +300,7 @@ test('Shift+arrow keys snap selected subtitle boundaries to neighbors', async ({
 });
 
 test('A/D adjusts a held subtitle block and a held shared boundary', async ({ page }) => {
-  await loadAttachedCues(page);
+  await loadAttachedCues(page, true);
   await page.locator('#waveform-settings-toggle').click();
   const step = page.locator('#cue-move-step');
   await step.fill('100');
@@ -250,7 +337,7 @@ test('A/D adjusts a held subtitle block and a held shared boundary', async ({ pa
 });
 
 test('A also compresses an attached preceding cue', async ({ page }) => {
-  await loadAttachedCues(page);
+  await loadAttachedCues(page, true);
   await page.locator('#waveform-settings-toggle').click();
   const step = page.locator('#cue-move-step');
   await step.fill('100');

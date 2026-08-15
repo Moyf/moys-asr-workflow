@@ -510,6 +510,7 @@
       projectPath: extension(source) === ".srt" ? "" : source,
       srtPath: extension(source) === ".srt" ? source : "",
       outputMode: $("postprocessOutputMode").value,
+      mediaPath: $("mediaPath").value.trim(),
     };
   }
 

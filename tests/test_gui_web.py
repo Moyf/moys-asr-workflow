@@ -492,6 +492,8 @@ class GuiWebBridgeTests(unittest.TestCase):
 
     def test_llm_bridge_forwards_stream_deltas_to_event_pump(self) -> None:
         project = self.root / "clip.mosp"
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
         project.write_text(
             json.dumps({"segments": [{"start": 0, "end": 1000, "text": "待处理"}]}, ensure_ascii=False),
             encoding="utf-8",
@@ -507,6 +509,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         with mock.patch("maw.gui_web.complete_subtitle_groups", side_effect=complete):
             result = self.api.run_llm_postprocess({
                 "projectPath": str(project),
+                "mediaPath": str(media),
                 "outputMode": "json",
                 "operation": "proofread",
                 "providerId": "deepseek",
@@ -520,6 +523,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.api.pump.shutdown()
         scripts = "\n".join(self.window.scripts)
         self.assertTrue(result["ok"])
+        output_project = Path(str(result["projectPath"]))
+        self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["media"], str(media.resolve()))
         self.assertIn('"type": "postprocess_stream"', scripts)
         self.assertIn('"kind": "reset"', scripts)
         self.assertIn('"kind": "reasoning"', scripts)
@@ -1802,6 +1807,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('bridge("run_script_match"', script)
         self.assertIn('bridge("run_ocr_dedup"', script)
         self.assertIn("fallbackVideoPath", script)
+        self.assertIn('mediaPath: $("mediaPath").value.trim()', script)
         self.assertIn('bridge("run_llm_postprocess"', script)
         self.assertIn('bridge("run_fixed_replacement"', script)
         self.assertIn('bridge("run_ffconcat_rebuild"', script)

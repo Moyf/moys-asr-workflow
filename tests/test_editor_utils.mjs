@@ -38,6 +38,24 @@ test('translates editor project controls and dynamic save messages to English', 
 });
 
 
+test('translates adjacent adjustment and current-cue operation settings to English', () => {
+  assert.equal(i18n.translateText('字幕时间调整', 'en'), 'Subtitle timing adjustment');
+  assert.equal(i18n.translateText('自动吸附调整相邻字幕', 'en'), 'Automatically snap-adjust adjacent subtitles');
+  assert.equal(
+    i18n.translateText('开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动', 'en'),
+    'When enabled, dragging or fine-tuning adjacent cues on the same track links them by default; hold Alt to temporarily separate them. When disabled, they adjust independently by default; hold Alt to temporarily link them.',
+  );
+  assert.equal(
+    i18n.translateText('开启后，按 Esc 会恢复当前字幕编辑前的文本；关闭后按 Esc 保留文本改动并退出编辑', 'en'),
+    'When enabled, Esc restores the text from before editing; when disabled, Esc keeps text changes and exits editing.',
+  );
+  assert.equal(
+    i18n.translateText('关闭后按 Esc 保留文本改动；开启后恢复编辑前的文本。', 'en'),
+    'When disabled, Esc keeps text changes; when enabled, it restores the text from before editing.',
+  );
+});
+
+
 test('builds expandable replacement rows with before and after text', () => {
   const result = helpers.buildReplacementPreview(
     [

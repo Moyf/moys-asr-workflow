@@ -845,18 +845,19 @@
     const value = roundMs(valueMs);
     if (edge === 'end') {
       const lower = left.start + minDuration;
-      const upper = Number.isFinite(left.end) ? left.end : Infinity;
-      // 不越过右侧段的起始，避免产生负时长或重叠；但不强制拉动邻居。
-      const ceiling = Number.isFinite(right.start) ? right.start : upper;
-      const next = clamp(value, lower, Math.min(upper, ceiling));
+      // 右侧字幕保持不动；使用它的起点作为固定上限，不能把当前值
+      // 当作上限，否则边界第一次向左拉开后就无法再向右回拖。
+      const upper = Number.isFinite(right.start) ? right.start : Infinity;
+      const next = clamp(value, lower, upper);
       const oldEnd = left.end;
       left.end = next;
       left.items = remapItems(left.items, left.start, oldEnd, left.start, next);
     } else {
       const upper = right.end - minDuration;
-      const floor = Number.isFinite(right.start) ? right.start : 0;
-      const base = Number.isFinite(left.end) ? left.end : floor;
-      const next = clamp(value, Math.max(floor, base), upper);
+      // 左侧字幕保持不动；使用它的终点作为固定下限，同样允许边界
+      // 在拉开后反向回到邻字幕边界。
+      const lower = Number.isFinite(left.end) ? left.end : 0;
+      const next = clamp(value, lower, upper);
       const oldStart = right.start;
       right.start = next;
       right.items = remapItems(right.items, oldStart, right.end, next, right.end);
@@ -877,6 +878,11 @@
     return !!left && !!right && Number(left.end) === Number(right.start);
   }
 
+  function shouldAdjustAdjacentCuesIndependently(altKey, autoSnapAdjacentCues) {
+    // Alt 始终临时反转自动吸附开关；开关关闭且未按 Alt 时也是独立调整。
+    return Boolean(altKey) === Boolean(autoSnapAdjacentCues);
+  }
+
   function normalizedIndices(segments, indices) {
     return [...new Set(Array.from(indices || [])
       .map((idx) => Number(idx))
@@ -885,11 +891,9 @@
   }
 
   // Keyboard movement is a small, discrete counterpart to moving a waveform
-  // block. When the selected range is attached to a neighboring cue, the
-  // shared boundary follows the moved range: moving away expands the neighbor
-  // and moving toward it compresses the neighbor. Alt keeps both neighbors
-  // untouched, while the normal no-overlap and minimum-duration limits still
-  // apply.
+  // block. When adjacent-cue auto snapping is active and the selected range is
+  // attached to a neighboring cue, the shared boundary follows the moved
+  // range. The Alt modifier temporarily reverses that choice.
   function planMoveStep(segments, indices, deltaMs, durationMs, {
     sticky = true,
     minDuration = MIN_CUE_MS,
@@ -1174,8 +1178,39 @@
     return timeMs < Number(segment.end) || !next || Number(next.start) > timeMs;
   }
 
+  function lastCueIndexAtOrBefore(segments, timeMs) {
+    let low = 0;
+    let high = segments.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      const start = Number(segments[middle]?.start);
+      if (Number.isFinite(start) && start <= timeMs) low = middle + 1;
+      else high = middle;
+    }
+    return low - 1;
+  }
+
+  function firstCueIndexOverlapping(segments, startMs) {
+    let low = 0;
+    let high = segments.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      const start = Number(segments[middle]?.start);
+      if (Number.isFinite(start) && start < startMs) low = middle + 1;
+      else high = middle;
+    }
+    if (low > 0 && Number(segments[low - 1]?.end) > startMs) return low - 1;
+    return low;
+  }
+
   function findActiveCueIndex(segments, timeMs, skipDisabled = true) {
-    return segments.findIndex((_, index) => isActiveCueAtTime(segments, index, timeMs, skipDisabled));
+    if (!Array.isArray(segments) || !segments.length || !Number.isFinite(Number(timeMs))) return -1;
+    let index = lastCueIndexAtOrBefore(segments, Number(timeMs));
+    if (skipDisabled) {
+      while (index >= 0 && segments[index]?.disabled) index -= 1;
+    }
+    return index >= 0 && isActiveCueAtTime(segments, index, Number(timeMs), skipDisabled)
+      ? index : -1;
   }
 
   function syncSpectralColorToggle(toggle, available, preferred) {
@@ -1203,6 +1238,7 @@
       this.manualFollowUntil = 0;
       this.multiRange = [-1, -1];
       this.activeIndex = -1;
+      this.activeExtensionIndex = -1;
       this.drag = null;
       this.createCueDrag = null;
       this.gapRangeDrag = null;
@@ -1216,6 +1252,11 @@
       // Shift+滚轮调振幅的 rAF 节流：一帧内的滚动累加方向后只触发一次
       this.pendingScaleDirection = 0;
       this.scaleRafScheduled = false;
+      // 行高预设也可能由高回报率滚轮连续触发；合并到下一帧，避免每个
+      // wheel 事件都重排并重绘整组可视行。
+      this.pendingRowHeightDirection = 0;
+      this.rowHeightRafScheduled = false;
+      this.renderedRows = [];
       // 波形交互工具：'select'（默认，保留 Ctrl/Shift/分组多选与拖动）或
       // 'razor'（左键点击字幕块即在指针位置安全拆分）。Alt 行为不随工具变化。
       this.tool = 'select';
@@ -1264,8 +1305,11 @@
       }
     }
 
-    isAltSnapActive(altKey = false) {
-      return Boolean(altKey) && this.options.getAltSnapReversal?.() !== false;
+    isAdjacentCueAdjustmentIndependent(altKey = false) {
+      return shouldAdjustAdjacentCuesIndependently(
+        altKey,
+        this.options.getAutoSnapAdjacentCues?.() === true,
+      );
     }
 
     hasCueDrag() {
@@ -1297,9 +1341,7 @@
         this.render();
       });
       this.rowHeightSelect?.addEventListener('change', () => {
-        this.settings.rowHeight = Number(this.rowHeightSelect.value);
-        saveSettings(this.settings);
-        this.render();
+        this.setRowHeight(Number(this.rowHeightSelect.value));
       });
       this.showGroupBadgesToggle?.addEventListener('change', () => {
         this.settings.showGroupBadges = this.showGroupBadgesToggle.checked;
@@ -1599,9 +1641,9 @@
       if (this.settings.rowHeight === next) return true;
       this.settings.rowHeight = next;
       if (this.rowHeightSelect) this.rowHeightSelect.value = String(next);
-      this.multiRange = [-1, -1];
       saveSettings(this.settings);
-      this.render();
+      if (this.isMultiMode() && this.payload) this.updateMultiRowLayout();
+      else this.render();
       return true;
     }
 
@@ -1938,7 +1980,7 @@
       this.setStatus('已恢复默认工作区');
     }
 
-    setLayoutData(value) {
+    setLayoutData(value, { render = true } = {}) {
       const layout = normalizeLayoutData(value);
       this.settings.layout = layout.preset;
       if (layout.waveformMode) this.settings.mode = layout.waveformMode;
@@ -1950,7 +1992,7 @@
       this.settings.layoutEditing = false;
       saveSettings(this.settings);
       this.applyLayout();
-      this.render();
+      if (render) this.render();
     }
 
     focusWaveform() {
@@ -1969,8 +2011,12 @@
       }
       this.settings.waveformScale = next;
       saveSettings(this.settings);
-      this.applyLayout();
-      this.renderSegments();
+      if (this.waveformScaleLabel) {
+        this.waveformScaleLabel.textContent = `×${parseFloat(next.toFixed(2))}`;
+      }
+      // 振幅只影响 Canvas 像素，不影响字幕块、行结构或时间映射；复用
+      // 已有可视行，避免批量调节时反复创建 DOM 和事件监听器。
+      this.redrawWaveformCanvases();
     }
 
     scheduleWheelScaleChange() {
@@ -1983,6 +2029,25 @@
         const direction = this.pendingScaleDirection > 0 ? 1 : -1;
         this.pendingScaleDirection = 0;
         this.changeWaveformScale(direction);
+      });
+    }
+
+    scheduleRowHeightChange(direction) {
+      this.pendingRowHeightDirection += direction > 0 ? 1 : -1;
+      if (this.rowHeightRafScheduled) return;
+      this.rowHeightRafScheduled = true;
+      requestAnimationFrame(() => {
+        this.rowHeightRafScheduled = false;
+        if (this.pendingRowHeightDirection === 0) return;
+        const directionToApply = this.pendingRowHeightDirection > 0 ? 1 : -1;
+        this.pendingRowHeightDirection = 0;
+        const current = ROW_HEIGHT_PRESETS.indexOf(this.settings.rowHeight);
+        const next = clamp(current + directionToApply, 0, ROW_HEIGHT_PRESETS.length - 1);
+        if (next === current) return;
+        this.settings.rowHeight = ROW_HEIGHT_PRESETS[next];
+        if (this.rowHeightSelect) this.rowHeightSelect.value = String(this.settings.rowHeight);
+        saveSettings(this.settings);
+        this.updateMultiRowLayout();
       });
     }
 
@@ -2079,7 +2144,7 @@
       this.render();
     }
 
-    setPayload(payload) {
+    setPayload(payload, { render = true } = {}) {
       const decoded = decodePayload(payload);
       if (!decoded) {
         this.payload = null;
@@ -2087,7 +2152,7 @@
         this.setStatus('等待波形数据');
         this.empty.textContent = '加载媒体后显示波形';
         this.empty.classList.remove('hidden');
-        this.render();
+        if (render) this.render();
         return false;
       }
       this.payload = payload;
@@ -2098,7 +2163,7 @@
         : `${formatCompact(payload.duration_ms)} · 缓存波形（未加载媒体）`);
       this.centerBasicOnCurrentTime();
       this.multiRange = [-1, -1];
-      this.render();
+      if (render) this.render();
       return true;
     }
 
@@ -2106,20 +2171,20 @@
       return this.payload;
     }
 
-    setSpectralPayload(payload) {
+    setSpectralPayload(payload, { render = true } = {}) {
       this.spectral = decodeSpectralPayload(payload);
       // Without spectral data the feature is visibly and functionally off.
       // Keep the stored preference intact so a deferred server payload can
       // restore the user's choice when it becomes available.
       syncSpectralColorToggle(this.spectralColorToggle, this.spectral != null, this.settings.spectralColor);
-      this.render();
+      if (render) this.render();
       return this.spectral != null;
     }
 
-    setReapeaksWaveform(payload) {
+    setReapeaksWaveform(payload, { render = true } = {}) {
       this.reapeaksPeaks = decodePayload(payload);
       this.reapeaksPayload = this.reapeaksPeaks ? payload : null;
-      this.render();
+      if (render) this.render();
       return this.reapeaksPayload != null;
     }
 
@@ -2327,6 +2392,7 @@
       this.applyLayout();
       if (!this.payload || !this.peaks) {
         this.content.replaceChildren();
+        this.renderedRows = [];
         this.empty.classList.remove('hidden');
         return;
       }
@@ -2350,8 +2416,51 @@
       });
     }
 
+    redrawWaveformCanvases() {
+      if (!this.payload || !this.peaks) return;
+      if (!this.renderedRows.length) {
+        this.renderSegments();
+        return;
+      }
+      this.renderedRows.forEach((row) => this.drawRow(row));
+      this.updatePlayback(false);
+    }
+
+    updateMultiRowLayout() {
+      if (!this.isMultiMode() || !this.payload) {
+        this.render();
+        return;
+      }
+      const rowDurationMs = this.settings.secondsPerRow * 1000;
+      const rowCount = Math.max(1, Math.ceil(this.durationMs / rowDurationMs));
+      const stride = this.settings.rowHeight + ROW_GAP;
+      this.content.style.height = `${rowCount * stride - ROW_GAP}px`;
+
+      // 先改已有行的几何，再根据新的 stride 增量补齐视口；已有行保留其
+      // Canvas、字幕块和事件监听器，只在后面重画受到高度影响的 Canvas。
+      const retainedRows = new Set(this.renderedRows);
+      this.renderedRows.forEach((row) => {
+        const index = Number(row.dataset.rowIndex);
+        if (!Number.isInteger(index) || index < 0) return;
+        const startMs = index * rowDurationMs;
+        const endMs = Math.min(this.durationMs, startMs + rowDurationMs);
+        row.style.top = `${index * stride}px`;
+        row.style.height = `${this.settings.rowHeight}px`;
+        row.style.width = `${Math.max(0.01, Math.min(1, (endMs - startMs) / rowDurationMs) * 100)}%`;
+      });
+      this.multiRange = [-1, -1];
+      this.renderMultiVisible(false);
+      retainedRows.forEach((row) => {
+        if (row.isConnected) this.drawRow(row);
+      });
+      this.positionPlayheads();
+    }
+
     renderSegments() {
-      if (!this.payload) return;
+      if (!this.payload) {
+        this.render();
+        return;
+      }
       if (this.settings.mode === 'basic') this.renderBasic();
       else this.renderMultiVisible(true);
     }
@@ -2367,6 +2476,7 @@
       const groupBadges = computeGroupBadges(this.options.getSegments('main'));
       const row = this.createRow(this.basicWindowStartMs, endMs, -1, true, groupBadges);
       this.content.appendChild(row);
+      this.renderedRows = [row];
       this.drawRow(row);
       this.updatePlayback(false);
     }
@@ -2400,6 +2510,7 @@
         for (let index = first; index <= last; index++) {
           rows.push(this.content.appendChild(this.createMultiRow(index, rowDurationMs, groupBadges)));
         }
+        this.renderedRows = rows;
         for (const row of rows) this.drawRow(row);
         this.updatePlayback(false);
         return;
@@ -2418,6 +2529,7 @@
         if (existing.has(String(index))) continue;
         created.push(this.content.appendChild(this.createMultiRow(index, rowDurationMs, groupBadges)));
       }
+      this.renderedRows = [...this.content.querySelectorAll('.waveform-row')];
       for (const row of created) this.drawRow(row);
       this.updatePlayback(false);
     }
@@ -2460,6 +2572,7 @@
       playhead.className = 'waveform-playhead';
       playhead.hidden = true;
       row.appendChild(playhead);
+      row._waveformPlayhead = playhead;
 
       const pointerLine = document.createElement('div');
       pointerLine.className = 'waveform-pointer-line';
@@ -2554,8 +2667,12 @@
     appendGapBlocks(row, startMs, endMs) {
       const gaps = this.options.getGapRemoveGaps?.() || [];
       const gapOperationMode = this.options.getGapOperationMode?.() || 'boundary_drag';
-      gaps.forEach((gap, index) => {
-        if (!gap || gap.end <= startMs || gap.start >= endMs) return;
+      const firstGapIndex = firstCueIndexOverlapping(gaps, startMs);
+      for (let index = firstGapIndex; index < gaps.length; index += 1) {
+        const gap = gaps[index];
+        if (!gap) continue;
+        if (gap.start >= endMs) break;
+        if (gap.end <= startMs) continue;
         const block = document.createElement('div');
         block.className = 'waveform-gap-block';
         block.dataset.gapIndex = String(index);
@@ -2619,7 +2736,7 @@
           this.options.showGapContextMenu?.(event.clientX, event.clientY, index);
         });
         row.appendChild(block);
-      });
+      }
     }
 
     appendCueBlocks(row, startMs, endMs, groupBadges = null) {
@@ -2631,9 +2748,12 @@
       const now = this.currentTimeMs();
       const activeMainIndex = findActiveCueIndex(segments, now);
       const badgesByIndex = groupBadges || computeGroupBadges(segments);
-      segments.forEach((segment, index) => {
-        if (segment.end <= startMs || segment.start >= endMs) return;
-        if (segment.disabled && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden')) return;
+      const firstMainIndex = firstCueIndexOverlapping(segments, startMs);
+      for (let index = firstMainIndex; index < segments.length; index += 1) {
+        const segment = segments[index];
+        if (segment.start >= endMs) break;
+        if (segment.end <= startMs) continue;
+        if (segment.disabled && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden')) continue;
         const block = document.createElement('div');
         block.className = 'waveform-cue-block';
         block.dataset.idx = String(index);
@@ -2698,16 +2818,19 @@
           else this.options.activateCue?.(index);
         });
         row.appendChild(block);
-      });
+      }
 
       if (!multiLane) return;
       const extensionSegments = this.options.getExtensionSegments?.() || [];
       const extensionSelected = this.options.getExtensionSelection?.() || new Set();
       const extensionBindingMarkers = bindingMarkerTargets.extension;
       const activeExtensionIndex = findActiveCueIndex(extensionSegments, now);
-      extensionSegments.forEach((segment, index) => {
-        if (segment.end <= startMs || segment.start >= endMs) return;
-        if (segment.disabled && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden')) return;
+      const firstExtensionIndex = firstCueIndexOverlapping(extensionSegments, startMs);
+      for (let index = firstExtensionIndex; index < extensionSegments.length; index += 1) {
+        const segment = extensionSegments[index];
+        if (segment.start >= endMs) break;
+        if (segment.end <= startMs) continue;
+        if (segment.disabled && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden')) continue;
         const block = document.createElement('div');
           block.className = 'waveform-cue-block';
           block.dataset.track = 'extension';
@@ -2750,7 +2873,7 @@
           else this.options.activateExtensionCue?.(index);
         });
         row.appendChild(block);
-      });
+      }
     }
 
     setBindingMarker(block, visible) {
@@ -3448,11 +3571,7 @@
         const current = ROW_HEIGHT_PRESETS.indexOf(this.settings.rowHeight);
         const next = clamp(current + (scrollDelta > 0 ? -1 : 1), 0, ROW_HEIGHT_PRESETS.length - 1);
         if (next !== current) {
-          this.settings.rowHeight = ROW_HEIGHT_PRESETS[next];
-      if (this.rowHeightSelect) this.rowHeightSelect.value = String(this.settings.rowHeight);
-      if (this.showGroupBadgesToggle) this.showGroupBadgesToggle.checked = this.settings.showGroupBadges !== false;
-          saveSettings(this.settings);
-          this.renderMulti();
+          this.scheduleRowHeightChange(scrollDelta > 0 ? -1 : 1);
         }
         return;
       }
@@ -3505,16 +3624,16 @@
       // 剃刀工具：无修饰键左键点击字幕块（非手柄）时，在指针位置安全拆分。
       // 修饰键（Alt/Ctrl(Cmd)/Shift）仍走原行为，便于拆分后立即多选/禁用。
       const targetHandle = event.target.closest('.waveform-cue-handle');
-      const altSnapActive = this.isAltSnapActive(event.altKey);
+      const adjacentCueAdjustmentIndependent = this.isAdjacentCueAdjustmentIndependent(event.altKey);
       if (track === 'main' && this.tool === 'razor' && !targetHandle
           && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
         const timeMs = this.timeFromPointer(event, row);
         this.options.splitCueAtTime?.(index, timeMs);
         return;
       }
-      // Alt 行为分裂：命中共享边界手柄时拆开为单侧独立拖动；否则保持
-      // Alt+点击字幕块切换禁用的既有行为。
-      if (altSnapActive && targetHandle) {
+      // 相邻字幕独立调整：命中共享边界手柄时拆开为单侧拖动；Alt 会
+      // 根据“自动吸附调整相邻字幕”开关临时反转这一模式。
+      if (adjacentCueAdjustmentIndependent && targetHandle) {
         const sharedLeft = targetHandle.classList.contains('left')
           && index > 0 && this.isSharedBoundary(event, index - 1, index, row, track);
         const sharedRight = targetHandle.classList.contains('right')
@@ -3601,7 +3720,7 @@
         changed: false,
         // Alt+副字幕拖动临时解除主副联动；Alt+主字幕拖动仍带着绑定的
         // 副字幕一起走，但允许先挤压主轨相邻字幕。
-        independent: Boolean(altSnapActive && track === 'extension'),
+        independent: Boolean(event.altKey && track === 'extension'),
         allowSqueeze: false,
         squeezeOriginals: allOriginals,
         altToggleDisabledOnClick: Boolean(
@@ -3699,7 +3818,7 @@
         indices,
         deltaMs,
         this.cueDragDurationMs(),
-        { sticky: !this.isAltSnapActive(altKey) },
+        { sticky: !this.isAdjacentCueAdjustmentIndependent(altKey) },
       );
       if (!plan.changed) return false;
       this.options.onBeginEdit?.('移动字幕时间');
@@ -3708,7 +3827,7 @@
         indices,
         deltaMs,
         this.cueDragDurationMs(),
-        { sticky: !this.isAltSnapActive(altKey) },
+        { sticky: !this.isAdjacentCueAdjustmentIndependent(altKey) },
       );
       result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
       this.options.onCommitEdit?.(result.indices, 'move', track);
@@ -3721,7 +3840,7 @@
       const indices = normalizedIndices(segments, this.options.getSelection?.(track));
       if (!indices.length || (edge !== 'start' && edge !== 'end')) return false;
       const index = edge === 'start' ? indices[0] : indices[indices.length - 1];
-      const options = { sticky: !this.isAltSnapActive(altKey) };
+      const options = { sticky: !this.isAdjacentCueAdjustmentIndependent(altKey) };
       const plan = planBoundaryStep(segments, index, edge, deltaMs, this.cueDragDurationMs(), options);
       if (!plan.changed) return false;
       this.options.onBeginEdit?.(`${edge === 'start' ? '调整字幕起点' : '调整字幕终点'}`);
@@ -3790,14 +3909,15 @@
       let plan;
       let apply;
       if (drag.kind === 'move') {
-        const options = { sticky: !this.isAltSnapActive(altKey) };
+        const options = { sticky: !this.isAdjacentCueAdjustmentIndependent(altKey) };
         plan = planMoveStep(segments, drag.indices, deltaMs, durationMs, options);
         apply = () => applyMoveStep(segments, drag.indices, deltaMs, durationMs, options);
       } else {
         const edge = drag.kind === 'resize-left' || drag.kind === 'resize-boundary-independent'
           ? 'start' : 'end';
         const options = {
-          sticky: drag.kind !== 'resize-boundary-independent' && !this.isAltSnapActive(altKey),
+          sticky: drag.kind !== 'resize-boundary-independent'
+            && !this.isAdjacentCueAdjustmentIndependent(altKey),
         };
         plan = planBoundaryStep(segments, drag.index, edge, deltaMs, durationMs, options);
         apply = () => applyBoundaryStep(segments, drag.index, edge, deltaMs, durationMs, options);
@@ -3824,7 +3944,9 @@
     handleHeldCueKey(direction, deltaMs, { shiftKey = false, altKey = false, snap = false } = {}) {
       if (!this.drag) return false;
       if (shiftKey) {
-        if (snap && !this.isAltSnapActive(altKey)) this.snapActiveCueBoundaryByKeyboard(direction);
+        // Shift 是显式的边界贴合命令，不受自动吸附默认值影响；Alt
+        // 只反转普通 A/D 微调的自动联动模式。
+        if (snap) this.snapActiveCueBoundaryByKeyboard(direction);
         // 按住字幕块时即使吸附不可用也要消费按键，不能穿透成普通导航。
         return true;
       }
@@ -4100,11 +4222,12 @@
           : '调整字幕边界';
         this.options.onBeginEdit(label);
       }
-      // 一旦在本次拖动中进入 Alt 独立模式，松开 Alt 也不要把已经独立
-      // 调整过的字幕重新吸回绑定对象；关系仍保留，下一次普通拖动再联动。
-      const altSnapActive = this.isAltSnapActive(event.altKey);
-      if (drag.kind === 'move' && altSnapActive) drag.allowSqueeze = true;
-      if (drag.track === 'extension' && altSnapActive) drag.independent = true;
+      // 一旦在本次拖动中进入相邻字幕独立模式，松开 Alt 也不要把已经
+      // 调整过的字幕重新吸回邻居；下一次拖动再按设置决定默认模式。
+      const adjacentCueAdjustmentIndependent = this.isAdjacentCueAdjustmentIndependent(event.altKey);
+      if (drag.kind === 'move' && adjacentCueAdjustmentIndependent) drag.allowSqueeze = true;
+      // 主字幕/副字幕绑定的独立调整仍只由 Alt 临时触发，不受同轨自动吸附开关影响。
+      if (drag.track === 'extension' && event.altKey) drag.independent = true;
       const disableSnap = drag.independent === true || drag.allowSqueeze === true;
       if (drag.kind === 'move') this.applyMoveDrag(drag, deltaMs, disableSnap, drag.allowSqueeze);
       else if (drag.kind === 'resize-boundary') this.applyBoundaryDrag(drag, deltaMs, drag.independent);
@@ -4365,9 +4488,13 @@
       }
       const extensionSegments = this.options.getExtensionSegments?.() || [];
       const activeExtensionIndex = findActiveCueIndex(extensionSegments, now);
-      this.content.querySelectorAll('.waveform-cue-block[data-track="extension"]').forEach((block) => {
-        block.classList.toggle('active', Number(block.dataset.extIdx) === activeExtensionIndex);
-      });
+      if (activeExtensionIndex !== this.activeExtensionIndex) {
+        this.activeExtensionIndex = activeExtensionIndex;
+        this.content.querySelectorAll('.waveform-cue-block[data-track="extension"]')
+          .forEach((block) => {
+            block.classList.toggle('active', Number(block.dataset.extIdx) === activeExtensionIndex);
+          });
+      }
 
       if (allowFollow && this.settings.mode === 'basic') {
         const windowMs = this.settings.visibleSeconds * 1000;
@@ -4389,7 +4516,9 @@
             behavior: 'smooth',
           });
           requestAnimationFrame(() => { this.autoScrolling = false; });
-          this.renderMultiVisible(true);
+          // 滚动事件会在新的可视范围稳定后增量补行；播放热路径不应在
+          // 每次跨行时强制重建当前整组 DOM/Canvas。
+          this.scheduleMultiVisible();
         }
       }
       this.positionPlayheads();
@@ -4397,10 +4526,10 @@
 
     positionPlayheads() {
       const now = this.currentTimeMs();
-      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+      this.renderedRows.forEach((row) => {
         const startMs = Number(row.dataset.startMs);
         const endMs = Number(row.dataset.endMs);
-        const playhead = row.querySelector('.waveform-playhead');
+        const playhead = row._waveformPlayhead || row.querySelector('.waveform-playhead');
         if (!playhead) return;
         const visible = now >= startMs && now <= endMs;
         playhead.hidden = !visible;
@@ -4424,6 +4553,9 @@
       remapItems,
       roundMs,
       sourceForFile,
+      shouldAdjustAdjacentCuesIndependently,
+      findActiveCueIndex,
+      firstCueIndexOverlapping,
       applySharedBoundary,
       applyIndependentEdge,
       applyMoveStep,

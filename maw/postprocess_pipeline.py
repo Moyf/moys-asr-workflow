@@ -449,6 +449,7 @@ def run_postprocess_pipeline(
                         translated_artifact=artifact,
                         target=str(step.get("target") or "zh"),
                         output_directory=run_directory,
+                        media_path=media_path,
                     )
             except PostprocessCancelled:
                 raise
@@ -542,6 +543,7 @@ def _run_step(
             script_path=Path(str(step.get("scriptPath") or "")).expanduser(),
             output_mode=output_mode,
             output_directory=output_directory,
+            media_path=media_path,
         ))
     if step_id == "replace":
         replacements = tuple(
@@ -555,6 +557,7 @@ def _run_step(
             output_mode=output_mode,
             replacements=replacements,
             output_directory=output_directory,
+            media_path=media_path,
         ))
     if step_id == "ocr":
         if ffmpeg_path is None:
@@ -580,6 +583,7 @@ def _run_step(
             threshold=float(_number_or_default(step.get("threshold"), 0.5)),
             report=bool(step.get("report")),
             output_directory=output_directory,
+            media_path=media_path,
         ), ffmpeg_path=ffmpeg_path, on_status=on_status)
     operation = "translate_zh" if step_id == "translate" and str(step.get("target") or "zh") == "zh" else (
         "translate_en" if step_id == "translate" else step_id
@@ -608,6 +612,7 @@ def _run_step(
         operation=operation,
         custom_prompt=str(step.get("customPrompt") or "").strip(),
         output_directory=output_directory,
+        media_path=media_path,
     ), complete=complete, on_status=on_status)
 
 
@@ -618,6 +623,7 @@ def _attach_translation_track(
     translated_artifact: SubtitleArtifact,
     target: str,
     output_directory: Path,
+    media_path: Path | None = None,
 ) -> SubtitleArtifact:
     """Keep the pre-translation main track and add the translation as an extension track."""
 
@@ -733,6 +739,7 @@ def _attach_translation_track(
         write_srt=True,
         warnings=warnings,
         output_directory=output_directory,
+        media_path=media_path,
     )
     return SubtitleArtifact(
         source_project_path=combined_artifact.source_project_path,

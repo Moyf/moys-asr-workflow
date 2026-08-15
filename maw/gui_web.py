@@ -754,6 +754,7 @@ class LauncherApi:
                     srt_path=_optional_path(payload.get("srtPath")),
                     output_mode=_output_mode(payload.get("outputMode")),
                     replacements=replacements,
+                    media_path=_optional_path(payload.get("mediaPath")),
                 )
             )
             self._emit_postprocess_status("toolbox_status_writing")
@@ -774,6 +775,7 @@ class LauncherApi:
                     srt_path=_optional_path(payload.get("srtPath")),
                     script_path=script_path,
                     output_mode=_output_mode(payload.get("outputMode")),
+                    media_path=_optional_path(payload.get("mediaPath")),
                 )
             )
             self._emit_postprocess_status("toolbox_status_writing")
@@ -809,6 +811,7 @@ class LauncherApi:
                 video_path=_optional_path(payload.get("videoPath")),
                 output_mode=_output_mode(payload.get("outputMode")),
                 fallback_video_path=_optional_path(payload.get("fallbackVideoPath")),
+                media_path=_optional_path(payload.get("mediaPath")),
                 region=_ocr_region(payload),
                 threshold=float(str(raw_threshold if raw_threshold is not None else "0.5")),
                 report=bool(payload.get("report")),
@@ -870,6 +873,7 @@ class LauncherApi:
                     operation=operation,
                     custom_prompt=custom_prompt,
                     task_prompt=(str(payload.get("taskPrompt") or "") if "taskPrompt" in payload else None),
+                    media_path=_optional_path(payload.get("mediaPath")),
                 ),
                 complete=complete,
                 on_status=self._emit_postprocess_status,

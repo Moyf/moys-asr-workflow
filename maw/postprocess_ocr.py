@@ -75,6 +75,7 @@ class OcrDedupRequest:
     threshold: float = DEFAULT_THRESHOLD
     report: bool = False
     output_directory: Path | None = None
+    media_path: Path | None = None
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.threshold <= 1.0:
@@ -94,6 +95,7 @@ class OcrDedupArtifact:
     processed_count: int = 0
     skipped_count: int = 0
     failed_count: int = 0
+    translated_srt_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,6 +219,7 @@ def run_ocr_dedup(
         write_project=request.output_mode in {OutputMode.JSON, OutputMode.BOTH},
         write_srt=request.output_mode in {OutputMode.SRT, OutputMode.BOTH},
         output_directory=request.output_directory,
+        media_path=request.media_path or request.fallback_video_path,
     )
 
     report_path = _write_report(rows, source_project or source_srt, request.output_directory) if request.report else None

@@ -10,7 +10,7 @@
 | 2 | 生成 / 频谱 | 频谱颜色只影响显示；询问是否可以完全不生成频谱 | 说明 | 仅说明 |
 | 3 | Launcher / OCR | 未安装 OCR 时不能显示“已就绪”；安装后刷新状态；刷新按钮不能被挤压；源码版与打包版提示区分；识别进度增加间距；当前产物自动高亮 | 修改 | 已修复 |
 | 4 | 编辑器 / 工程 | 去重工程加载提示；OCR 后保留媒体路径；允许拖入 `.ReaPeaks`；无绑定工程的服务器提示改为导出后重新打开 | 修改 | 已修复 |
-| 5 | 编辑器 / 设置 | 设置图标统一；全局按钮改为“⚙️ 全局设置”；增加全局 Alt 吸附反转和 ESC 行为设置；波形设置增加“操作”分类；延长字幕默认值改为向前 120ms、向后 60ms | 修改 | 已修复 |
+| 5 | 编辑器 / 设置 | 设置图标统一；全局按钮改为“⚙️ 全局设置”；增加全局“自动吸附调整相邻字幕”开关（默认关闭，Alt 临时反转）；current-cue-panel 的“操作”中增加可选“Esc 取消编辑”（默认关闭）；延长字幕默认值改为向前 120ms、向后 60ms | 修改 | 已修复 |
 | 6 | 编辑器 / 多字幕 | 绑定同步支持撤销；“绑定/解绑”改为“批量对齐”；副字幕支持 B/Enter 拆分；主字幕合并同步副字幕；绑定时自动同步时长；多选副字幕按 H 批量对齐 | 修改 | 已修复 |
 | 7 | 编辑器 / 切分 | 强制切分两侧至少保留 100ms；首次时长不足时保留编辑/弹窗，第二次按 B/Enter 强制钳制切点；撤销恢复切分前选中状态 | 修改 | 已修复 |
 | 8 | 编辑器 / 播放 | 去掉播放器高度限制；Home/End 跳转首尾；字幕悬停显示 B 提示；最后一行波形按真实剩余时长缩短 | 修改 | 已修复 |
@@ -23,6 +23,8 @@
 | 15 | 生成 / ReaPeaks 频谱 | 生成 ReaPeaks 时希望保留波形层、按开关决定是否计算频谱；没有频谱数据时编辑器禁用频谱颜色 | 修改 | 已修复 |
 | 16 | 编辑器 / 长音轨提示 | 浏览器无法整段解码时仍提示用户运行 `edit.py`，应改为 GUI 入口 | 修改 | 已修复 |
 | 17 | 波形缓存 / 重构询问 | 希望把 ReaPeaks 与自研波形封装为同一个独立缓存文件，拖入长视频时按媒体尝试复用 | 说明 | 仅说明 |
+| 18 | Launcher / 自动后处理 | OCR 作为最后一步时自动后处理失败；从 SRT 或缺少媒体字段的工程进入翻译等步骤后，输出工程丢失 `media` | 修改 | 已修复 |
+| 19 | 编辑器 / 多字幕快捷键 | 选中字幕时 `Shift+←/→` 应贴合前后字幕边界，但在多重字幕模式下不生效 | 修改 | 已修复 |
 
 ## 修复与验证记录
 
@@ -31,7 +33,7 @@
 | 1 | 已修复 | `.venv\\Scripts\\python.exe -m unittest tests.test_media_cache`（3/3 通过，含“测试模式使用限长缓存但保留原始媒体签名”）；`media_cache.py` 输出频谱生成进度，并在缓存旁路缺失时保留工程已有缓存。 |
 | 3 | 已修复 | `.venv\\Scripts\\python.exe -m unittest tests.test_gui_web tests.test_ocr_runtime tests.test_postprocess_ocr`（相关测试包含在 210/210 通过批次）；`node --check web\\launcher\\launcher.js`; `node --check web\\launcher\\postprocess.js`; `git diff --check` 均通过。 |
 | 4 | 已修复 | `node --check web\\editor.js`; `.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（13/13 通过）；`.venv\\Scripts\\python.exe edit.py --blank`; `blank-editor.html` 已扫描确认 ReaPeaks 解析/拖入入口，以及无绑定服务器提示“导出 .mosp，再重新打开该文件”；`git diff --check` 通过。 |
-| 5 | 已修复 | `node --check web\\editor.js`; `node --check web\\waveform.js`; `node --check web\\editor-i18n.js`; `node --test tests\\test_waveform_js.mjs tests\\test_editor_utils.mjs`（113/113 通过）；`.venv\\Scripts\\python.exe edit.py --blank`; `.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（13/13 通过）；`git diff --check` 通过。 |
+| 5 | 已修复 | `node --check web\\editor.js`; `node --check web\\waveform.js`; `node --check web\\editor-i18n.js`; `node --test tests\\test_waveform_js.mjs tests\\test_editor_utils.mjs`（116/116 通过）；current-cue-panel Esc 回归 1/1；自动吸附/键盘回归 5/5；`.venv\\Scripts\\python.exe edit.py --blank`; `.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（15/15 通过）；`git diff --check` 通过。 |
 | 6 | 已修复 | `npx playwright test tests/e2e/multi-subtitle.spec.mjs --grep "aligns multiple selected extension cues" --project=chromium`（1/1 通过）；`npx playwright test tests/e2e/multi-subtitle.spec.mjs --grep "auto-synced binding|merges selected extension|选中的主字幕与绑定副字幕|拼合主字幕" --project=chromium`（4/4 通过）；`node --check web\\editor.js`; `node --check web\\editor-i18n.js`; 源码与便携版已同步。 |
 | 7 | 已修复 | `node --check web\\editor.js`; `node --check web\\editor-i18n.js`; `npx playwright test tests/e2e/waveform-history.spec.mjs --grep \"retries an inline split with B or Enter|requires a second B\" --project=chromium`（2/2 通过，内联路径明确验证第二次 Enter）；`npx playwright test tests/e2e/multi-subtitle.spec.mjs --grep \"uses B on a single selected extension|uses the linked split dialog|retries a short linked split|imports an extension SRT\" --project=chromium`（4/4 通过）；`.venv\\Scripts\\python.exe edit.py --blank`; `git diff --check`。 |
 | 8 | 已修复 | `node --check web\\editor.js`; `node --check web\\waveform.js`; `npx playwright test tests/e2e/waveform-history.spec.mjs --grep \"B splits the selected subtitle under|retries an inline split with B or Enter|Home and End|hovering a selected subtitle|last multi-row waveform|requires a second B\" --project=chromium`（6/6 通过）；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（113/113 通过）；`.venv\\Scripts\\python.exe edit.py --blank`; `python -m py_compile edit.py`; `git diff --check`。 |
@@ -39,6 +41,7 @@
 | 13 | 已修复 | 服务器启动路径同步读取自研波形，跳过启动阶段的 `.ReaPeaks` 解析；服务器开始提供请求后由后台线程加载频谱和 ReaPeaks 波形，并通过 `/api/waveform` 返回 `loading` / `ready` 状态，编辑器轮询后动态增强显示。`.venv\\Scripts\\python.exe -m unittest tests.test_local_editor_server`（17/17 通过，其中新增阻塞后台解析时首页仍返回 200、状态最终变为 `ready` 的回归）；`.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（14/14）；`.venv\\Scripts\\python.exe edit.py --blank`；`node --check web\\editor.js`、`node --check web\\waveform.js`、`node --check web\\editor-i18n.js` 通过。 |
 | 14 | 已修复 | Launcher 消息中的 URL 正则在中文右括号、书名号、引号及常见句末标点前停止，不再把后续说明文字并入链接；`.venv\\Scripts\\python.exe -m unittest tests.test_gui_web.LauncherAssetContractTests.test_launcher_message_url_stops_before_closing_punctuation`（1/1）；`node --check web\\launcher\\launcher.js` 通过。 |
 | 15 | 已修复 | `--with-waveform` / Launcher 默认生成并嵌入 ReaPeaks wave 层，`--with-spectral` 或勾选“生成 ReaPeaks 频谱数据”才执行 FFT 并嵌入 spectral；只有波形层时编辑器自动取消并禁用频谱颜色，后台补齐频谱后恢复可用。`.venv\\Scripts\\python.exe -m unittest tests.test_reapeaks tests.test_media_cache tests.test_cli tests.test_gui_workflow tests.test_gui_web tests.test_local_asr`（250/250）；`node --test tests\\test_waveform_js.mjs tests\\test_editor_utils.mjs`（114/114）；相关 Python/JS 语法检查、`.venv\\Scripts\\python.exe edit.py --blank`、`git diff --check` 均通过。 |
+| 19 | 已修复 | `npx playwright test tests/e2e/multi-subtitle.spec.mjs --grep "Shift\\+arrow snaps selected main and secondary cues" --project=chromium`（1/1）；同时覆盖主字幕 `Shift+←`、副字幕 `Shift+→` 的贴合，并确认 current-cue-panel 的轨道目标正确。 |
 
 ## 询问项结论
 
@@ -50,8 +53,8 @@
 
 ## 阶段汇总（设置、缓存、Launcher/OCR）
 
-- 已完成第 1、3、5、8、9 项。第 1 项用限长缓存媒体生成波形/频谱，但写回原始媒体签名，并增加频谱生成提示；第 3 项收紧 OCR 就绪判断、安装后刷新、按钮布局、识别结果间距和产物高亮；第 5 项补齐全局设置、Alt/ESC 行为、波形“操作”分类和延长默认值；第 8、9 项的播放/波形与 Launcher/LLM 反馈也已完成。
-- 已验证：编辑器/波形/i18n/Launcher/后处理脚本语法通过；Node 113/113 通过；Python 相关批次 210/210 通过；便携版已重新生成。`uv run` 因本机 uv 缓存权限失败，使用仓库 `.venv` 完成 Python 验证。
+- 已完成第 1、3、5、8、9、19 项。第 1 项用限长缓存媒体生成波形/频谱，但写回原始媒体签名，并增加频谱生成提示；第 3 项收紧 OCR 就绪判断、安装后刷新、按钮布局、识别结果间距和产物高亮；第 5 项补齐全局自动吸附设置、current-cue-panel 的 Esc 操作设置和延长默认值；第 19 项补齐多重字幕主轨/副轨的 `Shift+←/→` 显式边界贴合；第 8、9 项的播放/波形与 Launcher/LLM 反馈也已完成。
+- 已验证：编辑器/波形/i18n/Launcher/后处理脚本语法通过；当前编辑器 Node 回归 116/116 通过，`tests.test_waveform` 15/15 通过；便携版已重新生成。`uv run` 因本机 uv 缓存权限失败，使用仓库 `.venv` 完成 Python 验证。
 - 当前剩余修改项：无。第 13、14、16 项已完成；第 2、10、11、12、17 项为说明项，无需修改。
 
 ## 增量记录（任务 13、14：启动解耦与链接范围）
@@ -132,3 +135,19 @@
 - 任务 17 当前只记录设计结论：统一媒体旁缓存是可行的，建议使用带媒体 `name / size / modified_ms` 签名的独立容器，内部放自研波形、ReaPeaks wave 层和可选 spectral 层；Server/桌面 GUI 可按媒体路径自动查找，单文件浏览器只能在用户同时提供缓存文件或工程内已有缓存时复用，不能绕过浏览器对相邻文件的访问限制。旧 `.ReaPeaks` 与 `.waveform.json` 应保留只读兼容后再迁移，避免一次性改写已有缓存协议。
 
 已验证：`node --check web\\waveform.js`；`node --test tests\\test_waveform_js.mjs`（36/36）；`.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（15/15）；`.venv\\Scripts\\python.exe edit.py --blank`；`git diff --check`。未实施任务 17 的缓存协议重构，因此没有宣称拖入长视频已支持自动读取统一缓存。
+
+## 增量记录（任务 18：自动后处理产物契约与媒体路径）
+
+- 原因：`run_postprocess_pipeline()` 每完成一步都会读取 `artifact.translated_srt_path`，但 OCR 返回的 `OcrDedupArtifact` 没有这个可选字段，因此 OCR 作为最后一步或中间一步都会在 OCR 写出后失败；这不是 OCR 识别失败。
+- 修复：OCR 产物补齐 `translated_srt_path=None`；后处理写出统一接收当前 `media_path`，仅在输入工程缺少 `media` 时补写绝对路径，并贯通翻译、固定替换、文稿匹配、OCR 和独立 OCR runtime。工具箱从 SRT 输入时也把当前媒体传给后端。
+- 已修复项没有覆盖已有工程的 `media`：如果工程已有媒体字段，即使 Launcher 表单中残留另一条媒体路径，也不会覆盖它。
+
+已验证：`.venv\\Scripts\\python.exe -m unittest tests.test_postprocess tests.test_postprocess_match tests.test_postprocess_ocr tests.test_postprocess_pipeline tests.test_gui_web tests.test_ocr_runtime`（214/214）；`node --check web\\launcher\\postprocess.js`；`git diff --check`。全量 Python 共 580 个测试，其中 4 个既有 ReaPeaks fixture 用例因 `tests\\test_data` 写入权限失败，其余通过。
+
+## 增量记录（任务 5、19：时间调整快捷键与编辑 Esc）
+
+- 全局设置现在只提供「自动吸附调整相邻字幕」，默认关闭；关闭时普通移动、边界微调和共享边界拖动默认独立，按住 `Alt` 临时联动；开启时默认联动，按住 `Alt` 临时独立。`Alt` 始终是临时反转操作，不再单独配置 Alt 功能。
+- `Esc` 设置已从全局设置和波形拖动移除，放入 `current-cue-panel` 齿轮的「操作」类别；「Esc 取消编辑」默认关闭。关闭时 `Esc` 提交文本改动并退出，开启时恢复进入编辑前的文本。
+- `Shift+←/→` 是显式的直接边界贴合操作，不受自动吸附开关影响；多重字幕模式下根据当前字幕面板目标分别操作主轨或副轨，左/右方向分别贴合前一条结尾或后一条开头，不移动邻居。
+
+已验证：`node --test tests\\test_waveform_js.mjs tests\\test_editor_utils.mjs`（116/116）；`.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（15/15）；自动吸附与键盘回归 5/5；current-cue-panel Esc 回归 1/1；多重字幕 `Shift+←/→` 主轨/副轨回归 1/1；`npm run sync:docs` 已同步网站文档；`git diff --check` 通过。网站 `npm run check` 因本机 `website/node_modules` 缺少 `astro` 未能执行，文档类型检查未验证。

@@ -215,6 +215,52 @@ test('moves one shared boundary while preserving both cue durations', () => {
 });
 
 
+test('finds the active cue in a gap and prefers the cue at a shared boundary', () => {
+  const segments = [
+    { start: 0, end: 1000 },
+    { start: 2000, end: 3000 },
+    { start: 3000, end: 4200 },
+  ];
+  assert.equal(helpers.findActiveCueIndex(segments, 1500), 0);
+  assert.equal(helpers.findActiveCueIndex(segments, 3000), 2);
+  assert.equal(helpers.findActiveCueIndex(segments, 5000), 2);
+});
+
+
+test('skips disabled cues while finding the active waveform cue', () => {
+  const segments = [
+    { start: 0, end: 1000 },
+    { start: 1000, end: 2000, disabled: true },
+    { start: 3000, end: 4000 },
+  ];
+  assert.equal(helpers.findActiveCueIndex(segments, 1500), 0);
+  assert.equal(helpers.findActiveCueIndex(segments, 2500), 0);
+  assert.equal(helpers.findActiveCueIndex(segments, 3000), 2);
+  assert.equal(helpers.findActiveCueIndex(segments, 1500, false), 1);
+});
+
+
+test('locates the first cue overlapping a waveform row without scanning earlier cues', () => {
+  const segments = [
+    { start: 0, end: 900 },
+    { start: 900, end: 1800 },
+    { start: 1750, end: 2300 },
+    { start: 3000, end: 3600 },
+  ];
+  assert.equal(helpers.firstCueIndexOverlapping(segments, 1800), 2);
+  assert.equal(helpers.firstCueIndexOverlapping(segments, 2300), 3);
+  assert.equal(helpers.firstCueIndexOverlapping(segments, 3600), 4);
+});
+
+
+test('Alt temporarily reverses the automatic adjacent-cue setting', () => {
+  assert.equal(helpers.shouldAdjustAdjacentCuesIndependently(false, false), true);
+  assert.equal(helpers.shouldAdjustAdjacentCuesIndependently(true, false), false);
+  assert.equal(helpers.shouldAdjustAdjacentCuesIndependently(false, true), false);
+  assert.equal(helpers.shouldAdjustAdjacentCuesIndependently(true, true), true);
+});
+
+
 test('Alt-drag moves only the hit side of a shared boundary, leaving the neighbor untouched', () => {
   // 共享边界在 1000：默认拖动会同时改左侧 end 和右侧 start；Alt 独立拖动只改被命中一侧。
   const segments = [
@@ -232,6 +278,30 @@ test('Alt-drag moves only the hit side of a shared boundary, leaving the neighbo
   assert.deepEqual(JSON.parse(JSON.stringify(segments)), [
     { start: 0, end: 800, items: [{ text: 'A', start: 0, end: 800 }] },
     { start: 1500, end: 2200, items: [{ text: 'B', start: 1500, end: 2200 }] },
+  ]);
+
+  // 独立拉开后，边界仍应允许反向拖回；邻字幕的固定边界是限制，
+  // 不能使用“当前值”作为单向上限或下限。
+  const reversibleEnd = [
+    { start: 0, end: 1000 },
+    { start: 1000, end: 2200 },
+  ];
+  helpers.applyIndependentEdge(reversibleEnd, 0, 'end', 800, 100);
+  helpers.applyIndependentEdge(reversibleEnd, 0, 'end', 900, 100);
+  assert.deepEqual(JSON.parse(JSON.stringify(reversibleEnd)), [
+    { start: 0, end: 900 },
+    { start: 1000, end: 2200 },
+  ]);
+
+  const reversibleStart = [
+    { start: 0, end: 1000 },
+    { start: 1000, end: 2200 },
+  ];
+  helpers.applyIndependentEdge(reversibleStart, 0, 'start', 1200, 100);
+  helpers.applyIndependentEdge(reversibleStart, 0, 'start', 1100, 100);
+  assert.deepEqual(JSON.parse(JSON.stringify(reversibleStart)), [
+    { start: 0, end: 1000 },
+    { start: 1100, end: 2200 },
   ]);
 });
 

@@ -9,6 +9,7 @@ from unittest import mock
 
 from maw.gui_web import LauncherApi, LauncherPaths, _request_from_payload
 from maw.postprocess_io import SubtitleArtifact
+from maw.postprocess_ocr import OcrDedupArtifact
 from maw.postprocess_pipeline import (
     PostprocessCancelled,
     PostprocessPipelineError,
@@ -94,9 +95,11 @@ class PostprocessPipelineTests(unittest.TestCase):
             translated_artifact=SubtitleArtifact(self.project, self.srt, translated_project, translated_srt),
             target="en",
             output_directory=self.root / "run",
+            media_path=self.media,
         )
         combined = json.loads(result.project_path.read_text(encoding="utf-8"))
 
+        self.assertEqual(combined["media"], str(self.media.resolve()))
         self.assertEqual([segment["text"] for segment in combined["segments"]], ["原文一", "原文二"])
         self.assertEqual(combined["segments"][0]["items"][0]["text"], "原文一")
         self.assertTrue(combined["multi_subtitle"]["enabled"])
@@ -217,6 +220,46 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertIn('"text": "错字"', self.project.read_text(encoding="utf-8"))
         self.assertIn("正字", result.srt_path.read_text(encoding="utf-8"))
         self.assertEqual([event["stage"] for event in events if event["stage"] in {"step_start", "step_done"}], ["step_start", "step_done"])
+
+    def test_pipeline_accepts_ocr_as_the_last_step(self) -> None:
+        video = self.root / "clip.mp4"
+        ffmpeg = self.root / "ffmpeg.exe"
+        video.write_bytes(b"video")
+        ffmpeg.write_bytes(b"ffmpeg")
+        ocr_project = self.root / "ocr-output.mosp"
+        ocr_srt = self.root / "ocr-output.srt"
+        ocr_project.write_text(self.project.read_text(encoding="utf-8"), encoding="utf-8")
+        ocr_srt.write_text(self.srt.read_text(encoding="utf-8"), encoding="utf-8")
+        artifact = OcrDedupArtifact(
+            source_project_path=self.project,
+            source_srt_path=self.srt,
+            project_path=ocr_project,
+            srt_path=ocr_srt,
+            report_path=None,
+        )
+        plan = self.plan({
+            "id": "ocr",
+            "enabled": True,
+            "videoPath": str(video),
+            "regionMode": "full",
+            "threshold": 0.5,
+        })
+
+        with mock.patch("maw.postprocess_pipeline.run_ocr_dedup", return_value=artifact):
+            result = run_postprocess_pipeline(
+                plan,
+                media_path=self.media,
+                project_path=self.project,
+                srt_path=self.srt,
+                env_path=self.env_path,
+                ffmpeg_path=ffmpeg,
+                cancel_event=Event(),
+            )
+
+        self.assertEqual(result.completed_steps, ("ocr",))
+        self.assertIsNone(result.translated_srt_path)
+        self.assertTrue(result.project_path.is_file())
+        self.assertTrue(result.srt_path.is_file())
 
     def test_pipeline_retains_workspace_and_can_resume_after_failure(self) -> None:
         plan = self.plan(self.replace_step(), self.match_step(), retain=True)
