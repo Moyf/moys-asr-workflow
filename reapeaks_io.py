@@ -20,15 +20,8 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import reapeaks_generate
+import reapeaks as rust_generate
 import waveform as waveform_module
-
-try:
-    import reapeaks as rust_generate  # noqa: F401
-
-    HAS_RUST = True
-except ImportError:
-    HAS_RUST = False
 
 MAGIC_V10 = b"RPKM"  # v1.0: min == -max (mirrored)
 MAGIC_V11 = b"RPKN"  # v1.1: explicit min/max
@@ -444,10 +437,12 @@ def generate_reapeaks_stream_bytes(
 
     Only the current ffmpeg chunk and the generator's bounded accumulators are
     in memory; the full PCM never materializes. Returns None when ffmpeg is
-    missing, the media has no decodable audio, or generation fails.
+    missing, the media has no decodable audio, or the Rust kernel fails; each
+    failure mode logs a distinct reason instead of degrading silently.
     """
     ffmpeg = resolve_ffmpeg(ffmpeg_bin)
     if not ffmpeg:
+        print("[reapeaks] 缺少 ffmpeg，跳过 .ReaPeaks 生成")
         return None
     try:
         proc = subprocess.Popen(
@@ -469,20 +464,19 @@ def generate_reapeaks_stream_bytes(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        assert proc.stdout is not None
-        assert proc.stderr is not None
+    except OSError as exc:
+        print(f"[reapeaks] 启动 ffmpeg 失败: {exc}")
+        return None
+    assert proc.stdout is not None
+    assert proc.stderr is not None
+    try:
         header = proc.stdout.read(4096)
         parsed = _parse_wav_header(header)
         if parsed is None:
-            proc.kill()
-            proc.stdout.close()
-            proc.stderr.close()
-            proc.wait()
+            print("[reapeaks] 解码失败：无法解析 ffmpeg 输出的 WAV 头")
             return None
         channels, sample_rate, data_off = parsed
-        # Rust 内核优先（1-4MB 块内并行 + GIL 释放），Python 参考回退。
-        # 与 reapeaks_generate 全量输出对齐：wave+spectral+loudness 三层。
-        if HAS_RUST:
+        try:
             features = (
                 ["wave", "spectral", "loudness"]
                 if include_spectral
@@ -493,14 +487,10 @@ def generate_reapeaks_stream_bytes(
                 features=features,
                 mipmap_levels=3,
             )
-            read_size = 1 * 1024 * 1024
-        else:
-            streamer = reapeaks_generate._ReaPeaksStreamer(
-                sample_rate,
-                channels,
-                include_spectral=include_spectral,
-            )
-            read_size = 64 * 1024
+        except Exception as exc:  # noqa: BLE001 - 构造失败必须响亮，不静默降级
+            print(f"[reapeaks] Rust 内核初始化失败: {exc}")
+            return None
+        read_size = 1 * 1024 * 1024
         if data_off < len(header):
             streamer.feed(header[data_off:])
         while True:
@@ -509,15 +499,27 @@ def generate_reapeaks_stream_bytes(
                 break
             streamer.feed(chunk)
         stderr = proc.stderr.read().decode("utf-8", errors="replace").strip()
-        proc.stdout.close()
-        proc.stderr.close()
         if proc.wait() != 0:
+            print(f"[reapeaks] 解码失败：ffmpeg 退出码 {proc.returncode}"
+                  + (f"（{stderr}）" if stderr else ""))
             return None
         if stderr:
+            print(f"[reapeaks] 解码失败：{stderr}")
             return None
-        return streamer.finish(src_timestamp=src_timestamp, src_filesize=src_filesize)
-    except Exception:
+        try:
+            return streamer.finish(src_timestamp=src_timestamp, src_filesize=src_filesize)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[reapeaks] Rust 内核生成失败: {exc}")
+            return None
+    except Exception as exc:  # noqa: BLE001
+        print(f"[reapeaks] .ReaPeaks 生成失败: {exc}")
         return None
+    finally:
+        proc.stdout.close()
+        proc.stderr.close()
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
 
 
 def generate_for_media(
@@ -569,8 +571,11 @@ def generate_for_media(
         if data is None:
             return None
         target.write_bytes(data)
-    except Exception:
-        # 生成是兜底：任何失败（含 numpy 缺失）都不阻断转写/启动流程。
+    except Exception as exc:  # noqa: BLE001
+        # 生成是兜底：任何失败都不阻断转写/启动流程。具体原因（缺 ffmpeg /
+        # 解码失败 / Rust 内核故障）由 generate_reapeaks_stream_bytes 打日志，
+        # 这里的异常仅剩写文件或取 stat 等罕见兜底路径。
+        print(f"[reapeaks] .ReaPeaks 生成失败: {exc}")
         return None
     return target
 

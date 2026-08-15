@@ -13,12 +13,6 @@ from pathlib import Path
 import media_cache
 import reapeaks_io as reapeaks
 
-try:
-    import numpy  # noqa: F401
-    HAS_NUMPY = True
-except ImportError:
-    HAS_NUMPY = False
-
 
 def _make_tone(path: Path) -> None:
     """1s 440Hz 单声道 wav。"""
@@ -46,7 +40,6 @@ class MediaCacheTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
-    @unittest.skipUnless(HAS_NUMPY, "numpy is required")
     def test_embeds_waveform_and_wave_only_reapeaks_by_default(self) -> None:
         result = media_cache.embed_media_caches(self.project, self.wav)
         # 波形已嵌入工程
@@ -64,7 +57,6 @@ class MediaCacheTests(unittest.TestCase):
         self.assertIsNotNone(reapeaks.load_waveform_payload(self.wav))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
-    @unittest.skipUnless(HAS_NUMPY, "numpy is required")
     def test_embeds_spectral_when_explicitly_requested(self) -> None:
         result = media_cache.embed_media_caches(
             self.project,
@@ -76,7 +68,6 @@ class MediaCacheTests(unittest.TestCase):
         self.assertIsNotNone(reapeaks.load_spectral_payload(self.wav))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
-    @unittest.skipUnless(HAS_NUMPY, "numpy is required")
     def test_test_mode_cache_uses_limited_media_but_keeps_source_signature(self) -> None:
         source = self.root / "source.mp4"
         cache_media = self.root / "limited.wav"
@@ -97,7 +88,6 @@ class MediaCacheTests(unittest.TestCase):
         self.assertGreater(result.project["waveform"]["duration_ms"], 0)
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
-    @unittest.skipUnless(HAS_NUMPY, "numpy is required")
     def test_reapeaks_cache_lands_next_to_source_media(self) -> None:
         """临时缓存媒体的 .ReaPeaks 必须落到源媒体旁并记录源签名。
 
@@ -127,7 +117,6 @@ class MediaCacheTests(unittest.TestCase):
         self.assertIsNotNone(reapeaks.load_waveform_payload(source))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
-    @unittest.skipUnless(HAS_NUMPY, "numpy is required")
     def test_missing_media_degrades_to_warning(self) -> None:
         missing = self.root / "missing.mp3"
         result = media_cache.embed_media_caches(self.project, missing)

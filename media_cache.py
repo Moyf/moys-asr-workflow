@@ -107,7 +107,7 @@ def embed_media_caches(
         # 避免「缺少 ffmpeg 或 numpy」的误导。
         print(f"[reapeaks] 警告: 缓存媒体不存在，已跳过生成: {cache_path}")
     else:
-        print("[reapeaks] 已跳过 ReaPeaks 缓存生成（缺少 ffmpeg/numpy 或解码失败）")
+        print("[reapeaks] 已跳过频谱缓存生成（原因见上方 [reapeaks] 日志）")
     return MediaCacheResult(
         project=project,
         waveform_error=waveform_result.error,
