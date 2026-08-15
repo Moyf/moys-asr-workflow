@@ -257,6 +257,37 @@ test('automatic adjacent snapping controls shared-boundary dragging and Alt reve
   ]);
 });
 
+test('an independent shared-boundary drag can reverse before release', async ({ page }) => {
+  await loadAttachedCues(page);
+  const handle = page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-handle.right').first();
+  const handleBox = await stableVisibleBoundingBox(page, handle);
+  const row = handle.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
+  const rowBox = await row.boundingBox();
+  const rowStart = Number(await row.getAttribute('data-start-ms'));
+  const rowEnd = Number(await row.getAttribute('data-end-ms'));
+  expect(rowBox).not.toBeNull();
+  expect(rowEnd).toBeGreaterThan(rowStart);
+
+  const startX = handleBox.x + handleBox.width / 2;
+  const y = handleBox.y + handleBox.height / 2;
+  const deltaX = (rowBox.width * -500) / (rowEnd - rowStart);
+  await page.mouse.move(startX, y);
+  await page.mouse.down();
+  await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);
+  await page.mouse.move(startX + deltaX, y, { steps: 5 });
+  await expect.poll(() => page.evaluate(() => DATA.segments[0].end)).toBe(9500);
+
+  // 回到按下时的共享边界；旧逻辑会把 9500 当成单向上限，无法回到 10000。
+  await page.mouse.move(startX, y, { steps: 5 });
+  await expect.poll(() => page.evaluate(() => DATA.segments[0].end)).toBe(10000);
+  await page.mouse.up();
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 10000 },
+    { start: 10000, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+});
+
 test('explicit Shift snapping remains available when automatic adjacent snapping is off', async ({ page }) => {
   await loadAttachedCues(page);
   await page.evaluate(() => {
