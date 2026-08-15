@@ -15,26 +15,38 @@ mkdir -p "$BUILD_DIR"
 echo "==> 1/6 PyInstaller 构建 dist/MAW"
 uv run --group build pyinstaller --noconfirm --clean MAW.spec
 
-echo "==> 2/6 准备静态 ffmpeg（johnvansickle）"
-FFMPEG_TARBALL="$BUILD_DIR/ffmpeg-release-amd64-static.tar.xz"
-FFMPEG_URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+echo "==> 2/6 准备静态 ffmpeg（BtbN FFmpeg-Builds，固定 autobuild 版本）"
+FFMPEG_VERSION="N-126134-gc48230eb86"
+FFMPEG_TARBALL="$BUILD_DIR/ffmpeg-${FFMPEG_VERSION}-linux64-gpl.tar.xz"
+FFMPEG_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-14-13-16/ffmpeg-${FFMPEG_VERSION}-linux64-gpl.tar.xz"
+FFMPEG_SHA256="9e49d517f47031140e45fae1813325482b1fd0a886a15d9977ac75cfec1cab05"
 FFMPEG_DIR="$BUILD_DIR/ffmpeg-static"
 # 静态版自包含 libstdc++ 依赖，不受 PyInstaller 的 _internal 旧库污染；
 # 动态版 ffmpeg 若打进包内，AppRun 污染环境下照样会 GLIBCXX 报错。
-if [ ! -x "$FFMPEG_DIR/ffmpeg" ]; then
+# BtbN autobuild 固定版本 + 写死 SHA256：版本与校验双固定，完全可复现；
+# 升级时改 FFMPEG_VERSION / FFMPEG_URL / FFMPEG_SHA256 三处即可
+# （checksums 见 https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-08-14-13-16）。
+if [ ! -x "$FFMPEG_DIR/bin/ffmpeg" ]; then
     if [ ! -f "$FFMPEG_TARBALL" ]; then
         echo "    下载静态 ffmpeg..."
         curl -sL --retry 3 --retry-delay 2 -o "$FFMPEG_TARBALL" "$FFMPEG_URL"
     fi
+    echo "    校验静态 ffmpeg 完整性..."
+    if ! echo "$FFMPEG_SHA256  $FFMPEG_TARBALL" | sha256sum -c - >/dev/null; then
+        echo "错误：ffmpeg 下载校验和不匹配（$FFMPEG_TARBALL），已删除请重试。" >&2
+        rm -f "$FFMPEG_TARBALL"
+        exit 1
+    fi
     mkdir -p "$FFMPEG_DIR"
     tar -xf "$FFMPEG_TARBALL" -C "$FFMPEG_DIR" --strip-components=1
-    chmod +x "$FFMPEG_DIR/ffmpeg" "$FFMPEG_DIR/ffprobe"
+    chmod +x "$FFMPEG_DIR/bin/ffmpeg" "$FFMPEG_DIR/bin/ffprobe"
 fi
 # 放入 PyInstaller onedir 产物：frozen 时 _bundled_ffmpeg_directory() 查
-# sys.executable.parent / ffmpeg / bin（即 dist/MAW/ffmpeg/bin）
+# sys.executable.parent / ffmpeg / bin（即 dist/MAW/ffmpeg/bin）。BtbN 包内
+# 二进制位于解压根目录的 bin/ 子目录（与 johnvansickle 的根目录布局不同）。
 mkdir -p "dist/MAW/ffmpeg/bin"
-cp "$FFMPEG_DIR/ffmpeg" "$FFMPEG_DIR/ffprobe" "dist/MAW/ffmpeg/bin/"
-echo "    静态 ffmpeg: $("$FFMPEG_DIR/ffmpeg" -version 2>&1 | head -n 1)"
+cp "$FFMPEG_DIR/bin/ffmpeg" "$FFMPEG_DIR/bin/ffprobe" "dist/MAW/ffmpeg/bin/"
+echo "    静态 ffmpeg: $("$FFMPEG_DIR/bin/ffmpeg" -version 2>&1 | head -n 1)"
 
 echo "==> 3/6 组装 AppDir"
 if [ -d "$APP_DIR" ]; then
