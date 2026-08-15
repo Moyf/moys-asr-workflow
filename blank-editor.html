@@ -7929,18 +7929,19 @@
     const value = roundMs(valueMs);
     if (edge === 'end') {
       const lower = left.start + minDuration;
-      const upper = Number.isFinite(left.end) ? left.end : Infinity;
-      // 不越过右侧段的起始，避免产生负时长或重叠；但不强制拉动邻居。
-      const ceiling = Number.isFinite(right.start) ? right.start : upper;
-      const next = clamp(value, lower, Math.min(upper, ceiling));
+      // 右侧字幕保持不动；使用它的起点作为固定上限，不能把当前值
+      // 当作上限，否则边界第一次向左拉开后就无法再向右回拖。
+      const upper = Number.isFinite(right.start) ? right.start : Infinity;
+      const next = clamp(value, lower, upper);
       const oldEnd = left.end;
       left.end = next;
       left.items = remapItems(left.items, left.start, oldEnd, left.start, next);
     } else {
       const upper = right.end - minDuration;
-      const floor = Number.isFinite(right.start) ? right.start : 0;
-      const base = Number.isFinite(left.end) ? left.end : floor;
-      const next = clamp(value, Math.max(floor, base), upper);
+      // 左侧字幕保持不动；使用它的终点作为固定下限，同样允许边界
+      // 在拉开后反向回到邻字幕边界。
+      const lower = Number.isFinite(left.end) ? left.end : 0;
+      const next = clamp(value, lower, upper);
       const oldStart = right.start;
       right.start = next;
       right.items = remapItems(right.items, oldStart, right.end, next, right.end);
