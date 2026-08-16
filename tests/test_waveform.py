@@ -498,16 +498,25 @@ class EditorAssetTests(unittest.TestCase):
         page = edit.build_blank_html()
         for marker in (
             'id="ninja-mode"',
+            'id="ninja-sound"',
+            'id="ninja-sound-field"',
             'id="ninja-slash-effect"',
             'id="ninja-slash-effect-field"',
+            'id="ninja-slash-params-field"',
+            'id="ninja-slash-length"',
+            'id="ninja-slash-rotate"',
             'const NINJA_SFX_BASE_URL = "web/sfx/";',
             'const NINJA_SFX_HISTORY = [];',
             'function triggerNinjaSplitFeedback(',
-            'sfx_katana_slash_01.ogg',
             'sfx_katana_slash_01.opus',
+            '播放音效',
+            '刀光长度',
+            '随机旋转幅度',
             '打开字幕忍者模式，让拆分字幕变得更加有趣',
         ):
             self.assertIn(marker, page)
+        # 仓库只内置 Opus 音效；OGG 备选格式已移除。
+        self.assertNotIn('sfx_katana_slash_01.ogg', page)
 
     def test_user_text_that_looks_like_a_template_token_is_preserved(self) -> None:
         page = edit.render_editor_page(

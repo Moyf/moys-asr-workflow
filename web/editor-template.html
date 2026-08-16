@@ -702,12 +702,31 @@ __WAVEFORM_CSS__
     <div class="editor-settings-sub-group">
       <span class="editor-settings-title">其他</span>
       <div class="editor-settings-toggle-group ninja-toggle-group">
-        <label class="toggle editor-settings-item" title="开启后，分割工具改用 🔪 图标，成功拆分时播放刀光音效">
+        <label class="toggle editor-settings-item" title="开启后，分割工具改用 🔪 图标，并可启用拆分音效与刀光特效">
           <input type="checkbox" id="ninja-mode"> 字幕忍者
+        </label>
+        <label class="toggle editor-settings-item" id="ninja-sound-field" title="开启后，成功拆分时播放随机刀光音效" hidden>
+          <input type="checkbox" id="ninja-sound" checked> 播放音效
         </label>
         <label class="toggle editor-settings-item" id="ninja-slash-effect-field" title="开启后，成功拆分时在屏幕上显示一道白色刀光" hidden>
           <input type="checkbox" id="ninja-slash-effect" checked> 显示刀光特效
         </label>
+        <div class="ninja-slash-params" id="ninja-slash-params-field" hidden>
+          <label class="ninja-slash-param" title="刀光长度，按视口高度的百分比计算">
+            刀光长度
+            <span class="gap-remove-number-control">
+              <input id="ninja-slash-length" type="number" min="20" max="400" step="5" value="80">
+              <span class="gap-remove-unit">%</span>
+            </span>
+          </label>
+          <label class="ninja-slash-param" title="0 度为完全垂直；30 度表示在左右各 30 度范围内随机倾斜">
+            随机旋转幅度
+            <span class="gap-remove-number-control">
+              <input id="ninja-slash-rotate" type="number" min="0" max="60" step="1" value="6">
+              <span class="gap-remove-unit">°</span>
+            </span>
+          </label>
+        </div>
         <small class="editor-settings-hint">打开字幕忍者模式，让拆分字幕变得更加有趣</small>
       </div>
     </div>

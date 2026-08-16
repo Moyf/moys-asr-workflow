@@ -31,9 +31,8 @@ if str(ROOT) not in sys.path:
 
 NINJA_SFX_ROOT = ROOT / "web" / "sfx"
 NINJA_SFX_NAMES = frozenset(
-    f"sfx_katana_slash_{index:02d}.{extension}"
+    f"sfx_katana_slash_{index:02d}.opus"
     for index in range(1, 5)
-    for extension in ("ogg", "opus")
 )
 mimetypes.add_type("audio/ogg", ".opus")
 

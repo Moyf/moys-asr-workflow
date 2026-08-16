@@ -926,6 +926,16 @@
     flex: 0 0 100%; gap: 3px 12px; align-items: center;
   }
   .ninja-toggle-group > .editor-settings-hint { grid-column: 1 / -1; }
+  /* 刀光参数行：刀光特效开启后显示在开关下一行，横向排列长度与旋转幅度。 */
+  .ninja-slash-params {
+    grid-column: 1 / -1;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 3px 16px;
+  }
+  .ninja-slash-params[hidden] { display: none; }
+  .ninja-slash-param {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--text-muted); font-size: 12px; white-space: nowrap;
+  }
   .editor-settings-panel select {
     background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);
     border-radius: var(--radius-sm); padding: 4px 6px; font-size: 12px; cursor: pointer;
@@ -2182,7 +2192,7 @@
     --slash-linger: 120ms;
     --slash-x: 50%;
     --slash-y: 50%;
-    --slash-height: 190%;
+    --slash-height: 80%;
   }
   /* 锋利刃芯：参考横向渐变线改为纵向，边缘淡出，中段保持纯白。 */
   #ninja-slash-flash::before,
