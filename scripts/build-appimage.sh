@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 构建 MAW Linux AppImage。产物：build-appimage/MAW-x86_64.AppImage
+# 构建 MAW Linux AppImage。产物：build-appimage/MAW-Linux-x86_64.AppImage
 # 前置：系统需有 ffmpeg（生成图标）与 mksquashfs（appimagetool 内部使用）。
 set -euo pipefail
 
@@ -130,13 +130,13 @@ if [ ! -x "$APPIMAGE_TOOL" ]; then
 fi
 
 echo "==> 5/6 打包 AppImage"
-"$APPIMAGE_TOOL" --appimage-extract-and-run "$APP_DIR" "$BUILD_DIR/MAW-x86_64.AppImage"
+"$APPIMAGE_TOOL" --appimage-extract-and-run "$APP_DIR" "$BUILD_DIR/MAW-Linux-x86_64.AppImage"
 
 echo "==> 6/6 生成缩略图缓存（缺 libappimage 的系统上让文件管理器显示图标）"
-if uv run python "$REPO_ROOT/scripts/make-appimage-thumbnail.py" "$BUILD_DIR/MAW-x86_64.AppImage"; then
+if uv run python "$REPO_ROOT/scripts/make-appimage-thumbnail.py" "$BUILD_DIR/MAW-Linux-x86_64.AppImage"; then
     echo "    缩略图缓存已生成"
 else
     echo "    警告：缩略图缓存生成失败（不影响 AppImage 本身）"
 fi
 
-echo "==> 完成：$BUILD_DIR/MAW-x86_64.AppImage"
+echo "==> 完成：$BUILD_DIR/MAW-Linux-x86_64.AppImage"

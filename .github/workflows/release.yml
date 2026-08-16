@@ -214,8 +214,8 @@ jobs:
             platform: linux
             os: ubuntu-22.04
             arch: x64
-            asset: MAW-x86_64
-            paths: build-appimage/MAW-x86_64*.AppImage
+            asset: MAW-Linux-x86_64
+            paths: build-appimage/MAW-Linux-x86_64*.AppImage
     runs-on: ${{ matrix.os }}
     env:
       PYTHONUTF8: '1'
@@ -425,7 +425,7 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           set -euo pipefail
-          AppImage="build-appimage/MAW-x86_64.AppImage"
+          AppImage="build-appimage/MAW-Linux-x86_64.AppImage"
           test -f "$AppImage"
           test -x "$AppImage"
           file "$AppImage" | grep -q 'ELF 64-bit'
@@ -435,7 +435,7 @@ jobs:
         run: |
           set -euo pipefail
           cd build-appimage
-          ./MAW-x86_64.AppImage --appimage-extract >/dev/null 2>&1
+          ./MAW-Linux-x86_64.AppImage --appimage-extract >/dev/null 2>&1
           if [ -e squashfs-root/_internal/libstdc++.so.6 ] || [ -e squashfs-root/_internal/libgcc_s.so.1 ] || [ -e squashfs-root/_internal/libgbm.so.1 ]; then
             echo "FAIL: AppImage 内置了 libstdc++/libgcc_s/libgbm，会污染系统 Mesa 驱动加载"
             exit 1
@@ -447,7 +447,7 @@ jobs:
         if: ${{ always() && matrix.platform == 'linux' }}
         run: |
           cd build-appimage
-          ./MAW-x86_64.AppImage --appimage-extract >/dev/null 2>&1 || true
+          ./MAW-Linux-x86_64.AppImage --appimage-extract >/dev/null 2>&1 || true
           echo "=== Qt6/lib 里 xcb-cursor 相关:"
           ls squashfs-root/_internal/PyQt6/Qt6/lib/ 2>/dev/null | grep -i xcb || echo "(无)"
           echo "=== libqxcb.so 缺失依赖:"
@@ -459,7 +459,7 @@ jobs:
         run: |
           set -euo pipefail
           cd build-appimage
-          ./MAW-x86_64.AppImage --appimage-extract >/dev/null 2>&1
+          ./MAW-Linux-x86_64.AppImage --appimage-extract >/dev/null 2>&1
           BIN="squashfs-root/ffmpeg/bin"
           test -x "$BIN/ffmpeg"
           test -x "$BIN/ffprobe"
@@ -476,7 +476,7 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           set -euo pipefail
-          AppImage="build-appimage/MAW-x86_64.AppImage"
+          AppImage="build-appimage/MAW-Linux-x86_64.AppImage"
           # 无 FUSE 环境用解压运行模式；timeout 命中（124）说明 GUI 事件循环在正常存活。
           # 20 秒足以确认 Launcher 正常起屏（正常启动只需数秒），到期被杀即视为通过。
           set +e
@@ -493,8 +493,8 @@ jobs:
         if: ${{ matrix.platform == 'linux' && startsWith(github.ref, 'refs/tags/v') }}
         run: |
           set -euo pipefail
-          mv "build-appimage/MAW-x86_64.AppImage" "build-appimage/MAW-x86_64-${{ github.ref_name }}.AppImage"
-          test -f "build-appimage/MAW-x86_64-${{ github.ref_name }}.AppImage"
+          mv "build-appimage/MAW-Linux-x86_64.AppImage" "build-appimage/MAW-Linux-x86_64-${{ github.ref_name }}.AppImage"
+          test -f "build-appimage/MAW-Linux-x86_64-${{ github.ref_name }}.AppImage"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
