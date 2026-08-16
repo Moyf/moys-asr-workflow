@@ -4992,7 +4992,13 @@ function splitItemsAtChar(
       safeSegmentEnd,
       Number.isFinite(rawEnd) ? rawEnd : safeSegmentEnd,
     );
-    return { start, end };
+    if (end > start) return { start, end };
+    // item 时间完全落在段范围之外（上游工程的病态时间码）：钳制后区间
+    // 倒置。丢弃会让词文本从 items 里消失，这里压到越界最近一侧的
+    // 最小可表达区间，保留词数据；分配循环仍按文本对齐决定归属侧。
+    return Number.isFinite(rawStart) && rawStart >= safeSegmentEnd
+      ? { start: Math.max(safeSegmentStart, safeSegmentEnd - 1), end: safeSegmentEnd }
+      : { start: safeSegmentStart, end: Math.min(safeSegmentEnd, safeSegmentStart + 1) };
   };
   const previous = [...records].reverse().find((record) => record.textEnd <= safeOffset);
   const next = records.find((record) => record.textStart >= safeOffset);
@@ -5076,6 +5082,16 @@ function splitItemsAtChar(
       // 退回顺序映射或异常 item 文本对齐时，仍不得让 item 穿过字幕边界。
       const end = Math.min(range.end, splitMs);
       if (end > range.start) leftItems.push({ ...record.item, start: range.start, end });
+    }
+  }
+  // 病态时间码被钳制到段尾/段头时，可能与相邻 item 挤占同一毫秒槽。
+  // 从后往前把前一项的 end 压到后一项的 start，保证 items 递增不重叠；
+  // 压到 0 长度的极端病态保留原样，交由保存前的校验暴露问题。
+  for (const items of [leftItems, rightItems]) {
+    for (let i = items.length - 1; i > 0; i--) {
+      if (items[i - 1].end > items[i].start && items[i - 1].start < items[i].start) {
+        items[i - 1].end = items[i].start;
+      }
     }
   }
   return { leftItems, rightItems, splitMs, hasItems };

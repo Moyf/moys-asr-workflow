@@ -1478,10 +1478,12 @@
     user-select: none;
   }
   /* 长工程仍保留列表语义和可搜索 DOM，但让浏览器跳过视口外字幕的
-     布局/绘制；滚动到该行时再按真实内容补算尺寸。 */
+     布局/绘制；滚动到该行时再按真实内容补算尺寸。占位高度必须贴近
+     真实行高（内容 21px + 上下 padding 12px + margin 4px ≈ 46px），
+     否则真实布局后 scrollHeight 收缩，已滚动的列表位置会被 clamp 走。 */
   .cues-container > .cue {
     content-visibility: auto;
-    contain-intrinsic-size: 0 56px;
+    contain-intrinsic-size: 0 46px;
   }
   .cue-split-flash {
     position: absolute;
