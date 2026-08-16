@@ -27,6 +27,20 @@ class MediaCacheResult:
     reapeaks_path: Path | None = None
 
 
+# 生成后需要合并进最终工程的缓存键。CLI 在临时目录存活期内先调用
+# embed_media_caches，工程其余字段（segments 等）后处理完成后再合并，
+# 避免缓存生成被挪到临时目录清理之后（v1.4.0 后回归的根因）。
+CACHE_KEYS = ("waveform", "spectral", "waveform_reapeaks")
+
+
+def merge_media_caches(target: dict[str, Any], result: MediaCacheResult) -> dict[str, Any]:
+    """把 ``result.project`` 里生成的缓存键合并进 ``target`` 工程。"""
+    for key in CACHE_KEYS:
+        if key in result.project:
+            target[key] = result.project[key]
+    return target
+
+
 def embed_media_caches(
     project: dict[str, Any],
     media_path: Path | str,
@@ -38,7 +52,9 @@ def embed_media_caches(
 
     ``media_path`` 是实际用于解码和生成缓存的文件；``source_media_path``
     是工程中记录的原始媒体。测试模式会把前者指向临时的 2 分钟音频，
-    但缓存的来源签名仍指向后者，避免工程加载时被误判为缓存失效。
+    但缓存的来源签名仍指向后者，避免工程加载时被误判为缓存失效；
+    ``.ReaPeaks`` 也写到源媒体旁（而非临时文件旁），临时目录清理后
+    服务器仍能从源媒体旁读到它。
 
     波形失败仅警告、ReaPeaks 失败仅跳过，与既有降级语义一致。
     ``generate_spectral`` 关闭时仍生成 ReaPeaks wave 层，但跳过频谱 FFT
@@ -67,6 +83,7 @@ def embed_media_caches(
     reapeaks_path = reapeaks.generate_for_media(
         cache_path,
         include_spectral=generate_spectral,
+        source_media_path=source_path,
     )
     if reapeaks_path is not None:
         cache_kind = "波形和频谱缓存" if generate_spectral else "波形缓存"
@@ -85,8 +102,12 @@ def embed_media_caches(
                 print(f"[reapeaks-wave] 已嵌入 {reapeaks_wave['peak_count']} peaks")
         except (OSError, ValueError, IndexError, struct.error) as error:
             print(f"[reapeaks] 警告: 无法读取已生成缓存: {error}")
+    elif not cache_path.exists():
+        # 常见于调用方把生成挪到了临时目录清理之后；明确指出真实原因，
+        # 避免「缺少 ffmpeg 或 numpy」的误导。
+        print(f"[reapeaks] 警告: 缓存媒体不存在，已跳过生成: {cache_path}")
     else:
-        print("[reapeaks] 已跳过 ReaPeaks 缓存生成（缺少 ffmpeg 或 numpy）")
+        print("[reapeaks] 已跳过 ReaPeaks 缓存生成（缺少 ffmpeg/numpy 或解码失败）")
     return MediaCacheResult(
         project=project,
         waveform_error=waveform_result.error,

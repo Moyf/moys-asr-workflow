@@ -502,6 +502,7 @@ def generate_for_media(
     *,
     ffmpeg_bin: str | None = None,
     include_spectral: bool = True,
+    source_media_path: Path | str | None = None,
 ) -> Path | None:
     """Best-effort .ReaPeaks generation for a media file, or the existing path.
 
@@ -511,15 +512,25 @@ def generate_for_media(
     ``include_spectral`` is true, already contains a spectral mipmap; stale or
     incomplete caches are rebuilt. The file is written next to the media so
     the server only ever reads it.
+
+    ``media_path`` is the file actually decoded (e.g. a limited-length
+    extraction inside a temporary working directory). ``source_media_path``
+    is the original media: the cache is written next to it and its mtime/size
+    are recorded in the header, so the server still finds and accepts the
+    cache after the temporary directory is gone. Defaults to ``media_path``
+    for unchanged single-file behavior.
     """
     media_path = Path(media_path)
-    existing = find_reapeaks(media_path)
-    if existing is not None and _reapeaks_matches_media(existing, media_path):
+    signature_path = (
+        Path(source_media_path) if source_media_path is not None else media_path
+    )
+    existing = find_reapeaks(signature_path)
+    if existing is not None and _reapeaks_matches_media(existing, signature_path):
         if not include_spectral or _reapeaks_contains_spectral(existing):
             return existing
-    target = media_path.with_name(media_path.name + ".ReaPeaks")
+    target = signature_path.with_name(signature_path.name + ".ReaPeaks")
     try:
-        src = media_path.stat()
+        src = signature_path.stat()
         src_timestamp = int(src.st_mtime)
         src_filesize = src.st_size
         if src_timestamp > 0x7FFFFFFF or src_filesize > 0x7FFFFFFF:

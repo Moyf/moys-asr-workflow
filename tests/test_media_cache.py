@@ -98,6 +98,36 @@ class MediaCacheTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     @unittest.skipUnless(HAS_NUMPY, "numpy is required")
+    def test_reapeaks_cache_lands_next_to_source_media(self) -> None:
+        """临时缓存媒体的 .ReaPeaks 必须落到源媒体旁并记录源签名。
+
+        回归：CLI 把提取音频放在 TemporaryDirectory 里，with 块退出后目录
+        即被删除；.ReaPeaks 若写在缓存媒体旁会随目录一起消失，源媒体旁永远
+        没有频谱缓存，编辑器的频谱颜色与 ReaPeaks 波形层随之失效。
+        """
+        source = self.root / "source.mp4"
+        shutil.copy2(self.wav, source)
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_media = Path(tmp) / "audio.wav"
+            shutil.copy2(self.wav, cache_media)
+            result = media_cache.embed_media_caches(
+                self.project,
+                cache_media,
+                source_media_path=source,
+                generate_spectral=True,
+            )
+        # with 块已退出、临时目录已删除：源媒体旁必须留有可用缓存
+        self.assertIsNotNone(result.reapeaks_path)
+        self.assertEqual(
+            Path(result.reapeaks_path), source.with_name(source.name + ".ReaPeaks")
+        )
+        self.assertTrue(Path(result.reapeaks_path).exists())
+        # server 从源媒体旁读取时，头部签名必须匹配
+        self.assertIsNotNone(reapeaks.load_spectral_payload(source))
+        self.assertIsNotNone(reapeaks.load_waveform_payload(source))
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    @unittest.skipUnless(HAS_NUMPY, "numpy is required")
     def test_missing_media_degrades_to_warning(self) -> None:
         missing = self.root / "missing.mp3"
         result = media_cache.embed_media_caches(self.project, missing)
