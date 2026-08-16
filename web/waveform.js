@@ -1375,6 +1375,14 @@
       );
     }
 
+    // 共享边界拖动期间，在「共享边界」状态文本旁提示当前“相邻字幕自动吸附”
+    // 模式；文案按用户设置显示默认模式，Alt 始终是临时反转修饰键。
+    adjacentSnapModeStatusHint() {
+      return this.options.getAutoSnapAdjacentCues?.() === true
+        ? '当前为相邻字幕自动吸附模式，按住 Alt 可以临时解除吸附。'
+        : '当前未启用相邻字幕自动吸附，按住 Alt 可以临时启用。';
+    }
+
     hasCueDrag() {
       return Boolean(this.drag || this.createCueDrag);
     }
@@ -4694,7 +4702,9 @@
       rightSegment.start = boundary;
       leftSegment.items = remapItems(left.items, left.start, left.end, left.start, boundary);
       rightSegment.items = remapItems(right.items, right.start, right.end, boundary, right.end);
-      this.setStatus(`共享边界 ${formatCompact(boundary)}`);
+      this.setStatus(`共享边界 ${formatCompact(boundary)} · ${this.adjacentSnapModeStatusHint()}`);
+      // 吸附模式提示只挂在「共享边界」状态上：共享边界拖动正是自动吸附
+      // 默认联动/独立两种模式的直接体现，Alt 可随时临时反转。
     }
 
     endCueDrag(event) {

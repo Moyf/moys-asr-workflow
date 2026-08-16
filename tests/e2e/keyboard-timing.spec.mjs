@@ -209,26 +209,26 @@ test('selected arrow keys move cues, adjust boundaries, and honor the configured
   ]);
 });
 
-test('automatic adjacent snapping is off by default and Alt temporarily enables it', async ({ page }) => {
+test('automatic adjacent snapping is on by default and Alt temporarily disables it', async ({ page }) => {
   await loadAttachedCues(page);
-  await expect(page.locator('#auto-snap-adjacent-cues')).not.toBeChecked();
+  await expect(page.locator('#auto-snap-adjacent-cues')).toBeChecked();
   await page.locator('.cue[data-idx="0"]').click();
   await page.keyboard.press('Control+Shift+ArrowRight');
-  await expect.poll(() => readTimings(page)).toEqual([
-    { start: 5000, end: 10000 },
-    { start: 10000, end: 18000 },
-    { start: 25000, end: 30000 },
-  ]);
-
-  await page.keyboard.press('Alt+Control+Shift+ArrowRight');
   await expect.poll(() => readTimings(page)).toEqual([
     { start: 5000, end: 10050 },
     { start: 10050, end: 18000 },
     { start: 25000, end: 30000 },
   ]);
+
+  await page.keyboard.press('Alt+Control+Shift+ArrowLeft');
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 10000 },
+    { start: 10050, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
 });
 
-test('automatic adjacent snapping controls shared-boundary dragging and Alt reverses it', async ({ page }) => {
+test('automatic adjacent snapping links shared-boundary dragging by default and Alt reverses it', async ({ page }) => {
   await loadAttachedCues(page);
   const dragSharedBoundary = async (altKey = false) => {
     const handle = page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-handle.right').first();
@@ -252,10 +252,13 @@ test('automatic adjacent snapping controls shared-boundary dragging and Alt reve
     if (altKey) await page.keyboard.up('Alt');
   };
 
+  // 默认开启：共享边界拖动联动相邻字幕；拖动期间状态栏提示当前吸附模式。
   await dragSharedBoundary();
+  await expect(page.locator('#waveform-status'))
+    .toContainText('当前为相邻字幕自动吸附模式，按住 Alt 可以临时解除吸附');
   await expect.poll(() => readTimings(page)).toEqual([
     { start: 5000, end: 9500 },
-    { start: 10000, end: 18000 },
+    { start: 9500, end: 18000 },
     { start: 25000, end: 30000 },
   ]);
 
@@ -264,16 +267,18 @@ test('automatic adjacent snapping controls shared-boundary dragging and Alt reve
     DATA.segments[1].start = 10000;
     renderAll();
   });
+  // Alt 临时反转：只移动当前字幕的边界，相邻字幕保持不动。
   await dragSharedBoundary(true);
   await expect.poll(() => readTimings(page)).toEqual([
     { start: 5000, end: 9500 },
-    { start: 9500, end: 18000 },
+    { start: 10000, end: 18000 },
     { start: 25000, end: 30000 },
   ]);
 });
 
 test('an independent shared-boundary drag can reverse before release', async ({ page }) => {
-  await loadAttachedCues(page);
+  // 该测试验证“自动吸附关闭”时的独立拖动路径，显式关闭开关。
+  await loadAttachedCues(page, false);
   const handle = page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-handle.right').first();
   const handleBox = await stableVisibleBoundingBox(page, handle);
   const row = handle.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
@@ -301,10 +306,23 @@ test('an independent shared-boundary drag can reverse before release', async ({ 
     { start: 10000, end: 18000 },
     { start: 25000, end: 30000 },
   ]);
+
+  // 关闭自动吸附时按住 Alt：共享边界临时联动拖动，状态栏在「共享边界」
+  // 文本旁提示未启用自动吸附及 Alt 临时启用方式。
+  await page.keyboard.down('Alt');
+  await page.mouse.move(startX, y);
+  await page.mouse.down();
+  await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);
+  await page.mouse.move(startX + deltaX, y, { steps: 4 });
+  await expect(page.locator('#waveform-status'))
+    .toContainText('当前未启用相邻字幕自动吸附，按住 Alt 可以临时启用');
+  await page.mouse.up();
+  await page.keyboard.up('Alt');
 });
 
 test('explicit Shift snapping remains available when automatic adjacent snapping is off', async ({ page }) => {
-  await loadAttachedCues(page);
+  // Shift 贴合是显式命令；这里显式关闭自动吸附，验证其不受开关影响。
+  await loadAttachedCues(page, false);
   await page.evaluate(() => {
     DATA.segments[0].end = 9000;
     DATA.segments[1].start = 10000;

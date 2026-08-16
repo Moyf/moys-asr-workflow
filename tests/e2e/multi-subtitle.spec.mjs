@@ -3052,6 +3052,13 @@ test('keeps bound extensions synced when a main shared boundary is dragged indep
       ],
     },
   };
+  // 该测试验证同轨独立拖动路径，显式关闭自动吸附（默认已开启）。
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'moy.asr.editor.settings.v1',
+      JSON.stringify({ autoSnapAdjacentCues: false }),
+    );
+  });
   await page.goto(server.url);
   await dropFiles(page, [{
     name: 'main-shared-boundary-project.json',
@@ -3079,7 +3086,7 @@ test('keeps bound extensions synced when a main shared boundary is dragged indep
     await page.mouse.up();
   };
 
-  // 自动吸附默认关闭：同轨相邻主字幕保持独立，但绑定副字幕仍跟随主字幕边界。
+  // 自动吸附已显式关闭：同轨相邻主字幕保持独立，但绑定副字幕仍跟随主字幕边界。
   await dragHandleBy(
     '.waveform-cue-block[data-track="main"][data-idx="0"] .waveform-cue-handle.right',
     -200,

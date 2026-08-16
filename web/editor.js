@@ -654,7 +654,7 @@ const DEFAULT_EDITOR_SETTINGS = {
   // 选中字幕后用方向键 / A-D 微调时间的幅度。
   cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
   // 是否默认让同轨相邻字幕随边界调整一起联动；Alt 始终临时反转该行为。
-  autoSnapAdjacentCues: false,
+  autoSnapAdjacentCues: true,
   // 娱乐彩蛋：成功拆分时的音效与刀光反馈，并把分割工具图标换成 🔪。
   ninjaMode: false,
   // 字幕忍者的拆分音效开关；忍者开关开启后才在设置中显示。
@@ -740,7 +740,7 @@ function readEditorSettings() {
       jklPlaybackMode: normalizeJklPlaybackMode(saved.jklPlaybackMode),
       mediaSeekStepMs: clampMediaSeekStepMs(savedMediaSeekStepMs),
       cueMoveStepMs: clampCueMoveStepMs(saved.cueMoveStepMs),
-      autoSnapAdjacentCues: saved.autoSnapAdjacentCues === true,
+      autoSnapAdjacentCues: saved.autoSnapAdjacentCues !== false,
       ninjaMode: saved.ninjaMode === true,
       ninjaSound: saved.ninjaSound !== false,
       ninjaSlashEffect: saved.ninjaSlashEffect !== false,
