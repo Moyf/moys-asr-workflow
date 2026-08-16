@@ -50,7 +50,9 @@ class GuiWebBridgeTests(unittest.TestCase):
         """Given local config, When JS asks for config, Then secrets are masked and registries return."""
         _ = self.env_path.write_text("DASHSCOPE_API_KEY=sk-secret-abcd\nDASHSCOPE_REGION=singapore\nMAW_GUI_LANG=en\n", encoding="utf-8")
 
-        config = self.api.get_config()
+        # 系统环境变量优先于 .env；置空相关变量，保证断言的是 .env 里的值。
+        with mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": "", "DASHSCOPE_REGION": "", "MAW_GUI_LANG": ""}, clear=False):
+            config = self.api.get_config()
 
         self.assertEqual(config["apiKey"], "sk-secret-abcd")
         self.assertEqual(config["maskedApiKey"], "sk-…abcd")
@@ -1296,9 +1298,11 @@ class GuiWebBridgeTests(unittest.TestCase):
     def test_start_transcription_rejects_empty_resolved_api_key(self) -> None:
         """Given media and output but no key anywhere, When starting, Then API key blocks."""
         media = self.root / "clip.mp3"
-        media.write_bytes(b"media")
+        _ = media.write_bytes(b"media")
 
-        result = self.api.start_transcription({"mediaPath": str(media), "srtPath": str(self.root / "out.srt"), "apiKey": ""})
+        # 置空系统环境变量，保证“任何位置都没有 Key”的前提成立。
+        with mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": ""}, clear=False):
+            result = self.api.start_transcription({"mediaPath": str(media), "srtPath": str(self.root / "out.srt"), "apiKey": ""})
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "apiKey")
@@ -1307,11 +1311,13 @@ class GuiWebBridgeTests(unittest.TestCase):
     def test_start_transcription_accepts_api_key_from_env_file(self) -> None:
         """Given saved API key, When field is empty, Then resolved key is used."""
         media = self.root / "clip.mp3"
-        media.write_bytes(b"media")
+        _ = media.write_bytes(b"media")
         self.env_path.write_text("DASHSCOPE_API_KEY=sk-from-env\n", encoding="utf-8")
 
-        with mock.patch("maw.gui_web.run_transcription"):
-            result = self.api.start_transcription({"mediaPath": str(media), "srtPath": str(self.root / "out.srt"), "apiKey": ""})
+        # 置空系统环境变量，保证解析到的 Key 确实来自 .env 而非宿主环境。
+        with mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": ""}, clear=False):
+            with mock.patch("maw.gui_web.run_transcription"):
+                result = self.api.start_transcription({"mediaPath": str(media), "srtPath": str(self.root / "out.srt"), "apiKey": ""})
 
         self.assertTrue(result["ok"])
         self.api.cancel_transcription()
