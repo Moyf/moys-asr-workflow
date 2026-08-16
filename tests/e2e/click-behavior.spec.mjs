@@ -534,6 +534,72 @@ test('B splits at the pointer inside the cue list and at the playhead outside it
   await expect(page.locator('.cue-split-flash.is-active')).toHaveCount(0);
 });
 
+test('B split inside the cue list keeps the list scroll position', async ({ page }) => {
+  await page.goto(server.url);
+  // 关闭「点击自动滚动」，避免点击选中行时先把列表滚到中央，干扰拆分滚动断言。
+  await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('moy.asr.editor.settings.v1') || '{}');
+    saved.cueListAutoScrollOnClick = false;
+    localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify(saved));
+  });
+  await page.reload();
+  await page.evaluate(() => {
+    DATA.segments.push(...Array.from({ length: 34 }, (_, offset) => {
+      const index = DATA.segments.length + offset;
+      const start = index * 5000;
+      return { start, end: start + 1000, text: `Extra ${index}`, items: [] };
+    }));
+    renderAll();
+    // 先滚到底再滚回目标行：content-visibility 会让视口外的行按
+    // contain-intrinsic-size 惰性重排，触发浏览器滚动锚定持续微调 scrollTop；
+    // 先让所有行完成一次重排，之后的滚动位置才是稳定的。
+    const list = document.getElementById('cues-container');
+    list.scrollTop = list.scrollHeight;
+    void list.scrollHeight;
+  });
+  await page.waitForTimeout(400);
+  await page.evaluate(() => {
+    const list = document.getElementById('cues-container');
+    document.querySelector('.cue[data-idx="30"]').scrollIntoView({ block: 'start' });
+    void list.scrollHeight;
+  });
+  // 等滚动锚定完全稳定后再记录基准位置。
+  await expect.poll(async () => {
+    const a = await page.evaluate(() => document.getElementById('cues-container').scrollTop);
+    await page.waitForTimeout(150);
+    const b = await page.evaluate(() => document.getElementById('cues-container').scrollTop);
+    return a === b;
+  }, { timeout: 4000 }).toBe(true);
+  const before = await page.evaluate(() => document.getElementById('cues-container').scrollTop);
+  expect(before).toBeGreaterThan(0);
+  const target = page.locator('.cue[data-idx="30"]');
+  const text = target.locator('.text');
+  // 点击位置直接落在文字第 5 个字符后，B 拆分的文字偏移可预期（Extra｜30）。
+  const splitPoint = await text.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 5);
+    range.setEnd(node, 5);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+  await target.dispatchEvent('pointerdown', {
+    bubbles: true, button: 0, buttons: 1, pointerId: 1,
+    clientX: splitPoint.x, clientY: splitPoint.y,
+  });
+  await target.dispatchEvent('click', { bubbles: true, detail: 1, clientX: splitPoint.x, clientY: splitPoint.y });
+  await expect(target).toHaveClass(/selected/);
+  await page.mouse.move(splitPoint.x, splitPoint.y);
+  await expect(page.locator('.cue-split-preview')).toHaveCount(1);
+  await page.keyboard.press('b');
+
+  await expect.poll(() => page.locator('.cue').count()).toBe(41);
+  await expect(page.locator('.cue[data-idx="31"]')).toHaveClass(/selected/);
+  await expect(page.locator('.cue .text').nth(30)).toHaveText('Extra');
+  await expect(page.locator('.cue .text').nth(31)).toHaveText('30');
+  await expect.poll(() => page.evaluate(() => document.getElementById('cues-container').scrollTop)).toBe(before);
+});
+
 test('B flashes a yellow marker after splitting at the waveform pointer without a selection', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => clearSelection());

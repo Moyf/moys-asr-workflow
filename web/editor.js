@@ -6369,8 +6369,14 @@ function splitAtCursor(feedbackPoint = null, { listFeedback = true } = {}) {
 
   rememberTemporaryVisibleSplitCues({ mainSegments: [leftSeg, rightSeg] });
   renderAll();
-  const rightEl = container.querySelector(`.cue[data-idx="${idx + 1}"]`);
-  if (rightEl) scrollCueToCenter(rightEl);
+  // 列表来源的拆分（B 键悬停行、列表右键拆分、行内编辑拆分）都发生在当前
+  // 可见的字幕行上，拆分后保持列表原滚动位置，不再把右半段滚到列表中央。
+  // 波形 / 编辑面板等其它来源的拆分结果可能不在列表视口内，仍滚动到新右半段，
+  // 便于在列表中看到拆分结果。
+  if (!listFeedback) {
+    const rightEl = container.querySelector(`.cue[data-idx="${idx + 1}"]`);
+    if (rightEl) scrollCueToCenter(rightEl);
+  }
   selectOnly(idx + 1);
   // 拆分后后半段是新的视觉选中项，也必须成为 Shift+点击的范围锚点。
   lastClickedIdx = idx + 1;
