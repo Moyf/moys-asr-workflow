@@ -574,7 +574,7 @@ def generate_for_media(
         src = signature_path.stat()
         media_timestamp = int(src.st_mtime)
         media_filesize = media.st_size
-        if media_timestamp > 0x80000000 or media_filesize > 0x7FFFFFFF:
+        if media_timestamp >= 0x80000000 or media_filesize > 0x7FFFFFFF:
             # 超出 .ReaPeaks 头部 int32 字段范围，无法可靠记录来源，跳过生成。
             print("[reapeaks] 音频数据过大，或时间戳格式违规")
             return None
