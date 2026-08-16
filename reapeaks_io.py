@@ -10,6 +10,7 @@ The spectral payload is a *cache* derived from the media's .ReaPeaks file, so
 looking it up must never block the editor: any missing / unreadable /
 non-spectral file degrades to ``None``.
 """
+
 from __future__ import annotations
 
 import base64
@@ -238,10 +239,7 @@ def _paired_spectral_rates(ra: ReaPeaksFile) -> list[tuple[int, MipMap]]:
     """
     wave_mips = ra.wave_mipmaps()
     spectral_mips = ra.spectral_mipmaps()
-    return [
-        (abs(wm.division_factor), sm)
-        for wm, sm in zip(wave_mips, spectral_mips)
-    ]
+    return [(abs(wm.division_factor), sm) for wm, sm in zip(wave_mips, spectral_mips)]
 
 
 def extract_spectral_payload(
@@ -332,9 +330,14 @@ def extract_waveform_payload(
 
 
 def _reapeaks_matches_media(reapeaks_path: Path | str, media_path: Path | str) -> bool:
-    """True when a .ReaPeaks cache was generated for the *current* media.
+    """True when a .ReaPeaks cache is acceptable for the *current* media.
 
-    The header stores the generating media's mtime and size; a zero pair means a
+    Provenance is matched on the header's second-resolution mtime
+    (``src_timestamp``) only. The recorded size is deliberately not compared:
+    ``generate_for_media`` records the size of the file it decoded (a
+    temporary extraction), which can differ from the media the server later
+    resolves, while the timestamp is taken from the original media and
+    therefore survives that mapping. A zero timestamp/filesize pair means a
     legacy MAW cache with no provenance, which is treated as stale so it gets
     rebuilt instead of silently reused.
     """
@@ -348,7 +351,7 @@ def _reapeaks_matches_media(reapeaks_path: Path | str, media_path: Path | str) -
         st = Path(media_path).stat()
     except OSError:
         return False
-    return ra.src_filesize == st.st_size and ra.src_timestamp == int(st.st_mtime)
+    return ra.src_timestamp == int(st.st_mtime)
 
 
 def _reapeaks_contains_spectral(reapeaks_path: Path | str) -> bool:
@@ -370,7 +373,9 @@ def load_waveform_payload(media_path: Path) -> dict | None:
         return None
 
 
-def load_spectral_payload(media_path: Path, *, peaks_per_second: int = 100) -> dict | None:
+def load_spectral_payload(
+    media_path: Path, *, peaks_per_second: int = 100
+) -> dict | None:
     """Find the media's .ReaPeaks and return a spectral payload, or None.
 
     Any missing / unreadable / non-spectral / stale .ReaPeaks degrades to None
@@ -485,7 +490,8 @@ def generate_reapeaks_stream_bytes(
                 else ["wave", "loudness"]
             )
             streamer = rust_generate.ReapeaksStreamer(
-                sample_rate, channels,
+                sample_rate,
+                channels,
                 features=features,
                 mipmap_levels=3,
             )
@@ -504,14 +510,18 @@ def generate_reapeaks_stream_bytes(
         stderr_file.seek(0)
         stderr = stderr_file.read().decode("utf-8", errors="replace").strip()
         if retcode != 0:
-            print(f"[reapeaks] 解码失败：ffmpeg 退出码 {retcode}"
-                  + (f"（{stderr}）" if stderr else ""))
+            print(
+                f"[reapeaks] 解码失败：ffmpeg 退出码 {retcode}"
+                + (f"（{stderr}）" if stderr else "")
+            )
             return None
         if stderr:
             print(f"[reapeaks] 解码失败：{stderr}")
             return None
         try:
-            return streamer.finish(src_timestamp=src_timestamp, src_filesize=src_filesize)
+            return streamer.finish(
+                src_timestamp=src_timestamp, src_filesize=src_filesize
+            )
         except Exception as exc:  # noqa: BLE001
             print(f"[reapeaks] Rust 内核生成失败: {exc}")
             return None
@@ -544,10 +554,11 @@ def generate_for_media(
 
     ``media_path`` is the file actually decoded (e.g. a limited-length
     extraction inside a temporary working directory). ``source_media_path``
-    is the original media: the cache is written next to it and its mtime/size
-    are recorded in the header, so the server still finds and accepts the
-    cache after the temporary directory is gone. Defaults to ``media_path``
-    for unchanged single-file behavior.
+    is the original media: the cache is written next to it, its mtime is
+    recorded in the header (the recorded size comes from ``media_path`` and
+    is not part of any provenance check), so the server still finds and
+    accepts the cache after the temporary directory is gone. Defaults to
+    ``media_path`` for unchanged single-file behavior.
     """
     media_path = Path(media_path)
     signature_path = (
@@ -559,20 +570,23 @@ def generate_for_media(
             return existing
     target = signature_path.with_name(signature_path.name + ".ReaPeaks")
     try:
+        media = media_path.stat()
         src = signature_path.stat()
-        src_timestamp = int(src.st_mtime)
-        src_filesize = src.st_size
-        if src_timestamp > 0x7FFFFFFF or src_filesize > 0x7FFFFFFF:
+        media_timestamp = int(src.st_mtime)
+        media_filesize = media.st_size
+        if media_timestamp > 0x80000000 or media_filesize > 0x7FFFFFFF:
             # 超出 .ReaPeaks 头部 int32 字段范围，无法可靠记录来源，跳过生成。
+            print("[reapeaks] 音频数据过大，或时间戳格式违规")
             return None
         data = generate_reapeaks_stream_bytes(
             media_path,
             ffmpeg_bin=ffmpeg_bin,
-            src_timestamp=src_timestamp,
-            src_filesize=src_filesize,
+            src_timestamp=media_timestamp,
+            src_filesize=media_filesize,
             include_spectral=include_spectral,
         )
         if data is None:
+            print("[reapeaks] ReaPeaks 数据为空")
             return None
         target.write_bytes(data)
     except Exception as exc:  # noqa: BLE001
@@ -591,9 +605,10 @@ if __name__ == "__main__":
     print(file.summary())
     wave_mips = file.wave_mipmaps()
     if wave_mips:
-        print("first 5 wave peaks (mip 0):", [
-            (round(p[0].max), round(p[0].min)) for p in wave_mips[0].wave[:5]
-        ])
+        print(
+            "first 5 wave peaks (mip 0):",
+            [(round(p[0].max), round(p[0].min)) for p in wave_mips[0].wave[:5]],
+        )
     spec_mips = file.spectral_mipmaps()
     if spec_mips:
         print("first 5 spectral peaks (mip 0):", spec_mips[0].spectral[:5])

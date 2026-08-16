@@ -4,11 +4,13 @@
 ``waveform.embed_waveform`` / ``reapeaks.generate_for_media`` 的调用与
 日志样板。本模块只做编排，具体算法仍由 waveform / reapeaks 各自负责。
 """
+
 from __future__ import annotations
 
+import json
+import struct
 from dataclasses import dataclass
 from pathlib import Path
-import struct
 from typing import Any
 
 import reapeaks_io as reapeaks
@@ -33,7 +35,9 @@ class MediaCacheResult:
 CACHE_KEYS = ("waveform", "spectral", "waveform_reapeaks")
 
 
-def merge_media_caches(target: dict[str, Any], result: MediaCacheResult) -> dict[str, Any]:
+def merge_media_caches(
+    target: dict[str, Any], result: MediaCacheResult
+) -> dict[str, Any]:
     """把 ``result.project`` 里生成的缓存键合并进 ``target`` 工程。"""
     for key in CACHE_KEYS:
         if key in result.project:
@@ -61,7 +65,9 @@ def embed_media_caches(
     与工程内的 spectral payload。
     """
     cache_path = Path(media_path)
-    source_path = Path(source_media_path) if source_media_path is not None else cache_path
+    source_path = (
+        Path(source_media_path) if source_media_path is not None else cache_path
+    )
     waveform_result = embed_waveform(project, cache_path)
     project = waveform_result.project
     if waveform_result.error is None:
@@ -91,12 +97,15 @@ def embed_media_caches(
         try:
             if generate_spectral:
                 spectral = reapeaks.extract_spectral_payload(
-                    reapeaks_path, source_path,
+                    reapeaks_path,
+                    source_path,
                 )
                 if spectral is not None:
                     project["spectral"] = spectral
                     print(f"[spectral] 已嵌入 {spectral['peak_count']} 频谱点")
-            reapeaks_wave = reapeaks.extract_waveform_payload(reapeaks_path, source_path)
+            reapeaks_wave = reapeaks.extract_waveform_payload(
+                reapeaks_path, source_path
+            )
             if reapeaks_wave is not None:
                 project["waveform_reapeaks"] = reapeaks_wave
                 print(f"[reapeaks-wave] 已嵌入 {reapeaks_wave['peak_count']} peaks")
@@ -113,3 +122,44 @@ def embed_media_caches(
         waveform_error=waveform_result.error,
         reapeaks_path=reapeaks_path,
     )
+
+
+def main() -> None:
+    """IPDB 调试入口：消费 embed_media_caches 的入参 dump，复现调用现场。
+
+    配合 generate_subtitle_qwen_api.py 在调用前写入的
+    ``media_cache_debug_input.json`` 使用：转写一次拿到 dump 后，
+    在终端 ``uv run python media_cache.py`` 即可停在
+    ``embed_media_caches`` 内的 ipdb 断点逐步调试。
+    """
+    dump_path = Path(__file__).with_name("media_cache_debug_input.json")
+    if not dump_path.exists():
+        raise SystemExit(
+            f"{dump_path} 不存在；请先用 generate_subtitle_qwen_api.py "
+            "--with-waveform 转写以生成入参 dump。"
+        )
+    payload = json.loads(dump_path.read_text(encoding="utf-8"))
+    media_path = Path(payload["media_path"])
+    source_media_path = (
+        Path(payload["source_media_path"]) if payload.get("source_media_path") else None
+    )
+    generate_spectral = payload["generate_spectral"]
+    print(f"[debug] 消费 dump: media_path={media_path}")
+    print(f"[debug] source_media_path={source_media_path}")
+    print(f"[debug] generate_spectral={generate_spectral}")
+    print(f"[debug] media_path 存在: {media_path.exists()}")
+    result = embed_media_caches(
+        payload["project"],
+        media_path,
+        source_media_path=source_media_path,
+        generate_spectral=generate_spectral,
+    )
+    print(f"[debug] reapeaks_path={result.reapeaks_path}")
+    print(f"[debug] waveform_error={result.waveform_error}")
+    print(
+        f"[debug] project 缓存键: {[key for key in CACHE_KEYS if key in result.project]}"
+    )
+
+
+if __name__ == "__main__":
+    main()
