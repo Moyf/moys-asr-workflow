@@ -711,6 +711,8 @@
   .toolbar.cue-list-toolbar > *,
   .toolbar.waveform-toolbar > *,
   .toolbar.cue-editor-toolbar > * { flex: 0 0 auto; }
+  /* 字幕编辑区工具栏不出横向滚动条；空间不足时由 key-hints 收缩省略（见下方规则）。 */
+  .toolbar.cue-editor-toolbar { overflow-x: hidden; }
   .toolbar.cue-list-toolbar .input-clear input[type=text] { min-width: 140px; width: 20ch; }
   .settings-anchor {
     display: inline-flex; align-items: center;
@@ -1177,18 +1179,23 @@
     padding: 2px 6px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);
     box-shadow: 0 1px 0 var(--border-subtle);
   }
+  /* 字幕编辑区工具栏不出现横向滚动条：空间不足时压缩按键提示并用省略号截断，
+     后置齿轮按钮（settings-anchor，flex 不收缩）始终保持完整可见。 */
   .waveform-status.cue-editor-key-hints {
-    display: inline-flex;
-    align-items: center;
-    gap: 14px;
-    max-width: none;
-    overflow: visible;
+    display: block;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .cue-editor-key-hint {
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    margin-left: 14px;
   }
+  .cue-editor-key-hint:first-child { margin-left: 0; }
   .help-tip-callout {
     display: flex; align-items: center; gap: 12px; min-width: 0; margin-top: 8px; padding: 8px 10px;
     border-left: 3px solid var(--accent); border-radius: var(--radius-sm);
@@ -1361,7 +1368,7 @@
     margin: -10px -12px 10px;
     padding: 6px 8px;
     flex-wrap: nowrap;
-    overflow-x: auto;
+    overflow-x: hidden;
     overflow-y: hidden;
     align-items: center;
     background: var(--panel-toolbar-bg);
@@ -1780,6 +1787,16 @@
   }
   .multi-subtitle-split-auto-submit input { margin: 0; accent-color: var(--accent); }
   .multi-subtitle-split-footer .actions { margin-top: 0; }
+  .multi-subtitle-split-key-hints {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px;
+    margin-top: 12px; color: var(--text-muted); font-size: 11px;
+  }
+  .multi-subtitle-split-key-hints kbd {
+    background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 2px 6px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);
+    box-shadow: 0 1px 0 var(--border-subtle);
+  }
+  .multi-subtitle-split-key-hint { display: inline-flex; align-items: center; gap: 4px; }
   .multi-subtitle-split-meta { color: var(--text-muted); font: 11px/1.45 var(--font-mono); margin-bottom: 8px; }
   .multi-subtitle-split-cut-hint { margin-left: 8px; color: var(--amber-hover); font-family: var(--font-sans); }
   .multi-subtitle-split-language-hint {
@@ -2986,15 +3003,15 @@
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"] {
   bottom: var(--multi-subtitle-bottom-inset);
-  border-style: dotted;
-  border-color: color-mix(in srgb, var(--cue-color) 50%, var(--wave-cue-mix));
+  outline-style: dotted;
+  outline-color: color-mix(in srgb, var(--cue-color) 50%, var(--wave-cue-mix));
   background: color-mix(in srgb, var(--cue-color) 10%, var(--wave-cue-mix));
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"] .waveform-cue-label {
   color: var(--text-secondary);
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"].selected {
-  border-style: solid;
+  outline-style: solid;
   outline-color: var(--accent-hover);
 }
 .waveform-playhead {
@@ -3166,7 +3183,9 @@
   bottom: 7px;
   height: 35px;
   min-width: 3px;
-  border: 1px solid color-mix(in srgb, var(--cue-color) 80%, white);
+  /* 轮廓用 outline 画在盒外：不占盒内空间、不参与指针命中，
+     避免最外 1px 边界落不到 .waveform-cue-handle 而触发整块拖动。 */
+  outline: 1px solid color-mix(in srgb, var(--cue-color) 80%, white);
   border-radius: 4px;
   background: color-mix(in srgb, var(--cue-color) 42%, var(--wave-cue-mix));
   color: var(--wave-cue-text);
@@ -3175,7 +3194,7 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: 11px;
-  line-height: 33px;
+  line-height: 35px;
   padding: 0 8px;
   box-shadow: 0 1px 5px var(--wave-cue-shadow);
   touch-action: none;
@@ -3212,14 +3231,18 @@
 .waveform-cue-block.active {
   color: var(--active-cue-fg);
 }
-/* 播放中块的轮廓让位于选中轮廓，避免覆盖 .selected 的黄色 outline。 */
-.waveform-cue-block.active:not(.selected) {
+/* 播放中块的轮廓让位于选中轮廓，避免覆盖 .selected 的黄色 outline。
+   带 .waveform-row 前缀把特异性追平到 (0,4,0)，与多重字幕轨道规则
+   （.waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"]）
+   打平后靠本规则在文件中更靠后胜出：播放中的副轨块显示播放头轮廓，
+   而不是轨道底色的 dotted 淡轮廓。 */
+.waveform-row .waveform-cue-block.active:not(.selected) {
   outline: solid 1px var(--wave-playhead);
 }
 .waveform-cue-block.disabled {
   opacity: 0.48;
   color: var(--wave-disabled-text);
-  border-color: var(--wave-disabled-border);
+  outline-color: var(--wave-disabled-border);
   background: repeating-linear-gradient(
     135deg,
     var(--wave-disabled-a) 0 5px,
@@ -3269,8 +3292,8 @@
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="main"],
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"] {
-  /* 标签和字幕块都使用同一个 lane 高度；border-box 避免块边框额外撑高，
-     导致右侧“主/副”标记与实际轨道中心错开。 */
+  /* 标签和字幕块都使用同一个 lane 高度；块轮廓是画在盒外的 outline，
+     不占盒内高度，右侧“主/副”标记与轨道中心始终对齐。 */
   height: var(--multi-subtitle-lane-height);
   box-sizing: border-box;
   min-height: 0;
@@ -3291,8 +3314,8 @@
 .waveform-row.multi-subtitle-row .waveform-cue-block.disabled {
   opacity: 0.48;
   color: var(--wave-disabled-text);
-  border-style: dashed;
-  border-color: var(--wave-disabled-border);
+  outline-style: dashed;
+  outline-color: var(--wave-disabled-border);
   background: repeating-linear-gradient(
     135deg,
     var(--wave-disabled-a) 0 5px,
@@ -3305,8 +3328,8 @@
    以半透明虚影预览将要创建的时间范围。 */
 .waveform-cue-block.waveform-create-preview {
   z-index: 12;
-  border-style: dashed;
-  border-color: color-mix(in srgb, var(--cue-color) 80%, white);
+  outline-style: dashed;
+  outline-color: color-mix(in srgb, var(--cue-color) 80%, white);
   background: color-mix(in srgb, var(--cue-color) 28%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--cue-color) 30%, transparent);
   cursor: grabbing;
@@ -3349,7 +3372,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.4.0-beta.9</span>
+  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.4.0</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -4236,7 +4259,6 @@
   </div>
   <section class="current-cue-panel" id="current-cue-panel" aria-label="当前字幕编辑区">
     <div class="toolbar cue-editor-toolbar">
-      <span class="info layout-toolbar-label">编辑</span>
       <span class="waveform-status cue-editor-key-hints" id="cue-editor-key-hints" aria-label="字幕编辑快捷键">
         <span class="cue-editor-key-hint"><kbd id="cue-editor-split-key">Enter</kbd> 拆分</span>
         <span class="cue-editor-key-hint"><kbd id="cue-editor-confirm-key">Ctrl+Enter</kbd> 确认</span>
@@ -4573,7 +4595,7 @@
 <div class="modal-mask" id="multi-subtitle-split-modal">
   <div class="modal multi-subtitle-split-modal" role="dialog" aria-modal="true" aria-labelledby="multi-subtitle-split-title">
     <h3 id="multi-subtitle-split-title">联动拆分扩展字幕</h3>
-    <p class="modal-desc">移动鼠标点击，或用键盘选择拆分断点：Tab 切换主/副字幕，WASD/方向键移动 ✂️，空格确认或取消。</p>
+    <p class="modal-desc">移动鼠标点击，或用键盘选择拆分断点。</p>
     <div class="multi-subtitle-split-language-hint" role="note" aria-label="语言类型提示">
       <div>字符型语言（中文等）按字符拆分。</div>
       <div>单词型语言（英语等）只在空格处切分，确保不会拆碎单词；可在多重字幕 ⚙️ 设置中切换语言类型。</div>
@@ -4592,6 +4614,11 @@
     </section>
     <div class="multi-subtitle-split-preview" id="multi-subtitle-split-preview"></div>
     <div class="multi-subtitle-split-error" id="multi-subtitle-split-error" role="status"></div>
+    <div class="multi-subtitle-split-key-hints" aria-label="拆分弹窗按键提示">
+      <span class="multi-subtitle-split-key-hint"><kbd>W/A/S/D</kbd> 或 <kbd>方向键</kbd> 移动 ✂️</span>
+      <span class="multi-subtitle-split-key-hint"><kbd>空格</kbd> 锁定 / 解锁断点</span>
+      <span class="multi-subtitle-split-key-hint"><kbd>Tab</kbd> 切换主/副字幕</span>
+    </div>
     <div class="multi-subtitle-split-footer">
       <label class="multi-subtitle-split-auto-submit" for="multi-subtitle-split-auto-submit">
         <input type="checkbox" id="multi-subtitle-split-auto-submit" checked>
@@ -6583,7 +6610,10 @@
     '按住字幕时': 'While holding a subtitle:', '按住字幕时：': 'While holding a subtitle:',
     '按住字幕': 'While holding a subtitle',
     '绑定到主副字幕（自动匹配）': 'Bind to a main/secondary subtitle pair (auto-match)',
-    '移动鼠标点击，或用键盘选择拆分断点：Tab 切换主/副字幕，WASD/方向键移动 ✂️，空格确认或取消。': 'Click with the mouse, or use the keyboard to pick split points: Tab switches main/secondary, WASD/arrows move ✂️, Space confirms or cancels.',
+    '移动鼠标点击，或用键盘选择拆分断点。': 'Click with the mouse, or use the keyboard to pick split points.',
+    '拆分弹窗按键提示': 'Split modal keyboard hints',
+    '方向键': 'arrow keys', '移动 ✂️': 'move ✂️', '锁定 / 解锁断点': 'lock / unlock breakpoint',
+    '切换主/副字幕': 'switch main/secondary subtitle',
     '字幕编辑快捷键': 'Subtitle editing shortcuts',
     '向前/后微调移动字幕（按住': 'Fine-tune subtitle movement backward/forward (hold',
     '临时反转相邻字幕联动': 'temporarily reverse adjacent-cue linking',
@@ -8400,6 +8430,14 @@
     return low - 1;
   }
 
+  // 波形块的 active 轮廓是纯视觉提示：只有播放头真正落在 [start, end) 内才点亮。
+  // 空隙中沿用的“当前字幕”（导航 / 逻辑语义，见 isActiveCueAtTime）不点亮轮廓。
+  function isActiveCueVisualHit(segments, index, timeMs) {
+    const segment = segments[index];
+    const time = Number(timeMs);
+    return Boolean(segment) && Number(segment.start) <= time && time < Number(segment.end);
+  }
+
   function firstCueIndexOverlapping(segments, startMs) {
     let low = 0;
     let high = segments.length;
@@ -8451,8 +8489,12 @@
       this.basicWindowStartMs = 0;
       this.manualFollowUntil = 0;
       this.multiRange = [-1, -1];
-      this.activeIndex = -1;
-      this.activeExtensionIndex = -1;
+    this.activeIndex = -1;
+    this.activeExtensionIndex = -1;
+    // active 轮廓的视觉命中状态：空隙中 activeIndex 不变，但轮廓需要熄灭，
+    // 因此单独跟踪“上次是否严格命中”以触发 class 刷新。
+    this.activeVisualHit = false;
+    this.activeExtensionVisualHit = false;
       this.drag = null;
       this.createCueDrag = null;
       this.gapRangeDrag = null;
@@ -10088,7 +10130,8 @@
         block.style.setProperty('--cue-color', colorForSegment(segment));
         if (selected.has(index)) block.classList.add('selected');
         if (segment.disabled) block.classList.add('disabled');
-        if (index === activeMainIndex) block.classList.add('active');
+        // 空隙中沿用的当前字幕不点亮 active 轮廓（仅视觉；逻辑语义不变）。
+        if (index === activeMainIndex && isActiveCueVisualHit(segments, index, now)) block.classList.add('active');
 
         const label = document.createElement('span');
         label.className = 'waveform-cue-label';
@@ -10166,7 +10209,8 @@
           block.style.setProperty('--cue-color', '#7a9fc5');
         if (extensionSelected.has(index)) block.classList.add('selected');
         if (segment.disabled) block.classList.add('disabled');
-        if (index === activeExtensionIndex) block.classList.add('active');
+        // 空隙中沿用的当前字幕不点亮 active 轮廓（仅视觉；逻辑语义不变）。
+        if (index === activeExtensionIndex && isActiveCueVisualHit(extensionSegments, index, now)) block.classList.add('active');
         const label = document.createElement('span');
         label.className = 'waveform-cue-label';
         label.textContent = String(segment.text || '').replace(/\s+/g, ' ');
@@ -11907,19 +11951,25 @@
       const now = this.currentTimeMs();
       const segments = this.options.getSegments('main');
       const activeIndex = findActiveCueIndex(segments, now);
-      if (activeIndex !== this.activeIndex) {
+      const activeVisualHit = activeIndex >= 0 && isActiveCueVisualHit(segments, activeIndex, now);
+      if (activeIndex !== this.activeIndex || activeVisualHit !== this.activeVisualHit) {
         this.activeIndex = activeIndex;
+        this.activeVisualHit = activeVisualHit;
         this.content.querySelectorAll('.waveform-cue-block[data-track="main"]').forEach((block) => {
-          block.classList.toggle('active', Number(block.dataset.idx) === activeIndex);
+          block.classList.toggle('active', Number(block.dataset.idx) === activeIndex && activeVisualHit);
         });
       }
       const extensionSegments = this.options.getExtensionSegments?.() || [];
       const activeExtensionIndex = findActiveCueIndex(extensionSegments, now);
-      if (activeExtensionIndex !== this.activeExtensionIndex) {
+      const activeExtensionVisualHit = activeExtensionIndex >= 0
+        && isActiveCueVisualHit(extensionSegments, activeExtensionIndex, now);
+      if (activeExtensionIndex !== this.activeExtensionIndex
+          || activeExtensionVisualHit !== this.activeExtensionVisualHit) {
         this.activeExtensionIndex = activeExtensionIndex;
+        this.activeExtensionVisualHit = activeExtensionVisualHit;
         this.content.querySelectorAll('.waveform-cue-block[data-track="extension"]')
           .forEach((block) => {
-            block.classList.toggle('active', Number(block.dataset.extIdx) === activeExtensionIndex);
+            block.classList.toggle('active', Number(block.dataset.extIdx) === activeExtensionIndex && activeExtensionVisualHit);
           });
       }
 
@@ -17468,7 +17518,13 @@ function toggleSplitLaneKeyboardLock(state, lane) {
   if (splitLaneUsesMainTimestamp(state, lane)) return;
   state.lockedLanes[lane] = !splitLaneLocked(state, lane);
   updateLinkedSplitLockVisual();
-  if (splitLaneLocked(state, lane)) maybeAutoSubmitLinkedSplit(state);
+  if (!splitLaneLocked(state, lane)) return;
+  const submitted = maybeAutoSubmitLinkedSplit(state);
+  // 键盘锁定后自动聚焦下一条未锁定的 lane（若有），WASD/空格 可连续操作；
+  // 自动提交已接管或弹窗已关闭（提交成功）时不再移动焦点。
+  if (submitted || state !== pendingLinkedSplit) return;
+  const nextLane = splitKeyboardSwitchLane(state, lane);
+  if (nextLane && !splitLaneLocked(state, nextLane)) focusSplitLane(state, nextLane);
 }
 
 // 已锁定的 lane 上按移动键：闪烁边缘并提示先解锁再移动。
