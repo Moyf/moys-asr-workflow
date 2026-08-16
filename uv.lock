@@ -1086,19 +1086,6 @@ wheels = [
 ]
 
 [[package]]
-name = "ipdb"
-version = "0.13.13"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "decorator" },
-    { name = "ipython" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3d/1b/7e07e7b752017f7693a0f4d41c13e5ca29ce8cbcfdcc1fd6c4ad8c0a27a0/ipdb-0.13.13.tar.gz", hash = "sha256:e3ac6018ef05126d442af680aad863006ec19d02290561ac88b8b1c0b0cfc726", size = 17042, upload-time = "2023-03-09T15:40:57.487Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/0c/4c/b075da0092003d9a55cf2ecc1cae9384a1ca4f650d51b00fc59875fe76f6/ipdb-0.13.13-py3-none-any.whl", hash = "sha256:45529994741c4ab6d2388bfa5d7b725c2cf7fe9deffabdb8a6113aa5ed449ed4", size = 12130, upload-time = "2023-03-09T15:40:55.021Z" },
-]
-
-[[package]]
 name = "ipython"
 version = "9.16.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1488,9 +1475,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-dev = [
-    { name = "ipdb" },
-]
 local = [
     { name = "accelerate" },
     { name = "funasr" },
@@ -1518,7 +1502,6 @@ requires-dist = [
     { name = "accelerate", marker = "extra == 'local'", specifier = ">=1.12" },
     { name = "funasr", marker = "extra == 'local'", specifier = ">=1.2.6" },
     { name = "hf-xet", marker = "extra == 'local'", specifier = ">=1.5" },
-    { name = "ipdb", marker = "extra == 'dev'", specifier = ">=0.13.13" },
     { name = "jieba", specifier = ">=0.42" },
     { name = "numpy", marker = "extra == 'ocr'", specifier = ">=2.2,<2.5" },
     { name = "onnxruntime", marker = "extra == 'ocr'", specifier = ">=1.18" },
@@ -1535,7 +1518,7 @@ requires-dist = [
     { name = "torchaudio", marker = "sys_platform == 'win32' and extra == 'local'", specifier = ">=2.11.0", index = "https://download.pytorch.org/whl/cu130" },
     { name = "torchaudio", marker = "sys_platform != 'win32' and extra == 'local'", specifier = ">=2.11.0" },
 ]
-provides-extras = ["local", "ocr", "dev"]
+provides-extras = ["local", "ocr"]
 
 [package.metadata.requires-dev]
 build = [{ name = "pyinstaller", specifier = "==6.16.0" }]

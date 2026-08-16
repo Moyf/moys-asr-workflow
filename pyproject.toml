@@ -33,9 +33,6 @@ ocr = [
     "pillow>=10.0.0",
     "rapidocr>=3.9.0",
 ]
-dev = [
-    "ipdb>=0.13.13",
-]
 
 [[tool.uv.index]]
 name = "pytorch-cu130"

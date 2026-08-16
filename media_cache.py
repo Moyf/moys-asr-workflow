@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-import json
 import struct
 from dataclasses import dataclass
 from pathlib import Path
@@ -122,44 +121,3 @@ def embed_media_caches(
         waveform_error=waveform_result.error,
         reapeaks_path=reapeaks_path,
     )
-
-
-def main() -> None:
-    """IPDB 调试入口：消费 embed_media_caches 的入参 dump，复现调用现场。
-
-    配合 generate_subtitle_qwen_api.py 在调用前写入的
-    ``media_cache_debug_input.json`` 使用：转写一次拿到 dump 后，
-    在终端 ``uv run python media_cache.py`` 即可停在
-    ``embed_media_caches`` 内的 ipdb 断点逐步调试。
-    """
-    dump_path = Path(__file__).with_name("media_cache_debug_input.json")
-    if not dump_path.exists():
-        raise SystemExit(
-            f"{dump_path} 不存在；请先用 generate_subtitle_qwen_api.py "
-            "--with-waveform 转写以生成入参 dump。"
-        )
-    payload = json.loads(dump_path.read_text(encoding="utf-8"))
-    media_path = Path(payload["media_path"])
-    source_media_path = (
-        Path(payload["source_media_path"]) if payload.get("source_media_path") else None
-    )
-    generate_spectral = payload["generate_spectral"]
-    print(f"[debug] 消费 dump: media_path={media_path}")
-    print(f"[debug] source_media_path={source_media_path}")
-    print(f"[debug] generate_spectral={generate_spectral}")
-    print(f"[debug] media_path 存在: {media_path.exists()}")
-    result = embed_media_caches(
-        payload["project"],
-        media_path,
-        source_media_path=source_media_path,
-        generate_spectral=generate_spectral,
-    )
-    print(f"[debug] reapeaks_path={result.reapeaks_path}")
-    print(f"[debug] waveform_error={result.waveform_error}")
-    print(
-        f"[debug] project 缓存键: {[key for key in CACHE_KEYS if key in result.project]}"
-    )
-
-
-if __name__ == "__main__":
-    main()
