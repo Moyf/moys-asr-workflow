@@ -5147,20 +5147,13 @@ function buildSplitPair(
   const track = binding ? getExtensionTrack(binding.track_id) : null;
   const extension = binding ? extensionSegmentById(binding.extension_segment_ids?.[0], track) : null;
   if (!main || !binding || !track || !extension) return null;
-  // 联动拆分要求主副两侧在共同切点的两边各保留最小时长；任一侧总时长不足、
-  // 或两段时间范围重叠出的共同区间放不下合法切点时，弹窗内只会静默失败，
-  // 这里直接给出原因并拒绝打开弹窗。
+  // 联动拆分要求主副两侧在共同切点的两边各保留最小时长。副字幕总时长不足、
+  // 或两段重叠区间放不下合法切点时，不再直接拒绝：弹窗内会走「只拆主字幕并
+  // 解除绑定」的降级路径（仅在主字幕自身可拆时启用）；只有主字幕总时长不足
+  // （降级也无从谈起）才提前给出原因。
   const linkedMinSpanMs = SUBTITLE_MIN_DURATION_MS * 2;
-  if (extension.end - extension.start < linkedMinSpanMs) {
-    flashHint('副字幕总时长不足 200ms，无法联动拆分', 'warning');
-    return null;
-  }
   if (main.end - main.start < linkedMinSpanMs) {
     flashHint('主字幕总时长不足 200ms，无法联动拆分', 'warning');
-    return null;
-  }
-  if (Math.min(main.end, extension.end) - Math.max(main.start, extension.start) < linkedMinSpanMs) {
-    flashHint('主副字幕时间重叠不足，无法找到共同切点', 'warning');
     return null;
   }
   const mainMode = getMainSubtitleSplitMode(main);
