@@ -540,7 +540,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: MAW-*
-          path: assets
+          # 不要使用仓库已有的 assets/ 目录：上传时用 glob 会把源素材
+          # （launcher.jpg、maw.icns、screenshot*.jpg 等）一起传进 Release。
+          path: release-artifacts
           merge-multiple: true
 
       - name: Create or update GitHub Release
@@ -559,4 +561,4 @@ jobs:
               --target '${{ github.sha }}' || true
           fi
           gh release edit "$Tag" --title "$Tag" --notes-file release-notes.md
-          gh release upload "$Tag" assets/* --clobber
+          gh release upload "$Tag" release-artifacts/* --clobber
