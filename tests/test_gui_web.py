@@ -51,7 +51,16 @@ class GuiWebBridgeTests(unittest.TestCase):
         _ = self.env_path.write_text("DASHSCOPE_API_KEY=sk-secret-abcd\nDASHSCOPE_REGION=singapore\nMAW_GUI_LANG=en\n", encoding="utf-8")
 
         # 系统环境变量优先于 .env；置空相关变量，保证断言的是 .env 里的值。
-        with mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": "", "DASHSCOPE_REGION": "", "MAW_GUI_LANG": ""}, clear=False):
+        # lastModel/lastLanguage 走 pick_optional：只要键存在就返回（空串也算），
+        # 必须移除宿主键，否则断言 None 会被宿主键破坏（mock.patch.dict 的
+        # delete 参数在部分 Python 版本不可用，这里在补丁块内直接 pop）。
+        with mock.patch.dict(
+            os.environ,
+            {"DASHSCOPE_API_KEY": "", "DASHSCOPE_REGION": "", "MAW_GUI_LANG": "", "STICKER_DIR": ""},
+            clear=False,
+        ):
+            for key in ("MAW_GUI_LAST_MODEL", "MAW_GUI_LAST_LANGUAGE"):
+                os.environ.pop(key, None)
             config = self.api.get_config()
 
         self.assertEqual(config["apiKey"], "sk-secret-abcd")
@@ -176,14 +185,20 @@ class GuiWebBridgeTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        config = self.api.get_config()
-        result = self.api.save_postprocess_settings({
-            "providerId": "qwen",
-            "apiKey": "sk-qwen-private",
-            "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "model": "qwen-plus",
-            "reasoningMode": "medium",
-        })
+        # 宿主环境变量优先于 .env；置空 DEEPSEEK 相关变量，保证断言的是 .env 里的值。
+        with mock.patch.dict(os.environ, {
+            "MAW_POSTPROCESS_DEEPSEEK_MODEL": "",
+            "MAW_POSTPROCESS_DEEPSEEK_BASE_URL": "",
+            "MAW_POSTPROCESS_DEEPSEEK_REASONING_MODE": "",
+        }, clear=False):
+            config = self.api.get_config()
+            result = self.api.save_postprocess_settings({
+                "providerId": "qwen",
+                "apiKey": "sk-qwen-private",
+                "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "model": "qwen-plus",
+                "reasoningMode": "medium",
+            })
 
         raw_providers = config["postprocessProviders"]
         if not isinstance(raw_providers, list):
@@ -597,9 +612,15 @@ class GuiWebBridgeTests(unittest.TestCase):
     def test_get_config_exposes_last_language_empty_vs_absent(self) -> None:
         self.env_path.write_text("MAW_GUI_LAST_MODEL=stt-async-v5\nMAW_GUI_LAST_LANGUAGE=\n", encoding="utf-8")
 
-        remembered = self.api.get_config()
-        self.env_path.write_text("DASHSCOPE_DEFAULT_LANGUAGE=zh\n", encoding="utf-8")
-        absent = self.api.get_config()
+        # pick_optional 按“键是否存在”读取：宿主同名键（即使是空串）会盖过 .env，
+        # 必须移除宿主键，让 .env 的 stt-async-v5/空值生效（mock.patch.dict 的
+        # delete 参数在部分 Python 版本不可用，这里在补丁块内直接 pop）。
+        with mock.patch.dict(os.environ, {}, clear=False):
+            for key in ("MAW_GUI_LAST_MODEL", "MAW_GUI_LAST_LANGUAGE"):
+                os.environ.pop(key, None)
+            remembered = self.api.get_config()
+            self.env_path.write_text("DASHSCOPE_DEFAULT_LANGUAGE=zh\n", encoding="utf-8")
+            absent = self.api.get_config()
 
         self.assertEqual(remembered["lastModel"], "stt-async-v5")
         self.assertEqual(remembered["lastLanguage"], "")

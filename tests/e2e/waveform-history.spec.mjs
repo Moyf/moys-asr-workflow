@@ -9,6 +9,7 @@ import {
   makeFirstCueWordSplittable,
   makeTempDir,
   startServer,
+  testSegments,
 } from './helpers.mjs';
 
 let tempDir;
@@ -321,6 +322,18 @@ test('manual text split keeps malformed item timing inside both cues and restore
       expect(item.end).toBeGreaterThan(item.start);
     }
   }
+
+  // 本测试通过 Ctrl+S 把拆分后的工程写回了服务器（磁盘 + 内存）。
+  // 恢复原始工程并保存，避免同 spec 后续测试加载到被改写的数据。
+  const restoreResponse = page.waitForResponse((response) => (
+    response.url().endsWith('/api/project') && response.request().method() === 'POST'
+  ));
+  await page.evaluate((segments) => {
+    DATA.segments = segments.map((segment) => JSON.parse(JSON.stringify(segment)));
+    renderAll();
+  }, testSegments());
+  await page.keyboard.press('Control+s');
+  expect((await restoreResponse).ok()).toBe(true);
 });
 
 test('current-cue text keeps the list and waveform labels in sync through undo and redo', async ({ page }) => {
