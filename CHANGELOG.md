@@ -18,7 +18,7 @@
 
 ### 🔄 变更
 
-- `.ReaPeaks` 波形与频谱缓存改为由 Rust 内核（`reapeaks` 升级到 0.3.0）统一生成，移除 Python 参考实现；`include_spectral=False` 时仍只生成 wave 层，生成失败按原因打日志、不再静默降级。
+- `.ReaPeaks` 波形与频谱缓存改为由 Rust 内核（`reapeaks` 升级到 0.3.1，内置 `.pyi` 类型桩）统一生成，移除 Python 参考实现；`include_spectral=False` 时仍只生成 wave 层，生成失败按原因打日志、不再静默降级。
 - numpy 移入 `ocr` 可选依赖（仅 OCR 路径 lazy import），主依赖不再包含 numpy，与「主包保持 OCR 无关」的打包契约一致。
 - ffmpeg stderr 落临时文件，避免解码报错量大时与 stdout 管道互相阻塞。
 
