@@ -34,7 +34,7 @@ from maw.project import repair_segment_durations
 from maw.qwen_audio import parse_qwen_audio_hotwords
 from maw.speaker import apply_speaker_colors, split_items_by_speaker
 
-from media_cache import embed_media_caches
+from media_cache import embed_media_caches, merge_media_caches
 
 
 # ===== 路径与常量 =====
@@ -1736,6 +1736,18 @@ def main():
         if repaired_count:
             print(f"[info] 已兜底修复 {repaired_count} 处 0 长/倒挂时间码（保底 100ms）")
 
+        # 媒体缓存必须在临时目录清理前生成：audio_path 指向 tmpdir 内的
+        # 提取音频，with 块结束后文件即被删除。先暂存结果，待 segments
+        # 后处理完成、写出工程时再合并（合并键见 media_cache.CACHE_KEYS）。
+        cache_result = None
+        if args.json_out and args.with_waveform:
+            cache_result = embed_media_caches(
+                {"media": str(input_path)},
+                Path(audio_path) if audio_path else input_path,
+                source_media_path=input_path,
+                generate_spectral=args.with_spectral,
+            )
+
     if enable_speaker:
         speakers = sorted({str(seg["speaker"]) for seg in segments if seg.get("speaker") is not None})
         print(f"[speaker] 识别到 {len(speakers)} 个说话人: {', '.join(speakers)}")
@@ -1819,14 +1831,8 @@ def main():
                 for seg in segments
             ],
         }
-        if args.with_waveform:
-            cache_media_path = Path(audio_path) if audio_path else input_path
-            json_data = embed_media_caches(
-                json_data,
-                cache_media_path,
-                source_media_path=input_path,
-                generate_spectral=args.with_spectral,
-            ).project
+        if cache_result is not None:
+            json_data = merge_media_caches(json_data, cache_result)
         print("[输出] 正在写入工程文件...")
         json_path.write_text(
             json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8"

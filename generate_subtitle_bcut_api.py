@@ -40,7 +40,7 @@ from maw.bcut import (
     transcribe,
 )
 from maw.project import repair_segment_durations, validate_project
-from media_cache import embed_media_caches
+from media_cache import embed_media_caches, merge_media_caches
 
 
 def main():
@@ -190,6 +190,18 @@ def main():
         if repaired_count:
             print(f"[info] 已兜底修复 {repaired_count} 处 0 长/倒挂时间码（保底 100ms）")
 
+        # 媒体缓存必须在临时目录清理前生成：audio_path 指向 tmpdir 内的
+        # 提取音频，with 块结束后文件即被删除。先暂存结果，待 segments
+        # 后处理完成、写出工程时再合并（合并键见 media_cache.CACHE_KEYS）。
+        cache_result = None
+        if args.json_out and args.with_waveform:
+            cache_result = embed_media_caches(
+                {"media": str(input_path)},
+                Path(audio_path),
+                source_media_path=input_path,
+                generate_spectral=args.with_spectral,
+            )
+
     # 剥句末标点（与 Qwen 版一致）
     if not args.keep_punct:
         for seg in segments:
@@ -252,13 +264,8 @@ def main():
                 for seg in segments
             ],
         }
-        if args.with_waveform:
-            json_data = embed_media_caches(
-                json_data,
-                Path(audio_path),
-                source_media_path=input_path,
-                generate_spectral=args.with_spectral,
-            ).project
+        if cache_result is not None:
+            json_data = merge_media_caches(json_data, cache_result)
         check = validate_project(json_data)
         if not check.ok:
             print("[警告] 工程文件未通过契约校验，请把以下内容反馈给开发者：")
