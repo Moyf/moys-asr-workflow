@@ -134,7 +134,10 @@ test('can use a dropped project subtitle as an extension and preserve optional i
 
   await page.locator('#multi-subtitle-settings-toggle').click();
   await page.locator('#multi-subtitle-settings-menu').waitFor({ state: 'visible' });
+  // 点击菜单项后齿轮菜单会关闭；交换回来需要重新打开菜单再点一次。
   await page.locator('#multi-subtitle-swap').click();
+  await page.locator('#multi-subtitle-settings-toggle').click();
+  await page.locator('#multi-subtitle-settings-menu').waitFor({ state: 'visible' });
   await page.locator('#multi-subtitle-swap').click();
 
   const roundTripped = await page.evaluate(() => JSON.parse(buildJson()));

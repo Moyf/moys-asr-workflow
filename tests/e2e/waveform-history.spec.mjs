@@ -217,7 +217,7 @@ test('waveform background split supports undo and redo', async ({ page }) => {
   const box = await row.boundingBox();
   expect(box).not.toBeNull();
   await page.mouse.click(box.x + box.width * 0.4, box.y + 20, { button: 'right' });
-  const splitItem = page.locator('#ctxmenu .item', { hasText: '按音频位置拆分当前字幕' });
+  const splitItem = page.locator('#ctxmenu .item', { hasText: '按音频位置拆分' });
   await expect(splitItem).toBeEnabled();
   await splitItem.click();
   await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
@@ -1083,7 +1083,7 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   await expect(page.locator('#help-waveform-split-key')).toHaveText('B');
   await expect(helpPanel).toContainText('绑定到主副字幕（自动匹配）');
   await expect(helpPanel).toContainText('解绑当前副字幕');
-  await expect(helpPanel).toContainText('对齐副字幕到主字幕时间轴');
+  await expect(helpPanel).toContainText('批量对齐选中的副字幕到各自主字幕时间轴');
   await expect(helpPanel).not.toContainText('波形轨道徽标');
   await expect(helpPanel).not.toContainText('语言类型：单词型适合英语等空格语言，字符型适合中文/日文等');
   await expect(helpPanel).not.toContainText('主字幕自动使用时间码拆分：单轨可直接拆分');
@@ -1161,6 +1161,8 @@ test('extends selected subtitles without remapping items and undoes the batch in
   })).toBeVisible();
   await expect.poll(() => page.evaluate(() => DATA.segments.slice(0, 2))).toEqual(before.segments);
 
+  // 产品语义：「向前延长」作用于起点侧（不越过前一条/时间轴 0），「向后延长」作用于终点侧。
+  // forward=250 时 seg0 起点已在 0 只能由向后 60ms 补终点；seg1 起点前移 250、终点后延 60。
   await page.locator('#subtitle-extend-forward-ms').fill('250');
   await page.locator('#subtitle-extend-run').click();
   await expect.poll(() => page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => ({
@@ -1168,8 +1170,8 @@ test('extends selected subtitles without remapping items and undoes the batch in
     end: segment.end,
     items: segment.items,
   })))).toEqual([
-    { start: 0, end: 8200, items: before.segments[0].items },
-    { start: 49750, end: 58200, items: before.segments[1].items },
+    { start: 0, end: 8060, items: before.segments[0].items },
+    { start: 49750, end: 58060, items: before.segments[1].items },
   ]);
   await expect(page.locator('#hint-stack .hint-card.hint-success', {
     hasText: '已处理 2 个选中字幕：完整延长 1 条，部分延长 1 条，未延长 0 条',

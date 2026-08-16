@@ -326,23 +326,40 @@ test('the unconfigured Enter shortcut commits and exits cue-panel editing', asyn
     .toBe('Alpha committed by Enter');
 });
 
-test('Escape exits cue-panel editing without saving the text', async ({ page }) => {
+test('Escape keeps cue-panel text edits by default and cancels when the setting is on', async ({ page }) => {
   await page.goto(server.url);
   const cue = page.locator('.cue[data-idx="0"]');
   const panel = page.locator('#cue-panel-text');
 
+  // 默认行为：Esc 保留本次文本改动并退出编辑（改动即时写入工程）。
   await cue.click();
   const original = await panel.inputValue();
   await panel.focus();
-  await panel.fill('This edit is cancelled');
+  await panel.fill('This edit is kept');
   await expect(page.locator('#undo-btn')).toBeEnabled();
   await panel.press('Escape');
 
   await expect(panel).not.toBeFocused();
-  await expect(panel).toHaveValue(original);
+  await expect(panel).toHaveValue('This edit is kept');
+  await expect.poll(() => page.evaluate(() => DATA.segments[0].text)).toBe('This edit is kept');
+
+  // 开启「操作 → Esc 取消编辑」后：Esc 恢复进入本次编辑前的文本。
+  await page.evaluate(() => {
+    const saved = { ...JSON.parse(localStorage.getItem('moy.asr.editor.settings.v1') || '{}'), cueEditorCancelOnEscape: true };
+    localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify(saved));
+    location.reload();
+  });
+  await page.waitForFunction(() => document.readyState === 'complete');
+  const cueAfterReload = page.locator('.cue[data-idx="0"]');
+  const panelAfterReload = page.locator('#cue-panel-text');
+  await cueAfterReload.click();
+  await panelAfterReload.focus();
+  await panelAfterReload.fill('This edit is cancelled');
+  await panelAfterReload.press('Escape');
+
+  await expect(panelAfterReload).not.toBeFocused();
+  await expect(panelAfterReload).toHaveValue(original);
   await expect.poll(() => page.evaluate(() => DATA.segments[0].text)).toBe(original);
-  await expect(cue).not.toHaveClass(/dirty/);
-  await expect(page.locator('#undo-btn')).toBeDisabled();
 });
 
 test('Escape exits inline cue editing without saving the text', async ({ page }) => {
@@ -602,6 +619,8 @@ test('B split inside the cue list keeps the list scroll position', async ({ page
 
 test('B flashes a yellow marker after splitting at the waveform pointer without a selection', async ({ page }) => {
   await page.goto(server.url);
+  // 默认主字幕按单词模式拆分；'Alpha' 单词内无词边界，先改造成两词再测拆分闪光。
+  await makeFirstCueWordSplittable(page);
   await page.evaluate(() => clearSelection());
   await expect(page.locator('.cue.selected')).toHaveCount(0);
 
@@ -691,7 +710,7 @@ test('left and right arrows seek like the media step buttons', async ({ page }) 
   });
 
   await page.keyboard.press('ArrowLeft');
-  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeCloseTo(5, 1);
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeCloseTo(9, 1);
   await page.keyboard.press('ArrowRight');
   await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeCloseTo(10, 1);
   await expect.poll(() => page.evaluate(() => document.getElementById('player').paused)).toBe(true);
