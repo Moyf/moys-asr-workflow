@@ -2385,7 +2385,10 @@ test('opens the extension-only split dialog from the waveform context menu and u
 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
   await expect(extensionBlock).toBeVisible();
-  await extensionBlock.click({ button: 'right', position: { x: 150, y: 10 } });
+  // 右键位置由块几何推导（块中部 → 字幕中点切点）：固定像素在波形面板变窄后
+  // 会把切点推到字幕末尾附近，右侧不足 100ms 时弹窗无法自动提交。
+  const blockBox = await waitForLayoutBox(extensionBlock, '副字幕块没有布局');
+  await extensionBlock.click({ button: 'right', position: { x: Math.round(blockBox.width / 2), y: 10 } });
   await page.locator('#ctxmenu .item').filter({ hasText: '在鼠标位置拆分' }).click();
 
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
@@ -2430,7 +2433,10 @@ test('renders one scissors marker per word-space split and trims the split text'
 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
   await expect(extensionBlock).toBeVisible();
-  await extensionBlock.click({ button: 'right', position: { x: 120, y: 10 } });
+  // 右键取块内 1/4 处（切点约 1500ms，明显更靠近第一个空格断点）：
+  // 固定像素在波形面板变窄后会使初始断点偏向第二个空格。
+  const blockBox = await waitForLayoutBox(extensionBlock, '副字幕块没有布局');
+  await extensionBlock.click({ button: 'right', position: { x: Math.round(blockBox.width * 0.25), y: 10 } });
   await page.locator('#ctxmenu .item').filter({ hasText: '在鼠标位置拆分' }).click();
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
   const splitText = page.locator('#multi-subtitle-split-text');
@@ -2478,7 +2484,11 @@ test('renders a scissors marker for a symbol-connected word split', async ({ pag
   }]);
 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
-  await extensionBlock.click({ button: 'right', position: { x: 120, y: 10 } });
+  await expect(extensionBlock).toBeVisible();
+  // 右键取块内 1/4 处（切点约 1500ms，靠近开头断点）：固定像素在波形面板
+  // 变窄后可能把初始断点推到 offset 10，导致下面的「未激活」断言抖动。
+  const blockBox = await waitForLayoutBox(extensionBlock, '副字幕块没有布局');
+  await extensionBlock.click({ button: 'right', position: { x: Math.round(blockBox.width * 0.25), y: 10 } });
   await page.locator('#ctxmenu .item').filter({ hasText: '在鼠标位置拆分' }).click();
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
   const splitText = page.locator('#multi-subtitle-split-text');
@@ -2535,7 +2545,11 @@ test('renders a post-period word split without dropping the period', async ({ pa
   }]);
 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
-  await extensionBlock.click({ button: 'right', position: { x: 120, y: 10 } });
+  await expect(extensionBlock).toBeVisible();
+  // 右键取块内 1/4 处：固定像素在波形面板变窄后可能让切点逼近字幕末尾，
+  // 使切点不再满足两侧各 100ms，弹窗无法自动提交。
+  const blockBox = await waitForLayoutBox(extensionBlock, '副字幕块没有布局');
+  await extensionBlock.click({ button: 'right', position: { x: Math.round(blockBox.width * 0.25), y: 10 } });
   await page.locator('#ctxmenu .item').filter({ hasText: '在鼠标位置拆分' }).click();
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
   const splitText = page.locator('#multi-subtitle-split-text');
