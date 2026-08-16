@@ -911,7 +911,6 @@ __WAVEFORM_CSS__
   </div>
   <section class="current-cue-panel" id="current-cue-panel" aria-label="当前字幕编辑区">
     <div class="toolbar cue-editor-toolbar">
-      <span class="info layout-toolbar-label">编辑</span>
       <span class="waveform-status cue-editor-key-hints" id="cue-editor-key-hints" aria-label="字幕编辑快捷键">
         <span class="cue-editor-key-hint"><kbd id="cue-editor-split-key">Enter</kbd> 拆分</span>
         <span class="cue-editor-key-hint"><kbd id="cue-editor-confirm-key">Ctrl+Enter</kbd> 确认</span>
@@ -1248,7 +1247,7 @@ __WAVEFORM_CSS__
 <div class="modal-mask" id="multi-subtitle-split-modal">
   <div class="modal multi-subtitle-split-modal" role="dialog" aria-modal="true" aria-labelledby="multi-subtitle-split-title">
     <h3 id="multi-subtitle-split-title">联动拆分扩展字幕</h3>
-    <p class="modal-desc">移动鼠标点击，或用键盘选择拆分断点：Tab 切换主/副字幕，WASD/方向键移动 ✂️，空格确认或取消。</p>
+    <p class="modal-desc">移动鼠标点击，或用键盘选择拆分断点。</p>
     <div class="multi-subtitle-split-language-hint" role="note" aria-label="语言类型提示">
       <div>字符型语言（中文等）按字符拆分。</div>
       <div>单词型语言（英语等）只在空格处切分，确保不会拆碎单词；可在多重字幕 ⚙️ 设置中切换语言类型。</div>
@@ -1267,6 +1266,11 @@ __WAVEFORM_CSS__
     </section>
     <div class="multi-subtitle-split-preview" id="multi-subtitle-split-preview"></div>
     <div class="multi-subtitle-split-error" id="multi-subtitle-split-error" role="status"></div>
+    <div class="multi-subtitle-split-key-hints" aria-label="拆分弹窗按键提示">
+      <span class="multi-subtitle-split-key-hint"><kbd>W/A/S/D</kbd> 或 <kbd>方向键</kbd> 移动 ✂️</span>
+      <span class="multi-subtitle-split-key-hint"><kbd>空格</kbd> 锁定 / 解锁断点</span>
+      <span class="multi-subtitle-split-key-hint"><kbd>Tab</kbd> 切换主/副字幕</span>
+    </div>
     <div class="multi-subtitle-split-footer">
       <label class="multi-subtitle-split-auto-submit" for="multi-subtitle-split-auto-submit">
         <input type="checkbox" id="multi-subtitle-split-auto-submit" checked>

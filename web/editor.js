@@ -5429,7 +5429,13 @@ function toggleSplitLaneKeyboardLock(state, lane) {
   if (splitLaneUsesMainTimestamp(state, lane)) return;
   state.lockedLanes[lane] = !splitLaneLocked(state, lane);
   updateLinkedSplitLockVisual();
-  if (splitLaneLocked(state, lane)) maybeAutoSubmitLinkedSplit(state);
+  if (!splitLaneLocked(state, lane)) return;
+  const submitted = maybeAutoSubmitLinkedSplit(state);
+  // 键盘锁定后自动聚焦下一条未锁定的 lane（若有），WASD/空格 可连续操作；
+  // 自动提交已接管或弹窗已关闭（提交成功）时不再移动焦点。
+  if (submitted || state !== pendingLinkedSplit) return;
+  const nextLane = splitKeyboardSwitchLane(state, lane);
+  if (nextLane && !splitLaneLocked(state, nextLane)) focusSplitLane(state, nextLane);
 }
 
 // 已锁定的 lane 上按移动键：闪烁边缘并提示先解锁再移动。

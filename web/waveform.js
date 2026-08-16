@@ -1245,6 +1245,14 @@
     return low - 1;
   }
 
+  // 波形块的 active 轮廓是纯视觉提示：只有播放头真正落在 [start, end) 内才点亮。
+  // 空隙中沿用的“当前字幕”（导航 / 逻辑语义，见 isActiveCueAtTime）不点亮轮廓。
+  function isActiveCueVisualHit(segments, index, timeMs) {
+    const segment = segments[index];
+    const time = Number(timeMs);
+    return Boolean(segment) && Number(segment.start) <= time && time < Number(segment.end);
+  }
+
   function firstCueIndexOverlapping(segments, startMs) {
     let low = 0;
     let high = segments.length;
@@ -1296,8 +1304,12 @@
       this.basicWindowStartMs = 0;
       this.manualFollowUntil = 0;
       this.multiRange = [-1, -1];
-      this.activeIndex = -1;
-      this.activeExtensionIndex = -1;
+    this.activeIndex = -1;
+    this.activeExtensionIndex = -1;
+    // active 轮廓的视觉命中状态：空隙中 activeIndex 不变，但轮廓需要熄灭，
+    // 因此单独跟踪“上次是否严格命中”以触发 class 刷新。
+    this.activeVisualHit = false;
+    this.activeExtensionVisualHit = false;
       this.drag = null;
       this.createCueDrag = null;
       this.gapRangeDrag = null;
@@ -2933,7 +2945,8 @@
         block.style.setProperty('--cue-color', colorForSegment(segment));
         if (selected.has(index)) block.classList.add('selected');
         if (segment.disabled) block.classList.add('disabled');
-        if (index === activeMainIndex) block.classList.add('active');
+        // 空隙中沿用的当前字幕不点亮 active 轮廓（仅视觉；逻辑语义不变）。
+        if (index === activeMainIndex && isActiveCueVisualHit(segments, index, now)) block.classList.add('active');
 
         const label = document.createElement('span');
         label.className = 'waveform-cue-label';
@@ -3011,7 +3024,8 @@
           block.style.setProperty('--cue-color', '#7a9fc5');
         if (extensionSelected.has(index)) block.classList.add('selected');
         if (segment.disabled) block.classList.add('disabled');
-        if (index === activeExtensionIndex) block.classList.add('active');
+        // 空隙中沿用的当前字幕不点亮 active 轮廓（仅视觉；逻辑语义不变）。
+        if (index === activeExtensionIndex && isActiveCueVisualHit(extensionSegments, index, now)) block.classList.add('active');
         const label = document.createElement('span');
         label.className = 'waveform-cue-label';
         label.textContent = String(segment.text || '').replace(/\s+/g, ' ');
@@ -4752,19 +4766,25 @@
       const now = this.currentTimeMs();
       const segments = this.options.getSegments('main');
       const activeIndex = findActiveCueIndex(segments, now);
-      if (activeIndex !== this.activeIndex) {
+      const activeVisualHit = activeIndex >= 0 && isActiveCueVisualHit(segments, activeIndex, now);
+      if (activeIndex !== this.activeIndex || activeVisualHit !== this.activeVisualHit) {
         this.activeIndex = activeIndex;
+        this.activeVisualHit = activeVisualHit;
         this.content.querySelectorAll('.waveform-cue-block[data-track="main"]').forEach((block) => {
-          block.classList.toggle('active', Number(block.dataset.idx) === activeIndex);
+          block.classList.toggle('active', Number(block.dataset.idx) === activeIndex && activeVisualHit);
         });
       }
       const extensionSegments = this.options.getExtensionSegments?.() || [];
       const activeExtensionIndex = findActiveCueIndex(extensionSegments, now);
-      if (activeExtensionIndex !== this.activeExtensionIndex) {
+      const activeExtensionVisualHit = activeExtensionIndex >= 0
+        && isActiveCueVisualHit(extensionSegments, activeExtensionIndex, now);
+      if (activeExtensionIndex !== this.activeExtensionIndex
+          || activeExtensionVisualHit !== this.activeExtensionVisualHit) {
         this.activeExtensionIndex = activeExtensionIndex;
+        this.activeExtensionVisualHit = activeExtensionVisualHit;
         this.content.querySelectorAll('.waveform-cue-block[data-track="extension"]')
           .forEach((block) => {
-            block.classList.toggle('active', Number(block.dataset.extIdx) === activeExtensionIndex);
+            block.classList.toggle('active', Number(block.dataset.extIdx) === activeExtensionIndex && activeExtensionVisualHit);
           });
       }
 

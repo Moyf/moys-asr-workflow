@@ -995,6 +995,13 @@ test('moves the split point with WASD, switches lanes with Tab and confirms with
   await page.keyboard.press('Enter');
 
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  // 弹窗底部展示结构化按键提示行。
+  const keyHints = page.locator('.multi-subtitle-split-key-hints');
+  await expect(keyHints).toBeVisible();
+  await expect(keyHints).toContainText('W/A/S/D');
+  await expect(keyHints).toContainText('方向键');
+  await expect(keyHints).toContainText('锁定 / 解锁断点');
+  await expect(keyHints).toContainText('切换主/副字幕');
   // 弹窗打开即聚焦主 lane，带虚线边框标识。
   const mainLane = page.locator('#multi-subtitle-split-main-text');
   await expect(mainLane).toBeFocused();
@@ -1027,18 +1034,22 @@ test('moves the split point with WASD, switches lanes with Tab and confirms with
   const backRowOffset = Number(await extensionActiveGap.getAttribute('data-offset'));
   expect(Math.abs(backRowOffset - firstRowOffset)).toBeLessThanOrEqual(2);
 
-  // Space 确认锁定当前断点，再按一次解锁以便继续移动。
+  // Space 锁定当前断点；锁定后焦点自动落到下一条未锁定的 lane。
   await page.keyboard.press('Space');
   await expect(extensionLane).toHaveClass(/locked/);
+  await expect(mainLane).toBeFocused();
+
+  // Tab 回到已锁定的 lane，再按 Space 解锁以便继续移动。
+  await page.keyboard.press('Tab');
+  await expect(extensionLane).toBeFocused();
   await page.keyboard.press('Space');
   await expect(extensionLane).not.toHaveClass(/locked/);
 
-  // 两个 lane 都用 Space 确认后按默认设置自动提交。
-  await page.keyboard.press('Tab');
-  await expect(mainLane).toBeFocused();
+  // 两个 lane 都用 Space 确认后按默认设置自动提交；锁定一条后焦点已自动就位，无需 Tab。
   await page.keyboard.press('Space');
-  await expect(mainLane).toHaveClass(/locked/);
-  await page.keyboard.press('Tab');
+  await expect(extensionLane).toHaveClass(/locked/);
+  await expect(mainLane).toBeFocused();
+  // 最后一按锁定主 lane 并触发自动提交；弹窗关闭时会清理 locked 标记。
   await page.keyboard.press('Space');
   await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
   await expect(page.locator('#cues-container > .multi-dual-cue')).toHaveCount(2);
@@ -1141,6 +1152,11 @@ test('flashes the border and hints when moving a locked split lane', async ({ pa
   await expect(mainLane).toBeFocused();
   await page.keyboard.press('Space');
   await expect(mainLane).toHaveClass(/locked/);
+  // 锁定后焦点自动落到未锁定的副 lane；Tab 回到已锁定的主 lane 再测移动拦截。
+  const extensionLane = page.locator('#multi-subtitle-split-text');
+  await expect(extensionLane).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(mainLane).toBeFocused();
 
   // 锁定后按移动键：断点不动、边缘闪烁并出现解锁提示。
   const mainActiveGap = mainLane.locator('.multi-subtitle-split-gap.active');

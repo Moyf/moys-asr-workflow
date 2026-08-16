@@ -233,7 +233,8 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="editor-settings-panel"', page)
         self.assertIn('id="cue-editor-settings-toggle"', page)
         self.assertIn('id="cue-editor-settings-panel"', page)
-        self.assertIn('<span class="info layout-toolbar-label">编辑</span>', page)
+        # 编辑区 header 不再显示「编辑」模块标签，只保留快捷键提示
+        self.assertNotIn('<span class="info layout-toolbar-label">编辑</span>', page)
         self.assertIn('<span class="settings-panel-title">显示</span>', page)
         self.assertIn('<span class="settings-panel-title">操作</span>', page)
         self.assertIn('id="cue-editor-cancel-on-escape"> Esc 取消编辑', page)

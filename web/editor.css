@@ -693,6 +693,8 @@
   .toolbar.cue-list-toolbar > *,
   .toolbar.waveform-toolbar > *,
   .toolbar.cue-editor-toolbar > * { flex: 0 0 auto; }
+  /* 字幕编辑区工具栏不出横向滚动条；空间不足时由 key-hints 收缩省略（见下方规则）。 */
+  .toolbar.cue-editor-toolbar { overflow-x: hidden; }
   .toolbar.cue-list-toolbar .input-clear input[type=text] { min-width: 140px; width: 20ch; }
   .settings-anchor {
     display: inline-flex; align-items: center;
@@ -1159,18 +1161,23 @@
     padding: 2px 6px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);
     box-shadow: 0 1px 0 var(--border-subtle);
   }
+  /* 字幕编辑区工具栏不出现横向滚动条：空间不足时压缩按键提示并用省略号截断，
+     后置齿轮按钮（settings-anchor，flex 不收缩）始终保持完整可见。 */
   .waveform-status.cue-editor-key-hints {
-    display: inline-flex;
-    align-items: center;
-    gap: 14px;
-    max-width: none;
-    overflow: visible;
+    display: block;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .cue-editor-key-hint {
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    margin-left: 14px;
   }
+  .cue-editor-key-hint:first-child { margin-left: 0; }
   .help-tip-callout {
     display: flex; align-items: center; gap: 12px; min-width: 0; margin-top: 8px; padding: 8px 10px;
     border-left: 3px solid var(--accent); border-radius: var(--radius-sm);
@@ -1343,7 +1350,7 @@
     margin: -10px -12px 10px;
     padding: 6px 8px;
     flex-wrap: nowrap;
-    overflow-x: auto;
+    overflow-x: hidden;
     overflow-y: hidden;
     align-items: center;
     background: var(--panel-toolbar-bg);
@@ -1762,6 +1769,16 @@
   }
   .multi-subtitle-split-auto-submit input { margin: 0; accent-color: var(--accent); }
   .multi-subtitle-split-footer .actions { margin-top: 0; }
+  .multi-subtitle-split-key-hints {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px;
+    margin-top: 12px; color: var(--text-muted); font-size: 11px;
+  }
+  .multi-subtitle-split-key-hints kbd {
+    background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 2px 6px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);
+    box-shadow: 0 1px 0 var(--border-subtle);
+  }
+  .multi-subtitle-split-key-hint { display: inline-flex; align-items: center; gap: 4px; }
   .multi-subtitle-split-meta { color: var(--text-muted); font: 11px/1.45 var(--font-mono); margin-bottom: 8px; }
   .multi-subtitle-split-cut-hint { margin-left: 8px; color: var(--amber-hover); font-family: var(--font-sans); }
   .multi-subtitle-split-language-hint {
