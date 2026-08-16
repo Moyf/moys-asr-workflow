@@ -5300,6 +5300,143 @@ function splitLaneUsesMainTimestamp(state, lane) {
   return lane === 'main' && state?.kind === 'linked' && state.mainTimestampLocked === true;
 }
 
+// 键盘可交互：⌚️ 时间码锚定的主轨和已用 Space/点击锁定的 lane 不响应移动键。
+function splitLaneKeyboardInteractive(state, lane) {
+  return !splitLaneUsesMainTimestamp(state, lane) && !splitLaneLocked(state, lane);
+}
+
+function splitLaneSegment(state, lane) {
+  if (lane === 'main') return state?.mainIndex >= 0 ? DATA.segments[state.mainIndex] : null;
+  return extensionSegmentById(state?.extensionId, getExtensionTrack(state?.trackId));
+}
+
+// 左右移动：在当前 lane 的合法断点序列中前进/后退一步。
+function stepSplitLaneOffset(state, lane, direction) {
+  const segment = splitLaneSegment(state, lane);
+  const mode = lane === 'main' ? state?.mainMode : state?.extensionMode;
+  const current = lane === 'main' ? state?.mainOffset : state?.offset;
+  const offsets = MULTI_SUBTITLE_UTILS.subtitleSplitOffsets(segment?.text || '', mode);
+  if (!offsets.length) return null;
+  if (direction < 0) {
+    for (let index = offsets.length - 1; index >= 0; index -= 1) {
+      if (offsets[index] < current) return offsets[index];
+    }
+    return null;
+  }
+  return offsets.find((offset) => offset > current) ?? null;
+}
+
+// 上下移动：按渲染后的视觉行定位。gap 元素样式一致，同一行的 top 相同；
+// 行距约等于 line-height（36px），用远小于行距的容差聚类即可。
+const SPLIT_LANE_LINE_TOLERANCE_PX = 10;
+
+function splitLaneGapLines(textEl) {
+  return Array.from(textEl.querySelectorAll('.multi-subtitle-split-gap'))
+    .map((gap) => {
+      const rect = gap.getBoundingClientRect();
+      return { gap, midX: rect.left + rect.width / 2, midY: rect.top + rect.height / 2 };
+    })
+    .sort((left, right) => left.midY - right.midY || left.midX - right.midX)
+    .reduce((lines, entry) => {
+      const current = lines[lines.length - 1];
+      if (current && Math.abs(entry.midY - current.midY) <= SPLIT_LANE_LINE_TOLERANCE_PX) {
+        current.entries.push(entry);
+        return lines;
+      }
+      lines.push({ midY: entry.midY, entries: [entry] });
+      return lines;
+    }, []);
+}
+
+// 上下移动：目标行上取与当前断点水平距离最近的 gap；单行或越界时返回 null。
+function verticalSplitLaneOffset(state, lane, direction) {
+  const { textEl } = splitLaneElements(lane);
+  if (!textEl) return null;
+  const lines = splitLaneGapLines(textEl);
+  if (lines.length < 2) return null;
+  const currentOffset = lane === 'main' ? state?.mainOffset : state?.offset;
+  let anchor = lines.flatMap((line) => line.entries)
+    .find((entry) => Number(entry.gap.dataset.offset) === currentOffset);
+  if (!anchor) {
+    // 当前断点没有 gap 元素（如文字开头）时退回字符锚点，用行中点估算所在行。
+    const charRect = Array.from(textEl.querySelectorAll('.multi-subtitle-split-char'))
+      .find((char) => Number(char.dataset.offset) === currentOffset)
+      ?.getBoundingClientRect();
+    if (!charRect) return null;
+    const anchorMidY = charRect.top + charRect.height / 2;
+    const nearestLine = lines.reduce((best, line) => (
+      Math.abs(line.midY - anchorMidY) < Math.abs(best.midY - anchorMidY) ? line : best
+    ), lines[0]);
+    const target = lines[lines.indexOf(nearestLine) + direction];
+    if (!target) return null;
+    const anchorMidX = charRect.left + charRect.width / 2;
+    const picked = target.entries.reduce((best, entry) => (
+      Math.abs(entry.midX - anchorMidX) < Math.abs(best.midX - anchorMidX) ? entry : best
+    ), target.entries[0]);
+    return picked ? Number(picked.gap.dataset.offset) : null;
+  }
+  const target = lines[lines.findIndex(
+    (line) => line.entries.includes(anchor),
+  ) + direction];
+  if (!target) return null;
+  const picked = target.entries.reduce((best, entry) => (
+    Math.abs(entry.midX - anchor.midX) < Math.abs(best.midX - anchor.midX) ? entry : best
+  ), target.entries[0]);
+  return picked ? Number(picked.gap.dataset.offset) : null;
+}
+
+// 键盘操作的 lane：优先看真实焦点，失焦（如点到复选框）时回退到上次记录。
+function splitKeyboardActiveLane(state) {
+  if (document.activeElement === multiSubtitleSplitMainText) return 'main';
+  if (document.activeElement === multiSubtitleSplitText) return 'extension';
+  return state?.keyboardLane || null;
+}
+
+function splitLaneVisible(lane) {
+  const { laneEl } = splitLaneElements(lane);
+  return Boolean(laneEl && !laneEl.hidden);
+}
+
+function focusSplitLane(state, lane) {
+  const { textEl } = splitLaneElements(lane);
+  if (!textEl || !splitLaneVisible(lane)) return false;
+  textEl.focus({ preventScroll: true });
+  if (state) state.keyboardLane = lane;
+  return true;
+}
+
+// Tab 在主/副 lane 间切换：仅在联动模式且主轨可交互时可用。
+function splitKeyboardSwitchLane(state, current) {
+  if (state?.kind !== 'linked') return null;
+  if (splitLaneUsesMainTimestamp(state, 'main')) return null;
+  if (current === 'main') return 'extension';
+  if (current === 'extension') return 'main';
+  return 'main';
+}
+
+// Space 与鼠标点击同语义：锁定当前断点；再按一次解锁以便继续移动。
+function toggleSplitLaneKeyboardLock(state, lane) {
+  if (state !== pendingLinkedSplit || !state.lockedLanes) return;
+  if (splitLaneUsesMainTimestamp(state, lane)) return;
+  state.lockedLanes[lane] = !splitLaneLocked(state, lane);
+  updateLinkedSplitLockVisual();
+  if (splitLaneLocked(state, lane)) maybeAutoSubmitLinkedSplit(state);
+}
+
+// 已锁定的 lane 上按移动键：闪烁边缘并提示先解锁再移动。
+function flashSplitLaneBlockedFeedback(lane) {
+  const { textEl } = splitLaneElements(lane);
+  if (textEl) {
+    textEl.classList.remove('lane-move-blocked');
+    void textEl.offsetWidth; // 强制重排，让动画可以重新触发
+    textEl.classList.add('lane-move-blocked');
+    textEl.addEventListener('animationend', () => {
+      textEl.classList.remove('lane-move-blocked');
+    }, { once: true });
+  }
+  flashHint('请先按空格解除锁定，然后再进行移动', 'invalid');
+}
+
 function syncLinkedSplitTime(state, activeLane, main, extension) {
   if (state?.kind !== 'linked' || !main || !extension) return;
 
@@ -5509,7 +5646,7 @@ function renderSplitLane(state, lane) {
     textEl.removeAttribute('aria-disabled');
     textEl.setAttribute('tabindex', '0');
     textEl.setAttribute('aria-label', isMain ? '选择主字幕拆分点' : '选择副字幕断点');
-    textEl.title = '鼠标移动选择拆分点，左键点击锁定；再次点击后解锁';
+    textEl.title = '鼠标移动选择拆分点，左键点击锁定；也可用 WASD/方向键移动，空格确认或取消';
     textEl.onmousemove = (event) => {
       if (splitLaneLocked(pendingLinkedSplit, lane)) return;
       const target = event.target;
@@ -5564,12 +5701,16 @@ function renderLinkedSplitText(state) {
     ? 'main'
     : state.kind === 'extension'
       ? 'extension'
-      : state.cutSource === 'word-timestamps-default' ? 'main' : 'extension');
+      : state.mainInteractive ? 'main' : 'extension');
   updateLinkedSplitPreview(
     state.kind === 'main' ? state.mainOffset
       : state.kind === 'extension' ? state.offset : state.mainOffset,
     initialLane,
   );
+  // 弹窗打开即聚焦初始 lane，让 WASD/方向键/Space 直接可用；
+  // ⌚️ 时间码锚定的主轨不可交互，回落到副轨。
+  state.keyboardLane = splitLaneUsesMainTimestamp(state, initialLane) ? 'extension' : initialLane;
+  focusSplitLane(state, state.keyboardLane);
 }
 
 function updateLinkedSplitLockVisual() {
@@ -5588,8 +5729,8 @@ function updateLinkedSplitLockVisual() {
     textEl.title = timestampLocked
       ? '主字幕按时间码拆分于此处，不可交互'
       : splitLaneLocked(state, lane)
-        ? '拆分点已锁定，再次点击后解锁'
-        : '鼠标移动选择拆分点，左键点击锁定；再次点击后解锁';
+        ? '拆分点已锁定，点击或按空格解锁'
+        : '鼠标移动选择拆分点，左键点击锁定；也可用 WASD/方向键移动，空格确认或取消';
     textEl.querySelectorAll('.multi-subtitle-split-gap').forEach((gap) => {
       gap.classList.toggle(
         'locked',
@@ -5705,10 +5846,21 @@ function updateLinkedSplitPreview(offset, lane = 'extension') {
   state.cutMs = extensionOnly ? state.extensionCutMs : state.mainCutMs;
   state.textValid = textValid;
   state.timingValid = mainTimingValid && extensionTimingValid;
+  state.mainTimingValid = Boolean(mainTimingValid);
   state.forceCutMs = textValid
     ? forceSplitCutForSegments(forceSegments, state.cutMs)
     : null;
   state.forceEligible = textValid && !state.timingValid && Number.isFinite(state.forceCutMs);
+  // 联动模式下，拓展轨无法形成合法拆分（文本断点非法，或最短 100ms 钳制也救不回来）、
+  // 而主轨自身仍可拆时，允许降级为「只拆主轨并解除绑定」，避免主轨被拓展轨阻塞。
+  state.mainOnlyFallbackEligible = false;
+  if (state.kind === 'linked' && main && extension && mainTextValid && !valid && !state.forceEligible) {
+    const mainRescuable = mainTimingValid
+      || Number.isFinite(forceSplitCutForSegments([main], state.mainCutMs));
+    const extensionRescuable = extensionTextValid && (extensionTimingValid
+      || Number.isFinite(forceSplitCutForSegments([extension], state.extensionCutMs)));
+    state.mainOnlyFallbackEligible = mainRescuable && !extensionRescuable;
+  }
   if (valid) state.forceSplitArmed = false;
   state.valid = valid;
   updateSplitLaneVisual(state, 'main');
@@ -5738,11 +5890,15 @@ function updateLinkedSplitPreview(offset, lane = 'extension') {
     }
   }
   if (multiSubtitleSplitError) {
-    multiSubtitleSplitError.textContent = valid ? '' : (extensionOnly
-      ? '拓展字幕切点必须为两侧各留至少 100ms。'
-      : '主字幕和拓展字幕切点都必须为两侧各留至少 100ms。');
+    multiSubtitleSplitError.textContent = valid ? '' : (state.mainOnlyFallbackEligible
+      ? '副字幕无法在当前切点形成合法拆分；确认后只拆分主字幕，并解除与副字幕的绑定。'
+      : extensionOnly
+        ? '拓展字幕切点必须为两侧各留至少 100ms。'
+        : '主字幕和拓展字幕切点都必须为两侧各留至少 100ms。');
   }
-  if (multiSubtitleSplitConfirm) multiSubtitleSplitConfirm.disabled = !valid;
+  if (multiSubtitleSplitConfirm) {
+    multiSubtitleSplitConfirm.disabled = !valid && !state.mainOnlyFallbackEligible;
+  }
   updateLinkedSplitLockVisual();
   return valid;
 }
@@ -5789,7 +5945,7 @@ function openExtensionSplitModal(
   return true;
 }
 
-function commitMainWaveformSplit(state, { force = false } = {}) {
+function commitMainWaveformSplit(state, { force = false, successMessage = '已按选择的断点拆分主字幕' } = {}) {
   // 波形入口可能是在当前字幕面板仍有未提交编辑时触发；先完成面板编辑，
   // 再为“拆分”建立快照，确保一次撤销能回到拆分前的完整字幕状态。
   commitCuePanelEdit();
@@ -5842,9 +5998,37 @@ function commitMainWaveformSplit(state, { force = false } = {}) {
     feedbackPoint: null,
     listFeedback: false,
   });
+
   // 弹窗提交的刀光位置由唤起来源决定：列表唤起留在列表，其余落在波形最终切点。
   triggerNinjaSplitFeedback(ninjaModalSplitPoint(state, splitMs, 'main'));
-  flashHint('已按选择的断点拆分主字幕', 'success');
+  if (successMessage) flashHint(successMessage, 'success');
+  return true;
+}
+
+// 降级路径：拓展轨无法形成合法拆分时，只拆主轨并解除与副字幕的绑定。
+function commitLinkedSplitMainOnly(state) {
+  const main = DATA.segments[state.mainIndex];
+  if (!main) return false;
+  let force = false;
+  if (!state.mainTimingValid) {
+    const mainForceCutMs = forceSplitCutForSegments([main], state.mainCutMs);
+    if (!Number.isFinite(mainForceCutMs)) {
+      flashHint('字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
+      return false;
+    }
+    if (!state.forceSplitArmed) {
+      state.forceSplitArmed = true;
+      flashHint(forcedSplitRetryHint(), 'warning');
+      return false;
+    }
+    force = true;
+    state.cutMs = mainForceCutMs;
+    state.mainCutMs = mainForceCutMs;
+  }
+  const committed = commitMainWaveformSplit(state, { force, successMessage: null });
+  if (!committed) return false;
+  markMultiSubtitleDirty();
+  flashHint('由于副字幕无法在当前切点形成合法拆分，为了拆分主字幕，已解除绑定', 'warning');
   return true;
 }
 
@@ -5918,6 +6102,11 @@ function confirmLinkedSplit() {
   const previewValid = updateLinkedSplitPreview(previewOffset, previewLane);
   let force = false;
   if (!previewValid) {
+    // 拓展轨救不回来而主轨可拆：降级为只拆主轨并解除绑定，主轨不被拓展轨阻塞。
+    if (state.kind === 'linked' && state.mainOnlyFallbackEligible) {
+      commitLinkedSplitMainOnly(state);
+      return;
+    }
     if (!state.textValid) {
       flashHint('当前断点无法把主副字幕文本各拆成两段', 'warning');
       return;
@@ -7610,6 +7799,8 @@ document.addEventListener('fullscreenchange', syncMediaControls);
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
   if (editingState || isTextEditingTarget(e)) return;
+  // 拆分弹窗内方向键用于移动 ✂️ 断点，不再 seek 媒体或微调字幕时间。
+  if (multiSubtitleSplitModal?.classList.contains('show')) return;
   const target = e.target instanceof Element ? e.target : document.activeElement;
   if (target?.closest?.('.geo-box, input, select, textarea')) return;
   if (!isPlaybackKeyboardTarget(e) && isNativeKeyboardControl(e)) return;
@@ -7792,6 +7983,7 @@ document.addEventListener('keydown', (e) => {
   if (isNativeKeyboardControl(e) || isPlayerKeyboardTarget(e)) return;
   if (replaceModal.classList.contains('show') || stickerModal.classList.contains('show')
       || stickerPreviewModal.classList.contains('show') || projectMediaModal.classList.contains('show')
+      || multiSubtitleSplitModal?.classList.contains('show')
       || document.getElementById('sticker-root-modal').classList.contains('show')
       || ctxmenu.classList.contains('show')) return;
   if (!switchMultiSubtitleTrack(e.key === 'ArrowUp' ? -1 : 1)) return;
@@ -7820,6 +8012,8 @@ document.addEventListener('keydown', (e) => {
   if (stickerModal.classList.contains('show')) return;
   if (stickerPreviewModal.classList.contains('show')) return;
   if (projectMediaModal.classList.contains('show')) return;
+  // 拆分弹窗内空格用于确认/取消断点，交给弹窗自己的键盘处理。
+  if (multiSubtitleSplitModal?.classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
   if (!isPlaybackKeyboardTarget(e) && isNativeKeyboardControl(e)) return;
   if (e.ctrlKey || e.altKey || e.metaKey) return;
@@ -7942,6 +8136,7 @@ document.addEventListener('keydown', (e) => {
   if (stickerModal.classList.contains('show')) return;
   if (stickerPreviewModal.classList.contains('show')) return;
   if (projectMediaModal.classList.contains('show')) return;
+  if (multiSubtitleSplitModal?.classList.contains('show')) return;
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.metaKey) return;
@@ -11720,25 +11915,84 @@ multiSubtitleSplitConfirm?.addEventListener('click', confirmLinkedSplit);
 multiSubtitleSplitModal?.addEventListener('click', (event) => {
   if (event.target === multiSubtitleSplitModal) closeLinkedSplitModal();
 });
+// 鼠标点击 lane 会自然聚焦；这里同步 keyboardLane，供失焦后的 WASD 回退使用。
+multiSubtitleSplitMainText?.addEventListener('focus', () => {
+  if (pendingLinkedSplit) pendingLinkedSplit.keyboardLane = 'main';
+});
+multiSubtitleSplitText?.addEventListener('focus', () => {
+  if (pendingLinkedSplit) pendingLinkedSplit.keyboardLane = 'extension';
+});
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape' || !multiSubtitleImportModal?.classList.contains('show')) return;
   event.preventDefault();
   event.stopPropagation();
   closeMultiSubtitleImportModal();
 }, true);
+// 拆分弹窗的键盘流：Tab 切换主/副 lane，WASD 或方向键移动 ✂️，
+// Space 确认/取消确认断点；捕获阶段拦截，避免触发全局的选字幕与播放快捷键。
 document.addEventListener('keydown', (event) => {
   if (!multiSubtitleSplitModal?.classList.contains('show')) return;
   if (event.key === 'Escape') {
     event.preventDefault();
     event.stopPropagation();
     closeLinkedSplitModal();
-  } else if (!event.repeat
+    return;
+  }
+  const state = pendingLinkedSplit;
+  if (!state) return;
+  // 焦点在弹窗内原生控件（复选框/按钮）上时保留其自身键盘行为。
+  const target = event.target instanceof Element ? event.target : null;
+  const onNativeControl = Boolean(
+    target?.closest('button, input, select, textarea, a, [contenteditable]'),
+  );
+  if (event.key === 'Tab' && !onNativeControl) {
+    const current = splitKeyboardActiveLane(state);
+    const nextLane = splitKeyboardSwitchLane(state, current);
+    if (!nextLane || nextLane === current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    focusSplitLane(state, nextLane);
+    return;
+  }
+  if (!event.repeat
       && (event.key === 'Enter' || event.key === 'b' || event.key === 'B')
       && !(event.ctrlKey || event.metaKey || event.altKey || event.shiftKey)) {
     event.preventDefault();
     event.stopPropagation();
     confirmLinkedSplit();
+    return;
   }
+  if (isSpaceKey(event)) {
+    if (event.ctrlKey || event.altKey || event.metaKey) return;
+    if (onNativeControl || event.repeat) return;
+    const lane = splitKeyboardActiveLane(state);
+    if (!lane || !splitLaneVisible(lane)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    toggleSplitLaneKeyboardLock(state, lane);
+    return;
+  }
+  const key = event.key.toLowerCase();
+  const horizontal = key === 'a' || event.key === 'ArrowLeft' ? -1
+    : key === 'd' || event.key === 'ArrowRight' ? 1 : 0;
+  const vertical = key === 'w' || event.key === 'ArrowUp' ? -1
+    : key === 's' || event.key === 'ArrowDown' ? 1 : 0;
+  if (!horizontal && !vertical) return;
+  if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+  const lane = splitKeyboardActiveLane(state);
+  if (!lane) return;
+  if (!splitLaneKeyboardInteractive(state, lane)) {
+    // ⌚️ 时间码锚定的主轨静默忽略；Space/点击锁定的 lane 闪烁边缘并提示先解锁。
+    if (!event.repeat && splitLaneLocked(state, lane)) flashSplitLaneBlockedFeedback(lane);
+    return;
+  }
+  const nextOffset = vertical
+    ? verticalSplitLaneOffset(state, lane, vertical)
+    : stepSplitLaneOffset(state, lane, horizontal);
+  if (!Number.isFinite(nextOffset)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  updateLinkedSplitPreview(nextOffset, lane);
 }, true);
 
 async function loadMediaFile(file) {

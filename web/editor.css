@@ -1785,6 +1785,21 @@
     border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary);
     font-size: 20px; line-height: 1.8; user-select: none; cursor: crosshair; white-space: pre-wrap;
   }
+  /* 键盘/点击激活的 lane 用虚线边框标识；锁定态（下方 .locked）保持自己的边框色。 */
+  .multi-subtitle-split-text:focus {
+    border-style: dashed; border-color: var(--accent);
+    outline: none;
+  }
+  /* 已锁定的 lane 上按移动键：红色边缘闪烁，提示需先按空格解锁。 */
+  .multi-subtitle-split-text.lane-move-blocked {
+    border-color: var(--red-hover);
+    animation: split-lane-blocked-flash .72s ease;
+  }
+  @keyframes split-lane-blocked-flash {
+    0%, 100% { box-shadow: none; }
+    15%, 55% { box-shadow: 0 0 0 2px var(--red-hover); }
+    35%, 75% { box-shadow: none; }
+  }
   .multi-subtitle-split-text .multi-subtitle-split-char { display: inline-block; padding: 0 1px; }
   .multi-subtitle-split-text .multi-subtitle-split-char.split-left { color: #ffd34d; }
   .multi-subtitle-split-text .multi-subtitle-split-char.split-right { color: #78e08f; }
