@@ -7,6 +7,7 @@ requires-python = ">=3.11"
 license = { text = "AGPL-3.0-only" }
 dependencies = [
     "jieba>=0.42",
+    "opencc-python-reimplemented>=0.1.7",
     "pywebview>=6.2.1; sys_platform != 'linux'",
     "pywebview[qt]>=6.2.1; sys_platform == 'linux'",
     "requests>=2.28",

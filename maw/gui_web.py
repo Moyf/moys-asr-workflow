@@ -27,7 +27,7 @@ from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, Tr
 from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError, install_local_runtime, managed_runtime_status
 from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
 from maw.media import find_ffmpeg, resolve_project_media
-from maw.postprocess import LlmPostprocessRequest, OutputMode, Replacement, ReplacementRequest, run_fixed_replacement as process_fixed_replacement, run_llm_postprocess as process_llm_postprocess
+from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_ffmpeg import FfconcatRequest, run_ffconcat_rebuild as process_ffconcat_rebuild
 from maw.postprocess_match import ScriptMatchRequest, run_script_match as process_script_match
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
@@ -46,6 +46,7 @@ from maw.postprocess_pipeline import (
     validate_plan,
 )
 from maw.postprocess_pipeline import PostprocessPipelineError
+from maw.text_conversion import TextConversionUnavailable, normalize_text_conversion_mode
 from maw.ocr_runtime import OCR_MODEL_ID, OcrRuntimeCancelled, OcrRuntimeError, install_ocr_runtime, managed_ocr_runtime_status, ocr_model_type, ocr_models_payload, run_ocr_in_runtime
 from maw.project_preview import JsonValue
 from maw.soniox import SonioxContextError, build_soniox_context
@@ -741,27 +742,33 @@ class LauncherApi:
             return {"ok": False, "field": "postprocessModel", "code": "postprocess_models_failed", "detail": detail, "error": detail}
         return {"ok": True, "providerId": preset.id, "models": models}
 
-    def run_fixed_replacement(self, payload: Mapping[str, object]) -> dict[str, object]:
+    def run_fixed_process(self, payload: Mapping[str, object]) -> dict[str, object]:
         self._emit_postprocess_status("toolbox_status_reading")
         try:
             replacements = tuple(
                 Replacement(source=str(item.get("source") or ""), target=str(item.get("target") or ""))
                 for item in _mapping_list(payload.get("replacements"))
             )
-            self._emit_postprocess_status("toolbox_status_replacing")
-            result = process_fixed_replacement(
-                ReplacementRequest(
+            self._emit_postprocess_status("toolbox_status_fixed_processing")
+            result = process_fixed_process(
+                FixedProcessRequest(
                     project_path=_optional_path(payload.get("projectPath")),
                     srt_path=_optional_path(payload.get("srtPath")),
                     output_mode=_output_mode(payload.get("outputMode")),
                     replacements=replacements,
                     media_path=_optional_path(payload.get("mediaPath")),
+                    conversion=normalize_text_conversion_mode(payload.get("conversion")),
                 )
             )
             self._emit_postprocess_status("toolbox_status_writing")
-        except (OSError, UnicodeError, ValueError) as error:
+        except (OSError, UnicodeError, ValueError, TextConversionUnavailable) as error:
             return {"ok": False, "field": "postprocessInput", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
+
+    def run_fixed_replacement(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Compatibility bridge for callers using the old toolbox method name."""
+
+        return self.run_fixed_process(payload)
 
     def run_script_match(self, payload: Mapping[str, object]) -> dict[str, object]:
         script_path = _optional_path(payload.get("scriptPath"))
@@ -1560,7 +1567,7 @@ class LauncherApi:
         stage = str(event.get("stage") or "")
         labels = {
             "match": "文稿匹配",
-            "replace": "固定替换",
+            "replace": "固定处理",
             "proofread": "LLM 校对",
             "resegment": "重新断句",
             "ocr": "OCR 字幕去重",
