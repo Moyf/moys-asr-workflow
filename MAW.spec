@@ -132,7 +132,6 @@ a = Analysis(
         "maw.bcut",
         "opencc",
         *opencc_hiddenimports,
-        "numpy",
         "reapeaks",
     ],
     hookspath=[],
