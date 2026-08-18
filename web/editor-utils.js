@@ -3,6 +3,60 @@
 (function () {
   'use strict';
 
+  const SUBTITLE_FONT_FAMILY_DISPLAY_NAMES_ZH = Object.freeze({
+    'Microsoft YaHei': '微软雅黑',
+    'Microsoft YaHei UI': '微软雅黑',
+    SimHei: '黑体',
+    SimSun: '宋体',
+    NSimSun: '新宋体',
+    FangSong: '仿宋',
+    KaiTi: '楷体',
+    'PingFang SC': '苹方',
+    'Heiti SC': '黑体-简',
+    'Songti SC': '宋体-简',
+    'Kaiti SC': '楷体-简',
+    'Source Han Sans SC': '思源黑体',
+    'Source Han Serif SC': '思源宋体',
+    'Noto Sans CJK SC': 'Noto Sans CJK 简体中文',
+    'Noto Serif CJK SC': 'Noto Serif CJK 简体中文',
+  });
+
+  function subtitleFontFamilyDisplayName(family, language) {
+    if (language !== 'zh' || typeof family !== 'string') return family;
+    return SUBTITLE_FONT_FAMILY_DISPLAY_NAMES_ZH[family] || family;
+  }
+
+  const KEYBOARD_OPERATION_REFERENCE_MODES = new Set(['pointer', 'playhead']);
+
+  function normalizeKeyboardOperationReferenceMode(value) {
+    return KEYBOARD_OPERATION_REFERENCE_MODES.has(value) ? value : 'pointer';
+  }
+
+  function resolveKeyboardOperationReference(mode, { pointer = null, playheadTarget = null } = {}) {
+    const resolvedMode = normalizeKeyboardOperationReferenceMode(mode);
+    if (resolvedMode === 'pointer') {
+      if (!pointer || !Number.isFinite(Number(pointer.timeMs))) return null;
+      const track = pointer.track === 'extension' ? 'extension' : 'main';
+      return {
+        timeMs: Math.round(Number(pointer.timeMs)),
+        track,
+        trackId: track === 'extension' && typeof pointer.trackId === 'string'
+          ? pointer.trackId : null,
+        source: 'pointer',
+      };
+    }
+    const timeMs = Number(playheadTarget?.timeMs);
+    if (!Number.isFinite(timeMs)) return null;
+    const track = playheadTarget?.kind === 'extension' ? 'extension' : 'main';
+    return {
+      timeMs: Math.round(timeMs),
+      track,
+      trackId: track === 'extension' && typeof playheadTarget.trackId === 'string'
+        ? playheadTarget.trackId : null,
+      source: 'playhead',
+    };
+  }
+
   function buildReplacementPreview(segments, indexes, find, replacement, options = {}) {
     if (!find) return { error: null, matchCount: 0, lineCount: 0, rows: [] };
     const flags = `${options.caseSensitive ? '' : 'i'}g`;
@@ -1556,6 +1610,9 @@
   }
 
   window.AsrEditorUtils = {
+    subtitleFontFamilyDisplayName,
+    normalizeKeyboardOperationReferenceMode,
+    resolveKeyboardOperationReference,
     buildReplacementPreview,
     countTextUnits,
     countSubtitleUnits,

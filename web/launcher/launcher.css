@@ -1452,6 +1452,36 @@ textarea::placeholder {
   background: var(--accent-tint-strong);
 }
 
+.artifact-context-menu {
+  position: fixed;
+  z-index: 70;
+  display: grid;
+  min-width: 180px;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-overlay);
+  box-shadow: var(--shadow-3);
+}
+
+.artifact-context-menu button {
+  min-height: var(--control-h);
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--btn-text);
+  background: transparent;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.artifact-context-menu button:hover,
+.artifact-context-menu button:focus-visible {
+  color: var(--text-primary);
+  background: var(--btn-bg-hover);
+}
+
 .settings-actions {
   display: flex;
   flex-wrap: wrap;

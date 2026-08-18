@@ -471,6 +471,147 @@ class LocalEditorServerTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "内置工作区"):
                 server.save_preset_workspace("custom", workspace)
 
+    def test_workspace_navigation_updates_merge_and_survive_server_restart(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        settings_path = self.root / "server-editor-settings.json"
+        workspace = {
+            "schema": 1,
+            "preset": "custom",
+            "columnPercent": 46,
+            "editorDisplay": {"cueListShowTime": True},
+            "navigation": {"cueListScrollTop": 120, "waveformTopEdgeMs": 2400},
+        }
+        preset_workspace = {
+            "schema": 1,
+            "preset": "wave-right",
+            "waveformSettings": {"secondsPerRow": 10},
+        }
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, settings_path=settings_path,
+        ) as server:
+            server.save_workspace("剪辑工作区", workspace, overwrite=False)
+            server.save_preset_workspace("wave-right", preset_workspace)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+                def post(payload: dict) -> tuple[int, dict]:
+                    request = urllib.request.Request(
+                        f"{base_url}/api/settings",
+                        data=json.dumps(payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    try:
+                        with urllib.request.urlopen(request) as response:
+                            return response.status, json.loads(response.read())
+                    except urllib.error.HTTPError as error:
+                        return error.code, json.loads(error.read())
+
+                status, result = post({
+                    "updateWorkspaceNavigation": {
+                        "name": "剪辑工作区",
+                        "navigation": {"cueListScrollTop": 840, "waveformTopEdgeMs": 12600},
+                    },
+                })
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+                saved = server.settings.saved_workspaces["剪辑工作区"]
+                self.assertEqual(saved["navigation"], {"cueListScrollTop": 840, "waveformTopEdgeMs": 12600})
+                self.assertEqual(saved["columnPercent"], workspace["columnPercent"])
+                self.assertEqual(saved["editorDisplay"], workspace["editorDisplay"])
+
+                status, result = post({
+                    "updateWorkspaceNavigation": {
+                        "name": "剪辑工作区",
+                        "navigation": {"cueListScrollTop": 900},
+                    },
+                })
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+                self.assertEqual(
+                    server.settings.saved_workspaces["剪辑工作区"]["navigation"],
+                    {"cueListScrollTop": 900, "waveformTopEdgeMs": 12600},
+                )
+
+                status, result = post({
+                    "updateWorkspaceNavigation": {
+                        "preset": "wave-right",
+                        "navigation": {"cueListScrollTop": 360, "waveformTopEdgeMs": 7200},
+                    },
+                })
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+                self.assertEqual(
+                    server.settings.preset_workspaces["wave-right"]["navigation"],
+                    {"cueListScrollTop": 360, "waveformTopEdgeMs": 7200},
+                )
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+        reloaded = server_editor.read_server_settings(settings_path)
+        self.assertEqual(
+            reloaded.saved_workspaces["剪辑工作区"]["navigation"],
+            {"cueListScrollTop": 900, "waveformTopEdgeMs": 12600},
+        )
+        self.assertEqual(
+            reloaded.preset_workspaces["wave-right"]["navigation"],
+            {"cueListScrollTop": 360, "waveformTopEdgeMs": 7200},
+        )
+
+    def test_workspace_navigation_rejects_invalid_targets_values_and_fields(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        settings_path = self.root / "server-editor-settings.json"
+        workspace = {"schema": 1, "columnPercent": 46, "editorDisplay": {"cueListShowTime": True}}
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, settings_path=settings_path,
+        ) as server:
+            server.save_workspace("剪辑工作区", workspace, overwrite=False)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+                def post(navigation: dict, *, target: dict | None = None) -> tuple[int, dict]:
+                    update = {"navigation": navigation}
+                    update.update(target or {"name": "剪辑工作区"})
+                    request = urllib.request.Request(
+                        f"{base_url}/api/settings",
+                        data=json.dumps({"updateWorkspaceNavigation": update}).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    try:
+                        with urllib.request.urlopen(request) as response:
+                            return response.status, json.loads(response.read())
+                    except urllib.error.HTTPError as error:
+                        return error.code, json.loads(error.read())
+
+                invalid_cases = [
+                    ({"cueListScrollTop": -1, "waveformTopEdgeMs": 20}, None),
+                    ({"cueListScrollTop": 1.5, "waveformTopEdgeMs": 20}, None),
+                    ({"cueListScrollTop": float("nan"), "waveformTopEdgeMs": 20}, None),
+                    ({"cueListScrollTop": 20, "waveformTopEdgeMs": "20"}, None),
+                    ({"cueListScrollTop": 20, "waveformTopEdgeMs": 20, "other": 1}, None),
+                    ({"cueListScrollTop": 20, "waveformTopEdgeMs": 20}, {"name": "不存在"}),
+                    ({"cueListScrollTop": 20, "waveformTopEdgeMs": 20}, {"preset": "custom"}),
+                ]
+                for navigation, target in invalid_cases:
+                    with self.subTest(navigation=navigation, target=target):
+                        status, result = post(navigation, target=target)
+                        self.assertEqual(status, 400)
+                        self.assertFalse(result["ok"])
+                self.assertEqual(server.settings.saved_workspaces["剪辑工作区"], workspace)
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
     def test_server_saves_project_with_backup_and_rejects_unsafe_save_as(self) -> None:
         project = server_editor.load_project(
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,

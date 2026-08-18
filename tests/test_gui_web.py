@@ -178,6 +178,20 @@ class GuiWebBridgeTests(unittest.TestCase):
             "# keep\nDASHSCOPE_REGION=beijing\nSTICKER_DIR=stickers\nMAW_GUI_LAST_MODEL=stt-async-v5\nMAW_GUI_LAST_LANGUAGE=\n",
         )
 
+    def test_zoom_preference_round_trips_normalized_through_config(self) -> None:
+        result = self.api.save_prefs({"zoomPercent": 115})
+
+        self.assertEqual(result, {"ok": True, "zoomPercent": 115})
+        self.assertEqual(self.api.get_config()["zoomPercent"], 115)
+        self.assertIn("MAW_GUI_ZOOM_PERCENT=115", self.env_path.read_text(encoding="utf-8"))
+
+    def test_zoom_preference_normalizes_malformed_and_out_of_range_values(self) -> None:
+        for value, expected in (("NaN", 100), (79, 80), (151, 150)):
+            with self.subTest(value=value):
+                result = self.api.save_prefs({"zoomPercent": value})
+                self.assertEqual(result, {"ok": True, "zoomPercent": expected})
+                self.assertEqual(self.api.get_config()["zoomPercent"], expected)
+
     def test_postprocess_config_masks_keys_and_saves_provider_settings(self) -> None:
         self.env_path.write_text(
             "MAW_POSTPROCESS_DEEPSEEK_API_KEY=sk-deepseek-secret\n"
@@ -878,6 +892,36 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn("File does not exist", result["error"])
         open_path.assert_not_called()
 
+    def test_open_containing_folder_opens_resolved_parent_for_existing_file(self) -> None:
+        artifact = self.root / "nested" / "clip.mosp"
+        artifact.parent.mkdir()
+        artifact.write_text("{}\n", encoding="utf-8")
+
+        with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as open_path:
+            result = self.api.open_containing_folder({"path": str(artifact)})
+
+        self.assertEqual(result, {"ok": True})
+        open_path.assert_called_once_with(artifact.parent.resolve())
+
+    def test_open_containing_folder_rejects_missing_file(self) -> None:
+        with mock.patch("maw.gui_web._open_existing_path") as open_path:
+            result = self.api.open_containing_folder({"path": str(self.root / "missing.mosp")})
+
+        self.assertFalse(result["ok"])
+        self.assertIn("File does not exist", result["error"])
+        open_path.assert_not_called()
+
+    def test_open_containing_folder_rejects_directory_input(self) -> None:
+        directory = self.root / "artifacts"
+        directory.mkdir()
+
+        with mock.patch("maw.gui_web._open_existing_path") as open_path:
+            result = self.api.open_containing_folder({"path": str(directory)})
+
+        self.assertFalse(result["ok"])
+        self.assertIn("File does not exist", result["error"])
+        open_path.assert_not_called()
+
     def test_open_mose_forwards_bundled_ffmpeg_to_sibling_app(self) -> None:
         executable = self.root / "MOSE.exe"
         ffmpeg_dir = self.root / "ffmpeg" / "bin"
@@ -1071,7 +1115,7 @@ class GuiWebBridgeTests(unittest.TestCase):
                 return 2
 
         def spawn(*_args, **kwargs):
-            kwargs["stdout"].write(b"Traceback: FLV conversion failed\r\nffmpeg is unavailable\r\n")
+            kwargs["stdout"].write(b"Traceback: FLV conversion failed\nffmpeg is unavailable\n")
             kwargs["stdout"].flush()
             return FailedProcess()
 
