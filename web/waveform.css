@@ -886,6 +886,7 @@
 .waveform-cue-block.waveform-create-preview {
   z-index: 12;
   outline-style: dashed;
+  border-style: dashed;
   outline-color: color-mix(in srgb, var(--cue-color) 80%, white);
   background: color-mix(in srgb, var(--cue-color) 28%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--cue-color) 30%, transparent);
