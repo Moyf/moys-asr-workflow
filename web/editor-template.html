@@ -431,6 +431,8 @@ __WAVEFORM_CSS__
           <span><kbd>W</kbd>/<kbd>S</kbd> 选择前/后字幕</span>
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd>Shift+W</kbd>/<kbd>Shift+S</kbd> 连选前/后字幕</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Home</kbd>/<kbd>End</kbd> 选择并显示当前轨道首/末条可见字幕</span>
         </div>
         <div class="help-category">
           <h6 class="help-category-title">波形区</h6>
@@ -563,6 +565,9 @@ __WAVEFORM_CSS__
           <span class="help-important"><kbd>空格</kbd> 播放/暂停</span>
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd>←</kbd>/<kbd>→</kbd> 无选中时前后跳转 <span id="help-media-seek-step">1000ms</span></span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Home</kbd>/<kbd>End</kbd> 在波形区或播放器跳转到媒体开头/结尾</span>
+          <span class="help-break" aria-hidden="true"></span>
           <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> <span id="help-jkl-mode">倒放/停止/1×播放</span></span>
           <span class="help-note">提示：可在「媒体」设置中切换 J/K/L 的「慢放/快放」或「倒放/正放」，也可调整跳转时长。</span>
         </div>
@@ -1045,6 +1050,14 @@ __WAVEFORM_CSS__
               <input type="checkbox" id="auto-snap-adjacent-cues" checked> 自动吸附调整相邻字幕
             </label>
             <small class="settings-panel-hint">关闭后默认独立调整相邻字幕；按住 Alt 临时反转为联动。开启后默认吸附联动；按住 Alt 临时解除。</small>
+            <label class="editor-settings-item" title="B/Z/X/N 快捷键使用鼠标位置或当前播放头作为时间基准">
+              快捷键时间基准
+              <select id="keyboard-operation-reference">
+                <option value="pointer" selected>鼠标位置</option>
+                <option value="playhead">播放头</option>
+              </select>
+            </label>
+            <small class="settings-panel-hint" id="keyboard-operation-reference-hint">B/Z/X/N 使用鼠标所在波形位置；波形外不执行时间操作。</small>
           </div>
           <div class="settings-panel-section waveform-settings-section">
             <span class="settings-panel-title waveform-settings-title">按键调整字幕</span>

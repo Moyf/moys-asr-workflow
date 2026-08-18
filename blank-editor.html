@@ -3784,6 +3784,8 @@
           <span><kbd>W</kbd>/<kbd>S</kbd> 选择前/后字幕</span>
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd>Shift+W</kbd>/<kbd>Shift+S</kbd> 连选前/后字幕</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Home</kbd>/<kbd>End</kbd> 选择并显示当前轨道首/末条可见字幕</span>
         </div>
         <div class="help-category">
           <h6 class="help-category-title">波形区</h6>
@@ -3916,6 +3918,9 @@
           <span class="help-important"><kbd>空格</kbd> 播放/暂停</span>
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd>←</kbd>/<kbd>→</kbd> 无选中时前后跳转 <span id="help-media-seek-step">1000ms</span></span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Home</kbd>/<kbd>End</kbd> 在波形区或播放器跳转到媒体开头/结尾</span>
+          <span class="help-break" aria-hidden="true"></span>
           <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> <span id="help-jkl-mode">倒放/停止/1×播放</span></span>
           <span class="help-note">提示：可在「媒体」设置中切换 J/K/L 的「慢放/快放」或「倒放/正放」，也可调整跳转时长。</span>
         </div>
@@ -4398,6 +4403,14 @@
               <input type="checkbox" id="auto-snap-adjacent-cues" checked> 自动吸附调整相邻字幕
             </label>
             <small class="settings-panel-hint">关闭后默认独立调整相邻字幕；按住 Alt 临时反转为联动。开启后默认吸附联动；按住 Alt 临时解除。</small>
+            <label class="editor-settings-item" title="B/Z/X/N 快捷键使用鼠标位置或当前播放头作为时间基准">
+              快捷键时间基准
+              <select id="keyboard-operation-reference">
+                <option value="pointer" selected>鼠标位置</option>
+                <option value="playhead">播放头</option>
+              </select>
+            </label>
+            <small class="settings-panel-hint" id="keyboard-operation-reference-hint">B/Z/X/N 使用鼠标所在波形位置；波形外不执行时间操作。</small>
           </div>
           <div class="settings-panel-section waveform-settings-section">
             <span class="settings-panel-title waveform-settings-title">按键调整字幕</span>
@@ -4714,6 +4727,60 @@
 // without constructing the full browser editor DOM.
 (function () {
   'use strict';
+
+  const SUBTITLE_FONT_FAMILY_DISPLAY_NAMES_ZH = Object.freeze({
+    'Microsoft YaHei': '微软雅黑',
+    'Microsoft YaHei UI': '微软雅黑',
+    SimHei: '黑体',
+    SimSun: '宋体',
+    NSimSun: '新宋体',
+    FangSong: '仿宋',
+    KaiTi: '楷体',
+    'PingFang SC': '苹方',
+    'Heiti SC': '黑体-简',
+    'Songti SC': '宋体-简',
+    'Kaiti SC': '楷体-简',
+    'Source Han Sans SC': '思源黑体',
+    'Source Han Serif SC': '思源宋体',
+    'Noto Sans CJK SC': 'Noto Sans CJK 简体中文',
+    'Noto Serif CJK SC': 'Noto Serif CJK 简体中文',
+  });
+
+  function subtitleFontFamilyDisplayName(family, language) {
+    if (language !== 'zh' || typeof family !== 'string') return family;
+    return SUBTITLE_FONT_FAMILY_DISPLAY_NAMES_ZH[family] || family;
+  }
+
+  const KEYBOARD_OPERATION_REFERENCE_MODES = new Set(['pointer', 'playhead']);
+
+  function normalizeKeyboardOperationReferenceMode(value) {
+    return KEYBOARD_OPERATION_REFERENCE_MODES.has(value) ? value : 'pointer';
+  }
+
+  function resolveKeyboardOperationReference(mode, { pointer = null, playheadTarget = null } = {}) {
+    const resolvedMode = normalizeKeyboardOperationReferenceMode(mode);
+    if (resolvedMode === 'pointer') {
+      if (!pointer || !Number.isFinite(Number(pointer.timeMs))) return null;
+      const track = pointer.track === 'extension' ? 'extension' : 'main';
+      return {
+        timeMs: Math.round(Number(pointer.timeMs)),
+        track,
+        trackId: track === 'extension' && typeof pointer.trackId === 'string'
+          ? pointer.trackId : null,
+        source: 'pointer',
+      };
+    }
+    const timeMs = Number(playheadTarget?.timeMs);
+    if (!Number.isFinite(timeMs)) return null;
+    const track = playheadTarget?.kind === 'extension' ? 'extension' : 'main';
+    return {
+      timeMs: Math.round(timeMs),
+      track,
+      trackId: track === 'extension' && typeof playheadTarget.trackId === 'string'
+        ? playheadTarget.trackId : null,
+      source: 'playhead',
+    };
+  }
 
   function buildReplacementPreview(segments, indexes, find, replacement, options = {}) {
     if (!find) return { error: null, matchCount: 0, lineCount: 0, rows: [] };
@@ -6268,6 +6335,9 @@
   }
 
   window.AsrEditorUtils = {
+    subtitleFontFamilyDisplayName,
+    normalizeKeyboardOperationReferenceMode,
+    resolveKeyboardOperationReference,
     buildReplacementPreview,
     countTextUnits,
     countSubtitleUnits,
@@ -6488,7 +6558,7 @@
     '已保存工作区': 'Saved workspaces',
     '保存工作区': 'Save workspace', '另存为工作区': 'Save workspace as', '删除工作区': 'Delete workspace',
     '工作区配置 ▾': 'Workspace configuration ▾', '导出工作区配置': 'Export workspace configuration', '导入工作区配置': 'Import workspace configuration',
-    '🔧 设置': '🔧 Settings', '⚙️ 全局设置': '⚙️ Global settings', '字幕时间调整': 'Subtitle timing adjustment', '自动吸附调整相邻字幕': 'Automatically snap-adjust adjacent subtitles', '开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动': 'When enabled, dragging or fine-tuning adjacent cues on the same track links them by default; hold Alt to temporarily separate them. When disabled, they adjust independently by default; hold Alt to temporarily link them.', '关闭后默认独立调整相邻字幕；按住 Alt 临时反转为联动。开启后默认吸附联动；按住 Alt 临时解除。': 'When disabled, adjacent cues adjust independently by default; hold Alt to temporarily link them. When enabled, linking is the default; hold Alt to temporarily separate them.', '操作': 'Behavior', 'Esc 取消编辑': 'Esc cancels editing', '开启后，按 Esc 会恢复当前字幕编辑前的文本；关闭后按 Esc 保留文本改动并退出编辑': 'When enabled, Esc restores the text from before editing; when disabled, Esc keeps text changes and exits editing.', '关闭后按 Esc 保留文本改动；开启后恢复编辑前的文本。': 'When disabled, Esc keeps text changes; when enabled, it restores the text from before editing.', '🤔 帮助': '🤔 Help',
+    '🔧 设置': '🔧 Settings', '⚙️ 全局设置': '⚙️ Global settings', '字幕时间调整': 'Subtitle timing adjustment', '自动吸附调整相邻字幕': 'Automatically snap-adjust adjacent subtitles', '开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动': 'When enabled, dragging or fine-tuning adjacent cues on the same track links them by default; hold Alt to temporarily separate them. When disabled, they adjust independently by default; hold Alt to temporarily link them.', '关闭后默认独立调整相邻字幕；按住 Alt 临时反转为联动。开启后默认吸附联动；按住 Alt 临时解除。': 'When disabled, adjacent cues adjust independently by default; hold Alt to temporarily link them. When enabled, linking is the default; hold Alt to temporarily separate them.', '操作': 'Behavior', 'Esc 取消编辑': 'Esc cancels editing', '开启后，按 Esc 会恢复当前字幕编辑前的文本；关闭后按 Esc 保留文本改动并退出编辑': 'When enabled, Esc restores the text from before editing; when disabled, Esc keeps text changes and exits editing.', '关闭后按 Esc 保留文本改动；开启后恢复编辑前的文本。': 'When disabled, Esc keeps text changes; when enabled, it restores the text from before editing.', '快捷键时间基准': 'Keyboard operation reference', 'B/Z/X/N 快捷键使用鼠标位置或当前播放头作为时间基准': 'B/Z/X/N keyboard operations use the pointer position or current playhead as their time reference', '🤔 帮助': '🤔 Help',
     '等待波形数据': 'Waiting for waveform data', '波形处理': 'Waveform processing',
     '扫描参数': 'Scan parameters',
     '按波形音量扫描内部空隙，不改写原时间轴': 'Scan internal gaps from waveform volume without changing the original timeline',
@@ -6584,6 +6654,10 @@
     '鼠标操作': 'Mouse actions', '选择操作': 'Selection', '编辑操作': 'Editing actions', '快捷功能': 'Quick actions', '切换工具': 'Switch tools',
     '波形区操作': 'Waveform actions', '空白波形区': 'Blank waveform area', '波形外观调整': 'Waveform appearance', '静音空隙操作': 'Silent-gap operations', '字幕列表': 'Subtitle list',
     'WASD 方向键': 'WASD directional keys', '选择前/后字幕': 'Select previous/next subtitle', '连选前/后字幕': 'Extend selection backward/forward',
+    '选择并显示当前轨道首/末条可见字幕': 'Select and reveal the first/last visible subtitle on the current track',
+    '快捷键时间基准': 'Keyboard timing reference', '鼠标位置': 'Mouse position', '播放头': 'Playhead',
+    'B/Z/X/N 使用鼠标所在波形位置；波形外不执行时间操作。': 'B/Z/X/N use the mouse position in the waveform; outside it, timing actions do nothing.',
+    'B/Z/X/N 使用当前播放头位置；无当前字幕目标时使用主轨。': 'B/Z/X/N use the current playhead; when no cue target is active, they use the main track.',
     '其实就是用 WASD 啦，从字幕列表看是上下跳，从波形区看是左右跳 : P': 'It is just WASD: jump up and down in the subtitle list, and left and right in the waveform area : P',
     '波形区显示': 'Waveform display', '显示调整': 'Display adjustments',
     '启用/禁用字幕': 'Enable/disable subtitle',
@@ -6610,6 +6684,7 @@
     '选择工具': 'Select tool', '分割工具': 'Razor tool',
     '播放/暂停': 'Play/pause',
     '无选中时前后跳转': 'Seek back/forward with no selection',
+    '在波形区或播放器跳转到媒体开头/结尾': 'Seek to the start/end of the media from the waveform or player',
     '提示：可在「媒体」设置中切换 J/K/L 的「慢放/快放」或「倒放/正放」，也可调整跳转时长。': 'Tip: In Media settings, switch J/K/L between “slow/fast” and “reverse/forward”, and adjust the seek duration.',
     '选中字幕时': 'With subtitles selected:', '选中字幕时：': 'With subtitles selected:',
     '按键微调字幕': 'Fine-tuning subtitles with keys', '选中字幕': 'With a subtitle selected',
@@ -7407,6 +7482,25 @@
     const comfortInset = Math.min(120, Math.max(48, safeViewportHeight * 0.2));
     return rowTop >= comfortInset
       && rowTop + safeRowHeight <= safeViewportHeight - comfortInset;
+  }
+
+  function waveformTopEdgeMs(state) {
+    if (state?.mode === 'basic') return Math.max(0, Math.round(Number(state.basicWindowStartMs) || 0));
+    const scrollTop = Math.max(0, Number(state?.scrollTop) || 0);
+    const stride = Math.max(1, Number(state?.rowHeight) + Number(state?.rowGap));
+    const rowDurationMs = Math.max(1, Number(state?.secondsPerRow) * 1000 || 1);
+    return Math.max(0, Math.floor(scrollTop / stride) * rowDurationMs);
+  }
+
+  function restoreWaveformTopEdgeMs(state, value) {
+    if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value)) return null;
+    const durationMs = Math.max(0, Math.round(Number(state?.durationMs) || 0));
+    if (state?.mode === 'basic') {
+      const windowMs = Math.max(1, Number(state.visibleSeconds) * 1000 || 1);
+      return clamp(value, 0, Math.max(0, durationMs - windowMs));
+    }
+    const rowDurationMs = Math.max(1, Number(state?.secondsPerRow) * 1000 || 1);
+    return Math.floor(Math.min(value, durationMs) / rowDurationMs) * rowDurationMs;
   }
 
   // 组序号徽章：颜色与表情包分组彼此独立，因此同一条字幕可同时拥有两枚徽章。
@@ -8511,6 +8605,7 @@
       this.suppressGapClickUntil = 0;
       this.autoScrolling = false;
       this.autoScrollTarget = null;
+      this.navigationRestoring = false;
       this.multiFollowRowIndex = -1;
       this.multiFollowCheckPending = true;
       this.resizeFrame = 0;
@@ -9532,6 +9627,11 @@
       this.centerBasicOnCurrentTime();
       this.multiRange = [-1, -1];
       if (render) this.render();
+      if (this.pendingNavigation) {
+        const navigation = this.pendingNavigation;
+        this.pendingNavigation = null;
+        this.restoreNavigation(navigation);
+      }
       return true;
     }
 
@@ -11982,7 +12082,7 @@
           });
       }
 
-      if (allowFollow && this.settings.mode === 'basic') {
+      if (allowFollow && this.settings.mode === 'basic' && !this.navigationRestoring) {
         const windowMs = this.settings.visibleSeconds * 1000;
         const relative = (now - this.basicWindowStartMs) / Math.max(1, windowMs);
         if (now < this.basicWindowStartMs || now > this.basicWindowStartMs + windowMs ||
@@ -11993,7 +12093,8 @@
         }
       }
 
-      if (allowFollow && this.isMultiMode() && this.player && !this.player.paused && Date.now() > this.manualFollowUntil) {
+      if (allowFollow && this.isMultiMode() && !this.navigationRestoring
+          && this.player && !this.player.paused && Date.now() > this.manualFollowUntil) {
         const rowIndex = Math.floor(now / (this.settings.secondsPerRow * 1000));
         const shouldCheckFollow = this.multiFollowCheckPending || rowIndex !== this.multiFollowRowIndex;
         if (!shouldCheckFollow) {
@@ -12031,6 +12132,61 @@
         if (!needsScroll) this.autoScrollTarget = null;
       }
       this.positionPlayheads();
+    }
+
+    getNavigationSnapshot() {
+      return {
+        cueListScrollTop: Math.max(0, Math.round(Number(this.cues?.scrollTop) || 0)),
+        waveformTopEdgeMs: waveformTopEdgeMs({
+          mode: this.settings.mode,
+          basicWindowStartMs: this.basicWindowStartMs,
+          scrollTop: this.scroll?.scrollTop,
+          rowHeight: this.settings.rowHeight,
+          rowGap: ROW_GAP,
+          secondsPerRow: this.settings.secondsPerRow,
+        }),
+      };
+    }
+
+    restoreNavigation(snapshot) {
+      if (!snapshot || typeof snapshot !== 'object') return false;
+      if (!this.payload) {
+        this.pendingNavigation = snapshot;
+        if (typeof snapshot.cueListScrollTop === 'number' && Number.isFinite(snapshot.cueListScrollTop)) {
+          const maxTop = Math.max(0, this.cues.scrollHeight - this.cues.clientHeight);
+          this.cues.scrollTop = clamp(Math.round(snapshot.cueListScrollTop), 0, maxTop);
+        }
+        return true;
+      }
+      const topEdgeMs = restoreWaveformTopEdgeMs({
+        mode: this.settings.mode,
+        durationMs: this.durationMs,
+        visibleSeconds: this.settings.visibleSeconds,
+        secondsPerRow: this.settings.secondsPerRow,
+      }, snapshot.waveformTopEdgeMs);
+      this.navigationRestoring = true;
+      if (topEdgeMs !== null) {
+        if (this.settings.mode === 'basic') {
+          this.basicWindowStartMs = topEdgeMs;
+          this.renderBasic();
+        } else {
+          const rowDurationMs = Math.max(1, this.settings.secondsPerRow * 1000);
+          const stride = this.settings.rowHeight + ROW_GAP;
+          const rowTop = Math.floor(topEdgeMs / rowDurationMs) * stride;
+          const maxTop = Math.max(0, this.scroll.scrollHeight - this.scroll.clientHeight);
+          this.scroll.scrollTop = clamp(rowTop, 0, maxTop);
+          this.renderMultiVisible();
+        }
+      }
+      if (typeof snapshot.cueListScrollTop === 'number' && Number.isFinite(snapshot.cueListScrollTop)) {
+        const maxTop = Math.max(0, this.cues.scrollHeight - this.cues.clientHeight);
+        this.cues.scrollTop = clamp(Math.round(snapshot.cueListScrollTop), 0, maxTop);
+      }
+      this.manualFollowUntil = Date.now() + 5000;
+      this.autoScrolling = false;
+      this.autoScrollTarget = null;
+      requestAnimationFrame(() => { this.navigationRestoring = false; });
+      return topEdgeMs !== null || typeof snapshot.cueListScrollTop === 'number';
     }
 
     positionPlayheads() {
@@ -12088,6 +12244,8 @@
       layoutRootDropIntent,
       layoutDropPreviewRect,
       isMultiRowInComfortZone,
+      waveformTopEdgeMs,
+      restoreWaveformTopEdgeMs,
       computeGroupBadges,
     },
   };
@@ -12635,6 +12793,9 @@ function normalizeClickBehavior(value) {
 function normalizeClickTarget(value) {
   return CLICK_TARGET_VALUES.has(value) ? value : 'pointer';
 }
+function normalizeKeyboardOperationReferenceMode(value) {
+  return value === 'playhead' ? 'playhead' : 'pointer';
+}
 function normalizeJklPlaybackMode(value) {
   return JKL_PLAYBACK_MODE_VALUES.has(value) ? value : DEFAULT_JKL_PLAYBACK_MODE;
 }
@@ -12747,6 +12908,7 @@ const DEFAULT_EDITOR_SETTINGS = {
   clickBehavior: 'select-and-seek',
   // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
   clickTarget: 'pointer',
+  keyboardOperationReference: 'pointer',
   // J/K/L 播放控制：direction 为倒放/停止/正放，speed 保留旧的慢速/重置/倍速行为。
   jklPlaybackMode: DEFAULT_JKL_PLAYBACK_MODE,
   // 媒体控制按钮与无选中字幕时左右方向键的跳转幅度。
@@ -12838,6 +13000,7 @@ function readEditorSettings() {
       stickerOtioExportMode: saved.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
       clickBehavior: normalizeClickBehavior(saved.clickBehavior),
       clickTarget: normalizeClickTarget(saved.clickTarget),
+      keyboardOperationReference: normalizeKeyboardOperationReferenceMode(saved.keyboardOperationReference),
       jklPlaybackMode: normalizeJklPlaybackMode(saved.jklPlaybackMode),
       mediaSeekStepMs: clampMediaSeekStepMs(savedMediaSeekStepMs),
       cueMoveStepMs: clampCueMoveStepMs(saved.cueMoveStepMs),
@@ -13359,6 +13522,8 @@ const helpMediaSeekStep = document.getElementById('help-media-seek-step');
 const clickBehaviorSelect = document.getElementById('click-behavior');
 const clickTargetField = document.getElementById('click-target-field');
 const clickTargetSelect = document.getElementById('click-target');
+const keyboardOperationReferenceSelect = document.getElementById('keyboard-operation-reference');
+const keyboardOperationReferenceHint = document.getElementById('keyboard-operation-reference-hint');
 const jklPlaybackModeSelect = document.getElementById('jkl-playback-mode');
 const jklPlaybackModeHint = document.getElementById('jkl-playback-mode-hint');
 const helpJklMode = document.getElementById('help-jkl-mode');
@@ -13990,6 +14155,9 @@ if (autoSaveIntervalInput) autoSaveIntervalInput.value = String(EDITOR_SETTINGS.
 if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.stickerOverlayEnabled;
 if (clickBehaviorSelect) clickBehaviorSelect.value = EDITOR_SETTINGS.clickBehavior;
 if (clickTargetSelect) clickTargetSelect.value = EDITOR_SETTINGS.clickTarget;
+if (keyboardOperationReferenceSelect) {
+  keyboardOperationReferenceSelect.value = EDITOR_SETTINGS.keyboardOperationReference;
+}
 if (jklPlaybackModeSelect) jklPlaybackModeSelect.value = EDITOR_SETTINGS.jklPlaybackMode;
 if (mediaSeekStepInput) mediaSeekStepInput.value = String(EDITOR_SETTINGS.mediaSeekStepMs);
 if (cueMoveStepInput) cueMoveStepInput.value = String(EDITOR_SETTINGS.cueMoveStepMs);
@@ -14407,6 +14575,11 @@ clickBehaviorSelect?.addEventListener('change', () => {
 clickTargetSelect?.addEventListener('change', () => {
   updateEditorSettings({ clickTarget: normalizeClickTarget(clickTargetSelect.value) });
 });
+keyboardOperationReferenceSelect?.addEventListener('change', () => {
+  const mode = normalizeKeyboardOperationReferenceMode(keyboardOperationReferenceSelect.value);
+  updateEditorSettings({ keyboardOperationReference: mode });
+  refreshKeyboardOperationReferenceHint();
+});
 jklPlaybackModeSelect?.addEventListener('change', () => {
   const wasReversePlaying = jklReversePlaying;
   updateEditorSettings({ jklPlaybackMode: normalizeJklPlaybackMode(jklPlaybackModeSelect.value) });
@@ -14530,7 +14703,10 @@ subtitleBackgroundAlphaInput?.addEventListener('change', () => applySubtitleBack
 subtitleFontFamilyScanButton?.addEventListener('click', () => {
   void scanSubtitleLocalFonts();
 });
-document.addEventListener('mawe:languagechange', renderSubtitleFontFamilyStatus);
+document.addEventListener('mawe:languagechange', () => {
+  renderSubtitleFontFamilyStatus();
+  relabelSubtitleFontFamilyOptions();
+});
 subtitleColorInput?.addEventListener('change', () => {
   pushPreviewUndo('调整主字幕颜色', snapshotPreviewState());
   setSubtitleAppearance({ color: subtitleColorInput.value });
@@ -14606,6 +14782,27 @@ function refreshClickBehaviorHint() {
 }
 refreshClickBehaviorHint();
 document.addEventListener('mawe:languagechange', refreshClickBehaviorHint);
+
+const KEYBOARD_OPERATION_REFERENCE_HINTS = {
+  zh: {
+    pointer: 'B/Z/X/N 使用鼠标所在波形位置；波形外不执行时间操作。',
+    playhead: 'B/Z/X/N 使用当前播放头位置；无当前字幕目标时使用主轨。',
+  },
+  en: {
+    pointer: 'B/Z/X/N use the mouse position in the waveform; outside it, timing actions do nothing.',
+    playhead: 'B/Z/X/N use the current playhead; when no cue target is active, they use the main track.',
+  },
+};
+function refreshKeyboardOperationReferenceHint() {
+  const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+  const mode = normalizeKeyboardOperationReferenceMode(EDITOR_SETTINGS.keyboardOperationReference);
+  if (keyboardOperationReferenceSelect) keyboardOperationReferenceSelect.value = mode;
+  if (keyboardOperationReferenceHint) {
+    keyboardOperationReferenceHint.textContent = KEYBOARD_OPERATION_REFERENCE_HINTS[language][mode];
+  }
+}
+refreshKeyboardOperationReferenceHint();
+document.addEventListener('mawe:languagechange', refreshKeyboardOperationReferenceHint);
 
 const JKL_MODE_UI_TEXT = {
   zh: {
@@ -19215,6 +19412,7 @@ let cueListPointer = null;
 // Enter（原地编辑 vs 聚焦字幕编辑区）据此分发；指针坐标由 cueListPointer /
 // lastPointerPos 提供，两者独立更新、互不替代。
 let lastEditRegion = null;
+let navigationOwner = null;
 let lastPointerPos = null;
 let cueSplitPreviewEl = null;
 let cueSplitPreviewFrame = 0;
@@ -19233,6 +19431,20 @@ document.addEventListener('pointerdown', (e) => {
   if (e.target instanceof Element && e.target.closest('.cue')) lastEditRegion = 'cue-list';
   else if (e.target instanceof Element && e.target.closest('#waveform-pane')) lastEditRegion = 'waveform';
 }, true);
+function navigationOwnerForTarget(target) {
+  if (!(target instanceof Element)) return null;
+  if (target.closest('.cue')) return 'cue-list';
+  if (target.closest('.player-stage, #media-controls, .waveform-row, #waveform-scroll')) {
+    return 'waveform/player';
+  }
+  return null;
+}
+function updateNavigationOwner(event) {
+  const owner = navigationOwnerForTarget(event.target);
+  if (owner) navigationOwner = owner;
+}
+document.addEventListener('pointerdown', updateNavigationOwner, true);
+document.addEventListener('focusin', updateNavigationOwner, true);
 document.addEventListener('pointermove', (e) => {
   lastPointerPos = { x: e.clientX, y: e.clientY };
 }, true);
@@ -19299,7 +19511,27 @@ function waveformPointerContext() {
   const timeMs = waveformEditor?.timeMsAtPoint?.(lastPointerPos.x, lastPointerPos.y);
   if (!Number.isFinite(timeMs)) return null;
   const track = waveformEditor?.trackAtPoint?.(lastPointerPos.x, lastPointerPos.y) || 'main';
-  return { ...lastPointerPos, timeMs, track };
+  return {
+    ...lastPointerPos,
+    timeMs,
+    track,
+    trackId: track === 'extension' ? getActiveExtensionTrack()?.id || null : null,
+  };
+}
+
+function keyboardOperationReference() {
+  const pointer = waveformPointerContext();
+  const target = getCurrentCuePanelTarget();
+  return GEO_UTILS.resolveKeyboardOperationReference(
+    EDITOR_SETTINGS.keyboardOperationReference,
+    {
+      pointer,
+      playheadTarget: {
+        ...(target || { kind: 'main', trackId: null }),
+        timeMs: Math.round(Number(player.currentTime) * 1000),
+      },
+    },
+  );
 }
 
 // Z/X 只接受一个“逻辑字幕”作为目标：点击主字幕时，绑定副字幕是它的
@@ -19312,7 +19544,7 @@ function getPointerBoundaryEditTarget(context) {
 
   if (!mainIndices.length && !extensionIndices.length) {
     const extension = context.track === 'extension' && multiSubtitleVisible();
-    const track = extension ? getActiveExtensionTrack() : null;
+    const track = extension ? getExtensionTrack(context.trackId) : null;
     const segments = extension ? track?.segments : DATA.segments;
     const index = findWaveformCueAtTime(context.timeMs, segments);
     if (index < 0 || !segments?.[index]) return null;
@@ -19373,9 +19605,13 @@ function handlePointerBoundaryShortcut(event, edge) {
       || ctxmenu.classList.contains('show')) return;
   if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
 
-  const context = waveformPointerContext();
+  const reference = keyboardOperationReference();
+  const context = reference ? { ...reference } : null;
   const target = getPointerBoundaryEditTarget(context);
-  if (!context || !target || !waveformEditor?.setCueBoundaryToTime) return;
+  if (!reference || !target || !waveformEditor?.setCueBoundaryToTime) {
+    if (!reference) flashHint('无有效的快捷键时间基准', 'invalid');
+    return;
+  }
   const track = target.kind === 'extension' ? 'extension' : 'main';
   if (!waveformEditor.setCueBoundaryToTime(context.timeMs, edge, track, target.index)) return;
   event.preventDefault();
@@ -19962,8 +20198,49 @@ document.addEventListener('keydown', (e) => {
   seekMediaBy(direction * EDITOR_SETTINGS.mediaSeekStepMs / 1000);
 }, true);
 
-// Home/End：在播放区域或页面空白处把媒体跳到首尾；文本输入、普通按钮和
-// 模态窗口内保留浏览器/控件自己的 Home/End 行为。
+function renderedCueBoundaryTarget(target, boundary) {
+  const selector = target?.kind === 'extension'
+    ? '.multi-dual-cue[data-ext-idx], .multi-extension-cue[data-ext-idx]'
+    : '.cue[data-idx], .multi-dual-cue[data-main-idx]';
+  const track = target?.kind === 'extension' ? target.track : 'main';
+  const indexes = [...container.querySelectorAll(selector)]
+    .filter((cue) => !cue.classList.contains('hidden'))
+    .map((cue) => Number(target?.kind === 'extension'
+      ? cue.dataset.extIdx
+      : cue.dataset.idx ?? cue.dataset.mainIdx))
+    .filter((index, position, values) => (
+      Number.isInteger(index)
+      && !isHiddenDisabled(index, track)
+      && values.indexOf(index) === position
+    ));
+  const index = boundary === 'first' ? indexes[0] : indexes[indexes.length - 1];
+  if (!Number.isInteger(index)) return null;
+  const cue = container.querySelector(
+    target?.kind === 'extension'
+      ? `.multi-dual-cue[data-ext-idx="${index}"], .multi-extension-cue[data-ext-idx="${index}"]`
+      : `.cue[data-idx="${index}"], .multi-dual-cue[data-main-idx="${index}"]`,
+  );
+  return cue ? { cue, index } : null;
+}
+
+function navigateCueListBoundary(key) {
+  const target = getCurrentCuePanelTarget();
+  if (!target) return false;
+  const boundary = renderedCueBoundaryTarget(target, key === 'Home' ? 'first' : 'last');
+  if (!boundary) return false;
+  if (target.kind === 'extension') {
+    selectOnlyExtension(boundary.index, target.track);
+    lastClickedExtensionIdx = boundary.index;
+  } else {
+    selectOnly(boundary.index);
+    lastClickedIdx = boundary.index;
+  }
+  scrollCueToCenter(boundary.cue);
+  return true;
+}
+
+// Home/End：字幕列表最近拥有导航时选择当前轨道首尾；波形、播放器或尚未
+// 确定区域时跳转媒体首尾。文本输入、普通按钮和模态窗口保留原生行为。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Home' && e.key !== 'End') return;
   if (editingState || extensionEditingState || isTextEditingTarget(e)) return;
@@ -19975,6 +20252,11 @@ document.addEventListener('keydown', (e) => {
       || multiSubtitleImportModal?.classList.contains('show')
       || document.getElementById('sticker-root-modal').classList.contains('show')
       || ctxmenu.classList.contains('show')) return;
+  if (navigationOwner === 'cue-list' && navigateCueListBoundary(e.key)) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
   const duration = Number(player?.duration);
   if (!hasLoadedMedia() || !Number.isFinite(duration) || duration <= 0) return;
   e.preventDefault();
@@ -20654,15 +20936,18 @@ document.addEventListener('keydown', (e) => {
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
-  const context = waveformPointerContext();
-  if (!context) return;
+  const reference = keyboardOperationReference();
+  if (!reference) {
+    flashHint('无有效的快捷键时间基准', 'invalid');
+    return;
+  }
   e.preventDefault();
   e.stopPropagation();
   lastEditRegion = 'waveform';
-  if (context.track === 'extension' && multiSubtitleVisible()) {
-    addExtensionAtWaveformTime(context.timeMs, context.x, context.y, getActiveExtensionTrack());
+  if (reference.track === 'extension' && multiSubtitleVisible()) {
+    addExtensionAtWaveformTime(reference.timeMs, lastPointerPos?.x || 0, lastPointerPos?.y || 0, getExtensionTrack(reference.trackId));
   } else {
-    addCueAtWaveformTime(context.timeMs, context.x, context.y);
+    addCueAtWaveformTime(reference.timeMs, lastPointerPos?.x || 0, lastPointerPos?.y || 0);
   }
 });
 
@@ -20824,12 +21109,12 @@ document.addEventListener('keydown', (e) => {
   // 绑定关系会让点击主字幕时同时选中副字幕；不能仅凭 selectedExtensionIdxs
   // 判断当前轨道，否则主字幕 active 时会被误判成副字幕单独拆分。
   const activeCuePanel = getCurrentCuePanelTarget();
-  const pointerContext = waveformPointerContext();
-  const pointerMainIndex = pointerContext
-    ? findWaveformCueAtTime(pointerContext.timeMs, DATA.segments) : -1;
+  const operationReference = keyboardOperationReference();
+  const pointerMainIndex = operationReference
+    ? findWaveformCueAtTime(operationReference.timeMs, DATA.segments) : -1;
   const activeExtensionTrack = getActiveExtensionTrack();
-  const pointerExtensionIndex = pointerContext?.track === 'extension'
-    ? findWaveformCueAtTime(pointerContext.timeMs, activeExtensionTrack?.segments) : -1;
+  const pointerExtensionIndex = operationReference?.track === 'extension'
+    ? findWaveformCueAtTime(operationReference.timeMs, getExtensionTrack(operationReference.trackId)?.segments) : -1;
   if (selectedExtensionIdxs.size === 1) {
     const context = hoveredSelectedCueContext();
     if (context?.kind === 'extension' && context.track?.segments?.[context.idx]) {
@@ -20852,13 +21137,13 @@ document.addEventListener('keydown', (e) => {
     && activeCuePanel?.kind === 'extension'
     && selectedExtensionIdxs.size === 1
     && selectedExtensionIdxs.has(activeCuePanel.index)
-    && pointerContext?.track === 'extension'
+    && operationReference?.track === 'extension'
     && pointerExtensionIndex === activeCuePanel.index;
   const extensionIsActive = multiSubtitleVisible()
     && activeCuePanel?.kind === 'extension'
     && selectedExtensionIdxs.size === 1
     && selectedExtensionIdxs.has(activeCuePanel.index)
-    && (!pointerContext || pointerMainIndex < 0 || waveformExtensionIsActive);
+    && (!operationReference || pointerMainIndex < 0 || waveformExtensionIsActive);
   if (extensionIsActive) {
     const extensionIndex = [...selectedExtensionIdxs][0];
     const track = activeExtensionTrack;
@@ -20868,7 +21153,8 @@ document.addEventListener('keydown', (e) => {
     const pointerElement = lastPointerPos
       ? document.elementFromPoint(lastPointerPos.x, lastPointerPos.y)
       : null;
-    if (lastPointerPos && (pointerElement?.closest('#waveform-pane') || lastEditRegion === 'waveform')) {
+    if (EDITOR_SETTINGS.keyboardOperationReference === 'pointer'
+        && lastPointerPos && (pointerElement?.closest('#waveform-pane') || lastEditRegion === 'waveform')) {
       const pointerTimeMs = waveformEditor?.timeMsAtPoint?.(lastPointerPos.x, lastPointerPos.y);
       if (Number.isFinite(pointerTimeMs) && pointerTimeMs > extension.start && pointerTimeMs < extension.end) {
         timeMs = pointerTimeMs;
@@ -20877,7 +21163,12 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     // 同上：首次 B 只负责打开副字幕拆分弹窗。
     e.stopImmediatePropagation();
-    openExtensionSplitModal(extensionIndex, timeMs, track);
+    openExtensionSplitModal(
+      extensionIndex,
+      EDITOR_SETTINGS.keyboardOperationReference === 'playhead'
+        ? operationReference?.timeMs ?? null : timeMs,
+      track,
+    );
     return;
   }
   // 1) 字幕列表：需要单选 + 悬停提供文字位置
@@ -20889,26 +21180,26 @@ document.addEventListener('keydown', (e) => {
     }
   }
   // 2) 波形：指针音频位置
-  if (pointerContext) {
-    const idx = findWaveformCueAtTime(pointerContext.timeMs, DATA.segments);
+  if (operationReference?.source === 'pointer' || operationReference?.track === 'extension') {
+    const idx = findWaveformCueAtTime(operationReference.timeMs, DATA.segments);
     if (idx >= 0) {
-      splitAt(idx, 0, 0, pointerContext.timeMs);
+      splitAt(idx, 0, 0, operationReference.timeMs);
       return;
     }
     const extensionTrack = getActiveExtensionTrack();
-    const extensionIndex = multiSubtitleVisible()
-      ? findWaveformCueAtTime(pointerContext.timeMs, extensionTrack?.segments) : -1;
+    const extensionIndex = multiSubtitleVisible() && operationReference.track === 'extension'
+      ? findWaveformCueAtTime(operationReference.timeMs, getExtensionTrack(operationReference.trackId)?.segments) : -1;
     if (extensionIndex >= 0) {
       e.preventDefault();
       e.stopImmediatePropagation();
-      openExtensionSplitModal(extensionIndex, pointerContext.timeMs, extensionTrack);
+      openExtensionSplitModal(extensionIndex, operationReference.timeMs, getExtensionTrack(operationReference.trackId));
       return;
     }
     flashHint('指针位置没有可拆分字幕', 'invalid');
     return;
   }
   // 3) 播放头位置
-  const timeMs = Math.round(player.currentTime * 1000);
+  const timeMs = operationReference?.timeMs ?? Math.round(player.currentTime * 1000);
   const idx = DATA.segments.findIndex((segment) => timeMs > segment.start && timeMs < segment.end);
   if (idx >= 0) {
     splitAt(idx, 0, 0, timeMs);
@@ -21017,6 +21308,17 @@ function setSubtitleFontFamilyScanState(state, count = 0) {
 function subtitleFontFamilyOptionExists(select, value) {
   return !!select && Array.from(select.options).some((option) => option.value === value);
 }
+function subtitleFontFamilyDisplayName(family) {
+  const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+  return GEO_UTILS.subtitleFontFamilyDisplayName(family, language);
+}
+function relabelSubtitleFontFamilyOptions() {
+  [subtitleFontFamilySelect, extensionSubtitleFontFamilySelect].filter(Boolean).forEach((select) => {
+    Array.from(select.querySelectorAll('option[data-local-font="true"], option[data-generated="true"]')).forEach((option) => {
+      option.textContent = subtitleFontFamilyDisplayName(option.value);
+    });
+  });
+}
 function normalizeSubtitleColor(value) {
   if (typeof value !== 'string') return null;
   const color = value.trim().toLowerCase();
@@ -21080,7 +21382,7 @@ function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
         && !subtitleFontFamilyOptionExists(subtitleFontFamilySelect, family)) {
       const option = document.createElement('option');
       option.value = family;
-      option.textContent = family;
+      option.textContent = subtitleFontFamilyDisplayName(family);
       option.dataset.generated = 'true';
       subtitleFontFamilySelect.append(option);
     }
@@ -21112,7 +21414,7 @@ function syncExtensionSubtitleAppearanceControls() {
         && !subtitleFontFamilyOptionExists(extensionSubtitleFontFamilySelect, family)) {
       const option = document.createElement('option');
       option.value = family;
-      option.textContent = family;
+      option.textContent = subtitleFontFamilyDisplayName(family);
       option.dataset.generated = 'true';
       extensionSubtitleFontFamilySelect.append(option);
     }
@@ -21222,7 +21524,7 @@ function replaceSubtitleLocalFontOptions(families) {
       if (existing.has(family)) return;
       const option = document.createElement('option');
       option.value = family;
-      option.textContent = family;
+      option.textContent = subtitleFontFamilyDisplayName(family);
       option.dataset.localFont = 'true';
       fragment.append(option);
       existing.add(family);
@@ -21231,6 +21533,7 @@ function replaceSubtitleLocalFontOptions(families) {
   });
   syncSubtitleAppearanceControls();
   syncExtensionSubtitleAppearanceControls();
+  relabelSubtitleFontFamilyOptions();
 }
 function initializeSubtitleFontFamilyScanner() {
   if (!subtitleFontFamilyScanButton) return;
@@ -22953,6 +23256,33 @@ async function updateServerWorkspaceSettings(payload) {
   return result;
 }
 
+function currentWorkspaceNavigation() {
+  const snapshot = waveformEditor?.getNavigationSnapshot?.();
+  const cueListScrollTop = Math.max(0, Math.round(Number(container?.scrollTop) || 0));
+  return {
+    ...(snapshot || {}),
+    cueListScrollTop,
+  };
+}
+
+async function saveWorkspaceNavigation(target) {
+  if (!target || !SERVER_CONFIG?.settingsUrl || !waveformEditor) return;
+  const navigation = currentWorkspaceNavigation();
+  try {
+    const result = await updateServerWorkspaceSettings({
+      updateWorkspaceNavigation: { ...target, navigation },
+    });
+    SERVER_CONFIG.savedWorkspaces = result.savedWorkspaces || {};
+    SERVER_CONFIG.presetWorkspaces = result.presetWorkspaces || {};
+  } catch (error) {
+    flashHint(`记住工作区导航失败：${error.message || error}`, 'warning');
+  }
+}
+
+function restoreWorkspaceNavigation(workspace) {
+  waveformEditor?.restoreNavigation?.(workspace?.navigation);
+}
+
 async function saveCurrentWorkspace({ saveAs }) {
   if (!waveformEditor || !SERVER_CONFIG?.settingsUrl) return;
   let name = currentServerWorkspaceName;
@@ -23007,13 +23337,21 @@ async function deleteCurrentServerWorkspace() {
 
 // 应用一次下拉选择：saved:* 从本机库恢复；内置 id 优先用本机覆盖版，否则用默认定义。
 // 工作区 = 窗口布局 + 显示状态，切换时同时恢复该工作区保存的显示开关。
-function applyWorkspaceSelection(preset) {
+async function applyWorkspaceSelection(preset) {
+  const previousTarget = currentServerWorkspaceName
+    ? { name: currentServerWorkspaceName }
+    : currentBuiltinWorkspaceName ? { preset: currentBuiltinWorkspaceName } : null;
+  if (previousTarget && (preset !== `saved:${currentServerWorkspaceName}`
+      && preset !== currentBuiltinWorkspaceName)) {
+    await saveWorkspaceNavigation(previousTarget);
+  }
   if (preset.startsWith('saved:')) {
     const name = preset.slice('saved:'.length);
     const workspace = getSavedServerWorkspaces()[name];
     if (!workspace) return;
     waveformEditor.setLayoutData({ ...workspace, selectedPreset: `saved:${name}` });
     applyEditorDisplaySettings(workspace.editorDisplay);
+    restoreWorkspaceNavigation(workspace);
     currentServerWorkspaceName = name;
     currentBuiltinWorkspaceName = '';
     refreshWorkspaceSelect();
@@ -23028,12 +23366,13 @@ function applyWorkspaceSelection(preset) {
   currentServerWorkspaceName = '';
   currentBuiltinWorkspaceName = preset;
   const savedPreset = getSavedPresetWorkspaces()[preset];
-  if (savedPreset) waveformEditor.setLayoutData(savedPreset);
-  else waveformEditor.setLayout(preset);
+   if (savedPreset) waveformEditor.setLayoutData(savedPreset);
+   else waveformEditor.setLayout(preset);
   applyEditorDisplaySettings(
     savedPreset?.editorDisplay || window.AsrWaveform?.builtinWorkspaces?.[preset]?.editorDisplay,
   );
-  workspacePresetSelect.value = preset;
+   workspacePresetSelect.value = preset;
+   restoreWorkspaceNavigation(savedPreset);
   refreshWorkspaceSelect();
   syncWorkspaceControls();
   void updateServerWorkspaceSettings({ activeWorkspaceName: '' }).catch((error) => {
@@ -23083,8 +23422,12 @@ function configureServerWorkspaceLibrary() {
     saveWorkspaceAsButton?.addEventListener('click', () => { void saveCurrentWorkspace({ saveAs: true }); });
     deleteWorkspaceButton?.addEventListener('click', () => { void deleteCurrentServerWorkspace(); });
     workspacePresetSelect.dataset.listenersBound = 'true';
-  }
-  syncWorkspaceControls();
+   }
+   const initialWorkspace = currentServerWorkspaceName
+     ? getSavedServerWorkspaces()[currentServerWorkspaceName]
+     : getSavedPresetWorkspaces()[currentBuiltinWorkspaceName];
+   restoreWorkspaceNavigation(initialWorkspace || DATA.workspace);
+   syncWorkspaceControls();
 }
 
 function configureWorkspaceTransfer() {

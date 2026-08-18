@@ -281,6 +281,14 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('seekMediaBy(-EDITOR_SETTINGS.mediaSeekStepMs / 1000)', page)
         self.assertIn('id="help-media-seek-step"', page)
         self.assertIn('class="help-break"', page)
+        self.assertIn(
+            '<span><kbd>←</kbd>/<kbd>→</kbd> 无选中时前后跳转 <span id="help-media-seek-step">1000ms</span></span>\n'
+            '          <span class="help-break" aria-hidden="true"></span>\n'
+            '          <span><kbd>Home</kbd>/<kbd>End</kbd> 在波形区或播放器跳转到媒体开头/结尾</span>\n'
+            '          <span class="help-break" aria-hidden="true"></span>\n'
+            '          <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> <span id="help-jkl-mode">倒放/停止/1×播放</span></span>',
+            page,
+        )
         self.assertIn('其实就是用 WASD 啦，从字幕列表看是上下跳，从波形区看是左右跳 : P', page)
         self.assertNotIn('id="jkl-playback-mode"', editor_settings_panel)
         self.assertIn('id="help-split-key"', page)
