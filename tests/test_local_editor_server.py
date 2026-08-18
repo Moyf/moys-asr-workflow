@@ -250,7 +250,8 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('src="/media"', page)
         self.assertIn('let STICKER_URL_PREFIX = "/stickers";', page)
         self.assertIn('const NINJA_SFX_BASE_URL = "/sfx/";', page)
-        self.assertIn('const SERVER_CONFIG = {"saveUrl": "/api/project", "createUrl": "/api/project/create", ', page)
+        self.assertIn('const SERVER_CONFIG = {"saveUrl": "/api/project", ', page)
+        self.assertNotIn('createUrl', page)
         self.assertIn('"requestToken": "", "stickerRootUrl": "/api/stickers/root", ', page)
         self.assertIn('"portableStickerExportUrl": "/api/exports/sticker-otio", ', page)
         self.assertIn('"canPortableStickerExport": true, "initialStickerCount": 1, ', page)
@@ -815,108 +816,6 @@ class LocalEditorServerTests(unittest.TestCase):
             finally:
                 server.shutdown()
                 thread.join(timeout=2)
-
-    def test_create_project_endpoint_writes_binds_and_remembers_project(self) -> None:
-        project = server_editor.load_blank_project(str(self.stickers))
-        settings_path = self.root / "server-editor-settings.json"
-        target = self.root / "created.mosp"
-        dialog_calls: list[str] = []
-
-        def choose_path(suggested_name: str):
-            dialog_calls.append(suggested_name)
-            return server_editor.ProjectSaveDialogResult.selected(target)
-
-        with server_editor.EditorServer(
-            ("127.0.0.1", 0),
-            project,
-            settings_path=settings_path,
-            project_save_dialog=choose_path,
-        ) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
-            thread.start()
-            try:
-                base_url = f"http://127.0.0.1:{server.server_address[1]}"
-                request = urllib.request.Request(
-                    f"{base_url}/api/project/create",
-                    data=json.dumps({
-                        "project": {"media": "", "segments": []},
-                        "suggestedName": "draft.mosp",
-                        "requestToken": server.request_token,
-                    }).encode("utf-8"),
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                with urllib.request.urlopen(request) as response:
-                    result = json.loads(response.read())
-            finally:
-                server.shutdown()
-                thread.join(timeout=2)
-
-        self.assertEqual(dialog_calls, ["draft.mosp"])
-        self.assertEqual(result["name"], "created.mosp")
-        self.assertTrue(result["canSave"])
-        self.assertFalse(result["cancelled"])
-        self.assertNotIn("path", result)
-        self.assertEqual(json.loads(target.read_text(encoding="utf-8")), result["project"])
-        self.assertNotIn("path", result["project"])
-        self.assertEqual(server.project.json_path, target)
-        self.assertEqual(server.settings.recent_projects[0].path, target)
-        self.assertEqual(server_editor.read_server_settings(settings_path).recent_projects[0].path, target)
-
-    def test_create_project_cancellation_preserves_server_state(self) -> None:
-        project = server_editor.load_blank_project(str(self.stickers))
-        settings_path = self.root / "server-editor-settings.json"
-
-        with server_editor.EditorServer(
-            ("127.0.0.1", 0),
-            project,
-            settings_path=settings_path,
-            project_save_dialog=lambda _name: server_editor.ProjectSaveDialogResult.cancelled(),
-        ) as server:
-            original_project = server.project
-            result = server.create_project({"media": "", "segments": []}, "draft.mosp")
-
-        self.assertTrue(result.cancelled)
-        self.assertIs(server.project, original_project)
-        self.assertEqual(server.settings, server_editor.ServerSettings())
-        self.assertFalse(settings_path.exists())
-        self.assertEqual(list(self.root.glob("*.mosp")), [])
-
-    def test_create_project_rejects_extra_path_field_before_dialog(self) -> None:
-        dialog = mock.Mock(return_value=server_editor.ProjectSaveDialogResult.cancelled())
-        project = server_editor.load_blank_project(str(self.stickers))
-        with server_editor.EditorServer(
-            ("127.0.0.1", 0), project, project_save_dialog=dialog,
-        ) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
-            thread.start()
-            try:
-                base_url = f"http://127.0.0.1:{server.server_address[1]}"
-                request = urllib.request.Request(
-                    f"{base_url}/api/project/create",
-                    data=json.dumps({
-                        "project": {"segments": []},
-                        "suggestedName": "draft.mosp",
-                        "requestToken": server.request_token,
-                        "path": str(self.root / "forbidden.mosp"),
-                    }).encode("utf-8"),
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                with self.assertRaises(urllib.error.HTTPError) as context:
-                    urllib.request.urlopen(request)
-                self.assertEqual(context.exception.code, 400)
-            finally:
-                server.shutdown()
-                thread.join(timeout=2)
-
-        dialog.assert_not_called()
-        self.assertFalse((self.root / "forbidden.mosp").exists())
-
-    def test_create_project_sanitizes_dialog_suggestion(self) -> None:
-        self.assertEqual(server_editor.sanitize_project_suggested_name("../bad:name.txt"), ".._bad_name.mosp")
-        self.assertEqual(server_editor.sanitize_project_suggested_name("CON"), "CON_project.mosp")
-        self.assertEqual(server_editor.sanitize_project_suggested_name(""), "untitled.mosp")
 
     def test_server_accepts_reconciled_extension_ranges_but_rejects_overlap(self) -> None:
         project = server_editor.load_project(

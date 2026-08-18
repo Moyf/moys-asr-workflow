@@ -12,6 +12,8 @@ import html
 import json
 import mimetypes
 import os
+import secrets
+import shutil
 import struct
 import sys
 import tempfile
@@ -22,7 +24,8 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import NamedTuple
-from urllib.parse import unquote, urlsplit
+from hmac import compare_digest
+from urllib.parse import quote, unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +53,7 @@ from maw.media import MEDIA_EXTENSIONS, MediaConversionError, MediaResolutionErr
 MAX_RECENT_PROJECTS = 10
 SETTINGS_FILE_NAME = "server-editor-settings.json"
 BUILTIN_WORKSPACE_IDS = frozenset({"classic", "wave-right", "three-fold", "cinema"})
+STICKER_IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"})
 
 
 class ByteRange(NamedTuple):
@@ -371,7 +375,11 @@ def without_deferred_reapeaks(project: ServerProject) -> ServerProject:
     return replace(project, data=data)
 
 
-def build_server_page(project: ServerProject, settings: ServerSettings | None = None) -> bytes:
+def build_server_page(
+    project: ServerProject,
+    settings: ServerSettings | None = None,
+    request_token: str = "",
+) -> bytes:
     """Render with current web/ assets on every page request to prevent UI drift."""
     settings = settings or ServerSettings()
     if project.media_path:
@@ -386,12 +394,16 @@ def build_server_page(project: ServerProject, settings: ServerSettings | None = 
         media_class = ""
     else:
         media_html = '<audio id="player" preload="metadata" style="width:100%;display:block;"></audio>'
-        title = html.escape("MAWE（本地服务器）- 用「打开工程」加载 JSON")
-        filename_base = "untitled"
-        json_display = "未加载工程"
+        title = html.escape(
+            f"MAWE（本地服务器）- {project.json_path.name}"
+            if project.json_path
+            else "MAWE（本地服务器）- 用「打开工程」加载 JSON"
+        )
+        filename_base = project.json_path.stem if project.json_path else "untitled"
+        json_display = project.json_path.name if project.json_path else "未加载工程"
         media_display = "未加载媒体"
         media_title = ""
-        json_class = "empty"
+        json_class = "" if project.json_path else "empty"
         media_class = "empty"
 
     page_data = copy.deepcopy(project.data)
@@ -412,7 +424,6 @@ def build_server_page(project: ServerProject, settings: ServerSettings | None = 
         ninja_sfx_base_url_json=json.dumps("/sfx/", ensure_ascii=False),
         server_config_json=json.dumps({
             "saveUrl": "/api/project",
-            "createUrl": "/api/project/create",
             "requestToken": request_token,
             "stickerRootUrl": "/api/stickers/root",
             "portableStickerExportUrl": "/api/exports/sticker-otio",
@@ -465,7 +476,6 @@ class EditorServer(ThreadingHTTPServer):
         self.stickers_dir = stickers_dir
         self.no_waveform = no_waveform
         self.peaks_per_second = peaks_per_second
-        self.project_save_dialog = project_save_dialog
         self.request_token = secrets.token_urlsafe(32)
         self.save_lock = threading.Lock()
         self.sticker_lock = threading.Lock()
@@ -745,44 +755,6 @@ class EditorServer(ThreadingHTTPServer):
             self.save_lock.release()
         return target, backup
 
-    def create_project(self, project_data: dict, suggested_name: str) -> CreateProjectResult:
-        """Checkpoint a new project at a host-authorized path, then bind it."""
-        try:
-            repaired_project = copy.deepcopy(project_data)
-            repair_project_timing_ranges(repaired_project, repair_segment_ranges=False)
-            normalized_project = normalize_project(repaired_project)
-        except (TypeError, ProjectValidationFailed) as error:
-            raise SaveProjectError(str(error)) from error
-        dialog_name = sanitize_project_suggested_name(suggested_name)
-        if not self.save_lock.acquire(blocking=False):
-            raise ProjectMutationInProgressError("另一个工程保存操作正在进行")
-        try:
-            selection = self.project_save_dialog(dialog_name)
-            if selection.status == "cancelled":
-                return CreateProjectResult(cancelled=True)
-            if selection.status != "selected" or selection.path is None:
-                raise ProjectSaveDialogError("系统保存对话框不可用")
-            target = selection.path.resolve()
-            if target.suffix.casefold() not in {".mosp", ".json"} or not target.parent.is_dir():
-                raise ProjectSaveDialogError("系统保存对话框返回了无效路径")
-            backup = write_project_json(target, normalized_project)
-            next_settings = remember_project(self.settings, target)
-            if self.settings_path:
-                write_server_settings(self.settings_path, next_settings)
-            self.project = ServerProject(
-                normalized_project,
-                target,
-                None,
-                self.project.sticker_root,
-                self.project.stickers,
-                source_media_path=None,
-                reapeaks_path=None,
-            )
-            self.settings = next_settings
-            return CreateProjectResult(False, normalized_project, target, backup)
-        finally:
-            self.save_lock.release()
-
 
 def safe_project_filename(directory: Path, filename: str) -> Path:
     candidate = Path(filename)
@@ -946,8 +918,6 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.shutdown_server()
         elif path == "/api/project":
             self.save_project()
-        elif path == "/api/project/create":
-            self.create_project()
         elif path == "/api/project/attach":
             self.attach_project()
         elif path == "/api/recent-projects/open":
@@ -980,6 +950,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             if filename is not None and not isinstance(filename, str):
                 raise SaveProjectError("文件名格式不正确")
             target, backup = self.editor_server.save_project(request.get("project"), filename)
+        except ProjectMutationInProgressError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
         except (UnicodeDecodeError, json.JSONDecodeError, SaveProjectError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
@@ -990,43 +963,6 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "ok": True,
             "filename": target.name,
             "backup": backup.name if backup else None,
-        })
-
-    def create_project(self) -> None:
-        try:
-            request = self.read_json_request()
-            if set(request) != {"project", "suggestedName", "requestToken"}:
-                raise SaveProjectError("新建工程请求字段不正确")
-            if request.get("requestToken") != self.editor_server.request_token:
-                raise SaveProjectError("新建工程请求令牌无效")
-            project_data = request.get("project")
-            suggested_name = request.get("suggestedName")
-            if not isinstance(project_data, dict) or not isinstance(suggested_name, str):
-                raise SaveProjectError("工程内容或建议文件名格式不正确")
-            result = self.editor_server.create_project(project_data, suggested_name)
-        except ProjectMutationInProgressError as error:
-            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
-            return
-        except (UnicodeDecodeError, json.JSONDecodeError, SaveProjectError, ValueError) as error:
-            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
-            return
-        except ProjectSaveDialogError as error:
-            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(error)})
-            return
-        except OSError as error:
-            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": f"创建工程失败：{error}"})
-            return
-        if result.cancelled:
-            self.send_json(HTTPStatus.OK, {"ok": True, "cancelled": True})
-            return
-        assert result.target is not None and result.project is not None
-        self.send_json(HTTPStatus.OK, {
-            "ok": True,
-            "cancelled": False,
-            "name": result.target.name,
-            "backup": result.backup.name if result.backup else None,
-            "canSave": True,
-            "project": result.project,
         })
 
     def _check_request_token(self, request: dict) -> None:
@@ -1225,7 +1161,11 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.send_json(HTTPStatus.OK, self.editor_server.reapeaks_status_payload())
             return
         if path == "/":
-            page = build_server_page(self.editor_server.project, self.editor_server.settings)
+            page = build_server_page(
+                self.editor_server.project,
+                self.editor_server.settings,
+                self.editor_server.request_token,
+            )
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(page)))
