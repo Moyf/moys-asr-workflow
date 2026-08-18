@@ -14,6 +14,55 @@ vm.runInNewContext(i18nSource, i18nContext);
 const i18n = i18nContext.window.MAWE_I18N;
 
 
+test('maps exactly the approved preview font families in Chinese', () => {
+  const cases = [
+    ['Microsoft YaHei', '微软雅黑'],
+    ['Microsoft YaHei UI', '微软雅黑'],
+    ['SimHei', '黑体'],
+    ['SimSun', '宋体'],
+    ['NSimSun', '新宋体'],
+    ['FangSong', '仿宋'],
+    ['KaiTi', '楷体'],
+    ['PingFang SC', '苹方'],
+    ['Heiti SC', '黑体-简'],
+    ['Songti SC', '宋体-简'],
+    ['Kaiti SC', '楷体-简'],
+    ['Source Han Sans SC', '思源黑体'],
+    ['Source Han Serif SC', '思源宋体'],
+    ['Noto Sans CJK SC', 'Noto Sans CJK 简体中文'],
+    ['Noto Serif CJK SC', 'Noto Serif CJK 简体中文'],
+  ];
+  for (const [family, displayName] of cases) {
+    assert.equal(helpers.subtitleFontFamilyDisplayName(family, 'zh'), displayName);
+    assert.equal(helpers.subtitleFontFamilyDisplayName(family, 'en'), family);
+  }
+});
+
+
+test('leaves unknown and non-string preview font families unchanged', () => {
+  assert.equal(helpers.subtitleFontFamilyDisplayName('MAW Test Sans', 'zh'), 'MAW Test Sans');
+  assert.equal(helpers.subtitleFontFamilyDisplayName('Microsoft Yahei', 'zh'), 'Microsoft Yahei');
+  assert.equal(helpers.subtitleFontFamilyDisplayName(null, 'zh'), null);
+});
+
+test('normalizes and resolves keyboard operation references', () => {
+  assert.equal(helpers.normalizeKeyboardOperationReferenceMode('pointer'), 'pointer');
+  assert.equal(helpers.normalizeKeyboardOperationReferenceMode('playhead'), 'playhead');
+  assert.equal(helpers.normalizeKeyboardOperationReferenceMode('invalid'), 'pointer');
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.resolveKeyboardOperationReference('pointer', {
+    pointer: { timeMs: 2000, track: 'extension', trackId: 'secondary' },
+  }))), { timeMs: 2000, track: 'extension', trackId: 'secondary', source: 'pointer' });
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.resolveKeyboardOperationReference('playhead', {
+    pointer: { timeMs: 2000, track: 'main' },
+    playheadTarget: { kind: 'extension', timeMs: 6000, trackId: 'secondary' },
+  }))), { timeMs: 6000, track: 'extension', trackId: 'secondary', source: 'playhead' });
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.resolveKeyboardOperationReference('playhead', {
+    playheadTarget: { kind: 'main', timeMs: 6000 },
+  }))), { timeMs: 6000, track: 'main', trackId: null, source: 'playhead' });
+  assert.equal(helpers.resolveKeyboardOperationReference('pointer', { pointer: null }), null);
+});
+
+
 test('translates editor project controls and dynamic save messages to English', () => {
   assert.equal(i18n.translateText('保存工程', 'en'), 'Save project');
   assert.equal(i18n.translateText('自动打开上次工程', 'en'), 'Automatically open last project');
