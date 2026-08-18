@@ -10399,10 +10399,20 @@ function copyText(text, hint) {
   );
 }
 
-let projectLoadedFromSrt = false;
+let projectImportDirty = false;
+let projectCheckpointed = Boolean(SERVER_CONFIG?.canSave)
+  || !document.getElementById('json-name')?.classList.contains('empty');
+let projectCheckpointInFlight = false;
+// 浏览器「新建工程 / 另存为」选择的文件由页面持有 FileSystemFileHandle 持续写回；
+// Server 绑定的工程仍由服务器按真实路径原子保存，且优先级高于句柄。
+let projectFileHandle = null;
 
 function serverProjectSavingEnabled() {
-  return !!(SERVER_CONFIG && SERVER_CONFIG.saveUrl && SERVER_CONFIG.canSave && !projectLoadedFromSrt);
+  return !!(SERVER_CONFIG && SERVER_CONFIG.saveUrl && SERVER_CONFIG.canSave);
+}
+
+function projectSaveTargetEnabled() {
+  return serverProjectSavingEnabled() || projectFileHandle !== null;
 }
 
 function parseProjectValidationTarget(detail) {
@@ -10524,13 +10534,14 @@ function showProjectSaveError(detail) {
 
 function configureServerSaveControls() {
   const hasServer = !!(SERVER_CONFIG && SERVER_CONFIG.saveUrl);
-  if (saveProjectDropdown) saveProjectDropdown.hidden = !hasServer;
+  // 浏览器持有工程句柄时同样显示保存控件；服务器绑定优先于句柄。
+  if (saveProjectDropdown) saveProjectDropdown.hidden = !(hasServer || projectFileHandle !== null);
   [saveProjectButton, document.getElementById('save-project-menu-btn')].forEach((button) => {
     if (!button) return;
-    button.disabled = !serverProjectSavingEnabled();
-     if (!serverProjectSavingEnabled()) button.title = '当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件';
+    button.disabled = !projectSaveTargetEnabled();
+     if (!projectSaveTargetEnabled()) button.title = '当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件';
   });
-  if (saveProjectButton && serverProjectSavingEnabled()) {
+  if (saveProjectButton && projectSaveTargetEnabled()) {
     saveProjectButton.title = '保存回当前工程文件（Ctrl(Cmd)+S）';
   }
   // 另存为走系统文件对话框，不依赖服务器绑定，始终可用。
@@ -10550,17 +10561,20 @@ function scheduleAutoSave() {
     window.clearInterval(autoSaveTimer);
     autoSaveTimer = null;
   }
-  if (!serverProjectSavingEnabled() || !EDITOR_SETTINGS.autoSaveProject) return;
+  if (!projectSaveTargetEnabled() || !EDITOR_SETTINGS.autoSaveProject) return;
   autoSaveTimer = window.setInterval(() => {
-    if (hasUnsavedProjectChanges() && !projectSaveInFlight) void saveProjectToServer({ silent: true });
+    if (hasUnsavedProjectChanges() && !projectSaveInFlight && !projectCheckpointInFlight) {
+      void saveCurrentProject({ silent: true });
+    }
   }, EDITOR_SETTINGS.autoSaveIntervalSeconds * 1000);
 }
 
-function configureServerAutoSave() {
-  if (!serverAutoSaveSettings || !autoSaveProjectToggle || !autoSaveIntervalField || !autoSaveIntervalInput) return;
-  const available = !!(SERVER_CONFIG && SERVER_CONFIG.saveUrl);
-  serverAutoSaveSettings.hidden = !available;
-  if (!available) return;
+  function configureServerAutoSave() {
+    if (!serverAutoSaveSettings || !autoSaveProjectToggle || !autoSaveIntervalField || !autoSaveIntervalInput) return;
+    // 服务器绑定工程或浏览器保存对话框（句柄模式）任一可用时都可自动保存。
+    const available = Boolean(SERVER_CONFIG?.saveUrl || window.showSaveFilePicker);
+    serverAutoSaveSettings.hidden = !available;
+    if (!available) return;
   const sync = () => {
     autoSaveProjectToggle.checked = EDITOR_SETTINGS.autoSaveProject;
     autoSaveIntervalInput.value = String(EDITOR_SETTINGS.autoSaveIntervalSeconds);
@@ -10585,7 +10599,7 @@ function configureServerAutoSave() {
 function hasUnsavedProjectChanges() {
   const multiDirty = Boolean(DATA.multi_subtitle?._dirty)
     || (DATA.multi_subtitle?.tracks || []).some((track) => track.segments?.some((segment) => segment._dirty));
-  return gapRemoveDirty || previewGeometryDirty
+  return projectImportDirty || gapRemoveDirty || previewGeometryDirty
     || DATA.segments.some((segment) => segment._dirty)
     || multiDirty;
 }
@@ -10597,11 +10611,11 @@ function scheduleAutoSaveFlush() {
     window.clearTimeout(autoSaveFlushTimer);
     autoSaveFlushTimer = null;
   }
-  if (!serverProjectSavingEnabled() || !EDITOR_SETTINGS.autoSaveProject) return;
+  if (!projectSaveTargetEnabled() || !EDITOR_SETTINGS.autoSaveProject) return;
   autoSaveFlushTimer = window.setTimeout(() => {
     autoSaveFlushTimer = null;
     if (hasUnsavedProjectChanges() && !projectSaveInFlight) {
-      void saveProjectToServer({ silent: true });
+      void saveCurrentProject({ silent: true });
     }
   }, EDIT_SAVE_DEBOUNCE_MS);
 }
@@ -11031,6 +11045,7 @@ function markProjectSaved(filename, backupName, { silent = false } = {}) {
   (multi.tracks || []).forEach((track) => track.segments.forEach((segment) => { delete segment._dirty; }));
   gapRemoveDirty = false;
   previewGeometryDirty = false;
+  projectImportDirty = false;
   FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
   const jsonEl = document.getElementById('json-name');
   if (jsonEl) {
@@ -11047,7 +11062,7 @@ async function saveProjectToServer({ silent = false } = {}) {
     if (!silent) flashHint('当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件', 'invalid');
     return false;
   }
-  if (projectSaveInFlight) return false;
+  if (projectSaveInFlight || projectCheckpointInFlight) return false;
   if (editingState) finishEdit(true);
   if (extensionEditingState) finishExtensionEdit(true);
   commitCuePanelEdit();
@@ -11085,8 +11100,38 @@ async function saveProjectToServer({ silent = false } = {}) {
   }
 }
 
+// 把当前工程写回页面持有的浏览器文件句柄（新建工程 / 另存为选定的目标）。
+async function saveProjectToHandle({ silent = false } = {}) {
+  if (!projectFileHandle) return false;
+  if (projectSaveInFlight || projectCheckpointInFlight) return false;
+  if (editingState) finishEdit(true);
+  if (extensionEditingState) finishExtensionEdit(true);
+  commitCuePanelEdit();
+  const projectJson = buildJson();
+  projectSaveInFlight = true;
+  try {
+    const writable = await projectFileHandle.createWritable();
+    await writable.write(new Blob([projectJson], { type: 'application/json;charset=utf-8' }));
+    await writable.close();
+    markProjectSaved(projectFileHandle.name, null, { silent });
+    return true;
+  } catch (error) {
+    flashHint(`保存失败：${error?.message || error}`, 'warning');
+    return false;
+  } finally {
+    projectSaveInFlight = false;
+  }
+}
+
+// 统一保存入口：句柄目标优先（最近一次新建/另存为选定的文件），否则写回服务器绑定工程。
+async function saveCurrentProject({ silent = false } = {}) {
+  if (projectFileHandle) return saveProjectToHandle({ silent });
+  return saveProjectToServer({ silent });
+}
+
 // 另存为：打开系统文件浏览对话框把工程文件保存到用户选择的位置。
-// 与「导出工程」的区别：保存成功后当前工程名跟随新文件（标题、导出默认名随之更新）。
+// 与「导出工程」的区别：保存成功后当前工程名跟随新文件（标题、导出默认名随之更新），
+// 且后续 Ctrl(Cmd)+S / 自动保存都写回这个新选定的文件。
 async function saveProjectAsToFile() {
   if (editingState) finishEdit(true);
   if (extensionEditingState) finishExtensionEdit(true);
@@ -11107,7 +11152,10 @@ async function saveProjectAsToFile() {
     const writable = await handle.createWritable();
     await writable.write(new Blob([buildJson()], { type: 'application/json;charset=utf-8' }));
     await writable.close();
+    projectFileHandle = handle;
     markProjectSaved(handle.name, null);
+    configureServerSaveControls();
+    scheduleAutoSave();
   } catch (error) {
     if (error && error.name === 'AbortError') return;  // 用户取消保存对话框
     flashHint(`保存失败：${error?.message || error}`, 'warning');
@@ -11163,7 +11211,7 @@ document.getElementById('download-json').addEventListener('click', async () => {
     desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
   });
 });
-saveProjectButton?.addEventListener('click', () => saveProjectToServer());
+saveProjectButton?.addEventListener('click', () => saveCurrentProject());
 saveProjectAsButton?.addEventListener('click', () => saveProjectAsToFile());
 // Project-level save shortcuts intentionally override the browser page-save
 // command. finishEdit() inside saveProjectToServer commits an active text edit.
@@ -11173,7 +11221,7 @@ document.addEventListener('keydown', (event) => {
   if (event.shiftKey) {
     void saveProjectAsToFile();
   } else {
-    void saveProjectToServer();
+    void saveCurrentProject();
   }
 });
 document.getElementById('download-resolve-json').addEventListener('click', async () => {
@@ -11399,6 +11447,128 @@ function resetLoadedMedia() {
   syncPlayerPlaceholder();
 }
 
+function buildBlankProject() {
+  return { media: '', language: '', model: '', segments: [] };
+}
+
+function suggestedProjectName(file = null) {
+  const stem = file?.name?.replace(/\.[^.]+$/i, '').trim();
+  return `${stem || 'untitled'}.mosp`;
+}
+
+function applyCanonicalProject(data, filename) {
+  currentCuePanelIdx = -1;
+  currentCuePanelKind = 'main';
+  currentCuePanelTrackId = null;
+  resetCuePanelEditState();
+  resetLoadedMedia();
+  DATA.media = typeof data.media === 'string' ? data.media : '';
+  DATA.language = data.language || '';
+  DATA.model = data.model || '';
+  DATA.waveform = data.waveform || null;
+  DATA.spectral = data.spectral || null;
+  DATA.waveform_reapeaks = data.waveform_reapeaks || null;
+  DATA.workspace = data.workspace || null;
+  DATA.gap_remove = data.gap_remove || null;
+  DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
+  gapRemoveDirty = false;
+  previewGeometryDirty = false;
+  projectImportDirty = false;
+  // 外部载入的工程没有页面持有的文件句柄；新建/另存为会在载入后重新绑定句柄。
+  projectFileHandle = null;
+  setPreviewGeometry(getPreviewGeometry(), { markDirty: false });
+  applyExtensionSubtitleAppearance(DATA.preview?.extension_subtitle);
+  setStickerGeometry(getStickerGeometry(), { markDirty: false });
+  refreshPreviewGeometryEditable();
+  if (data.sticker_root) STICKER_ROOT = data.sticker_root;
+  DATA.segments.length = 0;
+  data.segments.forEach((segment) => DATA.segments.push(segment));
+  DATA.multi_subtitle = MULTI_SUBTITLE_UTILS.normalizeMultiSubtitle(data.multi_subtitle, DATA.segments);
+  editorHistory.clear();
+  updateUndoRedoButtons();
+  clearSelection();
+  lastActive = -1;
+  if (waveformEditor) {
+    waveformEditor.setLayoutData(DATA.workspace, { render: false });
+    applyEditorDisplaySettings(DATA.workspace?.editorDisplay);
+    restoreWorkspaceSelection();
+    syncWorkspaceControls();
+    waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform, { render: false });
+    waveformEditor.setSpectralPayload(DATA.spectral, { render: false });
+    waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks, { render: false });
+  }
+  updateGapRemoveUi();
+  renderAll({ waveform: 'full' });
+  updateUnloadedMediaLabel(DATA.media);
+  FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
+  const jsonEl = document.getElementById('json-name');
+  if (jsonEl) {
+    jsonEl.textContent = filename;
+    jsonEl.title = `点击复制工程文件名：${filename}`;
+    jsonEl.classList.remove('empty');
+    jsonEl.onclick = () => copyText(filename, `已复制：${filename}`);
+  }
+  projectCheckpointed = true;
+  configureServerSaveControls();
+  scheduleAutoSave();
+}
+
+// 新建工程：浏览器原生保存对话框选择位置，页面持有句柄持续写回。
+// 不再经过服务器 helper；服务器绑定的旧工程在创建成功后解除保存，避免串写。
+async function createProjectCheckpoint(project, suggestedName) {
+  if (projectCheckpointInFlight || projectSaveInFlight) {
+    flashHint('工程正在保存，请稍候再试', 'warning');
+    return false;
+  }
+  projectCheckpointInFlight = true;
+  try {
+    if (!window.showSaveFilePicker) {
+      // 无原生保存对话框的浏览器：退化为普通下载（无句柄，后续保存走导出）。
+      const saved = await downloadFile(JSON.stringify(project, null, 2), suggestedName, 'application/json', {
+        desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] },
+      });
+      if (!saved) return false;
+      applyCanonicalProject(project, suggestedName);
+      detachServerProjectSaving();
+      return true;
+    }
+    const handle = await window.showSaveFilePicker({
+      suggestedName,
+      types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
+    });
+    const writable = await handle.createWritable();
+    await writable.write(new Blob([JSON.stringify(project, null, 2)], { type: 'application/json;charset=utf-8' }));
+    await writable.close();
+    applyCanonicalProject(project, handle.name);
+    projectFileHandle = handle;
+    // detachServerProjectSaving 内部会刷新保存控件并重启自动保存。
+    detachServerProjectSaving();
+    return true;
+  } catch (error) {
+    if (error && error.name === 'AbortError') return false;  // 用户取消保存对话框
+    flashHint(`创建工程失败：${error.message || error}`, 'warning');
+    return false;
+  } finally {
+    projectCheckpointInFlight = false;
+  }
+}
+
+// 浏览器自行管理的工程（句柄或下载创建）不能再写回服务器绑定的旧工程文件，
+// 便携表情包 OTIO 也随之退回引用原始素材（服务器已不跟踪当前工程）。
+function detachServerProjectSaving() {
+  if (SERVER_CONFIG) {
+    SERVER_CONFIG.canSave = false;
+    SERVER_CONFIG.canPortableStickerExport = false;
+  }
+  configureServerSaveControls();
+  scheduleAutoSave();
+}
+
+async function ensureProjectCheckpointForImport(file) {
+  if (projectCheckpointed) return true;
+  return createProjectCheckpoint(buildBlankProject(), suggestedProjectName(file));
+}
+
 function isMawProject(data) {
   if (!data || typeof data !== 'object' || !Array.isArray(data.segments)) return false;
   let previousEnd = 0;
@@ -11475,7 +11645,7 @@ function replaceMainTrack(segments, displayName = '字幕') {
   MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(DATA);
   DATA.gap_remove = null;
   gapRemoveDirty = false;
-  projectLoadedFromSrt = true;
+  projectImportDirty = true;
   updateUndoRedoButtons();
   clearSelection({ commitCuePanel: false });
   lastActive = -1;
@@ -11776,7 +11946,10 @@ async function openSrtFile(file) {
   try {
     const segments = parseSrtSegments(await readFileTextWithProgress(file));
     updateEditorLoading(75, `正在载入字幕 ${file.name}…`);
-    return replaceMainTrack(segments, file.name);
+    if (!await ensureProjectCheckpointForImport(file)) return false;
+    const imported = replaceMainTrack(segments, file.name);
+    if (imported && projectSaveTargetEnabled()) await saveCurrentProject({ silent: true });
+    return imported;
   } catch (error) {
     flashHint(`加载字幕失败：${error.message || error}`, 'warning');
     return false;
@@ -11803,58 +11976,7 @@ async function openProjectFile(file, options = {}) {
       flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。', 'warning');
       return false;
     }
-    // 单独选 JSON 时，浏览器没有授权访问它所在目录；先清理旧媒体，避免旧音轨配上新字幕。
-    resetLoadedMedia();
-    DATA.media = typeof data.media === 'string' ? data.media : '';
-    DATA.language = data.language || '';
-    DATA.model = data.model || '';
-    DATA.waveform = data.waveform || null;
-    DATA.spectral = data.spectral || null;
-    DATA.waveform_reapeaks = data.waveform_reapeaks || null;
-    DATA.workspace = data.workspace || null;
-    DATA.gap_remove = data.gap_remove || null;
-    gapRemoveDirty = false;
-    // 预览几何：归一化后应用；缺失时回退到 legacy 默认，且不弄脏工程。
-    DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
-    setPreviewGeometry(getPreviewGeometry(), { markDirty: false });
-    applyExtensionSubtitleAppearance(DATA.preview?.extension_subtitle);
-    setStickerGeometry(getStickerGeometry(), { markDirty: false });
-    refreshPreviewGeometryEditable();
-    if (data.sticker_root) STICKER_ROOT = data.sticker_root;
-    DATA.segments.length = 0;
-    data.segments.forEach((segment) => DATA.segments.push(segment));
-    DATA.multi_subtitle = MULTI_SUBTITLE_UTILS.normalizeMultiSubtitle(data.multi_subtitle, DATA.segments);
-    projectLoadedFromSrt = false;
-    configureServerSaveControls();
-    scheduleAutoSave();
-    editorHistory.clear();
-    updateUndoRedoButtons();
-    clearSelection();
-    lastActive = -1;
-    if (waveformEditor) {
-      // 工程加载会同时更新布局、主波形、频谱和 ReaPeaks；先只写入状态，
-      // 由下面一次 renderAll({ waveform: 'full' }) 统一创建可视行和 Canvas。
-      waveformEditor.setLayoutData(DATA.workspace, { render: false });
-      applyEditorDisplaySettings(DATA.workspace?.editorDisplay);
-      restoreWorkspaceSelection();
-      syncWorkspaceControls();
-      waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform, { render: false });
-      waveformEditor.setSpectralPayload(DATA.spectral, { render: false });
-      waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks, { render: false });
-    }
-    updateGapRemoveUi();
-    // 工程加载可能同时切换多字幕开关和轨道结构。
-    renderAll({ waveform: 'full' });
-    updateUnloadedMediaLabel(DATA.media);
-
-    FILENAME_BASE = file.name.replace(/\.(json|mosp)$/i, '');
-    const jsonEl = document.getElementById('json-name');
-    if (jsonEl) {
-      jsonEl.textContent = file.name;
-      jsonEl.title = `点击复制工程文件名：${file.name}`;
-      jsonEl.classList.remove('empty');
-      jsonEl.onclick = () => copyText(file.name, `已复制：${file.name}`);
-    }
+    applyCanonicalProject(data, file.name);
     const expectedName = window.AsrEditorUtils.fileBasename(DATA.media);
     // 服务器版：浏览器拿不到工程真实路径，但工程记录的媒体是绝对路径。
     // 先让服务器按它定位同目录同名工程并接管（自动加载媒体、允许 Ctrl(Cmd)+S 保存）；
@@ -11863,6 +11985,9 @@ async function openProjectFile(file, options = {}) {
       updateEditorLoading(85, '正在连接本地编辑器服务器…');
       if (await attachProjectToServer(file.name, data)) return true;
     }
+    // 工程未被服务器接管（无媒体可定位 / 接管失败）：服务器仍绑定旧工程，
+    // 当前内容不能再写回它；后续保存退化为「导出工程」，直到重新经服务器打开。
+    if (SERVER_CONFIG?.saveUrl) detachServerProjectSaving();
     if (expectedName && !suppressMediaPrompt) {
       pendingProjectMediaSelection = { projectReady: true };
       showProjectMediaModal();
@@ -11882,6 +12007,12 @@ async function openProjectFile(file, options = {}) {
     finishLoading();
   }
 }
+
+document.getElementById('new-project').addEventListener('click', async () => {
+  if (hasUnsavedProjectChanges()
+      && !confirm('当前有未保存的改动，是否确定新建工程？将丢失未保存内容。')) return;
+  await createProjectCheckpoint(buildBlankProject(), suggestedProjectName());
+});
 
 document.getElementById('open-project').addEventListener('click', () => {
   if (hasUnsavedProjectChanges()) {
@@ -12227,8 +12358,13 @@ function mediaLoadErrorMessage(file) {
 loadMediaFileInput.addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
+  if (!pendingProjectMediaSelection && !await ensureProjectCheckpointForImport(file)) return;
   pendingProjectMediaSelection = null;
-  await loadMediaFile(file);
+  const imported = await loadMediaFile(file);
+  if (imported) {
+    projectImportDirty = true;
+    if (projectSaveTargetEnabled()) await saveCurrentProject({ silent: true });
+  }
 });
 
 loadMediaFileInput.addEventListener('cancel', () => {
@@ -13760,13 +13896,10 @@ async function handleDroppedFiles(files) {
   const reapeaksFile = files.find(isReapeaksFile);
   const jsonFile = files.find(isJsonFile);
   const srtFile = files.find(isSrtFile);
+  let stagedSrtSegments = null;
   if (!mediaFile && !reapeaksFile && !jsonFile && !srtFile) {
     flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / ReaPeaks）', 'warning');
     return;
-  }
-  if (reapeaksFile) {
-    if (mediaFile) await loadMediaFile(mediaFile);
-    await loadReapeaksFile(reapeaksFile);
   }
   if (jsonFile) {
     if (DATA.segments.length > 0) {
@@ -13788,7 +13921,24 @@ async function handleDroppedFiles(files) {
     if (opened && mediaFile) await loadMediaFile(mediaFile);
     return;
   }
-  if (mediaFile) await loadMediaFile(mediaFile);
+  if (reapeaksFile && !mediaFile && !srtFile) {
+    await loadReapeaksFile(reapeaksFile);
+    return;
+  }
+  if (srtFile && DATA.segments.length === 0) {
+    try {
+      stagedSrtSegments = parseSrtSegments(await readFileTextWithProgress(srtFile));
+    } catch (error) {
+      flashHint(`导入字幕失败：${error.message || error}`, 'warning');
+      return;
+    }
+  }
+  if ((mediaFile || srtFile) && !await ensureProjectCheckpointForImport(mediaFile || srtFile)) return;
+  if (mediaFile) {
+    const imported = await loadMediaFile(mediaFile);
+    if (imported) projectImportDirty = true;
+  }
+  if (reapeaksFile) await loadReapeaksFile(reapeaksFile);
   if (srtFile) {
     if (DATA.segments.length > 0) {
       if (hasUnsavedProjectChanges()
@@ -13800,9 +13950,10 @@ async function handleDroppedFiles(files) {
         flashHint(`导入字幕失败：${error.message || error}`, 'warning');
       }
     } else {
-      await openSrtFile(srtFile);
+      replaceMainTrack(stagedSrtSegments, srtFile.name);
     }
   }
+  if ((mediaFile || srtFile) && projectSaveTargetEnabled()) await saveCurrentProject({ silent: true });
   updateEditorLoading(100, '文件加载完成');
   } finally {
     finishLoading();

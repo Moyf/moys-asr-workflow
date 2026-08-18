@@ -53,6 +53,28 @@ class EditorAssetContractTests(unittest.TestCase):
         ):
             self.assertNotIn(legacy_token, template)
 
+    def test_new_project_action_precedes_open_project(self) -> None:
+        template = edit.read_web_asset("editor-template.html")
+        self.assertIn('id="new-project"', template)
+        self.assertLess(template.index('id="new-project"'), template.index('id="open-project"'))
+
+    def test_editor_sources_expose_checkpointed_import_contract(self) -> None:
+        script = edit.read_web_asset("editor.js")
+        for seam in (
+            "function buildBlankProject()",
+            "function suggestedProjectName(",
+            "async function createProjectCheckpoint(",
+            "async function ensureProjectCheckpointForImport(",
+            "function applyCanonicalProject(",
+        ):
+            self.assertIn(seam, script)
+        self.assertIn("let projectFileHandle = null", script)
+        self.assertIn("function saveProjectToHandle(", script)
+        self.assertIn("function saveCurrentProject(", script)
+        self.assertIn("function detachServerProjectSaving(", script)
+        self.assertNotIn("SERVER_CONFIG.createUrl", script)
+        self.assertNotIn("!projectLoadedFromSrt", script)
+
     def test_sticker_root_uses_server_validation_without_browser_picker(self) -> None:
         template = edit.read_web_asset("editor-template.html")
         script = edit.read_web_asset("editor.js")
@@ -102,9 +124,15 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn("stickerOtioExportMode: 'original'", script)
         self.assertIn("saved.stickerOtioExportMode === 'portable' ? 'portable' : 'original'", script)
         self.assertIn("updateEditorSettings({ stickerOtioExportMode: stickerOtioExportMode.value })", script)
+        # 便携导出能力只在服务器渲染绑定工程时开启；浏览器句柄工程不被服务器
+        # 跟踪，解除保存时必须一并关闭，避免把导出写到服务器旧工程目录。
+        self.assertIn("SERVER_CONFIG.canPortableStickerExport = false", script)
+        self.assertNotIn("SERVER_CONFIG.canPortableStickerExport = true", script)
         self.assertIn("if (!syncStickerOtioExportMode())", script)
         self.assertIn("function configureServerSaveControls()", script)
-        self.assertIn("syncStickerOtioExportMode();", script)
+        # 同步统一收敛在 configureServerSaveControls 末尾：保存目标变化
+        # （服务器绑定 / 浏览器句柄 / 解除）都流经它重算便携导出可用性。
+        self.assertEqual(script.count("syncStickerOtioExportMode();"), 1)
         self.assertNotIn("const portableStickerExportEnabled", script)
 
     def test_generated_page_contains_registered_modules_in_order(self) -> None:
