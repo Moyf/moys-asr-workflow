@@ -20,6 +20,76 @@
     output_collision: "An output file with the same name already exists. To avoid overwriting it, the new output has been given a suffix."
   });
   Object.assign(STRINGS.zh, {
+    mode_label: "转写模式",
+    mode_single: "单文件",
+    mode_batch: "批量",
+    mode_single_hint: "一次处理一个媒体文件。",
+    mode_batch_hint: "按队列顺序逐个转写，所有文件共用识别设置。",
+    batch_drop_zone: "拖入多个音频/视频文件，或点击添加。",
+    batch_queue: "文件队列",
+    batch_queue_label: "批量转写队列",
+    batch_add: "添加文件",
+    batch_clear: "清空",
+    batch_drop_hint: "拖入多个音频/视频文件，或反复添加文件；所有文件共用下方识别设置。",
+    batch_empty: "尚未添加媒体文件。",
+    batch_rejected: "已忽略 {count} 个不支持的文件。",
+    batch_outcome_missing: "批量结束时未收到该文件的结果。",
+    batch_manuscript_disabled: "批量模式不支持逐文件文稿映射。本次批量运行会跳过文稿匹配；单文件设置保持不变。",
+    batch_start: "开始全部",
+    batch_stop: "停止全部",
+    batch_starting: "正在启动批量转写……",
+    batch_running: "批量转写中……",
+    batch_stopping: "正在停止批量转写……",
+    batch_complete: "批量转写完成",
+    batch_cancelled: "批量转写已停止",
+    batch_status_queued: "等待中",
+    batch_status_running: "转写中",
+    batch_status_done: "已完成",
+    batch_status_failed: "失败",
+    batch_status_cancelled: "已取消",
+    batch_status_skipped: "已跳过",
+    batch_log_details: "查看日志",
+    batch_error_details: "查看错误",
+    batch_open_project: "打开工程",
+    batch_open_folder: "打开文件夹",
+    batch_remove: "移除",
+  });
+  Object.assign(STRINGS.en, {
+    mode_label: "Transcription mode",
+    mode_single: "Single file",
+    mode_batch: "Batch",
+    mode_single_hint: "Process one media file at a time.",
+    mode_batch_hint: "Transcribe the queue sequentially with shared settings.",
+    batch_drop_zone: "Drop multiple audio/video files, or click Add files.",
+    batch_queue: "File queue",
+    batch_queue_label: "Batch transcription queue",
+    batch_add: "Add files",
+    batch_clear: "Clear",
+    batch_drop_hint: "Drop multiple audio/video files or add them repeatedly. Every file uses the shared recognition settings below.",
+    batch_empty: "No media files added yet.",
+    batch_rejected: "Ignored {count} unsupported file(s).",
+    batch_outcome_missing: "No result was reported for this file when the batch finished.",
+    batch_manuscript_disabled: "Batch mode does not support per-file manuscript mapping. Script match is skipped for this batch; your single-file setting is unchanged.",
+    batch_start: "Start all",
+    batch_stop: "Stop all",
+    batch_starting: "Starting batch transcription…",
+    batch_running: "Batch transcription in progress…",
+    batch_stopping: "Stopping batch transcription…",
+    batch_complete: "Batch transcription complete",
+    batch_cancelled: "Batch transcription stopped",
+    batch_status_queued: "Queued",
+    batch_status_running: "Transcribing",
+    batch_status_done: "Done",
+    batch_status_failed: "Failed",
+    batch_status_cancelled: "Cancelled",
+    batch_status_skipped: "Skipped",
+    batch_log_details: "View log",
+    batch_error_details: "View error",
+    batch_open_project: "Open project",
+    batch_open_folder: "Open folder",
+    batch_remove: "Remove",
+  });
+  Object.assign(STRINGS.zh, {
     auto_postprocess_title: "3️⃣ 转写后自动处理 （Beta）",
     auto_postprocess_hint: "转写完成后按固定顺序处理字幕；首次启用某一步前，请先在工具箱中完成配置。",
     auto_postprocess_enable: "启用转写后自动处理",
@@ -721,6 +791,17 @@
       get_server_status: async ({ port = "8250" }) => ({ ok: true, running: false, url: `http://127.0.0.1:${port}/` }),
       stop_server: async () => ({ ok: true }),
       start_transcription: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "log", message: "[mock] 上传完成" }), 250); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "done", result: { srtPath: "D:\\Demo\\clip.srt", jsonPath: "D:\\Demo\\clip.json", htmlPath: "D:\\Demo\\clip.edit.html" } }), 900); return { ok: true }; },
+      start_batch_transcription: async ({ items }) => {
+        window.MAWLauncher.onBackendEvent({ type: "batchStarted", total: items.length });
+        items.forEach((item, index) => {
+          setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "batchItem", itemId: item.id, index, mediaPath: item.mediaPath, status: "running" }), index * 650 + 100);
+          setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "batchItemLog", itemId: item.id, index, message: `[mock] ${item.mediaPath}` }), index * 650 + 250);
+          setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "batchItem", itemId: item.id, index, mediaPath: item.mediaPath, status: "done", result: { srtPath: item.mediaPath.replace(/\.[^.\\/]+$/u, ".srt"), jsonPath: item.mediaPath.replace(/\.[^.\\/]+$/u, ".mosp") } }), index * 650 + 550);
+        });
+        setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "batchDone", total: items.length, cancelled: false }), items.length * 650 + 600);
+        return { ok: true };
+      },
+      cancel_batch_transcription: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "batchDone", cancelled: true }), 120); return { ok: true }; },
       open_output_folder: async () => ({ ok: true }),
       open_html: async () => ({ ok: true }),
       get_emoji_font_path: async () => ({ ok: true, path: "" })
@@ -1119,6 +1200,7 @@
   }
 
   function handleBackendEvent(event) {
+    if (["batchStarted", "batchItem", "batchItemLog", "batchDone", "batch_started", "batch_item", "batch_item_log", "batch_done"].includes(event.type)) window.MAWLauncher?.onBatchEvent?.(event);
     if (event.type === "emojiFontReady" && event.path) injectEmojiFont(event.path);
     if (event.type === "log") appendLog(event.message);
     if (event.type === "postprocess_status") window.MAWLauncher?.onPostprocessStatus?.(event);
@@ -1238,7 +1320,7 @@
     }
     if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
   }
-  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onLanguageChanged() {} };
+  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getTranscriptionPayload: formPayload, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onLanguageChanged() {} };
 
   $("langToggle").addEventListener("click", async () => { state.lang = state.lang === "zh" ? "en" : "zh"; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (!result.ok) applyErrorResult(result); });
   $("themeLight").addEventListener("click", () => setTheme("light")); $("themeDark").addEventListener("click", () => setTheme("dark")); $("themeSystem").addEventListener("click", () => setTheme("system"));
