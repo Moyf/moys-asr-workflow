@@ -199,6 +199,143 @@ test('Escape closes an artifact context menu while postprocess is busy', async (
   await expect(artifact).toBeFocused();
 });
 
+test('batch mode disables manuscript matching without changing its saved single-file choice', async ({ page }) => {
+  // Given: manuscript matching is configured and selected for single-file transcription.
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#autoPostprocessEnabled').check();
+  await page.evaluate(() => {
+    const field = document.getElementById('postprocessScriptPath');
+    field.value = 'D:\\Demo\\script.txt';
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const match = page.locator('#autoStepMatch');
+  await match.check();
+  await expect(match).toBeChecked();
+  await expect(page.locator('#toolboxDrawer')).toBeHidden();
+  await page.evaluate(() => {
+    window.__savedPlans = [];
+    const callBackend = window.MAWLauncher.callBackend;
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'save_postprocess_plan') window.__savedPlans.push(JSON.parse(JSON.stringify(payload.plan)));
+      return callBackend(method, payload);
+    };
+  });
+
+  // When: batch mode is selected and another setting is edited (which persists the plan).
+  await page.locator('#batchMode').click();
+
+  // Then: matching is visibly unavailable but the user's selection is preserved.
+  await expect(match).toBeChecked();
+  await expect(match).toBeDisabled();
+  await expect(page.locator('[data-auto-step-row="match"]')).toHaveClass(/batch-unavailable/);
+  await expect(page.locator('#batchManuscriptNotice')).toBeVisible();
+  await expect(page.locator('#batchManuscriptNotice')).toHaveAttribute('role', 'note');
+  await page.evaluate(() => {
+    const field = document.getElementById('postprocessReplacements');
+    field.value = 'old => new';
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForFunction(() => (window.__savedPlans || []).length > 0);
+  const plans = await page.evaluate(() => window.__savedPlans);
+  expect(plans.length).toBeGreaterThan(0);
+  for (const plan of plans) {
+    expect(plan.steps.find((step) => step.id === 'match').enabled).toBe(true);
+  }
+
+  // When: single-file mode is restored.
+  await page.locator('#singleMode').click();
+
+  // Then: the saved single-file choice is untouched.
+  await expect(match).toBeChecked();
+  await expect(match).toBeEnabled();
+});
+
+test('batch start delegates output allocation and batchDone reconciles every terminal outcome', async ({ page }) => {
+  // Given: three queued files and a bridge spy that leaves allocation to the batch backend.
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#batchMode').click();
+  await page.evaluate(() => {
+    window.__batchCalls = [];
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      window.__batchCalls.push({ method, payload });
+      return { ok: true };
+    };
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', {
+      value: { files: [{ path: 'D:\\Demo\\first.mp3' }, { path: 'D:\\Demo\\second.mp3' }, { path: 'D:\\Demo\\third.mp3' }] },
+    });
+    document.getElementById('mediaCard').dispatchEvent(drop);
+  });
+
+  // When: the run starts and the backend reports one completed and one cancelled item.
+  await page.locator('#startBatch').click();
+  await page.evaluate(() => window.MAWLauncher.onBackendEvent({
+    type: 'batch_done',
+    status: 'cancelled',
+    outcomes: [
+      { id: 'batch-1', status: 'done', result: { srt_path: 'D:\\Demo\\first.srt', json_path: 'D:\\Demo\\first.mosp' } },
+      { id: 'batch-2', status: 'cancelled', error: 'Cancelled before start' },
+    ],
+  }));
+
+  // Then: no preallocation call occurred and the single-file paths stay out of the shared settings.
+  const calls = await page.evaluate(() => window.__batchCalls);
+  expect(calls.map(({ method }) => method)).toEqual(['start_batch_transcription']);
+  expect(calls[0].payload.items).toEqual([
+    { id: 'batch-1', mediaPath: 'D:\\Demo\\first.mp3' },
+    { id: 'batch-2', mediaPath: 'D:\\Demo\\second.mp3' },
+    { id: 'batch-3', mediaPath: 'D:\\Demo\\third.mp3' },
+  ]);
+  expect(calls[0].payload.settings.mediaPath).toBeUndefined();
+  expect(calls[0].payload.settings.srtPath).toBeUndefined();
+  expect(calls[0].payload.settings.providerId).toBeTruthy();
+
+  // Then: every row reaches a terminal state, including the unreported cancelled leftover.
+  const rows = page.locator('.batch-row');
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0)).toHaveClass(/done/);
+  await expect(rows.nth(1)).toHaveClass(/cancelled/);
+  await expect(rows.nth(2)).toHaveClass(/cancelled/);
+  await expect(rows.nth(2).locator('.batch-status')).toHaveText('已取消');
+  await expect(page.locator('.batch-row.queued')).toHaveCount(0);
+  await expect(rows.nth(0).getByRole('button', { name: '打开工程' })).toBeVisible();
+  await expect(rows.nth(0).getByRole('button', { name: '打开文件夹' })).toBeVisible();
+});
+
+test('batchDone fails rows that never reported when the batch was not cancelled', async ({ page }) => {
+  // Given: two queued files started in batch mode.
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#batchMode').click();
+  await page.evaluate(() => {
+    window.MAWLauncher.callBackend = async () => ({ ok: true });
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', {
+      value: { files: [{ path: 'D:\\Demo\\first.mp3' }, { path: 'D:\\Demo\\second.mp3' }] },
+    });
+    document.getElementById('mediaCard').dispatchEvent(drop);
+  });
+
+  // When: the batch finishes normally but only one item ever reported an outcome.
+  await page.locator('#startBatch').click();
+  await page.evaluate(() => window.MAWLauncher.onBackendEvent({
+    type: 'batchDone',
+    status: 'done',
+    outcomes: [{ id: 'batch-1', status: 'done', srtPath: 'D:\\Demo\\first.srt', jsonPath: 'D:\\Demo\\first.mosp' }],
+  }));
+
+  // Then: the unreported row cannot remain queued and explains its failure.
+  const rows = page.locator('.batch-row');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toHaveClass(/done/);
+  await expect(rows.nth(1)).toHaveClass(/failed/);
+  await expect(rows.nth(1).locator('.batch-status')).toHaveText('失败');
+  await expect(rows.nth(1).locator('.batch-details')).toContainText('批量结束时未收到该文件的结果');
+  await expect(page.locator('.batch-row.queued')).toHaveCount(0);
+});
+
 test('artifact context menu opens at the viewport pointer after Launcher zoom', async ({ page }) => {
   // Given: generated artifacts and Launcher CSS zoom at 125%.
   await openLauncher(page);
