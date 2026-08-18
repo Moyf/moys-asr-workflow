@@ -4,6 +4,7 @@
 
 ## [Unreleased]
 
+- Launcher now supports sequential batch transcription with per-item output allocation, failure isolation, cancellation, and sanitized batch manifests.
 - Launcher toolbox now supports generating an embedded-waveform media-only `.mosp` project without transcription, with scoped optional spectral data plus separate generate-only and generate-and-open-editor actions.
 - Launcher toolbox now uses primary Post-processing and Utilities tabs, including an independent Utilities media input that follows the main Launcher media until overridden.
 
