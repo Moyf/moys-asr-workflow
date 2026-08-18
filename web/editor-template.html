@@ -677,6 +677,13 @@ __WAVEFORM_CSS__
     </label>
     <small class="editor-settings-hint">选中时，会将所有不同颜色的字幕按「文件名_颜色」格式统一导出；否则每个颜色都会弹出单独的保存框。</small>
     </div>
+    <label class="editor-settings-item" title="选择表情包 OTIO 引用原始素材，或由服务器复制素材并生成便携文件夹">
+      表情包 OTIO
+      <select id="sticker-otio-export-mode">
+        <option value="original" selected>引用原始素材</option>
+        <option value="portable">便携 OTIO 文件夹（工程同目录）</option>
+      </select>
+    </label>
     </div>
     <div id="server-auto-save-settings" class="editor-settings-sub-group" hidden>
       <span class="editor-settings-title">保存</span>
@@ -1201,27 +1208,19 @@ __WAVEFORM_CSS__
 
 <!-- 表情包根目录 modal -->
 <div class="modal-mask" id="sticker-root-modal">
-  <div class="modal">
-    <h3>设置表情包根目录</h3>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sticker-root-title">
+    <h3 id="sticker-root-title">设置表情包根目录</h3>
     <div class="modal-desc">
       所有表情包路径都基于此根目录。修改后页面所有缩略图会立刻按新路径加载。
     </div>
     <label for="sticker-root-input">当前根目录（绝对路径）</label>
     <div class="modal-field-row">
-      <input type="text" id="sticker-root-input" placeholder="如 D:/AI/AI音频转录/表情包" autocomplete="off">
-      <button id="sticker-root-pick" title="扫描本地文件夹以加载表情包缩略图（浏览器拿不到磁盘路径，需手动填写导出路径）">📁 扫描</button>
+      <input type="text" id="sticker-root-input" placeholder="输入绝对路径" autocomplete="off" aria-describedby="sticker-root-status">
+      <button type="button" id="sticker-root-read" class="primary">读取</button>
     </div>
-    <input type="file" id="sticker-root-folder-input" webkitdirectory directory multiple style="display:none">
-    <p id="sticker-root-browser-warn" class="modal-hint" style="display:none; color: #ffc864; font-weight: 600;">
-      ⬆️ 当前是浏览器加载模式，请手动填写真实磁盘路径以导出 OTIO 工程<br>
-      （或在启动器的 ⚙️ 设置中填写表情包路径后，重新启动服务器）
-    </p>
-    <div class="modal-hint">
-      支持 OS 路径（D:/foo/bar 或 D:\foo\bar）或 file:// URL。点 📁 扫描只加载缩略图预览，不会自动填入导出路径。
-    </div>
+    <div id="sticker-root-status" class="modal-hint" role="status" aria-live="polite"></div>
     <div class="actions">
       <button id="sticker-root-cancel">取消</button>
-      <button id="sticker-root-confirm" class="primary">应用</button>
     </div>
   </div>
 </div>

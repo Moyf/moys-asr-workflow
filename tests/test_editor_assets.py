@@ -53,6 +53,60 @@ class EditorAssetContractTests(unittest.TestCase):
         ):
             self.assertNotIn(legacy_token, template)
 
+    def test_sticker_root_uses_server_validation_without_browser_picker(self) -> None:
+        template = edit.read_web_asset("editor-template.html")
+        script = edit.read_web_asset("editor.js")
+        styles = edit.read_web_asset("editor.css")
+        self.assertIn('id="sticker-root-input"', template)
+        self.assertIn('id="sticker-root-read"', template)
+        self.assertIn('id="sticker-root-status"', template)
+        self.assertIn("SERVER_CONFIG.stickerRootUrl", script)
+        self.assertIn("STICKERS.splice(0, STICKERS.length, ...result.stickers)", script)
+        self.assertIn("let stickerRootHintCard = null", script)
+        self.assertIn("stickerRootHintCard?.remove()", script)
+        self.assertIn("function setStickerRootModalOpen(open)", script)
+        self.assertIn("event.key === 'Escape'", script)
+        self.assertIn("event.key !== 'Tab'", script)
+        self.assertIn("#sticker-root-modal { z-index: 280; }", styles)
+        self.assertIn("width: min(540px, calc(100vw - 32px))", styles)
+        for removed in (
+            "showDirectoryPicker",
+            "webkitdirectory",
+            "sticker-root-folder-input",
+            "applyStickerFiles",
+            "collectStickerEntries",
+            "[本地]",
+        ):
+            self.assertNotIn(removed, template + script)
+
+    def test_sticker_otio_exposes_portable_mode_and_relative_metadata(self) -> None:
+        template = edit.read_web_asset("editor-template.html")
+        script = edit.read_web_asset("editor.js")
+        self.assertIn('id="sticker-otio-export-mode"', template)
+        self.assertIn('option value="portable"', template)
+        self.assertIn("sticker_rel: seg.sticker.rel || ''", script)
+        self.assertIn("sticker_rel: sticker.sticker_rel", script)
+        self.assertIn("SERVER_CONFIG?.canPortableStickerExport", script)
+        self.assertIn("SERVER_CONFIG?.portableStickerExportUrl", script)
+        self.assertIn("'stickers', buildStickerOtio", script)
+        self.assertIn("'gap-removed-stickers', buildGapRemovedStickerOtio", script)
+        self.assertIn("timeline: JSON.parse(payload)", script)
+
+    def test_portable_sticker_export_capability_syncs_after_project_binding(self) -> None:
+        script = edit.read_web_asset("editor.js")
+        self.assertIn("function syncStickerOtioExportMode()", script)
+        self.assertIn("portableStickerExportOption.disabled = !available", script)
+        self.assertIn("stickerOtioExportMode.value = available", script)
+        self.assertIn("? EDITOR_SETTINGS.stickerOtioExportMode", script)
+        self.assertIn(": 'original'", script)
+        self.assertIn("stickerOtioExportMode: 'original'", script)
+        self.assertIn("saved.stickerOtioExportMode === 'portable' ? 'portable' : 'original'", script)
+        self.assertIn("updateEditorSettings({ stickerOtioExportMode: stickerOtioExportMode.value })", script)
+        self.assertIn("if (!syncStickerOtioExportMode())", script)
+        self.assertIn("function configureServerSaveControls()", script)
+        self.assertIn("syncStickerOtioExportMode();", script)
+        self.assertNotIn("const portableStickerExportEnabled", script)
+
     def test_generated_page_contains_registered_modules_in_order(self) -> None:
         page = edit.build_blank_html()
         self.assertNotRegex(page, r"__[A-Z][A-Z0-9_]+__")

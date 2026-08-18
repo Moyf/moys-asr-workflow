@@ -1908,7 +1908,12 @@
     width: 100%;
     min-width: 0;
   }
-  #sticker-root-modal .modal { width: 540px; }
+  #sticker-root-modal { z-index: 280; }
+  #sticker-root-modal .modal {
+    width: min(540px, calc(100vw - 32px));
+    min-width: 0;
+    max-height: calc(100dvh - 32px);
+  }
   .editor-settings-hint { display: block; max-width: 100%; font-size: 12px; line-height: 1.35; color: var(--text-muted); margin: 0; }
   .editor-settings-hint[hidden] { display: none; }
   .modal .preview {

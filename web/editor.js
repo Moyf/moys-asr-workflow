@@ -643,6 +643,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   autoSaveIntervalSeconds: 30,
   // 表情包预览：在视频画面内渲染当前时间的表情包（默认关闭）。
   stickerOverlayEnabled: false,
+  // 表情包 OTIO：保留用户偏好的原始素材引用 / 便携文件夹模式。
+  stickerOtioExportMode: 'original',
   // 字幕单击行为：默认选中并跳转；select-and-play 额外在暂停时开始播放。
   clickBehavior: 'select-and-seek',
   // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
@@ -735,6 +737,7 @@ function readEditorSettings() {
       autoSaveProject: saved.autoSaveProject !== false,
       autoSaveIntervalSeconds: clampAutoSaveInterval(saved.autoSaveIntervalSeconds),
       stickerOverlayEnabled: saved.stickerOverlayEnabled === true,
+      stickerOtioExportMode: saved.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
       clickBehavior: normalizeClickBehavior(saved.clickBehavior),
       clickTarget: normalizeClickTarget(saved.clickTarget),
       jklPlaybackMode: normalizeJklPlaybackMode(saved.jklPlaybackMode),
@@ -3056,15 +3059,16 @@ function syncPlayerPlaceholder() {
 
 // 合成表情包文件的 URL（用于 <img src>）
 // 优先级:
-//   1) sticker._blobUrl  - 来自浏览器选文件夹（无法拿到绝对路径，只能用 blob URL）
-//   2) sticker.rel + STICKER_ROOT  - 拼出 file:// URL
-//   3) sticker.path  - 兼容老版工程
+let stickerAssetRevision = 0;
+
+//   1) sticker.rel + STICKER_ROOT  - 拼出服务器或 file:// URL
+//   2) sticker.path  - 兼容老版工程
 function stickerUrl(sticker) {
   if (!sticker) return '';
-  if (sticker._blobUrl) return sticker._blobUrl;
   if (sticker.rel) {
     if (STICKER_URL_PREFIX) {
-      return `${STICKER_URL_PREFIX.replace(/\/$/, '')}/${sticker.rel.split('/').map(encodeURIComponent).join('/')}`;
+      const url = `${STICKER_URL_PREFIX.replace(/\/$/, '')}/${sticker.rel.split('/').map(encodeURIComponent).join('/')}`;
+      return stickerAssetRevision ? `${url}?root=${stickerAssetRevision}` : url;
     }
     if (!STICKER_ROOT) return sticker.rel;
     let root = STICKER_ROOT;
@@ -3077,12 +3081,8 @@ function stickerUrl(sticker) {
 }
 
 // 合成表情包文件的操作系统绝对路径（用于导出表情包 OTIO）。
-// 当表情包是通过浏览器「选文件夹」方式加载时，STICKER_ROOT 是 "[本地] xxx" 虚拟标识，
-// 浏览器安全限制无法拿到真实磁盘路径，此时返回空串。
 function stickerAbsPath(sticker) {
   if (!sticker) return '';
-  // [本地] 前缀 = 浏览器 blob URL 模式，无法获知真实路径
-  if (STICKER_ROOT && STICKER_ROOT.startsWith('[本地]')) return '';
   if (sticker.rel && STICKER_ROOT) {
     // 去掉可能的 file:// 前缀，保留纯 OS 路径
     let root = STICKER_ROOT.replace(/^file:\/+/, '');
@@ -10248,6 +10248,7 @@ function collectStickerOtioEntries(removed) {
       startMs,
       endMs,
       absPath,
+      sticker_rel: seg.sticker.rel || '',
       name: stickerOtioName(seg.sticker, absPath),
     });
   }
@@ -10284,6 +10285,7 @@ function buildStickerOtioTimeline(stickers, timelineName) {
           asr_segment_index: sticker.idx,
           start_ms: Math.round(sticker.startMs),
           end_ms: Math.round(sticker.endMs),
+          sticker_rel: sticker.sticker_rel,
         },
       },
       name: sticker.name,
@@ -10535,6 +10537,7 @@ function configureServerSaveControls() {
   if (saveProjectAsButton) {
     saveProjectAsButton.title = '另存为工程文件（Ctrl(Cmd)+Shift+S）';
   }
+  syncStickerOtioExportMode();
 }
 
 let autoSaveTimer = null;
@@ -11181,15 +11184,63 @@ document.getElementById('download-resolve-json').addEventListener('click', async
       desc: 'Resolve JSON', types: { 'application/json': ['.json'] }
     });
   }
-});document.getElementById('download-sticker-otio').addEventListener('click', async () => {
-  if (editingState) finishEdit(true);
-  const payload = buildStickerOtio();
-  if (payload) {
-    await downloadFile(payload, `${FILENAME_BASE}_stickers.otio`, 'application/vnd.opentimelineio+json', {
-      desc: 'OTIO 工程文件', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
-    });
-  }
 });
+const stickerOtioExportMode = document.getElementById('sticker-otio-export-mode');
+const portableStickerExportOption = stickerOtioExportMode?.querySelector('option[value="portable"]');
+
+function syncStickerOtioExportMode() {
+  const available = Boolean(
+    SERVER_CONFIG?.canPortableStickerExport && SERVER_CONFIG?.portableStickerExportUrl
+  );
+  if (portableStickerExportOption) portableStickerExportOption.disabled = !available;
+  if (stickerOtioExportMode) {
+    stickerOtioExportMode.value = available
+      ? EDITOR_SETTINGS.stickerOtioExportMode
+      : 'original';
+  }
+  return available;
+}
+
+stickerOtioExportMode?.addEventListener('change', () => {
+  updateEditorSettings({ stickerOtioExportMode: stickerOtioExportMode.value });
+});
+
+async function exportStickerOtio(kind, buildTimeline, filename, description) {
+  if (editingState) finishEdit(true);
+  const payload = buildTimeline();
+  if (!payload) return;
+  if (stickerOtioExportMode?.value !== 'portable') {
+    await downloadFile(payload, filename, 'application/vnd.opentimelineio+json', {
+      desc: description, types: { 'application/vnd.opentimelineio+json': ['.otio'] }
+    });
+    return;
+  }
+  if (!syncStickerOtioExportMode()) {
+    flashHint('当前工程无法导出便携表情包 OTIO 文件夹', 'warning');
+    return;
+  }
+  flashHint('正在生成便携表情包 OTIO 文件夹…');
+  try {
+    const response = await fetch(new URL(SERVER_CONFIG.portableStickerExportUrl, window.location.href), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requestToken: SERVER_CONFIG.requestToken,
+        kind,
+        timeline: JSON.parse(payload),
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
+    flashHint(`已生成 ${result.folderPath}，复制 ${result.stickerCount} 张表情包`, 'success');
+  } catch (error) {
+    flashHint(`便携表情包 OTIO 导出失败：${error.message || error}`, 'warning');
+  }
+}
+
+document.getElementById('download-sticker-otio').addEventListener('click', () => exportStickerOtio(
+  'stickers', buildStickerOtio, `${FILENAME_BASE}_stickers.otio`, 'OTIO 工程文件'
+));
 document.getElementById('download-gap-removed-srt').addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedSrt();
@@ -11228,13 +11279,10 @@ document.getElementById('download-gap-removed-regions-json').addEventListener('c
   }
 });
 document.getElementById('download-gap-removed-sticker-otio').addEventListener('click', async () => {
-  if (editingState) finishEdit(true);
-  const payload = buildGapRemovedStickerOtio();
-  if (payload) {
-    await downloadFile(payload, `${FILENAME_BASE}_gap-removed-stickers.otio`, 'application/vnd.opentimelineio+json', {
-      desc: '去空隙表情包 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
-    });
-  }
+  await exportStickerOtio(
+    'gap-removed-stickers', buildGapRemovedStickerOtio,
+    `${FILENAME_BASE}_gap-removed-stickers.otio`, '去空隙表情包 OTIO 工程'
+  );
 });
 
 // === 工具栏导出下拉菜单 ===
@@ -12190,105 +12238,108 @@ loadMediaFileInput.addEventListener('cancel', () => {
 // === 表情包根目录配置 ===
 const stickerRootModal = document.getElementById('sticker-root-modal');
 const stickerRootInput = document.getElementById('sticker-root-input');
-const stickerRootFolderInput = document.getElementById('sticker-root-folder-input');
+const stickerRootRead = document.getElementById('sticker-root-read');
+const stickerRootStatus = document.getElementById('sticker-root-status');
+const stickerRootServerEnabled = Boolean(SERVER_CONFIG?.stickerRootUrl);
+let stickerRootReturnFocus = null;
+let stickerRootHintCard = null;
 
-document.getElementById('sticker-root-btn').addEventListener('click', () => {
-  // 浏览器加载模式（[本地] 前缀）下不在输入框显示虚拟标识，避免用户误以为是有效导出路径
-  stickerRootInput.value = (STICKER_ROOT && STICKER_ROOT.startsWith('[本地]')) ? '' : (STICKER_ROOT || '');
-  updateStickerRootBrowserWarn();
-  stickerRootModal.classList.add('show');
-  setTimeout(() => stickerRootInput.focus(), 50);
-});
-
-// 浏览器加载模式（[本地] 前缀）警告横幅显隐：只在 blob 模式下提示用户需手动填写真实磁盘路径
-function updateStickerRootBrowserWarn() {
-  const warn = document.getElementById('sticker-root-browser-warn');
-  if (warn) warn.style.display = (STICKER_ROOT && STICKER_ROOT.startsWith('[本地]')) ? 'block' : 'none';
+function setStickerRootStatus(message) {
+  stickerRootStatus.textContent = message;
 }
-document.getElementById('sticker-root-cancel').addEventListener('click', () => stickerRootModal.classList.remove('show'));
-stickerRootModal.addEventListener('click', (e) => { if (e.target === stickerRootModal) stickerRootModal.classList.remove('show'); });
 
-// 「📁 扫描」按钮：优先用 showDirectoryPicker 选本地文件夹——原生选择器本身就是确认动作，
-// 不会再弹浏览器的「是否上传 N 个文件到此站点」提示；不支持时回退 webkitdirectory。
-// 浏览器拿不到绝对路径，所以用 blob URL 替换 STICKERS 数组；导出路径需用户手动填写。
-const STICKER_IMG_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
-
-function applyStickerFiles(entries, topDir) {
-  // entries: [{ file, rel }]，rel 为相对所选文件夹的路径
-  if (!entries.length) {
-    flashHint('选中的文件夹里没有图片文件', 'invalid');
+function setStickerRootModalOpen(open) {
+  if (open) {
+    stickerRootReturnFocus = document.activeElement instanceof HTMLElement
+      ? document.activeElement : null;
+    stickerRootModal.classList.add('show');
+    const initialFocus = stickerRootServerEnabled
+      ? stickerRootInput : document.getElementById('sticker-root-cancel');
+    setTimeout(() => initialFocus.focus(), 50);
     return;
   }
-  // 释放旧 STICKERS 的 blob URL（如果有）
-  STICKERS.forEach(s => {
-    if (s._blobUrl) { try { URL.revokeObjectURL(s._blobUrl); } catch (e) {} }
-  });
-  STICKERS.length = 0;
-  for (const { file, rel } of entries) {
-    STICKERS.push({
-      name: file.name.replace(/\.[^.]+$/, ''),
-      filename: file.name,
-      rel: rel,
-      _blobUrl: URL.createObjectURL(file),
-    });
-  }
-  // 显示一个虚拟根，仅作内部状态标识（stickerAbsPath 据此跳过导出）；浏览器拿不到真实磁盘路径。
-  // 不把 [本地] 虚拟标识填入输入框，避免用户误以为是有效导出路径。
-  STICKER_ROOT = topDir ? `[本地] ${topDir}` : '[本地]';
-  updateStickerRootBrowserWarn();
-  renderAll();
-  flashHint(`扫描到 ${STICKERS.length} 个表情包；由于浏览器限制，你需要手动填写本地绝对路径，否则无法导出`);
-}
-
-async function collectStickerEntries(dirHandle, prefix, out) {
-  for await (const entry of dirHandle.values()) {
-    if (entry.kind === 'file') {
-      if (STICKER_IMG_EXT.test(entry.name)) out.push({ handle: entry, rel: prefix + entry.name });
-    } else if (entry.kind === 'directory') {
-      await collectStickerEntries(entry, `${prefix}${entry.name}/`, out);
-    }
-  }
-}
-
-document.getElementById('sticker-root-pick').addEventListener('click', async () => {
-  if (window.showDirectoryPicker) {
-    try {
-      const dirHandle = await window.showDirectoryPicker({ id: 'maw-sticker-root' });
-      const found = [];
-      await collectStickerEntries(dirHandle, '', found);
-      const entries = [];
-      for (const item of found) entries.push({ file: await item.handle.getFile(), rel: item.rel });
-      applyStickerFiles(entries, dirHandle.name);
-      return;
-    } catch (e) {
-      // 用户取消选择 — 静默退出；其他错误（安全限制等）回退到 webkitdirectory
-      if (e && e.name === 'AbortError') return;
-    }
-  }
-  stickerRootFolderInput.value = '';
-  stickerRootFolderInput.click();
-});
-
-stickerRootFolderInput.addEventListener('change', (e) => {
-  const files = Array.from(e.target.files || []);
-  if (!files.length) return;
-  // 只保留图片文件；取顶层目录名作为提示性 STICKER_ROOT（浏览器拿不到真实磁盘路径）
-  const imgs = files.filter(f => STICKER_IMG_EXT.test(f.name));
-  const firstRel = imgs[0]?.webkitRelativePath || '';
-  const topDir = firstRel.includes('/') ? firstRel.split('/')[0] : '';
-  applyStickerFiles(
-    imgs.map(f => ({ file: f, rel: (f.webkitRelativePath || f.name).split('/').slice(1).join('/') || f.name })),
-    topDir,
-  );
-});
-
-document.getElementById('sticker-root-confirm').addEventListener('click', () => {
-  const newRoot = stickerRootInput.value.trim().replace(/\\/g, '/').replace(/\/+$/, '');
-  STICKER_ROOT = newRoot;
   stickerRootModal.classList.remove('show');
-  // 重新渲染所有 cue 让 sticker URL 用新根目录拼接
-  renderAll();
-  flashHint(newRoot ? `根目录已更新` : '已清空根目录', 'success');
+  stickerRootReturnFocus?.focus();
+  stickerRootReturnFocus = null;
+}
+
+function flashStickerRootHint(message, type) {
+  stickerRootHintCard?.remove();
+  stickerRootHintCard = flashHint(message, type);
+}
+
+if (!stickerRootServerEnabled) {
+  stickerRootInput.disabled = true;
+  stickerRootRead.disabled = true;
+}
+
+document.getElementById('sticker-root-btn').addEventListener('click', () => {
+  stickerRootInput.value = STICKER_ROOT || '';
+  setStickerRootStatus(stickerRootServerEnabled
+    ? (STICKER_ROOT
+      ? `当前路径已读取 ${Number(SERVER_CONFIG.initialStickerCount) || STICKERS.length} 张图片。可输入 Windows、macOS 或 Linux 绝对路径。`
+      : '请输入绝对路径，例如 C:\\Media\\Stickers、/Users/name/Stickers 或 /home/name/Stickers。')
+    : '仅 Server 编辑器可以读取和验证表情包绝对路径。');
+  setStickerRootModalOpen(true);
+});
+
+document.getElementById('sticker-root-cancel').addEventListener('click', () => setStickerRootModalOpen(false));
+stickerRootModal.addEventListener('click', (event) => {
+  if (event.target === stickerRootModal) setStickerRootModalOpen(false);
+});
+stickerRootModal.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    setStickerRootModalOpen(false);
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const focusable = [...stickerRootModal.querySelectorAll('input:not(:disabled), button:not(:disabled)')];
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+});
+
+stickerRootRead.addEventListener('click', async () => {
+  if (!stickerRootServerEnabled || stickerRootRead.disabled) return;
+  const path = stickerRootInput.value.trim();
+  stickerRootHintCard?.remove();
+  stickerRootHintCard = null;
+  stickerRootRead.disabled = true;
+  stickerRootInput.disabled = true;
+  setStickerRootStatus('正在读取并验证表情包目录…');
+  try {
+    const response = await fetch(new URL(SERVER_CONFIG.stickerRootUrl, window.location.href), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken, path }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
+    STICKERS.splice(0, STICKERS.length, ...result.stickers);
+    STICKER_ROOT = result.root;
+    SERVER_CONFIG.initialStickerCount = result.count;
+    stickerRootInput.value = result.root;
+    stickerAssetRevision += 1;
+    projectImportDirty = true;
+    renderAll();
+    setStickerRootStatus(`路径有效，已读取 ${result.count} 张图片。`);
+    flashStickerRootHint(`表情包根目录已更新，读取 ${result.count} 张图片`, 'success');
+  } catch (error) {
+    setStickerRootStatus(`读取失败：${error.message || error}。当前有效根目录和表情包保持不变。`);
+    flashStickerRootHint(`表情包根目录读取失败：${error.message || error}`, 'warning');
+  } finally {
+    stickerRootRead.disabled = false;
+    stickerRootInput.disabled = false;
+    stickerRootInput.focus();
+  }
 });
 
 // === 批量替换 ===
