@@ -96,6 +96,7 @@ radius, or shadow system is introduced.
 | `.toolbox-drawer` | Bounded panel for one active post-processing workflow | hidden, open, busy |
 | `.toolbox-tabs` | Switch between LLM, fixed replacement, and FFconcat | idle, active, focus |
 | `.toolbox-result` | Show generated artifacts and chain state | empty, success, warning, error |
+| `.artifact-context-menu` | Three-action menu for one generated artifact | hidden, open, item hover, item focus |
 
 The drawer owns its own vertical scroll and uses `max-block-size` plus
 `overflow-y: auto`; the document remains the outer Launcher scroll owner. At widths
@@ -115,6 +116,15 @@ column. Long paths use `overflow-wrap: anywhere` and never force horizontal scro
   endpoint. Saved keys are displayed only as masked values.
 - The floating button and drawer expose `aria-expanded`, dialog labeling, keyboard
   focus, Escape close, and visible focus rings.
+- Artifact buttons show localized type labels while keeping filename and full path in
+  title and accessible text. Their context menu uses the existing overlay, border,
+  radius, shadow, focus, and 4px spacing tokens; it opens at the pointer, clamps to an
+  8px viewport inset, focuses the first action, and closes on action, Escape, outside
+  pointer input, or replacement by another artifact menu.
+- Launcher zoom is persisted in 5% steps from 80% through 150%, with 100% as the
+  default and reset value. Pointer events and `getBoundingClientRect()` remain in
+  viewport pixels; CSS geometry is written in page units through the shared
+  viewport-to-page conversion, so overlays and both toolbox resize axes stay aligned.
 - On narrow screens the floating button clears the two-row sticky action footer and
   the open drawer clears the button; error results use primary text over the red-soft
   background to preserve AA contrast.

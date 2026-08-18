@@ -96,6 +96,7 @@ class EffectiveConfig:
     last_model: str | None = None
     last_language: str | None = None
     model_cache_root: str = ""
+    zoom_percent: int = 100
 
 
 REGIONS: Final[tuple[tuple[str, str], ...]] = (
@@ -455,6 +456,16 @@ def load_env(path: Path = DEFAULT_ENV_PATH) -> dict[str, str]:
     return values
 
 
+def normalize_zoom_percent(value: object) -> int:
+    try:
+        parsed = float(str(value))
+    except (TypeError, ValueError):
+        return 100
+    if not parsed == parsed or parsed in (float("inf"), float("-inf")):
+        return 100
+    return min(150, max(80, round(parsed / 5) * 5))
+
+
 def save_env(path: Path, updates: Mapping[str, str]) -> None:
     for key, value in updates.items():
         if "\x00" in value or (value and value.splitlines() != [value]):
@@ -503,6 +514,7 @@ def effective_config(path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] |
         last_model=pick_optional("MAW_GUI_LAST_MODEL"),
         last_language=pick_optional("MAW_GUI_LAST_LANGUAGE"),
         model_cache_root=pick("MAW_MODEL_CACHE_ROOT").strip(),
+        zoom_percent=normalize_zoom_percent(pick("MAW_GUI_ZOOM_PERCENT", "100")),
     )
 
 

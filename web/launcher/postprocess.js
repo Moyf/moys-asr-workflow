@@ -34,6 +34,7 @@
   let modelChoicesOpen = false;
   let llmPrompts = {};
   let activeLlmOperation = "";
+  let artifactMenuTarget = null;
 
   function t(key) {
     return window.MAWLauncher.translate(key);
@@ -328,8 +329,10 @@
   }
 
   function clampToolboxSize(width, height) {
-    const maxWidth = Math.max(TOOLBOX_MIN_WIDTH, window.innerWidth - 40);
-    const maxHeight = Math.max(TOOLBOX_MIN_HEIGHT, Math.min(TOOLBOX_MAX_HEIGHT, window.innerHeight - 156));
+    const viewportWidth = window.MAWLauncher.viewportPixelsToPage(window.innerWidth);
+    const viewportHeight = window.MAWLauncher.viewportPixelsToPage(window.innerHeight);
+    const maxWidth = Math.max(TOOLBOX_MIN_WIDTH, viewportWidth - 40);
+    const maxHeight = Math.max(TOOLBOX_MIN_HEIGHT, Math.min(TOOLBOX_MAX_HEIGHT, viewportHeight - 156));
     return {
       width: Math.round(Math.min(Math.max(width, TOOLBOX_MIN_WIDTH), maxWidth)),
       height: Math.round(Math.min(Math.max(height, TOOLBOX_MIN_HEIGHT), maxHeight)),
@@ -366,15 +369,21 @@
     handle.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
-      const rect = $("toolboxDrawer").getBoundingClientRect();
-      const start = { x: event.clientX, y: event.clientY, width: rect.width, height: rect.height };
-      let size = { width: rect.width, height: rect.height };
+      const drawer = $("toolboxDrawer");
+      const style = getComputedStyle(drawer);
+      const start = {
+        x: event.clientX,
+        y: event.clientY,
+        width: Number.parseFloat(style.width),
+        height: Number.parseFloat(style.height),
+      };
+      let size = { width: start.width, height: start.height };
       handle.setPointerCapture(event.pointerId);
       handle.classList.add("dragging");
       const onMove = (moveEvent) => {
         size = axis === "y"
-          ? applyToolboxSize(start.width, start.height + start.y - moveEvent.clientY)
-          : applyToolboxSize(start.width + start.x - moveEvent.clientX, start.height);
+          ? applyToolboxSize(start.width, start.height + window.MAWLauncher.viewportPixelsToPage(start.y - moveEvent.clientY))
+          : applyToolboxSize(start.width + window.MAWLauncher.viewportPixelsToPage(start.x - moveEvent.clientX), start.height);
       };
       const onEnd = () => {
         handle.removeEventListener("pointermove", onMove);
@@ -393,10 +402,12 @@
       event.preventDefault();
       const step = event.shiftKey ? 96 : 24;
       const grow = event.key === "ArrowUp" || event.key === "ArrowLeft";
-      const rect = $("toolboxDrawer").getBoundingClientRect();
+      const style = getComputedStyle($("toolboxDrawer"));
+      const width = Number.parseFloat(style.width);
+      const height = Number.parseFloat(style.height);
       const size = axis === "y"
-        ? applyToolboxSize(rect.width, rect.height + (grow ? step : -step))
-        : applyToolboxSize(rect.width + (grow ? step : -step), rect.height);
+        ? applyToolboxSize(width, height + (grow ? step : -step))
+        : applyToolboxSize(width + (grow ? step : -step), height);
       persistToolboxSize(size);
     });
   }
@@ -550,11 +561,62 @@
     button.classList.add("selected");
   }
 
+  function artifactLabel(kind) {
+    return t(kind === "project" ? "artifact_type_project" : "artifact_type_srt");
+  }
+
+  function renderArtifactButton(button) {
+    const label = artifactLabel(button.dataset.artifactKind);
+    const name = button.dataset.artifactName;
+    const path = button.dataset.artifactPath;
+    button.textContent = label;
+    button.title = `${name}\n${path}`;
+    button.setAttribute("aria-label", `${label}: ${name}; ${path}`);
+  }
+
+  function closeArtifactMenu({ restoreFocus = false } = {}) {
+    const target = artifactMenuTarget;
+    artifactMenuTarget = null;
+    $("artifactContextMenu").classList.add("hidden");
+    if (restoreFocus) target?.button.focus();
+  }
+
+  function openArtifactMenu(event, path, button) {
+    event.preventDefault();
+    event.stopPropagation();
+    closeArtifactMenu();
+    artifactMenuTarget = { path, button };
+    const menu = $("artifactContextMenu");
+    menu.classList.remove("hidden");
+    menu.style.left = "0";
+    menu.style.top = "0";
+    const rect = menu.getBoundingClientRect();
+    const inset = 8;
+    const left = Math.min(Math.max(event.clientX, inset), window.innerWidth - rect.width - inset);
+    const top = Math.min(Math.max(event.clientY, inset), window.innerHeight - rect.height - inset);
+    menu.style.left = `${window.MAWLauncher.viewportPixelsToPage(Math.max(inset, left))}px`;
+    menu.style.top = `${window.MAWLauncher.viewportPixelsToPage(Math.max(inset, top))}px`;
+    menu.querySelector('[role="menuitem"]')?.focus({ preventScroll: true });
+  }
+
+  async function runArtifactAction(action) {
+    const target = artifactMenuTarget;
+    if (!target) return;
+    closeArtifactMenu({ restoreFocus: true });
+    if (action === "select") {
+      selectChainPath(target.path, target.button);
+      return;
+    }
+    const result = await bridge(action, { path: target.path });
+    if (!result.ok) setResult(result.error || t("failed"), "error");
+  }
+
   function addChainResult(chain, result) {
-    const paths = [result.projectPath, result.srtPath]
-      .filter(Boolean)
-      .filter((path, index, all) => all.indexOf(path) === index);
-    if (!paths.length) return;
+    const artifacts = [
+      { kind: "project", path: result.projectPath },
+      { kind: "srt", path: result.srtPath },
+    ].filter((artifact, index, all) => artifact.path && all.findIndex((candidate) => candidate.path === artifact.path) === index);
+    if (!artifacts.length) return;
     const container = $("toolboxChain");
     const list = $("toolboxChainList");
     const item = document.createElement("div");
@@ -566,15 +628,17 @@
     files.className = "toolbox-chain-files";
     const activePath = result.projectPath || result.srtPath || "";
     if (activePath) clearChainSelection();
-    paths.forEach((path) => {
+    artifacts.forEach(({ kind, path }) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "toolbox-chain-file";
       button.classList.toggle("selected", path === activePath);
-      button.textContent = fileName(path);
-      button.title = path;
-      button.setAttribute("aria-label", `${label.textContent}: ${path}`);
+      button.dataset.artifactKind = kind;
+      button.dataset.artifactName = fileName(path);
+      button.dataset.artifactPath = path;
+      renderArtifactButton(button);
       button.addEventListener("click", () => selectChainPath(path, button));
+      button.addEventListener("contextmenu", (event) => openArtifactMenu(event, path, button));
       button.addEventListener("dblclick", async (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -1255,6 +1319,12 @@
   document.addEventListener("click", (event) => {
     if (!event.target?.closest?.(".llm-model-picker")) setModelChoicesOpen(false);
   });
+  document.addEventListener("pointerdown", (event) => {
+    if (artifactMenuTarget && !event.target?.closest?.("#artifactContextMenu")) closeArtifactMenu();
+  });
+  $("artifactSetTarget").addEventListener("click", () => { void runArtifactAction("select"); });
+  $("artifactOpenFolder").addEventListener("click", () => { void runArtifactAction("open_containing_folder"); });
+  $("artifactOpenFile").addEventListener("click", () => { void runArtifactAction("open_file"); });
   ["llmApiKey", "llmBaseUrl", "llmModel", "llmReasoningMode"].forEach((id) => {
     $(id).addEventListener("input", () => setFieldError(id, ""));
     $(id).addEventListener("change", () => setFieldError(id, ""));
@@ -1294,7 +1364,13 @@
   });
   ["jsonPath", "srtPath", "mediaPath"].forEach((id) => $(id).addEventListener("input", syncPaths));
   document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || busy) return;
+    if (event.key !== "Escape") return;
+    if (artifactMenuTarget) {
+      event.preventDefault();
+      closeArtifactMenu({ restoreFocus: true });
+      return;
+    }
+    if (busy) return;
     if (modelChoicesOpen) {
       setModelChoicesOpen(false);
       return;
@@ -1310,6 +1386,9 @@
     if (event.stage === "step_done") setResult(`${autoStepLabel(event.step)}：${t("toolbox_done")}`, "success");
   };
   window.MAWLauncher.getAutoPostprocessPayload = autoPlanFromControls;
+  window.MAWLauncher.onLanguageChanged = () => {
+    document.querySelectorAll(".toolbox-chain-file").forEach(renderArtifactButton);
+  };
   window.MAWLauncher.openAutoPostprocessStep = openAutoStep;
   window.MAWLauncher.onOcrRuntimeChanged = () => {
     renderOcrModel();
