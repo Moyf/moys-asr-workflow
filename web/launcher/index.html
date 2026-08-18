@@ -413,42 +413,68 @@
     <div id="status" class="status">就绪</div>
   </main>
 
-  <button id="toolboxFab" class="toolbox-fab" type="button" aria-controls="toolboxDrawer" aria-expanded="false" data-i18n-title="toolbox_open" title="打开后处理工具箱">
+  <button id="toolboxFab" class="toolbox-fab" type="button" aria-controls="toolboxDrawer" aria-expanded="false" data-i18n-title="toolbox_open" title="打开工具箱">
     <span aria-hidden="true">🧰</span>
   </button>
   <aside id="toolboxDrawer" class="toolbox-drawer hidden" role="dialog" aria-modal="false" aria-labelledby="toolboxTitle">
     <div class="toolbox-sticky">
       <header class="toolbox-header">
         <div class="toolbox-header-copy">
-          <h2 id="toolboxTitle" data-i18n="toolbox_title">后处理工具箱（Beta）</h2>
+          <h2 id="toolboxTitle" data-i18n="toolbox_title">工具箱</h2>
           <p data-i18n="toolbox_chain_hint">每次生成新文件，并自动作为下一步输入；选择工具后运行。</p>
         </div>
-        <p class="toolbox-beta"><span data-i18n="toolbox_beta_notice">该功能正在开发中，仅供尝鲜；遇到问题可前往 </span><a id="toolboxIssuesLink" class="status-link" href="https://github.com/Moyf/moys-asr-workflow/issues">issues</a><span data-i18n="toolbox_beta_notice_tail"> 提反馈</span></p>
         <button id="toolboxClose" class="ghost small" type="button" aria-label="close">×</button>
       </header>
-      <div id="toolboxInputDropZone" class="field toolbox-input">
-        <div class="toolbox-input-heading">
-          <label for="toolboxInputPath" data-i18n="toolbox_input">处理文件</label>
-          <span id="toolboxInputName" class="toolbox-input-name empty" aria-live="polite" data-i18n="toolbox_input_empty">未选择文件</span>
+      <nav id="toolboxPrimaryTabList" class="toolbox-primary-tabs" role="tablist" aria-labelledby="toolboxTitle">
+        <button id="toolboxPostprocessPrimaryTab" class="toolbox-primary-tab active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="toolboxPostprocessView" data-toolbox-section="postprocess" data-i18n="toolbox_group_postprocess">后处理</button>
+        <button id="toolboxUtilitiesPrimaryTab" class="toolbox-primary-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxUtilitiesView" data-toolbox-section="utilities" data-i18n="toolbox_group_utilities">实用工具</button>
+      </nav>
+      <section id="toolboxPostprocessView" class="toolbox-primary-view" role="tabpanel" aria-labelledby="toolboxPostprocessPrimaryTab">
+        <div id="toolboxInputDropZone" class="field toolbox-input">
+          <div class="toolbox-input-heading">
+            <label for="toolboxInputPath" data-i18n="toolbox_input">处理文件</label>
+            <span id="toolboxInputName" class="toolbox-input-name empty" aria-live="polite" data-i18n="toolbox_input_empty">未选择文件</span>
+          </div>
+          <div class="path-row">
+            <input id="toolboxInputPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_input_placeholder" placeholder="跟随工程文件，也可拖入 .mosp / .json / .srt">
+            <button id="pickToolboxInput" class="ghost" type="button" data-i18n="choose">选择</button>
+          </div>
+          <p class="hint" data-i18n="toolbox_input_hint">默认跟随「工程文件」并随每次处理更新；手动选择或拖入后以这里为准。</p>
+          <p id="toolboxInputPathError" class="field-error"></p>
         </div>
-        <div class="path-row">
-          <input id="toolboxInputPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_input_placeholder" placeholder="跟随工程文件，也可拖入 .mosp / .json / .srt">
-          <button id="pickToolboxInput" class="ghost" type="button" data-i18n="choose">选择</button>
+        <div id="toolboxChain" class="toolbox-chain hidden" aria-label="processing artifacts">
+          <p class="toolbox-chain-heading" data-i18n="toolbox_chain_heading">处理产物（点击文件名切换输入）</p>
+          <div id="toolboxChainList" class="toolbox-chain-list"></div>
         </div>
-        <p class="hint" data-i18n="toolbox_input_hint">默认跟随「工程文件」并随每次处理更新；手动选择或拖入后以这里为准。</p>
-        <p id="toolboxInputPathError" class="field-error"></p>
-      </div>
-      <div id="toolboxChain" class="toolbox-chain hidden" aria-label="processing artifacts">
-        <p class="toolbox-chain-heading" data-i18n="toolbox_chain_heading">处理产物（点击文件名切换输入）</p>
-        <div id="toolboxChainList" class="toolbox-chain-list"></div>
-      </div>
-      <div class="toolbox-tabs" role="tablist" aria-label="post-processing tools">
-        <button id="toolboxMatchTab" class="toolbox-tab active" type="button" role="tab" aria-selected="true" aria-controls="toolboxMatchPanel" data-tool="match" data-i18n="toolbox_match">文稿匹配</button>
-        <button id="toolboxOcrTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxOcrPanel" data-tool="ocr" data-i18n="toolbox_ocr_dedup">OCR 字幕去重</button>
-        <button id="toolboxLlmTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxLlmPanel" data-tool="llm" data-i18n="toolbox_llm">LLM 处理</button>
-        <button id="toolboxReplaceTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxReplacePanel" data-tool="replace" data-i18n="toolbox_replace">固定替换</button>
-        <button id="toolboxFfconcatTab" class="toolbox-tab hidden" type="button" role="tab" aria-selected="false" aria-controls="toolboxFfconcatPanel" data-tool="ffconcat" data-i18n="toolbox_ffconcat" aria-hidden="true" tabindex="-1">媒体重组</button>
-      </div>
+        <nav id="toolboxPostprocessTabList" class="toolbox-tabs" role="tablist" aria-labelledby="toolboxPostprocessPrimaryTab">
+          <div class="toolbox-tab-list">
+            <button id="toolboxMatchTab" class="toolbox-tab active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="toolboxMatchPanel" data-tool="match" data-i18n="toolbox_match">文稿匹配</button>
+            <button id="toolboxOcrTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxOcrPanel" data-tool="ocr" data-i18n="toolbox_ocr_dedup">OCR 字幕去重</button>
+            <button id="toolboxLlmTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxLlmPanel" data-tool="llm" data-i18n="toolbox_llm">LLM 处理</button>
+            <button id="toolboxReplaceTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxReplacePanel" data-tool="replace" data-i18n="toolbox_replace">固定替换</button>
+          </div>
+        </nav>
+      </section>
+      <section id="toolboxUtilitiesView" class="toolbox-primary-view hidden" role="tabpanel" aria-labelledby="toolboxUtilitiesPrimaryTab">
+        <div id="toolboxUtilityMediaDropZone" class="field toolbox-input">
+          <div class="toolbox-input-heading">
+            <label for="toolboxUtilityMediaPath" data-i18n="toolbox_utility_media">媒体文件</label>
+            <span id="toolboxUtilityMediaName" class="toolbox-input-name empty" aria-live="polite" data-i18n="toolbox_input_empty">未选择文件</span>
+          </div>
+          <div class="path-row">
+            <input id="toolboxUtilityMediaPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_utility_media_placeholder" placeholder="默认跟随 Launcher 媒体，也可选择或拖入媒体文件">
+            <button id="pickToolboxUtilityMedia" class="ghost" type="button" data-i18n="choose">选择</button>
+          </div>
+          <p class="hint" data-i18n="toolbox_utility_media_hint">默认跟随 Launcher 媒体；选择或拖入媒体后，以这里为准。清空可恢复跟随。</p>
+          <p id="toolboxUtilityMediaPathError" class="field-error"></p>
+        </div>
+        <nav id="toolboxUtilitiesTabList" class="toolbox-tabs" role="tablist" aria-labelledby="toolboxUtilitiesPrimaryTab">
+          <div class="toolbox-tab-list toolbox-utility-tab-list">
+            <button id="toolboxWaveformTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxWaveformPanel" data-tool="waveform" data-i18n="toolbox_waveform">生成波形</button>
+            <button id="toolboxFfconcatTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxFfconcatPanel" data-tool="ffconcat" tabindex="-1" data-i18n="toolbox_ffconcat">媒体重组</button>
+          </div>
+        </nav>
+      </section>
     </div>
     <div class="toolbox-content">
       <div id="toolboxProgress" class="progress hidden" aria-hidden="true"><span></span></div>
@@ -467,6 +493,16 @@
           <pre id="toolboxModelOutput" class="toolbox-stream-text"></pre>
         </details>
       </div>
+      <section id="toolboxWaveformPanel" class="toolbox-panel hidden toolbox-utility-panel" role="tabpanel" aria-labelledby="toolboxWaveformTab">
+        <p class="hint toolbox-panel-hint" data-i18n="toolbox_waveform_hint">仅使用上方媒体生成带内嵌波形的媒体工程，不需要字幕或转写。</p>
+        <div class="field toolbox-waveform-spectral-field">
+          <label class="check-field" for="toolboxGenerateSpectral" data-i18n-title="generate_spectral_title">
+            <input id="toolboxGenerateSpectral" type="checkbox">
+            <span data-i18n="generate_spectral">生成 ReaPeaks 频谱数据</span>
+          </label>
+          <p class="hint" data-i18n="generate_spectral_hint">默认只生成 ReaPeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。</p>
+        </div>
+      </section>
 
     <section id="toolboxMatchPanel" class="toolbox-panel" role="tabpanel" aria-labelledby="toolboxMatchTab">
       <p class="hint toolbox-panel-hint" data-i18n="toolbox_match_hint">匹配度过低时会停止，不写出可能错配的结果。</p>
@@ -601,21 +637,21 @@
       </div>
     </section>
 
-    <section id="toolboxFfconcatPanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxFfconcatTab">
-      <div class="field">
+    <section id="toolboxFfconcatPanel" class="toolbox-panel hidden toolbox-utility-panel" role="tabpanel" aria-labelledby="toolboxFfconcatTab">
+      <div id="toolboxFfconcatDropZone" class="field toolbox-input">
         <label for="postprocessFfconcatPath">FFconcat</label>
         <div class="path-row">
-          <input id="postprocessFfconcatPath" type="text" autocomplete="off">
+          <input id="postprocessFfconcatPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_ffconcat_placeholder" placeholder="选择或拖入 FFconcat 文件；将通过 FFmpeg 按清单重组当前媒体">
           <button id="pickPostprocessFfconcat" class="ghost" type="button" data-i18n="choose">选择</button>
         </div>
-        <p id="postprocessFfconcatError" class="field-error"></p>
+        <p id="postprocessFfconcatPathError" class="field-error"></p>
       </div>
-      <p class="toolbox-notice" data-i18n="toolbox_ffconcat_warning">只允许引用当前媒体。重组会生成新媒体，但不会改写字幕时间轴。</p>
+      <p class="toolbox-notice" data-i18n="toolbox_ffconcat_warning">先在编辑器中执行「移除静音空隙」，然后可选择导出 FFconcat 文件。只允许引用当前媒体；重组会生成新媒体，但不会改写字幕时间轴。</p>
     </section>
 
     </div>
     <div class="toolbox-footer">
-      <div class="field toolbox-output-field">
+      <div id="toolboxOutputField" class="field toolbox-output-field">
         <label for="postprocessOutputMode" data-i18n="toolbox_output">输出</label>
         <select id="postprocessOutputMode">
           <option value="both" data-i18n="toolbox_output_both">工程 + SRT</option>
@@ -624,6 +660,10 @@
         </select>
       </div>
       <div class="toolbox-output-action">
+        <div class="toolbox-action-slot hidden" data-tool-action="waveform">
+          <button id="generateWaveform" class="ghost" type="button" data-i18n="toolbox_generate_waveform">生成波形文件</button>
+          <button id="runWaveform" class="primary" type="button" data-i18n="toolbox_run_waveform">生成波形并打开编辑器</button>
+        </div>
         <div class="toolbox-action-slot" data-tool-action="match">
           <button id="runScriptMatch" class="primary" type="button" data-i18n="toolbox_run_match">匹配文稿</button>
         </div>
@@ -637,7 +677,6 @@
           <button id="runFixedReplacement" class="primary" type="button" data-i18n="toolbox_run_replace">执行替换</button>
         </div>
         <div class="toolbox-action-slot hidden" data-tool-action="ffconcat">
-          <code id="toolboxMediaPath">未选择媒体</code>
           <button id="runFfconcatRebuild" class="primary" type="button" data-i18n="toolbox_run_media">生成新媒体</button>
         </div>
       </div>

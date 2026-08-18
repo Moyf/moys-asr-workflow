@@ -21,12 +21,15 @@ from pathlib import Path
 from threading import Event
 from typing import BinaryIO, Final, final
 
+from media_cache import embed_media_caches
+from waveform import is_waveform_payload
 from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, LANGUAGES, MODELS, PROVIDERS, REGIONS, ModelConfig, ProviderConfig, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
 from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError, install_local_runtime, managed_runtime_status
 from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
 from maw.media import find_ffmpeg, resolve_project_media
+from maw.project import normalize_project
 from maw.postprocess import LlmPostprocessRequest, OutputMode, Replacement, ReplacementRequest, run_fixed_replacement as process_fixed_replacement, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_ffmpeg import FfconcatRequest, run_ffconcat_rebuild as process_ffconcat_rebuild
 from maw.postprocess_match import ScriptMatchRequest, run_script_match as process_script_match
@@ -106,6 +109,8 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "postprocess_config_invalid": "自动后处理配置不完整。",
     "postprocess_failed": "转写已完成，但自动后处理失败。",
     "postprocess_cancelled": "自动后处理已取消，原始转写产物仍然保留。",
+    "waveform_unavailable": "Waveform data could not be embedded.",
+    "waveform_generation_failed": "Waveform project generation failed.",
 }
 
 
@@ -1170,6 +1175,42 @@ class LauncherApi:
             "rawPath": str(raw_response_path(request.srt_path)) if request.debug_raw else "",
         }
 
+    def generate_waveform_project(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Create a media-only project containing embedded waveform caches."""
+        media_text = str(payload.get("mediaPath") or "").strip()
+        media_path = Path(media_text).expanduser().resolve() if media_text else None
+        if media_path is None or media_path.suffix.lower() not in MEDIA_EXTS or not media_path.is_file():
+            return _error_result("mediaPath", "media_not_found", media_text)
+
+        output_seed = unique_output_path(media_path.with_suffix(".waveform.srt"))
+        project_path = output_seed.with_suffix(".mosp")
+        project: dict[str, object] = {"media": str(media_path), "segments": []}
+        try:
+            cached = embed_media_caches(
+                project,
+                media_path,
+                source_media_path=media_path,
+                generate_spectral=bool(payload.get("generateSpectral")),
+            )
+            normalized = normalize_project(cached.project)
+            waveform = normalized.get("waveform")
+            if not is_waveform_payload(waveform) or int(waveform["peak_count"]) <= 0:
+                return _error_result("mediaPath", "waveform_unavailable", str(media_path))
+            project_path.write_bytes((json.dumps(normalized, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+        except (OSError, TypeError, ValueError) as error:
+            return _error_result("mediaPath", "waveform_generation_failed", str(error))
+
+        warnings: list[str] = []
+        if cached.reapeaks_path is None:
+            warnings.append("ReaPeaks cache was not generated.")
+        return {
+            "ok": True,
+            "mediaPath": str(media_path),
+            "projectPath": str(project_path),
+            "warnings": warnings,
+            "reapeaksPath": str(cached.reapeaks_path) if cached.reapeaks_path else "",
+        }
+
     def get_local_models(self, payload: Mapping[str, object] | None = None) -> dict[str, object]:
         provider = provider_by_id("local")
         model_cache_root = effective_config(self.paths.env_path).model_cache_root
@@ -2146,6 +2187,8 @@ def _route_dropped_path(path: str) -> dict[str, object]:
         return {"type": "dropSubtitle", "path": path}
     if suffix == ".txt":
         return {"type": "dropHotwordFile", "path": path}
+    if suffix == ".ffconcat":
+        return {"type": "dropFfconcat", "path": path}
     if suffix in MEDIA_EXTS:
         return {"type": "dropMedia", "path": path}
     return {"type": "dropReject", "path": path}

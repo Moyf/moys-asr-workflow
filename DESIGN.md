@@ -82,7 +82,7 @@ legacy rendering when the user is not editing it.
 - Segment timing (`segments[*].start/end/items[*].start/end`) is never touched by
   preview geometry code.
 
-## 5. Launcher post-processing toolbox
+## 5. Launcher toolbox
 
 The Launcher adds one compact, fixed toolbox above the action footer. It reuses the
 existing Launcher tokens in `web/launcher/launcher.css`; no new color, typography,
@@ -94,7 +94,8 @@ radius, or shadow system is introduced.
 |---|---|---|
 | `.toolbox-fab` | Round entry point at the lower-right edge | idle, hover, focus, expanded, disabled |
 | `.toolbox-drawer` | Bounded panel for one active post-processing workflow | hidden, open, busy |
-| `.toolbox-tabs` | Switch between LLM, fixed replacement, and FFconcat | idle, active, focus |
+| `.toolbox-primary-tabs` | Switch between subtitle post-processing and media utilities | idle, active, focus |
+| `.toolbox-tabs` | Switch tools within the active primary workflow | idle, active, focus |
 | `.toolbox-result` | Show generated artifacts and chain state | empty, success, warning, error |
 | `.artifact-context-menu` | Three-action menu for one generated artifact | hidden, open, item hover, item focus |
 
@@ -128,3 +129,14 @@ column. Long paths use `overflow-wrap: anywhere` and never force horizontal scro
 - On narrow screens the floating button clears the two-row sticky action footer and
   the open drawer clears the button; error results use primary text over the red-soft
   background to preserve AA contrast.
+- The primary navigation is immediately below the Toolbox header:「后处理」is selected
+  by default and owns the subtitle / `.mosp` input, artifact chain, output selector,
+  and script match, OCR dedup, LLM, and fixed replacement tools.「实用工具」owns a
+  separate media input and waveform generation plus FFconcat rebuild; it never exposes
+  the subtitle input or artifact chain.
+- The Utilities media input follows the Launcher's media path until the user chooses,
+  drops, or types an override. Clearing that override restores following behavior.
+  Waveform offers separate generate-only and generate-and-open-editor actions, with a
+  scoped optional spectral-cache checkbox; only the latter changes the Launcher project
+  and starts the existing MAWE Server flow. FFconcat accepts a picked or dropped script
+  that references the scoped Utilities media input.
