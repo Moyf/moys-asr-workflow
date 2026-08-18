@@ -318,7 +318,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("container.classList.toggle('hide-cue-sticker'", page)
         self.assertIn('id="cue-list-auto-scroll-on-click" checked', page)
         self.assertIn('cueListAutoScrollOnClick: saved.cueListAutoScrollOnClick !== false', page)
-        self.assertIn('if (EDITOR_SETTINGS.cueListAutoScrollOnClick) scrollCueToCenter(el);', page)
+        self.assertIn('if (EDITOR_SETTINGS.cueListAutoScrollOnClick && !state?.preserveListScroll)', page)
         self.assertIn("const visibleHeight = Math.max(1, visibleBottom - visibleTop);", page)
         self.assertIn(
             "const comfortInset = Math.min(120, Math.max(48, visibleHeight * 0.2));",
