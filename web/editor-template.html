@@ -28,6 +28,7 @@ __WAVEFORM_CSS__
   <span class="json-name __JSON_NAME_CLASS__" id="json-name" title="点击复制工程文件名">__JSON_DISPLAY__</span>
 </h1>
 <div class="toolbar row-actions">
+  <button type="button" id="new-project" title="创建并保存一个空白工程">新建工程</button>
   <span class="dropdown button-split" id="open-project-dropdown">
     <button id="open-project" title="单独打开工程；浏览器无法自动读取关联媒体时会提示选择">打开工程</button>
     <button type="button" id="open-project-menu-btn" class="split-caret" aria-label="打开更多文件">▾</button>
@@ -682,12 +683,19 @@ __WAVEFORM_CSS__
     </label>
     <small class="editor-settings-hint">选中时，会将所有不同颜色的字幕按「文件名_颜色」格式统一导出；否则每个颜色都会弹出单独的保存框。</small>
     </div>
+    <label class="editor-settings-item" title="选择表情包 OTIO 引用原始素材，或由服务器复制素材并生成便携文件夹">
+      表情包 OTIO
+      <select id="sticker-otio-export-mode">
+        <option value="original" selected>引用原始素材</option>
+        <option value="portable">便携 OTIO 文件夹（工程同目录）</option>
+      </select>
+    </label>
     </div>
     <div id="server-auto-save-settings" class="editor-settings-sub-group" hidden>
       <span class="editor-settings-title">保存</span>
-      <label class="toggle editor-settings-item" title="仅服务器版编辑器可将改动保存回当前工程文件">
-        <input type="checkbox" id="auto-save-project" checked> 自动保存
-      </label>
+        <label class="toggle editor-settings-item" title="将改动自动保存回当前工程文件">
+          <input type="checkbox" id="auto-save-project" checked> 自动保存
+        </label>
       <label class="editor-settings-item" id="auto-save-interval-field" hidden>自动保存间隔
         <span class="gap-remove-number-control">
           <input id="auto-save-interval" type="number" min="5" max="3600" step="1" value="30">
@@ -887,7 +895,7 @@ __WAVEFORM_CSS__
     </div>
     <div class="player-stage">
       __MEDIA_HTML__
-      <div class="player-empty" id="player-empty">加载媒体后显示视频</div>
+          <div class="player-empty" id="player-empty">拖入工程、媒体或 SRT 开始编辑</div>
       <div id="overlay" class="subtitle-overlay geo-box hidden" tabindex="0" role="group" aria-label="字幕预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 显示控制点，Esc 退出。"><span id="overlay-main-text"></span><span id="overlay-extension-text" class="subtitle-extension-text hidden"></span><span class="overlay-handle" data-handle="nw" aria-hidden="true"></span><span class="overlay-handle" data-handle="n" aria-hidden="true"></span><span class="overlay-handle" data-handle="ne" aria-hidden="true"></span><span class="overlay-handle" data-handle="e" aria-hidden="true"></span><span class="overlay-handle" data-handle="se" aria-hidden="true"></span><span class="overlay-handle" data-handle="s" aria-hidden="true"></span><span class="overlay-handle" data-handle="sw" aria-hidden="true"></span><span class="overlay-handle" data-handle="w" aria-hidden="true"></span></div>
     </div>
     <div class="media-controls" id="media-controls" role="group" aria-label="媒体播放控制">
@@ -1095,7 +1103,7 @@ __WAVEFORM_CSS__
     <div class="waveform-scroll" id="waveform-scroll">
       <div class="waveform-content" id="waveform-content"></div>
     </div>
-    <div class="waveform-empty" id="waveform-empty">加载媒体后显示波形</div>
+        <div class="waveform-empty" id="waveform-empty">拖入媒体后显示波形</div>
   </section>
   <div class="workspace-divider" id="workspace-divider" title="拖动调整波形与字幕区域比例"></div>
   <div class="workspace-divider workspace-divider-secondary" id="workspace-divider-secondary" title="拖动调整布局区域比例"></div>
@@ -1146,7 +1154,7 @@ __WAVEFORM_CSS__
       <span class="sep"></span>
       <button id="filter-over" title="只显示超过阈值的字幕（再次点击关闭）">仅看超长</button>
     </div>
-    <div class="cues-empty" id="cues-empty">加载工程后显示字幕列表</div>
+      <div class="cues-empty" id="cues-empty">拖入工程或 SRT 后显示字幕列表</div>
   </div>
 </div>
 
@@ -1214,27 +1222,19 @@ __WAVEFORM_CSS__
 
 <!-- 表情包根目录 modal -->
 <div class="modal-mask" id="sticker-root-modal">
-  <div class="modal">
-    <h3>设置表情包根目录</h3>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sticker-root-title">
+    <h3 id="sticker-root-title">设置表情包根目录</h3>
     <div class="modal-desc">
       所有表情包路径都基于此根目录。修改后页面所有缩略图会立刻按新路径加载。
     </div>
     <label for="sticker-root-input">当前根目录（绝对路径）</label>
     <div class="modal-field-row">
-      <input type="text" id="sticker-root-input" placeholder="如 D:/AI/AI音频转录/表情包" autocomplete="off">
-      <button id="sticker-root-pick" title="扫描本地文件夹以加载表情包缩略图（浏览器拿不到磁盘路径，需手动填写导出路径）">📁 扫描</button>
+      <input type="text" id="sticker-root-input" placeholder="输入绝对路径" autocomplete="off" aria-describedby="sticker-root-status">
+      <button type="button" id="sticker-root-read" class="primary">读取</button>
     </div>
-    <input type="file" id="sticker-root-folder-input" webkitdirectory directory multiple style="display:none">
-    <p id="sticker-root-browser-warn" class="modal-hint" style="display:none; color: #ffc864; font-weight: 600;">
-      ⬆️ 当前是浏览器加载模式，请手动填写真实磁盘路径以导出 OTIO 工程<br>
-      （或在启动器的 ⚙️ 设置中填写表情包路径后，重新启动服务器）
-    </p>
-    <div class="modal-hint">
-      支持 OS 路径（D:/foo/bar 或 D:\foo\bar）或 file:// URL。点 📁 扫描只加载缩略图预览，不会自动填入导出路径。
-    </div>
+    <div id="sticker-root-status" class="modal-hint" role="status" aria-live="polite"></div>
     <div class="actions">
       <button id="sticker-root-cancel">取消</button>
-      <button id="sticker-root-confirm" class="primary">应用</button>
     </div>
   </div>
 </div>
@@ -1301,7 +1301,7 @@ __WAVEFORM_CSS__
 <div class="ctxmenu" id="ctxmenu"></div>
 
 <!-- 拖拽加载遮罩 -->
-<div class="drag-overlay" id="drag-overlay"><div class="drag-hint">📥 松开以加载文件（视频 / 音频 / JSON / SRT）</div></div>
+<div class="drag-overlay" id="drag-overlay"><div class="drag-hint">松开以加载工程、媒体或 SRT</div></div>
 
 <!-- 文件读取/媒体解码进度 -->
 <div class="editor-loading" id="editor-loading" hidden aria-live="polite" aria-busy="true">
