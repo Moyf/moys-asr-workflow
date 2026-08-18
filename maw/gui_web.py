@@ -546,6 +546,7 @@ class LauncherApi:
             "providers": [_provider_payload(item, self.paths.env_path, config.model_cache_root) for item in PROVIDERS],
             "postprocessProviders": _postprocess_provider_payloads(self.paths.env_path),
             "postprocessAutoPlan": load_postprocess_plan(self.paths.env_path),
+            "zoomPercent": config.zoom_percent,
         }
 
     def default_output(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -604,12 +605,19 @@ class LauncherApi:
             updates["MAW_GUI_LAST_LANGUAGE"] = str(payload.get("language") or "")
         if "showRareLangs" in payload:
             updates["MAW_GUI_SHOW_RARE_LANGS"] = "true" if payload.get("showRareLangs") else "false"
+        if "zoomPercent" in payload:
+            from maw.gui_config import normalize_zoom_percent
+
+            zoom_percent = normalize_zoom_percent(payload.get("zoomPercent"))
+            updates["MAW_GUI_ZOOM_PERCENT"] = str(zoom_percent)
+        else:
+            zoom_percent = effective_config(self.paths.env_path).zoom_percent
         if updates:
             try:
                 save_env(self.paths.env_path, updates)
             except (OSError, UnicodeError, ValueError) as error:
                 return _error_result("", "config_save_failed", f"{self.paths.env_path}: {error}")
-        return {"ok": True}
+        return {"ok": True, "zoomPercent": zoom_percent}
 
     def save_postprocess_settings(self, payload: Mapping[str, object]) -> dict[str, object]:
         preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
@@ -964,6 +972,12 @@ class LauncherApi:
         if not path.is_file():
             return {"ok": False, "error": f"File does not exist: {path}"}
         return _open_existing_path(path)
+
+    def open_containing_folder(self, payload: Mapping[str, object]) -> dict[str, object]:
+        path = Path(str(payload.get("path") or "").strip()).expanduser()
+        if not path.is_file():
+            return {"ok": False, "error": f"File does not exist: {path}"}
+        return _open_existing_path(path.resolve().parent)
 
     def open_mose(self, payload: Mapping[str, object]) -> dict[str, object]:
         """Open the packaged MOSE editor and pass it the selected project path."""
