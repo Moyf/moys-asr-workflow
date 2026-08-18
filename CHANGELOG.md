@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+- Launcher toolbox now supports generating an embedded-waveform media-only `.mosp` project without transcription, with scoped optional spectral data plus separate generate-only and generate-and-open-editor actions.
+- Launcher toolbox now uses primary Post-processing and Utilities tabs, including an independent Utilities media input that follows the main Launcher media until overridden.
 
 ## [1.4.0] - 2026-08-16
 
