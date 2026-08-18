@@ -6742,7 +6742,7 @@
     '未选择': 'Not selected',
     '加载工程后显示字幕列表': 'Subtitle list appears after loading a project',
     '加载媒体后显示视频': 'Video appears after loading media',
-    '加载媒体后显示波形': 'Waveform appears after loading media',
+  '加载媒体后显示波形（大媒体需要先用 MAW 生成波形后拖入）': 'Waveform appears after loading media (for large media, generate the waveform with MAW first and drag it here)',
     '‹ 前一条': '‹ Previous', '后一条 ›': 'Next ›', '＋ 表情包': '＋ Sticker',
     '在光标处拆分': 'Split at cursor', '在光标处拆分（': 'Split at cursor (', '范围：全部字幕': 'Scope: all subtitles',
     '查找': 'Find', '替换为': 'Replace with', '批量替换': 'Batch replace',
@@ -9616,7 +9616,7 @@
         this.payload = null;
         this.peaks = null;
         this.setStatus('等待波形数据');
-        this.empty.textContent = '加载媒体后显示波形';
+        this.empty.textContent = '加载媒体后显示波形（大媒体需要先用 MAW 生成波形后拖入）';
         this.empty.classList.remove('hidden');
         if (render) this.render();
         return false;
@@ -9660,6 +9660,9 @@
     setReapeaksWaveform(payload, { render = true } = {}) {
       this.reapeaksPeaks = decodePayload(payload);
       this.reapeaksPayload = this.reapeaksPeaks ? payload : null;
+      if (this.reapeaksPayload && !this.payload) {
+        this.setPayload(this.reapeaksPayload, { render: false });
+      }
       if (render) this.render();
       return this.reapeaksPayload != null;
     }
@@ -24780,7 +24783,6 @@ async function loadReapeaksFile(file) {
     DATA.spectral = parsed.spectral;
     waveformEditor.setReapeaksWaveform(parsed.waveform);
     waveformEditor.setSpectralPayload(parsed.spectral);
-    waveformEditor.setPayload(null);
     waveformEditor.setMediaAvailable(false);
     flashHint(`已加载 ReaPeaks 缓存：${file.name}`, 'success');
     return true;

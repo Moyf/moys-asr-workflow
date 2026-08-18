@@ -324,7 +324,7 @@
     '未选择': 'Not selected',
     '加载工程后显示字幕列表': 'Subtitle list appears after loading a project',
     '加载媒体后显示视频': 'Video appears after loading media',
-    '加载媒体后显示波形': 'Waveform appears after loading media',
+  '加载媒体后显示波形（大媒体需要先用 MAW 生成波形后拖入）': 'Waveform appears after loading media (for large media, generate the waveform with MAW first and drag it here)',
     '‹ 前一条': '‹ Previous', '后一条 ›': 'Next ›', '＋ 表情包': '＋ Sticker',
     '在光标处拆分': 'Split at cursor', '在光标处拆分（': 'Split at cursor (', '范围：全部字幕': 'Scope: all subtitles',
     '查找': 'Find', '替换为': 'Replace with', '批量替换': 'Batch replace',

@@ -12521,7 +12521,6 @@ async function loadReapeaksFile(file) {
     DATA.spectral = parsed.spectral;
     waveformEditor.setReapeaksWaveform(parsed.waveform);
     waveformEditor.setSpectralPayload(parsed.spectral);
-    waveformEditor.setPayload(null);
     waveformEditor.setMediaAvailable(false);
     flashHint(`已加载 ReaPeaks 缓存：${file.name}`, 'success');
     return true;
