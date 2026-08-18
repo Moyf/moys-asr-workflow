@@ -103,6 +103,14 @@ class AttachProjectError(ValueError):
     """A browser-opened project could not be bound to its on-disk file."""
 
 
+class ProjectMutationInProgressError(RuntimeError):
+    """Another project create/save operation currently owns the mutation lock."""
+
+
+class StickerExportInProgressError(RuntimeError):
+    """Another portable sticker export currently owns the sticker lock."""
+
+
 def default_settings_path() -> Path:
     """Return a per-user app-data path, outside the project and browser storage."""
     if os.name == "nt":
@@ -249,6 +257,32 @@ def load_project(
     if repaired_count:
         print(f"[project] 已兜底修复 {repaired_count} 处异常时间码（保底 100ms）")
     data = normalize_project(raw_data)
+    sticker_source = data.get("sticker_root")
+    sticker_root: Path | None = None
+    stickers: list[dict] = []
+    if isinstance(sticker_source, str) and sticker_source.strip():
+        try:
+            sticker_root, stickers = validate_sticker_root(sticker_source)
+        except (OSError, ValueError):
+            sticker_root = None
+    if sticker_root is None:
+        fallback_source = stickers_dir or edit.get_default_sticker_dir()
+        if fallback_source:
+            fallback_path = Path(fallback_source).resolve()
+            root_text, stickers = edit.scan_stickers(fallback_path)
+            sticker_root = Path(root_text) if root_text else None
+
+    media_value = data.get("media")
+    if explicit_media is None and (not isinstance(media_value, str) or not media_value.strip()):
+        return ServerProject(
+            data,
+            json_path,
+            None,
+            sticker_root,
+            stickers,
+            source_media_path=None,
+            reapeaks_path=None,
+        )
 
     resolution = resolve_project_media(json_path, data, explicit_media)
     if not resolution.loadable:
@@ -299,14 +333,11 @@ def load_project(
                     f"({reapeaks_wave['peaks_per_second']}/秒)"
                 )
 
-    source = stickers_dir or edit.get_default_sticker_dir()
-    sticker_root = Path(source).resolve() if source else None
-    root_text, stickers = edit.scan_stickers(sticker_root) if sticker_root else ("", [])
     return ServerProject(
         data,
         json_path,
         media_path,
-        Path(root_text) if root_text else None,
+        sticker_root,
         stickers,
         source_media_path=source_media_path,
         reapeaks_path=reapeaks_base,
@@ -381,8 +412,14 @@ def build_server_page(project: ServerProject, settings: ServerSettings | None = 
         ninja_sfx_base_url_json=json.dumps("/sfx/", ensure_ascii=False),
         server_config_json=json.dumps({
             "saveUrl": "/api/project",
+            "createUrl": "/api/project/create",
+            "requestToken": request_token,
+            "stickerRootUrl": "/api/stickers/root",
+            "portableStickerExportUrl": "/api/exports/sticker-otio",
             "waveformUrl": "/api/waveform",
             "canSave": project.json_path is not None,
+            "canPortableStickerExport": project.json_path is not None,
+            "initialStickerCount": len(project.stickers),
             "autoLoadedMediaName": (project.source_media_path or project.media_path).name if project.media_path else None,
             "recentProjectsUrl": "/api/recent-projects/open",
             "attachUrl": "/api/project/attach",
@@ -428,7 +465,10 @@ class EditorServer(ThreadingHTTPServer):
         self.stickers_dir = stickers_dir
         self.no_waveform = no_waveform
         self.peaks_per_second = peaks_per_second
+        self.project_save_dialog = project_save_dialog
+        self.request_token = secrets.token_urlsafe(32)
         self.save_lock = threading.Lock()
+        self.sticker_lock = threading.Lock()
         self.settings_lock = threading.Lock()
         self.reapeaks_lock = threading.Lock()
         self.reapeaks_generation = 0
@@ -456,6 +496,13 @@ class EditorServer(ThreadingHTTPServer):
                 print(f"[settings] 后台保存失败: {error}", file=sys.stderr)
 
         threading.Thread(target=persist, daemon=True, name="maw-save-settings").start()
+
+    def set_sticker_root(self, raw_path: str) -> tuple[Path, list[dict]]:
+        """Scan a root before atomically making it the active sticker scope."""
+        with self.sticker_lock:
+            root, stickers = validate_sticker_root(raw_path)
+            self.project = replace(self.project, sticker_root=root, stickers=stickers)
+            return root, stickers
 
     def start_deferred_reapeaks_load(self) -> None:
         """Load optional ReaPeaks layers after the HTTP server is available."""
@@ -688,11 +735,53 @@ class EditorServer(ThreadingHTTPServer):
         target = self.project.json_path
         if filename is not None:
             target = safe_project_filename(target.parent, filename)
-        with self.save_lock:
+        if not self.save_lock.acquire(blocking=False):
+            raise ProjectMutationInProgressError("另一个工程保存操作正在进行")
+        try:
             backup = write_project_json(target, normalized_project)
             self.project = replace(self.project, data=normalized_project, json_path=target)
             self.remember_project(target)
+        finally:
+            self.save_lock.release()
         return target, backup
+
+    def create_project(self, project_data: dict, suggested_name: str) -> CreateProjectResult:
+        """Checkpoint a new project at a host-authorized path, then bind it."""
+        try:
+            repaired_project = copy.deepcopy(project_data)
+            repair_project_timing_ranges(repaired_project, repair_segment_ranges=False)
+            normalized_project = normalize_project(repaired_project)
+        except (TypeError, ProjectValidationFailed) as error:
+            raise SaveProjectError(str(error)) from error
+        dialog_name = sanitize_project_suggested_name(suggested_name)
+        if not self.save_lock.acquire(blocking=False):
+            raise ProjectMutationInProgressError("另一个工程保存操作正在进行")
+        try:
+            selection = self.project_save_dialog(dialog_name)
+            if selection.status == "cancelled":
+                return CreateProjectResult(cancelled=True)
+            if selection.status != "selected" or selection.path is None:
+                raise ProjectSaveDialogError("系统保存对话框不可用")
+            target = selection.path.resolve()
+            if target.suffix.casefold() not in {".mosp", ".json"} or not target.parent.is_dir():
+                raise ProjectSaveDialogError("系统保存对话框返回了无效路径")
+            backup = write_project_json(target, normalized_project)
+            next_settings = remember_project(self.settings, target)
+            if self.settings_path:
+                write_server_settings(self.settings_path, next_settings)
+            self.project = ServerProject(
+                normalized_project,
+                target,
+                None,
+                self.project.sticker_root,
+                self.project.stickers,
+                source_media_path=None,
+                reapeaks_path=None,
+            )
+            self.settings = next_settings
+            return CreateProjectResult(False, normalized_project, target, backup)
+        finally:
+            self.save_lock.release()
 
 
 def safe_project_filename(directory: Path, filename: str) -> Path:
@@ -705,6 +794,119 @@ def safe_project_filename(directory: Path, filename: str) -> Path:
     ):
         raise SaveProjectError("另存为只能使用当前工程目录内的 .mosp 或 .json 文件名")
     return directory / candidate.name
+
+
+def validate_sticker_root(raw_path: str) -> tuple[Path, list[dict]]:
+    """Validate and scan one native absolute sticker directory."""
+    candidate = Path(raw_path).expanduser()
+    if not candidate.is_absolute():
+        raise ValueError("表情包根目录必须是绝对路径")
+    root = candidate.resolve(strict=True)
+    if not root.is_dir():
+        raise ValueError("表情包根目录不是文件夹")
+    root_text, stickers = edit.scan_stickers(root)
+    if not root_text:
+        raise ValueError("表情包根目录无法扫描")
+    return Path(root_text), stickers
+
+
+def _sticker_rel_path(raw_rel: str, root: Path) -> Path:
+    """Resolve a submitted sticker-relative path without crossing the root."""
+    if not raw_rel or "\\" in raw_rel:
+        raise ValueError("表情包相对路径不安全")
+    relative = Path(raw_rel)
+    if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
+        raise ValueError("表情包相对路径不安全")
+    if relative.suffix.casefold() not in STICKER_IMAGE_EXTENSIONS:
+        raise ValueError("表情包格式不受支持")
+    try:
+        source = (root / relative).resolve(strict=True)
+    except FileNotFoundError as error:
+        raise ValueError("表情包源文件不存在") from error
+    try:
+        source.relative_to(root)
+    except ValueError as error:
+        raise ValueError("表情包路径超出根目录") from error
+    if not source.is_file():
+        raise ValueError("表情包源文件不存在")
+    return source
+
+
+def export_sticker_otio(project: ServerProject, kind: str, timeline: dict, root: Path) -> tuple[Path, str, int]:
+    """Build and atomically publish a portable sticker-only OTIO package."""
+    if project.json_path is None:
+        raise ValueError("当前服务器没有绑定工程文件")
+    if timeline.get("OTIO_SCHEMA") != "Timeline.1":
+        raise ValueError("OTIO 必须是 Timeline")
+    if kind not in {"stickers", "gap-removed-stickers"}:
+        raise ValueError("不支持的表情包 OTIO 类型")
+    stem = project.json_path.stem
+    package_base = f"{stem}_stickers_otio" if kind == "stickers" else f"{stem}_gap-removed-stickers_otio"
+    otio_name = f"{stem}_stickers.otio" if kind == "stickers" else f"{stem}_gap-removed-stickers.otio"
+    parent = project.json_path.parent
+    package = parent / package_base
+    suffix = 1
+    while package.exists():
+        suffix += 1
+        package = parent / f"{package_base}-{suffix}"
+    used: dict[Path, str] = {}
+    used_names: set[str] = set()
+    clip_count = 0
+
+    def visit(value: dict) -> None:
+        nonlocal clip_count
+        if value.get("OTIO_SCHEMA") == "Clip.2" and isinstance(value.get("media_references"), dict):
+            clip_count += 1
+        metadata = value.get("metadata")
+        moy = metadata.get("moy") if isinstance(metadata, dict) else None
+        sticker_rel = moy.get("sticker_rel") if isinstance(moy, dict) else None
+        if value.get("OTIO_SCHEMA") == "Clip.2" and isinstance(value.get("media_references"), dict) and (
+            not isinstance(sticker_rel, str) or not sticker_rel.strip()
+        ):
+            raise ValueError("表情包 Clip 缺少 sticker_rel")
+        if isinstance(sticker_rel, str) and sticker_rel.strip():
+            source = _sticker_rel_path(sticker_rel, root)
+            if source not in used:
+                filename = source.name
+                stem, extension = source.stem, source.suffix
+                candidate_name = filename
+                collision = 1
+                while candidate_name.casefold() in used_names:
+                    collision += 1
+                    candidate_name = f"{stem}-{collision}{extension}"
+                used[source] = candidate_name
+                used_names.add(candidate_name.casefold())
+            references = value.get("media_references")
+            if isinstance(references, dict):
+                for reference in references.values():
+                    if isinstance(reference, dict) and isinstance(reference.get("target_url"), str):
+                        reference["target_url"] = "stickers/" + quote(used[source], safe="")
+        for child in value.values():
+            if isinstance(child, dict):
+                visit(child)
+            elif isinstance(child, list):
+                for item in child:
+                    if isinstance(item, dict):
+                        visit(item)
+
+    payload = copy.deepcopy(timeline)
+    visit(payload)
+    if clip_count == 0 or not used:
+        raise ValueError("表情包 OTIO 没有可导出的表情包")
+    temporary = Path(tempfile.mkdtemp(prefix=f".{package.name}-", dir=parent))
+    try:
+        stickers_dir = temporary / "stickers"
+        stickers_dir.mkdir()
+        for source, filename in used.items():
+            shutil.copy2(source, stickers_dir / filename)
+        (temporary / otio_name).write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n",
+        )
+        os.replace(temporary, package)
+    except (OSError, ValueError):
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
+    return package, otio_name, len(used)
 
 
 def write_project_json(target: Path, project_data: dict) -> Path | None:
@@ -744,12 +946,18 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.shutdown_server()
         elif path == "/api/project":
             self.save_project()
+        elif path == "/api/project/create":
+            self.create_project()
         elif path == "/api/project/attach":
             self.attach_project()
         elif path == "/api/recent-projects/open":
             self.open_recent_project()
         elif path == "/api/settings":
             self.update_settings()
+        elif path == "/api/stickers/root":
+            self.set_sticker_root()
+        elif path == "/api/exports/sticker-otio":
+            self.export_sticker_otio()
         else:
             self.send_localized_error(HTTPStatus.NOT_FOUND, "未知 API")
 
@@ -782,6 +990,109 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "ok": True,
             "filename": target.name,
             "backup": backup.name if backup else None,
+        })
+
+    def create_project(self) -> None:
+        try:
+            request = self.read_json_request()
+            if set(request) != {"project", "suggestedName", "requestToken"}:
+                raise SaveProjectError("新建工程请求字段不正确")
+            if request.get("requestToken") != self.editor_server.request_token:
+                raise SaveProjectError("新建工程请求令牌无效")
+            project_data = request.get("project")
+            suggested_name = request.get("suggestedName")
+            if not isinstance(project_data, dict) or not isinstance(suggested_name, str):
+                raise SaveProjectError("工程内容或建议文件名格式不正确")
+            result = self.editor_server.create_project(project_data, suggested_name)
+        except ProjectMutationInProgressError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, SaveProjectError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        except ProjectSaveDialogError as error:
+            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(error)})
+            return
+        except OSError as error:
+            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": f"创建工程失败：{error}"})
+            return
+        if result.cancelled:
+            self.send_json(HTTPStatus.OK, {"ok": True, "cancelled": True})
+            return
+        assert result.target is not None and result.project is not None
+        self.send_json(HTTPStatus.OK, {
+            "ok": True,
+            "cancelled": False,
+            "name": result.target.name,
+            "backup": result.backup.name if result.backup else None,
+            "canSave": True,
+            "project": result.project,
+        })
+
+    def _check_request_token(self, request: dict) -> None:
+        token = request.get("requestToken")
+        if not isinstance(token, str) or not compare_digest(token, self.editor_server.request_token):
+            raise PermissionError("请求令牌无效")
+
+    def set_sticker_root(self) -> None:
+        try:
+            request = self.read_json_request()
+            self._check_request_token(request)
+            path = request.get("path")
+            if not isinstance(path, str) or not path:
+                raise ValueError("表情包根目录格式不正确")
+            root, stickers = self.editor_server.set_sticker_root(path)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, OSError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, {
+            "ok": True,
+            "root": root.as_posix(),
+            "count": len(stickers),
+            "stickers": stickers,
+        })
+
+    def export_sticker_otio(self) -> None:
+        try:
+            request = self.read_json_request()
+            self._check_request_token(request)
+            kind = request.get("kind")
+            timeline = request.get("timeline")
+            if not isinstance(kind, str) or not isinstance(timeline, dict):
+                raise ValueError("表情包 OTIO 请求格式不正确")
+            if not self.editor_server.sticker_lock.acquire(blocking=False):
+                raise StickerExportInProgressError("另一个表情包导出操作正在进行")
+            try:
+                project = self.editor_server.project
+                root = project.sticker_root
+                if root is None:
+                    raise ValueError("尚未验证表情包根目录")
+                package, otio_name, sticker_count = export_sticker_otio(
+                    project, kind, timeline, root,
+                )
+            finally:
+                self.editor_server.sticker_lock.release()
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except StickerExportInProgressError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        except OSError as error:
+            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": f"表情包导出失败：{error}"})
+            return
+        self.send_json(HTTPStatus.OK, {
+            "ok": True,
+            "folderName": package.name,
+            "folderPath": str(package.resolve()),
+            "otioName": otio_name,
+            "stickerCount": sticker_count,
         })
 
     def read_json_request(self) -> dict:

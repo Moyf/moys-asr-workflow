@@ -79,6 +79,130 @@ class LocalEditorServerTests(unittest.TestCase):
                 server_editor.EditorRequestHandler.send_file(handler, self.media, True)
                 handler.wfile.write.assert_called_once()
 
+    def test_media_less_projects_reopen_bound_without_media_work(self) -> None:
+        for project_data in (
+            {"media": "", "segments": []},
+            {
+                "segments": [
+                    {"start": 0, "end": 1000, "text": "仅字幕工程"},
+                ],
+            },
+        ):
+            with self.subTest(project_data=project_data):
+                project_path = self.root / "subtitles-only.mosp"
+                project_path.write_text(json.dumps(project_data), encoding="utf-8")
+                with (
+                    mock.patch.object(server_editor, "resolve_project_media") as resolve_media,
+                    mock.patch.object(server_editor.edit, "load_or_extract_waveform") as load_waveform,
+                    mock.patch.object(server_editor.reapeaks, "load_spectral_payload") as load_spectral,
+                    mock.patch.object(server_editor.reapeaks, "load_waveform_payload") as load_reapeaks_waveform,
+                ):
+                    project = server_editor.load_project(
+                        project_path,
+                        None,
+                        str(self.stickers),
+                        no_waveform=False,
+                        peaks_per_second=100,
+                    )
+
+                resolve_media.assert_not_called()
+                load_waveform.assert_not_called()
+                load_spectral.assert_not_called()
+                load_reapeaks_waveform.assert_not_called()
+                self.assertEqual(project.json_path, project_path)
+                self.assertIsNone(project.media_path)
+                self.assertIsNone(project.source_media_path)
+                self.assertIsNone(project.reapeaks_path)
+                self.assertIn('"canSave": true', server_editor.build_server_page(project).decode("utf-8"))
+
+    def test_bound_media_less_page_displays_project_name(self) -> None:
+        project_path = self.root / "subtitles-only.mosp"
+        project_path.write_text(
+            json.dumps({"media": "", "segments": [{"start": 0, "end": 1000, "text": "仅字幕工程"}]}),
+            encoding="utf-8",
+        )
+        project = server_editor.load_project(
+            project_path,
+            None,
+            str(self.stickers),
+            no_waveform=True,
+            peaks_per_second=100,
+        )
+
+        page = server_editor.build_server_page(project).decode("utf-8")
+
+        self.assertIn('let FILENAME_BASE = "subtitles-only";', page)
+        self.assertIn('id="json-name" title="点击复制工程文件名">subtitles-only.mosp</span>', page)
+        self.assertNotIn('class="json-name empty"', page)
+        self.assertIn('id="media-name" title="">未加载媒体</span>', page)
+        self.assertIn('"canSave": true', page)
+
+    def test_media_less_project_loads_without_a_sticker_directory(self) -> None:
+        project_path = self.root / "no-stickers.mosp"
+        project_path.write_text(
+            json.dumps({"media": "", "segments": []}),
+            encoding="utf-8",
+        )
+
+        with mock.patch.object(server_editor.edit, "get_default_sticker_dir", return_value=None):
+            project = server_editor.load_project(
+                project_path,
+                None,
+                None,
+                no_waveform=True,
+                peaks_per_second=100,
+            )
+
+        self.assertEqual(project.json_path, project_path)
+        self.assertIsNone(project.media_path)
+        self.assertIsNone(project.sticker_root)
+        self.assertEqual(project.stickers, [])
+
+    def test_nonempty_missing_media_is_still_rejected(self) -> None:
+        project_path = self.root / "missing-media.mosp"
+        project_path.write_text(
+            json.dumps({"media": "missing.mp3", "segments": []}),
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(server_editor.MediaResolutionError):
+            server_editor.load_project(
+                project_path,
+                None,
+                str(self.stickers),
+                no_waveform=True,
+                peaks_per_second=100,
+            )
+
+    def test_project_sticker_root_wins_over_launcher_root(self) -> None:
+        project_root = self.root / "project-stickers"
+        project_root.mkdir()
+        (project_root / "project.png").write_bytes(b"project")
+        project_path = self.root / "persisted.json"
+        project_path.write_text(json.dumps({
+            "media": str(self.media), "sticker_root": str(project_root), "segments": [],
+        }), encoding="utf-8")
+
+        project = server_editor.load_project(
+            project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+
+        self.assertEqual(project.sticker_root, project_root.resolve())
+        self.assertEqual([sticker["rel"] for sticker in project.stickers], ["project.png"])
+
+    def test_invalid_project_sticker_root_falls_back_to_launcher_root(self) -> None:
+        project_path = self.root / "invalid-persisted.json"
+        project_path.write_text(json.dumps({
+            "media": str(self.media), "sticker_root": str(self.root / "missing-stickers"), "segments": [],
+        }), encoding="utf-8")
+
+        project = server_editor.load_project(
+            project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+
+        self.assertEqual(project.sticker_root, self.stickers.resolve())
+        self.assertEqual([sticker["rel"] for sticker in project.stickers], ["nested/cat.png"])
+
     def test_unknown_resource_keeps_localized_detail_with_ascii_http_reason(self) -> None:
         project = server_editor.load_project(
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
@@ -126,7 +250,10 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('src="/media"', page)
         self.assertIn('let STICKER_URL_PREFIX = "/stickers";', page)
         self.assertIn('const NINJA_SFX_BASE_URL = "/sfx/";', page)
-        self.assertIn('const SERVER_CONFIG = {"saveUrl": "/api/project", "waveformUrl": "/api/waveform", "canSave": true, ', page)
+        self.assertIn('const SERVER_CONFIG = {"saveUrl": "/api/project", "createUrl": "/api/project/create", ', page)
+        self.assertIn('"requestToken": "", "stickerRootUrl": "/api/stickers/root", ', page)
+        self.assertIn('"portableStickerExportUrl": "/api/exports/sticker-otio", ', page)
+        self.assertIn('"canPortableStickerExport": true, "initialStickerCount": 1, ', page)
         self.assertIn('"autoLoadedMediaName": "clip.mp3", "recentProjectsUrl": "/api/recent-projects/open", ', page)
         self.assertIn('"attachUrl": "/api/project/attach", "settingsUrl": "/api/settings", ', page)
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
@@ -174,6 +301,165 @@ class LocalEditorServerTests(unittest.TestCase):
             finally:
                 server.shutdown()
                 thread.join(timeout=2)
+
+    def test_sticker_root_endpoint_validates_token_and_preserves_state_on_failure(self) -> None:
+        project = server_editor.load_blank_project(str(self.stickers))
+        alternate = self.root / "alternate-stickers"
+        alternate.mkdir()
+        (alternate / "new.png").write_bytes(b"new")
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+                def post(payload: dict) -> tuple[int, dict]:
+                    request = urllib.request.Request(
+                        f"{base_url}/api/stickers/root",
+                        data=json.dumps(payload).encode(),
+                        headers={"Content-Type": "application/json"}, method="POST",
+                    )
+                    try:
+                        with urllib.request.urlopen(request) as response:
+                            return response.status, json.loads(response.read())
+                    except urllib.error.HTTPError as error:
+                        return error.code, json.loads(error.read())
+
+                original_root = server.project.sticker_root
+                status, result = post({"requestToken": "wrong", "path": str(alternate)})
+                self.assertEqual(status, 403)
+                self.assertFalse(result["ok"])
+                self.assertEqual(server.project.sticker_root, original_root)
+                status, result = post({"requestToken": server.request_token, "path": str(self.root / "missing")})
+                self.assertEqual(status, 400)
+                self.assertFalse(result["ok"])
+                self.assertEqual(server.project.sticker_root, original_root)
+                status, result = post({"requestToken": server.request_token, "path": str(alternate)})
+                self.assertEqual(status, 200)
+                self.assertEqual(result["root"], alternate.as_posix())
+                self.assertEqual(result["count"], 1)
+                self.assertEqual(result["stickers"][0]["rel"], "new.png")
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_sticker_otio_export_copies_used_stickers_portably(self) -> None:
+        first = self.stickers / "a" / "x.png"
+        second = self.stickers / "b" / "X.png"
+        first.parent.mkdir()
+        second.parent.mkdir()
+        first.write_bytes(b"first")
+        second.write_bytes(b"second")
+        timeline = {
+            "OTIO_SCHEMA": "Timeline.1",
+            "name": "source",
+            "metadata": {},
+            "tracks": {"children": [{"children": [
+                {"OTIO_SCHEMA": "Gap.1"},
+                {"OTIO_SCHEMA": "Clip.2", "metadata": {"moy": {"sticker_rel": "a/x.png"}},
+                 "media_references": {"DEFAULT_MEDIA": {"target_url": "old-a"}}},
+                {"OTIO_SCHEMA": "Clip.2", "metadata": {"moy": {"sticker_rel": "a/x.png"}},
+                 "media_references": {"DEFAULT_MEDIA": {"target_url": "old-a-2"}}},
+                {"OTIO_SCHEMA": "Clip.2", "metadata": {"moy": {"sticker_rel": "b/X.png"}},
+                 "media_references": {"DEFAULT_MEDIA": {"target_url": "old-b"}},
+                 "source_media": "file:///do-not-copy.mp4"},
+            ]}]},
+        }
+        with server_editor.EditorServer(("127.0.0.1", 0), server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                def post(payload: dict) -> tuple[int, dict]:
+                    request = urllib.request.Request(
+                        f"{base_url}/api/exports/sticker-otio",
+                        data=json.dumps(payload).encode(),
+                        headers={"Content-Type": "application/json"}, method="POST",
+                    )
+                    try:
+                        with urllib.request.urlopen(request) as response:
+                            return response.status, json.loads(response.read())
+                    except urllib.error.HTTPError as error:
+                        return error.code, json.loads(error.read())
+
+                server.set_sticker_root(str(self.stickers))
+                status, result = post({"requestToken": server.request_token, "kind": "stickers", "timeline": timeline})
+                self.assertEqual(status, 200)
+                package = self.root / result["folderName"]
+                self.assertEqual(package.parent, self.project_path.parent)
+                self.assertEqual(result["folderPath"], str(package.resolve()))
+                self.assertEqual(result["otioName"], "clip_stickers.otio")
+                self.assertEqual(result["stickerCount"], 2)
+                self.assertFalse((package / "do-not-copy.mp4").exists())
+                copied = sorted((package / "stickers").iterdir())
+                self.assertEqual({item.name for item in copied}, {"x.png", "X-2.png"})
+                exported = json.loads((package / result["otioName"]).read_text(encoding="utf-8"))
+                clips = exported["tracks"]["children"][0]["children"]
+                urls = [clip["media_references"]["DEFAULT_MEDIA"]["target_url"] for clip in clips if "media_references" in clip]
+                self.assertEqual(urls, ["stickers/x.png", "stickers/x.png", "stickers/X-2.png"])
+                self.assertNotIn(b"\r\n", (package / result["otioName"]).read_bytes())
+                occupied = package
+                occupied.mkdir(exist_ok=True)
+                status, result = post({"requestToken": server.request_token, "kind": "stickers", "timeline": timeline})
+                self.assertEqual(status, 200)
+                self.assertTrue(result["folderName"].endswith("-2"))
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_sticker_otio_export_rejects_malicious_relative_path(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        timeline = {"OTIO_SCHEMA": "Timeline.1", "tracks": {"children": [{"children": [
+            {"metadata": {"moy": {"sticker_rel": "../clip.mp3"}}, "media_references": {"DEFAULT_MEDIA": {"target_url": "x"}}},
+        ]}]}}
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            server.set_sticker_root(str(self.stickers))
+            with self.assertRaises(ValueError):
+                server_editor.export_sticker_otio(server.project, "stickers", timeline, self.stickers)
+
+    def test_sticker_otio_export_requires_sticker_rel_on_each_clip(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        server = server_editor.EditorServer(("127.0.0.1", 0), project)
+        try:
+            server.set_sticker_root(str(self.stickers))
+            timeline = {"OTIO_SCHEMA": "Timeline.1", "tracks": {"children": [{"children": [
+                {"OTIO_SCHEMA": "Clip.2", "metadata": {}, "media_references": {"DEFAULT_MEDIA": {"target_url": "x"}}},
+            ]}]}}
+            with self.assertRaises(ValueError):
+                server_editor.export_sticker_otio(server.project, "stickers", timeline, self.stickers)
+        finally:
+            server.server_close()
+
+    def test_sticker_otio_export_uri_encodes_filename_but_copies_raw_name(self) -> None:
+        filename = "face #%.png"
+        source = self.stickers / filename
+        source.write_bytes(b"special")
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        server = server_editor.EditorServer(("127.0.0.1", 0), project)
+        try:
+            server.set_sticker_root(str(self.stickers))
+            timeline = {"OTIO_SCHEMA": "Timeline.1", "tracks": {"children": [{"children": [
+                {"OTIO_SCHEMA": "Clip.2", "metadata": {"moy": {"sticker_rel": filename}},
+                 "media_references": {"DEFAULT_MEDIA": {"target_url": "old"}}},
+            ]}]}}
+            package, otio_name, count = server_editor.export_sticker_otio(
+                server.project, "stickers", timeline, self.stickers,
+            )
+            self.assertEqual(count, 1)
+            self.assertTrue((package / "stickers" / filename).is_file())
+            exported = json.loads((package / otio_name).read_text(encoding="utf-8"))
+            target = exported["tracks"]["children"][0]["children"][0]["media_references"]["DEFAULT_MEDIA"]["target_url"]
+            self.assertEqual(target, "stickers/face%20%23%25.png")
+        finally:
+            server.server_close()
 
     def test_reapeaks_loading_is_deferred_until_server_is_serving(self) -> None:
         self_waveform = {
@@ -529,6 +815,108 @@ class LocalEditorServerTests(unittest.TestCase):
             finally:
                 server.shutdown()
                 thread.join(timeout=2)
+
+    def test_create_project_endpoint_writes_binds_and_remembers_project(self) -> None:
+        project = server_editor.load_blank_project(str(self.stickers))
+        settings_path = self.root / "server-editor-settings.json"
+        target = self.root / "created.mosp"
+        dialog_calls: list[str] = []
+
+        def choose_path(suggested_name: str):
+            dialog_calls.append(suggested_name)
+            return server_editor.ProjectSaveDialogResult.selected(target)
+
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0),
+            project,
+            settings_path=settings_path,
+            project_save_dialog=choose_path,
+        ) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                request = urllib.request.Request(
+                    f"{base_url}/api/project/create",
+                    data=json.dumps({
+                        "project": {"media": "", "segments": []},
+                        "suggestedName": "draft.mosp",
+                        "requestToken": server.request_token,
+                    }).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request) as response:
+                    result = json.loads(response.read())
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+        self.assertEqual(dialog_calls, ["draft.mosp"])
+        self.assertEqual(result["name"], "created.mosp")
+        self.assertTrue(result["canSave"])
+        self.assertFalse(result["cancelled"])
+        self.assertNotIn("path", result)
+        self.assertEqual(json.loads(target.read_text(encoding="utf-8")), result["project"])
+        self.assertNotIn("path", result["project"])
+        self.assertEqual(server.project.json_path, target)
+        self.assertEqual(server.settings.recent_projects[0].path, target)
+        self.assertEqual(server_editor.read_server_settings(settings_path).recent_projects[0].path, target)
+
+    def test_create_project_cancellation_preserves_server_state(self) -> None:
+        project = server_editor.load_blank_project(str(self.stickers))
+        settings_path = self.root / "server-editor-settings.json"
+
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0),
+            project,
+            settings_path=settings_path,
+            project_save_dialog=lambda _name: server_editor.ProjectSaveDialogResult.cancelled(),
+        ) as server:
+            original_project = server.project
+            result = server.create_project({"media": "", "segments": []}, "draft.mosp")
+
+        self.assertTrue(result.cancelled)
+        self.assertIs(server.project, original_project)
+        self.assertEqual(server.settings, server_editor.ServerSettings())
+        self.assertFalse(settings_path.exists())
+        self.assertEqual(list(self.root.glob("*.mosp")), [])
+
+    def test_create_project_rejects_extra_path_field_before_dialog(self) -> None:
+        dialog = mock.Mock(return_value=server_editor.ProjectSaveDialogResult.cancelled())
+        project = server_editor.load_blank_project(str(self.stickers))
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, project_save_dialog=dialog,
+        ) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                request = urllib.request.Request(
+                    f"{base_url}/api/project/create",
+                    data=json.dumps({
+                        "project": {"segments": []},
+                        "suggestedName": "draft.mosp",
+                        "requestToken": server.request_token,
+                        "path": str(self.root / "forbidden.mosp"),
+                    }).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with self.assertRaises(urllib.error.HTTPError) as context:
+                    urllib.request.urlopen(request)
+                self.assertEqual(context.exception.code, 400)
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+        dialog.assert_not_called()
+        self.assertFalse((self.root / "forbidden.mosp").exists())
+
+    def test_create_project_sanitizes_dialog_suggestion(self) -> None:
+        self.assertEqual(server_editor.sanitize_project_suggested_name("../bad:name.txt"), ".._bad_name.mosp")
+        self.assertEqual(server_editor.sanitize_project_suggested_name("CON"), "CON_project.mosp")
+        self.assertEqual(server_editor.sanitize_project_suggested_name(""), "untitled.mosp")
 
     def test_server_accepts_reconciled_extension_ranges_but_rejects_overlap(self) -> None:
         project = server_editor.load_project(
