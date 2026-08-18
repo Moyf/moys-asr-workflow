@@ -206,6 +206,20 @@ class BatchRunnerTests(unittest.TestCase):
         self.assertEqual(started, ["clip-1"])
         self.assertEqual([item["status"] for item in result["outcomes"]], ["failed", "done"])
 
+    def test_request_none_without_preflight_error_is_isolated(self) -> None:
+        valid = self._items(1)[0]
+        started: list[str] = []
+
+        def transcribe(request: TranscriptionRequest, *, cancel_event: threading.Event) -> TranscriptionResult:
+            started.append(request.media_path.stem)
+            return TranscriptionResult(request.srt_path, request.srt_path.with_suffix(".mosp"), None)
+
+        result = run_batch((BatchItem("invalid", None), valid), settings={}, manifest_path=self.root / "manifest.json", cancel_event=threading.Event(), transcribe=transcribe)
+
+        self.assertEqual(started, ["clip-0"])
+        self.assertEqual([item["status"] for item in result["outcomes"]], ["failed", "done"])
+        self.assertTrue(result["outcomes"][0]["error"])
+
     def test_batch_passes_ocr_runtime_root_and_routes_pipeline_logs(self) -> None:
         plan = {"enabled": True, "steps": [{"id": "ocr", "enabled": True}]}
         events: list[dict[str, object]] = []
@@ -252,6 +266,38 @@ class BatchApiTests(unittest.TestCase):
                     self.assertEqual(result["itemCount"], 1)
                     cancel_result = api.cancel_batch_transcription()
                     self.assertTrue(cancel_result["ok"])
+            api.shutdown()
+
+    def test_start_batch_derives_output_path_when_item_omits_srt_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            media = root / "clip.mp3"
+            media.write_bytes(b"media")
+            api = LauncherApi(paths=LauncherPaths(root, root / ".env", root / "launcher.html"), window_getter=lambda: None)
+            with mock.patch("maw.gui_web.run_batch") as run_batch:
+                result = api.start_batch_transcription({"items": [{"id": "a", "mediaPath": str(media)}], "apiKey": "secret"})
+                self.assertTrue(result["ok"])
+                worker = api.batch_worker
+                self.assertIsNotNone(worker)
+                worker.join(timeout=5)
+                items = run_batch.call_args.args[0]
+                self.assertEqual(items[0].request.srt_path, root / "clip.qwen-audio.srt")
+            api.shutdown()
+
+    def test_batch_main_emits_done_event_when_runner_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            media = root / "clip.mp3"
+            media.write_bytes(b"media")
+            api = LauncherApi(paths=LauncherPaths(root, root / ".env", root / "launcher.html"), window_getter=lambda: None)
+            with mock.patch.object(api, "_emit") as emit, mock.patch("maw.gui_web.run_batch", side_effect=RuntimeError("worker exploded")):
+                result = api.start_batch_transcription({"items": [{"id": "a", "mediaPath": str(media), "srtPath": str(root / "clip.srt")}], "apiKey": "secret"})
+                self.assertTrue(result["ok"])
+                worker = api.batch_worker
+                self.assertIsNotNone(worker)
+                worker.join(timeout=5)
+                self.assertIsNone(api.batch_worker)
+                self.assertTrue(any(call.args[0].get("type") == "batch_done" and call.args[0].get("status") == "failed" and "worker exploded" in str(call.args[0].get("error")) for call in emit.call_args_list))
             api.shutdown()
 
     def test_batch_default_manifest_path_avoids_existing_file(self) -> None:

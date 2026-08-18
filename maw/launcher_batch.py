@@ -75,8 +75,13 @@ def run_batch(
     outcomes: list[dict[str, object]] = []
     reserved: set[Path] = set()
     for index, item in enumerate(items):
-        if item.preflight_error:
-            outcome = {"id": item.item_id, "status": "failed", "index": index, "error": item.preflight_error}
+        if item.preflight_error or item.request is None:
+            outcome = {
+                "id": item.item_id,
+                "status": "failed",
+                "index": index,
+                "error": item.preflight_error or "Batch item is invalid.",
+            }
             outcomes.append(outcome)
             _update_manifest(manifest, index, outcome, manifest_path)
             _emit(on_event, {"type": "batch_item", **outcome})

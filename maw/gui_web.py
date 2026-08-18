@@ -1202,6 +1202,15 @@ class LauncherApi:
                     "srtPath": raw_item.get("srtPath") or raw_item.get("outputPath"),
                 }
                 merged = dict(item_payload)
+                media_text = str(merged.get("mediaPath") or "").strip()
+                if media_text and not str(merged.get("srtPath") or "").strip():
+                    merged["srtPath"] = str(
+                        default_srt_path(
+                            Path(media_text),
+                            provider=str(merged.get("providerId") or "qwen"),
+                            model=str(merged.get("modelId") or DEFAULT_MODEL_ID),
+                        )
+                    )
                 raw_plan = merged.get("autoPostprocess")
                 if isinstance(raw_plan, Mapping):
                     merged["autoPostprocess"] = _batch_postprocess_plan(raw_plan)
@@ -1246,6 +1255,16 @@ class LauncherApi:
                 env_path=self.paths.env_path,
                 ffmpeg_path=_postprocess_ffmpeg(self.paths.env_path),
                 ocr_runtime_root=self._ocr_runtime_status().path,
+            )
+        except Exception as error:  # noqa: BROAD_EXCEPT_OK - background GUI boundary must unlock the batch controls.
+            self._emit(
+                {
+                    "type": "batch_done",
+                    "status": "failed",
+                    "error": str(error),
+                    "outcomes": [],
+                    "manifestPath": str(manifest_path),
+                }
             )
         finally:
             if self.batch_worker is threading.current_thread():
