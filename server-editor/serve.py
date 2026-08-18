@@ -10,6 +10,7 @@ import argparse
 import copy
 import html
 import json
+import math
 import mimetypes
 import os
 import struct
@@ -364,11 +365,14 @@ def build_server_page(project: ServerProject, settings: ServerSettings | None = 
         media_class = "empty"
 
     page_data = copy.deepcopy(project.data)
+    if isinstance(page_data.get("workspace"), dict):
+        page_data["workspace"].pop("navigation", None)
     project_workspace = page_data.get("workspace")
     project_selected_workspace = project_workspace.get("selectedPreset") if isinstance(project_workspace, dict) else None
     active_workspace = settings.saved_workspaces.get(settings.active_workspace_name)
     if active_workspace is not None and not project_selected_workspace:
         page_data["workspace"] = copy.deepcopy(active_workspace)
+        page_data["workspace"].pop("navigation", None)
         page_data["workspace"]["selectedPreset"] = f"saved:{settings.active_workspace_name}"
     page = edit.render_editor_page(
         title=title,
@@ -591,6 +595,39 @@ class EditorServer(ThreadingHTTPServer):
             if name and name not in self.settings.saved_workspaces:
                 raise ValueError("工作区不存在")
             self.settings = replace(self.settings, active_workspace_name=name)
+            self.persist_settings()
+
+    def update_workspace_navigation(
+        self,
+        *,
+        name: str | None,
+        preset: str | None,
+        navigation: dict[str, object],
+    ) -> None:
+        if (name is None) == (preset is None):
+            raise ValueError("必须指定一个工作区名称或内置工作区")
+        with self.settings_lock:
+            if name is not None:
+                if name not in self.settings.saved_workspaces:
+                    raise ValueError("工作区不存在")
+                workspaces = copy.deepcopy(self.settings.saved_workspaces)
+            else:
+                assert preset is not None
+                if preset not in self.settings.preset_workspaces:
+                    raise ValueError("内置工作区覆盖不存在")
+                workspaces = copy.deepcopy(self.settings.preset_workspaces)
+            workspace = workspaces[name if name is not None else preset]
+            current_navigation = workspace.get("navigation", {})
+            if not isinstance(current_navigation, dict):
+                current_navigation = {}
+            current_navigation.update(navigation)
+            workspace["navigation"] = current_navigation
+            if len(json.dumps(workspaces, ensure_ascii=False)) > 256 * 1024:
+                raise ValueError("工作区不能超过 256 KB")
+            if name is not None:
+                self.settings = replace(self.settings, saved_workspaces=workspaces)
+            else:
+                self.settings = replace(self.settings, preset_workspaces=workspaces)
             self.persist_settings()
 
     def open_recent_project(self, project_path: str) -> ServerProject:
@@ -905,6 +942,35 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             if not isinstance(active_workspace_name, str):
                 raise ValueError("activeWorkspaceName 必须是字符串")
             self.editor_server.set_active_workspace(active_workspace_name)
+            return True
+        update_navigation = request.get("updateWorkspaceNavigation")
+        if update_navigation is not None:
+            if not isinstance(update_navigation, dict):
+                raise ValueError("updateWorkspaceNavigation 必须是对象")
+            name = update_navigation.get("name")
+            preset = update_navigation.get("preset")
+            navigation = update_navigation.get("navigation")
+            if name is not None and (not isinstance(name, str) or not name.strip()):
+                raise ValueError("工作区名称格式不正确")
+            if preset is not None and not isinstance(preset, str):
+                raise ValueError("内置工作区名称格式不正确")
+            if not isinstance(navigation, dict) or not navigation:
+                raise ValueError("导航状态必须是非空对象")
+            allowed = {"cueListScrollTop", "waveformTopEdgeMs"}
+            if set(navigation) - allowed:
+                raise ValueError("导航状态包含未知字段")
+            for key, value in navigation.items():
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                    raise ValueError(f"{key} 必须是有限数字")
+                if value < 0 or (isinstance(value, float) and not value.is_integer()):
+                    raise ValueError(f"{key} 必须是非负整数")
+                if isinstance(value, float):
+                    navigation[key] = int(value)
+            self.editor_server.update_workspace_navigation(
+                name=name.strip() if isinstance(name, str) else None,
+                preset=preset,
+                navigation=navigation,
+            )
             return True
         return False
 
