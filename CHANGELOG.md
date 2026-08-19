@@ -4,9 +4,10 @@
 
 ## [Unreleased]
 
-- Launcher now supports sequential batch transcription with per-item output allocation, failure isolation, cancellation, and sanitized batch manifests.
-- Launcher toolbox now supports generating an embedded-waveform media-only `.mosp` project without transcription, with scoped optional spectral data plus separate generate-only and generate-and-open-editor actions.
-- Launcher toolbox now uses primary Post-processing and Utilities tabs, including an independent Utilities media input that follows the main Launcher media until overridden.
+- Launcher 现支持批量转写：可一次加入多个音频或视频文件，按顺序执行转写，并为每个文件生成独立的 SRT、`.mosp` 和便携编辑器产物。
+- 批量转写支持仅生成 SRT、取消运行、失败隔离和跳过已完成文件；批量结果会生成清理后的批量清单，便于继续处理和核对结果。
+- Launcher 批量队列提供文件状态、阶段日志、当前处理进度、单文件完成或失败提示，以及最终成功/失败汇总。
+- Launcher 支持将媒体直接拖入批量队列，并提供批量区域的格式校验、重复文件提示和结果操作入口。
 
 ## [1.4.0] - 2026-08-16
 
