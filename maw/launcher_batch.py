@@ -118,14 +118,21 @@ def run_batch(
             else:
                 pipeline_result = None
             final_srt = getattr(pipeline_result, "srt_path", result.srt_path)
-            final_json = getattr(pipeline_result, "project_path", result.json_path)
-            final_html = getattr(pipeline_result, "html_path", result.html_path)
+            final_json: Path | None = getattr(pipeline_result, "project_path", result.json_path)
+            final_html: Path | None = getattr(pipeline_result, "html_path", result.html_path)
+            if request.srt_only:
+                if final_json is not None:
+                    final_json.unlink(missing_ok=True)
+                if final_html:
+                    Path(final_html).unlink(missing_ok=True)
+                final_json = None
+                final_html = None
             outcome = {
                 "id": item.item_id,
                 "status": "done",
                 "index": index,
                 "srtPath": str(final_srt),
-                "jsonPath": str(final_json),
+                "jsonPath": str(final_json or ""),
                 "htmlPath": str(final_html or ""),
             }
         except (TranscriptionCancelledError, PostprocessCancelled):

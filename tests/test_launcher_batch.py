@@ -284,6 +284,57 @@ class BatchApiTests(unittest.TestCase):
                 self.assertEqual(items[0].request.srt_path, root / "clip.qwen-audio.srt")
             api.shutdown()
 
+    def test_start_batch_srt_only_marks_requests_without_project_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            media = root / "clip.mp3"
+            media.write_bytes(b"media")
+            api = LauncherApi(paths=LauncherPaths(root, root / ".env", root / "launcher.html"), window_getter=lambda: None)
+            with mock.patch("maw.gui_web.run_batch") as run_batch:
+                result = api.start_batch_transcription({
+                    "items": [{"id": "a", "mediaPath": str(media)}],
+                    "settings": {"apiKey": "secret", "batchSrtOnly": True},
+                })
+                self.assertTrue(result["ok"])
+                worker = api.batch_worker
+                self.assertIsNotNone(worker)
+                worker.join(timeout=5)
+                request = run_batch.call_args.args[0][0].request
+                self.assertTrue(request.srt_only)
+                self.assertFalse(request.generate_html)
+            api.shutdown()
+
+    def test_run_batch_srt_only_omits_project_and_html_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            media = root / "clip.mp3"
+            media.write_bytes(b"media")
+            srt = root / "clip.srt"
+            project = root / "clip.mosp"
+            html = root / "clip.edit.html"
+            srt.write_text("1\n00:00:00,000 --> 00:00:01,000\nhello\n", encoding="utf-8")
+            project.write_text("{}", encoding="utf-8")
+            html.write_text("html", encoding="utf-8")
+
+            def transcribe(_request: TranscriptionRequest, *, cancel_event: threading.Event) -> TranscriptionResult:
+                return TranscriptionResult(srt, project, html)
+
+            item = BatchItem("a", TranscriptionRequest(media, srt, srt_only=True))
+            result = run_batch(
+                (item,),
+                settings={},
+                manifest_path=root / "manifest.json",
+                cancel_event=threading.Event(),
+                transcribe=transcribe,
+            )
+
+            self.assertEqual(result["outcomes"][0]["srtPath"], str(srt))
+            self.assertEqual(result["outcomes"][0]["jsonPath"], "")
+            self.assertEqual(result["outcomes"][0]["htmlPath"], "")
+            self.assertTrue(srt.is_file())
+            self.assertFalse(project.exists())
+            self.assertFalse(html.exists())
+
     def test_batch_main_emits_done_event_when_runner_raises(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
