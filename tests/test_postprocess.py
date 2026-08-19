@@ -218,6 +218,29 @@ class PostprocessTests(unittest.TestCase):
             [("一", 0, 200), ("隻", 200, 400), ("貓", 400, 1000)],
         )
 
+    def test_fixed_process_supports_taiwan_traditional_conversion_modes(self) -> None:
+        project = {"segments": [{"start": 0, "end": 1000, "text": "软件里面", "items": [{"start": 0, "end": 500, "text": "软件"}, {"start": 500, "end": 1000, "text": "里面"}]}]}
+        _ = self.project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+
+        for mode in (TextConversion.TO_TRADITIONAL_TW, TextConversion.TO_TRADITIONAL_TWP):
+            with self.subTest(mode=mode):
+                result = run_fixed_process(FixedProcessRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.JSON,
+                    replacements=(),
+                    conversion=mode,
+                ))
+                if result.project_path is None:
+                    self.fail("JSON output mode must create a project file")
+                converted = project_segments(read_project(result.project_path))[0]
+                expected = {
+                    TextConversion.TO_TRADITIONAL_TW: "軟件裡面",
+                    TextConversion.TO_TRADITIONAL_TWP: "軟體裡面",
+                }[mode]
+                self.assertEqual(converted["text"], expected)
+                self.assertEqual(len(converted["items"]), 2)
+
     def test_srt_only_output_is_the_authoritative_next_input(self) -> None:
         first = run_fixed_replacement(
             ReplacementRequest(

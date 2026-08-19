@@ -2103,6 +2103,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('mediaPath: $("mediaPath").value.trim()', script)
         self.assertIn('bridge("run_llm_postprocess"', script)
         self.assertIn('bridge("run_fixed_process"', script)
+        self.assertIn('value="to_traditional_tw"', page)
+        self.assertIn('value="to_traditional_twp"', page)
         self.assertIn('bridge("run_ffconcat_rebuild"', script)
         self.assertIn('bridge("save_postprocess_settings"', script)
         self.assertIn('bridge("test_postprocess_connection"', script)
