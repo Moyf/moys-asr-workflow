@@ -18300,7 +18300,7 @@ function commitMainWaveformSplit(state, { force = false, successMessage = '已�
   renderAll();
   selectOnly(mainIndex + 1);
   lastClickedIdx = mainIndex + 1;
-  update();
+  updateWithoutCueListAutoScroll();
   flashSplitFeedback({
     index: mainIndex,
     track: 'main',
@@ -18385,7 +18385,7 @@ function commitExtensionSplit(state, { force = false } = {}) {
   renderAll();
   selectOnlyExtension(extensionIndex + 1);
   lastClickedExtensionIdx = extensionIndex + 1;
-  update();
+  updateWithoutCueListAutoScroll();
   flashSplitFeedback({
     index: extensionIndex,
     track: 'extension',
@@ -18509,7 +18509,7 @@ function confirmLinkedSplit() {
   renderAll();
   selectOnly(mainIndex);
   lastClickedIdx = mainIndex;
-  update();
+  updateWithoutCueListAutoScroll();
   flashSplitFeedback({
     index: mainIndex,
     track: 'main',
@@ -18697,7 +18697,7 @@ function splitAtCursor(feedbackPoint = null, { listFeedback = true } = {}) {
       || waveformEditor?.getSplitPointAtTime?.(splitMs, 'main')
       || ninjaFeedbackPoint,
   );
-  update();
+  updateWithoutCueListAutoScroll();
   flashSplitFeedback({
     index: idx,
     track: 'main',
@@ -21945,6 +21945,22 @@ function update() {
   const idx = findActive(tMs);
   updateActiveCue(idx);
   refreshSubtitlePreview(tMs, idx);
+}
+
+// 拆分等结构性提交后的 update() 只刷新时间码与激活态，不触发播放跟随滚动。
+// renderAll 刚重建列表时，content-visibility 让视口外的行仍处于估算占位
+// 高度，updateActiveCue 量到的瞬态几何会把「活动行不在视口」误判成真，
+// 再用被污染的 offsetTop 算出错误目标平滑滚走（页面放大倍率越高、真实
+// 行高与估算差异越大越容易触发）。拆分后是否滚动、滚到哪里已由拆分
+// 来源显式决定（列表来源保持原位，波形来源显式居中新右半段）。
+function updateWithoutCueListAutoScroll() {
+  const previousSuppress = suppressCueListAutoScroll;
+  suppressCueListAutoScroll = true;
+  try {
+    update();
+  } finally {
+    suppressCueListAutoScroll = previousSuppress;
+  }
 }
 // === 表情包预览（视频画面内）===
 // 层位置/尺寸由 preview.sticker 几何驱动（默认右上角）；点击后可拖动/缩放，与字幕预览同一套交互。
