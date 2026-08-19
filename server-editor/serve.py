@@ -1349,7 +1349,7 @@ def main() -> int:
     parser.add_argument("-m", "--media", help="媒体文件路径（默认按 JSON.media / 同目录探测）")
     parser.add_argument("-s", "--stickers", help="表情包目录（默认读取 .env 的 STICKER_DIR）")
     parser.add_argument("--blank", action="store_true", help="启动空白编辑器，之后在页面中选择 JSON 与媒体")
-    parser.add_argument("--port", type=int, default=8250, help="监听端口（默认 8250，0=自动选择）")
+    parser.add_argument("-p", "--port", type=int, default=8250, help="监听端口（默认 8250，0=自动选择）")
     parser.add_argument("--no-open", action="store_true", help="只启动服务，不自动打开浏览器")
     parser.add_argument("--no-waveform", action="store_true", help="跳过 ffmpeg 波形预计算")
     parser.add_argument(

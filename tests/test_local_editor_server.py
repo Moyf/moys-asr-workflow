@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import struct
+import subprocess
 import sys
 import tempfile
 import threading
@@ -62,6 +63,16 @@ class LocalEditorServerTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
+
+    def test_server_help_exposes_short_port_option(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(SERVER_PATH), "-h"],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+
+        self.assertIn("-p PORT, --port PORT", result.stdout)
 
     def test_range_parser_handles_standard_and_suffix_ranges(self) -> None:
         self.assertEqual(server_editor.parse_byte_range("bytes=2-5", 10), (2, 5))
