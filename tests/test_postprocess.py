@@ -129,7 +129,11 @@ class PostprocessTests(unittest.TestCase):
                 "start": 0,
                 "end": 1000,
                 "text": "旧软件里面",
-                "items": [{"start": 0, "end": 500, "text": "软件"}, {"start": 500, "end": 1000, "text": "里面"}],
+                "items": [
+                    {"start": 0, "end": 200, "text": "旧"},
+                    {"start": 200, "end": 500, "text": "软件"},
+                    {"start": 500, "end": 1000, "text": "里面"},
+                ],
             }],
         }
         _ = self.project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
@@ -149,10 +153,20 @@ class PostprocessTests(unittest.TestCase):
             self.fail("project output mode must create a project file")
         converted = project_segments(read_project(result.project_path))[0]
         self.assertEqual(converted["text"], "新軟體裏面")
-        self.assertNotIn("items", converted)
+        self.assertEqual(
+            [(item["text"], item["start"], item["end"]) for item in converted["items"]],
+            [("新", 0, 200), ("軟體", 200, 500), ("裏面", 500, 1000)],
+        )
 
     def test_fixed_process_can_run_conversion_without_replacement_rules(self) -> None:
-        project = {"segments": [{"start": 0, "end": 1000, "text": "軟件"}]}
+        project = {
+            "segments": [{
+                "start": 0,
+                "end": 1000,
+                "text": "軟件",
+                "items": [{"start": 0, "end": 500, "text": "軟"}, {"start": 500, "end": 1000, "text": "件"}],
+            }],
+        }
         _ = self.project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
 
         result = run_fixed_process(FixedProcessRequest(
@@ -165,7 +179,12 @@ class PostprocessTests(unittest.TestCase):
 
         if result.project_path is None:
             self.fail("project output mode must create a project file")
-        self.assertEqual(project_segments(read_project(result.project_path))[0]["text"], "软件")
+        converted = project_segments(read_project(result.project_path))[0]
+        self.assertEqual(converted["text"], "软件")
+        self.assertEqual(
+            [(item["text"], item["start"], item["end"]) for item in converted["items"]],
+            [("软", 0, 500), ("件", 500, 1000)],
+        )
 
     def test_srt_only_output_is_the_authoritative_next_input(self) -> None:
         first = run_fixed_replacement(

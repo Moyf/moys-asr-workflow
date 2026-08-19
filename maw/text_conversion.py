@@ -53,7 +53,7 @@ def convert_text(text: str, mode: object) -> str:
 
 
 def apply_text_conversion(segments: list[JsonDict], mode: object) -> bool:
-    """Convert segment text and remove stale word timings when text changes."""
+    """Convert segment text and preserve item timing when the mapping is safe."""
 
     conversion = normalize_text_conversion_mode(mode)
     if conversion is TextConversion.OFF:
@@ -67,9 +67,27 @@ def apply_text_conversion(segments: list[JsonDict], mode: object) -> bool:
         if converted == original:
             continue
         segment["text"] = converted
-        segment.pop("items", None)
+        if not _convert_items(segment, conversion, converted):
+            segment.pop("items", None)
         changed = True
     return changed
+
+
+def _convert_items(segment: JsonDict, mode: TextConversion, expected_text: str) -> bool:
+    raw_items = segment.get("items")
+    if not isinstance(raw_items, list) or not raw_items:
+        return False
+    converted_items: list[JsonDict] = []
+    for raw_item in raw_items:
+        if not isinstance(raw_item, dict) or not isinstance(raw_item.get("text"), str):
+            return False
+        item = dict(raw_item)
+        item["text"] = convert_text(str(raw_item["text"]), mode)
+        converted_items.append(item)
+    if "".join(str(item["text"]) for item in converted_items) != expected_text:
+        return False
+    segment["items"] = converted_items
+    return True
 
 
 @lru_cache(maxsize=2)

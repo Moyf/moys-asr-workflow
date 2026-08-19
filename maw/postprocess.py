@@ -99,12 +99,16 @@ def run_fixed_process(request: FixedProcessRequest) -> SubtitleArtifact:
                 segment["items"] = reconciled_items
 
         # Convert through the project helper so standalone and pipeline runs
-        # share the same OpenCC behavior. Conversion invalidates any item map
-        # retained by the safe replacement reconciliation above.
+        # share the same OpenCC behavior. Item timing is retained when each
+        # item maps independently and the converted items reconstruct the cue.
         holder: JsonDict = {"text": processed}
+        if segment.get("items") is not None:
+            holder["items"] = segment["items"]
         _ = apply_text_conversion([holder], request.conversion)
         converted = str(holder["text"])
-        if converted != processed:
+        if "items" in holder:
+            segment["items"] = holder["items"]
+        else:
             segment.pop("items", None)
         if converted != original:
             segment["text"] = converted
