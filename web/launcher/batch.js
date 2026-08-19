@@ -3,7 +3,7 @@
 
   const $ = (id) => document.getElementById(id);
   const MEDIA_EXTENSIONS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"]);
-  const state = { mode: "single", running: false, cancelling: false, items: [], nextId: 1 };
+  const state = { mode: "single", running: false, cancelling: false, items: [], nextId: 1, progress: { total: 0, finished: 0, done: 0, failed: 0 } };
 
   function t(key) {
     return window.MAWLauncher.translate(key);
@@ -40,8 +40,19 @@
   }
 
   function setItemStatus(item, status, detail = "") {
+    const previousStatus = item.status;
     item.status = status || item.status;
     if (detail) item.detail = detail;
+    if ((previousStatus === "running" || previousStatus === "queued") && ["done", "failed", "cancelled", "skipped"].includes(item.status)) {
+      state.progress.finished += 1;
+      if (item.status === "done") state.progress.done += 1;
+      if (item.status === "failed") state.progress.failed += 1;
+      const index = item.index + 1;
+      const name = fileName(item.mediaPath);
+      const key = item.status === "done" ? "batch_item_done" : item.status === "failed" ? "batch_item_failed" : "batch_item_cancelled";
+      const message = t(key).replace("{index}", String(index)).replace("{name}", name);
+      window.MAWLauncher.appendLog?.(message);
+    }
     renderQueue();
   }
 
@@ -142,6 +153,7 @@
   function addPaths(paths) {
     const existing = new Set(state.items.map((item) => item.mediaPath.toLocaleLowerCase()));
     let rejected = 0;
+    let duplicate = 0;
     paths.forEach((rawPath) => {
       const mediaPath = String(rawPath || "").trim();
       const key = mediaPath.toLocaleLowerCase();
@@ -149,13 +161,27 @@
         rejected += 1;
         return;
       }
-      if (existing.has(key)) return;
+      if (existing.has(key)) {
+        duplicate += 1;
+        return;
+      }
       existing.add(key);
       state.items.push({ id: `batch-${state.nextId}`, index: state.items.length, mediaPath, status: "queued", detail: "", logs: [], result: null });
       state.nextId += 1;
     });
     renderQueue();
-    if (rejected) $("status").textContent = t("batch_rejected").replace("{count}", String(rejected));
+    const notices = [];
+    if (rejected) notices.push(t("batch_rejected").replace("{count}", String(rejected)));
+    if (duplicate) notices.push(`${t("batch_duplicate")}${duplicate > 1 ? ` ×${duplicate}` : ""}`);
+    const notice = $("batchDropNotice");
+    notice.textContent = notices.join(" ");
+    notice.classList.toggle("hidden", notices.length === 0);
+  }
+
+  function showDropNotice(message) {
+    const notice = $("batchDropNotice");
+    notice.textContent = message;
+    notice.classList.remove("hidden");
   }
 
   function lockControls(locked) {
@@ -200,21 +226,41 @@
 
   async function startBatch() {
     if (!state.items.length || state.running) return;
-    state.items.forEach((item) => { item.status = "queued"; item.detail = ""; item.logs = []; item.result = null; });
+    const completed = state.items.filter((item) => item.status === "done");
+    let itemsToRun = state.items;
+    if (completed.length && await window.MAWLauncher.confirm(t("batch_skip_completed_confirm"))) {
+      itemsToRun = state.items.filter((item) => item.status !== "done");
+    }
+    if (!itemsToRun.length) {
+      $("status").textContent = t("batch_complete");
+      return;
+    }
+    itemsToRun.forEach((item) => { item.status = "queued"; item.detail = ""; item.logs = []; item.result = null; });
+    state.progress = { total: itemsToRun.length, finished: 0, done: 0, failed: 0 };
     state.running = true;
     state.cancelling = false;
     lockControls(true);
     $("status").textContent = t("batch_starting");
     // 单文件的媒体/输出路径不进批量载荷：每个条目的输出由后端按媒体权威分配。
     const { mediaPath: _singleMediaPath, srtPath: _singleSrtPath, ...settings } = window.MAWLauncher.getTranscriptionPayload();
-    const items = state.items.map((item) => ({ id: item.id, mediaPath: item.mediaPath }));
+    settings.generateHtml = false;
+    settings.batchSrtOnly = Boolean($("batchSrtOnly")?.checked);
+    const items = itemsToRun.map((item) => ({ id: item.id, mediaPath: item.mediaPath }));
     const payload = { items, settings };
     const result = await window.MAWLauncher.callBackend("start_batch_transcription", payload);
     if (!result.ok) {
       state.running = false;
       lockControls(false);
-      $("status").textContent = result.detail || result.error || t("failed");
+      const detail = result.detail ? `${result.error || t("failed")} ${result.detail}` : (result.error || t("failed"));
+      $("status").textContent = detail;
+      appendBatchError(detail);
+      window.MAWLauncher.onBatchError?.(result);
     }
+  }
+
+  function appendBatchError(message) {
+    const log = $("log");
+    if (log) log.textContent += `[error] ${message}\n`;
   }
 
   async function stopBatch() {
@@ -234,8 +280,10 @@
     event = normalizeEvent(event);
     if (event.type === "batchStarted") {
       state.running = true;
+      state.progress.total = Number(event.total) || state.progress.total || state.items.length;
       lockControls(true);
-      $("status").textContent = t("batch_running");
+      $("status").textContent = t("batch_progress").replace("{current}", "1").replace("{total}", String(state.progress.total)).replace("{name}", fileName(state.items[0]?.mediaPath));
+      window.MAWLauncher.appendLog?.($("status").textContent);
       return;
     }
     if (event.type === "batchItemLog") {
@@ -243,7 +291,10 @@
       const item = findItem(event);
       if (!item) return;
       const message = String(event.message || event.log || event.item?.message || "");
-      if (message) item.logs.push(message);
+      if (message) {
+        item.logs.push(message);
+        window.MAWLauncher.appendLog?.(`[${message}]`, { inline: true });
+      }
       renderQueue();
       return;
     }
@@ -254,7 +305,12 @@
       const nested = event.item && typeof event.item === "object" ? event.item : {};
       item.result = event.result || nested.result || ((event.srtPath || event.jsonPath || event.htmlPath) ? { srtPath: event.srtPath || "", jsonPath: event.jsonPath || "", htmlPath: event.htmlPath || "" } : item.result);
       const detail = event.error || event.detail || nested.error || nested.detail || "";
-      setItemStatus(item, event.status || nested.status || (item.result ? "done" : item.status), detail);
+      const nextStatus = event.status || nested.status || (item.result ? "done" : item.status);
+      if (nextStatus === "running") {
+        $("status").textContent = t("batch_progress").replace("{current}", String(item.index + 1)).replace("{total}", String(state.progress.total)).replace("{name}", fileName(item.mediaPath));
+        window.MAWLauncher.appendLog?.($("status").textContent);
+      }
+      setItemStatus(item, nextStatus, detail);
       return;
     }
     if (event.type === "batchDone") {
@@ -282,16 +338,27 @@
       state.running = false;
       state.cancelling = false;
       lockControls(false);
-      $("status").textContent = cancelled ? t("batch_cancelled") : t("batch_complete");
+      if (!cancelled) {
+        state.progress.done = state.items.filter((item) => item.status === "done").length;
+        state.progress.failed = state.items.filter((item) => item.status === "failed").length;
+        $("status").textContent = t("batch_progress_done").replace("{done}", String(state.progress.done)).replace("{failed}", String(state.progress.failed));
+        window.MAWLauncher.appendLog?.($("status").textContent);
+      } else {
+        $("status").textContent = t("batch_cancelled");
+      }
     }
   }
 
   function handleDrop(event) {
     if (state.mode !== "batch" || state.running) return;
-    const files = Array.from(event.dataTransfer?.files || []);
-    if (!files.length) return;
+    // pywebview sends the authoritative absolute paths asynchronously through
+    // the Python bridge. Do not enqueue browser-only file.name values first,
+    // or the later full-path event will be treated as a duplicate.
+    if (window.MAWLauncher.backend === "real") return;
     event.preventDefault();
     event.stopImmediatePropagation();
+    const files = Array.from(event.dataTransfer?.files || []);
+    if (!files.length) return;
     addPaths(files.map((file) => file.path || file.name));
   }
 
@@ -304,6 +371,16 @@
     $("stopBatch").addEventListener("click", stopBatch);
     $("mediaCard").addEventListener("drop", handleDrop, true);
     window.MAWLauncher.onBatchEvent = handleBatchEvent;
+    window.MAWLauncher.onBatchDrop = (path) => {
+      if (state.mode !== "batch" || state.running || !path) return false;
+      addPaths([path]);
+      return true;
+    };
+    window.MAWLauncher.onBatchDropReject = (path) => {
+      if (state.mode !== "batch" || state.running) return false;
+      showDropNotice(t("batch_rejected").replace("{count}", "1"));
+      return true;
+    };
     const previousLanguageChanged = window.MAWLauncher.onLanguageChanged;
     window.MAWLauncher.onLanguageChanged = () => {
       previousLanguageChanged?.();

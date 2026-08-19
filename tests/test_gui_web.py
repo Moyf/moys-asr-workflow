@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
-from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
+from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
 
 
@@ -1477,6 +1477,16 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["code"], "media_not_found")
         self.assertIn("media", result["error"].lower())
 
+    def test_batch_invalid_items_returns_preflight_details(self) -> None:
+        result = self.api.start_batch_transcription({
+            "items": [{"id": "missing", "mediaPath": str(self.root / "missing.mp3")}],
+            "apiKey": "sk-test",
+        })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "batch_items_invalid")
+        self.assertIn("missing", result["detail"])
+
     def test_local_request_skips_api_key_and_carries_engine_options(self) -> None:
         media = self.root / "clip.mp3"
         media.write_bytes(b"media")
@@ -1942,6 +1952,21 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('"code": "ffprobe_start_failed"', event_script)
         self.assertIn('"detail": "Transcription failed with exit code 1"', event_script)
 
+    def test_worker_emits_cancellation_error_for_cancelled_transcription(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.root / "clip.wav",
+            srt_path=self.root / "clip.srt",
+        )
+
+        with mock.patch("maw.gui_web.run_transcription", side_effect=TranscriptionCancelledError()):
+            self.api._worker_main(request, threading.Event())
+
+        self.assertTrue(self.window.scripts)
+        event_script = self.window.scripts[-1]
+        self.assertIn('"type": "error"', event_script)
+        self.assertIn('"code": "transcription_cancelled"', event_script)
+        self.assertNotIn('"code": "transcription_failed"', event_script)
+
     def test_worker_emits_retryable_error_for_ffmpeg_start_failure(self) -> None:
         request = TranscriptionRequest(
             media_path=self.root / "clip.mp4",
@@ -2377,6 +2402,24 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('function syncHtmlMenu()', script)
         self.assertIn('$("openHtml").classList.toggle("hidden", !enabled)', script)
         self.assertIn('$("openHtml").disabled = enabled && !state.result?.htmlPath', script)
+
+    def test_launcher_batch_and_single_stop_controls_are_wired(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        batch_script = (ROOT / "web" / "launcher" / "batch.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="stop" class="ghost server-stop hidden"', page)
+        self.assertIn('data-i18n="batch_start">✨ 开始批量生成', page)
+        self.assertIn('id="batchSrtOnly" type="checkbox"', page)
+        self.assertIn('bridge("cancel_transcription")', script)
+        self.assertIn('batchSrtOnly', batch_script)
+        self.assertIn('window.MAWLauncher.confirm(t("batch_skip_completed_confirm"))', batch_script)
+        self.assertIn('data-i18n="batch_confirm_yes">是', page)
+        self.assertIn('data-i18n="batch_confirm_no">否', page)
+        self.assertIn('batchDropNotice', page)
+        self.assertIn('window.MAWLauncher.appendLog?.(`[${message}]`, { inline: true })', batch_script)
+        self.assertIn('window.MAWLauncher.backend === "real"', batch_script)
+        self.assertLess(batch_script.index('if (window.MAWLauncher.backend === "real") return;'), batch_script.index('event.stopImmediatePropagation();'))
 
     def test_server_status_uses_clickable_link_and_independent_stop_control(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")

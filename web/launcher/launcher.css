@@ -2055,6 +2055,22 @@ textarea::placeholder {
   padding: 16px;
 }
 
+.batch-confirm-card {
+  width: min(480px, calc(100vw - 32px));
+}
+
+.batch-confirm-message {
+  margin: 0 0 18px;
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+.batch-confirm-card .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .modal-header {
   flex: 0 0 auto;
   display: flex;

@@ -78,8 +78,13 @@
           </div>
         </div>
         <p class="hint" data-i18n="batch_drop_hint">拖入多个音频/视频文件，或反复添加文件；所有文件共用下方识别设置。</p>
+        <p id="batchDropNotice" class="hint warn hidden" aria-live="polite"></p>
         <div id="batchQueue" class="batch-queue" role="list" aria-label="批量转写队列" data-i18n-aria-label="batch_queue_label"></div>
         <div id="batchEmpty" class="batch-empty" data-i18n="batch_empty">尚未添加媒体文件。</div>
+        <label class="check-field batch-srt-only" for="batchSrtOnly">
+          <input id="batchSrtOnly" type="checkbox">
+          <span data-i18n="batch_srt_only">只生成 SRT 字幕</span>
+        </label>
       </div>
     </section>
 
@@ -423,7 +428,8 @@
 
     <footer class="actions">
       <button id="start" class="primary" type="button" data-i18n="start">生成字幕和工程</button>
-      <button id="startBatch" class="primary hidden" type="button" data-i18n="batch_start">开始全部</button>
+      <button id="stop" class="ghost server-stop hidden" type="button" data-i18n="stop">停止</button>
+      <button id="startBatch" class="primary hidden" type="button" data-i18n="batch_start">✨ 开始批量生成</button>
       <button id="stopBatch" class="ghost server-stop hidden" type="button" data-i18n="batch_stop">停止全部</button>
       <div class="split-wrap">
         <button id="openMawe" class="ghost split-main" type="button" data-i18n="start_server_editor">启动 Server 版字幕编辑器</button>
@@ -861,6 +867,20 @@
           <p id="stickerDirError" class="field-error"></p>
         </div>
       </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="batchConfirmModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="batchConfirmTitle">
+    <div class="modal-backdrop"></div>
+    <section class="modal-card batch-confirm-card">
+      <header class="modal-header">
+        <h2 id="batchConfirmTitle" data-i18n="batch_confirm_title">确认</h2>
+      </header>
+      <p id="batchConfirmMessage" class="batch-confirm-message"></p>
+      <div class="modal-actions">
+        <button id="batchConfirmYes" class="primary" type="button" data-i18n="batch_confirm_yes">是</button>
+        <button id="batchConfirmNo" class="ghost" type="button" data-i18n="batch_confirm_no">否</button>
       </div>
     </section>
   </div>
