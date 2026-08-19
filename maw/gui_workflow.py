@@ -54,6 +54,7 @@ class TranscriptionRequest:
     generate_spectral: bool = False
     ui_language: str = "zh"
     generate_html: bool = True
+    srt_only: bool = False
     debug_raw: bool = False
     engine: str = ""
     model_path: str = ""
