@@ -26,6 +26,7 @@
   const AUTO_LLM_OPERATIONS = { proofread: "proofread", resegment: "resegment" };
   let autoPlanSaveTimer = 0;
   let pendingAutoStep = "";
+  let toolboxOpenMode = "manual";
   let busy = false;
   let inputManual = false;
   let utilityMediaManual = false;
@@ -321,7 +322,13 @@
     const wasOpen = !$("toolboxDrawer").classList.contains("hidden");
     $("toolboxDrawer").classList.toggle("hidden", !open);
     $("toolboxFab").setAttribute("aria-expanded", String(open));
+    if (!open) toolboxOpenMode = "manual";
     syncPaths();
+    if (open) {
+      const activeTab = activeToolboxView().querySelector(".toolbox-tab.active")
+        || activeToolboxView().querySelector(".toolbox-tab");
+      if (activeTab) selectTool(activeTab.dataset.tool);
+    }
     if (open) $("toolboxClose").focus();
     if (!open && wasOpen) $("toolboxFab").focus();
   }
@@ -363,11 +370,13 @@
     });
     Object.entries(panels).forEach(([name, id]) => $(id).classList.toggle("hidden", name !== tool));
     document.querySelectorAll("[data-tool-action]").forEach((action) => {
-      action.classList.toggle("hidden", action.dataset.toolAction !== tool);
+      action.classList.toggle("hidden", action.dataset.toolAction !== tool || toolboxOpenMode === "auto-config");
     });
     $("toolboxInputDropZone").classList.toggle("hidden", section !== "postprocess");
     $("toolboxChain").classList.toggle("hidden", section !== "postprocess" || !$("toolboxChainList").children.length);
-    $("toolboxOutputField").classList.toggle("hidden", section !== "postprocess");
+    const configOnly = toolboxOpenMode === "auto-config";
+    $("toolboxOutputField").classList.toggle("hidden", section !== "postprocess" || configOnly);
+    $("toolboxConfigOnlyHint")?.classList.toggle("hidden", !configOnly);
   }
 
   function moveToolFocus(event) {
@@ -958,6 +967,7 @@
       window.MAWLauncher.openSettings("llmSettingsSection", focusId);
       return;
     }
+    toolboxOpenMode = "auto-config";
     setOpen(true);
     selectTool(AUTO_STEP_TOOLS[stepId] || "match");
     setAutoStepsExpanded(true);
@@ -1311,7 +1321,10 @@
     initializeAutoPostprocess();
   }
 
-  $("toolboxFab").addEventListener("click", () => setOpen($("toolboxDrawer").classList.contains("hidden")));
+  $("toolboxFab").addEventListener("click", () => {
+    toolboxOpenMode = "manual";
+    setOpen($("toolboxDrawer").classList.contains("hidden"));
+  });
   $("toolboxClose").addEventListener("click", () => setOpen(false));
   $("toolboxDrawer").addEventListener("wheel", (event) => {
     event.stopPropagation();
