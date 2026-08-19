@@ -16,7 +16,7 @@ async function runReplacement(page, { outputMode = 'both' } = {}) {
   await page.locator('#toolboxInputPath').fill('D:\\Demo\\source.mosp');
   await page.locator('#postprocessOutputMode').selectOption(outputMode);
   await page.locator('#postprocessReplacements').fill('old => new');
-  await page.locator('#runFixedReplacement').click();
+  await page.locator('#runFixedProcess').click();
   await expect(page.locator('.toolbox-chain-item')).toHaveCount(previousCount + 1);
 }
 
@@ -174,14 +174,14 @@ test('Escape closes an artifact context menu while postprocess is busy', async (
   await page.evaluate(() => {
     const callBackend = window.MAWLauncher.callBackend;
     window.MAWLauncher.callBackend = (method, payload) => (
-      method === 'run_fixed_replacement'
+      method === 'run_fixed_process'
         ? new Promise(() => {})
         : callBackend(method, payload)
     );
   });
   const artifact = page.locator('.toolbox-chain-file').nth(0);
   const menu = page.getByRole('menu');
-  await page.locator('#runFixedReplacement').click();
+  await page.locator('#runFixedProcess').click();
   await expect(page.locator('#toolboxProgress')).toBeVisible();
   await artifact.click({ button: 'right' });
   await expect(menu).toBeVisible();
