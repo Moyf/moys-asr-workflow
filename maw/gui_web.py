@@ -25,7 +25,7 @@ from media_cache import embed_media_caches
 from waveform import is_waveform_payload
 from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, LANGUAGES, MODELS, PROVIDERS, REGIONS, ModelConfig, ProviderConfig, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
-from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
+from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
 from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError, install_local_runtime, managed_runtime_status
 from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
@@ -94,6 +94,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "segmentation_invalid": "Subtitle segmentation settings are invalid.",
     "ffmpeg_start_failed": "FFmpeg failed to start.",
     "transcription_failed": "Transcription failed.",
+    "transcription_cancelled": "转写已取消。",
     "context_too_long": "Qwen-Audio context is limited to 400 characters.",
     "soniox_context_too_long": "Soniox context is limited to approximately 10,000 characters.",
     "soniox_context_invalid": "Soniox context format is invalid.",
@@ -1225,7 +1226,18 @@ class LauncherApi:
         manifest_text = str(payload.get("manifestPath") or "").strip()
         first_request = next((item.request for item in items if item.request is not None), None)
         if first_request is None:
-            return {"ok": False, "field": "items", "code": "batch_items_invalid", "error": "No valid batch items were provided."}
+            details = "; ".join(
+                f"{item.item_id}: {item.preflight_error}"
+                for item in items
+                if item.preflight_error
+            )
+            return {
+                "ok": False,
+                "field": "items",
+                "code": "batch_items_invalid",
+                "error": "No valid batch items were provided.",
+                "detail": details,
+            }
         manifest_path = Path(manifest_text).expanduser() if manifest_text else _unique_batch_manifest_path(first_request.srt_path.parent)
         self.batch_cancel_event = Event()
         self.pump.start()
@@ -1542,6 +1554,12 @@ class LauncherApi:
                 cancel_event=cancel_event,
                 on_process_start=lambda pid: self._emit({"type": "log", "message": f"[info] 转写进程已启动 (pid {pid})"}),
             )
+        except TranscriptionCancelledError as error:
+            self._emit({"type": "error", "code": "transcription_cancelled", "detail": str(error)})
+            if self.worker is threading.current_thread():
+                self.worker = None
+            self.pump.flush()
+            return
         except TranscriptionProcessError as error:
             if _is_ffprobe_start_failure(child_output):
                 self._emit({
@@ -1887,7 +1905,6 @@ class LauncherApi:
             if path:
                 self._emit(_route_dropped_path(path))
                 self.pump.flush()
-                return
 
 
 def run_app(*, debug: bool = False, devtools: bool = False) -> None:
@@ -2116,7 +2133,8 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         speaker_colors=bool(payload.get("speakerColors")) and model.supports_speaker,
         generate_spectral=bool(payload.get("generateSpectral")),
         ui_language=_gui_lang(payload),
-        generate_html=bool(payload.get("generateHtml")),
+        generate_html=bool(payload.get("generateHtml")) and not bool(payload.get("batchSrtOnly")),
+        srt_only=bool(payload.get("batchSrtOnly")),
         debug_raw=bool(payload.get("debugRaw")),
         engine=model.engine if provider.kind == "local" else "",
         model_path=local_model_path if provider.kind == "local" else "",
