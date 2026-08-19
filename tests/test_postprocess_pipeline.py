@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from maw.gui_web import LauncherApi, LauncherPaths, _request_from_payload
+from maw.postprocess import LlmPostprocessRequest
 from maw.postprocess_io import SubtitleArtifact
 from maw.postprocess_ocr import OcrDedupArtifact
 from maw.postprocess_pipeline import (
@@ -54,7 +55,10 @@ class PostprocessPipelineTests(unittest.TestCase):
         return plan
 
     def replace_step(self, enabled: bool = True) -> dict[str, object]:
-        return {"id": "replace", "enabled": enabled, "replacements": [{"source": "错", "target": "正"}]}
+        return {"id": "replace", "enabled": enabled, "replacements": [{"source": "错", "target": "正"}], "conversion": "off"}
+
+    def conversion_step(self, mode: str = "to_traditional") -> dict[str, object]:
+        return {"id": "replace", "enabled": True, "replacements": [], "conversion": mode}
 
     def match_step(self, enabled: bool = True) -> dict[str, object]:
         script = self.root / "script.txt"
@@ -67,6 +71,53 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertFalse(plan["enabled"])
         self.assertFalse(plan["retainIntermediate"])
         self.assertEqual([step["id"] for step in plan["steps"]], ["match", "replace", "proofread", "resegment", "ocr", "translate"])
+        self.assertEqual(plan["steps"][1]["conversion"], "off")
+
+    def test_validation_allows_conversion_without_replacement_rules(self) -> None:
+        plan, errors = validate_plan(self.plan(self.conversion_step()), env_path=self.env_path, media_path=self.media, ffmpeg_path=None)
+
+        self.assertEqual(errors, ())
+        self.assertEqual(plan["steps"][1]["conversion"], "to_traditional")
+
+    def test_pipeline_runs_conversion_before_translation_steps(self) -> None:
+        self.project.write_text(
+            json.dumps({"segments": [{"id": "main-001", "start": 0, "end": 1000, "text": "软件"}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        self.srt.write_text("1\n00:00:00,000 --> 00:00:01,000\n软件\n", encoding="utf-8")
+        translation_input: list[str] = []
+
+        def fake_translate(request: LlmPostprocessRequest, *, complete: object, on_status: object) -> SubtitleArtifact:
+            del complete, on_status
+            project_path = request.project_path
+            output_directory = request.output_directory
+            if not isinstance(project_path, Path) or not isinstance(output_directory, Path):
+                raise AssertionError("translation request should contain project paths")
+            payload = json.loads(project_path.read_text(encoding="utf-8"))
+            translation_input.append(payload["segments"][0]["text"])
+            payload["segments"][0]["text"] = "Translation"
+            translated_project = output_directory / "translated.mosp"
+            translated_srt = output_directory / "translated.srt"
+            translated_project.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            translated_srt.write_text("1\n00:00:00,000 --> 00:00:01,000\nTranslation\n", encoding="utf-8")
+            return SubtitleArtifact(project_path, request.srt_path, translated_project, translated_srt)
+
+        translate_step = {"id": "translate", "enabled": True, "providerId": "deepseek", "target": "en", "customPrompt": ""}
+        with mock.patch("maw.postprocess_pipeline.run_llm_postprocess", side_effect=fake_translate):
+            result = run_postprocess_pipeline(
+                self.plan(self.conversion_step(), translate_step),
+                media_path=self.media,
+                project_path=self.project,
+                srt_path=self.srt,
+                env_path=self.env_path,
+                ffmpeg_path=None,
+                cancel_event=Event(),
+                llm_settings={"deepseek": {"apiKey": "key", "baseUrl": "https://example.test", "model": "model", "verified": "1"}},
+            )
+
+        self.assertEqual(translation_input, ["軟件"])
+        self.assertIsNotNone(result.translated_srt_path)
+        self.assertIn("Translation", result.translated_srt_path.read_text(encoding="utf-8"))
 
     def test_translation_keeps_main_track_and_adds_extension_track(self) -> None:
         source_payload = {
@@ -355,8 +406,8 @@ class PostprocessPipelineTests(unittest.TestCase):
 
     def test_pipeline_retains_workspace_and_can_resume_after_failure(self) -> None:
         plan = self.plan(self.replace_step(), self.match_step(), retain=True)
-        original_replace = __import__("maw.postprocess_pipeline", fromlist=["run_fixed_replacement"]).run_fixed_replacement
-        with mock.patch("maw.postprocess_pipeline.run_fixed_replacement", side_effect=RuntimeError("mock replace failure")):
+        original_replace = __import__("maw.postprocess_pipeline", fromlist=["run_fixed_process"]).run_fixed_process
+        with mock.patch("maw.postprocess_pipeline.run_fixed_process", side_effect=RuntimeError("mock replace failure")):
             with self.assertRaises(PostprocessPipelineError) as raised:
                 run_postprocess_pipeline(
                     plan,
@@ -372,7 +423,7 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertTrue(error.run_directory.is_dir())
         self.assertTrue(error.current_project.is_file())
 
-        with mock.patch("maw.postprocess_pipeline.run_fixed_replacement", side_effect=original_replace):
+        with mock.patch("maw.postprocess_pipeline.run_fixed_process", side_effect=original_replace):
             result = run_postprocess_pipeline(
                 plan,
                 media_path=self.media,

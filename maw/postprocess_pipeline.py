@@ -20,11 +20,11 @@ from typing import Final
 
 from maw.gui_config import load_env
 from maw.postprocess import (
+    FixedProcessRequest,
     LlmPostprocessRequest,
     OutputMode,
     Replacement,
-    ReplacementRequest,
-    run_fixed_replacement,
+    run_fixed_process,
     run_llm_postprocess,
 )
 from maw.postprocess_io import SubtitleArtifact, read_project, write_artifacts
@@ -39,6 +39,7 @@ from maw.postprocess_match import ScriptMatchRequest, run_script_match
 from maw.postprocess_ocr import OcrDedupArtifact, OcrDedupRequest, OcrRegion, run_ocr_dedup
 from maw.ocr_runtime import OCR_MODEL_ID, run_ocr_in_runtime
 from maw.project_preview import JsonValue
+from maw.text_conversion import TextConversion, normalize_text_conversion_mode
 
 
 POSTPROCESS_PLAN_VERSION: Final[int] = 1
@@ -66,7 +67,7 @@ def default_postprocess_plan() -> dict[str, object]:
         "retainIntermediate": False,
         "steps": [
             {"id": "match", "enabled": False, "scriptPath": ""},
-            {"id": "replace", "enabled": False, "replacements": []},
+            {"id": "replace", "enabled": False, "replacements": [], "conversion": TextConversion.OFF.value},
             {"id": "proofread", "enabled": False, "providerId": "deepseek", "customPrompt": ""},
             {"id": "resegment", "enabled": False, "providerId": "deepseek", "customPrompt": ""},
             {"id": "ocr", "enabled": False, "videoPath": "", "regionMode": "full", "regionX1": 0, "regionY1": 0, "regionX2": 100, "regionY2": 100, "threshold": 0.5, "report": False},
@@ -108,6 +109,8 @@ def normalize_plan(raw: object) -> dict[str, object]:
             value = source[key]
             if key == "replacements":
                 step[key] = _normalize_replacements(value)
+            elif key == "conversion":
+                step[key] = normalize_text_conversion_mode(value).value
             elif key == "target":
                 step[key] = str(value or "zh") if str(value or "zh") in TRANSLATION_TARGETS else "zh"
             elif key in {"regionX1", "regionY1", "regionX2", "regionY2", "threshold"}:
@@ -280,8 +283,10 @@ def validate_plan(
             if path.suffix.lower() not in SCRIPT_EXTENSIONS or not path.is_file():
                 errors.append({"step": step_id, "field": "postprocessScriptPath", "message": "文稿匹配需要一个存在的 .txt、.md 或 .markdown 文稿文件。"})
         elif step_id == "replace":
-            if not _normalize_replacements(step.get("replacements")):
-                errors.append({"step": step_id, "field": "postprocessReplacements", "message": "固定替换至少需要一条有效替换规则。"})
+            has_replacements = bool(_normalize_replacements(step.get("replacements")))
+            has_conversion = normalize_text_conversion_mode(step.get("conversion")) is not TextConversion.OFF
+            if not has_replacements and not has_conversion:
+                errors.append({"step": step_id, "field": "postprocessReplacements", "message": "固定处理至少需要一条批量替换规则或一种简繁转换。"})
         elif step_id in {"proofread", "resegment", "translate"}:
             provider_id = str(step.get("providerId") or "deepseek")
             status = _snapshot_provider_status(llm_settings.get(provider_id)) if llm_settings and provider_id in llm_settings else postprocess_provider_status(env_path, provider_id)
@@ -557,11 +562,12 @@ def _run_step(
             for item in _normalize_replacements(step.get("replacements"))
             if isinstance(item, Mapping) and str(item.get("source") or "")
         )
-        return run_fixed_replacement(ReplacementRequest(
+        return run_fixed_process(FixedProcessRequest(
             project_path=project_path,
             srt_path=srt_path,
             output_mode=output_mode,
             replacements=replacements,
+            conversion=normalize_text_conversion_mode(step.get("conversion")),
             output_directory=output_directory,
             media_path=media_path,
         ))

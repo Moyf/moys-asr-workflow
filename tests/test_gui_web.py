@@ -405,6 +405,24 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(output_srt.is_file())
         self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["segments"][0]["text"], "正字")
 
+    def test_fixed_process_bridge_supports_conversion_without_rules(self) -> None:
+        project = self.root / "clip.mosp"
+        project.write_text(
+            json.dumps({"segments": [{"start": 0, "end": 1000, "text": "軟件"}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        result = self.api.run_fixed_process({
+            "projectPath": str(project),
+            "srtPath": "",
+            "outputMode": "both",
+            "replacements": [],
+            "conversion": "to_simplified",
+        })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(json.loads(Path(str(result["projectPath"])).read_text(encoding="utf-8"))["segments"][0]["text"], "软件")
+
     def test_generate_waveform_project_creates_media_only_embedded_project(self) -> None:
         """Given media, When generating waveform, Then a normalized cache-only project is written."""
         media = self.root / "clip.wav"
@@ -2028,6 +2046,7 @@ class LauncherAssetContractTests(unittest.TestCase):
             "toolboxOcrPanel",
             "toolboxLlmPanel",
             "toolboxReplacePanel",
+            "postprocessConversion",
             "toolboxFfconcatPanel",
             "postprocessScriptPath",
             "postprocessProvider",
@@ -2058,7 +2077,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn("fallbackVideoPath", script)
         self.assertIn('mediaPath: $("mediaPath").value.trim()', script)
         self.assertIn('bridge("run_llm_postprocess"', script)
-        self.assertIn('bridge("run_fixed_replacement"', script)
+        self.assertIn('bridge("run_fixed_process"', script)
         self.assertIn('bridge("run_ffconcat_rebuild"', script)
         self.assertIn('bridge("save_postprocess_settings"', script)
         self.assertIn('bridge("test_postprocess_connection"', script)
@@ -2212,7 +2231,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="postprocessOutputMode"', footer_html)
         for tool in ("match", "ocr", "llm", "replace", "ffconcat"):
             self.assertIn(f'data-tool-action="{tool}"', footer_html)
-        for button in ("runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedReplacement", "runFfconcatRebuild"):
+        for button in ("runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild"):
             self.assertIn(f'id="{button}"', footer_html)
         self.assertIn('id="generateWaveform"', footer_html)
 
@@ -2260,11 +2279,12 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn(".toolbox-static-value {\n  height: 34px;", stylesheet)
         self.assertIn(".field-spacer {\n  visibility: hidden;", stylesheet)
         self.assertIn(".toolbox-grid {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 10px;\n  align-items: start;\n}", stylesheet)
-        # 单字段的文稿匹配 / 固定替换面板不套分组卡片。
+        # 文稿匹配保持单字段；固定处理按批量替换和简繁转换分组。
         match_panel = page[page.index('id="toolboxMatchPanel"'):page.index('id="toolboxOcrPanel"')]
         replace_panel = page[page.index('id="toolboxReplacePanel"'):page.index('id="toolboxFfconcatPanel"')]
         self.assertNotIn("adv-group", match_panel)
-        self.assertNotIn("adv-group", replace_panel)
+        self.assertIn('data-i18n="toolbox_group_fixed_replacements"', replace_panel)
+        self.assertIn('data-i18n="toolbox_group_fixed_conversion"', replace_panel)
 
     def test_llm_save_feedback_is_local_and_transient(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")

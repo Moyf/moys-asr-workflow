@@ -317,7 +317,7 @@
                 <button id="configureAutoMatch" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
               </div>
               <div class="auto-step-row" data-auto-step-row="replace">
-                <label class="check-field" for="autoStepReplace"><input id="autoStepReplace" type="checkbox"><span data-i18n="auto_step_replace">固定替换</span></label>
+                <label class="check-field" for="autoStepReplace"><input id="autoStepReplace" type="checkbox"><span data-i18n="auto_step_replace">固定处理</span></label>
                 <span id="autoStepReplaceStatus" class="auto-step-status hint"></span>
                 <span id="autoStepReplaceHint" class="auto-step-hint hint"></span>
                 <button id="configureAutoReplace" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
@@ -451,7 +451,7 @@
             <button id="toolboxMatchTab" class="toolbox-tab active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="toolboxMatchPanel" data-tool="match" data-i18n="toolbox_match">文稿匹配</button>
             <button id="toolboxOcrTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxOcrPanel" data-tool="ocr" data-i18n="toolbox_ocr_dedup">OCR 字幕去重</button>
             <button id="toolboxLlmTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxLlmPanel" data-tool="llm" data-i18n="toolbox_llm">LLM 处理</button>
-            <button id="toolboxReplaceTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxReplacePanel" data-tool="replace" data-i18n="toolbox_replace">固定替换</button>
+             <button id="toolboxReplaceTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxReplacePanel" data-tool="replace" data-i18n="toolbox_replace">固定处理</button>
           </div>
         </nav>
       </section>
@@ -629,11 +629,26 @@
 
     <section id="toolboxReplacePanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxReplaceTab">
       <p class="hint toolbox-panel-hint" data-i18n="toolbox_replace_safe">分段起止时间保持不变。</p>
-      <div class="field">
-        <label for="postprocessReplacements" data-i18n="toolbox_replace_rules">替换规则</label>
-        <textarea id="postprocessReplacements" rows="7" autocomplete="off" data-i18n-placeholder="toolbox_replace_placeholder"></textarea>
-        <p class="hint" data-i18n="toolbox_replace_hint">每行一条：原文 =&gt; 新文。修改文本后会移除失真的逐词时间。</p>
-        <p id="postprocessReplacementsError" class="field-error"></p>
+      <div class="adv-group">
+        <h3 data-i18n="toolbox_group_fixed_replacements">批量替换</h3>
+        <div class="field">
+          <label for="postprocessReplacements" data-i18n="toolbox_replace_rules">批量替换规则</label>
+          <textarea id="postprocessReplacements" rows="7" autocomplete="off" data-i18n-placeholder="toolbox_replace_placeholder"></textarea>
+          <p class="hint" data-i18n="toolbox_replace_hint">每行一条：原文 =&gt; 新文，按顺序应用。修改文本后会移除失真的逐词时间。</p>
+          <p id="postprocessReplacementsError" class="field-error"></p>
+        </div>
+      </div>
+      <div class="adv-group">
+        <h3 data-i18n="toolbox_group_fixed_conversion">简繁转换</h3>
+        <div class="field">
+          <label for="postprocessConversion" data-i18n="toolbox_conversion">转换方向</label>
+          <select id="postprocessConversion">
+            <option value="off" data-i18n="toolbox_conversion_off">不转换</option>
+            <option value="to_simplified" data-i18n="toolbox_conversion_to_simplified">转为简体</option>
+            <option value="to_traditional" data-i18n="toolbox_conversion_to_traditional">转为繁体</option>
+          </select>
+          <p class="hint" data-i18n="toolbox_conversion_hint">先执行批量替换，再转换文字；不访问网络。</p>
+        </div>
       </div>
     </section>
 
@@ -674,7 +689,7 @@
           <button id="runLlmPostprocess" class="primary" type="button" data-i18n="toolbox_run">运行处理</button>
         </div>
         <div class="toolbox-action-slot hidden" data-tool-action="replace">
-          <button id="runFixedReplacement" class="primary" type="button" data-i18n="toolbox_run_replace">执行替换</button>
+          <button id="runFixedProcess" class="primary" type="button" data-i18n="toolbox_run_replace">执行固定处理</button>
         </div>
         <div class="toolbox-action-slot hidden" data-tool-action="ffconcat">
           <button id="runFfconcatRebuild" class="primary" type="button" data-i18n="toolbox_run_media">生成新媒体</button>

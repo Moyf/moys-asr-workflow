@@ -11,10 +11,12 @@ from typing import final
 from unittest import mock
 
 from maw.postprocess import (
+    FixedProcessRequest,
     LlmPostprocessRequest,
     OutputMode,
     Replacement,
     ReplacementRequest,
+    run_fixed_process,
     apply_llm_groups,
     run_fixed_replacement,
     run_llm_postprocess,
@@ -23,6 +25,7 @@ from maw.postprocess_ffmpeg import FfconcatRequest, parse_ffconcat, run_ffconcat
 from maw.postprocess_io import PostprocessFileError, _atomic_write, read_project, read_srt, render_srt
 from maw.postprocess_llm import LlmClientError, LlmSettings, _chat_endpoint, _models_endpoint, _reasoning_parameters, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, test_llm_connection as check_llm_connection
 from maw.project_preview import JsonDict
+from maw.text_conversion import TextConversion
 
 
 def sample_project(media: Path) -> JsonDict:
@@ -119,6 +122,69 @@ class PostprocessTests(unittest.TestCase):
         self.assertIn("00:00:00,100 --> 00:00:00,900", first.srt_path.read_text(encoding="utf-8"))
         self.assertEqual(second.source_project_path, first.project_path)
         self.assertNotEqual(second.project_path, first.project_path)
+
+    def test_fixed_process_applies_batch_replacements_then_traditional_conversion(self) -> None:
+        project = {
+            "segments": [{
+                "start": 0,
+                "end": 1000,
+                "text": "旧软件里面",
+                "items": [
+                    {"start": 0, "end": 200, "text": "旧"},
+                    {"start": 200, "end": 500, "text": "软件"},
+                    {"start": 500, "end": 1000, "text": "里面"},
+                ],
+            }],
+        }
+        _ = self.project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+
+        result = run_fixed_process(FixedProcessRequest(
+            project_path=self.project_path,
+            srt_path=None,
+            output_mode=OutputMode.JSON,
+            replacements=(
+                Replacement(source="旧", target="新"),
+                Replacement(source="软件", target="软体"),
+            ),
+            conversion=TextConversion.TO_TRADITIONAL,
+        ))
+
+        if result.project_path is None:
+            self.fail("project output mode must create a project file")
+        converted = project_segments(read_project(result.project_path))[0]
+        self.assertEqual(converted["text"], "新軟體裏面")
+        self.assertEqual(
+            [(item["text"], item["start"], item["end"]) for item in converted["items"]],
+            [("新", 0, 200), ("軟體", 200, 500), ("裏面", 500, 1000)],
+        )
+
+    def test_fixed_process_can_run_conversion_without_replacement_rules(self) -> None:
+        project = {
+            "segments": [{
+                "start": 0,
+                "end": 1000,
+                "text": "軟件",
+                "items": [{"start": 0, "end": 500, "text": "軟"}, {"start": 500, "end": 1000, "text": "件"}],
+            }],
+        }
+        _ = self.project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+
+        result = run_fixed_process(FixedProcessRequest(
+            project_path=self.project_path,
+            srt_path=None,
+            output_mode=OutputMode.JSON,
+            replacements=(),
+            conversion=TextConversion.TO_SIMPLIFIED,
+        ))
+
+        if result.project_path is None:
+            self.fail("project output mode must create a project file")
+        converted = project_segments(read_project(result.project_path))[0]
+        self.assertEqual(converted["text"], "软件")
+        self.assertEqual(
+            [(item["text"], item["start"], item["end"]) for item in converted["items"]],
+            [("软", 0, 500), ("件", 500, 1000)],
+        )
 
     def test_srt_only_output_is_the_authoritative_next_input(self) -> None:
         first = run_fixed_replacement(

@@ -13,6 +13,7 @@ from typing import Final
 from maw.postprocess_io import SubtitleArtifact, read_project, read_srt, write_artifacts
 from maw.project import normalize_project
 from maw.project_preview import JsonDict, JsonValue
+from maw.text_conversion import TextConversion, apply_text_conversion
 
 
 class OutputMode(StrEnum):
@@ -28,13 +29,19 @@ class Replacement:
 
 
 @dataclass(frozen=True, slots=True)
-class ReplacementRequest:
+class FixedProcessRequest:
     project_path: Path | None
     srt_path: Path | None
     output_mode: OutputMode
     replacements: tuple[Replacement, ...]
     output_directory: Path | None = None
     media_path: Path | None = None
+    conversion: TextConversion = TextConversion.OFF
+
+
+# Kept as a source-compatible alias for integrations and saved callers using the
+# old "fixed replacement" name. The user-facing operation is now fixed process.
+ReplacementRequest = FixedProcessRequest
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,31 +76,42 @@ TIMING_FIELDS: Final = ("start", "end", "text", "items")
 ONE_TO_ONE_TRANSLATION_OPERATIONS: Final = frozenset({"translate_en", "translate_zh"})
 
 
-def run_fixed_replacement(request: ReplacementRequest) -> SubtitleArtifact:
+def run_fixed_process(request: FixedProcessRequest) -> SubtitleArtifact:
     project, source_project, source_srt = _load_input(request.project_path, request.srt_path)
-    segments = project.get("segments")
-    if isinstance(segments, list):
-        for segment in segments:
-            if not isinstance(segment, dict):
-                continue
-            original = segment.get("text")
-            if not isinstance(original, str):
-                continue
-            replaced = original
-            for entry in request.replacements:
-                if entry.source:
-                    replaced = replaced.replace(entry.source, entry.target)
-            if replaced != original:
-                segment["text"] = replaced
-                reconciled_items = _reconcile_fixed_replacements(
-                    original,
-                    segment.get("items"),
-                    request.replacements,
-                )
-                if reconciled_items is None:
-                    _ = segment.pop("items", None)
-                else:
-                    segment["items"] = reconciled_items
+    segments = _segments(project)
+    for segment in segments:
+        original = segment.get("text")
+        if not isinstance(original, str):
+            continue
+        processed = original
+        for entry in request.replacements:
+            if entry.source:
+                processed = processed.replace(entry.source, entry.target)
+        if processed != original:
+            reconciled_items = _reconcile_fixed_replacements(
+                original,
+                segment.get("items"),
+                request.replacements,
+            )
+            if reconciled_items is None:
+                _ = segment.pop("items", None)
+            else:
+                segment["items"] = reconciled_items
+
+        # Convert through the project helper so standalone and pipeline runs
+        # share the same OpenCC behavior. Item timing is retained when each
+        # item maps independently and the converted items reconstruct the cue.
+        holder: JsonDict = {"text": processed}
+        if segment.get("items") is not None:
+            holder["items"] = segment["items"]
+        _ = apply_text_conversion([holder], request.conversion)
+        converted = str(holder["text"])
+        if "items" in holder:
+            segment["items"] = holder["items"]
+        else:
+            segment.pop("items", None)
+        if converted != original:
+            segment["text"] = converted
     return _write(
         project,
         source_project,
@@ -103,6 +121,12 @@ def run_fixed_replacement(request: ReplacementRequest) -> SubtitleArtifact:
         output_directory=request.output_directory,
         media_path=request.media_path,
     )
+
+
+def run_fixed_replacement(request: ReplacementRequest) -> SubtitleArtifact:
+    """Compatibility wrapper for the pre-1.4 fixed-replacement API."""
+
+    return run_fixed_process(request)
 
 
 def run_llm_postprocess(

@@ -121,7 +121,7 @@
       retainIntermediate: false,
       steps: [
         { id: "match", enabled: false, scriptPath: "" },
-        { id: "replace", enabled: false, replacements: [] },
+        { id: "replace", enabled: false, replacements: [], conversion: "off" },
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "resegment", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "ocr", enabled: false, videoPath: "", regionMode: "full", regionX1: 0, regionY1: 0, regionX2: 100, regionY2: 100, threshold: 0.5, report: false },
@@ -553,7 +553,7 @@
   function setBusy(nextBusy, statusKey = "toolbox_running") {
     busy = nextBusy;
     $("toolboxProgress").classList.toggle("hidden", !busy);
-    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedReplacement", "runFfconcatRebuild", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport"].forEach((id) => {
+    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
       $(id).disabled = busy;
     });
     renderOcrModel();
@@ -628,7 +628,7 @@
   function chainLabel(kind, operation = "") {
     if (kind === "match") return t("toolbox_chain_match");
     if (kind === "ocr") return t("toolbox_chain_ocr");
-    if (kind === "replace") return t("toolbox_chain_replace");
+    if (kind === "fixed" || kind === "replace") return t("toolbox_chain_replace");
     const operationKeys = {
       proofread: "toolbox_chain_llm_proofread",
       resegment: "toolbox_chain_llm_resegment",
@@ -794,7 +794,9 @@
     }
     if (stepId === "replace") {
       const count = parseReplacements().length;
-      return count ? t("auto_step_hint_rules").replace("{count}", String(count)) : t("auto_step_hint_no_rules");
+      const rules = count ? t("auto_step_hint_rules").replace("{count}", String(count)) : t("auto_step_hint_no_rules");
+      const conversion = $("postprocessConversion").value;
+      return conversion === "off" ? rules : `${rules} · ${t(`toolbox_conversion_${conversion}`)}`;
     }
     if (["proofread", "resegment", "translate"].includes(stepId)) {
       const operation = autoLlmOperation(stepId);
@@ -816,7 +818,7 @@
       retainIntermediate: Boolean($("autoPostprocessRetain")?.checked),
       steps: [
         { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim() },
-        { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements() },
+        { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements(), conversion: $("postprocessConversion").value },
         { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId, customPrompt: getLlmPrompt("proofread") },
         { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId, customPrompt: getLlmPrompt("resegment") },
         { id: "ocr", enabled: Boolean($("autoStepOcr")?.checked), videoPath: $("ocrVideoPath").value.trim(), ...ocr, threshold: Number($("ocrThreshold").value), report: Boolean($("ocrReport").checked) },
@@ -835,7 +837,7 @@
       const path = $("postprocessScriptPath").value.trim();
       return Boolean(path && SCRIPT_EXTS.has(extension(path)));
     }
-    if (stepId === "replace") return parseReplacements().length > 0;
+    if (stepId === "replace") return parseReplacements().length > 0 || $("postprocessConversion").value !== "off";
     if (["proofread", "resegment", "translate"].includes(stepId)) return autoLlmReady($("postprocessProvider").value);
     if (stepId === "ocr") {
       const config = window.MAWLauncher.config || {};
@@ -930,7 +932,7 @@
 
   function autoStepFocusField(stepId) {
     if (stepId === "match") return "postprocessScriptPath";
-    if (stepId === "replace") return "postprocessReplacements";
+    if (stepId === "replace") return parseReplacements().length ? "postprocessConversion" : "postprocessReplacements";
     if (["proofread", "resegment", "translate"].includes(stepId)) return "postprocessPrompt";
     if (stepId !== "ocr") return "";
     const video = $("ocrVideoPath").value.trim() || autoOcrVideoPath();
@@ -988,6 +990,7 @@
     $("postprocessScriptPath").value = String(match.scriptPath || "");
     const replace = byId.get("replace") || {};
     $("postprocessReplacements").value = (Array.isArray(replace.replacements) ? replace.replacements : []).map((item) => `${item.source || ""} => ${item.target || ""}`).join("\n");
+    $("postprocessConversion").value = ["to_simplified", "to_traditional"].includes(replace.conversion) ? replace.conversion : "off";
     ["proofread", "resegment"].forEach((stepId) => {
       const prompt = byId.get(stepId)?.customPrompt;
       if (typeof prompt === "string" && prompt) llmPrompts[autoLlmOperation(stepId)] = prompt;
@@ -1245,11 +1248,12 @@
     }
   }
 
-  async function runReplacement() {
+  async function runFixedProcess() {
     const paths = resolveInputPaths();
     if (!paths) return;
     const replacements = parseReplacements();
-    if (!replacements.length) {
+    const conversion = $("postprocessConversion").value;
+    if (!replacements.length && conversion === "off") {
       setFieldError("postprocessReplacements", t("toolbox_need_rules"));
       setResult(t("toolbox_need_rules"), "error");
       return;
@@ -1257,8 +1261,8 @@
     setFieldError("postprocessReplacements", "");
     setBusy(true, "toolbox_status_starting");
     try {
-      const result = await bridge("run_fixed_replacement", { ...paths, replacements });
-      if (result.ok) applySubtitleResult(result, { kind: "replace" });
+      const result = await bridge("run_fixed_process", { ...paths, replacements, conversion });
+      if (result.ok) applySubtitleResult(result, { kind: "fixed" });
       else setResult(result.error || result.detail || t("failed"), "error");
     } finally {
       setBusy(false);
@@ -1352,7 +1356,7 @@
   $("ocrModel").addEventListener("change", renderOcrModel);
   $("openOcrSettings").addEventListener("click", () => window.MAWLauncher.openSettings("ocrSettingsSection"));
   $("runLlmPostprocess").addEventListener("click", runLlm);
-  $("runFixedReplacement").addEventListener("click", runReplacement);
+  $("runFixedProcess").addEventListener("click", runFixedProcess);
   $("runFfconcatRebuild").addEventListener("click", runFfconcat);
   $("pickPostprocessFfconcat").addEventListener("click", async () => {
     const result = await bridge("choose_file", { kind: "ffconcat" });
@@ -1447,6 +1451,7 @@
     $(id).addEventListener("change", () => setFieldError(id, ""));
   });
   $("postprocessReplacements").addEventListener("input", () => { setFieldError("postprocessReplacements", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
+  $("postprocessConversion").addEventListener("change", () => { setFieldError("postprocessReplacements", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
   $("ocrVideoPath").addEventListener("input", () => { ocrVideoManual = Boolean($("ocrVideoPath").value.trim()); setFieldError("ocrVideoPath", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
   ["ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "autoTranslateTarget"].forEach((id) => {
     $(id).addEventListener("input", () => { renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
