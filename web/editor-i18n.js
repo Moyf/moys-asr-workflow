@@ -23,6 +23,25 @@
     '导出纯文本（TXT）': 'Export plain text (TXT)',
     '导出工程': 'Export project', '导出去空隙版本 ▾': 'Export gap-removed version ▾',
     '字幕 SRT': 'Subtitle SRT', '时间线 OTIO 工程': 'Timeline OTIO project',
+    '导出时间线模式': 'Export timeline mode', '去空隙时间线': 'Gap-removed timeline', '原始时间线': 'Source timeline',
+    '导出帧率': 'Export frame rate', '写入原生字幕文本对象': 'Write native subtitle text objects',
+    '导出扩展字幕轨': 'Export extension subtitle track', '主轨字幕': 'Main-track subtitles',
+    '主轨与扩展轨字幕': 'Main and extension subtitles', '导出文件名': 'Export filename',
+    '导出媒体路径缺失': 'Export media path is missing', '导出媒体时长缺失': 'Export media duration is missing',
+    '导出文件名无效': 'Export filename is invalid', '导出警告': 'Export warning',
+    'Premiere FCP 7 XML（实验性）': 'Premiere FCP 7 XML (experimental)',
+    '导出 FCP 7 XML 供 Premiere 交接。此交接尚未完成目标应用验证。': 'Export FCP 7 XML for Premiere handoff. This handoff has not completed target-application validation.',
+    '原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。': 'Native text is optional handoff data with no style or placement fidelity claim; export SRT with its separate button.',
+    '导出 XML': 'Export XML',
+    'FCP 7 XML 已保存，SRT 保存已取消': 'FCP 7 XML was saved; SRT save was cancelled',
+    'FCP 7 XML 已保存，SRT 保存失败': 'FCP 7 XML was saved; SRT save failed',
+    'FCP 7 XML 下载已发起，SRT 保存已取消': 'FCP 7 XML download was dispatched; SRT save was cancelled',
+    'FCP 7 XML 下载已发起，SRT 保存失败': 'FCP 7 XML download was dispatched; SRT save failed',
+    'FCP 7 XML 已保存': 'FCP 7 XML was saved',
+    'FCP 7 XML 下载已发起': 'FCP 7 XML download was dispatched',
+    'FCP 7 XML 保存已取消': 'FCP 7 XML save was cancelled',
+    'FCP 7 XML 保存失败': 'FCP 7 XML save failed',
+    'FCP 7 XML 导出失败': 'FCP 7 XML export failed',
     'FFconcat 文件': 'FFconcat file', '保留区域 JSON': 'Kept-regions JSON',
     '表情包 OTIO': 'Sticker OTIO', '导出表情包时间线 ▾': 'Export sticker timeline ▾',
     '下载 Resolve JSON': 'Download Resolve JSON',
@@ -489,6 +508,7 @@
     '导出表情包时间线': 'Export sticker timeline',
     '导出颜色与表情包的 Resolve JSON，供兼容执行脚本批量导入': 'Export color and sticker Resolve JSON for compatible import scripts',
     '导出只包含表情包图片轨道的 OTIO 工程': 'Export an OTIO project containing only sticker image tracks',
+    '实验性 Premiere 交接：导出 FCP 7 XML': 'Experimental Premiere handoff: export FCP 7 XML',
     '在视频画面右上角预览当前时间的表情包': 'Preview stickers at the current time over the video',
     '选择工具（V，默认）：点击选中、拖动移动、拖动边界调整；Ctrl(Cmd)/Shift 多选，Shift+空白拖拽框选，Alt 临时反转相邻字幕联动，Alt+点击切换禁用': 'Select tool (V, default): click to select, drag to move, drag edges to trim; Ctrl(Cmd)/Shift multi-select, Shift+drag on blank area to box-select, Alt temporarily reverses adjacent-cue linking, Alt+click toggles disabled',
     '分割工具（R）：点击字幕块在指针位置安全拆分（按词/字级时间码对齐，拒绝 100ms 以内的边缘拆分）；Esc 切回选择': 'Razor tool (R): click a subtitle block to split at the pointer using word/character timing; splits within 100 ms of an edge are rejected; Esc returns to Select',
@@ -731,6 +751,14 @@
     return text;
   }
 
+  function validateTranslationKeys(keys) {
+    const values = Array.from(keys, (key) => String(key));
+    return {
+      zh: values.filter((key) => !(key in EN_TEXT) && !(key in EN_ATTR)),
+      en: values.filter((key) => translateText(key, EN) === key),
+    };
+  }
+
   function translateTextNode(node) {
     const parent = node.parentElement;
     if (!parent || parent.closest(SKIP_SELECTOR)) return;
@@ -832,6 +860,7 @@
     applyLanguage,
     start,
     translateText,
+    validateTranslationKeys,
   };
   global.MAWE?.register('i18n', () => global.MAWE_I18N);
 

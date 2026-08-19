@@ -152,6 +152,7 @@ __WAVEFORM_CSS__
     <span class="dropdown" id="extra-export-dropdown">
       <button id="extra-export-btn" title="导出表情包时间线">导出表情包时间线 ▾</button>
       <div class="dropdown-menu" id="extra-export-menu">
+        <div class="dropdown-item" id="download-fcp7-export" title="实验性 Premiere 交接：导出 FCP 7 XML">Premiere FCP 7 XML（实验性）</div>
         <div class="dropdown-item" id="download-resolve-json" title="导出颜色与表情包的 Resolve JSON，供兼容执行脚本批量导入">下载 Resolve JSON</div>
         <div class="dropdown-item" id="download-sticker-otio" title="导出只包含表情包图片轨道的 OTIO 工程">下载表情包 OTIO 工程</div>
       </div>
@@ -1134,6 +1135,42 @@ __WAVEFORM_CSS__
       <button id="filter-over" title="只显示超过阈值的字幕（再次点击关闭）">仅看超长</button>
     </div>
     <div class="cues-empty" id="cues-empty">加载工程后显示字幕列表</div>
+  </div>
+</div>
+
+<!-- Premiere FCP 7 XML 实验性交接导出。 -->
+<div class="modal-mask" id="fcp7-export-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="fcp7-export-title" aria-describedby="fcp7-export-description">
+    <h3 id="fcp7-export-title">Premiere FCP 7 XML（实验性）</h3>
+    <p class="modal-desc" id="fcp7-export-description">导出 FCP 7 XML 供 Premiere 交接。此交接尚未完成目标应用验证。</p>
+    <label for="fcp7-export-timeline-mode">导出时间线模式</label>
+    <select id="fcp7-export-timeline-mode">
+      <option value="gap_removed" selected>去空隙时间线</option>
+      <option value="source">原始时间线</option>
+    </select>
+    <label for="fcp7-export-fps">导出帧率</label>
+    <select id="fcp7-export-fps">
+      <option value="24">24 fps</option>
+      <option value="25">25 fps</option>
+      <option value="30" selected>30 fps</option>
+      <option value="30000/1001">30000/1001 fps</option>
+      <option value="50">50 fps</option>
+      <option value="60">60 fps</option>
+      <option value="60000/1001">60000/1001 fps</option>
+    </select>
+    <label for="fcp7-export-subtitle-tracks">导出扩展字幕轨</label>
+    <select id="fcp7-export-subtitle-tracks">
+      <option value="main" selected>主轨字幕</option>
+      <option value="main_and_extension">主轨与扩展轨字幕</option>
+    </select>
+    <label class="row" for="fcp7-export-native-text">
+      <input type="checkbox" id="fcp7-export-native-text"> 写入原生字幕文本对象
+    </label>
+    <p class="modal-hint">原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。</p>
+    <div class="actions">
+      <button type="button" id="fcp7-export-cancel">取消</button>
+      <button type="button" id="fcp7-export-confirm" class="primary">导出 XML</button>
+    </div>
   </div>
 </div>
 

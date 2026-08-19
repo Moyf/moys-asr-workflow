@@ -3500,6 +3500,7 @@
     <span class="dropdown" id="extra-export-dropdown">
       <button id="extra-export-btn" title="导出表情包时间线">导出表情包时间线 ▾</button>
       <div class="dropdown-menu" id="extra-export-menu">
+        <div class="dropdown-item" id="download-fcp7-export" title="实验性 Premiere 交接：导出 FCP 7 XML">Premiere FCP 7 XML（实验性）</div>
         <div class="dropdown-item" id="download-resolve-json" title="导出颜色与表情包的 Resolve JSON，供兼容执行脚本批量导入">下载 Resolve JSON</div>
         <div class="dropdown-item" id="download-sticker-otio" title="导出只包含表情包图片轨道的 OTIO 工程">下载表情包 OTIO 工程</div>
       </div>
@@ -4482,6 +4483,42 @@
       <button id="filter-over" title="只显示超过阈值的字幕（再次点击关闭）">仅看超长</button>
     </div>
     <div class="cues-empty" id="cues-empty">加载工程后显示字幕列表</div>
+  </div>
+</div>
+
+<!-- Premiere FCP 7 XML 实验性交接导出。 -->
+<div class="modal-mask" id="fcp7-export-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="fcp7-export-title" aria-describedby="fcp7-export-description">
+    <h3 id="fcp7-export-title">Premiere FCP 7 XML（实验性）</h3>
+    <p class="modal-desc" id="fcp7-export-description">导出 FCP 7 XML 供 Premiere 交接。此交接尚未完成目标应用验证。</p>
+    <label for="fcp7-export-timeline-mode">导出时间线模式</label>
+    <select id="fcp7-export-timeline-mode">
+      <option value="gap_removed" selected>去空隙时间线</option>
+      <option value="source">原始时间线</option>
+    </select>
+    <label for="fcp7-export-fps">导出帧率</label>
+    <select id="fcp7-export-fps">
+      <option value="24">24 fps</option>
+      <option value="25">25 fps</option>
+      <option value="30" selected>30 fps</option>
+      <option value="30000/1001">30000/1001 fps</option>
+      <option value="50">50 fps</option>
+      <option value="60">60 fps</option>
+      <option value="60000/1001">60000/1001 fps</option>
+    </select>
+    <label for="fcp7-export-subtitle-tracks">导出扩展字幕轨</label>
+    <select id="fcp7-export-subtitle-tracks">
+      <option value="main" selected>主轨字幕</option>
+      <option value="main_and_extension">主轨与扩展轨字幕</option>
+    </select>
+    <label class="row" for="fcp7-export-native-text">
+      <input type="checkbox" id="fcp7-export-native-text"> 写入原生字幕文本对象
+    </label>
+    <p class="modal-hint">原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。</p>
+    <div class="actions">
+      <button type="button" id="fcp7-export-cancel">取消</button>
+      <button type="button" id="fcp7-export-confirm" class="primary">导出 XML</button>
+    </div>
   </div>
 </div>
 
@@ -6084,6 +6121,623 @@
     return intervals;
   }
 
+  const EXPORT_FRAME_PROFILES = Object.freeze({
+    24: Object.freeze({ name: '24', numerator: 24, denominator: 1, fps: 24 }),
+    25: Object.freeze({ name: '25', numerator: 25, denominator: 1, fps: 25 }),
+    30: Object.freeze({ name: '30', numerator: 30, denominator: 1, fps: 30 }),
+    '30000/1001': Object.freeze({ name: '30000/1001', numerator: 30000, denominator: 1001, fps: 30000 / 1001 }),
+    50: Object.freeze({ name: '50', numerator: 50, denominator: 1, fps: 50 }),
+    60: Object.freeze({ name: '60', numerator: 60, denominator: 1, fps: 60 }),
+    '60000/1001': Object.freeze({ name: '60000/1001', numerator: 60000, denominator: 1001, fps: 60000 / 1001 }),
+  });
+
+  function resolveExportFrameProfile(fps, dropFrame = false) {
+    if (typeof dropFrame !== 'boolean') throw new Error('drop-frame option must be boolean');
+    const key = String(fps);
+    const profile = EXPORT_FRAME_PROFILES[key];
+    if (!profile) throw new Error(`unsupported export FPS: ${key}`);
+    if (dropFrame) throw new Error(`drop-frame export is unsupported for ${key}`);
+    return profile;
+  }
+
+  function exportMsToFrames(ms, fps, rounding = 'floor') {
+    const profile = typeof fps === 'object' && fps?.numerator
+      ? fps : resolveExportFrameProfile(fps, false);
+    const value = Math.max(0, Number(ms)) * profile.numerator / (1000 * profile.denominator);
+    if (!Number.isFinite(value)) throw new Error('invalid export time');
+    if (rounding === 'ceil') return Math.max(1, Math.ceil(value));
+    if (rounding !== 'floor') throw new Error(`unsupported frame rounding: ${rounding}`);
+    return Math.max(0, Math.floor(value));
+  }
+
+  function mapExportTime(policy, sourceMs) {
+    const source = Math.max(0, Math.round(Number(sourceMs) || 0));
+    const mapped = policy.mode === 'source' ? source : mapGapRemovedTime(source, policy.gaps);
+    return Math.min(policy.outputDurationMs ?? policy.sourceDurationMs, mapped);
+  }
+
+  function exportPolicyMsToFrames(policy, ms, rounding = 'floor') {
+    return exportMsToFrames(ms, policy.profile, rounding);
+  }
+
+  const EXPORT_SUBTITLE_TRACKS = Object.freeze(['main', 'extension', 'both', 'main_and_extension']);
+  const EXPORT_INVALID_NAME_CHARS = /[\\/<>:"|?*\u0000-\u001f]/g;
+  const EXPORT_OPTION_KEYS = Object.freeze([
+    'timelineMode', 'mode', 'fps', 'dropFrame', 'nativeTextObjects', 'subtitleTracks', 'baseName',
+  ]);
+
+  function normalizeExportOptions(options = {}) {
+    if (!options || typeof options !== 'object' || Array.isArray(options)) {
+      throw new Error('export options must be an object');
+    }
+    Object.keys(options).sort().forEach((key) => {
+      if (!EXPORT_OPTION_KEYS.includes(key)) throw new Error(`unknown export option: ${key}`);
+    });
+    const timelineMode = options.timelineMode ?? options.mode ?? 'gap_removed';
+    if (timelineMode !== 'source' && timelineMode !== 'gap_removed') {
+      throw new Error(`unsupported export mode: ${timelineMode}`);
+    }
+    const fps = String(options.fps ?? 30);
+    resolveExportFrameProfile(fps, options.dropFrame === true);
+    if (options.dropFrame !== undefined && typeof options.dropFrame !== 'boolean') {
+      throw new Error('drop-frame option must be boolean');
+    }
+    const subtitleTracks = options.subtitleTracks ?? 'main';
+    if (!EXPORT_SUBTITLE_TRACKS.includes(subtitleTracks)) {
+      throw new Error(`unsupported subtitle tracks: ${subtitleTracks}`);
+    }
+    const nativeTextObjects = options.nativeTextObjects ?? false;
+    if (typeof nativeTextObjects !== 'boolean') throw new Error('native text option must be boolean');
+    const dropFrame = options.dropFrame ?? false;
+    const baseName = String(options.baseName ?? 'maw-export').trim();
+    if (!baseName || baseName === '.' || baseName === '..' || /[\u0000-\u001f]/.test(baseName)) {
+      throw new Error('invalid export base name');
+    }
+    return Object.freeze({
+      timelineMode, fps, dropFrame, nativeTextObjects,
+      subtitleTracks: subtitleTracks === 'both' ? 'main_and_extension' : subtitleTracks, baseName,
+    });
+  }
+
+  function sanitizeExportName(value) {
+    const sanitized = String(value ?? '')
+      .replace(/\.[^.]+$/, '')
+      .replace(/[\\/]+/g, '_')
+      .replace(/^[.]+/, '_')
+      .replace(/\.\.(?=_|$)/g, '_')
+      .replace(EXPORT_INVALID_NAME_CHARS, '_')
+      .replace(/[. ]+$/, '')
+      .trim();
+    if (!sanitized || sanitized === '.' || sanitized === '..') throw new Error('invalid export base name');
+    if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i.test(sanitized)) return `_${sanitized}_`;
+    return sanitized;
+  }
+
+  function buildExportNames(baseName) {
+    const safeBaseName = sanitizeExportName(baseName);
+    return Object.freeze({
+      baseName: safeBaseName,
+      files: Object.freeze({
+        project: `${safeBaseName}.xml`,
+        subtitles: `${safeBaseName}.srt`,
+      }),
+    });
+  }
+
+  function escapeExportXml(value) {
+    const text = String(value ?? '');
+    for (const character of text) {
+      const codePoint = character.codePointAt(0);
+      if (codePoint < 0x20 && codePoint !== 0x09 && codePoint !== 0x0a && codePoint !== 0x0d) {
+        throw new Error('XML 1.0 forbidden control character');
+      }
+    }
+    return text.replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;',
+    }[character]));
+  }
+
+  function exportPathToFileUrl(value, { encodeDriveColon = false } = {}) {
+    const source = String(value ?? '').trim();
+    if (!source) throw new Error('missing export path');
+    if (/^file:\/\//i.test(source)) {
+      const match = /^file:\/\/([^/]*)(\/.*)?$/i.exec(source);
+      if (!match) throw new Error('invalid file URL');
+      const authority = match[1];
+      const pathValue = match[2] || '';
+      const driveUrlMatch = /^\/([A-Za-z]):\/(.*)$/.exec(pathValue);
+      if (authority.toLowerCase() === 'localhost' && driveUrlMatch) {
+        const encodedPath = driveUrlMatch[2].split('/').map((part) => encodeURIComponent(part)).join('/');
+        const drive = encodeDriveColon ? `${driveUrlMatch[1]}%3A` : `${driveUrlMatch[1]}:`;
+        return `file://localhost/${drive}/${encodedPath}`;
+      }
+      if (!authority && driveUrlMatch) {
+        const encodedDrivePath = driveUrlMatch[2].split('/').map((part) => encodeURIComponent(part)).join('/');
+        return `file://localhost/${driveUrlMatch[1]}:/${encodedDrivePath}`;
+      }
+      if (authority && !pathValue || authority && !/^\/[^/]+(?:\/|$)/.test(pathValue)) {
+        throw new Error('UNC file URL must include a share');
+      }
+      const encodedPath = pathValue.split('/').map((part) => encodeURIComponent(part)).join('/');
+      return `file://${authority}${encodedPath}`;
+    }
+    const normalized = source.replace(/\\/g, '/');
+    const uncMatch = /^\/\/([^/]+)(\/.*)?$/.exec(normalized);
+    if (uncMatch) {
+      const uncPath = uncMatch[2] || '';
+      if (!/^\/[^/]+(?:\/|$)/.test(uncPath)) throw new Error('UNC path must include a share');
+      const encodedUncPath = uncPath.split('/').map((part) => encodeURIComponent(part)).join('/');
+      return `file://${uncMatch[1]}${encodedUncPath}`;
+    }
+    const driveMatch = /^([A-Za-z]):\/(.*)$/.exec(normalized);
+    if (driveMatch) {
+      const encodedDriveParts = driveMatch[2].split('/').map((part) => encodeURIComponent(part)).join('/');
+      const drive = encodeDriveColon ? `${driveMatch[1]}%3A` : `${driveMatch[1]}:`;
+      return `file://localhost/${drive}/${encodedDriveParts}`;
+    }
+    const withLeadingSlash = normalized;
+    const rooted = withLeadingSlash.startsWith('/') ? withLeadingSlash : `/${withLeadingSlash}`;
+    const encoded = rooted.split('/').map((part, index) => (
+      index === 0 && part === '' ? '' : encodeURIComponent(part).replace(/^([A-Za-z])%3A$/, '$1:')
+    )).join('/');
+    return `file://${encoded}`;
+  }
+
+  function freezeExportValue(value, seen = new Set()) {
+    if (!value || typeof value !== 'object' || seen.has(value)) return value;
+    seen.add(value);
+    Object.values(value).forEach((child) => freezeExportValue(child, seen));
+    return Object.freeze(value);
+  }
+
+  function buildProjectExportPlan(project, options = {}) {
+    if (!project || typeof project !== 'object') throw new Error('invalid export project');
+    const media = project.media && typeof project.media === 'object' ? project.media : null;
+    const mediaPath = String((typeof project.media === 'string' ? project.media : '')
+      || media?.path || media?.mediaPath || '').trim();
+    const durationValue = options.durationMs ?? project.waveform?.duration_ms ?? project.duration_ms
+      ?? media?.durationMs ?? media?.duration_ms;
+    const durationMs = durationValue;
+    if (!mediaPath) throw new Error('missing export media path');
+    if (!Number.isInteger(durationMs) || durationMs <= 0) throw new Error('missing export media duration');
+    const requestedMode = options.timelineMode ?? options.mode ?? 'gap_removed';
+    if (requestedMode !== 'source' && requestedMode !== 'gap_removed') {
+      throw new Error(`unsupported export mode: ${requestedMode}`);
+    }
+    const mode = requestedMode;
+    if (options.dropFrame !== undefined && typeof options.dropFrame !== 'boolean') {
+      throw new Error('drop-frame option must be boolean');
+    }
+    const rawGaps = project.gaps !== undefined ? project.gaps : project.gap_remove?.gaps;
+    if (rawGaps != null && !Array.isArray(rawGaps)) throw new Error('invalid export gaps');
+    const malformedGap = (gap) => {
+      const start = gap?.start;
+      const end = gap?.end;
+      return !Number.isInteger(start) || start < 0
+        || !Number.isInteger(end) || end < 0 || end <= start;
+    };
+    if (Array.isArray(rawGaps) && rawGaps.some(malformedGap)) {
+      throw new Error('invalid export gap interval');
+    }
+    const gaps = Array.isArray(rawGaps)
+      ? rawGaps.map((gap) => ({
+        start: Math.max(0, Math.round(Number(gap.start))),
+        end: Math.max(0, Math.round(Number(gap.end))),
+        removed: gap.removed !== false,
+      }))
+      : [];
+    const keptIntervals = mode === 'source'
+      ? [{ start: 0, end: durationMs }]
+      : buildGapRemovedIntervals(durationMs, gaps);
+    const outputDurationMs = keptIntervals.reduce((sum, interval) => sum + interval.end - interval.start, 0);
+    if (outputDurationMs <= 0) throw new Error('export has no kept media');
+    const frameProfile = resolveExportFrameProfile(options.fps ?? 30, options.dropFrame === true);
+    const mapSourceToOutput = (sourceMs) => mode === 'source'
+      ? Math.max(0, Math.min(durationMs, Math.round(Number(sourceMs) || 0)))
+      : mapGapRemovedTime(sourceMs, gaps);
+    const warnings = [];
+    if (mode === 'gap_removed' && !gaps.some((gap) => gap.removed)) warnings.push({ code: 'no_removed_gaps' });
+    const projectSegments = Array.isArray(project.segments) ? project.segments : [];
+    const schemaExtension = Array.isArray(project.multi_subtitle?.tracks)
+      ? project.multi_subtitle.tracks.flatMap((track) => Array.isArray(track?.segments) ? track.segments : [])
+      : [];
+    const projectExtension = project.multi_subtitle?.enabled === true
+      ? schemaExtension
+      : (project.multi_subtitle == null && Array.isArray(project.extensionSegments)
+        ? project.extensionSegments : []);
+    const projectCues = (segments, track) => segments.map((segment, index) => {
+      if (!segment || segment.disabled) return null;
+      const rawStart = Math.round(Number(segment.start));
+      const rawEnd = Math.round(Number(segment.end));
+      const start = Math.min(durationMs, Math.max(0, rawStart));
+      const end = Math.min(durationMs, Math.max(start, rawEnd));
+      if (!Number.isInteger(segment?.start) || segment.start < 0
+        || !Number.isInteger(segment?.end) || segment.end < 0 || segment.end <= segment.start) {
+        warnings.push({ code: 'invalid_cue', track, index });
+        return null;
+      }
+      const mappedStart = mapSourceToOutput(start);
+      const mappedEnd = mapSourceToOutput(end);
+      if (mappedEnd <= mappedStart) {
+        warnings.push({ code: 'fully_removed_cue', track, index });
+        return null;
+      }
+      if (rawStart !== start || rawEnd !== end) warnings.push({ code: 'clamped_cue_to_duration', track, index });
+      return {
+        id: String(segment.id || `${track}-${index}`), track, index,
+        text: String(segment.text || ''), sourceStartMs: start, sourceEndMs: end,
+        startMs: mappedStart, endMs: mappedEnd,
+      };
+    }).filter(Boolean);
+    const cues = { main: projectCues(projectSegments, 'main'), extension: projectCues(projectExtension, 'extension') };
+    const stickers = [];
+    const stickerHeads = new Set();
+    const stickerRoot = String(project.sticker_root || project.stickerRoot || '').trim().replace(/[\\/]$/, '');
+    const resolveStickerPath = (sticker) => {
+      const rawPath = String(sticker?.rel || sticker?.filename || sticker?.path || sticker?.url || '').trim();
+      if (!rawPath || !stickerRoot || /^[A-Za-z]:[\\/]/.test(rawPath)
+        || rawPath.startsWith('/') || rawPath.startsWith('file://')) return rawPath;
+      return `${stickerRoot}/${rawPath.replace(/^[\\/]+/, '')}`;
+    };
+    projectSegments.forEach((segment, index) => {
+      const reference = segment?.sticker_ref;
+      const source = segment?.sticker || (reference && projectSegments[reference.headIdx]?.sticker);
+      if (reference && Number.isInteger(reference.headIdx)) {
+        const head = projectSegments[reference.headIdx];
+        if (!head?.sticker || head.disabled || reference.headIdx === index) {
+          warnings.push({ code: 'dangling_sticker_reference', index, headIdx: reference.headIdx });
+          return;
+        } else {
+          const headName = String(head.sticker.name || head.sticker.filename || '').replace(/\.[^.]+$/, '');
+          if (reference.name && headName && reference.name !== headName) {
+            warnings.push({ code: 'stale_sticker_reference', index, headIdx: reference.headIdx });
+          }
+        }
+      }
+      if (!source || segment.disabled || (segment.sticker && stickerHeads.has(index))) return;
+      if (segment.sticker) stickerHeads.add(index);
+      const timing = segment.sticker || segment;
+      const stickerStart = Number(timing.start);
+      const stickerEnd = Number(timing.end);
+      const rawStart = Math.round(Number.isFinite(stickerStart) ? stickerStart : Number(segment.start) || 0);
+      const rawEnd = Math.round(Number.isFinite(stickerEnd) ? stickerEnd : Number(segment.end) || 0);
+      const start = Math.min(durationMs, Math.max(0, rawStart));
+      const end = Math.min(durationMs, Math.max(start, rawEnd));
+      if (end <= start || mapSourceToOutput(end) <= mapSourceToOutput(start)) {
+        warnings.push({ code: 'fully_removed_sticker', index });
+        return;
+      }
+      const resolvedStickerPath = resolveStickerPath(source);
+      if (!resolvedStickerPath) {
+        warnings.push({ code: 'missing_sticker_path', index });
+        return;
+      }
+      if (rawStart !== start || rawEnd !== end) warnings.push({ code: 'clamped_sticker_to_duration', index });
+      stickers.push({
+        headIndex: index, name: String(source.name || ''),
+        path: resolvedStickerPath,
+        sourceStartMs: start, sourceEndMs: end,
+        startMs: mapSourceToOutput(start), endMs: mapSourceToOutput(end),
+      });
+    });
+    if (cues.main.length === 0 && cues.extension.length === 0) warnings.push({ code: 'no_enabled_cues' });
+    warnings.sort((left, right) => left.code.localeCompare(right.code) || (left.index ?? 0) - (right.index ?? 0));
+    const plan = {
+      media: { path: mediaPath, type: String(media?.type || 'video'), durationMs },
+      mode, sourceDurationMs: durationMs, keptIntervals, outputDurationMs,
+      mapping: { mode, sourceDurationMs: durationMs, outputDurationMs, gaps },
+      framePolicy: { profile: frameProfile, rounding: ['floor', 'ceil'], dropFrame: false },
+      cues, stickers, warnings, frameProfile,
+      subtitleFontFamily: premiereFontFamily(project.preview?.subtitle?.font_family),
+    };
+    Object.defineProperties(plan, {
+      mapSourceToOutput: { value: (sourceMs) => mapExportTime(plan.mapping, sourceMs), enumerable: false },
+      frameForMs: { value: (ms, rounding = 'floor') => exportMsToFrames(ms, frameProfile, rounding), enumerable: false },
+    });
+    return freezeExportValue(plan);
+  }
+
+  function assertExportPlan(plan) {
+    if (!plan || typeof plan !== 'object') throw new Error('invalid export plan');
+    if (!plan.media || !String(plan.media.path || '').trim()) throw new Error('missing export media path');
+    if (!Number.isInteger(plan.sourceDurationMs) || plan.sourceDurationMs <= 0) {
+      throw new Error('missing export media duration');
+    }
+    if (!plan.frameProfile || !Number.isInteger(plan.frameProfile.numerator)
+      || !Number.isInteger(plan.frameProfile.denominator)) {
+      throw new Error('missing export frame profile');
+    }
+    if (!Number.isInteger(plan.outputDurationMs) || plan.outputDurationMs <= 0) {
+      throw new Error('invalid export plan duration');
+    }
+    if (!Array.isArray(plan.keptIntervals) || !plan.keptIntervals.length
+      || plan.keptIntervals.some((interval) => !Number.isInteger(interval?.start)
+        || !Number.isInteger(interval?.end) || interval.end <= interval.start)) {
+      throw new Error('empty export interval');
+    }
+    const outputDuration = plan.outputDurationMs;
+    const cueLists = [plan.cues?.main, plan.cues?.extension].filter(Array.isArray);
+    if (cueLists.flat().some((cue) => cue.startMs < 0 || cue.endMs > outputDuration || cue.endMs <= cue.startMs)) {
+      throw new Error('export cue outside output duration');
+    }
+    if ((Array.isArray(plan.stickers) ? plan.stickers : []).some((sticker) => (
+      sticker.startMs < 0 || sticker.endMs > outputDuration || sticker.endMs <= sticker.startMs
+    ))) throw new Error('export sticker outside output duration');
+    return plan;
+  }
+
+  function exportPlanFrame(plan, ms, rounding) {
+    return exportMsToFrames(ms, plan.frameProfile, rounding);
+  }
+
+  function formatSrtTime(ms) {
+    const value = Math.max(0, Math.round(Number(ms) || 0));
+    const hours = Math.floor(value / 3600000);
+    const minutes = Math.floor((value % 3600000) / 60000);
+    const seconds = Math.floor((value % 60000) / 1000);
+    const milliseconds = value % 1000;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
+  }
+
+  function selectedSubtitleTracks(plan, subtitleTracks) {
+    const selected = subtitleTracks === 'main_and_extension' || subtitleTracks === 'both'
+      ? ['main', 'extension'] : subtitleTracks === 'extension' ? ['extension'] : ['main'];
+    return selected.flatMap((track) => Array.isArray(plan.cues?.[track]) ? plan.cues[track] : []);
+  }
+
+  function serializeMappedSrt(plan, options = {}) {
+    const exportPlan = assertExportPlan(plan);
+    if (options.subtitleTracks !== undefined && !EXPORT_SUBTITLE_TRACKS.includes(options.subtitleTracks)) {
+      throw new Error(`unsupported subtitle tracks: ${options.subtitleTracks}`);
+    }
+    const tracks = selectedSubtitleTracks(exportPlan, options.subtitleTracks || 'main');
+    return `${tracks.map((cue, index) => {
+      const start = Math.max(0, Math.round(Number(cue.startMs) || 0));
+      const end = Math.max(start + 1, Math.round(Number(cue.endMs) || 0));
+      return `${index + 1}\n${formatSrtTime(start)} --> ${formatSrtTime(end)}\n${String(cue.text || '')}\n`;
+    }).join('\n')}`;
+  }
+
+  function fcpRate(profile) {
+    return `<rate><timebase>${profile.numerator}/${profile.denominator}</timebase><ntsc>${profile.denominator === 1001 ? 'TRUE' : 'FALSE'}</ntsc></rate>`;
+  }
+
+  function fcpTimeRange(startMs, endMs, plan) {
+    const start = exportPlanFrame(plan, startMs, 'floor');
+    const end = Math.max(start + 1, exportPlanFrame(plan, endMs, 'ceil'));
+    return { start, end, duration: end - start };
+  }
+
+  function encodeGraphicAndTypeText(text, fontFamily = 'FangSong') {
+    const payload = {
+      mTextParam: {
+        mAlignment: 0,
+        mBackFillColor: 0,
+        mBackFillOpacity: 100,
+        mBackFillSize: 0,
+        mBackFillVisible: false,
+        mDefaultRun: [],
+        mHeight: 0,
+        mHindiDigits: false,
+        mIndic: false,
+        mIsMask: false,
+        mIsMaskInverted: false,
+        mIsVerticalText: false,
+        mLeading: 0,
+        mLigatures: false,
+        mLineCapType: 0,
+        mLineJoinType: 0,
+        mMiterLimit: 2.5,
+        mNumStrokes: 1,
+        mRTL: false,
+        mShadowAngle: 0,
+        mShadowBlur: 0,
+        mShadowColor: 0,
+        mShadowOffset: 0,
+        mShadowOpacity: 0,
+        mShadowSize: 0,
+        mShadowVisible: false,
+        mStyleSheet: {
+          mAdditionalStrokeColor: [],
+          mAdditionalStrokeVisible: [],
+          mAdditionalStrokeWidth: [],
+          mBaselineOption: { mParamValues: [[0, 0]] },
+          mBaselineShift: { mParamValues: [[0, 0]] },
+          mCapsOption: { mParamValues: [[0, 0]] },
+          mFauxBold: { mParamValues: [[0, false]] },
+          mFauxItalic: { mParamValues: [[0, false]] },
+          mFillColor: { mParamValues: [[0, 16777215]] },
+          mFillOverStroke: { mParamValues: [[0, true]] },
+          mFillVisible: { mParamValues: [[0, true]] },
+          mFontName: { mParamValues: [[0, fontFamily]] },
+          mFontSize: { mParamValues: [[0, 120]] },
+          mKerning: { mParamValues: [[0, 0]] },
+          mStrokeColor: { mParamValues: [[0, 16777215]] },
+          mStrokeVisible: { mParamValues: [[0, false]] },
+          mStrokeWidth: { mParamValues: [[0, 1]] },
+          mText: String(text ?? ''),
+          mTracking: { mParamValues: [[0, 0]] },
+          mTsumi: { mParamValues: [[0, 0]] },
+          mUnderline: { mParamValues: [[0, false]] },
+        },
+        mTabWidth: 400,
+        mWidth: 0,
+      },
+      mVersion: 1,
+    };
+    const json = JSON.stringify(payload);
+    const bytes = new Uint8Array(8 + json.length * 2);
+    bytes[0] = 0xf6;
+    bytes[1] = 0x0a;
+    for (let index = 0; index < json.length; index += 1) {
+      const code = json.charCodeAt(index);
+      bytes[8 + index * 2] = code & 0xff;
+      bytes[9 + index * 2] = code >>> 8;
+    }
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    if (typeof globalThis.btoa === 'function') return globalThis.btoa(binary);
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    let encoded = '';
+    for (let index = 0; index < bytes.length; index += 3) {
+      const first = bytes[index];
+      const second = bytes[index + 1];
+      const third = bytes[index + 2];
+      encoded += alphabet[first >> 2];
+      encoded += alphabet[((first & 3) << 4) | (second === undefined ? 0 : second >> 4)];
+      encoded += second === undefined ? '=' : alphabet[((second & 15) << 2) | (third === undefined ? 0 : third >> 6)];
+      encoded += third === undefined ? '=' : alphabet[third & 63];
+    }
+    return encoded;
+  }
+
+  function premiereFontFamily(value) {
+    const key = String(value ?? '').trim();
+    return ({
+      default: 'Arial',
+      yahei: 'Microsoft YaHei',
+      hei: 'SimHei',
+      song: 'FangSong',
+      sans: 'Arial',
+    })[key] || key || 'Arial';
+  }
+
+  function fcpClipItem({ id, fileId, name, path, sourceStartMs, sourceEndMs, startMs, endMs, startFrame, endFrame, plan, mediaKind, track, link, defineFile = true, encodeDriveColon = false }) {
+    const source = fcpTimeRange(sourceStartMs, sourceEndMs, plan);
+    const timeline = fcpTimeRange(startMs, endMs, plan);
+    const url = escapeExportXml(exportPathToFileUrl(path, { encodeDriveColon }));
+    const media = mediaKind === 'audio' ? '<sourcetrack><mediatype>audio</mediatype><trackindex>1</trackindex><channel>1</channel><channelcount>2</channelcount></sourcetrack>'
+      : '<sourcetrack><mediatype>video</mediatype><trackindex>1</trackindex></sourcetrack>';
+    const sourceDuration = exportPlanFrame(plan, plan.sourceDurationMs, 'ceil');
+    const fileMedia = mediaKind === 'audio'
+      ? `<media><audio><duration>${sourceDuration}</duration><channelcount>2</channelcount></audio></media>`
+      : `<media><video><duration>${sourceDuration}</duration></video><audio><duration>${sourceDuration}</duration><channelcount>2</channelcount></audio></media>`;
+    const file = defineFile
+      ? `<file id="${escapeExportXml(fileId)}"><name>${escapeExportXml(fileBasename(path))}</name><pathurl>${url}</pathurl><duration>${sourceDuration}</duration>${fcpRate(plan.frameProfile)}${fileMedia}</file>`
+      : `<file id="${escapeExportXml(fileId)}"/>`;
+    const frameStart = startFrame ?? timeline.start;
+    const frameEnd = Math.max(frameStart + 1, endFrame ?? timeline.end);
+    return `<clipitem id="${escapeExportXml(id)}"><name>${escapeExportXml(name)}</name><duration>${frameEnd - frameStart}</duration>${fcpRate(plan.frameProfile)}<start>${frameStart}</start><end>${frameEnd}</end><in>${source.start}</in><out>${source.end}</out>${file}${media}${link ? `<link><linkclipref>${escapeExportXml(link)}</linkclipref><mediatype>audio</mediatype><trackindex>1</trackindex><clipindex>1</clipindex></link>` : ''}<label>${escapeExportXml(track)}</label></clipitem>`;
+  }
+
+  function serializeFcp7Xml(plan, options = {}) {
+    const exportPlan = assertExportPlan(plan);
+    if (options.nativeTextObjects !== undefined && typeof options.nativeTextObjects !== 'boolean') {
+      throw new Error('native text option must be boolean');
+    }
+    const nativeTextObjects = options.nativeTextObjects === true;
+    const subtitleTracks = options.subtitleTracks || 'main';
+    if (!EXPORT_SUBTITLE_TRACKS.includes(subtitleTracks)) {
+      throw new Error(`unsupported subtitle tracks: ${subtitleTracks}`);
+    }
+    const mediaType = String(exportPlan.media.type || 'video').toLowerCase();
+    const hasVideo = mediaType !== 'audio';
+    const duration = exportPlanFrame(exportPlan, exportPlan.outputDurationMs, 'ceil');
+    let cursor = 0;
+    const sourceTracks = [];
+    const intervals = Array.isArray(exportPlan.keptIntervals) ? exportPlan.keptIntervals : [];
+    const boundaries = [0];
+    intervals.forEach((interval) => boundaries.push(boundaries[boundaries.length - 1]
+      + exportPlanFrame(exportPlan, interval.end - interval.start, 'floor')));
+    boundaries[boundaries.length - 1] = duration;
+    intervals.forEach((interval, index) => {
+      const range = fcpTimeRange(interval.start, interval.end, exportPlan);
+      const startMs = cursor * 1000 * exportPlan.frameProfile.denominator / exportPlan.frameProfile.numerator;
+      const endMs = (cursor + range.duration) * 1000 * exportPlan.frameProfile.denominator / exportPlan.frameProfile.numerator;
+      sourceTracks.push(fcpClipItem({
+        id: `video-clip-${index + 1}`, fileId: 'file-source-video-1', name: `${fileBasename(exportPlan.media.path)} [${index + 1}]`,
+        path: exportPlan.media.path, sourceStartMs: interval.start, sourceEndMs: interval.end,
+        startMs, endMs, startFrame: boundaries[index], endFrame: boundaries[index + 1], plan: exportPlan, mediaKind: mediaType, track: 'source', defineFile: index === 0,
+      }));
+      cursor += range.duration;
+    });
+    const audioTracks = hasVideo ? intervals.map((interval, index) => {
+      const range = fcpTimeRange(interval.start, interval.end, exportPlan);
+      const startMs = (intervals.slice(0, index).reduce((sum, prior) => sum + fcpTimeRange(prior.start, prior.end, exportPlan).duration, 0)) * 1000 * exportPlan.frameProfile.denominator / exportPlan.frameProfile.numerator;
+      const endMs = startMs + range.duration * 1000 * exportPlan.frameProfile.denominator / exportPlan.frameProfile.numerator;
+      return fcpClipItem({ id: `audio-clip-${index + 1}`, fileId: 'file-source-audio', name: `${fileBasename(exportPlan.media.path)} audio [${index + 1}]`, path: exportPlan.media.path, sourceStartMs: interval.start, sourceEndMs: interval.end, startMs, endMs, startFrame: boundaries[index], endFrame: boundaries[index + 1], plan: exportPlan, mediaKind: 'audio', track: 'source-audio', link: `video-clip-${index + 1}`, defineFile: index === 0 });
+    }) : [];
+    const videoTracks = hasVideo ? [`<track>${sourceTracks.join('')}</track>`] : [];
+    const stickerFileIds = new Map();
+    const stickerTracks = hasVideo ? (Array.isArray(exportPlan.stickers) ? exportPlan.stickers : []).map((sticker, index) => {
+      if (!String(sticker.path || '').trim()) return '';
+      const stickerKey = String(sticker.path);
+      const fileId = stickerFileIds.get(stickerKey) || `file-sticker-${stickerFileIds.size + 1}`;
+      const defineFile = !stickerFileIds.has(stickerKey);
+      stickerFileIds.set(stickerKey, fileId);
+      const clip = fcpClipItem({
+        id: `sticker-clip-${index + 1}`, fileId, name: `MAW sticker - ${sticker.name || index + 1}`,
+        path: sticker.path, sourceStartMs: 0, sourceEndMs: exportPlan.sourceDurationMs,
+        startMs: sticker.startMs, endMs: sticker.endMs, plan: exportPlan, mediaKind: 'video', track: `sticker-${index + 1}`,
+        defineFile, encodeDriveColon: true,
+      });
+      return `<track>${clip}</track>`;
+    }).filter(Boolean) : [];
+    const textTracks = nativeTextObjects && hasVideo ? (subtitleTracks === 'main_and_extension' || subtitleTracks === 'both'
+      ? ['main', 'extension'] : subtitleTracks === 'extension' ? ['extension'] : ['main']).map((track) => {
+      const cues = selectedSubtitleTracks(exportPlan, track);
+      const generators = cues.map((cue, index) => {
+        const range = fcpTimeRange(cue.startMs, cue.endMs, exportPlan);
+        const text = encodeGraphicAndTypeText(cue.text, exportPlan.subtitleFontFamily);
+        const clipId = `text-${track}-${index + 1}`;
+        return `<clipitem id="${clipId}"><name>MAW native text - ${escapeExportXml(track)}</name><enabled>TRUE</enabled><duration>${range.duration}</duration>${fcpRate(exportPlan.frameProfile)}<start>${range.start}</start><end>${range.end}</end><in>0</in><out>${range.duration}</out><file id="file-${clipId}"><name>MAW GraphicAndType</name><mediaSource>GraphicAndType</mediaSource><duration>${range.duration}</duration>${fcpRate(exportPlan.frameProfile)}<media><video><duration>${range.duration}</duration></video></media></file><filter><effect><name>GraphicAndType</name><effectid>GraphicAndType</effectid><effectcategory>graphic</effectcategory><effecttype>filter</effecttype><mediatype>video</mediatype><parameter authoringApp="MAW"><parameterid>1</parameterid><name>Source Text</name><value>${text}</value></parameter></effect></filter></clipitem>`;
+      }).join('');
+      return generators ? `<track>${generators}</track>` : '';
+    }).filter(Boolean) : [];
+    const video = hasVideo ? `<video>${videoTracks.concat(stickerTracks, textTracks).join('')}</video>` : '';
+    const audio = mediaType === 'audio' ? `<audio><track>${sourceTracks.join('')}</track></audio>` : `<audio><track>${audioTracks.join('')}</track></audio>`;
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xmeml>\n<xmeml version="5"><sequence id="MAW-sequence"><name>MAW FCP 7 Premiere handoff</name><duration>${duration}</duration>${fcpRate(exportPlan.frameProfile)}<media>${video}${audio}</media></sequence></xmeml>`;
+    return xml;
+  }
+
+  function buildFcp7ExportArtifacts(plan, options = {}) {
+    const exportPlan = assertExportPlan(plan);
+    const normalized = normalizeExportOptions({
+      timelineMode: exportPlan.mode,
+      fps: exportPlan.frameProfile.name,
+      ...options,
+    });
+    if (normalized.timelineMode !== exportPlan.mode
+      || normalized.fps !== exportPlan.frameProfile.name) {
+      throw new Error('export artifact options do not match the shared plan');
+    }
+    const names = buildExportNames(normalized.baseName);
+    const serializerOptions = {
+      nativeTextObjects: normalized.nativeTextObjects,
+      subtitleTracks: normalized.subtitleTracks,
+    };
+    return freezeExportValue([
+      {
+        kind: 'xml', filename: names.files.project, mime: 'application/xml',
+        content: serializeFcp7Xml(exportPlan, serializerOptions), plan: exportPlan,
+      },
+      {
+        kind: 'srt', filename: names.files.subtitles, mime: 'text/plain',
+        content: serializeMappedSrt(exportPlan, serializerOptions), plan: exportPlan,
+      },
+    ]);
+  }
+
+  const EXPORT_SAVE_STATUSES = Object.freeze(['cancelled', 'failed', 'dispatched', 'saved']);
+
+  async function saveSequentialExportArtifacts(artifacts, saveArtifact) {
+    if (!Array.isArray(artifacts) || artifacts.length !== 2
+      || artifacts[0]?.kind !== 'xml' || artifacts[1]?.kind !== 'srt') {
+      throw new Error('export artifacts must contain XML then SRT');
+    }
+    if (typeof saveArtifact !== 'function') throw new Error('save artifact callback is required');
+    const outcomes = { xml: 'not_attempted', srt: 'not_attempted', complete: false };
+    for (const artifact of artifacts) {
+      const result = await saveArtifact(artifact);
+      const status = result?.status;
+      if (!EXPORT_SAVE_STATUSES.includes(status)) throw new Error(`invalid export save status: ${status}`);
+      outcomes[artifact.kind] = status;
+      if (status === 'cancelled' || status === 'failed') return freezeExportValue(outcomes);
+    }
+    outcomes.complete = true;
+    return freezeExportValue(outcomes);
+  }
+
   function quoteFfconcatPath(value) {
     const normalized = String(value || '').trim().replace(/\\/g, '/');
     return `'${normalized.replace(/'/g, "'\\''")}'`;
@@ -6320,6 +6974,21 @@
     getRemovedGapRanges,
     mapGapRemovedTime,
     buildGapRemovedIntervals,
+    EXPORT_FRAME_PROFILES,
+    resolveExportFrameProfile,
+    exportMsToFrames,
+    mapExportTime,
+    exportPolicyMsToFrames,
+    normalizeExportOptions,
+    sanitizeExportName,
+    buildExportNames,
+    escapeExportXml,
+    exportPathToFileUrl,
+    buildProjectExportPlan,
+    serializeMappedSrt,
+    serializeFcp7Xml,
+    buildFcp7ExportArtifacts,
+    saveSequentialExportArtifacts,
     buildFfconcat,
     configuredEnterAction,
     isMacPlatform,
@@ -6363,6 +7032,25 @@
     '导出纯文本（TXT）': 'Export plain text (TXT)',
     '导出工程': 'Export project', '导出去空隙版本 ▾': 'Export gap-removed version ▾',
     '字幕 SRT': 'Subtitle SRT', '时间线 OTIO 工程': 'Timeline OTIO project',
+    '导出时间线模式': 'Export timeline mode', '去空隙时间线': 'Gap-removed timeline', '原始时间线': 'Source timeline',
+    '导出帧率': 'Export frame rate', '写入原生字幕文本对象': 'Write native subtitle text objects',
+    '导出扩展字幕轨': 'Export extension subtitle track', '主轨字幕': 'Main-track subtitles',
+    '主轨与扩展轨字幕': 'Main and extension subtitles', '导出文件名': 'Export filename',
+    '导出媒体路径缺失': 'Export media path is missing', '导出媒体时长缺失': 'Export media duration is missing',
+    '导出文件名无效': 'Export filename is invalid', '导出警告': 'Export warning',
+    'Premiere FCP 7 XML（实验性）': 'Premiere FCP 7 XML (experimental)',
+    '导出 FCP 7 XML 供 Premiere 交接。此交接尚未完成目标应用验证。': 'Export FCP 7 XML for Premiere handoff. This handoff has not completed target-application validation.',
+    '原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。': 'Native text is optional handoff data with no style or placement fidelity claim; export SRT with its separate button.',
+    '导出 XML': 'Export XML',
+    'FCP 7 XML 已保存，SRT 保存已取消': 'FCP 7 XML was saved; SRT save was cancelled',
+    'FCP 7 XML 已保存，SRT 保存失败': 'FCP 7 XML was saved; SRT save failed',
+    'FCP 7 XML 下载已发起，SRT 保存已取消': 'FCP 7 XML download was dispatched; SRT save was cancelled',
+    'FCP 7 XML 下载已发起，SRT 保存失败': 'FCP 7 XML download was dispatched; SRT save failed',
+    'FCP 7 XML 已保存': 'FCP 7 XML was saved',
+    'FCP 7 XML 下载已发起': 'FCP 7 XML download was dispatched',
+    'FCP 7 XML 保存已取消': 'FCP 7 XML save was cancelled',
+    'FCP 7 XML 保存失败': 'FCP 7 XML save failed',
+    'FCP 7 XML 导出失败': 'FCP 7 XML export failed',
     'FFconcat 文件': 'FFconcat file', '保留区域 JSON': 'Kept-regions JSON',
     '表情包 OTIO': 'Sticker OTIO', '导出表情包时间线 ▾': 'Export sticker timeline ▾',
     '下载 Resolve JSON': 'Download Resolve JSON',
@@ -6829,6 +7517,7 @@
     '导出表情包时间线': 'Export sticker timeline',
     '导出颜色与表情包的 Resolve JSON，供兼容执行脚本批量导入': 'Export color and sticker Resolve JSON for compatible import scripts',
     '导出只包含表情包图片轨道的 OTIO 工程': 'Export an OTIO project containing only sticker image tracks',
+    '实验性 Premiere 交接：导出 FCP 7 XML': 'Experimental Premiere handoff: export FCP 7 XML',
     '在视频画面右上角预览当前时间的表情包': 'Preview stickers at the current time over the video',
     '选择工具（V，默认）：点击选中、拖动移动、拖动边界调整；Ctrl(Cmd)/Shift 多选，Shift+空白拖拽框选，Alt 临时反转相邻字幕联动，Alt+点击切换禁用': 'Select tool (V, default): click to select, drag to move, drag edges to trim; Ctrl(Cmd)/Shift multi-select, Shift+drag on blank area to box-select, Alt temporarily reverses adjacent-cue linking, Alt+click toggles disabled',
     '分割工具（R）：点击字幕块在指针位置安全拆分（按词/字级时间码对齐，拒绝 100ms 以内的边缘拆分）；Esc 切回选择': 'Razor tool (R): click a subtitle block to split at the pointer using word/character timing; splits within 100 ms of an edge are rejected; Esc returns to Select',
@@ -7071,6 +7760,14 @@
     return text;
   }
 
+  function validateTranslationKeys(keys) {
+    const values = Array.from(keys, (key) => String(key));
+    return {
+      zh: values.filter((key) => !(key in EN_TEXT) && !(key in EN_ATTR)),
+      en: values.filter((key) => translateText(key, EN) === key),
+    };
+  }
+
   function translateTextNode(node) {
     const parent = node.parentElement;
     if (!parent || parent.closest(SKIP_SELECTOR)) return;
@@ -7172,6 +7869,7 @@
     applyLanguage,
     start,
     translateText,
+    validateTranslationKeys,
   };
   global.MAWE?.register('i18n', () => global.MAWE_I18N);
 
@@ -13358,6 +14056,13 @@ const stickerPreviewModal = document.getElementById('sticker-preview-modal');
 const projectMediaModal = document.getElementById('project-media-modal');
 const projectMediaSelectButton = document.getElementById('project-media-select');
 const projectMediaLaterButton = document.getElementById('project-media-later');
+const fcp7ExportModal = document.getElementById('fcp7-export-modal');
+const fcp7ExportTimelineMode = document.getElementById('fcp7-export-timeline-mode');
+const fcp7ExportFps = document.getElementById('fcp7-export-fps');
+const fcp7ExportSubtitleTracks = document.getElementById('fcp7-export-subtitle-tracks');
+const fcp7ExportNativeText = document.getElementById('fcp7-export-native-text');
+const fcp7ExportCancel = document.getElementById('fcp7-export-cancel');
+const fcp7ExportConfirm = document.getElementById('fcp7-export-confirm');
 const ctxmenu = document.getElementById('ctxmenu');
 const cuePanel = document.getElementById('current-cue-panel');
 const cuePanelPrev = document.getElementById('cue-panel-prev');
@@ -22450,7 +23155,7 @@ function buildGapRemovedStickerOtio() {
   return result.json;
 }
 
-async function downloadFile(content, filename, mime, accept) {
+async function downloadFile(content, filename, mime, accept, detailed = false) {
   // 优先尝试 File System Access API（弹出保存路径选择对话框）
   if (window.showSaveFilePicker) {
     try {
@@ -22461,10 +23166,11 @@ async function downloadFile(content, filename, mime, accept) {
       const w = await handle.createWritable();
       await w.write(new Blob([content], { type: mime + ';charset=utf-8' }));
       await w.close();
-      return true;
+      return detailed ? { status: 'saved' } : true;
     } catch (e) {
       // 用户取消保存对话框 — 静默退出，不回退
-      if (e && e.name === 'AbortError') return false;
+      if (e && e.name === 'AbortError') return detailed ? { status: 'cancelled' } : false;
+      if (detailed) return { status: 'failed' };
       // 其他错误（如安全限制、unsupported 文件类型）：回退到 anchor 下载
     }
   }
@@ -22475,7 +23181,7 @@ async function downloadFile(content, filename, mime, accept) {
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  return true;
+  return detailed ? { status: 'dispatched' } : true;
 }
 
 // === 标题区：媒体名点击复制 / 工程文件名点击复制 ===
@@ -23215,6 +23921,82 @@ if (jsonNameEl && !jsonNameEl.classList.contains('empty')) {
     if (name) copyText(name, `已复制：${name}`);
   });
 }
+
+function translatedEditorText(text) {
+  return window.MAWE_I18N?.translateText?.(text) || text;
+}
+
+function closeFcp7ExportModal() {
+  fcp7ExportModal.classList.remove('show');
+}
+
+function openFcp7ExportModal() {
+  if (editingState) finishEdit(true);
+  if (extensionEditingState) finishExtensionEdit(true);
+  commitCuePanelEdit();
+  const extensionAvailable = Boolean(getActiveExtensionTrack());
+  const extensionOption = fcp7ExportSubtitleTracks.querySelector('option[value="main_and_extension"]');
+  extensionOption.disabled = !extensionAvailable;
+  if (!extensionAvailable) fcp7ExportSubtitleTracks.value = 'main';
+  fcp7ExportNativeText.checked = false;
+  fcp7ExportModal.classList.add('show');
+  fcp7ExportTimelineMode.focus();
+}
+
+async function exportFcp7Xml() {
+  fcp7ExportConfirm.disabled = true;
+  try {
+    const durationMs = waveformEditor?.durationMs
+      || Math.round(Number(player?.duration) * 1000)
+      || DATA.waveform?.duration_ms
+      || 0;
+    const options = window.AsrEditorUtils.normalizeExportOptions({
+      timelineMode: fcp7ExportTimelineMode.value,
+      fps: fcp7ExportFps.value,
+      subtitleTracks: fcp7ExportSubtitleTracks.value,
+      nativeTextObjects: fcp7ExportNativeText.checked,
+      baseName: FILENAME_BASE,
+    });
+    const plan = window.AsrEditorUtils.buildProjectExportPlan(DATA, {
+      ...options,
+      durationMs: Math.round(durationMs),
+    });
+    const [artifact] = window.AsrEditorUtils.buildFcp7ExportArtifacts(plan, options);
+    closeFcp7ExportModal();
+    const result = await downloadFile(
+      artifact.content,
+      artifact.filename,
+      artifact.mime,
+      { desc: 'FCP 7 XML', types: { 'application/xml': ['.xml'] } },
+      true,
+    );
+    const messages = {
+      saved: ['FCP 7 XML 已保存', 'success'],
+      dispatched: ['FCP 7 XML 下载已发起', 'success'],
+      cancelled: ['FCP 7 XML 保存已取消', 'invalid'],
+      failed: ['FCP 7 XML 保存失败', 'warning'],
+    };
+    const [message, type] = messages[result.status] || messages.failed;
+    flashHint(translatedEditorText(message), type);
+  } catch (error) {
+    flashHint(`${translatedEditorText('FCP 7 XML 导出失败')}：${error.message}`, 'warning');
+  } finally {
+    fcp7ExportConfirm.disabled = false;
+  }
+}
+
+document.getElementById('download-fcp7-export').addEventListener('click', openFcp7ExportModal);
+fcp7ExportCancel.addEventListener('click', closeFcp7ExportModal);
+fcp7ExportConfirm.addEventListener('click', () => { void exportFcp7Xml(); });
+fcp7ExportModal.addEventListener('click', (event) => {
+  if (event.target === fcp7ExportModal) closeFcp7ExportModal();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !fcp7ExportModal.classList.contains('show')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeFcp7ExportModal();
+}, true);
 
 document.getElementById('download-srt').addEventListener('click', async () => {
   if (editingState) finishEdit(true);
@@ -24554,11 +25336,12 @@ function assignSticker(sticker) {
   pushUndo('分配表情包');
   if (stickerTargetMode === 'multi' && stickerTargetIdxs.length > 1) {
     const sorted = [...stickerTargetIdxs].sort((a, b) => a - b);
-    const start = DATA.segments[sorted[0]].start;
-    const end = DATA.segments[sorted[sorted.length - 1]].end;
     const headIdx = sorted[0];
-    // 头条：完整 sticker，时间跨整个范围
-    DATA.segments[headIdx].sticker = { ...sticker, start, end };
+    // 每条字幕都是一个独立的时间实例；head 只负责保存素材，不能把多条字幕
+    // 的时间范围合并成一条，否则 XML/OTIO 会把中间的引用压成连续长片段。
+    DATA.segments[headIdx].sticker = {
+      ...sticker, start: DATA.segments[headIdx].start, end: DATA.segments[headIdx].end,
+    };
     DATA.segments[headIdx].sticker_ref = null;
     // 后续条：sticker_ref 标记，便于显示和导航
     for (let i = 1; i < sorted.length; i++) {
