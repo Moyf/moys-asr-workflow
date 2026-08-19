@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const panels = { match: "toolboxMatchPanel", ocr: "toolboxOcrPanel", llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel" };
+  const panels = { waveform: "toolboxWaveformPanel", match: "toolboxMatchPanel", ocr: "toolboxOcrPanel", llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel" };
   const TASK_PROMPT_KEYS = { proofread: "toolbox_task_proofread", resegment: "toolbox_task_resegment", translate_en: "toolbox_task_translate_en", translate_zh: "toolbox_task_translate_zh" };
   const SUBTITLE_EXTS = new Set([".mosp", ".json", ".srt"]);
   const VIDEO_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"]);
@@ -28,12 +28,15 @@
   let pendingAutoStep = "";
   let busy = false;
   let inputManual = false;
+  let utilityMediaManual = false;
+  let activeToolboxSection = "postprocess";
   let ocrVideoManual = false;
   let saveStatusTimer = 0;
   let modelChoices = [];
   let modelChoicesOpen = false;
   let llmPrompts = {};
   let activeLlmOperation = "";
+  let artifactMenuTarget = null;
 
   function t(key) {
     return window.MAWLauncher.translate(key);
@@ -229,11 +232,21 @@
     name.classList.toggle("empty", !hasPath);
   }
 
+  function syncUtilityMediaName() {
+    const path = $("toolboxUtilityMediaPath").value.trim();
+    const name = $("toolboxUtilityMediaName");
+    const hasPath = Boolean(path);
+    name.textContent = hasPath ? fileName(path) : t("toolbox_input_empty");
+    name.title = path;
+    name.classList.toggle("empty", !hasPath);
+  }
+
   function syncPaths() {
     if (!inputManual) $("toolboxInputPath").value = autoSourcePath();
-    $("toolboxMediaPath").textContent = $("mediaPath").value.trim() || t("toolbox_no_media");
+    if (!utilityMediaManual) $("toolboxUtilityMediaPath").value = $("mediaPath").value.trim();
     syncOcrVideo();
     syncInputName();
+    syncUtilityMediaName();
   }
 
   function autoOcrVideoPath() {
@@ -305,31 +318,79 @@
   }
 
   function setOpen(open) {
+    const wasOpen = !$("toolboxDrawer").classList.contains("hidden");
     $("toolboxDrawer").classList.toggle("hidden", !open);
     $("toolboxFab").setAttribute("aria-expanded", String(open));
     syncPaths();
     if (open) $("toolboxClose").focus();
+    if (!open && wasOpen) $("toolboxFab").focus();
   }
 
   function setTestConnectionAttention(attention) {
     $("testLlmConnection")?.classList.toggle("attention", Boolean(attention));
   }
 
+  function toolboxSectionForTool(tool) {
+    return ["waveform", "ffconcat"].includes(tool) ? "utilities" : "postprocess";
+  }
+
+  function activeToolboxView() {
+    return activeToolboxSection === "postprocess" ? $("toolboxPostprocessView") : $("toolboxUtilitiesView");
+  }
+
+  function selectToolboxSection(section) {
+    activeToolboxSection = section;
+    document.querySelectorAll("[data-toolbox-section]").forEach((tab) => {
+      const active = tab.dataset.toolboxSection === section;
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", String(active));
+      tab.tabIndex = active ? 0 : -1;
+    });
+    $("toolboxPostprocessView").classList.toggle("hidden", section !== "postprocess");
+    $("toolboxUtilitiesView").classList.toggle("hidden", section !== "utilities");
+    const activeTab = activeToolboxView().querySelector(".toolbox-tab.active") || activeToolboxView().querySelector(".toolbox-tab");
+    if (activeTab) selectTool(activeTab.dataset.tool);
+  }
+
   function selectTool(tool) {
+    const section = toolboxSectionForTool(tool);
+    if (section !== activeToolboxSection) selectToolboxSection(section);
     document.querySelectorAll(".toolbox-tab").forEach((tab) => {
       const active = tab.dataset.tool === tool;
       tab.classList.toggle("active", active);
       tab.setAttribute("aria-selected", String(active));
+      tab.tabIndex = active ? 0 : -1;
     });
     Object.entries(panels).forEach(([name, id]) => $(id).classList.toggle("hidden", name !== tool));
     document.querySelectorAll("[data-tool-action]").forEach((action) => {
       action.classList.toggle("hidden", action.dataset.toolAction !== tool);
     });
+    $("toolboxInputDropZone").classList.toggle("hidden", section !== "postprocess");
+    $("toolboxChain").classList.toggle("hidden", section !== "postprocess" || !$("toolboxChainList").children.length);
+    $("toolboxOutputField").classList.toggle("hidden", section !== "postprocess");
+  }
+
+  function moveToolFocus(event) {
+    const tools = [...event.currentTarget.closest('[role="tablist"]').querySelectorAll(".toolbox-tab:not(.hidden)")];
+    const currentIndex = tools.indexOf(event.currentTarget);
+    if (currentIndex < 0) return;
+    const offset = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
+    const target = event.key === "Home"
+      ? tools[0]
+      : event.key === "End"
+        ? tools.at(-1)
+        : tools[(currentIndex + offset + tools.length) % tools.length];
+    if (!target) return;
+    event.preventDefault();
+    selectTool(target.dataset.tool);
+    target.focus();
   }
 
   function clampToolboxSize(width, height) {
-    const maxWidth = Math.max(TOOLBOX_MIN_WIDTH, window.innerWidth - 40);
-    const maxHeight = Math.max(TOOLBOX_MIN_HEIGHT, Math.min(TOOLBOX_MAX_HEIGHT, window.innerHeight - 156));
+    const viewportWidth = window.MAWLauncher.viewportPixelsToPage(window.innerWidth);
+    const viewportHeight = window.MAWLauncher.viewportPixelsToPage(window.innerHeight);
+    const maxWidth = Math.max(TOOLBOX_MIN_WIDTH, viewportWidth - 40);
+    const maxHeight = Math.max(TOOLBOX_MIN_HEIGHT, Math.min(TOOLBOX_MAX_HEIGHT, viewportHeight - 156));
     return {
       width: Math.round(Math.min(Math.max(width, TOOLBOX_MIN_WIDTH), maxWidth)),
       height: Math.round(Math.min(Math.max(height, TOOLBOX_MIN_HEIGHT), maxHeight)),
@@ -366,15 +427,21 @@
     handle.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
-      const rect = $("toolboxDrawer").getBoundingClientRect();
-      const start = { x: event.clientX, y: event.clientY, width: rect.width, height: rect.height };
-      let size = { width: rect.width, height: rect.height };
+      const drawer = $("toolboxDrawer");
+      const style = getComputedStyle(drawer);
+      const start = {
+        x: event.clientX,
+        y: event.clientY,
+        width: Number.parseFloat(style.width),
+        height: Number.parseFloat(style.height),
+      };
+      let size = { width: start.width, height: start.height };
       handle.setPointerCapture(event.pointerId);
       handle.classList.add("dragging");
       const onMove = (moveEvent) => {
         size = axis === "y"
-          ? applyToolboxSize(start.width, start.height + start.y - moveEvent.clientY)
-          : applyToolboxSize(start.width + start.x - moveEvent.clientX, start.height);
+          ? applyToolboxSize(start.width, start.height + window.MAWLauncher.viewportPixelsToPage(start.y - moveEvent.clientY))
+          : applyToolboxSize(start.width + window.MAWLauncher.viewportPixelsToPage(start.x - moveEvent.clientX), start.height);
       };
       const onEnd = () => {
         handle.removeEventListener("pointermove", onMove);
@@ -393,10 +460,12 @@
       event.preventDefault();
       const step = event.shiftKey ? 96 : 24;
       const grow = event.key === "ArrowUp" || event.key === "ArrowLeft";
-      const rect = $("toolboxDrawer").getBoundingClientRect();
+      const style = getComputedStyle($("toolboxDrawer"));
+      const width = Number.parseFloat(style.width);
+      const height = Number.parseFloat(style.height);
       const size = axis === "y"
-        ? applyToolboxSize(rect.width, rect.height + (grow ? step : -step))
-        : applyToolboxSize(rect.width + (grow ? step : -step), rect.height);
+        ? applyToolboxSize(width, height + (grow ? step : -step))
+        : applyToolboxSize(width + (grow ? step : -step), height);
       persistToolboxSize(size);
     });
   }
@@ -484,12 +553,40 @@
   function setBusy(nextBusy, statusKey = "toolbox_running") {
     busy = nextBusy;
     $("toolboxProgress").classList.toggle("hidden", !busy);
-    ["runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
+    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
       $(id).disabled = busy;
     });
     renderOcrModel();
     if (busy) setModelChoicesOpen(false);
     if (busy) setResult(t(statusKey));
+  }
+
+  async function generateWaveformProject(openEditor) {
+    const mediaPath = $("toolboxUtilityMediaPath").value.trim();
+    if (!mediaPath) {
+      setResult(t("toolbox_need_media"), "error");
+      return;
+    }
+    setBusy(true, "toolbox_status_starting");
+    try {
+      const result = await bridge("generate_waveform_project", {
+        mediaPath,
+        generateSpectral: $("toolboxGenerateSpectral").checked,
+      });
+      if (!result.ok) {
+        const errorKeys = new Set(["waveform_unavailable", "waveform_generation_failed"]);
+        setResult(errorKeys.has(result.code) ? t(result.code) : (result.error || result.detail || t("failed")), "error");
+        return;
+      }
+      if (openEditor) {
+        window.MAWLauncher.setJsonPath(result.projectPath);
+        await window.MAWLauncher.openServerEditor();
+      }
+      const warnings = Array.isArray(result.warnings) ? result.warnings : [];
+      setResult(`${t("toolbox_done")}\n${result.projectPath}${warnings.length ? `\n${warnings.join("\n")}` : ""}`, "success");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function resolveInputPaths() {
@@ -550,11 +647,62 @@
     button.classList.add("selected");
   }
 
+  function artifactLabel(kind) {
+    return t(kind === "project" ? "artifact_type_project" : "artifact_type_srt");
+  }
+
+  function renderArtifactButton(button) {
+    const label = artifactLabel(button.dataset.artifactKind);
+    const name = button.dataset.artifactName;
+    const path = button.dataset.artifactPath;
+    button.textContent = label;
+    button.title = `${name}\n${path}`;
+    button.setAttribute("aria-label", `${label}: ${name}; ${path}`);
+  }
+
+  function closeArtifactMenu({ restoreFocus = false } = {}) {
+    const target = artifactMenuTarget;
+    artifactMenuTarget = null;
+    $("artifactContextMenu").classList.add("hidden");
+    if (restoreFocus) target?.button.focus();
+  }
+
+  function openArtifactMenu(event, path, button) {
+    event.preventDefault();
+    event.stopPropagation();
+    closeArtifactMenu();
+    artifactMenuTarget = { path, button };
+    const menu = $("artifactContextMenu");
+    menu.classList.remove("hidden");
+    menu.style.left = "0";
+    menu.style.top = "0";
+    const rect = menu.getBoundingClientRect();
+    const inset = 8;
+    const left = Math.min(Math.max(event.clientX, inset), window.innerWidth - rect.width - inset);
+    const top = Math.min(Math.max(event.clientY, inset), window.innerHeight - rect.height - inset);
+    menu.style.left = `${window.MAWLauncher.viewportPixelsToPage(Math.max(inset, left))}px`;
+    menu.style.top = `${window.MAWLauncher.viewportPixelsToPage(Math.max(inset, top))}px`;
+    menu.querySelector('[role="menuitem"]')?.focus({ preventScroll: true });
+  }
+
+  async function runArtifactAction(action) {
+    const target = artifactMenuTarget;
+    if (!target) return;
+    closeArtifactMenu({ restoreFocus: true });
+    if (action === "select") {
+      selectChainPath(target.path, target.button);
+      return;
+    }
+    const result = await bridge(action, { path: target.path });
+    if (!result.ok) setResult(result.error || t("failed"), "error");
+  }
+
   function addChainResult(chain, result) {
-    const paths = [result.projectPath, result.srtPath]
-      .filter(Boolean)
-      .filter((path, index, all) => all.indexOf(path) === index);
-    if (!paths.length) return;
+    const artifacts = [
+      { kind: "project", path: result.projectPath },
+      { kind: "srt", path: result.srtPath },
+    ].filter((artifact, index, all) => artifact.path && all.findIndex((candidate) => candidate.path === artifact.path) === index);
+    if (!artifacts.length) return;
     const container = $("toolboxChain");
     const list = $("toolboxChainList");
     const item = document.createElement("div");
@@ -566,15 +714,17 @@
     files.className = "toolbox-chain-files";
     const activePath = result.projectPath || result.srtPath || "";
     if (activePath) clearChainSelection();
-    paths.forEach((path) => {
+    artifacts.forEach(({ kind, path }) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "toolbox-chain-file";
       button.classList.toggle("selected", path === activePath);
-      button.textContent = fileName(path);
-      button.title = path;
-      button.setAttribute("aria-label", `${label.textContent}: ${path}`);
+      button.dataset.artifactKind = kind;
+      button.dataset.artifactName = fileName(path);
+      button.dataset.artifactPath = path;
+      renderArtifactButton(button);
       button.addEventListener("click", () => selectChainPath(path, button));
+      button.addEventListener("contextmenu", (event) => openArtifactMenu(event, path, button));
       button.addEventListener("dblclick", async (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -1120,24 +1270,24 @@
   }
 
   async function runFfconcat() {
-    const mediaPath = $("mediaPath").value.trim();
+    const mediaPath = $("toolboxUtilityMediaPath").value.trim();
     const ffconcatPath = $("postprocessFfconcatPath").value.trim();
     if (!mediaPath) {
       setResult(t("toolbox_need_media"), "error");
       return;
     }
     if (extension(ffconcatPath) !== ".ffconcat") {
-      setFieldError("postprocessFfconcat", t("toolbox_need_ffconcat"));
+      setFieldError("postprocessFfconcatPath", t("toolbox_need_ffconcat"));
       setResult(t("toolbox_need_ffconcat"), "error");
       return;
     }
-    setFieldError("postprocessFfconcat", "");
+    setFieldError("postprocessFfconcatPath", "");
     setBusy(true, "toolbox_status_starting");
     try {
       const result = await bridge("run_ffconcat_rebuild", { mediaPath, ffconcatPath });
       if (result.ok) {
-        $("mediaPath").value = result.mediaPath;
-        $("mediaPath").dispatchEvent(new Event("input", { bubbles: true }));
+        utilityMediaManual = true;
+        $("toolboxUtilityMediaPath").value = result.mediaPath;
         syncPaths();
         setResult(`${t("toolbox_media_done")}\n${result.mediaPath}`, "success");
       } else setResult(result.error || result.detail || t("failed"), "error");
@@ -1160,7 +1310,7 @@
     renderTaskPrompt();
     renderOcrRegion();
     renderOcrModel();
-    selectTool("match");
+    selectToolboxSection("postprocess");
     syncPaths();
     initializeAutoPostprocess();
   }
@@ -1171,7 +1321,26 @@
     event.stopPropagation();
     if (!event.target?.closest?.(".toolbox-content")) event.preventDefault();
   }, { passive: false });
-  document.querySelectorAll(".toolbox-tab").forEach((tab) => tab.addEventListener("click", () => selectTool(tab.dataset.tool)));
+  document.querySelectorAll("[data-toolbox-section]").forEach((tab) => {
+    tab.addEventListener("click", () => selectToolboxSection(tab.dataset.toolboxSection));
+    tab.addEventListener("keydown", (event) => {
+      if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
+      const tabs = [...$("toolboxPrimaryTabList").querySelectorAll("[data-toolbox-section]")];
+      const currentIndex = tabs.indexOf(tab);
+      const offset = event.key === "ArrowRight" ? 1 : -1;
+      const target = event.key === "Home" ? tabs[0] : event.key === "End" ? tabs.at(-1) : tabs[(currentIndex + offset + tabs.length) % tabs.length];
+      if (!target) return;
+      event.preventDefault();
+      selectToolboxSection(target.dataset.toolboxSection);
+      target.focus();
+    });
+  });
+  document.querySelectorAll(".toolbox-tab").forEach((tab) => {
+    tab.addEventListener("click", () => selectTool(tab.dataset.tool));
+    tab.addEventListener("keydown", (event) => {
+      if (["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp", "Home", "End"].includes(event.key)) moveToolFocus(event);
+    });
+  });
   $("postprocessProvider").addEventListener("change", () => { renderProvider(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("postprocessOperation").addEventListener("change", () => switchLlmOperation($("postprocessOperation").value));
   $("llmProvider").addEventListener("change", () => { $("postprocessProvider").value = $("llmProvider").value; renderProvider(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
@@ -1180,6 +1349,8 @@
   $("getLlmModels").addEventListener("click", getModels);
   $("llmModelChoicesToggle").addEventListener("mousedown", (event) => event.preventDefault());
   $("llmModelChoicesToggle").addEventListener("click", () => setModelChoicesOpen(!modelChoicesOpen));
+  $("generateWaveform").addEventListener("click", () => { void generateWaveformProject(false); });
+  $("runWaveform").addEventListener("click", () => { void generateWaveformProject(true); });
   $("runScriptMatch").addEventListener("click", runScriptMatch);
   $("runOcrDedup").addEventListener("click", runOcrDedup);
   $("ocrModel").addEventListener("change", renderOcrModel);
@@ -1209,6 +1380,15 @@
       syncInputName();
     }
   });
+  $("pickToolboxUtilityMedia").addEventListener("click", async () => {
+    const result = await bridge("choose_file", { kind: "media" });
+    if (result.ok) {
+      utilityMediaManual = true;
+      $("toolboxUtilityMediaPath").value = result.path;
+      setFieldError("toolboxUtilityMediaPath", "");
+      syncUtilityMediaName();
+    }
+  });
   $("pickOcrVideo").addEventListener("click", async () => {
     const result = await bridge("choose_file", { kind: "video" });
     if (result.ok) {
@@ -1229,16 +1409,17 @@
     syncOcrVideo();
     syncInputName();
   });
+  $("toolboxUtilityMediaPath").addEventListener("input", () => {
+    utilityMediaManual = Boolean($("toolboxUtilityMediaPath").value.trim());
+    setFieldError("toolboxUtilityMediaPath", "");
+    syncPaths();
+  });
   $("ocrVideoPath").addEventListener("input", () => {
     ocrVideoManual = Boolean($("ocrVideoPath").value.trim());
     setFieldError("ocrVideoPath", "");
   });
   $("ocrRegionMode").addEventListener("change", renderOcrRegion);
   $("ocrThreshold").addEventListener("input", () => setFieldError("ocrThreshold", ""));
-  $("toolboxIssuesLink").addEventListener("click", (event) => {
-    event.preventDefault();
-    bridge("open_url", { url: "https://github.com/Moyf/moys-asr-workflow/issues" });
-  });
   $("openLlmSettings").addEventListener("click", () => { window.MAWLauncher.openSettings("llmSettingsSection"); requestAnimationFrame(() => $("llmApiKey")?.focus()); });
   $("postprocessScriptPath").addEventListener("input", () => { setFieldError("postprocessScriptPath", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
   $("postprocessPrompt").addEventListener("input", () => {
@@ -1259,6 +1440,12 @@
   document.addEventListener("click", (event) => {
     if (!event.target?.closest?.(".llm-model-picker")) setModelChoicesOpen(false);
   });
+  document.addEventListener("pointerdown", (event) => {
+    if (artifactMenuTarget && !event.target?.closest?.("#artifactContextMenu")) closeArtifactMenu();
+  });
+  $("artifactSetTarget").addEventListener("click", () => { void runArtifactAction("select"); });
+  $("artifactOpenFolder").addEventListener("click", () => { void runArtifactAction("open_containing_folder"); });
+  $("artifactOpenFile").addEventListener("click", () => { void runArtifactAction("open_file"); });
   ["llmApiKey", "llmBaseUrl", "llmModel", "llmReasoningMode"].forEach((id) => {
     $(id).addEventListener("input", () => setFieldError(id, ""));
     $(id).addEventListener("change", () => setFieldError(id, ""));
@@ -1299,7 +1486,13 @@
   });
   ["jsonPath", "srtPath", "mediaPath"].forEach((id) => $(id).addEventListener("input", syncPaths));
   document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || busy) return;
+    if (event.key !== "Escape") return;
+    if (artifactMenuTarget) {
+      event.preventDefault();
+      closeArtifactMenu({ restoreFocus: true });
+      return;
+    }
+    if (busy) return;
     if (modelChoicesOpen) {
       setModelChoicesOpen(false);
       return;
@@ -1315,6 +1508,9 @@
     if (event.stage === "step_done") setResult(`${autoStepLabel(event.step)}：${t("toolbox_done")}`, "success");
   };
   window.MAWLauncher.getAutoPostprocessPayload = autoPlanFromControls;
+  window.MAWLauncher.onLanguageChanged = () => {
+    document.querySelectorAll(".toolbox-chain-file").forEach(renderArtifactButton);
+  };
   window.MAWLauncher.openAutoPostprocessStep = openAutoStep;
   window.MAWLauncher.onOcrRuntimeChanged = () => {
     renderOcrModel();

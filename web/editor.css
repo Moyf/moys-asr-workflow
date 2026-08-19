@@ -1164,7 +1164,9 @@
   /* 字幕编辑区工具栏不出现横向滚动条：空间不足时压缩按键提示并用省略号截断，
      后置齿轮按钮（settings-anchor，flex 不收缩）始终保持完整可见。 */
   .waveform-status.cue-editor-key-hints {
-    display: block;
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
     flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
@@ -1175,7 +1177,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    margin-left: 14px;
+    margin-left: 0;
   }
   .cue-editor-key-hint:first-child { margin-left: 0; }
   .help-tip-callout {
@@ -1908,7 +1910,12 @@
     width: 100%;
     min-width: 0;
   }
-  #sticker-root-modal .modal { width: 540px; }
+  #sticker-root-modal { z-index: 280; }
+  #sticker-root-modal .modal {
+    width: min(540px, calc(100vw - 32px));
+    min-width: 0;
+    max-height: calc(100dvh - 32px);
+  }
   .editor-settings-hint { display: block; max-width: 100%; font-size: 12px; line-height: 1.35; color: var(--text-muted); margin: 0; }
   .editor-settings-hint[hidden] { display: none; }
   .modal .preview {

@@ -148,6 +148,21 @@ test('uses display defaults for each built-in workspace preset', () => {
   assert.equal(builtinWorkspaces['wave-right'].editorDisplay.cueEditorShowTimeActions, false);
 });
 
+test('captures and clamps semantic waveform top-edge anchors', () => {
+  assert.equal(helpers.waveformTopEdgeMs({ mode: 'basic', basicWindowStartMs: 1234 }), 1234);
+  assert.equal(helpers.waveformTopEdgeMs({ mode: 'basic', basicWindowStartMs: -4 }), 0);
+  assert.equal(helpers.waveformTopEdgeMs({ mode: 'multi', scrollTop: 265, rowHeight: 120, rowGap: 10, secondsPerRow: 10 }), 20000);
+  assert.equal(helpers.waveformTopEdgeMs({ mode: 'multi', scrollTop: 0, rowHeight: 120, rowGap: 10, secondsPerRow: 10 }), 0);
+});
+
+test('restores semantic waveform anchors without accepting malformed values', () => {
+  assert.equal(helpers.restoreWaveformTopEdgeMs({ mode: 'basic', durationMs: 60000, visibleSeconds: 10 }, 55000), 50000);
+  assert.equal(helpers.restoreWaveformTopEdgeMs({ mode: 'basic', durationMs: 60000, visibleSeconds: 10 }, -1), 0);
+  assert.equal(helpers.restoreWaveformTopEdgeMs({ mode: 'basic', durationMs: 60000, visibleSeconds: 10 }, 1.5), null);
+  assert.equal(helpers.restoreWaveformTopEdgeMs({ mode: 'multi', durationMs: 60000, secondsPerRow: 10 }, 25500), 20000);
+  assert.equal(helpers.restoreWaveformTopEdgeMs({ mode: 'multi', durationMs: 60000, secondsPerRow: 10 }, 'bad'), null);
+});
+
 
 test('registers the three-fold built-in workspace from the example layout', () => {
   const workspace = builtinWorkspaces['three-fold'];

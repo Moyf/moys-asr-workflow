@@ -15,6 +15,23 @@ from maw import gui_config  # noqa: E402
 
 
 class GuiConfigTests(unittest.TestCase):
+    def test_zoom_percent_defaults_and_clamps_to_five_point_bounds(self) -> None:
+        self.assertEqual(gui_config.normalize_zoom_percent(None), 100)
+        self.assertEqual(gui_config.normalize_zoom_percent("NaN"), 100)
+        self.assertEqual(gui_config.normalize_zoom_percent("79"), 80)
+        self.assertEqual(gui_config.normalize_zoom_percent("151"), 150)
+        self.assertEqual(gui_config.normalize_zoom_percent("105"), 105)
+
+    def test_effective_config_reads_zoom_percent(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            _ = env_path.write_text("MAW_GUI_ZOOM_PERCENT=115\n", encoding="utf-8")
+
+            with mock.patch.dict(os.environ, {}, clear=True):
+                resolved = gui_config.effective_config(env_path)
+
+        self.assertEqual(resolved.zoom_percent, 115)
+
     def test_default_env_path_uses_macos_application_support(self) -> None:
         with mock.patch.object(gui_config.sys, "platform", "darwin"):
             with mock.patch.object(gui_config.Path, "home", return_value=Path("/Users/test-user")):
