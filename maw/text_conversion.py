@@ -66,9 +66,9 @@ def apply_text_conversion(segments: list[JsonDict], mode: object) -> bool:
         converted = convert_text(original, conversion)
         if converted == original:
             continue
-        segment["text"] = converted
         if not _convert_items(segment, conversion, converted):
             segment.pop("items", None)
+        segment["text"] = converted
         changed = True
     return changed
 
@@ -76,6 +76,9 @@ def apply_text_conversion(segments: list[JsonDict], mode: object) -> bool:
 def _convert_items(segment: JsonDict, mode: TextConversion, expected_text: str) -> bool:
     raw_items = segment.get("items")
     if not isinstance(raw_items, list) or not raw_items:
+        return False
+    original_text = segment.get("text")
+    if not isinstance(original_text, str):
         return False
     converted_items: list[JsonDict] = []
     for raw_item in raw_items:
@@ -85,7 +88,17 @@ def _convert_items(segment: JsonDict, mode: TextConversion, expected_text: str) 
         item["text"] = convert_text(str(raw_item["text"]), mode)
         converted_items.append(item)
     if "".join(str(item["text"]) for item in converted_items) != expected_text:
-        return False
+        if len(original_text) != len(expected_text):
+            return False
+        if "".join(str(item.get("text") or "") for item in raw_items) != original_text:
+            return False
+        offset = 0
+        for item, raw_item in zip(converted_items, raw_items):
+            length = len(str(raw_item["text"]))
+            item["text"] = expected_text[offset : offset + length]
+            offset += length
+        if offset != len(expected_text):
+            return False
     segment["items"] = converted_items
     return True
 

@@ -186,6 +186,38 @@ class PostprocessTests(unittest.TestCase):
             [("软", 0, 500), ("件", 500, 1000)],
         )
 
+    def test_fixed_process_rechunks_equal_length_phrase_conversion_items(self) -> None:
+        project = {
+            "segments": [{
+                "start": 0,
+                "end": 1000,
+                "text": "一只猫",
+                "items": [
+                    {"start": 0, "end": 200, "text": "一"},
+                    {"start": 200, "end": 400, "text": "只"},
+                    {"start": 400, "end": 1000, "text": "猫"},
+                ],
+            }],
+        }
+        _ = self.project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+
+        result = run_fixed_process(FixedProcessRequest(
+            project_path=self.project_path,
+            srt_path=None,
+            output_mode=OutputMode.JSON,
+            replacements=(),
+            conversion=TextConversion.TO_TRADITIONAL,
+        ))
+
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project file")
+        converted = project_segments(read_project(result.project_path))[0]
+        self.assertEqual(converted["text"], "一隻貓")
+        self.assertEqual(
+            [(item["text"], item["start"], item["end"]) for item in converted["items"]],
+            [("一", 0, 200), ("隻", 200, 400), ("貓", 400, 1000)],
+        )
+
     def test_srt_only_output_is_the_authoritative_next_input(self) -> None:
         first = run_fixed_replacement(
             ReplacementRequest(
