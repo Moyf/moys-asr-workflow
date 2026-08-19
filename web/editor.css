@@ -530,6 +530,10 @@
     font-size: var(--subtitle-preview-font-size);
     color: #ffd34d;
   }
+  .player-wrap.empty-state .subtitle-overlay .subtitle-extension-text {
+    background: transparent;
+    text-shadow: none;
+  }
   .subtitle-overlay.hidden { display: none; }
   /* 几何编辑盒（字幕预览 / 表情包预览共用）：
      点击聚焦 / 控制点编辑 / 正在拖动缩放时显示实线框与方形手柄；hover 不显示。 */

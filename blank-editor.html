@@ -548,6 +548,10 @@
     font-size: var(--subtitle-preview-font-size);
     color: #ffd34d;
   }
+  .player-wrap.empty-state .subtitle-overlay .subtitle-extension-text {
+    background: transparent;
+    text-shadow: none;
+  }
   .subtitle-overlay.hidden { display: none; }
   /* 几何编辑盒（字幕预览 / 表情包预览共用）：
      点击聚焦 / 控制点编辑 / 正在拖动缩放时显示实线框与方形手柄；hover 不显示。 */
@@ -3210,7 +3214,7 @@
 /* 分组徽章：放在块上方的行内区域（bottom = 块高35 + 块底7 + 间距2），
    纯视觉提示不遮挡块内文字；left 由 JS 按块位置写入 */
 .waveform-cue-badge {
-  position: absolute; bottom: calc(44px + var(--badge-stack-index, 0) * 16px); z-index: 6;
+  position: absolute; bottom: calc(44px + var(--badge-stack-index, 0) * 16px); z-index: 7;
   font-size: 11px; line-height: 1.3; padding: 1px 5px; white-space: nowrap;
   color: var(--text-secondary); background: var(--wave-badge-bg); border-radius: 3px;
   pointer-events: none; font-family: var(--font-mono);
