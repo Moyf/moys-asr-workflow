@@ -1,0 +1,22 @@
+{
+  "media": "C:\\MAW Fixtures\\测试 & take's \"< >.mp4",
+  "waveform": { "duration_ms": 6000 },
+  "gap_remove": {
+    "gaps": [
+      { "start": 1000, "end": 1600, "removed": true },
+      { "start": 4000, "end": 4500, "removed": true }
+    ]
+  },
+  "segments": [
+    {
+      "id": "cue-1",
+      "start": 0,
+      "end": 900,
+      "text": "CJK & quoted <text>",
+      "sticker": {
+        "name": "头部 <&>",
+        "rel": "stickers\\nested\\猫 & \".png"
+      }
+    }
+  ]
+}

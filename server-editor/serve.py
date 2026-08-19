@@ -50,6 +50,14 @@ from maw.media import MEDIA_EXTENSIONS, MediaConversionError, MediaResolutionErr
 MAX_RECENT_PROJECTS = 10
 SETTINGS_FILE_NAME = "server-editor-settings.json"
 BUILTIN_WORKSPACE_IDS = frozenset({"classic", "wave-right", "three-fold", "cinema"})
+PRPROJ_CAPABILITY = {
+    "ok": False,
+    "capability": "prproj",
+    "supported": False,
+    "reason": "no_pinned_writer_or_profile",
+    "profile": None,
+    "route": "/api/prproj",
+}
 
 
 class ByteRange(NamedTuple):
@@ -750,6 +758,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.open_recent_project()
         elif path == "/api/settings":
             self.update_settings()
+        elif path == "/api/prproj":
+            self.send_json(HTTPStatus.NOT_IMPLEMENTED, PRPROJ_CAPABILITY)
         else:
             self.send_localized_error(HTTPStatus.NOT_FOUND, "未知 API")
 
@@ -910,6 +920,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
 
     def handle_request(self, *, include_body: bool) -> None:
         path = urlsplit(self.path).path
+        if path == "/api/prproj-capability":
+            self.send_json(HTTPStatus.OK, PRPROJ_CAPABILITY)
+            return
         if path == "/api/waveform":
             self.send_json(HTTPStatus.OK, self.editor_server.reapeaks_status_payload())
             return

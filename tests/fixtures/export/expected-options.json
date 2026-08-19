@@ -1,0 +1,8 @@
+{
+  "timelineMode": "gap_removed",
+  "fps": "30000/1001",
+  "dropFrame": false,
+  "nativeTextObjects": false,
+  "subtitleTracks": "main",
+  "baseName": "测试-take"
+}

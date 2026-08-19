@@ -117,6 +117,52 @@ class LocalEditorServerTests(unittest.TestCase):
             thread.join(timeout=2)
             self.assertFalse(thread.is_alive())
 
+    def test_prproj_capability_endpoint_is_stable_and_loopback_only(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                self.assertEqual(server.server_address[0], "127.0.0.1")
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                with urllib.request.urlopen(f"{base_url}/api/prproj-capability") as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(response.headers["Content-Type"], "application/json; charset=utf-8")
+                    self.assertEqual(int(response.headers["Content-Length"]), len(response.read()))
+                with urllib.request.urlopen(f"{base_url}/api/prproj-capability") as response:
+                    self.assertEqual(json.loads(response.read()), server_editor.PRPROJ_CAPABILITY)
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_prproj_generation_route_refuses_without_writing(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        output_path = self.root / "attempted.prproj"
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                request = urllib.request.Request(
+                    f"{base_url}/api/prproj",
+                    data=json.dumps({"output": str(output_path)}).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with self.assertRaises(urllib.error.HTTPError) as context:
+                    urllib.request.urlopen(request)
+                error = context.exception
+                self.assertEqual(error.code, 501)
+                self.assertEqual(json.loads(error.read()), server_editor.PRPROJ_CAPABILITY)
+                self.assertFalse(output_path.exists())
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
     def test_server_page_uses_shared_template_and_routes_stickers(self) -> None:
         project = server_editor.load_project(
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
