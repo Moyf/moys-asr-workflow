@@ -1011,7 +1011,7 @@
     $("postprocessScriptPath").value = String(match.scriptPath || "");
     const replace = byId.get("replace") || {};
     $("postprocessReplacements").value = (Array.isArray(replace.replacements) ? replace.replacements : []).map((item) => `${item.source || ""} => ${item.target || ""}`).join("\n");
-    $("postprocessConversion").value = ["to_simplified", "to_traditional", "to_traditional_tw", "to_traditional_twp"].includes(replace.conversion) ? replace.conversion : "off";
+    $("postprocessConversion").value = ["to_simplified", "to_traditional", "to_traditional_tw", "to_traditional_twp", "to_traditional_hk"].includes(replace.conversion) ? replace.conversion : "off";
     ["proofread", "resegment"].forEach((stepId) => {
       const prompt = byId.get(stepId)?.customPrompt;
       if (typeof prompt === "string" && prompt) llmPrompts[autoLlmOperation(stepId)] = prompt;

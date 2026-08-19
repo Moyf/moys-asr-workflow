@@ -15,6 +15,7 @@ class TextConversion(StrEnum):
     TO_TRADITIONAL = "to_traditional"
     TO_TRADITIONAL_TW = "to_traditional_tw"
     TO_TRADITIONAL_TWP = "to_traditional_twp"
+    TO_TRADITIONAL_HK = "to_traditional_hk"
 
 
 TEXT_CONVERSION_MODES: Final[frozenset[str]] = frozenset(item.value for item in TextConversion)
@@ -23,6 +24,7 @@ _OPENCC_CONFIGS: Final[dict[TextConversion, str]] = {
     TextConversion.TO_TRADITIONAL: "s2t",
     TextConversion.TO_TRADITIONAL_TW: "s2tw",
     TextConversion.TO_TRADITIONAL_TWP: "s2twp",
+    TextConversion.TO_TRADITIONAL_HK: "s2hk",
 }
 
 

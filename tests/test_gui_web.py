@@ -2105,6 +2105,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('bridge("run_fixed_process"', script)
         self.assertIn('value="to_traditional_tw"', page)
         self.assertIn('value="to_traditional_twp"', page)
+        self.assertIn('value="to_traditional_hk"', page)
         self.assertIn('bridge("run_ffconcat_rebuild"', script)
         self.assertIn('bridge("save_postprocess_settings"', script)
         self.assertIn('bridge("test_postprocess_connection"', script)

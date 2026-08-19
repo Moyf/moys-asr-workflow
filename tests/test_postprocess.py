@@ -222,7 +222,7 @@ class PostprocessTests(unittest.TestCase):
         project = {"segments": [{"start": 0, "end": 1000, "text": "软件里面", "items": [{"start": 0, "end": 500, "text": "软件"}, {"start": 500, "end": 1000, "text": "里面"}]}]}
         _ = self.project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
 
-        for mode in (TextConversion.TO_TRADITIONAL_TW, TextConversion.TO_TRADITIONAL_TWP):
+        for mode in (TextConversion.TO_TRADITIONAL_TW, TextConversion.TO_TRADITIONAL_TWP, TextConversion.TO_TRADITIONAL_HK):
             with self.subTest(mode=mode):
                 result = run_fixed_process(FixedProcessRequest(
                     project_path=self.project_path,
@@ -237,6 +237,7 @@ class PostprocessTests(unittest.TestCase):
                 expected = {
                     TextConversion.TO_TRADITIONAL_TW: "軟件裡面",
                     TextConversion.TO_TRADITIONAL_TWP: "軟體裡面",
+                    TextConversion.TO_TRADITIONAL_HK: "軟件裏面",
                 }[mode]
                 self.assertEqual(converted["text"], expected)
                 self.assertEqual(len(converted["items"]), 2)

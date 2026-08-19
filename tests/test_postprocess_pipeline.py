@@ -85,6 +85,12 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertEqual(errors, ())
         self.assertEqual(plan["steps"][1]["conversion"], "to_traditional_twp")
 
+    def test_validation_preserves_hong_kong_traditional_conversion_mode(self) -> None:
+        plan, errors = validate_plan(self.plan(self.conversion_step("to_traditional_hk")), env_path=self.env_path, media_path=self.media, ffmpeg_path=None)
+
+        self.assertEqual(errors, ())
+        self.assertEqual(plan["steps"][1]["conversion"], "to_traditional_hk")
+
     def test_pipeline_runs_conversion_before_translation_steps(self) -> None:
         self.project.write_text(
             json.dumps({"segments": [{"id": "main-001", "start": 0, "end": 1000, "text": "软件"}]}, ensure_ascii=False),
