@@ -37,6 +37,7 @@
   let llmPrompts = {};
   let activeLlmOperation = "";
   let artifactMenuTarget = null;
+  let batchMode = false;
 
   function t(key) {
     return window.MAWLauncher.translate(key);
@@ -557,6 +558,7 @@
       $(id).disabled = busy;
     });
     renderOcrModel();
+    applyBatchModeLocks();
     if (busy) setModelChoicesOpen(false);
     if (busy) setResult(t(statusKey));
   }
@@ -789,6 +791,7 @@
 
   function autoStepHint(stepId) {
     if (stepId === "match") {
+      if (batchMode) return t("batch_manuscript_disabled");
       const path = $("postprocessScriptPath").value.trim();
       return path ? fileName(path) : t("auto_step_hint_no_file");
     }
@@ -817,6 +820,7 @@
       enabled: Boolean($("autoPostprocessEnabled")?.checked),
       retainIntermediate: Boolean($("autoPostprocessRetain")?.checked),
       steps: [
+        // 始终上报用户的单文件勾选；批量运行由后端统一跳过文稿匹配，前端不改写、不持久化批量态。
         { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim() },
         { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements(), conversion: $("postprocessConversion").value },
         { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId, customPrompt: getLlmPrompt("proofread") },
@@ -869,20 +873,27 @@
       const status = $(`autoStep${stepId[0].toUpperCase()}${stepId.slice(1)}Status`);
       const row = document.querySelector(`[data-auto-step-row="${stepId}"]`);
       const enabled = Boolean(checkbox?.checked);
+      const available = stepId !== "match" || !batchMode;
+      if (stepId === "match" && batchMode && checkbox) {
+        checkbox.disabled = true;
+      } else if (stepId === "match" && checkbox) {
+        checkbox.disabled = false;
+      }
       const ready = autoStepReady(stepId);
-      if (enabled) selected.push(stepId);
-      if (enabled && !ready) invalid.push(stepId);
+      if (enabled && available) selected.push(stepId);
+      if (enabled && available && !ready) invalid.push(stepId);
       if (status) {
-        status.textContent = enabled ? t(ready ? "auto_status_ready" : "auto_status_config") : t("auto_status_disabled");
-        status.classList.toggle("ready", enabled && ready);
-        status.classList.toggle("invalid", enabled && !ready);
+        status.textContent = available && enabled ? t(ready ? "auto_status_ready" : "auto_status_config") : t("auto_status_disabled");
+        status.classList.toggle("ready", available && enabled && ready);
+        status.classList.toggle("invalid", available && enabled && !ready);
       }
       const hint = $(`autoStep${stepId[0].toUpperCase()}${stepId.slice(1)}Hint`);
       if (hint) {
         hint.textContent = autoStepHint(stepId);
         hint.title = hint.textContent;
       }
-      row?.classList.toggle("needs-config", enabled && !ready);
+      row?.classList.toggle("needs-config", available && enabled && !ready);
+      row?.classList.toggle("batch-unavailable", !available);
     });
     const enabled = Boolean($("autoPostprocessEnabled")?.checked);
     $("autoPostprocessOptions")?.classList.toggle("hidden", !enabled);
@@ -1510,6 +1521,18 @@
   window.MAWLauncher.getAutoPostprocessPayload = autoPlanFromControls;
   window.MAWLauncher.onLanguageChanged = () => {
     document.querySelectorAll(".toolbox-chain-file").forEach(renderArtifactButton);
+    renderAutoPostprocessState();
+  };
+  function applyBatchModeLocks() {
+    $("toolboxMatchTab").disabled = batchMode;
+    $("runScriptMatch").disabled = batchMode || busy;
+    $("configureAutoMatch").disabled = batchMode;
+  }
+  window.MAWLauncher.onBatchModeChanged = (active) => {
+    batchMode = Boolean(active);
+    applyBatchModeLocks();
+    if (batchMode && $("toolboxMatchTab").classList.contains("active")) selectTool("replace");
+    renderAutoPostprocessState();
   };
   window.MAWLauncher.openAutoPostprocessStep = openAutoStep;
   window.MAWLauncher.onOcrRuntimeChanged = () => {

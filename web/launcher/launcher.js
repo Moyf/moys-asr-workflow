@@ -20,6 +20,100 @@
     output_collision: "An output file with the same name already exists. To avoid overwriting it, the new output has been given a suffix."
   });
   Object.assign(STRINGS.zh, {
+    mode_label: "转写模式",
+    mode_single: "单文件",
+    mode_batch: "批量",
+    mode_single_hint: "一次处理一个媒体文件。",
+    mode_batch_hint: "按队列顺序逐个转写，所有文件共用识别设置。",
+    batch_drop_zone: "拖入多个音频/视频文件，或点击添加。",
+    batch_queue: "文件队列",
+    batch_queue_label: "批量转写队列",
+    batch_add: "添加文件",
+    batch_clear: "清空",
+    batch_drop_hint: "拖入多个音频/视频文件，或反复添加文件；所有文件共用下方识别设置。",
+    batch_empty: "尚未添加媒体文件。",
+    batch_rejected: "已忽略 {count} 个不支持的文件。",
+    batch_duplicate: "文件已在当前列表内",
+    batch_outcome_missing: "批量结束时未收到该文件的结果。",
+    batch_manuscript_disabled: "批量模式不支持逐文件文稿映射。本次批量运行会跳过文稿匹配；单文件设置保持不变。",
+    batch_start: "✨ 开始批量生成",
+    batch_stop: "停止全部",
+    batch_srt_only: "只生成 SRT 字幕",
+    batch_skip_completed_confirm: "队列中有已处理完成的文件。是否跳过已处理完成的文件？",
+    batch_confirm_title: "确认",
+    batch_confirm_yes: "是",
+    batch_confirm_no: "否",
+    stop: "停止",
+    batch_starting: "正在启动批量转写……",
+    batch_running: "批量转写中……",
+    batch_progress: "正在处理第 {current}/{total} 个文件：{name}",
+    batch_item_done: "第 {index} 个文件处理完成：{name}",
+    batch_item_failed: "第 {index} 个文件处理失败：{name}（详见上方“查看错误”）",
+    batch_item_cancelled: "第 {index} 个文件已取消：{name}",
+    batch_progress_done: "批量处理完成：成功 {done} 个，失败 {failed} 个。",
+    batch_stopping: "正在停止批量转写……",
+    batch_complete: "批量转写完成",
+    batch_cancelled: "批量转写已停止",
+    batch_status_queued: "等待中",
+    batch_status_running: "转写中",
+    batch_status_done: "已完成",
+    batch_status_failed: "失败",
+    batch_status_cancelled: "已取消",
+    batch_status_skipped: "已跳过",
+    batch_log_details: "查看日志",
+    batch_error_details: "查看错误",
+    batch_open_project: "打开工程",
+    batch_open_folder: "打开文件夹",
+    batch_remove: "移除",
+  });
+  Object.assign(STRINGS.en, {
+    mode_label: "Transcription mode",
+    mode_single: "Single file",
+    mode_batch: "Batch",
+    mode_single_hint: "Process one media file at a time.",
+    mode_batch_hint: "Transcribe the queue sequentially with shared settings.",
+    batch_drop_zone: "Drop multiple audio/video files, or click Add files.",
+    batch_queue: "File queue",
+    batch_queue_label: "Batch transcription queue",
+    batch_add: "Add files",
+    batch_clear: "Clear",
+    batch_drop_hint: "Drop multiple audio/video files or add them repeatedly. Every file uses the shared recognition settings below.",
+    batch_empty: "No media files added yet.",
+    batch_rejected: "Ignored {count} unsupported file(s).",
+    batch_duplicate: "The file is already in the current list.",
+    batch_outcome_missing: "No result was reported for this file when the batch finished.",
+    batch_manuscript_disabled: "Batch mode does not support per-file manuscript mapping. Script match is skipped for this batch; your single-file setting is unchanged.",
+    batch_start: "✨ Generate batch",
+    batch_stop: "Stop all",
+    batch_srt_only: "Generate SRT subtitles only",
+    batch_skip_completed_confirm: "Some files in the queue are already complete. Skip completed files?",
+    batch_confirm_title: "Confirm",
+    batch_confirm_yes: "Yes",
+    batch_confirm_no: "No",
+    stop: "Stop",
+    batch_starting: "Starting batch transcription…",
+    batch_running: "Batch transcription in progress…",
+    batch_progress: "Processing file {current}/{total}: {name}",
+    batch_item_done: "File {index} completed: {name}",
+    batch_item_failed: "File {index} failed: {name} (see ‘View error’ above)",
+    batch_item_cancelled: "File {index} cancelled: {name}",
+    batch_progress_done: "Batch complete: {done} succeeded, {failed} failed.",
+    batch_stopping: "Stopping batch transcription…",
+    batch_complete: "Batch transcription complete",
+    batch_cancelled: "Batch transcription stopped",
+    batch_status_queued: "Queued",
+    batch_status_running: "Transcribing",
+    batch_status_done: "Done",
+    batch_status_failed: "Failed",
+    batch_status_cancelled: "Cancelled",
+    batch_status_skipped: "Skipped",
+    batch_log_details: "View log",
+    batch_error_details: "View error",
+    batch_open_project: "Open project",
+    batch_open_folder: "Open folder",
+    batch_remove: "Remove",
+  });
+  Object.assign(STRINGS.zh, {
     auto_postprocess_title: "3️⃣ 转写后自动处理 （Beta）",
     auto_postprocess_hint: "转写完成后按固定顺序处理字幕；首次启用某一步前，请先在工具箱中完成配置。",
     auto_postprocess_enable: "启用转写后自动处理",
@@ -502,6 +596,7 @@
       segmentation_invalid: "切句参数无效：请输入整数，并确保最大字数不小于短句合并阈值。",
       ffmpeg_start_failed: "FFmpeg 启动失败（Windows 错误 0xC0000142）。请检查 FFmpeg 是否完整、可执行文件是否被安全软件拦截；本次任务已停止，可以修复后重新尝试。",
       transcription_failed: "转写失败，本次任务已停止。请查看日志后修正问题，再重新尝试。",
+      transcription_cancelled: "转写已停止。",
       ffprobe_start_failed: "ffprobe 启动失败（Windows 错误 0xC0000142）。请重新运行 MAW；如果仍然失败，请重新下载并完整解压 MAWxFF，并检查 Windows 安全中心是否拦截了 ffprobe.exe。",
       config_save_failed: (detail) => `无法保存本地配置：${detail || "请检查应用数据目录权限后重试。"}`,
       server_no_response: (detail) => `编辑器服务器没有响应（${detail || "http://127.0.0.1"}）——端口可能被占用，请检查端口后重试。`,
@@ -544,6 +639,7 @@
       segmentation_invalid: "Invalid segmentation settings: enter integers and ensure max characters is at least the merge threshold.",
       ffmpeg_start_failed: "FFmpeg failed to start (Windows error 0xC0000142). Check that FFmpeg is complete and not blocked by security software, then retry.",
       transcription_failed: "Transcription failed and this run has stopped. Check the log, fix the problem, and retry.",
+      transcription_cancelled: "Transcription stopped.",
       ffprobe_start_failed: "ffprobe failed to start (Windows error 0xC0000142). Please run MAW again. If it keeps happening, download and fully extract MAWxFF again, and check Windows Security for a blocked ffprobe.exe.",
       config_save_failed: (detail) => `Could not save local configuration: ${detail || "check the app-data directory permissions and try again."}`,
       server_no_response: (detail) => `The editor server did not respond (${detail || "http://127.0.0.1"}). The port may be occupied; check the port and retry.`,
@@ -725,7 +821,19 @@
       start_server: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "log", message: "[mock] would open http://127.0.0.1:8250/ after server responds" }), 120); return { ok: true, url: "http://127.0.0.1:8250/" }; },
       get_server_status: async ({ port = "8250" }) => ({ ok: true, running: false, url: `http://127.0.0.1:${port}/` }),
       stop_server: async () => ({ ok: true }),
-      start_transcription: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "log", message: "[mock] 上传完成" }), 250); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "done", result: { srtPath: "D:\\Demo\\clip.srt", jsonPath: "D:\\Demo\\clip.json", htmlPath: "D:\\Demo\\clip.edit.html" } }), 900); return { ok: true }; },
+       start_transcription: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "log", message: "[mock] 上传完成" }), 250); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "done", result: { srtPath: "D:\\Demo\\clip.srt", jsonPath: "D:\\Demo\\clip.json", htmlPath: "D:\\Demo\\clip.edit.html" } }), 900); return { ok: true }; },
+       cancel_transcription: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "error", code: "transcription_cancelled", detail: "Transcription cancelled" }), 120); return { ok: true }; },
+      start_batch_transcription: async ({ items }) => {
+        window.MAWLauncher.onBackendEvent({ type: "batchStarted", total: items.length });
+        items.forEach((item, index) => {
+          setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "batchItem", itemId: item.id, index, mediaPath: item.mediaPath, status: "running" }), index * 650 + 100);
+          setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "batchItemLog", itemId: item.id, index, message: `[mock] ${item.mediaPath}` }), index * 650 + 250);
+          setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "batchItem", itemId: item.id, index, mediaPath: item.mediaPath, status: "done", result: { srtPath: item.mediaPath.replace(/\.[^.\\/]+$/u, ".srt"), jsonPath: item.mediaPath.replace(/\.[^.\\/]+$/u, ".mosp") } }), index * 650 + 550);
+        });
+        setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "batchDone", total: items.length, cancelled: false }), items.length * 650 + 600);
+        return { ok: true };
+      },
+      cancel_batch_transcription: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "batchDone", cancelled: true }), 120); return { ok: true }; },
       open_output_folder: async () => ({ ok: true }),
       open_html: async () => ({ ok: true }),
       get_emoji_font_path: async () => ({ ok: true, path: "" })
@@ -783,7 +891,9 @@
     link.addEventListener("click", (event) => { event.preventDefault(); bridge("open_url", { url }); });
     status.append(link);
   }
-  const appendLog = (text) => { const log = $("log"); log.textContent += `${text}\n`; log.scrollTop = log.scrollHeight; state.lastLogMessage = text; const latest = $("logLatest"); latest.textContent = text; latest.classList.remove("hidden"); };
+  const appendLog = (text, { inline = false } = {}) => { const log = $("log"); const needsSpace = inline && log.textContent && !log.textContent.endsWith("\n"); log.textContent += `${needsSpace ? " " : ""}${text}${inline ? "" : "\n"}`; log.scrollTop = log.scrollHeight; state.lastLogMessage = text; const latest = $("logLatest"); const inlineLatest = inline && latest.dataset.inline === "true"; latest.textContent = inlineLatest ? `${latest.textContent} ${text}` : text; latest.dataset.inline = String(inline); latest.classList.remove("hidden"); };
+  function confirmAction(message) { $("batchConfirmMessage").textContent = String(message || ""); $("batchConfirmModal").classList.remove("hidden"); $("batchConfirmYes").focus(); return new Promise((resolve) => { window.MAWLauncher.confirmResolve = resolve; }); }
+  function finishConfirm(value) { const resolve = window.MAWLauncher.confirmResolve; window.MAWLauncher.confirmResolve = null; $("batchConfirmModal").classList.add("hidden"); resolve?.(value); }
 
   function resolveTheme() { if (state.theme === "light" || state.theme === "dark") return state.theme; return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; }
   function applyTheme() { if (resolveTheme() === "light") document.documentElement.dataset.theme = "light"; else delete document.documentElement.dataset.theme; $("themeLight").classList.toggle("active", state.theme === "light"); $("themeDark").classList.toggle("active", state.theme === "dark"); $("themeSystem").classList.toggle("active", state.theme === "system"); }
@@ -820,7 +930,7 @@
     });
   }
 
-  function setRunning(running) { state.running = running; $("progress").classList.toggle("hidden", !running); $("start").disabled = running; setStatus(running ? t("running") : t("ready")); }
+  function setRunning(running) { state.running = running; $("progress").classList.toggle("hidden", !running); $("start").classList.toggle("hidden", running); $("stop").classList.toggle("hidden", !running); $("start").disabled = running; $("stop").disabled = !running; setStatus(running ? t("running") : t("ready")); }
   function fillSelect(id, items, value) { const el = $(id); el.innerHTML = ""; items.forEach((item) => el.add(new Option(item.label, item.id))); el.value = value ?? ""; }
   function setError(field, message) { const input = $(field); const hint = $(`${field}Error`); if (input) input.classList.toggle("invalid", Boolean(message)); if (hint) { renderMessage(hint, message); hint.classList.toggle("visible", Boolean(message)); } }
   function setOutputNotice(message) { const notice = $("srtPathNotice"); if (!notice) return; renderMessage(notice, message); notice.classList.toggle("hidden", !message); }
@@ -1124,6 +1234,7 @@
   }
 
   function handleBackendEvent(event) {
+    if (["batchStarted", "batchItem", "batchItemLog", "batchDone", "batch_started", "batch_item", "batch_item_log", "batch_done"].includes(event.type)) window.MAWLauncher?.onBatchEvent?.(event);
     if (event.type === "emojiFontReady" && event.path) injectEmojiFont(event.path);
     if (event.type === "log") appendLog(event.message);
     if (event.type === "postprocess_status") window.MAWLauncher?.onPostprocessStatus?.(event);
@@ -1241,9 +1352,11 @@
       appendLog(t("done"));
       void checkExistingServer(t("done"));
     }
+    if (event.type === "dropMedia" && window.MAWLauncher?.onBatchDrop?.(event.path || "")) return;
+    if (event.type === "dropReject" && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
     if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
   }
-  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onLanguageChanged() {} };
+  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onLanguageChanged() {} };
 
   $("langToggle").addEventListener("click", async () => { state.lang = state.lang === "zh" ? "en" : "zh"; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (!result.ok) applyErrorResult(result); });
   $("themeLight").addEventListener("click", () => setTheme("light")); $("themeDark").addEventListener("click", () => setTheme("dark")); $("themeSystem").addEventListener("click", () => setTheme("system"));
@@ -1276,6 +1389,7 @@
   $("prepareLocalModel").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localPreparing) { state.localProgressMessage = t("local_prepare_cancelling"); renderLocalModelStatus(); appendLog(t("local_prepare_cancelling")); const result = await bridge("cancel_local_model"); if (!result.ok) { state.localProgressMessage = t("local_prepare_running"); applyErrorResult(result); renderLocalModelStatus(); } return; } state.localPreparing = true; state.localProgressMessage = t("local_prepare_running"); state.localProgress = null; renderLocalModelStatus(); appendLog(t("local_prepare_running")); const result = await bridge("prepare_local_model", { modelId: $("model").value, modelPath: $("localModelPath").value.trim(), device: $("localDevice").value }); if (!result.ok) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; applyErrorResult(result); renderLocalModelStatus(); } else if (result.alreadyInstalled) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; renderLocalModelStatus(); setStatus(t("local_installed")); } });
   $("ffmpegHelp").addEventListener("click", () => bridge("open_url", { url: "https://ffmpeg.org/download.html" }));
   $("settingsButton").addEventListener("click", openSettings); $("settingsClose").addEventListener("click", closeSettings); $("settingsBackdrop").addEventListener("click", closeSettings); document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeSettings(); });
+  $("batchConfirmYes").addEventListener("click", () => finishConfirm(true)); $("batchConfirmNo").addEventListener("click", () => finishConfirm(false));
   $("changeFfmpeg").addEventListener("click", () => $("ffmpegPathBox").classList.remove("hidden"));
   $("saveFfmpeg").addEventListener("click", async () => { const result = await bridge("save_ffmpeg_path", { path: $("ffmpegPath").value.trim() }); if (!result.ok) { const message = ffmpegSaveError(result); setError("ffmpegPath", message); setStatus(message); return; } setError("ffmpegPath", ""); await refreshFfmpeg(); setStatus(t("saved")); });
   $("pickStickerDir").addEventListener("click", async () => { const result = await bridge("choose_folder"); if (result.ok) await saveStickerDirectory(result.path); });
@@ -1284,6 +1398,7 @@
   $("languageReset").addEventListener("click", () => { const el = $("language"); Array.from(el.options).forEach((o) => { o.selected = false; }); savePrefsDebounced({ language: "" }); });
   $("saveSettings").addEventListener("click", async () => { const result = await bridge("save_settings", formPayload()); if (result.ok) { const current = provider(); current.apiKey = $("apiKey").value.trim(); current.maskedApiKey = result.maskedApiKey; state.config.apiKey = current.apiKey; state.config.maskedApiKey = result.maskedApiKey; renderKeyStatus(); setStatus(t("saved")); } else applyErrorResult(result); });
   $("start").addEventListener("click", async () => { if (!validateLocal()) return; $("retryPostprocess")?.classList.add("hidden"); $("log").textContent = ""; state.lastLogMessage = ""; const latest = $("logLatest"); latest.textContent = ""; latest.classList.add("hidden"); setRunning(true); $("logTitle").scrollIntoView({ behavior: "smooth", block: "start" }); const result = await bridge("start_transcription", formPayload()); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } else if (result.outputPath) { $("srtPath").value = result.outputPath; if (result.outputRenamed) setOutputNotice(t("output_collision")); } });
+  $("stop").addEventListener("click", async () => { if (!state.running) return; $("stop").disabled = true; setStatus(t("batch_stopping")); const result = await bridge("cancel_transcription"); if (!result.ok) { $("stop").disabled = false; setStatus(result.detail || result.error || t("failed")); } });
   $("retryPostprocess").addEventListener("click", async () => { $("retryPostprocess").classList.add("hidden"); setRunning(true); const result = await bridge("retry_postprocess"); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } });
   $("openMawe").addEventListener("click", openServerEditor); $("stopServer").addEventListener("click", stopEditorServer); $("openFolder").addEventListener("click", () => bridge("open_output_folder"));
   $("openMenu").addEventListener("click", () => $("htmlMenu").classList.toggle("hidden")); $("openHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_html"); }); $("openBlankHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_blank_html"); }); document.addEventListener("click", (event) => { if (!event.target.closest(".split-wrap")) $("htmlMenu").classList.add("hidden"); });
@@ -1293,7 +1408,7 @@
   document.addEventListener("dragend", clearDropState);
   document.addEventListener("dragleave", (event) => { if (!event.relatedTarget && event.target === document.documentElement) clearDropState(); });
   // 真实后端模式下 drop 由 Python 侧异步回传事件，不能在这里清理 dropTarget，否则 handleRoutedDrop 读不到目标。
-  document.addEventListener("drop", (event) => { event.preventDefault(); if (window.MAWLauncher.backend === "real") return; const file = event.dataTransfer?.files?.[0]; handleRoutedDrop(file?.path || file?.name || ""); });
+  document.addEventListener("drop", (event) => { event.preventDefault(); if (window.MAWLauncher.backend === "real") return; const files = Array.from(event.dataTransfer?.files || []); let handled = false; if (window.MAWLauncher?.onBatchDrop) files.forEach((file) => { handled = window.MAWLauncher.onBatchDrop(file.path || file.name || "") || handled; }); if (handled) return; const file = files[0]; handleRoutedDrop(file?.path || file?.name || ""); });
   setupScrollbarFlash();
   document.addEventListener("DOMContentLoaded", init);
   document.addEventListener("keydown", handleZoomKeydown);

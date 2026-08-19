@@ -36,7 +36,15 @@
 
     <section id="mediaCard" class="card drop-card" aria-labelledby="mediaTitle">
       <h2 id="mediaTitle" data-i18n="media_output">1️⃣ 媒体与输出</h2>
+      <div class="mode-switch-row">
+        <div class="segmented" role="group" aria-label="转写模式" data-i18n-aria-label="mode_label">
+          <button type="button" class="segment active" id="singleMode" aria-pressed="true" data-i18n="mode_single">单文件</button>
+          <button type="button" class="segment" id="batchMode" aria-pressed="false" data-i18n="mode_batch">批量</button>
+        </div>
+        <p id="modeHint" class="hint" data-i18n="mode_single_hint">一次处理一个媒体文件。</p>
+      </div>
       <div id="dropZone" class="drop-zone" data-i18n="drop_hint">拖入音频/视频文件，或点击选择。</div>
+      <div id="singleMediaFields">
       <div class="field">
         <label for="mediaPath" data-i18n="media">媒体文件</label>
         <div class="path-row">
@@ -57,9 +65,30 @@
         <input id="generateHtml" type="checkbox">
         <span data-i18n="generate_html">同时生成单文件版网页编辑器（html）</span>
       </label>
+      </div>
+      <div id="batchMediaFields" class="batch-media hidden">
+        <div class="batch-toolbar">
+          <div>
+            <strong data-i18n="batch_queue">文件队列</strong>
+            <span id="batchQueueCount" class="batch-count" aria-live="polite">0</span>
+          </div>
+          <div class="batch-toolbar-actions">
+            <button id="batchAddFiles" class="ghost" type="button" data-i18n="batch_add">添加文件</button>
+            <button id="batchClear" class="ghost" type="button" data-i18n="batch_clear">清空</button>
+          </div>
+        </div>
+        <p class="hint" data-i18n="batch_drop_hint">拖入多个音频/视频文件，或反复添加文件；所有文件共用下方识别设置。</p>
+        <p id="batchDropNotice" class="hint warn hidden" aria-live="polite"></p>
+        <div id="batchQueue" class="batch-queue" role="list" aria-label="批量转写队列" data-i18n-aria-label="batch_queue_label"></div>
+        <div id="batchEmpty" class="batch-empty" data-i18n="batch_empty">尚未添加媒体文件。</div>
+        <label class="check-field batch-srt-only" for="batchSrtOnly">
+          <input id="batchSrtOnly" type="checkbox">
+          <span data-i18n="batch_srt_only">只生成 SRT 字幕</span>
+        </label>
+      </div>
     </section>
 
-    <section class="card" aria-labelledby="settingsTitle">
+    <section id="recognitionCard" class="card" aria-labelledby="settingsTitle">
       <h2 id="settingsTitle" data-i18n="recognition">2️⃣ 识别设置</h2>
       <div class="provider-row">
         <div class="field provider-field">
@@ -298,6 +327,7 @@
     <section id="autoPostprocessCard" class="card" aria-labelledby="autoPostprocessTitle">
       <h2 id="autoPostprocessTitle" data-i18n="auto_postprocess_title">3️⃣ 转写后自动处理 （Beta）</h2>
       <p class="hint" data-i18n="auto_postprocess_hint">转写完成后按固定顺序处理字幕；首次启用某一步前，请先在工具箱中完成配置。</p>
+      <p id="batchManuscriptNotice" class="toolbox-notice hidden" role="note" data-i18n="batch_manuscript_disabled">批量模式不支持逐文件文稿映射。本次批量运行会跳过文稿匹配；单文件设置保持不变。</p>
       <label class="check-field auto-postprocess-toggle" for="autoPostprocessEnabled">
         <input id="autoPostprocessEnabled" type="checkbox">
         <span data-i18n="auto_postprocess_enable">启用转写后自动处理</span>
@@ -311,7 +341,7 @@
           <div class="collapse-body">
             <div id="autoPostprocessSteps" class="auto-postprocess-steps">
               <div class="auto-step-row" data-auto-step-row="match">
-                <label class="check-field" for="autoStepMatch"><input id="autoStepMatch" type="checkbox"><span data-i18n="auto_step_match">文稿匹配</span></label>
+                <label class="check-field" for="autoStepMatch"><input id="autoStepMatch" type="checkbox" aria-describedby="autoStepMatchHint"><span data-i18n="auto_step_match">文稿匹配</span></label>
                 <span id="autoStepMatchStatus" class="auto-step-status hint"></span>
                 <span id="autoStepMatchHint" class="auto-step-hint hint"></span>
                 <button id="configureAutoMatch" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
@@ -398,6 +428,9 @@
 
     <footer class="actions">
       <button id="start" class="primary" type="button" data-i18n="start">生成字幕和工程</button>
+      <button id="stop" class="ghost server-stop hidden" type="button" data-i18n="stop">停止</button>
+      <button id="startBatch" class="primary hidden" type="button" data-i18n="batch_start">✨ 开始批量生成</button>
+      <button id="stopBatch" class="ghost server-stop hidden" type="button" data-i18n="batch_stop">停止全部</button>
       <div class="split-wrap">
         <button id="openMawe" class="ghost split-main" type="button" data-i18n="start_server_editor">启动 Server 版字幕编辑器</button>
         <button id="openMenu" class="ghost split-caret" type="button" aria-haspopup="true">▾</button>
@@ -852,7 +885,22 @@
       </div>
     </section>
   </div>
+
+  <div id="batchConfirmModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="batchConfirmTitle">
+    <div class="modal-backdrop"></div>
+    <section class="modal-card batch-confirm-card">
+      <header class="modal-header">
+        <h2 id="batchConfirmTitle" data-i18n="batch_confirm_title">确认</h2>
+      </header>
+      <p id="batchConfirmMessage" class="batch-confirm-message"></p>
+      <div class="modal-actions">
+        <button id="batchConfirmYes" class="primary" type="button" data-i18n="batch_confirm_yes">是</button>
+        <button id="batchConfirmNo" class="ghost" type="button" data-i18n="batch_confirm_no">否</button>
+      </div>
+    </section>
+  </div>
   <script src="launcher.js"></script>
+  <script src="batch.js"></script>
   <script src="postprocess.js"></script>
 </body>
 </html>

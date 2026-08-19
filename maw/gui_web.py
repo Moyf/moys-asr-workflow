@@ -25,7 +25,8 @@ from media_cache import embed_media_caches
 from waveform import is_waveform_payload
 from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, LANGUAGES, MODELS, PROVIDERS, REGIONS, ModelConfig, ProviderConfig, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
-from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
+from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
+from maw.launcher_batch import BatchItem, run_batch
 from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError, install_local_runtime, managed_runtime_status
 from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
 from maw.media import find_ffmpeg, resolve_project_media
@@ -94,6 +95,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "segmentation_invalid": "Subtitle segmentation settings are invalid.",
     "ffmpeg_start_failed": "FFmpeg failed to start.",
     "transcription_failed": "Transcription failed.",
+    "transcription_cancelled": "转写已取消。",
     "context_too_long": "Qwen-Audio context is limited to 400 characters.",
     "soniox_context_too_long": "Soniox context is limited to approximately 10,000 characters.",
     "soniox_context_invalid": "Soniox context format is invalid.",
@@ -464,6 +466,8 @@ class LauncherApi:
         self.window_getter = window_getter or _active_window
         self.cancel_event: Event | None = None
         self.worker: threading.Thread | None = None
+        self.batch_worker: threading.Thread | None = None
+        self.batch_cancel_event: Event | None = None
         self.local_prepare_cancel_event: Event | None = None
         self.local_prepare_worker: threading.Thread | None = None
         self.local_runtime_cancel_event: Event | None = None
@@ -947,8 +951,9 @@ class LauncherApi:
             file_types = ("Text files (*.txt)", "All files (*.*)")
         else:
             file_types = ("Media files (*.mp4;*.mkv;*.avi;*.mov;*.wmv;*.flv;*.webm;*.ts;*.m4v;*.mp3;*.wav;*.m4a;*.flac;*.aac;*.ogg)", "All files (*.*)")
-        chosen = _file_dialog(open_dialog=True, file_types=file_types)
-        return _dialog_result(chosen)
+        multiple = bool(payload.get("multiple"))
+        chosen = _file_dialog(open_dialog=True, file_types=file_types, multiple=multiple)
+        return _dialog_result(chosen, include_paths=multiple)
 
     def read_hotword_file(self, payload: Mapping[str, object]) -> dict[str, object]:
         value = str(payload.get("path") or "").strip()
@@ -1153,6 +1158,8 @@ class LauncherApi:
         return _error_result("port", "server_stop_failed", url)
 
     def start_transcription(self, payload: Mapping[str, object]) -> dict[str, object]:
+        if self.batch_worker and self.batch_worker.is_alive():
+            return {"ok": False, "error": "A batch transcription is already running."}
         if self.worker and self.worker.is_alive():
             return {"ok": False, "error": "Transcription is already running."}
         if self.local_prepare_worker and self.local_prepare_worker.is_alive():
@@ -1181,6 +1188,107 @@ class LauncherApi:
             "outputRenamed": output_renamed,
             "rawPath": str(raw_response_path(request.srt_path)) if request.debug_raw else "",
         }
+
+    def start_batch_transcription(self, payload: Mapping[str, object]) -> dict[str, object]:
+        if self.worker and self.worker.is_alive() or self.batch_worker and self.batch_worker.is_alive():
+            return {"ok": False, "error": "Transcription is already running."}
+        raw_items = payload.get("items")
+        if not isinstance(raw_items, Sequence) or isinstance(raw_items, (str, bytes)) or not raw_items:
+            return {"ok": False, "field": "items", "code": "batch_items_required", "error": "Batch items are required."}
+        shared = payload.get("settings")
+        settings = dict(shared) if isinstance(shared, Mapping) else {key: value for key, value in payload.items() if key != "items"}
+        items: list[BatchItem] = []
+        reserved: set[Path] = set()
+        for index, raw_item in enumerate(raw_items):
+            item_id = str(raw_item.get("id") or index) if isinstance(raw_item, Mapping) else str(index)
+            try:
+                if not isinstance(raw_item, Mapping):
+                    raise PreflightError("items", "batch_item_invalid", f"Batch item {index + 1} is invalid.")
+                item_payload = {
+                    **settings,
+                    "mediaPath": raw_item.get("mediaPath"),
+                    "srtPath": raw_item.get("srtPath") or raw_item.get("outputPath"),
+                }
+                merged = dict(item_payload)
+                media_text = str(merged.get("mediaPath") or "").strip()
+                if media_text and not str(merged.get("srtPath") or "").strip():
+                    merged["srtPath"] = str(
+                        default_srt_path(
+                            Path(media_text),
+                            provider=str(merged.get("providerId") or "qwen"),
+                            model=str(merged.get("modelId") or DEFAULT_MODEL_ID),
+                        )
+                    )
+                raw_plan = merged.get("autoPostprocess")
+                if isinstance(raw_plan, Mapping):
+                    merged["autoPostprocess"] = _batch_postprocess_plan(raw_plan)
+                request = _request_from_payload(merged, self.paths.env_path)
+                selected = _batch_unique_output_path(request.srt_path, reserved)
+                items.append(BatchItem(str(raw_item.get("id") or index), replace(request, srt_path=selected)))
+                reserved.update(_artifact_paths(selected))
+            except PreflightError as error:
+                items.append(BatchItem(item_id, None, error.message))
+            except (OSError, ValueError) as error:
+                items.append(BatchItem(item_id, None, str(error)))
+        manifest_text = str(payload.get("manifestPath") or "").strip()
+        first_request = next((item.request for item in items if item.request is not None), None)
+        if first_request is None:
+            details = "; ".join(
+                f"{item.item_id}: {item.preflight_error}"
+                for item in items
+                if item.preflight_error
+            )
+            return {
+                "ok": False,
+                "field": "items",
+                "code": "batch_items_invalid",
+                "error": "No valid batch items were provided.",
+                "detail": details,
+            }
+        manifest_path = Path(manifest_text).expanduser() if manifest_text else _unique_batch_manifest_path(first_request.srt_path.parent)
+        self.batch_cancel_event = Event()
+        self.pump.start()
+        self.batch_worker = threading.Thread(
+            target=self._batch_main,
+            args=(tuple(items), settings, manifest_path, self.batch_cancel_event),
+            daemon=True,
+        )
+        self.batch_worker.start()
+        return {"ok": True, "manifestPath": str(manifest_path), "itemCount": len(items)}
+
+    def cancel_batch_transcription(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        if self.batch_cancel_event:
+            self.batch_cancel_event.set()
+        if self.cancel_event:
+            self.cancel_event.set()
+        return {"ok": True}
+
+    def _batch_main(self, items: Sequence[BatchItem], settings: Mapping[str, object], manifest_path: Path, cancel_event: Event) -> None:
+        try:
+            run_batch(
+                items,
+                settings=settings,
+                manifest_path=manifest_path,
+                cancel_event=cancel_event,
+                on_event=self._emit,
+                env_path=self.paths.env_path,
+                ffmpeg_path=_postprocess_ffmpeg(self.paths.env_path),
+                ocr_runtime_root=self._ocr_runtime_status().path,
+            )
+        except Exception as error:  # noqa: BROAD_EXCEPT_OK - background GUI boundary must unlock the batch controls.
+            self._emit(
+                {
+                    "type": "batch_done",
+                    "status": "failed",
+                    "error": str(error),
+                    "outcomes": [],
+                    "manifestPath": str(manifest_path),
+                }
+            )
+        finally:
+            if self.batch_worker is threading.current_thread():
+                self.batch_worker = None
+            self.pump.flush()
 
     def generate_waveform_project(self, payload: Mapping[str, object]) -> dict[str, object]:
         """Create a media-only project containing embedded waveform caches."""
@@ -1429,6 +1537,7 @@ class LauncherApi:
 
     def shutdown(self) -> None:
         self.cancel_transcription()
+        self.cancel_batch_transcription()
         if self.local_prepare_cancel_event:
             self.local_prepare_cancel_event.set()
         if self.local_runtime_cancel_event:
@@ -1452,6 +1561,12 @@ class LauncherApi:
                 cancel_event=cancel_event,
                 on_process_start=lambda pid: self._emit({"type": "log", "message": f"[info] 转写进程已启动 (pid {pid})"}),
             )
+        except TranscriptionCancelledError as error:
+            self._emit({"type": "error", "code": "transcription_cancelled", "detail": str(error)})
+            if self.worker is threading.current_thread():
+                self.worker = None
+            self.pump.flush()
+            return
         except TranscriptionProcessError as error:
             if _is_ffprobe_start_failure(child_output):
                 self._emit({
@@ -1797,7 +1912,6 @@ class LauncherApi:
             if path:
                 self._emit(_route_dropped_path(path))
                 self.pump.flush()
-                return
 
 
 def run_app(*, debug: bool = False, devtools: bool = False) -> None:
@@ -2026,7 +2140,8 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         speaker_colors=bool(payload.get("speakerColors")) and model.supports_speaker,
         generate_spectral=bool(payload.get("generateSpectral")),
         ui_language=_gui_lang(payload),
-        generate_html=bool(payload.get("generateHtml")),
+        generate_html=bool(payload.get("generateHtml")) and not bool(payload.get("batchSrtOnly")),
+        srt_only=bool(payload.get("batchSrtOnly")),
         debug_raw=bool(payload.get("debugRaw")),
         engine=model.engine if provider.kind == "local" else "",
         model_path=local_model_path if provider.kind == "local" else "",
@@ -2039,13 +2154,13 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     )
 
 
-def _file_dialog(*, open_dialog: bool, file_types: tuple[str, ...], save_filename: str = "") -> tuple[str, ...] | None:
+def _file_dialog(*, open_dialog: bool, file_types: tuple[str, ...], save_filename: str = "", multiple: bool = False) -> tuple[str, ...] | None:
     import webview
 
     if not webview.windows:
         return None
     dialog_type = OPEN_DIALOG if open_dialog else SAVE_DIALOG
-    selected = webview.windows[0].create_file_dialog(dialog_type, save_filename=save_filename, file_types=file_types)
+    selected = webview.windows[0].create_file_dialog(dialog_type, save_filename=save_filename, file_types=file_types, allow_multiple=multiple)
     return tuple(selected) if selected else None
 
 
@@ -2058,10 +2173,53 @@ def _folder_dialog() -> tuple[str, ...] | None:
     return tuple(selected) if selected else None
 
 
-def _dialog_result(selected: tuple[str, ...] | None) -> dict[str, object]:
+def _dialog_result(selected: tuple[str, ...] | None, *, include_paths: bool = False) -> dict[str, object]:
     if not selected:
         return {"ok": False, "path": ""}
-    return {"ok": True, "path": selected[0]}
+    result: dict[str, object] = {"ok": True, "path": selected[0]}
+    if include_paths:
+        result["paths"] = list(selected)
+    return result
+
+
+def _artifact_paths(path: Path) -> set[Path]:
+    return {path, path.with_suffix(".mosp"), path.with_suffix(".edit.html")}
+
+
+def _batch_unique_output_path(path: Path, reserved: set[Path]) -> Path:
+    candidate = unique_output_path(path)
+    counter = 1
+    while _artifact_paths(candidate) & reserved:
+        candidate = path.with_name(f"{path.stem}-{counter}{path.suffix}")
+        counter += 1
+    return candidate
+
+
+def _unique_batch_manifest_path(directory: Path) -> Path:
+    candidate = directory / "maw-batch-manifest.json"
+    counter = 1
+    while candidate.exists():
+        candidate = directory / f"maw-batch-manifest-{counter}.json"
+        counter += 1
+    return candidate
+
+
+def _batch_postprocess_plan(plan: Mapping[str, object]) -> dict[str, object]:
+    steps = plan.get("steps")
+    if not isinstance(steps, Sequence) or isinstance(steps, (str, bytes)):
+        return dict(plan)
+    sanitized: dict[str, object] = {
+        **dict(plan),
+        "steps": [
+            {**dict(step), "enabled": False}
+            if isinstance(step, Mapping) and str(step.get("id") or "") == "match"
+            else step
+            for step in steps
+        ],
+    }
+    if bool(sanitized.get("enabled")) and not enabled_steps(sanitized):
+        sanitized["enabled"] = False
+    return sanitized
 
 
 def _active_window() -> object | None:
