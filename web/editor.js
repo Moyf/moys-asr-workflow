@@ -6044,7 +6044,7 @@ function commitMainWaveformSplit(state, { force = false, successMessage = '已�
   renderAll();
   selectOnly(mainIndex + 1);
   lastClickedIdx = mainIndex + 1;
-  update();
+  updateWithoutCueListAutoScroll();
   flashSplitFeedback({
     index: mainIndex,
     track: 'main',
@@ -6129,7 +6129,7 @@ function commitExtensionSplit(state, { force = false } = {}) {
   renderAll();
   selectOnlyExtension(extensionIndex + 1);
   lastClickedExtensionIdx = extensionIndex + 1;
-  update();
+  updateWithoutCueListAutoScroll();
   flashSplitFeedback({
     index: extensionIndex,
     track: 'extension',
@@ -6253,7 +6253,7 @@ function confirmLinkedSplit() {
   renderAll();
   selectOnly(mainIndex);
   lastClickedIdx = mainIndex;
-  update();
+  updateWithoutCueListAutoScroll();
   flashSplitFeedback({
     index: mainIndex,
     track: 'main',
@@ -6441,7 +6441,7 @@ function splitAtCursor(feedbackPoint = null, { listFeedback = true } = {}) {
       || waveformEditor?.getSplitPointAtTime?.(splitMs, 'main')
       || ninjaFeedbackPoint,
   );
-  update();
+  updateWithoutCueListAutoScroll();
   flashSplitFeedback({
     index: idx,
     track: 'main',
@@ -9706,6 +9706,22 @@ function update() {
   updateActiveCue(idx);
   refreshSubtitlePreview(tMs, idx);
 }
+
+// 拆分等结构性提交后的 update() 只刷新时间码与激活态，不触发播放跟随滚动。
+// renderAll 刚重建列表时，content-visibility 让视口外的行仍处于估算占位
+// 高度，updateActiveCue 量到的瞬态几何会把「活动行不在视口」误判成真，
+// 再用被污染的 offsetTop 算出错误目标平滑滚走（页面放大倍率越高、真实
+// 行高与估算差异越大越容易触发）。拆分后是否滚动、滚到哪里已由拆分
+// 来源显式决定（列表来源保持原位，波形来源显式居中新右半段）。
+function updateWithoutCueListAutoScroll() {
+  const previousSuppress = suppressCueListAutoScroll;
+  suppressCueListAutoScroll = true;
+  try {
+    update();
+  } finally {
+    suppressCueListAutoScroll = previousSuppress;
+  }
+}
 // === 表情包预览（视频画面内）===
 // 层位置/尺寸由 preview.sticker 几何驱动（默认右上角）；点击后可拖动/缩放，与字幕预览同一套交互。
 const stickerOverlayLayer = document.createElement('div');
@@ -10952,6 +10968,12 @@ function getSavedPresetWorkspaces() {
     ? SERVER_CONFIG.presetWorkspaces : {};
 }
 
+// 覆盖可能只存导航状态（后端自动创建），没有布局数据；只有含 navigation
+// 以外字段的覆盖才能作为布局来源，否则退回内置默认布局。
+function presetWorkspaceHasLayout(workspace) {
+  return Boolean(workspace) && Object.keys(workspace).some((key) => key !== 'navigation');
+}
+
 function currentWorkspaceDisplayName() {
   const selected = workspacePresetSelect?.selectedOptions?.[0];
   return selected?.textContent?.trim() || currentServerWorkspaceName || currentBuiltinWorkspaceName || '当前工作区';
@@ -11126,13 +11148,14 @@ async function applyWorkspaceSelection(preset) {
   currentServerWorkspaceName = '';
   currentBuiltinWorkspaceName = preset;
   const savedPreset = getSavedPresetWorkspaces()[preset];
-   if (savedPreset) waveformEditor.setLayoutData(savedPreset);
-   else waveformEditor.setLayout(preset);
+  const layoutPreset = presetWorkspaceHasLayout(savedPreset) ? savedPreset : null;
+  if (layoutPreset) waveformEditor.setLayoutData(layoutPreset);
+  else waveformEditor.setLayout(preset);
   applyEditorDisplaySettings(
     savedPreset?.editorDisplay || window.AsrWaveform?.builtinWorkspaces?.[preset]?.editorDisplay,
   );
-   workspacePresetSelect.value = preset;
-   restoreWorkspaceNavigation(savedPreset);
+  workspacePresetSelect.value = preset;
+  restoreWorkspaceNavigation(savedPreset);
   refreshWorkspaceSelect();
   syncWorkspaceControls();
   void updateServerWorkspaceSettings({ activeWorkspaceName: '' }).catch((error) => {
@@ -11152,7 +11175,7 @@ function configureServerWorkspaceLibrary() {
     ? savedSelection : DATA.workspace?.preset;
   currentBuiltinWorkspaceName = currentServerWorkspaceName ? ''
     : BUILTIN_WORKSPACE_IDS.includes(initialPreset) ? initialPreset : 'wave-right';
-  if (!savedSelection && currentBuiltinWorkspaceName && getSavedPresetWorkspaces()[currentBuiltinWorkspaceName]) {
+  if (!savedSelection && currentBuiltinWorkspaceName && presetWorkspaceHasLayout(getSavedPresetWorkspaces()[currentBuiltinWorkspaceName])) {
     waveformEditor.setLayoutData(getSavedPresetWorkspaces()[currentBuiltinWorkspaceName]);
     if (workspacePresetSelect) workspacePresetSelect.value = currentBuiltinWorkspaceName;
   }
