@@ -9,6 +9,7 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
@@ -898,6 +899,130 @@ class LocalEditorServerTests(unittest.TestCase):
             finally:
                 server.shutdown()
                 thread.join(timeout=2)
+
+    def test_workspace_navigation_creates_navigation_only_preset_override(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        settings_path = self.root / "server-editor-settings.json"
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, settings_path=settings_path,
+        ) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+                def post(payload: dict) -> tuple[int, dict]:
+                    request = urllib.request.Request(
+                        f"{base_url}/api/settings",
+                        data=json.dumps(payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    try:
+                        with urllib.request.urlopen(request) as response:
+                            return response.status, json.loads(response.read())
+                    except urllib.error.HTTPError as error:
+                        return error.code, json.loads(error.read())
+
+                # First save for builtin preset with no existing override
+                status, result = post({
+                    "updateWorkspaceNavigation": {
+                        "preset": "wave-right",
+                        "navigation": {"cueListScrollTop": 100, "waveformTopEdgeMs": 2000},
+                    },
+                })
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+                self.assertEqual(
+                    server.settings.preset_workspaces["wave-right"],
+                    {"navigation": {"cueListScrollTop": 100, "waveformTopEdgeMs": 2000}},
+                )
+
+                # Second save updates the same navigation dict
+                status, result = post({
+                    "updateWorkspaceNavigation": {
+                        "preset": "wave-right",
+                        "navigation": {"cueListScrollTop": 300},
+                    },
+                })
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+                self.assertEqual(
+                    server.settings.preset_workspaces["wave-right"],
+                    {"navigation": {"cueListScrollTop": 300, "waveformTopEdgeMs": 2000}},
+                )
+
+                # Full preset workspace save still works and preserves navigation
+                status, result = post({
+                    "savePresetWorkspace": {
+                        "preset": "wave-right",
+                        "workspace": {
+                            "schema": 1,
+                            "columnPercent": 50,
+                            "editorDisplay": {"cueListShowTime": True},
+                        },
+                    },
+                })
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+                self.assertEqual(
+                    server.settings.preset_workspaces["wave-right"],
+                    {
+                        "schema": 1,
+                        "columnPercent": 50,
+                        "editorDisplay": {"cueListShowTime": True},
+                        "navigation": {"cueListScrollTop": 300, "waveformTopEdgeMs": 2000},
+                    },
+                )
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_open_recent_project_does_not_hold_settings_lock(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        settings_path = self.root / "server-editor-settings.json"
+        # Write a recent-projects entry directly into settings
+        initial_settings = server_editor.read_server_settings(settings_path)
+        initial_settings = replace(
+            initial_settings,
+            recent_projects=[
+                server_editor.RecentProject(
+                    path=self.project_path,
+                    name=self.project_path.name,
+                ),
+            ],
+        )
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, settings=initial_settings, settings_path=settings_path,
+        ) as server:
+            load_started = threading.Event()
+            original_load_project = server_editor.load_project
+
+            def slow_load_project(*args, **kwargs):
+                load_started.set()
+                import time
+                time.sleep(0.5)
+                return original_load_project(*args, **kwargs)
+
+            with mock.patch.object(server_editor, "load_project", slow_load_project):
+                thread = threading.Thread(
+                    target=server.open_recent_project, args=(str(self.project_path),),
+                )
+                thread.start()
+                try:
+                    load_started.wait(timeout=2)
+                    # set_active_workspace should not block while load_project sleeps
+                    server.save_workspace("x", {"schema": 1}, overwrite=False)
+                    start = __import__("time").time()
+                    server.set_active_workspace("x")
+                    elapsed = __import__("time").time() - start
+                    self.assertLess(elapsed, 0.3, "set_active_workspace blocked on load_project")
+                finally:
+                    thread.join(timeout=2)
 
     def test_server_saves_project_with_backup_and_rejects_unsafe_save_as(self) -> None:
         project = server_editor.load_project(

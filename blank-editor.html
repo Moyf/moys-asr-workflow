@@ -23208,6 +23208,12 @@ function getSavedPresetWorkspaces() {
     ? SERVER_CONFIG.presetWorkspaces : {};
 }
 
+// 覆盖可能只存导航状态（后端自动创建），没有布局数据；只有含 navigation
+// 以外字段的覆盖才能作为布局来源，否则退回内置默认布局。
+function presetWorkspaceHasLayout(workspace) {
+  return Boolean(workspace) && Object.keys(workspace).some((key) => key !== 'navigation');
+}
+
 function currentWorkspaceDisplayName() {
   const selected = workspacePresetSelect?.selectedOptions?.[0];
   return selected?.textContent?.trim() || currentServerWorkspaceName || currentBuiltinWorkspaceName || '当前工作区';
@@ -23382,13 +23388,14 @@ async function applyWorkspaceSelection(preset) {
   currentServerWorkspaceName = '';
   currentBuiltinWorkspaceName = preset;
   const savedPreset = getSavedPresetWorkspaces()[preset];
-   if (savedPreset) waveformEditor.setLayoutData(savedPreset);
-   else waveformEditor.setLayout(preset);
+  const layoutPreset = presetWorkspaceHasLayout(savedPreset) ? savedPreset : null;
+  if (layoutPreset) waveformEditor.setLayoutData(layoutPreset);
+  else waveformEditor.setLayout(preset);
   applyEditorDisplaySettings(
     savedPreset?.editorDisplay || window.AsrWaveform?.builtinWorkspaces?.[preset]?.editorDisplay,
   );
-   workspacePresetSelect.value = preset;
-   restoreWorkspaceNavigation(savedPreset);
+  workspacePresetSelect.value = preset;
+  restoreWorkspaceNavigation(savedPreset);
   refreshWorkspaceSelect();
   syncWorkspaceControls();
   void updateServerWorkspaceSettings({ activeWorkspaceName: '' }).catch((error) => {
@@ -23408,7 +23415,7 @@ function configureServerWorkspaceLibrary() {
     ? savedSelection : DATA.workspace?.preset;
   currentBuiltinWorkspaceName = currentServerWorkspaceName ? ''
     : BUILTIN_WORKSPACE_IDS.includes(initialPreset) ? initialPreset : 'wave-right';
-  if (!savedSelection && currentBuiltinWorkspaceName && getSavedPresetWorkspaces()[currentBuiltinWorkspaceName]) {
+  if (!savedSelection && currentBuiltinWorkspaceName && presetWorkspaceHasLayout(getSavedPresetWorkspaces()[currentBuiltinWorkspaceName])) {
     waveformEditor.setLayoutData(getSavedPresetWorkspaces()[currentBuiltinWorkspaceName]);
     if (workspacePresetSelect) workspacePresetSelect.value = currentBuiltinWorkspaceName;
   }
