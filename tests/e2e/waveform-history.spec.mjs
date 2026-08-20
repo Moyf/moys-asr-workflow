@@ -733,6 +733,131 @@ test('Home and End seek the player and reveal the media boundaries', async ({ pa
   })).toBeGreaterThan(-1);
 });
 
+test('Home and End preserve native search and help-tab behavior', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('.cue[data-idx="2"]').click();
+  await page.evaluate(() => {
+    const nativeTargets = document.createElement('div');
+    nativeTargets.innerHTML = [
+      '<select id="home-end-select"><option>One</option><option>Two</option></select>',
+      '<textarea id="home-end-textarea">Alpha Bravo</textarea>',
+      '<button id="home-end-button" type="button">Native button</button>',
+      '<a id="home-end-link" href="#home-end-target">Native link</a>',
+      '<div id="home-end-editable" contenteditable="true">Alpha Bravo</div>',
+    ].join('');
+    document.body.append(nativeTargets);
+    const media = document.getElementById('player');
+    media.currentTime = 123;
+    media.dispatchEvent(new Event('timeupdate'));
+  });
+  const search = page.locator('#search');
+  await search.fill('Alpha Bravo');
+  await search.press('Home');
+  expect(await search.evaluate((element) => element.selectionStart)).toBe(0);
+  await expect(page.locator('.cue[data-idx="2"]')).toHaveClass(/selected/);
+
+  for (const selector of [
+    '#home-end-select',
+    '#home-end-textarea',
+    '#home-end-button',
+    '#home-end-link',
+    '#home-end-editable',
+  ]) {
+    const target = page.locator(selector);
+    await target.focus();
+    await target.press('Home');
+    await expect(page.locator('.cue[data-idx="2"]')).toHaveClass(/selected/);
+    await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBe(123);
+  }
+
+  await page.locator('#help-toggle').click();
+  const generalTab = page.locator('#help-tab-general');
+  const playbackTab = page.locator('#help-tab-playback');
+  await generalTab.focus();
+  await generalTab.press('End');
+  await expect(playbackTab).toBeFocused();
+  await expect(playbackTab).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('.cue[data-idx="2"]')).toHaveClass(/selected/);
+});
+
+test('Home and End follow the main cue-list owner without seeking media', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('.cue[data-idx="2"]').click();
+  await page.locator('#search').fill('a');
+  await expect(page.locator('.cue[data-idx="4"]')).toHaveClass(/hidden/);
+  await page.locator('#search').evaluate((element) => element.blur());
+  await page.evaluate(() => {
+    const media = document.getElementById('player');
+    media.currentTime = 123;
+    media.dispatchEvent(new Event('timeupdate'));
+  });
+
+  await page.keyboard.press('Home');
+  await expect(page.locator('.cue[data-idx="0"]')).toHaveClass(/selected/);
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBe(123);
+
+  await page.keyboard.press('End');
+  await expect(page.locator('.cue[data-idx="3"]')).toHaveClass(/selected/);
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBe(123);
+});
+
+test('Home and End keep extension cue-list navigation on the exact track', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    DATA.multi_subtitle = {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-home-end',
+        role: 'extension',
+        name: 'English',
+        language: 'English',
+        split_mode: 'word',
+        segments: DATA.segments.slice(0, 3).map((segment, index) => ({
+          id: `extension-home-end-${index}`,
+          start: segment.start,
+          end: segment.end,
+          text: `Extension ${index + 1}`,
+        })),
+      }],
+      bindings: [],
+    };
+    renderAll({ waveform: 'full' });
+  });
+  const extensionCue = page.locator(
+    '.multi-dual-cue[data-ext-idx="1"] .multi-cue-column.extension',
+  );
+  await extensionCue.click();
+  await page.evaluate(() => {
+    const media = document.getElementById('player');
+    media.currentTime = 123;
+    media.dispatchEvent(new Event('timeupdate'));
+  });
+
+  await page.keyboard.press('Home');
+  await expect(page.locator('.multi-dual-cue[data-ext-idx="0"]')).toHaveClass(/selected/);
+  expect(await page.evaluate(() => getCurrentCuePanelTarget()?.trackId)).toBe('extension-home-end');
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBe(123);
+
+  await page.keyboard.press('End');
+  await expect(page.locator('.multi-dual-cue[data-ext-idx="2"]')).toHaveClass(/selected/);
+  expect(await page.evaluate(() => getCurrentCuePanelTarget()?.trackId)).toBe('extension-home-end');
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBe(123);
+});
+
+test('Home and End help explains cue-list and media routing in Chinese and English', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('#help-toggle').click();
+  const helpPanel = page.locator('#help-panel');
+  await expect(helpPanel).toContainText('选择并显示当前轨道首/末条可见字幕');
+  await expect(helpPanel).toContainText('在波形区或播放器跳转到媒体开头/结尾');
+
+  await page.locator('#language-toggle').evaluate((button) => button.click());
+  await expect(helpPanel).toContainText('Select and reveal the first/last visible subtitle on the current track');
+  await expect(helpPanel).toContainText('Seek to the start/end of the media from the waveform or player');
+});
+
 test('hovering a selected subtitle shows the B split hint', async ({ page }) => {
   await page.goto(server.url);
   const cue = page.locator('.cue[data-idx="0"]');

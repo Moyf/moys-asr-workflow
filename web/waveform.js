@@ -215,6 +215,25 @@
       && rowTop + safeRowHeight <= safeViewportHeight - comfortInset;
   }
 
+  function waveformTopEdgeMs(state) {
+    if (state?.mode === 'basic') return Math.max(0, Math.round(Number(state.basicWindowStartMs) || 0));
+    const scrollTop = Math.max(0, Number(state?.scrollTop) || 0);
+    const stride = Math.max(1, Number(state?.rowHeight) + Number(state?.rowGap));
+    const rowDurationMs = Math.max(1, Number(state?.secondsPerRow) * 1000 || 1);
+    return Math.max(0, Math.floor(scrollTop / stride) * rowDurationMs);
+  }
+
+  function restoreWaveformTopEdgeMs(state, value) {
+    if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value)) return null;
+    const durationMs = Math.max(0, Math.round(Number(state?.durationMs) || 0));
+    if (state?.mode === 'basic') {
+      const windowMs = Math.max(1, Number(state.visibleSeconds) * 1000 || 1);
+      return clamp(value, 0, Math.max(0, durationMs - windowMs));
+    }
+    const rowDurationMs = Math.max(1, Number(state?.secondsPerRow) * 1000 || 1);
+    return Math.floor(Math.min(value, durationMs) / rowDurationMs) * rowDurationMs;
+  }
+
   // 组序号徽章：颜色与表情包分组彼此独立，因此同一条字幕可同时拥有两枚徽章。
   // 颜色组大小 <2 时不显示；表情包即使只有单条也显示 🦊 作为非视觉化标记。
   function computeGroupBadges(segments) {
@@ -1317,12 +1336,18 @@
       this.suppressGapClickUntil = 0;
       this.autoScrolling = false;
       this.autoScrollTarget = null;
+      this.navigationRestoring = false;
       this.multiFollowRowIndex = -1;
       this.multiFollowCheckPending = true;
       this.resizeFrame = 0;
       // 字幕快捷键会在很短时间内连续请求定位；复用滚动事件已有的
       // rAF 合并，避免每个按键都强制重建可视行和 Canvas。
       this.multiVisibleFrame = 0;
+      // 「鼠标位置自动预览」：高回报率 pointermove 用 rAF 合并，每帧最多按
+      // 最新事件 seek 一次；pointerleave 时取消尚未执行的待办。
+      this.hoverSeekPreviewFrame = 0;
+      this.hoverSeekPreviewLastEvent = null;
+      this.hoverSeekPreviewRow = null;
       // Shift+滚轮调振幅的 debounce：滚动期间只累计净步数，停止后一次性重绘
       this.pendingScaleDirection = 0;
       this.scaleDebounceTimer = 0;
@@ -1494,6 +1519,41 @@
 
     hidePointerLine(marker) {
       if (marker) marker.hidden = true;
+    }
+
+    // 暂停时指针在波形上移动即把画面预览到指针时间。与拖动播放头一样按
+    // 最新事件合并到每帧最多一次；真正 seek 前重新检查开关与播放状态，
+    // 避免调度之后状态已变化（开始播放、关闭开关、行被虚拟化重建）仍执行。
+    scheduleHoverSeekPreview(event, row) {
+      if (this.options.getHoverSeekPreview?.() !== true) return;
+      this.hoverSeekPreviewLastEvent = event;
+      this.hoverSeekPreviewRow = row;
+      if (this.hoverSeekPreviewFrame) return;
+      this.hoverSeekPreviewFrame = requestAnimationFrame(() => this.flushHoverSeekPreview());
+    }
+
+    cancelHoverSeekPreview() {
+      if (this.hoverSeekPreviewFrame) {
+        cancelAnimationFrame(this.hoverSeekPreviewFrame);
+        this.hoverSeekPreviewFrame = 0;
+      }
+      this.hoverSeekPreviewLastEvent = null;
+      this.hoverSeekPreviewRow = null;
+    }
+
+    flushHoverSeekPreview() {
+      this.hoverSeekPreviewFrame = 0;
+      const event = this.hoverSeekPreviewLastEvent;
+      const row = this.hoverSeekPreviewRow;
+      this.hoverSeekPreviewLastEvent = null;
+      this.hoverSeekPreviewRow = null;
+      if (!event || !row) return;
+      if (this.options.getHoverSeekPreview?.() !== true) return;
+      if (!this.player || !this.mediaAvailable) return;
+      if (!this.player.paused) return;
+      if (event.buttons !== 0) return;
+      if (!row.isConnected) return;
+      this.seekFromPointer(event, row, false);
     }
 
     bindDivider() {
@@ -2324,7 +2384,7 @@
         this.payload = null;
         this.peaks = null;
         this.setStatus('等待波形数据');
-        this.empty.textContent = '加载媒体后显示波形';
+        this.empty.textContent = '加载媒体后显示波形（大媒体需要先用 MAW 生成波形后拖入）';
         this.empty.classList.remove('hidden');
         if (render) this.render();
         return false;
@@ -2338,6 +2398,11 @@
       this.centerBasicOnCurrentTime();
       this.multiRange = [-1, -1];
       if (render) this.render();
+      if (this.pendingNavigation) {
+        const navigation = this.pendingNavigation;
+        this.pendingNavigation = null;
+        this.restoreNavigation(navigation);
+      }
       return true;
     }
 
@@ -2363,6 +2428,9 @@
     setReapeaksWaveform(payload, { render = true } = {}) {
       this.reapeaksPeaks = decodePayload(payload);
       this.reapeaksPayload = this.reapeaksPeaks ? payload : null;
+      if (this.reapeaksPayload && !this.payload) {
+        this.setPayload(this.reapeaksPayload, { render: false });
+      }
       if (render) this.render();
       return this.reapeaksPayload != null;
     }
@@ -2825,8 +2893,14 @@
         this.seekFromPointer(event, row, false, geometry);
       });
       row.addEventListener('pointerenter', (event) => this.showPointerLine(event, row, pointerLine));
-      row.addEventListener('pointermove', (event) => this.showPointerLine(event, row, pointerLine));
-      row.addEventListener('pointerleave', () => this.hidePointerLine(pointerLine));
+      row.addEventListener('pointermove', (event) => {
+        this.showPointerLine(event, row, pointerLine);
+        this.scheduleHoverSeekPreview(event, row);
+      });
+      row.addEventListener('pointerleave', () => {
+        this.hidePointerLine(pointerLine);
+        this.cancelHoverSeekPreview();
+      });
       row.addEventListener('auxclick', (event) => {
         if (event.button === 1 && gapOperationMode === 'middle_drag') event.preventDefault();
       });
@@ -4788,7 +4862,7 @@
           });
       }
 
-      if (allowFollow && this.settings.mode === 'basic') {
+      if (allowFollow && this.settings.mode === 'basic' && !this.navigationRestoring) {
         const windowMs = this.settings.visibleSeconds * 1000;
         const relative = (now - this.basicWindowStartMs) / Math.max(1, windowMs);
         if (now < this.basicWindowStartMs || now > this.basicWindowStartMs + windowMs ||
@@ -4799,7 +4873,8 @@
         }
       }
 
-      if (allowFollow && this.isMultiMode() && this.player && !this.player.paused && Date.now() > this.manualFollowUntil) {
+      if (allowFollow && this.isMultiMode() && !this.navigationRestoring
+          && this.player && !this.player.paused && Date.now() > this.manualFollowUntil) {
         const rowIndex = Math.floor(now / (this.settings.secondsPerRow * 1000));
         const shouldCheckFollow = this.multiFollowCheckPending || rowIndex !== this.multiFollowRowIndex;
         if (!shouldCheckFollow) {
@@ -4837,6 +4912,61 @@
         if (!needsScroll) this.autoScrollTarget = null;
       }
       this.positionPlayheads();
+    }
+
+    getNavigationSnapshot() {
+      return {
+        cueListScrollTop: Math.max(0, Math.round(Number(this.cues?.scrollTop) || 0)),
+        waveformTopEdgeMs: waveformTopEdgeMs({
+          mode: this.settings.mode,
+          basicWindowStartMs: this.basicWindowStartMs,
+          scrollTop: this.scroll?.scrollTop,
+          rowHeight: this.settings.rowHeight,
+          rowGap: ROW_GAP,
+          secondsPerRow: this.settings.secondsPerRow,
+        }),
+      };
+    }
+
+    restoreNavigation(snapshot) {
+      if (!snapshot || typeof snapshot !== 'object') return false;
+      if (!this.payload) {
+        this.pendingNavigation = snapshot;
+        if (typeof snapshot.cueListScrollTop === 'number' && Number.isFinite(snapshot.cueListScrollTop)) {
+          const maxTop = Math.max(0, this.cues.scrollHeight - this.cues.clientHeight);
+          this.cues.scrollTop = clamp(Math.round(snapshot.cueListScrollTop), 0, maxTop);
+        }
+        return true;
+      }
+      const topEdgeMs = restoreWaveformTopEdgeMs({
+        mode: this.settings.mode,
+        durationMs: this.durationMs,
+        visibleSeconds: this.settings.visibleSeconds,
+        secondsPerRow: this.settings.secondsPerRow,
+      }, snapshot.waveformTopEdgeMs);
+      this.navigationRestoring = true;
+      if (topEdgeMs !== null) {
+        if (this.settings.mode === 'basic') {
+          this.basicWindowStartMs = topEdgeMs;
+          this.renderBasic();
+        } else {
+          const rowDurationMs = Math.max(1, this.settings.secondsPerRow * 1000);
+          const stride = this.settings.rowHeight + ROW_GAP;
+          const rowTop = Math.floor(topEdgeMs / rowDurationMs) * stride;
+          const maxTop = Math.max(0, this.scroll.scrollHeight - this.scroll.clientHeight);
+          this.scroll.scrollTop = clamp(rowTop, 0, maxTop);
+          this.renderMultiVisible();
+        }
+      }
+      if (typeof snapshot.cueListScrollTop === 'number' && Number.isFinite(snapshot.cueListScrollTop)) {
+        const maxTop = Math.max(0, this.cues.scrollHeight - this.cues.clientHeight);
+        this.cues.scrollTop = clamp(Math.round(snapshot.cueListScrollTop), 0, maxTop);
+      }
+      this.manualFollowUntil = Date.now() + 5000;
+      this.autoScrolling = false;
+      this.autoScrollTarget = null;
+      requestAnimationFrame(() => { this.navigationRestoring = false; });
+      return topEdgeMs !== null || typeof snapshot.cueListScrollTop === 'number';
     }
 
     positionPlayheads() {
@@ -4894,6 +5024,8 @@
       layoutRootDropIntent,
       layoutDropPreviewRect,
       isMultiRowInComfortZone,
+      waveformTopEdgeMs,
+      restoreWaveformTopEdgeMs,
       computeGroupBadges,
     },
   };

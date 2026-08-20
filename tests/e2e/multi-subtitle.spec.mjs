@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   cleanupTempDir,
   findFreePort,
+  generateBlankEditor,
   generateWaveformPayload,
   makeTempDir,
   startStaticServer,
@@ -15,9 +16,7 @@ let server;
 
 test.beforeAll(async () => {
   tempDir = makeTempDir('multi-subtitle');
-  // blank-editor.html 已由源码变更后的验证步骤生成；这里直接复用它，
-  // 避免每个 E2E worker 再次触发 uv 的依赖解析和本机缓存权限问题。
-  const blankPath = join(process.cwd(), 'blank-editor.html');
+  const blankPath = generateBlankEditor(join(tempDir, 'blank-editor.html'));
   server = await startStaticServer(blankPath, await findFreePort());
 });
 
@@ -2119,6 +2118,45 @@ test('refreshes local font options for both main and extension subtitles', async
   expect(fontFamilies.main).toContain('MAW Test Sans');
   expect(fontFamilies.extension).toContain('MAW Test Serif');
 });
+
+test('localizes approved scanned font labels in both selectors', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.queryLocalFonts = async () => [
+      { family: 'Microsoft YaHei' },
+      { family: 'SimSun' },
+      { family: 'Source Han Sans SC' },
+      { family: 'MAW Test Sans' },
+    ];
+  });
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-extension').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  await page.locator('#subtitle-preview-settings-toggle').click();
+  await page.locator('#subtitle-font-family-scan').click();
+  const options = await page.evaluate(() => ['subtitle-font-family', 'extension-subtitle-font-family']
+    .map((id) => Array.from(document.getElementById(id).options, (option) => ({
+      label: option.textContent,
+      value: option.value,
+    }))));
+  expect(options[0]).toEqual(options[1]);
+  expect(options[0]).toEqual(expect.arrayContaining([
+    { label: '微软雅黑', value: 'Microsoft YaHei' },
+    { label: '宋体', value: 'SimSun' },
+    { label: '思源黑体', value: 'Source Han Sans SC' },
+    { label: 'MAW Test Sans', value: 'MAW Test Sans' },
+  ]));
+  await page.locator('#subtitle-font-family').selectOption('Source Han Sans SC');
+  await page.locator('#extension-subtitle-font-family').selectOption('SimSun');
+  await page.locator('#language-toggle').click();
+  await expect(page.locator('#subtitle-font-family option:checked')).toHaveText('Source Han Sans SC');
+  await expect(page.locator('#extension-subtitle-font-family option:checked')).toHaveText('SimSun');
+  expect(await page.evaluate(() => ({
+    main: document.getElementById('subtitle-font-family').value,
+    extension: document.getElementById('extension-subtitle-font-family').value,
+  }))).toEqual({ main: 'Source Han Sans SC', extension: 'SimSun' });
+});
+
+
 
 test('aligns a bound extension cue to the main subtitle range from its context menu', async ({ page }) => {
   await importPair(page);

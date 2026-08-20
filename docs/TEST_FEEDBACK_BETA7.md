@@ -47,6 +47,8 @@
 - 未验证边界：仍需在 Premiere 实机打开包含 GIF/JPG 表情包的 XML，确认图片免手动重链以及字体在目标机器已安装时的实际显示效果。
 
 已验证：`node --test tests\\test_editor_utils.mjs`（111/111）；`node --check web\\editor-utils.js`、`node --check web\\editor.js`；`uv run python edit.py --blank`；`git diff --check`。Premiere 图片自动重链和真实字体显示仍需用户实机确认。
+| 33 | Launcher / 批量拖入 | 不支持格式的提示显示在单文件区域；重复拖入文件没有提示；批量阶段日志只显示在单条记录；跳过确认按钮应显示“是 / 否” | 修改 | 已修复 |
+| 34 | Launcher / 批量进度 | 批量运行时总日志和状态区缺少当前文件、完成/失败和汇总反馈 | 修改 | 已修复 |
 
 ## 修复与验证记录
 
@@ -71,6 +73,8 @@
 | 24 | 已修复 | 新增绑定和未绑定、且与主字幕时间重叠的波形区回归；`B` 均打开「选择副字幕拆分点」，主字幕时间不变。相关 Playwright 回归 4/4 通过；`node --check`、Node 119/119、便携版生成和 `git diff --check` 通过。 |
 | 26 | 已修复 | `C` 合并后新建的绑定副字幕在开关开启时同步到合并后的主字幕范围，并重算绑定 offset；关闭开关时保留原副字幕范围。相关 Playwright 回归 3/3 通过；`node --check web\\editor.js`、便携版生成和 `git diff --check` 通过。 |
 | 27 | 已修复 | 自动后处理 OCR 改为复用已安装的 managed runtime，并把运行结果转换回流水线产物契约；安装完成事件同时刷新 OCR 控件和自动步骤状态，自动步骤可在运行时状态就绪后恢复。OCR runtime / OCR 后处理 / 自动后处理 / Launcher GUI 回归分别纳入 64/64 和 154/154 通过批次；相关 MAW Python 模块、Launcher JS 和编辑器 JS 语法检查，以及 `git diff --check` 通过。 |
+| 33 | 已修复 | 批量区域新增独立拖入提示；不支持格式和重复文件不再写入单文件错误区，重复文件提示“文件已在当前列表内”；`batch_item_log` 阶段名同步写入总日志并以内联形式显示；跳过已完成文件改为自定义“是 / 否”确认按钮。已通过完整 Python 643/643、Launcher 190/190、Node 126/126、Launcher JS 语法、便携版生成、`git diff --check` 和浏览器冒烟验证。 |
+| 34 | 已修复 | 批量开始时状态区显示当前文件序号（如 `正在处理第 1/3 个文件`）；切换文件时更新当前处理文件；每个文件完成、失败或取消时写入总日志；批量结束时汇总成功/失败数量。已通过 Launcher 190/190、Launcher JS 语法检查和浏览器批量冒烟验证。 |
 
 ## 询问项结论
 

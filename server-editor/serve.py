@@ -10,8 +10,11 @@ import argparse
 import copy
 import html
 import json
+import math
 import mimetypes
 import os
+import secrets
+import shutil
 import struct
 import sys
 import tempfile
@@ -22,7 +25,8 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import NamedTuple
-from urllib.parse import unquote, urlsplit
+from hmac import compare_digest
+from urllib.parse import quote, unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,6 +62,7 @@ PRPROJ_CAPABILITY = {
     "profile": None,
     "route": "/api/prproj",
 }
+STICKER_IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"})
 
 
 class ByteRange(NamedTuple):
@@ -109,6 +114,14 @@ class RecentProjectError(ValueError):
 
 class AttachProjectError(ValueError):
     """A browser-opened project could not be bound to its on-disk file."""
+
+
+class ProjectMutationInProgressError(RuntimeError):
+    """Another project create/save operation currently owns the mutation lock."""
+
+
+class StickerExportInProgressError(RuntimeError):
+    """Another portable sticker export currently owns the sticker lock."""
 
 
 def default_settings_path() -> Path:
@@ -257,6 +270,32 @@ def load_project(
     if repaired_count:
         print(f"[project] 已兜底修复 {repaired_count} 处异常时间码（保底 100ms）")
     data = normalize_project(raw_data)
+    sticker_source = data.get("sticker_root")
+    sticker_root: Path | None = None
+    stickers: list[dict] = []
+    if isinstance(sticker_source, str) and sticker_source.strip():
+        try:
+            sticker_root, stickers = validate_sticker_root(sticker_source)
+        except (OSError, ValueError):
+            sticker_root = None
+    if sticker_root is None:
+        fallback_source = stickers_dir or edit.get_default_sticker_dir()
+        if fallback_source:
+            fallback_path = Path(fallback_source).resolve()
+            root_text, stickers = edit.scan_stickers(fallback_path)
+            sticker_root = Path(root_text) if root_text else None
+
+    media_value = data.get("media")
+    if explicit_media is None and (not isinstance(media_value, str) or not media_value.strip()):
+        return ServerProject(
+            data,
+            json_path,
+            None,
+            sticker_root,
+            stickers,
+            source_media_path=None,
+            reapeaks_path=None,
+        )
 
     resolution = resolve_project_media(json_path, data, explicit_media)
     if not resolution.loadable:
@@ -307,14 +346,11 @@ def load_project(
                     f"({reapeaks_wave['peaks_per_second']}/秒)"
                 )
 
-    source = stickers_dir or edit.get_default_sticker_dir()
-    sticker_root = Path(source).resolve() if source else None
-    root_text, stickers = edit.scan_stickers(sticker_root) if sticker_root else ("", [])
     return ServerProject(
         data,
         json_path,
         media_path,
-        Path(root_text) if root_text else None,
+        sticker_root,
         stickers,
         source_media_path=source_media_path,
         reapeaks_path=reapeaks_base,
@@ -348,7 +384,11 @@ def without_deferred_reapeaks(project: ServerProject) -> ServerProject:
     return replace(project, data=data)
 
 
-def build_server_page(project: ServerProject, settings: ServerSettings | None = None) -> bytes:
+def build_server_page(
+    project: ServerProject,
+    settings: ServerSettings | None = None,
+    request_token: str = "",
+) -> bytes:
     """Render with current web/ assets on every page request to prevent UI drift."""
     settings = settings or ServerSettings()
     if project.media_path:
@@ -363,20 +403,27 @@ def build_server_page(project: ServerProject, settings: ServerSettings | None = 
         media_class = ""
     else:
         media_html = '<audio id="player" preload="metadata" style="width:100%;display:block;"></audio>'
-        title = html.escape("MAWE（本地服务器）- 用「打开工程」加载 JSON")
-        filename_base = "untitled"
-        json_display = "未加载工程"
+        title = html.escape(
+            f"MAWE（本地服务器）- {project.json_path.name}"
+            if project.json_path
+            else "MAWE（本地服务器）- 用「打开工程」加载 JSON"
+        )
+        filename_base = project.json_path.stem if project.json_path else "untitled"
+        json_display = project.json_path.name if project.json_path else "未加载工程"
         media_display = "未加载媒体"
         media_title = ""
-        json_class = "empty"
+        json_class = "" if project.json_path else "empty"
         media_class = "empty"
 
     page_data = copy.deepcopy(project.data)
+    if isinstance(page_data.get("workspace"), dict):
+        page_data["workspace"].pop("navigation", None)
     project_workspace = page_data.get("workspace")
     project_selected_workspace = project_workspace.get("selectedPreset") if isinstance(project_workspace, dict) else None
     active_workspace = settings.saved_workspaces.get(settings.active_workspace_name)
     if active_workspace is not None and not project_selected_workspace:
         page_data["workspace"] = copy.deepcopy(active_workspace)
+        page_data["workspace"].pop("navigation", None)
         page_data["workspace"]["selectedPreset"] = f"saved:{settings.active_workspace_name}"
     page = edit.render_editor_page(
         title=title,
@@ -389,8 +436,13 @@ def build_server_page(project: ServerProject, settings: ServerSettings | None = 
         ninja_sfx_base_url_json=json.dumps("/sfx/", ensure_ascii=False),
         server_config_json=json.dumps({
             "saveUrl": "/api/project",
+            "requestToken": request_token,
+            "stickerRootUrl": "/api/stickers/root",
+            "portableStickerExportUrl": "/api/exports/sticker-otio",
             "waveformUrl": "/api/waveform",
             "canSave": project.json_path is not None,
+            "canPortableStickerExport": project.json_path is not None,
+            "initialStickerCount": len(project.stickers),
             "autoLoadedMediaName": (project.source_media_path or project.media_path).name if project.media_path else None,
             "recentProjectsUrl": "/api/recent-projects/open",
             "attachUrl": "/api/project/attach",
@@ -436,7 +488,9 @@ class EditorServer(ThreadingHTTPServer):
         self.stickers_dir = stickers_dir
         self.no_waveform = no_waveform
         self.peaks_per_second = peaks_per_second
+        self.request_token = secrets.token_urlsafe(32)
         self.save_lock = threading.Lock()
+        self.sticker_lock = threading.Lock()
         self.settings_lock = threading.Lock()
         self.reapeaks_lock = threading.Lock()
         self.reapeaks_generation = 0
@@ -464,6 +518,13 @@ class EditorServer(ThreadingHTTPServer):
                 print(f"[settings] 后台保存失败: {error}", file=sys.stderr)
 
         threading.Thread(target=persist, daemon=True, name="maw-save-settings").start()
+
+    def set_sticker_root(self, raw_path: str) -> tuple[Path, list[dict]]:
+        """Scan a root before atomically making it the active sticker scope."""
+        with self.sticker_lock:
+            root, stickers = validate_sticker_root(raw_path)
+            self.project = replace(self.project, sticker_root=root, stickers=stickers)
+            return root, stickers
 
     def start_deferred_reapeaks_load(self) -> None:
         """Load optional ReaPeaks layers after the HTTP server is available."""
@@ -581,7 +642,11 @@ class EditorServer(ThreadingHTTPServer):
             raise ValueError("不是可保存的内置工作区")
         with self.settings_lock:
             workspaces = copy.deepcopy(self.settings.preset_workspaces)
+            existing = workspaces.get(preset, {})
+            preserved_nav = existing.get("navigation") if isinstance(existing, dict) else None
             workspaces[preset] = copy.deepcopy(workspace)
+            if preserved_nav is not None and isinstance(workspaces[preset], dict):
+                workspaces[preset]["navigation"] = preserved_nav
             self.settings = replace(self.settings, preset_workspaces=workspaces, active_workspace_name="")
             self.persist_settings()
 
@@ -601,27 +666,63 @@ class EditorServer(ThreadingHTTPServer):
             self.settings = replace(self.settings, active_workspace_name=name)
             self.persist_settings()
 
+    def update_workspace_navigation(
+        self,
+        *,
+        name: str | None,
+        preset: str | None,
+        navigation: dict[str, object],
+    ) -> None:
+        if (name is None) == (preset is None):
+            raise ValueError("必须指定一个工作区名称或内置工作区")
+        with self.settings_lock:
+            if name is not None:
+                if name not in self.settings.saved_workspaces:
+                    raise ValueError("工作区不存在")
+                workspaces = copy.deepcopy(self.settings.saved_workspaces)
+            else:
+                assert preset is not None
+                if preset not in BUILTIN_WORKSPACE_IDS:
+                    raise ValueError("内置工作区覆盖不存在")
+                workspaces = copy.deepcopy(self.settings.preset_workspaces)
+                if preset not in workspaces:
+                    workspaces[preset] = {}
+            workspace = workspaces[name if name is not None else preset]
+            current_navigation = workspace.get("navigation", {})
+            if not isinstance(current_navigation, dict):
+                current_navigation = {}
+            current_navigation.update(navigation)
+            workspace["navigation"] = current_navigation
+            if len(json.dumps(workspaces, ensure_ascii=False)) > 256 * 1024:
+                raise ValueError("工作区不能超过 256 KB")
+            if name is not None:
+                self.settings = replace(self.settings, saved_workspaces=workspaces)
+            else:
+                self.settings = replace(self.settings, preset_workspaces=workspaces)
+            self.persist_settings()
+
     def open_recent_project(self, project_path: str) -> ServerProject:
         candidate = Path(project_path).expanduser().resolve()
         with self.settings_lock:
             known = next((item for item in self.settings.recent_projects if item.path == candidate), None)
             if not known:
                 raise RecentProjectError("该工程不在本机最近打开记录中")
-            project = load_project(
-                known.path,
-                None,
-                self.stickers_dir,
-                no_waveform=self.no_waveform,
-                load_reapeaks=not self.defer_reapeaks,
-                peaks_per_second=self.peaks_per_second,
-            )
-            if self.defer_reapeaks:
-                project = without_deferred_reapeaks(project)
+        project = load_project(
+            known.path,
+            None,
+            self.stickers_dir,
+            no_waveform=self.no_waveform,
+            load_reapeaks=not self.defer_reapeaks,
+            peaks_per_second=self.peaks_per_second,
+        )
+        if self.defer_reapeaks:
+            project = without_deferred_reapeaks(project)
+        with self.settings_lock:
             self.project = project
             self.settings = remember_project(self.settings, project.json_path)
             self.persist_settings()
-            self.start_deferred_reapeaks_load()
-            return project
+        self.start_deferred_reapeaks_load()
+        return project
 
     def attach_project(self, file_name: str, browser_project: dict) -> ServerProject:
         """Bind a project opened through the browser to its on-disk file.
@@ -696,10 +797,14 @@ class EditorServer(ThreadingHTTPServer):
         target = self.project.json_path
         if filename is not None:
             target = safe_project_filename(target.parent, filename)
-        with self.save_lock:
+        if not self.save_lock.acquire(blocking=False):
+            raise ProjectMutationInProgressError("另一个工程保存操作正在进行")
+        try:
             backup = write_project_json(target, normalized_project)
             self.project = replace(self.project, data=normalized_project, json_path=target)
             self.remember_project(target)
+        finally:
+            self.save_lock.release()
         return target, backup
 
 
@@ -713,6 +818,119 @@ def safe_project_filename(directory: Path, filename: str) -> Path:
     ):
         raise SaveProjectError("另存为只能使用当前工程目录内的 .mosp 或 .json 文件名")
     return directory / candidate.name
+
+
+def validate_sticker_root(raw_path: str) -> tuple[Path, list[dict]]:
+    """Validate and scan one native absolute sticker directory."""
+    candidate = Path(raw_path).expanduser()
+    if not candidate.is_absolute():
+        raise ValueError("表情包根目录必须是绝对路径")
+    root = candidate.resolve(strict=True)
+    if not root.is_dir():
+        raise ValueError("表情包根目录不是文件夹")
+    root_text, stickers = edit.scan_stickers(root)
+    if not root_text:
+        raise ValueError("表情包根目录无法扫描")
+    return Path(root_text), stickers
+
+
+def _sticker_rel_path(raw_rel: str, root: Path) -> Path:
+    """Resolve a submitted sticker-relative path without crossing the root."""
+    if not raw_rel or "\\" in raw_rel:
+        raise ValueError("表情包相对路径不安全")
+    relative = Path(raw_rel)
+    if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
+        raise ValueError("表情包相对路径不安全")
+    if relative.suffix.casefold() not in STICKER_IMAGE_EXTENSIONS:
+        raise ValueError("表情包格式不受支持")
+    try:
+        source = (root / relative).resolve(strict=True)
+    except FileNotFoundError as error:
+        raise ValueError("表情包源文件不存在") from error
+    try:
+        source.relative_to(root)
+    except ValueError as error:
+        raise ValueError("表情包路径超出根目录") from error
+    if not source.is_file():
+        raise ValueError("表情包源文件不存在")
+    return source
+
+
+def export_sticker_otio(project: ServerProject, kind: str, timeline: dict, root: Path) -> tuple[Path, str, int]:
+    """Build and atomically publish a portable sticker-only OTIO package."""
+    if project.json_path is None:
+        raise ValueError("当前服务器没有绑定工程文件")
+    if timeline.get("OTIO_SCHEMA") != "Timeline.1":
+        raise ValueError("OTIO 必须是 Timeline")
+    if kind not in {"stickers", "gap-removed-stickers"}:
+        raise ValueError("不支持的表情包 OTIO 类型")
+    stem = project.json_path.stem
+    package_base = f"{stem}_stickers_otio" if kind == "stickers" else f"{stem}_gap-removed-stickers_otio"
+    otio_name = f"{stem}_stickers.otio" if kind == "stickers" else f"{stem}_gap-removed-stickers.otio"
+    parent = project.json_path.parent
+    package = parent / package_base
+    suffix = 1
+    while package.exists():
+        suffix += 1
+        package = parent / f"{package_base}-{suffix}"
+    used: dict[Path, str] = {}
+    used_names: set[str] = set()
+    clip_count = 0
+
+    def visit(value: dict) -> None:
+        nonlocal clip_count
+        if value.get("OTIO_SCHEMA") == "Clip.2" and isinstance(value.get("media_references"), dict):
+            clip_count += 1
+        metadata = value.get("metadata")
+        moy = metadata.get("moy") if isinstance(metadata, dict) else None
+        sticker_rel = moy.get("sticker_rel") if isinstance(moy, dict) else None
+        if value.get("OTIO_SCHEMA") == "Clip.2" and isinstance(value.get("media_references"), dict) and (
+            not isinstance(sticker_rel, str) or not sticker_rel.strip()
+        ):
+            raise ValueError("表情包 Clip 缺少 sticker_rel")
+        if isinstance(sticker_rel, str) and sticker_rel.strip():
+            source = _sticker_rel_path(sticker_rel, root)
+            if source not in used:
+                filename = source.name
+                stem, extension = source.stem, source.suffix
+                candidate_name = filename
+                collision = 1
+                while candidate_name.casefold() in used_names:
+                    collision += 1
+                    candidate_name = f"{stem}-{collision}{extension}"
+                used[source] = candidate_name
+                used_names.add(candidate_name.casefold())
+            references = value.get("media_references")
+            if isinstance(references, dict):
+                for reference in references.values():
+                    if isinstance(reference, dict) and isinstance(reference.get("target_url"), str):
+                        reference["target_url"] = "stickers/" + quote(used[source], safe="")
+        for child in value.values():
+            if isinstance(child, dict):
+                visit(child)
+            elif isinstance(child, list):
+                for item in child:
+                    if isinstance(item, dict):
+                        visit(item)
+
+    payload = copy.deepcopy(timeline)
+    visit(payload)
+    if clip_count == 0 or not used:
+        raise ValueError("表情包 OTIO 没有可导出的表情包")
+    temporary = Path(tempfile.mkdtemp(prefix=f".{package.name}-", dir=parent))
+    try:
+        stickers_dir = temporary / "stickers"
+        stickers_dir.mkdir()
+        for source, filename in used.items():
+            shutil.copy2(source, stickers_dir / filename)
+        (temporary / otio_name).write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n",
+        )
+        os.replace(temporary, package)
+    except (OSError, ValueError):
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
+    return package, otio_name, len(used)
 
 
 def write_project_json(target: Path, project_data: dict) -> Path | None:
@@ -760,6 +978,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.update_settings()
         elif path == "/api/prproj":
             self.send_json(HTTPStatus.NOT_IMPLEMENTED, PRPROJ_CAPABILITY)
+        elif path == "/api/stickers/root":
+            self.set_sticker_root()
+        elif path == "/api/exports/sticker-otio":
+            self.export_sticker_otio()
         else:
             self.send_localized_error(HTTPStatus.NOT_FOUND, "未知 API")
 
@@ -782,6 +1004,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             if filename is not None and not isinstance(filename, str):
                 raise SaveProjectError("文件名格式不正确")
             target, backup = self.editor_server.save_project(request.get("project"), filename)
+        except ProjectMutationInProgressError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
         except (UnicodeDecodeError, json.JSONDecodeError, SaveProjectError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
@@ -792,6 +1017,72 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "ok": True,
             "filename": target.name,
             "backup": backup.name if backup else None,
+        })
+
+    def _check_request_token(self, request: dict) -> None:
+        token = request.get("requestToken")
+        if not isinstance(token, str) or not compare_digest(token, self.editor_server.request_token):
+            raise PermissionError("请求令牌无效")
+
+    def set_sticker_root(self) -> None:
+        try:
+            request = self.read_json_request()
+            self._check_request_token(request)
+            path = request.get("path")
+            if not isinstance(path, str) or not path:
+                raise ValueError("表情包根目录格式不正确")
+            root, stickers = self.editor_server.set_sticker_root(path)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, OSError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, {
+            "ok": True,
+            "root": root.as_posix(),
+            "count": len(stickers),
+            "stickers": stickers,
+        })
+
+    def export_sticker_otio(self) -> None:
+        try:
+            request = self.read_json_request()
+            self._check_request_token(request)
+            kind = request.get("kind")
+            timeline = request.get("timeline")
+            if not isinstance(kind, str) or not isinstance(timeline, dict):
+                raise ValueError("表情包 OTIO 请求格式不正确")
+            if not self.editor_server.sticker_lock.acquire(blocking=False):
+                raise StickerExportInProgressError("另一个表情包导出操作正在进行")
+            try:
+                project = self.editor_server.project
+                root = project.sticker_root
+                if root is None:
+                    raise ValueError("尚未验证表情包根目录")
+                package, otio_name, sticker_count = export_sticker_otio(
+                    project, kind, timeline, root,
+                )
+            finally:
+                self.editor_server.sticker_lock.release()
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except StickerExportInProgressError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        except OSError as error:
+            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": f"表情包导出失败：{error}"})
+            return
+        self.send_json(HTTPStatus.OK, {
+            "ok": True,
+            "folderName": package.name,
+            "folderPath": str(package.resolve()),
+            "otioName": otio_name,
+            "stickerCount": sticker_count,
         })
 
     def read_json_request(self) -> dict:
@@ -916,6 +1207,35 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 raise ValueError("activeWorkspaceName 必须是字符串")
             self.editor_server.set_active_workspace(active_workspace_name)
             return True
+        update_navigation = request.get("updateWorkspaceNavigation")
+        if update_navigation is not None:
+            if not isinstance(update_navigation, dict):
+                raise ValueError("updateWorkspaceNavigation 必须是对象")
+            name = update_navigation.get("name")
+            preset = update_navigation.get("preset")
+            navigation = update_navigation.get("navigation")
+            if name is not None and (not isinstance(name, str) or not name.strip()):
+                raise ValueError("工作区名称格式不正确")
+            if preset is not None and not isinstance(preset, str):
+                raise ValueError("内置工作区名称格式不正确")
+            if not isinstance(navigation, dict) or not navigation:
+                raise ValueError("导航状态必须是非空对象")
+            allowed = {"cueListScrollTop", "waveformTopEdgeMs"}
+            if set(navigation) - allowed:
+                raise ValueError("导航状态包含未知字段")
+            for key, value in navigation.items():
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                    raise ValueError(f"{key} 必须是有限数字")
+                if value < 0 or (isinstance(value, float) and not value.is_integer()):
+                    raise ValueError(f"{key} 必须是非负整数")
+                if isinstance(value, float):
+                    navigation[key] = int(value)
+            self.editor_server.update_workspace_navigation(
+                name=name.strip() if isinstance(name, str) else None,
+                preset=preset,
+                navigation=navigation,
+            )
+            return True
         return False
 
     def handle_request(self, *, include_body: bool) -> None:
@@ -927,7 +1247,11 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.send_json(HTTPStatus.OK, self.editor_server.reapeaks_status_payload())
             return
         if path == "/":
-            page = build_server_page(self.editor_server.project, self.editor_server.settings)
+            page = build_server_page(
+                self.editor_server.project,
+                self.editor_server.settings,
+                self.editor_server.request_token,
+            )
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(page)))
@@ -1045,7 +1369,7 @@ def main() -> int:
     parser.add_argument("-m", "--media", help="媒体文件路径（默认按 JSON.media / 同目录探测）")
     parser.add_argument("-s", "--stickers", help="表情包目录（默认读取 .env 的 STICKER_DIR）")
     parser.add_argument("--blank", action="store_true", help="启动空白编辑器，之后在页面中选择 JSON 与媒体")
-    parser.add_argument("--port", type=int, default=8250, help="监听端口（默认 8250，0=自动选择）")
+    parser.add_argument("-p", "--port", type=int, default=8250, help="监听端口（默认 8250，0=自动选择）")
     parser.add_argument("--no-open", action="store_true", help="只启动服务，不自动打开浏览器")
     parser.add_argument("--no-waveform", action="store_true", help="跳过 ffmpeg 波形预计算")
     parser.add_argument(

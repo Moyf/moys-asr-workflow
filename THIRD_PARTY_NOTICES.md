@@ -6,6 +6,7 @@
 |---|---|---|
 | [requests](https://requests.readthedocs.io/) | HTTP requests to the ASR API | Apache-2.0 |
 | [jieba](https://github.com/fxsjy/jieba) | Chinese subtitle segmentation | MIT |
+| [opencc-python-reimplemented](https://github.com/yichen0831/opencc-python) / [OpenCC](https://github.com/BYVoid/OpenCC) | Local Simplified/Traditional Chinese conversion in the post-processing toolbox | Apache-2.0 |
 | [RapidOCR](https://github.com/RapidAI/RapidOCR) / PP-OCRv6 | Local CPU OCR for the 「OCR 字幕去重」 toolbox; the frozen bundle includes the PP-OCRv6 tiny model files | Apache-2.0; bundled model files remain subject to upstream model terms |
 | [ONNX Runtime](https://onnxruntime.ai/) | CPU inference runtime for RapidOCR | MIT |
 | [Pillow](https://python-pillow.github.io/) | Decode, crop, and resize video frames before OCR | HPND |

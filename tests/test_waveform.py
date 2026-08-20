@@ -258,7 +258,8 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('字幕（编辑状态下）拆分按键', page)
         self.assertNotIn('波形区拆分按键', page)
         self.assertEqual(page.count('class="editor-settings-item editor-settings-list-fields editor-settings-display-row"'), 0)
-        self.assertIn('class="settings-panel-section media-playback-settings-section"', page)
+        self.assertIn('class="settings-panel-section media-preview-settings-section"', page)
+        self.assertIn('id="hover-seek-preview"', page)
         self.assertIn('class="settings-panel-title">预览字幕样式</span>', page)
         self.assertIn('id="main-subtitle-preview-settings"', page)
         self.assertIn('id="extension-subtitle-preview-settings"', page)
@@ -281,6 +282,14 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('seekMediaBy(-EDITOR_SETTINGS.mediaSeekStepMs / 1000)', page)
         self.assertIn('id="help-media-seek-step"', page)
         self.assertIn('class="help-break"', page)
+        self.assertIn(
+            '<span><kbd>←</kbd>/<kbd>→</kbd> 无选中时前后跳转 <span id="help-media-seek-step">1000ms</span></span>\n'
+            '          <span class="help-break" aria-hidden="true"></span>\n'
+            '          <span><kbd>Home</kbd>/<kbd>End</kbd> 在波形区或播放器跳转到媒体开头/结尾</span>\n'
+            '          <span class="help-break" aria-hidden="true"></span>\n'
+            '          <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> <span id="help-jkl-mode">倒放/停止/1×播放</span></span>',
+            page,
+        )
         self.assertIn('其实就是用 WASD 啦，从字幕列表看是上下跳，从波形区看是左右跳 : P', page)
         self.assertNotIn('id="jkl-playback-mode"', editor_settings_panel)
         self.assertIn('id="help-split-key"', page)
@@ -310,7 +319,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("container.classList.toggle('hide-cue-sticker'", page)
         self.assertIn('id="cue-list-auto-scroll-on-click" checked', page)
         self.assertIn('cueListAutoScrollOnClick: saved.cueListAutoScrollOnClick !== false', page)
-        self.assertIn('if (EDITOR_SETTINGS.cueListAutoScrollOnClick) scrollCueToCenter(el);', page)
+        self.assertIn('if (EDITOR_SETTINGS.cueListAutoScrollOnClick && !state?.preserveListScroll)', page)
         self.assertIn("const visibleHeight = Math.max(1, visibleBottom - visibleTop);", page)
         self.assertIn(
             "const comfortInset = Math.min(120, Math.max(48, visibleHeight * 0.2));",

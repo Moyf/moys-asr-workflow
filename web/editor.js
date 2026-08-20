@@ -537,6 +537,9 @@ function normalizeClickBehavior(value) {
 function normalizeClickTarget(value) {
   return CLICK_TARGET_VALUES.has(value) ? value : 'pointer';
 }
+function normalizeKeyboardOperationReferenceMode(value) {
+  return value === 'playhead' ? 'playhead' : 'pointer';
+}
 function normalizeJklPlaybackMode(value) {
   return JKL_PLAYBACK_MODE_VALUES.has(value) ? value : DEFAULT_JKL_PLAYBACK_MODE;
 }
@@ -643,16 +646,21 @@ const DEFAULT_EDITOR_SETTINGS = {
   autoSaveIntervalSeconds: 30,
   // 表情包预览：在视频画面内渲染当前时间的表情包（默认关闭）。
   stickerOverlayEnabled: false,
+  // 表情包 OTIO：保留用户偏好的原始素材引用 / 便携文件夹模式。
+  stickerOtioExportMode: 'original',
   // 字幕单击行为：默认选中并跳转；select-and-play 额外在暂停时开始播放。
   clickBehavior: 'select-and-seek',
   // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
   clickTarget: 'pointer',
+  keyboardOperationReference: 'pointer',
   // J/K/L 播放控制：direction 为倒放/停止/正放，speed 保留旧的慢速/重置/倍速行为。
   jklPlaybackMode: DEFAULT_JKL_PLAYBACK_MODE,
   // 媒体控制按钮与无选中字幕时左右方向键的跳转幅度。
   mediaSeekStepMs: DEFAULT_MEDIA_SEEK_STEP_MS,
   // 选中字幕后用方向键 / A-D 微调时间的幅度。
   cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
+  // 鼠标位置自动预览：暂停时指针在波形上移动即把画面定位到指针时间（默认关闭）。
+  hoverSeekPreview: false,
   // 是否默认让同轨相邻字幕随边界调整一起联动；Alt 始终临时反转该行为。
   autoSnapAdjacentCues: true,
   // 娱乐彩蛋：成功拆分时的音效与刀光反馈，并把分割工具图标换成 🔪。
@@ -735,11 +743,14 @@ function readEditorSettings() {
       autoSaveProject: saved.autoSaveProject !== false,
       autoSaveIntervalSeconds: clampAutoSaveInterval(saved.autoSaveIntervalSeconds),
       stickerOverlayEnabled: saved.stickerOverlayEnabled === true,
+      stickerOtioExportMode: saved.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
       clickBehavior: normalizeClickBehavior(saved.clickBehavior),
       clickTarget: normalizeClickTarget(saved.clickTarget),
+      keyboardOperationReference: normalizeKeyboardOperationReferenceMode(saved.keyboardOperationReference),
       jklPlaybackMode: normalizeJklPlaybackMode(saved.jklPlaybackMode),
       mediaSeekStepMs: clampMediaSeekStepMs(savedMediaSeekStepMs),
       cueMoveStepMs: clampCueMoveStepMs(saved.cueMoveStepMs),
+      hoverSeekPreview: saved.hoverSeekPreview === true,
       autoSnapAdjacentCues: saved.autoSnapAdjacentCues !== false,
       ninjaMode: saved.ninjaMode === true,
       ninjaSound: saved.ninjaSound !== false,
@@ -1258,8 +1269,11 @@ const helpMediaSeekStep = document.getElementById('help-media-seek-step');
 const clickBehaviorSelect = document.getElementById('click-behavior');
 const clickTargetField = document.getElementById('click-target-field');
 const clickTargetSelect = document.getElementById('click-target');
+const keyboardOperationReferenceSelect = document.getElementById('keyboard-operation-reference');
+const keyboardOperationReferenceHint = document.getElementById('keyboard-operation-reference-hint');
 const jklPlaybackModeSelect = document.getElementById('jkl-playback-mode');
 const jklPlaybackModeHint = document.getElementById('jkl-playback-mode-hint');
+const hoverSeekPreviewToggle = document.getElementById('hover-seek-preview');
 const helpJklMode = document.getElementById('help-jkl-mode');
 const cueMoveStepInput = document.getElementById('cue-move-step');
 const autoSnapAdjacentCuesToggle = document.getElementById('auto-snap-adjacent-cues');
@@ -1896,7 +1910,11 @@ if (autoSaveIntervalInput) autoSaveIntervalInput.value = String(EDITOR_SETTINGS.
 if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.stickerOverlayEnabled;
 if (clickBehaviorSelect) clickBehaviorSelect.value = EDITOR_SETTINGS.clickBehavior;
 if (clickTargetSelect) clickTargetSelect.value = EDITOR_SETTINGS.clickTarget;
+if (keyboardOperationReferenceSelect) {
+  keyboardOperationReferenceSelect.value = EDITOR_SETTINGS.keyboardOperationReference;
+}
 if (jklPlaybackModeSelect) jklPlaybackModeSelect.value = EDITOR_SETTINGS.jklPlaybackMode;
+if (hoverSeekPreviewToggle) hoverSeekPreviewToggle.checked = EDITOR_SETTINGS.hoverSeekPreview;
 if (mediaSeekStepInput) mediaSeekStepInput.value = String(EDITOR_SETTINGS.mediaSeekStepMs);
 if (cueMoveStepInput) cueMoveStepInput.value = String(EDITOR_SETTINGS.cueMoveStepMs);
 if (autoSnapAdjacentCuesToggle) {
@@ -2313,6 +2331,11 @@ clickBehaviorSelect?.addEventListener('change', () => {
 clickTargetSelect?.addEventListener('change', () => {
   updateEditorSettings({ clickTarget: normalizeClickTarget(clickTargetSelect.value) });
 });
+keyboardOperationReferenceSelect?.addEventListener('change', () => {
+  const mode = normalizeKeyboardOperationReferenceMode(keyboardOperationReferenceSelect.value);
+  updateEditorSettings({ keyboardOperationReference: mode });
+  refreshKeyboardOperationReferenceHint();
+});
 jklPlaybackModeSelect?.addEventListener('change', () => {
   const wasReversePlaying = jklReversePlaying;
   updateEditorSettings({ jklPlaybackMode: normalizeJklPlaybackMode(jklPlaybackModeSelect.value) });
@@ -2322,6 +2345,9 @@ jklPlaybackModeSelect?.addEventListener('change', () => {
   if (wasReversePlaying) update();
   syncMediaControls();
   refreshJklPlaybackModeUi();
+});
+hoverSeekPreviewToggle?.addEventListener('change', () => {
+  updateEditorSettings({ hoverSeekPreview: hoverSeekPreviewToggle.checked });
 });
 function refreshMediaSeekInputStep(value = EDITOR_SETTINGS.mediaSeekStepMs) {
   if (mediaSeekStepInput) mediaSeekStepInput.step = String(mediaSeekStepForValue(value));
@@ -2436,7 +2462,10 @@ subtitleBackgroundAlphaInput?.addEventListener('change', () => applySubtitleBack
 subtitleFontFamilyScanButton?.addEventListener('click', () => {
   void scanSubtitleLocalFonts();
 });
-document.addEventListener('mawe:languagechange', renderSubtitleFontFamilyStatus);
+document.addEventListener('mawe:languagechange', () => {
+  renderSubtitleFontFamilyStatus();
+  relabelSubtitleFontFamilyOptions();
+});
 subtitleColorInput?.addEventListener('change', () => {
   pushPreviewUndo('调整主字幕颜色', snapshotPreviewState());
   setSubtitleAppearance({ color: subtitleColorInput.value });
@@ -2512,6 +2541,27 @@ function refreshClickBehaviorHint() {
 }
 refreshClickBehaviorHint();
 document.addEventListener('mawe:languagechange', refreshClickBehaviorHint);
+
+const KEYBOARD_OPERATION_REFERENCE_HINTS = {
+  zh: {
+    pointer: 'B/Z/X/N 使用鼠标所在波形位置；波形外不执行时间操作。',
+    playhead: 'B/Z/X/N 使用当前播放头位置；无当前字幕目标时使用主轨。',
+  },
+  en: {
+    pointer: 'B/Z/X/N use the mouse position in the waveform; outside it, timing actions do nothing.',
+    playhead: 'B/Z/X/N use the current playhead; when no cue target is active, they use the main track.',
+  },
+};
+function refreshKeyboardOperationReferenceHint() {
+  const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+  const mode = normalizeKeyboardOperationReferenceMode(EDITOR_SETTINGS.keyboardOperationReference);
+  if (keyboardOperationReferenceSelect) keyboardOperationReferenceSelect.value = mode;
+  if (keyboardOperationReferenceHint) {
+    keyboardOperationReferenceHint.textContent = KEYBOARD_OPERATION_REFERENCE_HINTS[language][mode];
+  }
+}
+refreshKeyboardOperationReferenceHint();
+document.addEventListener('mawe:languagechange', refreshKeyboardOperationReferenceHint);
 
 const JKL_MODE_UI_TEXT = {
   zh: {
@@ -3063,15 +3113,16 @@ function syncPlayerPlaceholder() {
 
 // 合成表情包文件的 URL（用于 <img src>）
 // 优先级:
-//   1) sticker._blobUrl  - 来自浏览器选文件夹（无法拿到绝对路径，只能用 blob URL）
-//   2) sticker.rel + STICKER_ROOT  - 拼出 file:// URL
-//   3) sticker.path  - 兼容老版工程
+let stickerAssetRevision = 0;
+
+//   1) sticker.rel + STICKER_ROOT  - 拼出服务器或 file:// URL
+//   2) sticker.path  - 兼容老版工程
 function stickerUrl(sticker) {
   if (!sticker) return '';
-  if (sticker._blobUrl) return sticker._blobUrl;
   if (sticker.rel) {
     if (STICKER_URL_PREFIX) {
-      return `${STICKER_URL_PREFIX.replace(/\/$/, '')}/${sticker.rel.split('/').map(encodeURIComponent).join('/')}`;
+      const url = `${STICKER_URL_PREFIX.replace(/\/$/, '')}/${sticker.rel.split('/').map(encodeURIComponent).join('/')}`;
+      return stickerAssetRevision ? `${url}?root=${stickerAssetRevision}` : url;
     }
     if (!STICKER_ROOT) return sticker.rel;
     let root = STICKER_ROOT;
@@ -3084,12 +3135,8 @@ function stickerUrl(sticker) {
 }
 
 // 合成表情包文件的操作系统绝对路径（用于导出表情包 OTIO）。
-// 当表情包是通过浏览器「选文件夹」方式加载时，STICKER_ROOT 是 "[本地] xxx" 虚拟标识，
-// 浏览器安全限制无法拿到真实磁盘路径，此时返回空串。
 function stickerAbsPath(sticker) {
   if (!sticker) return '';
-  // [本地] 前缀 = 浏览器 blob URL 模式，无法获知真实路径
-  if (STICKER_ROOT && STICKER_ROOT.startsWith('[本地]')) return '';
   if (sticker.rel && STICKER_ROOT) {
     // 去掉可能的 file:// 前缀，保留纯 OS 路径
     let root = STICKER_ROOT.replace(/^file:\/+/, '');
@@ -6012,7 +6059,7 @@ function commitMainWaveformSplit(state, { force = false, successMessage = '已�
   renderAll();
   selectOnly(mainIndex + 1);
   lastClickedIdx = mainIndex + 1;
-  update();
+  updateWithoutCueListAutoScroll();
   flashSplitFeedback({
     index: mainIndex,
     track: 'main',
@@ -6097,7 +6144,7 @@ function commitExtensionSplit(state, { force = false } = {}) {
   renderAll();
   selectOnlyExtension(extensionIndex + 1);
   lastClickedExtensionIdx = extensionIndex + 1;
-  update();
+  updateWithoutCueListAutoScroll();
   flashSplitFeedback({
     index: extensionIndex,
     track: 'extension',
@@ -6221,7 +6268,7 @@ function confirmLinkedSplit() {
   renderAll();
   selectOnly(mainIndex);
   lastClickedIdx = mainIndex;
-  update();
+  updateWithoutCueListAutoScroll();
   flashSplitFeedback({
     index: mainIndex,
     track: 'main',
@@ -6409,7 +6456,7 @@ function splitAtCursor(feedbackPoint = null, { listFeedback = true } = {}) {
       || waveformEditor?.getSplitPointAtTime?.(splitMs, 'main')
       || ninjaFeedbackPoint,
   );
-  update();
+  updateWithoutCueListAutoScroll();
   flashSplitFeedback({
     index: idx,
     track: 'main',
@@ -7093,7 +7140,7 @@ function cueListVisibleBounds() {
   return { containerRect, top, bottom: containerRect.bottom };
 }
 
-function scrollCueToCenter(cueEl) {
+function scrollCueToCenter(cueEl, { behavior = 'smooth' } = {}) {
   if (!cueEl || cueEl.classList.contains('hidden')) return;
   const { containerRect: cRect, top: visibleTop, bottom: visibleBottom } = cueListVisibleBounds();
   const eRect = cueEl.getBoundingClientRect();
@@ -7101,20 +7148,22 @@ function scrollCueToCenter(cueEl) {
   const comfortInset = Math.min(120, Math.max(48, visibleHeight * 0.2));
   // 目标已经处于列表中间的舒适区域时，不再制造一次多余的滚动动画。
   // 顶部从 sticky 工具栏底部开始计算，避免把字幕滚到工具栏下面。
+  const containerComfortTop = cRect.top + comfortInset;
+  const containerComfortBottom = cRect.bottom - comfortInset;
   if (
-    eRect.top >= visibleTop + comfortInset
-    && eRect.bottom <= visibleBottom - comfortInset
+    eRect.top >= containerComfortTop
+    && eRect.bottom <= containerComfortBottom
   ) return;
   const offsetTop = (eRect.top - cRect.top) + container.scrollTop;
   const visibleTopOffset = visibleTop - cRect.top;
   const target = offsetTop + eRect.height / 2 - visibleTopOffset - visibleHeight / 2;
-  container.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+  container.scrollTo({ top: Math.max(0, target), behavior });
 }
-function scrollCueIntoViewIfNeeded(cueEl) {
+function scrollCueIntoViewIfNeeded(cueEl, options) {
   if (!cueEl || cueEl.classList.contains('hidden')) return;
   const { top, bottom } = cueListVisibleBounds();
   const eRect = cueEl.getBoundingClientRect();
-  if (eRect.top < top || eRect.bottom > bottom) scrollCueToCenter(cueEl);
+  if (eRect.top < top || eRect.bottom > bottom) scrollCueToCenter(cueEl, options);
 }
 
 // === seek ===
@@ -7124,6 +7173,7 @@ let cueListPointer = null;
 // Enter（原地编辑 vs 聚焦字幕编辑区）据此分发；指针坐标由 cueListPointer /
 // lastPointerPos 提供，两者独立更新、互不替代。
 let lastEditRegion = null;
+let navigationOwner = null;
 let lastPointerPos = null;
 let cueSplitPreviewEl = null;
 let cueSplitPreviewFrame = 0;
@@ -7142,6 +7192,20 @@ document.addEventListener('pointerdown', (e) => {
   if (e.target instanceof Element && e.target.closest('.cue')) lastEditRegion = 'cue-list';
   else if (e.target instanceof Element && e.target.closest('#waveform-pane')) lastEditRegion = 'waveform';
 }, true);
+function navigationOwnerForTarget(target) {
+  if (!(target instanceof Element)) return null;
+  if (target.closest('.cue')) return 'cue-list';
+  if (target.closest('.player-stage, #media-controls, .waveform-row, #waveform-scroll')) {
+    return 'waveform/player';
+  }
+  return null;
+}
+function updateNavigationOwner(event) {
+  const owner = navigationOwnerForTarget(event.target);
+  if (owner) navigationOwner = owner;
+}
+document.addEventListener('pointerdown', updateNavigationOwner, true);
+document.addEventListener('focusin', updateNavigationOwner, true);
 document.addEventListener('pointermove', (e) => {
   lastPointerPos = { x: e.clientX, y: e.clientY };
 }, true);
@@ -7208,7 +7272,27 @@ function waveformPointerContext() {
   const timeMs = waveformEditor?.timeMsAtPoint?.(lastPointerPos.x, lastPointerPos.y);
   if (!Number.isFinite(timeMs)) return null;
   const track = waveformEditor?.trackAtPoint?.(lastPointerPos.x, lastPointerPos.y) || 'main';
-  return { ...lastPointerPos, timeMs, track };
+  return {
+    ...lastPointerPos,
+    timeMs,
+    track,
+    trackId: track === 'extension' ? getActiveExtensionTrack()?.id || null : null,
+  };
+}
+
+function keyboardOperationReference() {
+  const pointer = waveformPointerContext();
+  const target = getCurrentCuePanelTarget();
+  return GEO_UTILS.resolveKeyboardOperationReference(
+    EDITOR_SETTINGS.keyboardOperationReference,
+    {
+      pointer,
+      playheadTarget: {
+        ...(target || { kind: 'main', trackId: null }),
+        timeMs: Math.round(Number(player.currentTime) * 1000),
+      },
+    },
+  );
 }
 
 // Z/X 只接受一个“逻辑字幕”作为目标：点击主字幕时，绑定副字幕是它的
@@ -7221,7 +7305,7 @@ function getPointerBoundaryEditTarget(context) {
 
   if (!mainIndices.length && !extensionIndices.length) {
     const extension = context.track === 'extension' && multiSubtitleVisible();
-    const track = extension ? getActiveExtensionTrack() : null;
+    const track = extension ? getExtensionTrack(context.trackId) : null;
     const segments = extension ? track?.segments : DATA.segments;
     const index = findWaveformCueAtTime(context.timeMs, segments);
     if (index < 0 || !segments?.[index]) return null;
@@ -7282,9 +7366,13 @@ function handlePointerBoundaryShortcut(event, edge) {
       || ctxmenu.classList.contains('show')) return;
   if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
 
-  const context = waveformPointerContext();
+  const reference = keyboardOperationReference();
+  const context = reference ? { ...reference } : null;
   const target = getPointerBoundaryEditTarget(context);
-  if (!context || !target || !waveformEditor?.setCueBoundaryToTime) return;
+  if (!reference || !target || !waveformEditor?.setCueBoundaryToTime) {
+    if (!reference) flashHint('无有效的快捷键时间基准', 'invalid');
+    return;
+  }
   const track = target.kind === 'extension' ? 'extension' : 'main';
   if (!waveformEditor.setCueBoundaryToTime(context.timeMs, edge, track, target.index)) return;
   event.preventDefault();
@@ -7359,6 +7447,11 @@ function bindCueEvents(el, idx) {
     }
 
     const now = performance.now();
+    const listScrollBeforeClick = container.scrollTop;
+    const listCenterScroll = Math.max(
+      0,
+      el.offsetTop - container.clientHeight / 2 + el.offsetHeight / 2,
+    );
     const isSecondDoubleClick = e.detail > 1
       || (lastPrimaryPointerDownAt > 0 && now - lastPrimaryPointerDownAt < 500);
     lastPrimaryPointerDownAt = now;
@@ -7376,6 +7469,8 @@ function bindCueEvents(el, idx) {
       handled: true,
       suppressClick: action !== 'select',
       time: now,
+      preserveListScroll: listScrollBeforeClick > 0 && el.offsetTop < listScrollBeforeClick,
+      listScrollBeforeClick,
     };
   });
   el.addEventListener('pointermove', (e) => {
@@ -7405,17 +7500,22 @@ function bindCueEvents(el, idx) {
     if (!state?.handled) selectFromCuePointer(e);
 
     // 选择已经在 pointerdown 完成；这里仅处理列表滚动、波形定位和媒体 Seek。
-    if (EDITOR_SETTINGS.cueListAutoScrollOnClick) scrollCueToCenter(el);
+    if (EDITOR_SETTINGS.cueListAutoScrollOnClick && !state?.preserveListScroll) {
+      scrollCueToCenter(el);
+    }
     waveformEditor?.revealTime(DATA.segments[idx].start, true);
     if (EDITOR_SETTINGS.clickBehavior !== 'select-only') {
       // 默认只跳转不改动播放状态；“选中并跳转（自动播放）”会在暂停时启动播放。
       const previousSuppress = suppressCueListAutoScroll;
-      suppressCueListAutoScroll = !EDITOR_SETTINGS.cueListAutoScrollOnClick;
+      suppressCueListAutoScroll = state?.preserveListScroll
+        ? true : !EDITOR_SETTINGS.cueListAutoScrollOnClick;
       try {
         seekFromWaveform(DATA.segments[idx].start / 1000);
       } finally {
-        suppressCueListAutoScroll = previousSuppress;
+        suppressCueListAutoScroll = state?.preserveListScroll
+          ? true : previousSuppress;
       }
+      if (state?.preserveListScroll) container.scrollTop = state.listScrollBeforeClick;
       if (EDITOR_SETTINGS.clickBehavior === 'select-and-play' && player.paused) togglePlayback();
     }
   });
@@ -7871,8 +7971,49 @@ document.addEventListener('keydown', (e) => {
   seekMediaBy(direction * EDITOR_SETTINGS.mediaSeekStepMs / 1000);
 }, true);
 
-// Home/End：在播放区域或页面空白处把媒体跳到首尾；文本输入、普通按钮和
-// 模态窗口内保留浏览器/控件自己的 Home/End 行为。
+function renderedCueBoundaryTarget(target, boundary) {
+  const selector = target?.kind === 'extension'
+    ? '.multi-dual-cue[data-ext-idx], .multi-extension-cue[data-ext-idx]'
+    : '.cue[data-idx], .multi-dual-cue[data-main-idx]';
+  const track = target?.kind === 'extension' ? target.track : 'main';
+  const indexes = [...container.querySelectorAll(selector)]
+    .filter((cue) => !cue.classList.contains('hidden'))
+    .map((cue) => Number(target?.kind === 'extension'
+      ? cue.dataset.extIdx
+      : cue.dataset.idx ?? cue.dataset.mainIdx))
+    .filter((index, position, values) => (
+      Number.isInteger(index)
+      && !isHiddenDisabled(index, track)
+      && values.indexOf(index) === position
+    ));
+  const index = boundary === 'first' ? indexes[0] : indexes[indexes.length - 1];
+  if (!Number.isInteger(index)) return null;
+  const cue = container.querySelector(
+    target?.kind === 'extension'
+      ? `.multi-dual-cue[data-ext-idx="${index}"], .multi-extension-cue[data-ext-idx="${index}"]`
+      : `.cue[data-idx="${index}"], .multi-dual-cue[data-main-idx="${index}"]`,
+  );
+  return cue ? { cue, index } : null;
+}
+
+function navigateCueListBoundary(key) {
+  const target = getCurrentCuePanelTarget();
+  if (!target) return false;
+  const boundary = renderedCueBoundaryTarget(target, key === 'Home' ? 'first' : 'last');
+  if (!boundary) return false;
+  if (target.kind === 'extension') {
+    selectOnlyExtension(boundary.index, target.track);
+    lastClickedExtensionIdx = boundary.index;
+  } else {
+    selectOnly(boundary.index);
+    lastClickedIdx = boundary.index;
+  }
+  scrollCueToCenter(boundary.cue);
+  return true;
+}
+
+// Home/End：字幕列表最近拥有导航时选择当前轨道首尾；波形、播放器或尚未
+// 确定区域时跳转媒体首尾。文本输入、普通按钮和模态窗口保留原生行为。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Home' && e.key !== 'End') return;
   if (editingState || extensionEditingState || isTextEditingTarget(e)) return;
@@ -7884,6 +8025,11 @@ document.addEventListener('keydown', (e) => {
       || multiSubtitleImportModal?.classList.contains('show')
       || document.getElementById('sticker-root-modal').classList.contains('show')
       || ctxmenu.classList.contains('show')) return;
+  if (navigationOwner === 'cue-list' && navigateCueListBoundary(e.key)) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
   const duration = Number(player?.duration);
   if (!hasLoadedMedia() || !Number.isFinite(duration) || duration <= 0) return;
   e.preventDefault();
@@ -8563,15 +8709,18 @@ document.addEventListener('keydown', (e) => {
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
-  const context = waveformPointerContext();
-  if (!context) return;
+  const reference = keyboardOperationReference();
+  if (!reference) {
+    flashHint('无有效的快捷键时间基准', 'invalid');
+    return;
+  }
   e.preventDefault();
   e.stopPropagation();
   lastEditRegion = 'waveform';
-  if (context.track === 'extension' && multiSubtitleVisible()) {
-    addExtensionAtWaveformTime(context.timeMs, context.x, context.y, getActiveExtensionTrack());
+  if (reference.track === 'extension' && multiSubtitleVisible()) {
+    addExtensionAtWaveformTime(reference.timeMs, lastPointerPos?.x || 0, lastPointerPos?.y || 0, getExtensionTrack(reference.trackId));
   } else {
-    addCueAtWaveformTime(context.timeMs, context.x, context.y);
+    addCueAtWaveformTime(reference.timeMs, lastPointerPos?.x || 0, lastPointerPos?.y || 0);
   }
 });
 
@@ -8733,12 +8882,12 @@ document.addEventListener('keydown', (e) => {
   // 绑定关系会让点击主字幕时同时选中副字幕；不能仅凭 selectedExtensionIdxs
   // 判断当前轨道，否则主字幕 active 时会被误判成副字幕单独拆分。
   const activeCuePanel = getCurrentCuePanelTarget();
-  const pointerContext = waveformPointerContext();
-  const pointerMainIndex = pointerContext
-    ? findWaveformCueAtTime(pointerContext.timeMs, DATA.segments) : -1;
+  const operationReference = keyboardOperationReference();
+  const pointerMainIndex = operationReference
+    ? findWaveformCueAtTime(operationReference.timeMs, DATA.segments) : -1;
   const activeExtensionTrack = getActiveExtensionTrack();
-  const pointerExtensionIndex = pointerContext?.track === 'extension'
-    ? findWaveformCueAtTime(pointerContext.timeMs, activeExtensionTrack?.segments) : -1;
+  const pointerExtensionIndex = operationReference?.track === 'extension'
+    ? findWaveformCueAtTime(operationReference.timeMs, getExtensionTrack(operationReference.trackId)?.segments) : -1;
   if (selectedExtensionIdxs.size === 1) {
     const context = hoveredSelectedCueContext();
     if (context?.kind === 'extension' && context.track?.segments?.[context.idx]) {
@@ -8761,13 +8910,13 @@ document.addEventListener('keydown', (e) => {
     && activeCuePanel?.kind === 'extension'
     && selectedExtensionIdxs.size === 1
     && selectedExtensionIdxs.has(activeCuePanel.index)
-    && pointerContext?.track === 'extension'
+    && operationReference?.track === 'extension'
     && pointerExtensionIndex === activeCuePanel.index;
   const extensionIsActive = multiSubtitleVisible()
     && activeCuePanel?.kind === 'extension'
     && selectedExtensionIdxs.size === 1
     && selectedExtensionIdxs.has(activeCuePanel.index)
-    && (!pointerContext || pointerMainIndex < 0 || waveformExtensionIsActive);
+    && (!operationReference || pointerMainIndex < 0 || waveformExtensionIsActive);
   if (extensionIsActive) {
     const extensionIndex = [...selectedExtensionIdxs][0];
     const track = activeExtensionTrack;
@@ -8777,7 +8926,8 @@ document.addEventListener('keydown', (e) => {
     const pointerElement = lastPointerPos
       ? document.elementFromPoint(lastPointerPos.x, lastPointerPos.y)
       : null;
-    if (lastPointerPos && (pointerElement?.closest('#waveform-pane') || lastEditRegion === 'waveform')) {
+    if (EDITOR_SETTINGS.keyboardOperationReference === 'pointer'
+        && lastPointerPos && (pointerElement?.closest('#waveform-pane') || lastEditRegion === 'waveform')) {
       const pointerTimeMs = waveformEditor?.timeMsAtPoint?.(lastPointerPos.x, lastPointerPos.y);
       if (Number.isFinite(pointerTimeMs) && pointerTimeMs > extension.start && pointerTimeMs < extension.end) {
         timeMs = pointerTimeMs;
@@ -8786,7 +8936,12 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     // 同上：首次 B 只负责打开副字幕拆分弹窗。
     e.stopImmediatePropagation();
-    openExtensionSplitModal(extensionIndex, timeMs, track);
+    openExtensionSplitModal(
+      extensionIndex,
+      EDITOR_SETTINGS.keyboardOperationReference === 'playhead'
+        ? operationReference?.timeMs ?? null : timeMs,
+      track,
+    );
     return;
   }
   // 1) 字幕列表：需要单选 + 悬停提供文字位置
@@ -8798,26 +8953,26 @@ document.addEventListener('keydown', (e) => {
     }
   }
   // 2) 波形：指针音频位置
-  if (pointerContext) {
-    const idx = findWaveformCueAtTime(pointerContext.timeMs, DATA.segments);
+  if (operationReference?.source === 'pointer' || operationReference?.track === 'extension') {
+    const idx = findWaveformCueAtTime(operationReference.timeMs, DATA.segments);
     if (idx >= 0) {
-      splitAt(idx, 0, 0, pointerContext.timeMs);
+      splitAt(idx, 0, 0, operationReference.timeMs);
       return;
     }
     const extensionTrack = getActiveExtensionTrack();
-    const extensionIndex = multiSubtitleVisible()
-      ? findWaveformCueAtTime(pointerContext.timeMs, extensionTrack?.segments) : -1;
+    const extensionIndex = multiSubtitleVisible() && operationReference.track === 'extension'
+      ? findWaveformCueAtTime(operationReference.timeMs, getExtensionTrack(operationReference.trackId)?.segments) : -1;
     if (extensionIndex >= 0) {
       e.preventDefault();
       e.stopImmediatePropagation();
-      openExtensionSplitModal(extensionIndex, pointerContext.timeMs, extensionTrack);
+      openExtensionSplitModal(extensionIndex, operationReference.timeMs, getExtensionTrack(operationReference.trackId));
       return;
     }
     flashHint('指针位置没有可拆分字幕', 'invalid');
     return;
   }
   // 3) 播放头位置
-  const timeMs = Math.round(player.currentTime * 1000);
+  const timeMs = operationReference?.timeMs ?? Math.round(player.currentTime * 1000);
   const idx = DATA.segments.findIndex((segment) => timeMs > segment.start && timeMs < segment.end);
   if (idx >= 0) {
     splitAt(idx, 0, 0, timeMs);
@@ -8926,6 +9081,17 @@ function setSubtitleFontFamilyScanState(state, count = 0) {
 function subtitleFontFamilyOptionExists(select, value) {
   return !!select && Array.from(select.options).some((option) => option.value === value);
 }
+function subtitleFontFamilyDisplayName(family) {
+  const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+  return GEO_UTILS.subtitleFontFamilyDisplayName(family, language);
+}
+function relabelSubtitleFontFamilyOptions() {
+  [subtitleFontFamilySelect, extensionSubtitleFontFamilySelect].filter(Boolean).forEach((select) => {
+    Array.from(select.querySelectorAll('option[data-local-font="true"], option[data-generated="true"]')).forEach((option) => {
+      option.textContent = subtitleFontFamilyDisplayName(option.value);
+    });
+  });
+}
 function normalizeSubtitleColor(value) {
   if (typeof value !== 'string') return null;
   const color = value.trim().toLowerCase();
@@ -8989,7 +9155,7 @@ function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
         && !subtitleFontFamilyOptionExists(subtitleFontFamilySelect, family)) {
       const option = document.createElement('option');
       option.value = family;
-      option.textContent = family;
+      option.textContent = subtitleFontFamilyDisplayName(family);
       option.dataset.generated = 'true';
       subtitleFontFamilySelect.append(option);
     }
@@ -9021,7 +9187,7 @@ function syncExtensionSubtitleAppearanceControls() {
         && !subtitleFontFamilyOptionExists(extensionSubtitleFontFamilySelect, family)) {
       const option = document.createElement('option');
       option.value = family;
-      option.textContent = family;
+      option.textContent = subtitleFontFamilyDisplayName(family);
       option.dataset.generated = 'true';
       extensionSubtitleFontFamilySelect.append(option);
     }
@@ -9131,7 +9297,7 @@ function replaceSubtitleLocalFontOptions(families) {
       if (existing.has(family)) return;
       const option = document.createElement('option');
       option.value = family;
-      option.textContent = family;
+      option.textContent = subtitleFontFamilyDisplayName(family);
       option.dataset.localFont = 'true';
       fragment.append(option);
       existing.add(family);
@@ -9140,6 +9306,7 @@ function replaceSubtitleLocalFontOptions(families) {
   });
   syncSubtitleAppearanceControls();
   syncExtensionSubtitleAppearanceControls();
+  relabelSubtitleFontFamilyOptions();
 }
 function initializeSubtitleFontFamilyScanner() {
   if (!subtitleFontFamilyScanButton) return;
@@ -9484,7 +9651,9 @@ function updateActiveCue(idx) {
     const cur = container.querySelector(`.cue[data-idx="${idx}"]`);
     if (cur) {
       cur.classList.add('active');
-      if (!editingState && !suppressCueListAutoScroll) scrollCueIntoViewIfNeeded(cur);
+      if (!editingState && !suppressCueListAutoScroll) {
+        scrollCueIntoViewIfNeeded(cur, { behavior: 'auto' });
+      }
     }
   }
   lastActive = idx;
@@ -9551,6 +9720,22 @@ function update() {
   const idx = findActive(tMs);
   updateActiveCue(idx);
   refreshSubtitlePreview(tMs, idx);
+}
+
+// 拆分等结构性提交后的 update() 只刷新时间码与激活态，不触发播放跟随滚动。
+// renderAll 刚重建列表时，content-visibility 让视口外的行仍处于估算占位
+// 高度，updateActiveCue 量到的瞬态几何会把「活动行不在视口」误判成真，
+// 再用被污染的 offsetTop 算出错误目标平滑滚走（页面放大倍率越高、真实
+// 行高与估算差异越大越容易触发）。拆分后是否滚动、滚到哪里已由拆分
+// 来源显式决定（列表来源保持原位，波形来源显式居中新右半段）。
+function updateWithoutCueListAutoScroll() {
+  const previousSuppress = suppressCueListAutoScroll;
+  suppressCueListAutoScroll = true;
+  try {
+    update();
+  } finally {
+    suppressCueListAutoScroll = previousSuppress;
+  }
 }
 // === 表情包预览（视频画面内）===
 // 层位置/尺寸由 preview.sticker 几何驱动（默认右上角）；点击后可拖动/缩放，与字幕预览同一套交互。
@@ -10264,6 +10449,7 @@ function collectStickerOtioEntries(removed) {
       startMs,
       endMs,
       absPath,
+      sticker_rel: seg.sticker.rel || '',
       name: stickerOtioName(sticker, absPath),
     });
   }
@@ -10300,6 +10486,7 @@ function buildStickerOtioTimeline(stickers, timelineName) {
           asr_segment_index: sticker.idx,
           start_ms: Math.round(sticker.startMs),
           end_ms: Math.round(sticker.endMs),
+          sticker_rel: sticker.sticker_rel,
         },
       },
       name: sticker.name,
@@ -10377,9 +10564,9 @@ function buildGapRemovedStickerOtio() {
   return result.json;
 }
 
-async function downloadFile(content, filename, mime, accept, detailed = false) {
+async function downloadFile(content, filename, mime, accept, { usePicker = true, detailed = false } = {}) {
   // 优先尝试 File System Access API（弹出保存路径选择对话框）
-  if (window.showSaveFilePicker) {
+  if (usePicker && window.showSaveFilePicker) {
     try {
       const handle = await window.showSaveFilePicker({
         suggestedName: filename,
@@ -10414,10 +10601,20 @@ function copyText(text, hint) {
   );
 }
 
-let projectLoadedFromSrt = false;
+let projectImportDirty = false;
+let projectCheckpointed = Boolean(SERVER_CONFIG?.canSave)
+  || !document.getElementById('json-name')?.classList.contains('empty');
+let projectCheckpointInFlight = false;
+// 浏览器「新建工程 / 另存为」选择的文件由页面持有 FileSystemFileHandle 持续写回；
+// Server 绑定的工程仍由服务器按真实路径原子保存，且优先级高于句柄。
+let projectFileHandle = null;
 
 function serverProjectSavingEnabled() {
-  return !!(SERVER_CONFIG && SERVER_CONFIG.saveUrl && SERVER_CONFIG.canSave && !projectLoadedFromSrt);
+  return !!(SERVER_CONFIG && SERVER_CONFIG.saveUrl && SERVER_CONFIG.canSave);
+}
+
+function projectSaveTargetEnabled() {
+  return serverProjectSavingEnabled() || projectFileHandle !== null;
 }
 
 function parseProjectValidationTarget(detail) {
@@ -10539,19 +10736,21 @@ function showProjectSaveError(detail) {
 
 function configureServerSaveControls() {
   const hasServer = !!(SERVER_CONFIG && SERVER_CONFIG.saveUrl);
-  if (saveProjectDropdown) saveProjectDropdown.hidden = !hasServer;
+  // 浏览器持有工程句柄时同样显示保存控件；服务器绑定优先于句柄。
+  if (saveProjectDropdown) saveProjectDropdown.hidden = !(hasServer || projectFileHandle !== null);
   [saveProjectButton, document.getElementById('save-project-menu-btn')].forEach((button) => {
     if (!button) return;
-    button.disabled = !serverProjectSavingEnabled();
-     if (!serverProjectSavingEnabled()) button.title = '当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件';
+    button.disabled = !projectSaveTargetEnabled();
+     if (!projectSaveTargetEnabled()) button.title = '当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件';
   });
-  if (saveProjectButton && serverProjectSavingEnabled()) {
+  if (saveProjectButton && projectSaveTargetEnabled()) {
     saveProjectButton.title = '保存回当前工程文件（Ctrl(Cmd)+S）';
   }
   // 另存为走系统文件对话框，不依赖服务器绑定，始终可用。
   if (saveProjectAsButton) {
     saveProjectAsButton.title = '另存为工程文件（Ctrl(Cmd)+Shift+S）';
   }
+  syncStickerOtioExportMode();
 }
 
 let autoSaveTimer = null;
@@ -10564,17 +10763,20 @@ function scheduleAutoSave() {
     window.clearInterval(autoSaveTimer);
     autoSaveTimer = null;
   }
-  if (!serverProjectSavingEnabled() || !EDITOR_SETTINGS.autoSaveProject) return;
+  if (!projectSaveTargetEnabled() || !EDITOR_SETTINGS.autoSaveProject) return;
   autoSaveTimer = window.setInterval(() => {
-    if (hasUnsavedProjectChanges() && !projectSaveInFlight) void saveProjectToServer({ silent: true });
+    if (hasUnsavedProjectChanges() && !projectSaveInFlight && !projectCheckpointInFlight) {
+      void saveCurrentProject({ silent: true });
+    }
   }, EDITOR_SETTINGS.autoSaveIntervalSeconds * 1000);
 }
 
-function configureServerAutoSave() {
-  if (!serverAutoSaveSettings || !autoSaveProjectToggle || !autoSaveIntervalField || !autoSaveIntervalInput) return;
-  const available = !!(SERVER_CONFIG && SERVER_CONFIG.saveUrl);
-  serverAutoSaveSettings.hidden = !available;
-  if (!available) return;
+  function configureServerAutoSave() {
+    if (!serverAutoSaveSettings || !autoSaveProjectToggle || !autoSaveIntervalField || !autoSaveIntervalInput) return;
+    // 服务器绑定工程或浏览器保存对话框（句柄模式）任一可用时都可自动保存。
+    const available = Boolean(SERVER_CONFIG?.saveUrl || window.showSaveFilePicker);
+    serverAutoSaveSettings.hidden = !available;
+    if (!available) return;
   const sync = () => {
     autoSaveProjectToggle.checked = EDITOR_SETTINGS.autoSaveProject;
     autoSaveIntervalInput.value = String(EDITOR_SETTINGS.autoSaveIntervalSeconds);
@@ -10599,7 +10801,7 @@ function configureServerAutoSave() {
 function hasUnsavedProjectChanges() {
   const multiDirty = Boolean(DATA.multi_subtitle?._dirty)
     || (DATA.multi_subtitle?.tracks || []).some((track) => track.segments?.some((segment) => segment._dirty));
-  return gapRemoveDirty || previewGeometryDirty
+  return projectImportDirty || gapRemoveDirty || previewGeometryDirty
     || DATA.segments.some((segment) => segment._dirty)
     || multiDirty;
 }
@@ -10611,11 +10813,11 @@ function scheduleAutoSaveFlush() {
     window.clearTimeout(autoSaveFlushTimer);
     autoSaveFlushTimer = null;
   }
-  if (!serverProjectSavingEnabled() || !EDITOR_SETTINGS.autoSaveProject) return;
+  if (!projectSaveTargetEnabled() || !EDITOR_SETTINGS.autoSaveProject) return;
   autoSaveFlushTimer = window.setTimeout(() => {
     autoSaveFlushTimer = null;
     if (hasUnsavedProjectChanges() && !projectSaveInFlight) {
-      void saveProjectToServer({ silent: true });
+      void saveCurrentProject({ silent: true });
     }
   }, EDIT_SAVE_DEBOUNCE_MS);
 }
@@ -10791,6 +10993,12 @@ function getSavedPresetWorkspaces() {
     ? SERVER_CONFIG.presetWorkspaces : {};
 }
 
+// 覆盖可能只存导航状态（后端自动创建），没有布局数据；只有含 navigation
+// 以外字段的覆盖才能作为布局来源，否则退回内置默认布局。
+function presetWorkspaceHasLayout(workspace) {
+  return Boolean(workspace) && Object.keys(workspace).some((key) => key !== 'navigation');
+}
+
 function currentWorkspaceDisplayName() {
   const selected = workspacePresetSelect?.selectedOptions?.[0];
   return selected?.textContent?.trim() || currentServerWorkspaceName || currentBuiltinWorkspaceName || '当前工作区';
@@ -10855,6 +11063,33 @@ async function updateServerWorkspaceSettings(payload) {
   return result;
 }
 
+function currentWorkspaceNavigation() {
+  const snapshot = waveformEditor?.getNavigationSnapshot?.();
+  const cueListScrollTop = Math.max(0, Math.round(Number(container?.scrollTop) || 0));
+  return {
+    ...(snapshot || {}),
+    cueListScrollTop,
+  };
+}
+
+async function saveWorkspaceNavigation(target) {
+  if (!target || !SERVER_CONFIG?.settingsUrl || !waveformEditor) return;
+  const navigation = currentWorkspaceNavigation();
+  try {
+    const result = await updateServerWorkspaceSettings({
+      updateWorkspaceNavigation: { ...target, navigation },
+    });
+    SERVER_CONFIG.savedWorkspaces = result.savedWorkspaces || {};
+    SERVER_CONFIG.presetWorkspaces = result.presetWorkspaces || {};
+  } catch (error) {
+    flashHint(`记住工作区导航失败：${error.message || error}`, 'warning');
+  }
+}
+
+function restoreWorkspaceNavigation(workspace) {
+  waveformEditor?.restoreNavigation?.(workspace?.navigation);
+}
+
 async function saveCurrentWorkspace({ saveAs }) {
   if (!waveformEditor || !SERVER_CONFIG?.settingsUrl) return;
   let name = currentServerWorkspaceName;
@@ -10909,13 +11144,21 @@ async function deleteCurrentServerWorkspace() {
 
 // 应用一次下拉选择：saved:* 从本机库恢复；内置 id 优先用本机覆盖版，否则用默认定义。
 // 工作区 = 窗口布局 + 显示状态，切换时同时恢复该工作区保存的显示开关。
-function applyWorkspaceSelection(preset) {
+async function applyWorkspaceSelection(preset) {
+  const previousTarget = currentServerWorkspaceName
+    ? { name: currentServerWorkspaceName }
+    : currentBuiltinWorkspaceName ? { preset: currentBuiltinWorkspaceName } : null;
+  if (previousTarget && (preset !== `saved:${currentServerWorkspaceName}`
+      && preset !== currentBuiltinWorkspaceName)) {
+    await saveWorkspaceNavigation(previousTarget);
+  }
   if (preset.startsWith('saved:')) {
     const name = preset.slice('saved:'.length);
     const workspace = getSavedServerWorkspaces()[name];
     if (!workspace) return;
     waveformEditor.setLayoutData({ ...workspace, selectedPreset: `saved:${name}` });
     applyEditorDisplaySettings(workspace.editorDisplay);
+    restoreWorkspaceNavigation(workspace);
     currentServerWorkspaceName = name;
     currentBuiltinWorkspaceName = '';
     refreshWorkspaceSelect();
@@ -10930,12 +11173,14 @@ function applyWorkspaceSelection(preset) {
   currentServerWorkspaceName = '';
   currentBuiltinWorkspaceName = preset;
   const savedPreset = getSavedPresetWorkspaces()[preset];
-  if (savedPreset) waveformEditor.setLayoutData(savedPreset);
+  const layoutPreset = presetWorkspaceHasLayout(savedPreset) ? savedPreset : null;
+  if (layoutPreset) waveformEditor.setLayoutData(layoutPreset);
   else waveformEditor.setLayout(preset);
   applyEditorDisplaySettings(
     savedPreset?.editorDisplay || window.AsrWaveform?.builtinWorkspaces?.[preset]?.editorDisplay,
   );
   workspacePresetSelect.value = preset;
+  restoreWorkspaceNavigation(savedPreset);
   refreshWorkspaceSelect();
   syncWorkspaceControls();
   void updateServerWorkspaceSettings({ activeWorkspaceName: '' }).catch((error) => {
@@ -10955,7 +11200,7 @@ function configureServerWorkspaceLibrary() {
     ? savedSelection : DATA.workspace?.preset;
   currentBuiltinWorkspaceName = currentServerWorkspaceName ? ''
     : BUILTIN_WORKSPACE_IDS.includes(initialPreset) ? initialPreset : 'wave-right';
-  if (!savedSelection && currentBuiltinWorkspaceName && getSavedPresetWorkspaces()[currentBuiltinWorkspaceName]) {
+  if (!savedSelection && currentBuiltinWorkspaceName && presetWorkspaceHasLayout(getSavedPresetWorkspaces()[currentBuiltinWorkspaceName])) {
     waveformEditor.setLayoutData(getSavedPresetWorkspaces()[currentBuiltinWorkspaceName]);
     if (workspacePresetSelect) workspacePresetSelect.value = currentBuiltinWorkspaceName;
   }
@@ -10985,8 +11230,12 @@ function configureServerWorkspaceLibrary() {
     saveWorkspaceAsButton?.addEventListener('click', () => { void saveCurrentWorkspace({ saveAs: true }); });
     deleteWorkspaceButton?.addEventListener('click', () => { void deleteCurrentServerWorkspace(); });
     workspacePresetSelect.dataset.listenersBound = 'true';
-  }
-  syncWorkspaceControls();
+   }
+   const initialWorkspace = currentServerWorkspaceName
+     ? getSavedServerWorkspaces()[currentServerWorkspaceName]
+     : getSavedPresetWorkspaces()[currentBuiltinWorkspaceName];
+   restoreWorkspaceNavigation(initialWorkspace || DATA.workspace);
+   syncWorkspaceControls();
 }
 
 function configureWorkspaceTransfer() {
@@ -11045,6 +11294,7 @@ function markProjectSaved(filename, backupName, { silent = false } = {}) {
   (multi.tracks || []).forEach((track) => track.segments.forEach((segment) => { delete segment._dirty; }));
   gapRemoveDirty = false;
   previewGeometryDirty = false;
+  projectImportDirty = false;
   FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
   const jsonEl = document.getElementById('json-name');
   if (jsonEl) {
@@ -11061,7 +11311,7 @@ async function saveProjectToServer({ silent = false } = {}) {
     if (!silent) flashHint('当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件', 'invalid');
     return false;
   }
-  if (projectSaveInFlight) return false;
+  if (projectSaveInFlight || projectCheckpointInFlight) return false;
   if (editingState) finishEdit(true);
   if (extensionEditingState) finishExtensionEdit(true);
   commitCuePanelEdit();
@@ -11099,8 +11349,38 @@ async function saveProjectToServer({ silent = false } = {}) {
   }
 }
 
+// 把当前工程写回页面持有的浏览器文件句柄（新建工程 / 另存为选定的目标）。
+async function saveProjectToHandle({ silent = false } = {}) {
+  if (!projectFileHandle) return false;
+  if (projectSaveInFlight || projectCheckpointInFlight) return false;
+  if (editingState) finishEdit(true);
+  if (extensionEditingState) finishExtensionEdit(true);
+  commitCuePanelEdit();
+  const projectJson = buildJson();
+  projectSaveInFlight = true;
+  try {
+    const writable = await projectFileHandle.createWritable();
+    await writable.write(new Blob([projectJson], { type: 'application/json;charset=utf-8' }));
+    await writable.close();
+    markProjectSaved(projectFileHandle.name, null, { silent });
+    return true;
+  } catch (error) {
+    flashHint(`保存失败：${error?.message || error}`, 'warning');
+    return false;
+  } finally {
+    projectSaveInFlight = false;
+  }
+}
+
+// 统一保存入口：句柄目标优先（最近一次新建/另存为选定的文件），否则写回服务器绑定工程。
+async function saveCurrentProject({ silent = false } = {}) {
+  if (projectFileHandle) return saveProjectToHandle({ silent });
+  return saveProjectToServer({ silent });
+}
+
 // 另存为：打开系统文件浏览对话框把工程文件保存到用户选择的位置。
-// 与「导出工程」的区别：保存成功后当前工程名跟随新文件（标题、导出默认名随之更新）。
+// 与「导出工程」的区别：保存成功后当前工程名跟随新文件（标题、导出默认名随之更新），
+// 且后续 Ctrl(Cmd)+S / 自动保存都写回这个新选定的文件。
 async function saveProjectAsToFile() {
   if (editingState) finishEdit(true);
   if (extensionEditingState) finishExtensionEdit(true);
@@ -11121,7 +11401,10 @@ async function saveProjectAsToFile() {
     const writable = await handle.createWritable();
     await writable.write(new Blob([buildJson()], { type: 'application/json;charset=utf-8' }));
     await writable.close();
+    projectFileHandle = handle;
     markProjectSaved(handle.name, null);
+    configureServerSaveControls();
+    scheduleAutoSave();
   } catch (error) {
     if (error && error.name === 'AbortError') return;  // 用户取消保存对话框
     flashHint(`保存失败：${error?.message || error}`, 'warning');
@@ -11190,7 +11473,7 @@ async function exportFcp7Xml() {
       artifact.filename,
       artifact.mime,
       { desc: 'FCP 7 XML', types: { 'application/xml': ['.xml'] } },
-      true,
+       { detailed: true },
     );
     const messages = {
       saved: ['FCP 7 XML 已保存', 'success'],
@@ -11253,7 +11536,7 @@ document.getElementById('download-json').addEventListener('click', async () => {
     desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
   });
 });
-saveProjectButton?.addEventListener('click', () => saveProjectToServer());
+saveProjectButton?.addEventListener('click', () => saveCurrentProject());
 saveProjectAsButton?.addEventListener('click', () => saveProjectAsToFile());
 // Project-level save shortcuts intentionally override the browser page-save
 // command. finishEdit() inside saveProjectToServer commits an active text edit.
@@ -11263,7 +11546,7 @@ document.addEventListener('keydown', (event) => {
   if (event.shiftKey) {
     void saveProjectAsToFile();
   } else {
-    void saveProjectToServer();
+    void saveCurrentProject();
   }
 });
 document.getElementById('download-resolve-json').addEventListener('click', async () => {
@@ -11274,15 +11557,63 @@ document.getElementById('download-resolve-json').addEventListener('click', async
       desc: 'Resolve JSON', types: { 'application/json': ['.json'] }
     });
   }
-});document.getElementById('download-sticker-otio').addEventListener('click', async () => {
-  if (editingState) finishEdit(true);
-  const payload = buildStickerOtio();
-  if (payload) {
-    await downloadFile(payload, `${FILENAME_BASE}_stickers.otio`, 'application/vnd.opentimelineio+json', {
-      desc: 'OTIO 工程文件', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
-    });
-  }
 });
+const stickerOtioExportMode = document.getElementById('sticker-otio-export-mode');
+const portableStickerExportOption = stickerOtioExportMode?.querySelector('option[value="portable"]');
+
+function syncStickerOtioExportMode() {
+  const available = Boolean(
+    SERVER_CONFIG?.canPortableStickerExport && SERVER_CONFIG?.portableStickerExportUrl
+  );
+  if (portableStickerExportOption) portableStickerExportOption.disabled = !available;
+  if (stickerOtioExportMode) {
+    stickerOtioExportMode.value = available
+      ? EDITOR_SETTINGS.stickerOtioExportMode
+      : 'original';
+  }
+  return available;
+}
+
+stickerOtioExportMode?.addEventListener('change', () => {
+  updateEditorSettings({ stickerOtioExportMode: stickerOtioExportMode.value });
+});
+
+async function exportStickerOtio(kind, buildTimeline, filename, description) {
+  if (editingState) finishEdit(true);
+  const payload = buildTimeline();
+  if (!payload) return;
+  if (stickerOtioExportMode?.value !== 'portable') {
+    await downloadFile(payload, filename, 'application/vnd.opentimelineio+json', {
+      desc: description, types: { 'application/vnd.opentimelineio+json': ['.otio'] }
+    });
+    return;
+  }
+  if (!syncStickerOtioExportMode()) {
+    flashHint('当前工程无法导出便携表情包 OTIO 文件夹', 'warning');
+    return;
+  }
+  flashHint('正在生成便携表情包 OTIO 文件夹…');
+  try {
+    const response = await fetch(new URL(SERVER_CONFIG.portableStickerExportUrl, window.location.href), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requestToken: SERVER_CONFIG.requestToken,
+        kind,
+        timeline: JSON.parse(payload),
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
+    flashHint(`已生成 ${result.folderPath}，复制 ${result.stickerCount} 张表情包`, 'success');
+  } catch (error) {
+    flashHint(`便携表情包 OTIO 导出失败：${error.message || error}`, 'warning');
+  }
+}
+
+document.getElementById('download-sticker-otio').addEventListener('click', () => exportStickerOtio(
+  'stickers', buildStickerOtio, `${FILENAME_BASE}_stickers.otio`, 'OTIO 工程文件'
+));
 document.getElementById('download-gap-removed-srt').addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedSrt();
@@ -11321,13 +11652,10 @@ document.getElementById('download-gap-removed-regions-json').addEventListener('c
   }
 });
 document.getElementById('download-gap-removed-sticker-otio').addEventListener('click', async () => {
-  if (editingState) finishEdit(true);
-  const payload = buildGapRemovedStickerOtio();
-  if (payload) {
-    await downloadFile(payload, `${FILENAME_BASE}_gap-removed-stickers.otio`, 'application/vnd.opentimelineio+json', {
-      desc: '去空隙表情包 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
-    });
-  }
+  await exportStickerOtio(
+    'gap-removed-stickers', buildGapRemovedStickerOtio,
+    `${FILENAME_BASE}_gap-removed-stickers.otio`, '去空隙表情包 OTIO 工程'
+  );
 });
 
 // === 工具栏导出下拉菜单 ===
@@ -11444,6 +11772,151 @@ function resetLoadedMedia() {
   syncPlayerPlaceholder();
 }
 
+function buildBlankProject() {
+  return { media: '', language: '', model: '', segments: [] };
+}
+
+function suggestedProjectName(file = null) {
+  const stem = file?.name?.replace(/\.[^.]+$/i, '').trim();
+  return `${stem || 'untitled'}.mosp`;
+}
+
+function applyCanonicalProject(data, filename) {
+  currentCuePanelIdx = -1;
+  currentCuePanelKind = 'main';
+  currentCuePanelTrackId = null;
+  resetCuePanelEditState();
+  resetLoadedMedia();
+  DATA.media = typeof data.media === 'string' ? data.media : '';
+  DATA.language = data.language || '';
+  DATA.model = data.model || '';
+  DATA.waveform = data.waveform || null;
+  DATA.spectral = data.spectral || null;
+  DATA.waveform_reapeaks = data.waveform_reapeaks || null;
+  DATA.workspace = data.workspace || null;
+  DATA.gap_remove = data.gap_remove || null;
+  DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
+  gapRemoveDirty = false;
+  previewGeometryDirty = false;
+  projectImportDirty = false;
+  // 外部载入的工程没有页面持有的文件句柄；新建/另存为会在载入后重新绑定句柄。
+  projectFileHandle = null;
+  setPreviewGeometry(getPreviewGeometry(), { markDirty: false });
+  applyExtensionSubtitleAppearance(DATA.preview?.extension_subtitle);
+  setStickerGeometry(getStickerGeometry(), { markDirty: false });
+  refreshPreviewGeometryEditable();
+  if (data.sticker_root) STICKER_ROOT = data.sticker_root;
+  DATA.segments.length = 0;
+  data.segments.forEach((segment) => DATA.segments.push(segment));
+  DATA.multi_subtitle = MULTI_SUBTITLE_UTILS.normalizeMultiSubtitle(data.multi_subtitle, DATA.segments);
+  editorHistory.clear();
+  updateUndoRedoButtons();
+  clearSelection();
+  lastActive = -1;
+  if (waveformEditor) {
+    waveformEditor.setLayoutData(DATA.workspace, { render: false });
+    applyEditorDisplaySettings(DATA.workspace?.editorDisplay);
+    restoreWorkspaceSelection();
+    syncWorkspaceControls();
+    waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform, { render: false });
+    waveformEditor.setSpectralPayload(DATA.spectral, { render: false });
+    waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks, { render: false });
+  }
+  updateGapRemoveUi();
+  renderAll({ waveform: 'full' });
+  updateUnloadedMediaLabel(DATA.media);
+  FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
+  const jsonEl = document.getElementById('json-name');
+  if (jsonEl) {
+    jsonEl.textContent = filename;
+    jsonEl.title = `点击复制工程文件名：${filename}`;
+    jsonEl.classList.remove('empty');
+    jsonEl.onclick = () => copyText(filename, `已复制：${filename}`);
+  }
+  projectCheckpointed = true;
+  configureServerSaveControls();
+  scheduleAutoSave();
+}
+
+// 新建工程：浏览器原生保存对话框选择位置，页面持有句柄持续写回。
+// 不再经过服务器 helper；服务器绑定的旧工程在创建成功后解除保存，避免串写。
+async function createProjectCheckpoint(project, suggestedName) {
+  if (projectCheckpointInFlight || projectSaveInFlight) {
+    flashHint('工程正在保存，请稍候再试', 'warning');
+    return false;
+  }
+  projectCheckpointInFlight = true;
+  try {
+    if (!window.showSaveFilePicker || !navigator.userActivation?.isActive) {
+      // 检查点只用于确认后续导入可以继续；无用户手势时不能弹出保存对话框，
+      // 直接建立内存工程检查点，后续仍通过显式导出保存。
+      applyCanonicalProject(project, suggestedName);
+      detachServerProjectSaving();
+      return true;
+    }
+    const handle = await window.showSaveFilePicker({
+      suggestedName,
+      types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
+    });
+    const writable = await handle.createWritable();
+    await writable.write(new Blob([JSON.stringify(project, null, 2)], { type: 'application/json;charset=utf-8' }));
+    await writable.close();
+    applyCanonicalProject(project, handle.name);
+    projectFileHandle = handle;
+    // detachServerProjectSaving 内部会刷新保存控件并重启自动保存。
+    detachServerProjectSaving();
+    return true;
+  } catch (error) {
+    if (error && error.name === 'AbortError') return false;  // 用户取消保存对话框
+    if (error && (error.name === 'NotAllowedError' || error.name === 'SecurityError')) {
+      try {
+        const saved = await downloadFile(
+          JSON.stringify(project, null, 2),
+          suggestedName,
+          'application/json',
+          { desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] } },
+          { usePicker: false },
+        );
+        if (saved) {
+          applyCanonicalProject(project, suggestedName);
+          detachServerProjectSaving();
+          return true;
+        }
+      } catch (fallbackError) {
+        flashHint(`创建工程失败：${fallbackError.message || fallbackError}`, 'warning');
+        return false;
+      }
+    }
+    flashHint(`创建工程失败：${error.message || error}`, 'warning');
+    return false;
+  } finally {
+    projectCheckpointInFlight = false;
+  }
+}
+
+// 浏览器自行管理的工程（句柄或下载创建）不能再写回服务器绑定的旧工程文件，
+// 便携表情包 OTIO 也随之退回引用原始素材（服务器已不跟踪当前工程）。
+function detachServerProjectSaving() {
+  if (SERVER_CONFIG) {
+    SERVER_CONFIG.canSave = false;
+    SERVER_CONFIG.canPortableStickerExport = false;
+  }
+  configureServerSaveControls();
+  scheduleAutoSave();
+}
+
+async function ensureProjectCheckpointForImport(file, { usePicker = true } = {}) {
+  if (projectCheckpointed) return true;
+  if (usePicker && window.showSaveFilePicker) {
+    return createProjectCheckpoint(buildBlankProject(), suggestedProjectName(file));
+  }
+  // Drag/drop imports are asynchronous by the time they reach here; do not
+  // open a save picker as part of importing a subtitle.
+  applyCanonicalProject(buildBlankProject(), suggestedProjectName(file));
+  detachServerProjectSaving();
+  return true;
+}
+
 function isMawProject(data) {
   if (!data || typeof data !== 'object' || !Array.isArray(data.segments)) return false;
   let previousEnd = 0;
@@ -11520,7 +11993,7 @@ function replaceMainTrack(segments, displayName = '字幕') {
   MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(DATA);
   DATA.gap_remove = null;
   gapRemoveDirty = false;
-  projectLoadedFromSrt = true;
+  projectImportDirty = true;
   updateUndoRedoButtons();
   clearSelection({ commitCuePanel: false });
   lastActive = -1;
@@ -11565,25 +12038,8 @@ function beginEditorLoading(label, progress = 0) {
 }
 
 async function readFileTextWithProgress(file) {
-  if (!file?.stream || !Number.isFinite(file.size) || file.size <= 0) {
-    updateEditorLoading(20, `正在读取 ${file?.name || '文件'}…`);
-    return file.text();
-  }
-  const reader = file.stream().getReader();
-  const chunks = [];
-  let loaded = 0;
-  try {
-    while (true) {
-      const next = await reader.read();
-      if (next.done) break;
-      chunks.push(next.value);
-      loaded += next.value.byteLength || 0;
-      updateEditorLoading(5 + (loaded / file.size) * 45, `正在读取 ${file.name}…`);
-    }
-  } finally {
-    reader.releaseLock?.();
-  }
-  return new Blob(chunks).text();
+  updateEditorLoading(20, `正在读取 ${file?.name || '文件'}…`);
+  return file.text();
 }
 
 async function parseSubtitleImportFile(file) {
@@ -11821,7 +12277,10 @@ async function openSrtFile(file) {
   try {
     const segments = parseSrtSegments(await readFileTextWithProgress(file));
     updateEditorLoading(75, `正在载入字幕 ${file.name}…`);
-    return replaceMainTrack(segments, file.name);
+    if (!await ensureProjectCheckpointForImport(file)) return false;
+    const imported = replaceMainTrack(segments, file.name);
+    if (imported && projectSaveTargetEnabled()) await saveCurrentProject({ silent: true });
+    return imported;
   } catch (error) {
     flashHint(`加载字幕失败：${error.message || error}`, 'warning');
     return false;
@@ -11848,58 +12307,7 @@ async function openProjectFile(file, options = {}) {
       flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。', 'warning');
       return false;
     }
-    // 单独选 JSON 时，浏览器没有授权访问它所在目录；先清理旧媒体，避免旧音轨配上新字幕。
-    resetLoadedMedia();
-    DATA.media = typeof data.media === 'string' ? data.media : '';
-    DATA.language = data.language || '';
-    DATA.model = data.model || '';
-    DATA.waveform = data.waveform || null;
-    DATA.spectral = data.spectral || null;
-    DATA.waveform_reapeaks = data.waveform_reapeaks || null;
-    DATA.workspace = data.workspace || null;
-    DATA.gap_remove = data.gap_remove || null;
-    gapRemoveDirty = false;
-    // 预览几何：归一化后应用；缺失时回退到 legacy 默认，且不弄脏工程。
-    DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
-    setPreviewGeometry(getPreviewGeometry(), { markDirty: false });
-    applyExtensionSubtitleAppearance(DATA.preview?.extension_subtitle);
-    setStickerGeometry(getStickerGeometry(), { markDirty: false });
-    refreshPreviewGeometryEditable();
-    if (data.sticker_root) STICKER_ROOT = data.sticker_root;
-    DATA.segments.length = 0;
-    data.segments.forEach((segment) => DATA.segments.push(segment));
-    DATA.multi_subtitle = MULTI_SUBTITLE_UTILS.normalizeMultiSubtitle(data.multi_subtitle, DATA.segments);
-    projectLoadedFromSrt = false;
-    configureServerSaveControls();
-    scheduleAutoSave();
-    editorHistory.clear();
-    updateUndoRedoButtons();
-    clearSelection();
-    lastActive = -1;
-    if (waveformEditor) {
-      // 工程加载会同时更新布局、主波形、频谱和 ReaPeaks；先只写入状态，
-      // 由下面一次 renderAll({ waveform: 'full' }) 统一创建可视行和 Canvas。
-      waveformEditor.setLayoutData(DATA.workspace, { render: false });
-      applyEditorDisplaySettings(DATA.workspace?.editorDisplay);
-      restoreWorkspaceSelection();
-      syncWorkspaceControls();
-      waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform, { render: false });
-      waveformEditor.setSpectralPayload(DATA.spectral, { render: false });
-      waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks, { render: false });
-    }
-    updateGapRemoveUi();
-    // 工程加载可能同时切换多字幕开关和轨道结构。
-    renderAll({ waveform: 'full' });
-    updateUnloadedMediaLabel(DATA.media);
-
-    FILENAME_BASE = file.name.replace(/\.(json|mosp)$/i, '');
-    const jsonEl = document.getElementById('json-name');
-    if (jsonEl) {
-      jsonEl.textContent = file.name;
-      jsonEl.title = `点击复制工程文件名：${file.name}`;
-      jsonEl.classList.remove('empty');
-      jsonEl.onclick = () => copyText(file.name, `已复制：${file.name}`);
-    }
+    applyCanonicalProject(data, file.name);
     const expectedName = window.AsrEditorUtils.fileBasename(DATA.media);
     // 服务器版：浏览器拿不到工程真实路径，但工程记录的媒体是绝对路径。
     // 先让服务器按它定位同目录同名工程并接管（自动加载媒体、允许 Ctrl(Cmd)+S 保存）；
@@ -11908,6 +12316,9 @@ async function openProjectFile(file, options = {}) {
       updateEditorLoading(85, '正在连接本地编辑器服务器…');
       if (await attachProjectToServer(file.name, data)) return true;
     }
+    // 工程未被服务器接管（无媒体可定位 / 接管失败）：服务器仍绑定旧工程，
+    // 当前内容不能再写回它；后续保存退化为「导出工程」，直到重新经服务器打开。
+    if (SERVER_CONFIG?.saveUrl) detachServerProjectSaving();
     if (expectedName && !suppressMediaPrompt) {
       pendingProjectMediaSelection = { projectReady: true };
       showProjectMediaModal();
@@ -11927,6 +12338,12 @@ async function openProjectFile(file, options = {}) {
     finishLoading();
   }
 }
+
+document.getElementById('new-project').addEventListener('click', async () => {
+  if (hasUnsavedProjectChanges()
+      && !confirm('当前有未保存的改动，是否确定新建工程？将丢失未保存内容。')) return;
+  await createProjectCheckpoint(buildBlankProject(), suggestedProjectName());
+});
 
 document.getElementById('open-project').addEventListener('click', () => {
   if (hasUnsavedProjectChanges()) {
@@ -12228,7 +12645,6 @@ async function loadReapeaksFile(file) {
     DATA.spectral = parsed.spectral;
     waveformEditor.setReapeaksWaveform(parsed.waveform);
     waveformEditor.setSpectralPayload(parsed.spectral);
-    waveformEditor.setPayload(null);
     waveformEditor.setMediaAvailable(false);
     flashHint(`已加载 ReaPeaks 缓存：${file.name}`, 'success');
     return true;
@@ -12272,8 +12688,13 @@ function mediaLoadErrorMessage(file) {
 loadMediaFileInput.addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
+  if (!pendingProjectMediaSelection && !await ensureProjectCheckpointForImport(file)) return;
   pendingProjectMediaSelection = null;
-  await loadMediaFile(file);
+  const imported = await loadMediaFile(file);
+  if (imported) {
+    projectImportDirty = true;
+    if (projectSaveTargetEnabled()) await saveCurrentProject({ silent: true });
+  }
 });
 
 loadMediaFileInput.addEventListener('cancel', () => {
@@ -12283,105 +12704,108 @@ loadMediaFileInput.addEventListener('cancel', () => {
 // === 表情包根目录配置 ===
 const stickerRootModal = document.getElementById('sticker-root-modal');
 const stickerRootInput = document.getElementById('sticker-root-input');
-const stickerRootFolderInput = document.getElementById('sticker-root-folder-input');
+const stickerRootRead = document.getElementById('sticker-root-read');
+const stickerRootStatus = document.getElementById('sticker-root-status');
+const stickerRootServerEnabled = Boolean(SERVER_CONFIG?.stickerRootUrl);
+let stickerRootReturnFocus = null;
+let stickerRootHintCard = null;
 
-document.getElementById('sticker-root-btn').addEventListener('click', () => {
-  // 浏览器加载模式（[本地] 前缀）下不在输入框显示虚拟标识，避免用户误以为是有效导出路径
-  stickerRootInput.value = (STICKER_ROOT && STICKER_ROOT.startsWith('[本地]')) ? '' : (STICKER_ROOT || '');
-  updateStickerRootBrowserWarn();
-  stickerRootModal.classList.add('show');
-  setTimeout(() => stickerRootInput.focus(), 50);
-});
-
-// 浏览器加载模式（[本地] 前缀）警告横幅显隐：只在 blob 模式下提示用户需手动填写真实磁盘路径
-function updateStickerRootBrowserWarn() {
-  const warn = document.getElementById('sticker-root-browser-warn');
-  if (warn) warn.style.display = (STICKER_ROOT && STICKER_ROOT.startsWith('[本地]')) ? 'block' : 'none';
+function setStickerRootStatus(message) {
+  stickerRootStatus.textContent = message;
 }
-document.getElementById('sticker-root-cancel').addEventListener('click', () => stickerRootModal.classList.remove('show'));
-stickerRootModal.addEventListener('click', (e) => { if (e.target === stickerRootModal) stickerRootModal.classList.remove('show'); });
 
-// 「📁 扫描」按钮：优先用 showDirectoryPicker 选本地文件夹——原生选择器本身就是确认动作，
-// 不会再弹浏览器的「是否上传 N 个文件到此站点」提示；不支持时回退 webkitdirectory。
-// 浏览器拿不到绝对路径，所以用 blob URL 替换 STICKERS 数组；导出路径需用户手动填写。
-const STICKER_IMG_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
-
-function applyStickerFiles(entries, topDir) {
-  // entries: [{ file, rel }]，rel 为相对所选文件夹的路径
-  if (!entries.length) {
-    flashHint('选中的文件夹里没有图片文件', 'invalid');
+function setStickerRootModalOpen(open) {
+  if (open) {
+    stickerRootReturnFocus = document.activeElement instanceof HTMLElement
+      ? document.activeElement : null;
+    stickerRootModal.classList.add('show');
+    const initialFocus = stickerRootServerEnabled
+      ? stickerRootInput : document.getElementById('sticker-root-cancel');
+    setTimeout(() => initialFocus.focus(), 50);
     return;
   }
-  // 释放旧 STICKERS 的 blob URL（如果有）
-  STICKERS.forEach(s => {
-    if (s._blobUrl) { try { URL.revokeObjectURL(s._blobUrl); } catch (e) {} }
-  });
-  STICKERS.length = 0;
-  for (const { file, rel } of entries) {
-    STICKERS.push({
-      name: file.name.replace(/\.[^.]+$/, ''),
-      filename: file.name,
-      rel: rel,
-      _blobUrl: URL.createObjectURL(file),
-    });
-  }
-  // 显示一个虚拟根，仅作内部状态标识（stickerAbsPath 据此跳过导出）；浏览器拿不到真实磁盘路径。
-  // 不把 [本地] 虚拟标识填入输入框，避免用户误以为是有效导出路径。
-  STICKER_ROOT = topDir ? `[本地] ${topDir}` : '[本地]';
-  updateStickerRootBrowserWarn();
-  renderAll();
-  flashHint(`扫描到 ${STICKERS.length} 个表情包；由于浏览器限制，你需要手动填写本地绝对路径，否则无法导出`);
-}
-
-async function collectStickerEntries(dirHandle, prefix, out) {
-  for await (const entry of dirHandle.values()) {
-    if (entry.kind === 'file') {
-      if (STICKER_IMG_EXT.test(entry.name)) out.push({ handle: entry, rel: prefix + entry.name });
-    } else if (entry.kind === 'directory') {
-      await collectStickerEntries(entry, `${prefix}${entry.name}/`, out);
-    }
-  }
-}
-
-document.getElementById('sticker-root-pick').addEventListener('click', async () => {
-  if (window.showDirectoryPicker) {
-    try {
-      const dirHandle = await window.showDirectoryPicker({ id: 'maw-sticker-root' });
-      const found = [];
-      await collectStickerEntries(dirHandle, '', found);
-      const entries = [];
-      for (const item of found) entries.push({ file: await item.handle.getFile(), rel: item.rel });
-      applyStickerFiles(entries, dirHandle.name);
-      return;
-    } catch (e) {
-      // 用户取消选择 — 静默退出；其他错误（安全限制等）回退到 webkitdirectory
-      if (e && e.name === 'AbortError') return;
-    }
-  }
-  stickerRootFolderInput.value = '';
-  stickerRootFolderInput.click();
-});
-
-stickerRootFolderInput.addEventListener('change', (e) => {
-  const files = Array.from(e.target.files || []);
-  if (!files.length) return;
-  // 只保留图片文件；取顶层目录名作为提示性 STICKER_ROOT（浏览器拿不到真实磁盘路径）
-  const imgs = files.filter(f => STICKER_IMG_EXT.test(f.name));
-  const firstRel = imgs[0]?.webkitRelativePath || '';
-  const topDir = firstRel.includes('/') ? firstRel.split('/')[0] : '';
-  applyStickerFiles(
-    imgs.map(f => ({ file: f, rel: (f.webkitRelativePath || f.name).split('/').slice(1).join('/') || f.name })),
-    topDir,
-  );
-});
-
-document.getElementById('sticker-root-confirm').addEventListener('click', () => {
-  const newRoot = stickerRootInput.value.trim().replace(/\\/g, '/').replace(/\/+$/, '');
-  STICKER_ROOT = newRoot;
   stickerRootModal.classList.remove('show');
-  // 重新渲染所有 cue 让 sticker URL 用新根目录拼接
-  renderAll();
-  flashHint(newRoot ? `根目录已更新` : '已清空根目录', 'success');
+  stickerRootReturnFocus?.focus();
+  stickerRootReturnFocus = null;
+}
+
+function flashStickerRootHint(message, type) {
+  stickerRootHintCard?.remove();
+  stickerRootHintCard = flashHint(message, type);
+}
+
+if (!stickerRootServerEnabled) {
+  stickerRootInput.disabled = true;
+  stickerRootRead.disabled = true;
+}
+
+document.getElementById('sticker-root-btn').addEventListener('click', () => {
+  stickerRootInput.value = STICKER_ROOT || '';
+  setStickerRootStatus(stickerRootServerEnabled
+    ? (STICKER_ROOT
+      ? `当前路径已读取 ${Number(SERVER_CONFIG.initialStickerCount) || STICKERS.length} 张图片。可输入 Windows、macOS 或 Linux 绝对路径。`
+      : '请输入绝对路径，例如 C:\\Media\\Stickers、/Users/name/Stickers 或 /home/name/Stickers。')
+    : '仅 Server 编辑器可以读取和验证表情包绝对路径。');
+  setStickerRootModalOpen(true);
+});
+
+document.getElementById('sticker-root-cancel').addEventListener('click', () => setStickerRootModalOpen(false));
+stickerRootModal.addEventListener('click', (event) => {
+  if (event.target === stickerRootModal) setStickerRootModalOpen(false);
+});
+stickerRootModal.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    setStickerRootModalOpen(false);
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const focusable = [...stickerRootModal.querySelectorAll('input:not(:disabled), button:not(:disabled)')];
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+});
+
+stickerRootRead.addEventListener('click', async () => {
+  if (!stickerRootServerEnabled || stickerRootRead.disabled) return;
+  const path = stickerRootInput.value.trim();
+  stickerRootHintCard?.remove();
+  stickerRootHintCard = null;
+  stickerRootRead.disabled = true;
+  stickerRootInput.disabled = true;
+  setStickerRootStatus('正在读取并验证表情包目录…');
+  try {
+    const response = await fetch(new URL(SERVER_CONFIG.stickerRootUrl, window.location.href), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken, path }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
+    STICKERS.splice(0, STICKERS.length, ...result.stickers);
+    STICKER_ROOT = result.root;
+    SERVER_CONFIG.initialStickerCount = result.count;
+    stickerRootInput.value = result.root;
+    stickerAssetRevision += 1;
+    projectImportDirty = true;
+    renderAll();
+    setStickerRootStatus(`路径有效，已读取 ${result.count} 张图片。`);
+    flashStickerRootHint(`表情包根目录已更新，读取 ${result.count} 张图片`, 'success');
+  } catch (error) {
+    setStickerRootStatus(`读取失败：${error.message || error}。当前有效根目录和表情包保持不变。`);
+    flashStickerRootHint(`表情包根目录读取失败：${error.message || error}`, 'warning');
+  } finally {
+    stickerRootRead.disabled = false;
+    stickerRootInput.disabled = false;
+    stickerRootInput.focus();
+  }
 });
 
 // === 批量替换 ===
@@ -13709,6 +14133,8 @@ function initWaveformEditor() {
     getClickTarget: () => EDITOR_SETTINGS.clickTarget,
     getAutoSnapAdjacentCues: () => EDITOR_SETTINGS.autoSnapAdjacentCues,
     getWaveShapeSource: () => EDITOR_SETTINGS.waveShapeSource,
+    // JKL 倒放靠逐帧回退实现，媒体元素本身处于暂停态；倒放期间同样视为播放中。
+    getHoverSeekPreview: () => EDITOR_SETTINGS.hoverSeekPreview && !jklReversePlaying,
     showTrackBadges: () => EDITOR_SETTINGS.multiSubtitleShowTrackBadges,
     onBeginEdit: (label) => pushUndo(label),
     syncBoundCueDrag,
@@ -13803,13 +14229,10 @@ async function handleDroppedFiles(files) {
   const reapeaksFile = files.find(isReapeaksFile);
   const jsonFile = files.find(isJsonFile);
   const srtFile = files.find(isSrtFile);
+  let stagedSrtSegments = null;
   if (!mediaFile && !reapeaksFile && !jsonFile && !srtFile) {
     flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / ReaPeaks）', 'warning');
     return;
-  }
-  if (reapeaksFile) {
-    if (mediaFile) await loadMediaFile(mediaFile);
-    await loadReapeaksFile(reapeaksFile);
   }
   if (jsonFile) {
     if (DATA.segments.length > 0) {
@@ -13831,11 +14254,26 @@ async function handleDroppedFiles(files) {
     if (opened && mediaFile) await loadMediaFile(mediaFile);
     return;
   }
-  if (mediaFile) await loadMediaFile(mediaFile);
+  if (reapeaksFile && !mediaFile && !srtFile) {
+    await loadReapeaksFile(reapeaksFile);
+    return;
+  }
+  if (srtFile && DATA.segments.length === 0) {
+    try {
+      stagedSrtSegments = parseSrtSegments(await readFileTextWithProgress(srtFile));
+    } catch (error) {
+      flashHint(`导入字幕失败：${error.message || error}`, 'warning');
+      return;
+    }
+  }
+  if ((mediaFile || srtFile) && !await ensureProjectCheckpointForImport(mediaFile || srtFile, { usePicker: false })) return;
+  if (mediaFile) {
+    const imported = await loadMediaFile(mediaFile);
+    if (imported) projectImportDirty = true;
+  }
+  if (reapeaksFile) await loadReapeaksFile(reapeaksFile);
   if (srtFile) {
     if (DATA.segments.length > 0) {
-      if (hasUnsavedProjectChanges()
-          && !confirm('当前有未保存的改动，是否继续导入为字幕来源？')) return;
       try {
         const segments = await parseSubtitleImportFile(srtFile);
         await showMultiSubtitleImportChoice(srtFile, segments);
@@ -13843,9 +14281,10 @@ async function handleDroppedFiles(files) {
         flashHint(`导入字幕失败：${error.message || error}`, 'warning');
       }
     } else {
-      await openSrtFile(srtFile);
+      replaceMainTrack(stagedSrtSegments, srtFile.name);
     }
   }
+  if ((mediaFile || srtFile) && projectSaveTargetEnabled()) await saveCurrentProject({ silent: true });
   updateEditorLoading(100, '文件加载完成');
   } finally {
     finishLoading();
