@@ -10541,6 +10541,10 @@ function buildGapRemovedStickerOtio() {
 }
 
 async function downloadFile(content, filename, mime, accept, { usePicker = true } = {}) {
+  const isSrt = filename.toLowerCase().endsWith('.srt');
+  const fileContent = isSrt
+    ? new Uint8Array([0xEF, 0xBB, 0xBF, ...new TextEncoder().encode(String(content))])
+    : content;
   // 优先尝试 File System Access API（弹出保存路径选择对话框）
   if (usePicker && window.showSaveFilePicker) {
     try {
@@ -10549,7 +10553,7 @@ async function downloadFile(content, filename, mime, accept, { usePicker = true 
         types: accept ? [{ description: accept.desc, accept: accept.types }] : undefined,
       });
       const w = await handle.createWritable();
-      await w.write(new Blob([content], { type: mime + ';charset=utf-8' }));
+      await w.write(new Blob([fileContent], { type: mime + ';charset=utf-8' }));
       await w.close();
       return true;
     } catch (e) {
@@ -10559,7 +10563,7 @@ async function downloadFile(content, filename, mime, accept, { usePicker = true 
     }
   }
   // 兜底：传统 anchor 下载（不弹路径选择）
-  const blob = new Blob([content], { type: mime + ';charset=utf-8' });
+  const blob = new Blob([fileContent], { type: mime + ';charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = filename;
@@ -11938,7 +11942,7 @@ function beginEditorLoading(label, progress = 0) {
 
 async function readFileTextWithProgress(file) {
   updateEditorLoading(20, `正在读取 ${file?.name || '文件'}…`);
-  return file.text();
+  return window.AsrEditorUtils.decodeSubtitleText(await file.arrayBuffer());
 }
 
 async function parseSubtitleImportFile(file) {

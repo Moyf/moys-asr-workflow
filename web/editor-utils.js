@@ -26,6 +26,29 @@
     return SUBTITLE_FONT_FAMILY_DISPLAY_NAMES_ZH[family] || family;
   }
 
+  // SRT files commonly come from Windows subtitle tools, which may save them
+  // as UTF-8 (with or without BOM) or as the local GBK code page. Decode the
+  // bytes here instead of relying on File.text(), whose encoding is fixed to
+  // UTF-8 and turns GBK Chinese into replacement characters.
+  function decodeSubtitleText(input) {
+    if (typeof input === 'string') return input.replace(/^\uFEFF/, '');
+    const bytes = input instanceof Uint8Array ? input : new Uint8Array(input || []);
+    if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+      return new TextDecoder('utf-8').decode(bytes.subarray(3));
+    }
+    if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+      return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+    }
+    if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+      return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+    }
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch {
+      return new TextDecoder('gb18030').decode(bytes);
+    }
+  }
+
   const KEYBOARD_OPERATION_REFERENCE_MODES = new Set(['pointer', 'playhead']);
 
   function normalizeKeyboardOperationReferenceMode(value) {
@@ -1611,6 +1634,7 @@
 
   window.AsrEditorUtils = {
     subtitleFontFamilyDisplayName,
+    decodeSubtitleText,
     normalizeKeyboardOperationReferenceMode,
     resolveKeyboardOperationReference,
     buildReplacementPreview,
