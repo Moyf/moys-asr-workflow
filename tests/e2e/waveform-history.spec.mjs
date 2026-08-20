@@ -1336,6 +1336,32 @@ test('subtitle export stays direct when only disabled subtitles have colors', as
   await expect(page.locator('#subtitle-export-dropdown')).toBeHidden();
 });
 
+test('sticker Resolve and OTIO exports expand references per enabled subtitle', async ({ page }) => {
+  await page.goto(server.url);
+  const result = await page.evaluate(() => {
+    DATA.segments = [
+      { start: 1000, end: 2000, text: 'one', sticker: { name: 'reaction', path: 'reaction.png' } },
+      { start: 3000, end: 4000, text: 'two', sticker_ref: { name: 'reaction', headIdx: 0 } },
+      { start: 5000, end: 6000, text: 'disabled', disabled: true, sticker_ref: { name: 'reaction', headIdx: 0 } },
+      { start: 7000, end: 8000, text: 'dangling', sticker_ref: { name: 'missing', headIdx: 99 } },
+    ];
+    const resolve = JSON.parse(buildResolveJson());
+    const otio = JSON.parse(buildStickerOtio());
+    const children = otio.tracks.children[0].children;
+    return {
+      resolveStickers: resolve.segments.filter((segment) => segment.sticker).map((segment) => [
+        segment.start_ms, segment.end_ms, segment.sticker.start, segment.sticker.end,
+      ]),
+      otioClips: children.filter((child) => child.OTIO_SCHEMA === 'Clip.2').map((clip) => [
+        clip.metadata.moy.start_ms, clip.metadata.moy.end_ms,
+      ]),
+    };
+  });
+
+  expect(result.resolveStickers).toEqual([[1000, 2000, 1000, 2000], [3000, 4000, 3000, 4000]]);
+  expect(result.otioClips).toEqual([[1000, 2000], [3000, 4000]]);
+});
+
 test('gap-removed export includes color SRT and names OTIO as a timeline project', async ({ page }) => {
   // 关闭「彩色字幕统一导出」，回到逐个下载的行为（默认勾选时会走目录选择器，自动化无法处理）
   await page.addInitScript(() => {

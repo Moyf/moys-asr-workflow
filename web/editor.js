@@ -10031,7 +10031,11 @@ function buildCurrentWorkspaceData() {
 
 function buildResolveJson() {
   const segments = DATA.segments.map((seg, idx) => {
-    const sticker = seg.sticker ? { ...seg.sticker } : null;
+    const headIdx = seg.sticker_ref?.headIdx;
+    const head = Number.isInteger(headIdx) ? DATA.segments[headIdx] : null;
+    const validStickerRef = !seg.sticker_ref || (head && !head.disabled && headIdx < idx);
+    const headSticker = !seg.disabled && validStickerRef ? seg.sticker || head?.sticker : null;
+    const sticker = headSticker ? { ...headSticker, start: seg.start, end: seg.end } : null;
     if (sticker) {
       const absPath = stickerAbsPath(sticker);
       if (absPath) sticker.abs_path = absPath;
@@ -10046,7 +10050,7 @@ function buildResolveJson() {
       color_ref: seg.color_ref || null,
       resolve_color: colorName,
       sticker,
-      sticker_ref: seg.sticker_ref || null,
+      sticker_ref: validStickerRef ? seg.sticker_ref || null : null,
     };
   });
   const colorCount = segments.filter(s => s.resolve_color).length;
@@ -10236,7 +10240,11 @@ function collectStickerOtioEntries(removed) {
   const entries = [];
   for (let idx = 0; idx < DATA.segments.length; idx++) {
     const seg = DATA.segments[idx];
-    const sticker = seg.sticker || (seg.sticker_ref && DATA.segments[seg.sticker_ref.headIdx]?.sticker);
+    if (seg.disabled) continue;
+    const headIdx = seg.sticker_ref?.headIdx;
+    const head = Number.isInteger(headIdx) ? DATA.segments[headIdx] : null;
+    if (seg.sticker_ref && (!head || head.disabled || headIdx >= idx)) continue;
+    const sticker = seg.sticker || head?.sticker;
     if (!sticker) continue;
     const absPath = stickerAbsPath(sticker);
     if (!absPath) return { error: '表情包缺少真实磁盘路径；请先设置实际表情包根目录后再导出 OTIO' };
