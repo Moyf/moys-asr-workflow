@@ -109,7 +109,7 @@ class EditorAssetContractTests(unittest.TestCase):
         script = edit.read_web_asset("editor.js")
         self.assertIn('id="sticker-otio-export-mode"', template)
         self.assertIn('option value="portable"', template)
-        self.assertIn("sticker_rel: seg.sticker.rel || ''", script)
+        self.assertIn("sticker_rel: sticker.rel || ''", script)
         self.assertIn("sticker_rel: sticker.sticker_rel", script)
         self.assertIn("SERVER_CONFIG?.canPortableStickerExport", script)
         self.assertIn("SERVER_CONFIG?.portableStickerExportUrl", script)
