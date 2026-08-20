@@ -1876,7 +1876,7 @@
       ? `<file id="${escapeExportXml(fileId)}"><name>${escapeExportXml(fileBasename(path))}</name><pathurl>${url}</pathurl><duration>${sourceDuration}</duration>${fcpRate(plan.frameProfile)}${isSticker ? `<timecode><rate>${fcpRate(plan.frameProfile).replace('<rate>', '').replace('</rate>', '')}</rate><string>00:00:00:00</string><frame>0</frame><displayformat>NDF</displayformat></timecode>` : ''}${fileMedia}</file>`
       : `<file id="${escapeExportXml(fileId)}"/>`;
     const frameStart = startFrame ?? timeline.start;
-    const frameEnd = Math.max(frameStart + 1, endFrame ?? timeline.end);
+    const frameEnd = Math.max(frameStart + 1, endFrame ?? frameStart + source.duration);
     const stickerClipMetadata = isSticker
       ? `<enabled>TRUE</enabled><alphatype>${/\.(?:gif|png|webp)$/iu.test(path) ? 'straight' : 'none'}</alphatype><pixelaspectratio>square</pixelaspectratio><anamorphic>FALSE</anamorphic>`
       : '';
@@ -1896,14 +1896,13 @@
     }
     const mediaType = String(exportPlan.media.type || 'video').toLowerCase();
     const hasVideo = mediaType !== 'audio';
-    const duration = exportPlanFrame(exportPlan, exportPlan.outputDurationMs, 'ceil');
     let cursor = 0;
     const sourceTracks = [];
     const intervals = Array.isArray(exportPlan.keptIntervals) ? exportPlan.keptIntervals : [];
     const boundaries = [0];
     intervals.forEach((interval) => boundaries.push(boundaries[boundaries.length - 1]
-      + exportPlanFrame(exportPlan, interval.end - interval.start, 'floor')));
-    boundaries[boundaries.length - 1] = duration;
+      + fcpTimeRange(interval.start, interval.end, exportPlan).duration));
+    const duration = boundaries[boundaries.length - 1];
     intervals.forEach((interval, index) => {
       const range = fcpTimeRange(interval.start, interval.end, exportPlan);
       const startMs = cursor * 1000 * exportPlan.frameProfile.denominator / exportPlan.frameProfile.numerator;
@@ -1931,7 +1930,8 @@
       stickerFileIds.set(stickerKey, fileId);
       const clip = fcpClipItem({
         id: `sticker-clip-${index + 1}`, fileId, name: `MAW sticker - ${sticker.name || index + 1}`,
-        path: sticker.path, width: sticker.width, height: sticker.height, sourceStartMs: 0, sourceEndMs: exportPlan.sourceDurationMs,
+        path: sticker.path, width: sticker.width, height: sticker.height, sourceStartMs: 0,
+        sourceEndMs: Math.max(1, sticker.endMs - sticker.startMs),
         startMs: sticker.startMs, endMs: sticker.endMs, plan: exportPlan, mediaKind: 'sticker', track: `sticker-${index + 1}`,
         defineFile, encodeDriveColon: true,
       });

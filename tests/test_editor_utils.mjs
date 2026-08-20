@@ -1196,7 +1196,7 @@ test('serializes the shared plan as deterministic FCP 7 XML and mapped SRT', () 
   assert.equal((xml.match(/<clipitem\b/g) || []).length, 7);
   assert.equal((xml.match(/<generatoritem\b/g) || []).length, 0);
   assert.equal(xmlElements(xml, 'track').length, 3);
-  assert.ok(xml.includes('<duration>147</duration>'));
+  assert.ok(xml.includes('<duration>149</duration>'));
   assert.ok(xml.includes('<in>47</in><out>120</out>'));
   assert.ok(xml.includes('file://localhost/C:/fixtures/%E6%B5%8B%E8%AF%95%20%26%20take.mp4'));
   assert.ok(xml.includes('file:///icons/%E6%B5%8B%E8%AF%95%20%26%20icon.png'));
@@ -1254,6 +1254,22 @@ test('preserves supplied sticker dimensions in FCP7 media metadata', () => {
   const xml = helpers.serializeFcp7Xml(plan);
   assert.match(xml, /<width>1920<\/width><height>1080<\/height>/);
   assert.doesNotMatch(xml, /<width>720<\/width><height>480<\/height>/);
+});
+
+test('keeps FCP7 sticker source range equal to its timeline range', () => {
+  const project = {
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1001 }, gaps: [], sticker_root: 'E:/素材/表情包',
+    segments: [{ start: 101, end: 901, text: '问号', sticker: {
+      name: '超多疑问-黑', filename: '超多疑问-黑.jpg', rel: '超多疑问-黑.jpg', width: 1920, height: 1080,
+      start: 101, end: 901,
+    } }],
+  };
+  const plan = helpers.buildProjectExportPlan(project, { timelineMode: 'source', fps: 30 });
+  const xml = helpers.serializeFcp7Xml(plan);
+  const sticker = xml.match(/<clipitem id="sticker-clip-1">[\s\S]*?<duration>(\d+)<\/duration>[\s\S]*?<start>(\d+)<\/start><end>(\d+)<\/end>[\s\S]*?<in>(\d+)<\/in><out>(\d+)<\/out>/);
+  assert.ok(sticker, 'sticker clip should be serialized');
+  assert.equal(Number(sticker[1]), Number(sticker[3]) - Number(sticker[2]));
+  assert.equal(Number(sticker[1]), Number(sticker[5]) - Number(sticker[4]));
 });
 
 test('declares two-channel video source audio for linked FCP7 media', () => {
