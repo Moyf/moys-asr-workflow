@@ -10236,11 +10236,12 @@ function collectStickerOtioEntries(removed) {
   const entries = [];
   for (let idx = 0; idx < DATA.segments.length; idx++) {
     const seg = DATA.segments[idx];
-    if (!seg.sticker) continue;
-    const absPath = stickerAbsPath(seg.sticker);
+    const sticker = seg.sticker || (seg.sticker_ref && DATA.segments[seg.sticker_ref.headIdx]?.sticker);
+    if (!sticker) continue;
+    const absPath = stickerAbsPath(sticker);
     if (!absPath) return { error: '表情包缺少真实磁盘路径；请先设置实际表情包根目录后再导出 OTIO' };
-    const origStart = seg.sticker.start != null ? seg.sticker.start : seg.start;
-    const origEnd = seg.sticker.end != null ? seg.sticker.end : seg.end;
+    const origStart = seg.sticker?.start != null ? seg.sticker.start : seg.start;
+    const origEnd = seg.sticker?.end != null ? seg.sticker.end : seg.end;
     if (origEnd <= origStart) continue;
     const startMs = removed.length
       ? window.AsrEditorUtils.mapGapRemovedTime(origStart, removed)
@@ -10255,7 +10256,7 @@ function collectStickerOtioEntries(removed) {
       startMs,
       endMs,
       absPath,
-      name: stickerOtioName(seg.sticker, absPath),
+      name: stickerOtioName(sticker, absPath),
     });
   }
   return { entries };
