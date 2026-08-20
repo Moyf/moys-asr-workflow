@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
+import { TextDecoder } from 'node:util';
 import vm from 'node:vm';
 
 
 const source = fs.readFileSync(new URL('../web/editor-utils.js', import.meta.url), 'utf8');
-const context = { window: {} };
+const context = { window: {}, TextDecoder };
 vm.runInNewContext(source, context);
 const helpers = context.window.AsrEditorUtils;
 const i18nSource = fs.readFileSync(new URL('../web/editor-i18n.js', import.meta.url), 'utf8');
@@ -43,6 +44,20 @@ test('leaves unknown and non-string preview font families unchanged', () => {
   assert.equal(helpers.subtitleFontFamilyDisplayName('MAW Test Sans', 'zh'), 'MAW Test Sans');
   assert.equal(helpers.subtitleFontFamilyDisplayName('Microsoft Yahei', 'zh'), 'Microsoft Yahei');
   assert.equal(helpers.subtitleFontFamilyDisplayName(null, 'zh'), null);
+});
+
+test('decodes UTF-8, BOM, UTF-16, and Windows GB18030 subtitle bytes', () => {
+  const encode = (label, text) => new TextEncoder().encode(text);
+  const utf8 = encode('utf-8', '1\n00:00:00,000 --> 00:00:01,000\n你好');
+  assert.equal(helpers.decodeSubtitleText(utf8), '1\n00:00:00,000 --> 00:00:01,000\n你好');
+
+  const utf8Bom = new Uint8Array([0xEF, 0xBB, 0xBF, ...utf8]);
+  assert.equal(helpers.decodeSubtitleText(utf8Bom), '1\n00:00:00,000 --> 00:00:01,000\n你好');
+
+  const utf16le = new Uint8Array([0xFF, 0xFE, ...Buffer.from('你好', 'utf16le')]);
+  assert.equal(helpers.decodeSubtitleText(utf16le), '你好');
+
+  assert.equal(helpers.decodeSubtitleText(new Uint8Array([0xC4, 0xE3, 0xBA, 0xC3])), '你好');
 });
 
 test('normalizes and resolves keyboard operation references', () => {

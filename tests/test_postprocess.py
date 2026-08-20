@@ -608,6 +608,14 @@ class PostprocessTests(unittest.TestCase):
         self.assertIn("1\n00:00:01,200 --> 00:00:02,200\n下一句", rendered)
         self.assertNotIn("\n2\n", rendered)
 
+    def test_srt_output_is_written_as_utf8_with_bom(self) -> None:
+        target = self.root / "captions.srt"
+
+        _atomic_write(target, "1\n字幕\n")
+
+        self.assertEqual(target.read_bytes()[:3], b"\xef\xbb\xbf")
+        self.assertEqual(target.read_text(encoding="utf-8-sig"), "1\n字幕\n")
+
     def test_srt_reader_rejects_a_block_without_timing(self) -> None:
         malformed = self.root / "malformed.srt"
         _ = malformed.write_text(
