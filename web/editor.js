@@ -10449,7 +10449,7 @@ function collectStickerOtioEntries(removed) {
       startMs,
       endMs,
       absPath,
-      sticker_rel: seg.sticker.rel || '',
+      sticker_rel: sticker.rel || '',
       name: stickerOtioName(sticker, absPath),
     });
   }
