@@ -92,10 +92,8 @@ test('hover seek preview seeks paused media to the pointer time', async ({ page 
   const targetSec = await hoverFirstWaveformRow(page, 0.5);
 
   // Then: the still-paused media seeks to the pointer time.
-  await expect.poll(() => page.evaluate(() => {
-    const player = document.getElementById('player');
-    return { currentTime: player.currentTime, paused: player.paused };
-  })).toMatchObject({ paused: true });
+  await waitForHoverSeekFrames(page);
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').paused)).toBe(true);
   const currentTime = await page.evaluate(() => document.getElementById('player').currentTime);
   expect(currentTime).toBeGreaterThanOrEqual(targetSec - 0.5);
   expect(currentTime).toBeLessThanOrEqual(targetSec + 0.5);
