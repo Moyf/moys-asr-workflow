@@ -4,6 +4,7 @@
 
 ## [Unreleased]
 
+- PR #56：新增实验性的 Premiere FCP 7 XML 交接导出，支持去空隙 / 原始时间线、可选原生 GraphicAndType 字幕文本、贴图素材路径和扩展字幕轨导出；贴图 head 记录可选原始 `width` / `height`，缺失或无法读取时使用兼容默认值。Premiere 图片自动重链和字体显示仍需实机确认。
 
 ## [1.4.0] - 2026-08-16
 

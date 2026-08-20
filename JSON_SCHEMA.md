@@ -405,6 +405,8 @@
   "name": "表情包名（去扩展名）",
   "filename": "表情包名.png",
   "rel": "相对 sticker_root 的路径，通常等于 filename",
+  "width": 1920,
+  "height": 1080,
   "start": 1234,
   "end": 9999
 }
@@ -415,6 +417,7 @@
 | `name` | 显示名，通常等于文件名去扩展名 |
 | `filename` | 完整文件名（含扩展名） |
 | `rel` | 相对 `sticker_root` 的路径。平铺目录下等于 `filename` |
+| `width` / `height` | 可选正整数，原始图片像素宽高。旧工程缺失时，导出器使用兼容默认值。 |
 | `start` / `end` | 表情包时间范围（毫秒）。导出 EDL 时使用；跨多句时通常等于 head 段的 `start` 与最后一句的 `end` |
 
 ### 4.2 sticker_ref（后续条引用 head）

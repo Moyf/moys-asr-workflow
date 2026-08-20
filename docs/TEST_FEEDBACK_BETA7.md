@@ -261,3 +261,13 @@
 - 已验证：`node --test tests\test_editor_utils.mjs` 为 `151/151`，组合 `node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs` 为 `193/193`；FCP7 浏览器回归 `9/9`；XML 使用 Python `xml.etree.ElementTree` 解析；`node --check web/editor-utils.js` 与 `git diff --check` 通过。当前环境未重新运行 Premiere，因此目标应用最终转换仍为未验证，不宣称已完全兼容。
 - 当前 SHA-256：`web/editor-utils.js` `5ff8a79c9c8366d2a750223f596697aadffa7e904c6a5521c2b026a9f542c239`；`tests/test_editor_utils.mjs` `4ccaef69c35e3781109c2cd86f81e629a4320608520fe9ec4cd9583dadf9efc0`；`tests/e2e/fcp7-export.spec.mjs` `56347702556ef1db0cf3886f2732f0b5f1f80f42e336e64065021fd4dbf62870`。`.debug-journal.md` 为临时文件，不纳入证据或发布产物。
 - 后续复现发现：仓库参考 XML 同时存在 `file:///D:/...` 与 `file://localhost/D|/...` 两种历史写法；针对当前 Premiere“找不到媒体”反馈，序列化器改为 `file://localhost/D:/...`，并补充回归断言。Premiere 实机重新导入仍需用户在相同媒体路径上确认，当前不能宣称已完全兼容。
+# PR #56 审核整改（2026-08-20）
+
+状态：已修复
+
+- FCP7 非整帧区间取整不一致：`f27ade0a` 统一源区间和时间线区间的帧边界，贴图 source duration 按当前字幕实例计算。
+- 多段贴图导出遗漏：`65294c2e` 让 OTIO 与 Resolve JSON 逐段解析 `sticker_ref`，使用当前字幕段时间范围；禁用段不导出，悬空引用按既有跳过规则处理。
+- 契约文档：`CHANGELOG.md` 增加 PR #56 汇总及 Premiere 图片自动重链、字体显示的实机限制；`JSON_SCHEMA.md` 补充可选 `sticker.width` / `sticker.height` 和旧工程兼容规则。
+- 尺寸解析失败：`scan_stickers()` 保留无法读取尺寸的图片，输出 warning，由导出器使用兼容默认值；新增损坏图片回归测试。
+
+验证：Node `155/155`、Python `607/607`、贴图导出 Playwright `1/1`、语法检查、`uv run python edit.py --blank`、`git diff --check` 均通过。Premiere 实机导入仍未验证。
