@@ -3018,6 +3018,10 @@
   outline-color: color-mix(in srgb, var(--cue-color) 50%, var(--wave-cue-mix));
   background: color-mix(in srgb, var(--cue-color) 10%, var(--wave-cue-mix));
 }
+.waveform-row.multi-subtitle-row .waveform-cue-badge {
+  /* 双字幕时 badge 要放在最上方主字幕块之上；单层行继续使用默认 bottom。 */
+  bottom: calc(var(--multi-subtitle-bottom-inset) + (var(--multi-subtitle-lane-height) * 2) + var(--multi-subtitle-lane-gap) + 2px);
+}
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"] .waveform-cue-label {
   color: var(--text-secondary);
 }
@@ -3214,7 +3218,7 @@
 /* 分组徽章：放在块上方的行内区域（bottom = 块高35 + 块底7 + 间距2），
    纯视觉提示不遮挡块内文字；left 由 JS 按块位置写入 */
 .waveform-cue-badge {
-  position: absolute; bottom: calc(44px + var(--badge-stack-index, 0) * 16px); z-index: 7;
+  position: absolute; bottom: calc(44px + var(--badge-stack-index, 0) * 16px); z-index: 6;
   font-size: 11px; line-height: 1.3; padding: 1px 5px; white-space: nowrap;
   color: var(--text-secondary); background: var(--wave-badge-bg); border-radius: 3px;
   pointer-events: none; font-family: var(--font-mono);
