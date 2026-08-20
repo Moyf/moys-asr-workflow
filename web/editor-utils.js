@@ -1671,7 +1671,8 @@
       if (rawStart !== start || rawEnd !== end) warnings.push({ code: 'clamped_sticker_to_duration', index });
       stickers.push({
         headIndex: index, name: String(source.name || ''),
-        path: resolvedStickerPath,
+        path: resolvedStickerPath, width: Number.isInteger(source.width) ? source.width : 720,
+        height: Number.isInteger(source.height) ? source.height : 480,
         sourceStartMs: start, sourceEndMs: end,
         startMs: mapSourceToOutput(start), endMs: mapSourceToOutput(end),
       });
@@ -1858,22 +1859,29 @@
     })[key] || key || 'Arial';
   }
 
-  function fcpClipItem({ id, fileId, name, path, sourceStartMs, sourceEndMs, startMs, endMs, startFrame, endFrame, plan, mediaKind, track, link, defineFile = true, encodeDriveColon = false }) {
+  function fcpClipItem({ id, fileId, name, path, width, height, sourceStartMs, sourceEndMs, startMs, endMs, startFrame, endFrame, plan, mediaKind, track, link, defineFile = true, encodeDriveColon = false }) {
     const source = fcpTimeRange(sourceStartMs, sourceEndMs, plan);
     const timeline = fcpTimeRange(startMs, endMs, plan);
     const url = escapeExportXml(exportPathToFileUrl(path, { encodeDriveColon }));
+    const isSticker = mediaKind === 'sticker';
     const media = mediaKind === 'audio' ? '<sourcetrack><mediatype>audio</mediatype><trackindex>1</trackindex><channel>1</channel><channelcount>2</channelcount></sourcetrack>'
       : '<sourcetrack><mediatype>video</mediatype><trackindex>1</trackindex></sourcetrack>';
     const sourceDuration = exportPlanFrame(plan, plan.sourceDurationMs, 'ceil');
     const fileMedia = mediaKind === 'audio'
       ? `<media><audio><duration>${sourceDuration}</duration><channelcount>2</channelcount></audio></media>`
-      : `<media><video><duration>${sourceDuration}</duration></video><audio><duration>${sourceDuration}</duration><channelcount>2</channelcount></audio></media>`;
+      : isSticker
+        ? `<media><video><samplecharacteristics><rate><timebase>${plan.frameProfile.numerator}/${plan.frameProfile.denominator}</timebase><ntsc>${plan.frameProfile.denominator === 1001 ? 'TRUE' : 'FALSE'}</ntsc></rate><width>${Number.isInteger(width) && width > 0 ? width : 720}</width><height>${Number.isInteger(height) && height > 0 ? height : 480}</height><anamorphic>FALSE</anamorphic><pixelaspectratio>square</pixelaspectratio><fielddominance>none</fielddominance></samplecharacteristics></video></media>`
+        : `<media><video><duration>${sourceDuration}</duration></video><audio><duration>${sourceDuration}</duration><channelcount>2</channelcount></audio></media>`;
     const file = defineFile
-      ? `<file id="${escapeExportXml(fileId)}"><name>${escapeExportXml(fileBasename(path))}</name><pathurl>${url}</pathurl><duration>${sourceDuration}</duration>${fcpRate(plan.frameProfile)}${fileMedia}</file>`
+      ? `<file id="${escapeExportXml(fileId)}"><name>${escapeExportXml(fileBasename(path))}</name><pathurl>${url}</pathurl><duration>${sourceDuration}</duration>${fcpRate(plan.frameProfile)}${isSticker ? `<timecode><rate>${fcpRate(plan.frameProfile).replace('<rate>', '').replace('</rate>', '')}</rate><string>00:00:00:00</string><frame>0</frame><displayformat>NDF</displayformat></timecode>` : ''}${fileMedia}</file>`
       : `<file id="${escapeExportXml(fileId)}"/>`;
     const frameStart = startFrame ?? timeline.start;
     const frameEnd = Math.max(frameStart + 1, endFrame ?? timeline.end);
-    return `<clipitem id="${escapeExportXml(id)}"><name>${escapeExportXml(name)}</name><duration>${frameEnd - frameStart}</duration>${fcpRate(plan.frameProfile)}<start>${frameStart}</start><end>${frameEnd}</end><in>${source.start}</in><out>${source.end}</out>${file}${media}${link ? `<link><linkclipref>${escapeExportXml(link)}</linkclipref><mediatype>audio</mediatype><trackindex>1</trackindex><clipindex>1</clipindex></link>` : ''}<label>${escapeExportXml(track)}</label></clipitem>`;
+    const stickerClipMetadata = isSticker
+      ? `<enabled>TRUE</enabled><alphatype>${/\.(?:gif|png|webp)$/iu.test(path) ? 'straight' : 'none'}</alphatype><pixelaspectratio>square</pixelaspectratio><anamorphic>FALSE</anamorphic>`
+      : '';
+    const masterClipMetadata = isSticker ? `<masterclipid>${escapeExportXml(fileId.replace(/^file-/, 'master-'))}</masterclipid>` : '';
+    return `<clipitem id="${escapeExportXml(id)}">${masterClipMetadata}<name>${escapeExportXml(name)}</name>${stickerClipMetadata}<duration>${frameEnd - frameStart}</duration>${fcpRate(plan.frameProfile)}<start>${frameStart}</start><end>${frameEnd}</end><in>${source.start}</in><out>${source.end}</out>${file}${media}${link ? `<link><linkclipref>${escapeExportXml(link)}</linkclipref><mediatype>audio</mediatype><trackindex>1</trackindex><clipindex>1</clipindex></link>` : ''}<label>${escapeExportXml(track)}</label></clipitem>`;
   }
 
   function serializeFcp7Xml(plan, options = {}) {
@@ -1923,8 +1931,8 @@
       stickerFileIds.set(stickerKey, fileId);
       const clip = fcpClipItem({
         id: `sticker-clip-${index + 1}`, fileId, name: `MAW sticker - ${sticker.name || index + 1}`,
-        path: sticker.path, sourceStartMs: 0, sourceEndMs: exportPlan.sourceDurationMs,
-        startMs: sticker.startMs, endMs: sticker.endMs, plan: exportPlan, mediaKind: 'video', track: `sticker-${index + 1}`,
+        path: sticker.path, width: sticker.width, height: sticker.height, sourceStartMs: 0, sourceEndMs: exportPlan.sourceDurationMs,
+        startMs: sticker.startMs, endMs: sticker.endMs, plan: exportPlan, mediaKind: 'sticker', track: `sticker-${index + 1}`,
         defineFile, encodeDriveColon: true,
       });
       return `<track>${clip}</track>`;

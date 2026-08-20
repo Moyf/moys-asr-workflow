@@ -1234,8 +1234,26 @@ test('resolves sticker media from sticker_root and emits one clip per subtitle o
   assert.equal((xml.match(/<clipitem id="sticker-clip-/g) || []).length, 2);
   assert.equal((xml.match(/<file id="file-sticker-[^"]+">/g) || []).length, 1);
   assert.match(xml, /<pathurl>file:\/\/localhost\/E(?:%3A|:)\/%E7%B4%A0%E6%9D%90\/%E8%A1%A8%E6%83%85%E5%8C%85\/%E6%8F%8F%E8%BE%B9gif\/.+<\/pathurl>/);
+  assert.match(xml, /<clipitem id="sticker-clip-1"><masterclipid>master-sticker-1<\/masterclipid><name>[^<]+<\/name><enabled>TRUE<\/enabled><alphatype>straight<\/alphatype><pixelaspectratio>square<\/pixelaspectratio>/);
+  assert.match(xml, /<file id="file-sticker-[^"]+">[\s\S]*?<timecode><rate><timebase>30\/1<\/timebase><ntsc>FALSE<\/ntsc><\/rate><string>00:00:00:00<\/string><frame>0<\/frame><displayformat>NDF<\/displayformat><\/timecode>[\s\S]*?<media><video><samplecharacteristics>[\s\S]*?<width>720<\/width><height>480<\/height>/);
   assert.match(xml, /<clipitem id="sticker-clip-1">[\s\S]*?<start>30<\/start><end>60<\/end>/);
   assert.match(xml, /<clipitem id="sticker-clip-2">[\s\S]*?<start>90<\/start><end>120<\/end>/);
+});
+
+test('preserves supplied sticker dimensions in FCP7 media metadata', () => {
+  const project = {
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    gaps: [],
+    sticker_root: 'E:/素材/表情包',
+    segments: [{ start: 0, end: 1000, text: '问号', sticker: {
+      name: '超多疑问-黑', filename: '超多疑问-黑.jpg', rel: '超多疑问-黑.jpg',
+      width: 1920, height: 1080, start: 0, end: 1000,
+    } }],
+  };
+  const plan = helpers.buildProjectExportPlan(project, { timelineMode: 'source', fps: 30 });
+  const xml = helpers.serializeFcp7Xml(plan);
+  assert.match(xml, /<width>1920<\/width><height>1080<\/height>/);
+  assert.doesNotMatch(xml, /<width>720<\/width><height>480<\/height>/);
 });
 
 test('declares two-channel video source audio for linked FCP7 media', () => {
