@@ -1343,6 +1343,11 @@
       // 字幕快捷键会在很短时间内连续请求定位；复用滚动事件已有的
       // rAF 合并，避免每个按键都强制重建可视行和 Canvas。
       this.multiVisibleFrame = 0;
+      // 「鼠标位置自动预览」：高回报率 pointermove 用 rAF 合并，每帧最多按
+      // 最新事件 seek 一次；pointerleave 时取消尚未执行的待办。
+      this.hoverSeekPreviewFrame = 0;
+      this.hoverSeekPreviewLastEvent = null;
+      this.hoverSeekPreviewRow = null;
       // Shift+滚轮调振幅的 debounce：滚动期间只累计净步数，停止后一次性重绘
       this.pendingScaleDirection = 0;
       this.scaleDebounceTimer = 0;
@@ -1514,6 +1519,41 @@
 
     hidePointerLine(marker) {
       if (marker) marker.hidden = true;
+    }
+
+    // 暂停时指针在波形上移动即把画面预览到指针时间。与拖动播放头一样按
+    // 最新事件合并到每帧最多一次；真正 seek 前重新检查开关与播放状态，
+    // 避免调度之后状态已变化（开始播放、关闭开关、行被虚拟化重建）仍执行。
+    scheduleHoverSeekPreview(event, row) {
+      if (this.options.getHoverSeekPreview?.() !== true) return;
+      this.hoverSeekPreviewLastEvent = event;
+      this.hoverSeekPreviewRow = row;
+      if (this.hoverSeekPreviewFrame) return;
+      this.hoverSeekPreviewFrame = requestAnimationFrame(() => this.flushHoverSeekPreview());
+    }
+
+    cancelHoverSeekPreview() {
+      if (this.hoverSeekPreviewFrame) {
+        cancelAnimationFrame(this.hoverSeekPreviewFrame);
+        this.hoverSeekPreviewFrame = 0;
+      }
+      this.hoverSeekPreviewLastEvent = null;
+      this.hoverSeekPreviewRow = null;
+    }
+
+    flushHoverSeekPreview() {
+      this.hoverSeekPreviewFrame = 0;
+      const event = this.hoverSeekPreviewLastEvent;
+      const row = this.hoverSeekPreviewRow;
+      this.hoverSeekPreviewLastEvent = null;
+      this.hoverSeekPreviewRow = null;
+      if (!event || !row) return;
+      if (this.options.getHoverSeekPreview?.() !== true) return;
+      if (!this.player || !this.mediaAvailable) return;
+      if (!this.player.paused) return;
+      if (event.buttons !== 0) return;
+      if (!row.isConnected) return;
+      this.seekFromPointer(event, row, false);
     }
 
     bindDivider() {
@@ -2853,8 +2893,14 @@
         this.seekFromPointer(event, row, false, geometry);
       });
       row.addEventListener('pointerenter', (event) => this.showPointerLine(event, row, pointerLine));
-      row.addEventListener('pointermove', (event) => this.showPointerLine(event, row, pointerLine));
-      row.addEventListener('pointerleave', () => this.hidePointerLine(pointerLine));
+      row.addEventListener('pointermove', (event) => {
+        this.showPointerLine(event, row, pointerLine);
+        this.scheduleHoverSeekPreview(event, row);
+      });
+      row.addEventListener('pointerleave', () => {
+        this.hidePointerLine(pointerLine);
+        this.cancelHoverSeekPreview();
+      });
       row.addEventListener('auxclick', (event) => {
         if (event.button === 1 && gapOperationMode === 'middle_drag') event.preventDefault();
       });

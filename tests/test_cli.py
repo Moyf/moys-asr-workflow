@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 from unittest import mock
 
@@ -135,8 +137,9 @@ class CliTests(unittest.TestCase):
         kill_external.assert_not_called()
 
     def test_qwen_only_options_are_rejected_for_soniox(self) -> None:
-        with self.assertRaises(SystemExit) as raised:
-            cli.main(["--provider", "soniox", "-i", "clip.mp3", "--region", "beijing"])
+        with redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as raised:
+                cli.main(["--provider", "soniox", "-i", "clip.mp3", "--region", "beijing"])
 
         self.assertEqual(raised.exception.code, 2)
 
