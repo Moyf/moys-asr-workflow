@@ -170,7 +170,8 @@ def _atomic_write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+        encoding = "utf-8-sig" if path.suffix.lower() == ".srt" else "utf-8"
+        with os.fdopen(descriptor, "w", encoding=encoding, newline="\n") as handle:
             _ = handle.write(text)
         os.replace(temporary_name, path)
     except (OSError, UnicodeError):
