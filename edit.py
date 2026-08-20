@@ -29,8 +29,9 @@ import json
 import os
 import re
 import struct
+import sys
 from pathlib import Path
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 from maw.project import ProjectValidationFailed, normalize_project
 from maw.media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS
@@ -53,8 +54,8 @@ class Sticker(TypedDict):
     name: str
     filename: str
     rel: str
-    width: int
-    height: int
+    width: NotRequired[int]
+    height: NotRequired[int]
 
 
 def image_dimensions(path: Path) -> tuple[int, int]:
@@ -169,6 +170,7 @@ def scan_stickers(dir_path: Path, max_depth: int = 3, max_items: int = 500) -> t
         return ("", [])
     root_abs = dir_path.resolve()
     items: list[Sticker] = []
+    skipped_dimensions = 0
     for p in sorted(root_abs.rglob("*")):
         if not p.is_file():
             continue
@@ -183,10 +185,16 @@ def scan_stickers(dir_path: Path, max_depth: int = 3, max_items: int = 500) -> t
         try:
             width, height = image_dimensions(p)
         except (OSError, ValueError):
+            skipped_dimensions += 1
+            items.append({"name": name, "filename": p.name, "rel": rel})
+            if len(items) >= max_items:
+                break
             continue
         items.append({"name": name, "filename": p.name, "rel": rel, "width": width, "height": height})
         if len(items) >= max_items:
             break
+    if skipped_dimensions:
+        print(f"[sticker] 警告：{skipped_dimensions} 个图片无法读取尺寸，已保留并使用兼容默认值", file=sys.stderr)
     return (root_abs.as_posix(), items)
 
 
