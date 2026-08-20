@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import io
 import json
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 from unittest import mock
 
@@ -576,7 +578,8 @@ class BcutCliExitContractTests(unittest.TestCase):
         """缺失输入文件属于调用方错误，必须以非零退出码失败。"""
         from generate_subtitle_bcut_api import main
 
-        with mock.patch("sys.argv", ["generate_subtitle_bcut_api.py", "does-not-exist.mp3"]):
+        with redirect_stderr(io.StringIO()), \
+             mock.patch("sys.argv", ["generate_subtitle_bcut_api.py", "does-not-exist.mp3"]):
             with self.assertRaises(SystemExit) as raised:
                 main()
         self.assertEqual(raised.exception.code, 1)
@@ -665,20 +668,23 @@ class PublicCliWiringTests(unittest.TestCase):
     def test_bcut_rejects_language_and_model(self) -> None:
         from maw import cli
 
-        with self.assertRaises(SystemExit) as raised:
-            cli.main(["--provider", "bcut", "-i", "clip.mp3", "--language", "zh"])
+        with redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as raised:
+                cli.main(["--provider", "bcut", "-i", "clip.mp3", "--language", "zh"])
         self.assertEqual(raised.exception.code, 2)
 
-        with self.assertRaises(SystemExit) as raised:
-            cli.main(["--provider", "bcut", "-i", "clip.mp3", "--model", "x"])
+        with redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as raised:
+                cli.main(["--provider", "bcut", "-i", "clip.mp3", "--model", "x"])
         self.assertEqual(raised.exception.code, 2)
 
     def test_bcut_rejects_speaker_and_qwen_only_args(self) -> None:
         from maw import cli
 
         for extra in (["--speaker"], ["--speaker-colors"], ["--region", "beijing"], ["--hotword", "词"]):
-            with self.assertRaises(SystemExit, msg=extra) as raised:
-                cli.main(["--provider", "bcut", "-i", "clip.mp3", *extra])
+            with redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit, msg=extra) as raised:
+                    cli.main(["--provider", "bcut", "-i", "clip.mp3", *extra])
             self.assertEqual(raised.exception.code, 2, msg=extra)
 
     def test_bcut_minimal_args_reach_generator(self) -> None:

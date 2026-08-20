@@ -753,11 +753,12 @@ __WAVEFORM_CSS__
       <div class="settings-anchor subtitle-preview-settings" id="subtitle-preview-settings">
         <button type="button" id="subtitle-preview-settings-toggle" class="subtitle-preview-settings-toggle" title="媒体设置" aria-label="媒体设置" aria-expanded="false" aria-controls="subtitle-preview-settings-panel" aria-haspopup="dialog">⚙️</button>
         <div class="settings-panel subtitle-preview-settings-panel" id="subtitle-preview-settings-panel" role="dialog" aria-label="媒体设置" hidden>
-          <div class="settings-panel-section media-playback-settings-section">
-            <span class="settings-panel-title">JKL 播放模式</span>
+          <div class="settings-panel-section media-preview-settings-section">
+            <span class="settings-panel-title">播放预览</span>
+            <label class="toggle settings-panel-item"><input type="checkbox" id="hover-seek-preview"> 自动预览鼠标位置画面</label>
             <div class="settings-panel-field">
               <label class="settings-panel-item" title="选择 J/K/L 的播放控制方式">
-                <span>播放模式</span>
+                <span>JKL 按键播放控制</span>
                 <select id="jkl-playback-mode">
                   <option value="speed">慢速和倍速</option>
                   <option value="direction" selected>倒放和正放</option>
@@ -765,17 +766,16 @@ __WAVEFORM_CSS__
               </label>
               <small class="settings-panel-hint" id="jkl-playback-mode-hint">J 倒放，K 停止（重置播放速度），K 播放。多次按 J/K 可以倍增速度。</small>
             </div>
-          </div>
-          <div class="settings-panel-section media-seek-settings-section">
-            <span class="settings-panel-title">跳转时长</span>
-            <label class="settings-panel-item" title="媒体控制按钮和左右方向键每次跳转的毫秒数">
-              <span>每次跳转</span>
-              <span class="gap-remove-number-control">
-                <input type="number" id="media-seek-step" min="10" max="60000" step="100" value="1000" inputmode="numeric" aria-label="跳转时长">
-                <span class="gap-remove-unit">ms</span>
-              </span>
-            </label>
-            <small class="settings-panel-hint">控制按钮和左右方向键的每次跳转时长（单位：ms）</small>
+            <div class="settings-panel-field">
+              <label class="settings-panel-item" title="媒体控制按钮和左右方向键每次跳转的毫秒数">
+                <span>每次跳转时长</span>
+                <span class="gap-remove-number-control">
+                  <input type="number" id="media-seek-step" min="10" max="60000" step="100" value="1000" inputmode="numeric" aria-label="每次跳转时长">
+                  <span class="gap-remove-unit">ms</span>
+                </span>
+              </label>
+              <small class="settings-panel-hint">控制按钮和左右方向键的每次跳转时长（单位：ms）</small>
+            </div>
           </div>
           <div class="settings-panel-section subtitle-preview-settings-section">
             <span class="settings-panel-title">预览字幕样式</span>

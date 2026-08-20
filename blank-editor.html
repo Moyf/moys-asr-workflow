@@ -4113,11 +4113,12 @@
       <div class="settings-anchor subtitle-preview-settings" id="subtitle-preview-settings">
         <button type="button" id="subtitle-preview-settings-toggle" class="subtitle-preview-settings-toggle" title="媒体设置" aria-label="媒体设置" aria-expanded="false" aria-controls="subtitle-preview-settings-panel" aria-haspopup="dialog">⚙️</button>
         <div class="settings-panel subtitle-preview-settings-panel" id="subtitle-preview-settings-panel" role="dialog" aria-label="媒体设置" hidden>
-          <div class="settings-panel-section media-playback-settings-section">
-            <span class="settings-panel-title">JKL 播放模式</span>
+          <div class="settings-panel-section media-preview-settings-section">
+            <span class="settings-panel-title">播放预览</span>
+            <label class="toggle settings-panel-item"><input type="checkbox" id="hover-seek-preview"> 自动预览鼠标位置画面</label>
             <div class="settings-panel-field">
               <label class="settings-panel-item" title="选择 J/K/L 的播放控制方式">
-                <span>播放模式</span>
+                <span>JKL 按键播放控制</span>
                 <select id="jkl-playback-mode">
                   <option value="speed">慢速和倍速</option>
                   <option value="direction" selected>倒放和正放</option>
@@ -4125,17 +4126,16 @@
               </label>
               <small class="settings-panel-hint" id="jkl-playback-mode-hint">J 倒放，K 停止（重置播放速度），K 播放。多次按 J/K 可以倍增速度。</small>
             </div>
-          </div>
-          <div class="settings-panel-section media-seek-settings-section">
-            <span class="settings-panel-title">跳转时长</span>
-            <label class="settings-panel-item" title="媒体控制按钮和左右方向键每次跳转的毫秒数">
-              <span>每次跳转</span>
-              <span class="gap-remove-number-control">
-                <input type="number" id="media-seek-step" min="10" max="60000" step="100" value="1000" inputmode="numeric" aria-label="跳转时长">
-                <span class="gap-remove-unit">ms</span>
-              </span>
-            </label>
-            <small class="settings-panel-hint">控制按钮和左右方向键的每次跳转时长（单位：ms）</small>
+            <div class="settings-panel-field">
+              <label class="settings-panel-item" title="媒体控制按钮和左右方向键每次跳转的毫秒数">
+                <span>每次跳转时长</span>
+                <span class="gap-remove-number-control">
+                  <input type="number" id="media-seek-step" min="10" max="60000" step="100" value="1000" inputmode="numeric" aria-label="每次跳转时长">
+                  <span class="gap-remove-unit">ms</span>
+                </span>
+              </label>
+              <small class="settings-panel-hint">控制按钮和左右方向键的每次跳转时长（单位：ms）</small>
+            </div>
           </div>
           <div class="settings-panel-section subtitle-preview-settings-section">
             <span class="settings-panel-title">预览字幕样式</span>
@@ -8643,6 +8643,11 @@
       // 字幕快捷键会在很短时间内连续请求定位；复用滚动事件已有的
       // rAF 合并，避免每个按键都强制重建可视行和 Canvas。
       this.multiVisibleFrame = 0;
+      // 「鼠标位置自动预览」：高回报率 pointermove 用 rAF 合并，每帧最多按
+      // 最新事件 seek 一次；pointerleave 时取消尚未执行的待办。
+      this.hoverSeekPreviewFrame = 0;
+      this.hoverSeekPreviewLastEvent = null;
+      this.hoverSeekPreviewRow = null;
       // Shift+滚轮调振幅的 debounce：滚动期间只累计净步数，停止后一次性重绘
       this.pendingScaleDirection = 0;
       this.scaleDebounceTimer = 0;
@@ -8814,6 +8819,41 @@
 
     hidePointerLine(marker) {
       if (marker) marker.hidden = true;
+    }
+
+    // 暂停时指针在波形上移动即把画面预览到指针时间。与拖动播放头一样按
+    // 最新事件合并到每帧最多一次；真正 seek 前重新检查开关与播放状态，
+    // 避免调度之后状态已变化（开始播放、关闭开关、行被虚拟化重建）仍执行。
+    scheduleHoverSeekPreview(event, row) {
+      if (this.options.getHoverSeekPreview?.() !== true) return;
+      this.hoverSeekPreviewLastEvent = event;
+      this.hoverSeekPreviewRow = row;
+      if (this.hoverSeekPreviewFrame) return;
+      this.hoverSeekPreviewFrame = requestAnimationFrame(() => this.flushHoverSeekPreview());
+    }
+
+    cancelHoverSeekPreview() {
+      if (this.hoverSeekPreviewFrame) {
+        cancelAnimationFrame(this.hoverSeekPreviewFrame);
+        this.hoverSeekPreviewFrame = 0;
+      }
+      this.hoverSeekPreviewLastEvent = null;
+      this.hoverSeekPreviewRow = null;
+    }
+
+    flushHoverSeekPreview() {
+      this.hoverSeekPreviewFrame = 0;
+      const event = this.hoverSeekPreviewLastEvent;
+      const row = this.hoverSeekPreviewRow;
+      this.hoverSeekPreviewLastEvent = null;
+      this.hoverSeekPreviewRow = null;
+      if (!event || !row) return;
+      if (this.options.getHoverSeekPreview?.() !== true) return;
+      if (!this.player || !this.mediaAvailable) return;
+      if (!this.player.paused) return;
+      if (event.buttons !== 0) return;
+      if (!row.isConnected) return;
+      this.seekFromPointer(event, row, false);
     }
 
     bindDivider() {
@@ -10153,8 +10193,14 @@
         this.seekFromPointer(event, row, false, geometry);
       });
       row.addEventListener('pointerenter', (event) => this.showPointerLine(event, row, pointerLine));
-      row.addEventListener('pointermove', (event) => this.showPointerLine(event, row, pointerLine));
-      row.addEventListener('pointerleave', () => this.hidePointerLine(pointerLine));
+      row.addEventListener('pointermove', (event) => {
+        this.showPointerLine(event, row, pointerLine);
+        this.scheduleHoverSeekPreview(event, row);
+      });
+      row.addEventListener('pointerleave', () => {
+        this.hidePointerLine(pointerLine);
+        this.cancelHoverSeekPreview();
+      });
       row.addEventListener('auxclick', (event) => {
         if (event.button === 1 && gapOperationMode === 'middle_drag') event.preventDefault();
       });
@@ -12949,6 +12995,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   mediaSeekStepMs: DEFAULT_MEDIA_SEEK_STEP_MS,
   // 选中字幕后用方向键 / A-D 微调时间的幅度。
   cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
+  // 鼠标位置自动预览：暂停时指针在波形上移动即把画面定位到指针时间（默认关闭）。
+  hoverSeekPreview: false,
   // 是否默认让同轨相邻字幕随边界调整一起联动；Alt 始终临时反转该行为。
   autoSnapAdjacentCues: true,
   // 娱乐彩蛋：成功拆分时的音效与刀光反馈，并把分割工具图标换成 🔪。
@@ -13038,6 +13086,7 @@ function readEditorSettings() {
       jklPlaybackMode: normalizeJklPlaybackMode(saved.jklPlaybackMode),
       mediaSeekStepMs: clampMediaSeekStepMs(savedMediaSeekStepMs),
       cueMoveStepMs: clampCueMoveStepMs(saved.cueMoveStepMs),
+      hoverSeekPreview: saved.hoverSeekPreview === true,
       autoSnapAdjacentCues: saved.autoSnapAdjacentCues !== false,
       ninjaMode: saved.ninjaMode === true,
       ninjaSound: saved.ninjaSound !== false,
@@ -13560,6 +13609,7 @@ const keyboardOperationReferenceSelect = document.getElementById('keyboard-opera
 const keyboardOperationReferenceHint = document.getElementById('keyboard-operation-reference-hint');
 const jklPlaybackModeSelect = document.getElementById('jkl-playback-mode');
 const jklPlaybackModeHint = document.getElementById('jkl-playback-mode-hint');
+const hoverSeekPreviewToggle = document.getElementById('hover-seek-preview');
 const helpJklMode = document.getElementById('help-jkl-mode');
 const cueMoveStepInput = document.getElementById('cue-move-step');
 const autoSnapAdjacentCuesToggle = document.getElementById('auto-snap-adjacent-cues');
@@ -14193,6 +14243,7 @@ if (keyboardOperationReferenceSelect) {
   keyboardOperationReferenceSelect.value = EDITOR_SETTINGS.keyboardOperationReference;
 }
 if (jklPlaybackModeSelect) jklPlaybackModeSelect.value = EDITOR_SETTINGS.jklPlaybackMode;
+if (hoverSeekPreviewToggle) hoverSeekPreviewToggle.checked = EDITOR_SETTINGS.hoverSeekPreview;
 if (mediaSeekStepInput) mediaSeekStepInput.value = String(EDITOR_SETTINGS.mediaSeekStepMs);
 if (cueMoveStepInput) cueMoveStepInput.value = String(EDITOR_SETTINGS.cueMoveStepMs);
 if (autoSnapAdjacentCuesToggle) {
@@ -14623,6 +14674,9 @@ jklPlaybackModeSelect?.addEventListener('change', () => {
   if (wasReversePlaying) update();
   syncMediaControls();
   refreshJklPlaybackModeUi();
+});
+hoverSeekPreviewToggle?.addEventListener('change', () => {
+  updateEditorSettings({ hoverSeekPreview: hoverSeekPreviewToggle.checked });
 });
 function refreshMediaSeekInputStep(value = EDITOR_SETTINGS.mediaSeekStepMs) {
   if (mediaSeekStepInput) mediaSeekStepInput.step = String(mediaSeekStepForValue(value));
@@ -26325,6 +26379,8 @@ function initWaveformEditor() {
     getClickTarget: () => EDITOR_SETTINGS.clickTarget,
     getAutoSnapAdjacentCues: () => EDITOR_SETTINGS.autoSnapAdjacentCues,
     getWaveShapeSource: () => EDITOR_SETTINGS.waveShapeSource,
+    // JKL 倒放靠逐帧回退实现，媒体元素本身处于暂停态；倒放期间同样视为播放中。
+    getHoverSeekPreview: () => EDITOR_SETTINGS.hoverSeekPreview && !jklReversePlaying,
     showTrackBadges: () => EDITOR_SETTINGS.multiSubtitleShowTrackBadges,
     onBeginEdit: (label) => pushUndo(label),
     syncBoundCueDrag,

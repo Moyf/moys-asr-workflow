@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import io
 import json
 import unittest
+from contextlib import redirect_stderr
 from unittest import mock
 
 import requests
@@ -608,7 +610,8 @@ class SonioxCliExitContractTests(unittest.TestCase):
         """缺失输入文件属于调用方错误，必须以非零退出码失败。"""
         from generate_subtitle_soniox_api import main
 
-        with mock.patch("sys.argv", ["generate_subtitle_soniox_api.py", "does-not-exist.mp3"]):
+        with redirect_stderr(io.StringIO()), \
+             mock.patch("sys.argv", ["generate_subtitle_soniox_api.py", "does-not-exist.mp3"]):
             with self.assertRaises(SystemExit) as raised:
                 main()
         self.assertEqual(raised.exception.code, 1)

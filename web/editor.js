@@ -659,6 +659,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   mediaSeekStepMs: DEFAULT_MEDIA_SEEK_STEP_MS,
   // 选中字幕后用方向键 / A-D 微调时间的幅度。
   cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
+  // 鼠标位置自动预览：暂停时指针在波形上移动即把画面定位到指针时间（默认关闭）。
+  hoverSeekPreview: false,
   // 是否默认让同轨相邻字幕随边界调整一起联动；Alt 始终临时反转该行为。
   autoSnapAdjacentCues: true,
   // 娱乐彩蛋：成功拆分时的音效与刀光反馈，并把分割工具图标换成 🔪。
@@ -748,6 +750,7 @@ function readEditorSettings() {
       jklPlaybackMode: normalizeJklPlaybackMode(saved.jklPlaybackMode),
       mediaSeekStepMs: clampMediaSeekStepMs(savedMediaSeekStepMs),
       cueMoveStepMs: clampCueMoveStepMs(saved.cueMoveStepMs),
+      hoverSeekPreview: saved.hoverSeekPreview === true,
       autoSnapAdjacentCues: saved.autoSnapAdjacentCues !== false,
       ninjaMode: saved.ninjaMode === true,
       ninjaSound: saved.ninjaSound !== false,
@@ -1270,6 +1273,7 @@ const keyboardOperationReferenceSelect = document.getElementById('keyboard-opera
 const keyboardOperationReferenceHint = document.getElementById('keyboard-operation-reference-hint');
 const jklPlaybackModeSelect = document.getElementById('jkl-playback-mode');
 const jklPlaybackModeHint = document.getElementById('jkl-playback-mode-hint');
+const hoverSeekPreviewToggle = document.getElementById('hover-seek-preview');
 const helpJklMode = document.getElementById('help-jkl-mode');
 const cueMoveStepInput = document.getElementById('cue-move-step');
 const autoSnapAdjacentCuesToggle = document.getElementById('auto-snap-adjacent-cues');
@@ -1903,6 +1907,7 @@ if (keyboardOperationReferenceSelect) {
   keyboardOperationReferenceSelect.value = EDITOR_SETTINGS.keyboardOperationReference;
 }
 if (jklPlaybackModeSelect) jklPlaybackModeSelect.value = EDITOR_SETTINGS.jklPlaybackMode;
+if (hoverSeekPreviewToggle) hoverSeekPreviewToggle.checked = EDITOR_SETTINGS.hoverSeekPreview;
 if (mediaSeekStepInput) mediaSeekStepInput.value = String(EDITOR_SETTINGS.mediaSeekStepMs);
 if (cueMoveStepInput) cueMoveStepInput.value = String(EDITOR_SETTINGS.cueMoveStepMs);
 if (autoSnapAdjacentCuesToggle) {
@@ -2333,6 +2338,9 @@ jklPlaybackModeSelect?.addEventListener('change', () => {
   if (wasReversePlaying) update();
   syncMediaControls();
   refreshJklPlaybackModeUi();
+});
+hoverSeekPreviewToggle?.addEventListener('change', () => {
+  updateEditorSettings({ hoverSeekPreview: hoverSeekPreviewToggle.checked });
 });
 function refreshMediaSeekInputStep(value = EDITOR_SETTINGS.mediaSeekStepMs) {
   if (mediaSeekStepInput) mediaSeekStepInput.step = String(mediaSeekStepForValue(value));
@@ -14035,6 +14043,8 @@ function initWaveformEditor() {
     getClickTarget: () => EDITOR_SETTINGS.clickTarget,
     getAutoSnapAdjacentCues: () => EDITOR_SETTINGS.autoSnapAdjacentCues,
     getWaveShapeSource: () => EDITOR_SETTINGS.waveShapeSource,
+    // JKL 倒放靠逐帧回退实现，媒体元素本身处于暂停态；倒放期间同样视为播放中。
+    getHoverSeekPreview: () => EDITOR_SETTINGS.hoverSeekPreview && !jklReversePlaying,
     showTrackBadges: () => EDITOR_SETTINGS.multiSubtitleShowTrackBadges,
     onBeginEdit: (label) => pushUndo(label),
     syncBoundCueDrag,
