@@ -51,6 +51,10 @@ extend-exclude = ["tests/**", "website/**", "desktop/**"]
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]
 
+[tool.ruff.lint.per-file-ignores]
+# Soniox keeps these names as compatibility exports for existing callers.
+"maw/soniox.py" = ["F401"]
+
 [dependency-groups]
 build = [
     "pyinstaller==6.16.0",

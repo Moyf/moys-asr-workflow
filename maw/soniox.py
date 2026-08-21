@@ -40,7 +40,11 @@ from generate_subtitle_qwen_api import (
     split_segments_auto,
 )
 # Re-exported for the Soniox CLI and existing callers of ``maw.soniox``.
-from maw.speaker import apply_speaker_colors, split_items_by_speaker  # noqa: F401
+from maw.speaker import (
+    SPEAKER_COLOR_PALETTE,
+    apply_speaker_colors,
+    split_items_by_speaker,
+)
 
 BASE_URL = "https://api.soniox.com"
 DEFAULT_MODEL = "stt-async-v5"
