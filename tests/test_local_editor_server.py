@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import struct
 import subprocess
@@ -10,6 +11,7 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
+import zipfile
 from dataclasses import replace
 from pathlib import Path
 from unittest import mock
@@ -312,7 +314,8 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertNotIn('createUrl', page)
         self.assertIn('"requestToken": "", "stickerRootUrl": "/api/stickers/root", ', page)
         self.assertIn('"portableStickerExportUrl": "/api/exports/sticker-otio", ', page)
-        self.assertIn('"canPortableStickerExport": true, "initialStickerCount": 1, ', page)
+        self.assertIn('"otiozStickerExportUrl": "/api/exports/sticker-otioz", ', page)
+        self.assertIn('"canPortableStickerExport": true, "canOtozStickerExport": true, "initialStickerCount": 1, ', page)
         self.assertIn('"autoLoadedMediaName": "clip.mp3", "recentProjectsUrl": "/api/recent-projects/open", ', page)
         self.assertIn('"attachUrl": "/api/project/attach", "settingsUrl": "/api/settings", ', page)
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
@@ -519,6 +522,172 @@ class LocalEditorServerTests(unittest.TestCase):
             self.assertEqual(target, "stickers/face%20%23%25.png")
         finally:
             server.server_close()
+
+    def _sticker_otioz_serve(self) -> tuple[server_editor.EditorServer, threading.Thread, str]:
+        server = server_editor.EditorServer(("127.0.0.1", 0), server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        ))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{server.server_address[1]}"
+        return server, thread, base_url
+
+    def _post_sticker_otioz(
+        self, base_url: str, server: server_editor.EditorServer, timeline: dict, *, kind: str = "stickers",
+    ) -> tuple[int, object, bytes]:
+        request = urllib.request.Request(
+            f"{base_url}/api/exports/sticker-otioz",
+            data=json.dumps({"requestToken": server.request_token, "kind": kind, "timeline": timeline}).encode(),
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request) as response:
+                return response.status, dict(response.headers), response.read()
+        except urllib.error.HTTPError as error:
+            return error.code, dict(error.headers), error.read()
+
+    def test_sticker_otioz_export_returns_zip_with_media_and_metadata(self) -> None:
+        first = self.stickers / "a" / "x.png"
+        first.parent.mkdir()
+        first.write_bytes(b"first")
+        timeline = {
+            "OTIO_SCHEMA": "Timeline.1",
+            "name": "source",
+            "metadata": {},
+            "tracks": {"children": [{"children": [
+                {"OTIO_SCHEMA": "Gap.1"},
+                {"OTIO_SCHEMA": "Clip.2", "metadata": {"moy": {"sticker_rel": "a/x.png"}},
+                 "source_range": {"OTIO_SCHEMA": "TimeRange.1", "duration": {"rate": 25, "value": 10}, "start_time": {"rate": 25, "value": 0}},
+                 "media_references": {"DEFAULT_MEDIA": {"OTIO_SCHEMA": "ExternalReference.1", "target_url": "old-a"}}},
+                {"OTIO_SCHEMA": "Clip.2", "metadata": {"moy": {"sticker_rel": "a/x.png"}},
+                 "media_references": {"DEFAULT_MEDIA": {"OTIO_SCHEMA": "ExternalReference.1", "target_url": "old-a-2"}}},
+                {"OTIO_SCHEMA": "Clip.2", "metadata": {"moy": {"sticker_rel": "nested/cat.png"}},
+                 "media_references": {"DEFAULT_MEDIA": {"OTIO_SCHEMA": "ExternalReference.1", "target_url": "old-b",
+                                                         "available_range": {"OTIO_SCHEMA": "TimeRange.1", "duration": {"value": 5.0}, "start_time": {}}}}},
+            ]}]},
+        }
+        server, thread, base_url = self._sticker_otioz_serve()
+        try:
+            server.set_sticker_root(str(self.stickers))
+            status, headers, body = self._post_sticker_otioz(base_url, server, timeline)
+            self.assertEqual(status, 200)
+            self.assertEqual(headers["Content-Type"], "application/zip")
+            self.assertEqual(headers["Content-Disposition"], 'attachment; filename="clip_stickers.otioz"')
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+        with zipfile.ZipFile(io.BytesIO(body)) as archive:
+            names = set(archive.namelist())
+            self.assertIn("content.otio", names)
+            self.assertIn("version.txt", names)
+            self.assertIn("media/x.png", names)
+            self.assertIn("media/cat.png", names)
+            self.assertEqual(len([name for name in names if name.startswith("media/")]), 2)
+            self.assertEqual(archive.read("version.txt").decode("utf-8"), "1.0.0")
+            self.assertEqual(archive.read("media/x.png"), b"first")
+            self.assertEqual(archive.read("media/cat.png"), b"png")
+            exported = json.loads(archive.read("content.otio").decode("utf-8"))
+        clips = [clip for clip in exported["tracks"]["children"][0]["children"] if "media_references" in clip]
+        urls = [clip["media_references"]["DEFAULT_MEDIA"]["target_url"] for clip in clips]
+        self.assertEqual(urls, ["media/x.png", "media/x.png", "media/cat.png"])
+        first_ref = clips[0]["media_references"]["DEFAULT_MEDIA"]
+        self.assertEqual(first_ref["available_range"]["OTIO_SCHEMA"], "TimeRange.1")
+        self.assertEqual(first_ref["available_range"]["duration"]["value"], 1.0)
+        self.assertEqual(first_ref["available_range"]["duration"]["rate"], 25)
+        self.assertEqual(first_ref["available_range"]["start_time"]["value"], 0.0)
+        second_ref = clips[1]["media_references"]["DEFAULT_MEDIA"]
+        self.assertIn("available_range", second_ref)
+        self.assertEqual(second_ref["available_range"]["duration"]["rate"], 60)
+        third_ref = clips[2]["media_references"]["DEFAULT_MEDIA"]
+        self.assertEqual(third_ref["available_range"]["duration"]["value"], 5.0)
+
+    def test_sticker_otioz_export_dedupes_same_named_stickers(self) -> None:
+        first = self.stickers / "a" / "x.png"
+        second = self.stickers / "b" / "x.png"
+        first.parent.mkdir()
+        second.parent.mkdir()
+        first.write_bytes(b"first")
+        second.write_bytes(b"second")
+        timeline = {"OTIO_SCHEMA": "Timeline.1", "tracks": {"children": [{"children": [
+            {"OTIO_SCHEMA": "Clip.2", "metadata": {"moy": {"sticker_rel": "a/x.png"}},
+             "media_references": {"DEFAULT_MEDIA": {"target_url": "old-a"}}},
+            {"OTIO_SCHEMA": "Clip.2", "metadata": {"moy": {"sticker_rel": "b/x.png"}},
+             "media_references": {"DEFAULT_MEDIA": {"target_url": "old-b"}}},
+        ]}]}}
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        server = server_editor.EditorServer(("127.0.0.1", 0), project)
+        try:
+            server.set_sticker_root(str(self.stickers))
+            zip_bytes, otio_name, count = server_editor.export_sticker_otioz(
+                server.project, "stickers", timeline, self.stickers,
+            )
+            self.assertEqual(otio_name, "clip_stickers.otio")
+            self.assertEqual(count, 2)
+        finally:
+            server.server_close()
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
+            names = set(archive.namelist())
+            self.assertIn("media/x.png", names)
+            self.assertIn("media/x-2.png", names)
+            self.assertEqual(archive.read("media/x.png"), b"first")
+            self.assertEqual(archive.read("media/x-2.png"), b"second")
+            exported = json.loads(archive.read("content.otio").decode("utf-8"))
+        clips = [clip for clip in exported["tracks"]["children"][0]["children"] if "media_references" in clip]
+        urls = [clip["media_references"]["DEFAULT_MEDIA"]["target_url"] for clip in clips]
+        self.assertEqual(urls, ["media/x.png", "media/x-2.png"])
+
+    def test_sticker_otioz_export_rejects_missing_sticker_rel(self) -> None:
+        timeline = {"OTIO_SCHEMA": "Timeline.1", "tracks": {"children": [{"children": [
+            {"OTIO_SCHEMA": "Clip.2", "metadata": {}, "media_references": {"DEFAULT_MEDIA": {"target_url": "x"}}},
+        ]}]}}
+        server, thread, base_url = self._sticker_otioz_serve()
+        try:
+            server.set_sticker_root(str(self.stickers))
+            status, _, body = self._post_sticker_otioz(base_url, server, timeline)
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+        self.assertEqual(status, 400)
+        result = json.loads(body.decode("utf-8"))
+        self.assertFalse(result["ok"])
+        self.assertIn("缺少 sticker_rel", result["error"])
+
+    def test_sticker_otioz_export_rejects_path_escape(self) -> None:
+        timeline = {"OTIO_SCHEMA": "Timeline.1", "tracks": {"children": [{"children": [
+            {"OTIO_SCHEMA": "Clip.2", "metadata": {"moy": {"sticker_rel": "../clip.jpg"}},
+             "media_references": {"DEFAULT_MEDIA": {"target_url": "x"}}},
+        ]}]}}
+        server, thread, base_url = self._sticker_otioz_serve()
+        try:
+            server.set_sticker_root(str(self.stickers))
+            status, _, body = self._post_sticker_otioz(base_url, server, timeline)
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+        self.assertEqual(status, 400)
+        result = json.loads(body.decode("utf-8"))
+        self.assertFalse(result["ok"])
+        self.assertIn("相对路径不安全", result["error"])
+
+    def test_sticker_otioz_export_requires_verified_sticker_root(self) -> None:
+        timeline = {"OTIO_SCHEMA": "Timeline.1", "tracks": {"children": [{"children": [
+            {"OTIO_SCHEMA": "Clip.2", "metadata": {"moy": {"sticker_rel": "nested/cat.png"}},
+             "media_references": {"DEFAULT_MEDIA": {"target_url": "x"}}},
+        ]}]}}
+        server, thread, base_url = self._sticker_otioz_serve()
+        try:
+            # load_project 会把 stickers_dir 兜底设为 root；显式清空验证未校验时的拒绝路径。
+            server.project = replace(server.project, sticker_root=None, stickers=[])
+            status, _, body = self._post_sticker_otioz(base_url, server, timeline)
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+        self.assertEqual(status, 400)
+        result = json.loads(body.decode("utf-8"))
+        self.assertFalse(result["ok"])
+        self.assertIn("尚未验证表情包根目录", result["error"])
 
     def test_reapeaks_loading_is_deferred_until_server_is_serving(self) -> None:
         self_waveform = {

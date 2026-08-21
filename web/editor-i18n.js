@@ -48,10 +48,18 @@
     'FCP 7 XML 保存失败': 'FCP 7 XML save failed',
     'FCP 7 XML 导出失败': 'FCP 7 XML export failed',
     'FFconcat 文件': 'FFconcat file', '保留区域 JSON': 'Kept-regions JSON',
-    '表情包 OTIO': 'Sticker OTIO', '导出表情包时间线 ▾': 'Export sticker timeline ▾',
+    '表情包 OTIO': 'Sticker OTIO', '表情包 OTIOZ': 'Sticker OTIOZ', '导出表情包时间线 ▾': 'Export sticker timeline ▾',
     '选择表情包 OTIO 引用原始素材，或由服务器复制素材并生成便携文件夹': 'Choose whether sticker OTIO references original media or the server copies media into a portable folder',
     '下载 Resolve JSON': 'Download Resolve JSON',
     '下载表情包 OTIO 工程': 'Download sticker OTIO project',
+    '下载表情包 OTIOZ 工程': 'Download sticker OTIOZ project',
+    '按移除静音空隙后的时间轴导出表情包图片轨道 OTIOZ 工程（服务器打包图片进 zip，需校验表情包根目录）；完全落在空隙内的表情包会被丢弃': 'Export the sticker track as OTIOZ on the gap-removed timeline (server packs images into zip; validated sticker root required); stickers fully inside gaps are omitted',
+    '导出表情包图片轨道 OTIOZ 工程（服务器打包图片进 zip，需校验表情包根目录）': 'Export a sticker-track OTIOZ bundle (server packs images into zip; validated sticker root required)',
+    '服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出 OTIOZ': 'Server packaging is unavailable: open the project via server-editor and bind a project file before exporting OTIOZ',
+    '当前工程无法导出表情包 OTIOZ（需要以 server-editor 打开并绑定工程文件）': 'Cannot export sticker OTIOZ here (requires server-editor with a bound project file)',
+    '正在生成表情包 OTIOZ 工程…': 'Generating sticker OTIOZ bundle…',
+    'OTIOZ 已生成，图片已打包进 zip': 'OTIOZ generated; images are packed into the zip',
+    '没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除': 'No silent gaps removed yet; scan with "Remove silent gaps" first',
     '字幕': 'Subtitles', '字幕预览': 'Subtitle preview', '表情包预览': 'Sticker preview', '字幕列表和编辑区': 'Subtitle list & editor', '字幕编辑区': 'Subtitle editor',
     '多重字幕': 'Multiple subtitles', '多重字幕设置': 'Multiple-subtitle settings', '主轨': 'Main track', '扩展轨': 'Extension track', '副轨': 'Secondary track', '双列': 'Two columns', '绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H': 'After binding, sync the secondary subtitle start and end to the main subtitle, equivalent to pressing H', '交换主字幕和副字幕的文本、时间与绑定关系': 'Swap the main and secondary subtitle text, timing, and bindings',
     '拆分与合并': 'Split and merge', '波形形状来源': 'Waveform shape source', '自研波形': 'Self-built waveform', 'ReaPeaks 波形层': 'ReaPeaks waveform layer',
@@ -758,6 +766,9 @@
     if (text === '当前有未保存的改动，是否确定打开最近工程？将丢失未保存内容。') {
       return 'This project has unsaved changes. Open the recent project and discard them?';
     }
+    // 表情包导出灰显拦截 flashHint：当前模式不可用：<原因>
+    match = /^当前模式不可用：(.+)$/.exec(text);
+    if (match) return `Unavailable in the current mode: ${translateText(match[1], EN)}`;
     return text;
   }
 
