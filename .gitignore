@@ -49,5 +49,11 @@ desktop/src/index.html
 !MAW.spec
 .playwright-mcp/
 
+# Local post-processing configuration (may contain personal paths and settings).
+maw-postprocess.json
+
 # AppImage 构建产物（scripts/build-appimage.sh）
 build-appimage/
+
+# Local reference material. Never package or commit these files.
+/ref/

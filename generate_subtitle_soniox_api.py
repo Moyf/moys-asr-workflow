@@ -42,7 +42,7 @@ from maw.soniox import (
     parse_soniox_context_json,
     transcribe,
 )
-from media_cache import embed_media_caches
+from media_cache import embed_media_caches, merge_media_caches
 
 
 def _language_hints(raw: str | None) -> list[str]:
@@ -100,6 +100,10 @@ def main():
         help="将波形峰值数据嵌入工程文件（GUI 转写默认开启）",
     )
     parser.add_argument(
+        "--with-spectral", action="store_true",
+        help="在 .ReaPeaks 波形缓存中额外生成频谱数据（需要 --with-waveform）",
+    )
+    parser.add_argument(
         "-s", "--stickers", default=get_default_sticker_dir(),
         help="表情包文件夹路径，传给 edit.py（默认读 .env 的 STICKER_DIR）",
     )
@@ -129,6 +133,8 @@ def main():
     )
     args = parser.parse_args()
     configure_console_output()
+    if args.with_spectral and not args.with_waveform:
+        parser.error("--with-spectral 需要同时指定 --with-waveform")
 
     input_path = Path(args.input)
     if not input_path.exists():
@@ -245,6 +251,18 @@ def main():
         if repaired_count:
             print(f"[info] 已兜底修复 {repaired_count} 处 0 长/倒挂时间码（保底 100ms）")
 
+        # 媒体缓存必须在临时目录清理前生成：audio_path 指向 tmpdir 内的
+        # 提取音频，with 块结束后文件即被删除。先暂存结果，待 segments
+        # 后处理完成、写出工程时再合并（合并键见 media_cache.CACHE_KEYS）。
+        cache_result = None
+        if args.json_out and args.with_waveform:
+            cache_result = embed_media_caches(
+                {"media": str(input_path)},
+                Path(audio_path),
+                source_media_path=input_path,
+                generate_spectral=args.with_spectral,
+            )
+
     if enable_speaker:
         speakers = sorted({str(seg["speaker"]) for seg in segments if seg.get("speaker")})
         print(f"[speaker] 识别到 {len(speakers)} 个说话人: {', '.join(speakers)}")
@@ -320,8 +338,8 @@ def main():
                 for seg in segments
             ],
         }
-        if args.with_waveform:
-            json_data = embed_media_caches(json_data, input_path).project
+        if cache_result is not None:
+            json_data = merge_media_caches(json_data, cache_result)
         print("[输出] 正在校验工程文件...")
         check = validate_project(json_data)
         if not check.ok:

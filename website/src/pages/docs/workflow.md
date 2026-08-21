@@ -89,11 +89,12 @@ CLI 未指定 `--model` 时默认使用 `qwen-audio-3.0-asr-flash-filetrans`；�
 --keep-punct         保留每条字幕末尾的逗号和句号
 --no-html            只要 SRT 和工程文件，不生成便携 HTML
 --with-waveform      把波形写进工程文件，免去编辑器首次打开的 sidecar 缓存文件
+--with-spectral      在 ReaPeaks 波形缓存中额外生成频谱数据（需要 --with-waveform）
 --debug              输出部分 API 原始结果，便于反馈问题
 --debug-raw          单独保存完整 ASR 原始 JSON（<输出文件名>.asr-response.json）
 ```
 
-CLI 默认不内嵌波形；需要交给编辑器直接打开且不想生成 `<媒体名>.waveform.json` sidecar 时，加 `--with-waveform`。波形提取会额外用 FFmpeg 完整扫一遍媒体，失败时只给警告，不影响字幕与工程文件输出。输入视频会先由 FFmpeg 提取单声道 16kHz WAV；音频输入也会通过 FFprobe 获取时长。没有 FFmpeg/FFprobe 时，这一步无法完成。
+CLI 默认不内嵌波形；需要交给编辑器直接打开且不想生成 `<媒体名>.waveform.json` sidecar 时，加 `--with-waveform`。该选项默认生成媒体旁 `.ReaPeaks` 的 wave 层，但跳过耗时较高的频谱计算；只有同时加 `--with-spectral` 才生成频谱层。Launcher 中对应的“生成 ReaPeaks 频谱数据”默认不勾选。波形提取会额外用 FFmpeg 完整扫一遍媒体，失败时只给警告，不影响字幕与工程文件输出。输入视频会先由 FFmpeg 提取单声道 16kHz WAV；音频输入也会通过 FFprobe 获取时长。没有 FFmpeg/FFprobe 时，这一步无法完成。
 
 ## 用 Qwen-Audio 3.0 ASR 转写（热词与上下文）
 
@@ -212,6 +213,12 @@ uv run python generate_subtitle_bcut_api.py "D:\Videos\example.mp4" -ll 2m --jso
 
 接口只直接接收 `flac / aac / m4a / mp3 / wav`；视频和其他音频格式会先经 ffmpeg 转成 16k 单声道 wav 再上传。不支持语言指定（面向中文）、说话人分离与热词。
 
+## 2.5 转写后自动处理
+
+Launcher 可以在转写成功后自动串接文稿匹配、固定替换、LLM 校对、重新断句、OCR 字幕去重和翻译。功能默认关闭；配置、LLM 连接验证、中间产物目录、失败恢复和安全边界见[转写后自动处理](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/POSTPROCESS_PIPELINE.md)。
+
+自动处理会保留原始转写结果，最终结果另写为带 `.postprocess` 后缀的 `.mosp` 和 `.srt`。失败或取消不会影响原始结果，并会保留中间目录供恢复。
+
 ## 3. 理解三个输出文件
 
 | File | Use it for | Keep it? |
@@ -285,13 +292,13 @@ LLM 工具支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 Ope
 
 供应商 API Key、URL 和模型可在 Launcher 右上角的 `⚙️ 配置` →「LLM 后处理」中保存到本机 `.env`；工具箱 LLM 面板提供快捷链接跳转到这里。界面和 bridge 结果只显示掩码，不会把完整 Key 写入工程或日志。留空已经保存过的 Key 输入框并再次保存 URL/模型时，原 Key 会保留。「测试连接」只使用当前表单值发送最小请求，不会写入配置；保存成功后显示的「LLM 设置已保存。」只是短暂的状态反馈。字幕文字会发送到所选 LLM 供应商，请根据素材敏感程度和供应商的数据政策决定是否使用。完整机器协议见 [LLM_POSTPROCESS_PROTOCOL.md](../llm-postprocess/)。
 
-### 固定替换
+### 固定处理
 
-固定替换每行填写一条 `原文 => 新文`。它适合统一人名、产品名和固定错别字，不调用网络服务。替换只改变文字，分段起止时间保持不变；文字变化的段会移除旧逐词时间，避免文字与 `items` 不一致。
+固定处理包含两部分：批量替换和简繁转换。批量替换每行填写一条 `原文 => 新文`，按从上到下的顺序应用；转换可选「不转换」「转为简体」或「转为繁体」，并在批量替换之后执行。它适合统一人名、产品名、固定错别字和字幕字形，不调用网络服务。处理只改变文字，分段起止时间保持不变；文字变化的段会移除旧逐词时间，避免文字与 `items` 不一致。自动处理管线中的固定处理位于翻译前。
 
 ### OCR 字幕去重
 
-「OCR 字幕去重」用于处理视频画面已经烧录字幕、而工程中又存在同一条字幕的情况。它会为每条启用字幕抽取中点画面，使用 CPU 版 RapidOCR PP-OCRv6 tiny 识别画面文字，并将 OCR 文字与字幕文字做相似度比较；命中后，工程输出会把该段标记为 `disabled: true`，SRT 输出会跳过该段并重新编号。已有 `disabled` 会保留，因此结果是原有禁用集合与本次命中集合的并集。
+「OCR 字幕去重」用于处理视频画面已经烧录字幕、而工程中又存在同一条字幕的情况。首次使用时，先在 Launcher「配置」的「OCR 模型」部分安装可选的独立 OCR 运行环境；之后工具箱可以选择 CPU 版 RapidOCR PP-OCRv6 tiny 或 small，为每条启用字幕抽取中点画面并将 OCR 文字与字幕文字做相似度比较。tiny 更快，small 对复杂画面更稳但占用更多资源。命中后，工程输出会把该段标记为 `disabled: true`，SRT 输出会跳过该段并重新编号。已有 `disabled` 会保留，因此结果是原有禁用集合与本次命中集合的并集。
 
 - 默认识别范围是 100% 完整画面，也可以选择底部 30% 或填写自定义矩形。独立 SRT 没有媒体路径时必须在工具箱中选择视频；如果 Launcher 当前媒体是音频，也必须额外选择视频画面输入。
 - OCR 结果不会改写字幕文字或时间码。选择「生成 OCR 报告」后，会额外写出 CSV，包含每条字幕的处理状态、OCR 文字、三种相似度、最终相似度和错误信息。

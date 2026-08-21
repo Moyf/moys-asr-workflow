@@ -18,8 +18,8 @@ from urllib.error import URLError
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
-from maw.gui_workflow import TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
+from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
+from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
 
 
@@ -50,7 +50,18 @@ class GuiWebBridgeTests(unittest.TestCase):
         """Given local config, When JS asks for config, Then secrets are masked and registries return."""
         _ = self.env_path.write_text("DASHSCOPE_API_KEY=sk-secret-abcd\nDASHSCOPE_REGION=singapore\nMAW_GUI_LANG=en\n", encoding="utf-8")
 
-        config = self.api.get_config()
+        # 系统环境变量优先于 .env；置空相关变量，保证断言的是 .env 里的值。
+        # lastModel/lastLanguage 走 pick_optional：只要键存在就返回（空串也算），
+        # 必须移除宿主键，否则断言 None 会被宿主键破坏（mock.patch.dict 的
+        # delete 参数在部分 Python 版本不可用，这里在补丁块内直接 pop）。
+        with mock.patch.dict(
+            os.environ,
+            {"DASHSCOPE_API_KEY": "", "DASHSCOPE_REGION": "", "MAW_GUI_LANG": "", "STICKER_DIR": ""},
+            clear=False,
+        ):
+            for key in ("MAW_GUI_LAST_MODEL", "MAW_GUI_LAST_LANGUAGE"):
+                os.environ.pop(key, None)
+            config = self.api.get_config()
 
         self.assertEqual(config["apiKey"], "sk-secret-abcd")
         self.assertEqual(config["maskedApiKey"], "sk-…abcd")
@@ -167,6 +178,20 @@ class GuiWebBridgeTests(unittest.TestCase):
             "# keep\nDASHSCOPE_REGION=beijing\nSTICKER_DIR=stickers\nMAW_GUI_LAST_MODEL=stt-async-v5\nMAW_GUI_LAST_LANGUAGE=\n",
         )
 
+    def test_zoom_preference_round_trips_normalized_through_config(self) -> None:
+        result = self.api.save_prefs({"zoomPercent": 115})
+
+        self.assertEqual(result, {"ok": True, "zoomPercent": 115})
+        self.assertEqual(self.api.get_config()["zoomPercent"], 115)
+        self.assertIn("MAW_GUI_ZOOM_PERCENT=115", self.env_path.read_text(encoding="utf-8"))
+
+    def test_zoom_preference_normalizes_malformed_and_out_of_range_values(self) -> None:
+        for value, expected in (("NaN", 100), (79, 80), (151, 150)):
+            with self.subTest(value=value):
+                result = self.api.save_prefs({"zoomPercent": value})
+                self.assertEqual(result, {"ok": True, "zoomPercent": expected})
+                self.assertEqual(self.api.get_config()["zoomPercent"], expected)
+
     def test_postprocess_config_masks_keys_and_saves_provider_settings(self) -> None:
         self.env_path.write_text(
             "MAW_POSTPROCESS_DEEPSEEK_API_KEY=sk-deepseek-secret\n"
@@ -174,14 +199,20 @@ class GuiWebBridgeTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        config = self.api.get_config()
-        result = self.api.save_postprocess_settings({
-            "providerId": "qwen",
-            "apiKey": "sk-qwen-private",
-            "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "model": "qwen-plus",
-            "reasoningMode": "medium",
-        })
+        # 宿主环境变量优先于 .env；置空 DEEPSEEK 相关变量，保证断言的是 .env 里的值。
+        with mock.patch.dict(os.environ, {
+            "MAW_POSTPROCESS_DEEPSEEK_MODEL": "",
+            "MAW_POSTPROCESS_DEEPSEEK_BASE_URL": "",
+            "MAW_POSTPROCESS_DEEPSEEK_REASONING_MODE": "",
+        }, clear=False):
+            config = self.api.get_config()
+            result = self.api.save_postprocess_settings({
+                "providerId": "qwen",
+                "apiKey": "sk-qwen-private",
+                "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "model": "qwen-plus",
+                "reasoningMode": "medium",
+            })
 
         raw_providers = config["postprocessProviders"]
         if not isinstance(raw_providers, list):
@@ -196,6 +227,27 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn("MAW_POSTPROCESS_QWEN_REASONING_MODE=medium", self.env_path.read_text(encoding="utf-8"))
         self.assertEqual(result["reasoningMode"], "medium")
         self.assertEqual(providers["deepseek"]["reasoningMode"], "off")
+
+    def test_qwen_postprocess_reuses_dashscope_api_key(self) -> None:
+        self.env_path.write_text("DASHSCOPE_API_KEY=sk-dashscope-shared\n", encoding="utf-8")
+
+        with mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": ""}, clear=False):
+            config = self.api.get_config()
+            providers = {item["id"]: item for item in config["postprocessProviders"]}
+            self.assertEqual(providers["qwen"]["maskedApiKey"], "sk-…ared")
+            self.assertTrue(providers["qwen"]["hasApiKey"])
+
+            with mock.patch("maw.gui_web.test_llm_connection") as check_connection:
+                result = self.api.test_postprocess_connection({
+                    "providerId": "qwen",
+                    "apiKey": "",
+                    "baseUrl": "",
+                    "model": "",
+                })
+
+        self.assertTrue(result["ok"])
+        settings = check_connection.call_args.args[0]
+        self.assertEqual(settings.api_key, "sk-dashscope-shared")
 
     def test_postprocess_settings_keep_saved_key_when_key_field_is_blank(self) -> None:
         self.env_path.write_text(
@@ -353,6 +405,199 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(output_srt.is_file())
         self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["segments"][0]["text"], "正字")
 
+    def test_fixed_process_bridge_supports_conversion_without_rules(self) -> None:
+        project = self.root / "clip.mosp"
+        project.write_text(
+            json.dumps({"segments": [{"start": 0, "end": 1000, "text": "軟件"}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        result = self.api.run_fixed_process({
+            "projectPath": str(project),
+            "srtPath": "",
+            "outputMode": "both",
+            "replacements": [],
+            "conversion": "to_simplified",
+        })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(json.loads(Path(str(result["projectPath"])).read_text(encoding="utf-8"))["segments"][0]["text"], "软件")
+
+    def test_generate_waveform_project_creates_media_only_embedded_project(self) -> None:
+        """Given media, When generating waveform, Then a normalized cache-only project is written."""
+        media = self.root / "clip.wav"
+        media.write_bytes(b"audio")
+        embedded = {
+            "segments": [],
+            "media": str(media.resolve()),
+            "waveform": {
+                "schema": "moy.asr.waveform.v1",
+                "encoding": "i8-minmax-base64",
+                "peak_count": 2,
+                "peaks_per_second": 1,
+                "duration_ms": 2000,
+                "data": "AQIDBA==",
+            },
+        }
+
+        with mock.patch("maw.gui_web.embed_media_caches", return_value=SimpleNamespace(project=embedded, waveform_error=None, reapeaks_path=None)) as embed:
+            result = self.api.generate_waveform_project({"mediaPath": str(media), "generateSpectral": True})
+
+        self.assertTrue(result["ok"])
+        project_path = Path(str(result["projectPath"]))
+        self.assertTrue(project_path.is_file())
+        self.assertEqual(project_path.name, "clip.waveform.mosp")
+        project = json.loads(project_path.read_text(encoding="utf-8"))
+        self.assertEqual(project["segments"], [])
+        self.assertEqual(project["media"], str(media.resolve()))
+        self.assertEqual(project["waveform"]["data"], "AQIDBA==")
+        embed.assert_called_once_with(
+            {"media": str(media.resolve()), "segments": []},
+            media.resolve(),
+            source_media_path=media.resolve(),
+            generate_spectral=True,
+        )
+
+    def test_generate_waveform_project_rejects_invalid_embedded_waveform(self) -> None:
+        """Given unusable cache output, When generating waveform, Then no project is published."""
+        media = self.root / "clip.wav"
+        media.write_bytes(b"audio")
+        embedded = {"segments": [], "media": str(media.resolve()), "waveform": {"peak_count": 2}}
+
+        with mock.patch("maw.gui_web.embed_media_caches", return_value=SimpleNamespace(project=embedded, waveform_error=RuntimeError("decode failed"), reapeaks_path=None)):
+            result = self.api.generate_waveform_project({"mediaPath": str(media)})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "waveform_unavailable")
+        self.assertFalse((self.root / "clip.waveform.mosp").exists())
+
+    def test_generate_waveform_project_uses_collision_safe_project_name(self) -> None:
+        """Given an existing waveform project, When generating again, Then the original is preserved."""
+        media = self.root / "clip.wav"
+        media.write_bytes(b"audio")
+        original = self.root / "clip.waveform.mosp"
+        original.write_text("original\n", encoding="utf-8", newline="\n")
+        embedded = {
+            "segments": [],
+            "media": str(media.resolve()),
+            "waveform": {
+                "schema": "moy.asr.waveform.v1",
+                "encoding": "i8-minmax-base64",
+                "peak_count": 1,
+                "peaks_per_second": 1,
+                "duration_ms": 1000,
+                "data": "AQI=",
+            },
+        }
+
+        with mock.patch("maw.gui_web.embed_media_caches", return_value=SimpleNamespace(project=embedded, waveform_error=None, reapeaks_path=None)):
+            result = self.api.generate_waveform_project({"mediaPath": str(media)})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(Path(str(result["projectPath"])).name, "clip.waveform-1.mosp")
+        self.assertEqual(original.read_text(encoding="utf-8"), "original\n")
+
+    def test_generate_waveform_project_rejects_missing_media_structured(self) -> None:
+        """Given a missing media path, When generating waveform, Then the bridge returns an error result."""
+        result = self.api.generate_waveform_project({"mediaPath": str(self.root / "missing.wav")})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["field"], "mediaPath")
+
+    def test_launcher_waveform_contract_uses_utility_media_and_no_subtitle_requirement(self) -> None:
+        """Given launcher assets, When checking waveform mode, Then it uses Utilities media and exposes both actions."""
+        html = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        self.assertIn('data-i18n="toolbox_waveform"', html)
+        self.assertIn('data-tool-action="waveform"', html)
+        waveform_action = html.index('data-tool-action="waveform"')
+        self.assertGreater(waveform_action, html.index('class="toolbox-footer"'))
+        self.assertIn("generate_waveform_project", script)
+        self.assertIn('const mediaPath = $("toolboxUtilityMediaPath").value.trim()', script)
+        self.assertIn('id="toolboxGenerateSpectral" type="checkbox"', html)
+        self.assertIn('generateSpectral: $("toolboxGenerateSpectral").checked', script)
+        self.assertNotIn('generateSpectral: $("generateSpectral").checked', script)
+        self.assertIn('id="generateWaveform"', html)
+        self.assertIn('id="runWaveform"', html)
+        self.assertIn('toolbox_run_waveform: "生成波形并打开编辑器"', (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8"))
+        self.assertIn("async function generateWaveformProject(openEditor)", script)
+        self.assertIn("if (openEditor) {", script)
+        self.assertIn("await window.MAWLauncher.openServerEditor()", script)
+
+    def test_launcher_toolbox_uses_primary_tabs_for_postprocessing_and_utilities(self) -> None:
+        """Given Launcher assets, When rendering Toolbox, Then primary tabs split subtitle and media workflows."""
+        html = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        strings = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        header = html.index('class="toolbox-header"')
+        primary_tabs = html.index('id="toolboxPrimaryTabList"')
+        postprocess_view = html.index('id="toolboxPostprocessView"')
+        utilities_view = html.index('id="toolboxUtilitiesView"')
+        postprocess_html = html[postprocess_view:utilities_view]
+        utilities_html = html[utilities_view:html.index('class="toolbox-footer"')]
+
+        self.assertLess(header, primary_tabs)
+        self.assertLess(primary_tabs, postprocess_view)
+        self.assertIn('id="toolboxPostprocessPrimaryTab"', html)
+        self.assertIn('id="toolboxUtilitiesPrimaryTab"', html)
+        self.assertIn('data-i18n="toolbox_group_postprocess"', html)
+        self.assertIn('data-i18n="toolbox_group_utilities"', html)
+        self.assertIn('id="toolboxPostprocessView" class="toolbox-primary-view" role="tabpanel"', html)
+        self.assertIn('id="toolboxUtilitiesView" class="toolbox-primary-view hidden" role="tabpanel"', html)
+        for tab_id in ("toolboxMatchTab", "toolboxOcrTab", "toolboxLlmTab", "toolboxReplaceTab"):
+            self.assertIn(f'id="{tab_id}"', postprocess_html)
+        for tab_id in ("toolboxWaveformTab", "toolboxFfconcatTab"):
+            self.assertIn(f'id="{tab_id}"', utilities_html)
+        self.assertNotIn('id="toolboxWaveformTab"', postprocess_html)
+        self.assertNotIn('id="toolboxFfconcatTab"', postprocess_html)
+        self.assertIn('toolbox_title: "工具箱"', strings)
+        self.assertIn('toolbox_title: "Toolbox"', strings)
+        self.assertIn('toolbox_group_postprocess: "后处理"', strings)
+        self.assertIn('toolbox_group_utilities: "实用工具"', strings)
+        self.assertIn('toolbox_utility_media: "媒体文件"', strings)
+        self.assertIn('toolbox_utility_media: "Media file"', strings)
+        self.assertEqual(html.count('role="tablist"'), 3)
+        self.assertIn('id="toolboxPostprocessTabList"', html)
+        self.assertIn('id="toolboxUtilitiesTabList"', html)
+        self.assertIn('id="toolboxMatchTab" class="toolbox-tab active" type="button" role="tab" tabindex="0"', html)
+        self.assertIn('id="toolboxWaveformTab" class="toolbox-tab" type="button" role="tab" tabindex="-1"', html)
+        self.assertIn('id="toolboxUtilityMediaPath"', utilities_html)
+        self.assertIn('id="pickToolboxUtilityMedia"', utilities_html)
+        self.assertIn('function selectToolboxSection(section)', script)
+        self.assertIn('function moveToolFocus(event)', script)
+        self.assertIn('if (!open && wasOpen) $("toolboxFab").focus();', script)
+        self.assertIn('let utilityMediaManual = false;', script)
+        self.assertIn('$("toolboxUtilityMediaPath").value = $("mediaPath").value.trim();', script)
+        self.assertIn('bridge("choose_file", { kind: "media" })', script)
+
+    def test_toolbox_close_restores_trigger_focus_and_ffconcat_marks_its_input(self) -> None:
+        """Given Toolbox source, When closing or validating FFconcat, Then focus and invalid state stay accessible."""
+        html = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        self.assertIn('const wasOpen = !$("toolboxDrawer").classList.contains("hidden");', script)
+        self.assertIn('if (!open && wasOpen) $("toolboxFab").focus();', script)
+        self.assertIn('id="postprocessFfconcatPath"', html)
+        self.assertIn('id="postprocessFfconcatPathError"', html)
+        self.assertIn('id="toolboxFfconcatDropZone"', html)
+        self.assertIn('setFieldError("postprocessFfconcatPath", t("toolbox_need_ffconcat"))', script)
+
+    def test_toolbox_presentation_and_ffconcat_drop_contracts(self) -> None:
+        """Given Launcher assets, When rendering Toolbox utilities, Then feedback, drop targets, and labels stay scoped."""
+        html = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        styles = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        self.assertNotIn('class="toolbox-beta"', html)
+        self.assertNotIn('toolboxIssuesLink', html)
+        self.assertIn('.toolbox-result {\n  margin-top: 16px;', styles)
+        self.assertNotIn('.toolbox-content > .toolbox-result', styles)
+        self.assertIn('bindDropField("toolboxFfconcatDropZone", "toolboxFfconcat", "toolboxFfconcatDropZone")', script)
+        self.assertIn('target === "toolboxFfconcat"', script)
+        self.assertIn('event.type === "dropFfconcat"', script)
+
     def test_script_match_bridge_returns_chainable_project_and_srt_paths(self) -> None:
         project = self.root / "clip.mosp"
         script = self.root / "script.txt"
@@ -471,6 +716,8 @@ class GuiWebBridgeTests(unittest.TestCase):
 
     def test_llm_bridge_forwards_stream_deltas_to_event_pump(self) -> None:
         project = self.root / "clip.mosp"
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
         project.write_text(
             json.dumps({"segments": [{"start": 0, "end": 1000, "text": "待处理"}]}, ensure_ascii=False),
             encoding="utf-8",
@@ -486,6 +733,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         with mock.patch("maw.gui_web.complete_subtitle_groups", side_effect=complete):
             result = self.api.run_llm_postprocess({
                 "projectPath": str(project),
+                "mediaPath": str(media),
                 "outputMode": "json",
                 "operation": "proofread",
                 "providerId": "deepseek",
@@ -499,6 +747,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.api.pump.shutdown()
         scripts = "\n".join(self.window.scripts)
         self.assertTrue(result["ok"])
+        output_project = Path(str(result["projectPath"]))
+        self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["media"], str(media.resolve()))
         self.assertIn('"type": "postprocess_stream"', scripts)
         self.assertIn('"kind": "reset"', scripts)
         self.assertIn('"kind": "reasoning"', scripts)
@@ -569,9 +819,15 @@ class GuiWebBridgeTests(unittest.TestCase):
     def test_get_config_exposes_last_language_empty_vs_absent(self) -> None:
         self.env_path.write_text("MAW_GUI_LAST_MODEL=stt-async-v5\nMAW_GUI_LAST_LANGUAGE=\n", encoding="utf-8")
 
-        remembered = self.api.get_config()
-        self.env_path.write_text("DASHSCOPE_DEFAULT_LANGUAGE=zh\n", encoding="utf-8")
-        absent = self.api.get_config()
+        # pick_optional 按“键是否存在”读取：宿主同名键（即使是空串）会盖过 .env，
+        # 必须移除宿主键，让 .env 的 stt-async-v5/空值生效（mock.patch.dict 的
+        # delete 参数在部分 Python 版本不可用，这里在补丁块内直接 pop）。
+        with mock.patch.dict(os.environ, {}, clear=False):
+            for key in ("MAW_GUI_LAST_MODEL", "MAW_GUI_LAST_LANGUAGE"):
+                os.environ.pop(key, None)
+            remembered = self.api.get_config()
+            self.env_path.write_text("DASHSCOPE_DEFAULT_LANGUAGE=zh\n", encoding="utf-8")
+            absent = self.api.get_config()
 
         self.assertEqual(remembered["lastModel"], "stt-async-v5")
         self.assertEqual(remembered["lastLanguage"], "")
@@ -616,7 +872,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             wait_for_server.call_args_list,
             [
                 mock.call("http://127.0.0.1:9876/", timeout=0.25),
-                mock.call("http://127.0.0.1:9876/", timeout=5.0),
+                mock.call("http://127.0.0.1:9876/", timeout=SERVER_START_TIMEOUT),
             ],
         )
         self.assertNotIn("serverAlreadyRunning", result)
@@ -654,6 +910,36 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn("File does not exist", result["error"])
         open_path.assert_not_called()
 
+    def test_open_containing_folder_opens_resolved_parent_for_existing_file(self) -> None:
+        artifact = self.root / "nested" / "clip.mosp"
+        artifact.parent.mkdir()
+        artifact.write_text("{}\n", encoding="utf-8")
+
+        with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as open_path:
+            result = self.api.open_containing_folder({"path": str(artifact)})
+
+        self.assertEqual(result, {"ok": True})
+        open_path.assert_called_once_with(artifact.parent.resolve())
+
+    def test_open_containing_folder_rejects_missing_file(self) -> None:
+        with mock.patch("maw.gui_web._open_existing_path") as open_path:
+            result = self.api.open_containing_folder({"path": str(self.root / "missing.mosp")})
+
+        self.assertFalse(result["ok"])
+        self.assertIn("File does not exist", result["error"])
+        open_path.assert_not_called()
+
+    def test_open_containing_folder_rejects_directory_input(self) -> None:
+        directory = self.root / "artifacts"
+        directory.mkdir()
+
+        with mock.patch("maw.gui_web._open_existing_path") as open_path:
+            result = self.api.open_containing_folder({"path": str(directory)})
+
+        self.assertFalse(result["ok"])
+        self.assertIn("File does not exist", result["error"])
+        open_path.assert_not_called()
+
     def test_open_mose_forwards_bundled_ffmpeg_to_sibling_app(self) -> None:
         executable = self.root / "MOSE.exe"
         ffmpeg_dir = self.root / "ffmpeg" / "bin"
@@ -678,7 +964,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         with mock.patch.object(sys, "platform", "win32"):
             with mock.patch.object(sys, "frozen", True, create=True):
                 with mock.patch.object(sys, "executable", str(maw_executable)):
-                    self.assertEqual(_find_mose_executable(), mose_executable.resolve())
+                    with mock.patch("maw.gui_web._registered_mose_executable", return_value=None):
+                        self.assertEqual(_find_mose_executable(), mose_executable.resolve())
 
     def test_find_mose_resolves_macos_app_beside_frozen_maw(self) -> None:
         maw_executable = self.root / "MAW.app" / "Contents" / "MacOS" / "MAW"
@@ -846,7 +1133,7 @@ class GuiWebBridgeTests(unittest.TestCase):
                 return 2
 
         def spawn(*_args, **kwargs):
-            kwargs["stdout"].write(b"Traceback: FLV conversion failed\r\nffmpeg is unavailable\r\n")
+            kwargs["stdout"].write(b"Traceback: FLV conversion failed\nffmpeg is unavailable\n")
             kwargs["stdout"].flush()
             return FailedProcess()
 
@@ -1208,6 +1495,16 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["code"], "media_not_found")
         self.assertIn("media", result["error"].lower())
 
+    def test_batch_invalid_items_returns_preflight_details(self) -> None:
+        result = self.api.start_batch_transcription({
+            "items": [{"id": "missing", "mediaPath": str(self.root / "missing.mp3")}],
+            "apiKey": "sk-test",
+        })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "batch_items_invalid")
+        self.assertIn("missing", result["detail"])
+
     def test_local_request_skips_api_key_and_carries_engine_options(self) -> None:
         media = self.root / "clip.mp3"
         media.write_bytes(b"media")
@@ -1269,9 +1566,11 @@ class GuiWebBridgeTests(unittest.TestCase):
     def test_start_transcription_rejects_empty_resolved_api_key(self) -> None:
         """Given media and output but no key anywhere, When starting, Then API key blocks."""
         media = self.root / "clip.mp3"
-        media.write_bytes(b"media")
+        _ = media.write_bytes(b"media")
 
-        result = self.api.start_transcription({"mediaPath": str(media), "srtPath": str(self.root / "out.srt"), "apiKey": ""})
+        # 置空系统环境变量，保证“任何位置都没有 Key”的前提成立。
+        with mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": ""}, clear=False):
+            result = self.api.start_transcription({"mediaPath": str(media), "srtPath": str(self.root / "out.srt"), "apiKey": ""})
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "apiKey")
@@ -1280,11 +1579,13 @@ class GuiWebBridgeTests(unittest.TestCase):
     def test_start_transcription_accepts_api_key_from_env_file(self) -> None:
         """Given saved API key, When field is empty, Then resolved key is used."""
         media = self.root / "clip.mp3"
-        media.write_bytes(b"media")
+        _ = media.write_bytes(b"media")
         self.env_path.write_text("DASHSCOPE_API_KEY=sk-from-env\n", encoding="utf-8")
 
-        with mock.patch("maw.gui_web.run_transcription"):
-            result = self.api.start_transcription({"mediaPath": str(media), "srtPath": str(self.root / "out.srt"), "apiKey": ""})
+        # 置空系统环境变量，保证解析到的 Key 确实来自 .env 而非宿主环境。
+        with mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": ""}, clear=False):
+            with mock.patch("maw.gui_web.run_transcription"):
+                result = self.api.start_transcription({"mediaPath": str(media), "srtPath": str(self.root / "out.srt"), "apiKey": ""})
 
         self.assertTrue(result["ok"])
         self.api.cancel_transcription()
@@ -1421,6 +1722,20 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertFalse(_request_from_payload(payload, self.env_path).generate_html)
         self.assertTrue(_request_from_payload({**payload, "generateHtml": True}, self.env_path).generate_html)
+
+    def test_request_from_payload_controls_spectral_generation(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        payload = {
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+        }
+
+        self.assertFalse(_request_from_payload(payload, self.env_path).generate_spectral)
+        self.assertTrue(
+            _request_from_payload({**payload, "generateSpectral": True}, self.env_path).generate_spectral
+        )
 
     def test_request_from_payload_enables_speaker_colors_only_for_selected_model(self) -> None:
         media = self.root / "clip.mp3"
@@ -1655,6 +1970,21 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('"code": "ffprobe_start_failed"', event_script)
         self.assertIn('"detail": "Transcription failed with exit code 1"', event_script)
 
+    def test_worker_emits_cancellation_error_for_cancelled_transcription(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.root / "clip.wav",
+            srt_path=self.root / "clip.srt",
+        )
+
+        with mock.patch("maw.gui_web.run_transcription", side_effect=TranscriptionCancelledError()):
+            self.api._worker_main(request, threading.Event())
+
+        self.assertTrue(self.window.scripts)
+        event_script = self.window.scripts[-1]
+        self.assertIn('"type": "error"', event_script)
+        self.assertIn('"code": "transcription_cancelled"', event_script)
+        self.assertNotIn('"code": "transcription_failed"', event_script)
+
     def test_worker_emits_retryable_error_for_ffmpeg_start_failure(self) -> None:
         request = TranscriptionRequest(
             media_path=self.root / "clip.mp4",
@@ -1683,12 +2013,14 @@ class GuiWebBridgeTests(unittest.TestCase):
         mosp_project = _route_dropped_path(r"D:\Videos\clip.mosp")
         subtitle = _route_dropped_path(r"D:\Videos\clip.srt")
         hotwords = _route_dropped_path(r"D:\Videos\clip.txt")
+        ffconcat = _route_dropped_path(r"D:\Videos\clip.ffconcat")
 
         self.assertEqual(media, {"type": "dropMedia", "path": r"D:\Videos\clip.MP4"})
         self.assertEqual(project, {"type": "dropJson", "path": r"D:\Videos\clip.json"})
         self.assertEqual(mosp_project, {"type": "dropJson", "path": r"D:\Videos\clip.mosp"})
         self.assertEqual(subtitle, {"type": "dropSubtitle", "path": r"D:\Videos\clip.srt"})
         self.assertEqual(hotwords, {"type": "dropHotwordFile", "path": r"D:\Videos\clip.txt"})
+        self.assertEqual(ffconcat, {"type": "dropFfconcat", "path": r"D:\Videos\clip.ffconcat"})
 
 
 @final
@@ -1739,6 +2071,7 @@ class LauncherAssetContractTests(unittest.TestCase):
             "toolboxOcrPanel",
             "toolboxLlmPanel",
             "toolboxReplacePanel",
+            "postprocessConversion",
             "toolboxFfconcatPanel",
             "postprocessScriptPath",
             "postprocessProvider",
@@ -1767,8 +2100,12 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('bridge("run_script_match"', script)
         self.assertIn('bridge("run_ocr_dedup"', script)
         self.assertIn("fallbackVideoPath", script)
+        self.assertIn('mediaPath: $("mediaPath").value.trim()', script)
         self.assertIn('bridge("run_llm_postprocess"', script)
-        self.assertIn('bridge("run_fixed_replacement"', script)
+        self.assertIn('bridge("run_fixed_process"', script)
+        self.assertIn('value="to_traditional_tw"', page)
+        self.assertIn('value="to_traditional_twp"', page)
+        self.assertIn('value="to_traditional_hk"', page)
         self.assertIn('bridge("run_ffconcat_rebuild"', script)
         self.assertIn('bridge("save_postprocess_settings"', script)
         self.assertIn('bridge("test_postprocess_connection"', script)
@@ -1797,7 +2134,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('openSettings("llmSettingsSection")', script)
         self.assertIn('$("jsonPath").value = result.projectPath', script)
         self.assertIn('$("srtPath").value = result.srtPath', script)
-        self.assertIn('$("mediaPath").value = result.mediaPath', script)
+        self.assertIn('$("toolboxUtilityMediaPath").value = result.mediaPath', script)
         self.assertIn(".toolbox-fab", stylesheet)
         self.assertIn(".toolbox-drawer", stylesheet)
         self.assertIn(".toolbox-content", stylesheet)
@@ -1865,6 +2202,15 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn("customPrompt: getLlmPrompt(autoLlmOperation(\"translate\"))", script)
         self.assertIn("function renderTaskPrompt(operation", script)
 
+    def test_empty_auto_postprocess_plan_guides_step_selection(self) -> None:
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertIn('auto_summary_empty: "请在下方「后处理步骤」中勾选需要的工序。"', launcher_script)
+        self.assertIn('summary.textContent = t("auto_summary_empty")', script)
+        self.assertIn('if ($("autoPostprocessEnabled").checked) setAutoStepsExpanded(true);', script)
+        self.assertIn('if (plan.enabled && !AUTO_STEP_ORDER.some((stepId) => $(AUTO_STEP_CHECKBOXES[stepId]).checked)) setAutoStepsExpanded(true);', script)
+
     def test_toolbox_tabs_stay_above_scrollable_panels(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
@@ -1874,7 +2220,11 @@ class LauncherAssetContractTests(unittest.TestCase):
         input_drop_zone = page.index('id="toolboxInputDropZone"')
         chain = page.index('id="toolboxChain"')
         chain_list = page.index('id="toolboxChainList"')
-        tabs = page.index('<div class="toolbox-tabs"')
+        primary_tabs = page.index('id="toolboxPrimaryTabList"')
+        postprocess_view = page.index('id="toolboxPostprocessView"')
+        utilities_view = page.index('id="toolboxUtilitiesView"')
+        postprocess_tabs = page.index('id="toolboxPostprocessTabList"')
+        utilities_tabs = page.index('id="toolboxUtilitiesTabList"')
         content = page.index('class="toolbox-content"')
         progress = page.index('<div id="toolboxProgress"')
         result = page.index('<div id="toolboxResult"')
@@ -1888,9 +2238,12 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertLess(sticky, input_drop_zone)
         self.assertLess(input_drop_zone, chain)
         self.assertLess(chain, chain_list)
-        self.assertLess(chain, tabs)
-        self.assertLess(input_drop_zone, tabs)
-        self.assertLess(tabs, content)
+        self.assertLess(sticky, primary_tabs)
+        self.assertLess(primary_tabs, postprocess_view)
+        self.assertLess(primary_tabs, utilities_view)
+        self.assertLess(postprocess_view, utilities_view)
+        self.assertLess(postprocess_tabs, content)
+        self.assertLess(utilities_tabs, content)
         self.assertLess(content, progress)
         self.assertLess(progress, result)
         self.assertIn('data-i18n="toolbox_chain_hint">每次生成新文件，并自动作为下一步输入；选择工具后运行。</p>', page)
@@ -1906,15 +2259,15 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="postprocessOutputMode"', footer_html)
         for tool in ("match", "ocr", "llm", "replace", "ffconcat"):
             self.assertIn(f'data-tool-action="{tool}"', footer_html)
-        for button in ("runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedReplacement", "runFfconcatRebuild"):
+        for button in ("runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild"):
             self.assertIn(f'id="{button}"', footer_html)
-        self.assertIn('id="toolboxMediaPath"', footer_html)
+        self.assertIn('id="generateWaveform"', footer_html)
 
         # 自定义顶边 / 左边拖拽把手替代原生 resize。
         self.assertIn('id="toolboxResizeY" class="toolbox-resize-y" role="separator" aria-orientation="horizontal"', page)
         self.assertIn('id="toolboxResizeX" class="toolbox-resize-x" role="separator" aria-orientation="vertical"', page)
         self.assertIn('id="toolboxMatchTab" class="toolbox-tab active"', page)
-        self.assertIn('id="toolboxFfconcatTab" class="toolbox-tab hidden"', page)
+        self.assertIn('id="toolboxFfconcatTab" class="toolbox-tab"', page)
         self.assertIn("overflow-y: auto", stylesheet)
         self.assertNotIn("resize: both", stylesheet)
         self.assertIn("block-size: min(560px, calc(100dvh - 156px))", stylesheet)
@@ -1954,20 +2307,43 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn(".toolbox-static-value {\n  height: 34px;", stylesheet)
         self.assertIn(".field-spacer {\n  visibility: hidden;", stylesheet)
         self.assertIn(".toolbox-grid {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 10px;\n  align-items: start;\n}", stylesheet)
-        # 单字段的文稿匹配 / 固定替换面板不套分组卡片。
+        # 文稿匹配保持单字段；固定处理按批量替换和简繁转换分组。
         match_panel = page[page.index('id="toolboxMatchPanel"'):page.index('id="toolboxOcrPanel"')]
         replace_panel = page[page.index('id="toolboxReplacePanel"'):page.index('id="toolboxFfconcatPanel"')]
         self.assertNotIn("adv-group", match_panel)
-        self.assertNotIn("adv-group", replace_panel)
+        self.assertIn('data-i18n="toolbox_group_fixed_replacements"', replace_panel)
+        self.assertIn('data-i18n="toolbox_group_fixed_conversion"', replace_panel)
 
     def test_llm_save_feedback_is_local_and_transient(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn('id="llmSettingsSaveStatus"', page)
         self.assertIn('setSettingsSaveStatus(t("toolbox_saved"), "success")', script)
-        self.assertNotIn('setResult(t("toolbox_saved"), "success")', script)
+        self.assertNotIn("toolbox_saved_test_hint", script)
+        self.assertNotIn("toolbox_saved_test_hint", launcher_script)
         self.assertIn("window.setTimeout(() => setSettingsSaveStatus(\"\"), timeoutMs)", script)
+        self.assertIn('toolbox_saved: "LLM 设置已保存。"', launcher_script)
+        self.assertIn('toolbox_saved: "LLM settings saved."', launcher_script)
+        self.assertIn("if (autoTest && enteredApiKey)", script)
+        self.assertIn('await testConnection({ alreadySaved: true });', script)
+        self.assertIn('$("saveLlmSettings").addEventListener("click", () => { void saveSettings({ autoTest: true }); });', script)
+        pending_step = script[script.index("function maybeEnablePendingAutoStep()"):script.index("function applyAutoPostprocessPlan")]
+        self.assertNotIn("closeSettings", pending_step)
+        self.assertNotIn("setOpen(true)", pending_step)
+        self.assertIn("font-size: 14px;", stylesheet)
+        self.assertIn("font-size: 13px;", stylesheet)
+        self.assertNotIn("font-size: 11px", stylesheet)
+        self.assertNotIn("font: 11px", stylesheet)
+        self.assertIn(".local-status-row > button", stylesheet)
+
+    def test_launcher_message_url_stops_before_closing_punctuation(self) -> None:
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        expected = r'''const urlPattern = /https?:\/\/[^\s<>"'|)\]}，。；：！？）】》」』]+/gi;'''
+        self.assertIn(expected, script)
 
     def test_launcher_hero_shows_the_bundled_brand_icon(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -1996,9 +2372,14 @@ class LauncherAssetContractTests(unittest.TestCase):
 
         for control in ("segmentationField", "maxLen", "minLen", "gapSplit"):
             self.assertIn(f'id="{control}"', page)
+        self.assertIn('id="generateSpectral" type="checkbox"', page)
+        self.assertIn('id="generateSpectralField"', page)
         self.assertIn('maxLen: $("maxLen").value.trim()', script)
         self.assertIn('minLen: $("minLen").value.trim()', script)
         self.assertIn('gapSplit: $("gapSplit").value.trim()', script)
+        self.assertIn('generateSpectral: $("generateSpectral").checked', script)
+        self.assertIn('generate_spectral: "生成 ReaPeaks 频谱数据"', script)
+        self.assertIn('generate_spectral: "Generate ReaPeaks spectral data"', script)
         self.assertIn('segmentation: "字幕切句"', script)
         self.assertIn(".segmentation-row", stylesheet)
 
@@ -2044,6 +2425,24 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('function syncHtmlMenu()', script)
         self.assertIn('$("openHtml").classList.toggle("hidden", !enabled)', script)
         self.assertIn('$("openHtml").disabled = enabled && !state.result?.htmlPath', script)
+
+    def test_launcher_batch_and_single_stop_controls_are_wired(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        batch_script = (ROOT / "web" / "launcher" / "batch.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="stop" class="ghost server-stop hidden"', page)
+        self.assertIn('data-i18n="batch_start">✨ 开始批量生成', page)
+        self.assertIn('id="batchSrtOnly" type="checkbox"', page)
+        self.assertIn('bridge("cancel_transcription")', script)
+        self.assertIn('batchSrtOnly', batch_script)
+        self.assertIn('window.MAWLauncher.confirm(t("batch_skip_completed_confirm"))', batch_script)
+        self.assertIn('data-i18n="batch_confirm_yes">是', page)
+        self.assertIn('data-i18n="batch_confirm_no">否', page)
+        self.assertIn('batchDropNotice', page)
+        self.assertIn('window.MAWLauncher.appendLog?.(`[${message}]`, { inline: true })', batch_script)
+        self.assertIn('window.MAWLauncher.backend === "real"', batch_script)
+        self.assertLess(batch_script.index('if (window.MAWLauncher.backend === "real") return;'), batch_script.index('event.stopImmediatePropagation();'))
 
     def test_server_status_uses_clickable_link_and_independent_stop_control(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -2254,7 +2653,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
-        for expected in ("1️⃣ 媒体与输出", "2️⃣ 识别设置", "3️⃣ 转写后自动处理", "4️⃣ 日志", "5️⃣ 字幕编辑器设置"):
+        for expected in ("1️⃣ 媒体与输出", "2️⃣ 识别设置", "3️⃣ 转写后自动处理 （Beta）", "4️⃣ 日志", "5️⃣ 字幕编辑器设置"):
             self.assertIn(expected, page)
         self.assertIn(".card h2 {\n  margin: 0 0 12px;\n  color: var(--text-secondary);\n  font-size: 16px;", stylesheet)
 
@@ -2317,6 +2716,43 @@ class LauncherAssetContractTests(unittest.TestCase):
 
         self.assertIn(".ghost.attention:hover:not(:disabled)", stylesheet)
         self.assertIn("border-color: var(--amber-hover);", stylesheet)
+
+    def test_launcher_guides_auto_llm_setup_to_test_connection(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        self.assertIn('openAutoStep(stepId, "", { highlightConnection: true });', script)
+        self.assertIn('function setTestConnectionAttention(attention)', script)
+        self.assertIn('setTestConnectionAttention(true);', script)
+        self.assertIn('setTestConnectionAttention(false);', script)
+        self.assertIn('id="testLlmConnection"', page)
+        self.assertIn('.primary.attention', stylesheet)
+
+    def test_launcher_refreshes_auto_postprocess_state_after_ocr_install(self) -> None:
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        self.assertIn('window.MAWLauncher.onOcrRuntimeChanged = () => {', script)
+        self.assertIn('renderAutoPostprocessState();', script)
+        self.assertIn('maybeEnablePendingAutoStep();', script)
+
+    def test_launcher_keeps_settings_actions_visible_and_isolates_toolbox_wheel(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        self.assertIn('<div class="settings-scroll">', page)
+        self.assertIn('id="toolboxClose"', page)
+        self.assertIn('id="settingsClose"', page)
+        self.assertIn('$("toolboxDrawer").addEventListener("wheel"', script)
+        self.assertIn('event.stopPropagation();', script)
+        self.assertIn('event.preventDefault();', script)
+        self.assertIn('settings-scroll', launcher_script)
+        self.assertIn('.settings-scroll {', stylesheet)
+        self.assertIn('overscroll-behavior: contain;', stylesheet)
+        self.assertIn('#toolboxClose,', stylesheet)
+        self.assertIn('#settingsClose {', stylesheet)
 
 
 @final

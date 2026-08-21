@@ -196,7 +196,7 @@ class PackagingContractTests(unittest.TestCase):
     def test_macos_bundle_uses_the_icns_app_icon(self) -> None:
         """Given a macOS app bundle, When PyInstaller builds it, Then the bundle has the branded ICNS icon."""
         spec = read_text("MAW.spec")
-        workflow = read_text(".github/workflows/build-macos.yml")
+        workflow = read_text(".github/workflows/release.yml")
         icon = (ROOT / "assets" / "maw.icns").read_bytes()
 
         self.assertIn("icon=str(ROOT / 'assets' / 'maw.icns')", spec)
@@ -209,10 +209,10 @@ class PackagingContractTests(unittest.TestCase):
 
     def test_macos_release_workflow_publishes_maw_archives_without_mose_or_checksums(self) -> None:
         """Given a macOS arm64 release, When packaging runs, Then only MAW app variants are uploaded."""
-        workflow = read_text(".github/workflows/build-macos.yml")
+        workflow = read_text(".github/workflows/release.yml")
 
-        self.assertIn("runs-on: macos-14", workflow)
-        self.assertIn("architecture: arm64", workflow)
+        self.assertIn("os: macos-14", workflow)
+        self.assertIn("arch: arm64", workflow)
         self.assertIn("https://www.osxexperts.net/ffmpeg81arm.zip", workflow)
         self.assertIn("https://www.osxexperts.net/ffprobe81arm.zip", workflow)
         self.assertNotIn("MOSE", workflow)
@@ -221,20 +221,21 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("cargo check --manifest-path src-tauri/Cargo.toml", workflow)
 
     def test_tag_release_workflows_use_idempotent_release_uploads(self) -> None:
-        """Given all platform workflows publish one tag release, When they run, Then they use idempotent gh CLI uploads."""
-        for workflow_path in (
-            ".github/workflows/release-windows.yml",
-            ".github/workflows/build-macos.yml",
-            ".github/workflows/release-linux.yml",
-        ):
-            workflow = read_text(workflow_path)
-            self.assertIn("gh release upload", workflow)
-            self.assertIn("--clobber", workflow)
-            self.assertIn("scripts/prepare_release_notes.py", workflow)
-            self.assertIn("gh release edit", workflow)
-            self.assertIn("--notes-file release-notes.md", workflow)
+        """Given the merged release workflow publishes one tag release, When it runs, Then it uses idempotent gh CLI uploads."""
+        workflow = read_text(".github/workflows/release.yml")
+        self.assertIn("gh release upload", workflow)
+        self.assertIn("--clobber", workflow)
+        self.assertIn("scripts/prepare_release_notes.py", workflow)
+        self.assertIn("gh release edit", workflow)
+        self.assertIn("--notes-file release-notes.md", workflow)
+        # publish 必须同时满足 tag 触发 + Windows 构建成功，否则 dispatch 会误发 Release
+        self.assertIn("startsWith(github.ref, 'refs/tags/v') && !cancelled() && needs.build-windows.result == 'success'", workflow)
+        # 不完整构建警告：needs 上下文只提供单数 result（矩阵 job 的聚合结果），
+        # 复数 results 不是有效属性，会让警告永不触发
+        self.assertIn("needs.build-aux.result == 'failure'", workflow)
+        self.assertNotIn("needs.build-aux.results", workflow)
         # macOS-specific assertions
-        macos_workflow = read_text(".github/workflows/build-macos.yml")
+        macos_workflow = read_text(".github/workflows/release.yml")
         self.assertNotIn("tauri.macos.conf.json", macos_workflow)
         self.assertIn("ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085bb9e8f6fe709598ad", macos_workflow)
         self.assertIn("a6640a77d38a6f0527c5b597e599cb36a3427a6931444ed80bc62542421950a1", macos_workflow)
@@ -251,6 +252,26 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("MOSE.app", macos_workflow)
         self.assertIn("MAWxFF-macOS-arm64-*.zip", macos_workflow)
         self.assertNotIn(".zip.sha256", macos_workflow)
+
+    def test_appimage_build_drops_bundled_cpp_runtime(self) -> None:
+        """Given the AppImage build script and workflow, When the AppDir is assembled, Then bundled libstdc++/libgcc_s/libgbm are removed and CI forbids them."""
+        script = read_text("scripts/build-appimage.sh")
+        workflow = read_text(".github/workflows/release.yml")
+
+        self.assertIn('rm -f "$APP_DIR/_internal/libstdc++.so.6" "$APP_DIR/_internal/libgcc_s.so.1"', script)
+        self.assertIn('"$APP_DIR/_internal/libgbm.so.1"', script)
+        self.assertIn("Verify no bundled C++ runtime in AppImage", workflow)
+        self.assertIn("_internal/libgbm.so.1", workflow)
+
+    def test_appimage_build_ships_ffmpeg_gpl_license_and_source_notice(self) -> None:
+        """Given the AppImage build script, When the BtbN GPL ffmpeg build is bundled, Then the GPLv3 license text and a source notice are written into the bundle."""
+        script = read_text("scripts/build-appimage.sh")
+
+        self.assertIn('dist/MAW/ffmpeg/GPLv3.txt', script)
+        self.assertIn('dist/MAW/ffmpeg/SOURCE.txt', script)
+        self.assertIn('https://www.gnu.org/licenses/gpl-3.0.txt', script)
+        self.assertIn('Build provider: https://github.com/BtbN/FFmpeg-Builds', script)
+        self.assertIn('Archive SHA-256: $FFMPEG_SHA256', script)
 
     def test_local_build_script_invokes_uv_and_pyinstaller_for_maw_onedir(self) -> None:
         """Given a Windows developer build, When the script is read, Then it builds dist/MAW/MAW.exe."""
@@ -276,7 +297,7 @@ class PackagingContractTests(unittest.TestCase):
 
     def test_release_workflow_is_tag_triggered_and_publishes_both_windows_packages(self) -> None:
         """Given a v* tag push, When workflow is read, Then it releases standard and MAWxFF builds."""
-        workflow = read_text(".github/workflows/release-windows.yml")
+        workflow = read_text(".github/workflows/release.yml")
 
         self.assertRegex(workflow, re.compile(r"on:\s+push:\s+tags:\s+- 'v\*'", re.MULTILINE))
         self.assertIn("windows-2022", workflow)
@@ -286,7 +307,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("tests/test_packaging_contract.py", workflow)
         self.assertIn("pyproject.toml", workflow)
         self.assertIn("github.ref_name", workflow)
-        self.assertIn(r'(?m)^version = "(?<version>[^"]+)"\r?$', workflow)
+        self.assertIn(r's/^version = "\(.*\)"$/\1/p', workflow)
         self.assertIn("scripts/sync_launcher_version.py --write", workflow)
         self.assertIn("scripts/sync_launcher_version.py --check", workflow)
         self.assertIn("PYTHONUTF8: '1'", workflow)
@@ -304,7 +325,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("ffmpeg.exe", workflow)
         self.assertIn("ffprobe.exe", workflow)
         self.assertNotIn("ffplay.exe", workflow)
-        self.assertIn("MAWxFF-Windows-x64-${{ github.ref_name }}.zip", workflow)
+        self.assertIn("MAWxFF-Windows-x64-${{ steps.version.outputs.version }}.zip", workflow)
         self.assertIn("actions/upload-artifact@v4", workflow)
         self.assertIn("gh release upload", workflow)
         self.assertIn("--target '${{ github.sha }}'", workflow)

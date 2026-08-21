@@ -40,7 +40,7 @@ from maw.bcut import (
     transcribe,
 )
 from maw.project import repair_segment_durations, validate_project
-from media_cache import embed_media_caches
+from media_cache import embed_media_caches, merge_media_caches
 
 
 def main():
@@ -74,6 +74,10 @@ def main():
         help="将波形峰值数据嵌入工程文件（GUI 转写默认开启）",
     )
     parser.add_argument(
+        "--with-spectral", action="store_true",
+        help="在 .ReaPeaks 波形缓存中额外生成频谱数据（需要 --with-waveform）",
+    )
+    parser.add_argument(
         "-s", "--stickers", default=get_default_sticker_dir(),
         help="表情包文件夹路径，传给 edit.py（默认读 .env 的 STICKER_DIR）",
     )
@@ -94,6 +98,8 @@ def main():
         help="保存必剪服务端返回的完整原始 JSON，用于排查断句、标点和时间码",
     )
     args = parser.parse_args()
+    if args.with_spectral and not args.with_waveform:
+        parser.error("--with-spectral 需要同时指定 --with-waveform")
 
     input_path = Path(args.input)
     if not input_path.exists():
@@ -184,6 +190,18 @@ def main():
         if repaired_count:
             print(f"[info] 已兜底修复 {repaired_count} 处 0 长/倒挂时间码（保底 100ms）")
 
+        # 媒体缓存必须在临时目录清理前生成：audio_path 指向 tmpdir 内的
+        # 提取音频，with 块结束后文件即被删除。先暂存结果，待 segments
+        # 后处理完成、写出工程时再合并（合并键见 media_cache.CACHE_KEYS）。
+        cache_result = None
+        if args.json_out and args.with_waveform:
+            cache_result = embed_media_caches(
+                {"media": str(input_path)},
+                Path(audio_path),
+                source_media_path=input_path,
+                generate_spectral=args.with_spectral,
+            )
+
     # 剥句末标点（与 Qwen 版一致）
     if not args.keep_punct:
         for seg in segments:
@@ -246,8 +264,8 @@ def main():
                 for seg in segments
             ],
         }
-        if args.with_waveform:
-            json_data = embed_media_caches(json_data, input_path).project
+        if cache_result is not None:
+            json_data = merge_media_caches(json_data, cache_result)
         check = validate_project(json_data)
         if not check.ok:
             print("[警告] 工程文件未通过契约校验，请把以下内容反馈给开发者：")

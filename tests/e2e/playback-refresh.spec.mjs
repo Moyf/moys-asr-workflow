@@ -99,6 +99,28 @@ test('playback refreshes the subtitle preview and playhead without timeupdate', 
   expect(after).toBeGreaterThan(before);
 });
 
+test('playback follows the playhead within the visible multi-row waveform', async ({ page }) => {
+  await page.goto(server.url);
+  await page.waitForFunction(() => {
+    const media = document.getElementById('player');
+    const scroll = document.getElementById('waveform-scroll');
+    return media.readyState >= 1 && Number.isFinite(media.duration) && media.duration > 0
+      && scroll.clientHeight > 0 && scroll.scrollHeight > scroll.clientHeight;
+  });
+
+  const before = await page.locator('#waveform-scroll').evaluate((element) => element.scrollTop);
+  await page.evaluate(async () => {
+    const media = document.getElementById('player');
+    media.currentTime = 45;
+    await media.play();
+  });
+
+  await expect.poll(() => page.locator('#waveform-scroll').evaluate((element) => element.scrollTop), {
+    timeout: 3000,
+  }).toBeGreaterThan(before + 10);
+  await page.evaluate(() => document.getElementById('player').pause());
+});
+
 test('JKL direction mode drives the timeline backward and forward', async ({ page }) => {
   await page.goto(server.url);
   await page.waitForFunction(() => {
@@ -108,7 +130,7 @@ test('JKL direction mode drives the timeline backward and forward', async ({ pag
 
   await page.locator('#subtitle-preview-settings-toggle').click();
   await expect(page.locator('#jkl-playback-mode')).toHaveValue('direction');
-  await expect(page.locator('#jkl-playback-mode-hint')).toContainText('无反向声音');
+  await expect(page.locator('#jkl-playback-mode-hint')).toContainText('J 倒放');
 
   await page.evaluate(() => {
     const media = document.getElementById('player');

@@ -97,7 +97,7 @@ def preset_by_id(provider_id: str) -> LlmProviderPreset:
 def complete_subtitle_groups(
     settings: LlmSettings,
     system_prompt: str,
-    cues: list[dict[str, str]],
+    cues: list[dict[str, JsonValue]],
     *,
     on_delta: LlmDelta | None = None,
 ) -> dict[str, JsonValue]:
@@ -145,7 +145,7 @@ def complete_subtitle_groups(
 def _request_completion(
     settings: LlmSettings,
     system_prompt: str,
-    cues: list[dict[str, str]],
+    cues: list[dict[str, JsonValue]],
     *,
     on_delta: LlmDelta | None,
 ) -> dict[str, JsonValue]:
@@ -197,8 +197,9 @@ def _retry_prompt(system_prompt: str, reason: str) -> str:
         f"{system_prompt}\n\n"
         f"上一次输出未通过本地协议校验（{reason}）。请重新处理同一批输入并完整返回结果。"
         "只输出一个严格有效的 JSON 对象，不要 Markdown 代码块、注释、解释或额外文字。"
-        "顶层必须是 groups 数组；每个 group 必须包含 source_ids 数组和非空 text 字符串。"
-        "text 中的双引号、反斜杠和换行必须按 JSON 规则转义；不得返回空 text。"
+        "顶层必须是 groups 数组；普通字幕 group 必须包含 source_ids 数组和非空 text 字符串，"
+        "字词重分句 group 必须包含 atom_ids 数组且不得包含空数组。"
+        "text 中的双引号、反斜杠和换行必须按 JSON 规则转义。"
     )
 
 
@@ -211,6 +212,15 @@ def _response_protocol_error(parsed: object) -> str | None:
     for index, group in enumerate(groups, start=1):
         if not isinstance(group, dict):
             return f"LLM group {index} must be an object"
+        raw_atom_ids = group.get("atom_ids")
+        if raw_atom_ids is not None:
+            if (
+                not isinstance(raw_atom_ids, list)
+                or not raw_atom_ids
+                or not all(isinstance(value, str) and value for value in raw_atom_ids)
+            ):
+                return f"LLM group {index} must contain atom_ids"
+            continue
         raw_ids = group.get("source_ids")
         if raw_ids is None and isinstance(group.get("id"), str):
             raw_ids = [group["id"]]

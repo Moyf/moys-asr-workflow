@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import sys
 import subprocess
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
@@ -74,6 +75,7 @@ class OcrDedupRequest:
     threshold: float = DEFAULT_THRESHOLD
     report: bool = False
     output_directory: Path | None = None
+    media_path: Path | None = None
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.threshold <= 1.0:
@@ -93,6 +95,7 @@ class OcrDedupArtifact:
     processed_count: int = 0
     skipped_count: int = 0
     failed_count: int = 0
+    translated_srt_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,6 +219,7 @@ def run_ocr_dedup(
         write_project=request.output_mode in {OutputMode.JSON, OutputMode.BOTH},
         write_srt=request.output_mode in {OutputMode.SRT, OutputMode.BOTH},
         output_directory=request.output_directory,
+        media_path=request.media_path or request.fallback_video_path,
     )
 
     report_path = _write_report(rows, source_project or source_srt, request.output_directory) if request.report else None
@@ -237,6 +241,7 @@ def run_ocr_dedup(
         processed_count=processed,
         skipped_count=skipped,
         failed_count=failed,
+        translated_srt_path=None,
     )
 
 
@@ -402,7 +407,12 @@ class _RapidOcrRecognizer:
         try:
             from rapidocr import ModelType, OCRVersion, RapidOCR
         except ImportError as error:
-            raise RuntimeError("OCR 依赖未安装，请先运行 uv sync --extra ocr；打包版请在 Launcher 设置中安装 OCR 支持。") from error
+            message = (
+                "OCR 依赖未安装，请在 Launcher 设置中安装 OCR 支持。"
+                if getattr(sys, "frozen", False)
+                else "OCR 依赖未安装，请在开发环境中运行 `uv sync --extra ocr`。"
+            )
+            raise RuntimeError(message) from error
 
         try:
             selected_model_type = ModelType(model_type)

@@ -9,6 +9,11 @@
   const SPECTRAL_SCHEMA = 'moy.asr.spectral.v1';
   const SPECTRAL_ENCODING = 'u16-freq-density-base64';
   const WORKSPACE_SCHEMA = 'moy.asr.editor.workspace.v1';
+
+  function localizedWaveformMessage(zh, en) {
+    return window.MAWE_I18N?.language === 'en' ? en : zh;
+  }
+
   // 渲染器预设：classic / wave-right 由专属 CSS 网格渲染；custom 由 layoutTree 渲染
   // （大荧幕布局与用户保存的自定义工作区都以树渲染）。
   const RENDERER_PRESETS = ['classic', 'wave-right', 'custom'];
@@ -107,14 +112,15 @@
   const ROW_HEIGHT_PRESETS = [64, 80, 96, 120, 144, 168];
   const ROW_GAP = 10;
   const SPLIT_FLASH_DURATION_MS = 720;
-  // 多行波形保留视口前后几行，字幕快捷键跨行时可以直接复用已绘制的行。
+  // 多行波形保留视口前后少量行，字幕快捷键跨行时可以直接复用已绘制的行。
   // 行本身仍按可视区增量创建，不会把整段长媒体一次性放进 DOM。
-  const MULTI_ROW_BUFFER = 4;
+  const MULTI_ROW_BUFFER = 2;
   const MIN_CUE_MS = 100;
   const MIN_WAVEFORM_SCALE = 0.25;
   const MAX_WAVEFORM_SCALE = 6;
   const SNAP_MS = 80;
   const ROUND_MS = 10;
+  const WAVEFORM_ADJUST_DEBOUNCE_MS = 160;
   const BROWSER_DECODE_LIMIT = 512 * 1024 * 1024;
   const BROWSER_PCM_ESTIMATE_LIMIT = 768 * 1024 * 1024;
   // 右侧整列波形布局：当前字幕编辑区略收紧，把空间让给字幕列表。
@@ -197,6 +203,35 @@
 
   function clamp(value, low, high) {
     return Math.max(low, Math.min(high, value));
+  }
+
+  function isMultiRowInComfortZone(rowIndex, scrollTop, viewportHeight, rowHeight) {
+    const safeRowHeight = Math.max(1, Number(rowHeight) || 0);
+    const safeViewportHeight = Math.max(1, Number(viewportHeight) || 0);
+    const safeScrollTop = Number.isFinite(Number(scrollTop)) ? Number(scrollTop) : 0;
+    const rowTop = Number(rowIndex) * (safeRowHeight + ROW_GAP) - safeScrollTop;
+    const comfortInset = Math.min(120, Math.max(48, safeViewportHeight * 0.2));
+    return rowTop >= comfortInset
+      && rowTop + safeRowHeight <= safeViewportHeight - comfortInset;
+  }
+
+  function waveformTopEdgeMs(state) {
+    if (state?.mode === 'basic') return Math.max(0, Math.round(Number(state.basicWindowStartMs) || 0));
+    const scrollTop = Math.max(0, Number(state?.scrollTop) || 0);
+    const stride = Math.max(1, Number(state?.rowHeight) + Number(state?.rowGap));
+    const rowDurationMs = Math.max(1, Number(state?.secondsPerRow) * 1000 || 1);
+    return Math.max(0, Math.floor(scrollTop / stride) * rowDurationMs);
+  }
+
+  function restoreWaveformTopEdgeMs(state, value) {
+    if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value)) return null;
+    const durationMs = Math.max(0, Math.round(Number(state?.durationMs) || 0));
+    if (state?.mode === 'basic') {
+      const windowMs = Math.max(1, Number(state.visibleSeconds) * 1000 || 1);
+      return clamp(value, 0, Math.max(0, durationMs - windowMs));
+    }
+    const rowDurationMs = Math.max(1, Number(state?.secondsPerRow) * 1000 || 1);
+    return Math.floor(Math.min(value, durationMs) / rowDurationMs) * rowDurationMs;
   }
 
   // 组序号徽章：颜色与表情包分组彼此独立，因此同一条字幕可同时拥有两枚徽章。
@@ -542,6 +577,151 @@
     }
   }
 
+  // 浏览器端只读解析 REAPER 的 .ReaPeaks 文件。桌面/服务器版会在
+  // 生成页面时预先内联同一份 payload；便携版拖入 sidecar 时则走这里，
+  // 因此两种编辑器得到完全相同的 wave/spectral 缓存契约。
+  function decodeReapeaksFile(arrayBuffer, source = null) {
+    if (!(arrayBuffer instanceof ArrayBuffer)) return null;
+    const bytes = new Uint8Array(arrayBuffer);
+    if (bytes.length < 18) return null;
+    const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+    if (!['RPKM', 'RPKN', 'RPKL'].includes(magic)) return null;
+    const channels = bytes[4];
+    const mipmapCount = bytes[5];
+    if (!channels || !mipmapCount) return null;
+    const view = new DataView(arrayBuffer);
+    const sampleRate = view.getInt32(6, true);
+    if (!Number.isFinite(sampleRate) || sampleRate <= 0) return null;
+    const headerEnd = 18 + mipmapCount * 8;
+    if (headerEnd > bytes.length) return null;
+    const mipmaps = [];
+    let headerOffset = 18;
+    for (let i = 0; i < mipmapCount; i++) {
+      const division = view.getInt32(headerOffset, true);
+      const peakCount = view.getInt32(headerOffset + 4, true);
+      if (peakCount < 0) return null;
+      const kind = division === -'s'.charCodeAt(0)
+        ? 'spectral'
+        : division === -'g'.charCodeAt(0)
+          ? 'spectrogram'
+          : division === -'r'.charCodeAt(0) || division === -'l'.charCodeAt(0)
+            ? 'loudness' : 'wave';
+      mipmaps.push({ division, peakCount, kind });
+      headerOffset += 8;
+    }
+
+    const munge = (value) => {
+      if (value >= -24576 && value <= 24576) return value / 24576;
+      if (value > 24576) return 2 ** ((value - 24576) / 1024);
+      return -(2 ** ((-value - 24576) / 1024));
+    };
+    const quantize = (value) => {
+      const numeric = magic === 'RPKL' ? munge(value) : value / 32768;
+      return clamp(Math.round(clamp(numeric, -1, 1) * 127), -127, 127);
+    };
+    const waveMips = [];
+    const spectralMips = [];
+    let offset = headerEnd;
+    const need = (count) => {
+      if (count < 0 || offset + count > bytes.length) throw new Error('短文件');
+    };
+    try {
+      for (const mip of mipmaps) {
+        if (mip.kind === 'wave') {
+          const encoded = new Uint8Array(mip.peakCount * 2);
+          for (let peak = 0; peak < mip.peakCount; peak++) {
+            let low = 127;
+            let high = -127;
+            for (let channel = 0; channel < channels; channel++) {
+              need(magic === 'RPKL' ? 4 : magic === 'RPKM' ? 2 : 4);
+              const maxRaw = view.getInt16(offset, true);
+              offset += 2;
+              const minRaw = magic === 'RPKM' ? -maxRaw : view.getInt16(offset, true);
+              if (magic !== 'RPKM') offset += 2;
+              const maxValue = quantize(maxRaw);
+              const minValue = quantize(minRaw);
+              low = Math.min(low, minValue);
+              high = Math.max(high, maxValue);
+            }
+            encoded[peak * 2] = low & 0xff;
+            encoded[peak * 2 + 1] = high & 0xff;
+          }
+          waveMips.push({ mip, data: encoded });
+          continue;
+        }
+        if (mip.kind === 'spectral') {
+          const spectral = new Uint16Array(mip.peakCount * 2);
+          for (let peak = 0; peak < mip.peakCount; peak++) {
+            let freq = 0;
+            let density = 0;
+            for (let channel = 0; channel < channels; channel++) {
+              need(4);
+              const packed = view.getUint32(offset, true);
+              offset += 4;
+              if (channel === 0) {
+                freq = packed & 0x7fff;
+                density = (packed >>> 15) & 0x3fff;
+              }
+            }
+            spectral[peak * 2] = freq;
+            spectral[peak * 2 + 1] = density;
+          }
+          spectralMips.push({ mip, data: spectral });
+          continue;
+        }
+        // 跳过当前编辑器不显示的 spectrogram/loudness 层，但仍准确推进
+        // offset，避免后面的 wave/spectral 层被错误解释。
+        const bytesPerValue = mip.kind === 'spectrogram' ? 192 : 4;
+        need(mip.peakCount * channels * bytesPerValue);
+        offset += mip.peakCount * channels * bytesPerValue;
+      }
+    } catch (_) {
+      return null;
+    }
+    if (!waveMips.length) return null;
+    const finest = waveMips[0];
+    const division = Math.abs(finest.mip.division);
+    if (!division) return null;
+    const baseSource = source && typeof source === 'object' ? source : undefined;
+    const waveform = {
+      schema: SCHEMA,
+      encoding: ENCODING,
+      peaks_per_second: Math.round(sampleRate / division),
+      peak_count: finest.mip.peakCount,
+      duration_ms: Math.round(finest.mip.peakCount * division / sampleRate * 1000),
+      ...(baseSource ? { source: baseSource } : {}),
+      data: bytesToBase64(finest.data),
+    };
+    let spectral = null;
+    if (spectralMips.length) {
+      const targetDivision = Math.max(1, Math.round(sampleRate / 100));
+      const paired = spectralMips.map((entry, index) => ({
+        ...entry,
+        division: Math.abs(waveMips[index]?.mip.division || division),
+      }));
+      const selected = paired.reduce((best, entry) => (
+        Math.abs(entry.division - targetDivision) < Math.abs(best.division - targetDivision)
+          ? entry : best
+      ), paired[0]);
+      const payloadBytes = new Uint8Array(selected.data.length * 2);
+      selected.data.forEach((value, index) => {
+        payloadBytes[index * 2] = value & 0xff;
+        payloadBytes[index * 2 + 1] = value >>> 8;
+      });
+      spectral = {
+        schema: SPECTRAL_SCHEMA,
+        encoding: SPECTRAL_ENCODING,
+        sample_rate: sampleRate,
+        division: selected.division,
+        peak_count: selected.mip.peakCount,
+        duration_ms: Math.round(selected.mip.peakCount * selected.division / sampleRate * 1000),
+        ...(baseSource ? { source: baseSource } : {}),
+        data: bytesToBase64(payloadBytes),
+      };
+    }
+    return { waveform, spectral };
+  }
+
   function bytesToBase64(bytes) {
     const chunkSize = 0x8000;
     const parts = [];
@@ -659,6 +839,50 @@
     return target;
   }
 
+  function buildWaveformEnvelope(
+    peaks,
+    peaksPerSecond,
+    peakCount,
+    startMs,
+    endMs,
+    width,
+    useInterpolation = false,
+  ) {
+    const numericWidth = Number(width);
+    const safeWidth = Number.isFinite(numericWidth)
+      ? Math.max(1, Math.round(numericWidth)) : 1;
+    const low = new Float32Array(safeWidth);
+    const high = new Float32Array(safeWidth);
+    if (!peaks || peakCount <= 0 || !Number.isFinite(peaksPerSecond) || peaksPerSecond <= 0) {
+      return { low, high };
+    }
+    const rangeMs = Math.max(1, Number(endMs) - Number(startMs));
+    const interpolatedPeak = [0, 0];
+    for (let x = 0; x < safeWidth; x++) {
+      const xStartMs = startMs + (x / safeWidth) * rangeMs;
+      const xEndMs = startMs + ((x + 1) / safeWidth) * rangeMs;
+      if (useInterpolation) {
+        const centerMs = (xStartMs + xEndMs) / 2;
+        const peakPosition = (centerMs / 1000) * peaksPerSecond - 0.5;
+        sampleInterpolatedPeak(peaks, peakPosition, peakCount, interpolatedPeak);
+        low[x] = interpolatedPeak[0];
+        high[x] = interpolatedPeak[1];
+        continue;
+      }
+      const firstPeak = clamp(Math.floor((xStartMs / 1000) * peaksPerSecond), 0, peakCount - 1);
+      const lastPeak = clamp(Math.ceil((xEndMs / 1000) * peaksPerSecond), firstPeak + 1, peakCount);
+      let min = 127;
+      let max = -127;
+      for (let peak = firstPeak; peak < lastPeak; peak++) {
+        min = Math.min(min, peaks[peak * 2]);
+        max = Math.max(max, peaks[peak * 2 + 1]);
+      }
+      low[x] = min;
+      high[x] = max;
+    }
+    return { low, high };
+  }
+
   function colorForSegment(segment) {
     if (segment.color?.name && PALETTE[segment.color.name]) return PALETTE[segment.color.name];
     if (segment.color_ref?.name && PALETTE[segment.color_ref.name]) return PALETTE[segment.color_ref.name];
@@ -695,18 +919,19 @@
     const value = roundMs(valueMs);
     if (edge === 'end') {
       const lower = left.start + minDuration;
-      const upper = Number.isFinite(left.end) ? left.end : Infinity;
-      // 不越过右侧段的起始，避免产生负时长或重叠；但不强制拉动邻居。
-      const ceiling = Number.isFinite(right.start) ? right.start : upper;
-      const next = clamp(value, lower, Math.min(upper, ceiling));
+      // 右侧字幕保持不动；使用它的起点作为固定上限，不能把当前值
+      // 当作上限，否则边界第一次向左拉开后就无法再向右回拖。
+      const upper = Number.isFinite(right.start) ? right.start : Infinity;
+      const next = clamp(value, lower, upper);
       const oldEnd = left.end;
       left.end = next;
       left.items = remapItems(left.items, left.start, oldEnd, left.start, next);
     } else {
       const upper = right.end - minDuration;
-      const floor = Number.isFinite(right.start) ? right.start : 0;
-      const base = Number.isFinite(left.end) ? left.end : floor;
-      const next = clamp(value, Math.max(floor, base), upper);
+      // 左侧字幕保持不动；使用它的终点作为固定下限，同样允许边界
+      // 在拉开后反向回到邻字幕边界。
+      const lower = Number.isFinite(left.end) ? left.end : 0;
+      const next = clamp(value, lower, upper);
       const oldStart = right.start;
       right.start = next;
       right.items = remapItems(right.items, oldStart, right.end, next, right.end);
@@ -727,6 +952,11 @@
     return !!left && !!right && Number(left.end) === Number(right.start);
   }
 
+  function shouldAdjustAdjacentCuesIndependently(altKey, autoSnapAdjacentCues) {
+    // Alt 始终临时反转自动吸附开关；开关关闭且未按 Alt 时也是独立调整。
+    return Boolean(altKey) === Boolean(autoSnapAdjacentCues);
+  }
+
   function normalizedIndices(segments, indices) {
     return [...new Set(Array.from(indices || [])
       .map((idx) => Number(idx))
@@ -735,11 +965,9 @@
   }
 
   // Keyboard movement is a small, discrete counterpart to moving a waveform
-  // block. When the selected range is attached to a neighboring cue, the
-  // shared boundary follows the moved range: moving away expands the neighbor
-  // and moving toward it compresses the neighbor. Alt keeps both neighbors
-  // untouched, while the normal no-overlap and minimum-duration limits still
-  // apply.
+  // block. When adjacent-cue auto snapping is active and the selected range is
+  // attached to a neighboring cue, the shared boundary follows the moved
+  // range. The Alt modifier temporarily reverses that choice.
   function planMoveStep(segments, indices, deltaMs, durationMs, {
     sticky = true,
     minDuration = MIN_CUE_MS,
@@ -1024,8 +1252,59 @@
     return timeMs < Number(segment.end) || !next || Number(next.start) > timeMs;
   }
 
+  function lastCueIndexAtOrBefore(segments, timeMs) {
+    let low = 0;
+    let high = segments.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      const start = Number(segments[middle]?.start);
+      if (Number.isFinite(start) && start <= timeMs) low = middle + 1;
+      else high = middle;
+    }
+    return low - 1;
+  }
+
+  // 波形块的 active 轮廓是纯视觉提示：只有播放头真正落在 [start, end) 内才点亮。
+  // 空隙中沿用的“当前字幕”（导航 / 逻辑语义，见 isActiveCueAtTime）不点亮轮廓。
+  function isActiveCueVisualHit(segments, index, timeMs) {
+    const segment = segments[index];
+    const time = Number(timeMs);
+    return Boolean(segment) && Number(segment.start) <= time && time < Number(segment.end);
+  }
+
+  function firstCueIndexOverlapping(segments, startMs) {
+    let low = 0;
+    let high = segments.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      const start = Number(segments[middle]?.start);
+      if (Number.isFinite(start) && start < startMs) low = middle + 1;
+      else high = middle;
+    }
+    if (low > 0 && Number(segments[low - 1]?.end) > startMs) return low - 1;
+    return low;
+  }
+
   function findActiveCueIndex(segments, timeMs, skipDisabled = true) {
-    return segments.findIndex((_, index) => isActiveCueAtTime(segments, index, timeMs, skipDisabled));
+    if (!Array.isArray(segments) || !segments.length || !Number.isFinite(Number(timeMs))) return -1;
+    let index = lastCueIndexAtOrBefore(segments, Number(timeMs));
+    if (skipDisabled) {
+      while (index >= 0 && segments[index]?.disabled) index -= 1;
+    }
+    return index >= 0 && isActiveCueAtTime(segments, index, Number(timeMs), skipDisabled)
+      ? index : -1;
+  }
+
+  function syncSpectralColorToggle(toggle, available, preferred, busy = false) {
+    if (!toggle) return;
+    const hasSpectral = Boolean(available);
+    const isBusy = Boolean(busy);
+    toggle.disabled = !hasSpectral || isBusy;
+    toggle.checked = hasSpectral && preferred === true;
+    if (typeof toggle.setAttribute === 'function') {
+      toggle.setAttribute('aria-disabled', String(!hasSpectral || isBusy));
+      toggle.setAttribute('aria-busy', String(isBusy));
+    }
   }
 
   class WaveformEditor {
@@ -1039,23 +1318,44 @@
       this.reapeaksPeaks = null;
       this.player = null;
       this.mediaAvailable = false;
+      this.spectralColorBusy = false;
+      this.spectralColorRenderToken = 0;
       this.basicWindowStartMs = 0;
       this.manualFollowUntil = 0;
       this.multiRange = [-1, -1];
-      this.activeIndex = -1;
+    this.activeIndex = -1;
+    this.activeExtensionIndex = -1;
+    // active 轮廓的视觉命中状态：空隙中 activeIndex 不变，但轮廓需要熄灭，
+    // 因此单独跟踪“上次是否严格命中”以触发 class 刷新。
+    this.activeVisualHit = false;
+    this.activeExtensionVisualHit = false;
       this.drag = null;
       this.createCueDrag = null;
       this.gapRangeDrag = null;
       this.gapBoundaryDrag = null;
       this.suppressGapClickUntil = 0;
       this.autoScrolling = false;
+      this.autoScrollTarget = null;
+      this.navigationRestoring = false;
+      this.multiFollowRowIndex = -1;
+      this.multiFollowCheckPending = true;
       this.resizeFrame = 0;
       // 字幕快捷键会在很短时间内连续请求定位；复用滚动事件已有的
       // rAF 合并，避免每个按键都强制重建可视行和 Canvas。
       this.multiVisibleFrame = 0;
-      // Shift+滚轮调振幅的 rAF 节流：一帧内的滚动累加方向后只触发一次
+      // 「鼠标位置自动预览」：高回报率 pointermove 用 rAF 合并，每帧最多按
+      // 最新事件 seek 一次；pointerleave 时取消尚未执行的待办。
+      this.hoverSeekPreviewFrame = 0;
+      this.hoverSeekPreviewLastEvent = null;
+      this.hoverSeekPreviewRow = null;
+      // Shift+滚轮调振幅的 debounce：滚动期间只累计净步数，停止后一次性重绘
       this.pendingScaleDirection = 0;
-      this.scaleRafScheduled = false;
+      this.scaleDebounceTimer = 0;
+      // 行高预设也可能由高回报率滚轮连续触发；等待滚动停止后一次性重排，
+      // 避免每个 wheel 事件都重绘整组可视行。
+      this.pendingRowHeightDirection = 0;
+      this.rowHeightDebounceTimer = 0;
+      this.renderedRows = [];
       // 波形交互工具：'select'（默认，保留 Ctrl/Shift/分组多选与拖动）或
       // 'razor'（左键点击字幕块即在指针位置安全拆分）。Alt 行为不随工具变化。
       this.tool = 'select';
@@ -1069,6 +1369,7 @@
       this.content = document.getElementById('waveform-content');
       this.empty = document.getElementById('waveform-empty');
       this.status = document.getElementById('waveform-status');
+      this.spectralColorStatus = document.getElementById('waveform-spectral-status');
       this.divider = document.getElementById('workspace-divider');
       this.secondaryDivider = document.getElementById('workspace-divider-secondary');
       this.windowLabel = document.getElementById('waveform-window-label');
@@ -1104,6 +1405,25 @@
       }
     }
 
+    isAdjacentCueAdjustmentIndependent(altKey = false) {
+      return shouldAdjustAdjacentCuesIndependently(
+        altKey,
+        this.options.getAutoSnapAdjacentCues?.() === true,
+      );
+    }
+
+    // 共享边界拖动期间，在「共享边界」状态文本旁提示当前“相邻字幕自动吸附”
+    // 模式；文案按用户设置显示默认模式，Alt 始终是临时反转修饰键。
+    adjacentSnapModeStatusHint() {
+      return this.options.getAutoSnapAdjacentCues?.() === true
+        ? '当前为相邻字幕自动吸附模式，按住 Alt 可以临时解除吸附。'
+        : '当前未启用相邻字幕自动吸附，按住 Alt 可以临时启用。';
+    }
+
+    hasCueDrag() {
+      return Boolean(this.drag || this.createCueDrag);
+    }
+
     bindControls() {
       document.querySelectorAll('[data-waveform-mode]').forEach((button) => {
         button.addEventListener('click', () => this.setMode(button.dataset.waveformMode));
@@ -1121,7 +1441,12 @@
       document.getElementById('waveform-zoom-out').addEventListener('click', () => this.changeZoom(1));
       this.waveformScaleDownButton?.addEventListener('click', () => this.changeWaveformScale(-1));
       this.waveformScaleUpButton?.addEventListener('click', () => this.changeWaveformScale(1));
-      this.pane.addEventListener('pointerdown', () => this.focusWaveform());
+      this.pane.addEventListener('pointerdown', () => {
+        this.autoScrolling = false;
+        this.autoScrollTarget = null;
+        this.multiFollowCheckPending = true;
+        this.focusWaveform();
+      });
       this.secondsPerRowSelect.addEventListener('change', () => {
         this.settings.secondsPerRow = Number(this.secondsPerRowSelect.value);
         saveSettings(this.settings);
@@ -1129,9 +1454,7 @@
         this.render();
       });
       this.rowHeightSelect?.addEventListener('change', () => {
-        this.settings.rowHeight = Number(this.rowHeightSelect.value);
-        saveSettings(this.settings);
-        this.render();
+        this.setRowHeight(Number(this.rowHeightSelect.value));
       });
       this.showGroupBadgesToggle?.addEventListener('change', () => {
         this.settings.showGroupBadges = this.showGroupBadgesToggle.checked;
@@ -1143,11 +1466,11 @@
         this.settings.dragPlayhead = this.dragPlayheadToggle.checked;
         saveSettings(this.settings);
       });
-      if (this.spectralColorToggle) this.spectralColorToggle.checked = this.settings.spectralColor === true;
+      if (this.spectralColorToggle) {
+        syncSpectralColorToggle(this.spectralColorToggle, false, this.settings.spectralColor);
+      }
       this.spectralColorToggle?.addEventListener('change', () => {
-        this.settings.spectralColor = this.spectralColorToggle.checked;
-        saveSettings(this.settings);
-        this.render();
+        this.scheduleSpectralColorRender();
       });
       this.sideSelect?.addEventListener('change', () => {
         this.settings.side = this.sideSelect.value === 'right' ? 'right' : 'left';
@@ -1163,9 +1486,23 @@
       this.layoutEditToggle?.addEventListener('click', () => this.toggleLayoutEditMode());
       this.layoutResetButton?.addEventListener('click', () => this.resetLayout());
       this.scroll.addEventListener('wheel', (event) => this.handleWheel(event), { passive: false });
+      this.scroll.addEventListener('pointerdown', () => {
+        this.autoScrolling = false;
+        this.autoScrollTarget = null;
+        this.multiFollowCheckPending = true;
+      });
       this.scroll.addEventListener('scroll', (event) => {
         if (!this.isMultiMode()) return;
-        if (event.isTrusted && !this.autoScrolling) this.manualFollowUntil = Date.now() + 3000;
+        const wasAutoScroll = this.autoScrolling || this.autoScrollTarget !== null;
+        if (this.autoScrollTarget !== null
+            && Math.abs(this.scroll.scrollTop - this.autoScrollTarget) <= 0.5) {
+          this.autoScrolling = false;
+          this.autoScrollTarget = null;
+        }
+        if (event.isTrusted && !wasAutoScroll) {
+          this.manualFollowUntil = Date.now() + 3000;
+          this.multiFollowCheckPending = true;
+        }
         this.scheduleMultiVisible();
       });
       this.bindDivider();
@@ -1182,6 +1519,41 @@
 
     hidePointerLine(marker) {
       if (marker) marker.hidden = true;
+    }
+
+    // 暂停时指针在波形上移动即把画面预览到指针时间。与拖动播放头一样按
+    // 最新事件合并到每帧最多一次；真正 seek 前重新检查开关与播放状态，
+    // 避免调度之后状态已变化（开始播放、关闭开关、行被虚拟化重建）仍执行。
+    scheduleHoverSeekPreview(event, row) {
+      if (this.options.getHoverSeekPreview?.() !== true) return;
+      this.hoverSeekPreviewLastEvent = event;
+      this.hoverSeekPreviewRow = row;
+      if (this.hoverSeekPreviewFrame) return;
+      this.hoverSeekPreviewFrame = requestAnimationFrame(() => this.flushHoverSeekPreview());
+    }
+
+    cancelHoverSeekPreview() {
+      if (this.hoverSeekPreviewFrame) {
+        cancelAnimationFrame(this.hoverSeekPreviewFrame);
+        this.hoverSeekPreviewFrame = 0;
+      }
+      this.hoverSeekPreviewLastEvent = null;
+      this.hoverSeekPreviewRow = null;
+    }
+
+    flushHoverSeekPreview() {
+      this.hoverSeekPreviewFrame = 0;
+      const event = this.hoverSeekPreviewLastEvent;
+      const row = this.hoverSeekPreviewRow;
+      this.hoverSeekPreviewLastEvent = null;
+      this.hoverSeekPreviewRow = null;
+      if (!event || !row) return;
+      if (this.options.getHoverSeekPreview?.() !== true) return;
+      if (!this.player || !this.mediaAvailable) return;
+      if (!this.player.paused) return;
+      if (event.buttons !== 0) return;
+      if (!row.isConnected) return;
+      this.seekFromPointer(event, row, false);
     }
 
     bindDivider() {
@@ -1355,6 +1727,8 @@
     setMode(mode) {
       if (!['basic', 'multi'].includes(mode) || mode === this.settings.mode) return;
       this.settings.mode = mode;
+      this.multiFollowRowIndex = -1;
+      this.multiFollowCheckPending = true;
       saveSettings(this.settings);
       this.applyLayout();
       if (mode === 'basic') this.centerBasicOnCurrentTime();
@@ -1425,13 +1799,21 @@
 
     setRowHeight(value) {
       const next = Number(value);
+      if (this.rowHeightDebounceTimer) {
+        window.clearTimeout(this.rowHeightDebounceTimer);
+        this.rowHeightDebounceTimer = 0;
+        this.pendingRowHeightDirection = 0;
+      }
       if (!ROW_HEIGHT_PRESETS.includes(next)) return false;
       if (this.settings.rowHeight === next) return true;
       this.settings.rowHeight = next;
       if (this.rowHeightSelect) this.rowHeightSelect.value = String(next);
-      this.multiRange = [-1, -1];
       saveSettings(this.settings);
-      this.render();
+      if (this.isMultiMode() && this.payload) {
+        this.updateMultiRowLayout();
+      } else {
+        this.render();
+      }
       return true;
     }
 
@@ -1768,7 +2150,7 @@
       this.setStatus('已恢复默认工作区');
     }
 
-    setLayoutData(value) {
+    setLayoutData(value, { render = true } = {}) {
       const layout = normalizeLayoutData(value);
       this.settings.layout = layout.preset;
       if (layout.waveformMode) this.settings.mode = layout.waveformMode;
@@ -1780,7 +2162,7 @@
       this.settings.layoutEditing = false;
       saveSettings(this.settings);
       this.applyLayout();
-      this.render();
+      if (render) this.render();
     }
 
     focusWaveform() {
@@ -1788,32 +2170,62 @@
     }
 
     changeWaveformScale(direction) {
+      if (this.scaleDebounceTimer) {
+        window.clearTimeout(this.scaleDebounceTimer);
+        this.scaleDebounceTimer = 0;
+        this.pendingScaleDirection = 0;
+      }
+      this.applyWaveformScaleSteps(Math.sign(direction));
+    }
+
+    applyWaveformScaleSteps(steps) {
       const current = this.settings.waveformScale;
-      const next = waveformScaleAfterStep(current, direction);
+      const numericSteps = Math.trunc(Number(steps));
+      if (!numericSteps) return;
+      const stepDirection = numericSteps > 0 ? 1 : -1;
+      let next = current;
+      for (let index = 0; index < Math.abs(numericSteps); index += 1) {
+        const candidate = waveformScaleAfterStep(next, stepDirection);
+        if (candidate === next) break;
+        next = candidate;
+      }
       if (next === current) {
         // 已到边界：减不下去/加不上去，通知编辑器给出提示
         document.dispatchEvent(new CustomEvent('asr:waveform-scale-limit', {
-          detail: { atMin: direction < 0, atMax: direction > 0 },
+          detail: { atMin: stepDirection < 0, atMax: stepDirection > 0 },
         }));
         return;
       }
       this.settings.waveformScale = next;
       saveSettings(this.settings);
-      this.applyLayout();
-      this.renderSegments();
+      if (this.waveformScaleLabel) {
+        this.waveformScaleLabel.textContent = `×${parseFloat(next.toFixed(2))}`;
+      }
+      // peak 包络按行缓存；连续滚轮由上层 debounce 合并后，这里只清晰重绘一次。
+      this.redrawWaveformCanvases();
     }
 
     scheduleWheelScaleChange() {
-      if (this.scaleRafScheduled) return;
-      this.scaleRafScheduled = true;
-      requestAnimationFrame(() => {
-        this.scaleRafScheduled = false;
-        if (this.pendingScaleDirection === 0) return;
-        // 一帧内的滚动合并为单次方向；触摸板惯性抖动产生的正反向会互相抵消
-        const direction = this.pendingScaleDirection > 0 ? 1 : -1;
+      if (this.scaleDebounceTimer) window.clearTimeout(this.scaleDebounceTimer);
+      this.scaleDebounceTimer = window.setTimeout(() => {
+        this.scaleDebounceTimer = 0;
+        const steps = this.pendingScaleDirection;
         this.pendingScaleDirection = 0;
-        this.changeWaveformScale(direction);
-      });
+        this.applyWaveformScaleSteps(steps);
+      }, WAVEFORM_ADJUST_DEBOUNCE_MS);
+    }
+
+    scheduleRowHeightChange(direction) {
+      this.pendingRowHeightDirection += direction > 0 ? 1 : -1;
+      if (this.rowHeightDebounceTimer) window.clearTimeout(this.rowHeightDebounceTimer);
+      this.rowHeightDebounceTimer = window.setTimeout(() => {
+        this.rowHeightDebounceTimer = 0;
+        const steps = this.pendingRowHeightDirection;
+        this.pendingRowHeightDirection = 0;
+        const current = ROW_HEIGHT_PRESETS.indexOf(this.settings.rowHeight);
+        const next = clamp(current + steps, 0, ROW_HEIGHT_PRESETS.length - 1);
+        if (next !== current) this.setRowHeight(ROW_HEIGHT_PRESETS[next]);
+      }, WAVEFORM_ADJUST_DEBOUNCE_MS);
     }
 
     updateDisabledVisibility() {
@@ -1822,6 +2234,9 @@
 
     revealTime(timeMs, center = true) {
       if (!this.payload) return;
+      this.autoScrolling = false;
+      this.autoScrollTarget = null;
+      this.multiFollowCheckPending = true;
       if (this.settings.mode === 'basic') {
         const windowMs = this.settings.visibleSeconds * 1000;
         const maxStart = Math.max(0, this.durationMs - windowMs);
@@ -1839,11 +2254,8 @@
       const rowIndex = clamp(Math.floor(timeMs / rowDurationMs), 0, Math.max(0, Math.ceil(this.durationMs / rowDurationMs) - 1));
       const stride = this.settings.rowHeight + ROW_GAP;
       const currentScrollTop = this.scroll.scrollTop;
-      const rowTop = rowIndex * stride - currentScrollTop;
-      const comfortInset = Math.min(120, Math.max(48, this.scroll.clientHeight * 0.2));
-      const rowInComfortZone = (
-        rowTop >= comfortInset
-        && rowTop + this.settings.rowHeight <= this.scroll.clientHeight - comfortInset
+      const rowInComfortZone = isMultiRowInComfortZone(
+        rowIndex, currentScrollTop, this.scroll.clientHeight, this.settings.rowHeight,
       );
       const scrollTop = center && rowInComfortZone
         ? currentScrollTop
@@ -1882,6 +2294,63 @@
       this.status.classList.toggle('busy', kind === 'busy');
     }
 
+    setSpectralColorStatus(message = '') {
+      if (!this.spectralColorStatus) return;
+      const visible = Boolean(message);
+      this.spectralColorStatus.hidden = !visible;
+      this.spectralColorStatus.textContent = visible ? message : '';
+    }
+
+    scheduleSpectralColorRender() {
+      const toggle = this.spectralColorToggle;
+      if (!toggle || !this.spectral) {
+        syncSpectralColorToggle(toggle, this.spectral != null, this.settings.spectralColor, this.spectralColorBusy);
+        return;
+      }
+      // Native disabled controls already block normal repeated clicks. Keep a
+      // guard as well for synthetic change events and automation code.
+      if (this.spectralColorBusy) {
+        toggle.checked = this.settings.spectralColor === true;
+        return;
+      }
+
+      const enabled = toggle.checked === true;
+      this.settings.spectralColor = enabled;
+      saveSettings(this.settings);
+      this.spectralColorBusy = true;
+      this.setSpectralColorStatus(localizedWaveformMessage(
+        enabled ? '正在应用频谱颜色…' : '正在关闭频谱颜色…',
+        enabled ? 'Applying spectral colors…' : 'Removing spectral colors…',
+      ));
+      syncSpectralColorToggle(toggle, true, enabled, true);
+
+      const token = ++this.spectralColorRenderToken;
+      const renderAfterPaint = () => {
+        // Let the browser paint the disabled control and live status before
+        // the synchronous Canvas redraw occupies the main thread.
+        window.setTimeout(() => {
+          if (token !== this.spectralColorRenderToken) return;
+          try {
+            this.render();
+          } finally {
+            this.spectralColorBusy = false;
+            syncSpectralColorToggle(
+              toggle,
+              this.spectral != null,
+              this.settings.spectralColor,
+              false,
+            );
+            this.setSpectralColorStatus();
+          }
+        }, 0);
+      };
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(renderAfterPaint);
+      } else {
+        window.setTimeout(renderAfterPaint, 0);
+      }
+    }
+
     attachPlayer(player) {
       if (this.player) {
         this.player.removeEventListener('timeupdate', this._onPlayerTime);
@@ -1909,15 +2378,15 @@
       this.render();
     }
 
-    setPayload(payload) {
+    setPayload(payload, { render = true } = {}) {
       const decoded = decodePayload(payload);
       if (!decoded) {
         this.payload = null;
         this.peaks = null;
         this.setStatus('等待波形数据');
-        this.empty.textContent = '加载媒体后显示波形';
+        this.empty.textContent = '加载媒体后显示波形（大媒体需要先用 MAW 生成波形后拖入）';
         this.empty.classList.remove('hidden');
-        this.render();
+        if (render) this.render();
         return false;
       }
       this.payload = payload;
@@ -1928,7 +2397,12 @@
         : `${formatCompact(payload.duration_ms)} · 缓存波形（未加载媒体）`);
       this.centerBasicOnCurrentTime();
       this.multiRange = [-1, -1];
-      this.render();
+      if (render) this.render();
+      if (this.pendingNavigation) {
+        const navigation = this.pendingNavigation;
+        this.pendingNavigation = null;
+        this.restoreNavigation(navigation);
+      }
       return true;
     }
 
@@ -1936,16 +2410,28 @@
       return this.payload;
     }
 
-    setSpectralPayload(payload) {
+    setSpectralPayload(payload, { render = true } = {}) {
       this.spectral = decodeSpectralPayload(payload);
-      this.render();
+      // Without spectral data the feature is visibly and functionally off.
+      // Keep the stored preference intact so a deferred server payload can
+      // restore the user's choice when it becomes available.
+      syncSpectralColorToggle(
+        this.spectralColorToggle,
+        this.spectral != null,
+        this.settings.spectralColor,
+        this.spectralColorBusy,
+      );
+      if (render) this.render();
       return this.spectral != null;
     }
 
-    setReapeaksWaveform(payload) {
+    setReapeaksWaveform(payload, { render = true } = {}) {
       this.reapeaksPeaks = decodePayload(payload);
       this.reapeaksPayload = this.reapeaksPeaks ? payload : null;
-      this.render();
+      if (this.reapeaksPayload && !this.payload) {
+        this.setPayload(this.reapeaksPayload, { render: false });
+      }
+      if (render) this.render();
       return this.reapeaksPayload != null;
     }
 
@@ -1967,20 +2453,29 @@
       this.options.onPayload(null);
       this.setPayload(null);
       if (file.size > BROWSER_DECODE_LIMIT) {
-        const message = '媒体过大，浏览器不会整段解码；请用 edit.py 预生成波形';
+        const message = localizedWaveformMessage(
+          '媒体过大，浏览器不会整段解码；请使用 MAW GUI 预生成波形',
+          'The media is too large for full browser decoding; use the MAW GUI to pre-generate the waveform',
+        );
         this.setStatus(message, 'error');
         throw new Error(message);
       }
       const durationSeconds = await this.waitForPlayerDuration();
       const estimatedPcmBytes = durationSeconds * 48000 * 2 * 4;
       if (durationSeconds > 0 && estimatedPcmBytes > BROWSER_PCM_ESTIMATE_LIMIT) {
-        const message = '音轨较长，浏览器整段解码可能耗尽内存；请用 edit.py 预生成波形';
+        const message = localizedWaveformMessage(
+          '音轨较长，浏览器整段解码可能耗尽内存；请使用 MAW GUI 预生成波形',
+          'The audio track is long and full browser decoding may exhaust memory; use the MAW GUI to pre-generate the waveform',
+        );
         this.setStatus(message, 'error');
         throw new Error(message);
       }
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!AudioContextClass) {
-        const message = '当前浏览器不支持 Web Audio；请用 edit.py 预生成波形';
+        const message = localizedWaveformMessage(
+          '当前浏览器不支持 Web Audio；请使用 MAW GUI 预生成波形',
+          'This browser does not support Web Audio; use the MAW GUI to pre-generate the waveform',
+        );
         this.setStatus(message, 'error');
         throw new Error(message);
       }
@@ -2034,7 +2529,11 @@
         this.setPayload(payload);
         return payload;
       } catch (error) {
-        const message = `浏览器无法解析音轨：${error.message || error}；请用 edit.py 预生成波形`;
+        const detail = error.message || error;
+        const message = localizedWaveformMessage(
+          `浏览器无法解析音轨：${detail}；请使用 MAW GUI 预生成波形`,
+          `The browser could not decode the audio track: ${detail}; use the MAW GUI to pre-generate the waveform`,
+        );
         this.setStatus(message, 'error');
         throw new Error(message);
       } finally {
@@ -2140,6 +2639,7 @@
       this.applyLayout();
       if (!this.payload || !this.peaks) {
         this.content.replaceChildren();
+        this.renderedRows = [];
         this.empty.classList.remove('hidden');
         return;
       }
@@ -2157,14 +2657,60 @@
     stretchWaveformCanvases() {
       // 字幕块/空隙块/播放头均为百分比定位，会随行宽自动跟随；
       // 只有 canvas 位图需要按新尺寸临时拉伸
-      this.content.querySelectorAll('.waveform-row canvas').forEach((canvas) => {
+      this.renderedRows.forEach((row) => {
+        const canvas = row.querySelector('canvas');
+        if (!canvas) return;
         canvas.style.width = '100%';
         canvas.style.height = '100%';
       });
     }
 
+    redrawWaveformCanvases({ measure = true } = {}) {
+      if (!this.payload || !this.peaks) return;
+      if (!this.renderedRows.length) {
+        this.renderSegments();
+        return;
+      }
+      this.renderedRows.forEach((row) => this.drawRow(row, { measure }));
+      this.updatePlayback(false);
+    }
+
+    updateMultiRowLayout() {
+      if (!this.isMultiMode() || !this.payload) {
+        this.render();
+        return;
+      }
+      this.multiFollowCheckPending = true;
+      const rowDurationMs = this.settings.secondsPerRow * 1000;
+      const rowCount = Math.max(1, Math.ceil(this.durationMs / rowDurationMs));
+      const stride = this.settings.rowHeight + ROW_GAP;
+      this.content.style.height = `${rowCount * stride - ROW_GAP}px`;
+
+      // 先改已有行的几何，再根据新的 stride 增量补齐视口；已有行保留其
+      // Canvas、字幕块和事件监听器，只在后面重画受到高度影响的 Canvas。
+      const retainedRows = new Set(this.renderedRows);
+      this.renderedRows.forEach((row) => {
+        const index = Number(row.dataset.rowIndex);
+        if (!Number.isInteger(index) || index < 0) return;
+        const startMs = index * rowDurationMs;
+        const endMs = Math.min(this.durationMs, startMs + rowDurationMs);
+        row.style.top = `${index * stride}px`;
+        row.style.height = `${this.settings.rowHeight}px`;
+        row.style.width = `${Math.max(0.01, Math.min(1, (endMs - startMs) / rowDurationMs) * 100)}%`;
+      });
+      this.multiRange = [-1, -1];
+      this.renderMultiVisible(false);
+      retainedRows.forEach((row) => {
+        if (row.isConnected) this.drawRow(row);
+      });
+      this.positionPlayheads();
+    }
+
     renderSegments() {
-      if (!this.payload) return;
+      if (!this.payload) {
+        this.render();
+        return;
+      }
       if (this.settings.mode === 'basic') this.renderBasic();
       else this.renderMultiVisible(true);
     }
@@ -2180,6 +2726,7 @@
       const groupBadges = computeGroupBadges(this.options.getSegments('main'));
       const row = this.createRow(this.basicWindowStartMs, endMs, -1, true, groupBadges);
       this.content.appendChild(row);
+      this.renderedRows = [row];
       this.drawRow(row);
       this.updatePlayback(false);
     }
@@ -2189,6 +2736,7 @@
       const rowCount = Math.max(1, Math.ceil(this.durationMs / rowDurationMs));
       this.content.style.height = `${rowCount * (this.settings.rowHeight + ROW_GAP) - ROW_GAP}px`;
       this.multiRange = [-1, -1];
+      this.multiFollowCheckPending = true;
       this.renderMultiVisible(true);
     }
 
@@ -2213,6 +2761,7 @@
         for (let index = first; index <= last; index++) {
           rows.push(this.content.appendChild(this.createMultiRow(index, rowDurationMs, groupBadges)));
         }
+        this.renderedRows = rows;
         for (const row of rows) this.drawRow(row);
         this.updatePlayback(false);
         return;
@@ -2231,6 +2780,7 @@
         if (existing.has(String(index))) continue;
         created.push(this.content.appendChild(this.createMultiRow(index, rowDurationMs, groupBadges)));
       }
+      this.renderedRows = [...this.content.querySelectorAll('.waveform-row')];
       for (const row of created) this.drawRow(row);
       this.updatePlayback(false);
     }
@@ -2241,6 +2791,10 @@
       const row = this.createRow(startMs, endMs, index, false, groupBadges);
       row.style.top = `${index * (this.settings.rowHeight + ROW_GAP)}px`;
       row.style.height = `${this.settings.rowHeight}px`;
+      // 最后一行只代表媒体剩余的真实时长；缩短容器不会减少采样量，
+      // 但能避免把不存在的尾部时间误画成整行波形。
+      row.style.right = 'auto';
+      row.style.width = `${Math.max(0.01, Math.min(1, (endMs - startMs) / rowDurationMs) * 100)}%`;
       return row;
     }
 
@@ -2269,6 +2823,7 @@
       playhead.className = 'waveform-playhead';
       playhead.hidden = true;
       row.appendChild(playhead);
+      row._waveformPlayhead = playhead;
 
       const pointerLine = document.createElement('div');
       pointerLine.className = 'waveform-pointer-line';
@@ -2338,8 +2893,14 @@
         this.seekFromPointer(event, row, false, geometry);
       });
       row.addEventListener('pointerenter', (event) => this.showPointerLine(event, row, pointerLine));
-      row.addEventListener('pointermove', (event) => this.showPointerLine(event, row, pointerLine));
-      row.addEventListener('pointerleave', () => this.hidePointerLine(pointerLine));
+      row.addEventListener('pointermove', (event) => {
+        this.showPointerLine(event, row, pointerLine);
+        this.scheduleHoverSeekPreview(event, row);
+      });
+      row.addEventListener('pointerleave', () => {
+        this.hidePointerLine(pointerLine);
+        this.cancelHoverSeekPreview();
+      });
       row.addEventListener('auxclick', (event) => {
         if (event.button === 1 && gapOperationMode === 'middle_drag') event.preventDefault();
       });
@@ -2363,8 +2924,12 @@
     appendGapBlocks(row, startMs, endMs) {
       const gaps = this.options.getGapRemoveGaps?.() || [];
       const gapOperationMode = this.options.getGapOperationMode?.() || 'boundary_drag';
-      gaps.forEach((gap, index) => {
-        if (!gap || gap.end <= startMs || gap.start >= endMs) return;
+      const firstGapIndex = firstCueIndexOverlapping(gaps, startMs);
+      for (let index = firstGapIndex; index < gaps.length; index += 1) {
+        const gap = gaps[index];
+        if (!gap) continue;
+        if (gap.start >= endMs) break;
+        if (gap.end <= startMs) continue;
         const block = document.createElement('div');
         block.className = 'waveform-gap-block';
         block.dataset.gapIndex = String(index);
@@ -2428,7 +2993,7 @@
           this.options.showGapContextMenu?.(event.clientX, event.clientY, index);
         });
         row.appendChild(block);
-      });
+      }
     }
 
     appendCueBlocks(row, startMs, endMs, groupBadges = null) {
@@ -2440,9 +3005,12 @@
       const now = this.currentTimeMs();
       const activeMainIndex = findActiveCueIndex(segments, now);
       const badgesByIndex = groupBadges || computeGroupBadges(segments);
-      segments.forEach((segment, index) => {
-        if (segment.end <= startMs || segment.start >= endMs) return;
-        if (segment.disabled && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden')) return;
+      const firstMainIndex = firstCueIndexOverlapping(segments, startMs);
+      for (let index = firstMainIndex; index < segments.length; index += 1) {
+        const segment = segments[index];
+        if (segment.start >= endMs) break;
+        if (segment.end <= startMs) continue;
+        if (segment.disabled && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden')) continue;
         const block = document.createElement('div');
         block.className = 'waveform-cue-block';
         block.dataset.idx = String(index);
@@ -2451,7 +3019,8 @@
         block.style.setProperty('--cue-color', colorForSegment(segment));
         if (selected.has(index)) block.classList.add('selected');
         if (segment.disabled) block.classList.add('disabled');
-        if (index === activeMainIndex) block.classList.add('active');
+        // 空隙中沿用的当前字幕不点亮 active 轮廓（仅视觉；逻辑语义不变）。
+        if (index === activeMainIndex && isActiveCueVisualHit(segments, index, now)) block.classList.add('active');
 
         const label = document.createElement('span');
         label.className = 'waveform-cue-label';
@@ -2507,16 +3076,19 @@
           else this.options.activateCue?.(index);
         });
         row.appendChild(block);
-      });
+      }
 
       if (!multiLane) return;
       const extensionSegments = this.options.getExtensionSegments?.() || [];
       const extensionSelected = this.options.getExtensionSelection?.() || new Set();
       const extensionBindingMarkers = bindingMarkerTargets.extension;
       const activeExtensionIndex = findActiveCueIndex(extensionSegments, now);
-      extensionSegments.forEach((segment, index) => {
-        if (segment.end <= startMs || segment.start >= endMs) return;
-        if (segment.disabled && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden')) return;
+      const firstExtensionIndex = firstCueIndexOverlapping(extensionSegments, startMs);
+      for (let index = firstExtensionIndex; index < extensionSegments.length; index += 1) {
+        const segment = extensionSegments[index];
+        if (segment.start >= endMs) break;
+        if (segment.end <= startMs) continue;
+        if (segment.disabled && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden')) continue;
         const block = document.createElement('div');
           block.className = 'waveform-cue-block';
           block.dataset.track = 'extension';
@@ -2526,7 +3098,8 @@
           block.style.setProperty('--cue-color', '#7a9fc5');
         if (extensionSelected.has(index)) block.classList.add('selected');
         if (segment.disabled) block.classList.add('disabled');
-        if (index === activeExtensionIndex) block.classList.add('active');
+        // 空隙中沿用的当前字幕不点亮 active 轮廓（仅视觉；逻辑语义不变）。
+        if (index === activeExtensionIndex && isActiveCueVisualHit(extensionSegments, index, now)) block.classList.add('active');
         const label = document.createElement('span');
         label.className = 'waveform-cue-label';
         label.textContent = String(segment.text || '').replace(/\s+/g, ' ');
@@ -2559,7 +3132,7 @@
           else this.options.activateExtensionCue?.(index);
         });
         row.appendChild(block);
-      });
+      }
     }
 
     setBindingMarker(block, visible) {
@@ -2681,17 +3254,62 @@
       });
     }
 
-    drawRow(row) {
+    getWaveformEnvelope(row, width, startMs, endMs, activePeaks, peaksPerSecond, activeCount, useInterpolation) {
+      const key = row._waveformEnvelopeKey;
+      if (row._waveformEnvelope && key
+          && key.width === width
+          && key.startMs === startMs
+          && key.endMs === endMs
+          && key.source === activePeaks
+          && key.peaksPerSecond === peaksPerSecond
+          && key.peakCount === activeCount
+          && key.useInterpolation === useInterpolation) {
+        return row._waveformEnvelope;
+      }
+      const envelope = buildWaveformEnvelope(
+        activePeaks,
+        peaksPerSecond,
+        activeCount,
+        startMs,
+        endMs,
+        width,
+        useInterpolation,
+      );
+      row._waveformEnvelopeKey = {
+        width,
+        startMs,
+        endMs,
+        source: activePeaks,
+        peaksPerSecond,
+        peakCount: activeCount,
+        useInterpolation,
+      };
+      row._waveformEnvelope = envelope;
+      return envelope;
+    }
+
+    drawRow(row, { measure = true } = {}) {
       const canvas = row.querySelector('canvas');
-      const rect = row.getBoundingClientRect();
-      if (!canvas || rect.width <= 0 || rect.height <= 0 || !this.peaks) return;
+      if (!canvas || !this.peaks) return;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
-      const width = Math.max(1, Math.round(rect.width));
-      const height = Math.max(1, Math.round(rect.height));
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
+      let width = Number(row._waveformCanvasWidth);
+      let height = Number(row._waveformCanvasHeight);
+      if (measure || !Number.isFinite(width) || !Number.isFinite(height)) {
+        const rect = row.getBoundingClientRect();
+        width = Math.max(1, Math.round(rect.width));
+        height = Math.max(1, Math.round(rect.height));
+      }
+      if (width <= 0 || height <= 0) return;
+      const pixelWidth = Math.round(width * dpr);
+      const pixelHeight = Math.round(height * dpr);
+      if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+      if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+      const cssWidth = `${width}px`;
+      const cssHeight = `${height}px`;
+      if (canvas.style.width !== cssWidth) canvas.style.width = cssWidth;
+      if (canvas.style.height !== cssHeight) canvas.style.height = cssHeight;
+      row._waveformCanvasWidth = width;
+      row._waveformCanvasHeight = height;
       const ctx = canvas.getContext('2d', { alpha: false });
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const colors = this._getWaveColors();
@@ -2718,7 +3336,7 @@
       ctx.lineTo(width, height * 0.46);
       ctx.stroke();
 
-      // 波形形状来源：默认使用 .ReaPeaks 的最细 wave 层；没有时回退到自研缓存。
+      // 波形形状来源：默认使用自研缓存；用户切换后才使用 .ReaPeaks 的最细 wave 层。
       const shapeSource = this.options.getWaveShapeSource?.() || 'self';
       const useReapeaksShape = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;
       const activePeaks = useReapeaksShape ? this.reapeaksPeaks : this.peaks;
@@ -2728,7 +3346,16 @@
       const useInterpolation = this.settings.mode === 'basic'
         && this.settings.visibleSeconds === ZOOM_PRESETS[0]
         && (rangeMs / 1000) * peaksPerSecond < width;
-      const interpolatedPeak = [0, 0];
+      const envelope = this.getWaveformEnvelope(
+        row,
+        width,
+        startMs,
+        endMs,
+        activePeaks,
+        peaksPerSecond,
+        activeCount,
+        useInterpolation,
+      );
       const center = height * 0.46;
       const amplitude = waveformAmplitude(height, this.settings.waveformScale);
       const minWaveY = 2;
@@ -2742,29 +3369,8 @@
       let pathOpen = false;
       for (let x = 0; x < width; x++) {
         const xStartMs = startMs + (x / width) * rangeMs;
-        const xEndMs = startMs + ((x + 1) / width) * rangeMs;
-        let low;
-        let high;
-        if (useInterpolation) {
-          const centerMs = (xStartMs + xEndMs) / 2;
-          const peakPosition = (centerMs / 1000) * peaksPerSecond - 0.5;
-          sampleInterpolatedPeak(
-            activePeaks,
-            peakPosition,
-            activeCount,
-            interpolatedPeak,
-          );
-          [low, high] = interpolatedPeak;
-        } else {
-          const firstPeak = clamp(Math.floor((xStartMs / 1000) * peaksPerSecond), 0, activeCount - 1);
-          const lastPeak = clamp(Math.ceil((xEndMs / 1000) * peaksPerSecond), firstPeak + 1, activeCount);
-          low = 127;
-          high = -127;
-          for (let peak = firstPeak; peak < lastPeak; peak++) {
-            low = Math.min(low, activePeaks[peak * 2]);
-            high = Math.max(high, activePeaks[peak * 2 + 1]);
-          }
-        }
+        const low = envelope.low[x];
+        const high = envelope.high[x];
         const yTop = clamp(center - (high / 127) * amplitude, minWaveY, maxWaveY);
         const yBot = clamp(center - (low / 127) * amplitude, minWaveY, maxWaveY);
         if (spectral) {
@@ -3251,17 +3857,16 @@
     handleWheel(event) {
       const scrollDelta = wheelScrollDelta(event);
       if (!scrollDelta) return;
+      this.autoScrolling = false;
+      this.autoScrollTarget = null;
+      this.multiFollowCheckPending = true;
       if (this.isMultiMode() && (event.ctrlKey || event.metaKey) && event.shiftKey) {
         // Ctrl(Cmd)+Shift+滚轮：仅多行模式下循环调整行高预设，向上滚放大，不改变时间映射
         event.preventDefault();
         const current = ROW_HEIGHT_PRESETS.indexOf(this.settings.rowHeight);
         const next = clamp(current + (scrollDelta > 0 ? -1 : 1), 0, ROW_HEIGHT_PRESETS.length - 1);
         if (next !== current) {
-          this.settings.rowHeight = ROW_HEIGHT_PRESETS[next];
-      if (this.rowHeightSelect) this.rowHeightSelect.value = String(this.settings.rowHeight);
-      if (this.showGroupBadgesToggle) this.showGroupBadgesToggle.checked = this.settings.showGroupBadges !== false;
-          saveSettings(this.settings);
-          this.renderMulti();
+          this.scheduleRowHeightChange(scrollDelta > 0 ? -1 : 1);
         }
         return;
       }
@@ -3314,15 +3919,16 @@
       // 剃刀工具：无修饰键左键点击字幕块（非手柄）时，在指针位置安全拆分。
       // 修饰键（Alt/Ctrl(Cmd)/Shift）仍走原行为，便于拆分后立即多选/禁用。
       const targetHandle = event.target.closest('.waveform-cue-handle');
+      const adjacentCueAdjustmentIndependent = this.isAdjacentCueAdjustmentIndependent(event.altKey);
       if (track === 'main' && this.tool === 'razor' && !targetHandle
           && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
         const timeMs = this.timeFromPointer(event, row);
         this.options.splitCueAtTime?.(index, timeMs);
         return;
       }
-      // Alt 行为分裂：命中共享边界手柄时拆开为单侧独立拖动；否则保持
-      // Alt+点击字幕块切换禁用的既有行为。
-      if (event.altKey && targetHandle) {
+      // 相邻字幕独立调整：命中共享边界手柄时拆开为单侧拖动；Alt 会
+      // 根据“自动吸附调整相邻字幕”开关临时反转这一模式。
+      if (adjacentCueAdjustmentIndependent && targetHandle) {
         const sharedLeft = targetHandle.classList.contains('left')
           && index > 0 && this.isSharedBoundary(event, index - 1, index, row, track);
         const sharedRight = targetHandle.classList.contains('right')
@@ -3507,7 +4113,7 @@
         indices,
         deltaMs,
         this.cueDragDurationMs(),
-        { sticky: !altKey },
+        { sticky: !this.isAdjacentCueAdjustmentIndependent(altKey) },
       );
       if (!plan.changed) return false;
       this.options.onBeginEdit?.('移动字幕时间');
@@ -3516,7 +4122,7 @@
         indices,
         deltaMs,
         this.cueDragDurationMs(),
-        { sticky: !altKey },
+        { sticky: !this.isAdjacentCueAdjustmentIndependent(altKey) },
       );
       result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
       this.options.onCommitEdit?.(result.indices, 'move', track);
@@ -3529,7 +4135,7 @@
       const indices = normalizedIndices(segments, this.options.getSelection?.(track));
       if (!indices.length || (edge !== 'start' && edge !== 'end')) return false;
       const index = edge === 'start' ? indices[0] : indices[indices.length - 1];
-      const options = { sticky: !altKey };
+      const options = { sticky: !this.isAdjacentCueAdjustmentIndependent(altKey) };
       const plan = planBoundaryStep(segments, index, edge, deltaMs, this.cueDragDurationMs(), options);
       if (!plan.changed) return false;
       this.options.onBeginEdit?.(`${edge === 'start' ? '调整字幕起点' : '调整字幕终点'}`);
@@ -3546,6 +4152,67 @@
         result.affectedIndices,
         result.linked ? 'resize-boundary' : 'resize-boundary-independent',
         track,
+      );
+      this.refreshCueOverlay();
+      return true;
+    }
+
+    // 把单条字幕的一个边界直接定位到波形指针时间。与方向键微调一样，
+    // 保留最短时长和同轨不重叠约束，但不联动同轨邻居；跨轨绑定由编辑器
+    // 的提交回调处理。targetIndex 用于“当前没有选中字幕但指针命中字幕”的路径。
+    setCueBoundaryToTime(timeMs, edge, track = 'main', targetIndex = null) {
+      const segments = this.options.getSegments(track);
+      const selectedIndices = normalizedIndices(segments, this.options.getSelection?.(track));
+      const hasExplicitTarget = targetIndex !== null && targetIndex !== undefined;
+      const index = hasExplicitTarget ? Number(targetIndex)
+        : selectedIndices.length === 1 ? selectedIndices[0] : -1;
+      if (!Number.isInteger(index) || !segments[index]
+          || (!hasExplicitTarget && selectedIndices.length !== 1)
+          || (edge !== 'start' && edge !== 'end')) return false;
+
+      const segment = segments[index];
+      const current = Number(segment[edge]);
+      const requested = Number(timeMs);
+      if (!Number.isFinite(current) || !Number.isFinite(requested)) return false;
+
+      const previous = segments[index - 1];
+      const next = segments[index + 1];
+      let lower;
+      let upper;
+      if (edge === 'start') {
+        lower = Number(previous?.end ?? 0);
+        upper = Number(segment.end) - MIN_CUE_MS;
+      } else {
+        lower = Number(segment.start) + MIN_CUE_MS;
+        upper = Number(next?.start ?? this.cueDragDurationMs());
+        if (!Number.isFinite(upper) || upper <= 0) upper = Infinity;
+      }
+      if (!Number.isFinite(lower) || lower > upper) return true;
+
+      const target = clamp(roundMs(requested), lower, upper);
+      if (!Number.isFinite(target) || target === current) return true;
+
+      const original = snapshotTiming(segment);
+      this.options.onBeginEdit?.(edge === 'start' ? '定位字幕起点' : '定位字幕终点');
+      if (edge === 'start') {
+        segment.start = target;
+      } else {
+        segment.end = target;
+      }
+      segment.items = remapItems(
+        original.items,
+        original.start,
+        original.end,
+        segment.start,
+        segment.end,
+      );
+      segment._dirty = true;
+      this.options.onCommitEdit?.(
+        [index],
+        'resize-boundary-pointer',
+        track,
+        false,
+        { edge, targetIndex: index, targetTimeMs: target, original },
       );
       this.refreshCueOverlay();
       return true;
@@ -3598,14 +4265,15 @@
       let plan;
       let apply;
       if (drag.kind === 'move') {
-        const options = { sticky: !altKey };
+        const options = { sticky: !this.isAdjacentCueAdjustmentIndependent(altKey) };
         plan = planMoveStep(segments, drag.indices, deltaMs, durationMs, options);
         apply = () => applyMoveStep(segments, drag.indices, deltaMs, durationMs, options);
       } else {
         const edge = drag.kind === 'resize-left' || drag.kind === 'resize-boundary-independent'
           ? 'start' : 'end';
         const options = {
-          sticky: drag.kind !== 'resize-boundary-independent' && !altKey,
+          sticky: drag.kind !== 'resize-boundary-independent'
+            && !this.isAdjacentCueAdjustmentIndependent(altKey),
         };
         plan = planBoundaryStep(segments, drag.index, edge, deltaMs, durationMs, options);
         apply = () => applyBoundaryStep(segments, drag.index, edge, deltaMs, durationMs, options);
@@ -3632,7 +4300,9 @@
     handleHeldCueKey(direction, deltaMs, { shiftKey = false, altKey = false, snap = false } = {}) {
       if (!this.drag) return false;
       if (shiftKey) {
-        if (snap && !altKey) this.snapActiveCueBoundaryByKeyboard(direction);
+        // Shift 是显式的边界贴合命令，不受自动吸附默认值影响；Alt
+        // 只反转普通 A/D 微调的自动联动模式。
+        if (snap) this.snapActiveCueBoundaryByKeyboard(direction);
         // 按住字幕块时即使吸附不可用也要消费按键，不能穿透成普通导航。
         return true;
       }
@@ -3908,11 +4578,13 @@
           : '调整字幕边界';
         this.options.onBeginEdit(label);
       }
-      // 一旦在本次拖动中进入 Alt 独立模式，松开 Alt 也不要把已经独立
-      // 调整过的字幕重新吸回绑定对象；关系仍保留，下一次普通拖动再联动。
-      if (drag.kind === 'move' && event.altKey) drag.allowSqueeze = true;
+      // 一旦在本次拖动中进入相邻字幕独立模式，松开 Alt 也不要把已经
+      // 调整过的字幕重新吸回邻居；下一次拖动再按设置决定默认模式。
+      const adjacentCueAdjustmentIndependent = this.isAdjacentCueAdjustmentIndependent(event.altKey);
+      if (drag.kind === 'move' && adjacentCueAdjustmentIndependent) drag.allowSqueeze = true;
+      // 主字幕/副字幕绑定的独立调整仍只由 Alt 临时触发，不受同轨自动吸附开关影响。
       if (drag.track === 'extension' && event.altKey) drag.independent = true;
-      const disableSnap = drag.independent === true || drag.allowSqueeze === true;
+      const disableSnap = drag.independent === true;
       if (drag.kind === 'move') this.applyMoveDrag(drag, deltaMs, disableSnap, drag.allowSqueeze);
       else if (drag.kind === 'resize-boundary') this.applyBoundaryDrag(drag, deltaMs, drag.independent);
       else if (drag.kind === 'resize-boundary-independent') this.applyIndependentBoundaryDrag(drag, deltaMs);
@@ -3974,9 +4646,11 @@
         for (const idx of drag.indices) {
           const original = drag.originals.get(idx);
           candidates.push(playhead - original.start, playhead - original.end);
-          if (idx > 0 && !moved.has(idx - 1)) candidates.push(segments[idx - 1].end - original.start);
-          if (idx + 1 < segments.length && !moved.has(idx + 1)) {
-            candidates.push(segments[idx + 1].start - original.end);
+          if (!allowSqueeze) {
+            if (idx > 0 && !moved.has(idx - 1)) candidates.push(segments[idx - 1].end - original.start);
+            if (idx + 1 < segments.length && !moved.has(idx + 1)) {
+              candidates.push(segments[idx + 1].start - original.end);
+            }
           }
           crossTrackTargets.forEach((target) => {
             candidates.push(target - original.start, target - original.end);
@@ -4116,7 +4790,9 @@
       rightSegment.start = boundary;
       leftSegment.items = remapItems(left.items, left.start, left.end, left.start, boundary);
       rightSegment.items = remapItems(right.items, right.start, right.end, boundary, right.end);
-      this.setStatus(`共享边界 ${formatCompact(boundary)}`);
+      this.setStatus(`共享边界 ${formatCompact(boundary)} · ${this.adjacentSnapModeStatusHint()}`);
+      // 吸附模式提示只挂在「共享边界」状态上：共享边界拖动正是自动吸附
+      // 默认联动/独立两种模式的直接体现，Alt 可随时临时反转。
     }
 
     endCueDrag(event) {
@@ -4164,19 +4840,29 @@
       const now = this.currentTimeMs();
       const segments = this.options.getSegments('main');
       const activeIndex = findActiveCueIndex(segments, now);
-      if (activeIndex !== this.activeIndex) {
+      const activeVisualHit = activeIndex >= 0 && isActiveCueVisualHit(segments, activeIndex, now);
+      if (activeIndex !== this.activeIndex || activeVisualHit !== this.activeVisualHit) {
         this.activeIndex = activeIndex;
+        this.activeVisualHit = activeVisualHit;
         this.content.querySelectorAll('.waveform-cue-block[data-track="main"]').forEach((block) => {
-          block.classList.toggle('active', Number(block.dataset.idx) === activeIndex);
+          block.classList.toggle('active', Number(block.dataset.idx) === activeIndex && activeVisualHit);
         });
       }
       const extensionSegments = this.options.getExtensionSegments?.() || [];
       const activeExtensionIndex = findActiveCueIndex(extensionSegments, now);
-      this.content.querySelectorAll('.waveform-cue-block[data-track="extension"]').forEach((block) => {
-        block.classList.toggle('active', Number(block.dataset.extIdx) === activeExtensionIndex);
-      });
+      const activeExtensionVisualHit = activeExtensionIndex >= 0
+        && isActiveCueVisualHit(extensionSegments, activeExtensionIndex, now);
+      if (activeExtensionIndex !== this.activeExtensionIndex
+          || activeExtensionVisualHit !== this.activeExtensionVisualHit) {
+        this.activeExtensionIndex = activeExtensionIndex;
+        this.activeExtensionVisualHit = activeExtensionVisualHit;
+        this.content.querySelectorAll('.waveform-cue-block[data-track="extension"]')
+          .forEach((block) => {
+            block.classList.toggle('active', Number(block.dataset.extIdx) === activeExtensionIndex && activeExtensionVisualHit);
+          });
+      }
 
-      if (allowFollow && this.settings.mode === 'basic') {
+      if (allowFollow && this.settings.mode === 'basic' && !this.navigationRestoring) {
         const windowMs = this.settings.visibleSeconds * 1000;
         const relative = (now - this.basicWindowStartMs) / Math.max(1, windowMs);
         if (now < this.basicWindowStartMs || now > this.basicWindowStartMs + windowMs ||
@@ -4187,27 +4873,108 @@
         }
       }
 
-      if (allowFollow && this.isMultiMode() && this.player && !this.player.paused && Date.now() > this.manualFollowUntil) {
+      if (allowFollow && this.isMultiMode() && !this.navigationRestoring
+          && this.player && !this.player.paused && Date.now() > this.manualFollowUntil) {
         const rowIndex = Math.floor(now / (this.settings.secondsPerRow * 1000));
-        if (rowIndex < this.multiRange[0] || rowIndex > this.multiRange[1]) {
+        const shouldCheckFollow = this.multiFollowCheckPending || rowIndex !== this.multiFollowRowIndex;
+        if (!shouldCheckFollow) {
+          this.positionPlayheads();
+          return;
+        }
+        this.multiFollowRowIndex = rowIndex;
+        this.multiFollowCheckPending = false;
+        const viewportHeight = this.scroll.clientHeight;
+        const rowInComfortZone = viewportHeight > 0 && isMultiRowInComfortZone(
+          rowIndex, this.scroll.scrollTop, viewportHeight, this.settings.rowHeight,
+        );
+        const stride = this.settings.rowHeight + ROW_GAP;
+        const targetScrollTop = clamp(
+          rowIndex * stride - viewportHeight * 0.35,
+          0,
+          Math.max(0, this.scroll.scrollHeight - viewportHeight),
+        );
+        const currentScrollTop = this.scroll.scrollTop;
+        const targetChanged = this.autoScrollTarget === null
+          || Math.abs(targetScrollTop - this.autoScrollTarget) > 0.5;
+        const needsScroll = Math.abs(targetScrollTop - currentScrollTop) > 0.5;
+        if (!rowInComfortZone && needsScroll && targetChanged) {
           this.autoScrolling = true;
+          this.autoScrollTarget = targetScrollTop;
           this.scroll.scrollTo({
-            top: Math.max(0, rowIndex * (this.settings.rowHeight + ROW_GAP) - this.scroll.clientHeight * 0.35),
+            top: targetScrollTop,
             behavior: 'smooth',
           });
           requestAnimationFrame(() => { this.autoScrolling = false; });
-          this.renderMultiVisible(true);
+          // 滚动事件会在新的可视范围稳定后增量补行；播放热路径不应在
+          // 每次跨行时强制重建当前整组 DOM/Canvas。
+          this.scheduleMultiVisible();
         }
+        if (!needsScroll) this.autoScrollTarget = null;
       }
       this.positionPlayheads();
     }
 
+    getNavigationSnapshot() {
+      return {
+        cueListScrollTop: Math.max(0, Math.round(Number(this.cues?.scrollTop) || 0)),
+        waveformTopEdgeMs: waveformTopEdgeMs({
+          mode: this.settings.mode,
+          basicWindowStartMs: this.basicWindowStartMs,
+          scrollTop: this.scroll?.scrollTop,
+          rowHeight: this.settings.rowHeight,
+          rowGap: ROW_GAP,
+          secondsPerRow: this.settings.secondsPerRow,
+        }),
+      };
+    }
+
+    restoreNavigation(snapshot) {
+      if (!snapshot || typeof snapshot !== 'object') return false;
+      if (!this.payload) {
+        this.pendingNavigation = snapshot;
+        if (typeof snapshot.cueListScrollTop === 'number' && Number.isFinite(snapshot.cueListScrollTop)) {
+          const maxTop = Math.max(0, this.cues.scrollHeight - this.cues.clientHeight);
+          this.cues.scrollTop = clamp(Math.round(snapshot.cueListScrollTop), 0, maxTop);
+        }
+        return true;
+      }
+      const topEdgeMs = restoreWaveformTopEdgeMs({
+        mode: this.settings.mode,
+        durationMs: this.durationMs,
+        visibleSeconds: this.settings.visibleSeconds,
+        secondsPerRow: this.settings.secondsPerRow,
+      }, snapshot.waveformTopEdgeMs);
+      this.navigationRestoring = true;
+      if (topEdgeMs !== null) {
+        if (this.settings.mode === 'basic') {
+          this.basicWindowStartMs = topEdgeMs;
+          this.renderBasic();
+        } else {
+          const rowDurationMs = Math.max(1, this.settings.secondsPerRow * 1000);
+          const stride = this.settings.rowHeight + ROW_GAP;
+          const rowTop = Math.floor(topEdgeMs / rowDurationMs) * stride;
+          const maxTop = Math.max(0, this.scroll.scrollHeight - this.scroll.clientHeight);
+          this.scroll.scrollTop = clamp(rowTop, 0, maxTop);
+          this.renderMultiVisible();
+        }
+      }
+      if (typeof snapshot.cueListScrollTop === 'number' && Number.isFinite(snapshot.cueListScrollTop)) {
+        const maxTop = Math.max(0, this.cues.scrollHeight - this.cues.clientHeight);
+        this.cues.scrollTop = clamp(Math.round(snapshot.cueListScrollTop), 0, maxTop);
+      }
+      this.manualFollowUntil = Date.now() + 5000;
+      this.autoScrolling = false;
+      this.autoScrollTarget = null;
+      requestAnimationFrame(() => { this.navigationRestoring = false; });
+      return topEdgeMs !== null || typeof snapshot.cueListScrollTop === 'number';
+    }
+
     positionPlayheads() {
       const now = this.currentTimeMs();
-      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+      this.renderedRows.forEach((row) => {
         const startMs = Number(row.dataset.startMs);
         const endMs = Number(row.dataset.endMs);
-        const playhead = row.querySelector('.waveform-playhead');
+        const playhead = row._waveformPlayhead || row.querySelector('.waveform-playhead');
         if (!playhead) return;
         const visible = now >= startMs && now <= endMs;
         playhead.hidden = !visible;
@@ -4224,11 +4991,16 @@
     builtinWorkspaces: BUILTIN_WORKSPACES,
     testing: {
       decodePayload,
+      decodeReapeaksFile,
       decodeSpectralPayload,
+      syncSpectralColorToggle,
       freqColor,
       remapItems,
       roundMs,
       sourceForFile,
+      shouldAdjustAdjacentCuesIndependently,
+      findActiveCueIndex,
+      firstCueIndexOverlapping,
       applySharedBoundary,
       applyIndependentEdge,
       applyMoveStep,
@@ -4239,6 +5011,7 @@
       wheelScrollDelta,
       waveformScaleAfterStep,
       waveformAmplitude,
+      buildWaveformEnvelope,
       sampleInterpolatedPeak,
       normalizeLayoutData,
       swapLayoutModuleOrder,
@@ -4250,6 +5023,9 @@
       layoutDropIntent,
       layoutRootDropIntent,
       layoutDropPreviewRect,
+      isMultiRowInComfortZone,
+      waveformTopEdgeMs,
+      restoreWaveformTopEdgeMs,
       computeGroupBadges,
     },
   };

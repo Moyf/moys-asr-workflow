@@ -63,9 +63,46 @@ test('media seek buttons and arrow keys use the configured seek duration', async
   const step = page.locator('#media-seek-step');
   await expect(step).toHaveValue('1000');
   await page.locator('#subtitle-preview-settings-toggle').click();
+  await step.fill('100');
+  await step.press('Tab');
+  await expect(step).toHaveValue('100');
+  await expect(step).toHaveAttribute('min', '10');
+  await expect(step).toHaveAttribute('step', '10');
+  await step.focus();
+  await step.press('ArrowDown');
+  await expect(step).toHaveValue('90');
+  await step.press('ArrowDown');
+  await expect(step).toHaveValue('80');
+  await step.press('ArrowUp');
+  await expect(step).toHaveValue('90');
+  await step.press('ArrowUp');
+  await expect(step).toHaveValue('100');
+  await step.press('ArrowUp');
+  await expect(step).toHaveValue('200');
+  await expect(step).toHaveAttribute('step', '100');
+  await step.press('ArrowDown');
+  await expect(step).toHaveValue('100');
+  await expect(step).toHaveAttribute('step', '10');
+  await step.fill('200');
+  await step.press('Tab');
+  await page.evaluate(() => {
+    const input = document.getElementById('media-seek-step');
+    input.stepDown();
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect(step).toHaveValue('100');
+  await expect(step).toHaveAttribute('step', '10');
+  await page.evaluate(() => {
+    const input = document.getElementById('media-seek-step');
+    input.stepUp();
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect(step).toHaveValue('200');
+  await expect(step).toHaveAttribute('step', '100');
   await step.fill('7000');
   await step.press('Tab');
   await expect(step).toHaveValue('7000');
+  await expect(step).toHaveAttribute('step', '100');
   await page.locator('#subtitle-preview-settings-toggle').click();
   await expect.poll(() => page.evaluate(() => JSON.parse(
     localStorage.getItem('moy.asr.editor.settings.v1') || '{}',
@@ -289,23 +326,40 @@ test('the unconfigured Enter shortcut commits and exits cue-panel editing', asyn
     .toBe('Alpha committed by Enter');
 });
 
-test('Escape exits cue-panel editing without saving the text', async ({ page }) => {
+test('Escape keeps cue-panel text edits by default and cancels when the setting is on', async ({ page }) => {
   await page.goto(server.url);
   const cue = page.locator('.cue[data-idx="0"]');
   const panel = page.locator('#cue-panel-text');
 
+  // 默认行为：Esc 保留本次文本改动并退出编辑（改动即时写入工程）。
   await cue.click();
   const original = await panel.inputValue();
   await panel.focus();
-  await panel.fill('This edit is cancelled');
+  await panel.fill('This edit is kept');
   await expect(page.locator('#undo-btn')).toBeEnabled();
   await panel.press('Escape');
 
   await expect(panel).not.toBeFocused();
-  await expect(panel).toHaveValue(original);
+  await expect(panel).toHaveValue('This edit is kept');
+  await expect.poll(() => page.evaluate(() => DATA.segments[0].text)).toBe('This edit is kept');
+
+  // 开启「操作 → Esc 取消编辑」后：Esc 恢复进入本次编辑前的文本。
+  await page.evaluate(() => {
+    const saved = { ...JSON.parse(localStorage.getItem('moy.asr.editor.settings.v1') || '{}'), cueEditorCancelOnEscape: true };
+    localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify(saved));
+    location.reload();
+  });
+  await page.waitForFunction(() => document.readyState === 'complete');
+  const cueAfterReload = page.locator('.cue[data-idx="0"]');
+  const panelAfterReload = page.locator('#cue-panel-text');
+  await cueAfterReload.click();
+  await panelAfterReload.focus();
+  await panelAfterReload.fill('This edit is cancelled');
+  await panelAfterReload.press('Escape');
+
+  await expect(panelAfterReload).not.toBeFocused();
+  await expect(panelAfterReload).toHaveValue(original);
   await expect.poll(() => page.evaluate(() => DATA.segments[0].text)).toBe(original);
-  await expect(cue).not.toHaveClass(/dirty/);
-  await expect(page.locator('#undo-btn')).toBeDisabled();
 });
 
 test('Escape exits inline cue editing without saving the text', async ({ page }) => {
@@ -497,8 +551,76 @@ test('B splits at the pointer inside the cue list and at the playhead outside it
   await expect(page.locator('.cue-split-flash.is-active')).toHaveCount(0);
 });
 
+test('B split inside the cue list keeps the list scroll position', async ({ page }) => {
+  await page.goto(server.url);
+  // 关闭「点击自动滚动」，避免点击选中行时先把列表滚到中央，干扰拆分滚动断言。
+  await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('moy.asr.editor.settings.v1') || '{}');
+    saved.cueListAutoScrollOnClick = false;
+    localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify(saved));
+  });
+  await page.reload();
+  await page.evaluate(() => {
+    DATA.segments.push(...Array.from({ length: 34 }, (_, offset) => {
+      const index = DATA.segments.length + offset;
+      const start = index * 5000;
+      return { start, end: start + 1000, text: `Extra ${index}`, items: [] };
+    }));
+    renderAll();
+    // 先滚到底再滚回目标行：content-visibility 会让视口外的行按
+    // contain-intrinsic-size 惰性重排，触发浏览器滚动锚定持续微调 scrollTop；
+    // 先让所有行完成一次重排，之后的滚动位置才是稳定的。
+    const list = document.getElementById('cues-container');
+    list.scrollTop = list.scrollHeight;
+    void list.scrollHeight;
+  });
+  await page.waitForTimeout(400);
+  await page.evaluate(() => {
+    const list = document.getElementById('cues-container');
+    document.querySelector('.cue[data-idx="30"]').scrollIntoView({ block: 'start' });
+    void list.scrollHeight;
+  });
+  // 等滚动锚定完全稳定后再记录基准位置。
+  await expect.poll(async () => {
+    const a = await page.evaluate(() => document.getElementById('cues-container').scrollTop);
+    await page.waitForTimeout(150);
+    const b = await page.evaluate(() => document.getElementById('cues-container').scrollTop);
+    return a === b;
+  }, { timeout: 4000 }).toBe(true);
+  const before = await page.evaluate(() => document.getElementById('cues-container').scrollTop);
+  expect(before).toBeGreaterThan(0);
+  const target = page.locator('.cue[data-idx="30"]');
+  const text = target.locator('.text');
+  // 点击位置直接落在文字第 5 个字符后，B 拆分的文字偏移可预期（Extra｜30）。
+  const splitPoint = await text.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 5);
+    range.setEnd(node, 5);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+  await target.dispatchEvent('pointerdown', {
+    bubbles: true, button: 0, buttons: 1, pointerId: 1,
+    clientX: splitPoint.x, clientY: splitPoint.y,
+  });
+  await target.dispatchEvent('click', { bubbles: true, detail: 1, clientX: splitPoint.x, clientY: splitPoint.y });
+  await expect(target).toHaveClass(/selected/);
+  await page.mouse.move(splitPoint.x, splitPoint.y);
+  await expect(page.locator('.cue-split-preview')).toHaveCount(1);
+  await page.keyboard.press('b');
+
+  await expect.poll(() => page.locator('.cue').count()).toBe(41);
+  await expect(page.locator('.cue[data-idx="31"]')).toHaveClass(/selected/);
+  await expect(page.locator('.cue .text').nth(30)).toHaveText('Extra');
+  await expect(page.locator('.cue .text').nth(31)).toHaveText('30');
+  await expect.poll(() => page.evaluate(() => document.getElementById('cues-container').scrollTop)).toBe(before);
+});
+
 test('B flashes a yellow marker after splitting at the waveform pointer without a selection', async ({ page }) => {
   await page.goto(server.url);
+  // 默认主字幕按单词模式拆分；'Alpha' 单词内无词边界，先改造成两词再测拆分闪光。
+  await makeFirstCueWordSplittable(page);
   await page.evaluate(() => clearSelection());
   await expect(page.locator('.cue.selected')).toHaveCount(0);
 
@@ -588,7 +710,7 @@ test('left and right arrows seek like the media step buttons', async ({ page }) 
   });
 
   await page.keyboard.press('ArrowLeft');
-  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeCloseTo(5, 1);
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeCloseTo(9, 1);
   await page.keyboard.press('ArrowRight');
   await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeCloseTo(10, 1);
   await expect.poll(() => page.evaluate(() => document.getElementById('player').paused)).toBe(true);

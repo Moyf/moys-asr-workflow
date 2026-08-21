@@ -5,10 +5,13 @@ import tempfile
 import unittest
 from pathlib import Path
 from threading import Event
+from types import SimpleNamespace
 from unittest import mock
 
 from maw.gui_web import LauncherApi, LauncherPaths, _request_from_payload
+from maw.postprocess import LlmPostprocessRequest
 from maw.postprocess_io import SubtitleArtifact
+from maw.postprocess_ocr import OcrDedupArtifact
 from maw.postprocess_pipeline import (
     PostprocessCancelled,
     PostprocessPipelineError,
@@ -52,7 +55,10 @@ class PostprocessPipelineTests(unittest.TestCase):
         return plan
 
     def replace_step(self, enabled: bool = True) -> dict[str, object]:
-        return {"id": "replace", "enabled": enabled, "replacements": [{"source": "错", "target": "正"}]}
+        return {"id": "replace", "enabled": enabled, "replacements": [{"source": "错", "target": "正"}], "conversion": "off"}
+
+    def conversion_step(self, mode: str = "to_traditional") -> dict[str, object]:
+        return {"id": "replace", "enabled": True, "replacements": [], "conversion": mode}
 
     def match_step(self, enabled: bool = True) -> dict[str, object]:
         script = self.root / "script.txt"
@@ -65,6 +71,65 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertFalse(plan["enabled"])
         self.assertFalse(plan["retainIntermediate"])
         self.assertEqual([step["id"] for step in plan["steps"]], ["match", "replace", "proofread", "resegment", "ocr", "translate"])
+        self.assertEqual(plan["steps"][1]["conversion"], "off")
+
+    def test_validation_allows_conversion_without_replacement_rules(self) -> None:
+        plan, errors = validate_plan(self.plan(self.conversion_step()), env_path=self.env_path, media_path=self.media, ffmpeg_path=None)
+
+        self.assertEqual(errors, ())
+        self.assertEqual(plan["steps"][1]["conversion"], "to_traditional")
+
+    def test_validation_preserves_taiwan_traditional_conversion_mode(self) -> None:
+        plan, errors = validate_plan(self.plan(self.conversion_step("to_traditional_twp")), env_path=self.env_path, media_path=self.media, ffmpeg_path=None)
+
+        self.assertEqual(errors, ())
+        self.assertEqual(plan["steps"][1]["conversion"], "to_traditional_twp")
+
+    def test_validation_preserves_hong_kong_traditional_conversion_mode(self) -> None:
+        plan, errors = validate_plan(self.plan(self.conversion_step("to_traditional_hk")), env_path=self.env_path, media_path=self.media, ffmpeg_path=None)
+
+        self.assertEqual(errors, ())
+        self.assertEqual(plan["steps"][1]["conversion"], "to_traditional_hk")
+
+    def test_pipeline_runs_conversion_before_translation_steps(self) -> None:
+        self.project.write_text(
+            json.dumps({"segments": [{"id": "main-001", "start": 0, "end": 1000, "text": "软件"}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        self.srt.write_text("1\n00:00:00,000 --> 00:00:01,000\n软件\n", encoding="utf-8")
+        translation_input: list[str] = []
+
+        def fake_translate(request: LlmPostprocessRequest, *, complete: object, on_status: object) -> SubtitleArtifact:
+            del complete, on_status
+            project_path = request.project_path
+            output_directory = request.output_directory
+            if not isinstance(project_path, Path) or not isinstance(output_directory, Path):
+                raise AssertionError("translation request should contain project paths")
+            payload = json.loads(project_path.read_text(encoding="utf-8"))
+            translation_input.append(payload["segments"][0]["text"])
+            payload["segments"][0]["text"] = "Translation"
+            translated_project = output_directory / "translated.mosp"
+            translated_srt = output_directory / "translated.srt"
+            translated_project.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            translated_srt.write_text("1\n00:00:00,000 --> 00:00:01,000\nTranslation\n", encoding="utf-8")
+            return SubtitleArtifact(project_path, request.srt_path, translated_project, translated_srt)
+
+        translate_step = {"id": "translate", "enabled": True, "providerId": "deepseek", "target": "en", "customPrompt": ""}
+        with mock.patch("maw.postprocess_pipeline.run_llm_postprocess", side_effect=fake_translate):
+            result = run_postprocess_pipeline(
+                self.plan(self.conversion_step(), translate_step),
+                media_path=self.media,
+                project_path=self.project,
+                srt_path=self.srt,
+                env_path=self.env_path,
+                ffmpeg_path=None,
+                cancel_event=Event(),
+                llm_settings={"deepseek": {"apiKey": "key", "baseUrl": "https://example.test", "model": "model", "verified": "1"}},
+            )
+
+        self.assertEqual(translation_input, ["軟件"])
+        self.assertIsNotNone(result.translated_srt_path)
+        self.assertIn("Translation", result.translated_srt_path.read_text(encoding="utf-8"))
 
     def test_translation_keeps_main_track_and_adds_extension_track(self) -> None:
         source_payload = {
@@ -94,9 +159,11 @@ class PostprocessPipelineTests(unittest.TestCase):
             translated_artifact=SubtitleArtifact(self.project, self.srt, translated_project, translated_srt),
             target="en",
             output_directory=self.root / "run",
+            media_path=self.media,
         )
         combined = json.loads(result.project_path.read_text(encoding="utf-8"))
 
+        self.assertEqual(combined["media"], str(self.media.resolve()))
         self.assertEqual([segment["text"] for segment in combined["segments"]], ["原文一", "原文二"])
         self.assertEqual(combined["segments"][0]["items"][0]["text"], "原文一")
         self.assertTrue(combined["multi_subtitle"]["enabled"])
@@ -218,10 +285,141 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertIn("正字", result.srt_path.read_text(encoding="utf-8"))
         self.assertEqual([event["stage"] for event in events if event["stage"] in {"step_start", "step_done"}], ["step_start", "step_done"])
 
+    def test_pipeline_accepts_ocr_as_the_last_step(self) -> None:
+        video = self.root / "clip.mp4"
+        ffmpeg = self.root / "ffmpeg.exe"
+        video.write_bytes(b"video")
+        ffmpeg.write_bytes(b"ffmpeg")
+        ocr_project = self.root / "ocr-output.mosp"
+        ocr_srt = self.root / "ocr-output.srt"
+        ocr_project.write_text(self.project.read_text(encoding="utf-8"), encoding="utf-8")
+        ocr_srt.write_text(self.srt.read_text(encoding="utf-8"), encoding="utf-8")
+        artifact = OcrDedupArtifact(
+            source_project_path=self.project,
+            source_srt_path=self.srt,
+            project_path=ocr_project,
+            srt_path=ocr_srt,
+            report_path=None,
+        )
+        plan = self.plan({
+            "id": "ocr",
+            "enabled": True,
+            "videoPath": str(video),
+            "regionMode": "full",
+            "threshold": 0.5,
+        })
+
+        with mock.patch("maw.postprocess_pipeline.run_ocr_dedup", return_value=artifact):
+            result = run_postprocess_pipeline(
+                plan,
+                media_path=self.media,
+                project_path=self.project,
+                srt_path=self.srt,
+                env_path=self.env_path,
+                ffmpeg_path=ffmpeg,
+                cancel_event=Event(),
+            )
+
+        self.assertEqual(result.completed_steps, ("ocr",))
+        self.assertIsNone(result.translated_srt_path)
+        self.assertTrue(result.project_path.is_file())
+        self.assertTrue(result.srt_path.is_file())
+
+    def test_pipeline_uses_managed_ocr_runtime_when_runtime_root_is_supplied(self) -> None:
+        video = self.root / "clip.mp4"
+        ffmpeg = self.root / "ffmpeg.exe"
+        video.write_bytes(b"video")
+        ffmpeg.write_bytes(b"ffmpeg")
+        ocr_project = self.root / "managed-ocr-output.mosp"
+        ocr_srt = self.root / "managed-ocr-output.srt"
+        ocr_project.write_text(self.project.read_text(encoding="utf-8"), encoding="utf-8")
+        ocr_srt.write_text(self.srt.read_text(encoding="utf-8"), encoding="utf-8")
+        plan = self.plan({
+            "id": "ocr",
+            "enabled": True,
+            "videoPath": str(video),
+            "regionMode": "full",
+            "threshold": 0.5,
+        })
+        worker_result = {
+            "sourceProjectPath": str(self.project),
+            "sourceSrtPath": str(self.srt),
+            "projectPath": str(ocr_project),
+            "srtPath": str(ocr_srt),
+            "reportPath": "",
+            "warnings": ["managed OCR"],
+            "newlyDisabledCount": 1,
+            "existingDisabledCount": 0,
+            "processedCount": 2,
+            "skippedCount": 0,
+            "failedCount": 0,
+        }
+
+        with (
+            mock.patch("maw.postprocess_pipeline.run_ocr_in_runtime", return_value=worker_result) as run_runtime,
+            mock.patch("maw.postprocess_pipeline.run_ocr_dedup") as run_direct,
+        ):
+            result = run_postprocess_pipeline(
+                plan,
+                media_path=self.media,
+                project_path=self.project,
+                srt_path=self.srt,
+                env_path=self.env_path,
+                ffmpeg_path=ffmpeg,
+                ocr_runtime_root=self.root / "ocr-runtime",
+                cancel_event=Event(),
+            )
+
+        run_runtime.assert_called_once()
+        self.assertEqual(run_runtime.call_args.kwargs["runtime_root"], self.root / "ocr-runtime")
+        run_direct.assert_not_called()
+        self.assertEqual(result.completed_steps, ("ocr",))
+        self.assertEqual(result.warnings, ("managed OCR",))
+        self.assertTrue(result.project_path.is_file())
+        self.assertTrue(result.srt_path.is_file())
+
+    def test_pipeline_accepts_legacy_ocr_artifact_without_translation_field(self) -> None:
+        video = self.root / "clip.mp4"
+        ffmpeg = self.root / "ffmpeg.exe"
+        video.write_bytes(b"video")
+        ffmpeg.write_bytes(b"ffmpeg")
+        ocr_project = self.root / "legacy-ocr-output.mosp"
+        ocr_srt = self.root / "legacy-ocr-output.srt"
+        ocr_project.write_text(self.project.read_text(encoding="utf-8"), encoding="utf-8")
+        ocr_srt.write_text(self.srt.read_text(encoding="utf-8"), encoding="utf-8")
+        legacy_artifact = SimpleNamespace(
+            source_project_path=self.project,
+            source_srt_path=self.srt,
+            project_path=ocr_project,
+            srt_path=ocr_srt,
+            warnings=(),
+        )
+        plan = self.plan({
+            "id": "ocr",
+            "enabled": True,
+            "videoPath": str(video),
+            "regionMode": "full",
+            "threshold": 0.5,
+        })
+
+        with mock.patch("maw.postprocess_pipeline.run_ocr_dedup", return_value=legacy_artifact):
+            result = run_postprocess_pipeline(
+                plan,
+                media_path=self.media,
+                project_path=self.project,
+                srt_path=self.srt,
+                env_path=self.env_path,
+                ffmpeg_path=ffmpeg,
+                cancel_event=Event(),
+            )
+
+        self.assertEqual(result.completed_steps, ("ocr",))
+        self.assertIsNone(result.translated_srt_path)
+
     def test_pipeline_retains_workspace_and_can_resume_after_failure(self) -> None:
         plan = self.plan(self.replace_step(), self.match_step(), retain=True)
-        original_replace = __import__("maw.postprocess_pipeline", fromlist=["run_fixed_replacement"]).run_fixed_replacement
-        with mock.patch("maw.postprocess_pipeline.run_fixed_replacement", side_effect=RuntimeError("mock replace failure")):
+        original_replace = __import__("maw.postprocess_pipeline", fromlist=["run_fixed_process"]).run_fixed_process
+        with mock.patch("maw.postprocess_pipeline.run_fixed_process", side_effect=RuntimeError("mock replace failure")):
             with self.assertRaises(PostprocessPipelineError) as raised:
                 run_postprocess_pipeline(
                     plan,
@@ -237,7 +435,7 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertTrue(error.run_directory.is_dir())
         self.assertTrue(error.current_project.is_file())
 
-        with mock.patch("maw.postprocess_pipeline.run_fixed_replacement", side_effect=original_replace):
+        with mock.patch("maw.postprocess_pipeline.run_fixed_process", side_effect=original_replace):
             result = run_postprocess_pipeline(
                 plan,
                 media_path=self.media,

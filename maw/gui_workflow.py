@@ -50,8 +50,10 @@ class TranscriptionRequest:
     workspace_id: str = ""
     provider: str = "qwen"
     speaker_colors: bool = False
+    generate_spectral: bool = False
     ui_language: str = "zh"
     generate_html: bool = True
+    srt_only: bool = False
     debug_raw: bool = False
     engine: str = ""
     model_path: str = ""
@@ -230,6 +232,8 @@ def build_transcribe_command(
         command = [exe, str(script)]
     command.append(str(request.media_path))
     command.extend(["--output", str(build_output_paths(request.srt_path).srt), "--json", "--no-html", "--with-waveform"])
+    if request.generate_spectral:
+        command.append("--with-spectral")
     if request.debug_raw:
         command.append("--debug-raw")
     if is_local:

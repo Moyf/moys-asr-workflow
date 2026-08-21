@@ -68,7 +68,7 @@
 - `source` 用于缓存失效；媒体文件名、字节大小或最后修改时间变化时会重新计算。
 - 默认密度 100 峰/秒。三小时音频约产生 108 万峰、2.88 MB base64 字符串。
 - 未识别的 `schema` / `encoding` 会被忽略，不阻止工程加载。
-- Qwen/Soniox 命令行生成器默认不内嵌波形；加 `--with-waveform` 时可在转写生成工程文件时把同一 payload 写入顶层 `waveform`。GUI 转写默认开启该模式。
+- Qwen/Soniox/必剪/本地命令行生成器默认不内嵌波形；加 `--with-waveform` 时可在转写生成工程文件时把同一 payload 写入顶层 `waveform`，并在媒体旁生成只含 wave 层的 `.ReaPeaks` 缓存。GUI 转写默认开启该模式。
 - 编辑器首次打开缺少有效 `waveform` 的工程时，仍可能在媒体旁写入 `<媒体名>.waveform.json` sidecar；它使用同一 `source` 签名，可被后续工程复用。sidecar 不属于字幕真源，删除后可重新提取。
 
 ### 1.1a spectral 频谱缓存（可选）
@@ -93,13 +93,13 @@
 
 - `data` 每个频谱采样占 4 字节：主频 uint16（低 15 位有效，0–32767）、密度 uint16（低 14 位有效，0–16383），整体再做 base64。
 - `division` 是时间对齐用的每采样样本数：`sample_rate / division` 即每秒频谱采样数。`sample_rate`、`source` 与主波形一致。
-- **生成时机**：转写生成工程时（`--with-waveform`，GUI 转写默认开启）在媒体旁自动生成 `<媒体名>.ReaPeaks`（若不存在）；服务器只读取已有的 `.ReaPeaks`，不负责生成。自动生成依赖 `numpy`，缺少 ffmpeg/numpy 时静默跳过。
+- **生成时机**：转写生成工程时，`--with-waveform` 在媒体旁自动生成 `<媒体名>.ReaPeaks` 的 wave 层（GUI 默认开启）；只有同时勾选 Launcher 的“生成 ReaPeaks 频谱数据”或传入 `--with-spectral`，才额外执行频谱 FFT 并写入 spectral 层。`--with-spectral` 必须与 `--with-waveform` 一起使用。服务器只读取已有的 `.ReaPeaks`，不负责生成。自动生成依赖 `numpy`，缺少 ffmpeg/numpy 时静默跳过。
 - 解析器读取 REAPER 的 `RPKN`/`RPKL` 文件，取匹配 `peaks_per_second` 分辨率的 spectral 层（`-(int)'s'` 标记）；无 spectral 层、文件缺失或损坏时静默降级，不影响编辑器。
 - 未识别的 `schema` / `encoding` 会被忽略。浏览器端在 `decodeSpectralPayload` 校验这两字段与 `data` 长度（`peak_count * 4`）。
 
 ### 1.1b waveform_reapeaks 波形层（可选）
 
-`waveform_reapeaks` 是 `.ReaPeaks` 最细 wave 层转成的 `moy.asr.waveform.v1` payload（字段与 §1.1 完全一致）。它作为**可选的波形形状来源**：编辑器默认使用本字段绘制包络；没有可用 `.ReaPeaks` 时回退到自研 `waveform`（1000 Hz 重采样），从而避免高频内容的自研重采样欠采样。
+`waveform_reapeaks` 是 `.ReaPeaks` 最细 wave 层转成的 `moy.asr.waveform.v1` payload（字段与 §1.1 完全一致）。它作为**可选的波形形状来源**：编辑器默认使用自研 `waveform`；用户可以在波形设置中切换到本字段绘制包络。没有可用 `.ReaPeaks` 时仍可使用自研 `waveform`（1000 Hz 重采样）。
 
 ```json
 {
@@ -116,6 +116,7 @@
 - 由服务器加载媒体时从 `find_reapeaks` 找到的 `.ReaPeaks` 解析最细 wave 层得到；`peaks_per_second = sample_rate / division`（约 300 峰/秒）。
 - 缺失 `.ReaPeaks` 或没有 wave 层时该字段不出现，编辑器回退自研波形。
 - 与 `spectral` 同源，均为 `.ReaPeaks` 派生的可丢弃缓存，非真源。
+- 没有 `spectral` 数据时，编辑器会自动取消并禁用“频谱颜色”开关；后台读到合法频谱后重新启用该开关。
 
 ### 1.2 workspace 工作区
 
@@ -404,6 +405,8 @@
   "name": "表情包名（去扩展名）",
   "filename": "表情包名.png",
   "rel": "相对 sticker_root 的路径，通常等于 filename",
+  "width": 1920,
+  "height": 1080,
   "start": 1234,
   "end": 9999
 }
@@ -414,6 +417,7 @@
 | `name` | 显示名，通常等于文件名去扩展名 |
 | `filename` | 完整文件名（含扩展名） |
 | `rel` | 相对 `sticker_root` 的路径。平铺目录下等于 `filename` |
+| `width` / `height` | 可选正整数，原始图片像素宽高。旧工程缺失时，导出器使用兼容默认值。 |
 | `start` / `end` | 表情包时间范围（毫秒）。导出 EDL 时使用；跨多句时通常等于 head 段的 `start` 与最后一句的 `end` |
 
 ### 4.2 sticker_ref（后续条引用 head）

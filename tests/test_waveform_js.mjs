@@ -29,6 +29,20 @@ test('decodes compact signed min/max peaks', () => {
 });
 
 
+test('builds a reusable pixel envelope from waveform peaks', () => {
+  const envelope = helpers.buildWaveformEnvelope(
+    Int8Array.from([-10, 10, -20, 20, -30, 30, -40, 40]),
+    2,
+    4,
+    0,
+    2000,
+    2,
+  );
+  assert.deepEqual(Array.from(envelope.low), [-20, -40]);
+  assert.deepEqual(Array.from(envelope.high), [20, 40]);
+});
+
+
 test('uses deltaX when macOS remaps Shift+wheel', () => {
   assert.equal(helpers.wheelScrollDelta({ deltaY: 0, deltaX: -120 }), -120);
   assert.equal(helpers.wheelScrollDelta({ deltaY: 0, deltaX: 120 }), 120);
@@ -134,6 +148,21 @@ test('uses display defaults for each built-in workspace preset', () => {
   assert.equal(builtinWorkspaces['wave-right'].editorDisplay.cueEditorShowTimeActions, false);
 });
 
+test('captures and clamps semantic waveform top-edge anchors', () => {
+  assert.equal(helpers.waveformTopEdgeMs({ mode: 'basic', basicWindowStartMs: 1234 }), 1234);
+  assert.equal(helpers.waveformTopEdgeMs({ mode: 'basic', basicWindowStartMs: -4 }), 0);
+  assert.equal(helpers.waveformTopEdgeMs({ mode: 'multi', scrollTop: 265, rowHeight: 120, rowGap: 10, secondsPerRow: 10 }), 20000);
+  assert.equal(helpers.waveformTopEdgeMs({ mode: 'multi', scrollTop: 0, rowHeight: 120, rowGap: 10, secondsPerRow: 10 }), 0);
+});
+
+test('restores semantic waveform anchors without accepting malformed values', () => {
+  assert.equal(helpers.restoreWaveformTopEdgeMs({ mode: 'basic', durationMs: 60000, visibleSeconds: 10 }, 55000), 50000);
+  assert.equal(helpers.restoreWaveformTopEdgeMs({ mode: 'basic', durationMs: 60000, visibleSeconds: 10 }, -1), 0);
+  assert.equal(helpers.restoreWaveformTopEdgeMs({ mode: 'basic', durationMs: 60000, visibleSeconds: 10 }, 1.5), null);
+  assert.equal(helpers.restoreWaveformTopEdgeMs({ mode: 'multi', durationMs: 60000, secondsPerRow: 10 }, 25500), 20000);
+  assert.equal(helpers.restoreWaveformTopEdgeMs({ mode: 'multi', durationMs: 60000, secondsPerRow: 10 }, 'bad'), null);
+});
+
 
 test('registers the three-fold built-in workspace from the example layout', () => {
   const workspace = builtinWorkspaces['three-fold'];
@@ -215,6 +244,61 @@ test('moves one shared boundary while preserving both cue durations', () => {
 });
 
 
+test('finds the active cue in a gap and prefers the cue at a shared boundary', () => {
+  const segments = [
+    { start: 0, end: 1000 },
+    { start: 2000, end: 3000 },
+    { start: 3000, end: 4200 },
+  ];
+  assert.equal(helpers.findActiveCueIndex(segments, 1500), 0);
+  assert.equal(helpers.findActiveCueIndex(segments, 3000), 2);
+  assert.equal(helpers.findActiveCueIndex(segments, 5000), 2);
+});
+
+
+test('skips disabled cues while finding the active waveform cue', () => {
+  const segments = [
+    { start: 0, end: 1000 },
+    { start: 1000, end: 2000, disabled: true },
+    { start: 3000, end: 4000 },
+  ];
+  assert.equal(helpers.findActiveCueIndex(segments, 1500), 0);
+  assert.equal(helpers.findActiveCueIndex(segments, 2500), 0);
+  assert.equal(helpers.findActiveCueIndex(segments, 3000), 2);
+  assert.equal(helpers.findActiveCueIndex(segments, 1500, false), 1);
+});
+
+
+test('follows a multi-row playhead using the actual viewport comfort zone', () => {
+  // 390px 视口的上下舒适区各为 78px；第二行仍在虚拟化缓冲内，
+  // 但已经超出实际可视舒适区，播放时应触发跟随。
+  assert.equal(helpers.isMultiRowInComfortZone(1, 0, 390, 120), true);
+  assert.equal(helpers.isMultiRowInComfortZone(2, 0, 390, 120), false);
+  assert.equal(helpers.isMultiRowInComfortZone(1, 100, 390, 120), false);
+});
+
+
+test('locates the first cue overlapping a waveform row without scanning earlier cues', () => {
+  const segments = [
+    { start: 0, end: 900 },
+    { start: 900, end: 1800 },
+    { start: 1750, end: 2300 },
+    { start: 3000, end: 3600 },
+  ];
+  assert.equal(helpers.firstCueIndexOverlapping(segments, 1800), 2);
+  assert.equal(helpers.firstCueIndexOverlapping(segments, 2300), 3);
+  assert.equal(helpers.firstCueIndexOverlapping(segments, 3600), 4);
+});
+
+
+test('Alt temporarily reverses the automatic adjacent-cue setting', () => {
+  assert.equal(helpers.shouldAdjustAdjacentCuesIndependently(false, false), true);
+  assert.equal(helpers.shouldAdjustAdjacentCuesIndependently(true, false), false);
+  assert.equal(helpers.shouldAdjustAdjacentCuesIndependently(false, true), false);
+  assert.equal(helpers.shouldAdjustAdjacentCuesIndependently(true, true), true);
+});
+
+
 test('Alt-drag moves only the hit side of a shared boundary, leaving the neighbor untouched', () => {
   // 共享边界在 1000：默认拖动会同时改左侧 end 和右侧 start；Alt 独立拖动只改被命中一侧。
   const segments = [
@@ -232,6 +316,30 @@ test('Alt-drag moves only the hit side of a shared boundary, leaving the neighbo
   assert.deepEqual(JSON.parse(JSON.stringify(segments)), [
     { start: 0, end: 800, items: [{ text: 'A', start: 0, end: 800 }] },
     { start: 1500, end: 2200, items: [{ text: 'B', start: 1500, end: 2200 }] },
+  ]);
+
+  // 独立拉开后，边界仍应允许反向拖回；邻字幕的固定边界是限制，
+  // 不能使用“当前值”作为单向上限或下限。
+  const reversibleEnd = [
+    { start: 0, end: 1000 },
+    { start: 1000, end: 2200 },
+  ];
+  helpers.applyIndependentEdge(reversibleEnd, 0, 'end', 800, 100);
+  helpers.applyIndependentEdge(reversibleEnd, 0, 'end', 900, 100);
+  assert.deepEqual(JSON.parse(JSON.stringify(reversibleEnd)), [
+    { start: 0, end: 900 },
+    { start: 1000, end: 2200 },
+  ]);
+
+  const reversibleStart = [
+    { start: 0, end: 1000 },
+    { start: 1000, end: 2200 },
+  ];
+  helpers.applyIndependentEdge(reversibleStart, 0, 'start', 1200, 100);
+  helpers.applyIndependentEdge(reversibleStart, 0, 'start', 1100, 100);
+  assert.deepEqual(JSON.parse(JSON.stringify(reversibleStart)), [
+    { start: 0, end: 1000 },
+    { start: 1100, end: 2200 },
   ]);
 });
 
@@ -591,6 +699,33 @@ test('rejects unknown or malformed spectral payloads', () => {
   const wrongSchema = encodeSpectralPayload([[1, 2]]);
   wrongSchema.schema = 'moy.asr.waveform.v1';
   assert.equal(helpers.decodeSpectralPayload(wrongSchema), null);
+});
+
+
+test('disables spectral colors when spectral data is unavailable', () => {
+  const toggle = {
+    disabled: false,
+    checked: true,
+    attributes: {},
+    setAttribute(name, value) { this.attributes[name] = value; },
+  };
+
+  helpers.syncSpectralColorToggle(toggle, false, true);
+  assert.equal(toggle.disabled, true);
+  assert.equal(toggle.checked, false);
+  assert.equal(toggle.attributes['aria-disabled'], 'true');
+
+  helpers.syncSpectralColorToggle(toggle, true, true);
+  assert.equal(toggle.disabled, false);
+  assert.equal(toggle.checked, true);
+  assert.equal(toggle.attributes['aria-disabled'], 'false');
+  assert.equal(toggle.attributes['aria-busy'], 'false');
+
+  helpers.syncSpectralColorToggle(toggle, true, true, true);
+  assert.equal(toggle.disabled, true);
+  assert.equal(toggle.checked, true);
+  assert.equal(toggle.attributes['aria-disabled'], 'true');
+  assert.equal(toggle.attributes['aria-busy'], 'true');
 });
 
 

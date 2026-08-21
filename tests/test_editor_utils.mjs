@@ -1,17 +1,122 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { TextDecoder } from 'node:util';
 import vm from 'node:vm';
 
 
 const source = fs.readFileSync(new URL('../web/editor-utils.js', import.meta.url), 'utf8');
-const context = { window: {} };
+const context = { window: {}, TextDecoder };
 vm.runInNewContext(source, context);
 const helpers = context.window.AsrEditorUtils;
 const i18nSource = fs.readFileSync(new URL('../web/editor-i18n.js', import.meta.url), 'utf8');
 const i18nContext = { window: {} };
 vm.runInNewContext(i18nSource, i18nContext);
 const i18n = i18nContext.window.MAWE_I18N;
+
+function parseXml(xml) {
+  const result = spawnSync('python', ['-c', [
+    'import sys, xml.etree.ElementTree as ET',
+    'ET.fromstring(sys.stdin.read())',
+    'print("ok")',
+  ].join(';')], { input: xml, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  return xml;
+}
+
+function parseXmlFileAudio(xml) {
+  const script = [
+    'import json, sys, xml.etree.ElementTree as ET',
+    'root = ET.fromstring(sys.stdin.read())',
+    'files = []',
+    'for element in root.findall(".//file"):','  audio = element.find("./media/audio")',
+    '  files.append({"id": element.attrib["id"], "channelcount": audio.findtext("channelcount") if audio is not None else None})',
+    'print(json.dumps(files))',
+  ].join('\n');
+  const result = spawnSync('python', ['-c', script], { input: xml, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  return JSON.parse(result.stdout);
+}
+
+function parseSrt(srt) {
+  return srt.trim().split(/\n\n+/).map((block) => {
+    const lines = block.split('\n');
+    const match = /^(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})$/.exec(lines[1]);
+    assert.ok(match);
+    return { number: Number(lines[0]), start: match[1], end: match[2], text: lines.slice(2).join('\n') };
+  });
+}
+
+function xmlElements(xml, tag) {
+  return [...xml.matchAll(new RegExp(`<${tag}(?:\\s[^>]*)?>[\\s\\S]*?<\\/${tag}>`, 'g'))].map((match) => match[0]);
+}
+
+
+test('maps exactly the approved preview font families in Chinese', () => {
+  const cases = [
+    ['Microsoft YaHei', '微软雅黑'],
+    ['Microsoft YaHei UI', '微软雅黑'],
+    ['SimHei', '黑体'],
+    ['SimSun', '宋体'],
+    ['NSimSun', '新宋体'],
+    ['FangSong', '仿宋'],
+    ['KaiTi', '楷体'],
+    ['PingFang SC', '苹方'],
+    ['Heiti SC', '黑体-简'],
+    ['Songti SC', '宋体-简'],
+    ['Kaiti SC', '楷体-简'],
+    ['Source Han Sans SC', '思源黑体'],
+    ['Source Han Serif SC', '思源宋体'],
+    ['Noto Sans CJK SC', 'Noto Sans CJK 简体中文'],
+    ['Noto Serif CJK SC', 'Noto Serif CJK 简体中文'],
+  ];
+  for (const [family, displayName] of cases) {
+    assert.equal(helpers.subtitleFontFamilyDisplayName(family, 'zh'), displayName);
+    assert.equal(helpers.subtitleFontFamilyDisplayName(family, 'en'), family);
+  }
+});
+
+
+test('leaves unknown and non-string preview font families unchanged', () => {
+  assert.equal(helpers.subtitleFontFamilyDisplayName('MAW Test Sans', 'zh'), 'MAW Test Sans');
+  assert.equal(helpers.subtitleFontFamilyDisplayName('Microsoft Yahei', 'zh'), 'Microsoft Yahei');
+  assert.equal(helpers.subtitleFontFamilyDisplayName(null, 'zh'), null);
+});
+
+test('decodes UTF-8, BOM, UTF-16, and Windows GB18030 subtitle bytes', () => {
+  const encode = (label, text) => new TextEncoder().encode(text);
+  const utf8 = encode('utf-8', '1\n00:00:00,000 --> 00:00:01,000\n你好');
+  assert.equal(helpers.decodeSubtitleText(utf8), '1\n00:00:00,000 --> 00:00:01,000\n你好');
+
+  const utf8Bom = new Uint8Array([0xEF, 0xBB, 0xBF, ...utf8]);
+  assert.equal(helpers.decodeSubtitleText(utf8Bom), '1\n00:00:00,000 --> 00:00:01,000\n你好');
+
+  const utf16le = new Uint8Array([0xFF, 0xFE, ...Buffer.from('你好', 'utf16le')]);
+  assert.equal(helpers.decodeSubtitleText(utf16le), '你好');
+
+  assert.equal(helpers.decodeSubtitleText(new Uint8Array([0xC4, 0xE3, 0xBA, 0xC3])), '你好');
+});
+
+test('normalizes and resolves keyboard operation references', () => {
+  assert.equal(helpers.normalizeKeyboardOperationReferenceMode('pointer'), 'pointer');
+  assert.equal(helpers.normalizeKeyboardOperationReferenceMode('playhead'), 'playhead');
+  assert.equal(helpers.normalizeKeyboardOperationReferenceMode('invalid'), 'pointer');
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.resolveKeyboardOperationReference('pointer', {
+    pointer: { timeMs: 2000, track: 'extension', trackId: 'secondary' },
+  }))), { timeMs: 2000, track: 'extension', trackId: 'secondary', source: 'pointer' });
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.resolveKeyboardOperationReference('playhead', {
+    pointer: { timeMs: 2000, track: 'main' },
+    playheadTarget: { kind: 'extension', timeMs: 6000, trackId: 'secondary' },
+  }))), { timeMs: 6000, track: 'extension', trackId: 'secondary', source: 'playhead' });
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.resolveKeyboardOperationReference('playhead', {
+    playheadTarget: { kind: 'main', timeMs: 6000 },
+  }))), { timeMs: 6000, track: 'main', trackId: null, source: 'playhead' });
+  assert.equal(helpers.resolveKeyboardOperationReference('pointer', { pointer: null }), null);
+});
 
 
 test('translates editor project controls and dynamic save messages to English', () => {
@@ -35,6 +140,24 @@ test('translates editor project controls and dynamic save messages to English', 
     'Replaced the binding for main subtitle 1 with extension subtitle 2',
   );
   assert.equal(i18n.translateText('保存工程', 'zh'), '保存工程');
+});
+
+
+test('translates adjacent adjustment and current-cue operation settings to English', () => {
+  assert.equal(i18n.translateText('字幕时间调整', 'en'), 'Subtitle timing adjustment');
+  assert.equal(i18n.translateText('自动吸附调整相邻字幕', 'en'), 'Automatically snap-adjust adjacent subtitles');
+  assert.equal(
+    i18n.translateText('开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动', 'en'),
+    'When enabled, dragging or fine-tuning adjacent cues on the same track links them by default; hold Alt to temporarily separate them. When disabled, they adjust independently by default; hold Alt to temporarily link them.',
+  );
+  assert.equal(
+    i18n.translateText('开启后，按 Esc 会恢复当前字幕编辑前的文本；关闭后按 Esc 保留文本改动并退出编辑', 'en'),
+    'When enabled, Esc restores the text from before editing; when disabled, Esc keeps text changes and exits editing.',
+  );
+  assert.equal(
+    i18n.translateText('关闭后按 Esc 保留文本改动；开启后恢复编辑前的文本。', 'en'),
+    'When disabled, Esc keeps text changes; when enabled, it restores the text from before editing.',
+  );
 });
 
 
@@ -851,6 +974,636 @@ test('maps source time and media intervals after restored gaps are excluded', ()
     { start: 1600, end: 4000 },
     { start: 4500, end: 6000 },
   ]);
+});
+
+test('characterizes removed-gap mapping and sticker inheritance without mutation', () => {
+  const gaps = [
+    { start: 1000, end: 1600, removed: true },
+    { start: 2400, end: 3000, removed: false },
+    { start: 4000, end: 4500, removed: true },
+  ];
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.getRemovedGapRanges(gaps))), [
+    { start: 1000, end: 1600 },
+    { start: 4000, end: 4500 },
+  ]);
+  const segments = [
+    { sticker: { name: 'head', path: 'head.png' } },
+    { sticker_ref: { name: 'head', headIdx: 0 } },
+  ];
+  const before = JSON.stringify(segments);
+  const inherited = helpers.resolveMergedGroupInheritance(segments, [1], 'sticker', 'sticker_ref');
+  assert.deepEqual(JSON.parse(JSON.stringify(inherited.ref)), segments[1].sticker_ref);
+  inherited.ref.name = 'changed';
+  assert.equal(JSON.stringify(segments), before);
+});
+
+test('builds an immutable gap-removed export plan with cue and sticker projection', () => {
+  const project = {
+    media: { path: 'C:\\Media\\测试 & take.mp4', type: 'video', durationMs: 6000 },
+    gaps: [
+      { start: 1000, end: 1600, removed: true },
+      { start: 4000, end: 4500, removed: true },
+    ],
+    segments: [
+      { id: 'a', start: 700, end: 950, text: 'before', sticker: { name: 's', path: 's.png' } },
+       { id: 'b', start: 1200, end: 1800, text: 'crossing', sticker_ref: { name: 'wrong', headIdx: 0 } },
+      { id: 'c', start: 1300, end: 1500, text: 'removed', sticker_ref: { name: 's', headIdx: 0 } },
+      { id: 'd', start: 2000, end: 2200, text: 'disabled', disabled: true },
+      { id: 'e', start: 4700, end: 5200, text: 'after', sticker_ref: { name: 's', headIdx: 0 } },
+      { id: 'f', start: 2500, end: 2600, text: 'dangling', sticker_ref: { name: 'bad', headIdx: 99 } },
+    ],
+    multi_subtitle: { enabled: true, tracks: [{ id: 'translation', segments: [
+      { id: 'x', start: 2100, end: 2300, text: '副轨' },
+      { id: 'y', start: 4100, end: 4700, text: 'disabled extension', disabled: true },
+    ] }] },
+  };
+  const snapshot = JSON.stringify(project);
+  const plan = helpers.buildProjectExportPlan(project, {
+    mode: 'gap_removed', fps: '30000/1001', dropFrame: false,
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(plan.keptIntervals)), [
+    { start: 0, end: 1000 }, { start: 1600, end: 4000 }, { start: 4500, end: 6000 },
+  ]);
+  assert.equal(plan.outputDurationMs, 4900);
+  assert.equal(plan.mapSourceToOutput(5000), 3900);
+  const serializedPlan = JSON.parse(JSON.stringify(plan));
+  assert.equal(helpers.mapExportTime(serializedPlan.mapping, 5000), 3900);
+  assert.equal(helpers.exportPolicyMsToFrames(serializedPlan.framePolicy, 1001), 30);
+  assert.deepEqual(plan.cues.main.map((cue) => cue.id), ['a', 'b', 'e', 'f']);
+  assert.deepEqual(plan.cues.extension.map((cue) => cue.id), ['x']);
+  assert.deepEqual(JSON.parse(JSON.stringify(plan.cues.extension.map((cue) => [cue.startMs, cue.endMs]))), [[1500, 1700]]);
+  const disabledExtension = helpers.buildProjectExportPlan({
+    ...project, multi_subtitle: { ...project.multi_subtitle, enabled: false },
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(disabledExtension.cues.extension)), []);
+  assert.ok(plan.cues.main.find((cue) => cue.id === 'b').endMs > plan.cues.main.find((cue) => cue.id === 'b').startMs);
+  assert.deepEqual(JSON.parse(JSON.stringify(plan.stickers.map((sticker) => sticker.headIndex))), [0, 1, 4]);
+  assert.ok(plan.warnings.some((warning) => warning.code === 'dangling_sticker_reference'));
+  assert.ok(plan.warnings.some((warning) => warning.code === 'stale_sticker_reference'));
+  assert.equal(JSON.stringify(project), snapshot);
+  assert.equal(Object.isFrozen(plan), true);
+  assert.equal(Object.isFrozen(plan.keptIntervals), true);
+  project.gaps[0].start = 0;
+  assert.equal(plan.mapSourceToOutput(1400), 1000);
+});
+
+test('consumes schema-shaped media, duration, gap_remove, and sticker resources', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: 'fixture.mp4',
+    waveform: { duration_ms: 6000 },
+    gap_remove: { gaps: [{ start: 1000, end: 1600, removed: true }] },
+    segments: [{ id: 'head', start: 0, end: 900, sticker: {
+      name: 'schema-sticker', rel: 'nested/sticker.png', filename: 'sticker.png', start: 100, end: 800,
+    } }],
+  });
+  assert.equal(plan.media.path, 'fixture.mp4');
+  assert.equal(plan.sourceDurationMs, 6000);
+  assert.deepEqual(JSON.parse(JSON.stringify(plan.keptIntervals)), [
+    { start: 0, end: 1000 }, { start: 1600, end: 6000 },
+  ]);
+  assert.equal(plan.stickers[0].path, 'nested/sticker.png');
+});
+
+test('omits malformed cue timings without coercion', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: 'fixture.mp4', duration_ms: 1000,
+    segments: [
+      { id: 'string', start: '0', end: 100 },
+      { id: 'fraction', start: 100, end: 100.5 },
+      { id: 'negative', start: -1, end: 200 },
+      { id: 'inverted', start: 300, end: 200 },
+      { id: 'good', start: 400, end: 500 },
+    ],
+  }, { mode: 'gap_removed' });
+  assert.deepEqual(plan.cues.main.map((cue) => cue.id), ['good']);
+  assert.equal(plan.warnings.filter((warning) => warning.code === 'invalid_cue').length, 4);
+});
+
+test('uses sticker bounds when present and reports self references and empty exports', () => {
+  const project = {
+    media: { path: 'fixture.mp4', durationMs: 3000 },
+    gaps: [{ start: 1000, end: 2000, removed: true }],
+    segments: [
+      { start: 0, end: 3000, sticker: { name: 'bounded', path: 's.png', start: 2200, end: 2800 } },
+      { start: 0, end: 500, sticker: { name: 'self', path: 'self.png' }, sticker_ref: { headIdx: 1 } },
+      { start: 0, end: 500, disabled: true },
+    ],
+  };
+  const plan = helpers.buildProjectExportPlan(project);
+  assert.deepEqual(JSON.parse(JSON.stringify(plan.stickers.map(({ sourceStartMs, sourceEndMs }) => [sourceStartMs, sourceEndMs]))), [[2200, 2800]]);
+  assert.ok(plan.warnings.some((warning) => warning.code === 'dangling_sticker_reference'));
+
+  const disabled = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', durationMs: 3000 },
+    gaps: [{ start: 1000, end: 2000, removed: true }],
+    segments: [{ start: 0, end: 500, disabled: true }],
+  });
+  assert.ok(disabled.warnings.some((warning) => warning.code === 'no_enabled_cues'));
+});
+
+test('omits disabled sticker heads and their references, including all-disabled projects', () => {
+  const project = {
+    media: { path: 'fixture.mp4', durationMs: 2000 },
+    segments: [
+      { start: 0, end: 500, disabled: true, sticker: { path: 'disabled.png' } },
+      { start: 500, end: 1000, sticker_ref: { headIdx: 0 } },
+    ],
+  };
+  const plan = helpers.buildProjectExportPlan(project, { mode: 'source' });
+  assert.deepEqual(JSON.parse(JSON.stringify(plan.stickers)), []);
+  assert.ok(plan.warnings.some((warning) => warning.code === 'dangling_sticker_reference'));
+  const allDisabled = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', durationMs: 2000 },
+    segments: [{ start: 0, end: 500, disabled: true, sticker: { path: 'disabled.png' } }],
+  }, { mode: 'source' });
+  assert.equal(allDisabled.stickers.length, 0);
+});
+
+test('uses exact fractional frame profiles and rejects drop-frame requests', () => {
+  for (const fps of [24, 25, 30, 50, 60, '30000/1001', '60000/1001']) {
+    assert.equal(helpers.resolveExportFrameProfile(fps).name, String(fps));
+  }
+  assert.equal(helpers.exportMsToFrames(1001, '30000/1001', 'floor'), 30);
+  assert.equal(helpers.exportMsToFrames(1001, '30000/1001', 'ceil'), 30);
+  assert.equal(helpers.exportMsToFrames(41, 24, 'ceil'), 1);
+  assert.throws(() => helpers.resolveExportFrameProfile('30000/1001', true), /drop-frame/);
+  assert.throws(() => helpers.resolveExportFrameProfile(29.97, false), /unsupported/);
+});
+
+test('rejects malformed export inputs and unknown options explicitly', () => {
+  const base = { media: { path: 'fixture.mp4', durationMs: 1000 }, segments: [] };
+  assert.throws(() => helpers.buildProjectExportPlan({ ...base, media: { durationMs: 1000 } }), /missing export media path/);
+  assert.throws(() => helpers.buildProjectExportPlan({ ...base, media: { path: 'x', durationMs: 0 } }), /missing export media duration/);
+  assert.throws(() => helpers.buildProjectExportPlan({ ...base, gaps: [{ start: 500, end: 400 }] }), /invalid export gap interval/);
+  assert.throws(() => helpers.buildProjectExportPlan({ ...base, gaps: [{ start: '1', end: 2 }] }), /invalid export gap interval/);
+  assert.throws(() => helpers.buildProjectExportPlan({ ...base, gaps: [{ start: 1.5, end: 2 }] }), /invalid export gap interval/);
+  assert.throws(() => helpers.buildProjectExportPlan({ ...base, gaps: [{ start: -1, end: 2 }] }), /invalid export gap interval/);
+  assert.throws(() => helpers.buildProjectExportPlan({ ...base, gaps: 'bad' }), /invalid export gaps/);
+  assert.throws(() => helpers.buildProjectExportPlan({ ...base, gaps: [{ start: 1, end: 2 }] }, { mode: 'unknown' }), /unsupported export mode/);
+  assert.throws(() => helpers.buildProjectExportPlan(base, { dropFrame: 'false' }), /must be boolean/);
+  assert.ok(helpers.buildProjectExportPlan(base).warnings.some((warning) => warning.code === 'no_removed_gaps'));
+});
+
+test('baseline export plan keeps Todo 2 defaults and source path content', () => {
+  const project = {
+    media: 'C:\\fixtures\\baseline take.mp4',
+    waveform: { duration_ms: 1000 },
+    segments: [],
+  };
+  const plan = helpers.buildProjectExportPlan(project);
+  assert.equal(plan.mode, 'gap_removed');
+  assert.equal(plan.frameProfile.name, '30');
+  assert.equal(plan.media.path, project.media);
+  assert.equal(plan.framePolicy.dropFrame, false);
+});
+
+test('defines a portable export-options contract from synthetic fixture data', () => {
+  const fixtureRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'export');
+  const fixturePaths = ['synthetic-windows.mosp', 'synthetic-posix.mosp'].map((name) => path.join(fixtureRoot, name));
+  assert.deepEqual(fixturePaths.map((fixturePath) => fs.existsSync(fixturePath)), [true, true]);
+  const options = helpers.normalizeExportOptions({
+    timelineMode: 'gap_removed', fps: '30000/1001', subtitleTracks: 'main',
+    baseName: '测试-take',
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(options)), JSON.parse(fs.readFileSync(
+    path.join(fixtureRoot, 'expected-options.json'), 'utf8',
+  )));
+  assert.equal(options.nativeTextObjects, false);
+  assert.equal(options.dropFrame, false);
+  fixturePaths.forEach((fixturePath, index) => {
+    const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+    const plan = helpers.buildProjectExportPlan(fixture, options);
+    assert.equal(plan.media.path, fixture.media);
+    assert.equal(plan.outputDurationMs, index === 0 ? 4900 : 6000);
+    assert.equal(plan.stickers.length, 1);
+  });
+  assert.equal(Object.isFrozen(options), true);
+});
+
+test('normalizes closed FPS and track choices without guessing unsupported values', () => {
+  for (const fps of [24, 25, 30, 50, 60, '30000/1001', '60000/1001']) {
+    assert.equal(helpers.normalizeExportOptions({ fps }).fps, String(fps));
+  }
+  assert.equal(helpers.normalizeExportOptions({ subtitleTracks: 'main_and_extension' }).subtitleTracks, 'main_and_extension');
+  assert.throws(() => helpers.normalizeExportOptions({ fps: 29.97 }), /unsupported export FPS/);
+  assert.throws(() => helpers.normalizeExportOptions({ dropFrame: true }), /drop-frame/);
+  assert.throws(() => helpers.normalizeExportOptions({ subtitleTracks: 'all' }), /unsupported subtitle tracks/);
+  assert.throws(() => helpers.normalizeExportOptions([]), /export options must be an object/);
+  assert.throws(() => helpers.normalizeExportOptions({ unknownOption: true }), /unknown export option: unknownOption/);
+});
+
+test('sanitizes deterministic names and escapes XML and file URLs', () => {
+  const names = helpers.buildExportNames('..\\CON: 测试 / take?.mp4');
+  assert.equal(names.baseName, '__CON_ 测试 _ take_');
+  assert.deepEqual(JSON.parse(JSON.stringify(names.files)), {
+    project: '__CON_ 测试 _ take_.xml',
+    subtitles: '__CON_ 测试 _ take_.srt',
+  });
+  assert.ok(!/[\\/\u0000-\u001f]/.test(names.baseName));
+  assert.notEqual(names.baseName, '.');
+  assert.notEqual(names.baseName, '..');
+  for (const reserved of ['CON', 'PRN', 'AUX', 'NUL', 'COM1', 'LPT9', 'con. ', 'AUX...']) {
+    const safe = helpers.buildExportNames(reserved).baseName;
+    assert.notEqual(safe.toUpperCase(), reserved.trim().toUpperCase());
+    assert.equal(safe, safe.replace(/[. ]+$/, ''));
+    assert.ok(!/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:[. ]*)$/i.test(safe));
+  }
+  assert.equal(helpers.escapeExportXml('a<&>"\''), 'a&lt;&amp;&gt;&quot;&apos;');
+  assert.equal(
+    helpers.exportPathToFileUrl('C:\\Fixtures\\测试 & take\".mp4'),
+    'file://localhost/C:/Fixtures/%E6%B5%8B%E8%AF%95%20%26%20take%22.mp4',
+  );
+  assert.equal(
+    helpers.exportPathToFileUrl('/fixtures/测试 & take.mp4'),
+    'file:///fixtures/%E6%B5%8B%E8%AF%95%20%26%20take.mp4',
+  );
+  assert.equal(
+    helpers.exportPathToFileUrl('file://server/share/测试.mp4'),
+    'file://server/share/%E6%B5%8B%E8%AF%95.mp4',
+  );
+  assert.equal(
+    helpers.exportPathToFileUrl('\\\\server\\share\\测试.mp4'),
+    'file://server/share/%E6%B5%8B%E8%AF%95.mp4',
+  );
+  assert.throws(() => helpers.exportPathToFileUrl('file://server'), /UNC file URL must include a share/);
+});
+
+test('rejects XML 1.0 forbidden controls and preserves allowed whitespace controls', () => {
+  for (const codePoint of [0, 8, 11, 12, 14, 31]) {
+    assert.throws(() => helpers.escapeExportXml(`bad${String.fromCodePoint(codePoint)}`), /XML 1\.0 forbidden control/);
+  }
+  assert.equal(helpers.escapeExportXml('tab\tline\nreturn\r'), 'tab\tline\nreturn\r');
+});
+
+test('rejects pathless or malformed names before any output ownership is claimed', () => {
+  assert.throws(() => helpers.normalizeExportOptions({ baseName: '' }), /base name/);
+  assert.throws(() => helpers.normalizeExportOptions({ baseName: '\u0000' }), /base name/);
+  assert.throws(() => helpers.normalizeExportOptions({ baseName: '.' }), /base name/);
+  assert.throws(() => helpers.exportPathToFileUrl(''), /path/);
+});
+
+test('serializes the shared plan as deterministic FCP 7 XML and mapped SRT', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'C:\\fixtures\\测试 & take.mp4', type: 'video', durationMs: 6000 },
+    gaps: [{ start: 1000, end: 1600, removed: true }, { start: 4000, end: 4500, removed: true }],
+    segments: [
+      { id: 'before', start: 700, end: 950, text: 'A & <B>' },
+      { id: 'crossing', start: 1200, end: 1800, text: 'crossing' },
+      { id: 'after', start: 4700, end: 5200, text: 'quote " and apostrophe \'', sticker: {
+        name: 'sticker', rel: 'icons/测试 & icon.png', start: 4700, end: 5200,
+      } },
+    ],
+  }, { fps: '30000/1001', nativeTextObjects: false });
+  const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: false });
+  const srt = helpers.serializeMappedSrt(plan);
+  parseXml(xml);
+  assert.equal((xml.match(/<clipitem\b/g) || []).length, 7);
+  assert.equal((xml.match(/<generatoritem\b/g) || []).length, 0);
+  assert.equal(xmlElements(xml, 'track').length, 3);
+  assert.ok(xml.includes('<duration>149</duration>'));
+  assert.ok(xml.includes('<in>47</in><out>120</out>'));
+  assert.ok(xml.includes('file://localhost/C:/fixtures/%E6%B5%8B%E8%AF%95%20%26%20take.mp4'));
+  assert.ok(xml.includes('file:///icons/%E6%B5%8B%E8%AF%95%20%26%20icon.png'));
+  assert.deepEqual(parseSrt(srt).map(({ start, end }) => [start, end]), [
+    ['00:00:00,700', '00:00:00,950'],
+    ['00:00:01,000', '00:00:01,200'],
+    ['00:00:03,600', '00:00:04,100'],
+  ]);
+  assert.equal(helpers.serializeFcp7Xml(plan, { nativeTextObjects: false }), xml);
+  assert.equal(helpers.serializeMappedSrt(plan), srt);
+});
+
+test('resolves sticker media from sticker_root and emits one clip per subtitle occurrence', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'C:\\fixtures\\source.mp4', type: 'video', durationMs: 12000 },
+    sticker_root: 'E:/素材/表情包',
+    segments: [
+      {
+        id: 'cue-1', start: 1000, end: 2000,
+        sticker: { name: '你得死', filename: '你得死.gif', rel: '描边gif/你得死.gif' },
+      },
+      {
+        id: 'cue-2', start: 3000, end: 4000,
+        sticker_ref: { name: '你得死', headIdx: 0 },
+      },
+    ],
+  }, { mode: 'source' });
+  assert.equal(plan.stickers.length, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(plan.stickers.map(({ path, startMs, endMs }) => ({ path, startMs, endMs })))), [
+    { path: 'E:/素材/表情包/描边gif/你得死.gif', startMs: 1000, endMs: 2000 },
+    { path: 'E:/素材/表情包/描边gif/你得死.gif', startMs: 3000, endMs: 4000 },
+  ]);
+  const xml = helpers.serializeFcp7Xml(plan);
+  parseXml(xml);
+  assert.equal((xml.match(/<clipitem id="sticker-clip-/g) || []).length, 2);
+  assert.equal((xml.match(/<file id="file-sticker-[^"]+">/g) || []).length, 1);
+  assert.match(xml, /<pathurl>file:\/\/localhost\/E(?:%3A|:)\/%E7%B4%A0%E6%9D%90\/%E8%A1%A8%E6%83%85%E5%8C%85\/%E6%8F%8F%E8%BE%B9gif\/.+<\/pathurl>/);
+  assert.match(xml, /<clipitem id="sticker-clip-1"><masterclipid>master-sticker-1<\/masterclipid><name>[^<]+<\/name><enabled>TRUE<\/enabled><alphatype>straight<\/alphatype><pixelaspectratio>square<\/pixelaspectratio>/);
+  assert.match(xml, /<file id="file-sticker-[^"]+">[\s\S]*?<timecode><rate><timebase>30\/1<\/timebase><ntsc>FALSE<\/ntsc><\/rate><string>00:00:00:00<\/string><frame>0<\/frame><displayformat>NDF<\/displayformat><\/timecode>[\s\S]*?<media><video><samplecharacteristics>[\s\S]*?<width>720<\/width><height>480<\/height>/);
+  assert.match(xml, /<clipitem id="sticker-clip-1">[\s\S]*?<start>30<\/start><end>60<\/end>/);
+  assert.match(xml, /<clipitem id="sticker-clip-2">[\s\S]*?<start>90<\/start><end>120<\/end>/);
+});
+
+test('preserves supplied sticker dimensions in FCP7 media metadata', () => {
+  const project = {
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    gaps: [],
+    sticker_root: 'E:/素材/表情包',
+    segments: [{ start: 0, end: 1000, text: '问号', sticker: {
+      name: '超多疑问-黑', filename: '超多疑问-黑.jpg', rel: '超多疑问-黑.jpg',
+      width: 1920, height: 1080, start: 0, end: 1000,
+    } }],
+  };
+  const plan = helpers.buildProjectExportPlan(project, { timelineMode: 'source', fps: 30 });
+  const xml = helpers.serializeFcp7Xml(plan);
+  assert.match(xml, /<width>1920<\/width><height>1080<\/height>/);
+  assert.doesNotMatch(xml, /<width>720<\/width><height>480<\/height>/);
+});
+
+test('keeps FCP7 sticker source range equal to its timeline range', () => {
+  const project = {
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1001 }, gaps: [], sticker_root: 'E:/素材/表情包',
+    segments: [{ start: 101, end: 901, text: '问号', sticker: {
+      name: '超多疑问-黑', filename: '超多疑问-黑.jpg', rel: '超多疑问-黑.jpg', width: 1920, height: 1080,
+      start: 101, end: 901,
+    } }],
+  };
+  const plan = helpers.buildProjectExportPlan(project, { timelineMode: 'source', fps: 30 });
+  const xml = helpers.serializeFcp7Xml(plan);
+  const sticker = xml.match(/<clipitem id="sticker-clip-1">[\s\S]*?<duration>(\d+)<\/duration>[\s\S]*?<start>(\d+)<\/start><end>(\d+)<\/end>[\s\S]*?<in>(\d+)<\/in><out>(\d+)<\/out>/);
+  assert.ok(sticker, 'sticker clip should be serialized');
+  assert.equal(Number(sticker[1]), Number(sticker[3]) - Number(sticker[2]));
+  assert.equal(Number(sticker[1]), Number(sticker[5]) - Number(sticker[4]));
+});
+
+test('declares two-channel video source audio for linked FCP7 media', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'C:\\fixtures\\stereo.mp4', type: 'video', durationMs: 1000 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: 'stereo source' }],
+  }, { mode: 'source' });
+  const xml = helpers.serializeFcp7Xml(plan);
+  parseXml(xml);
+  const videoFile = /<file id="file-source-video-1">[\s\S]*?<\/file>/.exec(xml)?.[0];
+  const audioFile = /<file id="file-source-audio">[\s\S]*?<\/file>/.exec(xml)?.[0];
+  assert.ok(videoFile);
+  assert.ok(audioFile);
+  assert.match(videoFile, /<audio><duration>30<\/duration><channelcount>2<\/channelcount><\/audio>/);
+  assert.match(audioFile, /<audio><duration>30<\/duration><channelcount>2<\/channelcount><\/audio>/);
+  assert.deepEqual(parseXmlFileAudio(xml).filter(({ id }) => id.startsWith('file-source-')), [
+    { id: 'file-source-video-1', channelcount: '2' },
+    { id: 'file-source-audio', channelcount: '2' },
+  ]);
+  assert.match(xml, /<clipitem id="audio-clip-1">[\s\S]*?<sourcetrack><mediatype>audio<\/mediatype><trackindex>1<\/trackindex><channel>1<\/channel><channelcount>2<\/channelcount><\/sourcetrack>[\s\S]*?<link><linkclipref>video-clip-1<\/linkclipref><mediatype>audio<\/mediatype><trackindex>1<\/trackindex>/);
+});
+
+test('emits visible GraphicAndType text clips and omits video for audio-only plans', () => {
+  const audioPlan = helpers.buildProjectExportPlan({
+    media: { path: '/fixtures/audio.wav', type: 'audio', durationMs: 1000 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: 'Audio cue' }],
+  }, { mode: 'source', fps: 30 });
+  const xml = helpers.serializeFcp7Xml(audioPlan, { nativeTextObjects: true });
+  parseXml(xml);
+  assert.equal((xml.match(/<track>/g) || []).length, 1);
+  assert.equal((xml.match(/<clipitem\b/g) || []).length, 1);
+  assert.equal((xml.match(/<generatoritem\b/g) || []).length, 0);
+  assert.doesNotMatch(xml, /<video>/);
+  const videoPlan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: 'Video cue' }],
+  }, { mode: 'source', fps: 30 });
+  const videoXml = helpers.serializeFcp7Xml(videoPlan, { nativeTextObjects: true });
+  assert.equal((videoXml.match(/<generatoritem\b/g) || []).length, 0);
+  assert.match(videoXml, /<clipitem id="text-main-1">[\s\S]*?<effectid>GraphicAndType<\/effectid>[\s\S]*?<parameterid>1<\/parameterid>[\s\S]*?<value>[A-Za-z0-9+/=]+<\/value>/);
+  assert.match(videoXml, /<mediaSource>GraphicAndType<\/mediaSource>/);
+});
+
+test('encodes native GraphicAndType text as Premiere UTF-16LE payload', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: 'TETe 改名' }],
+  }, { mode: 'source', fps: 30 });
+  const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
+  const encoded = /<parameterid>1<\/parameterid>[\s\S]*?<value>([^<]+)<\/value>/.exec(xml)?.[1];
+  assert.ok(encoded);
+  const bytes = Buffer.from(encoded, 'base64');
+  assert.equal(bytes[0], 0xf6);
+  assert.deepEqual([...bytes.subarray(1, 8)], [10, 0, 0, 0, 0, 0, 0]);
+  const payload = JSON.parse(bytes.subarray(8).toString('utf16le'));
+  assert.equal(payload.mTextParam.mStyleSheet.mText, 'TETe 改名');
+  assert.equal(payload.mVersion, 1);
+});
+
+test('writes the preview subtitle font into the GraphicAndType payload', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    preview: { subtitle: { font_family: 'song' } },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '字体' }],
+  }, { mode: 'source', fps: 30 });
+  const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
+  const encoded = /<parameterid>1<\/parameterid>[\s\S]*?<value>([^<]+)<\/value>/.exec(xml)?.[1];
+  const bytes = Buffer.from(encoded, 'base64');
+  const payload = JSON.parse(bytes.subarray(8).toString('utf16le'));
+  assert.equal(payload.mTextParam.mStyleSheet.mFontName.mParamValues[0][1], 'FangSong');
+});
+
+test('selects main, extension, and both subtitle tracks in XML and SRT', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    segments: [{ start: 100, end: 300, text: 'main' }],
+    multi_subtitle: { enabled: true, tracks: [{ segments: [{ start: 400, end: 700, text: 'extension' }] }] },
+  }, { mode: 'source' });
+  for (const subtitleTracks of ['main', 'main_and_extension']) {
+    const xml = helpers.serializeFcp7Xml(plan, { subtitleTracks, nativeTextObjects: true });
+    const srt = helpers.serializeMappedSrt(plan, { subtitleTracks });
+    assert.equal((xml.match(/<clipitem id="text-/g) || []).length, subtitleTracks === 'main' ? 1 : 2);
+    assert.equal(parseSrt(srt).length, subtitleTracks === 'main' ? 1 : 2);
+  }
+});
+
+test('reports malformed intervals, missing sticker paths, and stale serializer warnings', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    gaps: [{ start: 100, end: 200, removed: true }],
+    segments: [
+      { start: 100, end: 100, text: 'empty' },
+      { start: 250, end: 300, text: 'missing sticker', sticker: { name: 'missing', start: 250, end: 300 } },
+    ],
+  });
+  assert.ok(plan.warnings.some((warning) => warning.code === 'invalid_cue'));
+  assert.ok(plan.warnings.some((warning) => warning.code === 'missing_sticker_path'));
+  assert.throws(() => helpers.serializeFcp7Xml({ ...plan, keptIntervals: [{ start: 0, end: 0 }] }), /empty export interval/);
+});
+
+test('clamps gap-removed cues and stickers to source duration before serialization', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    gaps: [{ start: 200, end: 300, removed: true }, { start: 700, end: 800, removed: true }],
+    segments: [
+      { start: 900, end: 5000, text: 'outside', sticker: { path: 's.png', start: 900, end: 5000 } },
+    ],
+  }, { fps: 30 });
+  assert.equal(plan.cues.main[0].sourceEndMs, 1000);
+  assert.equal(plan.stickers[0].sourceEndMs, 1000);
+  assert.ok(plan.warnings.some((warning) => warning.code === 'clamped_cue_to_duration'));
+  assert.ok(plan.warnings.some((warning) => warning.code === 'clamped_sticker_to_duration'));
+  const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
+  const sequenceDuration = Number(/<sequence id="MAW-sequence">[\s\S]*?<duration>(\d+)<\/duration>/.exec(xml)[1]);
+  for (const match of xml.matchAll(/<(?:clipitem|generatoritem)[^>]*>[\s\S]*?<start>(\d+)<\/start><end>(\d+)<\/end>/g)) {
+    assert.ok(Number(match[2]) <= sequenceDuration);
+  }
+});
+
+test('resolves every source video and audio file reference to one definition', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    gaps: [{ start: 200, end: 300, removed: true }],
+    segments: [
+      { start: 0, end: 200, sticker: { path: 'one.png' } },
+      { start: 300, end: 600, sticker: { path: 'two.png' } },
+    ],
+  });
+  const xml = helpers.serializeFcp7Xml(plan);
+  const sourceVideoRefs = [...xml.matchAll(/<clipitem id="video-clip-\d+">[\s\S]*?<file id="([^"]+)"/g)].map((match) => match[1]);
+  const sourceAudioRefs = [...xml.matchAll(/<clipitem id="audio-clip-\d+">[\s\S]*?<file id="([^"]+)"/g)].map((match) => match[1]);
+  assert.ok(sourceVideoRefs.length > 1);
+  assert.deepEqual(new Set(sourceVideoRefs), new Set(['file-source-video-1']));
+  assert.deepEqual(new Set(sourceAudioRefs), new Set(['file-source-audio']));
+  assert.equal((xml.match(/<file id="file-source-video-1"><name>/g) || []).length, 1);
+  assert.equal((xml.match(/<file id="file-source-audio"><name>/g) || []).length, 1);
+  assert.match(xml, /<clipitem id="video-clip-1">[\s\S]*?<in>0<\/in><out>6<\/out>/);
+  assert.match(xml, /<clipitem id="video-clip-2">[\s\S]*?<in>9<\/in><out>30<\/out>/);
+  assert.match(xml, /<clipitem id="audio-clip-1">[\s\S]*?<in>0<\/in><out>6<\/out>/);
+  assert.match(xml, /<clipitem id="audio-clip-2">[\s\S]*?<in>9<\/in><out>30<\/out>/);
+});
+
+test('clamps public export mappings beyond source duration to output duration', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', durationMs: 1000 },
+    gaps: [{ start: 200, end: 300, removed: true }], segments: [],
+  });
+  assert.equal(plan.mapSourceToOutput(5000), plan.outputDurationMs);
+  assert.equal(helpers.mapExportTime(plan.mapping, 5000), plan.outputDurationMs);
+});
+
+test('rejects unsupported serializer subtitle track values', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', durationMs: 1000 }, segments: [],
+  }, { mode: 'source' });
+  assert.throws(() => helpers.serializeFcp7Xml(plan, { subtitleTracks: 'invalid' }), /unsupported subtitle tracks/);
+  assert.throws(() => helpers.serializeMappedSrt(plan, { subtitleTracks: 'invalid' }), /unsupported subtitle tracks/);
+});
+
+test('rejects serializer input that lacks media path, duration, or frame profile', () => {
+  assert.throws(() => helpers.serializeFcp7Xml({ media: { type: 'video' } }), /media path/);
+  assert.throws(() => helpers.serializeMappedSrt({ cues: { main: [] } }), /media path/);
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 }, segments: [],
+  }, { mode: 'source' });
+  assert.throws(() => helpers.serializeFcp7Xml({ ...plan, frameProfile: null }), /frame profile/);
+});
+
+test('translates every project-export option, outcome, and warning key in both locales', () => {
+  const keys = [
+    '导出时间线模式', '去空隙时间线', '原始时间线', '导出帧率', '写入原生字幕文本对象',
+    '导出扩展字幕轨', '主轨字幕', '主轨与扩展轨字幕', '导出文件名', '导出媒体路径缺失',
+    '导出媒体时长缺失', '导出文件名无效', '导出警告',
+    'Premiere FCP 7 XML（实验性）',
+    '实验性 Premiere 交接：导出 FCP 7 XML',
+    '导出 FCP 7 XML 供 Premiere 交接。此交接尚未完成目标应用验证。',
+    '原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。',
+    '导出 XML', 'FCP 7 XML 已保存', 'FCP 7 XML 下载已发起',
+    'FCP 7 XML 保存已取消', 'FCP 7 XML 保存失败', 'FCP 7 XML 导出失败',
+  ];
+  assert.equal(JSON.stringify(i18n.validateTranslationKeys(keys)), JSON.stringify({ zh: [], en: [] }));
+  for (const key of keys) assert.equal(i18n.translateText(key, 'zh'), key);
+  assert.equal(JSON.stringify(i18n.validateTranslationKeys([...keys, '不存在的 Todo 3 key'])), JSON.stringify({
+    zh: ['不存在的 Todo 3 key'], en: ['不存在的 Todo 3 key'],
+  }));
+});
+
+test('builds XML and SRT artifacts from one shared export plan', async () => {
+  // Given: two artifacts derived from one frozen export plan.
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    segments: [{ start: 100, end: 400, text: 'shared plan' }],
+  }, { mode: 'source' });
+  const artifacts = helpers.buildFcp7ExportArtifacts(plan, {
+    baseName: 'fixture', nativeTextObjects: false, subtitleTracks: 'main',
+  });
+  const order = [];
+
+  // When: both browser saves complete.
+  const result = await helpers.saveSequentialExportArtifacts(artifacts, async (artifact) => {
+    order.push(artifact.kind);
+    return { status: 'saved' };
+  });
+
+  // Then: XML is first, SRT is second, and both retain the same plan identity.
+  assert.deepEqual(order, ['xml', 'srt']);
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    xml: 'saved', srt: 'saved', complete: true,
+  });
+  assert.equal(artifacts[0].plan, plan);
+  assert.equal(artifacts[1].plan, plan);
+  assert.equal(Object.isFrozen(artifacts), true);
+  assert.equal(Object.isFrozen(artifacts[0]), true);
+});
+
+test('stops artifact saving after XML cancellation', async () => {
+  // Given: an XML-first export pair.
+  const artifacts = Object.freeze([
+    Object.freeze({ kind: 'xml' }), Object.freeze({ kind: 'srt' }),
+  ]);
+  let calls = 0;
+
+  // When: the first save is cancelled.
+  const result = await helpers.saveSequentialExportArtifacts(artifacts, async () => {
+    calls += 1;
+    return { status: 'cancelled' };
+  });
+
+  // Then: SRT is never requested and is reported as not attempted.
+  assert.equal(calls, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    xml: 'cancelled', srt: 'not_attempted', complete: false,
+  });
+});
+
+test('reports second artifact failure without false complete success', async () => {
+  // Given: an XML-first export pair and distinct browser outcomes.
+  const artifacts = Object.freeze([
+    Object.freeze({ kind: 'xml' }), Object.freeze({ kind: 'srt' }),
+  ]);
+  const outcomes = [{ status: 'saved' }, { status: 'failed' }];
+
+  // When: XML saves and SRT fails.
+  const result = await helpers.saveSequentialExportArtifacts(
+    artifacts,
+    async () => outcomes.shift(),
+  );
+
+  // Then: the partial save remains explicit.
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    xml: 'saved', srt: 'failed', complete: false,
+  });
+});
+
+test('keeps dispatched artifact downloads distinct from confirmed saves', async () => {
+  // Given: a browser that can only dispatch anchor downloads.
+  const artifacts = Object.freeze([
+    Object.freeze({ kind: 'xml' }), Object.freeze({ kind: 'srt' }),
+  ]);
+
+  // When: both downloads are dispatched without save confirmation.
+  const result = await helpers.saveSequentialExportArtifacts(
+    artifacts,
+    async () => ({ status: 'dispatched' }),
+  );
+
+  // Then: the pair completes, but neither artifact is called saved.
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    xml: 'dispatched', srt: 'dispatched', complete: true,
+  });
 });
 
 test('builds an ffconcat plan from kept media intervals', () => {

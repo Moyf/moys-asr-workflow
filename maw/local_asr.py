@@ -905,12 +905,14 @@ def prepared_audio(
 def write_local_outputs(
     *,
     input_path: Path,
+    cache_media_path: Path | None = None,
     output_srt: Path,
     transcription: LocalTranscription,
     segments: list[dict[str, Any]],
     write_json: bool,
     generate_html: bool,
     with_waveform: bool,
+    generate_spectral: bool = False,
 ) -> LocalOutputPaths:
     """Write SRT and optional MAW project/portable editor outputs."""
     output_srt.parent.mkdir(parents=True, exist_ok=True)
@@ -928,7 +930,12 @@ def write_local_outputs(
     if with_waveform:
         from media_cache import embed_media_caches
 
-        project = embed_media_caches(project, input_path).project
+        project = embed_media_caches(
+            project,
+            cache_media_path or input_path,
+            source_media_path=input_path,
+            generate_spectral=generate_spectral,
+        ).project
     json_path.write_text(
         json.dumps(project, ensure_ascii=False, indent=2),
         encoding="utf-8",

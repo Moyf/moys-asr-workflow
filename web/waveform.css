@@ -76,6 +76,12 @@
 }
 .waveform-status.error { color: var(--red-hover); }
 .waveform-status.busy { color: var(--amber-hover); }
+.waveform-spectral-status {
+  color: var(--amber-hover);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.waveform-spectral-status[hidden] { display: none; }
 
 .editor-workspace {
   --waveform-split: 60%;
@@ -554,15 +560,15 @@
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"] {
   bottom: var(--multi-subtitle-bottom-inset);
-  border-style: dotted;
-  border-color: color-mix(in srgb, var(--cue-color) 50%, var(--wave-cue-mix));
+  outline-style: dotted;
+  outline-color: color-mix(in srgb, var(--cue-color) 50%, var(--wave-cue-mix));
   background: color-mix(in srgb, var(--cue-color) 10%, var(--wave-cue-mix));
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"] .waveform-cue-label {
   color: var(--text-secondary);
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"].selected {
-  border-style: solid;
+  outline-style: solid;
   outline-color: var(--accent-hover);
 }
 .waveform-playhead {
@@ -734,7 +740,9 @@
   bottom: 7px;
   height: 35px;
   min-width: 3px;
-  border: 1px solid color-mix(in srgb, var(--cue-color) 80%, white);
+  /* 轮廓用 outline 画在盒外：不占盒内空间、不参与指针命中，
+     避免最外 1px 边界落不到 .waveform-cue-handle 而触发整块拖动。 */
+  outline: 1px solid color-mix(in srgb, var(--cue-color) 80%, white);
   border-radius: 4px;
   background: color-mix(in srgb, var(--cue-color) 42%, var(--wave-cue-mix));
   color: var(--wave-cue-text);
@@ -743,7 +751,7 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: 11px;
-  line-height: 33px;
+  line-height: 35px;
   padding: 0 8px;
   box-shadow: 0 1px 5px var(--wave-cue-shadow);
   touch-action: none;
@@ -752,7 +760,7 @@
 /* 分组徽章：放在块上方的行内区域（bottom = 块高35 + 块底7 + 间距2），
    纯视觉提示不遮挡块内文字；left 由 JS 按块位置写入 */
 .waveform-cue-badge {
-  position: absolute; bottom: calc(44px + var(--badge-stack-index, 0) * 16px); z-index: 6;
+  position: absolute; bottom: calc(44px + var(--badge-stack-index, 0) * 16px); z-index: 7;
   font-size: 11px; line-height: 1.3; padding: 1px 5px; white-space: nowrap;
   color: var(--text-secondary); background: var(--wave-badge-bg); border-radius: 3px;
   pointer-events: none; font-family: var(--font-mono);
@@ -778,13 +786,20 @@
   outline-offset: 1px;
 }
 .waveform-cue-block.active {
-  background: color-mix(in srgb, var(--cue-color) 70%, var(--wave-cue-active-mix));
   color: var(--active-cue-fg);
+}
+/* 播放中块的轮廓让位于选中轮廓，避免覆盖 .selected 的黄色 outline。
+   带 .waveform-row 前缀把特异性追平到 (0,4,0)，与多重字幕轨道规则
+   （.waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"]）
+   打平后靠本规则在文件中更靠后胜出：播放中的副轨块显示播放头轮廓，
+   而不是轨道底色的 dotted 淡轮廓。 */
+.waveform-row .waveform-cue-block.active:not(.selected) {
+  outline: solid 1px var(--wave-playhead);
 }
 .waveform-cue-block.disabled {
   opacity: 0.48;
   color: var(--wave-disabled-text);
-  border-color: var(--wave-disabled-border);
+  outline-color: var(--wave-disabled-border);
   background: repeating-linear-gradient(
     135deg,
     var(--wave-disabled-a) 0 5px,
@@ -834,8 +849,8 @@
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="main"],
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"] {
-  /* 标签和字幕块都使用同一个 lane 高度；border-box 避免块边框额外撑高，
-     导致右侧“主/副”标记与实际轨道中心错开。 */
+  /* 标签和字幕块都使用同一个 lane 高度；块轮廓是画在盒外的 outline，
+     不占盒内高度，右侧“主/副”标记与轨道中心始终对齐。 */
   height: var(--multi-subtitle-lane-height);
   box-sizing: border-box;
   min-height: 0;
@@ -856,8 +871,8 @@
 .waveform-row.multi-subtitle-row .waveform-cue-block.disabled {
   opacity: 0.48;
   color: var(--wave-disabled-text);
-  border-style: dashed;
-  border-color: var(--wave-disabled-border);
+  outline-style: dashed;
+  outline-color: var(--wave-disabled-border);
   background: repeating-linear-gradient(
     135deg,
     var(--wave-disabled-a) 0 5px,
@@ -870,8 +885,9 @@
    以半透明虚影预览将要创建的时间范围。 */
 .waveform-cue-block.waveform-create-preview {
   z-index: 12;
+  outline-style: dashed;
   border-style: dashed;
-  border-color: color-mix(in srgb, var(--cue-color) 80%, white);
+  outline-color: color-mix(in srgb, var(--cue-color) 80%, white);
   background: color-mix(in srgb, var(--cue-color) 28%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--cue-color) 30%, transparent);
   cursor: grabbing;

@@ -88,8 +88,16 @@ def write_artifacts(
     write_srt: bool,
     warnings: tuple[str, ...] = (),
     output_directory: Path | None = None,
+    media_path: Path | None = None,
 ) -> SubtitleArtifact:
     normalized = normalize_project(project)
+    raw_media = normalized.get("media")
+    if media_path is not None and str(media_path).strip() and (
+        not isinstance(raw_media, str) or not raw_media.strip()
+    ):
+        # The active media is a fallback for SRT or media-less project input;
+        # never overwrite a project that already carries its own media.
+        normalized["media"] = str(media_path.expanduser().resolve(strict=False))
     base = source_project_path or source_srt_path
     if base is None:
         raise PostprocessFileError(Path("."), "an input project or SRT is required")
@@ -162,7 +170,8 @@ def _atomic_write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+        encoding = "utf-8-sig" if path.suffix.lower() == ".srt" else "utf-8"
+        with os.fdopen(descriptor, "w", encoding=encoding, newline="\n") as handle:
             _ = handle.write(text)
         os.replace(temporary_name, path)
     except (OSError, UnicodeError):

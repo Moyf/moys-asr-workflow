@@ -52,7 +52,8 @@ Batch 1 已验证场景（localhost 与便携 HTML 均通过真实波形交互�
 | 高 | 波形工具 | 波形多选、精确删除、右键创建、默认选择工具、剃刀工具、Alt 临时拆开共享边界 | 待验收 | 先复现“删到后一条”再修复；边界仍满足 100ms 与不重叠。Batch 1 已完成：删除身份错位根因（`clearSelection`→`commitCuePanelEdit` 在 splice 后写回旧面板文本）、最小修复（splice 前提交面板编辑并重置 `currentCuePanelIdx`）、Del 键 + 波形 Ctrl/Shift 多选最小命令面、5 项 Playwright 回归场景（首/中/尾删除后虚拟滚动验证 + 多选删除 + 全删拒绝）在 localhost 与便携 HTML 双模式各通过 3 次重复。证据：`.omo/evidence/maw-1-1-batch-1/` |
 | 高 | 播放与预览工作区 | 常驻播放工具栏；字幕与当前表情包可拖动/缩放并持久化 | 已确认 | localhost 与便携 HTML 保存重开后位置一致 |
 | 高 | 颜色导出 | 统一 blue 为 `#168cff`；全量及按颜色/未着色导出 SRT、ASS | 已确认 | ASS 实际渲染颜色正确；head/ref 分组一致 |
-| 中 | FCPXML | 单媒体 FCPXML 1.9 子集；不生成 PRPROJ，不宣传 Premiere 兼容 | 已确认 | XML 结构测试加 Final Cut 实机导入 |
+| 中 | FCPXML | 单媒体 Final Cut FCPXML 1.9 子集；这是独立的 Final Cut 交付项，不生成 PRPROJ，也不宣传 Premiere 兼容 | 已确认 | XML 结构测试加 Final Cut 实机导入 |
+| 低 | Premiere 项目交接 | 新增、独立于上述 FCPXML 1.9 项的 FCP 7 XML（XMEML v5）Premiere handoff；`.prproj` 能力门已明确拒绝生成 | 已确认 | FCP 7 XML 与 SRT 的 Premiere 实机导入；`.prproj` 仅返回不支持，不生成字节、不宣称兼容；证据：`docs/dev/PRPROJ_CAPABILITY.md` |
 | 低 | 频谱探索 | 只做有明确性能、缓存和内存门槛的技术验证 | 已确认（门槛制） | 不通过门槛时只保留结果文档，不加入正式 UI |
 
 ## 跨平台 GUI 打包决策
@@ -98,7 +99,7 @@ Batch 1 已验证场景（localhost 与便携 HTML 均通过真实波形交互�
 
 - MIMO、豆包：尚无已确认的模型、鉴权和输出契约。
 - Soniox 实时识别与同步翻译：不属于当前本地媒体工作流。
-- 原生 `.prproj` 和 Premiere 兼容承诺。
+- 原生 `.prproj` 和 Premiere 兼容承诺；能力门只提供明确的不支持结果，不生成 `.prproj` 字节，也不扩大为 FCPXML 1.9 的 Premiere 兼容。
 - GUI 内置本地模型、自动下载模型或基础安装中的 GPU 依赖。
 - 随应用捆绑 FFmpeg、PyInstaller onefile 主发行版、管理员权限。
 - 普通 CI 自动发布、自动签名或向不可信 PR 提供 Apple 凭据。

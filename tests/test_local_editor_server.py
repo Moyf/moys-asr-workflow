@@ -3,12 +3,14 @@ from __future__ import annotations
 import importlib.util
 import json
 import struct
+import subprocess
 import sys
 import tempfile
 import threading
 import unittest
 import urllib.error
 import urllib.request
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
@@ -63,6 +65,16 @@ class LocalEditorServerTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
+    def test_server_help_exposes_short_port_option(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(SERVER_PATH), "-h"],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+
+        self.assertIn("-p PORT, --port PORT", result.stdout)
+
     def test_range_parser_handles_standard_and_suffix_ranges(self) -> None:
         self.assertEqual(server_editor.parse_byte_range("bytes=2-5", 10), (2, 5))
         self.assertEqual(server_editor.parse_byte_range("bytes=7-", 10), (7, 9))
@@ -78,6 +90,130 @@ class LocalEditorServerTests(unittest.TestCase):
                 handler.wfile.write.side_effect = disconnect
                 server_editor.EditorRequestHandler.send_file(handler, self.media, True)
                 handler.wfile.write.assert_called_once()
+
+    def test_media_less_projects_reopen_bound_without_media_work(self) -> None:
+        for project_data in (
+            {"media": "", "segments": []},
+            {
+                "segments": [
+                    {"start": 0, "end": 1000, "text": "仅字幕工程"},
+                ],
+            },
+        ):
+            with self.subTest(project_data=project_data):
+                project_path = self.root / "subtitles-only.mosp"
+                project_path.write_text(json.dumps(project_data), encoding="utf-8")
+                with (
+                    mock.patch.object(server_editor, "resolve_project_media") as resolve_media,
+                    mock.patch.object(server_editor.edit, "load_or_extract_waveform") as load_waveform,
+                    mock.patch.object(server_editor.reapeaks, "load_spectral_payload") as load_spectral,
+                    mock.patch.object(server_editor.reapeaks, "load_waveform_payload") as load_reapeaks_waveform,
+                ):
+                    project = server_editor.load_project(
+                        project_path,
+                        None,
+                        str(self.stickers),
+                        no_waveform=False,
+                        peaks_per_second=100,
+                    )
+
+                resolve_media.assert_not_called()
+                load_waveform.assert_not_called()
+                load_spectral.assert_not_called()
+                load_reapeaks_waveform.assert_not_called()
+                self.assertEqual(project.json_path, project_path)
+                self.assertIsNone(project.media_path)
+                self.assertIsNone(project.source_media_path)
+                self.assertIsNone(project.reapeaks_path)
+                self.assertIn('"canSave": true', server_editor.build_server_page(project).decode("utf-8"))
+
+    def test_bound_media_less_page_displays_project_name(self) -> None:
+        project_path = self.root / "subtitles-only.mosp"
+        project_path.write_text(
+            json.dumps({"media": "", "segments": [{"start": 0, "end": 1000, "text": "仅字幕工程"}]}),
+            encoding="utf-8",
+        )
+        project = server_editor.load_project(
+            project_path,
+            None,
+            str(self.stickers),
+            no_waveform=True,
+            peaks_per_second=100,
+        )
+
+        page = server_editor.build_server_page(project).decode("utf-8")
+
+        self.assertIn('let FILENAME_BASE = "subtitles-only";', page)
+        self.assertIn('id="json-name" title="点击复制工程文件名">subtitles-only.mosp</span>', page)
+        self.assertNotIn('class="json-name empty"', page)
+        self.assertIn('id="media-name" title="">未加载媒体</span>', page)
+        self.assertIn('"canSave": true', page)
+
+    def test_media_less_project_loads_without_a_sticker_directory(self) -> None:
+        project_path = self.root / "no-stickers.mosp"
+        project_path.write_text(
+            json.dumps({"media": "", "segments": []}),
+            encoding="utf-8",
+        )
+
+        with mock.patch.object(server_editor.edit, "get_default_sticker_dir", return_value=None):
+            project = server_editor.load_project(
+                project_path,
+                None,
+                None,
+                no_waveform=True,
+                peaks_per_second=100,
+            )
+
+        self.assertEqual(project.json_path, project_path)
+        self.assertIsNone(project.media_path)
+        self.assertIsNone(project.sticker_root)
+        self.assertEqual(project.stickers, [])
+
+    def test_nonempty_missing_media_is_still_rejected(self) -> None:
+        project_path = self.root / "missing-media.mosp"
+        project_path.write_text(
+            json.dumps({"media": "missing.mp3", "segments": []}),
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(server_editor.MediaResolutionError):
+            server_editor.load_project(
+                project_path,
+                None,
+                str(self.stickers),
+                no_waveform=True,
+                peaks_per_second=100,
+            )
+
+    def test_project_sticker_root_wins_over_launcher_root(self) -> None:
+        project_root = self.root / "project-stickers"
+        project_root.mkdir()
+        (project_root / "project.png").write_bytes(b"project")
+        project_path = self.root / "persisted.json"
+        project_path.write_text(json.dumps({
+            "media": str(self.media), "sticker_root": str(project_root), "segments": [],
+        }), encoding="utf-8")
+
+        project = server_editor.load_project(
+            project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+
+        self.assertEqual(project.sticker_root, project_root.resolve())
+        self.assertEqual([sticker["rel"] for sticker in project.stickers], ["project.png"])
+
+    def test_invalid_project_sticker_root_falls_back_to_launcher_root(self) -> None:
+        project_path = self.root / "invalid-persisted.json"
+        project_path.write_text(json.dumps({
+            "media": str(self.media), "sticker_root": str(self.root / "missing-stickers"), "segments": [],
+        }), encoding="utf-8")
+
+        project = server_editor.load_project(
+            project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+
+        self.assertEqual(project.sticker_root, self.stickers.resolve())
+        self.assertEqual([sticker["rel"] for sticker in project.stickers], ["nested/cat.png"])
 
     def test_unknown_resource_keeps_localized_detail_with_ascii_http_reason(self) -> None:
         project = server_editor.load_project(
@@ -117,6 +253,52 @@ class LocalEditorServerTests(unittest.TestCase):
             thread.join(timeout=2)
             self.assertFalse(thread.is_alive())
 
+    def test_prproj_capability_endpoint_is_stable_and_loopback_only(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                self.assertEqual(server.server_address[0], "127.0.0.1")
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                with urllib.request.urlopen(f"{base_url}/api/prproj-capability") as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(response.headers["Content-Type"], "application/json; charset=utf-8")
+                    self.assertEqual(int(response.headers["Content-Length"]), len(response.read()))
+                with urllib.request.urlopen(f"{base_url}/api/prproj-capability") as response:
+                    self.assertEqual(json.loads(response.read()), server_editor.PRPROJ_CAPABILITY)
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_prproj_generation_route_refuses_without_writing(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        output_path = self.root / "attempted.prproj"
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                request = urllib.request.Request(
+                    f"{base_url}/api/prproj",
+                    data=json.dumps({"output": str(output_path)}).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with self.assertRaises(urllib.error.HTTPError) as context:
+                    urllib.request.urlopen(request)
+                error = context.exception
+                self.assertEqual(error.code, 501)
+                self.assertEqual(json.loads(error.read()), server_editor.PRPROJ_CAPABILITY)
+                self.assertFalse(output_path.exists())
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
     def test_server_page_uses_shared_template_and_routes_stickers(self) -> None:
         project = server_editor.load_project(
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
@@ -126,7 +308,11 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('src="/media"', page)
         self.assertIn('let STICKER_URL_PREFIX = "/stickers";', page)
         self.assertIn('const NINJA_SFX_BASE_URL = "/sfx/";', page)
-        self.assertIn('const SERVER_CONFIG = {"saveUrl": "/api/project", "canSave": true, ', page)
+        self.assertIn('const SERVER_CONFIG = {"saveUrl": "/api/project", ', page)
+        self.assertNotIn('createUrl', page)
+        self.assertIn('"requestToken": "", "stickerRootUrl": "/api/stickers/root", ', page)
+        self.assertIn('"portableStickerExportUrl": "/api/exports/sticker-otio", ', page)
+        self.assertIn('"canPortableStickerExport": true, "initialStickerCount": 1, ', page)
         self.assertIn('"autoLoadedMediaName": "clip.mp3", "recentProjectsUrl": "/api/recent-projects/open", ', page)
         self.assertIn('"attachUrl": "/api/project/attach", "settingsUrl": "/api/settings", ', page)
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
@@ -172,6 +358,247 @@ class LocalEditorServerTests(unittest.TestCase):
                 with urllib.request.urlopen(f"{base_url}/stickers/nested/cat.png") as response:
                     self.assertEqual(response.read(), b"png")
             finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_sticker_root_endpoint_validates_token_and_preserves_state_on_failure(self) -> None:
+        project = server_editor.load_blank_project(str(self.stickers))
+        alternate = self.root / "alternate-stickers"
+        alternate.mkdir()
+        (alternate / "new.png").write_bytes(b"new")
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+                def post(payload: dict) -> tuple[int, dict]:
+                    request = urllib.request.Request(
+                        f"{base_url}/api/stickers/root",
+                        data=json.dumps(payload).encode(),
+                        headers={"Content-Type": "application/json"}, method="POST",
+                    )
+                    try:
+                        with urllib.request.urlopen(request) as response:
+                            return response.status, json.loads(response.read())
+                    except urllib.error.HTTPError as error:
+                        return error.code, json.loads(error.read())
+
+                original_root = server.project.sticker_root
+                status, result = post({"requestToken": "wrong", "path": str(alternate)})
+                self.assertEqual(status, 403)
+                self.assertFalse(result["ok"])
+                self.assertEqual(server.project.sticker_root, original_root)
+                status, result = post({"requestToken": server.request_token, "path": str(self.root / "missing")})
+                self.assertEqual(status, 400)
+                self.assertFalse(result["ok"])
+                self.assertEqual(server.project.sticker_root, original_root)
+                status, result = post({"requestToken": server.request_token, "path": str(alternate)})
+                self.assertEqual(status, 200)
+                self.assertEqual(result["root"], alternate.as_posix())
+                self.assertEqual(result["count"], 1)
+                self.assertEqual(result["stickers"][0]["rel"], "new.png")
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_sticker_otio_export_copies_used_stickers_portably(self) -> None:
+        first = self.stickers / "a" / "x.png"
+        second = self.stickers / "b" / "X.png"
+        first.parent.mkdir()
+        second.parent.mkdir()
+        first.write_bytes(b"first")
+        second.write_bytes(b"second")
+        timeline = {
+            "OTIO_SCHEMA": "Timeline.1",
+            "name": "source",
+            "metadata": {},
+            "tracks": {"children": [{"children": [
+                {"OTIO_SCHEMA": "Gap.1"},
+                {"OTIO_SCHEMA": "Clip.2", "metadata": {"moy": {"sticker_rel": "a/x.png"}},
+                 "media_references": {"DEFAULT_MEDIA": {"target_url": "old-a"}}},
+                {"OTIO_SCHEMA": "Clip.2", "metadata": {"moy": {"sticker_rel": "a/x.png"}},
+                 "media_references": {"DEFAULT_MEDIA": {"target_url": "old-a-2"}}},
+                {"OTIO_SCHEMA": "Clip.2", "metadata": {"moy": {"sticker_rel": "b/X.png"}},
+                 "media_references": {"DEFAULT_MEDIA": {"target_url": "old-b"}},
+                 "source_media": "file:///do-not-copy.mp4"},
+            ]}]},
+        }
+        with server_editor.EditorServer(("127.0.0.1", 0), server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                def post(payload: dict) -> tuple[int, dict]:
+                    request = urllib.request.Request(
+                        f"{base_url}/api/exports/sticker-otio",
+                        data=json.dumps(payload).encode(),
+                        headers={"Content-Type": "application/json"}, method="POST",
+                    )
+                    try:
+                        with urllib.request.urlopen(request) as response:
+                            return response.status, json.loads(response.read())
+                    except urllib.error.HTTPError as error:
+                        return error.code, json.loads(error.read())
+
+                server.set_sticker_root(str(self.stickers))
+                status, result = post({"requestToken": server.request_token, "kind": "stickers", "timeline": timeline})
+                self.assertEqual(status, 200)
+                package = self.root / result["folderName"]
+                self.assertEqual(package.parent, self.project_path.parent)
+                self.assertEqual(result["folderPath"], str(package.resolve()))
+                self.assertEqual(result["otioName"], "clip_stickers.otio")
+                self.assertEqual(result["stickerCount"], 2)
+                self.assertFalse((package / "do-not-copy.mp4").exists())
+                copied = sorted((package / "stickers").iterdir())
+                self.assertEqual({item.name for item in copied}, {"x.png", "X-2.png"})
+                exported = json.loads((package / result["otioName"]).read_text(encoding="utf-8"))
+                clips = exported["tracks"]["children"][0]["children"]
+                urls = [clip["media_references"]["DEFAULT_MEDIA"]["target_url"] for clip in clips if "media_references" in clip]
+                self.assertEqual(urls, ["stickers/x.png", "stickers/x.png", "stickers/X-2.png"])
+                self.assertNotIn(b"\r\n", (package / result["otioName"]).read_bytes())
+                occupied = package
+                occupied.mkdir(exist_ok=True)
+                status, result = post({"requestToken": server.request_token, "kind": "stickers", "timeline": timeline})
+                self.assertEqual(status, 200)
+                self.assertTrue(result["folderName"].endswith("-2"))
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_sticker_otio_export_rejects_malicious_relative_path(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        timeline = {"OTIO_SCHEMA": "Timeline.1", "tracks": {"children": [{"children": [
+            {"metadata": {"moy": {"sticker_rel": "../clip.mp3"}}, "media_references": {"DEFAULT_MEDIA": {"target_url": "x"}}},
+        ]}]}}
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            server.set_sticker_root(str(self.stickers))
+            with self.assertRaises(ValueError):
+                server_editor.export_sticker_otio(server.project, "stickers", timeline, self.stickers)
+
+    def test_sticker_otio_export_requires_sticker_rel_on_each_clip(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        server = server_editor.EditorServer(("127.0.0.1", 0), project)
+        try:
+            server.set_sticker_root(str(self.stickers))
+            timeline = {"OTIO_SCHEMA": "Timeline.1", "tracks": {"children": [{"children": [
+                {"OTIO_SCHEMA": "Clip.2", "metadata": {}, "media_references": {"DEFAULT_MEDIA": {"target_url": "x"}}},
+            ]}]}}
+            with self.assertRaises(ValueError):
+                server_editor.export_sticker_otio(server.project, "stickers", timeline, self.stickers)
+        finally:
+            server.server_close()
+
+    def test_sticker_otio_export_uri_encodes_filename_but_copies_raw_name(self) -> None:
+        filename = "face #%.png"
+        source = self.stickers / filename
+        source.write_bytes(b"special")
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        server = server_editor.EditorServer(("127.0.0.1", 0), project)
+        try:
+            server.set_sticker_root(str(self.stickers))
+            timeline = {"OTIO_SCHEMA": "Timeline.1", "tracks": {"children": [{"children": [
+                {"OTIO_SCHEMA": "Clip.2", "metadata": {"moy": {"sticker_rel": filename}},
+                 "media_references": {"DEFAULT_MEDIA": {"target_url": "old"}}},
+            ]}]}}
+            package, otio_name, count = server_editor.export_sticker_otio(
+                server.project, "stickers", timeline, self.stickers,
+            )
+            self.assertEqual(count, 1)
+            self.assertTrue((package / "stickers" / filename).is_file())
+            exported = json.loads((package / otio_name).read_text(encoding="utf-8"))
+            target = exported["tracks"]["children"][0]["children"][0]["media_references"]["DEFAULT_MEDIA"]["target_url"]
+            self.assertEqual(target, "stickers/face%20%23%25.png")
+        finally:
+            server.server_close()
+
+    def test_reapeaks_loading_is_deferred_until_server_is_serving(self) -> None:
+        self_waveform = {
+            "schema": "moy.asr.waveform.v1",
+            "encoding": "i8-minmax-base64",
+            "peaks_per_second": 1000,
+            "peak_count": 1,
+            "duration_ms": 1,
+            "data": "AIA=",
+        }
+        with (
+            mock.patch.object(server_editor.edit, "load_or_extract_waveform", return_value=(self_waveform, False)) as waveform_load,
+            mock.patch.object(server_editor.reapeaks, "load_spectral_payload") as spectral_load,
+            mock.patch.object(server_editor.reapeaks, "load_waveform_payload") as reapeaks_wave_load,
+        ):
+            project = server_editor.load_project(
+                self.project_path,
+                None,
+                str(self.stickers),
+                no_waveform=False,
+                load_reapeaks=False,
+                peaks_per_second=100,
+            )
+
+        waveform_load.assert_called_once()
+        spectral_load.assert_not_called()
+        reapeaks_wave_load.assert_not_called()
+        self.assertIs(project.data["waveform"], self_waveform)
+        self.assertNotIn("spectral", project.data)
+        self.assertNotIn("waveform_reapeaks", project.data)
+
+        spectral_payload = {"peak_count": 2, "division": 80}
+        reapeaks_wave_payload = {"peak_count": 4, "peaks_per_second": 1000}
+        loader_started = threading.Event()
+        release_loader = threading.Event()
+
+        def blocking_spectral_load(*_args: object, **_kwargs: object) -> dict:
+            loader_started.set()
+            release_loader.wait(timeout=3)
+            return spectral_payload
+
+        def waveform_reapeaks_load(*_args: object, **_kwargs: object) -> dict:
+            return reapeaks_wave_payload
+
+        with (
+            mock.patch.object(server_editor.reapeaks, "load_spectral_payload", side_effect=blocking_spectral_load),
+            mock.patch.object(server_editor.reapeaks, "load_waveform_payload", side_effect=waveform_reapeaks_load),
+            server_editor.EditorServer(
+                ("127.0.0.1", 0),
+                project,
+                stickers_dir=str(self.stickers),
+                no_waveform=False,
+                defer_reapeaks=True,
+                peaks_per_second=100,
+            ) as server,
+        ):
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            base_url = f"http://127.0.0.1:{server.server_address[1]}"
+            try:
+                self.assertTrue(loader_started.wait(timeout=2))
+
+                # If ReaPeaks were still on the request/startup path, this
+                # request would wait for release_loader instead of returning.
+                with urllib.request.urlopen(f"{base_url}/", timeout=1) as response:
+                    self.assertEqual(response.status, 200)
+                with urllib.request.urlopen(f"{base_url}/api/waveform", timeout=1) as response:
+                    self.assertEqual(json.loads(response.read())["status"], "loading")
+
+                release_loader.set()
+                assert server.reapeaks_thread is not None
+                server.reapeaks_thread.join(timeout=2)
+                self.assertFalse(server.reapeaks_thread.is_alive())
+                with urllib.request.urlopen(f"{base_url}/api/waveform", timeout=1) as response:
+                    result = json.loads(response.read())
+                self.assertEqual(result["status"], "ready")
+                self.assertEqual(result["spectral"], spectral_payload)
+                self.assertEqual(result["waveform_reapeaks"], reapeaks_wave_payload)
+            finally:
+                release_loader.set()
                 server.shutdown()
                 thread.join(timeout=2)
 
@@ -388,6 +815,271 @@ class LocalEditorServerTests(unittest.TestCase):
             self.assertEqual(server.settings.preset_workspaces, {})
             with self.assertRaisesRegex(ValueError, "内置工作区"):
                 server.save_preset_workspace("custom", workspace)
+
+    def test_workspace_navigation_updates_merge_and_survive_server_restart(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        settings_path = self.root / "server-editor-settings.json"
+        workspace = {
+            "schema": 1,
+            "preset": "custom",
+            "columnPercent": 46,
+            "editorDisplay": {"cueListShowTime": True},
+            "navigation": {"cueListScrollTop": 120, "waveformTopEdgeMs": 2400},
+        }
+        preset_workspace = {
+            "schema": 1,
+            "preset": "wave-right",
+            "waveformSettings": {"secondsPerRow": 10},
+        }
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, settings_path=settings_path,
+        ) as server:
+            server.save_workspace("剪辑工作区", workspace, overwrite=False)
+            server.save_preset_workspace("wave-right", preset_workspace)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+                def post(payload: dict) -> tuple[int, dict]:
+                    request = urllib.request.Request(
+                        f"{base_url}/api/settings",
+                        data=json.dumps(payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    try:
+                        with urllib.request.urlopen(request) as response:
+                            return response.status, json.loads(response.read())
+                    except urllib.error.HTTPError as error:
+                        return error.code, json.loads(error.read())
+
+                status, result = post({
+                    "updateWorkspaceNavigation": {
+                        "name": "剪辑工作区",
+                        "navigation": {"cueListScrollTop": 840, "waveformTopEdgeMs": 12600},
+                    },
+                })
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+                saved = server.settings.saved_workspaces["剪辑工作区"]
+                self.assertEqual(saved["navigation"], {"cueListScrollTop": 840, "waveformTopEdgeMs": 12600})
+                self.assertEqual(saved["columnPercent"], workspace["columnPercent"])
+                self.assertEqual(saved["editorDisplay"], workspace["editorDisplay"])
+
+                status, result = post({
+                    "updateWorkspaceNavigation": {
+                        "name": "剪辑工作区",
+                        "navigation": {"cueListScrollTop": 900},
+                    },
+                })
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+                self.assertEqual(
+                    server.settings.saved_workspaces["剪辑工作区"]["navigation"],
+                    {"cueListScrollTop": 900, "waveformTopEdgeMs": 12600},
+                )
+
+                status, result = post({
+                    "updateWorkspaceNavigation": {
+                        "preset": "wave-right",
+                        "navigation": {"cueListScrollTop": 360, "waveformTopEdgeMs": 7200},
+                    },
+                })
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+                self.assertEqual(
+                    server.settings.preset_workspaces["wave-right"]["navigation"],
+                    {"cueListScrollTop": 360, "waveformTopEdgeMs": 7200},
+                )
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+        reloaded = server_editor.read_server_settings(settings_path)
+        self.assertEqual(
+            reloaded.saved_workspaces["剪辑工作区"]["navigation"],
+            {"cueListScrollTop": 900, "waveformTopEdgeMs": 12600},
+        )
+        self.assertEqual(
+            reloaded.preset_workspaces["wave-right"]["navigation"],
+            {"cueListScrollTop": 360, "waveformTopEdgeMs": 7200},
+        )
+
+    def test_workspace_navigation_rejects_invalid_targets_values_and_fields(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        settings_path = self.root / "server-editor-settings.json"
+        workspace = {"schema": 1, "columnPercent": 46, "editorDisplay": {"cueListShowTime": True}}
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, settings_path=settings_path,
+        ) as server:
+            server.save_workspace("剪辑工作区", workspace, overwrite=False)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+                def post(navigation: dict, *, target: dict | None = None) -> tuple[int, dict]:
+                    update = {"navigation": navigation}
+                    update.update(target or {"name": "剪辑工作区"})
+                    request = urllib.request.Request(
+                        f"{base_url}/api/settings",
+                        data=json.dumps({"updateWorkspaceNavigation": update}).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    try:
+                        with urllib.request.urlopen(request) as response:
+                            return response.status, json.loads(response.read())
+                    except urllib.error.HTTPError as error:
+                        return error.code, json.loads(error.read())
+
+                invalid_cases = [
+                    ({"cueListScrollTop": -1, "waveformTopEdgeMs": 20}, None),
+                    ({"cueListScrollTop": 1.5, "waveformTopEdgeMs": 20}, None),
+                    ({"cueListScrollTop": float("nan"), "waveformTopEdgeMs": 20}, None),
+                    ({"cueListScrollTop": 20, "waveformTopEdgeMs": "20"}, None),
+                    ({"cueListScrollTop": 20, "waveformTopEdgeMs": 20, "other": 1}, None),
+                    ({"cueListScrollTop": 20, "waveformTopEdgeMs": 20}, {"name": "不存在"}),
+                    ({"cueListScrollTop": 20, "waveformTopEdgeMs": 20}, {"preset": "custom"}),
+                ]
+                for navigation, target in invalid_cases:
+                    with self.subTest(navigation=navigation, target=target):
+                        status, result = post(navigation, target=target)
+                        self.assertEqual(status, 400)
+                        self.assertFalse(result["ok"])
+                self.assertEqual(server.settings.saved_workspaces["剪辑工作区"], workspace)
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_workspace_navigation_creates_navigation_only_preset_override(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        settings_path = self.root / "server-editor-settings.json"
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, settings_path=settings_path,
+        ) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+                def post(payload: dict) -> tuple[int, dict]:
+                    request = urllib.request.Request(
+                        f"{base_url}/api/settings",
+                        data=json.dumps(payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    try:
+                        with urllib.request.urlopen(request) as response:
+                            return response.status, json.loads(response.read())
+                    except urllib.error.HTTPError as error:
+                        return error.code, json.loads(error.read())
+
+                # First save for builtin preset with no existing override
+                status, result = post({
+                    "updateWorkspaceNavigation": {
+                        "preset": "wave-right",
+                        "navigation": {"cueListScrollTop": 100, "waveformTopEdgeMs": 2000},
+                    },
+                })
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+                self.assertEqual(
+                    server.settings.preset_workspaces["wave-right"],
+                    {"navigation": {"cueListScrollTop": 100, "waveformTopEdgeMs": 2000}},
+                )
+
+                # Second save updates the same navigation dict
+                status, result = post({
+                    "updateWorkspaceNavigation": {
+                        "preset": "wave-right",
+                        "navigation": {"cueListScrollTop": 300},
+                    },
+                })
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+                self.assertEqual(
+                    server.settings.preset_workspaces["wave-right"],
+                    {"navigation": {"cueListScrollTop": 300, "waveformTopEdgeMs": 2000}},
+                )
+
+                # Full preset workspace save still works and preserves navigation
+                status, result = post({
+                    "savePresetWorkspace": {
+                        "preset": "wave-right",
+                        "workspace": {
+                            "schema": 1,
+                            "columnPercent": 50,
+                            "editorDisplay": {"cueListShowTime": True},
+                        },
+                    },
+                })
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+                self.assertEqual(
+                    server.settings.preset_workspaces["wave-right"],
+                    {
+                        "schema": 1,
+                        "columnPercent": 50,
+                        "editorDisplay": {"cueListShowTime": True},
+                        "navigation": {"cueListScrollTop": 300, "waveformTopEdgeMs": 2000},
+                    },
+                )
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_open_recent_project_does_not_hold_settings_lock(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        settings_path = self.root / "server-editor-settings.json"
+        # Write a recent-projects entry directly into settings
+        initial_settings = server_editor.read_server_settings(settings_path)
+        initial_settings = replace(
+            initial_settings,
+            recent_projects=[
+                server_editor.RecentProject(
+                    path=self.project_path,
+                    name=self.project_path.name,
+                ),
+            ],
+        )
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, settings=initial_settings, settings_path=settings_path,
+        ) as server:
+            load_started = threading.Event()
+            original_load_project = server_editor.load_project
+
+            def slow_load_project(*args, **kwargs):
+                load_started.set()
+                import time
+                time.sleep(0.5)
+                return original_load_project(*args, **kwargs)
+
+            with mock.patch.object(server_editor, "load_project", slow_load_project):
+                thread = threading.Thread(
+                    target=server.open_recent_project, args=(str(self.project_path),),
+                )
+                thread.start()
+                try:
+                    load_started.wait(timeout=2)
+                    # set_active_workspace should not block while load_project sleeps
+                    server.save_workspace("x", {"schema": 1}, overwrite=False)
+                    start = __import__("time").time()
+                    server.set_active_workspace("x")
+                    elapsed = __import__("time").time() - start
+                    self.assertLess(elapsed, 0.3, "set_active_workspace blocked on load_project")
+                finally:
+                    thread.join(timeout=2)
 
     def test_server_saves_project_with_backup_and_rejects_unsafe_save_as(self) -> None:
         project = server_editor.load_project(

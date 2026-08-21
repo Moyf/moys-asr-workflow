@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   cleanupTempDir,
   findFreePort,
+  generateBlankEditor,
   generateWaveformPayload,
   makeTempDir,
   startStaticServer,
@@ -15,9 +16,7 @@ let server;
 
 test.beforeAll(async () => {
   tempDir = makeTempDir('multi-subtitle');
-  // blank-editor.html 已由源码变更后的验证步骤生成；这里直接复用它，
-  // 避免每个 E2E worker 再次触发 uv 的依赖解析和本机缓存权限问题。
-  const blankPath = join(process.cwd(), 'blank-editor.html');
+  const blankPath = generateBlankEditor(join(tempDir, 'blank-editor.html'));
   server = await startStaticServer(blankPath, await findFreePort());
 });
 
@@ -91,6 +90,21 @@ async function waitForLayoutBox(locator, message) {
   }, { timeout: 5000, message }).toBe(true);
   if (!latestBox) throw new Error(message);
   return latestBox;
+}
+
+async function moveWaveformPointerToTime(page, blockLocator, timeMs) {
+  const blockBox = await waitForLayoutBox(blockLocator, '波形字幕块没有布局');
+  const row = blockLocator.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
+  const rowBox = await row.boundingBox();
+  const rowStart = Number(await row.getAttribute('data-start-ms'));
+  const rowEnd = Number(await row.getAttribute('data-end-ms'));
+  expect(rowBox).not.toBeNull();
+  expect(rowEnd).toBeGreaterThan(rowStart);
+  const ratio = (timeMs - rowStart) / (rowEnd - rowStart);
+  await page.mouse.move(
+    rowBox.x + rowBox.width * Math.max(0, Math.min(1, ratio)),
+    blockBox.y + blockBox.height / 2,
+  );
 }
 
 test('defaults the waveform shape source to ReaPeaks', async ({ page }) => {
@@ -481,6 +495,11 @@ test('keeps track badges optional and uses striped disabled styling for secondar
   await expect(firstWaveformRow).not.toHaveClass(/show-track-badges/);
   await page.locator('#multi-subtitle-settings-toggle').click();
 
+  const main = page.locator('.multi-cue-column.main:not(.multi-cue-empty)').first();
+  await main.click({ modifiers: ['Alt'] });
+  await expect(main).toHaveClass(/disabled/);
+  await expect(main).toHaveCSS('background-image', 'none');
+
   await firstRow.locator('.multi-cue-column.extension').click({ modifiers: ['Alt'] });
   await expect(firstRow.locator('.multi-cue-column.extension')).toHaveClass(/disabled/);
   await expect(firstRow.locator('.multi-cue-column.extension')).toHaveCSS(
@@ -600,16 +619,21 @@ test('undoing an auto-synced binding restores the extension timing as well as th
   await extension.click({ button: 'right' });
   await expect(page.locator('#ctxmenu')).toHaveClass(/show/);
   await page.locator('#ctxmenu .item').filter({ hasText: '与选中的主字幕绑定' }).click();
+  const waveformExtension = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
   expect(await page.evaluate(() => ({
     range: [DATA.multi_subtitle.tracks[0].segments[0].start, DATA.multi_subtitle.tracks[0].segments[0].end],
     bindings: DATA.multi_subtitle.bindings.length,
   }))).toEqual({ range: [1000, 3000], bindings: 1 });
+  await expect(waveformExtension).toHaveAttribute('data-start', '1000');
+  await expect(waveformExtension).toHaveAttribute('data-end', '3000');
 
   await page.keyboard.press('Control+z');
   expect(await page.evaluate(() => ({
     range: [DATA.multi_subtitle.tracks[0].segments[0].start, DATA.multi_subtitle.tracks[0].segments[0].end],
     bindings: DATA.multi_subtitle.bindings.length,
   }))).toEqual({ range: [1200, 2200], bindings: 0 });
+  await expect(waveformExtension).toHaveAttribute('data-start', '1200');
+  await expect(waveformExtension).toHaveAttribute('data-end', '2200');
 });
 
 test('uses the secondary language split mode and caret position for list B splitting', async ({ page }) => {
@@ -864,7 +888,7 @@ test('imports an extension SRT with 300ms preview, dual columns, split dialog, a
   expect(rightSplitMeta).not.toBe(leftSplitMeta);
   await page.mouse.click(rightX, splitY);
   await expect(splitText).toHaveClass(/locked/);
-  await expect(splitText).toHaveAttribute('title', '拆分点已锁定，再次点击后解锁');
+  await expect(splitText).toHaveAttribute('title', '拆分点已锁定，点击或按空格解锁');
   await expect(page.locator('#multi-subtitle-split-preview')).toHaveClass(/locked/);
   await page.mouse.move(leftX, splitY);
   await expect(page.locator('#multi-subtitle-split-meta')).toHaveText(rightSplitMeta);
@@ -929,6 +953,317 @@ test('auto-submits a linked split after both subtitle lanes are confirmed', asyn
   await expect(page.locator('.multi-cue-column.main .text')).toHaveCount(3);
   await expect(page.locator('.multi-cue-column.extension .text')).toHaveCount(4);
 });
+
+async function placeCaret(element, offset) {
+  await element.evaluate((node, caretOffset) => {
+    const range = document.createRange();
+    range.setStart(node.firstChild, caretOffset);
+    range.setEnd(node.firstChild, caretOffset);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }, offset);
+}
+
+function selectedSnapshot() {
+  return Array.from(document.querySelectorAll('.selected'))
+    .map((element) => element.textContent.trim().slice(0, 40));
+}
+
+test('moves the split point with WASD, switches lanes with Tab and confirms with Space', async ({ page }) => {
+  await page.goto(server.url);
+  await dropFiles(page, [srtSpec('main.srt', [
+    '1',
+    '00:00:00,000 --> 00:00:04,000',
+    'One two three four.',
+    '',
+  ].join('\n'))]);
+  await expect(page.locator('#cues-container > .cue')).toHaveCount(1);
+  await dropFiles(page, [srtSpec('translation.srt', [
+    '1',
+    '00:00:00,050 --> 00:00:03,950',
+    '这是一条用来测试键盘上下移动功能的很长很长的副字幕文本应该会自动折行成多行显示',
+    '',
+  ].join('\n'))]);
+  await expect(page.locator('#multi-subtitle-import-modal')).toHaveClass(/show/);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  const firstMain = page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main .text');
+  await firstMain.dblclick();
+  await placeCaret(firstMain, 4);
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  // 弹窗底部展示结构化按键提示行。
+  const keyHints = page.locator('.multi-subtitle-split-key-hints');
+  await expect(keyHints).toBeVisible();
+  await expect(keyHints).toContainText('W/A/S/D');
+  await expect(keyHints).toContainText('方向键');
+  await expect(keyHints).toContainText('锁定 / 解锁断点');
+  await expect(keyHints).toContainText('切换主/副字幕');
+  // 弹窗打开即聚焦主 lane，带虚线边框标识。
+  const mainLane = page.locator('#multi-subtitle-split-main-text');
+  await expect(mainLane).toBeFocused();
+  expect(await mainLane.evaluate((element) => getComputedStyle(element).borderTopStyle)).toBe('dashed');
+  const mainActiveGap = mainLane.locator('.multi-subtitle-split-gap.active');
+  await expect(mainActiveGap).toHaveAttribute('data-offset', '4');
+
+  // D/→ 按字词边界步进，A/← 回退；期间不得触发全局的字幕选择跳转。
+  const selectedBefore = await page.evaluate(selectedSnapshot);
+  await page.keyboard.press('d');
+  await expect(mainActiveGap).toHaveAttribute('data-offset', '8');
+  await page.keyboard.press('ArrowRight');
+  await expect(mainActiveGap).toHaveAttribute('data-offset', '14');
+  await page.keyboard.press('a');
+  await expect(mainActiveGap).toHaveAttribute('data-offset', '8');
+  await page.keyboard.press('ArrowLeft');
+  await expect(mainActiveGap).toHaveAttribute('data-offset', '4');
+  expect(await page.evaluate(selectedSnapshot)).toEqual(selectedBefore);
+
+  // Tab 切到副 lane；多行文本支持上下移动，单行边界外不动作。
+  await page.keyboard.press('Tab');
+  const extensionLane = page.locator('#multi-subtitle-split-text');
+  await expect(extensionLane).toBeFocused();
+  const extensionActiveGap = extensionLane.locator('.multi-subtitle-split-gap.active');
+  const firstRowOffset = Number(await extensionActiveGap.getAttribute('data-offset'));
+  await page.keyboard.press('ArrowDown');
+  const secondRowOffset = Number(await extensionActiveGap.getAttribute('data-offset'));
+  expect(secondRowOffset - firstRowOffset).toBeGreaterThan(5);
+  await page.keyboard.press('ArrowUp');
+  const backRowOffset = Number(await extensionActiveGap.getAttribute('data-offset'));
+  expect(Math.abs(backRowOffset - firstRowOffset)).toBeLessThanOrEqual(2);
+
+  // Space 锁定当前断点；锁定后焦点自动落到下一条未锁定的 lane。
+  await page.keyboard.press('Space');
+  await expect(extensionLane).toHaveClass(/locked/);
+  await expect(mainLane).toBeFocused();
+
+  // Tab 回到已锁定的 lane，再按 Space 解锁以便继续移动。
+  await page.keyboard.press('Tab');
+  await expect(extensionLane).toBeFocused();
+  await page.keyboard.press('Space');
+  await expect(extensionLane).not.toHaveClass(/locked/);
+
+  // 两个 lane 都用 Space 确认后按默认设置自动提交；锁定一条后焦点已自动就位，无需 Tab。
+  await page.keyboard.press('Space');
+  await expect(extensionLane).toHaveClass(/locked/);
+  await expect(mainLane).toBeFocused();
+  // 最后一按锁定主 lane 并触发自动提交；弹窗关闭时会清理 locked 标记。
+  await page.keyboard.press('Space');
+  await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+  await expect(page.locator('#cues-container > .multi-dual-cue')).toHaveCount(2);
+});
+
+test('keeps the timecode-anchored main lane out of Tab lane switching', async ({ page }) => {
+  const projectPath = join(tempDir, 'kbd-timecode-locked-project.json');
+  const project = {
+    media: '', language: 'English', model: '',
+    segments: [{
+      id: 'main-kbd-001', start: 0, end: 2000, text: 'One two three.',
+      items: [
+        { start: 0, end: 700, text: 'One' },
+        { start: 700, end: 1200, text: 'two' },
+        { start: 1200, end: 2000, text: 'three.' },
+      ],
+    }],
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
+      tracks: [{
+        id: 'extension-kbd-1', role: 'extension', name: 'Translation', language: '',
+        split_mode: 'continuous', source_name: 'translation.srt',
+        segments: [{ id: 'extension-kbd-001', start: 50, end: 1950, text: '你好时间码锁定测试' }],
+      }],
+      bindings: [{
+        id: 'binding-kbd-001', track_id: 'extension-kbd-1',
+        main_segment_ids: ['main-kbd-001'], extension_segment_ids: ['extension-kbd-001'],
+        start_offset_ms: 50, end_offset_ms: -50,
+      }],
+    },
+  };
+  writeFileSync(projectPath, JSON.stringify(project), 'utf8');
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'kbd-timecode-locked-project.json',
+    type: 'application/json',
+    base64: readFileSync(projectPath).toString('base64'),
+  }]);
+
+  const mainText = page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main .text');
+  await mainText.dblclick();
+  await placeCaret(mainText, 4);
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  // 主轨被 ⌚️ 时间码锚定：不可交互，初始焦点落到副 lane。
+  const mainLane = page.locator('#multi-subtitle-split-main-text');
+  await expect(mainLane).toHaveClass(/timestamp-locked/);
+  const extensionLane = page.locator('#multi-subtitle-split-text');
+  await expect(extensionLane).toBeFocused();
+
+  // Tab 不把焦点切到主 lane；副 lane 仍可用 D 步进断点。
+  await page.keyboard.press('Tab');
+  await expect(mainLane).not.toBeFocused();
+  const extensionActiveGap = extensionLane.locator('.multi-subtitle-split-gap.active');
+  const startOffset = Number(await extensionActiveGap.getAttribute('data-offset'));
+  await page.keyboard.press('d');
+  expect(Number(await extensionActiveGap.getAttribute('data-offset'))).toBe(startOffset + 1);
+  await page.keyboard.press('Escape');
+});
+
+function kbdProjectFileName(name) {
+  return join(tempDir, name);
+}
+
+test('flashes the border and hints when moving a locked split lane', async ({ page }) => {
+  const projectPath = kbdProjectFileName('kbd-locked-move-project.json');
+  const project = {
+    media: '', language: '', model: '',
+    segments: [{ id: 'main-kbd-lock-001', start: 0, end: 2000, text: 'One two three.', items: [] }],
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
+      tracks: [{
+        id: 'extension-kbd-lock-1', role: 'extension', name: 'Translation', language: '',
+        split_mode: 'continuous', source_name: 'translation.srt',
+        segments: [{ id: 'extension-kbd-lock-001', start: 50, end: 1950, text: '锁定移动测试文本' }],
+      }],
+      bindings: [{
+        id: 'binding-kbd-lock-001', track_id: 'extension-kbd-lock-1',
+        main_segment_ids: ['main-kbd-lock-001'], extension_segment_ids: ['extension-kbd-lock-001'],
+        start_offset_ms: 50, end_offset_ms: -50,
+      }],
+    },
+  };
+  writeFileSync(projectPath, JSON.stringify(project), 'utf8');
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'kbd-locked-move-project.json',
+    type: 'application/json',
+    base64: readFileSync(projectPath).toString('base64'),
+  }]);
+
+  const mainText = page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main .text');
+  await mainText.dblclick();
+  await placeCaret(mainText, 4);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+
+  const mainLane = page.locator('#multi-subtitle-split-main-text');
+  await expect(mainLane).toBeFocused();
+  await page.keyboard.press('Space');
+  await expect(mainLane).toHaveClass(/locked/);
+  // 锁定后焦点自动落到未锁定的副 lane；Tab 回到已锁定的主 lane 再测移动拦截。
+  const extensionLane = page.locator('#multi-subtitle-split-text');
+  await expect(extensionLane).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(mainLane).toBeFocused();
+
+  // 锁定后按移动键：断点不动、边缘闪烁并出现解锁提示。
+  const mainActiveGap = mainLane.locator('.multi-subtitle-split-gap.active');
+  const lockedOffset = await mainActiveGap.getAttribute('data-offset');
+  await page.keyboard.press('d');
+  await expect(mainActiveGap).toHaveAttribute('data-offset', lockedOffset);
+  await expect(mainLane).toHaveClass(/lane-move-blocked/);
+  await expect(page.locator('#hint-stack')).toContainText('请先按空格解除锁定，然后再进行移动');
+  await expect(mainLane).not.toHaveClass(/lane-move-blocked/);
+
+  // 解锁后同一按键恢复移动。
+  await page.keyboard.press('Space');
+  await expect(mainLane).not.toHaveClass(/locked/);
+  await page.keyboard.press('d');
+  await expect(mainActiveGap).not.toHaveAttribute('data-offset', lockedOffset);
+  await page.keyboard.press('Escape');
+});
+
+test('splits only the main subtitle and unbinds when the extension cannot be split', async ({ page }) => {
+  const projectPath = kbdProjectFileName('kbd-main-only-fallback-project.json');
+  const project = {
+    media: '', language: '', model: '',
+    segments: [{ id: 'main-kbd-fallback-001', start: 0, end: 2000, text: '主字幕可以正常拆分', items: [] }],
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
+      tracks: [{
+        // 副字幕总时长 120ms < 200ms：无论怎么钳制都无法两侧各留 100ms。
+        id: 'extension-kbd-fallback-1', role: 'extension', name: 'Translation', language: '',
+        split_mode: 'continuous', source_name: 'translation.srt',
+        segments: [{ id: 'extension-kbd-fallback-001', start: 940, end: 1060, text: '过短副字幕' }],
+      }],
+      bindings: [{
+        id: 'binding-kbd-fallback-001', track_id: 'extension-kbd-fallback-1',
+        main_segment_ids: ['main-kbd-fallback-001'], extension_segment_ids: ['extension-kbd-fallback-001'],
+        start_offset_ms: 940, end_offset_ms: -940,
+      }],
+    },
+  };
+  writeFileSync(projectPath, JSON.stringify(project), 'utf8');
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'kbd-main-only-fallback-project.json',
+    type: 'application/json',
+    base64: readFileSync(projectPath).toString('base64'),
+  }]);
+
+  const mainText = page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main .text');
+  await mainText.dblclick();
+  // 光标放在第 5 个字符后：主字幕可以｜正常拆分。
+  await placeCaret(mainText, 5);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+
+  // 副字幕救不回来时不再阻塞：错误文案说明降级，拆分按钮保持可用。
+  await expect(page.locator('#multi-subtitle-split-error'))
+    .toContainText('确认后只拆分主字幕，并解除与副字幕的绑定');
+  await expect(page.locator('#multi-subtitle-split-confirm')).toBeEnabled();
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+  expect(await page.evaluate(() => DATA.segments.map((segment) => segment.text)))
+    .toEqual(['主字幕可以', '正常拆分']);
+  // 副字幕保持原样且已解绑。
+  expect(await page.evaluate(() => ({
+    bindings: DATA.multi_subtitle.bindings.length,
+    extensionCount: DATA.multi_subtitle.tracks[0].segments.length,
+  }))).toEqual({ bindings: 0, extensionCount: 1 });
+  await expect(page.locator('.multi-cue-column.extension.unbound')).toHaveCount(1);
+  await expect(page.locator('#hint-stack')).toContainText('为了拆分主字幕，已解除绑定');
+});
+
+test('focuses the main lane first when both lanes are interactive', async ({ page }) => {
+  const projectPath = kbdProjectFileName('kbd-pointer-focus-project.json');
+  const project = {
+    media: '', language: '', model: '',
+    segments: [{ id: 'main-kbd-focus-001', start: 0, end: 2000, text: 'One two three four.', items: [] }],
+    waveform: generateWaveformPayload(2500),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
+      tracks: [{
+        id: 'extension-kbd-focus-1', role: 'extension', name: 'Translation', language: '',
+        split_mode: 'continuous', source_name: 'translation.srt',
+        segments: [{ id: 'extension-kbd-focus-001', start: 50, end: 1950, text: '指针入口聚焦测试' }],
+      }],
+      bindings: [{
+        id: 'binding-kbd-focus-001', track_id: 'extension-kbd-focus-1',
+        main_segment_ids: ['main-kbd-focus-001'], extension_segment_ids: ['extension-kbd-focus-001'],
+        start_offset_ms: 50, end_offset_ms: -50,
+      }],
+    },
+  };
+  writeFileSync(projectPath, JSON.stringify(project), 'utf8');
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'kbd-pointer-focus-project.json',
+    type: 'application/json',
+    base64: readFileSync(projectPath).toString('base64'),
+  }]);
+
+  // 波形右键「按音频位置拆分」入口没有文字光标位置；主轨可交互时应先聚焦主 lane。
+  const mainBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
+  await mainBlock.click({ button: 'right', position: { x: 150, y: 10 } });
+  await page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分' }).click();
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await expect(page.locator('#multi-subtitle-split-main-text')).toBeFocused();
+  await page.keyboard.press('Escape');
+});
+
 
 test('keeps the dual-column index and timecode on the same header row', async ({ page }) => {
   await importPair(page);
@@ -1084,6 +1419,95 @@ test('uses B on a single selected extension cue to open the extension split dial
   await expect(page.locator('.multi-cue-column.extension:not(.multi-cue-empty)')).toHaveCount(4);
 });
 
+test('uses B on a waveform-selected extension cue instead of its overlapping main cue', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-waveform-001', start: 1000, end: 3000, text: 'main cue' }],
+    waveform: generateWaveformPayload(5000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-waveform-1', role: 'extension', name: 'English', language: 'English',
+        split_mode: 'word', segments: [{
+          id: 'extension-waveform-001', start: 1100, end: 2900, text: 'extension cue',
+        }],
+      }],
+      bindings: [{
+        id: 'binding-waveform-001', track_id: 'extension-waveform-1',
+        main_segment_ids: ['main-waveform-001'],
+        extension_segment_ids: ['extension-waveform-001'],
+        start_offset_ms: 100, end_offset_ms: -100,
+      }],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'waveform-selected-extension-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
+  const extensionBox = await waitForLayoutBox(extensionBlock, '副字幕波形块没有布局');
+  const mainBefore = await page.evaluate(() => DATA.segments.map((segment) => [segment.start, segment.end]));
+  await page.mouse.click(
+    extensionBox.x + extensionBox.width / 2,
+    extensionBox.y + extensionBox.height / 2,
+  );
+  await expect(extensionBlock).toHaveClass(/selected/);
+  await page.keyboard.press('b');
+
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await expect(page.locator('#multi-subtitle-split-title')).toHaveText('选择副字幕拆分点');
+  await expect(page.locator('#multi-subtitle-split-main-lane')).toBeHidden();
+  expect(await page.evaluate(() => DATA.segments.map((segment) => [segment.start, segment.end])))
+    .toEqual(mainBefore);
+  await page.keyboard.press('Escape');
+});
+
+test('uses B on a waveform-selected unbound extension cue instead of an overlapping main cue', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-unbound-waveform-001', start: 1000, end: 3000, text: 'main cue' }],
+    waveform: generateWaveformPayload(5000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-unbound-waveform-1', role: 'extension', name: 'English', language: 'English',
+        split_mode: 'word', segments: [{
+          id: 'extension-unbound-waveform-001', start: 1100, end: 2900, text: 'unbound extension',
+        }],
+      }],
+      bindings: [],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'waveform-selected-unbound-extension-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
+  const extensionBox = await waitForLayoutBox(extensionBlock, '未绑定副字幕波形块没有布局');
+  const mainBefore = await page.evaluate(() => DATA.segments.map((segment) => [segment.start, segment.end]));
+  await page.mouse.click(
+    extensionBox.x + extensionBox.width / 2,
+    extensionBox.y + extensionBox.height / 2,
+  );
+  await expect(extensionBlock).toHaveClass(/selected/);
+  await page.keyboard.press('b');
+
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await expect(page.locator('#multi-subtitle-split-title')).toHaveText('选择副字幕拆分点');
+  await expect(page.locator('#multi-subtitle-split-main-lane')).toBeHidden();
+  expect(await page.evaluate(() => DATA.segments.map((segment) => [segment.start, segment.end])))
+    .toEqual(mainBefore);
+  await page.keyboard.press('Escape');
+});
+
 test('uses the linked split dialog when the main cue is active with its bound extension selected', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-result-confirm').click();
@@ -1102,6 +1526,59 @@ test('uses the linked split dialog when the main cue is active with its bound ex
   await expect(page.locator('#multi-subtitle-split-main-lane')).toBeVisible();
   await expect(page.locator('#multi-subtitle-split-extension-lane')).toBeVisible();
   await page.keyboard.press('Escape');
+});
+
+test('retries a short linked split with B before forcing both tracks to 100ms', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  await page.evaluate(() => {
+    const main = DATA.segments[0];
+    main.start = 1000;
+    main.end = 5000;
+    main.text = 'Alpha Bravo';
+    main.items = [
+      { start: 1000, end: 1050, text: 'Alpha' },
+      { start: 1050, end: 5000, text: 'Bravo' },
+    ];
+    const extension = DATA.multi_subtitle.tracks[0].segments[0];
+    extension.start = 1000;
+    extension.end = 5000;
+    extension.text = 'One Two';
+    extension.items = [
+      { start: 1000, end: 1050, text: 'One' },
+      { start: 1050, end: 5000, text: 'Two' },
+    ];
+    renderAll({ waveform: 'none' });
+  });
+
+  const mainText = page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main .text');
+  await mainText.dblclick();
+  await mainText.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 5);
+    range.setEnd(node, 5);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+
+  await page.keyboard.press('b');
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(2);
+  await expect(page.locator('.hint-card.hint-warning', {
+    hasText: '请再次按 B 或 Enter 强制拆分',
+  })).toBeVisible();
+
+  await page.keyboard.press('b');
+  await expect.poll(() => page.locator('.multi-dual-cue').count()).toBe(4);
+  expect(await page.evaluate(() => ({
+    main: DATA.segments.slice(0, 2).map((segment) => segment.end - segment.start),
+    extension: DATA.multi_subtitle.tracks[0].segments.slice(0, 2)
+      .map((segment) => segment.end - segment.start),
+  }))).toEqual({ main: [100, 3900], extension: [100, 3900] });
 });
 
 test('shows unbind in a bound main subtitle context menu', async ({ page }) => {
@@ -1417,10 +1894,40 @@ test('keeps extension selection, timing, disabled, and hide shortcuts in parity 
   await expect(extensionColumn).not.toHaveClass(/disabled/);
 });
 
+test('Shift+arrow snaps selected main and secondary cues in multiple-subtitle mode', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-extension').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  await page.evaluate(() => {
+    DATA.segments[0].end = 2500;
+    DATA.segments[1].start = 3000;
+    const extension = DATA.multi_subtitle.tracks[0].segments;
+    extension[0].end = 2400;
+    extension[1].start = 3000;
+    renderAll();
+  });
+
+  await page.locator('.multi-cue-column.main').filter({ hasText: 'Second line.' }).click();
+  await expect(page.locator('#cue-panel-target')).toHaveText('主字幕');
+  await page.keyboard.press('Shift+ArrowLeft');
+  await expect.poll(() => page.evaluate(() => DATA.segments[1].start)).toBe(2500);
+
+  await page.locator('.multi-cue-column.extension').filter({ hasText: '你好，世界。' }).click();
+  await expect(page.locator('#cue-panel-target')).toHaveText('副字幕');
+  await page.keyboard.press('Shift+ArrowRight');
+  await expect.poll(() => page.evaluate(() => (
+    DATA.multi_subtitle.tracks[0].segments[0].end
+  ))).toBe(3000);
+});
+
 test('选中的主字幕与绑定副字幕一起合并并支持撤销', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
+  await openMultiSubtitleSettings(page);
+  await expect(page.locator('#multi-subtitle-auto-sync-duration')).toBeChecked();
+  await page.locator('#multi-subtitle-settings-toggle').click();
 
   const first = page.locator('.multi-cue-column.main').filter({ hasText: 'Hello world.' });
   const second = page.locator('.multi-cue-column.main').filter({ hasText: 'Second line.' });
@@ -1431,7 +1938,11 @@ test('选中的主字幕与绑定副字幕一起合并并支持撤销', async ({
   await expect(page.locator('.multi-dual-cue')).toHaveCount(2);
   const merged = page.locator('.multi-dual-cue').filter({ hasText: 'Hello world.' });
   await expect(merged.locator('.multi-cue-column.main .time')).toHaveText('00:00.000 → 00:05.000');
-  await expect(merged.locator('.multi-cue-column.extension .time')).toHaveText('00:00.050 → 00:04.950');
+  await expect(merged.locator('.multi-cue-column.extension .time')).toHaveText('00:00.000 → 00:05.000');
+  expect(await page.evaluate(() => DATA.multi_subtitle.bindings.map((binding) => ({
+    start: binding.start_offset_ms,
+    end: binding.end_offset_ms,
+  })))).toEqual([{ start: 0, end: 0 }]);
 
   await page.keyboard.press('Control+z');
   await expect(page.locator('.multi-dual-cue')).toHaveCount(3);
@@ -1471,6 +1982,12 @@ test('ignores a tiny unbound extension overlap at the main merge boundary', asyn
     type: 'application/json',
     base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
   }]);
+
+  // 该用例验证未绑定的微小边界重叠仍被保留；关闭自动同步，
+  // 避免把新的“绑定后按 H 整理冲突”语义混入本用例。
+  await openMultiSubtitleSettings(page);
+  await page.locator('#multi-subtitle-auto-sync-duration').uncheck();
+  await page.locator('#multi-subtitle-settings-toggle').click();
 
   await page.locator('.multi-cue-column.main').filter({ hasText: '主字幕一' }).click();
   await page.locator('.multi-cue-column.main').filter({ hasText: '主字幕二' }).click({ modifiers: ['Control'] });
@@ -1574,6 +2091,73 @@ test('shows independent extension preview controls with yellow defaults', async 
   await expect(page.locator('#extension-overlay-toggle')).not.toBeChecked();
 });
 
+test('refreshes local font options for both main and extension subtitles', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.queryLocalFonts = async () => [
+      { family: 'MAW Test Sans' },
+      { family: 'MAW Test Serif' },
+    ];
+  });
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-extension').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  await page.locator('#subtitle-preview-settings-toggle').click();
+
+  const scanButton = page.locator('#subtitle-font-family-scan');
+  await expect(scanButton).toBeEnabled();
+  await scanButton.click();
+  await expect(page.locator('#subtitle-font-family option[value="MAW Test Sans"]')).toHaveCount(1);
+  await expect(page.locator('#extension-subtitle-font-family option[value="MAW Test Sans"]')).toHaveCount(1);
+
+  await page.locator('#subtitle-font-family').selectOption('MAW Test Sans');
+  await page.locator('#extension-subtitle-font-family').selectOption('MAW Test Serif');
+  const fontFamilies = await page.evaluate(() => ({
+    main: document.getElementById('overlay-main-text').style.fontFamily,
+    extension: document.getElementById('overlay-extension-text').style.fontFamily,
+  }));
+  expect(fontFamilies.main).toContain('MAW Test Sans');
+  expect(fontFamilies.extension).toContain('MAW Test Serif');
+});
+
+test('localizes approved scanned font labels in both selectors', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.queryLocalFonts = async () => [
+      { family: 'Microsoft YaHei' },
+      { family: 'SimSun' },
+      { family: 'Source Han Sans SC' },
+      { family: 'MAW Test Sans' },
+    ];
+  });
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-extension').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  await page.locator('#subtitle-preview-settings-toggle').click();
+  await page.locator('#subtitle-font-family-scan').click();
+  const options = await page.evaluate(() => ['subtitle-font-family', 'extension-subtitle-font-family']
+    .map((id) => Array.from(document.getElementById(id).options, (option) => ({
+      label: option.textContent,
+      value: option.value,
+    }))));
+  expect(options[0]).toEqual(options[1]);
+  expect(options[0]).toEqual(expect.arrayContaining([
+    { label: '微软雅黑', value: 'Microsoft YaHei' },
+    { label: '宋体', value: 'SimSun' },
+    { label: '思源黑体', value: 'Source Han Sans SC' },
+    { label: 'MAW Test Sans', value: 'MAW Test Sans' },
+  ]));
+  await page.locator('#subtitle-font-family').selectOption('Source Han Sans SC');
+  await page.locator('#extension-subtitle-font-family').selectOption('SimSun');
+  await page.locator('#language-toggle').click();
+  await expect(page.locator('#subtitle-font-family option:checked')).toHaveText('Source Han Sans SC');
+  await expect(page.locator('#extension-subtitle-font-family option:checked')).toHaveText('SimSun');
+  expect(await page.evaluate(() => ({
+    main: document.getElementById('subtitle-font-family').value,
+    extension: document.getElementById('extension-subtitle-font-family').value,
+  }))).toEqual({ main: 'Source Han Sans SC', extension: 'SimSun' });
+});
+
+
+
 test('aligns a bound extension cue to the main subtitle range from its context menu', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-extension').click();
@@ -1588,6 +2172,26 @@ test('aligns a bound extension cue to the main subtitle range from its context m
 
   await page.keyboard.press('Control+z');
   await expect(row.locator('.multi-cue-column.extension .time')).toHaveText('00:00.050 → 00:01.950');
+});
+
+test('aligns multiple selected extension cues with H and undoes the batch once', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  const first = page.locator('.multi-cue-column.extension').filter({ hasText: '你好，世界。' });
+  const second = page.locator('.multi-cue-column.extension').filter({ hasText: '第二句。' });
+  await first.click();
+  await second.click({ modifiers: ['Control'] });
+  await expect(page.locator('#sel-count')).toHaveText('4');
+
+  await page.keyboard.press('h');
+  await expect(page.locator('#hint-stack')).toContainText('已批量对齐 2 条副字幕');
+  await expect(first.locator('.time')).toHaveText('00:00.000 → 00:02.000');
+  await expect(second.locator('.time')).toHaveText('00:03.000 → 00:05.000');
+
+  await page.keyboard.press('Control+z');
+  await expect(first.locator('.time')).toHaveText('00:00.050 → 00:01.950');
+  await expect(second.locator('.time')).toHaveText('00:03.050 → 00:04.950');
 });
 
 test('keeps the main range fixed and removes a fully covered extension cue on H alignment', async ({ page }) => {
@@ -1743,7 +2347,7 @@ test('keeps the main range fixed when its extension follower hits another extens
   expect(timing.extension[0][1]).toBe(timing.main[1] - 1000);
 });
 
-test('limits an extension drag to the available main-track boundary', async ({ page }) => {
+test('lets an extension drag move only the extension cue beyond the main-track boundary', async ({ page }) => {
   const project = {
     segments: [
       { id: 'main-001', start: 1000, end: 3000, text: '主字幕', items: [] },
@@ -1792,11 +2396,16 @@ test('limits an extension drag to the available main-track boundary', async ({ p
   await page.mouse.move(targetX, centerY, { steps: 4 });
   await page.mouse.up();
 
-  await expect(page.locator('#hint-stack')).toContainText('限制副字幕拖动');
-  expect(await page.evaluate(() => ({
+  await expect.poll(() => page.evaluate(() => [DATA.segments[0].start, DATA.segments[0].end]))
+    .toEqual([1000, 3000]);
+  const timing = await page.evaluate(() => ({
     main: [DATA.segments[0].start, DATA.segments[0].end],
     extension: [DATA.multi_subtitle.tracks[0].segments[0].start, DATA.multi_subtitle.tracks[0].segments[0].end],
-  }))).toEqual({ main: [1000, 3200], extension: [1000, 2200] });
+  }));
+  expect(timing.main).toEqual([1000, 3000]);
+  expect(timing.extension[0]).toBe(1000);
+  expect(timing.extension[1]).toBeGreaterThan(3000);
+  await expect(page.locator('#hint-stack')).not.toContainText('限制副字幕拖动');
 });
 
 test('opens the extension-only split dialog from the waveform context menu and undoes it', async ({ page }) => {
@@ -1830,7 +2439,10 @@ test('opens the extension-only split dialog from the waveform context menu and u
 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
   await expect(extensionBlock).toBeVisible();
-  await extensionBlock.click({ button: 'right', position: { x: 150, y: 10 } });
+  // 右键位置由块几何推导（块中部 → 字幕中点切点）：固定像素在波形面板变窄后
+  // 会把切点推到字幕末尾附近，右侧不足 100ms 时弹窗无法自动提交。
+  const blockBox = await waitForLayoutBox(extensionBlock, '副字幕块没有布局');
+  await extensionBlock.click({ button: 'right', position: { x: Math.round(blockBox.width / 2), y: 10 } });
   await page.locator('#ctxmenu .item').filter({ hasText: '在鼠标位置拆分' }).click();
 
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
@@ -1875,7 +2487,10 @@ test('renders one scissors marker per word-space split and trims the split text'
 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
   await expect(extensionBlock).toBeVisible();
-  await extensionBlock.click({ button: 'right', position: { x: 120, y: 10 } });
+  // 右键取块内 1/4 处（切点约 1500ms，明显更靠近第一个空格断点）：
+  // 固定像素在波形面板变窄后会使初始断点偏向第二个空格。
+  const blockBox = await waitForLayoutBox(extensionBlock, '副字幕块没有布局');
+  await extensionBlock.click({ button: 'right', position: { x: Math.round(blockBox.width * 0.25), y: 10 } });
   await page.locator('#ctxmenu .item').filter({ hasText: '在鼠标位置拆分' }).click();
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
   const splitText = page.locator('#multi-subtitle-split-text');
@@ -1923,7 +2538,11 @@ test('renders a scissors marker for a symbol-connected word split', async ({ pag
   }]);
 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
-  await extensionBlock.click({ button: 'right', position: { x: 120, y: 10 } });
+  await expect(extensionBlock).toBeVisible();
+  // 右键取块内 1/4 处（切点约 1500ms，靠近开头断点）：固定像素在波形面板
+  // 变窄后可能把初始断点推到 offset 10，导致下面的「未激活」断言抖动。
+  const blockBox = await waitForLayoutBox(extensionBlock, '副字幕块没有布局');
+  await extensionBlock.click({ button: 'right', position: { x: Math.round(blockBox.width * 0.25), y: 10 } });
   await page.locator('#ctxmenu .item').filter({ hasText: '在鼠标位置拆分' }).click();
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
   const splitText = page.locator('#multi-subtitle-split-text');
@@ -1980,7 +2599,11 @@ test('renders a post-period word split without dropping the period', async ({ pa
   }]);
 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
-  await extensionBlock.click({ button: 'right', position: { x: 120, y: 10 } });
+  await expect(extensionBlock).toBeVisible();
+  // 右键取块内 1/4 处：固定像素在波形面板变窄后可能让切点逼近字幕末尾，
+  // 使切点不再满足两侧各 100ms，弹窗无法自动提交。
+  const blockBox = await waitForLayoutBox(extensionBlock, '副字幕块没有布局');
+  await extensionBlock.click({ button: 'right', position: { x: Math.round(blockBox.width * 0.25), y: 10 } });
   await page.locator('#ctxmenu .item').filter({ hasText: '在鼠标位置拆分' }).click();
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
   const splitText = page.locator('#multi-subtitle-split-text');
@@ -2467,6 +3090,98 @@ test('restores squeezed bound extension subtitles when an Alt drag is pulled bac
   });
 });
 
+test('keeps bound extensions synced when a main shared boundary is dragged independently', async ({ page }) => {
+  const project = {
+    segments: [
+      { id: 'main-shared-1', start: 1000, end: 2000, text: '主字幕一', items: [] },
+      { id: 'main-shared-2', start: 2000, end: 3000, text: '主字幕二', items: [] },
+    ],
+    waveform: generateWaveformPayload(5000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-shared', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        segments: [
+          { id: 'extension-shared-1', start: 1000, end: 2000, text: 'first', items: [] },
+          { id: 'extension-shared-2', start: 2000, end: 3000, text: 'second', items: [] },
+        ],
+      }],
+      bindings: [
+        {
+          id: 'binding-shared-1', track_id: 'extension-shared',
+          main_segment_ids: ['main-shared-1'], extension_segment_ids: ['extension-shared-1'],
+        },
+        {
+          id: 'binding-shared-2', track_id: 'extension-shared',
+          main_segment_ids: ['main-shared-2'], extension_segment_ids: ['extension-shared-2'],
+        },
+      ],
+    },
+  };
+  // 该测试验证同轨独立拖动路径，显式关闭自动吸附（默认已开启）。
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'moy.asr.editor.settings.v1',
+      JSON.stringify({ autoSnapAdjacentCues: false }),
+    );
+  });
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'main-shared-boundary-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const readRanges = () => page.evaluate(() => ({
+    main: DATA.segments.map((segment) => [segment.start, segment.end]),
+    extension: DATA.multi_subtitle.tracks[0].segments.map((segment) => [segment.start, segment.end]),
+  }));
+  const dragHandleBy = async (selector, deltaMs) => {
+    const handle = page.locator(selector);
+    const handleBox = await waitForLayoutBox(handle, '主字幕共享边界手柄没有布局');
+    const row = handle.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
+    const rowBox = await waitForLayoutBox(row, '共享边界所在波形行没有布局');
+    const rowStart = Number(await row.getAttribute('data-start-ms'));
+    const rowEnd = Number(await row.getAttribute('data-end-ms'));
+    const y = handleBox.y + handleBox.height / 2;
+    const startX = handleBox.x + handleBox.width / 2;
+    const targetX = startX + (deltaMs / (rowEnd - rowStart)) * rowBox.width;
+    await page.mouse.move(startX, y);
+    await page.mouse.down();
+    await page.mouse.move(targetX, y, { steps: 4 });
+    await page.mouse.up();
+  };
+
+  // 自动吸附已显式关闭：同轨相邻主字幕保持独立，但绑定副字幕仍跟随主字幕边界。
+  await dragHandleBy(
+    '.waveform-cue-block[data-track="main"][data-idx="0"] .waveform-cue-handle.right',
+    -200,
+  );
+  await expect.poll(readRanges).toEqual({
+    main: [[1000, 1800], [2000, 3000]],
+    extension: [[1000, 1800], [2000, 3000]],
+  });
+
+  await page.evaluate(() => {
+    DATA.segments[0].end = 2000;
+    DATA.segments[1].start = 2000;
+    DATA.multi_subtitle.tracks[0].segments[0].end = 2000;
+    DATA.multi_subtitle.tracks[0].segments[1].start = 2000;
+    renderAll();
+  });
+
+  await dragHandleBy(
+    '.waveform-cue-block[data-track="main"][data-idx="1"] .waveform-cue-handle.left',
+    200,
+  );
+  await expect.poll(readRanges).toEqual({
+    main: [[1000, 2000], [2200, 3000]],
+    extension: [[1000, 2000], [2200, 3000]],
+  });
+});
+
 test('snaps an extension cue to main-track boundaries when cross-track snapping is enabled', async ({ page }) => {
   const projectPath = join(tempDir, 'cross-track-snap-project.json');
   const project = {
@@ -2835,4 +3550,85 @@ test('labels a linked split time inferred from main word timestamps', async ({ p
     .not.toHaveClass(/timestamp-locked-lane/);
   await expect(page.locator('#multi-subtitle-split-timestamp-hint')).toBeHidden();
   await page.keyboard.press('Escape');
+});
+
+test('Z/X adjust one main or extension cue at the pointer and ignore multi-selection', async ({ page }) => {
+  const project = {
+    segments: [
+      { id: 'main-pointer-001', start: 1000, end: 4000, text: 'main one' },
+      { id: 'main-pointer-002', start: 5000, end: 7000, text: 'main two' },
+    ],
+    waveform: generateWaveformPayload(8000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-pointer-1', role: 'extension', name: 'English', language: 'English',
+        split_mode: 'word', segments: [
+          { id: 'extension-pointer-001', start: 1200, end: 3800, text: 'extension one' },
+        ],
+      }],
+      bindings: [{
+        id: 'binding-pointer-001', track_id: 'extension-pointer-1',
+        main_segment_ids: ['main-pointer-001'],
+        extension_segment_ids: ['extension-pointer-001'],
+        start_offset_ms: 200, end_offset_ms: -200,
+      }],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'pointer-boundary-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const readRanges = () => page.evaluate(() => ({
+    main: DATA.segments.map((segment) => [segment.start, segment.end]),
+    extension: DATA.multi_subtitle.tracks[0].segments.map((segment) => [segment.start, segment.end]),
+  }));
+  const mainBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
+  const secondMainBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="1"]');
+  const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
+
+  // 主字幕当前面板激活时，绑定副字幕随同一边界增量调整。
+  await mainBlock.click();
+  await moveWaveformPointerToTime(page, mainBlock, 2000);
+  await page.keyboard.press('z');
+  await expect.poll(readRanges).toEqual({
+    main: [[2000, 4000], [5000, 7000]],
+    extension: [[2200, 3800]],
+  });
+  await moveWaveformPointerToTime(page, mainBlock, 3500);
+  await page.keyboard.press('x');
+  await expect.poll(readRanges).toEqual({
+    main: [[2000, 3500], [5000, 7000]],
+    extension: [[2200, 3300]],
+  });
+
+  // 副字幕当前面板激活时，即使主副同时处于选中状态，也只改变副字幕。
+  await extensionBlock.click();
+  await moveWaveformPointerToTime(page, extensionBlock, 2500);
+  await page.keyboard.press('z');
+  await expect.poll(readRanges).toEqual({
+    main: [[2000, 3500], [5000, 7000]],
+    extension: [[2500, 3300]],
+  });
+  await moveWaveformPointerToTime(page, extensionBlock, 3000);
+  await page.keyboard.press('x');
+  await expect.poll(readRanges).toEqual({
+    main: [[2000, 3500], [5000, 7000]],
+    extension: [[2500, 3000]],
+  });
+
+  // 多选时不执行，即使指针落在其中一条字幕上。
+  await mainBlock.click();
+  await secondMainBlock.click({ modifiers: ['Control'] });
+  await moveWaveformPointerToTime(page, secondMainBlock, 6000);
+  await page.keyboard.press('z');
+  await expect.poll(readRanges).toEqual({
+    main: [[2000, 3500], [5000, 7000]],
+    extension: [[2500, 3000]],
+  });
 });

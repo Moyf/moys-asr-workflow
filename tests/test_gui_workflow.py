@@ -78,7 +78,20 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(command[command.index("--model") + 1], "qwen3-asr-flash-filetrans")
         self.assertEqual(command[command.index("--language") + 1], "zh")
         self.assertEqual(command.count("--with-waveform"), 1)
+        self.assertNotIn("--with-spectral", command)
         self.assertNotIn("secret-key", " ".join(command))
+
+    def test_build_transcribe_command_enables_spectral_generation_when_requested(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            generate_spectral=True,
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertEqual(command.count("--with-waveform"), 1)
+        self.assertEqual(command.count("--with-spectral"), 1)
 
     def test_build_transcribe_command_passes_segmentation_options(self) -> None:
         request = TranscriptionRequest(

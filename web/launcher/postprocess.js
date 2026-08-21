@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const panels = { match: "toolboxMatchPanel", ocr: "toolboxOcrPanel", llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel" };
+  const panels = { waveform: "toolboxWaveformPanel", match: "toolboxMatchPanel", ocr: "toolboxOcrPanel", llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel" };
   const TASK_PROMPT_KEYS = { proofread: "toolbox_task_proofread", resegment: "toolbox_task_resegment", translate_en: "toolbox_task_translate_en", translate_zh: "toolbox_task_translate_zh" };
   const SUBTITLE_EXTS = new Set([".mosp", ".json", ".srt"]);
   const VIDEO_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"]);
@@ -26,14 +26,19 @@
   const AUTO_LLM_OPERATIONS = { proofread: "proofread", resegment: "resegment" };
   let autoPlanSaveTimer = 0;
   let pendingAutoStep = "";
+  let toolboxOpenMode = "manual";
   let busy = false;
   let inputManual = false;
+  let utilityMediaManual = false;
+  let activeToolboxSection = "postprocess";
   let ocrVideoManual = false;
   let saveStatusTimer = 0;
   let modelChoices = [];
   let modelChoicesOpen = false;
   let llmPrompts = {};
   let activeLlmOperation = "";
+  let artifactMenuTarget = null;
+  let batchMode = false;
 
   function t(key) {
     return window.MAWLauncher.translate(key);
@@ -118,7 +123,7 @@
       retainIntermediate: false,
       steps: [
         { id: "match", enabled: false, scriptPath: "" },
-        { id: "replace", enabled: false, replacements: [] },
+        { id: "replace", enabled: false, replacements: [], conversion: "off" },
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "resegment", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "ocr", enabled: false, videoPath: "", regionMode: "full", regionX1: 0, regionY1: 0, regionX2: 100, regionY2: 100, threshold: 0.5, report: false },
@@ -229,11 +234,21 @@
     name.classList.toggle("empty", !hasPath);
   }
 
+  function syncUtilityMediaName() {
+    const path = $("toolboxUtilityMediaPath").value.trim();
+    const name = $("toolboxUtilityMediaName");
+    const hasPath = Boolean(path);
+    name.textContent = hasPath ? fileName(path) : t("toolbox_input_empty");
+    name.title = path;
+    name.classList.toggle("empty", !hasPath);
+  }
+
   function syncPaths() {
     if (!inputManual) $("toolboxInputPath").value = autoSourcePath();
-    $("toolboxMediaPath").textContent = $("mediaPath").value.trim() || t("toolbox_no_media");
+    if (!utilityMediaManual) $("toolboxUtilityMediaPath").value = $("mediaPath").value.trim();
     syncOcrVideo();
     syncInputName();
+    syncUtilityMediaName();
   }
 
   function autoOcrVideoPath() {
@@ -305,27 +320,87 @@
   }
 
   function setOpen(open) {
+    const wasOpen = !$("toolboxDrawer").classList.contains("hidden");
     $("toolboxDrawer").classList.toggle("hidden", !open);
     $("toolboxFab").setAttribute("aria-expanded", String(open));
+    if (!open) toolboxOpenMode = "manual";
     syncPaths();
+    if (open) {
+      const activeTab = activeToolboxView().querySelector(".toolbox-tab.active")
+        || activeToolboxView().querySelector(".toolbox-tab");
+      if (activeTab) selectTool(activeTab.dataset.tool);
+    }
     if (open) $("toolboxClose").focus();
+    if (!open && wasOpen) $("toolboxFab").focus();
+  }
+
+  function setTestConnectionAttention(attention) {
+    $("testLlmConnection")?.classList.toggle("attention", Boolean(attention));
+  }
+
+  function toolboxSectionForTool(tool) {
+    return ["waveform", "ffconcat"].includes(tool) ? "utilities" : "postprocess";
+  }
+
+  function activeToolboxView() {
+    return activeToolboxSection === "postprocess" ? $("toolboxPostprocessView") : $("toolboxUtilitiesView");
+  }
+
+  function selectToolboxSection(section) {
+    activeToolboxSection = section;
+    document.querySelectorAll("[data-toolbox-section]").forEach((tab) => {
+      const active = tab.dataset.toolboxSection === section;
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", String(active));
+      tab.tabIndex = active ? 0 : -1;
+    });
+    $("toolboxPostprocessView").classList.toggle("hidden", section !== "postprocess");
+    $("toolboxUtilitiesView").classList.toggle("hidden", section !== "utilities");
+    const activeTab = activeToolboxView().querySelector(".toolbox-tab.active") || activeToolboxView().querySelector(".toolbox-tab");
+    if (activeTab) selectTool(activeTab.dataset.tool);
   }
 
   function selectTool(tool) {
+    const section = toolboxSectionForTool(tool);
+    if (section !== activeToolboxSection) selectToolboxSection(section);
     document.querySelectorAll(".toolbox-tab").forEach((tab) => {
       const active = tab.dataset.tool === tool;
       tab.classList.toggle("active", active);
       tab.setAttribute("aria-selected", String(active));
+      tab.tabIndex = active ? 0 : -1;
     });
     Object.entries(panels).forEach(([name, id]) => $(id).classList.toggle("hidden", name !== tool));
     document.querySelectorAll("[data-tool-action]").forEach((action) => {
-      action.classList.toggle("hidden", action.dataset.toolAction !== tool);
+      action.classList.toggle("hidden", action.dataset.toolAction !== tool || toolboxOpenMode === "auto-config");
     });
+    $("toolboxInputDropZone").classList.toggle("hidden", section !== "postprocess");
+    $("toolboxChain").classList.toggle("hidden", section !== "postprocess" || !$("toolboxChainList").children.length);
+    const configOnly = toolboxOpenMode === "auto-config";
+    $("toolboxOutputField").classList.toggle("hidden", section !== "postprocess" || configOnly);
+    $("toolboxConfigOnlyHint")?.classList.toggle("hidden", !configOnly);
+  }
+
+  function moveToolFocus(event) {
+    const tools = [...event.currentTarget.closest('[role="tablist"]').querySelectorAll(".toolbox-tab:not(.hidden)")];
+    const currentIndex = tools.indexOf(event.currentTarget);
+    if (currentIndex < 0) return;
+    const offset = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
+    const target = event.key === "Home"
+      ? tools[0]
+      : event.key === "End"
+        ? tools.at(-1)
+        : tools[(currentIndex + offset + tools.length) % tools.length];
+    if (!target) return;
+    event.preventDefault();
+    selectTool(target.dataset.tool);
+    target.focus();
   }
 
   function clampToolboxSize(width, height) {
-    const maxWidth = Math.max(TOOLBOX_MIN_WIDTH, window.innerWidth - 40);
-    const maxHeight = Math.max(TOOLBOX_MIN_HEIGHT, Math.min(TOOLBOX_MAX_HEIGHT, window.innerHeight - 156));
+    const viewportWidth = window.MAWLauncher.viewportPixelsToPage(window.innerWidth);
+    const viewportHeight = window.MAWLauncher.viewportPixelsToPage(window.innerHeight);
+    const maxWidth = Math.max(TOOLBOX_MIN_WIDTH, viewportWidth - 40);
+    const maxHeight = Math.max(TOOLBOX_MIN_HEIGHT, Math.min(TOOLBOX_MAX_HEIGHT, viewportHeight - 156));
     return {
       width: Math.round(Math.min(Math.max(width, TOOLBOX_MIN_WIDTH), maxWidth)),
       height: Math.round(Math.min(Math.max(height, TOOLBOX_MIN_HEIGHT), maxHeight)),
@@ -362,15 +437,21 @@
     handle.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
-      const rect = $("toolboxDrawer").getBoundingClientRect();
-      const start = { x: event.clientX, y: event.clientY, width: rect.width, height: rect.height };
-      let size = { width: rect.width, height: rect.height };
+      const drawer = $("toolboxDrawer");
+      const style = getComputedStyle(drawer);
+      const start = {
+        x: event.clientX,
+        y: event.clientY,
+        width: Number.parseFloat(style.width),
+        height: Number.parseFloat(style.height),
+      };
+      let size = { width: start.width, height: start.height };
       handle.setPointerCapture(event.pointerId);
       handle.classList.add("dragging");
       const onMove = (moveEvent) => {
         size = axis === "y"
-          ? applyToolboxSize(start.width, start.height + start.y - moveEvent.clientY)
-          : applyToolboxSize(start.width + start.x - moveEvent.clientX, start.height);
+          ? applyToolboxSize(start.width, start.height + window.MAWLauncher.viewportPixelsToPage(start.y - moveEvent.clientY))
+          : applyToolboxSize(start.width + window.MAWLauncher.viewportPixelsToPage(start.x - moveEvent.clientX), start.height);
       };
       const onEnd = () => {
         handle.removeEventListener("pointermove", onMove);
@@ -389,10 +470,12 @@
       event.preventDefault();
       const step = event.shiftKey ? 96 : 24;
       const grow = event.key === "ArrowUp" || event.key === "ArrowLeft";
-      const rect = $("toolboxDrawer").getBoundingClientRect();
+      const style = getComputedStyle($("toolboxDrawer"));
+      const width = Number.parseFloat(style.width);
+      const height = Number.parseFloat(style.height);
       const size = axis === "y"
-        ? applyToolboxSize(rect.width, rect.height + (grow ? step : -step))
-        : applyToolboxSize(rect.width + (grow ? step : -step), rect.height);
+        ? applyToolboxSize(width, height + (grow ? step : -step))
+        : applyToolboxSize(width + (grow ? step : -step), height);
       persistToolboxSize(size);
     });
   }
@@ -480,12 +563,41 @@
   function setBusy(nextBusy, statusKey = "toolbox_running") {
     busy = nextBusy;
     $("toolboxProgress").classList.toggle("hidden", !busy);
-    ["runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedReplacement", "runFfconcatRebuild", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport"].forEach((id) => {
+    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
       $(id).disabled = busy;
     });
     renderOcrModel();
+    applyBatchModeLocks();
     if (busy) setModelChoicesOpen(false);
     if (busy) setResult(t(statusKey));
+  }
+
+  async function generateWaveformProject(openEditor) {
+    const mediaPath = $("toolboxUtilityMediaPath").value.trim();
+    if (!mediaPath) {
+      setResult(t("toolbox_need_media"), "error");
+      return;
+    }
+    setBusy(true, "toolbox_status_starting");
+    try {
+      const result = await bridge("generate_waveform_project", {
+        mediaPath,
+        generateSpectral: $("toolboxGenerateSpectral").checked,
+      });
+      if (!result.ok) {
+        const errorKeys = new Set(["waveform_unavailable", "waveform_generation_failed"]);
+        setResult(errorKeys.has(result.code) ? t(result.code) : (result.error || result.detail || t("failed")), "error");
+        return;
+      }
+      if (openEditor) {
+        window.MAWLauncher.setJsonPath(result.projectPath);
+        await window.MAWLauncher.openServerEditor();
+      }
+      const warnings = Array.isArray(result.warnings) ? result.warnings : [];
+      setResult(`${t("toolbox_done")}\n${result.projectPath}${warnings.length ? `\n${warnings.join("\n")}` : ""}`, "success");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function resolveInputPaths() {
@@ -510,6 +622,7 @@
       projectPath: extension(source) === ".srt" ? "" : source,
       srtPath: extension(source) === ".srt" ? source : "",
       outputMode: $("postprocessOutputMode").value,
+      mediaPath: $("mediaPath").value.trim(),
     };
   }
 
@@ -526,7 +639,7 @@
   function chainLabel(kind, operation = "") {
     if (kind === "match") return t("toolbox_chain_match");
     if (kind === "ocr") return t("toolbox_chain_ocr");
-    if (kind === "replace") return t("toolbox_chain_replace");
+    if (kind === "fixed" || kind === "replace") return t("toolbox_chain_replace");
     const operationKeys = {
       proofread: "toolbox_chain_llm_proofread",
       resegment: "toolbox_chain_llm_resegment",
@@ -545,11 +658,62 @@
     button.classList.add("selected");
   }
 
+  function artifactLabel(kind) {
+    return t(kind === "project" ? "artifact_type_project" : "artifact_type_srt");
+  }
+
+  function renderArtifactButton(button) {
+    const label = artifactLabel(button.dataset.artifactKind);
+    const name = button.dataset.artifactName;
+    const path = button.dataset.artifactPath;
+    button.textContent = label;
+    button.title = `${name}\n${path}`;
+    button.setAttribute("aria-label", `${label}: ${name}; ${path}`);
+  }
+
+  function closeArtifactMenu({ restoreFocus = false } = {}) {
+    const target = artifactMenuTarget;
+    artifactMenuTarget = null;
+    $("artifactContextMenu").classList.add("hidden");
+    if (restoreFocus) target?.button.focus();
+  }
+
+  function openArtifactMenu(event, path, button) {
+    event.preventDefault();
+    event.stopPropagation();
+    closeArtifactMenu();
+    artifactMenuTarget = { path, button };
+    const menu = $("artifactContextMenu");
+    menu.classList.remove("hidden");
+    menu.style.left = "0";
+    menu.style.top = "0";
+    const rect = menu.getBoundingClientRect();
+    const inset = 8;
+    const left = Math.min(Math.max(event.clientX, inset), window.innerWidth - rect.width - inset);
+    const top = Math.min(Math.max(event.clientY, inset), window.innerHeight - rect.height - inset);
+    menu.style.left = `${window.MAWLauncher.viewportPixelsToPage(Math.max(inset, left))}px`;
+    menu.style.top = `${window.MAWLauncher.viewportPixelsToPage(Math.max(inset, top))}px`;
+    menu.querySelector('[role="menuitem"]')?.focus({ preventScroll: true });
+  }
+
+  async function runArtifactAction(action) {
+    const target = artifactMenuTarget;
+    if (!target) return;
+    closeArtifactMenu({ restoreFocus: true });
+    if (action === "select") {
+      selectChainPath(target.path, target.button);
+      return;
+    }
+    const result = await bridge(action, { path: target.path });
+    if (!result.ok) setResult(result.error || t("failed"), "error");
+  }
+
   function addChainResult(chain, result) {
-    const paths = [result.projectPath, result.srtPath]
-      .filter(Boolean)
-      .filter((path, index, all) => all.indexOf(path) === index);
-    if (!paths.length) return;
+    const artifacts = [
+      { kind: "project", path: result.projectPath },
+      { kind: "srt", path: result.srtPath },
+    ].filter((artifact, index, all) => artifact.path && all.findIndex((candidate) => candidate.path === artifact.path) === index);
+    if (!artifacts.length) return;
     const container = $("toolboxChain");
     const list = $("toolboxChainList");
     const item = document.createElement("div");
@@ -559,14 +723,19 @@
     label.textContent = chainLabel(chain.kind, chain.operation);
     const files = document.createElement("div");
     files.className = "toolbox-chain-files";
-    paths.forEach((path) => {
+    const activePath = result.projectPath || result.srtPath || "";
+    if (activePath) clearChainSelection();
+    artifacts.forEach(({ kind, path }) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "toolbox-chain-file";
-      button.textContent = fileName(path);
-      button.title = path;
-      button.setAttribute("aria-label", `${label.textContent}: ${path}`);
+      button.classList.toggle("selected", path === activePath);
+      button.dataset.artifactKind = kind;
+      button.dataset.artifactName = fileName(path);
+      button.dataset.artifactPath = path;
+      renderArtifactButton(button);
       button.addEventListener("click", () => selectChainPath(path, button));
+      button.addEventListener("contextmenu", (event) => openArtifactMenu(event, path, button));
       button.addEventListener("dblclick", async (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -631,12 +800,15 @@
 
   function autoStepHint(stepId) {
     if (stepId === "match") {
+      if (batchMode) return t("batch_manuscript_disabled");
       const path = $("postprocessScriptPath").value.trim();
       return path ? fileName(path) : t("auto_step_hint_no_file");
     }
     if (stepId === "replace") {
       const count = parseReplacements().length;
-      return count ? t("auto_step_hint_rules").replace("{count}", String(count)) : t("auto_step_hint_no_rules");
+      const rules = count ? t("auto_step_hint_rules").replace("{count}", String(count)) : t("auto_step_hint_no_rules");
+      const conversion = $("postprocessConversion").value;
+      return conversion === "off" ? rules : `${rules} · ${t(`toolbox_conversion_${conversion}`)}`;
     }
     if (["proofread", "resegment", "translate"].includes(stepId)) {
       const operation = autoLlmOperation(stepId);
@@ -657,8 +829,9 @@
       enabled: Boolean($("autoPostprocessEnabled")?.checked),
       retainIntermediate: Boolean($("autoPostprocessRetain")?.checked),
       steps: [
+        // 始终上报用户的单文件勾选；批量运行由后端统一跳过文稿匹配，前端不改写、不持久化批量态。
         { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim() },
-        { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements() },
+        { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements(), conversion: $("postprocessConversion").value },
         { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId, customPrompt: getLlmPrompt("proofread") },
         { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId, customPrompt: getLlmPrompt("resegment") },
         { id: "ocr", enabled: Boolean($("autoStepOcr")?.checked), videoPath: $("ocrVideoPath").value.trim(), ...ocr, threshold: Number($("ocrThreshold").value), report: Boolean($("ocrReport").checked) },
@@ -677,9 +850,13 @@
       const path = $("postprocessScriptPath").value.trim();
       return Boolean(path && SCRIPT_EXTS.has(extension(path)));
     }
-    if (stepId === "replace") return parseReplacements().length > 0;
+    if (stepId === "replace") return parseReplacements().length > 0 || $("postprocessConversion").value !== "off";
     if (["proofread", "resegment", "translate"].includes(stepId)) return autoLlmReady($("postprocessProvider").value);
     if (stepId === "ocr") {
+      const config = window.MAWLauncher.config || {};
+      const ocrModel = (Array.isArray(config.ocrModels) ? config.ocrModels : [])
+        .find((item) => item.id === $("ocrModel").value);
+      if (!config.ocrRuntime?.ready || !ocrModel?.installed) return false;
       const threshold = Number($("ocrThreshold").value);
       const video = $("ocrVideoPath").value.trim() || autoOcrVideoPath();
       if (!video || !VIDEO_EXTS.has(extension(video)) || !Number.isFinite(threshold) || threshold < 0 || threshold > 1) return false;
@@ -705,20 +882,27 @@
       const status = $(`autoStep${stepId[0].toUpperCase()}${stepId.slice(1)}Status`);
       const row = document.querySelector(`[data-auto-step-row="${stepId}"]`);
       const enabled = Boolean(checkbox?.checked);
+      const available = stepId !== "match" || !batchMode;
+      if (stepId === "match" && batchMode && checkbox) {
+        checkbox.disabled = true;
+      } else if (stepId === "match" && checkbox) {
+        checkbox.disabled = false;
+      }
       const ready = autoStepReady(stepId);
-      if (enabled) selected.push(stepId);
-      if (enabled && !ready) invalid.push(stepId);
+      if (enabled && available) selected.push(stepId);
+      if (enabled && available && !ready) invalid.push(stepId);
       if (status) {
-        status.textContent = enabled ? t(ready ? "auto_status_ready" : "auto_status_config") : t("auto_status_disabled");
-        status.classList.toggle("ready", enabled && ready);
-        status.classList.toggle("invalid", enabled && !ready);
+        status.textContent = available && enabled ? t(ready ? "auto_status_ready" : "auto_status_config") : t("auto_status_disabled");
+        status.classList.toggle("ready", available && enabled && ready);
+        status.classList.toggle("invalid", available && enabled && !ready);
       }
       const hint = $(`autoStep${stepId[0].toUpperCase()}${stepId.slice(1)}Hint`);
       if (hint) {
         hint.textContent = autoStepHint(stepId);
         hint.title = hint.textContent;
       }
-      row?.classList.toggle("needs-config", enabled && !ready);
+      row?.classList.toggle("needs-config", available && enabled && !ready);
+      row?.classList.toggle("batch-unavailable", !available);
     });
     const enabled = Boolean($("autoPostprocessEnabled")?.checked);
     $("autoPostprocessOptions")?.classList.toggle("hidden", !enabled);
@@ -727,6 +911,8 @@
     if (!summary) return;
     if (!enabled) {
       summary.textContent = t("auto_summary_disabled");
+    } else if (!selected.length) {
+      summary.textContent = t("auto_summary_empty");
     } else if (invalid.length) {
       summary.textContent = t("auto_summary_invalid").replace("{steps}", invalid.map(autoStepLabel).join(stateLangSeparator()));
     } else {
@@ -766,7 +952,7 @@
 
   function autoStepFocusField(stepId) {
     if (stepId === "match") return "postprocessScriptPath";
-    if (stepId === "replace") return "postprocessReplacements";
+    if (stepId === "replace") return parseReplacements().length ? "postprocessConversion" : "postprocessReplacements";
     if (["proofread", "resegment", "translate"].includes(stepId)) return "postprocessPrompt";
     if (stepId !== "ocr") return "";
     const video = $("ocrVideoPath").value.trim() || autoOcrVideoPath();
@@ -782,7 +968,7 @@
     return "ocrThreshold";
   }
 
-  function openAutoStep(stepId, invalidField = "") {
+  function openAutoStep(stepId, invalidField = "", { highlightConnection = false } = {}) {
     pendingAutoStep = stepId;
     const llmStep = ["proofread", "resegment", "translate"].includes(stepId);
     if (llmStep && !autoLlmReady($("postprocessProvider").value)) {
@@ -790,9 +976,11 @@
       const focusId = ["llmApiKey", "llmBaseUrl", "llmModel"].includes(invalidField)
         ? invalidField
         : (item?.hasApiKey === false ? "llmApiKey" : (item?.hasBaseUrl === false ? "llmBaseUrl" : "llmModel"));
+      if (highlightConnection) setTestConnectionAttention(true);
       window.MAWLauncher.openSettings("llmSettingsSection", focusId);
       return;
     }
+    toolboxOpenMode = "auto-config";
     setOpen(true);
     selectTool(AUTO_STEP_TOOLS[stepId] || "match");
     setAutoStepsExpanded(true);
@@ -810,14 +998,6 @@
     pendingAutoStep = "";
     renderAutoPostprocessState();
     persistAutoPlanSoon();
-    if (["proofread", "resegment", "translate"].includes(stepId)) {
-      window.MAWLauncher.closeSettings?.();
-      setOpen(true);
-      selectTool("llm");
-      setAutoStepsExpanded(true);
-      selectAutoLlmOperation(stepId);
-      focusAutoField("postprocessPrompt");
-    }
     return true;
   }
 
@@ -831,6 +1011,7 @@
     $("postprocessScriptPath").value = String(match.scriptPath || "");
     const replace = byId.get("replace") || {};
     $("postprocessReplacements").value = (Array.isArray(replace.replacements) ? replace.replacements : []).map((item) => `${item.source || ""} => ${item.target || ""}`).join("\n");
+    $("postprocessConversion").value = ["to_simplified", "to_traditional", "to_traditional_tw", "to_traditional_twp", "to_traditional_hk"].includes(replace.conversion) ? replace.conversion : "off";
     ["proofread", "resegment"].forEach((stepId) => {
       const prompt = byId.get(stepId)?.customPrompt;
       if (typeof prompt === "string" && prompt) llmPrompts[autoLlmOperation(stepId)] = prompt;
@@ -851,6 +1032,7 @@
     saveLlmPrompts();
     loadLlmPrompt(activeLlmOperation || $("postprocessOperation").value);
     renderOcrRegion();
+    if (plan.enabled && !AUTO_STEP_ORDER.some((stepId) => $(AUTO_STEP_CHECKBOXES[stepId]).checked)) setAutoStepsExpanded(true);
     renderAutoPostprocessState();
   }
 
@@ -933,9 +1115,10 @@
     }
   }
 
-  async function saveSettings() {
+  async function saveSettings({ autoTest = false } = {}) {
     setSettingsSaveStatus("");
     const item = provider();
+    const enteredApiKey = $("llmApiKey").value.trim();
     const result = await bridge("save_postprocess_settings", {
       providerId: item.id,
       apiKey: $("llmApiKey").value.trim(),
@@ -967,17 +1150,23 @@
     syncProviderOptionLabels();
     renderProvider(item.id);
     renderAutoPostprocessState();
-    setSettingsSaveStatus(t("toolbox_saved"), "success");
+    if (autoTest && enteredApiKey) {
+      await testConnection({ alreadySaved: true });
+    } else {
+      setSettingsSaveStatus(t("toolbox_saved"), "success");
+    }
     return result;
   }
 
-  async function testConnection() {
+  async function testConnection({ alreadySaved = false } = {}) {
     setSettingsSaveStatus(t("llm_connection_testing"), "", 0);
     $("testLlmConnection").disabled = true;
     $("getLlmModels").disabled = true;
     try {
-      const saved = await saveSettings();
-      if (!saved?.ok) return;
+      if (!alreadySaved) {
+        const saved = await saveSettings({ autoTest: false });
+        if (!saved?.ok) return saved;
+      }
       const item = provider();
       const result = await bridge("test_postprocess_connection", {
         providerId: item.id,
@@ -993,9 +1182,11 @@
         maybeEnablePendingAutoStep();
       }
       else setSettingsSaveStatus(result.detail || result.error || t("failed"), "error", 0);
+      return result;
     } catch (error) {
       setSettingsSaveStatus(String(error?.message || error || t("failed")), "error", 0);
     } finally {
+      setTestConnectionAttention(false);
       $("testLlmConnection").disabled = busy;
       $("getLlmModels").disabled = busy;
     }
@@ -1078,11 +1269,12 @@
     }
   }
 
-  async function runReplacement() {
+  async function runFixedProcess() {
     const paths = resolveInputPaths();
     if (!paths) return;
     const replacements = parseReplacements();
-    if (!replacements.length) {
+    const conversion = $("postprocessConversion").value;
+    if (!replacements.length && conversion === "off") {
       setFieldError("postprocessReplacements", t("toolbox_need_rules"));
       setResult(t("toolbox_need_rules"), "error");
       return;
@@ -1090,8 +1282,8 @@
     setFieldError("postprocessReplacements", "");
     setBusy(true, "toolbox_status_starting");
     try {
-      const result = await bridge("run_fixed_replacement", { ...paths, replacements });
-      if (result.ok) applySubtitleResult(result, { kind: "replace" });
+      const result = await bridge("run_fixed_process", { ...paths, replacements, conversion });
+      if (result.ok) applySubtitleResult(result, { kind: "fixed" });
       else setResult(result.error || result.detail || t("failed"), "error");
     } finally {
       setBusy(false);
@@ -1099,24 +1291,24 @@
   }
 
   async function runFfconcat() {
-    const mediaPath = $("mediaPath").value.trim();
+    const mediaPath = $("toolboxUtilityMediaPath").value.trim();
     const ffconcatPath = $("postprocessFfconcatPath").value.trim();
     if (!mediaPath) {
       setResult(t("toolbox_need_media"), "error");
       return;
     }
     if (extension(ffconcatPath) !== ".ffconcat") {
-      setFieldError("postprocessFfconcat", t("toolbox_need_ffconcat"));
+      setFieldError("postprocessFfconcatPath", t("toolbox_need_ffconcat"));
       setResult(t("toolbox_need_ffconcat"), "error");
       return;
     }
-    setFieldError("postprocessFfconcat", "");
+    setFieldError("postprocessFfconcatPath", "");
     setBusy(true, "toolbox_status_starting");
     try {
       const result = await bridge("run_ffconcat_rebuild", { mediaPath, ffconcatPath });
       if (result.ok) {
-        $("mediaPath").value = result.mediaPath;
-        $("mediaPath").dispatchEvent(new Event("input", { bubbles: true }));
+        utilityMediaManual = true;
+        $("toolboxUtilityMediaPath").value = result.mediaPath;
         syncPaths();
         setResult(`${t("toolbox_media_done")}\n${result.mediaPath}`, "success");
       } else setResult(result.error || result.detail || t("failed"), "error");
@@ -1139,28 +1331,56 @@
     renderTaskPrompt();
     renderOcrRegion();
     renderOcrModel();
-    selectTool("match");
+    selectToolboxSection("postprocess");
     syncPaths();
     initializeAutoPostprocess();
   }
 
-  $("toolboxFab").addEventListener("click", () => setOpen($("toolboxDrawer").classList.contains("hidden")));
+  $("toolboxFab").addEventListener("click", () => {
+    toolboxOpenMode = "manual";
+    setOpen($("toolboxDrawer").classList.contains("hidden"));
+  });
   $("toolboxClose").addEventListener("click", () => setOpen(false));
-  document.querySelectorAll(".toolbox-tab").forEach((tab) => tab.addEventListener("click", () => selectTool(tab.dataset.tool)));
+  $("toolboxDrawer").addEventListener("wheel", (event) => {
+    event.stopPropagation();
+    if (!event.target?.closest?.(".toolbox-content")) event.preventDefault();
+  }, { passive: false });
+  document.querySelectorAll("[data-toolbox-section]").forEach((tab) => {
+    tab.addEventListener("click", () => selectToolboxSection(tab.dataset.toolboxSection));
+    tab.addEventListener("keydown", (event) => {
+      if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
+      const tabs = [...$("toolboxPrimaryTabList").querySelectorAll("[data-toolbox-section]")];
+      const currentIndex = tabs.indexOf(tab);
+      const offset = event.key === "ArrowRight" ? 1 : -1;
+      const target = event.key === "Home" ? tabs[0] : event.key === "End" ? tabs.at(-1) : tabs[(currentIndex + offset + tabs.length) % tabs.length];
+      if (!target) return;
+      event.preventDefault();
+      selectToolboxSection(target.dataset.toolboxSection);
+      target.focus();
+    });
+  });
+  document.querySelectorAll(".toolbox-tab").forEach((tab) => {
+    tab.addEventListener("click", () => selectTool(tab.dataset.tool));
+    tab.addEventListener("keydown", (event) => {
+      if (["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp", "Home", "End"].includes(event.key)) moveToolFocus(event);
+    });
+  });
   $("postprocessProvider").addEventListener("change", () => { renderProvider(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("postprocessOperation").addEventListener("change", () => switchLlmOperation($("postprocessOperation").value));
   $("llmProvider").addEventListener("change", () => { $("postprocessProvider").value = $("llmProvider").value; renderProvider(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
-  $("saveLlmSettings").addEventListener("click", saveSettings);
+  $("saveLlmSettings").addEventListener("click", () => { void saveSettings({ autoTest: true }); });
   $("testLlmConnection").addEventListener("click", testConnection);
   $("getLlmModels").addEventListener("click", getModels);
   $("llmModelChoicesToggle").addEventListener("mousedown", (event) => event.preventDefault());
   $("llmModelChoicesToggle").addEventListener("click", () => setModelChoicesOpen(!modelChoicesOpen));
+  $("generateWaveform").addEventListener("click", () => { void generateWaveformProject(false); });
+  $("runWaveform").addEventListener("click", () => { void generateWaveformProject(true); });
   $("runScriptMatch").addEventListener("click", runScriptMatch);
   $("runOcrDedup").addEventListener("click", runOcrDedup);
   $("ocrModel").addEventListener("change", renderOcrModel);
   $("openOcrSettings").addEventListener("click", () => window.MAWLauncher.openSettings("ocrSettingsSection"));
   $("runLlmPostprocess").addEventListener("click", runLlm);
-  $("runFixedReplacement").addEventListener("click", runReplacement);
+  $("runFixedProcess").addEventListener("click", runFixedProcess);
   $("runFfconcatRebuild").addEventListener("click", runFfconcat);
   $("pickPostprocessFfconcat").addEventListener("click", async () => {
     const result = await bridge("choose_file", { kind: "ffconcat" });
@@ -1184,6 +1404,15 @@
       syncInputName();
     }
   });
+  $("pickToolboxUtilityMedia").addEventListener("click", async () => {
+    const result = await bridge("choose_file", { kind: "media" });
+    if (result.ok) {
+      utilityMediaManual = true;
+      $("toolboxUtilityMediaPath").value = result.path;
+      setFieldError("toolboxUtilityMediaPath", "");
+      syncUtilityMediaName();
+    }
+  });
   $("pickOcrVideo").addEventListener("click", async () => {
     const result = await bridge("choose_file", { kind: "video" });
     if (result.ok) {
@@ -1204,16 +1433,17 @@
     syncOcrVideo();
     syncInputName();
   });
+  $("toolboxUtilityMediaPath").addEventListener("input", () => {
+    utilityMediaManual = Boolean($("toolboxUtilityMediaPath").value.trim());
+    setFieldError("toolboxUtilityMediaPath", "");
+    syncPaths();
+  });
   $("ocrVideoPath").addEventListener("input", () => {
     ocrVideoManual = Boolean($("ocrVideoPath").value.trim());
     setFieldError("ocrVideoPath", "");
   });
   $("ocrRegionMode").addEventListener("change", renderOcrRegion);
   $("ocrThreshold").addEventListener("input", () => setFieldError("ocrThreshold", ""));
-  $("toolboxIssuesLink").addEventListener("click", (event) => {
-    event.preventDefault();
-    bridge("open_url", { url: "https://github.com/Moyf/moys-asr-workflow/issues" });
-  });
   $("openLlmSettings").addEventListener("click", () => { window.MAWLauncher.openSettings("llmSettingsSection"); requestAnimationFrame(() => $("llmApiKey")?.focus()); });
   $("postprocessScriptPath").addEventListener("input", () => { setFieldError("postprocessScriptPath", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
   $("postprocessPrompt").addEventListener("input", () => {
@@ -1234,17 +1464,28 @@
   document.addEventListener("click", (event) => {
     if (!event.target?.closest?.(".llm-model-picker")) setModelChoicesOpen(false);
   });
+  document.addEventListener("pointerdown", (event) => {
+    if (artifactMenuTarget && !event.target?.closest?.("#artifactContextMenu")) closeArtifactMenu();
+  });
+  $("artifactSetTarget").addEventListener("click", () => { void runArtifactAction("select"); });
+  $("artifactOpenFolder").addEventListener("click", () => { void runArtifactAction("open_containing_folder"); });
+  $("artifactOpenFile").addEventListener("click", () => { void runArtifactAction("open_file"); });
   ["llmApiKey", "llmBaseUrl", "llmModel", "llmReasoningMode"].forEach((id) => {
     $(id).addEventListener("input", () => setFieldError(id, ""));
     $(id).addEventListener("change", () => setFieldError(id, ""));
   });
   $("postprocessReplacements").addEventListener("input", () => { setFieldError("postprocessReplacements", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
+  $("postprocessConversion").addEventListener("change", () => { setFieldError("postprocessReplacements", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
   $("ocrVideoPath").addEventListener("input", () => { ocrVideoManual = Boolean($("ocrVideoPath").value.trim()); setFieldError("ocrVideoPath", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
   ["ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "autoTranslateTarget"].forEach((id) => {
     $(id).addEventListener("input", () => { renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
     $(id).addEventListener("change", () => { renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
   });
-  $("autoPostprocessEnabled").addEventListener("change", () => { renderAutoPostprocessState(); persistAutoPlanSoon(); });
+  $("autoPostprocessEnabled").addEventListener("change", () => {
+    if ($("autoPostprocessEnabled").checked) setAutoStepsExpanded(true);
+    renderAutoPostprocessState();
+    persistAutoPlanSoon();
+  });
   $("autoPostprocessRetain").addEventListener("change", () => { renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("autoPostprocessStepsToggle").addEventListener("click", () => {
     const expanded = $("autoPostprocessStepsCard").classList.contains("collapsed");
@@ -1259,7 +1500,7 @@
       if (checkbox.checked && !autoStepReady(stepId)) {
         checkbox.checked = false;
         renderAutoPostprocessState();
-        openAutoStep(stepId);
+        openAutoStep(stepId, "", { highlightConnection: true });
         return;
       }
       renderAutoPostprocessState();
@@ -1269,7 +1510,13 @@
   });
   ["jsonPath", "srtPath", "mediaPath"].forEach((id) => $(id).addEventListener("input", syncPaths));
   document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || busy) return;
+    if (event.key !== "Escape") return;
+    if (artifactMenuTarget) {
+      event.preventDefault();
+      closeArtifactMenu({ restoreFocus: true });
+      return;
+    }
+    if (busy) return;
     if (modelChoicesOpen) {
       setModelChoicesOpen(false);
       return;
@@ -1285,7 +1532,26 @@
     if (event.stage === "step_done") setResult(`${autoStepLabel(event.step)}：${t("toolbox_done")}`, "success");
   };
   window.MAWLauncher.getAutoPostprocessPayload = autoPlanFromControls;
+  window.MAWLauncher.onLanguageChanged = () => {
+    document.querySelectorAll(".toolbox-chain-file").forEach(renderArtifactButton);
+    renderAutoPostprocessState();
+  };
+  function applyBatchModeLocks() {
+    $("toolboxMatchTab").disabled = batchMode;
+    $("runScriptMatch").disabled = batchMode || busy;
+    $("configureAutoMatch").disabled = batchMode;
+  }
+  window.MAWLauncher.onBatchModeChanged = (active) => {
+    batchMode = Boolean(active);
+    applyBatchModeLocks();
+    if (batchMode && $("toolboxMatchTab").classList.contains("active")) selectTool("replace");
+    renderAutoPostprocessState();
+  };
   window.MAWLauncher.openAutoPostprocessStep = openAutoStep;
-  window.MAWLauncher.onOcrRuntimeChanged = renderOcrModel;
+  window.MAWLauncher.onOcrRuntimeChanged = () => {
+    renderOcrModel();
+    renderAutoPostprocessState();
+    maybeEnablePendingAutoStep();
+  };
   if (window.MAWLauncher.config) initialize();
 })();

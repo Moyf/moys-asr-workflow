@@ -58,7 +58,7 @@ class ScriptMatchTests(unittest.TestCase):
         segments = project["segments"]
         self.assertEqual(project["custom_metadata"], {"keep": True})
         self.assertEqual(segments[0]["text"], "今天好，")
-        self.assertNotIn("items", segments[0])
+        self.assertEqual(segments[0]["items"], [{"start": 0, "end": 500, "text": "今天好，"}])
         self.assertEqual(segments[1]["text"], "天气。")
         self.assertEqual([(item["start"], item["end"]) for item in segments], [(0, 1000), (1000, 2000)])
         self.assertIn("今天好，", result.srt_path.read_text(encoding="utf-8"))

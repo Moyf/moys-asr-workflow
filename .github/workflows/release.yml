@@ -1,0 +1,564 @@
+name: Release MAW GUI
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  # Windows 是发布门禁：它失败则整个 Release 不发布；
+  # macOS / Linux 失败仅提醒（publish 追加警告），不阻断。
+  build-windows:
+    name: Build Windows x64 bundle
+    runs-on: windows-2022
+    env:
+      PYTHONUTF8: '1'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Compute version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            # dispatch 触发时 ref_name 是分支名；上传 artifact 禁止 / \ * ? " < > | 等字符，统一清洗
+            CleanName="${GITHUB_REF_NAME//[^a-zA-Z0-9._-]/-}"
+            echo "version=${CleanName}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify tag matches pyproject version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+          Version="$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml)"
+          if [ "${{ github.ref_name }}" != "v${Version}" ]; then
+            echo "Tag ${{ github.ref_name }} does not match pyproject version v${Version}."
+            exit 1
+          fi
+
+      - name: Sync Launcher version from project metadata
+        run: python scripts/sync_launcher_version.py --write
+
+      - name: Verify Launcher version
+        run: python scripts/sync_launcher_version.py --check
+
+      - name: Install locked dependencies
+        run: uv sync --group build --frozen
+
+      - name: Run packaging contract tests
+        run: uv run python -m unittest tests/test_packaging_contract.py
+
+      - name: Run Python tests
+        run: uv run python -m unittest discover -s tests -p "test_*.py"
+
+      - name: Build MAW bundle
+        shell: pwsh
+        run: .\scripts\build-windows.ps1 -SkipTests
+
+      - name: Smoke MAW executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ExePath = 'dist\MAW\MAW.exe'
+          if (-not (Test-Path -LiteralPath $ExePath -PathType Leaf)) {
+            throw 'Missing dist\MAW\MAW.exe after build.'
+          }
+          $HelpProcess = Start-Process -FilePath $ExePath -ArgumentList '--help' -PassThru -WindowStyle Hidden
+          if ($HelpProcess.WaitForExit(10000)) {
+            if ($HelpProcess.ExitCode -eq 0) {
+              exit 0
+            }
+          } else {
+            Stop-Process -Id $HelpProcess.Id -Force
+          }
+          $GuiProcess = Start-Process -FilePath $ExePath -PassThru -WindowStyle Hidden
+          if ($GuiProcess.WaitForExit(5000)) {
+            if ($GuiProcess.ExitCode -ne 0) {
+              throw "MAW.exe launch smoke exited with $($GuiProcess.ExitCode)."
+            }
+          } else {
+            Stop-Process -Id $GuiProcess.Id -Force
+          }
+
+      - name: Create standard release archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Version = '${{ steps.version.outputs.version }}'
+          $Archive = "MAW-Windows-x64-$Version.zip"
+          Compress-Archive -LiteralPath 'dist\MAW' -DestinationPath $Archive -Force
+
+      - name: Create FFmpeg-bundled release archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $FfmpegVersion = '8.1.2'
+          $FfmpegCommit = '38b88335f9'
+          $FfmpegArchive = "build\ffmpeg-$FfmpegVersion-essentials_build.zip"
+          $FfmpegUrls = @(
+            "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-$FfmpegVersion-essentials_build.zip"
+            "https://github.com/GyanD/codexffmpeg/releases/download/$FfmpegVersion/ffmpeg-$FfmpegVersion-essentials_build.zip"
+          )
+          $ExpectedHash = 'db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec'
+          New-Item -ItemType Directory -Path 'build\ffmpeg-package' -Force | Out-Null
+          $DownloadedUrl = $null
+          foreach ($FfmpegUrl in $FfmpegUrls) {
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              try {
+                Write-Host "Downloading FFmpeg from $FfmpegUrl (attempt $attempt/3)"
+                Invoke-WebRequest -Uri $FfmpegUrl -OutFile $FfmpegArchive -TimeoutSec 120
+                $ActualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $FfmpegArchive).Hash.ToLowerInvariant()
+                if ($ActualHash -ne $ExpectedHash) {
+                  throw "FFmpeg archive checksum mismatch: expected $ExpectedHash, got $ActualHash."
+                }
+                $DownloadedUrl = $FfmpegUrl
+                break
+              } catch {
+                Remove-Item -LiteralPath $FfmpegArchive -Force -ErrorAction SilentlyContinue
+                Write-Warning "FFmpeg download failed from $FfmpegUrl (attempt $attempt/3): $($_.Exception.Message)"
+                if ($attempt -lt 3) {
+                  Start-Sleep -Seconds 10
+                }
+              }
+            }
+            if ($DownloadedUrl) {
+              break
+            }
+          }
+          if (-not $DownloadedUrl) {
+            throw "Unable to download a verified FFmpeg archive from any configured source."
+          }
+          Expand-Archive -LiteralPath $FfmpegArchive -DestinationPath 'build\ffmpeg-package' -Force
+
+          Copy-Item -LiteralPath 'dist\MAW' -Destination 'dist\MAWxFF' -Recurse
+          New-Item -ItemType Directory -Path 'dist\MAWxFF\ffmpeg\bin' -Force | Out-Null
+          $FfmpegExe = Get-ChildItem -LiteralPath 'build\ffmpeg-package' -Filter 'ffmpeg.exe' -File -Recurse | Select-Object -First 1
+          $FfprobeExe = Get-ChildItem -LiteralPath 'build\ffmpeg-package' -Filter 'ffprobe.exe' -File -Recurse | Select-Object -First 1
+          if (-not $FfmpegExe -or -not $FfprobeExe) {
+            throw 'The downloaded FFmpeg package did not contain ffmpeg.exe and ffprobe.exe.'
+          }
+          Copy-Item -LiteralPath $FfmpegExe.FullName -Destination 'dist\MAWxFF\ffmpeg\bin\ffmpeg.exe'
+          Copy-Item -LiteralPath $FfprobeExe.FullName -Destination 'dist\MAWxFF\ffmpeg\bin\ffprobe.exe'
+
+          $License = Get-ChildItem -LiteralPath 'build\ffmpeg-package' -Filter 'LICENSE' -File -Recurse | Select-Object -First 1
+          $Readme = Get-ChildItem -LiteralPath 'build\ffmpeg-package' -Filter 'README.txt' -File -Recurse | Select-Object -First 1
+          if (-not $License -or -not $Readme) {
+            throw 'The downloaded FFmpeg package did not contain its license and README.'
+          }
+          Copy-Item -LiteralPath $License.FullName -Destination 'dist\MAWxFF\ffmpeg\LICENSE.txt'
+          Copy-Item -LiteralPath $Readme.FullName -Destination 'dist\MAWxFF\ffmpeg\README.txt'
+          @(
+            "FFmpeg $FfmpegVersion Essentials build for Windows x64"
+            "Build provider: https://www.gyan.dev/ffmpeg/builds/"
+            "Original binary archive: $DownloadedUrl"
+            "Archive SHA-256: $ExpectedHash"
+            "Corresponding FFmpeg source commit: https://github.com/FFmpeg/FFmpeg/commit/$FfmpegCommit"
+            "FFmpeg source archive: https://github.com/FFmpeg/FFmpeg/archive/$FfmpegCommit.tar.gz"
+            'This MAWxFF package includes only ffmpeg.exe and ffprobe.exe from the original build.'
+            'See LICENSE.txt and README.txt in this directory for license and build configuration details.'
+          ) | Set-Content -LiteralPath 'dist\MAWxFF\ffmpeg\SOURCE.txt' -Encoding utf8
+
+          $Version = '${{ steps.version.outputs.version }}'
+          $Archive = "MAWxFF-Windows-x64-$Version.zip"
+          Compress-Archive -LiteralPath 'dist\MAWxFF' -DestinationPath $Archive -Force
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: MAW-Windows-x64-${{ steps.version.outputs.version }}
+          path: |
+            MAW-Windows-x64-${{ steps.version.outputs.version }}.zip
+            MAWxFF-Windows-x64-${{ steps.version.outputs.version }}.zip
+          if-no-files-found: error
+
+  build-aux:
+    name: Build ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64
+            platform: macos
+            os: macos-14
+            arch: arm64
+            asset: MAW-macOS-arm64
+            paths: |
+              MAW-macOS-arm64-*.zip
+              MAWxFF-macOS-arm64-*.zip
+          - name: Linux x86_64
+            platform: linux
+            os: ubuntu-22.04
+            arch: x64
+            asset: MAW-Linux-x86_64
+            paths: build-appimage/MAW-Linux-x86_64*.AppImage
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONUTF8: '1'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: ${{ matrix.arch }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Compute version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            # dispatch 触发时 ref_name 是分支名；上传 artifact 禁止 / \ * ? " < > | 等字符，统一清洗
+            CleanName="${GITHUB_REF_NAME//[^a-zA-Z0-9._-]/-}"
+            echo "version=${CleanName}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify tag matches pyproject version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+          Version="$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml)"
+          if [ "${{ github.ref_name }}" != "v${Version}" ]; then
+            echo "Tag ${{ github.ref_name }} does not match pyproject version v${Version}."
+            exit 1
+          fi
+
+      - name: Sync Launcher version from project metadata
+        run: python scripts/sync_launcher_version.py --write
+
+      - name: Verify Launcher version
+        run: python scripts/sync_launcher_version.py --check
+
+      - name: Install locked dependencies
+        run: uv sync --group build --frozen
+
+      - name: Run packaging contract tests
+        run: uv run python -m unittest tests/test_packaging_contract.py
+
+      - name: Run Python tests
+        run: uv run python -m unittest discover -s tests -p "test_*.py"
+
+      # ---------- macOS 专属 ----------
+
+      - name: Verify macOS app icon asset
+        if: matrix.platform == 'macos'
+        run: uv run python scripts/build_macos_icon.py --check
+
+      - name: Build MAW GUI bundle
+        if: matrix.platform == 'macos'
+        run: uv run --group build pyinstaller --noconfirm --clean MAW.spec
+
+      - name: Bundle uv bootstrap for optional runtimes
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          UvCommand="$(command -v uv)"
+          BootstrapDirectory="dist/MAW.app/Contents/Resources/bootstrap"
+          mkdir -p "$BootstrapDirectory"
+          cp "$UvCommand" "$BootstrapDirectory/uv"
+          chmod +x "$BootstrapDirectory/uv"
+
+      - name: Smoke MAW executable
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          AppExe="dist/MAW.app/Contents/MacOS/MAW"
+          if [ ! -f "$AppExe" ]; then
+            echo "Missing $AppExe after build."
+            exit 1
+          fi
+          "$AppExe" --smoke-import
+          "$AppExe" --help >/dev/null
+
+      - name: Ad-hoc codesign the app bundle
+        if: matrix.platform == 'macos'
+        run: |
+          codesign --force --deep --sign - dist/MAW.app
+          codesign --verify --deep --strict --verbose=2 dist/MAW.app
+
+      - name: Build MAWxFF app bundle
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          FfmpegVersion="8.1"
+          FfmpegArchiveUrl="https://www.osxexperts.net/ffmpeg81arm.zip"
+          FfmpegArchiveSha256="ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085bb9e8f6fe709598ad"
+          FfprobeArchiveUrl="https://www.osxexperts.net/ffprobe81arm.zip"
+          FfprobeArchiveSha256="a6640a77d38a6f0527c5b597e599cb36a3427a6931444ed80bc62542421950a1"
+          FfmpegBinarySha256="9a08d61f9328e8164ba560ee7a79958e357307fcfeea6fe626b7d66cdc287028"
+          FfprobeBinarySha256="aab17ac7379c1178aaf400c3ef36cdb67db0b75b1a23eeef2cb9f658be8844e6"
+          LicenseBaseUrl="https://raw.githubusercontent.com/FFmpeg/FFmpeg/n8.1"
+          DownloadRoot="build/macos-ffmpeg/downloads"
+          ExtractRoot="build/macos-ffmpeg/extracted"
+          FfmpegArchive="$DownloadRoot/ffmpeg81arm.zip"
+          FfprobeArchive="$DownloadRoot/ffprobe81arm.zip"
+          mkdir -p "$DownloadRoot" "$ExtractRoot/ffmpeg" "$ExtractRoot/ffprobe"
+
+          curl --fail --location --retry 3 --silent --show-error --output "$FfmpegArchive" "$FfmpegArchiveUrl"
+          curl --fail --location --retry 3 --silent --show-error --output "$FfprobeArchive" "$FfprobeArchiveUrl"
+          printf '%s  %s\n' "$FfmpegArchiveSha256" "$FfmpegArchive" | shasum -a 256 -c -
+          printf '%s  %s\n' "$FfprobeArchiveSha256" "$FfprobeArchive" | shasum -a 256 -c -
+          unzip -q -o "$FfmpegArchive" -d "$ExtractRoot/ffmpeg"
+          unzip -q -o "$FfprobeArchive" -d "$ExtractRoot/ffprobe"
+
+          FfmpegBinary="$(find "$ExtractRoot/ffmpeg" -type f -name ffmpeg ! -path '*/__MACOSX/*' -print -quit)"
+          FfprobeBinary="$(find "$ExtractRoot/ffprobe" -type f -name ffprobe ! -path '*/__MACOSX/*' -print -quit)"
+          if [ -z "$FfmpegBinary" ] || [ -z "$FfprobeBinary" ]; then
+            echo "The downloaded macOS FFmpeg archives did not contain ffmpeg and ffprobe."
+            exit 1
+          fi
+          chmod +x "$FfmpegBinary" "$FfprobeBinary"
+          file "$FfmpegBinary" | grep -q 'arm64'
+          file "$FfprobeBinary" | grep -q 'arm64'
+          printf '%s  %s\n' "$FfmpegBinarySha256" "$FfmpegBinary" | shasum -a 256 -c -
+          printf '%s  %s\n' "$FfprobeBinarySha256" "$FfprobeBinary" | shasum -a 256 -c -
+
+          cp -R dist/MAW.app dist/MAWxFF.app
+          FfmpegDirectory="dist/MAWxFF.app/Contents/MacOS/ffmpeg"
+          mkdir -p "$FfmpegDirectory/bin"
+          cp "$FfmpegBinary" "$FfmpegDirectory/bin/ffmpeg"
+          cp "$FfprobeBinary" "$FfmpegDirectory/bin/ffprobe"
+          curl --fail --location --retry 3 --silent --show-error --output "$FfmpegDirectory/LICENSE.md" "$LicenseBaseUrl/LICENSE.md"
+          curl --fail --location --retry 3 --silent --show-error --output "$FfmpegDirectory/COPYING.GPLv3" "$LicenseBaseUrl/COPYING.GPLv3"
+          curl --fail --location --retry 3 --silent --show-error --output "$FfmpegDirectory/COPYING.LGPLv2.1" "$LicenseBaseUrl/COPYING.LGPLv2.1"
+          cat > "$FfmpegDirectory/SOURCE.txt" <<EOF
+          FFmpeg $FfmpegVersion Apple Silicon static binaries for MAWxFF.
+          Build provider: https://www.osxexperts.net/
+          Original ffmpeg archive: $FfmpegArchiveUrl
+          Original ffprobe archive: $FfprobeArchiveUrl
+          FFmpeg license and reference source: $LicenseBaseUrl
+          This MAWxFF package includes only ffmpeg and ffprobe from the original builds.
+          See LICENSE.md, COPYING.GPLv3, and COPYING.LGPLv2.1 in this directory.
+          EOF
+
+          codesign --force --deep --sign - dist/MAWxFF.app
+          dist/MAWxFF.app/Contents/MacOS/ffmpeg/bin/ffmpeg -version >/dev/null
+          dist/MAWxFF.app/Contents/MacOS/ffmpeg/bin/ffprobe -version >/dev/null
+          dist/MAWxFF.app/Contents/MacOS/MAW --smoke-import
+          dist/MAWxFF.app/Contents/MacOS/MAW --help >/dev/null
+          codesign --verify --deep --strict --verbose=2 dist/MAWxFF.app
+
+      - name: Create release archives
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          Version="${{ steps.version.outputs.version }}"
+          StandardArchive="MAW-macOS-arm64-${Version}.zip"
+          XffArchive="MAWxFF-macOS-arm64-${Version}.zip"
+          StandardStage="build/release/standard"
+          XffStage="build/release/xff"
+          mkdir -p "$StandardStage" "$XffStage"
+          ditto dist/MAW.app "$StandardStage/MAW.app"
+          ditto dist/MAWxFF.app "$XffStage/MAWxFF.app"
+          (
+            cd "$StandardStage"
+            zip -qry "$GITHUB_WORKSPACE/$StandardArchive" MAW.app
+          )
+          (
+            cd "$XffStage"
+            zip -qry "$GITHUB_WORKSPACE/$XffArchive" MAWxFF.app
+          )
+          unzip -l "$StandardArchive" | grep -q 'MAW.app/Contents/MacOS/MAW'
+          unzip -l "$XffArchive" | grep -q 'MAWxFF.app/Contents/MacOS/MAW'
+
+      # ---------- Linux 专属 ----------
+
+      - name: Install system dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          # ffmpeg：生成 AppImage 图标；squashfs-tools：appimagetool 需要
+          # libnss3 等：PyInstaller 收集 QtWebEngine 的运行时依赖
+          sudo apt-get install -y \
+            ffmpeg squashfs-tools \
+            libnss3 libasound2 libxcomposite1 libxdamage1 libxrandr2 \
+            libxtst6 libxkbcommon0 libxkbcommon-x11-0 libpci3 libgl1 libegl1 \
+            libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xkb1 \
+            xvfb
+          sudo apt-get clean
+
+      - name: Build AppImage
+        if: matrix.platform == 'linux'
+        run: bash scripts/build-appimage.sh
+
+      - name: Verify AppImage output
+        if: matrix.platform == 'linux'
+        run: |
+          set -euo pipefail
+          AppImage="build-appimage/MAW-Linux-x86_64.AppImage"
+          test -f "$AppImage"
+          test -x "$AppImage"
+          file "$AppImage" | grep -q 'ELF 64-bit'
+
+      - name: Verify no bundled C++ runtime in AppImage
+        if: matrix.platform == 'linux'
+        run: |
+          set -euo pipefail
+          cd build-appimage
+          ./MAW-Linux-x86_64.AppImage --appimage-extract >/dev/null 2>&1
+          if [ -e squashfs-root/_internal/libstdc++.so.6 ] || [ -e squashfs-root/_internal/libgcc_s.so.1 ] || [ -e squashfs-root/_internal/libgbm.so.1 ]; then
+            echo "FAIL: AppImage 内置了 libstdc++/libgcc_s/libgbm，会污染系统 Mesa 驱动加载"
+            exit 1
+          fi
+          echo "OK: 未内置 libstdc++/libgcc_s/libgbm"
+          rm -r squashfs-root
+
+      - name: Diagnose AppImage libraries
+        if: ${{ always() && matrix.platform == 'linux' }}
+        run: |
+          cd build-appimage
+          ./MAW-Linux-x86_64.AppImage --appimage-extract >/dev/null 2>&1 || true
+          echo "=== Qt6/lib 里 xcb-cursor 相关:"
+          ls squashfs-root/_internal/PyQt6/Qt6/lib/ 2>/dev/null | grep -i xcb || echo "(无)"
+          echo "=== libqxcb.so 缺失依赖:"
+          ldd squashfs-root/_internal/PyQt6/Qt6/plugins/platforms/libqxcb.so 2>&1 | grep "not found" || echo "(依赖完整)"
+          rm -r squashfs-root
+
+      - name: Verify bundled static ffmpeg under polluted environment
+        if: matrix.platform == 'linux'
+        run: |
+          set -euo pipefail
+          cd build-appimage
+          ./MAW-Linux-x86_64.AppImage --appimage-extract >/dev/null 2>&1
+          BIN="squashfs-root/ffmpeg/bin"
+          test -x "$BIN/ffmpeg"
+          test -x "$BIN/ffprobe"
+          # 模拟 PyInstaller bootloader：LD_LIBRARY_PATH 指向 _internal（含旧 libstdc++）。
+          # 静态 ffmpeg 必须自包含，在此污染环境下仍能正常运行；动态版会
+          # 在这里报 GLIBCXX_3.4.32 not found。
+          export LD_LIBRARY_PATH="$PWD/squashfs-root/_internal"
+          "$BIN/ffmpeg" -version >/dev/null
+          "$BIN/ffprobe" -version >/dev/null
+          echo "OK: 静态 ffmpeg 在污染 LD_LIBRARY_PATH 下正常运行"
+          rm -r squashfs-root
+
+      - name: Smoke AppImage (headless)
+        if: matrix.platform == 'linux'
+        run: |
+          set -euo pipefail
+          AppImage="build-appimage/MAW-Linux-x86_64.AppImage"
+          # 无 FUSE 环境用解压运行模式；timeout 命中（124）说明 GUI 事件循环在正常存活。
+          # 20 秒足以确认 Launcher 正常起屏（正常启动只需数秒），到期被杀即视为通过。
+          set +e
+          timeout 20 xvfb-run -a env APPIMAGE_EXTRACT_AND_RUN=1 "$AppImage" > /tmp/maw-smoke.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 124 ]; then
+            echo "AppImage did not stay running (status $status). See log:"
+            tail -50 /tmp/maw-smoke.log
+            exit 1
+          fi
+
+      - name: Rename AppImage with version
+        if: ${{ matrix.platform == 'linux' && startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          set -euo pipefail
+          mv "build-appimage/MAW-Linux-x86_64.AppImage" "build-appimage/MAW-Linux-x86_64-${{ github.ref_name }}.AppImage"
+          test -f "build-appimage/MAW-Linux-x86_64-${{ github.ref_name }}.AppImage"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}-${{ steps.version.outputs.version }}
+          path: ${{ matrix.paths }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && !cancelled() && needs.build-windows.result == 'success' }}
+    needs: [build-windows, build-aux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Prepare release notes from CHANGELOG
+        run: python3 scripts/prepare_release_notes.py --tag "${{ github.ref_name }}" --output release-notes.md
+
+      - name: Append incomplete-build warning
+        if: ${{ needs.build-aux.result == 'failure' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >> release-notes.md <<'EOF'
+          ## 平台构建不完整
+
+          Windows 构建成功，但 macOS / Linux 构建未全部成功，本次 Release 仅包含成功平台的安装包。
+          开发者请查看本次 Actions 运行日志排查失败平台。
+          EOF
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: MAW-*
+          # 不要使用仓库已有的 assets/ 目录：上传时用 glob 会把源素材
+          # （launcher.jpg、maw.icns、screenshot*.jpg 等）一起传进 Release。
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Create or update GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          Tag="${{ github.ref_name }}"
+          case "$Tag" in *-*) Prerelease=true;; *) Prerelease=false;; esac
+          # 并发安全：已存在则跳过创建；create 撞 already_exists 时继续上传
+          if ! gh release view "$Tag" >/dev/null 2>&1; then
+            gh release create "$Tag" \
+              --title "$Tag" \
+              --notes-file release-notes.md \
+              --prerelease="$Prerelease" \
+              --target '${{ github.sha }}' || true
+          fi
+          gh release edit "$Tag" --title "$Tag" --notes-file release-notes.md
+          gh release upload "$Tag" release-artifacts/* --clobber

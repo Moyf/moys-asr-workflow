@@ -9,6 +9,7 @@ import {
   makeFirstCueWordSplittable,
   makeTempDir,
   startServer,
+  testSegments,
 } from './helpers.mjs';
 
 let tempDir;
@@ -217,7 +218,7 @@ test('waveform background split supports undo and redo', async ({ page }) => {
   const box = await row.boundingBox();
   expect(box).not.toBeNull();
   await page.mouse.click(box.x + box.width * 0.4, box.y + 20, { button: 'right' });
-  const splitItem = page.locator('#ctxmenu .item', { hasText: '按音频位置拆分当前字幕' });
+  const splitItem = page.locator('#ctxmenu .item', { hasText: '按音频位置拆分' });
   await expect(splitItem).toBeEnabled();
   await splitItem.click();
   await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
@@ -321,6 +322,18 @@ test('manual text split keeps malformed item timing inside both cues and restore
       expect(item.end).toBeGreaterThan(item.start);
     }
   }
+
+  // 本测试通过 Ctrl+S 把拆分后的工程写回了服务器（磁盘 + 内存）。
+  // 恢复原始工程并保存，避免同 spec 后续测试加载到被改写的数据。
+  const restoreResponse = page.waitForResponse((response) => (
+    response.url().endsWith('/api/project') && response.request().method() === 'POST'
+  ));
+  await page.evaluate((segments) => {
+    DATA.segments = segments.map((segment) => JSON.parse(JSON.stringify(segment)));
+    renderAll();
+  }, testSegments());
+  await page.keyboard.press('Control+s');
+  expect((await restoreResponse).ok()).toBe(true);
 });
 
 test('current-cue text keeps the list and waveform labels in sync through undo and redo', async ({ page }) => {
@@ -361,6 +374,30 @@ test('current-cue text keeps the list and waveform labels in sync through undo a
   await redo.click();
   await expect(listText).toHaveText('Alpha revised');
   await expect(waveformLabel).toHaveText('Alpha revised');
+});
+
+test('current-cue Escape behavior follows the operation setting', async ({ page }) => {
+  await page.goto(server.url);
+  const panelText = page.locator('#cue-panel-text');
+  const listText = page.locator('.cue[data-idx="0"] .text');
+  await page.locator('.waveform-cue-block[data-idx="0"]').first().click();
+  await expect(panelText).toHaveValue('Alpha');
+
+  await panelText.fill('Alpha kept');
+  await panelText.press('Escape');
+  await expect(panelText).toHaveValue('Alpha kept');
+  await expect(listText).toHaveText('Alpha kept');
+
+  await page.locator('#cue-editor-settings-toggle').click();
+  const cancelOnEscape = page.locator('#cue-editor-cancel-on-escape');
+  await expect(cancelOnEscape).not.toBeChecked();
+  await cancelOnEscape.check();
+  await page.locator('#cue-editor-settings-toggle').click();
+
+  await panelText.fill('Alpha reverted');
+  await panelText.press('Escape');
+  await expect(panelText).toHaveValue('Alpha kept');
+  await expect(listText).toHaveText('Alpha kept');
 });
 
 test('C merge refreshes the paused main subtitle preview', async ({ page }) => {
@@ -418,6 +455,62 @@ test('B splits the selected subtitle under the cue-list pointer and supports und
   await expect.poll(() => page.locator('.cue').count()).toBe(7);
   await expect(page.locator('.cue .text').nth(0)).toHaveText('Alpha');
   await expect(page.locator('.cue .text').nth(1)).toHaveText('Bravo');
+});
+
+test('retries an inline split with B or Enter and clamps both halves to 100ms', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    const segment = DATA.segments[0];
+    segment.text = 'Alpha Bravo';
+    segment.items = [
+      { start: segment.start, end: segment.start + 50, text: 'Alpha' },
+      { start: segment.start + 50, end: segment.end, text: 'Bravo' },
+    ];
+    renderAll({ waveform: 'full' });
+  });
+
+  const cue = page.locator('.cue[data-idx="0"]');
+  await cue.click();
+  const text = cue.locator('.text');
+  await text.dblclick();
+  await text.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 5);
+    range.setEnd(node, 5);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+
+  // The first attempt leaves the editor open and only arms the forced retry.
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.cue')).toHaveCount(6);
+  await expect(text).toHaveAttribute('contenteditable', 'plaintext-only');
+  await expect(page.locator('.hint-card.hint-warning', {
+    hasText: '请再次按 B 或 Enter 强制拆分',
+  })).toBeVisible();
+
+  // B/Enter is accepted only for this armed retry while the inline editor is open.
+  await page.keyboard.press('Enter');
+  await expect.poll(() => page.locator('.cue').count()).toBe(7);
+  const splitTiming = await page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => ({
+    text: segment.text,
+    duration: segment.end - segment.start,
+  })));
+  expect(splitTiming).toEqual([
+    { text: 'Alpha', duration: 100 },
+    { text: 'Bravo', duration: 7900 },
+  ]);
+  await expect(page.locator('.cue[data-idx="1"]')).toHaveClass(/selected/);
+
+  // The split history restores the original text, timing, selection and panel target.
+  await page.getByRole('button', { name: /撤销/ }).click();
+  await expect.poll(() => page.locator('.cue').count()).toBe(6);
+  await expect(page.locator('.cue[data-idx="0"]')).toHaveClass(/selected/);
+  await expect.poll(() => page.evaluate(() => window.MAWE_EDITOR_BRIDGE.currentCuePanelIdx)).toBe(0);
+  await expect(page.locator('.cue[data-idx="0"] .text')).toHaveText('Alpha Bravo');
+  expect(await page.evaluate(() => DATA.segments[0].end - DATA.segments[0].start)).toBe(8000);
 });
 
 test('long-only filtering temporarily keeps split results visible until focus leaves', async ({ page }) => {
@@ -601,6 +694,261 @@ test('B splits at the pointer audio position while hovering the waveform', async
   await expect(page.locator('.cue .text').nth(1)).toHaveText('Bravo');
 });
 
+test('Home and End seek the player and reveal the media boundaries', async ({ page }) => {
+  await page.goto(server.url);
+  await expect.poll(() => page.evaluate(() => {
+    const scroll = document.getElementById('waveform-scroll');
+    return scroll.scrollHeight > scroll.clientHeight;
+  })).toBe(true);
+  await page.evaluate(() => {
+    waveformEditor.settings.mode = 'multi';
+    waveformEditor.settings.secondsPerRow = 10;
+    waveformEditor.render();
+    const scroll = document.getElementById('waveform-scroll');
+    scroll.scrollTop = scroll.scrollHeight;
+  });
+  await expect.poll(() => page.evaluate(
+    () => document.getElementById('waveform-scroll').scrollTop,
+  )).toBeGreaterThan(0);
+  await page.evaluate(() => {
+    const media = document.getElementById('player');
+    media.currentTime = 123;
+    media.dispatchEvent(new Event('timeupdate'));
+  });
+
+  await page.keyboard.press('Home');
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBe(0);
+  await expect.poll(() => page.evaluate(
+    () => document.getElementById('waveform-scroll').scrollTop,
+  )).toBeLessThan(1);
+
+  await page.keyboard.press('End');
+  await expect.poll(() => page.evaluate(() => {
+    const media = document.getElementById('player');
+    return Math.abs(media.currentTime - media.duration);
+  })).toBeLessThan(0.01);
+  await expect.poll(() => page.evaluate(() => {
+    const scroll = document.getElementById('waveform-scroll');
+    return scroll.scrollTop - (scroll.scrollHeight - scroll.clientHeight);
+  })).toBeGreaterThan(-1);
+});
+
+test('Home and End preserve native search and help-tab behavior', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('.cue[data-idx="2"]').click();
+  await page.evaluate(() => {
+    const nativeTargets = document.createElement('div');
+    nativeTargets.innerHTML = [
+      '<select id="home-end-select"><option>One</option><option>Two</option></select>',
+      '<textarea id="home-end-textarea">Alpha Bravo</textarea>',
+      '<button id="home-end-button" type="button">Native button</button>',
+      '<a id="home-end-link" href="#home-end-target">Native link</a>',
+      '<div id="home-end-editable" contenteditable="true">Alpha Bravo</div>',
+    ].join('');
+    document.body.append(nativeTargets);
+    const media = document.getElementById('player');
+    media.currentTime = 123;
+    media.dispatchEvent(new Event('timeupdate'));
+  });
+  const search = page.locator('#search');
+  await search.fill('Alpha Bravo');
+  await search.press('Home');
+  expect(await search.evaluate((element) => element.selectionStart)).toBe(0);
+  await expect(page.locator('.cue[data-idx="2"]')).toHaveClass(/selected/);
+
+  for (const selector of [
+    '#home-end-select',
+    '#home-end-textarea',
+    '#home-end-button',
+    '#home-end-link',
+    '#home-end-editable',
+  ]) {
+    const target = page.locator(selector);
+    await target.focus();
+    await target.press('Home');
+    await expect(page.locator('.cue[data-idx="2"]')).toHaveClass(/selected/);
+    await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBe(123);
+  }
+
+  await page.locator('#help-toggle').click();
+  const generalTab = page.locator('#help-tab-general');
+  const playbackTab = page.locator('#help-tab-playback');
+  await generalTab.focus();
+  await generalTab.press('End');
+  await expect(playbackTab).toBeFocused();
+  await expect(playbackTab).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('.cue[data-idx="2"]')).toHaveClass(/selected/);
+});
+
+test('Home and End follow the main cue-list owner without seeking media', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('.cue[data-idx="2"]').click();
+  await page.locator('#search').fill('a');
+  await expect(page.locator('.cue[data-idx="4"]')).toHaveClass(/hidden/);
+  await page.locator('#search').evaluate((element) => element.blur());
+  await page.evaluate(() => {
+    const media = document.getElementById('player');
+    media.currentTime = 123;
+    media.dispatchEvent(new Event('timeupdate'));
+  });
+
+  await page.keyboard.press('Home');
+  await expect(page.locator('.cue[data-idx="0"]')).toHaveClass(/selected/);
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBe(123);
+
+  await page.keyboard.press('End');
+  await expect(page.locator('.cue[data-idx="3"]')).toHaveClass(/selected/);
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBe(123);
+});
+
+test('Home and End keep extension cue-list navigation on the exact track', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    DATA.multi_subtitle = {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-home-end',
+        role: 'extension',
+        name: 'English',
+        language: 'English',
+        split_mode: 'word',
+        segments: DATA.segments.slice(0, 3).map((segment, index) => ({
+          id: `extension-home-end-${index}`,
+          start: segment.start,
+          end: segment.end,
+          text: `Extension ${index + 1}`,
+        })),
+      }],
+      bindings: [],
+    };
+    renderAll({ waveform: 'full' });
+  });
+  const extensionCue = page.locator(
+    '.multi-dual-cue[data-ext-idx="1"] .multi-cue-column.extension',
+  );
+  await extensionCue.click();
+  await page.evaluate(() => {
+    const media = document.getElementById('player');
+    media.currentTime = 123;
+    media.dispatchEvent(new Event('timeupdate'));
+  });
+
+  await page.keyboard.press('Home');
+  await expect(page.locator('.multi-dual-cue[data-ext-idx="0"]')).toHaveClass(/selected/);
+  expect(await page.evaluate(() => getCurrentCuePanelTarget()?.trackId)).toBe('extension-home-end');
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBe(123);
+
+  await page.keyboard.press('End');
+  await expect(page.locator('.multi-dual-cue[data-ext-idx="2"]')).toHaveClass(/selected/);
+  expect(await page.evaluate(() => getCurrentCuePanelTarget()?.trackId)).toBe('extension-home-end');
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBe(123);
+});
+
+test('Home and End help explains cue-list and media routing in Chinese and English', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('#help-toggle').click();
+  const helpPanel = page.locator('#help-panel');
+  await expect(helpPanel).toContainText('选择并显示当前轨道首/末条可见字幕');
+  await expect(helpPanel).toContainText('在波形区或播放器跳转到媒体开头/结尾');
+
+  await page.locator('#language-toggle').evaluate((button) => button.click());
+  await expect(helpPanel).toContainText('Select and reveal the first/last visible subtitle on the current track');
+  await expect(helpPanel).toContainText('Seek to the start/end of the media from the waveform or player');
+});
+
+test('hovering a selected subtitle shows the B split hint', async ({ page }) => {
+  await page.goto(server.url);
+  const cue = page.locator('.cue[data-idx="0"]');
+  await cue.click();
+  const text = cue.locator('.text');
+  const splitPoint = await text.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    range.setStart(node, 2);
+    range.setEnd(node, 2);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.move(splitPoint.x, splitPoint.y);
+
+  const preview = cue.locator('.cue-split-preview');
+  await expect(preview).toBeVisible();
+  expect(await preview.evaluate((element) => getComputedStyle(element, '::after').content)).toBe('"B"');
+});
+
+test('the last multi-row waveform uses the media remainder width', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    waveformEditor.settings.mode = 'multi';
+    waveformEditor.settings.secondsPerRow = 64;
+    waveformEditor.settings.rowHeight = 72;
+    waveformEditor.render();
+    const scroll = document.getElementById('waveform-scroll');
+    scroll.scrollTop = scroll.scrollHeight;
+    waveformEditor.renderMultiVisible(true);
+  });
+
+  const lastRow = page.locator('.waveform-row[data-row-index="4"]');
+  await expect(lastRow).toBeVisible();
+  await expect(lastRow).toHaveAttribute('style', /width: 68\.75%/);
+  await expect(lastRow).toHaveAttribute('data-end-ms', '300000');
+});
+
+test('requires a second B in the split dialog before forcing a short-side cut', async ({ page }) => {
+  await page.addInitScript(() => {
+    const key = 'moy.asr.editor.settings.v1';
+    const settings = JSON.parse(localStorage.getItem(key) || '{}');
+    localStorage.setItem(key, JSON.stringify({
+      ...settings,
+      autoSaveProject: false,
+      splitUseWordTimestamps: false,
+    }));
+  });
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    const segment = DATA.segments[0];
+    segment.text = 'Alpha Bravo';
+    segment.items = [
+      { start: segment.start, end: segment.start + 50, text: 'Alpha' },
+      { start: segment.start + 50, end: segment.end, text: 'Bravo' },
+    ];
+    renderAll({ waveform: 'full' });
+  });
+
+  const row = page.locator('.waveform-row').first();
+  const box = await row.boundingBox();
+  const rowStart = Number(await row.getAttribute('data-start-ms'));
+  const rowEnd = Number(await row.getAttribute('data-end-ms'));
+  if (!box || !Number.isFinite(rowStart) || !Number.isFinite(rowEnd)) {
+    throw new Error('波形行没有有效时间范围');
+  }
+  const pointerTime = 50;
+  const pointerX = box.x + ((pointerTime - rowStart) / (rowEnd - rowStart)) * box.width;
+  await page.mouse.move(pointerX, box.y + box.height / 2);
+  await page.keyboard.press('b');
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+
+  // The first confirmation only arms the retry and keeps the dialog open.
+  await page.keyboard.press('b');
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await expect(page.locator('.cue')).toHaveCount(6);
+  await expect(page.locator('.hint-card.hint-warning', {
+    hasText: '请再次按 B 或 Enter 强制拆分',
+  })).toBeVisible();
+
+  await page.keyboard.press('b');
+  await expect.poll(() => page.locator('.cue').count()).toBe(7);
+  expect(await page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => [
+    segment.text,
+    segment.end - segment.start,
+  ]))).toEqual([
+    ['Alpha', 100],
+    ['Bravo', 7900],
+  ]);
+});
+
 test('B and C refresh cue overlays without redrawing cached waveform canvases', async ({ page }) => {
   await page.goto(server.url);
   await makeFirstCueWordSplittable(page);
@@ -650,6 +998,147 @@ test('B and C refresh cue overlays without redrawing cached waveform canvases', 
   });
 });
 
+test('waveform appearance wheel adjustments wait for input to settle', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    waveformEditor.settings.mode = 'multi';
+    waveformEditor.settings.secondsPerRow = 300;
+    waveformEditor.settings.rowHeight = 96;
+    waveformEditor.settings.waveformScale = 1;
+    waveformEditor.multiRange = [-1, -1];
+    waveformEditor.render();
+
+    const row = document.querySelector('.waveform-row[data-row-index="0"]');
+    const canvas = row?.querySelector('canvas');
+    if (!row || !canvas) throw new Error('没有可测试的波形 Canvas');
+    window.__waveformAppearanceStats = { drawRows: 0, canvas };
+    const originalDrawRow = waveformEditor.drawRow.bind(waveformEditor);
+    waveformEditor.drawRow = function wrappedDrawRow(...args) {
+      window.__waveformAppearanceStats.drawRows += 1;
+      return originalDrawRow(...args);
+    };
+  });
+
+  const scaleBefore = await page.evaluate(() => {
+    const scroll = document.getElementById('waveform-scroll');
+    for (let index = 0; index < 3; index += 1) {
+      scroll.dispatchEvent(new WheelEvent('wheel', {
+        deltaY: -120,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }));
+    }
+    return {
+      scale: waveformEditor.settings.waveformScale,
+      drawRows: window.__waveformAppearanceStats.drawRows,
+    };
+  });
+  expect(scaleBefore).toEqual({ scale: 1, drawRows: 0 });
+  await expect.poll(() => page.evaluate(() => waveformEditor.settings.waveformScale)).toBe(2.5);
+  await expect.poll(() => page.evaluate(() => window.__waveformAppearanceStats.drawRows > 0)).toBe(true);
+
+  await page.evaluate(() => {
+    window.__waveformAppearanceStats.drawRows = 0;
+    const scroll = document.getElementById('waveform-scroll');
+    for (let index = 0; index < 2; index += 1) {
+      scroll.dispatchEvent(new WheelEvent('wheel', {
+        deltaY: -120,
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }));
+    }
+  });
+  expect(await page.evaluate(() => ({
+    rowHeight: waveformEditor.settings.rowHeight,
+    drawRows: window.__waveformAppearanceStats.drawRows,
+  }))).toEqual({ rowHeight: 96, drawRows: 0 });
+  await expect.poll(() => page.evaluate(() => waveformEditor.settings.rowHeight)).toBe(144);
+  await expect.poll(() => page.evaluate(() => window.__waveformAppearanceStats.drawRows > 0)).toBe(true);
+});
+
+test('spectral color toggle shows pending state and ignores repeated clicks', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    waveformEditor.settings.mode = 'multi';
+    waveformEditor.settings.secondsPerRow = 10;
+    waveformEditor.settings.spectralColor = false;
+    waveformEditor.multiRange = [-1, -1];
+    waveformEditor.render();
+
+    const peakCount = 1000;
+    const bytes = new Uint8Array(peakCount * 4);
+    for (let index = 0; index < peakCount; index += 1) {
+      bytes[index * 4] = 232;
+      bytes[index * 4 + 1] = 3;
+      bytes[index * 4 + 2] = 255;
+      bytes[index * 4 + 3] = 63;
+    }
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    waveformEditor.setSpectralPayload({
+      schema: 'moy.asr.spectral.v1',
+      encoding: 'u16-freq-density-base64',
+      sample_rate: 8000,
+      division: 80,
+      peak_count: peakCount,
+      data: btoa(binary),
+    }, { render: false });
+    waveformEditor.spectralColorToggle.checked = false;
+
+    window.__spectralColorStats = { renders: 0 };
+    const originalRender = waveformEditor.render.bind(waveformEditor);
+    waveformEditor.render = function wrappedRender(...args) {
+      window.__spectralColorStats.renders += 1;
+      return originalRender(...args);
+    };
+  });
+
+  const immediate = await page.evaluate(() => {
+    const toggle = document.getElementById('waveform-spectral-color');
+    toggle.click();
+    toggle.click();
+    const status = document.getElementById('waveform-spectral-status');
+    return {
+      checked: toggle.checked,
+      disabled: toggle.disabled,
+      ariaBusy: toggle.getAttribute('aria-busy'),
+      statusHidden: status.hidden,
+      statusText: status.textContent,
+      renders: window.__spectralColorStats.renders,
+    };
+  });
+  expect(immediate).toMatchObject({
+    checked: true,
+    disabled: true,
+    ariaBusy: 'true',
+    statusHidden: false,
+    renders: 0,
+  });
+  expect(immediate.statusText).toMatch(/应用频谱颜色|Applying spectral colors/);
+
+  await expect.poll(() => page.evaluate(() => {
+    const toggle = document.getElementById('waveform-spectral-color');
+    return {
+      checked: toggle.checked,
+      disabled: toggle.disabled,
+      ariaBusy: toggle.getAttribute('aria-busy'),
+      statusHidden: document.getElementById('waveform-spectral-status').hidden,
+      renders: window.__spectralColorStats.renders,
+      setting: waveformEditor.settings.spectralColor,
+    };
+  })).toEqual({
+    checked: true,
+    disabled: false,
+    ariaBusy: 'false',
+    statusHidden: true,
+    renders: 1,
+    setting: true,
+  });
+});
+
 test('settings gears stay at the end of their headers and rise above dividers', async ({ page }) => {
   await page.goto(server.url);
   const settings = [
@@ -660,6 +1149,7 @@ test('settings gears stay at the end of their headers and rise above dividers', 
   ];
 
   for (const [toggleSelector, toolbarSelector, panelSelector] of settings) {
+    await expect(page.locator(toggleSelector)).toHaveText('⚙️');
     const layout = await page.evaluate(({ toggleSelector: buttonSelector, toolbarSelector: headerSelector }) => {
       const button = document.querySelector(buttonSelector);
       const toolbar = document.querySelector(headerSelector);
@@ -731,7 +1221,7 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   await expect(page.locator('#help-waveform-split-key')).toHaveText('B');
   await expect(helpPanel).toContainText('绑定到主副字幕（自动匹配）');
   await expect(helpPanel).toContainText('解绑当前副字幕');
-  await expect(helpPanel).toContainText('对齐副字幕到主字幕时间轴');
+  await expect(helpPanel).toContainText('批量对齐选中的副字幕到各自主字幕时间轴');
   await expect(helpPanel).not.toContainText('波形轨道徽标');
   await expect(helpPanel).not.toContainText('语言类型：单词型适合英语等空格语言，字符型适合中文/日文等');
   await expect(helpPanel).not.toContainText('主字幕自动使用时间码拆分：单轨可直接拆分');
@@ -799,8 +1289,8 @@ test('extends selected subtitles without remapping items and undoes the batch in
   })));
   await page.locator('#subtitle-extend-manage').click();
   await expect(page.locator('#subtitle-extend-panel')).toHaveClass(/show/);
-  await expect(page.locator('#subtitle-extend-forward-ms')).toHaveValue('250');
-  await expect(page.locator('#subtitle-extend-backward-ms')).toHaveValue('200');
+  await expect(page.locator('#subtitle-extend-forward-ms')).toHaveValue('120');
+  await expect(page.locator('#subtitle-extend-backward-ms')).toHaveValue('60');
 
   await page.locator('#subtitle-extend-forward-ms').fill('-1');
   await page.locator('#subtitle-extend-run').click();
@@ -809,6 +1299,8 @@ test('extends selected subtitles without remapping items and undoes the batch in
   })).toBeVisible();
   await expect.poll(() => page.evaluate(() => DATA.segments.slice(0, 2))).toEqual(before.segments);
 
+  // 产品语义：「向前延长」作用于起点侧（不越过前一条/时间轴 0），「向后延长」作用于终点侧。
+  // forward=250 时 seg0 起点已在 0 只能由向后 60ms 补终点；seg1 起点前移 250、终点后延 60。
   await page.locator('#subtitle-extend-forward-ms').fill('250');
   await page.locator('#subtitle-extend-run').click();
   await expect.poll(() => page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => ({
@@ -816,8 +1308,8 @@ test('extends selected subtitles without remapping items and undoes the batch in
     end: segment.end,
     items: segment.items,
   })))).toEqual([
-    { start: 0, end: 8200, items: before.segments[0].items },
-    { start: 49750, end: 58200, items: before.segments[1].items },
+    { start: 0, end: 8060, items: before.segments[0].items },
+    { start: 49750, end: 58060, items: before.segments[1].items },
   ]);
   await expect(page.locator('#hint-stack .hint-card.hint-success', {
     hasText: '已处理 2 个选中字幕：完整延长 1 条，部分延长 1 条，未延长 0 条',
@@ -967,6 +1459,32 @@ test('subtitle export stays direct when only disabled subtitles have colors', as
   });
   await expect(page.locator('#download-srt')).toBeVisible();
   await expect(page.locator('#subtitle-export-dropdown')).toBeHidden();
+});
+
+test('sticker Resolve and OTIO exports expand references per enabled subtitle', async ({ page }) => {
+  await page.goto(server.url);
+  const result = await page.evaluate(() => {
+    DATA.segments = [
+      { start: 1000, end: 2000, text: 'one', sticker: { name: 'reaction', path: 'reaction.png' } },
+      { start: 3000, end: 4000, text: 'two', sticker_ref: { name: 'reaction', headIdx: 0 } },
+      { start: 5000, end: 6000, text: 'disabled', disabled: true, sticker_ref: { name: 'reaction', headIdx: 0 } },
+      { start: 7000, end: 8000, text: 'dangling', sticker_ref: { name: 'missing', headIdx: 99 } },
+    ];
+    const resolve = JSON.parse(buildResolveJson());
+    const otio = JSON.parse(buildStickerOtio());
+    const children = otio.tracks.children[0].children;
+    return {
+      resolveStickers: resolve.segments.filter((segment) => segment.sticker).map((segment) => [
+        segment.start_ms, segment.end_ms, segment.sticker.start, segment.sticker.end,
+      ]),
+      otioClips: children.filter((child) => child.OTIO_SCHEMA === 'Clip.2').map((clip) => [
+        clip.metadata.moy.start_ms, clip.metadata.moy.end_ms,
+      ]),
+    };
+  });
+
+  expect(result.resolveStickers).toEqual([[1000, 2000, 1000, 2000], [3000, 4000, 3000, 4000]]);
+  expect(result.otioClips).toEqual([[1000, 2000], [3000, 4000]]);
 });
 
 test('gap-removed export includes color SRT and names OTIO as a timeline project', async ({ page }) => {

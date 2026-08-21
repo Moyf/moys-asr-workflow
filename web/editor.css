@@ -121,6 +121,9 @@
     --wave-pointer-line:    rgba(205, 214, 223, 0.78);
     --wave-split-flash:     #ffd43b;
     --wave-split-flash-glow: rgba(255, 212, 59, 0.85);
+    --wave-split-preview-bg:     #8d6a02;
+    --wave-split-preview-border: #ffd43b;
+    --wave-split-preview-fg:     #ffffff;
     --wave-disabled-text:   #89939b;
     --wave-disabled-border: #66717a;
     --wave-disabled-a:      rgba(84, 94, 104, 0.68);
@@ -207,8 +210,9 @@
     --gap-scan-inset:       rgba(255, 220, 176, 0.2);
     --gap-scan-shadow:      rgba(77, 39, 17, 0.28);
 
-    /* 字体栈 */
-    --font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    /* 字体栈：末尾追加 Linux 系 CJK 字体，避免 Linux 上汉字失控地落到
+       fontconfig 兜底；Windows/macOS 的系统字体在前面先命中，行为不变 */
+    --font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
 
@@ -316,6 +320,9 @@
     --wave-pointer-line:    rgba(108, 118, 132, 0.72);
     --wave-split-flash:     #c48700;
     --wave-split-flash-glow: rgba(213, 154, 0, 0.72);
+    --wave-split-preview-bg:     #fff0b8;
+    --wave-split-preview-border: #9a6a1e;
+    --wave-split-preview-fg:     #5a4100;
     --wave-disabled-text:   #8a93a3;
     --wave-disabled-border: #c2c8d2;
     --wave-disabled-a:      rgba(120, 128, 140, 0.55);
@@ -508,15 +515,24 @@
     background: rgba(0,0,0,0.65);
     color: #fff;
     padding: 6px 14px; border-radius: var(--radius-sm);
-    font-size: 18px;
+    --subtitle-preview-font-size: 18px;
+    font-size: var(--subtitle-preview-font-size);
     line-height: 1.3; white-space: pre-wrap; word-break: break-word;
     text-shadow: 0 1px 2px rgba(0,0,0,0.8);
     pointer-events: none;
   }
+  .player-wrap.fullscreen-preview .subtitle-overlay span {
+    font-size: calc(var(--subtitle-preview-font-size) + var(--subtitle-preview-font-size));
+  }
   .subtitle-overlay span.hidden { display: none; }
   .subtitle-overlay .subtitle-extension-text {
-    font-size: 16px;
+    --subtitle-preview-font-size: 16px;
+    font-size: var(--subtitle-preview-font-size);
     color: #ffd34d;
+  }
+  .player-wrap.empty-state .subtitle-overlay .subtitle-extension-text {
+    background: transparent;
+    text-shadow: none;
   }
   .subtitle-overlay.hidden { display: none; }
   /* 几何编辑盒（字幕预览 / 表情包预览共用）：
@@ -681,6 +697,8 @@
   .toolbar.cue-list-toolbar > *,
   .toolbar.waveform-toolbar > *,
   .toolbar.cue-editor-toolbar > * { flex: 0 0 auto; }
+  /* 字幕编辑区工具栏不出横向滚动条；空间不足时由 key-hints 收缩省略（见下方规则）。 */
+  .toolbar.cue-editor-toolbar { overflow-x: hidden; }
   .toolbar.cue-list-toolbar .input-clear input[type=text] { min-width: 140px; width: 20ch; }
   .settings-anchor {
     display: inline-flex; align-items: center;
@@ -914,6 +932,16 @@
     flex: 0 0 100%; gap: 3px 12px; align-items: center;
   }
   .ninja-toggle-group > .editor-settings-hint { grid-column: 1 / -1; }
+  /* 刀光参数行：刀光特效开启后显示在开关下一行，横向排列长度与旋转幅度。 */
+  .ninja-slash-params {
+    grid-column: 1 / -1;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 3px 16px;
+  }
+  .ninja-slash-params[hidden] { display: none; }
+  .ninja-slash-param {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--text-muted); font-size: 12px; white-space: nowrap;
+  }
   .editor-settings-panel select {
     background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);
     border-radius: var(--radius-sm); padding: 4px 6px; font-size: 12px; cursor: pointer;
@@ -1137,18 +1165,25 @@
     padding: 2px 6px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);
     box-shadow: 0 1px 0 var(--border-subtle);
   }
+  /* 字幕编辑区工具栏不出现横向滚动条：空间不足时压缩按键提示并用省略号截断，
+     后置齿轮按钮（settings-anchor，flex 不收缩）始终保持完整可见。 */
   .waveform-status.cue-editor-key-hints {
     display: inline-flex;
     align-items: center;
     gap: 14px;
-    max-width: none;
-    overflow: visible;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .cue-editor-key-hint {
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    margin-left: 0;
   }
+  .cue-editor-key-hint:first-child { margin-left: 0; }
   .help-tip-callout {
     display: flex; align-items: center; gap: 12px; min-width: 0; margin-top: 8px; padding: 8px 10px;
     border-left: 3px solid var(--accent); border-radius: var(--radius-sm);
@@ -1321,7 +1356,7 @@
     margin: -10px -12px 10px;
     padding: 6px 8px;
     flex-wrap: nowrap;
-    overflow-x: auto;
+    overflow-x: hidden;
     overflow-y: hidden;
     align-items: center;
     background: var(--panel-toolbar-bg);
@@ -1333,7 +1368,6 @@
     grid-template-columns: auto auto minmax(220px, 1fr) auto;
     gap: 10px; align-items: stretch;
   }
-  .current-cue-panel.empty { opacity: 0.62; }
   .current-cue-panel.hide-cue-editor-navigation .cue-panel-navigation,
   .current-cue-panel.hide-cue-editor-time-actions .cue-panel-time-actions,
   .current-cue-panel.hide-cue-editor-sticker .cue-panel-sticker-wrap { display: none; }
@@ -1456,6 +1490,14 @@
     transition: background var(--t-fast), border-color var(--t-fast);
     user-select: none;
   }
+  /* 长工程仍保留列表语义和可搜索 DOM，但让浏览器跳过视口外字幕的
+     布局/绘制；滚动到该行时再按真实内容补算尺寸。占位高度必须贴近
+     真实行高（内容 21px + 上下 padding 12px + margin 4px ≈ 46px），
+     否则真实布局后 scrollHeight 收缩，已滚动的列表位置会被 clamp 走。 */
+  .cues-container > .cue {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 46px;
+  }
   .cue-split-flash {
     position: absolute;
     z-index: 3;
@@ -1481,6 +1523,22 @@
     opacity: .72;
     pointer-events: none;
     transform: translateX(-1px);
+  }
+  .cue-split-preview::after {
+    content: "B";
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    min-width: 14px;
+    padding: 2px 4px;
+    border: 1px solid var(--wave-split-preview-border);
+    border-radius: 3px;
+    color: var(--wave-split-preview-fg);
+    background: var(--wave-split-preview-bg);
+    box-shadow: var(--shadow-1);
+    font: 700 10px/1 var(--font-mono);
+    text-align: center;
+    white-space: nowrap;
   }
   .cue.has-color { background: color-mix(in srgb, var(--color-bar, #777) 30%, transparent); }
   .cue.has-color:hover { background: color-mix(in srgb, var(--color-bar, #777) 30%, var(--bg-raised)); }
@@ -1717,6 +1775,16 @@
   }
   .multi-subtitle-split-auto-submit input { margin: 0; accent-color: var(--accent); }
   .multi-subtitle-split-footer .actions { margin-top: 0; }
+  .multi-subtitle-split-key-hints {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px;
+    margin-top: 12px; color: var(--text-muted); font-size: 11px;
+  }
+  .multi-subtitle-split-key-hints kbd {
+    background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 2px 6px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);
+    box-shadow: 0 1px 0 var(--border-subtle);
+  }
+  .multi-subtitle-split-key-hint { display: inline-flex; align-items: center; gap: 4px; }
   .multi-subtitle-split-meta { color: var(--text-muted); font: 11px/1.45 var(--font-mono); margin-bottom: 8px; }
   .multi-subtitle-split-cut-hint { margin-left: 8px; color: var(--amber-hover); font-family: var(--font-sans); }
   .multi-subtitle-split-language-hint {
@@ -1741,6 +1809,21 @@
     position: relative; padding: 18px 14px; border: 1px solid var(--border);
     border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary);
     font-size: 20px; line-height: 1.8; user-select: none; cursor: crosshair; white-space: pre-wrap;
+  }
+  /* 键盘/点击激活的 lane 用虚线边框标识；锁定态（下方 .locked）保持自己的边框色。 */
+  .multi-subtitle-split-text:focus {
+    border-style: dashed; border-color: var(--accent);
+    outline: none;
+  }
+  /* 已锁定的 lane 上按移动键：红色边缘闪烁，提示需先按空格解锁。 */
+  .multi-subtitle-split-text.lane-move-blocked {
+    border-color: var(--red-hover);
+    animation: split-lane-blocked-flash .72s ease;
+  }
+  @keyframes split-lane-blocked-flash {
+    0%, 100% { box-shadow: none; }
+    15%, 55% { box-shadow: 0 0 0 2px var(--red-hover); }
+    35%, 75% { box-shadow: none; }
   }
   .multi-subtitle-split-text .multi-subtitle-split-char { display: inline-block; padding: 0 1px; }
   .multi-subtitle-split-text .multi-subtitle-split-char.split-left { color: #ffd34d; }
@@ -1799,12 +1882,14 @@
   .multi-cue-column.unbound { opacity: .82; }
   .multi-cue-column.disabled {
     color: var(--text-muted);
+    border-radius: var(--radius-sm);
+  }
+  .multi-cue-column.extension.disabled {
     background: repeating-linear-gradient(
       135deg,
       var(--wave-disabled-a) 0 5px,
       var(--wave-disabled-b) 5px 10px
     );
-    border-radius: var(--radius-sm);
   }
   .multi-cue-column.disabled .index,
   .multi-cue-column.disabled .time,
@@ -1829,7 +1914,12 @@
     width: 100%;
     min-width: 0;
   }
-  #sticker-root-modal .modal { width: 540px; }
+  #sticker-root-modal { z-index: 280; }
+  #sticker-root-modal .modal {
+    width: min(540px, calc(100vw - 32px));
+    min-width: 0;
+    max-height: calc(100dvh - 32px);
+  }
   .editor-settings-hint { display: block; max-width: 100%; font-size: 12px; line-height: 1.35; color: var(--text-muted); margin: 0; }
   .editor-settings-hint[hidden] { display: none; }
   .modal .preview {
@@ -2147,7 +2237,7 @@
     --slash-linger: 120ms;
     --slash-x: 50%;
     --slash-y: 50%;
-    --slash-height: 190%;
+    --slash-height: 80%;
   }
   /* 锋利刃芯：参考横向渐变线改为纵向，边缘淡出，中段保持纯白。 */
   #ninja-slash-flash::before,

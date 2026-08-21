@@ -312,6 +312,8 @@ def run_ocr_in_runtime(
     _append_path(command, "--srt-path", request.srt_path)
     _append_path(command, "--video-path", request.video_path)
     _append_path(command, "--fallback-video-path", request.fallback_video_path)
+    _append_path(command, "--media-path", request.media_path)
+    _append_path(command, "--output-directory", request.output_directory)
     if request.report:
         command.append("--report")
 

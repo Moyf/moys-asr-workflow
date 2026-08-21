@@ -10,7 +10,7 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
-from maw.postprocess import OutputMode
+from maw.postprocess import OutputMode, _reconcile_items
 from maw.postprocess_io import SubtitleArtifact, PostprocessFileError, read_project, read_srt, write_artifacts
 from maw.project import normalize_project
 from maw.project_preview import JsonDict
@@ -27,6 +27,7 @@ class ScriptMatchRequest:
     script_path: Path
     output_mode: OutputMode
     output_directory: Path | None = None
+    media_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +63,7 @@ def run_script_match(request: ScriptMatchRequest) -> SubtitleArtifact:
         write_srt=request.output_mode in {OutputMode.SRT, OutputMode.BOTH},
         warnings=(f"文稿来源：{script_path}", *warnings),
         output_directory=request.output_directory,
+        media_path=request.media_path,
     )
 
 
@@ -125,7 +127,15 @@ def _match_project(project: JsonDict, script_text: str) -> tuple[JsonDict, tuple
             continue
         if replacement != original_text:
             target_segment["text"] = replacement
-            target_segment.pop("items", None)
+            reconciled_items = _reconcile_items(
+                original_text,
+                target_segment.get("items"),
+                replacement,
+            )
+            if reconciled_items is None:
+                target_segment.pop("items", None)
+            else:
+                target_segment["items"] = reconciled_items
             changed += 1
 
     warnings: list[str] = [f"文稿匹配度：{coverage:.0%}；已更新 {changed} 个字幕段。"]
