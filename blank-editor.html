@@ -4350,10 +4350,10 @@
         <div class="settings-panel waveform-settings-panel" id="waveform-settings-panel" role="dialog" aria-label="波形设置" hidden>
           <div class="settings-panel-section waveform-settings-section">
             <span class="settings-panel-title waveform-settings-title">音频波形区</span>
-            <label class="editor-settings-item" title="波形形状来源：默认使用自研 1000Hz 重采样缓存；需要时可切换到媒体旁 .ReaPeaks 的最细 wave 层">波形形状来源
+            <label class="editor-settings-item" title="波形形状来源：默认使用媒体旁 .ReaPeaks 的最细 wave 层（缺数据时自动回退自研缓存）；需要时可切回自研">波形形状来源
               <select id="waveform-shape-source">
-                <option value="self" selected>自研波形</option>
-                <option value="reapeaks">ReaPeaks 波形层</option>
+                <option value="self">自研波形</option>
+                <option value="reapeaks" selected>ReaPeaks 波形层</option>
               </select>
             </label>
             <label class="toggle editor-settings-item" title="使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形">
@@ -7522,7 +7522,7 @@
     '调整播放器画面内字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the subtitle preview background opacity in the player; 0 hides the background',
     '字幕背景不透明度': 'Subtitle background opacity',
     '只影响播放器画面内的拓展字幕预览': 'Only affects extension subtitle preview in the player',
-    '波形形状来源：默认使用自研 1000Hz 重采样缓存；需要时可切换到媒体旁 .ReaPeaks 的最细 wave 层': 'Waveform shape source: use the self-built 1000 Hz resampled cache by default; switch to the finest wave layer beside the media from .ReaPeaks when needed',
+    '波形形状来源：默认使用媒体旁 .ReaPeaks 的最细 wave 层（缺数据时自动回退自研缓存）；需要时可切回自研': 'Waveform shape source: use the finest wave layer beside the media from .ReaPeaks by default (falls back to the self-built cache when missing); switch back to self-built when needed',
     '选择播放器画面内拓展字幕预览使用的字体族': 'Choose the font family used by the extension subtitle preview in the player',
     '选择播放器画面内副字幕预览使用的字体族': 'Choose the font family used by the secondary subtitle preview in the player',
     '选择播放器画面内主字幕预览的颜色': 'Choose the color of the main subtitle preview in the player',
@@ -11343,8 +11343,8 @@
       ctx.lineTo(width, height * 0.46);
       ctx.stroke();
 
-      // 波形形状来源：默认使用自研缓存；用户切换后才使用 .ReaPeaks 的最细 wave 层。
-      const shapeSource = this.options.getWaveShapeSource?.() || 'self';
+      // 波形形状来源：默认使用 .ReaPeaks 的最细 wave 层（缺数据时自动回退自研缓存）；用户可切回自研。
+      const shapeSource = this.options.getWaveShapeSource?.() || 'reapeaks';
       const useReapeaksShape = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;
       const activePeaks = useReapeaksShape ? this.reapeaksPeaks : this.peaks;
       const activePps = useReapeaksShape ? this.reapeaksPayload.peaks_per_second : this.payload.peaks_per_second;
@@ -13726,8 +13726,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   multiSubtitleShowTrackBadges: false,
   // 界面主题：dark（默认）/ light。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
   theme: 'dark',
-  // 波形形状来源：self（默认，自研 1000Hz 重采样缓存）/ reapeaks（.ReaPeaks 最细 wave 层）。
-  waveShapeSource: 'self',
+  // 波形形状来源：reapeaks（默认，有 .ReaPeaks 缓存时用其最细 wave 层，缺数据自动回退自研）/ self（自研 1000Hz 重采样缓存）。
+  waveShapeSource: 'reapeaks',
 };
 const SUBTITLE_FONT_SIZE_MIN = 12;
 const SUBTITLE_FONT_SIZE_MAX = 96;

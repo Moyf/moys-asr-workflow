@@ -41,7 +41,7 @@ NINJA_SFX_NAMES = frozenset(
 mimetypes.add_type("audio/ogg", ".opus")
 
 import edit  # noqa: E402
-import reapeaks  # noqa: E402
+import reapeaks_io as reapeaks  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
 from maw.project import (  # noqa: E402
     ProjectValidationFailed,

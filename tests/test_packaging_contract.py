@@ -165,9 +165,15 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("onnxruntime>=1.18", dependencies)
         self.assertNotIn("pillow>=10.0.0", dependencies)
         self.assertNotIn("rapidocr>=3.9.0", dependencies)
+        self.assertNotIn("numpy>=2.2,<2.5", dependencies)
         self.assertEqual(
             ocr_dependencies,
-            {"onnxruntime>=1.18", "pillow>=10.0.0", "rapidocr>=3.9.0"},
+            {
+                "numpy>=2.2,<2.5",
+                "onnxruntime>=1.18",
+                "pillow>=10.0.0",
+                "rapidocr>=3.9.0",
+            },
         )
         lockfile = read_text("uv.lock")
         self.assertIn('ocr = [', lockfile)

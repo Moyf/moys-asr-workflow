@@ -3336,8 +3336,8 @@
       ctx.lineTo(width, height * 0.46);
       ctx.stroke();
 
-      // 波形形状来源：默认使用自研缓存；用户切换后才使用 .ReaPeaks 的最细 wave 层。
-      const shapeSource = this.options.getWaveShapeSource?.() || 'self';
+      // 波形形状来源：默认使用 .ReaPeaks 的最细 wave 层（缺数据时自动回退自研缓存）；用户可切回自研。
+      const shapeSource = this.options.getWaveShapeSource?.() || 'reapeaks';
       const useReapeaksShape = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;
       const activePeaks = useReapeaksShape ? this.reapeaksPeaks : this.peaks;
       const activePps = useReapeaksShape ? this.reapeaksPayload.peaks_per_second : this.payload.peaks_per_second;

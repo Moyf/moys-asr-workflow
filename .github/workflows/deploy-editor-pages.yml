@@ -11,7 +11,7 @@ on:
       - "edit.py"
       - "web/**"
       - "waveform.py"
-      - "reapeaks.py"
+      - "reapeaks_io.py"
       - "maw/**"
       - ".github/workflows/deploy-editor-pages.yml"
   workflow_dispatch:

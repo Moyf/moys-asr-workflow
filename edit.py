@@ -41,7 +41,7 @@ from waveform import (
     load_or_extract_waveform,
 )
 
-import reapeaks
+import reapeaks_io as reapeaks
 
 VIDEO_EXTS = set(VIDEO_EXTENSIONS)
 AUDIO_EXTS = set(AUDIO_EXTENSIONS)
