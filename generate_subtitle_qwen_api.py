@@ -887,13 +887,12 @@ def upload_to_oss(policy: dict, file_path: str) -> str:
         )
 
     # upload_host 形如 https://dashscope-file-mgr.oss-cn-beijing.aliyuncs.com
-    # 解析出 bucket 和 endpoint
+    # 解析出 bucket
     host_clean = upload_host.replace("https://", "").replace("http://", "").rstrip("/")
     parts = host_clean.split(".", 2)
     if len(parts) < 3:
         raise RuntimeError(f"无法从 upload_host 解析 bucket: {upload_host}")
     bucket = parts[0]
-    endpoint = parts[1] + "." + parts[2]
 
     upload_dir = policy.get("upload_dir") or policy.get("key_prefix") or policy.get("object_prefix")
     if not upload_dir:

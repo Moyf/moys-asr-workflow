@@ -38,7 +38,27 @@ explicit = true
 torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
 torchaudio = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
 
+[tool.ruff]
+target-version = "py311"
+include = [
+    "*.py",
+    "maw/**/*.py",
+    "scripts/**/*.py",
+    "server-editor/**/*.py",
+]
+extend-exclude = ["tests/**", "website/**", "desktop/**"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# Soniox keeps these names as compatibility exports for existing callers.
+"maw/soniox.py" = ["F401"]
+
 [dependency-groups]
 build = [
     "pyinstaller==6.16.0",
+]
+dev = [
+    "ruff>=0.16.3",
 ]
