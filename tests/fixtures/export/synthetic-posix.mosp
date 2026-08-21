@@ -1,0 +1,16 @@
+{
+  "media": "/fixtures/MAW export/测试 & take's \"< >.mp4",
+  "waveform": { "duration_ms": 6000 },
+  "segments": [
+    {
+      "id": "cue-1",
+      "start": 0,
+      "end": 900,
+      "text": "portable fixture",
+      "sticker": {
+        "name": "head",
+        "rel": "stickers/nested/猫 & \".png"
+      }
+    }
+  ]
+}

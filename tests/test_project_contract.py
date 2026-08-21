@@ -144,6 +144,20 @@ class ProjectContractTests(unittest.TestCase):
         self.assertEqual(result.preview["segments"][1]["end"], 1500)
         self.assertEqual(result.project["segments"][1]["end"], 2200)
 
+    def test_validate_project_accepts_optional_sticker_dimensions(self) -> None:
+        project = {
+            "segments": [{
+                "start": 0,
+                "end": 1000,
+                "text": "猫",
+                "sticker": {"name": "cat", "width": 1920, "height": 1080},
+            }],
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok)
+
     def test_validate_project_reports_path_qualified_errors(self) -> None:
         project = {
             "segments": [

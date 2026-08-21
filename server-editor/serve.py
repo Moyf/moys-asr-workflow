@@ -54,6 +54,14 @@ from maw.media import MEDIA_EXTENSIONS, MediaConversionError, MediaResolutionErr
 MAX_RECENT_PROJECTS = 10
 SETTINGS_FILE_NAME = "server-editor-settings.json"
 BUILTIN_WORKSPACE_IDS = frozenset({"classic", "wave-right", "three-fold", "cinema"})
+PRPROJ_CAPABILITY = {
+    "ok": False,
+    "capability": "prproj",
+    "supported": False,
+    "reason": "no_pinned_writer_or_profile",
+    "profile": None,
+    "route": "/api/prproj",
+}
 STICKER_IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"})
 
 
@@ -968,6 +976,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.open_recent_project()
         elif path == "/api/settings":
             self.update_settings()
+        elif path == "/api/prproj":
+            self.send_json(HTTPStatus.NOT_IMPLEMENTED, PRPROJ_CAPABILITY)
         elif path == "/api/stickers/root":
             self.set_sticker_root()
         elif path == "/api/exports/sticker-otio":
@@ -1230,6 +1240,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
 
     def handle_request(self, *, include_body: bool) -> None:
         path = urlsplit(self.path).path
+        if path == "/api/prproj-capability":
+            self.send_json(HTTPStatus.OK, PRPROJ_CAPABILITY)
+            return
         if path == "/api/waveform":
             self.send_json(HTTPStatus.OK, self.editor_server.reapeaks_status_payload())
             return

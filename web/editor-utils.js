@@ -1454,6 +1454,631 @@
     return intervals;
   }
 
+  const EXPORT_FRAME_PROFILES = Object.freeze({
+    24: Object.freeze({ name: '24', numerator: 24, denominator: 1, fps: 24 }),
+    25: Object.freeze({ name: '25', numerator: 25, denominator: 1, fps: 25 }),
+    30: Object.freeze({ name: '30', numerator: 30, denominator: 1, fps: 30 }),
+    '30000/1001': Object.freeze({ name: '30000/1001', numerator: 30000, denominator: 1001, fps: 30000 / 1001 }),
+    50: Object.freeze({ name: '50', numerator: 50, denominator: 1, fps: 50 }),
+    60: Object.freeze({ name: '60', numerator: 60, denominator: 1, fps: 60 }),
+    '60000/1001': Object.freeze({ name: '60000/1001', numerator: 60000, denominator: 1001, fps: 60000 / 1001 }),
+  });
+
+  function resolveExportFrameProfile(fps, dropFrame = false) {
+    if (typeof dropFrame !== 'boolean') throw new Error('drop-frame option must be boolean');
+    const key = String(fps);
+    const profile = EXPORT_FRAME_PROFILES[key];
+    if (!profile) throw new Error(`unsupported export FPS: ${key}`);
+    if (dropFrame) throw new Error(`drop-frame export is unsupported for ${key}`);
+    return profile;
+  }
+
+  function exportMsToFrames(ms, fps, rounding = 'floor') {
+    const profile = typeof fps === 'object' && fps?.numerator
+      ? fps : resolveExportFrameProfile(fps, false);
+    const value = Math.max(0, Number(ms)) * profile.numerator / (1000 * profile.denominator);
+    if (!Number.isFinite(value)) throw new Error('invalid export time');
+    if (rounding === 'ceil') return Math.max(1, Math.ceil(value));
+    if (rounding !== 'floor') throw new Error(`unsupported frame rounding: ${rounding}`);
+    return Math.max(0, Math.floor(value));
+  }
+
+  function mapExportTime(policy, sourceMs) {
+    const source = Math.max(0, Math.round(Number(sourceMs) || 0));
+    const mapped = policy.mode === 'source' ? source : mapGapRemovedTime(source, policy.gaps);
+    return Math.min(policy.outputDurationMs ?? policy.sourceDurationMs, mapped);
+  }
+
+  function exportPolicyMsToFrames(policy, ms, rounding = 'floor') {
+    return exportMsToFrames(ms, policy.profile, rounding);
+  }
+
+  const EXPORT_SUBTITLE_TRACKS = Object.freeze(['main', 'extension', 'both', 'main_and_extension']);
+  const EXPORT_INVALID_NAME_CHARS = /[\\/<>:"|?*\u0000-\u001f]/g;
+  const EXPORT_OPTION_KEYS = Object.freeze([
+    'timelineMode', 'mode', 'fps', 'dropFrame', 'nativeTextObjects', 'subtitleTracks', 'baseName',
+  ]);
+
+  function normalizeExportOptions(options = {}) {
+    if (!options || typeof options !== 'object' || Array.isArray(options)) {
+      throw new Error('export options must be an object');
+    }
+    Object.keys(options).sort().forEach((key) => {
+      if (!EXPORT_OPTION_KEYS.includes(key)) throw new Error(`unknown export option: ${key}`);
+    });
+    const timelineMode = options.timelineMode ?? options.mode ?? 'gap_removed';
+    if (timelineMode !== 'source' && timelineMode !== 'gap_removed') {
+      throw new Error(`unsupported export mode: ${timelineMode}`);
+    }
+    const fps = String(options.fps ?? 30);
+    resolveExportFrameProfile(fps, options.dropFrame === true);
+    if (options.dropFrame !== undefined && typeof options.dropFrame !== 'boolean') {
+      throw new Error('drop-frame option must be boolean');
+    }
+    const subtitleTracks = options.subtitleTracks ?? 'main';
+    if (!EXPORT_SUBTITLE_TRACKS.includes(subtitleTracks)) {
+      throw new Error(`unsupported subtitle tracks: ${subtitleTracks}`);
+    }
+    const nativeTextObjects = options.nativeTextObjects ?? false;
+    if (typeof nativeTextObjects !== 'boolean') throw new Error('native text option must be boolean');
+    const dropFrame = options.dropFrame ?? false;
+    const baseName = String(options.baseName ?? 'maw-export').trim();
+    if (!baseName || baseName === '.' || baseName === '..' || /[\u0000-\u001f]/.test(baseName)) {
+      throw new Error('invalid export base name');
+    }
+    return Object.freeze({
+      timelineMode, fps, dropFrame, nativeTextObjects,
+      subtitleTracks: subtitleTracks === 'both' ? 'main_and_extension' : subtitleTracks, baseName,
+    });
+  }
+
+  function sanitizeExportName(value) {
+    const sanitized = String(value ?? '')
+      .replace(/\.[^.]+$/, '')
+      .replace(/[\\/]+/g, '_')
+      .replace(/^[.]+/, '_')
+      .replace(/\.\.(?=_|$)/g, '_')
+      .replace(EXPORT_INVALID_NAME_CHARS, '_')
+      .replace(/[. ]+$/, '')
+      .trim();
+    if (!sanitized || sanitized === '.' || sanitized === '..') throw new Error('invalid export base name');
+    if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i.test(sanitized)) return `_${sanitized}_`;
+    return sanitized;
+  }
+
+  function buildExportNames(baseName) {
+    const safeBaseName = sanitizeExportName(baseName);
+    return Object.freeze({
+      baseName: safeBaseName,
+      files: Object.freeze({
+        project: `${safeBaseName}.xml`,
+        subtitles: `${safeBaseName}.srt`,
+      }),
+    });
+  }
+
+  function escapeExportXml(value) {
+    const text = String(value ?? '');
+    for (const character of text) {
+      const codePoint = character.codePointAt(0);
+      if (codePoint < 0x20 && codePoint !== 0x09 && codePoint !== 0x0a && codePoint !== 0x0d) {
+        throw new Error('XML 1.0 forbidden control character');
+      }
+    }
+    return text.replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;',
+    }[character]));
+  }
+
+  function exportPathToFileUrl(value, { encodeDriveColon = false } = {}) {
+    const source = String(value ?? '').trim();
+    if (!source) throw new Error('missing export path');
+    if (/^file:\/\//i.test(source)) {
+      const match = /^file:\/\/([^/]*)(\/.*)?$/i.exec(source);
+      if (!match) throw new Error('invalid file URL');
+      const authority = match[1];
+      const pathValue = match[2] || '';
+      const driveUrlMatch = /^\/([A-Za-z]):\/(.*)$/.exec(pathValue);
+      if (authority.toLowerCase() === 'localhost' && driveUrlMatch) {
+        const encodedPath = driveUrlMatch[2].split('/').map((part) => encodeURIComponent(part)).join('/');
+        const drive = encodeDriveColon ? `${driveUrlMatch[1]}%3A` : `${driveUrlMatch[1]}:`;
+        return `file://localhost/${drive}/${encodedPath}`;
+      }
+      if (!authority && driveUrlMatch) {
+        const encodedDrivePath = driveUrlMatch[2].split('/').map((part) => encodeURIComponent(part)).join('/');
+        return `file://localhost/${driveUrlMatch[1]}:/${encodedDrivePath}`;
+      }
+      if (authority && !pathValue || authority && !/^\/[^/]+(?:\/|$)/.test(pathValue)) {
+        throw new Error('UNC file URL must include a share');
+      }
+      const encodedPath = pathValue.split('/').map((part) => encodeURIComponent(part)).join('/');
+      return `file://${authority}${encodedPath}`;
+    }
+    const normalized = source.replace(/\\/g, '/');
+    const uncMatch = /^\/\/([^/]+)(\/.*)?$/.exec(normalized);
+    if (uncMatch) {
+      const uncPath = uncMatch[2] || '';
+      if (!/^\/[^/]+(?:\/|$)/.test(uncPath)) throw new Error('UNC path must include a share');
+      const encodedUncPath = uncPath.split('/').map((part) => encodeURIComponent(part)).join('/');
+      return `file://${uncMatch[1]}${encodedUncPath}`;
+    }
+    const driveMatch = /^([A-Za-z]):\/(.*)$/.exec(normalized);
+    if (driveMatch) {
+      const encodedDriveParts = driveMatch[2].split('/').map((part) => encodeURIComponent(part)).join('/');
+      const drive = encodeDriveColon ? `${driveMatch[1]}%3A` : `${driveMatch[1]}:`;
+      return `file://localhost/${drive}/${encodedDriveParts}`;
+    }
+    const withLeadingSlash = normalized;
+    const rooted = withLeadingSlash.startsWith('/') ? withLeadingSlash : `/${withLeadingSlash}`;
+    const encoded = rooted.split('/').map((part, index) => (
+      index === 0 && part === '' ? '' : encodeURIComponent(part).replace(/^([A-Za-z])%3A$/, '$1:')
+    )).join('/');
+    return `file://${encoded}`;
+  }
+
+  function freezeExportValue(value, seen = new Set()) {
+    if (!value || typeof value !== 'object' || seen.has(value)) return value;
+    seen.add(value);
+    Object.values(value).forEach((child) => freezeExportValue(child, seen));
+    return Object.freeze(value);
+  }
+
+  function buildProjectExportPlan(project, options = {}) {
+    if (!project || typeof project !== 'object') throw new Error('invalid export project');
+    const media = project.media && typeof project.media === 'object' ? project.media : null;
+    const mediaPath = String((typeof project.media === 'string' ? project.media : '')
+      || media?.path || media?.mediaPath || '').trim();
+    const durationValue = options.durationMs ?? project.waveform?.duration_ms ?? project.duration_ms
+      ?? media?.durationMs ?? media?.duration_ms;
+    const durationMs = durationValue;
+    if (!mediaPath) throw new Error('missing export media path');
+    if (!Number.isInteger(durationMs) || durationMs <= 0) throw new Error('missing export media duration');
+    const requestedMode = options.timelineMode ?? options.mode ?? 'gap_removed';
+    if (requestedMode !== 'source' && requestedMode !== 'gap_removed') {
+      throw new Error(`unsupported export mode: ${requestedMode}`);
+    }
+    const mode = requestedMode;
+    if (options.dropFrame !== undefined && typeof options.dropFrame !== 'boolean') {
+      throw new Error('drop-frame option must be boolean');
+    }
+    const rawGaps = project.gaps !== undefined ? project.gaps : project.gap_remove?.gaps;
+    if (rawGaps != null && !Array.isArray(rawGaps)) throw new Error('invalid export gaps');
+    const malformedGap = (gap) => {
+      const start = gap?.start;
+      const end = gap?.end;
+      return !Number.isInteger(start) || start < 0
+        || !Number.isInteger(end) || end < 0 || end <= start;
+    };
+    if (Array.isArray(rawGaps) && rawGaps.some(malformedGap)) {
+      throw new Error('invalid export gap interval');
+    }
+    const gaps = Array.isArray(rawGaps)
+      ? rawGaps.map((gap) => ({
+        start: Math.max(0, Math.round(Number(gap.start))),
+        end: Math.max(0, Math.round(Number(gap.end))),
+        removed: gap.removed !== false,
+      }))
+      : [];
+    const keptIntervals = mode === 'source'
+      ? [{ start: 0, end: durationMs }]
+      : buildGapRemovedIntervals(durationMs, gaps);
+    const outputDurationMs = keptIntervals.reduce((sum, interval) => sum + interval.end - interval.start, 0);
+    if (outputDurationMs <= 0) throw new Error('export has no kept media');
+    const frameProfile = resolveExportFrameProfile(options.fps ?? 30, options.dropFrame === true);
+    const mapSourceToOutput = (sourceMs) => mode === 'source'
+      ? Math.max(0, Math.min(durationMs, Math.round(Number(sourceMs) || 0)))
+      : mapGapRemovedTime(sourceMs, gaps);
+    const warnings = [];
+    if (mode === 'gap_removed' && !gaps.some((gap) => gap.removed)) warnings.push({ code: 'no_removed_gaps' });
+    const projectSegments = Array.isArray(project.segments) ? project.segments : [];
+    const schemaExtension = Array.isArray(project.multi_subtitle?.tracks)
+      ? project.multi_subtitle.tracks.flatMap((track) => Array.isArray(track?.segments) ? track.segments : [])
+      : [];
+    const projectExtension = project.multi_subtitle?.enabled === true
+      ? schemaExtension
+      : (project.multi_subtitle == null && Array.isArray(project.extensionSegments)
+        ? project.extensionSegments : []);
+    const projectCues = (segments, track) => segments.map((segment, index) => {
+      if (!segment || segment.disabled) return null;
+      const rawStart = Math.round(Number(segment.start));
+      const rawEnd = Math.round(Number(segment.end));
+      const start = Math.min(durationMs, Math.max(0, rawStart));
+      const end = Math.min(durationMs, Math.max(start, rawEnd));
+      if (!Number.isInteger(segment?.start) || segment.start < 0
+        || !Number.isInteger(segment?.end) || segment.end < 0 || segment.end <= segment.start) {
+        warnings.push({ code: 'invalid_cue', track, index });
+        return null;
+      }
+      const mappedStart = mapSourceToOutput(start);
+      const mappedEnd = mapSourceToOutput(end);
+      if (mappedEnd <= mappedStart) {
+        warnings.push({ code: 'fully_removed_cue', track, index });
+        return null;
+      }
+      if (rawStart !== start || rawEnd !== end) warnings.push({ code: 'clamped_cue_to_duration', track, index });
+      return {
+        id: String(segment.id || `${track}-${index}`), track, index,
+        text: String(segment.text || ''), sourceStartMs: start, sourceEndMs: end,
+        startMs: mappedStart, endMs: mappedEnd,
+      };
+    }).filter(Boolean);
+    const cues = { main: projectCues(projectSegments, 'main'), extension: projectCues(projectExtension, 'extension') };
+    const stickers = [];
+    const stickerHeads = new Set();
+    const stickerRoot = String(project.sticker_root || project.stickerRoot || '').trim().replace(/[\\/]$/, '');
+    const resolveStickerPath = (sticker) => {
+      const rawPath = String(sticker?.rel || sticker?.filename || sticker?.path || sticker?.url || '').trim();
+      if (!rawPath || !stickerRoot || /^[A-Za-z]:[\\/]/.test(rawPath)
+        || rawPath.startsWith('/') || rawPath.startsWith('file://')) return rawPath;
+      return `${stickerRoot}/${rawPath.replace(/^[\\/]+/, '')}`;
+    };
+    projectSegments.forEach((segment, index) => {
+      const reference = segment?.sticker_ref;
+      const source = segment?.sticker || (reference && projectSegments[reference.headIdx]?.sticker);
+      if (reference && Number.isInteger(reference.headIdx)) {
+        const head = projectSegments[reference.headIdx];
+        if (!head?.sticker || head.disabled || reference.headIdx === index) {
+          warnings.push({ code: 'dangling_sticker_reference', index, headIdx: reference.headIdx });
+          return;
+        } else {
+          const headName = String(head.sticker.name || head.sticker.filename || '').replace(/\.[^.]+$/, '');
+          if (reference.name && headName && reference.name !== headName) {
+            warnings.push({ code: 'stale_sticker_reference', index, headIdx: reference.headIdx });
+          }
+        }
+      }
+      if (!source || segment.disabled || (segment.sticker && stickerHeads.has(index))) return;
+      if (segment.sticker) stickerHeads.add(index);
+      const timing = segment.sticker || segment;
+      const stickerStart = Number(timing.start);
+      const stickerEnd = Number(timing.end);
+      const rawStart = Math.round(Number.isFinite(stickerStart) ? stickerStart : Number(segment.start) || 0);
+      const rawEnd = Math.round(Number.isFinite(stickerEnd) ? stickerEnd : Number(segment.end) || 0);
+      const start = Math.min(durationMs, Math.max(0, rawStart));
+      const end = Math.min(durationMs, Math.max(start, rawEnd));
+      if (end <= start || mapSourceToOutput(end) <= mapSourceToOutput(start)) {
+        warnings.push({ code: 'fully_removed_sticker', index });
+        return;
+      }
+      const resolvedStickerPath = resolveStickerPath(source);
+      if (!resolvedStickerPath) {
+        warnings.push({ code: 'missing_sticker_path', index });
+        return;
+      }
+      if (rawStart !== start || rawEnd !== end) warnings.push({ code: 'clamped_sticker_to_duration', index });
+      stickers.push({
+        headIndex: index, name: String(source.name || ''),
+        path: resolvedStickerPath, width: Number.isInteger(source.width) ? source.width : 720,
+        height: Number.isInteger(source.height) ? source.height : 480,
+        sourceStartMs: start, sourceEndMs: end,
+        startMs: mapSourceToOutput(start), endMs: mapSourceToOutput(end),
+      });
+    });
+    if (cues.main.length === 0 && cues.extension.length === 0) warnings.push({ code: 'no_enabled_cues' });
+    warnings.sort((left, right) => left.code.localeCompare(right.code) || (left.index ?? 0) - (right.index ?? 0));
+    const plan = {
+      media: { path: mediaPath, type: String(media?.type || 'video'), durationMs },
+      mode, sourceDurationMs: durationMs, keptIntervals, outputDurationMs,
+      mapping: { mode, sourceDurationMs: durationMs, outputDurationMs, gaps },
+      framePolicy: { profile: frameProfile, rounding: ['floor', 'ceil'], dropFrame: false },
+      cues, stickers, warnings, frameProfile,
+      subtitleFontFamily: premiereFontFamily(project.preview?.subtitle?.font_family),
+    };
+    Object.defineProperties(plan, {
+      mapSourceToOutput: { value: (sourceMs) => mapExportTime(plan.mapping, sourceMs), enumerable: false },
+      frameForMs: { value: (ms, rounding = 'floor') => exportMsToFrames(ms, frameProfile, rounding), enumerable: false },
+    });
+    return freezeExportValue(plan);
+  }
+
+  function assertExportPlan(plan) {
+    if (!plan || typeof plan !== 'object') throw new Error('invalid export plan');
+    if (!plan.media || !String(plan.media.path || '').trim()) throw new Error('missing export media path');
+    if (!Number.isInteger(plan.sourceDurationMs) || plan.sourceDurationMs <= 0) {
+      throw new Error('missing export media duration');
+    }
+    if (!plan.frameProfile || !Number.isInteger(plan.frameProfile.numerator)
+      || !Number.isInteger(plan.frameProfile.denominator)) {
+      throw new Error('missing export frame profile');
+    }
+    if (!Number.isInteger(plan.outputDurationMs) || plan.outputDurationMs <= 0) {
+      throw new Error('invalid export plan duration');
+    }
+    if (!Array.isArray(plan.keptIntervals) || !plan.keptIntervals.length
+      || plan.keptIntervals.some((interval) => !Number.isInteger(interval?.start)
+        || !Number.isInteger(interval?.end) || interval.end <= interval.start)) {
+      throw new Error('empty export interval');
+    }
+    const outputDuration = plan.outputDurationMs;
+    const cueLists = [plan.cues?.main, plan.cues?.extension].filter(Array.isArray);
+    if (cueLists.flat().some((cue) => cue.startMs < 0 || cue.endMs > outputDuration || cue.endMs <= cue.startMs)) {
+      throw new Error('export cue outside output duration');
+    }
+    if ((Array.isArray(plan.stickers) ? plan.stickers : []).some((sticker) => (
+      sticker.startMs < 0 || sticker.endMs > outputDuration || sticker.endMs <= sticker.startMs
+    ))) throw new Error('export sticker outside output duration');
+    return plan;
+  }
+
+  function exportPlanFrame(plan, ms, rounding) {
+    return exportMsToFrames(ms, plan.frameProfile, rounding);
+  }
+
+  function formatSrtTime(ms) {
+    const value = Math.max(0, Math.round(Number(ms) || 0));
+    const hours = Math.floor(value / 3600000);
+    const minutes = Math.floor((value % 3600000) / 60000);
+    const seconds = Math.floor((value % 60000) / 1000);
+    const milliseconds = value % 1000;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
+  }
+
+  function selectedSubtitleTracks(plan, subtitleTracks) {
+    const selected = subtitleTracks === 'main_and_extension' || subtitleTracks === 'both'
+      ? ['main', 'extension'] : subtitleTracks === 'extension' ? ['extension'] : ['main'];
+    return selected.flatMap((track) => Array.isArray(plan.cues?.[track]) ? plan.cues[track] : []);
+  }
+
+  function serializeMappedSrt(plan, options = {}) {
+    const exportPlan = assertExportPlan(plan);
+    if (options.subtitleTracks !== undefined && !EXPORT_SUBTITLE_TRACKS.includes(options.subtitleTracks)) {
+      throw new Error(`unsupported subtitle tracks: ${options.subtitleTracks}`);
+    }
+    const tracks = selectedSubtitleTracks(exportPlan, options.subtitleTracks || 'main');
+    return `${tracks.map((cue, index) => {
+      const start = Math.max(0, Math.round(Number(cue.startMs) || 0));
+      const end = Math.max(start + 1, Math.round(Number(cue.endMs) || 0));
+      return `${index + 1}\n${formatSrtTime(start)} --> ${formatSrtTime(end)}\n${String(cue.text || '')}\n`;
+    }).join('\n')}`;
+  }
+
+  function fcpRate(profile) {
+    return `<rate><timebase>${profile.numerator}/${profile.denominator}</timebase><ntsc>${profile.denominator === 1001 ? 'TRUE' : 'FALSE'}</ntsc></rate>`;
+  }
+
+  function fcpTimeRange(startMs, endMs, plan) {
+    const start = exportPlanFrame(plan, startMs, 'floor');
+    const end = Math.max(start + 1, exportPlanFrame(plan, endMs, 'ceil'));
+    return { start, end, duration: end - start };
+  }
+
+  function encodeGraphicAndTypeText(text, fontFamily = 'FangSong') {
+    const payload = {
+      mTextParam: {
+        mAlignment: 0,
+        mBackFillColor: 0,
+        mBackFillOpacity: 100,
+        mBackFillSize: 0,
+        mBackFillVisible: false,
+        mDefaultRun: [],
+        mHeight: 0,
+        mHindiDigits: false,
+        mIndic: false,
+        mIsMask: false,
+        mIsMaskInverted: false,
+        mIsVerticalText: false,
+        mLeading: 0,
+        mLigatures: false,
+        mLineCapType: 0,
+        mLineJoinType: 0,
+        mMiterLimit: 2.5,
+        mNumStrokes: 1,
+        mRTL: false,
+        mShadowAngle: 0,
+        mShadowBlur: 0,
+        mShadowColor: 0,
+        mShadowOffset: 0,
+        mShadowOpacity: 0,
+        mShadowSize: 0,
+        mShadowVisible: false,
+        mStyleSheet: {
+          mAdditionalStrokeColor: [],
+          mAdditionalStrokeVisible: [],
+          mAdditionalStrokeWidth: [],
+          mBaselineOption: { mParamValues: [[0, 0]] },
+          mBaselineShift: { mParamValues: [[0, 0]] },
+          mCapsOption: { mParamValues: [[0, 0]] },
+          mFauxBold: { mParamValues: [[0, false]] },
+          mFauxItalic: { mParamValues: [[0, false]] },
+          mFillColor: { mParamValues: [[0, 16777215]] },
+          mFillOverStroke: { mParamValues: [[0, true]] },
+          mFillVisible: { mParamValues: [[0, true]] },
+          mFontName: { mParamValues: [[0, fontFamily]] },
+          mFontSize: { mParamValues: [[0, 120]] },
+          mKerning: { mParamValues: [[0, 0]] },
+          mStrokeColor: { mParamValues: [[0, 16777215]] },
+          mStrokeVisible: { mParamValues: [[0, false]] },
+          mStrokeWidth: { mParamValues: [[0, 1]] },
+          mText: String(text ?? ''),
+          mTracking: { mParamValues: [[0, 0]] },
+          mTsumi: { mParamValues: [[0, 0]] },
+          mUnderline: { mParamValues: [[0, false]] },
+        },
+        mTabWidth: 400,
+        mWidth: 0,
+      },
+      mVersion: 1,
+    };
+    const json = JSON.stringify(payload);
+    const bytes = new Uint8Array(8 + json.length * 2);
+    bytes[0] = 0xf6;
+    bytes[1] = 0x0a;
+    for (let index = 0; index < json.length; index += 1) {
+      const code = json.charCodeAt(index);
+      bytes[8 + index * 2] = code & 0xff;
+      bytes[9 + index * 2] = code >>> 8;
+    }
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    if (typeof globalThis.btoa === 'function') return globalThis.btoa(binary);
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    let encoded = '';
+    for (let index = 0; index < bytes.length; index += 3) {
+      const first = bytes[index];
+      const second = bytes[index + 1];
+      const third = bytes[index + 2];
+      encoded += alphabet[first >> 2];
+      encoded += alphabet[((first & 3) << 4) | (second === undefined ? 0 : second >> 4)];
+      encoded += second === undefined ? '=' : alphabet[((second & 15) << 2) | (third === undefined ? 0 : third >> 6)];
+      encoded += third === undefined ? '=' : alphabet[third & 63];
+    }
+    return encoded;
+  }
+
+  function premiereFontFamily(value) {
+    const key = String(value ?? '').trim();
+    return ({
+      default: 'Arial',
+      yahei: 'Microsoft YaHei',
+      hei: 'SimHei',
+      song: 'FangSong',
+      sans: 'Arial',
+    })[key] || key || 'Arial';
+  }
+
+  function fcpClipItem({ id, fileId, name, path, width, height, sourceStartMs, sourceEndMs, startMs, endMs, startFrame, endFrame, plan, mediaKind, track, link, defineFile = true, encodeDriveColon = false }) {
+    const source = fcpTimeRange(sourceStartMs, sourceEndMs, plan);
+    const timeline = fcpTimeRange(startMs, endMs, plan);
+    const url = escapeExportXml(exportPathToFileUrl(path, { encodeDriveColon }));
+    const isSticker = mediaKind === 'sticker';
+    const media = mediaKind === 'audio' ? '<sourcetrack><mediatype>audio</mediatype><trackindex>1</trackindex><channel>1</channel><channelcount>2</channelcount></sourcetrack>'
+      : '<sourcetrack><mediatype>video</mediatype><trackindex>1</trackindex></sourcetrack>';
+    const sourceDuration = exportPlanFrame(plan, plan.sourceDurationMs, 'ceil');
+    const fileMedia = mediaKind === 'audio'
+      ? `<media><audio><duration>${sourceDuration}</duration><channelcount>2</channelcount></audio></media>`
+      : isSticker
+        ? `<media><video><samplecharacteristics><rate><timebase>${plan.frameProfile.numerator}/${plan.frameProfile.denominator}</timebase><ntsc>${plan.frameProfile.denominator === 1001 ? 'TRUE' : 'FALSE'}</ntsc></rate><width>${Number.isInteger(width) && width > 0 ? width : 720}</width><height>${Number.isInteger(height) && height > 0 ? height : 480}</height><anamorphic>FALSE</anamorphic><pixelaspectratio>square</pixelaspectratio><fielddominance>none</fielddominance></samplecharacteristics></video></media>`
+        : `<media><video><duration>${sourceDuration}</duration></video><audio><duration>${sourceDuration}</duration><channelcount>2</channelcount></audio></media>`;
+    const file = defineFile
+      ? `<file id="${escapeExportXml(fileId)}"><name>${escapeExportXml(fileBasename(path))}</name><pathurl>${url}</pathurl><duration>${sourceDuration}</duration>${fcpRate(plan.frameProfile)}${isSticker ? `<timecode><rate>${fcpRate(plan.frameProfile).replace('<rate>', '').replace('</rate>', '')}</rate><string>00:00:00:00</string><frame>0</frame><displayformat>NDF</displayformat></timecode>` : ''}${fileMedia}</file>`
+      : `<file id="${escapeExportXml(fileId)}"/>`;
+    const frameStart = startFrame ?? timeline.start;
+    const frameEnd = Math.max(frameStart + 1, endFrame ?? frameStart + source.duration);
+    const stickerClipMetadata = isSticker
+      ? `<enabled>TRUE</enabled><alphatype>${/\.(?:gif|png|webp)$/iu.test(path) ? 'straight' : 'none'}</alphatype><pixelaspectratio>square</pixelaspectratio><anamorphic>FALSE</anamorphic>`
+      : '';
+    const masterClipMetadata = isSticker ? `<masterclipid>${escapeExportXml(fileId.replace(/^file-/, 'master-'))}</masterclipid>` : '';
+    return `<clipitem id="${escapeExportXml(id)}">${masterClipMetadata}<name>${escapeExportXml(name)}</name>${stickerClipMetadata}<duration>${frameEnd - frameStart}</duration>${fcpRate(plan.frameProfile)}<start>${frameStart}</start><end>${frameEnd}</end><in>${source.start}</in><out>${source.end}</out>${file}${media}${link ? `<link><linkclipref>${escapeExportXml(link)}</linkclipref><mediatype>audio</mediatype><trackindex>1</trackindex><clipindex>1</clipindex></link>` : ''}<label>${escapeExportXml(track)}</label></clipitem>`;
+  }
+
+  function serializeFcp7Xml(plan, options = {}) {
+    const exportPlan = assertExportPlan(plan);
+    if (options.nativeTextObjects !== undefined && typeof options.nativeTextObjects !== 'boolean') {
+      throw new Error('native text option must be boolean');
+    }
+    const nativeTextObjects = options.nativeTextObjects === true;
+    const subtitleTracks = options.subtitleTracks || 'main';
+    if (!EXPORT_SUBTITLE_TRACKS.includes(subtitleTracks)) {
+      throw new Error(`unsupported subtitle tracks: ${subtitleTracks}`);
+    }
+    const mediaType = String(exportPlan.media.type || 'video').toLowerCase();
+    const hasVideo = mediaType !== 'audio';
+    let cursor = 0;
+    const sourceTracks = [];
+    const intervals = Array.isArray(exportPlan.keptIntervals) ? exportPlan.keptIntervals : [];
+    const boundaries = [0];
+    intervals.forEach((interval) => boundaries.push(boundaries[boundaries.length - 1]
+      + fcpTimeRange(interval.start, interval.end, exportPlan).duration));
+    const duration = boundaries[boundaries.length - 1];
+    intervals.forEach((interval, index) => {
+      const range = fcpTimeRange(interval.start, interval.end, exportPlan);
+      const startMs = cursor * 1000 * exportPlan.frameProfile.denominator / exportPlan.frameProfile.numerator;
+      const endMs = (cursor + range.duration) * 1000 * exportPlan.frameProfile.denominator / exportPlan.frameProfile.numerator;
+      sourceTracks.push(fcpClipItem({
+        id: `video-clip-${index + 1}`, fileId: 'file-source-video-1', name: `${fileBasename(exportPlan.media.path)} [${index + 1}]`,
+        path: exportPlan.media.path, sourceStartMs: interval.start, sourceEndMs: interval.end,
+        startMs, endMs, startFrame: boundaries[index], endFrame: boundaries[index + 1], plan: exportPlan, mediaKind: mediaType, track: 'source', defineFile: index === 0,
+      }));
+      cursor += range.duration;
+    });
+    const audioTracks = hasVideo ? intervals.map((interval, index) => {
+      const range = fcpTimeRange(interval.start, interval.end, exportPlan);
+      const startMs = (intervals.slice(0, index).reduce((sum, prior) => sum + fcpTimeRange(prior.start, prior.end, exportPlan).duration, 0)) * 1000 * exportPlan.frameProfile.denominator / exportPlan.frameProfile.numerator;
+      const endMs = startMs + range.duration * 1000 * exportPlan.frameProfile.denominator / exportPlan.frameProfile.numerator;
+      return fcpClipItem({ id: `audio-clip-${index + 1}`, fileId: 'file-source-audio', name: `${fileBasename(exportPlan.media.path)} audio [${index + 1}]`, path: exportPlan.media.path, sourceStartMs: interval.start, sourceEndMs: interval.end, startMs, endMs, startFrame: boundaries[index], endFrame: boundaries[index + 1], plan: exportPlan, mediaKind: 'audio', track: 'source-audio', link: `video-clip-${index + 1}`, defineFile: index === 0 });
+    }) : [];
+    const videoTracks = hasVideo ? [`<track>${sourceTracks.join('')}</track>`] : [];
+    const stickerFileIds = new Map();
+    const stickerTracks = hasVideo ? (Array.isArray(exportPlan.stickers) ? exportPlan.stickers : []).map((sticker, index) => {
+      if (!String(sticker.path || '').trim()) return '';
+      const stickerKey = String(sticker.path);
+      const fileId = stickerFileIds.get(stickerKey) || `file-sticker-${stickerFileIds.size + 1}`;
+      const defineFile = !stickerFileIds.has(stickerKey);
+      stickerFileIds.set(stickerKey, fileId);
+      const clip = fcpClipItem({
+        id: `sticker-clip-${index + 1}`, fileId, name: `MAW sticker - ${sticker.name || index + 1}`,
+        path: sticker.path, width: sticker.width, height: sticker.height, sourceStartMs: 0,
+        sourceEndMs: Math.max(1, sticker.endMs - sticker.startMs),
+        startMs: sticker.startMs, endMs: sticker.endMs, plan: exportPlan, mediaKind: 'sticker', track: `sticker-${index + 1}`,
+        defineFile, encodeDriveColon: true,
+      });
+      return `<track>${clip}</track>`;
+    }).filter(Boolean) : [];
+    const textTracks = nativeTextObjects && hasVideo ? (subtitleTracks === 'main_and_extension' || subtitleTracks === 'both'
+      ? ['main', 'extension'] : subtitleTracks === 'extension' ? ['extension'] : ['main']).map((track) => {
+      const cues = selectedSubtitleTracks(exportPlan, track);
+      const generators = cues.map((cue, index) => {
+        const range = fcpTimeRange(cue.startMs, cue.endMs, exportPlan);
+        const text = encodeGraphicAndTypeText(cue.text, exportPlan.subtitleFontFamily);
+        const clipId = `text-${track}-${index + 1}`;
+        return `<clipitem id="${clipId}"><name>MAW native text - ${escapeExportXml(track)}</name><enabled>TRUE</enabled><duration>${range.duration}</duration>${fcpRate(exportPlan.frameProfile)}<start>${range.start}</start><end>${range.end}</end><in>0</in><out>${range.duration}</out><file id="file-${clipId}"><name>MAW GraphicAndType</name><mediaSource>GraphicAndType</mediaSource><duration>${range.duration}</duration>${fcpRate(exportPlan.frameProfile)}<media><video><duration>${range.duration}</duration></video></media></file><filter><effect><name>GraphicAndType</name><effectid>GraphicAndType</effectid><effectcategory>graphic</effectcategory><effecttype>filter</effecttype><mediatype>video</mediatype><parameter authoringApp="MAW"><parameterid>1</parameterid><name>Source Text</name><value>${text}</value></parameter></effect></filter></clipitem>`;
+      }).join('');
+      return generators ? `<track>${generators}</track>` : '';
+    }).filter(Boolean) : [];
+    const video = hasVideo ? `<video>${videoTracks.concat(stickerTracks, textTracks).join('')}</video>` : '';
+    const audio = mediaType === 'audio' ? `<audio><track>${sourceTracks.join('')}</track></audio>` : `<audio><track>${audioTracks.join('')}</track></audio>`;
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xmeml>\n<xmeml version="5"><sequence id="MAW-sequence"><name>MAW FCP 7 Premiere handoff</name><duration>${duration}</duration>${fcpRate(exportPlan.frameProfile)}<media>${video}${audio}</media></sequence></xmeml>`;
+    return xml;
+  }
+
+  function buildFcp7ExportArtifacts(plan, options = {}) {
+    const exportPlan = assertExportPlan(plan);
+    const normalized = normalizeExportOptions({
+      timelineMode: exportPlan.mode,
+      fps: exportPlan.frameProfile.name,
+      ...options,
+    });
+    if (normalized.timelineMode !== exportPlan.mode
+      || normalized.fps !== exportPlan.frameProfile.name) {
+      throw new Error('export artifact options do not match the shared plan');
+    }
+    const names = buildExportNames(normalized.baseName);
+    const serializerOptions = {
+      nativeTextObjects: normalized.nativeTextObjects,
+      subtitleTracks: normalized.subtitleTracks,
+    };
+    return freezeExportValue([
+      {
+        kind: 'xml', filename: names.files.project, mime: 'application/xml',
+        content: serializeFcp7Xml(exportPlan, serializerOptions), plan: exportPlan,
+      },
+      {
+        kind: 'srt', filename: names.files.subtitles, mime: 'text/plain',
+        content: serializeMappedSrt(exportPlan, serializerOptions), plan: exportPlan,
+      },
+    ]);
+  }
+
+  const EXPORT_SAVE_STATUSES = Object.freeze(['cancelled', 'failed', 'dispatched', 'saved']);
+
+  async function saveSequentialExportArtifacts(artifacts, saveArtifact) {
+    if (!Array.isArray(artifacts) || artifacts.length !== 2
+      || artifacts[0]?.kind !== 'xml' || artifacts[1]?.kind !== 'srt') {
+      throw new Error('export artifacts must contain XML then SRT');
+    }
+    if (typeof saveArtifact !== 'function') throw new Error('save artifact callback is required');
+    const outcomes = { xml: 'not_attempted', srt: 'not_attempted', complete: false };
+    for (const artifact of artifacts) {
+      const result = await saveArtifact(artifact);
+      const status = result?.status;
+      if (!EXPORT_SAVE_STATUSES.includes(status)) throw new Error(`invalid export save status: ${status}`);
+      outcomes[artifact.kind] = status;
+      if (status === 'cancelled' || status === 'failed') return freezeExportValue(outcomes);
+    }
+    outcomes.complete = true;
+    return freezeExportValue(outcomes);
+  }
+
   function quoteFfconcatPath(value) {
     const normalized = String(value || '').trim().replace(/\\/g, '/');
     return `'${normalized.replace(/'/g, "'\\''")}'`;
@@ -1694,6 +2319,21 @@
     getRemovedGapRanges,
     mapGapRemovedTime,
     buildGapRemovedIntervals,
+    EXPORT_FRAME_PROFILES,
+    resolveExportFrameProfile,
+    exportMsToFrames,
+    mapExportTime,
+    exportPolicyMsToFrames,
+    normalizeExportOptions,
+    sanitizeExportName,
+    buildExportNames,
+    escapeExportXml,
+    exportPathToFileUrl,
+    buildProjectExportPlan,
+    serializeMappedSrt,
+    serializeFcp7Xml,
+    buildFcp7ExportArtifacts,
+    saveSequentialExportArtifacts,
     buildFfconcat,
     configuredEnterAction,
     isMacPlatform,

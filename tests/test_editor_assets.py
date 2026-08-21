@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
+from contextlib import redirect_stderr
+from io import StringIO
 from pathlib import Path
 
 
@@ -106,7 +109,7 @@ class EditorAssetContractTests(unittest.TestCase):
         script = edit.read_web_asset("editor.js")
         self.assertIn('id="sticker-otio-export-mode"', template)
         self.assertIn('option value="portable"', template)
-        self.assertIn("sticker_rel: seg.sticker.rel || ''", script)
+        self.assertIn("sticker_rel: sticker.rel || ''", script)
         self.assertIn("sticker_rel: sticker.sticker_rel", script)
         self.assertIn("SERVER_CONFIG?.canPortableStickerExport", script)
         self.assertIn("SERVER_CONFIG?.portableStickerExportUrl", script)
@@ -165,6 +168,20 @@ class EditorAssetContractTests(unittest.TestCase):
             "__EDITOR_JS__",
         ):
             self.assertNotIn(legacy_token, build_script)
+
+
+class StickerScanTests(unittest.TestCase):
+    def test_scan_stickers_keeps_images_when_dimensions_are_unreadable(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            sticker = Path(directory) / "broken.png"
+            sticker.write_bytes(b"not-a-png")
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                root, stickers = edit.scan_stickers(Path(directory))
+
+        self.assertTrue(root)
+        self.assertEqual(stickers, [{"name": "broken", "filename": "broken.png", "rel": "broken.png"}])
+        self.assertIn("无法读取尺寸", stderr.getvalue())
 
 
 if __name__ == "__main__":

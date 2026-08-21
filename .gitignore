@@ -54,3 +54,6 @@ maw-postprocess.json
 
 # AppImage 构建产物（scripts/build-appimage.sh）
 build-appimage/
+
+# Local reference material. Never package or commit these files.
+/ref/

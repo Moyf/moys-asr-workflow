@@ -28,8 +28,10 @@ import html
 import json
 import os
 import re
+import struct
+import sys
 from pathlib import Path
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 from maw.project import ProjectValidationFailed, normalize_project
 from maw.media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS
@@ -52,6 +54,46 @@ class Sticker(TypedDict):
     name: str
     filename: str
     rel: str
+    width: NotRequired[int]
+    height: NotRequired[int]
+
+
+def image_dimensions(path: Path) -> tuple[int, int]:
+    """Read common sticker dimensions without adding an image dependency."""
+    data = path.read_bytes()
+    ext = path.suffix.lower()
+    if ext in {".jpg", ".jpeg"} and data[:2] == b"\xff\xd8":
+        offset = 2
+        while offset + 4 <= len(data):
+            if data[offset] != 0xFF:
+                offset += 1
+                continue
+            marker = data[offset + 1]
+            offset += 2
+            if marker in {0xD8, 0xD9} or 0xD0 <= marker <= 0xD7:
+                continue
+            if offset + 2 > len(data):
+                break
+            length = int.from_bytes(data[offset:offset + 2], "big")
+            if marker in {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF} and offset + 7 <= len(data):
+                return int.from_bytes(data[offset + 5:offset + 7], "big"), int.from_bytes(data[offset + 3:offset + 5], "big")
+            if length < 2:
+                break
+            offset += length
+    if ext == ".png" and data.startswith(b"\x89PNG\r\n\x1a\n") and len(data) >= 24:
+        return struct.unpack(">II", data[16:24])
+    if ext == ".gif" and data[:6] in {b"GIF87a", b"GIF89a"} and len(data) >= 10:
+        return struct.unpack("<HH", data[6:10])
+    if ext == ".bmp" and data[:2] == b"BM" and len(data) >= 26:
+        return abs(struct.unpack("<i", data[18:22])[0]), abs(struct.unpack("<i", data[22:26])[0])
+    if ext == ".webp" and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        if data[12:16] == b"VP8X" and len(data) >= 30:
+            return 1 + int.from_bytes(data[24:27], "little"), 1 + int.from_bytes(data[27:30], "little")
+        if data[12:16] == b"VP8 " and len(data) >= 30:
+            marker = data.find(b"\x9d\x01\x2a", 20)
+            if marker >= 0 and marker + 7 <= len(data):
+                return int.from_bytes(data[marker + 3:marker + 5], "little") & 0x3FFF, int.from_bytes(data[marker + 5:marker + 7], "little") & 0x3FFF
+    raise ValueError(f"unsupported or invalid image: {path}")
 
 
 def get_app_version() -> str:
@@ -128,6 +170,7 @@ def scan_stickers(dir_path: Path, max_depth: int = 3, max_items: int = 500) -> t
         return ("", [])
     root_abs = dir_path.resolve()
     items: list[Sticker] = []
+    skipped_dimensions = 0
     for p in sorted(root_abs.rglob("*")):
         if not p.is_file():
             continue
@@ -139,9 +182,19 @@ def scan_stickers(dir_path: Path, max_depth: int = 3, max_items: int = 500) -> t
             continue
         rel = rel_path.as_posix()  # 含子目录的相对路径
         name = rel_path.with_suffix("").as_posix()  # 如 "大狗/xxx"，跨子目录唯一
-        items.append({"name": name, "filename": p.name, "rel": rel})
+        try:
+            width, height = image_dimensions(p)
+        except (OSError, ValueError):
+            skipped_dimensions += 1
+            items.append({"name": name, "filename": p.name, "rel": rel})
+            if len(items) >= max_items:
+                break
+            continue
+        items.append({"name": name, "filename": p.name, "rel": rel, "width": width, "height": height})
         if len(items) >= max_items:
             break
+    if skipped_dimensions:
+        print(f"[sticker] 警告：{skipped_dimensions} 个图片无法读取尺寸，已保留并使用兼容默认值", file=sys.stderr)
     return (root_abs.as_posix(), items)
 
 

@@ -1283,6 +1283,13 @@ const stickerPreviewModal = document.getElementById('sticker-preview-modal');
 const projectMediaModal = document.getElementById('project-media-modal');
 const projectMediaSelectButton = document.getElementById('project-media-select');
 const projectMediaLaterButton = document.getElementById('project-media-later');
+const fcp7ExportModal = document.getElementById('fcp7-export-modal');
+const fcp7ExportTimelineMode = document.getElementById('fcp7-export-timeline-mode');
+const fcp7ExportFps = document.getElementById('fcp7-export-fps');
+const fcp7ExportSubtitleTracks = document.getElementById('fcp7-export-subtitle-tracks');
+const fcp7ExportNativeText = document.getElementById('fcp7-export-native-text');
+const fcp7ExportCancel = document.getElementById('fcp7-export-cancel');
+const fcp7ExportConfirm = document.getElementById('fcp7-export-confirm');
 const ctxmenu = document.getElementById('ctxmenu');
 const cuePanel = document.getElementById('current-cue-panel');
 const cuePanelPrev = document.getElementById('cue-panel-prev');
@@ -10209,7 +10216,11 @@ function buildCurrentWorkspaceData() {
 
 function buildResolveJson() {
   const segments = DATA.segments.map((seg, idx) => {
-    const sticker = seg.sticker ? { ...seg.sticker } : null;
+    const headIdx = seg.sticker_ref?.headIdx;
+    const head = Number.isInteger(headIdx) ? DATA.segments[headIdx] : null;
+    const validStickerRef = !seg.sticker_ref || (head && !head.disabled && headIdx < idx);
+    const headSticker = !seg.disabled && validStickerRef ? seg.sticker || head?.sticker : null;
+    const sticker = headSticker ? { ...headSticker, start: seg.start, end: seg.end } : null;
     if (sticker) {
       const absPath = stickerAbsPath(sticker);
       if (absPath) sticker.abs_path = absPath;
@@ -10224,7 +10235,7 @@ function buildResolveJson() {
       color_ref: seg.color_ref || null,
       resolve_color: colorName,
       sticker,
-      sticker_ref: seg.sticker_ref || null,
+      sticker_ref: validStickerRef ? seg.sticker_ref || null : null,
     };
   });
   const colorCount = segments.filter(s => s.resolve_color).length;
@@ -10414,11 +10425,16 @@ function collectStickerOtioEntries(removed) {
   const entries = [];
   for (let idx = 0; idx < DATA.segments.length; idx++) {
     const seg = DATA.segments[idx];
-    if (!seg.sticker) continue;
-    const absPath = stickerAbsPath(seg.sticker);
+    if (seg.disabled) continue;
+    const headIdx = seg.sticker_ref?.headIdx;
+    const head = Number.isInteger(headIdx) ? DATA.segments[headIdx] : null;
+    if (seg.sticker_ref && (!head || head.disabled || headIdx >= idx)) continue;
+    const sticker = seg.sticker || head?.sticker;
+    if (!sticker) continue;
+    const absPath = stickerAbsPath(sticker);
     if (!absPath) return { error: '表情包缺少真实磁盘路径；请先设置实际表情包根目录后再导出 OTIO' };
-    const origStart = seg.sticker.start != null ? seg.sticker.start : seg.start;
-    const origEnd = seg.sticker.end != null ? seg.sticker.end : seg.end;
+    const origStart = seg.sticker?.start != null ? seg.sticker.start : seg.start;
+    const origEnd = seg.sticker?.end != null ? seg.sticker.end : seg.end;
     if (origEnd <= origStart) continue;
     const startMs = removed.length
       ? window.AsrEditorUtils.mapGapRemovedTime(origStart, removed)
@@ -10433,8 +10449,8 @@ function collectStickerOtioEntries(removed) {
       startMs,
       endMs,
       absPath,
-      sticker_rel: seg.sticker.rel || '',
-      name: stickerOtioName(seg.sticker, absPath),
+      sticker_rel: sticker.rel || '',
+      name: stickerOtioName(sticker, absPath),
     });
   }
   return { entries };
@@ -10548,7 +10564,7 @@ function buildGapRemovedStickerOtio() {
   return result.json;
 }
 
-async function downloadFile(content, filename, mime, accept, { usePicker = true } = {}) {
+async function downloadFile(content, filename, mime, accept, { usePicker = true, detailed = false } = {}) {
   const isSrt = filename.toLowerCase().endsWith('.srt');
   const fileContent = isSrt
     ? new Uint8Array([0xEF, 0xBB, 0xBF, ...new TextEncoder().encode(String(content))])
@@ -10563,10 +10579,11 @@ async function downloadFile(content, filename, mime, accept, { usePicker = true 
       const w = await handle.createWritable();
       await w.write(new Blob([fileContent], { type: mime + ';charset=utf-8' }));
       await w.close();
-      return true;
+      return detailed ? { status: 'saved' } : true;
     } catch (e) {
       // 用户取消保存对话框 — 静默退出，不回退
-      if (e && e.name === 'AbortError') return false;
+      if (e && e.name === 'AbortError') return detailed ? { status: 'cancelled' } : false;
+      if (detailed) return { status: 'failed' };
       // 其他错误（如安全限制、unsupported 文件类型）：回退到 anchor 下载
     }
   }
@@ -10577,7 +10594,7 @@ async function downloadFile(content, filename, mime, accept, { usePicker = true 
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  return true;
+  return detailed ? { status: 'dispatched' } : true;
 }
 
 // === 标题区：媒体名点击复制 / 工程文件名点击复制 ===
@@ -11413,6 +11430,82 @@ if (jsonNameEl && !jsonNameEl.classList.contains('empty')) {
     if (name) copyText(name, `已复制：${name}`);
   });
 }
+
+function translatedEditorText(text) {
+  return window.MAWE_I18N?.translateText?.(text) || text;
+}
+
+function closeFcp7ExportModal() {
+  fcp7ExportModal.classList.remove('show');
+}
+
+function openFcp7ExportModal() {
+  if (editingState) finishEdit(true);
+  if (extensionEditingState) finishExtensionEdit(true);
+  commitCuePanelEdit();
+  const extensionAvailable = Boolean(getActiveExtensionTrack());
+  const extensionOption = fcp7ExportSubtitleTracks.querySelector('option[value="main_and_extension"]');
+  extensionOption.disabled = !extensionAvailable;
+  if (!extensionAvailable) fcp7ExportSubtitleTracks.value = 'main';
+  fcp7ExportNativeText.checked = false;
+  fcp7ExportModal.classList.add('show');
+  fcp7ExportTimelineMode.focus();
+}
+
+async function exportFcp7Xml() {
+  fcp7ExportConfirm.disabled = true;
+  try {
+    const durationMs = waveformEditor?.durationMs
+      || Math.round(Number(player?.duration) * 1000)
+      || DATA.waveform?.duration_ms
+      || 0;
+    const options = window.AsrEditorUtils.normalizeExportOptions({
+      timelineMode: fcp7ExportTimelineMode.value,
+      fps: fcp7ExportFps.value,
+      subtitleTracks: fcp7ExportSubtitleTracks.value,
+      nativeTextObjects: fcp7ExportNativeText.checked,
+      baseName: FILENAME_BASE,
+    });
+    const plan = window.AsrEditorUtils.buildProjectExportPlan(DATA, {
+      ...options,
+      durationMs: Math.round(durationMs),
+    });
+    const [artifact] = window.AsrEditorUtils.buildFcp7ExportArtifacts(plan, options);
+    closeFcp7ExportModal();
+    const result = await downloadFile(
+      artifact.content,
+      artifact.filename,
+      artifact.mime,
+      { desc: 'FCP 7 XML', types: { 'application/xml': ['.xml'] } },
+       { detailed: true },
+    );
+    const messages = {
+      saved: ['FCP 7 XML 已保存', 'success'],
+      dispatched: ['FCP 7 XML 下载已发起', 'success'],
+      cancelled: ['FCP 7 XML 保存已取消', 'invalid'],
+      failed: ['FCP 7 XML 保存失败', 'warning'],
+    };
+    const [message, type] = messages[result.status] || messages.failed;
+    flashHint(translatedEditorText(message), type);
+  } catch (error) {
+    flashHint(`${translatedEditorText('FCP 7 XML 导出失败')}：${error.message}`, 'warning');
+  } finally {
+    fcp7ExportConfirm.disabled = false;
+  }
+}
+
+document.getElementById('download-fcp7-export').addEventListener('click', openFcp7ExportModal);
+fcp7ExportCancel.addEventListener('click', closeFcp7ExportModal);
+fcp7ExportConfirm.addEventListener('click', () => { void exportFcp7Xml(); });
+fcp7ExportModal.addEventListener('click', (event) => {
+  if (event.target === fcp7ExportModal) closeFcp7ExportModal();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !fcp7ExportModal.classList.contains('show')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeFcp7ExportModal();
+}, true);
 
 document.getElementById('download-srt').addEventListener('click', async () => {
   if (editingState) finishEdit(true);
@@ -12893,11 +12986,12 @@ function assignSticker(sticker) {
   pushUndo('分配表情包');
   if (stickerTargetMode === 'multi' && stickerTargetIdxs.length > 1) {
     const sorted = [...stickerTargetIdxs].sort((a, b) => a - b);
-    const start = DATA.segments[sorted[0]].start;
-    const end = DATA.segments[sorted[sorted.length - 1]].end;
     const headIdx = sorted[0];
-    // 头条：完整 sticker，时间跨整个范围
-    DATA.segments[headIdx].sticker = { ...sticker, start, end };
+    // 每条字幕都是一个独立的时间实例；head 只负责保存素材，不能把多条字幕
+    // 的时间范围合并成一条，否则 XML/OTIO 会把中间的引用压成连续长片段。
+    DATA.segments[headIdx].sticker = {
+      ...sticker, start: DATA.segments[headIdx].start, end: DATA.segments[headIdx].end,
+    };
     DATA.segments[headIdx].sticker_ref = null;
     // 后续条：sticker_ref 标记，便于显示和导航
     for (let i = 1; i < sorted.length; i++) {

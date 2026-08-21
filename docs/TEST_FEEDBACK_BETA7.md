@@ -35,6 +35,18 @@
 | 30 | 编辑器 / 波形性能 | 连续调节波形振幅、行高时反复重绘导致编辑器卡顿 | 修改 | 已修复 |
 | 29 | 编辑器 / 波形快捷键 | 增加 `Z/X`，将单个字幕的起点/终点定位到鼠标位置；主字幕联动绑定副字幕，副字幕只调整自身，多选不生效；无选中时作用于鼠标命中的字幕 | 修改 | 已修复 |
 | 32 | 编辑器 / 波形性能 | 频谱颜色切换重绘反馈延迟，用户可能误以为没有响应而重复点击 | 修改 | 已修复 |
+| 33 | Premiere 交接 | 原生文字已成功写入；视频可自动识别并播放；图片不会弹出查找媒体但仍需手动重新链接；希望导出预览字幕字体，参考 `序列03-带字体.xml` 中的 FangSong | 修改 | 进行中 |
+
+## 增量记录（任务 33：Premiere XML 文字、视频、图片与字体反馈）
+
+- 已验证：原生 GraphicAndType 文字已经成功写入 Premiere；视频媒体可以自动识别并播放。
+- 当前问题：图片文件不会弹出“查找媒体”，但导入后仍需要手动重新链接，说明 XML 已建立图片剪辑但图片文件引用或文件媒体描述仍不满足 Premiere 的自动解析条件。
+- 参考资料：`examples/序列03-带字体.xml` 的 GraphicAndType payload 中，预览字幕字体位于 Base64 + UTF-16LE JSON 的 `mTextParam.mStyleSheet.mFontName.mParamValues[0][1]`，示例值为 `FangSong`。
+- 本轮处理：修正图片文件 URL 的 Windows drive-letter 编码，并让导出 payload 从工程 `preview.subtitle.font_family` 读取字体；内置 `song` 映射为 Premiere 字体名 `FangSong`。
+- 当前能力：编辑器已有“读取本机字体”功能，会通过 `queryLocalFonts()` 将本机字体 family 加入主/副字幕字体下拉框；用户选择后直接保存 family 名称。导出层继续将该 family 原样写入 Premiere payload；浏览器预览和 Premiere 显示都要求目标电脑已安装同名字体。
+- 未验证边界：仍需在 Premiere 实机打开包含 GIF/JPG 表情包的 XML，确认图片免手动重链以及字体在目标机器已安装时的实际显示效果。
+
+已验证：`node --test tests\\test_editor_utils.mjs`（111/111）；`node --check web\\editor-utils.js`、`node --check web\\editor.js`；`uv run python edit.py --blank`；`git diff --check`。Premiere 图片自动重链和真实字体显示仍需用户实机确认。
 | 33 | Launcher / 批量拖入 | 不支持格式的提示显示在单文件区域；重复拖入文件没有提示；批量阶段日志只显示在单条记录；跳过确认按钮应显示“是 / 否” | 修改 | 已修复 |
 | 34 | Launcher / 批量进度 | 批量运行时总日志和状态区缺少当前文件、完成/失败和汇总反馈 | 修改 | 已修复 |
 
@@ -244,3 +256,22 @@
 - 同轨相邻吸附与跨轨道吸附拆开处理：关闭前者时，副字幕移动仍可按「跨轨道吸附」设置贴合主字幕边界。已补充主字幕共享边界左右手柄、副字幕越过主轨边界和跨轨吸附回归。
 
 已验证：主副字幕相关浏览器回归 3/3；自动吸附、独立共享边界和 Shift 贴合回归 4/4；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（121/121）；`node --check web\\editor.js`、`node --check web\\waveform.js`；`python edit.py --blank`；`git diff --check` 均通过。
+
+## 增量记录（FCP7 Premiere 交接：任务 4、5）
+
+- Premiere 实机反馈：通用 `generatoritem` 的 `Text` effect 在 `00:00:00:03` 与 `00:02:16`（video track 2）显示“未转换”，并以透明视频占位；Windows 媒体路径未自动识别；源媒体为 2 声道而 XML 声明 1 声道时链接媒体被拒绝。
+- 处理：Windows drive path 改为 Premiere 常见的 `file://localhost/C:/path`，保留 UNC、POSIX 与 UTF-8 百分号编码；视频与音频 file media 均声明 `channelcount=2`，音频 clip 声明双声道 sourcetrack 并链接到视频 clip；原生文本改为 `clipitem` + `GraphicAndType` effect + parameter 1，移除通用 `generatoritem`。
+- 结构证据仅来自 `examples/序列 01.xml` 的 GraphicAndType 层级；未复制其 opaque payload 或路径。
+- 已验证：`node --test tests\test_editor_utils.mjs` 为 `151/151`，组合 `node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs` 为 `193/193`；FCP7 浏览器回归 `9/9`；XML 使用 Python `xml.etree.ElementTree` 解析；`node --check web/editor-utils.js` 与 `git diff --check` 通过。当前环境未重新运行 Premiere，因此目标应用最终转换仍为未验证，不宣称已完全兼容。
+- 当前 SHA-256：`web/editor-utils.js` `5ff8a79c9c8366d2a750223f596697aadffa7e904c6a5521c2b026a9f542c239`；`tests/test_editor_utils.mjs` `4ccaef69c35e3781109c2cd86f81e629a4320608520fe9ec4cd9583dadf9efc0`；`tests/e2e/fcp7-export.spec.mjs` `56347702556ef1db0cf3886f2732f0b5f1f80f42e336e64065021fd4dbf62870`。`.debug-journal.md` 为临时文件，不纳入证据或发布产物。
+- 后续复现发现：仓库参考 XML 同时存在 `file:///D:/...` 与 `file://localhost/D|/...` 两种历史写法；针对当前 Premiere“找不到媒体”反馈，序列化器改为 `file://localhost/D:/...`，并补充回归断言。Premiere 实机重新导入仍需用户在相同媒体路径上确认，当前不能宣称已完全兼容。
+# PR #56 审核整改（2026-08-20）
+
+状态：已修复
+
+- FCP7 非整帧区间取整不一致：`f27ade0a` 统一源区间和时间线区间的帧边界，贴图 source duration 按当前字幕实例计算。
+- 多段贴图导出遗漏：`65294c2e` 让 OTIO 与 Resolve JSON 逐段解析 `sticker_ref`，使用当前字幕段时间范围；禁用段不导出，悬空引用按既有跳过规则处理。
+- 契约文档：`CHANGELOG.md` 增加 PR #56 汇总及 Premiere 图片自动重链、字体显示的实机限制；`JSON_SCHEMA.md` 补充可选 `sticker.width` / `sticker.height` 和旧工程兼容规则。
+- 尺寸解析失败：`scan_stickers()` 保留无法读取尺寸的图片，输出 warning，由导出器使用兼容默认值；新增损坏图片回归测试。
+
+验证：Node `155/155`、Python `607/607`、贴图导出 Playwright `1/1`、语法检查、`uv run python edit.py --blank`、`git diff --check` 均通过。Premiere 实机导入仍未验证。
