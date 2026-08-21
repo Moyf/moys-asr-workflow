@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import copy
 import html
+import io
 import json
 import math
 import mimetypes
@@ -20,6 +21,7 @@ import sys
 import tempfile
 import threading
 import webbrowser
+import zipfile
 from dataclasses import dataclass, field, replace
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -439,9 +441,11 @@ def build_server_page(
             "requestToken": request_token,
             "stickerRootUrl": "/api/stickers/root",
             "portableStickerExportUrl": "/api/exports/sticker-otio",
+            "otiozStickerExportUrl": "/api/exports/sticker-otioz",
             "waveformUrl": "/api/waveform",
             "canSave": project.json_path is not None,
             "canPortableStickerExport": project.json_path is not None,
+            "canOtozStickerExport": project.json_path is not None,
             "initialStickerCount": len(project.stickers),
             "autoLoadedMediaName": (project.source_media_path or project.media_path).name if project.media_path else None,
             "recentProjectsUrl": "/api/recent-projects/open",
@@ -933,6 +937,88 @@ def export_sticker_otio(project: ServerProject, kind: str, timeline: dict, root:
     return package, otio_name, len(used)
 
 
+def export_sticker_otioz(project: ServerProject, kind: str, timeline: dict, root: Path) -> tuple[bytes, str, int]:
+    """Build a standard .otioz zip (content.otio + version.txt + media/*) in memory."""
+    if project.json_path is None:
+        raise ValueError("当前服务器没有绑定工程文件")
+    if timeline.get("OTIO_SCHEMA") != "Timeline.1":
+        raise ValueError("OTIO 必须是 Timeline")
+    if kind not in {"stickers", "gap-removed-stickers"}:
+        raise ValueError("不支持的表情包 OTIO 类型")
+    stem = project.json_path.stem
+    otio_name = f"{stem}_stickers.otio" if kind == "stickers" else f"{stem}_gap-removed-stickers.otio"
+    used: dict[Path, str] = {}
+    used_names: set[str] = set()
+    clip_count = 0
+
+    def visit(value: dict) -> None:
+        nonlocal clip_count
+        if value.get("OTIO_SCHEMA") == "Clip.2" and isinstance(value.get("media_references"), dict):
+            clip_count += 1
+        metadata = value.get("metadata")
+        moy = metadata.get("moy") if isinstance(metadata, dict) else None
+        sticker_rel = moy.get("sticker_rel") if isinstance(moy, dict) else None
+        if value.get("OTIO_SCHEMA") == "Clip.2" and isinstance(value.get("media_references"), dict) and (
+            not isinstance(sticker_rel, str) or not sticker_rel.strip()
+        ):
+            raise ValueError("表情包 Clip 缺少 sticker_rel")
+        if isinstance(sticker_rel, str) and sticker_rel.strip():
+            source = _sticker_rel_path(sticker_rel, root)
+            if source not in used:
+                filename = source.name
+                stem, extension = source.stem, source.suffix
+                candidate_name = filename
+                collision = 1
+                while candidate_name.casefold() in used_names:
+                    collision += 1
+                    candidate_name = f"{stem}-{collision}{extension}"
+                used[source] = candidate_name
+                used_names.add(candidate_name.casefold())
+            references = value.get("media_references")
+            if isinstance(references, dict):
+                for reference in references.values():
+                    if isinstance(reference, dict) and isinstance(reference.get("target_url"), str):
+                        reference["target_url"] = "media/" + quote(used[source], safe="")
+        references = value.get("media_references")
+        if isinstance(references, dict):
+            fps = 60
+            source_range = value.get("source_range")
+            if isinstance(source_range, dict):
+                duration = source_range.get("duration")
+                if isinstance(duration, dict) and isinstance(duration.get("rate"), (int, float)):
+                    fps = duration["rate"]
+            for reference in references.values():
+                if isinstance(reference, dict) and isinstance(reference.get("OTIO_SCHEMA"), str) and reference["OTIO_SCHEMA"] == "ExternalReference.1" and not isinstance(reference.get("available_range"), dict):
+                    reference["available_range"] = {
+                        "OTIO_SCHEMA": "TimeRange.1",
+                        "duration": {"OTIO_SCHEMA": "RationalTime.1", "rate": fps, "value": 1.0},
+                        "start_time": {"OTIO_SCHEMA": "RationalTime.1", "rate": fps, "value": 0.0},
+                    }
+        for child in value.values():
+            if isinstance(child, dict):
+                visit(child)
+            elif isinstance(child, list):
+                for item in child:
+                    if isinstance(item, dict):
+                        visit(item)
+
+    payload = copy.deepcopy(timeline)
+    visit(payload)
+    if clip_count == 0 or not used:
+        raise ValueError("表情包 OTIO 没有可导出的表情包")
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(
+            "content.otio",
+            json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8") + b"\n",
+            compress_type=zipfile.ZIP_DEFLATED,
+        )
+        archive.writestr("version.txt", "1.0.0".encode("utf-8"), compress_type=zipfile.ZIP_DEFLATED)
+        for source, filename in used.items():
+            archive.writestr(f"media/{filename}", source.read_bytes(), compress_type=zipfile.ZIP_STORED)
+    return buffer.getvalue(), otio_name, len(used)
+
+
 def write_project_json(target: Path, project_data: dict) -> Path | None:
     """Atomically write LF JSON and retain the immediately previous file as .bak."""
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -982,6 +1068,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.set_sticker_root()
         elif path == "/api/exports/sticker-otio":
             self.export_sticker_otio()
+        elif path == "/api/exports/sticker-otioz":
+            self.export_sticker_otioz()
         else:
             self.send_localized_error(HTTPStatus.NOT_FOUND, "未知 API")
 
@@ -1084,6 +1172,45 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "otioName": otio_name,
             "stickerCount": sticker_count,
         })
+
+    def export_sticker_otioz(self) -> None:
+        try:
+            request = self.read_json_request()
+            self._check_request_token(request)
+            kind = request.get("kind")
+            timeline = request.get("timeline")
+            if not isinstance(kind, str) or not isinstance(timeline, dict):
+                raise ValueError("表情包 OTIOZ 请求格式不正确")
+            if not self.editor_server.sticker_lock.acquire(blocking=False):
+                raise StickerExportInProgressError("另一个表情包导出操作正在进行")
+            try:
+                project = self.editor_server.project
+                root = project.sticker_root
+                if root is None:
+                    raise ValueError("尚未验证表情包根目录")
+                zip_bytes, otio_name, sticker_count = export_sticker_otioz(
+                    project, kind, timeline, root,
+                )
+            finally:
+                self.editor_server.sticker_lock.release()
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except StickerExportInProgressError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        except OSError as error:
+            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": f"表情包导出失败：{error}"})
+            return
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Disposition", f'attachment; filename="{otio_name[:-5]}.otioz"')
+        self.send_header("Content-Length", str(len(zip_bytes)))
+        self.end_headers()
+        self.wfile.write(zip_bytes)
 
     def read_json_request(self) -> dict:
         length = int(self.headers.get("Content-Length", "0"))
