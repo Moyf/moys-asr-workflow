@@ -5,12 +5,12 @@ import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { TextDecoder } from 'node:util';
+import { TextDecoder, TextEncoder } from 'node:util';
 import vm from 'node:vm';
 
 
 const source = fs.readFileSync(new URL('../web/editor-utils.js', import.meta.url), 'utf8');
-const context = { window: {}, TextDecoder };
+const context = { window: {}, TextDecoder, TextEncoder, Uint8Array };
 vm.runInNewContext(source, context);
 const helpers = context.window.AsrEditorUtils;
 const i18nSource = fs.readFileSync(new URL('../web/editor-i18n.js', import.meta.url), 'utf8');
@@ -23,7 +23,7 @@ function parseXml(xml) {
     'import sys, xml.etree.ElementTree as ET',
     'ET.fromstring(sys.stdin.read())',
     'print("ok")',
-  ].join(';')], { input: xml, encoding: 'utf8' });
+  ].join(';')], { input: xml, encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1' } });
   assert.equal(result.status, 0, result.stderr);
   return xml;
 }
@@ -37,7 +37,7 @@ function parseXmlFileAudio(xml) {
     '  files.append({"id": element.attrib["id"], "channelcount": audio.findtext("channelcount") if audio is not None else None})',
     'print(json.dumps(files))',
   ].join('\n');
-  const result = spawnSync('python', ['-c', script], { input: xml, encoding: 'utf8' });
+  const result = spawnSync('python', ['-c', script], { input: xml, encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1' } });
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout);
 }
@@ -158,6 +158,28 @@ test('translates adjacent adjustment and current-cue operation settings to Engli
     i18n.translateText('关闭后按 Esc 保留文本改动；开启后恢复编辑前的文本。', 'en'),
     'When disabled, Esc keeps text changes; when enabled, it restores the text from before editing.',
   );
+});
+
+test('translates OTIOZ export labels, mode hints and dynamic messages to English', () => {
+  assert.equal(i18n.translateText('表情包 OTIOZ', 'en'), 'Sticker OTIOZ');
+  assert.equal(i18n.translateText('下载表情包 OTIOZ 工程', 'en'), 'Download sticker OTIOZ project');
+  const hint = '服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出 OTIOZ';
+  assert.equal(
+    i18n.translateText(hint, 'en'),
+    'Server packaging is unavailable: open the project via server-editor and bind a project file before exporting OTIOZ',
+  );
+  assert.equal(
+    i18n.translateText(`当前模式不可用：${hint}`, 'en'),
+    'Unavailable in the current mode: Server packaging is unavailable: open the project via server-editor and bind a project file before exporting OTIOZ',
+  );
+  assert.equal(
+    i18n.translateText('当前工程无法导出表情包 OTIOZ（需要以 server-editor 打开并绑定工程文件）', 'en'),
+    'Cannot export sticker OTIOZ here (requires server-editor with a bound project file)',
+  );
+  assert.equal(i18n.translateText('正在生成表情包 OTIOZ 工程…', 'en'), 'Generating sticker OTIOZ bundle…');
+  assert.equal(i18n.translateText('OTIOZ 已生成，图片已打包进 zip', 'en'), 'OTIOZ generated; images are packed into the zip');
+  // zh 语言下返回原文
+  assert.equal(i18n.translateText('表情包 OTIOZ', 'zh'), '表情包 OTIOZ');
 });
 
 
