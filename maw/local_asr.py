@@ -91,15 +91,15 @@ def resolve_device(device: str) -> str:
     """Resolve ``auto`` without importing Torch for the cloud-only path."""
     normalized = device.strip().lower()
     if normalized != "auto":
-        if normalized not in {"cpu", "cuda"}:
-            raise ValueError("device must be one of: auto, cpu, cuda")
+        if normalized not in {"cpu", "cuda","xpu"}:
+            raise ValueError("device must be one of: auto, cpu, cuda, xpu")
         return normalized
 
     try:
         import torch  # type: ignore[import-not-found]
     except ImportError:
         return "cpu"
-    return "cuda" if torch.cuda.is_available() else "cpu"
+    return "cuda" if torch.cuda.is_available() else 'xpu' if torch.xpu.is_available() else "cpu"
 
 
 def _missing_dependency(
@@ -442,11 +442,11 @@ class QwenAsrEngine:
             raise _missing_dependency("torch", cause=error) from error
 
         resolved_device = resolve_device(self.device)
-        device_map = "cuda:0" if resolved_device == "cuda" else resolved_device
+        device_map =  resolved_device
         if on_event:
             on_event(f"[local] loading QwenASR: {self.model_path} ({resolved_device})")
         kwargs: dict[str, Any] = {
-            "dtype": torch.float16 if resolved_device == "cuda" else torch.float32,
+            "dtype": torch.float16 if resolved_device == "cuda" or "xpu" else torch.float32,
             "device_map": device_map,
             "max_inference_batch_size": 1,
             # Keep each request bounded by the chunk size, while leaving enough

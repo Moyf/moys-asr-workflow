@@ -38,8 +38,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--model-path", help="显式指定已经下载好的模型目录")
     parser.add_argument(
-        "--device", choices=("auto", "cpu", "cuda"), default="auto",
-        help="推理设备（默认: auto，优先 CUDA；不可用时回退 CPU）",
+        "--device", choices=("auto", "cpu", "cuda", "xpu"), default="auto",
+        help="推理设备（默认: auto，GPU不可用时回退 CPU）",
     )
     parser.add_argument(
         "--forced-aligner", default=QWEN_DEFAULT_FORCED_ALIGNER,

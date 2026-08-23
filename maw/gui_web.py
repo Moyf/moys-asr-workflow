@@ -2048,8 +2048,8 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         if local_status.status == "partial":
             raise PreflightError("model", "local_model_incomplete", local_status.detail)
         runtime_python = local_status.runtime_python
-        if device not in {"auto", "cpu", "cuda"}:
-            raise PreflightError("device", "local_model_path_invalid", "设备必须是 auto、cpu 或 cuda。")
+        if device not in {"auto", "cpu", "cuda", "xpu"}:
+            raise PreflightError("device", "local_model_path_invalid", "设备必须是 auto、cpu 、 cuda 或 xpu。")
     if provider.requires_api_key and not api_key:
         raise PreflightError("apiKey", "api_key_missing", "API key is required.")
     if provider.id == "qwen" and region == "singapore" and not workspace_id:

@@ -13,12 +13,15 @@ Launcher 已提供实验性的「本地模型」识别方式，入口仍复用�
 ## 安装可选依赖
 
 源码开发环境默认 `uv sync` 不会安装本地模型依赖。开发者可以手动安装：
-
+### 对于英伟达显卡
 ```powershell
-uv sync --extra local
+uv sync --extra local-cu130
 ```
-
-这会安装 `qwen-asr`、FunASR 1.3.29+、`torchaudio` 和它们需要的推理运行时。在 Windows 上，MAW 会从 PyTorch 官方 CUDA 13.0 索引安装 GPU 版 Torch / TorchAudio；默认设备选择会优先使用 CUDA，不可用时才回退 CPU。模型权重由上游运行时按模型 ID 下载到其缓存目录，不会写入仓库，也不会由 MAW 自动管理。
+### 对于英特尔Xe显卡
+```powershell
+uv sync --extra local-xpu
+```
+这会安装 `qwen-asr`、FunASR 1.3.29+、`torchaudio` 和它们需要的推理运行时。在 Windows 上，MAW 会从 PyTorch 官方 CUDA 13.0 / XPU 索引安装 GPU 版 Torch / TorchAudio；默认设备选择会优先使用 GPU，不可用时才回退 CPU。模型权重由上游运行时按模型 ID 下载到其缓存目录，不会写入仓库，也不会由 MAW 自动管理。
 
 普通用户不需要执行这个命令。Windows 打包版选择「本地模型」后，点击「安装本地模型支持」即可由 GUI 在 `%LOCALAPPDATA%\\MAW\\local-runtime` 创建独立 Python 环境并安装同一组依赖；安装完成后再点击「下载模型」。运行环境和模型缓存分别位于 `local-runtime` 与 `model-cache`，安装失败可以重试或修复，模型下载可以重新扫描。Launcher 的「模型保存目录」可以改到其他磁盘，设置会保存到 `.env`，并同时作用于 Hugging Face 与 ModelScope 缓存。
 
@@ -43,11 +46,11 @@ uv run python generate_subtitle_local.py "D:\Videos\example.mp4" `
   --engine funasr --model iic/SenseVoiceSmall --language en --length-limit 30s --json
 ```
 
-有 NVIDIA GPU 时也可以试用 Fun-ASR-Nano：
+有 独立GPU 时也可以试用 Fun-ASR-Nano：
 
 ```powershell
 uv run python generate_subtitle_local.py "D:\Videos\example.mp4" `
-  --engine funasr --model FunAudioLLM/Fun-ASR-Nano-2512 --language en --device cuda --length-limit 30s --json
+  --engine funasr --model FunAudioLLM/Fun-ASR-Nano-2512 --language en --device auto --length-limit 30s --json
 ```
 
 Paraformer 仍保留为兼容选项：
@@ -57,7 +60,7 @@ uv run python generate_subtitle_local.py "D:\Videos\example.mp4" `
   --engine funasr --length-limit 30s --json
 ```
 
-`--model` 可以指定上游模型 ID，`--model-path` 可以指定已经下载好的本地模型目录。Qwen3-ASR 0.6B 和 1.7B 都默认加载 `Qwen/Qwen3-ForcedAligner-0.6B`，以输出可编辑字幕所需的词级时间戳；它不是可选增强。SenseVoice 默认配合 FSMN-VAD 并保留句级时间戳，Fun-ASR-Nano 默认配合 FSMN-VAD 请求句级时间戳；如果上游返回字符级时间戳，MAW 会再按标点和静音切分，否则至少按 VAD 语音区间生成字幕。默认 `--device auto` 会优先使用 CUDA；如需排查兼容性或没有 NVIDIA GPU，可显式传入 `--device cpu`。第一次验证建议加 `--length-limit 30s`。
+`--model` 可以指定上游模型 ID，`--model-path` 可以指定已经下载好的本地模型目录。Qwen3-ASR 0.6B 和 1.7B 都默认加载 `Qwen/Qwen3-ForcedAligner-0.6B`，以输出可编辑字幕所需的词级时间戳；它不是可选增强。SenseVoice 默认配合 FSMN-VAD 并保留句级时间戳，Fun-ASR-Nano 默认配合 FSMN-VAD 请求句级时间戳；如果上游返回字符级时间戳，MAW 会再按标点和静音切分，否则至少按 VAD 语音区间生成字幕。默认 `--device auto` 会优先使用 GPU；如需排查兼容性或没有 独立GPU，可显式传入 `--device cpu`。第一次验证建议加 `--length-limit 30s`。
 
 不使用 Launcher 时，也可以通过环境变量指定统一的模型缓存根目录：
 
@@ -100,12 +103,12 @@ uv run python generate_subtitle_local.py "D:\Videos\example.mp4" `
 - Qwen3-ASR 0.6B 和 1.7B 都使用同一个 Forced Aligner；时间戳按秒读取并归一化为 MAW 要求的整数毫秒。FunASR 的常见句级/字词级时间戳也会归一化为同一格式。
 - Qwen3-ASR 长音频采用独立的 FFmpeg 分块识别，默认每块 30 秒，并在合并前恢复原始时间偏移，避免单次生成长度限制导致后半段字幕缺失。
 - 当模型没有可可靠映射的词级时间戳时，仍保留句级字幕，不人为伪造字词边界。
-- SenseVoice 默认启用 FSMN-VAD 和富文本后处理；Fun-ASR-Nano 默认启用 FSMN-VAD、远程模型代码和句级时间戳请求，适合 CUDA 环境；其他 FunASR 的 VAD、标点、说话人模型可以通过对应参数传入，但不同模型组合的兼容性仍需要真实环境验证。
+- SenseVoice 默认启用 FSMN-VAD 和富文本后处理；Fun-ASR-Nano 默认启用 FSMN-VAD、远程模型代码和句级时间戳请求，适合 独立GPU 环境；其他 FunASR 的 VAD、标点、说话人模型可以通过对应参数传入，但不同模型组合的兼容性仍需要真实环境验证。
 - 本地 CPU 推理、模型下载、实际显存/内存、长媒体速度和不同模型版本尚未在本项目中做完整验收。
 
 ## 模型与缓存大小
 
-大小会随上游版本、权重格式和附加模型变化。粗略预留：Qwen3-ASR-0.6B 主模型约 1.5–2.5 GB，1.7B 主模型通常更大，两个 Qwen 选项共用的 Forced Aligner 另需约 1–2 GB；SenseVoice Small 及 FSMN-VAD 建议预留约 1–2 GB，Fun-ASR-Nano 建议预留更多空间并优先使用 CUDA，FunASR `paraformer-zh` 及常用 VAD/标点/说话人组件合计建议预留约 2–4 GB。这里指下载缓存，不等同于推理时的内存峰值。
+大小会随上游版本、权重格式和附加模型变化。粗略预留：Qwen3-ASR-0.6B 主模型约 1.5–2.5 GB，1.7B 主模型通常更大，两个 Qwen 选项共用的 Forced Aligner 另需约 1–2 GB；SenseVoice Small 及 FSMN-VAD 建议预留约 1–2 GB，Fun-ASR-Nano 建议预留更多空间并优先使用 独立GPU，FunASR `paraformer-zh` 及常用 VAD/标点/说话人组件合计建议预留约 2–4 GB。这里指下载缓存，不等同于推理时的内存峰值。
 
 ## 模型准备的中断与继续
 
