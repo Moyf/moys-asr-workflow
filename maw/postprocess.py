@@ -69,9 +69,14 @@ PROMPTS: Final[dict[str, str]] = {
 
 SAFE_SCALARS: Final = ("speaker", "disabled")
 VISUAL_FIELDS: Final = ("sticker", "sticker_ref", "color", "color_ref")
-MAX_LLM_CUES_PER_REQUEST: Final = 80
+# Structured subtitle output is considerably longer than the input text.  Keep
+# requests small enough that a model has room to return every ID, especially
+# for one-to-one translation where an omitted final cue would make the result
+# unusable as a secondary subtitle track.
+MAX_LLM_CUES_PER_REQUEST: Final = 40
 MAX_LLM_INPUT_CHARS_PER_REQUEST: Final = 4000
 MAX_LLM_WARNING_TEXT_CHARS: Final = 240
+MAX_SINGLE_CUE_TRANSLATION_ATTEMPTS: Final = 2
 TIMING_FIELDS: Final = ("start", "end", "text", "items")
 ONE_TO_ONE_TRANSLATION_OPERATIONS: Final = frozenset({"translate_en", "translate_zh"})
 
@@ -140,6 +145,8 @@ def run_llm_postprocess(
     operation_prompt = PROMPTS.get(request.operation, PROMPTS["custom"]) if request.task_prompt is None else request.task_prompt.strip()
     custom = request.custom_prompt.strip()
     strict_translation = request.operation in ONE_TO_ONE_TRANSLATION_OPERATIONS
+    if strict_translation:
+        _reject_recursive_translation_input(source_project, request.operation)
     item_aware_resegment = request.operation == "resegment" and _has_complete_items(project)
     system_prompt = _protocol_prompt(
         operation_prompt,
@@ -156,21 +163,31 @@ def run_llm_postprocess(
     response_modes: list[str] = []
     for index, batch in enumerate(batches, 1):
         _notify_status(on_status, "toolbox_status_llm_batch", current=index, total=len(batches))
-        try:
-            response = complete(system_prompt, batch)
-        except RuntimeError as error:
-            first_id = batch[0]["id"] if batch else "?"
-            last_id = batch[-1]["id"] if batch else "?"
-            raise RuntimeError(
-                f"第 {index}/{len(batches)} 批（{first_id}–{last_id}）处理失败：{error}"
-            ) from error
-        clean_response, batch_skipped, batch_warnings, response_mode = _sanitize_llm_response(
-            response,
-            batch,
-            batch_number=index,
-            strict_translation=strict_translation,
-            item_aware_resegment=item_aware_resegment,
-        )
+        if strict_translation:
+            clean_response, batch_skipped, batch_warnings = _complete_strict_translation_batch(
+                complete,
+                system_prompt,
+                batch,
+                batch_number=index,
+                total_batches=len(batches),
+            )
+            response_mode = "cues"
+        else:
+            try:
+                response = complete(system_prompt, batch)
+            except RuntimeError as error:
+                first_id = batch[0]["id"] if batch else "?"
+                last_id = batch[-1]["id"] if batch else "?"
+                raise RuntimeError(
+                    f"第 {index}/{len(batches)} 批（{first_id}–{last_id}）处理失败：{error}"
+                ) from error
+            clean_response, batch_skipped, batch_warnings, response_mode = _sanitize_llm_response(
+                response,
+                batch,
+                batch_number=index,
+                strict_translation=False,
+                item_aware_resegment=item_aware_resegment,
+            )
         responses.append(clean_response)
         response_modes.append(response_mode)
         skipped_source_ids.update(batch_skipped)
@@ -181,6 +198,10 @@ def run_llm_postprocess(
         report = _format_skip_report(skipped_source_ids, response_warnings)
         detail = f"\n{report}" if report else ""
         raise ValueError(f"LLM 没有生成可用字幕，未写出输出产物。{detail}")
+    if strict_translation and skipped_source_ids:
+        report = _format_skip_report(skipped_source_ids, response_warnings)
+        detail = f"\n{report}" if report else ""
+        raise ValueError(f"翻译结果仍有遗漏，未写出输出产物。{detail}")
     _notify_status(on_status, "toolbox_status_reorganizing")
     response = _combine_llm_responses(responses)
     if item_aware_resegment and all(mode == "atoms" for mode in response_modes):
@@ -266,6 +287,147 @@ def _llm_batches(cues: list[dict[str, JsonValue]]) -> list[list[dict[str, JsonVa
     return batches
 
 
+def _missing_translation_retry_prompt(system_prompt: str) -> str:
+    """Request only the subtitles that a structurally valid answer omitted."""
+    return (
+        f"{system_prompt}\n\n"
+        "上一轮有字幕未遵循一对一协议。本轮输入只包含需要补齐的字幕；必须为输入中的每一个 "
+        "cue 各返回一条非空翻译。每个 group 必须只用该 cue 的 id 字段，按输入顺序完整覆盖。"
+        "只输出严格有效的 JSON 对象。"
+    )
+
+
+def _complete_strict_translation_batch(
+    complete: LlmComplete,
+    system_prompt: str,
+    batch: list[dict[str, JsonValue]],
+    *,
+    batch_number: int,
+    total_batches: int,
+    is_repair: bool = False,
+) -> tuple[JsonDict, frozenset[str], tuple[str, ...]]:
+    """Return a verified one-to-one translation, adaptively splitting bad replies.
+
+    A model can sometimes return a syntactically valid JSON object while merging
+    adjacent subtitle IDs.  Retrying the same large list repeats that failure.
+    Keep any individually verified rows, then split only the invalid/missing
+    subset until each response is structurally verifiable.  A single cue gets a
+    small bounded retry before the whole translation is rejected by the caller.
+    """
+    prompt = _missing_translation_retry_prompt(system_prompt) if is_repair else system_prompt
+    try:
+        response = complete(prompt, batch)
+    except RuntimeError as error:
+        first_id = batch[0]["id"] if batch else "?"
+        last_id = batch[-1]["id"] if batch else "?"
+        label = "遗漏字幕重试" if is_repair else "处理"
+        raise RuntimeError(
+            f"第 {batch_number}/{total_batches} 批{label}（{first_id}–{last_id}）失败：{error}"
+        ) from error
+    clean_response, skipped, warnings, response_mode = _sanitize_llm_response(
+        response,
+        batch,
+        batch_number=batch_number,
+        strict_translation=True,
+        item_aware_resegment=False,
+    )
+    if response_mode != "cues":
+        raise ValueError("翻译返回了不兼容的结果格式，未写出输出产物。")
+    if not skipped:
+        return clean_response, frozenset(), ()
+
+    response_parts: list[Mapping[str, JsonValue]] = [clean_response]
+    missing_batch = [cue for cue in batch if str(cue["id"]) in skipped]
+    if len(missing_batch) > 1:
+        midpoint = len(missing_batch) // 2
+        unresolved: set[str] = set()
+        unresolved_warnings: list[str] = []
+        for subset in (missing_batch[:midpoint], missing_batch[midpoint:]):
+            repaired, remaining, repair_warnings = _complete_strict_translation_batch(
+                complete,
+                system_prompt,
+                subset,
+                batch_number=batch_number,
+                total_batches=total_batches,
+                is_repair=True,
+            )
+            response_parts.append(repaired)
+            unresolved.update(remaining)
+            unresolved_warnings.extend(repair_warnings)
+        return (
+            _merge_translation_response_parts(response_parts, batch),
+            frozenset(unresolved),
+            tuple(unresolved_warnings),
+        )
+
+    # At one cue there is nothing left to split.  A bounded retry tolerates a
+    # transient malformed/empty model answer without permitting partial output.
+    for _ in range(MAX_SINGLE_CUE_TRANSLATION_ATTEMPTS):
+        try:
+            repair_response = complete(_missing_translation_retry_prompt(system_prompt), missing_batch)
+        except RuntimeError as error:
+            cue_id = missing_batch[0]["id"]
+            raise RuntimeError(
+                f"第 {batch_number}/{total_batches} 批遗漏字幕重试（{cue_id}）失败：{error}"
+            ) from error
+        repaired, remaining, repair_warnings, repaired_mode = _sanitize_llm_response(
+            repair_response,
+            missing_batch,
+            batch_number=batch_number,
+            strict_translation=True,
+            item_aware_resegment=False,
+        )
+        if repaired_mode != "cues":
+            raise ValueError("翻译遗漏字幕重试返回了不兼容的结果格式，未写出输出产物。")
+        response_parts.append(repaired)
+        if not remaining:
+            return _merge_translation_response_parts(response_parts, batch), frozenset(), ()
+        warnings = repair_warnings
+    return _merge_translation_response_parts(response_parts, batch), skipped, warnings
+
+
+def _merge_translation_response_parts(
+    response_parts: Sequence[Mapping[str, JsonValue]],
+    batch: Sequence[Mapping[str, JsonValue]],
+) -> JsonDict:
+    """Restore the original cue order after one or more missing-cue repairs."""
+    groups_by_source_id: dict[str, JsonValue] = {}
+    for response in response_parts:
+        groups = response.get("groups")
+        if not isinstance(groups, list):
+            continue
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            source_ids = group.get("source_ids")
+            if (
+                isinstance(source_ids, list)
+                and len(source_ids) == 1
+                and isinstance(source_ids[0], str)
+            ):
+                groups_by_source_id[source_ids[0]] = group
+    return {
+        "groups": [
+            groups_by_source_id[str(cue["id"])]
+            for cue in batch
+            if str(cue["id"]) in groups_by_source_id
+        ]
+    }
+
+
+def _reject_recursive_translation_input(source_project: Path | None, operation: str) -> None:
+    """Prevent an already translated artifact from silently becoming its own source."""
+    if source_project is None:
+        return
+    target = "translate-en" if operation == "translate_en" else "translate-zh"
+    if f".{target}" in source_project.stem.lower():
+        language = "英文" if operation == "translate_en" else "中文"
+        raise ValueError(
+            f"当前输入看起来是已生成的{language}翻译工程（{source_project.name}）。"
+            "请选择最初的原字幕工程再执行翻译，避免把残缺或已翻译结果再次处理。"
+        )
+
+
 def _cue_number(source_id: str) -> str:
     try:
         return str(int(source_id.removeprefix("c")))
@@ -297,7 +459,7 @@ def _format_skip_detail(
 
 
 def _format_skip_summary(skipped_source_ids: Sequence[str]) -> str:
-    return f"已跳过 {len(set(skipped_source_ids))} 条不合规字幕，未写入输出产物。"
+    return f"已跳过 {len(set(skipped_source_ids))} 条不合规字幕。"
 
 
 def _format_skip_report_lines(details: Sequence[str]) -> tuple[str, ...]:
@@ -358,9 +520,23 @@ def _sanitize_llm_response(
         if not isinstance(raw_group, dict):
             reject(group_index, "结果不是对象", ())
             continue
-        raw_ids = raw_group.get("source_ids")
-        if raw_ids is None and isinstance(raw_group.get("id"), str):
-            raw_ids = [raw_group["id"]]
+        if strict_translation:
+            raw_id = raw_group.get("id")
+            raw_source_ids = raw_group.get("source_ids")
+            if isinstance(raw_id, str) and raw_id:
+                raw_ids: object = [raw_id]
+            elif isinstance(raw_source_ids, list):
+                # Qwen models commonly use the generic source_ids schema even
+                # when asked for id.  A single, verified source ID is just as
+                # safe for a translation; only grouping multiple IDs is unsafe.
+                raw_ids = raw_source_ids
+            else:
+                reject(group_index, "翻译结果缺少有效 id", ())
+                continue
+        else:
+            raw_ids = raw_group.get("source_ids")
+            if raw_ids is None and isinstance(raw_group.get("id"), str):
+                raw_ids = [raw_group["id"]]
         candidate_ids = tuple(value for value in raw_ids if isinstance(value, str)) if isinstance(raw_ids, list) else ()
         if (
             not isinstance(raw_ids, list)
@@ -1157,11 +1333,17 @@ def _protocol_prompt(
             "不得返回 source_ids、添加未知 atom ID、遗漏 atom ID 或返回空组。"
             f"{task}{custom}"
         )
-    grouping = (
-        "source_ids 必须按输入顺序完整覆盖；每组只能包含一个 source ID，且每个 ID 只能出现一次；不得合并、拆分或重排相邻字幕。"
-        if strict_translation
-        else "source_ids 必须按输入顺序完整覆盖；合并连续字幕时放入同一组，拆分一条字幕时可让连续多组重复同一个 ID。"
-    )
+    if strict_translation:
+        return (
+            "你处理的是字幕，不是普通文章。输入只有按顺序排列的不透明 cue ID 与文字。"
+            "不要猜测、输出或修改时间。只返回严格有效的 JSON 对象，不要 Markdown 代码块、注释、解释或额外文字。"
+            "返回格式：{\"groups\":[{\"id\":\"c0001\",\"text\":\"...\"}]}。"
+            "每个 group 必须包含一个非空 id 和一个非空 text；不得使用 source_ids 字段。"
+            "每个输入 cue 必须返回且只能返回一条同 id 的翻译，按输入顺序完整覆盖；"
+            "不得合并、拆分、重排、跳过或添加 ID。text 中的双引号、反斜杠和换行必须按 JSON 规则转义。"
+            f"{task}{custom}"
+        )
+    grouping = "source_ids 必须按输入顺序完整覆盖；合并连续字幕时放入同一组，拆分一条字幕时可让连续多组重复同一个 ID。"
     return (
         "你处理的是字幕，不是普通文章。输入只有按顺序排列的不透明 cue ID 与文字。"
         "不要猜测、输出或修改时间。只返回严格有效的 JSON 对象，不要 Markdown 代码块、注释、解释或额外文字。"
