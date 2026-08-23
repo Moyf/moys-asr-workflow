@@ -289,6 +289,15 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual(provider.regions, ())
         self.assertIn("SECRET_KEY", provider.note)
 
+    def test_provider_registry_contains_custom_openai_compatible_asr(self) -> None:
+        provider = gui_config.provider_by_id("openai")
+
+        self.assertEqual(provider.label, "自定义 OpenAI 兼容 ASR")
+        self.assertEqual(provider.models[0].id, "custom-asr")
+        self.assertEqual(provider.models[0].env_key, "MAW_OPENAI_ASR_API_KEY")
+        self.assertEqual(provider.regions, ())
+        self.assertIn("时间戳", provider.note)
+
     def test_provider_registry_contains_local_models_without_api_key(self) -> None:
         provider = gui_config.provider_by_id("local")
 

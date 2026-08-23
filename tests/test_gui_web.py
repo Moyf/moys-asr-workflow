@@ -230,6 +230,40 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["maskedApiKey"], "sk-…9999")
         self.assertNotIn("super-secret", result["message"])
 
+    def test_custom_openai_asr_settings_and_request_are_forwarded(self) -> None:
+        media = self.root / "clip.wav"
+        media.write_bytes(b"audio")
+        result = self.api.save_settings({
+            "providerId": "openai",
+            "modelId": "custom-asr",
+            "apiKey": "sk-relay",
+            "openaiBaseUrl": "https://relay.example/v1",
+            "openaiModel": "relay-asr-model",
+            "guiLang": "zh",
+        })
+
+        self.assertTrue(result["ok"])
+        env_text = self.env_path.read_text(encoding="utf-8")
+        self.assertIn("MAW_OPENAI_ASR_API_KEY=sk-relay", env_text)
+        self.assertIn("MAW_OPENAI_ASR_BASE_URL=https://relay.example/v1", env_text)
+        self.assertIn("MAW_OPENAI_ASR_MODEL=relay-asr-model", env_text)
+
+        request = _request_from_payload({
+            "providerId": "openai",
+            "modelId": "custom-asr",
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "clip.srt"),
+            "apiKey": "sk-relay",
+            "openaiBaseUrl": "https://relay.example/v1",
+            "openaiModel": "relay-asr-model",
+            "generateHtml": False,
+        }, self.env_path)
+
+        self.assertEqual(request.provider, "openai")
+        self.assertEqual(request.base_url, "https://relay.example/v1")
+        self.assertEqual(request.model, "relay-asr-model")
+        self.assertEqual(request.api_key, "sk-relay")
+
     def test_save_prefs_writes_only_gui_memory_keys(self) -> None:
         self.env_path.write_text("# keep\nDASHSCOPE_REGION=beijing\nSTICKER_DIR=stickers\n", encoding="utf-8")
 

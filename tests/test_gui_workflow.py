@@ -265,6 +265,49 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertIn("--debug-raw", command)
 
+    def test_build_transcribe_command_openai_compatible_uses_custom_endpoint(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="openai",
+            model="qwen3-asr-flash-filetrans",
+            language="zh",
+            base_url="https://relay.test/v1",
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertIn("generate_subtitle_openai_api.py", command[1])
+        self.assertEqual(command[command.index("--base-url") + 1], "https://relay.test/v1")
+        self.assertEqual(command[command.index("--model") + 1], "qwen3-asr-flash-filetrans")
+        self.assertEqual(command[command.index("--language") + 1], "zh")
+        self.assertNotIn("secret-key", " ".join(command))
+
+    def test_build_transcribe_command_frozen_openai_compatible_dispatches_flag(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="openai",
+            base_url="https://relay.test/v1",
+            model="custom-model",
+        )
+
+        command = build_transcribe_command(request, executable=Path("MAW"), frozen=True)
+
+        self.assertEqual(command[:3], ["MAW", "--transcribe-openai", str(self.media_path)])
+
+    def test_child_environment_openai_compatible_uses_custom_key_and_base_url(self) -> None:
+        env = _child_environment(
+            {},
+            "sk-custom",
+            provider="openai",
+            base_url="https://relay.test/v1",
+        )
+
+        self.assertEqual(env["MAW_OPENAI_ASR_API_KEY"], "sk-custom")
+        self.assertEqual(env["MAW_OPENAI_ASR_BASE_URL"], "https://relay.test/v1")
+        self.assertNotIn("DASHSCOPE_API_KEY", env)
+
     def test_soniox_generator_help_declares_debug_raw(self) -> None:
         result = subprocess.run(
             [sys.executable, str(ROOT / "generate_subtitle_soniox_api.py"), "--help"],
