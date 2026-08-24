@@ -130,6 +130,29 @@ class ScriptMatchTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "保留符号"):
             prepare_script_text("甲？", ("！",), ("？",))
 
+    def test_punctuation_segments_do_not_override_alignment_boundaries(self) -> None:
+        self.project_path.write_text(
+            json.dumps(
+                {
+                    "segments": [
+                        {"start": 0, "end": 1000, "text": "甲乙"},
+                        {"start": 1000, "end": 2000, "text": "丙丁"},
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        self.script_path.write_text("甲乙丙。丁", encoding="utf-8")
+
+        result = run_script_match(
+            ScriptMatchRequest(self.project_path, None, self.script_path, OutputMode.JSON)
+        )
+
+        assert result.project_path is not None
+        segments = read_project(result.project_path)["segments"]
+        self.assertEqual([segment["text"] for segment in segments], ["甲乙", "丙。丁"])
+
 
 if __name__ == "__main__":
     unittest.main()
