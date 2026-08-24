@@ -602,6 +602,162 @@
     return value == null ? null : JSON.parse(JSON.stringify(value));
   }
 
+  const EDITOR_SETTING_ROW_HEIGHTS = [64, 80, 96, 120, 144, 168];
+  const DEFAULT_EDITOR_SETTINGS = Object.freeze({
+    splitKey: 'enter', splitUseWordTimestamps: true, splitAutoSubmit: true,
+    overlayEnabled: true, extensionOverlayEnabled: true, multiSubtitleRowHeight: 168,
+    exportStartAtZero: false, cueListShowIndex: true, cueListShowTime: true,
+    cueListShowSticker: true, cueListShowCharcount: true, cueListAutoScrollOnClick: true,
+    cueListKeepSplitVisible: true, cueListHideDisabled: false, cueListCharcountThreshold: 16,
+    cueEditorShowNavigation: false, cueEditorShowTimeActions: false, cueEditorShowSticker: false,
+    cueEditorCancelOnEscape: false, selectGroupMembers: false, mergeJoinText: '',
+    autoMergeGapMs: 200, autoMergeSnapDirection: 'backward', autoMergeShortCount: 3,
+    autoMergeAbsorbShort: true, autoMergeAbsorbDirection: 'previous', exportColorUnified: true,
+    autoSaveProject: true, autoSaveIntervalSeconds: 30, stickerOverlayEnabled: false,
+    stickerOtioExportMode: 'original', clickBehavior: 'select-and-seek', clickTarget: 'pointer',
+    keyboardOperationReference: 'pointer', jklPlaybackMode: 'direction', mediaSeekStepMs: 1000,
+    cueMoveStepMs: 50, hoverSeekPreview: false, autoSnapAdjacentCues: true, ninjaMode: false,
+    ninjaSound: true, ninjaSlashEffect: true, ninjaSlashLengthPercent: 80,
+    ninjaSlashRotateAmplitude: 6, crossTrackSnap: true, selectBoundSubtitlePair: true,
+    multiSubtitleAutoSyncDuration: true, multiSubtitleShowTrackBadges: false, theme: 'dark',
+    waveShapeSource: 'self',
+  });
+
+  function clampInteger(value, fallback, minimum, maximum) {
+    const rounded = Math.round(Number(value));
+    return Math.min(maximum, Math.max(minimum, Number.isFinite(rounded) ? rounded : fallback));
+  }
+
+  function normalizeEditorSettings(saved = {}) {
+    const savedSettings = saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
+    const legacySeekStepSeconds = Number(savedSettings.mediaSeekStepSeconds);
+    const mediaSeekStepMs = savedSettings.mediaSeekStepMs !== undefined
+      ? savedSettings.mediaSeekStepMs
+      : Number.isFinite(legacySeekStepSeconds) ? legacySeekStepSeconds * 1000 : undefined;
+    return {
+      ...DEFAULT_EDITOR_SETTINGS,
+      splitKey: savedSettings.splitKey === 'ctrl-enter' ? 'ctrl-enter' : 'enter',
+      splitUseWordTimestamps: savedSettings.splitUseWordTimestamps !== false,
+      splitAutoSubmit: savedSettings.splitAutoSubmit !== false,
+      overlayEnabled: savedSettings.overlayEnabled !== false,
+      extensionOverlayEnabled: savedSettings.extensionOverlayEnabled !== false,
+      multiSubtitleRowHeight: EDITOR_SETTING_ROW_HEIGHTS.includes(Number(savedSettings.multiSubtitleRowHeight))
+        ? Number(savedSettings.multiSubtitleRowHeight) : 168,
+      exportStartAtZero: savedSettings.exportStartAtZero === true,
+      cueListShowIndex: savedSettings.cueListShowIndex !== false,
+      cueListShowTime: savedSettings.cueListShowTime !== false,
+      cueListShowSticker: savedSettings.cueListShowSticker !== false,
+      cueListShowCharcount: savedSettings.cueListShowCharcount !== false,
+      cueListAutoScrollOnClick: savedSettings.cueListAutoScrollOnClick !== false,
+      cueListKeepSplitVisible: savedSettings.cueListKeepSplitVisible !== false,
+      cueListHideDisabled: savedSettings.cueListHideDisabled === true,
+      cueListCharcountThreshold: clampInteger(savedSettings.cueListCharcountThreshold, 16, 1, 200),
+      cueEditorShowNavigation: savedSettings.cueEditorShowNavigation === true,
+      cueEditorShowTimeActions: savedSettings.cueEditorShowTimeActions === true,
+      cueEditorShowSticker: savedSettings.cueEditorShowSticker === true,
+      cueEditorCancelOnEscape: savedSettings.cueEditorCancelOnEscape === true,
+      selectGroupMembers: savedSettings.selectGroupMembers === true,
+      mergeJoinText: typeof savedSettings.mergeJoinText === 'string' ? savedSettings.mergeJoinText : '',
+      autoMergeGapMs: clampInteger(savedSettings.autoMergeGapMs, 200, 0, 10000),
+      autoMergeSnapDirection: savedSettings.autoMergeSnapDirection === 'forward' ? 'forward' : 'backward',
+      autoMergeShortCount: clampInteger(savedSettings.autoMergeShortCount, 3, 1, 20),
+      autoMergeAbsorbShort: savedSettings.autoMergeAbsorbShort !== false,
+      autoMergeAbsorbDirection: savedSettings.autoMergeAbsorbDirection === 'next' ? 'next' : 'previous',
+      exportColorUnified: savedSettings.exportColorUnified !== false,
+      autoSaveProject: savedSettings.autoSaveProject !== false,
+      autoSaveIntervalSeconds: clampInteger(savedSettings.autoSaveIntervalSeconds, 30, 5, 3600),
+      stickerOverlayEnabled: savedSettings.stickerOverlayEnabled === true,
+      stickerOtioExportMode: savedSettings.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
+      clickBehavior: ['select-only', 'select-and-seek', 'select-and-play'].includes(savedSettings.clickBehavior)
+        ? savedSettings.clickBehavior : 'select-and-seek',
+      clickTarget: ['cue-start', 'pointer'].includes(savedSettings.clickTarget) ? savedSettings.clickTarget : 'pointer',
+      keyboardOperationReference: savedSettings.keyboardOperationReference === 'playhead' ? 'playhead' : 'pointer',
+      jklPlaybackMode: ['speed', 'direction'].includes(savedSettings.jklPlaybackMode)
+        ? savedSettings.jklPlaybackMode : 'direction',
+      mediaSeekStepMs: clampInteger(mediaSeekStepMs, 1000, 10, 60000),
+      cueMoveStepMs: clampInteger(savedSettings.cueMoveStepMs, 50, 10, 2000),
+      hoverSeekPreview: savedSettings.hoverSeekPreview === true,
+      autoSnapAdjacentCues: savedSettings.autoSnapAdjacentCues !== false,
+      ninjaMode: savedSettings.ninjaMode === true,
+      ninjaSound: savedSettings.ninjaSound !== false,
+      ninjaSlashEffect: savedSettings.ninjaSlashEffect !== false,
+      ninjaSlashLengthPercent: clampInteger(savedSettings.ninjaSlashLengthPercent, 80, 20, 400),
+      ninjaSlashRotateAmplitude: clampInteger(savedSettings.ninjaSlashRotateAmplitude, 6, 0, 60),
+      crossTrackSnap: savedSettings.crossTrackSnap !== false,
+      selectBoundSubtitlePair: savedSettings.selectBoundSubtitlePair !== false,
+      multiSubtitleAutoSyncDuration: savedSettings.multiSubtitleAutoSyncDuration !== false,
+      multiSubtitleShowTrackBadges: savedSettings.multiSubtitleShowTrackBadges === true,
+      theme: savedSettings.theme === 'light' ? 'light' : 'dark',
+      waveShapeSource: savedSettings.waveShapeSource === 'reapeaks' ? 'reapeaks' : 'self',
+    };
+  }
+
+  function normalizeMultiSubtitleRowHeight(value) {
+    return EDITOR_SETTING_ROW_HEIGHTS.includes(Number(value)) ? Number(value) : 168;
+  }
+  function normalizeClickBehavior(value) {
+    return ['select-only', 'select-and-seek', 'select-and-play'].includes(value)
+      ? value : 'select-and-seek';
+  }
+  function normalizeClickTarget(value) {
+    return ['cue-start', 'pointer'].includes(value) ? value : 'pointer';
+  }
+  function normalizeKeyboardOperationReferenceMode(value) {
+    return value === 'playhead' ? 'playhead' : 'pointer';
+  }
+  function normalizeJklPlaybackMode(value) {
+    return ['speed', 'direction'].includes(value) ? value : 'direction';
+  }
+  function clampMediaSeekStepMs(value) { return clampInteger(value, 1000, 10, 60000); }
+  function clampCueMoveStepMs(value) { return clampInteger(value, 50, 10, 2000); }
+  function clampAutoSaveInterval(value) { return clampInteger(value, 30, 5, 3600); }
+  function clampCharcountThreshold(value) { return clampInteger(value, 16, 1, 200); }
+  function clampNinjaSlashLength(value) { return clampInteger(value, 80, 20, 400); }
+  function clampNinjaSlashRotateAmplitude(value) { return clampInteger(value, 6, 0, 60); }
+  function clampAutoMergeGapMs(value) { return clampInteger(value, 200, 0, 10000); }
+  function clampAutoMergeShortCount(value) { return clampInteger(value, 3, 1, 20); }
+
+  const GAP_REMOVE_SCHEMA = 'moy.asr.gap_remove.v1';
+  function normalizeGapRemoveData(value) {
+    const source = value && typeof value === 'object' ? value : {};
+    const gaps = cloneJsonValue(normalizeGapRemoveGaps(source.gaps)) || [];
+    return {
+      schema: GAP_REMOVE_SCHEMA,
+      detector: source.detector === 'audio_gate' || !gaps.length ? 'audio_gate' : 'legacy_subtitle_gap',
+      minimum_ms: clampInteger(source.minimum_ms, 500, 100, 60000),
+      threshold_db: Math.min(0, Math.max(-96, Number.isFinite(Number(source.threshold_db)) ? Number(source.threshold_db) : -24)),
+      hysteresis_db: Math.min(30, Math.max(0, Number.isFinite(Number(source.hysteresis_db)) ? Number(source.hysteresis_db) : 2)),
+      lead_in_ms: clampInteger(source.lead_in_ms, 40, 0, 2000),
+      lead_out_ms: clampInteger(source.lead_out_ms, 80, 0, 2000),
+      skip_playback: source.skip_playback !== false,
+      manual_corrections: source.manual_corrections === true,
+      operation_mode: ['none', 'boundary_drag', 'middle_drag'].includes(source.operation_mode)
+        ? source.operation_mode : 'boundary_drag',
+      gaps,
+    };
+  }
+
+  const HISTORY_RECORD_DEFAULT_LABELS = Object.freeze({
+    segments: '编辑', layout: '调整工作区', gap_remove: '空隙移除', preview: '预览',
+  });
+  function buildSegmentsHistorySnapshot(segments, multiSubtitle) {
+    return { segments: cloneJsonValue(segments), multi_subtitle: cloneJsonValue(multiSubtitle) };
+  }
+  function buildHistoryRecord(kind, label, payload, view = null) {
+    const recordKind = Object.prototype.hasOwnProperty.call(HISTORY_RECORD_DEFAULT_LABELS, kind)
+      ? kind : 'segments';
+    const record = { kind: recordKind, label: label || HISTORY_RECORD_DEFAULT_LABELS[recordKind] };
+    if (recordKind === 'segments') {
+      record.segs = cloneJsonValue(payload);
+      if (view) record.view = cloneJsonValue(view);
+    } else if (recordKind === 'layout') record.layout = payload || null;
+    else if (recordKind === 'gap_remove') {
+      record.gapRemove = cloneJsonValue(payload?.gapRemove ?? null);
+      record.gapRemoveDirty = payload?.gapRemoveDirty === true;
+    } else record.preview = cloneJsonValue(payload);
+    return record;
+  }
+
   // === 多重字幕（双语字幕）===
   // 这组 helper 刻意不依赖 DOM，便携 HTML、localhost 编辑器和 Node 测试共用同一套
   // 数据/匹配/近似拆分规则。主轨仍然是顶层 segments；扩展轨的 items 不参与拆分。
@@ -1209,25 +1365,28 @@
     const firstEnabledIndex = Number.isInteger(options.firstEnabledIndex)
       ? options.firstEnabledIndex
       : getSrtExportFirstIndex(source, alignFirstStart);
+    const keepDisabledPlaceholder = options.keepDisabledPlaceholder === true && !colorName;
     const parts = [];
-    source
-      .map((segment, sourceIndex) => ({ segment, sourceIndex }))
-      .filter(({ segment }) => {
-        if (!segment || segment.disabled) return false;
-        if (!colorName) return true;
+    let outputIndex = 0;
+    source.forEach((segment, sourceIndex) => {
+      if (!segment) return;
+      const disabled = segment.disabled === true;
+      if (disabled && !keepDisabledPlaceholder) return;
+      if (!disabled && colorName) {
         const effectiveName = effectiveColorName(segment, source);
-        return colorName === 'default' ? !effectiveName : effectiveName === colorName;
-      })
-      .forEach(({ segment, sourceIndex }, index) => {
-        const mappedStart = Math.max(0, Math.round(Number(mapTime(segment.start)) || 0));
-        const start = alignFirstStart && sourceIndex === firstEnabledIndex ? 0 : mappedStart;
-        const mappedEnd = Math.max(0, Math.round(Number(mapTime(segment.end)) || 0));
-        const end = options.ensurePositiveDuration ? Math.max(start + 1, mappedEnd) : mappedEnd;
-        parts.push(String(index + 1));
-        parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
-        parts.push(String(segment.text || ''));
-        parts.push('');
-      });
+        const matches = colorName === 'default' ? !effectiveName : effectiveName === colorName;
+        if (!matches) return;
+      }
+      const mappedStart = Math.max(0, Math.round(Number(mapTime(segment.start)) || 0));
+      const start = alignFirstStart && !disabled && sourceIndex === firstEnabledIndex ? 0 : mappedStart;
+      const mappedEnd = Math.max(0, Math.round(Number(mapTime(segment.end)) || 0));
+      const end = options.ensurePositiveDuration ? Math.max(start + 1, mappedEnd) : mappedEnd;
+      outputIndex += 1;
+      parts.push(String(outputIndex));
+      parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
+      parts.push(disabled ? '' : String(segment.text || ''));
+      parts.push('');
+    });
     return parts.join('\n');
   }
 
@@ -2306,6 +2465,23 @@
     buildMultiDisplayRows,
     getSrtExportFirstIndex,
     getSrtExportOffset,
+    normalizeEditorSettings,
+    normalizeMultiSubtitleRowHeight,
+    normalizeClickBehavior,
+    normalizeClickTarget,
+    normalizeKeyboardOperationReferenceMode,
+    normalizeJklPlaybackMode,
+    clampMediaSeekStepMs,
+    clampCueMoveStepMs,
+    clampAutoSaveInterval,
+    clampCharcountThreshold,
+    clampNinjaSlashLength,
+    clampNinjaSlashRotateAmplitude,
+    clampAutoMergeGapMs,
+    clampAutoMergeShortCount,
+    normalizeGapRemoveData,
+    buildSegmentsHistorySnapshot,
+    buildHistoryRecord,
     effectiveColorName,
     shiftGroupReferenceIndices,
     repairGroupReferenceIndices,

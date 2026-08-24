@@ -118,6 +118,49 @@ test('normalizes and resolves keyboard operation references', () => {
   assert.equal(helpers.resolveKeyboardOperationReference('pointer', { pointer: null }), null);
 });
 
+test('normalizes editor settings without preserving invalid persisted values', () => {
+  const settings = helpers.normalizeEditorSettings({
+    multiSubtitleRowHeight: 999,
+    mediaSeekStepSeconds: 2,
+    cueMoveStepMs: -1,
+    theme: 'light',
+    stickerOtioExportMode: 'portable',
+    autoMergeShortCount: 99,
+  });
+  assert.equal(settings.multiSubtitleRowHeight, 168);
+  assert.equal(settings.mediaSeekStepMs, 2000);
+  assert.equal(settings.cueMoveStepMs, 10);
+  assert.equal(settings.theme, 'light');
+  assert.equal(settings.stickerOtioExportMode, 'portable');
+  assert.equal(settings.autoMergeShortCount, 20);
+});
+
+test('normalizes gap-remove data and returns independent gap values', () => {
+  const input = { detector: 'legacy_subtitle_gap', minimum_ms: 1, gaps: [{ start: 10, end: 20 }] };
+  const normalized = helpers.normalizeGapRemoveData(input);
+  assert.equal(normalized.minimum_ms, 100);
+  assert.equal(normalized.detector, 'legacy_subtitle_gap');
+  assert.deepEqual(JSON.parse(JSON.stringify(normalized.gaps)), [{ start: 10, end: 20, removed: true }]);
+  input.gaps[0].start = 999;
+  assert.equal(normalized.gaps[0].start, 10);
+});
+
+test('builds immutable-shaped history records for each editor history kind', () => {
+  const snapshot = helpers.buildSegmentsHistorySnapshot([{ text: 'before' }], { enabled: false });
+  const record = helpers.buildHistoryRecord('segments', '', snapshot, { mainIds: ['a'] });
+  assert.deepEqual(JSON.parse(JSON.stringify(record)), {
+    kind: 'segments', label: '编辑',
+    segs: JSON.parse(JSON.stringify(snapshot)), view: { mainIds: ['a'] },
+  });
+  snapshot.segments[0].text = 'after';
+  assert.equal(record.segs.segments[0].text, 'before');
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.buildHistoryRecord('gap_remove', null, {
+    gapRemove: { gaps: [] }, gapRemoveDirty: true,
+  }))), {
+    kind: 'gap_remove', label: '空隙移除', gapRemove: { gaps: [] }, gapRemoveDirty: true,
+  });
+});
+
 
 test('translates editor project controls and dynamic save messages to English', () => {
   assert.equal(i18n.translateText('保存工程', 'en'), 'Save project');
