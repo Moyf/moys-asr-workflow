@@ -558,8 +558,6 @@ def _run_step(
             output_mode=output_mode,
             output_directory=output_directory,
             media_path=media_path,
-            extra_split_punctuation=tuple(str(value) for value in step.get("extraSplitPunctuation", ()) if str(value)),
-            preserve_punctuation=tuple(str(value) for value in step.get("preservePunctuation", ()) if str(value)),
         ))
     if step_id == "replace":
         replacements = tuple(
