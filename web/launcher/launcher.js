@@ -182,10 +182,10 @@
     drop_reject_media: "仅支持以下媒体文件类型：\n{extensions}",
     output_collision: "检测到同名输出文件，为避免覆盖，生成的新文件已自动添加后缀。",
     custom_asr_base_url: "ASR Base URL",
-    custom_asr_base_url_placeholder: "例如 https://e-flowcode.cc/v1",
+    custom_asr_base_url_placeholder: "例如 https://api.openai.com/v1",
     custom_asr_base_url_hint: "程序会请求该地址下的 /audio/transcriptions，并要求接口返回时间戳。",
     custom_asr_model: "ASR 模型名",
-    custom_asr_model_placeholder: "例如 qwen3-asr-flash-filetrans",
+    custom_asr_model_placeholder: "例如 gpt-4o-transcribe",
     custom_asr_model_hint: "填写中转站或服务商控制台提供的模型名。",
     custom_asr_base_url_missing: "请填写自定义 ASR Base URL。",
     custom_asr_model_missing: "请填写自定义 ASR 模型名。"
@@ -197,10 +197,10 @@
     drop_reject_media: "Only the following media file types are supported:\n{extensions}",
     output_collision: "An output file with the same name already exists. To avoid overwriting it, the new output has been given a suffix.",
     custom_asr_base_url: "ASR Base URL",
-    custom_asr_base_url_placeholder: "For example, https://e-flowcode.cc/v1",
+    custom_asr_base_url_placeholder: "For example, https://api.openai.com/v1",
     custom_asr_base_url_hint: "MAW calls /audio/transcriptions under this URL and requires timestamped output.",
     custom_asr_model: "ASR model",
-    custom_asr_model_placeholder: "For example, qwen3-asr-flash-filetrans",
+    custom_asr_model_placeholder: "For example, gpt-4o-transcribe",
     custom_asr_model_hint: "Enter the model name provided by your relay or service provider.",
     custom_asr_base_url_missing: "Enter a custom ASR Base URL.",
     custom_asr_model_missing: "Enter a custom ASR model name."
@@ -965,7 +965,7 @@
   let activeSettingsTab = "general";
 
   function mockApi() {
-    let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "zh", customDisplayName: "", openaiBaseUrl: "https://e-flowcode.cc/v1", openaiModel: "qwen3-asr-flash-filetrans", postprocessApiKeys: {}, theme: null };
+    let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "zh", customDisplayName: "", openaiBaseUrl: "https://api.openai.com/v1", openaiModel: "gpt-4o-transcribe", postprocessApiKeys: {}, theme: null };
     const chainedPath = (path, operation, fallback) => path
       ? path.replace(/(\.[^.\\/]+)$/u, `.${operation}$1`)
       : fallback;
@@ -1038,12 +1038,12 @@
           {
             id: "openai",
             label: "自定义 OpenAI 兼容 ASR",
-            keyUrl: "https://e-flowcode.cc/docs/setup/asr-api",
+            keyUrl: "https://platform.openai.com/api-keys",
             apiKey: saved.apiKey,
             maskedApiKey: saved.apiKey ? "sk-…demo" : "",
             supportsSpeaker: false,
             multiLanguage: false,
-            note: "可连接 E-FlowCode 或其他兼容 /audio/transcriptions 的中转；必须返回 segments/words 时间戳。",
+            note: "默认连接 OpenAI 官方服务，也可填写其他兼容 /audio/transcriptions 的地址；必须返回 segments/words 时间戳。",
             commonLanguages: ["", "zh", "en"],
             models: [{ id: "custom-asr", label: "自定义模型", envKey: "MAW_OPENAI_ASR_API_KEY", note: "模型名和地址在下方填写", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }],
             regions: [],

@@ -19,8 +19,8 @@ EXAMPLE_ENV_PATH: Final = ROOT / ".env.example"
 QWEN_AUDIO_MODEL_ID: Final = "qwen-audio-3.0-asr-flash-filetrans"
 QWEN3_ASR_MODEL_ID: Final = "qwen3-asr-flash-filetrans"
 OPENAI_ASR_MODEL_ID: Final = "custom-asr"
-OPENAI_ASR_DEFAULT_BASE_URL: Final = "https://e-flowcode.cc/v1"
-OPENAI_ASR_DEFAULT_MODEL: Final = "qwen3-asr-flash-filetrans"
+OPENAI_ASR_DEFAULT_BASE_URL: Final = "https://api.openai.com/v1"
+OPENAI_ASR_DEFAULT_MODEL: Final = "gpt-4o-transcribe"
 # qwen-audio-3.0 是最新发布的模型，作为各入口默认；旧 qwen3-asr 置底保留（后续可能移除）。
 DEFAULT_MODEL_ID: Final = QWEN_AUDIO_MODEL_ID
 
@@ -289,7 +289,7 @@ OPENAI_ASR_MODELS: Final[tuple[ModelConfig, ...]] = (
         id=OPENAI_ASR_MODEL_ID,
         label="自定义 OpenAI 兼容 ASR",
         env_key="MAW_OPENAI_ASR_API_KEY",
-        note="可接 E-FlowCode 或其他兼容 /audio/transcriptions 的 ASR 服务；模型名和地址可自定义",
+        note="默认使用 OpenAI 官方转写服务，也可填写其他兼容 /audio/transcriptions 的 ASR 地址和模型",
         languages=LANGUAGES,
     ),
 )
@@ -459,7 +459,7 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
     ProviderConfig(
         id="openai",
         label="自定义 OpenAI 兼容 ASR",
-        key_url="https://e-flowcode.cc/docs/setup/asr-api",
+        key_url="https://platform.openai.com/api-keys",
         models=OPENAI_ASR_MODELS,
         regions=(),
         languages=LANGUAGES,

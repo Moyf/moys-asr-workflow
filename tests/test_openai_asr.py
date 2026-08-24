@@ -7,6 +7,8 @@ from unittest import mock
 
 
 from generate_subtitle_openai_api import (
+    DEFAULT_BASE_URL,
+    DEFAULT_MODEL,
     normalize_base_url,
     parse_timestamped_response,
     request_transcription,
@@ -15,6 +17,11 @@ from generate_subtitle_openai_api import (
 
 
 class OpenAiAsrTests(unittest.TestCase):
+    def test_official_openai_defaults(self) -> None:
+        self.assertEqual(DEFAULT_BASE_URL, "https://api.openai.com/v1")
+        self.assertEqual(DEFAULT_MODEL, "gpt-4o-transcribe")
+        self.assertEqual(normalize_base_url(""), DEFAULT_BASE_URL)
+
     def test_normalize_base_url_accepts_root_v1_and_endpoint_urls(self) -> None:
         self.assertEqual(normalize_base_url("https://example.test"), "https://example.test/v1")
         self.assertEqual(normalize_base_url("https://example.test/v1/"), "https://example.test/v1")

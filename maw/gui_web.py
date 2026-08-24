@@ -24,7 +24,6 @@ from typing import BinaryIO, Final, final
 from maw.app_paths import default_emoji_font_path
 from maw.ffmpeg import FfmpegTools, resolve_ffmpeg_tools
 from maw.media_cache import embed_media_caches
-from maw.waveform import is_waveform_payload
 from maw.gui_config import (
     DEFAULT_ENV_PATH,
     DEFAULT_MODEL_ID,

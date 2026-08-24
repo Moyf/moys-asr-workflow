@@ -17,7 +17,6 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -32,11 +31,11 @@ from generate_subtitle_qwen_api import (
     split_segments_auto,
 )
 from maw.project import repair_segment_durations
-from media_cache import embed_media_caches, merge_media_caches
+from maw.media_cache import embed_media_caches, merge_media_caches
 
 
-DEFAULT_BASE_URL = "https://e-flowcode.cc/v1"
-DEFAULT_MODEL = "qwen3-asr-flash-filetrans"
+DEFAULT_BASE_URL = "https://api.openai.com/v1"
+DEFAULT_MODEL = "gpt-4o-transcribe"
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
