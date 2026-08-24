@@ -110,10 +110,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $Version = '${{ steps.version.outputs.version }}'
-          $Archive = "MAW-Windows-x64-$Version.zip"
-          Compress-Archive -LiteralPath 'dist\MAW' -DestinationPath $Archive -Force
+          Copy-Item -LiteralPath 'dist\MAW' -Destination 'dist\MAW-lite' -Recurse
 
-      - name: Create FFmpeg-bundled release archive
+      - name: Bundle FFmpeg and create release archives
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -155,23 +154,22 @@ jobs:
           }
           Expand-Archive -LiteralPath $FfmpegArchive -DestinationPath 'build\ffmpeg-package' -Force
 
-          Copy-Item -LiteralPath 'dist\MAW' -Destination 'dist\MAWxFF' -Recurse
-          New-Item -ItemType Directory -Path 'dist\MAWxFF\ffmpeg\bin' -Force | Out-Null
+          New-Item -ItemType Directory -Path 'dist\MAW\ffmpeg\bin' -Force | Out-Null
           $FfmpegExe = Get-ChildItem -LiteralPath 'build\ffmpeg-package' -Filter 'ffmpeg.exe' -File -Recurse | Select-Object -First 1
           $FfprobeExe = Get-ChildItem -LiteralPath 'build\ffmpeg-package' -Filter 'ffprobe.exe' -File -Recurse | Select-Object -First 1
           if (-not $FfmpegExe -or -not $FfprobeExe) {
             throw 'The downloaded FFmpeg package did not contain ffmpeg.exe and ffprobe.exe.'
           }
-          Copy-Item -LiteralPath $FfmpegExe.FullName -Destination 'dist\MAWxFF\ffmpeg\bin\ffmpeg.exe'
-          Copy-Item -LiteralPath $FfprobeExe.FullName -Destination 'dist\MAWxFF\ffmpeg\bin\ffprobe.exe'
+          Copy-Item -LiteralPath $FfmpegExe.FullName -Destination 'dist\MAW\ffmpeg\bin\ffmpeg.exe'
+          Copy-Item -LiteralPath $FfprobeExe.FullName -Destination 'dist\MAW\ffmpeg\bin\ffprobe.exe'
 
           $License = Get-ChildItem -LiteralPath 'build\ffmpeg-package' -Filter 'LICENSE' -File -Recurse | Select-Object -First 1
           $Readme = Get-ChildItem -LiteralPath 'build\ffmpeg-package' -Filter 'README.txt' -File -Recurse | Select-Object -First 1
           if (-not $License -or -not $Readme) {
             throw 'The downloaded FFmpeg package did not contain its license and README.'
           }
-          Copy-Item -LiteralPath $License.FullName -Destination 'dist\MAWxFF\ffmpeg\LICENSE.txt'
-          Copy-Item -LiteralPath $Readme.FullName -Destination 'dist\MAWxFF\ffmpeg\README.txt'
+          Copy-Item -LiteralPath $License.FullName -Destination 'dist\MAW\ffmpeg\LICENSE.txt'
+          Copy-Item -LiteralPath $Readme.FullName -Destination 'dist\MAW\ffmpeg\README.txt'
           @(
             "FFmpeg $FfmpegVersion Essentials build for Windows x64"
             "Build provider: https://www.gyan.dev/ffmpeg/builds/"
@@ -179,13 +177,13 @@ jobs:
             "Archive SHA-256: $ExpectedHash"
             "Corresponding FFmpeg source commit: https://github.com/FFmpeg/FFmpeg/commit/$FfmpegCommit"
             "FFmpeg source archive: https://github.com/FFmpeg/FFmpeg/archive/$FfmpegCommit.tar.gz"
-            'This MAWxFF package includes only ffmpeg.exe and ffprobe.exe from the original build.'
+            'This MAW package includes only ffmpeg.exe and ffprobe.exe from the original build.'
             'See LICENSE.txt and README.txt in this directory for license and build configuration details.'
-          ) | Set-Content -LiteralPath 'dist\MAWxFF\ffmpeg\SOURCE.txt' -Encoding utf8
+          ) | Set-Content -LiteralPath 'dist\MAW\ffmpeg\SOURCE.txt' -Encoding utf8
 
           $Version = '${{ steps.version.outputs.version }}'
-          $Archive = "MAWxFF-Windows-x64-$Version.zip"
-          Compress-Archive -LiteralPath 'dist\MAWxFF' -DestinationPath $Archive -Force
+          Compress-Archive -LiteralPath 'dist\MAW-lite' -DestinationPath "MAW-lite-Windows-x64-$Version.zip" -Force
+          Compress-Archive -LiteralPath 'dist\MAW' -DestinationPath "MAW-Windows-x64-$Version.zip" -Force
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -193,7 +191,7 @@ jobs:
           name: MAW-Windows-x64-${{ steps.version.outputs.version }}
           path: |
             MAW-Windows-x64-${{ steps.version.outputs.version }}.zip
-            MAWxFF-Windows-x64-${{ steps.version.outputs.version }}.zip
+            MAW-lite-Windows-x64-${{ steps.version.outputs.version }}.zip
           if-no-files-found: error
 
   build-aux:
@@ -209,7 +207,7 @@ jobs:
             asset: MAW-macOS-arm64
             paths: |
               MAW-macOS-arm64-*.zip
-              MAWxFF-macOS-arm64-*.zip
+              MAW-lite-macOS-arm64-*.zip
           - name: Linux x86_64
             platform: linux
             os: ubuntu-22.04
@@ -314,7 +312,7 @@ jobs:
           codesign --force --deep --sign - dist/MAW.app
           codesign --verify --deep --strict --verbose=2 dist/MAW.app
 
-      - name: Build MAWxFF app bundle
+      - name: Create MAW-lite app bundle before bundling FFmpeg into MAW
         if: matrix.platform == 'macos'
         shell: bash
         run: |
@@ -352,8 +350,8 @@ jobs:
           printf '%s  %s\n' "$FfmpegBinarySha256" "$FfmpegBinary" | shasum -a 256 -c -
           printf '%s  %s\n' "$FfprobeBinarySha256" "$FfprobeBinary" | shasum -a 256 -c -
 
-          cp -R dist/MAW.app dist/MAWxFF.app
-          FfmpegDirectory="dist/MAWxFF.app/Contents/MacOS/ffmpeg"
+          cp -R dist/MAW.app dist/MAW-lite.app
+          FfmpegDirectory="dist/MAW.app/Contents/MacOS/ffmpeg"
           mkdir -p "$FfmpegDirectory/bin"
           cp "$FfmpegBinary" "$FfmpegDirectory/bin/ffmpeg"
           cp "$FfprobeBinary" "$FfmpegDirectory/bin/ffprobe"
@@ -361,21 +359,21 @@ jobs:
           curl --fail --location --retry 3 --silent --show-error --output "$FfmpegDirectory/COPYING.GPLv3" "$LicenseBaseUrl/COPYING.GPLv3"
           curl --fail --location --retry 3 --silent --show-error --output "$FfmpegDirectory/COPYING.LGPLv2.1" "$LicenseBaseUrl/COPYING.LGPLv2.1"
           cat > "$FfmpegDirectory/SOURCE.txt" <<EOF
-          FFmpeg $FfmpegVersion Apple Silicon static binaries for MAWxFF.
+          FFmpeg $FfmpegVersion Apple Silicon static binaries for MAW.
           Build provider: https://www.osxexperts.net/
           Original ffmpeg archive: $FfmpegArchiveUrl
           Original ffprobe archive: $FfprobeArchiveUrl
           FFmpeg license and reference source: $LicenseBaseUrl
-          This MAWxFF package includes only ffmpeg and ffprobe from the original builds.
+          This MAW package includes only ffmpeg and ffprobe from the original builds.
           See LICENSE.md, COPYING.GPLv3, and COPYING.LGPLv2.1 in this directory.
           EOF
 
-          codesign --force --deep --sign - dist/MAWxFF.app
-          dist/MAWxFF.app/Contents/MacOS/ffmpeg/bin/ffmpeg -version >/dev/null
-          dist/MAWxFF.app/Contents/MacOS/ffmpeg/bin/ffprobe -version >/dev/null
-          dist/MAWxFF.app/Contents/MacOS/MAW --smoke-import
-          dist/MAWxFF.app/Contents/MacOS/MAW --help >/dev/null
-          codesign --verify --deep --strict --verbose=2 dist/MAWxFF.app
+          codesign --force --deep --sign - dist/MAW.app
+          dist/MAW.app/Contents/MacOS/ffmpeg/bin/ffmpeg -version >/dev/null
+          dist/MAW.app/Contents/MacOS/ffmpeg/bin/ffprobe -version >/dev/null
+          dist/MAW.app/Contents/MacOS/MAW --smoke-import
+          dist/MAW.app/Contents/MacOS/MAW --help >/dev/null
+          codesign --verify --deep --strict --verbose=2 dist/MAW.app
 
       - name: Create release archives
         if: matrix.platform == 'macos'
@@ -384,22 +382,22 @@ jobs:
           set -euo pipefail
           Version="${{ steps.version.outputs.version }}"
           StandardArchive="MAW-macOS-arm64-${Version}.zip"
-          XffArchive="MAWxFF-macOS-arm64-${Version}.zip"
+          LiteArchive="MAW-lite-macOS-arm64-${Version}.zip"
           StandardStage="build/release/standard"
-          XffStage="build/release/xff"
-          mkdir -p "$StandardStage" "$XffStage"
+          LiteStage="build/release/lite"
+          mkdir -p "$StandardStage" "$LiteStage"
           ditto dist/MAW.app "$StandardStage/MAW.app"
-          ditto dist/MAWxFF.app "$XffStage/MAWxFF.app"
+          ditto dist/MAW-lite.app "$LiteStage/MAW-lite.app"
           (
             cd "$StandardStage"
             zip -qry "$GITHUB_WORKSPACE/$StandardArchive" MAW.app
           )
           (
-            cd "$XffStage"
-            zip -qry "$GITHUB_WORKSPACE/$XffArchive" MAWxFF.app
+            cd "$LiteStage"
+            zip -qry "$GITHUB_WORKSPACE/$LiteArchive" MAW-lite.app
           )
           unzip -l "$StandardArchive" | grep -q 'MAW.app/Contents/MacOS/MAW'
-          unzip -l "$XffArchive" | grep -q 'MAWxFF.app/Contents/MacOS/MAW'
+          unzip -l "$LiteArchive" | grep -q 'MAW-lite.app/Contents/MacOS/MAW'
 
       # ---------- Linux 专属 ----------
 

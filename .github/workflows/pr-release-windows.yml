@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   build-windows:
-    name: Build Windows x64 no-FFmpeg preview
+    name: Build Windows x64 MAW-lite preview
     runs-on: windows-2022
     env:
       PYTHONUTF8: '1'
@@ -80,20 +80,20 @@ jobs:
             throw "The PR preview must not bundle FFmpeg: $($BundledFfmpeg.FullName -join ', ')"
           }
 
-      - name: Create no-FFmpeg release preview archive
+      - name: Create MAW-lite release preview archive
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $PrNumber = '${{ github.event.pull_request.number || 'manual' }}'
           $BuildSha = '${{ github.event.pull_request.head.sha || github.sha }}'
-          $Archive = "MAW-Windows-x64-pr-$PrNumber-$BuildSha.zip"
+          $Archive = "MAW-lite-Windows-x64-pr-$PrNumber-$BuildSha.zip"
           Compress-Archive -LiteralPath 'dist\MAW' -DestinationPath $Archive -Force
 
-      - name: Upload no-FFmpeg release preview
+      - name: Upload MAW-lite release preview
         uses: actions/upload-artifact@v4
         with:
-          name: MAW-Windows-x64-pr-${{ github.event.pull_request.number || 'manual' }}-${{ github.event.pull_request.head.sha || github.sha }}
+          name: MAW-lite-Windows-x64-pr-${{ github.event.pull_request.number || 'manual' }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
-            MAW-Windows-x64-pr-${{ github.event.pull_request.number || 'manual' }}-${{ github.event.pull_request.head.sha || github.sha }}.zip
+            MAW-lite-Windows-x64-pr-${{ github.event.pull_request.number || 'manual' }}-${{ github.event.pull_request.head.sha || github.sha }}.zip
           if-no-files-found: error
           retention-days: 14
