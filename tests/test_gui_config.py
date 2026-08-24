@@ -263,6 +263,14 @@ class GuiConfigTests(unittest.TestCase):
         self.assertTrue(provider.multi_language)
         self.assertTrue(provider.models[0].supports_context)
 
+    def test_provider_registry_contains_tencent_recording_recognition(self) -> None:
+        provider = gui_config.provider_by_id("tencent")
+
+        self.assertEqual(provider.models[0].id, "16k_zh_en_2.0")
+        self.assertEqual(provider.models[0].env_key, "TENCENT_SECRET_ID")
+        self.assertEqual(provider.regions, ())
+        self.assertIn("SECRET_KEY", provider.note)
+
     def test_provider_registry_contains_local_models_without_api_key(self) -> None:
         provider = gui_config.provider_by_id("local")
 

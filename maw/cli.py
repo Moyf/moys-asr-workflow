@@ -88,7 +88,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         help="输出路径：第一个是 SRT，第二个可选路径是 .mosp；省略时按输入自动命名",
     )
     parser.add_argument("--mosp", dest="mosp_output", help="单独指定 .mosp 工程输出路径（等价于 -o SRT MOSP 的第二个路径）")
-    parser.add_argument("--provider", choices=("qwen", "soniox", "bcut"), default="qwen", help="ASR 供应商（默认 qwen；bcut 为免 Key 实验性接口，仅中文）")
+    parser.add_argument("--provider", choices=("qwen", "soniox", "tencent", "bcut"), default="qwen", help="ASR 供应商（默认 qwen；tencent 为腾讯云录音文件识别）")
     parser.add_argument("--model", help="覆盖当前供应商的 ASR 模型")
     parser.add_argument("--max-len", type=int, help="每条字幕最大字数")
     parser.add_argument("--min-len", type=int, help="句号间最短字数")
@@ -213,6 +213,16 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
         or args.hotword
     ):
         parser.error("--provider soniox 不支持 Qwen 专用的地域、词表、热词、context 或 file-url 参数")
+    if args.provider == "tencent" and (
+        any(
+            value is not None for value in (
+                args.region, args.workspace_id, args.vocabulary_id, args.hotword_file,
+                args.hotword_weight, args.context, args.context_file, args.soniox_context_json,
+            )
+        )
+        or args.hotword
+    ):
+        parser.error("--provider tencent 仅支持 --file-url、--model、--language 和通用字幕参数")
     if args.provider == "bcut" and (
         any(
             value is not None
@@ -333,6 +343,10 @@ def _invoke_generator(provider: str, argv: Sequence[str]) -> int:
         import generate_subtitle_bcut_api as generator
 
         script_name = "generate_subtitle_bcut_api.py"
+    elif provider == "tencent":
+        import generate_subtitle_tencent_api as generator
+
+        script_name = "generate_subtitle_tencent_api.py"
     else:
         import generate_subtitle_qwen_api as generator
 
