@@ -43,6 +43,19 @@ QWEN_DEFAULT_CHUNK_SECONDS = 30
 QWEN_MAX_NEW_TOKENS = 1024
 FUNASR_DEFAULT_MODEL = "paraformer-zh"
 SENSEVOICE_DEFAULT_MERGE_LENGTH_S = 15
+MOSS_DEFAULT_MODEL = "OpenMOSS-Team/MOSS-Transcribe-Diarize"
+MOSS_DEFAULT_REVISION = "e8681d68e7042738ffca8ac8212bc8fcb1131ab8"
+MOSS_MAX_NEW_TOKENS = 65_536
+MOSS_MAX_AUDIO_SECONDS = 90 * 60
+
+
+def _missing_moss_dependency(cause: ImportError) -> MissingLocalDependency:
+    actual = str(getattr(cause, "name", "") or "").strip()
+    package = actual or "moss-transcribe-diarize"
+    return MissingLocalDependency(
+        f"缺少 MOSS 本地运行环境依赖 {package}；请在 Launcher 中安装 MOSS 运行环境，"
+        "或按 docs/LOCAL_ASR.md 配置独立的 MOSS 开发环境。"
+    )
 
 
 class LocalAsrError(RuntimeError):
@@ -808,6 +821,115 @@ class FunAsrEngine:
         )
 
 
+class MossDiarizeEngine:
+    """Lazy MOSS-Transcribe-Diarize adapter with speaker-aware segments."""
+
+    def __init__(self, model: str = MOSS_DEFAULT_MODEL, *, model_path: str | Path | None = None, device: str = "auto") -> None:
+        self.model = model
+        self.model_path = str(model_path) if model_path else model
+        self.device = device
+        self._runtime: tuple[Any, Any, Any] | None = None
+
+    def _load(self, on_event: ProgressCallback | None = None) -> tuple[Any, Any, Any]:
+        if self._runtime is not None:
+            return self._runtime
+        try:
+            import torch  # type: ignore[import-not-found]
+            from transformers import AutoModelForCausalLM, AutoProcessor  # type: ignore[import-not-found]
+            from moss_transcribe_diarize.attention import load_model_with_attention_fallback  # type: ignore[import-not-found]
+        except ImportError as error:
+            raise _missing_moss_dependency(error) from error
+
+        resolved = resolve_device(self.device)
+        device = torch.device("cuda:0" if resolved == "cuda" else resolved)
+        dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
+        if on_event:
+            on_event(f"[local] loading MOSS-Transcribe-Diarize: {self.model_path} ({device})")
+        revision = MOSS_DEFAULT_REVISION if self.model == MOSS_DEFAULT_MODEL else ""
+        model_loader = None
+        if revision:
+            def model_loader(model_path: str, **kwargs: Any) -> Any:
+                return AutoModelForCausalLM.from_pretrained(model_path, revision=revision, **kwargs)
+
+        model, attention_report = load_model_with_attention_fallback(
+            self.model_path,
+            device=device,
+            dtype=dtype,
+            model_loader=model_loader,
+        )
+        model = model.to(dtype=dtype).to(device).eval()
+        if revision:
+            processor = AutoProcessor.from_pretrained(
+                self.model_path,
+                revision=revision,
+                trust_remote_code=True,
+            )
+        else:
+            processor = AutoProcessor.from_pretrained(self.model_path, trust_remote_code=True)
+        self._runtime = (model, processor, attention_report)
+        if on_event:
+            on_event("[local] MOSS-Transcribe-Diarize loaded")
+        return self._runtime
+
+    def transcribe(
+        self,
+        audio_path: Path,
+        *,
+        language: str | None = None,
+        batch_size_s: int = 300,
+        hotwords: Sequence[str] = (),
+        on_event: ProgressCallback | None = None,
+    ) -> LocalTranscription:
+        del batch_size_s
+        if language and on_event:
+            on_event("[local] MOSS 自动识别语言，已忽略语言提示")
+        if hotwords and on_event:
+            on_event("[local] MOSS 不接受 MAW 热词参数，已忽略热词")
+        duration_s = get_duration_sec(str(audio_path))
+        if math.isfinite(duration_s) and duration_s > MOSS_MAX_AUDIO_SECONDS:
+            raise LocalAsrError("MOSS 单次推理最多支持约 90 分钟音频；请先裁剪媒体后重试。")
+        try:
+            from moss_transcribe_diarize import parse_transcript  # type: ignore[import-not-found]
+            from moss_transcribe_diarize.inference_utils import build_transcription_messages, generate_transcription  # type: ignore[import-not-found]
+        except ImportError as error:
+            raise _missing_moss_dependency(error) from error
+        model, processor, attention_report = self._load(on_event)
+        if on_event:
+            on_event(f"[local] transcribing: {audio_path.name}")
+        messages = build_transcription_messages(audio_path)
+        result = generate_transcription(
+            model,
+            processor,
+            messages,
+            max_new_tokens=MOSS_MAX_NEW_TOKENS,
+            do_sample=False,
+            device=next(model.parameters()).device,
+            dtype=next(model.parameters()).dtype,
+            attention_report=attention_report,
+        )
+        if int(result.get("generated_tokens") or 0) >= MOSS_MAX_NEW_TOKENS and on_event:
+            on_event("[local] 警告：MOSS 输出达到最大 token 数，字幕可能在音频结尾处被截断")
+        parsed = parse_transcript(str(result.get("text") or ""))
+        segments: list[dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
+        for entry in parsed:
+            start = _as_seconds_ms(entry.start)
+            end = _as_seconds_ms(entry.end)
+            if end <= start or not entry.text:
+                continue
+            item = _item(entry.text, start, end, entry.speaker)
+            segment = _segment(entry.text, start, end, [item], entry.speaker)
+            items.append(item)
+            segments.append(segment)
+        if not segments and result.get("text") and on_event:
+            on_event("[local] 警告：MOSS 返回的文本未解析出有效时间戳")
+        for previous, current in zip(segments, segments[1:]):
+            if current["start"] - previous["end"] > 10_000 and on_event:
+                on_event(f"[local] 警告：检测到超过 10 秒的无字幕空档（{previous['end']}–{current['start']}ms）")
+        language_value = language or ""
+        return LocalTranscription(str(result.get("text") or ""), language_value, items, segments, self.model)
+
+
 def create_local_engine(
     engine: str,
     *,
@@ -840,7 +962,13 @@ def create_local_engine(
             trust_remote_code=trust_remote_code,
             rich_postprocess=rich_postprocess,
         )
-    raise ValueError("engine must be one of: qwen-asr, funasr")
+    if normalized == "moss":
+        return MossDiarizeEngine(
+            model or MOSS_DEFAULT_MODEL,
+            model_path=model_path,
+            device=device,
+        )
+    raise ValueError("engine must be one of: qwen-asr, funasr, moss")
 
 
 def build_local_segments(
@@ -963,6 +1091,10 @@ def write_local_outputs(
 
 __all__ = [
     "FUNASR_DEFAULT_MODEL",
+    "MOSS_DEFAULT_MODEL",
+    "MOSS_DEFAULT_REVISION",
+    "MOSS_MAX_NEW_TOKENS",
+    "MOSS_MAX_AUDIO_SECONDS",
     "LocalAsrEngine",
     "LocalAsrError",
     "LocalOutputPaths",
@@ -973,6 +1105,7 @@ __all__ = [
     "QWEN_DEFAULT_CHUNK_SECONDS",
     "QWEN_MAX_NEW_TOKENS",
     "FunAsrEngine",
+    "MossDiarizeEngine",
     "QwenAsrEngine",
     "build_local_segments",
     "create_local_engine",

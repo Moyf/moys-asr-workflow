@@ -1,4 +1,4 @@
-"""Local QwenASR / FunASR -> SRT + MAW project CLI.
+"""Local QwenASR / FunASR / MOSS -> SRT + MAW project CLI.
 
 This remains a source-mode first step.  Model packages are optional; the
 Launcher only routes to this CLI and lets the upstream runtime prepare its
@@ -27,11 +27,11 @@ from maw.local_asr import (
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="使用本地 QwenASR 或 FunASR 生成 MAW 字幕工程",
+        description="使用本地 QwenASR、FunASR 或 MOSS 生成 MAW 字幕工程",
     )
     parser.add_argument("input", help="输入视频或音频文件路径")
     parser.add_argument(
-        "--engine", choices=("qwen-asr", "funasr"), default="qwen-asr",
+        "--engine", choices=("qwen-asr", "funasr", "moss"), default="qwen-asr",
         help="本地推理引擎（默认: qwen-asr）",
     )
     parser.add_argument(
@@ -49,6 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--vad-model", help="FunASR 可选 VAD 模型")
     parser.add_argument("--punc-model", help="FunASR 可选标点模型")
     parser.add_argument("--speaker-model", help="FunASR 可选说话人模型")
+    parser.add_argument("--speaker-colors", action="store_true", help="为说话人段落生成颜色快照")
     parser.add_argument("--language", help="语言提示，例如 zh 或 en")
     parser.add_argument("--hotword", action="append", default=[], help="热词，可重复传入")
     parser.add_argument(
@@ -79,7 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def default_output_path(input_path: Path, engine: str) -> Path:
-    tag = "qwen-asr-local" if engine == "qwen-asr" else "funasr-local"
+    tag = {"qwen-asr": "qwen-asr-local", "funasr": "funasr-local", "moss": "moss-local"}.get(engine, "local")
     return input_path.with_name(f"{input_path.stem}.{tag}.srt")
 
 
@@ -152,6 +153,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 min_len=args.min_len,
                 gap_split_ms=args.gap_split,
             )
+            if args.speaker_colors:
+                from maw.speaker import apply_speaker_colors
+
+                apply_speaker_colors(segments)
             if not segments:
                 print("错误: 本地模型没有返回可用的转写文本")
                 return 1
