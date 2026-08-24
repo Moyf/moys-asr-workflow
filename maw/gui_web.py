@@ -1186,7 +1186,7 @@ class LauncherApi:
             "ok": True,
             "outputPath": str(request.srt_path),
             "outputRenamed": output_renamed,
-            "rawPath": str(raw_response_path(request.srt_path)) if request.debug_raw else "",
+            "rawPath": str(raw_response_path(request.srt_path)) if request.debug_raw and request.provider != "local" else "",
         }
 
     def start_batch_transcription(self, payload: Mapping[str, object]) -> dict[str, object]:
