@@ -5,10 +5,18 @@
 MAW 当前的正式入口仍然是云端 ASR。这个页面记录本地模型流程的第一版：
 
 ```text
-本地媒体 -> SenseVoice / Fun-ASR-Nano / Qwen3-ASR / Paraformer -> MAW 统一时间戳 -> SRT + .mosp -> MAWE
+本地媒体 -> SenseVoice / Fun-ASR-Nano / Qwen3-ASR / MOSS Transcribe-Diarize / Paraformer -> MAW 统一时间戳 -> SRT + .mosp -> MAWE
 ```
 
 Launcher 已提供实验性的「本地模型」识别方式，入口仍复用同一套媒体、输出和 MAWE 流程，而不是另做一套 UI。Windows 打包版可以直接在 Launcher 中安装本地运行环境；详细范围见 [MAW 1.2 本地模型 Launcher 开发记录](dev/MAW%201.2%20本地模型%20Launcher%20开发记录.md)。
+
+## MOSS Transcribe-Diarize
+
+MOSS Transcribe-Diarize 0.9B 是 Apache-2.0 许可的端到端转写与说话人分离模型。官方在 AISHELL-4、Alimeeting、Podcast 和 Movies 多说话人基准上报告了较低的 CER / cpCER，适合会议、访谈、播客和多人视频；说话人标签是当前音频内的相对编号（如 `S01`），不是跨文件的真实身份。
+
+MAW 通过独立的 MOSS 运行环境加载它：MOSS 需要 Transformers 5.x，而 QwenASR 运行环境固定使用 Transformers 4.x，因此两者不能安装在同一个环境中。Launcher 选择 MOSS 后，安装按钮会使用 Python 3.12 创建 `local-runtime-moss`，模型缓存仍使用统一的 Hugging Face 缓存目录。MOSS 需要 `trust_remote_code` 加载上游模型代码；MAW 固定了默认 Hugging Face 模型快照和 GitHub 推理包提交，首次使用前仍请确认你信任 OpenMOSS 的模型仓库。使用 `--model` 指定其他模型时，不会套用默认快照固定。
+
+MOSS 单次推理最多约 90 分钟，MAW 不对它做分块，以免不同块中的 `S01` / `S02` 失去跨长音频的一致性。它会把秒级浮点时间戳转换为 MAW 要求的整数毫秒，并保留每个字幕段的 `speaker` 字段。CPU 可以运行但预计较慢，建议使用 CUDA；首次验证建议使用 30 秒、包含两位说话人的中文音频。MOSS 的公开评测主要集中在中文多人场景，其他语言应先用自己的音频验收。
 
 ## 安装可选依赖
 
@@ -57,6 +65,13 @@ uv run python generate_subtitle_local.py "D:\Videos\example.mp4" `
   --engine funasr --length-limit 30s --json
 ```
 
+MOSS 多说话人转写：
+
+```powershell
+uv run python generate_subtitle_local.py "D:\Videos\meeting.mp4" `
+  --engine moss --length-limit 30s --device cuda --speaker-colors --json
+```
+
 `--model` 可以指定上游模型 ID，`--model-path` 可以指定已经下载好的本地模型目录。Qwen3-ASR 0.6B 和 1.7B 都默认加载 `Qwen/Qwen3-ForcedAligner-0.6B`，以输出可编辑字幕所需的词级时间戳；它不是可选增强。SenseVoice 默认配合 FSMN-VAD 并保留句级时间戳，Fun-ASR-Nano 默认配合 FSMN-VAD 请求句级时间戳；如果上游返回字符级时间戳，MAW 会再按标点和静音切分，否则至少按 VAD 语音区间生成字幕。默认 `--device auto` 会优先使用 CUDA；如需排查兼容性或没有 NVIDIA GPU，可显式传入 `--device cpu`。第一次验证建议加 `--length-limit 30s`。
 
 不使用 Launcher 时，也可以通过环境变量指定统一的模型缓存根目录：
@@ -96,6 +111,7 @@ uv run python generate_subtitle_local.py "D:\Videos\example.mp4" `
 ## 当前边界
 
 - Launcher 的「下载模型」按钮调用 QwenASR / FunASR 上游加载器准备缓存；当前正式列出 SenseVoice Small、Fun-ASR-Nano、Qwen3-ASR 0.6B、Qwen3-ASR 1.7B 和 Paraformer 兼容选项。本地运行环境由 GUI 独立安装，不放入 Windows 冻结包，Torch / TorchAudio 和模型权重仍按需下载。
+- Launcher 也列出 MOSS Transcribe-Diarize 0.9B；它使用单独的 `local-runtime-moss` 环境和 Hugging Face 缓存，不与 QwenASR / FunASR 运行环境混装。
 - Launcher 可以把模型缓存切换到自定义目录；它参考了 [Voicebox 的模型目录配置方式](https://github.com/jamiepine/voicebox/blob/main/backend/config.py)，把运行环境和 Hugging Face / ModelScope 模型缓存分开管理。
 - Qwen3-ASR 0.6B 和 1.7B 都使用同一个 Forced Aligner；时间戳按秒读取并归一化为 MAW 要求的整数毫秒。FunASR 的常见句级/字词级时间戳也会归一化为同一格式。
 - Qwen3-ASR 长音频采用独立的 FFmpeg 分块识别，默认每块 30 秒，并在合并前恢复原始时间偏移，避免单次生成长度限制导致后半段字幕缺失。
