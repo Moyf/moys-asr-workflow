@@ -234,7 +234,7 @@ def build_transcribe_command(
     command.extend(["--output", str(build_output_paths(request.srt_path).srt), "--json", "--no-html", "--with-waveform"])
     if request.generate_spectral:
         command.append("--with-spectral")
-    if request.debug_raw:
+    if request.debug_raw and not is_local:
         command.append("--debug-raw")
     if is_local:
         _append_option(command, "--engine", request.engine or "qwen-asr")
@@ -351,7 +351,7 @@ def run_transcription(
         raise TranscriptionProcessError(process.returncode, output=collected)
     _require_output(paths.srt, "SRT")
     _require_output(paths.json, "JSON")
-    raw_path = raw_response_path(paths.srt) if request.debug_raw else None
+    raw_path = raw_response_path(paths.srt) if request.debug_raw and request.provider != "local" else None
     if raw_path is not None:
         _require_output(raw_path, "raw ASR response")
     html_path = None
