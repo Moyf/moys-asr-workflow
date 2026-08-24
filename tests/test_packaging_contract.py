@@ -199,6 +199,22 @@ class PackagingContractTests(unittest.TestCase):
         for relative_path in sorted(bundled_paths):
             self.assertIn(_local_runtime_spec_entry(relative_path), spec)
 
+    def test_local_runtime_installs_reapeaks_and_bumps_runtime_version(self) -> None:
+        """Given the Rust waveform generator is required, When local runtime metadata is read, Then it is installed and invalidates old runtimes."""
+        local_runtime = read_text("maw/local_runtime.py")
+
+        self.assertIn('RUNTIME_VERSION: Final = "4"', local_runtime)
+        self.assertIn('"reapeaks>=0.3.1"', local_runtime)
+        self.assertIn('"reapeaks"', local_runtime)
+
+    def test_pages_workflow_installs_reapeaks_before_building_editor(self) -> None:
+        """Given a clean Pages runner, When the portable editor is built, Then its native dependency is installed first."""
+        workflow = read_text(".github/workflows/deploy-editor-pages.yml")
+
+        install = workflow.index("python -m pip install --disable-pip-version-check reapeaks==0.3.1")
+        build = workflow.index("python edit.py --blank")
+        self.assertLess(install, build)
+
     def test_macos_bundle_uses_the_icns_app_icon(self) -> None:
         """Given a macOS app bundle, When PyInstaller builds it, Then the bundle has the branded ICNS icon."""
         spec = read_text("MAW.spec")
