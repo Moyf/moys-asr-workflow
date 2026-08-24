@@ -93,6 +93,15 @@ class LocalEditorServerTests(unittest.TestCase):
                 server_editor.EditorRequestHandler.send_file(handler, self.media, True)
                 handler.wfile.write.assert_called_once()
 
+    def test_request_handler_ignores_client_disconnect_while_reading(self) -> None:
+        handler = object.__new__(server_editor.EditorRequestHandler)
+        with mock.patch.object(
+            server_editor.BaseHTTPRequestHandler,
+            "handle",
+            side_effect=ConnectionAbortedError(10053, "client aborted"),
+        ):
+            handler.handle()
+
     def test_media_less_projects_reopen_bound_without_media_work(self) -> None:
         for project_data in (
             {"media": "", "segments": []},

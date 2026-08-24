@@ -1040,6 +1040,20 @@ def write_project_json(target: Path, project_data: dict) -> Path | None:
 class EditorRequestHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
+    def handle(self) -> None:
+        """Ignore a browser closing a keep-alive connection while reading it.
+
+        Media elements routinely cancel an old Range request while seeking or
+        replacing a source. ``send_file`` handles a disconnect during the
+        response body, but the client can also close the socket before
+        ``BaseHTTPRequestHandler`` starts reading the next keep-alive request.
+        In that case CPython raises from ``handle_one_request`` instead.
+        """
+        try:
+            super().handle()
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+            return
+
     @property
     def editor_server(self) -> EditorServer:
         return self.server  # type: ignore[return-value]
