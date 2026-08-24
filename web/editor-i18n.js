@@ -407,7 +407,7 @@
     '调整播放器画面内字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the subtitle preview background opacity in the player; 0 hides the background',
     '字幕背景不透明度': 'Subtitle background opacity',
     '只影响播放器画面内的拓展字幕预览': 'Only affects extension subtitle preview in the player',
-    '波形形状来源：默认使用自研 1000Hz 重采样缓存；需要时可切换到媒体旁 .ReaPeaks 的最细 wave 层': 'Waveform shape source: use the self-built 1000 Hz resampled cache by default; switch to the finest wave layer beside the media from .ReaPeaks when needed',
+    '波形形状来源：默认使用媒体旁 .ReaPeaks 的最细 wave 层（缺数据时自动回退自研缓存）；需要时可切回自研': 'Waveform shape source: use the finest wave layer beside the media from .ReaPeaks by default (falls back to the self-built cache when missing); switch back to self-built when needed',
     '选择播放器画面内拓展字幕预览使用的字体族': 'Choose the font family used by the extension subtitle preview in the player',
     '选择播放器画面内副字幕预览使用的字体族': 'Choose the font family used by the secondary subtitle preview in the player',
     '选择播放器画面内主字幕预览的颜色': 'Choose the color of the main subtitle preview in the player',

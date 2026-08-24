@@ -2,7 +2,8 @@
 
 只生成 wav；`*.wav` 被 gitignore，不入库。`.ReaPeaks` 由用户在 REAPER 中打开
 对应 wav 后生成，复制回 `tests/test_data/`（.ReaPeaks 可提交）。内容设计见
-`FIXTURES.md`。numpy 依赖已随 ReaPeaks 功能并入主依赖。
+`FIXTURES.md`。生成 wav 需要 numpy（现为 `ocr` 可选依赖）；numpy 缺失时
+`test_reapeaks_fixture.py` 的相关用例自动 skip。
 """
 from __future__ import annotations
 
