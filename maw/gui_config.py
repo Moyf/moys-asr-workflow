@@ -307,6 +307,17 @@ SONIOX_MODELS: Final[tuple[ModelConfig, ...]] = (
     ),
 )
 
+TENCENT_MODELS: Final[tuple[ModelConfig, ...]] = (
+    ModelConfig(
+        id="16k_zh_en_2.0",
+        label="腾讯云录音文件识别（大模型 2.0）",
+        env_key="TENCENT_SECRET_ID",
+        note="SecretId 写入此处；SecretKey 请在本机 .env 配置",
+        supports_speaker=False,
+        languages=LANGUAGES,
+    ),
+)
+
 LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
         id="qwen3-asr-local",
@@ -406,6 +417,16 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         supports_speaker=True,
         multi_language=True,
         common_languages=SONIOX_COMMON_LANGUAGES,
+    ),
+    ProviderConfig(
+        id="tencent",
+        label="腾讯云录音文件识别",
+        key_url="https://console.cloud.tencent.com/cam/capi",
+        models=TENCENT_MODELS,
+        regions=(),
+        languages=LANGUAGES,
+        common_languages=QWEN_COMMON_LANGUAGES,
+        note="需要 TENCENT_SECRET_ID 与 TENCENT_SECRET_KEY；大于 5MB 的媒体请使用 COS URL",
     ),
     ProviderConfig(
         id="local",

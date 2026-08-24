@@ -162,6 +162,7 @@ PROVIDER_SRT_TAGS: Final = {
     "soniox": ".soniox",
     "local": ".qwen-asr-local",
     "bcut": ".bcut",
+    "tencent": ".tencent-asr",
 }
 
 
@@ -209,12 +210,15 @@ def build_transcribe_command(
     exe = str(executable or sys.executable)
     is_frozen = bool(getattr(sys, "frozen", False) if frozen is None else frozen)
     is_soniox = request.provider == "soniox"
+    is_tencent = request.provider == "tencent"
     is_bcut = request.provider == "bcut"
     is_local = request.provider == "local"
     if is_local:
         script_name = "generate_subtitle_local.py"
     elif is_bcut:
         script_name = "generate_subtitle_bcut_api.py"
+    elif is_tencent:
+        script_name = "generate_subtitle_tencent_api.py"
     else:
         script_name = "generate_subtitle_soniox_api.py" if is_soniox else "generate_subtitle_qwen_api.py"
     script = Path(__file__).resolve().parents[1] / script_name
@@ -226,6 +230,8 @@ def build_transcribe_command(
             command = [exe, "--transcribe-local"]
         elif is_bcut:
             command = [exe, "--transcribe-bcut"]
+        elif is_tencent:
+            command = [exe, "--transcribe-tencent"]
         else:
             command = [exe, "--transcribe-soniox" if is_soniox else "--transcribe"]
     else:
@@ -253,6 +259,11 @@ def build_transcribe_command(
                 "--context-json",
                 json.dumps(request.soniox_context, ensure_ascii=False, separators=(",", ":")),
             )
+    elif is_tencent:
+        _append_option(command, "--model", request.model)
+        _append_option(command, "--language", request.language)
+        if request.speaker_colors:
+            command.append("--speaker-colors")
     elif is_bcut:
         # 必剪接口无语言/模型/说话人参数，这里一律不下发
         pass
@@ -476,6 +487,12 @@ def _child_environment(
             env["SONIOX_API_KEY"] = api_key
     elif provider == "bcut":
         pass  # 必剪为非官方免 Key 接口，无需注入凭据
+    elif provider == "tencent":
+        if api_key:
+            env["TENCENT_SECRET_ID"] = api_key
+        secret_key = parent.get("TENCENT_SECRET_KEY") or load_env(DEFAULT_ENV_PATH).get("TENCENT_SECRET_KEY", "")
+        if secret_key:
+            env["TENCENT_SECRET_KEY"] = secret_key
     else:
         if api_key:
             env["DASHSCOPE_API_KEY"] = api_key
