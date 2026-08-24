@@ -280,6 +280,40 @@ class LocalAsrFlowTests(unittest.TestCase):
     def test_moss_default_revision_is_pinned(self) -> None:
         self.assertRegex(MOSS_DEFAULT_REVISION, r"^[0-9a-f]{40}$")
 
+    def test_moss_default_revision_is_forwarded_to_model_and_processor(self) -> None:
+        engine = create_local_engine("moss")
+        model = mock.Mock()
+        model.to.return_value = model
+        model.eval.return_value = model
+        processor = object()
+        auto_model = mock.Mock()
+        auto_model.from_pretrained.return_value = model
+        auto_processor = mock.Mock()
+        auto_processor.from_pretrained.return_value = processor
+        torch = SimpleNamespace(
+            bfloat16="bfloat16",
+            float32="float32",
+            device=lambda value: SimpleNamespace(type=value),
+        )
+        attention = mock.Mock(return_value=(model, {}))
+        with mock.patch.dict("sys.modules", {
+            "torch": torch,
+            "transformers": SimpleNamespace(
+                AutoModelForCausalLM=auto_model,
+                AutoProcessor=auto_processor,
+            ),
+            "moss_transcribe_diarize.attention": SimpleNamespace(
+                load_model_with_attention_fallback=attention,
+            ),
+        }):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cpu"):
+                engine._load()
+
+        model_loader = attention.call_args.kwargs["model_loader"]
+        model_loader("model-path")
+        self.assertEqual(auto_model.from_pretrained.call_args.kwargs["revision"], MOSS_DEFAULT_REVISION)
+        self.assertEqual(auto_processor.from_pretrained.call_args.kwargs["revision"], MOSS_DEFAULT_REVISION)
+
     def test_moss_transcript_is_normalized_to_speaker_segments(self) -> None:
         class FakeModel:
             def parameters(self):
