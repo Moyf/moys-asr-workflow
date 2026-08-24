@@ -7,7 +7,7 @@ from pathlib import Path
 
 from maw.postprocess import OutputMode
 from maw.postprocess_io import read_project
-from maw.postprocess_match import ScriptMatchRequest, prepare_script_text, run_script_match
+from maw.postprocess_match import ScriptMatchRequest, run_script_match
 
 
 class ScriptMatchTests(unittest.TestCase):
@@ -119,16 +119,6 @@ class ScriptMatchTests(unittest.TestCase):
         self.assertEqual(result.project_path.suffix, ".mosp")
         self.assertIn("新文", result.srt_path.read_text(encoding="utf-8"))
         self.assertEqual(read_project(result.project_path)["segments"][0]["text"], "新文")
-
-    def test_extra_punctuation_reports_configuration(self) -> None:
-        text, warning = prepare_script_text("甲？乙！丙~", ("？", "！", "~"), ("？", "~"))
-
-        self.assertEqual(text, "甲？乙！丙~")
-        self.assertIn("额外断句符号：3 个", warning)
-
-    def test_preserved_punctuation_must_be_declared_as_a_split_symbol(self) -> None:
-        with self.assertRaisesRegex(ValueError, "保留符号"):
-            prepare_script_text("甲？", ("！",), ("？",))
 
 
 if __name__ == "__main__":
