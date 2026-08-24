@@ -22,7 +22,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from maw import reapeaks_generate
+import reapeaks as rust_generate
 from maw import waveform as waveform_module
 
 MAGIC_V10 = b"RPKM"  # v1.0: min == -max (mirrored)

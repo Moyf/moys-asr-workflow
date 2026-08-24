@@ -12,7 +12,8 @@ import unittest
 import wave
 from pathlib import Path
 
-from maw import reapeaks, reapeaks_generate, waveform
+import reapeaks as rust_generate
+from maw import reapeaks, waveform
 
 
 # 固定源媒体 mtime，避免测试跨秒边界导致校验结果不确定。
