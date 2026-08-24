@@ -667,7 +667,30 @@
         <div class="field">
           <label for="postprocessReplacements" data-i18n="toolbox_replace_rules">批量替换规则</label>
           <textarea id="postprocessReplacements" rows="7" autocomplete="off" data-i18n-placeholder="toolbox_replace_placeholder"></textarea>
-          <p class="hint" data-i18n="toolbox_replace_hint">每行一条：原文 =&gt; 新文，按顺序应用。修改文本后会移除失真的逐词时间。</p>
+          <div class="toolbox-grid replace-options">
+            <div class="field">
+              <label for="postprocessReplacementSeparator" data-i18n="toolbox_replace_separator">替换分隔符号</label>
+              <select id="postprocessReplacementSeparator">
+                <option value="arrow" data-i18n="toolbox_replace_separator_arrow">=&gt;</option>
+                <option value="comma" data-i18n="toolbox_replace_separator_comma">中英文逗号</option>
+                <option value="tab" data-i18n="toolbox_replace_separator_tab">Tab 制表符</option>
+                <option value="custom" data-i18n="toolbox_replace_separator_custom">自定义</option>
+              </select>
+            </div>
+            <div class="field hidden" id="postprocessReplacementCustomSeparatorField">
+              <label for="postprocessReplacementCustomSeparator" data-i18n="toolbox_replace_custom_separator">自定义分隔符</label>
+              <input id="postprocessReplacementCustomSeparator" type="text" maxlength="20" autocomplete="off" placeholder=" | ">
+            </div>
+          </div>
+          <label class="check-field" for="postprocessReplacementTrim">
+            <input id="postprocessReplacementTrim" type="checkbox" checked>
+            <span data-i18n="toolbox_replace_trim">自动去除前后空白</span>
+          </label>
+          <div class="replace-rule-preview">
+            <div class="toolbox-preset-label" data-i18n="toolbox_replace_preview">规则预览</div>
+            <pre id="postprocessReplacementPreview"></pre>
+          </div>
+          <p class="hint" data-i18n="toolbox_replace_hint">每行一条替换规则；修改文本后会移除失真的逐词时间。</p>
           <p id="postprocessReplacementsError" class="field-error"></p>
         </div>
       </div>
@@ -822,8 +845,8 @@
         </div>
       </div>
       <div class="settings-section" id="ocrSettingsSection">
-        <h3 data-i18n="settings_ocr">OCR 模型</h3>
-        <p class="hint" data-i18n="settings_ocr_hint">OCR 是可选功能。主程序不预装 OCR 依赖，首次使用时在这里下载独立运行环境。</p>
+        <h3 data-i18n="settings_ocr">OCR 支持</h3>
+        <p class="hint" data-i18n="settings_ocr_hint">OCR 识别功能用于去除与画面上的文本重复的字幕，常用于配音游戏实况等视频内容。主程序不预装 OCR 依赖，首次使用时在这里下载独立运行环境。</p>
         <div class="field">
           <label for="ocrRuntimePath" data-i18n="ocr_runtime_path">OCR 运行环境目录</label>
           <div class="path-row">
@@ -832,11 +855,6 @@
           </div>
           <p id="ocrRuntimePathError" class="field-error"></p>
           <p class="hint" data-i18n="ocr_runtime_path_hint">默认安装到用户目录；可改到空间更充足的磁盘。运行环境和模型随这里保存。</p>
-        </div>
-        <div class="field">
-          <label data-i18n="ocr_runtime_model">OCR 模型</label>
-          <p id="ocrSettingsModel" class="toolbox-static-value"></p>
-          <p id="ocrSettingsModelStatus" class="hint" aria-live="polite"></p>
         </div>
         <div class="local-status-row">
           <p id="ocrRuntimeStatus" class="local-status" aria-live="polite"></p>

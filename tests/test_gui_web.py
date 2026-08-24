@@ -2270,7 +2270,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="toolboxFfconcatTab" class="toolbox-tab"', page)
         self.assertIn("overflow-y: auto", stylesheet)
         self.assertNotIn("resize: both", stylesheet)
-        self.assertIn("block-size: min(560px, calc(100dvh - 156px))", stylesheet)
+        self.assertIn("block-size: min(640px, calc(100dvh - 156px))", stylesheet)
         self.assertIn("min-inline-size: min(360px, calc(100vw - 24px))", stylesheet)
         self.assertIn(".toolbox-footer", stylesheet)
         self.assertIn(".toolbox-resize-y", stylesheet)

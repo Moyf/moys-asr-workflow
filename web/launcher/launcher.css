@@ -593,6 +593,12 @@ label {
   white-space: nowrap;
 }
 
+#ocrSettingsSection .task-progress,
+#ocrSettingsSection #ocrRuntimeHint,
+#ocrSettingsSection #installOcrRuntime {
+  margin-top: 10px;
+}
+
 .local-model-panel > .ghost {
   justify-self: start;
 }
@@ -1313,7 +1319,7 @@ textarea::placeholder {
   bottom: 134px;
   z-index: 36;
   width: min(560px, calc(100vw - 40px));
-  block-size: min(560px, calc(100dvh - 156px));
+  block-size: min(640px, calc(100dvh - 156px));
   min-inline-size: min(360px, calc(100vw - 24px));
   max-inline-size: calc(100vw - 40px);
   min-block-size: 320px;
@@ -1904,6 +1910,23 @@ textarea::placeholder {
 .toolbox-preset-prompt-text.empty {
   color: var(--text-faint);
   font-style: italic;
+}
+
+.replace-rule-preview {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+}
+
+.replace-rule-preview pre {
+  margin: 6px 0 0;
+  color: var(--text-primary);
+  font: inherit;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* 只读取值（如固定的 OCR 模型）：与输入控件同高同底，两列网格行内对齐。 */

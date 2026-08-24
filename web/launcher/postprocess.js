@@ -773,14 +773,59 @@
     setResult(`${t("toolbox_done")}${warnings.length ? `\n${warnings.join("\n")}` : ""}`, "success");
   }
 
+  function replacementSeparator() {
+    const mode = $("postprocessReplacementSeparator")?.value || "arrow";
+    if (mode === "comma") return /[,，]/u;
+    if (mode === "tab") return /\t/u;
+    if (mode === "custom") {
+      const value = $("postprocessReplacementCustomSeparator")?.value || "";
+      return value ? value : null;
+    }
+    return "=>";
+  }
+
+  function syncReplacementSeparator() {
+    const custom = $("postprocessReplacementSeparator").value === "custom";
+    $("postprocessReplacementCustomSeparatorField").classList.toggle("hidden", !custom);
+    $("postprocessReplacementCustomSeparator").disabled = !custom;
+    const customSeparator = $("postprocessReplacementCustomSeparator").value || " | ";
+    const examples = {
+      arrow: "错别字 => 正确文字",
+      comma: "错别字,正确文字",
+      tab: "错别字\t正确文字",
+      custom: `错别字${customSeparator}正确文字`,
+    };
+    $("postprocessReplacements").placeholder = examples[$("postprocessReplacementSeparator").value] || examples.arrow;
+  }
+
   function parseReplacements() {
+    const separator = replacementSeparator();
+    const trim = $("postprocessReplacementTrim")?.checked !== false;
+    if (!separator) return [];
     return $("postprocessReplacements").value.split(/\r?\n/u).map((line) => {
-      const separator = line.indexOf("=>");
-      return separator < 0 ? null : {
-        source: line.slice(0, separator).trim(),
-        target: line.slice(separator + 2).trim(),
-      };
+      const index = typeof separator === "string" ? line.indexOf(separator) : line.search(separator);
+      const length = typeof separator === "string" ? separator.length : 1;
+      if (index < 0) return null;
+      const source = line.slice(0, index);
+      const target = line.slice(index + length);
+      return { source: trim ? source.trim() : source, target: trim ? target.trim() : target };
     }).filter((item) => item?.source);
+  }
+
+  function replacementRuleText(item) {
+    const separator = $("postprocessReplacementSeparator")?.value || "arrow";
+    const value = separator === "comma" ? "," : separator === "tab" ? "\t" : separator === "custom" ? ($("postprocessReplacementCustomSeparator")?.value || "") : "=>";
+    return `${item.source || ""}${value}${item.target || ""}`;
+  }
+
+  function renderReplacementPreview() {
+    const preview = $("postprocessReplacementPreview");
+    if (!preview) return;
+    const hasInput = $("postprocessReplacements").value.length > 0;
+    const rules = parseReplacements();
+    preview.textContent = rules.length
+      ? rules.map(replacementRuleText).join("\n")
+      : t(hasInput ? "toolbox_replace_preview_empty" : "toolbox_replace_preview_hint");
   }
 
   function autoLlmOperation(stepId) {
@@ -831,7 +876,7 @@
       steps: [
         // 始终上报用户的单文件勾选；批量运行由后端统一跳过文稿匹配，前端不改写、不持久化批量态。
         { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim() },
-        { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements(), conversion: $("postprocessConversion").value },
+        { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements(), replacementSeparator: $("postprocessReplacementSeparator").value, replacementTrim: $("postprocessReplacementTrim").checked, replacementCustomSeparator: $("postprocessReplacementCustomSeparator").value, conversion: $("postprocessConversion").value },
         { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId, customPrompt: getLlmPrompt("proofread") },
         { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId, customPrompt: getLlmPrompt("resegment") },
         { id: "ocr", enabled: Boolean($("autoStepOcr")?.checked), videoPath: $("ocrVideoPath").value.trim(), ...ocr, threshold: Number($("ocrThreshold").value), report: Boolean($("ocrReport").checked) },
@@ -1010,7 +1055,12 @@
     const match = byId.get("match") || {};
     $("postprocessScriptPath").value = String(match.scriptPath || "");
     const replace = byId.get("replace") || {};
-    $("postprocessReplacements").value = (Array.isArray(replace.replacements) ? replace.replacements : []).map((item) => `${item.source || ""} => ${item.target || ""}`).join("\n");
+    $("postprocessReplacementSeparator").value = ["arrow", "comma", "tab", "custom"].includes(replace.replacementSeparator) ? replace.replacementSeparator : "arrow";
+    $("postprocessReplacementTrim").checked = replace.replacementTrim !== false;
+    $("postprocessReplacementCustomSeparator").value = String(replace.replacementCustomSeparator || "");
+    $("postprocessReplacements").value = (Array.isArray(replace.replacements) ? replace.replacements : []).map(replacementRuleText).join("\n");
+    syncReplacementSeparator();
+    renderReplacementPreview();
     $("postprocessConversion").value = ["to_simplified", "to_traditional", "to_traditional_tw", "to_traditional_twp", "to_traditional_hk"].includes(replace.conversion) ? replace.conversion : "off";
     ["proofread", "resegment"].forEach((stepId) => {
       const prompt = byId.get(stepId)?.customPrompt;
@@ -1474,7 +1524,10 @@
     $(id).addEventListener("input", () => setFieldError(id, ""));
     $(id).addEventListener("change", () => setFieldError(id, ""));
   });
-  $("postprocessReplacements").addEventListener("input", () => { setFieldError("postprocessReplacements", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
+  $("postprocessReplacements").addEventListener("input", () => { setFieldError("postprocessReplacements", ""); renderReplacementPreview(); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
+  $("postprocessReplacementSeparator").addEventListener("change", () => { syncReplacementSeparator(); renderReplacementPreview(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
+  $("postprocessReplacementCustomSeparator").addEventListener("input", () => { syncReplacementSeparator(); renderReplacementPreview(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
+  $("postprocessReplacementTrim").addEventListener("change", () => { renderReplacementPreview(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("postprocessConversion").addEventListener("change", () => { setFieldError("postprocessReplacements", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
   $("ocrVideoPath").addEventListener("input", () => { ocrVideoManual = Boolean($("ocrVideoPath").value.trim()); setFieldError("ocrVideoPath", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
   ["ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "autoTranslateTarget"].forEach((id) => {
