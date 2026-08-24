@@ -149,7 +149,7 @@ def _match_project(
     result_segments = result["segments"]
     unmatched = 0
     changed = 0
-    for span_index, span in enumerate(spans):
+    for span in spans:
         script_start = _map_boundary(span.normalized_start, boundaries)
         script_end = _map_boundary(span.normalized_end, boundaries)
         script_start, script_end = sorted((script_start, script_end))
@@ -160,11 +160,7 @@ def _match_project(
         original_text = source_segment.get("text")
         if not isinstance(original_text, str):
             continue
-        replacement = (
-            punctuation_segments[span_index]
-            if len(punctuation_segments) == len(spans)
-            else _slice_normalized(alignment_text, script, script_start, script_end)
-        )
+        replacement = _slice_normalized(alignment_text, script, script_start, script_end)
         if not replacement:
             unmatched += 1
             continue
