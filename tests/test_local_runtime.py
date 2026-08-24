@@ -97,7 +97,7 @@ class LocalRuntimeTests(unittest.TestCase):
                         packages = root / "Lib" / "site-packages"
                     else:
                         packages = root / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
-                    for name in ("funasr", "qwen_asr", "jieba", "torch", "torchaudio"):
+                    for name in ("funasr", "qwen_asr", "jieba", "reapeaks", "torch", "torchaudio"):
                         (packages / name).mkdir(parents=True, exist_ok=True)
                 return 0
 
@@ -118,7 +118,10 @@ class LocalRuntimeTests(unittest.TestCase):
 
         self.assertIn("jieba>=0.42", GENERAL_REQUIREMENTS)
         self.assertIn("jieba>=0.42", install_command)
+        self.assertIn("reapeaks>=0.3.1", GENERAL_REQUIREMENTS)
+        self.assertIn("reapeaks>=0.3.1", install_command)
         self.assertIn("import jieba", verify_command[-1])
+        self.assertIn("reapeaks", verify_command[-1])
 
     def test_install_without_uv_explains_packaged_bootstrap_requirement(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
