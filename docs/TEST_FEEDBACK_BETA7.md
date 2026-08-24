@@ -54,7 +54,7 @@
 
 | 编号 | 处理结果 | 验证证据 |
 | --- | --- | --- |
-| 1 | 已修复 | `.venv\\Scripts\\python.exe -m unittest tests.test_media_cache`（3/3 通过，含“测试模式使用限长缓存但保留原始媒体签名”）；`media_cache.py` 输出频谱生成进度，并在缓存旁路缺失时保留工程已有缓存。 |
+| 1 | 已修复 | `.venv\\Scripts\\python.exe -m unittest tests.test_media_cache`（3/3 通过，含“测试模式使用限长缓存但保留原始媒体签名”）；`maw/media_cache.py` 输出频谱生成进度，并在缓存旁路缺失时保留工程已有缓存。 |
 | 3 | 已修复 | `.venv\\Scripts\\python.exe -m unittest tests.test_gui_web tests.test_ocr_runtime tests.test_postprocess_ocr`（相关测试包含在 210/210 通过批次）；`node --check web\\launcher\\launcher.js`; `node --check web\\launcher\\postprocess.js`; `git diff --check` 均通过。 |
 | 4 | 已修复 | `node --check web\\editor.js`; `.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（13/13 通过）；`.venv\\Scripts\\python.exe edit.py --blank`; `blank-editor.html` 已扫描确认 ReaPeaks 解析/拖入入口，以及无绑定服务器提示“导出 .mosp，再重新打开该文件”；`git diff --check` 通过。 |
 | 5 | 已修复 | `node --check web\\editor.js`; `node --check web\\waveform.js`; `node --check web\\editor-i18n.js`; `node --test tests\\test_waveform_js.mjs tests\\test_editor_utils.mjs`（当前批次 119/119 通过）；current-cue-panel Esc 回归 1/1；自动吸附/键盘回归 5/5；`.venv\\Scripts\\python.exe edit.py --blank`; `.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（15/15 通过）；`git diff --check` 通过。 |

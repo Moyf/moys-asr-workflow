@@ -21,8 +21,8 @@ from pathlib import Path
 from threading import Event
 from typing import BinaryIO, Final, final
 
-from media_cache import embed_media_caches
-from waveform import is_waveform_payload
+from maw.media_cache import embed_media_caches
+from maw.waveform import is_waveform_payload
 from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, MODELS, PROVIDERS, ModelConfig, ProviderConfig, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix

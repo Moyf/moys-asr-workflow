@@ -34,7 +34,7 @@ from maw.project import repair_segment_durations
 from maw.qwen_audio import parse_qwen_audio_hotwords
 from maw.speaker import apply_speaker_colors, split_items_by_speaker
 
-from media_cache import embed_media_caches, merge_media_caches
+from maw.media_cache import embed_media_caches, merge_media_caches
 
 
 # ===== 路径与常量 =====

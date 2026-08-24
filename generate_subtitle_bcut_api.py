@@ -40,7 +40,7 @@ from maw.bcut import (
     transcribe,
 )
 from maw.project import repair_segment_durations, validate_project
-from media_cache import embed_media_caches, merge_media_caches
+from maw.media_cache import embed_media_caches, merge_media_caches
 
 
 def main():

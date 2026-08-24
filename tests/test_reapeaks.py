@@ -12,9 +12,7 @@ import unittest
 import wave
 from pathlib import Path
 
-import reapeaks
-import reapeaks_generate
-import waveform
+from maw import reapeaks, reapeaks_generate, waveform
 
 try:
     import numpy  # noqa: F401

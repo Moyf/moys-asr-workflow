@@ -9,7 +9,7 @@ MAW（Moy's ASR Workflow）是一个收窄的本地工作流：本地媒体经�
 - `generate_subtitle_qwen_api.py`：Qwen/Fun-ASR 转写命令入口，`--json` 为历史兼容参数名，默认生成 `.mosp` 工程。
 - `generate_subtitle_soniox_api.py`：Soniox 转写命令入口，同样默认生成 `.mosp` 工程。
 - `maw/gui_web.py`、`maw/gui_workflow.py` 与 `web/launcher/`：Launcher 图形界面及其后端桥接。
-- `edit.py`：读取 `.mosp` / `.json` 工程，渲染单文件 `.edit.html`；也生成 `blank-editor.html`。
+- `edit.py`：读取 `.mosp` / `.json` 工程，渲染单文件 `.edit.html`；也生成 `blank-editor.html`。波形、ReaPeaks 和媒体缓存实现位于 `maw/waveform.py`、`maw/reapeaks.py`、`maw/reapeaks_generate.py`、`maw/media_cache.py`。
 - `server-editor/serve.py`：仅监听 `127.0.0.1` 的编辑器服务器，负责媒体 Range 响应、工程安全保存与本机设置。
 - `web/`：唯一前端源码。`editor-template.html` 组合 `editor.css`、`waveform.css` 与 `editor-scripts.txt` 中按顺序列出的脚本；禁止手改生成后的 `blank-editor.html`。
 

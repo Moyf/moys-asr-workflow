@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import edit  # noqa: E402
-import waveform as waveform_module  # noqa: E402
+from maw import waveform as waveform_module  # noqa: E402
 
 
 class WaveformExtractionTests(unittest.TestCase):
@@ -559,7 +559,7 @@ class EditorAssetTests(unittest.TestCase):
     def test_all_source_assets_use_lf_and_end_with_newline(self) -> None:
         for path in [
             ROOT / "edit.py",
-            ROOT / "waveform.py",
+            ROOT / "maw" / "waveform.py",
             ROOT / "server-editor" / "serve.py",
             *(path for path in sorted((ROOT / "web").glob("*")) if path.is_file()),
         ]:

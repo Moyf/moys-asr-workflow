@@ -20,8 +20,8 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import reapeaks_generate
-import waveform as waveform_module
+from maw import reapeaks_generate
+from maw import waveform as waveform_module
 
 MAGIC_V10 = b"RPKM"  # v1.0: min == -max (mirrored)
 MAGIC_V11 = b"RPKN"  # v1.1: explicit min/max

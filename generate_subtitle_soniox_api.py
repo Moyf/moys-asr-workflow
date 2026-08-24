@@ -42,7 +42,7 @@ from maw.soniox import (
     parse_soniox_context_json,
     transcribe,
 )
-from media_cache import embed_media_caches, merge_media_caches
+from maw.media_cache import embed_media_caches, merge_media_caches
 
 
 def _language_hints(raw: str | None) -> list[str]:

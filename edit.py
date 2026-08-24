@@ -35,13 +35,13 @@ from typing import NotRequired, TypedDict
 
 from maw.project import ProjectValidationFailed, normalize_project
 from maw.media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS
-from waveform import (
+from maw.waveform import (
     DEFAULT_PEAKS_PER_SECOND,
     WaveformError,
     load_or_extract_waveform,
 )
 
-import reapeaks
+from maw import reapeaks
 
 VIDEO_EXTS = set(VIDEO_EXTENSIONS)
 AUDIO_EXTS = set(AUDIO_EXTENSIONS)

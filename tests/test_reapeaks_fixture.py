@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import reapeaks
+from maw import reapeaks
 
 TEST_DATA_DIR = Path(__file__).resolve().parent / "test_data"
 

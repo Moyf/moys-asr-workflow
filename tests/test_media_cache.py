@@ -10,8 +10,7 @@ import unittest
 import wave
 from pathlib import Path
 
-import media_cache
-import reapeaks
+from maw import media_cache, reapeaks
 
 try:
     import numpy  # noqa: F401

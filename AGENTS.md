@@ -17,7 +17,7 @@ README.md                     # 新用户的安装和最短路径
 docs/WORKFLOW.md              # 全流程、参数、排错
 JSON_SCHEMA.md                # JSON 工程契约
 generate_subtitle_qwen_api.py # API 转写入口
-edit.py + waveform.py         # 单文件编辑器生成和波形缓存
+edit.py + maw/waveform.py     # 单文件编辑器生成和波形缓存
 server-editor/serve.py        # 推荐的 localhost 编辑器
 web/                          # 所有前端源码
 docs/LOCAL_ASR.md             # 实验性本地 Qwen3-ASR / FunASR CLI
@@ -107,8 +107,3 @@ MAW 从一开始就是独立项目。需要引入外部代码时，逐项审查�
 
 ## 代码协作
 有时候多个 Agents 会同时开工，遇到文件变动的情况不用慌张。
-
-## Worktree
-
-在 worktree 完成应有的工作（PR 被合并，或者直接合并进 main）之后，要记得清理 worktree，避免泛滥。
-
