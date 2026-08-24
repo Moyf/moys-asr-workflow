@@ -1307,6 +1307,13 @@
     }
   }
 
+  function resolveTimelineDurationMs(payload, playerDurationSeconds) {
+    const cachedDurationMs = Math.max(0, Math.round(Number(payload?.duration_ms) || 0));
+    const mediaDurationMs = Number.isFinite(Number(playerDurationSeconds))
+      ? Math.max(0, Math.round(Number(playerDurationSeconds) * 1000)) : 0;
+    return Math.max(cachedDurationMs, mediaDurationMs);
+  }
+
   class WaveformEditor {
     constructor(options) {
       this.options = options;
@@ -1392,6 +1399,10 @@
         rowMiddle: document.getElementById('layout-resizer-h2'),
       };
       this._onPlayerTime = () => this.updatePlayback();
+      this._onPlayerMetadata = () => {
+        this._onPlayerTime();
+        this.render();
+      };
       this._onResize = () => this.scheduleRender();
       this.bindControls();
       this.bindDockHandles();
@@ -2355,13 +2366,13 @@
       if (this.player) {
         this.player.removeEventListener('timeupdate', this._onPlayerTime);
         this.player.removeEventListener('seeked', this._onPlayerTime);
-        this.player.removeEventListener('loadedmetadata', this._onPlayerTime);
+        this.player.removeEventListener('loadedmetadata', this._onPlayerMetadata);
       }
       this.player = player;
       if (this.player) {
         this.player.addEventListener('timeupdate', this._onPlayerTime);
         this.player.addEventListener('seeked', this._onPlayerTime);
-        this.player.addEventListener('loadedmetadata', this._onPlayerTime);
+        this.player.addEventListener('loadedmetadata', this._onPlayerMetadata);
       }
       this.updatePlayback();
     }
@@ -2564,9 +2575,7 @@
     }
 
     get durationMs() {
-      if (this.payload) return this.payload.duration_ms;
-      if (this.player && Number.isFinite(this.player.duration)) return Math.round(this.player.duration * 1000);
-      return 0;
+      return resolveTimelineDurationMs(this.payload, this.player?.duration);
     }
 
     currentTimeMs() {
@@ -2637,7 +2646,7 @@
       // 主题切换后令牌值变化：每次全量渲染前刷新画布颜色缓存，供 drawRow 读取。
       this._readWaveColors();
       this.applyLayout();
-      if (!this.payload || !this.peaks) {
+      if (this.durationMs <= 0) {
         this.content.replaceChildren();
         this.renderedRows = [];
         this.empty.classList.remove('hidden');
@@ -2716,7 +2725,7 @@
     }
 
     renderBasic() {
-      if (!this.payload) return;
+      if (this.durationMs <= 0) return;
       const windowMs = this.settings.visibleSeconds * 1000;
       const maxStart = Math.max(0, this.durationMs - windowMs);
       this.basicWindowStartMs = clamp(this.basicWindowStartMs, 0, maxStart);
@@ -2741,7 +2750,7 @@
     }
 
     renderMultiVisible(force = false) {
-      if (!this.isMultiMode() || !this.payload) return;
+      if (!this.isMultiMode() || this.durationMs <= 0) return;
       const rowDurationMs = this.settings.secondsPerRow * 1000;
       const rowCount = Math.max(1, Math.ceil(this.durationMs / rowDurationMs));
       const stride = this.settings.rowHeight + ROW_GAP;
@@ -3290,7 +3299,7 @@
 
     drawRow(row, { measure = true } = {}) {
       const canvas = row.querySelector('canvas');
-      if (!canvas || !this.peaks) return;
+      if (!canvas) return;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       let width = Number(row._waveformCanvasWidth);
       let height = Number(row._waveformCanvasHeight);
@@ -3336,6 +3345,8 @@
       ctx.lineTo(width, height * 0.46);
       ctx.stroke();
 
+      if (!this.peaks) return;
+
       // 波形形状来源：默认使用 .ReaPeaks 的最细 wave 层（缺数据时自动回退自研缓存）；用户可切回自研。
       const shapeSource = this.options.getWaveShapeSource?.() || 'reapeaks';
       const useReapeaksShape = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;
@@ -3363,12 +3374,23 @@
       const spectral = this.settings.spectralColor === true ? this.spectral : null;
       const defaultColor = this.mediaAvailable ? colors.peak : colors.peakDim;
       const spectralRate = spectral ? spectral.sample_rate / spectral.division : 0;
+      const waveformDurationMs = Math.max(
+        0,
+        Math.round(Number((useReapeaksShape ? this.reapeaksPayload : this.payload)?.duration_ms) || 0),
+      );
       ctx.lineWidth = 1;
       // 有频谱缓存时逐像素按主频染色（颜色只填充在波形包络内）；
       // 否则沿用单次批量描边，避免无频谱时的逐像素绘制开销。
       let pathOpen = false;
       for (let x = 0; x < width; x++) {
         const xStartMs = startMs + (x / width) * rangeMs;
+        if (xStartMs >= waveformDurationMs) {
+          if (!spectral && pathOpen) {
+            ctx.stroke();
+            pathOpen = false;
+          }
+          continue;
+        }
         const low = envelope.low[x];
         const high = envelope.high[x];
         const yTop = clamp(center - (high / 127) * amplitude, minWaveY, maxWaveY);
@@ -4836,7 +4858,7 @@
     }
 
     updatePlayback(allowFollow = true) {
-      if (!this.payload) return;
+      if (this.durationMs <= 0) return;
       const now = this.currentTimeMs();
       const segments = this.options.getSegments('main');
       const activeIndex = findActiveCueIndex(segments, now);
@@ -5011,6 +5033,7 @@
       wheelScrollDelta,
       waveformScaleAfterStep,
       waveformAmplitude,
+      resolveTimelineDurationMs,
       buildWaveformEnvelope,
       sampleInterpolatedPeak,
       normalizeLayoutData,

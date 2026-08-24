@@ -28,6 +28,12 @@ test('decodes compact signed min/max peaks', () => {
   assert.deepEqual(Array.from(decoded), [-127, 127, -10, 10]);
 });
 
+test('uses the longer media duration when the cached waveform is truncated', () => {
+  assert.equal(helpers.resolveTimelineDurationMs({ duration_ms: 120000 }, 634.432), 634432);
+  assert.equal(helpers.resolveTimelineDurationMs({ duration_ms: 634432 }, 120), 634432);
+  assert.equal(helpers.resolveTimelineDurationMs({ duration_ms: 120000 }, Number.NaN), 120000);
+});
+
 
 test('builds a reusable pixel envelope from waveform peaks', () => {
   const envelope = helpers.buildWaveformEnvelope(
