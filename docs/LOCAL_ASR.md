@@ -14,7 +14,7 @@ Launcher 已提供实验性的「本地模型」识别方式，入口仍复用�
 
 MOSS Transcribe-Diarize 0.9B 是 Apache-2.0 许可的端到端转写与说话人分离模型。官方在 AISHELL-4、Alimeeting、Podcast 和 Movies 多说话人基准上报告了较低的 CER / cpCER，适合会议、访谈、播客和多人视频；说话人标签是当前音频内的相对编号（如 `S01`），不是跨文件的真实身份。
 
-MAW 通过独立的 MOSS 运行环境加载它：MOSS 需要 Transformers 5.x，而 QwenASR 运行环境固定使用 Transformers 4.x，因此两者不能安装在同一个环境中。Launcher 选择 MOSS 后，安装按钮会使用 Python 3.12 创建 `local-runtime-moss`，模型缓存仍使用统一的 Hugging Face 缓存目录。MOSS 需要 `trust_remote_code` 加载上游模型代码；MAW 固定了默认 Hugging Face 模型快照和 GitHub 推理包提交，首次使用前仍请确认你信任 OpenMOSS 的模型仓库。使用 `--model` 指定其他模型时，不会套用默认快照固定。
+MAW 通过独立的 MOSS 运行环境加载它：MOSS 需要 Transformers 5.x，而 QwenASR 运行环境固定使用 Transformers 4.x，因此两者不能安装在同一个环境中。Launcher 选择 MOSS 后，安装按钮会使用 Python 3.12 创建 `local-runtime-moss`，模型缓存仍使用统一的 Hugging Face 缓存目录。MOSS 需要 `trust_remote_code` 加载上游模型代码；MAW 对默认模型固定了 Hugging Face 模型仓库提交 `e8681d68...`，对 GitHub 推理包固定了提交 `e607537b...`。首次使用前仍请确认你信任 OpenMOSS 的模型仓库。使用 `--model` 指定其他模型时，MAW 不会替它推断或套用 revision；这类自定义模型会按其自身的远程代码配置加载。
 
 MOSS 单次推理最多约 90 分钟，MAW 不对它做分块，以免不同块中的 `S01` / `S02` 失去跨长音频的一致性。它会把秒级浮点时间戳转换为 MAW 要求的整数毫秒，并保留每个字幕段的 `speaker` 字段。CPU 可以运行但预计较慢，建议使用 CUDA；首次验证建议使用 30 秒、包含两位说话人的中文音频。MOSS 的公开评测主要集中在中文多人场景，其他语言应先用自己的音频验收。
 
