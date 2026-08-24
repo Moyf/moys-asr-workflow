@@ -16,7 +16,6 @@ from maw.gui_workflow import (
     TranscriptionProcessError,
     TranscriptionRequest,
     TranscriptionResult,
-    build_output_paths,
     run_transcription,
 )
 from maw.postprocess_pipeline import PostprocessCancelled, PostprocessPipelineError, enabled_steps
