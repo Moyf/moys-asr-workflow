@@ -332,14 +332,12 @@ def extract_waveform_payload(
 def _reapeaks_matches_media(reapeaks_path: Path | str, media_path: Path | str) -> bool:
     """True when a .ReaPeaks cache is acceptable for the *current* media.
 
-    Provenance is matched on the header's second-resolution mtime
-    (``src_timestamp``) only. The recorded size is deliberately not compared:
-    ``generate_for_media`` records the size of the file it decoded (a
-    temporary extraction), which can differ from the media the server later
-    resolves, while the timestamp is taken from the original media and
-    therefore survives that mapping. A zero timestamp/filesize pair means a
-    legacy MAW cache with no provenance, which is treated as stale so it gets
-    rebuilt instead of silently reused.
+    Provenance is matched on the source media's second-resolution mtime and
+    byte size. A zero timestamp/filesize pair means a legacy MAW cache with no
+    provenance, which is treated as stale so it gets rebuilt instead of
+    silently reused. Matching the size is important for limited test runs:
+    their decoded temporary audio can have the same mtime as the source while
+    containing only the first two minutes.
     """
     try:
         ra = ReaPeaksFile(str(reapeaks_path))
@@ -351,7 +349,7 @@ def _reapeaks_matches_media(reapeaks_path: Path | str, media_path: Path | str) -
         st = Path(media_path).stat()
     except OSError:
         return False
-    return ra.src_timestamp == int(st.st_mtime)
+    return ra.src_timestamp == int(st.st_mtime) and ra.src_filesize == st.st_size
 
 
 def _reapeaks_contains_spectral(reapeaks_path: Path | str) -> bool:
@@ -573,6 +571,8 @@ def generate_for_media(
         media = media_path.stat()
         src = signature_path.stat()
         media_timestamp = int(src.st_mtime)
+        # Keep the decoded media size in the header. A limited test extraction
+        # must not later be accepted as a complete source-media cache.
         media_filesize = media.st_size
         if media_timestamp >= 0x80000000 or media_filesize > 0x7FFFFFFF:
             # 超出 .ReaPeaks 头部 int32 字段范围，无法可靠记录来源，跳过生成。

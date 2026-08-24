@@ -306,6 +306,32 @@ class GenerateReaPeaksTests(unittest.TestCase):
         self.assertTrue(reapeaks.ReaPeaksFile(str(target)).spectral_mipmaps())
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    def test_full_run_rebuilds_cache_created_from_limited_temporary_media(self) -> None:
+        source = self.root / "source.wav"
+        shutil.copy2(self.tone_path, source)
+        limited = self.root / "limited.wav"
+        subprocess_run([
+            "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+            "-y", "-i", str(source), "-t", "0.2", str(limited),
+        ])
+
+        target = source.with_name(source.name + ".ReaPeaks")
+        limited_cache = reapeaks.generate_for_media(
+            limited,
+            source_media_path=source,
+            include_spectral=False,
+        )
+        self.assertEqual(limited_cache, target)
+        limited_count = reapeaks.ReaPeaksFile(str(target)).wave_mipmaps()[0].peak_count
+        self.assertIsNone(reapeaks.load_waveform_payload(source))
+
+        full_cache = reapeaks.generate_for_media(source, include_spectral=False)
+        self.assertEqual(full_cache, target)
+        full_count = reapeaks.ReaPeaksFile(str(target)).wave_mipmaps()[0].peak_count
+        self.assertGreaterEqual(full_count, limited_count)
+        self.assertIsNotNone(reapeaks.load_waveform_payload(source))
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_generate_for_media_handles_non_wav_media(self) -> None:
         mp3 = self.root / "tone.mp3"
         subprocess_run(["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
