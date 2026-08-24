@@ -28,7 +28,9 @@ from maw.gui_platform import asset_path, popen_process_tree, process_group_kwarg
 
 
 RUNTIME_VERSION: Final = "3"
+MOSS_RUNTIME_VERSION: Final = "1"
 PYTHON_VERSION: Final = "3.11"
+MOSS_PYTHON_VERSION: Final = "3.12"
 PYTORCH_INDEX: Final = "https://download.pytorch.org/whl/cu130"
 GENERAL_REQUIREMENTS: Final[tuple[str, ...]] = (
     "accelerate>=1.12",
@@ -37,6 +39,17 @@ GENERAL_REQUIREMENTS: Final[tuple[str, ...]] = (
     "jieba>=0.42",
     "qwen-asr>=0.0.6",
     "requests>=2.28",
+)
+MOSS_REQUIREMENTS: Final[tuple[str, ...]] = (
+    "av>=14.0",
+    "librosa>=0.11.0",
+    "numba>=0.61.0",
+    "packaging>=24.0",
+    "safetensors>=0.6.2",
+    "soundfile>=0.12",
+    "soxr>=0.5",
+    "transformers>=5.6.0,<6.0.0",
+    "moss-transcribe-diarize @ https://github.com/OpenMOSS/MOSS-Transcribe-Diarize/archive/e607537b1b870475e7898969d40b864de8b691b6.zip",
 )
 WINDOWS_TORCH_REQUIREMENTS: Final[tuple[str, ...]] = (
     "torch==2.13.0+cu130",
@@ -92,11 +105,13 @@ def default_app_data_root() -> Path:
     return Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "MAW"
 
 
-def default_runtime_root() -> Path:
+def default_runtime_root(engine: str = "") -> Path:
     override = os.environ.get("MAW_LOCAL_RUNTIME_ROOT", "").strip()
     if override:
-        return Path(override).expanduser().resolve(strict=False)
-    return default_app_data_root() / "local-runtime"
+        base = Path(override).expanduser().resolve(strict=False)
+        return base.with_name(f"{base.name}-moss") if engine.strip().casefold() == "moss" else base
+    suffix = "-moss" if engine.strip().casefold() == "moss" else ""
+    return default_app_data_root() / f"local-runtime{suffix}"
 
 
 def default_model_cache_root() -> Path:
@@ -126,15 +141,16 @@ def model_cache_environment(model_cache_root: str | Path | None = None) -> dict[
     }
 
 
-def runtime_python_path(root: Path | None = None) -> Path:
-    target = root or default_runtime_root()
+def runtime_python_path(root: Path | None = None, *, engine: str = "") -> Path:
+    target = root or default_runtime_root(engine)
     relative = Path("Scripts") / "python.exe" if os.name == "nt" else Path("bin") / "python"
     return target / relative
 
 
-def managed_runtime_status(model_cache_root: str | Path | None = None) -> LocalRuntimeStatus:
-    root = default_runtime_root()
-    python = runtime_python_path(root)
+def managed_runtime_status(model_cache_root: str | Path | None = None, *, engine: str = "") -> LocalRuntimeStatus:
+    is_moss = engine.strip().casefold() == "moss"
+    root = default_runtime_root(engine)
+    python = runtime_python_path(root, engine=engine)
     model_cache = resolve_model_cache_root(model_cache_root)
     manifest_path = root / "runtime.json"
     if not root.exists():
@@ -149,7 +165,8 @@ def managed_runtime_status(model_cache_root: str | Path | None = None) -> LocalR
             "本地运行环境不完整，请点击“修复运行环境”。",
         )
     manifest = _read_manifest(manifest_path)
-    if manifest.get("status") != "ready" or manifest.get("runtimeVersion") != RUNTIME_VERSION:
+    expected_version = MOSS_RUNTIME_VERSION if is_moss else RUNTIME_VERSION
+    if manifest.get("status") != "ready" or manifest.get("runtimeVersion") != expected_version:
         return LocalRuntimeStatus(
             "broken",
             False,
@@ -157,9 +174,9 @@ def managed_runtime_status(model_cache_root: str | Path | None = None) -> LocalR
             str(python),
             str(model_cache),
             "本地运行环境需要修复，请点击“修复运行环境”。",
-            str(manifest.get("runtimeVersion") or RUNTIME_VERSION),
+            str(manifest.get("runtimeVersion") or expected_version),
         )
-    if not _runtime_package_dirs_present(root):
+    if not _runtime_package_dirs_present(root, engine=engine):
         return LocalRuntimeStatus(
             "broken",
             False,
@@ -178,8 +195,8 @@ def managed_runtime_status(model_cache_root: str | Path | None = None) -> LocalR
     )
 
 
-def managed_runtime_python() -> str:
-    status = managed_runtime_status()
+def managed_runtime_python(engine: str = "") -> str:
+    status = managed_runtime_status(engine=engine)
     return status.python_path if status.ready else ""
 
 
@@ -189,11 +206,15 @@ def install_local_runtime(
     cancel_event: Event | None = None,
     repair: bool = False,
     model_cache_root: str | Path | None = None,
+    engine: str = "",
 ) -> LocalRuntimeStatus:
     """Create or repair the user-managed runtime and verify all adapters."""
     emit = on_event or (lambda _message, _percent, _stage: None)
     cancel = cancel_event or Event()
-    root = default_runtime_root()
+    is_moss = engine.strip().casefold() == "moss"
+    runtime_version = MOSS_RUNTIME_VERSION if is_moss else RUNTIME_VERSION
+    python_version = MOSS_PYTHON_VERSION if is_moss else PYTHON_VERSION
+    root = default_runtime_root(engine)
     root.parent.mkdir(parents=True, exist_ok=True)
     uv = _find_uv()
     if uv is None:
@@ -201,15 +222,15 @@ def install_local_runtime(
             "未找到本地运行环境安装器 uv。请使用官方 Windows 打包版，或在开发环境中确保 uv 已加入 PATH。"
         )
 
-    current = managed_runtime_status(model_cache_root)
+    current = managed_runtime_status(model_cache_root, engine=engine)
     if current.ready and not repair:
         emit("本地运行环境已经安装完成。", 100, "ready")
         return current
 
     _check_cancel(cancel)
-    emit("正在准备 Python 运行环境……", 5, "bootstrap")
-    python = runtime_python_path(root)
-    venv_args = [str(uv), "venv", "--python", PYTHON_VERSION, "--allow-existing"]
+    emit("正在准备 MOSS Python 3.12 运行环境……" if is_moss else "正在准备 Python 运行环境……", 5, "bootstrap")
+    python = runtime_python_path(root, engine=engine)
+    venv_args = [str(uv), "venv", "--python", python_version, "--allow-existing"]
     if root.exists() and not python.exists():
         venv_args.append("--clear")
     venv_args.extend(["--prompt", "MAW-local", str(root)])
@@ -218,9 +239,9 @@ def install_local_runtime(
     if not python.exists():
         raise LocalRuntimeError(f"Python 运行环境创建失败：未找到 {python}")
 
-    emit("正在安装本地 ASR 依赖（Torch、FunASR、QwenASR）……", 25, "dependencies")
+    emit("正在安装 MOSS 本地依赖（Transformers 5.x、Torch）……" if is_moss else "正在安装本地 ASR 依赖（Torch、FunASR、QwenASR）……", 25, "dependencies")
     requirements = (
-        *GENERAL_REQUIREMENTS,
+        *(MOSS_REQUIREMENTS if is_moss else GENERAL_REQUIREMENTS),
         *(WINDOWS_TORCH_REQUIREMENTS if os.name == "nt" else OTHER_TORCH_REQUIREMENTS),
     )
     install_args = [
@@ -245,19 +266,20 @@ def install_local_runtime(
     _check_cancel(cancel)
 
     emit("正在验证本地模型运行时……", 90, "verify")
-    verify_args = [
-        str(python),
-        "-c",
-        "from funasr import AutoModel; from qwen_asr import Qwen3ASRModel; import jieba, torch, torchaudio; print('MAW_LOCAL_RUNTIME_READY')",
-    ]
+    verify_imports = (
+        "from moss_transcribe_diarize import parse_transcript; import transformers, torch, torchaudio; print('MAW_LOCAL_RUNTIME_READY')"
+        if is_moss else
+        "from funasr import AutoModel; from qwen_asr import Qwen3ASRModel; import jieba, torch, torchaudio; print('MAW_LOCAL_RUNTIME_READY')"
+    )
+    verify_args = [str(python), "-c", verify_imports]
     _run_process(verify_args, env=_runtime_env(model_cache_root), cancel=cancel, on_line=lambda line: emit(line, 94, "verify"))
     _check_cancel(cancel)
-    _write_manifest(root, {"status": "ready", "runtimeVersion": RUNTIME_VERSION, "pythonVersion": PYTHON_VERSION, "installedAt": int(time.time())})
+    _write_manifest(root, {"status": "ready", "runtimeVersion": runtime_version, "pythonVersion": python_version, "installedAt": int(time.time())})
     cache_environment = model_cache_environment(model_cache_root)
     for path in (resolve_model_cache_root(model_cache_root), Path(cache_environment["HF_HUB_CACHE"]), Path(cache_environment["MODELSCOPE_CACHE"])):
         path.mkdir(parents=True, exist_ok=True)
-    emit("本地运行环境已安装完成。现在可以下载模型。", 100, "ready")
-    return managed_runtime_status(model_cache_root)
+    emit("MOSS 本地运行环境已安装完成。现在可以下载模型。" if is_moss else "本地运行环境已安装完成。现在可以下载模型。", 100, "ready")
+    return managed_runtime_status(model_cache_root, engine=engine)
 
 
 def prepare_model_in_runtime(
@@ -276,7 +298,7 @@ def prepare_model_in_runtime(
     cancel_event: Event | None = None,
 ) -> int:
     """Run the model loader in the managed environment, not inside MAW.exe."""
-    status = managed_runtime_status(model_cache_root)
+    status = managed_runtime_status(model_cache_root, engine=engine)
     if not status.ready:
         raise LocalRuntimeError("本地模型运行时尚未安装，请先安装本地模型支持。")
     helper = _runtime_bundle_path("maw/local_runtime_worker.py")
@@ -395,7 +417,7 @@ def _uv_line(emit: RuntimeEvent, percent: int, stage: str) -> Callable[[str], No
 def _dependency_line(emit: RuntimeEvent) -> Callable[[str], None]:
     """Turn uv's package log into a coarse but honest install progress signal."""
     markers = {
-        "accelerate", "funasr", "hf-xet", "jieba", "qwen-asr", "requests", "torch", "torchaudio",
+        "accelerate", "av", "funasr", "hf-xet", "jieba", "librosa", "moss", "qwen-asr", "requests", "torch", "torchaudio", "transformers",
     }
     seen: set[str] = set()
 
@@ -488,12 +510,17 @@ def _read_manifest(path: Path) -> dict[str, object]:
     return dict(value) if isinstance(value, Mapping) else {}
 
 
-def _runtime_package_dirs_present(root: Path) -> bool:
+def _runtime_package_dirs_present(root: Path, *, engine: str = "") -> bool:
     site_packages = root / "Lib" / "site-packages" if os.name == "nt" else root / "lib"
     if os.name != "nt":
         candidates = list(site_packages.glob("python*/site-packages"))
         site_packages = candidates[0] if candidates else site_packages
-    return all((site_packages / name).exists() for name in ("funasr", "qwen_asr", "jieba", "torch", "torchaudio"))
+    required = (
+        ("moss_transcribe_diarize", "transformers", "torch", "torchaudio")
+        if engine.strip().casefold() == "moss"
+        else ("funasr", "qwen_asr", "jieba", "torch", "torchaudio")
+    )
+    return all((site_packages / name).exists() for name in required)
 
 
 def _write_manifest(root: Path, values: Mapping[str, object]) -> None:
