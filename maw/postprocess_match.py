@@ -18,6 +18,7 @@ from maw.project_preview import JsonDict
 
 SCRIPT_EXTENSIONS = frozenset({".txt", ".md", ".markdown"})
 MIN_MATCH_COVERAGE = 0.55
+DEFAULT_SPLIT_PUNCTUATION = frozenset({"，", "。", ",", ".", "\n"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +29,8 @@ class ScriptMatchRequest:
     output_mode: OutputMode
     output_directory: Path | None = None
     media_path: Path | None = None
+    extra_split_punctuation: tuple[str, ...] = ()
+    preserve_punctuation: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +56,17 @@ class _NormalizedText:
 def run_script_match(request: ScriptMatchRequest) -> SubtitleArtifact:
     project, source_project, source_srt = _load_input(request.project_path, request.srt_path)
     script_path, script_text = _read_script(request.script_path)
-    matched, warnings = _match_project(project, script_text)
+    prepared_script, punctuation_warning = prepare_script_text(
+        script_text,
+        request.extra_split_punctuation,
+        request.preserve_punctuation,
+    )
+    matched, warnings = _match_project(
+        project,
+        prepared_script,
+        DEFAULT_SPLIT_PUNCTUATION | frozenset(request.extra_split_punctuation),
+        DEFAULT_SPLIT_PUNCTUATION | frozenset(request.preserve_punctuation),
+    )
     return write_artifacts(
         matched,
         source_project_path=source_project,
@@ -61,18 +74,44 @@ def run_script_match(request: ScriptMatchRequest) -> SubtitleArtifact:
         operation="matched",
         write_project=request.output_mode in {OutputMode.JSON, OutputMode.BOTH},
         write_srt=request.output_mode in {OutputMode.SRT, OutputMode.BOTH},
-        warnings=(f"文稿来源：{script_path}", *warnings),
+        warnings=(f"文稿来源：{script_path}", punctuation_warning, *warnings),
         output_directory=request.output_directory,
         media_path=request.media_path,
     )
 
 
-def _match_project(project: JsonDict, script_text: str) -> tuple[JsonDict, tuple[str, ...]]:
+def prepare_script_text(
+    script_text: str,
+    extra_split_punctuation: tuple[str, ...] = (),
+    preserve_punctuation: tuple[str, ...] = (),
+) -> tuple[str, str]:
+    """Validate and apply custom manuscript punctuation before matching."""
+
+    split_symbols = tuple(symbol for symbol in extra_split_punctuation if symbol)
+    preserve_symbols = tuple(symbol for symbol in preserve_punctuation if symbol)
+    missing = tuple(symbol for symbol in preserve_symbols if symbol not in split_symbols)
+    if missing:
+        raise ValueError(
+            "保留符号必须来自额外断句符号：" + "、".join(missing)
+        )
+    if not split_symbols:
+        return script_text, "未配置额外断句符号。"
+    return script_text, f"额外断句符号：{len(split_symbols)} 个；保留：{len(preserve_symbols)} 个。"
+
+
+def _match_project(
+    project: JsonDict,
+    script_text: str,
+    split_punctuation: frozenset[str] = DEFAULT_SPLIT_PUNCTUATION,
+    preserve_punctuation: frozenset[str] = frozenset(),
+) -> tuple[JsonDict, tuple[str, ...]]:
     segments = project.get("segments")
     if not isinstance(segments, list):
         raise ValueError("project segments must be an array")
 
-    script = _normalize_text(script_text)
+    punctuation_segments = _split_script_segments(script_text, split_punctuation, preserve_punctuation)
+    alignment_text = "".join(punctuation_segments) if punctuation_segments else script_text
+    script = _normalize_text(alignment_text)
     source_parts: list[str] = []
     spans: list[_CueSpan] = []
     offset = 0
@@ -110,7 +149,7 @@ def _match_project(project: JsonDict, script_text: str) -> tuple[JsonDict, tuple
     result_segments = result["segments"]
     unmatched = 0
     changed = 0
-    for span in spans:
+    for span_index, span in enumerate(spans):
         script_start = _map_boundary(span.normalized_start, boundaries)
         script_end = _map_boundary(span.normalized_end, boundaries)
         script_start, script_end = sorted((script_start, script_end))
@@ -121,7 +160,11 @@ def _match_project(project: JsonDict, script_text: str) -> tuple[JsonDict, tuple
         original_text = source_segment.get("text")
         if not isinstance(original_text, str):
             continue
-        replacement = _slice_normalized(script_text, script, script_start, script_end)
+        replacement = (
+            punctuation_segments[span_index]
+            if len(punctuation_segments) == len(spans)
+            else _slice_normalized(alignment_text, script, script_start, script_end)
+        )
         if not replacement:
             unmatched += 1
             continue
@@ -149,6 +192,38 @@ def _match_project(project: JsonDict, script_text: str) -> tuple[JsonDict, tuple
     if disabled_count:
         warnings.append(f"已保留 {disabled_count} 个 disabled 字幕段，未参与文稿匹配。")
     return normalize_project(result), tuple(warnings)
+
+
+def _split_script_segments(
+    text: str,
+    punctuation: frozenset[str],
+    preserve_punctuation: frozenset[str],
+) -> tuple[str, ...]:
+    """Split a manuscript at configured symbols while keeping selected marks."""
+
+    if not punctuation:
+        return ()
+    segments: list[str] = []
+    current: list[str] = []
+    symbols = tuple(sorted(punctuation, key=len, reverse=True))
+    index = 0
+    while index < len(text):
+        symbol = next((candidate for candidate in symbols if text.startswith(candidate, index)), "")
+        if symbol:
+            if symbol in preserve_punctuation:
+                current.append(symbol)
+            value = "".join(current).strip()
+            if _normalize_text(value).value:
+                segments.append(value)
+            current = []
+            index += len(symbol)
+            continue
+        current.append(text[index])
+        index += 1
+    value = "".join(current).strip()
+    if _normalize_text(value).value:
+        segments.append(value)
+    return tuple(segments)
 
 
 def _alignment_boundaries(
