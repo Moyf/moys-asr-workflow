@@ -1409,9 +1409,10 @@ class LauncherApi:
         model_cache_root = effective_config(self.paths.env_path).model_cache_root
         selected_id = str((payload or {}).get("modelId") or "")
         selected_path = str((payload or {}).get("modelPath") or "").strip()
+        selected_model = next((item for item in provider.models if item.id == selected_id), provider.models[0])
         return {
             "ok": True,
-            "runtime": managed_runtime_status(model_cache_root).to_payload(),
+            "runtime": managed_runtime_status(model_cache_root, engine=selected_model.engine).to_payload(),
             "models": [
                 _model_payload(
                     model,
@@ -1424,7 +1425,10 @@ class LauncherApi:
 
     def get_local_runtime(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         model_cache_root = effective_config(self.paths.env_path).model_cache_root
-        return {"ok": True, **managed_runtime_status(model_cache_root).to_payload()}
+        requested_model = str((_payload or {}).get("modelId") or "")
+        model = next((item for item in provider_by_id("local").models if item.id == requested_model), None)
+        engine = model.engine if model else ""
+        return {"ok": True, **managed_runtime_status(model_cache_root, engine=engine).to_payload()}
 
     def get_ocr_runtime(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         status = self._ocr_runtime_status()
@@ -1476,11 +1480,14 @@ class LauncherApi:
             return _error_result("model", "local_runtime_install_failed", "本地运行环境正在安装中。")
         repair = bool((payload or {}).get("repair"))
         model_cache_root = effective_config(self.paths.env_path).model_cache_root
+        requested_model = str((payload or {}).get("modelId") or "")
+        model = next((item for item in provider_by_id("local").models if item.id == requested_model), None)
+        engine = model.engine if model else ""
         self.local_runtime_cancel_event = Event()
         self.pump.start()
         self.local_runtime_worker = threading.Thread(
             target=self._local_runtime_main,
-            args=(repair, model_cache_root, self.local_runtime_cancel_event),
+            args=(repair, model_cache_root, engine, self.local_runtime_cancel_event),
             daemon=True,
         )
         self.local_runtime_worker.start()
@@ -1858,6 +1865,7 @@ class LauncherApi:
         self,
         repair: bool,
         model_cache_root: str,
+        engine: str,
         cancel_event: Event,
     ) -> None:
         def on_progress(message: str, percent: int, stage: str) -> None:
@@ -1877,6 +1885,7 @@ class LauncherApi:
                 cancel_event=cancel_event,
                 repair=repair,
                 model_cache_root=model_cache_root,
+                engine=engine,
             )
             if cancel_event.is_set():
                 return
