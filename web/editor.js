@@ -11822,6 +11822,7 @@ function applyCanonicalProject(data, filename) {
   }
   updateGapRemoveUi();
   renderAll({ waveform: 'full' });
+  refreshSubtitlePreview(0, -1);
   updateUnloadedMediaLabel(DATA.media);
   FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
   const jsonEl = document.getElementById('json-name');

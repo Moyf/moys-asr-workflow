@@ -408,6 +408,15 @@ test('only absorbs short subtitles when their adjacent gap is within the thresho
   );
 });
 
+test('absorbs a short subtitle when it is directly adjacent with a zero gap', () => {
+  const segments = [
+    { start: 0, end: 1000, text: '这是个短' },
+    { start: 1000, end: 2000, text: '字幕' },
+  ];
+  const plan = JSON.parse(JSON.stringify(helpers.planAutoMerge(segments, { gapMs: 200, shortCount: 3 })));
+  assert.deepEqual(plan.groups, [[0, 1]]);
+});
+
 test('applies backward snaps by extending the later subtitle start earlier', () => {
   const segments = [
     { start: 0, end: 1000, text: '前一句字幕' },

@@ -1984,10 +1984,16 @@
   .gap-skip-toggle { white-space: nowrap; }
 
   /* 拼接/合并字幕 —— 复用 .gap-remove-panel 家族样式，只补充自有差异 */
-  .auto-merge-panel .gap-remove-fields { row-gap: 12px; }
+  .auto-merge-panel .auto-merge-section { display: grid; gap: 8px; }
+  .auto-merge-panel .auto-merge-section + .auto-merge-section { margin-top: 14px; }
+  .auto-merge-panel .auto-merge-section h4 {
+    margin: 0; padding: 0 2px; color: var(--text-secondary); font-size: 12px; line-height: 1.3;
+    font-weight: 700; letter-spacing: .04em;
+  }
+  .auto-merge-panel .gap-remove-fields { row-gap: 8px; }
   .auto-merge-panel .gap-remove-field { row-gap: 8px; }
   .auto-merge-panel .gap-remove-field small { font-size: 11px; line-height: 1.45; }
-  .auto-merge-absorb-field { margin: 12px 0; }
+  .auto-merge-absorb-field { margin: 0; }
   .auto-merge-absorb-field input[type=checkbox] { justify-self: end; width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
   .auto-merge-panel select {
     justify-self: end; max-width: 120px; padding: 4px 6px;
@@ -3661,50 +3667,52 @@
     <button type="button" id="auto-merge-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭拼接/合并字幕工具窗">×</button>
   </header>
   <div class="gap-remove-panel-body">
-    <div class="gap-remove-parameters-heading">
-      <span>拼接/合并参数</span>
-      <small>直接修改字幕时间轴，整个操作一次撤销</small>
-    </div>
-    <div class="gap-remove-fields">
-      <label class="gap-remove-field">
-        <span class="gap-remove-field-label">间隔阈值</span>
-        <span class="gap-remove-number-control">
-          <input type="number" id="auto-merge-gap-ms" min="0" max="10000" step="50" value="200" inputmode="numeric">
-          <span class="gap-remove-unit">ms</span>
-        </span>
-        <small>将间隔过短的前后字幕直接吸附在一起，去除中间的短暂空白；0 表示不处理</small>
+    <section class="auto-merge-section" aria-labelledby="auto-merge-join-heading">
+      <h4 id="auto-merge-join-heading">拼接字幕</h4>
+      <div class="gap-remove-fields">
+        <label class="gap-remove-field">
+          <span class="gap-remove-field-label">间隔阈值</span>
+          <span class="gap-remove-number-control">
+            <input type="number" id="auto-merge-gap-ms" min="0" max="10000" step="50" value="200" inputmode="numeric">
+            <span class="gap-remove-unit">ms</span>
+          </span>
+          <small>将间隔过短的前后字幕直接吸附在一起；0 表示不处理间隔</small>
+        </label>
+        <label class="gap-remove-field">
+          <span class="gap-remove-field-label">吸附方向</span>
+          <select id="auto-merge-snap-direction">
+            <option value="backward" selected>向前吸附</option>
+            <option value="forward">向后吸附</option>
+          </select>
+          <small>向前：后方字幕起点吸附到前方字幕终点；向后：前方字幕终点吸附到后方字幕起点</small>
+        </label>
+      </div>
+    </section>
+    <section class="auto-merge-section" aria-labelledby="auto-merge-absorb-heading">
+      <h4 id="auto-merge-absorb-heading">吸收合并字幕</h4>
+      <label class="gap-remove-field auto-merge-absorb-field" title="关闭后只吸附间隔，不合并任何字幕">
+        <span class="gap-remove-field-label">吸收过短字幕</span>
+        <input type="checkbox" id="auto-merge-absorb-short" checked>
+        <small>过短字幕与相邻字幕间隔在阈值内时吸收，间隔为 0ms 也会生效；关闭后只吸附间隔</small>
       </label>
-      <label class="gap-remove-field">
-        <span class="gap-remove-field-label">吸附方向</span>
-        <select id="auto-merge-snap-direction">
-          <option value="backward" selected>向前吸附</option>
-          <option value="forward">向后吸附</option>
-        </select>
-        <small>向前：后方字幕的起点吸附到前方字幕的终点；向后：前方字幕的终点吸附到后方字幕的起点</small>
-      </label>
-    </div>
-    <label class="gap-remove-field auto-merge-absorb-field" title="关闭后只吸附间隔，不合并任何字幕">
-      <span class="gap-remove-field-label">吸收过短字幕</span>
-      <input type="checkbox" id="auto-merge-absorb-short" checked>
-      <small>过短字幕也必须与相邻字幕间隔在上方阈值内才会吸收；关闭后只吸附间隔</small>
-    </label>
-    <div class="gap-remove-fields">
-      <label class="gap-remove-field">
-        <span class="gap-remove-field-label">短字幕阈值</span>
-        <span class="gap-remove-number-control">
-          <input type="number" id="auto-merge-short-count" min="1" max="20" step="1" value="3" inputmode="numeric">
-        </span>
-        <small>中文少于 N 个字 / 英文少于 N 个词即视为过短字幕</small>
-      </label>
-      <label class="gap-remove-field">
-        <span class="gap-remove-field-label">吸收方向</span>
-        <select id="auto-merge-absorb-direction">
-          <option value="previous" selected>向前吸收</option>
-          <option value="next">向后吸收</option>
-        </select>
-        <small>向前：过短字幕并入上一条；向后：并入下一条</small>
-      </label>
-    </div>
+      <div class="gap-remove-fields">
+        <label class="gap-remove-field">
+          <span class="gap-remove-field-label">短字幕阈值</span>
+          <span class="gap-remove-number-control">
+            <input type="number" id="auto-merge-short-count" min="1" max="20" step="1" value="3" inputmode="numeric">
+          </span>
+          <small>中文少于 N 个字 / 英文少于 N 个词即视为过短字幕</small>
+        </label>
+        <label class="gap-remove-field">
+          <span class="gap-remove-field-label">吸收方向</span>
+          <select id="auto-merge-absorb-direction">
+            <option value="previous" selected>向前吸收</option>
+            <option value="next">向后吸收</option>
+          </select>
+          <small>向前：过短字幕并入上一条；向后：并入下一条</small>
+        </label>
+      </div>
+    </section>
     <button type="button" id="auto-merge-run" class="gap-remove-scan">
       <span>拼接/合并字幕</span>
       <small>按当前参数处理整段工程</small>
@@ -5017,7 +5025,7 @@
   //   snapDirection 'forward'（向后拓展）把前方字幕 end 后延到后一条 start。
   // - groups: [[idx, ...]]，过短字幕的合并组；absorbDirection 'previous'（向前吸收，
   //   默认）并入上一条、'next'（向后吸收）并入下一条；absorbShort 为 false 时不合并。
-  //   吸收同样要求两条字幕的实际间隔在 (0, gapMs] 内；禁用项或 speaker 不一致的组合不合并。
+  //   吸收同样要求两条字幕的实际间隔在 [0, gapMs] 内；禁用项或 speaker 不一致的组合不合并。
   function planAutoMerge(segments, options = {}) {
     const gapMs = Math.max(0, Math.round(Number(options.gapMs) || 0));
     const snapDirection = options.snapDirection === 'forward' ? 'forward' : 'backward';
@@ -5043,7 +5051,7 @@
       if (left.disabled || right.disabled) return false;
       if (!Number.isFinite(left.end) || !Number.isFinite(right.start)) return false;
       const gap = right.start - left.end;
-      if (gap <= 0 || gap > gapMs) return false;
+      if (gap < 0 || gap > gapMs) return false;
       return (left.speaker ?? null) === (right.speaker ?? null);
     };
     const groups = [];
@@ -25059,6 +25067,7 @@ function applyCanonicalProject(data, filename) {
   }
   updateGapRemoveUi();
   renderAll({ waveform: 'full' });
+  refreshSubtitlePreview(0, -1);
   updateUnloadedMediaLabel(DATA.media);
   FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
   const jsonEl = document.getElementById('json-name');

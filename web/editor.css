@@ -1967,10 +1967,16 @@
   .gap-skip-toggle { white-space: nowrap; }
 
   /* 拼接/合并字幕 —— 复用 .gap-remove-panel 家族样式，只补充自有差异 */
-  .auto-merge-panel .gap-remove-fields { row-gap: 12px; }
+  .auto-merge-panel .auto-merge-section { display: grid; gap: 8px; }
+  .auto-merge-panel .auto-merge-section + .auto-merge-section { margin-top: 14px; }
+  .auto-merge-panel .auto-merge-section h4 {
+    margin: 0; padding: 0 2px; color: var(--text-secondary); font-size: 12px; line-height: 1.3;
+    font-weight: 700; letter-spacing: .04em;
+  }
+  .auto-merge-panel .gap-remove-fields { row-gap: 8px; }
   .auto-merge-panel .gap-remove-field { row-gap: 8px; }
   .auto-merge-panel .gap-remove-field small { font-size: 11px; line-height: 1.45; }
-  .auto-merge-absorb-field { margin: 12px 0; }
+  .auto-merge-absorb-field { margin: 0; }
   .auto-merge-absorb-field input[type=checkbox] { justify-self: end; width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
   .auto-merge-panel select {
     justify-self: end; max-width: 120px; padding: 4px 6px;
