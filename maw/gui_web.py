@@ -23,7 +23,7 @@ from typing import BinaryIO, Final, final
 
 from media_cache import embed_media_caches
 from waveform import is_waveform_payload
-from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, LANGUAGES, MODELS, PROVIDERS, REGIONS, ModelConfig, ProviderConfig, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
+from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, MODELS, PROVIDERS, ModelConfig, ProviderConfig, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
@@ -43,7 +43,6 @@ from maw.postprocess_pipeline import (
     invalidate_llm_verification_if_changed,
     is_llm_verified,
     load_postprocess_plan,
-    postprocess_provider_status,
     run_postprocess_pipeline,
     save_postprocess_plan,
     snapshot_postprocess_llm_settings,
@@ -435,7 +434,8 @@ def download_emoji_font(urls: Sequence[str], dest: Path, timeout: float = 20.0) 
         if not url:
             continue
         try:
-            with urlopen(url, timeout=timeout) as response:  # noqa: S310 - 仅 https 白名单 CDN
+            # URLs are restricted to the HTTPS-only CDN allowlist by the caller.
+            with urlopen(url, timeout=timeout) as response:  # noqa: S310
                 if getattr(response, "status", None) != 200:
                     continue
                 size = 0
@@ -1275,7 +1275,8 @@ class LauncherApi:
                 ffmpeg_path=_postprocess_ffmpeg(self.paths.env_path),
                 ocr_runtime_root=self._ocr_runtime_status().path,
             )
-        except Exception as error:  # noqa: BROAD_EXCEPT_OK - background GUI boundary must unlock the batch controls.
+        # The background GUI boundary must unlock the batch controls after any failure.
+        except Exception as error:  # noqa: BLE001
             self._emit(
                 {
                     "type": "batch_done",
@@ -1586,7 +1587,8 @@ class LauncherApi:
                 self.worker = None
             self.pump.flush()
             return
-        except Exception as error:  # noqa: BROAD_EXCEPT_OK - pywebview worker boundary reports to JS.
+        # The pywebview worker boundary must report every backend failure to JS.
+        except Exception as error:  # noqa: BLE001
             self._emit({"type": "error", "code": "transcription_failed", "detail": str(error)})
             if self.worker is threading.current_thread():
                 self.worker = None
@@ -1896,7 +1898,8 @@ class LauncherApi:
                 "modelId": model.id,
                 "status": local_model_payload(model, model_path, model_cache_root=model_cache_root) | {"status": status.status},
             })
-        except Exception as error:  # noqa: BROAD_EXCEPT_OK - optional runtime boundary.
+        # Optional runtime setup failures are converted into a user-facing status.
+        except Exception as error:  # noqa: BLE001
             if cancel_event.is_set():
                 self._emit({"type": "localPrepareCancelled", "modelId": model.id})
             else:

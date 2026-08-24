@@ -39,6 +39,7 @@ from generate_subtitle_qwen_api import (
     is_cjk_char,
     split_segments_auto,
 )
+# Re-exported for the Soniox CLI and existing callers of ``maw.soniox``.
 from maw.speaker import (
     SPEAKER_COLOR_PALETTE,
     apply_speaker_colors,
