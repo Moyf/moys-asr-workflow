@@ -4,6 +4,7 @@
 
 ## [Unreleased]
 
+- 新增腾讯云「录音文件识别」供应商：使用 TC3-HMAC-SHA256 鉴权、异步任务轮询和结构化毫秒时间戳，支持 `16k_zh_en_2.0` 引擎；5MB 以上媒体可通过 COS / 公网 URL 识别。
 - PR #42：编辑器新增表情包 OTIOZ 导出；server-editor 会将 `content.otio`、`version.txt` 和图片素材 `media/*` 打包为 zip，支持原始时间线与移除静音空隙后的时间线，非服务器模式下按钮会灰显并提示原因。
 - PR #56：新增实验性的 Premiere FCP 7 XML 交接导出，支持去空隙 / 原始时间线、可选原生 GraphicAndType 字幕文本、贴图素材路径和扩展字幕轨导出；贴图 head 记录可选原始 `width` / `height`，缺失或无法读取时使用兼容默认值。Premiere 图片自动重链和字体显示仍需实机确认。
 - Launcher 现支持批量转写：可一次加入多个音频或视频文件，按顺序执行转写，并为每个文件生成独立的 SRT、`.mosp`
