@@ -4,7 +4,7 @@
 
 ## 0. 安装依赖
 
-如果使用 GitHub Releases 提供的 Windows 或 macOS 图形版，Python 与 uv 已由应用打包，不需要单独安装；普通版的 `ffmpeg` 和 `ffprobe` 仍是外部依赖，`MAWxFF` 版已经随包提供。Windows 解压后双击 `MAW.exe`；macOS 解压后打开 `MAW.app`。Launcher 默认启动 Server 版编辑器，右侧菜单可打开工程 HTML 编辑器或空白 HTML 编辑器；MOSE 桌面版暂不随 Release 分发。
+如果使用 GitHub Releases 提供的 Windows 或 macOS 图形版，Python、uv、FFmpeg 与 ffprobe 已由默认 `MAW` 包打包，不需要单独安装；体积更小的 `MAW-lite` 包不包含 FFmpeg，需要系统已安装并可在 PATH 中找到 `ffmpeg` 和 `ffprobe`。Windows 解压后双击 `MAW.exe`；macOS 解压后打开 `MAW.app` 或 `MAW-lite.app`。Launcher 默认启动 Server 版编辑器，右侧菜单可打开工程 HTML 编辑器或空白 HTML 编辑器；MOSE 桌面版暂不随 Release 分发。
 
 源码方式继续按下列步骤安装：
 

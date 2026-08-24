@@ -27,7 +27,8 @@ class ReleaseNotesTests(unittest.TestCase):
         notes = build_release_notes("## [1.0.0] - today\n\n### ✨ 新增\n\n- feature\n", "v1.0.0")
 
         self.assertIn("## 下载哪个版本？", notes)
-        self.assertIn("如果你不知道 `FFMpeg` 是什么", notes)
+        self.assertIn("默认下载 `MAW`", notes)
+        self.assertIn("MAW-lite", notes)
         self.assertNotIn("### 📦", notes)
         self.assertIn("## 如何使用", notes)
         self.assertIn("1. 下载安装包后解压", notes)
