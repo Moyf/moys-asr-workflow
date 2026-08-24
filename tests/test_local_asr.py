@@ -11,6 +11,9 @@ from generate_subtitle_qwen_api import extract_audio
 from generate_subtitle_local import build_parser, default_output_path, load_hotword_files
 from maw.local_asr import (
     FUNASR_DEFAULT_MODEL,
+    MOSS_DEFAULT_MODEL,
+    MOSS_DEFAULT_REVISION,
+    MOSS_MAX_NEW_TOKENS,
     QWEN_DEFAULT_CHUNK_SECONDS,
     QWEN_DEFAULT_FORCED_ALIGNER,
     QWEN_DEFAULT_MODEL,
@@ -269,6 +272,61 @@ class LocalAsrFlowTests(unittest.TestCase):
         self.assertEqual(nano.vad_model, "fsmn-vad")
         self.assertEqual(nano.vad_max_single_segment_time, 30000)
 
+    def test_engine_factory_supports_moss(self) -> None:
+        moss = create_local_engine("moss")
+
+        self.assertEqual(moss.model, MOSS_DEFAULT_MODEL)
+
+    def test_moss_default_revision_is_pinned(self) -> None:
+        self.assertRegex(MOSS_DEFAULT_REVISION, r"^[0-9a-f]{40}$")
+
+    def test_moss_transcript_is_normalized_to_speaker_segments(self) -> None:
+        class FakeModel:
+            def parameters(self):
+                return iter([SimpleNamespace(device="cpu", dtype="float32")])
+
+        engine = create_local_engine("moss")
+        engine._runtime = (FakeModel(), object(), {})
+        parsed = [
+            SimpleNamespace(start=0.5, end=1.25, speaker="S01", text="你好"),
+            SimpleNamespace(start=1.5, end=2.0, speaker="S02", text="世界"),
+        ]
+        with mock.patch("maw.local_asr.get_duration_sec", return_value=2.0):
+            with mock.patch.dict("sys.modules", {
+                "moss_transcribe_diarize": SimpleNamespace(parse_transcript=mock.Mock(return_value=parsed)),
+                "moss_transcribe_diarize.inference_utils": SimpleNamespace(
+                    build_transcription_messages=mock.Mock(return_value=[]),
+                    generate_transcription=mock.Mock(return_value={"text": "raw"}),
+                ),
+            }):
+                with mock.patch("maw.local_asr.MossDiarizeEngine._load", return_value=engine._runtime):
+                    result = engine.transcribe(Path("sample.wav"))
+
+        self.assertEqual([(item["start"], item["end"]) for item in result.items], [(500, 1250), (1500, 2000)])
+        self.assertEqual([segment["speaker"] for segment in result.segments], ["S01", "S02"])
+
+    def test_moss_warns_when_generation_reaches_output_limit(self) -> None:
+        class FakeModel:
+            def parameters(self):
+                return iter([SimpleNamespace(device="cpu", dtype="float32")])
+
+        engine = create_local_engine("moss")
+        engine._runtime = (FakeModel(), object(), {})
+        events: list[str] = []
+        with mock.patch("maw.local_asr.get_duration_sec", return_value=2.0):
+            with mock.patch.dict("sys.modules", {
+                "moss_transcribe_diarize": SimpleNamespace(parse_transcript=lambda _text: []),
+                "moss_transcribe_diarize.inference_utils": SimpleNamespace(
+                    build_transcription_messages=lambda _path: [],
+                    generate_transcription=lambda *_args, **_kwargs: {
+                        "text": "", "generated_tokens": MOSS_MAX_NEW_TOKENS,
+                    },
+                ),
+            }):
+                engine.transcribe(Path("sample.wav"), on_event=events.append)
+
+        self.assertTrue(any("达到最大 token 数" in event for event in events))
+
     def test_sensevoice_requests_sentence_timestamps_and_preserves_cues(self) -> None:
         class FakeRuntime:
             def generate(self, **kwargs):
@@ -359,6 +417,8 @@ class LocalAsrFlowTests(unittest.TestCase):
         path = default_output_path(Path("D:/media/sample.mp4"), "funasr")
 
         self.assertEqual(path.name, "sample.funasr-local.srt")
+
+        self.assertEqual(default_output_path(Path("D:/media/sample.mp4"), "moss").name, "sample.moss-local.srt")
 
     def test_write_local_outputs_writes_mosp_without_editing_media(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
