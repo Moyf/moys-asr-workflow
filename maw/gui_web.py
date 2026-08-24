@@ -266,7 +266,7 @@ def _find_mose_executable() -> Path | None:
 
 
 def _mose_environment() -> dict[str, str]:
-    """Pass a bundled MAWxFF directory to MOSE when the two apps are siblings."""
+    """Pass the bundled MAW FFmpeg directory to MOSE when the apps are siblings."""
     environment = os.environ.copy()
     bundled_directory = _bundled_ffmpeg_directory()
     if bundled_directory is not None:
