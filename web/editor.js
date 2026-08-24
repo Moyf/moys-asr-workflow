@@ -6,6 +6,45 @@ let STICKER_URL_PREFIX = __STICKER_URL_PREFIX_JSON__;
 const SERVER_CONFIG = __SERVER_CONFIG_JSON__;
 const NINJA_SFX_BASE_URL = __NINJA_SFX_BASE_URL_JSON__;
 
+const MAWE_DEBUG_ENABLED = Boolean(
+  SERVER_CONFIG?.debug || new URLSearchParams(window.location.search).has('mawe-debug'),
+);
+function maweDebug(stage, details = {}) {
+  if (MAWE_DEBUG_ENABLED) console.debug(`[MAWE][${stage}]`, details);
+}
+function maweDomContractCheck() {
+  const requiredIds = [
+    'player', 'player-empty', 'cues-container', 'cues-empty', 'filter-over',
+    'hide-disabled-toggle', 'waveform-scroll', 'waveform-content',
+  ];
+  const missing = requiredIds.filter((id) => !document.getElementById(id));
+  if (missing.length) {
+    console.error('[MAWE][boot] editor DOM contract is incomplete', { missing });
+  }
+  maweDebug('boot:dom-contract', { checked: requiredIds.length, missing });
+  return missing;
+}
+window.addEventListener('error', (event) => {
+  const details = {
+    message: event.message,
+    source: event.filename,
+    line: event.lineno,
+    column: event.colno,
+    stack: event.error?.stack || null,
+  };
+  window.MAWE_DEBUG_ERRORS = [...(window.MAWE_DEBUG_ERRORS || []), details];
+  console.error('[MAWE][runtime] uncaught error', details);
+});
+window.addEventListener('unhandledrejection', (event) => {
+  window.MAWE_DEBUG_ERRORS = [...(window.MAWE_DEBUG_ERRORS || []), {
+    message: String(event.reason), stack: event.reason?.stack || null,
+  }];
+  console.error('[MAWE][runtime] unhandled rejection', event.reason);
+});
+if (!window.AsrEditorUtils) {
+  console.error('[MAWE][boot] AsrEditorUtils is unavailable; editor scripts are incomplete or out of order');
+}
+
 const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
 const EDITOR_SETTINGS_UTILS = window.AsrEditorUtils;
 const MULTI_SUBTITLE_TOLERANCE_MS = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_TOLERANCE_MS || 300;
@@ -13,6 +52,7 @@ const MULTI_SUBTITLE_MERGE_OVERLAP_TOLERANCE_MS = 500;
 const SUBTITLE_MIN_DURATION_MS = 100;
 const MULTI_SUBTITLE_IMPORT_PROMPT = '是否选择导入第二条字幕以开启多重字幕模式？';
 const MULTI_SUBTITLE_TOGGLE_TITLE = '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。';
+maweDomContractCheck();
 let normalizedMultiSubtitleReference = null;
 let pendingSrtImportAsExtension = false;
 
@@ -2188,7 +2228,7 @@ cueListCharcountThresholdInput?.addEventListener('change', () => {
 bindCueEditorDisplayToggle(cueEditorShowNavigationToggle, 'cueEditorShowNavigation');
 bindCueEditorDisplayToggle(cueEditorShowTimeActionsToggle, 'cueEditorShowTimeActions');
 bindCueEditorDisplayToggle(cueEditorShowStickerToggle, 'cueEditorShowSticker');
-exportStartAtZeroToggle.addEventListener('change', () => {
+exportStartAtZeroToggle?.addEventListener('change', () => {
   updateEditorSettings({ exportStartAtZero: exportStartAtZeroToggle.checked });
 });
 selectGroupMembersToggle?.addEventListener('change', () => {
@@ -2942,7 +2982,7 @@ gapRemoveClearAllButton?.addEventListener('click', clearAllGaps);
 gapRemoveCloseButton?.addEventListener('click', closeGapRemovePanel);
 gapRemoveOperationMode?.addEventListener('change', () => {
   const state = getGapRemoveData(true);
-  const nextMode = GAP_REMOVE_OPERATION_MODES.has(gapRemoveOperationMode.value)
+  const nextMode = ['none', 'boundary_drag', 'middle_drag'].includes(gapRemoveOperationMode.value)
     ? gapRemoveOperationMode.value : DEFAULT_GAP_REMOVE_OPERATION_MODE;
   if (state.operation_mode === nextMode) return;
   pushGapRemoveUndo('切换空隙操作方式');
@@ -4481,7 +4521,7 @@ searchEl.addEventListener('input', () => {
   clearTimeout(searchDebounce);
   searchDebounce = setTimeout(() => applySearch(searchEl.value), 100);
 });
-document.getElementById('search-clear').addEventListener('click', () => {
+document.getElementById('search-clear')?.addEventListener('click', () => {
   searchEl.value = '';
   refreshSearchClearVisibility();
   applySearch('');
@@ -7041,6 +7081,8 @@ function scrollCueIntoViewIfNeeded(cueEl, options) {
 
 // === seek ===
 let seekWarned = false;
+let pendingMediaSeekTimeSec = null;
+let autoLoadedMediaReadyNotified = false;
 let cueListPointer = null;
 // 最后一次指针按下所在的编辑区域：cue-list / waveform。
 // Enter（原地编辑 vs 聚焦字幕编辑区）据此分发；指针坐标由 cueListPointer /
@@ -7711,6 +7753,12 @@ function bindPlayerEvents(mediaElement) {
   if (!mediaElement) return;
   mediaElement.addEventListener('timeupdate', update);
   mediaElement.addEventListener('seeked', update);
+  mediaElement.addEventListener('loadedmetadata', () => {
+    notifyAutoLoadedMediaReady(mediaElement);
+    flushPendingMediaSeek(mediaElement);
+  });
+  mediaElement.addEventListener('canplay', () => flushPendingMediaSeek(mediaElement));
+  mediaElement.addEventListener('progress', () => flushPendingMediaSeek(mediaElement));
   mediaElement.addEventListener('play', () => startPlaybackRefresh(mediaElement));
   mediaElement.addEventListener('playing', () => startPlaybackRefresh(mediaElement));
   mediaElement.addEventListener('pause', () => {
@@ -7734,6 +7782,12 @@ function bindPlayerEvents(mediaElement) {
   }
   ['timeupdate', 'loadedmetadata', 'durationchange', 'play', 'playing', 'pause', 'ended', 'volumechange', 'ratechange', 'emptied']
     .forEach((eventName) => mediaElement.addEventListener(eventName, syncMediaControls));
+  if (mediaElement.readyState >= 1) {
+    queueMicrotask(() => {
+      notifyAutoLoadedMediaReady(mediaElement);
+      flushPendingMediaSeek(mediaElement);
+    });
+  }
   syncMediaControls();
 }
 
@@ -11405,10 +11459,10 @@ async function exportFcp7Xml() {
   }
 }
 
-document.getElementById('download-fcp7-export').addEventListener('click', openFcp7ExportModal);
-fcp7ExportCancel.addEventListener('click', closeFcp7ExportModal);
-fcp7ExportConfirm.addEventListener('click', () => { void exportFcp7Xml(); });
-fcp7ExportModal.addEventListener('click', (event) => {
+document.getElementById('download-fcp7-export')?.addEventListener('click', openFcp7ExportModal);
+fcp7ExportCancel?.addEventListener('click', closeFcp7ExportModal);
+fcp7ExportConfirm?.addEventListener('click', () => { void exportFcp7Xml(); });
+fcp7ExportModal?.addEventListener('click', (event) => {
   if (event.target === fcp7ExportModal) closeFcp7ExportModal();
 });
 document.addEventListener('keydown', (event) => {
@@ -11418,7 +11472,7 @@ document.addEventListener('keydown', (event) => {
   closeFcp7ExportModal();
 }, true);
 
-document.getElementById('download-srt').addEventListener('click', async () => {
+document.getElementById('download-srt')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
     desc: 'SRT 字幕文件', types: { 'text/plain': ['.srt'] }
@@ -11432,20 +11486,20 @@ downloadMultiSrtButton?.addEventListener('click', async () => {
     desc: '扩展字幕 SRT 文件', types: { 'text/plain': ['.srt'] },
   });
 });
-document.getElementById('download-full-srt').addEventListener('click', async () => {
+document.getElementById('download-full-srt')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
     desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
   });
 });
-document.getElementById('download-color-srt').addEventListener('click', () => downloadColorSrts(false));
-document.getElementById('download-plain-text').addEventListener('click', async () => {
+document.getElementById('download-color-srt')?.addEventListener('click', () => downloadColorSrts(false));
+document.getElementById('download-plain-text')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   await downloadFile(window.AsrEditorUtils.buildPlainTextPayload(DATA.segments), `${FILENAME_BASE}.txt`, 'text/plain', {
     desc: '纯文本字幕文件', types: { 'text/plain': ['.txt'] }
   });
 });
-document.getElementById('download-json').addEventListener('click', async () => {
+document.getElementById('download-json')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   await downloadFile(buildJson(), `${FILENAME_BASE}.mosp`, 'application/json', {
     desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
@@ -11464,7 +11518,7 @@ document.addEventListener('keydown', (event) => {
     void saveCurrentProject();
   }
 });
-document.getElementById('download-resolve-json').addEventListener('click', async () => {
+document.getElementById('download-resolve-json')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildResolveJson();
   if (payload) {
@@ -11526,13 +11580,13 @@ async function exportStickerOtio(kind, buildTimeline, filename, description) {
   }
 }
 
-document.getElementById('download-sticker-otio').addEventListener('click', () => {
+document.getElementById('download-sticker-otio')?.addEventListener('click', () => {
   if (stickerExportBlocked('download-sticker-otio')) return;
   exportStickerOtio(
     'stickers', buildStickerOtio, `${FILENAME_BASE}_stickers.otio`, 'OTIO 工程文件'
   );
 });
-document.getElementById('download-gap-removed-srt').addEventListener('click', async () => {
+document.getElementById('download-gap-removed-srt')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedSrt();
   if (payload) {
@@ -11541,8 +11595,8 @@ document.getElementById('download-gap-removed-srt').addEventListener('click', as
     });
   }
 });
-document.getElementById('download-gap-removed-color-srt').addEventListener('click', () => downloadColorSrts(true));
-document.getElementById('download-gap-removed-otio').addEventListener('click', async () => {
+document.getElementById('download-gap-removed-color-srt')?.addEventListener('click', () => downloadColorSrts(true));
+document.getElementById('download-gap-removed-otio')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedOtio();
   if (payload) {
@@ -11551,7 +11605,7 @@ document.getElementById('download-gap-removed-otio').addEventListener('click', a
     });
   }
 });
-document.getElementById('download-gap-removed-ffconcat').addEventListener('click', async () => {
+document.getElementById('download-gap-removed-ffconcat')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedFfconcat();
   if (payload) {
@@ -11560,7 +11614,7 @@ document.getElementById('download-gap-removed-ffconcat').addEventListener('click
     });
   }
 });
-document.getElementById('download-gap-removed-regions-json').addEventListener('click', async () => {
+document.getElementById('download-gap-removed-regions-json')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedRegionsJson();
   if (payload) {
@@ -11569,14 +11623,14 @@ document.getElementById('download-gap-removed-regions-json').addEventListener('c
     });
   }
 });
-document.getElementById('download-gap-removed-sticker-otio').addEventListener('click', async () => {
+document.getElementById('download-gap-removed-sticker-otio')?.addEventListener('click', async () => {
   if (stickerExportBlocked('download-gap-removed-sticker-otio')) return;
   await exportStickerOtio(
     'gap-removed-stickers', buildGapRemovedStickerOtio,
     `${FILENAME_BASE}_gap-removed-stickers.otio`, '去空隙表情包 OTIO 工程'
   );
 });
-document.getElementById('download-gap-removed-sticker-otioz').addEventListener('click', async () => {
+document.getElementById('download-gap-removed-sticker-otioz')?.addEventListener('click', async () => {
   if (stickerExportBlocked('download-gap-removed-sticker-otioz')) return;
   const removed = getRemovedGapRanges();
   if (!removed.length) {
@@ -11589,7 +11643,7 @@ document.getElementById('download-gap-removed-sticker-otioz').addEventListener('
     `${FILENAME_BASE}_gap-removed-stickers.otioz`, '去空隙表情包 OTIOZ 工程'
   );
 });
-document.getElementById('download-sticker-otioz').addEventListener('click', async () => {
+document.getElementById('download-sticker-otioz')?.addEventListener('click', async () => {
   if (stickerExportBlocked('download-sticker-otioz')) return;
   await exportStickerOtoz(
     'stickers', buildStickerOtio,
@@ -11710,6 +11764,8 @@ function resetLoadedMedia() {
   player = emptyPlayer;
   bindPlayerEvents(player);
   seekWarned = false;
+  pendingMediaSeekTimeSec = null;
+  autoLoadedMediaReadyNotified = false;
   waveformEditor?.attachPlayer(player);
   syncPlayerPlaceholder();
 }
@@ -12284,13 +12340,13 @@ async function openProjectFile(file, options = {}) {
   }
 }
 
-document.getElementById('new-project').addEventListener('click', async () => {
+document.getElementById('new-project')?.addEventListener('click', async () => {
   if (hasUnsavedProjectChanges()
       && !confirm('当前有未保存的改动，是否确定新建工程？将丢失未保存内容。')) return;
   await createProjectCheckpoint(buildBlankProject(), suggestedProjectName());
 });
 
-document.getElementById('open-project').addEventListener('click', () => {
+document.getElementById('open-project')?.addEventListener('click', () => {
   if (hasUnsavedProjectChanges()) {
     if (!confirm('当前有未保存的改动，是否确定打开新工程？将丢失未保存内容。')) return;
   }
@@ -12310,12 +12366,12 @@ openProjectFileInput.addEventListener('change', async (e) => {
 // === 加载媒体 ===
 // 通过浏览器文件选择器选本地媒体（视频/音频），用 blob URL 替换播放器源。
 // 如果媒体类型与当前播放器标签不一致（video<->audio），会原地替换整个 <video>/<audio> 元素。
-document.getElementById('load-media').addEventListener('click', () => {
+document.getElementById('load-media')?.addEventListener('click', () => {
   pendingProjectMediaSelection = null;
   loadMediaFileInput.value = '';
   loadMediaFileInput.click();
 });
-document.getElementById('load-srt').addEventListener('click', () => {
+document.getElementById('load-srt')?.addEventListener('click', () => {
   pendingSrtImportAsExtension = false;
   if (hasUnsavedProjectChanges()
       && !confirm('当前有未保存的改动，是否确定加载字幕？将替换当前字幕。')) return;
@@ -12511,6 +12567,8 @@ async function loadMediaFile(file) {
     player = newPlayer;
     bindPlayerEvents(player);
     seekWarned = false;  // 新媒体重新探测 seek 能力
+    pendingMediaSeekTimeSec = null;
+    autoLoadedMediaReadyNotified = false;
   }
 
   try {
@@ -12674,7 +12732,7 @@ function setStickerRootModalOpen(open) {
   stickerRootReturnFocus = null;
 }
 
-document.getElementById('sticker-root-confirm').addEventListener('click', () => {
+document.getElementById('sticker-root-confirm')?.addEventListener('click', () => {
   const newRoot = stickerRootInput.value.trim().replace(/\\/g, '/').replace(/\/+$/, '');
   STICKER_ROOT = newRoot;
   updateStickerExportButtons();
@@ -12696,7 +12754,7 @@ if (!stickerRootServerEnabled) {
   stickerRootRead.disabled = true;
 }
 
-document.getElementById('sticker-root-btn').addEventListener('click', () => {
+document.getElementById('sticker-root-btn')?.addEventListener('click', () => {
   stickerRootInput.value = STICKER_ROOT || '';
   setStickerRootStatus(stickerRootServerEnabled
     ? (STICKER_ROOT
@@ -12706,11 +12764,11 @@ document.getElementById('sticker-root-btn').addEventListener('click', () => {
   setStickerRootModalOpen(true);
 });
 
-document.getElementById('sticker-root-cancel').addEventListener('click', () => setStickerRootModalOpen(false));
-stickerRootModal.addEventListener('click', (event) => {
+document.getElementById('sticker-root-cancel')?.addEventListener('click', () => setStickerRootModalOpen(false));
+stickerRootModal?.addEventListener('click', (event) => {
   if (event.target === stickerRootModal) setStickerRootModalOpen(false);
 });
-stickerRootModal.addEventListener('keydown', (event) => {
+stickerRootModal?.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     event.preventDefault();
     setStickerRootModalOpen(false);
@@ -12865,10 +12923,10 @@ function openReplaceModal(scope) {
   updatePreview();
 }
 
-document.getElementById('replace-btn').addEventListener('click', () => openReplaceModal(null));
-document.getElementById('replace-cancel').addEventListener('click', () => replaceModal.classList.remove('show'));
+document.getElementById('replace-btn')?.addEventListener('click', () => openReplaceModal(null));
+document.getElementById('replace-cancel')?.addEventListener('click', () => replaceModal.classList.remove('show'));
 replaceModal.addEventListener('click', (e) => { if (e.target === replaceModal) replaceModal.classList.remove('show'); });
-document.getElementById('replace-confirm').addEventListener('click', () => {
+document.getElementById('replace-confirm')?.addEventListener('click', () => {
   const re = buildReplaceRegex();
   if (!re || re.error) return;
   const repl = replaceInput.value;
@@ -12982,12 +13040,12 @@ function clearStickerOnTargets() {
   flashHint('已清除', 'success');
 }
 
-document.getElementById('sticker-filter').addEventListener('input', (e) => {
+document.getElementById('sticker-filter')?.addEventListener('input', (e) => {
   renderStickerGrid(e.target.value);
 });
-document.getElementById('sticker-cancel').addEventListener('click', () => stickerModal.classList.remove('show'));
-document.getElementById('sticker-clear').addEventListener('click', clearStickerOnTargets);
-stickerModal.addEventListener('click', (e) => { if (e.target === stickerModal) stickerModal.classList.remove('show'); });
+document.getElementById('sticker-cancel')?.addEventListener('click', () => stickerModal.classList.remove('show'));
+document.getElementById('sticker-clear')?.addEventListener('click', clearStickerOnTargets);
+stickerModal?.addEventListener('click', (e) => { if (e.target === stickerModal) stickerModal.classList.remove('show'); });
 
 // 表情包预览 modal
 let previewIdx = -1;
@@ -12999,9 +13057,9 @@ function openStickerPreview(idx) {
   document.getElementById('sticker-preview-name').textContent = seg.sticker.name;
   stickerPreviewModal.classList.add('show');
 }
-document.getElementById('sticker-preview-close').addEventListener('click', () => stickerPreviewModal.classList.remove('show'));
-stickerPreviewModal.addEventListener('click', (e) => { if (e.target === stickerPreviewModal) stickerPreviewModal.classList.remove('show'); });
-document.getElementById('sticker-preview-delete').addEventListener('click', () => {
+document.getElementById('sticker-preview-close')?.addEventListener('click', () => stickerPreviewModal.classList.remove('show'));
+stickerPreviewModal?.addEventListener('click', (e) => { if (e.target === stickerPreviewModal) stickerPreviewModal.classList.remove('show'); });
+document.getElementById('sticker-preview-delete')?.addEventListener('click', () => {
   if (previewIdx < 0) return;
   // 如果删除的是 head，要把所有引用它的 sticker_ref 也清掉
   removeStickerCascade(previewIdx);
@@ -13018,7 +13076,7 @@ function removeStickerCascade(idx) {
   // 走组拆分：被切除的 idx 后面的同 group ref 自动晋升新 head
   splitGroupsAtCutPoints(new Set([idx]), 'sticker', 'sticker_ref');
 }
-document.getElementById('sticker-preview-replace').addEventListener('click', () => {
+document.getElementById('sticker-preview-replace')?.addEventListener('click', () => {
   if (previewIdx < 0) return;
   stickerPreviewModal.classList.remove('show');
   openStickerPicker([previewIdx], false);
@@ -13976,6 +14034,10 @@ function syncTimelineGroupRanges() {
 function seekFromWaveform(timeSec) {
   const seekableEnd = player.seekable.length ? player.seekable.end(player.seekable.length - 1) : 0;
   if (seekableEnd <= 0 && !seekWarned) {
+    if (player.readyState < 1 || player.networkState === HTMLMediaElement.NETWORK_LOADING) {
+      pendingMediaSeekTimeSec = timeSec;
+      return;
+    }
     seekWarned = true;
     flashHint('媒体尚不可 seek；请等待加载完成或用 file:// 直接打开 HTML', 'warning');
   }
@@ -13988,6 +14050,19 @@ function seekFromWaveform(timeSec) {
   } catch (error) {
     flashHint(`跳转失败：${error.message}`, 'warning');
   }
+}
+
+function notifyAutoLoadedMediaReady(mediaElement) {
+  if (mediaElement !== player || autoLoadedMediaReadyNotified || !SERVER_CONFIG?.autoLoadedMediaName) return;
+  autoLoadedMediaReadyNotified = true;
+  flashHint(`已加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`, 'success');
+}
+
+function flushPendingMediaSeek(mediaElement) {
+  if (mediaElement !== player || pendingMediaSeekTimeSec === null) return;
+  const timeSec = pendingMediaSeekTimeSec;
+  pendingMediaSeekTimeSec = null;
+  seekFromWaveform(timeSec);
 }
 
 function initWaveformEditor() {
@@ -14275,6 +14350,12 @@ window.addEventListener('drop', (e) => {
 // 加载时统一拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
 const repairedGroupReferenceCount = window.AsrEditorUtils.repairGroupReferenceIndices(DATA.segments);
 const repairedTimingCount = normalizeProjectTimings(DATA);
+maweDebug('boot:begin', {
+  server: Boolean(SERVER_CONFIG),
+  segments: Array.isArray(DATA.segments) ? DATA.segments.length : null,
+  media: DATA.media || '',
+  recentProjects: SERVER_CONFIG?.recentProjects?.length || 0,
+});
 cleanPunctuation();
 configureServerSaveControls();
 configureServerAutoSave();
@@ -14303,18 +14384,21 @@ window.MAWE_EDITOR_BRIDGE = Object.freeze({
 });
 window.MAWE?.register('editor-bridge', () => window.MAWE_EDITOR_BRIDGE);
 renderAll({ waveform: 'full' });
+maweDebug('boot:complete', {
+  renderedSegments: container?.querySelectorAll?.('.cue-row')?.length || 0,
+  recentProjectsVisible: recentProjectsEl ? !recentProjectsEl.hidden : false,
+  mediaName: mediaNameEl?.textContent || '',
+  placeholderVisible: playerEmpty ? !playerEmpty.hidden : null,
+});
 updateGapRemoveUi();
 if (repairedTimingCount > 0) {
   flashHint(`已自动修复 ${repairedTimingCount} 处异常时间码（保底 100ms）`, 'warning');
 } else if (repairedGroupReferenceCount > 0) {
   flashHint(`已自动修复 ${repairedGroupReferenceCount} 处分组引用`, 'warning');
 }
-if (SERVER_CONFIG?.autoLoadedMediaName) {
-  flashHint(`已自动加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`, 'success');
-}
 void loadDeferredReapeaks();
 
-document.getElementById('filter-over').addEventListener('click', (e) => {
+document.getElementById('filter-over')?.addEventListener('click', (e) => {
   e.currentTarget.classList.toggle('active');
   if (!e.currentTarget.classList.contains('active')) {
     clearTemporaryVisibleSplitCues();
@@ -14323,7 +14407,7 @@ document.getElementById('filter-over').addEventListener('click', (e) => {
 });
 
 // 「隐藏禁用项」开关：开启后禁用项 display:none，并从选中集移除
-hideDisabledToggle.addEventListener('change', () => {
+hideDisabledToggle?.addEventListener('change', () => {
   hideDisabled = hideDisabledToggle.checked;
   updateEditorSettings({ cueListHideDisabled: hideDisabled });
   container.classList.toggle('hide-disabled', hideDisabled);
