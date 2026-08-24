@@ -1059,6 +1059,24 @@ textarea::placeholder {
   display: block;
 }
 
+.script-preview {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+}
+
+.script-preview pre {
+  max-height: 120px;
+  margin: 6px 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-secondary);
+  font: inherit;
+}
+
 .ghost,
 .primary {
   height: 34px;

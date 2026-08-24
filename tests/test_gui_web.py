@@ -620,6 +620,16 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(output_srt.is_file())
         self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["segments"][0]["text"], "旧句。")
 
+    def test_script_preview_returns_bounded_utf8_text(self) -> None:
+        script = self.root / "preview.txt"
+        script.write_text("甲" * 300, encoding="utf-8")
+
+        result = self.api.read_script_preview({"path": str(script)})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(len(str(result["preview"])), 240)
+        self.assertTrue(result["truncated"])
+
     def test_ocr_dedup_bridge_forwards_video_region_threshold_and_report(self) -> None:
         project = self.root / "clip.mosp"
         video = self.root / "clip.mp4"

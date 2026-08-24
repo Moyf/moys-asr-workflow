@@ -33,7 +33,7 @@ from maw.media import find_ffmpeg, resolve_project_media
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
 from maw.project import normalize_project
 from maw.postprocess_ffmpeg import FfconcatRequest, run_ffconcat_rebuild as process_ffconcat_rebuild
-from maw.postprocess_match import ScriptMatchRequest, run_script_match as process_script_match
+from maw.postprocess_match import SCRIPT_EXTENSIONS, ScriptMatchRequest, run_script_match as process_script_match
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
 from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, preset_by_id, test_llm_connection
 from maw.postprocess_pipeline import (
@@ -801,6 +801,8 @@ class LauncherApi:
                     script_path=script_path,
                     output_mode=_output_mode(payload.get("outputMode")),
                     media_path=_optional_path(payload.get("mediaPath")),
+                    extra_split_punctuation=tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value)),
+                    preserve_punctuation=tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value)),
                 )
             )
             self._emit_postprocess_status("toolbox_status_writing")
@@ -965,6 +967,21 @@ class LauncherApi:
         except (OSError, UnicodeError) as error:
             return _error_result("qwenAudioHotwordsFile", "hotwords_file_missing", str(error))
         return {"ok": True, "path": str(path), "text": text}
+
+    def read_script_preview(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Return a bounded UTF-8 manuscript preview for the Launcher."""
+
+        value = str(payload.get("path") or "").strip()
+        path = Path(value).expanduser()
+        if not value or not path.is_file() or path.suffix.lower() not in SCRIPT_EXTENSIONS:
+            return _error_result("postprocessScriptPath", "script_preview_missing", "文稿文件不存在或格式不支持。")
+        try:
+            text = path.read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeError) as error:
+            return _error_result("postprocessScriptPath", "script_preview_failed", str(error))
+        preview_limit = 240
+        preview = text.replace("\r\n", "\n").replace("\r", "\n")[:preview_limit]
+        return {"ok": True, "path": str(path), "preview": preview, "truncated": len(text) > preview_limit}
 
     def choose_folder(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         chosen = _folder_dialog()
