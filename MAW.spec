@@ -100,6 +100,7 @@ excluded_local_modules = [
     "torch",
     "torchaudio",
     "transformers",
+    "moss_transcribe_diarize",
 ]
 
 a = Analysis(
