@@ -35,13 +35,13 @@ from typing import NotRequired, TypedDict
 
 from maw.project import ProjectValidationFailed, normalize_project
 from maw.media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS
-from waveform import (
+from maw.waveform import (
     DEFAULT_PEAKS_PER_SECOND,
     WaveformError,
     load_or_extract_waveform,
 )
 
-import reapeaks_io as reapeaks
+from maw import reapeaks
 
 VIDEO_EXTS = set(VIDEO_EXTENSIONS)
 AUDIO_EXTS = set(AUDIO_EXTENSIONS)
@@ -391,7 +391,7 @@ def main():
                 break
 
     if not media_path or not media_path.exists():
-        print(f"错误: 找不到媒体文件，请用 -m 参数指定")
+        print("错误: 找不到媒体文件，请用 -m 参数指定")
         return 1
 
     if not args.no_waveform:

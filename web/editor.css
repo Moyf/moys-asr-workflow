@@ -1050,6 +1050,8 @@
   }
   .toolbar .dropdown-item:hover { background: var(--accent-tint); color: var(--text-primary); }
   .toolbar .dropdown-item.disabled { opacity: .42; cursor: not-allowed; pointer-events: none; }
+  /* 表情包导出按模式互斥灰显：保留 hover 与 click（title 提示原因、点击给 flashHint 指引） */
+  .toolbar .dropdown-item.sticker-disabled { opacity: .42; cursor: not-allowed; }
   .toolbar .dropdown-separator { height: 1px; margin: 4px 8px; background: var(--border-subtle); }
   .toolbar .recent-project-setting {
     display: flex;

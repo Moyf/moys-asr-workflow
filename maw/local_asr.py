@@ -928,7 +928,7 @@ def write_local_outputs(
         "segments": segments,
     }
     if with_waveform:
-        from media_cache import embed_media_caches
+        from maw.media_cache import embed_media_caches
 
         project = embed_media_caches(
             project,

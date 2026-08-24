@@ -10,8 +10,13 @@ import unittest
 import wave
 from pathlib import Path
 
-import media_cache
-import reapeaks_io as reapeaks
+from maw import media_cache, reapeaks
+
+try:
+    import numpy  # noqa: F401
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
 
 
 def _make_tone(path: Path) -> None:
