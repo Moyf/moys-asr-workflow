@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import copy
 import difflib
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Collection, Mapping, Sequence
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Final
@@ -77,8 +77,38 @@ MAX_LLM_CUES_PER_REQUEST: Final = 40
 MAX_LLM_INPUT_CHARS_PER_REQUEST: Final = 4000
 MAX_LLM_WARNING_TEXT_CHARS: Final = 240
 MAX_SINGLE_CUE_TRANSLATION_ATTEMPTS: Final = 2
+MAX_TRANSLATION_REPAIR_REQUESTS_PER_BATCH: Final = 32
 TIMING_FIELDS: Final = ("start", "end", "text", "items")
 ONE_TO_ONE_TRANSLATION_OPERATIONS: Final = frozenset({"translate_en", "translate_zh"})
+
+
+@dataclass(slots=True)
+class _TranslationRepairBudget:
+    """Bound follow-up requests and retain the complete unfinished ID set."""
+
+    cue_ids: tuple[str, ...]
+    limit: int = MAX_TRANSLATION_REPAIR_REQUESTS_PER_BATCH
+    used: int = 0
+    resolved_ids: set[str] = field(default_factory=set)
+
+    def record(self, batch: Sequence[Mapping[str, JsonValue]], skipped: Collection[str]) -> None:
+        skipped_set = set(skipped)
+        self.resolved_ids.update(
+            str(cue["id"])
+            for cue in batch
+            if str(cue["id"]) not in skipped_set
+        )
+
+    def consume(self, *, batch_number: int, total_batches: int) -> None:
+        if self.used >= self.limit:
+            unfinished = tuple(cue_id for cue_id in self.cue_ids if cue_id not in self.resolved_ids)
+            unfinished_text = "、".join(unfinished) or "（无法确定）"
+            message = (
+                f"第 {batch_number}/{total_batches} 批翻译补救请求已达到上限（{self.limit} 次），"
+                f"未完成 cue ID：{unfinished_text}。未写出输出产物。"
+            )
+            raise ValueError(message)
+        self.used += 1
 
 
 def run_fixed_process(request: FixedProcessRequest) -> SubtitleArtifact:
@@ -101,7 +131,7 @@ def run_fixed_process(request: FixedProcessRequest) -> SubtitleArtifact:
             if reconciled_items is None:
                 _ = segment.pop("items", None)
             else:
-                segment["items"] = reconciled_items
+                segment["items"] = list[JsonValue](reconciled_items)
 
         # Convert through the project helper so standalone and pipeline runs
         # share the same OpenCC behavior. Item timing is retained when each
@@ -114,7 +144,7 @@ def run_fixed_process(request: FixedProcessRequest) -> SubtitleArtifact:
         if "items" in holder:
             segment["items"] = holder["items"]
         else:
-            segment.pop("items", None)
+            _ = segment.pop("items", None)
         if converted != original:
             segment["text"] = converted
     return _write(
@@ -164,12 +194,16 @@ def run_llm_postprocess(
     for index, batch in enumerate(batches, 1):
         _notify_status(on_status, "toolbox_status_llm_batch", current=index, total=len(batches))
         if strict_translation:
+            repair_budget = _TranslationRepairBudget(
+                tuple(str(cue["id"]) for cue in batch)
+            )
             clean_response, batch_skipped, batch_warnings = _complete_strict_translation_batch(
                 complete,
                 system_prompt,
                 batch,
                 batch_number=index,
                 total_batches=len(batches),
+                repair_budget=repair_budget,
             )
             response_mode = "cues"
         else:
@@ -193,7 +227,7 @@ def run_llm_postprocess(
         skipped_source_ids.update(batch_skipped)
         response_warnings.extend(batch_warnings)
         _notify_status(on_status, "toolbox_status_llm_batch_done", current=index, total=len(batches))
-    source_ids = {cue["id"] for cue in cues}
+    source_ids = {str(cue["id"]) for cue in cues}
     if source_ids and skipped_source_ids >= source_ids:
         report = _format_skip_report(skipped_source_ids, response_warnings)
         detail = f"\n{report}" if report else ""
@@ -304,6 +338,7 @@ def _complete_strict_translation_batch(
     *,
     batch_number: int,
     total_batches: int,
+    repair_budget: _TranslationRepairBudget,
     is_repair: bool = False,
 ) -> tuple[JsonDict, frozenset[str], tuple[str, ...]]:
     """Return a verified one-to-one translation, adaptively splitting bad replies.
@@ -314,6 +349,8 @@ def _complete_strict_translation_batch(
     subset until each response is structurally verifiable.  A single cue gets a
     small bounded retry before the whole translation is rejected by the caller.
     """
+    if is_repair:
+        repair_budget.consume(batch_number=batch_number, total_batches=total_batches)
     prompt = _missing_translation_retry_prompt(system_prompt) if is_repair else system_prompt
     try:
         response = complete(prompt, batch)
@@ -333,6 +370,7 @@ def _complete_strict_translation_batch(
     )
     if response_mode != "cues":
         raise ValueError("翻译返回了不兼容的结果格式，未写出输出产物。")
+    repair_budget.record(batch, skipped)
     if not skipped:
         return clean_response, frozenset(), ()
 
@@ -349,6 +387,7 @@ def _complete_strict_translation_batch(
                 subset,
                 batch_number=batch_number,
                 total_batches=total_batches,
+                repair_budget=repair_budget,
                 is_repair=True,
             )
             response_parts.append(repaired)
@@ -363,6 +402,7 @@ def _complete_strict_translation_batch(
     # At one cue there is nothing left to split.  A bounded retry tolerates a
     # transient malformed/empty model answer without permitting partial output.
     for _ in range(MAX_SINGLE_CUE_TRANSLATION_ATTEMPTS):
+        repair_budget.consume(batch_number=batch_number, total_batches=total_batches)
         try:
             repair_response = complete(_missing_translation_retry_prompt(system_prompt), missing_batch)
         except RuntimeError as error:
@@ -379,6 +419,7 @@ def _complete_strict_translation_batch(
         )
         if repaired_mode != "cues":
             raise ValueError("翻译遗漏字幕重试返回了不兼容的结果格式，未写出输出产物。")
+        repair_budget.record(missing_batch, remaining)
         response_parts.append(repaired)
         if not remaining:
             return _merge_translation_response_parts(response_parts, batch), frozenset(), ()
@@ -416,16 +457,17 @@ def _merge_translation_response_parts(
 
 
 def _reject_recursive_translation_input(source_project: Path | None, operation: str) -> None:
-    """Prevent an already translated artifact from silently becoming its own source."""
+    """Apply a filename-convention guard, not content-based translation detection."""
     if source_project is None:
         return
     target = "translate-en" if operation == "translate_en" else "translate-zh"
     if f".{target}" in source_project.stem.lower():
         language = "英文" if operation == "translate_en" else "中文"
-        raise ValueError(
-            f"当前输入看起来是已生成的{language}翻译工程（{source_project.name}）。"
+        message = (
+            f"当前文件名符合已生成的{language}翻译工程命名规则（{source_project.name}）。"
             "请选择最初的原字幕工程再执行翻译，避免把残缺或已翻译结果再次处理。"
         )
+        raise ValueError(message)
 
 
 def _cue_number(source_id: str) -> str:
@@ -458,7 +500,7 @@ def _format_skip_detail(
     )
 
 
-def _format_skip_summary(skipped_source_ids: Sequence[str]) -> str:
+def _format_skip_summary(skipped_source_ids: Collection[str]) -> str:
     return f"已跳过 {len(set(skipped_source_ids))} 条不合规字幕。"
 
 
@@ -468,7 +510,7 @@ def _format_skip_report_lines(details: Sequence[str]) -> tuple[str, ...]:
     return ("不合规字幕明细：", *(f"- {detail}" for detail in details))
 
 
-def _format_skip_report(skipped_source_ids: Sequence[str], details: Sequence[str]) -> str:
+def _format_skip_report(skipped_source_ids: Collection[str], details: Sequence[str]) -> str:
     lines = (_format_skip_summary(skipped_source_ids), *_format_skip_report_lines(details))
     return "\n".join(lines)
 
@@ -506,7 +548,7 @@ def _sanitize_llm_response(
     def reject(group_index: int, reason: str, ids: Sequence[str]) -> None:
         known_ids = tuple(cue_id for cue_id in ids if cue_id in expected_set)
         for cue_id in known_ids:
-            skipped_details.setdefault(
+            _ = skipped_details.setdefault(
                 cue_id,
                 _format_skip_detail(
                     cue_by_id[cue_id],
@@ -574,16 +616,19 @@ def _sanitize_llm_response(
         if accepted_sequence and not is_split_repeat and positions[0] <= index_by_id[accepted_sequence[-1]]:
             reject(group_index, "source ID 顺序错误", candidate_ids)
             continue
-        accepted_groups.append({"source_ids": list(candidate_ids), "text": text.strip()})
+        accepted_groups.append({
+            "source_ids": list[JsonValue](candidate_ids),
+            "text": text.strip(),
+        })
         accepted_sequence.extend(candidate_ids)
         accepted_ids.update(candidate_ids)
         for cue_id in candidate_ids:
-            skipped_details.pop(cue_id, None)
+            _ = skipped_details.pop(cue_id, None)
         last_group_ids = candidate_ids
 
     missing_ids = [cue_id for cue_id in expected_ids if cue_id not in accepted_ids]
     for cue_id in missing_ids:
-        skipped_details.setdefault(
+        _ = skipped_details.setdefault(
             cue_id,
             _format_skip_detail(
                 cue_by_id[cue_id],
@@ -653,7 +698,7 @@ def _sanitize_atom_response(
             return _reject_atom_batch(batch, batch_number, f"模型第 {group_index} 组的 atom ID 必须连续")
         seen.update(atom_ids)
         flattened.extend(atom_ids)
-        accepted_groups.append({"atom_ids": atom_ids})
+        accepted_groups.append({"atom_ids": list[JsonValue](atom_ids)})
     if flattened != expected_atom_ids:
         return _reject_atom_batch(batch, batch_number, "模型遗漏、重排或跳过了部分 atom ID")
     return {"groups": accepted_groups}, frozenset(), (), "atoms"
@@ -677,7 +722,7 @@ def _apply_llm_groups_with_warnings(
     response: Mapping[str, JsonValue],
     *,
     strict_translation: bool = False,
-    skipped_source_ids: Sequence[str] = (),
+    skipped_source_ids: Collection[str] = (),
     preserve_items_on_equal_text: bool = True,
     drop_items: bool = False,
 ) -> tuple[JsonDict, tuple[str, ...]]:
@@ -741,7 +786,7 @@ def _apply_llm_atom_groups_with_warnings(
     project: JsonDict,
     response: Mapping[str, JsonValue],
     *,
-    skipped_source_ids: Sequence[str] = (),
+    skipped_source_ids: Collection[str] = (),
 ) -> tuple[JsonDict, tuple[str, ...]]:
     """Rebuild resegmented cues from original item atoms only.
 
@@ -762,14 +807,14 @@ def _apply_llm_atom_groups_with_warnings(
         items = _validated_items(source_segments[source_index])
         if items is None:
             raise ValueError(f"{source_id} 缺少可用于重新断句的有效字词时间码")
-        atom_ids: list[str] = []
+        source_atom_ids: list[str] = []
         for item_index, item in enumerate(items, 1):
             atom_id = f"{source_id}a{item_index:04d}"
-            atom_ids.append(atom_id)
+            source_atom_ids.append(atom_id)
             atom_by_id[atom_id] = copy.deepcopy(item)
             if source_id not in skipped:
                 active_atom_ids.append(atom_id)
-        source_atoms[source_id] = tuple(atom_ids)
+        source_atoms[source_id] = tuple(source_atom_ids)
 
     raw_groups = response.get("groups")
     if not isinstance(raw_groups, list) or not raw_groups:
@@ -784,17 +829,17 @@ def _apply_llm_atom_groups_with_warnings(
         raw_ids = raw_group.get("atom_ids")
         if not isinstance(raw_ids, list) or not raw_ids or not all(isinstance(value, str) for value in raw_ids):
             raise ValueError(f"LLM atom group {group_index} must contain atom_ids")
-        atom_ids = tuple(str(value) for value in raw_ids)
-        if any(atom_id not in active_positions for atom_id in atom_ids):
+        group_atom_ids = tuple(str(value) for value in raw_ids)
+        if any(atom_id not in active_positions for atom_id in group_atom_ids):
             raise ValueError(f"LLM atom group {group_index} contains an unknown or skipped atom ID")
-        if any(atom_id in seen for atom_id in atom_ids):
+        if any(atom_id in seen for atom_id in group_atom_ids):
             raise ValueError(f"LLM atom group {group_index} repeats an atom ID")
-        positions = [active_positions[atom_id] for atom_id in atom_ids]
+        positions = [active_positions[atom_id] for atom_id in group_atom_ids]
         if positions != list(range(positions[0], positions[0] + len(positions))):
             raise ValueError(f"LLM atom group {group_index} must contain consecutive atom IDs")
-        parsed.append(atom_ids)
-        flattened.extend(atom_ids)
-        seen.update(atom_ids)
+        parsed.append(group_atom_ids)
+        flattened.extend(group_atom_ids)
+        seen.update(group_atom_ids)
     if flattened != active_atom_ids:
         raise ValueError("LLM atom groups must cover all active atom IDs once, in order")
 
@@ -852,7 +897,7 @@ def _apply_llm_atom_groups_with_warnings(
         segment["items"] = [copy.deepcopy(atom_by_id[atom_id]) for atom_id in atom_ids]
         if regrouped:
             for field in VISUAL_FIELDS:
-                segment.pop(field, None)
+                _ = segment.pop(field, None)
         for field in SAFE_SCALARS:
             first_value = first_source.get(field)
             if first_value is not None and all(source.get(field) == first_value for source in source_group):
@@ -920,9 +965,9 @@ def _build_segments(
             segment["id"] = candidate_id
         group_regrouped = len(source_ids) != 1 or split_counts.get(source_ids[0], 0) > 1
         if drop_items:
-            segment.pop("items", None)
+            _ = segment.pop("items", None)
         elif group_regrouped:
-            segment.pop("items", None)
+            _ = segment.pop("items", None)
         elif not unchanged:
             if preserve_items_on_equal_text:
                 reconciled_items = _reconcile_items(
@@ -931,16 +976,16 @@ def _build_segments(
                     text,
                 )
                 if reconciled_items is None:
-                    segment.pop("items", None)
+                    _ = segment.pop("items", None)
                 else:
-                    segment["items"] = reconciled_items
+                    segment["items"] = list[JsonValue](reconciled_items)
             else:
-                segment.pop("items", None)
+                _ = segment.pop("items", None)
         elif not preserve_items_on_equal_text:
-            segment.pop("items", None)
+            _ = segment.pop("items", None)
         if regrouped:
             for field in VISUAL_FIELDS:
-                segment.pop(field, None)
+                _ = segment.pop(field, None)
         elif not unchanged:
             for field in VISUAL_FIELDS:
                 if field in first:
@@ -1338,7 +1383,8 @@ def _protocol_prompt(
             "你处理的是字幕，不是普通文章。输入只有按顺序排列的不透明 cue ID 与文字。"
             "不要猜测、输出或修改时间。只返回严格有效的 JSON 对象，不要 Markdown 代码块、注释、解释或额外文字。"
             "返回格式：{\"groups\":[{\"id\":\"c0001\",\"text\":\"...\"}]}。"
-            "每个 group 必须包含一个非空 id 和一个非空 text；不得使用 source_ids 字段。"
+            "规范格式中每个 group 必须包含一个非空 id 和一个非空 text。"
+            "兼容接收仅含一个 ID 的 source_ids 数组，但不要主动使用；多个 source_ids 一律无效。"
             "每个输入 cue 必须返回且只能返回一条同 id 的翻译，按输入顺序完整覆盖；"
             "不得合并、拆分、重排、跳过或添加 ID。text 中的双引号、反斜杠和换行必须按 JSON 规则转义。"
             f"{task}{custom}"

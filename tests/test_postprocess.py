@@ -1,4 +1,4 @@
-# pyright: reportAny=false, reportImplicitOverride=false, reportUninitializedInstanceVariable=false
+# pyright: reportAny=false, reportImplicitOverride=false, reportPrivateUsage=false, reportUninitializedInstanceVariable=false, reportUnusedCallResult=false
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from unittest import mock
 from maw.postprocess import (
     FixedProcessRequest,
     LlmPostprocessRequest,
+    MAX_TRANSLATION_REPAIR_REQUESTS_PER_BATCH,
     OutputMode,
     Replacement,
     ReplacementRequest,
@@ -24,7 +25,7 @@ from maw.postprocess import (
 from maw.postprocess_ffmpeg import FfconcatRequest, parse_ffconcat, run_ffconcat_rebuild
 from maw.postprocess_io import PostprocessFileError, _atomic_write, read_project, read_srt, render_srt
 from maw.postprocess_llm import LlmClientError, LlmSettings, _chat_endpoint, _models_endpoint, _reasoning_parameters, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, test_llm_connection as check_llm_connection
-from maw.project_preview import JsonDict
+from maw.project_preview import JsonDict, JsonValue
 from maw.text_conversion import TextConversion
 
 
@@ -63,6 +64,18 @@ def project_segments(project: JsonDict) -> list[JsonDict]:
             raise AssertionError("all project segments must be objects")
         segments.append(segment)
     return segments
+
+
+def segment_items(segment: JsonDict) -> list[JsonDict]:
+    raw_items = segment.get("items")
+    if not isinstance(raw_items, list):
+        raise AssertionError("segment must contain an item array")
+    items: list[JsonDict] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            raise AssertionError("all segment items must be objects")
+        items.append(item)
+    return items
 
 
 @final
@@ -112,7 +125,7 @@ class PostprocessTests(unittest.TestCase):
         self.assertEqual(first_segments[0]["start"], 100)
         self.assertEqual(first_segments[0]["end"], 900)
         self.assertEqual(
-            [(item["text"], item["start"], item["end"]) for item in first_segments[0]["items"]],
+            [(item["text"], item["start"], item["end"]) for item in segment_items(first_segments[0])],
             [("8+1", 100, 300), ("很好喝", 300, 900)],
         )
         self.assertEqual(first_segments[0]["speaker"], "speaker-1")
@@ -154,7 +167,7 @@ class PostprocessTests(unittest.TestCase):
         converted = project_segments(read_project(result.project_path))[0]
         self.assertEqual(converted["text"], "新軟體裏面")
         self.assertEqual(
-            [(item["text"], item["start"], item["end"]) for item in converted["items"]],
+            [(item["text"], item["start"], item["end"]) for item in segment_items(converted)],
             [("新", 0, 200), ("軟體", 200, 500), ("裏面", 500, 1000)],
         )
 
@@ -182,7 +195,7 @@ class PostprocessTests(unittest.TestCase):
         converted = project_segments(read_project(result.project_path))[0]
         self.assertEqual(converted["text"], "软件")
         self.assertEqual(
-            [(item["text"], item["start"], item["end"]) for item in converted["items"]],
+            [(item["text"], item["start"], item["end"]) for item in segment_items(converted)],
             [("软", 0, 500), ("件", 500, 1000)],
         )
 
@@ -214,7 +227,7 @@ class PostprocessTests(unittest.TestCase):
         converted = project_segments(read_project(result.project_path))[0]
         self.assertEqual(converted["text"], "一隻貓")
         self.assertEqual(
-            [(item["text"], item["start"], item["end"]) for item in converted["items"]],
+            [(item["text"], item["start"], item["end"]) for item in segment_items(converted)],
             [("一", 0, 200), ("隻", 200, 400), ("貓", 400, 1000)],
         )
 
@@ -240,7 +253,7 @@ class PostprocessTests(unittest.TestCase):
                     TextConversion.TO_TRADITIONAL_HK: "軟件裏面",
                 }[mode]
                 self.assertEqual(converted["text"], expected)
-                self.assertEqual(len(converted["items"]), 2)
+                self.assertEqual(len(segment_items(converted)), 2)
 
     def test_srt_only_output_is_the_authoritative_next_input(self) -> None:
         first = run_fixed_replacement(
@@ -293,7 +306,7 @@ class PostprocessTests(unittest.TestCase):
         output = project_segments(read_project(result.project_path))[0]
         self.assertEqual(output["text"], "要理很好")
         self.assertEqual(
-            [(item["text"], item["start"], item["end"]) for item in output["items"]],
+            [(item["text"], item["start"], item["end"]) for item in segment_items(output)],
             [("要", 100, 180), ("理", 180, 300), ("很好", 300, 900)],
         )
 
@@ -322,7 +335,7 @@ class PostprocessTests(unittest.TestCase):
         output = project_segments(read_project(result.project_path))[0]
         self.assertEqual(output["text"], "药理学很好")
         self.assertEqual(
-            [(item["text"], item["start"], item["end"]) for item in output["items"]],
+            [(item["text"], item["start"], item["end"]) for item in segment_items(output)],
             [("药理学", 100, 300), ("很好", 300, 900)],
         )
 
@@ -442,9 +455,9 @@ class PostprocessTests(unittest.TestCase):
             {"start": 1600, "end": 2200, "text": "一句"},
         ]
         self.project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
-        received: list[tuple[str, list[dict[str, object]]]] = []
+        received: list[tuple[str, list[dict[str, JsonValue]]]] = []
 
-        def complete(system_prompt: str, cues: list[dict[str, object]]) -> JsonDict:
+        def complete(system_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
             received.append((system_prompt, cues))
             return {
                 "groups": [
@@ -474,13 +487,13 @@ class PostprocessTests(unittest.TestCase):
             [(100, 300), (300, 1600), (1600, 2200)],
         )
         self.assertEqual(
-            [[item["text"] for item in segment["items"]] for segment in output],
+            [[item["text"] for item in segment_items(segment)] for segment in output],
             [["酒"], ["很好喝", "下"], ["一句"]],
         )
         self.assertEqual(len({str(segment["id"]) for segment in output}), 3)
         self.assertIn("按字词时间码", "".join(result.warnings))
         self.assertIn("atom ID", received[0][0])
-        self.assertEqual(received[0][1][0]["items"][0]["id"], "c0001a0001")
+        self.assertEqual(segment_items(received[0][1][0])[0]["id"], "c0001a0001")
 
     def test_llm_resegment_falls_back_safely_when_provider_returns_cue_groups(self) -> None:
         project = sample_project(self.media)
@@ -524,7 +537,7 @@ class PostprocessTests(unittest.TestCase):
         result = project_segments(processed)[0]
         self.assertEqual(result["note"], "keep this")
         self.assertEqual(
-            [(item["text"], item["start"], item["end"]) for item in result["items"]],
+            [(item["text"], item["start"], item["end"]) for item in segment_items(result)],
             [("酒", 100, 300), ("很适合饮用", 300, 900)],
         )
 
@@ -541,7 +554,7 @@ class PostprocessTests(unittest.TestCase):
             "items": [{"start": 2400, "end": 3000, "text": "第三句"}],
             "sticker_ref": {"headIdx": 0},
         })
-        project["segments"] = segments
+        project["segments"] = list[JsonValue](segments)
 
         processed = apply_llm_groups(project, {
             "groups": [
@@ -554,7 +567,7 @@ class PostprocessTests(unittest.TestCase):
         self.assertEqual([(item["start"], item["end"]) for item in result], [(100, 2200), (2400, 3000)])
         self.assertNotIn("items", result[0])
         self.assertEqual(
-            [(item["text"], item["start"], item["end"]) for item in result[1]["items"]],
+            [(item["text"], item["start"], item["end"]) for item in segment_items(result[1])],
             [("第三句", 2400, 3000)],
         )
         for segment in result:
@@ -857,11 +870,14 @@ class PostprocessTests(unittest.TestCase):
             for index in range(301)
         ]
         _ = self.project_path.write_text(json.dumps(project), encoding="utf-8")
-        batches: list[list[dict[str, str]]] = []
+        batches: list[list[dict[str, JsonValue]]] = []
 
-        def complete(_system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
+        def complete(_system_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
             batches.append(cues)
-            return {"groups": [{"id": cue["id"], "text": cue["text"]} for cue in cues]}
+            return {"groups": list[JsonValue](
+                {"id": cue["id"], "text": cue["text"]}
+                for cue in cues
+            )}
 
         result = run_llm_postprocess(
             LlmPostprocessRequest(
@@ -885,11 +901,14 @@ class PostprocessTests(unittest.TestCase):
             for index in range(3)
         ]
         _ = self.project_path.write_text(json.dumps(project), encoding="utf-8")
-        batches: list[list[dict[str, str]]] = []
+        batches: list[list[dict[str, JsonValue]]] = []
 
-        def complete(_system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
+        def complete(_system_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
             batches.append(cues)
-            return {"groups": [{"id": cue["id"], "text": cue["text"]} for cue in cues]}
+            return {"groups": list[JsonValue](
+                {"id": cue["id"], "text": cue["text"]}
+                for cue in cues
+            )}
 
         _ = run_llm_postprocess(
             LlmPostprocessRequest(
@@ -912,10 +931,13 @@ class PostprocessTests(unittest.TestCase):
         ]
         _ = self.project_path.write_text(json.dumps(project), encoding="utf-8")
 
-        def complete(_system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
+        def complete(_system_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
             if cues[0]["id"] == "c0002":
                 raise LlmClientError("LLM returned invalid JSON after retry: char 4408")
-            return {"groups": [{"id": cue["id"], "text": cue["text"]} for cue in cues]}
+            return {"groups": list[JsonValue](
+                {"id": cue["id"], "text": cue["text"]}
+                for cue in cues
+            )}
 
         with self.assertRaisesRegex(RuntimeError, r"第 2/2 批（c0002–c0002）处理失败：.*char 4408"):
             _ = run_llm_postprocess(
@@ -932,8 +954,11 @@ class PostprocessTests(unittest.TestCase):
     def test_llm_runner_reports_progress_stages(self) -> None:
         statuses: list[tuple[str, dict[str, int]]] = []
 
-        def complete(_system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
-            return {"groups": [{"id": cue["id"], "text": cue["text"]} for cue in cues]}
+        def complete(_system_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            return {"groups": list[JsonValue](
+                {"id": cue["id"], "text": cue["text"]}
+                for cue in cues
+            )}
 
         _ = run_llm_postprocess(
             LlmPostprocessRequest(
@@ -963,9 +988,12 @@ class PostprocessTests(unittest.TestCase):
     def test_llm_runner_uses_visible_task_prompt_and_keeps_custom_prompt(self) -> None:
         prompts: list[str] = []
 
-        def complete(system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
+        def complete(system_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
             prompts.append(system_prompt)
-            return {"groups": [{"id": cue["id"], "text": cue["text"]} for cue in cues]}
+            return {"groups": list[JsonValue](
+                {"id": cue["id"], "text": cue["text"]}
+                for cue in cues
+            )}
 
         _ = run_llm_postprocess(
             LlmPostprocessRequest(
@@ -986,7 +1014,7 @@ class PostprocessTests(unittest.TestCase):
     def test_llm_translation_preserves_source_boundaries(self) -> None:
         prompts: list[str] = []
 
-        def complete(system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
+        def complete(system_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
             prompts.append(system_prompt)
             return {
                 "groups": [
@@ -1022,7 +1050,8 @@ class PostprocessTests(unittest.TestCase):
         self.assertNotIn("items", translated_segments[0])
         self.assertEqual(translated_segments[0]["speaker"], "speaker-1")
         self.assertEqual(translated_segments[1]["color"], source_segments[1]["color"])
-        self.assertIn("不得使用 source_ids 字段", prompts[0])
+        self.assertIn("规范格式中每个 group", prompts[0])
+        self.assertIn("多个 source_ids 一律无效", prompts[0])
 
     def test_llm_translation_drops_items_even_when_text_is_unchanged(self) -> None:
         result = run_llm_postprocess(
@@ -1047,7 +1076,7 @@ class PostprocessTests(unittest.TestCase):
         self.assertTrue(all("items" not in segment for segment in translated))
 
     def test_llm_translation_does_not_write_when_every_group_is_invalid(self) -> None:
-        def complete(_system_prompt: str, _cues: list[dict[str, str]]) -> JsonDict:
+        def complete(_system_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
             return {"groups": [{"source_ids": ["c0001", "c0002"], "text": "Merged translation"}]}
 
         before = set(self.root.iterdir())
@@ -1069,8 +1098,8 @@ class PostprocessTests(unittest.TestCase):
     def test_llm_translation_retries_only_omitted_cues_before_writing(self) -> None:
         calls: list[list[str]] = []
 
-        def complete(_system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
-            calls.append([cue["id"] for cue in cues])
+        def complete(_system_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            calls.append([str(cue["id"]) for cue in cues])
             if len(calls) == 1:
                 return {
                     "groups": [
@@ -1078,7 +1107,10 @@ class PostprocessTests(unittest.TestCase):
                         {"id": "c0002", "text": "Keep this line."},
                     ]
                 }
-            return {"groups": [{"id": cue["id"], "text": "Translate this line."} for cue in cues]}
+            return {"groups": list[JsonValue](
+                {"id": cue["id"], "text": "Translate this line."}
+                for cue in cues
+            )}
 
         result = run_llm_postprocess(
             LlmPostprocessRequest(
@@ -1100,8 +1132,8 @@ class PostprocessTests(unittest.TestCase):
     def test_llm_translation_accepts_single_source_id_groups_without_retry(self) -> None:
         calls: list[list[str]] = []
 
-        def complete(_system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
-            calls.append([cue["id"] for cue in cues])
+        def complete(_system_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            calls.append([str(cue["id"]) for cue in cues])
             return {
                 "groups": [
                     {"source_ids": [cue["id"]], "text": f"Translation {cue['id']}"}
@@ -1126,14 +1158,107 @@ class PostprocessTests(unittest.TestCase):
         self.assertEqual([segment["text"] for segment in segments], ["Translation c0001", "Translation c0002"])
         self.assertEqual(calls, [["c0001", "c0002"]])
 
+    def test_llm_translation_accepts_mixed_id_and_single_source_ids(self) -> None:
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.JSON,
+                operation="translate_en",
+                custom_prompt="",
+            ),
+            complete=lambda _prompt, _cues: {
+                "groups": [
+                    {"id": "c0001", "text": "First line."},
+                    {"source_ids": ["c0002"], "text": "Second line."},
+                ]
+            },
+        )
+
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project")
+        segments = project_segments(read_project(result.project_path))
+        self.assertEqual([segment["text"] for segment in segments], ["First line.", "Second line."])
+
+    def test_llm_translation_repairs_duplicate_id(self) -> None:
+        calls: list[list[str]] = []
+
+        def complete(_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            ids = [str(cue["id"]) for cue in cues]
+            calls.append(ids)
+            if len(calls) == 1:
+                return {
+                    "groups": [
+                        {"id": "c0001", "text": "First line."},
+                        {"id": "c0001", "text": "Duplicate line."},
+                        {"id": "c0002", "text": "Second line."},
+                    ]
+                }
+            return {"groups": [{"id": "c0001", "text": "Repaired first line."}]}
+
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.JSON,
+                operation="translate_en",
+                custom_prompt="",
+            ),
+            complete=complete,
+        )
+
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project")
+        segments = project_segments(read_project(result.project_path))
+        self.assertEqual(
+            [segment["text"] for segment in segments],
+            ["Repaired first line.", "Second line."],
+        )
+        self.assertEqual(calls, [["c0001", "c0002"], ["c0001"]])
+
+    def test_llm_translation_repairs_unknown_id_as_a_missing_expected_id(self) -> None:
+        calls: list[list[str]] = []
+
+        def complete(_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            ids = [str(cue["id"]) for cue in cues]
+            calls.append(ids)
+            if len(calls) == 1:
+                return {
+                    "groups": [
+                        {"id": "c0001", "text": "First line."},
+                        {"id": "c9999", "text": "Unknown line."},
+                    ]
+                }
+            return {"groups": [{"id": "c0002", "text": "Repaired second line."}]}
+
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.JSON,
+                operation="translate_en",
+                custom_prompt="",
+            ),
+            complete=complete,
+        )
+
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project")
+        segments = project_segments(read_project(result.project_path))
+        self.assertEqual(
+            [segment["text"] for segment in segments],
+            ["First line.", "Repaired second line."],
+        )
+        self.assertEqual(calls, [["c0001", "c0002"], ["c0002"]])
+
     def test_llm_translation_adaptively_splits_merged_model_reply(self) -> None:
         calls: list[list[str]] = []
 
-        def complete(_system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
-            ids = [cue["id"] for cue in cues]
+        def complete(_system_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            ids = [str(cue["id"]) for cue in cues]
             calls.append(ids)
             if len(cues) > 1:
-                return {"groups": [{"source_ids": ids, "text": "Merged translation"}]}
+                return {"groups": [{"source_ids": list[JsonValue](ids), "text": "Merged translation"}]}
             return {"groups": [{"id": cues[0]["id"], "text": f"Translation {cues[0]['id']}"}]}
 
         result = run_llm_postprocess(
@@ -1172,8 +1297,11 @@ class PostprocessTests(unittest.TestCase):
     def test_llm_translation_does_not_write_partial_output_after_missing_cue_retries(self) -> None:
         before = set(self.root.iterdir())
 
-        def complete(_system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
-            return {"groups": [{"id": cue["id"], "text": cue["text"]} for cue in cues[:-1]]}
+        def complete(_system_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            return {"groups": list[JsonValue](
+                {"id": cue["id"], "text": cue["text"]}
+                for cue in cues[:-1]
+            )}
 
         with self.assertRaisesRegex(ValueError, "翻译结果仍有遗漏，未写出输出产物") as raised:
             _ = run_llm_postprocess(
@@ -1189,12 +1317,51 @@ class PostprocessTests(unittest.TestCase):
         self.assertIn("c0002", str(raised.exception))
         self.assertEqual(set(self.root.iterdir()), before)
 
+    def test_llm_translation_all_failure_has_a_bounded_repair_budget(self) -> None:
+        project = sample_project(self.media)
+        project["segments"] = list[JsonValue](
+            {
+                "start": index * 1000,
+                "end": (index + 1) * 1000,
+                "text": f"cue {index + 1}",
+            }
+            for index in range(40)
+        )
+        _ = self.project_path.write_text(json.dumps(project), encoding="utf-8")
+        calls = 0
+
+        def complete(_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
+            nonlocal calls
+            calls += 1
+            return {"groups": []}
+
+        before = set(self.root.iterdir())
+        with self.assertRaisesRegex(ValueError, "翻译补救请求已达到上限") as raised:
+            _ = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.BOTH,
+                    operation="translate_en",
+                    custom_prompt="",
+                ),
+                complete=complete,
+            )
+
+        self.assertEqual(calls, 1 + MAX_TRANSLATION_REPAIR_REQUESTS_PER_BATCH)
+        self.assertIn("c0001", str(raised.exception))
+        self.assertIn("c0040", str(raised.exception))
+        self.assertEqual(set(self.root.iterdir()), before)
+
     def test_llm_custom_operation_has_no_preset_task_prompt(self) -> None:
         prompts: list[str] = []
 
-        def complete(system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
+        def complete(system_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
             prompts.append(system_prompt)
-            return {"groups": [{"id": cue["id"], "text": cue["text"]} for cue in cues]}
+            return {"groups": list[JsonValue](
+                {"id": cue["id"], "text": cue["text"]}
+                for cue in cues
+            )}
 
         _ = run_llm_postprocess(
             LlmPostprocessRequest(
@@ -1213,8 +1380,11 @@ class PostprocessTests(unittest.TestCase):
         self.assertIn("用户附加要求：只保留口语表达。", prompts[0])
 
     def test_llm_runner_writes_project_and_matching_srt(self) -> None:
-        def complete(_system_prompt: str, cues: list[dict[str, str]]) -> JsonDict:
-            return {"groups": [{"id": cue["id"], "text": f"校对：{cue['text']}"} for cue in cues]}
+        def complete(_system_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            return {"groups": list[JsonValue](
+                {"id": cue["id"], "text": f"校对：{cue['text']}"}
+                for cue in cues
+            )}
 
         result = run_llm_postprocess(
             LlmPostprocessRequest(
