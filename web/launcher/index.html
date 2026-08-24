@@ -545,24 +545,9 @@
           <input id="postprocessScriptPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_script_placeholder" placeholder="UTF-8 .txt / .md 文稿">
           <button id="pickPostprocessScript" class="ghost" type="button" data-i18n="choose">选择</button>
         </div>
-          <p class="hint" data-i18n="toolbox_script_hint">文稿文字会替换字幕文字；原字幕时间保持不变。</p>
-          <div id="postprocessScriptPreview" class="script-preview hidden" aria-live="polite">
-            <div class="toolbox-preset-label" data-i18n="toolbox_script_preview">文稿预览</div>
-            <pre id="postprocessScriptPreviewText"></pre>
-          </div>
-          <p id="postprocessScriptPathError" class="field-error"></p>
-        </div>
-        <div class="field">
-          <label for="postprocessExtraSplitPunctuation" data-i18n="toolbox_extra_split_punctuation">额外断句符号</label>
-          <textarea id="postprocessExtraSplitPunctuation" rows="4" autocomplete="off" data-i18n-placeholder="toolbox_extra_split_punctuation_placeholder" placeholder="？\n！\n——\n~"></textarea>
-          <p class="hint" data-i18n="toolbox_extra_split_punctuation_hint">每行一个符号；默认逗号、句号和换行仍然生效。</p>
-        </div>
-        <div class="field">
-          <label for="postprocessPreservePunctuation" data-i18n="toolbox_preserve_punctuation">保留符号</label>
-          <textarea id="postprocessPreservePunctuation" rows="3" autocomplete="off" data-i18n-placeholder="toolbox_preserve_punctuation_placeholder" placeholder="？\n！\n~"></textarea>
-          <p id="postprocessPreservePunctuationError" class="field-error"></p>
-          <p class="hint" data-i18n="toolbox_preserve_punctuation_hint">断句后仍将符号保留在对应字幕末尾。</p>
-        </div>
+        <p class="hint" data-i18n="toolbox_script_hint">文稿文字会替换字幕文字；原字幕时间保持不变。</p>
+        <p id="postprocessScriptPathError" class="field-error"></p>
+      </div>
     </section>
 
     <section id="toolboxOcrPanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxOcrTab">

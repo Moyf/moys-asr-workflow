@@ -116,35 +116,6 @@
     return (String(path || "").match(/\.[^.\\/]+$/u)?.[0] || "").toLowerCase();
   }
 
-  function punctuationLines(id) {
-    return String($(id)?.value || "").split(/\r?\n/u).map((value) => value.trim()).filter(Boolean);
-  }
-
-  function validateMatchPunctuation() {
-    const split = new Set(punctuationLines("postprocessExtraSplitPunctuation"));
-    const missing = punctuationLines("postprocessPreservePunctuation").filter((value) => !split.has(value));
-    const message = missing.length ? `${t("toolbox_preserve_punctuation_invalid")} ${missing.join("、")}` : "";
-    setFieldError("postprocessPreservePunctuation", message);
-    return !message;
-  }
-
-  async function refreshScriptPreview() {
-    const path = $("postprocessScriptPath").value.trim();
-    const preview = $("postprocessScriptPreview");
-    if (!path || !SCRIPT_EXTS.has(extension(path))) {
-      preview.classList.add("hidden");
-      $("postprocessScriptPreviewText").textContent = "";
-      return;
-    }
-    const result = await bridge("read_script_preview", { path });
-    if (!result.ok) {
-      preview.classList.add("hidden");
-      return;
-    }
-    $("postprocessScriptPreviewText").textContent = `${result.preview}${result.truncated ? "\n…" : ""}`;
-    preview.classList.remove("hidden");
-  }
-
   function defaultAutoPlan() {
     return {
       version: 1,
@@ -904,7 +875,7 @@
       retainIntermediate: Boolean($("autoPostprocessRetain")?.checked),
       steps: [
         // 始终上报用户的单文件勾选；批量运行由后端统一跳过文稿匹配，前端不改写、不持久化批量态。
-        { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim(), extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"), preservePunctuation: punctuationLines("postprocessPreservePunctuation") },
+        { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim() },
         { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements(), replacementSeparator: $("postprocessReplacementSeparator").value, replacementTrim: $("postprocessReplacementTrim").checked, replacementCustomSeparator: $("postprocessReplacementCustomSeparator").value, conversion: $("postprocessConversion").value },
         { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId, customPrompt: getLlmPrompt("proofread") },
         { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId, customPrompt: getLlmPrompt("resegment") },
@@ -1083,10 +1054,6 @@
     AUTO_STEP_ORDER.forEach((stepId) => { $(AUTO_STEP_CHECKBOXES[stepId]).checked = Boolean(byId.get(stepId)?.enabled); });
     const match = byId.get("match") || {};
     $("postprocessScriptPath").value = String(match.scriptPath || "");
-    $("postprocessExtraSplitPunctuation").value = Array.isArray(match.extraSplitPunctuation) ? match.extraSplitPunctuation.join("\n") : "";
-    $("postprocessPreservePunctuation").value = Array.isArray(match.preservePunctuation) ? match.preservePunctuation.join("\n") : "";
-    validateMatchPunctuation();
-    void refreshScriptPreview();
     const replace = byId.get("replace") || {};
     $("postprocessReplacementSeparator").value = ["arrow", "comma", "tab", "custom"].includes(replace.replacementSeparator) ? replace.replacementSeparator : "arrow";
     $("postprocessReplacementTrim").checked = replace.replacementTrim !== false;
@@ -1139,19 +1106,10 @@
       setResult(t("toolbox_need_script"), "error");
       return;
     }
-    if (!validateMatchPunctuation()) {
-      setResult(t("toolbox_preserve_punctuation_invalid"), "error");
-      return;
-    }
     setFieldError("postprocessScriptPath", "");
     setBusy(true, "toolbox_status_starting");
     try {
-      const result = await bridge("run_script_match", {
-        ...paths,
-        scriptPath,
-        extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"),
-        preservePunctuation: punctuationLines("postprocessPreservePunctuation"),
-      });
+      const result = await bridge("run_script_match", { ...paths, scriptPath });
       if (result.ok) applySubtitleResult(result, { kind: "match" });
       else setResult(result.error || result.detail || t("failed"), "error");
     } finally {
@@ -1468,9 +1426,6 @@
   $("generateWaveform").addEventListener("click", () => { void generateWaveformProject(false); });
   $("runWaveform").addEventListener("click", () => { void generateWaveformProject(true); });
   $("runScriptMatch").addEventListener("click", runScriptMatch);
-  $("postprocessScriptPath").addEventListener("input", () => { void refreshScriptPreview(); });
-  $("postprocessExtraSplitPunctuation").addEventListener("input", validateMatchPunctuation);
-  $("postprocessPreservePunctuation").addEventListener("input", validateMatchPunctuation);
   $("runOcrDedup").addEventListener("click", runOcrDedup);
   $("ocrModel").addEventListener("change", renderOcrModel);
   $("openOcrSettings").addEventListener("click", () => window.MAWLauncher.openSettings("ocrSettingsSection"));
@@ -1487,7 +1442,6 @@
       $("postprocessScriptPath").value = result.path;
       $("postprocessScriptPath").dispatchEvent(new Event("input", { bubbles: true }));
       setFieldError("postprocessScriptPath", "");
-      void refreshScriptPreview();
     }
   });
   $("pickToolboxInput").addEventListener("click", async () => {
