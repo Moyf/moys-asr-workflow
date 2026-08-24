@@ -14,8 +14,7 @@
   } catch (e) { /* 忽略：保持默认暗色 */ }
 })();
 </script>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230f172a'/%3E%3Cpath d='M13 16h38v25H31l-11 9v-9h-7z' fill='%2314b8a6'/%3E%3Cpath d='M22 24h20M22 30h15M22 36h11' fill='none' stroke='white' stroke-linecap='round' stroke-width='4'/%3E%3C/svg%3E">
-<style>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230f172a'/%3E%3Cpath d='M13 16h38v25H31l-11 9v-9h-7z' fill='%2314b8a6'/%3E%3Cpath d='M22 24h20M22 30h15M22 36h11' fill='none' stroke='white' stroke-linecap='round' stroke-width='4'/%3E%3C/svg%3E"><style>
   /* ============================================================
      MAWE 设计令牌系统
      单一真源：所有颜色、圆角、阴影、动效均由此处派生。
@@ -1068,6 +1067,8 @@
   }
   .toolbar .dropdown-item:hover { background: var(--accent-tint); color: var(--text-primary); }
   .toolbar .dropdown-item.disabled { opacity: .42; cursor: not-allowed; pointer-events: none; }
+  /* 表情包导出按模式互斥灰显：保留 hover 与 click（title 提示原因、点击给 flashHint 指引） */
+  .toolbar .dropdown-item.sticker-disabled { opacity: .42; cursor: not-allowed; }
   .toolbar .dropdown-separator { height: 1px; margin: 4px 8px; background: var(--border-subtle); }
   .toolbar .recent-project-setting {
     display: flex;
@@ -3508,6 +3509,7 @@
         <div class="dropdown-item" id="download-gap-removed-ffconcat" title="导出 FFmpeg concat demuxer 可读取的保留区间；流复制的切点精度受关键帧和编码包限制">FFconcat 文件</div>
         <div class="dropdown-item" id="download-gap-removed-regions-json" title="以毫秒为单位导出原媒体中的全部保留区域，供自定义脚本或工具读取">保留区域 JSON</div>
         <div class="dropdown-item" id="download-gap-removed-sticker-otio" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIO；完全落在空隙内的表情包会被丢弃">表情包 OTIO</div>
+        <div class="dropdown-item" id="download-gap-removed-sticker-otioz" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIOZ 工程（服务器打包图片进 zip，需校验表情包根目录）；完全落在空隙内的表情包会被丢弃">表情包 OTIOZ</div>
       </div>
     </span>
     <span class="dropdown" id="extra-export-dropdown">
@@ -3516,6 +3518,7 @@
         <div class="dropdown-item" id="download-fcp7-export" title="实验性 Premiere 交接：导出 FCP 7 XML">Premiere FCP 7 XML（实验性）</div>
         <div class="dropdown-item" id="download-resolve-json" title="导出颜色与表情包的 Resolve JSON，供兼容执行脚本批量导入">下载 Resolve JSON</div>
         <div class="dropdown-item" id="download-sticker-otio" title="导出只包含表情包图片轨道的 OTIO 工程">下载表情包 OTIO 工程</div>
+        <div class="dropdown-item" id="download-sticker-otioz" title="导出表情包图片轨道 OTIOZ 工程（服务器打包图片进 zip，需校验表情包根目录）">下载表情包 OTIOZ 工程</div>
       </div>
     </span>
   </span>
@@ -7171,10 +7174,18 @@
     'FCP 7 XML 保存失败': 'FCP 7 XML save failed',
     'FCP 7 XML 导出失败': 'FCP 7 XML export failed',
     'FFconcat 文件': 'FFconcat file', '保留区域 JSON': 'Kept-regions JSON',
-    '表情包 OTIO': 'Sticker OTIO', '导出表情包时间线 ▾': 'Export sticker timeline ▾',
+    '表情包 OTIO': 'Sticker OTIO', '表情包 OTIOZ': 'Sticker OTIOZ', '导出表情包时间线 ▾': 'Export sticker timeline ▾',
     '选择表情包 OTIO 引用原始素材，或由服务器复制素材并生成便携文件夹': 'Choose whether sticker OTIO references original media or the server copies media into a portable folder',
     '下载 Resolve JSON': 'Download Resolve JSON',
     '下载表情包 OTIO 工程': 'Download sticker OTIO project',
+    '下载表情包 OTIOZ 工程': 'Download sticker OTIOZ project',
+    '按移除静音空隙后的时间轴导出表情包图片轨道 OTIOZ 工程（服务器打包图片进 zip，需校验表情包根目录）；完全落在空隙内的表情包会被丢弃': 'Export the sticker track as OTIOZ on the gap-removed timeline (server packs images into zip; validated sticker root required); stickers fully inside gaps are omitted',
+    '导出表情包图片轨道 OTIOZ 工程（服务器打包图片进 zip，需校验表情包根目录）': 'Export a sticker-track OTIOZ bundle (server packs images into zip; validated sticker root required)',
+    '服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出 OTIOZ': 'Server packaging is unavailable: open the project via server-editor and bind a project file before exporting OTIOZ',
+    '当前工程无法导出表情包 OTIOZ（需要以 server-editor 打开并绑定工程文件）': 'Cannot export sticker OTIOZ here (requires server-editor with a bound project file)',
+    '正在生成表情包 OTIOZ 工程…': 'Generating sticker OTIOZ bundle…',
+    'OTIOZ 已生成，图片已打包进 zip': 'OTIOZ generated; images are packed into the zip',
+    '没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除': 'No silent gaps removed yet; scan with "Remove silent gaps" first',
     '字幕': 'Subtitles', '字幕预览': 'Subtitle preview', '表情包预览': 'Sticker preview', '字幕列表和编辑区': 'Subtitle list & editor', '字幕编辑区': 'Subtitle editor',
     '多重字幕': 'Multiple subtitles', '多重字幕设置': 'Multiple-subtitle settings', '主轨': 'Main track', '扩展轨': 'Extension track', '副轨': 'Secondary track', '双列': 'Two columns', '绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H': 'After binding, sync the secondary subtitle start and end to the main subtitle, equivalent to pressing H', '交换主字幕和副字幕的文本、时间与绑定关系': 'Swap the main and secondary subtitle text, timing, and bindings',
     '拆分与合并': 'Split and merge', '波形形状来源': 'Waveform shape source', '自研波形': 'Self-built waveform', 'ReaPeaks 波形层': 'ReaPeaks waveform layer',
@@ -7881,6 +7892,9 @@
     if (text === '当前有未保存的改动，是否确定打开最近工程？将丢失未保存内容。') {
       return 'This project has unsaved changes. Open the recent project and discard them?';
     }
+    // 表情包导出灰显拦截 flashHint：当前模式不可用：<原因>
+    match = /^当前模式不可用：(.+)$/.exec(text);
+    if (match) return `Unavailable in the current mode: ${translateText(match[1], EN)}`;
     return text;
   }
 
@@ -23464,6 +23478,7 @@ function buildStickerOtio() {
 
 // 收集表情包条目；当传入 removed gaps 时，把每条表情包的时间映射到去空隙后的时间线，
 // 并跳过完全落在空隙内、映射后时长归零的条目。removed 为空数组时退化为原始时间线。
+// 表情包必须有真实磁盘路径（服务器 OTIO/OTIOZ 均按 sticker_rel 读盘）。
 function collectStickerOtioEntries(removed) {
   const entries = [];
   for (let idx = 0; idx < DATA.segments.length; idx++) {
@@ -23475,7 +23490,9 @@ function collectStickerOtioEntries(removed) {
     const sticker = seg.sticker || head?.sticker;
     if (!sticker) continue;
     const absPath = stickerAbsPath(sticker);
-    if (!absPath) return { error: '表情包缺少真实磁盘路径；请先设置实际表情包根目录后再导出 OTIO' };
+    if (!absPath) {
+      return { error: '表情包缺少真实磁盘路径；请先设置实际表情包根目录后再导出 OTIO' };
+    }
     const origStart = seg.sticker?.start != null ? seg.sticker.start : seg.start;
     const origEnd = seg.sticker?.end != null ? seg.sticker.end : seg.end;
     if (origEnd <= origStart) continue;
@@ -23545,7 +23562,7 @@ function buildStickerOtioTimeline(stickers, timelineName) {
           name: '',
           available_range: null,
           available_image_bounds: null,
-          target_url: stickerTargetUrl(sticker.absPath),
+          target_url: sticker.targetUrl || stickerTargetUrl(sticker.absPath),
         },
       },
       active_media_reference_key: 'DEFAULT_MEDIA',
@@ -23605,6 +23622,77 @@ function buildGapRemovedStickerOtio() {
     return null;
   }
   return result.json;
+}
+
+// OTIOZ 打包：前端把 timeline 交给服务器，服务器读盘打包 zip（content.otio + version.txt + media/*）。
+// 需要 server-editor 模式 + 已绑定工程 + 已校验的表情包根目录（与便携文件夹导出同源）。
+async function exportStickerOtoz(kind, buildTimeline, filename, description) {
+  const tr = (s) => window.MAWE_I18N?.translateText?.(s) || s;
+  if (editingState) finishEdit(true);
+  const payload = buildTimeline();
+  if (!payload) return;
+  if (!SERVER_CONFIG?.canOtozStickerExport || !SERVER_CONFIG?.otiozStickerExportUrl) {
+    flashHint(tr('当前工程无法导出表情包 OTIOZ（需要以 server-editor 打开并绑定工程文件）'), 'warning');
+    return;
+  }
+  flashHint(tr('正在生成表情包 OTIOZ 工程…'));
+  try {
+    const response = await fetch(new URL(SERVER_CONFIG.otiozStickerExportUrl, window.location.href), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requestToken: SERVER_CONFIG.requestToken,
+        kind,
+        timeline: JSON.parse(payload),
+      }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `服务器返回 ${response.status}`);
+    }
+    const blob = await response.blob();
+    flashHint(tr('OTIOZ 已生成，图片已打包进 zip'), 'success');
+    await downloadFile(blob, filename, 'application/zip', {
+      desc: description, types: { 'application/zip': ['.otioz'] }
+    });
+  } catch (error) {
+    flashHint(`表情包 OTIOZ 导出失败：${error.message || error}`, 'warning');
+  }
+}
+
+// 表情包导出的两种交付格式：
+//   .otio（original 模式，引用 file:// 路径）始终可用
+//   .otioz（服务器打包 zip）需要 server-editor + 已绑定工程文件，否则灰显并说明原因
+const STICKER_OTIOZ_BUTTONS = ['download-sticker-otioz', 'download-gap-removed-sticker-otioz'];
+
+function updateStickerExportButtons() {
+  const serverOk = !!(SERVER_CONFIG?.canOtozStickerExport && SERVER_CONFIG?.otiozStickerExportUrl);
+  // title 只写中文原文，i18n 的 translateAttributes 会按当前语言翻译（避免双真源）
+  const apply = (ids, disabled, reason) => {
+    ids.forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (!el.dataset.originalTitle) el.dataset.originalTitle = el.title;
+      el.classList.toggle('sticker-disabled', disabled);
+      el.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+      el.title = disabled ? reason : el.dataset.originalTitle;
+    });
+  };
+  apply(
+    STICKER_OTIOZ_BUTTONS, !serverOk,
+    '服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出 OTIOZ',
+  );
+}
+
+// 灰显按钮的点击拦截：给出原因指引而非静默失败。
+function stickerExportBlocked(id) {
+  const el = document.getElementById(id);
+  if (el && el.classList.contains('sticker-disabled')) {
+    const msg = `当前模式不可用：${el.title || '请使用另一种导出格式'}`;
+    flashHint(window.MAWE_I18N?.translateText?.(msg) || msg);
+    return true;
+  }
+  return false;
 }
 
 async function downloadFile(content, filename, mime, accept, { usePicker = true, detailed = false } = {}) {
@@ -24658,9 +24746,12 @@ async function exportStickerOtio(kind, buildTimeline, filename, description) {
   }
 }
 
-document.getElementById('download-sticker-otio').addEventListener('click', () => exportStickerOtio(
-  'stickers', buildStickerOtio, `${FILENAME_BASE}_stickers.otio`, 'OTIO 工程文件'
-));
+document.getElementById('download-sticker-otio').addEventListener('click', () => {
+  if (stickerExportBlocked('download-sticker-otio')) return;
+  exportStickerOtio(
+    'stickers', buildStickerOtio, `${FILENAME_BASE}_stickers.otio`, 'OTIO 工程文件'
+  );
+});
 document.getElementById('download-gap-removed-srt').addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedSrt();
@@ -24699,11 +24790,35 @@ document.getElementById('download-gap-removed-regions-json').addEventListener('c
   }
 });
 document.getElementById('download-gap-removed-sticker-otio').addEventListener('click', async () => {
+  if (stickerExportBlocked('download-gap-removed-sticker-otio')) return;
   await exportStickerOtio(
     'gap-removed-stickers', buildGapRemovedStickerOtio,
     `${FILENAME_BASE}_gap-removed-stickers.otio`, '去空隙表情包 OTIO 工程'
   );
 });
+document.getElementById('download-gap-removed-sticker-otioz').addEventListener('click', async () => {
+  if (stickerExportBlocked('download-gap-removed-sticker-otioz')) return;
+  const removed = getRemovedGapRanges();
+  if (!removed.length) {
+    const msg = '没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除';
+    flashHint(window.MAWE_I18N?.translateText?.(msg) || msg);
+    return;
+  }
+  await exportStickerOtoz(
+    'gap-removed-stickers', buildGapRemovedStickerOtio,
+    `${FILENAME_BASE}_gap-removed-stickers.otioz`, '去空隙表情包 OTIOZ 工程'
+  );
+});
+document.getElementById('download-sticker-otioz').addEventListener('click', async () => {
+  if (stickerExportBlocked('download-sticker-otioz')) return;
+  await exportStickerOtoz(
+    'stickers', buildStickerOtio,
+    `${FILENAME_BASE}_stickers.otioz`, '表情包 OTIOZ 工程'
+  );
+});
+
+// 初始按服务器模式刷新表情包 OTIOZ 导出按钮的可用性
+updateStickerExportButtons();
 
 // === 工具栏导出下拉菜单 ===
 function bindToolbarExportDropdown(dropdownId, buttonId, menuId) {
@@ -25355,6 +25470,9 @@ async function openProjectFile(file, options = {}) {
       return false;
     }
     applyCanonicalProject(data, file.name);
+    // 工程可能携带新 sticker_root；刷新表情包导出按钮的互斥灰显状态
+    updateStickerExportButtons();
+    projectLoadedFromSrt = false;
     const expectedName = window.AsrEditorUtils.fileBasename(DATA.media);
     // 服务器版：浏览器拿不到工程真实路径，但工程记录的媒体是绝对路径。
     // 先让服务器按它定位同目录同名工程并接管（自动加载媒体、允许 Ctrl(Cmd)+S 保存）；
@@ -25775,6 +25893,18 @@ function setStickerRootModalOpen(open) {
   stickerRootReturnFocus?.focus();
   stickerRootReturnFocus = null;
 }
+
+document.getElementById('sticker-root-confirm').addEventListener('click', () => {
+  const newRoot = stickerRootInput.value.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+  STICKER_ROOT = newRoot;
+  updateStickerExportButtons();
+  stickerRootModal.classList.remove('show');
+  stickerRootReturnFocus?.focus();
+  stickerRootReturnFocus = null;
+  // 重新渲染所有 cue 让 sticker URL 用新根目录拼接
+  renderAll();
+  flashHint(newRoot ? `根目录已更新` : '已清空根目录', 'success');
+});
 
 function flashStickerRootHint(message, type) {
   stickerRootHintCard?.remove();
