@@ -1437,8 +1437,8 @@
       });
       this.pane?.classList.toggle('tool-select', this.tool === 'select');
       this.pane?.classList.toggle('tool-razor', this.tool === 'razor');
-      document.getElementById('waveform-zoom-in').addEventListener('click', () => this.changeZoom(-1));
-      document.getElementById('waveform-zoom-out').addEventListener('click', () => this.changeZoom(1));
+      document.getElementById('waveform-zoom-in')?.addEventListener('click', () => this.changeZoom(-1));
+      document.getElementById('waveform-zoom-out')?.addEventListener('click', () => this.changeZoom(1));
       this.waveformScaleDownButton?.addEventListener('click', () => this.changeWaveformScale(-1));
       this.waveformScaleUpButton?.addEventListener('click', () => this.changeWaveformScale(1));
       this.pane.addEventListener('pointerdown', () => {
@@ -1447,7 +1447,7 @@
         this.multiFollowCheckPending = true;
         this.focusWaveform();
       });
-      this.secondsPerRowSelect.addEventListener('change', () => {
+      this.secondsPerRowSelect?.addEventListener('change', () => {
         this.settings.secondsPerRow = Number(this.secondsPerRowSelect.value);
         saveSettings(this.settings);
         this.multiRange = [-1, -1];
