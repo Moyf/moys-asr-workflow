@@ -420,10 +420,12 @@ jobs:
             cd "$LiteStage"
             zip -qry "$GITHUB_WORKSPACE/$LiteArchive" MAW-lite.app FAQ-常见问题.txt
           )
-          unzip -l "$StandardArchive" | grep -q 'MAW.app/Contents/MacOS/MAW'
-          unzip -l "$LiteArchive" | grep -q 'MAW-lite.app/Contents/MacOS/MAW'
-          unzip -l "$StandardArchive" | grep -q 'FAQ-常见问题.txt'
-          unzip -l "$LiteArchive" | grep -q 'FAQ-常见问题.txt'
+          # 不使用 grep -q：set -o pipefail 下，grep 提前退出会让 unzip
+          # 收到 SIGPIPE，导致归档校验被误判为失败。
+          unzip -l "$StandardArchive" | grep -F 'MAW.app/Contents/MacOS/MAW' >/dev/null
+          unzip -l "$LiteArchive" | grep -F 'MAW-lite.app/Contents/MacOS/MAW' >/dev/null
+          unzip -l "$StandardArchive" | grep -F 'FAQ-常见问题.txt' >/dev/null
+          unzip -l "$LiteArchive" | grep -F 'FAQ-常见问题.txt' >/dev/null
 
       # ---------- Linux 专属 ----------
 
