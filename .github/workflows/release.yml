@@ -424,21 +424,31 @@ jobs:
           # 组合过于脆弱，归档有效时也可能把校验误判为失败。
           python3 - "$StandardArchive" "$LiteArchive" <<'PY'
           import sys
+          from pathlib import Path
           from zipfile import ZipFile
 
+          faq_bytes = Path("FAQ-常见问题.txt").read_bytes()
           checks = (
-              (sys.argv[1], ("MAW.app/Contents/MacOS/MAW", "FAQ-常见问题.txt")),
-              (sys.argv[2], ("MAW-lite.app/Contents/MacOS/MAW", "FAQ-常见问题.txt")),
+              (sys.argv[1], "MAW.app/Contents/MacOS/MAW"),
+              (sys.argv[2], "MAW-lite.app/Contents/MacOS/MAW"),
           )
 
-          for archive_name, required_entries in checks:
+          for archive_name, required_entry in checks:
               with ZipFile(archive_name) as archive:
                   names = archive.namelist()
-              for required_entry in required_entries:
                   if not any(required_entry in name for name in names):
                       raise SystemExit(
                           f"{archive_name} 缺少归档内容：{required_entry}"
                       )
+                  faq_entries = [
+                      name
+                      for name in names
+                      if name.startswith("FAQ-") and name.endswith(".txt")
+                  ]
+                  if not faq_entries:
+                      raise SystemExit(f"{archive_name} 缺少 FAQ 文本文件")
+                  if not any(archive.read(name) == faq_bytes for name in faq_entries):
+                      raise SystemExit(f"{archive_name} 中的 FAQ 内容不匹配")
           PY
 
       # ---------- Linux 专属 ----------
