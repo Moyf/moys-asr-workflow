@@ -420,12 +420,26 @@ jobs:
             cd "$LiteStage"
             zip -qry "$GITHUB_WORKSPACE/$LiteArchive" MAW-lite.app FAQ-常见问题.txt
           )
-          # 不使用 grep -q：set -o pipefail 下，grep 提前退出会让 unzip
-          # 收到 SIGPIPE，导致归档校验被误判为失败。
-          unzip -l "$StandardArchive" | grep -F 'MAW.app/Contents/MacOS/MAW' >/dev/null
-          unzip -l "$LiteArchive" | grep -F 'MAW-lite.app/Contents/MacOS/MAW' >/dev/null
-          unzip -l "$StandardArchive" | grep -F 'FAQ-常见问题.txt' >/dev/null
-          unzip -l "$LiteArchive" | grep -F 'FAQ-常见问题.txt' >/dev/null
+          # 不使用 unzip | grep：macOS 的 unzip 输出、grep 管道和 pipefail
+          # 组合过于脆弱，归档有效时也可能把校验误判为失败。
+          python3 - "$StandardArchive" "$LiteArchive" <<'PY'
+          import sys
+          from zipfile import ZipFile
+
+          checks = (
+              (sys.argv[1], ("MAW.app/Contents/MacOS/MAW", "FAQ-常见问题.txt")),
+              (sys.argv[2], ("MAW-lite.app/Contents/MacOS/MAW", "FAQ-常见问题.txt")),
+          )
+
+          for archive_name, required_entries in checks:
+              with ZipFile(archive_name) as archive:
+                  names = archive.namelist()
+              for required_entry in required_entries:
+                  if not any(required_entry in name for name in names):
+                      raise SystemExit(
+                          f"{archive_name} 缺少归档内容：{required_entry}"
+                      )
+          PY
 
       # ---------- Linux 专属 ----------
 
