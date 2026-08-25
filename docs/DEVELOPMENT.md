@@ -119,6 +119,7 @@ uv run python edit.py --blank
 ## 开发检查
 
 ```powershell
+uv run --frozen ruff check
 node --check web\editor.js
 node --check web\waveform.js
 node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs
