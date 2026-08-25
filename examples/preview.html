@@ -126,6 +126,12 @@
       gap: 12px;
     }
 
+    .timeline-controls {
+      display: flex;
+      flex: 0 0 auto;
+      gap: 8px;
+    }
+
     .timeline input {
       flex: 1;
       min-width: 120px;
@@ -141,6 +147,7 @@
     }
 
     .stage {
+      position: relative;
       min-height: 260px;
       aspect-ratio: 16 / 9;
       max-height: calc(100vh - 245px);
@@ -156,6 +163,26 @@
         linear-gradient(45deg, transparent 75%, #242830 75%) 12px -12px / 24px 24px,
         linear-gradient(-45deg, transparent 75%, #242830 75%) -12px 0 / 24px 24px,
         #1d2026;
+    }
+
+    .stage.is-dragover {
+      border-color: #6e9edc;
+      box-shadow: inset 0 0 0 2px rgba(110, 158, 220, .45);
+    }
+
+    .stage.is-dragover::after {
+      content: "松开以加载 .ograf.zip 或 .lottie";
+      position: absolute;
+      inset: 14px;
+      display: grid;
+      place-items: center;
+      border: 1px dashed #6e9edc;
+      border-radius: 8px;
+      background: rgba(22, 24, 29, .78);
+      color: #e6e9ef;
+      font-size: 16px;
+      font-weight: 600;
+      pointer-events: none;
     }
 
     .stage > *:not(.empty) {
@@ -196,7 +223,7 @@
   <main class="app">
     <header>
       <h1>MAW 动态图形预览</h1>
-      <p class="hint">可扫描 examples，也可直接拖入 .ograf.zip 或 .lottie</p>
+      <p class="hint">可扫描 examples，也可直接拖入 .ograf.zip 或 .lottie；空格播放/暂停</p>
     </header>
 
     <section class="toolbar" aria-label="动态图形控制">
@@ -211,11 +238,13 @@
         <input id="zip-input" type="file" accept=".zip,.ograf.zip,.lottie" hidden>
       </label>
       <button id="load-button" class="primary" type="button" disabled>加载</button>
-      <button id="play-button" type="button" disabled>播放</button>
-      <button id="stop-button" type="button" disabled>停止</button>
     </section>
 
     <section class="timeline" aria-label="时间轴">
+      <div class="timeline-controls" aria-label="播放控制">
+        <button id="play-button" type="button" disabled>播放</button>
+        <button id="stop-button" type="button" disabled>停止</button>
+      </div>
       <input id="time-range" type="range" min="0" max="1" step="1" value="0" disabled>
       <span id="time-label" class="time-label">00:00.000 / 00:00.000</span>
     </section>
@@ -784,26 +813,47 @@
     packageSelect.addEventListener('change', () => { void loadSelectedGraphic(); });
     loadButton.addEventListener('click', () => { void loadSelectedGraphic(); });
 
-    ['dragenter', 'dragover'].forEach((eventName) => {
-      dropZone.addEventListener(eventName, (event) => {
+    function bindDropTarget(target) {
+      let dragDepth = 0;
+      const clearDragState = () => {
+        dragDepth = 0;
+        target.classList.remove('is-dragover');
+      };
+
+      target.addEventListener('dragenter', (event) => {
         event.preventDefault();
-        dropZone.classList.add('is-dragover');
+        dragDepth += 1;
+        if (target === dropZone) dropZone.classList.add('is-dragover');
+        target.classList.add('is-dragover');
       });
-    });
-    ['dragleave', 'drop'].forEach((eventName) => {
-      dropZone.addEventListener(eventName, (event) => {
+      target.addEventListener('dragover', (event) => {
         event.preventDefault();
-        dropZone.classList.remove('is-dragover');
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+        target.classList.add('is-dragover');
       });
-    });
-    dropZone.addEventListener('drop', (event) => {
-      void handleDroppedFile(event.dataTransfer?.files?.[0]);
-    });
+      target.addEventListener('dragleave', (event) => {
+        event.preventDefault();
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (!dragDepth) {
+          clearDragState();
+          if (target !== dropZone) dropZone.classList.remove('is-dragover');
+        }
+      });
+      target.addEventListener('drop', (event) => {
+        event.preventDefault();
+        clearDragState();
+        if (target !== dropZone) dropZone.classList.remove('is-dragover');
+        void handleDroppedFile(event.dataTransfer?.files?.[0]);
+      });
+    }
+
+    bindDropTarget(dropZone);
+    bindDropTarget(stage);
     zipInput.addEventListener('change', () => {
       void handleDroppedFile(zipInput.files?.[0]);
     });
 
-    playButton.addEventListener('click', async () => {
+    async function togglePlayback() {
       if (!state.active) return;
       try {
         if (state.playing) {
@@ -821,6 +871,19 @@
       } catch (error) {
         setStatus(`播放失败：${error?.message || error}`, 'error');
       }
+    }
+
+    playButton.addEventListener('click', () => { void togglePlayback(); });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.code !== 'Space' || event.repeat || !state.active) return;
+      const target = event.target;
+      if (target instanceof Element
+        && target.closest('input, textarea, select, button, a, [contenteditable="true"]')) {
+        return;
+      }
+      event.preventDefault();
+      void togglePlayback();
     });
 
     stopButton.addEventListener('click', async () => {
