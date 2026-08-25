@@ -133,6 +133,9 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(settings.theme, 'light');
   assert.equal(settings.stickerOtioExportMode, 'portable');
   assert.equal(settings.autoMergeShortCount, 20);
+  assert.equal(settings.waveShapeSource, 'reapeaks');
+  assert.equal(helpers.normalizeEditorSettings({ waveShapeSource: 'self' }).waveShapeSource, 'self');
+  assert.equal(helpers.normalizeEditorSettings({ waveShapeSource: 'invalid' }).waveShapeSource, 'reapeaks');
 });
 
 test('normalizes gap-remove data and returns independent gap values', () => {
@@ -166,6 +169,7 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('保存工程', 'en'), 'Save project');
   assert.equal(i18n.translateText('自动打开上次工程', 'en'), 'Automatically open last project');
   assert.equal(i18n.translateText('上次打开：demo.json', 'en'), 'Last opened: demo.json');
+  assert.equal(i18n.translateText('已加载媒体：synthetic.wav', 'en'), 'Media loaded: synthetic.wav');
   assert.equal(i18n.translateText('保存成功！', 'en'), 'Saved!');
   assert.equal(i18n.translateText('字幕忍者', 'en'), 'Subtitle Ninja');
   assert.equal(i18n.translateText('显示刀光特效', 'en'), 'Show slash effect');
