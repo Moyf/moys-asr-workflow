@@ -1025,9 +1025,15 @@
     width: max-content; min-width: 100%; max-width: 320px;
   }
   .toolbar .batch-operations-dropdown > .dropdown-menu {
-    left: 0; right: auto; width: max-content; min-width: 150px; max-width: min(260px, calc(100vw - 16px));
+    position: fixed; left: 0; right: auto; top: 0;
+    width: max-content; min-width: 150px; max-width: min(260px, calc(100vw - 16px));
+    z-index: 1000;
   }
   .toolbar .dropdown.open .dropdown-menu { display: block; }
+  #batch-operations-dropdown.open > #batch-operations-menu {
+    display: flex; flex-direction: column; gap: 4px; padding: 6px;
+    z-index: 1000;
+  }
   .toolbar .multi-subtitle-settings-dropdown > button {
     min-width: 30px; padding: 3px 7px; font-size: 15px; line-height: 1;
   }
@@ -1744,6 +1750,7 @@
     display: flex; align-items: center; gap: 6px; margin: 0 0 9px; cursor: pointer; user-select: none;
   }
   .modal .modal-check-row input { margin: 0; }
+  .modal .batch-selected-only-hint { margin: 0; color: var(--text-faint); }
   .modal .modal-field-row { display: flex; gap: 6px; align-items: stretch; }
   .modal .modal-field-row input[type=text] { flex: 1 1 auto; width: auto; }
   .modal .modal-field-row button {
@@ -1904,6 +1911,7 @@
   }
   .multi-subtitle-split-error { min-height: 20px; color: var(--red-hover); font-size: 12px; }
   .multi-cue-column { min-width: 0; position: relative; }
+  .multi-cue-column.dirty { box-shadow: inset 3px 0 0 var(--amber); }
   .multi-cue-column.extension { color: var(--text-secondary); }
   .multi-cue-column.unbound { opacity: .82; }
   .multi-cue-column.disabled {
@@ -2017,11 +2025,29 @@
     color: var(--text-secondary); font-size: 12px;
   }
   .timed-text-edit-toolbar label { margin: 0; color: var(--text-secondary); }
-  .timed-text-edit-toolbar label:nth-of-type(2) { margin-left: 8px; }
+  .timed-text-edit-track-control { display: inline-flex; align-items: center; gap: 6px; }
+  .timed-text-edit-track-control[hidden] { display: none; }
+  .timed-text-edit-view-control { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; }
   .timed-text-edit-toolbar select {
     min-width: 100px; padding: 4px 7px; color: var(--text-primary); background: var(--bg-input);
     border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px;
   }
+  .timed-text-edit-view-switch {
+    display: inline-flex; gap: 2px; width: max-content; max-width: 100%; padding: 2px;
+    border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-input);
+  }
+  .timed-text-edit-view-switch button {
+    height: 26px; border: 0; border-radius: var(--radius-sm); background: transparent;
+    color: var(--text-muted); padding: 0 10px; font-size: 12px; cursor: pointer;
+    transition: background var(--t-fast), color var(--t-fast), box-shadow var(--t-fast);
+  }
+  .timed-text-edit-view-switch button:hover:not(:disabled) { background: var(--btn-bg-hover); color: var(--text-primary); }
+  .timed-text-edit-view-switch button.active,
+  .timed-text-edit-view-switch button[aria-pressed="true"] {
+    background: var(--accent-tint-strong); color: var(--accent-hover); font-weight: 600;
+  }
+  .timed-text-edit-view-switch button:disabled { opacity: .42; cursor: not-allowed; }
+  .timed-text-edit-view-switch button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
   .timed-text-edit-source-info { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .timed-text-edit-layout {
     display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
@@ -2041,25 +2067,38 @@
     min-height: 0; flex: 1 1 auto; overflow-y: auto; padding: 7px;
   }
   .timed-text-edit-row {
-    display: grid; grid-template-columns: 48px minmax(100px, 1fr); column-gap: 13px; row-gap: 7px;
+    display: grid; grid-template-columns: minmax(92px, 108px) minmax(100px, 1fr); column-gap: 13px; row-gap: 7px;
     margin: 0 0 6px; padding: 8px 10px; border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm); background: var(--bg-raised);
     transition: border-color var(--t-fast), background var(--t-fast);
   }
   .timed-text-edit-row:last-child { margin-bottom: 0; }
   .timed-text-edit-row.changed { border-color: var(--amber-line); background: color-mix(in srgb, var(--amber-line) 7%, var(--bg-raised)); }
+  .timed-text-edit-row.deleted { border-color: var(--red); background: color-mix(in srgb, var(--red) 10%, var(--bg-raised)); }
   .timed-text-edit-row-meta {
     display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
-    color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums;
+    min-width: 0; color: var(--text-muted); font-size: 10px; line-height: 1.25; font-variant-numeric: tabular-nums;
   }
   .timed-text-edit-row-meta strong { color: var(--text-secondary); font-size: 11px; }
-  .timed-text-edit-row-meta span { white-space: nowrap; }
+  .timed-text-edit-row-meta span { white-space: pre-line; }
+  .timed-text-edit-row-time-line { display: flex; align-items: flex-start; gap: 7px; min-width: 0; }
+  .timed-text-edit-row-time { white-space: pre-line; }
+  .timed-text-edit-time-badges { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+  .timed-text-edit-coverage, .timed-text-edit-reuse {
+    display: inline-flex; align-items: center; padding: 1px 4px; margin-top: 1px;
+    border: 1px solid var(--border-subtle); border-radius: 3px; white-space: nowrap;
+    font: 10px/1.2 var(--font-mono); color: var(--text-faint);
+  }
+  .timed-text-edit-coverage.good, .timed-text-edit-reuse.good { color: var(--green-hover); border-color: var(--green); background: var(--green-soft); }
+  .timed-text-edit-coverage.partial, .timed-text-edit-reuse.partial { color: var(--amber-hover); border-color: var(--amber-line); background: color-mix(in srgb, var(--amber-line) 10%, transparent); }
+  .timed-text-edit-coverage.none, .timed-text-edit-reuse.none { color: var(--text-faint); border-color: var(--border-subtle); background: transparent; }
   .timed-text-edit-row-main { min-width: 0; padding-left: 3px; }
   .timed-text-edit-row textarea {
     display: block; width: 100%; min-height: 34px; box-sizing: border-box; resize: vertical;
     padding: 6px 8px; color: var(--text-primary); background: var(--bg-input);
     border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit; line-height: 1.45;
   }
+  .timed-text-edit-row.deleted textarea { border-color: var(--red); color: var(--red-hover); }
   .timed-text-edit-row textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
   .timed-text-edit-single-textarea {
     display: block; flex: 1 1 auto; width: calc(100% - 20px); min-height: 0; height: auto; margin: 10px;
@@ -2081,6 +2120,8 @@
   .timed-text-edit-diff-part.add { color: var(--green-hover); text-decoration: underline; text-decoration-thickness: 1px; }
   .timed-text-edit-diff-part.remove { color: var(--red-hover); text-decoration: line-through; }
   .timed-text-edit-timing-change { padding: 3px 6px; color: var(--accent-hover); background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 3px; font-size: 10px; font-variant-numeric: tabular-nums; }
+  .timed-text-edit-estimated-timing { padding: 3px 6px; color: var(--amber-hover); background: color-mix(in srgb, var(--amber-line) 9%, transparent); border-radius: 3px; font-size: 10px; }
+  .timed-text-edit-deleted-label { padding: 3px 6px; color: var(--red-hover); background: color-mix(in srgb, var(--red) 10%, transparent); border-radius: 3px; font-size: 10px; }
   .timed-text-edit-report { padding: 12px; overflow-y: auto; }
   .timed-text-edit-report h4 { margin: 0 0 9px; color: var(--text-primary); font-size: 13px; }
   .timed-text-edit-report-summary, .timed-text-edit-report-mapping { display: grid; gap: 6px; }
@@ -2105,6 +2146,7 @@
   .timed-text-edit-change-list { margin-top: 12px; border-top: 1px solid var(--border-subtle); padding-top: 9px; }
   .timed-text-edit-change-list summary { color: var(--text-secondary); font-size: 12px; cursor: pointer; }
   .timed-text-edit-change-item { margin-top: 8px; padding: 7px; background: var(--bg-raised); border-radius: var(--radius-sm); font-size: 11px; }
+  .timed-text-edit-change-item.deleted { border: 1px solid color-mix(in srgb, var(--red) 50%, var(--border-subtle)); }
   .timed-text-edit-change-item-title { color: var(--text-secondary); margin-bottom: 4px; }
   .timed-text-edit-change-item .timed-text-edit-diff-line { margin-top: 3px; }
   @media (max-width: 820px) {
@@ -4695,9 +4737,9 @@
       <div class="dropdown batch-operations-dropdown" id="batch-operations-dropdown">
         <button type="button" id="batch-operations-btn" aria-expanded="false" aria-controls="batch-operations-menu" aria-haspopup="menu">批量操作 ▾</button>
         <div class="dropdown-menu" id="batch-operations-menu" role="menu">
-          <button type="button" class="dropdown-item" id="replace-btn" role="menuitem">批量替换…</button>
-          <button type="button" class="dropdown-item" id="timed-text-edit-btn" role="menuitem" title="以保持字幕行结构的方式集中编辑文本，并预览时间码映射结果">纯文本编辑…</button>
-          <button type="button" class="dropdown-item" id="text-process-btn" role="menuitem">文本处理…</button>
+          <button type="button" class="dropdown-item" id="replace-btn" role="menuitem">批量替换</button>
+          <button type="button" class="dropdown-item" id="timed-text-edit-btn" role="menuitem" title="集中编辑字幕文本，并预览拆分、合并和字词时间码映射结果">纯文本编辑</button>
+          <button type="button" class="dropdown-item" id="text-process-btn" role="menuitem">文本处理</button>
         </div>
       </div>
       <span class="sep"></span>
@@ -4764,7 +4806,9 @@
     <h3 id="replace-modal-title">批量替换</h3>
     <div id="replace-scope-info" style="font-size:12px;color:#888;margin-bottom:8px;">范围：全部字幕</div>
     <label class="modal-check-row" for="replace-selected-only">
-      <input type="checkbox" id="replace-selected-only" disabled> 仅处理选中的字幕
+      <input type="checkbox" id="replace-selected-only" disabled>
+      <span>仅处理选中的字幕</span>
+      <span id="replace-selected-only-hint" class="modal-hint batch-selected-only-hint" hidden>需要先选中至少1条字幕才可启用</span>
     </label>
     <label>查找</label>
     <input type="text" id="find-input" placeholder="要查找的内容" autocomplete="off">
@@ -4792,13 +4836,15 @@
     </p>
     <div id="text-process-scope-info" class="text-process-scope-info">范围：全部字幕</div>
     <label class="modal-check-row" for="text-process-selected-only">
-      <input type="checkbox" id="text-process-selected-only" disabled> 仅处理选中的字幕
+      <input type="checkbox" id="text-process-selected-only" disabled>
+      <span>仅处理选中的字幕</span>
+      <span id="text-process-selected-only-hint" class="modal-hint batch-selected-only-hint" hidden>需要先选中至少1条字幕才可启用</span>
     </label>
     <div class="text-process-operations" aria-label="文本处理操作">
       <label class="text-process-operation" for="text-process-trim">
         <input type="checkbox" id="text-process-trim">
-        <span>Trim</span>
-        <span class="modal-hint">去除前后空白</span>
+        <span>修剪前后空白</span>
+        <span class="modal-hint">去除字幕前方和后方的空格</span>
       </label>
       <label class="text-process-operation" for="text-process-capitalize">
         <input type="checkbox" id="text-process-capitalize">
@@ -4829,7 +4875,7 @@
   </div>
 </div>
 
-<!-- 保持字幕行结构的纯文本编辑 MVP。 -->
+<!-- 支持调整字幕行结构并预览字词时间码映射的纯文本编辑 MVP。 -->
 <div class="modal-mask" id="timed-text-edit-modal">
   <div class="modal timed-text-edit-modal" role="dialog" aria-modal="true"
        aria-labelledby="timed-text-edit-title" aria-describedby="timed-text-edit-description">
@@ -4837,30 +4883,34 @@
       <div>
         <h3 id="timed-text-edit-title">纯文本编辑</h3>
         <p class="modal-desc" id="timed-text-edit-description">
-          集中修改字幕文字；保持字幕行结构，确认前会分析字词时间码的保留情况；相邻字幕的开头/结尾移动会同步更新时间范围。
+           集中修改字幕文字；新增、删除或移动换行时会尝试拆分、合并并重新分配字词时间码；确认前会分析映射结果。
         </p>
       </div>
       <button type="button" id="timed-text-edit-close" class="timed-text-edit-close"
               title="关闭（Esc）" aria-label="关闭纯文本编辑">×</button>
     </div>
     <div class="timed-text-edit-toolbar">
-      <label for="timed-text-edit-track">编辑轨道</label>
-      <select id="timed-text-edit-track">
-        <option value="main">主字幕</option>
-        <option value="extension">副字幕</option>
-      </select>
-      <label for="timed-text-edit-view">编辑视图</label>
-      <select id="timed-text-edit-view">
-        <option value="rows">逐条编辑</option>
-        <option value="single">单文本框</option>
-      </select>
+      <div class="timed-text-edit-track-control" id="timed-text-edit-track-control">
+        <label for="timed-text-edit-track">编辑轨道</label>
+        <select id="timed-text-edit-track">
+          <option value="main">主字幕</option>
+          <option value="extension">副字幕</option>
+        </select>
+      </div>
+      <div class="timed-text-edit-view-control">
+        <span>编辑视图</span>
+        <div id="timed-text-edit-view" class="timed-text-edit-view-switch" role="group" aria-label="编辑视图">
+          <button type="button" data-view="rows" aria-pressed="true">逐条编辑</button>
+          <button type="button" data-view="single" aria-pressed="false">整体编辑</button>
+        </div>
+      </div>
       <span class="timed-text-edit-source-info" id="timed-text-edit-source-info"></span>
     </div>
     <div class="timed-text-edit-layout">
       <section class="timed-text-edit-input-panel" aria-labelledby="timed-text-edit-input-title">
         <div class="timed-text-edit-section-heading">
           <strong id="timed-text-edit-input-title">字幕文本</strong>
-          <span class="modal-hint">每一行对应一条已有字幕；请勿新增或删除行。</span>
+          <span class="modal-hint">每一行对应一条当前字幕；新增、删除或移动换行会尝试调整字幕行结构。⌚️有效覆盖率 · ♻️原始时间码复用率</span>
         </div>
         <div class="timed-text-edit-rows" id="timed-text-edit-rows"></div>
         <textarea id="timed-text-edit-single-textarea" class="timed-text-edit-single-textarea"
@@ -5242,6 +5292,111 @@
     return Array.from(String(text == null ? '' : text));
   }
 
+  function isTimedTextWhitespace(token) {
+    return /\s/u.test(token);
+  }
+
+  function timedTextItemCoverageMask(text, rawItems) {
+    const sourceTokens = timedTextTokens(text);
+    const targetTokens = sourceTokens.filter((token) => !isTimedTextWhitespace(token));
+    const items = Array.isArray(rawItems) ? rawItems : [];
+    const itemTokens = [];
+    const itemCoverage = [];
+    let validItemCount = 0;
+    items.forEach((item) => {
+      const tokens = timedTextTokens(item?.text).filter((token) => !isTimedTextWhitespace(token));
+      const start = Number(item?.start);
+      const end = Number(item?.end);
+      const validTiming = tokens.length > 0
+        && Number.isFinite(start) && Number.isFinite(end) && end > start;
+      if (validTiming) {
+        validItemCount += 1;
+      }
+      itemTokens.push(...tokens);
+      tokens.forEach(() => itemCoverage.push(validTiming));
+    });
+    const covered = new Uint8Array(targetTokens.length);
+    const opcodes = timedTextDiffOpcodes(itemTokens, targetTokens);
+    if (opcodes) {
+      opcodes.forEach((opcode) => {
+        if (opcode.tag !== 'equal') return;
+        for (let offset = 0; offset < opcode.targetEnd - opcode.targetStart; offset += 1) {
+          const sourceIndex = opcode.sourceStart + offset;
+          const targetIndex = opcode.targetStart + offset;
+          if (itemCoverage[sourceIndex]) covered[targetIndex] = 1;
+        }
+      });
+    }
+    return {
+      sourceTokens: targetTokens,
+      covered,
+      coveredCharacters: covered.reduce((sum, value) => sum + value, 0),
+      validItemCount,
+      totalItemCount: items.length,
+    };
+  }
+
+  function timedTextItemCoverage(text, rawItems) {
+    const coverage = timedTextItemCoverageMask(text, rawItems);
+    const { sourceTokens, coveredCharacters, validItemCount, totalItemCount } = coverage;
+    const totalCharacters = sourceTokens.length;
+    return {
+      percent: totalCharacters ? Math.round((coveredCharacters / totalCharacters) * 100) : 0,
+      coveredCharacters,
+      totalCharacters,
+      validItemCount,
+      totalItemCount,
+    };
+  }
+
+  // “有效覆盖率”只说明当前文字被有效时间码覆盖；“原始时间码复用率”
+  // 还要扣除新增/删除后无法对应到原文字符的位置。等长改字是已确认的
+  // 可靠场景：旧 item 的时间范围会按原位置复用，因此不因错别字本身降级。
+  function timedTextItemReuse(originalText, originalItems, text, rawItems, mappingStatus = '') {
+    const sourceCoverage = timedTextItemCoverageMask(originalText, originalItems);
+    const targetCoverage = timedTextItemCoverageMask(text, rawItems);
+    const sourceTokens = sourceCoverage.sourceTokens;
+    const targetTokens = targetCoverage.sourceTokens;
+    const totalCharacters = Math.max(sourceTokens.length, targetTokens.length);
+    if (!totalCharacters || !sourceCoverage.validItemCount || !targetCoverage.coveredCharacters) {
+      return {
+        percent: 0,
+        reusedCharacters: 0,
+        totalCharacters,
+        sourceCharacters: sourceTokens.length,
+        currentCharacters: targetTokens.length,
+      };
+    }
+
+    let reusedCharacters = 0;
+    if (sourceTokens.length === targetTokens.length && mappingStatus === 'full') {
+      // 等长改字分支保持每个原 item 的时间范围，按当前位置复用时间码。
+      reusedCharacters = targetCoverage.coveredCharacters;
+    } else {
+      const opcodes = timedTextDiffOpcodes(sourceTokens, targetTokens);
+      if (opcodes) {
+        opcodes.forEach((opcode) => {
+          if (opcode.tag !== 'equal') return;
+          const length = opcode.targetEnd - opcode.targetStart;
+          for (let offset = 0; offset < length; offset += 1) {
+            const sourceIndex = opcode.sourceStart + offset;
+            const targetIndex = opcode.targetStart + offset;
+            if (sourceCoverage.covered[sourceIndex] && targetCoverage.covered[targetIndex]) {
+              reusedCharacters += 1;
+            }
+          }
+        });
+      }
+    }
+    return {
+      percent: Math.round((reusedCharacters / totalCharacters) * 100),
+      reusedCharacters,
+      totalCharacters,
+      sourceCharacters: sourceTokens.length,
+      currentCharacters: targetTokens.length,
+    };
+  }
+
   function buildTimedTextDiff(before, after) {
     const beforeTokens = timedTextTokens(before);
     const afterTokens = timedTextTokens(after);
@@ -5310,11 +5465,398 @@
     return timedTextItemLayout(originalText, items)?.spans || null;
   }
 
-  function timedTextItemSplitIndex(layout, boundary) {
-    if (!layout || !Number.isInteger(boundary) || boundary <= 0
-        || boundary >= layout.spans[layout.spans.length - 1].end) return -1;
-    const index = layout.spans.findIndex((span) => span.end === boundary);
-    return index < 0 ? -1 : index + 1;
+  function timedTextItemsSlice(layout, startBoundary, endBoundary) {
+    if (!layout || !Number.isInteger(startBoundary) || !Number.isInteger(endBoundary)) return null;
+    const total = layout.spans[layout.spans.length - 1]?.end || 0;
+    if (startBoundary < 0 || endBoundary > total || startBoundary >= endBoundary) return [];
+    return layout.items.flatMap((item, index) => {
+      const span = layout.spans[index];
+      const sliceStart = Math.max(startBoundary, span.start);
+      const sliceEnd = Math.min(endBoundary, span.end);
+      if (sliceStart >= sliceEnd) return [];
+      const itemTokens = timedTextTokens(item.text);
+      const localStart = sliceStart - span.start;
+      const localEnd = sliceEnd - span.start;
+      const itemStart = Number(item.start);
+      const itemEnd = Number(item.end);
+      const itemLength = Math.max(1, itemTokens.length);
+      const timeAt = (offset) => Math.round(
+        itemStart + ((itemEnd - itemStart) * offset) / itemLength,
+      );
+      const copy = cloneJsonValue(item);
+      copy.text = itemTokens.slice(localStart, localEnd).join('');
+      copy.start = timeAt(localStart);
+      copy.end = timeAt(localEnd);
+      // 被切开的 item 不再有唯一的原始身份；时间和其它可选元数据仍保留。
+      if (sliceStart !== span.start || sliceEnd !== span.end) delete copy.id;
+      return [copy];
+    });
+  }
+
+  function timedTextItemsPartition(layout, prefixCount, suffixCount) {
+    if (!layout || !Number.isInteger(prefixCount) || !Number.isInteger(suffixCount)) return null;
+    const total = layout.spans[layout.spans.length - 1]?.end || 0;
+    const bodyEnd = total - suffixCount;
+    if (prefixCount < 0 || suffixCount < 0 || prefixCount > bodyEnd) return null;
+    const prefix = timedTextItemsSlice(layout, 0, prefixCount);
+    const body = timedTextItemsSlice(layout, prefixCount, bodyEnd);
+    const suffix = timedTextItemsSlice(layout, bodyEnd, total);
+    if (!prefix || !body || !suffix || (prefixCount < bodyEnd && !body.length)) return null;
+    return { prefix, body, suffix };
+  }
+
+  function timedTextStructureRequested(segments, draftTexts) {
+    const source = Array.isArray(segments) ? segments : [];
+    const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    if (!source.length || source.some((segment) => String(segment?.text || '').includes('\n'))) return false;
+    return source.length !== texts.length
+      || texts.some((text) => String(text == null ? '' : text).includes('\n'));
+  }
+
+  function timedTextDraftLines(draftTexts) {
+    return timedTextDraftLineEntries(draftTexts).map((entry) => entry.text);
+  }
+
+  function timedTextDraftLineEntries(draftTexts) {
+    return (Array.isArray(draftTexts) ? draftTexts : [])
+      .flatMap((text, draftIndex) => String(text == null ? '' : text)
+        .replace(/\r\n?/g, '\n')
+        .split('\n')
+        .map((line) => ({ text: line, draftIndex })));
+  }
+
+  function timedTextRangeIsWhitespace(tokens, range) {
+    return tokens.slice(range.start, range.end).every((token) => /\s/u.test(token));
+  }
+
+  function retimeTimedTextSlice(items, newText) {
+    const source = Array.isArray(items) ? items : [];
+    const targetTokens = timedTextTokens(newText);
+    const lengths = source.map((item) => timedTextTokens(item?.text).length);
+    if (!source.length || lengths.some((length) => length <= 0)
+        || lengths.reduce((sum, length) => sum + length, 0) !== targetTokens.length) return null;
+    let offset = 0;
+    return source.map((item, index) => {
+      const copy = cloneJsonValue(item);
+      const length = lengths[index];
+      copy.text = targetTokens.slice(offset, offset + length).join('');
+      offset += length;
+      return copy;
+    });
+  }
+
+  const TIMED_TEXT_ESTIMATED_MIN_MS = 100;
+  const TIMED_TEXT_ESTIMATED_MS_PER_CHARACTER = 100;
+
+  function timedTextEstimatedDuration(text) {
+    const units = Math.max(1, Math.ceil(countTextUnits(text)));
+    return Math.max(
+      TIMED_TEXT_ESTIMATED_MIN_MS,
+      units * TIMED_TEXT_ESTIMATED_MS_PER_CHARACTER,
+    );
+  }
+
+  function timedTextSegmentBoundary(segment, offset, total) {
+    const start = Number(segment?.start);
+    const end = Number(segment?.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || total <= 0) return null;
+    const safeOffset = Math.max(0, Math.min(total, Number(offset) || 0));
+    return Math.round(start + ((end - start) * safeOffset) / total);
+  }
+
+  function emptyTimedTextStructurePlan(error = '') {
+    return {
+      valid: false,
+      type: null,
+      error,
+      mode: null,
+      segments: [],
+      outputMeta: [],
+      sourceOutputIndexes: [],
+      affectedSourceIndexes: [],
+      removedSourceIndexes: [],
+    };
+  }
+
+  function findTimedTextTokenSequence(sourceTokens, targetTokens, fromIndex) {
+    if (!targetTokens.length) return -1;
+    for (let index = Math.max(0, fromIndex); index + targetTokens.length <= sourceTokens.length; index += 1) {
+      if (sameTimedTextTokens(
+        sourceTokens.slice(index, index + targetTokens.length),
+        targetTokens,
+      )) return index;
+    }
+    return -1;
+  }
+
+  function buildTimedTextStructurePlan(segments, draftTexts) {
+    const source = Array.isArray(segments) ? segments : [];
+    const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    if (!timedTextStructureRequested(source, texts)) return emptyTimedTextStructurePlan();
+    // 空行表示用户清空了对应字幕；纯文本视图不再保留空字幕行，直接将其视为删除标记。
+    const lineEntries = timedTextDraftLineEntries(texts)
+      .filter((entry) => String(entry.text).trim() !== '');
+    const lines = lineEntries.map((entry) => entry.text);
+
+    const sourceTokens = source.map((segment) => timedTextTokens(segment?.text));
+    const sourceOffsets = [];
+    let totalCharacters = 0;
+    sourceTokens.forEach((tokens) => {
+      sourceOffsets.push({ start: totalCharacters, end: totalCharacters + tokens.length });
+      totalCharacters += tokens.length;
+    });
+    if (!totalCharacters) return emptyTimedTextStructurePlan('当前字幕没有可用于拆分的文字。');
+    const flattenedSource = sourceTokens.flat();
+    const lineTokens = lines.map((line) => timedTextTokens(line));
+    const lineRanges = [];
+    let exactCursor = 0;
+    let exact = true;
+    for (const tokens of lineTokens) {
+      const start = findTimedTextTokenSequence(flattenedSource, tokens, exactCursor);
+      if (start < 0) {
+        exact = false;
+        break;
+      }
+      lineRanges.push({ start, end: start + tokens.length });
+      exactCursor = start + tokens.length;
+    }
+
+    let mode = 'exact';
+    if (exact) {
+      const gaps = [];
+      let previous = 0;
+      lineRanges.forEach((range) => {
+        if (range.start > previous) gaps.push({ start: previous, end: range.start });
+        previous = range.end;
+      });
+      if (previous < totalCharacters) gaps.push({ start: previous, end: totalCharacters });
+      const boundaries = new Set([0, ...sourceOffsets.flatMap((range) => [range.start, range.end])]);
+      if (gaps.some((gap) => (
+        (!boundaries.has(gap.start) || !boundaries.has(gap.end))
+        && !timedTextRangeIsWhitespace(flattenedSource, gap)
+      ))) {
+        return emptyTimedTextStructurePlan('删除字幕时只能删除完整字幕行，不能只删除其中一部分文字。');
+      }
+    } else {
+      // 某些前面的句子被改写后，仍尝试从后面的未改文字建立锚点。
+      // 锚点之间的新增/改写区域只允许走字幕段级估算，不能再按原始 index 猜。
+      const anchors = Array.from({ length: lineTokens.length }, () => null);
+      let cursor = 0;
+      let anchorCount = 0;
+      lineTokens.forEach((tokens, index) => {
+        const start = findTimedTextTokenSequence(flattenedSource, tokens, cursor);
+        if (start < 0) return;
+        anchors[index] = { start, end: start + tokens.length };
+        cursor = start + tokens.length;
+        anchorCount += 1;
+      });
+      if (!anchorCount) {
+        return emptyTimedTextStructurePlan('无法根据原文重新匹配拆句结果；请保留至少一段未改文字作为匹配锚点。');
+      }
+      mode = 'anchor';
+      let previousLineIndex = -1;
+      let previousSourceEnd = 0;
+      const anchorIndexes = anchors
+        .map((anchor, index) => (anchor ? index : -1))
+        .filter((index) => index >= 0);
+      for (const nextLineIndex of [...anchorIndexes, lineTokens.length]) {
+        const nextAnchor = nextLineIndex < lineTokens.length ? anchors[nextLineIndex] : null;
+        const sourceEnd = nextAnchor?.start ?? totalCharacters;
+        const missingIndexes = [];
+        for (let index = previousLineIndex + 1; index < nextLineIndex; index += 1) {
+          if (!anchors[index]) missingIndexes.push(index);
+        }
+        const targetLength = missingIndexes.reduce((sum, index) => sum + lineTokens[index].length, 0);
+        const sourceLength = sourceEnd - previousSourceEnd;
+        if (missingIndexes.length && (targetLength <= 0 || sourceLength <= 0)) {
+          return emptyTimedTextStructurePlan('无法根据原文重新匹配拆句结果；改写区域缺少可用时间范围。');
+        }
+        let targetOffset = 0;
+        missingIndexes.forEach((index) => {
+          const start = previousSourceEnd + Math.round((sourceLength * targetOffset) / targetLength);
+          targetOffset += lineTokens[index].length;
+          const end = previousSourceEnd + Math.round((sourceLength * targetOffset) / targetLength);
+          if (end <= start) {
+            lineRanges.length = 0;
+            return;
+          }
+          lineRanges[index] = { start, end };
+        });
+        if (nextAnchor) {
+          lineRanges[nextLineIndex] = nextAnchor;
+          previousLineIndex = nextLineIndex;
+          previousSourceEnd = nextAnchor.end;
+        } else {
+          previousLineIndex = lineTokens.length - 1;
+          previousSourceEnd = totalCharacters;
+        }
+      }
+      if (lineRanges.length !== lineTokens.length || lineRanges.some((range) => !range)) {
+        return emptyTimedTextStructurePlan('无法根据原文重新匹配拆句结果；请减少连续改写的字幕行。');
+      }
+    }
+
+    const layouts = source.map((segment) => timedTextItemLayout(segment?.text, segment?.items));
+    const outputSegments = [];
+    const outputMeta = [];
+    const sourceOutputIndexes = Array.from({ length: source.length }, () => []);
+    let previousOutputEnd = null;
+    for (const [outputIndex, range] of lineRanges.entries()) {
+      const overlaps = sourceOffsets
+        .map((sourceRange, sourceIndex) => ({ sourceRange, sourceIndex }))
+        .filter(({ sourceRange }) => range.start < sourceRange.end && range.end > sourceRange.start);
+      if (!overlaps.length) return emptyTimedTextStructurePlan('无法找到新字幕对应的原始时间范围。');
+
+      const first = overlaps[0].sourceIndex;
+      const last = overlaps[overlaps.length - 1].sourceIndex;
+      const firstLocal = range.start - sourceOffsets[first].start;
+      const lastLocal = range.end - sourceOffsets[last].start;
+      const isWholeUnchangedSource = overlaps.length === 1
+        && firstLocal === 0
+        && lastLocal === sourceTokens[first].length
+        && lines[outputIndex] === String(source[first]?.text || '');
+      let items = null;
+      let timingEstimated = false;
+      if (isWholeUnchangedSource) {
+        // 末尾多出的空行等不会改变字幕结构；没有字词时间码时也可以安全地保留这个无变化行。
+        items = Array.isArray(source[first]?.items) ? cloneJsonValue(source[first].items) : null;
+      } else {
+        const originalItems = [];
+        let canReuseItems = true;
+        for (const { sourceRange, sourceIndex } of overlaps) {
+          const localStart = Math.max(0, range.start - sourceRange.start);
+          const localEnd = Math.min(sourceRange.end - sourceRange.start, range.end - sourceRange.start);
+          if (localStart >= localEnd) continue;
+          if (!layouts[sourceIndex]) {
+            canReuseItems = false;
+            break;
+          }
+          const slice = timedTextItemsSlice(layouts[sourceIndex], localStart, localEnd);
+          if (!slice?.length) {
+            canReuseItems = false;
+            break;
+          }
+          originalItems.push(...slice);
+        }
+        items = canReuseItems ? retimeTimedTextSlice(originalItems, lines[outputIndex]) : null;
+        if (!items?.length || !timedTextItemsOrdered(items)) {
+          // 没有完整字词时间码时仍允许拆句，但只生成字幕段级时间范围，
+          // 并在报告中明确标记为按范围/字数估算，绝不伪造精确 items。
+          items = null;
+          timingEstimated = true;
+        }
+      }
+      let start = items?.length
+        ? (firstLocal === 0 ? Number(source[first]?.start) : Number(items[0].start))
+        : timedTextSegmentBoundary(source[first], firstLocal, sourceTokens[first].length);
+      let end = items?.length
+        ? (lastLocal === sourceTokens[last].length
+          ? Number(source[last]?.end) : Number(items[items.length - 1].end))
+        : timedTextSegmentBoundary(source[last], lastLocal, sourceTokens[last].length);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        timingEstimated = true;
+        start = Number.isFinite(previousOutputEnd) ? previousOutputEnd : 0;
+        end = start + timedTextEstimatedDuration(lines[outputIndex]);
+      } else if (timingEstimated) {
+        if (Number.isFinite(previousOutputEnd) && start < previousOutputEnd) start = previousOutputEnd;
+        end = Math.max(end, start + TIMED_TEXT_ESTIMATED_MIN_MS);
+      }
+      const nextSourceStart = Number(source[last + 1]?.start);
+      if (timingEstimated && Number.isFinite(nextSourceStart)) {
+        if (start >= nextSourceStart) {
+          return emptyTimedTextStructurePlan('自动估算的字幕时间范围没有足够空间，不能越过下一条字幕的开头。');
+        }
+        end = Math.min(end, nextSourceStart);
+        if (end - start < TIMED_TEXT_ESTIMATED_MIN_MS) {
+          return emptyTimedTextStructurePlan('自动估算的字幕时间范围不足 100ms，且不能越过下一条字幕的开头。');
+        }
+      }
+      if (end <= start) {
+        return emptyTimedTextStructurePlan('拆句后产生了无效的字幕时间范围。');
+      }
+      const segment = cloneJsonValue(source[first] || {});
+      segment.start = start;
+      segment.end = end;
+      segment.text = lines[outputIndex];
+      if (!isWholeUnchangedSource) {
+        if (items?.length) segment.items = items;
+        else delete segment.items;
+      }
+      outputSegments.push(segment);
+      outputMeta.push({
+        sourceIndexes: overlaps.map(({ sourceIndex }) => sourceIndex),
+        range,
+        timingEstimated,
+        draftIndex: lineEntries[outputIndex]?.draftIndex,
+      });
+      overlaps.forEach(({ sourceIndex }) => sourceOutputIndexes[sourceIndex].push(outputIndex));
+      previousOutputEnd = end;
+    }
+
+    const usedSegments = [...source];
+    outputMeta.forEach((meta, outputIndex) => {
+      const sourceIndex = meta.sourceIndexes[0];
+      const sourceSegment = source[sourceIndex] || {};
+      const sourceRange = sourceOffsets[sourceIndex];
+      const firstOutputForSource = sourceOutputIndexes[sourceIndex][0] === outputIndex;
+      const canKeepSourceId = firstOutputForSource && meta.range.start === sourceRange.start;
+      if (canKeepSourceId && sourceSegment.id) {
+        outputSegments[outputIndex].id = sourceSegment.id;
+      } else {
+        const baseId = `${sourceSegment.id || `segment-${sourceIndex + 1}`}-text-${outputIndex + 1}`;
+        outputSegments[outputIndex].id = uniqueStableSegmentId(usedSegments, baseId, 'segment');
+      }
+      usedSegments.push(outputSegments[outputIndex]);
+      if (sourceSegment.sticker && !firstOutputForSource) {
+        outputSegments[outputIndex].sticker = null;
+        outputSegments[outputIndex].sticker_ref = {
+          name: sourceSegment.sticker.name,
+          headIdx: sourceOutputIndexes[sourceIndex][0],
+        };
+      }
+      if (sourceSegment.color && !firstOutputForSource) {
+        outputSegments[outputIndex].color = null;
+        outputSegments[outputIndex].color_ref = {
+          name: sourceSegment.color.name,
+          headIdx: sourceOutputIndexes[sourceIndex][0],
+        };
+      }
+    });
+
+    const affectedSourceIndexes = [];
+    sourceOutputIndexes.forEach((outputIndexes, sourceIndex) => {
+      if (outputIndexes.length !== 1) {
+        affectedSourceIndexes.push(sourceIndex);
+        return;
+      }
+      const meta = outputMeta[outputIndexes[0]];
+      const range = sourceOffsets[sourceIndex];
+      const output = outputSegments[outputIndexes[0]];
+      if (meta.sourceIndexes.length !== 1
+          || meta.range.start !== range.start
+          || meta.range.end !== range.end
+          || output.text !== source[sourceIndex]?.text) affectedSourceIndexes.push(sourceIndex);
+    });
+
+    const removedSourceIndexes = sourceOutputIndexes
+      .map((outputIndexes, sourceIndex) => outputIndexes.length ? -1 : sourceIndex)
+      .filter((index) => index >= 0);
+    const hasSplit = sourceOutputIndexes.some((indexes) => indexes.length > 1);
+    const hasMerge = outputMeta.some((meta) => meta.sourceIndexes.length > 1);
+    const hasDelete = removedSourceIndexes.length > 0;
+    const type = [hasSplit ? 'split' : '', hasMerge ? 'merge' : '', hasDelete ? 'delete' : '']
+      .filter(Boolean).join('+');
+    return {
+      valid: true,
+      type: type || 'resegment',
+      error: '',
+      mode,
+      segments: outputSegments,
+      outputMeta,
+      sourceOutputIndexes,
+      affectedSourceIndexes,
+      removedSourceIndexes,
+    };
   }
 
   function sameTimedTextTokens(left, right) {
@@ -5385,6 +5927,88 @@
     });
   }
 
+  // 逐条字幕通常很短，用 LCS 生成字符级 diff 足够可靠；过大的单条文本
+  // 走保守兜底，避免编辑器因构造过大的二维表而卡住。
+  function timedTextDiffOpcodes(sourceTokens, targetTokens) {
+    const sourceLength = sourceTokens.length;
+    const targetLength = targetTokens.length;
+    const columns = targetLength + 1;
+    const cellCount = (sourceLength + 1) * columns;
+    if (cellCount > 2000000) return null;
+
+    const table = new Uint32Array(cellCount);
+    for (let sourceIndex = sourceLength - 1; sourceIndex >= 0; sourceIndex -= 1) {
+      const row = sourceIndex * columns;
+      const nextRow = (sourceIndex + 1) * columns;
+      for (let targetIndex = targetLength - 1; targetIndex >= 0; targetIndex -= 1) {
+        table[row + targetIndex] = sourceTokens[sourceIndex] === targetTokens[targetIndex]
+          ? table[nextRow + targetIndex + 1] + 1
+          : Math.max(table[nextRow + targetIndex], table[row + targetIndex + 1]);
+      }
+    }
+
+    const opcodes = [];
+    let sourcePosition = 0;
+    let targetPosition = 0;
+    let pendingSourceStart = null;
+    let pendingTargetStart = null;
+    const flushChanged = () => {
+      if (pendingSourceStart === null) return;
+      opcodes.push({
+        tag: 'replace',
+        sourceStart: pendingSourceStart,
+        sourceEnd: sourcePosition,
+        targetStart: pendingTargetStart,
+        targetEnd: targetPosition,
+      });
+      pendingSourceStart = null;
+      pendingTargetStart = null;
+    };
+    const appendEqual = () => {
+      const previous = opcodes[opcodes.length - 1];
+      if (previous?.tag === 'equal'
+          && previous.sourceEnd === sourcePosition
+          && previous.targetEnd === targetPosition) {
+        previous.sourceEnd += 1;
+        previous.targetEnd += 1;
+      } else {
+        opcodes.push({
+          tag: 'equal',
+          sourceStart: sourcePosition,
+          sourceEnd: sourcePosition + 1,
+          targetStart: targetPosition,
+          targetEnd: targetPosition + 1,
+        });
+      }
+    };
+
+    while (sourcePosition < sourceLength && targetPosition < targetLength) {
+      if (sourceTokens[sourcePosition] === targetTokens[targetPosition]) {
+        flushChanged();
+        appendEqual();
+        sourcePosition += 1;
+        targetPosition += 1;
+        continue;
+      }
+      if (pendingSourceStart === null) {
+        pendingSourceStart = sourcePosition;
+        pendingTargetStart = targetPosition;
+      }
+      const skipSource = table[(sourcePosition + 1) * columns + targetPosition];
+      const skipTarget = table[sourcePosition * columns + targetPosition + 1];
+      if (skipSource >= skipTarget) sourcePosition += 1;
+      else targetPosition += 1;
+    }
+    if (pendingSourceStart === null && (sourcePosition < sourceLength || targetPosition < targetLength)) {
+      pendingSourceStart = sourcePosition;
+      pendingTargetStart = targetPosition;
+    }
+    sourcePosition = sourceLength;
+    targetPosition = targetLength;
+    flushChanged();
+    return opcodes;
+  }
+
   function emptyTimedTextBoundaryPlan(source) {
     return {
       transfers: [],
@@ -5431,26 +6055,23 @@
       const beforeTokens = timedTextTokens(source[index]?.text);
       const prefixCount = prefixCounts[index];
       const suffixCount = suffixCounts[index];
-      if (prefixCount + suffixCount >= beforeTokens.length) {
+      if (prefixCount + suffixCount > beforeTokens.length) {
         return emptyTimedTextBoundaryPlan(source);
       }
       const layout = timedTextItemLayout(source[index]?.text, source[index]?.items);
       if (!layout) return emptyTimedTextBoundaryPlan(source);
-      const prefixIndex = prefixCount
-        ? timedTextItemSplitIndex(layout, prefixCount) : 0;
-      const suffixIndex = suffixCount
-        ? timedTextItemSplitIndex(layout, beforeTokens.length - suffixCount) : layout.items.length;
-      if (prefixIndex < 0 || suffixIndex < 0 || prefixIndex >= suffixIndex) {
+      const partition = timedTextItemsPartition(layout, prefixCount, suffixCount);
+      if (!partition) {
         return emptyTimedTextBoundaryPlan(source);
       }
-      partitions[index] = { layout, prefixIndex, suffixIndex };
+      partitions[index] = { layout, ...partition };
     }
 
     for (const candidate of candidates) {
       const partition = partitions[candidate.sourceIndex];
       candidate.movedItems = candidate.type === 'prefix-to-previous'
-        ? cloneJsonValue(partition.layout.items.slice(0, partition.prefixIndex))
-        : cloneJsonValue(partition.layout.items.slice(partition.suffixIndex));
+        ? cloneJsonValue(partition.prefix)
+        : cloneJsonValue(partition.suffix);
       if (!candidate.movedItems.length
           || candidate.movedItems.map((item) => item.text).join('') !== candidate.movedTokens.join('')) {
         return emptyTimedTextBoundaryPlan(source);
@@ -5472,10 +6093,10 @@
       const incomingSuffixItems = incomingSuffixes[index]?.movedItems || [];
       const nextItems = [
         ...cloneJsonValue(incomingPrefixItems),
-        ...partition.layout.items.slice(partition.prefixIndex, partition.suffixIndex),
+        ...cloneJsonValue(partition.body),
         ...cloneJsonValue(incomingSuffixItems),
       ];
-      if (!nextItems.length
+      if ((expectedTokens.length && !nextItems.length)
           || nextItems.map((item) => item.text).join('') !== expectedTokens.join('')
           || !timedTextItemsOrdered(nextItems)) {
         return emptyTimedTextBoundaryPlan(source);
@@ -5484,8 +6105,10 @@
       const segment = source[index];
       let start = Number(segment?.start);
       let end = Number(segment?.end);
-      if (prefixCounts[index] || prefixTokens.length) start = Number(nextItems[0].start);
-      if (suffixCounts[index] || suffixTokens.length) end = Number(nextItems[nextItems.length - 1].end);
+      if (nextItems.length) {
+        if (prefixCounts[index] || prefixTokens.length) start = Number(nextItems[0].start);
+        if (suffixCounts[index] || suffixTokens.length) end = Number(nextItems[nextItems.length - 1].end);
+      }
       if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
         return emptyTimedTextBoundaryPlan(source);
       }
@@ -5539,74 +6162,167 @@
       return { status: 'full', items, preservedItems: items.length, affectedItems: 0 };
     }
 
-    let prefix = 0;
-    while (
-      prefix < originalTokens.length
-      && prefix < newTokens.length
-      && originalTokens[prefix] === newTokens[prefix]
-    ) prefix += 1;
-    let suffix = 0;
-    while (
-      suffix < originalTokens.length - prefix
-      && suffix < newTokens.length - prefix
-      && originalTokens[originalTokens.length - 1 - suffix]
-        === newTokens[newTokens.length - 1 - suffix]
-    ) suffix += 1;
-    const unchanged = prefix + suffix;
+    const opcodes = timedTextDiffOpcodes(originalTokens, newTokens);
+    if (!opcodes) {
+      return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+    }
+    const unchanged = opcodes.reduce((total, opcode) => (
+      opcode.tag === 'equal' ? total + opcode.sourceEnd - opcode.sourceStart : total
+    ), 0);
     const comparableLength = Math.max(1, Math.min(originalTokens.length, newTokens.length));
     const changedOriginal = originalTokens.length - unchanged;
     const changedTarget = newTokens.length - unchanged;
+    const sourceFullyAnchored = unchanged === originalTokens.length;
     if (
       unchanged === 0
-      || unchanged < Math.max(1, Math.round(comparableLength * 0.25))
-      || changedOriginal > originalTokens.length * 0.75
-      || changedTarget > newTokens.length * 0.75
+      || (!sourceFullyAnchored && unchanged < Math.max(1, Math.round(comparableLength * 0.25)))
+      || (!sourceFullyAnchored && changedOriginal > originalTokens.length * 0.75)
+      || (!sourceFullyAnchored && changedTarget > newTokens.length * 0.75)
     ) {
       return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
     }
 
-    const changedStart = prefix;
-    const changedEnd = originalTokens.length - suffix;
-    const affectedIndexes = spans
-      .map((span, index) => ({ span, index }))
-      .filter(({ span }) => {
-        if (changedStart === changedEnd) {
-          return span.start <= changedStart && changedStart <= span.end;
-        }
-        return span.start < changedEnd && span.end > changedStart;
-      })
-      .map(({ index }) => index);
-    if (!affectedIndexes.length) {
+    const affectedIndexes = new Set();
+    const parentIndexes = Array.from({ length: items.length }, (_, index) => index);
+    const findParent = (index) => {
+      let root = index;
+      while (parentIndexes[root] !== root) root = parentIndexes[root];
+      while (parentIndexes[index] !== index) {
+        const next = parentIndexes[index];
+        parentIndexes[index] = root;
+        index = next;
+      }
+      return root;
+    };
+    const unionItems = (left, right) => {
+      const leftRoot = findParent(left);
+      const rightRoot = findParent(right);
+      if (leftRoot === rightRoot) return;
+      parentIndexes[Math.max(leftRoot, rightRoot)] = Math.min(leftRoot, rightRoot);
+    };
+    const indexesForSourceRange = (sourceStart, sourceEnd) => (
+      sourceStart < sourceEnd
+        ? spans
+          .map((span, index) => ({ span, index }))
+          .filter(({ span }) => span.end > sourceStart && span.start < sourceEnd)
+          .map(({ index }) => index)
+        : []
+    );
+    const insertionItemIndex = (position) => {
+      if (position <= spans[0].start) return 0;
+      const lastIndex = spans.length - 1;
+      if (position >= spans[lastIndex].end) return lastIndex;
+      for (let index = 0; index < spans.length; index += 1) {
+        const span = spans[index];
+        if (span.start < position && position < span.end) return index;
+        // 插入在 item 边界时归到前一个 item，避免无关的后一个 item 也被合并。
+        if (position === span.start) return Math.max(0, index - 1);
+      }
+      return lastIndex;
+    };
+    opcodes.forEach((opcode) => {
+      if (opcode.tag === 'equal') return;
+      const indexes = indexesForSourceRange(opcode.sourceStart, opcode.sourceEnd);
+      if (!indexes.length) {
+        const index = insertionItemIndex(opcode.sourceStart);
+        if (Number.isInteger(index)) indexes.push(index);
+      }
+      indexes.forEach((index) => affectedIndexes.add(index));
+      for (let index = 1; index < indexes.length; index += 1) {
+        unionItems(indexes[0], indexes[index]);
+      }
+    });
+    if (!affectedIndexes.size) {
       return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
     }
-    const firstIndex = affectedIndexes[0];
-    const lastIndex = affectedIndexes[affectedIndexes.length - 1];
-    const firstSpan = spans[firstIndex];
-    const lastSpan = spans[lastIndex];
-    const prefixText = originalTokens.slice(firstSpan.start, Math.max(firstSpan.start, changedStart)).join('');
-    const suffixText = originalTokens.slice(Math.min(lastSpan.end, changedEnd)).join('');
-    const targetText = newTokens.slice(prefix, newTokens.length - suffix).join('');
-    const merged = { ...items[firstIndex] };
-    merged.text = prefixText + targetText + suffixText;
-    merged.start = items[firstIndex].start;
-    merged.end = items[lastIndex].end;
-    const reconciled = [
-      ...items.slice(0, firstIndex),
-      ...(merged.text ? [merged] : []),
-      ...items.slice(lastIndex + 1),
-    ];
+
+    const componentsByRoot = new Map();
+    affectedIndexes.forEach((index) => {
+      const root = findParent(index);
+      const component = componentsByRoot.get(root);
+      if (component) {
+        component.start = Math.min(component.start, index);
+        component.end = Math.max(component.end, index);
+      } else {
+        componentsByRoot.set(root, { start: index, end: index });
+      }
+    });
+    const components = [...componentsByRoot.values()];
+    const componentIds = new Map();
+    [...componentsByRoot.keys()].forEach((root, componentId) => {
+      componentIds.set(root, componentId);
+    });
+    const itemOwnerKey = (index) => {
+      const componentId = componentIds.get(findParent(index));
+      return componentId === undefined ? `item:${index}` : `affected:${componentId}`;
+    };
+
+    const targetKeys = [];
+    for (const opcode of opcodes) {
+      if (opcode.tag === 'equal') {
+        for (let sourceIndex = opcode.sourceStart; sourceIndex < opcode.sourceEnd; sourceIndex += 1) {
+          const itemIndex = spans.findIndex((span) => span.start <= sourceIndex && sourceIndex < span.end);
+          if (itemIndex < 0) {
+            return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+          }
+          targetKeys.push(itemOwnerKey(itemIndex));
+        }
+        continue;
+      }
+      if (opcode.targetStart >= opcode.targetEnd) continue;
+      const indexes = indexesForSourceRange(opcode.sourceStart, opcode.sourceEnd);
+      if (!indexes.length) {
+        const index = insertionItemIndex(opcode.sourceStart);
+        if (Number.isInteger(index)) indexes.push(index);
+      }
+      if (!indexes.length) {
+        return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+      }
+      const ownerKey = itemOwnerKey(indexes[0]);
+      for (let targetIndex = opcode.targetStart; targetIndex < opcode.targetEnd; targetIndex += 1) {
+        targetKeys.push(ownerKey);
+      }
+    }
+
+    const runs = [];
+    targetKeys.forEach((key, index) => {
+      const previous = runs[runs.length - 1];
+      if (previous?.key === key) previous.end = index + 1;
+      else runs.push({ key, start: index, end: index + 1 });
+    });
+    const usedKeys = new Set();
+    const reconciled = [];
+    for (const run of runs) {
+      if (usedKeys.has(run.key)) {
+        return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+      }
+      usedKeys.add(run.key);
+      const text = newTokens.slice(run.start, run.end).join('');
+      if (!text) continue;
+      let item;
+      if (run.key.startsWith('item:')) {
+        item = cloneJsonValue(items[Number(run.key.slice(5))]);
+      } else {
+        const component = components[Number(run.key.slice(9))];
+        item = cloneJsonValue(items[component.start]);
+        item.start = items[component.start].start;
+        item.end = items[component.end].end;
+      }
+      item.text = text;
+      reconciled.push(item);
+    }
     if (reconciled.length && reconciled.map((item) => item.text).join('') === newText) {
       return {
         status: 'partial',
         items: reconciled,
         preservedItems: reconciled.length,
-        affectedItems: affectedIndexes.length,
+        affectedItems: affectedIndexes.size,
       };
     }
     return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
   }
 
-  function buildTimedTextEditReport(segments, draftTexts) {
+  function buildTimedTextEditReportFixed(segments, draftTexts) {
     const source = Array.isArray(segments) ? segments : [];
     const texts = Array.isArray(draftTexts) ? draftTexts : [];
     const valid = source.length === texts.length;
@@ -5626,17 +6342,27 @@
         : reconcileTimedTextItems(before, segment?.items, after);
       const afterStart = boundary ? boundary.start : Number(segment?.start);
       const afterEnd = boundary ? boundary.end : Number(segment?.end);
+      const coverage = timedTextItemCoverage(after, mapping.items);
+      const reuse = timedTextItemReuse(
+        before, segment?.items, after, mapping.items, mapping.status,
+      );
       return {
         index,
         before,
         after,
         changed: before !== after,
+        deleted: Boolean(before.trim() && !after.trim()),
         diff,
         mappingStatus: mapping.status,
         beforeItemCount: Array.isArray(segment?.items) ? segment.items.length : 0,
         afterItemCount: mapping.items?.length || 0,
         preservedItems: mapping.preservedItems,
         affectedItems: mapping.affectedItems,
+        items: mapping.items,
+        itemCoverage: coverage.percent,
+        itemCoverageData: coverage,
+        itemReuse: reuse.percent,
+        itemReuseData: reuse,
         beforeStart: Number(segment?.start),
         beforeEnd: Number(segment?.end),
         afterStart,
@@ -5666,22 +6392,194 @@
     return { valid, rows, changedRows, stats, boundaryMoves: boundaryPlan.transfers };
   }
 
+  function timedTextStructureSourceSlice(source, range) {
+    const sourceSegments = Array.isArray(source) ? source : [];
+    const requestedStart = Math.max(0, Math.round(Number(range?.start) || 0));
+    const requestedEnd = Math.max(requestedStart, Math.round(Number(range?.end) || 0));
+    const textParts = [];
+    const items = [];
+    let offset = 0;
+    sourceSegments.forEach((segment) => {
+      const tokens = timedTextTokens(segment?.text);
+      const sourceStart = offset;
+      const sourceEnd = offset + tokens.length;
+      offset = sourceEnd;
+      const localStart = Math.max(0, requestedStart - sourceStart);
+      const localEnd = Math.min(tokens.length, requestedEnd - sourceStart);
+      if (localStart >= localEnd) return;
+      textParts.push(tokens.slice(localStart, localEnd).join(''));
+      const layout = timedTextItemLayout(segment?.text, segment?.items);
+      if (layout) {
+        const sliced = timedTextItemsSlice(layout, localStart, localEnd);
+        if (sliced) items.push(...sliced);
+      }
+    });
+    return { text: textParts.join(''), items };
+  }
+
+  function buildTimedTextStructureReport(source, texts, plan) {
+    const outputRows = plan.segments.map((output, outputIndex) => {
+      const meta = plan.outputMeta[outputIndex] || { sourceIndexes: [], range: null };
+      const sourceSlice = timedTextStructureSourceSlice(source, meta.range);
+      const sourceIndexes = Array.isArray(meta.sourceIndexes) ? meta.sourceIndexes : [];
+      const structural = sourceIndexes.some((index) => plan.affectedSourceIndexes.includes(index))
+        || sourceIndexes.length !== 1;
+      const before = sourceSlice.text;
+      const after = String(output?.text || '');
+      const mappingStatus = structural
+        ? 'structure'
+        : reconcileTimedTextItems(before, sourceSlice.items, after).status;
+      const coverage = timedTextItemCoverage(after, output?.items);
+      const reuse = timedTextItemReuse(
+        before,
+        sourceSlice.items,
+        after,
+        output?.items,
+        before === after ? 'full' : mappingStatus,
+      );
+      return {
+        index: outputIndex,
+        draftIndex: meta.draftIndex,
+        sourceIndexes,
+        before,
+        after,
+        changed: before !== after || structural,
+        deleted: false,
+        structureChanged: structural,
+        diff: buildTimedTextDiff(before, after),
+        mappingStatus,
+        beforeItemCount: sourceSlice.items.length,
+        afterItemCount: Array.isArray(output?.items) ? output.items.length : 0,
+        preservedItems: Array.isArray(output?.items) ? output.items.length : 0,
+        affectedItems: Array.isArray(output?.items) ? output.items.length : 0,
+        items: output?.items,
+        itemCoverage: coverage.percent,
+        itemCoverageData: coverage,
+        itemReuse: reuse.percent,
+        itemReuseData: reuse,
+        beforeStart: sourceSlice.items[0]?.start ?? Number(output?.start),
+        beforeEnd: sourceSlice.items[sourceSlice.items.length - 1]?.end ?? Number(output?.end),
+        afterStart: Number(output?.start),
+        afterEnd: Number(output?.end),
+        timingChanged: structural,
+        timingEstimated: meta.timingEstimated === true,
+      };
+    });
+    const rows = source.map((segment, index) => {
+      const outputIndexes = plan.sourceOutputIndexes[index] || [];
+      const outputs = outputIndexes.map((outputIndex) => plan.segments[outputIndex]).filter(Boolean);
+      const before = String(segment?.text == null ? '' : segment.text);
+      const after = outputs.map((output) => String(output?.text || '')).join('');
+      const affected = plan.affectedSourceIndexes.includes(index);
+      const diff = buildTimedTextDiff(before, after);
+      const items = outputs.flatMap((output) => Array.isArray(output?.items) ? output.items : []);
+      const mappingStatus = affected ? 'structure' : reconcileTimedTextItems(before, segment?.items, after).status;
+      const coverage = timedTextItemCoverage(after, items);
+      const reuse = timedTextItemReuse(
+        before, segment?.items, after, items, mappingStatus,
+      );
+      const firstOutput = outputs[0];
+      const lastOutput = outputs[outputs.length - 1];
+      const afterStart = firstOutput ? Number(firstOutput.start) : Number(segment?.start);
+      const afterEnd = lastOutput ? Number(lastOutput.end) : Number(segment?.end);
+      return {
+        index,
+        before,
+        after,
+        displayAfter: outputs.map((output) => String(output?.text || '')).join('\n'),
+        changed: before !== after || affected,
+        deleted: Boolean(before.trim() && !after.trim()),
+        structureChanged: affected,
+        diff,
+        mappingStatus,
+        beforeItemCount: Array.isArray(segment?.items) ? segment.items.length : 0,
+        afterItemCount: items.length,
+        preservedItems: items.length,
+        affectedItems: items.length,
+        items,
+        itemCoverage: coverage.percent,
+        itemCoverageData: coverage,
+        itemReuse: reuse.percent,
+        itemReuseData: reuse,
+        beforeStart: Number(segment?.start),
+        beforeEnd: Number(segment?.end),
+        afterStart,
+        afterEnd,
+        timingChanged: affected
+          || afterStart !== Number(segment?.start) || afterEnd !== Number(segment?.end),
+      };
+    });
+    const changedRows = rows.filter((row) => row.changed);
+    const stats = {
+      ...buildTimedTextEditReportFixed(source, source.map((segment) => segment?.text || '')).stats,
+      totalSegments: source.length,
+      changedSegments: changedRows.length,
+      unchangedSegments: rows.length - changedRows.length,
+      beforeCharacters: rows.reduce((sum, row) => sum + timedTextTokens(row.before).length, 0),
+      afterCharacters: rows.reduce((sum, row) => sum + timedTextTokens(row.after).length, 0),
+      addedCharacters: changedRows.reduce((sum, row) => sum + row.diff.addedCharacters, 0),
+      removedCharacters: changedRows.reduce((sum, row) => sum + row.diff.removedCharacters, 0),
+      fullMappedCues: changedRows.filter((row) => row.mappingStatus === 'full').length,
+      partialMappedCues: changedRows.filter((row) => row.mappingStatus === 'partial').length,
+      lostMappedCues: changedRows.filter((row) => row.mappingStatus === 'lost').length,
+      unavailableMappedCues: changedRows.filter((row) => row.mappingStatus === 'unavailable').length,
+      boundaryMappedCues: 0,
+      boundaryMoves: 0,
+      timingChangedCues: rows.filter((row) => row.timingChanged).length,
+      preservedItems: changedRows.reduce((sum, row) => sum + row.preservedItems, 0),
+      affectedItems: changedRows.reduce((sum, row) => sum + row.affectedItems, 0),
+      structureMappedCues: changedRows.filter((row) => row.mappingStatus === 'structure').length,
+      estimatedTimingCues: outputRows.filter((row) => row.timingEstimated).length,
+    };
+    return {
+      valid: true,
+      rows,
+      changedRows,
+      stats,
+      boundaryMoves: [],
+      structure: plan,
+      previewSegments: plan.segments,
+      outputRows,
+    };
+  }
+
+  function buildTimedTextEditReport(segments, draftTexts) {
+    const source = Array.isArray(segments) ? segments : [];
+    const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    if (timedTextStructureRequested(source, texts)) {
+      const plan = buildTimedTextStructurePlan(source, texts);
+      if (plan.valid) return buildTimedTextStructureReport(source, texts, plan);
+      return {
+        ...buildTimedTextEditReportFixed(source, texts),
+        structure: plan,
+        previewSegments: [],
+      };
+    }
+    return buildTimedTextEditReportFixed(source, texts);
+  }
+
   function applyTimedTextEdit(segments, draftTexts) {
     const source = Array.isArray(segments) ? segments : [];
     const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    if (timedTextStructureRequested(source, texts)) {
+      const structurePlan = buildTimedTextStructurePlan(source, texts);
+      return structurePlan.valid ? cloneJsonValue(structurePlan.segments) : null;
+    }
     if (source.length !== texts.length) return null;
     const boundaryPlan = buildTimedTextBoundaryPlan(source, texts);
-    return source.map((segment, index) => {
+    return source.flatMap((segment, index) => {
       const next = cloneJsonValue(segment || {});
       const before = String(next.text == null ? '' : next.text);
       const after = String(texts[index] == null ? '' : texts[index]);
       if (before === after) return next;
+      if (!after) return [];
       const boundary = boundaryPlan.updates[index];
       if (boundary) {
         next.text = after;
         next.start = boundary.start;
         next.end = boundary.end;
-        next.items = cloneJsonValue(boundary.items);
+        if (boundary.items.length) next.items = cloneJsonValue(boundary.items);
+        else delete next.items;
         return next;
       }
       const mapping = reconcileTimedTextItems(before, next.items, after);
@@ -7997,7 +8895,10 @@
     applyTextProcessing,
     buildTextProcessingPreview,
     buildTimedTextDiff,
+    timedTextItemCoverage,
+    timedTextItemReuse,
     buildTimedTextBoundaryPlan,
+    buildTimedTextStructurePlan,
     buildTimedTextEditReport,
     applyTimedTextEdit,
     countTextUnits,
@@ -8465,17 +9366,20 @@
     '在光标处拆分': 'Split at cursor', '在光标处拆分（': 'Split at cursor (', '范围：全部字幕': 'Scope: all subtitles',
     '查找': 'Find', '替换为': 'Replace with', '批量替换': 'Batch replace',
     '纯文本编辑…': 'Plain text edit…', '纯文本编辑': 'Plain text edit', '编辑轨道': 'Edit track',
-    '编辑视图': 'Edit view', '逐条编辑': 'Edit row by row', '单文本框': 'Single text area',
+    '编辑视图': 'Edit view', '逐条编辑': 'Edit row by row', '整体编辑': 'Whole text', '单文本框': 'Single text area',
     '显示全部': 'Show all',
     '字幕文本': 'Subtitle text', '修改影响': 'Change impact', '修改内容': 'Changed text',
     '应用修改': 'Apply changes', '查看修改内容': 'View changes', '还没有修改内容。': 'No changes yet.',
-    '每一行对应一条已有字幕；请勿新增或删除行。': 'Each row is one existing subtitle; do not add or delete rows.',
-    '集中修改字幕文字；保持字幕行结构，确认前会分析字词时间码的保留情况；相邻字幕的开头/结尾移动会同步更新时间范围。': 'Edit subtitle text in one place; keep the subtitle row structure and analyze word-timing retention before applying. Start/end moves between adjacent subtitles also update their time ranges.',
+    '每一行对应一条当前字幕；新增、删除或移动换行会尝试调整字幕行结构。': 'Each line maps to a current subtitle; adding, removing, or moving line breaks will try to adjust the subtitle structure.',
+    '每一行对应一条当前字幕；新增、删除或移动换行会尝试调整字幕行结构。⌚️有效覆盖率 · ♻️原始时间码复用率': 'Each line maps to a current subtitle; adding, removing, or moving line breaks will try to adjust the subtitle structure. ⌚️ effective coverage · ♻️ original timing reuse',
+    '集中编辑字幕文本，并预览拆分、合并和字词时间码映射结果': 'Edit subtitle text in one place and preview split, merge, and word-timing mappings.',
+    '集中修改字幕文字；新增、删除或移动换行时会尝试拆分、合并并重新分配字词时间码；确认前会分析映射结果。': 'Edit subtitle text in one place; adding, removing, or moving line breaks will try to split, merge, and redistribute word timings before applying.',
     '未修改（原样保留）': 'Unchanged (retained as-is)', '修改后完整映射': 'Fully mapped after edit',
     '完整保留': 'Fully retained', '部分保留': 'Partially retained', '时间码丢失': 'Timecodes dropped',
     '完整映射': 'Fully mapped', '部分映射': 'Partially mapped', '原本没有字词时间码': 'No original word timings',
     '边界移动（时间码已转移）': 'Boundary move (word timings transferred)',
     '边界移动（转移时间码）': 'Boundary move (word timings transferred)',
+    '结构调整（时间码已重新分配）': 'Structure change (word timings redistributed)',
     '原本没有字词码': 'No word timings originally', '字符变化': 'Character changes', '字幕行': 'Subtitle rows',
     '修改前：': 'Before: ', '修改后：': 'After: ', '前：': 'Before: ', '后：': 'After: ',
     '还没有修改内容。': 'No changes yet.',
@@ -8483,23 +9387,33 @@
     '部分字幕无法可靠映射原字词时间码；应用后只保留字幕段整体时间范围。': 'Some subtitles cannot reliably map their original word timings; applying the edit keeps only the overall subtitle segment range.',
     '修改范围内的字词会合并为较粗的时间码，未受影响的字词仍会保留。': 'Words in the changed range are merged into coarser timings; unaffected words are retained.',
     '当前修改可以完整复用原字词时间码；字幕段整体时间范围不会改变。': 'The current edits can fully reuse the original word timings; the overall subtitle segment ranges stay unchanged.',
+    '当前字幕没有可用于拆分的文字。': 'The current subtitles have no text that can be used for splitting.',
+    '等待可靠时间码映射': 'Waiting for a reliable timing mapping',
     '当前没有可编辑的字幕': 'There are no subtitles to edit',
     '字幕在编辑窗口打开后发生了变化，请关闭窗口并重新打开': 'The subtitles changed while the editor was open. Close and reopen it.',
     '无法应用文本修改：字幕行结构发生了变化': 'Cannot apply text changes: the subtitle rows changed',
     '切换轨道会丢弃当前未应用的文本修改，是否继续？': 'Switching tracks will discard unapplied text changes. Continue?',
     '当前筛选没有修改内容。': 'No changes match the current filter.',
     '检测到相邻字幕之间的开头/结尾移动；对应字词时间码会一起转移，并更新字幕段范围。': 'A start/end move between adjacent subtitles was detected; the matching word timings will move too and the subtitle ranges will be updated.',
-    '当前字幕包含换行，暂不能切换到单文本框视图': 'The current subtitles contain line breaks, so the single-text-area view is unavailable.',
-    '请先保持每条字幕一行，再切换编辑视图': 'Keep one subtitle per line before switching the editing view.',
+    '检测到字幕行结构变化；应用后会按字词时间码拆分、合并或删除字幕行，并解除受影响的多字幕绑定。': 'A subtitle-row structure change was detected; applying it will split, merge, or delete rows using word timings and unlink affected multiple-subtitle bindings.',
+    '新增或删除字幕行后，文字总长度发生了变化，暂时无法可靠分配时间码。': 'The total text length changed after adding or deleting subtitle rows, so timings cannot be assigned reliably yet.',
+    '删除字幕时只能删除完整字幕行，不能只删除其中一部分文字。': 'Deleting subtitles can remove only complete rows, not part of a row.',
+    '拆句涉及的原字幕缺少可用字词时间码，无法安全拆分。': 'The source subtitle lacks usable word timings, so it cannot be split safely.',
+    '拆句边界没有可用的字词时间码。': 'The split boundary has no usable word timing.',
+    '拆句后的字词时间码无法保持顺序。': 'The word timings cannot remain ordered after the split.',
+    '拆分或合并后的字幕行不能为空。': 'A subtitle row created by splitting or merging cannot be empty.',
+    '无法找到新字幕对应的原始时间范围。': 'The original timing range for the new subtitle could not be found.',
+    '拆句后产生了无效的字幕时间范围。': 'The split produced an invalid subtitle time range.',
+    '当前字幕包含换行，暂不能切换到整体编辑视图': 'The current subtitles contain line breaks, so the whole-text view is unavailable.',
     '当前有未应用的文本修改，确定关闭编辑窗口吗？': 'You have unapplied text changes. Close the editing window?',
     '区分大小写': 'Case sensitive',
     '正则表达式': 'Regular expression',
     '输入查找内容查看预览': 'Enter text to preview replacements',
-    '文本处理…': 'Text processing…', '文本处理': 'Text processing', '仅处理选中的字幕': 'Process selected subtitles only',
-    'Trim': 'Trim', '去除前后空白': 'Remove surrounding whitespace', '首字母大写': 'Capitalize first letter', '只作用于第一个字母': 'Only affects the first letter',
+    '文本处理…': 'Text processing…', '文本处理': 'Text processing', '仅处理选中的字幕': 'Process selected subtitles only', '需要先选中至少1条字幕才可启用': 'Select at least one subtitle first to enable this option',
+    'Trim': 'Trim', '修剪前后空白': 'Trim surrounding whitespace', '去除字幕前方和后方的空格': 'Remove spaces before and after the subtitle text', '去除前后空白': 'Remove surrounding whitespace', '首字母大写': 'Capitalize first letter', '只作用于第一个字母': 'Only affects the first letter',
     '添加前缀': 'Add prefix', '插入到字幕开头': 'Insert at the beginning', '附加内容': 'Add suffix', '插入到字幕结尾': 'Insert at the end',
     '去除 md 格式符号': 'Remove Markdown formatting', '移除常见 Markdown 标记': 'Remove common Markdown markers',
-    '选择操作后查看预览': 'Select an operation to preview', '至少选择一项文本处理操作': 'Select at least one text-processing operation',
+    '选择操作后查看预览': 'Select an operation to preview', '至少选择一项文本处理操作': 'Select at least one text-processing operation', '选定的字幕不会发生变化': 'The selected subtitles would not change',
     '应用处理': 'Apply processing', '处理前：': 'Before: ', '处理后：': 'After: ',
     '选择要执行的文本操作；字幕行不会被删除，处理为空时会保留空字幕行。字词时间码会按文本编辑规则尽量保留。': 'Choose text operations; subtitle rows are not deleted, and empty results remain as empty rows. Word timings are retained when possible using the text-editing rules.',
     '取消': 'Cancel', '替换全部': 'Replace all', '分配表情包': 'Assign sticker',
@@ -8590,7 +9504,6 @@
     '选中字幕时，方向键和按住字幕块/边界时的 A/D 每次调整的毫秒数': 'Milliseconds adjusted per arrow-key press or A/D press while holding a subtitle block or edge',
     '关闭（Esc）': 'Close (Esc)',
     '关闭纯文本编辑': 'Close plain text editor',
-    '以保持字幕行结构的方式集中编辑文本，并预览时间码映射结果': 'Edit subtitle text while preserving its row structure and preview the timing-mapping result',
     '单文本框编辑': 'Single text area editing',
     '关闭帮助窗口': 'Close the help window',
     '关闭移除静音空隙工具窗': 'Close the silent-gap tool',
@@ -8778,8 +9691,19 @@
     if (match) return `Subtitle ${match[1]} text`;
     match = /^第\s*(\d+)\s*条\s*·\s*(.+)$/.exec(text);
     if (match) return `Subtitle ${match[1]} · ${translateText(match[2], EN)}`;
-    match = /^单文本框当前有\s*(\d+)\s*行，需要保持\s*(\d+)\s*行；请勿新增或删除换行。$/.exec(text);
-    if (match) return `The single text area has ${match[1]} lines; keep ${match[2]} lines and do not add or remove line breaks.`;
+    match = /^有效字词时间码覆盖率：\s*(\d+)%$/.exec(text);
+    if (match) return `Word-timing coverage: ${match[1]}%`;
+    match = /^原始时间码复用率：\s*(\d+)%$/.exec(text);
+    if (match) return `Original timing reuse: ${match[1]}%`;
+    match = /^有效字词时间码：\s*(\d+)\/(\d+)$/.exec(text);
+    if (match) return `Valid word timings: ${match[1]}/${match[2]}`;
+    match = /^有效字词时间码覆盖率：\s*(\d+)\/(\d+)$/.exec(text);
+    if (match) return `Word-timing coverage: ${match[1]}/${match[2]}`;
+    match = /^原始时间码复用率：\s*(\d+)\/(\d+)$/.exec(text);
+    if (match) return `Original timing reuse: ${match[1]}/${match[2]}`;
+    if (text === '时间范围为自动估算（按原字幕范围/文字长度分配）') {
+      return 'Time range estimated from the original cue range and text length';
+    }
     match = /^时间范围：(.+?)\s*[–-]\s*(.+?)\s*→\s*(.+?)\s*[–-]\s*(.+)$/.exec(text);
     if (match) return `Time range: ${match[1]} - ${match[2]} -> ${match[3]} - ${match[4]}`;
     match = /^版本号\s+(.+)$/.exec(text);
@@ -8860,10 +9784,11 @@
     if (match) return `Copied: ${match[1]}`;
     match = /^已复制媒体名：(.+)$/.exec(text);
     if (match) return `Media name copied: ${match[1]}`;
-    match = /^已应用纯文本编辑：(\d+) 条字幕(?:，(\d+) 条字词时间码已清除)?$/.exec(text);
+    match = /^已应用纯文本编辑：(\d+) 条字幕(?:，移除 (\d+) 条空字幕行)?(?:，(\d+) 条字词时间码已清除)?$/.exec(text);
     if (match) {
       return `Plain text edit applied: ${match[1]} subtitle${match[1] === '1' ? '' : 's'}`
-        + (match[2] ? `; word timings cleared for ${match[2]}` : '');
+        + (match[2] ? `; removed ${match[2]} empty subtitle row${match[2] === '1' ? '' : 's'}` : '')
+        + (match[3] ? `; word timings cleared for ${match[3]}` : '');
     }
     match = /^总长度\s+(.+)$/.exec(text);
     if (match) return `Total length ${match[1]}`;
@@ -15296,6 +16221,7 @@ const timedTextEditModal = document.getElementById('timed-text-edit-modal');
 const timedTextEditClose = document.getElementById('timed-text-edit-close');
 const timedTextEditCancel = document.getElementById('timed-text-edit-cancel');
 const timedTextEditApply = document.getElementById('timed-text-edit-apply');
+const timedTextEditTrackControl = document.getElementById('timed-text-edit-track-control');
 const timedTextEditTrack = document.getElementById('timed-text-edit-track');
 const timedTextEditView = document.getElementById('timed-text-edit-view');
 const timedTextEditSourceInfo = document.getElementById('timed-text-edit-source-info');
@@ -18388,6 +19314,7 @@ function buildMultiCueColumn(segment, index, track, kind) {
     column.textContent = '—';
     return column;
   }
+  if (segment._dirty) column.classList.add('dirty');
   if (segment.disabled) column.classList.add('disabled');
   const header = document.createElement('div');
   header.className = 'multi-cue-column-header';
@@ -25781,7 +26708,7 @@ document.getElementById('download-sticker-otioz')?.addEventListener('click', asy
 updateStickerExportButtons();
 
 // === 工具栏导出下拉菜单 ===
-function bindToolbarExportDropdown(dropdownId, buttonId, menuId) {
+function bindToolbarExportDropdown(dropdownId, buttonId, menuId, positioner = null) {
   const dd = document.getElementById(dropdownId);
   const btn = document.getElementById(buttonId);
   const menu = document.getElementById(menuId);
@@ -25789,6 +26716,7 @@ function bindToolbarExportDropdown(dropdownId, buttonId, menuId) {
   const setOpen = (open) => {
     dd.classList.toggle('open', open);
     if (btn.hasAttribute('aria-expanded')) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open && positioner) requestAnimationFrame(positioner);
   };
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -25811,6 +26739,11 @@ function bindToolbarExportDropdown(dropdownId, buttonId, menuId) {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') setOpen(false);
   });
+  if (positioner) {
+    window.addEventListener('resize', positioner);
+    window.addEventListener('scroll', positioner, true);
+    dd.closest('.cue-list-toolbar, .toolbar')?.addEventListener('scroll', positioner);
+  }
 }
 bindToolbarExportDropdown('subtitle-export-dropdown', 'subtitle-export-btn', 'subtitle-export-menu');
 bindToolbarExportDropdown('gap-removed-export-dropdown', 'gap-removed-export-btn', 'gap-removed-export-menu');
@@ -25819,7 +26752,34 @@ bindToolbarExportDropdown('open-project-dropdown', 'open-project-menu-btn', 'ope
 bindToolbarExportDropdown('save-project-dropdown', 'save-project-menu-btn', 'save-project-menu');
 bindToolbarExportDropdown('workspace-transfer-dropdown', 'workspace-transfer-btn', 'workspace-transfer-menu');
 bindToolbarExportDropdown('multi-subtitle-settings-dropdown', 'multi-subtitle-settings-toggle', 'multi-subtitle-settings-menu');
-bindToolbarExportDropdown('batch-operations-dropdown', 'batch-operations-btn', 'batch-operations-menu');
+function positionBatchOperationsMenu() {
+  const dropdown = document.getElementById('batch-operations-dropdown');
+  const button = document.getElementById('batch-operations-btn');
+  const menu = document.getElementById('batch-operations-menu');
+  if (!dropdown?.classList.contains('open') || !button || !menu) return;
+  const buttonRect = button.getBoundingClientRect();
+  const menuWidth = menu.offsetWidth;
+  const menuHeight = menu.offsetHeight;
+  const margin = 8;
+  const left = Math.min(
+    Math.max(margin, buttonRect.left),
+    Math.max(margin, window.innerWidth - menuWidth - margin),
+  );
+  const belowTop = buttonRect.bottom + 6;
+  const aboveTop = buttonRect.top - menuHeight - 6;
+  let top = belowTop;
+  if (belowTop + menuHeight > window.innerHeight - margin && aboveTop >= margin) {
+    top = aboveTop;
+  } else if (belowTop + menuHeight > window.innerHeight - margin) {
+    top = Math.max(margin, window.innerHeight - menuHeight - margin);
+  }
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+bindToolbarExportDropdown(
+  'batch-operations-dropdown', 'batch-operations-btn', 'batch-operations-menu',
+  positionBatchOperationsMenu,
+);
 
 // === 打开工程 ===
 const openProjectFileInput = document.getElementById('open-project-file');
@@ -26960,6 +27920,7 @@ const replacePreview = document.getElementById('replace-preview');
 const replaceScopeInfo = document.getElementById('replace-scope-info');
 const replaceModalTitle = document.getElementById('replace-modal-title');
 const replaceSelectedOnlyCb = document.getElementById('replace-selected-only');
+const replaceSelectedOnlyHint = document.getElementById('replace-selected-only-hint');
 
 // null = 全部；[idxs] = 仅这些行
 let replaceScope = null;
@@ -27053,6 +28014,7 @@ function refreshReplaceSelectionControl() {
   const available = replaceSelectionSnapshot.length > 0;
   replaceSelectedOnlyCb.disabled = !available;
   if (!available) replaceSelectedOnlyCb.checked = false;
+  if (replaceSelectedOnlyHint) replaceSelectedOnlyHint.hidden = available;
   replaceScope = replaceSelectedOnlyCb.checked ? [...replaceSelectionSnapshot] : null;
   refreshScopeInfo();
 }
@@ -27070,8 +28032,7 @@ function openReplaceModal(scope) {
   replaceSelectionSnapshot = normalizeBatchSelection(
     Array.isArray(scope) && scope.length ? scope : [...selectedIdxs],
   );
-  replaceSelectedOnlyCb.checked = Boolean(Array.isArray(scope) && scope.length
-    && replaceSelectionSnapshot.length);
+  replaceSelectedOnlyCb.checked = replaceSelectionSnapshot.length > 0;
   refreshReplaceSelectionControl();
   refreshScopeInfo();
   replaceModal.classList.add('show');
@@ -27112,6 +28073,7 @@ document.getElementById('replace-confirm')?.addEventListener('click', () => {
 // === 文本处理 ===
 const textProcessButton = document.getElementById('text-process-btn');
 const textProcessSelectedOnlyCb = document.getElementById('text-process-selected-only');
+const textProcessSelectedOnlyHint = document.getElementById('text-process-selected-only-hint');
 const textProcessScopeInfo = document.getElementById('text-process-scope-info');
 const textProcessPreview = document.getElementById('text-process-preview');
 const textProcessConfirm = document.getElementById('text-process-confirm');
@@ -27149,6 +28111,7 @@ function refreshTextProcessSelectionControl() {
   const available = textProcessSelectionSnapshot.length > 0;
   textProcessSelectedOnlyCb.disabled = !available;
   if (!available) textProcessSelectedOnlyCb.checked = false;
+  if (textProcessSelectedOnlyHint) textProcessSelectedOnlyHint.hidden = available;
   textProcessScope = textProcessSelectedOnlyCb.checked
     ? [...textProcessSelectionSnapshot] : null;
   refreshTextProcessScopeInfo();
@@ -27189,7 +28152,7 @@ function renderTextProcessPreview() {
     details.append(before, after);
     textProcessPreview.appendChild(details);
   });
-  textProcessConfirm.disabled = result.changedCount === 0;
+  textProcessConfirm.disabled = false;
 }
 
 function refreshTextProcessInputState() {
@@ -27208,7 +28171,7 @@ function openTextProcessModal() {
   }
   if (editingState) finishEdit(true);
   textProcessSelectionSnapshot = normalizeBatchSelection([...selectedIdxs]);
-  textProcessSelectedOnlyCb.checked = false;
+  textProcessSelectedOnlyCb.checked = textProcessSelectionSnapshot.length > 0;
   refreshTextProcessSelectionControl();
   [textProcessTrim, textProcessCapitalize, textProcessPrefix,
     textProcessSuffix, textProcessStripMarkdown].forEach((input) => { input.checked = false; });
@@ -27246,8 +28209,7 @@ textProcessConfirm?.addEventListener('click', () => {
   const indexes = textProcessScope || DATA.segments.map((_, index) => index);
   const result = window.AsrEditorUtils.buildTextProcessingPreview(DATA.segments, indexes, options);
   if (!result.changedCount) {
-    closeTextProcessModal();
-    flashHint('没有需要处理的内容', 'invalid');
+    flashHint('选定的字幕不会发生变化', 'invalid');
     return;
   }
   const draftTexts = DATA.segments.map((segment) => String(segment?.text || ''));
@@ -27269,7 +28231,7 @@ textProcessConfirm?.addEventListener('click', () => {
   flashHint(`已应用文本处理：${result.changedCount} 条字幕`, 'success');
 });
 
-// === 纯文本编辑（保持字幕行结构的 MVP） ===
+// === 纯文本编辑（支持调整字幕行结构的 MVP） ===
 function timedTextEditSegments(kind) {
   return kind === 'extension' ? getActiveExtensionTrack()?.segments || [] : DATA.segments;
 }
@@ -27301,6 +28263,7 @@ function appendTimedTextEditStat(container, label, value, filterKey = null, coun
     valueEl.addEventListener('click', () => {
       if (!timedTextEditDraft) return;
       timedTextEditDraft.filter = filterKey;
+      timedTextEditChangeDetails.open = true;
       updateTimedTextEditReport();
     });
   }
@@ -27336,7 +28299,7 @@ function renderTimedTextEditRowDiff(rowElement, reportRow) {
   const diffElement = rowElement.querySelector('.timed-text-edit-row-diff');
   if (!diffElement) return;
   diffElement.replaceChildren();
-  diffElement.hidden = !reportRow.changed && !reportRow.timingChanged;
+  diffElement.hidden = !reportRow.changed && !reportRow.timingChanged && !reportRow.timingEstimated;
   if (reportRow.changed) {
     appendTimedTextEditDiffLine(diffElement, '修改前：', reportRow.diff.before, 'before');
     appendTimedTextEditDiffLine(diffElement, '修改后：', reportRow.diff.after, 'after');
@@ -27347,6 +28310,18 @@ function renderTimedTextEditRowDiff(rowElement, reportRow) {
     timing.textContent = `时间范围：${fmtSrtTime(reportRow.beforeStart)} – ${fmtSrtTime(reportRow.beforeEnd)} → ${fmtSrtTime(reportRow.afterStart)} – ${fmtSrtTime(reportRow.afterEnd)}`;
     diffElement.appendChild(timing);
   }
+  if (reportRow.timingEstimated) {
+    const estimated = document.createElement('div');
+    estimated.className = 'timed-text-edit-estimated-timing';
+    estimated.textContent = '时间范围为自动估算（按原字幕范围/文字长度分配）';
+    diffElement.appendChild(estimated);
+  }
+  if (reportRow.deleted) {
+    const deleted = document.createElement('div');
+    deleted.className = 'timed-text-edit-deleted-label';
+    deleted.textContent = '整句删除（时间码已转移到其他字幕）';
+    diffElement.appendChild(deleted);
+  }
 }
 
 function timedTextEditMappingLabel(status) {
@@ -27356,16 +28331,40 @@ function timedTextEditMappingLabel(status) {
     lost: '时间码丢失',
     unavailable: '原本没有字词时间码',
     boundary: '边界移动（时间码已转移）',
+    structure: '结构调整（时间码已重新分配）',
+    deleted: '整句删除（时间码已转移）',
   }[status] || '未分析';
+}
+
+function timedTextEditCoverageClass(percent) {
+  if (percent <= 0) return 'none';
+  return percent > 90 ? 'good' : 'partial';
+}
+
+function renderTimedTextEditMetric(element, percent, kind, title = '') {
+  if (!element) return;
+  const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  const isReuse = kind === 'reuse';
+  element.textContent = `${isReuse ? '♻️' : '⌚️'}${safePercent}%`;
+  element.className = `timed-text-edit-${isReuse ? 'reuse' : 'coverage'} ${timedTextEditCoverageClass(safePercent)}`;
+  element.title = title || `${isReuse ? '原始时间码复用率' : '有效字词时间码覆盖率'}：${safePercent}%`;
 }
 
 function renderTimedTextEditChangeList(report) {
   const wasOpen = timedTextEditChangeDetails.open;
   timedTextEditChangeList.replaceChildren();
   const filter = timedTextEditDraft?.filter || null;
+  const deletedRows = report.structure?.valid
+    ? (report.rows || [])
+      .filter((row) => row.deleted)
+      .map((row) => ({ ...row, mappingStatus: 'deleted' }))
+    : [];
+  const displayRows = report.structure?.valid && report.outputRows?.length
+    ? [...report.outputRows, ...deletedRows]
+    : report.changedRows;
   const rows = filter === 'unchanged'
     ? []
-    : report.changedRows.filter((row) => !filter || row.mappingStatus === filter);
+    : displayRows.filter((row) => row.changed && (!filter || row.mappingStatus === filter));
   if (!rows.length) {
     const empty = document.createElement('div');
     empty.className = 'modal-hint';
@@ -27376,7 +28375,7 @@ function renderTimedTextEditChangeList(report) {
   }
   rows.forEach((row) => {
     const item = document.createElement('div');
-    item.className = 'timed-text-edit-change-item';
+    item.className = `timed-text-edit-change-item${row.deleted ? ' deleted' : ''}`;
     const title = document.createElement('div');
     title.className = 'timed-text-edit-change-item-title';
     title.textContent = `第 ${row.index + 1} 条 · ${timedTextEditMappingLabel(row.mappingStatus)}`;
@@ -27389,6 +28388,18 @@ function renderTimedTextEditChangeList(report) {
       timing.textContent = `时间范围：${fmtSrtTime(row.beforeStart)} – ${fmtSrtTime(row.beforeEnd)} → ${fmtSrtTime(row.afterStart)} – ${fmtSrtTime(row.afterEnd)}`;
       item.appendChild(timing);
     }
+    if (row.timingEstimated) {
+      const estimated = document.createElement('div');
+      estimated.className = 'timed-text-edit-estimated-timing';
+      estimated.textContent = '时间范围为自动估算（按原字幕范围/文字长度分配）';
+      item.appendChild(estimated);
+    }
+    if (row.deleted) {
+      const deleted = document.createElement('div');
+      deleted.className = 'timed-text-edit-deleted-label';
+      deleted.textContent = '整句删除（时间码已转移到其他字幕）';
+      item.appendChild(deleted);
+    }
     timedTextEditChangeList.appendChild(item);
   });
   timedTextEditChangeDetails.open = wasOpen;
@@ -27397,23 +28408,58 @@ function renderTimedTextEditChangeList(report) {
 function renderTimedTextEditRows() {
   timedTextEditRows.replaceChildren();
   if (!timedTextEditDraft) return;
-  timedTextEditDraft.sourceSegments.forEach((segment, index) => {
+  const report = timedTextEditDraft.report;
+  const rowReports = timedTextEditDraftRowReports(report, timedTextEditDraft.texts);
+  timedTextEditDraft.texts.forEach((textValue, index) => {
+    const rowReport = rowReports[index];
+    const segment = report?.structure?.valid && Number.isInteger(rowReport?.draftIndex)
+      ? report.previewSegments[rowReport.index]
+      : (!report?.structure?.valid && timedTextEditDraft.texts.length === timedTextEditDraft.sourceSegments.length
+        ? timedTextEditDraft.sourceSegments[index] : null);
     const row = document.createElement('div');
-    row.className = 'timed-text-edit-row';
+    row.className = `timed-text-edit-row${rowReport?.deleted ? ' deleted' : ''}`;
     row.dataset.index = String(index);
     const meta = document.createElement('div');
     meta.className = 'timed-text-edit-row-meta';
     const number = document.createElement('strong');
     number.textContent = String(index + 1);
     const time = document.createElement('span');
-    time.textContent = `${fmtSrtTime(segment.start)}\n${fmtSrtTime(segment.end)}`;
-    meta.append(number, time);
+    time.className = 'timed-text-edit-row-time';
+    time.textContent = segment
+      ? `${fmtSrtTime(segment.start)}\n${fmtSrtTime(segment.end)}` : '—\n—';
+    const coverage = document.createElement('span');
+    const coverageData = window.AsrEditorUtils.timedTextItemCoverage(
+      textValue, segment?.items,
+    );
+    const reuseData = window.AsrEditorUtils.timedTextItemReuse(
+      textValue, segment?.items, textValue, segment?.items, 'full',
+    );
+    renderTimedTextEditMetric(
+      coverage,
+      coverageData.percent,
+      'coverage',
+      segment ? `有效字词时间码覆盖率：${coverageData.coveredCharacters}/${coverageData.totalCharacters}` : '等待可靠时间码映射',
+    );
+    const reuse = document.createElement('span');
+    renderTimedTextEditMetric(
+      reuse,
+      reuseData.percent,
+      'reuse',
+      segment ? `原始时间码复用率：${reuseData.reusedCharacters}/${reuseData.totalCharacters}` : '等待原始时间码映射',
+    );
+    const badges = document.createElement('span');
+    badges.className = 'timed-text-edit-time-badges';
+    badges.append(coverage, reuse);
+    const timeLine = document.createElement('div');
+    timeLine.className = 'timed-text-edit-row-time-line';
+    timeLine.append(time, badges);
+    meta.append(number, timeLine);
     const main = document.createElement('div');
     main.className = 'timed-text-edit-row-main';
     const textarea = document.createElement('textarea');
     textarea.dataset.index = String(index);
-    textarea.value = timedTextEditDraft.texts[index];
-    textarea.rows = Math.min(5, Math.max(2, String(segment.text || '').split('\n').length));
+    textarea.value = textValue;
+    textarea.rows = Math.min(5, Math.max(2, String(textValue || '').split('\n').length));
     textarea.spellcheck = false;
     textarea.setAttribute('aria-label', `第 ${index + 1} 条字幕文本`);
     const diff = document.createElement('div');
@@ -27427,19 +28473,22 @@ function renderTimedTextEditRows() {
 
 function timedTextEditCanUseSingleView() {
   return Boolean(timedTextEditDraft?.sourceSegments.every((segment, index) => {
-    return !String(segment?.text || '').includes('\n')
-      && !String(timedTextEditDraft.texts[index] || '').includes('\n');
+    return !String(segment?.text || '').includes('\n');
   }));
 }
 
 function renderTimedTextEditView() {
   if (!timedTextEditDraft) return;
   const canUseSingle = timedTextEditCanUseSingleView();
-  const singleOption = timedTextEditView?.querySelector('option[value="single"]');
+  const singleOption = timedTextEditView?.querySelector('[data-view="single"]');
   if (singleOption) singleOption.disabled = !canUseSingle;
   if (!canUseSingle && timedTextEditDraft.view === 'single') timedTextEditDraft.view = 'rows';
   const single = timedTextEditDraft.view === 'single' && canUseSingle;
-  timedTextEditView.value = single ? 'single' : 'rows';
+  timedTextEditView?.querySelectorAll('[data-view]').forEach((button) => {
+    const active = button.dataset.view === (single ? 'single' : 'rows');
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
   timedTextEditRows.hidden = single;
   timedTextEditSingleTextarea.hidden = !single;
   timedTextEditSingleHint.hidden = !single || !timedTextEditDraft.singleLineError;
@@ -27450,6 +28499,35 @@ function timedTextEditRowFilterKey(row) {
   return row.changed ? row.mappingStatus : 'unchanged';
 }
 
+function timedTextEditDraftRowReports(report, texts) {
+  const source = Array.isArray(texts) ? texts : [];
+  if (!report?.structure?.valid) {
+    return source.map((_, index) => report?.rows?.[index] || null);
+  }
+  const outputByDraftIndex = new Map(
+    (report.outputRows || [])
+      .filter((row) => Number.isInteger(row?.draftIndex))
+      .map((row) => [row.draftIndex, row]),
+  );
+  const deletedRows = (report.rows || []).filter((row) => row?.deleted);
+  let deletedIndex = 0;
+  return source.map((text, index) => {
+    const output = outputByDraftIndex.get(index);
+    if (output) return output;
+    if (!String(text == null ? '' : text).trim()) return deletedRows[deletedIndex++] || null;
+    return null;
+  });
+}
+
+function normalizeTimedTextEditDraftLines(texts) {
+  const lines = (Array.isArray(texts) ? texts : [])
+    .map((text) => String(text == null ? '' : text));
+  // 整体编辑末尾的换行只是输入习惯，不额外创建一条空字幕；真正清空的
+  // 中间行仍保留到预览中，并在应用时按删除字幕处理。
+  while (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+  return lines.length ? lines : [''];
+}
+
 function updateTimedTextEditReport() {
   if (!timedTextEditDraft) return;
   const report = window.AsrEditorUtils.buildTimedTextEditReport(
@@ -27458,8 +28536,15 @@ function updateTimedTextEditReport() {
   );
   timedTextEditDraft.report = report;
   const { stats } = report;
+  if (timedTextEditRows.childElementCount !== timedTextEditDraft.texts.length) {
+    renderTimedTextEditRows();
+  }
   timedTextEditReportSummary.replaceChildren();
-  appendTimedTextEditStat(timedTextEditReportSummary, '字幕行', `${stats.totalSegments} 条`);
+  appendTimedTextEditStat(
+    timedTextEditReportSummary,
+    '字幕行',
+    report.structure?.valid ? `${stats.totalSegments} → ${report.previewSegments.length} 条` : `${stats.totalSegments} 条`,
+  );
   appendTimedTextEditStat(
     timedTextEditReportSummary,
     '修改内容',
@@ -27477,13 +28562,28 @@ function updateTimedTextEditReport() {
   appendTimedTextEditStat(timedTextEditReportMapping, '修改后完整映射', `${stats.fullMappedCues} 条`, 'full', stats.fullMappedCues);
   appendTimedTextEditStat(timedTextEditReportMapping, '部分保留', `${stats.partialMappedCues} 条`, 'partial', stats.partialMappedCues);
   appendTimedTextEditStat(timedTextEditReportMapping, '边界移动（转移时间码）', `${stats.boundaryMappedCues} 条`, 'boundary', stats.boundaryMappedCues);
+  if (stats.structureMappedCues > 0) {
+    appendTimedTextEditStat(
+      timedTextEditReportMapping,
+      '结构调整（重新分配时间码）',
+      `${stats.structureMappedCues} 条`,
+      'structure',
+      stats.structureMappedCues,
+    );
+  }
   appendTimedTextEditStat(timedTextEditReportMapping, '时间码丢失', `${stats.lostMappedCues} 条`, 'lost', stats.lostMappedCues);
   appendTimedTextEditStat(timedTextEditReportMapping, '原本没有字词码', `${stats.unavailableMappedCues} 条`, 'unavailable', stats.unavailableMappedCues);
   timedTextEditShowAll.hidden = !timedTextEditDraft.filter;
   timedTextEditShowAll.textContent = '显示全部';
 
   timedTextEditReportHint.classList.remove('warning');
-  if (!stats.changedSegments) {
+  if (report.structure && !report.structure.valid && report.structure.error) {
+    timedTextEditReportHint.classList.add('warning');
+    timedTextEditReportHint.textContent = report.structure.error;
+  } else if (stats.estimatedTimingCues) {
+    timedTextEditReportHint.classList.add('warning');
+    timedTextEditReportHint.textContent = `有 ${stats.estimatedTimingCues} 条字幕缺少可复用的字词时间码，应用后将按原字幕范围/文字长度自动估算时间；不会伪造精确字词时间码。`;
+  } else if (!stats.changedSegments) {
     timedTextEditReportHint.textContent = '修改后会保持当前字幕段的开始、结束时间不变。';
   } else if (stats.lostMappedCues) {
     timedTextEditReportHint.classList.add('warning');
@@ -27493,27 +28593,62 @@ function updateTimedTextEditReport() {
     timedTextEditReportHint.textContent = '修改范围内的字词会合并为较粗的时间码，未受影响的字词仍会保留。';
   } else if (stats.boundaryMoves) {
     timedTextEditReportHint.textContent = '检测到相邻字幕之间的开头/结尾移动；对应字词时间码会一起转移，并更新字幕段范围。';
+  } else if (stats.structureMappedCues) {
+    timedTextEditReportHint.textContent = '检测到字幕行结构变化；应用后会按字词时间码拆分、合并或删除字幕行，并解除受影响的多字幕绑定。';
   } else {
     timedTextEditReportHint.textContent = '当前修改可以完整复用原字词时间码；字幕段整体时间范围不会改变。';
   }
 
-  report.rows.forEach((rowReport) => {
-    const rowElement = timedTextEditRows.querySelector(`.timed-text-edit-row[data-index="${rowReport.index}"]`);
+  const draftRowReports = timedTextEditDraftRowReports(report, timedTextEditDraft.texts);
+  draftRowReports.forEach((rowReport, index) => {
+    const rowElement = timedTextEditRows.querySelector(`.timed-text-edit-row[data-index="${index}"]`);
     if (!rowElement) return;
-    rowElement.classList.toggle('changed', rowReport.changed);
+    rowElement.classList.toggle('changed', Boolean(rowReport?.changed));
+    rowElement.classList.toggle('deleted', Boolean(rowReport?.deleted));
     rowElement.hidden = Boolean(timedTextEditDraft.filter)
-      && timedTextEditRowFilterKey(rowReport) !== timedTextEditDraft.filter;
-    renderTimedTextEditRowDiff(rowElement, rowReport);
+      && (!rowReport || timedTextEditRowFilterKey(rowReport) !== timedTextEditDraft.filter);
+    if (rowReport) renderTimedTextEditRowDiff(rowElement, rowReport);
+  });
+  timedTextEditDraft.texts.forEach((text, index) => {
+    const rowElement = timedTextEditRows.querySelector(`.timed-text-edit-row[data-index="${index}"]`);
+    const coverage = rowElement?.querySelector('.timed-text-edit-coverage');
+    const reuse = rowElement?.querySelector('.timed-text-edit-reuse');
+    const rowReport = draftRowReports[index];
+    const preview = report.structure?.valid && Number.isInteger(rowReport?.draftIndex)
+      ? report.previewSegments[rowReport.index]
+      : (!report.structure?.valid ? report.rows[index]?.items : null);
+    const items = report.structure?.valid ? preview?.items : preview;
+    const coverageData = rowReport?.itemCoverageData
+      || window.AsrEditorUtils.timedTextItemCoverage(text, items);
+    const reuseData = rowReport?.itemReuseData || {
+      percent: 0,
+      reusedCharacters: 0,
+      totalCharacters: Array.from(String(text == null ? '' : text)).length,
+    };
+    renderTimedTextEditMetric(
+      coverage,
+      coverageData.percent,
+      'coverage',
+      `有效字词时间码覆盖率：${coverageData.coveredCharacters}/${coverageData.totalCharacters}`,
+    );
+    renderTimedTextEditMetric(
+      reuse,
+      reuseData.percent,
+      'reuse',
+      `原始时间码复用率：${reuseData.reusedCharacters}/${reuseData.totalCharacters}`,
+    );
   });
   renderTimedTextEditChangeList(report);
-  const singleLineValid = timedTextEditDraft.view !== 'single' || !timedTextEditDraft.singleLineError;
-  timedTextEditSingleHint.textContent = timedTextEditDraft.singleLineError || '';
-  timedTextEditSingleHint.hidden = timedTextEditDraft.view !== 'single' || !timedTextEditDraft.singleLineError;
-  timedTextEditApply.disabled = !report.valid || !singleLineValid || stats.changedSegments === 0;
+  const singleHint = report.structure?.valid ? '' : (report.structure?.error || timedTextEditDraft.singleLineError || '');
+  timedTextEditSingleHint.textContent = singleHint;
+  timedTextEditSingleHint.hidden = timedTextEditDraft.view !== 'single' || !singleHint;
+  timedTextEditApply.disabled = !report.valid || stats.changedSegments === 0;
 }
 
 function refreshTimedTextEditTrackOptions(kind = currentTimedTextEditKind()) {
-  const extensionAvailable = Boolean(getActiveExtensionTrack()?.segments?.length);
+  const multiSubtitleEnabled = getMultiSubtitleState().enabled === true;
+  if (timedTextEditTrackControl) timedTextEditTrackControl.hidden = !multiSubtitleEnabled;
+  const extensionAvailable = multiSubtitleEnabled && Boolean(getActiveExtensionTrack()?.segments?.length);
   const extensionOption = timedTextEditTrack.querySelector('option[value="extension"]');
   if (extensionOption) extensionOption.hidden = !extensionAvailable;
   const nextKind = kind === 'extension' && extensionAvailable ? 'extension' : 'main';
@@ -27560,6 +28695,106 @@ function timedTextEditHasUnappliedChanges() {
   return Boolean(timedTextEditDraft?.report?.stats.changedSegments || timedTextEditDraft?.singleLineError);
 }
 
+function applyTimedTextEditSegments(kind, sourceSegments, targetSegments, nextSegments, report, texts) {
+  const nextIds = new Set((nextSegments || []).map((segment) => segment?.id).filter(Boolean));
+  const removedIndexes = new Set((sourceSegments || []).map((segment, index) => {
+    if (segment?.id) return nextIds.has(segment.id) ? -1 : index;
+    const row = report?.rows?.[index];
+    return row?.changed && !String(row.after || '') ? index : -1;
+  }).filter((index) => index >= 0));
+  (report?.structure?.removedSourceIndexes || []).forEach((index) => removedIndexes.add(index));
+  const structureChanged = Boolean(report?.structure?.valid
+    && (report.structure.affectedSourceIndexes?.length || nextSegments.length !== sourceSegments.length));
+  if (!removedIndexes.size && !structureChanged) {
+    targetSegments.splice(0, targetSegments.length, ...nextSegments);
+    return 0;
+  }
+
+  const removedIndexList = [...removedIndexes].sort((a, b) => a - b);
+  const removeSet = new Set(removedIndexList);
+  const removedIds = removedIndexList.map((index) => sourceSegments[index]?.id).filter(Boolean);
+  const affectedIndexes = new Set(report?.structure?.affectedSourceIndexes || []);
+  removedIndexList.forEach((index) => affectedIndexes.add(index));
+  const affectedIds = [...affectedIndexes].map((index) => sourceSegments[index]?.id).filter(Boolean);
+  const pairedExtensionIndices = new Set();
+  let extensionTrack = null;
+  let bindingsChanged = false;
+
+  if (kind === 'extension') {
+    const multi = getMultiSubtitleState();
+    const beforeBindingCount = (multi.bindings || []).length;
+    removeBindingsForSegmentIds([], affectedIds);
+    bindingsChanged = (multi.bindings || []).length !== beforeBindingCount;
+  } else {
+    const multi = getMultiSubtitleState();
+    extensionTrack = multiSubtitleVisible() && removedIds.length ? getActiveExtensionTrack() : null;
+    if (extensionTrack) {
+      (multi.bindings || []).forEach((binding) => {
+        if (!binding.main_segment_ids?.some((id) => removedIds.includes(id))) return;
+        (binding.extension_segment_ids || []).forEach((id) => {
+          const index = extensionTrack.segments.findIndex((segment) => segment?.id === id);
+          if (index >= 0) pairedExtensionIndices.add(index);
+        });
+      });
+    }
+    const beforeBindingCount = (multi.bindings || []).length;
+    removeBindingsForSegmentIds(
+      affectedIds,
+      extensionTrack
+        ? [...pairedExtensionIndices].map((index) => extensionTrack.segments[index]?.id)
+        : [],
+    );
+    bindingsChanged = (multi.bindings || []).length !== beforeBindingCount;
+
+    if (removedIndexList.length) {
+      // 与删除字幕相同的分组语义：来源行离开后，颜色 / 表情包组在切点处拆开。
+      splitGroupsAtCutPoints(removeSet, 'sticker', 'sticker_ref');
+      splitGroupsAtCutPoints(removeSet, 'color', 'color_ref');
+      DATA.segments.forEach((segment, index) => {
+        if (removeSet.has(index)) return;
+        if (segment.sticker_ref && removeSet.has(segment.sticker_ref.headIdx)) {
+          segment.sticker_ref = null;
+        }
+        if (segment.color_ref && removeSet.has(segment.color_ref.headIdx)) {
+          segment.color_ref = null;
+        }
+      });
+    }
+  }
+
+  // 结构发生变化后，旧下标选中态和字幕编辑面板都必须失效，避免渲染后指向相邻字幕。
+  clearSelection({ silent: true });
+  currentCuePanelKind = 'main';
+  currentCuePanelIdx = -1;
+  currentCuePanelTrackId = null;
+  lastClickedIdx = -1;
+  lastClickedExtensionIdx = -1;
+  lastActive = -1;
+  targetSegments.splice(0, targetSegments.length, ...nextSegments);
+
+  if (kind !== 'extension') {
+    const shiftHeadIdx = (ref) => {
+      let shift = 0;
+      for (const removedIndex of removedIndexList) {
+        if (removedIndex < ref.headIdx) shift += 1;
+        else break;
+      }
+      if (shift) ref.headIdx -= shift;
+    };
+    DATA.segments.forEach((segment) => {
+      if (segment.sticker_ref) shiftHeadIdx(segment.sticker_ref);
+      if (segment.color_ref) shiftHeadIdx(segment.color_ref);
+    });
+    window.AsrEditorUtils.repairGroupReferenceIndices(DATA.segments);
+    if (extensionTrack && pairedExtensionIndices.size) {
+      [...pairedExtensionIndices].sort((a, b) => b - a)
+        .forEach((index) => extensionTrack.segments.splice(index, 1));
+    }
+  }
+  if (bindingsChanged || pairedExtensionIndices.size) markMultiSubtitleDirty();
+  return removedIndexes.length;
+}
+
 function requestCloseTimedTextEdit() {
   if (timedTextEditHasUnappliedChanges()
       && !window.confirm('当前有未应用的文本修改，确定关闭编辑窗口吗？')) return false;
@@ -27587,7 +28822,9 @@ timedTextEditRows?.addEventListener('input', (event) => {
   if (!textarea || !timedTextEditDraft) return;
   const index = Number(textarea.dataset.index);
   if (!Number.isInteger(index) || index < 0 || index >= timedTextEditDraft.texts.length) return;
-  timedTextEditDraft.texts[index] = textarea.value.replace(/\r\n?/g, '\n');
+  const replacementLines = textarea.value.replace(/\r\n?/g, '\n').split('\n');
+  timedTextEditDraft.texts.splice(index, 1, ...replacementLines);
+  timedTextEditDraft.texts = normalizeTimedTextEditDraftLines(timedTextEditDraft.texts);
   timedTextEditDraft.singleText = timedTextEditDraft.texts.join('\n');
   timedTextEditDraft.singleLineError = '';
   renderTimedTextEditView();
@@ -27596,30 +28833,24 @@ timedTextEditRows?.addEventListener('input', (event) => {
 timedTextEditSingleTextarea?.addEventListener('input', () => {
   if (!timedTextEditDraft) return;
   timedTextEditDraft.singleText = timedTextEditSingleTextarea.value.replace(/\r\n?/g, '\n');
-  const lines = timedTextEditDraft.singleText.split('\n');
-  if (lines.length === timedTextEditDraft.sourceSegments.length) {
-    timedTextEditDraft.texts = lines;
-    timedTextEditDraft.singleLineError = '';
-  } else {
-    timedTextEditDraft.singleLineError = `单文本框当前有 ${lines.length} 行，需要保持 ${timedTextEditDraft.sourceSegments.length} 行；请勿新增或删除换行。`;
-  }
+  timedTextEditDraft.texts = normalizeTimedTextEditDraftLines(
+    timedTextEditDraft.singleText.split('\n'),
+  );
+  timedTextEditDraft.singleText = timedTextEditDraft.texts.join('\n');
+  timedTextEditDraft.singleLineError = '';
   updateTimedTextEditReport();
 });
-timedTextEditView?.addEventListener('change', () => {
-  if (!timedTextEditDraft) return;
-  const nextView = timedTextEditView.value === 'single' ? 'single' : 'rows';
+timedTextEditView?.addEventListener('click', (event) => {
+  const button = event.target.closest?.('button[data-view]');
+  if (!button || button.disabled || !timedTextEditDraft) return;
+  const nextView = button.dataset.view === 'single' ? 'single' : 'rows';
   if (nextView === 'single' && !timedTextEditCanUseSingleView()) {
-    timedTextEditView.value = 'rows';
-    flashHint('当前字幕包含换行，暂不能切换到单文本框视图', 'invalid');
-    return;
-  }
-  if (timedTextEditDraft.view === 'single' && timedTextEditDraft.singleLineError) {
-    timedTextEditView.value = 'single';
-    flashHint('请先保持每条字幕一行，再切换编辑视图', 'invalid');
+    flashHint('当前字幕包含换行，暂不能切换到整体编辑视图', 'invalid');
     return;
   }
   timedTextEditDraft.view = nextView;
   if (nextView === 'single') timedTextEditDraft.singleText = timedTextEditDraft.texts.join('\n');
+  else renderTimedTextEditRows();
   renderTimedTextEditView();
   updateTimedTextEditReport();
   setTimeout(() => (nextView === 'single'
@@ -27648,7 +28879,7 @@ timedTextEditModal?.addEventListener('click', (event) => {
 });
 timedTextEditApply?.addEventListener('click', () => {
   const draft = timedTextEditDraft;
-  if (!draft?.report?.stats.changedSegments || draft.singleLineError) return;
+  if (!draft?.report?.valid || !draft.report.stats.changedSegments) return;
   const targetSegments = timedTextEditSegments(draft.kind);
   const currentMatchesSnapshot = targetSegments.length === draft.sourceSegments.length
     && targetSegments.every((segment, index) => {
@@ -27673,19 +28904,27 @@ timedTextEditApply?.addEventListener('click', () => {
   }
   pushUndo('纯文本编辑');
   nextSegments.forEach((segment) => { segment._dirty = true; });
-  targetSegments.splice(0, targetSegments.length, ...nextSegments);
+  const removedCount = applyTimedTextEditSegments(
+    draft.kind,
+    draft.sourceSegments,
+    targetSegments,
+    nextSegments,
+    draft.report,
+    draft.texts,
+  );
   if (draft.kind === 'extension') markMultiSubtitleDirty();
   else markMainSegmentsDirty(targetSegments);
   syncBindingOffsets();
   scheduleAutoSaveFlush();
   const changedCount = draft.report.stats.changedSegments;
   const lostCount = draft.report.stats.lostMappedCues;
+  const estimatedCount = draft.report.stats.estimatedTimingCues || 0;
   closeTimedTextEdit();
   renderAll({ waveform: 'overlay' });
   update();
   updateUndoRedoButtons();
   flashHint(
-    `已应用纯文本编辑：${changedCount} 条字幕${lostCount ? `，${lostCount} 条字词时间码已清除` : ''}`,
+    `已应用纯文本编辑：${changedCount} 条字幕${removedCount ? `，移除 ${removedCount} 条空字幕行` : ''}${lostCount ? `，${lostCount} 条字词时间码已清除` : ''}${estimatedCount ? `，${estimatedCount} 条时间范围为自动估算` : ''}`,
     'success',
   );
 });

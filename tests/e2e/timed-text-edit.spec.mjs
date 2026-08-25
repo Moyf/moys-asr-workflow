@@ -57,12 +57,18 @@ test('previews text changes and applies the reported item-timing mapping', async
   await page.locator('#timed-text-edit-btn').click();
   await expect(page.locator('#timed-text-edit-modal')).toHaveClass(/show/);
   await expect(page.locator('#timed-text-edit-source-info')).toContainText('主字幕');
+  await expect(page.locator('#timed-text-edit-track-control')).toBeHidden();
 
-  await page.locator('#timed-text-edit-view').selectOption('single');
+  await page.locator('#timed-text-edit-view [data-view="single"]').click();
   await expect(page.locator('#timed-text-edit-single-textarea')).toBeVisible();
   await expect(page.locator('#timed-text-edit-single-textarea')).toHaveValue('就是这颗\nabc');
-  await page.locator('#timed-text-edit-view').selectOption('rows');
+  // 模拟切换视图前浏览器尚未派发 input 的最后一次 DOM 更新。
+  await page.locator('#timed-text-edit-single-textarea').evaluate((element) => {
+    element.value = '就是那颗\nabc';
+  });
+  await page.locator('#timed-text-edit-view [data-view="rows"]').click();
   await expect(page.locator('#timed-text-edit-rows')).toBeVisible();
+  await expect(page.locator('#timed-text-edit-rows textarea').nth(0)).toHaveValue('就是那颗');
 
   const rows = page.locator('#timed-text-edit-rows textarea');
   await rows.nth(0).fill('就是那颗');
@@ -95,19 +101,23 @@ test('previews text changes and applies the reported item-timing mapping', async
 
   await page.locator('#timed-text-edit-apply').click();
   await expect(page.locator('#timed-text-edit-modal')).not.toHaveClass(/show/);
+  await expect(page.locator('#cues-container .cue[data-idx="0"]')).toHaveClass(/dirty/);
   const state = await page.evaluate(() => ({
     texts: DATA.segments.map((segment) => segment.text),
     items: DATA.segments.map((segment) => segment.items),
     ranges: DATA.segments.map((segment) => [segment.start, segment.end]),
+    dirty: DATA.segments.map((segment) => Boolean(segment._dirty)),
   }));
   expect(state.texts).toEqual(['就是那颗', 'abXc']);
   expect(state.ranges).toEqual([[0, 1000], [1200, 2200]]);
+  expect(state.dirty).toEqual([true, true]);
   expect(state.items[0]).toEqual([
     { start: 0, end: 400, text: '就是' },
     { start: 400, end: 1000, text: '那颗' },
   ]);
   expect(state.items[1]).toEqual([
     { start: 1200, end: 1500, text: 'a' },
-    { start: 1500, end: 2200, text: 'bXc' },
+    { start: 1500, end: 1800, text: 'bX' },
+    { start: 1800, end: 2200, text: 'c' },
   ]);
 });

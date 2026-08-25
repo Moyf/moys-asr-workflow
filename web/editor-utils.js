@@ -178,6 +178,111 @@
     return Array.from(String(text == null ? '' : text));
   }
 
+  function isTimedTextWhitespace(token) {
+    return /\s/u.test(token);
+  }
+
+  function timedTextItemCoverageMask(text, rawItems) {
+    const sourceTokens = timedTextTokens(text);
+    const targetTokens = sourceTokens.filter((token) => !isTimedTextWhitespace(token));
+    const items = Array.isArray(rawItems) ? rawItems : [];
+    const itemTokens = [];
+    const itemCoverage = [];
+    let validItemCount = 0;
+    items.forEach((item) => {
+      const tokens = timedTextTokens(item?.text).filter((token) => !isTimedTextWhitespace(token));
+      const start = Number(item?.start);
+      const end = Number(item?.end);
+      const validTiming = tokens.length > 0
+        && Number.isFinite(start) && Number.isFinite(end) && end > start;
+      if (validTiming) {
+        validItemCount += 1;
+      }
+      itemTokens.push(...tokens);
+      tokens.forEach(() => itemCoverage.push(validTiming));
+    });
+    const covered = new Uint8Array(targetTokens.length);
+    const opcodes = timedTextDiffOpcodes(itemTokens, targetTokens);
+    if (opcodes) {
+      opcodes.forEach((opcode) => {
+        if (opcode.tag !== 'equal') return;
+        for (let offset = 0; offset < opcode.targetEnd - opcode.targetStart; offset += 1) {
+          const sourceIndex = opcode.sourceStart + offset;
+          const targetIndex = opcode.targetStart + offset;
+          if (itemCoverage[sourceIndex]) covered[targetIndex] = 1;
+        }
+      });
+    }
+    return {
+      sourceTokens: targetTokens,
+      covered,
+      coveredCharacters: covered.reduce((sum, value) => sum + value, 0),
+      validItemCount,
+      totalItemCount: items.length,
+    };
+  }
+
+  function timedTextItemCoverage(text, rawItems) {
+    const coverage = timedTextItemCoverageMask(text, rawItems);
+    const { sourceTokens, coveredCharacters, validItemCount, totalItemCount } = coverage;
+    const totalCharacters = sourceTokens.length;
+    return {
+      percent: totalCharacters ? Math.round((coveredCharacters / totalCharacters) * 100) : 0,
+      coveredCharacters,
+      totalCharacters,
+      validItemCount,
+      totalItemCount,
+    };
+  }
+
+  // “有效覆盖率”只说明当前文字被有效时间码覆盖；“原始时间码复用率”
+  // 还要扣除新增/删除后无法对应到原文字符的位置。等长改字是已确认的
+  // 可靠场景：旧 item 的时间范围会按原位置复用，因此不因错别字本身降级。
+  function timedTextItemReuse(originalText, originalItems, text, rawItems, mappingStatus = '') {
+    const sourceCoverage = timedTextItemCoverageMask(originalText, originalItems);
+    const targetCoverage = timedTextItemCoverageMask(text, rawItems);
+    const sourceTokens = sourceCoverage.sourceTokens;
+    const targetTokens = targetCoverage.sourceTokens;
+    const totalCharacters = Math.max(sourceTokens.length, targetTokens.length);
+    if (!totalCharacters || !sourceCoverage.validItemCount || !targetCoverage.coveredCharacters) {
+      return {
+        percent: 0,
+        reusedCharacters: 0,
+        totalCharacters,
+        sourceCharacters: sourceTokens.length,
+        currentCharacters: targetTokens.length,
+      };
+    }
+
+    let reusedCharacters = 0;
+    if (sourceTokens.length === targetTokens.length && mappingStatus === 'full') {
+      // 等长改字分支保持每个原 item 的时间范围，按当前位置复用时间码。
+      reusedCharacters = targetCoverage.coveredCharacters;
+    } else {
+      const opcodes = timedTextDiffOpcodes(sourceTokens, targetTokens);
+      if (opcodes) {
+        opcodes.forEach((opcode) => {
+          if (opcode.tag !== 'equal') return;
+          const length = opcode.targetEnd - opcode.targetStart;
+          for (let offset = 0; offset < length; offset += 1) {
+            const sourceIndex = opcode.sourceStart + offset;
+            const targetIndex = opcode.targetStart + offset;
+            if (sourceCoverage.covered[sourceIndex] && targetCoverage.covered[targetIndex]) {
+              reusedCharacters += 1;
+            }
+          }
+        });
+      }
+    }
+    return {
+      percent: Math.round((reusedCharacters / totalCharacters) * 100),
+      reusedCharacters,
+      totalCharacters,
+      sourceCharacters: sourceTokens.length,
+      currentCharacters: targetTokens.length,
+    };
+  }
+
   function buildTimedTextDiff(before, after) {
     const beforeTokens = timedTextTokens(before);
     const afterTokens = timedTextTokens(after);
@@ -246,11 +351,398 @@
     return timedTextItemLayout(originalText, items)?.spans || null;
   }
 
-  function timedTextItemSplitIndex(layout, boundary) {
-    if (!layout || !Number.isInteger(boundary) || boundary <= 0
-        || boundary >= layout.spans[layout.spans.length - 1].end) return -1;
-    const index = layout.spans.findIndex((span) => span.end === boundary);
-    return index < 0 ? -1 : index + 1;
+  function timedTextItemsSlice(layout, startBoundary, endBoundary) {
+    if (!layout || !Number.isInteger(startBoundary) || !Number.isInteger(endBoundary)) return null;
+    const total = layout.spans[layout.spans.length - 1]?.end || 0;
+    if (startBoundary < 0 || endBoundary > total || startBoundary >= endBoundary) return [];
+    return layout.items.flatMap((item, index) => {
+      const span = layout.spans[index];
+      const sliceStart = Math.max(startBoundary, span.start);
+      const sliceEnd = Math.min(endBoundary, span.end);
+      if (sliceStart >= sliceEnd) return [];
+      const itemTokens = timedTextTokens(item.text);
+      const localStart = sliceStart - span.start;
+      const localEnd = sliceEnd - span.start;
+      const itemStart = Number(item.start);
+      const itemEnd = Number(item.end);
+      const itemLength = Math.max(1, itemTokens.length);
+      const timeAt = (offset) => Math.round(
+        itemStart + ((itemEnd - itemStart) * offset) / itemLength,
+      );
+      const copy = cloneJsonValue(item);
+      copy.text = itemTokens.slice(localStart, localEnd).join('');
+      copy.start = timeAt(localStart);
+      copy.end = timeAt(localEnd);
+      // 被切开的 item 不再有唯一的原始身份；时间和其它可选元数据仍保留。
+      if (sliceStart !== span.start || sliceEnd !== span.end) delete copy.id;
+      return [copy];
+    });
+  }
+
+  function timedTextItemsPartition(layout, prefixCount, suffixCount) {
+    if (!layout || !Number.isInteger(prefixCount) || !Number.isInteger(suffixCount)) return null;
+    const total = layout.spans[layout.spans.length - 1]?.end || 0;
+    const bodyEnd = total - suffixCount;
+    if (prefixCount < 0 || suffixCount < 0 || prefixCount > bodyEnd) return null;
+    const prefix = timedTextItemsSlice(layout, 0, prefixCount);
+    const body = timedTextItemsSlice(layout, prefixCount, bodyEnd);
+    const suffix = timedTextItemsSlice(layout, bodyEnd, total);
+    if (!prefix || !body || !suffix || (prefixCount < bodyEnd && !body.length)) return null;
+    return { prefix, body, suffix };
+  }
+
+  function timedTextStructureRequested(segments, draftTexts) {
+    const source = Array.isArray(segments) ? segments : [];
+    const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    if (!source.length || source.some((segment) => String(segment?.text || '').includes('\n'))) return false;
+    return source.length !== texts.length
+      || texts.some((text) => String(text == null ? '' : text).includes('\n'));
+  }
+
+  function timedTextDraftLines(draftTexts) {
+    return timedTextDraftLineEntries(draftTexts).map((entry) => entry.text);
+  }
+
+  function timedTextDraftLineEntries(draftTexts) {
+    return (Array.isArray(draftTexts) ? draftTexts : [])
+      .flatMap((text, draftIndex) => String(text == null ? '' : text)
+        .replace(/\r\n?/g, '\n')
+        .split('\n')
+        .map((line) => ({ text: line, draftIndex })));
+  }
+
+  function timedTextRangeIsWhitespace(tokens, range) {
+    return tokens.slice(range.start, range.end).every((token) => /\s/u.test(token));
+  }
+
+  function retimeTimedTextSlice(items, newText) {
+    const source = Array.isArray(items) ? items : [];
+    const targetTokens = timedTextTokens(newText);
+    const lengths = source.map((item) => timedTextTokens(item?.text).length);
+    if (!source.length || lengths.some((length) => length <= 0)
+        || lengths.reduce((sum, length) => sum + length, 0) !== targetTokens.length) return null;
+    let offset = 0;
+    return source.map((item, index) => {
+      const copy = cloneJsonValue(item);
+      const length = lengths[index];
+      copy.text = targetTokens.slice(offset, offset + length).join('');
+      offset += length;
+      return copy;
+    });
+  }
+
+  const TIMED_TEXT_ESTIMATED_MIN_MS = 100;
+  const TIMED_TEXT_ESTIMATED_MS_PER_CHARACTER = 100;
+
+  function timedTextEstimatedDuration(text) {
+    const units = Math.max(1, Math.ceil(countTextUnits(text)));
+    return Math.max(
+      TIMED_TEXT_ESTIMATED_MIN_MS,
+      units * TIMED_TEXT_ESTIMATED_MS_PER_CHARACTER,
+    );
+  }
+
+  function timedTextSegmentBoundary(segment, offset, total) {
+    const start = Number(segment?.start);
+    const end = Number(segment?.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || total <= 0) return null;
+    const safeOffset = Math.max(0, Math.min(total, Number(offset) || 0));
+    return Math.round(start + ((end - start) * safeOffset) / total);
+  }
+
+  function emptyTimedTextStructurePlan(error = '') {
+    return {
+      valid: false,
+      type: null,
+      error,
+      mode: null,
+      segments: [],
+      outputMeta: [],
+      sourceOutputIndexes: [],
+      affectedSourceIndexes: [],
+      removedSourceIndexes: [],
+    };
+  }
+
+  function findTimedTextTokenSequence(sourceTokens, targetTokens, fromIndex) {
+    if (!targetTokens.length) return -1;
+    for (let index = Math.max(0, fromIndex); index + targetTokens.length <= sourceTokens.length; index += 1) {
+      if (sameTimedTextTokens(
+        sourceTokens.slice(index, index + targetTokens.length),
+        targetTokens,
+      )) return index;
+    }
+    return -1;
+  }
+
+  function buildTimedTextStructurePlan(segments, draftTexts) {
+    const source = Array.isArray(segments) ? segments : [];
+    const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    if (!timedTextStructureRequested(source, texts)) return emptyTimedTextStructurePlan();
+    // 空行表示用户清空了对应字幕；纯文本视图不再保留空字幕行，直接将其视为删除标记。
+    const lineEntries = timedTextDraftLineEntries(texts)
+      .filter((entry) => String(entry.text).trim() !== '');
+    const lines = lineEntries.map((entry) => entry.text);
+
+    const sourceTokens = source.map((segment) => timedTextTokens(segment?.text));
+    const sourceOffsets = [];
+    let totalCharacters = 0;
+    sourceTokens.forEach((tokens) => {
+      sourceOffsets.push({ start: totalCharacters, end: totalCharacters + tokens.length });
+      totalCharacters += tokens.length;
+    });
+    if (!totalCharacters) return emptyTimedTextStructurePlan('当前字幕没有可用于拆分的文字。');
+    const flattenedSource = sourceTokens.flat();
+    const lineTokens = lines.map((line) => timedTextTokens(line));
+    const lineRanges = [];
+    let exactCursor = 0;
+    let exact = true;
+    for (const tokens of lineTokens) {
+      const start = findTimedTextTokenSequence(flattenedSource, tokens, exactCursor);
+      if (start < 0) {
+        exact = false;
+        break;
+      }
+      lineRanges.push({ start, end: start + tokens.length });
+      exactCursor = start + tokens.length;
+    }
+
+    let mode = 'exact';
+    if (exact) {
+      const gaps = [];
+      let previous = 0;
+      lineRanges.forEach((range) => {
+        if (range.start > previous) gaps.push({ start: previous, end: range.start });
+        previous = range.end;
+      });
+      if (previous < totalCharacters) gaps.push({ start: previous, end: totalCharacters });
+      const boundaries = new Set([0, ...sourceOffsets.flatMap((range) => [range.start, range.end])]);
+      if (gaps.some((gap) => (
+        (!boundaries.has(gap.start) || !boundaries.has(gap.end))
+        && !timedTextRangeIsWhitespace(flattenedSource, gap)
+      ))) {
+        return emptyTimedTextStructurePlan('删除字幕时只能删除完整字幕行，不能只删除其中一部分文字。');
+      }
+    } else {
+      // 某些前面的句子被改写后，仍尝试从后面的未改文字建立锚点。
+      // 锚点之间的新增/改写区域只允许走字幕段级估算，不能再按原始 index 猜。
+      const anchors = Array.from({ length: lineTokens.length }, () => null);
+      let cursor = 0;
+      let anchorCount = 0;
+      lineTokens.forEach((tokens, index) => {
+        const start = findTimedTextTokenSequence(flattenedSource, tokens, cursor);
+        if (start < 0) return;
+        anchors[index] = { start, end: start + tokens.length };
+        cursor = start + tokens.length;
+        anchorCount += 1;
+      });
+      if (!anchorCount) {
+        return emptyTimedTextStructurePlan('无法根据原文重新匹配拆句结果；请保留至少一段未改文字作为匹配锚点。');
+      }
+      mode = 'anchor';
+      let previousLineIndex = -1;
+      let previousSourceEnd = 0;
+      const anchorIndexes = anchors
+        .map((anchor, index) => (anchor ? index : -1))
+        .filter((index) => index >= 0);
+      for (const nextLineIndex of [...anchorIndexes, lineTokens.length]) {
+        const nextAnchor = nextLineIndex < lineTokens.length ? anchors[nextLineIndex] : null;
+        const sourceEnd = nextAnchor?.start ?? totalCharacters;
+        const missingIndexes = [];
+        for (let index = previousLineIndex + 1; index < nextLineIndex; index += 1) {
+          if (!anchors[index]) missingIndexes.push(index);
+        }
+        const targetLength = missingIndexes.reduce((sum, index) => sum + lineTokens[index].length, 0);
+        const sourceLength = sourceEnd - previousSourceEnd;
+        if (missingIndexes.length && (targetLength <= 0 || sourceLength <= 0)) {
+          return emptyTimedTextStructurePlan('无法根据原文重新匹配拆句结果；改写区域缺少可用时间范围。');
+        }
+        let targetOffset = 0;
+        missingIndexes.forEach((index) => {
+          const start = previousSourceEnd + Math.round((sourceLength * targetOffset) / targetLength);
+          targetOffset += lineTokens[index].length;
+          const end = previousSourceEnd + Math.round((sourceLength * targetOffset) / targetLength);
+          if (end <= start) {
+            lineRanges.length = 0;
+            return;
+          }
+          lineRanges[index] = { start, end };
+        });
+        if (nextAnchor) {
+          lineRanges[nextLineIndex] = nextAnchor;
+          previousLineIndex = nextLineIndex;
+          previousSourceEnd = nextAnchor.end;
+        } else {
+          previousLineIndex = lineTokens.length - 1;
+          previousSourceEnd = totalCharacters;
+        }
+      }
+      if (lineRanges.length !== lineTokens.length || lineRanges.some((range) => !range)) {
+        return emptyTimedTextStructurePlan('无法根据原文重新匹配拆句结果；请减少连续改写的字幕行。');
+      }
+    }
+
+    const layouts = source.map((segment) => timedTextItemLayout(segment?.text, segment?.items));
+    const outputSegments = [];
+    const outputMeta = [];
+    const sourceOutputIndexes = Array.from({ length: source.length }, () => []);
+    let previousOutputEnd = null;
+    for (const [outputIndex, range] of lineRanges.entries()) {
+      const overlaps = sourceOffsets
+        .map((sourceRange, sourceIndex) => ({ sourceRange, sourceIndex }))
+        .filter(({ sourceRange }) => range.start < sourceRange.end && range.end > sourceRange.start);
+      if (!overlaps.length) return emptyTimedTextStructurePlan('无法找到新字幕对应的原始时间范围。');
+
+      const first = overlaps[0].sourceIndex;
+      const last = overlaps[overlaps.length - 1].sourceIndex;
+      const firstLocal = range.start - sourceOffsets[first].start;
+      const lastLocal = range.end - sourceOffsets[last].start;
+      const isWholeUnchangedSource = overlaps.length === 1
+        && firstLocal === 0
+        && lastLocal === sourceTokens[first].length
+        && lines[outputIndex] === String(source[first]?.text || '');
+      let items = null;
+      let timingEstimated = false;
+      if (isWholeUnchangedSource) {
+        // 末尾多出的空行等不会改变字幕结构；没有字词时间码时也可以安全地保留这个无变化行。
+        items = Array.isArray(source[first]?.items) ? cloneJsonValue(source[first].items) : null;
+      } else {
+        const originalItems = [];
+        let canReuseItems = true;
+        for (const { sourceRange, sourceIndex } of overlaps) {
+          const localStart = Math.max(0, range.start - sourceRange.start);
+          const localEnd = Math.min(sourceRange.end - sourceRange.start, range.end - sourceRange.start);
+          if (localStart >= localEnd) continue;
+          if (!layouts[sourceIndex]) {
+            canReuseItems = false;
+            break;
+          }
+          const slice = timedTextItemsSlice(layouts[sourceIndex], localStart, localEnd);
+          if (!slice?.length) {
+            canReuseItems = false;
+            break;
+          }
+          originalItems.push(...slice);
+        }
+        items = canReuseItems ? retimeTimedTextSlice(originalItems, lines[outputIndex]) : null;
+        if (!items?.length || !timedTextItemsOrdered(items)) {
+          // 没有完整字词时间码时仍允许拆句，但只生成字幕段级时间范围，
+          // 并在报告中明确标记为按范围/字数估算，绝不伪造精确 items。
+          items = null;
+          timingEstimated = true;
+        }
+      }
+      let start = items?.length
+        ? (firstLocal === 0 ? Number(source[first]?.start) : Number(items[0].start))
+        : timedTextSegmentBoundary(source[first], firstLocal, sourceTokens[first].length);
+      let end = items?.length
+        ? (lastLocal === sourceTokens[last].length
+          ? Number(source[last]?.end) : Number(items[items.length - 1].end))
+        : timedTextSegmentBoundary(source[last], lastLocal, sourceTokens[last].length);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        timingEstimated = true;
+        start = Number.isFinite(previousOutputEnd) ? previousOutputEnd : 0;
+        end = start + timedTextEstimatedDuration(lines[outputIndex]);
+      } else if (timingEstimated) {
+        if (Number.isFinite(previousOutputEnd) && start < previousOutputEnd) start = previousOutputEnd;
+        end = Math.max(end, start + TIMED_TEXT_ESTIMATED_MIN_MS);
+      }
+      const nextSourceStart = Number(source[last + 1]?.start);
+      if (timingEstimated && Number.isFinite(nextSourceStart)) {
+        if (start >= nextSourceStart) {
+          return emptyTimedTextStructurePlan('自动估算的字幕时间范围没有足够空间，不能越过下一条字幕的开头。');
+        }
+        end = Math.min(end, nextSourceStart);
+        if (end - start < TIMED_TEXT_ESTIMATED_MIN_MS) {
+          return emptyTimedTextStructurePlan('自动估算的字幕时间范围不足 100ms，且不能越过下一条字幕的开头。');
+        }
+      }
+      if (end <= start) {
+        return emptyTimedTextStructurePlan('拆句后产生了无效的字幕时间范围。');
+      }
+      const segment = cloneJsonValue(source[first] || {});
+      segment.start = start;
+      segment.end = end;
+      segment.text = lines[outputIndex];
+      if (!isWholeUnchangedSource) {
+        if (items?.length) segment.items = items;
+        else delete segment.items;
+      }
+      outputSegments.push(segment);
+      outputMeta.push({
+        sourceIndexes: overlaps.map(({ sourceIndex }) => sourceIndex),
+        range,
+        timingEstimated,
+        draftIndex: lineEntries[outputIndex]?.draftIndex,
+      });
+      overlaps.forEach(({ sourceIndex }) => sourceOutputIndexes[sourceIndex].push(outputIndex));
+      previousOutputEnd = end;
+    }
+
+    const usedSegments = [...source];
+    outputMeta.forEach((meta, outputIndex) => {
+      const sourceIndex = meta.sourceIndexes[0];
+      const sourceSegment = source[sourceIndex] || {};
+      const sourceRange = sourceOffsets[sourceIndex];
+      const firstOutputForSource = sourceOutputIndexes[sourceIndex][0] === outputIndex;
+      const canKeepSourceId = firstOutputForSource && meta.range.start === sourceRange.start;
+      if (canKeepSourceId && sourceSegment.id) {
+        outputSegments[outputIndex].id = sourceSegment.id;
+      } else {
+        const baseId = `${sourceSegment.id || `segment-${sourceIndex + 1}`}-text-${outputIndex + 1}`;
+        outputSegments[outputIndex].id = uniqueStableSegmentId(usedSegments, baseId, 'segment');
+      }
+      usedSegments.push(outputSegments[outputIndex]);
+      if (sourceSegment.sticker && !firstOutputForSource) {
+        outputSegments[outputIndex].sticker = null;
+        outputSegments[outputIndex].sticker_ref = {
+          name: sourceSegment.sticker.name,
+          headIdx: sourceOutputIndexes[sourceIndex][0],
+        };
+      }
+      if (sourceSegment.color && !firstOutputForSource) {
+        outputSegments[outputIndex].color = null;
+        outputSegments[outputIndex].color_ref = {
+          name: sourceSegment.color.name,
+          headIdx: sourceOutputIndexes[sourceIndex][0],
+        };
+      }
+    });
+
+    const affectedSourceIndexes = [];
+    sourceOutputIndexes.forEach((outputIndexes, sourceIndex) => {
+      if (outputIndexes.length !== 1) {
+        affectedSourceIndexes.push(sourceIndex);
+        return;
+      }
+      const meta = outputMeta[outputIndexes[0]];
+      const range = sourceOffsets[sourceIndex];
+      const output = outputSegments[outputIndexes[0]];
+      if (meta.sourceIndexes.length !== 1
+          || meta.range.start !== range.start
+          || meta.range.end !== range.end
+          || output.text !== source[sourceIndex]?.text) affectedSourceIndexes.push(sourceIndex);
+    });
+
+    const removedSourceIndexes = sourceOutputIndexes
+      .map((outputIndexes, sourceIndex) => outputIndexes.length ? -1 : sourceIndex)
+      .filter((index) => index >= 0);
+    const hasSplit = sourceOutputIndexes.some((indexes) => indexes.length > 1);
+    const hasMerge = outputMeta.some((meta) => meta.sourceIndexes.length > 1);
+    const hasDelete = removedSourceIndexes.length > 0;
+    const type = [hasSplit ? 'split' : '', hasMerge ? 'merge' : '', hasDelete ? 'delete' : '']
+      .filter(Boolean).join('+');
+    return {
+      valid: true,
+      type: type || 'resegment',
+      error: '',
+      mode,
+      segments: outputSegments,
+      outputMeta,
+      sourceOutputIndexes,
+      affectedSourceIndexes,
+      removedSourceIndexes,
+    };
   }
 
   function sameTimedTextTokens(left, right) {
@@ -321,6 +813,88 @@
     });
   }
 
+  // 逐条字幕通常很短，用 LCS 生成字符级 diff 足够可靠；过大的单条文本
+  // 走保守兜底，避免编辑器因构造过大的二维表而卡住。
+  function timedTextDiffOpcodes(sourceTokens, targetTokens) {
+    const sourceLength = sourceTokens.length;
+    const targetLength = targetTokens.length;
+    const columns = targetLength + 1;
+    const cellCount = (sourceLength + 1) * columns;
+    if (cellCount > 2000000) return null;
+
+    const table = new Uint32Array(cellCount);
+    for (let sourceIndex = sourceLength - 1; sourceIndex >= 0; sourceIndex -= 1) {
+      const row = sourceIndex * columns;
+      const nextRow = (sourceIndex + 1) * columns;
+      for (let targetIndex = targetLength - 1; targetIndex >= 0; targetIndex -= 1) {
+        table[row + targetIndex] = sourceTokens[sourceIndex] === targetTokens[targetIndex]
+          ? table[nextRow + targetIndex + 1] + 1
+          : Math.max(table[nextRow + targetIndex], table[row + targetIndex + 1]);
+      }
+    }
+
+    const opcodes = [];
+    let sourcePosition = 0;
+    let targetPosition = 0;
+    let pendingSourceStart = null;
+    let pendingTargetStart = null;
+    const flushChanged = () => {
+      if (pendingSourceStart === null) return;
+      opcodes.push({
+        tag: 'replace',
+        sourceStart: pendingSourceStart,
+        sourceEnd: sourcePosition,
+        targetStart: pendingTargetStart,
+        targetEnd: targetPosition,
+      });
+      pendingSourceStart = null;
+      pendingTargetStart = null;
+    };
+    const appendEqual = () => {
+      const previous = opcodes[opcodes.length - 1];
+      if (previous?.tag === 'equal'
+          && previous.sourceEnd === sourcePosition
+          && previous.targetEnd === targetPosition) {
+        previous.sourceEnd += 1;
+        previous.targetEnd += 1;
+      } else {
+        opcodes.push({
+          tag: 'equal',
+          sourceStart: sourcePosition,
+          sourceEnd: sourcePosition + 1,
+          targetStart: targetPosition,
+          targetEnd: targetPosition + 1,
+        });
+      }
+    };
+
+    while (sourcePosition < sourceLength && targetPosition < targetLength) {
+      if (sourceTokens[sourcePosition] === targetTokens[targetPosition]) {
+        flushChanged();
+        appendEqual();
+        sourcePosition += 1;
+        targetPosition += 1;
+        continue;
+      }
+      if (pendingSourceStart === null) {
+        pendingSourceStart = sourcePosition;
+        pendingTargetStart = targetPosition;
+      }
+      const skipSource = table[(sourcePosition + 1) * columns + targetPosition];
+      const skipTarget = table[sourcePosition * columns + targetPosition + 1];
+      if (skipSource >= skipTarget) sourcePosition += 1;
+      else targetPosition += 1;
+    }
+    if (pendingSourceStart === null && (sourcePosition < sourceLength || targetPosition < targetLength)) {
+      pendingSourceStart = sourcePosition;
+      pendingTargetStart = targetPosition;
+    }
+    sourcePosition = sourceLength;
+    targetPosition = targetLength;
+    flushChanged();
+    return opcodes;
+  }
+
   function emptyTimedTextBoundaryPlan(source) {
     return {
       transfers: [],
@@ -367,26 +941,23 @@
       const beforeTokens = timedTextTokens(source[index]?.text);
       const prefixCount = prefixCounts[index];
       const suffixCount = suffixCounts[index];
-      if (prefixCount + suffixCount >= beforeTokens.length) {
+      if (prefixCount + suffixCount > beforeTokens.length) {
         return emptyTimedTextBoundaryPlan(source);
       }
       const layout = timedTextItemLayout(source[index]?.text, source[index]?.items);
       if (!layout) return emptyTimedTextBoundaryPlan(source);
-      const prefixIndex = prefixCount
-        ? timedTextItemSplitIndex(layout, prefixCount) : 0;
-      const suffixIndex = suffixCount
-        ? timedTextItemSplitIndex(layout, beforeTokens.length - suffixCount) : layout.items.length;
-      if (prefixIndex < 0 || suffixIndex < 0 || prefixIndex >= suffixIndex) {
+      const partition = timedTextItemsPartition(layout, prefixCount, suffixCount);
+      if (!partition) {
         return emptyTimedTextBoundaryPlan(source);
       }
-      partitions[index] = { layout, prefixIndex, suffixIndex };
+      partitions[index] = { layout, ...partition };
     }
 
     for (const candidate of candidates) {
       const partition = partitions[candidate.sourceIndex];
       candidate.movedItems = candidate.type === 'prefix-to-previous'
-        ? cloneJsonValue(partition.layout.items.slice(0, partition.prefixIndex))
-        : cloneJsonValue(partition.layout.items.slice(partition.suffixIndex));
+        ? cloneJsonValue(partition.prefix)
+        : cloneJsonValue(partition.suffix);
       if (!candidate.movedItems.length
           || candidate.movedItems.map((item) => item.text).join('') !== candidate.movedTokens.join('')) {
         return emptyTimedTextBoundaryPlan(source);
@@ -408,10 +979,10 @@
       const incomingSuffixItems = incomingSuffixes[index]?.movedItems || [];
       const nextItems = [
         ...cloneJsonValue(incomingPrefixItems),
-        ...partition.layout.items.slice(partition.prefixIndex, partition.suffixIndex),
+        ...cloneJsonValue(partition.body),
         ...cloneJsonValue(incomingSuffixItems),
       ];
-      if (!nextItems.length
+      if ((expectedTokens.length && !nextItems.length)
           || nextItems.map((item) => item.text).join('') !== expectedTokens.join('')
           || !timedTextItemsOrdered(nextItems)) {
         return emptyTimedTextBoundaryPlan(source);
@@ -420,8 +991,10 @@
       const segment = source[index];
       let start = Number(segment?.start);
       let end = Number(segment?.end);
-      if (prefixCounts[index] || prefixTokens.length) start = Number(nextItems[0].start);
-      if (suffixCounts[index] || suffixTokens.length) end = Number(nextItems[nextItems.length - 1].end);
+      if (nextItems.length) {
+        if (prefixCounts[index] || prefixTokens.length) start = Number(nextItems[0].start);
+        if (suffixCounts[index] || suffixTokens.length) end = Number(nextItems[nextItems.length - 1].end);
+      }
       if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
         return emptyTimedTextBoundaryPlan(source);
       }
@@ -475,74 +1048,167 @@
       return { status: 'full', items, preservedItems: items.length, affectedItems: 0 };
     }
 
-    let prefix = 0;
-    while (
-      prefix < originalTokens.length
-      && prefix < newTokens.length
-      && originalTokens[prefix] === newTokens[prefix]
-    ) prefix += 1;
-    let suffix = 0;
-    while (
-      suffix < originalTokens.length - prefix
-      && suffix < newTokens.length - prefix
-      && originalTokens[originalTokens.length - 1 - suffix]
-        === newTokens[newTokens.length - 1 - suffix]
-    ) suffix += 1;
-    const unchanged = prefix + suffix;
+    const opcodes = timedTextDiffOpcodes(originalTokens, newTokens);
+    if (!opcodes) {
+      return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+    }
+    const unchanged = opcodes.reduce((total, opcode) => (
+      opcode.tag === 'equal' ? total + opcode.sourceEnd - opcode.sourceStart : total
+    ), 0);
     const comparableLength = Math.max(1, Math.min(originalTokens.length, newTokens.length));
     const changedOriginal = originalTokens.length - unchanged;
     const changedTarget = newTokens.length - unchanged;
+    const sourceFullyAnchored = unchanged === originalTokens.length;
     if (
       unchanged === 0
-      || unchanged < Math.max(1, Math.round(comparableLength * 0.25))
-      || changedOriginal > originalTokens.length * 0.75
-      || changedTarget > newTokens.length * 0.75
+      || (!sourceFullyAnchored && unchanged < Math.max(1, Math.round(comparableLength * 0.25)))
+      || (!sourceFullyAnchored && changedOriginal > originalTokens.length * 0.75)
+      || (!sourceFullyAnchored && changedTarget > newTokens.length * 0.75)
     ) {
       return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
     }
 
-    const changedStart = prefix;
-    const changedEnd = originalTokens.length - suffix;
-    const affectedIndexes = spans
-      .map((span, index) => ({ span, index }))
-      .filter(({ span }) => {
-        if (changedStart === changedEnd) {
-          return span.start <= changedStart && changedStart <= span.end;
-        }
-        return span.start < changedEnd && span.end > changedStart;
-      })
-      .map(({ index }) => index);
-    if (!affectedIndexes.length) {
+    const affectedIndexes = new Set();
+    const parentIndexes = Array.from({ length: items.length }, (_, index) => index);
+    const findParent = (index) => {
+      let root = index;
+      while (parentIndexes[root] !== root) root = parentIndexes[root];
+      while (parentIndexes[index] !== index) {
+        const next = parentIndexes[index];
+        parentIndexes[index] = root;
+        index = next;
+      }
+      return root;
+    };
+    const unionItems = (left, right) => {
+      const leftRoot = findParent(left);
+      const rightRoot = findParent(right);
+      if (leftRoot === rightRoot) return;
+      parentIndexes[Math.max(leftRoot, rightRoot)] = Math.min(leftRoot, rightRoot);
+    };
+    const indexesForSourceRange = (sourceStart, sourceEnd) => (
+      sourceStart < sourceEnd
+        ? spans
+          .map((span, index) => ({ span, index }))
+          .filter(({ span }) => span.end > sourceStart && span.start < sourceEnd)
+          .map(({ index }) => index)
+        : []
+    );
+    const insertionItemIndex = (position) => {
+      if (position <= spans[0].start) return 0;
+      const lastIndex = spans.length - 1;
+      if (position >= spans[lastIndex].end) return lastIndex;
+      for (let index = 0; index < spans.length; index += 1) {
+        const span = spans[index];
+        if (span.start < position && position < span.end) return index;
+        // 插入在 item 边界时归到前一个 item，避免无关的后一个 item 也被合并。
+        if (position === span.start) return Math.max(0, index - 1);
+      }
+      return lastIndex;
+    };
+    opcodes.forEach((opcode) => {
+      if (opcode.tag === 'equal') return;
+      const indexes = indexesForSourceRange(opcode.sourceStart, opcode.sourceEnd);
+      if (!indexes.length) {
+        const index = insertionItemIndex(opcode.sourceStart);
+        if (Number.isInteger(index)) indexes.push(index);
+      }
+      indexes.forEach((index) => affectedIndexes.add(index));
+      for (let index = 1; index < indexes.length; index += 1) {
+        unionItems(indexes[0], indexes[index]);
+      }
+    });
+    if (!affectedIndexes.size) {
       return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
     }
-    const firstIndex = affectedIndexes[0];
-    const lastIndex = affectedIndexes[affectedIndexes.length - 1];
-    const firstSpan = spans[firstIndex];
-    const lastSpan = spans[lastIndex];
-    const prefixText = originalTokens.slice(firstSpan.start, Math.max(firstSpan.start, changedStart)).join('');
-    const suffixText = originalTokens.slice(Math.min(lastSpan.end, changedEnd)).join('');
-    const targetText = newTokens.slice(prefix, newTokens.length - suffix).join('');
-    const merged = { ...items[firstIndex] };
-    merged.text = prefixText + targetText + suffixText;
-    merged.start = items[firstIndex].start;
-    merged.end = items[lastIndex].end;
-    const reconciled = [
-      ...items.slice(0, firstIndex),
-      ...(merged.text ? [merged] : []),
-      ...items.slice(lastIndex + 1),
-    ];
+
+    const componentsByRoot = new Map();
+    affectedIndexes.forEach((index) => {
+      const root = findParent(index);
+      const component = componentsByRoot.get(root);
+      if (component) {
+        component.start = Math.min(component.start, index);
+        component.end = Math.max(component.end, index);
+      } else {
+        componentsByRoot.set(root, { start: index, end: index });
+      }
+    });
+    const components = [...componentsByRoot.values()];
+    const componentIds = new Map();
+    [...componentsByRoot.keys()].forEach((root, componentId) => {
+      componentIds.set(root, componentId);
+    });
+    const itemOwnerKey = (index) => {
+      const componentId = componentIds.get(findParent(index));
+      return componentId === undefined ? `item:${index}` : `affected:${componentId}`;
+    };
+
+    const targetKeys = [];
+    for (const opcode of opcodes) {
+      if (opcode.tag === 'equal') {
+        for (let sourceIndex = opcode.sourceStart; sourceIndex < opcode.sourceEnd; sourceIndex += 1) {
+          const itemIndex = spans.findIndex((span) => span.start <= sourceIndex && sourceIndex < span.end);
+          if (itemIndex < 0) {
+            return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+          }
+          targetKeys.push(itemOwnerKey(itemIndex));
+        }
+        continue;
+      }
+      if (opcode.targetStart >= opcode.targetEnd) continue;
+      const indexes = indexesForSourceRange(opcode.sourceStart, opcode.sourceEnd);
+      if (!indexes.length) {
+        const index = insertionItemIndex(opcode.sourceStart);
+        if (Number.isInteger(index)) indexes.push(index);
+      }
+      if (!indexes.length) {
+        return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+      }
+      const ownerKey = itemOwnerKey(indexes[0]);
+      for (let targetIndex = opcode.targetStart; targetIndex < opcode.targetEnd; targetIndex += 1) {
+        targetKeys.push(ownerKey);
+      }
+    }
+
+    const runs = [];
+    targetKeys.forEach((key, index) => {
+      const previous = runs[runs.length - 1];
+      if (previous?.key === key) previous.end = index + 1;
+      else runs.push({ key, start: index, end: index + 1 });
+    });
+    const usedKeys = new Set();
+    const reconciled = [];
+    for (const run of runs) {
+      if (usedKeys.has(run.key)) {
+        return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+      }
+      usedKeys.add(run.key);
+      const text = newTokens.slice(run.start, run.end).join('');
+      if (!text) continue;
+      let item;
+      if (run.key.startsWith('item:')) {
+        item = cloneJsonValue(items[Number(run.key.slice(5))]);
+      } else {
+        const component = components[Number(run.key.slice(9))];
+        item = cloneJsonValue(items[component.start]);
+        item.start = items[component.start].start;
+        item.end = items[component.end].end;
+      }
+      item.text = text;
+      reconciled.push(item);
+    }
     if (reconciled.length && reconciled.map((item) => item.text).join('') === newText) {
       return {
         status: 'partial',
         items: reconciled,
         preservedItems: reconciled.length,
-        affectedItems: affectedIndexes.length,
+        affectedItems: affectedIndexes.size,
       };
     }
     return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
   }
 
-  function buildTimedTextEditReport(segments, draftTexts) {
+  function buildTimedTextEditReportFixed(segments, draftTexts) {
     const source = Array.isArray(segments) ? segments : [];
     const texts = Array.isArray(draftTexts) ? draftTexts : [];
     const valid = source.length === texts.length;
@@ -562,17 +1228,27 @@
         : reconcileTimedTextItems(before, segment?.items, after);
       const afterStart = boundary ? boundary.start : Number(segment?.start);
       const afterEnd = boundary ? boundary.end : Number(segment?.end);
+      const coverage = timedTextItemCoverage(after, mapping.items);
+      const reuse = timedTextItemReuse(
+        before, segment?.items, after, mapping.items, mapping.status,
+      );
       return {
         index,
         before,
         after,
         changed: before !== after,
+        deleted: Boolean(before.trim() && !after.trim()),
         diff,
         mappingStatus: mapping.status,
         beforeItemCount: Array.isArray(segment?.items) ? segment.items.length : 0,
         afterItemCount: mapping.items?.length || 0,
         preservedItems: mapping.preservedItems,
         affectedItems: mapping.affectedItems,
+        items: mapping.items,
+        itemCoverage: coverage.percent,
+        itemCoverageData: coverage,
+        itemReuse: reuse.percent,
+        itemReuseData: reuse,
         beforeStart: Number(segment?.start),
         beforeEnd: Number(segment?.end),
         afterStart,
@@ -602,22 +1278,200 @@
     return { valid, rows, changedRows, stats, boundaryMoves: boundaryPlan.transfers };
   }
 
+  function timedTextStructureSourceSlice(source, range) {
+    const sourceSegments = Array.isArray(source) ? source : [];
+    const requestedStart = Math.max(0, Math.round(Number(range?.start) || 0));
+    const requestedEnd = Math.max(requestedStart, Math.round(Number(range?.end) || 0));
+    const textParts = [];
+    const items = [];
+    let offset = 0;
+    sourceSegments.forEach((segment) => {
+      const tokens = timedTextTokens(segment?.text);
+      const sourceStart = offset;
+      const sourceEnd = offset + tokens.length;
+      offset = sourceEnd;
+      const localStart = Math.max(0, requestedStart - sourceStart);
+      const localEnd = Math.min(tokens.length, requestedEnd - sourceStart);
+      if (localStart >= localEnd) return;
+      textParts.push(tokens.slice(localStart, localEnd).join(''));
+      const layout = timedTextItemLayout(segment?.text, segment?.items);
+      if (layout) {
+        const sliced = timedTextItemsSlice(layout, localStart, localEnd);
+        if (sliced) items.push(...sliced);
+      }
+    });
+    return { text: textParts.join(''), items };
+  }
+
+  function buildTimedTextStructureReport(source, texts, plan) {
+    const outputRows = plan.segments.map((output, outputIndex) => {
+      const meta = plan.outputMeta[outputIndex] || { sourceIndexes: [], range: null };
+      const sourceSlice = timedTextStructureSourceSlice(source, meta.range);
+      const sourceIndexes = Array.isArray(meta.sourceIndexes) ? meta.sourceIndexes : [];
+      const structural = sourceIndexes.some((index) => plan.affectedSourceIndexes.includes(index))
+        || sourceIndexes.length !== 1;
+      // 结构拆分时，每个输出行只对应原字幕的一段时间范围，但“修改前”
+      // 应该展示用户实际拆分的整条原字幕，而不是展示与“修改后”相同的切片。
+      // 例如「超高速摄影机」拆成「超高速」/「摄影机」时，两行都以整句为 before。
+      const fullSourceText = sourceIndexes
+        .map((index) => String(source[index]?.text == null ? '' : source[index].text))
+        .join('');
+      const before = structural && fullSourceText ? fullSourceText : sourceSlice.text;
+      const after = String(output?.text || '');
+      const mappingStatus = structural
+        ? 'structure'
+        : reconcileTimedTextItems(before, sourceSlice.items, after).status;
+      const coverage = timedTextItemCoverage(after, output?.items);
+      const reuse = timedTextItemReuse(
+        before,
+        sourceSlice.items,
+        after,
+        output?.items,
+        before === after ? 'full' : mappingStatus,
+      );
+      return {
+        index: outputIndex,
+        draftIndex: meta.draftIndex,
+        sourceIndexes,
+        before,
+        after,
+        changed: before !== after || structural,
+        deleted: false,
+        structureChanged: structural,
+        diff: buildTimedTextDiff(before, after),
+        mappingStatus,
+        beforeItemCount: sourceSlice.items.length,
+        afterItemCount: Array.isArray(output?.items) ? output.items.length : 0,
+        preservedItems: Array.isArray(output?.items) ? output.items.length : 0,
+        affectedItems: Array.isArray(output?.items) ? output.items.length : 0,
+        items: output?.items,
+        itemCoverage: coverage.percent,
+        itemCoverageData: coverage,
+        itemReuse: reuse.percent,
+        itemReuseData: reuse,
+        beforeStart: sourceSlice.items[0]?.start ?? Number(output?.start),
+        beforeEnd: sourceSlice.items[sourceSlice.items.length - 1]?.end ?? Number(output?.end),
+        afterStart: Number(output?.start),
+        afterEnd: Number(output?.end),
+        timingChanged: structural,
+        timingEstimated: meta.timingEstimated === true,
+      };
+    });
+    const rows = source.map((segment, index) => {
+      const outputIndexes = plan.sourceOutputIndexes[index] || [];
+      const outputs = outputIndexes.map((outputIndex) => plan.segments[outputIndex]).filter(Boolean);
+      const before = String(segment?.text == null ? '' : segment.text);
+      const after = outputs.map((output) => String(output?.text || '')).join('');
+      const affected = plan.affectedSourceIndexes.includes(index);
+      const diff = buildTimedTextDiff(before, after);
+      const items = outputs.flatMap((output) => Array.isArray(output?.items) ? output.items : []);
+      const mappingStatus = affected ? 'structure' : reconcileTimedTextItems(before, segment?.items, after).status;
+      const coverage = timedTextItemCoverage(after, items);
+      const reuse = timedTextItemReuse(
+        before, segment?.items, after, items, mappingStatus,
+      );
+      const firstOutput = outputs[0];
+      const lastOutput = outputs[outputs.length - 1];
+      const afterStart = firstOutput ? Number(firstOutput.start) : Number(segment?.start);
+      const afterEnd = lastOutput ? Number(lastOutput.end) : Number(segment?.end);
+      return {
+        index,
+        before,
+        after,
+        displayAfter: outputs.map((output) => String(output?.text || '')).join('\n'),
+        changed: before !== after || affected,
+        deleted: Boolean(before.trim() && !after.trim()),
+        structureChanged: affected,
+        diff,
+        mappingStatus,
+        beforeItemCount: Array.isArray(segment?.items) ? segment.items.length : 0,
+        afterItemCount: items.length,
+        preservedItems: items.length,
+        affectedItems: items.length,
+        items,
+        itemCoverage: coverage.percent,
+        itemCoverageData: coverage,
+        itemReuse: reuse.percent,
+        itemReuseData: reuse,
+        beforeStart: Number(segment?.start),
+        beforeEnd: Number(segment?.end),
+        afterStart,
+        afterEnd,
+        timingChanged: affected
+          || afterStart !== Number(segment?.start) || afterEnd !== Number(segment?.end),
+      };
+    });
+    const changedRows = rows.filter((row) => row.changed);
+    const stats = {
+      ...buildTimedTextEditReportFixed(source, source.map((segment) => segment?.text || '')).stats,
+      totalSegments: source.length,
+      changedSegments: changedRows.length,
+      unchangedSegments: rows.length - changedRows.length,
+      beforeCharacters: rows.reduce((sum, row) => sum + timedTextTokens(row.before).length, 0),
+      afterCharacters: rows.reduce((sum, row) => sum + timedTextTokens(row.after).length, 0),
+      addedCharacters: changedRows.reduce((sum, row) => sum + row.diff.addedCharacters, 0),
+      removedCharacters: changedRows.reduce((sum, row) => sum + row.diff.removedCharacters, 0),
+      fullMappedCues: changedRows.filter((row) => row.mappingStatus === 'full').length,
+      partialMappedCues: changedRows.filter((row) => row.mappingStatus === 'partial').length,
+      lostMappedCues: changedRows.filter((row) => row.mappingStatus === 'lost').length,
+      unavailableMappedCues: changedRows.filter((row) => row.mappingStatus === 'unavailable').length,
+      boundaryMappedCues: 0,
+      boundaryMoves: 0,
+      timingChangedCues: rows.filter((row) => row.timingChanged).length,
+      preservedItems: changedRows.reduce((sum, row) => sum + row.preservedItems, 0),
+      affectedItems: changedRows.reduce((sum, row) => sum + row.affectedItems, 0),
+      structureMappedCues: changedRows.filter((row) => row.mappingStatus === 'structure').length,
+      estimatedTimingCues: outputRows.filter((row) => row.timingEstimated).length,
+    };
+    return {
+      valid: true,
+      rows,
+      changedRows,
+      stats,
+      boundaryMoves: [],
+      structure: plan,
+      previewSegments: plan.segments,
+      outputRows,
+    };
+  }
+
+  function buildTimedTextEditReport(segments, draftTexts) {
+    const source = Array.isArray(segments) ? segments : [];
+    const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    if (timedTextStructureRequested(source, texts)) {
+      const plan = buildTimedTextStructurePlan(source, texts);
+      if (plan.valid) return buildTimedTextStructureReport(source, texts, plan);
+      return {
+        ...buildTimedTextEditReportFixed(source, texts),
+        structure: plan,
+        previewSegments: [],
+      };
+    }
+    return buildTimedTextEditReportFixed(source, texts);
+  }
+
   function applyTimedTextEdit(segments, draftTexts) {
     const source = Array.isArray(segments) ? segments : [];
     const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    if (timedTextStructureRequested(source, texts)) {
+      const structurePlan = buildTimedTextStructurePlan(source, texts);
+      return structurePlan.valid ? cloneJsonValue(structurePlan.segments) : null;
+    }
     if (source.length !== texts.length) return null;
     const boundaryPlan = buildTimedTextBoundaryPlan(source, texts);
-    return source.map((segment, index) => {
+    return source.flatMap((segment, index) => {
       const next = cloneJsonValue(segment || {});
       const before = String(next.text == null ? '' : next.text);
       const after = String(texts[index] == null ? '' : texts[index]);
       if (before === after) return next;
+      if (!after) return [];
       const boundary = boundaryPlan.updates[index];
       if (boundary) {
         next.text = after;
         next.start = boundary.start;
         next.end = boundary.end;
-        next.items = cloneJsonValue(boundary.items);
+        if (boundary.items.length) next.items = cloneJsonValue(boundary.items);
+        else delete next.items;
         return next;
       }
       const mapping = reconcileTimedTextItems(before, next.items, after);
@@ -2933,7 +3787,10 @@
     applyTextProcessing,
     buildTextProcessingPreview,
     buildTimedTextDiff,
+    timedTextItemCoverage,
+    timedTextItemReuse,
     buildTimedTextBoundaryPlan,
+    buildTimedTextStructurePlan,
     buildTimedTextEditReport,
     applyTimedTextEdit,
     countTextUnits,

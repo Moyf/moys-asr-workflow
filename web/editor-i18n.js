@@ -357,17 +357,20 @@
     '在光标处拆分': 'Split at cursor', '在光标处拆分（': 'Split at cursor (', '范围：全部字幕': 'Scope: all subtitles',
     '查找': 'Find', '替换为': 'Replace with', '批量替换': 'Batch replace',
     '纯文本编辑…': 'Plain text edit…', '纯文本编辑': 'Plain text edit', '编辑轨道': 'Edit track',
-    '编辑视图': 'Edit view', '逐条编辑': 'Edit row by row', '单文本框': 'Single text area',
+    '编辑视图': 'Edit view', '逐条编辑': 'Edit row by row', '整体编辑': 'Whole text', '单文本框': 'Single text area',
     '显示全部': 'Show all',
     '字幕文本': 'Subtitle text', '修改影响': 'Change impact', '修改内容': 'Changed text',
     '应用修改': 'Apply changes', '查看修改内容': 'View changes', '还没有修改内容。': 'No changes yet.',
-    '每一行对应一条已有字幕；请勿新增或删除行。': 'Each row is one existing subtitle; do not add or delete rows.',
-    '集中修改字幕文字；保持字幕行结构，确认前会分析字词时间码的保留情况；相邻字幕的开头/结尾移动会同步更新时间范围。': 'Edit subtitle text in one place; keep the subtitle row structure and analyze word-timing retention before applying. Start/end moves between adjacent subtitles also update their time ranges.',
+    '每一行对应一条当前字幕；新增、删除或移动换行会尝试调整字幕行结构。': 'Each line maps to a current subtitle; adding, removing, or moving line breaks will try to adjust the subtitle structure.',
+    '每一行对应一条当前字幕；新增、删除或移动换行会尝试调整字幕行结构。⌚️有效覆盖率 · ♻️原始时间码复用率': 'Each line maps to a current subtitle; adding, removing, or moving line breaks will try to adjust the subtitle structure. ⌚️ effective coverage · ♻️ original timing reuse',
+    '集中编辑字幕文本，并预览拆分、合并和字词时间码映射结果': 'Edit subtitle text in one place and preview split, merge, and word-timing mappings.',
+    '集中修改字幕文字；新增、删除或移动换行时会尝试拆分、合并并重新分配字词时间码；确认前会分析映射结果。': 'Edit subtitle text in one place; adding, removing, or moving line breaks will try to split, merge, and redistribute word timings before applying.',
     '未修改（原样保留）': 'Unchanged (retained as-is)', '修改后完整映射': 'Fully mapped after edit',
     '完整保留': 'Fully retained', '部分保留': 'Partially retained', '时间码丢失': 'Timecodes dropped',
     '完整映射': 'Fully mapped', '部分映射': 'Partially mapped', '原本没有字词时间码': 'No original word timings',
     '边界移动（时间码已转移）': 'Boundary move (word timings transferred)',
     '边界移动（转移时间码）': 'Boundary move (word timings transferred)',
+    '结构调整（时间码已重新分配）': 'Structure change (word timings redistributed)',
     '原本没有字词码': 'No word timings originally', '字符变化': 'Character changes', '字幕行': 'Subtitle rows',
     '修改前：': 'Before: ', '修改后：': 'After: ', '前：': 'Before: ', '后：': 'After: ',
     '还没有修改内容。': 'No changes yet.',
@@ -375,23 +378,33 @@
     '部分字幕无法可靠映射原字词时间码；应用后只保留字幕段整体时间范围。': 'Some subtitles cannot reliably map their original word timings; applying the edit keeps only the overall subtitle segment range.',
     '修改范围内的字词会合并为较粗的时间码，未受影响的字词仍会保留。': 'Words in the changed range are merged into coarser timings; unaffected words are retained.',
     '当前修改可以完整复用原字词时间码；字幕段整体时间范围不会改变。': 'The current edits can fully reuse the original word timings; the overall subtitle segment ranges stay unchanged.',
+    '当前字幕没有可用于拆分的文字。': 'The current subtitles have no text that can be used for splitting.',
+    '等待可靠时间码映射': 'Waiting for a reliable timing mapping',
     '当前没有可编辑的字幕': 'There are no subtitles to edit',
     '字幕在编辑窗口打开后发生了变化，请关闭窗口并重新打开': 'The subtitles changed while the editor was open. Close and reopen it.',
     '无法应用文本修改：字幕行结构发生了变化': 'Cannot apply text changes: the subtitle rows changed',
     '切换轨道会丢弃当前未应用的文本修改，是否继续？': 'Switching tracks will discard unapplied text changes. Continue?',
     '当前筛选没有修改内容。': 'No changes match the current filter.',
     '检测到相邻字幕之间的开头/结尾移动；对应字词时间码会一起转移，并更新字幕段范围。': 'A start/end move between adjacent subtitles was detected; the matching word timings will move too and the subtitle ranges will be updated.',
-    '当前字幕包含换行，暂不能切换到单文本框视图': 'The current subtitles contain line breaks, so the single-text-area view is unavailable.',
-    '请先保持每条字幕一行，再切换编辑视图': 'Keep one subtitle per line before switching the editing view.',
+    '检测到字幕行结构变化；应用后会按字词时间码拆分、合并或删除字幕行，并解除受影响的多字幕绑定。': 'A subtitle-row structure change was detected; applying it will split, merge, or delete rows using word timings and unlink affected multiple-subtitle bindings.',
+    '新增或删除字幕行后，文字总长度发生了变化，暂时无法可靠分配时间码。': 'The total text length changed after adding or deleting subtitle rows, so timings cannot be assigned reliably yet.',
+    '删除字幕时只能删除完整字幕行，不能只删除其中一部分文字。': 'Deleting subtitles can remove only complete rows, not part of a row.',
+    '拆句涉及的原字幕缺少可用字词时间码，无法安全拆分。': 'The source subtitle lacks usable word timings, so it cannot be split safely.',
+    '拆句边界没有可用的字词时间码。': 'The split boundary has no usable word timing.',
+    '拆句后的字词时间码无法保持顺序。': 'The word timings cannot remain ordered after the split.',
+    '拆分或合并后的字幕行不能为空。': 'A subtitle row created by splitting or merging cannot be empty.',
+    '无法找到新字幕对应的原始时间范围。': 'The original timing range for the new subtitle could not be found.',
+    '拆句后产生了无效的字幕时间范围。': 'The split produced an invalid subtitle time range.',
+    '当前字幕包含换行，暂不能切换到整体编辑视图': 'The current subtitles contain line breaks, so the whole-text view is unavailable.',
     '当前有未应用的文本修改，确定关闭编辑窗口吗？': 'You have unapplied text changes. Close the editing window?',
     '区分大小写': 'Case sensitive',
     '正则表达式': 'Regular expression',
     '输入查找内容查看预览': 'Enter text to preview replacements',
-    '文本处理…': 'Text processing…', '文本处理': 'Text processing', '仅处理选中的字幕': 'Process selected subtitles only',
-    'Trim': 'Trim', '去除前后空白': 'Remove surrounding whitespace', '首字母大写': 'Capitalize first letter', '只作用于第一个字母': 'Only affects the first letter',
+    '文本处理…': 'Text processing…', '文本处理': 'Text processing', '仅处理选中的字幕': 'Process selected subtitles only', '需要先选中至少1条字幕才可启用': 'Select at least one subtitle first to enable this option',
+    'Trim': 'Trim', '修剪前后空白': 'Trim surrounding whitespace', '去除字幕前方和后方的空格': 'Remove spaces before and after the subtitle text', '去除前后空白': 'Remove surrounding whitespace', '首字母大写': 'Capitalize first letter', '只作用于第一个字母': 'Only affects the first letter',
     '添加前缀': 'Add prefix', '插入到字幕开头': 'Insert at the beginning', '附加内容': 'Add suffix', '插入到字幕结尾': 'Insert at the end',
     '去除 md 格式符号': 'Remove Markdown formatting', '移除常见 Markdown 标记': 'Remove common Markdown markers',
-    '选择操作后查看预览': 'Select an operation to preview', '至少选择一项文本处理操作': 'Select at least one text-processing operation',
+    '选择操作后查看预览': 'Select an operation to preview', '至少选择一项文本处理操作': 'Select at least one text-processing operation', '选定的字幕不会发生变化': 'The selected subtitles would not change',
     '应用处理': 'Apply processing', '处理前：': 'Before: ', '处理后：': 'After: ',
     '选择要执行的文本操作；字幕行不会被删除，处理为空时会保留空字幕行。字词时间码会按文本编辑规则尽量保留。': 'Choose text operations; subtitle rows are not deleted, and empty results remain as empty rows. Word timings are retained when possible using the text-editing rules.',
     '取消': 'Cancel', '替换全部': 'Replace all', '分配表情包': 'Assign sticker',
@@ -482,7 +495,6 @@
     '选中字幕时，方向键和按住字幕块/边界时的 A/D 每次调整的毫秒数': 'Milliseconds adjusted per arrow-key press or A/D press while holding a subtitle block or edge',
     '关闭（Esc）': 'Close (Esc)',
     '关闭纯文本编辑': 'Close plain text editor',
-    '以保持字幕行结构的方式集中编辑文本，并预览时间码映射结果': 'Edit subtitle text while preserving its row structure and preview the timing-mapping result',
     '单文本框编辑': 'Single text area editing',
     '关闭帮助窗口': 'Close the help window',
     '关闭移除静音空隙工具窗': 'Close the silent-gap tool',
@@ -670,8 +682,19 @@
     if (match) return `Subtitle ${match[1]} text`;
     match = /^第\s*(\d+)\s*条\s*·\s*(.+)$/.exec(text);
     if (match) return `Subtitle ${match[1]} · ${translateText(match[2], EN)}`;
-    match = /^单文本框当前有\s*(\d+)\s*行，需要保持\s*(\d+)\s*行；请勿新增或删除换行。$/.exec(text);
-    if (match) return `The single text area has ${match[1]} lines; keep ${match[2]} lines and do not add or remove line breaks.`;
+    match = /^有效字词时间码覆盖率：\s*(\d+)%$/.exec(text);
+    if (match) return `Word-timing coverage: ${match[1]}%`;
+    match = /^原始时间码复用率：\s*(\d+)%$/.exec(text);
+    if (match) return `Original timing reuse: ${match[1]}%`;
+    match = /^有效字词时间码：\s*(\d+)\/(\d+)$/.exec(text);
+    if (match) return `Valid word timings: ${match[1]}/${match[2]}`;
+    match = /^有效字词时间码覆盖率：\s*(\d+)\/(\d+)$/.exec(text);
+    if (match) return `Word-timing coverage: ${match[1]}/${match[2]}`;
+    match = /^原始时间码复用率：\s*(\d+)\/(\d+)$/.exec(text);
+    if (match) return `Original timing reuse: ${match[1]}/${match[2]}`;
+    if (text === '时间范围为自动估算（按原字幕范围/文字长度分配）') {
+      return 'Time range estimated from the original cue range and text length';
+    }
     match = /^时间范围：(.+?)\s*[–-]\s*(.+?)\s*→\s*(.+?)\s*[–-]\s*(.+)$/.exec(text);
     if (match) return `Time range: ${match[1]} - ${match[2]} -> ${match[3]} - ${match[4]}`;
     match = /^版本号\s+(.+)$/.exec(text);
@@ -752,10 +775,11 @@
     if (match) return `Copied: ${match[1]}`;
     match = /^已复制媒体名：(.+)$/.exec(text);
     if (match) return `Media name copied: ${match[1]}`;
-    match = /^已应用纯文本编辑：(\d+) 条字幕(?:，(\d+) 条字词时间码已清除)?$/.exec(text);
+    match = /^已应用纯文本编辑：(\d+) 条字幕(?:，移除 (\d+) 条空字幕行)?(?:，(\d+) 条字词时间码已清除)?$/.exec(text);
     if (match) {
       return `Plain text edit applied: ${match[1]} subtitle${match[1] === '1' ? '' : 's'}`
-        + (match[2] ? `; word timings cleared for ${match[2]}` : '');
+        + (match[2] ? `; removed ${match[2]} empty subtitle row${match[2] === '1' ? '' : 's'}` : '')
+        + (match[3] ? `; word timings cleared for ${match[3]}` : '');
     }
     match = /^总长度\s+(.+)$/.exec(text);
     if (match) return `Total length ${match[1]}`;
