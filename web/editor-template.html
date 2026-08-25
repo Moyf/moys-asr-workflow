@@ -151,10 +151,12 @@ __WAVEFORM_CSS__
       </div>
     </span>
     <span class="dropdown" id="extra-export-dropdown">
-      <button id="extra-export-btn" title="导出表情包时间线">导出表情包时间线 ▾</button>
+      <button id="extra-export-btn" title="更多导出">更多导出 ▾</button>
       <div class="dropdown-menu" id="extra-export-menu">
         <div class="dropdown-item" id="download-fcp7-export" title="实验性 Premiere 交接：导出 FCP 7 XML">Premiere FCP 7 XML（实验性）</div>
         <div class="dropdown-item" id="download-resolve-json" title="导出颜色与表情包的 Resolve JSON，供兼容执行脚本批量导入">下载 Resolve JSON</div>
+        <div class="dropdown-item" id="download-lottie" title="导出逐字高亮动态字幕 .lottie（需要以 server-editor 打开并绑定工程文件）">动态字幕（Lottie）</div>
+        <div class="dropdown-item" id="download-ograf" title="导出符合 OGraf 规范的动态字幕包（需要以 server-editor 打开并绑定工程文件）">动态字幕（OGraf）</div>
         <div class="dropdown-item" id="download-sticker-otio" title="导出只包含表情包图片轨道的 OTIO 工程">下载表情包 OTIO 工程</div>
         <div class="dropdown-item" id="download-sticker-otioz" title="导出表情包图片轨道 OTIOZ 工程（服务器打包图片进 zip，需校验表情包根目录）">下载表情包 OTIOZ 工程</div>
       </div>
@@ -1194,6 +1196,79 @@ __WAVEFORM_CSS__
     <div class="actions">
       <button type="button" id="fcp7-export-cancel">取消</button>
       <button type="button" id="fcp7-export-confirm" class="primary">导出 XML</button>
+    </div>
+  </div>
+</div>
+
+<!-- Lottie 动态字幕导出；由 server-editor 打包为单个 .lottie 文件。 -->
+<div class="modal-mask" id="lottie-export-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="lottie-export-title" aria-describedby="lottie-export-description">
+    <h3 id="lottie-export-title">Lottie 动态字幕</h3>
+    <p class="modal-desc" id="lottie-export-description">导出单个 .lottie 文件，可直接拖入 DaVinci Resolve 21 的 Media Pool 或时间线。当前版本使用逐字/逐词高亮，并沿用 MAW 的字幕预览字体、颜色和位置。</p>
+    <label for="lottie-export-track">字幕轨道</label>
+    <select id="lottie-export-track">
+      <option value="main" selected>主轨字幕</option>
+      <option value="extension">扩展字幕轨</option>
+    </select>
+    <label for="lottie-export-resolution">合成尺寸</label>
+    <select id="lottie-export-resolution">
+      <option value="1920x1080" selected>1920 × 1080（横屏）</option>
+      <option value="1080x1920">1080 × 1920（竖屏）</option>
+      <option value="3840x2160">3840 × 2160（4K 横屏）</option>
+    </select>
+    <label for="lottie-export-fps">导出帧率</label>
+    <select id="lottie-export-fps">
+      <option value="24">24 fps</option>
+      <option value="25">25 fps</option>
+      <option value="30" selected>30 fps</option>
+      <option value="30000/1001">30000/1001 fps</option>
+      <option value="50">50 fps</option>
+      <option value="60">60 fps</option>
+      <option value="60000/1001">60000/1001 fps</option>
+    </select>
+    <label for="lottie-export-render-mode">文字渲染</label>
+    <select id="lottie-export-render-mode">
+      <option value="text" selected>文本模式（依赖系统字体）</option>
+      <option value="glyph">矢量模式（内置字形，文件更大）</option>
+    </select>
+    <p class="modal-hint">文本模式只记录字体名；矢量模式会把当前字幕实际用到的字形轮廓内置到包里，适合中文和未安装相同字体的机器。</p>
+    <div class="actions">
+      <button type="button" id="lottie-export-cancel">取消</button>
+      <button type="button" id="lottie-export-confirm" class="primary">导出 .lottie</button>
+    </div>
+  </div>
+</div>
+
+<!-- OGraf 动态字幕导出；由 server-editor 打包 manifest 与 Web Component sidecar。 -->
+<div class="modal-mask" id="ograf-export-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="ograf-export-title" aria-describedby="ograf-export-description">
+    <h3 id="ograf-export-title">OGraf 动态字幕</h3>
+    <p class="modal-desc" id="ograf-export-description">导出符合 OGraf 规范的 .ograf.zip；解压后保持 .ograf.json 与 .mjs 同目录，再把 .ograf.json 拖入 DaVinci Resolve 21。字幕由 Canvas Web Component 渲染。</p>
+    <label for="ograf-export-track">字幕轨道</label>
+    <select id="ograf-export-track">
+      <option value="main" selected>主轨字幕</option>
+      <option value="extension">扩展字幕轨</option>
+    </select>
+    <label for="ograf-export-resolution">合成尺寸</label>
+    <select id="ograf-export-resolution">
+      <option value="1920x1080" selected>1920 × 1080（横屏）</option>
+      <option value="1080x1920">1080 × 1920（竖屏）</option>
+      <option value="3840x2160">3840 × 2160（4K 横屏）</option>
+    </select>
+    <label for="ograf-export-fps">导出帧率</label>
+    <select id="ograf-export-fps">
+      <option value="24">24 fps</option>
+      <option value="25">25 fps</option>
+      <option value="30" selected>30 fps</option>
+      <option value="30000/1001">30000/1001 fps</option>
+      <option value="50">50 fps</option>
+      <option value="60">60 fps</option>
+      <option value="60000/1001">60000/1001 fps</option>
+    </select>
+    <p class="modal-hint">这是包含两个文件的压缩包，不是可单独使用的 JSON；解压后不要分离或改名。Canvas 使用 Resolve 所在机器的系统字体回退链，适合验证中文显示。</p>
+    <div class="actions">
+      <button type="button" id="ograf-export-cancel">取消</button>
+      <button type="button" id="ograf-export-confirm" class="primary">导出 .ograf.zip</button>
     </div>
   </div>
 </div>

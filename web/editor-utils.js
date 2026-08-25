@@ -2375,6 +2375,631 @@
     });
   }
 
+  // === Lottie 动态字幕导出 ===
+  // 生成器只负责无外部资源的 Lottie JSON；server-editor 再把它放进
+  // dotLottie（.lottie）容器。这样时间码、字体、颜色和定位都能在 Node
+  // 中单测，服务器不需要理解字幕工程的业务结构。
+  const LOTTIE_DEFAULT_FPS = 30;
+  const LOTTIE_DEFAULT_WIDTH = 1920;
+  const LOTTIE_DEFAULT_HEIGHT = 1080;
+  const LOTTIE_DEFAULT_FONT_FAMILY = 'Arial';
+  const LOTTIE_DEFAULT_HIGHLIGHT_COLOR = '#ffd34d';
+  const LOTTIE_FONT_FAMILY_ALIASES = Object.freeze({
+    default: LOTTIE_DEFAULT_FONT_FAMILY,
+    yahei: 'Microsoft YaHei',
+    hei: 'SimHei',
+    song: 'SimSun',
+    sans: 'Arial',
+  });
+
+  function lottieAnimatedProperty(value) {
+    return { a: 0, k: value };
+  }
+
+  function normalizeLottieFps(value) {
+    const raw = String(value ?? '').trim();
+    let fps = 0;
+    if (/^\d+(?:\.\d+)?\/\d+(?:\.\d+)?$/u.test(raw)) {
+      const [numerator, denominator] = raw.split('/').map(Number);
+      fps = denominator > 0 ? numerator / denominator : 0;
+    } else {
+      fps = Number(raw);
+    }
+    return Number.isFinite(fps) && fps > 0 && fps <= 240 ? fps : LOTTIE_DEFAULT_FPS;
+  }
+
+  function normalizeLottieCanvasDimension(value, fallback) {
+    const dimension = Math.round(Number(value));
+    return Number.isFinite(dimension) && dimension >= 1 && dimension <= 16384
+      ? dimension : fallback;
+  }
+
+  function lottieColor(value, fallback) {
+    const source = typeof value === 'string' && /^#[0-9a-f]{6}$/iu.test(value)
+      ? value : fallback;
+    return [0, 2, 4].map((offset) => Number.parseInt(source.slice(1 + offset, 3 + offset), 16) / 255);
+  }
+
+  function normalizeLottieFontFamily(value) {
+    const raw = typeof value === 'string' ? value.trim() : '';
+    if (!raw || raw === 'default') return LOTTIE_DEFAULT_FONT_FAMILY;
+    return LOTTIE_FONT_FAMILY_ALIASES[raw] || raw;
+  }
+
+  function normalizeLottieRenderMode(value) {
+    return value === 'glyph' ? 'glyph' : 'text';
+  }
+
+  function lottieTextUnits(value) {
+    return Array.from(String(value || '').replace(/\r\n?/gu, '\n'));
+  }
+
+  function findLottieTextUnits(haystack, needle, fromIndex) {
+    if (!needle.length) return -1;
+    const start = Math.max(0, Math.min(haystack.length, Number(fromIndex) || 0));
+    outer: for (let index = start; index <= haystack.length - needle.length; index++) {
+      for (let offset = 0; offset < needle.length; offset++) {
+        if (haystack[index + offset] !== needle[offset]) continue outer;
+      }
+      return index;
+    }
+    return -1;
+  }
+
+  function lottieSelectorKeyframes(entries, finalFrame, valueKey) {
+    const byFrame = new Map();
+    entries.forEach((entry) => {
+      if (!Number.isFinite(entry.frame)) return;
+      byFrame.set(Math.max(0, Math.round(entry.frame)), Math.max(0, Math.round(entry[valueKey])));
+    });
+    if (Number.isFinite(finalFrame)) byFrame.set(Math.max(0, Math.round(finalFrame)), 0);
+    return [...byFrame.entries()].sort((left, right) => left[0] - right[0]).map(([frame, value]) => ({
+      t: frame,
+      s: [value],
+      h: 1,
+    }));
+  }
+
+  function buildLottieTextAnimator(
+    segment, textUnits, cueStartFrame, cueEndFrame, fps, highlightColor,
+  ) {
+    const items = Array.isArray(segment?.items) ? segment.items : [];
+    let ranges = [];
+    let cursor = 0;
+    items.forEach((item) => {
+      const itemText = String(item?.text || '').replace(/\r\n?/gu, '\n');
+      const itemUnits = lottieTextUnits(itemText);
+      if (!itemUnits.length) return;
+      const startIndex = findLottieTextUnits(textUnits, itemUnits, cursor);
+      if (startIndex < 0) return;
+      const endIndex = startIndex + itemUnits.length;
+      const rawStart = Number(item?.start);
+      const itemFrame = Number.isFinite(rawStart)
+        ? Math.max(cueStartFrame, Math.min(cueEndFrame, Math.floor(rawStart / 1000 * fps)))
+        : cueStartFrame;
+      ranges.push({ frame: itemFrame, start: startIndex, end: endIndex });
+      cursor = endIndex;
+    });
+    // SRT 和被文字处理过的工程可能没有可用的 items。仍然生成逐字高亮，
+    // 将字符按句段时长均匀分配，避免导出的动态字幕退化为静态字幕。
+    if (!ranges.length) {
+      const frameSpan = Math.max(1, cueEndFrame - cueStartFrame);
+      ranges = textUnits.map((_, index) => ({
+        frame: cueStartFrame + Math.floor(frameSpan * index / textUnits.length),
+        start: index,
+        end: index + 1,
+      }));
+    }
+
+    const first = ranges[0];
+    const startEntries = [{ frame: cueStartFrame, start: first.frame > cueStartFrame ? 0 : first.start }];
+    const endEntries = [{ frame: cueStartFrame, end: first.frame > cueStartFrame ? 0 : first.end }];
+    ranges.slice(first.frame > cueStartFrame ? 0 : 1).forEach((range) => {
+      startEntries.push({ frame: range.frame, start: range.start });
+      endEntries.push({ frame: range.frame, end: range.end });
+    });
+    return {
+      nm: 'MAW word highlight',
+      s: {
+        t: 0,
+        xe: lottieAnimatedProperty(0),
+        ne: lottieAnimatedProperty(0),
+        a: lottieAnimatedProperty(100),
+        b: 1,
+        rn: 0,
+        sh: 1,
+        sm: lottieAnimatedProperty(100),
+        o: lottieAnimatedProperty(0),
+        r: 2,
+        s: { a: 1, k: lottieSelectorKeyframes(startEntries, cueEndFrame, 'start') },
+        e: { a: 1, k: lottieSelectorKeyframes(endEntries, cueEndFrame, 'end') },
+      },
+      a: {
+        fc: lottieAnimatedProperty(highlightColor),
+      },
+    };
+  }
+
+  function buildLottieAnimation(segments, options = {}) {
+    const width = normalizeLottieCanvasDimension(options.width, LOTTIE_DEFAULT_WIDTH);
+    const height = normalizeLottieCanvasDimension(options.height, LOTTIE_DEFAULT_HEIGHT);
+    const fps = normalizeLottieFps(options.fps);
+    const source = Array.isArray(segments) ? segments : [];
+    const maxSegmentEnd = source.reduce((max, segment) => {
+      const end = Number(segment?.end);
+      return Number.isFinite(end) ? Math.max(max, end) : max;
+    }, 0);
+    const requestedDuration = Number(options.durationMs);
+    const durationMs = Math.max(
+      maxSegmentEnd,
+      Number.isFinite(requestedDuration) && requestedDuration > 0 ? requestedDuration : 0,
+      1,
+    );
+    const totalFrames = Math.max(1, Math.ceil(durationMs / 1000 * fps));
+    const subtitle = options.subtitle && typeof options.subtitle === 'object' ? options.subtitle : {};
+    const geometry = normalizePreviewGeometry(subtitle, DEFAULT_PREVIEW_GEOMETRY);
+    const boxWidth = Math.max(1, Math.round(geometry.width * width));
+    const boxHeight = Math.max(1, Math.round(geometry.height * height));
+    const centerX = Math.round((geometry.x + geometry.width / 2) * width);
+    const centerY = Math.round((geometry.y + geometry.height / 2) * height);
+    const referenceWidth = Number(options.previewReferenceWidth) > 0
+      ? Number(options.previewReferenceWidth) : 960;
+    const rawFontSize = Number(subtitle.font_size);
+    const fontSize = Math.max(8, Math.min(512, Math.round(
+      (Number.isFinite(rawFontSize) && rawFontSize > 0 ? rawFontSize : 18) * width / referenceWidth,
+    )));
+    const fontFamily = normalizeLottieFontFamily(subtitle.font_family);
+    const renderMode = normalizeLottieRenderMode(options.renderMode);
+    const baseColor = lottieColor(subtitle.color, '#ffffff');
+    const highlightColor = lottieColor(options.highlightColor, LOTTIE_DEFAULT_HIGHLIGHT_COLOR);
+    const layers = [];
+
+    source.forEach((segment, index) => {
+      if (!segment || segment.disabled) return;
+      const text = String(segment.text || '').replace(/\r\n?/gu, '\n');
+      const start = Number(segment.start);
+      const end = Number(segment.end);
+      if (!text || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+      const ip = Math.max(0, Math.min(totalFrames - 1, Math.floor(start / 1000 * fps)));
+      const op = Math.max(ip + 1, Math.min(totalFrames, Math.ceil(end / 1000 * fps)));
+      const textUnits = lottieTextUnits(text);
+      const animator = buildLottieTextAnimator(
+        segment, textUnits, ip, op, fps, highlightColor,
+      );
+      const document = {
+        f: fontFamily,
+        fc: baseColor,
+        sc: [0, 0, 0],
+        sw: 0,
+        of: false,
+        s: fontSize,
+        lh: Math.round(fontSize * 1.25),
+        sz: [boxWidth, boxHeight],
+        ps: [-Math.round(boxWidth / 2), -Math.round(boxHeight / 2)],
+        t: text.replace(/\n/gu, '\r'),
+        j: 2,
+        tr: 0,
+        ls: 0,
+      };
+      layers.push({
+        ddd: 0,
+        ind: layers.length + 1,
+        ty: 5,
+        nm: `MAW 字幕 ${index + 1}`,
+        sr: 1,
+        ks: {
+          o: lottieAnimatedProperty(100),
+          r: lottieAnimatedProperty(0),
+          p: lottieAnimatedProperty([centerX, centerY, 0]),
+          a: lottieAnimatedProperty([0, 0, 0]),
+          s: lottieAnimatedProperty([100, 100, 100]),
+        },
+        ao: 0,
+        ip,
+        op,
+        st: 0,
+        bm: 0,
+        t: {
+          d: { k: [{ s: document, t: 0 }] },
+          a: animator ? [animator] : [],
+          m: { a: lottieAnimatedProperty([0, 0]) },
+          p: {},
+        },
+      });
+    });
+
+    return {
+      v: '5.7.0',
+      fr: fps,
+      ip: 0,
+      op: totalFrames,
+      w: width,
+      h: height,
+      nm: 'MAW Dynamic Captions',
+      ddd: 0,
+      assets: [],
+      fonts: { list: [{ fName: fontFamily, fFamily: fontFamily, fStyle: 'Regular', ascent: 75 }] },
+      layers,
+      meta: {
+        g: 'moys-asr-workflow',
+        d: 'MAW dynamic captions',
+        renderMode,
+        fontFamily,
+        highlightColor: options.highlightColor || LOTTIE_DEFAULT_HIGHLIGHT_COLOR,
+      },
+    };
+  }
+
+  // === OGraf 动态字幕导出 ===
+  // OGraf 不是一个只包含 JSON 的动画容器：规范要求 manifest（*.ograf.json）
+  // 引用一个导出 Web Component 的 JavaScript 文件。这里生成无外部资源的
+  // Canvas 组件，并由 server-editor 将 manifest 与 .mjs sidecar 一起打包。
+  const OGRAF_SCHEMA_URL = 'https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json';
+  const OGRAF_DEFAULT_FONT_FAMILY = 'Arial';
+  const OGRAF_DEFAULT_HIGHLIGHT_COLOR = '#ffd34d';
+  const OGRAF_MANIFEST_FILENAME = 'maw-dynamic-captions.ograf.json';
+  const OGRAF_MAIN_FILENAME = 'maw-dynamic-captions.mjs';
+
+  function normalizeOgrafColor(value, fallback) {
+    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    return /^#[0-9a-f]{6}$/u.test(raw) ? raw : fallback;
+  }
+
+  function normalizeOgrafFontFamily(value) {
+    const base = normalizeLottieFontFamily(value || OGRAF_DEFAULT_FONT_FAMILY);
+    const fallback = '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif';
+    return /microsoft\s+yahei|pingfang|noto\s+sans\s+cjk/iu.test(base)
+      ? base : `${base}, ${fallback}`;
+  }
+
+  function buildOgrafCueRanges(segment, textUnits) {
+    const cueStart = Number(segment?.start);
+    const cueEnd = Number(segment?.end);
+    const items = Array.isArray(segment?.items) ? segment.items : [];
+    const ranges = [];
+    let cursor = 0;
+    items.forEach((item) => {
+      const itemText = String(item?.text || '').replace(/\r\n?/gu, '\n');
+      const itemUnits = lottieTextUnits(itemText);
+      if (!itemUnits.length) return;
+      const startIndex = findLottieTextUnits(textUnits, itemUnits, cursor);
+      if (startIndex < 0) return;
+      const endIndex = startIndex + itemUnits.length;
+      const rawStart = Number(item?.start);
+      const rawEnd = Number(item?.end);
+      const startMs = Number.isFinite(rawStart)
+        ? Math.max(cueStart, Math.min(cueEnd, Math.round(rawStart))) : cueStart;
+      const endMs = Number.isFinite(rawEnd)
+        ? Math.max(startMs, Math.min(cueEnd, Math.round(rawEnd))) : cueEnd;
+      if (endMs > startMs) ranges.push({ start: startIndex, end: endIndex, startMs, endMs });
+      cursor = endIndex;
+    });
+    if (ranges.length) return ranges;
+
+    // Imported SRT or edited cues may not have word timestamps. Keep the OGraf
+    // output animated by distributing characters evenly over the cue duration.
+    const span = Math.max(1, cueEnd - cueStart);
+    return textUnits.map((_, index) => ({
+      start: index,
+      end: index + 1,
+      startMs: cueStart + Math.floor(span * index / textUnits.length),
+      endMs: cueStart + Math.max(
+        1,
+        Math.floor(span * (index + 1) / textUnits.length),
+      ),
+    })).map((range) => ({ ...range, endMs: Math.min(cueEnd, range.endMs) }));
+  }
+
+  function buildOgrafMainSource(data) {
+    const embeddedData = JSON.stringify(data, null, 2);
+    return String.raw`// Generated by moys-asr-workflow. Keep this file beside the .ograf.json manifest.
+const DEFAULT_DATA = /*__maw_ograf_data__*/;
+
+function clamp(value, minimum, maximum) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return minimum;
+  return Math.max(minimum, Math.min(maximum, number));
+}
+
+function mergeState(base, patch) {
+  const next = patch && typeof patch === 'object' ? patch : {};
+  const merged = Object.assign({}, base || {}, next);
+  merged.subtitle = Object.assign({}, base?.subtitle || {}, next.subtitle || {});
+  if (!Array.isArray(next.cues) || !next.cues.length) merged.cues = base?.cues || [];
+  return merged;
+}
+
+class MawDynamicCaptions extends HTMLElement {
+  constructor() {
+    super();
+    this._data = DEFAULT_DATA;
+    this._time = 0;
+    this._playing = false;
+    this._frame = 0;
+    this._lastTimestamp = 0;
+    this._schedule = [];
+    this.attachShadow({ mode: 'open' });
+    this._canvas = document.createElement('canvas');
+    this._canvas.setAttribute('aria-hidden', 'true');
+    this._canvas.style.display = 'block';
+    this._canvas.style.width = '100%';
+    this._canvas.style.height = '100%';
+    this._canvas.style.background = 'transparent';
+    this.shadowRoot.append(this._canvas);
+    this._context = this._canvas.getContext('2d');
+  }
+
+  connectedCallback() {
+    this.style.display = 'block';
+    this.style.overflow = 'hidden';
+    this.style.background = 'transparent';
+    this._resize();
+    this._draw();
+  }
+
+  async load({ data } = {}) {
+    this._data = mergeState(DEFAULT_DATA, data);
+    this._time = 0;
+    this._resize();
+    this._draw();
+    return { statusCode: 200, statusMessage: 'OK' };
+  }
+
+  async dispose() {
+    this._playing = false;
+    this._stopLoop();
+    this._schedule = [];
+    return { statusCode: 200, statusMessage: 'OK' };
+  }
+
+  async playAction() {
+    this._playing = true;
+    if (this._time >= Number(this._data.durationMs || 0)) this._time = 0;
+    this._lastTimestamp = 0;
+    this._startLoop();
+    return { statusCode: 200, statusMessage: 'OK', currentStep: 0 };
+  }
+
+  async stopAction() {
+    this._playing = false;
+    this._stopLoop();
+    this._draw();
+    return { statusCode: 200, statusMessage: 'OK' };
+  }
+
+  async updateAction({ data } = {}) {
+    this._data = mergeState(this._data, data);
+    this._resize();
+    this._draw();
+    return { statusCode: 200, statusMessage: 'OK' };
+  }
+
+  async customAction() {
+    return { statusCode: 400, statusMessage: 'No custom actions supported' };
+  }
+
+  async goToTime({ timestamp } = {}) {
+    this._time = clamp(timestamp, 0, Number(this._data.durationMs || 0));
+    this._draw();
+    return { statusCode: 200, statusMessage: 'OK' };
+  }
+
+  async setActionsSchedule({ schedule } = {}) {
+    this._schedule = Array.isArray(schedule)
+      ? schedule.filter((entry) => Number.isFinite(Number(entry?.timestamp)))
+        .sort((left, right) => Number(left.timestamp) - Number(right.timestamp))
+      : [];
+    return { statusCode: 200, statusMessage: 'OK' };
+  }
+
+  _resize() {
+    const width = Math.max(1, Math.round(Number(this._data.width) || 1920));
+    const height = Math.max(1, Math.round(Number(this._data.height) || 1080));
+    if (this._canvas.width !== width) this._canvas.width = width;
+    if (this._canvas.height !== height) this._canvas.height = height;
+  }
+
+  _startLoop() {
+    if (this._frame) return;
+    const tick = (timestamp) => {
+      this._frame = 0;
+      if (!this._playing) return;
+      const elapsed = this._lastTimestamp ? Math.max(0, timestamp - this._lastTimestamp) : 0;
+      this._lastTimestamp = timestamp;
+      const duration = Math.max(1, Number(this._data.durationMs) || 1);
+      this._time = Math.min(duration, this._time + elapsed);
+      this._draw();
+      if (this._time >= duration) {
+        this._playing = false;
+        this._lastTimestamp = 0;
+        return;
+      }
+      this._frame = requestAnimationFrame(tick);
+    };
+    this._frame = requestAnimationFrame(tick);
+  }
+
+  _stopLoop() {
+    if (this._frame) cancelAnimationFrame(this._frame);
+    this._frame = 0;
+    this._lastTimestamp = 0;
+  }
+
+  _runScheduledActions() {
+    while (this._schedule.length && Number(this._schedule[0].timestamp) <= this._time) {
+      const entry = this._schedule.shift();
+      const action = entry?.action || {};
+      const params = action.params || {};
+      if (action.type === 'updateAction') {
+        this._data = mergeState(this._data, params.data);
+        this._resize();
+      } else if (action.type === 'playAction') {
+        this._playing = true;
+      } else if (action.type === 'stopAction') {
+        this._playing = false;
+      }
+    }
+  }
+
+  _draw() {
+    if (!this._context) return;
+    this._runScheduledActions();
+    const width = this._canvas.width;
+    const height = this._canvas.height;
+    this._context.clearRect(0, 0, width, height);
+    const cues = Array.isArray(this._data.cues) ? this._data.cues : [];
+    cues.filter((cue) => this._time >= Number(cue.startMs) && this._time < Number(cue.endMs))
+      .forEach((cue) => this._drawCue(cue, width, height));
+  }
+
+  _drawCue(cue, width, height) {
+    const subtitle = this._data.subtitle || {};
+    const fontSize = Math.max(8, Number(subtitle.fontSize) || 18);
+    const fontFamily = String(this._data.fontFamily || 'Arial, sans-serif');
+    const lines = String(cue.text || '').replace(/\r\n?/g, '\n').split('\n');
+    const context = this._context;
+    const boxWidth = Math.max(1, Number(subtitle.width || 0.8) * width);
+    const centerX = (Number(subtitle.x || 0.1) + Number(subtitle.width || 0.8) / 2) * width;
+    const centerY = (Number(subtitle.y || 0.7) + Number(subtitle.height || 0.2) / 2) * height;
+    context.textAlign = 'left';
+    context.textBaseline = 'middle';
+    context.font = fontSize + 'px ' + fontFamily;
+    const lineUnits = lines.map((line) => Array.from(line));
+    const longestLine = lineUnits.reduce((longest, units) => Math.max(
+      longest,
+      units.reduce((total, character) => total + context.measureText(character).width, 0),
+    ), 0);
+    const actualFontSize = longestLine > boxWidth
+      ? Math.max(8, fontSize * boxWidth / longestLine) : fontSize;
+    context.font = actualFontSize + 'px ' + fontFamily;
+    const lineHeight = actualFontSize * 1.25;
+    const firstBaseline = centerY - (lines.length - 1) * lineHeight / 2;
+    let globalIndex = 0;
+    lineUnits.forEach((units, lineIndex) => {
+      const widths = units.map((character) => context.measureText(character).width);
+      const lineWidth = widths.reduce((total, value) => total + value, 0);
+      let cursorX = centerX - lineWidth / 2;
+      const baseline = firstBaseline + lineIndex * lineHeight;
+      units.forEach((character, characterIndex) => {
+        const rangeIndex = globalIndex + characterIndex;
+        context.fillStyle = String(subtitle.color || '#ffffff');
+        context.fillText(character, cursorX, baseline);
+        const highlighted = (Array.isArray(cue.ranges) ? cue.ranges : []).some((range) => (
+          rangeIndex >= Number(range.start)
+          && rangeIndex < Number(range.end)
+          && this._time >= Number(range.startMs)
+          && this._time < Number(range.endMs)
+        ));
+        if (highlighted) {
+          context.fillStyle = String(subtitle.highlightColor || '#ffd34d');
+          context.fillText(character, cursorX, baseline);
+        }
+        cursorX += widths[characterIndex];
+      });
+      globalIndex += units.length + (lineIndex < lineUnits.length - 1 ? 1 : 0);
+    });
+  }
+}
+
+if (!customElements.get('maw-dynamic-captions')) {
+  customElements.define('maw-dynamic-captions', MawDynamicCaptions);
+}
+
+export default MawDynamicCaptions;
+`.replace('/*__maw_ograf_data__*/', embeddedData);
+  }
+
+  function buildOgrafGraphic(segments, options = {}) {
+    const width = normalizeLottieCanvasDimension(options.width, LOTTIE_DEFAULT_WIDTH);
+    const height = normalizeLottieCanvasDimension(options.height, LOTTIE_DEFAULT_HEIGHT);
+    const fps = normalizeLottieFps(options.fps);
+    const source = Array.isArray(segments) ? segments : [];
+    const maxSegmentEnd = source.reduce((max, segment) => {
+      const end = Number(segment?.end);
+      return Number.isFinite(end) ? Math.max(max, end) : max;
+    }, 0);
+    const requestedDuration = Number(options.durationMs);
+    const durationMs = Math.max(
+      maxSegmentEnd,
+      Number.isFinite(requestedDuration) && requestedDuration > 0 ? requestedDuration : 0,
+      1,
+    );
+    const subtitle = options.subtitle && typeof options.subtitle === 'object' ? options.subtitle : {};
+    const geometry = normalizePreviewGeometry(subtitle, DEFAULT_PREVIEW_GEOMETRY);
+    const referenceWidth = Number(options.previewReferenceWidth) > 0
+      ? Number(options.previewReferenceWidth) : 960;
+    const rawFontSize = Number(subtitle.font_size);
+    const fontSize = Math.max(8, Math.min(512, Math.round(
+      (Number.isFinite(rawFontSize) && rawFontSize > 0 ? rawFontSize : 18) * width / referenceWidth,
+    )));
+    const data = {
+      version: '1.0.0',
+      width,
+      height,
+      fps,
+      durationMs: Math.round(durationMs),
+      fontFamily: normalizeOgrafFontFamily(subtitle.font_family || OGRAF_DEFAULT_FONT_FAMILY),
+      subtitle: {
+        x: geometry.x,
+        y: geometry.y,
+        width: geometry.width,
+        height: geometry.height,
+        fontSize,
+        color: normalizeOgrafColor(subtitle.color, '#ffffff'),
+        highlightColor: normalizeOgrafColor(options.highlightColor, OGRAF_DEFAULT_HIGHLIGHT_COLOR),
+      },
+      cues: [],
+    };
+
+    source.forEach((segment, index) => {
+      if (!segment || segment.disabled) return;
+      const text = String(segment.text || '').replace(/\r\n?/gu, '\n');
+      const start = Number(segment.start);
+      const end = Number(segment.end);
+      if (!text || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+      const textUnits = lottieTextUnits(text);
+      data.cues.push({
+        id: `cue-${index + 1}`,
+        startMs: Math.round(start),
+        endMs: Math.round(end),
+        text,
+        ranges: buildOgrafCueRanges(segment, textUnits),
+      });
+    });
+
+    return {
+      manifestFilename: OGRAF_MANIFEST_FILENAME,
+      mainFilename: OGRAF_MAIN_FILENAME,
+      manifest: {
+        $schema: OGRAF_SCHEMA_URL,
+        id: 'maw-dynamic-captions',
+        version: '1.0.0',
+        name: 'MAW Dynamic Captions',
+        description: 'Dynamic subtitle captions rendered by a Canvas Web Component.',
+        author: { name: 'moys-asr-workflow' },
+        main: OGRAF_MAIN_FILENAME,
+        schema: {
+          type: 'object',
+          required: ['width', 'height', 'fps', 'durationMs', 'subtitle', 'cues'],
+          properties: {
+            version: { type: 'string' },
+            width: { type: 'number', minimum: 1 },
+            height: { type: 'number', minimum: 1 },
+            fps: { type: 'number', exclusiveMinimum: 0 },
+            durationMs: { type: 'integer', minimum: 1 },
+            fontFamily: { type: 'string' },
+            subtitle: { type: 'object' },
+            cues: { type: 'array' },
+          },
+        },
+        supportsRealTime: true,
+        supportsNonRealTime: true,
+        stepCount: 1,
+      },
+      mainSource: buildOgrafMainSource(data),
+    };
+  }
+
   // 统一撤销/重做栈：管理两个不透明记录数组。
   // - push(record)：压入 undo 栈，清空 redo 栈，按 limit 裁剪。
   // - popUndo(currentSnapshot)：从 undo 弹出一条记录，把当前快照压入 redo，
@@ -2522,6 +3147,8 @@
     clampPreviewGeometry,
     previewGeometryToCss,
     applyPreviewGeometryDelta,
+    buildLottieAnimation,
+    buildOgrafGraphic,
   };
   if (window.MAWE?.register) {
     window.MAWE.register('editor-utils', () => window.AsrEditorUtils);

@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "AGPL-3.0-only" }
 dependencies = [
+    "fonttools>=4.55",
     "jieba>=0.42",
     "opencc-python-reimplemented>=0.1.7",
     "pywebview>=6.2.1; sys_platform != 'linux'",

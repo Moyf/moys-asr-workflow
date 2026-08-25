@@ -1203,6 +1203,19 @@ const fcp7ExportSubtitleTracks = document.getElementById('fcp7-export-subtitle-t
 const fcp7ExportNativeText = document.getElementById('fcp7-export-native-text');
 const fcp7ExportCancel = document.getElementById('fcp7-export-cancel');
 const fcp7ExportConfirm = document.getElementById('fcp7-export-confirm');
+const lottieExportModal = document.getElementById('lottie-export-modal');
+const lottieExportTrack = document.getElementById('lottie-export-track');
+const lottieExportResolution = document.getElementById('lottie-export-resolution');
+const lottieExportFps = document.getElementById('lottie-export-fps');
+const lottieExportRenderMode = document.getElementById('lottie-export-render-mode');
+const lottieExportCancel = document.getElementById('lottie-export-cancel');
+const lottieExportConfirm = document.getElementById('lottie-export-confirm');
+const ografExportModal = document.getElementById('ograf-export-modal');
+const ografExportTrack = document.getElementById('ograf-export-track');
+const ografExportResolution = document.getElementById('ograf-export-resolution');
+const ografExportFps = document.getElementById('ograf-export-fps');
+const ografExportCancel = document.getElementById('ograf-export-cancel');
+const ografExportConfirm = document.getElementById('ograf-export-confirm');
 const ctxmenu = document.getElementById('ctxmenu');
 const cuePanel = document.getElementById('current-cue-panel');
 const cuePanelPrev = document.getElementById('cue-panel-prev');
@@ -11523,6 +11536,229 @@ document.addEventListener('keydown', (event) => {
   closeFcp7ExportModal();
 }, true);
 
+function lottieExportAvailable() {
+  return Boolean(SERVER_CONFIG?.canLottieExport && SERVER_CONFIG?.lottieExportUrl);
+}
+
+function updateLottieExportButton() {
+  const button = document.getElementById('download-lottie');
+  if (!button) return;
+  if (!button.dataset.originalTitle) button.dataset.originalTitle = button.title;
+  const disabled = !lottieExportAvailable();
+  button.classList.toggle('sticker-disabled', disabled);
+  button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+  button.title = disabled
+    ? translatedEditorText('服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出动态字幕')
+    : button.dataset.originalTitle;
+}
+
+function lottieExportBlocked() {
+  if (lottieExportAvailable()) return false;
+  const message = '当前模式不可用：动态字幕 .lottie 导出需要以 server-editor 打开并绑定工程文件';
+  flashHint(window.MAWE_I18N?.translateText?.(message) || message, 'warning');
+  return true;
+}
+
+function closeLottieExportModal() {
+  lottieExportModal?.classList.remove('show');
+}
+
+function openLottieExportModal() {
+  if (lottieExportBlocked()) return;
+  if (editingState) finishEdit(true);
+  if (extensionEditingState) finishExtensionEdit(true);
+  commitCuePanelEdit();
+  const extensionOption = lottieExportTrack?.querySelector('option[value="extension"]');
+  const extensionAvailable = Boolean(getActiveExtensionTrack());
+  if (extensionOption) extensionOption.disabled = !extensionAvailable;
+  if (!extensionAvailable && lottieExportTrack) lottieExportTrack.value = 'main';
+  lottieExportModal?.classList.add('show');
+  lottieExportTrack?.focus();
+}
+
+function lottieExportCanvasSize() {
+  const match = /^(\d+)x(\d+)$/u.exec(lottieExportResolution?.value || '');
+  if (!match) return { width: 1920, height: 1080 };
+  return { width: Number(match[1]), height: Number(match[2]) };
+}
+
+async function exportLottieDynamicCaptions() {
+  if (lottieExportBlocked()) return;
+  lottieExportConfirm.disabled = true;
+  try {
+    const extension = lottieExportTrack?.value === 'extension';
+    const track = extension ? getActiveExtensionTrack() : null;
+    const segments = extension ? track?.segments : DATA.segments;
+    if (!Array.isArray(segments) || !segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
+      throw new Error(translatedEditorText(
+        extension ? '当前扩展字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
+      ));
+    }
+    const durationMs = waveformEditor?.durationMs
+      || Math.round(Number(player?.duration) * 1000)
+      || DATA.waveform?.duration_ms
+      || 0;
+    const size = lottieExportCanvasSize();
+    const appearance = extension ? getExtensionSubtitleAppearance() : getSubtitleAppearance();
+    const animation = window.AsrEditorUtils.buildLottieAnimation(segments, {
+      durationMs: Math.round(durationMs),
+      fps: lottieExportFps?.value || '30',
+      renderMode: lottieExportRenderMode?.value || 'text',
+      width: size.width,
+      height: size.height,
+      subtitle: { ...getPreviewGeometry(), ...appearance },
+    });
+    flashHint(translatedEditorText('正在生成动态字幕 .lottie…'));
+    const response = await fetch(new URL(SERVER_CONFIG.lottieExportUrl, window.location.href), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken, animation }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || `服务器返回 ${response.status}`);
+    }
+    const blob = await response.blob();
+    closeLottieExportModal();
+    const suffix = extension ? '_extension' : '';
+    const saved = await downloadFile(
+      blob,
+      `${FILENAME_BASE}${suffix}_dynamic-caption.lottie`,
+      'application/zip+dotlottie',
+      { desc: 'Lottie 动态字幕', types: { 'application/zip+dotlottie': ['.lottie'] } },
+    );
+    if (saved) flashHint(translatedEditorText('动态字幕 .lottie 已生成'), 'success');
+  } catch (error) {
+    flashHint(`${translatedEditorText('动态字幕 .lottie 导出失败')}：${error.message || error}`, 'warning');
+  } finally {
+    lottieExportConfirm.disabled = false;
+  }
+}
+
+document.getElementById('download-lottie')?.addEventListener('click', openLottieExportModal);
+lottieExportCancel?.addEventListener('click', closeLottieExportModal);
+lottieExportConfirm?.addEventListener('click', () => { void exportLottieDynamicCaptions(); });
+lottieExportModal?.addEventListener('click', (event) => {
+  if (event.target === lottieExportModal) closeLottieExportModal();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !lottieExportModal?.classList.contains('show')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeLottieExportModal();
+}, true);
+
+function ografExportAvailable() {
+  return Boolean(SERVER_CONFIG?.canOgrafExport && SERVER_CONFIG?.ografExportUrl);
+}
+
+function updateOgrafExportButton() {
+  const button = document.getElementById('download-ograf');
+  if (!button) return;
+  if (!button.dataset.originalTitle) button.dataset.originalTitle = button.title;
+  const disabled = !ografExportAvailable();
+  button.classList.toggle('sticker-disabled', disabled);
+  button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+  button.title = disabled
+    ? translatedEditorText('服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出动态字幕')
+    : button.dataset.originalTitle;
+}
+
+function ografExportBlocked() {
+  if (ografExportAvailable()) return false;
+  const message = '当前模式不可用：OGraf 动态字幕导出需要以 server-editor 打开并绑定工程文件';
+  flashHint(window.MAWE_I18N?.translateText?.(message) || message, 'warning');
+  return true;
+}
+
+function closeOgrafExportModal() {
+  ografExportModal?.classList.remove('show');
+}
+
+function openOgrafExportModal() {
+  if (ografExportBlocked()) return;
+  if (editingState) finishEdit(true);
+  if (extensionEditingState) finishExtensionEdit(true);
+  commitCuePanelEdit();
+  const extensionOption = ografExportTrack?.querySelector('option[value="extension"]');
+  const extensionAvailable = Boolean(getActiveExtensionTrack());
+  if (extensionOption) extensionOption.disabled = !extensionAvailable;
+  if (!extensionAvailable && ografExportTrack) ografExportTrack.value = 'main';
+  ografExportModal?.classList.add('show');
+  ografExportTrack?.focus();
+}
+
+function ografExportCanvasSize() {
+  const match = /^(\d+)x(\d+)$/u.exec(ografExportResolution?.value || '');
+  if (!match) return { width: 1920, height: 1080 };
+  return { width: Number(match[1]), height: Number(match[2]) };
+}
+
+async function exportOgrafDynamicCaptions() {
+  if (ografExportBlocked()) return;
+  ografExportConfirm.disabled = true;
+  try {
+    const extension = ografExportTrack?.value === 'extension';
+    const track = extension ? getActiveExtensionTrack() : null;
+    const segments = extension ? track?.segments : DATA.segments;
+    if (!Array.isArray(segments) || !segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
+      throw new Error(translatedEditorText(
+        extension ? '当前扩展字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
+      ));
+    }
+    const durationMs = waveformEditor?.durationMs
+      || Math.round(Number(player?.duration) * 1000)
+      || DATA.waveform?.duration_ms
+      || 0;
+    const size = ografExportCanvasSize();
+    const appearance = extension ? getExtensionSubtitleAppearance() : getSubtitleAppearance();
+    const graphic = window.AsrEditorUtils.buildOgrafGraphic(segments, {
+      durationMs: Math.round(durationMs),
+      fps: ografExportFps?.value || '30',
+      width: size.width,
+      height: size.height,
+      subtitle: { ...getPreviewGeometry(), ...appearance },
+    });
+    flashHint(translatedEditorText('正在生成动态字幕 .ograf.zip…'));
+    const response = await fetch(new URL(SERVER_CONFIG.ografExportUrl, window.location.href), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken, graphic }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || `服务器返回 ${response.status}`);
+    }
+    const blob = await response.blob();
+    closeOgrafExportModal();
+    const suffix = extension ? '_extension' : '';
+    const saved = await downloadFile(
+      blob,
+      `${FILENAME_BASE}${suffix}_dynamic-caption.ograf.zip`,
+      'application/zip',
+      { desc: 'OGraf 动态字幕', types: { 'application/zip': ['.zip'] } },
+    );
+    if (saved) flashHint(translatedEditorText('动态字幕 .ograf.zip 已生成；请先解压'), 'success');
+  } catch (error) {
+    flashHint(`${translatedEditorText('动态字幕 .ograf.zip 导出失败')}：${error.message || error}`, 'warning');
+  } finally {
+    ografExportConfirm.disabled = false;
+  }
+}
+
+document.getElementById('download-ograf')?.addEventListener('click', openOgrafExportModal);
+ografExportCancel?.addEventListener('click', closeOgrafExportModal);
+ografExportConfirm?.addEventListener('click', () => { void exportOgrafDynamicCaptions(); });
+ografExportModal?.addEventListener('click', (event) => {
+  if (event.target === ografExportModal) closeOgrafExportModal();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !ografExportModal?.classList.contains('show')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeOgrafExportModal();
+}, true);
+
 document.getElementById('download-srt')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
@@ -11704,6 +11940,8 @@ document.getElementById('download-sticker-otioz')?.addEventListener('click', asy
 
 // 初始按服务器模式刷新表情包 OTIOZ 导出按钮的可用性
 updateStickerExportButtons();
+updateLottieExportButton();
+updateOgrafExportButton();
 
 // === 工具栏导出下拉菜单 ===
 function bindToolbarExportDropdown(dropdownId, buttonId, menuId) {
@@ -11950,8 +12188,12 @@ function detachServerProjectSaving() {
   if (SERVER_CONFIG) {
     SERVER_CONFIG.canSave = false;
     SERVER_CONFIG.canPortableStickerExport = false;
+    SERVER_CONFIG.canLottieExport = false;
+    SERVER_CONFIG.canOgrafExport = false;
   }
   configureServerSaveControls();
+  updateLottieExportButton();
+  updateOgrafExportButton();
   scheduleAutoSave();
 }
 

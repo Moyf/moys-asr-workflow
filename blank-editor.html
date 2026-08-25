@@ -1712,6 +1712,11 @@
     padding: 18px; min-width: 360px; max-width: 90vw; max-height: 90vh;
     display: flex; flex-direction: column;
   }
+  #fcp7-export-modal .modal,
+  #lottie-export-modal .modal,
+  #ograf-export-modal .modal {
+    width: min(560px, calc(100vw - 32px)); min-width: 0;
+  }
   .modal h3 { margin: 0 0 12px 0; font-size: 14px; color: var(--text-primary); font-weight: 600; }
   .modal label { display: block; font-size: 12px; color: var(--text-secondary); margin: 8px 0 4px 0; }
   .modal input[type=text] {
@@ -1720,6 +1725,24 @@
     transition: border-color var(--t-fast), box-shadow var(--t-fast);
   }
   .modal input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+  .modal select {
+    width: 100%; min-width: 0; min-height: var(--control-h); box-sizing: border-box;
+    padding: 5px 34px 5px 9px; color: var(--text-primary); background-color: var(--bg-input);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-size: 12px; line-height: 1.2; cursor: pointer; color-scheme: dark;
+    appearance: none;
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+      linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+    background-position: calc(100% - 13px) 50%, calc(100% - 8px) 50%;
+    background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+    transition: border-color var(--t-fast), box-shadow var(--t-fast), background-color var(--t-fast);
+  }
+  [data-theme="light"] .modal select { color-scheme: light; }
+  .modal select:hover { background-color: var(--btn-bg-hover); border-color: var(--border-strong); }
+  .modal select:focus-visible { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+  .modal select:disabled { opacity: .48; cursor: not-allowed; }
+  .modal select option { background: var(--bg-overlay); color: var(--text-primary); }
   .modal .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
   .modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
   .modal .actions button {
@@ -3523,10 +3546,12 @@
       </div>
     </span>
     <span class="dropdown" id="extra-export-dropdown">
-      <button id="extra-export-btn" title="导出表情包时间线">导出表情包时间线 ▾</button>
+      <button id="extra-export-btn" title="更多导出">更多导出 ▾</button>
       <div class="dropdown-menu" id="extra-export-menu">
         <div class="dropdown-item" id="download-fcp7-export" title="实验性 Premiere 交接：导出 FCP 7 XML">Premiere FCP 7 XML（实验性）</div>
         <div class="dropdown-item" id="download-resolve-json" title="导出颜色与表情包的 Resolve JSON，供兼容执行脚本批量导入">下载 Resolve JSON</div>
+        <div class="dropdown-item" id="download-lottie" title="导出逐字高亮动态字幕 .lottie（需要以 server-editor 打开并绑定工程文件）">动态字幕（Lottie）</div>
+        <div class="dropdown-item" id="download-ograf" title="导出符合 OGraf 规范的动态字幕包（需要以 server-editor 打开并绑定工程文件）">动态字幕（OGraf）</div>
         <div class="dropdown-item" id="download-sticker-otio" title="导出只包含表情包图片轨道的 OTIO 工程">下载表情包 OTIO 工程</div>
         <div class="dropdown-item" id="download-sticker-otioz" title="导出表情包图片轨道 OTIOZ 工程（服务器打包图片进 zip，需校验表情包根目录）">下载表情包 OTIOZ 工程</div>
       </div>
@@ -4566,6 +4591,79 @@
     <div class="actions">
       <button type="button" id="fcp7-export-cancel">取消</button>
       <button type="button" id="fcp7-export-confirm" class="primary">导出 XML</button>
+    </div>
+  </div>
+</div>
+
+<!-- Lottie 动态字幕导出；由 server-editor 打包为单个 .lottie 文件。 -->
+<div class="modal-mask" id="lottie-export-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="lottie-export-title" aria-describedby="lottie-export-description">
+    <h3 id="lottie-export-title">Lottie 动态字幕</h3>
+    <p class="modal-desc" id="lottie-export-description">导出单个 .lottie 文件，可直接拖入 DaVinci Resolve 21 的 Media Pool 或时间线。当前版本使用逐字/逐词高亮，并沿用 MAW 的字幕预览字体、颜色和位置。</p>
+    <label for="lottie-export-track">字幕轨道</label>
+    <select id="lottie-export-track">
+      <option value="main" selected>主轨字幕</option>
+      <option value="extension">扩展字幕轨</option>
+    </select>
+    <label for="lottie-export-resolution">合成尺寸</label>
+    <select id="lottie-export-resolution">
+      <option value="1920x1080" selected>1920 × 1080（横屏）</option>
+      <option value="1080x1920">1080 × 1920（竖屏）</option>
+      <option value="3840x2160">3840 × 2160（4K 横屏）</option>
+    </select>
+    <label for="lottie-export-fps">导出帧率</label>
+    <select id="lottie-export-fps">
+      <option value="24">24 fps</option>
+      <option value="25">25 fps</option>
+      <option value="30" selected>30 fps</option>
+      <option value="30000/1001">30000/1001 fps</option>
+      <option value="50">50 fps</option>
+      <option value="60">60 fps</option>
+      <option value="60000/1001">60000/1001 fps</option>
+    </select>
+    <label for="lottie-export-render-mode">文字渲染</label>
+    <select id="lottie-export-render-mode">
+      <option value="text" selected>文本模式（依赖系统字体）</option>
+      <option value="glyph">矢量模式（内置字形，文件更大）</option>
+    </select>
+    <p class="modal-hint">文本模式只记录字体名；矢量模式会把当前字幕实际用到的字形轮廓内置到包里，适合中文和未安装相同字体的机器。</p>
+    <div class="actions">
+      <button type="button" id="lottie-export-cancel">取消</button>
+      <button type="button" id="lottie-export-confirm" class="primary">导出 .lottie</button>
+    </div>
+  </div>
+</div>
+
+<!-- OGraf 动态字幕导出；由 server-editor 打包 manifest 与 Web Component sidecar。 -->
+<div class="modal-mask" id="ograf-export-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="ograf-export-title" aria-describedby="ograf-export-description">
+    <h3 id="ograf-export-title">OGraf 动态字幕</h3>
+    <p class="modal-desc" id="ograf-export-description">导出符合 OGraf 规范的 .ograf.zip；解压后保持 .ograf.json 与 .mjs 同目录，再把 .ograf.json 拖入 DaVinci Resolve 21。字幕由 Canvas Web Component 渲染。</p>
+    <label for="ograf-export-track">字幕轨道</label>
+    <select id="ograf-export-track">
+      <option value="main" selected>主轨字幕</option>
+      <option value="extension">扩展字幕轨</option>
+    </select>
+    <label for="ograf-export-resolution">合成尺寸</label>
+    <select id="ograf-export-resolution">
+      <option value="1920x1080" selected>1920 × 1080（横屏）</option>
+      <option value="1080x1920">1080 × 1920（竖屏）</option>
+      <option value="3840x2160">3840 × 2160（4K 横屏）</option>
+    </select>
+    <label for="ograf-export-fps">导出帧率</label>
+    <select id="ograf-export-fps">
+      <option value="24">24 fps</option>
+      <option value="25">25 fps</option>
+      <option value="30" selected>30 fps</option>
+      <option value="30000/1001">30000/1001 fps</option>
+      <option value="50">50 fps</option>
+      <option value="60">60 fps</option>
+      <option value="60000/1001">60000/1001 fps</option>
+    </select>
+    <p class="modal-hint">这是包含两个文件的压缩包，不是可单独使用的 JSON；解压后不要分离或改名。Canvas 使用 Resolve 所在机器的系统字体回退链，适合验证中文显示。</p>
+    <div class="actions">
+      <button type="button" id="ograf-export-cancel">取消</button>
+      <button type="button" id="ograf-export-confirm" class="primary">导出 .ograf.zip</button>
     </div>
   </div>
 </div>
@@ -7159,6 +7257,631 @@
     });
   }
 
+  // === Lottie 动态字幕导出 ===
+  // 生成器只负责无外部资源的 Lottie JSON；server-editor 再把它放进
+  // dotLottie（.lottie）容器。这样时间码、字体、颜色和定位都能在 Node
+  // 中单测，服务器不需要理解字幕工程的业务结构。
+  const LOTTIE_DEFAULT_FPS = 30;
+  const LOTTIE_DEFAULT_WIDTH = 1920;
+  const LOTTIE_DEFAULT_HEIGHT = 1080;
+  const LOTTIE_DEFAULT_FONT_FAMILY = 'Arial';
+  const LOTTIE_DEFAULT_HIGHLIGHT_COLOR = '#ffd34d';
+  const LOTTIE_FONT_FAMILY_ALIASES = Object.freeze({
+    default: LOTTIE_DEFAULT_FONT_FAMILY,
+    yahei: 'Microsoft YaHei',
+    hei: 'SimHei',
+    song: 'SimSun',
+    sans: 'Arial',
+  });
+
+  function lottieAnimatedProperty(value) {
+    return { a: 0, k: value };
+  }
+
+  function normalizeLottieFps(value) {
+    const raw = String(value ?? '').trim();
+    let fps = 0;
+    if (/^\d+(?:\.\d+)?\/\d+(?:\.\d+)?$/u.test(raw)) {
+      const [numerator, denominator] = raw.split('/').map(Number);
+      fps = denominator > 0 ? numerator / denominator : 0;
+    } else {
+      fps = Number(raw);
+    }
+    return Number.isFinite(fps) && fps > 0 && fps <= 240 ? fps : LOTTIE_DEFAULT_FPS;
+  }
+
+  function normalizeLottieCanvasDimension(value, fallback) {
+    const dimension = Math.round(Number(value));
+    return Number.isFinite(dimension) && dimension >= 1 && dimension <= 16384
+      ? dimension : fallback;
+  }
+
+  function lottieColor(value, fallback) {
+    const source = typeof value === 'string' && /^#[0-9a-f]{6}$/iu.test(value)
+      ? value : fallback;
+    return [0, 2, 4].map((offset) => Number.parseInt(source.slice(1 + offset, 3 + offset), 16) / 255);
+  }
+
+  function normalizeLottieFontFamily(value) {
+    const raw = typeof value === 'string' ? value.trim() : '';
+    if (!raw || raw === 'default') return LOTTIE_DEFAULT_FONT_FAMILY;
+    return LOTTIE_FONT_FAMILY_ALIASES[raw] || raw;
+  }
+
+  function normalizeLottieRenderMode(value) {
+    return value === 'glyph' ? 'glyph' : 'text';
+  }
+
+  function lottieTextUnits(value) {
+    return Array.from(String(value || '').replace(/\r\n?/gu, '\n'));
+  }
+
+  function findLottieTextUnits(haystack, needle, fromIndex) {
+    if (!needle.length) return -1;
+    const start = Math.max(0, Math.min(haystack.length, Number(fromIndex) || 0));
+    outer: for (let index = start; index <= haystack.length - needle.length; index++) {
+      for (let offset = 0; offset < needle.length; offset++) {
+        if (haystack[index + offset] !== needle[offset]) continue outer;
+      }
+      return index;
+    }
+    return -1;
+  }
+
+  function lottieSelectorKeyframes(entries, finalFrame, valueKey) {
+    const byFrame = new Map();
+    entries.forEach((entry) => {
+      if (!Number.isFinite(entry.frame)) return;
+      byFrame.set(Math.max(0, Math.round(entry.frame)), Math.max(0, Math.round(entry[valueKey])));
+    });
+    if (Number.isFinite(finalFrame)) byFrame.set(Math.max(0, Math.round(finalFrame)), 0);
+    return [...byFrame.entries()].sort((left, right) => left[0] - right[0]).map(([frame, value]) => ({
+      t: frame,
+      s: [value],
+      h: 1,
+    }));
+  }
+
+  function buildLottieTextAnimator(
+    segment, textUnits, cueStartFrame, cueEndFrame, fps, highlightColor,
+  ) {
+    const items = Array.isArray(segment?.items) ? segment.items : [];
+    let ranges = [];
+    let cursor = 0;
+    items.forEach((item) => {
+      const itemText = String(item?.text || '').replace(/\r\n?/gu, '\n');
+      const itemUnits = lottieTextUnits(itemText);
+      if (!itemUnits.length) return;
+      const startIndex = findLottieTextUnits(textUnits, itemUnits, cursor);
+      if (startIndex < 0) return;
+      const endIndex = startIndex + itemUnits.length;
+      const rawStart = Number(item?.start);
+      const itemFrame = Number.isFinite(rawStart)
+        ? Math.max(cueStartFrame, Math.min(cueEndFrame, Math.floor(rawStart / 1000 * fps)))
+        : cueStartFrame;
+      ranges.push({ frame: itemFrame, start: startIndex, end: endIndex });
+      cursor = endIndex;
+    });
+    // SRT 和被文字处理过的工程可能没有可用的 items。仍然生成逐字高亮，
+    // 将字符按句段时长均匀分配，避免导出的动态字幕退化为静态字幕。
+    if (!ranges.length) {
+      const frameSpan = Math.max(1, cueEndFrame - cueStartFrame);
+      ranges = textUnits.map((_, index) => ({
+        frame: cueStartFrame + Math.floor(frameSpan * index / textUnits.length),
+        start: index,
+        end: index + 1,
+      }));
+    }
+
+    const first = ranges[0];
+    const startEntries = [{ frame: cueStartFrame, start: first.frame > cueStartFrame ? 0 : first.start }];
+    const endEntries = [{ frame: cueStartFrame, end: first.frame > cueStartFrame ? 0 : first.end }];
+    ranges.slice(first.frame > cueStartFrame ? 0 : 1).forEach((range) => {
+      startEntries.push({ frame: range.frame, start: range.start });
+      endEntries.push({ frame: range.frame, end: range.end });
+    });
+    return {
+      nm: 'MAW word highlight',
+      s: {
+        t: 0,
+        xe: lottieAnimatedProperty(0),
+        ne: lottieAnimatedProperty(0),
+        a: lottieAnimatedProperty(100),
+        b: 1,
+        rn: 0,
+        sh: 1,
+        sm: lottieAnimatedProperty(100),
+        o: lottieAnimatedProperty(0),
+        r: 2,
+        s: { a: 1, k: lottieSelectorKeyframes(startEntries, cueEndFrame, 'start') },
+        e: { a: 1, k: lottieSelectorKeyframes(endEntries, cueEndFrame, 'end') },
+      },
+      a: {
+        fc: lottieAnimatedProperty(highlightColor),
+      },
+    };
+  }
+
+  function buildLottieAnimation(segments, options = {}) {
+    const width = normalizeLottieCanvasDimension(options.width, LOTTIE_DEFAULT_WIDTH);
+    const height = normalizeLottieCanvasDimension(options.height, LOTTIE_DEFAULT_HEIGHT);
+    const fps = normalizeLottieFps(options.fps);
+    const source = Array.isArray(segments) ? segments : [];
+    const maxSegmentEnd = source.reduce((max, segment) => {
+      const end = Number(segment?.end);
+      return Number.isFinite(end) ? Math.max(max, end) : max;
+    }, 0);
+    const requestedDuration = Number(options.durationMs);
+    const durationMs = Math.max(
+      maxSegmentEnd,
+      Number.isFinite(requestedDuration) && requestedDuration > 0 ? requestedDuration : 0,
+      1,
+    );
+    const totalFrames = Math.max(1, Math.ceil(durationMs / 1000 * fps));
+    const subtitle = options.subtitle && typeof options.subtitle === 'object' ? options.subtitle : {};
+    const geometry = normalizePreviewGeometry(subtitle, DEFAULT_PREVIEW_GEOMETRY);
+    const boxWidth = Math.max(1, Math.round(geometry.width * width));
+    const boxHeight = Math.max(1, Math.round(geometry.height * height));
+    const centerX = Math.round((geometry.x + geometry.width / 2) * width);
+    const centerY = Math.round((geometry.y + geometry.height / 2) * height);
+    const referenceWidth = Number(options.previewReferenceWidth) > 0
+      ? Number(options.previewReferenceWidth) : 960;
+    const rawFontSize = Number(subtitle.font_size);
+    const fontSize = Math.max(8, Math.min(512, Math.round(
+      (Number.isFinite(rawFontSize) && rawFontSize > 0 ? rawFontSize : 18) * width / referenceWidth,
+    )));
+    const fontFamily = normalizeLottieFontFamily(subtitle.font_family);
+    const renderMode = normalizeLottieRenderMode(options.renderMode);
+    const baseColor = lottieColor(subtitle.color, '#ffffff');
+    const highlightColor = lottieColor(options.highlightColor, LOTTIE_DEFAULT_HIGHLIGHT_COLOR);
+    const layers = [];
+
+    source.forEach((segment, index) => {
+      if (!segment || segment.disabled) return;
+      const text = String(segment.text || '').replace(/\r\n?/gu, '\n');
+      const start = Number(segment.start);
+      const end = Number(segment.end);
+      if (!text || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+      const ip = Math.max(0, Math.min(totalFrames - 1, Math.floor(start / 1000 * fps)));
+      const op = Math.max(ip + 1, Math.min(totalFrames, Math.ceil(end / 1000 * fps)));
+      const textUnits = lottieTextUnits(text);
+      const animator = buildLottieTextAnimator(
+        segment, textUnits, ip, op, fps, highlightColor,
+      );
+      const document = {
+        f: fontFamily,
+        fc: baseColor,
+        sc: [0, 0, 0],
+        sw: 0,
+        of: false,
+        s: fontSize,
+        lh: Math.round(fontSize * 1.25),
+        sz: [boxWidth, boxHeight],
+        ps: [-Math.round(boxWidth / 2), -Math.round(boxHeight / 2)],
+        t: text.replace(/\n/gu, '\r'),
+        j: 2,
+        tr: 0,
+        ls: 0,
+      };
+      layers.push({
+        ddd: 0,
+        ind: layers.length + 1,
+        ty: 5,
+        nm: `MAW 字幕 ${index + 1}`,
+        sr: 1,
+        ks: {
+          o: lottieAnimatedProperty(100),
+          r: lottieAnimatedProperty(0),
+          p: lottieAnimatedProperty([centerX, centerY, 0]),
+          a: lottieAnimatedProperty([0, 0, 0]),
+          s: lottieAnimatedProperty([100, 100, 100]),
+        },
+        ao: 0,
+        ip,
+        op,
+        st: 0,
+        bm: 0,
+        t: {
+          d: { k: [{ s: document, t: 0 }] },
+          a: animator ? [animator] : [],
+          m: { a: lottieAnimatedProperty([0, 0]) },
+          p: {},
+        },
+      });
+    });
+
+    return {
+      v: '5.7.0',
+      fr: fps,
+      ip: 0,
+      op: totalFrames,
+      w: width,
+      h: height,
+      nm: 'MAW Dynamic Captions',
+      ddd: 0,
+      assets: [],
+      fonts: { list: [{ fName: fontFamily, fFamily: fontFamily, fStyle: 'Regular', ascent: 75 }] },
+      layers,
+      meta: {
+        g: 'moys-asr-workflow',
+        d: 'MAW dynamic captions',
+        renderMode,
+        fontFamily,
+        highlightColor: options.highlightColor || LOTTIE_DEFAULT_HIGHLIGHT_COLOR,
+      },
+    };
+  }
+
+  // === OGraf 动态字幕导出 ===
+  // OGraf 不是一个只包含 JSON 的动画容器：规范要求 manifest（*.ograf.json）
+  // 引用一个导出 Web Component 的 JavaScript 文件。这里生成无外部资源的
+  // Canvas 组件，并由 server-editor 将 manifest 与 .mjs sidecar 一起打包。
+  const OGRAF_SCHEMA_URL = 'https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json';
+  const OGRAF_DEFAULT_FONT_FAMILY = 'Arial';
+  const OGRAF_DEFAULT_HIGHLIGHT_COLOR = '#ffd34d';
+  const OGRAF_MANIFEST_FILENAME = 'maw-dynamic-captions.ograf.json';
+  const OGRAF_MAIN_FILENAME = 'maw-dynamic-captions.mjs';
+
+  function normalizeOgrafColor(value, fallback) {
+    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    return /^#[0-9a-f]{6}$/u.test(raw) ? raw : fallback;
+  }
+
+  function normalizeOgrafFontFamily(value) {
+    const base = normalizeLottieFontFamily(value || OGRAF_DEFAULT_FONT_FAMILY);
+    const fallback = '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif';
+    return /microsoft\s+yahei|pingfang|noto\s+sans\s+cjk/iu.test(base)
+      ? base : `${base}, ${fallback}`;
+  }
+
+  function buildOgrafCueRanges(segment, textUnits) {
+    const cueStart = Number(segment?.start);
+    const cueEnd = Number(segment?.end);
+    const items = Array.isArray(segment?.items) ? segment.items : [];
+    const ranges = [];
+    let cursor = 0;
+    items.forEach((item) => {
+      const itemText = String(item?.text || '').replace(/\r\n?/gu, '\n');
+      const itemUnits = lottieTextUnits(itemText);
+      if (!itemUnits.length) return;
+      const startIndex = findLottieTextUnits(textUnits, itemUnits, cursor);
+      if (startIndex < 0) return;
+      const endIndex = startIndex + itemUnits.length;
+      const rawStart = Number(item?.start);
+      const rawEnd = Number(item?.end);
+      const startMs = Number.isFinite(rawStart)
+        ? Math.max(cueStart, Math.min(cueEnd, Math.round(rawStart))) : cueStart;
+      const endMs = Number.isFinite(rawEnd)
+        ? Math.max(startMs, Math.min(cueEnd, Math.round(rawEnd))) : cueEnd;
+      if (endMs > startMs) ranges.push({ start: startIndex, end: endIndex, startMs, endMs });
+      cursor = endIndex;
+    });
+    if (ranges.length) return ranges;
+
+    // Imported SRT or edited cues may not have word timestamps. Keep the OGraf
+    // output animated by distributing characters evenly over the cue duration.
+    const span = Math.max(1, cueEnd - cueStart);
+    return textUnits.map((_, index) => ({
+      start: index,
+      end: index + 1,
+      startMs: cueStart + Math.floor(span * index / textUnits.length),
+      endMs: cueStart + Math.max(
+        1,
+        Math.floor(span * (index + 1) / textUnits.length),
+      ),
+    })).map((range) => ({ ...range, endMs: Math.min(cueEnd, range.endMs) }));
+  }
+
+  function buildOgrafMainSource(data) {
+    const embeddedData = JSON.stringify(data, null, 2);
+    return String.raw`// Generated by moys-asr-workflow. Keep this file beside the .ograf.json manifest.
+const DEFAULT_DATA = /*__maw_ograf_data__*/;
+
+function clamp(value, minimum, maximum) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return minimum;
+  return Math.max(minimum, Math.min(maximum, number));
+}
+
+function mergeState(base, patch) {
+  const next = patch && typeof patch === 'object' ? patch : {};
+  const merged = Object.assign({}, base || {}, next);
+  merged.subtitle = Object.assign({}, base?.subtitle || {}, next.subtitle || {});
+  if (!Array.isArray(next.cues) || !next.cues.length) merged.cues = base?.cues || [];
+  return merged;
+}
+
+class MawDynamicCaptions extends HTMLElement {
+  constructor() {
+    super();
+    this._data = DEFAULT_DATA;
+    this._time = 0;
+    this._playing = false;
+    this._frame = 0;
+    this._lastTimestamp = 0;
+    this._schedule = [];
+    this.attachShadow({ mode: 'open' });
+    this._canvas = document.createElement('canvas');
+    this._canvas.setAttribute('aria-hidden', 'true');
+    this._canvas.style.display = 'block';
+    this._canvas.style.width = '100%';
+    this._canvas.style.height = '100%';
+    this._canvas.style.background = 'transparent';
+    this.shadowRoot.append(this._canvas);
+    this._context = this._canvas.getContext('2d');
+  }
+
+  connectedCallback() {
+    this.style.display = 'block';
+    this.style.overflow = 'hidden';
+    this.style.background = 'transparent';
+    this._resize();
+    this._draw();
+  }
+
+  async load({ data } = {}) {
+    this._data = mergeState(DEFAULT_DATA, data);
+    this._time = 0;
+    this._resize();
+    this._draw();
+    return { statusCode: 200, statusMessage: 'OK' };
+  }
+
+  async dispose() {
+    this._playing = false;
+    this._stopLoop();
+    this._schedule = [];
+    return { statusCode: 200, statusMessage: 'OK' };
+  }
+
+  async playAction() {
+    this._playing = true;
+    if (this._time >= Number(this._data.durationMs || 0)) this._time = 0;
+    this._lastTimestamp = 0;
+    this._startLoop();
+    return { statusCode: 200, statusMessage: 'OK', currentStep: 0 };
+  }
+
+  async stopAction() {
+    this._playing = false;
+    this._stopLoop();
+    this._draw();
+    return { statusCode: 200, statusMessage: 'OK' };
+  }
+
+  async updateAction({ data } = {}) {
+    this._data = mergeState(this._data, data);
+    this._resize();
+    this._draw();
+    return { statusCode: 200, statusMessage: 'OK' };
+  }
+
+  async customAction() {
+    return { statusCode: 400, statusMessage: 'No custom actions supported' };
+  }
+
+  async goToTime({ timestamp } = {}) {
+    this._time = clamp(timestamp, 0, Number(this._data.durationMs || 0));
+    this._draw();
+    return { statusCode: 200, statusMessage: 'OK' };
+  }
+
+  async setActionsSchedule({ schedule } = {}) {
+    this._schedule = Array.isArray(schedule)
+      ? schedule.filter((entry) => Number.isFinite(Number(entry?.timestamp)))
+        .sort((left, right) => Number(left.timestamp) - Number(right.timestamp))
+      : [];
+    return { statusCode: 200, statusMessage: 'OK' };
+  }
+
+  _resize() {
+    const width = Math.max(1, Math.round(Number(this._data.width) || 1920));
+    const height = Math.max(1, Math.round(Number(this._data.height) || 1080));
+    if (this._canvas.width !== width) this._canvas.width = width;
+    if (this._canvas.height !== height) this._canvas.height = height;
+  }
+
+  _startLoop() {
+    if (this._frame) return;
+    const tick = (timestamp) => {
+      this._frame = 0;
+      if (!this._playing) return;
+      const elapsed = this._lastTimestamp ? Math.max(0, timestamp - this._lastTimestamp) : 0;
+      this._lastTimestamp = timestamp;
+      const duration = Math.max(1, Number(this._data.durationMs) || 1);
+      this._time = Math.min(duration, this._time + elapsed);
+      this._draw();
+      if (this._time >= duration) {
+        this._playing = false;
+        this._lastTimestamp = 0;
+        return;
+      }
+      this._frame = requestAnimationFrame(tick);
+    };
+    this._frame = requestAnimationFrame(tick);
+  }
+
+  _stopLoop() {
+    if (this._frame) cancelAnimationFrame(this._frame);
+    this._frame = 0;
+    this._lastTimestamp = 0;
+  }
+
+  _runScheduledActions() {
+    while (this._schedule.length && Number(this._schedule[0].timestamp) <= this._time) {
+      const entry = this._schedule.shift();
+      const action = entry?.action || {};
+      const params = action.params || {};
+      if (action.type === 'updateAction') {
+        this._data = mergeState(this._data, params.data);
+        this._resize();
+      } else if (action.type === 'playAction') {
+        this._playing = true;
+      } else if (action.type === 'stopAction') {
+        this._playing = false;
+      }
+    }
+  }
+
+  _draw() {
+    if (!this._context) return;
+    this._runScheduledActions();
+    const width = this._canvas.width;
+    const height = this._canvas.height;
+    this._context.clearRect(0, 0, width, height);
+    const cues = Array.isArray(this._data.cues) ? this._data.cues : [];
+    cues.filter((cue) => this._time >= Number(cue.startMs) && this._time < Number(cue.endMs))
+      .forEach((cue) => this._drawCue(cue, width, height));
+  }
+
+  _drawCue(cue, width, height) {
+    const subtitle = this._data.subtitle || {};
+    const fontSize = Math.max(8, Number(subtitle.fontSize) || 18);
+    const fontFamily = String(this._data.fontFamily || 'Arial, sans-serif');
+    const lines = String(cue.text || '').replace(/\r\n?/g, '\n').split('\n');
+    const context = this._context;
+    const boxWidth = Math.max(1, Number(subtitle.width || 0.8) * width);
+    const centerX = (Number(subtitle.x || 0.1) + Number(subtitle.width || 0.8) / 2) * width;
+    const centerY = (Number(subtitle.y || 0.7) + Number(subtitle.height || 0.2) / 2) * height;
+    context.textAlign = 'left';
+    context.textBaseline = 'middle';
+    context.font = fontSize + 'px ' + fontFamily;
+    const lineUnits = lines.map((line) => Array.from(line));
+    const longestLine = lineUnits.reduce((longest, units) => Math.max(
+      longest,
+      units.reduce((total, character) => total + context.measureText(character).width, 0),
+    ), 0);
+    const actualFontSize = longestLine > boxWidth
+      ? Math.max(8, fontSize * boxWidth / longestLine) : fontSize;
+    context.font = actualFontSize + 'px ' + fontFamily;
+    const lineHeight = actualFontSize * 1.25;
+    const firstBaseline = centerY - (lines.length - 1) * lineHeight / 2;
+    let globalIndex = 0;
+    lineUnits.forEach((units, lineIndex) => {
+      const widths = units.map((character) => context.measureText(character).width);
+      const lineWidth = widths.reduce((total, value) => total + value, 0);
+      let cursorX = centerX - lineWidth / 2;
+      const baseline = firstBaseline + lineIndex * lineHeight;
+      units.forEach((character, characterIndex) => {
+        const rangeIndex = globalIndex + characterIndex;
+        context.fillStyle = String(subtitle.color || '#ffffff');
+        context.fillText(character, cursorX, baseline);
+        const highlighted = (Array.isArray(cue.ranges) ? cue.ranges : []).some((range) => (
+          rangeIndex >= Number(range.start)
+          && rangeIndex < Number(range.end)
+          && this._time >= Number(range.startMs)
+          && this._time < Number(range.endMs)
+        ));
+        if (highlighted) {
+          context.fillStyle = String(subtitle.highlightColor || '#ffd34d');
+          context.fillText(character, cursorX, baseline);
+        }
+        cursorX += widths[characterIndex];
+      });
+      globalIndex += units.length + (lineIndex < lineUnits.length - 1 ? 1 : 0);
+    });
+  }
+}
+
+if (!customElements.get('maw-dynamic-captions')) {
+  customElements.define('maw-dynamic-captions', MawDynamicCaptions);
+}
+
+export default MawDynamicCaptions;
+`.replace('/*__maw_ograf_data__*/', embeddedData);
+  }
+
+  function buildOgrafGraphic(segments, options = {}) {
+    const width = normalizeLottieCanvasDimension(options.width, LOTTIE_DEFAULT_WIDTH);
+    const height = normalizeLottieCanvasDimension(options.height, LOTTIE_DEFAULT_HEIGHT);
+    const fps = normalizeLottieFps(options.fps);
+    const source = Array.isArray(segments) ? segments : [];
+    const maxSegmentEnd = source.reduce((max, segment) => {
+      const end = Number(segment?.end);
+      return Number.isFinite(end) ? Math.max(max, end) : max;
+    }, 0);
+    const requestedDuration = Number(options.durationMs);
+    const durationMs = Math.max(
+      maxSegmentEnd,
+      Number.isFinite(requestedDuration) && requestedDuration > 0 ? requestedDuration : 0,
+      1,
+    );
+    const subtitle = options.subtitle && typeof options.subtitle === 'object' ? options.subtitle : {};
+    const geometry = normalizePreviewGeometry(subtitle, DEFAULT_PREVIEW_GEOMETRY);
+    const referenceWidth = Number(options.previewReferenceWidth) > 0
+      ? Number(options.previewReferenceWidth) : 960;
+    const rawFontSize = Number(subtitle.font_size);
+    const fontSize = Math.max(8, Math.min(512, Math.round(
+      (Number.isFinite(rawFontSize) && rawFontSize > 0 ? rawFontSize : 18) * width / referenceWidth,
+    )));
+    const data = {
+      version: '1.0.0',
+      width,
+      height,
+      fps,
+      durationMs: Math.round(durationMs),
+      fontFamily: normalizeOgrafFontFamily(subtitle.font_family || OGRAF_DEFAULT_FONT_FAMILY),
+      subtitle: {
+        x: geometry.x,
+        y: geometry.y,
+        width: geometry.width,
+        height: geometry.height,
+        fontSize,
+        color: normalizeOgrafColor(subtitle.color, '#ffffff'),
+        highlightColor: normalizeOgrafColor(options.highlightColor, OGRAF_DEFAULT_HIGHLIGHT_COLOR),
+      },
+      cues: [],
+    };
+
+    source.forEach((segment, index) => {
+      if (!segment || segment.disabled) return;
+      const text = String(segment.text || '').replace(/\r\n?/gu, '\n');
+      const start = Number(segment.start);
+      const end = Number(segment.end);
+      if (!text || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+      const textUnits = lottieTextUnits(text);
+      data.cues.push({
+        id: `cue-${index + 1}`,
+        startMs: Math.round(start),
+        endMs: Math.round(end),
+        text,
+        ranges: buildOgrafCueRanges(segment, textUnits),
+      });
+    });
+
+    return {
+      manifestFilename: OGRAF_MANIFEST_FILENAME,
+      mainFilename: OGRAF_MAIN_FILENAME,
+      manifest: {
+        $schema: OGRAF_SCHEMA_URL,
+        id: 'maw-dynamic-captions',
+        version: '1.0.0',
+        name: 'MAW Dynamic Captions',
+        description: 'Dynamic subtitle captions rendered by a Canvas Web Component.',
+        author: { name: 'moys-asr-workflow' },
+        main: OGRAF_MAIN_FILENAME,
+        schema: {
+          type: 'object',
+          required: ['width', 'height', 'fps', 'durationMs', 'subtitle', 'cues'],
+          properties: {
+            version: { type: 'string' },
+            width: { type: 'number', minimum: 1 },
+            height: { type: 'number', minimum: 1 },
+            fps: { type: 'number', exclusiveMinimum: 0 },
+            durationMs: { type: 'integer', minimum: 1 },
+            fontFamily: { type: 'string' },
+            subtitle: { type: 'object' },
+            cues: { type: 'array' },
+          },
+        },
+        supportsRealTime: true,
+        supportsNonRealTime: true,
+        stepCount: 1,
+      },
+      mainSource: buildOgrafMainSource(data),
+    };
+  }
+
   // 统一撤销/重做栈：管理两个不透明记录数组。
   // - push(record)：压入 undo 栈，清空 redo 栈，按 limit 裁剪。
   // - popUndo(currentSnapshot)：从 undo 弹出一条记录，把当前快照压入 redo，
@@ -7306,6 +8029,8 @@
     clampPreviewGeometry,
     previewGeometryToCss,
     applyPreviewGeometryDelta,
+    buildLottieAnimation,
+    buildOgrafGraphic,
   };
   if (window.MAWE?.register) {
     window.MAWE.register('editor-utils', () => window.AsrEditorUtils);
@@ -7346,6 +8071,35 @@
     '导出帧率': 'Export frame rate', '写入原生字幕文本对象': 'Write native subtitle text objects',
     '导出扩展字幕轨': 'Export extension subtitle track', '主轨字幕': 'Main-track subtitles',
     '主轨与扩展轨字幕': 'Main and extension subtitles', '导出文件名': 'Export filename',
+    '动态字幕（Lottie）': 'Dynamic captions (Lottie)',
+    '导出逐字高亮动态字幕 .lottie（需要以 server-editor 打开并绑定工程文件）': 'Export word-highlight dynamic captions as .lottie (requires server-editor with a bound project file)',
+    '动态字幕（OGraf）': 'Dynamic captions (OGraf)',
+    '导出符合 OGraf 规范的动态字幕包（需要以 server-editor 打开并绑定工程文件）': 'Export an OGraf-compliant dynamic-caption package (requires server-editor with a bound project file)',
+    'Lottie 动态字幕': 'Lottie dynamic captions',
+    '导出单个 .lottie 文件，可直接拖入 DaVinci Resolve 21 的 Media Pool 或时间线。当前版本使用逐字/逐词高亮，并沿用 MAW 的字幕预览字体、颜色和位置。': 'Export one .lottie file that can be dragged into DaVinci Resolve 21 Media Pool or the timeline. This version uses character/word highlighting and follows the MAW subtitle preview font, color, and position.',
+    '字幕轨道': 'Subtitle track', '扩展字幕轨': 'Extension subtitles', '合成尺寸': 'Composition size',
+    '1920 × 1080（横屏）': '1920 × 1080 (landscape)', '1080 × 1920（竖屏）': '1080 × 1920 (portrait)',
+    '3840 × 2160（4K 横屏）': '3840 × 2160 (4K landscape)',
+    '文字渲染': 'Text rendering',
+    '文本模式（依赖系统字体）': 'Text mode (requires a system font)',
+    '矢量模式（内置字形，文件更大）': 'Vector mode (bundled glyphs, larger file)',
+    '文本模式只记录字体名；矢量模式会把当前字幕实际用到的字形轮廓内置到包里，适合中文和未安装相同字体的机器。': 'Text mode records only the font name; vector mode bundles the outlines used by the current captions and is suitable for Chinese or machines without the same font installed.',
+    '导出 .lottie': 'Export .lottie',
+    'OGraf 动态字幕': 'OGraf dynamic captions',
+    '导出符合 OGraf 规范的 .ograf.zip；解压后保持 .ograf.json 与 .mjs 同目录，再把 .ograf.json 拖入 DaVinci Resolve 21。字幕由 Canvas Web Component 渲染。': 'Export an OGraf-compliant .ograf.zip; after extracting, keep the .ograf.json and .mjs together, then drag the .ograf.json into DaVinci Resolve 21. Captions are rendered by a Canvas Web Component.',
+    '这是包含两个文件的压缩包，不是可单独使用的 JSON；解压后不要分离或改名。Canvas 使用 Resolve 所在机器的系统字体回退链，适合验证中文显示。': 'This is a two-file archive, not a standalone JSON; do not separate or rename the files after extracting. Canvas uses the system font fallback chain on the Resolve machine, which is useful for checking Chinese text.',
+    '导出 .ograf.zip': 'Export .ograf.zip',
+    '服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出动态字幕': 'Server packaging is unavailable: open the project via server-editor and bind a project file before exporting dynamic captions',
+    '当前模式不可用：动态字幕 .lottie 导出需要以 server-editor 打开并绑定工程文件': 'Unavailable here: dynamic-caption .lottie export requires server-editor with a bound project file',
+    '当前扩展字幕轨没有可导出的字幕': 'The current extension subtitle track has no exportable subtitles',
+    '当前主轨没有可导出的字幕': 'The main subtitle track has no exportable subtitles',
+    '正在生成动态字幕 .lottie…': 'Generating dynamic-caption .lottie…',
+    '动态字幕 .lottie 已生成': 'Dynamic-caption .lottie generated',
+    '动态字幕 .lottie 导出失败': 'Dynamic-caption .lottie export failed',
+    '当前模式不可用：OGraf 动态字幕导出需要以 server-editor 打开并绑定工程文件': 'Unavailable here: OGraf dynamic-caption export requires server-editor with a bound project file',
+    '正在生成动态字幕 .ograf.zip…': 'Generating dynamic-caption .ograf.zip…',
+    '动态字幕 .ograf.zip 已生成；请先解压': 'Dynamic-caption .ograf.zip generated; extract it first',
+    '动态字幕 .ograf.zip 导出失败': 'Dynamic-caption .ograf.zip export failed',
     '导出媒体路径缺失': 'Export media path is missing', '导出媒体时长缺失': 'Export media duration is missing',
     '导出文件名无效': 'Export filename is invalid', '导出警告': 'Export warning',
     'Premiere FCP 7 XML（实验性）': 'Premiere FCP 7 XML (experimental)',
@@ -7362,7 +8116,7 @@
     'FCP 7 XML 保存失败': 'FCP 7 XML save failed',
     'FCP 7 XML 导出失败': 'FCP 7 XML export failed',
     'FFconcat 文件': 'FFconcat file', '保留区域 JSON': 'Kept-regions JSON',
-    '表情包 OTIO': 'Sticker OTIO', '表情包 OTIOZ': 'Sticker OTIOZ', '导出表情包时间线 ▾': 'Export sticker timeline ▾',
+    '表情包 OTIO': 'Sticker OTIO', '表情包 OTIOZ': 'Sticker OTIOZ', '更多导出 ▾': 'More exports ▾',
     '选择表情包 OTIO 引用原始素材，或由服务器复制素材并生成便携文件夹': 'Choose whether sticker OTIO references original media or the server copies media into a portable folder',
     '下载 Resolve JSON': 'Download Resolve JSON',
     '下载表情包 OTIO 工程': 'Download sticker OTIO project',
@@ -7842,7 +8596,7 @@
     '导出 FFmpeg concat demuxer 可读取的保留区间；流复制的切点精度受关键帧和编码包限制': 'Export kept intervals for FFmpeg concat; stream-copy cut accuracy depends on keyframes and packets',
     '以毫秒为单位导出原媒体中的全部保留区域，供自定义脚本或工具读取': 'Export all kept source-media regions in milliseconds',
     '按移除静音空隙后的时间轴导出表情包图片轨道 OTIO；完全落在空隙内的表情包会被丢弃': 'Export sticker image tracks on the gap-removed OTIO timeline; stickers fully inside gaps are omitted',
-    '导出表情包时间线': 'Export sticker timeline',
+    '更多导出': 'More exports',
     '导出颜色与表情包的 Resolve JSON，供兼容执行脚本批量导入': 'Export color and sticker Resolve JSON for compatible import scripts',
     '导出只包含表情包图片轨道的 OTIO 工程': 'Export an OTIO project containing only sticker image tracks',
     '实验性 Premiere 交接：导出 FCP 7 XML': 'Experimental Premiere handoff: export FCP 7 XML',
@@ -14455,6 +15209,19 @@ const fcp7ExportSubtitleTracks = document.getElementById('fcp7-export-subtitle-t
 const fcp7ExportNativeText = document.getElementById('fcp7-export-native-text');
 const fcp7ExportCancel = document.getElementById('fcp7-export-cancel');
 const fcp7ExportConfirm = document.getElementById('fcp7-export-confirm');
+const lottieExportModal = document.getElementById('lottie-export-modal');
+const lottieExportTrack = document.getElementById('lottie-export-track');
+const lottieExportResolution = document.getElementById('lottie-export-resolution');
+const lottieExportFps = document.getElementById('lottie-export-fps');
+const lottieExportRenderMode = document.getElementById('lottie-export-render-mode');
+const lottieExportCancel = document.getElementById('lottie-export-cancel');
+const lottieExportConfirm = document.getElementById('lottie-export-confirm');
+const ografExportModal = document.getElementById('ograf-export-modal');
+const ografExportTrack = document.getElementById('ograf-export-track');
+const ografExportResolution = document.getElementById('ograf-export-resolution');
+const ografExportFps = document.getElementById('ograf-export-fps');
+const ografExportCancel = document.getElementById('ograf-export-cancel');
+const ografExportConfirm = document.getElementById('ograf-export-confirm');
 const ctxmenu = document.getElementById('ctxmenu');
 const cuePanel = document.getElementById('current-cue-panel');
 const cuePanelPrev = document.getElementById('cue-panel-prev');
@@ -24775,6 +25542,229 @@ document.addEventListener('keydown', (event) => {
   closeFcp7ExportModal();
 }, true);
 
+function lottieExportAvailable() {
+  return Boolean(SERVER_CONFIG?.canLottieExport && SERVER_CONFIG?.lottieExportUrl);
+}
+
+function updateLottieExportButton() {
+  const button = document.getElementById('download-lottie');
+  if (!button) return;
+  if (!button.dataset.originalTitle) button.dataset.originalTitle = button.title;
+  const disabled = !lottieExportAvailable();
+  button.classList.toggle('sticker-disabled', disabled);
+  button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+  button.title = disabled
+    ? translatedEditorText('服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出动态字幕')
+    : button.dataset.originalTitle;
+}
+
+function lottieExportBlocked() {
+  if (lottieExportAvailable()) return false;
+  const message = '当前模式不可用：动态字幕 .lottie 导出需要以 server-editor 打开并绑定工程文件';
+  flashHint(window.MAWE_I18N?.translateText?.(message) || message, 'warning');
+  return true;
+}
+
+function closeLottieExportModal() {
+  lottieExportModal?.classList.remove('show');
+}
+
+function openLottieExportModal() {
+  if (lottieExportBlocked()) return;
+  if (editingState) finishEdit(true);
+  if (extensionEditingState) finishExtensionEdit(true);
+  commitCuePanelEdit();
+  const extensionOption = lottieExportTrack?.querySelector('option[value="extension"]');
+  const extensionAvailable = Boolean(getActiveExtensionTrack());
+  if (extensionOption) extensionOption.disabled = !extensionAvailable;
+  if (!extensionAvailable && lottieExportTrack) lottieExportTrack.value = 'main';
+  lottieExportModal?.classList.add('show');
+  lottieExportTrack?.focus();
+}
+
+function lottieExportCanvasSize() {
+  const match = /^(\d+)x(\d+)$/u.exec(lottieExportResolution?.value || '');
+  if (!match) return { width: 1920, height: 1080 };
+  return { width: Number(match[1]), height: Number(match[2]) };
+}
+
+async function exportLottieDynamicCaptions() {
+  if (lottieExportBlocked()) return;
+  lottieExportConfirm.disabled = true;
+  try {
+    const extension = lottieExportTrack?.value === 'extension';
+    const track = extension ? getActiveExtensionTrack() : null;
+    const segments = extension ? track?.segments : DATA.segments;
+    if (!Array.isArray(segments) || !segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
+      throw new Error(translatedEditorText(
+        extension ? '当前扩展字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
+      ));
+    }
+    const durationMs = waveformEditor?.durationMs
+      || Math.round(Number(player?.duration) * 1000)
+      || DATA.waveform?.duration_ms
+      || 0;
+    const size = lottieExportCanvasSize();
+    const appearance = extension ? getExtensionSubtitleAppearance() : getSubtitleAppearance();
+    const animation = window.AsrEditorUtils.buildLottieAnimation(segments, {
+      durationMs: Math.round(durationMs),
+      fps: lottieExportFps?.value || '30',
+      renderMode: lottieExportRenderMode?.value || 'text',
+      width: size.width,
+      height: size.height,
+      subtitle: { ...getPreviewGeometry(), ...appearance },
+    });
+    flashHint(translatedEditorText('正在生成动态字幕 .lottie…'));
+    const response = await fetch(new URL(SERVER_CONFIG.lottieExportUrl, window.location.href), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken, animation }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || `服务器返回 ${response.status}`);
+    }
+    const blob = await response.blob();
+    closeLottieExportModal();
+    const suffix = extension ? '_extension' : '';
+    const saved = await downloadFile(
+      blob,
+      `${FILENAME_BASE}${suffix}_dynamic-caption.lottie`,
+      'application/zip+dotlottie',
+      { desc: 'Lottie 动态字幕', types: { 'application/zip+dotlottie': ['.lottie'] } },
+    );
+    if (saved) flashHint(translatedEditorText('动态字幕 .lottie 已生成'), 'success');
+  } catch (error) {
+    flashHint(`${translatedEditorText('动态字幕 .lottie 导出失败')}：${error.message || error}`, 'warning');
+  } finally {
+    lottieExportConfirm.disabled = false;
+  }
+}
+
+document.getElementById('download-lottie')?.addEventListener('click', openLottieExportModal);
+lottieExportCancel?.addEventListener('click', closeLottieExportModal);
+lottieExportConfirm?.addEventListener('click', () => { void exportLottieDynamicCaptions(); });
+lottieExportModal?.addEventListener('click', (event) => {
+  if (event.target === lottieExportModal) closeLottieExportModal();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !lottieExportModal?.classList.contains('show')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeLottieExportModal();
+}, true);
+
+function ografExportAvailable() {
+  return Boolean(SERVER_CONFIG?.canOgrafExport && SERVER_CONFIG?.ografExportUrl);
+}
+
+function updateOgrafExportButton() {
+  const button = document.getElementById('download-ograf');
+  if (!button) return;
+  if (!button.dataset.originalTitle) button.dataset.originalTitle = button.title;
+  const disabled = !ografExportAvailable();
+  button.classList.toggle('sticker-disabled', disabled);
+  button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+  button.title = disabled
+    ? translatedEditorText('服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出动态字幕')
+    : button.dataset.originalTitle;
+}
+
+function ografExportBlocked() {
+  if (ografExportAvailable()) return false;
+  const message = '当前模式不可用：OGraf 动态字幕导出需要以 server-editor 打开并绑定工程文件';
+  flashHint(window.MAWE_I18N?.translateText?.(message) || message, 'warning');
+  return true;
+}
+
+function closeOgrafExportModal() {
+  ografExportModal?.classList.remove('show');
+}
+
+function openOgrafExportModal() {
+  if (ografExportBlocked()) return;
+  if (editingState) finishEdit(true);
+  if (extensionEditingState) finishExtensionEdit(true);
+  commitCuePanelEdit();
+  const extensionOption = ografExportTrack?.querySelector('option[value="extension"]');
+  const extensionAvailable = Boolean(getActiveExtensionTrack());
+  if (extensionOption) extensionOption.disabled = !extensionAvailable;
+  if (!extensionAvailable && ografExportTrack) ografExportTrack.value = 'main';
+  ografExportModal?.classList.add('show');
+  ografExportTrack?.focus();
+}
+
+function ografExportCanvasSize() {
+  const match = /^(\d+)x(\d+)$/u.exec(ografExportResolution?.value || '');
+  if (!match) return { width: 1920, height: 1080 };
+  return { width: Number(match[1]), height: Number(match[2]) };
+}
+
+async function exportOgrafDynamicCaptions() {
+  if (ografExportBlocked()) return;
+  ografExportConfirm.disabled = true;
+  try {
+    const extension = ografExportTrack?.value === 'extension';
+    const track = extension ? getActiveExtensionTrack() : null;
+    const segments = extension ? track?.segments : DATA.segments;
+    if (!Array.isArray(segments) || !segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
+      throw new Error(translatedEditorText(
+        extension ? '当前扩展字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
+      ));
+    }
+    const durationMs = waveformEditor?.durationMs
+      || Math.round(Number(player?.duration) * 1000)
+      || DATA.waveform?.duration_ms
+      || 0;
+    const size = ografExportCanvasSize();
+    const appearance = extension ? getExtensionSubtitleAppearance() : getSubtitleAppearance();
+    const graphic = window.AsrEditorUtils.buildOgrafGraphic(segments, {
+      durationMs: Math.round(durationMs),
+      fps: ografExportFps?.value || '30',
+      width: size.width,
+      height: size.height,
+      subtitle: { ...getPreviewGeometry(), ...appearance },
+    });
+    flashHint(translatedEditorText('正在生成动态字幕 .ograf.zip…'));
+    const response = await fetch(new URL(SERVER_CONFIG.ografExportUrl, window.location.href), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken, graphic }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || `服务器返回 ${response.status}`);
+    }
+    const blob = await response.blob();
+    closeOgrafExportModal();
+    const suffix = extension ? '_extension' : '';
+    const saved = await downloadFile(
+      blob,
+      `${FILENAME_BASE}${suffix}_dynamic-caption.ograf.zip`,
+      'application/zip',
+      { desc: 'OGraf 动态字幕', types: { 'application/zip': ['.zip'] } },
+    );
+    if (saved) flashHint(translatedEditorText('动态字幕 .ograf.zip 已生成；请先解压'), 'success');
+  } catch (error) {
+    flashHint(`${translatedEditorText('动态字幕 .ograf.zip 导出失败')}：${error.message || error}`, 'warning');
+  } finally {
+    ografExportConfirm.disabled = false;
+  }
+}
+
+document.getElementById('download-ograf')?.addEventListener('click', openOgrafExportModal);
+ografExportCancel?.addEventListener('click', closeOgrafExportModal);
+ografExportConfirm?.addEventListener('click', () => { void exportOgrafDynamicCaptions(); });
+ografExportModal?.addEventListener('click', (event) => {
+  if (event.target === ografExportModal) closeOgrafExportModal();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !ografExportModal?.classList.contains('show')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeOgrafExportModal();
+}, true);
+
 document.getElementById('download-srt')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
@@ -24956,6 +25946,8 @@ document.getElementById('download-sticker-otioz')?.addEventListener('click', asy
 
 // 初始按服务器模式刷新表情包 OTIOZ 导出按钮的可用性
 updateStickerExportButtons();
+updateLottieExportButton();
+updateOgrafExportButton();
 
 // === 工具栏导出下拉菜单 ===
 function bindToolbarExportDropdown(dropdownId, buttonId, menuId) {
@@ -25202,8 +26194,12 @@ function detachServerProjectSaving() {
   if (SERVER_CONFIG) {
     SERVER_CONFIG.canSave = false;
     SERVER_CONFIG.canPortableStickerExport = false;
+    SERVER_CONFIG.canLottieExport = false;
+    SERVER_CONFIG.canOgrafExport = false;
   }
   configureServerSaveControls();
+  updateLottieExportButton();
+  updateOgrafExportButton();
   scheduleAutoSave();
 }
 
