@@ -14,6 +14,9 @@ mkdir -p "$BUILD_DIR"
 
 echo "==> 1/6 PyInstaller 构建 dist/MAW"
 uv run --group build pyinstaller --noconfirm --clean MAW.spec
+# PyInstaller 6 places datas under _internal in an onedir bundle. Keep the
+# user-facing FAQ at the AppImage root as well, where users can find it easily.
+cp "FAQ-常见问题.txt" "dist/MAW/FAQ-常见问题.txt"
 
 echo "==> 2/6 准备静态 ffmpeg（BtbN FFmpeg-Builds，固定 autobuild 版本）"
 FFMPEG_VERSION="N-126134-gc48230eb86"

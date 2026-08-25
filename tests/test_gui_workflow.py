@@ -404,7 +404,7 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(env["PATH"].split(os.pathsep)[0], str(ffmpeg_dir))
 
     def test_child_environment_uses_release_root_ffmpeg_in_frozen_mode(self) -> None:
-        app_root = self.root / "MAWxFF"
+        app_root = self.root / "MAW"
         ffmpeg_dir = app_root / "ffmpeg" / "bin"
         ffmpeg_dir.mkdir(parents=True)
         (ffmpeg_dir / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).write_bytes(b"exe")

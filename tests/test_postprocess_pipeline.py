@@ -72,6 +72,19 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertFalse(plan["retainIntermediate"])
         self.assertEqual([step["id"] for step in plan["steps"]], ["match", "replace", "proofread", "resegment", "ocr", "translate"])
         self.assertEqual(plan["steps"][1]["conversion"], "off")
+        self.assertEqual(plan["steps"][0]["matchMode"], "script")
+
+    def test_match_mode_is_preserved_when_normalizing_plan(self) -> None:
+        plan = default_postprocess_plan()
+        plan["enabled"] = True
+        script = self.root / "script.txt"
+        script.write_text("正字\n保留\n", encoding="utf-8")
+        plan["steps"] = [{"id": "match", "enabled": True, "scriptPath": str(script), "matchMode": "text"}]
+
+        normalized, errors = validate_plan(plan, env_path=self.env_path, media_path=self.media, ffmpeg_path=None)
+
+        self.assertEqual(errors, ())
+        self.assertEqual(normalized["steps"][0]["matchMode"], "text")
 
     def test_validation_allows_conversion_without_replacement_rules(self) -> None:
         plan, errors = validate_plan(self.plan(self.conversion_step()), env_path=self.env_path, media_path=self.media, ffmpeg_path=None)

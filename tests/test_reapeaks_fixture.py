@@ -13,14 +13,17 @@ from maw import reapeaks
 
 TEST_DATA_DIR = Path(__file__).resolve().parent / "test_data"
 
-_spec = importlib.util.spec_from_file_location("gen_fixtures", TEST_DATA_DIR / "gen_fixtures.py")
-gen_fixtures = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(gen_fixtures)
-
 try:
-    import numpy  # noqa: F401
+    _spec = importlib.util.spec_from_file_location(
+        "gen_fixtures", TEST_DATA_DIR / "gen_fixtures.py"
+    )
+    gen_fixtures = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(gen_fixtures)
+    # gen_fixtures 顶层 import numpy；numpy 已移入 ocr 可选依赖，
+    # 缺失时整个模块降级为 skip，不再让测试套件 ImportError。
     HAS_NUMPY = True
 except ImportError:
+    gen_fixtures = None
     HAS_NUMPY = False
 
 
@@ -64,6 +67,10 @@ class FixtureReaPeaksTests(unittest.TestCase):
             reapeaks_path = TEST_DATA_DIR / f"{name}.wav.ReaPeaks"
             wav_path = TEST_DATA_DIR / f"{name}.wav"
             if reapeaks_path.is_file() and not wav_path.is_file():
+                if gen_fixtures is None:
+                    raise unittest.SkipTest(
+                        "numpy 不可用（已移入 ocr 可选依赖），无法生成 fixture wav"
+                    )
                 gen_func = getattr(gen_fixtures, f"gen_{name}")
                 gen_func()
                 cls._generated_wavs.append(wav_path)

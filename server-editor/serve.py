@@ -51,6 +51,7 @@ from maw.project import (  # noqa: E402
     repair_project_timing_ranges,
 )
 from maw.media import MEDIA_EXTENSIONS, MediaConversionError, MediaResolutionError, MediaStatus, convert_media_for_browser, resolve_project_media  # noqa: E402
+from maw.lottie_glyphs import LottieGlyphError, vectorize_lottie_animation  # noqa: E402
 
 
 MAX_RECENT_PROJECTS = 10
@@ -124,6 +125,14 @@ class ProjectMutationInProgressError(RuntimeError):
 
 class StickerExportInProgressError(RuntimeError):
     """Another portable sticker export currently owns the sticker lock."""
+
+
+class LottieExportInProgressError(RuntimeError):
+    """Another dynamic-caption export currently owns the Lottie lock."""
+
+
+class OgrafExportInProgressError(RuntimeError):
+    """Another dynamic-caption export currently owns the OGraf lock."""
 
 
 def default_settings_path() -> Path:
@@ -442,11 +451,15 @@ def build_server_page(
             "stickerRootUrl": "/api/stickers/root",
             "portableStickerExportUrl": "/api/exports/sticker-otio",
             "otiozStickerExportUrl": "/api/exports/sticker-otioz",
+            "lottieExportUrl": "/api/exports/lottie",
+            "ografExportUrl": "/api/exports/ograf",
             "waveformUrl": "/api/waveform",
             "canSave": project.json_path is not None,
             "canPortableStickerExport": project.json_path is not None,
             "canOtozStickerExport": project.json_path is not None,
             "initialStickerCount": len(project.stickers),
+            "canLottieExport": project.json_path is not None,
+            "canOgrafExport": project.json_path is not None,
             "autoLoadedMediaName": (project.source_media_path or project.media_path).name if project.media_path else None,
             "recentProjectsUrl": "/api/recent-projects/open",
             "attachUrl": "/api/project/attach",
@@ -495,6 +508,8 @@ class EditorServer(ThreadingHTTPServer):
         self.request_token = secrets.token_urlsafe(32)
         self.save_lock = threading.Lock()
         self.sticker_lock = threading.Lock()
+        self.lottie_lock = threading.Lock()
+        self.ograf_lock = threading.Lock()
         self.settings_lock = threading.Lock()
         self.reapeaks_lock = threading.Lock()
         self.reapeaks_generation = 0
@@ -1019,6 +1034,123 @@ def export_sticker_otioz(project: ServerProject, kind: str, timeline: dict, root
     return buffer.getvalue(), otio_name, len(used)
 
 
+def export_lottie(project: ServerProject, animation: dict) -> tuple[bytes, str]:
+    """Build a single-resource dotLottie v2 archive for Resolve 21 and later."""
+    if project.json_path is None:
+        raise ValueError("当前服务器没有绑定工程文件")
+    if not isinstance(animation, dict):
+        raise ValueError("Lottie 动画必须是 JSON 对象")
+    for field_name in ("v", "fr", "ip", "op", "w", "h", "layers"):
+        if field_name not in animation:
+            raise ValueError(f"Lottie 动画缺少字段：{field_name}")
+    if not isinstance(animation["v"], str) or not animation["v"].strip():
+        raise ValueError("Lottie 版本格式不正确")
+    if isinstance(animation["fr"], bool) or not isinstance(animation["fr"], (int, float)) or animation["fr"] <= 0:
+        raise ValueError("Lottie 帧率格式不正确")
+    for field_name in ("ip", "op"):
+        value = animation[field_name]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise ValueError(f"Lottie {field_name} 格式不正确")
+    if animation["op"] <= animation["ip"]:
+        raise ValueError("Lottie 时间范围必须为正")
+    for field_name in ("w", "h"):
+        value = animation[field_name]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            raise ValueError(f"Lottie {field_name} 格式不正确")
+    if not isinstance(animation["layers"], list):
+        raise ValueError("Lottie layers 必须是数组")
+    assets = animation.get("assets")
+    if assets not in (None, []):
+        raise ValueError("当前 Lottie 导出暂不支持外部图片资源")
+    render_mode = animation.get("meta", {}).get("renderMode", "text") if isinstance(animation.get("meta"), dict) else "text"
+    if render_mode not in {"text", "glyph"}:
+        raise ValueError("Lottie 文字渲染模式不正确")
+    if render_mode == "glyph":
+        try:
+            animation = vectorize_lottie_animation(animation)
+        except LottieGlyphError:
+            raise
+        except Exception as error:
+            raise ValueError(f"Lottie 矢量字形生成失败：{error}") from error
+    try:
+        animation_body = json.dumps(animation, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"Lottie JSON 不可序列化：{error}") from error
+    if len(animation_body) > 32 * 1024 * 1024:
+        raise ValueError("Lottie 动画超过 32 MB")
+
+    animation_id = "maw-caption"
+    manifest = {
+        "version": "2",
+        "generator": f"moys-asr-workflow {edit.get_app_version()}",
+        "initial": {"animation": animation_id},
+        "animations": [{"id": animation_id}],
+    }
+    manifest_body = json.dumps(manifest, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("manifest.json", manifest_body)
+        archive.writestr(f"a/{animation_id}.json", animation_body)
+    return buffer.getvalue(), f"{project.json_path.stem}_dynamic-caption.lottie"
+
+
+def export_ograf(project: ServerProject, graphic: dict) -> tuple[bytes, str]:
+    """Build an OGraf package containing its .ograf.json manifest and JS sidecar."""
+    if project.json_path is None:
+        raise ValueError("当前服务器没有绑定工程文件")
+    if not isinstance(graphic, dict):
+        raise ValueError("OGraf 图形必须是 JSON 对象")
+    manifest = graphic.get("manifest")
+    main_source = graphic.get("mainSource")
+    manifest_filename = graphic.get("manifestFilename")
+    main_filename = graphic.get("mainFilename")
+    if not isinstance(manifest, dict):
+        raise ValueError("OGraf manifest 必须是 JSON 对象")
+    if not isinstance(main_source, str) or not main_source.strip():
+        raise ValueError("OGraf 主脚本不能为空")
+    if not isinstance(manifest_filename, str) or not manifest_filename.endswith(".ograf.json"):
+        raise ValueError("OGraf manifest 文件名必须以 .ograf.json 结尾")
+    if not isinstance(main_filename, str) or not main_filename.endswith((".mjs", ".js")):
+        raise ValueError("OGraf 主脚本文件名必须以 .mjs 或 .js 结尾")
+    for filename in (manifest_filename, main_filename):
+        if not filename or filename in {".", ".."} or "/" in filename or "\\" in filename:
+            raise ValueError("OGraf 文件名不能包含目录")
+    required_fields = ("$schema", "id", "name", "main", "supportsRealTime", "supportsNonRealTime")
+    for field_name in required_fields:
+        if field_name not in manifest:
+            raise ValueError(f"OGraf manifest 缺少字段：{field_name}")
+    if manifest["$schema"] != "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json":
+        raise ValueError("OGraf manifest 的 $schema 不正确")
+    for field_name in ("id", "name", "main"):
+        if not isinstance(manifest[field_name], str) or not manifest[field_name].strip():
+            raise ValueError(f"OGraf manifest 的 {field_name} 格式不正确")
+    if "/" in manifest["id"] or manifest["main"] != main_filename:
+        raise ValueError("OGraf manifest 的 id 或 main 格式不正确")
+    if any(not isinstance(manifest[field_name], bool) for field_name in ("supportsRealTime", "supportsNonRealTime")):
+        raise ValueError("OGraf manifest 的渲染能力字段格式不正确")
+    if manifest.get("schema") is not None and not isinstance(manifest["schema"], dict):
+        raise ValueError("OGraf manifest 的 schema 必须是 JSON 对象")
+    if "extends HTMLElement" not in main_source or "export default" not in main_source:
+        raise ValueError("OGraf 主脚本必须导出 HTMLElement Web Component")
+    if manifest["supportsNonRealTime"] and (
+        "goToTime" not in main_source or "setActionsSchedule" not in main_source
+    ):
+        raise ValueError("OGraf 非实时脚本缺少 goToTime 或 setActionsSchedule")
+    try:
+        manifest_body = json.dumps(manifest, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        main_body = main_source.encode("utf-8")
+    except (UnicodeEncodeError, TypeError, ValueError) as error:
+        raise ValueError(f"OGraf 文件不可序列化：{error}") from error
+    if len(manifest_body) + len(main_body) > 32 * 1024 * 1024:
+        raise ValueError("OGraf 图形超过 32 MB")
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(manifest_filename, manifest_body)
+        archive.writestr(main_filename, main_body)
+    return buffer.getvalue(), f"{project.json_path.stem}_dynamic-caption.ograf.zip"
+
+
 def write_project_json(target: Path, project_data: dict) -> Path | None:
     """Atomically write LF JSON and retain the immediately previous file as .bak."""
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -1084,6 +1216,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.export_sticker_otio()
         elif path == "/api/exports/sticker-otioz":
             self.export_sticker_otioz()
+        elif path == "/api/exports/lottie":
+            self.export_lottie()
+        elif path == "/api/exports/ograf":
+            self.export_ograf()
         else:
             self.send_localized_error(HTTPStatus.NOT_FOUND, "未知 API")
 
@@ -1225,6 +1361,80 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(zip_bytes)))
         self.end_headers()
         self.wfile.write(zip_bytes)
+
+    def export_lottie(self) -> None:
+        try:
+            request = self.read_json_request()
+            self._check_request_token(request)
+            animation = request.get("animation")
+            if not isinstance(animation, dict):
+                raise ValueError("Lottie 请求格式不正确")
+            if not self.editor_server.lottie_lock.acquire(blocking=False):
+                raise LottieExportInProgressError("另一个动态字幕导出操作正在进行")
+            try:
+                lottie_bytes, lottie_name = export_lottie(self.editor_server.project, animation)
+            finally:
+                self.editor_server.lottie_lock.release()
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except LottieExportInProgressError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        except OSError as error:
+            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": f"动态字幕导出失败：{error}"})
+            return
+        ascii_name = ''.join(
+            char if 32 <= ord(char) < 127 and char not in {'"', '\\', ';'} else '_'
+            for char in lottie_name
+        ) or "maw_dynamic-caption.lottie"
+        disposition = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(lottie_name, safe='')}"
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/zip+dotlottie")
+        self.send_header("Content-Disposition", disposition)
+        self.send_header("Content-Length", str(len(lottie_bytes)))
+        self.end_headers()
+        self.wfile.write(lottie_bytes)
+
+    def export_ograf(self) -> None:
+        try:
+            request = self.read_json_request()
+            self._check_request_token(request)
+            graphic = request.get("graphic")
+            if not isinstance(graphic, dict):
+                raise ValueError("OGraf 请求格式不正确")
+            if not self.editor_server.ograf_lock.acquire(blocking=False):
+                raise OgrafExportInProgressError("另一个 OGraf 动态字幕导出操作正在进行")
+            try:
+                ograf_bytes, ograf_name = export_ograf(self.editor_server.project, graphic)
+            finally:
+                self.editor_server.ograf_lock.release()
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except OgrafExportInProgressError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        except OSError as error:
+            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": f"OGraf 动态字幕导出失败：{error}"})
+            return
+        ascii_name = ''.join(
+            char if 32 <= ord(char) < 127 and char not in {'"', '\\', ';'} else '_'
+            for char in ograf_name
+        ) or "maw_dynamic-caption.ograf.zip"
+        disposition = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(ograf_name, safe='')}"
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Disposition", disposition)
+        self.send_header("Content-Length", str(len(ograf_bytes)))
+        self.end_headers()
+        self.wfile.write(ograf_bytes)
 
     def read_json_request(self) -> dict:
         length = int(self.headers.get("Content-Length", "0"))

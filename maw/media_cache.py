@@ -4,11 +4,12 @@
 ``waveform.embed_waveform`` / ``reapeaks.generate_for_media`` 的调用与
 日志样板。本模块只做编排，具体算法仍由 waveform / reapeaks 各自负责。
 """
+
 from __future__ import annotations
 
+import struct
 from dataclasses import dataclass
 from pathlib import Path
-import struct
 from typing import Any
 
 from maw import reapeaks
@@ -33,7 +34,9 @@ class MediaCacheResult:
 CACHE_KEYS = ("waveform", "spectral", "waveform_reapeaks")
 
 
-def merge_media_caches(target: dict[str, Any], result: MediaCacheResult) -> dict[str, Any]:
+def merge_media_caches(
+    target: dict[str, Any], result: MediaCacheResult
+) -> dict[str, Any]:
     """把 ``result.project`` 里生成的缓存键合并进 ``target`` 工程。"""
     for key in CACHE_KEYS:
         if key in result.project:
@@ -61,7 +64,9 @@ def embed_media_caches(
     与工程内的 spectral payload。
     """
     cache_path = Path(media_path)
-    source_path = Path(source_media_path) if source_media_path is not None else cache_path
+    source_path = (
+        Path(source_media_path) if source_media_path is not None else cache_path
+    )
     waveform_result = embed_waveform(project, cache_path)
     project = waveform_result.project
     if waveform_result.error is None:
@@ -91,12 +96,15 @@ def embed_media_caches(
         try:
             if generate_spectral:
                 spectral = reapeaks.extract_spectral_payload(
-                    reapeaks_path, source_path,
+                    reapeaks_path,
+                    source_path,
                 )
                 if spectral is not None:
                     project["spectral"] = spectral
                     print(f"[spectral] 已嵌入 {spectral['peak_count']} 频谱点")
-            reapeaks_wave = reapeaks.extract_waveform_payload(reapeaks_path, source_path)
+            reapeaks_wave = reapeaks.extract_waveform_payload(
+                reapeaks_path, source_path
+            )
             if reapeaks_wave is not None:
                 project["waveform_reapeaks"] = reapeaks_wave
                 print(f"[reapeaks-wave] 已嵌入 {reapeaks_wave['peak_count']} peaks")
@@ -107,7 +115,7 @@ def embed_media_caches(
         # 避免「缺少 ffmpeg 或 numpy」的误导。
         print(f"[reapeaks] 警告: 缓存媒体不存在，已跳过生成: {cache_path}")
     else:
-        print("[reapeaks] 已跳过 ReaPeaks 缓存生成（缺少 ffmpeg/numpy 或解码失败）")
+        print("[reapeaks] 已跳过频谱缓存生成（原因见上方 [reapeaks] 日志）")
     return MediaCacheResult(
         project=project,
         waveform_error=waveform_result.error,
