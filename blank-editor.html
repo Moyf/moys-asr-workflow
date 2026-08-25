@@ -19453,7 +19453,10 @@ function confirmLinkedSplit() {
   flashHint('已按同一绝对时间切点联动拆分', 'success');
 }
 
-function splitAtCursor(feedbackPoint = null, { listFeedback = true } = {}) {
+function splitAtCursor(
+  feedbackPoint = null,
+  { listFeedback = true, cueListAnchor: suppliedCueListAnchor = null } = {},
+) {
   if (!editingState) return false;
   const force = editingState.forceSplitArmed === true;
   const { el, idx, textEl } = editingState;
@@ -19579,6 +19582,14 @@ function splitAtCursor(feedbackPoint = null, { listFeedback = true } = {}) {
     _dirty: true,
   };
 
+  // renderAll() 会重建整张字幕列表。content-visibility 会在重建后先用估算
+  // 行高占位，再为视口附近的行回填真实高度；只保存 scrollTop 无法阻止
+  // 当前字幕被累计行高误差顶走。列表来源的拆分因此保存原行的屏幕位置，
+  // 重绘后再用左半段恢复这个视觉锚点。
+  const cueListAnchor = listFeedback
+    ? suppliedCueListAnchor || captureCueListVisualAnchor(el)
+    : null;
+
   textEl.removeAttribute('contenteditable');
   el.classList.remove('editing');
   editingState = null;
@@ -19603,14 +19614,15 @@ function splitAtCursor(feedbackPoint = null, { listFeedback = true } = {}) {
 
   rememberTemporaryVisibleSplitCues({ mainSegments: [leftSeg, rightSeg] });
   renderAll();
+  const leftEl = container.querySelector(`.cue[data-idx="${idx}"]`);
+  const rightEl = container.querySelector(`.cue[data-idx="${idx + 1}"]`);
   // 列表来源的拆分（B 键悬停行、列表右键拆分、行内编辑拆分）都发生在当前
-  // 可见的字幕行上，拆分后保持列表原滚动位置，不再把右半段滚到列表中央。
+  // 可见的字幕行上，拆分后让左半段留在原字幕的视觉位置；右半段自然排在
+  // 下一行。这样既保留 content-visibility，也不会被懒布局累计误差顶走。
   // 波形 / 编辑面板等其它来源的拆分结果可能不在列表视口内，仍滚动到新右半段，
   // 便于在列表中看到拆分结果。
-  if (!listFeedback) {
-    const rightEl = container.querySelector(`.cue[data-idx="${idx + 1}"]`);
-    if (rightEl) scrollCueToCenter(rightEl);
-  }
+  if (listFeedback) restoreCueListVisualAnchor(leftEl, cueListAnchor);
+  else if (rightEl) scrollCueToCenter(rightEl);
   selectOnly(idx + 1);
   // 拆分后后半段是新的视觉选中项，也必须成为 Shift+点击的范围锚点。
   lastClickedIdx = idx + 1;
@@ -19680,6 +19692,11 @@ function flashSplitFeedback({ index, track = 'main', splitMs, feedbackPoint = nu
 function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
   if (!el) return false;
+  // 从非编辑态按 B / 右键拆分时，startEdit() 可能让当前行先发生一次布局
+  // 变化；锚点必须取自用户按键前看到的位置，而不是临时编辑态的位置。
+  const cueListAnchor = Number.isFinite(waveformTimeMs)
+    ? null
+    : captureCueListVisualAnchor(el);
   const waveformFeedbackPoint = Number.isFinite(waveformTimeMs)
     ? waveformEditor?.getSplitPointAtTime?.(waveformTimeMs, 'main') || null
     : null;
@@ -19737,7 +19754,7 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
   if (Number.isFinite(caretInfo?.offset)) setEditingCaretOffset(caretInfo.offset);
   return splitAtCursor(
     { clientX: markerX, clientY: caretInfo?.rect?.top ?? y },
-    { listFeedback: true },
+    { listFeedback: true, cueListAnchor },
   );
 }
 
@@ -20303,6 +20320,40 @@ function cueListVisibleBounds() {
     ? Math.min(containerRect.bottom, Math.max(containerRect.top, toolbarRect.bottom))
     : containerRect.top;
   return { containerRect, top, bottom: containerRect.bottom };
+}
+
+let cueListVisualAnchorGeneration = 0;
+
+function captureCueListVisualAnchor(cueEl) {
+  if (!cueEl?.isConnected || cueEl.classList.contains('hidden')) return null;
+  const top = cueEl.getBoundingClientRect().top;
+  return Number.isFinite(top) ? { top } : null;
+}
+
+function restoreCueListVisualAnchor(cueEl, anchor) {
+  if (!cueEl?.isConnected || !Number.isFinite(anchor?.top)) return;
+  const generation = ++cueListVisualAnchorGeneration;
+  const maxFrames = 12;
+  const epsilon = 0.75;
+  let frameCount = 0;
+
+  const restore = () => {
+    if (generation !== cueListVisualAnchorGeneration || !cueEl.isConnected) return;
+    const delta = cueEl.getBoundingClientRect().top - anchor.top;
+    if (!Number.isFinite(delta)) return;
+    if (Math.abs(delta) > epsilon) {
+      const previousScrollTop = container.scrollTop;
+      container.scrollTop += delta;
+      // 到达列表边界、无法继续补偿时无需再占用后续动画帧。
+      if (Math.abs(container.scrollTop - previousScrollTop) < epsilon) return;
+    }
+    frameCount += 1;
+    // content-visibility 可能先稳定几帧，再因滚动到新的行而继续回填真实
+    // 高度；短暂覆盖完整观察窗口，避免连续拆分时出现延迟的二次位移。
+    if (frameCount < maxFrames) requestAnimationFrame(restore);
+  };
+
+  restore();
 }
 
 function scrollCueToCenter(cueEl, { behavior = 'smooth' } = {}) {
