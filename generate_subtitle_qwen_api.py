@@ -50,6 +50,10 @@ POLL_HEARTBEAT_SECONDS = 15
 
 TASK_SUCCESS_STATUSES = frozenset({"SUCCEEDED", "SUCCESS", "COMPLETED", "COMPLETE"})
 TASK_FAILURE_STATUSES = frozenset({"FAILED", "FAILURE", "ERROR"})
+FFMPEG_MISSING_MESSAGE = (
+    "找不到 FFmpeg，请下载完整版 MAW（MAW-lite 不包含 FFmpeg）；"
+    "如果要继续使用 MAW-lite，请安装 FFmpeg，并确保 ffmpeg 与 ffprobe 已加入 PATH。"
+)
 
 
 def configure_console_output() -> None:
@@ -243,6 +247,16 @@ def _raise_for_dashscope_status(response: requests.Response, action: str) -> Non
 
 # ===== ffmpeg 工具函数（与本地版一致） =====
 
+def _run_media_tool(cmd: list[str], **kwargs):
+    try:
+        return subprocess.run(cmd, **kwargs)
+    except FileNotFoundError as exc:
+        executable = Path(cmd[0]).name.lower() if cmd else ""
+        if executable in {"ffmpeg", "ffprobe"}:
+            raise RuntimeError(FFMPEG_MISSING_MESSAGE) from exc
+        raise
+
+
 def extract_audio(video_path: str, output_path: str, duration_limit: float | None = None) -> None:
     cmd = ["ffmpeg", "-i", video_path]
     if duration_limit is not None:
@@ -253,7 +267,7 @@ def extract_audio(video_path: str, output_path: str, duration_limit: float | Non
         "-y", output_path,
     ])
     print(f"[ffmpeg] 正在提取音频: {video_path}")
-    subprocess.run(cmd, check=True, capture_output=True)
+    _run_media_tool(cmd, check=True, capture_output=True)
     print("[ffmpeg] 音频提取完成")
 
 
@@ -263,7 +277,7 @@ def get_duration_sec(filepath: str) -> float:
         "-show_entries", "format=duration",
         "-of", "csv=p=0", filepath,
     ]
-    out = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    out = _run_media_tool(cmd, check=True, capture_output=True, text=True)
     return float(out.stdout.strip())
 
 
@@ -1669,7 +1683,7 @@ def main():
                     "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
                     "-y", limited_path,
                 ]
-                subprocess.run(cmd, check=True, capture_output=True)
+                _run_media_tool(cmd, check=True, capture_output=True)
                 audio_path = limited_path
                 duration = limit_sec
                 lm, ls = divmod(int(limit_sec), 60)

@@ -551,9 +551,9 @@ test('B splits at the pointer inside the cue list and at the playhead outside it
   await expect(page.locator('.cue-split-flash.is-active')).toHaveCount(0);
 });
 
-test('B split inside the cue list keeps the list scroll position', async ({ page }) => {
+test('B split keeps the source cue visually anchored while lazy rows relayout', async ({ page }) => {
   await page.goto(server.url);
-  // 关闭「点击自动滚动」，避免点击选中行时先把列表滚到中央，干扰拆分滚动断言。
+  // 关闭「点击自动滚动」，只观察拆分重绘和 content-visibility 行高回填。
   await page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('moy.asr.editor.settings.v1') || '{}');
     saved.cueListAutoScrollOnClick = false;
@@ -561,42 +561,47 @@ test('B split inside the cue list keeps the list scroll position', async ({ page
   });
   await page.reload();
   await page.evaluate(() => {
-    DATA.segments.push(...Array.from({ length: 34 }, (_, offset) => {
-      const index = DATA.segments.length + offset;
-      const start = index * 5000;
-      return { start, end: start + 1000, text: `Extra ${index}`, items: [] };
-    }));
+    const samples = [
+      '短字幕',
+      '这是一条会在字幕列表里自动换行的真实长度字幕',
+      '较长字幕用于模拟采访视频中的自然断句和不同的列表行高',
+      '中等长度字幕内容',
+    ];
+    DATA.segments = Array.from({ length: 90 }, (_, index) => {
+      const start = index * 2000;
+      return {
+        start,
+        end: start + 1800,
+        text: `${samples[index % samples.length]} ${index}`,
+        items: [],
+      };
+    });
     renderAll();
-    // 先滚到底再滚回目标行：content-visibility 会让视口外的行按
-    // contain-intrinsic-size 惰性重排，触发浏览器滚动锚定持续微调 scrollTop；
-    // 先让所有行完成一次重排，之后的滚动位置才是稳定的。
-    const list = document.getElementById('cues-container');
-    list.scrollTop = list.scrollHeight;
-    void list.scrollHeight;
+    document.querySelector('.cue[data-idx="56"]').scrollIntoView({ block: 'center' });
   });
-  await page.waitForTimeout(400);
-  await page.evaluate(() => {
-    const list = document.getElementById('cues-container');
-    document.querySelector('.cue[data-idx="30"]').scrollIntoView({ block: 'start' });
-    void list.scrollHeight;
-  });
-  // 等滚动锚定完全稳定后再记录基准位置。
+
+  // 只等目标附近的可见行稳定，不能滚遍整张列表预热，否则会掩盖重绘后的
+  // 懒布局回填问题。
   await expect.poll(async () => {
-    const a = await page.evaluate(() => document.getElementById('cues-container').scrollTop);
-    await page.waitForTimeout(150);
-    const b = await page.evaluate(() => document.getElementById('cues-container').scrollTop);
-    return a === b;
-  }, { timeout: 4000 }).toBe(true);
-  const before = await page.evaluate(() => document.getElementById('cues-container').scrollTop);
-  expect(before).toBeGreaterThan(0);
-  const target = page.locator('.cue[data-idx="30"]');
+    const first = await page.locator('.cue[data-idx="56"]').evaluate(
+      (element) => element.getBoundingClientRect().top,
+    );
+    await page.waitForTimeout(100);
+    const second = await page.locator('.cue[data-idx="56"]').evaluate(
+      (element) => element.getBoundingClientRect().top,
+    );
+    return Math.abs(first - second);
+  }, { timeout: 4000 }).toBeLessThan(0.5);
+
+  const target = page.locator('.cue[data-idx="56"]');
   const text = target.locator('.text');
-  // 点击位置直接落在文字第 5 个字符后，B 拆分的文字偏移可预期（Extra｜30）。
+  // 点击位置直接落在文字中间，确保左右两段都有效。
   const splitPoint = await text.evaluate((element) => {
     const node = element.firstChild;
     const range = document.createRange();
-    range.setStart(node, 5);
-    range.setEnd(node, 5);
+    const offset = Math.floor(node.textContent.length / 2);
+    range.setStart(node, offset);
+    range.setEnd(node, offset);
     const rect = range.getBoundingClientRect();
     return { x: rect.x, y: rect.y + rect.height / 2 };
   });
@@ -608,13 +613,49 @@ test('B split inside the cue list keeps the list scroll position', async ({ page
   await expect(target).toHaveClass(/selected/);
   await page.mouse.move(splitPoint.x, splitPoint.y);
   await expect(page.locator('.cue-split-preview')).toHaveCount(1);
+  const beforeTop = await target.evaluate((element) => element.getBoundingClientRect().top);
   await page.keyboard.press('b');
 
-  await expect.poll(() => page.locator('.cue').count()).toBe(41);
-  await expect(page.locator('.cue[data-idx="31"]')).toHaveClass(/selected/);
-  await expect(page.locator('.cue .text').nth(30)).toHaveText('Extra');
-  await expect(page.locator('.cue .text').nth(31)).toHaveText('30');
-  await expect.poll(() => page.evaluate(() => document.getElementById('cues-container').scrollTop)).toBe(before);
+  await expect.poll(() => page.locator('.cue').count()).toBe(91);
+  const left = page.locator('.cue[data-idx="56"]');
+  const right = page.locator('.cue[data-idx="57"]');
+  await expect(right).toHaveClass(/selected/);
+  await expect.poll(async () => {
+    const currentTop = await left.evaluate((element) => element.getBoundingClientRect().top);
+    return Math.abs(currentTop - beforeTop);
+  }).toBeLessThan(1.5);
+  await expect(left).toHaveCSS('content-visibility', 'auto');
+
+  // 连续拆分新生成的右半段，也不能让累计行高误差把当前工作位置越推越远。
+  const secondText = right.locator('.text');
+  const secondSplitPoint = await secondText.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    const offset = Math.max(1, Math.floor(node.textContent.length / 2));
+    range.setStart(node, offset);
+    range.setEnd(node, offset);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+  await right.dispatchEvent('pointerdown', {
+    bubbles: true, button: 0, buttons: 1, pointerId: 1,
+    clientX: secondSplitPoint.x, clientY: secondSplitPoint.y,
+  });
+  await right.dispatchEvent('click', {
+    bubbles: true, detail: 1,
+    clientX: secondSplitPoint.x, clientY: secondSplitPoint.y,
+  });
+  await page.mouse.move(secondSplitPoint.x, secondSplitPoint.y);
+  const secondBeforeTop = await right.evaluate((element) => element.getBoundingClientRect().top);
+  await page.keyboard.press('b');
+
+  await expect.poll(() => page.locator('.cue').count()).toBe(92);
+  const secondLeft = page.locator('.cue[data-idx="57"]');
+  await expect(page.locator('.cue[data-idx="58"]')).toHaveClass(/selected/);
+  await expect.poll(async () => {
+    const currentTop = await secondLeft.evaluate((element) => element.getBoundingClientRect().top);
+    return Math.abs(currentTop - secondBeforeTop);
+  }).toBeLessThan(1.5);
 });
 
 test('B flashes a yellow marker after splitting at the waveform pointer without a selection', async ({ page }) => {

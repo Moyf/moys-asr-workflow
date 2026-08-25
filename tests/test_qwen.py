@@ -8,6 +8,7 @@ from unittest import mock
 
 from generate_subtitle_qwen_api import (
     extract_audio,
+    get_duration_sec,
     main,
     repair_nonpositive_duration_segments,
     split_words_to_segments,
@@ -43,6 +44,14 @@ class QwenCliExitContractTests(unittest.TestCase):
 
 
 class QwenMediaExtractionTests(unittest.TestCase):
+    def test_missing_ffmpeg_tools_report_the_full_package_hint(self) -> None:
+        with mock.patch(
+            "generate_subtitle_qwen_api.subprocess.run",
+            side_effect=FileNotFoundError(2, "系统找不到指定的文件"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "找不到 FFmpeg，请下载完整版 MAW"):
+                get_duration_sec("input.mp4")
+
     def test_video_extraction_can_limit_duration_in_the_first_ffmpeg_pass(self) -> None:
         with mock.patch("generate_subtitle_qwen_api.subprocess.run") as run:
             extract_audio("input.mp4", "output.wav", duration_limit=120)

@@ -28,6 +28,7 @@ from generate_subtitle_qwen_api import (
     LANGUAGE_MAP,
     configure_console_output,
     extract_audio,
+    _run_media_tool,
     generate_srt,
     get_duration_sec,
     parse_duration,
@@ -199,7 +200,7 @@ def main():
                 "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
                 "-y", limited_path,
             ]
-            subprocess.run(cmd, check=True, capture_output=True)
+            _run_media_tool(cmd, check=True, capture_output=True)
             audio_path = limited_path
             duration = limit_sec
             lm, ls = divmod(int(limit_sec), 60)

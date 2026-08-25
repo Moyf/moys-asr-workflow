@@ -67,7 +67,7 @@ Batch 1 已验证场景（localhost 与便携 HTML 均通过真实波形交互�
 - 1.1 先提供 Intel 与 Apple Silicon 两个独立 Mac 工件，不承诺 `universal2`。
 - 普通 CI 构建为未签名开发工件；Apple Developer ID 签名和 notarization 留作受保护、人工触发的发布流程，不向 PR 暴露凭据。
 - 工作流只上传唯一命名的 ZIP 工件，不创建 tag、不推送、不创建 GitHub Release。
-- PR 会自动构建 Windows x64 无 FFmpeg 预览 ZIP 工件并保留 14 天，构建完成后由独立 workflow 更新 PR 评论并提供 Actions 下载链接；正式 tag release 继续由发布工作流创建普通版与 MAWxFF 版。
+- PR 会自动构建 Windows x64 无 FFmpeg 的 `MAW-lite` 预览 ZIP 工件并保留 14 天，构建完成后由独立 workflow 更新 PR 评论并提供 Actions 下载链接；正式 tag release 由发布工作流创建默认带 FFmpeg 的 `MAW` 版和无 FFmpeg 的 `MAW-lite` 版。
 - FFmpeg/ffprobe 继续作为外部依赖；Mac GUI 允许选择绝对路径，以兼容 Finder 启动时不含 Homebrew 目录的 PATH。
 
 ## FFmpeg 分发决策

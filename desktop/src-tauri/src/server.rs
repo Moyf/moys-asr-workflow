@@ -804,7 +804,7 @@ fn ffmpeg_command(
     } else {
         app.shell()
             .sidecar("ffmpeg")
-            .map_err(|error| format!("无法找到 FFmpeg：请安装 FFmpeg，或使用 MAWxFF 版本：{}", error))?
+            .map_err(|error| format!("无法找到 FFmpeg：请安装 FFmpeg，或使用默认 MAW 版本：{}", error))?
     };
     Ok(command.args(args))
 }

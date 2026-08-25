@@ -31,8 +31,5 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Install locked development dependencies
-        run: uv sync --no-group build --frozen
-
       - name: Run Ruff check
-        run: uv run ruff check
+        run: uv run --frozen ruff check

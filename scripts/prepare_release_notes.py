@@ -29,8 +29,8 @@ def build_release_notes(changelog: str, tag: str) -> str:
     """Build the shared download and usage guide followed by release notes."""
     guide = """## 下载哪个版本？
 
-**如果你不知道 `FFMpeg` 是什么** ： 根据自己的平台，下载 `MAWxFF` 开头的版本。它内置了我们需要的视频处理模块。
-**如果你本机环境装有 `ffmpeg`** ： 可以选择下载体积更小的纯 `MAW` 版本。
+**默认下载 `MAW`** ： 它内置了我们需要的 `ffmpeg` 和 `ffprobe`，解压即用。
+**如果你本机环境装有 `ffmpeg`** ： 可以选择体积更小的 `MAW-lite` 版本。
 
 ## 如何使用
 

@@ -39,7 +39,7 @@ MAW 的 Release 包除了图形 Launcher，也支持直接用命令行完成转�
 
 ### Release 包
 
-请保留 Release 解压后的整个 `MAW` 目录，不要只复制 `MAW.exe`。`MAWxFF` 包已经把 `ffmpeg.exe` 和 `ffprobe.exe` 放在包内；普通包需要系统 PATH 中已有这两个命令。MAW 运行 CLI 时会自动把随包的 FFmpeg 加入当前进程环境。
+请保留 Release 解压后的整个目录，不要只复制 `MAW.exe`。默认 `MAW` 包已经把 `ffmpeg.exe` 和 `ffprobe.exe` 放在包内；`MAW-lite` 包需要系统 PATH 中已有这两个命令。MAW 运行 CLI 时会自动把随包的 FFmpeg 加入当前进程环境。
 
 ### API Key
 
@@ -339,7 +339,7 @@ if (-not (Test-Path -LiteralPath $mospPath)) {
 
 常见问题：
 
-- `ffmpeg` 或 `ffprobe` 找不到：改用 `MAWxFF` 包，或把 FFmpeg 安装目录加入 PATH。
+- `ffmpeg` 或 `ffprobe` 找不到：改用默认的 `MAW` 包，或把 FFmpeg 安装目录加入 PATH。
 - 报未配置 API Key：检查对应供应商的环境变量名，或检查 `.env` 是否位于 Release 的 `MAW.exe` 同目录。
 - 输出路径包含空格但文件没有生成：检查 PowerShell 命令是否给路径加了双引号。
 - Server 打不开工程媒体：工程里的媒体路径可能已失效，使用 `PROJECT --media PATH` 指定当前媒体。

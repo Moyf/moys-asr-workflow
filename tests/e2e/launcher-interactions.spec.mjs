@@ -29,25 +29,25 @@ test('artifact rows localize type labels while preserving MOSP-first and SRT-onl
   await expect(artifacts.nth(0)).toHaveText('MOSP 工程');
   await expect(artifacts.nth(1)).toHaveText('SRT 字幕');
   await expect(artifacts.nth(0)).toHaveClass(/selected/);
-  await expect(page.locator('#toolboxInputPath')).toHaveValue('D:\\Demo\\source.replace.mosp');
-  await expect(artifacts.nth(0)).toHaveAttribute('title', 'source.replace.mosp\nD:\\Demo\\source.replace.mosp');
-  await expect(artifacts.nth(0)).toHaveAttribute('aria-label', /MOSP 工程.*source\.replace\.mosp.*D:\\Demo\\source\.replace\.mosp/);
+  await expect(page.locator('#toolboxInputPath')).toHaveValue('D:\\Demo\\source.fixed.mosp');
+  await expect(artifacts.nth(0)).toHaveAttribute('title', 'source.fixed.mosp\nD:\\Demo\\source.fixed.mosp');
+  await expect(artifacts.nth(0)).toHaveAttribute('aria-label', /MOSP 工程.*source\.fixed\.mosp.*D:\\Demo\\source\.fixed\.mosp/);
 
   await page.locator('#langToggle').click();
   await expect(artifacts.nth(0)).toHaveText('MOSP project');
   await expect(artifacts.nth(1)).toHaveText('SRT subtitles');
 
   await artifacts.nth(1).click();
-  await expect(page.locator('#toolboxInputPath')).toHaveValue('D:\\Demo\\clip.replace.srt');
-  await expect(page.locator('#jsonPath')).toHaveValue('D:\\Demo\\source.replace.mosp');
-  await expect(page.locator('#srtPath')).toHaveValue('D:\\Demo\\clip.replace.srt');
+  await expect(page.locator('#toolboxInputPath')).toHaveValue('D:\\Demo\\clip.fixed.srt');
+  await expect(page.locator('#jsonPath')).toHaveValue('D:\\Demo\\source.fixed.mosp');
+  await expect(page.locator('#srtPath')).toHaveValue('D:\\Demo\\clip.fixed.srt');
 
   await runReplacement(page, { outputMode: 'srt' });
   const srtOnly = page.locator('.toolbox-chain-item').nth(1).locator('.toolbox-chain-file');
   await expect(srtOnly).toHaveCount(1);
   await expect(srtOnly).toHaveText('SRT subtitles');
   await expect(srtOnly).toHaveClass(/selected/);
-  await expect(page.locator('#toolboxInputPath')).toHaveValue('D:\\Demo\\clip.replace.srt');
+  await expect(page.locator('#toolboxInputPath')).toHaveValue('D:\\Demo\\clip.fixed.srt');
 });
 
 test('artifact context menu exposes exactly three actions and closes on every required path', async ({ page }) => {
@@ -75,15 +75,15 @@ test('artifact context menu exposes exactly three actions and closes on every re
   await expect(menu.getByRole('menuitem').nth(0)).toBeFocused();
   await menu.getByRole('menuitem', { name: 'Set as processing target' }).click();
   await expect(menu).toBeHidden();
-  await expect(page.locator('#toolboxInputPath')).toHaveValue('D:\\Demo\\clip.replace.srt');
+  await expect(page.locator('#toolboxInputPath')).toHaveValue('D:\\Demo\\clip.fixed.srt');
 
   await srt.click({ button: 'right' });
   await menu.getByRole('menuitem', { name: 'Open containing folder' }).click();
   await srt.click({ button: 'right' });
   await menu.getByRole('menuitem', { name: 'Open file', exact: true }).click();
   expect(await page.evaluate(() => window.__artifactCalls)).toEqual([
-    { method: 'open_containing_folder', payload: { path: 'D:\\Demo\\clip.replace.srt' } },
-    { method: 'open_file', payload: { path: 'D:\\Demo\\clip.replace.srt' } },
+    { method: 'open_containing_folder', payload: { path: 'D:\\Demo\\clip.fixed.srt' } },
+    { method: 'open_file', payload: { path: 'D:\\Demo\\clip.fixed.srt' } },
   ]);
 
   await srt.click({ button: 'right' });

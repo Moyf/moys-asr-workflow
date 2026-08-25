@@ -136,14 +136,15 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("if (waveformEditor && !preserveProjectWaveform)", editor)
         self.assertIn("getPayload()", waveform)
 
-    def test_self_waveform_is_the_default_shape_source(self) -> None:
+    def test_reapeaks_waveform_is_the_default_shape_source(self) -> None:
         editor = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
         template = (ROOT / "web" / "editor-template.html").read_text(encoding="utf-8")
         waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
-        self.assertIn("waveShapeSource: 'self'", editor)
-        self.assertIn('<option value="self" selected>自研波形</option>', template)
-        self.assertNotIn('<option value="reapeaks" selected>', template)
-        self.assertIn("shapeSource === 'reapeaks'", waveform)
+        self.assertIn("waveShapeSource: 'reapeaks'", editor)
+        self.assertIn("getWaveShapeSource?.() || 'reapeaks'", waveform)
+        self.assertIn('<option value="reapeaks" selected>ReaPeaks 波形层</option>', template)
+        self.assertNotIn('<option value="self" selected>', template)
+        self.assertIn("useReapeaksShape = shapeSource === 'reapeaks'", waveform)
 
     def test_long_media_waveform_hint_points_to_maw_gui(self) -> None:
         waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")

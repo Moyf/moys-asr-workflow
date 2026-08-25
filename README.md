@@ -15,7 +15,7 @@ MAW 是一个以 API 转写为主的字幕生成与编辑工作流。它提供 W
 
 ## 快速开始
 
-1. [下载最新版](https://github.com/Moyf/moys-asr-workflow/releases/latest)。Windows 没有 FFmpeg 时选择 `MAWxFF-Windows-x64-v*.zip`；已安装 `ffmpeg` / `ffprobe` 时选择体积更小的 `MAW-Windows-x64-v*.zip`，macOS 下载对应的 `MAW.app`。
+1. [下载最新版](https://github.com/Moyf/moys-asr-workflow/releases/latest)。默认下载带 FFmpeg 的 `MAW-Windows-x64-v*.zip`；如果已安装 `ffmpeg` / `ffprobe`，也可以选择体积更小的 `MAW-lite-Windows-x64-v*.zip`，macOS 下载对应的 `MAW.app` 或 `MAW-lite.app`。
 2. 解压并启动 `MAW.exe` 或 `MAW.app`。
 3. 在 Launcher 配置转写服务的 API Key，选择媒体并点击生成。
 4. 在 MAWE 中检查、编辑字幕，导出 SRT 或其他格式。

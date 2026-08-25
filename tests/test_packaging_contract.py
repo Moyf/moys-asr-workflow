@@ -152,6 +152,15 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("onefile=True", spec)
         for bundled_path in ("web", "server-editor", "LICENSE", "THIRD_PARTY_NOTICES.md"):
             self.assertIn(bundled_path, spec)
+        faq_path = ROOT / "FAQ-常见问题.txt"
+        self.assertTrue(faq_path.is_file())
+        faq = faq_path.read_text(encoding="utf-8")
+        self.assertIn("Python.Runtime.Loader.Initialize", faq)
+        self.assertIn("解除锁定", faq)
+        self.assertIn("Bandizip", faq)
+        self.assertIn("MAW-lite", faq)
+        self.assertIn("下载带内置 FFmpeg 的完整版 MAW 包", faq)
+        self.assertIn("FAQ-常见问题.txt", spec)
         for excluded_module in ("funasr", "qwen_asr", "onnxruntime", "PIL", "rapidocr", "torch", "torchaudio"):
             self.assertIn(f'"{excluded_module}"', spec)
         self.assertNotIn('"*.mp4"', spec)
@@ -165,9 +174,15 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("onnxruntime>=1.18", dependencies)
         self.assertNotIn("pillow>=10.0.0", dependencies)
         self.assertNotIn("rapidocr>=3.9.0", dependencies)
+        self.assertNotIn("numpy>=2.2,<2.5", dependencies)
         self.assertEqual(
             ocr_dependencies,
-            {"onnxruntime>=1.18", "pillow>=10.0.0", "rapidocr>=3.9.0"},
+            {
+                "numpy>=2.2,<2.5",
+                "onnxruntime>=1.18",
+                "pillow>=10.0.0",
+                "rapidocr>=3.9.0",
+            },
         )
         lockfile = read_text("uv.lock")
         self.assertIn('ocr = [', lockfile)
@@ -239,18 +254,19 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("tauri.macos.conf.json", macos_workflow)
         self.assertIn("ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085bb9e8f6fe709598ad", macos_workflow)
         self.assertIn("a6640a77d38a6f0527c5b597e599cb36a3427a6931444ed80bc62542421950a1", macos_workflow)
-        self.assertIn("MAWxFF.app/Contents/MacOS/ffmpeg/bin", macos_workflow)
-        self.assertIn("codesign --force --deep --sign - dist/MAWxFF.app", macos_workflow)
+        self.assertIn("MAW.app/Contents/MacOS/ffmpeg/bin", macos_workflow)
+        self.assertIn("codesign --force --deep --sign - dist/MAW.app", macos_workflow)
         self.assertIn("MAW-macOS-arm64-${Version}.zip", macos_workflow)
-        self.assertIn("MAWxFF-macOS-arm64-${Version}.zip", macos_workflow)
+        self.assertIn("MAW-lite-macOS-arm64-${Version}.zip", macos_workflow)
         self.assertIn("scripts/sync_launcher_version.py --write", macos_workflow)
         self.assertIn("scripts/sync_launcher_version.py --check", macos_workflow)
         self.assertIn('StandardStage="build/release/standard"', macos_workflow)
-        self.assertIn('XffStage="build/release/xff"', macos_workflow)
+        self.assertIn('LiteStage="build/release/lite"', macos_workflow)
         self.assertIn('zip -qry "$GITHUB_WORKSPACE/$StandardArchive" MAW.app', macos_workflow)
-        self.assertIn('zip -qry "$GITHUB_WORKSPACE/$XffArchive" MAWxFF.app', macos_workflow)
+        self.assertIn('zip -qry "$GITHUB_WORKSPACE/$LiteArchive" MAW-lite.app', macos_workflow)
+        self.assertIn('FAQ-常见问题.txt', macos_workflow)
         self.assertNotIn("MOSE.app", macos_workflow)
-        self.assertIn("MAWxFF-macOS-arm64-*.zip", macos_workflow)
+        self.assertIn("MAW-lite-macOS-arm64-*.zip", macos_workflow)
         self.assertNotIn(".zip.sha256", macos_workflow)
 
     def test_appimage_build_drops_bundled_cpp_runtime(self) -> None:
@@ -267,6 +283,7 @@ class PackagingContractTests(unittest.TestCase):
         """Given the AppImage build script, When the BtbN GPL ffmpeg build is bundled, Then the GPLv3 license text and a source notice are written into the bundle."""
         script = read_text("scripts/build-appimage.sh")
 
+        self.assertIn('cp "FAQ-常见问题.txt" "dist/MAW/FAQ-常见问题.txt"', script)
         self.assertIn('dist/MAW/ffmpeg/GPLv3.txt', script)
         self.assertIn('dist/MAW/ffmpeg/SOURCE.txt', script)
         self.assertIn('https://www.gnu.org/licenses/gpl-3.0.txt', script)
@@ -281,6 +298,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("uv run --group build pyinstaller", script)
         self.assertIn("MAW.spec", script)
         self.assertIn("dist\\MAW\\MAW.exe", script)
+        self.assertIn("$FaqSource", script)
+        self.assertIn("$FaqBundlePath", script)
         self.assertNotIn("cargo check --manifest-path", script)
         self.assertNotIn("npm run tauri -- build", script)
         self.assertNotIn("desktop", script)
@@ -296,7 +315,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("scripts/sync_launcher_version.py --check", workflow)
 
     def test_release_workflow_is_tag_triggered_and_publishes_both_windows_packages(self) -> None:
-        """Given a v* tag push, When workflow is read, Then it releases standard and MAWxFF builds."""
+        """Given a v* tag push, When workflow is read, Then it releases MAW and MAW-lite builds."""
         workflow = read_text(".github/workflows/release.yml")
 
         self.assertRegex(workflow, re.compile(r"on:\s+push:\s+tags:\s+- 'v\*'", re.MULTILINE))
@@ -325,7 +344,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("ffmpeg.exe", workflow)
         self.assertIn("ffprobe.exe", workflow)
         self.assertNotIn("ffplay.exe", workflow)
-        self.assertIn("MAWxFF-Windows-x64-${{ steps.version.outputs.version }}.zip", workflow)
+        self.assertIn("MAW-Windows-x64-${{ steps.version.outputs.version }}.zip", workflow)
+        self.assertIn("MAW-lite-Windows-x64-${{ steps.version.outputs.version }}.zip", workflow)
         self.assertIn("actions/upload-artifact@v4", workflow)
         self.assertIn("gh release upload", workflow)
         self.assertIn("--target '${{ github.sha }}'", workflow)
@@ -422,7 +442,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("Compress-Archive", workflow)
         self.assertIn("actions/upload-artifact@v4", workflow)
         self.assertIn("retention-days: 14", workflow)
-        self.assertIn("MAW-Windows-x64-pr-", workflow)
+        self.assertIn("MAW-lite-Windows-x64-pr-", workflow)
         self.assertNotIn(".zip.sha256", workflow)
         self.assertIn("persist-credentials: false", workflow)
         self.assertNotIn("MAWxFF", workflow)

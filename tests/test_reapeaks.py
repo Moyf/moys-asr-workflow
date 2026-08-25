@@ -12,17 +12,18 @@ import unittest
 import wave
 from pathlib import Path
 
-from maw import reapeaks, reapeaks_generate, waveform
-
-try:
-    import numpy  # noqa: F401
-    HAS_NUMPY = True
-except ImportError:
-    HAS_NUMPY = False
+from maw import reapeaks, waveform
+import reapeaks as rust_generate
 
 
 # 固定源媒体 mtime，避免测试跨秒边界导致校验结果不确定。
 FIXED_MTIME = 1_700_000_000.0
+
+
+def _read_wav_pcm(path: Path) -> tuple[int, int, bytes]:
+    """Return (sample_rate, channels, interleaved int16 PCM) for a WAV file."""
+    with wave.open(str(path), "rb") as wf:
+        return wf.getframerate(), wf.getnchannels(), wf.readframes(wf.getnframes())
 
 
 def build_reapeaks(path: Path, media_path: Path) -> None:
@@ -202,10 +203,15 @@ class GenerateReaPeaksTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
-    @unittest.skipUnless(HAS_NUMPY, "numpy is required")
     def test_generate_reapeaks_bytes_roundtrip(self) -> None:
-        sr, ch, samples = reapeaks_generate.read_wav_slices(str(self.tone_path))
-        data = reapeaks_generate.generate_reapeaks_bytes(sr, ch, samples)
+        sr, ch, frames = _read_wav_pcm(self.tone_path)
+        streamer = rust_generate.ReapeaksStreamer(
+            sr, ch,
+            features=["wave", "spectral", "loudness"],
+            mipmap_levels=3,
+        )
+        streamer.feed(frames)
+        data = streamer.finish()
         target = self.root / "tone.ReaPeaks"
         target.write_bytes(data)
         parsed = reapeaks.ReaPeaksFile(str(target))
@@ -219,20 +225,24 @@ class GenerateReaPeaksTests(unittest.TestCase):
         wave0 = parsed.wave_mipmaps()[0]
         div = wave0.division_factor
         first = wave0.wave[0][0]
-        self.assertAlmostEqual(first.max, max(samples[0][:div]), delta=1)
-        self.assertAlmostEqual(first.min, min(samples[0][:div]), delta=1)
+        samples = struct.unpack("<%dh" % (len(frames) // 2), frames)
+        self.assertAlmostEqual(first.max, max(samples[:div]), delta=1)
+        self.assertAlmostEqual(first.min, min(samples[:div]), delta=1)
         # 440Hz 纯音的主导频率应落在 300-600Hz
         spec0 = parsed.spectral_mipmaps()[0]
         freq = spec0.spectral[0][0][0]
         self.assertGreater(freq, 300)
         self.assertLess(freq, 600)
 
-    @unittest.skipUnless(HAS_NUMPY, "numpy is required")
     def test_generate_reapeaks_bytes_can_skip_spectral_layer(self) -> None:
-        sr, ch, samples = reapeaks_generate.read_wav_slices(str(self.tone_path))
-        data = reapeaks_generate.generate_reapeaks_bytes(
-            sr, ch, samples, include_spectral=False,
+        sr, ch, frames = _read_wav_pcm(self.tone_path)
+        streamer = rust_generate.ReapeaksStreamer(
+            sr, ch,
+            features=["wave", "loudness"],
+            mipmap_levels=3,
         )
+        streamer.feed(frames)
+        data = streamer.finish()
         target = self.root / "tone-wave-only.ReaPeaks"
         target.write_bytes(data)
 
@@ -241,14 +251,17 @@ class GenerateReaPeaksTests(unittest.TestCase):
         self.assertNotIn("spectral", [m.kind for m in parsed.mipmaps])
         self.assertIsNone(reapeaks.extract_spectral_payload(target, self.tone_path))
 
-    @unittest.skipUnless(HAS_NUMPY, "numpy is required")
     def test_extract_waveform_payload_has_amplitude(self) -> None:
-        sr, ch, samples = reapeaks_generate.read_wav_slices(str(self.tone_path))
-        src = self.tone_path.stat()
-        reapeaks_generate.write_reapeaks(
-            self.root / "tone.wav.ReaPeaks", sr, ch, samples,
-            src_timestamp=int(src.st_mtime), src_filesize=src.st_size,
+        sr, ch, frames = _read_wav_pcm(self.tone_path)
+        streamer = rust_generate.ReapeaksStreamer(
+            sr, ch,
+            features=["wave", "spectral", "loudness"],
+            mipmap_levels=3,
         )
+        streamer.feed(frames)
+        src = self.tone_path.stat()
+        data = streamer.finish(src_timestamp=int(src.st_mtime), src_filesize=src.st_size)
+        (self.root / "tone.wav.ReaPeaks").write_bytes(data)
         payload = reapeaks.load_waveform_payload(self.tone_path)
         self.assertIsNotNone(payload)
         self.assertGreater(payload["peak_count"], 0)
@@ -258,7 +271,6 @@ class GenerateReaPeaksTests(unittest.TestCase):
         self.assertTrue(any(value != 0 for value in vals))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
-    @unittest.skipUnless(HAS_NUMPY, "numpy is required")
     def test_generate_for_media_writes_and_reuses(self) -> None:
         target = self.root / "tone.wav.ReaPeaks"
         self.assertFalse(target.exists())
@@ -275,7 +287,6 @@ class GenerateReaPeaksTests(unittest.TestCase):
         self.assertIsNotNone(payload2)
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
-    @unittest.skipUnless(HAS_NUMPY, "numpy is required")
     def test_generate_for_media_rebuilds_stale_cache(self) -> None:
         # 已有缓存但与当前媒体不匹配（旧媒体残留）时重新生成并覆盖。
         stale = self.root / "tone.wav.ReaPeaks"
@@ -286,7 +297,6 @@ class GenerateReaPeaksTests(unittest.TestCase):
         self.assertIsNotNone(payload)
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
-    @unittest.skipUnless(HAS_NUMPY, "numpy is required")
     def test_generate_for_media_rebuilds_wave_only_cache_when_spectral_is_requested(self) -> None:
         target = self.root / "tone.wav.ReaPeaks"
         reapeaks.generate_for_media(self.tone_path, include_spectral=False)
@@ -296,7 +306,6 @@ class GenerateReaPeaksTests(unittest.TestCase):
         self.assertTrue(reapeaks.ReaPeaksFile(str(target)).spectral_mipmaps())
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
-    @unittest.skipUnless(HAS_NUMPY, "numpy is required")
     def test_generate_for_media_handles_non_wav_media(self) -> None:
         mp3 = self.root / "tone.mp3"
         subprocess_run(["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
