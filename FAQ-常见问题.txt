@@ -1,0 +1,96 @@
+MAW 常见问题（随发布包附带）
+================================
+
+本文件面向从 GitHub Releases 下载 MAW 图形版的用户。
+提交问题前，请先确认版本号和下载的完整压缩包名称。
+
+
+一、Windows 启动时报 Python.Runtime.Loader.Initialize 错误
+------------------------------------------------------------
+
+如果错误信息中出现下面任意内容：
+
+    Python.Runtime.Loader.Initialize
+    Python.Runtime.dll
+
+这通常不是 Python 没有安装，而是 Windows 给下载的 ZIP 添加了“来自 Internet”的安全标记，
+解压后的运行时 DLL 被阻止加载。
+
+推荐处理步骤：
+
+1. 找到最初从 GitHub 下载的 MAW-*.zip，右键 -> 属性。
+2. 在“常规”页勾选“解除锁定”（英文 Windows 为 Unblock），点击“应用”。
+3. 删除或移走旧的解压目录。
+4. 从已经解除锁定的 ZIP 重新解压完整目录，然后启动目录中的 MAW.exe。
+5. 不要只复制 MAW.exe；MAW.exe 旁边的运行时目录和 DLL 必须完整保留。
+
+如果系统自带的解压方式仍然出现同样问题，可以使用 Bandizip 等可靠的解压软件，
+重新解压完整 ZIP；仍建议先解除原始 ZIP 的锁定。
+
+如果解除锁定并重新解压后仍然报错，不要先把现代 .NET Runtime 8/9 当作替代品安装。
+Python.NET 使用 Windows .NET Framework；只有当错误明确指向 Framework 版本且系统版本过旧时，
+才检查是否已安装 .NET Framework 4.8。
+
+
+二、转写时提示“找不到文件”或 `[WinError 2] 系统找不到指定的文件`
+------------------------------------------------------------------
+
+如果日志中出现：
+
+    [媒体] 正在读取原始视频时长...
+    FileNotFoundError: [WinError 2] 系统找不到指定的文件。
+
+而你下载的是 MAW-lite，通常是因为 Lite 包不包含 FFmpeg 和 FFprobe。
+
+如果程序显示“找不到 FFmpeg，请下载完整版 MAW”，请直接下载完整版 MAW，不要下载文件名带 `lite` 的版本。
+请下载带内置 FFmpeg 的完整版 MAW 包，不要下载文件名带 `lite` 的版本。
+如果必须继续使用 MAW-lite，请自行安装 FFmpeg，并确保 `ffmpeg` 与 `ffprobe` 都已加入 PATH，
+然后重新打开 MAW。
+
+
+三、提示找不到 FFmpeg 或 FFprobe
+--------------------------------
+
+MAW 标准包（文件名通常包含 MAW-Windows、MAW-macOS 或 MAW-Linux）内置 FFmpeg。
+MAW-lite 为减小体积不包含 FFmpeg，需要用户自己安装，并确保 ffmpeg 和 ffprobe 都能找到。
+
+Windows：可以改用内置 FFmpeg 的标准 MAW 包，或安装 FFmpeg 后把 bin 目录加入 PATH，
+重新打开 PowerShell 和 MAW。
+
+macOS：从 Finder 启动应用时不一定继承终端 PATH。可在 Launcher 的配置中填写同时包含
+ffmpeg 和 ffprobe 的目录；Apple Silicon Homebrew 常见目录是 /opt/homebrew/bin，
+Intel Homebrew 常见目录是 /usr/local/bin。
+
+
+四、提示未配置 API Key
+----------------------
+
+在 Launcher 的配置中填写对应转写服务商的 API Key，然后重新执行任务。
+不要把真实 API Key 放进工程文件、截图、GitHub Issue 或本 FAQ 文件。
+
+
+五、API 任务超时、上传失败或返回 HTTP 403
+------------------------------------------
+
+先检查网络、API Key、服务商地域和 Workspace ID 是否匹配。
+如果是 Fun-ASR 的 HTTP 403：
+
+- AccessDenied：检查 API Key 是否有目标模型权限，以及 IP 白名单是否允许当前网络。
+- Workspace.AccessDenied 或 WorkSpaceNotFound：确认 API Key、地域和 Workspace ID 属于同一业务空间。
+- AllocationQuota.FreeTierOnly：免费额度可能已经用完，需要调整百炼账户的额度设置。
+
+
+六、如何反馈仍未解决的问题
+----------------------------
+
+请在 GitHub Issue 中提供：
+
+- MAW 版本号和完整下载包名称；
+- Windows/macOS/Linux 版本与 CPU 架构；
+- 从启动到报错的操作步骤；
+- 完整错误信息、终端输出或截图；
+- 是否解除 ZIP 锁定并重新解压，是否尝试过 Bandizip。
+
+提交前请删除 API Key、访问令牌、原始媒体和其他隐私内容；本地路径可以脱敏。
+
+Issue 地址：https://github.com/Moyf/moys-asr-workflow/issues/new

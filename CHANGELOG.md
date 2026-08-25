@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### 🐛 问题修复
+
+- 发布包新增 `FAQ-常见问题.txt`，补充 Windows 解压、Python runtime、Lite 版本与 FFmpeg 的常见问题说明。
+- MAW-lite 缺少 FFmpeg/FFprobe 时显示明确的“找不到 FFmpeg，请下载完整版 MAW”提示，不再只显示模糊的“找不到文件”。
+
 ## [1.5.0-beta.1] - 2026-08-25
 
 ### 🚀 全新特性

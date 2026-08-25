@@ -80,6 +80,14 @@ jobs:
         shell: pwsh
         run: .\scripts\build-windows.ps1 -SkipTests
 
+      - name: Verify bundled FAQ
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path -LiteralPath 'dist\MAW\FAQ-常见问题.txt' -PathType Leaf)) {
+            throw 'Missing dist\MAW\FAQ-常见问题.txt after build.'
+          }
+
       - name: Smoke MAW executable
         shell: pwsh
         run: |
@@ -282,6 +290,14 @@ jobs:
         if: matrix.platform == 'macos'
         run: uv run --group build pyinstaller --noconfirm --clean MAW.spec
 
+      - name: Verify bundled FAQ
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          FaqPath="$(find dist/MAW.app -type f -name 'FAQ-常见问题.txt' -print -quit)"
+          test -n "$FaqPath"
+
       - name: Bundle uv bootstrap for optional runtimes
         if: matrix.platform == 'macos'
         shell: bash
@@ -388,16 +404,20 @@ jobs:
           mkdir -p "$StandardStage" "$LiteStage"
           ditto dist/MAW.app "$StandardStage/MAW.app"
           ditto dist/MAW-lite.app "$LiteStage/MAW-lite.app"
+          cp FAQ-常见问题.txt "$StandardStage/FAQ-常见问题.txt"
+          cp FAQ-常见问题.txt "$LiteStage/FAQ-常见问题.txt"
           (
             cd "$StandardStage"
-            zip -qry "$GITHUB_WORKSPACE/$StandardArchive" MAW.app
+            zip -qry "$GITHUB_WORKSPACE/$StandardArchive" MAW.app FAQ-常见问题.txt
           )
           (
             cd "$LiteStage"
-            zip -qry "$GITHUB_WORKSPACE/$LiteArchive" MAW-lite.app
+            zip -qry "$GITHUB_WORKSPACE/$LiteArchive" MAW-lite.app FAQ-常见问题.txt
           )
           unzip -l "$StandardArchive" | grep -q 'MAW.app/Contents/MacOS/MAW'
           unzip -l "$LiteArchive" | grep -q 'MAW-lite.app/Contents/MacOS/MAW'
+          unzip -l "$StandardArchive" | grep -q 'FAQ-常见问题.txt'
+          unzip -l "$LiteArchive" | grep -q 'FAQ-常见问题.txt'
 
       # ---------- Linux 专属 ----------
 
@@ -438,6 +458,7 @@ jobs:
             echo "FAIL: AppImage 内置了 libstdc++/libgcc_s/libgbm，会污染系统 Mesa 驱动加载"
             exit 1
           fi
+          test -f squashfs-root/FAQ-常见问题.txt
           echo "OK: 未内置 libstdc++/libgcc_s/libgbm"
           rm -r squashfs-root
 
