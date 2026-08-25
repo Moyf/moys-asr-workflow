@@ -120,6 +120,20 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertIn("--debug-raw", command)
         self.assertEqual(raw_response_path(self.srt_path), self.srt_path.with_suffix(".asr-response.json"))
 
+    def test_build_transcribe_command_local_ignores_debug_raw(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="local",
+            model="Qwen/Qwen3-ASR-0.6B",
+            runtime_python="runtime-python",
+            debug_raw=True,
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertNotIn("--debug-raw", command)
+
     def test_build_transcribe_command_qwen_audio_passes_one_shot_context_hotwords_and_vocabulary(self) -> None:
         request = TranscriptionRequest(
             media_path=self.media_path,
@@ -390,7 +404,7 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(env["PATH"].split(os.pathsep)[0], str(ffmpeg_dir))
 
     def test_child_environment_uses_release_root_ffmpeg_in_frozen_mode(self) -> None:
-        app_root = self.root / "MAWxFF"
+        app_root = self.root / "MAW"
         ffmpeg_dir = app_root / "ffmpeg" / "bin"
         ffmpeg_dir.mkdir(parents=True)
         (ffmpeg_dir / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).write_bytes(b"exe")

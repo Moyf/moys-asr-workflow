@@ -21,9 +21,9 @@ from pathlib import Path
 from threading import Event
 from typing import BinaryIO, Final, final
 
-from media_cache import embed_media_caches
-from waveform import is_waveform_payload
-from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, LANGUAGES, MODELS, PROVIDERS, REGIONS, ModelConfig, ProviderConfig, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
+from maw.media_cache import embed_media_caches
+from maw.waveform import is_waveform_payload
+from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, MODELS, PROVIDERS, ModelConfig, ProviderConfig, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
@@ -31,9 +31,10 @@ from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError, install_
 from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
 from maw.media import find_ffmpeg, resolve_project_media
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
+from maw.postprocess_io import read_project, read_srt
 from maw.project import normalize_project
 from maw.postprocess_ffmpeg import FfconcatRequest, run_ffconcat_rebuild as process_ffconcat_rebuild
-from maw.postprocess_match import ScriptMatchRequest, run_script_match as process_script_match
+from maw.postprocess_match import DEFAULT_SPLIT_PUNCTUATION, SCRIPT_EXTENSIONS, ScriptMatchRequest, _match_project, _read_script, prepare_script_text, run_script_match as process_script_match
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
 from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, preset_by_id, test_llm_connection
 from maw.postprocess_pipeline import (
@@ -43,7 +44,6 @@ from maw.postprocess_pipeline import (
     invalidate_llm_verification_if_changed,
     is_llm_verified,
     load_postprocess_plan,
-    postprocess_provider_status,
     run_postprocess_pipeline,
     save_postprocess_plan,
     snapshot_postprocess_llm_settings,
@@ -66,7 +66,7 @@ MOSE_FILE_TYPE = "Moy.MOSE.Project"
 # 工程恢复会同步准备自研波形；大型工程可能需要超过默认的网络探测窗口。
 SERVER_START_TIMEOUT: Final = 30.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.4.0"
+BUNDLED_APP_VERSION = "1.5.0-beta.7"
 MOSE_VERSION = "0.1.0"
 
 
@@ -267,7 +267,7 @@ def _find_mose_executable() -> Path | None:
 
 
 def _mose_environment() -> dict[str, str]:
-    """Pass a bundled MAWxFF directory to MOSE when the two apps are siblings."""
+    """Pass the bundled MAW FFmpeg directory to MOSE when the apps are siblings."""
     environment = os.environ.copy()
     bundled_directory = _bundled_ffmpeg_directory()
     if bundled_directory is not None:
@@ -435,7 +435,8 @@ def download_emoji_font(urls: Sequence[str], dest: Path, timeout: float = 20.0) 
         if not url:
             continue
         try:
-            with urlopen(url, timeout=timeout) as response:  # noqa: S310 - 仅 https 白名单 CDN
+            # URLs are restricted to the HTTPS-only CDN allowlist by the caller.
+            with urlopen(url, timeout=timeout) as response:  # noqa: S310
                 if getattr(response, "status", None) != 200:
                     continue
                 size = 0
@@ -801,6 +802,9 @@ class LauncherApi:
                     script_path=script_path,
                     output_mode=_output_mode(payload.get("outputMode")),
                     media_path=_optional_path(payload.get("mediaPath")),
+                    extra_split_punctuation=tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value)),
+                    preserve_punctuation=tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value)),
+                    match_mode=str(payload.get("matchMode") or "script"),
                 )
             )
             self._emit_postprocess_status("toolbox_status_writing")
@@ -965,6 +969,79 @@ class LauncherApi:
         except (OSError, UnicodeError) as error:
             return _error_result("qwenAudioHotwordsFile", "hotwords_file_missing", str(error))
         return {"ok": True, "path": str(path), "text": text}
+
+    def read_script_preview(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Return a bounded UTF-8 manuscript preview for the Launcher."""
+
+        value = str(payload.get("path") or "").strip()
+        path = Path(value).expanduser()
+        if not value or not path.is_file() or path.suffix.lower() not in SCRIPT_EXTENSIONS:
+            return _error_result("postprocessScriptPath", "script_preview_missing", "文稿文件不存在或格式不支持。")
+        try:
+            text = path.read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeError) as error:
+            return _error_result("postprocessScriptPath", "script_preview_failed", str(error))
+        preview_limit = 240
+        preview = text.replace("\r\n", "\n").replace("\r", "\n")[:preview_limit]
+        return {"ok": True, "path": str(path), "preview": preview, "truncated": len(text) > preview_limit}
+
+    def preview_script_match(self, payload: Mapping[str, object]) -> dict[str, object]:
+        project_path = _optional_path(payload.get("projectPath"))
+        srt_path = _optional_path(payload.get("srtPath"))
+        script_path = _optional_path(payload.get("scriptPath"))
+        if script_path is None or (project_path is None and srt_path is None):
+            return {"ok": False, "preview": "", "errorCode": "missing_source"}
+        try:
+            project = read_project(project_path) if project_path is not None else read_srt(srt_path)
+            _, script_text = _read_script(script_path)
+            match_mode = str(payload.get("matchMode") or "script")
+            extra_split = tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value))
+            preserve = tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value))
+            prepared, _warning = prepare_script_text(
+                script_text,
+                extra_split if match_mode == "script" else (),
+                preserve if match_mode == "script" else (),
+            )
+            matched, warnings = _match_project(
+                project,
+                prepared,
+                DEFAULT_SPLIT_PUNCTUATION | frozenset(extra_split if match_mode == "script" else ()),
+                DEFAULT_SPLIT_PUNCTUATION | frozenset(preserve if match_mode == "script" else ()),
+                match_mode,
+            )
+            segments = matched.get("segments", [])
+            preview = "\n".join(
+                f"{index + 1}. {segment.get('text', '')}"
+                for index, segment in enumerate(segments)
+                if isinstance(segment, dict) and segment.get("text")
+            )
+            match_rate = next(
+                (
+                    int(match.group(1))
+                    for warning in warnings
+                    if (match := re.search(r"文稿匹配度：([0-9]+)%", warning))
+                ),
+                None,
+            )
+            original_segment_count = sum(
+                1 for segment in project.get("segments", ()) if isinstance(segment, dict) and segment.get("text")
+            )
+            matched_segment_count = sum(
+                1 for segment in segments if isinstance(segment, dict) and segment.get("text")
+            )
+            return {
+                "ok": True,
+                "preview": preview,
+                "matchRate": match_rate,
+                "originalSegmentCount": original_segment_count,
+                "matchedSegmentCount": matched_segment_count,
+                "truncated": False,
+            }
+        except ValueError as error:
+            error_code = "match_too_low" if "coverage is too low" in str(error) else "preview_failed"
+            return {"ok": False, "preview": "", "errorCode": error_code}
+        except (OSError, UnicodeError):
+            return {"ok": False, "preview": "", "errorCode": "preview_failed"}
 
     def choose_folder(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         chosen = _folder_dialog()
@@ -1186,7 +1263,7 @@ class LauncherApi:
             "ok": True,
             "outputPath": str(request.srt_path),
             "outputRenamed": output_renamed,
-            "rawPath": str(raw_response_path(request.srt_path)) if request.debug_raw else "",
+            "rawPath": str(raw_response_path(request.srt_path)) if request.debug_raw and request.provider != "local" else "",
         }
 
     def start_batch_transcription(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1275,7 +1352,8 @@ class LauncherApi:
                 ffmpeg_path=_postprocess_ffmpeg(self.paths.env_path),
                 ocr_runtime_root=self._ocr_runtime_status().path,
             )
-        except Exception as error:  # noqa: BROAD_EXCEPT_OK - background GUI boundary must unlock the batch controls.
+        # The background GUI boundary must unlock the batch controls after any failure.
+        except Exception as error:  # noqa: BLE001
             self._emit(
                 {
                     "type": "batch_done",
@@ -1586,7 +1664,8 @@ class LauncherApi:
                 self.worker = None
             self.pump.flush()
             return
-        except Exception as error:  # noqa: BROAD_EXCEPT_OK - pywebview worker boundary reports to JS.
+        # The pywebview worker boundary must report every backend failure to JS.
+        except Exception as error:  # noqa: BLE001
             self._emit({"type": "error", "code": "transcription_failed", "detail": str(error)})
             if self.worker is threading.current_thread():
                 self.worker = None
@@ -1896,7 +1975,8 @@ class LauncherApi:
                 "modelId": model.id,
                 "status": local_model_payload(model, model_path, model_cache_root=model_cache_root) | {"status": status.status},
             })
-        except Exception as error:  # noqa: BROAD_EXCEPT_OK - optional runtime boundary.
+        # Optional runtime setup failures are converted into a user-facing status.
+        except Exception as error:  # noqa: BLE001
             if cancel_event.is_set():
                 self._emit({"type": "localPrepareCancelled", "modelId": model.id})
             else:
@@ -2101,7 +2181,8 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             ffmpeg_path=_postprocess_ffmpeg(env_path),
         )
         if bool(candidate_plan.get("enabled")):
-            if plan_errors:
+            active_auto_steps = enabled_steps(candidate_plan)
+            if plan_errors and active_auto_steps:
                 first_error = plan_errors[0]
                 raise PreflightError(
                     str(first_error.get("field") or "autoPostprocess"),
@@ -2109,7 +2190,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
                     str(first_error.get("message") or "自动后处理配置不完整。"),
                     str(first_error.get("step") or ""),
                 )
-            if enabled_steps(candidate_plan):
+            if active_auto_steps:
                 auto_plan = candidate_plan
                 auto_llm_settings = snapshot_postprocess_llm_settings(env_path, candidate_plan)
     return TranscriptionRequest(

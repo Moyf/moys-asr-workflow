@@ -42,10 +42,10 @@ jobs:
             const updatedAt = new Date(run.updated_at || run.created_at || Date.now());
             const statusTitle = succeeded ? '🔧 Windows PR 打包完成' : '❌ Windows PR 打包失败';
             const statusText = succeeded
-              ? 'Windows 无 FFmpeg 测试包已经生成。'
-              : 'Windows 无 FFmpeg 测试包没有生成，请查看 Actions 日志。';
+               ? 'Windows MAW-lite 测试包已经生成。'
+               : 'Windows MAW-lite 测试包没有生成，请查看 Actions 日志。';
             const linkText = succeeded
-              ? `[下载 Windows 无 FFmpeg 构建产物](${run.html_url})`
+               ? `[下载 Windows MAW-lite 构建产物](${run.html_url})`
               : `[查看 GitHub Actions 日志](${run.html_url})`;
 
             const commentBody = `${marker}

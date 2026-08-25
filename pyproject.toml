@@ -1,17 +1,20 @@
 [project]
 name = "moys-asr-workflow"
-version = "1.4.0"
+version = "1.5.0-beta.7"
 description = "A small cloud ASR API to local subtitle-editor workflow."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "AGPL-3.0-only" }
 dependencies = [
+    "fonttools>=4.55",
     "jieba>=0.42",
     "opencc-python-reimplemented>=0.1.7",
     "pywebview>=6.2.1; sys_platform != 'linux'",
     "pywebview[qt]>=6.2.1; sys_platform == 'linux'",
     "requests>=2.28",
-    "numpy>=2.2,<2.5",
+    # Rust .ReaPeaks 生成内核（MIT/Apache-2.0，独立仓库）；唯一生成路径，
+    # 无 Python 参考实现回退，缺失或版本不符时直接暴露 ImportError。
+    "reapeaks>=0.3.1"
 ]
 
 [project.optional-dependencies]
@@ -34,6 +37,9 @@ local-xpu = [
     "pytorch-triton-xpu",
 ]
 ocr = [
+    # numpy 由 OCR 路径使用（maw/postprocess_ocr 内 lazy import）；.ReaPeaks
+    # 生成已改由 Rust 内核承担，不再依赖 numpy。
+    "numpy>=2.2,<2.5",
     "onnxruntime>=1.18",
     "pillow>=10.0.0",
     "rapidocr>=3.9.0",
@@ -70,7 +76,27 @@ pytorch-triton-xpu = [
   { index = "pytorch-xpu", extra = "local-xpu" },
 ]
 
+[tool.ruff]
+target-version = "py311"
+include = [
+    "*.py",
+    "maw/**/*.py",
+    "scripts/**/*.py",
+    "server-editor/**/*.py",
+]
+extend-exclude = ["tests/**", "website/**", "desktop/**"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# Soniox keeps these names as compatibility exports for existing callers.
+"maw/soniox.py" = ["F401"]
+
 [dependency-groups]
 build = [
     "pyinstaller==6.16.0",
+]
+dev = [
+    "ruff>=0.16.3",
 ]

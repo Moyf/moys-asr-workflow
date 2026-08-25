@@ -28,6 +28,7 @@ from generate_subtitle_qwen_api import (
     LANGUAGE_MAP,
     configure_console_output,
     extract_audio,
+    _run_media_tool,
     generate_srt,
     get_duration_sec,
     parse_duration,
@@ -42,7 +43,7 @@ from maw.soniox import (
     parse_soniox_context_json,
     transcribe,
 )
-from media_cache import embed_media_caches, merge_media_caches
+from maw.media_cache import embed_media_caches, merge_media_caches
 
 
 def _language_hints(raw: str | None) -> list[str]:
@@ -199,7 +200,7 @@ def main():
                 "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
                 "-y", limited_path,
             ]
-            subprocess.run(cmd, check=True, capture_output=True)
+            _run_media_tool(cmd, check=True, capture_output=True)
             audio_path = limited_path
             duration = limit_sec
             lm, ls = divmod(int(limit_sec), 60)

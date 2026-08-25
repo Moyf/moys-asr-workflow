@@ -70,6 +70,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="在 .ReaPeaks 波形缓存中额外生成频谱数据（需要 --with-waveform）",
     )
     parser.add_argument("--no-html", action="store_true", help="不生成便携 HTML 编辑器")
+    parser.add_argument(
+        "--debug-raw", action="store_true",
+        help="兼容 Launcher 的调试选项；本地引擎暂不保存额外的原始响应文件",
+    )
     return parser
 
 

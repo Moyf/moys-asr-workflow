@@ -228,7 +228,7 @@ def embed_waveform(
     """Return a project copy with embedded peaks, or the original project on failure."""
     try:
         payload = extract_waveform(media_path, peaks_per_second=peaks_per_second)
-    except Exception as exc:  # noqa: BROAD_EXCEPT_OK
+    except Exception as exc:  # noqa: BLE001
         return EmbeddedWaveformResult(project=project, error=exc)
     embedded = dict(project)
     embedded["waveform"] = payload

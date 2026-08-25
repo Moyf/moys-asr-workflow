@@ -17,7 +17,7 @@ README.md                     # 新用户的安装和最短路径
 docs/WORKFLOW.md              # 全流程、参数、排错
 JSON_SCHEMA.md                # JSON 工程契约
 generate_subtitle_qwen_api.py # API 转写入口
-edit.py + waveform.py         # 单文件编辑器生成和波形缓存
+edit.py + maw/waveform.py     # 单文件编辑器生成和波形缓存
 server-editor/serve.py        # 推荐的 localhost 编辑器
 web/                          # 所有前端源码
 docs/LOCAL_ASR.md             # 实验性本地 Qwen3-ASR / FunASR CLI

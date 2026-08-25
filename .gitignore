@@ -13,6 +13,10 @@ __pycache__/
 
 # Local media and subtitle outputs
 /examples/
+!/examples/
+/examples/*
+!/examples/preview.html
+!/examples/serve_ograf_preview.py
 *.mp4
 *.mov
 *.mkv

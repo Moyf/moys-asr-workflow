@@ -244,6 +244,19 @@ class BatchRunnerTests(unittest.TestCase):
 
 
 class BatchApiTests(unittest.TestCase):
+    @staticmethod
+    def _blocked_batch_runner(error: Exception | None = None) -> tuple[threading.Event, threading.Event, object]:
+        started = threading.Event()
+        release = threading.Event()
+
+        def run_batch(*_args: object, **_kwargs: object) -> None:
+            started.set()
+            release.wait(timeout=5)
+            if error is not None:
+                raise error
+
+        return started, release, run_batch
+
     def test_choose_file_returns_all_paths_for_multiple(self) -> None:
         api = LauncherApi(paths=LauncherPaths(Path("."), Path(".env"), Path("launcher.html")), window_getter=lambda: None)
         with mock.patch("maw.gui_web._file_dialog", return_value=("a.mp3", "b.mp3")):
@@ -274,11 +287,15 @@ class BatchApiTests(unittest.TestCase):
             media = root / "clip.mp3"
             media.write_bytes(b"media")
             api = LauncherApi(paths=LauncherPaths(root, root / ".env", root / "launcher.html"), window_getter=lambda: None)
-            with mock.patch("maw.gui_web.run_batch") as run_batch:
+            started, release, runner = self._blocked_batch_runner()
+            with mock.patch("maw.gui_web.run_batch", side_effect=runner) as run_batch:
                 result = api.start_batch_transcription({"items": [{"id": "a", "mediaPath": str(media)}], "apiKey": "secret"})
                 self.assertTrue(result["ok"])
+                self.assertTrue(started.wait(timeout=5))
                 worker = api.batch_worker
                 self.assertIsNotNone(worker)
+                release.set()
+                assert worker is not None
                 worker.join(timeout=5)
                 items = run_batch.call_args.args[0]
                 self.assertEqual(items[0].request.srt_path, root / "clip.qwen-audio.srt")
@@ -290,14 +307,18 @@ class BatchApiTests(unittest.TestCase):
             media = root / "clip.mp3"
             media.write_bytes(b"media")
             api = LauncherApi(paths=LauncherPaths(root, root / ".env", root / "launcher.html"), window_getter=lambda: None)
-            with mock.patch("maw.gui_web.run_batch") as run_batch:
+            started, release, runner = self._blocked_batch_runner()
+            with mock.patch("maw.gui_web.run_batch", side_effect=runner) as run_batch:
                 result = api.start_batch_transcription({
                     "items": [{"id": "a", "mediaPath": str(media)}],
                     "settings": {"apiKey": "secret", "batchSrtOnly": True},
                 })
                 self.assertTrue(result["ok"])
+                self.assertTrue(started.wait(timeout=5))
                 worker = api.batch_worker
                 self.assertIsNotNone(worker)
+                release.set()
+                assert worker is not None
                 worker.join(timeout=5)
                 request = run_batch.call_args.args[0][0].request
                 self.assertTrue(request.srt_only)
@@ -341,11 +362,15 @@ class BatchApiTests(unittest.TestCase):
             media = root / "clip.mp3"
             media.write_bytes(b"media")
             api = LauncherApi(paths=LauncherPaths(root, root / ".env", root / "launcher.html"), window_getter=lambda: None)
-            with mock.patch.object(api, "_emit") as emit, mock.patch("maw.gui_web.run_batch", side_effect=RuntimeError("worker exploded")):
+            started, release, runner = self._blocked_batch_runner(RuntimeError("worker exploded"))
+            with mock.patch.object(api, "_emit") as emit, mock.patch("maw.gui_web.run_batch", side_effect=runner):
                 result = api.start_batch_transcription({"items": [{"id": "a", "mediaPath": str(media), "srtPath": str(root / "clip.srt")}], "apiKey": "secret"})
                 self.assertTrue(result["ok"])
+                self.assertTrue(started.wait(timeout=5))
                 worker = api.batch_worker
                 self.assertIsNotNone(worker)
+                release.set()
+                assert worker is not None
                 worker.join(timeout=5)
                 self.assertIsNone(api.batch_worker)
                 self.assertTrue(any(call.args[0].get("type") == "batch_done" and call.args[0].get("status") == "failed" and "worker exploded" in str(call.args[0].get("error")) for call in emit.call_args_list))

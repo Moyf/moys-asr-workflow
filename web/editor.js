@@ -6,14 +6,53 @@ let STICKER_URL_PREFIX = __STICKER_URL_PREFIX_JSON__;
 const SERVER_CONFIG = __SERVER_CONFIG_JSON__;
 const NINJA_SFX_BASE_URL = __NINJA_SFX_BASE_URL_JSON__;
 
+const MAWE_DEBUG_ENABLED = Boolean(
+  SERVER_CONFIG?.debug || new URLSearchParams(window.location.search).has('mawe-debug'),
+);
+function maweDebug(stage, details = {}) {
+  if (MAWE_DEBUG_ENABLED) console.debug(`[MAWE][${stage}]`, details);
+}
+function maweDomContractCheck() {
+  const requiredIds = [
+    'player', 'player-empty', 'cues-container', 'cues-empty', 'filter-over',
+    'hide-disabled-toggle', 'waveform-scroll', 'waveform-content',
+  ];
+  const missing = requiredIds.filter((id) => !document.getElementById(id));
+  if (missing.length) {
+    console.error('[MAWE][boot] editor DOM contract is incomplete', { missing });
+  }
+  maweDebug('boot:dom-contract', { checked: requiredIds.length, missing });
+  return missing;
+}
+window.addEventListener('error', (event) => {
+  const details = {
+    message: event.message,
+    source: event.filename,
+    line: event.lineno,
+    column: event.colno,
+    stack: event.error?.stack || null,
+  };
+  window.MAWE_DEBUG_ERRORS = [...(window.MAWE_DEBUG_ERRORS || []), details];
+  console.error('[MAWE][runtime] uncaught error', details);
+});
+window.addEventListener('unhandledrejection', (event) => {
+  window.MAWE_DEBUG_ERRORS = [...(window.MAWE_DEBUG_ERRORS || []), {
+    message: String(event.reason), stack: event.reason?.stack || null,
+  }];
+  console.error('[MAWE][runtime] unhandled rejection', event.reason);
+});
+if (!window.AsrEditorUtils) {
+  console.error('[MAWE][boot] AsrEditorUtils is unavailable; editor scripts are incomplete or out of order');
+}
+
 const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
+const EDITOR_SETTINGS_UTILS = window.AsrEditorUtils;
 const MULTI_SUBTITLE_TOLERANCE_MS = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_TOLERANCE_MS || 300;
 const MULTI_SUBTITLE_MERGE_OVERLAP_TOLERANCE_MS = 500;
-const MULTI_SUBTITLE_ROW_HEIGHT_PRESETS = [64, 80, 96, 120, 144, 168];
-const DEFAULT_MULTI_SUBTITLE_ROW_HEIGHT = 168;
 const SUBTITLE_MIN_DURATION_MS = 100;
 const MULTI_SUBTITLE_IMPORT_PROMPT = '是否选择导入第二条字幕以开启多重字幕模式？';
 const MULTI_SUBTITLE_TOGGLE_TITLE = '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。';
+maweDomContractCheck();
 let normalizedMultiSubtitleReference = null;
 let pendingSrtImportAsExtension = false;
 
@@ -159,12 +198,6 @@ function markMainSegmentsDirty(segments = DATA.segments) {
   (Array.isArray(segments) ? segments : []).forEach((segment) => {
     if (segment) segment._dirty = true;
   });
-}
-
-function normalizeMultiSubtitleRowHeight(value) {
-  const next = Number(value);
-  return MULTI_SUBTITLE_ROW_HEIGHT_PRESETS.includes(next)
-    ? next : DEFAULT_MULTI_SUBTITLE_ROW_HEIGHT;
 }
 
 function syncBindingOffsets() {
@@ -518,10 +551,7 @@ function constrainBoundExtensionPanelEdit(extension, track, oldStart, oldEnd) {
 
 normalizeMultiSubtitleState();
 const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';
-const CLICK_BEHAVIOR_VALUES = new Set(['select-only', 'select-and-seek', 'select-and-play']);
-const CLICK_TARGET_VALUES = new Set(['cue-start', 'pointer']);
-const JKL_PLAYBACK_MODE_VALUES = new Set(['speed', 'direction']);
-const DEFAULT_JKL_PLAYBACK_MODE = 'direction';
+const GAP_REMOVE_SCHEMA = 'moy.asr.gap_remove.v1';
 const MEDIA_SEEK_STEP_MIN_MS = 10;
 const MEDIA_SEEK_STEP_MAX_MS = 60000;
 const MEDIA_SEEK_STEP_FINE_THRESHOLD_MS = 100;
@@ -531,19 +561,6 @@ const DEFAULT_MEDIA_SEEK_STEP_MS = 1000;
 const CUE_MOVE_STEP_MIN_MS = 10;
 const CUE_MOVE_STEP_MAX_MS = 2000;
 const DEFAULT_CUE_MOVE_STEP_MS = 50;
-function normalizeClickBehavior(value) {
-  return CLICK_BEHAVIOR_VALUES.has(value) ? value : 'select-and-seek';
-}
-function normalizeClickTarget(value) {
-  return CLICK_TARGET_VALUES.has(value) ? value : 'pointer';
-}
-function normalizeKeyboardOperationReferenceMode(value) {
-  return value === 'playhead' ? 'playhead' : 'pointer';
-}
-function normalizeJklPlaybackMode(value) {
-  return JKL_PLAYBACK_MODE_VALUES.has(value) ? value : DEFAULT_JKL_PLAYBACK_MODE;
-}
-
 function clampMediaSeekStepMs(value) {
   const rounded = Math.round(Number(value));
   return Math.min(
@@ -607,7 +624,7 @@ const DEFAULT_EDITOR_SETTINGS = {
   // 多重字幕开启时，拓展字幕预览默认自动显示。
   extensionOverlayEnabled: true,
   // 多重字幕开启时使用的波形行高度；关闭多重字幕后恢复「配置」中的高度。
-  multiSubtitleRowHeight: DEFAULT_MULTI_SUBTITLE_ROW_HEIGHT,
+  multiSubtitleRowHeight: 168,
   exportStartAtZero: false,
   cueListShowIndex: true,
   cueListShowTime: true,
@@ -654,7 +671,7 @@ const DEFAULT_EDITOR_SETTINGS = {
   clickTarget: 'pointer',
   keyboardOperationReference: 'pointer',
   // J/K/L 播放控制：direction 为倒放/停止/正放，speed 保留旧的慢速/重置/倍速行为。
-  jklPlaybackMode: DEFAULT_JKL_PLAYBACK_MODE,
+  jklPlaybackMode: 'direction',
   // 媒体控制按钮与无选中字幕时左右方向键的跳转幅度。
   mediaSeekStepMs: DEFAULT_MEDIA_SEEK_STEP_MS,
   // 选中字幕后用方向键 / A-D 微调时间的幅度。
@@ -683,8 +700,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   multiSubtitleShowTrackBadges: false,
   // 界面主题：dark（默认）/ light。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
   theme: 'dark',
-  // 波形形状来源：self（默认，自研 1000Hz 重采样缓存）/ reapeaks（.ReaPeaks 最细 wave 层）。
-  waveShapeSource: 'self',
+  // 波形形状来源：reapeaks（默认，有 .ReaPeaks 缓存时用其最细 wave 层，缺数据自动回退自研）/ self（自研 1000Hz 重采样缓存）。
+  waveShapeSource: 'reapeaks',
 };
 const SUBTITLE_FONT_SIZE_MIN = 12;
 const SUBTITLE_FONT_SIZE_MAX = 96;
@@ -706,97 +723,39 @@ const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
 });
 
 function readEditorSettings() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || '{}');
-    const legacySeekStepSeconds = Number(saved.mediaSeekStepSeconds);
-    const savedMediaSeekStepMs = saved.mediaSeekStepMs !== undefined
-      ? saved.mediaSeekStepMs
-      : Number.isFinite(legacySeekStepSeconds) ? legacySeekStepSeconds * 1000 : undefined;
-    return {
-      splitKey: saved.splitKey === 'ctrl-enter' ? 'ctrl-enter' : DEFAULT_EDITOR_SETTINGS.splitKey,
-      splitUseWordTimestamps: saved.splitUseWordTimestamps !== false,
-      splitAutoSubmit: saved.splitAutoSubmit !== false,
-      overlayEnabled: saved.overlayEnabled !== false,
-      extensionOverlayEnabled: saved.extensionOverlayEnabled !== false,
-      multiSubtitleRowHeight: normalizeMultiSubtitleRowHeight(saved.multiSubtitleRowHeight),
-      exportStartAtZero: saved.exportStartAtZero === true,
-      cueListShowIndex: saved.cueListShowIndex !== false,
-      cueListShowTime: saved.cueListShowTime !== false,
-      cueListShowSticker: saved.cueListShowSticker !== false,
-      cueListShowCharcount: saved.cueListShowCharcount !== false,
-      cueListAutoScrollOnClick: saved.cueListAutoScrollOnClick !== false,
-      cueListKeepSplitVisible: saved.cueListKeepSplitVisible !== false,
-      cueListHideDisabled: saved.cueListHideDisabled === true,
-      cueListCharcountThreshold: clampCharcountThreshold(saved.cueListCharcountThreshold),
-      cueEditorShowNavigation: saved.cueEditorShowNavigation === true,
-      cueEditorShowTimeActions: saved.cueEditorShowTimeActions === true,
-      cueEditorShowSticker: saved.cueEditorShowSticker === true,
-      cueEditorCancelOnEscape: saved.cueEditorCancelOnEscape === true,
-      selectGroupMembers: saved.selectGroupMembers === true,
-      mergeJoinText: typeof saved.mergeJoinText === 'string' ? saved.mergeJoinText : DEFAULT_EDITOR_SETTINGS.mergeJoinText,
-      autoMergeGapMs: clampAutoMergeGapMs(saved.autoMergeGapMs),
-      autoMergeSnapDirection: saved.autoMergeSnapDirection === 'forward' ? 'forward' : 'backward',
-      autoMergeShortCount: clampAutoMergeShortCount(saved.autoMergeShortCount),
-      autoMergeAbsorbShort: saved.autoMergeAbsorbShort !== false,
-      autoMergeAbsorbDirection: saved.autoMergeAbsorbDirection === 'next' ? 'next' : 'previous',
-      exportColorUnified: saved.exportColorUnified !== false,
-      autoSaveProject: saved.autoSaveProject !== false,
-      autoSaveIntervalSeconds: clampAutoSaveInterval(saved.autoSaveIntervalSeconds),
-      stickerOverlayEnabled: saved.stickerOverlayEnabled === true,
-      stickerOtioExportMode: saved.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
-      clickBehavior: normalizeClickBehavior(saved.clickBehavior),
-      clickTarget: normalizeClickTarget(saved.clickTarget),
-      keyboardOperationReference: normalizeKeyboardOperationReferenceMode(saved.keyboardOperationReference),
-      jklPlaybackMode: normalizeJklPlaybackMode(saved.jklPlaybackMode),
-      mediaSeekStepMs: clampMediaSeekStepMs(savedMediaSeekStepMs),
-      cueMoveStepMs: clampCueMoveStepMs(saved.cueMoveStepMs),
-      hoverSeekPreview: saved.hoverSeekPreview === true,
-      autoSnapAdjacentCues: saved.autoSnapAdjacentCues !== false,
-      ninjaMode: saved.ninjaMode === true,
-      ninjaSound: saved.ninjaSound !== false,
-      ninjaSlashEffect: saved.ninjaSlashEffect !== false,
-      ninjaSlashLengthPercent: clampNinjaSlashLength(saved.ninjaSlashLengthPercent),
-      ninjaSlashRotateAmplitude: clampNinjaSlashRotateAmplitude(saved.ninjaSlashRotateAmplitude),
-      crossTrackSnap: saved.crossTrackSnap !== false,
-      selectBoundSubtitlePair: saved.selectBoundSubtitlePair !== false,
-      multiSubtitleAutoSyncDuration: saved.multiSubtitleAutoSyncDuration !== false,
-      multiSubtitleShowTrackBadges: saved.multiSubtitleShowTrackBadges === true,
-      theme: saved.theme === 'light' ? 'light' : 'dark',
-      waveShapeSource: saved.waveShapeSource === 'self' ? 'self' : 'reapeaks',
-    };
-  } catch (_) {
-    return { ...DEFAULT_EDITOR_SETTINGS };
-  }
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || '{}'); } catch (_) { /* invalid storage */ }
+  return EDITOR_SETTINGS_UTILS.normalizeEditorSettings({
+    ...saved,
+    cueListAutoScrollOnClick: saved.cueListAutoScrollOnClick !== false,
+    cueListShowIndex: saved.cueListShowIndex !== false,
+    cueListShowTime: saved.cueListShowTime !== false,
+    cueListShowSticker: saved.cueListShowSticker !== false,
+    cueListShowCharcount: saved.cueListShowCharcount !== false,
+    cueEditorShowTimeActions: saved.cueEditorShowTimeActions === true,
+    cueEditorShowNavigation: saved.cueEditorShowNavigation === true,
+    cueEditorShowSticker: saved.cueEditorShowSticker === true,
+    cueEditorCancelOnEscape: saved.cueEditorCancelOnEscape === true,
+    autoSnapAdjacentCues: saved.autoSnapAdjacentCues !== false,
+    stickerOtioExportMode: saved.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
+  });
 }
 
-function clampAutoSaveInterval(value) {
-  const seconds = Math.round(Number(value));
-  return Math.min(3600, Math.max(5, Number.isFinite(seconds) ? seconds : 30));
-}
-
-function clampCharcountThreshold(value) {
-  const threshold = Math.round(Number(value));
-  return Math.min(200, Math.max(1, Number.isFinite(threshold) ? threshold : 16));
-}
-
-function clampNinjaSlashLength(value) {
-  const percent = Math.round(Number(value));
-  return Math.min(400, Math.max(20, Number.isFinite(percent) ? percent : 80));
-}
-
-function clampNinjaSlashRotateAmplitude(value) {
-  const degrees = Math.round(Number(value));
-  return Math.min(60, Math.max(0, Number.isFinite(degrees) ? degrees : 6));
-}
-
-function clampAutoMergeGapMs(value) {
-  const ms = Math.round(Number(value));  return Math.min(10000, Math.max(0, Number.isFinite(ms) ? ms : DEFAULT_EDITOR_SETTINGS.autoMergeGapMs));
-}
-
-function clampAutoMergeShortCount(value) {
-  const count = Math.round(Number(value));
-  return Math.min(20, Math.max(1, Number.isFinite(count) ? count : DEFAULT_EDITOR_SETTINGS.autoMergeShortCount));
-}
+const normalizeMultiSubtitleRowHeight = EDITOR_SETTINGS_UTILS.normalizeMultiSubtitleRowHeight;
+const normalizeClickBehavior = EDITOR_SETTINGS_UTILS.normalizeClickBehavior;
+const normalizeClickTarget = EDITOR_SETTINGS_UTILS.normalizeClickTarget;
+const normalizeKeyboardOperationReferenceMode = EDITOR_SETTINGS_UTILS.normalizeKeyboardOperationReferenceMode;
+const normalizeJklPlaybackMode = EDITOR_SETTINGS_UTILS.normalizeJklPlaybackMode;
+const clampAutoSaveInterval = EDITOR_SETTINGS_UTILS.clampAutoSaveInterval;
+const clampCharcountThreshold = EDITOR_SETTINGS_UTILS.clampCharcountThreshold;
+const clampNinjaSlashLength = EDITOR_SETTINGS_UTILS.clampNinjaSlashLength;
+const clampNinjaSlashRotateAmplitude = EDITOR_SETTINGS_UTILS.clampNinjaSlashRotateAmplitude;
+const clampAutoMergeGapMs = EDITOR_SETTINGS_UTILS.clampAutoMergeGapMs;
+const clampAutoMergeShortCount = EDITOR_SETTINGS_UTILS.clampAutoMergeShortCount;
+const clampGapRemoveMinimum = (value) => Math.min(60000, Math.max(100, Math.round(Number(value)) || 500));
+const clampGapRemoveThreshold = (value) => Math.min(0, Math.max(-96, Number.isFinite(Number(value)) ? Number(value) : -24));
+const clampGapRemoveHysteresis = (value) => Math.min(30, Math.max(0, Number.isFinite(Number(value)) ? Number(value) : 2));
+const clampGapRemoveLeadMs = (value, fallback) => Math.min(2000, Math.max(0, Math.round(Number(value)) || fallback));
 
 function saveEditorSettings(settings) {
   try {
@@ -820,8 +779,6 @@ const COLOR_PALETTE = [
 const COLOR_BY_NAME = Object.fromEntries(COLOR_PALETTE.map(c => [c.name, c]));
 function colorValue(name) { return COLOR_BY_NAME[name]?.value || '#777'; }
 
-const GAP_REMOVE_SCHEMA = 'moy.asr.gap_remove.v1';
-const GAP_REMOVE_OPERATION_MODES = new Set(['none', 'boundary_drag', 'middle_drag']);
 const DEFAULT_GAP_REMOVE_MIN_MS = 500;
 const DEFAULT_GAP_REMOVE_THRESHOLD_DB = -24;
 const DEFAULT_GAP_REMOVE_HYSTERESIS_DB = 2;
@@ -830,44 +787,7 @@ const DEFAULT_GAP_REMOVE_LEAD_OUT_MS = 80;
 const DEFAULT_GAP_REMOVE_OPERATION_MODE = 'boundary_drag';
 const GAP_REMOVE_ADVANCED_OPEN_KEY = 'moy.asr.gap_remove.advanced_open.v1';
 
-function clampGapRemoveMinimum(value) {
-  const rounded = Math.round(Number(value));
-  return Math.min(60000, Math.max(100, Number.isFinite(rounded) ? rounded : DEFAULT_GAP_REMOVE_MIN_MS));
-}
-
-function clampGapRemoveThreshold(value) {
-  const numeric = Number(value);
-  return Math.min(0, Math.max(-96, Number.isFinite(numeric) ? numeric : DEFAULT_GAP_REMOVE_THRESHOLD_DB));
-}
-
-function clampGapRemoveHysteresis(value) {
-  const numeric = Number(value);
-  return Math.min(30, Math.max(0, Number.isFinite(numeric) ? numeric : DEFAULT_GAP_REMOVE_HYSTERESIS_DB));
-}
-
-function clampGapRemoveLeadMs(value, fallback) {
-  const rounded = Math.round(Number(value));
-  return Math.min(2000, Math.max(0, Number.isFinite(rounded) ? rounded : fallback));
-}
-
-function normalizedGapRemoveData(value) {
-  const source = value && typeof value === 'object' ? value : {};
-  const gaps = window.AsrEditorUtils.normalizeGapRemoveGaps(source.gaps);
-  return {
-    schema: GAP_REMOVE_SCHEMA,
-    detector: source.detector === 'audio_gate' || !gaps.length ? 'audio_gate' : 'legacy_subtitle_gap',
-    minimum_ms: clampGapRemoveMinimum(source.minimum_ms),
-    threshold_db: clampGapRemoveThreshold(source.threshold_db),
-    hysteresis_db: clampGapRemoveHysteresis(source.hysteresis_db),
-    lead_in_ms: clampGapRemoveLeadMs(source.lead_in_ms, DEFAULT_GAP_REMOVE_LEAD_IN_MS),
-    lead_out_ms: clampGapRemoveLeadMs(source.lead_out_ms, DEFAULT_GAP_REMOVE_LEAD_OUT_MS),
-    skip_playback: source.skip_playback !== false,
-    manual_corrections: source.manual_corrections === true,
-    operation_mode: GAP_REMOVE_OPERATION_MODES.has(source.operation_mode)
-      ? source.operation_mode : DEFAULT_GAP_REMOVE_OPERATION_MODE,
-    gaps,
-  };
-}
+const normalizedGapRemoveData = EDITOR_SETTINGS_UTILS.normalizeGapRemoveData;
 
 let normalizedGapRemoveReference = null;
 let normalizedGapRemoveCache = null;
@@ -942,10 +862,7 @@ let gapRemoveDirty = false;
 function snapshotSegments() {
   // _dirty 也保留，恢复后能再次导出"工程文件"时正确标记；多字幕数据与主轨
   // 必须处于同一条记录中，绑定/成对删除/联动拆分才能原子撤销。
-  return JSON.parse(JSON.stringify({
-    segments: DATA.segments,
-    multi_subtitle: getMultiSubtitleState(),
-  }));
+  return EDITOR_SETTINGS_UTILS.buildSegmentsHistorySnapshot(DATA.segments, getMultiSubtitleState());
 }
 function snapshotEditorSelection() {
   const extensionTrack = getActiveExtensionTrack();
@@ -969,32 +886,27 @@ function snapshotEditorSelection() {
   };
 }
 function pushUndo(label, { captureView = false } = {}) {
-  const record = {
-    kind: 'segments',
-    label: label || '编辑',
-    segs: snapshotSegments(),
-    view: captureView ? snapshotEditorSelection() : null,
-  };
+  const record = EDITOR_SETTINGS_UTILS.buildHistoryRecord(
+    'segments', label, snapshotSegments(), captureView ? snapshotEditorSelection() : null,
+  );
   editorHistory.push(record);
   updateUndoRedoButtons();
   return record;
 }
 function pushLayoutUndo(label, snapshot) {
   if (!snapshot) return;
-  editorHistory.push({ kind: 'layout', label: label || '调整工作区', layout: snapshot });
+  editorHistory.push(EDITOR_SETTINGS_UTILS.buildHistoryRecord('layout', label, snapshot));
   updateUndoRedoButtons();
 }
 function pushGapRemoveUndo(label) {
-  editorHistory.push({
-    kind: 'gap_remove',
-    label: label || '空隙移除',
-    gapRemove: DATA.gap_remove ? JSON.parse(JSON.stringify(DATA.gap_remove)) : null,
+  editorHistory.push(EDITOR_SETTINGS_UTILS.buildHistoryRecord('gap_remove', label, {
+    gapRemove: DATA.gap_remove,
     gapRemoveDirty,
-  });
+  }));
   updateUndoRedoButtons();
 }
 function pushPreviewUndo(label, preview) {
-  editorHistory.push({ kind: 'preview', label: label || '预览', preview });
+  editorHistory.push(EDITOR_SETTINGS_UTILS.buildHistoryRecord('preview', label, preview));
   updateUndoRedoButtons();
 }
 function snapshotPreviewState() {
@@ -1023,21 +935,22 @@ function applyPreviewState(state) {
 // 按记录 kind 拍下当前状态，作为对端栈的镜像（label 沿用原记录）
 function snapshotCurrentForKind(kind, label, sourceRecord = null) {
   if (kind === 'layout') {
-    return { kind: 'layout', label: label || '调整工作区', layout: waveformEditor?.getLayoutHistorySnapshot?.() || null };
+    return EDITOR_SETTINGS_UTILS.buildHistoryRecord(
+      'layout', label, waveformEditor?.getLayoutHistorySnapshot?.() || null,
+    );
   }
   if (kind === 'gap_remove') {
-    return {
-      kind: 'gap_remove', label: label || '空隙移除',
-      gapRemove: DATA.gap_remove ? JSON.parse(JSON.stringify(DATA.gap_remove)) : null,
+    return EDITOR_SETTINGS_UTILS.buildHistoryRecord('gap_remove', label, {
+      gapRemove: DATA.gap_remove,
       gapRemoveDirty,
-    };
+    });
   }
   if (kind === 'preview') {
-    return { kind: 'preview', label: label || '预览', preview: snapshotPreviewState() };
+    return EDITOR_SETTINGS_UTILS.buildHistoryRecord('preview', label, snapshotPreviewState());
   }
-  const snapshot = { kind: 'segments', label: label || '编辑', segs: snapshotSegments() };
-  if (sourceRecord?.view) snapshot.view = snapshotEditorSelection();
-  return snapshot;
+  return EDITOR_SETTINGS_UTILS.buildHistoryRecord(
+    'segments', label, snapshotSegments(), sourceRecord?.view ? snapshotEditorSelection() : null,
+  );
 }
 function restoreEditorSelection(snapshot) {
   if (!snapshot) return;
@@ -1290,6 +1203,19 @@ const fcp7ExportSubtitleTracks = document.getElementById('fcp7-export-subtitle-t
 const fcp7ExportNativeText = document.getElementById('fcp7-export-native-text');
 const fcp7ExportCancel = document.getElementById('fcp7-export-cancel');
 const fcp7ExportConfirm = document.getElementById('fcp7-export-confirm');
+const lottieExportModal = document.getElementById('lottie-export-modal');
+const lottieExportTrack = document.getElementById('lottie-export-track');
+const lottieExportResolution = document.getElementById('lottie-export-resolution');
+const lottieExportFps = document.getElementById('lottie-export-fps');
+const lottieExportRenderMode = document.getElementById('lottie-export-render-mode');
+const lottieExportCancel = document.getElementById('lottie-export-cancel');
+const lottieExportConfirm = document.getElementById('lottie-export-confirm');
+const ografExportModal = document.getElementById('ograf-export-modal');
+const ografExportTrack = document.getElementById('ograf-export-track');
+const ografExportResolution = document.getElementById('ograf-export-resolution');
+const ografExportFps = document.getElementById('ograf-export-fps');
+const ografExportCancel = document.getElementById('ograf-export-cancel');
+const ografExportConfirm = document.getElementById('ograf-export-confirm');
 const ctxmenu = document.getElementById('ctxmenu');
 const cuePanel = document.getElementById('current-cue-panel');
 const cuePanelPrev = document.getElementById('cue-panel-prev');
@@ -2315,7 +2241,7 @@ cueListCharcountThresholdInput?.addEventListener('change', () => {
 bindCueEditorDisplayToggle(cueEditorShowNavigationToggle, 'cueEditorShowNavigation');
 bindCueEditorDisplayToggle(cueEditorShowTimeActionsToggle, 'cueEditorShowTimeActions');
 bindCueEditorDisplayToggle(cueEditorShowStickerToggle, 'cueEditorShowSticker');
-exportStartAtZeroToggle.addEventListener('change', () => {
+exportStartAtZeroToggle?.addEventListener('change', () => {
   updateEditorSettings({ exportStartAtZero: exportStartAtZeroToggle.checked });
 });
 selectGroupMembersToggle?.addEventListener('change', () => {
@@ -3069,7 +2995,7 @@ gapRemoveClearAllButton?.addEventListener('click', clearAllGaps);
 gapRemoveCloseButton?.addEventListener('click', closeGapRemovePanel);
 gapRemoveOperationMode?.addEventListener('change', () => {
   const state = getGapRemoveData(true);
-  const nextMode = GAP_REMOVE_OPERATION_MODES.has(gapRemoveOperationMode.value)
+  const nextMode = ['none', 'boundary_drag', 'middle_drag'].includes(gapRemoveOperationMode.value)
     ? gapRemoveOperationMode.value : DEFAULT_GAP_REMOVE_OPERATION_MODE;
   if (state.operation_mode === nextMode) return;
   pushGapRemoveUndo('切换空隙操作方式');
@@ -4608,7 +4534,7 @@ searchEl.addEventListener('input', () => {
   clearTimeout(searchDebounce);
   searchDebounce = setTimeout(() => applySearch(searchEl.value), 100);
 });
-document.getElementById('search-clear').addEventListener('click', () => {
+document.getElementById('search-clear')?.addEventListener('click', () => {
   searchEl.value = '';
   refreshSearchClearVisibility();
   applySearch('');
@@ -6288,7 +6214,10 @@ function confirmLinkedSplit() {
   flashHint('已按同一绝对时间切点联动拆分', 'success');
 }
 
-function splitAtCursor(feedbackPoint = null, { listFeedback = true } = {}) {
+function splitAtCursor(
+  feedbackPoint = null,
+  { listFeedback = true, cueListAnchor: suppliedCueListAnchor = null } = {},
+) {
   if (!editingState) return false;
   const force = editingState.forceSplitArmed === true;
   const { el, idx, textEl } = editingState;
@@ -6414,6 +6343,14 @@ function splitAtCursor(feedbackPoint = null, { listFeedback = true } = {}) {
     _dirty: true,
   };
 
+  // renderAll() 会重建整张字幕列表。content-visibility 会在重建后先用估算
+  // 行高占位，再为视口附近的行回填真实高度；只保存 scrollTop 无法阻止
+  // 当前字幕被累计行高误差顶走。列表来源的拆分因此保存原行的屏幕位置，
+  // 重绘后再用左半段恢复这个视觉锚点。
+  const cueListAnchor = listFeedback
+    ? suppliedCueListAnchor || captureCueListVisualAnchor(el)
+    : null;
+
   textEl.removeAttribute('contenteditable');
   el.classList.remove('editing');
   editingState = null;
@@ -6438,14 +6375,15 @@ function splitAtCursor(feedbackPoint = null, { listFeedback = true } = {}) {
 
   rememberTemporaryVisibleSplitCues({ mainSegments: [leftSeg, rightSeg] });
   renderAll();
+  const leftEl = container.querySelector(`.cue[data-idx="${idx}"]`);
+  const rightEl = container.querySelector(`.cue[data-idx="${idx + 1}"]`);
   // 列表来源的拆分（B 键悬停行、列表右键拆分、行内编辑拆分）都发生在当前
-  // 可见的字幕行上，拆分后保持列表原滚动位置，不再把右半段滚到列表中央。
+  // 可见的字幕行上，拆分后让左半段留在原字幕的视觉位置；右半段自然排在
+  // 下一行。这样既保留 content-visibility，也不会被懒布局累计误差顶走。
   // 波形 / 编辑面板等其它来源的拆分结果可能不在列表视口内，仍滚动到新右半段，
   // 便于在列表中看到拆分结果。
-  if (!listFeedback) {
-    const rightEl = container.querySelector(`.cue[data-idx="${idx + 1}"]`);
-    if (rightEl) scrollCueToCenter(rightEl);
-  }
+  if (listFeedback) restoreCueListVisualAnchor(leftEl, cueListAnchor);
+  else if (rightEl) scrollCueToCenter(rightEl);
   selectOnly(idx + 1);
   // 拆分后后半段是新的视觉选中项，也必须成为 Shift+点击的范围锚点。
   lastClickedIdx = idx + 1;
@@ -6515,6 +6453,11 @@ function flashSplitFeedback({ index, track = 'main', splitMs, feedbackPoint = nu
 function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
   if (!el) return false;
+  // 从非编辑态按 B / 右键拆分时，startEdit() 可能让当前行先发生一次布局
+  // 变化；锚点必须取自用户按键前看到的位置，而不是临时编辑态的位置。
+  const cueListAnchor = Number.isFinite(waveformTimeMs)
+    ? null
+    : captureCueListVisualAnchor(el);
   const waveformFeedbackPoint = Number.isFinite(waveformTimeMs)
     ? waveformEditor?.getSplitPointAtTime?.(waveformTimeMs, 'main') || null
     : null;
@@ -6572,7 +6515,7 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
   if (Number.isFinite(caretInfo?.offset)) setEditingCaretOffset(caretInfo.offset);
   return splitAtCursor(
     { clientX: markerX, clientY: caretInfo?.rect?.top ?? y },
-    { listFeedback: true },
+    { listFeedback: true, cueListAnchor },
   );
 }
 
@@ -7140,6 +7083,40 @@ function cueListVisibleBounds() {
   return { containerRect, top, bottom: containerRect.bottom };
 }
 
+let cueListVisualAnchorGeneration = 0;
+
+function captureCueListVisualAnchor(cueEl) {
+  if (!cueEl?.isConnected || cueEl.classList.contains('hidden')) return null;
+  const top = cueEl.getBoundingClientRect().top;
+  return Number.isFinite(top) ? { top } : null;
+}
+
+function restoreCueListVisualAnchor(cueEl, anchor) {
+  if (!cueEl?.isConnected || !Number.isFinite(anchor?.top)) return;
+  const generation = ++cueListVisualAnchorGeneration;
+  const maxFrames = 12;
+  const epsilon = 0.75;
+  let frameCount = 0;
+
+  const restore = () => {
+    if (generation !== cueListVisualAnchorGeneration || !cueEl.isConnected) return;
+    const delta = cueEl.getBoundingClientRect().top - anchor.top;
+    if (!Number.isFinite(delta)) return;
+    if (Math.abs(delta) > epsilon) {
+      const previousScrollTop = container.scrollTop;
+      container.scrollTop += delta;
+      // 到达列表边界、无法继续补偿时无需再占用后续动画帧。
+      if (Math.abs(container.scrollTop - previousScrollTop) < epsilon) return;
+    }
+    frameCount += 1;
+    // content-visibility 可能先稳定几帧，再因滚动到新的行而继续回填真实
+    // 高度；短暂覆盖完整观察窗口，避免连续拆分时出现延迟的二次位移。
+    if (frameCount < maxFrames) requestAnimationFrame(restore);
+  };
+
+  restore();
+}
+
 function scrollCueToCenter(cueEl, { behavior = 'smooth' } = {}) {
   if (!cueEl || cueEl.classList.contains('hidden')) return;
   const { containerRect: cRect, top: visibleTop, bottom: visibleBottom } = cueListVisibleBounds();
@@ -7168,6 +7145,8 @@ function scrollCueIntoViewIfNeeded(cueEl, options) {
 
 // === seek ===
 let seekWarned = false;
+let pendingMediaSeekTimeSec = null;
+let autoLoadedMediaReadyNotified = false;
 let cueListPointer = null;
 // 最后一次指针按下所在的编辑区域：cue-list / waveform。
 // Enter（原地编辑 vs 聚焦字幕编辑区）据此分发；指针坐标由 cueListPointer /
@@ -7838,6 +7817,12 @@ function bindPlayerEvents(mediaElement) {
   if (!mediaElement) return;
   mediaElement.addEventListener('timeupdate', update);
   mediaElement.addEventListener('seeked', update);
+  mediaElement.addEventListener('loadedmetadata', () => {
+    notifyAutoLoadedMediaReady(mediaElement);
+    flushPendingMediaSeek(mediaElement);
+  });
+  mediaElement.addEventListener('canplay', () => flushPendingMediaSeek(mediaElement));
+  mediaElement.addEventListener('progress', () => flushPendingMediaSeek(mediaElement));
   mediaElement.addEventListener('play', () => startPlaybackRefresh(mediaElement));
   mediaElement.addEventListener('playing', () => startPlaybackRefresh(mediaElement));
   mediaElement.addEventListener('pause', () => {
@@ -7861,6 +7846,12 @@ function bindPlayerEvents(mediaElement) {
   }
   ['timeupdate', 'loadedmetadata', 'durationchange', 'play', 'playing', 'pause', 'ended', 'volumechange', 'ratechange', 'emptied']
     .forEach((eventName) => mediaElement.addEventListener(eventName, syncMediaControls));
+  if (mediaElement.readyState >= 1) {
+    queueMicrotask(() => {
+      notifyAutoLoadedMediaReady(mediaElement);
+      flushPendingMediaSeek(mediaElement);
+    });
+  }
   syncMediaControls();
 }
 
@@ -9877,49 +9868,22 @@ overlayToggle.addEventListener('change', () => {
 let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 
 function buildSrt() {
-  const parts = [];
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     DATA.segments,
     EDITOR_SETTINGS.exportStartAtZero,
   );
-  const exportTime = (timeMs) => fmtSrtTime(Math.max(0, Math.round(Number(timeMs) || 0)));
-  let n = 0;  // 导出序号：跳过禁用项后重新连续编号
-  DATA.segments.forEach((seg, index) => {
-    if (seg.disabled) {
-      if (!EXPORT_KEEP_DISABLED_PLACEHOLDER) return;  // 默认：完全跳过
-      // 占位模式：保留时间轴，内容留空（序号不变）
-      n++;
-      parts.push(String(n));
-      parts.push(`${exportTime(seg.start)} --> ${exportTime(seg.end)}`);
-      parts.push('');
-      parts.push('');
-      return;
-    }
-    n++;
-    parts.push(String(n));
-    const start = EDITOR_SETTINGS.exportStartAtZero && index === firstEnabledIndex
-      ? fmtSrtTime(0)
-      : exportTime(seg.start);
-    parts.push(`${start} --> ${exportTime(seg.end)}`);
-    parts.push(seg.text);
-    parts.push('');
+  return window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
+    alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
+    keepDisabledPlaceholder: EXPORT_KEEP_DISABLED_PLACEHOLDER,
+    formatTime: fmtSrtTime,
   });
-  return parts.join('\n');
 }
 
 function buildExtensionSrt(track = getActiveExtensionTrack()) {
-  if (!track) return '';
-  const parts = [];
-  let number = 0;
-  (track.segments || []).forEach((segment) => {
-    if (!segment || segment.disabled) return;
-    number++;
-    parts.push(String(number));
-    parts.push(`${fmtSrtTime(segment.start)} --> ${fmtSrtTime(segment.end)}`);
-    parts.push(segment.text || '');
-    parts.push('');
+  return window.AsrEditorUtils.buildSrtPayload(track?.segments || [], {
+    formatTime: fmtSrtTime,
   });
-  return parts.join('\n');
 }
 
 function buildGapRemovedSrt() {
@@ -9928,26 +9892,17 @@ function buildGapRemovedSrt() {
     flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
     return null;
   }
-  const parts = [];
-  let number = 0;
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     DATA.segments,
     EDITOR_SETTINGS.exportStartAtZero,
   );
-  DATA.segments.forEach((segment, index) => {
-    if (segment.disabled) return;
-    number++;
-    const mappedStart = window.AsrEditorUtils.mapGapRemovedTime(segment.start, removed);
-    const start = EDITOR_SETTINGS.exportStartAtZero && index === firstEnabledIndex
-      ? 0
-      : mappedStart;
-    const end = window.AsrEditorUtils.mapGapRemovedTime(segment.end, removed);
-    parts.push(String(number));
-    parts.push(`${fmtSrtTime(start)} --> ${fmtSrtTime(Math.max(start + 1, end))}`);
-    parts.push(segment.text);
-    parts.push('');
+  return window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
+    alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
+    mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
+    ensurePositiveDuration: true,
+    formatTime: fmtSrtTime,
   });
-  return parts.join('\n');
 }
 
 function usedSubtitleColors() {
@@ -11568,10 +11523,10 @@ async function exportFcp7Xml() {
   }
 }
 
-document.getElementById('download-fcp7-export').addEventListener('click', openFcp7ExportModal);
-fcp7ExportCancel.addEventListener('click', closeFcp7ExportModal);
-fcp7ExportConfirm.addEventListener('click', () => { void exportFcp7Xml(); });
-fcp7ExportModal.addEventListener('click', (event) => {
+document.getElementById('download-fcp7-export')?.addEventListener('click', openFcp7ExportModal);
+fcp7ExportCancel?.addEventListener('click', closeFcp7ExportModal);
+fcp7ExportConfirm?.addEventListener('click', () => { void exportFcp7Xml(); });
+fcp7ExportModal?.addEventListener('click', (event) => {
   if (event.target === fcp7ExportModal) closeFcp7ExportModal();
 });
 document.addEventListener('keydown', (event) => {
@@ -11581,7 +11536,230 @@ document.addEventListener('keydown', (event) => {
   closeFcp7ExportModal();
 }, true);
 
-document.getElementById('download-srt').addEventListener('click', async () => {
+function lottieExportAvailable() {
+  return Boolean(SERVER_CONFIG?.canLottieExport && SERVER_CONFIG?.lottieExportUrl);
+}
+
+function updateLottieExportButton() {
+  const button = document.getElementById('download-lottie');
+  if (!button) return;
+  if (!button.dataset.originalTitle) button.dataset.originalTitle = button.title;
+  const disabled = !lottieExportAvailable();
+  button.classList.toggle('sticker-disabled', disabled);
+  button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+  button.title = disabled
+    ? translatedEditorText('服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出动态字幕')
+    : button.dataset.originalTitle;
+}
+
+function lottieExportBlocked() {
+  if (lottieExportAvailable()) return false;
+  const message = '当前模式不可用：动态字幕 .lottie 导出需要以 server-editor 打开并绑定工程文件';
+  flashHint(window.MAWE_I18N?.translateText?.(message) || message, 'warning');
+  return true;
+}
+
+function closeLottieExportModal() {
+  lottieExportModal?.classList.remove('show');
+}
+
+function openLottieExportModal() {
+  if (lottieExportBlocked()) return;
+  if (editingState) finishEdit(true);
+  if (extensionEditingState) finishExtensionEdit(true);
+  commitCuePanelEdit();
+  const extensionOption = lottieExportTrack?.querySelector('option[value="extension"]');
+  const extensionAvailable = Boolean(getActiveExtensionTrack());
+  if (extensionOption) extensionOption.disabled = !extensionAvailable;
+  if (!extensionAvailable && lottieExportTrack) lottieExportTrack.value = 'main';
+  lottieExportModal?.classList.add('show');
+  lottieExportTrack?.focus();
+}
+
+function lottieExportCanvasSize() {
+  const match = /^(\d+)x(\d+)$/u.exec(lottieExportResolution?.value || '');
+  if (!match) return { width: 1920, height: 1080 };
+  return { width: Number(match[1]), height: Number(match[2]) };
+}
+
+async function exportLottieDynamicCaptions() {
+  if (lottieExportBlocked()) return;
+  lottieExportConfirm.disabled = true;
+  try {
+    const extension = lottieExportTrack?.value === 'extension';
+    const track = extension ? getActiveExtensionTrack() : null;
+    const segments = extension ? track?.segments : DATA.segments;
+    if (!Array.isArray(segments) || !segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
+      throw new Error(translatedEditorText(
+        extension ? '当前扩展字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
+      ));
+    }
+    const durationMs = waveformEditor?.durationMs
+      || Math.round(Number(player?.duration) * 1000)
+      || DATA.waveform?.duration_ms
+      || 0;
+    const size = lottieExportCanvasSize();
+    const appearance = extension ? getExtensionSubtitleAppearance() : getSubtitleAppearance();
+    const animation = window.AsrEditorUtils.buildLottieAnimation(segments, {
+      durationMs: Math.round(durationMs),
+      fps: lottieExportFps?.value || '30',
+      renderMode: lottieExportRenderMode?.value || 'text',
+      width: size.width,
+      height: size.height,
+      subtitle: { ...getPreviewGeometry(), ...appearance },
+    });
+    flashHint(translatedEditorText('正在生成动态字幕 .lottie…'));
+    const response = await fetch(new URL(SERVER_CONFIG.lottieExportUrl, window.location.href), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken, animation }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || `服务器返回 ${response.status}`);
+    }
+    const blob = await response.blob();
+    closeLottieExportModal();
+    const suffix = extension ? '_extension' : '';
+    const saved = await downloadFile(
+      blob,
+      `${FILENAME_BASE}${suffix}_dynamic-caption.lottie`,
+      'application/zip+dotlottie',
+      { desc: 'Lottie 动态字幕', types: { 'application/zip+dotlottie': ['.lottie'] } },
+    );
+    if (saved) flashHint(translatedEditorText('动态字幕 .lottie 已生成'), 'success');
+  } catch (error) {
+    flashHint(`${translatedEditorText('动态字幕 .lottie 导出失败')}：${error.message || error}`, 'warning');
+  } finally {
+    lottieExportConfirm.disabled = false;
+  }
+}
+
+document.getElementById('download-lottie')?.addEventListener('click', openLottieExportModal);
+lottieExportCancel?.addEventListener('click', closeLottieExportModal);
+lottieExportConfirm?.addEventListener('click', () => { void exportLottieDynamicCaptions(); });
+lottieExportModal?.addEventListener('click', (event) => {
+  if (event.target === lottieExportModal) closeLottieExportModal();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !lottieExportModal?.classList.contains('show')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeLottieExportModal();
+}, true);
+
+function ografExportAvailable() {
+  return Boolean(SERVER_CONFIG?.canOgrafExport && SERVER_CONFIG?.ografExportUrl);
+}
+
+function updateOgrafExportButton() {
+  const button = document.getElementById('download-ograf');
+  if (!button) return;
+  if (!button.dataset.originalTitle) button.dataset.originalTitle = button.title;
+  const disabled = !ografExportAvailable();
+  button.classList.toggle('sticker-disabled', disabled);
+  button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+  button.title = disabled
+    ? translatedEditorText('服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出动态字幕')
+    : button.dataset.originalTitle;
+}
+
+function ografExportBlocked() {
+  if (ografExportAvailable()) return false;
+  const message = '当前模式不可用：OGraf 动态字幕导出需要以 server-editor 打开并绑定工程文件';
+  flashHint(window.MAWE_I18N?.translateText?.(message) || message, 'warning');
+  return true;
+}
+
+function closeOgrafExportModal() {
+  ografExportModal?.classList.remove('show');
+}
+
+function openOgrafExportModal() {
+  if (ografExportBlocked()) return;
+  if (editingState) finishEdit(true);
+  if (extensionEditingState) finishExtensionEdit(true);
+  commitCuePanelEdit();
+  const extensionOption = ografExportTrack?.querySelector('option[value="extension"]');
+  const extensionAvailable = Boolean(getActiveExtensionTrack());
+  if (extensionOption) extensionOption.disabled = !extensionAvailable;
+  if (!extensionAvailable && ografExportTrack) ografExportTrack.value = 'main';
+  ografExportModal?.classList.add('show');
+  ografExportTrack?.focus();
+}
+
+function ografExportCanvasSize() {
+  const match = /^(\d+)x(\d+)$/u.exec(ografExportResolution?.value || '');
+  if (!match) return { width: 1920, height: 1080 };
+  return { width: Number(match[1]), height: Number(match[2]) };
+}
+
+async function exportOgrafDynamicCaptions() {
+  if (ografExportBlocked()) return;
+  ografExportConfirm.disabled = true;
+  try {
+    const extension = ografExportTrack?.value === 'extension';
+    const track = extension ? getActiveExtensionTrack() : null;
+    const segments = extension ? track?.segments : DATA.segments;
+    if (!Array.isArray(segments) || !segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
+      throw new Error(translatedEditorText(
+        extension ? '当前扩展字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
+      ));
+    }
+    const durationMs = waveformEditor?.durationMs
+      || Math.round(Number(player?.duration) * 1000)
+      || DATA.waveform?.duration_ms
+      || 0;
+    const size = ografExportCanvasSize();
+    const appearance = extension ? getExtensionSubtitleAppearance() : getSubtitleAppearance();
+    const graphic = window.AsrEditorUtils.buildOgrafGraphic(segments, {
+      durationMs: Math.round(durationMs),
+      fps: ografExportFps?.value || '30',
+      width: size.width,
+      height: size.height,
+      subtitle: { ...getPreviewGeometry(), ...appearance },
+    });
+    flashHint(translatedEditorText('正在生成动态字幕 .ograf.zip…'));
+    const response = await fetch(new URL(SERVER_CONFIG.ografExportUrl, window.location.href), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken, graphic }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || `服务器返回 ${response.status}`);
+    }
+    const blob = await response.blob();
+    closeOgrafExportModal();
+    const suffix = extension ? '_extension' : '';
+    const saved = await downloadFile(
+      blob,
+      `${FILENAME_BASE}${suffix}_dynamic-caption.ograf.zip`,
+      'application/zip',
+      { desc: 'OGraf 动态字幕', types: { 'application/zip': ['.zip'] } },
+    );
+    if (saved) flashHint(translatedEditorText('动态字幕 .ograf.zip 已生成；请先解压'), 'success');
+  } catch (error) {
+    flashHint(`${translatedEditorText('动态字幕 .ograf.zip 导出失败')}：${error.message || error}`, 'warning');
+  } finally {
+    ografExportConfirm.disabled = false;
+  }
+}
+
+document.getElementById('download-ograf')?.addEventListener('click', openOgrafExportModal);
+ografExportCancel?.addEventListener('click', closeOgrafExportModal);
+ografExportConfirm?.addEventListener('click', () => { void exportOgrafDynamicCaptions(); });
+ografExportModal?.addEventListener('click', (event) => {
+  if (event.target === ografExportModal) closeOgrafExportModal();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !ografExportModal?.classList.contains('show')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeOgrafExportModal();
+}, true);
+
+document.getElementById('download-srt')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
     desc: 'SRT 字幕文件', types: { 'text/plain': ['.srt'] }
@@ -11595,20 +11773,20 @@ downloadMultiSrtButton?.addEventListener('click', async () => {
     desc: '扩展字幕 SRT 文件', types: { 'text/plain': ['.srt'] },
   });
 });
-document.getElementById('download-full-srt').addEventListener('click', async () => {
+document.getElementById('download-full-srt')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
     desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
   });
 });
-document.getElementById('download-color-srt').addEventListener('click', () => downloadColorSrts(false));
-document.getElementById('download-plain-text').addEventListener('click', async () => {
+document.getElementById('download-color-srt')?.addEventListener('click', () => downloadColorSrts(false));
+document.getElementById('download-plain-text')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   await downloadFile(window.AsrEditorUtils.buildPlainTextPayload(DATA.segments), `${FILENAME_BASE}.txt`, 'text/plain', {
     desc: '纯文本字幕文件', types: { 'text/plain': ['.txt'] }
   });
 });
-document.getElementById('download-json').addEventListener('click', async () => {
+document.getElementById('download-json')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   await downloadFile(buildJson(), `${FILENAME_BASE}.mosp`, 'application/json', {
     desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
@@ -11627,7 +11805,7 @@ document.addEventListener('keydown', (event) => {
     void saveCurrentProject();
   }
 });
-document.getElementById('download-resolve-json').addEventListener('click', async () => {
+document.getElementById('download-resolve-json')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildResolveJson();
   if (payload) {
@@ -11689,13 +11867,13 @@ async function exportStickerOtio(kind, buildTimeline, filename, description) {
   }
 }
 
-document.getElementById('download-sticker-otio').addEventListener('click', () => {
+document.getElementById('download-sticker-otio')?.addEventListener('click', () => {
   if (stickerExportBlocked('download-sticker-otio')) return;
   exportStickerOtio(
     'stickers', buildStickerOtio, `${FILENAME_BASE}_stickers.otio`, 'OTIO 工程文件'
   );
 });
-document.getElementById('download-gap-removed-srt').addEventListener('click', async () => {
+document.getElementById('download-gap-removed-srt')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedSrt();
   if (payload) {
@@ -11704,8 +11882,8 @@ document.getElementById('download-gap-removed-srt').addEventListener('click', as
     });
   }
 });
-document.getElementById('download-gap-removed-color-srt').addEventListener('click', () => downloadColorSrts(true));
-document.getElementById('download-gap-removed-otio').addEventListener('click', async () => {
+document.getElementById('download-gap-removed-color-srt')?.addEventListener('click', () => downloadColorSrts(true));
+document.getElementById('download-gap-removed-otio')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedOtio();
   if (payload) {
@@ -11714,7 +11892,7 @@ document.getElementById('download-gap-removed-otio').addEventListener('click', a
     });
   }
 });
-document.getElementById('download-gap-removed-ffconcat').addEventListener('click', async () => {
+document.getElementById('download-gap-removed-ffconcat')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedFfconcat();
   if (payload) {
@@ -11723,7 +11901,7 @@ document.getElementById('download-gap-removed-ffconcat').addEventListener('click
     });
   }
 });
-document.getElementById('download-gap-removed-regions-json').addEventListener('click', async () => {
+document.getElementById('download-gap-removed-regions-json')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedRegionsJson();
   if (payload) {
@@ -11732,14 +11910,14 @@ document.getElementById('download-gap-removed-regions-json').addEventListener('c
     });
   }
 });
-document.getElementById('download-gap-removed-sticker-otio').addEventListener('click', async () => {
+document.getElementById('download-gap-removed-sticker-otio')?.addEventListener('click', async () => {
   if (stickerExportBlocked('download-gap-removed-sticker-otio')) return;
   await exportStickerOtio(
     'gap-removed-stickers', buildGapRemovedStickerOtio,
     `${FILENAME_BASE}_gap-removed-stickers.otio`, '去空隙表情包 OTIO 工程'
   );
 });
-document.getElementById('download-gap-removed-sticker-otioz').addEventListener('click', async () => {
+document.getElementById('download-gap-removed-sticker-otioz')?.addEventListener('click', async () => {
   if (stickerExportBlocked('download-gap-removed-sticker-otioz')) return;
   const removed = getRemovedGapRanges();
   if (!removed.length) {
@@ -11752,7 +11930,7 @@ document.getElementById('download-gap-removed-sticker-otioz').addEventListener('
     `${FILENAME_BASE}_gap-removed-stickers.otioz`, '去空隙表情包 OTIOZ 工程'
   );
 });
-document.getElementById('download-sticker-otioz').addEventListener('click', async () => {
+document.getElementById('download-sticker-otioz')?.addEventListener('click', async () => {
   if (stickerExportBlocked('download-sticker-otioz')) return;
   await exportStickerOtoz(
     'stickers', buildStickerOtio,
@@ -11762,6 +11940,8 @@ document.getElementById('download-sticker-otioz').addEventListener('click', asyn
 
 // 初始按服务器模式刷新表情包 OTIOZ 导出按钮的可用性
 updateStickerExportButtons();
+updateLottieExportButton();
+updateOgrafExportButton();
 
 // === 工具栏导出下拉菜单 ===
 function bindToolbarExportDropdown(dropdownId, buttonId, menuId) {
@@ -11873,6 +12053,8 @@ function resetLoadedMedia() {
   player = emptyPlayer;
   bindPlayerEvents(player);
   seekWarned = false;
+  pendingMediaSeekTimeSec = null;
+  autoLoadedMediaReadyNotified = false;
   waveformEditor?.attachPlayer(player);
   syncPlayerPlaceholder();
 }
@@ -11929,6 +12111,7 @@ function applyCanonicalProject(data, filename) {
   }
   updateGapRemoveUi();
   renderAll({ waveform: 'full' });
+  refreshSubtitlePreview(0, -1);
   updateUnloadedMediaLabel(DATA.media);
   FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
   const jsonEl = document.getElementById('json-name');
@@ -12005,8 +12188,12 @@ function detachServerProjectSaving() {
   if (SERVER_CONFIG) {
     SERVER_CONFIG.canSave = false;
     SERVER_CONFIG.canPortableStickerExport = false;
+    SERVER_CONFIG.canLottieExport = false;
+    SERVER_CONFIG.canOgrafExport = false;
   }
   configureServerSaveControls();
+  updateLottieExportButton();
+  updateOgrafExportButton();
   scheduleAutoSave();
 }
 
@@ -12447,13 +12634,13 @@ async function openProjectFile(file, options = {}) {
   }
 }
 
-document.getElementById('new-project').addEventListener('click', async () => {
+document.getElementById('new-project')?.addEventListener('click', async () => {
   if (hasUnsavedProjectChanges()
       && !confirm('当前有未保存的改动，是否确定新建工程？将丢失未保存内容。')) return;
   await createProjectCheckpoint(buildBlankProject(), suggestedProjectName());
 });
 
-document.getElementById('open-project').addEventListener('click', () => {
+document.getElementById('open-project')?.addEventListener('click', () => {
   if (hasUnsavedProjectChanges()) {
     if (!confirm('当前有未保存的改动，是否确定打开新工程？将丢失未保存内容。')) return;
   }
@@ -12473,12 +12660,12 @@ openProjectFileInput.addEventListener('change', async (e) => {
 // === 加载媒体 ===
 // 通过浏览器文件选择器选本地媒体（视频/音频），用 blob URL 替换播放器源。
 // 如果媒体类型与当前播放器标签不一致（video<->audio），会原地替换整个 <video>/<audio> 元素。
-document.getElementById('load-media').addEventListener('click', () => {
+document.getElementById('load-media')?.addEventListener('click', () => {
   pendingProjectMediaSelection = null;
   loadMediaFileInput.value = '';
   loadMediaFileInput.click();
 });
-document.getElementById('load-srt').addEventListener('click', () => {
+document.getElementById('load-srt')?.addEventListener('click', () => {
   pendingSrtImportAsExtension = false;
   if (hasUnsavedProjectChanges()
       && !confirm('当前有未保存的改动，是否确定加载字幕？将替换当前字幕。')) return;
@@ -12674,6 +12861,8 @@ async function loadMediaFile(file) {
     player = newPlayer;
     bindPlayerEvents(player);
     seekWarned = false;  // 新媒体重新探测 seek 能力
+    pendingMediaSeekTimeSec = null;
+    autoLoadedMediaReadyNotified = false;
   }
 
   try {
@@ -12720,7 +12909,7 @@ async function loadMediaFile(file) {
   }
 
   lastActive = -1;
-  flashHint(`已加载媒体：${file.name}`, 'success');
+  flashHint(translatedEditorText(`已加载媒体：${file.name}`), 'success');
   if (waveformEditor && !preserveProjectWaveform) {
     try {
       DATA.spectral = null;
@@ -12837,7 +13026,7 @@ function setStickerRootModalOpen(open) {
   stickerRootReturnFocus = null;
 }
 
-document.getElementById('sticker-root-confirm').addEventListener('click', () => {
+document.getElementById('sticker-root-confirm')?.addEventListener('click', () => {
   const newRoot = stickerRootInput.value.trim().replace(/\\/g, '/').replace(/\/+$/, '');
   STICKER_ROOT = newRoot;
   updateStickerExportButtons();
@@ -12859,7 +13048,7 @@ if (!stickerRootServerEnabled) {
   stickerRootRead.disabled = true;
 }
 
-document.getElementById('sticker-root-btn').addEventListener('click', () => {
+document.getElementById('sticker-root-btn')?.addEventListener('click', () => {
   stickerRootInput.value = STICKER_ROOT || '';
   setStickerRootStatus(stickerRootServerEnabled
     ? (STICKER_ROOT
@@ -12869,11 +13058,11 @@ document.getElementById('sticker-root-btn').addEventListener('click', () => {
   setStickerRootModalOpen(true);
 });
 
-document.getElementById('sticker-root-cancel').addEventListener('click', () => setStickerRootModalOpen(false));
-stickerRootModal.addEventListener('click', (event) => {
+document.getElementById('sticker-root-cancel')?.addEventListener('click', () => setStickerRootModalOpen(false));
+stickerRootModal?.addEventListener('click', (event) => {
   if (event.target === stickerRootModal) setStickerRootModalOpen(false);
 });
-stickerRootModal.addEventListener('keydown', (event) => {
+stickerRootModal?.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     event.preventDefault();
     setStickerRootModalOpen(false);
@@ -13028,10 +13217,10 @@ function openReplaceModal(scope) {
   updatePreview();
 }
 
-document.getElementById('replace-btn').addEventListener('click', () => openReplaceModal(null));
-document.getElementById('replace-cancel').addEventListener('click', () => replaceModal.classList.remove('show'));
+document.getElementById('replace-btn')?.addEventListener('click', () => openReplaceModal(null));
+document.getElementById('replace-cancel')?.addEventListener('click', () => replaceModal.classList.remove('show'));
 replaceModal.addEventListener('click', (e) => { if (e.target === replaceModal) replaceModal.classList.remove('show'); });
-document.getElementById('replace-confirm').addEventListener('click', () => {
+document.getElementById('replace-confirm')?.addEventListener('click', () => {
   const re = buildReplaceRegex();
   if (!re || re.error) return;
   const repl = replaceInput.value;
@@ -13145,12 +13334,12 @@ function clearStickerOnTargets() {
   flashHint('已清除', 'success');
 }
 
-document.getElementById('sticker-filter').addEventListener('input', (e) => {
+document.getElementById('sticker-filter')?.addEventListener('input', (e) => {
   renderStickerGrid(e.target.value);
 });
-document.getElementById('sticker-cancel').addEventListener('click', () => stickerModal.classList.remove('show'));
-document.getElementById('sticker-clear').addEventListener('click', clearStickerOnTargets);
-stickerModal.addEventListener('click', (e) => { if (e.target === stickerModal) stickerModal.classList.remove('show'); });
+document.getElementById('sticker-cancel')?.addEventListener('click', () => stickerModal.classList.remove('show'));
+document.getElementById('sticker-clear')?.addEventListener('click', clearStickerOnTargets);
+stickerModal?.addEventListener('click', (e) => { if (e.target === stickerModal) stickerModal.classList.remove('show'); });
 
 // 表情包预览 modal
 let previewIdx = -1;
@@ -13162,9 +13351,9 @@ function openStickerPreview(idx) {
   document.getElementById('sticker-preview-name').textContent = seg.sticker.name;
   stickerPreviewModal.classList.add('show');
 }
-document.getElementById('sticker-preview-close').addEventListener('click', () => stickerPreviewModal.classList.remove('show'));
-stickerPreviewModal.addEventListener('click', (e) => { if (e.target === stickerPreviewModal) stickerPreviewModal.classList.remove('show'); });
-document.getElementById('sticker-preview-delete').addEventListener('click', () => {
+document.getElementById('sticker-preview-close')?.addEventListener('click', () => stickerPreviewModal.classList.remove('show'));
+stickerPreviewModal?.addEventListener('click', (e) => { if (e.target === stickerPreviewModal) stickerPreviewModal.classList.remove('show'); });
+document.getElementById('sticker-preview-delete')?.addEventListener('click', () => {
   if (previewIdx < 0) return;
   // 如果删除的是 head，要把所有引用它的 sticker_ref 也清掉
   removeStickerCascade(previewIdx);
@@ -13181,7 +13370,7 @@ function removeStickerCascade(idx) {
   // 走组拆分：被切除的 idx 后面的同 group ref 自动晋升新 head
   splitGroupsAtCutPoints(new Set([idx]), 'sticker', 'sticker_ref');
 }
-document.getElementById('sticker-preview-replace').addEventListener('click', () => {
+document.getElementById('sticker-preview-replace')?.addEventListener('click', () => {
   if (previewIdx < 0) return;
   stickerPreviewModal.classList.remove('show');
   openStickerPicker([previewIdx], false);
@@ -14139,6 +14328,10 @@ function syncTimelineGroupRanges() {
 function seekFromWaveform(timeSec) {
   const seekableEnd = player.seekable.length ? player.seekable.end(player.seekable.length - 1) : 0;
   if (seekableEnd <= 0 && !seekWarned) {
+    if (player.readyState < 1 || player.networkState === HTMLMediaElement.NETWORK_LOADING) {
+      pendingMediaSeekTimeSec = timeSec;
+      return;
+    }
     seekWarned = true;
     flashHint('媒体尚不可 seek；请等待加载完成或用 file:// 直接打开 HTML', 'warning');
   }
@@ -14151,6 +14344,19 @@ function seekFromWaveform(timeSec) {
   } catch (error) {
     flashHint(`跳转失败：${error.message}`, 'warning');
   }
+}
+
+function notifyAutoLoadedMediaReady(mediaElement) {
+  if (mediaElement !== player || autoLoadedMediaReadyNotified || !SERVER_CONFIG?.autoLoadedMediaName) return;
+  autoLoadedMediaReadyNotified = true;
+  flashHint(translatedEditorText(`已加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`), 'success');
+}
+
+function flushPendingMediaSeek(mediaElement) {
+  if (mediaElement !== player || pendingMediaSeekTimeSec === null) return;
+  const timeSec = pendingMediaSeekTimeSec;
+  pendingMediaSeekTimeSec = null;
+  seekFromWaveform(timeSec);
 }
 
 function initWaveformEditor() {
@@ -14438,6 +14644,12 @@ window.addEventListener('drop', (e) => {
 // 加载时统一拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
 const repairedGroupReferenceCount = window.AsrEditorUtils.repairGroupReferenceIndices(DATA.segments);
 const repairedTimingCount = normalizeProjectTimings(DATA);
+maweDebug('boot:begin', {
+  server: Boolean(SERVER_CONFIG),
+  segments: Array.isArray(DATA.segments) ? DATA.segments.length : null,
+  media: DATA.media || '',
+  recentProjects: SERVER_CONFIG?.recentProjects?.length || 0,
+});
 cleanPunctuation();
 configureServerSaveControls();
 configureServerAutoSave();
@@ -14466,18 +14678,21 @@ window.MAWE_EDITOR_BRIDGE = Object.freeze({
 });
 window.MAWE?.register('editor-bridge', () => window.MAWE_EDITOR_BRIDGE);
 renderAll({ waveform: 'full' });
+maweDebug('boot:complete', {
+  renderedSegments: container?.querySelectorAll?.('.cue-row')?.length || 0,
+  recentProjectsVisible: recentProjectsEl ? !recentProjectsEl.hidden : false,
+  mediaName: mediaNameEl?.textContent || '',
+  placeholderVisible: playerEmpty ? !playerEmpty.hidden : null,
+});
 updateGapRemoveUi();
 if (repairedTimingCount > 0) {
   flashHint(`已自动修复 ${repairedTimingCount} 处异常时间码（保底 100ms）`, 'warning');
 } else if (repairedGroupReferenceCount > 0) {
   flashHint(`已自动修复 ${repairedGroupReferenceCount} 处分组引用`, 'warning');
 }
-if (SERVER_CONFIG?.autoLoadedMediaName) {
-  flashHint(`已自动加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`, 'success');
-}
 void loadDeferredReapeaks();
 
-document.getElementById('filter-over').addEventListener('click', (e) => {
+document.getElementById('filter-over')?.addEventListener('click', (e) => {
   e.currentTarget.classList.toggle('active');
   if (!e.currentTarget.classList.contains('active')) {
     clearTemporaryVisibleSplitCues();
@@ -14486,7 +14701,7 @@ document.getElementById('filter-over').addEventListener('click', (e) => {
 });
 
 // 「隐藏禁用项」开关：开启后禁用项 display:none，并从选中集移除
-hideDisabledToggle.addEventListener('change', () => {
+hideDisabledToggle?.addEventListener('change', () => {
   hideDisabled = hideDisabledToggle.checked;
   updateEditorSettings({ cueListHideDisabled: hideDisabled });
   container.classList.toggle('hide-disabled', hideDisabled);

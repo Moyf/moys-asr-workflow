@@ -13,7 +13,7 @@ MAW is an API-first subtitle generation and editing workflow. It provides Window
 
 ## Quick start
 
-1. [Download the latest release](https://github.com/Moyf/moys-asr-workflow/releases/latest). On Windows, choose `MAWxFF-Windows-x64-v*.zip` if FFmpeg is not installed; choose the smaller `MAW-Windows-x64-v*.zip` if `ffmpeg` and `ffprobe` are already available. macOS users should download the corresponding `MAW.app` package.
+1. [Download the latest release](https://github.com/Moyf/moys-asr-workflow/releases/latest). The default Windows package is `MAW-Windows-x64-v*.zip` and includes FFmpeg; if `ffmpeg` and `ffprobe` are already available, choose the smaller `MAW-lite-Windows-x64-v*.zip`. macOS users can choose the corresponding `MAW.app` or `MAW-lite.app` package.
 2. Extract the package and launch `MAW.exe` or `MAW.app`.
 3. Configure an ASR provider API key in the Launcher, choose your media, and start transcription.
 4. Review and edit the subtitles in MAWE, then export SRT or another supported format.

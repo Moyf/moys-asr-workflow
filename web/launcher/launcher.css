@@ -593,6 +593,12 @@ label {
   white-space: nowrap;
 }
 
+#ocrSettingsSection .task-progress,
+#ocrSettingsSection #ocrRuntimeHint,
+#ocrSettingsSection #installOcrRuntime {
+  margin-top: 10px;
+}
+
 .local-model-panel > .ghost {
   justify-self: start;
 }
@@ -1053,6 +1059,71 @@ textarea::placeholder {
   display: block;
 }
 
+.script-preview {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+}
+
+.script-preview pre {
+  max-height: 120px;
+  margin: 6px 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-secondary);
+  font: inherit;
+}
+
+.match-previews {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 8px;
+}
+
+.match-previews .script-preview.full-width-preview {
+  grid-column: 1 / -1;
+}
+
+.match-segmentation-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.match-segmentation-options > .field {
+  align-self: start;
+  align-content: start;
+  margin-top: 10px;
+}
+
+.match-segmentation-field > label {
+  display: block;
+  height: 1.25em;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.match-stats {
+  margin: 0;
+}
+
+.match-stats.success {
+  color: var(--green);
+}
+
+.match-stats.error {
+  color: var(--red);
+}
+
+@media (max-width: 560px) {
+  .match-segmentation-options {
+    grid-template-columns: 1fr;
+  }
+}
+
 .ghost,
 .primary {
   height: 34px;
@@ -1313,7 +1384,7 @@ textarea::placeholder {
   bottom: 134px;
   z-index: 36;
   width: min(560px, calc(100vw - 40px));
-  block-size: min(560px, calc(100dvh - 156px));
+  block-size: min(640px, calc(100dvh - 156px));
   min-inline-size: min(360px, calc(100vw - 24px));
   max-inline-size: calc(100vw - 40px);
   min-block-size: 320px;
@@ -1906,6 +1977,23 @@ textarea::placeholder {
   font-style: italic;
 }
 
+.replace-rule-preview {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+}
+
+.replace-rule-preview pre {
+  margin: 6px 0 0;
+  color: var(--text-primary);
+  font: inherit;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* 只读取值（如固定的 OCR 模型）：与输入控件同高同底，两列网格行内对齐。 */
 .toolbox-static-value {
   height: 34px;
@@ -2251,9 +2339,19 @@ html,
 .modal-card,
 .settings-scroll,
 .toolbox-content,
-.toolbox-chain-list {
+.toolbox-chain-list,
+textarea {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
+}
+
+textarea::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+textarea::-webkit-scrollbar-thumb {
+  border-width: 2px;
 }
 
 html.scrolling,
@@ -2261,7 +2359,8 @@ html.scrolling,
 .modal-card.scrolling,
 .settings-scroll.scrolling,
 .toolbox-content.scrolling,
-.toolbox-chain-list.scrolling {
+.toolbox-chain-list.scrolling,
+textarea.scrolling {
   scrollbar-color: var(--text-muted) transparent;
 }
 

@@ -66,8 +66,15 @@ def default_postprocess_plan() -> dict[str, object]:
         "enabled": False,
         "retainIntermediate": False,
         "steps": [
-            {"id": "match", "enabled": False, "scriptPath": ""},
-            {"id": "replace", "enabled": False, "replacements": [], "conversion": TextConversion.OFF.value},
+            {
+                "id": "match",
+                "enabled": False,
+                "scriptPath": "",
+                "matchMode": "script",
+                "extraSplitPunctuation": [],
+                "preservePunctuation": [],
+            },
+            {"id": "replace", "enabled": False, "replacements": [], "replacementSeparator": "arrow", "replacementTrim": True, "replacementCustomSeparator": "", "conversion": TextConversion.OFF.value},
             {"id": "proofread", "enabled": False, "providerId": "deepseek", "customPrompt": ""},
             {"id": "resegment", "enabled": False, "providerId": "deepseek", "customPrompt": ""},
             {"id": "ocr", "enabled": False, "videoPath": "", "regionMode": "full", "regionX1": 0, "regionY1": 0, "regionX2": 100, "regionY2": 100, "threshold": 0.5, "report": False},
@@ -103,12 +110,15 @@ def normalize_plan(raw: object) -> dict[str, object]:
         source = by_id.get(step_id, {})
         step = dict(default_step)
         step["enabled"] = bool(source.get("enabled"))
+        replacement_trim = bool(source.get("replacementTrim", True))
         for key in default_step:
             if key in {"id", "enabled"} or key not in source:
                 continue
             value = source[key]
             if key == "replacements":
-                step[key] = _normalize_replacements(value)
+                step[key] = _normalize_replacements(value, trim=replacement_trim)
+            elif key == "replacementTrim":
+                step[key] = bool(value)
             elif key == "conversion":
                 step[key] = normalize_text_conversion_mode(value).value
             elif key == "target":
@@ -117,6 +127,10 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = _number_or_default(value, step[key])
             elif key == "report":
                 step[key] = bool(value)
+            elif key == "matchMode":
+                step[key] = str(value or "script") if str(value or "script") in {"script", "text"} else "script"
+            elif key in {"extraSplitPunctuation", "preservePunctuation"}:
+                step[key] = [str(item).strip() for item in value if str(item).strip()] if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) else []
             else:
                 step[key] = str(value or "").strip()
         normalized_steps.append(step)
@@ -283,7 +297,7 @@ def validate_plan(
             if path.suffix.lower() not in SCRIPT_EXTENSIONS or not path.is_file():
                 errors.append({"step": step_id, "field": "postprocessScriptPath", "message": "文稿匹配需要一个存在的 .txt、.md 或 .markdown 文稿文件。"})
         elif step_id == "replace":
-            has_replacements = bool(_normalize_replacements(step.get("replacements")))
+            has_replacements = bool(_normalize_replacements(step.get("replacements"), trim=bool(step.get("replacementTrim", True))))
             has_conversion = normalize_text_conversion_mode(step.get("conversion")) is not TextConversion.OFF
             if not has_replacements and not has_conversion:
                 errors.append({"step": step_id, "field": "postprocessReplacements", "message": "固定处理至少需要一条批量替换规则或一种简繁转换。"})
@@ -555,6 +569,9 @@ def _run_step(
             output_mode=output_mode,
             output_directory=output_directory,
             media_path=media_path,
+            match_mode=str(step.get("matchMode") or "script"),
+            extra_split_punctuation=tuple(str(value) for value in step.get("extraSplitPunctuation", ()) if str(value)),
+            preserve_punctuation=tuple(str(value) for value in step.get("preservePunctuation", ()) if str(value)),
         ))
     if step_id == "replace":
         replacements = tuple(
@@ -905,11 +922,14 @@ def _save_config(path: Path, payload: Mapping[str, object]) -> None:
         raise
 
 
-def _normalize_replacements(value: object) -> list[dict[str, str]]:
+def _normalize_replacements(value: object, *, trim: bool = True) -> list[dict[str, str]]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
         return []
     return [
-        {"source": str(item.get("source") or "").strip(), "target": str(item.get("target") or "")}
+        {
+            "source": (str(item.get("source") or "").strip() if trim else str(item.get("source") or "")),
+            "target": (str(item.get("target") or "").strip() if trim else str(item.get("target") or "")),
+        }
         for item in value
         if isinstance(item, Mapping) and str(item.get("source") or "").strip()
     ]
