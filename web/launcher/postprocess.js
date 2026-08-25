@@ -1173,7 +1173,7 @@
     $("postprocessConversion").value = ["to_simplified", "to_traditional", "to_traditional_tw", "to_traditional_twp", "to_traditional_hk"].includes(replace.conversion) ? replace.conversion : "off";
     ["proofread", "resegment"].forEach((stepId) => {
       const prompt = byId.get(stepId)?.customPrompt;
-      if (typeof prompt === "string" && prompt) llmPrompts[autoLlmOperation(stepId)] = prompt;
+      if (typeof prompt === "string") llmPrompts[autoLlmOperation(stepId)] = prompt;
     });
     const ocr = byId.get("ocr") || {};
     $("ocrVideoPath").value = String(ocr.videoPath || "");
@@ -1187,7 +1187,7 @@
     $("ocrReport").checked = Boolean(ocr.report);
     $("autoTranslateTarget").value = String((byId.get("translate") || {}).target || "zh");
     const translatePrompt = byId.get("translate")?.customPrompt;
-    if (typeof translatePrompt === "string" && translatePrompt) llmPrompts[autoLlmOperation("translate")] = translatePrompt;
+    if (typeof translatePrompt === "string") llmPrompts[autoLlmOperation("translate")] = translatePrompt;
     saveLlmPrompts();
     loadLlmPrompt(activeLlmOperation || $("postprocessOperation").value);
     renderOcrRegion();
@@ -1546,8 +1546,8 @@
   $("runWaveform").addEventListener("click", () => { void generateWaveformProject(true); });
   $("runScriptMatch").addEventListener("click", runScriptMatch);
   $("postprocessScriptPath").addEventListener("input", () => { void refreshScriptPreview(); });
-  $("postprocessExtraSplitPunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshSplitPreview(); });
-  $("postprocessPreservePunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshSplitPreview(); });
+  $("postprocessExtraSplitPunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshSplitPreview(); persistAutoPlanSoon(); });
+  $("postprocessPreservePunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshSplitPreview(); persistAutoPlanSoon(); });
   $("postprocessMatchMode").addEventListener("change", () => { renderMatchMode(); validateMatchPunctuation(); void refreshSplitPreview(); persistAutoPlanSoon(); });
   $("runOcrDedup").addEventListener("click", runOcrDedup);
   $("ocrModel").addEventListener("change", renderOcrModel);
