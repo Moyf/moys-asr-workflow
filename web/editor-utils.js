@@ -620,7 +620,7 @@
     ninjaSound: true, ninjaSlashEffect: true, ninjaSlashLengthPercent: 80,
     ninjaSlashRotateAmplitude: 6, crossTrackSnap: true, selectBoundSubtitlePair: true,
     multiSubtitleAutoSyncDuration: true, multiSubtitleShowTrackBadges: false, theme: 'dark',
-    waveShapeSource: 'self',
+    waveShapeSource: 'reapeaks',
   });
 
   function clampInteger(value, fallback, minimum, maximum) {
@@ -688,7 +688,7 @@
       multiSubtitleAutoSyncDuration: savedSettings.multiSubtitleAutoSyncDuration !== false,
       multiSubtitleShowTrackBadges: savedSettings.multiSubtitleShowTrackBadges === true,
       theme: savedSettings.theme === 'light' ? 'light' : 'dark',
-      waveShapeSource: savedSettings.waveShapeSource === 'reapeaks' ? 'reapeaks' : 'self',
+      waveShapeSource: savedSettings.waveShapeSource === 'self' ? 'self' : 'reapeaks',
     };
   }
 

@@ -12858,7 +12858,7 @@ async function loadMediaFile(file) {
   }
 
   lastActive = -1;
-  flashHint(`已加载媒体：${file.name}`, 'success');
+  flashHint(translatedEditorText(`已加载媒体：${file.name}`), 'success');
   if (waveformEditor && !preserveProjectWaveform) {
     try {
       DATA.spectral = null;
@@ -14298,7 +14298,7 @@ function seekFromWaveform(timeSec) {
 function notifyAutoLoadedMediaReady(mediaElement) {
   if (mediaElement !== player || autoLoadedMediaReadyNotified || !SERVER_CONFIG?.autoLoadedMediaName) return;
   autoLoadedMediaReadyNotified = true;
-  flashHint(`已加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`, 'success');
+  flashHint(translatedEditorText(`已加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`), 'success');
 }
 
 function flushPendingMediaSeek(mediaElement) {

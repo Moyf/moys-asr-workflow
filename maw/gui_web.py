@@ -65,7 +65,7 @@ MOSE_FILE_TYPE = "Moy.MOSE.Project"
 # 工程恢复会同步准备自研波形；大型工程可能需要超过默认的网络探测窗口。
 SERVER_START_TIMEOUT: Final = 30.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.4.0"
+BUNDLED_APP_VERSION = "1.5.0-beta.1"
 MOSE_VERSION = "0.1.0"
 
 
@@ -2121,7 +2121,8 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             ffmpeg_path=_postprocess_ffmpeg(env_path),
         )
         if bool(candidate_plan.get("enabled")):
-            if plan_errors:
+            active_auto_steps = enabled_steps(candidate_plan)
+            if plan_errors and active_auto_steps:
                 first_error = plan_errors[0]
                 raise PreflightError(
                     str(first_error.get("field") or "autoPostprocess"),
@@ -2129,7 +2130,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
                     str(first_error.get("message") or "自动后处理配置不完整。"),
                     str(first_error.get("step") or ""),
                 )
-            if enabled_steps(candidate_plan):
+            if active_auto_steps:
                 auto_plan = candidate_plan
                 auto_llm_settings = snapshot_postprocess_llm_settings(env_path, candidate_plan)
     return TranscriptionRequest(

@@ -1600,6 +1600,23 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.api.cancel_transcription()
 
+    def test_request_from_payload_treats_enabled_empty_postprocess_as_disabled(self) -> None:
+        """Given an enabled plan with no selected steps, When building a request, Then transcription proceeds without a pipeline."""
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+
+        request = _request_from_payload({
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+            "autoPostprocess": {
+                "enabled": True,
+                "steps": [],
+            },
+        }, self.env_path)
+
+        self.assertIsNone(request.postprocess_plan)
+
     def test_start_transcription_rejects_singapore_without_workspace(self) -> None:
         """Given Singapore region, When workspace is absent, Then workspace blocks."""
         media = self.root / "clip.mp3"

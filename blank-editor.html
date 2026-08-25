@@ -3418,7 +3418,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.4.0</span>
+  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.5.0-beta.1</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -5502,7 +5502,7 @@
     ninjaSound: true, ninjaSlashEffect: true, ninjaSlashLengthPercent: 80,
     ninjaSlashRotateAmplitude: 6, crossTrackSnap: true, selectBoundSubtitlePair: true,
     multiSubtitleAutoSyncDuration: true, multiSubtitleShowTrackBadges: false, theme: 'dark',
-    waveShapeSource: 'self',
+    waveShapeSource: 'reapeaks',
   });
 
   function clampInteger(value, fallback, minimum, maximum) {
@@ -5570,7 +5570,7 @@
       multiSubtitleAutoSyncDuration: savedSettings.multiSubtitleAutoSyncDuration !== false,
       multiSubtitleShowTrackBadges: savedSettings.multiSubtitleShowTrackBadges === true,
       theme: savedSettings.theme === 'light' ? 'light' : 'dark',
-      waveShapeSource: savedSettings.waveShapeSource === 'reapeaks' ? 'reapeaks' : 'self',
+      waveShapeSource: savedSettings.waveShapeSource === 'self' ? 'self' : 'reapeaks',
     };
   }
 
@@ -8194,6 +8194,11 @@ export default MawDynamicCaptions;
     '跳过空隙': 'Skip gaps', '播放时跳过空隙': 'Skip gaps during playback', '未扫描空隙': 'Gaps not scanned', '工作区': 'Workspace',
     '拼合字幕': 'Snap subtitles', '拼合参数': 'Snap parameters',
     '拼接/合并字幕': 'Join / merge subtitles', '拼接/合并参数': 'Join / merge parameters',
+    '拼接字幕': 'Snap subtitles',
+    '将间隔过短的前后字幕直接吸附在一起；0 表示不处理间隔': 'Snap adjacent subtitles with short gaps directly together; 0 leaves gaps unchanged',
+    '向前：后方字幕起点吸附到前方字幕终点；向后：前方字幕终点吸附到后方字幕起点': 'Forward: snap the later subtitle start to the earlier subtitle end; backward: snap the earlier subtitle end to the later subtitle start',
+    '吸收合并字幕': 'Absorb and merge short subtitles',
+    '过短字幕与相邻字幕间隔在阈值内时吸收，间隔为 0ms 也会生效；关闭后只吸附间隔': 'Absorb short subtitles when the adjacent gap is within the threshold; 0 ms gaps also apply; when off, only snap gaps',
     '延长字幕': 'Extend subtitles', '延长参数': 'Extension parameters',
     '直接修改字幕时间轴，整个操作一次撤销': 'Edits the subtitle timeline directly; the whole run is one undo step',
     '先向前、再向后；整个操作一次撤销': 'Extends earlier first, then later; the whole run is one undo step',
@@ -8763,6 +8768,8 @@ export default MawDynamicCaptions;
     if (match) return `Server returned ${match[1]}`;
     match = /^已自动加载媒体：(.+)$/.exec(text);
     if (match) return `Media loaded automatically: ${match[1]}`;
+    match = /^已加载媒体：(.+)$/.exec(text);
+    if (match) return `Media loaded: ${match[1]}`;
     match = /^已复制：(.+)$/.exec(text);
     if (match) return `Copied: ${match[1]}`;
     match = /^已复制媒体名：(.+)$/.exec(text);
@@ -26857,7 +26864,7 @@ async function loadMediaFile(file) {
   }
 
   lastActive = -1;
-  flashHint(`已加载媒体：${file.name}`, 'success');
+  flashHint(translatedEditorText(`已加载媒体：${file.name}`), 'success');
   if (waveformEditor && !preserveProjectWaveform) {
     try {
       DATA.spectral = null;
@@ -28297,7 +28304,7 @@ function seekFromWaveform(timeSec) {
 function notifyAutoLoadedMediaReady(mediaElement) {
   if (mediaElement !== player || autoLoadedMediaReadyNotified || !SERVER_CONFIG?.autoLoadedMediaName) return;
   autoLoadedMediaReadyNotified = true;
-  flashHint(`已加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`, 'success');
+  flashHint(translatedEditorText(`已加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`), 'success');
 }
 
 function flushPendingMediaSeek(mediaElement) {

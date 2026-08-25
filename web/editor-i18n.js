@@ -155,6 +155,11 @@
     '跳过空隙': 'Skip gaps', '播放时跳过空隙': 'Skip gaps during playback', '未扫描空隙': 'Gaps not scanned', '工作区': 'Workspace',
     '拼合字幕': 'Snap subtitles', '拼合参数': 'Snap parameters',
     '拼接/合并字幕': 'Join / merge subtitles', '拼接/合并参数': 'Join / merge parameters',
+    '拼接字幕': 'Snap subtitles',
+    '将间隔过短的前后字幕直接吸附在一起；0 表示不处理间隔': 'Snap adjacent subtitles with short gaps directly together; 0 leaves gaps unchanged',
+    '向前：后方字幕起点吸附到前方字幕终点；向后：前方字幕终点吸附到后方字幕起点': 'Forward: snap the later subtitle start to the earlier subtitle end; backward: snap the earlier subtitle end to the later subtitle start',
+    '吸收合并字幕': 'Absorb and merge short subtitles',
+    '过短字幕与相邻字幕间隔在阈值内时吸收，间隔为 0ms 也会生效；关闭后只吸附间隔': 'Absorb short subtitles when the adjacent gap is within the threshold; 0 ms gaps also apply; when off, only snap gaps',
     '延长字幕': 'Extend subtitles', '延长参数': 'Extension parameters',
     '直接修改字幕时间轴，整个操作一次撤销': 'Edits the subtitle timeline directly; the whole run is one undo step',
     '先向前、再向后；整个操作一次撤销': 'Extends earlier first, then later; the whole run is one undo step',
@@ -724,6 +729,8 @@
     if (match) return `Server returned ${match[1]}`;
     match = /^已自动加载媒体：(.+)$/.exec(text);
     if (match) return `Media loaded automatically: ${match[1]}`;
+    match = /^已加载媒体：(.+)$/.exec(text);
+    if (match) return `Media loaded: ${match[1]}`;
     match = /^已复制：(.+)$/.exec(text);
     if (match) return `Copied: ${match[1]}`;
     match = /^已复制媒体名：(.+)$/.exec(text);
