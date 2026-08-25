@@ -1,0 +1,858 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MAW 动态图形预览</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: #16181d;
+      color: #e6e9ef;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { min-height: 100%; }
+
+    body {
+      margin: 0;
+      background: #16181d;
+    }
+
+    .app {
+      width: min(1180px, 100%);
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 650;
+    }
+
+    .hint {
+      margin: 0;
+      color: #9299a8;
+      font-size: 13px;
+    }
+
+    .toolbar,
+    .timeline {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid #30343d;
+      border-radius: 10px;
+      background: #20232a;
+    }
+
+    .toolbar label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      color: #aab1bf;
+      font-size: 13px;
+    }
+
+    .drop-zone {
+      min-height: 32px;
+      padding: 0 11px;
+      border: 1px dashed #596170;
+      border-radius: 6px;
+      color: #b9c0cc !important;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.is-dragover {
+      border-color: #6e9edc;
+      background: #272d38;
+      color: #e6e9ef !important;
+    }
+
+    select,
+    button {
+      height: 32px;
+      border: 1px solid #404651;
+      border-radius: 6px;
+      background: #1a1d24;
+      color: #e6e9ef;
+      font: inherit;
+    }
+
+    select {
+      min-width: 240px;
+      max-width: 460px;
+      padding: 0 9px;
+    }
+
+    button {
+      padding: 0 13px;
+      cursor: pointer;
+    }
+
+    button:hover:not(:disabled) { border-color: #6e9edc; }
+
+    button.primary {
+      border-color: #5387c6;
+      background: #315b91;
+    }
+
+    button:disabled,
+    select:disabled,
+    input:disabled {
+      cursor: default;
+      opacity: .45;
+    }
+
+    .timeline {
+      gap: 12px;
+    }
+
+    .timeline input {
+      flex: 1;
+      min-width: 120px;
+      accent-color: #4cae9e;
+    }
+
+    .time-label {
+      min-width: 150px;
+      color: #b9c0cc;
+      font-variant-numeric: tabular-nums;
+      font-size: 13px;
+      text-align: right;
+    }
+
+    .stage {
+      min-height: 260px;
+      aspect-ratio: 16 / 9;
+      max-height: calc(100vh - 245px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border: 1px solid #30343d;
+      border-radius: 10px;
+      background:
+        linear-gradient(45deg, #242830 25%, transparent 25%) 0 0 / 24px 24px,
+        linear-gradient(-45deg, #242830 25%, transparent 25%) 0 12px / 24px 24px,
+        linear-gradient(45deg, transparent 75%, #242830 75%) 12px -12px / 24px 24px,
+        linear-gradient(-45deg, transparent 75%, #242830 75%) -12px 0 / 24px 24px,
+        #1d2026;
+    }
+
+    .stage > *:not(.empty) {
+      width: min(100%, 1280px);
+      max-height: 100%;
+    }
+
+    .empty {
+      padding: 24px;
+      color: #9299a8;
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .status {
+      min-height: 20px;
+      margin: 0;
+      color: #9299a8;
+      font-size: 13px;
+    }
+
+    .status.error { color: #f08b8b; }
+    .status.success { color: #72c6a9; }
+
+    @media (max-width: 700px) {
+      .app { padding: 14px; }
+      header { display: block; }
+      .hint { margin-top: 6px; }
+      .toolbar { align-items: stretch; flex-wrap: wrap; }
+      .toolbar label { flex: 1 1 100%; }
+      select { flex: 1; min-width: 0; max-width: none; }
+      .stage { min-height: 190px; max-height: none; }
+      .time-label { min-width: 132px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <h1>MAW 动态图形预览</h1>
+      <p class="hint">可扫描 examples，也可直接拖入 .ograf.zip 或 .lottie</p>
+    </header>
+
+    <section class="toolbar" aria-label="动态图形控制">
+      <label>
+        图形
+        <select id="package-select" disabled>
+          <option>正在扫描…</option>
+        </select>
+      </label>
+      <label id="drop-zone" class="drop-zone" for="zip-input">
+        拖入 / 选择 .ograf.zip 或 .lottie
+        <input id="zip-input" type="file" accept=".zip,.ograf.zip,.lottie" hidden>
+      </label>
+      <button id="load-button" class="primary" type="button" disabled>加载</button>
+      <button id="play-button" type="button" disabled>播放</button>
+      <button id="stop-button" type="button" disabled>停止</button>
+    </section>
+
+    <section class="timeline" aria-label="时间轴">
+      <input id="time-range" type="range" min="0" max="1" step="1" value="0" disabled>
+      <span id="time-label" class="time-label">00:00.000 / 00:00.000</span>
+    </section>
+
+    <section id="stage" class="stage" aria-label="动态图形画布">
+      <div class="empty">正在准备预览…</div>
+    </section>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+  </main>
+
+  <script type="module">
+    const packageSelect = document.getElementById('package-select');
+    const loadButton = document.getElementById('load-button');
+    const playButton = document.getElementById('play-button');
+    const stopButton = document.getElementById('stop-button');
+    const timeRange = document.getElementById('time-range');
+    const timeLabel = document.getElementById('time-label');
+    const stage = document.getElementById('stage');
+    const status = document.getElementById('status');
+    const dropZone = document.getElementById('drop-zone');
+    const zipInput = document.getElementById('zip-input');
+
+    const state = {
+      packages: [],
+      active: null,
+      durationMs: 1,
+      playing: false,
+      animationFrame: 0,
+      loadToken: 0,
+    };
+
+    let dotLottieModulePromise;
+
+    function setStatus(message, kind = '') {
+      status.textContent = message;
+      status.className = `status ${kind}`.trim();
+    }
+
+    function formatTime(milliseconds) {
+      const value = Math.max(0, Number(milliseconds) || 0);
+      const minutes = Math.floor(value / 60000);
+      const seconds = Math.floor(value / 1000) % 60;
+      const millis = Math.floor(value % 1000);
+      return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
+    }
+
+    function currentTime() {
+      const value = Number(state.active?._time);
+      return Number.isFinite(value) ? Math.max(0, Math.min(state.durationMs, value)) : 0;
+    }
+
+    function updateTimeline() {
+      const value = currentTime();
+      timeRange.value = String(Math.round(value));
+      timeLabel.textContent = `${formatTime(value)} / ${formatTime(state.durationMs)}`;
+      if (state.playing) {
+        if (value >= state.durationMs) {
+          state.playing = false;
+          playButton.textContent = '播放';
+          return;
+        }
+        state.animationFrame = requestAnimationFrame(updateTimeline);
+      }
+    }
+
+    function stopTimelineLoop() {
+      if (state.animationFrame) cancelAnimationFrame(state.animationFrame);
+      state.animationFrame = 0;
+    }
+
+    function setControls(enabled) {
+      loadButton.disabled = !enabled;
+      playButton.disabled = !enabled;
+      stopButton.disabled = !enabled;
+      timeRange.disabled = !enabled;
+    }
+
+    function getDotLottieModule() {
+      if (!dotLottieModulePromise) {
+        dotLottieModulePromise = import(
+          'https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-web/+esm'
+        );
+      }
+      return dotLottieModulePromise;
+    }
+
+    function lottieIsLoaded(player) {
+      return typeof player.isLoaded === 'function' ? player.isLoaded() : player.isLoaded === true;
+    }
+
+    function waitForLottieLoad(player) {
+      if (lottieIsLoaded(player)) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        const timeout = window.setTimeout(() => {
+          finish(reject, new Error('Lottie 加载超时'));
+        }, 15000);
+        const cleanup = () => {
+          window.clearTimeout(timeout);
+          player.removeEventListener?.('load', onLoad);
+          player.removeEventListener?.('loadError', onLoadError);
+        };
+        const finish = (callback, value) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          callback(value);
+        };
+        const onLoad = () => finish(resolve);
+        const onLoadError = (event) => {
+          const detail = event?.error || event?.message || event?.detail;
+          finish(reject, new Error(detail ? `Lottie 加载失败：${detail}` : 'Lottie 加载失败'));
+        };
+        player.addEventListener('load', onLoad);
+        player.addEventListener('loadError', onLoadError);
+        if (lottieIsLoaded(player)) finish(resolve);
+      });
+    }
+
+    function resolveLottieDurationMs(player, totalFrames) {
+      const rawDuration = Math.max(0, Number(player.duration) || 0);
+      if (totalFrames > 1 && rawDuration > 0) {
+        const framesPerSecondIfSeconds = (totalFrames - 1) / rawDuration;
+        if (framesPerSecondIfSeconds >= 1 && framesPerSecondIfSeconds <= 240) {
+          return Math.max(1, rawDuration * 1000);
+        }
+      }
+      return Math.max(1, rawDuration || 1000);
+    }
+
+    function readZipUint16(bytes, offset) {
+      return bytes[offset] | (bytes[offset + 1] << 8);
+    }
+
+    function readZipUint32(bytes, offset) {
+      return (
+        bytes[offset]
+        | (bytes[offset + 1] << 8)
+        | (bytes[offset + 2] << 16)
+        | (bytes[offset + 3] << 24)
+      ) >>> 0;
+    }
+
+    function normalizeZipPath(value) {
+      if (typeof value !== 'string') throw new Error('ZIP 文件名格式不正确');
+      const normalized = value.replace(/\\/gu, '/');
+      if (normalized.startsWith('/') || /^[A-Za-z]:/u.test(normalized)) {
+        throw new Error(`ZIP 文件名不能是绝对路径：${value}`);
+      }
+      const parts = [];
+      normalized.split('/').forEach((part) => {
+        if (!part || part === '.') return;
+        if (part === '..') throw new Error(`ZIP 文件名包含越界路径：${value}`);
+        parts.push(part);
+      });
+      if (!parts.length) throw new Error('ZIP 文件名不能为空');
+      return parts.join('/');
+    }
+
+    function parseZipArchive(buffer) {
+      const bytes = new Uint8Array(buffer);
+      const firstEndOffset = Math.max(0, bytes.length - 22 - 0xffff);
+      let endOffset = -1;
+      for (let offset = bytes.length - 22; offset >= firstEndOffset; offset -= 1) {
+        if (readZipUint32(bytes, offset) === 0x06054b50) {
+          endOffset = offset;
+          break;
+        }
+      }
+      if (endOffset < 0) throw new Error('ZIP 文件缺少中央目录');
+
+      const entryCount = readZipUint16(bytes, endOffset + 10);
+      const centralDirectorySize = readZipUint32(bytes, endOffset + 12);
+      const centralDirectoryOffset = readZipUint32(bytes, endOffset + 16);
+      if (!entryCount || centralDirectoryOffset + centralDirectorySize > bytes.length) {
+        throw new Error('ZIP 文件中央目录不完整');
+      }
+
+      const entries = new Map();
+      let offset = centralDirectoryOffset;
+      for (let index = 0; index < entryCount; index += 1) {
+        if (readZipUint32(bytes, offset) !== 0x02014b50) {
+          throw new Error('ZIP 文件中央目录格式不正确');
+        }
+        const flags = readZipUint16(bytes, offset + 8);
+        const method = readZipUint16(bytes, offset + 10);
+        const compressedSize = readZipUint32(bytes, offset + 20);
+        const uncompressedSize = readZipUint32(bytes, offset + 24);
+        const nameLength = readZipUint16(bytes, offset + 28);
+        const extraLength = readZipUint16(bytes, offset + 30);
+        const commentLength = readZipUint16(bytes, offset + 32);
+        const localHeaderOffset = readZipUint32(bytes, offset + 42);
+        const nameStart = offset + 46;
+        const name = normalizeZipPath(new TextDecoder().decode(bytes.slice(nameStart, nameStart + nameLength)));
+        entries.set(name, {
+          flags,
+          method,
+          compressedSize,
+          uncompressedSize,
+          localHeaderOffset,
+        });
+        offset = nameStart + nameLength + extraLength + commentLength;
+      }
+      return { bytes, entries };
+    }
+
+    async function readZipEntry(zip, name) {
+      const entry = zip.entries.get(name);
+      if (!entry) throw new Error(`ZIP 中找不到文件：${name}`);
+      if (entry.flags & 1) throw new Error(`ZIP 文件已加密，无法预览：${name}`);
+      const localOffset = entry.localHeaderOffset;
+      if (readZipUint32(zip.bytes, localOffset) !== 0x04034b50) {
+        throw new Error(`ZIP 文件本地目录格式不正确：${name}`);
+      }
+      const nameLength = readZipUint16(zip.bytes, localOffset + 26);
+      const extraLength = readZipUint16(zip.bytes, localOffset + 28);
+      const dataStart = localOffset + 30 + nameLength + extraLength;
+      const dataEnd = dataStart + entry.compressedSize;
+      if (dataStart < 0 || dataEnd > zip.bytes.length) throw new Error(`ZIP 文件内容不完整：${name}`);
+      const compressed = zip.bytes.slice(dataStart, dataEnd);
+      if (entry.method === 0) return compressed;
+      if (entry.method !== 8) throw new Error(`ZIP 压缩方式暂不支持：${entry.method}`);
+      if (typeof DecompressionStream !== 'function') {
+        throw new Error('当前浏览器不支持 ZIP 解压，请改用服务器扫描方式');
+      }
+      const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      const result = new Uint8Array(await new Response(stream).arrayBuffer());
+      if (entry.uncompressedSize && result.length !== entry.uncompressedSize) {
+        throw new Error(`ZIP 文件解压大小不匹配：${name}`);
+      }
+      return result;
+    }
+
+    function resolveZipMainName(manifestName, main) {
+      const directory = manifestName.includes('/')
+        ? manifestName.slice(0, manifestName.lastIndexOf('/') + 1)
+        : '';
+      return normalizeZipPath(`${directory}${main}`);
+    }
+
+    async function readDroppedOgrafZip(file) {
+      if (!file || !/\.zip$/iu.test(file.name)) throw new Error('请选择 .ograf.zip 文件');
+      if (file.size > 32 * 1024 * 1024) throw new Error('OGraf ZIP 文件不能超过 32 MB');
+      const zip = parseZipArchive(await file.arrayBuffer());
+      const manifestNames = [...zip.entries.keys()].filter((name) => /\.ograf\.json$/iu.test(name));
+      if (manifestNames.length !== 1) {
+        throw new Error(`ZIP 中应当有一个 .ograf.json，实际找到 ${manifestNames.length} 个`);
+      }
+      const manifestName = manifestNames[0];
+      const manifestBytes = await readZipEntry(zip, manifestName);
+      let manifest;
+      try {
+        manifest = JSON.parse(new TextDecoder().decode(manifestBytes));
+      } catch (error) {
+        throw new Error(`manifest JSON 无法解析：${error?.message || error}`);
+      }
+      if (!manifest || typeof manifest.id !== 'string' || typeof manifest.main !== 'string') {
+        throw new Error('manifest 缺少 id 或 main');
+      }
+      const mainName = resolveZipMainName(manifestName, manifest.main);
+      const mainBytes = await readZipEntry(zip, mainName);
+      const moduleUrl = URL.createObjectURL(new Blob([mainBytes], { type: 'text/javascript' }));
+      return {
+        type: 'ograf',
+        name: manifest.name || file.name,
+        source: file.name,
+        manifestObject: manifest,
+        moduleUrl,
+        cleanup: () => URL.revokeObjectURL(moduleUrl),
+      };
+    }
+
+    function readDroppedLottie(file) {
+      if (!file || !/\.lottie$/iu.test(file.name)) throw new Error('请选择 .lottie 文件');
+      if (file.size > 32 * 1024 * 1024) throw new Error('Lottie 文件不能超过 32 MB');
+      const sourceUrl = URL.createObjectURL(file);
+      return {
+        type: 'lottie',
+        name: file.name.replace(/\.lottie$/iu, ''),
+        source: file.name,
+        src: sourceUrl,
+        cleanup: () => URL.revokeObjectURL(sourceUrl),
+      };
+    }
+
+    function releasePackages(packages) {
+      packages.forEach((packageInfo) => {
+        try { packageInfo.cleanup?.(); } catch { /* best effort */ }
+      });
+    }
+
+    function renderPackageOptions() {
+      packageSelect.replaceChildren();
+      state.packages.forEach((packageInfo, index) => {
+        const option = document.createElement('option');
+        option.value = String(index);
+        const typeLabel = packageInfo.type === 'lottie' ? 'Lottie' : 'OGraf';
+        option.textContent = `${typeLabel} · ${packageInfo.name || packageInfo.source || `图形 ${index + 1}`}`;
+        packageSelect.append(option);
+      });
+      if (state.packages.length) {
+        packageSelect.disabled = false;
+        packageSelect.value = '0';
+      } else {
+        packageSelect.append(new Option('未找到 .ograf.zip 或 .lottie', ''));
+        packageSelect.disabled = true;
+      }
+    }
+
+    function formatLoadError(error) {
+      const rawMessage = String(error?.message || error);
+      const errorName = String(error?.name || '');
+      const message = errorName && !rawMessage.startsWith(`${errorName}:`)
+        ? `${errorName}: ${rawMessage}`
+        : rawMessage;
+      if (/must not have attributes|NotSupportedError|缺少 load/iu.test(message)) {
+        return `${message}；请用修复后的 MAW 重新导出 OGraf 文件`;
+      }
+      if (/dotlottie|dynamically imported module|Failed to fetch/iu.test(message)) {
+        return `${message}；Lottie 预览需要联网加载官方播放器`;
+      }
+      return message;
+    }
+
+    async function loadLottieGraphic(packageInfo, token) {
+      const moduleNamespace = await getDotLottieModule();
+      const DotLottie = moduleNamespace.DotLottie || moduleNamespace.default;
+      if (typeof DotLottie !== 'function') throw new Error('Lottie 播放器没有导出 DotLottie');
+      if (token !== state.loadToken) return;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 1920;
+      canvas.height = 1080;
+      canvas.style.width = 'min(100%, 1280px)';
+      canvas.style.height = 'auto';
+      canvas.style.maxHeight = '100%';
+      canvas.style.objectFit = 'contain';
+      stage.replaceChildren(canvas);
+
+      const player = new DotLottie({
+        autoplay: false,
+        loop: false,
+        canvas,
+        layout: { fit: 'contain', align: [0.5, 0.5] },
+        renderConfig: { autoResize: true },
+        src: packageInfo.src,
+      });
+      try {
+        await waitForLottieLoad(player);
+      } catch (error) {
+        try { player.destroy?.(); } catch { /* best effort */ }
+        throw error;
+      }
+      if (token !== state.loadToken) {
+        try { player.destroy?.(); } catch { /* best effort */ }
+        return;
+      }
+
+      const totalFrames = Math.max(1, Math.round(Number(player.totalFrames) || 1));
+      const durationMs = resolveLottieDurationMs(player, totalFrames);
+      const adapter = {
+        _time: 0,
+        _durationMs: durationMs,
+        _player: player,
+        _playing: false,
+        async playAction() {
+          if (this._time >= durationMs) {
+            player.setFrame?.(0);
+            this._time = 0;
+          }
+          player.play();
+          this._playing = true;
+        },
+        async stopAction() {
+          player.pause?.();
+          this._playing = false;
+        },
+        async goToTime({ timestamp } = {}) {
+          const nextTime = Math.max(0, Math.min(durationMs, Number(timestamp) || 0));
+          const frame = totalFrames <= 1
+            ? 0
+            : Math.round((nextTime / durationMs) * (totalFrames - 1));
+          player.setFrame?.(frame);
+          this._time = nextTime;
+        },
+        async dispose() {
+          this._playing = false;
+          player.pause?.();
+          player.removeEventListener?.('frame', onFrame);
+          player.removeEventListener?.('complete', onComplete);
+          try { player.destroy?.(); } catch { /* best effort */ }
+        },
+      };
+      const onFrame = () => {
+        const frame = Number(player.currentFrame);
+        if (Number.isFinite(frame)) {
+          adapter._time = totalFrames <= 1
+            ? 0
+            : Math.max(0, Math.min(durationMs, (frame / (totalFrames - 1)) * durationMs));
+        }
+        updateTimeline();
+      };
+      const onComplete = () => {
+        adapter._time = durationMs;
+        adapter._playing = false;
+        if (state.active === adapter) {
+          state.playing = false;
+          stopTimelineLoop();
+          playButton.textContent = '播放';
+          updateTimeline();
+        }
+      };
+      player.addEventListener?.('frame', onFrame);
+      player.addEventListener?.('complete', onComplete);
+
+      state.active = adapter;
+      state.durationMs = durationMs;
+      timeRange.max = String(Math.round(durationMs));
+      timeRange.value = '0';
+      updateTimeline();
+      setControls(true);
+      setStatus(`${packageInfo.name} 已加载；Lottie 使用 Canvas 播放。`, 'success');
+    }
+
+    async function loadSelectedGraphic() {
+      const token = ++state.loadToken;
+      const packageInfo = state.packages[Number(packageSelect.value)];
+      if (!packageInfo) return;
+
+      state.playing = false;
+      stopTimelineLoop();
+      playButton.textContent = '播放';
+      setControls(false);
+      stage.replaceChildren();
+      setStatus(`正在加载 ${packageInfo.name}…`);
+
+      try {
+        const previousGraphic = state.active;
+        state.active = null;
+        if (previousGraphic?.dispose) await previousGraphic.dispose().catch(() => {});
+        state.durationMs = 1;
+        timeRange.max = '1';
+        timeRange.value = '0';
+        updateTimeline();
+        if (packageInfo.type === 'lottie') {
+          await loadLottieGraphic(packageInfo, token);
+          return;
+        }
+
+        let manifest;
+        let moduleUrl;
+        if (packageInfo.manifestObject) {
+          manifest = packageInfo.manifestObject;
+          moduleUrl = packageInfo.moduleUrl;
+        } else {
+          const manifestUrl = new URL(packageInfo.manifest, document.baseURI);
+          const manifestResponse = await fetch(manifestUrl, { cache: 'no-store' });
+          if (!manifestResponse.ok) throw new Error(`manifest HTTP ${manifestResponse.status}`);
+          manifest = await manifestResponse.json();
+          moduleUrl = new URL(manifest.main, manifestUrl).href;
+        }
+        if (!manifest || typeof manifest.id !== 'string' || typeof manifest.main !== 'string') {
+          throw new Error('manifest 缺少 id 或 main');
+        }
+
+        const moduleNamespace = await import(moduleUrl);
+        const ExportedGraphic = moduleNamespace.default || customElements.get(manifest.id);
+        if (typeof ExportedGraphic !== 'function') {
+          throw new Error('OGraf 主脚本没有导出 Web Component');
+        }
+        let previewTagName = manifest.id;
+        const registeredGraphic = customElements.get(previewTagName);
+        if (registeredGraphic && registeredGraphic !== ExportedGraphic) {
+          previewTagName = `maw-ograf-preview-${state.loadToken}`;
+          class PreviewGraphic extends ExportedGraphic {}
+          customElements.define(previewTagName, PreviewGraphic);
+        } else if (!registeredGraphic) {
+          customElements.define(previewTagName, ExportedGraphic);
+        }
+
+        const graphic = document.createElement(previewTagName);
+        const width = Number(graphic._data?.width) || 1920;
+        const height = Number(graphic._data?.height) || 1080;
+        graphic.style.aspectRatio = `${width} / ${height}`;
+        graphic.style.height = 'auto';
+        stage.replaceChildren(graphic);
+
+        if (typeof graphic.load !== 'function' || typeof graphic.goToTime !== 'function') {
+          throw new Error('OGraf Web Component 初始化失败：缺少 load 或 goToTime');
+        }
+        await graphic.load({
+          data: {},
+          renderType: 'non-realtime',
+          renderCharacteristics: { width, height },
+        });
+        if (token !== state.loadToken) return;
+
+        state.active = graphic;
+        state.durationMs = Math.max(1, Number(graphic._data?.durationMs) || 1000);
+        timeRange.max = String(Math.round(state.durationMs));
+        timeRange.value = '0';
+        updateTimeline();
+        setControls(true);
+        setStatus(`${packageInfo.name} 已加载；可以拖动时间轴检查字幕和逐字高亮。`, 'success');
+      } catch (error) {
+        if (token !== state.loadToken) return;
+        state.active = null;
+        setControls(false);
+        stage.replaceChildren(Object.assign(document.createElement('div'), {
+          className: 'empty',
+          textContent: '加载失败，请查看下方错误信息。',
+        }));
+        setStatus(`加载失败：${formatLoadError(error)}`, 'error');
+      }
+    }
+
+    async function loadIndex() {
+      try {
+        const response = await fetch('./ograf-index.json', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`ograf-index.json HTTP ${response.status}`);
+        const index = await response.json();
+        releasePackages(state.packages);
+        state.packages = Array.isArray(index.packages) ? index.packages : [];
+        renderPackageOptions();
+        if (!state.packages.length) {
+          stage.replaceChildren(Object.assign(document.createElement('div'), {
+            className: 'empty',
+            textContent: '请把从 MAW 导出的 .ograf.zip / .lottie 放进 examples，或直接拖到上方读取。',
+          }));
+          setStatus('未找到 OGraf 或 Lottie 文件。', 'error');
+          return;
+        }
+        await loadSelectedGraphic();
+      } catch (error) {
+        packageSelect.replaceChildren(new Option('无法读取 OGraf 列表', ''));
+        stage.replaceChildren(Object.assign(document.createElement('div'), {
+          className: 'empty',
+          textContent: '请用 serve_ograf_preview.py 启动此页面。',
+        }));
+        setStatus(`初始化失败：${error?.message || error}`, 'error');
+      }
+    }
+
+    async function handleDroppedFile(file) {
+      if (!file) return;
+      setStatus(`正在读取 ${file.name}…`);
+      try {
+        const packageInfo = /\.lottie$/iu.test(file.name)
+          ? readDroppedLottie(file)
+          : await readDroppedOgrafZip(file);
+        if (state.active?.dispose) await state.active.dispose().catch(() => {});
+        state.active = null;
+        state.playing = false;
+        stopTimelineLoop();
+        releasePackages(state.packages);
+        state.packages = [packageInfo];
+        renderPackageOptions();
+        await loadSelectedGraphic();
+      } catch (error) {
+        setStatus(`读取失败：${formatLoadError(error)}`, 'error');
+      } finally {
+        zipInput.value = '';
+      }
+    }
+
+    packageSelect.addEventListener('change', () => { void loadSelectedGraphic(); });
+    loadButton.addEventListener('click', () => { void loadSelectedGraphic(); });
+
+    ['dragenter', 'dragover'].forEach((eventName) => {
+      dropZone.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        dropZone.classList.add('is-dragover');
+      });
+    });
+    ['dragleave', 'drop'].forEach((eventName) => {
+      dropZone.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        dropZone.classList.remove('is-dragover');
+      });
+    });
+    dropZone.addEventListener('drop', (event) => {
+      void handleDroppedFile(event.dataTransfer?.files?.[0]);
+    });
+    zipInput.addEventListener('change', () => {
+      void handleDroppedFile(zipInput.files?.[0]);
+    });
+
+    playButton.addEventListener('click', async () => {
+      if (!state.active) return;
+      try {
+        if (state.playing) {
+          await state.active.stopAction({});
+          state.playing = false;
+          stopTimelineLoop();
+          playButton.textContent = '播放';
+        } else {
+          await state.active.playAction({});
+          state.playing = true;
+          playButton.textContent = '暂停';
+          stopTimelineLoop();
+          state.animationFrame = requestAnimationFrame(updateTimeline);
+        }
+      } catch (error) {
+        setStatus(`播放失败：${error?.message || error}`, 'error');
+      }
+    });
+
+    stopButton.addEventListener('click', async () => {
+      if (!state.active) return;
+      try {
+        await state.active.stopAction({});
+        await state.active.goToTime({ timestamp: 0 });
+        state.playing = false;
+        stopTimelineLoop();
+        playButton.textContent = '播放';
+        updateTimeline();
+      } catch (error) {
+        setStatus(`停止失败：${error?.message || error}`, 'error');
+      }
+    });
+
+    timeRange.addEventListener('input', async () => {
+      if (!state.active) return;
+      try {
+        await state.active.stopAction({});
+        await state.active.goToTime({ timestamp: Number(timeRange.value) });
+        state.playing = false;
+        stopTimelineLoop();
+        playButton.textContent = '播放';
+        updateTimeline();
+      } catch (error) {
+        setStatus(`定位失败：${error?.message || error}`, 'error');
+      }
+    });
+
+    window.addEventListener('beforeunload', () => releasePackages(state.packages));
+    void loadIndex();
+  </script>
+</body>
+</html>

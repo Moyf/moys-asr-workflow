@@ -2727,12 +2727,12 @@ class MawDynamicCaptions extends HTMLElement {
     this._canvas.style.background = 'transparent';
     this.shadowRoot.append(this._canvas);
     this._context = this._canvas.getContext('2d');
-    this.style.display = 'block';
-    this.style.overflow = 'hidden';
-    this.style.background = 'transparent';
   }
 
   connectedCallback() {
+    this.style.display = 'block';
+    this.style.overflow = 'hidden';
+    this.style.background = 'transparent';
     this._resize();
     this._draw();
   }

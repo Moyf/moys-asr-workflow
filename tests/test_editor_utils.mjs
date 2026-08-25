@@ -2082,6 +2082,15 @@ test('builds an OGraf package contract with a Chinese-capable Canvas Web Compone
   assert.equal(graphic.manifest.schema.type, 'object');
   assert.equal(graphic.manifest.schema.properties.cues.type, 'array');
   assert.match(graphic.mainSource, /class MawDynamicCaptions extends HTMLElement/);
+  const constructorSource = graphic.mainSource.slice(
+    graphic.mainSource.indexOf('constructor()'),
+    graphic.mainSource.indexOf('connectedCallback()'),
+  );
+  assert.doesNotMatch(
+    constructorSource,
+    /this\.style\./,
+    'custom-element constructors must not mutate host attributes before upgrade completes',
+  );
   assert.match(graphic.mainSource, /async goToTime/);
   assert.match(graphic.mainSource, /async setActionsSchedule/);
   assert.match(graphic.mainSource, /export default MawDynamicCaptions/);
