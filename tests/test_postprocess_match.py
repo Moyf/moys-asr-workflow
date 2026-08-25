@@ -153,6 +153,60 @@ class ScriptMatchTests(unittest.TestCase):
         segments = read_project(result.project_path)["segments"]
         self.assertEqual([segment["text"] for segment in segments], ["甲乙", "丙。丁"])
 
+    def test_text_only_mode_preserves_existing_cue_segmentation(self) -> None:
+        self.project_path.write_text(
+            json.dumps(
+                {"segments": [
+                    {"start": 0, "end": 1000, "text": "甲乙"},
+                    {"start": 1000, "end": 2000, "text": "丙丁"},
+                ]},
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        self.script_path.write_text("甲乙\n丙丁", encoding="utf-8")
+
+        result = run_script_match(
+            ScriptMatchRequest(self.project_path, None, self.script_path, OutputMode.JSON, match_mode="text")
+        )
+
+        assert result.project_path is not None
+        segments = read_project(result.project_path)["segments"]
+        self.assertEqual([segment["text"] for segment in segments], ["甲乙", "丙丁"])
+
+    def test_manuscript_line_breaks_are_used_as_segment_boundaries(self) -> None:
+        self.project_path.write_text(
+            json.dumps({"segments": [
+                {"start": 0, "end": 1000, "text": "甲乙"},
+                {"start": 1000, "end": 2000, "text": "丙丁"},
+            ]}, ensure_ascii=False), encoding="utf-8"
+        )
+        self.script_path.write_text("甲乙\n丙丁", encoding="utf-8")
+
+        result = run_script_match(ScriptMatchRequest(
+            self.project_path, None, self.script_path, OutputMode.JSON,
+        ))
+
+        assert result.project_path is not None
+        self.assertEqual([segment["text"] for segment in read_project(result.project_path)["segments"]], ["甲乙", "丙丁"])
+
+    def test_manuscript_line_breaks_can_rebuild_a_different_cue_count(self) -> None:
+        self.project_path.write_text(
+            json.dumps({"segments": [
+                {"start": 0, "end": 3000, "text": "甲乙丙丁"},
+                {"start": 3000, "end": 6000, "text": "戊己庚"},
+            ]}, ensure_ascii=False), encoding="utf-8"
+        )
+        self.script_path.write_text("甲乙\n丙丁\n戊己庚", encoding="utf-8")
+
+        result = run_script_match(ScriptMatchRequest(
+            self.project_path, None, self.script_path, OutputMode.JSON,
+        ))
+
+        assert result.project_path is not None
+        project = read_project(result.project_path)
+        self.assertEqual([segment["text"] for segment in project["segments"]], ["甲乙", "丙丁", "戊己庚"])
+        self.assertEqual([(segment["start"], segment["end"]) for segment in project["segments"]], [(0, 1500), (1500, 3000), (3000, 6000)])
 
 if __name__ == "__main__":
     unittest.main()
