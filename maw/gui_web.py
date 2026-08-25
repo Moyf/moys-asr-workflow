@@ -2121,7 +2121,8 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             ffmpeg_path=_postprocess_ffmpeg(env_path),
         )
         if bool(candidate_plan.get("enabled")):
-            if plan_errors:
+            active_auto_steps = enabled_steps(candidate_plan)
+            if plan_errors and active_auto_steps:
                 first_error = plan_errors[0]
                 raise PreflightError(
                     str(first_error.get("field") or "autoPostprocess"),
@@ -2129,7 +2130,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
                     str(first_error.get("message") or "自动后处理配置不完整。"),
                     str(first_error.get("step") or ""),
                 )
-            if enabled_steps(candidate_plan):
+            if active_auto_steps:
                 auto_plan = candidate_plan
                 auto_llm_settings = snapshot_postprocess_llm_settings(env_path, candidate_plan)
     return TranscriptionRequest(
