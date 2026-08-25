@@ -1002,11 +1002,11 @@ def _copy_common_metadata(source_segments: Sequence[JsonDict]) -> JsonDict:
     first = source_segments[0]
     excluded = set(TIMING_FIELDS) | set(SAFE_SCALARS) | set(VISUAL_FIELDS)
     result: JsonDict = {}
-    for field, value in first.items():
-        if field in excluded:
+    for metadata_key, value in first.items():
+        if metadata_key in excluded:
             continue
-        if all(field in source and source[field] == value for source in source_segments[1:]):
-            result[field] = copy.deepcopy(value)
+        if all(metadata_key in source and source[metadata_key] == value for source in source_segments[1:]):
+            result[metadata_key] = copy.deepcopy(value)
     return result
 
 
