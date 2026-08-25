@@ -121,11 +121,33 @@
   }
 
   function validateMatchPunctuation() {
+    if ($("postprocessMatchMode")?.value === "text") {
+      setFieldError("postprocessPreservePunctuation", "");
+      return true;
+    }
     const split = new Set(punctuationLines("postprocessExtraSplitPunctuation"));
     const missing = punctuationLines("postprocessPreservePunctuation").filter((value) => !split.has(value));
     const message = missing.length ? `${t("toolbox_preserve_punctuation_invalid")} ${missing.join("、")}` : "";
     setFieldError("postprocessPreservePunctuation", message);
     return !message;
+  }
+
+  function renderMatchMode() {
+    const options = $("postprocessMatchSegmentationOptions");
+    if (options) options.classList.toggle("hidden", $("postprocessMatchMode").value !== "script");
+  }
+
+  function hideSplitPreview() {
+    $("postprocessSplitPreview").classList.add("hidden");
+    $("postprocessSplitPreviewText").textContent = "";
+    $("postprocessSplitPreviewLabel").textContent = t("toolbox_split_preview");
+    $("postprocessScriptPreview")?.classList.add("full-width-preview");
+  }
+
+  function setMatchStats(message, kind = "") {
+    const stats = $("postprocessMatchStats");
+    stats.textContent = message;
+    stats.className = `match-stats${kind ? ` ${kind}` : ""}${message ? "" : " hidden"}`;
   }
 
   async function refreshScriptPreview() {
@@ -134,15 +156,66 @@
     if (!path || !SCRIPT_EXTS.has(extension(path))) {
       preview.classList.add("hidden");
       $("postprocessScriptPreviewText").textContent = "";
+      hideSplitPreview();
+      setMatchStats("");
       return;
     }
     const result = await bridge("read_script_preview", { path });
     if (!result.ok) {
       preview.classList.add("hidden");
+      hideSplitPreview();
+      setMatchStats("");
       return;
     }
     $("postprocessScriptPreviewText").textContent = `${result.preview}${result.truncated ? "\n…" : ""}`;
     preview.classList.remove("hidden");
+    await refreshSplitPreview();
+  }
+
+  async function refreshSplitPreview() {
+    const preview = $("postprocessSplitPreview");
+    const path = $("postprocessScriptPath").value.trim();
+    const mode = $("postprocessMatchMode").value;
+    const paths = inputPaths();
+    if (!path || mode !== "script" || !paths || (!paths.projectPath && !paths.srtPath)) {
+      hideSplitPreview();
+      setMatchStats("");
+      return;
+    }
+    const result = await bridge("preview_script_match", {
+      ...paths,
+      scriptPath: path,
+      matchMode: mode,
+      extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"),
+      preservePunctuation: punctuationLines("postprocessPreservePunctuation"),
+    });
+    if (!result.ok) {
+      hideSplitPreview();
+      setMatchStats(
+        result.errorCode === "match_too_low" ? t("toolbox_match_preview_too_low") : t("toolbox_match_preview_failed"),
+        "error",
+      );
+      return;
+    }
+    $("postprocessSplitPreviewText").textContent = result.preview;
+    const matchRate = Number.isFinite(Number(result.matchRate)) ? Math.round(Number(result.matchRate)) : null;
+    $("postprocessSplitPreviewLabel").textContent = matchRate === null
+      ? t("toolbox_split_preview")
+      : `${t("toolbox_split_preview")}（${t("toolbox_match_rate")}：${matchRate}%）`;
+    preview.classList.remove("hidden");
+    $("postprocessScriptPreview")?.classList.remove("full-width-preview");
+    const originalCount = Number(result.originalSegmentCount);
+    const matchedCount = Number(result.matchedSegmentCount);
+    if (Number.isInteger(originalCount) && Number.isInteger(matchedCount) && originalCount > 0) {
+      const changeRate = Math.round(((matchedCount - originalCount) / originalCount) * 100);
+      setMatchStats(
+        t("toolbox_match_preview_stats")
+          .replace("{from}", String(originalCount))
+          .replace("{to}", String(matchedCount))
+          .replace("{change}", `${changeRate >= 0 ? "+" : ""}${changeRate}%`),
+        "success",
+      );
+    }
   }
 
   function defaultAutoPlan() {
@@ -151,7 +224,7 @@
       enabled: false,
       retainIntermediate: false,
       steps: [
-        { id: "match", enabled: false, scriptPath: "" },
+        { id: "match", enabled: false, scriptPath: "", matchMode: "script" },
         { id: "replace", enabled: false, replacements: [], conversion: "off" },
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "resegment", enabled: false, providerId: "deepseek", customPrompt: "" },
@@ -261,6 +334,7 @@
     name.textContent = hasPath ? fileName(path) : t("toolbox_input_empty");
     name.title = path;
     name.classList.toggle("empty", !hasPath);
+    $("toolboxInputHint")?.classList.toggle("hidden", hasPath);
   }
 
   function syncUtilityMediaName() {
@@ -904,7 +978,7 @@
       retainIntermediate: Boolean($("autoPostprocessRetain")?.checked),
       steps: [
         // 始终上报用户的单文件勾选；批量运行由后端统一跳过文稿匹配，前端不改写、不持久化批量态。
-        { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim(), extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"), preservePunctuation: punctuationLines("postprocessPreservePunctuation") },
+        { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim(), matchMode: $("postprocessMatchMode").value, extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"), preservePunctuation: punctuationLines("postprocessPreservePunctuation") },
         { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements(), replacementSeparator: $("postprocessReplacementSeparator").value, replacementTrim: $("postprocessReplacementTrim").checked, replacementCustomSeparator: $("postprocessReplacementCustomSeparator").value, conversion: $("postprocessConversion").value },
         { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId, customPrompt: getLlmPrompt("proofread") },
         { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId, customPrompt: getLlmPrompt("resegment") },
@@ -1082,10 +1156,12 @@
     const byId = new Map(Array.isArray(plan.steps) ? plan.steps.map((step) => [step.id, step]) : []);
     AUTO_STEP_ORDER.forEach((stepId) => { $(AUTO_STEP_CHECKBOXES[stepId]).checked = Boolean(byId.get(stepId)?.enabled); });
     const match = byId.get("match") || {};
+    $("postprocessMatchMode").value = match.matchMode === "text" ? "text" : "script";
     $("postprocessScriptPath").value = String(match.scriptPath || "");
     $("postprocessExtraSplitPunctuation").value = Array.isArray(match.extraSplitPunctuation) ? match.extraSplitPunctuation.join("\n") : "";
     $("postprocessPreservePunctuation").value = Array.isArray(match.preservePunctuation) ? match.preservePunctuation.join("\n") : "";
     validateMatchPunctuation();
+    renderMatchMode();
     void refreshScriptPreview();
     const replace = byId.get("replace") || {};
     $("postprocessReplacementSeparator").value = ["arrow", "comma", "tab", "custom"].includes(replace.replacementSeparator) ? replace.replacementSeparator : "arrow";
@@ -1149,6 +1225,7 @@
       const result = await bridge("run_script_match", {
         ...paths,
         scriptPath,
+        matchMode: $("postprocessMatchMode").value,
         extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"),
         preservePunctuation: punctuationLines("postprocessPreservePunctuation"),
       });
@@ -1469,8 +1546,9 @@
   $("runWaveform").addEventListener("click", () => { void generateWaveformProject(true); });
   $("runScriptMatch").addEventListener("click", runScriptMatch);
   $("postprocessScriptPath").addEventListener("input", () => { void refreshScriptPreview(); });
-  $("postprocessExtraSplitPunctuation").addEventListener("input", validateMatchPunctuation);
-  $("postprocessPreservePunctuation").addEventListener("input", validateMatchPunctuation);
+  $("postprocessExtraSplitPunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshSplitPreview(); });
+  $("postprocessPreservePunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshSplitPreview(); });
+  $("postprocessMatchMode").addEventListener("change", () => { renderMatchMode(); validateMatchPunctuation(); void refreshSplitPreview(); persistAutoPlanSoon(); });
   $("runOcrDedup").addEventListener("click", runOcrDedup);
   $("ocrModel").addEventListener("change", renderOcrModel);
   $("openOcrSettings").addEventListener("click", () => window.MAWLauncher.openSettings("ocrSettingsSection"));
@@ -1526,9 +1604,10 @@
     clearChainSelection();
     inputManual = Boolean($("toolboxInputPath").value.trim());
     setFieldError("toolboxInputPath", "");
-    syncOcrVideo();
-    syncInputName();
-  });
+      syncOcrVideo();
+      syncInputName();
+      void refreshScriptPreview();
+    });
   $("toolboxUtilityMediaPath").addEventListener("input", () => {
     utilityMediaManual = Boolean($("toolboxUtilityMediaPath").value.trim());
     setFieldError("toolboxUtilityMediaPath", "");

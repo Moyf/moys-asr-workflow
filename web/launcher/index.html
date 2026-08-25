@@ -322,7 +322,7 @@
           </div>
         </div>
       </div>
-    </section>
+     </section>
 
     <section id="autoPostprocessCard" class="card" aria-labelledby="autoPostprocessTitle">
       <h2 id="autoPostprocessTitle" data-i18n="auto_postprocess_title">3️⃣ 转写后自动处理 （Beta）</h2>
@@ -472,7 +472,7 @@
             <input id="toolboxInputPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_input_placeholder" placeholder="跟随工程文件，也可拖入 .mosp / .json / .srt">
             <button id="pickToolboxInput" class="ghost" type="button" data-i18n="choose">选择</button>
           </div>
-          <p class="hint" data-i18n="toolbox_input_hint">默认跟随「工程文件」并随每次处理更新；手动选择或拖入后以这里为准。</p>
+           <p id="toolboxInputHint" class="hint" data-i18n="toolbox_input_hint">默认跟随「工程文件」并随每次处理更新；手动选择或拖入后以这里为准。</p>
           <p id="toolboxInputPathError" class="field-error"></p>
         </div>
         <div id="toolboxChain" class="toolbox-chain hidden" aria-label="processing artifacts">
@@ -539,29 +539,46 @@
 
     <section id="toolboxMatchPanel" class="toolbox-panel" role="tabpanel" aria-labelledby="toolboxMatchTab">
       <p class="hint toolbox-panel-hint" data-i18n="toolbox_match_hint">匹配度过低时会停止，不写出可能错配的结果。</p>
-      <div class="field">
+        <div class="field">
         <label for="postprocessScriptPath" data-i18n="toolbox_script">文稿文件</label>
         <div class="path-row">
           <input id="postprocessScriptPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_script_placeholder" placeholder="UTF-8 .txt / .md 文稿">
           <button id="pickPostprocessScript" class="ghost" type="button" data-i18n="choose">选择</button>
         </div>
           <p class="hint" data-i18n="toolbox_script_hint">文稿文字会替换字幕文字；原字幕时间保持不变。</p>
-          <div id="postprocessScriptPreview" class="script-preview hidden" aria-live="polite">
-            <div class="toolbox-preset-label" data-i18n="toolbox_script_preview">文稿预览</div>
-            <pre id="postprocessScriptPreviewText"></pre>
-          </div>
+           <div class="match-previews">
+             <div id="postprocessScriptPreview" class="script-preview hidden" aria-live="polite">
+               <div class="toolbox-preset-label" data-i18n="toolbox_script_preview">外稿预览</div>
+               <pre id="postprocessScriptPreviewText"></pre>
+             </div>
+             <div id="postprocessSplitPreview" class="script-preview hidden" aria-live="polite">
+                <div id="postprocessSplitPreviewLabel" class="toolbox-preset-label" data-i18n="toolbox_split_preview">拆分预览</div>
+               <pre id="postprocessSplitPreviewText"></pre>
+             </div>
+           </div>
           <p id="postprocessScriptPathError" class="field-error"></p>
         </div>
         <div class="field">
-          <label for="postprocessExtraSplitPunctuation" data-i18n="toolbox_extra_split_punctuation">额外断句符号</label>
-          <textarea id="postprocessExtraSplitPunctuation" rows="4" autocomplete="off" data-i18n-placeholder="toolbox_extra_split_punctuation_placeholder" placeholder="？\n！\n——\n~"></textarea>
-          <p class="hint" data-i18n="toolbox_extra_split_punctuation_hint">每行一个符号；默认逗号、句号和换行仍然生效。</p>
+          <label for="postprocessMatchMode" data-i18n="toolbox_match_mode">换行来源</label>
+         <select id="postprocessMatchMode">
+            <option value="script" data-i18n="toolbox_match_mode_script">按文稿换行（默认）</option>
+            <option value="text" data-i18n="toolbox_match_mode_text">只更正文本</option>
+         </select>
+         <p class="hint" data-i18n="toolbox_match_mode_hint">按文稿换行会使用文稿中的换行和断句符号；只更正文本保留现有字幕分段。</p>
+         <p id="postprocessMatchStats" class="match-stats hidden" aria-live="polite"></p>
         </div>
-        <div class="field">
-          <label for="postprocessPreservePunctuation" data-i18n="toolbox_preserve_punctuation">保留符号</label>
-          <textarea id="postprocessPreservePunctuation" rows="3" autocomplete="off" data-i18n-placeholder="toolbox_preserve_punctuation_placeholder" placeholder="？\n！\n~"></textarea>
-          <p id="postprocessPreservePunctuationError" class="field-error"></p>
-          <p class="hint" data-i18n="toolbox_preserve_punctuation_hint">断句后仍将符号保留在对应字幕末尾。</p>
+        <div id="postprocessMatchSegmentationOptions" class="match-segmentation-options">
+          <div class="match-segmentation-field field">
+            <label for="postprocessExtraSplitPunctuation" data-i18n="toolbox_extra_split_punctuation">额外断句符号</label>
+            <textarea id="postprocessExtraSplitPunctuation" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_extra_split_punctuation_placeholder" placeholder="？\n！\n——\n~"></textarea>
+            <p class="hint" data-i18n="toolbox_extra_split_punctuation_hint">每行一个符号；默认逗号、句号和换行仍然生效。</p>
+          </div>
+          <div class="match-segmentation-field field">
+            <label for="postprocessPreservePunctuation" data-i18n="toolbox_preserve_punctuation">断句后保留符号</label>
+            <textarea id="postprocessPreservePunctuation" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_preserve_punctuation_placeholder" placeholder="？\n！\n~"></textarea>
+            <p id="postprocessPreservePunctuationError" class="field-error"></p>
+            <p class="hint" data-i18n="toolbox_preserve_punctuation_hint">断句后仍将符号保留在对应字幕末尾。</p>
+          </div>
         </div>
     </section>
 

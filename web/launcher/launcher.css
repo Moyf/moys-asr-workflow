@@ -1077,6 +1077,53 @@ textarea::placeholder {
   font: inherit;
 }
 
+.match-previews {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 8px;
+}
+
+.match-previews .script-preview.full-width-preview {
+  grid-column: 1 / -1;
+}
+
+.match-segmentation-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.match-segmentation-options > .field {
+  align-self: start;
+  align-content: start;
+  margin-top: 10px;
+}
+
+.match-segmentation-field > label {
+  display: block;
+  height: 1.25em;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.match-stats {
+  margin: 0;
+}
+
+.match-stats.success {
+  color: var(--green);
+}
+
+.match-stats.error {
+  color: var(--red);
+}
+
+@media (max-width: 560px) {
+  .match-segmentation-options {
+    grid-template-columns: 1fr;
+  }
+}
+
 .ghost,
 .primary {
   height: 34px;
@@ -2292,9 +2339,19 @@ html,
 .modal-card,
 .settings-scroll,
 .toolbox-content,
-.toolbox-chain-list {
+.toolbox-chain-list,
+textarea {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
+}
+
+textarea::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+textarea::-webkit-scrollbar-thumb {
+  border-width: 2px;
 }
 
 html.scrolling,
@@ -2302,7 +2359,8 @@ html.scrolling,
 .modal-card.scrolling,
 .settings-scroll.scrolling,
 .toolbox-content.scrolling,
-.toolbox-chain-list.scrolling {
+.toolbox-chain-list.scrolling,
+textarea.scrolling {
   scrollbar-color: var(--text-muted) transparent;
 }
 
