@@ -73,6 +73,12 @@ jobs:
       - name: Run packaging contract tests
         run: uv run python -m unittest tests/test_packaging_contract.py
 
+      - name: Install Linux CJK test font
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
+
       - name: Run Python tests
         run: uv run python -m unittest discover -s tests -p "test_*.py"
 
@@ -465,6 +471,10 @@ jobs:
       - name: Diagnose AppImage libraries
         if: ${{ always() && matrix.platform == 'linux' }}
         run: |
+          if [ ! -f build-appimage/MAW-Linux-x86_64.AppImage ]; then
+            echo "跳过 AppImage 诊断：构建产物不存在，前置步骤已失败。"
+            exit 0
+          fi
           cd build-appimage
           ./MAW-Linux-x86_64.AppImage --appimage-extract >/dev/null 2>&1 || true
           echo "=== Qt6/lib 里 xcb-cursor 相关:"
