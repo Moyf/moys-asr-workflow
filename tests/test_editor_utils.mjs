@@ -244,6 +244,40 @@ test('builds expandable replacement rows with before and after text', () => {
   ]);
 });
 
+test('applies common text processing operations in a stable order', () => {
+  assert.equal(
+    helpers.applyTextProcessing('  **hello**  ', {
+      stripMarkdown: true, trim: true, capitalize: true,
+      addPrefix: true, prefix: '[', addSuffix: true, suffix: ']',
+    }),
+    '[Hello]',
+  );
+  assert.equal(
+    helpers.applyTextProcessing('  [hello](https://example.com)  ', {
+      stripMarkdown: true, trim: true,
+    }),
+    'hello',
+  );
+  assert.equal(helpers.applyTextProcessing('中文', { capitalize: true }), '中文');
+});
+
+test('previews text processing only for the selected subtitle indexes', () => {
+  const result = helpers.buildTextProcessingPreview(
+    [{ text: ' first ' }, { text: '**second**' }, { text: 'third' }],
+    [2, 1, 1],
+    { trim: true, stripMarkdown: true },
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    targetCount: 2,
+    changedCount: 1,
+    unchangedCount: 1,
+    rows: [
+      { index: 1, before: '**second**', after: 'second', changed: true },
+      { index: 2, before: 'third', after: 'third', changed: false },
+    ],
+  });
+});
+
 test('reports equal-length text edits as fully reusable word timings', () => {
   const source = [{
     id: 'cue-1', start: 0, end: 1000, text: '就是这颗',

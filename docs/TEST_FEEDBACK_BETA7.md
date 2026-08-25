@@ -49,6 +49,15 @@
 已验证：`node --test tests\\test_editor_utils.mjs`（111/111）；`node --check web\\editor-utils.js`、`node --check web\\editor.js`；`uv run python edit.py --blank`；`git diff --check`。Premiere 图片自动重链和真实字体显示仍需用户实机确认。
 | 33 | Launcher / 批量拖入 | 不支持格式的提示显示在单文件区域；重复拖入文件没有提示；批量阶段日志只显示在单条记录；跳过确认按钮应显示“是 / 否” | 修改 | 已修复 |
 | 34 | Launcher / 批量进度 | 批量运行时总日志和状态区缺少当前文件、完成/失败和汇总反馈 | 修改 | 已修复 |
+| 35 | 编辑器 / 批量操作 | 字幕列表顶部整合批量操作入口；批量替换和文本处理支持限定选中字幕；增加常用文本处理 | 修改 | 已修复 |
+
+## 增量记录（字幕列表批量操作与文本处理）
+
+- 已修复顶部“批量操作”下拉入口，菜单包含“批量替换”“纯文本编辑”“文本处理”；原有纯文本编辑入口保留为菜单项，并同步更新其 E2E 入口。
+- 已修复批量替换和文本处理的选中范围：打开弹窗时保存选中字幕快照；无选中时“仅处理选中的字幕”禁用并按全部字幕处理，弹窗打开后改变选择也不会改变当前范围。
+- 已增加文本处理弹窗：Trim、首字母大写、添加前缀、附加内容、去除 Markdown 格式符号；处理保持字幕行，时间码通过纯文本编辑的映射规则尽量保留，应用为空时保留空字幕行。
+- 已验证：`node --check web\\editor.js`、`node --check web\\editor-utils.js`、`node --check web\\editor-i18n.js`；`node --test tests\\test_editor_utils.mjs`（129/129）；`uv run python edit.py --blank`；`git diff --check`。
+- 浏览器 E2E 未完成：本机 `npx playwright` 访问 npm 缓存时因 `EPERM` 无法创建 `C:\\Users\\USER\\AppData\\Local\\npm-cache\\_cacache\\tmp`，未产生页面断言结果。
 
 ## 修复与验证记录
 

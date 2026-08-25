@@ -53,6 +53,7 @@ test('previews text changes and applies the reported item-timing mapping', async
   });
   await page.goto(server.url);
 
+  await page.locator('#batch-operations-btn').click();
   await page.locator('#timed-text-edit-btn').click();
   await expect(page.locator('#timed-text-edit-modal')).toHaveClass(/show/);
   await expect(page.locator('#timed-text-edit-source-info')).toContainText('主字幕');
@@ -89,6 +90,7 @@ test('previews text changes and applies the reported item-timing mapping', async
   await page.locator('#timed-text-edit-cancel').click();
   await expect(page.locator('#timed-text-edit-modal')).not.toHaveClass(/show/);
 
+  await page.locator('#batch-operations-btn').click();
   await page.locator('#timed-text-edit-btn').click();
 
   await page.locator('#timed-text-edit-apply').click();

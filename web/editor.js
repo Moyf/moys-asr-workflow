@@ -1078,6 +1078,7 @@ function historyGuarded() {
     return true;
   }
   return replaceModal.classList.contains('show')
+      || textProcessModal.classList.contains('show')
       || timedTextEditModal.classList.contains('show')
       || stickerModal.classList.contains('show')
       || stickerPreviewModal.classList.contains('show')
@@ -1192,6 +1193,7 @@ const helpJklMode = document.getElementById('help-jkl-mode');
 const cueMoveStepInput = document.getElementById('cue-move-step');
 const autoSnapAdjacentCuesToggle = document.getElementById('auto-snap-adjacent-cues');
 const replaceModal = document.getElementById('replace-modal');
+const textProcessModal = document.getElementById('text-process-modal');
 const timedTextEditButton = document.getElementById('timed-text-edit-btn');
 const timedTextEditModal = document.getElementById('timed-text-edit-modal');
 const timedTextEditClose = document.getElementById('timed-text-edit-close');
@@ -11720,6 +11722,7 @@ bindToolbarExportDropdown('open-project-dropdown', 'open-project-menu-btn', 'ope
 bindToolbarExportDropdown('save-project-dropdown', 'save-project-menu-btn', 'save-project-menu');
 bindToolbarExportDropdown('workspace-transfer-dropdown', 'workspace-transfer-btn', 'workspace-transfer-menu');
 bindToolbarExportDropdown('multi-subtitle-settings-dropdown', 'multi-subtitle-settings-toggle', 'multi-subtitle-settings-menu');
+bindToolbarExportDropdown('batch-operations-dropdown', 'batch-operations-btn', 'batch-operations-menu');
 
 // === 打开工程 ===
 const openProjectFileInput = document.getElementById('open-project-file');
@@ -12859,9 +12862,18 @@ const useRegexCb = document.getElementById('use-regex');
 const replacePreview = document.getElementById('replace-preview');
 const replaceScopeInfo = document.getElementById('replace-scope-info');
 const replaceModalTitle = document.getElementById('replace-modal-title');
+const replaceSelectedOnlyCb = document.getElementById('replace-selected-only');
 
 // null = 全部；[idxs] = 仅这些行
 let replaceScope = null;
+let replaceSelectionSnapshot = [];
+
+function normalizeBatchSelection(indexes) {
+  const candidates = Array.isArray(indexes) ? indexes : [...selectedIdxs];
+  return [...new Set(candidates
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < DATA.segments.length))]
+    .sort((a, b) => a - b);
+}
 
 function getReplaceTargets() {
   if (replaceScope && replaceScope.length) {
@@ -12939,12 +12951,31 @@ function refreshScopeInfo() {
   }
 }
 
+function refreshReplaceSelectionControl() {
+  if (!replaceSelectedOnlyCb) return;
+  const available = replaceSelectionSnapshot.length > 0;
+  replaceSelectedOnlyCb.disabled = !available;
+  if (!available) replaceSelectedOnlyCb.checked = false;
+  replaceScope = replaceSelectedOnlyCb.checked ? [...replaceSelectionSnapshot] : null;
+  refreshScopeInfo();
+}
+
 [findInput, replaceInput].forEach(el => el.addEventListener('input', updatePreview));
 [caseSensitiveCb, useRegexCb].forEach(el => el.addEventListener('change', updatePreview));
+replaceSelectedOnlyCb?.addEventListener('change', () => {
+  replaceScope = replaceSelectedOnlyCb.checked ? [...replaceSelectionSnapshot] : null;
+  refreshScopeInfo();
+  updatePreview();
+});
 
 function openReplaceModal(scope) {
   if (editingState) finishEdit(true);
-  replaceScope = scope || null;
+  replaceSelectionSnapshot = normalizeBatchSelection(
+    Array.isArray(scope) && scope.length ? scope : [...selectedIdxs],
+  );
+  replaceSelectedOnlyCb.checked = Boolean(Array.isArray(scope) && scope.length
+    && replaceSelectionSnapshot.length);
+  refreshReplaceSelectionControl();
   refreshScopeInfo();
   replaceModal.classList.add('show');
   setTimeout(() => findInput.focus(), 50);
@@ -12979,6 +13010,166 @@ document.getElementById('replace-confirm')?.addEventListener('click', () => {
   replaceModal.classList.remove('show');
   renderAll();
   flashHint(`已修改 ${changedRows} 行`, 'success');
+});
+
+// === 文本处理 ===
+const textProcessButton = document.getElementById('text-process-btn');
+const textProcessSelectedOnlyCb = document.getElementById('text-process-selected-only');
+const textProcessScopeInfo = document.getElementById('text-process-scope-info');
+const textProcessPreview = document.getElementById('text-process-preview');
+const textProcessConfirm = document.getElementById('text-process-confirm');
+const textProcessTrim = document.getElementById('text-process-trim');
+const textProcessCapitalize = document.getElementById('text-process-capitalize');
+const textProcessPrefix = document.getElementById('text-process-prefix');
+const textProcessPrefixInput = document.getElementById('text-process-prefix-input');
+const textProcessSuffix = document.getElementById('text-process-suffix');
+const textProcessSuffixInput = document.getElementById('text-process-suffix-input');
+const textProcessStripMarkdown = document.getElementById('text-process-strip-markdown');
+let textProcessSelectionSnapshot = [];
+let textProcessScope = null;
+
+function getTextProcessOptions() {
+  return {
+    trim: textProcessTrim.checked,
+    capitalize: textProcessCapitalize.checked,
+    addPrefix: textProcessPrefix.checked,
+    prefix: textProcessPrefixInput.value,
+    addSuffix: textProcessSuffix.checked,
+    suffix: textProcessSuffixInput.value,
+    stripMarkdown: textProcessStripMarkdown.checked,
+  };
+}
+
+function refreshTextProcessScopeInfo() {
+  const selected = textProcessScope && textProcessScope.length;
+  textProcessScopeInfo.textContent = selected
+    ? `范围：仅选中的 ${textProcessScope.length} 条字幕`
+    : `范围：全部 ${DATA.segments.length} 条字幕`;
+  textProcessScopeInfo.classList.toggle('selected', Boolean(selected));
+}
+
+function refreshTextProcessSelectionControl() {
+  const available = textProcessSelectionSnapshot.length > 0;
+  textProcessSelectedOnlyCb.disabled = !available;
+  if (!available) textProcessSelectedOnlyCb.checked = false;
+  textProcessScope = textProcessSelectedOnlyCb.checked
+    ? [...textProcessSelectionSnapshot] : null;
+  refreshTextProcessScopeInfo();
+}
+
+function renderTextProcessPreview() {
+  const options = getTextProcessOptions();
+  const hasOperation = textProcessTrim.checked || textProcessCapitalize.checked
+    || textProcessPrefix.checked || textProcessSuffix.checked || textProcessStripMarkdown.checked;
+  const indexes = textProcessScope || DATA.segments.map((_, index) => index);
+  textProcessPreview.replaceChildren();
+  if (!hasOperation) {
+    textProcessPreview.textContent = '请选择至少一项文本处理操作';
+    textProcessPreview.style.color = '';
+    textProcessConfirm.disabled = true;
+    return;
+  }
+  const result = window.AsrEditorUtils.buildTextProcessingPreview(DATA.segments, indexes, options);
+  textProcessPreview.style.color = result.changedCount ? '' : 'var(--text-muted)';
+  const summary = document.createElement('div');
+  summary.className = 'replace-preview-summary';
+  summary.textContent = result.changedCount
+    ? `将处理 ${result.targetCount} 条字幕，预计修改 ${result.changedCount} 条（展开查看前后文本）`
+    : `选定的 ${result.targetCount} 条字幕不会发生变化`;
+  textProcessPreview.appendChild(summary);
+  result.rows.filter((row) => row.changed).forEach((row) => {
+    const details = document.createElement('details');
+    details.className = 'replace-preview-row';
+    const title = document.createElement('summary');
+    title.textContent = `第 ${row.index + 1} 条`;
+    details.appendChild(title);
+    const before = document.createElement('div');
+    before.className = 'replace-preview-before';
+    before.textContent = `处理前：${row.before}`;
+    const after = document.createElement('div');
+    after.className = 'replace-preview-after';
+    after.textContent = `处理后：${row.after}`;
+    details.append(before, after);
+    textProcessPreview.appendChild(details);
+  });
+  textProcessConfirm.disabled = result.changedCount === 0;
+}
+
+function refreshTextProcessInputState() {
+  textProcessPrefixInput.disabled = !textProcessPrefix.checked;
+  textProcessSuffixInput.disabled = !textProcessSuffix.checked;
+}
+
+function closeTextProcessModal() {
+  textProcessModal.classList.remove('show');
+}
+
+function openTextProcessModal() {
+  if (!DATA.segments.length) {
+    flashHint('当前没有可处理的字幕', 'invalid');
+    return;
+  }
+  if (editingState) finishEdit(true);
+  textProcessSelectionSnapshot = normalizeBatchSelection([...selectedIdxs]);
+  textProcessSelectedOnlyCb.checked = false;
+  refreshTextProcessSelectionControl();
+  [textProcessTrim, textProcessCapitalize, textProcessPrefix,
+    textProcessSuffix, textProcessStripMarkdown].forEach((input) => { input.checked = false; });
+  textProcessPrefixInput.value = '';
+  textProcessSuffixInput.value = '';
+  refreshTextProcessInputState();
+  textProcessModal.classList.add('show');
+  renderTextProcessPreview();
+  setTimeout(() => textProcessTrim.focus(), 50);
+}
+
+textProcessButton?.addEventListener('click', openTextProcessModal);
+textProcessSelectedOnlyCb?.addEventListener('change', () => {
+  textProcessScope = textProcessSelectedOnlyCb.checked
+    ? [...textProcessSelectionSnapshot] : null;
+  refreshTextProcessScopeInfo();
+  renderTextProcessPreview();
+});
+[textProcessTrim, textProcessCapitalize, textProcessPrefix,
+  textProcessSuffix, textProcessStripMarkdown].forEach((input) => {
+  input?.addEventListener('change', () => {
+    refreshTextProcessInputState();
+    renderTextProcessPreview();
+  });
+});
+[textProcessPrefixInput, textProcessSuffixInput].forEach((input) => {
+  input?.addEventListener('input', renderTextProcessPreview);
+});
+document.getElementById('text-process-cancel')?.addEventListener('click', closeTextProcessModal);
+textProcessModal?.addEventListener('click', (event) => {
+  if (event.target === textProcessModal) closeTextProcessModal();
+});
+textProcessConfirm?.addEventListener('click', () => {
+  const options = getTextProcessOptions();
+  const indexes = textProcessScope || DATA.segments.map((_, index) => index);
+  const result = window.AsrEditorUtils.buildTextProcessingPreview(DATA.segments, indexes, options);
+  if (!result.changedCount) {
+    closeTextProcessModal();
+    flashHint('没有需要处理的内容', 'invalid');
+    return;
+  }
+  const draftTexts = DATA.segments.map((segment) => String(segment?.text || ''));
+  result.rows.forEach((row) => { draftTexts[row.index] = row.after; });
+  const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(DATA.segments, draftTexts);
+  if (!nextSegments) {
+    flashHint('无法应用文本处理：字幕行结构发生了变化', 'warning');
+    return;
+  }
+  pushUndo('文本处理');
+  DATA.segments.splice(0, DATA.segments.length, ...nextSegments);
+  markMainSegmentsDirty(DATA.segments);
+  syncBindingOffsets();
+  scheduleAutoSaveFlush();
+  closeTextProcessModal();
+  renderAll({ waveform: 'overlay' });
+  update();
+  updateUndoRedoButtons();
+  flashHint(`已应用文本处理：${result.changedCount} 条字幕`, 'success');
 });
 
 // === 纯文本编辑（保持字幕行结构的 MVP） ===

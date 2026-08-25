@@ -1024,6 +1024,9 @@
     left: auto; right: 0;
     width: max-content; min-width: 100%; max-width: 320px;
   }
+  .toolbar .batch-operations-dropdown > .dropdown-menu {
+    left: 0; right: auto; width: max-content; min-width: 150px; max-width: min(260px, calc(100vw - 16px));
+  }
   .toolbar .dropdown.open .dropdown-menu { display: block; }
   .toolbar .multi-subtitle-settings-dropdown > button {
     min-width: 30px; padding: 3px 7px; font-size: 15px; line-height: 1;
@@ -1737,6 +1740,10 @@
   /* 模态正文辅助元素（描述 / 提示 / 字段行） */
   .modal .modal-desc { font-size: 12px; color: var(--text-muted); margin: 0 0 8px; }
   .modal .modal-hint { font-size: 11px; color: var(--text-faint); margin-top: 6px; }
+  .modal .modal-check-row {
+    display: flex; align-items: center; gap: 6px; margin: 0 0 9px; cursor: pointer; user-select: none;
+  }
+  .modal .modal-check-row input { margin: 0; }
   .modal .modal-field-row { display: flex; gap: 6px; align-items: stretch; }
   .modal .modal-field-row input[type=text] { flex: 1 1 auto; width: auto; }
   .modal .modal-field-row button {
@@ -1961,6 +1968,30 @@
   }
   .replace-preview-before { color: var(--red-hover); }
   .replace-preview-after { color: var(--green-hover); }
+
+  .text-process-modal {
+    width: min(620px, calc(100vw - 24px)); min-width: 0; max-width: none;
+  }
+  .text-process-scope-info {
+    margin: 0 0 7px; color: var(--text-muted); font-size: 12px;
+  }
+  .text-process-scope-info.selected { color: var(--amber-hover); }
+  .text-process-operations {
+    display: grid; gap: 6px; margin-top: 2px; padding: 9px 10px;
+    background: var(--bg-panel); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  }
+  .text-process-operation {
+    display: grid; grid-template-columns: auto max-content minmax(0, 1fr); align-items: center; gap: 7px;
+    margin: 0 !important; color: var(--text-secondary) !important; cursor: pointer; min-height: 28px;
+  }
+  .text-process-operation input[type="checkbox"] { margin: 0; }
+  .text-process-operation .modal-hint { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .text-process-operation-input { grid-template-columns: auto max-content minmax(0, 1fr); }
+  .text-process-operation-input input[type="text"] {
+    width: auto; min-width: 0; margin: 0; padding: 5px 7px; font-size: 12px;
+  }
+  .text-process-preview { margin-top: 10px !important; min-height: 42px !important; }
+  .text-process-preview .replace-preview-row { margin-top: 5px; }
 
   /* 纯文本编辑 MVP：保留字幕行结构，集中展示文字修改与字词时间码影响。 */
   .timed-text-edit-modal {
@@ -4661,8 +4692,14 @@
       </span>
       <span class="info">显示 <b id="visible-count">0</b> / <b id="total-count">0</b></span>
       <span class="sep"></span>
-      <button id="replace-btn">批量替换…</button>
-      <button id="timed-text-edit-btn" type="button" title="以保持字幕行结构的方式集中编辑文本，并预览时间码映射结果">纯文本编辑…</button>
+      <div class="dropdown batch-operations-dropdown" id="batch-operations-dropdown">
+        <button type="button" id="batch-operations-btn" aria-expanded="false" aria-controls="batch-operations-menu" aria-haspopup="menu">批量操作 ▾</button>
+        <div class="dropdown-menu" id="batch-operations-menu" role="menu">
+          <button type="button" class="dropdown-item" id="replace-btn" role="menuitem">批量替换…</button>
+          <button type="button" class="dropdown-item" id="timed-text-edit-btn" role="menuitem" title="以保持字幕行结构的方式集中编辑文本，并预览时间码映射结果">纯文本编辑…</button>
+          <button type="button" class="dropdown-item" id="text-process-btn" role="menuitem">文本处理…</button>
+        </div>
+      </div>
       <span class="sep"></span>
       <button id="filter-over" title="只显示超过阈值的字幕（再次点击关闭）">仅看超长</button>
     </div>
@@ -4726,6 +4763,9 @@
   <div class="modal">
     <h3 id="replace-modal-title">批量替换</h3>
     <div id="replace-scope-info" style="font-size:12px;color:#888;margin-bottom:8px;">范围：全部字幕</div>
+    <label class="modal-check-row" for="replace-selected-only">
+      <input type="checkbox" id="replace-selected-only" disabled> 仅处理选中的字幕
+    </label>
     <label>查找</label>
     <input type="text" id="find-input" placeholder="要查找的内容" autocomplete="off">
     <label>替换为</label>
@@ -4738,6 +4778,53 @@
     <div class="actions">
       <button id="replace-cancel">取消</button>
       <button id="replace-confirm" class="primary">替换全部</button>
+    </div>
+  </div>
+</div>
+
+<!-- 常用文本处理 modal：保持字幕行和时间范围结构，只批量变更文本。 -->
+<div class="modal-mask" id="text-process-modal">
+  <div class="modal text-process-modal" role="dialog" aria-modal="true"
+       aria-labelledby="text-process-title" aria-describedby="text-process-description">
+    <h3 id="text-process-title">文本处理</h3>
+    <p class="modal-desc" id="text-process-description">
+      选择要执行的文本操作；字幕行不会被删除，处理为空时会保留空字幕行。字词时间码会按文本编辑规则尽量保留。
+    </p>
+    <div id="text-process-scope-info" class="text-process-scope-info">范围：全部字幕</div>
+    <label class="modal-check-row" for="text-process-selected-only">
+      <input type="checkbox" id="text-process-selected-only" disabled> 仅处理选中的字幕
+    </label>
+    <div class="text-process-operations" aria-label="文本处理操作">
+      <label class="text-process-operation" for="text-process-trim">
+        <input type="checkbox" id="text-process-trim">
+        <span>Trim</span>
+        <span class="modal-hint">去除前后空白</span>
+      </label>
+      <label class="text-process-operation" for="text-process-capitalize">
+        <input type="checkbox" id="text-process-capitalize">
+        <span>首字母大写</span>
+        <span class="modal-hint">只作用于第一个字母</span>
+      </label>
+      <label class="text-process-operation text-process-operation-input" for="text-process-prefix">
+        <input type="checkbox" id="text-process-prefix">
+        <span>添加前缀</span>
+        <input type="text" id="text-process-prefix-input" placeholder="插入到字幕开头" disabled>
+      </label>
+      <label class="text-process-operation text-process-operation-input" for="text-process-suffix">
+        <input type="checkbox" id="text-process-suffix">
+        <span>附加内容</span>
+        <input type="text" id="text-process-suffix-input" placeholder="插入到字幕结尾" disabled>
+      </label>
+      <label class="text-process-operation" for="text-process-strip-markdown">
+        <input type="checkbox" id="text-process-strip-markdown">
+        <span>去除 md 格式符号</span>
+        <span class="modal-hint">移除常见 Markdown 标记</span>
+      </label>
+    </div>
+    <div class="preview text-process-preview" id="text-process-preview">选择操作后查看预览</div>
+    <div class="actions">
+      <button type="button" id="text-process-cancel">取消</button>
+      <button type="button" id="text-process-confirm" class="primary" disabled>应用处理</button>
     </div>
   </div>
 </div>
@@ -5093,6 +5180,60 @@
       error: null,
       matchCount,
       lineCount: rows.length,
+      rows,
+    };
+  }
+
+  function stripMarkdownFormatting(text) {
+    return String(text == null ? '' : text)
+      .replace(/!\[([^\]]*)\]\([^\)\n]+\)/g, '$1')
+      .replace(/\[([^\]]+)\]\([^\)\n]+\)/g, '$1')
+      .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+      .replace(/^\s{0,3}>\s?/gm, '')
+      .replace(/^\s*[-*+]\s+/gm, '')
+      .replace(/[\\*_~`]/g, '');
+  }
+
+  function capitalizeFirstLetter(text) {
+    return String(text == null ? '' : text).replace(/^(\s*)(\p{L})/u, (match, leading, letter) => {
+      return `${leading}${letter.toLocaleUpperCase()}`;
+    });
+  }
+
+  // Apply the selected operations in a stable order so preview and execution
+  // always agree: Markdown -> trim -> capitalization -> prefix -> suffix.
+  function applyTextProcessing(text, options = {}) {
+    let result = String(text == null ? '' : text);
+    if (options.stripMarkdown) result = stripMarkdownFormatting(result);
+    if (options.trim) result = result.trim();
+    if (options.capitalize) result = capitalizeFirstLetter(result);
+    if (options.addPrefix) result = `${String(options.prefix == null ? '' : options.prefix)}${result}`;
+    if (options.addSuffix) result = `${result}${String(options.suffix == null ? '' : options.suffix)}`;
+    return result;
+  }
+
+  function normalizeTextProcessingIndexes(segments, indexes) {
+    const source = Array.isArray(segments) ? segments : [];
+    const candidates = Array.isArray(indexes)
+      ? indexes
+      : source.map((_, index) => index);
+    return [...new Set(candidates
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < source.length))]
+      .sort((a, b) => a - b);
+  }
+
+  function buildTextProcessingPreview(segments, indexes, options = {}) {
+    const source = Array.isArray(segments) ? segments : [];
+    const targetIndexes = normalizeTextProcessingIndexes(source, indexes);
+    const rows = targetIndexes.map((index) => {
+      const before = String(source[index]?.text == null ? '' : source[index].text);
+      const after = applyTextProcessing(before, options);
+      return { index, before, after, changed: before !== after };
+    });
+    return {
+      targetCount: rows.length,
+      changedCount: rows.filter((row) => row.changed).length,
+      unchangedCount: rows.filter((row) => !row.changed).length,
       rows,
     };
   }
@@ -7853,6 +7994,8 @@
     normalizeKeyboardOperationReferenceMode,
     resolveKeyboardOperationReference,
     buildReplacementPreview,
+    applyTextProcessing,
+    buildTextProcessingPreview,
     buildTimedTextDiff,
     buildTimedTextBoundaryPlan,
     buildTimedTextEditReport,
@@ -8082,7 +8225,7 @@
     '播放': 'Play', '暂停': 'Pause', '后退 1000ms': 'Back 1000ms', '前进 1000ms': 'Forward 1000ms',
     '媒体进度': 'Media progress', '音量': 'Volume', '速度': 'Speed', '播放速度': 'Playback speed',
     '全屏': 'Fullscreen', '退出全屏': 'Exit fullscreen',
-    '显示': 'Display', '筛选': 'Filter', '隐藏禁用': 'Hide disabled', '隐藏禁用字幕': 'Hide disabled subtitles', '批量替换…': 'Batch replace…',
+    '显示': 'Display', '筛选': 'Filter', '隐藏禁用': 'Hide disabled', '隐藏禁用字幕': 'Hide disabled subtitles', '批量操作 ▾': 'Batch operations ▾', '批量操作': 'Batch operations', '批量替换…': 'Batch replace…',
     '字数阈值': 'Character threshold', '仅看超长': 'Long only', '字幕列表设置': 'Subtitle list settings',
     '拆分后临时保留显示': 'Temporarily keep split results visible', '点击字幕后自动滚动': 'Auto-scroll after clicking a subtitle', '显示内容': 'Displayed content',
     '当前': 'Current', '已选': 'Selected', '波形': 'Waveform', '音频波形区': 'Audio waveform', '波形设置': 'Waveform settings', '波形轨道徽标（开启后）：': 'Waveform track badges (when enabled):', '使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形': 'Color the waveform using the spectral cache by dominant frequency; when disabled, use the original solid-color waveform',
@@ -8352,6 +8495,13 @@
     '区分大小写': 'Case sensitive',
     '正则表达式': 'Regular expression',
     '输入查找内容查看预览': 'Enter text to preview replacements',
+    '文本处理…': 'Text processing…', '文本处理': 'Text processing', '仅处理选中的字幕': 'Process selected subtitles only',
+    'Trim': 'Trim', '去除前后空白': 'Remove surrounding whitespace', '首字母大写': 'Capitalize first letter', '只作用于第一个字母': 'Only affects the first letter',
+    '添加前缀': 'Add prefix', '插入到字幕开头': 'Insert at the beginning', '附加内容': 'Add suffix', '插入到字幕结尾': 'Insert at the end',
+    '去除 md 格式符号': 'Remove Markdown formatting', '移除常见 Markdown 标记': 'Remove common Markdown markers',
+    '选择操作后查看预览': 'Select an operation to preview', '至少选择一项文本处理操作': 'Select at least one text-processing operation',
+    '应用处理': 'Apply processing', '处理前：': 'Before: ', '处理后：': 'After: ',
+    '选择要执行的文本操作；字幕行不会被删除，处理为空时会保留空字幕行。字词时间码会按文本编辑规则尽量保留。': 'Choose text operations; subtitle rows are not deleted, and empty results remain as empty rows. Word timings are retained when possible using the text-editing rules.',
     '取消': 'Cancel', '替换全部': 'Replace all', '分配表情包': 'Assign sticker',
     '清除当前': 'Clear current', '替换': 'Replace', '删除': 'Delete', '关闭': 'Close',
     '设置表情包根目录': 'Set sticker root folder',
@@ -15025,6 +15175,7 @@ function historyGuarded() {
     return true;
   }
   return replaceModal.classList.contains('show')
+      || textProcessModal.classList.contains('show')
       || timedTextEditModal.classList.contains('show')
       || stickerModal.classList.contains('show')
       || stickerPreviewModal.classList.contains('show')
@@ -15139,6 +15290,7 @@ const helpJklMode = document.getElementById('help-jkl-mode');
 const cueMoveStepInput = document.getElementById('cue-move-step');
 const autoSnapAdjacentCuesToggle = document.getElementById('auto-snap-adjacent-cues');
 const replaceModal = document.getElementById('replace-modal');
+const textProcessModal = document.getElementById('text-process-modal');
 const timedTextEditButton = document.getElementById('timed-text-edit-btn');
 const timedTextEditModal = document.getElementById('timed-text-edit-modal');
 const timedTextEditClose = document.getElementById('timed-text-edit-close');
@@ -25667,6 +25819,7 @@ bindToolbarExportDropdown('open-project-dropdown', 'open-project-menu-btn', 'ope
 bindToolbarExportDropdown('save-project-dropdown', 'save-project-menu-btn', 'save-project-menu');
 bindToolbarExportDropdown('workspace-transfer-dropdown', 'workspace-transfer-btn', 'workspace-transfer-menu');
 bindToolbarExportDropdown('multi-subtitle-settings-dropdown', 'multi-subtitle-settings-toggle', 'multi-subtitle-settings-menu');
+bindToolbarExportDropdown('batch-operations-dropdown', 'batch-operations-btn', 'batch-operations-menu');
 
 // === 打开工程 ===
 const openProjectFileInput = document.getElementById('open-project-file');
@@ -26806,9 +26959,18 @@ const useRegexCb = document.getElementById('use-regex');
 const replacePreview = document.getElementById('replace-preview');
 const replaceScopeInfo = document.getElementById('replace-scope-info');
 const replaceModalTitle = document.getElementById('replace-modal-title');
+const replaceSelectedOnlyCb = document.getElementById('replace-selected-only');
 
 // null = 全部；[idxs] = 仅这些行
 let replaceScope = null;
+let replaceSelectionSnapshot = [];
+
+function normalizeBatchSelection(indexes) {
+  const candidates = Array.isArray(indexes) ? indexes : [...selectedIdxs];
+  return [...new Set(candidates
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < DATA.segments.length))]
+    .sort((a, b) => a - b);
+}
 
 function getReplaceTargets() {
   if (replaceScope && replaceScope.length) {
@@ -26886,12 +27048,31 @@ function refreshScopeInfo() {
   }
 }
 
+function refreshReplaceSelectionControl() {
+  if (!replaceSelectedOnlyCb) return;
+  const available = replaceSelectionSnapshot.length > 0;
+  replaceSelectedOnlyCb.disabled = !available;
+  if (!available) replaceSelectedOnlyCb.checked = false;
+  replaceScope = replaceSelectedOnlyCb.checked ? [...replaceSelectionSnapshot] : null;
+  refreshScopeInfo();
+}
+
 [findInput, replaceInput].forEach(el => el.addEventListener('input', updatePreview));
 [caseSensitiveCb, useRegexCb].forEach(el => el.addEventListener('change', updatePreview));
+replaceSelectedOnlyCb?.addEventListener('change', () => {
+  replaceScope = replaceSelectedOnlyCb.checked ? [...replaceSelectionSnapshot] : null;
+  refreshScopeInfo();
+  updatePreview();
+});
 
 function openReplaceModal(scope) {
   if (editingState) finishEdit(true);
-  replaceScope = scope || null;
+  replaceSelectionSnapshot = normalizeBatchSelection(
+    Array.isArray(scope) && scope.length ? scope : [...selectedIdxs],
+  );
+  replaceSelectedOnlyCb.checked = Boolean(Array.isArray(scope) && scope.length
+    && replaceSelectionSnapshot.length);
+  refreshReplaceSelectionControl();
   refreshScopeInfo();
   replaceModal.classList.add('show');
   setTimeout(() => findInput.focus(), 50);
@@ -26926,6 +27107,166 @@ document.getElementById('replace-confirm')?.addEventListener('click', () => {
   replaceModal.classList.remove('show');
   renderAll();
   flashHint(`已修改 ${changedRows} 行`, 'success');
+});
+
+// === 文本处理 ===
+const textProcessButton = document.getElementById('text-process-btn');
+const textProcessSelectedOnlyCb = document.getElementById('text-process-selected-only');
+const textProcessScopeInfo = document.getElementById('text-process-scope-info');
+const textProcessPreview = document.getElementById('text-process-preview');
+const textProcessConfirm = document.getElementById('text-process-confirm');
+const textProcessTrim = document.getElementById('text-process-trim');
+const textProcessCapitalize = document.getElementById('text-process-capitalize');
+const textProcessPrefix = document.getElementById('text-process-prefix');
+const textProcessPrefixInput = document.getElementById('text-process-prefix-input');
+const textProcessSuffix = document.getElementById('text-process-suffix');
+const textProcessSuffixInput = document.getElementById('text-process-suffix-input');
+const textProcessStripMarkdown = document.getElementById('text-process-strip-markdown');
+let textProcessSelectionSnapshot = [];
+let textProcessScope = null;
+
+function getTextProcessOptions() {
+  return {
+    trim: textProcessTrim.checked,
+    capitalize: textProcessCapitalize.checked,
+    addPrefix: textProcessPrefix.checked,
+    prefix: textProcessPrefixInput.value,
+    addSuffix: textProcessSuffix.checked,
+    suffix: textProcessSuffixInput.value,
+    stripMarkdown: textProcessStripMarkdown.checked,
+  };
+}
+
+function refreshTextProcessScopeInfo() {
+  const selected = textProcessScope && textProcessScope.length;
+  textProcessScopeInfo.textContent = selected
+    ? `范围：仅选中的 ${textProcessScope.length} 条字幕`
+    : `范围：全部 ${DATA.segments.length} 条字幕`;
+  textProcessScopeInfo.classList.toggle('selected', Boolean(selected));
+}
+
+function refreshTextProcessSelectionControl() {
+  const available = textProcessSelectionSnapshot.length > 0;
+  textProcessSelectedOnlyCb.disabled = !available;
+  if (!available) textProcessSelectedOnlyCb.checked = false;
+  textProcessScope = textProcessSelectedOnlyCb.checked
+    ? [...textProcessSelectionSnapshot] : null;
+  refreshTextProcessScopeInfo();
+}
+
+function renderTextProcessPreview() {
+  const options = getTextProcessOptions();
+  const hasOperation = textProcessTrim.checked || textProcessCapitalize.checked
+    || textProcessPrefix.checked || textProcessSuffix.checked || textProcessStripMarkdown.checked;
+  const indexes = textProcessScope || DATA.segments.map((_, index) => index);
+  textProcessPreview.replaceChildren();
+  if (!hasOperation) {
+    textProcessPreview.textContent = '请选择至少一项文本处理操作';
+    textProcessPreview.style.color = '';
+    textProcessConfirm.disabled = true;
+    return;
+  }
+  const result = window.AsrEditorUtils.buildTextProcessingPreview(DATA.segments, indexes, options);
+  textProcessPreview.style.color = result.changedCount ? '' : 'var(--text-muted)';
+  const summary = document.createElement('div');
+  summary.className = 'replace-preview-summary';
+  summary.textContent = result.changedCount
+    ? `将处理 ${result.targetCount} 条字幕，预计修改 ${result.changedCount} 条（展开查看前后文本）`
+    : `选定的 ${result.targetCount} 条字幕不会发生变化`;
+  textProcessPreview.appendChild(summary);
+  result.rows.filter((row) => row.changed).forEach((row) => {
+    const details = document.createElement('details');
+    details.className = 'replace-preview-row';
+    const title = document.createElement('summary');
+    title.textContent = `第 ${row.index + 1} 条`;
+    details.appendChild(title);
+    const before = document.createElement('div');
+    before.className = 'replace-preview-before';
+    before.textContent = `处理前：${row.before}`;
+    const after = document.createElement('div');
+    after.className = 'replace-preview-after';
+    after.textContent = `处理后：${row.after}`;
+    details.append(before, after);
+    textProcessPreview.appendChild(details);
+  });
+  textProcessConfirm.disabled = result.changedCount === 0;
+}
+
+function refreshTextProcessInputState() {
+  textProcessPrefixInput.disabled = !textProcessPrefix.checked;
+  textProcessSuffixInput.disabled = !textProcessSuffix.checked;
+}
+
+function closeTextProcessModal() {
+  textProcessModal.classList.remove('show');
+}
+
+function openTextProcessModal() {
+  if (!DATA.segments.length) {
+    flashHint('当前没有可处理的字幕', 'invalid');
+    return;
+  }
+  if (editingState) finishEdit(true);
+  textProcessSelectionSnapshot = normalizeBatchSelection([...selectedIdxs]);
+  textProcessSelectedOnlyCb.checked = false;
+  refreshTextProcessSelectionControl();
+  [textProcessTrim, textProcessCapitalize, textProcessPrefix,
+    textProcessSuffix, textProcessStripMarkdown].forEach((input) => { input.checked = false; });
+  textProcessPrefixInput.value = '';
+  textProcessSuffixInput.value = '';
+  refreshTextProcessInputState();
+  textProcessModal.classList.add('show');
+  renderTextProcessPreview();
+  setTimeout(() => textProcessTrim.focus(), 50);
+}
+
+textProcessButton?.addEventListener('click', openTextProcessModal);
+textProcessSelectedOnlyCb?.addEventListener('change', () => {
+  textProcessScope = textProcessSelectedOnlyCb.checked
+    ? [...textProcessSelectionSnapshot] : null;
+  refreshTextProcessScopeInfo();
+  renderTextProcessPreview();
+});
+[textProcessTrim, textProcessCapitalize, textProcessPrefix,
+  textProcessSuffix, textProcessStripMarkdown].forEach((input) => {
+  input?.addEventListener('change', () => {
+    refreshTextProcessInputState();
+    renderTextProcessPreview();
+  });
+});
+[textProcessPrefixInput, textProcessSuffixInput].forEach((input) => {
+  input?.addEventListener('input', renderTextProcessPreview);
+});
+document.getElementById('text-process-cancel')?.addEventListener('click', closeTextProcessModal);
+textProcessModal?.addEventListener('click', (event) => {
+  if (event.target === textProcessModal) closeTextProcessModal();
+});
+textProcessConfirm?.addEventListener('click', () => {
+  const options = getTextProcessOptions();
+  const indexes = textProcessScope || DATA.segments.map((_, index) => index);
+  const result = window.AsrEditorUtils.buildTextProcessingPreview(DATA.segments, indexes, options);
+  if (!result.changedCount) {
+    closeTextProcessModal();
+    flashHint('没有需要处理的内容', 'invalid');
+    return;
+  }
+  const draftTexts = DATA.segments.map((segment) => String(segment?.text || ''));
+  result.rows.forEach((row) => { draftTexts[row.index] = row.after; });
+  const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(DATA.segments, draftTexts);
+  if (!nextSegments) {
+    flashHint('无法应用文本处理：字幕行结构发生了变化', 'warning');
+    return;
+  }
+  pushUndo('文本处理');
+  DATA.segments.splice(0, DATA.segments.length, ...nextSegments);
+  markMainSegmentsDirty(DATA.segments);
+  syncBindingOffsets();
+  scheduleAutoSaveFlush();
+  closeTextProcessModal();
+  renderAll({ waveform: 'overlay' });
+  update();
+  updateUndoRedoButtons();
+  flashHint(`已应用文本处理：${result.changedCount} 条字幕`, 'success');
 });
 
 // === 纯文本编辑（保持字幕行结构的 MVP） ===
