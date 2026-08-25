@@ -31,9 +31,10 @@ from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError, install_
 from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
 from maw.media import find_ffmpeg, resolve_project_media
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
+from maw.postprocess_io import read_project, read_srt
 from maw.project import normalize_project
 from maw.postprocess_ffmpeg import FfconcatRequest, run_ffconcat_rebuild as process_ffconcat_rebuild
-from maw.postprocess_match import SCRIPT_EXTENSIONS, ScriptMatchRequest, run_script_match as process_script_match
+from maw.postprocess_match import DEFAULT_SPLIT_PUNCTUATION, SCRIPT_EXTENSIONS, ScriptMatchRequest, _match_project, _read_script, prepare_script_text, run_script_match as process_script_match
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
 from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, preset_by_id, test_llm_connection
 from maw.postprocess_pipeline import (
@@ -803,6 +804,7 @@ class LauncherApi:
                     media_path=_optional_path(payload.get("mediaPath")),
                     extra_split_punctuation=tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value)),
                     preserve_punctuation=tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value)),
+                    match_mode=str(payload.get("matchMode") or "script"),
                 )
             )
             self._emit_postprocess_status("toolbox_status_writing")
@@ -982,6 +984,64 @@ class LauncherApi:
         preview_limit = 240
         preview = text.replace("\r\n", "\n").replace("\r", "\n")[:preview_limit]
         return {"ok": True, "path": str(path), "preview": preview, "truncated": len(text) > preview_limit}
+
+    def preview_script_match(self, payload: Mapping[str, object]) -> dict[str, object]:
+        project_path = _optional_path(payload.get("projectPath"))
+        srt_path = _optional_path(payload.get("srtPath"))
+        script_path = _optional_path(payload.get("scriptPath"))
+        if script_path is None or (project_path is None and srt_path is None):
+            return {"ok": False, "preview": "", "errorCode": "missing_source"}
+        try:
+            project = read_project(project_path) if project_path is not None else read_srt(srt_path)
+            _, script_text = _read_script(script_path)
+            match_mode = str(payload.get("matchMode") or "script")
+            extra_split = tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value))
+            preserve = tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value))
+            prepared, _warning = prepare_script_text(
+                script_text,
+                extra_split if match_mode == "script" else (),
+                preserve if match_mode == "script" else (),
+            )
+            matched, warnings = _match_project(
+                project,
+                prepared,
+                DEFAULT_SPLIT_PUNCTUATION | frozenset(extra_split if match_mode == "script" else ()),
+                DEFAULT_SPLIT_PUNCTUATION | frozenset(preserve if match_mode == "script" else ()),
+                match_mode,
+            )
+            segments = matched.get("segments", [])
+            preview = "\n".join(
+                f"{index + 1}. {segment.get('text', '')}"
+                for index, segment in enumerate(segments)
+                if isinstance(segment, dict) and segment.get("text")
+            )
+            match_rate = next(
+                (
+                    int(match.group(1))
+                    for warning in warnings
+                    if (match := re.search(r"文稿匹配度：([0-9]+)%", warning))
+                ),
+                None,
+            )
+            original_segment_count = sum(
+                1 for segment in project.get("segments", ()) if isinstance(segment, dict) and segment.get("text")
+            )
+            matched_segment_count = sum(
+                1 for segment in segments if isinstance(segment, dict) and segment.get("text")
+            )
+            return {
+                "ok": True,
+                "preview": preview,
+                "matchRate": match_rate,
+                "originalSegmentCount": original_segment_count,
+                "matchedSegmentCount": matched_segment_count,
+                "truncated": False,
+            }
+        except ValueError as error:
+            error_code = "match_too_low" if "coverage is too low" in str(error) else "preview_failed"
+            return {"ok": False, "preview": "", "errorCode": error_code}
+        except (OSError, UnicodeError):
+            return {"ok": False, "preview": "", "errorCode": "preview_failed"}
 
     def choose_folder(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         chosen = _folder_dialog()
