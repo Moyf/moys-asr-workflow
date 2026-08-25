@@ -66,7 +66,7 @@ MOSE_FILE_TYPE = "Moy.MOSE.Project"
 # 工程恢复会同步准备自研波形；大型工程可能需要超过默认的网络探测窗口。
 SERVER_START_TIMEOUT: Final = 30.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.5.0-beta.1"
+BUNDLED_APP_VERSION = "1.5.0-beta.2"
 MOSE_VERSION = "0.1.0"
 
 
