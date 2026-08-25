@@ -226,6 +226,31 @@ test('translates OTIOZ export labels, mode hints and dynamic messages to English
 });
 
 
+test('translates Lottie dynamic-caption export labels and messages to English', () => {
+  assert.equal(i18n.translateText('更多导出 ▾', 'en'), 'More exports ▾');
+  assert.equal(i18n.translateText('更多导出', 'en'), 'More exports');
+  assert.equal(i18n.translateText('动态字幕（Lottie）', 'en'), 'Dynamic captions (Lottie)');
+  assert.equal(i18n.translateText('Lottie 动态字幕', 'en'), 'Lottie dynamic captions');
+  assert.equal(i18n.translateText('导出 .lottie', 'en'), 'Export .lottie');
+  assert.equal(i18n.translateText('文字渲染', 'en'), 'Text rendering');
+  assert.equal(i18n.translateText('文本模式（依赖系统字体）', 'en'), 'Text mode (requires a system font)');
+  assert.equal(i18n.translateText('矢量模式（内置字形，文件更大）', 'en'), 'Vector mode (bundled glyphs, larger file)');
+  assert.equal(i18n.translateText('正在生成动态字幕 .lottie…', 'en'), 'Generating dynamic-caption .lottie…');
+  assert.equal(i18n.translateText('动态字幕 .lottie 已生成', 'en'), 'Dynamic-caption .lottie generated');
+  assert.equal(i18n.translateText('动态字幕（OGraf）', 'en'), 'Dynamic captions (OGraf)');
+  assert.equal(i18n.translateText('OGraf 动态字幕', 'en'), 'OGraf dynamic captions');
+  assert.equal(i18n.translateText('导出 .ograf.zip', 'en'), 'Export .ograf.zip');
+  assert.equal(
+    i18n.translateText('正在生成动态字幕 .ograf.zip…', 'en'),
+    'Generating dynamic-caption .ograf.zip…',
+  );
+  assert.equal(
+    i18n.translateText('动态字幕 .ograf.zip 已生成；请先解压', 'en'),
+    'Dynamic-caption .ograf.zip generated; extract it first',
+  );
+});
+
+
 test('builds expandable replacement rows with before and after text', () => {
   const result = helpers.buildReplacementPreview(
     [
@@ -1943,6 +1968,132 @@ test('applyPreviewGeometryDelta resize-w keeps right edge fixed at min-size', ()
   assert.ok(resized.width >= helpers.PREVIEW_MIN_WIDTH - 0.0001);
   // right edge (x + width) should stay at original 0.2 + 0.4 = 0.6
   assert.ok(Math.abs((resized.x + resized.width) - 0.6) < 0.001);
+});
+
+
+test('builds a resource-free Lottie caption animation with cue and word timing', () => {
+  const animation = helpers.buildLottieAnimation([
+    {
+      start: 0,
+      end: 1000,
+      text: '你好 world',
+      items: [
+        { start: 0, end: 400, text: '你' },
+        { start: 400, end: 700, text: '好' },
+        { start: 700, end: 1000, text: 'world' },
+      ],
+    },
+    { start: 1000, end: 1500, text: '被禁用', disabled: true },
+  ], {
+    width: 1920,
+    height: 1080,
+    fps: '30000/1001',
+    durationMs: 1500,
+    subtitle: { x: 0.1, y: 0.7, width: 0.8, height: 0.2, font_size: 18, font_family: 'yahei' },
+    highlightColor: '#00ff80',
+  });
+  assert.equal(animation.w, 1920);
+  assert.equal(animation.h, 1080);
+  assert.ok(Math.abs(animation.fr - 30000 / 1001) < 1e-9);
+  assert.equal(animation.op, 45);
+  assert.equal(animation.meta.renderMode, 'text');
+  assert.equal(animation.meta.fontFamily, 'Microsoft YaHei');
+  assert.deepEqual(JSON.parse(JSON.stringify(animation.assets)), []);
+  assert.equal(animation.layers.length, 1);
+  const layer = animation.layers[0];
+  assert.equal(layer.t.d.k[0].s.t, '你好 world'.replace(/\n/gu, '\r'));
+  assert.equal(layer.t.d.k[0].s.f, 'Microsoft YaHei');
+  assert.deepEqual(JSON.parse(JSON.stringify(layer.t.m.a.k)), [0, 0]);
+  assert.deepEqual(JSON.parse(JSON.stringify(layer.t.p)), {});
+  assert.equal(layer.t.a[0].s.r, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(layer.t.a[0].a.fc.k)), [0, 1, 0.5019607843137255]);
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    layer.t.a[0].s.s.k.slice(0, 2).map((keyframe) => keyframe.t),
+  )), [0, 11]);
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    layer.t.a[0].s.e.k.slice(0, 2).map((keyframe) => keyframe.t),
+  )), [0, 11]);
+});
+
+
+test('marks Lottie vector mode for server-side glyph conversion', () => {
+  const animation = helpers.buildLottieAnimation([
+    { start: 0, end: 600, text: '你好 Hello' },
+  ], {
+    durationMs: 600,
+    renderMode: 'glyph',
+    subtitle: { font_family: 'yahei' },
+  });
+  assert.equal(animation.meta.renderMode, 'glyph');
+  assert.equal(animation.meta.fontFamily, 'Microsoft YaHei');
+  assert.equal(animation.layers[0].ty, 5);
+  assert.equal(animation.layers[0].t.d.k[0].s.t, '你好 Hello');
+});
+
+
+test('falls back to evenly timed character highlights when cue items are unavailable', () => {
+  const animation = helpers.buildLottieAnimation([
+    { start: 1000, end: 2000, text: '字幕' },
+  ], { durationMs: 2000 });
+  const animator = animation.layers[0].t.a[0];
+  assert.ok(animator);
+  assert.equal(animator.s.r, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    animator.s.s.k.slice(0, 2).map((keyframe) => keyframe.t),
+  )), [30, 45]);
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    animator.s.e.k.slice(0, 2).map((keyframe) => keyframe.t),
+  )), [30, 45]);
+  assert.equal(animator.s.s.k.at(-1).t, 60);
+  assert.equal(animator.s.e.k.at(-1).t, 60);
+});
+
+
+test('builds an OGraf package contract with a Chinese-capable Canvas Web Component', () => {
+  const graphic = helpers.buildOgrafGraphic([
+    {
+      start: 0,
+      end: 1000,
+      text: '你好 world',
+      items: [
+        { start: 0, end: 400, text: '你' },
+        { start: 400, end: 700, text: '好' },
+        { start: 700, end: 1000, text: 'world' },
+      ],
+    },
+    { start: 1000, end: 1500, text: '被禁用', disabled: true },
+  ], {
+    width: 1920,
+    height: 1080,
+    fps: '30000/1001',
+    durationMs: 1500,
+    subtitle: { x: 0.1, y: 0.7, width: 0.8, height: 0.2, font_size: 18, font_family: 'default' },
+    highlightColor: '#00ff80',
+  });
+  assert.equal(graphic.manifestFilename, 'maw-dynamic-captions.ograf.json');
+  assert.equal(graphic.mainFilename, 'maw-dynamic-captions.mjs');
+  assert.equal(graphic.manifest.main, graphic.mainFilename);
+  assert.equal(
+    graphic.manifest.$schema,
+    'https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json',
+  );
+  assert.equal(graphic.manifest.supportsRealTime, true);
+  assert.equal(graphic.manifest.supportsNonRealTime, true);
+  assert.equal(graphic.manifest.schema.type, 'object');
+  assert.equal(graphic.manifest.schema.properties.cues.type, 'array');
+  assert.match(graphic.mainSource, /class MawDynamicCaptions extends HTMLElement/);
+  assert.match(graphic.mainSource, /async goToTime/);
+  assert.match(graphic.mainSource, /async setActionsSchedule/);
+  assert.match(graphic.mainSource, /export default MawDynamicCaptions/);
+  assert.match(graphic.mainSource, /你好 world/);
+  assert.match(graphic.mainSource, /Microsoft YaHei/);
+  const dataMatch = /const DEFAULT_DATA = ([\s\S]*?);\n\nfunction clamp/u.exec(graphic.mainSource);
+  assert.ok(dataMatch, 'OGraf main script should embed the caption data');
+  const data = JSON.parse(dataMatch[1]);
+  assert.equal(data.cues.length, 1);
+  assert.deepEqual(data.cues[0].ranges[0], { start: 0, end: 1, startMs: 0, endMs: 400 });
+  assert.equal(data.cues[0].ranges[2].start, 3);
+  assert.equal(data.subtitle.highlightColor, '#00ff80');
 });
 
 

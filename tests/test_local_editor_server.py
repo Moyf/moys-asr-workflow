@@ -647,6 +647,186 @@ class LocalEditorServerTests(unittest.TestCase):
         urls = [clip["media_references"]["DEFAULT_MEDIA"]["target_url"] for clip in clips]
         self.assertEqual(urls, ["media/x.png", "media/x-2.png"])
 
+    def test_lottie_export_builds_dotlottie_v2_archive(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        animation = {
+            "v": "5.7.0", "fr": 30, "ip": 0, "op": 30,
+            "w": 1920, "h": 1080, "assets": [], "layers": [],
+        }
+        archive_bytes, filename = server_editor.export_lottie(project, animation)
+        self.assertEqual(filename, "clip_dynamic-caption.lottie")
+        with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+            self.assertEqual(set(archive.namelist()), {"manifest.json", "a/maw-caption.json"})
+            manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+            self.assertEqual(manifest["version"], "2")
+            self.assertEqual(manifest["initial"]["animation"], "maw-caption")
+            self.assertEqual(manifest["animations"], [{"id": "maw-caption"}])
+            self.assertEqual(json.loads(archive.read("a/maw-caption.json")), animation)
+
+    def test_lottie_glyph_export_replaces_text_with_embedded_vector_shapes(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        animation = {
+            "v": "5.7.0", "fr": 30, "ip": 0, "op": 30,
+            "w": 1920, "h": 1080, "assets": [],
+            "fonts": {"list": [{"fName": "Microsoft YaHei", "fFamily": "Microsoft YaHei"}]},
+            "layers": [{
+                "ddd": 0, "ind": 1, "ty": 5, "nm": "测试字幕", "sr": 1,
+                "ks": {
+                    "o": {"a": 0, "k": 100}, "r": {"a": 0, "k": 0},
+                    "p": {"a": 0, "k": [960, 540, 0]}, "a": {"a": 0, "k": [0, 0, 0]},
+                    "s": {"a": 0, "k": [100, 100, 100]},
+                },
+                "ao": 0, "ip": 0, "op": 30, "st": 0, "bm": 0,
+                "t": {"d": {"k": [{"s": {
+                    "f": "Microsoft YaHei", "fc": [1, 1, 1], "s": 72,
+                    "lh": 90, "t": "你好 Hello",
+                }, "t": 0}]}, "a": []},
+            }],
+            "meta": {"renderMode": "glyph", "fontFamily": "Microsoft YaHei"},
+        }
+        archive_bytes, _ = server_editor.export_lottie(project, animation)
+        with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+            exported = json.loads(archive.read("a/maw-caption.json"))
+        self.assertEqual(exported["meta"]["renderMode"], "glyph")
+        self.assertEqual(exported["fonts"]["list"], [])
+        self.assertEqual(exported["layers"][0]["ty"], 4)
+        self.assertTrue(exported["layers"][0]["shapes"])
+        self.assertTrue(any(
+            group.get("nm") == "你"
+            for group in exported["layers"][0]["shapes"]
+        ))
+        first_fill = next(item for item in exported["layers"][0]["shapes"][0]["it"] if item.get("ty") == "fl")
+        self.assertEqual(first_fill["c"]["k"][0]["s"], [1, 1, 1])
+        self.assertNotIsInstance(first_fill["c"]["k"][0]["s"][0], list)
+
+    def test_lottie_export_endpoint_requires_token_and_returns_dotlottie(self) -> None:
+        server = server_editor.EditorServer(("127.0.0.1", 0), server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        ))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{server.server_address[1]}"
+        animation = {
+            "v": "5.7.0", "fr": 30, "ip": 0, "op": 30,
+            "w": 1920, "h": 1080, "assets": [], "layers": [],
+        }
+        try:
+            request = urllib.request.Request(
+                f"{base_url}/api/exports/lottie",
+                data=json.dumps({"requestToken": "wrong", "animation": animation}).encode(),
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            with self.assertRaises(urllib.error.HTTPError) as context:
+                urllib.request.urlopen(request)
+            self.assertEqual(context.exception.code, 403)
+
+            request = urllib.request.Request(
+                f"{base_url}/api/exports/lottie",
+                data=json.dumps({"requestToken": server.request_token, "animation": animation}).encode(),
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            with urllib.request.urlopen(request) as response:
+                body = response.read()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.headers["Content-Type"], "application/zip+dotlottie")
+                self.assertIn("dynamic-caption.lottie", response.headers["Content-Disposition"])
+            with zipfile.ZipFile(io.BytesIO(body)) as archive:
+                self.assertIn("manifest.json", archive.namelist())
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+            server.server_close()
+
+    def test_ograf_export_builds_manifest_and_web_component_archive(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        graphic = {
+            "manifestFilename": "maw-dynamic-captions.ograf.json",
+            "mainFilename": "maw-dynamic-captions.mjs",
+            "manifest": {
+                "$schema": "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json",
+                "id": "maw-dynamic-captions",
+                "version": "1.0.0",
+                "name": "MAW Dynamic Captions",
+                "main": "maw-dynamic-captions.mjs",
+                "schema": {"type": "object"},
+                "supportsRealTime": True,
+                "supportsNonRealTime": True,
+            },
+            "mainSource": (
+                "class MawDynamicCaptions extends HTMLElement {"
+                "async goToTime() {} async setActionsSchedule() {}"
+                "} export default MawDynamicCaptions;"
+            ),
+        }
+        archive_bytes, filename = server_editor.export_ograf(project, graphic)
+        self.assertEqual(filename, "clip_dynamic-caption.ograf.zip")
+        with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+            self.assertEqual(
+                set(archive.namelist()),
+                {"maw-dynamic-captions.ograf.json", "maw-dynamic-captions.mjs"},
+            )
+            manifest = json.loads(archive.read("maw-dynamic-captions.ograf.json"))
+            self.assertEqual(manifest["$schema"], graphic["manifest"]["$schema"])
+            self.assertEqual(manifest["main"], "maw-dynamic-captions.mjs")
+            self.assertIn("extends HTMLElement", archive.read("maw-dynamic-captions.mjs").decode())
+
+    def test_ograf_export_endpoint_requires_token_and_returns_zip(self) -> None:
+        server = server_editor.EditorServer(("127.0.0.1", 0), server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        ))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{server.server_address[1]}"
+        graphic = {
+            "manifestFilename": "maw-dynamic-captions.ograf.json",
+            "mainFilename": "maw-dynamic-captions.mjs",
+            "manifest": {
+                "$schema": "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json",
+                "id": "maw-dynamic-captions",
+                "name": "MAW Dynamic Captions",
+                "main": "maw-dynamic-captions.mjs",
+                "supportsRealTime": True,
+                "supportsNonRealTime": True,
+            },
+            "mainSource": (
+                "class MawDynamicCaptions extends HTMLElement {"
+                "async goToTime() {} async setActionsSchedule() {}"
+                "} export default MawDynamicCaptions;"
+            ),
+        }
+        try:
+            request = urllib.request.Request(
+                f"{base_url}/api/exports/ograf",
+                data=json.dumps({"requestToken": "wrong", "graphic": graphic}).encode(),
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            with self.assertRaises(urllib.error.HTTPError) as context:
+                urllib.request.urlopen(request)
+            self.assertEqual(context.exception.code, 403)
+
+            request = urllib.request.Request(
+                f"{base_url}/api/exports/ograf",
+                data=json.dumps({"requestToken": server.request_token, "graphic": graphic}).encode(),
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            with urllib.request.urlopen(request) as response:
+                body = response.read()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.headers["Content-Type"], "application/zip")
+                self.assertIn("dynamic-caption.ograf.zip", response.headers["Content-Disposition"])
+            with zipfile.ZipFile(io.BytesIO(body)) as archive:
+                self.assertIn("maw-dynamic-captions.ograf.json", archive.namelist())
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+            server.server_close()
+
     def test_sticker_otioz_export_rejects_missing_sticker_rel(self) -> None:
         timeline = {"OTIO_SCHEMA": "Timeline.1", "tracks": {"children": [{"children": [
             {"OTIO_SCHEMA": "Clip.2", "metadata": {}, "media_references": {"DEFAULT_MEDIA": {"target_url": "x"}}},
