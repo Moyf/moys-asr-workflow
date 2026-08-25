@@ -66,7 +66,14 @@ def default_postprocess_plan() -> dict[str, object]:
         "enabled": False,
         "retainIntermediate": False,
         "steps": [
-            {"id": "match", "enabled": False, "scriptPath": ""},
+            {
+                "id": "match",
+                "enabled": False,
+                "scriptPath": "",
+                "matchMode": "script",
+                "extraSplitPunctuation": [],
+                "preservePunctuation": [],
+            },
             {"id": "replace", "enabled": False, "replacements": [], "replacementSeparator": "arrow", "replacementTrim": True, "replacementCustomSeparator": "", "conversion": TextConversion.OFF.value},
             {"id": "proofread", "enabled": False, "providerId": "deepseek", "customPrompt": ""},
             {"id": "resegment", "enabled": False, "providerId": "deepseek", "customPrompt": ""},
@@ -120,6 +127,10 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = _number_or_default(value, step[key])
             elif key == "report":
                 step[key] = bool(value)
+            elif key == "matchMode":
+                step[key] = str(value or "script") if str(value or "script") in {"script", "text"} else "script"
+            elif key in {"extraSplitPunctuation", "preservePunctuation"}:
+                step[key] = [str(item).strip() for item in value if str(item).strip()] if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) else []
             else:
                 step[key] = str(value or "").strip()
         normalized_steps.append(step)
@@ -558,6 +569,7 @@ def _run_step(
             output_mode=output_mode,
             output_directory=output_directory,
             media_path=media_path,
+            match_mode=str(step.get("matchMode") or "script"),
             extra_split_punctuation=tuple(str(value) for value in step.get("extraSplitPunctuation", ()) if str(value)),
             preserve_punctuation=tuple(str(value) for value in step.get("preservePunctuation", ()) if str(value)),
         ))
