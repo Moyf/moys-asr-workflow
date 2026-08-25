@@ -244,6 +244,154 @@ test('builds expandable replacement rows with before and after text', () => {
   ]);
 });
 
+test('reports equal-length text edits as fully reusable word timings', () => {
+  const source = [{
+    id: 'cue-1', start: 0, end: 1000, text: '就是这颗',
+    items: [
+      { start: 0, end: 400, text: '就是' },
+      { start: 400, end: 1000, text: '这颗' },
+    ],
+  }];
+  const report = helpers.buildTimedTextEditReport(source, ['就是那颗']);
+  assert.deepEqual(JSON.parse(JSON.stringify(report.stats)), {
+    totalSegments: 1,
+    changedSegments: 1,
+    unchangedSegments: 0,
+    beforeCharacters: 4,
+    afterCharacters: 4,
+    addedCharacters: 1,
+    removedCharacters: 1,
+    fullMappedCues: 1,
+    partialMappedCues: 0,
+    lostMappedCues: 0,
+    unavailableMappedCues: 0,
+    boundaryMappedCues: 0,
+    boundaryMoves: 0,
+    timingChangedCues: 0,
+    preservedItems: 2,
+    affectedItems: 0,
+  });
+  const applied = helpers.applyTimedTextEdit(source, ['就是那颗']);
+  assert.deepEqual(JSON.parse(JSON.stringify(applied[0].items)), [
+    { start: 0, end: 400, text: '就是' },
+    { start: 400, end: 1000, text: '那颗' },
+  ]);
+});
+
+test('keeps unaffected item timings and reports partial mapping for inserted text', () => {
+  const source = [{
+    id: 'cue-1', start: 0, end: 1000, text: 'abc',
+    items: [
+      { start: 0, end: 300, text: 'a' },
+      { start: 300, end: 600, text: 'b' },
+      { start: 600, end: 1000, text: 'c' },
+    ],
+  }];
+  const report = helpers.buildTimedTextEditReport(source, ['abXc']);
+  assert.equal(report.rows[0].mappingStatus, 'partial');
+  assert.equal(report.stats.preservedItems, 2);
+  const applied = helpers.applyTimedTextEdit(source, ['abXc']);
+  assert.deepEqual(JSON.parse(JSON.stringify(applied[0].items)), [
+    { start: 0, end: 300, text: 'a' },
+    { start: 300, end: 1000, text: 'bXc' },
+  ]);
+});
+
+test('drops word timings when a text edit has no reliable anchor', () => {
+  const source = [{
+    id: 'cue-1', start: 0, end: 1000, text: 'abc',
+    items: [{ start: 0, end: 1000, text: 'abc' }],
+  }];
+  const report = helpers.buildTimedTextEditReport(source, ['xyz']);
+  assert.equal(report.rows[0].mappingStatus, 'full');
+  // 等长改字仍是安全的单 item 错别字修正，即使没有相同字符锚点。
+  const changedLength = helpers.buildTimedTextEditReport(source, ['xy']).rows[0];
+  assert.equal(changedLength.mappingStatus, 'lost');
+  const applied = helpers.applyTimedTextEdit(source, ['xy']);
+  assert.equal('items' in applied[0], false);
+});
+
+test('transfers boundary word timings and updates adjacent cue ranges for moved text', () => {
+  const source = [
+    {
+      id: 'cue-1', start: 0, end: 1000, text: '我想要在今天拍',
+      items: [
+        { start: 0, end: 300, text: '我想要' },
+        { start: 300, end: 800, text: '在今天拍' },
+      ],
+    },
+    {
+      id: 'cue-2', start: 1100, end: 2200, text: '一张珠穆拉玛峰给',
+      items: [
+        { start: 1100, end: 1250, text: '一张' },
+        { start: 1250, end: 1900, text: '珠穆拉玛峰' },
+        { start: 1900, end: 2200, text: '给' },
+      ],
+    },
+    {
+      id: 'cue-3', start: 2300, end: 3200, text: '我的同事探探路',
+      items: [{ start: 2300, end: 3200, text: '我的同事探探路' }],
+    },
+  ];
+  const draftTexts = ['我想要在今天拍一张', '珠穆拉玛峰', '给我的同事探探路'];
+  const plan = helpers.buildTimedTextBoundaryPlan(source, draftTexts);
+  assert.deepEqual(JSON.parse(JSON.stringify(plan.transfers)), [
+    {
+      type: 'prefix-to-previous', sourceIndex: 1, targetIndex: 0, movedText: '一张', movedItemCount: 1,
+    },
+    {
+      type: 'suffix-to-next', sourceIndex: 1, targetIndex: 2, movedText: '给', movedItemCount: 1,
+    },
+  ]);
+  const report = helpers.buildTimedTextEditReport(source, draftTexts);
+  assert.equal(report.stats.boundaryMoves, 2);
+  assert.equal(report.stats.boundaryMappedCues, 3);
+  assert.equal(report.stats.timingChangedCues, 3);
+  assert.ok(report.rows.every((row) => row.mappingStatus === 'boundary'));
+
+  const applied = helpers.applyTimedTextEdit(source, draftTexts);
+  assert.deepEqual(JSON.parse(JSON.stringify(applied.map((segment) => ({
+    text: segment.text,
+    start: segment.start,
+    end: segment.end,
+    items: segment.items,
+  })))), [
+    {
+      text: '我想要在今天拍一张', start: 0, end: 1250,
+      items: [
+        { start: 0, end: 300, text: '我想要' },
+        { start: 300, end: 800, text: '在今天拍' },
+        { start: 1100, end: 1250, text: '一张' },
+      ],
+    },
+    {
+      text: '珠穆拉玛峰', start: 1250, end: 1900,
+      items: [{ start: 1250, end: 1900, text: '珠穆拉玛峰' }],
+    },
+    {
+      text: '给我的同事探探路', start: 1900, end: 3200,
+      items: [
+        { start: 1900, end: 2200, text: '给' },
+        { start: 2300, end: 3200, text: '我的同事探探路' },
+      ],
+    },
+  ]);
+  assert.equal(source[0].end, 1000);
+  assert.equal(source[1].text, '一张珠穆拉玛峰给');
+});
+
+test('keeps a cleared subtitle row while removing its now-invalid word timings', () => {
+  const source = [{
+    id: 'cue-1', start: 100, end: 900, text: 'abc',
+    items: [{ start: 100, end: 900, text: 'abc' }],
+  }];
+  const applied = helpers.applyTimedTextEdit(source, ['']);
+  assert.deepEqual(JSON.parse(JSON.stringify(applied[0])), {
+    id: 'cue-1', start: 100, end: 900, text: '',
+  });
+  assert.equal(source[0].text, 'abc');
+});
+
 
 test('reports invalid regex without changing any rows', () => {
   const result = helpers.buildReplacementPreview(

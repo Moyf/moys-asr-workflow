@@ -120,6 +120,514 @@
     };
   }
 
+  function stripMarkdownFormatting(text) {
+    return String(text == null ? '' : text)
+      .replace(/!\[([^\]]*)\]\([^\)\n]+\)/g, '$1')
+      .replace(/\[([^\]]+)\]\([^\)\n]+\)/g, '$1')
+      .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+      .replace(/^\s{0,3}>\s?/gm, '')
+      .replace(/^\s*[-*+]\s+/gm, '')
+      .replace(/[\\*_~`]/g, '');
+  }
+
+  function capitalizeFirstLetter(text) {
+    return String(text == null ? '' : text).replace(/^(\s*)(\p{L})/u, (match, leading, letter) => {
+      return `${leading}${letter.toLocaleUpperCase()}`;
+    });
+  }
+
+  // Apply the selected operations in a stable order so preview and execution
+  // always agree: Markdown -> trim -> capitalization -> prefix -> suffix.
+  function applyTextProcessing(text, options = {}) {
+    let result = String(text == null ? '' : text);
+    if (options.stripMarkdown) result = stripMarkdownFormatting(result);
+    if (options.trim) result = result.trim();
+    if (options.capitalize) result = capitalizeFirstLetter(result);
+    if (options.addPrefix) result = `${String(options.prefix == null ? '' : options.prefix)}${result}`;
+    if (options.addSuffix) result = `${result}${String(options.suffix == null ? '' : options.suffix)}`;
+    return result;
+  }
+
+  function normalizeTextProcessingIndexes(segments, indexes) {
+    const source = Array.isArray(segments) ? segments : [];
+    const candidates = Array.isArray(indexes)
+      ? indexes
+      : source.map((_, index) => index);
+    return [...new Set(candidates
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < source.length))]
+      .sort((a, b) => a - b);
+  }
+
+  function buildTextProcessingPreview(segments, indexes, options = {}) {
+    const source = Array.isArray(segments) ? segments : [];
+    const targetIndexes = normalizeTextProcessingIndexes(source, indexes);
+    const rows = targetIndexes.map((index) => {
+      const before = String(source[index]?.text == null ? '' : source[index].text);
+      const after = applyTextProcessing(before, options);
+      return { index, before, after, changed: before !== after };
+    });
+    return {
+      targetCount: rows.length,
+      changedCount: rows.filter((row) => row.changed).length,
+      unchangedCount: rows.filter((row) => !row.changed).length,
+      rows,
+    };
+  }
+
+  function timedTextTokens(text) {
+    return Array.from(String(text == null ? '' : text));
+  }
+
+  function buildTimedTextDiff(before, after) {
+    const beforeTokens = timedTextTokens(before);
+    const afterTokens = timedTextTokens(after);
+    let prefix = 0;
+    while (
+      prefix < beforeTokens.length
+      && prefix < afterTokens.length
+      && beforeTokens[prefix] === afterTokens[prefix]
+    ) prefix += 1;
+    let suffix = 0;
+    while (
+      suffix < beforeTokens.length - prefix
+      && suffix < afterTokens.length - prefix
+      && beforeTokens[beforeTokens.length - 1 - suffix]
+        === afterTokens[afterTokens.length - 1 - suffix]
+    ) suffix += 1;
+    const beforeParts = [];
+    const afterParts = [];
+    if (prefix) {
+      const common = beforeTokens.slice(0, prefix).join('');
+      beforeParts.push({ kind: 'equal', text: common });
+      afterParts.push({ kind: 'equal', text: common });
+    }
+    const removed = beforeTokens.slice(prefix, beforeTokens.length - suffix).join('');
+    const added = afterTokens.slice(prefix, afterTokens.length - suffix).join('');
+    if (removed) beforeParts.push({ kind: 'remove', text: removed });
+    if (added) afterParts.push({ kind: 'add', text: added });
+    if (suffix) {
+      const common = beforeTokens.slice(beforeTokens.length - suffix).join('');
+      beforeParts.push({ kind: 'equal', text: common });
+      afterParts.push({ kind: 'equal', text: common });
+    }
+    return {
+      before: beforeParts.length ? beforeParts : [{ kind: 'equal', text: '' }],
+      after: afterParts.length ? afterParts : [{ kind: 'equal', text: '' }],
+      addedCharacters: timedTextTokens(added).length,
+      removedCharacters: timedTextTokens(removed).length,
+    };
+  }
+
+  function timedTextItemLayout(originalText, rawItems) {
+    if (!Array.isArray(rawItems) || !rawItems.length) return null;
+    const items = cloneJsonValue(rawItems);
+    const sourceTokens = timedTextTokens(originalText);
+    const spans = [];
+    let previousStart = -Infinity;
+    let previousEnd = -Infinity;
+    for (const item of items) {
+      if (!item || typeof item !== 'object') return null;
+      const itemTokens = timedTextTokens(item.text);
+      const start = Number(item.start);
+      const end = Number(item.end);
+      if (!itemTokens.length || !Number.isFinite(start) || !Number.isFinite(end)
+          || end < start || start < previousStart || start < previousEnd) return null;
+      const itemStart = spans.length ? spans[spans.length - 1].end : 0;
+      const itemEnd = itemStart + itemTokens.length;
+      spans.push({ start: itemStart, end: itemEnd });
+      previousStart = start;
+      previousEnd = end;
+    }
+    if (spans[spans.length - 1].end !== sourceTokens.length) return null;
+    return { items, spans };
+  }
+
+  function timedTextItemSpans(originalText, items) {
+    return timedTextItemLayout(originalText, items)?.spans || null;
+  }
+
+  function timedTextItemSplitIndex(layout, boundary) {
+    if (!layout || !Number.isInteger(boundary) || boundary <= 0
+        || boundary >= layout.spans[layout.spans.length - 1].end) return -1;
+    const index = layout.spans.findIndex((span) => span.end === boundary);
+    return index < 0 ? -1 : index + 1;
+  }
+
+  function sameTimedTextTokens(left, right) {
+    return left.length === right.length && left.every((token, index) => token === right[index]);
+  }
+
+  function hasTimedTextContent(tokens) {
+    return tokens.some((token) => token.trim() !== '');
+  }
+
+  function detectTimedTextBoundaryMoves(segments, draftTexts) {
+    const source = Array.isArray(segments) ? segments : [];
+    const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    if (source.length !== texts.length) return [];
+    const candidates = [];
+
+    // 当前字幕的开头移到上一条末尾：上一条新增的尾巴必须完整来自当前字幕开头。
+    for (let index = 1; index < source.length; index += 1) {
+      const previousBefore = timedTextTokens(source[index - 1]?.text);
+      const previousAfter = timedTextTokens(texts[index - 1]);
+      const currentBefore = timedTextTokens(source[index]?.text);
+      if (previousAfter.length <= previousBefore.length) continue;
+      const moved = previousAfter.slice(previousBefore.length);
+      if (!hasTimedTextContent(moved)
+          || !sameTimedTextTokens(previousAfter.slice(0, previousBefore.length), previousBefore)
+          || !sameTimedTextTokens(currentBefore.slice(0, moved.length), moved)) continue;
+      candidates.push({
+        type: 'prefix-to-previous',
+        sourceIndex: index,
+        targetIndex: index - 1,
+        movedTokens: moved,
+      });
+    }
+
+    // 当前字幕的结尾移到下一条开头：下一条新增的开头必须完整来自当前字幕结尾。
+    for (let index = 0; index < source.length - 1; index += 1) {
+      const currentBefore = timedTextTokens(source[index]?.text);
+      const nextBefore = timedTextTokens(source[index + 1]?.text);
+      const nextAfter = timedTextTokens(texts[index + 1]);
+      if (nextAfter.length <= nextBefore.length) continue;
+      const moved = nextAfter.slice(0, nextAfter.length - nextBefore.length);
+      if (!hasTimedTextContent(moved)
+          || !sameTimedTextTokens(nextAfter.slice(moved.length), nextBefore)
+          || !sameTimedTextTokens(currentBefore.slice(currentBefore.length - moved.length), moved)) continue;
+      candidates.push({
+        type: 'suffix-to-next',
+        sourceIndex: index,
+        targetIndex: index + 1,
+        movedTokens: moved,
+      });
+    }
+    return candidates;
+  }
+
+  function timedTextItemsOrdered(items) {
+    let previousStart = -Infinity;
+    let previousEnd = -Infinity;
+    return (items || []).every((item) => {
+      const start = Number(item?.start);
+      const end = Number(item?.end);
+      const valid = Number.isFinite(start) && Number.isFinite(end)
+        && end >= start && start >= previousStart && start >= previousEnd && end >= previousEnd;
+      if (valid) {
+        previousStart = start;
+        previousEnd = end;
+      }
+      return valid;
+    });
+  }
+
+  function emptyTimedTextBoundaryPlan(source) {
+    return {
+      transfers: [],
+      updates: Array.from({ length: source.length }, () => null),
+    };
+  }
+
+  function buildTimedTextBoundaryPlan(segments, draftTexts) {
+    const source = Array.isArray(segments) ? segments : [];
+    const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    if (source.length !== texts.length) return emptyTimedTextBoundaryPlan(source);
+    const candidates = detectTimedTextBoundaryMoves(source, texts);
+    if (!candidates.length) return emptyTimedTextBoundaryPlan(source);
+
+    const prefixCounts = Array.from({ length: source.length }, () => 0);
+    const suffixCounts = Array.from({ length: source.length }, () => 0);
+    const incomingPrefixes = Array.from({ length: source.length }, () => null);
+    const incomingSuffixes = Array.from({ length: source.length }, () => null);
+    for (const candidate of candidates) {
+      const movedLength = candidate.movedTokens.length;
+      if (candidate.type === 'prefix-to-previous') {
+        if (prefixCounts[candidate.sourceIndex] || incomingSuffixes[candidate.targetIndex]) {
+          return emptyTimedTextBoundaryPlan(source);
+        }
+        prefixCounts[candidate.sourceIndex] = movedLength;
+        incomingSuffixes[candidate.targetIndex] = candidate;
+      } else {
+        if (suffixCounts[candidate.sourceIndex] || incomingPrefixes[candidate.targetIndex]) {
+          return emptyTimedTextBoundaryPlan(source);
+        }
+        suffixCounts[candidate.sourceIndex] = movedLength;
+        incomingPrefixes[candidate.targetIndex] = candidate;
+      }
+    }
+
+    const partitions = Array.from({ length: source.length }, () => null);
+    const affectedIndexes = new Set();
+    candidates.forEach((candidate) => {
+      affectedIndexes.add(candidate.sourceIndex);
+      affectedIndexes.add(candidate.targetIndex);
+    });
+
+    for (const index of affectedIndexes) {
+      const beforeTokens = timedTextTokens(source[index]?.text);
+      const prefixCount = prefixCounts[index];
+      const suffixCount = suffixCounts[index];
+      if (prefixCount + suffixCount >= beforeTokens.length) {
+        return emptyTimedTextBoundaryPlan(source);
+      }
+      const layout = timedTextItemLayout(source[index]?.text, source[index]?.items);
+      if (!layout) return emptyTimedTextBoundaryPlan(source);
+      const prefixIndex = prefixCount
+        ? timedTextItemSplitIndex(layout, prefixCount) : 0;
+      const suffixIndex = suffixCount
+        ? timedTextItemSplitIndex(layout, beforeTokens.length - suffixCount) : layout.items.length;
+      if (prefixIndex < 0 || suffixIndex < 0 || prefixIndex >= suffixIndex) {
+        return emptyTimedTextBoundaryPlan(source);
+      }
+      partitions[index] = { layout, prefixIndex, suffixIndex };
+    }
+
+    for (const candidate of candidates) {
+      const partition = partitions[candidate.sourceIndex];
+      candidate.movedItems = candidate.type === 'prefix-to-previous'
+        ? cloneJsonValue(partition.layout.items.slice(0, partition.prefixIndex))
+        : cloneJsonValue(partition.layout.items.slice(partition.suffixIndex));
+      if (!candidate.movedItems.length
+          || candidate.movedItems.map((item) => item.text).join('') !== candidate.movedTokens.join('')) {
+        return emptyTimedTextBoundaryPlan(source);
+      }
+    }
+
+    for (const index of affectedIndexes) {
+      const beforeTokens = timedTextTokens(source[index]?.text);
+      const prefixTokens = incomingPrefixes[index]?.movedTokens || [];
+      const suffixTokens = incomingSuffixes[index]?.movedTokens || [];
+      const bodyTokens = beforeTokens.slice(prefixCounts[index], beforeTokens.length - suffixCounts[index]);
+      const expectedTokens = [...prefixTokens, ...bodyTokens, ...suffixTokens];
+      if (!sameTimedTextTokens(expectedTokens, timedTextTokens(texts[index]))) {
+        return emptyTimedTextBoundaryPlan(source);
+      }
+
+      const partition = partitions[index];
+      const incomingPrefixItems = incomingPrefixes[index]?.movedItems || [];
+      const incomingSuffixItems = incomingSuffixes[index]?.movedItems || [];
+      const nextItems = [
+        ...cloneJsonValue(incomingPrefixItems),
+        ...partition.layout.items.slice(partition.prefixIndex, partition.suffixIndex),
+        ...cloneJsonValue(incomingSuffixItems),
+      ];
+      if (!nextItems.length
+          || nextItems.map((item) => item.text).join('') !== expectedTokens.join('')
+          || !timedTextItemsOrdered(nextItems)) {
+        return emptyTimedTextBoundaryPlan(source);
+      }
+
+      const segment = source[index];
+      let start = Number(segment?.start);
+      let end = Number(segment?.end);
+      if (prefixCounts[index] || prefixTokens.length) start = Number(nextItems[0].start);
+      if (suffixCounts[index] || suffixTokens.length) end = Number(nextItems[nextItems.length - 1].end);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        return emptyTimedTextBoundaryPlan(source);
+      }
+      partitions[index].update = {
+        text: texts[index],
+        items: nextItems,
+        start,
+        end,
+      };
+    }
+
+    const updates = Array.from({ length: source.length }, () => null);
+    affectedIndexes.forEach((index) => { updates[index] = partitions[index].update; });
+    return {
+      transfers: candidates.map((candidate) => ({
+        type: candidate.type,
+        sourceIndex: candidate.sourceIndex,
+        targetIndex: candidate.targetIndex,
+        movedText: candidate.movedTokens.join(''),
+        movedItemCount: candidate.movedItems.length,
+      })),
+      updates,
+    };
+  }
+
+  function reconcileTimedTextItems(originalText, rawItems, newText) {
+    if (!Array.isArray(rawItems) || !rawItems.length) {
+      return { status: 'unavailable', items: null, preservedItems: 0, affectedItems: 0 };
+    }
+    const layout = timedTextItemLayout(originalText, rawItems);
+    if (!layout) {
+      const items = Array.isArray(rawItems) ? cloneJsonValue(rawItems) : [];
+      return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+    }
+    const { items, spans } = layout;
+    if (originalText === newText) {
+      return { status: 'full', items, preservedItems: items.length, affectedItems: 0 };
+    }
+
+    const originalTokens = timedTextTokens(originalText);
+    const newTokens = timedTextTokens(newText);
+    // 等长改字是最可靠的错别字修正场景：按原 item 的字符长度重新分配文字，
+    // 直接保留每个 item 的时间范围。
+    if (originalTokens.length === newTokens.length) {
+      let offset = 0;
+      items.forEach((item, index) => {
+        const length = spans[index].end - spans[index].start;
+        item.text = newTokens.slice(offset, offset + length).join('');
+        offset += length;
+      });
+      return { status: 'full', items, preservedItems: items.length, affectedItems: 0 };
+    }
+
+    let prefix = 0;
+    while (
+      prefix < originalTokens.length
+      && prefix < newTokens.length
+      && originalTokens[prefix] === newTokens[prefix]
+    ) prefix += 1;
+    let suffix = 0;
+    while (
+      suffix < originalTokens.length - prefix
+      && suffix < newTokens.length - prefix
+      && originalTokens[originalTokens.length - 1 - suffix]
+        === newTokens[newTokens.length - 1 - suffix]
+    ) suffix += 1;
+    const unchanged = prefix + suffix;
+    const comparableLength = Math.max(1, Math.min(originalTokens.length, newTokens.length));
+    const changedOriginal = originalTokens.length - unchanged;
+    const changedTarget = newTokens.length - unchanged;
+    if (
+      unchanged === 0
+      || unchanged < Math.max(1, Math.round(comparableLength * 0.25))
+      || changedOriginal > originalTokens.length * 0.75
+      || changedTarget > newTokens.length * 0.75
+    ) {
+      return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+    }
+
+    const changedStart = prefix;
+    const changedEnd = originalTokens.length - suffix;
+    const affectedIndexes = spans
+      .map((span, index) => ({ span, index }))
+      .filter(({ span }) => {
+        if (changedStart === changedEnd) {
+          return span.start <= changedStart && changedStart <= span.end;
+        }
+        return span.start < changedEnd && span.end > changedStart;
+      })
+      .map(({ index }) => index);
+    if (!affectedIndexes.length) {
+      return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+    }
+    const firstIndex = affectedIndexes[0];
+    const lastIndex = affectedIndexes[affectedIndexes.length - 1];
+    const firstSpan = spans[firstIndex];
+    const lastSpan = spans[lastIndex];
+    const prefixText = originalTokens.slice(firstSpan.start, Math.max(firstSpan.start, changedStart)).join('');
+    const suffixText = originalTokens.slice(Math.min(lastSpan.end, changedEnd)).join('');
+    const targetText = newTokens.slice(prefix, newTokens.length - suffix).join('');
+    const merged = { ...items[firstIndex] };
+    merged.text = prefixText + targetText + suffixText;
+    merged.start = items[firstIndex].start;
+    merged.end = items[lastIndex].end;
+    const reconciled = [
+      ...items.slice(0, firstIndex),
+      ...(merged.text ? [merged] : []),
+      ...items.slice(lastIndex + 1),
+    ];
+    if (reconciled.length && reconciled.map((item) => item.text).join('') === newText) {
+      return {
+        status: 'partial',
+        items: reconciled,
+        preservedItems: reconciled.length,
+        affectedItems: affectedIndexes.length,
+      };
+    }
+    return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+  }
+
+  function buildTimedTextEditReport(segments, draftTexts) {
+    const source = Array.isArray(segments) ? segments : [];
+    const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    const valid = source.length === texts.length;
+    const boundaryPlan = buildTimedTextBoundaryPlan(source, texts);
+    const rows = source.map((segment, index) => {
+      const before = String(segment?.text == null ? '' : segment.text);
+      const after = String(texts[index] == null ? '' : texts[index]);
+      const diff = buildTimedTextDiff(before, after);
+      const boundary = boundaryPlan.updates[index];
+      const mapping = boundary
+        ? {
+          status: 'boundary',
+          items: boundary.items,
+          preservedItems: boundary.items.length,
+          affectedItems: boundary.items.length,
+        }
+        : reconcileTimedTextItems(before, segment?.items, after);
+      const afterStart = boundary ? boundary.start : Number(segment?.start);
+      const afterEnd = boundary ? boundary.end : Number(segment?.end);
+      return {
+        index,
+        before,
+        after,
+        changed: before !== after,
+        diff,
+        mappingStatus: mapping.status,
+        beforeItemCount: Array.isArray(segment?.items) ? segment.items.length : 0,
+        afterItemCount: mapping.items?.length || 0,
+        preservedItems: mapping.preservedItems,
+        affectedItems: mapping.affectedItems,
+        beforeStart: Number(segment?.start),
+        beforeEnd: Number(segment?.end),
+        afterStart,
+        afterEnd,
+        timingChanged: afterStart !== Number(segment?.start) || afterEnd !== Number(segment?.end),
+      };
+    });
+    const changedRows = rows.filter((row) => row.changed);
+    const stats = {
+      totalSegments: source.length,
+      changedSegments: changedRows.length,
+      unchangedSegments: rows.length - changedRows.length,
+      beforeCharacters: rows.reduce((sum, row) => sum + timedTextTokens(row.before).length, 0),
+      afterCharacters: rows.reduce((sum, row) => sum + timedTextTokens(row.after).length, 0),
+      addedCharacters: changedRows.reduce((sum, row) => sum + row.diff.addedCharacters, 0),
+      removedCharacters: changedRows.reduce((sum, row) => sum + row.diff.removedCharacters, 0),
+      fullMappedCues: changedRows.filter((row) => row.mappingStatus === 'full').length,
+      partialMappedCues: changedRows.filter((row) => row.mappingStatus === 'partial').length,
+      lostMappedCues: changedRows.filter((row) => row.mappingStatus === 'lost').length,
+      unavailableMappedCues: changedRows.filter((row) => row.mappingStatus === 'unavailable').length,
+      boundaryMappedCues: changedRows.filter((row) => row.mappingStatus === 'boundary').length,
+      boundaryMoves: boundaryPlan.transfers.length,
+      timingChangedCues: rows.filter((row) => row.timingChanged).length,
+      preservedItems: changedRows.reduce((sum, row) => sum + row.preservedItems, 0),
+      affectedItems: changedRows.reduce((sum, row) => sum + row.affectedItems, 0),
+    };
+    return { valid, rows, changedRows, stats, boundaryMoves: boundaryPlan.transfers };
+  }
+
+  function applyTimedTextEdit(segments, draftTexts) {
+    const source = Array.isArray(segments) ? segments : [];
+    const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    if (source.length !== texts.length) return null;
+    const boundaryPlan = buildTimedTextBoundaryPlan(source, texts);
+    return source.map((segment, index) => {
+      const next = cloneJsonValue(segment || {});
+      const before = String(next.text == null ? '' : next.text);
+      const after = String(texts[index] == null ? '' : texts[index]);
+      if (before === after) return next;
+      const boundary = boundaryPlan.updates[index];
+      if (boundary) {
+        next.text = after;
+        next.start = boundary.start;
+        next.end = boundary.end;
+        next.items = cloneJsonValue(boundary.items);
+        return next;
+      }
+      const mapping = reconcileTimedTextItems(before, next.items, after);
+      next.text = after;
+      if (mapping.status === 'full' || mapping.status === 'partial') next.items = mapping.items;
+      else if (mapping.status === 'lost') delete next.items;
+      return next;
+    });
+  }
+
   function countTextUnits(text) {
     const normalized = String(text || '').replace(/\r\n?/g, '').replace(/\n/g, '');
     let total = 0;
@@ -2422,6 +2930,12 @@
     normalizeKeyboardOperationReferenceMode,
     resolveKeyboardOperationReference,
     buildReplacementPreview,
+    applyTextProcessing,
+    buildTextProcessingPreview,
+    buildTimedTextDiff,
+    buildTimedTextBoundaryPlan,
+    buildTimedTextEditReport,
+    applyTimedTextEdit,
     countTextUnits,
     countSubtitleUnits,
     cueMetrics,

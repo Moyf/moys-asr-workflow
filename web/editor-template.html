@@ -1154,7 +1154,14 @@ __WAVEFORM_CSS__
       </span>
       <span class="info">显示 <b id="visible-count">0</b> / <b id="total-count">0</b></span>
       <span class="sep"></span>
-      <button id="replace-btn">批量替换…</button>
+      <div class="dropdown batch-operations-dropdown" id="batch-operations-dropdown">
+        <button type="button" id="batch-operations-btn" aria-expanded="false" aria-controls="batch-operations-menu" aria-haspopup="menu">批量操作 ▾</button>
+        <div class="dropdown-menu" id="batch-operations-menu" role="menu">
+          <button type="button" class="dropdown-item" id="replace-btn" role="menuitem">批量替换…</button>
+          <button type="button" class="dropdown-item" id="timed-text-edit-btn" role="menuitem" title="以保持字幕行结构的方式集中编辑文本，并预览时间码映射结果">纯文本编辑…</button>
+          <button type="button" class="dropdown-item" id="text-process-btn" role="menuitem">文本处理…</button>
+        </div>
+      </div>
       <span class="sep"></span>
       <button id="filter-over" title="只显示超过阈值的字幕（再次点击关闭）">仅看超长</button>
     </div>
@@ -1218,6 +1225,9 @@ __WAVEFORM_CSS__
   <div class="modal">
     <h3 id="replace-modal-title">批量替换</h3>
     <div id="replace-scope-info" style="font-size:12px;color:#888;margin-bottom:8px;">范围：全部字幕</div>
+    <label class="modal-check-row" for="replace-selected-only">
+      <input type="checkbox" id="replace-selected-only" disabled> 仅处理选中的字幕
+    </label>
     <label>查找</label>
     <input type="text" id="find-input" placeholder="要查找的内容" autocomplete="off">
     <label>替换为</label>
@@ -1230,6 +1240,110 @@ __WAVEFORM_CSS__
     <div class="actions">
       <button id="replace-cancel">取消</button>
       <button id="replace-confirm" class="primary">替换全部</button>
+    </div>
+  </div>
+</div>
+
+<!-- 常用文本处理 modal：保持字幕行和时间范围结构，只批量变更文本。 -->
+<div class="modal-mask" id="text-process-modal">
+  <div class="modal text-process-modal" role="dialog" aria-modal="true"
+       aria-labelledby="text-process-title" aria-describedby="text-process-description">
+    <h3 id="text-process-title">文本处理</h3>
+    <p class="modal-desc" id="text-process-description">
+      选择要执行的文本操作；字幕行不会被删除，处理为空时会保留空字幕行。字词时间码会按文本编辑规则尽量保留。
+    </p>
+    <div id="text-process-scope-info" class="text-process-scope-info">范围：全部字幕</div>
+    <label class="modal-check-row" for="text-process-selected-only">
+      <input type="checkbox" id="text-process-selected-only" disabled> 仅处理选中的字幕
+    </label>
+    <div class="text-process-operations" aria-label="文本处理操作">
+      <label class="text-process-operation" for="text-process-trim">
+        <input type="checkbox" id="text-process-trim">
+        <span>Trim</span>
+        <span class="modal-hint">去除前后空白</span>
+      </label>
+      <label class="text-process-operation" for="text-process-capitalize">
+        <input type="checkbox" id="text-process-capitalize">
+        <span>首字母大写</span>
+        <span class="modal-hint">只作用于第一个字母</span>
+      </label>
+      <label class="text-process-operation text-process-operation-input" for="text-process-prefix">
+        <input type="checkbox" id="text-process-prefix">
+        <span>添加前缀</span>
+        <input type="text" id="text-process-prefix-input" placeholder="插入到字幕开头" disabled>
+      </label>
+      <label class="text-process-operation text-process-operation-input" for="text-process-suffix">
+        <input type="checkbox" id="text-process-suffix">
+        <span>附加内容</span>
+        <input type="text" id="text-process-suffix-input" placeholder="插入到字幕结尾" disabled>
+      </label>
+      <label class="text-process-operation" for="text-process-strip-markdown">
+        <input type="checkbox" id="text-process-strip-markdown">
+        <span>去除 md 格式符号</span>
+        <span class="modal-hint">移除常见 Markdown 标记</span>
+      </label>
+    </div>
+    <div class="preview text-process-preview" id="text-process-preview">选择操作后查看预览</div>
+    <div class="actions">
+      <button type="button" id="text-process-cancel">取消</button>
+      <button type="button" id="text-process-confirm" class="primary" disabled>应用处理</button>
+    </div>
+  </div>
+</div>
+
+<!-- 保持字幕行结构的纯文本编辑 MVP。 -->
+<div class="modal-mask" id="timed-text-edit-modal">
+  <div class="modal timed-text-edit-modal" role="dialog" aria-modal="true"
+       aria-labelledby="timed-text-edit-title" aria-describedby="timed-text-edit-description">
+    <div class="timed-text-edit-header">
+      <div>
+        <h3 id="timed-text-edit-title">纯文本编辑</h3>
+        <p class="modal-desc" id="timed-text-edit-description">
+          集中修改字幕文字；保持字幕行结构，确认前会分析字词时间码的保留情况；相邻字幕的开头/结尾移动会同步更新时间范围。
+        </p>
+      </div>
+      <button type="button" id="timed-text-edit-close" class="timed-text-edit-close"
+              title="关闭（Esc）" aria-label="关闭纯文本编辑">×</button>
+    </div>
+    <div class="timed-text-edit-toolbar">
+      <label for="timed-text-edit-track">编辑轨道</label>
+      <select id="timed-text-edit-track">
+        <option value="main">主字幕</option>
+        <option value="extension">副字幕</option>
+      </select>
+      <label for="timed-text-edit-view">编辑视图</label>
+      <select id="timed-text-edit-view">
+        <option value="rows">逐条编辑</option>
+        <option value="single">单文本框</option>
+      </select>
+      <span class="timed-text-edit-source-info" id="timed-text-edit-source-info"></span>
+    </div>
+    <div class="timed-text-edit-layout">
+      <section class="timed-text-edit-input-panel" aria-labelledby="timed-text-edit-input-title">
+        <div class="timed-text-edit-section-heading">
+          <strong id="timed-text-edit-input-title">字幕文本</strong>
+          <span class="modal-hint">每一行对应一条已有字幕；请勿新增或删除行。</span>
+        </div>
+        <div class="timed-text-edit-rows" id="timed-text-edit-rows"></div>
+        <textarea id="timed-text-edit-single-textarea" class="timed-text-edit-single-textarea"
+                  aria-label="单文本框编辑" hidden spellcheck="false" wrap="off"></textarea>
+        <div id="timed-text-edit-single-hint" class="timed-text-edit-single-hint" hidden></div>
+      </section>
+      <aside class="timed-text-edit-report" aria-labelledby="timed-text-edit-report-title">
+        <h4 id="timed-text-edit-report-title">修改影响</h4>
+        <div class="timed-text-edit-report-summary" id="timed-text-edit-report-summary"></div>
+        <div class="timed-text-edit-report-mapping" id="timed-text-edit-report-mapping"></div>
+        <button type="button" id="timed-text-edit-show-all" class="timed-text-edit-show-all" hidden>显示全部</button>
+        <div class="timed-text-edit-report-hint" id="timed-text-edit-report-hint"></div>
+        <details class="timed-text-edit-change-list" id="timed-text-edit-change-details">
+          <summary>查看修改内容</summary>
+          <div id="timed-text-edit-change-list"></div>
+        </details>
+      </aside>
+    </div>
+    <div class="actions">
+      <button type="button" id="timed-text-edit-cancel">取消</button>
+      <button type="button" id="timed-text-edit-apply" class="primary" disabled>应用修改</button>
     </div>
   </div>
 </div>
