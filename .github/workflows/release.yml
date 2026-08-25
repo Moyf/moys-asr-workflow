@@ -73,12 +73,6 @@ jobs:
       - name: Run packaging contract tests
         run: uv run python -m unittest tests/test_packaging_contract.py
 
-      - name: Install Linux CJK test font
-        if: matrix.platform == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y fonts-noto-cjk
-
       - name: Run Python tests
         run: uv run python -m unittest discover -s tests -p "test_*.py"
 
@@ -282,6 +276,12 @@ jobs:
 
       - name: Run packaging contract tests
         run: uv run python -m unittest tests/test_packaging_contract.py
+
+      - name: Install Linux CJK test font
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
 
       - name: Run Python tests
         run: uv run python -m unittest discover -s tests -p "test_*.py"
