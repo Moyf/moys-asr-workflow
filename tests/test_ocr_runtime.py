@@ -38,15 +38,16 @@ class OcrRuntimeTests(unittest.TestCase):
     def test_install_creates_venv_installs_exact_runtime_requirements_and_writes_manifest(self) -> None:
         calls: list[list[str]] = []
 
+        def fake_extract(_zip_path, target_dir):
+            python = target_dir / ("python.exe" if os.name == "nt" else "bin/python")
+            python.parent.mkdir(parents=True, exist_ok=True)
+            python.write_bytes(b"python")
+
         def fake_run(command, *, env, cancel, on_line, cwd):
             _ = (env, cancel, cwd)
             calls.append(command)
-            if len(command) > 1 and command[1] == "venv":
-                python = self.root / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-                python.parent.mkdir(parents=True, exist_ok=True)
-                python.write_bytes(b"python")
-            elif len(command) > 1 and command[1] == "pip":
-                site_packages = self.root / ("Lib/site-packages" if os.name == "nt" else "lib/python3.11/site-packages")
+            if "install" in command:
+                site_packages = self.root / "site-packages"
                 for package in ("numpy", "onnxruntime", "PIL", "rapidocr"):
                     (site_packages / package).mkdir(parents=True, exist_ok=True)
             on_line("fake command complete")
@@ -54,14 +55,15 @@ class OcrRuntimeTests(unittest.TestCase):
 
         requirements_txt = self.root.parent / "requirements-ocr.txt"
         requirements_txt.write_text("numpy==2.4.6\nonnxruntime==1.28.0\nrapidocr==3.9.2\n", encoding="utf-8")
-        with mock.patch("maw.ocr_runtime._find_uv", return_value=Path("uv.exe")):
-            with mock.patch("maw.ocr_runtime._ocr_requirements_path", return_value=requirements_txt):
-                with mock.patch("maw.ocr_runtime._run_process", side_effect=fake_run):
-                    status = install_ocr_runtime(runtime_root=self.root, cancel_event=Event())
+        with mock.patch("maw.ocr_runtime._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
+            with mock.patch("maw.ocr_runtime._extract_embed_python", side_effect=fake_extract):
+                with mock.patch("maw.ocr_runtime._ocr_requirements_path", return_value=requirements_txt):
+                    with mock.patch("maw.ocr_runtime._run_process", side_effect=fake_run):
+                        status = install_ocr_runtime(runtime_root=self.root, cancel_event=Event())
 
         self.assertTrue(status.ready)
         self.assertEqual(json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))["modelId"], OCR_MODEL_ID)
-        self.assertIn("uv", str(calls[0][0]).lower())
+        self.assertIn("--target", calls[1])
         self.assertIn("-r", calls[1])
         self.assertTrue(any("requirements-ocr.txt" in str(arg) for arg in calls[1]))
         self.assertIn("rapidocr", calls[2][-1])
@@ -114,14 +116,14 @@ class OcrRuntimeTests(unittest.TestCase):
         self.assertIn(str(self.root.parent / "ocr-output"), command)
 
     def _make_ready_runtime(self) -> None:
-        python = self.root / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        python = self.root / ("python/python.exe" if os.name == "nt" else "python/bin/python")
         python.parent.mkdir(parents=True, exist_ok=True)
         python.write_bytes(b"python")
-        site_packages = self.root / ("Lib/site-packages" if os.name == "nt" else "lib/python3.11/site-packages")
+        site_packages = self.root / "site-packages"
         for package in ("numpy", "onnxruntime", "PIL", "rapidocr"):
             (site_packages / package).mkdir(parents=True, exist_ok=True)
         (self.root / "runtime.json").write_text(
-            json.dumps({"status": "ready", "runtimeVersion": "2"}),
+            json.dumps({"status": "ready", "runtimeVersion": "3"}),
             encoding="utf-8",
         )
 
