@@ -10,13 +10,16 @@
 | Extra 不应合并成很长的一整句 | 已修复 | 数据层按每个源字幕段或同一段内连续 item 区间拆分 true Extra；`skip-source` 失败/口吃/Alternative 仍保持原有候选范围 | `maw/script_alignment.py`、`server-align/README.md` | 对齐单元测试；真实示例 Extra 列表检查 |
 | 紧邻完整重录的失败片段误判为 Extra | 已修复 | 选中的完整 take 前，对文本明显同源但未形成可靠候选的近邻片段做保守提升，标记为 `skip-source / incomplete` 并默认禁用；独立 Extra 仍默认保留 | `maw/script_alignment.py`、`server-align/README.md` | 对齐回归测试；合成重录样例检查 |
 | 候选内、候选外的近似改口误判为 Extra | 已修复 | 相邻完整源片段满足长共同开头与明显停顿时，前段写入 `skip-source / repetition`，后段保留；同一规则同时覆盖候选内部的 `internalSkips` 和候选外的连续源片段 | `maw/script_alignment.py`、`tests/test_script_alignment.py`、`JSON_SCHEMA.md` | 对齐单元测试；真实示例候选与 Extra 检查 |
+| Extra 卡片集中在同一处 | 已修复 | 文稿行继续按行号顺序排列；Extra 按 ASR 起始时间插入相邻文稿行之间，missing 行不再作为强制截断点；同一插入位置内继续保持 ASR 顺序 | `server-align/index.html` | Extra slot 排序检查；内嵌 JavaScript 语法检查 |
 | Ctrl+单击字幕块定位下方录制 card | 已修复 | 时间轴块保留原有普通点击行为；按住 Ctrl 单击时跳过选择/禁用动作，滚动到对应的候选或 Extra card，并短暂高亮目标 | `server-align/index.html`、`server-align/README.md` | 内嵌 JavaScript 语法检查；静态交互契约检查 |
+| 基础波形滚轮横向滚动与空格键焦点 | 已修复 | 基础模式将滚轮映射为时间轴横向滚动，多行模式保留纵向滚动；点击波形块或 checkbox 等控件后释放焦点，使空格键继续控制播放/暂停，同时保留文本输入的正常焦点行为 | `server-align/index.html`、`server-align/README.md` | 内嵌 JavaScript 语法与交互契约检查；对齐专项测试；示例 Server smoke check |
 
 ## 验证结果
 
 - `uv run python -m unittest tests.test_script_alignment tests.test_server_align`：15 项通过。
-- `node` `new Function(...)`：`server-align/index.html` 内嵌 JavaScript 语法通过。
+- `node` `new Function(...)`：`server-align/index.html` 内嵌 JavaScript 语法通过；滚轮横向滚动、控件释放焦点和 Ctrl 定位 card 契约检查通过。
 - 示例工程 `MAW-1.4更新说明.bcut.mosp`：页面、状态接口和媒体 HEAD 请求均返回 200；媒体声明支持 `bytes` Range。
+- 本次示例 Server smoke：`/` 与 `/api/state` 均返回 200，服务已正常停止。
 - `git diff --check`：通过；本次涉及文本文件均保持 LF 换行。
 
 ## 未验证
