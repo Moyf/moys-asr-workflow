@@ -242,6 +242,21 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertIn("--engine", command)
         self.assertIn("funasr", command)
 
+    def test_build_transcribe_command_passes_moss_speaker_colors(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="local",
+            engine="moss",
+            model="OpenMOSS-Team/MOSS-Transcribe-Diarize",
+            runtime_python="moss-python",
+            speaker_colors=True,
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertIn("--speaker-colors", command)
+
     def test_run_transcription_passes_api_key_only_in_child_environment(self) -> None:
         request = TranscriptionRequest(
             media_path=self.media_path,
