@@ -486,12 +486,12 @@ jobs:
           set -euo pipefail
           cd build-appimage
           ./MAW-Linux-x86_64.AppImage --appimage-extract >/dev/null 2>&1
-          if [ -e squashfs-root/_internal/libstdc++.so.6 ] || [ -e squashfs-root/_internal/libgcc_s.so.1 ] || [ -e squashfs-root/_internal/libgbm.so.1 ]; then
-            echo "FAIL: AppImage 内置了 libstdc++/libgcc_s/libgbm，会污染系统 Mesa 驱动加载"
+          if [ -e squashfs-root/_internal/libstdc++.so.6 ] || [ -e squashfs-root/_internal/libgcc_s.so.1 ] || [ -e squashfs-root/_internal/libgbm.so.1 ] || ls squashfs-root/_internal/libreadline.so.* >/dev/null 2>&1; then
+            echo "FAIL: AppImage 内置了 libstdc++/libgcc_s/libgbm/libreadline，会污染系统 Mesa 驱动加载"
             exit 1
           fi
           test -f squashfs-root/FAQ-常见问题.txt
-          echo "OK: 未内置 libstdc++/libgcc_s/libgbm"
+          echo "OK: 未内置 libstdc++/libgcc_s/libgbm/libreadline"
           rm -r squashfs-root
 
       - name: Diagnose AppImage libraries
