@@ -603,6 +603,41 @@ class PostprocessTests(unittest.TestCase):
         self.assertIn("atom ID", received[0][0])
         self.assertEqual(received[0][1][0]["items"][0]["id"], "c0001a0001")
 
+    def test_mosp_resegment_assigns_unique_ids_when_one_cue_splits(self) -> None:
+        project = sample_project(self.media)
+        segments = project_segments(project)
+        segments[0]["id"] = "source-first"
+        segments[1]["id"] = "source-second"
+        segments[1]["items"] = [
+            {"start": 1200, "end": 1600, "text": "下"},
+            {"start": 1600, "end": 2200, "text": "一句"},
+        ]
+        self.project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.JSON,
+                operation="resegment",
+                custom_prompt="",
+            ),
+            complete=lambda _prompt, _cues: {
+                "groups": [
+                    {"atom_ids": ["c0001a0001"]},
+                    {"atom_ids": ["c0001a0002"]},
+                    {"atom_ids": ["c0002a0001", "c0002a0002"]},
+                ]
+            },
+        )
+
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project file")
+        output = project_segments(read_project(result.project_path))
+        ids = [str(segment["id"]) for segment in output]
+        self.assertEqual(ids, ["source-first-part-001", "source-first-part-002", "source-second-part-001"])
+        self.assertEqual(len(ids), len(set(ids)))
+
     def test_llm_regroup_removes_all_positional_visual_refs_and_word_timings(self) -> None:
         project = sample_project(self.media)
         segments = project_segments(project)
