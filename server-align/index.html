@@ -1,0 +1,2072 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MAW 录制对齐</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101419;
+      --panel: #191f27;
+      --panel-2: #222b36;
+      --line: #354252;
+      --text: #edf2f7;
+      --muted: #9aa9b8;
+      --blue: #66adff;
+      --green: #63d596;
+      --amber: #f0bd64;
+      --yellow: #e7c759;
+      --red: #ed818a;
+      --disabled: #77818e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    button, select { font: inherit; }
+    button, select {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 7px 10px;
+    }
+    button { cursor: pointer; }
+    button:hover { border-color: var(--blue); }
+    button.primary { background: #2564a4; border-color: #55a1ea; }
+    button.active { border-color: var(--green); background: #1d4536; }
+    main { max-width: 1240px; margin: 0 auto; padding: 22px; }
+    h1, h2, p { margin-top: 0; }
+    h1 { font-size: 24px; margin-bottom: 5px; }
+    h2 { font-size: 16px; margin-bottom: 12px; }
+    .muted, small { color: var(--muted); }
+    .notice {
+      margin: 16px 0;
+      padding: 11px 13px;
+      border: 1px solid #66502b;
+      border-radius: 8px;
+      background: #2a2418;
+      color: #f3d29b;
+    }
+    .toolbar, .summary, .media-panel, .panel {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+    }
+.toolbar {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  margin-bottom: 14px;
+}
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.toolbar-status {
+  min-width: 0;
+  min-height: 1.5em;
+  overflow-wrap: anywhere;
+}
+.toolbar .spacer { flex: 1; }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(100px, 1fr));
+      gap: 1px;
+      overflow: hidden;
+      margin: 16px 0;
+    }
+    .summary-item { padding: 11px; background: var(--panel); }
+    .summary-item strong { display: block; font-size: 20px; }
+    .summary-item span { color: var(--muted); }
+    .media-panel { padding: 12px; margin-bottom: 14px; }
+    audio, video { width: 100%; max-height: 360px; }
+    .timeline-help {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .timeline-help > span:first-child { flex: 1 1 280px; }
+    .timeline-options {
+      display: flex;
+      flex: 0 1 auto;
+      flex-wrap: wrap;
+      gap: 6px 12px;
+      align-items: center;
+      color: var(--text);
+    }
+    .waveform-mode-options {
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 5px;
+    }
+    .waveform-mode-options > span { color: var(--muted); }
+    .waveform-mode {
+      padding: 3px 8px;
+      border-radius: 5px;
+      font-size: 12px;
+    }
+    .waveform-mode.active { border-color: var(--blue); background: #1d4164; }
+    .waveform-mode-setting { gap: 4px; }
+    .waveform-mode-setting select { padding: 3px 5px; font-size: 12px; }
+    .waveform-mode-setting[hidden] { display: none; }
+    .timeline-option {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .timeline-option input { margin: 0; accent-color: var(--blue); }
+    .timeline-help strong {
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .timeline-scroll {
+      margin-top: 6px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      overscroll-behavior: contain;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #0c1116;
+    }
+    .timeline-scroll.multi-mode {
+      max-height: min(70vh, 720px);
+      overflow-y: auto;
+    }
+    .timeline-scroll.multi-mode .time-ruler {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .timeline-content {
+      position: relative;
+      min-width: 100%;
+      padding: 0 0 8px;
+    }
+    .time-ruler {
+      position: relative;
+      height: 29px;
+      border-bottom: 1px solid #2a3541;
+      background: #111820;
+      color: var(--muted);
+      font: 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-variant-numeric: tabular-nums;
+      user-select: none;
+    }
+    .time-tick {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      border-left: 1px solid #465363;
+    }
+    .time-tick span {
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      white-space: nowrap;
+    }
+    .waveform-stage {
+      position: relative;
+      height: 180px;
+      border-bottom: 1px solid var(--line);
+      background: #0c1116;
+      overflow: hidden;
+      cursor: crosshair;
+      touch-action: none;
+      user-select: none;
+    }
+    .waveform-stage.multi-mode { height: 180px; }
+    #waveform-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .gap-overlay { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+    .gap-range {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      min-width: 2px;
+      background: repeating-linear-gradient(135deg, rgba(231,199,89,.16) 0 5px, rgba(122,105,39,.05) 5px 10px);
+      border-left: 1px solid rgba(245,225,133,.75);
+      border-right: 1px solid rgba(245,225,133,.75);
+    }
+    .waveform-hint {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      pointer-events: none;
+    }
+    .waveform-hint[hidden] { display: none; }
+    .multi-row-labels { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+    .multi-row-label {
+      position: absolute;
+      left: 6px;
+      padding: 2px 5px;
+      border: 1px solid rgba(154,169,184,.45);
+      border-radius: 4px;
+      background: rgba(12,17,22,.72);
+      color: var(--muted);
+      font: 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .timeline-marker {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      transform: translateX(-1px);
+      pointer-events: none;
+      z-index: 8;
+    }
+    .timeline-marker::before {
+      position: absolute;
+      top: 5px;
+      left: 4px;
+      padding: 2px 4px;
+      border-radius: 3px;
+      color: #0b1117;
+      background: var(--text);
+      content: attr(data-time);
+      font: 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: nowrap;
+    }
+    .timeline-marker[hidden] { display: none; }
+    #waveform-pointer {
+      background: rgba(220, 230, 240, .78);
+      box-shadow: 0 0 3px rgba(220, 230, 240, .45);
+    }
+    #waveform-playhead {
+      background: #f06d78;
+      box-shadow: 0 0 7px rgba(240, 109, 120, .78);
+    }
+    #waveform-playhead::before { background: #f06d78; }
+    .take-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      pointer-events: none;
+    }
+    .take-range {
+      position: absolute;
+      bottom: 10px;
+      height: 52px;
+      min-width: 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(255,255,255,.18);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 6px;
+      overflow: hidden;
+      white-space: nowrap;
+      color: #081017;
+      font-size: 12px;
+      text-align: left;
+      pointer-events: auto;
+    }
+    .take-badge {
+      flex: 0 0 auto;
+      padding: 2px 4px;
+      border-radius: 3px;
+      background: rgba(8, 16, 23, .72);
+      color: #f5f8fb;
+      font-size: 10px;
+      line-height: 1.2;
+    }
+    .take-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .take-range.match { background: rgba(99, 213, 150, .88); }
+    .take-range.alternative { background: rgba(102, 173, 255, .82); }
+    .take-range.distant-match { background: rgba(205, 157, 78, .76); color: #f5ecdc; }
+    .take-range.incomplete { background: rgba(119, 129, 142, .78); color: #e7edf2; }
+    .take-range.manual-enabled { background: rgba(99, 213, 150, .88); color: #081017; }
+    .take-range.selected-incomplete { outline: 1px dashed var(--amber); outline-offset: 1px; }
+    .take-range.extra { background: rgba(240, 189, 100, .88); }
+    .take-range.discard { background: repeating-linear-gradient(135deg, #68727e 0 5px, #4e5864 5px 10px); color: #e7edf2; }
+    .take-range.repetition { bottom: 70px; z-index: 8; }
+    .take-range.muted { opacity: .42; filter: saturate(.45); }
+    .take-range.muted:hover { opacity: .72; filter: saturate(.8); }
+    .take-range.selected { outline: 2px solid #fff; outline-offset: 1px; z-index: 7; opacity: .98; filter: none; }
+    .take-range:focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 9px; color: var(--muted); font-size: 12px; }
+    .legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; background: var(--blue); }
+    .legend .match::before { background: var(--green); }
+    .legend .disabled::before { background: var(--disabled); }
+    .legend .manual::before { background: var(--green); }
+    .legend .extra::before { background: var(--amber); }
+    .legend .gap::before { background: var(--yellow); }
+    .panel { padding: 15px; margin-top: 14px; }
+    .line-card { padding: 12px 0 14px; border-bottom: 1px solid #2d3743; }
+    .line-card:last-child { border-bottom: 0; padding-bottom: 0; }
+    .line-header { display: flex; gap: 9px; align-items: baseline; }
+    .line-number { color: var(--muted); min-width: 54px; }
+    .script-text { font-size: 16px; font-weight: 650; }
+    .recording-card .line-number { color: #dbe8f4; font-weight: 650; white-space: nowrap; }
+    .recording-card.extra-card .line-number,
+    .recording-card.extra-card .script-text,
+    .recording-card.extra-card .line-state { color: var(--amber); }
+    .recording-card.repetition-card .line-number,
+    .recording-card.repetition-card .script-text,
+    .recording-card.repetition-card .line-state { color: var(--disabled); }
+    .recording-card.missing-card .line-number,
+    .recording-card.missing-card .script-text { color: var(--red); }
+    .line-state { margin-left: auto; white-space: nowrap; }
+    .line-state.match { color: var(--green); }
+    .line-state.incomplete { color: var(--amber); }
+    .line-state.manual { color: var(--green); }
+    .line-state.missing { color: var(--red); }
+    .recording-list { display: grid; gap: 0; margin-top: 10px; }
+    .candidate-list { display: grid; gap: 7px; margin: 10px 0 0 54px; }
+    .candidate {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+      gap: 8px;
+      align-items: center;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #171d24;
+    }
+    .candidate.selected { border-color: var(--green); background: #182a25; }
+    .candidate.incomplete { opacity: .76; }
+    .candidate.manual-enabled { opacity: 1; border-color: var(--green); }
+    .candidate-text { min-width: 0; }
+    .candidate-text strong { display: block; }
+    .candidate-text small { display: block; }
+    .candidate-text .entry-context { color: var(--muted); font-size: 12px; }
+    .recording-entry.extra-entry {
+      border-left: 3px solid var(--amber);
+      background: #30291d;
+    }
+    .recording-entry.extra-entry.skip-source { border-left-color: var(--disabled); opacity: .82; }
+    .recording-entry.extra-entry.discarded { opacity: .66; }
+    .recording-card.jump-target { outline: 2px solid var(--blue); outline-offset: 3px; }
+    .badge { color: var(--blue); white-space: nowrap; }
+    .badge.match { color: var(--green); }
+    .badge.distant-match { color: var(--amber); }
+    .badge.incomplete { color: var(--disabled); }
+    .badge.extra { color: var(--amber); }
+    .badge.skip-source { color: var(--disabled); }
+    .candidate.manual-enabled .badge.incomplete { color: var(--green); }
+    .empty { margin-left: 54px; color: var(--red); }
+    .missing-line-list { display: grid; gap: 7px; margin-top: 12px; }
+    .missing-line {
+      display: grid;
+      grid-template-columns: minmax(95px, auto) minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      padding: 9px 0;
+      border-bottom: 1px solid #2d3743;
+    }
+    .missing-line:last-child { border-bottom: 0; }
+    .missing-line small { display: block; color: var(--red); }
+    .action-group { display: flex; gap: 5px; }
+    .action-group button { padding: 4px 8px; }
+.status { margin-left: 0; color: var(--muted); }
+    .status.ready { color: var(--green); }
+    .status.warn { color: var(--amber); }
+    @media (max-width: 820px) {
+      main { padding: 14px; }
+      .summary { grid-template-columns: repeat(3, 1fr); }
+      .candidate-list, .empty { margin-left: 0; }
+    }
+    @media (max-width: 560px) {
+      .summary { grid-template-columns: repeat(2, 1fr); }
+      .candidate { grid-template-columns: 1fr auto; }
+      .candidate button:not(.play) { grid-row: auto; }
+      .candidate button.play { grid-column: 1 / -1; }
+      .missing-line { grid-template-columns: 1fr; }
+      .recording-entry .action-group { grid-column: 1 / -1; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>MAW 录制对齐</h1>
+  <p id="meta" class="muted">正在读取 mosp……</p>
+    <div class="notice">
+    输入是「文稿 + 媒体 + ASR 生成的 mosp」。波形上的绿色块是采用的完整匹配，蓝色块是同一局部录制组的 Alternative（未选中的会自动静音），棕色块是远距离命中（默认保留、等待确认），灰色块是自动禁用的口吃/不完整/重复；不完整 take 可以直接点击波形块，或在下方手动启用，启用后会以绿色显示但仍保留 incomplete 标记。橙色块是默认保留的 Extra，黄色斜纹是播放和导出时会移除的空隙。导出会生成新的对齐 `.mosp`，不会覆盖源工程。
+  </div>
+<div class="toolbar">
+  <div class="toolbar-row">
+    <label for="path-picker">整段默认版本：</label>
+    <select id="path-picker"></select>
+    <button id="reset" type="button">恢复默认选择</button>
+    <span class="spacer"></span>
+    <button id="export" class="primary" type="button">导出对齐后的 mosp</button>
+  </div>
+  <div class="toolbar-status">
+    <span id="status" class="status"></span>
+  </div>
+</div>
+  <section class="summary" id="summary"></section>
+  <section class="media-panel">
+    <h2>波形与 take 块</h2>
+    <div id="media-host"><p class="muted">工程没有可播放媒体，仍可查看对齐结果。</p></div>
+    <div class="timeline-help">
+      <span id="timeline-help-text">基础模式横向滚动查看整段 · 单击定位 · 双击/空格播放暂停 · 按住左键拖动播放头 · Ctrl+单击块跳到下方 card</span>
+      <div class="timeline-options">
+        <div class="waveform-mode-options" role="group" aria-label="波形显示模式">
+          <span>波形：</span>
+          <button class="waveform-mode active" type="button" data-waveform-mode="basic">基础</button>
+          <button class="waveform-mode" type="button" data-waveform-mode="multi">多行</button>
+          <label class="timeline-option waveform-mode-setting" id="multi-row-seconds-setting" hidden>
+            每行
+            <select id="multi-row-seconds">
+              <option value="5">5 秒</option>
+              <option value="10" selected>10 秒</option>
+              <option value="20">20 秒</option>
+              <option value="30">30 秒</option>
+            </select>
+          </label>
+          <label class="timeline-option waveform-mode-setting" id="multi-row-height-setting" hidden>
+            行高
+            <select id="multi-row-height">
+              <option value="64">64 px</option>
+              <option value="80">80 px</option>
+              <option value="96">96 px</option>
+              <option value="120" selected>120 px</option>
+              <option value="144">144 px</option>
+            </select>
+          </label>
+        </div>
+        <label class="timeline-option" title="关闭时，播放头会正常经过 gap；导出仍按 gap_remove 处理">
+          <input id="skip-gap-playback" type="checkbox">
+          播放时跳过 gap
+        </label>
+        <label class="timeline-option" title="播放头跳到视口外时，自动滚动到附近">
+          <input id="follow-playhead" type="checkbox" checked>
+          播放头跳转时自动滚动
+        </label>
+      </div>
+      <strong id="timeline-position">00:00</strong>
+    </div>
+    <div class="timeline-scroll" id="timeline-scroll">
+      <div class="timeline-content" id="timeline-content">
+        <div id="time-ruler" class="time-ruler"></div>
+        <div class="waveform-stage" id="waveform-stage">
+          <canvas id="waveform-canvas"></canvas>
+          <div id="gap-overlay" class="gap-overlay"></div>
+          <div id="multi-row-labels" class="multi-row-labels"></div>
+          <div id="take-overlay" class="take-overlay" aria-label="对齐候选时间轴"></div>
+          <div id="waveform-pointer" class="timeline-marker" data-time="00:00" hidden></div>
+          <div id="waveform-playhead" class="timeline-marker" data-time="00:00" hidden></div>
+          <span id="waveform-hint" class="waveform-hint">正在加载波形……</span>
+        </div>
+      </div>
+    </div>
+    <div class="legend">
+      <span class="match">采用匹配</span>
+      <span>Alternative</span>
+      <span class="disabled">自动禁用</span>
+      <span class="manual">手动启用</span>
+      <span class="extra">Extra 保留</span>
+      <span class="gap">移除空隙</span>
+    </div>
+  </section>
+  <section class="panel">
+    <h2>文稿行与录制候选</h2>
+    <p class="muted">以文稿行顺序为主；同一行的候选按 ASR 起始时间排列，Extra 按录音时间插入相邻位置，并可直接试听、保留或禁用。</p>
+    <div id="lines"></div>
+  </section>
+</main>
+<script>
+  let state = null;
+  let alignment = null;
+  let selectedByLine = {};
+  let extraActions = {};
+  let candidateActions = {};
+  let selectionPreview = null;
+  let removedGaps = [];
+  let activeRangeEndMs = 0;
+  let auditioningRange = false;
+  let waveform = null;
+  let previewSerial = 0;
+  let timelineDrag = null;
+  let waveformMode = 'basic';
+  let multiRowSeconds = 10;
+  let multiRowHeight = 120;
+  let playbackFrameId = 0;
+  let playbackFramePlayer = null;
+  let timelineAutoScrollTarget = null;
+
+  // 与 MAWE 的波形模式保持同一类交互：基础模式使用固定像素/秒的完整横向时间轴，
+  // 多行模式把固定时长切成多行；两种模式都使用同一份源媒体时间码。
+  const TIMELINE_PIXELS_PER_SECOND = 80;
+  const TIMELINE_STAGE_HEIGHT = 180;
+  const TIMELINE_WAVEFORM_SCALE = 2.2;
+  const TIMELINE_MULTI_ROW_GAP = 10;
+  const TIMELINE_MAX_CANVAS_DIMENSION = 32767;
+
+  const $ = (selector) => document.querySelector(selector);
+
+  function formatTime(ms) {
+    const total = Math.max(0, Math.round(Number(ms) / 1000));
+    const minutes = Math.floor(total / 60);
+    const seconds = total % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  function timelineDurationMs() {
+    return Math.max(
+      Number(alignment?.sourceDurationMs || 0),
+      Number(waveform?.duration_ms || 0),
+      1,
+    );
+  }
+
+  function isMultiWaveform() {
+    return waveformMode === 'multi';
+  }
+
+  function multiRowDurationMs() {
+    return Math.max(1, Number(multiRowSeconds) || 10) * 1000;
+  }
+
+  function multiRowCount() {
+    return Math.max(1, Math.ceil(timelineDurationMs() / multiRowDurationMs()));
+  }
+
+  function multiRowStride() {
+    return Math.max(1, Number(multiRowHeight) || 120) + TIMELINE_MULTI_ROW_GAP;
+  }
+
+  function timelineContentWidth() {
+    const scroll = $('#timeline-scroll');
+    const content = $('#timeline-content');
+    if (isMultiWaveform()) {
+      return Math.max(1, Number(scroll?.clientWidth || 0), Number(content?.clientWidth || 0));
+    }
+    return Math.max(
+      Number(content?.clientWidth || 0),
+      timelineDurationMs() / 1000 * TIMELINE_PIXELS_PER_SECOND,
+      1,
+    );
+  }
+
+  function timeToTimelinePx(timeMs) {
+    return Math.max(0, Number(timeMs) / 1000 * TIMELINE_PIXELS_PER_SECOND);
+  }
+
+  function timelineRangePieces(startMs, endMs) {
+    const duration = timelineDurationMs();
+    const start = Math.max(0, Math.min(duration, Number(startMs) || 0));
+    const end = Math.max(start, Math.min(duration, Number(endMs) || 0));
+    if (end <= start) return [];
+    if (!isMultiWaveform()) {
+      return [{
+        left: timeToTimelinePx(start),
+        width: Math.max(2, timeToTimelinePx(end - start)),
+        top: 0,
+        height: TIMELINE_STAGE_HEIGHT,
+        rowIndex: 0,
+      }];
+    }
+    const rowDuration = multiRowDurationMs();
+    const rowWidth = Math.max(1, $('#waveform-stage')?.clientWidth || timelineContentWidth());
+    const firstRow = Math.floor(start / rowDuration);
+    const lastRow = Math.floor(Math.max(start, end - 1) / rowDuration);
+    const pieces = [];
+    for (let rowIndex = firstRow; rowIndex <= lastRow; rowIndex += 1) {
+      const rowStart = rowIndex * rowDuration;
+      const pieceStart = Math.max(start, rowStart);
+      const pieceEnd = Math.min(end, rowStart + rowDuration);
+      if (pieceEnd <= pieceStart) continue;
+      pieces.push({
+        left: (pieceStart - rowStart) / rowDuration * rowWidth,
+        width: Math.max(2, (pieceEnd - pieceStart) / rowDuration * rowWidth),
+        top: rowIndex * multiRowStride(),
+        height: Math.max(1, Number(multiRowHeight) || 120),
+        rowIndex,
+      });
+    }
+    return pieces;
+  }
+
+  function setTimelineGeometry() {
+    const scroll = $('#timeline-scroll');
+    const content = $('#timeline-content');
+    const ruler = $('#time-ruler');
+    const stage = $('#waveform-stage');
+    if (!scroll || !content || !ruler || !stage) return;
+    scroll.classList.toggle('multi-mode', isMultiWaveform());
+    const width = isMultiWaveform()
+      ? Math.max(1, scroll.clientWidth)
+      : Math.max(
+        scroll.clientWidth,
+        Math.ceil(timelineDurationMs() / 1000 * TIMELINE_PIXELS_PER_SECOND),
+        1,
+      );
+    content.style.width = `${width}px`;
+    ruler.style.width = `${width}px`;
+    stage.style.width = `${width}px`;
+    stage.style.height = isMultiWaveform()
+      ? `${multiRowCount() * multiRowStride() - TIMELINE_MULTI_ROW_GAP}px`
+      : `${TIMELINE_STAGE_HEIGHT}px`;
+    renderTimeRuler(width);
+    renderMultiRowLabels();
+  }
+
+  function scrollPlayheadIntoView(timeMs) {
+    const scroll = $('#timeline-scroll');
+    if (!scroll || $('#follow-playhead')?.checked === false) {
+      timelineAutoScrollTarget = null;
+      return;
+    }
+    if (isMultiWaveform()) {
+      const pieces = timelineRangePieces(timeMs, Number(timeMs) + 1);
+      const point = pieces[0];
+      if (!point) return;
+      const rulerHeight = $('#time-ruler')?.offsetHeight || 0;
+      const playheadTop = rulerHeight + point.top;
+      const viewportHeight = scroll.clientHeight;
+      const maxScroll = Math.max(0, scroll.scrollHeight - viewportHeight);
+      if (viewportHeight <= 0 || maxScroll <= 0) return;
+      const margin = Math.min(120, Math.max(36, viewportHeight * .2));
+      const topComfortEdge = scroll.scrollTop + margin;
+      const bottomComfortEdge = scroll.scrollTop + viewportHeight - margin;
+      let target = scroll.scrollTop;
+      if (playheadTop < topComfortEdge) {
+        target = playheadTop - margin;
+      } else if (playheadTop + point.height > bottomComfortEdge) {
+        target = playheadTop + point.height - viewportHeight + margin;
+      }
+      target = Math.max(0, Math.min(maxScroll, target));
+      if (Math.abs(target - scroll.scrollTop) <= 1) {
+        timelineAutoScrollTarget = null;
+      } else if (
+        timelineAutoScrollTarget === null
+        || Math.abs(target - timelineAutoScrollTarget) > 8
+      ) {
+        timelineAutoScrollTarget = target;
+        scroll.scrollTo({top: target, behavior: 'smooth'});
+      }
+      return;
+    }
+    const viewportWidth = scroll.clientWidth;
+    const maxScroll = Math.max(0, scroll.scrollWidth - viewportWidth);
+    if (viewportWidth <= 0 || maxScroll <= 0) return;
+    const playheadX = timeToTimelinePx(timeMs);
+    const margin = Math.min(160, Math.max(48, viewportWidth * .2));
+    const leftComfortEdge = scroll.scrollLeft + margin;
+    const rightComfortEdge = scroll.scrollLeft + viewportWidth - margin;
+    let target = scroll.scrollLeft;
+    if (playheadX < leftComfortEdge) {
+      target = playheadX - margin;
+    } else if (playheadX > rightComfortEdge) {
+      target = playheadX - viewportWidth + margin;
+    }
+    target = Math.max(0, Math.min(maxScroll, target));
+    if (Math.abs(target - scroll.scrollLeft) <= 1) {
+      timelineAutoScrollTarget = null;
+    } else if (
+      timelineAutoScrollTarget === null
+      || Math.abs(target - timelineAutoScrollTarget) > 8
+    ) {
+      timelineAutoScrollTarget = target;
+      scroll.scrollTo({left: target, behavior: 'smooth'});
+    }
+  }
+
+  function renderTimeRuler(width = timelineContentWidth()) {
+    const root = $('#time-ruler');
+    if (!root) return;
+    root.replaceChildren();
+    const duration = isMultiWaveform() ? multiRowDurationMs() : timelineDurationMs();
+    const durationSeconds = duration / 1000;
+    const stepSeconds = durationSeconds > 180 ? 10 : durationSeconds > 60 ? 5 : 2;
+    const timeToRulerPx = (seconds) => isMultiWaveform()
+      ? seconds / Math.max(.001, durationSeconds) * width
+      : seconds * TIMELINE_PIXELS_PER_SECOND;
+    for (let seconds = 0; seconds <= durationSeconds + 0.001; seconds += stepSeconds) {
+      const tick = document.createElement('div');
+      tick.className = 'time-tick';
+      tick.style.left = `${Math.min(width, timeToRulerPx(seconds))}px`;
+      const label = document.createElement('span');
+      label.textContent = formatTime(seconds * 1000);
+      tick.append(label);
+      root.append(tick);
+    }
+    if (durationSeconds > 0 && durationSeconds % stepSeconds > 0.001) {
+      const tick = document.createElement('div');
+      tick.className = 'time-tick';
+      tick.style.left = `${Math.max(0, width - 1)}px`;
+      const label = document.createElement('span');
+      label.textContent = formatTime(duration);
+      tick.append(label);
+      root.append(tick);
+    }
+  }
+
+  function renderMultiRowLabels() {
+    const root = $('#multi-row-labels');
+    if (!root) return;
+    root.replaceChildren();
+    if (!isMultiWaveform()) return;
+    const rowDuration = multiRowDurationMs();
+    const rowHeight = Math.max(1, Number(multiRowHeight) || 120);
+    for (let rowIndex = 0; rowIndex < multiRowCount(); rowIndex += 1) {
+      const start = rowIndex * rowDuration;
+      const end = Math.min(timelineDurationMs(), start + rowDuration);
+      const label = document.createElement('span');
+      label.className = 'multi-row-label';
+      label.style.top = `${rowIndex * multiRowStride() + 6}px`;
+      label.textContent = `${formatTime(start)}–${formatTime(end)}`;
+      label.title = `第 ${rowIndex + 1} 行 · ${formatTime(start)}–${formatTime(end)}`;
+      label.style.maxHeight = `${Math.max(1, rowHeight - 12)}px`;
+      root.append(label);
+    }
+  }
+
+  function candidateMap() {
+    const map = new Map();
+    for (const candidates of alignment.candidatesByLine) {
+      for (const candidate of candidates) map.set(candidate.id, candidate);
+    }
+    return map;
+  }
+
+  function selectedCandidateForLine(lineId) {
+    return candidateMap().get(selectedByLine[lineId]);
+  }
+
+  function isLocalAlternative(lineId, candidate) {
+    if (!candidate || candidate.status !== 'match' || selectedByLine[lineId] === candidate.id) return false;
+    const selected = selectedCandidateForLine(lineId);
+    return Boolean(
+      selected?.status === 'match'
+      && candidate.alternativeGroupId
+      && candidate.alternativeGroupId === selected.alternativeGroupId,
+    );
+  }
+
+  function isCandidateManuallyEnabled(candidate) {
+    return candidate?.status === 'incomplete' && candidateActions[candidate.id] === 'keep';
+  }
+
+  function currentExtras() {
+    return selectionPreview?.extraRanges || alignment.extras || [];
+  }
+
+  function actionFor(extra) {
+    return extraActions[extra.id] || extra.defaultAction || (extra.kind === 'skip-source' ? 'discard' : 'keep');
+  }
+
+  function syncActions(extras, preserve = true) {
+    const previous = preserve ? {...extraActions} : {};
+    extraActions = {};
+    for (const extra of extras || []) {
+      extraActions[extra.id] = previous[extra.id] || extra.defaultAction || (extra.kind === 'skip-source' ? 'discard' : 'keep');
+    }
+  }
+
+  function updateWaveformModeControls() {
+    const multi = isMultiWaveform();
+    document.querySelectorAll('[data-waveform-mode]').forEach((button) => {
+      const active = button.dataset.waveformMode === waveformMode;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    const secondsSetting = $('#multi-row-seconds-setting');
+    const heightSetting = $('#multi-row-height-setting');
+    if (secondsSetting) secondsSetting.hidden = !multi;
+    if (heightSetting) heightSetting.hidden = !multi;
+    const help = $('#timeline-help-text');
+    if (help) {
+      help.textContent = multi
+        ? '多行模式按每行时长排列 · 单击定位 · 双击/空格播放暂停 · 按住左键拖动播放头 · Ctrl+单击块跳到下方 card'
+        : '基础模式横向滚动查看整段 · 单击定位 · 双击/空格播放暂停 · 按住左键拖动播放头 · Ctrl+单击块跳到下方 card';
+    }
+    const secondsSelect = $('#multi-row-seconds');
+    const heightSelect = $('#multi-row-height');
+    if (secondsSelect) secondsSelect.value = String(multiRowSeconds);
+    if (heightSelect) heightSelect.value = String(multiRowHeight);
+  }
+
+  function setWaveformMode(mode) {
+    if (!['basic', 'multi'].includes(mode) || mode === waveformMode) return;
+    waveformMode = mode;
+    timelineAutoScrollTarget = null;
+    updateWaveformModeControls();
+    if (!alignment) return;
+    render();
+    updateTimelinePlayhead();
+  }
+
+  function setMultiRowSeconds(value) {
+    const next = [5, 10, 20, 30].includes(Number(value)) ? Number(value) : 10;
+    if (next === multiRowSeconds) return;
+    multiRowSeconds = next;
+    timelineAutoScrollTarget = null;
+    if (!alignment) return;
+    render();
+    updateTimelinePlayhead();
+  }
+
+  function setMultiRowHeight(value) {
+    const next = [64, 80, 96, 120, 144].includes(Number(value)) ? Number(value) : 120;
+    if (next === multiRowHeight) return;
+    multiRowHeight = next;
+    timelineAutoScrollTarget = null;
+    if (!alignment) return;
+    render();
+    updateTimelinePlayhead();
+  }
+
+  function setPath(pathId, {preserveActions = false} = {}) {
+    const path = alignment.paths.find((item) => item.id === pathId);
+    if (!path) return;
+    selectedByLine = {};
+    for (const choice of path.choices) {
+      if (choice.candidateId) selectedByLine[choice.lineId] = choice.candidateId;
+    }
+    $('#path-picker').value = pathId;
+    refreshPreview({preserveActions});
+  }
+
+  async function refreshPreview({preserveActions = true} = {}) {
+    const serial = ++previewSerial;
+    const oldActions = {...extraActions};
+    const oldCandidateActions = {...candidateActions};
+    $('#status').textContent = '正在更新对齐……';
+    try {
+      const requestPreview = (actions, candidateActionState) => fetch('/api/preview', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          selectedByLine,
+          extraActions: actions,
+          candidateActions: candidateActionState,
+        }),
+      });
+      let response = await requestPreview(
+        preserveActions ? oldActions : {},
+        preserveActions ? oldCandidateActions : {},
+      );
+      let result = await response.json();
+      // Choosing another take can invalidate IDs for the old gap pieces.
+      // Rebuild with the new path defaults before treating that as an error.
+      if ((!response.ok || !result.ok) && preserveActions) {
+        response = await requestPreview({}, {});
+        result = await response.json();
+      }
+      if (!response.ok || !result.ok) throw new Error(result.error || '预览失败');
+      if (serial !== previewSerial) return;
+      selectionPreview = result.selection;
+      removedGaps = result.gapRanges || [];
+      syncActions(selectionPreview.extraRanges || [], preserveActions);
+      candidateActions = {...(selectionPreview.candidateActions || {})};
+      selectionPreview.extraActions = {...extraActions};
+      render();
+      updateStatus();
+    } catch (error) {
+      if (serial === previewSerial) {
+        $('#status').textContent = `预览失败：${error.message}`;
+        render();
+      }
+    }
+  }
+
+  function playRange(startMs, endMs) {
+    const player = $('#media-player');
+    if (!player) {
+      $('#status').className = 'status warn';
+      $('#status').textContent = '当前没有可播放媒体，无法试听';
+      return;
+    }
+    const start = Math.max(0, Number(startMs));
+    const end = Math.max(start, Number(endMs));
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+    // 试听必须能够听到原始 take，即使这个 take 在最终预览中属于被移除的 gap。
+    // 最终播放仍由 handlePlayerTimeUpdate 负责跳过 gap；两条路径不能混用。
+    auditioningRange = true;
+    activeRangeEndMs = end;
+    player.currentTime = start / 1000;
+    const promise = player.play();
+    if (promise && typeof promise.catch === 'function') {
+      promise.catch((error) => {
+        auditioningRange = false;
+        activeRangeEndMs = 0;
+        $('#status').className = 'status warn';
+        $('#status').textContent = `试听失败：${error?.message || '浏览器拒绝播放媒体'}`;
+      });
+    }
+  }
+
+  function stopPlaybackRefresh(player = null) {
+    if (player && playbackFramePlayer && playbackFramePlayer !== player) return;
+    if (playbackFrameId) cancelAnimationFrame(playbackFrameId);
+    playbackFrameId = 0;
+    if (!player || playbackFramePlayer === player) playbackFramePlayer = null;
+  }
+
+  function startPlaybackRefresh(player) {
+    if (!player || player !== $('#media-player') || player.paused || player.ended) return;
+    if (playbackFramePlayer !== player) {
+      stopPlaybackRefresh();
+      playbackFramePlayer = player;
+    }
+    if (playbackFrameId) return;
+    const refresh = () => {
+      playbackFrameId = 0;
+      if (
+        playbackFramePlayer !== player
+        || player !== $('#media-player')
+        || player.paused
+        || player.ended
+      ) {
+        if (playbackFramePlayer === player) playbackFramePlayer = null;
+        return;
+      }
+      // Native timeupdate 的频率不保证连续；播放中每帧读取 currentTime，
+      // 只更新播放头/滚动和 gap 状态，不重绘波形画布。
+      handlePlayerTimeUpdate({currentTarget: player});
+      if (playbackFramePlayer === player && !player.paused && !player.ended) {
+        playbackFrameId = requestAnimationFrame(refresh);
+      }
+    };
+    playbackFrameId = requestAnimationFrame(refresh);
+  }
+
+  function handlePlayerTimeUpdate(event) {
+    const player = event.currentTarget;
+    const now = player.currentTime * 1000;
+    updateTimelinePlayhead();
+    if (auditioningRange) {
+      if (activeRangeEndMs && now >= activeRangeEndMs) {
+        player.pause();
+        activeRangeEndMs = 0;
+        auditioningRange = false;
+      }
+      return;
+    }
+    if ($('#skip-gap-playback')?.checked === true) {
+      const gap = removedGaps.find((item) => item.removed !== false && now >= Number(item.start) && now < Number(item.end) - 5);
+      if (gap) {
+        player.currentTime = Number(gap.end) / 1000;
+        return;
+      }
+    }
+    if (activeRangeEndMs && now >= activeRangeEndMs) {
+      player.pause();
+      activeRangeEndMs = 0;
+    }
+  }
+
+  function renderSummary() {
+    const lineCount = alignment.scriptLines.length;
+    const selectedCount = Object.keys(selectedByLine).length;
+    const matchCount = selectionPreview?.selected?.filter((item) => item.status === 'match').length || 0;
+    const incompleteCount = selectionPreview?.incompleteLineIds?.length || 0;
+    const extras = currentExtras();
+    const disabledCount = extras.filter((extra) => actionFor(extra) === 'discard').length;
+    const removedCount = removedGaps.filter((gap) => gap.removed !== false).length;
+    const values = [
+      ['文稿行', lineCount],
+      ['采用', `${selectedCount}/${lineCount}`],
+      ['完整匹配', matchCount],
+      ['不完整', incompleteCount],
+      ['禁用源段', disabledCount],
+      ['移除空隙', removedCount],
+    ];
+    $('#summary').replaceChildren(...values.map(([label, value]) => {
+      const item = document.createElement('div');
+      item.className = 'summary-item';
+      const strong = document.createElement('strong');
+      strong.textContent = value;
+      const span = document.createElement('span');
+      span.textContent = label;
+      item.append(strong, span);
+      return item;
+    }));
+  }
+
+  function appendTakeContent(take, badgeText, sourceText) {
+    const badge = document.createElement('span');
+    badge.className = 'take-badge';
+    badge.textContent = badgeText;
+    const text = document.createElement('span');
+    text.className = 'take-text';
+    text.textContent = String(sourceText || '').replace(/\s+/g, ' ');
+    take.append(badge, text);
+  }
+
+  function finiteTime(value) {
+    const time = Number(value);
+    return Number.isFinite(time) ? time : Number.MAX_SAFE_INTEGER;
+  }
+
+  function sourceCueLabel(record) {
+    const start = Number(record?.sourceStartOrdinal);
+    const end = Number(record?.sourceEndOrdinal);
+    if (!Number.isInteger(start) || !Number.isInteger(end) || end <= start) return 'ASR —';
+    const cues = alignment?.sourceCues || [];
+    const displayNumber = (position) => {
+      const originalIndex = Number(cues[position]?.originalIndex);
+      return Number.isInteger(originalIndex) ? originalIndex + 1 : position + 1;
+    };
+    const first = displayNumber(start);
+    const last = displayNumber(end - 1);
+    return first === last ? 'ASR #' + first : 'ASR #' + first + '–#' + last;
+  }
+
+  function inferredMissingStart(lineIndex) {
+    let previousEnd = null;
+    for (let index = lineIndex - 1; index >= 0; index -= 1) {
+      const candidates = alignment.candidatesByLine[index] || [];
+      const ends = candidates
+        .map((candidate) => Number(candidate.end))
+        .filter((value) => Number.isFinite(value));
+      if (ends.length) {
+        previousEnd = Math.max(...ends);
+        break;
+      }
+    }
+    let nextStart = null;
+    for (let index = lineIndex + 1; index < alignment.scriptLines.length; index += 1) {
+      const candidates = alignment.candidatesByLine[index] || [];
+      const starts = candidates
+        .map((candidate) => Number(candidate.start))
+        .filter((value) => Number.isFinite(value));
+      if (starts.length) {
+        nextStart = Math.min(...starts);
+        break;
+      }
+    }
+    if (previousEnd !== null && nextStart !== null) {
+      return nextStart >= previousEnd ? previousEnd + (nextStart - previousEnd) / 2 : previousEnd;
+    }
+    if (previousEnd !== null) return previousEnd;
+    if (nextStart !== null) return Math.max(0, nextStart - 1);
+    const lineCount = Math.max(1, alignment.scriptLines.length);
+    return timelineDurationMs() * (lineIndex + 0.5) / lineCount;
+  }
+
+  function extraSlotForEntry(extraEntry, lineEntries) {
+    for (let index = 0; index < lineEntries.length; index += 1) {
+      const lineEntry = lineEntries[index];
+      if (extraEntry.start < lineEntry.start) return index;
+      if (lineEntry.type === 'missing' || extraEntry.start <= lineEntry.end) return index + 1;
+    }
+    return lineEntries.length;
+  }
+
+  function recordingEntries() {
+    const lineEntries = [];
+    alignment.scriptLines.forEach((line, lineIndex) => {
+      const candidates = alignment.candidatesByLine[lineIndex] || [];
+      if (candidates.length) {
+        const starts = candidates
+          .map((candidate) => Number(candidate.start))
+          .filter((value) => Number.isFinite(value));
+        const ends = candidates
+          .map((candidate) => Number(candidate.end))
+          .filter((value) => Number.isFinite(value));
+        lineEntries.push({
+          type: 'line',
+          line,
+          lineIndex,
+          candidates: [...candidates].sort((left, right) => (
+            finiteTime(left.start) - finiteTime(right.start)
+          )),
+          index: lineIndex,
+          start: starts.length ? Math.min(...starts) : finiteTime(null),
+          end: ends.length ? Math.max(...ends) : finiteTime(null),
+        });
+      } else {
+        const start = inferredMissingStart(lineIndex);
+        lineEntries.push({
+          type: 'missing',
+          line,
+          lineIndex,
+          index: lineIndex,
+          start,
+          end: start,
+        });
+      }
+    });
+
+    const candidatesById = candidateMap();
+    const extraEntries = currentExtras()
+      .filter((extra) => !(
+        extra.kind === 'skip-source'
+        && extra.relatedCandidateId
+        && candidatesById.has(String(extra.relatedCandidateId))
+      ))
+      .map((extra, extraIndex) => ({
+        type: 'extra',
+        extra,
+        index: extraIndex,
+        start: finiteTime(extra.start),
+        end: finiteTime(extra.end),
+      }))
+      .sort((left, right) => (
+        left.start - right.start || left.end - right.end || left.index - right.index
+      ));
+    const extrasBySlot = Array.from({length: lineEntries.length + 1}, () => []);
+    extraEntries.forEach((extraEntry) => {
+      extrasBySlot[extraSlotForEntry(extraEntry, lineEntries)].push(extraEntry);
+    });
+
+    const entries = [];
+    for (let index = 0; index <= lineEntries.length; index += 1) {
+      entries.push(...extrasBySlot[index]);
+      if (index < lineEntries.length) entries.push(lineEntries[index]);
+    }
+    return entries;
+  }
+
+  function scrollToRecordingCard(target) {
+    const candidateId = String(target?.candidateId || '');
+    const extraId = String(target?.extraId || '');
+    if (!candidateId && !extraId) return;
+    let entry = null;
+    for (const node of document.querySelectorAll('#lines .recording-entry')) {
+      if (
+        (candidateId && node.dataset.candidateId === candidateId)
+        || (extraId && node.dataset.extraId === extraId)
+      ) {
+        entry = node;
+        break;
+      }
+    }
+    const card = entry?.closest('.recording-card');
+    if (!card) return;
+    card.scrollIntoView({behavior: 'smooth', block: 'center', inline: 'nearest'});
+    card.classList.remove('jump-target');
+    void card.offsetWidth;
+    card.classList.add('jump-target');
+    window.setTimeout(() => card.classList.remove('jump-target'), 900);
+  }
+
+  function bindTakeButton(take, callback) {
+    // 波形容器本身负责定位/拖动播放头；点击块时处理 take 选择，
+    // 或切换 incomplete take 的手动启用状态。Ctrl+单击只跳到下方对应 card。
+    take.addEventListener('pointerdown', (event) => event.stopPropagation());
+    take.addEventListener('dblclick', (event) => event.stopPropagation());
+    take.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (event.ctrlKey) {
+        event.preventDefault();
+        scrollToRecordingCard({
+          candidateId: take.dataset.candidateId,
+          extraId: take.dataset.extraId,
+        });
+        return;
+      }
+      callback();
+    });
+  }
+
+  function renderTimelineTakes() {
+    const root = $('#take-overlay');
+    root.replaceChildren();
+    const appendRange = (take, start, end, callback) => {
+      const pieces = timelineRangePieces(start, end);
+      pieces.forEach((piece, pieceIndex) => {
+        const node = pieceIndex === 0 ? take : take.cloneNode(true);
+        if (pieceIndex > 0) bindTakeButton(node, callback);
+        node.style.left = `${piece.left}px`;
+        node.style.width = `${Math.max(6, piece.width)}px`;
+        if (isMultiWaveform()) {
+          // 多行模式在同一行内给普通 take 和重复段各留一个轨道；
+          // 行高较小时同步缩短块，避免 repetition 溢出到上一行。
+          const takeHeight = Math.max(24, Math.min(52, Math.floor((piece.height - 16) / 2)));
+          const regularBottom = 6;
+          const repetitionBottom = regularBottom + takeHeight + 4;
+          const rowBottom = take.classList.contains('repetition') ? repetitionBottom : regularBottom;
+          node.style.height = `${takeHeight}px`;
+          node.style.top = `${piece.top + piece.height - rowBottom - takeHeight}px`;
+          node.style.bottom = 'auto';
+        }
+        root.append(node);
+      });
+    };
+
+    alignment.scriptLines.forEach((line, lineIndex) => {
+      const candidates = alignment.candidatesByLine[lineIndex] || [];
+      candidates.forEach((candidate) => {
+        const selected = selectedByLine[line.id] === candidate.id;
+        const complete = candidate.status === 'match';
+        const localAlternative = isLocalAlternative(line.id, candidate);
+        const manuallyEnabled = selected && isCandidateManuallyEnabled(candidate);
+        const take = document.createElement('button');
+        take.type = 'button';
+        const classes = ['take-range'];
+        if (complete) {
+          classes.push(selected ? 'match' : localAlternative ? 'alternative' : 'distant-match');
+        } else {
+          classes.push('incomplete');
+          if (manuallyEnabled) classes.push('manual-enabled');
+        }
+        if (!selected || (candidate.status === 'incomplete' && !manuallyEnabled)) classes.push('muted');
+        if (selected) classes.push('selected');
+        if (selected && !complete) classes.push('selected-incomplete');
+        take.className = classes.join(' ');
+        take.dataset.alternativeGroup = candidate.alternativeGroupId || line.id;
+        take.dataset.candidateId = candidate.id;
+        take.setAttribute('aria-pressed', String(complete ? selected : manuallyEnabled));
+        const badgeText = complete
+          ? (selected ? '采用' : localAlternative ? '备选' : '远距命中')
+          : manuallyEnabled ? '手动启用' : '不完整';
+        const sourceText = candidate.sourceText || line.text;
+        appendTakeContent(take, badgeText, sourceText);
+        const stateText = selected && !complete
+          ? (manuallyEnabled ? ' · 手动启用' : ' · 自动禁用')
+          : '';
+        const localityText = !selected && complete && !localAlternative
+          ? ' · 不自动归入 Alternative'
+          : '';
+        const actionText = complete
+          ? '点击切换采用的 take'
+          : manuallyEnabled ? '点击恢复自动禁用' : '点击启用此不完整 take';
+        take.title = `${badgeText}${stateText}${localityText} · ${actionText} · ${sourceText} ${formatTime(candidate.start)}–${formatTime(candidate.end)}`;
+        take.setAttribute('aria-label', take.title);
+        const activate = complete
+          ? () => chooseCandidate(line.id, candidate.id)
+          : () => toggleCandidateEnabled(line.id, candidate.id);
+        bindTakeButton(take, activate);
+        appendRange(take, candidate.start, candidate.end, activate);
+      });
+    });
+
+    for (const extra of currentExtras()) {
+      const action = actionFor(extra);
+      const kept = action === 'keep';
+      const take = document.createElement('button');
+      take.type = 'button';
+      const repetition = !kept && extra.kind === 'skip-source' && extra.reasonCode === 'repetition';
+      const classes = ['take-range', kept ? 'extra' : 'discard'];
+      if (!kept) classes.push('muted');
+      if (repetition) classes.push('repetition');
+      take.className = classes.join(' ');
+      take.dataset.extraId = extra.id;
+      const badgeText = kept ? 'Extra' : '禁用';
+      appendTakeContent(take, badgeText, extra.sourceText);
+      take.title = `${badgeText} · ${extra.sourceText} ${formatTime(extra.start)}–${formatTime(extra.end)}`;
+      take.setAttribute('aria-label', take.title);
+      const toggle = () => setExtraAction(extra.id, kept ? 'discard' : 'keep');
+      bindTakeButton(take, toggle);
+      appendRange(take, extra.start, extra.end, toggle);
+    }
+  }
+
+  function renderGaps() {
+    const root = $('#gap-overlay');
+    root.replaceChildren();
+    for (const gap of removedGaps.filter((item) => item.removed !== false)) {
+      for (const piece of timelineRangePieces(gap.start, gap.end)) {
+        const node = document.createElement('div');
+        node.className = 'gap-range';
+        node.style.left = `${piece.left}px`;
+        node.style.width = `${piece.width}px`;
+        if (isMultiWaveform()) {
+          node.style.top = `${piece.top}px`;
+          node.style.bottom = 'auto';
+          node.style.height = `${piece.height}px`;
+        }
+        node.title = `移除空隙 ${formatTime(gap.start)}–${formatTime(gap.end)}`;
+        root.append(node);
+      }
+    }
+  }
+
+  function renderLines() {
+    const root = $('#lines');
+    root.replaceChildren();
+    const map = candidateMap();
+    alignment.scriptLines.forEach((line, index) => {
+      const card = document.createElement('article');
+      card.className = 'line-card';
+      const header = document.createElement('div');
+      header.className = 'line-header';
+      const number = document.createElement('span');
+      number.className = 'line-number';
+      number.textContent = `第 ${index + 1} 行`;
+      const text = document.createElement('span');
+      text.className = 'script-text';
+      text.textContent = line.text;
+      const selected = map.get(selectedByLine[line.id]);
+      const selectedManuallyEnabled = isCandidateManuallyEnabled(selected);
+      const lineState = document.createElement('span');
+      lineState.className = `line-state ${selected?.status === 'match' ? 'match' : selectedManuallyEnabled ? 'manual' : selected ? 'incomplete' : 'missing'}`;
+      lineState.textContent = selected?.status === 'match'
+        ? 'match · 保留'
+        : selectedManuallyEnabled ? 'incomplete · 手动启用' : selected ? 'incomplete · 自动禁用' : 'missing-script';
+      header.append(number, text, lineState);
+      card.append(header);
+      const candidates = alignment.candidatesByLine[index] || [];
+      const list = document.createElement('div');
+      list.className = 'candidate-list';
+      if (!candidates.length) {
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.textContent = '没有达到最低匹配度；此行会作为 missing-script 保留为空。';
+        card.append(empty);
+      }
+      candidates.forEach((candidate) => {
+        const isSelected = selectedByLine[line.id] === candidate.id;
+        const localAlternative = isLocalAlternative(line.id, candidate);
+        const manuallyEnabled = isSelected && isCandidateManuallyEnabled(candidate);
+        const row = document.createElement('div');
+        row.className = `candidate ${isSelected ? 'selected' : ''} ${candidate.status === 'incomplete' ? 'incomplete' : ''} ${manuallyEnabled ? 'manual-enabled' : ''}`;
+        const select = document.createElement('button');
+        select.type = 'button';
+        select.textContent = isSelected
+          ? (candidate.status === 'match' ? '已采用' : manuallyEnabled ? '已手动启用' : '已选但禁用')
+          : '采用此 take';
+        select.addEventListener('click', () => chooseCandidate(line.id, candidate.id));
+        const body = document.createElement('div');
+        body.className = 'candidate-text';
+        const source = document.createElement('strong');
+        source.textContent = candidate.sourceText;
+        const detail = document.createElement('small');
+        const repetitionCount = Array.isArray(candidate.internalSkips) ? candidate.internalSkips.length : 0;
+        detail.textContent = `${formatTime(candidate.start)}–${formatTime(candidate.end)} · 匹配度 ${Math.round(Number(candidate.score) * 100)}%${repetitionCount ? ` · 自动禁用 ${repetitionCount} 个重复段` : ''}`;
+        body.append(source, detail);
+        const badge = document.createElement('span');
+        badge.className = `badge ${candidate.status}${candidate.status === 'match' && !isSelected && !localAlternative ? ' distant-match' : ''}`;
+        badge.textContent = candidate.status === 'match'
+          ? (isSelected ? 'match' : localAlternative ? 'Alternative' : '远距命中 · 待确认')
+          : manuallyEnabled ? 'incomplete · 手动启用' : 'incomplete · 禁用';
+        const enable = candidate.status === 'incomplete' ? document.createElement('button') : null;
+        if (enable) {
+          enable.type = 'button';
+          enable.className = manuallyEnabled ? 'active' : '';
+          enable.textContent = manuallyEnabled ? '取消手动启用' : isSelected ? '手动启用' : '采用并启用';
+          enable.title = isSelected
+            ? (manuallyEnabled ? '恢复自动禁用' : '覆盖自动禁用并保留此 take')
+            : '选择此 take，并覆盖 incomplete 的自动禁用';
+          enable.addEventListener('click', () => toggleCandidateEnabled(line.id, candidate.id));
+        }
+        const play = document.createElement('button');
+        play.type = 'button';
+        play.className = 'play';
+        play.textContent = '试听';
+        play.addEventListener('click', () => playRange(candidate.start, candidate.end));
+        row.append(select, body, badge);
+        if (enable) row.append(enable);
+        row.append(play);
+        list.append(row);
+      });
+      card.append(list);
+      root.append(card);
+    });
+  }
+
+  function renderExtras() {
+    const root = $('#extras');
+    root.replaceChildren();
+    for (const extra of currentExtras()) {
+      const action = actionFor(extra);
+      const row = document.createElement('div');
+      row.className = `extra-row ${extra.kind === 'skip-source' ? 'skip-source' : 'extra'}`;
+      const kind = document.createElement('strong');
+      if (extra.kind === 'skip-source') {
+        kind.textContent = extra.reasonCode === 'alternative'
+          ? 'Alternative · 禁用'
+          : extra.reasonCode === 'repetition'
+            ? '重复 · 禁用'
+            : '失败/口吃 · 禁用';
+      } else if (extra.reasonCode === 'distant-match') {
+        kind.textContent = action === 'keep' ? '远距命中 · 保留' : '远距命中 · 禁用';
+      } else {
+        kind.textContent = action === 'keep' ? 'Extra · 保留' : 'Extra · 禁用';
+      }
+      const body = document.createElement('span');
+      const title = document.createElement('strong');
+      title.textContent = extra.sourceText;
+      const detail = document.createElement('small');
+      detail.textContent = `${formatTime(extra.start)}–${formatTime(extra.end)} · ${action === 'keep' ? '保留在播放与导出时间线' : '转为移除空隙并禁用字幕'}`;
+      body.append(title, detail);
+      const actions = document.createElement('span');
+      actions.className = 'action-group';
+      const keep = document.createElement('button');
+      keep.type = 'button';
+      keep.textContent = '保留';
+      keep.className = action === 'keep' ? 'active' : '';
+      keep.addEventListener('click', () => setExtraAction(extra.id, 'keep'));
+      const discard = document.createElement('button');
+      discard.type = 'button';
+      discard.textContent = '禁用';
+      discard.className = action === 'discard' ? 'active' : '';
+      discard.addEventListener('click', () => setExtraAction(extra.id, 'discard'));
+      actions.append(keep, discard);
+      const play = document.createElement('button');
+      play.type = 'button';
+      play.textContent = '试听';
+      play.addEventListener('click', () => playRange(extra.start, extra.end));
+      row.append(kind, body, actions, play);
+      root.append(row);
+    }
+    if (!currentExtras().length) {
+      const empty = document.createElement('p');
+      empty.className = 'muted';
+      empty.textContent = '当前选择没有未采用的源片段。';
+      root.append(empty);
+    }
+  }
+
+  function renderChronologicalLineEntry(list, entry) {
+    const {line, lineIndex, candidates} = entry;
+    const selected = selectedCandidateForLine(line.id);
+    const selectedManuallyEnabled = isCandidateManuallyEnabled(selected);
+    const card = document.createElement('article');
+    card.className = 'line-card recording-card';
+    const header = document.createElement('div');
+    header.className = 'line-header';
+    const number = document.createElement('span');
+    number.className = 'line-number';
+    number.textContent = '第 ' + (lineIndex + 1) + ' 行';
+    const scriptText = document.createElement('span');
+    scriptText.className = 'script-text';
+    scriptText.textContent = line.text;
+    const lineState = document.createElement('span');
+    lineState.className = 'line-state '
+      + (selected?.status === 'match' ? 'match' : selectedManuallyEnabled ? 'manual' : selected ? 'incomplete' : 'missing');
+    lineState.textContent = selected?.status === 'match'
+      ? 'match · 保留'
+      : selectedManuallyEnabled ? 'incomplete · 手动启用' : selected ? 'incomplete · 自动禁用' : 'missing-script';
+    header.append(number, scriptText, lineState);
+
+    const candidateList = document.createElement('div');
+    candidateList.className = 'candidate-list';
+    candidates.forEach((candidate) => {
+      const isSelected = selectedByLine[line.id] === candidate.id;
+      const localAlternative = isLocalAlternative(line.id, candidate);
+      const manuallyEnabled = isSelected && isCandidateManuallyEnabled(candidate);
+      const row = document.createElement('div');
+      const rowClasses = ['candidate', 'recording-entry'];
+      if (isSelected) rowClasses.push('selected');
+      if (candidate.status === 'incomplete') rowClasses.push('incomplete');
+      if (manuallyEnabled) rowClasses.push('manual-enabled');
+      row.className = rowClasses.join(' ');
+      row.dataset.lineId = line.id;
+      row.dataset.candidateId = candidate.id;
+
+      const select = document.createElement('button');
+      select.type = 'button';
+      select.textContent = isSelected
+        ? (candidate.status === 'match' ? '已采用' : manuallyEnabled ? '已手动启用' : '已选但禁用')
+        : '采用此 take';
+      select.addEventListener('click', () => chooseCandidate(line.id, candidate.id));
+
+      const body = document.createElement('div');
+      body.className = 'candidate-text';
+      const source = document.createElement('strong');
+      source.textContent = candidate.sourceText || line.text;
+      const detail = document.createElement('small');
+      const repetitionCount = Array.isArray(candidate.internalSkips) ? candidate.internalSkips.length : 0;
+      detail.textContent = sourceCueLabel(candidate) + ' · '
+        + formatTime(candidate.start) + '–' + formatTime(candidate.end)
+        + ' · 匹配度 ' + Math.round(Number(candidate.score) * 100) + '%'
+        + (repetitionCount ? ' · 自动禁用 ' + repetitionCount + ' 个重复段' : '');
+      body.append(source, detail);
+
+      const badge = document.createElement('span');
+      badge.className = 'badge ' + candidate.status
+        + (candidate.status === 'match' && !isSelected && !localAlternative ? ' distant-match' : '');
+      badge.textContent = candidate.status === 'match'
+        ? (isSelected ? 'match' : localAlternative ? 'Alternative' : '远距命中 · 待确认')
+        : manuallyEnabled ? 'incomplete · 手动启用' : 'incomplete · 禁用';
+
+      const enable = candidate.status === 'incomplete' ? document.createElement('button') : null;
+      if (enable) {
+        enable.type = 'button';
+        enable.className = manuallyEnabled ? 'active' : '';
+        enable.textContent = manuallyEnabled ? '取消手动启用' : isSelected ? '手动启用' : '采用并启用';
+        enable.title = isSelected
+          ? (manuallyEnabled ? '恢复自动禁用' : '覆盖自动禁用并保留此 take')
+          : '选择此 take，并覆盖 incomplete 的自动禁用';
+        enable.addEventListener('click', () => toggleCandidateEnabled(line.id, candidate.id));
+      }
+
+      const play = document.createElement('button');
+      play.type = 'button';
+      play.className = 'play';
+      play.textContent = '试听';
+      play.addEventListener('click', () => playRange(candidate.start, candidate.end));
+      row.append(select, body, badge);
+      if (enable) row.append(enable);
+      row.append(play);
+      candidateList.append(row);
+    });
+    card.append(header, candidateList);
+    list.append(card);
+  }
+
+  function renderChronologicalExtraEntry(list, extra) {
+    const action = actionFor(extra);
+    const kept = action === 'keep';
+    const isExtra = extra.kind === 'extra';
+    const isRepetition = extra.kind === 'skip-source'
+      && extra.reasonCode === 'repetition';
+    const entryLabel = isExtra
+      ? 'Extra'
+      : isRepetition
+        ? '重复 Item'
+        : extra.reasonCode === 'alternative'
+          ? 'Alternative'
+          : extra.reasonCode === 'incomplete'
+            ? '失败/不完整'
+            : '未匹配源片段';
+    const card = document.createElement('article');
+    card.className = 'line-card recording-card '
+      + (isExtra ? 'extra-card' : 'source-card')
+      + (isRepetition ? ' repetition-card' : '');
+    const header = document.createElement('div');
+    header.className = 'line-header';
+    const number = document.createElement('span');
+    number.className = 'line-number';
+    number.textContent = '源录音';
+    const scriptText = document.createElement('span');
+    scriptText.className = 'script-text';
+    scriptText.textContent = entryLabel;
+    const lineState = document.createElement('span');
+    lineState.className = 'line-state ' + (kept ? 'match' : 'incomplete');
+    lineState.textContent = entryLabel + (kept ? ' · 保留' : ' · 禁用');
+    header.append(number, scriptText, lineState);
+
+    const candidateList = document.createElement('div');
+    candidateList.className = 'candidate-list';
+    const row = document.createElement('div');
+    const rowClasses = ['candidate', 'recording-entry', 'extra-entry'];
+    if (extra.kind === 'skip-source') rowClasses.push('skip-source');
+    if (!kept) rowClasses.push('discarded');
+    row.className = rowClasses.join(' ');
+    row.dataset.extraId = extra.id;
+
+    const actions = document.createElement('span');
+    actions.className = 'action-group';
+    const keep = document.createElement('button');
+    keep.type = 'button';
+    keep.textContent = '保留';
+    keep.className = kept ? 'active' : '';
+    keep.addEventListener('click', () => setExtraAction(extra.id, 'keep'));
+    const discard = document.createElement('button');
+    discard.type = 'button';
+    discard.textContent = '禁用';
+    discard.className = kept ? '' : 'active';
+    discard.addEventListener('click', () => setExtraAction(extra.id, 'discard'));
+    actions.append(keep, discard);
+
+    const body = document.createElement('div');
+    body.className = 'candidate-text';
+    const source = document.createElement('strong');
+    source.textContent = extra.sourceText;
+    const detail = document.createElement('small');
+    const actionText = kept
+      ? '当前保留在播放与导出时间线'
+      : isRepetition
+        ? '重复 Item，当前禁用并转为移除空隙'
+        : '当前禁用并转为移除空隙';
+    detail.textContent = sourceCueLabel(extra) + ' · '
+      + formatTime(extra.start) + '–' + formatTime(extra.end)
+      + ' · ' + actionText;
+    body.append(source, detail);
+
+    const badge = document.createElement('span');
+    badge.className = 'badge ' + (isExtra ? 'extra' : 'skip-source');
+    badge.textContent = entryLabel + ' · ' + (kept ? '保留' : '禁用');
+
+    const play = document.createElement('button');
+    play.type = 'button';
+    play.className = 'play';
+    play.textContent = '试听';
+    play.addEventListener('click', () => playRange(extra.start, extra.end));
+    row.append(actions, body, badge, play);
+    candidateList.append(row);
+    card.append(header, candidateList);
+    list.append(card);
+  }
+
+  function renderChronologicalMissingEntry(list, entry) {
+    const {line, lineIndex} = entry;
+    const card = document.createElement('article');
+    card.className = 'line-card recording-card missing-card';
+    card.title = '此行没有匹配的 ASR 源段；位置按前后文稿候选推定。';
+    const header = document.createElement('div');
+    header.className = 'line-header';
+    const number = document.createElement('span');
+    number.className = 'line-number';
+    number.textContent = '第 ' + (lineIndex + 1) + ' 行';
+    const scriptText = document.createElement('span');
+    scriptText.className = 'script-text';
+    scriptText.textContent = line.text;
+    const lineState = document.createElement('span');
+    lineState.className = 'line-state missing';
+    lineState.textContent = 'missing-script';
+    header.append(number, scriptText, lineState);
+    const message = document.createElement('div');
+    message.className = 'empty';
+    message.textContent = 'ASR — · 没有达到最低匹配度；此行会保留为空。';
+    card.append(header, message);
+    list.append(card);
+  }
+
+  function renderChronologicalLines() {
+    const root = $('#lines');
+    root.replaceChildren();
+    const list = document.createElement('div');
+    list.className = 'recording-list';
+    const entries = recordingEntries();
+    entries.forEach((entry) => {
+      if (entry.type === 'line') {
+        renderChronologicalLineEntry(list, entry);
+      } else if (entry.type === 'extra') {
+        renderChronologicalExtraEntry(list, entry.extra);
+      } else {
+        renderChronologicalMissingEntry(list, entry);
+      }
+    });
+    root.append(list);
+  }
+
+  function setExtraAction(id, action) {
+    extraActions[id] = action;
+    render();
+    refreshPreview();
+  }
+
+  function toggleCandidateEnabled(lineId, candidateId) {
+    const candidate = candidateMap().get(candidateId);
+    if (!candidate || candidate.status !== 'incomplete') return;
+    const previousCandidateId = selectedByLine[lineId];
+    if (previousCandidateId !== candidateId) {
+      if (previousCandidateId) delete candidateActions[previousCandidateId];
+      selectedByLine[lineId] = candidateId;
+    }
+    if (isCandidateManuallyEnabled(candidate)) {
+      delete candidateActions[candidateId];
+    } else {
+      candidateActions[candidateId] = 'keep';
+    }
+    render();
+    refreshPreview();
+  }
+
+  function chooseCandidate(lineId, candidateId) {
+    // 每个文稿行只有一个有效 take；更新选择即自动将同组 alternative 静音。
+    const previousCandidateId = selectedByLine[lineId];
+    if (previousCandidateId && previousCandidateId !== candidateId) {
+      delete candidateActions[previousCandidateId];
+    }
+    selectedByLine[lineId] = candidateId;
+    render();
+    refreshPreview();
+  }
+
+  function updateStatus() {
+    const ready = selectionPreview?.readyForMediaTrim === true;
+    const manualCount = selectionPreview?.manuallyEnabledCandidateIds?.length || 0;
+    const blockedCount = selectionPreview?.blockedIncompleteLineIds?.length || 0;
+    const status = $('#status');
+    status.className = `status ${ready ? 'ready' : 'warn'}`;
+    status.textContent = ready
+      ? manualCount
+        ? `可导出：${manualCount} 个 incomplete take 已手动启用`
+        : '可导出：所有文稿行都有完整 take'
+      : blockedCount
+        ? `仍有 ${blockedCount} 个 incomplete take 自动禁用；可手动启用后再导出`
+        : '仍有 missing-script；导出后会保留禁用状态';
+  }
+
+  function render() {
+    setTimelineGeometry();
+    renderSummary();
+    renderGaps();
+    renderTimelineTakes();
+    renderChronologicalLines();
+    drawWaveform();
+    updateTimelinePlayhead();
+  }
+
+  function renderPaths() {
+    const picker = $('#path-picker');
+    picker.replaceChildren();
+    for (const path of alignment.paths) {
+      const option = document.createElement('option');
+      option.value = path.id;
+      option.textContent = `${path.id}${path.complete ? ' · 全部完整' : ' · 含缺失/不完整'} · score ${Number(path.score).toFixed(2)}`;
+      picker.append(option);
+    }
+    picker.value = alignment.defaultPathId;
+    picker.addEventListener('change', () => setPath(picker.value, {preserveActions: false}));
+  }
+
+  function timelineTimeFromEvent(event) {
+    const stage = $('#waveform-stage');
+    if (!stage) return 0;
+    const rect = stage.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
+    if (isMultiWaveform()) {
+      const y = Math.max(0, event.clientY - rect.top);
+      const rawRowIndex = Math.min(
+        multiRowCount() - 1,
+        Math.max(0, Math.floor(y / multiRowStride())),
+      );
+      const rowHeight = Math.max(1, Number(multiRowHeight) || 120);
+      const rawRowOffset = y - rawRowIndex * multiRowStride();
+      const rowIndex = rawRowOffset > rowHeight + TIMELINE_MULTI_ROW_GAP / 2
+        ? Math.min(multiRowCount() - 1, rawRowIndex + 1)
+        : rawRowIndex;
+      // Clicking the small gap between two rows uses the closest row instead
+      // of producing a time outside the row's actual visual area.
+      const adjustedX = Math.max(0, Math.min(rect.width, x));
+      const time = rowIndex * multiRowDurationMs()
+        + adjustedX / Math.max(1, rect.width) * multiRowDurationMs();
+      return Math.max(0, Math.min(timelineDurationMs(), time));
+    }
+    return Math.max(
+      0,
+      Math.min(timelineDurationMs(), x / TIMELINE_PIXELS_PER_SECOND * 1000),
+    );
+  }
+
+  function setTimelineMarker(marker, timeMs) {
+    if (!marker) return;
+    const time = Math.max(0, Math.min(timelineDurationMs(), Number(timeMs) || 0));
+    if (isMultiWaveform()) {
+      const rowDuration = multiRowDurationMs();
+      const rowIndex = Math.min(multiRowCount() - 1, Math.floor(time / rowDuration));
+      const rowOffset = Math.min(rowDuration, Math.max(0, time - rowIndex * rowDuration));
+      const rowWidth = Math.max(1, $('#waveform-stage')?.clientWidth || timelineContentWidth());
+      marker.style.left = `${rowOffset / rowDuration * rowWidth}px`;
+      marker.style.top = `${rowIndex * multiRowStride()}px`;
+      marker.style.height = `${Math.max(1, Number(multiRowHeight) || 120)}px`;
+      marker.style.bottom = 'auto';
+    } else {
+      marker.style.left = `${timeToTimelinePx(time)}px`;
+      marker.style.top = '0';
+      marker.style.height = '';
+      marker.style.bottom = '0';
+    }
+    marker.dataset.time = formatTime(time);
+  }
+
+  function updateTimelinePlayhead() {
+    const player = $('#media-player');
+    const marker = $('#waveform-playhead');
+    if (!player || !marker || !Number.isFinite(player.currentTime)) {
+      if (marker) marker.hidden = true;
+      return;
+    }
+    const time = player.currentTime * 1000;
+    setTimelineMarker(marker, time);
+    marker.hidden = false;
+    $('#timeline-position').textContent = formatTime(time);
+    scrollPlayheadIntoView(time);
+  }
+
+  function showTimelinePointer(event) {
+    const marker = $('#waveform-pointer');
+    const time = timelineTimeFromEvent(event);
+    setTimelineMarker(marker, time);
+    marker.hidden = false;
+    $('#timeline-position').textContent = formatTime(time);
+  }
+
+  function reportPlaybackError(error) {
+    $('#status').className = 'status warn';
+    $('#status').textContent = `播放失败：${error?.message || '浏览器无法播放媒体'}`;
+  }
+
+  function seekTimeline(timeMs) {
+    const player = $('#media-player');
+    activeRangeEndMs = 0;
+    auditioningRange = false;
+    if (!player) {
+      $('#status').className = 'status warn';
+      $('#status').textContent = '当前没有可播放媒体，无法定位播放';
+      return;
+    }
+    player.currentTime = Math.max(0, Number(timeMs) || 0) / 1000;
+    updateTimelinePlayhead();
+  }
+
+  function toggleTimelinePlayback() {
+    const player = $('#media-player');
+    if (!player) {
+      $('#status').className = 'status warn';
+      $('#status').textContent = '当前没有可播放媒体，无法播放';
+      return;
+    }
+    activeRangeEndMs = 0;
+    auditioningRange = false;
+    if (player.paused) {
+      const promise = player.play();
+      if (promise && typeof promise.catch === 'function') promise.catch(reportPlaybackError);
+    } else {
+      player.pause();
+    }
+  }
+
+  function handleSpacebar(event) {
+    if (event.code !== 'Space' || event.repeat) return;
+    const target = event.target;
+    if (target?.closest?.('input, textarea, select, button, a, audio, video, [contenteditable="true"], [role="textbox"]')) return;
+    event.preventDefault();
+    toggleTimelinePlayback();
+  }
+
+  function setupTimelineInteractions() {
+    const stage = $('#waveform-stage');
+    if (!stage) return;
+    stage.addEventListener('pointerdown', () => {
+      // 用户开始定位/拖动时，允许下一次播放头更新重新计算跟随目标。
+      timelineAutoScrollTarget = null;
+    });
+    stage.addEventListener('pointerenter', showTimelinePointer);
+    stage.addEventListener('pointermove', (event) => {
+      showTimelinePointer(event);
+      if (!timelineDrag || timelineDrag.pointerId !== event.pointerId) return;
+      if (!(event.buttons & 1)) return;
+      if (Math.hypot(event.clientX - timelineDrag.startX, event.clientY - timelineDrag.startY) >= 3) {
+        timelineDrag.moved = true;
+      }
+      seekTimeline(timelineTimeFromEvent(event));
+    });
+    stage.addEventListener('pointerleave', () => {
+      if (!timelineDrag) $('#waveform-pointer').hidden = true;
+    });
+    stage.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      timelineDrag = {pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, moved: false};
+      stage.setPointerCapture?.(event.pointerId);
+      seekTimeline(timelineTimeFromEvent(event));
+    });
+    stage.addEventListener('pointerup', (event) => {
+      if (!timelineDrag || timelineDrag.pointerId !== event.pointerId) return;
+      seekTimeline(timelineTimeFromEvent(event));
+      stage.releasePointerCapture?.(event.pointerId);
+      timelineDrag = null;
+    });
+    stage.addEventListener('pointercancel', () => { timelineDrag = null; });
+    stage.addEventListener('dblclick', (event) => {
+      event.preventDefault();
+      seekTimeline(timelineTimeFromEvent(event));
+      toggleTimelinePlayback();
+    });
+  }
+
+  function drawWaveform() {
+    const canvas = $('#waveform-canvas');
+    const stage = $('#waveform-stage');
+    if (!canvas || !stage) return;
+    const rect = stage.getBoundingClientRect();
+    const cssWidth = Math.max(1, Math.round(stage.clientWidth || rect.width));
+    const cssHeight = Math.max(1, Math.round(stage.clientHeight || TIMELINE_STAGE_HEIGHT));
+    const ratio = Math.min(
+      1.5,
+      window.devicePixelRatio || 1,
+      TIMELINE_MAX_CANVAS_DIMENSION / cssWidth,
+      TIMELINE_MAX_CANVAS_DIMENSION / cssHeight,
+    );
+    const width = Math.max(1, Math.round(cssWidth * ratio));
+    const height = Math.max(1, Math.round(cssHeight * ratio));
+    canvas.style.width = `${cssWidth}px`;
+    canvas.style.height = `${cssHeight}px`;
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, width, height);
+    const rowHeight = Math.max(1, Number(multiRowHeight) || 120);
+    const sampleCount = Math.floor((waveform?.bytes?.length || 0) / 2);
+    const waveformDuration = Math.max(1, Number(waveform?.duration_ms) || timelineDurationMs());
+    const sampleAt = (timeMs) => {
+      if (!sampleCount) return null;
+      const ratioAtTime = Math.max(0, Math.min(1, Number(timeMs) / waveformDuration));
+      return Math.min(sampleCount - 1, Math.floor(ratioAtTime * sampleCount));
+    };
+    const drawWaveSegment = (startMs, endMs, left, rowWidth, top, segmentHeight) => {
+      const pixelWidth = Math.max(1, Math.round(rowWidth * ratio));
+      const center = (top + segmentHeight / 2) * ratio;
+      const amplitude = segmentHeight * .43 * TIMELINE_WAVEFORM_SCALE * ratio;
+      ctx.strokeStyle = '#5b9bd7';
+      ctx.globalAlpha = .9;
+      ctx.beginPath();
+      for (let pixel = 0; pixel < pixelWidth; pixel += 1) {
+        const time = startMs + (pixel / pixelWidth) * (endMs - startMs);
+        const index = sampleAt(time);
+        if (index === null) continue;
+        const low = signedByte(waveform.bytes[index * 2]) / 127;
+        const high = signedByte(waveform.bytes[index * 2 + 1]) / 127;
+        const y1 = Math.max(top * ratio + 2, Math.min((top + segmentHeight) * ratio - 2, center - high * amplitude));
+        const y2 = Math.max(top * ratio + 2, Math.min((top + segmentHeight) * ratio - 2, center - low * amplitude));
+        const x = left * ratio + pixel;
+        ctx.moveTo(x, y1);
+        ctx.lineTo(x, y2);
+      }
+      ctx.stroke();
+    };
+
+    ctx.strokeStyle = '#294254';
+    ctx.globalAlpha = .9;
+    ctx.lineWidth = Math.max(1, ratio);
+    if (isMultiWaveform()) {
+      const rowDuration = multiRowDurationMs();
+      for (let rowIndex = 0; rowIndex < multiRowCount(); rowIndex += 1) {
+        const start = rowIndex * rowDuration;
+        const end = Math.min(timelineDurationMs(), start + rowDuration);
+        const top = rowIndex * multiRowStride();
+        const actualWidth = cssWidth * Math.min(1, (end - start) / rowDuration);
+        const center = (top + rowHeight / 2) * ratio;
+        ctx.strokeStyle = '#294254';
+        ctx.beginPath();
+        ctx.moveTo(0, center);
+        ctx.lineTo(actualWidth * ratio, center);
+        ctx.stroke();
+        ctx.strokeStyle = '#202d38';
+        ctx.beginPath();
+        ctx.moveTo(0, (top + rowHeight) * ratio);
+        ctx.lineTo(cssWidth * ratio, (top + rowHeight) * ratio);
+        ctx.stroke();
+        ctx.strokeStyle = '#294254';
+        if (sampleCount && end > start) {
+          drawWaveSegment(start, end, 0, actualWidth, top, rowHeight);
+        }
+      }
+    } else {
+      const center = height / 2;
+      ctx.beginPath();
+      ctx.moveTo(0, center);
+      ctx.lineTo(width, center);
+      ctx.stroke();
+      if (sampleCount) drawWaveSegment(0, timelineDurationMs(), 0, cssWidth, 0, cssHeight);
+    }
+    ctx.globalAlpha = 1;
+    $('#waveform-hint').hidden = !sampleCount;
+  }
+
+  function signedByte(value) { return value >= 128 ? value - 256 : value; }
+
+  async function loadWaveform() {
+    if (!state.waveform?.available) {
+      $('#waveform-hint').textContent = 'mosp 没有内嵌波形；候选块仍可使用，导出后可在 MAWE 重新扫描。';
+      return;
+    }
+    try {
+      const response = await fetch(state.waveform.url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      waveform = {...payload, bytes: Uint8Array.from(atob(payload.data), (char) => char.charCodeAt(0))};
+      setTimelineGeometry();
+      drawWaveform();
+      updateTimelinePlayhead();
+    } catch (error) {
+      $('#waveform-hint').textContent = `波形加载失败：${error.message}`;
+    }
+  }
+
+  async function exportProject() {
+    const status = $('#status');
+    status.textContent = '正在生成对齐 mosp……';
+    try {
+      const response = await fetch('/api/export', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({selectedByLine, candidateActions, extraActions}),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || '导出失败');
+      status.className = `status ${result.readyForMediaTrim ? 'ready' : 'warn'}`;
+      const manualCount = result.selection?.manuallyEnabledCandidateIds?.length || 0;
+      const exportLabel = result.readyForMediaTrim
+        ? manualCount ? `已导出（${manualCount} 个 incomplete take 已手动启用）` : '已导出'
+        : '已导出（含未完成行）';
+      status.textContent = `${exportLabel}：${result.path}`;
+    } catch (error) {
+      status.className = 'status warn';
+      status.textContent = `导出失败：${error.message}`;
+    }
+  }
+
+  async function init() {
+    state = await (await fetch('/api/state')).json();
+    alignment = state.alignment;
+    selectedByLine = {...alignment.defaultSelection};
+    $('#meta').textContent = `${state.projectName} · 文稿 ${state.scriptName}${state.media.available ? ` · 媒体 ${state.media.name}` : ''}`;
+    if (state.media.available) {
+      const player = document.createElement(state.media.kind === 'video' ? 'video' : 'audio');
+      player.id = 'media-player';
+      player.controls = true;
+      player.preload = 'metadata';
+      player.src = state.media.url;
+      player.addEventListener('timeupdate', handlePlayerTimeUpdate);
+      player.addEventListener('loadedmetadata', () => updateTimelinePlayhead());
+      player.addEventListener('durationchange', () => updateTimelinePlayhead());
+      player.addEventListener('seeking', () => updateTimelinePlayhead());
+      player.addEventListener('seeked', () => updateTimelinePlayhead());
+      player.addEventListener('play', () => startPlaybackRefresh(player));
+      player.addEventListener('playing', () => startPlaybackRefresh(player));
+      player.addEventListener('pause', () => {
+        stopPlaybackRefresh(player);
+        updateTimelinePlayhead();
+      });
+      player.addEventListener('ended', () => {
+        stopPlaybackRefresh(player);
+        updateTimelinePlayhead();
+      });
+      player.addEventListener('error', () => reportPlaybackError(player.error));
+      $('#media-host').replaceChildren(player);
+    }
+    setupTimelineInteractions();
+    window.addEventListener('resize', () => {
+      setTimelineGeometry();
+      drawWaveform();
+      updateTimelinePlayhead();
+    });
+    renderPaths();
+    await refreshPreview({preserveActions: false});
+    await loadWaveform();
+    render();
+  }
+
+  document.querySelectorAll('[data-waveform-mode]').forEach((button) => {
+    button.addEventListener('click', () => setWaveformMode(button.dataset.waveformMode));
+  });
+  $('#multi-row-seconds').addEventListener('change', (event) => setMultiRowSeconds(event.target.value));
+  $('#multi-row-height').addEventListener('change', (event) => setMultiRowHeight(event.target.value));
+  updateWaveformModeControls();
+  $('#reset').addEventListener('click', () => setPath(alignment.defaultPathId, {preserveActions: false}));
+  $('#export').addEventListener('click', exportProject);
+  $('#follow-playhead').addEventListener('change', updateTimelinePlayhead);
+  document.addEventListener('keydown', handleSpacebar);
+  init().catch((error) => { $('#meta').textContent = `加载失败：${error.message}`; });
+</script>
+</body>
+</html>

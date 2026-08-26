@@ -18,6 +18,7 @@
   "sticker_root": "...",
   "waveform": { ... },
   "gap_remove": { ... },
+  "script_alignment": { ... },
   "workspace": { ... },
   "preview": { ... },
   "segments": [ ... ]
@@ -33,6 +34,7 @@
 | `sticker_root` | `string` | 否 | 表情包根目录绝对路径。打开工程时会覆盖编辑器内的 `STICKER_ROOT` |
 | `waveform` | `object` | 否 | 可丢弃的紧凑波形缓存。由 `edit.py` 或浏览器自动生成；不影响字幕语义 |
 | `gap_remove` | `object` | 否 | 可逆的空隙移除决定。保留原始媒体/字幕时间，仅描述导出与跳过播放时使用的派生时间轴 |
+| `script_alignment` | `object` | 否 | 录制对齐工具写入的选择记录；不改变 MAWE 的字幕与时间码语义 |
 | `workspace` | `object` | 否 | 编辑器工作区：四个功能区的窗口布局与显示状态；不影响字幕和波形缓存。服务器版也可使用独立的本机命名工作区库跨工程复用 |
 | `preview` | `object` | 否 | 预览呈现设置。含 `preview.subtitle`（主字幕预览框与样式）、可选的 `preview.extension_subtitle`（拓展字幕样式）和 `preview.sticker`（表情包预览层）。不影响字幕时间与文本 |
 
@@ -206,6 +208,60 @@
 - 扫描不会移除开头或结尾的素材。
 - 波形将 `removed: true` 画为橙色斜纹、`removed: false` 画为灰蓝斜纹；左键仅跳转播放头，Alt+左键才在两种状态间切换。
 - 旧版按字幕间隔扫描的结果会保留在工程中，但为避免误删已停用；重新扫描后会写入 `detector: "audio_gate"`。
+
+### 1.3a script_alignment 录制对齐记录
+
+`script_alignment` 是录制对齐 Server 写入的可选诊断与选择记录，不替代 `segments` 或 `gap_remove`。候选、选择和 Extra 范围可以包含 `sourceSlices`，用于记录一个源字幕段内的 item 子范围：
+
+```json
+{
+  "sourceCueIndex": 19,
+  "sourceCueId": "main-020",
+  "start": 46390,
+  "end": 48230,
+  "itemStart": 0,
+  "itemEnd": 12,
+  "sourceText": "目前支持画面上的这些模型"
+}
+```
+
+选中的 `incomplete` 候选默认不会进入保留区间；用户明确手动启用后，选择记录会保留原始 `incomplete` 分类，并增加以下字段：
+
+```json
+{
+  "candidateActions": {"candidate-001-01": "keep"},
+  "manuallyEnabledCandidateIds": ["candidate-001-01"],
+  "manuallyEnabledLineIds": ["line-001"],
+  "blockedIncompleteLineIds": []
+}
+```
+
+`candidateActions` 只记录用户对选中不完整候选的 `keep` / `discard` 覆盖；`manuallyEnabledCandidateIds` 表示实际解除自动禁用的候选，`blockedIncompleteLineIds` 表示仍会被禁用的不完整文稿行。这样可以区分“识别结果是不完整”和“用户确认仍要使用”这两个状态。
+
+当源段只有部分 item 被采用时，导出的工程会在相应 item 边界拆分字幕段；未采用部分设置 `disabled: true`，其间的时间同时写入 `gap_remove.gaps`。没有有效 `items` 时，录制对齐工具退回到源字幕段边界。
+
+候选和已选记录还可以包含 `internalSkips`，表示一个 take 内部自动识别出的重复源段：
+
+```json
+{
+  "kind": "skip-source",
+  "reasonCode": "repetition",
+  "sourceText": "双语字幕",
+  "sourceSlices": [{
+    "sourceCueIndex": 5,
+    "sourceCueId": "main-006",
+    "start": 16309,
+    "end": 17030,
+    "itemStart": 0,
+    "itemEnd": 4,
+    "sourceText": "双语字幕"
+  }]
+}
+```
+
+当前 MVP 只在相邻的完整源字幕段之间启用这一规则：文本归一化后完全相同，或具有足够长的共同开头并且后一个片段前有明显停顿。规则既适用于候选内部，也适用于候选外的连续未认领片段；默认舍弃前一个、保留后一个，因此不会把近似改口错误地列为新的 Alternative。导出时会从候选的保留范围扣除 `internalSkips`，相应字幕段设为 `disabled: true`，时间写入 `gap_remove.gaps`。
+
+候选的 `alternativeGroupId` 表示同一文稿行的局部录制组；相邻候选之间默认最多相隔 `10000ms`，且最多跨过 `8` 个源字幕段，限制值记录在对齐结果的 `settings.alternativeMaxGapMs` 与 `settings.alternativeMaxCues` 中。不同组的完整命中不会自动作为 `Alternative` 禁用，而会以 `kind: "extra"`、`reasonCode: "distant-match"` 进入可确认范围，默认保留。
 
 ### 1.4 preview 预览呈现
 
