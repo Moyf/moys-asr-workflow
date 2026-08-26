@@ -912,6 +912,129 @@ def _apply_llm_atom_groups_with_warnings(
     return normalize_project(result), tuple(warnings)
 
 
+def _apply_llm_atom_groups_with_warnings(
+    project: JsonDict,
+    response: Mapping[str, JsonValue],
+    *,
+    skipped_source_ids: Sequence[str] = (),
+) -> tuple[JsonDict, tuple[str, ...]]:
+    """Rebuild resegmented cues from the source mosp word timings."""
+    source_segments = _segments(project)
+    source_ids = [f"c{index:04d}" for index in range(1, len(source_segments) + 1)]
+    skipped = set(skipped_source_ids)
+    active_source_ids = [source_id for source_id in source_ids if source_id not in skipped]
+    atom_by_id: dict[str, JsonDict] = {}
+    source_atoms: dict[str, list[str]] = {}
+    source_index_by_id = {source_id: index for index, source_id in enumerate(source_ids)}
+    for source_id, segment in zip(source_ids, source_segments):
+        items = _validated_items(segment)
+        if items is None:
+            raise ValueError(f"{source_id} 缺少可用于重新断句的有效字词时间码")
+        atom_ids: list[str] = []
+        for item_index, item in enumerate(items, 1):
+            atom_id = f"{source_id}a{item_index:04d}"
+            atom_ids.append(atom_id)
+            atom_by_id[atom_id] = copy.deepcopy(item)
+        source_atoms[source_id] = atom_ids
+
+    active_atom_ids = [
+        atom_id
+        for source_id in active_source_ids
+        for atom_id in source_atoms[source_id]
+    ]
+    atom_positions = {atom_id: index for index, atom_id in enumerate(active_atom_ids)}
+    raw_groups = response.get("groups")
+    if not isinstance(raw_groups, list) or not raw_groups:
+        raise ValueError("LLM response must contain atom boundary groups")
+    parsed: list[tuple[str, ...]] = []
+    flattened: list[str] = []
+    seen: set[str] = set()
+    for group_index, raw_group in enumerate(raw_groups, start=1):
+        if not isinstance(raw_group, dict):
+            raise ValueError(f"LLM atom group {group_index} must be an object")
+        raw_ids = raw_group.get("atom_ids")
+        if not isinstance(raw_ids, list) or not raw_ids or not all(isinstance(value, str) for value in raw_ids):
+            raise ValueError(f"LLM atom group {group_index} must contain atom_ids")
+        atom_ids = tuple(str(value) for value in raw_ids)
+        if any(atom_id not in atom_positions for atom_id in atom_ids):
+            raise ValueError(f"LLM atom group {group_index} contains an unknown atom ID")
+        if any(atom_id in seen for atom_id in atom_ids):
+            raise ValueError(f"LLM atom group {group_index} repeats an atom ID")
+        positions = [atom_positions[atom_id] for atom_id in atom_ids]
+        if positions != list(range(positions[0], positions[0] + len(positions))):
+            raise ValueError(f"LLM atom group {group_index} must contain consecutive atom IDs")
+        parsed.append(atom_ids)
+        flattened.extend(atom_ids)
+        seen.update(atom_ids)
+    if flattened != active_atom_ids:
+        raise ValueError("LLM atom groups must cover all active atom IDs once, in order")
+
+    atom_source_id = {
+        atom_id: source_id
+        for source_id, atom_ids in source_atoms.items()
+        for atom_id in atom_ids
+        if source_id in active_source_ids
+    }
+    source_occurrences: dict[str, int] = {}
+    for atom_ids in parsed:
+        group_source_ids = set(atom_source_id[atom_id] for atom_id in atom_ids)
+        for source_id in group_source_ids:
+            source_occurrences[source_id] = source_occurrences.get(source_id, 0) + 1
+    regrouped = len(parsed) != len(active_source_ids) or any(
+        len({atom_source_id[atom_id] for atom_id in atom_ids}) != 1 for atom_ids in parsed
+    ) or any(
+        source_occurrences[source_id] != 1 for source_id in active_source_ids
+    )
+
+    new_segments: list[JsonValue] = []
+    for atom_ids in parsed:
+        group_source_ids = tuple(dict.fromkeys(atom_source_id[atom_id] for atom_id in atom_ids))
+        source_indexes = [source_index_by_id[source_id] for source_id in group_source_ids]
+        source_group = [source_segments[index] for index in source_indexes]
+        disabled_states = {source.get("disabled") is True for source in source_group}
+        if len(disabled_states) > 1:
+            raise ValueError("LLM atom groups cannot merge enabled and disabled cues")
+        first_source = source_group[0]
+        first_atom = atom_by_id[atom_ids[0]]
+        last_atom = atom_by_id[atom_ids[-1]]
+        if len(group_source_ids) == 1 and tuple(atom_ids) == tuple(source_atoms[group_source_ids[0]]):
+            start = _required_ms(first_source, "start")
+            end = _required_ms(first_source, "end")
+        else:
+            start = _required_ms(first_atom, "start")
+            end = _required_ms(last_atom, "end")
+        if end <= start:
+            raise ValueError("LLM atom groups cannot create a non-positive subtitle duration")
+        text = "".join(str(atom_by_id[atom_id]["text"]) for atom_id in atom_ids)
+        is_full_source = (
+            len(group_source_ids) == 1
+            and tuple(atom_ids) == tuple(source_atoms[group_source_ids[0]])
+            and not regrouped
+        )
+        segment = copy.deepcopy(first_source) if is_full_source else _copy_common_metadata(source_group)
+        segment.update({
+            "start": start,
+            "end": end,
+            "text": text,
+            "items": [copy.deepcopy(atom_by_id[atom_id]) for atom_id in atom_ids],
+        })
+        if regrouped:
+            for field in VISUAL_FIELDS:
+                segment.pop(field, None)
+        for field in SAFE_SCALARS:
+            first_value = first_source.get(field)
+            if first_value is not None and all(source.get(field) == first_value for source in source_group):
+                segment[field] = copy.deepcopy(first_value)
+        new_segments.append(segment)
+
+    result = copy.deepcopy(project)
+    result["segments"] = new_segments
+    warnings: list[str] = []
+    if regrouped:
+        warnings.append("已按字词时间码（mosp items）重新断句，并保留逐词时间对齐。")
+    return normalize_project(result), tuple(warnings)
+
+
 def _build_segments(
     sources: list[JsonDict],
     groups: Sequence[tuple[tuple[str, ...], str]],
@@ -1009,7 +1132,6 @@ def _copy_common_metadata(source_segments: Sequence[JsonDict]) -> JsonDict:
             result[metadata_key] = copy.deepcopy(value)
     return result
 
-
 def _derived_segment_id(source: JsonDict, source_id: str, part_number: int) -> str:
     """Create a deterministic, unique ID for a split output cue."""
     base = str(source.get("id") or source_id or "main")
@@ -1066,7 +1188,6 @@ def _validated_item_chunks(raw_items: JsonValue, expected_text: str) -> list[Jso
     if "".join(text_parts) != expected_text:
         return None
     return items
-
 
 def _item_text_spans(items: Sequence[JsonDict]) -> list[tuple[int, int]]:
     spans: list[tuple[int, int]] = []
@@ -1342,7 +1463,6 @@ def _validated_items(segment: JsonDict) -> list[JsonDict] | None:
         previous_start = item_start
         previous_end = item_end
     return items
-
 
 def _has_complete_items(project: JsonDict) -> bool:
     segments = _segments(project)
