@@ -14,6 +14,7 @@ mkdir -p "$BUILD_DIR"
 
 echo "==> 1/6 PyInstaller 构建 dist/MAW"
 # 生成托管 Runtime 的 frozen requirements txt（MAW.spec datas 条件追加打包）。
+mkdir -p build
 uv export --frozen --extra local --no-dev --format requirements-txt -o build/requirements-local.txt
 uv export --frozen --extra ocr --no-dev --format requirements-txt -o build/requirements-ocr.txt
 uv run --group build pyinstaller --noconfirm --clean MAW.spec
