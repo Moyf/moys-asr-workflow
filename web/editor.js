@@ -50,6 +50,7 @@ const EDITOR_SETTINGS_UTILS = window.AsrEditorUtils;
 const MULTI_SUBTITLE_TOLERANCE_MS = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_TOLERANCE_MS || 300;
 const MULTI_SUBTITLE_MERGE_OVERLAP_TOLERANCE_MS = 500;
 const SUBTITLE_MIN_DURATION_MS = 100;
+const PROJECT_SEGMENT_OVERLAP_AUTO_FIX_MAX_MS = 2;
 const MULTI_SUBTITLE_IMPORT_PROMPT = '是否选择导入第二条字幕以开启多重字幕模式？';
 const MULTI_SUBTITLE_TOGGLE_TITLE = '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。';
 maweDomContractCheck();
@@ -187,10 +188,16 @@ function addSubtitleBinding(mainSegment, extensionSegment, track = getActiveExte
   return binding;
 }
 
-function markMultiSubtitleDirty() {
+function markMultiSubtitleStateDirty() {
   const multi = getMultiSubtitleState();
-  if (!multi.enabled && !(multi.tracks || []).length) return;
+  if (!multi.enabled && !(multi.tracks || []).length) return null;
   multi._dirty = true;
+  return multi;
+}
+
+function markMultiSubtitleDirty() {
+  const multi = markMultiSubtitleStateDirty();
+  if (!multi) return;
   (multi.tracks || []).forEach((track) => track.segments.forEach((segment) => { segment._dirty = true; }));
 }
 
@@ -1083,6 +1090,8 @@ function historyGuarded() {
     return true;
   }
   return replaceModal.classList.contains('show')
+      || textProcessModal.classList.contains('show')
+      || timedTextEditModal.classList.contains('show')
       || stickerModal.classList.contains('show')
       || stickerPreviewModal.classList.contains('show')
       || projectMediaModal.classList.contains('show')
@@ -1196,6 +1205,33 @@ const helpJklMode = document.getElementById('help-jkl-mode');
 const cueMoveStepInput = document.getElementById('cue-move-step');
 const autoSnapAdjacentCuesToggle = document.getElementById('auto-snap-adjacent-cues');
 const replaceModal = document.getElementById('replace-modal');
+const textProcessModal = document.getElementById('text-process-modal');
+const timedTextEditButton = document.getElementById('timed-text-edit-btn');
+const timedTextEditModal = document.getElementById('timed-text-edit-modal');
+const timedTextEditClose = document.getElementById('timed-text-edit-close');
+const timedTextEditCancel = document.getElementById('timed-text-edit-cancel');
+const timedTextEditApply = document.getElementById('timed-text-edit-apply');
+const timedTextEditTrackControl = document.getElementById('timed-text-edit-track-control');
+const timedTextEditTrack = document.getElementById('timed-text-edit-track');
+const timedTextEditView = document.getElementById('timed-text-edit-view');
+const timedTextEditSourceInfo = document.getElementById('timed-text-edit-source-info');
+const timedTextEditCharcountThresholdControl = document.getElementById('timed-text-edit-charcount-control');
+const timedTextEditCharcountThresholdInput = document.getElementById('timed-text-edit-charcount-threshold');
+const timedTextEditShowDisabledToggle = document.getElementById('timed-text-edit-show-disabled');
+const timedTextEditRows = document.getElementById('timed-text-edit-rows');
+const timedTextEditSingleEditor = document.getElementById('timed-text-edit-single-editor');
+const timedTextEditSingleTextarea = document.getElementById('timed-text-edit-single-textarea');
+const timedTextEditSingleHint = document.getElementById('timed-text-edit-single-hint');
+const timedTextEditReportSummary = document.getElementById('timed-text-edit-report-summary');
+const timedTextEditReportMapping = document.getElementById('timed-text-edit-report-mapping');
+const timedTextEditShowAll = document.getElementById('timed-text-edit-show-all');
+const timedTextEditReportHint = document.getElementById('timed-text-edit-report-hint');
+const timedTextEditChangeDetails = document.getElementById('timed-text-edit-change-details');
+const timedTextEditChangeList = document.getElementById('timed-text-edit-change-list');
+const TIMED_TEXT_EDIT_REPORT_DEBOUNCE_MS = 160;
+let timedTextEditDraft = null;
+let timedTextEditReturnFocus = null;
+let timedTextEditReportTimer = null;
 const stickerModal = document.getElementById('sticker-modal');
 const stickerPreviewModal = document.getElementById('sticker-preview-modal');
 const projectMediaModal = document.getElementById('project-media-modal');
@@ -1630,7 +1666,7 @@ function applyCueListDisplaySettings() {
   cueListShowCharcountToggle.checked = EDITOR_SETTINGS.cueListShowCharcount;
   cueListAutoScrollOnClickToggle.checked = EDITOR_SETTINGS.cueListAutoScrollOnClick;
   cueListKeepSplitVisibleToggle.checked = EDITOR_SETTINGS.cueListKeepSplitVisible;
-  cueListCharcountThresholdInput.value = String(EDITOR_SETTINGS.cueListCharcountThreshold);
+  syncCharCountThresholdInputs(EDITOR_SETTINGS.cueListCharcountThreshold);
   hideDisabled = EDITOR_SETTINGS.cueListHideDisabled;
   hideDisabledToggle.checked = hideDisabled;
   container.classList.toggle('hide-disabled', hideDisabled);
@@ -2237,17 +2273,18 @@ cueListKeepSplitVisibleToggle?.addEventListener('change', () => {
   applySearch(searchEl.value);
 });
 cueListCharcountThresholdInput?.addEventListener('input', () => {
-  const value = Number(cueListCharcountThresholdInput.value);
-  if (Number.isFinite(value) && value >= 1 && value <= 200) {
-    updateEditorSettings({ cueListCharcountThreshold: clampCharcountThreshold(value) });
-  }
-  refreshAllCharCounts();
-  if (document.getElementById('filter-over').classList.contains('active')) {
-    applySearch(searchEl.value);
-  }
+  handleCharCountThresholdInput(cueListCharcountThresholdInput);
 });
 cueListCharcountThresholdInput?.addEventListener('change', () => {
-  cueListCharcountThresholdInput.value = String(getCharCountThreshold());
+  syncCharCountThresholdInputs();
+  updateTimedTextEditSingleGuide();
+});
+timedTextEditCharcountThresholdInput?.addEventListener('input', () => {
+  handleCharCountThresholdInput(timedTextEditCharcountThresholdInput);
+});
+timedTextEditCharcountThresholdInput?.addEventListener('change', () => {
+  syncCharCountThresholdInputs();
+  updateTimedTextEditSingleGuide();
 });
 bindCueEditorDisplayToggle(cueEditorShowNavigationToggle, 'cueEditorShowNavigation');
 bindCueEditorDisplayToggle(cueEditorShowTimeActionsToggle, 'cueEditorShowTimeActions');
@@ -3857,6 +3894,7 @@ function renderAll({ waveform = 'overlay' } = {}) {
   syncPlayerPlaceholder();
   updateMultiSubtitleUi();
   updateSubtitleExportUi();
+  refreshTimedTextEditButton();
   window.MAWE_ONBOARDING?.afterRender();
 }
 
@@ -4474,6 +4512,7 @@ function buildMultiCueColumn(segment, index, track, kind) {
     column.textContent = '—';
     return column;
   }
+  if (segment._dirty) column.classList.add('dirty');
   if (segment.disabled) column.classList.add('disabled');
   const header = document.createElement('div');
   header.className = 'multi-cue-column-header';
@@ -4574,8 +4613,36 @@ function calcCharWidth(text, mode = null) {
     : window.AsrEditorUtils.countTextUnits(text);
 }
 function getCharCountThreshold() {
-  const v = parseInt(cueListCharcountThresholdInput?.value, 10);
-  return Number.isFinite(v) && v > 0 ? v : EDITOR_SETTINGS.cueListCharcountThreshold;
+  const v = Number(EDITOR_SETTINGS.cueListCharcountThreshold);
+  return Number.isFinite(v) && v > 0
+    ? clampCharcountThreshold(v)
+    : DEFAULT_EDITOR_SETTINGS.cueListCharcountThreshold;
+}
+function syncCharCountThresholdInputs(value = getCharCountThreshold()) {
+  const threshold = clampCharcountThreshold(value);
+  const text = String(threshold);
+  if (cueListCharcountThresholdInput) cueListCharcountThresholdInput.value = text;
+  if (timedTextEditCharcountThresholdInput) timedTextEditCharcountThresholdInput.value = text;
+  return threshold;
+}
+function handleCharCountThresholdInput(input) {
+  const value = Number(input?.value);
+  if (Number.isFinite(value) && value >= 1 && value <= 200) {
+    const threshold = syncCharCountThresholdInputs(value);
+    updateEditorSettings({ cueListCharcountThreshold: threshold });
+  }
+  updateTimedTextEditSingleGuide();
+  refreshAllCharCounts();
+  if (document.getElementById('filter-over').classList.contains('active')) {
+    applySearch(searchEl.value);
+  }
+}
+function updateTimedTextEditSingleGuide() {
+  if (!timedTextEditSingleEditor) return;
+  timedTextEditSingleEditor.style.setProperty(
+    '--timed-text-edit-line-width',
+    `${getCharCountThreshold()}em`,
+  );
 }
 function applyCharCount(cntEl, text, mode = null) {
   if (!cntEl) return;
@@ -7758,6 +7825,12 @@ document.addEventListener('keydown', (event) => {
 // Esc：非字幕文本编辑状态下清除当前字幕选择；输入框和内联编辑继续保留原生/编辑行为。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
+  if (timedTextEditModal.classList.contains('show')) {
+    e.preventDefault();
+    e.stopPropagation();
+    requestCloseTimedTextEdit();
+    return;
+  }
   if (pendingExtensionBinding) {
     e.preventDefault();
     e.stopPropagation();
@@ -10338,11 +10411,39 @@ function normalizeProjectTimings(project, { repairSegmentRanges = true } = {}) {
   return fixed;
 }
 
+function timingRepairSignature(segment) {
+  return JSON.stringify({
+    start: segment?.start,
+    end: segment?.end,
+    items: Array.isArray(segment?.items)
+      ? segment.items.map((item) => ({ text: item?.text, start: item?.start, end: item?.end }))
+      : null,
+  });
+}
+
+function repairTimingGroup(segments) {
+  const source = Array.isArray(segments) ? segments : [];
+  const before = source.map((segment) => timingRepairSignature(segment));
+  const fixed = window.AsrEditorUtils.normalizeItemTimingRanges(source);
+  const changed = source.filter((segment, index) => (
+    timingRepairSignature(segment) !== before[index]
+  ));
+  return { fixed, changed };
+}
+
 function repairCurrentProjectTimings() {
-  const fixed = normalizeProjectTimings(DATA, { repairSegmentRanges: false });
+  const main = repairTimingGroup(DATA.segments);
+  const extension = (getMultiSubtitleState().tracks || []).reduce((result, track) => {
+    const repaired = repairTimingGroup(track?.segments);
+    result.fixed += repaired.fixed;
+    result.changed.push(...repaired.changed);
+    return result;
+  }, { fixed: 0, changed: [] });
+  const fixed = main.fixed + extension.fixed;
   if (fixed > 0) {
-    markMainSegmentsDirty(DATA.segments);
-    markMultiSubtitleDirty();
+    markMainSegmentsDirty(main.changed);
+    extension.changed.forEach((segment) => { segment._dirty = true; });
+    if (main.changed.length || extension.changed.length) markMultiSubtitleStateDirty();
     syncBindingOffsets();
   }
   return fixed;
@@ -10844,16 +10945,27 @@ function projectSaveTargetEnabled() {
 }
 
 function parseProjectValidationTarget(detail) {
-  const match = /^\$\.segments\[(\d+)\](?:\.items\[(\d+)\])?(?:\.[A-Za-z_]\w*)?\s*:/.exec(String(detail || ''));
-  if (!match) return null;
-  const segmentIndex = Number(match[1]);
-  const itemIndex = match[2] === undefined ? null : Number(match[2]);
-  const segment = DATA.segments[segmentIndex];
+  const value = String(detail || '');
+  const mainMatch = /^\$\.segments\[(\d+)\](?:\.items\[(\d+)\])?(?:\.[A-Za-z_]\w*)?\s*:/.exec(value);
+  const extensionMatch = /^\$\.multi_subtitle\.tracks\[(\d+)\]\.segments\[(\d+)\](?:\.items\[(\d+)\])?(?:\.[A-Za-z_]\w*)?\s*:/.exec(value);
+  if (!mainMatch && !extensionMatch) return null;
+  const kind = mainMatch ? 'main' : 'extension';
+  const trackIndex = extensionMatch ? Number(extensionMatch[1]) : null;
+  const segmentIndex = Number(mainMatch ? mainMatch[1] : extensionMatch[2]);
+  const itemValue = mainMatch ? mainMatch[2] : extensionMatch[3];
+  const itemIndex = itemValue === undefined ? null : Number(itemValue);
+  const track = extensionMatch ? getMultiSubtitleState().tracks?.[trackIndex] : null;
+  const segments = kind === 'main' ? DATA.segments : (track?.segments || []);
+  const segment = segments[segmentIndex];
   if (!segment) return null;
   const item = itemIndex === null
     ? null
     : (Array.isArray(segment.items) ? segment.items[itemIndex] : null);
   return {
+    kind,
+    trackIndex,
+    track,
+    segments,
     segmentIndex,
     itemIndex,
     segment,
@@ -10871,9 +10983,73 @@ function validationPreviewText(target) {
   }
 }
 
+function projectSegmentOverlap(target) {
+  const segments = target?.segments;
+  const currentIndex = Number(target?.segmentIndex);
+  if (!Array.isArray(segments) || !Number.isInteger(currentIndex) || currentIndex <= 0) return null;
+  const previous = segments[currentIndex - 1];
+  const current = segments[currentIndex];
+  const previousEnd = Number(previous?.end);
+  const currentStart = Number(current?.start);
+  const overlapMs = Math.round(previousEnd - currentStart);
+  if (!previous || !current || !Number.isFinite(overlapMs) || overlapMs <= 0) return null;
+  return {
+    previousIndex: currentIndex - 1,
+    currentIndex,
+    previous,
+    current,
+    overlapMs,
+  };
+}
+
+function repairProjectSegmentOverlap(target, mode, card) {
+  const segments = target?.segments;
+  const currentIndex = Number(target?.segmentIndex);
+  if (!Array.isArray(segments)) return false;
+  let previewSegments;
+  try {
+    previewSegments = JSON.parse(JSON.stringify(segments));
+  } catch (_) {
+    flashHint('无法准备时间范围修复，请先关闭提示后手动调整字幕边界', 'warning');
+    return false;
+  }
+  const preview = window.AsrEditorUtils.repairSegmentOverlap(previewSegments, currentIndex, mode);
+  if (!preview?.changed) {
+    flashHint('当前字幕边界已经发生变化，请重新保存并查看最新的校验提示', 'warning');
+    return false;
+  }
+
+  pushUndo('修复字幕时间重叠', { captureView: true });
+  const result = window.AsrEditorUtils.repairSegmentOverlap(segments, currentIndex, mode);
+  if (!result?.changed) {
+    flashHint('当前字幕边界已经发生变化，修复未应用', 'warning');
+    return false;
+  }
+  const changedSegments = (result.changedIndices || [])
+    .map((index) => segments[index])
+    .filter(Boolean);
+  if (target.kind === 'main') markMainSegmentsDirty(changedSegments);
+  else changedSegments.forEach((segment) => { segment._dirty = true; });
+  syncBindingOffsets();
+  if (target.kind === 'extension' || getMultiSubtitleState().tracks?.length) {
+    markMultiSubtitleStateDirty();
+  }
+  renderAll({ waveform: 'overlay' });
+  update();
+  updateUndoRedoButtons();
+  dismissHintCard(card);
+  const suffix = result.itemsCleared
+    ? '，已清除受影响字幕的字词时间码'
+    : '';
+  flashHint(`已修复字幕时间重叠${suffix}，正在重新保存`, result.itemsCleared ? 'warning' : 'success');
+  window.setTimeout(() => { void saveCurrentProject({ silent: true }); }, 0);
+  return true;
+}
+
 function focusProjectValidationTarget(target) {
   const { segmentIndex, segment } = target || {};
-  if (!segment || !DATA.segments[segmentIndex]) return;
+  const segments = target?.segments || DATA.segments;
+  if (!segment || !segments[segmentIndex]) return;
 
   // 校验错误不能因为用户当前的筛选状态而再次变得不可见。
   if (hideDisabled && segment.disabled) {
@@ -10881,7 +11057,10 @@ function focusProjectValidationTarget(target) {
     hideDisabledToggle.checked = false;
     container.classList.remove('hide-disabled');
   }
-  const cueBeforeFilter = container.querySelector(`.cue[data-idx="${segmentIndex}"]`);
+  const cueSelector = target.kind === 'extension'
+    ? `.cue[data-ext-idx="${segmentIndex}"]`
+    : `.cue[data-idx="${segmentIndex}"]`;
+  const cueBeforeFilter = container.querySelector(cueSelector);
   if (cueBeforeFilter?.classList.contains('hidden')) {
     searchEl.value = '';
     refreshSearchClearVisibility();
@@ -10890,9 +11069,14 @@ function focusProjectValidationTarget(target) {
     applySearch('');
   }
 
-  selectOnly(segmentIndex);
-  lastClickedIdx = segmentIndex;
-  const cue = container.querySelector(`.cue[data-idx="${segmentIndex}"]`);
+  if (target.kind === 'extension') {
+    selectOnlyExtension(segmentIndex, target.track || getActiveExtensionTrack());
+    lastClickedExtensionIdx = segmentIndex;
+  } else {
+    selectOnly(segmentIndex);
+    lastClickedIdx = segmentIndex;
+  }
+  const cue = container.querySelector(cueSelector);
   if (cue) {
     cue.classList.remove('validation-target');
     // 重新触发一次短暂的高亮，即使用户连续点击多个错误提示也能看出目标。
@@ -10946,6 +11130,45 @@ function showProjectSaveError(detail) {
       preview.className = 'hint-project-preview-value';
       preview.textContent = validationPreviewText(target);
 
+      const overlapElements = [];
+      const overlap = projectSegmentOverlap(target);
+      if (overlap) {
+        const conflict = document.createElement('div');
+        conflict.className = 'hint-project-conflict';
+        conflict.textContent = `第 ${overlap.previousIndex + 1} 条字幕结束于 ${fmtShort(overlap.previous.end)}，第 ${overlap.currentIndex + 1} 条字幕开始于 ${fmtShort(overlap.current.start)}，重叠 ${overlap.overlapMs}ms。`;
+
+        const repairDescription = document.createElement('div');
+        repairDescription.className = 'hint-project-repair-description';
+        repairDescription.textContent = overlap.overlapMs <= PROJECT_SEGMENT_OVERLAP_AUTO_FIX_MAX_MS
+          ? `这是小于等于 ${PROJECT_SEGMENT_OVERLAP_AUTO_FIX_MAX_MS}ms 的边界误差，可以安全把后句起点吸附到前句终点。`
+          : `重叠超过 ${PROJECT_SEGMENT_OVERLAP_AUTO_FIX_MAX_MS}ms，请确认要保留哪一侧的时间边界；修复后会自动再次保存。`;
+
+        const repairActions = document.createElement('div');
+        repairActions.className = 'hint-project-actions';
+        const addRepairButton = (className, text, mode) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = `hint-project-action ${className}`;
+          button.textContent = text;
+          button.addEventListener('click', () => {
+            button.disabled = true;
+            if (!repairProjectSegmentOverlap(target, mode, card)) button.disabled = false;
+          });
+          repairActions.appendChild(button);
+        };
+        if (overlap.overlapMs <= PROJECT_SEGMENT_OVERLAP_AUTO_FIX_MAX_MS) {
+          addRepairButton(
+            'hint-project-repair-auto',
+            `自动修复：推迟第 ${overlap.currentIndex + 1} 条字幕（${overlap.overlapMs}ms）`,
+            'shift-current',
+          );
+        } else {
+          addRepairButton('hint-project-repair-trim', '缩短前一句', 'trim-previous');
+          addRepairButton('hint-project-repair-shift', '推迟后一句', 'shift-current');
+        }
+        overlapElements.push(conflict, repairDescription, repairActions);
+      }
+
       const action = document.createElement('button');
       action.type = 'button';
       action.className = 'hint-project-action';
@@ -10955,7 +11178,7 @@ function showProjectSaveError(detail) {
         dismissHintCard(card);
       });
 
-      card.append(header, detailEl, location, previewLabel, preview, action);
+      card.append(header, detailEl, location, previewLabel, preview, ...overlapElements, action);
     },
   });
 }
@@ -12137,7 +12360,7 @@ updateLottieExportButton();
 updateOgrafExportButton();
 
 // === 工具栏导出下拉菜单 ===
-function bindToolbarExportDropdown(dropdownId, buttonId, menuId) {
+function bindToolbarExportDropdown(dropdownId, buttonId, menuId, positioner = null) {
   const dd = document.getElementById(dropdownId);
   const btn = document.getElementById(buttonId);
   const menu = document.getElementById(menuId);
@@ -12145,6 +12368,7 @@ function bindToolbarExportDropdown(dropdownId, buttonId, menuId) {
   const setOpen = (open) => {
     dd.classList.toggle('open', open);
     if (btn.hasAttribute('aria-expanded')) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open && positioner) requestAnimationFrame(positioner);
   };
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -12167,6 +12391,11 @@ function bindToolbarExportDropdown(dropdownId, buttonId, menuId) {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') setOpen(false);
   });
+  if (positioner) {
+    window.addEventListener('resize', positioner);
+    window.addEventListener('scroll', positioner, true);
+    dd.closest('.cue-list-toolbar, .toolbar')?.addEventListener('scroll', positioner);
+  }
 }
 bindToolbarExportDropdown('subtitle-export-dropdown', 'subtitle-export-btn', 'subtitle-export-menu');
 bindToolbarExportDropdown('gap-removed-export-dropdown', 'gap-removed-export-btn', 'gap-removed-export-menu');
@@ -12175,6 +12404,34 @@ bindToolbarExportDropdown('open-project-dropdown', 'open-project-menu-btn', 'ope
 bindToolbarExportDropdown('save-project-dropdown', 'save-project-menu-btn', 'save-project-menu');
 bindToolbarExportDropdown('workspace-transfer-dropdown', 'workspace-transfer-btn', 'workspace-transfer-menu');
 bindToolbarExportDropdown('multi-subtitle-settings-dropdown', 'multi-subtitle-settings-toggle', 'multi-subtitle-settings-menu');
+function positionBatchOperationsMenu() {
+  const dropdown = document.getElementById('batch-operations-dropdown');
+  const button = document.getElementById('batch-operations-btn');
+  const menu = document.getElementById('batch-operations-menu');
+  if (!dropdown?.classList.contains('open') || !button || !menu) return;
+  const buttonRect = button.getBoundingClientRect();
+  const menuWidth = menu.offsetWidth;
+  const menuHeight = menu.offsetHeight;
+  const margin = 8;
+  const left = Math.min(
+    Math.max(margin, buttonRect.left),
+    Math.max(margin, window.innerWidth - menuWidth - margin),
+  );
+  const belowTop = buttonRect.bottom + 6;
+  const aboveTop = buttonRect.top - menuHeight - 6;
+  let top = belowTop;
+  if (belowTop + menuHeight > window.innerHeight - margin && aboveTop >= margin) {
+    top = aboveTop;
+  } else if (belowTop + menuHeight > window.innerHeight - margin) {
+    top = Math.max(margin, window.innerHeight - menuHeight - margin);
+  }
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+bindToolbarExportDropdown(
+  'batch-operations-dropdown', 'batch-operations-btn', 'batch-operations-menu',
+  positionBatchOperationsMenu,
+);
 
 // === 打开工程 ===
 const openProjectFileInput = document.getElementById('open-project-file');
@@ -13318,9 +13575,19 @@ const useRegexCb = document.getElementById('use-regex');
 const replacePreview = document.getElementById('replace-preview');
 const replaceScopeInfo = document.getElementById('replace-scope-info');
 const replaceModalTitle = document.getElementById('replace-modal-title');
+const replaceSelectedOnlyCb = document.getElementById('replace-selected-only');
+const replaceSelectedOnlyHint = document.getElementById('replace-selected-only-hint');
 
 // null = 全部；[idxs] = 仅这些行
 let replaceScope = null;
+let replaceSelectionSnapshot = [];
+
+function normalizeBatchSelection(indexes) {
+  const candidates = Array.isArray(indexes) ? indexes : [...selectedIdxs];
+  return [...new Set(candidates
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < DATA.segments.length))]
+    .sort((a, b) => a - b);
+}
 
 function getReplaceTargets() {
   if (replaceScope && replaceScope.length) {
@@ -13398,12 +13665,31 @@ function refreshScopeInfo() {
   }
 }
 
+function refreshReplaceSelectionControl() {
+  if (!replaceSelectedOnlyCb) return;
+  const available = replaceSelectionSnapshot.length > 0;
+  replaceSelectedOnlyCb.disabled = !available;
+  if (!available) replaceSelectedOnlyCb.checked = false;
+  if (replaceSelectedOnlyHint) replaceSelectedOnlyHint.hidden = available;
+  replaceScope = replaceSelectedOnlyCb.checked ? [...replaceSelectionSnapshot] : null;
+  refreshScopeInfo();
+}
+
 [findInput, replaceInput].forEach(el => el.addEventListener('input', updatePreview));
 [caseSensitiveCb, useRegexCb].forEach(el => el.addEventListener('change', updatePreview));
+replaceSelectedOnlyCb?.addEventListener('change', () => {
+  replaceScope = replaceSelectedOnlyCb.checked ? [...replaceSelectionSnapshot] : null;
+  refreshScopeInfo();
+  updatePreview();
+});
 
 function openReplaceModal(scope) {
   if (editingState) finishEdit(true);
-  replaceScope = scope || null;
+  replaceSelectionSnapshot = normalizeBatchSelection(
+    Array.isArray(scope) && scope.length ? scope : [...selectedIdxs],
+  );
+  replaceSelectedOnlyCb.checked = replaceSelectionSnapshot.length > 0;
+  refreshReplaceSelectionControl();
   refreshScopeInfo();
   replaceModal.classList.add('show');
   setTimeout(() => findInput.focus(), 50);
@@ -13438,6 +13724,1131 @@ document.getElementById('replace-confirm')?.addEventListener('click', () => {
   replaceModal.classList.remove('show');
   renderAll();
   flashHint(`已修改 ${changedRows} 行`, 'success');
+});
+
+// === 文本处理 ===
+const textProcessButton = document.getElementById('text-process-btn');
+const textProcessSelectedOnlyCb = document.getElementById('text-process-selected-only');
+const textProcessSelectedOnlyHint = document.getElementById('text-process-selected-only-hint');
+const textProcessScopeInfo = document.getElementById('text-process-scope-info');
+const textProcessPreview = document.getElementById('text-process-preview');
+const textProcessConfirm = document.getElementById('text-process-confirm');
+const textProcessTrim = document.getElementById('text-process-trim');
+const textProcessCapitalize = document.getElementById('text-process-capitalize');
+const textProcessPrefix = document.getElementById('text-process-prefix');
+const textProcessPrefixInput = document.getElementById('text-process-prefix-input');
+const textProcessSuffix = document.getElementById('text-process-suffix');
+const textProcessSuffixInput = document.getElementById('text-process-suffix-input');
+const textProcessStripMarkdown = document.getElementById('text-process-strip-markdown');
+let textProcessSelectionSnapshot = [];
+let textProcessScope = null;
+
+function textProcessSelectionTargets() {
+  const targets = [...selectedIdxs]
+    .sort((a, b) => a - b)
+    .map((index) => ({ kind: 'main', index }));
+  const extensionTrack = getActiveExtensionTrack();
+  if (extensionTrack) {
+    [...selectedExtensionIdxs]
+      .sort((a, b) => a - b)
+      .forEach((index) => targets.push({
+        kind: 'extension',
+        index,
+        trackId: extensionTrack.id,
+      }));
+  }
+  return targets;
+}
+
+function textProcessAllTargets() {
+  return DATA.segments.map((_, index) => ({ kind: 'main', index }));
+}
+
+function textProcessTargetSegments(target) {
+  return target?.kind === 'extension'
+    ? getExtensionTrack(target.trackId)?.segments || []
+    : DATA.segments;
+}
+
+function textProcessTargetLabel(target) {
+  return `${target?.kind === 'extension' ? '副字幕' : '主字幕'}第 ${(target?.index ?? 0) + 1} 条`;
+}
+
+function textProcessTargets() {
+  return textProcessScope && textProcessScope.length
+    ? textProcessScope
+    : textProcessAllTargets();
+}
+
+function buildTextProcessPreview(targets, options) {
+  return (Array.isArray(targets) ? targets : []).flatMap((target) => {
+    const segments = textProcessTargetSegments(target);
+    const segment = segments[target.index];
+    if (!segment) return [];
+    const before = String(segment.text == null ? '' : segment.text);
+    const after = window.AsrEditorUtils.applyTextProcessing(before, options);
+    return [{ ...target, before, after, changed: before !== after }];
+  });
+}
+
+function getTextProcessOptions() {
+  return {
+    trim: textProcessTrim.checked,
+    capitalize: textProcessCapitalize.checked,
+    addPrefix: textProcessPrefix.checked,
+    prefix: textProcessPrefixInput.value,
+    addSuffix: textProcessSuffix.checked,
+    suffix: textProcessSuffixInput.value,
+    stripMarkdown: textProcessStripMarkdown.checked,
+  };
+}
+
+function refreshTextProcessScopeInfo() {
+  const selected = textProcessScope && textProcessScope.length;
+  textProcessScopeInfo.textContent = selected
+    ? `范围：仅选中的 ${textProcessScope.length} 条字幕`
+    : `范围：全部 ${DATA.segments.length} 条字幕`;
+  textProcessScopeInfo.classList.toggle('selected', Boolean(selected));
+}
+
+function refreshTextProcessSelectionControl() {
+  const available = textProcessSelectionSnapshot.length > 0;
+  textProcessSelectedOnlyCb.disabled = !available;
+  if (!available) textProcessSelectedOnlyCb.checked = false;
+  if (textProcessSelectedOnlyHint) textProcessSelectedOnlyHint.hidden = available;
+  textProcessScope = textProcessSelectedOnlyCb.checked
+    ? [...textProcessSelectionSnapshot] : null;
+  refreshTextProcessScopeInfo();
+}
+
+function renderTextProcessPreview() {
+  const options = getTextProcessOptions();
+  const hasOperation = textProcessTrim.checked || textProcessCapitalize.checked
+    || textProcessPrefix.checked || textProcessSuffix.checked || textProcessStripMarkdown.checked;
+  const targets = textProcessTargets();
+  textProcessPreview.replaceChildren();
+  if (!hasOperation) {
+    textProcessPreview.textContent = '请选择至少一项文本处理操作';
+    textProcessPreview.style.color = '';
+    textProcessConfirm.disabled = true;
+    return;
+  }
+  const rows = buildTextProcessPreview(targets, options);
+  const result = {
+    targetCount: rows.length,
+    changedCount: rows.filter((row) => row.changed).length,
+    rows,
+  };
+  textProcessPreview.style.color = result.changedCount ? '' : 'var(--text-muted)';
+  const summary = document.createElement('div');
+  summary.className = 'replace-preview-summary';
+  summary.textContent = result.changedCount
+    ? `将处理 ${result.targetCount} 条字幕，预计修改 ${result.changedCount} 条（展开查看前后文本）`
+    : `选定的 ${result.targetCount} 条字幕不会发生变化`;
+  textProcessPreview.appendChild(summary);
+  result.rows.filter((row) => row.changed).forEach((row) => {
+    const details = document.createElement('details');
+    details.className = 'replace-preview-row';
+    const title = document.createElement('summary');
+    title.textContent = textProcessTargetLabel(row);
+    details.appendChild(title);
+    const before = document.createElement('div');
+    before.className = 'replace-preview-before';
+    before.textContent = `处理前：${row.before}`;
+    const after = document.createElement('div');
+    after.className = 'replace-preview-after';
+    after.textContent = `处理后：${row.after}`;
+    details.append(before, after);
+    textProcessPreview.appendChild(details);
+  });
+  textProcessConfirm.disabled = false;
+}
+
+function refreshTextProcessInputState() {
+  textProcessPrefixInput.disabled = !textProcessPrefix.checked;
+  textProcessSuffixInput.disabled = !textProcessSuffix.checked;
+}
+
+function closeTextProcessModal() {
+  textProcessModal.classList.remove('show');
+}
+
+function openTextProcessModal() {
+  if (!DATA.segments.length && !getActiveExtensionTrack()?.segments?.length) {
+    flashHint('当前没有可处理的字幕', 'invalid');
+    return;
+  }
+  if (editingState) finishEdit(true);
+  textProcessSelectionSnapshot = textProcessSelectionTargets();
+  textProcessSelectedOnlyCb.checked = textProcessSelectionSnapshot.length > 0;
+  refreshTextProcessSelectionControl();
+  [textProcessTrim, textProcessCapitalize, textProcessPrefix,
+    textProcessSuffix, textProcessStripMarkdown].forEach((input) => { input.checked = false; });
+  textProcessPrefixInput.value = '';
+  textProcessSuffixInput.value = '';
+  refreshTextProcessInputState();
+  textProcessModal.classList.add('show');
+  renderTextProcessPreview();
+  setTimeout(() => textProcessTrim.focus(), 50);
+}
+
+textProcessButton?.addEventListener('click', openTextProcessModal);
+textProcessSelectedOnlyCb?.addEventListener('change', () => {
+  textProcessScope = textProcessSelectedOnlyCb.checked
+    ? [...textProcessSelectionSnapshot] : null;
+  refreshTextProcessScopeInfo();
+  renderTextProcessPreview();
+});
+[textProcessTrim, textProcessCapitalize, textProcessPrefix,
+  textProcessSuffix, textProcessStripMarkdown].forEach((input) => {
+  input?.addEventListener('change', () => {
+    refreshTextProcessInputState();
+    renderTextProcessPreview();
+  });
+});
+[textProcessPrefixInput, textProcessSuffixInput].forEach((input) => {
+  input?.addEventListener('input', renderTextProcessPreview);
+});
+document.getElementById('text-process-cancel')?.addEventListener('click', closeTextProcessModal);
+textProcessModal?.addEventListener('click', (event) => {
+  if (event.target === textProcessModal) closeTextProcessModal();
+});
+textProcessConfirm?.addEventListener('click', () => {
+  const options = getTextProcessOptions();
+  const result = {
+    rows: buildTextProcessPreview(textProcessTargets(), options),
+  };
+  result.changedCount = result.rows.filter((row) => row.changed).length;
+  if (!result.changedCount) {
+    flashHint('当前文本处理对于选中的字幕没有任何影响，未作改动', 'invalid');
+    return;
+  }
+  let mainDraftTexts = null;
+  const extensionDrafts = new Map();
+  result.rows.filter((row) => row.changed).forEach((row) => {
+    if (row.kind === 'extension') {
+      const track = getExtensionTrack(row.trackId);
+      if (!track) return;
+      const draft = extensionDrafts.get(track.id) || {
+        track,
+        texts: track.segments.map((segment) => String(segment?.text || '')),
+      };
+      draft.texts[row.index] = row.after;
+      extensionDrafts.set(track.id, draft);
+      return;
+    }
+    if (!mainDraftTexts) {
+      mainDraftTexts = DATA.segments.map((segment) => String(segment?.text || ''));
+    }
+    mainDraftTexts[row.index] = row.after;
+  });
+  const nextMainSegments = mainDraftTexts
+    ? window.AsrEditorUtils.applyTimedTextEdit(DATA.segments, mainDraftTexts)
+    : null;
+  const nextExtensionSegments = [];
+  for (const draft of extensionDrafts.values()) {
+    const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(draft.track.segments, draft.texts);
+    if (!nextSegments) {
+      flashHint('无法应用文本处理：字幕行结构发生了变化', 'warning');
+      return;
+    }
+    nextExtensionSegments.push({ track: draft.track, segments: nextSegments });
+  }
+  if (mainDraftTexts && !nextMainSegments) {
+    flashHint('无法应用文本处理：字幕行结构发生了变化', 'warning');
+    return;
+  }
+  pushUndo('文本处理');
+  if (nextMainSegments) {
+    DATA.segments.splice(0, DATA.segments.length, ...nextMainSegments);
+    markMainSegmentsDirty(DATA.segments);
+  }
+  nextExtensionSegments.forEach(({ track, segments }) => {
+    track.segments.splice(0, track.segments.length, ...segments);
+    track.segments.forEach((segment) => { segment._dirty = true; });
+  });
+  if (nextExtensionSegments.length) markMultiSubtitleDirty();
+  syncBindingOffsets();
+  scheduleAutoSaveFlush();
+  closeTextProcessModal();
+  renderAll({ waveform: 'overlay' });
+  update();
+  updateUndoRedoButtons();
+  flashHint(`已应用文本处理：${result.changedCount} 条字幕`, 'success');
+});
+
+// === 纯文本编辑（支持调整字幕行结构的 MVP） ===
+function timedTextEditSegments(kind) {
+  return kind === 'extension' ? getActiveExtensionTrack()?.segments || [] : DATA.segments;
+}
+
+function timedTextEditSourceSelection(kind, showDisabled = false) {
+  const allSegments = timedTextEditSegments(kind);
+  const sourceSegmentIndexes = allSegments
+    .map((segment, index) => ({ segment, index }))
+    .filter(({ segment }) => showDisabled || segment?.disabled !== true)
+    .map(({ index }) => index);
+  return {
+    allSegments,
+    sourceSegmentIndexes,
+    sourceSegments: sourceSegmentIndexes.map((index) => allSegments[index]),
+  };
+}
+
+function currentTimedTextEditKind() {
+  const panelTarget = getCurrentCuePanelTarget?.();
+  if (panelTarget?.kind === 'extension' && panelTarget.track?.segments?.length) return 'extension';
+  if (selectedIdxs.size === 0 && selectedExtensionIdxs.size > 0
+      && getActiveExtensionTrack()?.segments?.length) return 'extension';
+  return 'main';
+}
+
+function timedTextEditTrackLabel(kind) {
+  if (kind !== 'extension') return '主字幕';
+  const track = getActiveExtensionTrack();
+  return track?.name ? `副字幕（${track.name}）` : '副字幕';
+}
+
+function appendTimedTextEditStat(container, label, value, filterKey = null, count = 0) {
+  const row = document.createElement('div');
+  row.className = 'timed-text-edit-stat-row';
+  const labelEl = document.createElement('span');
+  labelEl.textContent = label;
+  const valueEl = filterKey && count > 0 ? document.createElement('button') : document.createElement('strong');
+  if (filterKey && count > 0) {
+    valueEl.type = 'button';
+    valueEl.className = 'timed-text-edit-stat-filter';
+    valueEl.classList.toggle('active', timedTextEditDraft?.filter === filterKey);
+    valueEl.addEventListener('click', () => {
+      if (!timedTextEditDraft) return;
+      timedTextEditDraft.filter = filterKey;
+      timedTextEditChangeDetails.open = true;
+      flushTimedTextEditReport();
+    });
+  }
+  valueEl.textContent = value;
+  row.append(labelEl, valueEl);
+  container.appendChild(row);
+}
+
+function appendTimedTextEditDivider(container) {
+  const divider = document.createElement('div');
+  divider.className = 'timed-text-edit-report-divider';
+  container.appendChild(divider);
+}
+
+function appendTimedTextEditDiffLine(container, label, parts, className) {
+  const line = document.createElement('div');
+  line.className = `timed-text-edit-diff-line ${className}`;
+  const labelEl = document.createElement('span');
+  labelEl.className = 'timed-text-edit-diff-label';
+  labelEl.textContent = label;
+  line.appendChild(labelEl);
+  (parts || []).forEach((part) => {
+    if (!part?.text) return;
+    const text = document.createElement('span');
+    text.className = `timed-text-edit-diff-part ${part.kind || 'equal'}`;
+    text.textContent = part.text;
+    line.appendChild(text);
+  });
+  container.appendChild(line);
+}
+
+function renderTimedTextEditRowDiff(rowElement, reportRow) {
+  const diffElement = rowElement.querySelector('.timed-text-edit-row-diff');
+  if (!diffElement) return;
+  diffElement.replaceChildren();
+  diffElement.hidden = !reportRow.changed && !reportRow.timingChanged && !reportRow.timingEstimated;
+  if (reportRow.changed) {
+    appendTimedTextEditDiffLine(diffElement, '修改前：', reportRow.diff.before, 'before');
+    appendTimedTextEditDiffLine(diffElement, '修改后：', reportRow.diff.after, 'after');
+  }
+  if (reportRow.timingChanged) {
+    const timing = document.createElement('div');
+    timing.className = 'timed-text-edit-timing-change';
+    timing.textContent = `时间范围：${fmtSrtTime(reportRow.beforeStart)} – ${fmtSrtTime(reportRow.beforeEnd)} → ${fmtSrtTime(reportRow.afterStart)} – ${fmtSrtTime(reportRow.afterEnd)}`;
+    diffElement.appendChild(timing);
+  }
+  if (reportRow.timingEstimated) {
+    const estimated = document.createElement('div');
+    estimated.className = 'timed-text-edit-estimated-timing';
+    estimated.textContent = '时间范围为自动估算（按原字幕范围/文字长度分配）';
+    diffElement.appendChild(estimated);
+  }
+  if (reportRow.deleted) {
+    const deleted = document.createElement('div');
+    deleted.className = 'timed-text-edit-deleted-label';
+    deleted.textContent = '整句删除（时间码已转移到其他字幕）';
+    diffElement.appendChild(deleted);
+  }
+}
+
+function timedTextEditMappingLabel(status) {
+  return {
+    full: '完整映射',
+    partial: '部分映射',
+    lost: '时间码丢失',
+    unavailable: '原本没有字词时间码',
+    boundary: '边界移动（时间码已转移）',
+    structure: '结构调整（时间码已重新分配）',
+    deleted: '整句删除（时间码已转移）',
+  }[status] || '未分析';
+}
+
+function timedTextEditCoverageClass(percent) {
+  if (percent <= 0) return 'none';
+  return percent > 90 ? 'good' : 'partial';
+}
+
+function renderTimedTextEditMetric(element, percent, kind, title = '') {
+  if (!element) return;
+  const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  const isReuse = kind === 'reuse';
+  element.textContent = `${isReuse ? '♻️' : '⌚️'}${safePercent}%`;
+  element.className = `timed-text-edit-${isReuse ? 'reuse' : 'coverage'} ${timedTextEditCoverageClass(safePercent)}`;
+  element.title = title || `${isReuse ? '原始时间码复用率' : '有效字词时间码覆盖率'}：${safePercent}%`;
+}
+
+function renderTimedTextEditChangeList(report) {
+  const wasOpen = timedTextEditChangeDetails.open;
+  timedTextEditChangeList.replaceChildren();
+  const filter = timedTextEditDraft?.filter || null;
+  const deletedRows = report.structure?.valid
+    ? (report.rows || [])
+      .filter((row) => row.deleted)
+      .map((row) => ({ ...row, mappingStatus: 'deleted' }))
+    : [];
+  const displayRows = report.structure?.valid && report.outputRows?.length
+    ? [...report.outputRows, ...deletedRows]
+    : report.changedRows;
+  const rows = filter === 'unchanged'
+    ? []
+    : displayRows.filter((row) => row.changed && (!filter || row.mappingStatus === filter));
+  if (!rows.length) {
+    const empty = document.createElement('div');
+    empty.className = 'modal-hint';
+    empty.textContent = filter ? '当前筛选没有修改内容。' : '还没有修改内容。';
+    timedTextEditChangeList.appendChild(empty);
+    timedTextEditChangeDetails.open = Boolean(filter && filter !== 'unchanged');
+    return;
+  }
+  rows.forEach((row) => {
+    const item = document.createElement('div');
+    item.className = `timed-text-edit-change-item${row.deleted ? ' deleted' : ''}`;
+    const title = document.createElement('div');
+    title.className = 'timed-text-edit-change-item-title';
+    title.textContent = `第 ${row.index + 1} 条 · ${timedTextEditMappingLabel(row.mappingStatus)}`;
+    item.appendChild(title);
+    appendTimedTextEditDiffLine(item, '前：', row.diff.before, 'before');
+    appendTimedTextEditDiffLine(item, '后：', row.diff.after, 'after');
+    if (row.timingChanged) {
+      const timing = document.createElement('div');
+      timing.className = 'timed-text-edit-timing-change';
+      timing.textContent = `时间范围：${fmtSrtTime(row.beforeStart)} – ${fmtSrtTime(row.beforeEnd)} → ${fmtSrtTime(row.afterStart)} – ${fmtSrtTime(row.afterEnd)}`;
+      item.appendChild(timing);
+    }
+    if (row.timingEstimated) {
+      const estimated = document.createElement('div');
+      estimated.className = 'timed-text-edit-estimated-timing';
+      estimated.textContent = '时间范围为自动估算（按原字幕范围/文字长度分配）';
+      item.appendChild(estimated);
+    }
+    if (row.deleted) {
+      const deleted = document.createElement('div');
+      deleted.className = 'timed-text-edit-deleted-label';
+      deleted.textContent = '整句删除（时间码已转移到其他字幕）';
+      item.appendChild(deleted);
+    }
+    timedTextEditChangeList.appendChild(item);
+  });
+  timedTextEditChangeDetails.open = wasOpen;
+}
+
+function renderTimedTextEditRows() {
+  timedTextEditRows.replaceChildren();
+  if (!timedTextEditDraft) return;
+  const report = timedTextEditDraft.report;
+  const rowReports = timedTextEditDraftRowReports(report, timedTextEditDraft.texts);
+  timedTextEditDraft.texts.forEach((textValue, index) => {
+    const rowReport = rowReports[index];
+    const segment = report?.structure?.valid && Number.isInteger(rowReport?.draftIndex)
+      ? report.previewSegments[rowReport.index]
+      : (!report?.structure?.valid && timedTextEditDraft.texts.length === timedTextEditDraft.sourceSegments.length
+        ? timedTextEditDraft.sourceSegments[index] : null);
+    const rowSourceIndexes = Array.isArray(rowReport?.sourceIndexes)
+      ? rowReport.sourceIndexes : [index];
+    const rowIncludesDisabled = rowSourceIndexes.some((sourceIndex) => (
+      timedTextEditDraft.sourceSegments[sourceIndex]?.disabled === true
+    ));
+    const row = document.createElement('div');
+    row.className = `timed-text-edit-row${rowReport?.deleted ? ' deleted' : ''}${rowIncludesDisabled ? ' disabled' : ''}`;
+    if (rowIncludesDisabled) row.title = '已禁用字幕';
+    row.dataset.index = String(index);
+    const meta = document.createElement('div');
+    meta.className = 'timed-text-edit-row-meta';
+    const number = document.createElement('strong');
+    number.textContent = String(index + 1);
+    const time = document.createElement('span');
+    time.className = 'timed-text-edit-row-time';
+    time.textContent = segment
+      ? `${fmtSrtTime(segment.start)}\n${fmtSrtTime(segment.end)}` : '—\n—';
+    const coverage = document.createElement('span');
+    const coverageData = window.AsrEditorUtils.timedTextItemCoverage(
+      textValue, segment?.items,
+    );
+    const reuseData = window.AsrEditorUtils.timedTextItemReuse(
+      textValue, segment?.items, textValue, segment?.items, 'full',
+    );
+    renderTimedTextEditMetric(
+      coverage,
+      coverageData.percent,
+      'coverage',
+      segment ? `有效字词时间码覆盖率：${coverageData.coveredCharacters}/${coverageData.totalCharacters}` : '等待可靠时间码映射',
+    );
+    const reuse = document.createElement('span');
+    renderTimedTextEditMetric(
+      reuse,
+      reuseData.percent,
+      'reuse',
+      segment ? `原始时间码复用率：${reuseData.reusedCharacters}/${reuseData.totalCharacters}` : '等待原始时间码映射',
+    );
+    const badges = document.createElement('span');
+    badges.className = 'timed-text-edit-time-badges';
+    badges.append(coverage, reuse);
+    const timeLine = document.createElement('div');
+    timeLine.className = 'timed-text-edit-row-time-line';
+    timeLine.append(time, badges);
+    meta.append(number, timeLine);
+    const main = document.createElement('div');
+    main.className = 'timed-text-edit-row-main';
+    const textarea = document.createElement('textarea');
+    textarea.dataset.index = String(index);
+    textarea.value = textValue;
+    textarea.rows = Math.min(5, Math.max(2, String(textValue || '').split('\n').length));
+    textarea.spellcheck = false;
+    textarea.setAttribute('aria-label', `第 ${index + 1} 条字幕文本`);
+    const diff = document.createElement('div');
+    diff.className = 'timed-text-edit-row-diff';
+    diff.hidden = true;
+    main.append(textarea, diff);
+    row.append(meta, main);
+    timedTextEditRows.appendChild(row);
+  });
+}
+
+function timedTextEditCanUseSingleView() {
+  return Boolean(timedTextEditDraft?.sourceSegments.every((segment, index) => {
+    return !String(segment?.text || '').includes('\n');
+  }));
+}
+
+function renderTimedTextEditView() {
+  if (!timedTextEditDraft) return;
+  const canUseSingle = timedTextEditCanUseSingleView();
+  const singleOption = timedTextEditView?.querySelector('[data-view="single"]');
+  if (singleOption) singleOption.disabled = !canUseSingle;
+  if (!canUseSingle && timedTextEditDraft.view === 'single') timedTextEditDraft.view = 'rows';
+  const single = timedTextEditDraft.view === 'single' && canUseSingle;
+  timedTextEditView?.querySelectorAll('[data-view]').forEach((button) => {
+    const active = button.dataset.view === (single ? 'single' : 'rows');
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  timedTextEditRows.hidden = single;
+  timedTextEditCharcountThresholdControl.hidden = !single;
+  timedTextEditSingleEditor.hidden = !single;
+  timedTextEditSingleTextarea.hidden = !single;
+  timedTextEditSingleHint.hidden = !single || !timedTextEditDraft.singleLineError;
+  if (single) {
+    syncCharCountThresholdInputs();
+    timedTextEditSingleTextarea.value = timedTextEditDraft.singleText;
+    updateTimedTextEditSingleGuide();
+  }
+}
+
+function timedTextEditRowFilterKey(row) {
+  return row.changed ? row.mappingStatus : 'unchanged';
+}
+
+function timedTextEditDraftRowReports(report, texts) {
+  const source = Array.isArray(texts) ? texts : [];
+  if (!report?.structure?.valid) {
+    return source.map((_, index) => report?.rows?.[index] || null);
+  }
+  const outputByDraftIndex = new Map(
+    (report.outputRows || [])
+      .filter((row) => Number.isInteger(row?.draftIndex))
+      .map((row) => [row.draftIndex, row]),
+  );
+  const deletedRows = (report.rows || []).filter((row) => row?.deleted);
+  let deletedIndex = 0;
+  return source.map((text, index) => {
+    const output = outputByDraftIndex.get(index);
+    if (output) return output;
+    if (!String(text == null ? '' : text).trim()) return deletedRows[deletedIndex++] || null;
+    return null;
+  });
+}
+
+function normalizeTimedTextEditDraftLines(texts) {
+  const lines = (Array.isArray(texts) ? texts : [])
+    .map((text) => String(text == null ? '' : text));
+  // 整体编辑末尾的换行只是输入习惯，不额外创建一条空字幕；真正清空的
+  // 中间行仍保留到预览中，并在应用时按删除字幕处理。
+  while (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+  return lines.length ? lines : [''];
+}
+
+function syncTimedTextEditDraftFromDom() {
+  if (!timedTextEditDraft || timedTextEditDraft.view !== 'single'
+      || !timedTextEditSingleTextarea) return;
+  const normalized = timedTextEditSingleTextarea.value.replace(/\r\n?/g, '\n');
+  timedTextEditDraft.texts = normalizeTimedTextEditDraftLines(normalized.split('\n'));
+  timedTextEditDraft.singleText = timedTextEditDraft.texts.join('\n');
+  timedTextEditDraft.singleLineError = '';
+}
+
+function cancelTimedTextEditReport() {
+  if (timedTextEditReportTimer === null) return;
+  clearTimeout(timedTextEditReportTimer);
+  timedTextEditReportTimer = null;
+}
+
+function flushTimedTextEditReport() {
+  cancelTimedTextEditReport();
+  updateTimedTextEditReport();
+}
+
+function scheduleTimedTextEditReport() {
+  cancelTimedTextEditReport();
+  timedTextEditReportTimer = setTimeout(() => {
+    timedTextEditReportTimer = null;
+    updateTimedTextEditReport();
+  }, TIMED_TEXT_EDIT_REPORT_DEBOUNCE_MS);
+}
+
+function updateTimedTextEditReport() {
+  if (!timedTextEditDraft) return;
+  const report = window.AsrEditorUtils.buildTimedTextEditReport(
+    timedTextEditDraft.sourceSegments,
+    timedTextEditDraft.texts,
+  );
+  timedTextEditDraft.report = report;
+  const { stats } = report;
+  if (timedTextEditRows.childElementCount !== timedTextEditDraft.texts.length) {
+    renderTimedTextEditRows();
+  }
+  timedTextEditReportSummary.replaceChildren();
+  appendTimedTextEditStat(
+    timedTextEditReportSummary,
+    '字幕行',
+    report.structure?.valid ? `${stats.totalSegments} → ${report.previewSegments.length} 条` : `${stats.totalSegments} 条`,
+  );
+  appendTimedTextEditStat(
+    timedTextEditReportSummary,
+    '修改内容',
+    `${stats.changedSegments} 条（未修改 ${stats.unchangedSegments} 条）`,
+  );
+  appendTimedTextEditStat(
+    timedTextEditReportSummary,
+    '字符变化',
+    `+${stats.addedCharacters} / -${stats.removedCharacters}`,
+  );
+
+  timedTextEditReportMapping.replaceChildren();
+  appendTimedTextEditDivider(timedTextEditReportMapping);
+  appendTimedTextEditStat(timedTextEditReportMapping, '未修改（原样保留）', `${stats.unchangedSegments} 条`, 'unchanged', stats.unchangedSegments);
+  appendTimedTextEditStat(timedTextEditReportMapping, '修改后完整映射', `${stats.fullMappedCues} 条`, 'full', stats.fullMappedCues);
+  appendTimedTextEditStat(timedTextEditReportMapping, '部分保留', `${stats.partialMappedCues} 条`, 'partial', stats.partialMappedCues);
+  appendTimedTextEditStat(timedTextEditReportMapping, '边界移动（转移时间码）', `${stats.boundaryMappedCues} 条`, 'boundary', stats.boundaryMappedCues);
+  if (stats.structureMappedCues > 0) {
+    appendTimedTextEditStat(
+      timedTextEditReportMapping,
+      '结构调整（重新分配时间码）',
+      `${stats.structureMappedCues} 条`,
+      'structure',
+      stats.structureMappedCues,
+    );
+  }
+  appendTimedTextEditStat(timedTextEditReportMapping, '时间码丢失', `${stats.lostMappedCues} 条`, 'lost', stats.lostMappedCues);
+  appendTimedTextEditStat(timedTextEditReportMapping, '原本没有字词码', `${stats.unavailableMappedCues} 条`, 'unavailable', stats.unavailableMappedCues);
+  timedTextEditShowAll.hidden = !timedTextEditDraft.filter;
+  timedTextEditShowAll.textContent = '显示全部';
+
+  timedTextEditReportHint.classList.remove('warning');
+  if (report.structure && !report.structure.valid && report.structure.error) {
+    timedTextEditReportHint.classList.add('warning');
+    timedTextEditReportHint.textContent = report.structure.error;
+  } else if (stats.estimatedTimingCues) {
+    timedTextEditReportHint.classList.add('warning');
+    timedTextEditReportHint.textContent = `有 ${stats.estimatedTimingCues} 条字幕缺少可复用的字词时间码，应用后将按原字幕范围/文字长度自动估算时间；不会伪造精确字词时间码。`;
+  } else if (!stats.changedSegments) {
+    timedTextEditReportHint.textContent = '修改后会保持当前字幕段的开始、结束时间不变。';
+  } else if (stats.lostMappedCues) {
+    timedTextEditReportHint.classList.add('warning');
+    timedTextEditReportHint.textContent = '部分字幕无法可靠映射原字词时间码；应用后只保留字幕段整体时间范围。';
+  } else if (stats.partialMappedCues) {
+    timedTextEditReportHint.classList.add('warning');
+    timedTextEditReportHint.textContent = '修改范围内的字词会合并为较粗的时间码，未受影响的字词仍会保留。';
+  } else if (stats.boundaryMoves) {
+    timedTextEditReportHint.textContent = '检测到相邻字幕之间的开头/结尾移动；对应字词时间码会一起转移，并更新字幕段范围。';
+  } else if (stats.structureMappedCues) {
+    timedTextEditReportHint.textContent = '检测到字幕行结构变化；应用后会按字词时间码拆分、合并或删除字幕行，并解除受影响的多字幕绑定。';
+  } else {
+    timedTextEditReportHint.textContent = '当前修改可以完整复用原字词时间码；字幕段整体时间范围不会改变。';
+  }
+
+  const draftRowReports = timedTextEditDraftRowReports(report, timedTextEditDraft.texts);
+  draftRowReports.forEach((rowReport, index) => {
+    const rowElement = timedTextEditRows.querySelector(`.timed-text-edit-row[data-index="${index}"]`);
+    if (!rowElement) return;
+    rowElement.classList.toggle('changed', Boolean(rowReport?.changed));
+    rowElement.classList.toggle('deleted', Boolean(rowReport?.deleted));
+    rowElement.hidden = Boolean(timedTextEditDraft.filter)
+      && (!rowReport || timedTextEditRowFilterKey(rowReport) !== timedTextEditDraft.filter);
+    if (rowReport) renderTimedTextEditRowDiff(rowElement, rowReport);
+  });
+  timedTextEditDraft.texts.forEach((text, index) => {
+    const rowElement = timedTextEditRows.querySelector(`.timed-text-edit-row[data-index="${index}"]`);
+    const coverage = rowElement?.querySelector('.timed-text-edit-coverage');
+    const reuse = rowElement?.querySelector('.timed-text-edit-reuse');
+    const rowReport = draftRowReports[index];
+    const preview = report.structure?.valid && Number.isInteger(rowReport?.draftIndex)
+      ? report.previewSegments[rowReport.index]
+      : (!report.structure?.valid ? report.rows[index]?.items : null);
+    const items = report.structure?.valid ? preview?.items : preview;
+    const coverageData = rowReport?.itemCoverageData
+      || window.AsrEditorUtils.timedTextItemCoverage(text, items);
+    const reuseData = rowReport?.itemReuseData || {
+      percent: 0,
+      reusedCharacters: 0,
+      totalCharacters: Array.from(String(text == null ? '' : text)).length,
+    };
+    renderTimedTextEditMetric(
+      coverage,
+      coverageData.percent,
+      'coverage',
+      `有效字词时间码覆盖率：${coverageData.coveredCharacters}/${coverageData.totalCharacters}`,
+    );
+    renderTimedTextEditMetric(
+      reuse,
+      reuseData.percent,
+      'reuse',
+      `原始时间码复用率：${reuseData.reusedCharacters}/${reuseData.totalCharacters}`,
+    );
+  });
+  renderTimedTextEditChangeList(report);
+  const singleHint = report.structure?.valid ? '' : (report.structure?.error || timedTextEditDraft.singleLineError || '');
+  timedTextEditSingleHint.textContent = singleHint;
+  timedTextEditSingleHint.hidden = timedTextEditDraft.view !== 'single' || !singleHint;
+  if (!timedTextEditDraft.sourceSegments.length && timedTextEditDraft.allSourceSegments.length) {
+    timedTextEditReportHint.textContent = '当前没有显示中的字幕；打开“显示已禁用字幕”后才能编辑。';
+  }
+  timedTextEditApply.disabled = !report.valid || stats.changedSegments === 0;
+}
+
+function refreshTimedTextEditTrackOptions(kind = currentTimedTextEditKind()) {
+  const multiSubtitleEnabled = getMultiSubtitleState().enabled === true;
+  if (timedTextEditTrackControl) timedTextEditTrackControl.hidden = !multiSubtitleEnabled;
+  const extensionAvailable = multiSubtitleEnabled && Boolean(getActiveExtensionTrack()?.segments?.length);
+  const extensionOption = timedTextEditTrack.querySelector('option[value="extension"]');
+  if (extensionOption) extensionOption.hidden = !extensionAvailable;
+  const nextKind = kind === 'extension' && extensionAvailable ? 'extension' : 'main';
+  timedTextEditTrack.value = nextKind;
+  return nextKind;
+}
+
+function loadTimedTextEditTrack(kind, { showDisabled = false } = {}) {
+  cancelTimedTextEditReport();
+  const nextKind = refreshTimedTextEditTrackOptions(kind);
+  const selection = timedTextEditSourceSelection(nextKind, showDisabled);
+  const sourceSegments = selection.sourceSegments;
+  const hiddenDisabledCount = selection.allSegments.length - sourceSegments.length;
+  timedTextEditDraft = {
+    kind: nextKind,
+    trackId: nextKind === 'extension' ? getActiveExtensionTrack()?.id || null : null,
+    showDisabled: Boolean(showDisabled),
+    sourceSegmentIndexes: selection.sourceSegmentIndexes,
+    allSourceSegments: JSON.parse(JSON.stringify(selection.allSegments || [])),
+    sourceSegments: JSON.parse(JSON.stringify(sourceSegments || [])),
+    texts: (sourceSegments || []).map((segment) => String(segment?.text || '')),
+    view: 'rows',
+    filter: null,
+    singleText: (sourceSegments || []).map((segment) => String(segment?.text || '')).join('\n'),
+    singleLineError: '',
+    report: null,
+  };
+  if (timedTextEditShowDisabledToggle) timedTextEditShowDisabledToggle.checked = Boolean(showDisabled);
+  timedTextEditSourceInfo.textContent = `${timedTextEditTrackLabel(nextKind)} · ${sourceSegments.length} 条${hiddenDisabledCount ? `（已隐藏 ${hiddenDisabledCount} 条禁用字幕）` : ''}`;
+  renderTimedTextEditRows();
+  renderTimedTextEditView();
+  updateTimedTextEditReport();
+}
+
+function refreshTimedTextEditButton() {
+  if (!timedTextEditButton) return;
+  const hasMain = DATA.segments.length > 0;
+  const hasExtension = Boolean(getActiveExtensionTrack()?.segments?.length);
+  timedTextEditButton.disabled = !hasMain && !hasExtension;
+}
+
+function closeTimedTextEdit() {
+  cancelTimedTextEditReport();
+  timedTextEditModal.classList.remove('show');
+  timedTextEditDraft = null;
+  timedTextEditRows.replaceChildren();
+  timedTextEditReturnFocus?.focus();
+  timedTextEditReturnFocus = null;
+}
+
+function timedTextEditHasUnappliedChanges() {
+  return Boolean(timedTextEditDraft?.report?.stats.changedSegments || timedTextEditDraft?.singleLineError);
+}
+
+function mergeTimedTextEditSegmentsWithHidden(
+  allSourceSegments,
+  sourceSegmentIndexes,
+  nextSegments,
+  report,
+) {
+  const all = Array.isArray(allSourceSegments) ? allSourceSegments : [];
+  const visibleIndexes = Array.isArray(sourceSegmentIndexes) ? sourceSegmentIndexes : [];
+  const outputBySourceIndex = new Map();
+  const unassigned = [];
+  const structural = report?.structure?.valid === true;
+  const sourceIndexById = new Map();
+  visibleIndexes.forEach((sourceIndex) => {
+    const id = all[sourceIndex]?.id;
+    if (id) sourceIndexById.set(id, sourceIndex);
+  });
+  const fixedOutputSourceIndexes = structural ? [] : (report?.rows || [])
+    .map((row, index) => (row?.deleted ? -1 : index))
+    .filter((index) => index >= 0);
+  (nextSegments || []).forEach((segment, outputIndex) => {
+    const sourceIndexes = structural
+      ? report.structure.outputMeta?.[outputIndex]?.sourceIndexes
+      : null;
+    let sourceIndex = null;
+    if (segment?.id && sourceIndexById.has(segment.id)) {
+      sourceIndex = sourceIndexById.get(segment.id);
+    } else {
+      const visibleIndex = Number.isInteger(sourceIndexes?.[0])
+        ? sourceIndexes[0] : (fixedOutputSourceIndexes[outputIndex] ?? outputIndex);
+      sourceIndex = visibleIndexes[visibleIndex];
+    }
+    if (!Number.isInteger(sourceIndex)) {
+      unassigned.push(segment);
+      return;
+    }
+    const outputs = outputBySourceIndex.get(sourceIndex) || [];
+    outputs.push(segment);
+    outputBySourceIndex.set(sourceIndex, outputs);
+  });
+
+  const visibleSet = new Set(visibleIndexes);
+  const merged = [];
+  all.forEach((segment, sourceIndex) => {
+    if (!visibleSet.has(sourceIndex)) {
+      merged.push(JSON.parse(JSON.stringify(segment)));
+      return;
+    }
+    (outputBySourceIndex.get(sourceIndex) || []).forEach((output) => merged.push(output));
+  });
+  // 正常的结构计划每个输出都应能追溯到至少一个可见来源行；保留兜底，
+  // 避免异常数据被静默丢掉，且不影响默认的可见字幕编辑路径。
+  unassigned.forEach((segment) => merged.push(segment));
+  return merged;
+}
+
+function applyTimedTextEditSegments(
+  kind,
+  sourceSegments,
+  targetSegments,
+  nextSegments,
+  report,
+  texts,
+  sourceSegmentIndexes = null,
+) {
+  const visibleSourceIndexes = Array.isArray(sourceSegmentIndexes)
+    ? sourceSegmentIndexes : (sourceSegments || []).map((_, index) => index);
+  const filtered = visibleSourceIndexes.length !== targetSegments.length
+    || visibleSourceIndexes.some((sourceIndex, index) => sourceIndex !== index);
+  const allSourceSegments = filtered ? targetSegments : sourceSegments;
+  const publishedSegments = filtered
+    ? mergeTimedTextEditSegmentsWithHidden(
+      allSourceSegments,
+      visibleSourceIndexes,
+      nextSegments,
+      report,
+    )
+    : nextSegments;
+  const nextIds = new Set((nextSegments || []).map((segment) => segment?.id).filter(Boolean));
+  const removedVisibleIndexes = new Set((sourceSegments || []).map((segment, index) => {
+    if (segment?.id) return nextIds.has(segment.id) ? -1 : index;
+    const row = report?.rows?.[index];
+    return row?.changed && !String(row.after || '') ? index : -1;
+  }).filter((index) => index >= 0));
+  (report?.structure?.removedSourceIndexes || []).forEach((index) => removedVisibleIndexes.add(index));
+  const removedIndexes = new Set([...removedVisibleIndexes]
+    .map((index) => visibleSourceIndexes[index])
+    .filter((index) => Number.isInteger(index)));
+  const structureChanged = Boolean(report?.structure?.valid
+    && (report.structure.affectedSourceIndexes?.length || nextSegments.length !== sourceSegments.length));
+  if (!removedIndexes.size && !structureChanged) {
+    targetSegments.splice(0, targetSegments.length, ...publishedSegments);
+    return 0;
+  }
+
+  const removedIndexList = [...removedIndexes].sort((a, b) => a - b);
+  const removeSet = new Set(removedIndexList);
+  const removedIds = removedIndexList.map((index) => allSourceSegments[index]?.id).filter(Boolean);
+  const affectedIndexes = new Set((report?.structure?.affectedSourceIndexes || [])
+    .map((index) => visibleSourceIndexes[index])
+    .filter((index) => Number.isInteger(index)));
+  removedIndexList.forEach((index) => affectedIndexes.add(index));
+  const affectedIds = [...affectedIndexes].map((index) => allSourceSegments[index]?.id).filter(Boolean);
+  const pairedExtensionIndices = new Set();
+  let extensionTrack = null;
+  let bindingsChanged = false;
+
+  if (kind === 'extension') {
+    const multi = getMultiSubtitleState();
+    const beforeBindingCount = (multi.bindings || []).length;
+    removeBindingsForSegmentIds([], affectedIds);
+    bindingsChanged = (multi.bindings || []).length !== beforeBindingCount;
+  } else {
+    const multi = getMultiSubtitleState();
+    extensionTrack = multiSubtitleVisible() && removedIds.length ? getActiveExtensionTrack() : null;
+    if (extensionTrack) {
+      (multi.bindings || []).forEach((binding) => {
+        if (!binding.main_segment_ids?.some((id) => removedIds.includes(id))) return;
+        (binding.extension_segment_ids || []).forEach((id) => {
+          const index = extensionTrack.segments.findIndex((segment) => segment?.id === id);
+          if (index >= 0) pairedExtensionIndices.add(index);
+        });
+      });
+    }
+    const beforeBindingCount = (multi.bindings || []).length;
+    removeBindingsForSegmentIds(
+      affectedIds,
+      extensionTrack
+        ? [...pairedExtensionIndices].map((index) => extensionTrack.segments[index]?.id)
+        : [],
+    );
+    bindingsChanged = (multi.bindings || []).length !== beforeBindingCount;
+
+    if (removedIndexList.length) {
+      // 与删除字幕相同的分组语义：来源行离开后，颜色 / 表情包组在切点处拆开。
+      splitGroupsAtCutPoints(removeSet, 'sticker', 'sticker_ref');
+      splitGroupsAtCutPoints(removeSet, 'color', 'color_ref');
+      DATA.segments.forEach((segment, index) => {
+        if (removeSet.has(index)) return;
+        if (segment.sticker_ref && removeSet.has(segment.sticker_ref.headIdx)) {
+          segment.sticker_ref = null;
+        }
+        if (segment.color_ref && removeSet.has(segment.color_ref.headIdx)) {
+          segment.color_ref = null;
+        }
+      });
+    }
+  }
+
+  // 结构发生变化后，旧下标选中态和字幕编辑面板都必须失效，避免渲染后指向相邻字幕。
+  clearSelection({ silent: true });
+  currentCuePanelKind = 'main';
+  currentCuePanelIdx = -1;
+  currentCuePanelTrackId = null;
+  lastClickedIdx = -1;
+  lastClickedExtensionIdx = -1;
+  lastActive = -1;
+  targetSegments.splice(0, targetSegments.length, ...publishedSegments);
+
+  if (kind !== 'extension') {
+    const shiftHeadIdx = (ref) => {
+      let shift = 0;
+      for (const removedIndex of removedIndexList) {
+        if (removedIndex < ref.headIdx) shift += 1;
+        else break;
+      }
+      if (shift) ref.headIdx -= shift;
+    };
+    DATA.segments.forEach((segment) => {
+      if (segment.sticker_ref) shiftHeadIdx(segment.sticker_ref);
+      if (segment.color_ref) shiftHeadIdx(segment.color_ref);
+    });
+    window.AsrEditorUtils.repairGroupReferenceIndices(DATA.segments);
+    if (extensionTrack && pairedExtensionIndices.size) {
+      [...pairedExtensionIndices].sort((a, b) => b - a)
+        .forEach((index) => extensionTrack.segments.splice(index, 1));
+    }
+  }
+  if (bindingsChanged || pairedExtensionIndices.size) markMultiSubtitleDirty();
+  return removedIndexes.length;
+}
+
+function requestCloseTimedTextEdit() {
+  if (timedTextEditHasUnappliedChanges()
+      && !window.confirm('当前有未应用的文本修改，确定关闭编辑窗口吗？')) return false;
+  closeTimedTextEdit();
+  return true;
+}
+
+function openTimedTextEdit() {
+  if (!DATA.segments.length && !getActiveExtensionTrack()?.segments?.length) {
+    flashHint('当前没有可编辑的字幕', 'invalid');
+    return;
+  }
+  if (editingState) finishEdit(true);
+  timedTextEditReturnFocus = document.activeElement instanceof HTMLElement
+    ? document.activeElement : null;
+  loadTimedTextEditTrack(currentTimedTextEditKind());
+  timedTextEditModal.classList.add('show');
+  setTimeout(() => (timedTextEditDraft?.view === 'single'
+    ? timedTextEditSingleTextarea : timedTextEditRows.querySelector('textarea'))?.focus(), 50);
+}
+
+timedTextEditButton?.addEventListener('click', openTimedTextEdit);
+timedTextEditRows?.addEventListener('input', (event) => {
+  const textarea = event.target.closest?.('textarea[data-index]');
+  if (!textarea || !timedTextEditDraft) return;
+  const index = Number(textarea.dataset.index);
+  if (!Number.isInteger(index) || index < 0 || index >= timedTextEditDraft.texts.length) return;
+  const replacementLines = textarea.value.replace(/\r\n?/g, '\n').split('\n');
+  timedTextEditDraft.texts.splice(index, 1, ...replacementLines);
+  timedTextEditDraft.texts = normalizeTimedTextEditDraftLines(timedTextEditDraft.texts);
+  timedTextEditDraft.singleText = timedTextEditDraft.texts.join('\n');
+  timedTextEditDraft.singleLineError = '';
+  renderTimedTextEditView();
+  scheduleTimedTextEditReport();
+});
+timedTextEditSingleTextarea?.addEventListener('input', () => {
+  if (!timedTextEditDraft) return;
+  timedTextEditDraft.singleText = timedTextEditSingleTextarea.value.replace(/\r\n?/g, '\n');
+  timedTextEditDraft.texts = normalizeTimedTextEditDraftLines(
+    timedTextEditDraft.singleText.split('\n'),
+  );
+  timedTextEditDraft.singleText = timedTextEditDraft.texts.join('\n');
+  timedTextEditDraft.singleLineError = '';
+  scheduleTimedTextEditReport();
+});
+timedTextEditView?.addEventListener('click', (event) => {
+  const button = event.target.closest?.('button[data-view]');
+  if (!button || button.disabled || !timedTextEditDraft) return;
+  // 视图切换可能紧跟在浏览器原生输入事件之前；以 textarea 当前值为准，
+  // 避免“整体编辑”切到“逐行编辑”时回填旧草稿，导致修改前/修改后相同。
+  syncTimedTextEditDraftFromDom();
+  const nextView = button.dataset.view === 'single' ? 'single' : 'rows';
+  if (nextView === 'single' && !timedTextEditCanUseSingleView()) {
+    flashHint('当前字幕包含换行，暂不能切换到整体编辑视图', 'invalid');
+    return;
+  }
+  timedTextEditDraft.view = nextView;
+  if (nextView === 'single') timedTextEditDraft.singleText = timedTextEditDraft.texts.join('\n');
+  else renderTimedTextEditRows();
+  renderTimedTextEditView();
+  flushTimedTextEditReport();
+  setTimeout(() => (nextView === 'single'
+    ? timedTextEditSingleTextarea : timedTextEditRows.querySelector('textarea'))?.focus(), 0);
+});
+timedTextEditShowAll?.addEventListener('click', () => {
+  if (!timedTextEditDraft) return;
+  timedTextEditDraft.filter = null;
+  flushTimedTextEditReport();
+});
+timedTextEditShowDisabledToggle?.addEventListener('change', () => {
+  if (!timedTextEditDraft) return;
+  const nextShowDisabled = timedTextEditShowDisabledToggle.checked;
+  if (nextShowDisabled === timedTextEditDraft.showDisabled) return;
+  if (timedTextEditHasUnappliedChanges()
+      && !window.confirm('切换显示范围会丢弃当前未应用的文本修改，是否继续？')) {
+    timedTextEditShowDisabledToggle.checked = timedTextEditDraft.showDisabled;
+    return;
+  }
+  loadTimedTextEditTrack(timedTextEditDraft.kind, { showDisabled: nextShowDisabled });
+});
+timedTextEditTrack?.addEventListener('change', () => {
+  if (!timedTextEditDraft) return;
+  if (timedTextEditHasUnappliedChanges()) {
+    const confirmed = window.confirm('切换轨道会丢弃当前未应用的文本修改，是否继续？');
+    if (!confirmed) {
+      timedTextEditTrack.value = timedTextEditDraft.kind;
+      return;
+    }
+  }
+  loadTimedTextEditTrack(timedTextEditTrack.value, {
+    showDisabled: timedTextEditDraft.showDisabled === true,
+  });
+});
+timedTextEditClose?.addEventListener('click', requestCloseTimedTextEdit);
+timedTextEditCancel?.addEventListener('click', requestCloseTimedTextEdit);
+timedTextEditModal?.addEventListener('click', (event) => {
+  if (event.target === timedTextEditModal) requestCloseTimedTextEdit();
+});
+timedTextEditApply?.addEventListener('click', () => {
+  const draft = timedTextEditDraft;
+  if (!draft) return;
+  syncTimedTextEditDraftFromDom();
+  flushTimedTextEditReport();
+  if (!draft.report?.valid || !draft.report.stats.changedSegments) return;
+  const targetSegments = timedTextEditSegments(draft.kind);
+  const snapshotSegments = Array.isArray(draft.allSourceSegments)
+    ? draft.allSourceSegments : draft.sourceSegments;
+  const currentMatchesSnapshot = targetSegments.length === snapshotSegments.length
+    && targetSegments.every((segment, index) => {
+      const source = snapshotSegments[index];
+      return segment?.id === source?.id
+        && Number(segment?.start) === Number(source?.start)
+        && Number(segment?.end) === Number(source?.end)
+        && String(segment?.text || '') === String(source?.text || '')
+        && Boolean(segment?.disabled) === Boolean(source?.disabled);
+    });
+  if (!currentMatchesSnapshot) {
+    flashHint('字幕在编辑窗口打开后发生了变化，请关闭窗口并重新打开', 'warning');
+    closeTimedTextEdit();
+    return;
+  }
+  const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(
+    draft.sourceSegments,
+    draft.texts,
+  );
+  if (!nextSegments) {
+    flashHint('无法应用文本修改：字幕行结构发生了变化', 'warning');
+    return;
+  }
+  pushUndo('纯文本编辑');
+  const dirtyFlags = window.AsrEditorUtils.timedTextEditDirtyFlags(
+    draft.sourceSegments,
+    nextSegments,
+    draft.report,
+  );
+  nextSegments.forEach((segment, index) => {
+    if (dirtyFlags[index]) segment._dirty = true;
+    else delete segment._dirty;
+  });
+  const removedCount = applyTimedTextEditSegments(
+    draft.kind,
+    draft.sourceSegments,
+    targetSegments,
+    nextSegments,
+    draft.report,
+    draft.texts,
+    draft.sourceSegmentIndexes,
+  );
+  if (draft.kind === 'extension') markMultiSubtitleStateDirty();
+  syncBindingOffsets();
+  // 纯文本编辑应用后暂不主动触发自动保存，让 dirty 标记短暂保留，
+  // 便于用户确认哪些字幕确实发生了变化；已有的自动保存计时器仍照常执行。
+  const changedCount = draft.report.stats.changedSegments;
+  const lostCount = draft.report.stats.lostMappedCues;
+  const estimatedCount = draft.report.stats.estimatedTimingCues || 0;
+  closeTimedTextEdit();
+  renderAll({ waveform: 'overlay' });
+  update();
+  updateUndoRedoButtons();
+  flashHint(
+    `已应用纯文本编辑：${changedCount} 条字幕${removedCount ? `，移除 ${removedCount} 条空字幕行` : ''}${lostCount ? `，${lostCount} 条字词时间码已清除` : ''}${estimatedCount ? `，${estimatedCount} 条时间范围为自动估算` : ''}`,
+    'success',
+  );
 });
 
 // === 表情包 ===

@@ -730,6 +730,43 @@ test('shows and edits the last clicked main or extension cue in the current subt
   await expect(panelText).toHaveValue('第二句。');
 });
 
+test('applies text processing to selected extension subtitles', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-text-process-001', start: 0, end: 2000, text: 'main cue' }],
+    waveform: generateWaveformPayload(3000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-text-process-1', role: 'extension', name: 'English', language: 'English',
+        split_mode: 'word',
+        segments: [{ id: 'extension-text-process-001', start: 0, end: 2000, text: 'extension cue' }],
+      }],
+      bindings: [],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'text-process-extension-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const row = page.locator('.multi-dual-cue').first();
+  await row.locator('.multi-cue-column.extension .text').click();
+  await page.locator('#batch-operations-btn').click();
+  await page.locator('#text-process-btn').click();
+  await expect(page.locator('#text-process-selected-only')).toBeChecked();
+  await page.locator('#text-process-prefix').check();
+  await page.locator('#text-process-prefix-input').fill('X ');
+  await expect(page.locator('#text-process-preview')).toContainText('副字幕第 1 条');
+  await page.locator('#text-process-confirm').click();
+
+  await expect(row.locator('.multi-cue-column.main .text')).toHaveText('main cue');
+  await expect(row.locator('.multi-cue-column.extension .text')).toHaveText('X extension cue');
+});
+
 test('selects bound subtitle pairs without changing the current editor target', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-result-confirm').click();
