@@ -55,12 +55,21 @@ cp "$FFMPEG_DIR/bin/ffmpeg" "$FFMPEG_DIR/bin/ffprobe" "dist/MAW/ffmpeg/bin/"
 # runner 上 gnu.org 偶发连接超时，curl (28) 会导致 AppImage 构建连带失败）；
 # SOURCE.txt 记录构建来源、归档地址与校验和。
 _GPL_TARGET="dist/MAW/ffmpeg/GPLv3.txt"
-if ! curl --fail --location --silent --show-error --connect-timeout 15 --max-time 90 \
-    -o "$_GPL_TARGET" "https://www.gnu.org/licenses/gpl-3.0.txt"; then
-    curl --fail --location --silent --show-error --connect-timeout 15 --max-time 90 \
-        -o "$_GPL_TARGET" \
-        "https://raw.githubusercontent.com/spdx/license-list-data/main/text/GPL-3.0-only.txt"
+_GPL_TMP="${_GPL_TARGET}.tmp"
+rm -f "$_GPL_TMP"
+if curl --fail --location --silent --show-error --connect-timeout 15 --max-time 90 \
+    -o "$_GPL_TMP" "https://www.gnu.org/licenses/gpl-3.0.txt" \
+    || curl --fail --location --silent --show-error --connect-timeout 15 --max-time 90 --retry 1 \
+        -o "$_GPL_TMP" \
+        "https://raw.githubusercontent.com/spdx/license-list-data/main/text/GPL-3.0-only.txt"; then
+    :
+else
+    rm -f "$_GPL_TMP"
+    echo "GPL 许可证文本下载失败（gnu.org 与 SPDX 镜像均不可达）" >&2
+    exit 1
 fi
+grep -q "GNU GENERAL" "$_GPL_TMP" || { rm -f "$_GPL_TMP"; echo "GPL 许可证文本内容校验失败" >&2; exit 1; }
+mv -f "$_GPL_TMP" "$_GPL_TARGET"
 test -s "$_GPL_TARGET"
 cat > "dist/MAW/ffmpeg/SOURCE.txt" <<EOF
 FFmpeg $FFMPEG_VERSION — BtbN FFmpeg-Builds linux64-gpl static build
