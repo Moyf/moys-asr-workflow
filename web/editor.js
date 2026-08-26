@@ -50,6 +50,7 @@ const EDITOR_SETTINGS_UTILS = window.AsrEditorUtils;
 const MULTI_SUBTITLE_TOLERANCE_MS = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_TOLERANCE_MS || 300;
 const MULTI_SUBTITLE_MERGE_OVERLAP_TOLERANCE_MS = 500;
 const SUBTITLE_MIN_DURATION_MS = 100;
+const PROJECT_SEGMENT_OVERLAP_AUTO_FIX_MAX_MS = 2;
 const MULTI_SUBTITLE_IMPORT_PROMPT = '是否选择导入第二条字幕以开启多重字幕模式？';
 const MULTI_SUBTITLE_TOGGLE_TITLE = '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。';
 maweDomContractCheck();
@@ -10751,16 +10752,27 @@ function projectSaveTargetEnabled() {
 }
 
 function parseProjectValidationTarget(detail) {
-  const match = /^\$\.segments\[(\d+)\](?:\.items\[(\d+)\])?(?:\.[A-Za-z_]\w*)?\s*:/.exec(String(detail || ''));
-  if (!match) return null;
-  const segmentIndex = Number(match[1]);
-  const itemIndex = match[2] === undefined ? null : Number(match[2]);
-  const segment = DATA.segments[segmentIndex];
+  const value = String(detail || '');
+  const mainMatch = /^\$\.segments\[(\d+)\](?:\.items\[(\d+)\])?(?:\.[A-Za-z_]\w*)?\s*:/.exec(value);
+  const extensionMatch = /^\$\.multi_subtitle\.tracks\[(\d+)\]\.segments\[(\d+)\](?:\.items\[(\d+)\])?(?:\.[A-Za-z_]\w*)?\s*:/.exec(value);
+  if (!mainMatch && !extensionMatch) return null;
+  const kind = mainMatch ? 'main' : 'extension';
+  const trackIndex = extensionMatch ? Number(extensionMatch[1]) : null;
+  const segmentIndex = Number(mainMatch ? mainMatch[1] : extensionMatch[2]);
+  const itemValue = mainMatch ? mainMatch[2] : extensionMatch[3];
+  const itemIndex = itemValue === undefined ? null : Number(itemValue);
+  const track = extensionMatch ? getMultiSubtitleState().tracks?.[trackIndex] : null;
+  const segments = kind === 'main' ? DATA.segments : (track?.segments || []);
+  const segment = segments[segmentIndex];
   if (!segment) return null;
   const item = itemIndex === null
     ? null
     : (Array.isArray(segment.items) ? segment.items[itemIndex] : null);
   return {
+    kind,
+    trackIndex,
+    track,
+    segments,
     segmentIndex,
     itemIndex,
     segment,
@@ -10778,9 +10790,73 @@ function validationPreviewText(target) {
   }
 }
 
+function projectSegmentOverlap(target) {
+  const segments = target?.segments;
+  const currentIndex = Number(target?.segmentIndex);
+  if (!Array.isArray(segments) || !Number.isInteger(currentIndex) || currentIndex <= 0) return null;
+  const previous = segments[currentIndex - 1];
+  const current = segments[currentIndex];
+  const previousEnd = Number(previous?.end);
+  const currentStart = Number(current?.start);
+  const overlapMs = Math.round(previousEnd - currentStart);
+  if (!previous || !current || !Number.isFinite(overlapMs) || overlapMs <= 0) return null;
+  return {
+    previousIndex: currentIndex - 1,
+    currentIndex,
+    previous,
+    current,
+    overlapMs,
+  };
+}
+
+function repairProjectSegmentOverlap(target, mode, card) {
+  const segments = target?.segments;
+  const currentIndex = Number(target?.segmentIndex);
+  if (!Array.isArray(segments)) return false;
+  let previewSegments;
+  try {
+    previewSegments = JSON.parse(JSON.stringify(segments));
+  } catch (_) {
+    flashHint('无法准备时间范围修复，请先关闭提示后手动调整字幕边界', 'warning');
+    return false;
+  }
+  const preview = window.AsrEditorUtils.repairSegmentOverlap(previewSegments, currentIndex, mode);
+  if (!preview?.changed) {
+    flashHint('当前字幕边界已经发生变化，请重新保存并查看最新的校验提示', 'warning');
+    return false;
+  }
+
+  pushUndo('修复字幕时间重叠', { captureView: true });
+  const result = window.AsrEditorUtils.repairSegmentOverlap(segments, currentIndex, mode);
+  if (!result?.changed) {
+    flashHint('当前字幕边界已经发生变化，修复未应用', 'warning');
+    return false;
+  }
+  const changedSegments = (result.changedIndices || [])
+    .map((index) => segments[index])
+    .filter(Boolean);
+  if (target.kind === 'main') markMainSegmentsDirty(changedSegments);
+  else changedSegments.forEach((segment) => { segment._dirty = true; });
+  syncBindingOffsets();
+  if (target.kind === 'extension' || getMultiSubtitleState().tracks?.length) {
+    markMultiSubtitleStateDirty();
+  }
+  renderAll({ waveform: 'overlay' });
+  update();
+  updateUndoRedoButtons();
+  dismissHintCard(card);
+  const suffix = result.itemsCleared
+    ? '，已清除受影响字幕的字词时间码'
+    : '';
+  flashHint(`已修复字幕时间重叠${suffix}，正在重新保存`, result.itemsCleared ? 'warning' : 'success');
+  window.setTimeout(() => { void saveCurrentProject({ silent: true }); }, 0);
+  return true;
+}
+
 function focusProjectValidationTarget(target) {
   const { segmentIndex, segment } = target || {};
-  if (!segment || !DATA.segments[segmentIndex]) return;
+  const segments = target?.segments || DATA.segments;
+  if (!segment || !segments[segmentIndex]) return;
 
   // 校验错误不能因为用户当前的筛选状态而再次变得不可见。
   if (hideDisabled && segment.disabled) {
@@ -10788,7 +10864,10 @@ function focusProjectValidationTarget(target) {
     hideDisabledToggle.checked = false;
     container.classList.remove('hide-disabled');
   }
-  const cueBeforeFilter = container.querySelector(`.cue[data-idx="${segmentIndex}"]`);
+  const cueSelector = target.kind === 'extension'
+    ? `.cue[data-ext-idx="${segmentIndex}"]`
+    : `.cue[data-idx="${segmentIndex}"]`;
+  const cueBeforeFilter = container.querySelector(cueSelector);
   if (cueBeforeFilter?.classList.contains('hidden')) {
     searchEl.value = '';
     refreshSearchClearVisibility();
@@ -10797,9 +10876,14 @@ function focusProjectValidationTarget(target) {
     applySearch('');
   }
 
-  selectOnly(segmentIndex);
-  lastClickedIdx = segmentIndex;
-  const cue = container.querySelector(`.cue[data-idx="${segmentIndex}"]`);
+  if (target.kind === 'extension') {
+    selectOnlyExtension(segmentIndex, target.track || getActiveExtensionTrack());
+    lastClickedExtensionIdx = segmentIndex;
+  } else {
+    selectOnly(segmentIndex);
+    lastClickedIdx = segmentIndex;
+  }
+  const cue = container.querySelector(cueSelector);
   if (cue) {
     cue.classList.remove('validation-target');
     // 重新触发一次短暂的高亮，即使用户连续点击多个错误提示也能看出目标。
@@ -10853,6 +10937,45 @@ function showProjectSaveError(detail) {
       preview.className = 'hint-project-preview-value';
       preview.textContent = validationPreviewText(target);
 
+      const overlapElements = [];
+      const overlap = projectSegmentOverlap(target);
+      if (overlap) {
+        const conflict = document.createElement('div');
+        conflict.className = 'hint-project-conflict';
+        conflict.textContent = `第 ${overlap.previousIndex + 1} 条字幕结束于 ${fmtShort(overlap.previous.end)}，第 ${overlap.currentIndex + 1} 条字幕开始于 ${fmtShort(overlap.current.start)}，重叠 ${overlap.overlapMs}ms。`;
+
+        const repairDescription = document.createElement('div');
+        repairDescription.className = 'hint-project-repair-description';
+        repairDescription.textContent = overlap.overlapMs <= PROJECT_SEGMENT_OVERLAP_AUTO_FIX_MAX_MS
+          ? `这是小于等于 ${PROJECT_SEGMENT_OVERLAP_AUTO_FIX_MAX_MS}ms 的边界误差，可以安全把后句起点吸附到前句终点。`
+          : `重叠超过 ${PROJECT_SEGMENT_OVERLAP_AUTO_FIX_MAX_MS}ms，请确认要保留哪一侧的时间边界；修复后会自动再次保存。`;
+
+        const repairActions = document.createElement('div');
+        repairActions.className = 'hint-project-actions';
+        const addRepairButton = (className, text, mode) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = `hint-project-action ${className}`;
+          button.textContent = text;
+          button.addEventListener('click', () => {
+            button.disabled = true;
+            if (!repairProjectSegmentOverlap(target, mode, card)) button.disabled = false;
+          });
+          repairActions.appendChild(button);
+        };
+        if (overlap.overlapMs <= PROJECT_SEGMENT_OVERLAP_AUTO_FIX_MAX_MS) {
+          addRepairButton(
+            'hint-project-repair-auto',
+            `自动修复：推迟第 ${overlap.currentIndex + 1} 条字幕（${overlap.overlapMs}ms）`,
+            'shift-current',
+          );
+        } else {
+          addRepairButton('hint-project-repair-trim', '缩短前一句', 'trim-previous');
+          addRepairButton('hint-project-repair-shift', '推迟后一句', 'shift-current');
+        }
+        overlapElements.push(conflict, repairDescription, repairActions);
+      }
+
       const action = document.createElement('button');
       action.type = 'button';
       action.className = 'hint-project-action';
@@ -10862,7 +10985,7 @@ function showProjectSaveError(detail) {
         dismissHintCard(card);
       });
 
-      card.append(header, detailEl, location, previewLabel, preview, action);
+      card.append(header, detailEl, location, previewLabel, preview, ...overlapElements, action);
     },
   });
 }

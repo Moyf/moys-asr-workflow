@@ -2096,9 +2096,8 @@
     transition: border-color var(--t-fast), background var(--t-fast);
   }
   .timed-text-edit-row:last-child { margin-bottom: 0; }
-  /* 修改内容已经在下方 diff 行用红/绿区分；行容器只保留轻微强调，
-     避免剪切粘贴尚未完成时整块字幕都变成醒目的黄色。 */
-  .timed-text-edit-row.changed { border-color: var(--border-subtle); border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 3%, var(--bg-raised)); }
+  /* 修改行与字幕列表的 dirty 状态保持一致，使用琥珀色提示。 */
+  .timed-text-edit-row.changed { border-color: var(--border-subtle); border-left-color: var(--amber); background: color-mix(in srgb, var(--amber) 3%, var(--bg-raised)); }
   .timed-text-edit-row.deleted { border-color: var(--red); background: color-mix(in srgb, var(--red) 10%, var(--bg-raised)); }
   .timed-text-edit-row.disabled { border-style: dashed; opacity: .7; }
   .timed-text-edit-row-meta {
@@ -2580,6 +2579,15 @@
     font: 13px/1.45 "Segoe UI", "Microsoft YaHei", sans-serif; white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
+  .hint-project-conflict {
+    padding: 6px 8px; border: 1px solid color-mix(in srgb, var(--red) 35%, var(--border));
+    border-radius: var(--radius-sm); background: color-mix(in srgb, var(--red) 8%, var(--bg-input));
+    color: var(--text-secondary); font: 11px/1.45 var(--font-mono); overflow-wrap: anywhere;
+  }
+  .hint-project-repair-description { color: var(--text-muted); font-size: 11px; line-height: 1.4; }
+  .hint-project-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .hint-project-actions .hint-project-action { margin-top: 0; }
+  .hint-project-action:disabled { opacity: .55; cursor: wait; }
   .hint-project-action {
     justify-self: start; margin-top: 2px; padding: 6px 9px;
     background: var(--btn-bg); color: var(--accent-hover); border: 1px solid var(--accent-strong);

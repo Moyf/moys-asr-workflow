@@ -1449,6 +1449,40 @@ test('repairs item overlap without hiding a real subtitle-segment overlap', () =
   assert.deepEqual(segments.map(({ start, end }) => [start, end]), [[0, 1000], [900, 1800]]);
 });
 
+test('repairs a subtitle-segment overlap by shifting the current cue', () => {
+  const segments = [
+    { start: 0, end: 1000, text: '第一句' },
+    { start: 999, end: 1800, text: '第二句' },
+  ];
+
+  const result = helpers.repairSegmentOverlap(segments, 1, 'shift-current');
+
+  assert.equal(result.changed, true);
+  assert.equal(result.overlapMs, 1);
+  assert.deepEqual(Array.from(result.changedIndices), [1]);
+  assert.deepEqual(segments.map(({ start, end }) => [start, end]), [[0, 1000], [1000, 1800]]);
+  assert.equal(segments[1]._dirty, true);
+});
+
+test('trimming a subtitle-segment overlap clears item timings that no longer fit', () => {
+  const segments = [
+    {
+      start: 0,
+      end: 1200,
+      text: '第一句',
+      items: [{ start: 0, end: 1200, text: '第一句' }],
+    },
+    { start: 1000, end: 1800, text: '第二句' },
+  ];
+
+  const result = helpers.repairSegmentOverlap(segments, 1, 'trim-previous');
+
+  assert.equal(result.changed, true);
+  assert.equal(result.itemsCleared, true);
+  assert.equal(segments[0].end, 1000);
+  assert.equal('items' in segments[0], false);
+});
+
 test('translates timing-repair flash hints to English', () => {
   assert.equal(
     i18n.translateText('已自动修复 2 处 0 长时间码（保底 100ms）', 'en'),

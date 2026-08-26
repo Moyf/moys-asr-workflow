@@ -1946,6 +1946,71 @@
     return fixed;
   }
 
+  function timedItemsFitSegmentRange(segment, start, end) {
+    const items = Array.isArray(segment?.items) ? segment.items : null;
+    if (!items) return true;
+    let previousEnd = start;
+    return items.every((item) => {
+      const itemStart = Number(item?.start);
+      const itemEnd = Number(item?.end);
+      const valid = Number.isInteger(itemStart)
+        && Number.isInteger(itemEnd)
+        && itemStart >= start
+        && itemEnd <= end
+        && itemStart >= previousEnd
+        && itemEnd > itemStart;
+      if (valid) previousEnd = itemEnd;
+      return valid;
+    });
+  }
+
+  // 修复一处相邻字幕段的时间重叠。默认把后句起点吸附到前句终点；
+  // 也可以显式选择缩短前句。只修改指定的一对字幕，不静默重排后续时间轴。
+  // 如果边界移动会让目标段的 items 越界，则删除该段 items，保留字幕段整体时间。
+  function repairSegmentOverlap(segments, index, mode = 'shift-current') {
+    const source = Array.isArray(segments) ? segments : [];
+    const currentIndex = Number(index);
+    if (!Number.isInteger(currentIndex) || currentIndex <= 0 || currentIndex >= source.length) {
+      return { changed: false, reason: 'invalid-index', overlapMs: 0 };
+    }
+    const previous = source[currentIndex - 1];
+    const current = source[currentIndex];
+    if (!previous || typeof previous !== 'object' || !current || typeof current !== 'object') {
+      return { changed: false, reason: 'invalid-segment', overlapMs: 0 };
+    }
+    const previousStart = Math.round(Number(previous.start));
+    const previousEnd = Math.round(Number(previous.end));
+    const currentStart = Math.round(Number(current.start));
+    const currentEnd = Math.round(Number(current.end));
+    const overlapMs = Number.isFinite(previousEnd) && Number.isFinite(currentStart)
+      ? previousEnd - currentStart : 0;
+    if (!Number.isFinite(overlapMs) || overlapMs <= 0) {
+      return { changed: false, reason: 'no-overlap', overlapMs: Math.max(0, overlapMs || 0) };
+    }
+
+    const trimPrevious = mode === 'trim-previous';
+    const target = trimPrevious ? previous : current;
+    const nextStart = trimPrevious ? previousStart : previousEnd;
+    const nextEnd = trimPrevious ? currentStart : currentEnd;
+    if (!Number.isFinite(nextStart) || !Number.isFinite(nextEnd) || nextEnd <= nextStart) {
+      return { changed: false, reason: 'no-room', overlapMs };
+    }
+    const clearsItems = Array.isArray(target.items)
+      && target.items.length > 0
+      && !timedItemsFitSegmentRange(target, nextStart, nextEnd);
+    if (trimPrevious) target.end = nextEnd;
+    else target.start = nextStart;
+    if (clearsItems) delete target.items;
+    target._dirty = true;
+    return {
+      changed: true,
+      mode: trimPrevious ? 'trim-previous' : 'shift-current',
+      overlapMs,
+      changedIndices: [trimPrevious ? currentIndex - 1 : currentIndex],
+      itemsCleared: clearsItems,
+    };
+  }
+
   // 拼合字幕计划（纯函数，不改动输入）。返回：
   // - snaps: [{ index, edge, time }]，相邻间隔在 (0, gapMs] 时：
   //   snapDirection 'backward'（向前拓展，默认）把后方字幕 start 前拓到前一条 end；
@@ -4776,6 +4841,7 @@ export default MawDynamicCaptions;
     isShortSubtitleText,
     normalizeSegmentTimings,
     normalizeItemTimingRanges,
+    repairSegmentOverlap,
     planAutoMerge,
     applyAutoMergeSnaps,
     planSubtitleExtension,
