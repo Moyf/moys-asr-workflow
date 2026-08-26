@@ -98,6 +98,7 @@ excluded_local_modules = [
     "torch",
     "torchaudio",
     "transformers",
+    "readline",
 ]
 
 a = Analysis(
