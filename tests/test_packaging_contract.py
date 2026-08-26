@@ -190,8 +190,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("uv export --frozen --extra local", release)
         self.assertIn("uv export --frozen --extra ocr", release)
 
-        self.assertIn('RUNTIME_VERSION: Final = "4"', local_runtime)
-        self.assertIn('OCR_RUNTIME_VERSION: Final = "2"', ocr_runtime)
+        self.assertIn('RUNTIME_VERSION: Final = "5"', local_runtime)
+        self.assertIn('OCR_RUNTIME_VERSION: Final = "3"', ocr_runtime)
 
         self.assertIn("_has_cuda", local_runtime)
         self.assertIn("torch==2.13.0", local_runtime)
@@ -338,7 +338,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("desktop", script)
         self.assertNotIn("MOSE", script)
         self.assertIn("bootstrap", script)
-        self.assertIn("uv.exe", script)
+        self.assertIn("python-3.11.9-embed-amd64.zip", script)
+        self.assertIn("get-pip.py", script)
         self.assertIn("$ErrorActionPreference = 'Stop'", script)
 
     def test_windows_preview_workflow_verifies_launcher_version(self) -> None:
