@@ -2856,6 +2856,19 @@
           this.beginGapRangeDrag(event, row);
           return;
         }
+        // Alt+左键拖动空白处：用与中键增加静音相同的范围操作，
+        // 这样不需要切换到“中键拖动”模式也能快速新增空隙。
+        if (
+          event.button === 0 &&
+          event.altKey &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.shiftKey &&
+          !event.target.closest('.waveform-cue-block, .waveform-gap-block')
+        ) {
+          this.beginGapRangeDrag(event, row, { removed: true });
+          return;
+        }
         // Ctrl(Cmd)+左键拖动空白处：按拖动范围创建一条指定时长字幕。
         // 命中字幕块或静音空隙时保留各自已有的选择/边界操作。
         if (
@@ -2960,7 +2973,7 @@
           : middleEnabled
             ? `${stateTitle}；中键拖动增加静音，Alt+中键拖动恢复声音`
             : stateTitle;
-        block.title = `${operationTitle}；Alt+拖动整体偏移，Ctrl/Cmd+拖动复制`;
+        block.title = `${operationTitle}；空白处 Alt+左键拖动增加，空隙块左键或 Alt+左键拖动整体偏移，Ctrl/Cmd+拖动复制`;
         const label = document.createElement('span');
         label.className = 'waveform-gap-label';
         label.textContent = gap.removed === false ? '已恢复' : '已移除';
@@ -2980,11 +2993,7 @@
         this.layoutGapBlock(block, gap, startMs, endMs);
         block.addEventListener('pointerdown', (event) => {
           const handle = event.target.closest('.waveform-gap-handle');
-          if (
-            event.button === 0
-            && !handle
-            && (event.altKey || event.ctrlKey || event.metaKey)
-          ) {
+          if (event.button === 0 && !handle) {
             this.beginGapMoveDrag(
               event,
               index,
@@ -4702,10 +4711,9 @@
       this.options.resizeGapBoundary?.(drag.index, drag.edge, drag.valueMs);
     }
 
-    beginGapRangeDrag(event, row) {
+    beginGapRangeDrag(event, row, { removed = !event.altKey } = {}) {
       event.preventDefault();
       event.stopPropagation();
-      const removed = !event.altKey;
       const startMs = this.gapRangePointerTime(event, row);
       this.clearGapRangePreviews();
       this.gapRangeDrag = {
