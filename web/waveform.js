@@ -14,6 +14,14 @@
     return window.MAWE_I18N?.language === 'en' ? en : zh;
   }
 
+  function gapOperationAllowsBoundary(mode) {
+    return mode === 'boundary_drag' || mode === 'boundary_and_middle';
+  }
+
+  function gapOperationAllowsMiddle(mode) {
+    return mode === 'middle_drag' || mode === 'boundary_and_middle';
+  }
+
   // 渲染器预设：classic / wave-right 由专属 CSS 网格渲染；custom 由 layoutTree 渲染
   // （大荧幕布局与用户保存的自定义工作区都以树渲染）。
   const RENDERER_PRESETS = ['classic', 'wave-right', 'custom'];
@@ -1333,6 +1341,8 @@
       this.createCueDrag = null;
       this.gapRangeDrag = null;
       this.gapBoundaryDrag = null;
+      this.gapMoveDrag = null;
+      this.gapMovePreviewFrame = 0;
       this.suppressGapClickUntil = 0;
       this.autoScrolling = false;
       this.autoScrollTarget = null;
@@ -2839,9 +2849,10 @@
       this.appendGapBlocks(row, startMs, endMs);
       this.appendCueBlocks(row, startMs, endMs, groupBadges || computeGroupBadges(this.options.getSegments('main')));
 
-      const gapOperationMode = this.options.getGapOperationMode?.() || 'boundary_drag';
       row.addEventListener('pointerdown', (event) => {
-        if (event.button === 1 && gapOperationMode === 'middle_drag') {
+        // 每次按下时读取最新模式；设置切换会重绘空隙块，但不会重建仍在
+        // 可视区内的行，不能使用 createRow 时捕获的旧值。
+        if (event.button === 1 && gapOperationAllowsMiddle(this.options.getGapOperationMode?.())) {
           this.beginGapRangeDrag(event, row);
           return;
         }
@@ -2902,7 +2913,9 @@
         this.cancelHoverSeekPreview();
       });
       row.addEventListener('auxclick', (event) => {
-        if (event.button === 1 && gapOperationMode === 'middle_drag') event.preventDefault();
+        if (event.button === 1 && gapOperationAllowsMiddle(this.options.getGapOperationMode?.())) {
+          event.preventDefault();
+        }
       });
       row.addEventListener('dblclick', (event) => {
         if (event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
@@ -2924,6 +2937,8 @@
     appendGapBlocks(row, startMs, endMs) {
       const gaps = this.options.getGapRemoveGaps?.() || [];
       const gapOperationMode = this.options.getGapOperationMode?.() || 'boundary_drag';
+      const boundaryEnabled = gapOperationAllowsBoundary(gapOperationMode);
+      const middleEnabled = gapOperationAllowsMiddle(gapOperationMode);
       const firstGapIndex = firstCueIndexOverlapping(gaps, startMs);
       for (let index = firstGapIndex; index < gaps.length; index += 1) {
         const gap = gaps[index];
@@ -2934,20 +2949,23 @@
         block.className = 'waveform-gap-block';
         block.dataset.gapIndex = String(index);
         block.classList.toggle('restored', gap.removed === false);
-        block.classList.toggle('boundary-editable', gapOperationMode === 'boundary_drag');
+        block.classList.toggle('boundary-editable', boundaryEnabled);
         const stateTitle = gap.removed === false
           ? '已保留空隙；左键跳转播放头，Alt+左键移除'
           : '已移除静音空隙；左键跳转播放头，Alt+左键恢复';
-        block.title = gapOperationMode === 'boundary_drag'
+        const operationTitle = boundaryEnabled && middleEnabled
+          ? `${stateTitle}；可拖动左右边界，也可用中键调整范围`
+          : boundaryEnabled
           ? `${stateTitle}；拖动左右边界可人工调整范围`
-          : gapOperationMode === 'middle_drag'
+          : middleEnabled
             ? `${stateTitle}；中键拖动增加静音，Alt+中键拖动恢复声音`
             : stateTitle;
+        block.title = `${operationTitle}；Alt+拖动整体偏移，Ctrl/Cmd+拖动复制`;
         const label = document.createElement('span');
         label.className = 'waveform-gap-label';
         label.textContent = gap.removed === false ? '已恢复' : '已移除';
         block.appendChild(label);
-        if (gapOperationMode === 'boundary_drag') {
+        if (boundaryEnabled) {
           if (gap.start >= startMs) {
             const leftHandle = document.createElement('span');
             leftHandle.className = 'waveform-gap-handle left';
@@ -2962,7 +2980,20 @@
         this.layoutGapBlock(block, gap, startMs, endMs);
         block.addEventListener('pointerdown', (event) => {
           const handle = event.target.closest('.waveform-gap-handle');
-          if (!handle || event.altKey) return;
+          if (
+            event.button === 0
+            && !handle
+            && (event.altKey || event.ctrlKey || event.metaKey)
+          ) {
+            this.beginGapMoveDrag(
+              event,
+              index,
+              row,
+              event.ctrlKey || event.metaKey ? 'copy' : 'move',
+            );
+            return;
+          }
+          if (!handle || event.altKey || event.ctrlKey || event.metaKey) return;
           this.beginGapBoundaryDrag(
             event,
             index,
@@ -3641,6 +3672,16 @@
     timeFromPointer(event, row, geometry = null) {
       const rect = geometry || row.getBoundingClientRect();
       const ratio = clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
+      const startMs = geometry?.startMs ?? Number(row.dataset.startMs);
+      const endMs = geometry?.endMs ?? Number(row.dataset.endMs);
+      return startMs + ratio * (endMs - startMs);
+    }
+
+    // 边界/整体 Gap 拖动需要允许指针越过当前行的左右边缘；否则多行模式
+    // 会把时间永远钳在本行，无法从一行延伸到前后行。
+    timeFromPointerUnbounded(event, row, geometry = null) {
+      const rect = geometry || row.getBoundingClientRect();
+      const ratio = (event.clientX - rect.left) / Math.max(1, rect.width);
       const startMs = geometry?.startMs ?? Number(row.dataset.startMs);
       const endMs = geometry?.endMs ?? Number(row.dataset.endMs);
       return startMs + ratio * (endMs - startMs);
@@ -4397,7 +4438,7 @@
     }
 
     beginGapBoundaryDrag(event, index, row, edge) {
-      if (event.button !== 0 || this.options.getGapOperationMode?.() !== 'boundary_drag') return;
+      if (event.button !== 0 || !gapOperationAllowsBoundary(this.options.getGapOperationMode?.())) return;
       event.preventDefault();
       event.stopPropagation();
       const gaps = this.options.getGapRemoveGaps?.() || [];
@@ -4418,6 +4459,128 @@
       window.addEventListener('pointercancel', this._gapBoundaryEnd, { once: true });
     }
 
+    beginGapMoveDrag(event, index, row, mode) {
+      if (event.button !== 0 || !['move', 'copy'].includes(mode)) return;
+      const gaps = this.options.getGapRemoveGaps?.() || [];
+      const original = gaps[index];
+      if (!original) return;
+      const captureTarget = event.currentTarget;
+      this.gapMoveDrag = {
+        pointerId: event.pointerId,
+        index,
+        mode,
+        row,
+        captureTarget,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startPointerMs: this.timeFromPointerUnbounded(event, row),
+        originalGaps: gaps.map((gap) => ({ ...gap })),
+        nextGaps: gaps.map((gap) => ({ ...gap })),
+        targetGap: { ...original },
+        deltaMs: 0,
+        changed: false,
+        moved: false,
+      };
+      captureTarget.classList.add('dragging');
+      captureTarget.setPointerCapture?.(event.pointerId);
+      window.addEventListener('pointermove', this._gapMoveMove = (moveEvent) => this.moveGapMoveDrag(moveEvent));
+      window.addEventListener('pointerup', this._gapMoveEnd = (upEvent) => this.endGapMoveDrag(upEvent), { once: true });
+      window.addEventListener('pointercancel', this._gapMoveEnd, { once: true });
+    }
+
+    gapMoveTarget(original, deltaMs) {
+      const length = Math.max(1, Number(original?.end) - Number(original?.start));
+      const duration = Number(this.durationMs);
+      const maxStart = Number.isFinite(duration) && duration > 0
+        ? Math.max(0, duration - length) : Infinity;
+      const start = Math.min(maxStart, Math.max(0, Number(original?.start) + deltaMs));
+      return { ...original, start, end: start + length };
+    }
+
+    moveGapMoveDrag(event) {
+      const drag = this.gapMoveDrag;
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      event.preventDefault();
+      const dx = event.clientX - drag.startClientX;
+      const dy = event.clientY - drag.startClientY;
+      if (dx * dx + dy * dy >= 9) {
+        drag.moved = true;
+      }
+      const pointerMs = this.timeFromPointerUnbounded(event, drag.row);
+      const deltaMs = roundMs(pointerMs - drag.startPointerMs);
+      drag.targetGap = this.gapMoveTarget(drag.originalGaps[drag.index], deltaMs);
+      drag.deltaMs = drag.targetGap.start - drag.originalGaps[drag.index].start;
+      drag.nextGaps = drag.mode === 'copy'
+        ? window.AsrEditorUtils.copyGapRemoveRange(
+          drag.originalGaps, drag.index, drag.deltaMs, this.durationMs,
+        )
+        : window.AsrEditorUtils.moveGapRemoveRange(
+          drag.originalGaps, drag.index, drag.deltaMs, this.durationMs,
+        );
+      drag.changed = JSON.stringify(drag.nextGaps) !== JSON.stringify(drag.originalGaps);
+      this.scheduleGapMovePreview(drag);
+    }
+
+    scheduleGapMovePreview(drag) {
+      if (this.gapMovePreviewFrame) return;
+      this.gapMovePreviewFrame = requestAnimationFrame(() => {
+        this.gapMovePreviewFrame = 0;
+        if (this.gapMoveDrag === drag) this.previewGapMoveDrag(drag);
+      });
+    }
+
+    clearGapMovePreview() {
+      this.content.querySelectorAll('.waveform-gap-drag-preview').forEach((element) => element.remove());
+    }
+
+    previewGapMoveDrag(drag) {
+      this.clearGapMovePreview();
+      this.refreshGapBlocks(drag.originalGaps);
+      if (!drag.moved) return;
+      if (drag.mode === 'move') {
+        this.content.querySelectorAll(`.waveform-gap-block[data-gap-index="${drag.index}"]`)
+          .forEach((block) => { block.hidden = true; });
+      }
+      const target = drag.targetGap;
+      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+        const rowStart = Number(row.dataset.startMs);
+        const rowEnd = Number(row.dataset.endMs);
+        if (target.end <= rowStart || target.start >= rowEnd) return;
+        const preview = document.createElement('div');
+        preview.className = `waveform-gap-block waveform-gap-drag-preview ${drag.mode}`;
+        if (target.removed === false) preview.classList.add('restored');
+        const label = document.createElement('span');
+        label.className = 'waveform-gap-label';
+        label.textContent = drag.mode === 'copy' ? '复制' : '移动';
+        preview.appendChild(label);
+        this.layoutGapBlock(preview, target, rowStart, rowEnd);
+        row.appendChild(preview);
+      });
+    }
+
+    endGapMoveDrag(event) {
+      const drag = this.gapMoveDrag;
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      window.removeEventListener('pointermove', this._gapMoveMove);
+      window.removeEventListener('pointerup', this._gapMoveEnd);
+      window.removeEventListener('pointercancel', this._gapMoveEnd);
+      try { drag.captureTarget.releasePointerCapture?.(event.pointerId); } catch (_) {}
+      drag.captureTarget.classList.remove('dragging');
+      this.clearGapMovePreview();
+      this.gapMoveDrag = null;
+      if (event.type === 'pointercancel' || !drag.moved) {
+        this.refreshGapBlocks(drag.originalGaps);
+        return;
+      }
+      this.suppressGapClickUntil = Date.now() + 250;
+      if (!drag.changed) {
+        this.refreshGapBlocks(drag.originalGaps);
+        return;
+      }
+      const callback = drag.mode === 'copy' ? this.options.copyGap : this.options.moveGap;
+      callback?.(drag.index, drag.deltaMs);
+    }
+
     refreshGapBlocks(gaps) {
       this.content.querySelectorAll('.waveform-gap-block').forEach((block) => {
         const gap = gaps[Number(block.dataset.gapIndex)];
@@ -4430,7 +4593,28 @@
       });
     }
 
+    clearGapBoundaryPreview() {
+      this.content.querySelectorAll('.waveform-gap-boundary-preview').forEach((element) => element.remove());
+    }
+
+    appendGapBoundaryPreview(row, gap, index) {
+      const preview = document.createElement('div');
+      preview.className = 'waveform-gap-block waveform-gap-boundary-preview';
+      preview.dataset.gapIndex = String(index);
+      preview.classList.toggle('restored', gap.removed === false);
+      preview.title = '拖动中的空隙边界预览';
+      const label = document.createElement('span');
+      label.className = 'waveform-gap-label';
+      label.textContent = '边界预览';
+      preview.appendChild(label);
+      const rowStart = Number(row.dataset.startMs);
+      const rowEnd = Number(row.dataset.endMs);
+      this.layoutGapBlock(preview, gap, rowStart, rowEnd);
+      row.appendChild(preview);
+    }
+
     previewGapBoundaryDrag(drag) {
+      this.clearGapBoundaryPreview();
       this.refreshGapBlocks(drag.originalGaps);
       const original = drag.originalGaps[drag.index];
       if (!original) return;
@@ -4439,10 +4623,21 @@
         gap.removed === original.removed && gap.start <= anchor && gap.end > anchor
       ));
       if (!target) return;
-      this.content.querySelectorAll(`.waveform-gap-block[data-gap-index="${drag.index}"]`).forEach((block) => {
-        const row = block.closest('.waveform-row');
-        if (row) this.layoutGapBlock(block, target, Number(row.dataset.startMs), Number(row.dataset.endMs));
-      });
+      const renderTarget = (nextGap, originalIndex) => {
+        this.content.querySelectorAll('.waveform-row').forEach((row) => {
+          const rowStart = Number(row.dataset.startMs);
+          const rowEnd = Number(row.dataset.endMs);
+          const existing = [...row.querySelectorAll(
+            `.waveform-gap-block[data-gap-index="${originalIndex}"]`,
+          )].find((block) => !block.classList.contains('waveform-gap-boundary-preview'));
+          if (existing) {
+            this.layoutGapBlock(existing, nextGap, rowStart, rowEnd);
+          } else if (nextGap.end > rowStart && nextGap.start < rowEnd) {
+            this.appendGapBoundaryPreview(row, nextGap, originalIndex);
+          }
+        });
+      };
+      renderTarget(target, drag.index);
       const adjacentIndex = drag.edge === 'start' ? drag.index - 1 : drag.index + 1;
       const adjacentOriginal = drag.originalGaps[adjacentIndex];
       const shared = adjacentOriginal && (
@@ -4457,17 +4652,18 @@
         && gap.start <= adjacentAnchor && gap.end > adjacentAnchor
       ));
       if (!adjacentTarget) return;
-      this.content.querySelectorAll(`.waveform-gap-block[data-gap-index="${adjacentIndex}"]`).forEach((block) => {
-        const row = block.closest('.waveform-row');
-        if (row) this.layoutGapBlock(block, adjacentTarget, Number(row.dataset.startMs), Number(row.dataset.endMs));
-      });
+      renderTarget(adjacentTarget, adjacentIndex);
     }
 
     moveGapBoundaryDrag(event) {
       const drag = this.gapBoundaryDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
       event.preventDefault();
-      const valueMs = roundMs(this.timeFromPointer(event, drag.row));
+      const valueMs = clamp(
+        roundMs(this.timeFromPointerUnbounded(event, drag.row)),
+        0,
+        Math.max(0, this.durationMs),
+      );
       drag.nextGaps = window.AsrEditorUtils.resizeGapRemoveBoundary(
         drag.originalGaps,
         drag.index,
@@ -4496,6 +4692,7 @@
       window.removeEventListener('pointercancel', this._gapBoundaryEnd);
       try { drag.captureTarget.releasePointerCapture?.(event.pointerId); } catch (_) {}
       this.content.querySelectorAll('.waveform-gap-block.dragging').forEach((block) => block.classList.remove('dragging'));
+      this.clearGapBoundaryPreview();
       this.gapBoundaryDrag = null;
       if (event.type === 'pointercancel' || !drag.changed) {
         this.refreshGapBlocks(drag.originalGaps);
@@ -4508,20 +4705,16 @@
     beginGapRangeDrag(event, row) {
       event.preventDefault();
       event.stopPropagation();
-      const preview = document.createElement('div');
       const removed = !event.altKey;
-      preview.className = `waveform-gap-range-preview ${removed ? 'remove' : 'restore'}`;
-      const label = document.createElement('span');
-      label.textContent = removed ? '增加静音' : '恢复声音';
-      preview.appendChild(label);
-      row.appendChild(preview);
+      const startMs = this.gapRangePointerTime(event, row);
+      this.clearGapRangePreviews();
       this.gapRangeDrag = {
         pointerId: event.pointerId,
         row,
-        startMs: this.timeFromPointer(event, row),
-        endMs: this.timeFromPointer(event, row),
+        startMs,
+        endMs: startMs,
         removed,
-        preview,
+        previews: [],
       };
       this.layoutGapRangePreview(this.gapRangeDrag);
       row.setPointerCapture?.(event.pointerId);
@@ -4530,21 +4723,65 @@
       window.addEventListener('pointercancel', this._gapRangeEnd, { once: true });
     }
 
+    gapRangePointerTime(event, row) {
+      return clamp(
+        this.timeFromPointerUnbounded(event, row),
+        0,
+        Math.max(0, this.durationMs),
+      );
+    }
+
+    clearGapRangePreviews() {
+      this.content.querySelectorAll('.waveform-gap-range-preview').forEach((element) => element.remove());
+    }
+
     layoutGapRangePreview(drag) {
-      const rowStart = Number(drag.row.dataset.startMs);
-      const rowEnd = Number(drag.row.dataset.endMs);
-      const duration = Math.max(1, rowEnd - rowStart);
       const start = Math.min(drag.startMs, drag.endMs);
       const end = Math.max(drag.startMs, drag.endMs);
-      drag.preview.style.left = `${((start - rowStart) / duration) * 100}%`;
-      drag.preview.style.width = `${Math.max(0.25, ((end - start) / duration) * 100)}%`;
+      const previews = [];
+      this.clearGapRangePreviews();
+      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+        const rowStart = Number(row.dataset.startMs);
+        const rowEnd = Number(row.dataset.endMs);
+        if (!Number.isFinite(rowStart) || !Number.isFinite(rowEnd) || rowEnd <= rowStart) return;
+
+        let visibleStart;
+        let visibleEnd;
+        if (end <= start) {
+          // 保留按下瞬间的细小指示条；真正的范围仍按半开区间拆分到各行。
+          if (row !== drag.row) return;
+          let point = clamp(start, rowStart, rowEnd);
+          if (point >= rowEnd) point = Math.max(rowStart, rowEnd - 1);
+          visibleStart = point;
+          visibleEnd = Math.min(rowEnd, point + 1);
+        } else {
+          if (end <= rowStart || start >= rowEnd) return;
+          visibleStart = Math.max(start, rowStart);
+          visibleEnd = Math.min(end, rowEnd);
+        }
+        if (visibleEnd <= visibleStart) return;
+
+        const preview = document.createElement('div');
+        preview.className = `waveform-gap-range-preview ${drag.removed ? 'remove' : 'restore'}`;
+        if (previews.length === 0) {
+          const label = document.createElement('span');
+          label.textContent = drag.removed ? '增加静音' : '恢复声音';
+          preview.appendChild(label);
+        }
+        const duration = Math.max(1, rowEnd - rowStart);
+        preview.style.left = `${((visibleStart - rowStart) / duration) * 100}%`;
+        preview.style.width = `${Math.max(0.25, ((visibleEnd - visibleStart) / duration) * 100)}%`;
+        row.appendChild(preview);
+        previews.push(preview);
+      });
+      drag.previews = previews;
     }
 
     moveGapRangeDrag(event) {
       const drag = this.gapRangeDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
       event.preventDefault();
-      drag.endMs = this.timeFromPointer(event, drag.row);
+      drag.endMs = this.gapRangePointerTime(event, drag.row);
       this.layoutGapRangePreview(drag);
     }
 
@@ -4555,7 +4792,7 @@
       window.removeEventListener('pointerup', this._gapRangeEnd);
       window.removeEventListener('pointercancel', this._gapRangeEnd);
       try { drag.row.releasePointerCapture?.(event.pointerId); } catch (_) {}
-      drag.preview.remove();
+      this.clearGapRangePreviews();
       this.gapRangeDrag = null;
       if (event.type === 'pointercancel') return;
       const start = roundMs(Math.min(drag.startMs, drag.endMs));

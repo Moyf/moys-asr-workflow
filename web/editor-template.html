@@ -243,8 +243,8 @@ __WAVEFORM_CSS__
     <div class="gap-remove-advanced">
       <button type="button" id="gap-remove-advanced-toggle" class="gap-remove-advanced-toggle" aria-expanded="false" aria-controls="gap-remove-advanced-body">
         <span class="gap-remove-advanced-caret" aria-hidden="true">▸</span>
-        <span class="gap-remove-advanced-label">高级设置</span>
-        <small>预留量、滞回等检测细节</small>
+        <span class="gap-remove-advanced-label">空隙检测与调整</span>
+        <small>预留量、滞回与边界调整</small>
       </button>
       <div class="gap-remove-advanced-body" id="gap-remove-advanced-body" hidden>
         <div class="gap-remove-fields gap-remove-fields-advanced">
@@ -273,6 +273,41 @@ __WAVEFORM_CSS__
             <small id="gap-remove-hysteresis-hint">当音频判定为有声时，需要降低到比阈值更低 2 dB 的时候才视作恢复静音。建议 1–3 dB，过高会延迟回到静音</small>
           </label>
         </div>
+        <button type="button" id="gap-remove-shrink" class="gap-remove-scan">
+          <span>收缩空隙</span>
+          <small>按当前前后预留收缩现有空隙</small>
+        </button>
+      </div>
+    </div>
+    <div class="gap-remove-advanced gap-remove-disable-settings">
+      <button type="button" id="gap-remove-disable-toggle" class="gap-remove-advanced-toggle" aria-expanded="false" aria-controls="gap-remove-disable-body">
+        <span class="gap-remove-advanced-caret" aria-hidden="true">▸</span>
+        <span class="gap-remove-advanced-label">禁用空隙内字幕</span>
+        <small>按覆盖率和剩余时长筛选</small>
+      </button>
+      <div class="gap-remove-advanced-body" id="gap-remove-disable-body" hidden>
+        <div class="gap-remove-fields gap-remove-fields-advanced">
+          <label class="gap-remove-field">
+            <span class="gap-remove-field-label">覆盖率</span>
+            <span class="gap-remove-number-control">
+              <input type="number" id="gap-remove-disable-coverage" min="0" max="100" step="5" value="80" inputmode="decimal">
+              <span class="gap-remove-unit">%</span>
+            </span>
+            <small>空隙覆盖字幕时长达到此比例</small>
+          </label>
+          <label class="gap-remove-field">
+            <span class="gap-remove-field-label">剩余时长阈值</span>
+            <span class="gap-remove-number-control">
+              <input type="number" id="gap-remove-disable-remaining" min="0" max="60000" step="50" value="300" inputmode="numeric">
+              <span class="gap-remove-unit">ms</span>
+            </span>
+            <small>覆盖后剩余字幕时长不超过此值</small>
+          </label>
+        </div>
+        <button type="button" id="gap-remove-disable-button" class="gap-remove-scan">
+          <span>禁用字幕</span>
+          <small>按以上条件处理主字幕</small>
+        </button>
       </div>
     </div>
     <button type="button" id="gap-remove-scan" class="gap-remove-scan">
@@ -557,7 +592,9 @@ __WAVEFORM_CSS__
       <section class="help-subgroup">
         <div class="help-category">
           <span><kbd>Alt+点击静音空隙区段</kbd> 切换移除/保留</span>
-          <span class="help-note">空隙区段操作方式设为「中键拖动」时：</span>
+          <span><kbd>Alt+拖动</kbd> 整体偏移 Gap；<kbd data-mod-key>Ctrl+拖动</kbd> 复制 Gap</span>
+          <span class="help-note">波形空白处右键可用“添加空隙”，默认使用设置中的最小空隙时长</span>
+          <span class="help-note">空隙区段操作方式设为「中键拖动」或「边界与中键」时：</span>
           <span><kbd>中键拖动</kbd> 增加静音区段</span>
           <span><kbd>Alt+中键拖动</kbd> 增加恢复区段</span>
         </div>
@@ -1078,12 +1115,13 @@ __WAVEFORM_CSS__
           </div>
           <div class="settings-panel-section waveform-settings-section">
             <span class="settings-panel-title waveform-settings-title">静音空隙</span>
-            <label class="editor-settings-item" title="移除静音空隙的人工修正方式；Alt+左键始终切换整段；中键拖动默认增加静音，按住 Alt 才恢复声音，边界碰到另一空隙时会合并">
+            <label class="editor-settings-item" title="移除静音空隙的人工修正方式；Alt+左键始终切换整段；Alt+拖动整体偏移，Ctrl/Cmd+拖动复制；中键拖动默认增加静音，按住 Alt 才恢复声音；“边界与中键”可同时启用两种方式">
               空隙区段操作方式
               <select id="gap-remove-operation-mode">
                 <option value="none">无</option>
                 <option value="boundary_drag" selected>拖动边界</option>
                 <option value="middle_drag">中键拖动</option>
+                <option value="boundary_and_middle">边界与中键</option>
               </select>
             </label>
           </div>
