@@ -101,6 +101,21 @@ test('gap context menu and modifier drags update the gap timeline', async ({ pag
   expect(added[0].removed).toBe(true);
   expect(added[0].end - added[0].start).toBe(500);
 
+  await setGaps([], 'boundary_drag');
+  const altRangeRow = page.locator('.waveform-row[data-row-index="0"]').first();
+  const altRangeBox = await altRangeRow.boundingBox();
+  expect(altRangeBox).not.toBeNull();
+  await page.keyboard.down('Alt');
+  await page.mouse.move(altRangeBox.x + altRangeBox.width * 0.82, altRangeBox.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(altRangeBox.x + altRangeBox.width * 0.94, altRangeBox.y + 20);
+  await page.mouse.up();
+  await page.keyboard.up('Alt');
+  const altAdded = await page.evaluate(() => DATA.gap_remove.gaps);
+  expect(altAdded.some((gap) => (
+    gap.removed && gap.start >= 8000 && gap.end <= 10000 && gap.end - gap.start >= 1000
+  ))).toBe(true);
+
   await setGaps([{ start: 10050, end: 10550, removed: true }], 'boundary_and_middle');
   await page.locator('#waveform-settings-toggle').click();
   await expect(page.locator('#gap-remove-operation-mode')).toHaveValue('boundary_and_middle');
@@ -203,12 +218,10 @@ test('gap context menu and modifier drags update the gap timeline', async ({ pag
   const moveBlock = page.locator('.waveform-gap-block[data-gap-index="0"]').first();
   const moveBox = await moveBlock.boundingBox();
   expect(moveBox).not.toBeNull();
-  await page.keyboard.down('Alt');
   await page.mouse.move(moveBox.x + moveBox.width / 2, moveBox.y + moveBox.height / 2);
   await page.mouse.down();
   await page.mouse.move(moveBox.x + moveBox.width / 2 + 100, moveBox.y + moveBox.height / 2);
   await page.mouse.up();
-  await page.keyboard.up('Alt');
   const moved = await page.evaluate(() => DATA.gap_remove.gaps);
   expect(moved).toHaveLength(1);
   expect(moved[0].start).toBeGreaterThan(12000);

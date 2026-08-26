@@ -2574,7 +2574,7 @@ function renderGapRemoveList() {
   const total = gapRemoveTotalMs(gaps);
   const summary = document.createElement('div');
   summary.className = 'gap-remove-total';
-  summary.textContent = `已移除 ${removedCount}/${gaps.length} 段，共 ${formatGapRemoveTotal(total)}；左键定位，Alt+点击切换，Alt+拖动整体偏移，Ctrl/Cmd+拖动复制。`;
+  summary.textContent = `已移除 ${removedCount}/${gaps.length} 段，共 ${formatGapRemoveTotal(total)}；左键定位，Alt+点击切换，空白处 Alt+左键拖动增加，空隙块左键拖动偏移，Ctrl/Cmd+拖动复制。`;
   gapRemoveList.appendChild(summary);
 }
 
