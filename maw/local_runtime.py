@@ -226,6 +226,28 @@ def install_local_runtime(
     )
     _check_cancel(cancel)
 
+    if sys.platform != "darwin" and not _has_cuda():
+        emit("未检测到 NVIDIA CUDA，切换 Torch 为 CPU 版……", 88, "cuda-fallback")
+        cpu_torch_args = [
+            str(uv),
+            "pip",
+            "install",
+            "--python",
+            str(python),
+            "--upgrade",
+            "--index-url",
+            "https://pypi.org/simple",
+            "torch==2.13.0",
+            "torchaudio==2.11.0",
+        ]
+        _run_process(
+            cpu_torch_args,
+            env=_runtime_env(model_cache_root),
+            cancel=cancel,
+            on_line=lambda line: emit(line, 89, "cuda-fallback"),
+        )
+        _check_cancel(cancel)
+
     emit("正在验证本地模型运行时……", 90, "verify")
     verify_args = [
         str(python),
@@ -392,6 +414,22 @@ def _requirement_package_names(path: Path) -> set[str]:
         if match:
             names.add(match.group(1).casefold())
     return names
+
+
+def _has_cuda() -> bool:
+    """Detect NVIDIA CUDA availability via nvidia-smi."""
+    nvidia_smi = shutil.which("nvidia-smi")
+    if nvidia_smi is None:
+        return False
+    try:
+        result = subprocess.run(
+            [nvidia_smi, "--query-gpu=name", "--format=csv,noheader"],
+            capture_output=True,
+            timeout=10,
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
+        return False
 
 
 def _uv_line(emit: RuntimeEvent, percent: int, stage: str) -> Callable[[str], None]:

@@ -193,6 +193,9 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn('RUNTIME_VERSION: Final = "4"', local_runtime)
         self.assertIn('OCR_RUNTIME_VERSION: Final = "2"', ocr_runtime)
 
+        self.assertIn("_has_cuda", local_runtime)
+        self.assertIn("torch==2.13.0", local_runtime)
+
     def test_ocr_dependencies_are_optional_and_runtime_worker_is_bundled_purely(self) -> None:
         """Given optional OCR support, When metadata and the frozen spec are read, Then the main package stays OCR-free."""
         project = tomllib.loads(read_text("pyproject.toml"))
