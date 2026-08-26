@@ -50,11 +50,18 @@ fi
 mkdir -p "dist/MAW/ffmpeg/bin"
 cp "$FFMPEG_DIR/bin/ffmpeg" "$FFMPEG_DIR/bin/ffprobe" "dist/MAW/ffmpeg/bin/"
 # GPL 合规：BtbN linux64-gpl 是 GPL 构建，分发须随附许可证文本与对应源码
-# 获取方式（GPLv3 §4 传递许可证副本、§6 提供源码书面要约）。GPLv3 全文从
-# gnu.org 拉取，SOURCE.txt 记录构建来源、归档地址与校验和。
-curl --fail --location --retry 3 --silent --show-error \
-    -o "dist/MAW/ffmpeg/GPLv3.txt" \
-    "https://www.gnu.org/licenses/gpl-3.0.txt"
+# 获取方式（GPLv3 §4 传递许可证副本、§6 提供源码书面要约）。GPLv3 全文
+# 优先从 gnu.org 拉取，失败时回退 GitHub 官方 SPDX 镜像（GitHub hosted
+# runner 上 gnu.org 偶发连接超时，curl (28) 会导致 AppImage 构建连带失败）；
+# SOURCE.txt 记录构建来源、归档地址与校验和。
+_GPL_TARGET="dist/MAW/ffmpeg/GPLv3.txt"
+if ! curl --fail --location --silent --show-error --connect-timeout 15 --max-time 90 \
+    -o "$_GPL_TARGET" "https://www.gnu.org/licenses/gpl-3.0.txt"; then
+    curl --fail --location --silent --show-error --connect-timeout 15 --max-time 90 \
+        -o "$_GPL_TARGET" \
+        "https://raw.githubusercontent.com/spdx/license-list-data/main/text/GPL-3.0-only.txt"
+fi
+test -s "$_GPL_TARGET"
 cat > "dist/MAW/ffmpeg/SOURCE.txt" <<EOF
 FFmpeg $FFMPEG_VERSION — BtbN FFmpeg-Builds linux64-gpl static build
 Build provider: https://github.com/BtbN/FFmpeg-Builds
