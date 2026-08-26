@@ -84,7 +84,7 @@ cp -a dist/MAW/. "$APP_DIR/"
 # 系统 libgbm 导出符号是旧版的超集（Chromium 所需 20 个 gbm_* 符号全覆盖），
 # 剔除后由系统版本接管，行为正确。
 rm -f "$APP_DIR/_internal/libstdc++.so.6" "$APP_DIR/_internal/libgcc_s.so.1" \
-      "$APP_DIR/_internal/libgbm.so.1"
+      "$APP_DIR/_internal/libgbm.so.1" "$APP_DIR"/_internal/libreadline.so.*
 
 # AppRun：QtWebEngine 在 AppImage（squashfs 只读、无 SUID sandbox helper）环境
 # 必须禁用 Chromium 沙箱，否则 Launcher 页面无法渲染。
