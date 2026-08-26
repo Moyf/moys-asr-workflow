@@ -20,6 +20,7 @@ from pathlib import Path
 from threading import Event
 from typing import Final, TextIO
 
+from maw.console import configure_utf8_environment
 from maw.gui_platform import (
     asset_path,
     popen_process_tree,
@@ -372,8 +373,7 @@ def _default_app_data_root() -> Path:
 def _runtime_env() -> dict[str, str]:
     env = dict(os.environ)
     env["PYTHONUNBUFFERED"] = "1"
-    env["PYTHONUTF8"] = "1"
-    env["PYTHONIOENCODING"] = "utf-8"
+    configure_utf8_environment(env)
     env["PYTHONNOUSERSITE"] = "1"
     return env
 

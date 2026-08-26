@@ -115,6 +115,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("name='MAW'", spec)
         self.assertIn("console=False", spec)
         self.assertIn("upx=False", spec)
+        self.assertIn('"maw.console"', spec)
+        self.assertIn("pyinstaller_utf8.py", spec)
         self.assertIn("maw.gui_web", spec)
         self.assertIn("maw.cli", spec)
         self.assertNotIn('collect_all("rapidocr")', spec)
@@ -192,6 +194,7 @@ class PackagingContractTests(unittest.TestCase):
             "maw/ocr_runtime_worker.py",
             "maw/postprocess_ocr.py",
             "maw/postprocess_io.py",
+            "maw/console.py",
         ):
             self.assertIn(f'(str(ROOT / "{relative.split("/")[0]}" / "{relative.split("/")[1]}"), "ocr-runtime/maw")', spec)
 

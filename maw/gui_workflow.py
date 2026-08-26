@@ -16,6 +16,7 @@ from pathlib import Path
 from threading import Event
 from typing import BinaryIO, Final, TextIO, final
 
+from maw.console import configure_utf8_environment
 from maw.gui_config import QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, load_env
 from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
 from maw.qwen_audio import split_qwen_audio_hotwords
@@ -460,8 +461,7 @@ def _child_environment(
 ) -> dict[str, str]:
     env = dict(parent)
     env["PYTHONUNBUFFERED"] = "1"
-    env["PYTHONUTF8"] = "1"
-    env["PYTHONIOENCODING"] = "utf-8"
+    configure_utf8_environment(env)
     configured_path = parent.get("FFMPEG_PATH") or load_env(DEFAULT_ENV_PATH).get("FFMPEG_PATH", "")
     configured = _prepend_ffmpeg_path(env, configured_path) if configured_path else False
     if not configured:

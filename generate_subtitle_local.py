@@ -11,6 +11,7 @@ import argparse
 from pathlib import Path
 from typing import Sequence
 
+from maw.console import configure_utf8_stdio
 from maw.local_asr import (
     FUNASR_DEFAULT_MODEL,
     QWEN_DEFAULT_CHUNK_SECONDS,
@@ -95,6 +96,7 @@ def load_hotword_files(paths: Sequence[str]) -> list[str]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    configure_utf8_stdio()
     args = build_parser().parse_args(argv)
     input_path = Path(args.input).expanduser().resolve()
     if not input_path.exists() or not input_path.is_file():

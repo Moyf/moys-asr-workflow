@@ -42,6 +42,10 @@ class LocalRuntimeTests(unittest.TestCase):
                 Path(__file__).resolve().parents[1] / "maw" / "local_runtime_worker.py",
                 package_root / "local_runtime_worker.py",
             )
+            shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "maw" / "console.py",
+                package_root / "console.py",
+            )
             work_dir = temp_root / "work"
             work_dir.mkdir()
             environment = dict(os.environ)

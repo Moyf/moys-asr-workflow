@@ -15,6 +15,7 @@ _BUNDLE_ROOT = Path(__file__).resolve().parents[1]
 if str(_BUNDLE_ROOT) not in sys.path:
     sys.path.insert(0, str(_BUNDLE_ROOT))
 
+from maw.console import configure_utf8_stdio  # noqa: E402
 from maw.local_asr import create_local_engine  # noqa: E402
 
 
@@ -35,6 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    configure_utf8_stdio()
     args = build_parser().parse_args(argv)
     if args.command != "prepare":
         return 2

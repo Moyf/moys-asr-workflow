@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from maw.console import configure_utf8_stdio
 from maw.gui_config import DEFAULT_MODEL_ID
 from maw.gui_platform import asset_path
 from maw.gui_workflow import (
@@ -140,6 +141,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 def prepare_cli_stdio() -> None:
     """Make help/errors usable when the GUI PyInstaller bootloader has no streams."""
     if sys.stdout is not None and sys.stderr is not None:
+        configure_utf8_stdio()
         return
     if os.name == "nt":
         if sys.stdout is None:
@@ -156,6 +158,7 @@ def prepare_cli_stdio() -> None:
         sys.stdout = open(os.devnull, "w", encoding="utf-8", errors="replace")
     if sys.stderr is None:
         sys.stderr = sys.stdout
+    configure_utf8_stdio()
 
 
 def _windows_stream(handle_number: int) -> io.TextIOBase | None:

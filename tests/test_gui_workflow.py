@@ -377,7 +377,7 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertEqual(env["PYTHONUNBUFFERED"], "1")
         self.assertEqual(env["PYTHONUTF8"], "1")
-        self.assertEqual(env["PYTHONIOENCODING"], "utf-8")
+        self.assertEqual(env["PYTHONIOENCODING"], "utf-8:replace")
         self.assertEqual(env["DASHSCOPE_API_KEY"], "secret-key")
         self.assertEqual(env["DASHSCOPE_WORKSPACE_ID"], "workspace-123")
 
@@ -770,11 +770,12 @@ class GuiWorkflowTests(unittest.TestCase):
     def test_entrypoint_smoke_import_argument_does_not_open_window(self) -> None:
         import maw_gui
 
-        with mock.patch("maw.gui_web.run_app") as run_app:
+        with mock.patch("maw.gui_web.run_app") as run_app, mock.patch("maw_gui.configure_utf8_stdio") as configure:
             exit_code = maw_gui.main(["--smoke-import"])
 
         self.assertEqual(exit_code, 0)
         run_app.assert_not_called()
+        configure.assert_called_once_with()
 
     def test_entrypoint_debug_aliases_configure_launcher_debug_modes(self) -> None:
         import maw_gui

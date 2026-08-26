@@ -33,6 +33,7 @@ import sys
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
+from maw.console import configure_utf8_stdio
 from maw.project import ProjectValidationFailed, normalize_project
 from maw.media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS
 from maw.waveform import (
@@ -312,6 +313,7 @@ def build_blank_html(ninja_sfx_base_url_json: str | None = None) -> str:
 
 
 def main():
+    configure_utf8_stdio()
     parser = argparse.ArgumentParser(description="MAWE — Moy's ASR Workflow Editor（含表情包管理 + 多选）")
     parser.add_argument(
         "json_path", nargs="?",
