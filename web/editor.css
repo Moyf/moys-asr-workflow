@@ -1486,6 +1486,11 @@
     margin: 0 -4px 4px;
     border-radius: calc(var(--radius-md) - 2px) calc(var(--radius-md) - 2px) 0 0;
   }
+  /* 批量菜单位于 sticky 工具栏的 stacking context 内；打开时提升整个工具栏，
+     确保菜单不会被右侧布局拖动条（z-index: 50）的伪元素盖住。 */
+  .cues-container > .cue-list-toolbar:has(#batch-operations-dropdown.open) {
+    z-index: 60;
+  }
   /* 布局编辑模式下，dock-handle 已在文档流中占位（顶部圆角归把手），
      工具栏 sticky 让出把手高度即可。 */
   .editor-workspace.layout-editing .cues-container > .cue-list-toolbar {
