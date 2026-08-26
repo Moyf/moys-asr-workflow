@@ -1058,7 +1058,7 @@ class LauncherApi:
         url = str(payload.get("url") or "").strip()
         if not url.startswith(("https://", "http://")):
             return {"ok": False, "error": "Invalid URL."}
-        webbrowser.open(url)
+        _open_external(url)
         return {"ok": True}
 
     def open_file(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -2533,6 +2533,19 @@ def _stop_external_maw_server(port: int) -> bool:
     return result.returncode == 0
 
 
+def _open_external(target: str) -> None:
+    if sys.platform == "linux" and getattr(sys, "frozen", False):
+        env = os.environ.copy()
+        original = env.get("LD_LIBRARY_PATH_ORIG")
+        if original is not None:
+            env["LD_LIBRARY_PATH"] = original
+        else:
+            env.pop("LD_LIBRARY_PATH", None)
+        subprocess.Popen(["xdg-open", target], env=env)
+    else:
+        webbrowser.open(target)
+
+
 def _open_existing_path(path: Path) -> dict[str, object]:
     target = Path(path).expanduser()
     if not target.exists():
@@ -2540,7 +2553,7 @@ def _open_existing_path(path: Path) -> dict[str, object]:
     if os.name == "nt":
         os.startfile(str(target))
     else:
-        webbrowser.open(target.resolve().as_uri())
+        _open_external(target.resolve().as_uri())
     return {"ok": True}
 
 
