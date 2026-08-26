@@ -19,6 +19,9 @@ if (-not (Test-Path -LiteralPath $EntryPoint -PathType Leaf)) {
 Push-Location -LiteralPath $RepoRoot
 try {
     uv sync --group build --frozen
+    # 生成托管 Runtime 的 frozen requirements txt（MAW.spec datas 条件追加打包）。
+    uv export --frozen --extra local --no-dev --format requirements-txt -o build/requirements-local.txt
+    uv export --frozen --extra ocr --no-dev --format requirements-txt -o build/requirements-ocr.txt
 
     if (-not $SkipTests) {
         uv run python -m unittest tests.test_packaging_contract
