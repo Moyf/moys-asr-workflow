@@ -1009,7 +1009,6 @@ def _copy_common_metadata(source_segments: Sequence[JsonDict]) -> JsonDict:
             result[metadata_key] = copy.deepcopy(value)
     return result
 
-
 def _derived_segment_id(source: JsonDict, source_id: str, part_number: int) -> str:
     """Create a deterministic, unique ID for a split output cue."""
     base = str(source.get("id") or source_id or "main")
@@ -1066,7 +1065,6 @@ def _validated_item_chunks(raw_items: JsonValue, expected_text: str) -> list[Jso
     if "".join(text_parts) != expected_text:
         return None
     return items
-
 
 def _item_text_spans(items: Sequence[JsonDict]) -> list[tuple[int, int]]:
     spans: list[tuple[int, int]] = []
@@ -1342,7 +1340,6 @@ def _validated_items(segment: JsonDict) -> list[JsonDict] | None:
         previous_start = item_start
         previous_end = item_end
     return items
-
 
 def _has_complete_items(project: JsonDict) -> bool:
     segments = _segments(project)

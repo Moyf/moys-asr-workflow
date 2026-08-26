@@ -120,6 +120,1715 @@
     };
   }
 
+  function stripMarkdownFormatting(text) {
+    return String(text == null ? '' : text)
+      .replace(/!\[([^\]]*)\]\([^\)\n]+\)/g, '$1')
+      .replace(/\[([^\]]+)\]\([^\)\n]+\)/g, '$1')
+      .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+      .replace(/^\s{0,3}>\s?/gm, '')
+      .replace(/^\s*[-*+]\s+/gm, '')
+      .replace(/[\\*_~`]/g, '');
+  }
+
+  function capitalizeFirstLetter(text) {
+    return String(text == null ? '' : text).replace(/^(\s*)(\p{L})/u, (match, leading, letter) => {
+      return `${leading}${letter.toLocaleUpperCase()}`;
+    });
+  }
+
+  // Apply the selected operations in a stable order so preview and execution
+  // always agree: Markdown -> trim -> capitalization -> prefix -> suffix.
+  function applyTextProcessing(text, options = {}) {
+    let result = String(text == null ? '' : text);
+    if (options.stripMarkdown) result = stripMarkdownFormatting(result);
+    if (options.trim) result = result.trim();
+    if (options.capitalize) result = capitalizeFirstLetter(result);
+    if (options.addPrefix) result = `${String(options.prefix == null ? '' : options.prefix)}${result}`;
+    if (options.addSuffix) result = `${result}${String(options.suffix == null ? '' : options.suffix)}`;
+    return result;
+  }
+
+  function normalizeTextProcessingIndexes(segments, indexes) {
+    const source = Array.isArray(segments) ? segments : [];
+    const candidates = Array.isArray(indexes)
+      ? indexes
+      : source.map((_, index) => index);
+    return [...new Set(candidates
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < source.length))]
+      .sort((a, b) => a - b);
+  }
+
+  function buildTextProcessingPreview(segments, indexes, options = {}) {
+    const source = Array.isArray(segments) ? segments : [];
+    const targetIndexes = normalizeTextProcessingIndexes(source, indexes);
+    const rows = targetIndexes.map((index) => {
+      const before = String(source[index]?.text == null ? '' : source[index].text);
+      const after = applyTextProcessing(before, options);
+      return { index, before, after, changed: before !== after };
+    });
+    return {
+      targetCount: rows.length,
+      changedCount: rows.filter((row) => row.changed).length,
+      unchangedCount: rows.filter((row) => !row.changed).length,
+      rows,
+    };
+  }
+
+  function timedTextTokens(text) {
+    return Array.from(String(text == null ? '' : text));
+  }
+
+  function isTimedTextWhitespace(token) {
+    return /\s/u.test(token);
+  }
+
+  // 标点、符号和 emoji 不代表新的可听内容。它们仍保留在 item 文本中，
+  // 但不单独占用时间；ZWJ / variation selector / keycap 也视为同一类字符。
+  function isTimedTextNeutralToken(token, includeWhitespace = false) {
+    if (includeWhitespace && isTimedTextWhitespace(token)) return true;
+    return /[\p{P}\p{S}]/u.test(token)
+      || /[\u200D\uFE0E\uFE0F\u20E3]/u.test(token);
+  }
+
+  function isTimedTextNeutralItem(item) {
+    const tokens = timedTextTokens(item?.text);
+    return tokens.length > 0 && tokens.every((token) => isTimedTextNeutralToken(token, true));
+  }
+
+  // 早期版本可能把没有独立时间的标点保存成 0ms item。保存前将这类字符
+  // 并入相邻的有时间 item：既保留原有字词时间，也避免修复器把它扩成越界的 100ms。
+  // 如果用户已经删掉该字符，则清理残留 item，避免错误一直留在工程里。
+  function normalizeTimedTextNeutralItems(segment) {
+    if (!segment || typeof segment !== 'object' || !Array.isArray(segment.items)) return 0;
+    const targetTokens = timedTextTokens(segment.text);
+    const repaired = [];
+    let targetOffset = 0;
+    let pendingNeutral = '';
+    let fixed = 0;
+    const matchesAtOffset = (tokens) => tokens.length > 0
+      && targetTokens.length >= targetOffset + tokens.length
+      && tokens.every((token, index) => targetTokens[targetOffset + index] === token);
+
+    segment.items.forEach((rawItem) => {
+      const itemTokens = timedTextTokens(rawItem?.text);
+      if (isTimedTextNeutralItem(rawItem)) {
+        if (!matchesAtOffset(itemTokens)) {
+          fixed += 1;
+          return;
+        }
+        targetOffset += itemTokens.length;
+        const text = itemTokens.join('');
+        if (repaired.length) {
+          repaired[repaired.length - 1].text += text;
+          fixed += 1;
+        } else {
+          pendingNeutral += text;
+          fixed += 1;
+        }
+        return;
+      }
+
+      const copy = cloneJsonValue(rawItem);
+      if (pendingNeutral) {
+        copy.text = `${pendingNeutral}${String(copy.text == null ? '' : copy.text)}`;
+        pendingNeutral = '';
+        fixed += 1;
+      }
+      repaired.push(copy);
+      if (matchesAtOffset(itemTokens)) targetOffset += itemTokens.length;
+    });
+
+    // 只有纯标点、emoji 的 item 没有可承载其文本的有时间 item；保留空数组即可。
+    if (pendingNeutral) fixed += 1;
+    if (fixed > 0) segment.items = repaired;
+    return fixed;
+  }
+
+  function timedTextItemCoverageMask(text, rawItems) {
+    const sourceTokens = timedTextTokens(text);
+    const targetTokens = sourceTokens.filter((token) => !isTimedTextNeutralToken(token, true));
+    const items = Array.isArray(rawItems) ? rawItems : [];
+    const itemTokens = [];
+    const itemCoverage = [];
+    let validItemCount = 0;
+    items.forEach((item) => {
+      const tokens = timedTextTokens(item?.text)
+        .filter((token) => !isTimedTextNeutralToken(token, true));
+      const start = Number(item?.start);
+      const end = Number(item?.end);
+      const validTiming = tokens.length > 0
+        && Number.isFinite(start) && Number.isFinite(end) && end > start;
+      if (validTiming) {
+        validItemCount += 1;
+      }
+      itemTokens.push(...tokens);
+      tokens.forEach(() => itemCoverage.push(validTiming));
+    });
+    const covered = new Uint8Array(targetTokens.length);
+    const opcodes = timedTextDiffOpcodes(itemTokens, targetTokens);
+    if (opcodes) {
+      opcodes.forEach((opcode) => {
+        if (opcode.tag !== 'equal') return;
+        for (let offset = 0; offset < opcode.targetEnd - opcode.targetStart; offset += 1) {
+          const sourceIndex = opcode.sourceStart + offset;
+          const targetIndex = opcode.targetStart + offset;
+          if (itemCoverage[sourceIndex]) covered[targetIndex] = 1;
+        }
+      });
+    }
+    return {
+      sourceTokens: targetTokens,
+      covered,
+      coveredCharacters: covered.reduce((sum, value) => sum + value, 0),
+      validItemCount,
+      totalItemCount: items.length,
+    };
+  }
+
+  function timedTextItemCoverage(text, rawItems) {
+    const coverage = timedTextItemCoverageMask(text, rawItems);
+    const { sourceTokens, coveredCharacters, validItemCount, totalItemCount } = coverage;
+    const totalCharacters = sourceTokens.length;
+    return {
+      percent: totalCharacters ? Math.round((coveredCharacters / totalCharacters) * 100) : 0,
+      coveredCharacters,
+      totalCharacters,
+      validItemCount,
+      totalItemCount,
+    };
+  }
+
+  // “有效覆盖率”只说明当前文字被有效时间码覆盖；“原始时间码复用率”
+  // 还要扣除新增/删除后无法对应到原文字符的位置。等长改字是已确认的
+  // 可靠场景：旧 item 的时间范围会按原位置复用，因此不因错别字本身降级。
+  function timedTextItemReuse(originalText, originalItems, text, rawItems, mappingStatus = '') {
+    const sourceCoverage = timedTextItemCoverageMask(originalText, originalItems);
+    const targetCoverage = timedTextItemCoverageMask(text, rawItems);
+    const sourceTokens = sourceCoverage.sourceTokens;
+    const targetTokens = targetCoverage.sourceTokens;
+    const totalCharacters = Math.max(sourceTokens.length, targetTokens.length);
+    if (!totalCharacters || !sourceCoverage.validItemCount || !targetCoverage.coveredCharacters) {
+      return {
+        percent: 0,
+        reusedCharacters: 0,
+        totalCharacters,
+        sourceCharacters: sourceTokens.length,
+        currentCharacters: targetTokens.length,
+      };
+    }
+
+    let reusedCharacters = 0;
+    if (sourceTokens.length === targetTokens.length && mappingStatus === 'full') {
+      // 等长改字分支保持每个原 item 的时间范围，按当前位置复用时间码。
+      reusedCharacters = targetCoverage.coveredCharacters;
+    } else {
+      const opcodes = timedTextDiffOpcodes(sourceTokens, targetTokens);
+      if (opcodes) {
+        opcodes.forEach((opcode) => {
+          if (opcode.tag !== 'equal') return;
+          const length = opcode.targetEnd - opcode.targetStart;
+          for (let offset = 0; offset < length; offset += 1) {
+            const sourceIndex = opcode.sourceStart + offset;
+            const targetIndex = opcode.targetStart + offset;
+            if (sourceCoverage.covered[sourceIndex] && targetCoverage.covered[targetIndex]) {
+              reusedCharacters += 1;
+            }
+          }
+        });
+      }
+    }
+    return {
+      percent: Math.round((reusedCharacters / totalCharacters) * 100),
+      reusedCharacters,
+      totalCharacters,
+      sourceCharacters: sourceTokens.length,
+      currentCharacters: targetTokens.length,
+    };
+  }
+
+  function buildTimedTextDiff(before, after) {
+    const beforeTokens = timedTextTokens(before);
+    const afterTokens = timedTextTokens(after);
+    let prefix = 0;
+    while (
+      prefix < beforeTokens.length
+      && prefix < afterTokens.length
+      && beforeTokens[prefix] === afterTokens[prefix]
+    ) prefix += 1;
+    let suffix = 0;
+    while (
+      suffix < beforeTokens.length - prefix
+      && suffix < afterTokens.length - prefix
+      && beforeTokens[beforeTokens.length - 1 - suffix]
+        === afterTokens[afterTokens.length - 1 - suffix]
+    ) suffix += 1;
+    const beforeParts = [];
+    const afterParts = [];
+    if (prefix) {
+      const common = beforeTokens.slice(0, prefix).join('');
+      beforeParts.push({ kind: 'equal', text: common });
+      afterParts.push({ kind: 'equal', text: common });
+    }
+    const removed = beforeTokens.slice(prefix, beforeTokens.length - suffix).join('');
+    const added = afterTokens.slice(prefix, afterTokens.length - suffix).join('');
+    if (removed) beforeParts.push({ kind: 'remove', text: removed });
+    if (added) afterParts.push({ kind: 'add', text: added });
+    if (suffix) {
+      const common = beforeTokens.slice(beforeTokens.length - suffix).join('');
+      beforeParts.push({ kind: 'equal', text: common });
+      afterParts.push({ kind: 'equal', text: common });
+    }
+    return {
+      before: beforeParts.length ? beforeParts : [{ kind: 'equal', text: '' }],
+      after: afterParts.length ? afterParts : [{ kind: 'equal', text: '' }],
+      addedCharacters: timedTextTokens(added).length,
+      removedCharacters: timedTextTokens(removed).length,
+    };
+  }
+
+  function timedTextItemLayout(originalText, rawItems) {
+    if (!Array.isArray(rawItems) || !rawItems.length) return null;
+    const items = cloneJsonValue(rawItems);
+    const sourceTokens = timedTextTokens(originalText);
+    const spans = [];
+    let previousStart = -Infinity;
+    let previousEnd = -Infinity;
+    for (const item of items) {
+      if (!item || typeof item !== 'object') return null;
+      const itemTokens = timedTextTokens(item.text);
+      const start = Number(item.start);
+      const end = Number(item.end);
+      if (!itemTokens.length || !Number.isFinite(start) || !Number.isFinite(end)
+          || end < start || start < previousStart || start < previousEnd) return null;
+      const itemStart = spans.length ? spans[spans.length - 1].end : 0;
+      const itemEnd = itemStart + itemTokens.length;
+      spans.push({ start: itemStart, end: itemEnd });
+      previousStart = start;
+      previousEnd = end;
+    }
+    if (spans[spans.length - 1].end !== sourceTokens.length) return null;
+    return { items, spans };
+  }
+
+  function timedTextItemSpans(originalText, items) {
+    return timedTextItemLayout(originalText, items)?.spans || null;
+  }
+
+  function timedTextItemsSlice(layout, startBoundary, endBoundary) {
+    if (!layout || !Number.isInteger(startBoundary) || !Number.isInteger(endBoundary)) return null;
+    const total = layout.spans[layout.spans.length - 1]?.end || 0;
+    if (startBoundary < 0 || endBoundary > total || startBoundary >= endBoundary) return [];
+    return layout.items.flatMap((item, index) => {
+      const span = layout.spans[index];
+      const sliceStart = Math.max(startBoundary, span.start);
+      const sliceEnd = Math.min(endBoundary, span.end);
+      if (sliceStart >= sliceEnd) return [];
+      const itemTokens = timedTextTokens(item.text);
+      const localStart = sliceStart - span.start;
+      const localEnd = sliceEnd - span.start;
+      const itemStart = Number(item.start);
+      const itemEnd = Number(item.end);
+      const itemLength = Math.max(1, itemTokens.length);
+      const timeAt = (offset) => Math.round(
+        itemStart + ((itemEnd - itemStart) * offset) / itemLength,
+      );
+      const copy = cloneJsonValue(item);
+      copy.text = itemTokens.slice(localStart, localEnd).join('');
+      copy.start = timeAt(localStart);
+      copy.end = timeAt(localEnd);
+      // 被切开的 item 不再有唯一的原始身份；时间和其它可选元数据仍保留。
+      if (sliceStart !== span.start || sliceEnd !== span.end) delete copy.id;
+      return [copy];
+    });
+  }
+
+  function timedTextItemsPartition(layout, prefixCount, suffixCount) {
+    if (!layout || !Number.isInteger(prefixCount) || !Number.isInteger(suffixCount)) return null;
+    const total = layout.spans[layout.spans.length - 1]?.end || 0;
+    const bodyEnd = total - suffixCount;
+    if (prefixCount < 0 || suffixCount < 0 || prefixCount > bodyEnd) return null;
+    const prefix = timedTextItemsSlice(layout, 0, prefixCount);
+    const body = timedTextItemsSlice(layout, prefixCount, bodyEnd);
+    const suffix = timedTextItemsSlice(layout, bodyEnd, total);
+    if (!prefix || !body || !suffix || (prefixCount < bodyEnd && !body.length)) return null;
+    return { prefix, body, suffix };
+  }
+
+  function timedTextNeutralInsertionItems(originalText, layout, newText, includeWhitespace = false) {
+    if (!layout || !Array.isArray(layout.items) || !layout.items.length) return null;
+    const sourceTokens = timedTextTokens(originalText);
+    const targetTokens = timedTextTokens(newText);
+    if (targetTokens.length <= sourceTokens.length) return null;
+    const isNeutral = (token) => isTimedTextNeutralToken(token, includeWhitespace);
+    const entries = [];
+    let sourceIndex = 0;
+    let insertedNeutral = false;
+    for (const token of targetTokens) {
+      if (sourceIndex < sourceTokens.length && token === sourceTokens[sourceIndex]) {
+        entries.push({ type: 'source', index: sourceIndex });
+        sourceIndex += 1;
+      } else if (isNeutral(token)) {
+        entries.push({ type: 'neutral', position: sourceIndex, token });
+        insertedNeutral = true;
+      } else {
+        return null;
+      }
+    }
+    if (!insertedNeutral || sourceIndex !== sourceTokens.length) return null;
+
+    const { items, spans } = layout;
+    const sourceLength = sourceTokens.length;
+    const itemIndexAt = (position) => {
+      if (position <= 0) return 0;
+      if (position >= sourceLength) return spans.length - 1;
+      return spans.findIndex((span) => position < span.end);
+    };
+    const itemTimeAt = (itemIndex, position) => {
+      const item = items[itemIndex];
+      const span = spans[itemIndex];
+      const start = Number(item?.start);
+      const end = Number(item?.end);
+      if (!span || !Number.isFinite(start) || !Number.isFinite(end)) return null;
+      const length = Math.max(1, span.end - span.start);
+      const offset = Math.max(0, Math.min(length, position - span.start));
+      return Math.round(start + ((end - start) * offset) / length);
+    };
+    const result = [];
+    let pendingNeutral = '';
+    const appendNeutral = (text) => {
+      if (!text) return;
+      if (result.length) result[result.length - 1].text += text;
+      else pendingNeutral += text;
+    };
+    const appendSourceRange = (rangeStart, rangeEnd) => {
+      let cursor = rangeStart;
+      while (cursor < rangeEnd) {
+        const itemIndex = itemIndexAt(cursor);
+        const span = spans[itemIndex];
+        if (!span) return false;
+        const chunkEnd = Math.min(rangeEnd, span.end);
+        const copy = cloneJsonValue(items[itemIndex]);
+        copy.text = sourceTokens.slice(cursor, chunkEnd).join('');
+        copy.start = itemTimeAt(itemIndex, cursor);
+        copy.end = itemTimeAt(itemIndex, chunkEnd);
+        if (copy.start === null || copy.end === null) return false;
+        if (cursor !== span.start || chunkEnd !== span.end) delete copy.id;
+        if (pendingNeutral) {
+          copy.text = `${pendingNeutral}${copy.text}`;
+          pendingNeutral = '';
+        }
+        result.push(copy);
+        cursor = chunkEnd;
+      }
+      return true;
+    };
+
+    let entryIndex = 0;
+    while (entryIndex < entries.length) {
+      const entry = entries[entryIndex];
+      if (entry.type === 'neutral') {
+        const position = entry.position;
+        let text = '';
+        while (entryIndex < entries.length
+            && entries[entryIndex].type === 'neutral'
+            && entries[entryIndex].position === position) {
+          text += entries[entryIndex].token;
+          entryIndex += 1;
+        }
+        appendNeutral(text);
+        continue;
+      }
+      const rangeStart = entry.index;
+      let rangeEnd = rangeStart + 1;
+      entryIndex += 1;
+      while (entryIndex < entries.length
+          && entries[entryIndex].type === 'source'
+          && entries[entryIndex].index === rangeEnd) {
+        rangeEnd += 1;
+        entryIndex += 1;
+      }
+      if (!appendSourceRange(rangeStart, rangeEnd)) return null;
+    }
+    if (pendingNeutral) {
+      if (!result.length) return null;
+      result[result.length - 1].text += pendingNeutral;
+    }
+    if (result.map((item) => item.text).join('') !== String(newText == null ? '' : newText)
+        || !timedTextItemsOrdered(result)) return null;
+    return result;
+  }
+
+  function timedTextStructureRequested(segments, draftTexts) {
+    const source = Array.isArray(segments) ? segments : [];
+    const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    if (!source.length || source.some((segment) => String(segment?.text || '').includes('\n'))) return false;
+    return source.length !== texts.length
+      || texts.some((text) => String(text == null ? '' : text).includes('\n'));
+  }
+
+  function timedTextDraftLines(draftTexts) {
+    return timedTextDraftLineEntries(draftTexts).map((entry) => entry.text);
+  }
+
+  function timedTextDraftLineEntries(draftTexts) {
+    return (Array.isArray(draftTexts) ? draftTexts : [])
+      .flatMap((text, draftIndex) => String(text == null ? '' : text)
+        .replace(/\r\n?/g, '\n')
+        .split('\n')
+        .map((line) => ({ text: line, draftIndex })));
+  }
+
+  function timedTextRangeIsWhitespace(tokens, range) {
+    return tokens.slice(range.start, range.end).every((token) => /\s/u.test(token));
+  }
+
+  function retimeTimedTextSlice(items, newText) {
+    const source = Array.isArray(items) ? items : [];
+    const targetTokens = timedTextTokens(newText);
+    const lengths = source.map((item) => timedTextTokens(item?.text).length);
+    if (!source.length || lengths.some((length) => length <= 0)) return null;
+    const sourceText = source.map((item) => String(item?.text || '')).join('');
+    const layout = timedTextItemLayout(sourceText, source);
+    const neutralItems = timedTextNeutralInsertionItems(sourceText, layout, newText, true);
+    if (neutralItems) return neutralItems;
+    if (lengths.reduce((sum, length) => sum + length, 0) !== targetTokens.length) return null;
+    let offset = 0;
+    return source.map((item, index) => {
+      const copy = cloneJsonValue(item);
+      const length = lengths[index];
+      copy.text = targetTokens.slice(offset, offset + length).join('');
+      offset += length;
+      return copy;
+    });
+  }
+
+  const TIMED_TEXT_ESTIMATED_MIN_MS = 100;
+  const TIMED_TEXT_ESTIMATED_MS_PER_CHARACTER = 100;
+
+  function timedTextEstimatedDuration(text) {
+    const units = Math.max(1, Math.ceil(countTextUnits(text)));
+    return Math.max(
+      TIMED_TEXT_ESTIMATED_MIN_MS,
+      units * TIMED_TEXT_ESTIMATED_MS_PER_CHARACTER,
+    );
+  }
+
+  function timedTextSegmentBoundary(segment, offset, total) {
+    const start = Number(segment?.start);
+    const end = Number(segment?.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || total <= 0) return null;
+    const safeOffset = Math.max(0, Math.min(total, Number(offset) || 0));
+    return Math.round(start + ((end - start) * safeOffset) / total);
+  }
+
+  function emptyTimedTextStructurePlan(error = '') {
+    return {
+      valid: false,
+      type: null,
+      error,
+      mode: null,
+      segments: [],
+      outputMeta: [],
+      sourceOutputIndexes: [],
+      affectedSourceIndexes: [],
+      removedSourceIndexes: [],
+    };
+  }
+
+  function findTimedTextTokenSequence(sourceTokens, targetTokens, fromIndex) {
+    if (!targetTokens.length) return -1;
+    for (let index = Math.max(0, fromIndex); index + targetTokens.length <= sourceTokens.length; index += 1) {
+      if (sameTimedTextTokens(
+        sourceTokens.slice(index, index + targetTokens.length),
+        targetTokens,
+      )) return index;
+    }
+    return -1;
+  }
+
+  function findTimedTextTokenSequences(sourceTokens, targetTokens) {
+    if (!targetTokens.length) return [];
+    const matches = [];
+    for (let index = 0; index + targetTokens.length <= sourceTokens.length; index += 1) {
+      if (sameTimedTextTokens(
+        sourceTokens.slice(index, index + targetTokens.length),
+        targetTokens,
+      )) matches.push({ start: index, end: index + targetTokens.length });
+    }
+    return matches;
+  }
+
+  function findTimedTextNeutralAwareSequences(sourceTokens, targetTokens) {
+    const sourcePositions = [];
+    const sourceAnchors = [];
+    sourceTokens.forEach((token, index) => {
+      if (isTimedTextNeutralToken(token, true)) return;
+      sourcePositions.push(index);
+      sourceAnchors.push(token);
+    });
+    const targetAnchors = targetTokens.filter((token) => !isTimedTextNeutralToken(token, true));
+    if (!targetAnchors.length) return [];
+    const matches = [];
+    for (let index = 0; index + targetAnchors.length <= sourceAnchors.length; index += 1) {
+      if (!sameTimedTextTokens(
+        sourceAnchors.slice(index, index + targetAnchors.length),
+        targetAnchors,
+      )) continue;
+      let rangeStart = sourcePositions[index];
+      let rangeEnd = sourcePositions[index + targetAnchors.length - 1] + 1;
+      while (rangeStart > 0 && isTimedTextNeutralToken(sourceTokens[rangeStart - 1], true)) {
+        rangeStart -= 1;
+      }
+      while (rangeEnd < sourceTokens.length && isTimedTextNeutralToken(sourceTokens[rangeEnd], true)) {
+        rangeEnd += 1;
+      }
+      matches.push({ start: rangeStart, end: rangeEnd });
+    }
+    return matches;
+  }
+
+  function timedTextAnchorCandidates(sourceTokens, lineTokens, sourceOffsets) {
+    const boundaries = new Set([0]);
+    sourceOffsets.forEach((range) => {
+      boundaries.add(range.start);
+      boundaries.add(range.end);
+    });
+    const candidates = [];
+    lineTokens.forEach((tokens, lineIndex) => {
+      const seen = new Set();
+      const append = (range, neutralAware = false) => {
+        if (!range || range.start >= range.end || seen.has(`${range.start}:${range.end}`)) return;
+        const startsAtBoundary = boundaries.has(range.start);
+        const endsAtBoundary = boundaries.has(range.end);
+        // 内部片段太容易把真正的后续字幕误认成锚点；拆分/合并只接受
+        // 至少一侧落在原字幕边界上的匹配。完全内部的片段留给区间估算。
+        if (!startsAtBoundary && !endsAtBoundary) return;
+        const wholeSource = !neutralAware && sourceOffsets.some((sourceRange) => (
+          sourceRange.start === range.start && sourceRange.end === range.end
+        ));
+        const boundaryScore = wholeSource
+          ? 100000000
+          : (startsAtBoundary && endsAtBoundary ? 1000000 : 10000);
+        seen.add(`${range.start}:${range.end}`);
+        candidates.push({
+          lineIndex,
+          start: range.start,
+          end: range.end,
+          score: boundaryScore + Math.min(tokens.length, 10000),
+        });
+      };
+      findTimedTextTokenSequences(sourceTokens, tokens).forEach((range) => append(range));
+      findTimedTextNeutralAwareSequences(sourceTokens, tokens)
+        .forEach((range) => append(range, true));
+    });
+    return candidates;
+  }
+
+  function selectTimedTextAnchors(sourceTokens, lineTokens, sourceOffsets) {
+    const candidates = timedTextAnchorCandidates(sourceTokens, lineTokens, sourceOffsets);
+    if (!candidates.length) return [];
+    const states = candidates.map((candidate) => ({
+      score: candidate.score,
+      count: 1,
+      coveredLength: candidate.end - candidate.start,
+      previous: -1,
+    }));
+    const isBetter = (left, right) => {
+      if (!right) return true;
+      if (left.score !== right.score) return left.score > right.score;
+      if (left.count !== right.count) return left.count > right.count;
+      if (left.coveredLength !== right.coveredLength) return left.coveredLength > right.coveredLength;
+      return left.previous < right.previous;
+    };
+    for (let current = 0; current < candidates.length; current += 1) {
+      const candidate = candidates[current];
+      for (let previous = 0; previous < current; previous += 1) {
+        const previousCandidate = candidates[previous];
+        if (previousCandidate.lineIndex >= candidate.lineIndex
+            || previousCandidate.end > candidate.start) continue;
+        const proposal = {
+          score: states[previous].score + candidate.score,
+          count: states[previous].count + 1,
+          coveredLength: states[previous].coveredLength + candidate.end - candidate.start,
+          previous,
+        };
+        if (isBetter(proposal, states[current])) states[current] = proposal;
+      }
+    }
+    let last = -1;
+    for (let index = 0; index < states.length; index += 1) {
+      if (last < 0 || isBetter(states[index], states[last])) last = index;
+    }
+    const selected = [];
+    while (last >= 0) {
+      selected.push(candidates[last]);
+      last = states[last].previous;
+    }
+    return selected.reverse();
+  }
+
+  function buildTimedTextStructurePlan(segments, draftTexts) {
+    const source = Array.isArray(segments) ? segments : [];
+    const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    if (!timedTextStructureRequested(source, texts)) return emptyTimedTextStructurePlan();
+    // 空行表示用户清空了对应字幕；纯文本视图不再保留空字幕行，直接将其视为删除标记。
+    const lineEntries = timedTextDraftLineEntries(texts)
+      .filter((entry) => String(entry.text).trim() !== '');
+    const lines = lineEntries.map((entry) => entry.text);
+
+    const sourceTokens = source.map((segment) => timedTextTokens(segment?.text));
+    const sourceOffsets = [];
+    let totalCharacters = 0;
+    sourceTokens.forEach((tokens) => {
+      sourceOffsets.push({ start: totalCharacters, end: totalCharacters + tokens.length });
+      totalCharacters += tokens.length;
+    });
+    if (!totalCharacters) return emptyTimedTextStructurePlan('当前字幕没有可用于拆分的文字。');
+    const flattenedSource = sourceTokens.flat();
+    const lineTokens = lines.map((line) => timedTextTokens(line));
+    const lineRanges = [];
+    let exactCursor = 0;
+    let exact = true;
+    for (const tokens of lineTokens) {
+      const start = findTimedTextTokenSequence(flattenedSource, tokens, exactCursor);
+      if (start < 0) {
+        exact = false;
+        break;
+      }
+      lineRanges.push({ start, end: start + tokens.length });
+      exactCursor = start + tokens.length;
+    }
+
+    let mode = 'exact';
+    if (exact) {
+      const gaps = [];
+      let previous = 0;
+      lineRanges.forEach((range) => {
+        if (range.start > previous) gaps.push({ start: previous, end: range.start });
+        previous = range.end;
+      });
+      if (previous < totalCharacters) gaps.push({ start: previous, end: totalCharacters });
+      const boundaries = new Set([0, ...sourceOffsets.flatMap((range) => [range.start, range.end])]);
+      if (gaps.some((gap) => (
+        (!boundaries.has(gap.start) || !boundaries.has(gap.end))
+        && !timedTextRangeIsWhitespace(flattenedSource, gap)
+      ))) {
+        return emptyTimedTextStructurePlan('删除字幕时只能删除完整字幕行，不能只删除其中一部分文字。');
+      }
+    } else {
+      // 某些前面的句子被改写后，仍尝试从后面的未改文字建立锚点。
+      // 锚点之间的新增/改写区域只允许走字幕段级估算，不能再按原始 index 猜。
+      const anchors = Array.from({ length: lineTokens.length }, () => null);
+      // 不再按草稿顺序贪心地拿每一个“看起来能匹配”的片段。一个较短的
+      // 内部片段可能会抢先消耗真正属于后面字幕的文字，之后所有行只能按
+      // 比例估算，最终表现为“一句错、句句错”。先收集全局候选，再选择一组
+      // 顺序一致且尽量覆盖完整原字幕的锚点，让未改字幕优先成为稳定边界。
+      const selectedAnchors = selectTimedTextAnchors(flattenedSource, lineTokens, sourceOffsets);
+      selectedAnchors.forEach((anchor) => {
+        anchors[anchor.lineIndex] = { start: anchor.start, end: anchor.end };
+      });
+      const anchorCount = selectedAnchors.length;
+      if (!anchorCount) {
+        return emptyTimedTextStructurePlan('无法根据原文重新匹配拆句结果；请保留至少一段未改文字作为匹配锚点。');
+      }
+      mode = 'anchor';
+      let previousLineIndex = -1;
+      let previousSourceEnd = 0;
+      const anchorIndexes = anchors
+        .map((anchor, index) => (anchor ? index : -1))
+        .filter((index) => index >= 0);
+      for (const nextLineIndex of [...anchorIndexes, lineTokens.length]) {
+        const nextAnchor = nextLineIndex < lineTokens.length ? anchors[nextLineIndex] : null;
+        const sourceEnd = nextAnchor?.start ?? totalCharacters;
+        const missingIndexes = [];
+        for (let index = previousLineIndex + 1; index < nextLineIndex; index += 1) {
+          if (!anchors[index]) missingIndexes.push(index);
+        }
+        const targetLength = missingIndexes.reduce((sum, index) => sum + lineTokens[index].length, 0);
+        const sourceLength = sourceEnd - previousSourceEnd;
+        if (missingIndexes.length && (targetLength <= 0 || sourceLength <= 0)) {
+          return emptyTimedTextStructurePlan('无法根据原文重新匹配拆句结果；改写区域缺少可用时间范围。');
+        }
+        let targetOffset = 0;
+        missingIndexes.forEach((index) => {
+          const start = previousSourceEnd + Math.round((sourceLength * targetOffset) / targetLength);
+          targetOffset += lineTokens[index].length;
+          const end = previousSourceEnd + Math.round((sourceLength * targetOffset) / targetLength);
+          if (end <= start) {
+            lineRanges.length = 0;
+            return;
+          }
+          lineRanges[index] = { start, end };
+        });
+        if (nextAnchor) {
+          lineRanges[nextLineIndex] = nextAnchor;
+          previousLineIndex = nextLineIndex;
+          previousSourceEnd = nextAnchor.end;
+        } else {
+          previousLineIndex = lineTokens.length - 1;
+          previousSourceEnd = totalCharacters;
+        }
+      }
+      if (lineRanges.length !== lineTokens.length || lineRanges.some((range) => !range)) {
+        return emptyTimedTextStructurePlan('无法根据原文重新匹配拆句结果；请减少连续改写的字幕行。');
+      }
+    }
+
+    const layouts = source.map((segment) => timedTextItemLayout(segment?.text, segment?.items));
+    const outputSegments = [];
+    const outputMeta = [];
+    const sourceOutputIndexes = Array.from({ length: source.length }, () => []);
+    let previousOutputEnd = null;
+    for (const [outputIndex, range] of lineRanges.entries()) {
+      const overlaps = sourceOffsets
+        .map((sourceRange, sourceIndex) => ({ sourceRange, sourceIndex }))
+        .filter(({ sourceRange }) => range.start < sourceRange.end && range.end > sourceRange.start);
+      if (!overlaps.length) return emptyTimedTextStructurePlan('无法找到新字幕对应的原始时间范围。');
+
+      const first = overlaps[0].sourceIndex;
+      const last = overlaps[overlaps.length - 1].sourceIndex;
+      const firstLocal = range.start - sourceOffsets[first].start;
+      const lastLocal = range.end - sourceOffsets[last].start;
+      const isWholeUnchangedSource = overlaps.length === 1
+        && firstLocal === 0
+        && lastLocal === sourceTokens[first].length
+        && lines[outputIndex] === String(source[first]?.text || '');
+      let items = null;
+      let timingEstimated = false;
+      if (isWholeUnchangedSource) {
+        // 末尾多出的空行等不会改变字幕结构；没有字词时间码时也可以安全地保留这个无变化行。
+        items = Array.isArray(source[first]?.items) ? cloneJsonValue(source[first].items) : null;
+      } else {
+        const originalItems = [];
+        let canReuseItems = true;
+        for (const { sourceRange, sourceIndex } of overlaps) {
+          const localStart = Math.max(0, range.start - sourceRange.start);
+          const localEnd = Math.min(sourceRange.end - sourceRange.start, range.end - sourceRange.start);
+          if (localStart >= localEnd) continue;
+          if (!layouts[sourceIndex]) {
+            canReuseItems = false;
+            break;
+          }
+          const slice = timedTextItemsSlice(layouts[sourceIndex], localStart, localEnd);
+          if (!slice?.length) {
+            canReuseItems = false;
+            break;
+          }
+          originalItems.push(...slice);
+        }
+        items = canReuseItems ? retimeTimedTextSlice(originalItems, lines[outputIndex]) : null;
+        if (!items?.length || !timedTextItemsOrdered(items)) {
+          // 没有完整字词时间码时仍允许拆句，但只生成字幕段级时间范围，
+          // 并在报告中明确标记为按范围/字数估算，绝不伪造精确 items。
+          items = null;
+          timingEstimated = true;
+        }
+      }
+      let start = items?.length
+        ? (firstLocal === 0 ? Number(source[first]?.start) : Number(items[0].start))
+        : timedTextSegmentBoundary(source[first], firstLocal, sourceTokens[first].length);
+      let end = items?.length
+        ? (lastLocal === sourceTokens[last].length
+          ? Number(source[last]?.end) : Number(items[items.length - 1].end))
+        : timedTextSegmentBoundary(source[last], lastLocal, sourceTokens[last].length);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        timingEstimated = true;
+        start = Number.isFinite(previousOutputEnd) ? previousOutputEnd : 0;
+        end = start + timedTextEstimatedDuration(lines[outputIndex]);
+      } else if (timingEstimated) {
+        if (Number.isFinite(previousOutputEnd) && start < previousOutputEnd) start = previousOutputEnd;
+        end = Math.max(end, start + TIMED_TEXT_ESTIMATED_MIN_MS);
+      }
+      const nextSourceStart = Number(source[last + 1]?.start);
+      if (timingEstimated && Number.isFinite(nextSourceStart)) {
+        if (start >= nextSourceStart) {
+          return emptyTimedTextStructurePlan('自动估算的字幕时间范围没有足够空间，不能越过下一条字幕的开头。');
+        }
+        end = Math.min(end, nextSourceStart);
+        if (end - start < TIMED_TEXT_ESTIMATED_MIN_MS) {
+          return emptyTimedTextStructurePlan('自动估算的字幕时间范围不足 100ms，且不能越过下一条字幕的开头。');
+        }
+      }
+      if (end <= start) {
+        return emptyTimedTextStructurePlan('拆句后产生了无效的字幕时间范围。');
+      }
+      const segment = cloneJsonValue(source[first] || {});
+      segment.start = start;
+      segment.end = end;
+      segment.text = lines[outputIndex];
+      if (!isWholeUnchangedSource) {
+        if (items?.length) segment.items = items;
+        else delete segment.items;
+      }
+      outputSegments.push(segment);
+      outputMeta.push({
+        sourceIndexes: overlaps.map(({ sourceIndex }) => sourceIndex),
+        range,
+        timingEstimated,
+        draftIndex: lineEntries[outputIndex]?.draftIndex,
+      });
+      overlaps.forEach(({ sourceIndex }) => sourceOutputIndexes[sourceIndex].push(outputIndex));
+      previousOutputEnd = end;
+    }
+
+    const usedSegments = [...source];
+    outputMeta.forEach((meta, outputIndex) => {
+      const sourceIndex = meta.sourceIndexes[0];
+      const sourceSegment = source[sourceIndex] || {};
+      const sourceRange = sourceOffsets[sourceIndex];
+      const firstOutputForSource = sourceOutputIndexes[sourceIndex][0] === outputIndex;
+      const canKeepSourceId = firstOutputForSource && meta.range.start === sourceRange.start;
+      if (canKeepSourceId && sourceSegment.id) {
+        outputSegments[outputIndex].id = sourceSegment.id;
+      } else {
+        const baseId = `${sourceSegment.id || `segment-${sourceIndex + 1}`}-text-${outputIndex + 1}`;
+        outputSegments[outputIndex].id = uniqueStableSegmentId(usedSegments, baseId, 'segment');
+      }
+      usedSegments.push(outputSegments[outputIndex]);
+      if (sourceSegment.sticker && !firstOutputForSource) {
+        outputSegments[outputIndex].sticker = null;
+        outputSegments[outputIndex].sticker_ref = {
+          name: sourceSegment.sticker.name,
+          headIdx: sourceOutputIndexes[sourceIndex][0],
+        };
+      }
+      if (sourceSegment.color && !firstOutputForSource) {
+        outputSegments[outputIndex].color = null;
+        outputSegments[outputIndex].color_ref = {
+          name: sourceSegment.color.name,
+          headIdx: sourceOutputIndexes[sourceIndex][0],
+        };
+      }
+    });
+
+    const affectedSourceIndexes = [];
+    sourceOutputIndexes.forEach((outputIndexes, sourceIndex) => {
+      if (outputIndexes.length !== 1) {
+        affectedSourceIndexes.push(sourceIndex);
+        return;
+      }
+      const meta = outputMeta[outputIndexes[0]];
+      const range = sourceOffsets[sourceIndex];
+      const output = outputSegments[outputIndexes[0]];
+      if (meta.sourceIndexes.length !== 1
+          || meta.range.start !== range.start
+          || meta.range.end !== range.end
+          || output.text !== source[sourceIndex]?.text) affectedSourceIndexes.push(sourceIndex);
+    });
+
+    const removedSourceIndexes = sourceOutputIndexes
+      .map((outputIndexes, sourceIndex) => outputIndexes.length ? -1 : sourceIndex)
+      .filter((index) => index >= 0);
+    const hasSplit = sourceOutputIndexes.some((indexes) => indexes.length > 1);
+    const hasMerge = outputMeta.some((meta) => meta.sourceIndexes.length > 1);
+    const hasDelete = removedSourceIndexes.length > 0;
+    const type = [hasSplit ? 'split' : '', hasMerge ? 'merge' : '', hasDelete ? 'delete' : '']
+      .filter(Boolean).join('+');
+    return {
+      valid: true,
+      type: type || 'resegment',
+      error: '',
+      mode,
+      segments: outputSegments,
+      outputMeta,
+      sourceOutputIndexes,
+      affectedSourceIndexes,
+      removedSourceIndexes,
+    };
+  }
+
+  function sameTimedTextTokens(left, right) {
+    return left.length === right.length && left.every((token, index) => token === right[index]);
+  }
+
+  function hasTimedTextContent(tokens) {
+    return tokens.some((token) => token.trim() !== '');
+  }
+
+  function detectTimedTextBoundaryMoves(segments, draftTexts) {
+    const source = Array.isArray(segments) ? segments : [];
+    const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    if (source.length !== texts.length) return [];
+    const candidates = [];
+
+    // 当前字幕的开头移到上一条末尾：上一条新增的尾巴必须完整来自当前字幕开头。
+    for (let index = 1; index < source.length; index += 1) {
+      const previousBefore = timedTextTokens(source[index - 1]?.text);
+      const previousAfter = timedTextTokens(texts[index - 1]);
+      const currentBefore = timedTextTokens(source[index]?.text);
+      if (previousAfter.length <= previousBefore.length) continue;
+      const moved = previousAfter.slice(previousBefore.length);
+      if (!hasTimedTextContent(moved)
+          || !sameTimedTextTokens(previousAfter.slice(0, previousBefore.length), previousBefore)
+          || !sameTimedTextTokens(currentBefore.slice(0, moved.length), moved)) continue;
+      candidates.push({
+        type: 'prefix-to-previous',
+        sourceIndex: index,
+        targetIndex: index - 1,
+        movedTokens: moved,
+      });
+    }
+
+    // 当前字幕的结尾移到下一条开头：下一条新增的开头必须完整来自当前字幕结尾。
+    for (let index = 0; index < source.length - 1; index += 1) {
+      const currentBefore = timedTextTokens(source[index]?.text);
+      const nextBefore = timedTextTokens(source[index + 1]?.text);
+      const nextAfter = timedTextTokens(texts[index + 1]);
+      if (nextAfter.length <= nextBefore.length) continue;
+      const moved = nextAfter.slice(0, nextAfter.length - nextBefore.length);
+      if (!hasTimedTextContent(moved)
+          || !sameTimedTextTokens(nextAfter.slice(moved.length), nextBefore)
+          || !sameTimedTextTokens(currentBefore.slice(currentBefore.length - moved.length), moved)) continue;
+      candidates.push({
+        type: 'suffix-to-next',
+        sourceIndex: index,
+        targetIndex: index + 1,
+        movedTokens: moved,
+      });
+    }
+    return candidates;
+  }
+
+  function timedTextItemsOrdered(items) {
+    let previousStart = -Infinity;
+    let previousEnd = -Infinity;
+    return (items || []).every((item) => {
+      const start = Number(item?.start);
+      const end = Number(item?.end);
+      const valid = Number.isFinite(start) && Number.isFinite(end)
+        && end >= start && start >= previousStart && start >= previousEnd && end >= previousEnd;
+      if (valid) {
+        previousStart = start;
+        previousEnd = end;
+      }
+      return valid;
+    });
+  }
+
+  // 逐条字幕通常很短，用 LCS 生成字符级 diff 足够可靠；过大的单条文本
+  // 走保守兜底，避免编辑器因构造过大的二维表而卡住。
+  function timedTextDiffOpcodes(sourceTokens, targetTokens) {
+    const sourceLength = sourceTokens.length;
+    const targetLength = targetTokens.length;
+    const columns = targetLength + 1;
+    const cellCount = (sourceLength + 1) * columns;
+    if (cellCount > 2000000) return null;
+
+    const table = new Uint32Array(cellCount);
+    for (let sourceIndex = sourceLength - 1; sourceIndex >= 0; sourceIndex -= 1) {
+      const row = sourceIndex * columns;
+      const nextRow = (sourceIndex + 1) * columns;
+      for (let targetIndex = targetLength - 1; targetIndex >= 0; targetIndex -= 1) {
+        table[row + targetIndex] = sourceTokens[sourceIndex] === targetTokens[targetIndex]
+          ? table[nextRow + targetIndex + 1] + 1
+          : Math.max(table[nextRow + targetIndex], table[row + targetIndex + 1]);
+      }
+    }
+
+    const opcodes = [];
+    let sourcePosition = 0;
+    let targetPosition = 0;
+    let pendingSourceStart = null;
+    let pendingTargetStart = null;
+    const flushChanged = () => {
+      if (pendingSourceStart === null) return;
+      opcodes.push({
+        tag: 'replace',
+        sourceStart: pendingSourceStart,
+        sourceEnd: sourcePosition,
+        targetStart: pendingTargetStart,
+        targetEnd: targetPosition,
+      });
+      pendingSourceStart = null;
+      pendingTargetStart = null;
+    };
+    const appendEqual = () => {
+      const previous = opcodes[opcodes.length - 1];
+      if (previous?.tag === 'equal'
+          && previous.sourceEnd === sourcePosition
+          && previous.targetEnd === targetPosition) {
+        previous.sourceEnd += 1;
+        previous.targetEnd += 1;
+      } else {
+        opcodes.push({
+          tag: 'equal',
+          sourceStart: sourcePosition,
+          sourceEnd: sourcePosition + 1,
+          targetStart: targetPosition,
+          targetEnd: targetPosition + 1,
+        });
+      }
+    };
+
+    while (sourcePosition < sourceLength && targetPosition < targetLength) {
+      if (sourceTokens[sourcePosition] === targetTokens[targetPosition]) {
+        flushChanged();
+        appendEqual();
+        sourcePosition += 1;
+        targetPosition += 1;
+        continue;
+      }
+      if (pendingSourceStart === null) {
+        pendingSourceStart = sourcePosition;
+        pendingTargetStart = targetPosition;
+      }
+      const skipSource = table[(sourcePosition + 1) * columns + targetPosition];
+      const skipTarget = table[sourcePosition * columns + targetPosition + 1];
+      if (skipSource >= skipTarget) sourcePosition += 1;
+      else targetPosition += 1;
+    }
+    if (pendingSourceStart === null && (sourcePosition < sourceLength || targetPosition < targetLength)) {
+      pendingSourceStart = sourcePosition;
+      pendingTargetStart = targetPosition;
+    }
+    sourcePosition = sourceLength;
+    targetPosition = targetLength;
+    flushChanged();
+    return opcodes;
+  }
+
+  function emptyTimedTextBoundaryPlan(source) {
+    return {
+      transfers: [],
+      updates: Array.from({ length: source.length }, () => null),
+    };
+  }
+
+  function buildTimedTextBoundaryPlan(segments, draftTexts) {
+    const source = Array.isArray(segments) ? segments : [];
+    const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    if (source.length !== texts.length) return emptyTimedTextBoundaryPlan(source);
+    const candidates = detectTimedTextBoundaryMoves(source, texts);
+    if (!candidates.length) return emptyTimedTextBoundaryPlan(source);
+
+    const prefixCounts = Array.from({ length: source.length }, () => 0);
+    const suffixCounts = Array.from({ length: source.length }, () => 0);
+    const incomingPrefixes = Array.from({ length: source.length }, () => null);
+    const incomingSuffixes = Array.from({ length: source.length }, () => null);
+    for (const candidate of candidates) {
+      const movedLength = candidate.movedTokens.length;
+      if (candidate.type === 'prefix-to-previous') {
+        if (prefixCounts[candidate.sourceIndex] || incomingSuffixes[candidate.targetIndex]) {
+          return emptyTimedTextBoundaryPlan(source);
+        }
+        prefixCounts[candidate.sourceIndex] = movedLength;
+        incomingSuffixes[candidate.targetIndex] = candidate;
+      } else {
+        if (suffixCounts[candidate.sourceIndex] || incomingPrefixes[candidate.targetIndex]) {
+          return emptyTimedTextBoundaryPlan(source);
+        }
+        suffixCounts[candidate.sourceIndex] = movedLength;
+        incomingPrefixes[candidate.targetIndex] = candidate;
+      }
+    }
+
+    const partitions = Array.from({ length: source.length }, () => null);
+    const affectedIndexes = new Set();
+    candidates.forEach((candidate) => {
+      affectedIndexes.add(candidate.sourceIndex);
+      affectedIndexes.add(candidate.targetIndex);
+    });
+
+    for (const index of affectedIndexes) {
+      const beforeTokens = timedTextTokens(source[index]?.text);
+      const prefixCount = prefixCounts[index];
+      const suffixCount = suffixCounts[index];
+      if (prefixCount + suffixCount > beforeTokens.length) {
+        return emptyTimedTextBoundaryPlan(source);
+      }
+      const layout = timedTextItemLayout(source[index]?.text, source[index]?.items);
+      if (!layout) return emptyTimedTextBoundaryPlan(source);
+      const partition = timedTextItemsPartition(layout, prefixCount, suffixCount);
+      if (!partition) {
+        return emptyTimedTextBoundaryPlan(source);
+      }
+      partitions[index] = { layout, ...partition };
+    }
+
+    for (const candidate of candidates) {
+      const partition = partitions[candidate.sourceIndex];
+      candidate.movedItems = candidate.type === 'prefix-to-previous'
+        ? cloneJsonValue(partition.prefix)
+        : cloneJsonValue(partition.suffix);
+      if (!candidate.movedItems.length
+          || candidate.movedItems.map((item) => item.text).join('') !== candidate.movedTokens.join('')) {
+        return emptyTimedTextBoundaryPlan(source);
+      }
+    }
+
+    for (const index of affectedIndexes) {
+      const beforeTokens = timedTextTokens(source[index]?.text);
+      const prefixTokens = incomingPrefixes[index]?.movedTokens || [];
+      const suffixTokens = incomingSuffixes[index]?.movedTokens || [];
+      const bodyTokens = beforeTokens.slice(prefixCounts[index], beforeTokens.length - suffixCounts[index]);
+      const expectedTokens = [...prefixTokens, ...bodyTokens, ...suffixTokens];
+      if (!sameTimedTextTokens(expectedTokens, timedTextTokens(texts[index]))) {
+        return emptyTimedTextBoundaryPlan(source);
+      }
+
+      const partition = partitions[index];
+      const incomingPrefixItems = incomingPrefixes[index]?.movedItems || [];
+      const incomingSuffixItems = incomingSuffixes[index]?.movedItems || [];
+      const nextItems = [
+        ...cloneJsonValue(incomingPrefixItems),
+        ...cloneJsonValue(partition.body),
+        ...cloneJsonValue(incomingSuffixItems),
+      ];
+      if ((expectedTokens.length && !nextItems.length)
+          || nextItems.map((item) => item.text).join('') !== expectedTokens.join('')
+          || !timedTextItemsOrdered(nextItems)) {
+        return emptyTimedTextBoundaryPlan(source);
+      }
+
+      const segment = source[index];
+      let start = Number(segment?.start);
+      let end = Number(segment?.end);
+      if (nextItems.length) {
+        if (prefixCounts[index] || prefixTokens.length) start = Number(nextItems[0].start);
+        if (suffixCounts[index] || suffixTokens.length) end = Number(nextItems[nextItems.length - 1].end);
+      }
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        return emptyTimedTextBoundaryPlan(source);
+      }
+      partitions[index].update = {
+        text: texts[index],
+        items: nextItems,
+        start,
+        end,
+      };
+    }
+
+    const updates = Array.from({ length: source.length }, () => null);
+    affectedIndexes.forEach((index) => { updates[index] = partitions[index].update; });
+    return {
+      transfers: candidates.map((candidate) => ({
+        type: candidate.type,
+        sourceIndex: candidate.sourceIndex,
+        targetIndex: candidate.targetIndex,
+        movedText: candidate.movedTokens.join(''),
+        movedItemCount: candidate.movedItems.length,
+      })),
+      updates,
+    };
+  }
+
+  function reconcileTimedTextItems(originalText, rawItems, newText) {
+    if (!Array.isArray(rawItems) || !rawItems.length) {
+      return { status: 'unavailable', items: null, preservedItems: 0, affectedItems: 0 };
+    }
+    const layout = timedTextItemLayout(originalText, rawItems);
+    if (!layout) {
+      const items = Array.isArray(rawItems) ? cloneJsonValue(rawItems) : [];
+      return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+    }
+    const { items, spans } = layout;
+    if (originalText === newText) {
+      return { status: 'full', items, preservedItems: items.length, affectedItems: 0 };
+    }
+
+    const originalTokens = timedTextTokens(originalText);
+    const newTokens = timedTextTokens(newText);
+    const neutralItems = timedTextNeutralInsertionItems(originalText, layout, newText);
+    if (neutralItems) {
+      return {
+        status: 'partial',
+        items: neutralItems,
+        preservedItems: items.length,
+        affectedItems: 0,
+      };
+    }
+    // 等长改字是最可靠的错别字修正场景：按原 item 的字符长度重新分配文字，
+    // 直接保留每个 item 的时间范围。
+    if (originalTokens.length === newTokens.length) {
+      let offset = 0;
+      items.forEach((item, index) => {
+        const length = spans[index].end - spans[index].start;
+        item.text = newTokens.slice(offset, offset + length).join('');
+        offset += length;
+      });
+      return { status: 'full', items, preservedItems: items.length, affectedItems: 0 };
+    }
+
+    const opcodes = timedTextDiffOpcodes(originalTokens, newTokens);
+    if (!opcodes) {
+      return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+    }
+    const unchanged = opcodes.reduce((total, opcode) => (
+      opcode.tag === 'equal' ? total + opcode.sourceEnd - opcode.sourceStart : total
+    ), 0);
+    const comparableLength = Math.max(1, Math.min(originalTokens.length, newTokens.length));
+    const changedOriginal = originalTokens.length - unchanged;
+    const changedTarget = newTokens.length - unchanged;
+    const sourceFullyAnchored = unchanged === originalTokens.length;
+    if (
+      unchanged === 0
+      || (!sourceFullyAnchored && unchanged < Math.max(1, Math.round(comparableLength * 0.25)))
+      || (!sourceFullyAnchored && changedOriginal > originalTokens.length * 0.75)
+      || (!sourceFullyAnchored && changedTarget > newTokens.length * 0.75)
+    ) {
+      return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+    }
+
+    const affectedIndexes = new Set();
+    const parentIndexes = Array.from({ length: items.length }, (_, index) => index);
+    const findParent = (index) => {
+      let root = index;
+      while (parentIndexes[root] !== root) root = parentIndexes[root];
+      while (parentIndexes[index] !== index) {
+        const next = parentIndexes[index];
+        parentIndexes[index] = root;
+        index = next;
+      }
+      return root;
+    };
+    const unionItems = (left, right) => {
+      const leftRoot = findParent(left);
+      const rightRoot = findParent(right);
+      if (leftRoot === rightRoot) return;
+      parentIndexes[Math.max(leftRoot, rightRoot)] = Math.min(leftRoot, rightRoot);
+    };
+    const indexesForSourceRange = (sourceStart, sourceEnd) => (
+      sourceStart < sourceEnd
+        ? spans
+          .map((span, index) => ({ span, index }))
+          .filter(({ span }) => span.end > sourceStart && span.start < sourceEnd)
+          .map(({ index }) => index)
+        : []
+    );
+    const insertionItemIndex = (position) => {
+      if (position <= spans[0].start) return 0;
+      const lastIndex = spans.length - 1;
+      if (position >= spans[lastIndex].end) return lastIndex;
+      for (let index = 0; index < spans.length; index += 1) {
+        const span = spans[index];
+        if (span.start < position && position < span.end) return index;
+        // 插入在 item 边界时归到前一个 item，避免无关的后一个 item 也被合并。
+        if (position === span.start) return Math.max(0, index - 1);
+      }
+      return lastIndex;
+    };
+    opcodes.forEach((opcode) => {
+      if (opcode.tag === 'equal') return;
+      const indexes = indexesForSourceRange(opcode.sourceStart, opcode.sourceEnd);
+      if (!indexes.length) {
+        const index = insertionItemIndex(opcode.sourceStart);
+        if (Number.isInteger(index)) indexes.push(index);
+      }
+      indexes.forEach((index) => affectedIndexes.add(index));
+      for (let index = 1; index < indexes.length; index += 1) {
+        unionItems(indexes[0], indexes[index]);
+      }
+    });
+    if (!affectedIndexes.size) {
+      return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+    }
+
+    const componentsByRoot = new Map();
+    affectedIndexes.forEach((index) => {
+      const root = findParent(index);
+      const component = componentsByRoot.get(root);
+      if (component) {
+        component.start = Math.min(component.start, index);
+        component.end = Math.max(component.end, index);
+      } else {
+        componentsByRoot.set(root, { start: index, end: index });
+      }
+    });
+    const components = [...componentsByRoot.values()];
+    const componentIds = new Map();
+    [...componentsByRoot.keys()].forEach((root, componentId) => {
+      componentIds.set(root, componentId);
+    });
+    const itemOwnerKey = (index) => {
+      const componentId = componentIds.get(findParent(index));
+      return componentId === undefined ? `item:${index}` : `affected:${componentId}`;
+    };
+
+    const targetKeys = [];
+    for (const opcode of opcodes) {
+      if (opcode.tag === 'equal') {
+        for (let sourceIndex = opcode.sourceStart; sourceIndex < opcode.sourceEnd; sourceIndex += 1) {
+          const itemIndex = spans.findIndex((span) => span.start <= sourceIndex && sourceIndex < span.end);
+          if (itemIndex < 0) {
+            return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+          }
+          targetKeys.push(itemOwnerKey(itemIndex));
+        }
+        continue;
+      }
+      if (opcode.targetStart >= opcode.targetEnd) continue;
+      const indexes = indexesForSourceRange(opcode.sourceStart, opcode.sourceEnd);
+      if (!indexes.length) {
+        const index = insertionItemIndex(opcode.sourceStart);
+        if (Number.isInteger(index)) indexes.push(index);
+      }
+      if (!indexes.length) {
+        return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+      }
+      const ownerKey = itemOwnerKey(indexes[0]);
+      for (let targetIndex = opcode.targetStart; targetIndex < opcode.targetEnd; targetIndex += 1) {
+        targetKeys.push(ownerKey);
+      }
+    }
+
+    const runs = [];
+    targetKeys.forEach((key, index) => {
+      const previous = runs[runs.length - 1];
+      if (previous?.key === key) previous.end = index + 1;
+      else runs.push({ key, start: index, end: index + 1 });
+    });
+    const usedKeys = new Set();
+    const reconciled = [];
+    for (const run of runs) {
+      if (usedKeys.has(run.key)) {
+        return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+      }
+      usedKeys.add(run.key);
+      const text = newTokens.slice(run.start, run.end).join('');
+      if (!text) continue;
+      let item;
+      if (run.key.startsWith('item:')) {
+        item = cloneJsonValue(items[Number(run.key.slice(5))]);
+      } else {
+        const component = components[Number(run.key.slice(9))];
+        item = cloneJsonValue(items[component.start]);
+        item.start = items[component.start].start;
+        item.end = items[component.end].end;
+      }
+      item.text = text;
+      reconciled.push(item);
+    }
+    if (reconciled.length && reconciled.map((item) => item.text).join('') === newText) {
+      return {
+        status: 'partial',
+        items: reconciled,
+        preservedItems: reconciled.length,
+        affectedItems: affectedIndexes.size,
+      };
+    }
+    return { status: 'lost', items: null, preservedItems: 0, affectedItems: items.length };
+  }
+
+  function buildTimedTextEditReportFixed(segments, draftTexts) {
+    const source = Array.isArray(segments) ? segments : [];
+    const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    const valid = source.length === texts.length;
+    const boundaryPlan = buildTimedTextBoundaryPlan(source, texts);
+    const rows = source.map((segment, index) => {
+      const before = String(segment?.text == null ? '' : segment.text);
+      const after = String(texts[index] == null ? '' : texts[index]);
+      const diff = buildTimedTextDiff(before, after);
+      const boundary = boundaryPlan.updates[index];
+      const mapping = boundary
+        ? {
+          status: 'boundary',
+          items: boundary.items,
+          preservedItems: boundary.items.length,
+          affectedItems: boundary.items.length,
+        }
+        : reconcileTimedTextItems(before, segment?.items, after);
+      const afterStart = boundary ? boundary.start : Number(segment?.start);
+      const afterEnd = boundary ? boundary.end : Number(segment?.end);
+      const coverage = timedTextItemCoverage(after, mapping.items);
+      const reuse = timedTextItemReuse(
+        before, segment?.items, after, mapping.items, mapping.status,
+      );
+      return {
+        index,
+        before,
+        after,
+        changed: before !== after,
+        deleted: Boolean(before.trim() && !after.trim()),
+        diff,
+        mappingStatus: mapping.status,
+        beforeItemCount: Array.isArray(segment?.items) ? segment.items.length : 0,
+        afterItemCount: mapping.items?.length || 0,
+        preservedItems: mapping.preservedItems,
+        affectedItems: mapping.affectedItems,
+        items: mapping.items,
+        itemCoverage: coverage.percent,
+        itemCoverageData: coverage,
+        itemReuse: reuse.percent,
+        itemReuseData: reuse,
+        beforeStart: Number(segment?.start),
+        beforeEnd: Number(segment?.end),
+        afterStart,
+        afterEnd,
+        timingChanged: afterStart !== Number(segment?.start) || afterEnd !== Number(segment?.end),
+      };
+    });
+    const changedRows = rows.filter((row) => row.changed);
+    const stats = {
+      totalSegments: source.length,
+      changedSegments: changedRows.length,
+      unchangedSegments: rows.length - changedRows.length,
+      beforeCharacters: rows.reduce((sum, row) => sum + timedTextTokens(row.before).length, 0),
+      afterCharacters: rows.reduce((sum, row) => sum + timedTextTokens(row.after).length, 0),
+      addedCharacters: changedRows.reduce((sum, row) => sum + row.diff.addedCharacters, 0),
+      removedCharacters: changedRows.reduce((sum, row) => sum + row.diff.removedCharacters, 0),
+      fullMappedCues: changedRows.filter((row) => row.mappingStatus === 'full').length,
+      partialMappedCues: changedRows.filter((row) => row.mappingStatus === 'partial').length,
+      lostMappedCues: changedRows.filter((row) => row.mappingStatus === 'lost').length,
+      unavailableMappedCues: changedRows.filter((row) => row.mappingStatus === 'unavailable').length,
+      boundaryMappedCues: changedRows.filter((row) => row.mappingStatus === 'boundary').length,
+      boundaryMoves: boundaryPlan.transfers.length,
+      timingChangedCues: rows.filter((row) => row.timingChanged).length,
+      preservedItems: changedRows.reduce((sum, row) => sum + row.preservedItems, 0),
+      affectedItems: changedRows.reduce((sum, row) => sum + row.affectedItems, 0),
+    };
+    return { valid, rows, changedRows, stats, boundaryMoves: boundaryPlan.transfers };
+  }
+
+  function timedTextStructureSourceSlice(source, range) {
+    const sourceSegments = Array.isArray(source) ? source : [];
+    const requestedStart = Math.max(0, Math.round(Number(range?.start) || 0));
+    const requestedEnd = Math.max(requestedStart, Math.round(Number(range?.end) || 0));
+    const textParts = [];
+    const items = [];
+    let offset = 0;
+    sourceSegments.forEach((segment) => {
+      const tokens = timedTextTokens(segment?.text);
+      const sourceStart = offset;
+      const sourceEnd = offset + tokens.length;
+      offset = sourceEnd;
+      const localStart = Math.max(0, requestedStart - sourceStart);
+      const localEnd = Math.min(tokens.length, requestedEnd - sourceStart);
+      if (localStart >= localEnd) return;
+      textParts.push(tokens.slice(localStart, localEnd).join(''));
+      const layout = timedTextItemLayout(segment?.text, segment?.items);
+      if (layout) {
+        const sliced = timedTextItemsSlice(layout, localStart, localEnd);
+        if (sliced) items.push(...sliced);
+      }
+    });
+    return { text: textParts.join(''), items };
+  }
+
+  function buildTimedTextStructureReport(source, texts, plan) {
+    const outputRows = plan.segments.map((output, outputIndex) => {
+      const meta = plan.outputMeta[outputIndex] || { sourceIndexes: [], range: null };
+      const sourceSlice = timedTextStructureSourceSlice(source, meta.range);
+      const sourceIndexes = Array.isArray(meta.sourceIndexes) ? meta.sourceIndexes : [];
+      const structural = sourceIndexes.some((index) => plan.affectedSourceIndexes.includes(index))
+        || sourceIndexes.length !== 1;
+      // 结构拆分时，每个输出行只对应原字幕的一段时间范围，但“修改前”
+      // 应该展示用户实际拆分的整条原字幕，而不是展示与“修改后”相同的切片。
+      // 例如「超高速摄影机」拆成「超高速」/「摄影机」时，两行都以整句为 before。
+      const fullSourceText = sourceIndexes
+        .map((index) => String(source[index]?.text == null ? '' : source[index].text))
+        .join('');
+      const before = structural && fullSourceText ? fullSourceText : sourceSlice.text;
+      const after = String(output?.text || '');
+      const mappingStatus = structural
+        ? 'structure'
+        : reconcileTimedTextItems(before, sourceSlice.items, after).status;
+      const coverage = timedTextItemCoverage(after, output?.items);
+      const reuse = timedTextItemReuse(
+        before,
+        sourceSlice.items,
+        after,
+        output?.items,
+        before === after ? 'full' : mappingStatus,
+      );
+      return {
+        index: outputIndex,
+        draftIndex: meta.draftIndex,
+        sourceIndexes,
+        before,
+        after,
+        changed: before !== after || structural,
+        deleted: false,
+        structureChanged: structural,
+        diff: buildTimedTextDiff(before, after),
+        mappingStatus,
+        beforeItemCount: sourceSlice.items.length,
+        afterItemCount: Array.isArray(output?.items) ? output.items.length : 0,
+        preservedItems: Array.isArray(output?.items) ? output.items.length : 0,
+        affectedItems: Array.isArray(output?.items) ? output.items.length : 0,
+        items: output?.items,
+        itemCoverage: coverage.percent,
+        itemCoverageData: coverage,
+        itemReuse: reuse.percent,
+        itemReuseData: reuse,
+        beforeStart: sourceSlice.items[0]?.start ?? Number(output?.start),
+        beforeEnd: sourceSlice.items[sourceSlice.items.length - 1]?.end ?? Number(output?.end),
+        afterStart: Number(output?.start),
+        afterEnd: Number(output?.end),
+        timingChanged: structural,
+        timingEstimated: meta.timingEstimated === true,
+      };
+    });
+    const rows = source.map((segment, index) => {
+      const outputIndexes = plan.sourceOutputIndexes[index] || [];
+      const outputs = outputIndexes.map((outputIndex) => plan.segments[outputIndex]).filter(Boolean);
+      const before = String(segment?.text == null ? '' : segment.text);
+      const after = outputs.map((output) => String(output?.text || '')).join('');
+      const affected = plan.affectedSourceIndexes.includes(index);
+      const diff = buildTimedTextDiff(before, after);
+      const items = outputs.flatMap((output) => Array.isArray(output?.items) ? output.items : []);
+      const mappingStatus = affected ? 'structure' : reconcileTimedTextItems(before, segment?.items, after).status;
+      const coverage = timedTextItemCoverage(after, items);
+      const reuse = timedTextItemReuse(
+        before, segment?.items, after, items, mappingStatus,
+      );
+      const firstOutput = outputs[0];
+      const lastOutput = outputs[outputs.length - 1];
+      const afterStart = firstOutput ? Number(firstOutput.start) : Number(segment?.start);
+      const afterEnd = lastOutput ? Number(lastOutput.end) : Number(segment?.end);
+      return {
+        index,
+        before,
+        after,
+        displayAfter: outputs.map((output) => String(output?.text || '')).join('\n'),
+        changed: before !== after || affected,
+        deleted: Boolean(before.trim() && !after.trim()),
+        structureChanged: affected,
+        diff,
+        mappingStatus,
+        beforeItemCount: Array.isArray(segment?.items) ? segment.items.length : 0,
+        afterItemCount: items.length,
+        preservedItems: items.length,
+        affectedItems: items.length,
+        items,
+        itemCoverage: coverage.percent,
+        itemCoverageData: coverage,
+        itemReuse: reuse.percent,
+        itemReuseData: reuse,
+        beforeStart: Number(segment?.start),
+        beforeEnd: Number(segment?.end),
+        afterStart,
+        afterEnd,
+        timingChanged: affected
+          || afterStart !== Number(segment?.start) || afterEnd !== Number(segment?.end),
+      };
+    });
+    const changedRows = rows.filter((row) => row.changed);
+    const stats = {
+      ...buildTimedTextEditReportFixed(source, source.map((segment) => segment?.text || '')).stats,
+      totalSegments: source.length,
+      changedSegments: changedRows.length,
+      unchangedSegments: rows.length - changedRows.length,
+      beforeCharacters: rows.reduce((sum, row) => sum + timedTextTokens(row.before).length, 0),
+      afterCharacters: rows.reduce((sum, row) => sum + timedTextTokens(row.after).length, 0),
+      addedCharacters: changedRows.reduce((sum, row) => sum + row.diff.addedCharacters, 0),
+      removedCharacters: changedRows.reduce((sum, row) => sum + row.diff.removedCharacters, 0),
+      fullMappedCues: changedRows.filter((row) => row.mappingStatus === 'full').length,
+      partialMappedCues: changedRows.filter((row) => row.mappingStatus === 'partial').length,
+      lostMappedCues: changedRows.filter((row) => row.mappingStatus === 'lost').length,
+      unavailableMappedCues: changedRows.filter((row) => row.mappingStatus === 'unavailable').length,
+      boundaryMappedCues: 0,
+      boundaryMoves: 0,
+      timingChangedCues: rows.filter((row) => row.timingChanged).length,
+      preservedItems: changedRows.reduce((sum, row) => sum + row.preservedItems, 0),
+      affectedItems: changedRows.reduce((sum, row) => sum + row.affectedItems, 0),
+      structureMappedCues: changedRows.filter((row) => row.mappingStatus === 'structure').length,
+      estimatedTimingCues: outputRows.filter((row) => row.timingEstimated).length,
+    };
+    return {
+      valid: true,
+      rows,
+      changedRows,
+      stats,
+      boundaryMoves: [],
+      structure: plan,
+      previewSegments: plan.segments,
+      outputRows,
+    };
+  }
+
+  function buildTimedTextEditReport(segments, draftTexts) {
+    const source = Array.isArray(segments) ? segments : [];
+    const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    if (timedTextStructureRequested(source, texts)) {
+      const plan = buildTimedTextStructurePlan(source, texts);
+      if (plan.valid) return buildTimedTextStructureReport(source, texts, plan);
+      return {
+        ...buildTimedTextEditReportFixed(source, texts),
+        structure: plan,
+        previewSegments: [],
+      };
+    }
+    return buildTimedTextEditReportFixed(source, texts);
+  }
+
+  function timedTextEditComparableSegment(segment) {
+    const comparable = cloneJsonValue(segment || {});
+    if (comparable && typeof comparable === 'object') delete comparable._dirty;
+    return comparable;
+  }
+
+  function timedTextEditSegmentsEquivalent(sourceSegment, outputSegment) {
+    return JSON.stringify(timedTextEditComparableSegment(sourceSegment))
+      === JSON.stringify(timedTextEditComparableSegment(outputSegment));
+  }
+
+  // 结构编辑会返回一组新的 segments，但不能因此把所有输出行都标成 dirty。
+  // 只有内容/时间范围/结构确实发生变化的输出，或来自本来就 dirty 的来源行，
+  // 才应继续显示 dirty；原样保留的一对一字幕沿用来源行的 dirty 状态。
+  function timedTextEditDirtyFlags(sourceSegments, nextSegments, report) {
+    const source = Array.isArray(sourceSegments) ? sourceSegments : [];
+    const next = Array.isArray(nextSegments) ? nextSegments : [];
+    const structure = report?.structure?.valid === true ? report.structure : null;
+    if (!structure) {
+      return next.map((segment, index) => {
+        const sourceSegment = source[index];
+        const row = report?.rows?.[index];
+        if (!sourceSegment || row?.changed || row?.timingChanged) return true;
+        return sourceSegment._dirty === true;
+      });
+    }
+
+    const affectedSourceIndexes = new Set(structure.affectedSourceIndexes || []);
+    const sourceOutputIndexes = Array.isArray(structure.sourceOutputIndexes)
+      ? structure.sourceOutputIndexes : [];
+    return next.map((segment, outputIndex) => {
+      const meta = structure.outputMeta?.[outputIndex];
+      const sourceIndexes = Array.isArray(meta?.sourceIndexes) ? meta.sourceIndexes : [];
+      const sourceIndex = sourceIndexes.length === 1 ? sourceIndexes[0] : -1;
+      const sourceSegment = sourceIndex >= 0 ? source[sourceIndex] : null;
+      const outputIndexes = sourceIndex >= 0 ? sourceOutputIndexes[sourceIndex] || [] : [];
+      const unchanged = Boolean(sourceSegment)
+        && sourceIndexes.length === 1
+        && outputIndexes.length === 1
+        && outputIndexes[0] === outputIndex
+        && !affectedSourceIndexes.has(sourceIndex)
+        && timedTextEditSegmentsEquivalent(sourceSegment, segment);
+      return unchanged ? sourceSegment._dirty === true : true;
+    });
+  }
+
+  function applyTimedTextEdit(segments, draftTexts) {
+    const source = Array.isArray(segments) ? segments : [];
+    const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    if (timedTextStructureRequested(source, texts)) {
+      const structurePlan = buildTimedTextStructurePlan(source, texts);
+      return structurePlan.valid ? cloneJsonValue(structurePlan.segments) : null;
+    }
+    if (source.length !== texts.length) return null;
+    const boundaryPlan = buildTimedTextBoundaryPlan(source, texts);
+    return source.flatMap((segment, index) => {
+      const next = cloneJsonValue(segment || {});
+      const before = String(next.text == null ? '' : next.text);
+      const after = String(texts[index] == null ? '' : texts[index]);
+      if (before === after) return next;
+      if (!after) return [];
+      const boundary = boundaryPlan.updates[index];
+      if (boundary) {
+        next.text = after;
+        next.start = boundary.start;
+        next.end = boundary.end;
+        if (boundary.items.length) next.items = cloneJsonValue(boundary.items);
+        else delete next.items;
+        return next;
+      }
+      const mapping = reconcileTimedTextItems(before, next.items, after);
+      next.text = after;
+      if (mapping.status === 'full' || mapping.status === 'partial') next.items = mapping.items;
+      else if (mapping.status === 'lost') delete next.items;
+      return next;
+    });
+  }
+
   function countTextUnits(text) {
     const normalized = String(text || '').replace(/\r\n?/g, '').replace(/\n/g, '');
     let total = 0;
@@ -180,6 +1889,7 @@
       if (!Number.isFinite(start)) start = 0;
       if (!Number.isFinite(end)) end = start;
       if (start < previousSegmentEnd) { start = previousSegmentEnd; fixed++; }
+      fixed += normalizeTimedTextNeutralItems(segment);
       const items = Array.isArray(segment.items) ? segment.items : null;
       let previousItemEnd = start;
       if (items) {
@@ -215,6 +1925,7 @@
     let fixed = 0;
     source.forEach((segment) => {
       if (!segment || typeof segment !== 'object') return;
+      fixed += normalizeTimedTextNeutralItems(segment);
       let previousItemEnd = Math.round(Number(segment.start));
       if (!Number.isFinite(previousItemEnd)) previousItemEnd = 0;
       const items = Array.isArray(segment.items) ? segment.items : null;
@@ -233,6 +1944,71 @@
       });
     });
     return fixed;
+  }
+
+  function timedItemsFitSegmentRange(segment, start, end) {
+    const items = Array.isArray(segment?.items) ? segment.items : null;
+    if (!items) return true;
+    let previousEnd = start;
+    return items.every((item) => {
+      const itemStart = Number(item?.start);
+      const itemEnd = Number(item?.end);
+      const valid = Number.isInteger(itemStart)
+        && Number.isInteger(itemEnd)
+        && itemStart >= start
+        && itemEnd <= end
+        && itemStart >= previousEnd
+        && itemEnd > itemStart;
+      if (valid) previousEnd = itemEnd;
+      return valid;
+    });
+  }
+
+  // 修复一处相邻字幕段的时间重叠。默认把后句起点吸附到前句终点；
+  // 也可以显式选择缩短前句。只修改指定的一对字幕，不静默重排后续时间轴。
+  // 如果边界移动会让目标段的 items 越界，则删除该段 items，保留字幕段整体时间。
+  function repairSegmentOverlap(segments, index, mode = 'shift-current') {
+    const source = Array.isArray(segments) ? segments : [];
+    const currentIndex = Number(index);
+    if (!Number.isInteger(currentIndex) || currentIndex <= 0 || currentIndex >= source.length) {
+      return { changed: false, reason: 'invalid-index', overlapMs: 0 };
+    }
+    const previous = source[currentIndex - 1];
+    const current = source[currentIndex];
+    if (!previous || typeof previous !== 'object' || !current || typeof current !== 'object') {
+      return { changed: false, reason: 'invalid-segment', overlapMs: 0 };
+    }
+    const previousStart = Math.round(Number(previous.start));
+    const previousEnd = Math.round(Number(previous.end));
+    const currentStart = Math.round(Number(current.start));
+    const currentEnd = Math.round(Number(current.end));
+    const overlapMs = Number.isFinite(previousEnd) && Number.isFinite(currentStart)
+      ? previousEnd - currentStart : 0;
+    if (!Number.isFinite(overlapMs) || overlapMs <= 0) {
+      return { changed: false, reason: 'no-overlap', overlapMs: Math.max(0, overlapMs || 0) };
+    }
+
+    const trimPrevious = mode === 'trim-previous';
+    const target = trimPrevious ? previous : current;
+    const nextStart = trimPrevious ? previousStart : previousEnd;
+    const nextEnd = trimPrevious ? currentStart : currentEnd;
+    if (!Number.isFinite(nextStart) || !Number.isFinite(nextEnd) || nextEnd <= nextStart) {
+      return { changed: false, reason: 'no-room', overlapMs };
+    }
+    const clearsItems = Array.isArray(target.items)
+      && target.items.length > 0
+      && !timedItemsFitSegmentRange(target, nextStart, nextEnd);
+    if (trimPrevious) target.end = nextEnd;
+    else target.start = nextStart;
+    if (clearsItems) delete target.items;
+    target._dirty = true;
+    return {
+      changed: true,
+      mode: trimPrevious ? 'trim-previous' : 'shift-current',
+      overlapMs,
+      changedIndices: [trimPrevious ? currentIndex - 1 : currentIndex],
+      itemsCleared: clearsItems,
+    };
   }
 
   // 拼合字幕计划（纯函数，不改动输入）。返回：
@@ -3150,6 +4926,16 @@ export default MawDynamicCaptions;
     normalizeKeyboardOperationReferenceMode,
     resolveKeyboardOperationReference,
     buildReplacementPreview,
+    applyTextProcessing,
+    buildTextProcessingPreview,
+    buildTimedTextDiff,
+    timedTextItemCoverage,
+    timedTextItemReuse,
+    buildTimedTextBoundaryPlan,
+    buildTimedTextStructurePlan,
+    buildTimedTextEditReport,
+    timedTextEditDirtyFlags,
+    applyTimedTextEdit,
     countTextUnits,
     countSubtitleUnits,
     cueMetrics,
@@ -3158,6 +4944,7 @@ export default MawDynamicCaptions;
     isShortSubtitleText,
     normalizeSegmentTimings,
     normalizeItemTimingRanges,
+    repairSegmentOverlap,
     planAutoMerge,
     applyAutoMergeSnaps,
     planSubtitleExtension,
