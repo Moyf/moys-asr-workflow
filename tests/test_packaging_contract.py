@@ -168,6 +168,31 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn('"*.mp4"', spec)
         self.assertNotIn('"*.srt"', spec)
 
+    def test_runtime_uses_frozen_requirements_txt_not_handwritten_constants(self) -> None:
+        """Given the frozen txt runtime install design, When runtime modules and spec are read, Then no hand-written requirement constants remain and install reads -r txt."""
+        spec = read_text("MAW.spec")
+        local_runtime = read_text("maw/local_runtime.py")
+        ocr_runtime = read_text("maw/ocr_runtime.py")
+        release = read_text(".github/workflows/release.yml")
+
+        self.assertNotIn("GENERAL_REQUIREMENTS", local_runtime)
+        self.assertNotIn("WINDOWS_TORCH_REQUIREMENTS", local_runtime)
+        self.assertNotIn("OTHER_TORCH_REQUIREMENTS", local_runtime)
+        self.assertNotIn("OCR_REQUIREMENTS", ocr_runtime)
+
+        self.assertIn("_runtime_requirements_path", local_runtime)
+        self.assertIn('"-r"', local_runtime)
+        self.assertIn("_ocr_requirements_path", ocr_runtime)
+
+        self.assertIn("requirements-local.txt", spec)
+        self.assertIn("requirements-ocr.txt", spec)
+
+        self.assertIn("uv export --frozen --extra local", release)
+        self.assertIn("uv export --frozen --extra ocr", release)
+
+        self.assertIn('RUNTIME_VERSION: Final = "4"', local_runtime)
+        self.assertIn('OCR_RUNTIME_VERSION: Final = "2"', ocr_runtime)
+
     def test_ocr_dependencies_are_optional_and_runtime_worker_is_bundled_purely(self) -> None:
         """Given optional OCR support, When metadata and the frozen spec are read, Then the main package stays OCR-free."""
         project = tomllib.loads(read_text("pyproject.toml"))
