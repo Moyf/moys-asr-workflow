@@ -105,8 +105,9 @@ class LocalRuntimeTests(unittest.TestCase):
             with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(root), "MAW_MODEL_CACHE_ROOT": str(cache)}):
                 with mock.patch("maw.local_runtime._find_uv", return_value=Path("uv.exe")):
                     with mock.patch("maw.local_runtime._runtime_requirements_path", return_value=requirements_txt):
-                        with mock.patch("maw.local_runtime._run_process", side_effect=fake_run) as run_process:
-                            status = install_local_runtime(on_event=lambda *event: events.append(event))
+                        with mock.patch("maw.local_runtime._has_cuda", return_value=True):
+                            with mock.patch("maw.local_runtime._run_process", side_effect=fake_run) as run_process:
+                                status = install_local_runtime(on_event=lambda *event: events.append(event))
 
             self.assertTrue(status.ready)
             self.assertTrue((root / "runtime.json").exists())
