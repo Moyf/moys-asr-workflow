@@ -651,6 +651,23 @@ test('splits a subtitle from overall text and redistributes word timings', () =>
   ]);
 });
 
+test('marks only changed outputs dirty after splitting the middle subtitle lines', () => {
+  const source = [
+    { id: 'cue-1', start: 0, end: 1000, text: '一' },
+    { id: 'cue-2', start: 1100, end: 2100, text: '二三' },
+    { id: 'cue-3', start: 2200, end: 3200, text: '四五六' },
+    { id: 'cue-4', start: 3300, end: 4300, text: '七' },
+  ];
+  const draft = ['一', '二', '三', '四', '五', '六', '七'];
+  const report = helpers.buildTimedTextEditReport(source, draft);
+  assert.equal(report.valid, true);
+  assert.equal(report.structure.valid, true);
+  const next = helpers.applyTimedTextEdit(source, draft);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.timedTextEditDirtyFlags(source, next, report))), [
+    false, true, true, true, true, true, false,
+  ]);
+});
+
 test('splits inside an item by proportionally dividing its time range', () => {
   const source = [{
     id: 'cue-1', start: 0, end: 1000, text: '就是这颗',
@@ -665,6 +682,70 @@ test('splits inside an item by proportionally dividing its time range', () => {
   })))), [
     { text: '就是', start: 0, end: 500, items: [{ start: 0, end: 500, text: '就是' }] },
     { text: '这颗', start: 500, end: 1000, items: [{ start: 500, end: 1000, text: '这颗' }] },
+  ]);
+});
+
+test('keeps original timings when punctuation, emoji, or kaomoji are appended', () => {
+  const source = [{
+    id: 'cue-1', start: 0, end: 1200, text: '这真的没法比',
+    items: [
+      { start: 0, end: 600, text: '这真的没' },
+      { start: 600, end: 1200, text: '法比' },
+    ],
+  }];
+  const draft = ['这真的没法比！🙂（╥﹏╥）'];
+  const report = helpers.buildTimedTextEditReport(source, draft);
+  assert.equal(report.rows[0].mappingStatus, 'partial');
+  assert.equal(report.rows[0].itemCoverage, 100);
+  assert.equal(report.rows[0].itemReuse, 100);
+  const applied = helpers.applyTimedTextEdit(source, draft);
+  assert.deepEqual(JSON.parse(JSON.stringify(applied[0])), {
+    id: 'cue-1', start: 0, end: 1200, text: '这真的没法比！🙂（╥﹏╥）',
+    items: [
+      { start: 0, end: 600, text: '这真的没' },
+      { start: 600, end: 1200, text: '法比！🙂（╥﹏╥）' },
+    ],
+  });
+});
+
+test('keeps unchanged cues clean when a neutral symbol is added to one cue', () => {
+  const source = [
+    { id: 'cue-1', start: 0, end: 1000, text: '第一句', items: [{ start: 0, end: 1000, text: '第一句' }] },
+    { id: 'cue-2', start: 1100, end: 2100, text: '第二句', items: [{ start: 1100, end: 2100, text: '第二句' }] },
+  ];
+  const draft = ['第一句！', '第二句'];
+  const report = helpers.buildTimedTextEditReport(source, draft);
+  const next = helpers.applyTimedTextEdit(source, draft);
+
+  assert.deepEqual(helpers.timedTextEditDirtyFlags(source, next, report), [true, false]);
+});
+
+test('does not fall back to estimated timing when a structural split adds emoji', () => {
+  const source = [{
+    id: 'cue-1', start: 0, end: 1000, text: '就是这颗',
+    items: [
+      { start: 0, end: 400, text: '就是' },
+      { start: 400, end: 1000, text: '这颗' },
+    ],
+  }];
+  const draft = ['就是🙂', '这颗'];
+  const report = helpers.buildTimedTextEditReport(source, draft);
+  assert.equal(report.valid, true);
+  assert.equal(report.structure.valid, true);
+  assert.equal(report.stats.estimatedTimingCues, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(report.previewSegments.map((segment) => ({
+    text: segment.text,
+    start: segment.start,
+    end: segment.end,
+    items: segment.items,
+  })))), [
+    {
+      text: '就是🙂', start: 0, end: 400,
+      items: [
+        { start: 0, end: 400, text: '就是🙂' },
+      ],
+    },
+    { text: '这颗', start: 400, end: 1000, items: [{ start: 400, end: 1000, text: '这颗' }] },
   ]);
 });
 
@@ -879,6 +960,57 @@ test('rematches later cues by text after splitting an earlier cue', () => {
   ]);
   assert.equal(report.outputRows[3].itemCoverage, 100);
   assert.equal(report.outputRows[4].itemReuse, 100);
+});
+
+test('prefers complete unchanged cues over partial substring anchors', () => {
+  const source = [
+    {
+      id: 'cue-1', start: 0, end: 1000, text: '原始句',
+      items: [{ start: 0, end: 1000, text: '原始句' }],
+    },
+    {
+      id: 'cue-2', start: 1100, end: 2100, text: '这个东西',
+      items: [{ start: 1100, end: 2100, text: '这个东西' }],
+    },
+    {
+      id: 'cue-3', start: 2200, end: 3200, text: '这真的',
+      items: [{ start: 2200, end: 3200, text: '这真的' }],
+    },
+    {
+      id: 'cue-4', start: 3300, end: 4300, text: '后面未改',
+      items: [{ start: 3300, end: 4300, text: '后面未改' }],
+    },
+  ];
+  const report = helpers.buildTimedTextEditReport(
+    source,
+    ['原始', '这个', '这个东西', '这真的', '后面未改'],
+  );
+  assert.equal(report.valid, true);
+  assert.equal(report.structure.mode, 'anchor');
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(report.outputRows.map((row) => ({
+      before: row.before,
+      after: row.after,
+      sourceIndexes: row.sourceIndexes,
+    })))),
+    [
+      { before: '原始句', after: '原始', sourceIndexes: [0] },
+      { before: '原始句', after: '这个', sourceIndexes: [0] },
+      { before: '这个东西', after: '这个东西', sourceIndexes: [1] },
+      { before: '这真的', after: '这真的', sourceIndexes: [2] },
+      { before: '后面未改', after: '后面未改', sourceIndexes: [3] },
+    ],
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(report.previewSegments.slice(2).map((segment) => [
+      segment.text, segment.start, segment.end,
+    ]))),
+    [
+      ['这个东西', 1100, 2100],
+      ['这真的', 2200, 3200],
+      ['后面未改', 3300, 4300],
+    ],
+  );
 });
 
 
@@ -1175,6 +1307,48 @@ test('widens a zero-length trailing item and extends its segment', () => {
   assert.ok(fixed >= 1);
   assert.equal(segments[0].end, 20440);
   assert.equal(segments[0].items[1].end, 20440);
+});
+
+test('folds a neutral punctuation item into the adjacent timed item', () => {
+  const segments = [{
+    start: 0,
+    end: 1000,
+    text: '这真的没法比！',
+    items: [
+      { text: '这真的没', start: 0, end: 600 },
+      { text: '法比', start: 600, end: 1000 },
+      { text: '！', start: 1000, end: 1000 },
+    ],
+  }];
+
+  const fixed = helpers.normalizeItemTimingRanges(segments);
+
+  assert.equal(fixed, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(segments[0].items)), [
+    { text: '这真的没', start: 0, end: 600 },
+    { text: '法比！', start: 600, end: 1000 },
+  ]);
+});
+
+test('removes a stale neutral punctuation item after its text is deleted', () => {
+  const segments = [{
+    start: 0,
+    end: 1000,
+    text: '这真的没法比',
+    items: [
+      { text: '这真的没', start: 0, end: 600 },
+      { text: '法比', start: 600, end: 1000 },
+      { text: '！', start: 1000, end: 1100 },
+    ],
+  }];
+
+  const fixed = helpers.normalizeItemTimingRanges(segments);
+
+  assert.equal(fixed, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(segments[0].items)), [
+    { text: '这真的没', start: 0, end: 600 },
+    { text: '法比', start: 600, end: 1000 },
+  ]);
 });
 
 test('widens a zero-length segment and keeps following segments ordered', () => {

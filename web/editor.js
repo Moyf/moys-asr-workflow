@@ -187,10 +187,16 @@ function addSubtitleBinding(mainSegment, extensionSegment, track = getActiveExte
   return binding;
 }
 
-function markMultiSubtitleDirty() {
+function markMultiSubtitleStateDirty() {
   const multi = getMultiSubtitleState();
-  if (!multi.enabled && !(multi.tracks || []).length) return;
+  if (!multi.enabled && !(multi.tracks || []).length) return null;
   multi._dirty = true;
+  return multi;
+}
+
+function markMultiSubtitleDirty() {
+  const multi = markMultiSubtitleStateDirty();
+  if (!multi) return;
   (multi.tracks || []).forEach((track) => track.segments.forEach((segment) => { segment._dirty = true; }));
 }
 
@@ -1203,7 +1209,11 @@ const timedTextEditTrackControl = document.getElementById('timed-text-edit-track
 const timedTextEditTrack = document.getElementById('timed-text-edit-track');
 const timedTextEditView = document.getElementById('timed-text-edit-view');
 const timedTextEditSourceInfo = document.getElementById('timed-text-edit-source-info');
+const timedTextEditCharcountThresholdControl = document.getElementById('timed-text-edit-charcount-control');
+const timedTextEditCharcountThresholdInput = document.getElementById('timed-text-edit-charcount-threshold');
+const timedTextEditShowDisabledToggle = document.getElementById('timed-text-edit-show-disabled');
 const timedTextEditRows = document.getElementById('timed-text-edit-rows');
+const timedTextEditSingleEditor = document.getElementById('timed-text-edit-single-editor');
 const timedTextEditSingleTextarea = document.getElementById('timed-text-edit-single-textarea');
 const timedTextEditSingleHint = document.getElementById('timed-text-edit-single-hint');
 const timedTextEditReportSummary = document.getElementById('timed-text-edit-report-summary');
@@ -1212,8 +1222,10 @@ const timedTextEditShowAll = document.getElementById('timed-text-edit-show-all')
 const timedTextEditReportHint = document.getElementById('timed-text-edit-report-hint');
 const timedTextEditChangeDetails = document.getElementById('timed-text-edit-change-details');
 const timedTextEditChangeList = document.getElementById('timed-text-edit-change-list');
+const TIMED_TEXT_EDIT_REPORT_DEBOUNCE_MS = 160;
 let timedTextEditDraft = null;
 let timedTextEditReturnFocus = null;
+let timedTextEditReportTimer = null;
 const stickerModal = document.getElementById('sticker-modal');
 const stickerPreviewModal = document.getElementById('sticker-preview-modal');
 const projectMediaModal = document.getElementById('project-media-modal');
@@ -1629,7 +1641,7 @@ function applyCueListDisplaySettings() {
   cueListShowCharcountToggle.checked = EDITOR_SETTINGS.cueListShowCharcount;
   cueListAutoScrollOnClickToggle.checked = EDITOR_SETTINGS.cueListAutoScrollOnClick;
   cueListKeepSplitVisibleToggle.checked = EDITOR_SETTINGS.cueListKeepSplitVisible;
-  cueListCharcountThresholdInput.value = String(EDITOR_SETTINGS.cueListCharcountThreshold);
+  syncCharCountThresholdInputs(EDITOR_SETTINGS.cueListCharcountThreshold);
   hideDisabled = EDITOR_SETTINGS.cueListHideDisabled;
   hideDisabledToggle.checked = hideDisabled;
   container.classList.toggle('hide-disabled', hideDisabled);
@@ -2236,17 +2248,18 @@ cueListKeepSplitVisibleToggle?.addEventListener('change', () => {
   applySearch(searchEl.value);
 });
 cueListCharcountThresholdInput?.addEventListener('input', () => {
-  const value = Number(cueListCharcountThresholdInput.value);
-  if (Number.isFinite(value) && value >= 1 && value <= 200) {
-    updateEditorSettings({ cueListCharcountThreshold: clampCharcountThreshold(value) });
-  }
-  refreshAllCharCounts();
-  if (document.getElementById('filter-over').classList.contains('active')) {
-    applySearch(searchEl.value);
-  }
+  handleCharCountThresholdInput(cueListCharcountThresholdInput);
 });
 cueListCharcountThresholdInput?.addEventListener('change', () => {
-  cueListCharcountThresholdInput.value = String(getCharCountThreshold());
+  syncCharCountThresholdInputs();
+  updateTimedTextEditSingleGuide();
+});
+timedTextEditCharcountThresholdInput?.addEventListener('input', () => {
+  handleCharCountThresholdInput(timedTextEditCharcountThresholdInput);
+});
+timedTextEditCharcountThresholdInput?.addEventListener('change', () => {
+  syncCharCountThresholdInputs();
+  updateTimedTextEditSingleGuide();
 });
 bindCueEditorDisplayToggle(cueEditorShowNavigationToggle, 'cueEditorShowNavigation');
 bindCueEditorDisplayToggle(cueEditorShowTimeActionsToggle, 'cueEditorShowTimeActions');
@@ -4393,8 +4406,36 @@ function calcCharWidth(text, mode = null) {
     : window.AsrEditorUtils.countTextUnits(text);
 }
 function getCharCountThreshold() {
-  const v = parseInt(cueListCharcountThresholdInput?.value, 10);
-  return Number.isFinite(v) && v > 0 ? v : EDITOR_SETTINGS.cueListCharcountThreshold;
+  const v = Number(EDITOR_SETTINGS.cueListCharcountThreshold);
+  return Number.isFinite(v) && v > 0
+    ? clampCharcountThreshold(v)
+    : DEFAULT_EDITOR_SETTINGS.cueListCharcountThreshold;
+}
+function syncCharCountThresholdInputs(value = getCharCountThreshold()) {
+  const threshold = clampCharcountThreshold(value);
+  const text = String(threshold);
+  if (cueListCharcountThresholdInput) cueListCharcountThresholdInput.value = text;
+  if (timedTextEditCharcountThresholdInput) timedTextEditCharcountThresholdInput.value = text;
+  return threshold;
+}
+function handleCharCountThresholdInput(input) {
+  const value = Number(input?.value);
+  if (Number.isFinite(value) && value >= 1 && value <= 200) {
+    const threshold = syncCharCountThresholdInputs(value);
+    updateEditorSettings({ cueListCharcountThreshold: threshold });
+  }
+  updateTimedTextEditSingleGuide();
+  refreshAllCharCounts();
+  if (document.getElementById('filter-over').classList.contains('active')) {
+    applySearch(searchEl.value);
+  }
+}
+function updateTimedTextEditSingleGuide() {
+  if (!timedTextEditSingleEditor) return;
+  timedTextEditSingleEditor.style.setProperty(
+    '--timed-text-edit-line-width',
+    `${getCharCountThreshold()}em`,
+  );
 }
 function applyCharCount(cntEl, text, mode = null) {
   if (!cntEl) return;
@@ -10112,11 +10153,39 @@ function normalizeProjectTimings(project, { repairSegmentRanges = true } = {}) {
   return fixed;
 }
 
+function timingRepairSignature(segment) {
+  return JSON.stringify({
+    start: segment?.start,
+    end: segment?.end,
+    items: Array.isArray(segment?.items)
+      ? segment.items.map((item) => ({ text: item?.text, start: item?.start, end: item?.end }))
+      : null,
+  });
+}
+
+function repairTimingGroup(segments) {
+  const source = Array.isArray(segments) ? segments : [];
+  const before = source.map((segment) => timingRepairSignature(segment));
+  const fixed = window.AsrEditorUtils.normalizeItemTimingRanges(source);
+  const changed = source.filter((segment, index) => (
+    timingRepairSignature(segment) !== before[index]
+  ));
+  return { fixed, changed };
+}
+
 function repairCurrentProjectTimings() {
-  const fixed = normalizeProjectTimings(DATA, { repairSegmentRanges: false });
+  const main = repairTimingGroup(DATA.segments);
+  const extension = (getMultiSubtitleState().tracks || []).reduce((result, track) => {
+    const repaired = repairTimingGroup(track?.segments);
+    result.fixed += repaired.fixed;
+    result.changed.push(...repaired.changed);
+    return result;
+  }, { fixed: 0, changed: [] });
+  const fixed = main.fixed + extension.fixed;
   if (fixed > 0) {
-    markMainSegmentsDirty(DATA.segments);
-    markMultiSubtitleDirty();
+    markMainSegmentsDirty(main.changed);
+    extension.changed.forEach((segment) => { segment._dirty = true; });
+    if (main.changed.length || extension.changed.length) markMultiSubtitleStateDirty();
     syncBindingOffsets();
   }
   return fixed;
@@ -13065,6 +13134,54 @@ const textProcessStripMarkdown = document.getElementById('text-process-strip-mar
 let textProcessSelectionSnapshot = [];
 let textProcessScope = null;
 
+function textProcessSelectionTargets() {
+  const targets = [...selectedIdxs]
+    .sort((a, b) => a - b)
+    .map((index) => ({ kind: 'main', index }));
+  const extensionTrack = getActiveExtensionTrack();
+  if (extensionTrack) {
+    [...selectedExtensionIdxs]
+      .sort((a, b) => a - b)
+      .forEach((index) => targets.push({
+        kind: 'extension',
+        index,
+        trackId: extensionTrack.id,
+      }));
+  }
+  return targets;
+}
+
+function textProcessAllTargets() {
+  return DATA.segments.map((_, index) => ({ kind: 'main', index }));
+}
+
+function textProcessTargetSegments(target) {
+  return target?.kind === 'extension'
+    ? getExtensionTrack(target.trackId)?.segments || []
+    : DATA.segments;
+}
+
+function textProcessTargetLabel(target) {
+  return `${target?.kind === 'extension' ? '副字幕' : '主字幕'}第 ${(target?.index ?? 0) + 1} 条`;
+}
+
+function textProcessTargets() {
+  return textProcessScope && textProcessScope.length
+    ? textProcessScope
+    : textProcessAllTargets();
+}
+
+function buildTextProcessPreview(targets, options) {
+  return (Array.isArray(targets) ? targets : []).flatMap((target) => {
+    const segments = textProcessTargetSegments(target);
+    const segment = segments[target.index];
+    if (!segment) return [];
+    const before = String(segment.text == null ? '' : segment.text);
+    const after = window.AsrEditorUtils.applyTextProcessing(before, options);
+    return [{ ...target, before, after, changed: before !== after }];
+  });
+}
+
 function getTextProcessOptions() {
   return {
     trim: textProcessTrim.checked,
@@ -13099,7 +13216,7 @@ function renderTextProcessPreview() {
   const options = getTextProcessOptions();
   const hasOperation = textProcessTrim.checked || textProcessCapitalize.checked
     || textProcessPrefix.checked || textProcessSuffix.checked || textProcessStripMarkdown.checked;
-  const indexes = textProcessScope || DATA.segments.map((_, index) => index);
+  const targets = textProcessTargets();
   textProcessPreview.replaceChildren();
   if (!hasOperation) {
     textProcessPreview.textContent = '请选择至少一项文本处理操作';
@@ -13107,7 +13224,12 @@ function renderTextProcessPreview() {
     textProcessConfirm.disabled = true;
     return;
   }
-  const result = window.AsrEditorUtils.buildTextProcessingPreview(DATA.segments, indexes, options);
+  const rows = buildTextProcessPreview(targets, options);
+  const result = {
+    targetCount: rows.length,
+    changedCount: rows.filter((row) => row.changed).length,
+    rows,
+  };
   textProcessPreview.style.color = result.changedCount ? '' : 'var(--text-muted)';
   const summary = document.createElement('div');
   summary.className = 'replace-preview-summary';
@@ -13119,7 +13241,7 @@ function renderTextProcessPreview() {
     const details = document.createElement('details');
     details.className = 'replace-preview-row';
     const title = document.createElement('summary');
-    title.textContent = `第 ${row.index + 1} 条`;
+    title.textContent = textProcessTargetLabel(row);
     details.appendChild(title);
     const before = document.createElement('div');
     before.className = 'replace-preview-before';
@@ -13143,12 +13265,12 @@ function closeTextProcessModal() {
 }
 
 function openTextProcessModal() {
-  if (!DATA.segments.length) {
+  if (!DATA.segments.length && !getActiveExtensionTrack()?.segments?.length) {
     flashHint('当前没有可处理的字幕', 'invalid');
     return;
   }
   if (editingState) finishEdit(true);
-  textProcessSelectionSnapshot = normalizeBatchSelection([...selectedIdxs]);
+  textProcessSelectionSnapshot = textProcessSelectionTargets();
   textProcessSelectedOnlyCb.checked = textProcessSelectionSnapshot.length > 0;
   refreshTextProcessSelectionControl();
   [textProcessTrim, textProcessCapitalize, textProcessPrefix,
@@ -13184,22 +13306,59 @@ textProcessModal?.addEventListener('click', (event) => {
 });
 textProcessConfirm?.addEventListener('click', () => {
   const options = getTextProcessOptions();
-  const indexes = textProcessScope || DATA.segments.map((_, index) => index);
-  const result = window.AsrEditorUtils.buildTextProcessingPreview(DATA.segments, indexes, options);
+  const result = {
+    rows: buildTextProcessPreview(textProcessTargets(), options),
+  };
+  result.changedCount = result.rows.filter((row) => row.changed).length;
   if (!result.changedCount) {
-    flashHint('选定的字幕不会发生变化', 'invalid');
+    flashHint('当前文本处理对于选中的字幕没有任何影响，未作改动', 'invalid');
     return;
   }
-  const draftTexts = DATA.segments.map((segment) => String(segment?.text || ''));
-  result.rows.forEach((row) => { draftTexts[row.index] = row.after; });
-  const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(DATA.segments, draftTexts);
-  if (!nextSegments) {
+  let mainDraftTexts = null;
+  const extensionDrafts = new Map();
+  result.rows.filter((row) => row.changed).forEach((row) => {
+    if (row.kind === 'extension') {
+      const track = getExtensionTrack(row.trackId);
+      if (!track) return;
+      const draft = extensionDrafts.get(track.id) || {
+        track,
+        texts: track.segments.map((segment) => String(segment?.text || '')),
+      };
+      draft.texts[row.index] = row.after;
+      extensionDrafts.set(track.id, draft);
+      return;
+    }
+    if (!mainDraftTexts) {
+      mainDraftTexts = DATA.segments.map((segment) => String(segment?.text || ''));
+    }
+    mainDraftTexts[row.index] = row.after;
+  });
+  const nextMainSegments = mainDraftTexts
+    ? window.AsrEditorUtils.applyTimedTextEdit(DATA.segments, mainDraftTexts)
+    : null;
+  const nextExtensionSegments = [];
+  for (const draft of extensionDrafts.values()) {
+    const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(draft.track.segments, draft.texts);
+    if (!nextSegments) {
+      flashHint('无法应用文本处理：字幕行结构发生了变化', 'warning');
+      return;
+    }
+    nextExtensionSegments.push({ track: draft.track, segments: nextSegments });
+  }
+  if (mainDraftTexts && !nextMainSegments) {
     flashHint('无法应用文本处理：字幕行结构发生了变化', 'warning');
     return;
   }
   pushUndo('文本处理');
-  DATA.segments.splice(0, DATA.segments.length, ...nextSegments);
-  markMainSegmentsDirty(DATA.segments);
+  if (nextMainSegments) {
+    DATA.segments.splice(0, DATA.segments.length, ...nextMainSegments);
+    markMainSegmentsDirty(DATA.segments);
+  }
+  nextExtensionSegments.forEach(({ track, segments }) => {
+    track.segments.splice(0, track.segments.length, ...segments);
+    track.segments.forEach((segment) => { segment._dirty = true; });
+  });
+  if (nextExtensionSegments.length) markMultiSubtitleDirty();
   syncBindingOffsets();
   scheduleAutoSaveFlush();
   closeTextProcessModal();
@@ -13212,6 +13371,19 @@ textProcessConfirm?.addEventListener('click', () => {
 // === 纯文本编辑（支持调整字幕行结构的 MVP） ===
 function timedTextEditSegments(kind) {
   return kind === 'extension' ? getActiveExtensionTrack()?.segments || [] : DATA.segments;
+}
+
+function timedTextEditSourceSelection(kind, showDisabled = false) {
+  const allSegments = timedTextEditSegments(kind);
+  const sourceSegmentIndexes = allSegments
+    .map((segment, index) => ({ segment, index }))
+    .filter(({ segment }) => showDisabled || segment?.disabled !== true)
+    .map(({ index }) => index);
+  return {
+    allSegments,
+    sourceSegmentIndexes,
+    sourceSegments: sourceSegmentIndexes.map((index) => allSegments[index]),
+  };
 }
 
 function currentTimedTextEditKind() {
@@ -13242,7 +13414,7 @@ function appendTimedTextEditStat(container, label, value, filterKey = null, coun
       if (!timedTextEditDraft) return;
       timedTextEditDraft.filter = filterKey;
       timedTextEditChangeDetails.open = true;
-      updateTimedTextEditReport();
+      flushTimedTextEditReport();
     });
   }
   valueEl.textContent = value;
@@ -13394,8 +13566,14 @@ function renderTimedTextEditRows() {
       ? report.previewSegments[rowReport.index]
       : (!report?.structure?.valid && timedTextEditDraft.texts.length === timedTextEditDraft.sourceSegments.length
         ? timedTextEditDraft.sourceSegments[index] : null);
+    const rowSourceIndexes = Array.isArray(rowReport?.sourceIndexes)
+      ? rowReport.sourceIndexes : [index];
+    const rowIncludesDisabled = rowSourceIndexes.some((sourceIndex) => (
+      timedTextEditDraft.sourceSegments[sourceIndex]?.disabled === true
+    ));
     const row = document.createElement('div');
-    row.className = `timed-text-edit-row${rowReport?.deleted ? ' deleted' : ''}`;
+    row.className = `timed-text-edit-row${rowReport?.deleted ? ' deleted' : ''}${rowIncludesDisabled ? ' disabled' : ''}`;
+    if (rowIncludesDisabled) row.title = '已禁用字幕';
     row.dataset.index = String(index);
     const meta = document.createElement('div');
     meta.className = 'timed-text-edit-row-meta';
@@ -13468,9 +13646,15 @@ function renderTimedTextEditView() {
     button.setAttribute('aria-pressed', String(active));
   });
   timedTextEditRows.hidden = single;
+  timedTextEditCharcountThresholdControl.hidden = !single;
+  timedTextEditSingleEditor.hidden = !single;
   timedTextEditSingleTextarea.hidden = !single;
   timedTextEditSingleHint.hidden = !single || !timedTextEditDraft.singleLineError;
-  if (single) timedTextEditSingleTextarea.value = timedTextEditDraft.singleText;
+  if (single) {
+    syncCharCountThresholdInputs();
+    timedTextEditSingleTextarea.value = timedTextEditDraft.singleText;
+    updateTimedTextEditSingleGuide();
+  }
 }
 
 function timedTextEditRowFilterKey(row) {
@@ -13513,6 +13697,25 @@ function syncTimedTextEditDraftFromDom() {
   timedTextEditDraft.texts = normalizeTimedTextEditDraftLines(normalized.split('\n'));
   timedTextEditDraft.singleText = timedTextEditDraft.texts.join('\n');
   timedTextEditDraft.singleLineError = '';
+}
+
+function cancelTimedTextEditReport() {
+  if (timedTextEditReportTimer === null) return;
+  clearTimeout(timedTextEditReportTimer);
+  timedTextEditReportTimer = null;
+}
+
+function flushTimedTextEditReport() {
+  cancelTimedTextEditReport();
+  updateTimedTextEditReport();
+}
+
+function scheduleTimedTextEditReport() {
+  cancelTimedTextEditReport();
+  timedTextEditReportTimer = setTimeout(() => {
+    timedTextEditReportTimer = null;
+    updateTimedTextEditReport();
+  }, TIMED_TEXT_EDIT_REPORT_DEBOUNCE_MS);
 }
 
 function updateTimedTextEditReport() {
@@ -13629,6 +13832,9 @@ function updateTimedTextEditReport() {
   const singleHint = report.structure?.valid ? '' : (report.structure?.error || timedTextEditDraft.singleLineError || '');
   timedTextEditSingleHint.textContent = singleHint;
   timedTextEditSingleHint.hidden = timedTextEditDraft.view !== 'single' || !singleHint;
+  if (!timedTextEditDraft.sourceSegments.length && timedTextEditDraft.allSourceSegments.length) {
+    timedTextEditReportHint.textContent = '当前没有显示中的字幕；打开“显示已禁用字幕”后才能编辑。';
+  }
   timedTextEditApply.disabled = !report.valid || stats.changedSegments === 0;
 }
 
@@ -13643,12 +13849,18 @@ function refreshTimedTextEditTrackOptions(kind = currentTimedTextEditKind()) {
   return nextKind;
 }
 
-function loadTimedTextEditTrack(kind) {
+function loadTimedTextEditTrack(kind, { showDisabled = false } = {}) {
+  cancelTimedTextEditReport();
   const nextKind = refreshTimedTextEditTrackOptions(kind);
-  const sourceSegments = timedTextEditSegments(nextKind);
+  const selection = timedTextEditSourceSelection(nextKind, showDisabled);
+  const sourceSegments = selection.sourceSegments;
+  const hiddenDisabledCount = selection.allSegments.length - sourceSegments.length;
   timedTextEditDraft = {
     kind: nextKind,
     trackId: nextKind === 'extension' ? getActiveExtensionTrack()?.id || null : null,
+    showDisabled: Boolean(showDisabled),
+    sourceSegmentIndexes: selection.sourceSegmentIndexes,
+    allSourceSegments: JSON.parse(JSON.stringify(selection.allSegments || [])),
     sourceSegments: JSON.parse(JSON.stringify(sourceSegments || [])),
     texts: (sourceSegments || []).map((segment) => String(segment?.text || '')),
     view: 'rows',
@@ -13657,7 +13869,8 @@ function loadTimedTextEditTrack(kind) {
     singleLineError: '',
     report: null,
   };
-  timedTextEditSourceInfo.textContent = `${timedTextEditTrackLabel(nextKind)} · ${sourceSegments.length} 条`;
+  if (timedTextEditShowDisabledToggle) timedTextEditShowDisabledToggle.checked = Boolean(showDisabled);
+  timedTextEditSourceInfo.textContent = `${timedTextEditTrackLabel(nextKind)} · ${sourceSegments.length} 条${hiddenDisabledCount ? `（已隐藏 ${hiddenDisabledCount} 条禁用字幕）` : ''}`;
   renderTimedTextEditRows();
   renderTimedTextEditView();
   updateTimedTextEditReport();
@@ -13671,6 +13884,7 @@ function refreshTimedTextEditButton() {
 }
 
 function closeTimedTextEdit() {
+  cancelTimedTextEditReport();
   timedTextEditModal.classList.remove('show');
   timedTextEditDraft = null;
   timedTextEditRows.replaceChildren();
@@ -13682,27 +13896,108 @@ function timedTextEditHasUnappliedChanges() {
   return Boolean(timedTextEditDraft?.report?.stats.changedSegments || timedTextEditDraft?.singleLineError);
 }
 
-function applyTimedTextEditSegments(kind, sourceSegments, targetSegments, nextSegments, report, texts) {
+function mergeTimedTextEditSegmentsWithHidden(
+  allSourceSegments,
+  sourceSegmentIndexes,
+  nextSegments,
+  report,
+) {
+  const all = Array.isArray(allSourceSegments) ? allSourceSegments : [];
+  const visibleIndexes = Array.isArray(sourceSegmentIndexes) ? sourceSegmentIndexes : [];
+  const outputBySourceIndex = new Map();
+  const unassigned = [];
+  const structural = report?.structure?.valid === true;
+  const sourceIndexById = new Map();
+  visibleIndexes.forEach((sourceIndex) => {
+    const id = all[sourceIndex]?.id;
+    if (id) sourceIndexById.set(id, sourceIndex);
+  });
+  const fixedOutputSourceIndexes = structural ? [] : (report?.rows || [])
+    .map((row, index) => (row?.deleted ? -1 : index))
+    .filter((index) => index >= 0);
+  (nextSegments || []).forEach((segment, outputIndex) => {
+    const sourceIndexes = structural
+      ? report.structure.outputMeta?.[outputIndex]?.sourceIndexes
+      : null;
+    let sourceIndex = null;
+    if (segment?.id && sourceIndexById.has(segment.id)) {
+      sourceIndex = sourceIndexById.get(segment.id);
+    } else {
+      const visibleIndex = Number.isInteger(sourceIndexes?.[0])
+        ? sourceIndexes[0] : (fixedOutputSourceIndexes[outputIndex] ?? outputIndex);
+      sourceIndex = visibleIndexes[visibleIndex];
+    }
+    if (!Number.isInteger(sourceIndex)) {
+      unassigned.push(segment);
+      return;
+    }
+    const outputs = outputBySourceIndex.get(sourceIndex) || [];
+    outputs.push(segment);
+    outputBySourceIndex.set(sourceIndex, outputs);
+  });
+
+  const visibleSet = new Set(visibleIndexes);
+  const merged = [];
+  all.forEach((segment, sourceIndex) => {
+    if (!visibleSet.has(sourceIndex)) {
+      merged.push(JSON.parse(JSON.stringify(segment)));
+      return;
+    }
+    (outputBySourceIndex.get(sourceIndex) || []).forEach((output) => merged.push(output));
+  });
+  // 正常的结构计划每个输出都应能追溯到至少一个可见来源行；保留兜底，
+  // 避免异常数据被静默丢掉，且不影响默认的可见字幕编辑路径。
+  unassigned.forEach((segment) => merged.push(segment));
+  return merged;
+}
+
+function applyTimedTextEditSegments(
+  kind,
+  sourceSegments,
+  targetSegments,
+  nextSegments,
+  report,
+  texts,
+  sourceSegmentIndexes = null,
+) {
+  const visibleSourceIndexes = Array.isArray(sourceSegmentIndexes)
+    ? sourceSegmentIndexes : (sourceSegments || []).map((_, index) => index);
+  const filtered = visibleSourceIndexes.length !== targetSegments.length
+    || visibleSourceIndexes.some((sourceIndex, index) => sourceIndex !== index);
+  const allSourceSegments = filtered ? targetSegments : sourceSegments;
+  const publishedSegments = filtered
+    ? mergeTimedTextEditSegmentsWithHidden(
+      allSourceSegments,
+      visibleSourceIndexes,
+      nextSegments,
+      report,
+    )
+    : nextSegments;
   const nextIds = new Set((nextSegments || []).map((segment) => segment?.id).filter(Boolean));
-  const removedIndexes = new Set((sourceSegments || []).map((segment, index) => {
+  const removedVisibleIndexes = new Set((sourceSegments || []).map((segment, index) => {
     if (segment?.id) return nextIds.has(segment.id) ? -1 : index;
     const row = report?.rows?.[index];
     return row?.changed && !String(row.after || '') ? index : -1;
   }).filter((index) => index >= 0));
-  (report?.structure?.removedSourceIndexes || []).forEach((index) => removedIndexes.add(index));
+  (report?.structure?.removedSourceIndexes || []).forEach((index) => removedVisibleIndexes.add(index));
+  const removedIndexes = new Set([...removedVisibleIndexes]
+    .map((index) => visibleSourceIndexes[index])
+    .filter((index) => Number.isInteger(index)));
   const structureChanged = Boolean(report?.structure?.valid
     && (report.structure.affectedSourceIndexes?.length || nextSegments.length !== sourceSegments.length));
   if (!removedIndexes.size && !structureChanged) {
-    targetSegments.splice(0, targetSegments.length, ...nextSegments);
+    targetSegments.splice(0, targetSegments.length, ...publishedSegments);
     return 0;
   }
 
   const removedIndexList = [...removedIndexes].sort((a, b) => a - b);
   const removeSet = new Set(removedIndexList);
-  const removedIds = removedIndexList.map((index) => sourceSegments[index]?.id).filter(Boolean);
-  const affectedIndexes = new Set(report?.structure?.affectedSourceIndexes || []);
+  const removedIds = removedIndexList.map((index) => allSourceSegments[index]?.id).filter(Boolean);
+  const affectedIndexes = new Set((report?.structure?.affectedSourceIndexes || [])
+    .map((index) => visibleSourceIndexes[index])
+    .filter((index) => Number.isInteger(index)));
   removedIndexList.forEach((index) => affectedIndexes.add(index));
-  const affectedIds = [...affectedIndexes].map((index) => sourceSegments[index]?.id).filter(Boolean);
+  const affectedIds = [...affectedIndexes].map((index) => allSourceSegments[index]?.id).filter(Boolean);
   const pairedExtensionIndices = new Set();
   let extensionTrack = null;
   let bindingsChanged = false;
@@ -13757,7 +14052,7 @@ function applyTimedTextEditSegments(kind, sourceSegments, targetSegments, nextSe
   lastClickedIdx = -1;
   lastClickedExtensionIdx = -1;
   lastActive = -1;
-  targetSegments.splice(0, targetSegments.length, ...nextSegments);
+  targetSegments.splice(0, targetSegments.length, ...publishedSegments);
 
   if (kind !== 'extension') {
     const shiftHeadIdx = (ref) => {
@@ -13815,7 +14110,7 @@ timedTextEditRows?.addEventListener('input', (event) => {
   timedTextEditDraft.singleText = timedTextEditDraft.texts.join('\n');
   timedTextEditDraft.singleLineError = '';
   renderTimedTextEditView();
-  updateTimedTextEditReport();
+  scheduleTimedTextEditReport();
 });
 timedTextEditSingleTextarea?.addEventListener('input', () => {
   if (!timedTextEditDraft) return;
@@ -13825,7 +14120,7 @@ timedTextEditSingleTextarea?.addEventListener('input', () => {
   );
   timedTextEditDraft.singleText = timedTextEditDraft.texts.join('\n');
   timedTextEditDraft.singleLineError = '';
-  updateTimedTextEditReport();
+  scheduleTimedTextEditReport();
 });
 timedTextEditView?.addEventListener('click', (event) => {
   const button = event.target.closest?.('button[data-view]');
@@ -13842,14 +14137,25 @@ timedTextEditView?.addEventListener('click', (event) => {
   if (nextView === 'single') timedTextEditDraft.singleText = timedTextEditDraft.texts.join('\n');
   else renderTimedTextEditRows();
   renderTimedTextEditView();
-  updateTimedTextEditReport();
+  flushTimedTextEditReport();
   setTimeout(() => (nextView === 'single'
     ? timedTextEditSingleTextarea : timedTextEditRows.querySelector('textarea'))?.focus(), 0);
 });
 timedTextEditShowAll?.addEventListener('click', () => {
   if (!timedTextEditDraft) return;
   timedTextEditDraft.filter = null;
-  updateTimedTextEditReport();
+  flushTimedTextEditReport();
+});
+timedTextEditShowDisabledToggle?.addEventListener('change', () => {
+  if (!timedTextEditDraft) return;
+  const nextShowDisabled = timedTextEditShowDisabledToggle.checked;
+  if (nextShowDisabled === timedTextEditDraft.showDisabled) return;
+  if (timedTextEditHasUnappliedChanges()
+      && !window.confirm('切换显示范围会丢弃当前未应用的文本修改，是否继续？')) {
+    timedTextEditShowDisabledToggle.checked = timedTextEditDraft.showDisabled;
+    return;
+  }
+  loadTimedTextEditTrack(timedTextEditDraft.kind, { showDisabled: nextShowDisabled });
 });
 timedTextEditTrack?.addEventListener('change', () => {
   if (!timedTextEditDraft) return;
@@ -13860,7 +14166,9 @@ timedTextEditTrack?.addEventListener('change', () => {
       return;
     }
   }
-  loadTimedTextEditTrack(timedTextEditTrack.value);
+  loadTimedTextEditTrack(timedTextEditTrack.value, {
+    showDisabled: timedTextEditDraft.showDisabled === true,
+  });
 });
 timedTextEditClose?.addEventListener('click', requestCloseTimedTextEdit);
 timedTextEditCancel?.addEventListener('click', requestCloseTimedTextEdit);
@@ -13871,16 +14179,19 @@ timedTextEditApply?.addEventListener('click', () => {
   const draft = timedTextEditDraft;
   if (!draft) return;
   syncTimedTextEditDraftFromDom();
-  updateTimedTextEditReport();
+  flushTimedTextEditReport();
   if (!draft.report?.valid || !draft.report.stats.changedSegments) return;
   const targetSegments = timedTextEditSegments(draft.kind);
-  const currentMatchesSnapshot = targetSegments.length === draft.sourceSegments.length
+  const snapshotSegments = Array.isArray(draft.allSourceSegments)
+    ? draft.allSourceSegments : draft.sourceSegments;
+  const currentMatchesSnapshot = targetSegments.length === snapshotSegments.length
     && targetSegments.every((segment, index) => {
-      const source = draft.sourceSegments[index];
+      const source = snapshotSegments[index];
       return segment?.id === source?.id
         && Number(segment?.start) === Number(source?.start)
         && Number(segment?.end) === Number(source?.end)
-        && String(segment?.text || '') === String(source?.text || '');
+        && String(segment?.text || '') === String(source?.text || '')
+        && Boolean(segment?.disabled) === Boolean(source?.disabled);
     });
   if (!currentMatchesSnapshot) {
     flashHint('字幕在编辑窗口打开后发生了变化，请关闭窗口并重新打开', 'warning');
@@ -13896,7 +14207,15 @@ timedTextEditApply?.addEventListener('click', () => {
     return;
   }
   pushUndo('纯文本编辑');
-  nextSegments.forEach((segment) => { segment._dirty = true; });
+  const dirtyFlags = window.AsrEditorUtils.timedTextEditDirtyFlags(
+    draft.sourceSegments,
+    nextSegments,
+    draft.report,
+  );
+  nextSegments.forEach((segment, index) => {
+    if (dirtyFlags[index]) segment._dirty = true;
+    else delete segment._dirty;
+  });
   const removedCount = applyTimedTextEditSegments(
     draft.kind,
     draft.sourceSegments,
@@ -13904,11 +14223,12 @@ timedTextEditApply?.addEventListener('click', () => {
     nextSegments,
     draft.report,
     draft.texts,
+    draft.sourceSegmentIndexes,
   );
-  if (draft.kind === 'extension') markMultiSubtitleDirty();
-  else markMainSegmentsDirty(targetSegments);
+  if (draft.kind === 'extension') markMultiSubtitleStateDirty();
   syncBindingOffsets();
-  scheduleAutoSaveFlush();
+  // 纯文本编辑应用后暂不主动触发自动保存，让 dirty 标记短暂保留，
+  // 便于用户确认哪些字幕确实发生了变化；已有的自动保存计时器仍照常执行。
   const changedCount = draft.report.stats.changedSegments;
   const lostCount = draft.report.stats.lostMappedCues;
   const estimatedCount = draft.report.stats.estimatedTimingCues || 0;

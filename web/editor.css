@@ -2031,7 +2031,24 @@
   }
   .timed-text-edit-view-switch button:disabled { opacity: .42; cursor: not-allowed; }
   .timed-text-edit-view-switch button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
-  .timed-text-edit-source-info { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .timed-text-edit-charcount-control {
+    display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; flex: 0 0 auto;
+  }
+  .timed-text-edit-charcount-control[hidden] { display: none; }
+  .timed-text-edit-charcount-control label { display: inline; margin: 0; color: var(--text-secondary); font-size: 12px; }
+  .timed-text-edit-charcount-control input[type="number"] {
+    width: 56px; min-height: 26px; box-sizing: border-box; padding: 4px 6px;
+    color: var(--text-primary); background: var(--bg-input); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); font: inherit; font-size: 12px;
+    transition: border-color var(--t-fast), box-shadow var(--t-fast);
+  }
+  .timed-text-edit-charcount-control input[type="number"]:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+  .timed-text-edit-show-disabled-control {
+    display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; flex: 0 0 auto;
+    white-space: nowrap; cursor: pointer;
+  }
+  .timed-text-edit-show-disabled-control input { margin: 0; accent-color: var(--accent); }
+  .timed-text-edit-source-info { min-width: 0; flex: 1 1 auto; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .timed-text-edit-layout {
     display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
     gap: 12px; min-height: 0; flex: 1 1 auto;
@@ -2060,6 +2077,7 @@
      避免剪切粘贴尚未完成时整块字幕都变成醒目的黄色。 */
   .timed-text-edit-row.changed { border-color: var(--border-subtle); border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 3%, var(--bg-raised)); }
   .timed-text-edit-row.deleted { border-color: var(--red); background: color-mix(in srgb, var(--red) 10%, var(--bg-raised)); }
+  .timed-text-edit-row.disabled { border-style: dashed; opacity: .7; }
   .timed-text-edit-row-meta {
     display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
     min-width: 0; color: var(--text-muted); font-size: 10px; line-height: 1.25; font-variant-numeric: tabular-nums;
@@ -2085,13 +2103,24 @@
   }
   .timed-text-edit-row.deleted textarea { border-color: var(--red); color: var(--red-hover); }
   .timed-text-edit-row textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+  .timed-text-edit-single-editor {
+    position: relative; display: flex; flex: 1 1 auto; min-height: 0; margin: 10px; overflow: hidden;
+    font: inherit;
+  }
+  .timed-text-edit-single-editor[hidden] { display: none; }
   .timed-text-edit-single-textarea {
-    display: block; flex: 1 1 auto; width: calc(100% - 20px); min-height: 0; height: auto; margin: 10px;
+    display: block; flex: 1 1 auto; width: 100%; min-height: 0; height: 100%; margin: 0;
     box-sizing: border-box; resize: none; padding: 10px 12px; color: var(--text-primary);
     background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm);
     font: inherit; line-height: 1.65; white-space: pre; overflow: auto;
   }
   .timed-text-edit-single-textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+  .timed-text-edit-single-guide {
+    position: absolute; z-index: 1; top: 1px; bottom: 1px;
+    left: calc(13px + var(--timed-text-edit-line-width, 16em)); width: 1px;
+    background: var(--accent-line); opacity: .55; pointer-events: none;
+    transition: left 100ms ease;
+  }
   .timed-text-edit-single-hint { margin: 0 10px 10px; padding: 7px 9px; color: var(--amber-hover); background: color-mix(in srgb, var(--amber-line) 8%, transparent); border: 1px solid var(--amber-line); border-radius: var(--radius-sm); font-size: 11px; line-height: 1.45; }
   .timed-text-edit-single-hint[hidden], .timed-text-edit-single-textarea[hidden] { display: none; }
   .timed-text-edit-row-diff {

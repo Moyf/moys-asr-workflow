@@ -182,15 +182,78 @@
     return /\s/u.test(token);
   }
 
+  // 标点、符号和 emoji 不代表新的可听内容。它们仍保留在 item 文本中，
+  // 但不单独占用时间；ZWJ / variation selector / keycap 也视为同一类字符。
+  function isTimedTextNeutralToken(token, includeWhitespace = false) {
+    if (includeWhitespace && isTimedTextWhitespace(token)) return true;
+    return /[\p{P}\p{S}]/u.test(token)
+      || /[\u200D\uFE0E\uFE0F\u20E3]/u.test(token);
+  }
+
+  function isTimedTextNeutralItem(item) {
+    const tokens = timedTextTokens(item?.text);
+    return tokens.length > 0 && tokens.every((token) => isTimedTextNeutralToken(token, true));
+  }
+
+  // 早期版本可能把没有独立时间的标点保存成 0ms item。保存前将这类字符
+  // 并入相邻的有时间 item：既保留原有字词时间，也避免修复器把它扩成越界的 100ms。
+  // 如果用户已经删掉该字符，则清理残留 item，避免错误一直留在工程里。
+  function normalizeTimedTextNeutralItems(segment) {
+    if (!segment || typeof segment !== 'object' || !Array.isArray(segment.items)) return 0;
+    const targetTokens = timedTextTokens(segment.text);
+    const repaired = [];
+    let targetOffset = 0;
+    let pendingNeutral = '';
+    let fixed = 0;
+    const matchesAtOffset = (tokens) => tokens.length > 0
+      && targetTokens.length >= targetOffset + tokens.length
+      && tokens.every((token, index) => targetTokens[targetOffset + index] === token);
+
+    segment.items.forEach((rawItem) => {
+      const itemTokens = timedTextTokens(rawItem?.text);
+      if (isTimedTextNeutralItem(rawItem)) {
+        if (!matchesAtOffset(itemTokens)) {
+          fixed += 1;
+          return;
+        }
+        targetOffset += itemTokens.length;
+        const text = itemTokens.join('');
+        if (repaired.length) {
+          repaired[repaired.length - 1].text += text;
+          fixed += 1;
+        } else {
+          pendingNeutral += text;
+          fixed += 1;
+        }
+        return;
+      }
+
+      const copy = cloneJsonValue(rawItem);
+      if (pendingNeutral) {
+        copy.text = `${pendingNeutral}${String(copy.text == null ? '' : copy.text)}`;
+        pendingNeutral = '';
+        fixed += 1;
+      }
+      repaired.push(copy);
+      if (matchesAtOffset(itemTokens)) targetOffset += itemTokens.length;
+    });
+
+    // 只有纯标点、emoji 的 item 没有可承载其文本的有时间 item；保留空数组即可。
+    if (pendingNeutral) fixed += 1;
+    if (fixed > 0) segment.items = repaired;
+    return fixed;
+  }
+
   function timedTextItemCoverageMask(text, rawItems) {
     const sourceTokens = timedTextTokens(text);
-    const targetTokens = sourceTokens.filter((token) => !isTimedTextWhitespace(token));
+    const targetTokens = sourceTokens.filter((token) => !isTimedTextNeutralToken(token, true));
     const items = Array.isArray(rawItems) ? rawItems : [];
     const itemTokens = [];
     const itemCoverage = [];
     let validItemCount = 0;
     items.forEach((item) => {
-      const tokens = timedTextTokens(item?.text).filter((token) => !isTimedTextWhitespace(token));
+      const tokens = timedTextTokens(item?.text)
+        .filter((token) => !isTimedTextNeutralToken(token, true));
       const start = Number(item?.start);
       const end = Number(item?.end);
       const validTiming = tokens.length > 0
@@ -391,6 +454,110 @@
     return { prefix, body, suffix };
   }
 
+  function timedTextNeutralInsertionItems(originalText, layout, newText, includeWhitespace = false) {
+    if (!layout || !Array.isArray(layout.items) || !layout.items.length) return null;
+    const sourceTokens = timedTextTokens(originalText);
+    const targetTokens = timedTextTokens(newText);
+    if (targetTokens.length <= sourceTokens.length) return null;
+    const isNeutral = (token) => isTimedTextNeutralToken(token, includeWhitespace);
+    const entries = [];
+    let sourceIndex = 0;
+    let insertedNeutral = false;
+    for (const token of targetTokens) {
+      if (sourceIndex < sourceTokens.length && token === sourceTokens[sourceIndex]) {
+        entries.push({ type: 'source', index: sourceIndex });
+        sourceIndex += 1;
+      } else if (isNeutral(token)) {
+        entries.push({ type: 'neutral', position: sourceIndex, token });
+        insertedNeutral = true;
+      } else {
+        return null;
+      }
+    }
+    if (!insertedNeutral || sourceIndex !== sourceTokens.length) return null;
+
+    const { items, spans } = layout;
+    const sourceLength = sourceTokens.length;
+    const itemIndexAt = (position) => {
+      if (position <= 0) return 0;
+      if (position >= sourceLength) return spans.length - 1;
+      return spans.findIndex((span) => position < span.end);
+    };
+    const itemTimeAt = (itemIndex, position) => {
+      const item = items[itemIndex];
+      const span = spans[itemIndex];
+      const start = Number(item?.start);
+      const end = Number(item?.end);
+      if (!span || !Number.isFinite(start) || !Number.isFinite(end)) return null;
+      const length = Math.max(1, span.end - span.start);
+      const offset = Math.max(0, Math.min(length, position - span.start));
+      return Math.round(start + ((end - start) * offset) / length);
+    };
+    const result = [];
+    let pendingNeutral = '';
+    const appendNeutral = (text) => {
+      if (!text) return;
+      if (result.length) result[result.length - 1].text += text;
+      else pendingNeutral += text;
+    };
+    const appendSourceRange = (rangeStart, rangeEnd) => {
+      let cursor = rangeStart;
+      while (cursor < rangeEnd) {
+        const itemIndex = itemIndexAt(cursor);
+        const span = spans[itemIndex];
+        if (!span) return false;
+        const chunkEnd = Math.min(rangeEnd, span.end);
+        const copy = cloneJsonValue(items[itemIndex]);
+        copy.text = sourceTokens.slice(cursor, chunkEnd).join('');
+        copy.start = itemTimeAt(itemIndex, cursor);
+        copy.end = itemTimeAt(itemIndex, chunkEnd);
+        if (copy.start === null || copy.end === null) return false;
+        if (cursor !== span.start || chunkEnd !== span.end) delete copy.id;
+        if (pendingNeutral) {
+          copy.text = `${pendingNeutral}${copy.text}`;
+          pendingNeutral = '';
+        }
+        result.push(copy);
+        cursor = chunkEnd;
+      }
+      return true;
+    };
+
+    let entryIndex = 0;
+    while (entryIndex < entries.length) {
+      const entry = entries[entryIndex];
+      if (entry.type === 'neutral') {
+        const position = entry.position;
+        let text = '';
+        while (entryIndex < entries.length
+            && entries[entryIndex].type === 'neutral'
+            && entries[entryIndex].position === position) {
+          text += entries[entryIndex].token;
+          entryIndex += 1;
+        }
+        appendNeutral(text);
+        continue;
+      }
+      const rangeStart = entry.index;
+      let rangeEnd = rangeStart + 1;
+      entryIndex += 1;
+      while (entryIndex < entries.length
+          && entries[entryIndex].type === 'source'
+          && entries[entryIndex].index === rangeEnd) {
+        rangeEnd += 1;
+        entryIndex += 1;
+      }
+      if (!appendSourceRange(rangeStart, rangeEnd)) return null;
+    }
+    if (pendingNeutral) {
+      if (!result.length) return null;
+      result[result.length - 1].text += pendingNeutral;
+    }
+    if (result.map((item) => item.text).join('') !== String(newText == null ? '' : newText)
+        || !timedTextItemsOrdered(result)) return null;
+    return result;
+  }
+
   function timedTextStructureRequested(segments, draftTexts) {
     const source = Array.isArray(segments) ? segments : [];
     const texts = Array.isArray(draftTexts) ? draftTexts : [];
@@ -419,8 +586,12 @@
     const source = Array.isArray(items) ? items : [];
     const targetTokens = timedTextTokens(newText);
     const lengths = source.map((item) => timedTextTokens(item?.text).length);
-    if (!source.length || lengths.some((length) => length <= 0)
-        || lengths.reduce((sum, length) => sum + length, 0) !== targetTokens.length) return null;
+    if (!source.length || lengths.some((length) => length <= 0)) return null;
+    const sourceText = source.map((item) => String(item?.text || '')).join('');
+    const layout = timedTextItemLayout(sourceText, source);
+    const neutralItems = timedTextNeutralInsertionItems(sourceText, layout, newText, true);
+    if (neutralItems) return neutralItems;
+    if (lengths.reduce((sum, length) => sum + length, 0) !== targetTokens.length) return null;
     let offset = 0;
     return source.map((item, index) => {
       const copy = cloneJsonValue(item);
@@ -475,6 +646,127 @@
     return -1;
   }
 
+  function findTimedTextTokenSequences(sourceTokens, targetTokens) {
+    if (!targetTokens.length) return [];
+    const matches = [];
+    for (let index = 0; index + targetTokens.length <= sourceTokens.length; index += 1) {
+      if (sameTimedTextTokens(
+        sourceTokens.slice(index, index + targetTokens.length),
+        targetTokens,
+      )) matches.push({ start: index, end: index + targetTokens.length });
+    }
+    return matches;
+  }
+
+  function findTimedTextNeutralAwareSequences(sourceTokens, targetTokens) {
+    const sourcePositions = [];
+    const sourceAnchors = [];
+    sourceTokens.forEach((token, index) => {
+      if (isTimedTextNeutralToken(token, true)) return;
+      sourcePositions.push(index);
+      sourceAnchors.push(token);
+    });
+    const targetAnchors = targetTokens.filter((token) => !isTimedTextNeutralToken(token, true));
+    if (!targetAnchors.length) return [];
+    const matches = [];
+    for (let index = 0; index + targetAnchors.length <= sourceAnchors.length; index += 1) {
+      if (!sameTimedTextTokens(
+        sourceAnchors.slice(index, index + targetAnchors.length),
+        targetAnchors,
+      )) continue;
+      let rangeStart = sourcePositions[index];
+      let rangeEnd = sourcePositions[index + targetAnchors.length - 1] + 1;
+      while (rangeStart > 0 && isTimedTextNeutralToken(sourceTokens[rangeStart - 1], true)) {
+        rangeStart -= 1;
+      }
+      while (rangeEnd < sourceTokens.length && isTimedTextNeutralToken(sourceTokens[rangeEnd], true)) {
+        rangeEnd += 1;
+      }
+      matches.push({ start: rangeStart, end: rangeEnd });
+    }
+    return matches;
+  }
+
+  function timedTextAnchorCandidates(sourceTokens, lineTokens, sourceOffsets) {
+    const boundaries = new Set([0]);
+    sourceOffsets.forEach((range) => {
+      boundaries.add(range.start);
+      boundaries.add(range.end);
+    });
+    const candidates = [];
+    lineTokens.forEach((tokens, lineIndex) => {
+      const seen = new Set();
+      const append = (range, neutralAware = false) => {
+        if (!range || range.start >= range.end || seen.has(`${range.start}:${range.end}`)) return;
+        const startsAtBoundary = boundaries.has(range.start);
+        const endsAtBoundary = boundaries.has(range.end);
+        // 内部片段太容易把真正的后续字幕误认成锚点；拆分/合并只接受
+        // 至少一侧落在原字幕边界上的匹配。完全内部的片段留给区间估算。
+        if (!startsAtBoundary && !endsAtBoundary) return;
+        const wholeSource = !neutralAware && sourceOffsets.some((sourceRange) => (
+          sourceRange.start === range.start && sourceRange.end === range.end
+        ));
+        const boundaryScore = wholeSource
+          ? 100000000
+          : (startsAtBoundary && endsAtBoundary ? 1000000 : 10000);
+        seen.add(`${range.start}:${range.end}`);
+        candidates.push({
+          lineIndex,
+          start: range.start,
+          end: range.end,
+          score: boundaryScore + Math.min(tokens.length, 10000),
+        });
+      };
+      findTimedTextTokenSequences(sourceTokens, tokens).forEach((range) => append(range));
+      findTimedTextNeutralAwareSequences(sourceTokens, tokens)
+        .forEach((range) => append(range, true));
+    });
+    return candidates;
+  }
+
+  function selectTimedTextAnchors(sourceTokens, lineTokens, sourceOffsets) {
+    const candidates = timedTextAnchorCandidates(sourceTokens, lineTokens, sourceOffsets);
+    if (!candidates.length) return [];
+    const states = candidates.map((candidate) => ({
+      score: candidate.score,
+      count: 1,
+      coveredLength: candidate.end - candidate.start,
+      previous: -1,
+    }));
+    const isBetter = (left, right) => {
+      if (!right) return true;
+      if (left.score !== right.score) return left.score > right.score;
+      if (left.count !== right.count) return left.count > right.count;
+      if (left.coveredLength !== right.coveredLength) return left.coveredLength > right.coveredLength;
+      return left.previous < right.previous;
+    };
+    for (let current = 0; current < candidates.length; current += 1) {
+      const candidate = candidates[current];
+      for (let previous = 0; previous < current; previous += 1) {
+        const previousCandidate = candidates[previous];
+        if (previousCandidate.lineIndex >= candidate.lineIndex
+            || previousCandidate.end > candidate.start) continue;
+        const proposal = {
+          score: states[previous].score + candidate.score,
+          count: states[previous].count + 1,
+          coveredLength: states[previous].coveredLength + candidate.end - candidate.start,
+          previous,
+        };
+        if (isBetter(proposal, states[current])) states[current] = proposal;
+      }
+    }
+    let last = -1;
+    for (let index = 0; index < states.length; index += 1) {
+      if (last < 0 || isBetter(states[index], states[last])) last = index;
+    }
+    const selected = [];
+    while (last >= 0) {
+      selected.push(candidates[last]);
+      last = states[last].previous;
+    }
+    return selected.reverse();
+  }
+
   function buildTimedTextStructurePlan(segments, draftTexts) {
     const source = Array.isArray(segments) ? segments : [];
     const texts = Array.isArray(draftTexts) ? draftTexts : [];
@@ -527,15 +819,15 @@
       // 某些前面的句子被改写后，仍尝试从后面的未改文字建立锚点。
       // 锚点之间的新增/改写区域只允许走字幕段级估算，不能再按原始 index 猜。
       const anchors = Array.from({ length: lineTokens.length }, () => null);
-      let cursor = 0;
-      let anchorCount = 0;
-      lineTokens.forEach((tokens, index) => {
-        const start = findTimedTextTokenSequence(flattenedSource, tokens, cursor);
-        if (start < 0) return;
-        anchors[index] = { start, end: start + tokens.length };
-        cursor = start + tokens.length;
-        anchorCount += 1;
+      // 不再按草稿顺序贪心地拿每一个“看起来能匹配”的片段。一个较短的
+      // 内部片段可能会抢先消耗真正属于后面字幕的文字，之后所有行只能按
+      // 比例估算，最终表现为“一句错、句句错”。先收集全局候选，再选择一组
+      // 顺序一致且尽量覆盖完整原字幕的锚点，让未改字幕优先成为稳定边界。
+      const selectedAnchors = selectTimedTextAnchors(flattenedSource, lineTokens, sourceOffsets);
+      selectedAnchors.forEach((anchor) => {
+        anchors[anchor.lineIndex] = { start: anchor.start, end: anchor.end };
       });
+      const anchorCount = selectedAnchors.length;
       if (!anchorCount) {
         return emptyTimedTextStructurePlan('无法根据原文重新匹配拆句结果；请保留至少一段未改文字作为匹配锚点。');
       }
@@ -1036,6 +1328,15 @@
 
     const originalTokens = timedTextTokens(originalText);
     const newTokens = timedTextTokens(newText);
+    const neutralItems = timedTextNeutralInsertionItems(originalText, layout, newText);
+    if (neutralItems) {
+      return {
+        status: 'partial',
+        items: neutralItems,
+        preservedItems: items.length,
+        affectedItems: 0,
+      };
+    }
     // 等长改字是最可靠的错别字修正场景：按原 item 的字符长度重新分配文字，
     // 直接保留每个 item 的时间范围。
     if (originalTokens.length === newTokens.length) {
@@ -1450,6 +1751,52 @@
     return buildTimedTextEditReportFixed(source, texts);
   }
 
+  function timedTextEditComparableSegment(segment) {
+    const comparable = cloneJsonValue(segment || {});
+    if (comparable && typeof comparable === 'object') delete comparable._dirty;
+    return comparable;
+  }
+
+  function timedTextEditSegmentsEquivalent(sourceSegment, outputSegment) {
+    return JSON.stringify(timedTextEditComparableSegment(sourceSegment))
+      === JSON.stringify(timedTextEditComparableSegment(outputSegment));
+  }
+
+  // 结构编辑会返回一组新的 segments，但不能因此把所有输出行都标成 dirty。
+  // 只有内容/时间范围/结构确实发生变化的输出，或来自本来就 dirty 的来源行，
+  // 才应继续显示 dirty；原样保留的一对一字幕沿用来源行的 dirty 状态。
+  function timedTextEditDirtyFlags(sourceSegments, nextSegments, report) {
+    const source = Array.isArray(sourceSegments) ? sourceSegments : [];
+    const next = Array.isArray(nextSegments) ? nextSegments : [];
+    const structure = report?.structure?.valid === true ? report.structure : null;
+    if (!structure) {
+      return next.map((segment, index) => {
+        const sourceSegment = source[index];
+        const row = report?.rows?.[index];
+        if (!sourceSegment || row?.changed || row?.timingChanged) return true;
+        return sourceSegment._dirty === true;
+      });
+    }
+
+    const affectedSourceIndexes = new Set(structure.affectedSourceIndexes || []);
+    const sourceOutputIndexes = Array.isArray(structure.sourceOutputIndexes)
+      ? structure.sourceOutputIndexes : [];
+    return next.map((segment, outputIndex) => {
+      const meta = structure.outputMeta?.[outputIndex];
+      const sourceIndexes = Array.isArray(meta?.sourceIndexes) ? meta.sourceIndexes : [];
+      const sourceIndex = sourceIndexes.length === 1 ? sourceIndexes[0] : -1;
+      const sourceSegment = sourceIndex >= 0 ? source[sourceIndex] : null;
+      const outputIndexes = sourceIndex >= 0 ? sourceOutputIndexes[sourceIndex] || [] : [];
+      const unchanged = Boolean(sourceSegment)
+        && sourceIndexes.length === 1
+        && outputIndexes.length === 1
+        && outputIndexes[0] === outputIndex
+        && !affectedSourceIndexes.has(sourceIndex)
+        && timedTextEditSegmentsEquivalent(sourceSegment, segment);
+      return unchanged ? sourceSegment._dirty === true : true;
+    });
+  }
+
   function applyTimedTextEdit(segments, draftTexts) {
     const source = Array.isArray(segments) ? segments : [];
     const texts = Array.isArray(draftTexts) ? draftTexts : [];
@@ -1542,6 +1889,7 @@
       if (!Number.isFinite(start)) start = 0;
       if (!Number.isFinite(end)) end = start;
       if (start < previousSegmentEnd) { start = previousSegmentEnd; fixed++; }
+      fixed += normalizeTimedTextNeutralItems(segment);
       const items = Array.isArray(segment.items) ? segment.items : null;
       let previousItemEnd = start;
       if (items) {
@@ -1577,6 +1925,7 @@
     let fixed = 0;
     source.forEach((segment) => {
       if (!segment || typeof segment !== 'object') return;
+      fixed += normalizeTimedTextNeutralItems(segment);
       let previousItemEnd = Math.round(Number(segment.start));
       if (!Number.isFinite(previousItemEnd)) previousItemEnd = 0;
       const items = Array.isArray(segment.items) ? segment.items : null;
@@ -3792,6 +4141,7 @@
     buildTimedTextBoundaryPlan,
     buildTimedTextStructurePlan,
     buildTimedTextEditReport,
+    timedTextEditDirtyFlags,
     applyTimedTextEdit,
     countTextUnits,
     countSubtitleUnits,

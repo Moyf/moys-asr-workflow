@@ -1324,6 +1324,14 @@ __WAVEFORM_CSS__
           <button type="button" data-view="single" aria-pressed="false">整体编辑</button>
         </div>
       </div>
+      <div class="timed-text-edit-charcount-control" id="timed-text-edit-charcount-control" hidden>
+        <label for="timed-text-edit-charcount-threshold">字数阈值</label>
+        <input id="timed-text-edit-charcount-threshold" type="number" min="1" max="200" step="1" value="16">
+      </div>
+      <label class="timed-text-edit-show-disabled-control" for="timed-text-edit-show-disabled">
+        <input type="checkbox" id="timed-text-edit-show-disabled">
+        显示已禁用字幕
+      </label>
       <span class="timed-text-edit-source-info" id="timed-text-edit-source-info"></span>
     </div>
     <div class="timed-text-edit-layout">
@@ -1333,8 +1341,11 @@ __WAVEFORM_CSS__
           <span class="modal-hint">每一行对应一条当前字幕；新增、删除或移动换行会尝试调整字幕行结构。⌚️有效覆盖率 · ♻️原始时间码复用率</span>
         </div>
         <div class="timed-text-edit-rows" id="timed-text-edit-rows"></div>
-        <textarea id="timed-text-edit-single-textarea" class="timed-text-edit-single-textarea"
-                  aria-label="单文本框编辑" hidden spellcheck="false" wrap="off"></textarea>
+        <div id="timed-text-edit-single-editor" class="timed-text-edit-single-editor" hidden>
+          <textarea id="timed-text-edit-single-textarea" class="timed-text-edit-single-textarea"
+                    aria-label="单文本框编辑" spellcheck="false" wrap="off"></textarea>
+          <span id="timed-text-edit-single-guide" class="timed-text-edit-single-guide" aria-hidden="true"></span>
+        </div>
         <div id="timed-text-edit-single-hint" class="timed-text-edit-single-hint" hidden></div>
       </section>
       <aside class="timed-text-edit-report" aria-labelledby="timed-text-edit-report-title">

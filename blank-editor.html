@@ -2048,7 +2048,24 @@
   }
   .timed-text-edit-view-switch button:disabled { opacity: .42; cursor: not-allowed; }
   .timed-text-edit-view-switch button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
-  .timed-text-edit-source-info { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .timed-text-edit-charcount-control {
+    display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; flex: 0 0 auto;
+  }
+  .timed-text-edit-charcount-control[hidden] { display: none; }
+  .timed-text-edit-charcount-control label { display: inline; margin: 0; color: var(--text-secondary); font-size: 12px; }
+  .timed-text-edit-charcount-control input[type="number"] {
+    width: 56px; min-height: 26px; box-sizing: border-box; padding: 4px 6px;
+    color: var(--text-primary); background: var(--bg-input); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); font: inherit; font-size: 12px;
+    transition: border-color var(--t-fast), box-shadow var(--t-fast);
+  }
+  .timed-text-edit-charcount-control input[type="number"]:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+  .timed-text-edit-show-disabled-control {
+    display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; flex: 0 0 auto;
+    white-space: nowrap; cursor: pointer;
+  }
+  .timed-text-edit-show-disabled-control input { margin: 0; accent-color: var(--accent); }
+  .timed-text-edit-source-info { min-width: 0; flex: 1 1 auto; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .timed-text-edit-layout {
     display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
     gap: 12px; min-height: 0; flex: 1 1 auto;
@@ -2073,8 +2090,11 @@
     transition: border-color var(--t-fast), background var(--t-fast);
   }
   .timed-text-edit-row:last-child { margin-bottom: 0; }
-  .timed-text-edit-row.changed { border-color: var(--amber-line); background: color-mix(in srgb, var(--amber-line) 7%, var(--bg-raised)); }
+  /* 修改内容已经在下方 diff 行用红/绿区分；行容器只保留轻微强调，
+     避免剪切粘贴尚未完成时整块字幕都变成醒目的黄色。 */
+  .timed-text-edit-row.changed { border-color: var(--border-subtle); border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 3%, var(--bg-raised)); }
   .timed-text-edit-row.deleted { border-color: var(--red); background: color-mix(in srgb, var(--red) 10%, var(--bg-raised)); }
+  .timed-text-edit-row.disabled { border-style: dashed; opacity: .7; }
   .timed-text-edit-row-meta {
     display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
     min-width: 0; color: var(--text-muted); font-size: 10px; line-height: 1.25; font-variant-numeric: tabular-nums;
@@ -2100,13 +2120,24 @@
   }
   .timed-text-edit-row.deleted textarea { border-color: var(--red); color: var(--red-hover); }
   .timed-text-edit-row textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+  .timed-text-edit-single-editor {
+    position: relative; display: flex; flex: 1 1 auto; min-height: 0; margin: 10px; overflow: hidden;
+    font: inherit;
+  }
+  .timed-text-edit-single-editor[hidden] { display: none; }
   .timed-text-edit-single-textarea {
-    display: block; flex: 1 1 auto; width: calc(100% - 20px); min-height: 0; height: auto; margin: 10px;
+    display: block; flex: 1 1 auto; width: 100%; min-height: 0; height: 100%; margin: 0;
     box-sizing: border-box; resize: none; padding: 10px 12px; color: var(--text-primary);
     background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm);
     font: inherit; line-height: 1.65; white-space: pre; overflow: auto;
   }
   .timed-text-edit-single-textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+  .timed-text-edit-single-guide {
+    position: absolute; z-index: 1; top: 1px; bottom: 1px;
+    left: calc(13px + var(--timed-text-edit-line-width, 16em)); width: 1px;
+    background: var(--accent-line); opacity: .55; pointer-events: none;
+    transition: left 100ms ease;
+  }
   .timed-text-edit-single-hint { margin: 0 10px 10px; padding: 7px 9px; color: var(--amber-hover); background: color-mix(in srgb, var(--amber-line) 8%, transparent); border: 1px solid var(--amber-line); border-radius: var(--radius-sm); font-size: 11px; line-height: 1.45; }
   .timed-text-edit-single-hint[hidden], .timed-text-edit-single-textarea[hidden] { display: none; }
   .timed-text-edit-row-diff {
@@ -4904,6 +4935,14 @@
           <button type="button" data-view="single" aria-pressed="false">整体编辑</button>
         </div>
       </div>
+      <div class="timed-text-edit-charcount-control" id="timed-text-edit-charcount-control" hidden>
+        <label for="timed-text-edit-charcount-threshold">字数阈值</label>
+        <input id="timed-text-edit-charcount-threshold" type="number" min="1" max="200" step="1" value="16">
+      </div>
+      <label class="timed-text-edit-show-disabled-control" for="timed-text-edit-show-disabled">
+        <input type="checkbox" id="timed-text-edit-show-disabled">
+        显示已禁用字幕
+      </label>
       <span class="timed-text-edit-source-info" id="timed-text-edit-source-info"></span>
     </div>
     <div class="timed-text-edit-layout">
@@ -4913,8 +4952,11 @@
           <span class="modal-hint">每一行对应一条当前字幕；新增、删除或移动换行会尝试调整字幕行结构。⌚️有效覆盖率 · ♻️原始时间码复用率</span>
         </div>
         <div class="timed-text-edit-rows" id="timed-text-edit-rows"></div>
-        <textarea id="timed-text-edit-single-textarea" class="timed-text-edit-single-textarea"
-                  aria-label="单文本框编辑" hidden spellcheck="false" wrap="off"></textarea>
+        <div id="timed-text-edit-single-editor" class="timed-text-edit-single-editor" hidden>
+          <textarea id="timed-text-edit-single-textarea" class="timed-text-edit-single-textarea"
+                    aria-label="单文本框编辑" spellcheck="false" wrap="off"></textarea>
+          <span id="timed-text-edit-single-guide" class="timed-text-edit-single-guide" aria-hidden="true"></span>
+        </div>
         <div id="timed-text-edit-single-hint" class="timed-text-edit-single-hint" hidden></div>
       </section>
       <aside class="timed-text-edit-report" aria-labelledby="timed-text-edit-report-title">
@@ -5296,15 +5338,78 @@
     return /\s/u.test(token);
   }
 
+  // 标点、符号和 emoji 不代表新的可听内容。它们仍保留在 item 文本中，
+  // 但不单独占用时间；ZWJ / variation selector / keycap 也视为同一类字符。
+  function isTimedTextNeutralToken(token, includeWhitespace = false) {
+    if (includeWhitespace && isTimedTextWhitespace(token)) return true;
+    return /[\p{P}\p{S}]/u.test(token)
+      || /[\u200D\uFE0E\uFE0F\u20E3]/u.test(token);
+  }
+
+  function isTimedTextNeutralItem(item) {
+    const tokens = timedTextTokens(item?.text);
+    return tokens.length > 0 && tokens.every((token) => isTimedTextNeutralToken(token, true));
+  }
+
+  // 早期版本可能把没有独立时间的标点保存成 0ms item。保存前将这类字符
+  // 并入相邻的有时间 item：既保留原有字词时间，也避免修复器把它扩成越界的 100ms。
+  // 如果用户已经删掉该字符，则清理残留 item，避免错误一直留在工程里。
+  function normalizeTimedTextNeutralItems(segment) {
+    if (!segment || typeof segment !== 'object' || !Array.isArray(segment.items)) return 0;
+    const targetTokens = timedTextTokens(segment.text);
+    const repaired = [];
+    let targetOffset = 0;
+    let pendingNeutral = '';
+    let fixed = 0;
+    const matchesAtOffset = (tokens) => tokens.length > 0
+      && targetTokens.length >= targetOffset + tokens.length
+      && tokens.every((token, index) => targetTokens[targetOffset + index] === token);
+
+    segment.items.forEach((rawItem) => {
+      const itemTokens = timedTextTokens(rawItem?.text);
+      if (isTimedTextNeutralItem(rawItem)) {
+        if (!matchesAtOffset(itemTokens)) {
+          fixed += 1;
+          return;
+        }
+        targetOffset += itemTokens.length;
+        const text = itemTokens.join('');
+        if (repaired.length) {
+          repaired[repaired.length - 1].text += text;
+          fixed += 1;
+        } else {
+          pendingNeutral += text;
+          fixed += 1;
+        }
+        return;
+      }
+
+      const copy = cloneJsonValue(rawItem);
+      if (pendingNeutral) {
+        copy.text = `${pendingNeutral}${String(copy.text == null ? '' : copy.text)}`;
+        pendingNeutral = '';
+        fixed += 1;
+      }
+      repaired.push(copy);
+      if (matchesAtOffset(itemTokens)) targetOffset += itemTokens.length;
+    });
+
+    // 只有纯标点、emoji 的 item 没有可承载其文本的有时间 item；保留空数组即可。
+    if (pendingNeutral) fixed += 1;
+    if (fixed > 0) segment.items = repaired;
+    return fixed;
+  }
+
   function timedTextItemCoverageMask(text, rawItems) {
     const sourceTokens = timedTextTokens(text);
-    const targetTokens = sourceTokens.filter((token) => !isTimedTextWhitespace(token));
+    const targetTokens = sourceTokens.filter((token) => !isTimedTextNeutralToken(token, true));
     const items = Array.isArray(rawItems) ? rawItems : [];
     const itemTokens = [];
     const itemCoverage = [];
     let validItemCount = 0;
     items.forEach((item) => {
-      const tokens = timedTextTokens(item?.text).filter((token) => !isTimedTextWhitespace(token));
+      const tokens = timedTextTokens(item?.text)
+        .filter((token) => !isTimedTextNeutralToken(token, true));
       const start = Number(item?.start);
       const end = Number(item?.end);
       const validTiming = tokens.length > 0
@@ -5505,6 +5610,110 @@
     return { prefix, body, suffix };
   }
 
+  function timedTextNeutralInsertionItems(originalText, layout, newText, includeWhitespace = false) {
+    if (!layout || !Array.isArray(layout.items) || !layout.items.length) return null;
+    const sourceTokens = timedTextTokens(originalText);
+    const targetTokens = timedTextTokens(newText);
+    if (targetTokens.length <= sourceTokens.length) return null;
+    const isNeutral = (token) => isTimedTextNeutralToken(token, includeWhitespace);
+    const entries = [];
+    let sourceIndex = 0;
+    let insertedNeutral = false;
+    for (const token of targetTokens) {
+      if (sourceIndex < sourceTokens.length && token === sourceTokens[sourceIndex]) {
+        entries.push({ type: 'source', index: sourceIndex });
+        sourceIndex += 1;
+      } else if (isNeutral(token)) {
+        entries.push({ type: 'neutral', position: sourceIndex, token });
+        insertedNeutral = true;
+      } else {
+        return null;
+      }
+    }
+    if (!insertedNeutral || sourceIndex !== sourceTokens.length) return null;
+
+    const { items, spans } = layout;
+    const sourceLength = sourceTokens.length;
+    const itemIndexAt = (position) => {
+      if (position <= 0) return 0;
+      if (position >= sourceLength) return spans.length - 1;
+      return spans.findIndex((span) => position < span.end);
+    };
+    const itemTimeAt = (itemIndex, position) => {
+      const item = items[itemIndex];
+      const span = spans[itemIndex];
+      const start = Number(item?.start);
+      const end = Number(item?.end);
+      if (!span || !Number.isFinite(start) || !Number.isFinite(end)) return null;
+      const length = Math.max(1, span.end - span.start);
+      const offset = Math.max(0, Math.min(length, position - span.start));
+      return Math.round(start + ((end - start) * offset) / length);
+    };
+    const result = [];
+    let pendingNeutral = '';
+    const appendNeutral = (text) => {
+      if (!text) return;
+      if (result.length) result[result.length - 1].text += text;
+      else pendingNeutral += text;
+    };
+    const appendSourceRange = (rangeStart, rangeEnd) => {
+      let cursor = rangeStart;
+      while (cursor < rangeEnd) {
+        const itemIndex = itemIndexAt(cursor);
+        const span = spans[itemIndex];
+        if (!span) return false;
+        const chunkEnd = Math.min(rangeEnd, span.end);
+        const copy = cloneJsonValue(items[itemIndex]);
+        copy.text = sourceTokens.slice(cursor, chunkEnd).join('');
+        copy.start = itemTimeAt(itemIndex, cursor);
+        copy.end = itemTimeAt(itemIndex, chunkEnd);
+        if (copy.start === null || copy.end === null) return false;
+        if (cursor !== span.start || chunkEnd !== span.end) delete copy.id;
+        if (pendingNeutral) {
+          copy.text = `${pendingNeutral}${copy.text}`;
+          pendingNeutral = '';
+        }
+        result.push(copy);
+        cursor = chunkEnd;
+      }
+      return true;
+    };
+
+    let entryIndex = 0;
+    while (entryIndex < entries.length) {
+      const entry = entries[entryIndex];
+      if (entry.type === 'neutral') {
+        const position = entry.position;
+        let text = '';
+        while (entryIndex < entries.length
+            && entries[entryIndex].type === 'neutral'
+            && entries[entryIndex].position === position) {
+          text += entries[entryIndex].token;
+          entryIndex += 1;
+        }
+        appendNeutral(text);
+        continue;
+      }
+      const rangeStart = entry.index;
+      let rangeEnd = rangeStart + 1;
+      entryIndex += 1;
+      while (entryIndex < entries.length
+          && entries[entryIndex].type === 'source'
+          && entries[entryIndex].index === rangeEnd) {
+        rangeEnd += 1;
+        entryIndex += 1;
+      }
+      if (!appendSourceRange(rangeStart, rangeEnd)) return null;
+    }
+    if (pendingNeutral) {
+      if (!result.length) return null;
+      result[result.length - 1].text += pendingNeutral;
+    }
+    if (result.map((item) => item.text).join('') !== String(newText == null ? '' : newText)
+        || !timedTextItemsOrdered(result)) return null;
+    return result;
+  }
+
   function timedTextStructureRequested(segments, draftTexts) {
     const source = Array.isArray(segments) ? segments : [];
     const texts = Array.isArray(draftTexts) ? draftTexts : [];
@@ -5533,8 +5742,12 @@
     const source = Array.isArray(items) ? items : [];
     const targetTokens = timedTextTokens(newText);
     const lengths = source.map((item) => timedTextTokens(item?.text).length);
-    if (!source.length || lengths.some((length) => length <= 0)
-        || lengths.reduce((sum, length) => sum + length, 0) !== targetTokens.length) return null;
+    if (!source.length || lengths.some((length) => length <= 0)) return null;
+    const sourceText = source.map((item) => String(item?.text || '')).join('');
+    const layout = timedTextItemLayout(sourceText, source);
+    const neutralItems = timedTextNeutralInsertionItems(sourceText, layout, newText, true);
+    if (neutralItems) return neutralItems;
+    if (lengths.reduce((sum, length) => sum + length, 0) !== targetTokens.length) return null;
     let offset = 0;
     return source.map((item, index) => {
       const copy = cloneJsonValue(item);
@@ -5589,6 +5802,127 @@
     return -1;
   }
 
+  function findTimedTextTokenSequences(sourceTokens, targetTokens) {
+    if (!targetTokens.length) return [];
+    const matches = [];
+    for (let index = 0; index + targetTokens.length <= sourceTokens.length; index += 1) {
+      if (sameTimedTextTokens(
+        sourceTokens.slice(index, index + targetTokens.length),
+        targetTokens,
+      )) matches.push({ start: index, end: index + targetTokens.length });
+    }
+    return matches;
+  }
+
+  function findTimedTextNeutralAwareSequences(sourceTokens, targetTokens) {
+    const sourcePositions = [];
+    const sourceAnchors = [];
+    sourceTokens.forEach((token, index) => {
+      if (isTimedTextNeutralToken(token, true)) return;
+      sourcePositions.push(index);
+      sourceAnchors.push(token);
+    });
+    const targetAnchors = targetTokens.filter((token) => !isTimedTextNeutralToken(token, true));
+    if (!targetAnchors.length) return [];
+    const matches = [];
+    for (let index = 0; index + targetAnchors.length <= sourceAnchors.length; index += 1) {
+      if (!sameTimedTextTokens(
+        sourceAnchors.slice(index, index + targetAnchors.length),
+        targetAnchors,
+      )) continue;
+      let rangeStart = sourcePositions[index];
+      let rangeEnd = sourcePositions[index + targetAnchors.length - 1] + 1;
+      while (rangeStart > 0 && isTimedTextNeutralToken(sourceTokens[rangeStart - 1], true)) {
+        rangeStart -= 1;
+      }
+      while (rangeEnd < sourceTokens.length && isTimedTextNeutralToken(sourceTokens[rangeEnd], true)) {
+        rangeEnd += 1;
+      }
+      matches.push({ start: rangeStart, end: rangeEnd });
+    }
+    return matches;
+  }
+
+  function timedTextAnchorCandidates(sourceTokens, lineTokens, sourceOffsets) {
+    const boundaries = new Set([0]);
+    sourceOffsets.forEach((range) => {
+      boundaries.add(range.start);
+      boundaries.add(range.end);
+    });
+    const candidates = [];
+    lineTokens.forEach((tokens, lineIndex) => {
+      const seen = new Set();
+      const append = (range, neutralAware = false) => {
+        if (!range || range.start >= range.end || seen.has(`${range.start}:${range.end}`)) return;
+        const startsAtBoundary = boundaries.has(range.start);
+        const endsAtBoundary = boundaries.has(range.end);
+        // 内部片段太容易把真正的后续字幕误认成锚点；拆分/合并只接受
+        // 至少一侧落在原字幕边界上的匹配。完全内部的片段留给区间估算。
+        if (!startsAtBoundary && !endsAtBoundary) return;
+        const wholeSource = !neutralAware && sourceOffsets.some((sourceRange) => (
+          sourceRange.start === range.start && sourceRange.end === range.end
+        ));
+        const boundaryScore = wholeSource
+          ? 100000000
+          : (startsAtBoundary && endsAtBoundary ? 1000000 : 10000);
+        seen.add(`${range.start}:${range.end}`);
+        candidates.push({
+          lineIndex,
+          start: range.start,
+          end: range.end,
+          score: boundaryScore + Math.min(tokens.length, 10000),
+        });
+      };
+      findTimedTextTokenSequences(sourceTokens, tokens).forEach((range) => append(range));
+      findTimedTextNeutralAwareSequences(sourceTokens, tokens)
+        .forEach((range) => append(range, true));
+    });
+    return candidates;
+  }
+
+  function selectTimedTextAnchors(sourceTokens, lineTokens, sourceOffsets) {
+    const candidates = timedTextAnchorCandidates(sourceTokens, lineTokens, sourceOffsets);
+    if (!candidates.length) return [];
+    const states = candidates.map((candidate) => ({
+      score: candidate.score,
+      count: 1,
+      coveredLength: candidate.end - candidate.start,
+      previous: -1,
+    }));
+    const isBetter = (left, right) => {
+      if (!right) return true;
+      if (left.score !== right.score) return left.score > right.score;
+      if (left.count !== right.count) return left.count > right.count;
+      if (left.coveredLength !== right.coveredLength) return left.coveredLength > right.coveredLength;
+      return left.previous < right.previous;
+    };
+    for (let current = 0; current < candidates.length; current += 1) {
+      const candidate = candidates[current];
+      for (let previous = 0; previous < current; previous += 1) {
+        const previousCandidate = candidates[previous];
+        if (previousCandidate.lineIndex >= candidate.lineIndex
+            || previousCandidate.end > candidate.start) continue;
+        const proposal = {
+          score: states[previous].score + candidate.score,
+          count: states[previous].count + 1,
+          coveredLength: states[previous].coveredLength + candidate.end - candidate.start,
+          previous,
+        };
+        if (isBetter(proposal, states[current])) states[current] = proposal;
+      }
+    }
+    let last = -1;
+    for (let index = 0; index < states.length; index += 1) {
+      if (last < 0 || isBetter(states[index], states[last])) last = index;
+    }
+    const selected = [];
+    while (last >= 0) {
+      selected.push(candidates[last]);
+      last = states[last].previous;
+    }
+    return selected.reverse();
+  }
+
   function buildTimedTextStructurePlan(segments, draftTexts) {
     const source = Array.isArray(segments) ? segments : [];
     const texts = Array.isArray(draftTexts) ? draftTexts : [];
@@ -5641,15 +5975,15 @@
       // 某些前面的句子被改写后，仍尝试从后面的未改文字建立锚点。
       // 锚点之间的新增/改写区域只允许走字幕段级估算，不能再按原始 index 猜。
       const anchors = Array.from({ length: lineTokens.length }, () => null);
-      let cursor = 0;
-      let anchorCount = 0;
-      lineTokens.forEach((tokens, index) => {
-        const start = findTimedTextTokenSequence(flattenedSource, tokens, cursor);
-        if (start < 0) return;
-        anchors[index] = { start, end: start + tokens.length };
-        cursor = start + tokens.length;
-        anchorCount += 1;
+      // 不再按草稿顺序贪心地拿每一个“看起来能匹配”的片段。一个较短的
+      // 内部片段可能会抢先消耗真正属于后面字幕的文字，之后所有行只能按
+      // 比例估算，最终表现为“一句错、句句错”。先收集全局候选，再选择一组
+      // 顺序一致且尽量覆盖完整原字幕的锚点，让未改字幕优先成为稳定边界。
+      const selectedAnchors = selectTimedTextAnchors(flattenedSource, lineTokens, sourceOffsets);
+      selectedAnchors.forEach((anchor) => {
+        anchors[anchor.lineIndex] = { start: anchor.start, end: anchor.end };
       });
+      const anchorCount = selectedAnchors.length;
       if (!anchorCount) {
         return emptyTimedTextStructurePlan('无法根据原文重新匹配拆句结果；请保留至少一段未改文字作为匹配锚点。');
       }
@@ -6150,6 +6484,15 @@
 
     const originalTokens = timedTextTokens(originalText);
     const newTokens = timedTextTokens(newText);
+    const neutralItems = timedTextNeutralInsertionItems(originalText, layout, newText);
+    if (neutralItems) {
+      return {
+        status: 'partial',
+        items: neutralItems,
+        preservedItems: items.length,
+        affectedItems: 0,
+      };
+    }
     // 等长改字是最可靠的错别字修正场景：按原 item 的字符长度重新分配文字，
     // 直接保留每个 item 的时间范围。
     if (originalTokens.length === newTokens.length) {
@@ -6424,7 +6767,13 @@
       const sourceIndexes = Array.isArray(meta.sourceIndexes) ? meta.sourceIndexes : [];
       const structural = sourceIndexes.some((index) => plan.affectedSourceIndexes.includes(index))
         || sourceIndexes.length !== 1;
-      const before = sourceSlice.text;
+      // 结构拆分时，每个输出行只对应原字幕的一段时间范围，但“修改前”
+      // 应该展示用户实际拆分的整条原字幕，而不是展示与“修改后”相同的切片。
+      // 例如「超高速摄影机」拆成「超高速」/「摄影机」时，两行都以整句为 before。
+      const fullSourceText = sourceIndexes
+        .map((index) => String(source[index]?.text == null ? '' : source[index].text))
+        .join('');
+      const before = structural && fullSourceText ? fullSourceText : sourceSlice.text;
       const after = String(output?.text || '');
       const mappingStatus = structural
         ? 'structure'
@@ -6558,6 +6907,52 @@
     return buildTimedTextEditReportFixed(source, texts);
   }
 
+  function timedTextEditComparableSegment(segment) {
+    const comparable = cloneJsonValue(segment || {});
+    if (comparable && typeof comparable === 'object') delete comparable._dirty;
+    return comparable;
+  }
+
+  function timedTextEditSegmentsEquivalent(sourceSegment, outputSegment) {
+    return JSON.stringify(timedTextEditComparableSegment(sourceSegment))
+      === JSON.stringify(timedTextEditComparableSegment(outputSegment));
+  }
+
+  // 结构编辑会返回一组新的 segments，但不能因此把所有输出行都标成 dirty。
+  // 只有内容/时间范围/结构确实发生变化的输出，或来自本来就 dirty 的来源行，
+  // 才应继续显示 dirty；原样保留的一对一字幕沿用来源行的 dirty 状态。
+  function timedTextEditDirtyFlags(sourceSegments, nextSegments, report) {
+    const source = Array.isArray(sourceSegments) ? sourceSegments : [];
+    const next = Array.isArray(nextSegments) ? nextSegments : [];
+    const structure = report?.structure?.valid === true ? report.structure : null;
+    if (!structure) {
+      return next.map((segment, index) => {
+        const sourceSegment = source[index];
+        const row = report?.rows?.[index];
+        if (!sourceSegment || row?.changed || row?.timingChanged) return true;
+        return sourceSegment._dirty === true;
+      });
+    }
+
+    const affectedSourceIndexes = new Set(structure.affectedSourceIndexes || []);
+    const sourceOutputIndexes = Array.isArray(structure.sourceOutputIndexes)
+      ? structure.sourceOutputIndexes : [];
+    return next.map((segment, outputIndex) => {
+      const meta = structure.outputMeta?.[outputIndex];
+      const sourceIndexes = Array.isArray(meta?.sourceIndexes) ? meta.sourceIndexes : [];
+      const sourceIndex = sourceIndexes.length === 1 ? sourceIndexes[0] : -1;
+      const sourceSegment = sourceIndex >= 0 ? source[sourceIndex] : null;
+      const outputIndexes = sourceIndex >= 0 ? sourceOutputIndexes[sourceIndex] || [] : [];
+      const unchanged = Boolean(sourceSegment)
+        && sourceIndexes.length === 1
+        && outputIndexes.length === 1
+        && outputIndexes[0] === outputIndex
+        && !affectedSourceIndexes.has(sourceIndex)
+        && timedTextEditSegmentsEquivalent(sourceSegment, segment);
+      return unchanged ? sourceSegment._dirty === true : true;
+    });
+  }
+
   function applyTimedTextEdit(segments, draftTexts) {
     const source = Array.isArray(segments) ? segments : [];
     const texts = Array.isArray(draftTexts) ? draftTexts : [];
@@ -6650,6 +7045,7 @@
       if (!Number.isFinite(start)) start = 0;
       if (!Number.isFinite(end)) end = start;
       if (start < previousSegmentEnd) { start = previousSegmentEnd; fixed++; }
+      fixed += normalizeTimedTextNeutralItems(segment);
       const items = Array.isArray(segment.items) ? segment.items : null;
       let previousItemEnd = start;
       if (items) {
@@ -6685,6 +7081,7 @@
     let fixed = 0;
     source.forEach((segment) => {
       if (!segment || typeof segment !== 'object') return;
+      fixed += normalizeTimedTextNeutralItems(segment);
       let previousItemEnd = Math.round(Number(segment.start));
       if (!Number.isFinite(previousItemEnd)) previousItemEnd = 0;
       const items = Array.isArray(segment.items) ? segment.items : null;
@@ -8900,6 +9297,7 @@
     buildTimedTextBoundaryPlan,
     buildTimedTextStructurePlan,
     buildTimedTextEditReport,
+    timedTextEditDirtyFlags,
     applyTimedTextEdit,
     countTextUnits,
     countSubtitleUnits,
@@ -9367,6 +9765,7 @@
     '查找': 'Find', '替换为': 'Replace with', '批量替换': 'Batch replace',
     '纯文本编辑…': 'Plain text edit…', '纯文本编辑': 'Plain text edit', '编辑轨道': 'Edit track',
     '编辑视图': 'Edit view', '逐条编辑': 'Edit row by row', '整体编辑': 'Whole text', '单文本框': 'Single text area',
+    '显示已禁用字幕': 'Show disabled subtitles',
     '显示全部': 'Show all',
     '字幕文本': 'Subtitle text', '修改影响': 'Change impact', '修改内容': 'Changed text',
     '应用修改': 'Apply changes', '查看修改内容': 'View changes', '还没有修改内容。': 'No changes yet.',
@@ -9386,7 +9785,9 @@
     '修改后会保持当前字幕段的开始、结束时间不变。': 'The subtitle segment start and end times stay unchanged after editing.',
     '部分字幕无法可靠映射原字词时间码；应用后只保留字幕段整体时间范围。': 'Some subtitles cannot reliably map their original word timings; applying the edit keeps only the overall subtitle segment range.',
     '修改范围内的字词会合并为较粗的时间码，未受影响的字词仍会保留。': 'Words in the changed range are merged into coarser timings; unaffected words are retained.',
+    '切换显示范围会丢弃当前未应用的文本修改，是否继续？': 'Changing the visible range will discard unapplied text edits. Continue?',
     '当前修改可以完整复用原字词时间码；字幕段整体时间范围不会改变。': 'The current edits can fully reuse the original word timings; the overall subtitle segment ranges stay unchanged.',
+    '当前没有显示中的字幕；打开“显示已禁用字幕”后才能编辑。': 'No visible subtitles; enable “Show disabled subtitles” to edit them.',
     '当前字幕没有可用于拆分的文字。': 'The current subtitles have no text that can be used for splitting.',
     '等待可靠时间码映射': 'Waiting for a reliable timing mapping',
     '当前没有可编辑的字幕': 'There are no subtitles to edit',
@@ -9413,7 +9814,7 @@
     'Trim': 'Trim', '修剪前后空白': 'Trim surrounding whitespace', '去除字幕前方和后方的空格': 'Remove spaces before and after the subtitle text', '去除前后空白': 'Remove surrounding whitespace', '首字母大写': 'Capitalize first letter', '只作用于第一个字母': 'Only affects the first letter',
     '添加前缀': 'Add prefix', '插入到字幕开头': 'Insert at the beginning', '附加内容': 'Add suffix', '插入到字幕结尾': 'Insert at the end',
     '去除 md 格式符号': 'Remove Markdown formatting', '移除常见 Markdown 标记': 'Remove common Markdown markers',
-    '选择操作后查看预览': 'Select an operation to preview', '至少选择一项文本处理操作': 'Select at least one text-processing operation', '选定的字幕不会发生变化': 'The selected subtitles would not change',
+    '选择操作后查看预览': 'Select an operation to preview', '至少选择一项文本处理操作': 'Select at least one text-processing operation', '当前文本处理对于选中的字幕没有任何影响，未作改动': 'The current text processing has no effect on the selected subtitles; no changes were made',
     '应用处理': 'Apply processing', '处理前：': 'Before: ', '处理后：': 'After: ',
     '选择要执行的文本操作；字幕行不会被删除，处理为空时会保留空字幕行。字词时间码会按文本编辑规则尽量保留。': 'Choose text operations; subtitle rows are not deleted, and empty results remain as empty rows. Word timings are retained when possible using the text-editing rules.',
     '取消': 'Cancel', '替换全部': 'Replace all', '分配表情包': 'Assign sticker',
@@ -15209,10 +15610,16 @@ function addSubtitleBinding(mainSegment, extensionSegment, track = getActiveExte
   return binding;
 }
 
-function markMultiSubtitleDirty() {
+function markMultiSubtitleStateDirty() {
   const multi = getMultiSubtitleState();
-  if (!multi.enabled && !(multi.tracks || []).length) return;
+  if (!multi.enabled && !(multi.tracks || []).length) return null;
   multi._dirty = true;
+  return multi;
+}
+
+function markMultiSubtitleDirty() {
+  const multi = markMultiSubtitleStateDirty();
+  if (!multi) return;
   (multi.tracks || []).forEach((track) => track.segments.forEach((segment) => { segment._dirty = true; }));
 }
 
@@ -16225,7 +16632,11 @@ const timedTextEditTrackControl = document.getElementById('timed-text-edit-track
 const timedTextEditTrack = document.getElementById('timed-text-edit-track');
 const timedTextEditView = document.getElementById('timed-text-edit-view');
 const timedTextEditSourceInfo = document.getElementById('timed-text-edit-source-info');
+const timedTextEditCharcountThresholdControl = document.getElementById('timed-text-edit-charcount-control');
+const timedTextEditCharcountThresholdInput = document.getElementById('timed-text-edit-charcount-threshold');
+const timedTextEditShowDisabledToggle = document.getElementById('timed-text-edit-show-disabled');
 const timedTextEditRows = document.getElementById('timed-text-edit-rows');
+const timedTextEditSingleEditor = document.getElementById('timed-text-edit-single-editor');
 const timedTextEditSingleTextarea = document.getElementById('timed-text-edit-single-textarea');
 const timedTextEditSingleHint = document.getElementById('timed-text-edit-single-hint');
 const timedTextEditReportSummary = document.getElementById('timed-text-edit-report-summary');
@@ -16234,8 +16645,10 @@ const timedTextEditShowAll = document.getElementById('timed-text-edit-show-all')
 const timedTextEditReportHint = document.getElementById('timed-text-edit-report-hint');
 const timedTextEditChangeDetails = document.getElementById('timed-text-edit-change-details');
 const timedTextEditChangeList = document.getElementById('timed-text-edit-change-list');
+const TIMED_TEXT_EDIT_REPORT_DEBOUNCE_MS = 160;
 let timedTextEditDraft = null;
 let timedTextEditReturnFocus = null;
+let timedTextEditReportTimer = null;
 const stickerModal = document.getElementById('sticker-modal');
 const stickerPreviewModal = document.getElementById('sticker-preview-modal');
 const projectMediaModal = document.getElementById('project-media-modal');
@@ -16651,7 +17064,7 @@ function applyCueListDisplaySettings() {
   cueListShowCharcountToggle.checked = EDITOR_SETTINGS.cueListShowCharcount;
   cueListAutoScrollOnClickToggle.checked = EDITOR_SETTINGS.cueListAutoScrollOnClick;
   cueListKeepSplitVisibleToggle.checked = EDITOR_SETTINGS.cueListKeepSplitVisible;
-  cueListCharcountThresholdInput.value = String(EDITOR_SETTINGS.cueListCharcountThreshold);
+  syncCharCountThresholdInputs(EDITOR_SETTINGS.cueListCharcountThreshold);
   hideDisabled = EDITOR_SETTINGS.cueListHideDisabled;
   hideDisabledToggle.checked = hideDisabled;
   container.classList.toggle('hide-disabled', hideDisabled);
@@ -17258,17 +17671,18 @@ cueListKeepSplitVisibleToggle?.addEventListener('change', () => {
   applySearch(searchEl.value);
 });
 cueListCharcountThresholdInput?.addEventListener('input', () => {
-  const value = Number(cueListCharcountThresholdInput.value);
-  if (Number.isFinite(value) && value >= 1 && value <= 200) {
-    updateEditorSettings({ cueListCharcountThreshold: clampCharcountThreshold(value) });
-  }
-  refreshAllCharCounts();
-  if (document.getElementById('filter-over').classList.contains('active')) {
-    applySearch(searchEl.value);
-  }
+  handleCharCountThresholdInput(cueListCharcountThresholdInput);
 });
 cueListCharcountThresholdInput?.addEventListener('change', () => {
-  cueListCharcountThresholdInput.value = String(getCharCountThreshold());
+  syncCharCountThresholdInputs();
+  updateTimedTextEditSingleGuide();
+});
+timedTextEditCharcountThresholdInput?.addEventListener('input', () => {
+  handleCharCountThresholdInput(timedTextEditCharcountThresholdInput);
+});
+timedTextEditCharcountThresholdInput?.addEventListener('change', () => {
+  syncCharCountThresholdInputs();
+  updateTimedTextEditSingleGuide();
 });
 bindCueEditorDisplayToggle(cueEditorShowNavigationToggle, 'cueEditorShowNavigation');
 bindCueEditorDisplayToggle(cueEditorShowTimeActionsToggle, 'cueEditorShowTimeActions');
@@ -19415,8 +19829,36 @@ function calcCharWidth(text, mode = null) {
     : window.AsrEditorUtils.countTextUnits(text);
 }
 function getCharCountThreshold() {
-  const v = parseInt(cueListCharcountThresholdInput?.value, 10);
-  return Number.isFinite(v) && v > 0 ? v : EDITOR_SETTINGS.cueListCharcountThreshold;
+  const v = Number(EDITOR_SETTINGS.cueListCharcountThreshold);
+  return Number.isFinite(v) && v > 0
+    ? clampCharcountThreshold(v)
+    : DEFAULT_EDITOR_SETTINGS.cueListCharcountThreshold;
+}
+function syncCharCountThresholdInputs(value = getCharCountThreshold()) {
+  const threshold = clampCharcountThreshold(value);
+  const text = String(threshold);
+  if (cueListCharcountThresholdInput) cueListCharcountThresholdInput.value = text;
+  if (timedTextEditCharcountThresholdInput) timedTextEditCharcountThresholdInput.value = text;
+  return threshold;
+}
+function handleCharCountThresholdInput(input) {
+  const value = Number(input?.value);
+  if (Number.isFinite(value) && value >= 1 && value <= 200) {
+    const threshold = syncCharCountThresholdInputs(value);
+    updateEditorSettings({ cueListCharcountThreshold: threshold });
+  }
+  updateTimedTextEditSingleGuide();
+  refreshAllCharCounts();
+  if (document.getElementById('filter-over').classList.contains('active')) {
+    applySearch(searchEl.value);
+  }
+}
+function updateTimedTextEditSingleGuide() {
+  if (!timedTextEditSingleEditor) return;
+  timedTextEditSingleEditor.style.setProperty(
+    '--timed-text-edit-line-width',
+    `${getCharCountThreshold()}em`,
+  );
 }
 function applyCharCount(cntEl, text, mode = null) {
   if (!cntEl) return;
@@ -25134,11 +25576,39 @@ function normalizeProjectTimings(project, { repairSegmentRanges = true } = {}) {
   return fixed;
 }
 
+function timingRepairSignature(segment) {
+  return JSON.stringify({
+    start: segment?.start,
+    end: segment?.end,
+    items: Array.isArray(segment?.items)
+      ? segment.items.map((item) => ({ text: item?.text, start: item?.start, end: item?.end }))
+      : null,
+  });
+}
+
+function repairTimingGroup(segments) {
+  const source = Array.isArray(segments) ? segments : [];
+  const before = source.map((segment) => timingRepairSignature(segment));
+  const fixed = window.AsrEditorUtils.normalizeItemTimingRanges(source);
+  const changed = source.filter((segment, index) => (
+    timingRepairSignature(segment) !== before[index]
+  ));
+  return { fixed, changed };
+}
+
 function repairCurrentProjectTimings() {
-  const fixed = normalizeProjectTimings(DATA, { repairSegmentRanges: false });
+  const main = repairTimingGroup(DATA.segments);
+  const extension = (getMultiSubtitleState().tracks || []).reduce((result, track) => {
+    const repaired = repairTimingGroup(track?.segments);
+    result.fixed += repaired.fixed;
+    result.changed.push(...repaired.changed);
+    return result;
+  }, { fixed: 0, changed: [] });
+  const fixed = main.fixed + extension.fixed;
   if (fixed > 0) {
-    markMainSegmentsDirty(DATA.segments);
-    markMultiSubtitleDirty();
+    markMainSegmentsDirty(main.changed);
+    extension.changed.forEach((segment) => { segment._dirty = true; });
+    if (main.changed.length || extension.changed.length) markMultiSubtitleStateDirty();
     syncBindingOffsets();
   }
   return fixed;
@@ -28087,6 +28557,54 @@ const textProcessStripMarkdown = document.getElementById('text-process-strip-mar
 let textProcessSelectionSnapshot = [];
 let textProcessScope = null;
 
+function textProcessSelectionTargets() {
+  const targets = [...selectedIdxs]
+    .sort((a, b) => a - b)
+    .map((index) => ({ kind: 'main', index }));
+  const extensionTrack = getActiveExtensionTrack();
+  if (extensionTrack) {
+    [...selectedExtensionIdxs]
+      .sort((a, b) => a - b)
+      .forEach((index) => targets.push({
+        kind: 'extension',
+        index,
+        trackId: extensionTrack.id,
+      }));
+  }
+  return targets;
+}
+
+function textProcessAllTargets() {
+  return DATA.segments.map((_, index) => ({ kind: 'main', index }));
+}
+
+function textProcessTargetSegments(target) {
+  return target?.kind === 'extension'
+    ? getExtensionTrack(target.trackId)?.segments || []
+    : DATA.segments;
+}
+
+function textProcessTargetLabel(target) {
+  return `${target?.kind === 'extension' ? '副字幕' : '主字幕'}第 ${(target?.index ?? 0) + 1} 条`;
+}
+
+function textProcessTargets() {
+  return textProcessScope && textProcessScope.length
+    ? textProcessScope
+    : textProcessAllTargets();
+}
+
+function buildTextProcessPreview(targets, options) {
+  return (Array.isArray(targets) ? targets : []).flatMap((target) => {
+    const segments = textProcessTargetSegments(target);
+    const segment = segments[target.index];
+    if (!segment) return [];
+    const before = String(segment.text == null ? '' : segment.text);
+    const after = window.AsrEditorUtils.applyTextProcessing(before, options);
+    return [{ ...target, before, after, changed: before !== after }];
+  });
+}
+
 function getTextProcessOptions() {
   return {
     trim: textProcessTrim.checked,
@@ -28121,7 +28639,7 @@ function renderTextProcessPreview() {
   const options = getTextProcessOptions();
   const hasOperation = textProcessTrim.checked || textProcessCapitalize.checked
     || textProcessPrefix.checked || textProcessSuffix.checked || textProcessStripMarkdown.checked;
-  const indexes = textProcessScope || DATA.segments.map((_, index) => index);
+  const targets = textProcessTargets();
   textProcessPreview.replaceChildren();
   if (!hasOperation) {
     textProcessPreview.textContent = '请选择至少一项文本处理操作';
@@ -28129,7 +28647,12 @@ function renderTextProcessPreview() {
     textProcessConfirm.disabled = true;
     return;
   }
-  const result = window.AsrEditorUtils.buildTextProcessingPreview(DATA.segments, indexes, options);
+  const rows = buildTextProcessPreview(targets, options);
+  const result = {
+    targetCount: rows.length,
+    changedCount: rows.filter((row) => row.changed).length,
+    rows,
+  };
   textProcessPreview.style.color = result.changedCount ? '' : 'var(--text-muted)';
   const summary = document.createElement('div');
   summary.className = 'replace-preview-summary';
@@ -28141,7 +28664,7 @@ function renderTextProcessPreview() {
     const details = document.createElement('details');
     details.className = 'replace-preview-row';
     const title = document.createElement('summary');
-    title.textContent = `第 ${row.index + 1} 条`;
+    title.textContent = textProcessTargetLabel(row);
     details.appendChild(title);
     const before = document.createElement('div');
     before.className = 'replace-preview-before';
@@ -28165,12 +28688,12 @@ function closeTextProcessModal() {
 }
 
 function openTextProcessModal() {
-  if (!DATA.segments.length) {
+  if (!DATA.segments.length && !getActiveExtensionTrack()?.segments?.length) {
     flashHint('当前没有可处理的字幕', 'invalid');
     return;
   }
   if (editingState) finishEdit(true);
-  textProcessSelectionSnapshot = normalizeBatchSelection([...selectedIdxs]);
+  textProcessSelectionSnapshot = textProcessSelectionTargets();
   textProcessSelectedOnlyCb.checked = textProcessSelectionSnapshot.length > 0;
   refreshTextProcessSelectionControl();
   [textProcessTrim, textProcessCapitalize, textProcessPrefix,
@@ -28206,22 +28729,59 @@ textProcessModal?.addEventListener('click', (event) => {
 });
 textProcessConfirm?.addEventListener('click', () => {
   const options = getTextProcessOptions();
-  const indexes = textProcessScope || DATA.segments.map((_, index) => index);
-  const result = window.AsrEditorUtils.buildTextProcessingPreview(DATA.segments, indexes, options);
+  const result = {
+    rows: buildTextProcessPreview(textProcessTargets(), options),
+  };
+  result.changedCount = result.rows.filter((row) => row.changed).length;
   if (!result.changedCount) {
-    flashHint('选定的字幕不会发生变化', 'invalid');
+    flashHint('当前文本处理对于选中的字幕没有任何影响，未作改动', 'invalid');
     return;
   }
-  const draftTexts = DATA.segments.map((segment) => String(segment?.text || ''));
-  result.rows.forEach((row) => { draftTexts[row.index] = row.after; });
-  const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(DATA.segments, draftTexts);
-  if (!nextSegments) {
+  let mainDraftTexts = null;
+  const extensionDrafts = new Map();
+  result.rows.filter((row) => row.changed).forEach((row) => {
+    if (row.kind === 'extension') {
+      const track = getExtensionTrack(row.trackId);
+      if (!track) return;
+      const draft = extensionDrafts.get(track.id) || {
+        track,
+        texts: track.segments.map((segment) => String(segment?.text || '')),
+      };
+      draft.texts[row.index] = row.after;
+      extensionDrafts.set(track.id, draft);
+      return;
+    }
+    if (!mainDraftTexts) {
+      mainDraftTexts = DATA.segments.map((segment) => String(segment?.text || ''));
+    }
+    mainDraftTexts[row.index] = row.after;
+  });
+  const nextMainSegments = mainDraftTexts
+    ? window.AsrEditorUtils.applyTimedTextEdit(DATA.segments, mainDraftTexts)
+    : null;
+  const nextExtensionSegments = [];
+  for (const draft of extensionDrafts.values()) {
+    const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(draft.track.segments, draft.texts);
+    if (!nextSegments) {
+      flashHint('无法应用文本处理：字幕行结构发生了变化', 'warning');
+      return;
+    }
+    nextExtensionSegments.push({ track: draft.track, segments: nextSegments });
+  }
+  if (mainDraftTexts && !nextMainSegments) {
     flashHint('无法应用文本处理：字幕行结构发生了变化', 'warning');
     return;
   }
   pushUndo('文本处理');
-  DATA.segments.splice(0, DATA.segments.length, ...nextSegments);
-  markMainSegmentsDirty(DATA.segments);
+  if (nextMainSegments) {
+    DATA.segments.splice(0, DATA.segments.length, ...nextMainSegments);
+    markMainSegmentsDirty(DATA.segments);
+  }
+  nextExtensionSegments.forEach(({ track, segments }) => {
+    track.segments.splice(0, track.segments.length, ...segments);
+    track.segments.forEach((segment) => { segment._dirty = true; });
+  });
+  if (nextExtensionSegments.length) markMultiSubtitleDirty();
   syncBindingOffsets();
   scheduleAutoSaveFlush();
   closeTextProcessModal();
@@ -28234,6 +28794,19 @@ textProcessConfirm?.addEventListener('click', () => {
 // === 纯文本编辑（支持调整字幕行结构的 MVP） ===
 function timedTextEditSegments(kind) {
   return kind === 'extension' ? getActiveExtensionTrack()?.segments || [] : DATA.segments;
+}
+
+function timedTextEditSourceSelection(kind, showDisabled = false) {
+  const allSegments = timedTextEditSegments(kind);
+  const sourceSegmentIndexes = allSegments
+    .map((segment, index) => ({ segment, index }))
+    .filter(({ segment }) => showDisabled || segment?.disabled !== true)
+    .map(({ index }) => index);
+  return {
+    allSegments,
+    sourceSegmentIndexes,
+    sourceSegments: sourceSegmentIndexes.map((index) => allSegments[index]),
+  };
 }
 
 function currentTimedTextEditKind() {
@@ -28264,7 +28837,7 @@ function appendTimedTextEditStat(container, label, value, filterKey = null, coun
       if (!timedTextEditDraft) return;
       timedTextEditDraft.filter = filterKey;
       timedTextEditChangeDetails.open = true;
-      updateTimedTextEditReport();
+      flushTimedTextEditReport();
     });
   }
   valueEl.textContent = value;
@@ -28416,8 +28989,14 @@ function renderTimedTextEditRows() {
       ? report.previewSegments[rowReport.index]
       : (!report?.structure?.valid && timedTextEditDraft.texts.length === timedTextEditDraft.sourceSegments.length
         ? timedTextEditDraft.sourceSegments[index] : null);
+    const rowSourceIndexes = Array.isArray(rowReport?.sourceIndexes)
+      ? rowReport.sourceIndexes : [index];
+    const rowIncludesDisabled = rowSourceIndexes.some((sourceIndex) => (
+      timedTextEditDraft.sourceSegments[sourceIndex]?.disabled === true
+    ));
     const row = document.createElement('div');
-    row.className = `timed-text-edit-row${rowReport?.deleted ? ' deleted' : ''}`;
+    row.className = `timed-text-edit-row${rowReport?.deleted ? ' deleted' : ''}${rowIncludesDisabled ? ' disabled' : ''}`;
+    if (rowIncludesDisabled) row.title = '已禁用字幕';
     row.dataset.index = String(index);
     const meta = document.createElement('div');
     meta.className = 'timed-text-edit-row-meta';
@@ -28490,9 +29069,15 @@ function renderTimedTextEditView() {
     button.setAttribute('aria-pressed', String(active));
   });
   timedTextEditRows.hidden = single;
+  timedTextEditCharcountThresholdControl.hidden = !single;
+  timedTextEditSingleEditor.hidden = !single;
   timedTextEditSingleTextarea.hidden = !single;
   timedTextEditSingleHint.hidden = !single || !timedTextEditDraft.singleLineError;
-  if (single) timedTextEditSingleTextarea.value = timedTextEditDraft.singleText;
+  if (single) {
+    syncCharCountThresholdInputs();
+    timedTextEditSingleTextarea.value = timedTextEditDraft.singleText;
+    updateTimedTextEditSingleGuide();
+  }
 }
 
 function timedTextEditRowFilterKey(row) {
@@ -28526,6 +29111,34 @@ function normalizeTimedTextEditDraftLines(texts) {
   // 中间行仍保留到预览中，并在应用时按删除字幕处理。
   while (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
   return lines.length ? lines : [''];
+}
+
+function syncTimedTextEditDraftFromDom() {
+  if (!timedTextEditDraft || timedTextEditDraft.view !== 'single'
+      || !timedTextEditSingleTextarea) return;
+  const normalized = timedTextEditSingleTextarea.value.replace(/\r\n?/g, '\n');
+  timedTextEditDraft.texts = normalizeTimedTextEditDraftLines(normalized.split('\n'));
+  timedTextEditDraft.singleText = timedTextEditDraft.texts.join('\n');
+  timedTextEditDraft.singleLineError = '';
+}
+
+function cancelTimedTextEditReport() {
+  if (timedTextEditReportTimer === null) return;
+  clearTimeout(timedTextEditReportTimer);
+  timedTextEditReportTimer = null;
+}
+
+function flushTimedTextEditReport() {
+  cancelTimedTextEditReport();
+  updateTimedTextEditReport();
+}
+
+function scheduleTimedTextEditReport() {
+  cancelTimedTextEditReport();
+  timedTextEditReportTimer = setTimeout(() => {
+    timedTextEditReportTimer = null;
+    updateTimedTextEditReport();
+  }, TIMED_TEXT_EDIT_REPORT_DEBOUNCE_MS);
 }
 
 function updateTimedTextEditReport() {
@@ -28642,6 +29255,9 @@ function updateTimedTextEditReport() {
   const singleHint = report.structure?.valid ? '' : (report.structure?.error || timedTextEditDraft.singleLineError || '');
   timedTextEditSingleHint.textContent = singleHint;
   timedTextEditSingleHint.hidden = timedTextEditDraft.view !== 'single' || !singleHint;
+  if (!timedTextEditDraft.sourceSegments.length && timedTextEditDraft.allSourceSegments.length) {
+    timedTextEditReportHint.textContent = '当前没有显示中的字幕；打开“显示已禁用字幕”后才能编辑。';
+  }
   timedTextEditApply.disabled = !report.valid || stats.changedSegments === 0;
 }
 
@@ -28656,12 +29272,18 @@ function refreshTimedTextEditTrackOptions(kind = currentTimedTextEditKind()) {
   return nextKind;
 }
 
-function loadTimedTextEditTrack(kind) {
+function loadTimedTextEditTrack(kind, { showDisabled = false } = {}) {
+  cancelTimedTextEditReport();
   const nextKind = refreshTimedTextEditTrackOptions(kind);
-  const sourceSegments = timedTextEditSegments(nextKind);
+  const selection = timedTextEditSourceSelection(nextKind, showDisabled);
+  const sourceSegments = selection.sourceSegments;
+  const hiddenDisabledCount = selection.allSegments.length - sourceSegments.length;
   timedTextEditDraft = {
     kind: nextKind,
     trackId: nextKind === 'extension' ? getActiveExtensionTrack()?.id || null : null,
+    showDisabled: Boolean(showDisabled),
+    sourceSegmentIndexes: selection.sourceSegmentIndexes,
+    allSourceSegments: JSON.parse(JSON.stringify(selection.allSegments || [])),
     sourceSegments: JSON.parse(JSON.stringify(sourceSegments || [])),
     texts: (sourceSegments || []).map((segment) => String(segment?.text || '')),
     view: 'rows',
@@ -28670,7 +29292,8 @@ function loadTimedTextEditTrack(kind) {
     singleLineError: '',
     report: null,
   };
-  timedTextEditSourceInfo.textContent = `${timedTextEditTrackLabel(nextKind)} · ${sourceSegments.length} 条`;
+  if (timedTextEditShowDisabledToggle) timedTextEditShowDisabledToggle.checked = Boolean(showDisabled);
+  timedTextEditSourceInfo.textContent = `${timedTextEditTrackLabel(nextKind)} · ${sourceSegments.length} 条${hiddenDisabledCount ? `（已隐藏 ${hiddenDisabledCount} 条禁用字幕）` : ''}`;
   renderTimedTextEditRows();
   renderTimedTextEditView();
   updateTimedTextEditReport();
@@ -28684,6 +29307,7 @@ function refreshTimedTextEditButton() {
 }
 
 function closeTimedTextEdit() {
+  cancelTimedTextEditReport();
   timedTextEditModal.classList.remove('show');
   timedTextEditDraft = null;
   timedTextEditRows.replaceChildren();
@@ -28695,27 +29319,108 @@ function timedTextEditHasUnappliedChanges() {
   return Boolean(timedTextEditDraft?.report?.stats.changedSegments || timedTextEditDraft?.singleLineError);
 }
 
-function applyTimedTextEditSegments(kind, sourceSegments, targetSegments, nextSegments, report, texts) {
+function mergeTimedTextEditSegmentsWithHidden(
+  allSourceSegments,
+  sourceSegmentIndexes,
+  nextSegments,
+  report,
+) {
+  const all = Array.isArray(allSourceSegments) ? allSourceSegments : [];
+  const visibleIndexes = Array.isArray(sourceSegmentIndexes) ? sourceSegmentIndexes : [];
+  const outputBySourceIndex = new Map();
+  const unassigned = [];
+  const structural = report?.structure?.valid === true;
+  const sourceIndexById = new Map();
+  visibleIndexes.forEach((sourceIndex) => {
+    const id = all[sourceIndex]?.id;
+    if (id) sourceIndexById.set(id, sourceIndex);
+  });
+  const fixedOutputSourceIndexes = structural ? [] : (report?.rows || [])
+    .map((row, index) => (row?.deleted ? -1 : index))
+    .filter((index) => index >= 0);
+  (nextSegments || []).forEach((segment, outputIndex) => {
+    const sourceIndexes = structural
+      ? report.structure.outputMeta?.[outputIndex]?.sourceIndexes
+      : null;
+    let sourceIndex = null;
+    if (segment?.id && sourceIndexById.has(segment.id)) {
+      sourceIndex = sourceIndexById.get(segment.id);
+    } else {
+      const visibleIndex = Number.isInteger(sourceIndexes?.[0])
+        ? sourceIndexes[0] : (fixedOutputSourceIndexes[outputIndex] ?? outputIndex);
+      sourceIndex = visibleIndexes[visibleIndex];
+    }
+    if (!Number.isInteger(sourceIndex)) {
+      unassigned.push(segment);
+      return;
+    }
+    const outputs = outputBySourceIndex.get(sourceIndex) || [];
+    outputs.push(segment);
+    outputBySourceIndex.set(sourceIndex, outputs);
+  });
+
+  const visibleSet = new Set(visibleIndexes);
+  const merged = [];
+  all.forEach((segment, sourceIndex) => {
+    if (!visibleSet.has(sourceIndex)) {
+      merged.push(JSON.parse(JSON.stringify(segment)));
+      return;
+    }
+    (outputBySourceIndex.get(sourceIndex) || []).forEach((output) => merged.push(output));
+  });
+  // 正常的结构计划每个输出都应能追溯到至少一个可见来源行；保留兜底，
+  // 避免异常数据被静默丢掉，且不影响默认的可见字幕编辑路径。
+  unassigned.forEach((segment) => merged.push(segment));
+  return merged;
+}
+
+function applyTimedTextEditSegments(
+  kind,
+  sourceSegments,
+  targetSegments,
+  nextSegments,
+  report,
+  texts,
+  sourceSegmentIndexes = null,
+) {
+  const visibleSourceIndexes = Array.isArray(sourceSegmentIndexes)
+    ? sourceSegmentIndexes : (sourceSegments || []).map((_, index) => index);
+  const filtered = visibleSourceIndexes.length !== targetSegments.length
+    || visibleSourceIndexes.some((sourceIndex, index) => sourceIndex !== index);
+  const allSourceSegments = filtered ? targetSegments : sourceSegments;
+  const publishedSegments = filtered
+    ? mergeTimedTextEditSegmentsWithHidden(
+      allSourceSegments,
+      visibleSourceIndexes,
+      nextSegments,
+      report,
+    )
+    : nextSegments;
   const nextIds = new Set((nextSegments || []).map((segment) => segment?.id).filter(Boolean));
-  const removedIndexes = new Set((sourceSegments || []).map((segment, index) => {
+  const removedVisibleIndexes = new Set((sourceSegments || []).map((segment, index) => {
     if (segment?.id) return nextIds.has(segment.id) ? -1 : index;
     const row = report?.rows?.[index];
     return row?.changed && !String(row.after || '') ? index : -1;
   }).filter((index) => index >= 0));
-  (report?.structure?.removedSourceIndexes || []).forEach((index) => removedIndexes.add(index));
+  (report?.structure?.removedSourceIndexes || []).forEach((index) => removedVisibleIndexes.add(index));
+  const removedIndexes = new Set([...removedVisibleIndexes]
+    .map((index) => visibleSourceIndexes[index])
+    .filter((index) => Number.isInteger(index)));
   const structureChanged = Boolean(report?.structure?.valid
     && (report.structure.affectedSourceIndexes?.length || nextSegments.length !== sourceSegments.length));
   if (!removedIndexes.size && !structureChanged) {
-    targetSegments.splice(0, targetSegments.length, ...nextSegments);
+    targetSegments.splice(0, targetSegments.length, ...publishedSegments);
     return 0;
   }
 
   const removedIndexList = [...removedIndexes].sort((a, b) => a - b);
   const removeSet = new Set(removedIndexList);
-  const removedIds = removedIndexList.map((index) => sourceSegments[index]?.id).filter(Boolean);
-  const affectedIndexes = new Set(report?.structure?.affectedSourceIndexes || []);
+  const removedIds = removedIndexList.map((index) => allSourceSegments[index]?.id).filter(Boolean);
+  const affectedIndexes = new Set((report?.structure?.affectedSourceIndexes || [])
+    .map((index) => visibleSourceIndexes[index])
+    .filter((index) => Number.isInteger(index)));
   removedIndexList.forEach((index) => affectedIndexes.add(index));
-  const affectedIds = [...affectedIndexes].map((index) => sourceSegments[index]?.id).filter(Boolean);
+  const affectedIds = [...affectedIndexes].map((index) => allSourceSegments[index]?.id).filter(Boolean);
   const pairedExtensionIndices = new Set();
   let extensionTrack = null;
   let bindingsChanged = false;
@@ -28770,7 +29475,7 @@ function applyTimedTextEditSegments(kind, sourceSegments, targetSegments, nextSe
   lastClickedIdx = -1;
   lastClickedExtensionIdx = -1;
   lastActive = -1;
-  targetSegments.splice(0, targetSegments.length, ...nextSegments);
+  targetSegments.splice(0, targetSegments.length, ...publishedSegments);
 
   if (kind !== 'extension') {
     const shiftHeadIdx = (ref) => {
@@ -28828,7 +29533,7 @@ timedTextEditRows?.addEventListener('input', (event) => {
   timedTextEditDraft.singleText = timedTextEditDraft.texts.join('\n');
   timedTextEditDraft.singleLineError = '';
   renderTimedTextEditView();
-  updateTimedTextEditReport();
+  scheduleTimedTextEditReport();
 });
 timedTextEditSingleTextarea?.addEventListener('input', () => {
   if (!timedTextEditDraft) return;
@@ -28838,11 +29543,14 @@ timedTextEditSingleTextarea?.addEventListener('input', () => {
   );
   timedTextEditDraft.singleText = timedTextEditDraft.texts.join('\n');
   timedTextEditDraft.singleLineError = '';
-  updateTimedTextEditReport();
+  scheduleTimedTextEditReport();
 });
 timedTextEditView?.addEventListener('click', (event) => {
   const button = event.target.closest?.('button[data-view]');
   if (!button || button.disabled || !timedTextEditDraft) return;
+  // 视图切换可能紧跟在浏览器原生输入事件之前；以 textarea 当前值为准，
+  // 避免“整体编辑”切到“逐行编辑”时回填旧草稿，导致修改前/修改后相同。
+  syncTimedTextEditDraftFromDom();
   const nextView = button.dataset.view === 'single' ? 'single' : 'rows';
   if (nextView === 'single' && !timedTextEditCanUseSingleView()) {
     flashHint('当前字幕包含换行，暂不能切换到整体编辑视图', 'invalid');
@@ -28852,14 +29560,25 @@ timedTextEditView?.addEventListener('click', (event) => {
   if (nextView === 'single') timedTextEditDraft.singleText = timedTextEditDraft.texts.join('\n');
   else renderTimedTextEditRows();
   renderTimedTextEditView();
-  updateTimedTextEditReport();
+  flushTimedTextEditReport();
   setTimeout(() => (nextView === 'single'
     ? timedTextEditSingleTextarea : timedTextEditRows.querySelector('textarea'))?.focus(), 0);
 });
 timedTextEditShowAll?.addEventListener('click', () => {
   if (!timedTextEditDraft) return;
   timedTextEditDraft.filter = null;
-  updateTimedTextEditReport();
+  flushTimedTextEditReport();
+});
+timedTextEditShowDisabledToggle?.addEventListener('change', () => {
+  if (!timedTextEditDraft) return;
+  const nextShowDisabled = timedTextEditShowDisabledToggle.checked;
+  if (nextShowDisabled === timedTextEditDraft.showDisabled) return;
+  if (timedTextEditHasUnappliedChanges()
+      && !window.confirm('切换显示范围会丢弃当前未应用的文本修改，是否继续？')) {
+    timedTextEditShowDisabledToggle.checked = timedTextEditDraft.showDisabled;
+    return;
+  }
+  loadTimedTextEditTrack(timedTextEditDraft.kind, { showDisabled: nextShowDisabled });
 });
 timedTextEditTrack?.addEventListener('change', () => {
   if (!timedTextEditDraft) return;
@@ -28870,7 +29589,9 @@ timedTextEditTrack?.addEventListener('change', () => {
       return;
     }
   }
-  loadTimedTextEditTrack(timedTextEditTrack.value);
+  loadTimedTextEditTrack(timedTextEditTrack.value, {
+    showDisabled: timedTextEditDraft.showDisabled === true,
+  });
 });
 timedTextEditClose?.addEventListener('click', requestCloseTimedTextEdit);
 timedTextEditCancel?.addEventListener('click', requestCloseTimedTextEdit);
@@ -28879,15 +29600,21 @@ timedTextEditModal?.addEventListener('click', (event) => {
 });
 timedTextEditApply?.addEventListener('click', () => {
   const draft = timedTextEditDraft;
-  if (!draft?.report?.valid || !draft.report.stats.changedSegments) return;
+  if (!draft) return;
+  syncTimedTextEditDraftFromDom();
+  flushTimedTextEditReport();
+  if (!draft.report?.valid || !draft.report.stats.changedSegments) return;
   const targetSegments = timedTextEditSegments(draft.kind);
-  const currentMatchesSnapshot = targetSegments.length === draft.sourceSegments.length
+  const snapshotSegments = Array.isArray(draft.allSourceSegments)
+    ? draft.allSourceSegments : draft.sourceSegments;
+  const currentMatchesSnapshot = targetSegments.length === snapshotSegments.length
     && targetSegments.every((segment, index) => {
-      const source = draft.sourceSegments[index];
+      const source = snapshotSegments[index];
       return segment?.id === source?.id
         && Number(segment?.start) === Number(source?.start)
         && Number(segment?.end) === Number(source?.end)
-        && String(segment?.text || '') === String(source?.text || '');
+        && String(segment?.text || '') === String(source?.text || '')
+        && Boolean(segment?.disabled) === Boolean(source?.disabled);
     });
   if (!currentMatchesSnapshot) {
     flashHint('字幕在编辑窗口打开后发生了变化，请关闭窗口并重新打开', 'warning');
@@ -28903,7 +29630,15 @@ timedTextEditApply?.addEventListener('click', () => {
     return;
   }
   pushUndo('纯文本编辑');
-  nextSegments.forEach((segment) => { segment._dirty = true; });
+  const dirtyFlags = window.AsrEditorUtils.timedTextEditDirtyFlags(
+    draft.sourceSegments,
+    nextSegments,
+    draft.report,
+  );
+  nextSegments.forEach((segment, index) => {
+    if (dirtyFlags[index]) segment._dirty = true;
+    else delete segment._dirty;
+  });
   const removedCount = applyTimedTextEditSegments(
     draft.kind,
     draft.sourceSegments,
@@ -28911,11 +29646,12 @@ timedTextEditApply?.addEventListener('click', () => {
     nextSegments,
     draft.report,
     draft.texts,
+    draft.sourceSegmentIndexes,
   );
-  if (draft.kind === 'extension') markMultiSubtitleDirty();
-  else markMainSegmentsDirty(targetSegments);
+  if (draft.kind === 'extension') markMultiSubtitleStateDirty();
   syncBindingOffsets();
-  scheduleAutoSaveFlush();
+  // 纯文本编辑应用后暂不主动触发自动保存，让 dirty 标记短暂保留，
+  // 便于用户确认哪些字幕确实发生了变化；已有的自动保存计时器仍照常执行。
   const changedCount = draft.report.stats.changedSegments;
   const lostCount = draft.report.stats.lostMappedCues;
   const estimatedCount = draft.report.stats.estimatedTimingCues || 0;
