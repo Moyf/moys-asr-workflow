@@ -1238,6 +1238,19 @@ const fcp7ExportSubtitleTracks = document.getElementById('fcp7-export-subtitle-t
 const fcp7ExportNativeText = document.getElementById('fcp7-export-native-text');
 const fcp7ExportCancel = document.getElementById('fcp7-export-cancel');
 const fcp7ExportConfirm = document.getElementById('fcp7-export-confirm');
+const lottieExportModal = document.getElementById('lottie-export-modal');
+const lottieExportTrack = document.getElementById('lottie-export-track');
+const lottieExportResolution = document.getElementById('lottie-export-resolution');
+const lottieExportFps = document.getElementById('lottie-export-fps');
+const lottieExportRenderMode = document.getElementById('lottie-export-render-mode');
+const lottieExportCancel = document.getElementById('lottie-export-cancel');
+const lottieExportConfirm = document.getElementById('lottie-export-confirm');
+const ografExportModal = document.getElementById('ograf-export-modal');
+const ografExportTrack = document.getElementById('ograf-export-track');
+const ografExportResolution = document.getElementById('ograf-export-resolution');
+const ografExportFps = document.getElementById('ograf-export-fps');
+const ografExportCancel = document.getElementById('ograf-export-cancel');
+const ografExportConfirm = document.getElementById('ograf-export-confirm');
 const ctxmenu = document.getElementById('ctxmenu');
 const cuePanel = document.getElementById('current-cue-panel');
 const cuePanelPrev = document.getElementById('cue-panel-prev');
@@ -6267,7 +6280,10 @@ function confirmLinkedSplit() {
   flashHint('已按同一绝对时间切点联动拆分', 'success');
 }
 
-function splitAtCursor(feedbackPoint = null, { listFeedback = true } = {}) {
+function splitAtCursor(
+  feedbackPoint = null,
+  { listFeedback = true, cueListAnchor: suppliedCueListAnchor = null } = {},
+) {
   if (!editingState) return false;
   const force = editingState.forceSplitArmed === true;
   const { el, idx, textEl } = editingState;
@@ -6393,6 +6409,14 @@ function splitAtCursor(feedbackPoint = null, { listFeedback = true } = {}) {
     _dirty: true,
   };
 
+  // renderAll() 会重建整张字幕列表。content-visibility 会在重建后先用估算
+  // 行高占位，再为视口附近的行回填真实高度；只保存 scrollTop 无法阻止
+  // 当前字幕被累计行高误差顶走。列表来源的拆分因此保存原行的屏幕位置，
+  // 重绘后再用左半段恢复这个视觉锚点。
+  const cueListAnchor = listFeedback
+    ? suppliedCueListAnchor || captureCueListVisualAnchor(el)
+    : null;
+
   textEl.removeAttribute('contenteditable');
   el.classList.remove('editing');
   editingState = null;
@@ -6417,14 +6441,15 @@ function splitAtCursor(feedbackPoint = null, { listFeedback = true } = {}) {
 
   rememberTemporaryVisibleSplitCues({ mainSegments: [leftSeg, rightSeg] });
   renderAll();
+  const leftEl = container.querySelector(`.cue[data-idx="${idx}"]`);
+  const rightEl = container.querySelector(`.cue[data-idx="${idx + 1}"]`);
   // 列表来源的拆分（B 键悬停行、列表右键拆分、行内编辑拆分）都发生在当前
-  // 可见的字幕行上，拆分后保持列表原滚动位置，不再把右半段滚到列表中央。
+  // 可见的字幕行上，拆分后让左半段留在原字幕的视觉位置；右半段自然排在
+  // 下一行。这样既保留 content-visibility，也不会被懒布局累计误差顶走。
   // 波形 / 编辑面板等其它来源的拆分结果可能不在列表视口内，仍滚动到新右半段，
   // 便于在列表中看到拆分结果。
-  if (!listFeedback) {
-    const rightEl = container.querySelector(`.cue[data-idx="${idx + 1}"]`);
-    if (rightEl) scrollCueToCenter(rightEl);
-  }
+  if (listFeedback) restoreCueListVisualAnchor(leftEl, cueListAnchor);
+  else if (rightEl) scrollCueToCenter(rightEl);
   selectOnly(idx + 1);
   // 拆分后后半段是新的视觉选中项，也必须成为 Shift+点击的范围锚点。
   lastClickedIdx = idx + 1;
@@ -6494,6 +6519,11 @@ function flashSplitFeedback({ index, track = 'main', splitMs, feedbackPoint = nu
 function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
   if (!el) return false;
+  // 从非编辑态按 B / 右键拆分时，startEdit() 可能让当前行先发生一次布局
+  // 变化；锚点必须取自用户按键前看到的位置，而不是临时编辑态的位置。
+  const cueListAnchor = Number.isFinite(waveformTimeMs)
+    ? null
+    : captureCueListVisualAnchor(el);
   const waveformFeedbackPoint = Number.isFinite(waveformTimeMs)
     ? waveformEditor?.getSplitPointAtTime?.(waveformTimeMs, 'main') || null
     : null;
@@ -6551,7 +6581,7 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
   if (Number.isFinite(caretInfo?.offset)) setEditingCaretOffset(caretInfo.offset);
   return splitAtCursor(
     { clientX: markerX, clientY: caretInfo?.rect?.top ?? y },
-    { listFeedback: true },
+    { listFeedback: true, cueListAnchor },
   );
 }
 
@@ -7117,6 +7147,40 @@ function cueListVisibleBounds() {
     ? Math.min(containerRect.bottom, Math.max(containerRect.top, toolbarRect.bottom))
     : containerRect.top;
   return { containerRect, top, bottom: containerRect.bottom };
+}
+
+let cueListVisualAnchorGeneration = 0;
+
+function captureCueListVisualAnchor(cueEl) {
+  if (!cueEl?.isConnected || cueEl.classList.contains('hidden')) return null;
+  const top = cueEl.getBoundingClientRect().top;
+  return Number.isFinite(top) ? { top } : null;
+}
+
+function restoreCueListVisualAnchor(cueEl, anchor) {
+  if (!cueEl?.isConnected || !Number.isFinite(anchor?.top)) return;
+  const generation = ++cueListVisualAnchorGeneration;
+  const maxFrames = 12;
+  const epsilon = 0.75;
+  let frameCount = 0;
+
+  const restore = () => {
+    if (generation !== cueListVisualAnchorGeneration || !cueEl.isConnected) return;
+    const delta = cueEl.getBoundingClientRect().top - anchor.top;
+    if (!Number.isFinite(delta)) return;
+    if (Math.abs(delta) > epsilon) {
+      const previousScrollTop = container.scrollTop;
+      container.scrollTop += delta;
+      // 到达列表边界、无法继续补偿时无需再占用后续动画帧。
+      if (Math.abs(container.scrollTop - previousScrollTop) < epsilon) return;
+    }
+    frameCount += 1;
+    // content-visibility 可能先稳定几帧，再因滚动到新的行而继续回填真实
+    // 高度；短暂覆盖完整观察窗口，避免连续拆分时出现延迟的二次位移。
+    if (frameCount < maxFrames) requestAnimationFrame(restore);
+  };
+
+  restore();
 }
 
 function scrollCueToCenter(cueEl, { behavior = 'smooth' } = {}) {
@@ -11572,6 +11636,229 @@ document.addEventListener('keydown', (event) => {
   closeFcp7ExportModal();
 }, true);
 
+function lottieExportAvailable() {
+  return Boolean(SERVER_CONFIG?.canLottieExport && SERVER_CONFIG?.lottieExportUrl);
+}
+
+function updateLottieExportButton() {
+  const button = document.getElementById('download-lottie');
+  if (!button) return;
+  if (!button.dataset.originalTitle) button.dataset.originalTitle = button.title;
+  const disabled = !lottieExportAvailable();
+  button.classList.toggle('sticker-disabled', disabled);
+  button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+  button.title = disabled
+    ? translatedEditorText('服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出动态字幕')
+    : button.dataset.originalTitle;
+}
+
+function lottieExportBlocked() {
+  if (lottieExportAvailable()) return false;
+  const message = '当前模式不可用：动态字幕 .lottie 导出需要以 server-editor 打开并绑定工程文件';
+  flashHint(window.MAWE_I18N?.translateText?.(message) || message, 'warning');
+  return true;
+}
+
+function closeLottieExportModal() {
+  lottieExportModal?.classList.remove('show');
+}
+
+function openLottieExportModal() {
+  if (lottieExportBlocked()) return;
+  if (editingState) finishEdit(true);
+  if (extensionEditingState) finishExtensionEdit(true);
+  commitCuePanelEdit();
+  const extensionOption = lottieExportTrack?.querySelector('option[value="extension"]');
+  const extensionAvailable = Boolean(getActiveExtensionTrack());
+  if (extensionOption) extensionOption.disabled = !extensionAvailable;
+  if (!extensionAvailable && lottieExportTrack) lottieExportTrack.value = 'main';
+  lottieExportModal?.classList.add('show');
+  lottieExportTrack?.focus();
+}
+
+function lottieExportCanvasSize() {
+  const match = /^(\d+)x(\d+)$/u.exec(lottieExportResolution?.value || '');
+  if (!match) return { width: 1920, height: 1080 };
+  return { width: Number(match[1]), height: Number(match[2]) };
+}
+
+async function exportLottieDynamicCaptions() {
+  if (lottieExportBlocked()) return;
+  lottieExportConfirm.disabled = true;
+  try {
+    const extension = lottieExportTrack?.value === 'extension';
+    const track = extension ? getActiveExtensionTrack() : null;
+    const segments = extension ? track?.segments : DATA.segments;
+    if (!Array.isArray(segments) || !segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
+      throw new Error(translatedEditorText(
+        extension ? '当前扩展字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
+      ));
+    }
+    const durationMs = waveformEditor?.durationMs
+      || Math.round(Number(player?.duration) * 1000)
+      || DATA.waveform?.duration_ms
+      || 0;
+    const size = lottieExportCanvasSize();
+    const appearance = extension ? getExtensionSubtitleAppearance() : getSubtitleAppearance();
+    const animation = window.AsrEditorUtils.buildLottieAnimation(segments, {
+      durationMs: Math.round(durationMs),
+      fps: lottieExportFps?.value || '30',
+      renderMode: lottieExportRenderMode?.value || 'text',
+      width: size.width,
+      height: size.height,
+      subtitle: { ...getPreviewGeometry(), ...appearance },
+    });
+    flashHint(translatedEditorText('正在生成动态字幕 .lottie…'));
+    const response = await fetch(new URL(SERVER_CONFIG.lottieExportUrl, window.location.href), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken, animation }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || `服务器返回 ${response.status}`);
+    }
+    const blob = await response.blob();
+    closeLottieExportModal();
+    const suffix = extension ? '_extension' : '';
+    const saved = await downloadFile(
+      blob,
+      `${FILENAME_BASE}${suffix}_dynamic-caption.lottie`,
+      'application/zip+dotlottie',
+      { desc: 'Lottie 动态字幕', types: { 'application/zip+dotlottie': ['.lottie'] } },
+    );
+    if (saved) flashHint(translatedEditorText('动态字幕 .lottie 已生成'), 'success');
+  } catch (error) {
+    flashHint(`${translatedEditorText('动态字幕 .lottie 导出失败')}：${error.message || error}`, 'warning');
+  } finally {
+    lottieExportConfirm.disabled = false;
+  }
+}
+
+document.getElementById('download-lottie')?.addEventListener('click', openLottieExportModal);
+lottieExportCancel?.addEventListener('click', closeLottieExportModal);
+lottieExportConfirm?.addEventListener('click', () => { void exportLottieDynamicCaptions(); });
+lottieExportModal?.addEventListener('click', (event) => {
+  if (event.target === lottieExportModal) closeLottieExportModal();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !lottieExportModal?.classList.contains('show')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeLottieExportModal();
+}, true);
+
+function ografExportAvailable() {
+  return Boolean(SERVER_CONFIG?.canOgrafExport && SERVER_CONFIG?.ografExportUrl);
+}
+
+function updateOgrafExportButton() {
+  const button = document.getElementById('download-ograf');
+  if (!button) return;
+  if (!button.dataset.originalTitle) button.dataset.originalTitle = button.title;
+  const disabled = !ografExportAvailable();
+  button.classList.toggle('sticker-disabled', disabled);
+  button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+  button.title = disabled
+    ? translatedEditorText('服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出动态字幕')
+    : button.dataset.originalTitle;
+}
+
+function ografExportBlocked() {
+  if (ografExportAvailable()) return false;
+  const message = '当前模式不可用：OGraf 动态字幕导出需要以 server-editor 打开并绑定工程文件';
+  flashHint(window.MAWE_I18N?.translateText?.(message) || message, 'warning');
+  return true;
+}
+
+function closeOgrafExportModal() {
+  ografExportModal?.classList.remove('show');
+}
+
+function openOgrafExportModal() {
+  if (ografExportBlocked()) return;
+  if (editingState) finishEdit(true);
+  if (extensionEditingState) finishExtensionEdit(true);
+  commitCuePanelEdit();
+  const extensionOption = ografExportTrack?.querySelector('option[value="extension"]');
+  const extensionAvailable = Boolean(getActiveExtensionTrack());
+  if (extensionOption) extensionOption.disabled = !extensionAvailable;
+  if (!extensionAvailable && ografExportTrack) ografExportTrack.value = 'main';
+  ografExportModal?.classList.add('show');
+  ografExportTrack?.focus();
+}
+
+function ografExportCanvasSize() {
+  const match = /^(\d+)x(\d+)$/u.exec(ografExportResolution?.value || '');
+  if (!match) return { width: 1920, height: 1080 };
+  return { width: Number(match[1]), height: Number(match[2]) };
+}
+
+async function exportOgrafDynamicCaptions() {
+  if (ografExportBlocked()) return;
+  ografExportConfirm.disabled = true;
+  try {
+    const extension = ografExportTrack?.value === 'extension';
+    const track = extension ? getActiveExtensionTrack() : null;
+    const segments = extension ? track?.segments : DATA.segments;
+    if (!Array.isArray(segments) || !segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
+      throw new Error(translatedEditorText(
+        extension ? '当前扩展字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
+      ));
+    }
+    const durationMs = waveformEditor?.durationMs
+      || Math.round(Number(player?.duration) * 1000)
+      || DATA.waveform?.duration_ms
+      || 0;
+    const size = ografExportCanvasSize();
+    const appearance = extension ? getExtensionSubtitleAppearance() : getSubtitleAppearance();
+    const graphic = window.AsrEditorUtils.buildOgrafGraphic(segments, {
+      durationMs: Math.round(durationMs),
+      fps: ografExportFps?.value || '30',
+      width: size.width,
+      height: size.height,
+      subtitle: { ...getPreviewGeometry(), ...appearance },
+    });
+    flashHint(translatedEditorText('正在生成动态字幕 .ograf.zip…'));
+    const response = await fetch(new URL(SERVER_CONFIG.ografExportUrl, window.location.href), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken, graphic }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || `服务器返回 ${response.status}`);
+    }
+    const blob = await response.blob();
+    closeOgrafExportModal();
+    const suffix = extension ? '_extension' : '';
+    const saved = await downloadFile(
+      blob,
+      `${FILENAME_BASE}${suffix}_dynamic-caption.ograf.zip`,
+      'application/zip',
+      { desc: 'OGraf 动态字幕', types: { 'application/zip': ['.zip'] } },
+    );
+    if (saved) flashHint(translatedEditorText('动态字幕 .ograf.zip 已生成；请先解压'), 'success');
+  } catch (error) {
+    flashHint(`${translatedEditorText('动态字幕 .ograf.zip 导出失败')}：${error.message || error}`, 'warning');
+  } finally {
+    ografExportConfirm.disabled = false;
+  }
+}
+
+document.getElementById('download-ograf')?.addEventListener('click', openOgrafExportModal);
+ografExportCancel?.addEventListener('click', closeOgrafExportModal);
+ografExportConfirm?.addEventListener('click', () => { void exportOgrafDynamicCaptions(); });
+ografExportModal?.addEventListener('click', (event) => {
+  if (event.target === ografExportModal) closeOgrafExportModal();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !ografExportModal?.classList.contains('show')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeOgrafExportModal();
+}, true);
+
 document.getElementById('download-srt')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
@@ -11753,6 +12040,8 @@ document.getElementById('download-sticker-otioz')?.addEventListener('click', asy
 
 // 初始按服务器模式刷新表情包 OTIOZ 导出按钮的可用性
 updateStickerExportButtons();
+updateLottieExportButton();
+updateOgrafExportButton();
 
 // === 工具栏导出下拉菜单 ===
 function bindToolbarExportDropdown(dropdownId, buttonId, menuId, positioner = null) {
@@ -12033,8 +12322,12 @@ function detachServerProjectSaving() {
   if (SERVER_CONFIG) {
     SERVER_CONFIG.canSave = false;
     SERVER_CONFIG.canPortableStickerExport = false;
+    SERVER_CONFIG.canLottieExport = false;
+    SERVER_CONFIG.canOgrafExport = false;
   }
   configureServerSaveControls();
+  updateLottieExportButton();
+  updateOgrafExportButton();
   scheduleAutoSave();
 }
 
@@ -12750,7 +13043,7 @@ async function loadMediaFile(file) {
   }
 
   lastActive = -1;
-  flashHint(`已加载媒体：${file.name}`, 'success');
+  flashHint(translatedEditorText(`已加载媒体：${file.name}`), 'success');
   if (waveformEditor && !preserveProjectWaveform) {
     try {
       DATA.spectral = null;
@@ -15344,7 +15637,7 @@ function seekFromWaveform(timeSec) {
 function notifyAutoLoadedMediaReady(mediaElement) {
   if (mediaElement !== player || autoLoadedMediaReadyNotified || !SERVER_CONFIG?.autoLoadedMediaName) return;
   autoLoadedMediaReadyNotified = true;
-  flashHint(`已加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`, 'success');
+  flashHint(translatedEditorText(`已加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`), 'success');
 }
 
 function flushPendingMediaSeek(mediaElement) {

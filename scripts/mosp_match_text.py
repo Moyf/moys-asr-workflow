@@ -21,7 +21,7 @@ from typing import Iterable, Sequence
 
 PRESERVED_END_PUNCTUATION = frozenset("！？：!?:")
 REMOVED_END_PUNCTUATION = frozenset("，。；、,.;")
-SPLIT_PUNCTUATION = PRESERVED_END_PUNCTUATION | REMOVED_END_PUNCTUATION
+SPLIT_PUNCTUATION = PRESERVED_END_PUNCTUATION | REMOVED_END_PUNCTUATION | frozenset("\n")
 CLOSING_PUNCTUATION = frozenset("”’」』】〕〉》）)]}」』】〕〉》")
 
 
@@ -155,25 +155,28 @@ def _clean_manuscript_for_display(text: str) -> str:
         text.lstrip("\ufeff")
         .replace("\r\n", "\n")
         .replace("\r", "\n")
-        .replace("\n", "")
     )
 
 
-def _raw_manuscript_segments(text: str) -> list[str]:
+def _raw_manuscript_segments(
+    text: str,
+    split_punctuation: frozenset[str],
+    preserve_punctuation: frozenset[str],
+) -> list[str]:
     segments: list[str] = []
     current: list[str] = []
     index = 0
     while index < len(text):
         character = text[index]
-        if character in SPLIT_PUNCTUATION:
-            if character in PRESERVED_END_PUNCTUATION:
+        if character in split_punctuation:
+            if character in preserve_punctuation:
                 current.append(character)
             index += 1
             while index < len(text) and (
-                text[index] in SPLIT_PUNCTUATION or text[index] in CLOSING_PUNCTUATION
+                text[index] in split_punctuation or text[index] in CLOSING_PUNCTUATION
             ):
                 if (
-                    text[index] in PRESERVED_END_PUNCTUATION
+                    text[index] in preserve_punctuation
                     or text[index] in CLOSING_PUNCTUATION
                 ):
                     current.append(text[index])
@@ -191,9 +194,17 @@ def _raw_manuscript_segments(text: str) -> list[str]:
     return segments
 
 
-def split_manuscript(text: str) -> tuple[str, list[ManuscriptSegment]]:
+def split_manuscript(
+    text: str,
+    split_punctuation: frozenset[str] = SPLIT_PUNCTUATION,
+    preserve_punctuation: frozenset[str] = PRESERVED_END_PUNCTUATION,
+) -> tuple[str, list[ManuscriptSegment]]:
     display_text = _clean_manuscript_for_display(text)
-    raw_segments = _raw_manuscript_segments(display_text)
+    if "\n" not in split_punctuation:
+        display_text = display_text.replace("\n", "")
+    raw_segments = _raw_manuscript_segments(
+        display_text, split_punctuation, preserve_punctuation
+    )
     if not raw_segments:
         raise AlignmentError("文稿为空")
 
@@ -456,7 +467,11 @@ def generate_srt(cues: Iterable[OutputCue]) -> str:
 
 
 def _align_mosp_and_manuscript(
-    mosp_text: str, manuscript_text: str, policy: str = "fuzzy"
+    mosp_text: str,
+    manuscript_text: str,
+    policy: str = "fuzzy",
+    split_punctuation: frozenset[str] = SPLIT_PUNCTUATION,
+    preserve_punctuation: frozenset[str] = PRESERVED_END_PUNCTUATION,
 ) -> tuple[
     list[OutputCue],
     dict[str, object],
@@ -466,7 +481,9 @@ def _align_mosp_and_manuscript(
     if policy not in {"fuzzy", "strict", "nearest"}:
         raise AlignmentError(f"不支持的错漏策略：{policy}")
     asr_chars, segment_count, item_count = parse_mosp(mosp_text)
-    normalized_manuscript, segments = split_manuscript(manuscript_text)
+    normalized_manuscript, segments = split_manuscript(
+        manuscript_text, split_punctuation, preserve_punctuation
+    )
     timings, report = align_character_timings(asr_chars, normalized_manuscript, policy)
     global_start = round(asr_chars[0].start_ms)
     global_end = round(asr_chars[-1].end_ms)
@@ -478,19 +495,35 @@ def _align_mosp_and_manuscript(
 
 
 def align_mosp_and_manuscript(
-    mosp_text: str, manuscript_text: str, policy: str = "fuzzy"
+    mosp_text: str,
+    manuscript_text: str,
+    policy: str = "fuzzy",
+    split_punctuation: frozenset[str] = SPLIT_PUNCTUATION,
+    preserve_punctuation: frozenset[str] = PRESERVED_END_PUNCTUATION,
 ) -> tuple[list[OutputCue], dict[str, object]]:
     output, report, _segments, _timings = _align_mosp_and_manuscript(
-        mosp_text, manuscript_text, policy
+        mosp_text,
+        manuscript_text,
+        policy,
+        split_punctuation,
+        preserve_punctuation,
     )
     return output, report
 
 
 def generate_matched_mosp(
-    mosp_text: str, manuscript_text: str, policy: str = "fuzzy"
+    mosp_text: str,
+    manuscript_text: str,
+    policy: str = "fuzzy",
+    split_punctuation: frozenset[str] = SPLIT_PUNCTUATION,
+    preserve_punctuation: frozenset[str] = PRESERVED_END_PUNCTUATION,
 ) -> tuple[list[OutputCue], dict[str, object], str]:
     output, report, segments, timings = _align_mosp_and_manuscript(
-        mosp_text, manuscript_text, policy
+        mosp_text,
+        manuscript_text,
+        policy,
+        split_punctuation,
+        preserve_punctuation,
     )
     try:
         project = json.loads(mosp_text.lstrip("\ufeff"))
@@ -608,7 +641,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(
         f"错漏：ASR {report['asr_unmatched_characters']} 字符，"
         f"文稿 {report['manuscript_unmatched_characters']} 字符；"
-        f"低置信区段 {len(report['low_confidence_regions'])} 个"
+        f"低置信区段 {len(report['low_confidence_regions']) if isinstance(report['low_confidence_regions'], list) else 0} 个"
     )
     print(
         f"数据：{report['input_segments']} 个 MOSP 段、{report['input_items']} 个字词 item -> "

@@ -80,6 +80,14 @@ jobs:
         shell: pwsh
         run: .\scripts\build-windows.ps1 -SkipTests
 
+      - name: Verify bundled FAQ
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path -LiteralPath 'dist\MAW\FAQ-常见问题.txt' -PathType Leaf)) {
+            throw 'Missing dist\MAW\FAQ-常见问题.txt after build.'
+          }
+
       - name: Smoke MAW executable
         shell: pwsh
         run: |
@@ -269,6 +277,12 @@ jobs:
       - name: Run packaging contract tests
         run: uv run python -m unittest tests/test_packaging_contract.py
 
+      - name: Install Linux CJK test font
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
+
       - name: Run Python tests
         run: uv run python -m unittest discover -s tests -p "test_*.py"
 
@@ -281,6 +295,14 @@ jobs:
       - name: Build MAW GUI bundle
         if: matrix.platform == 'macos'
         run: uv run --group build pyinstaller --noconfirm --clean MAW.spec
+
+      - name: Verify bundled FAQ
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          FaqPath="$(find dist/MAW.app -type f -name 'FAQ-常见问题.txt' -print -quit)"
+          test -n "$FaqPath"
 
       - name: Bundle uv bootstrap for optional runtimes
         if: matrix.platform == 'macos'
@@ -388,16 +410,46 @@ jobs:
           mkdir -p "$StandardStage" "$LiteStage"
           ditto dist/MAW.app "$StandardStage/MAW.app"
           ditto dist/MAW-lite.app "$LiteStage/MAW-lite.app"
+          cp FAQ-常见问题.txt "$StandardStage/FAQ-常见问题.txt"
+          cp FAQ-常见问题.txt "$LiteStage/FAQ-常见问题.txt"
           (
             cd "$StandardStage"
-            zip -qry "$GITHUB_WORKSPACE/$StandardArchive" MAW.app
+            zip -qry "$GITHUB_WORKSPACE/$StandardArchive" MAW.app FAQ-常见问题.txt
           )
           (
             cd "$LiteStage"
-            zip -qry "$GITHUB_WORKSPACE/$LiteArchive" MAW-lite.app
+            zip -qry "$GITHUB_WORKSPACE/$LiteArchive" MAW-lite.app FAQ-常见问题.txt
           )
-          unzip -l "$StandardArchive" | grep -q 'MAW.app/Contents/MacOS/MAW'
-          unzip -l "$LiteArchive" | grep -q 'MAW-lite.app/Contents/MacOS/MAW'
+          # 不使用 unzip | grep：macOS 的 unzip 输出、grep 管道和 pipefail
+          # 组合过于脆弱，归档有效时也可能把校验误判为失败。
+          python3 - "$StandardArchive" "$LiteArchive" <<'PY'
+          import sys
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          faq_bytes = Path("FAQ-常见问题.txt").read_bytes()
+          checks = (
+              (sys.argv[1], "MAW.app/Contents/MacOS/MAW"),
+              (sys.argv[2], "MAW-lite.app/Contents/MacOS/MAW"),
+          )
+
+          for archive_name, required_entry in checks:
+              with ZipFile(archive_name) as archive:
+                  names = archive.namelist()
+                  if not any(required_entry in name for name in names):
+                      raise SystemExit(
+                          f"{archive_name} 缺少归档内容：{required_entry}"
+                      )
+                  faq_entries = [
+                      name
+                      for name in names
+                      if name.startswith("FAQ-") and name.endswith(".txt")
+                  ]
+                  if not faq_entries:
+                      raise SystemExit(f"{archive_name} 缺少 FAQ 文本文件")
+                  if not any(archive.read(name) == faq_bytes for name in faq_entries):
+                      raise SystemExit(f"{archive_name} 中的 FAQ 内容不匹配")
+          PY
 
       # ---------- Linux 专属 ----------
 
@@ -438,12 +490,17 @@ jobs:
             echo "FAIL: AppImage 内置了 libstdc++/libgcc_s/libgbm，会污染系统 Mesa 驱动加载"
             exit 1
           fi
+          test -f squashfs-root/FAQ-常见问题.txt
           echo "OK: 未内置 libstdc++/libgcc_s/libgbm"
           rm -r squashfs-root
 
       - name: Diagnose AppImage libraries
         if: ${{ always() && matrix.platform == 'linux' }}
         run: |
+          if [ ! -f build-appimage/MAW-Linux-x86_64.AppImage ]; then
+            echo "跳过 AppImage 诊断：构建产物不存在，前置步骤已失败。"
+            exit 0
+          fi
           cd build-appimage
           ./MAW-Linux-x86_64.AppImage --appimage-extract >/dev/null 2>&1 || true
           echo "=== Qt6/lib 里 xcb-cursor 相关:"

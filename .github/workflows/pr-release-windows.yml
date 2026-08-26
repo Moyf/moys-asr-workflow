@@ -53,6 +53,14 @@ jobs:
         shell: pwsh
         run: .\scripts\build-windows.ps1 -SkipTests
 
+      - name: Verify bundled FAQ
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path -LiteralPath 'dist\MAW\FAQ-常见问题.txt' -PathType Leaf)) {
+            throw 'Missing dist\MAW\FAQ-常见问题.txt after build.'
+          }
+
       - name: Smoke MAW executable
         shell: pwsh
         run: |

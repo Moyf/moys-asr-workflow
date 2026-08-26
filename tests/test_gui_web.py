@@ -630,6 +630,20 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(len(str(result["preview"])), 240)
         self.assertTrue(result["truncated"])
 
+    def test_script_match_preview_returns_split_text(self) -> None:
+        project = self.root / "clip.mosp"
+        script = self.root / "preview.txt"
+        project.write_text(json.dumps({"segments": [{"start": 0, "end": 1000, "text": "甲乙"}]}), encoding="utf-8")
+        script.write_text("甲\n乙", encoding="utf-8")
+
+        result = self.api.preview_script_match({"projectPath": str(project), "scriptPath": str(script)})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["preview"], "1. 甲\n2. 乙")
+        self.assertEqual(result["matchRate"], 100)
+        self.assertEqual(result["originalSegmentCount"], 1)
+        self.assertEqual(result["matchedSegmentCount"], 2)
+
     def test_ocr_dedup_bridge_forwards_video_region_threshold_and_report(self) -> None:
         project = self.root / "clip.mosp"
         video = self.root / "clip.mp4"
@@ -1599,6 +1613,23 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.api.cancel_transcription()
+
+    def test_request_from_payload_treats_enabled_empty_postprocess_as_disabled(self) -> None:
+        """Given an enabled plan with no selected steps, When building a request, Then transcription proceeds without a pipeline."""
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+
+        request = _request_from_payload({
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+            "autoPostprocess": {
+                "enabled": True,
+                "steps": [],
+            },
+        }, self.env_path)
+
+        self.assertIsNone(request.postprocess_plan)
 
     def test_start_transcription_rejects_singapore_without_workspace(self) -> None:
         """Given Singapore region, When workspace is absent, Then workspace blocks."""
