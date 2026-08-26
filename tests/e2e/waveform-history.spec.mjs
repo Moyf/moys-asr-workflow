@@ -67,6 +67,229 @@ test('blank waveform context menu disables subtitle creation over an existing cu
   await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(6);
 });
 
+test('gap context menu and modifier drags update the gap timeline', async ({ page }) => {
+  await page.goto(server.url);
+  const setGaps = async (gaps, operationMode = 'boundary_drag') => {
+    await page.evaluate(({ nextGaps, nextMode }) => {
+      DATA.gap_remove = {
+        schema: 'moy.asr.gap_remove.v1',
+        detector: 'audio_gate',
+        minimum_ms: 500,
+        threshold_db: -24,
+        hysteresis_db: 2,
+        lead_in_ms: 40,
+        lead_out_ms: 80,
+        skip_playback: true,
+        operation_mode: nextMode,
+        manual_corrections: false,
+        gaps: nextGaps,
+      };
+      updateGapRemoveUi();
+      renderAll({ waveform: 'full' });
+    }, { nextGaps: gaps, nextMode: operationMode });
+  };
+
+  const firstRow = page.locator('.waveform-row[data-row-index="0"]').first();
+  await expect(firstRow).toBeVisible();
+  const firstBox = await firstRow.boundingBox();
+  expect(firstBox).not.toBeNull();
+  await page.mouse.click(firstBox.x + firstBox.width * 0.4, firstBox.y + 20, { button: 'right' });
+  await expect(page.locator('#ctxmenu .item', { hasText: '添加空隙' })).toBeVisible();
+  await page.locator('#ctxmenu .item', { hasText: '添加空隙' }).click();
+  const added = await page.evaluate(() => DATA.gap_remove.gaps);
+  expect(added).toHaveLength(1);
+  expect(added[0].removed).toBe(true);
+  expect(added[0].end - added[0].start).toBe(500);
+
+  await setGaps([{ start: 10050, end: 10550, removed: true }], 'boundary_and_middle');
+  await page.locator('#waveform-settings-toggle').click();
+  await expect(page.locator('#gap-remove-operation-mode')).toHaveValue('boundary_and_middle');
+  await page.locator('#waveform-settings-toggle').click();
+  const middleRow = page.locator('.waveform-row[data-row-index="0"]').first();
+  const middleBox = await middleRow.boundingBox();
+  expect(middleBox).not.toBeNull();
+  await page.mouse.move(middleBox.x + middleBox.width * 0.2, middleBox.y + 20);
+  await page.mouse.down({ button: 'middle' });
+  await page.mouse.move(middleBox.x + middleBox.width * 0.3, middleBox.y + 20);
+  await page.mouse.up({ button: 'middle' });
+  const middleResult = await page.evaluate(() => DATA.gap_remove.gaps);
+  expect(middleResult.some((gap) => gap.removed && gap.start <= 2000 && gap.end >= 3000)).toBe(true);
+
+  await setGaps([], 'boundary_and_middle');
+  const crossMiddleRow = page.locator('.waveform-row[data-row-index="0"]').first();
+  const crossMiddleBox = await crossMiddleRow.boundingBox();
+  expect(crossMiddleBox).not.toBeNull();
+  const crossMiddleY = crossMiddleBox.y + crossMiddleBox.height * 0.8;
+  await page.mouse.move(crossMiddleBox.x + crossMiddleBox.width * 0.98, crossMiddleY);
+  await page.mouse.down({ button: 'middle' });
+  await page.mouse.move(crossMiddleBox.x + crossMiddleBox.width * 1.02, crossMiddleY);
+  await expect.poll(() => page.evaluate(() => {
+    const rows = new Set([...document.querySelectorAll('.waveform-gap-range-preview')]
+      .map((element) => element.closest('.waveform-row')?.dataset.rowIndex));
+    return rows.has('0') && rows.has('1');
+  })).toBe(true);
+  await page.mouse.up({ button: 'middle' });
+  const crossMiddleResult = await page.evaluate(() => DATA.gap_remove.gaps);
+  expect(crossMiddleResult.some((gap) => (
+    gap.removed && gap.start <= 9800 && gap.end >= 10200
+  ))).toBe(true);
+  await expect.poll(() => page.evaluate(() => (
+    document.querySelectorAll('.waveform-gap-range-preview').length === 0
+  ))).toBe(true);
+
+  await setGaps([{ start: 10050, end: 10550, removed: true }], 'boundary_and_middle');
+  const boundaryHandle = page.locator(
+    '.waveform-row[data-row-index="1"] .waveform-gap-block[data-gap-index="0"] .waveform-gap-handle.left',
+  );
+  await expect(boundaryHandle).toBeVisible();
+  const handleBox = await boundaryHandle.boundingBox();
+  const boundaryRow = page.locator('.waveform-row[data-row-index="1"]').first();
+  const boundaryRowBox = await boundaryRow.boundingBox();
+  expect(handleBox).not.toBeNull();
+  expect(boundaryRowBox).not.toBeNull();
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(boundaryRowBox.x - 30, handleBox.y + handleBox.height / 2);
+  await expect.poll(() => page.evaluate(() => [...document.querySelectorAll(
+    '.waveform-gap-boundary-preview',
+  )].some((element) => (
+    element.closest('.waveform-row')?.dataset.rowIndex === '0'
+    && !element.hidden
+    && element.getBoundingClientRect().width > 0
+  )))).toBe(true);
+  await page.mouse.move(boundaryRowBox.x + boundaryRowBox.width * 0.1, handleBox.y + handleBox.height / 2);
+  await expect.poll(() => page.evaluate(() => (
+    document.querySelectorAll('.waveform-gap-boundary-preview').length === 0
+  ))).toBe(true);
+  await page.mouse.move(boundaryRowBox.x - 30, handleBox.y + handleBox.height / 2);
+  await expect.poll(() => page.evaluate(() => [...document.querySelectorAll(
+    '.waveform-gap-boundary-preview',
+  )].some((element) => (
+    element.closest('.waveform-row')?.dataset.rowIndex === '0'
+    && !element.hidden
+    && element.getBoundingClientRect().width > 0
+  )))).toBe(true);
+  await page.mouse.up();
+  const crossRowResult = await page.evaluate(() => DATA.gap_remove.gaps);
+  expect(crossRowResult[0].start).toBeLessThan(10000);
+
+  await setGaps([{ start: 9500, end: 10550, removed: true }], 'boundary_and_middle');
+  const shorteningHandle = page.locator(
+    '.waveform-row[data-row-index="1"] .waveform-gap-block[data-gap-index="0"] .waveform-gap-handle.right',
+  );
+  const shorteningHandleBox = await shorteningHandle.boundingBox();
+  const previousRow = page.locator('.waveform-row[data-row-index="0"]').first();
+  const previousRowBox = await previousRow.boundingBox();
+  expect(shorteningHandleBox).not.toBeNull();
+  expect(previousRowBox).not.toBeNull();
+  await page.mouse.move(
+    shorteningHandleBox.x + shorteningHandleBox.width / 2,
+    shorteningHandleBox.y + shorteningHandleBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    previousRowBox.x - previousRowBox.width * 0.1,
+    shorteningHandleBox.y + shorteningHandleBox.height / 2,
+  );
+  await expect.poll(() => page.evaluate(() => {
+    const secondRowBlock = document.querySelector(
+      '.waveform-row[data-row-index="1"] .waveform-gap-block[data-gap-index="0"]',
+    );
+    return Boolean(secondRowBlock?.hidden);
+  })).toBe(true);
+  await page.mouse.up();
+
+  await setGaps([{ start: 12000, end: 12500, removed: true }]);
+  const moveBlock = page.locator('.waveform-gap-block[data-gap-index="0"]').first();
+  const moveBox = await moveBlock.boundingBox();
+  expect(moveBox).not.toBeNull();
+  await page.keyboard.down('Alt');
+  await page.mouse.move(moveBox.x + moveBox.width / 2, moveBox.y + moveBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(moveBox.x + moveBox.width / 2 + 100, moveBox.y + moveBox.height / 2);
+  await page.mouse.up();
+  await page.keyboard.up('Alt');
+  const moved = await page.evaluate(() => DATA.gap_remove.gaps);
+  expect(moved).toHaveLength(1);
+  expect(moved[0].start).toBeGreaterThan(12000);
+  expect(moved[0].end - moved[0].start).toBe(500);
+
+  await setGaps([{ start: 12000, end: 12500, removed: true }]);
+  const copyBlock = page.locator('.waveform-gap-block[data-gap-index="0"]').first();
+  const copyBox = await copyBlock.boundingBox();
+  expect(copyBox).not.toBeNull();
+  await page.keyboard.down('Control');
+  await page.mouse.move(copyBox.x + copyBox.width / 2, copyBox.y + copyBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(copyBox.x + copyBox.width / 2 + 250, copyBox.y + copyBox.height / 2);
+  await page.mouse.up();
+  await page.keyboard.up('Control');
+  const copied = await page.evaluate(() => DATA.gap_remove.gaps);
+  expect(copied).toHaveLength(2);
+  expect(copied.some((gap) => gap.start === 12000 && gap.end === 12500)).toBe(true);
+  expect(copied.some((gap) => gap.start > 12500)).toBe(true);
+});
+
+test('disables subtitles by removed-gap coverage and remaining duration thresholds', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    DATA.segments.length = 0;
+    [
+      { id: 'full-gap', start: 1000, end: 2000, text: '完全在空隙内' },
+      { id: 'partial', start: 0, end: 2000, text: '覆盖一半' },
+      { id: 'near-gap', start: 800, end: 2000, text: '覆盖率和剩余时长都满足' },
+      { id: 'outside', start: 3000, end: 4000, text: '不在空隙内' },
+    ].forEach((segment) => DATA.segments.push(segment));
+    DATA.gap_remove = {
+      schema: 'moy.asr.gap_remove.v1',
+      detector: 'audio_gate',
+      minimum_ms: 500,
+      threshold_db: -24,
+      hysteresis_db: 2,
+      lead_in_ms: 40,
+      lead_out_ms: 80,
+      skip_playback: true,
+      operation_mode: 'boundary_drag',
+      manual_corrections: false,
+      gaps: [
+        { start: 1000, end: 1500, removed: true },
+        { start: 1450, end: 2000, removed: true },
+        { start: 3000, end: 3500, removed: false },
+      ],
+    };
+    updateGapRemoveUi();
+    renderAll({ waveform: 'full' });
+  });
+
+  await page.locator('#gap-remove-manage').click();
+  await page.locator('#gap-remove-disable-toggle').click();
+  await expect(page.locator('#gap-remove-disable-toggle')).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('#gap-remove-disable-coverage')).toHaveValue('80');
+  await expect(page.locator('#gap-remove-disable-remaining')).toHaveValue('300');
+  await expect(page.locator('#gap-remove-disable-button')).toBeEnabled();
+
+  await page.locator('#gap-remove-disable-button').click();
+  await expect.poll(() => page.evaluate(() => DATA.segments.map((segment) => Boolean(segment.disabled))))
+    .toEqual([true, false, true, false]);
+  await expect(page.locator('#hint-stack')).toContainText('已禁用 2 条静音空隙内的字幕');
+
+  await page.locator('#undo-btn').click();
+  await expect.poll(() => page.evaluate(() => DATA.segments.map((segment) => Boolean(segment.disabled))))
+    .toEqual([false, false, false, false]);
+
+  await page.locator('#gap-remove-disable-coverage').fill('50');
+  await page.locator('#gap-remove-disable-coverage').press('Tab');
+  await page.locator('#gap-remove-disable-remaining').fill('1000');
+  await page.locator('#gap-remove-disable-remaining').press('Tab');
+  await page.locator('#gap-remove-disable-button').click();
+  await expect.poll(() => page.evaluate(() => DATA.segments.map((segment) => Boolean(segment.disabled))))
+    .toEqual([true, true, true, false]);
+  await expect.poll(() => page.evaluate(() => ({
+    coverage: DATA.gap_remove.disable_coverage_percent,
+    remaining: DATA.gap_remove.disable_remaining_ms,
+  }))).toEqual({ coverage: 50, remaining: 1000 });
+});
+
 test('N creates a subtitle at the waveform pointer and focuses the new cue', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('.player-stage').hover();

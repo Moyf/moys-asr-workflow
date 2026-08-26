@@ -143,9 +143,62 @@ test('normalizes gap-remove data and returns independent gap values', () => {
   const normalized = helpers.normalizeGapRemoveData(input);
   assert.equal(normalized.minimum_ms, 100);
   assert.equal(normalized.detector, 'legacy_subtitle_gap');
+  assert.equal(normalized.disable_coverage_percent, 80);
+  assert.equal(normalized.disable_remaining_ms, 300);
   assert.deepEqual(JSON.parse(JSON.stringify(normalized.gaps)), [{ start: 10, end: 20, removed: true }]);
   input.gaps[0].start = 999;
   assert.equal(normalized.gaps[0].start, 10);
+});
+
+test('preserves the combined gap boundary and middle operation mode', () => {
+  const normalized = helpers.normalizeGapRemoveData({
+    operation_mode: 'boundary_and_middle', disable_coverage_percent: 67.5, disable_remaining_ms: 1250,
+  });
+  assert.equal(normalized.operation_mode, 'boundary_and_middle');
+  assert.equal(normalized.disable_coverage_percent, 67.5);
+  assert.equal(normalized.disable_remaining_ms, 1250);
+});
+
+test('finds subtitles covered by removed gaps using both thresholds', () => {
+  const segments = [
+    { id: 'full', start: 1000, end: 2000 },
+    { id: 'partial', start: 0, end: 2000 },
+    { id: 'near', start: 800, end: 2000 },
+    { id: 'outside', start: 3000, end: 4000 },
+    { id: 'invalid', start: 5000, end: 5000 },
+  ];
+  const gaps = [
+    { start: 1000, end: 1500, removed: true },
+    { start: 1450, end: 2000, removed: true },
+    { start: 3000, end: 3500, removed: false },
+  ];
+  const matches = helpers.findGapRemoveDisableMatches(segments, gaps, {
+    coveragePercent: 80, remainingMs: 300,
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(matches.map((match) => match.index))), [0, 2]);
+  assert.deepEqual(JSON.parse(JSON.stringify(matches[0])), {
+    index: 0, durationMs: 1000, coveredMs: 1000, remainingMs: 0, coveragePercent: 100,
+  });
+  assert.equal(matches[1].coveredMs, 1000);
+  assert.equal(matches[1].remainingMs, 200);
+  assert.ok(matches[1].coveragePercent > 83 && matches[1].coveragePercent < 84);
+});
+
+test('normalizes invalid gap subtitle-disable settings before matching', () => {
+  const segments = [{ start: 0, end: 1000 }];
+  const gaps = [{ start: 0, end: 900, removed: true }];
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.findGapRemoveDisableMatches(segments, gaps, {
+      coveragePercent: 101, remainingMs: -1,
+    }).map((match) => match.index))),
+    [],
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.findGapRemoveDisableMatches(segments, gaps, {
+      coveragePercent: 90, remainingMs: 100,
+    }).map((match) => match.index))),
+    [0],
+  );
 });
 
 test('builds immutable-shaped history records for each editor history kind', () => {
@@ -175,6 +228,10 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('显示刀光特效', 'en'), 'Show slash effect');
   assert.equal(i18n.translateText('字幕大小', 'en'), 'Font size');
   assert.equal(i18n.translateText('字幕预览设置', 'en'), 'Subtitle preview settings');
+  assert.equal(i18n.translateText('禁用空隙内字幕', 'en'), 'Disable subtitles in gaps');
+  assert.equal(i18n.translateText('覆盖率', 'en'), 'Coverage');
+  assert.equal(i18n.translateText('剩余时长阈值', 'en'), 'Remaining duration threshold');
+  assert.equal(i18n.translateText('禁用字幕', 'en'), 'Disable subtitles');
   assert.equal(i18n.translateText('交换主副字幕', 'en'), 'Swap main and secondary subtitles');
   assert.equal(i18n.translateText('主字幕 1', 'en'), 'Main subtitle 1');
   assert.equal(i18n.translateText('副字幕 1', 'en'), 'Secondary subtitle 1');
@@ -1034,6 +1091,39 @@ test('middle-button range adds arbitrary silence and overrides restored ranges',
   assert.deepEqual(JSON.parse(JSON.stringify(gaps)), [
     { start: 100, end: 250, removed: false },
     { start: 250, end: 900, removed: true },
+  ]);
+});
+
+
+test('moves one gap as a whole, clamps it to the media, and preserves its state', () => {
+  const gaps = helpers.moveGapRemoveRange([
+    { start: 1000, end: 1600, removed: false },
+    { start: 3000, end: 3400, removed: true },
+  ], 0, -1300, 5000);
+  assert.deepEqual(JSON.parse(JSON.stringify(gaps)), [
+    { start: 0, end: 600, removed: false },
+    { start: 3000, end: 3400, removed: true },
+  ]);
+});
+
+
+test('copies one gap without removing the original range', () => {
+  const gaps = helpers.copyGapRemoveRange([
+    { start: 1000, end: 1600, removed: true },
+  ], 0, 1200, 5000);
+  assert.deepEqual(JSON.parse(JSON.stringify(gaps)), [
+    { start: 1000, end: 1600, removed: true },
+    { start: 2200, end: 2800, removed: true },
+  ]);
+});
+
+
+test('whole-gap moves can cross an earlier row boundary', () => {
+  const gaps = helpers.moveGapRemoveRange([
+    { start: 10050, end: 10600, removed: true },
+  ], 0, -900, 20000);
+  assert.deepEqual(JSON.parse(JSON.stringify(gaps)), [
+    { start: 9150, end: 9700, removed: true },
   ]);
 });
 

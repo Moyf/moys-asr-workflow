@@ -718,6 +718,23 @@
   function clampAutoMergeShortCount(value) { return clampInteger(value, 3, 1, 20); }
 
   const GAP_REMOVE_SCHEMA = 'moy.asr.gap_remove.v1';
+  const GAP_REMOVE_DISABLE_COVERAGE_DEFAULT = 80;
+  const GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS = 300;
+  const GAP_REMOVE_DISABLE_REMAINING_MAX_MS = 60000;
+  function clampGapRemoveDisableCoverage(value) {
+    const numeric = typeof value === 'string' && !value.trim() ? NaN : Number(value);
+    return Math.min(100, Math.max(0, Number.isFinite(numeric)
+      ? numeric : GAP_REMOVE_DISABLE_COVERAGE_DEFAULT));
+  }
+  function clampGapRemoveDisableRemaining(value) {
+    const numeric = typeof value === 'string' && !value.trim() ? NaN : value;
+    return clampInteger(
+      numeric,
+      GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS,
+      0,
+      GAP_REMOVE_DISABLE_REMAINING_MAX_MS,
+    );
+  }
   function normalizeGapRemoveData(value) {
     const source = value && typeof value === 'object' ? value : {};
     const gaps = cloneJsonValue(normalizeGapRemoveGaps(source.gaps)) || [];
@@ -731,8 +748,10 @@
       lead_out_ms: clampInteger(source.lead_out_ms, 80, 0, 2000),
       skip_playback: source.skip_playback !== false,
       manual_corrections: source.manual_corrections === true,
-      operation_mode: ['none', 'boundary_drag', 'middle_drag'].includes(source.operation_mode)
+      operation_mode: ['none', 'boundary_drag', 'middle_drag', 'boundary_and_middle'].includes(source.operation_mode)
         ? source.operation_mode : 'boundary_drag',
+      disable_coverage_percent: clampGapRemoveDisableCoverage(source.disable_coverage_percent),
+      disable_remaining_ms: clampGapRemoveDisableRemaining(source.disable_remaining_ms),
       gaps,
     };
   }
@@ -1468,6 +1487,54 @@
     return coalesceGapRemoveGaps(next);
   }
 
+  // 将一个已有区段作为整体平移或复制到目标位置。与人工“范围移除”不同，
+  // 这里保留区段的 removed 状态，因此恢复区段也可以被整体拖动/复制。
+  function overlayGapRemoveRange(gaps, startMs, endMs, removed) {
+    const source = coalesceGapRemoveGaps(gaps);
+    const start = Math.max(0, Math.round(Math.min(Number(startMs), Number(endMs))));
+    const end = Math.max(0, Math.round(Math.max(Number(startMs), Number(endMs))));
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return source;
+    const next = [];
+    source.forEach((gap) => {
+      if (gap.end <= start || gap.start >= end) {
+        next.push({ ...gap });
+        return;
+      }
+      if (gap.start < start) next.push({ ...gap, end: start });
+      if (gap.end > end) next.push({ ...gap, start: end });
+    });
+    next.push({ start, end, removed: removed !== false });
+    return coalesceGapRemoveGaps(next);
+  }
+
+  function translateGapRemoveRange(gaps, index, deltaMs, durationMs, copy) {
+    const source = coalesceGapRemoveGaps(gaps);
+    const gapIndex = Math.round(Number(index));
+    const delta = Math.round(Number(deltaMs));
+    if (!Number.isFinite(gapIndex) || !Number.isFinite(delta)
+        || gapIndex < 0 || gapIndex >= source.length) return source;
+    const original = source[gapIndex];
+    const durationValue = Number(durationMs);
+    const hasDuration = Number.isFinite(durationValue) && durationValue > 0;
+    const duration = hasDuration ? Math.round(durationValue) : Infinity;
+    const length = Math.min(original.end - original.start, duration);
+    if (!Number.isFinite(length) || length <= 0) return source;
+    const maxStart = Math.max(0, duration - length);
+    const start = Math.min(maxStart, Math.max(0, original.start + delta));
+    const end = start + length;
+    if (start === original.start && end === original.end) return source;
+    const remaining = copy ? source : source.filter((_, sourceIndex) => sourceIndex !== gapIndex);
+    return overlayGapRemoveRange(remaining, start, end, original.removed);
+  }
+
+  function moveGapRemoveRange(gaps, index, deltaMs, durationMs) {
+    return translateGapRemoveRange(gaps, index, deltaMs, durationMs, false);
+  }
+
+  function copyGapRemoveRange(gaps, index, deltaMs, durationMs) {
+    return translateGapRemoveRange(gaps, index, deltaMs, durationMs, true);
+  }
+
   function resizeGapRemoveBoundary(gaps, index, edge, valueMs, minimumMs = 10) {
     const source = coalesceGapRemoveGaps(gaps);
     let gapIndex = Math.round(Number(index));
@@ -1586,6 +1653,29 @@
       }
     });
     return merged;
+  }
+
+  function findGapRemoveDisableMatches(segments, gaps, options = {}) {
+    const coverageThreshold = clampGapRemoveDisableCoverage(options.coveragePercent);
+    const remainingThreshold = clampGapRemoveDisableRemaining(options.remainingMs);
+    const removedRanges = getRemovedGapRanges(gaps);
+    const source = Array.isArray(segments) ? segments : [];
+    const matches = [];
+    source.forEach((segment, index) => {
+      const start = Number(segment?.start);
+      const end = Number(segment?.end);
+      const durationMs = end - start;
+      if (!Number.isFinite(start) || !Number.isFinite(end) || durationMs <= 0) return;
+      const coveredMs = removedRanges.reduce((total, range) => {
+        const overlap = Math.min(end, range.end) - Math.max(start, range.start);
+        return total + Math.max(0, overlap);
+      }, 0);
+      const remainingMs = Math.max(0, durationMs - coveredMs);
+      const coveragePercent = (coveredMs / durationMs) * 100;
+      if (coveragePercent + Number.EPSILON < coverageThreshold || remainingMs > remainingThreshold) return;
+      matches.push({ index, durationMs, coveredMs, remainingMs, coveragePercent });
+    });
+    return matches;
   }
 
   function mapGapRemovedTime(sourceMs, gaps) {
@@ -3104,6 +3194,11 @@ export default MawDynamicCaptions;
     clampNinjaSlashRotateAmplitude,
     clampAutoMergeGapMs,
     clampAutoMergeShortCount,
+    GAP_REMOVE_DISABLE_COVERAGE_DEFAULT,
+    GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS,
+    GAP_REMOVE_DISABLE_REMAINING_MAX_MS,
+    clampGapRemoveDisableCoverage,
+    clampGapRemoveDisableRemaining,
     normalizeGapRemoveData,
     buildSegmentsHistorySnapshot,
     buildHistoryRecord,
@@ -3115,9 +3210,12 @@ export default MawDynamicCaptions;
     fileBasename,
     normalizeGapRemoveGaps,
     applyGapRemoveRange,
+    moveGapRemoveRange,
+    copyGapRemoveRange,
     resizeGapRemoveBoundary,
     detectAudioGapRemoveGaps,
     getRemovedGapRanges,
+    findGapRemoveDisableMatches,
     mapGapRemovedTime,
     buildGapRemovedIntervals,
     EXPORT_FRAME_PROFILES,

@@ -190,6 +190,8 @@
   "skip_playback": true,
   "manual_corrections": false,
   "operation_mode": "middle_drag",
+  "disable_coverage_percent": 80,
+  "disable_remaining_ms": 300,
   "gaps": [
     { "start": 1280, "end": 2440, "removed": true },
     { "start": 6120, "end": 7050, "removed": false }
@@ -201,8 +203,9 @@
 - `minimum_ms` 的允许范围是 100–60000，单位为毫秒；默认 500。判定基于应用前/后端预留后的最终移除区间，预留吃完整段时不纳入移除。
 - `threshold_db` 的范围是 -96–0，默认 -24；`hysteresis_db` 的范围是 0–30，默认 2。比如阈值 -24、滞回 2 时，声音达到 -24 才算有声，低于 -26 才重新算静音。建议使用 1–3dB；过高会延迟回到静音。滞回位于「高级设置」折叠区内。
 - `lead_in_ms` / `lead_out_ms` 是每段空隙两侧保留的静音毫秒数，范围 0–2000，默认前端 40、后端 80。扫描得到的原始静音区间会在起点加 `lead_in_ms`、终点减 `lead_out_ms` 后再写入 `gaps`，避免剪掉空隙后两句贴得太急；预留后的区间短于 `minimum_ms` 时整段保留。
-- `manual_corrections` 表示当前结果是否包含人工修正。Alt+左键切换整段、边界拖动、中键范围操作和“全部恢复”都会设为 `true`；重新扫描前会要求确认，扫描成功后重置为 `false`。
-- `operation_mode` 控制人工修正交互：`none` 仅保留 Alt+点击整段切换，`boundary_drag` 在 hover 空隙时显示左右边界手柄，`middle_drag` 默认用中键增加静音、按住 Alt 才恢复声音；默认 `middle_drag`。边界拖入另一段空隙时会直接合并两段。
+- `manual_corrections` 表示当前结果是否包含人工修正。Alt+左键切换整段、边界拖动、Alt+整体拖动、Ctrl/Cmd+复制拖动、中键范围操作和“全部恢复”都会设为 `true`；重新扫描前会要求确认，扫描成功后重置为 `false`。
+- `operation_mode` 控制人工修正交互：`none` 仅保留 Alt+点击整段切换，`boundary_drag` 在 hover 空隙时显示左右边界手柄，`middle_drag` 默认用中键增加静音、按住 Alt 才恢复声音，`boundary_and_middle`（界面显示「边界与中键」）同时启用边界手柄和中键范围操作；当前界面默认 `boundary_drag`。边界拖入另一段空隙时会直接合并两段。
+- `disable_coverage_percent` 与 `disable_remaining_ms` 是“禁用空隙内字幕”设置，均为可选字段，缺失时默认分别为 80% 和 300ms。执行“禁用字幕”时，编辑器先把所有 `removed: true` 空隙合并，再筛选空隙覆盖字幕时长达到该比例、且未被覆盖的剩余字幕时长不超过该阈值的主字幕；完全落在空隙内的字幕会命中。该操作只设置字幕的 `disabled` 标记，不改写起止时间，并可通过撤销恢复。
 - 扫描不会移除开头或结尾的素材。
 - 波形将 `removed: true` 画为橙色斜纹、`removed: false` 画为灰蓝斜纹；左键仅跳转播放头，Alt+左键才在两种状态间切换。
 - 旧版按字幕间隔扫描的结果会保留在工程中，但为避免误删已停用；重新扫描后会写入 `detector: "audio_gate"`。

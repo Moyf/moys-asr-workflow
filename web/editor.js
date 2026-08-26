@@ -785,9 +785,14 @@ const DEFAULT_GAP_REMOVE_HYSTERESIS_DB = 2;
 const DEFAULT_GAP_REMOVE_LEAD_IN_MS = 40;
 const DEFAULT_GAP_REMOVE_LEAD_OUT_MS = 80;
 const DEFAULT_GAP_REMOVE_OPERATION_MODE = 'boundary_drag';
+const DEFAULT_GAP_REMOVE_DISABLE_COVERAGE_PERCENT = EDITOR_SETTINGS_UTILS.GAP_REMOVE_DISABLE_COVERAGE_DEFAULT ?? 80;
+const DEFAULT_GAP_REMOVE_DISABLE_REMAINING_MS = EDITOR_SETTINGS_UTILS.GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS ?? 300;
 const GAP_REMOVE_ADVANCED_OPEN_KEY = 'moy.asr.gap_remove.advanced_open.v1';
+const GAP_REMOVE_DISABLE_OPEN_KEY = 'moy.asr.gap_remove.disable_open.v1';
 
 const normalizedGapRemoveData = EDITOR_SETTINGS_UTILS.normalizeGapRemoveData;
+const clampGapRemoveDisableCoverage = EDITOR_SETTINGS_UTILS.clampGapRemoveDisableCoverage;
+const clampGapRemoveDisableRemaining = EDITOR_SETTINGS_UTILS.clampGapRemoveDisableRemaining;
 
 let normalizedGapRemoveReference = null;
 let normalizedGapRemoveCache = null;
@@ -1313,6 +1318,11 @@ const gapRemoveLeadIn = document.getElementById('gap-remove-lead-in');
 const gapRemoveLeadOut = document.getElementById('gap-remove-lead-out');
 const gapRemoveAdvancedToggle = document.getElementById('gap-remove-advanced-toggle');
 const gapRemoveAdvancedBody = document.getElementById('gap-remove-advanced-body');
+const gapRemoveDisableToggle = document.getElementById('gap-remove-disable-toggle');
+const gapRemoveDisableBody = document.getElementById('gap-remove-disable-body');
+const gapRemoveDisableCoverage = document.getElementById('gap-remove-disable-coverage');
+const gapRemoveDisableRemaining = document.getElementById('gap-remove-disable-remaining');
+const gapRemoveDisableButton = document.getElementById('gap-remove-disable-button');
 const gapRemoveOperationMode = document.getElementById('gap-remove-operation-mode');
 const gapRemoveScanButton = document.getElementById('gap-remove-scan');
 const gapRemoveSkipPlayback = document.getElementById('gap-skip-playback');
@@ -2563,7 +2573,7 @@ function renderGapRemoveList() {
   const total = gapRemoveTotalMs(gaps);
   const summary = document.createElement('div');
   summary.className = 'gap-remove-total';
-  summary.textContent = `已移除 ${removedCount}/${gaps.length} 段，共 ${formatGapRemoveTotal(total)}；左键空隙跳转播放头，Alt+左键切换移除。`;
+  summary.textContent = `已移除 ${removedCount}/${gaps.length} 段，共 ${formatGapRemoveTotal(total)}；左键定位，Alt+点击切换，Alt+拖动整体偏移，Ctrl/Cmd+拖动复制。`;
   gapRemoveList.appendChild(summary);
 }
 
@@ -2586,11 +2596,22 @@ function updateGapRemoveUi() {
   updateGapRemoveHysteresisHint();
   if (gapRemoveLeadIn && state) gapRemoveLeadIn.value = String(state.lead_in_ms);
   if (gapRemoveLeadOut && state) gapRemoveLeadOut.value = String(state.lead_out_ms);
+  if (gapRemoveDisableCoverage && state) {
+    gapRemoveDisableCoverage.value = String(
+      state.disable_coverage_percent ?? DEFAULT_GAP_REMOVE_DISABLE_COVERAGE_PERCENT,
+    );
+  }
+  if (gapRemoveDisableRemaining && state) {
+    gapRemoveDisableRemaining.value = String(
+      state.disable_remaining_ms ?? DEFAULT_GAP_REMOVE_DISABLE_REMAINING_MS,
+    );
+  }
   if (gapRemoveOperationMode) {
     gapRemoveOperationMode.value = state?.operation_mode || DEFAULT_GAP_REMOVE_OPERATION_MODE;
   }
   if (gapRemoveSkipPlayback) gapRemoveSkipPlayback.checked = state?.skip_playback !== false;
   if (gapRemoveClearAllButton) gapRemoveClearAllButton.disabled = !gaps.length;
+  if (gapRemoveDisableButton) gapRemoveDisableButton.disabled = !gaps.some((gap) => gap.removed);
   if (gapRemovedExportDropdown) {
     gapRemovedExportDropdown.hidden = !gaps.some((gap) => gap.removed);
     if (gapRemovedExportDropdown.hidden) gapRemovedExportDropdown.classList.remove('open');
@@ -2632,6 +2653,8 @@ function scanAndRemoveGaps() {
     skip_playback: previousState?.skip_playback,
     manual_corrections: false,
     operation_mode: previousState?.operation_mode,
+    disable_coverage_percent: previousState?.disable_coverage_percent,
+    disable_remaining_ms: previousState?.disable_remaining_ms,
     gaps,
   });
   flashHint(
@@ -2640,6 +2663,47 @@ function scanAndRemoveGaps() {
       : '没有达到门限的音量空隙',
     gaps.length ? 'success' : 'invalid',
   );
+}
+
+function readGapRemoveDisableSettings() {
+  const coveragePercent = clampGapRemoveDisableCoverage(gapRemoveDisableCoverage?.value);
+  const remainingMs = clampGapRemoveDisableRemaining(gapRemoveDisableRemaining?.value);
+  if (gapRemoveDisableCoverage) gapRemoveDisableCoverage.value = String(coveragePercent);
+  if (gapRemoveDisableRemaining) gapRemoveDisableRemaining.value = String(remainingMs);
+  return { coveragePercent, remainingMs };
+}
+
+function commitGapRemoveDisableSettings() {
+  const settings = readGapRemoveDisableSettings();
+  const state = getGapRemoveData(false);
+  if (!state) return settings;
+  if (state.disable_coverage_percent === settings.coveragePercent
+      && state.disable_remaining_ms === settings.remainingMs) return settings;
+  state.disable_coverage_percent = settings.coveragePercent;
+  state.disable_remaining_ms = settings.remainingMs;
+  setGapRemoveData(state);
+  return settings;
+}
+
+function disableSubtitlesInRemovedGaps() {
+  const settings = commitGapRemoveDisableSettings();
+  const matches = window.AsrEditorUtils.findGapRemoveDisableMatches(
+    DATA.segments,
+    getGapRemoveGaps(),
+    settings,
+  );
+  const targetIndexes = matches
+    .map((match) => match.index)
+    .filter((index) => !DATA.segments[index]?.disabled);
+  if (!targetIndexes.length) {
+    const message = matches.length ? '符合条件的字幕已全部禁用' : '没有符合条件的字幕';
+    flashHint(
+      window.MAWE_I18N?.translateText?.(message) || message,
+      matches.length ? 'success' : 'invalid',
+    );
+    return;
+  }
+  toggleDisabled(targetIndexes, 'main', { successDetail: '静音空隙内的字幕' });
 }
 
 function toggleGapRemoved(index) {
@@ -2679,6 +2743,56 @@ function applyManualGapRange(startMs, endMs, removed) {
   state.manual_corrections = true;
   setGapRemoveData(state);
   flashHint(removed ? '已人工移除所选范围' : '已人工恢复所选范围', 'success');
+}
+
+function addGapAtWaveformTime(timeMs) {
+  const duration = gapRemoveMediaDurationMs();
+  if (!duration) {
+    flashHint('媒体时长尚不可用；请先加载媒体后再添加空隙', 'invalid');
+    return false;
+  }
+  const point = Number(timeMs);
+  if (!Number.isFinite(point)) return false;
+  const state = getGapRemoveData(true);
+  const sourceGaps = state.detector === 'audio_gate' ? state.gaps : [];
+  const requestedLength = clampGapRemoveMinimum(state.minimum_ms);
+  const length = Math.min(duration, requestedLength);
+  const snappedPoint = Math.max(0, Math.min(duration, Math.round(point / 10) * 10));
+  const start = Math.min(snappedPoint, Math.max(0, duration - length));
+  const end = Math.min(duration, start + length);
+  if (end - start < 10) {
+    flashHint('媒体时长不足，无法添加空隙', 'warning');
+    return false;
+  }
+  const nextGaps = window.AsrEditorUtils.applyGapRemoveRange(sourceGaps, start, end, true);
+  if (JSON.stringify(nextGaps) === JSON.stringify(sourceGaps)) {
+    flashHint('该位置已经是已移除的空隙', 'invalid');
+    return false;
+  }
+  pushGapRemoveUndo('右键添加空隙');
+  state.detector = 'audio_gate';
+  state.gaps = nextGaps;
+  state.manual_corrections = true;
+  setGapRemoveData(state);
+  waveformEditor?.revealTime(start, true);
+  flashHint(`已添加 ${formatGapRemoveTotal(end - start)} 静音空隙`, 'success');
+  return true;
+}
+
+function translateManualGap(index, deltaMs, mode = 'move') {
+  const state = getGapRemoveData(false);
+  if (!state || state.detector !== 'audio_gate') return false;
+  const duration = gapRemoveMediaDurationMs();
+  const nextGaps = mode === 'copy'
+    ? window.AsrEditorUtils.copyGapRemoveRange(state.gaps, index, deltaMs, duration)
+    : window.AsrEditorUtils.moveGapRemoveRange(state.gaps, index, deltaMs, duration);
+  if (JSON.stringify(nextGaps) === JSON.stringify(state.gaps)) return false;
+  pushGapRemoveUndo(mode === 'copy' ? '复制并偏移空隙' : '整体偏移空隙');
+  state.gaps = nextGaps;
+  state.manual_corrections = true;
+  setGapRemoveData(state);
+  flashHint(mode === 'copy' ? '已复制并偏移空隙' : '已整体偏移空隙', 'success');
+  return true;
 }
 
 function resizeManualGapBoundary(index, edge, valueMs) {
@@ -2863,6 +2977,33 @@ function restoreGapRemoveAdvancedOpen() {
   setGapRemoveAdvancedOpen(saved === '1', { persist: false });
 }
 
+function gapRemoveDisableIsOpen() {
+  return gapRemoveDisableBody ? !gapRemoveDisableBody.hidden : false;
+}
+
+function setGapRemoveDisableOpen(open, { persist = true } = {}) {
+  if (!gapRemoveDisableBody || !gapRemoveDisableToggle) return;
+  gapRemoveDisableBody.hidden = !open;
+  gapRemoveDisableToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (persist) {
+    try {
+      localStorage.setItem(GAP_REMOVE_DISABLE_OPEN_KEY, open ? '1' : '0');
+    } catch (_) {
+      // file:// 隐私模式下 localStorage 可能被拒；折叠状态仅本次会话生效。
+    }
+  }
+}
+
+function restoreGapRemoveDisableOpen() {
+  let saved = null;
+  try {
+    saved = localStorage.getItem(GAP_REMOVE_DISABLE_OPEN_KEY);
+  } catch (_) {
+    saved = null;
+  }
+  setGapRemoveDisableOpen(saved === '1', { persist: false });
+}
+
 function updateGapRemoveHysteresisHint() {
   if (!gapRemoveHysteresisHint || !gapRemoveHysteresis) return;
   const value = gapRemoveHysteresis.value;
@@ -2923,8 +3064,15 @@ function openGapRemovePanel() {
   updateGapRemoveHysteresisHint();
   gapRemoveLeadIn.value = String(state?.lead_in_ms ?? DEFAULT_GAP_REMOVE_LEAD_IN_MS);
   gapRemoveLeadOut.value = String(state?.lead_out_ms ?? DEFAULT_GAP_REMOVE_LEAD_OUT_MS);
+  gapRemoveDisableCoverage.value = String(
+    state?.disable_coverage_percent ?? DEFAULT_GAP_REMOVE_DISABLE_COVERAGE_PERCENT,
+  );
+  gapRemoveDisableRemaining.value = String(
+    state?.disable_remaining_ms ?? DEFAULT_GAP_REMOVE_DISABLE_REMAINING_MS,
+  );
   gapRemoveOperationMode.value = state?.operation_mode || DEFAULT_GAP_REMOVE_OPERATION_MODE;
   restoreGapRemoveAdvancedOpen();
+  restoreGapRemoveDisableOpen();
   renderGapRemoveList();
   gapRemovePanel.classList.add('show');
   gapRemovePanel.setAttribute('aria-hidden', 'false');
@@ -2995,7 +3143,7 @@ gapRemoveClearAllButton?.addEventListener('click', clearAllGaps);
 gapRemoveCloseButton?.addEventListener('click', closeGapRemovePanel);
 gapRemoveOperationMode?.addEventListener('change', () => {
   const state = getGapRemoveData(true);
-  const nextMode = ['none', 'boundary_drag', 'middle_drag'].includes(gapRemoveOperationMode.value)
+  const nextMode = ['none', 'boundary_drag', 'middle_drag', 'boundary_and_middle'].includes(gapRemoveOperationMode.value)
     ? gapRemoveOperationMode.value : DEFAULT_GAP_REMOVE_OPERATION_MODE;
   if (state.operation_mode === nextMode) return;
   pushGapRemoveUndo('切换空隙操作方式');
@@ -3005,6 +3153,12 @@ gapRemoveOperationMode?.addEventListener('change', () => {
 gapRemoveAdvancedToggle?.addEventListener('click', () => {
   setGapRemoveAdvancedOpen(!gapRemoveAdvancedIsOpen());
 });
+gapRemoveDisableToggle?.addEventListener('click', () => {
+  setGapRemoveDisableOpen(!gapRemoveDisableIsOpen());
+});
+gapRemoveDisableCoverage?.addEventListener('change', commitGapRemoveDisableSettings);
+gapRemoveDisableRemaining?.addEventListener('change', commitGapRemoveDisableSettings);
+gapRemoveDisableButton?.addEventListener('click', disableSubtitlesInRemovedGaps);
 gapRemoveHysteresis?.addEventListener('input', updateGapRemoveHysteresisHint);
 window.addEventListener('resize', () => {
   if (!gapRemovePanelIsOpen()) return;
@@ -13481,7 +13635,7 @@ function clearColorOnTargets(idxs) {
 // === 禁用/启用 ===
 // 统一切换语义：目标全部禁用 → 全部启用；否则全部禁用
 // 单条时即"切换这一条的状态"（Alt+点击 / 右键菜单均走这里）
-function toggleDisabled(idxs, track = 'main') {
+function toggleDisabled(idxs, track = 'main', { successDetail = null } = {}) {
   const extensionTrack = track === 'extension'
     ? getActiveExtensionTrack()
     : (track?.segments ? track : null);
@@ -13540,7 +13694,9 @@ function toggleDisabled(idxs, track = 'main') {
   const action = allDisabled ? '启用' : '禁用';
   const extensionCount = [...boundExtensionTargets.values()]
     .reduce((total, indexes) => total + indexes.size, 0);
-  const detail = !isExtension && extensionCount
+  const detail = successDetail && !allDisabled
+    ? `${validIdxs.length} 条${successDetail}${!isExtension && extensionCount ? `，以及副字幕 ${extensionCount} 条` : ''}`
+    : !isExtension && extensionCount
     ? `主字幕 ${validIdxs.length} 条及副字幕 ${extensionCount} 条`
     : `${validIdxs.length} 条`;
   flashHint(`已${action} ${detail}`, 'success');
@@ -13898,7 +14054,7 @@ function findWaveformCueAtTime(timeMs, segments = DATA.segments) {
   });
 }
 
-// 右键波形背景：创建字幕，或按右键对应的音频位置拆分命中的字幕。
+// 右键波形背景：添加空隙、创建字幕，或按右键对应的音频位置拆分命中的字幕。
 function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
   ctxmenu.innerHTML = '';
   // 空白波形按鼠标实际落入的 lane 决定创建轨道；但拆分动作按时间点上
@@ -13936,6 +14092,7 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
       mainIdx >= 0,
     );
   }
+  addItem('添加空隙', '', () => addGapAtWaveformTime(timeMs));
   if (Array.isArray(DATA.segments) && DATA.segments.length) {
     addItem(
       '按音频位置拆分主字幕',
@@ -14440,6 +14597,8 @@ function initWaveformEditor() {
     toggleGapRemoved,
     applyGapRange: applyManualGapRange,
     resizeGapBoundary: resizeManualGapBoundary,
+    moveGap: (index, deltaMs) => translateManualGap(index, deltaMs, 'move'),
+    copyGap: (index, deltaMs) => translateManualGap(index, deltaMs, 'copy'),
     previewGapAt,
     showGapContextMenu: (x, y, index) => showGapContextMenu(x, y, index),
     showContextMenu: (x, y, idx, timeMs) => showContextMenu(x, y, idx, timeMs),
