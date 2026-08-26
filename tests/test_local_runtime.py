@@ -11,7 +11,6 @@ from unittest import mock
 
 
 from maw.local_runtime import (
-    GENERAL_REQUIREMENTS,
     LocalRuntimeError,
     default_model_cache_root,
     install_local_runtime,
@@ -97,14 +96,17 @@ class LocalRuntimeTests(unittest.TestCase):
                         packages = root / "Lib" / "site-packages"
                     else:
                         packages = root / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
-                    for name in ("funasr", "qwen_asr", "jieba", "torch", "torchaudio"):
+                    for name in ("funasr", "qwen_asr", "jieba", "torch", "torchaudio", "reapeaks"):
                         (packages / name).mkdir(parents=True, exist_ok=True)
                 return 0
 
+            requirements_txt = Path(temp_dir) / "requirements-local.txt"
+            requirements_txt.write_text("funasr==1.4.2\nqwen-asr==0.0.6\n", encoding="utf-8")
             with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(root), "MAW_MODEL_CACHE_ROOT": str(cache)}):
                 with mock.patch("maw.local_runtime._find_uv", return_value=Path("uv.exe")):
-                    with mock.patch("maw.local_runtime._run_process", side_effect=fake_run) as run_process:
-                        status = install_local_runtime(on_event=lambda *event: events.append(event))
+                    with mock.patch("maw.local_runtime._runtime_requirements_path", return_value=requirements_txt):
+                        with mock.patch("maw.local_runtime._run_process", side_effect=fake_run) as run_process:
+                            status = install_local_runtime(on_event=lambda *event: events.append(event))
 
             self.assertTrue(status.ready)
             self.assertTrue((root / "runtime.json").exists())
@@ -116,8 +118,8 @@ class LocalRuntimeTests(unittest.TestCase):
             install_command = run_process.call_args_list[1].args[0]
             verify_command = run_process.call_args_list[2].args[0]
 
-        self.assertIn("jieba>=0.42", GENERAL_REQUIREMENTS)
-        self.assertIn("jieba>=0.42", install_command)
+        self.assertIn("-r", install_command)
+        self.assertTrue(any("requirements-local.txt" in str(arg) for arg in install_command))
         self.assertIn("import jieba", verify_command[-1])
 
     def test_install_without_uv_explains_packaged_bootstrap_requirement(self) -> None:

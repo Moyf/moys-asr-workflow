@@ -11,7 +11,6 @@ from unittest import mock
 from maw.ocr_runtime import (
     OCR_MODEL_ID,
     OCR_SMALL_MODEL_ID,
-    OCR_REQUIREMENTS,
     install_ocr_runtime,
     managed_ocr_runtime_status,
     run_ocr_in_runtime,
@@ -53,14 +52,18 @@ class OcrRuntimeTests(unittest.TestCase):
             on_line("fake command complete")
             return 0
 
+        requirements_txt = self.root.parent / "requirements-ocr.txt"
+        requirements_txt.write_text("numpy==2.4.6\nonnxruntime==1.28.0\nrapidocr==3.9.2\n", encoding="utf-8")
         with mock.patch("maw.ocr_runtime._find_uv", return_value=Path("uv.exe")):
-            with mock.patch("maw.ocr_runtime._run_process", side_effect=fake_run):
-                status = install_ocr_runtime(runtime_root=self.root, cancel_event=Event())
+            with mock.patch("maw.ocr_runtime._ocr_requirements_path", return_value=requirements_txt):
+                with mock.patch("maw.ocr_runtime._run_process", side_effect=fake_run):
+                    status = install_ocr_runtime(runtime_root=self.root, cancel_event=Event())
 
         self.assertTrue(status.ready)
         self.assertEqual(json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))["modelId"], OCR_MODEL_ID)
         self.assertIn("uv", str(calls[0][0]).lower())
-        self.assertEqual(calls[1][-len(OCR_REQUIREMENTS):], list(OCR_REQUIREMENTS))
+        self.assertIn("-r", calls[1])
+        self.assertTrue(any("requirements-ocr.txt" in str(arg) for arg in calls[1]))
         self.assertIn("rapidocr", calls[2][-1])
 
     def test_worker_command_forwards_model_paths_region_and_output_options(self) -> None:
@@ -118,7 +121,7 @@ class OcrRuntimeTests(unittest.TestCase):
         for package in ("numpy", "onnxruntime", "PIL", "rapidocr"):
             (site_packages / package).mkdir(parents=True, exist_ok=True)
         (self.root / "runtime.json").write_text(
-            json.dumps({"status": "ready", "runtimeVersion": "1"}),
+            json.dumps({"status": "ready", "runtimeVersion": "2"}),
             encoding="utf-8",
         )
 
