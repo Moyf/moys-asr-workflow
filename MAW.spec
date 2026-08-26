@@ -111,7 +111,6 @@ a = Analysis(
         "maw.media_cache",
         "maw.waveform",
         "maw.reapeaks",
-        "waveform",
         "generate_subtitle_qwen_api",
         "generate_subtitle_soniox_api",
         "generate_subtitle_local",
