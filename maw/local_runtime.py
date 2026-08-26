@@ -18,6 +18,7 @@ import subprocess
 import sys
 import threading
 import time
+import zipfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,9 +28,11 @@ from typing import Final, TextIO
 from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
 
 
-RUNTIME_VERSION: Final = "4"
+RUNTIME_VERSION: Final = "5"
 PYTHON_VERSION: Final = "3.11"
 PYTORCH_INDEX: Final = "https://download.pytorch.org/whl/cu130"
+EMBED_PYTHON_ZIP: Final = "python-3.11.9-embed-amd64.zip"
+GET_PIP_SCRIPT: Final = "get-pip.py"
 
 
 RuntimeEvent = Callable[[str, int, str], None]
@@ -112,7 +115,7 @@ def model_cache_environment(model_cache_root: str | Path | None = None) -> dict[
 
 def runtime_python_path(root: Path | None = None) -> Path:
     target = root or default_runtime_root()
-    relative = Path("Scripts") / "python.exe" if os.name == "nt" else Path("bin") / "python"
+    relative = Path("python") / "python.exe" if os.name == "nt" else Path("python") / "bin" / "python"
     return target / relative
 
 
@@ -179,10 +182,13 @@ def install_local_runtime(
     cancel = cancel_event or Event()
     root = default_runtime_root()
     root.parent.mkdir(parents=True, exist_ok=True)
-    uv = _find_uv()
-    if uv is None:
+
+    embed_zip = _find_bootstrap_asset(EMBED_PYTHON_ZIP)
+    get_pip = _find_bootstrap_asset(GET_PIP_SCRIPT)
+    if embed_zip is None or get_pip is None:
         raise LocalRuntimeError(
-            "未找到本地运行环境安装器 uv。请使用官方 Windows 打包版，或在开发环境中确保 uv 已加入 PATH。"
+            "未找到本地运行环境安装资产（embedded Python 或 get-pip.py）。"
+            "请使用官方 Windows 打包版。"
         )
 
     current = managed_runtime_status(model_cache_root)
@@ -191,38 +197,38 @@ def install_local_runtime(
         return current
 
     _check_cancel(cancel)
-    emit("正在准备 Python 运行环境……", 5, "bootstrap")
+    emit("正在解压嵌入式 Python 运行环境……", 5, "bootstrap")
+    python_dir = root / "python"
     python = runtime_python_path(root)
-    venv_args = [str(uv), "venv", "--python", PYTHON_VERSION, "--allow-existing"]
-    if root.exists() and not python.exists():
-        venv_args.append("--clear")
-    venv_args.extend(["--prompt", "MAW-local", str(root)])
-    _run_process(venv_args, env=_runtime_env(model_cache_root), cancel=cancel, on_line=_uv_line(emit, 10, "bootstrap"))
+    if repair or not python.exists():
+        if python_dir.exists():
+            shutil.rmtree(python_dir)
+        _extract_embed_python(embed_zip, python_dir)
     _check_cancel(cancel)
     if not python.exists():
-        raise LocalRuntimeError(f"Python 运行环境创建失败：未找到 {python}")
+        raise LocalRuntimeError(f"Python 运行环境解压失败：未找到 {python}")
+
+    emit("正在安装 pip……", 12, "bootstrap")
+    _run_process(
+        _get_pip_command(python, get_pip),
+        env=_runtime_env(model_cache_root, root),
+        cancel=cancel,
+        on_line=_bootstrap_line(emit, 15, "bootstrap"),
+    )
+    _check_cancel(cancel)
 
     emit("正在安装本地 ASR 依赖（Torch、FunASR、QwenASR）……", 25, "dependencies")
     requirements_file = _runtime_requirements_path()
-    install_args = [
-        str(uv),
-        "pip",
-        "install",
-        "--python",
-        str(python),
-        "--upgrade",
-        "--index-url",
-        "https://pypi.org/simple",
-        "--extra-index-url",
-        PYTORCH_INDEX,
-        "--index-strategy",
-        "unsafe-best-match",
-        "-r",
-        str(requirements_file),
-    ]
+    site_packages = root / "site-packages"
+    install_args = _pip_install_command(
+        python,
+        site_packages,
+        requirements_file,
+        extra_index_url=PYTORCH_INDEX,
+    )
     _run_process(
         install_args,
-        env=_runtime_env(model_cache_root),
+        env=_runtime_env(model_cache_root, root),
         cancel=cancel,
         on_line=_dependency_line(emit, requirements_file),
     )
@@ -230,21 +236,15 @@ def install_local_runtime(
 
     if sys.platform != "darwin" and not _has_cuda():
         emit("未检测到 NVIDIA CUDA，切换 Torch 为 CPU 版……", 88, "cuda-fallback")
-        cpu_torch_args = [
-            str(uv),
-            "pip",
-            "install",
-            "--python",
-            str(python),
-            "--upgrade",
-            "--index-url",
-            "https://pypi.org/simple",
-            "torch==2.13.0",
-            "torchaudio==2.11.0",
-        ]
+        cpu_args = _pip_install_command(
+            python,
+            site_packages,
+            None,
+            packages=["torch==2.13.0", "torchaudio==2.11.0"],
+        )
         _run_process(
-            cpu_torch_args,
-            env=_runtime_env(model_cache_root),
+            cpu_args,
+            env=_runtime_env(model_cache_root, root),
             cancel=cancel,
             on_line=lambda line: emit(line, 89, "cuda-fallback"),
         )
@@ -256,7 +256,7 @@ def install_local_runtime(
         "-c",
         "from funasr import AutoModel; from qwen_asr import Qwen3ASRModel; import jieba, torch, torchaudio; print('MAW_LOCAL_RUNTIME_READY')",
     ]
-    _run_process(verify_args, env=_runtime_env(model_cache_root), cancel=cancel, on_line=lambda line: emit(line, 94, "verify"))
+    _run_process(verify_args, env=_runtime_env(model_cache_root, root), cancel=cancel, on_line=lambda line: emit(line, 94, "verify"))
     _check_cancel(cancel)
     _write_manifest(root, {"status": "ready", "runtimeVersion": RUNTIME_VERSION, "pythonVersion": PYTHON_VERSION, "installedAt": int(time.time())})
     cache_environment = model_cache_environment(model_cache_root)
@@ -303,7 +303,7 @@ def prepare_model_in_runtime(
         command.append("--trust-remote-code")
     return _run_process(
         command,
-        env=_runtime_env(model_cache_root),
+        env=_runtime_env(model_cache_root, default_runtime_root()),
         cancel=cancel_event or Event(),
         on_line=on_event or (lambda _line: None),
     )
@@ -355,33 +355,78 @@ def prepare_model_in_process(
     )
 
 
-def _runtime_env(model_cache_root: str | Path | None = None) -> dict[str, str]:
+def _runtime_env(
+    model_cache_root: str | Path | None = None,
+    runtime_root: Path | None = None,
+) -> dict[str, str]:
     env = dict(os.environ)
     env.update(model_cache_environment(model_cache_root))
     env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
+    if runtime_root is not None:
+        site_packages = runtime_root / "site-packages"
+        env["PYTHONPATH"] = str(site_packages)
     return env
 
 
-def _find_uv() -> Path | None:
-    candidates: list[Path] = []
-    configured = os.environ.get("MAW_UV_PATH", "").strip()
-    if configured:
-        candidates.append(Path(configured).expanduser())
-    candidates.extend([
-        asset_path("bootstrap/uv.exe"),
-        asset_path("bootstrap/uv"),
-        Path(sys.executable).resolve().parent / "bootstrap" / "uv.exe",
-        Path(sys.executable).resolve().parent / "bootstrap" / "uv",
-    ])
-    found = shutil.which("uv")
-    if found:
-        candidates.append(Path(found))
+def _find_bootstrap_asset(filename: str) -> Path | None:
+    """Find a bootstrap asset (embedded Python zip, get-pip.py) in the bundle."""
+    candidates: list[Path] = [
+        asset_path(f"bootstrap/{filename}"),
+        Path(sys.executable).resolve().parent / "bootstrap" / filename,
+    ]
+    # Dev mode: also check build/ directory where assets are staged.
+    if not getattr(sys, "frozen", False):
+        candidates.append(Path(__file__).resolve().parents[1] / "build" / filename)
     for candidate in candidates:
         if candidate.is_file():
             return candidate.resolve()
     return None
+
+
+def _extract_embed_python(zip_path: Path, target_dir: Path) -> None:
+    """Extract the embedded Python distribution and enable site + target packages."""
+    target_dir.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path) as archive:
+        archive.extractall(target_dir)
+    pth_path = target_dir / "python311._pth"
+    if pth_path.is_file():
+        text = pth_path.read_text(encoding="utf-8")
+        text = text.replace("#import site", "import site")
+        # The _pth file controls sys.path and overrides PYTHONPATH.
+        # Add ../site-packages so the embedded Python finds pip --target installs.
+        if "../site-packages" not in text:
+            text = text.rstrip() + "\n../site-packages\n"
+        pth_path.write_text(text, encoding="utf-8", newline="\n")
+
+
+def _get_pip_command(python_exe: Path, get_pip_path: Path) -> list[str]:
+    """Build the command to bootstrap pip into an embedded Python."""
+    return [str(python_exe), str(get_pip_path)]
+
+
+def _pip_install_command(
+    python_exe: Path,
+    target_dir: Path,
+    requirements_file: Path | None,
+    *,
+    extra_index_url: str | None = None,
+    packages: list[str] | None = None,
+) -> list[str]:
+    """Build a pip install --target command for the managed runtime."""
+    command = [
+        str(python_exe), "-m", "pip", "install", "--upgrade",
+        "--target", str(target_dir),
+        "--index-url", "https://pypi.org/simple",
+    ]
+    if extra_index_url:
+        command.extend(["--extra-index-url", extra_index_url])
+    if requirements_file is not None:
+        command.extend(["-r", str(requirements_file)])
+    if packages:
+        command.extend(packages)
+    return command
 
 
 def _runtime_bundle_path(relative: str) -> Path:
@@ -434,7 +479,7 @@ def _has_cuda() -> bool:
         return False
 
 
-def _uv_line(emit: RuntimeEvent, percent: int, stage: str) -> Callable[[str], None]:
+def _bootstrap_line(emit: RuntimeEvent, percent: int, stage: str) -> Callable[[str], None]:
     def report(line: str) -> None:
         text = line.strip()
         if text:
@@ -538,10 +583,7 @@ def _read_manifest(path: Path) -> dict[str, object]:
 
 
 def _runtime_package_dirs_present(root: Path) -> bool:
-    site_packages = root / "Lib" / "site-packages" if os.name == "nt" else root / "lib"
-    if os.name != "nt":
-        candidates = list(site_packages.glob("python*/site-packages"))
-        site_packages = candidates[0] if candidates else site_packages
+    site_packages = root / "site-packages"
     return all((site_packages / name).exists() for name in ("funasr", "qwen_asr", "jieba", "torch", "torchaudio", "reapeaks"))
 
 
