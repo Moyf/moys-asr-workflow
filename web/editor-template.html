@@ -243,8 +243,8 @@ __WAVEFORM_CSS__
     <div class="gap-remove-advanced">
       <button type="button" id="gap-remove-advanced-toggle" class="gap-remove-advanced-toggle" aria-expanded="false" aria-controls="gap-remove-advanced-body">
         <span class="gap-remove-advanced-caret" aria-hidden="true">▸</span>
-        <span class="gap-remove-advanced-label">高级设置</span>
-        <small>预留量、滞回等检测细节</small>
+        <span class="gap-remove-advanced-label">空隙检测与调整</span>
+        <small>预留量、滞回与边界调整</small>
       </button>
       <div class="gap-remove-advanced-body" id="gap-remove-advanced-body" hidden>
         <div class="gap-remove-fields gap-remove-fields-advanced">
@@ -273,6 +273,10 @@ __WAVEFORM_CSS__
             <small id="gap-remove-hysteresis-hint">当音频判定为有声时，需要降低到比阈值更低 2 dB 的时候才视作恢复静音。建议 1–3 dB，过高会延迟回到静音</small>
           </label>
         </div>
+        <button type="button" id="gap-remove-shrink" class="gap-remove-scan">
+          <span>收缩空隙</span>
+          <small>按当前前后预留收缩现有空隙</small>
+        </button>
       </div>
     </div>
     <div class="gap-remove-advanced gap-remove-disable-settings">

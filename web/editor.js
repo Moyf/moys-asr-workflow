@@ -1316,6 +1316,7 @@ const gapRemoveHysteresis = document.getElementById('gap-remove-hysteresis');
 const gapRemoveHysteresisHint = document.getElementById('gap-remove-hysteresis-hint');
 const gapRemoveLeadIn = document.getElementById('gap-remove-lead-in');
 const gapRemoveLeadOut = document.getElementById('gap-remove-lead-out');
+const gapRemoveShrinkButton = document.getElementById('gap-remove-shrink');
 const gapRemoveAdvancedToggle = document.getElementById('gap-remove-advanced-toggle');
 const gapRemoveAdvancedBody = document.getElementById('gap-remove-advanced-body');
 const gapRemoveDisableToggle = document.getElementById('gap-remove-disable-toggle');
@@ -2665,6 +2666,43 @@ function scanAndRemoveGaps() {
   );
 }
 
+function readGapRemoveLeadPadding() {
+  const read = (input, fallback) => {
+    const raw = input?.value;
+    const numeric = typeof raw === 'string' && !raw.trim() ? NaN : Number(raw);
+    return Math.min(2000, Math.max(0, Number.isFinite(numeric) ? Math.round(numeric) : fallback));
+  };
+  return {
+    leadInMs: read(gapRemoveLeadIn, DEFAULT_GAP_REMOVE_LEAD_IN_MS),
+    leadOutMs: read(gapRemoveLeadOut, DEFAULT_GAP_REMOVE_LEAD_OUT_MS),
+  };
+}
+
+function shrinkExistingGaps() {
+  const state = getGapRemoveData(false);
+  const gaps = getGapRemoveGaps();
+  if (!state || !gaps.length) {
+    flashHint('当前没有可收缩的静音空隙', 'invalid');
+    return;
+  }
+  const { leadInMs, leadOutMs } = readGapRemoveLeadPadding();
+  const nextGaps = window.AsrEditorUtils.shrinkGapRemoveGaps(gaps, leadInMs, leadOutMs);
+  if (JSON.stringify(nextGaps) === JSON.stringify(gaps)) {
+    flashHint('当前空隙无法按预留量继续收缩', 'invalid');
+    return;
+  }
+  pushGapRemoveUndo('按预留量收缩空隙');
+  state.lead_in_ms = leadInMs;
+  state.lead_out_ms = leadOutMs;
+  state.gaps = nextGaps;
+  state.manual_corrections = true;
+  setGapRemoveData(state);
+  flashHint(
+    `已按前端 ${leadInMs}ms、后端 ${leadOutMs}ms 收缩 ${gaps.length} 段空隙`,
+    'success',
+  );
+}
+
 function readGapRemoveDisableSettings() {
   const coveragePercent = clampGapRemoveDisableCoverage(gapRemoveDisableCoverage?.value);
   const remainingMs = clampGapRemoveDisableRemaining(gapRemoveDisableRemaining?.value);
@@ -3139,6 +3177,7 @@ gapRemovePanel?.querySelectorAll('input[type="number"]').forEach((input) => {
 
 gapRemoveManageButton?.addEventListener('click', toggleGapRemovePanel);
 gapRemoveScanButton?.addEventListener('click', scanAndRemoveGaps);
+gapRemoveShrinkButton?.addEventListener('click', shrinkExistingGaps);
 gapRemoveClearAllButton?.addEventListener('click', clearAllGaps);
 gapRemoveCloseButton?.addEventListener('click', closeGapRemovePanel);
 gapRemoveOperationMode?.addEventListener('change', () => {

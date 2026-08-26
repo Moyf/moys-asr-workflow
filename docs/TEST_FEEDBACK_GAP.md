@@ -15,6 +15,7 @@
 | 7 | 编辑器 / 静音空隙 | 跨行 Gap 缩短后清理第二行残留预览 | 修改 | 已修复 |
 | 8 | 编辑器 / 静音空隙 | 中键拖动创建 Gap 时也支持跨行延伸，并显示跨行预览 | 修改 | 已修复 |
 | 9 | 编辑器 / 静音空隙 | 在高级设置下增加“禁用空隙内字幕”折叠项，按覆盖率和剩余时长阈值批量禁用字幕 | 修改 | 已修复 |
+| 10 | 编辑器 / 静音空隙 | 在空隙检测与调整中增加“收缩空隙”，按当前预留量额外向内微调已有空隙 | 修改 | 已修复 |
 
 ## 基线
 
@@ -48,3 +49,10 @@
 - 9 已修复：点击“禁用字幕”时合并所有 `removed: true` 空隙，按覆盖率与剩余时长两个条件筛选主字幕；只处理当前未禁用的字幕，并沿用绑定副字幕同步、单次撤销与原有 `disabled` 语义。提示改为“已禁用 N 条静音空隙内的字幕”。
 - 9 已验证：`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（177/177）；`uv run python -m unittest tests.test_waveform`（15/15）；全量 `uv run python -m unittest discover -s tests -p "test_*.py"`（703 通过，4 跳过）；focused Chromium Gap 回归（4/4，含默认值、阈值边界、撤销和提示文案）；相关 JS 语法检查、`uv run python edit.py --blank` 和 `git diff --check` 通过。
 - 9 未验证边界：尚未运行完整 Playwright 套件；本轮只覆盖 Chromium focused 回归，未做 macOS 触控板/不同指针设备实机验证。
+
+### 收缩空隙
+
+- 10 已修复：在原“高级设置”折叠区内增加“收缩空隙”按钮，并将区块改名为“空隙检测与调整”。扫描时应用预留量的逻辑保持不变；按钮使用当前界面中的前端/后端预留值，对现有 `audio_gate` 空隙额外向内收缩。
+- 10 已修复：每段空隙的起点增加前端预留、终点减少后端预留；被预留量完全吃掉的区间会移除，其他区间保留 `removed` 状态。操作只写入 gap 撤销栈并标记人工修正，不改变字幕时间；重复点击可以继续微调。
+- 10 已验证：`node --check web\\editor.js`、`node --check web\\editor-utils.js` 通过；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（179/179）；`uv run python -m unittest tests.test_waveform`（15/15）；`uv run python edit.py --blank` 成功更新便携编辑器；focused Chromium Gap 回归（5/5，含改名后的折叠项、当前预留值收缩、保留/移除状态及撤销）；`git diff --check` 通过。
+- 10 未验证边界：尚未运行完整 Playwright 套件；本轮只覆盖 Chromium focused 回归，未做 macOS 触控板/不同指针设备实机验证。

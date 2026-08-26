@@ -3669,8 +3669,8 @@
     <div class="gap-remove-advanced">
       <button type="button" id="gap-remove-advanced-toggle" class="gap-remove-advanced-toggle" aria-expanded="false" aria-controls="gap-remove-advanced-body">
         <span class="gap-remove-advanced-caret" aria-hidden="true">▸</span>
-        <span class="gap-remove-advanced-label">高级设置</span>
-        <small>预留量、滞回等检测细节</small>
+        <span class="gap-remove-advanced-label">空隙检测与调整</span>
+        <small>预留量、滞回与边界调整</small>
       </button>
       <div class="gap-remove-advanced-body" id="gap-remove-advanced-body" hidden>
         <div class="gap-remove-fields gap-remove-fields-advanced">
@@ -3699,6 +3699,10 @@
             <small id="gap-remove-hysteresis-hint">当音频判定为有声时，需要降低到比阈值更低 2 dB 的时候才视作恢复静音。建议 1–3 dB，过高会延迟回到静音</small>
           </label>
         </div>
+        <button type="button" id="gap-remove-shrink" class="gap-remove-scan">
+          <span>收缩空隙</span>
+          <small>按当前前后预留收缩现有空隙</small>
+        </button>
       </div>
     </div>
     <div class="gap-remove-advanced gap-remove-disable-settings">
@@ -6434,6 +6438,19 @@
     return coalesceGapRemoveGaps(next);
   }
 
+  function shrinkGapRemoveGaps(gaps, leadInMs, leadOutMs) {
+    const source = coalesceGapRemoveGaps(gaps);
+    const leadIn = clampInteger(leadInMs, 40, 0, 2000);
+    const leadOut = clampInteger(leadOutMs, 80, 0, 2000);
+    return coalesceGapRemoveGaps(source
+      .map((gap) => ({
+        ...gap,
+        start: gap.start + leadIn,
+        end: gap.end - leadOut,
+      }))
+      .filter((gap) => gap.end > gap.start));
+  }
+
   // 将一个已有区段作为整体平移或复制到目标位置。与人工“范围移除”不同，
   // 这里保留区段的 removed 状态，因此恢复区段也可以被整体拖动/复制。
   function overlayGapRemoveRange(gaps, startMs, endMs, removed) {
@@ -8157,6 +8174,7 @@ export default MawDynamicCaptions;
     fileBasename,
     normalizeGapRemoveGaps,
     applyGapRemoveRange,
+    shrinkGapRemoveGaps,
     moveGapRemoveRange,
     copyGapRemoveRange,
     resizeGapRemoveBoundary,
@@ -8413,13 +8431,13 @@ export default MawDynamicCaptions;
     '按波形音量扫描内部空隙，不改写原时间轴': 'Scan internal gaps from waveform volume without changing the original timeline',
     '最小空隙': 'Minimum gap', '短于此值不处理': 'Ignore shorter gaps',
     '音量阈值': 'Volume threshold', '达到此音量才算有声': 'Audio is active at this level',
-    '高级设置': 'Advanced settings', '预留量、滞回等检测细节': 'Padding, hysteresis, and detection details',
+    '高级设置': 'Advanced settings', '空隙检测与调整': 'Gap detection and adjustment', '预留量、滞回等检测细节': 'Padding, hysteresis, and detection details', '预留量、滞回与边界调整': 'Padding, hysteresis, and boundary adjustment',
     '禁用空隙内字幕': 'Disable subtitles in gaps', '按覆盖率和剩余时长筛选': 'Filter by coverage and remaining duration',
     '覆盖率': 'Coverage', '空隙覆盖字幕时长达到此比例': 'Gap-covered time reaches this ratio',
     '剩余时长阈值': 'Remaining duration threshold', '覆盖后剩余字幕时长不超过此值': 'Remaining subtitle time after coverage cannot exceed this',
     '禁用字幕': 'Disable subtitles', '按以上条件处理主字幕': 'Apply the rules above to main subtitles',
     '符合条件的字幕已全部禁用': 'All matching subtitles are already disabled', '没有符合条件的字幕': 'No subtitles match the rules',
-    '前端预留': 'Lead-in padding', '后端预留': 'Lead-out padding', '滞回': 'Hysteresis',
+    '前端预留': 'Lead-in padding', '后端预留': 'Lead-out padding', '滞回': 'Hysteresis', '收缩空隙': 'Shrink gaps', '按当前前后预留收缩现有空隙': 'Shrink existing gaps by the current lead-in and lead-out padding',
     '扫描并移除': 'Scan and remove',
     '根据当前参数重新分析整段波形': 'Analyze the full waveform with these settings',
     '尚未扫描空隙。': 'Gaps have not been scanned.',
@@ -15727,6 +15745,7 @@ const gapRemoveHysteresis = document.getElementById('gap-remove-hysteresis');
 const gapRemoveHysteresisHint = document.getElementById('gap-remove-hysteresis-hint');
 const gapRemoveLeadIn = document.getElementById('gap-remove-lead-in');
 const gapRemoveLeadOut = document.getElementById('gap-remove-lead-out');
+const gapRemoveShrinkButton = document.getElementById('gap-remove-shrink');
 const gapRemoveAdvancedToggle = document.getElementById('gap-remove-advanced-toggle');
 const gapRemoveAdvancedBody = document.getElementById('gap-remove-advanced-body');
 const gapRemoveDisableToggle = document.getElementById('gap-remove-disable-toggle');
@@ -17076,6 +17095,43 @@ function scanAndRemoveGaps() {
   );
 }
 
+function readGapRemoveLeadPadding() {
+  const read = (input, fallback) => {
+    const raw = input?.value;
+    const numeric = typeof raw === 'string' && !raw.trim() ? NaN : Number(raw);
+    return Math.min(2000, Math.max(0, Number.isFinite(numeric) ? Math.round(numeric) : fallback));
+  };
+  return {
+    leadInMs: read(gapRemoveLeadIn, DEFAULT_GAP_REMOVE_LEAD_IN_MS),
+    leadOutMs: read(gapRemoveLeadOut, DEFAULT_GAP_REMOVE_LEAD_OUT_MS),
+  };
+}
+
+function shrinkExistingGaps() {
+  const state = getGapRemoveData(false);
+  const gaps = getGapRemoveGaps();
+  if (!state || !gaps.length) {
+    flashHint('当前没有可收缩的静音空隙', 'invalid');
+    return;
+  }
+  const { leadInMs, leadOutMs } = readGapRemoveLeadPadding();
+  const nextGaps = window.AsrEditorUtils.shrinkGapRemoveGaps(gaps, leadInMs, leadOutMs);
+  if (JSON.stringify(nextGaps) === JSON.stringify(gaps)) {
+    flashHint('当前空隙无法按预留量继续收缩', 'invalid');
+    return;
+  }
+  pushGapRemoveUndo('按预留量收缩空隙');
+  state.lead_in_ms = leadInMs;
+  state.lead_out_ms = leadOutMs;
+  state.gaps = nextGaps;
+  state.manual_corrections = true;
+  setGapRemoveData(state);
+  flashHint(
+    `已按前端 ${leadInMs}ms、后端 ${leadOutMs}ms 收缩 ${gaps.length} 段空隙`,
+    'success',
+  );
+}
+
 function readGapRemoveDisableSettings() {
   const coveragePercent = clampGapRemoveDisableCoverage(gapRemoveDisableCoverage?.value);
   const remainingMs = clampGapRemoveDisableRemaining(gapRemoveDisableRemaining?.value);
@@ -17550,6 +17606,7 @@ gapRemovePanel?.querySelectorAll('input[type="number"]').forEach((input) => {
 
 gapRemoveManageButton?.addEventListener('click', toggleGapRemovePanel);
 gapRemoveScanButton?.addEventListener('click', scanAndRemoveGaps);
+gapRemoveShrinkButton?.addEventListener('click', shrinkExistingGaps);
 gapRemoveClearAllButton?.addEventListener('click', clearAllGaps);
 gapRemoveCloseButton?.addEventListener('click', closeGapRemovePanel);
 gapRemoveOperationMode?.addEventListener('change', () => {

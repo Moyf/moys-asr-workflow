@@ -290,6 +290,57 @@ test('disables subtitles by removed-gap coverage and remaining duration threshol
   }))).toEqual({ coverage: 50, remaining: 1000 });
 });
 
+test('shrinks existing gaps from the gap settings padding', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    DATA.gap_remove = {
+      schema: 'moy.asr.gap_remove.v1',
+      detector: 'audio_gate',
+      minimum_ms: 500,
+      threshold_db: -24,
+      hysteresis_db: 2,
+      lead_in_ms: 40,
+      lead_out_ms: 80,
+      skip_playback: true,
+      operation_mode: 'boundary_drag',
+      manual_corrections: false,
+      gaps: [
+        { start: 1000, end: 2000, removed: true },
+        { start: 3000, end: 3400, removed: false },
+      ],
+    };
+    updateGapRemoveUi();
+    renderAll({ waveform: 'full' });
+  });
+
+  await page.locator('#gap-remove-manage').click();
+  await expect(page.locator('#gap-remove-advanced-toggle')).toContainText('空隙检测与调整');
+  const advancedToggle = page.locator('#gap-remove-advanced-toggle');
+  if (await advancedToggle.getAttribute('aria-expanded') !== 'true') await advancedToggle.click();
+  await expect(page.locator('#gap-remove-shrink')).toBeVisible();
+  await expect(page.locator('#gap-remove-lead-in')).toHaveValue('40');
+  await expect(page.locator('#gap-remove-lead-out')).toHaveValue('80');
+  await page.locator('#gap-remove-lead-in').fill('100');
+  await page.locator('#gap-remove-lead-out').fill('200');
+
+  await page.locator('#gap-remove-shrink').click();
+  await expect.poll(() => page.evaluate(() => DATA.gap_remove.gaps)).toEqual([
+    { start: 1100, end: 1800, removed: true },
+    { start: 3100, end: 3200, removed: false },
+  ]);
+  await expect.poll(() => page.evaluate(() => ({
+    leadIn: DATA.gap_remove.lead_in_ms,
+    leadOut: DATA.gap_remove.lead_out_ms,
+  }))).toEqual({ leadIn: 100, leadOut: 200 });
+  await expect(page.locator('#hint-stack')).toContainText('已按前端 100ms、后端 200ms 收缩 2 段空隙');
+
+  await page.locator('#undo-btn').click();
+  await expect.poll(() => page.evaluate(() => DATA.gap_remove.gaps)).toEqual([
+    { start: 1000, end: 2000, removed: true },
+    { start: 3000, end: 3400, removed: false },
+  ]);
+});
+
 test('N creates a subtitle at the waveform pointer and focuses the new cue', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('.player-stage').hover();

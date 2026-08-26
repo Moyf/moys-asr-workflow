@@ -1487,6 +1487,19 @@
     return coalesceGapRemoveGaps(next);
   }
 
+  function shrinkGapRemoveGaps(gaps, leadInMs, leadOutMs) {
+    const source = coalesceGapRemoveGaps(gaps);
+    const leadIn = clampInteger(leadInMs, 40, 0, 2000);
+    const leadOut = clampInteger(leadOutMs, 80, 0, 2000);
+    return coalesceGapRemoveGaps(source
+      .map((gap) => ({
+        ...gap,
+        start: gap.start + leadIn,
+        end: gap.end - leadOut,
+      }))
+      .filter((gap) => gap.end > gap.start));
+  }
+
   // 将一个已有区段作为整体平移或复制到目标位置。与人工“范围移除”不同，
   // 这里保留区段的 removed 状态，因此恢复区段也可以被整体拖动/复制。
   function overlayGapRemoveRange(gaps, startMs, endMs, removed) {
@@ -3210,6 +3223,7 @@ export default MawDynamicCaptions;
     fileBasename,
     normalizeGapRemoveGaps,
     applyGapRemoveRange,
+    shrinkGapRemoveGaps,
     moveGapRemoveRange,
     copyGapRemoveRange,
     resizeGapRemoveBoundary,

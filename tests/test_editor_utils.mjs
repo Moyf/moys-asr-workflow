@@ -228,6 +228,8 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('显示刀光特效', 'en'), 'Show slash effect');
   assert.equal(i18n.translateText('字幕大小', 'en'), 'Font size');
   assert.equal(i18n.translateText('字幕预览设置', 'en'), 'Subtitle preview settings');
+  assert.equal(i18n.translateText('空隙检测与调整', 'en'), 'Gap detection and adjustment');
+  assert.equal(i18n.translateText('收缩空隙', 'en'), 'Shrink gaps');
   assert.equal(i18n.translateText('禁用空隙内字幕', 'en'), 'Disable subtitles in gaps');
   assert.equal(i18n.translateText('覆盖率', 'en'), 'Coverage');
   assert.equal(i18n.translateText('剩余时长阈值', 'en'), 'Remaining duration threshold');
@@ -1091,6 +1093,34 @@ test('middle-button range adds arbitrary silence and overrides restored ranges',
   assert.deepEqual(JSON.parse(JSON.stringify(gaps)), [
     { start: 100, end: 250, removed: false },
     { start: 250, end: 900, removed: true },
+  ]);
+});
+
+
+test('shrinks existing gaps by lead padding without mutating source', () => {
+  const gaps = [
+    { start: 1000, end: 2000, removed: true },
+    { start: 3000, end: 3400, removed: false },
+  ];
+  const result = helpers.shrinkGapRemoveGaps(gaps, 100, 200);
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), [
+    { start: 1100, end: 1800, removed: true },
+    { start: 3100, end: 3200, removed: false },
+  ]);
+  assert.deepEqual(gaps, [
+    { start: 1000, end: 2000, removed: true },
+    { start: 3000, end: 3400, removed: false },
+  ]);
+});
+
+
+test('drops gaps consumed by inward padding and keeps neighboring ranges normalized', () => {
+  const result = helpers.shrinkGapRemoveGaps([
+    { start: 0, end: 100, removed: true },
+    { start: 1000, end: 2000, removed: true },
+  ], 60, 50);
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), [
+    { start: 1060, end: 1950, removed: true },
   ]);
 });
 
