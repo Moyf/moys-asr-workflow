@@ -193,6 +193,8 @@ def default_srt_path(
             tag = ".funasr-local"
         elif "qwen3-asr-1.7b" in local_model:
             tag = ".qwen3-asr-1.7b-local"
+        elif "moss" in local_model:
+            tag = ".moss-local"
         else:
             tag = ".qwen-asr-local"
     else:
@@ -243,6 +245,8 @@ def build_transcribe_command(
         _append_option(command, "--model-path", request.model_path)
         _append_option(command, "--device", request.device)
         _append_option(command, "--forced-aligner", request.forced_aligner)
+        if request.speaker_colors and request.engine == "moss":
+            command.append("--speaker-colors")
     elif is_soniox:
         _append_option(command, "--model", request.model if request.model != DEFAULT_MODEL_ID else "")
         if request.speaker_colors:
