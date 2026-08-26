@@ -37,10 +37,16 @@ try {
         throw "Build completed but did not copy FAQ-常见问题.txt beside MAW.exe."
     }
 
-    $UvCommand = Get-Command uv -ErrorAction Stop
     $BootstrapDirectory = Join-Path (Split-Path -Parent $ExePath) 'bootstrap'
     New-Item -ItemType Directory -Path $BootstrapDirectory -Force | Out-Null
-    Copy-Item -LiteralPath $UvCommand.Source -Destination (Join-Path $BootstrapDirectory 'uv.exe') -Force
+    $EmbedZip = Join-Path $RepoRoot 'build' 'python-3.11.9-embed-amd64.zip'
+    $GetPip = Join-Path $RepoRoot 'build' 'get-pip.py'
+    foreach ($Asset in @($EmbedZip, $GetPip)) {
+        if (-not (Test-Path -LiteralPath $Asset -PathType Leaf)) {
+            throw "Missing bootstrap asset: $Asset"
+        }
+        Copy-Item -LiteralPath $Asset -Destination (Join-Path $BootstrapDirectory (Split-Path -Leaf $Asset)) -Force
+    }
 
     Write-Host "Built $ExePath"
 }
