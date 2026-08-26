@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -26,25 +27,9 @@ from typing import Final, TextIO
 from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
 
 
-RUNTIME_VERSION: Final = "3"
+RUNTIME_VERSION: Final = "4"
 PYTHON_VERSION: Final = "3.11"
 PYTORCH_INDEX: Final = "https://download.pytorch.org/whl/cu130"
-GENERAL_REQUIREMENTS: Final[tuple[str, ...]] = (
-    "accelerate>=1.12",
-    "funasr>=1.3.29",
-    "hf-xet>=1.5",
-    "jieba>=0.42",
-    "qwen-asr>=0.0.6",
-    "requests>=2.28",
-)
-WINDOWS_TORCH_REQUIREMENTS: Final[tuple[str, ...]] = (
-    "torch==2.13.0+cu130",
-    "torchaudio==2.11.0+cu130",
-)
-OTHER_TORCH_REQUIREMENTS: Final[tuple[str, ...]] = (
-    "torch>=2.13.0",
-    "torchaudio>=2.11.0",
-)
 
 
 RuntimeEvent = Callable[[str, int, str], None]
@@ -218,10 +203,7 @@ def install_local_runtime(
         raise LocalRuntimeError(f"Python 运行环境创建失败：未找到 {python}")
 
     emit("正在安装本地 ASR 依赖（Torch、FunASR、QwenASR）……", 25, "dependencies")
-    requirements = (
-        *GENERAL_REQUIREMENTS,
-        *(WINDOWS_TORCH_REQUIREMENTS if os.name == "nt" else OTHER_TORCH_REQUIREMENTS),
-    )
+    requirements_file = _runtime_requirements_path()
     install_args = [
         str(uv),
         "pip",
@@ -233,13 +215,14 @@ def install_local_runtime(
         "https://pypi.org/simple",
         "--extra-index-url",
         PYTORCH_INDEX,
-        *requirements,
+        "-r",
+        str(requirements_file),
     ]
     _run_process(
         install_args,
         env=_runtime_env(model_cache_root),
         cancel=cancel,
-        on_line=_dependency_line(emit),
+        on_line=_dependency_line(emit, requirements_file),
     )
     _check_cancel(cancel)
 
@@ -383,6 +366,34 @@ def _runtime_bundle_path(relative: str) -> Path:
     return Path(__file__).resolve().parents[1] / relative
 
 
+def _runtime_requirements_path() -> Path:
+    """Resolve the frozen requirements.txt for the managed local ASR runtime."""
+    if getattr(sys, "frozen", False):
+        path = asset_path("local-runtime/requirements-local.txt")
+    else:
+        path = Path(__file__).resolve().parents[1] / "build" / "requirements-local.txt"
+    if not path.is_file():
+        raise LocalRuntimeError(
+            "本地运行环境依赖清单缺失：" + str(path) + "。"
+            "打包版应随包分发；源码运行请先运行 "
+            "uv export --frozen --extra local --no-dev --format requirements-txt -o build/requirements-local.txt"
+        )
+    return path
+
+
+def _requirement_package_names(path: Path) -> set[str]:
+    """Extract lowercased package names from a frozen requirements.txt for progress tracking."""
+    names: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        match = re.match(r"^([A-Za-z0-9_.-]+)", line)
+        if match:
+            names.add(match.group(1).casefold())
+    return names
+
+
 def _uv_line(emit: RuntimeEvent, percent: int, stage: str) -> Callable[[str], None]:
     def report(line: str) -> None:
         text = line.strip()
@@ -392,11 +403,9 @@ def _uv_line(emit: RuntimeEvent, percent: int, stage: str) -> Callable[[str], No
     return report
 
 
-def _dependency_line(emit: RuntimeEvent) -> Callable[[str], None]:
+def _dependency_line(emit: RuntimeEvent, requirements_file: Path) -> Callable[[str], None]:
     """Turn uv's package log into a coarse but honest install progress signal."""
-    markers = {
-        "accelerate", "funasr", "hf-xet", "jieba", "qwen-asr", "requests", "torch", "torchaudio",
-    }
+    markers = _requirement_package_names(requirements_file)
     seen: set[str] = set()
 
     def report(line: str) -> None:
@@ -493,7 +502,7 @@ def _runtime_package_dirs_present(root: Path) -> bool:
     if os.name != "nt":
         candidates = list(site_packages.glob("python*/site-packages"))
         site_packages = candidates[0] if candidates else site_packages
-    return all((site_packages / name).exists() for name in ("funasr", "qwen_asr", "jieba", "torch", "torchaudio"))
+    return all((site_packages / name).exists() for name in ("funasr", "qwen_asr", "jieba", "torch", "torchaudio", "reapeaks"))
 
 
 def _write_manifest(root: Path, values: Mapping[str, object]) -> None:
