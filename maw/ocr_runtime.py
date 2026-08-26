@@ -27,11 +27,11 @@ from maw.gui_platform import (
     release_process_tree,
     terminate_process_tree,
 )
-from maw.local_runtime import _find_uv
+from maw.local_runtime import _find_uv, _requirement_package_names
 from maw.postprocess_ocr import OcrDedupRequest
 
 
-OCR_RUNTIME_VERSION: Final = "1"
+OCR_RUNTIME_VERSION: Final = "2"
 OCR_PYTHON_VERSION: Final = "3.11"
 OCR_MODEL_ID: Final = "pp-ocrv6-tiny"
 OCR_MODEL_LABEL: Final = "PP-OCRv6 tiny（CPU）"
@@ -46,12 +46,8 @@ OCR_MODEL_LABELS: Final[dict[str, str]] = {
     OCR_MODEL_ID: OCR_MODEL_LABEL,
     OCR_SMALL_MODEL_ID: OCR_SMALL_MODEL_LABEL,
 }
-OCR_REQUIREMENTS: Final[tuple[str, ...]] = (
-    "numpy>=2.2,<2.5",
-    "onnxruntime>=1.18",
-    "pillow>=10.0.0",
-    "rapidocr>=3.9.0",
-)
+# OCR 依赖清单由 pyproject ocr extra 经 CI uv export 冻结（build/requirements-ocr.txt），
+# frozen 后随包分发于 asset_path("ocr-runtime/requirements-ocr.txt")。
 
 
 RuntimeEvent = Callable[[str, int, str], None]
@@ -218,6 +214,7 @@ def install_ocr_runtime(
         raise OcrRuntimeError(f"OCR Python 运行环境创建失败：未找到 {python}")
 
     emit("正在安装 OCR 模型和依赖……", 25, "dependencies")
+    requirements_file = _ocr_requirements_path()
     install_args = [
         str(uv),
         "pip",
@@ -227,13 +224,14 @@ def install_ocr_runtime(
         "--upgrade",
         "--index-url",
         "https://pypi.org/simple",
-        *OCR_REQUIREMENTS,
+        "-r",
+        str(requirements_file),
     ]
     _run_process(
         install_args,
         env=_runtime_env(),
         cancel=cancel,
-        on_line=_dependency_line(emit),
+        on_line=_dependency_line(emit, requirements_file),
         cwd=_runtime_bundle_root(),
     )
     _check_cancel(cancel)
@@ -259,7 +257,6 @@ def install_ocr_runtime(
             "runtimeVersion": OCR_RUNTIME_VERSION,
             "pythonVersion": OCR_PYTHON_VERSION,
             "modelId": OCR_MODEL_ID,
-            "requirements": list(OCR_REQUIREMENTS),
             "installedAt": int(time.time()),
         },
     )
@@ -392,6 +389,21 @@ def _runtime_bundle_path(relative: str) -> Path:
     return _runtime_bundle_root() / relative
 
 
+def _ocr_requirements_path() -> Path:
+    """Resolve the frozen requirements.txt for the managed OCR runtime."""
+    if getattr(sys, "frozen", False):
+        path = asset_path("ocr-runtime/requirements-ocr.txt")
+    else:
+        path = Path(__file__).resolve().parents[1] / "build" / "requirements-ocr.txt"
+    if not path.is_file():
+        raise OcrRuntimeError(
+            "OCR 运行环境依赖清单缺失：" + str(path) + "。"
+            "打包版应随包分发；源码运行请先运行 "
+            "uv export --frozen --extra ocr --no-dev --format requirements-txt -o build/requirements-ocr.txt"
+        )
+    return path
+
+
 def _uv_line(emit: RuntimeEvent, percent: int, stage: str) -> RuntimeLine:
     def report(line: str) -> None:
         text = line.strip()
@@ -401,8 +413,8 @@ def _uv_line(emit: RuntimeEvent, percent: int, stage: str) -> RuntimeLine:
     return report
 
 
-def _dependency_line(emit: RuntimeEvent) -> RuntimeLine:
-    markers = {"numpy", "onnxruntime", "pillow", "rapidocr"}
+def _dependency_line(emit: RuntimeEvent, requirements_file: Path) -> RuntimeLine:
+    markers = _requirement_package_names(requirements_file)
     seen: set[str] = set()
 
     def report(line: str) -> None:
@@ -524,7 +536,6 @@ __all__ = [
     "OCR_MODEL_TYPES",
     "OCR_SMALL_MODEL_ID",
     "OCR_SMALL_MODEL_LABEL",
-    "OCR_REQUIREMENTS",
     "OCR_RUNTIME_VERSION",
     "OcrRuntimeCancelled",
     "OcrRuntimeError",
