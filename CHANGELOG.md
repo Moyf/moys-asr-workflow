@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### 🐛 问题修复
+
+- **NixOS 打开字幕编辑器崩溃** ： PyInstaller 排除 `readline` 模块并在 AppImage 内物理剔除 `libreadline.so`（与既有 C++ 运行时剔除模式一致），避免 AppImage 内的旧版 readline 污染 `webbrowser.open` → xdg-open → bash 子进程；release CI 增加产物回归断言。
+- **Pages 部署路径过滤** ： `deploy-editor-pages.yml` 的 `paths` 清理失效的 `reapeaks_io.py` 条目（main 实际文件为 `maw/reapeaks.py`，已被 `maw/**` 覆盖，仅为消除残留）。
+
 ## [1.5.0-beta.3] - 2026-08-26
 
 ### 🚀 全新特性
