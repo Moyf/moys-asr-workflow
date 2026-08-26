@@ -435,7 +435,7 @@
     <h2>波形与 take 块</h2>
     <div id="media-host"><p class="muted">工程没有可播放媒体，仍可查看对齐结果。</p></div>
     <div class="timeline-help">
-      <span id="timeline-help-text">基础模式横向滚动查看整段 · 单击定位 · 双击/空格播放暂停 · 按住左键拖动播放头 · Ctrl+单击块跳到下方 card</span>
+      <span id="timeline-help-text">基础模式横向滚动查看整段 · 滚轮横向滚动 · 单击定位 · 双击/空格播放暂停 · 按住左键拖动播放头 · Ctrl+单击块跳到下方 card</span>
       <div class="timeline-options">
         <div class="waveform-mode-options" role="group" aria-label="波形显示模式">
           <span>波形：</span>
@@ -806,7 +806,7 @@
     if (help) {
       help.textContent = multi
         ? '多行模式按每行时长排列 · 单击定位 · 双击/空格播放暂停 · 按住左键拖动播放头 · Ctrl+单击块跳到下方 card'
-        : '基础模式横向滚动查看整段 · 单击定位 · 双击/空格播放暂停 · 按住左键拖动播放头 · Ctrl+单击块跳到下方 card';
+        : '基础模式横向滚动查看整段 · 滚轮横向滚动 · 单击定位 · 双击/空格播放暂停 · 按住左键拖动播放头 · Ctrl+单击块跳到下方 card';
     }
     const secondsSelect = $('#multi-row-seconds');
     const heightSelect = $('#multi-row-height');
@@ -1077,7 +1077,7 @@
     for (let index = 0; index < lineEntries.length; index += 1) {
       const lineEntry = lineEntries[index];
       if (extraEntry.start < lineEntry.start) return index;
-      if (lineEntry.type === 'missing' || extraEntry.start <= lineEntry.end) return index + 1;
+      if (extraEntry.start <= lineEntry.end) return index + 1;
     }
     return lineEntries.length;
   }
@@ -1187,6 +1187,18 @@
       }
       callback();
     });
+  }
+
+  function releasePlaybackFocus(event) {
+    const control = event.target?.closest?.('button, input[type="checkbox"], input[type="radio"], input[type="range"], select, audio, video, label');
+    if (!control && !document.activeElement?.matches?.('button, input[type="checkbox"], input[type="radio"], input[type="range"], select, audio, video')) return;
+    // 点击操作控件后，下一次空格键应继续控制时间轴播放；文本输入框不在这里处理。
+    window.setTimeout(() => {
+      const active = document.activeElement;
+      if (active?.matches?.('button, input[type="checkbox"], input[type="radio"], input[type="range"], select, audio, video')) {
+        active.blur();
+      }
+    }, 0);
   }
 
   function renderTimelineTakes() {
@@ -1841,6 +1853,22 @@
   }
 
   function setupTimelineInteractions() {
+    const scroll = $('#timeline-scroll');
+    if (scroll) {
+      scroll.addEventListener('wheel', (event) => {
+        if (isMultiWaveform()) return;
+        const dominantDelta = Math.abs(event.deltaX) >= Math.abs(event.deltaY)
+          ? event.deltaX
+          : event.deltaY;
+        if (!dominantDelta) return;
+        const unit = event.deltaMode === 1 ? 16
+          : event.deltaMode === 2 ? Math.max(1, scroll.clientWidth)
+            : 1;
+        const previous = scroll.scrollLeft;
+        scroll.scrollLeft += dominantDelta * unit;
+        if (scroll.scrollLeft !== previous) event.preventDefault();
+      }, {passive: false});
+    }
     const stage = $('#waveform-stage');
     if (!stage) return;
     stage.addEventListener('pointerdown', () => {
@@ -2065,6 +2093,7 @@
   $('#reset').addEventListener('click', () => setPath(alignment.defaultPathId, {preserveActions: false}));
   $('#export').addEventListener('click', exportProject);
   $('#follow-playhead').addEventListener('change', updateTimelinePlayhead);
+  document.addEventListener('click', releasePlaybackFocus, true);
   document.addEventListener('keydown', handleSpacebar);
   init().catch((error) => { $('#meta').textContent = `加载失败：${error.message}`; });
 </script>
