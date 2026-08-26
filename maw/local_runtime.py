@@ -215,6 +215,8 @@ def install_local_runtime(
         "https://pypi.org/simple",
         "--extra-index-url",
         PYTORCH_INDEX,
+        "--index-strategy",
+        "unsafe-best-match",
         "-r",
         str(requirements_file),
     ]
