@@ -3408,6 +3408,37 @@
 }
 .waveform-gap-block.restored .waveform-gap-label { color: #b9cbd8; background: rgba(27, 38, 47, 0.76); }
 .waveform-gap-block.boundary-editable { cursor: pointer; }
+.waveform-gap-block.dragging { cursor: grabbing; opacity: .82; }
+.waveform-gap-block.waveform-gap-drag-preview,
+.waveform-gap-block.waveform-gap-boundary-preview {
+  z-index: 13;
+  pointer-events: none;
+  border: 1px solid rgba(255, 213, 116, .98);
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(255, 170, 76, .58) 0 5px,
+    rgba(112, 65, 31, .58) 5px 10px
+  );
+  opacity: .92;
+}
+.waveform-gap-block.waveform-gap-drag-preview.copy {
+  border-style: dashed;
+  border-color: rgba(140, 222, 255, .98);
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(87, 174, 211, .58) 0 5px,
+    rgba(31, 73, 94, .58) 5px 10px
+  );
+}
+.waveform-gap-block.waveform-gap-drag-preview.restored,
+.waveform-gap-block.waveform-gap-boundary-preview.restored {
+  border-color: rgba(185, 220, 239, .98);
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(93, 141, 169, .58) 0 5px,
+    rgba(40, 70, 87, .58) 5px 10px
+  );
+}
 .waveform-gap-handle {
   position: absolute;
   z-index: 3;
@@ -3890,8 +3921,8 @@
     <div class="gap-remove-advanced">
       <button type="button" id="gap-remove-advanced-toggle" class="gap-remove-advanced-toggle" aria-expanded="false" aria-controls="gap-remove-advanced-body">
         <span class="gap-remove-advanced-caret" aria-hidden="true">▸</span>
-        <span class="gap-remove-advanced-label">高级设置</span>
-        <small>预留量、滞回等检测细节</small>
+        <span class="gap-remove-advanced-label">空隙检测与调整</span>
+        <small>预留量、滞回与边界调整</small>
       </button>
       <div class="gap-remove-advanced-body" id="gap-remove-advanced-body" hidden>
         <div class="gap-remove-fields gap-remove-fields-advanced">
@@ -3920,6 +3951,41 @@
             <small id="gap-remove-hysteresis-hint">当音频判定为有声时，需要降低到比阈值更低 2 dB 的时候才视作恢复静音。建议 1–3 dB，过高会延迟回到静音</small>
           </label>
         </div>
+        <button type="button" id="gap-remove-shrink" class="gap-remove-scan">
+          <span>收缩空隙</span>
+          <small>按当前前后预留收缩现有空隙</small>
+        </button>
+      </div>
+    </div>
+    <div class="gap-remove-advanced gap-remove-disable-settings">
+      <button type="button" id="gap-remove-disable-toggle" class="gap-remove-advanced-toggle" aria-expanded="false" aria-controls="gap-remove-disable-body">
+        <span class="gap-remove-advanced-caret" aria-hidden="true">▸</span>
+        <span class="gap-remove-advanced-label">禁用空隙内字幕</span>
+        <small>按覆盖率和剩余时长筛选</small>
+      </button>
+      <div class="gap-remove-advanced-body" id="gap-remove-disable-body" hidden>
+        <div class="gap-remove-fields gap-remove-fields-advanced">
+          <label class="gap-remove-field">
+            <span class="gap-remove-field-label">覆盖率</span>
+            <span class="gap-remove-number-control">
+              <input type="number" id="gap-remove-disable-coverage" min="0" max="100" step="5" value="80" inputmode="decimal">
+              <span class="gap-remove-unit">%</span>
+            </span>
+            <small>空隙覆盖字幕时长达到此比例</small>
+          </label>
+          <label class="gap-remove-field">
+            <span class="gap-remove-field-label">剩余时长阈值</span>
+            <span class="gap-remove-number-control">
+              <input type="number" id="gap-remove-disable-remaining" min="0" max="60000" step="50" value="300" inputmode="numeric">
+              <span class="gap-remove-unit">ms</span>
+            </span>
+            <small>覆盖后剩余字幕时长不超过此值</small>
+          </label>
+        </div>
+        <button type="button" id="gap-remove-disable-button" class="gap-remove-scan">
+          <span>禁用字幕</span>
+          <small>按以上条件处理主字幕</small>
+        </button>
       </div>
     </div>
     <button type="button" id="gap-remove-scan" class="gap-remove-scan">
@@ -4204,7 +4270,9 @@
       <section class="help-subgroup">
         <div class="help-category">
           <span><kbd>Alt+点击静音空隙区段</kbd> 切换移除/保留</span>
-          <span class="help-note">空隙区段操作方式设为「中键拖动」时：</span>
+          <span><kbd>Alt+拖动</kbd> 整体偏移 Gap；<kbd data-mod-key>Ctrl+拖动</kbd> 复制 Gap</span>
+          <span class="help-note">波形空白处右键可用“添加空隙”，默认使用设置中的最小空隙时长</span>
+          <span class="help-note">空隙区段操作方式设为「中键拖动」或「边界与中键」时：</span>
           <span><kbd>中键拖动</kbd> 增加静音区段</span>
           <span><kbd>Alt+中键拖动</kbd> 增加恢复区段</span>
         </div>
@@ -4725,12 +4793,13 @@
           </div>
           <div class="settings-panel-section waveform-settings-section">
             <span class="settings-panel-title waveform-settings-title">静音空隙</span>
-            <label class="editor-settings-item" title="移除静音空隙的人工修正方式；Alt+左键始终切换整段；中键拖动默认增加静音，按住 Alt 才恢复声音，边界碰到另一空隙时会合并">
+            <label class="editor-settings-item" title="移除静音空隙的人工修正方式；Alt+左键始终切换整段；Alt+拖动整体偏移，Ctrl/Cmd+拖动复制；中键拖动默认增加静音，按住 Alt 才恢复声音；“边界与中键”可同时启用两种方式">
               空隙区段操作方式
               <select id="gap-remove-operation-mode">
                 <option value="none">无</option>
                 <option value="boundary_drag" selected>拖动边界</option>
                 <option value="middle_drag">中键拖动</option>
+                <option value="boundary_and_middle">边界与中键</option>
               </select>
             </label>
           </div>
@@ -7761,6 +7830,23 @@
   function clampAutoMergeShortCount(value) { return clampInteger(value, 3, 1, 20); }
 
   const GAP_REMOVE_SCHEMA = 'moy.asr.gap_remove.v1';
+  const GAP_REMOVE_DISABLE_COVERAGE_DEFAULT = 80;
+  const GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS = 300;
+  const GAP_REMOVE_DISABLE_REMAINING_MAX_MS = 60000;
+  function clampGapRemoveDisableCoverage(value) {
+    const numeric = typeof value === 'string' && !value.trim() ? NaN : Number(value);
+    return Math.min(100, Math.max(0, Number.isFinite(numeric)
+      ? numeric : GAP_REMOVE_DISABLE_COVERAGE_DEFAULT));
+  }
+  function clampGapRemoveDisableRemaining(value) {
+    const numeric = typeof value === 'string' && !value.trim() ? NaN : value;
+    return clampInteger(
+      numeric,
+      GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS,
+      0,
+      GAP_REMOVE_DISABLE_REMAINING_MAX_MS,
+    );
+  }
   function normalizeGapRemoveData(value) {
     const source = value && typeof value === 'object' ? value : {};
     const gaps = cloneJsonValue(normalizeGapRemoveGaps(source.gaps)) || [];
@@ -7774,8 +7860,10 @@
       lead_out_ms: clampInteger(source.lead_out_ms, 80, 0, 2000),
       skip_playback: source.skip_playback !== false,
       manual_corrections: source.manual_corrections === true,
-      operation_mode: ['none', 'boundary_drag', 'middle_drag'].includes(source.operation_mode)
+      operation_mode: ['none', 'boundary_drag', 'middle_drag', 'boundary_and_middle'].includes(source.operation_mode)
         ? source.operation_mode : 'boundary_drag',
+      disable_coverage_percent: clampGapRemoveDisableCoverage(source.disable_coverage_percent),
+      disable_remaining_ms: clampGapRemoveDisableRemaining(source.disable_remaining_ms),
       gaps,
     };
   }
@@ -8511,6 +8599,67 @@
     return coalesceGapRemoveGaps(next);
   }
 
+  function shrinkGapRemoveGaps(gaps, leadInMs, leadOutMs) {
+    const source = coalesceGapRemoveGaps(gaps);
+    const leadIn = clampInteger(leadInMs, 40, 0, 2000);
+    const leadOut = clampInteger(leadOutMs, 80, 0, 2000);
+    return coalesceGapRemoveGaps(source
+      .map((gap) => ({
+        ...gap,
+        start: gap.start + leadIn,
+        end: gap.end - leadOut,
+      }))
+      .filter((gap) => gap.end > gap.start));
+  }
+
+  // 将一个已有区段作为整体平移或复制到目标位置。与人工“范围移除”不同，
+  // 这里保留区段的 removed 状态，因此恢复区段也可以被整体拖动/复制。
+  function overlayGapRemoveRange(gaps, startMs, endMs, removed) {
+    const source = coalesceGapRemoveGaps(gaps);
+    const start = Math.max(0, Math.round(Math.min(Number(startMs), Number(endMs))));
+    const end = Math.max(0, Math.round(Math.max(Number(startMs), Number(endMs))));
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return source;
+    const next = [];
+    source.forEach((gap) => {
+      if (gap.end <= start || gap.start >= end) {
+        next.push({ ...gap });
+        return;
+      }
+      if (gap.start < start) next.push({ ...gap, end: start });
+      if (gap.end > end) next.push({ ...gap, start: end });
+    });
+    next.push({ start, end, removed: removed !== false });
+    return coalesceGapRemoveGaps(next);
+  }
+
+  function translateGapRemoveRange(gaps, index, deltaMs, durationMs, copy) {
+    const source = coalesceGapRemoveGaps(gaps);
+    const gapIndex = Math.round(Number(index));
+    const delta = Math.round(Number(deltaMs));
+    if (!Number.isFinite(gapIndex) || !Number.isFinite(delta)
+        || gapIndex < 0 || gapIndex >= source.length) return source;
+    const original = source[gapIndex];
+    const durationValue = Number(durationMs);
+    const hasDuration = Number.isFinite(durationValue) && durationValue > 0;
+    const duration = hasDuration ? Math.round(durationValue) : Infinity;
+    const length = Math.min(original.end - original.start, duration);
+    if (!Number.isFinite(length) || length <= 0) return source;
+    const maxStart = Math.max(0, duration - length);
+    const start = Math.min(maxStart, Math.max(0, original.start + delta));
+    const end = start + length;
+    if (start === original.start && end === original.end) return source;
+    const remaining = copy ? source : source.filter((_, sourceIndex) => sourceIndex !== gapIndex);
+    return overlayGapRemoveRange(remaining, start, end, original.removed);
+  }
+
+  function moveGapRemoveRange(gaps, index, deltaMs, durationMs) {
+    return translateGapRemoveRange(gaps, index, deltaMs, durationMs, false);
+  }
+
+  function copyGapRemoveRange(gaps, index, deltaMs, durationMs) {
+    return translateGapRemoveRange(gaps, index, deltaMs, durationMs, true);
+  }
+
   function resizeGapRemoveBoundary(gaps, index, edge, valueMs, minimumMs = 10) {
     const source = coalesceGapRemoveGaps(gaps);
     let gapIndex = Math.round(Number(index));
@@ -8629,6 +8778,29 @@
       }
     });
     return merged;
+  }
+
+  function findGapRemoveDisableMatches(segments, gaps, options = {}) {
+    const coverageThreshold = clampGapRemoveDisableCoverage(options.coveragePercent);
+    const remainingThreshold = clampGapRemoveDisableRemaining(options.remainingMs);
+    const removedRanges = getRemovedGapRanges(gaps);
+    const source = Array.isArray(segments) ? segments : [];
+    const matches = [];
+    source.forEach((segment, index) => {
+      const start = Number(segment?.start);
+      const end = Number(segment?.end);
+      const durationMs = end - start;
+      if (!Number.isFinite(start) || !Number.isFinite(end) || durationMs <= 0) return;
+      const coveredMs = removedRanges.reduce((total, range) => {
+        const overlap = Math.min(end, range.end) - Math.max(start, range.start);
+        return total + Math.max(0, overlap);
+      }, 0);
+      const remainingMs = Math.max(0, durationMs - coveredMs);
+      const coveragePercent = (coveredMs / durationMs) * 100;
+      if (coveragePercent + Number.EPSILON < coverageThreshold || remainingMs > remainingThreshold) return;
+      matches.push({ index, durationMs, coveredMs, remainingMs, coveragePercent });
+    });
+    return matches;
   }
 
   function mapGapRemovedTime(sourceMs, gaps) {
@@ -10158,6 +10330,11 @@ export default MawDynamicCaptions;
     clampNinjaSlashRotateAmplitude,
     clampAutoMergeGapMs,
     clampAutoMergeShortCount,
+    GAP_REMOVE_DISABLE_COVERAGE_DEFAULT,
+    GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS,
+    GAP_REMOVE_DISABLE_REMAINING_MAX_MS,
+    clampGapRemoveDisableCoverage,
+    clampGapRemoveDisableRemaining,
     normalizeGapRemoveData,
     buildSegmentsHistorySnapshot,
     buildHistoryRecord,
@@ -10169,9 +10346,13 @@ export default MawDynamicCaptions;
     fileBasename,
     normalizeGapRemoveGaps,
     applyGapRemoveRange,
+    shrinkGapRemoveGaps,
+    moveGapRemoveRange,
+    copyGapRemoveRange,
     resizeGapRemoveBoundary,
     detectAudioGapRemoveGaps,
     getRemovedGapRanges,
+    findGapRemoveDisableMatches,
     mapGapRemovedTime,
     buildGapRemovedIntervals,
     EXPORT_FRAME_PROFILES,
@@ -10422,8 +10603,13 @@ export default MawDynamicCaptions;
     '按波形音量扫描内部空隙，不改写原时间轴': 'Scan internal gaps from waveform volume without changing the original timeline',
     '最小空隙': 'Minimum gap', '短于此值不处理': 'Ignore shorter gaps',
     '音量阈值': 'Volume threshold', '达到此音量才算有声': 'Audio is active at this level',
-    '高级设置': 'Advanced settings', '预留量、滞回等检测细节': 'Padding, hysteresis, and detection details',
-    '前端预留': 'Lead-in padding', '后端预留': 'Lead-out padding', '滞回': 'Hysteresis',
+    '高级设置': 'Advanced settings', '空隙检测与调整': 'Gap detection and adjustment', '预留量、滞回等检测细节': 'Padding, hysteresis, and detection details', '预留量、滞回与边界调整': 'Padding, hysteresis, and boundary adjustment',
+    '禁用空隙内字幕': 'Disable subtitles in gaps', '按覆盖率和剩余时长筛选': 'Filter by coverage and remaining duration',
+    '覆盖率': 'Coverage', '空隙覆盖字幕时长达到此比例': 'Gap-covered time reaches this ratio',
+    '剩余时长阈值': 'Remaining duration threshold', '覆盖后剩余字幕时长不超过此值': 'Remaining subtitle time after coverage cannot exceed this',
+    '禁用字幕': 'Disable subtitles', '按以上条件处理主字幕': 'Apply the rules above to main subtitles',
+    '符合条件的字幕已全部禁用': 'All matching subtitles are already disabled', '没有符合条件的字幕': 'No subtitles match the rules',
+    '前端预留': 'Lead-in padding', '后端预留': 'Lead-out padding', '滞回': 'Hysteresis', '收缩空隙': 'Shrink gaps', '按当前前后预留收缩现有空隙': 'Shrink existing gaps by the current lead-in and lead-out padding',
     '扫描并移除': 'Scan and remove',
     '根据当前参数重新分析整段波形': 'Analyze the full waveform with these settings',
     '尚未扫描空隙。': 'Gaps have not been scanned.',
@@ -11239,6 +11425,14 @@ export default MawDynamicCaptions;
 
   function localizedWaveformMessage(zh, en) {
     return window.MAWE_I18N?.language === 'en' ? en : zh;
+  }
+
+  function gapOperationAllowsBoundary(mode) {
+    return mode === 'boundary_drag' || mode === 'boundary_and_middle';
+  }
+
+  function gapOperationAllowsMiddle(mode) {
+    return mode === 'middle_drag' || mode === 'boundary_and_middle';
   }
 
   // 渲染器预设：classic / wave-right 由专属 CSS 网格渲染；custom 由 layoutTree 渲染
@@ -12560,6 +12754,8 @@ export default MawDynamicCaptions;
       this.createCueDrag = null;
       this.gapRangeDrag = null;
       this.gapBoundaryDrag = null;
+      this.gapMoveDrag = null;
+      this.gapMovePreviewFrame = 0;
       this.suppressGapClickUntil = 0;
       this.autoScrolling = false;
       this.autoScrollTarget = null;
@@ -14066,9 +14262,10 @@ export default MawDynamicCaptions;
       this.appendGapBlocks(row, startMs, endMs);
       this.appendCueBlocks(row, startMs, endMs, groupBadges || computeGroupBadges(this.options.getSegments('main')));
 
-      const gapOperationMode = this.options.getGapOperationMode?.() || 'boundary_drag';
       row.addEventListener('pointerdown', (event) => {
-        if (event.button === 1 && gapOperationMode === 'middle_drag') {
+        // 每次按下时读取最新模式；设置切换会重绘空隙块，但不会重建仍在
+        // 可视区内的行，不能使用 createRow 时捕获的旧值。
+        if (event.button === 1 && gapOperationAllowsMiddle(this.options.getGapOperationMode?.())) {
           this.beginGapRangeDrag(event, row);
           return;
         }
@@ -14129,7 +14326,9 @@ export default MawDynamicCaptions;
         this.cancelHoverSeekPreview();
       });
       row.addEventListener('auxclick', (event) => {
-        if (event.button === 1 && gapOperationMode === 'middle_drag') event.preventDefault();
+        if (event.button === 1 && gapOperationAllowsMiddle(this.options.getGapOperationMode?.())) {
+          event.preventDefault();
+        }
       });
       row.addEventListener('dblclick', (event) => {
         if (event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
@@ -14151,6 +14350,8 @@ export default MawDynamicCaptions;
     appendGapBlocks(row, startMs, endMs) {
       const gaps = this.options.getGapRemoveGaps?.() || [];
       const gapOperationMode = this.options.getGapOperationMode?.() || 'boundary_drag';
+      const boundaryEnabled = gapOperationAllowsBoundary(gapOperationMode);
+      const middleEnabled = gapOperationAllowsMiddle(gapOperationMode);
       const firstGapIndex = firstCueIndexOverlapping(gaps, startMs);
       for (let index = firstGapIndex; index < gaps.length; index += 1) {
         const gap = gaps[index];
@@ -14161,20 +14362,23 @@ export default MawDynamicCaptions;
         block.className = 'waveform-gap-block';
         block.dataset.gapIndex = String(index);
         block.classList.toggle('restored', gap.removed === false);
-        block.classList.toggle('boundary-editable', gapOperationMode === 'boundary_drag');
+        block.classList.toggle('boundary-editable', boundaryEnabled);
         const stateTitle = gap.removed === false
           ? '已保留空隙；左键跳转播放头，Alt+左键移除'
           : '已移除静音空隙；左键跳转播放头，Alt+左键恢复';
-        block.title = gapOperationMode === 'boundary_drag'
+        const operationTitle = boundaryEnabled && middleEnabled
+          ? `${stateTitle}；可拖动左右边界，也可用中键调整范围`
+          : boundaryEnabled
           ? `${stateTitle}；拖动左右边界可人工调整范围`
-          : gapOperationMode === 'middle_drag'
+          : middleEnabled
             ? `${stateTitle}；中键拖动增加静音，Alt+中键拖动恢复声音`
             : stateTitle;
+        block.title = `${operationTitle}；Alt+拖动整体偏移，Ctrl/Cmd+拖动复制`;
         const label = document.createElement('span');
         label.className = 'waveform-gap-label';
         label.textContent = gap.removed === false ? '已恢复' : '已移除';
         block.appendChild(label);
-        if (gapOperationMode === 'boundary_drag') {
+        if (boundaryEnabled) {
           if (gap.start >= startMs) {
             const leftHandle = document.createElement('span');
             leftHandle.className = 'waveform-gap-handle left';
@@ -14189,7 +14393,20 @@ export default MawDynamicCaptions;
         this.layoutGapBlock(block, gap, startMs, endMs);
         block.addEventListener('pointerdown', (event) => {
           const handle = event.target.closest('.waveform-gap-handle');
-          if (!handle || event.altKey) return;
+          if (
+            event.button === 0
+            && !handle
+            && (event.altKey || event.ctrlKey || event.metaKey)
+          ) {
+            this.beginGapMoveDrag(
+              event,
+              index,
+              row,
+              event.ctrlKey || event.metaKey ? 'copy' : 'move',
+            );
+            return;
+          }
+          if (!handle || event.altKey || event.ctrlKey || event.metaKey) return;
           this.beginGapBoundaryDrag(
             event,
             index,
@@ -14868,6 +15085,16 @@ export default MawDynamicCaptions;
     timeFromPointer(event, row, geometry = null) {
       const rect = geometry || row.getBoundingClientRect();
       const ratio = clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
+      const startMs = geometry?.startMs ?? Number(row.dataset.startMs);
+      const endMs = geometry?.endMs ?? Number(row.dataset.endMs);
+      return startMs + ratio * (endMs - startMs);
+    }
+
+    // 边界/整体 Gap 拖动需要允许指针越过当前行的左右边缘；否则多行模式
+    // 会把时间永远钳在本行，无法从一行延伸到前后行。
+    timeFromPointerUnbounded(event, row, geometry = null) {
+      const rect = geometry || row.getBoundingClientRect();
+      const ratio = (event.clientX - rect.left) / Math.max(1, rect.width);
       const startMs = geometry?.startMs ?? Number(row.dataset.startMs);
       const endMs = geometry?.endMs ?? Number(row.dataset.endMs);
       return startMs + ratio * (endMs - startMs);
@@ -15624,7 +15851,7 @@ export default MawDynamicCaptions;
     }
 
     beginGapBoundaryDrag(event, index, row, edge) {
-      if (event.button !== 0 || this.options.getGapOperationMode?.() !== 'boundary_drag') return;
+      if (event.button !== 0 || !gapOperationAllowsBoundary(this.options.getGapOperationMode?.())) return;
       event.preventDefault();
       event.stopPropagation();
       const gaps = this.options.getGapRemoveGaps?.() || [];
@@ -15645,6 +15872,128 @@ export default MawDynamicCaptions;
       window.addEventListener('pointercancel', this._gapBoundaryEnd, { once: true });
     }
 
+    beginGapMoveDrag(event, index, row, mode) {
+      if (event.button !== 0 || !['move', 'copy'].includes(mode)) return;
+      const gaps = this.options.getGapRemoveGaps?.() || [];
+      const original = gaps[index];
+      if (!original) return;
+      const captureTarget = event.currentTarget;
+      this.gapMoveDrag = {
+        pointerId: event.pointerId,
+        index,
+        mode,
+        row,
+        captureTarget,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startPointerMs: this.timeFromPointerUnbounded(event, row),
+        originalGaps: gaps.map((gap) => ({ ...gap })),
+        nextGaps: gaps.map((gap) => ({ ...gap })),
+        targetGap: { ...original },
+        deltaMs: 0,
+        changed: false,
+        moved: false,
+      };
+      captureTarget.classList.add('dragging');
+      captureTarget.setPointerCapture?.(event.pointerId);
+      window.addEventListener('pointermove', this._gapMoveMove = (moveEvent) => this.moveGapMoveDrag(moveEvent));
+      window.addEventListener('pointerup', this._gapMoveEnd = (upEvent) => this.endGapMoveDrag(upEvent), { once: true });
+      window.addEventListener('pointercancel', this._gapMoveEnd, { once: true });
+    }
+
+    gapMoveTarget(original, deltaMs) {
+      const length = Math.max(1, Number(original?.end) - Number(original?.start));
+      const duration = Number(this.durationMs);
+      const maxStart = Number.isFinite(duration) && duration > 0
+        ? Math.max(0, duration - length) : Infinity;
+      const start = Math.min(maxStart, Math.max(0, Number(original?.start) + deltaMs));
+      return { ...original, start, end: start + length };
+    }
+
+    moveGapMoveDrag(event) {
+      const drag = this.gapMoveDrag;
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      event.preventDefault();
+      const dx = event.clientX - drag.startClientX;
+      const dy = event.clientY - drag.startClientY;
+      if (dx * dx + dy * dy >= 9) {
+        drag.moved = true;
+      }
+      const pointerMs = this.timeFromPointerUnbounded(event, drag.row);
+      const deltaMs = roundMs(pointerMs - drag.startPointerMs);
+      drag.targetGap = this.gapMoveTarget(drag.originalGaps[drag.index], deltaMs);
+      drag.deltaMs = drag.targetGap.start - drag.originalGaps[drag.index].start;
+      drag.nextGaps = drag.mode === 'copy'
+        ? window.AsrEditorUtils.copyGapRemoveRange(
+          drag.originalGaps, drag.index, drag.deltaMs, this.durationMs,
+        )
+        : window.AsrEditorUtils.moveGapRemoveRange(
+          drag.originalGaps, drag.index, drag.deltaMs, this.durationMs,
+        );
+      drag.changed = JSON.stringify(drag.nextGaps) !== JSON.stringify(drag.originalGaps);
+      this.scheduleGapMovePreview(drag);
+    }
+
+    scheduleGapMovePreview(drag) {
+      if (this.gapMovePreviewFrame) return;
+      this.gapMovePreviewFrame = requestAnimationFrame(() => {
+        this.gapMovePreviewFrame = 0;
+        if (this.gapMoveDrag === drag) this.previewGapMoveDrag(drag);
+      });
+    }
+
+    clearGapMovePreview() {
+      this.content.querySelectorAll('.waveform-gap-drag-preview').forEach((element) => element.remove());
+    }
+
+    previewGapMoveDrag(drag) {
+      this.clearGapMovePreview();
+      this.refreshGapBlocks(drag.originalGaps);
+      if (!drag.moved) return;
+      if (drag.mode === 'move') {
+        this.content.querySelectorAll(`.waveform-gap-block[data-gap-index="${drag.index}"]`)
+          .forEach((block) => { block.hidden = true; });
+      }
+      const target = drag.targetGap;
+      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+        const rowStart = Number(row.dataset.startMs);
+        const rowEnd = Number(row.dataset.endMs);
+        if (target.end <= rowStart || target.start >= rowEnd) return;
+        const preview = document.createElement('div');
+        preview.className = `waveform-gap-block waveform-gap-drag-preview ${drag.mode}`;
+        if (target.removed === false) preview.classList.add('restored');
+        const label = document.createElement('span');
+        label.className = 'waveform-gap-label';
+        label.textContent = drag.mode === 'copy' ? '复制' : '移动';
+        preview.appendChild(label);
+        this.layoutGapBlock(preview, target, rowStart, rowEnd);
+        row.appendChild(preview);
+      });
+    }
+
+    endGapMoveDrag(event) {
+      const drag = this.gapMoveDrag;
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      window.removeEventListener('pointermove', this._gapMoveMove);
+      window.removeEventListener('pointerup', this._gapMoveEnd);
+      window.removeEventListener('pointercancel', this._gapMoveEnd);
+      try { drag.captureTarget.releasePointerCapture?.(event.pointerId); } catch (_) {}
+      drag.captureTarget.classList.remove('dragging');
+      this.clearGapMovePreview();
+      this.gapMoveDrag = null;
+      if (event.type === 'pointercancel' || !drag.moved) {
+        this.refreshGapBlocks(drag.originalGaps);
+        return;
+      }
+      this.suppressGapClickUntil = Date.now() + 250;
+      if (!drag.changed) {
+        this.refreshGapBlocks(drag.originalGaps);
+        return;
+      }
+      const callback = drag.mode === 'copy' ? this.options.copyGap : this.options.moveGap;
+      callback?.(drag.index, drag.deltaMs);
+    }
+
     refreshGapBlocks(gaps) {
       this.content.querySelectorAll('.waveform-gap-block').forEach((block) => {
         const gap = gaps[Number(block.dataset.gapIndex)];
@@ -15657,7 +16006,28 @@ export default MawDynamicCaptions;
       });
     }
 
+    clearGapBoundaryPreview() {
+      this.content.querySelectorAll('.waveform-gap-boundary-preview').forEach((element) => element.remove());
+    }
+
+    appendGapBoundaryPreview(row, gap, index) {
+      const preview = document.createElement('div');
+      preview.className = 'waveform-gap-block waveform-gap-boundary-preview';
+      preview.dataset.gapIndex = String(index);
+      preview.classList.toggle('restored', gap.removed === false);
+      preview.title = '拖动中的空隙边界预览';
+      const label = document.createElement('span');
+      label.className = 'waveform-gap-label';
+      label.textContent = '边界预览';
+      preview.appendChild(label);
+      const rowStart = Number(row.dataset.startMs);
+      const rowEnd = Number(row.dataset.endMs);
+      this.layoutGapBlock(preview, gap, rowStart, rowEnd);
+      row.appendChild(preview);
+    }
+
     previewGapBoundaryDrag(drag) {
+      this.clearGapBoundaryPreview();
       this.refreshGapBlocks(drag.originalGaps);
       const original = drag.originalGaps[drag.index];
       if (!original) return;
@@ -15666,10 +16036,21 @@ export default MawDynamicCaptions;
         gap.removed === original.removed && gap.start <= anchor && gap.end > anchor
       ));
       if (!target) return;
-      this.content.querySelectorAll(`.waveform-gap-block[data-gap-index="${drag.index}"]`).forEach((block) => {
-        const row = block.closest('.waveform-row');
-        if (row) this.layoutGapBlock(block, target, Number(row.dataset.startMs), Number(row.dataset.endMs));
-      });
+      const renderTarget = (nextGap, originalIndex) => {
+        this.content.querySelectorAll('.waveform-row').forEach((row) => {
+          const rowStart = Number(row.dataset.startMs);
+          const rowEnd = Number(row.dataset.endMs);
+          const existing = [...row.querySelectorAll(
+            `.waveform-gap-block[data-gap-index="${originalIndex}"]`,
+          )].find((block) => !block.classList.contains('waveform-gap-boundary-preview'));
+          if (existing) {
+            this.layoutGapBlock(existing, nextGap, rowStart, rowEnd);
+          } else if (nextGap.end > rowStart && nextGap.start < rowEnd) {
+            this.appendGapBoundaryPreview(row, nextGap, originalIndex);
+          }
+        });
+      };
+      renderTarget(target, drag.index);
       const adjacentIndex = drag.edge === 'start' ? drag.index - 1 : drag.index + 1;
       const adjacentOriginal = drag.originalGaps[adjacentIndex];
       const shared = adjacentOriginal && (
@@ -15684,17 +16065,18 @@ export default MawDynamicCaptions;
         && gap.start <= adjacentAnchor && gap.end > adjacentAnchor
       ));
       if (!adjacentTarget) return;
-      this.content.querySelectorAll(`.waveform-gap-block[data-gap-index="${adjacentIndex}"]`).forEach((block) => {
-        const row = block.closest('.waveform-row');
-        if (row) this.layoutGapBlock(block, adjacentTarget, Number(row.dataset.startMs), Number(row.dataset.endMs));
-      });
+      renderTarget(adjacentTarget, adjacentIndex);
     }
 
     moveGapBoundaryDrag(event) {
       const drag = this.gapBoundaryDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
       event.preventDefault();
-      const valueMs = roundMs(this.timeFromPointer(event, drag.row));
+      const valueMs = clamp(
+        roundMs(this.timeFromPointerUnbounded(event, drag.row)),
+        0,
+        Math.max(0, this.durationMs),
+      );
       drag.nextGaps = window.AsrEditorUtils.resizeGapRemoveBoundary(
         drag.originalGaps,
         drag.index,
@@ -15723,6 +16105,7 @@ export default MawDynamicCaptions;
       window.removeEventListener('pointercancel', this._gapBoundaryEnd);
       try { drag.captureTarget.releasePointerCapture?.(event.pointerId); } catch (_) {}
       this.content.querySelectorAll('.waveform-gap-block.dragging').forEach((block) => block.classList.remove('dragging'));
+      this.clearGapBoundaryPreview();
       this.gapBoundaryDrag = null;
       if (event.type === 'pointercancel' || !drag.changed) {
         this.refreshGapBlocks(drag.originalGaps);
@@ -15735,20 +16118,16 @@ export default MawDynamicCaptions;
     beginGapRangeDrag(event, row) {
       event.preventDefault();
       event.stopPropagation();
-      const preview = document.createElement('div');
       const removed = !event.altKey;
-      preview.className = `waveform-gap-range-preview ${removed ? 'remove' : 'restore'}`;
-      const label = document.createElement('span');
-      label.textContent = removed ? '增加静音' : '恢复声音';
-      preview.appendChild(label);
-      row.appendChild(preview);
+      const startMs = this.gapRangePointerTime(event, row);
+      this.clearGapRangePreviews();
       this.gapRangeDrag = {
         pointerId: event.pointerId,
         row,
-        startMs: this.timeFromPointer(event, row),
-        endMs: this.timeFromPointer(event, row),
+        startMs,
+        endMs: startMs,
         removed,
-        preview,
+        previews: [],
       };
       this.layoutGapRangePreview(this.gapRangeDrag);
       row.setPointerCapture?.(event.pointerId);
@@ -15757,21 +16136,65 @@ export default MawDynamicCaptions;
       window.addEventListener('pointercancel', this._gapRangeEnd, { once: true });
     }
 
+    gapRangePointerTime(event, row) {
+      return clamp(
+        this.timeFromPointerUnbounded(event, row),
+        0,
+        Math.max(0, this.durationMs),
+      );
+    }
+
+    clearGapRangePreviews() {
+      this.content.querySelectorAll('.waveform-gap-range-preview').forEach((element) => element.remove());
+    }
+
     layoutGapRangePreview(drag) {
-      const rowStart = Number(drag.row.dataset.startMs);
-      const rowEnd = Number(drag.row.dataset.endMs);
-      const duration = Math.max(1, rowEnd - rowStart);
       const start = Math.min(drag.startMs, drag.endMs);
       const end = Math.max(drag.startMs, drag.endMs);
-      drag.preview.style.left = `${((start - rowStart) / duration) * 100}%`;
-      drag.preview.style.width = `${Math.max(0.25, ((end - start) / duration) * 100)}%`;
+      const previews = [];
+      this.clearGapRangePreviews();
+      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+        const rowStart = Number(row.dataset.startMs);
+        const rowEnd = Number(row.dataset.endMs);
+        if (!Number.isFinite(rowStart) || !Number.isFinite(rowEnd) || rowEnd <= rowStart) return;
+
+        let visibleStart;
+        let visibleEnd;
+        if (end <= start) {
+          // 保留按下瞬间的细小指示条；真正的范围仍按半开区间拆分到各行。
+          if (row !== drag.row) return;
+          let point = clamp(start, rowStart, rowEnd);
+          if (point >= rowEnd) point = Math.max(rowStart, rowEnd - 1);
+          visibleStart = point;
+          visibleEnd = Math.min(rowEnd, point + 1);
+        } else {
+          if (end <= rowStart || start >= rowEnd) return;
+          visibleStart = Math.max(start, rowStart);
+          visibleEnd = Math.min(end, rowEnd);
+        }
+        if (visibleEnd <= visibleStart) return;
+
+        const preview = document.createElement('div');
+        preview.className = `waveform-gap-range-preview ${drag.removed ? 'remove' : 'restore'}`;
+        if (previews.length === 0) {
+          const label = document.createElement('span');
+          label.textContent = drag.removed ? '增加静音' : '恢复声音';
+          preview.appendChild(label);
+        }
+        const duration = Math.max(1, rowEnd - rowStart);
+        preview.style.left = `${((visibleStart - rowStart) / duration) * 100}%`;
+        preview.style.width = `${Math.max(0.25, ((visibleEnd - visibleStart) / duration) * 100)}%`;
+        row.appendChild(preview);
+        previews.push(preview);
+      });
+      drag.previews = previews;
     }
 
     moveGapRangeDrag(event) {
       const drag = this.gapRangeDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
       event.preventDefault();
-      drag.endMs = this.timeFromPointer(event, drag.row);
+      drag.endMs = this.gapRangePointerTime(event, drag.row);
       this.layoutGapRangePreview(drag);
     }
 
@@ -15782,7 +16205,7 @@ export default MawDynamicCaptions;
       window.removeEventListener('pointerup', this._gapRangeEnd);
       window.removeEventListener('pointercancel', this._gapRangeEnd);
       try { drag.row.releasePointerCapture?.(event.pointerId); } catch (_) {}
-      drag.preview.remove();
+      this.clearGapRangePreviews();
       this.gapRangeDrag = null;
       if (event.type === 'pointercancel') return;
       const start = roundMs(Math.min(drag.startMs, drag.endMs));
@@ -17055,9 +17478,14 @@ const DEFAULT_GAP_REMOVE_HYSTERESIS_DB = 2;
 const DEFAULT_GAP_REMOVE_LEAD_IN_MS = 40;
 const DEFAULT_GAP_REMOVE_LEAD_OUT_MS = 80;
 const DEFAULT_GAP_REMOVE_OPERATION_MODE = 'boundary_drag';
+const DEFAULT_GAP_REMOVE_DISABLE_COVERAGE_PERCENT = EDITOR_SETTINGS_UTILS.GAP_REMOVE_DISABLE_COVERAGE_DEFAULT ?? 80;
+const DEFAULT_GAP_REMOVE_DISABLE_REMAINING_MS = EDITOR_SETTINGS_UTILS.GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS ?? 300;
 const GAP_REMOVE_ADVANCED_OPEN_KEY = 'moy.asr.gap_remove.advanced_open.v1';
+const GAP_REMOVE_DISABLE_OPEN_KEY = 'moy.asr.gap_remove.disable_open.v1';
 
 const normalizedGapRemoveData = EDITOR_SETTINGS_UTILS.normalizeGapRemoveData;
+const clampGapRemoveDisableCoverage = EDITOR_SETTINGS_UTILS.clampGapRemoveDisableCoverage;
+const clampGapRemoveDisableRemaining = EDITOR_SETTINGS_UTILS.clampGapRemoveDisableRemaining;
 
 let normalizedGapRemoveReference = null;
 let normalizedGapRemoveCache = null;
@@ -17610,8 +18038,14 @@ const gapRemoveHysteresis = document.getElementById('gap-remove-hysteresis');
 const gapRemoveHysteresisHint = document.getElementById('gap-remove-hysteresis-hint');
 const gapRemoveLeadIn = document.getElementById('gap-remove-lead-in');
 const gapRemoveLeadOut = document.getElementById('gap-remove-lead-out');
+const gapRemoveShrinkButton = document.getElementById('gap-remove-shrink');
 const gapRemoveAdvancedToggle = document.getElementById('gap-remove-advanced-toggle');
 const gapRemoveAdvancedBody = document.getElementById('gap-remove-advanced-body');
+const gapRemoveDisableToggle = document.getElementById('gap-remove-disable-toggle');
+const gapRemoveDisableBody = document.getElementById('gap-remove-disable-body');
+const gapRemoveDisableCoverage = document.getElementById('gap-remove-disable-coverage');
+const gapRemoveDisableRemaining = document.getElementById('gap-remove-disable-remaining');
+const gapRemoveDisableButton = document.getElementById('gap-remove-disable-button');
 const gapRemoveOperationMode = document.getElementById('gap-remove-operation-mode');
 const gapRemoveScanButton = document.getElementById('gap-remove-scan');
 const gapRemoveSkipPlayback = document.getElementById('gap-skip-playback');
@@ -18863,7 +19297,7 @@ function renderGapRemoveList() {
   const total = gapRemoveTotalMs(gaps);
   const summary = document.createElement('div');
   summary.className = 'gap-remove-total';
-  summary.textContent = `已移除 ${removedCount}/${gaps.length} 段，共 ${formatGapRemoveTotal(total)}；左键空隙跳转播放头，Alt+左键切换移除。`;
+  summary.textContent = `已移除 ${removedCount}/${gaps.length} 段，共 ${formatGapRemoveTotal(total)}；左键定位，Alt+点击切换，Alt+拖动整体偏移，Ctrl/Cmd+拖动复制。`;
   gapRemoveList.appendChild(summary);
 }
 
@@ -18886,11 +19320,22 @@ function updateGapRemoveUi() {
   updateGapRemoveHysteresisHint();
   if (gapRemoveLeadIn && state) gapRemoveLeadIn.value = String(state.lead_in_ms);
   if (gapRemoveLeadOut && state) gapRemoveLeadOut.value = String(state.lead_out_ms);
+  if (gapRemoveDisableCoverage && state) {
+    gapRemoveDisableCoverage.value = String(
+      state.disable_coverage_percent ?? DEFAULT_GAP_REMOVE_DISABLE_COVERAGE_PERCENT,
+    );
+  }
+  if (gapRemoveDisableRemaining && state) {
+    gapRemoveDisableRemaining.value = String(
+      state.disable_remaining_ms ?? DEFAULT_GAP_REMOVE_DISABLE_REMAINING_MS,
+    );
+  }
   if (gapRemoveOperationMode) {
     gapRemoveOperationMode.value = state?.operation_mode || DEFAULT_GAP_REMOVE_OPERATION_MODE;
   }
   if (gapRemoveSkipPlayback) gapRemoveSkipPlayback.checked = state?.skip_playback !== false;
   if (gapRemoveClearAllButton) gapRemoveClearAllButton.disabled = !gaps.length;
+  if (gapRemoveDisableButton) gapRemoveDisableButton.disabled = !gaps.some((gap) => gap.removed);
   if (gapRemovedExportDropdown) {
     gapRemovedExportDropdown.hidden = !gaps.some((gap) => gap.removed);
     if (gapRemovedExportDropdown.hidden) gapRemovedExportDropdown.classList.remove('open');
@@ -18932,6 +19377,8 @@ function scanAndRemoveGaps() {
     skip_playback: previousState?.skip_playback,
     manual_corrections: false,
     operation_mode: previousState?.operation_mode,
+    disable_coverage_percent: previousState?.disable_coverage_percent,
+    disable_remaining_ms: previousState?.disable_remaining_ms,
     gaps,
   });
   flashHint(
@@ -18940,6 +19387,84 @@ function scanAndRemoveGaps() {
       : '没有达到门限的音量空隙',
     gaps.length ? 'success' : 'invalid',
   );
+}
+
+function readGapRemoveLeadPadding() {
+  const read = (input, fallback) => {
+    const raw = input?.value;
+    const numeric = typeof raw === 'string' && !raw.trim() ? NaN : Number(raw);
+    return Math.min(2000, Math.max(0, Number.isFinite(numeric) ? Math.round(numeric) : fallback));
+  };
+  return {
+    leadInMs: read(gapRemoveLeadIn, DEFAULT_GAP_REMOVE_LEAD_IN_MS),
+    leadOutMs: read(gapRemoveLeadOut, DEFAULT_GAP_REMOVE_LEAD_OUT_MS),
+  };
+}
+
+function shrinkExistingGaps() {
+  const state = getGapRemoveData(false);
+  const gaps = getGapRemoveGaps();
+  if (!state || !gaps.length) {
+    flashHint('当前没有可收缩的静音空隙', 'invalid');
+    return;
+  }
+  const { leadInMs, leadOutMs } = readGapRemoveLeadPadding();
+  const nextGaps = window.AsrEditorUtils.shrinkGapRemoveGaps(gaps, leadInMs, leadOutMs);
+  if (JSON.stringify(nextGaps) === JSON.stringify(gaps)) {
+    flashHint('当前空隙无法按预留量继续收缩', 'invalid');
+    return;
+  }
+  pushGapRemoveUndo('按预留量收缩空隙');
+  state.lead_in_ms = leadInMs;
+  state.lead_out_ms = leadOutMs;
+  state.gaps = nextGaps;
+  state.manual_corrections = true;
+  setGapRemoveData(state);
+  flashHint(
+    `已按前端 ${leadInMs}ms、后端 ${leadOutMs}ms 收缩 ${gaps.length} 段空隙`,
+    'success',
+  );
+}
+
+function readGapRemoveDisableSettings() {
+  const coveragePercent = clampGapRemoveDisableCoverage(gapRemoveDisableCoverage?.value);
+  const remainingMs = clampGapRemoveDisableRemaining(gapRemoveDisableRemaining?.value);
+  if (gapRemoveDisableCoverage) gapRemoveDisableCoverage.value = String(coveragePercent);
+  if (gapRemoveDisableRemaining) gapRemoveDisableRemaining.value = String(remainingMs);
+  return { coveragePercent, remainingMs };
+}
+
+function commitGapRemoveDisableSettings() {
+  const settings = readGapRemoveDisableSettings();
+  const state = getGapRemoveData(false);
+  if (!state) return settings;
+  if (state.disable_coverage_percent === settings.coveragePercent
+      && state.disable_remaining_ms === settings.remainingMs) return settings;
+  state.disable_coverage_percent = settings.coveragePercent;
+  state.disable_remaining_ms = settings.remainingMs;
+  setGapRemoveData(state);
+  return settings;
+}
+
+function disableSubtitlesInRemovedGaps() {
+  const settings = commitGapRemoveDisableSettings();
+  const matches = window.AsrEditorUtils.findGapRemoveDisableMatches(
+    DATA.segments,
+    getGapRemoveGaps(),
+    settings,
+  );
+  const targetIndexes = matches
+    .map((match) => match.index)
+    .filter((index) => !DATA.segments[index]?.disabled);
+  if (!targetIndexes.length) {
+    const message = matches.length ? '符合条件的字幕已全部禁用' : '没有符合条件的字幕';
+    flashHint(
+      window.MAWE_I18N?.translateText?.(message) || message,
+      matches.length ? 'success' : 'invalid',
+    );
+    return;
+  }
+  toggleDisabled(targetIndexes, 'main', { successDetail: '静音空隙内的字幕' });
 }
 
 function toggleGapRemoved(index) {
@@ -18979,6 +19504,56 @@ function applyManualGapRange(startMs, endMs, removed) {
   state.manual_corrections = true;
   setGapRemoveData(state);
   flashHint(removed ? '已人工移除所选范围' : '已人工恢复所选范围', 'success');
+}
+
+function addGapAtWaveformTime(timeMs) {
+  const duration = gapRemoveMediaDurationMs();
+  if (!duration) {
+    flashHint('媒体时长尚不可用；请先加载媒体后再添加空隙', 'invalid');
+    return false;
+  }
+  const point = Number(timeMs);
+  if (!Number.isFinite(point)) return false;
+  const state = getGapRemoveData(true);
+  const sourceGaps = state.detector === 'audio_gate' ? state.gaps : [];
+  const requestedLength = clampGapRemoveMinimum(state.minimum_ms);
+  const length = Math.min(duration, requestedLength);
+  const snappedPoint = Math.max(0, Math.min(duration, Math.round(point / 10) * 10));
+  const start = Math.min(snappedPoint, Math.max(0, duration - length));
+  const end = Math.min(duration, start + length);
+  if (end - start < 10) {
+    flashHint('媒体时长不足，无法添加空隙', 'warning');
+    return false;
+  }
+  const nextGaps = window.AsrEditorUtils.applyGapRemoveRange(sourceGaps, start, end, true);
+  if (JSON.stringify(nextGaps) === JSON.stringify(sourceGaps)) {
+    flashHint('该位置已经是已移除的空隙', 'invalid');
+    return false;
+  }
+  pushGapRemoveUndo('右键添加空隙');
+  state.detector = 'audio_gate';
+  state.gaps = nextGaps;
+  state.manual_corrections = true;
+  setGapRemoveData(state);
+  waveformEditor?.revealTime(start, true);
+  flashHint(`已添加 ${formatGapRemoveTotal(end - start)} 静音空隙`, 'success');
+  return true;
+}
+
+function translateManualGap(index, deltaMs, mode = 'move') {
+  const state = getGapRemoveData(false);
+  if (!state || state.detector !== 'audio_gate') return false;
+  const duration = gapRemoveMediaDurationMs();
+  const nextGaps = mode === 'copy'
+    ? window.AsrEditorUtils.copyGapRemoveRange(state.gaps, index, deltaMs, duration)
+    : window.AsrEditorUtils.moveGapRemoveRange(state.gaps, index, deltaMs, duration);
+  if (JSON.stringify(nextGaps) === JSON.stringify(state.gaps)) return false;
+  pushGapRemoveUndo(mode === 'copy' ? '复制并偏移空隙' : '整体偏移空隙');
+  state.gaps = nextGaps;
+  state.manual_corrections = true;
+  setGapRemoveData(state);
+  flashHint(mode === 'copy' ? '已复制并偏移空隙' : '已整体偏移空隙', 'success');
+  return true;
 }
 
 function resizeManualGapBoundary(index, edge, valueMs) {
@@ -19163,6 +19738,33 @@ function restoreGapRemoveAdvancedOpen() {
   setGapRemoveAdvancedOpen(saved === '1', { persist: false });
 }
 
+function gapRemoveDisableIsOpen() {
+  return gapRemoveDisableBody ? !gapRemoveDisableBody.hidden : false;
+}
+
+function setGapRemoveDisableOpen(open, { persist = true } = {}) {
+  if (!gapRemoveDisableBody || !gapRemoveDisableToggle) return;
+  gapRemoveDisableBody.hidden = !open;
+  gapRemoveDisableToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (persist) {
+    try {
+      localStorage.setItem(GAP_REMOVE_DISABLE_OPEN_KEY, open ? '1' : '0');
+    } catch (_) {
+      // file:// 隐私模式下 localStorage 可能被拒；折叠状态仅本次会话生效。
+    }
+  }
+}
+
+function restoreGapRemoveDisableOpen() {
+  let saved = null;
+  try {
+    saved = localStorage.getItem(GAP_REMOVE_DISABLE_OPEN_KEY);
+  } catch (_) {
+    saved = null;
+  }
+  setGapRemoveDisableOpen(saved === '1', { persist: false });
+}
+
 function updateGapRemoveHysteresisHint() {
   if (!gapRemoveHysteresisHint || !gapRemoveHysteresis) return;
   const value = gapRemoveHysteresis.value;
@@ -19223,8 +19825,15 @@ function openGapRemovePanel() {
   updateGapRemoveHysteresisHint();
   gapRemoveLeadIn.value = String(state?.lead_in_ms ?? DEFAULT_GAP_REMOVE_LEAD_IN_MS);
   gapRemoveLeadOut.value = String(state?.lead_out_ms ?? DEFAULT_GAP_REMOVE_LEAD_OUT_MS);
+  gapRemoveDisableCoverage.value = String(
+    state?.disable_coverage_percent ?? DEFAULT_GAP_REMOVE_DISABLE_COVERAGE_PERCENT,
+  );
+  gapRemoveDisableRemaining.value = String(
+    state?.disable_remaining_ms ?? DEFAULT_GAP_REMOVE_DISABLE_REMAINING_MS,
+  );
   gapRemoveOperationMode.value = state?.operation_mode || DEFAULT_GAP_REMOVE_OPERATION_MODE;
   restoreGapRemoveAdvancedOpen();
+  restoreGapRemoveDisableOpen();
   renderGapRemoveList();
   gapRemovePanel.classList.add('show');
   gapRemovePanel.setAttribute('aria-hidden', 'false');
@@ -19291,11 +19900,12 @@ gapRemovePanel?.querySelectorAll('input[type="number"]').forEach((input) => {
 
 gapRemoveManageButton?.addEventListener('click', toggleGapRemovePanel);
 gapRemoveScanButton?.addEventListener('click', scanAndRemoveGaps);
+gapRemoveShrinkButton?.addEventListener('click', shrinkExistingGaps);
 gapRemoveClearAllButton?.addEventListener('click', clearAllGaps);
 gapRemoveCloseButton?.addEventListener('click', closeGapRemovePanel);
 gapRemoveOperationMode?.addEventListener('change', () => {
   const state = getGapRemoveData(true);
-  const nextMode = ['none', 'boundary_drag', 'middle_drag'].includes(gapRemoveOperationMode.value)
+  const nextMode = ['none', 'boundary_drag', 'middle_drag', 'boundary_and_middle'].includes(gapRemoveOperationMode.value)
     ? gapRemoveOperationMode.value : DEFAULT_GAP_REMOVE_OPERATION_MODE;
   if (state.operation_mode === nextMode) return;
   pushGapRemoveUndo('切换空隙操作方式');
@@ -19305,6 +19915,12 @@ gapRemoveOperationMode?.addEventListener('change', () => {
 gapRemoveAdvancedToggle?.addEventListener('click', () => {
   setGapRemoveAdvancedOpen(!gapRemoveAdvancedIsOpen());
 });
+gapRemoveDisableToggle?.addEventListener('click', () => {
+  setGapRemoveDisableOpen(!gapRemoveDisableIsOpen());
+});
+gapRemoveDisableCoverage?.addEventListener('change', commitGapRemoveDisableSettings);
+gapRemoveDisableRemaining?.addEventListener('change', commitGapRemoveDisableSettings);
+gapRemoveDisableButton?.addEventListener('click', disableSubtitlesInRemovedGaps);
 gapRemoveHysteresis?.addEventListener('input', updateGapRemoveHysteresisHint);
 window.addEventListener('resize', () => {
   if (!gapRemovePanelIsOpen()) return;
@@ -31155,7 +31771,7 @@ function clearColorOnTargets(idxs) {
 // === 禁用/启用 ===
 // 统一切换语义：目标全部禁用 → 全部启用；否则全部禁用
 // 单条时即"切换这一条的状态"（Alt+点击 / 右键菜单均走这里）
-function toggleDisabled(idxs, track = 'main') {
+function toggleDisabled(idxs, track = 'main', { successDetail = null } = {}) {
   const extensionTrack = track === 'extension'
     ? getActiveExtensionTrack()
     : (track?.segments ? track : null);
@@ -31214,7 +31830,9 @@ function toggleDisabled(idxs, track = 'main') {
   const action = allDisabled ? '启用' : '禁用';
   const extensionCount = [...boundExtensionTargets.values()]
     .reduce((total, indexes) => total + indexes.size, 0);
-  const detail = !isExtension && extensionCount
+  const detail = successDetail && !allDisabled
+    ? `${validIdxs.length} 条${successDetail}${!isExtension && extensionCount ? `，以及副字幕 ${extensionCount} 条` : ''}`
+    : !isExtension && extensionCount
     ? `主字幕 ${validIdxs.length} 条及副字幕 ${extensionCount} 条`
     : `${validIdxs.length} 条`;
   flashHint(`已${action} ${detail}`, 'success');
@@ -31572,7 +32190,7 @@ function findWaveformCueAtTime(timeMs, segments = DATA.segments) {
   });
 }
 
-// 右键波形背景：创建字幕，或按右键对应的音频位置拆分命中的字幕。
+// 右键波形背景：添加空隙、创建字幕，或按右键对应的音频位置拆分命中的字幕。
 function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
   ctxmenu.innerHTML = '';
   // 空白波形按鼠标实际落入的 lane 决定创建轨道；但拆分动作按时间点上
@@ -31610,6 +32228,7 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
       mainIdx >= 0,
     );
   }
+  addItem('添加空隙', '', () => addGapAtWaveformTime(timeMs));
   if (Array.isArray(DATA.segments) && DATA.segments.length) {
     addItem(
       '按音频位置拆分主字幕',
@@ -32114,6 +32733,8 @@ function initWaveformEditor() {
     toggleGapRemoved,
     applyGapRange: applyManualGapRange,
     resizeGapBoundary: resizeManualGapBoundary,
+    moveGap: (index, deltaMs) => translateManualGap(index, deltaMs, 'move'),
+    copyGap: (index, deltaMs) => translateManualGap(index, deltaMs, 'copy'),
     previewGapAt,
     showGapContextMenu: (x, y, index) => showGapContextMenu(x, y, index),
     showContextMenu: (x, y, idx, timeMs) => showContextMenu(x, y, idx, timeMs),
