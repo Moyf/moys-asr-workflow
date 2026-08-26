@@ -149,12 +149,21 @@ def runtime_python_path(root: Path | None = None, *, engine: str = "") -> Path:
 
 def managed_runtime_status(model_cache_root: str | Path | None = None, *, engine: str = "") -> LocalRuntimeStatus:
     is_moss = engine.strip().casefold() == "moss"
+    expected_version = MOSS_RUNTIME_VERSION if is_moss else RUNTIME_VERSION
     root = default_runtime_root(engine)
     python = runtime_python_path(root, engine=engine)
     model_cache = resolve_model_cache_root(model_cache_root)
     manifest_path = root / "runtime.json"
     if not root.exists():
-        return LocalRuntimeStatus("missing", False, str(root), "", str(model_cache), "本地运行环境尚未安装。")
+        return LocalRuntimeStatus(
+            "missing",
+            False,
+            str(root),
+            "",
+            str(model_cache),
+            "本地运行环境尚未安装。",
+            runtime_version=expected_version,
+        )
     if not python.exists():
         return LocalRuntimeStatus(
             "broken",
@@ -163,9 +172,9 @@ def managed_runtime_status(model_cache_root: str | Path | None = None, *, engine
             str(python),
             str(model_cache),
             "本地运行环境不完整，请点击“修复运行环境”。",
+            runtime_version=expected_version,
         )
     manifest = _read_manifest(manifest_path)
-    expected_version = MOSS_RUNTIME_VERSION if is_moss else RUNTIME_VERSION
     if manifest.get("status") != "ready" or manifest.get("runtimeVersion") != expected_version:
         return LocalRuntimeStatus(
             "broken",
@@ -184,6 +193,7 @@ def managed_runtime_status(model_cache_root: str | Path | None = None, *, engine
             str(python),
             str(model_cache),
             "本地运行环境依赖不完整，请点击“修复运行环境”。",
+            runtime_version=expected_version,
         )
     return LocalRuntimeStatus(
         "ready",
@@ -192,6 +202,7 @@ def managed_runtime_status(model_cache_root: str | Path | None = None, *, engine
         str(python),
         str(model_cache),
         "本地运行环境已就绪。",
+        runtime_version=expected_version,
     )
 
 
