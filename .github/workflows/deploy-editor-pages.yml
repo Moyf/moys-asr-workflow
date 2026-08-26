@@ -10,7 +10,6 @@ on:
       - "docs/**"
       - "edit.py"
       - "web/**"
-      - "waveform.py"
       - "maw/reapeaks.py"
       - "maw/**"
       - ".github/workflows/deploy-editor-pages.yml"
