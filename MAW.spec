@@ -80,6 +80,14 @@ datas = [
 ]
 opencc_datas = collect_data_files("opencc")
 datas.extend(opencc_datas)
+# 托管 Runtime 依赖清单（CI 构建时 uv export 生成，frozen 后随包分发；
+# 缺失时跳过——源码模式不打包 runtime txt）。
+_runtime_req_local = ROOT / "build" / "requirements-local.txt"
+_runtime_req_ocr = ROOT / "build" / "requirements-ocr.txt"
+if _runtime_req_local.is_file():
+    datas.append((str(_runtime_req_local), "local-runtime"))
+if _runtime_req_ocr.is_file():
+    datas.append((str(_runtime_req_ocr), "ocr-runtime"))
 opencc_hiddenimports = collect_submodules("opencc")
 
 # OCR dependencies and model files stay outside the frozen bundle. The bundled
