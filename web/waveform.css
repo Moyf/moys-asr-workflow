@@ -672,6 +672,37 @@
 }
 .waveform-gap-block.restored .waveform-gap-label { color: #b9cbd8; background: rgba(27, 38, 47, 0.76); }
 .waveform-gap-block.boundary-editable { cursor: pointer; }
+.waveform-gap-block.dragging { cursor: grabbing; opacity: .82; }
+.waveform-gap-block.waveform-gap-drag-preview,
+.waveform-gap-block.waveform-gap-boundary-preview {
+  z-index: 13;
+  pointer-events: none;
+  border: 1px solid rgba(255, 213, 116, .98);
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(255, 170, 76, .58) 0 5px,
+    rgba(112, 65, 31, .58) 5px 10px
+  );
+  opacity: .92;
+}
+.waveform-gap-block.waveform-gap-drag-preview.copy {
+  border-style: dashed;
+  border-color: rgba(140, 222, 255, .98);
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(87, 174, 211, .58) 0 5px,
+    rgba(31, 73, 94, .58) 5px 10px
+  );
+}
+.waveform-gap-block.waveform-gap-drag-preview.restored,
+.waveform-gap-block.waveform-gap-boundary-preview.restored {
+  border-color: rgba(185, 220, 239, .98);
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(93, 141, 169, .58) 0 5px,
+    rgba(40, 70, 87, .58) 5px 10px
+  );
+}
 .waveform-gap-handle {
   position: absolute;
   z-index: 3;
