@@ -163,6 +163,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("FAQ-常见问题.txt", spec)
         for excluded_module in ("funasr", "qwen_asr", "onnxruntime", "PIL", "rapidocr", "torch", "torchaudio", "readline"):
             self.assertIn(f'"{excluded_module}"', spec)
+        self.assertIn('"maw.waveform"', spec)
+        self.assertNotIn('"waveform",', spec)
         self.assertNotIn('"*.mp4"', spec)
         self.assertNotIn('"*.srt"', spec)
 
@@ -276,8 +278,10 @@ class PackagingContractTests(unittest.TestCase):
 
         self.assertIn('rm -f "$APP_DIR/_internal/libstdc++.so.6" "$APP_DIR/_internal/libgcc_s.so.1"', script)
         self.assertIn('"$APP_DIR/_internal/libgbm.so.1"', script)
+        self.assertIn('"$APP_DIR"/_internal/libreadline.so.*', script)
         self.assertIn("Verify no bundled C++ runtime in AppImage", workflow)
         self.assertIn("_internal/libgbm.so.1", workflow)
+        self.assertIn("_internal/libreadline.so.*", workflow)
 
     def test_appimage_build_ships_ffmpeg_gpl_license_and_source_notice(self) -> None:
         """Given the AppImage build script, When the BtbN GPL ffmpeg build is bundled, Then the GPLv3 license text and a source notice are written into the bundle."""
@@ -287,6 +291,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn('dist/MAW/ffmpeg/GPLv3.txt', script)
         self.assertIn('dist/MAW/ffmpeg/SOURCE.txt', script)
         self.assertIn('https://www.gnu.org/licenses/gpl-3.0.txt', script)
+        self.assertIn('raw.githubusercontent.com/spdx/license-list-data', script)
         self.assertIn('Build provider: https://github.com/BtbN/FFmpeg-Builds', script)
         self.assertIn('Archive SHA-256: $FFMPEG_SHA256', script)
 
