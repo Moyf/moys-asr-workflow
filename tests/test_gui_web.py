@@ -18,7 +18,7 @@ from urllib.error import URLError
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
+from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
 
@@ -915,6 +915,77 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(result["usedMose"])
         self.assertEqual(popen.call_args.args[0], [str(executable), str(project.resolve())])
         self.assertEqual(popen.call_args.kwargs["cwd"], str(self.root))
+
+    def test_open_url_uses_external_opener(self) -> None:
+        with mock.patch("maw.gui_web._open_external") as open_external:
+            result = self.api.open_url({"url": "https://example.com/docs"})
+
+        self.assertEqual(result, {"ok": True})
+        open_external.assert_called_once_with("https://example.com/docs")
+
+    def test_open_external_restores_original_library_path_for_frozen_linux(self) -> None:
+        parent_env = {
+            "LD_LIBRARY_PATH": "/app/_internal",
+            "LD_LIBRARY_PATH_ORIG": "/run/current-system/sw/lib",
+            "MAW_TEST": "preserved",
+        }
+        with mock.patch.object(sys, "platform", "linux"):
+            with mock.patch.object(sys, "frozen", True, create=True):
+                with mock.patch.dict(os.environ, parent_env, clear=True):
+                    with mock.patch("maw.gui_web.subprocess.Popen") as popen:
+                        _open_external("https://example.com/docs")
+                    self.assertEqual(dict(os.environ), parent_env)
+
+        popen.assert_called_once()
+        self.assertEqual(popen.call_args.args[0], ["xdg-open", "https://example.com/docs"])
+        child_env = popen.call_args.kwargs["env"]
+        self.assertEqual(child_env["LD_LIBRARY_PATH"], "/run/current-system/sw/lib")
+        self.assertEqual(child_env["LD_LIBRARY_PATH_ORIG"], "/run/current-system/sw/lib")
+        self.assertEqual(child_env["MAW_TEST"], "preserved")
+
+    def test_open_external_removes_library_path_without_original_for_frozen_linux(self) -> None:
+        parent_env = {"LD_LIBRARY_PATH": "/app/_internal", "MAW_TEST": "preserved"}
+        with mock.patch.object(sys, "platform", "linux"):
+            with mock.patch.object(sys, "frozen", True, create=True):
+                with mock.patch.dict(os.environ, parent_env, clear=True):
+                    with mock.patch("maw.gui_web.subprocess.Popen") as popen:
+                        _open_external("file:///tmp/example.html")
+                    self.assertEqual(dict(os.environ), parent_env)
+
+        child_env = popen.call_args.kwargs["env"]
+        self.assertNotIn("LD_LIBRARY_PATH", child_env)
+        self.assertEqual(child_env["MAW_TEST"], "preserved")
+
+    def test_open_external_uses_webbrowser_when_not_frozen(self) -> None:
+        with mock.patch.object(sys, "platform", "linux"):
+            with mock.patch.object(sys, "frozen", False, create=True):
+                with mock.patch("maw.gui_web.subprocess.Popen") as popen:
+                    with mock.patch("maw.gui_web.webbrowser.open") as open_browser:
+                        _open_external("https://example.com/docs")
+
+        open_browser.assert_called_once_with("https://example.com/docs")
+        popen.assert_not_called()
+
+    @unittest.skipIf(os.name == "nt", "Non-Windows paths use the external opener")
+    def test_open_existing_path_uses_external_opener_for_file_and_folder(self) -> None:
+        artifact = self.root / "clip.edit.html"
+        directory = self.root / "output"
+        artifact.write_text("<!doctype html>\n", encoding="utf-8")
+        directory.mkdir()
+
+        with mock.patch("maw.gui_web._open_external") as open_external:
+            file_result = _open_existing_path(artifact)
+            folder_result = _open_existing_path(directory)
+
+        self.assertEqual(file_result, {"ok": True})
+        self.assertEqual(folder_result, {"ok": True})
+        self.assertEqual(
+            open_external.call_args_list,
+            [
+                mock.call(artifact.resolve().as_uri()),
+                mock.call(directory.resolve().as_uri()),
+            ],
+        )
 
     def test_open_file_opens_existing_chain_artifact(self) -> None:
         artifact = self.root / "clip.llm.mosp"
