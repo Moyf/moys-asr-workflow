@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import threading
@@ -27,11 +28,17 @@ from maw.gui_platform import (
     release_process_tree,
     terminate_process_tree,
 )
-from maw.local_runtime import _find_uv, _requirement_package_names
+from maw.local_runtime import (
+    _extract_embed_python,
+    _find_bootstrap_asset,
+    _get_pip_command,
+    _pip_install_command,
+    _requirement_package_names,
+)
 from maw.postprocess_ocr import OcrDedupRequest
 
 
-OCR_RUNTIME_VERSION: Final = "2"
+OCR_RUNTIME_VERSION: Final = "3"
 OCR_PYTHON_VERSION: Final = "3.11"
 OCR_MODEL_ID: Final = "pp-ocrv6-tiny"
 OCR_MODEL_LABEL: Final = "PP-OCRv6 tiny（CPU）"
@@ -100,7 +107,7 @@ def resolve_ocr_runtime_root(configured: str | Path | None = None) -> Path:
 
 def ocr_runtime_python_path(root: str | Path | None = None) -> Path:
     target = resolve_ocr_runtime_root(root)
-    relative = Path("Scripts") / "python.exe" if os.name == "nt" else Path("bin") / "python"
+    relative = Path("python") / "python.exe" if os.name == "nt" else Path("python") / "bin" / "python"
     return target / relative
 
 
@@ -185,10 +192,13 @@ def install_ocr_runtime(
     if root.exists() and not root.is_dir():
         raise OcrRuntimeError(f"OCR 运行环境路径不能是一个文件：{root}")
     root.parent.mkdir(parents=True, exist_ok=True)
-    uv = _find_uv()
-    if uv is None:
+
+    embed_zip = _find_bootstrap_asset("python-3.11.9-embed-amd64.zip")
+    get_pip = _find_bootstrap_asset("get-pip.py")
+    if embed_zip is None or get_pip is None:
         raise OcrRuntimeError(
-            "未找到 OCR 运行环境安装器 uv。请使用官方打包版，或在开发环境中确保 uv 已加入 PATH。"
+            "未找到 OCR 运行环境安装资产（embedded Python 或 get-pip.py）。"
+            "请使用官方打包版。"
         )
 
     current = managed_ocr_runtime_status(root)
@@ -200,36 +210,33 @@ def install_ocr_runtime(
     if root.exists() and not python.exists() and any(root.iterdir()):
         raise OcrRuntimeError("OCR 运行环境目录已存在但不完整，请更换路径或手动清理后重试。")
 
-    emit("正在准备 OCR Python 运行环境……", 5, "bootstrap")
-    venv_args = [str(uv), "venv", "--python", OCR_PYTHON_VERSION, "--allow-existing", "--prompt", "MAW-ocr", str(root)]
+    emit("正在解压嵌入式 OCR Python 运行环境……", 5, "bootstrap")
+    python_dir = root / "python"
+    if repair or not python.exists():
+        if python_dir.exists():
+            shutil.rmtree(python_dir)
+        _extract_embed_python(embed_zip, python_dir)
+    _check_cancel(cancel)
+    if not python.exists():
+        raise OcrRuntimeError(f"OCR Python 运行环境解压失败：未找到 {python}")
+
+    emit("正在安装 pip……", 12, "bootstrap")
     _run_process(
-        venv_args,
-        env=_runtime_env(),
+        _get_pip_command(python, get_pip),
+        env=_runtime_env(root),
         cancel=cancel,
-        on_line=_uv_line(emit, 10, "bootstrap"),
+        on_line=_bootstrap_line(emit, 15, "bootstrap"),
         cwd=_runtime_bundle_root(),
     )
     _check_cancel(cancel)
-    if not python.exists():
-        raise OcrRuntimeError(f"OCR Python 运行环境创建失败：未找到 {python}")
 
     emit("正在安装 OCR 模型和依赖……", 25, "dependencies")
     requirements_file = _ocr_requirements_path()
-    install_args = [
-        str(uv),
-        "pip",
-        "install",
-        "--python",
-        str(python),
-        "--upgrade",
-        "--index-url",
-        "https://pypi.org/simple",
-        "-r",
-        str(requirements_file),
-    ]
+    site_packages = root / "site-packages"
+    install_args = _pip_install_command(python, site_packages, requirements_file)
     _run_process(
         install_args,
-        env=_runtime_env(),
+        env=_runtime_env(root),
         cancel=cancel,
         on_line=_dependency_line(emit, requirements_file),
         cwd=_runtime_bundle_root(),
@@ -244,7 +251,7 @@ def install_ocr_runtime(
     ]
     _run_process(
         verify_args,
-        env=_runtime_env(),
+        env=_runtime_env(root),
         cancel=cancel,
         on_line=lambda line: emit(line, 94, "verify"),
         cwd=_runtime_bundle_root(),
@@ -338,7 +345,7 @@ def run_ocr_in_runtime(
 
     _run_process(
         command,
-        env=_runtime_env(),
+        env=_runtime_env(resolve_ocr_runtime_root(runtime_root)),
         cancel=cancel_event or Event(),
         on_line=handle_line,
         cwd=worker.parent.parent,
@@ -366,12 +373,15 @@ def _default_app_data_root() -> Path:
     return Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "MAW"
 
 
-def _runtime_env() -> dict[str, str]:
+def _runtime_env(runtime_root: Path | None = None) -> dict[str, str]:
     env = dict(os.environ)
     env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONNOUSERSITE"] = "1"
+    if runtime_root is not None:
+        site_packages = runtime_root / "site-packages"
+        env["PYTHONPATH"] = str(site_packages)
     return env
 
 
@@ -404,7 +414,7 @@ def _ocr_requirements_path() -> Path:
     return path
 
 
-def _uv_line(emit: RuntimeEvent, percent: int, stage: str) -> RuntimeLine:
+def _bootstrap_line(emit: RuntimeEvent, percent: int, stage: str) -> RuntimeLine:
     def report(line: str) -> None:
         text = line.strip()
         if text:
@@ -514,10 +524,7 @@ def _read_manifest(path: Path) -> dict[str, object]:
 
 
 def _ocr_package_dirs_present(root: Path) -> bool:
-    site_packages = root / "Lib" / "site-packages" if os.name == "nt" else root / "lib"
-    if os.name != "nt":
-        candidates = list(site_packages.glob("python*/site-packages"))
-        site_packages = candidates[0] if candidates else site_packages
+    site_packages = root / "site-packages"
     return all((site_packages / name).exists() for name in ("numpy", "onnxruntime", "PIL", "rapidocr"))
 
 
