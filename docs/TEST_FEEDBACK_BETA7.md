@@ -82,7 +82,14 @@
 - 校验同步收紧：`buildSplitPair` 与内联 `splitAtCursor` 改用最终左右边界分别校验两侧 >= 100ms；强制重试路径若自然边界使某一侧过短（末词紧贴字幕末尾等），该侧降级回用户确认的强制切点，另一侧保留自然边界。
 - 说明项：`web/waveform.js` 的 `splitSegmentAtTime`（波形工具函数，当前仅被单元测试引用、不在任何 UI 拆分链路上）保留原"最近 item 中点"契约；UI 上的剃刀拆分经 editor.js 文本管线执行，已随本次改动获得新语义。
 - 验证证据见下方修复记录第 42 行。
-- 未验证边界：联动拆分弹窗在词间空隙上的完整点击流未实机走查（其确认逻辑同样经 `buildSplitPair` 生效）；针对本行为的持久化 e2e 回归用例暂未入库，本轮以真实浏览器冒烟脚本代替。
+- 未验证边界：联动拆分弹窗在词间空隙上的完整点击流未实机走查（其确认逻辑同样经 `buildSplitPair` 生效）。
+
+## 增量记录（任务 42 补充：入库 e2e 回归）
+
+- 新增 `tests/e2e/split-word-gap.spec.mjs`（3/3 通过），把词间静音拆分行为固化为持久化回归：静音空隙场景断言左段 `end=6480`、右段 `start=6720` 且各自 item 贴合；连续词场景断言左右段仍共享 `20800` 单一切点；词内切点场景断言按比例插值共享 `6320` 且左右 item 不越过段边界。
+- 断言发现并记录既有行为：`cleanSplitItems` 会把左段末 item 的尾部标点裁掉（`型、`→`型`），时间不变；该行为早于本次改动，用例按现状固化。
+- 相邻既有拆分回归（`waveform-history.spec.mjs` 内联拆分 / 强制重试 / B 拆分 3 条）复跑 3/3 通过，确认无相互影响。
+- 运行方式：`$env:MAW_E2E_PYTHON='.venv\Scripts\python.exe'; npx playwright test tests/e2e/split-word-gap.spec.mjs --project=chromium`（系统 python 缺 `reapeaks`，按 beta7 既有结论使用仓库 .venv）。
 
 ## 修复与验证记录
 
@@ -110,6 +117,7 @@
 | 33 | 已修复 | 批量区域新增独立拖入提示；不支持格式和重复文件不再写入单文件错误区，重复文件提示“文件已在当前列表内”；`batch_item_log` 阶段名同步写入总日志并以内联形式显示；跳过已完成文件改为自定义“是 / 否”确认按钮。已通过完整 Python 643/643、Launcher 190/190、Node 126/126、Launcher JS 语法、便携版生成、`git diff --check` 和浏览器冒烟验证。 |
 | 34 | 已修复 | 批量开始时状态区显示当前文件序号（如 `正在处理第 1/3 个文件`）；切换文件时更新当前处理文件；每个文件完成、失败或取消时写入总日志；批量结束时汇总成功/失败数量。已通过 Launcher 190/190、Launcher JS 语法检查和浏览器批量冒烟验证。 |
 | 42 | 已修复 | `node --check web\editor.js`；`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（218/218 通过）；`.venv\Scripts\python.exe edit.py --blank` 重生成便携版；真实浏览器 Playwright 冒烟（serve.py 挂载测试工程 → 双击第 0 行进入编辑 → 光标定位偏移 5「、」后 → Enter）：拆分前 row0 `00:05.760→00:08.880 本地模型、AI校准和翻译…`，拆分后 row0 `00:05.760→00:06.480 本地模型`、row1 `00:06.720→00:08.880 AI校准和翻译…`，左段停在 6480、右段起于 6720，240ms 词间静音保留；`git diff --check` 通过。 |
+| 42 补 | 已修复 | 入库 e2e：`npx playwright test tests/e2e/split-word-gap.spec.mjs --project=chromium`（3/3 通过，MAW_E2E_PYTHON 指向仓库 .venv）；相邻既有拆分回归 `waveform-history.spec.mjs --grep "retries an inline split|manual text split keeps malformed|B splits the selected subtitle under"`（3/3 通过）；`git diff --check` 通过。 |
 
 ## 询问项结论
 
