@@ -163,10 +163,44 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("MAW-lite", faq)
         self.assertIn("下载带内置 FFmpeg 的完整版 MAW 包", faq)
         self.assertIn("FAQ-常见问题.txt", spec)
-        for excluded_module in ("funasr", "qwen_asr", "onnxruntime", "PIL", "rapidocr", "torch", "torchaudio"):
+        for excluded_module in ("funasr", "qwen_asr", "onnxruntime", "PIL", "rapidocr", "torch", "torchaudio", "readline"):
             self.assertIn(f'"{excluded_module}"', spec)
+        self.assertIn('"maw.waveform"', spec)
+        self.assertNotIn('"waveform",', spec)
         self.assertNotIn('"*.mp4"', spec)
         self.assertNotIn('"*.srt"', spec)
+
+    def test_runtime_uses_frozen_requirements_txt_not_handwritten_constants(self) -> None:
+        """Given the frozen txt runtime install design, When runtime specs and base are read, Then no hand-written requirement constants remain and install reads -r txt."""
+        spec = read_text("MAW.spec")
+        runtimes_base = read_text("maw/runtimes/base.py")
+        local_spec = read_text("maw/runtimes/local_spec.py")
+        ocr_spec = read_text("maw/runtimes/ocr_spec.py")
+        release = read_text(".github/workflows/release.yml")
+
+        # 三套 Runtime 统一由 RuntimeSpec 描述；手写依赖常量仅允许 moss 迁移期占位。
+        for text in (local_spec, ocr_spec):
+            self.assertNotIn("GENERAL_REQUIREMENTS", text)
+            self.assertNotIn("WINDOWS_TORCH_REQUIREMENTS", text)
+            self.assertNotIn("OTHER_TORCH_REQUIREMENTS", text)
+        self.assertNotIn("OCR_REQUIREMENTS", ocr_spec)
+
+        self.assertIn("requirements_key", local_spec)
+        self.assertIn("requirements_key", ocr_spec)
+        self.assertIn("requirements_path", runtimes_base)
+        self.assertIn('"-r"', runtimes_base)
+
+        self.assertIn("requirements-local.txt", spec)
+        self.assertIn("requirements-ocr.txt", spec)
+
+        self.assertIn("uv export --frozen --extra local", release)
+        self.assertIn("uv export --frozen --extra ocr", release)
+
+        self.assertIn('RUNTIME_VERSION = "5"', local_spec)
+        self.assertIn('OCR_RUNTIME_VERSION = "3"', ocr_spec)
+
+        self.assertIn("_has_cuda", runtimes_base)
+        self.assertIn("torch==2.13.0", local_spec)
 
     def test_ocr_dependencies_are_optional_and_runtime_worker_is_bundled_purely(self) -> None:
         """Given optional OCR support, When metadata and the frozen spec are read, Then the main package stays OCR-free."""
@@ -279,8 +313,10 @@ class PackagingContractTests(unittest.TestCase):
 
         self.assertIn('rm -f "$APP_DIR/_internal/libstdc++.so.6" "$APP_DIR/_internal/libgcc_s.so.1"', script)
         self.assertIn('"$APP_DIR/_internal/libgbm.so.1"', script)
+        self.assertIn('"$APP_DIR"/_internal/libreadline.so.*', script)
         self.assertIn("Verify no bundled C++ runtime in AppImage", workflow)
         self.assertIn("_internal/libgbm.so.1", workflow)
+        self.assertIn("_internal/libreadline.so.*", workflow)
 
     def test_appimage_build_ships_ffmpeg_gpl_license_and_source_notice(self) -> None:
         """Given the AppImage build script, When the BtbN GPL ffmpeg build is bundled, Then the GPLv3 license text and a source notice are written into the bundle."""
@@ -290,6 +326,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn('dist/MAW/ffmpeg/GPLv3.txt', script)
         self.assertIn('dist/MAW/ffmpeg/SOURCE.txt', script)
         self.assertIn('https://www.gnu.org/licenses/gpl-3.0.txt', script)
+        self.assertIn('raw.githubusercontent.com/spdx/license-list-data', script)
         self.assertIn('Build provider: https://github.com/BtbN/FFmpeg-Builds', script)
         self.assertIn('Archive SHA-256: $FFMPEG_SHA256', script)
 
@@ -308,7 +345,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("desktop", script)
         self.assertNotIn("MOSE", script)
         self.assertIn("bootstrap", script)
-        self.assertIn("uv.exe", script)
+        self.assertIn("python-3.11.9-embed-amd64.zip", script)
+        self.assertIn("get-pip.py", script)
         self.assertIn("$ErrorActionPreference = 'Stop'", script)
 
     def test_windows_preview_workflow_verifies_launcher_version(self) -> None:
@@ -316,6 +354,23 @@ class PackagingContractTests(unittest.TestCase):
         workflow = read_text(".github/workflows/pr-release-windows.yml")
 
         self.assertIn("scripts/sync_launcher_version.py --check", workflow)
+
+    def test_windows_preview_workflow_downloads_bootstrap_assets_before_build(self) -> None:
+        """Given a clean checkout, When the preview builds, Then bootstrap assets exist before PyInstaller runs."""
+        workflow = read_text(".github/workflows/pr-release-windows.yml")
+
+        self.assertIn("Download embedded Python bootstrap assets", workflow)
+        self.assertIn(
+            "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip",
+            workflow,
+        )
+        self.assertIn("https://bootstrap.pypa.io/get-pip.py", workflow)
+        self.assertIn("build-windows.ps1 -SkipTests", workflow)
+        self.assertLess(
+            workflow.index("python-3.11.9-embed-amd64.zip"),
+            workflow.index("build-windows.ps1 -SkipTests"),
+            "bootstrap 下载步骤必须在调用 build-windows.ps1 之前",
+        )
 
     def test_release_workflow_is_tag_triggered_and_publishes_both_windows_packages(self) -> None:
         """Given a v* tag push, When workflow is read, Then it releases MAW and MAW-lite builds."""

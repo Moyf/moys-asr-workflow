@@ -13,6 +13,14 @@ APPIMAGE_URL="https://github.com/AppImage/AppImageKit/releases/download/continuo
 mkdir -p "$BUILD_DIR"
 
 echo "==> 1/6 PyInstaller 构建 dist/MAW"
+# 生成托管 Runtime 的 frozen requirements txt（MAW.spec datas 条件追加打包）。
+mkdir -p build
+uv export --frozen --extra local --no-dev --format requirements-txt -o build/requirements-local.txt
+uv export --frozen --extra ocr --no-dev --format requirements-txt -o build/requirements-ocr.txt
+# moss 依赖与 local（qwen-asr/Transformers 4.x）互斥，独立声明、独立冻结。
+uv pip compile moss-requirements.in -p 3.11 --extra-index-url https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match -o build/requirements-moss.txt
+# 生成 CPU 版清单（去除 +cuXXX），供无 NVIDIA GPU 的机器首装时直接使用。
+uv run python scripts/freeze_cpu_requirements.py
 uv run --group build pyinstaller --noconfirm --clean MAW.spec
 # PyInstaller 6 places datas under _internal in an onedir bundle. Keep the
 # user-facing FAQ at the AppImage root as well, where users can find it easily.
@@ -50,11 +58,27 @@ fi
 mkdir -p "dist/MAW/ffmpeg/bin"
 cp "$FFMPEG_DIR/bin/ffmpeg" "$FFMPEG_DIR/bin/ffprobe" "dist/MAW/ffmpeg/bin/"
 # GPL 合规：BtbN linux64-gpl 是 GPL 构建，分发须随附许可证文本与对应源码
-# 获取方式（GPLv3 §4 传递许可证副本、§6 提供源码书面要约）。GPLv3 全文从
-# gnu.org 拉取，SOURCE.txt 记录构建来源、归档地址与校验和。
-curl --fail --location --retry 3 --silent --show-error \
-    -o "dist/MAW/ffmpeg/GPLv3.txt" \
-    "https://www.gnu.org/licenses/gpl-3.0.txt"
+# 获取方式（GPLv3 §4 传递许可证副本、§6 提供源码书面要约）。GPLv3 全文
+# 优先从 gnu.org 拉取，失败时回退 GitHub 官方 SPDX 镜像（GitHub hosted
+# runner 上 gnu.org 偶发连接超时，curl (28) 会导致 AppImage 构建连带失败）；
+# SOURCE.txt 记录构建来源、归档地址与校验和。
+_GPL_TARGET="dist/MAW/ffmpeg/GPLv3.txt"
+_GPL_TMP="${_GPL_TARGET}.tmp"
+rm -f "$_GPL_TMP"
+if curl --fail --location --silent --show-error --connect-timeout 15 --max-time 90 \
+    -o "$_GPL_TMP" "https://www.gnu.org/licenses/gpl-3.0.txt" \
+    || curl --fail --location --silent --show-error --connect-timeout 15 --max-time 90 --retry 1 \
+        -o "$_GPL_TMP" \
+        "https://raw.githubusercontent.com/spdx/license-list-data/main/text/GPL-3.0-only.txt"; then
+    :
+else
+    rm -f "$_GPL_TMP"
+    echo "GPL 许可证文本下载失败（gnu.org 与 SPDX 镜像均不可达）" >&2
+    exit 1
+fi
+grep -q "GNU GENERAL" "$_GPL_TMP" || { rm -f "$_GPL_TMP"; echo "GPL 许可证文本内容校验失败" >&2; exit 1; }
+mv -f "$_GPL_TMP" "$_GPL_TARGET"
+test -s "$_GPL_TARGET"
 cat > "dist/MAW/ffmpeg/SOURCE.txt" <<EOF
 FFmpeg $FFMPEG_VERSION — BtbN FFmpeg-Builds linux64-gpl static build
 Build provider: https://github.com/BtbN/FFmpeg-Builds
@@ -84,7 +108,7 @@ cp -a dist/MAW/. "$APP_DIR/"
 # 系统 libgbm 导出符号是旧版的超集（Chromium 所需 20 个 gbm_* 符号全覆盖），
 # 剔除后由系统版本接管，行为正确。
 rm -f "$APP_DIR/_internal/libstdc++.so.6" "$APP_DIR/_internal/libgcc_s.so.1" \
-      "$APP_DIR/_internal/libgbm.so.1"
+      "$APP_DIR/_internal/libgbm.so.1" "$APP_DIR"/_internal/libreadline.so.*
 
 # AppRun：QtWebEngine 在 AppImage（squashfs 只读、无 SUID sandbox helper）环境
 # 必须禁用 Chromium 沙箱，否则 Launcher 页面无法渲染。

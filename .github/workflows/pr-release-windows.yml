@@ -49,6 +49,12 @@ jobs:
       - name: Run Python tests
         run: uv run python -m unittest discover -s tests -p "test_*.py"
 
+      - name: Download embedded Python bootstrap assets
+        run: |
+          mkdir -p build
+          curl -L --retry 3 --connect-timeout 20 --max-time 300 -o build/python-3.11.9-embed-amd64.zip https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip
+          curl -L --retry 3 --connect-timeout 20 --max-time 120 -o build/get-pip.py https://bootstrap.pypa.io/get-pip.py
+
       - name: Build MAW bundle
         shell: pwsh
         run: .\scripts\build-windows.ps1 -SkipTests
@@ -59,6 +65,22 @@ jobs:
           $ErrorActionPreference = 'Stop'
           if (-not (Test-Path -LiteralPath 'dist\MAW\FAQ-常见问题.txt' -PathType Leaf)) {
             throw 'Missing dist\MAW\FAQ-常见问题.txt after build.'
+          }
+
+      - name: Verify runtime requirements bundled
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Required = @(
+            '_internal\local-runtime\requirements-local.txt'
+            '_internal\ocr-runtime\requirements-ocr.txt'
+            '_internal\moss-runtime\requirements-moss.txt'
+          )
+          foreach ($Relative in $Required) {
+            $Path = Join-Path 'dist\MAW' $Relative
+            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+              throw "Missing runtime requirements in bundle: $Path"
+            }
           }
 
       - name: Smoke MAW executable

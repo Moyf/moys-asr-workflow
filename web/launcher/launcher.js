@@ -974,7 +974,7 @@
     if (!isLocalProvider()) return;
     const runtime = state.config.localRuntime || {};
     const installing = state.localRuntimeInstalling;
-    const key = installing ? "local_runtime_installing" : ({ ready: "local_runtime_ready", broken: "local_runtime_broken", missing: "local_runtime_missing" }[runtime.status] || "local_runtime_missing");
+    const key = installing ? "local_runtime_installing" : ({ ready: "local_runtime_ready", broken: "local_runtime_broken", missing: "local_runtime_missing", installing: "local_runtime_installing" }[runtime.status] || "local_runtime_missing");
     const target = $("localRuntimeStatus");
     target.textContent = installing && state.localRuntimeProgressMessage ? state.localRuntimeProgressMessage : t(key);
     target.className = `local-status ${installing ? "warn" : (runtime.ready ? "ready" : "warn")}`;
@@ -984,7 +984,7 @@
     const button = $("installLocalRuntime");
     button.disabled = false;
     button.classList.toggle("hidden", !installing && runtime.status === "ready");
-    button.textContent = installing ? t("local_runtime_cancel") : (runtime.status === "ready" ? t("local_runtime_repair") : t("local_runtime_install"));
+    button.textContent = installing || runtime.status === "installing" ? t("local_runtime_cancel") : (runtime.status === "missing" ? t("local_runtime_install") : t("local_runtime_repair"));
     $("refreshLocalRuntime").disabled = installing;
     const progress = $("localRuntimeProgress");
     progress.classList.toggle("hidden", !installing);
@@ -994,7 +994,7 @@
   function renderOcrRuntime() {
     const runtime = state.config?.ocrRuntime || {};
     const installing = state.ocrRuntimeInstalling;
-    const key = installing ? "ocr_runtime_installing" : ({ ready: "ocr_runtime_ready", broken: "ocr_runtime_broken", missing: "ocr_runtime_missing" }[runtime.status] || "ocr_runtime_missing");
+    const key = installing ? "ocr_runtime_installing" : ({ ready: "ocr_runtime_ready", broken: "ocr_runtime_broken", missing: "ocr_runtime_missing", installing: "ocr_runtime_installing" }[runtime.status] || "ocr_runtime_missing");
     const target = $("ocrRuntimeStatus");
     target.textContent = installing && state.ocrRuntimeProgressMessage ? state.ocrRuntimeProgressMessage : t(key);
     target.className = `local-status ${installing ? "warn" : (runtime.ready ? "ready" : "warn")}`;
@@ -1004,7 +1004,7 @@
     const button = $("installOcrRuntime");
     button.disabled = false;
     button.classList.toggle("hidden", !installing && runtime.status === "ready");
-    button.textContent = installing ? t("ocr_runtime_cancel") : (runtime.status === "broken" ? t("ocr_runtime_repair") : t("ocr_runtime_install"));
+    button.textContent = installing || runtime.status === "installing" ? t("ocr_runtime_cancel") : (runtime.status === "missing" ? t("ocr_runtime_install") : t("ocr_runtime_repair"));
     $("refreshOcrRuntime").disabled = installing;
     const progress = $("ocrRuntimeProgress");
     progress.classList.toggle("hidden", !installing);
