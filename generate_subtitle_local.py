@@ -62,9 +62,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("-ll", "--length-limit", type=parse_duration, help="只处理前 N 秒，例如 2m")
     parser.add_argument("-o", "--output", help="输出 SRT 路径（默认与输入同目录）")
-    parser.add_argument("--max-len", type=int, default=21, help="中文单条字幕最大字符数")
+    parser.add_argument("--max-len", type=int, default=18, help="中文单条字幕最大字符数")
     parser.add_argument("--min-len", type=int, default=5, help="中文短句合并阈值")
-    parser.add_argument("--gap-split", type=int, default=1000, help="静音超过多少毫秒时切句")
+    parser.add_argument("--gap-split", type=int, default=800, help="静音超过多少毫秒时切句")
     parser.add_argument(
         "--strip-tail-punct", default="，。",
         help="句尾剥除的标点集合；传空串禁用剥除（默认剥逗号和句号）",
