@@ -1,6 +1,6 @@
 # Third-party notices
 
-本仓库不打包模型或云端 API 服务。默认的 `MAW-Windows` 与 `MAW-macOS-arm64` 包会附带对应平台的 `ffmpeg` 与 `ffprobe`；可选的 `MAW-lite` 包不含 FFmpeg；Linux 的 `MAW-Linux-x86_64.AppImage` 始终内置静态 `ffmpeg`/`ffprobe`（BtbN 构建）。Windows 包还会在 `bootstrap/uv.exe` 携带 uv，供用户通过 GUI 创建本地 ASR 运行环境。运行时可能使用下列外部组件；许可证和服务条款以各项目及服务方的最新文本为准。
+本仓库不打包模型或云端 API 服务。默认的 `MAW-Windows` 与 `MAW-macOS-arm64` 包会附带对应平台的 `ffmpeg` 与 `ffprobe`；可选的 `MAW-lite` 包不含 FFmpeg；Linux 的 `MAW-Linux-x86_64.AppImage` 始终内置静态 `ffmpeg`/`ffprobe`（BtbN 构建）。Windows 包还会在 `bootstrap/` 携带嵌入式 Python（python-3.11.9-embed-amd64.zip）与 `get-pip.py`，供用户通过 GUI 创建本地 ASR 运行环境。运行时可能使用下列外部组件；许可证和服务条款以各项目及服务方的最新文本为准。
 
 | Component | Purpose | License / terms |
 |---|---|---|

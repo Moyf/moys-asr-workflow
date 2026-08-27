@@ -18,9 +18,10 @@ from urllib.error import URLError
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
+from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
+from maw.runtimes.base import RuntimeStatus  # noqa: E402
 
 
 class FakeWindow:
@@ -915,6 +916,77 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(result["usedMose"])
         self.assertEqual(popen.call_args.args[0], [str(executable), str(project.resolve())])
         self.assertEqual(popen.call_args.kwargs["cwd"], str(self.root))
+
+    def test_open_url_uses_external_opener(self) -> None:
+        with mock.patch("maw.gui_web._open_external") as open_external:
+            result = self.api.open_url({"url": "https://example.com/docs"})
+
+        self.assertEqual(result, {"ok": True})
+        open_external.assert_called_once_with("https://example.com/docs")
+
+    def test_open_external_restores_original_library_path_for_frozen_linux(self) -> None:
+        parent_env = {
+            "LD_LIBRARY_PATH": "/app/_internal",
+            "LD_LIBRARY_PATH_ORIG": "/run/current-system/sw/lib",
+            "MAW_TEST": "preserved",
+        }
+        with mock.patch.object(sys, "platform", "linux"):
+            with mock.patch.object(sys, "frozen", True, create=True):
+                with mock.patch.dict(os.environ, parent_env, clear=True):
+                    with mock.patch("maw.gui_web.subprocess.Popen") as popen:
+                        _open_external("https://example.com/docs")
+                    self.assertEqual(dict(os.environ), parent_env)
+
+        popen.assert_called_once()
+        self.assertEqual(popen.call_args.args[0], ["xdg-open", "https://example.com/docs"])
+        child_env = popen.call_args.kwargs["env"]
+        self.assertEqual(child_env["LD_LIBRARY_PATH"], "/run/current-system/sw/lib")
+        self.assertEqual(child_env["LD_LIBRARY_PATH_ORIG"], "/run/current-system/sw/lib")
+        self.assertEqual(child_env["MAW_TEST"], "preserved")
+
+    def test_open_external_removes_library_path_without_original_for_frozen_linux(self) -> None:
+        parent_env = {"LD_LIBRARY_PATH": "/app/_internal", "MAW_TEST": "preserved"}
+        with mock.patch.object(sys, "platform", "linux"):
+            with mock.patch.object(sys, "frozen", True, create=True):
+                with mock.patch.dict(os.environ, parent_env, clear=True):
+                    with mock.patch("maw.gui_web.subprocess.Popen") as popen:
+                        _open_external("file:///tmp/example.html")
+                    self.assertEqual(dict(os.environ), parent_env)
+
+        child_env = popen.call_args.kwargs["env"]
+        self.assertNotIn("LD_LIBRARY_PATH", child_env)
+        self.assertEqual(child_env["MAW_TEST"], "preserved")
+
+    def test_open_external_uses_webbrowser_when_not_frozen(self) -> None:
+        with mock.patch.object(sys, "platform", "linux"):
+            with mock.patch.object(sys, "frozen", False, create=True):
+                with mock.patch("maw.gui_web.subprocess.Popen") as popen:
+                    with mock.patch("maw.gui_web.webbrowser.open") as open_browser:
+                        _open_external("https://example.com/docs")
+
+        open_browser.assert_called_once_with("https://example.com/docs")
+        popen.assert_not_called()
+
+    @unittest.skipIf(os.name == "nt", "Non-Windows paths use the external opener")
+    def test_open_existing_path_uses_external_opener_for_file_and_folder(self) -> None:
+        artifact = self.root / "clip.edit.html"
+        directory = self.root / "output"
+        artifact.write_text("<!doctype html>\n", encoding="utf-8")
+        directory.mkdir()
+
+        with mock.patch("maw.gui_web._open_external") as open_external:
+            file_result = _open_existing_path(artifact)
+            folder_result = _open_existing_path(directory)
+
+        self.assertEqual(file_result, {"ok": True})
+        self.assertEqual(folder_result, {"ok": True})
+        self.assertEqual(
+            open_external.call_args_list,
+            [
+                mock.call(artifact.resolve().as_uri()),
+                mock.call(directory.resolve().as_uri()),
+            ],
+        )
 
     def test_open_file_opens_existing_chain_artifact(self) -> None:
         artifact = self.root / "clip.llm.mosp"
@@ -2092,6 +2164,54 @@ class LauncherRuntimeTests(unittest.TestCase):
 
 
 @final
+class OpenRuntimeFolderTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.env_path = self.root / ".env"
+        self.paths = LauncherPaths(root=self.root, env_path=self.env_path, launcher_html=self.root / "launcher.html")
+        self.api = LauncherApi(paths=self.paths, window_getter=lambda: FakeWindow())
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_open_runtime_folder_opens_model_cache_directory_from_backend_config(self) -> None:
+        """Given the model-cache kind, When opening, Then backend resolves the dir and no raw path is trusted."""
+        with mock.patch("maw.gui_web.resolve_model_cache_root", return_value=self.root) as resolver:
+            with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as opener:
+                result = self.api.open_runtime_folder({"kind": "model-cache"})
+
+        self.assertTrue(result["ok"])
+        resolver.assert_called_once()
+        opener.assert_called_once_with(self.root)
+
+    def test_open_runtime_folder_resolves_managed_runtime_by_selected_model_engine(self) -> None:
+        """Given the runtime kind, When opening, Then the managed runtime root is resolved server-side."""
+        with mock.patch("maw.gui_web.effective_config", return_value=SimpleNamespace(model_cache_root="")):
+            with mock.patch(
+                "maw.gui_web.managed_runtime_status",
+                return_value=RuntimeStatus(status="broken", ready=False, path=str(self.root), python_path="", detail="", runtime_version="1"),
+            ) as status:
+                with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as opener:
+                    result = self.api.open_runtime_folder({"kind": "runtime", "modelId": "moss-local"})
+
+        self.assertTrue(result["ok"])
+        status.assert_called_once()
+        opener.assert_called_once_with(self.root)
+
+    def test_open_runtime_folder_rejects_unknown_kind_and_missing_directories(self) -> None:
+        """Given an unknown kind or non-existent directory, Then no filesystem access happens."""
+        result = self.api.open_runtime_folder({"kind": "../escape"})
+        self.assertFalse(result["ok"])
+
+        missing = self.root / "not-created"
+        with mock.patch("maw.gui_web.resolve_model_cache_root", return_value=missing):
+            result = self.api.open_runtime_folder({"kind": "model-cache"})
+        self.assertFalse(result["ok"])
+        self.assertIn("尚未创建", str(result.get("error")))
+
+
+@final
 class LauncherAssetContractTests(unittest.TestCase):
     def test_launcher_exposes_chainable_postprocess_toolbox(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -2761,7 +2881,14 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="localRuntimeProgressBar"', page)
         self.assertIn('id="localModelProgress"', page)
         self.assertIn('id="localModelProgressBar"', page)
-        self.assertIn('bridge("install_local_runtime"', script)
+        # 路径块（可点击打开文件夹）位于状态行上方；detail 与修复按钮同行。
+        self.assertIn('id="localRuntimePaths"', page)
+        self.assertLess(page.index('id="localRuntimePaths"'), page.index('id="localRuntimeStatus"'))
+        self.assertIn('<div class="repair-row">', page)
+        self.assertIn('bridge("open_runtime_folder"', script)
+        self.assertIn('def open_runtime_folder(', backend)
+        self.assertIn("repair: state.config.ocrRuntime?.status === \"broken\"", script)
+        self.assertIn('runtimeStatus !== "missing"', script)
         self.assertIn('event.type === "localRuntimeProgress"', script)
         self.assertIn('event.type === "localRuntimeReady"', script)
         self.assertIn('def install_local_runtime(', backend)

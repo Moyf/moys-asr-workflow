@@ -186,6 +186,7 @@
     local_runtime_ready_hint: "运行环境已就绪。现在可以下载所选模型。",
     local_runtime_path: "运行环境：",
     local_model_cache_path: "模型缓存：",
+    open_folder_hint: "点击打开所在文件夹",
     local_runtime_install_done: "本地模型支持已安装完成",
     local_runtime_install_failed: "本地运行环境安装失败",
     local_runtime_cancelled: "本地运行环境安装已取消"
@@ -263,6 +264,7 @@
     local_runtime_ready_hint: "The runtime is ready. You can now download the selected model.",
     local_runtime_path: "Runtime: ",
     local_model_cache_path: "Model cache: ",
+    open_folder_hint: "Click to open this folder",
     local_runtime_install_done: "Local model support is ready",
     local_runtime_install_failed: "Local runtime installation failed",
     local_runtime_cancelled: "Local runtime installation was cancelled"
@@ -890,7 +892,10 @@
     link.addEventListener("click", (event) => { event.preventDefault(); bridge("open_url", { url }); });
     status.append(link);
   }
-  const appendLog = (text, { inline = false } = {}) => { const log = $("log"); const needsSpace = inline && log.textContent && !log.textContent.endsWith("\n"); log.textContent += `${needsSpace ? " " : ""}${text}${inline ? "" : "\n"}`; log.scrollTop = log.scrollHeight; state.lastLogMessage = text; const latest = $("logLatest"); const inlineLatest = inline && latest.dataset.inline === "true"; latest.textContent = inlineLatest ? `${latest.textContent} ${text}` : text; latest.dataset.inline = String(inline); latest.classList.remove("hidden"); };
+  // latest（顶部黄字）常驻展示最新日志行；quietLatest 供 runtime 安装过程
+  // 使用——那段时间逐行 [runtime] 输出已在自动滚动的列表与面板进度区出现，
+  // 黄字再显示同一行会相邻重复。
+  const appendLog = (text, { inline = false, quietLatest = false } = {}) => { const log = $("log"); const needsSpace = inline && log.textContent && !log.textContent.endsWith("\n"); log.textContent += `${needsSpace ? " " : ""}${text}${inline ? "" : "\n"}`; log.scrollTop = log.scrollHeight; state.lastLogMessage = text; const latest = $("logLatest"); if (quietLatest) { latest.classList.add("hidden"); latest.dataset.inline = "false"; return; } const inlineLatest = inline && latest.dataset.inline === "true"; latest.textContent = inlineLatest ? `${latest.textContent} ${text}` : text; latest.dataset.inline = String(inline); latest.classList.remove("hidden"); };
   function confirmAction(message) { $("batchConfirmMessage").textContent = String(message || ""); $("batchConfirmModal").classList.remove("hidden"); $("batchConfirmYes").focus(); return new Promise((resolve) => { window.MAWLauncher.confirmResolve = resolve; }); }
   function finishConfirm(value) { const resolve = window.MAWLauncher.confirmResolve; window.MAWLauncher.confirmResolve = null; $("batchConfirmModal").classList.add("hidden"); resolve?.(value); }
 
@@ -970,21 +975,48 @@
   async function loadHotwordFile(path, appendToText = false) { if (ext(path) !== ".txt") { setError("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); clearDropState(); return; } const result = await bridge("read_hotword_file", { path }); if (!result.ok) { applyErrorResult(result, false); clearDropState(); return; } if (appendToText) { const incoming = String(result.text || "").trim(); if (incoming) { const current = $("qwenAudioHotwords").value.trimEnd(); $("qwenAudioHotwords").value = current ? `${current}\n${incoming}` : incoming; } setHotwordsMode("text"); renderHotwordWarnings($("qwenAudioHotwords").value); setStatus(t("qwen_audio_hotwords_loaded")); } else { setQwenAudioHotwordsFile(result.path || path); renderHotwordWarnings(String(result.text || ""), Number($("qwenAudioHotwordWeight").value), true); } clearDropState(); }
   function isLocalProvider() { return provider()?.kind === "local" || provider()?.id === "local"; }
   function localStatus() { return selectedModel()?.localStatus || {}; }
+  function renderLocalRuntimePaths(runtime) {
+    const container = $("localRuntimePaths");
+    container.textContent = "";
+    const entries = [
+      { label: t("local_runtime_path"), path: runtime.path || "", payload: { kind: "runtime", modelId: $("model").value } },
+      { label: t("local_model_cache_path"), path: runtime.modelCachePath || "", payload: { kind: "model-cache" } },
+    ].filter((entry) => entry.path);
+    for (const entry of entries) {
+      const line = document.createElement("span");
+      line.className = "runtime-path-line";
+      line.append(document.createTextNode(entry.label));
+      const link = document.createElement("a");
+      link.href = "#";
+      link.className = "inline-link runtime-path-link";
+      link.textContent = entry.path;
+      link.title = t("open_folder_hint");
+      link.addEventListener("click", async (event) => {
+        event.preventDefault();
+        const result = await bridge("open_runtime_folder", entry.payload);
+        if (!result.ok) setStatus(result.detail || result.error || t("failed"));
+        else setStatus(t("saved"));
+      });
+      line.append(link);
+      container.append(line);
+    }
+    container.classList.toggle("hidden", !entries.length);
+  }
   function renderLocalRuntime() {
     if (!isLocalProvider()) return;
     const runtime = state.config.localRuntime || {};
     const installing = state.localRuntimeInstalling;
-    const key = installing ? "local_runtime_installing" : ({ ready: "local_runtime_ready", broken: "local_runtime_broken", missing: "local_runtime_missing" }[runtime.status] || "local_runtime_missing");
+    const key = installing ? "local_runtime_installing" : ({ ready: "local_runtime_ready", broken: "local_runtime_broken", missing: "local_runtime_missing", installing: "local_runtime_installing" }[runtime.status] || "local_runtime_missing");
+    renderLocalRuntimePaths(runtime);
     const target = $("localRuntimeStatus");
     target.textContent = installing && state.localRuntimeProgressMessage ? state.localRuntimeProgressMessage : t(key);
     target.className = `local-status ${installing ? "warn" : (runtime.ready ? "ready" : "warn")}`;
-    const location = [runtime.path && `${t("local_runtime_path")}${runtime.path}`, runtime.modelCachePath && `${t("local_model_cache_path")}${runtime.modelCachePath}`].filter(Boolean).join("\n");
-    $("localRuntimeHint").textContent = [runtime.detail || (runtime.ready ? t("local_runtime_ready_hint") : t("local_runtime_hint")), location].filter(Boolean).join("\n");
+    $("localRuntimeHint").textContent = runtime.detail || (runtime.ready ? t("local_runtime_ready_hint") : t("local_runtime_hint"));
     $("localModelCachePath").value = state.config.modelCacheRoot || runtime.modelCachePath || $("localModelCachePath").value || "";
     const button = $("installLocalRuntime");
     button.disabled = false;
     button.classList.toggle("hidden", !installing && runtime.status === "ready");
-    button.textContent = installing ? t("local_runtime_cancel") : (runtime.status === "ready" ? t("local_runtime_repair") : t("local_runtime_install"));
+    button.textContent = installing || runtime.status === "installing" ? t("local_runtime_cancel") : (runtime.status === "missing" ? t("local_runtime_install") : t("local_runtime_repair"));
     $("refreshLocalRuntime").disabled = installing;
     const progress = $("localRuntimeProgress");
     progress.classList.toggle("hidden", !installing);
@@ -994,7 +1026,7 @@
   function renderOcrRuntime() {
     const runtime = state.config?.ocrRuntime || {};
     const installing = state.ocrRuntimeInstalling;
-    const key = installing ? "ocr_runtime_installing" : ({ ready: "ocr_runtime_ready", broken: "ocr_runtime_broken", missing: "ocr_runtime_missing" }[runtime.status] || "ocr_runtime_missing");
+    const key = installing ? "ocr_runtime_installing" : ({ ready: "ocr_runtime_ready", broken: "ocr_runtime_broken", missing: "ocr_runtime_missing", installing: "ocr_runtime_installing" }[runtime.status] || "ocr_runtime_missing");
     const target = $("ocrRuntimeStatus");
     target.textContent = installing && state.ocrRuntimeProgressMessage ? state.ocrRuntimeProgressMessage : t(key);
     target.className = `local-status ${installing ? "warn" : (runtime.ready ? "ready" : "warn")}`;
@@ -1004,7 +1036,7 @@
     const button = $("installOcrRuntime");
     button.disabled = false;
     button.classList.toggle("hidden", !installing && runtime.status === "ready");
-    button.textContent = installing ? t("ocr_runtime_cancel") : (runtime.status === "broken" ? t("ocr_runtime_repair") : t("ocr_runtime_install"));
+    button.textContent = installing || runtime.status === "installing" ? t("ocr_runtime_cancel") : (runtime.status === "missing" ? t("ocr_runtime_install") : t("ocr_runtime_repair"));
     $("refreshOcrRuntime").disabled = installing;
     const progress = $("ocrRuntimeProgress");
     progress.classList.toggle("hidden", !installing);
@@ -1331,7 +1363,7 @@
   function handleBackendEvent(event) {
     if (["batchStarted", "batchItem", "batchItemLog", "batchDone", "batch_started", "batch_item", "batch_item_log", "batch_done"].includes(event.type)) window.MAWLauncher?.onBatchEvent?.(event);
     if (event.type === "emojiFontReady" && event.path) injectEmojiFont(event.path);
-    if (event.type === "log") appendLog(event.message);
+    if (event.type === "log") appendLog(event.message, { quietLatest: Boolean(state.localRuntimeInstalling || state.ocrRuntimeInstalling) });
     if (event.type === "postprocess_status") window.MAWLauncher?.onPostprocessStatus?.(event);
     if (event.type === "postprocess_stream") window.MAWLauncher?.onPostprocessStream?.(event);
     if (event.type === "postprocess_pipeline") window.MAWLauncher?.onPostprocessPipeline?.(event);
@@ -1418,12 +1450,14 @@
       state.localRuntimeProgressMessage = "";
       void refreshLocalRuntime();
       renderLocalRuntime();
+      if (event.code === "local_runtime_install_failed") $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     if (event.type === "error" && ["ocr_runtime_install_failed", "ocr_runtime_cancelled"].includes(event.code)) {
       state.ocrRuntimeInstalling = false;
       state.ocrRuntimeProgressMessage = "";
       void refreshOcrRuntime();
       renderOcrRuntime();
+      if (event.code === "ocr_runtime_install_failed") $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     if (event.type === "error") {
       setRunning(false);
@@ -1479,7 +1513,7 @@
   $("installOcrRuntime").addEventListener("click", async () => { if (state.ocrRuntimeInstalling) { await bridge("cancel_ocr_runtime"); return; } state.ocrRuntimeInstalling = true; state.ocrRuntimeProgress = 0; state.ocrRuntimeProgressMessage = t("ocr_runtime_installing"); renderOcrRuntime(); appendLog(t("ocr_runtime_installing")); const result = await bridge("install_ocr_runtime", { repair: state.config.ocrRuntime?.status === "broken" }); if (!result.ok) { state.ocrRuntimeInstalling = false; state.ocrRuntimeProgressMessage = ""; applyErrorResult(result); renderOcrRuntime(); } });
   $("localModelPath").addEventListener("input", () => { setError("localModelPath", ""); if (isLocalProvider()) { state.localModelPaths[selectedModel().id] = $("localModelPath").value.trim(); void refreshLocalModels(); } });
   $("refreshLocalRuntime").addEventListener("click", async () => { $("refreshLocalRuntime").disabled = true; try { await refreshLocalRuntime(); await refreshLocalModels(); } finally { $("refreshLocalRuntime").disabled = false; } });
-  $("installLocalRuntime").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localRuntimeInstalling) { await bridge("cancel_local_runtime"); return; } state.localRuntimeInstalling = true; state.localRuntimeProgress = 0; state.localRuntimeProgressMessage = t("local_runtime_installing"); renderLocalRuntime(); appendLog(t("local_runtime_installing")); const result = await bridge("install_local_runtime", { modelId: $("model").value, repair: state.config.localRuntime?.status === "ready" }); if (!result.ok) { state.localRuntimeInstalling = false; state.localRuntimeProgressMessage = ""; applyErrorResult(result); renderLocalRuntime(); } });
+  $("installLocalRuntime").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localRuntimeInstalling) { await bridge("cancel_local_runtime"); return; } state.localRuntimeInstalling = true; state.localRuntimeProgress = 0; state.localRuntimeProgressMessage = t("local_runtime_installing"); renderLocalRuntime(); appendLog(t("local_runtime_installing")); const runtimeStatus = state.config.localRuntime?.status || ""; const result = await bridge("install_local_runtime", { modelId: $("model").value, repair: Boolean(runtimeStatus && runtimeStatus !== "missing") }); if (!result.ok) { state.localRuntimeInstalling = false; state.localRuntimeProgressMessage = ""; applyErrorResult(result); renderLocalRuntime(); } });
   $("refreshLocalModels").addEventListener("click", async () => { $("refreshLocalModels").disabled = true; try { await refreshLocalModels(); } finally { $("refreshLocalModels").disabled = false; } });
   $("prepareLocalModel").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localPreparing) { state.localProgressMessage = t("local_prepare_cancelling"); renderLocalModelStatus(); appendLog(t("local_prepare_cancelling")); const result = await bridge("cancel_local_model"); if (!result.ok) { state.localProgressMessage = t("local_prepare_running"); applyErrorResult(result); renderLocalModelStatus(); } return; } state.localPreparing = true; state.localProgressMessage = t("local_prepare_running"); state.localProgress = null; renderLocalModelStatus(); appendLog(t("local_prepare_running")); const result = await bridge("prepare_local_model", { modelId: $("model").value, modelPath: $("localModelPath").value.trim(), device: $("localDevice").value }); if (!result.ok) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; applyErrorResult(result); renderLocalModelStatus(); } else if (result.alreadyInstalled) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; renderLocalModelStatus(); setStatus(t("local_installed")); } });
   $("ffmpegHelp").addEventListener("click", () => bridge("open_url", { url: "https://ffmpeg.org/download.html" }));

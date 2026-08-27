@@ -50,6 +50,42 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(paths.json, self.root / "out.mosp")
         self.assertEqual(paths.html, self.root / "out.edit.html")
 
+    def test_child_environment_prepends_managed_site_packages_for_local_provider(self) -> None:
+        """Given source-mode local transcription, When building env, Then managed site-packages go first on PYTHONPATH."""
+        runtime_root = self.root / "local-runtime-moss"
+        (runtime_root / "site-packages").mkdir(parents=True, exist_ok=True)
+
+        with mock.patch.dict(os.environ, {"MAW_MOSS_RUNTIME_ROOT": str(runtime_root)}):
+            env = _child_environment(
+                {"PATH": "", "PYTHONPATH": str(self.root / "dev-stubs")},
+                api_key="",
+                provider="local",
+                engine="moss",
+            )
+
+        python_path = env["PYTHONPATH"].split(os.pathsep)
+        self.assertEqual(python_path[0], str(runtime_root / "site-packages"))
+        self.assertIn(str(self.root / "dev-stubs"), python_path)
+
+    def test_child_environment_skips_missing_site_packages_and_non_local_providers(self) -> None:
+        """Given no managed runtime installed (or cloud provider), Then PYTHONPATH stays untouched."""
+        missing_root = self.root / "not-installed"
+        with mock.patch.dict(os.environ, {"MAW_MOSS_RUNTIME_ROOT": str(missing_root)}):
+            env = _child_environment(
+                {"PATH": "", "PYTHONPATH": "keep-me"},
+                api_key="",
+                provider="local",
+                engine="moss",
+            )
+        self.assertEqual(env["PYTHONPATH"], "keep-me")
+
+        cloud = _child_environment(
+            {"PATH": "", "PYTHONPATH": "keep-me"},
+            api_key="",
+            provider="qwen",
+        )
+        self.assertEqual(cloud["PYTHONPATH"], "keep-me")
+
     def test_unique_output_path_adds_suffix_for_existing_sidecar(self) -> None:
         self.srt_path.with_suffix(".mosp").write_text("{}", encoding="utf-8")
 

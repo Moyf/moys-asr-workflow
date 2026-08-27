@@ -27,7 +27,13 @@ from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, MODELS, PROVIDERS
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
-from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError, install_local_runtime, managed_runtime_status
+from maw.local_runtime import (
+    LocalRuntimeCancelled,
+    LocalRuntimeError,
+    install_local_runtime,
+    managed_runtime_status,
+    resolve_model_cache_root,
+)
 from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
 from maw.media import find_ffmpeg, resolve_project_media
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
@@ -1058,7 +1064,7 @@ class LauncherApi:
         url = str(payload.get("url") or "").strip()
         if not url.startswith(("https://", "http://")):
             return {"ok": False, "error": "Invalid URL."}
-        webbrowser.open(url)
+        _open_external(url)
         return {"ok": True}
 
     def open_file(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1498,6 +1504,29 @@ class LauncherApi:
         if event:
             event.set()
         return {"ok": True}
+
+    def open_runtime_folder(self, payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        """打开托管 Runtime 的相关文件夹。
+
+        出于安全边界（只允许 127.0.0.1、不提供任意路径浏览/写入），
+        这里不接收前端传来的任意路径：kind 只支持 ``runtime`` /
+        ``model-cache`` 白名单，目录统一由后端按当前配置解析。
+        """
+        values = payload or {}
+        kind = str(values.get("kind") or "").strip()
+        if kind == "model-cache":
+            directory = resolve_model_cache_root(effective_config(self.paths.env_path).model_cache_root)
+        elif kind == "runtime":
+            model_cache_root = effective_config(self.paths.env_path).model_cache_root
+            requested_model = str(values.get("modelId") or "")
+            model = next((item for item in provider_by_id("local").models if item.id == requested_model), None)
+            engine = model.engine if model else ""
+            directory = Path(managed_runtime_status(model_cache_root, engine=engine).path)
+        else:
+            return {"ok": False, "error": "未知的运行时目录类型。"}
+        if not directory.is_dir():
+            return {"ok": False, "error": f"该文件夹尚未创建：{directory}"}
+        return _open_existing_path(directory)
 
     def cancel_local_model(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         event = getattr(self, "local_prepare_cancel_event", None)
@@ -2542,6 +2571,19 @@ def _stop_external_maw_server(port: int) -> bool:
     return result.returncode == 0
 
 
+def _open_external(target: str) -> None:
+    if sys.platform == "linux" and getattr(sys, "frozen", False):
+        env = os.environ.copy()
+        original = env.get("LD_LIBRARY_PATH_ORIG")
+        if original is not None:
+            env["LD_LIBRARY_PATH"] = original
+        else:
+            env.pop("LD_LIBRARY_PATH", None)
+        subprocess.Popen(["xdg-open", target], env=env)
+    else:
+        webbrowser.open(target)
+
+
 def _open_existing_path(path: Path) -> dict[str, object]:
     target = Path(path).expanduser()
     if not target.exists():
@@ -2549,7 +2591,7 @@ def _open_existing_path(path: Path) -> dict[str, object]:
     if os.name == "nt":
         os.startfile(str(target))
     else:
-        webbrowser.open(target.resolve().as_uri())
+        _open_external(target.resolve().as_uri())
     return {"ok": True}
 
 

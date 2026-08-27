@@ -20,7 +20,8 @@ from maw.console import configure_utf8_environment
 from maw.gui_config import QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, load_env
 from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
 from maw.qwen_audio import split_qwen_audio_hotwords
-from maw.local_runtime import model_cache_environment
+from maw.local_runtime import default_runtime_root, model_cache_environment
+from maw.runtimes import LOCAL
 
 
 @dataclass(frozen=True, slots=True)
@@ -329,6 +330,7 @@ def run_transcription(
         request.workspace_id,
         request.provider,
         request.model_cache_root,
+        request.engine,
     )
     command = build_transcribe_command(request, executable=executable, frozen=frozen)
     process = popen_process_tree(
@@ -462,6 +464,7 @@ def _child_environment(
     workspace_id: str = "",
     provider: str = "qwen",
     model_cache_root: str = "",
+    engine: str = "",
 ) -> dict[str, str]:
     env = dict(parent)
     env["PYTHONUNBUFFERED"] = "1"
@@ -487,6 +490,16 @@ def _child_environment(
             env["DASHSCOPE_WORKSPACE_ID"] = workspace_id
     if provider == "local":
         env.update(model_cache_environment(model_cache_root))
+        # 托管 runtime 依赖目录按平台安装模式解析：Windows 打包/源码为
+        # <runtime-root>/site-packages；unix 打包为宿主 venv 的
+        # lib/python3.x/site-packages。打包版的嵌入式 Python 由 python*._pth
+        # 自带该路径（且 _pth 模式忽略 PYTHONPATH，写上无副作用）；源码模式
+        # 复用开发环境解释器，必须显式前置，否则转写子进程 import 托管依赖
+        # （moss_transcribe_diarize 等）失败。
+        site_packages = LOCAL.site_packages(default_runtime_root(engine))
+        if site_packages.is_dir():
+            existing = env.get("PYTHONPATH", "")
+            env["PYTHONPATH"] = f"{site_packages}{os.pathsep}{existing}" if existing else str(site_packages)
     return env
 
 
