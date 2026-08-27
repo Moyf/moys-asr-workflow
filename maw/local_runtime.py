@@ -204,6 +204,11 @@ def prepare_model_in_runtime(
         env=_runtime_env(model_cache_root, default_runtime_root(engine)),
         cancel=cancel_event or Event(),
         on_line=on_event or (lambda _line: None),
+        cwd=str(helper.parent),
+        error_class=LocalRuntimeError,
+        cancelled_class=LocalRuntimeCancelled,
+        cancelled_message="本地模型准备已取消。",
+        message_prefix="本地运行环境",
     )
 
 
@@ -249,6 +254,11 @@ def prepare_model_in_process(
         env=_runtime_env(model_cache_root),
         cancel=cancel_event or Event(),
         on_line=on_event or (lambda _line: None),
+        cwd=str(helper.parent),
+        error_class=LocalRuntimeError,
+        cancelled_class=LocalRuntimeCancelled,
+        cancelled_message="本地模型准备已取消。",
+        message_prefix="本地运行环境",
     )
 
 
