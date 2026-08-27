@@ -14,7 +14,6 @@ import shutil
 import subprocess
 import sys
 import threading
-import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,6 +33,12 @@ from maw.local_runtime import (
     _get_pip_command,
     _pip_install_command,
     _requirement_package_names,
+)
+from maw.runtime_manifest import (
+    STATUS_INSTALLING,
+    STATUS_READY,
+    read_runtime_manifest,
+    write_runtime_manifest,
 )
 from maw.postprocess_ocr import OcrDedupRequest
 
@@ -114,7 +119,6 @@ def ocr_runtime_python_path(root: str | Path | None = None) -> Path:
 def managed_ocr_runtime_status(root: str | Path | None = None) -> OcrRuntimeStatus:
     target = resolve_ocr_runtime_root(root)
     python = ocr_runtime_python_path(target)
-    manifest_path = target / "runtime.json"
     if not target.exists():
         return OcrRuntimeStatus("missing", False, str(target), "", "OCR 支持尚未安装。")
     if not target.is_dir() or not python.exists():
@@ -125,15 +129,24 @@ def managed_ocr_runtime_status(root: str | Path | None = None) -> OcrRuntimeStat
             str(python),
             "OCR 运行环境不完整，请点击“修复 OCR 支持”。",
         )
-    manifest = _read_manifest(manifest_path)
-    if manifest.get("status") != "ready" or manifest.get("runtimeVersion") != OCR_RUNTIME_VERSION:
+    manifest = read_runtime_manifest(target)
+    if manifest.installing:
+        return OcrRuntimeStatus(
+            "installing",
+            False,
+            str(target),
+            str(python),
+            "OCR 运行环境正在安装中，请稍候。",
+            manifest.runtime_version or OCR_RUNTIME_VERSION,
+        )
+    if not manifest.is_ready_for(OCR_RUNTIME_VERSION):
         return OcrRuntimeStatus(
             "broken",
             False,
             str(target),
             str(python),
             "OCR 运行环境需要修复，请点击“修复 OCR 支持”。",
-            str(manifest.get("runtimeVersion") or OCR_RUNTIME_VERSION),
+            manifest.runtime_version or OCR_RUNTIME_VERSION,
         )
     if not _ocr_package_dirs_present(target):
         return OcrRuntimeStatus(
@@ -209,6 +222,8 @@ def install_ocr_runtime(
     python = ocr_runtime_python_path(root)
     if root.exists() and not python.exists() and any(root.iterdir()):
         raise OcrRuntimeError("OCR 运行环境目录已存在但不完整，请更换路径或手动清理后重试。")
+    # 安装开始即写入 installing 状态，避免安装过程中被判定为"需要修复"。
+    write_runtime_manifest(root, status=STATUS_INSTALLING, runtime_version=OCR_RUNTIME_VERSION, python_version=OCR_PYTHON_VERSION)
 
     emit("正在解压嵌入式 OCR Python 运行环境……", 5, "bootstrap")
     python_dir = root / "python"
@@ -257,15 +272,12 @@ def install_ocr_runtime(
         cwd=_runtime_bundle_root(),
     )
     _check_cancel(cancel)
-    _write_manifest(
+    write_runtime_manifest(
         root,
-        {
-            "status": "ready",
-            "runtimeVersion": OCR_RUNTIME_VERSION,
-            "pythonVersion": OCR_PYTHON_VERSION,
-            "modelId": OCR_MODEL_ID,
-            "installedAt": int(time.time()),
-        },
+        status=STATUS_READY,
+        runtime_version=OCR_RUNTIME_VERSION,
+        python_version=OCR_PYTHON_VERSION,
+        extra={"modelId": OCR_MODEL_ID},
     )
     emit("OCR 支持安装完成，现在可以在工具箱中选择 OCR 模型。", 100, "ready")
     return managed_ocr_runtime_status(root)
@@ -515,25 +527,9 @@ def _check_cancel(cancel: Event) -> None:
         raise OcrRuntimeCancelled("OCR 运行环境操作已取消。")
 
 
-def _read_manifest(path: Path) -> dict[str, object]:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return dict(value) if isinstance(value, Mapping) else {}
-
-
 def _ocr_package_dirs_present(root: Path) -> bool:
     site_packages = root / "site-packages"
     return all((site_packages / name).exists() for name in ("numpy", "onnxruntime", "PIL", "rapidocr"))
-
-
-def _write_manifest(root: Path, values: Mapping[str, object]) -> None:
-    root.mkdir(parents=True, exist_ok=True)
-    target = root / "runtime.json"
-    temporary = root / "runtime.json.tmp"
-    temporary.write_text(json.dumps(dict(values), ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
-    temporary.replace(target)
 
 
 __all__ = [
