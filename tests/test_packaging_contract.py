@@ -355,6 +355,23 @@ class PackagingContractTests(unittest.TestCase):
 
         self.assertIn("scripts/sync_launcher_version.py --check", workflow)
 
+    def test_windows_preview_workflow_downloads_bootstrap_assets_before_build(self) -> None:
+        """Given a clean checkout, When the preview builds, Then bootstrap assets exist before PyInstaller runs."""
+        workflow = read_text(".github/workflows/pr-release-windows.yml")
+
+        self.assertIn("Download embedded Python bootstrap assets", workflow)
+        self.assertIn(
+            "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip",
+            workflow,
+        )
+        self.assertIn("https://bootstrap.pypa.io/get-pip.py", workflow)
+        self.assertIn("build-windows.ps1 -SkipTests", workflow)
+        self.assertLess(
+            workflow.index("python-3.11.9-embed-amd64.zip"),
+            workflow.index("build-windows.ps1 -SkipTests"),
+            "bootstrap 下载步骤必须在调用 build-windows.ps1 之前",
+        )
+
     def test_release_workflow_is_tag_triggered_and_publishes_both_windows_packages(self) -> None:
         """Given a v* tag push, When workflow is read, Then it releases MAW and MAW-lite builds."""
         workflow = read_text(".github/workflows/release.yml")
