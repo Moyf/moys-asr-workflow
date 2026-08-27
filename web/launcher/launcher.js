@@ -692,7 +692,7 @@
         workspaceId: saved.workspaceId,
         guiLang: saved.guiLang,
         showRareLangs: saved.showRareLangs || false,
-        appVersion: "1.5.0-beta.3",
+        appVersion: "1.5.0-beta.4",
         stickerDir: saved.stickerDir || "",
         postprocessProviders: [
           { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
@@ -965,7 +965,7 @@
   function renderHotwordWarnings(value = $("qwenAudioHotwords").value, weight = Number($("qwenAudioHotwordWeight").value), ignoreComments = false) { const warning = $("qwenAudioHotwordsWarning"); const issues = collectHotwordWarnings(value, weight, ignoreComments); if (!issues.length) { warning.textContent = ""; warning.classList.remove("visible"); return; } const details = issues.slice(0, 5).map((issue) => t("qwen_audio_hotword_warning_item").replace("{label}", hotwordWarningLabel(issue)).replace("{reason}", t(`qwen_audio_hotword_issue_${issue.code}`))); if (issues.length > details.length) details.push(t("qwen_audio_hotword_warning_more")); warning.textContent = `${t("qwen_audio_hotwords_warning").replace("{count}", String(issues.length))}\n${details.join("\n")}`; warning.classList.add("visible"); }
   function syncQwenAudioHotwordsMode() { const fileMode = $("qwenAudioHotwordsMode").value === "file"; $("qwenAudioHotwordsTextField").classList.toggle("hidden", fileMode); $("qwenAudioHotwordsFileField").classList.toggle("hidden", !fileMode); renderHotwordWarnings(fileMode ? "" : $("qwenAudioHotwords").value, Number($("qwenAudioHotwordWeight").value)); }
   function setHotwordsMode(mode) { $("qwenAudioHotwordsMode").value = mode; $("qwenAudioHotwordsModeText").classList.toggle("active", mode === "text"); $("qwenAudioHotwordsModeFile").classList.toggle("active", mode === "file"); syncQwenAudioHotwordsMode(); }
-  function clearDropState() { dragState.depth = 0; state.dropTarget = ""; setDropHighlight(false); ["qwenAudioHotwords", "qwenAudioHotwordsFile", "jsonPath", "toolboxInputDropZone", "toolboxUtilityMediaDropZone", "toolboxFfconcatDropZone", "ocrVideoPathField", "postprocessScriptPath"].forEach((id) => $(id)?.classList.remove("drag-over")); }
+  function clearDropState() { dragState.depth = 0; state.dropTarget = ""; setDropHighlight(false); ["mediaPath", "qwenAudioHotwords", "qwenAudioHotwordsFile", "jsonPath", "serverMediaPath", "localModelCachePath", "localModelPath", "ocrRuntimePath", "ffmpegPath", "stickerDir", "toolboxInputDropZone", "toolboxUtilityMediaDropZone", "toolboxFfconcatDropZone", "ocrVideoPathField", "postprocessScriptPath"].forEach((id) => $(id)?.classList.remove("drag-over")); }
   function setQwenAudioHotwordsFile(path) { if (ext(path) !== ".txt") { setError("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return false; } $("qwenAudioHotwordsFile").value = path; setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); return true; }
   async function loadHotwordFile(path, appendToText = false) { if (ext(path) !== ".txt") { setError("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); clearDropState(); return; } const result = await bridge("read_hotword_file", { path }); if (!result.ok) { applyErrorResult(result, false); clearDropState(); return; } if (appendToText) { const incoming = String(result.text || "").trim(); if (incoming) { const current = $("qwenAudioHotwords").value.trimEnd(); $("qwenAudioHotwords").value = current ? `${current}\n${incoming}` : incoming; } setHotwordsMode("text"); renderHotwordWarnings($("qwenAudioHotwords").value); setStatus(t("qwen_audio_hotwords_loaded")); } else { setQwenAudioHotwordsFile(result.path || path); renderHotwordWarnings(String(result.text || ""), Number($("qwenAudioHotwordWeight").value), true); } clearDropState(); }
   function isLocalProvider() { return provider()?.kind === "local" || provider()?.id === "local"; }
@@ -1062,7 +1062,7 @@
   }
   async function refreshLocalRuntime() {
     if (!isLocalProvider()) return;
-    const result = await bridge("get_local_runtime");
+    const result = await bridge("get_local_runtime", { modelId: $("model").value });
     if (!result.ok) { applyErrorResult(result); return result; }
     state.config.localRuntime = result;
     state.config.modelCacheRoot = result.modelCachePath || state.config.modelCacheRoot || "";
@@ -1134,6 +1134,23 @@
     $("serverMediaFlvHint")?.classList.toggle("hidden", ext($("serverMediaPath").value.trim()) !== ".flv");
   }
   function setMedia(path) { $("mediaPath").value = path; setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); }
+  function setDroppedPath(field, path, eventType = "input") {
+    const value = String(path || "").trim();
+    const input = $(field);
+    if (!input || !value) return false;
+    input.value = value;
+    input.dispatchEvent(new Event(eventType, { bubbles: true }));
+    setError(field, "");
+    return true;
+  }
+  function setServerMedia(path) {
+    const value = String(path || "").trim();
+    if (!MEDIA_EXTS.has(ext(value))) {
+      setError("serverMediaPath", mediaDropError());
+      return false;
+    }
+    return setDroppedPath("serverMediaPath", value);
+  }
   function setJsonPath(path) { $("jsonPath").value = path; setError("jsonPath", ""); if (path !== state.serverProjectPath) $("openMawe").classList.add("attention"); refreshServerMedia(); }
   function applyErrorResult(result, logDetail = true) { const message = errText(result.code, result.detail || result.error); const fieldMessage = result.code === "server_start_failed" ? t("server_start_failed_hint") : (result.code === "server_no_response" ? t("server_no_response_hint") : message); if (result.field) setError(result.field, fieldMessage); if (result.field === "port" || result.field === "serverMediaPath" || result.field === "jsonPath") expandServer(); if (result.postprocessStep) window.MAWLauncher?.openAutoPostprocessStep?.(result.postprocessStep, result.field); else if (result.field === "autoPostprocessEnabled") $("autoPostprocessCard")?.scrollIntoView({ behavior: "smooth", block: "start" }); setStatus(message); if (logDetail && (result.detail || result.error)) appendLog(`[error] ${result.code || "backend_error"}: ${result.detail || result.error}`); }
   function validateSegmentation(data) { for (const [field, minimum] of [["maxLen", 1], ["minLen", 1], ["gapSplit", 0]]) { const value = data[field]; if (!value) continue; if (!/^\d+$/u.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < minimum) return fail(field, errText("segmentation_invalid", "")); } if (data.maxLen && data.minLen && Number(data.maxLen) < Number(data.minLen)) return fail("maxLen", errText("segmentation_invalid", "")); return true; }
@@ -1153,7 +1170,88 @@
   function onDragEnter(event) { if (!hasFileDrag(event) || !isInsideMediaCard(event.target)) return; event.preventDefault(); if (isInsideMediaCard(event.relatedTarget)) return; dragState.depth += 1; setDropHighlight(true); }
   function onDragLeave(event) { if (!isInsideMediaCard(event.target)) return; if (isInsideMediaCard(event.relatedTarget)) return; dragState.depth = Math.max(0, dragState.depth - 1); if (dragState.depth === 0) setDropHighlight(false); }
   function bindDropField(id, target, controlId) { const field = $(id); const control = $(controlId || id); field.addEventListener("dragenter", (event) => { if (!hasFileDrag(event)) return; event.preventDefault(); state.dropTarget = target; control.classList.add("drag-over"); }); field.addEventListener("dragover", (event) => { if (!hasFileDrag(event)) return; event.preventDefault(); state.dropTarget = target; control.classList.add("drag-over"); }); field.addEventListener("dragleave", (event) => { if (!field.contains(event.relatedTarget)) { control.classList.remove("drag-over"); if (state.dropTarget === target) state.dropTarget = ""; } }); }
-  function handleRoutedDrop(path) { const target = state.dropTarget; clearDropState(); const suffix = ext(path || ""); if (target === "toolboxInput") { if (PROJECT_EXTS.has(suffix) || suffix === ".srt") { $("toolboxInputPath").value = path; $("toolboxInputPath").dispatchEvent(new Event("input", { bubbles: true })); setError("toolboxInputPath", ""); } else setError("toolboxInputPath", t("toolbox_drop_reject")); return; } if (target === "toolboxUtilityMedia") { if (MEDIA_EXTS.has(suffix)) { $("toolboxUtilityMediaPath").value = path; $("toolboxUtilityMediaPath").dispatchEvent(new Event("input", { bubbles: true })); setError("toolboxUtilityMediaPath", ""); } else setError("toolboxUtilityMediaPath", t("toolbox_utility_media_reject")); return; } if (target === "toolboxFfconcat") { if (suffix === ".ffconcat") { $("postprocessFfconcatPath").value = path; $("postprocessFfconcatPath").dispatchEvent(new Event("input", { bubbles: true })); setError("postprocessFfconcatPath", ""); } else setError("postprocessFfconcatPath", t("toolbox_ffconcat_reject")); return; } if (target === "ocrVideo") { if (VIDEO_EXTS.has(suffix)) { $("ocrVideoPath").value = path; $("ocrVideoPath").dispatchEvent(new Event("input", { bubbles: true })); setError("ocrVideoPath", ""); } else setError("ocrVideoPath", t("toolbox_ocr_video_reject")); return; } if (target === "script") { if (SCRIPT_EXTS.has(suffix)) { $("postprocessScriptPath").value = path; $("postprocessScriptPath").dispatchEvent(new Event("input", { bubbles: true })); setError("postprocessScriptPath", ""); } else setError("postprocessScriptPath", t("toolbox_script_reject")); return; } if (target === "json") { if (PROJECT_EXTS.has(suffix)) { setJsonPath(path); setStatus(t("json_project")); } else setError("jsonPath", t("drop_reject_json")); return; } if (target === "text" || target === "file") { if (suffix === ".txt") { void loadHotwordFile(path, target === "text"); } else setError(target === "text" ? "qwenAudioHotwords" : "qwenAudioHotwordsFile", t("drop_reject_txt")); return; } if (PROJECT_EXTS.has(suffix)) { setJsonPath(path); setStatus(t("json_project")); return; } if (suffix === ".txt") { void loadHotwordFile(path, false); return; } if (MEDIA_EXTS.has(suffix)) { setMedia(path); setStatus(t("media")); return; } setError("mediaPath", mediaDropError()); }
+  function handleRoutedDrop(path) {
+    const target = state.dropTarget;
+    clearDropState();
+    const value = String(path || "").trim();
+    const suffix = ext(value);
+    if (target === "media") {
+      if (MEDIA_EXTS.has(suffix)) {
+        setMedia(value);
+        setStatus(t("media"));
+      } else setError("mediaPath", mediaDropError());
+      return;
+    }
+    if (target === "serverMedia") {
+      if (MEDIA_EXTS.has(suffix)) setServerMedia(value);
+      else setError("serverMediaPath", mediaDropError());
+      return;
+    }
+    const pathTargets = {
+      localModelCache: ["localModelCachePath", "change"],
+      localModel: ["localModelPath", "input"],
+      ocrRuntime: ["ocrRuntimePath", "change"],
+      ffmpeg: ["ffmpegPath", "input"],
+      stickerDir: ["stickerDir", "change"],
+    };
+    const pathTarget = pathTargets[target];
+    if (pathTarget) {
+      setDroppedPath(pathTarget[0], value, pathTarget[1]);
+      return;
+    }
+    if (target === "toolboxInput") {
+      if (PROJECT_EXTS.has(suffix) || suffix === ".srt") setDroppedPath("toolboxInputPath", value);
+      else setError("toolboxInputPath", t("toolbox_drop_reject"));
+      return;
+    }
+    if (target === "toolboxUtilityMedia") {
+      if (MEDIA_EXTS.has(suffix)) setDroppedPath("toolboxUtilityMediaPath", value);
+      else setError("toolboxUtilityMediaPath", t("toolbox_utility_media_reject"));
+      return;
+    }
+    if (target === "toolboxFfconcat") {
+      if (suffix === ".ffconcat") setDroppedPath("postprocessFfconcatPath", value);
+      else setError("postprocessFfconcatPath", t("toolbox_ffconcat_reject"));
+      return;
+    }
+    if (target === "ocrVideo") {
+      if (VIDEO_EXTS.has(suffix)) setDroppedPath("ocrVideoPath", value);
+      else setError("ocrVideoPath", t("toolbox_ocr_video_reject"));
+      return;
+    }
+    if (target === "script") {
+      if (SCRIPT_EXTS.has(suffix)) setDroppedPath("postprocessScriptPath", value);
+      else setError("postprocessScriptPath", t("toolbox_script_reject"));
+      return;
+    }
+    if (target === "json") {
+      if (PROJECT_EXTS.has(suffix)) {
+        setJsonPath(value);
+        setStatus(t("json_project"));
+      } else setError("jsonPath", t("drop_reject_json"));
+      return;
+    }
+    if (target === "text" || target === "file") {
+      if (suffix === ".txt") void loadHotwordFile(value, target === "text");
+      else setError(target === "text" ? "qwenAudioHotwords" : "qwenAudioHotwordsFile", t("drop_reject_txt"));
+      return;
+    }
+    if (PROJECT_EXTS.has(suffix)) {
+      setJsonPath(value);
+      setStatus(t("json_project"));
+      return;
+    }
+    if (suffix === ".txt") {
+      void loadHotwordFile(value, false);
+      return;
+    }
+    if (MEDIA_EXTS.has(suffix)) {
+      setMedia(value);
+      setStatus(t("media"));
+      return;
+    }
+    setError("mediaPath", mediaDropError());
+  }
   async function refreshServerMedia() { const jsonPath = $("jsonPath").value.trim(); const result = await bridge("check_server_media", { jsonPath }); state.serverMediaOk = Boolean(result.hasMedia && result.mediaExists); $("serverMediaField").classList.toggle("hidden", state.serverMediaOk || !jsonPath); return result; }
   async function refreshFfmpeg() { const result = await bridge("check_ffmpeg"); $("modalFfmpegFound").classList.toggle("hidden", !result.found); $("modalFfmpegMissing").classList.toggle("hidden", Boolean(result.found)); $("ffmpegPathBox").classList.toggle("hidden", Boolean(result.found)); $("settingsDot").classList.toggle("hidden", Boolean(result.found)); $("modalFfmpegFound").title = result.directory || ""; $("ffmpegDir").textContent = result.directory || ""; return result; }
   function ffmpegSaveError(result) { if (result.code) return errText(result.code, result.detail || result.error); if (result.found === false) return t("ffmpeg_missing"); return compactDetail(result.error) || t("failed"); }
@@ -1349,8 +1447,8 @@
       appendLog(t("done"));
       void checkExistingServer(t("done"));
     }
-    if (event.type === "dropMedia" && window.MAWLauncher?.onBatchDrop?.(event.path || "")) return;
-    if (event.type === "dropReject" && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
+    if (event.type === "dropMedia" && !state.dropTarget && window.MAWLauncher?.onBatchDrop?.(event.path || "")) return;
+    if (event.type === "dropReject" && !state.dropTarget && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
     if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
   }
   window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onLanguageChanged() {} };
@@ -1359,14 +1457,14 @@
   $("themeLight").addEventListener("click", () => setTheme("light")); $("themeDark").addEventListener("click", () => setTheme("dark")); $("themeSystem").addEventListener("click", () => setTheme("system"));
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme(); });
   $("homeLink").addEventListener("click", () => bridge("open_url", { url: HOME_URL }));
-  $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => applySelectedModel(true)); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("region").addEventListener("change", syncWorkspace); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
+  $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => { applySelectedModel(true); if (isLocalProvider()) { void refreshLocalRuntime(); void refreshLocalModels(); } }); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("region").addEventListener("change", syncWorkspace); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
   $("testRun").addEventListener("change", syncTestRun);
   $("generateHtml").addEventListener("change", syncHtmlMenu);
   $("mediaPath").addEventListener("input", () => { setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); }); $("srtPath").addEventListener("input", () => { state.srtAuto = false; state.testSuffixAdded = false; setError("srtPath", ""); setOutputNotice(""); });
   $("pickMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (!result.ok) return; if (!MEDIA_EXTS.has(ext(result.path))) { setError("mediaPath", mediaDropError()); return; } setMedia(result.path); });
   $("qwenAudioHotwordsModeText").addEventListener("click", () => { setHotwordsMode("text"); setError("qwenAudioHotwordsFile", ""); }); $("qwenAudioHotwordsModeFile").addEventListener("click", () => { setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); }); $("pickQwenAudioHotwordsFile").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "hotwords" }); if (result.ok) await loadHotwordFile(result.path || "", false); });
   $("pickJson").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "json" }); if (result.ok) setJsonPath(result.path); });
-  $("jsonPath").addEventListener("input", () => setError("jsonPath", "")); $("jsonPath").addEventListener("change", refreshServerMedia); $("pickServerMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (result.ok) { $("serverMediaPath").value = result.path; setError("serverMediaPath", ""); syncFlvHints(); } });
+  $("jsonPath").addEventListener("input", () => setError("jsonPath", "")); $("jsonPath").addEventListener("change", refreshServerMedia); $("pickServerMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (result.ok) setServerMedia(result.path || ""); });
   ["apiKey", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
   $("refreshServerStatus").addEventListener("click", async () => { $("refreshServerStatus").disabled = true; try { await checkExistingServer(); } finally { $("refreshServerStatus").disabled = false; } });
   $("openKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().keyUrl }));
@@ -1381,7 +1479,7 @@
   $("installOcrRuntime").addEventListener("click", async () => { if (state.ocrRuntimeInstalling) { await bridge("cancel_ocr_runtime"); return; } state.ocrRuntimeInstalling = true; state.ocrRuntimeProgress = 0; state.ocrRuntimeProgressMessage = t("ocr_runtime_installing"); renderOcrRuntime(); appendLog(t("ocr_runtime_installing")); const result = await bridge("install_ocr_runtime", { repair: state.config.ocrRuntime?.status === "broken" }); if (!result.ok) { state.ocrRuntimeInstalling = false; state.ocrRuntimeProgressMessage = ""; applyErrorResult(result); renderOcrRuntime(); } });
   $("localModelPath").addEventListener("input", () => { setError("localModelPath", ""); if (isLocalProvider()) { state.localModelPaths[selectedModel().id] = $("localModelPath").value.trim(); void refreshLocalModels(); } });
   $("refreshLocalRuntime").addEventListener("click", async () => { $("refreshLocalRuntime").disabled = true; try { await refreshLocalRuntime(); await refreshLocalModels(); } finally { $("refreshLocalRuntime").disabled = false; } });
-  $("installLocalRuntime").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localRuntimeInstalling) { await bridge("cancel_local_runtime"); return; } state.localRuntimeInstalling = true; state.localRuntimeProgress = 0; state.localRuntimeProgressMessage = t("local_runtime_installing"); renderLocalRuntime(); appendLog(t("local_runtime_installing")); const result = await bridge("install_local_runtime", { repair: state.config.localRuntime?.status === "ready" }); if (!result.ok) { state.localRuntimeInstalling = false; state.localRuntimeProgressMessage = ""; applyErrorResult(result); renderLocalRuntime(); } });
+  $("installLocalRuntime").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localRuntimeInstalling) { await bridge("cancel_local_runtime"); return; } state.localRuntimeInstalling = true; state.localRuntimeProgress = 0; state.localRuntimeProgressMessage = t("local_runtime_installing"); renderLocalRuntime(); appendLog(t("local_runtime_installing")); const result = await bridge("install_local_runtime", { modelId: $("model").value, repair: state.config.localRuntime?.status === "ready" }); if (!result.ok) { state.localRuntimeInstalling = false; state.localRuntimeProgressMessage = ""; applyErrorResult(result); renderLocalRuntime(); } });
   $("refreshLocalModels").addEventListener("click", async () => { $("refreshLocalModels").disabled = true; try { await refreshLocalModels(); } finally { $("refreshLocalModels").disabled = false; } });
   $("prepareLocalModel").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localPreparing) { state.localProgressMessage = t("local_prepare_cancelling"); renderLocalModelStatus(); appendLog(t("local_prepare_cancelling")); const result = await bridge("cancel_local_model"); if (!result.ok) { state.localProgressMessage = t("local_prepare_running"); applyErrorResult(result); renderLocalModelStatus(); } return; } state.localPreparing = true; state.localProgressMessage = t("local_prepare_running"); state.localProgress = null; renderLocalModelStatus(); appendLog(t("local_prepare_running")); const result = await bridge("prepare_local_model", { modelId: $("model").value, modelPath: $("localModelPath").value.trim(), device: $("localDevice").value }); if (!result.ok) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; applyErrorResult(result); renderLocalModelStatus(); } else if (result.alreadyInstalled) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; renderLocalModelStatus(); setStatus(t("local_installed")); } });
   $("ffmpegHelp").addEventListener("click", () => bridge("open_url", { url: "https://ffmpeg.org/download.html" }));
@@ -1400,12 +1498,39 @@
   $("openMawe").addEventListener("click", openServerEditor); $("stopServer").addEventListener("click", stopEditorServer); $("openFolder").addEventListener("click", () => bridge("open_output_folder"));
   $("openMenu").addEventListener("click", () => $("htmlMenu").classList.toggle("hidden")); $("openHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_html"); }); $("openBlankHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_blank_html"); }); document.addEventListener("click", (event) => { if (!event.target.closest(".split-wrap")) $("htmlMenu").classList.add("hidden"); });
   $("mediaCard").addEventListener("dragenter", onDragEnter); $("mediaCard").addEventListener("dragleave", onDragLeave);
-    bindDropField("qwenAudioHotwordsTextField", "text", "qwenAudioHotwords"); bindDropField("qwenAudioHotwordsFileField", "file", "qwenAudioHotwordsFile"); bindDropField("jsonPath", "json"); bindDropField("toolboxInputDropZone", "toolboxInput", "toolboxInputDropZone"); bindDropField("toolboxUtilityMediaDropZone", "toolboxUtilityMedia", "toolboxUtilityMediaDropZone"); bindDropField("toolboxFfconcatDropZone", "toolboxFfconcat", "toolboxFfconcatDropZone"); bindDropField("ocrVideoPathField", "ocrVideo", "ocrVideoPathField"); bindDropField("postprocessScriptPath", "script");
+  bindDropField("mediaPath", "media");
+  bindDropField("qwenAudioHotwordsTextField", "text", "qwenAudioHotwords");
+  bindDropField("qwenAudioHotwordsFileField", "file", "qwenAudioHotwordsFile");
+  bindDropField("jsonPath", "json");
+  bindDropField("serverMediaPath", "serverMedia");
+  bindDropField("localModelCachePath", "localModelCache");
+  bindDropField("localModelPath", "localModel");
+  bindDropField("ocrRuntimePath", "ocrRuntime");
+  bindDropField("ffmpegPath", "ffmpeg");
+  bindDropField("stickerDir", "stickerDir");
+  bindDropField("toolboxInputDropZone", "toolboxInput", "toolboxInputDropZone");
+  bindDropField("toolboxUtilityMediaDropZone", "toolboxUtilityMedia", "toolboxUtilityMediaDropZone");
+  bindDropField("toolboxFfconcatDropZone", "toolboxFfconcat", "toolboxFfconcatDropZone");
+  bindDropField("ocrVideoPathField", "ocrVideo", "ocrVideoPathField");
+  bindDropField("postprocessScriptPath", "script");
   document.addEventListener("dragover", (event) => { if (hasFileDrag(event)) event.preventDefault(); });
   document.addEventListener("dragend", clearDropState);
   document.addEventListener("dragleave", (event) => { if (!event.relatedTarget && event.target === document.documentElement) clearDropState(); });
   // 真实后端模式下 drop 由 Python 侧异步回传事件，不能在这里清理 dropTarget，否则 handleRoutedDrop 读不到目标。
-  document.addEventListener("drop", (event) => { event.preventDefault(); if (window.MAWLauncher.backend === "real") return; const files = Array.from(event.dataTransfer?.files || []); let handled = false; if (window.MAWLauncher?.onBatchDrop) files.forEach((file) => { handled = window.MAWLauncher.onBatchDrop(file.path || file.name || "") || handled; }); if (handled) return; const file = files[0]; handleRoutedDrop(file?.path || file?.name || ""); });
+  document.addEventListener("drop", (event) => {
+    event.preventDefault();
+    if (window.MAWLauncher.backend === "real") return;
+    const files = Array.from(event.dataTransfer?.files || []);
+    const file = files[0];
+    if (state.dropTarget) {
+      handleRoutedDrop(file?.path || file?.name || "");
+      return;
+    }
+    let handled = false;
+    if (window.MAWLauncher?.onBatchDrop) files.forEach((item) => { handled = window.MAWLauncher.onBatchDrop(item.path || item.name || "") || handled; });
+    if (handled) return;
+    handleRoutedDrop(file?.path || file?.name || "");
+  });
   setupScrollbarFlash();
   document.addEventListener("DOMContentLoaded", init);
   document.addEventListener("keydown", handleZoomKeydown);

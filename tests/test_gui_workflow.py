@@ -242,6 +242,21 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertIn("--engine", command)
         self.assertIn("funasr", command)
 
+    def test_build_transcribe_command_passes_moss_speaker_colors(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="local",
+            engine="moss",
+            model="OpenMOSS-Team/MOSS-Transcribe-Diarize",
+            runtime_python="moss-python",
+            speaker_colors=True,
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertIn("--speaker-colors", command)
+
     def test_run_transcription_passes_api_key_only_in_child_environment(self) -> None:
         request = TranscriptionRequest(
             media_path=self.media_path,
@@ -377,7 +392,7 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertEqual(env["PYTHONUNBUFFERED"], "1")
         self.assertEqual(env["PYTHONUTF8"], "1")
-        self.assertEqual(env["PYTHONIOENCODING"], "utf-8")
+        self.assertEqual(env["PYTHONIOENCODING"], "utf-8:replace")
         self.assertEqual(env["DASHSCOPE_API_KEY"], "secret-key")
         self.assertEqual(env["DASHSCOPE_WORKSPACE_ID"], "workspace-123")
 
@@ -770,11 +785,12 @@ class GuiWorkflowTests(unittest.TestCase):
     def test_entrypoint_smoke_import_argument_does_not_open_window(self) -> None:
         import maw_gui
 
-        with mock.patch("maw.gui_web.run_app") as run_app:
+        with mock.patch("maw.gui_web.run_app") as run_app, mock.patch("maw_gui.configure_utf8_stdio") as configure:
             exit_code = maw_gui.main(["--smoke-import"])
 
         self.assertEqual(exit_code, 0)
         run_app.assert_not_called()
+        configure.assert_called_once_with()
 
     def test_entrypoint_debug_aliases_configure_launcher_debug_modes(self) -> None:
         import maw_gui

@@ -26,13 +26,13 @@ from pathlib import Path
 from edit import get_default_sticker_dir
 from generate_subtitle_qwen_api import (
     LANGUAGE_MAP,
-    configure_console_output,
     extract_audio,
     _run_media_tool,
     generate_srt,
     get_duration_sec,
     parse_duration,
 )
+from maw.console import configure_utf8_stdio
 from maw.project import repair_segment_durations, validate_project
 from maw.soniox import (
     MAX_AUDIO_SECONDS,
@@ -59,6 +59,7 @@ def _language_hints(raw: str | None) -> list[str]:
 
 
 def main():
+    configure_utf8_stdio()
     parser = argparse.ArgumentParser(
         description="使用 Soniox 异步 STT API 生成视频字幕（云端版，可选说话人分离）",
     )
@@ -133,7 +134,6 @@ def main():
         help="保存 Soniox transcript API 返回的完整原始 JSON，用于排查解析和时间码",
     )
     args = parser.parse_args()
-    configure_console_output()
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
 

@@ -163,6 +163,78 @@ test('validation save error previews the item and jumps to its subtitle', async 
   await expect(page.locator('#cue-panel-text')).toHaveValue('Bravo');
 });
 
+test('small subtitle-segment overlap can be auto-repaired and saved again', async ({ page }) => {
+  await page.goto(server.url);
+  let saveAttempts = 0;
+  await page.route('**/api/project', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+    saveAttempts += 1;
+    if (saveAttempts === 1) {
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: false,
+          error: '$.segments[1].start: must be >= previous segment end',
+        }),
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.evaluate(() => {
+    DATA.segments[0].end = DATA.segments[1].start + 1;
+    DATA.segments[0]._dirty = true;
+    renderAll({ waveform: 'overlay' });
+  });
+  await page.keyboard.press('Control+s');
+  const hint = page.locator('.hint-project-error');
+  await expect(hint.locator('.hint-project-conflict')).toContainText('重叠 1ms');
+  await expect(hint.locator('.hint-project-repair-auto')).toContainText('自动修复');
+
+  const retry = page.waitForResponse((response) => (
+    response.url().endsWith('/api/project') && response.request().method() === 'POST'
+  ));
+  await hint.locator('.hint-project-repair-auto').click();
+  expect((await retry).ok()).toBe(true);
+  await expect.poll(() => page.evaluate(() => DATA.segments[1].start)).toBe(50001);
+  await expect(page.locator('.hint-card').last()).toContainText('保存成功！');
+  expect(saveAttempts).toBe(2);
+});
+
+test('larger subtitle-segment overlap requires an explicit repair direction', async ({ page }) => {
+  await page.goto(server.url);
+  await page.route('**/api/project', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ok: false,
+        error: '$.segments[1].start: must be >= previous segment end',
+      }),
+    });
+  });
+  await page.evaluate(() => {
+    DATA.segments[0].end = DATA.segments[1].start + 2000;
+    DATA.segments[0]._dirty = true;
+    renderAll({ waveform: 'overlay' });
+  });
+
+  await page.keyboard.press('Control+s');
+  const hint = page.locator('.hint-project-error');
+  await expect(hint.locator('.hint-project-conflict')).toContainText('重叠 2000ms');
+  await expect(hint.locator('.hint-project-repair-trim')).toHaveText('缩短前一句');
+  await expect(hint.locator('.hint-project-repair-shift')).toHaveText('推迟后一句');
+});
+
 test('auto-saves a text edit shortly after it loses focus', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('.cue').first().click();

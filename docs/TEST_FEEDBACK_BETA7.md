@@ -49,6 +49,29 @@
 已验证：`node --test tests\\test_editor_utils.mjs`（111/111）；`node --check web\\editor-utils.js`、`node --check web\\editor.js`；`uv run python edit.py --blank`；`git diff --check`。Premiere 图片自动重链和真实字体显示仍需用户实机确认。
 | 33 | Launcher / 批量拖入 | 不支持格式的提示显示在单文件区域；重复拖入文件没有提示；批量阶段日志只显示在单条记录；跳过确认按钮应显示“是 / 否” | 修改 | 已修复 |
 | 34 | Launcher / 批量进度 | 批量运行时总日志和状态区缺少当前文件、完成/失败和汇总反馈 | 修改 | 已修复 |
+| 35 | 编辑器 / 批量操作 | 字幕列表顶部整合批量操作入口；批量替换和文本处理支持限定选中字幕；增加常用文本处理 | 修改 | 已修复 |
+| 36 | 编辑器 / 纯文本编辑 | 新增全角标点后保存出现越界 item；删除该标点后错误仍残留；应用后不应把全部字幕标为 dirty | 修改 | 已修复 |
+| 37 | 编辑器 / 多字幕列表 | 双列多重字幕模式下，主字幕左侧的黄条覆盖文字 | 修改 | 已修复 |
+| 38 | 编辑器 / 多字幕命名 | 将「拓展字幕」及「扩展字幕」统一命名为「副字幕」 | 修改 | 已修复 |
+| 39 | 编辑器 / 导出菜单 | 去空隙版本与更多导出需要按字幕、OTIO、XML、动态字幕/Resolve JSON 等类别加分隔线；OTIO/OTIOZ 文案统一；去空隙菜单增加 FCPXML | 修改 | 已修复 |
+| 40 | 编辑器 / 导出文件名 | 工程名 MAW-1.4更新说明 导出 FCPXML 时被截断为 MAW-1.xml | 修改 | 已修复 |
+
+## 增量记录（任务 39、40：导出菜单分组、FCPXML 默认模式与点号工程名）
+
+- 任务 39 已按类别整理两个导出菜单：去空隙版本分为字幕、OTIO、FFconcat/JSON 三组，并将去空隙 FCPXML 放在 OTIO 组末尾；更多导出分为 XML、OTIO、动态字幕/Resolve JSON 三组。OTIO 文案统一为“OTIO 工程”，OTIOZ 文案统一为“OTIOZ 打包工程”，中英文翻译同步更新。
+- FCPXML 弹窗默认的“导出时间线模式”改为“去空隙时间线”；从“导出去空隙版本”打开 FCPXML 时也会强制选择去空隙模式，避免沿用上一次手动选择的原始时间线。
+- 任务 40 的根因是文件名清理把任意最后一个点号当作扩展名；现在仅移除已知扩展名，因此 `MAW-1.4更新说明` 会生成 `MAW-1.4更新说明.xml`，不会截断为 `MAW-1.xml`。
+
+- 已验证：`.venv\Scripts\python.exe edit.py --blank`；`node --check web\editor.js`、`web\editor-utils.js`、`web\editor-i18n.js`；`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（215/215）；`.venv\Scripts\python.exe -m unittest tests.test_waveform tests.test_editor_assets`（26/26）；使用 `.venv\Scripts\python.exe` 启动服务器的 `fcp7-export.spec.mjs` 浏览器回归（8/8）；`git diff --check`。
+- 首次直接运行 FCPXML 浏览器回归时使用了缺少 reapeaks 模块的系统 Python，服务器在启动阶段退出；切换到项目 .venv 解释器后全部通过。该次失败属于验证环境问题，不是代码断言失败。
+
+## 增量记录（字幕列表批量操作与文本处理）
+
+- 已修复顶部“批量操作”下拉入口，菜单包含“批量替换”“纯文本编辑”“文本处理”；原有纯文本编辑入口保留为菜单项，并同步更新其 E2E 入口。
+- 已修复批量替换和文本处理的选中范围：打开弹窗时保存选中字幕快照；无选中时“仅处理选中的字幕”禁用并按全部字幕处理，弹窗打开后改变选择也不会改变当前范围。
+- 已增加文本处理弹窗：Trim、首字母大写、添加前缀、附加内容、去除 Markdown 格式符号；处理保持字幕行，时间码通过纯文本编辑的映射规则尽量保留，应用为空时保留空字幕行。
+- 已验证：`node --check web\\editor.js`、`node --check web\\editor-utils.js`、`node --check web\\editor-i18n.js`；`node --test tests\\test_editor_utils.mjs`（129/129）；`uv run python edit.py --blank`；`git diff --check`。
+- 浏览器 E2E 未完成：本机 `npx playwright` 访问 npm 缓存时因 `EPERM` 无法创建 `C:\\Users\\lei.hu\\AppData\\Local\\npm-cache\\_cacache\\tmp`，未产生页面断言结果。
 
 ## 修复与验证记录
 
@@ -129,7 +152,7 @@
 ## 增量记录（任务 6：多字幕批量操作）
 
 - H 现在支持同时选中多条副字幕，按各自绑定关系批量对齐到主字幕时间范围，并只生成一条批量撤销记录；未绑定项会跳过并在提示中说明。
-- 绑定自动同步时长、主字幕合并同步副字幕、扩展字幕合并/拆分及其撤销路径均已通过浏览器回归；批量对齐后的副字幕冲突会按现有规则挤压或删除无法保留 100ms 的冲突项，不反向改变主字幕时间范围。
+- 绑定自动同步时长、主字幕合并同步副字幕、副字幕合并/拆分及其撤销路径均已通过浏览器回归；批量对齐后的副字幕冲突会按现有规则挤压或删除无法保留 100ms 的冲突项，不反向改变主字幕时间范围。
 - 已重新生成 `blank-editor.html`，模板中的“批量对齐”按钮、H 帮助文案和中英文映射与源码一致。
 
 已验证：批量 H 与撤销 1/1 通过；绑定/合并/联动相关回归 4/4 通过。
@@ -275,3 +298,16 @@
 - 尺寸解析失败：`scan_stickers()` 保留无法读取尺寸的图片，输出 warning，由导出器使用兼容默认值；新增损坏图片回归测试。
 
 验证：Node `155/155`、Python `607/607`、贴图导出 Playwright `1/1`、语法检查、`uv run python edit.py --blank`、`git diff --check` 均通过。Premiere 实机导入仍未验证。
+
+## 增量记录（任务 36：纯文本标点时间码与 dirty 标记）
+
+- 根因：纯文本编辑将新增 `！` 等无独立语音时间的符号生成了 0ms item，而保存前的时间码修复器会把 0ms item 扩成 100ms；末尾 item 因此越过所属字幕段的 `end`，服务端拒绝保存。一次失败保存后，该 item 也会继续留在内存中，所以删除文字仍会报错。
+- 修复：新增标点、符号、emoji 和符号型颜文字并入相邻的已有 item，复用其时间范围，不再生成独立零宽 item；兼容清理旧版本残留的标点 item，已删除的字符会被移除。保存前的时间码修复改为只标记实际被修复的字幕，不再因一处修复把整轨字幕标为 dirty。
+
+已验证：`node --check web\\editor.js`、`node --check web\\editor-utils.js`、`node --check web\\editor-i18n.js`；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（通过）；`uv run python edit.py --blank`；`git diff --check`。未执行真实浏览器与用户工程的手动复现。
+## 增量记录（任务 37、38：多字幕列表黄条与命名统一）
+
+- 任务 37 已修复：多重字幕双列列表的主列 dirty 标记继续使用 3px 琥珀色内描边，同时为 `.multi-cue-column.main.dirty` 预留 `3px` 左内边距并使用 `border-box`，首个文字不再被黄条覆盖；新增浏览器回归断言。
+- 任务 38 已修复：用户可见的「拓展字幕」「扩展字幕」「扩展轨」已统一为「副字幕」「副轨」，英文界面同步使用 `secondary`；内部 `role: extension`、CSS 类、数据字段和导出协议保持不变。
+- 已验证：`.venv\\Scripts\\python.exe edit.py --blank`；`node --check web\\editor.js`、`node --check web\\editor-utils.js`、`node --check web\\editor-i18n.js`、`node --check tests\\e2e\\multi-subtitle.spec.mjs`；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（215/215）；`git diff --check`；本地 Chromium 目标回归（使用 `MAW_E2E_PYTHON=.venv\\Scripts\\python.exe`）1/1。
+- localhost `server-editor --blank` 返回 200，页面包含副字幕文案和主列 dirty 规则，未发现旧中文称呼。完整 `multi-subtitle.spec.mjs` 为 80/81：唯一失败是既有的未绑定副字幕文本处理用例，其夹具的首个双列行本来是空主列，失败断言与本次修改无关。

@@ -181,6 +181,15 @@ class LocalModelDiscoveryTests(unittest.TestCase):
         self.assertEqual(prepare.call_args.kwargs["vad_model"], "fsmn-vad")
         self.assertTrue(prepare.call_args.kwargs["trust_remote_code"])
 
+        model = local_model("moss-transcribe-diarize-local")
+        missing = LocalModelStatus(model.id, model.engine, model.model_ref, "missing", True, False)
+        installed = LocalModelStatus(model.id, model.engine, model.model_ref, "installed", True, True)
+        with mock.patch("maw.local_models.inspect_local_model", side_effect=[missing, installed]):
+            with mock.patch("maw.local_models.prepare_model_in_process", return_value=0) as prepare:
+                prepare_local_model(model)
+
+        self.assertTrue(prepare.call_args.kwargs["trust_remote_code"])
+
     def test_prepare_progress_includes_a_broad_cache_estimate(self) -> None:
         model = local_model("qwen3-asr-local")
 

@@ -16,6 +16,7 @@ from pathlib import Path
 from threading import Event
 from typing import BinaryIO, Final, TextIO, final
 
+from maw.console import configure_utf8_environment
 from maw.gui_config import QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, load_env
 from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
 from maw.qwen_audio import split_qwen_audio_hotwords
@@ -192,6 +193,8 @@ def default_srt_path(
             tag = ".funasr-local"
         elif "qwen3-asr-1.7b" in local_model:
             tag = ".qwen3-asr-1.7b-local"
+        elif "moss" in local_model:
+            tag = ".moss-local"
         else:
             tag = ".qwen-asr-local"
     else:
@@ -242,6 +245,8 @@ def build_transcribe_command(
         _append_option(command, "--model-path", request.model_path)
         _append_option(command, "--device", request.device)
         _append_option(command, "--forced-aligner", request.forced_aligner)
+        if request.speaker_colors and request.engine == "moss":
+            command.append("--speaker-colors")
     elif is_soniox:
         _append_option(command, "--model", request.model if request.model != DEFAULT_MODEL_ID else "")
         if request.speaker_colors:
@@ -460,8 +465,7 @@ def _child_environment(
 ) -> dict[str, str]:
     env = dict(parent)
     env["PYTHONUNBUFFERED"] = "1"
-    env["PYTHONUTF8"] = "1"
-    env["PYTHONIOENCODING"] = "utf-8"
+    configure_utf8_environment(env)
     configured_path = parent.get("FFMPEG_PATH") or load_env(DEFAULT_ENV_PATH).get("FFMPEG_PATH", "")
     configured = _prepend_ffmpeg_path(env, configured_path) if configured_path else False
     if not configured:

@@ -1029,9 +1029,16 @@ textarea::placeholder {
   font-weight: 600;
 }
 
+#mediaPath.drag-over,
 #qwenAudioHotwords.drag-over,
 #qwenAudioHotwordsFile.drag-over,
-#jsonPath.drag-over {
+#jsonPath.drag-over,
+#serverMediaPath.drag-over,
+#localModelCachePath.drag-over,
+#localModelPath.drag-over,
+#ocrRuntimePath.drag-over,
+#ffmpegPath.drag-over,
+#stickerDir.drag-over {
   border-color: var(--accent);
   background-color: var(--bg-raised);
   box-shadow: 0 0 0 2px var(--accent-soft);

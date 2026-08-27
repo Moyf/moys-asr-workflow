@@ -12,6 +12,8 @@ from unittest import mock
 
 from maw.local_runtime import (
     LocalRuntimeError,
+    MOSS_RUNTIME_VERSION,
+    default_model_cache_root,
     install_local_runtime,
     managed_runtime_status,
     model_cache_environment,
@@ -38,6 +40,10 @@ class LocalRuntimeTests(unittest.TestCase):
             shutil.copyfile(
                 Path(__file__).resolve().parents[1] / "maw" / "local_runtime_worker.py",
                 package_root / "local_runtime_worker.py",
+            )
+            shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "maw" / "console.py",
+                package_root / "console.py",
             )
             work_dir = temp_root / "work"
             work_dir.mkdir()
@@ -147,6 +153,59 @@ class LocalRuntimeTests(unittest.TestCase):
         self.assertIn("--forced-aligner", command)
         environment = run_process.call_args.kwargs["env"]
         self.assertEqual(environment["HF_HUB_CACHE"], model_cache_environment()["HF_HUB_CACHE"])
+
+    def test_moss_runtime_uses_separate_root_and_requirements(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "runtime"
+            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(Path(temp_dir) / "app")}):
+                with mock.patch("maw.local_runtime._find_uv", return_value=Path("uv.exe")):
+                    with mock.patch("maw.local_runtime._run_process", return_value=0) as run_process:
+                        moss_root = Path(temp_dir) / "app" / "local-runtime-moss"
+
+                        def fake_run(command: list[str], **_kwargs: object) -> int:
+                            if command[1] == "venv":
+                                python = runtime_python_path(moss_root)
+                                python.parent.mkdir(parents=True, exist_ok=True)
+                                python.touch()
+                            if command[1:3] == ["pip", "install"]:
+                                packages = moss_root / "Lib" / "site-packages"
+                                for name in ("moss_transcribe_diarize", "transformers", "torch", "torchaudio"):
+                                    (packages / name).mkdir(parents=True, exist_ok=True)
+                            return 0
+
+                        run_process.side_effect = fake_run
+                        status = install_local_runtime(engine="moss")
+
+        self.assertTrue(status.ready)
+        self.assertIn("local-runtime-moss", status.path)
+        install_command = run_process.call_args_list[1].args[0]
+        self.assertTrue(any("transformers>=5.6.0" in value for value in install_command))
+
+    def test_moss_ready_status_reports_moss_runtime_version(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "runtime"
+            moss_root = root.with_name(f"{root.name}-moss")
+            python = runtime_python_path(moss_root)
+            python.parent.mkdir(parents=True, exist_ok=True)
+            python.touch()
+            site_packages = (
+                moss_root / "Lib" / "site-packages"
+                if os.name == "nt"
+                else moss_root / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+            )
+            for name in ("moss_transcribe_diarize", "transformers", "torch", "torchaudio"):
+                (site_packages / name).mkdir(parents=True, exist_ok=True)
+            (moss_root / "runtime.json").write_text(
+                '{"status": "ready", "runtimeVersion": "1"}\n',
+                encoding="utf-8",
+                newline="\n",
+            )
+            with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(root)}):
+                status = managed_runtime_status(engine="moss")
+
+        self.assertTrue(status.ready)
+        self.assertEqual(status.runtime_version, MOSS_RUNTIME_VERSION)
+        self.assertEqual(status.to_payload()["runtimeVersion"], MOSS_RUNTIME_VERSION)
 
 
 if __name__ == "__main__":

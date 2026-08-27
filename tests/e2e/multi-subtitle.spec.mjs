@@ -324,6 +324,53 @@ test('uses the same text editor box styling in single and dual-column modes', as
   expect(dualExtensionStyle).toEqual(singleStyle);
 });
 
+test('reserves space for the dirty marker beside main dual-column text', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'dirty-main-001', start: 0, end: 2000, text: 'main dirty cue', _dirty: true }],
+    waveform: generateWaveformPayload(3000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'dirty-extension-1', role: 'extension', name: 'English', language: 'English',
+        split_mode: 'word',
+        segments: [{ id: 'dirty-extension-001', start: 0, end: 2000, text: 'secondary cue' }],
+      }],
+      bindings: [{
+        id: 'dirty-binding-001',
+        track_id: 'dirty-extension-1',
+        main_segment_ids: ['dirty-main-001'],
+        extension_segment_ids: ['dirty-extension-001'],
+      }],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'dirty-marker-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const main = page.locator('.multi-dual-cue .multi-cue-column.main').first();
+  await expect(main).toHaveClass(/dirty/);
+  const geometry = await main.evaluate((element) => {
+    const text = element.querySelector('.text');
+    const columnBox = element.getBoundingClientRect();
+    const textBox = text?.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return {
+      boxSizing: style.boxSizing,
+      paddingLeft: style.paddingLeft,
+      columnLeft: columnBox.left,
+      textLeft: textBox?.left ?? 0,
+    };
+  });
+  expect(geometry.boxSizing).toBe('border-box');
+  expect(geometry.paddingLeft).toBe('3px');
+  expect(geometry.textLeft).toBeGreaterThanOrEqual(geometry.columnLeft + 3);
+});
+
 test('uses the main cue-row layout when displaying only the extension track', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-result-confirm').click();
@@ -730,6 +777,43 @@ test('shows and edits the last clicked main or extension cue in the current subt
   await expect(panelText).toHaveValue('第二句。');
 });
 
+test('applies text processing to selected extension subtitles', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-text-process-001', start: 0, end: 2000, text: 'main cue' }],
+    waveform: generateWaveformPayload(3000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-text-process-1', role: 'extension', name: 'English', language: 'English',
+        split_mode: 'word',
+        segments: [{ id: 'extension-text-process-001', start: 0, end: 2000, text: 'extension cue' }],
+      }],
+      bindings: [],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'text-process-extension-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const row = page.locator('.multi-dual-cue').first();
+  await row.locator('.multi-cue-column.extension .text').click();
+  await page.locator('#batch-operations-btn').click();
+  await page.locator('#text-process-btn').click();
+  await expect(page.locator('#text-process-selected-only')).toBeChecked();
+  await page.locator('#text-process-prefix').check();
+  await page.locator('#text-process-prefix-input').fill('X ');
+  await expect(page.locator('#text-process-preview')).toContainText('副字幕第 1 条');
+  await page.locator('#text-process-confirm').click();
+
+  await expect(row.locator('.multi-cue-column.main .text')).toHaveText('main cue');
+  await expect(row.locator('.multi-cue-column.extension .text')).toHaveText('X extension cue');
+});
+
 test('selects bound subtitle pairs without changing the current editor target', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-result-confirm').click();
@@ -901,7 +985,7 @@ test('imports an extension SRT with 300ms preview, dual columns, split dialog, a
   await expect(page.locator('.multi-cue-column.extension .text').filter({ hasText: '你好' })).toHaveCount(1);
   await expect(page.locator('.multi-cue-column.extension .text').filter({ hasText: '世界' })).toHaveCount(1);
 
-  // 默认主轨使用字词时间码，拓展轨的近似拆分不应反向改写主轨。
+  // 默认主轨使用字词时间码，副轨的近似拆分不应反向改写主轨。
   const splitTimings = await page.locator('.multi-cue-column').evaluateAll((elements) => (
     elements.map((element) => ({
       kind: element.classList.contains('main') ? 'main' : 'extension',
@@ -916,7 +1000,7 @@ test('imports an extension SRT with 300ms preview, dual columns, split dialog, a
   expect(mainSegments[0].end).toBe(mainSegments[1].start);
   expect(extensionSegments[0].end).toBe(extensionSegments[1].start);
 
-  // 清空主轨选择后只选中一条已绑定扩展字幕，Delete 必须成对删除；Ctrl+Z 恢复。
+  // 清空主轨选择后只选中一条已绑定副字幕，Delete 必须成对删除；Ctrl+Z 恢复。
   await page.keyboard.press('Escape');
   await page.locator('.multi-dual-cue').first().locator('.multi-cue-column.extension').click();
   await page.keyboard.press('Delete');
@@ -1775,7 +1859,7 @@ test('waits for a main cue when binding starts without a selected main cue', asy
   await page.locator('#ctxmenu .item').filter({ hasText: '绑定到主字幕' }).click();
   await expect(page.locator('#hint-stack')).toContainText('请点击一条主字幕完成绑定');
   await page.keyboard.press('Escape');
-  await expect(page.locator('#hint-stack')).toContainText('已取消绑定扩展字幕');
+  await expect(page.locator('#hint-stack')).toContainText('已取消绑定副字幕');
 
   await unboundExtension.click({ button: 'right' });
   await page.locator('#ctxmenu .item').filter({ hasText: '绑定到主字幕' }).click();
@@ -2421,7 +2505,7 @@ test('opens the extension-only split dialog from the waveform context menu and u
       tracks: [{
         id: 'extension-1', role: 'extension', name: '中文', language: 'zh', split_mode: 'continuous',
         source_name: 'translation.srt',
-        segments: [{ id: 'extension-001', start: 1050, end: 2950, text: '这是一条拓展字幕。' }],
+        segments: [{ id: 'extension-001', start: 1050, end: 2950, text: '这是一条副字幕。' }],
       }],
       bindings: [{
         id: 'binding-001', track_id: 'extension-1',
@@ -3247,7 +3331,7 @@ test('snaps an extension cue to main-track boundaries when cross-track snapping 
   await expect(page.locator('#multi-subtitle-cross-track-snap')).not.toBeChecked();
   const resetBlock = page.locator('.waveform-cue-block[data-track="extension"]').first();
   const resetBox = await resetBlock.boundingBox();
-  if (!resetBox) throw new Error('重新加载后扩展字幕波形块没有布局');
+  if (!resetBox) throw new Error('重新加载后副字幕波形块没有布局');
   const resetCenterX = resetBox.x + resetBox.width / 2;
   const resetCenterY = resetBox.y + resetBox.height / 2;
   await page.mouse.move(resetCenterX, resetCenterY);
