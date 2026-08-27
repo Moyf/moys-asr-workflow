@@ -432,9 +432,15 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="download-gap-removed-color-srt"', page)
         self.assertIn('id="download-gap-removed-otio"', page)
         self.assertIn('>时间线 OTIO 工程</div>', page)
+        self.assertIn('id="download-gap-removed-sticker-otio"', page)
+        self.assertIn('>表情包 OTIO 工程</div>', page)
+        self.assertIn('id="download-gap-removed-sticker-otioz"', page)
+        self.assertIn('>表情包 OTIOZ 打包工程</div>', page)
+        self.assertIn('id="download-gap-removed-fcp7-export"', page)
         self.assertIn('id="download-gap-removed-ffconcat"', page)
         self.assertIn('id="download-gap-removed-regions-json"', page)
         self.assertIn('id="download-fcp7-export"', page)
+        self.assertIn('<option value="gap_removed" selected>去空隙时间线</option>', page)
         self.assertIn('id="fcp7-export-modal"', page)
         self.assertIn('id="fcp7-export-fps"', page)
         self.assertIn('id="fcp7-export-subtitle-tracks"', page)
@@ -458,6 +464,35 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('timeFromPointerUnbounded', page)
         self.assertIn('gapOperationAllowsBoundary', page)
         self.assertIn('gapOperationAllowsMiddle', page)
+
+        gap_menu_start = page.index('<div class="dropdown-menu" id="gap-removed-export-menu">')
+        gap_menu_end = page.index('<span class="dropdown" id="extra-export-dropdown">', gap_menu_start)
+        gap_menu = page[gap_menu_start:gap_menu_end]
+        separator = '<div class="dropdown-separator" role="separator"></div>'
+        self.assertEqual(gap_menu.count(separator), 2)
+        first_separator = gap_menu.index(separator)
+        second_separator = gap_menu.index(separator, first_separator + len(separator))
+        self.assertLess(gap_menu.index('id="download-gap-removed-color-srt"'), first_separator)
+        self.assertLess(first_separator, gap_menu.index('id="download-gap-removed-otio"'))
+        self.assertLess(
+            gap_menu.index('id="download-gap-removed-sticker-otioz"'),
+            gap_menu.index('id="download-gap-removed-fcp7-export"'),
+        )
+        self.assertLess(gap_menu.index('id="download-gap-removed-fcp7-export"'), second_separator)
+        self.assertLess(second_separator, gap_menu.index('id="download-gap-removed-ffconcat"'))
+
+        extra_menu_start = page.index('<div class="dropdown-menu" id="extra-export-menu">')
+        extra_menu_end = page.index('\n      </div>\n    </span>\n  </span>\n</div>', extra_menu_start)
+        extra_menu = page[extra_menu_start:extra_menu_end]
+        self.assertEqual(extra_menu.count(separator), 2)
+        first_separator = extra_menu.index(separator)
+        second_separator = extra_menu.index(separator, first_separator + len(separator))
+        self.assertLess(extra_menu.index('id="download-fcp7-export"'), first_separator)
+        self.assertLess(first_separator, extra_menu.index('id="download-sticker-otio"'))
+        self.assertLess(extra_menu.index('id="download-sticker-otioz"'), second_separator)
+        self.assertLess(second_separator, extra_menu.index('id="download-resolve-json"'))
+        self.assertLess(second_separator, extra_menu.index('id="download-lottie"'))
+        self.assertLess(second_separator, extra_menu.index('id="download-ograf"'))
         self.assertIn('showGapContextMenu?.(event.clientX, event.clientY, index)', page)
         self.assertIn("gap.removed === false ? '移除区段' : '恢复区段'", page)
         self.assertIn("addItem('清理该区段', () => clearGap(index), { danger: true });", page)

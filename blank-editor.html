@@ -3824,22 +3824,27 @@
       <div class="dropdown-menu" id="gap-removed-export-menu">
         <div class="dropdown-item" id="download-gap-removed-srt" title="按移除静音空隙后的时间轴导出字幕；原工程时间不变">字幕 SRT</div>
         <div class="dropdown-item" id="download-gap-removed-color-srt" title="按移除静音空隙后的时间轴，为每种已使用颜色分别导出一份字幕">按颜色导出字幕</div>
+        <div class="dropdown-separator" role="separator"></div>
         <div class="dropdown-item" id="download-gap-removed-otio" title="导出原视频/音频的去空隙 OTIO 时间线，供支持 OTIO 的剪辑工具或工作流使用">时间线 OTIO 工程</div>
+        <div class="dropdown-item" id="download-gap-removed-sticker-otio" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIO；完全落在空隙内的表情包会被丢弃">表情包 OTIO 工程</div>
+        <div class="dropdown-item" id="download-gap-removed-sticker-otioz" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）；完全落在空隙内的表情包会被丢弃">表情包 OTIOZ 打包工程</div>
+        <div class="dropdown-item" id="download-gap-removed-fcp7-export" title="实验性 Premiere 交接：导出 FCP 7 XML">Premiere FCP 7 XML（实验性）</div>
+        <div class="dropdown-separator" role="separator"></div>
         <div class="dropdown-item" id="download-gap-removed-ffconcat" title="导出 FFmpeg concat demuxer 可读取的保留区间；流复制的切点精度受关键帧和编码包限制">FFconcat 文件</div>
         <div class="dropdown-item" id="download-gap-removed-regions-json" title="以毫秒为单位导出原媒体中的全部保留区域，供自定义脚本或工具读取">保留区域 JSON</div>
-        <div class="dropdown-item" id="download-gap-removed-sticker-otio" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIO；完全落在空隙内的表情包会被丢弃">表情包 OTIO</div>
-        <div class="dropdown-item" id="download-gap-removed-sticker-otioz" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIOZ 工程（服务器打包图片进 zip，需校验表情包根目录）；完全落在空隙内的表情包会被丢弃">表情包 OTIOZ</div>
       </div>
     </span>
     <span class="dropdown" id="extra-export-dropdown">
       <button id="extra-export-btn" title="更多导出">更多导出 ▾</button>
       <div class="dropdown-menu" id="extra-export-menu">
         <div class="dropdown-item" id="download-fcp7-export" title="实验性 Premiere 交接：导出 FCP 7 XML">Premiere FCP 7 XML（实验性）</div>
+        <div class="dropdown-separator" role="separator"></div>
+        <div class="dropdown-item" id="download-sticker-otio" title="导出只包含表情包图片轨道的 OTIO 工程">下载表情包 OTIO 工程</div>
+        <div class="dropdown-item" id="download-sticker-otioz" title="导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）">下载表情包 OTIOZ 打包工程</div>
+        <div class="dropdown-separator" role="separator"></div>
         <div class="dropdown-item" id="download-resolve-json" title="导出颜色与表情包的 Resolve JSON，供兼容执行脚本批量导入">下载 Resolve JSON</div>
         <div class="dropdown-item" id="download-lottie" title="导出逐字高亮动态字幕 .lottie（需要以 server-editor 打开并绑定工程文件）">动态字幕（Lottie）</div>
         <div class="dropdown-item" id="download-ograf" title="导出符合 OGraf 规范的动态字幕包（需要以 server-editor 打开并绑定工程文件）">动态字幕（OGraf）</div>
-        <div class="dropdown-item" id="download-sticker-otio" title="导出只包含表情包图片轨道的 OTIO 工程">下载表情包 OTIO 工程</div>
-        <div class="dropdown-item" id="download-sticker-otioz" title="导出表情包图片轨道 OTIOZ 工程（服务器打包图片进 zip，需校验表情包根目录）">下载表情包 OTIOZ 工程</div>
       </div>
     </span>
   </span>
@@ -8872,6 +8877,11 @@
 
   const EXPORT_SUBTITLE_TRACKS = Object.freeze(['main', 'extension', 'both', 'main_and_extension']);
   const EXPORT_INVALID_NAME_CHARS = /[\\/<>:"|?*\u0000-\u001f]/g;
+  const EXPORT_NAME_EXTENSIONS = new Set([
+    '.mosp', '.json', '.srt', '.txt', '.ass', '.vtt', '.xml', '.ffconcat', '.otio', '.otioz',
+    '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.ts', '.m4v',
+    '.mp3', '.wav', '.m4a', '.flac', '.aac', '.ogg', '.opus',
+  ]);
   const EXPORT_OPTION_KEYS = Object.freeze([
     'timelineMode', 'mode', 'fps', 'dropFrame', 'nativeTextObjects', 'subtitleTracks', 'baseName',
   ]);
@@ -8910,8 +8920,11 @@
   }
 
   function sanitizeExportName(value) {
-    const sanitized = String(value ?? '')
-      .replace(/\.[^.]+$/, '')
+    const source = String(value ?? '');
+    const lastDot = source.lastIndexOf('.');
+    const extension = lastDot >= 0 ? source.slice(lastDot).toLowerCase() : '';
+    const name = EXPORT_NAME_EXTENSIONS.has(extension) ? source.slice(0, lastDot) : source;
+    const sanitized = name
       .replace(/[\\/]+/g, '_')
       .replace(/^[.]+/, '_')
       .replace(/\.\.(?=_|$)/g, '_')
@@ -10423,6 +10436,7 @@ export default MawDynamicCaptions;
     '导出纯文本（TXT）': 'Export plain text (TXT)',
     '导出工程': 'Export project', '导出去空隙版本 ▾': 'Export gap-removed version ▾',
     '字幕 SRT': 'Subtitle SRT', '时间线 OTIO 工程': 'Timeline OTIO project',
+    '表情包 OTIO 工程': 'Sticker OTIO project', '表情包 OTIOZ 打包工程': 'Sticker OTIOZ bundle',
     '导出时间线模式': 'Export timeline mode', '去空隙时间线': 'Gap-removed timeline', '原始时间线': 'Source timeline',
     '导出帧率': 'Export frame rate', '写入原生字幕文本对象': 'Write native subtitle text objects',
     '导出副字幕轨': 'Export secondary subtitle track', '主轨字幕': 'Main-track subtitles',
@@ -10477,11 +10491,15 @@ export default MawDynamicCaptions;
     '下载 Resolve JSON': 'Download Resolve JSON',
     '下载表情包 OTIO 工程': 'Download sticker OTIO project',
     '下载表情包 OTIOZ 工程': 'Download sticker OTIOZ project',
+    '下载表情包 OTIOZ 打包工程': 'Download sticker OTIOZ bundle',
     '按移除静音空隙后的时间轴导出表情包图片轨道 OTIOZ 工程（服务器打包图片进 zip，需校验表情包根目录）；完全落在空隙内的表情包会被丢弃': 'Export the sticker track as OTIOZ on the gap-removed timeline (server packs images into zip; validated sticker root required); stickers fully inside gaps are omitted',
+    '按移除静音空隙后的时间轴导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）；完全落在空隙内的表情包会被丢弃': 'Export the sticker track as an OTIOZ bundle on the gap-removed timeline (server packs images into zip; validated sticker root required); stickers fully inside gaps are omitted',
     '导出表情包图片轨道 OTIOZ 工程（服务器打包图片进 zip，需校验表情包根目录）': 'Export a sticker-track OTIOZ bundle (server packs images into zip; validated sticker root required)',
+    '导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）': 'Export a sticker-track OTIOZ bundle (server packs images into zip; validated sticker root required)',
     '服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出 OTIOZ': 'Server packaging is unavailable: open the project via server-editor and bind a project file before exporting OTIOZ',
     '当前工程无法导出表情包 OTIOZ（需要以 server-editor 打开并绑定工程文件）': 'Cannot export sticker OTIOZ here (requires server-editor with a bound project file)',
     '正在生成表情包 OTIOZ 工程…': 'Generating sticker OTIOZ bundle…',
+    '正在生成表情包 OTIOZ 打包工程…': 'Generating sticker OTIOZ bundle…',
     'OTIOZ 已生成，图片已打包进 zip': 'OTIOZ generated; images are packed into the zip',
     '没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除': 'No silent gaps removed yet; scan with "Remove silent gaps" first',
     '字幕': 'Subtitles', '字幕预览': 'Subtitle preview', '表情包预览': 'Sticker preview', '字幕列表和编辑区': 'Subtitle list & editor', '字幕编辑区': 'Subtitle editor',
@@ -27521,7 +27539,7 @@ async function exportStickerOtoz(kind, buildTimeline, filename, description) {
     flashHint(tr('当前工程无法导出表情包 OTIOZ（需要以 server-editor 打开并绑定工程文件）'), 'warning');
     return;
   }
-  flashHint(tr('正在生成表情包 OTIOZ 工程…'));
+  flashHint(tr('正在生成表情包 OTIOZ 打包工程…'));
   try {
     const response = await fetch(new URL(SERVER_CONFIG.otiozStickerExportUrl, window.location.href), {
       method: 'POST',
@@ -28591,6 +28609,11 @@ function openFcp7ExportModal() {
   fcp7ExportTimelineMode.focus();
 }
 
+function openGapRemovedFcp7ExportModal() {
+  fcp7ExportTimelineMode.value = 'gap_removed';
+  openFcp7ExportModal();
+}
+
 async function exportFcp7Xml() {
   fcp7ExportConfirm.disabled = true;
   try {
@@ -28634,6 +28657,7 @@ async function exportFcp7Xml() {
 }
 
 document.getElementById('download-fcp7-export')?.addEventListener('click', openFcp7ExportModal);
+document.getElementById('download-gap-removed-fcp7-export')?.addEventListener('click', openGapRemovedFcp7ExportModal);
 fcp7ExportCancel?.addEventListener('click', closeFcp7ExportModal);
 fcp7ExportConfirm?.addEventListener('click', () => { void exportFcp7Xml(); });
 fcp7ExportModal?.addEventListener('click', (event) => {
@@ -29037,14 +29061,14 @@ document.getElementById('download-gap-removed-sticker-otioz')?.addEventListener(
   }
   await exportStickerOtoz(
     'gap-removed-stickers', buildGapRemovedStickerOtio,
-    `${FILENAME_BASE}_gap-removed-stickers.otioz`, '去空隙表情包 OTIOZ 工程'
+    `${FILENAME_BASE}_gap-removed-stickers.otioz`, '去空隙表情包 OTIOZ 打包工程'
   );
 });
 document.getElementById('download-sticker-otioz')?.addEventListener('click', async () => {
   if (stickerExportBlocked('download-sticker-otioz')) return;
   await exportStickerOtoz(
     'stickers', buildStickerOtio,
-    `${FILENAME_BASE}_stickers.otioz`, '表情包 OTIOZ 工程'
+    `${FILENAME_BASE}_stickers.otioz`, '表情包 OTIOZ 打包工程'
   );
 });
 

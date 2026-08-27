@@ -3533,6 +3533,11 @@
 
   const EXPORT_SUBTITLE_TRACKS = Object.freeze(['main', 'extension', 'both', 'main_and_extension']);
   const EXPORT_INVALID_NAME_CHARS = /[\\/<>:"|?*\u0000-\u001f]/g;
+  const EXPORT_NAME_EXTENSIONS = new Set([
+    '.mosp', '.json', '.srt', '.txt', '.ass', '.vtt', '.xml', '.ffconcat', '.otio', '.otioz',
+    '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.ts', '.m4v',
+    '.mp3', '.wav', '.m4a', '.flac', '.aac', '.ogg', '.opus',
+  ]);
   const EXPORT_OPTION_KEYS = Object.freeze([
     'timelineMode', 'mode', 'fps', 'dropFrame', 'nativeTextObjects', 'subtitleTracks', 'baseName',
   ]);
@@ -3571,8 +3576,11 @@
   }
 
   function sanitizeExportName(value) {
-    const sanitized = String(value ?? '')
-      .replace(/\.[^.]+$/, '')
+    const source = String(value ?? '');
+    const lastDot = source.lastIndexOf('.');
+    const extension = lastDot >= 0 ? source.slice(lastDot).toLowerCase() : '';
+    const name = EXPORT_NAME_EXTENSIONS.has(extension) ? source.slice(0, lastDot) : source;
+    const sanitized = name
       .replace(/[\\/]+/g, '_')
       .replace(/^[.]+/, '_')
       .replace(/\.\.(?=_|$)/g, '_')
