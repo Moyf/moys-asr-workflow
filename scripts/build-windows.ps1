@@ -19,15 +19,12 @@ if (-not (Test-Path -LiteralPath $EntryPoint -PathType Leaf)) {
 Push-Location -LiteralPath $RepoRoot
 try {
     uv sync --group build --frozen
-    # 生成托管 Runtime 的 frozen requirements txt（MAW.spec datas 条件追加打包）。
+    # 生成托管 Runtime 的 frozen requirements txt（MAW.spec datas 条件追加打包）；
+    # 主清单（local/ocr 走 uv export，moss 走 uv pip compile）与 CPU 变体
+    # （从声明源剥离 GPU 参数后原生冻结）统一由 freezer 模块执行，与
+    # build-appimage.sh / release.yml / 源码模式自动补齐完全同源。
     New-Item -ItemType Directory -Path 'build' -Force | Out-Null
-    uv export --frozen --extra local --no-dev --format requirements-txt -o build/requirements-local.txt
-    uv export --frozen --extra ocr --no-dev --format requirements-txt -o build/requirements-ocr.txt
-    # moss 依赖与 local（qwen-asr/Transformers 4.x）互斥，独立声明、独立冻结。
-    uv pip compile moss-requirements.in -p 3.11 --extra-index-url https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match -o build/requirements-moss.txt
-    # CPU 变体：屏蔽 GPU 源后原生冻结（带 CPU wheel 真实哈希，而非冻结后文本剔除）。
-    uv pip compile local-cpu-requirements.in -p 3.11 --generate-hashes --index-strategy unsafe-best-match -o build/requirements-local-cpu.txt
-    uv pip compile moss-cpu-requirements.in -p 3.11 --generate-hashes --index-strategy unsafe-best-match -o build/requirements-moss-cpu.txt
+    uv run python -m maw.runtimes.freezer freeze
 
     if (-not $SkipTests) {
         uv run python -m unittest tests.test_packaging_contract
