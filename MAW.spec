@@ -86,10 +86,13 @@ datas.extend(opencc_datas)
 # 缺失时跳过——源码模式不打包 runtime txt）。
 _runtime_req_local = ROOT / "build" / "requirements-local.txt"
 _runtime_req_ocr = ROOT / "build" / "requirements-ocr.txt"
+_runtime_req_moss = ROOT / "build" / "requirements-moss.txt"
 if _runtime_req_local.is_file():
     datas.append((str(_runtime_req_local), "local-runtime"))
 if _runtime_req_ocr.is_file():
     datas.append((str(_runtime_req_ocr), "ocr-runtime"))
+if _runtime_req_moss.is_file():
+    datas.append((str(_runtime_req_moss), "moss-runtime"))
 opencc_hiddenimports = collect_submodules("opencc")
 
 # OCR dependencies and model files stay outside the frozen bundle. The bundled
@@ -136,6 +139,11 @@ a = Analysis(
         "maw.local_asr",
         "maw.moss_runtime",
         "maw.ocr_runtime",
+        "maw.runtimes",
+        "maw.runtimes.base",
+        "maw.runtimes.local_spec",
+        "maw.runtimes.ocr_spec",
+        "maw.runtimes.moss_spec",
         "maw.cli",
         "maw.postprocess",
         "maw.text_conversion",

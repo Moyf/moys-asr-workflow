@@ -1,0 +1,25 @@
+# MOSS runtime 依赖唯一真源（frozen txt 的输入）。
+#
+# 为什么独立于 pyproject optional-dependencies：
+# MOSS Transcribe-Diarize 依赖 Transformers 5.x，而 local extra 的
+# qwen-asr==0.0.6 强制 Transformers==4.57.6 —— 两个互斥版本无法共存于
+# 同一个 uv.lock（uv lock 解析所有 extras 组合）。runtime 安装时
+# local 与 moss 本来就是两个独立环境，因此 moss 依赖在此独立声明，
+# 由 CI / 本机构建脚本用 `uv pip compile` 冻结为 requirements-moss.txt
+# （与 local/ocr 的 uv export 冻结管线并行，产物同为 pip 可安装的 txt）。
+# torch==2.13.0+cu130 只存在于 pytorch cu130 index，编译命令需带：
+#   uv pip compile moss-requirements.in -p 3.11 --extra-index-url
+#       https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match
+av>=14.0
+librosa>=0.11.0
+numba>=0.61.0
+packaging>=24.0
+safetensors>=0.6.2
+soundfile>=0.12
+soxr>=0.5
+transformers>=5.6.0,<6.0.0
+moss-transcribe-diarize @ https://github.com/OpenMOSS/MOSS-Transcribe-Diarize/archive/e607537b1b870475e7898969d40b864de8b691b6.zip
+torch==2.13.0+cu130; sys_platform != 'darwin'
+torch>=2.13.0; sys_platform == 'darwin'
+torchaudio==2.11.0+cu130; sys_platform != 'darwin'
+torchaudio>=2.11.0; sys_platform == 'darwin'

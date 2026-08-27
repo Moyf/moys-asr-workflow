@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### 🚀 全新特性
+
+- **MOSS 本地转录引擎** ： 引入 MOSS Transcribe-Diarize（Transformers 5.x）本地识别引擎，独立安装到 `local-runtime-moss` 环境，模型与其余引擎共用缓存目录。
+
+### 🔄 变更
+
+- **托管 Runtime 共性抽象** ： local / ocr / moss 三个托管 Runtime 统一到 `maw/runtimes`（`RuntimeSpec` 声明式规格 + `ManagedRuntime` 生命周期基类），`maw/local_runtime.py` 与 `maw/ocr_runtime.py` 收窄为薄壳委托，新增 `engine` 维度（local / moss）支持。
+- **移除 bundled uv** ： 三个托管 Runtime 一律 embedded Python + get-pip + `pip install --target` 安装；moss 依赖因与 local（qwen-asr 固定 Transformers 4.57.6）互斥而独立声明于 `moss-requirements.in`，由 `uv pip compile` 冻结（与 local/ocr 的 `uv export` 管线并行），macOS 产物不再内置 uv。
+
 ### 🐛 问题修复
 
 - **NixOS 打开字幕编辑器崩溃** ： PyInstaller 排除 `readline` 模块并在 AppImage 内物理剔除 `libreadline.so`（与既有 C++ 运行时剔除模式一致），避免 AppImage 内的旧版 readline 污染 `webbrowser.open` → xdg-open → bash 子进程；release CI 增加产物回归断言。
