@@ -1,4 +1,4 @@
-"""Local QwenASR / FunASR / MOSS -> SRT + MAW project CLI.
+"""Local QwenASR / FunASR / MOSS / faster-whisper -> SRT + MAW project CLI.
 
 This remains a source-mode first step.  Model packages are optional; the
 Launcher only routes to this CLI and lets the upstream runtime prepare its
@@ -17,6 +17,7 @@ from maw.local_asr import (
     QWEN_DEFAULT_CHUNK_SECONDS,
     QWEN_DEFAULT_FORCED_ALIGNER,
     QWEN_DEFAULT_MODEL,
+    WHISPER_DEFAULT_MODEL,
     build_local_segments,
     create_local_engine,
     parse_duration,
@@ -27,15 +28,19 @@ from maw.local_asr import (
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="使用本地 QwenASR、FunASR 或 MOSS 生成 MAW 字幕工程",
+        description="使用本地 QwenASR、FunASR、MOSS 或 faster-whisper 生成 MAW 字幕工程",
     )
     parser.add_argument("input", help="输入视频或音频文件路径")
     parser.add_argument(
-        "--engine", choices=("qwen-asr", "funasr", "moss"), default="qwen-asr",
-        help="本地推理引擎（默认: qwen-asr）",
+        "--engine", choices=("qwen-asr", "funasr", "moss", "whisper"), default="qwen-asr",
+        help="本地推理引擎（默认: qwen-asr；whisper 走 faster-whisper/CTranslate2 运行时）",
     )
     parser.add_argument(
-        "--model", help=f"模型 ID 或本地模型路径（Qwen 默认: {QWEN_DEFAULT_MODEL}；FunASR 默认: {FUNASR_DEFAULT_MODEL}）",
+        "--model", help=(
+            f"模型 ID 或本地模型路径（Qwen 默认: {QWEN_DEFAULT_MODEL}；"
+            f"FunASR 默认: {FUNASR_DEFAULT_MODEL}；Whisper 默认: {WHISPER_DEFAULT_MODEL}，"
+            "也可用 small/turbo 等 HF Hub 名称或已转换的 CTranslate2 目录）"
+        ),
     )
     parser.add_argument("--model-path", help="显式指定已经下载好的模型目录")
     parser.add_argument(
@@ -80,7 +85,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def default_output_path(input_path: Path, engine: str) -> Path:
-    tag = {"qwen-asr": "qwen-asr-local", "funasr": "funasr-local", "moss": "moss-local"}.get(engine, "local")
+    tag = {
+        "qwen-asr": "qwen-asr-local",
+        "funasr": "funasr-local",
+        "moss": "moss-local",
+        "whisper": "whisper-local",
+    }.get(engine, "local")
     return input_path.with_name(f"{input_path.stem}.{tag}.srt")
 
 

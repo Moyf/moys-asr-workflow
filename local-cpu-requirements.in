@@ -16,6 +16,7 @@
 # 直接依赖的精确 pin 必须与 pyproject [local] extra / uv.lock 保持一致；
 # tests/test_packaging_contract.py 有版本对齐断言，升级时同步修改。
 accelerate==1.12.0
+faster-whisper==1.2.1
 funasr==1.4.2
 hf-xet==1.6.0
 qwen-asr==0.0.6
