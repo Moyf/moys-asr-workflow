@@ -27,7 +27,13 @@ from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, MODELS, PROVIDERS
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
-from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError, install_local_runtime, managed_runtime_status
+from maw.local_runtime import (
+    LocalRuntimeCancelled,
+    LocalRuntimeError,
+    install_local_runtime,
+    managed_runtime_status,
+    resolve_model_cache_root,
+)
 from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
 from maw.media import find_ffmpeg, resolve_project_media
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
@@ -66,7 +72,7 @@ MOSE_FILE_TYPE = "Moy.MOSE.Project"
 # 工程恢复会同步准备自研波形；大型工程可能需要超过默认的网络探测窗口。
 SERVER_START_TIMEOUT: Final = 30.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.5.0-beta.2"
+BUNDLED_APP_VERSION = "1.5.0-beta.4"
 MOSE_VERSION = "0.1.0"
 
 
@@ -1058,7 +1064,7 @@ class LauncherApi:
         url = str(payload.get("url") or "").strip()
         if not url.startswith(("https://", "http://")):
             return {"ok": False, "error": "Invalid URL."}
-        webbrowser.open(url)
+        _open_external(url)
         return {"ok": True}
 
     def open_file(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1409,9 +1415,10 @@ class LauncherApi:
         model_cache_root = effective_config(self.paths.env_path).model_cache_root
         selected_id = str((payload or {}).get("modelId") or "")
         selected_path = str((payload or {}).get("modelPath") or "").strip()
+        selected_model = next((item for item in provider.models if item.id == selected_id), provider.models[0])
         return {
             "ok": True,
-            "runtime": managed_runtime_status(model_cache_root).to_payload(),
+            "runtime": managed_runtime_status(model_cache_root, engine=selected_model.engine).to_payload(),
             "models": [
                 _model_payload(
                     model,
@@ -1424,7 +1431,10 @@ class LauncherApi:
 
     def get_local_runtime(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         model_cache_root = effective_config(self.paths.env_path).model_cache_root
-        return {"ok": True, **managed_runtime_status(model_cache_root).to_payload()}
+        requested_model = str((_payload or {}).get("modelId") or "")
+        model = next((item for item in provider_by_id("local").models if item.id == requested_model), None)
+        engine = model.engine if model else ""
+        return {"ok": True, **managed_runtime_status(model_cache_root, engine=engine).to_payload()}
 
     def get_ocr_runtime(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         status = self._ocr_runtime_status()
@@ -1476,11 +1486,14 @@ class LauncherApi:
             return _error_result("model", "local_runtime_install_failed", "本地运行环境正在安装中。")
         repair = bool((payload or {}).get("repair"))
         model_cache_root = effective_config(self.paths.env_path).model_cache_root
+        requested_model = str((payload or {}).get("modelId") or "")
+        model = next((item for item in provider_by_id("local").models if item.id == requested_model), None)
+        engine = model.engine if model else ""
         self.local_runtime_cancel_event = Event()
         self.pump.start()
         self.local_runtime_worker = threading.Thread(
             target=self._local_runtime_main,
-            args=(repair, model_cache_root, self.local_runtime_cancel_event),
+            args=(repair, model_cache_root, engine, self.local_runtime_cancel_event),
             daemon=True,
         )
         self.local_runtime_worker.start()
@@ -1491,6 +1504,29 @@ class LauncherApi:
         if event:
             event.set()
         return {"ok": True}
+
+    def open_runtime_folder(self, payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        """打开托管 Runtime 的相关文件夹。
+
+        出于安全边界（只允许 127.0.0.1、不提供任意路径浏览/写入），
+        这里不接收前端传来的任意路径：kind 只支持 ``runtime`` /
+        ``model-cache`` 白名单，目录统一由后端按当前配置解析。
+        """
+        values = payload or {}
+        kind = str(values.get("kind") or "").strip()
+        if kind == "model-cache":
+            directory = resolve_model_cache_root(effective_config(self.paths.env_path).model_cache_root)
+        elif kind == "runtime":
+            model_cache_root = effective_config(self.paths.env_path).model_cache_root
+            requested_model = str(values.get("modelId") or "")
+            model = next((item for item in provider_by_id("local").models if item.id == requested_model), None)
+            engine = model.engine if model else ""
+            directory = Path(managed_runtime_status(model_cache_root, engine=engine).path)
+        else:
+            return {"ok": False, "error": "未知的运行时目录类型。"}
+        if not directory.is_dir():
+            return {"ok": False, "error": f"该文件夹尚未创建：{directory}"}
+        return _open_existing_path(directory)
 
     def cancel_local_model(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         event = getattr(self, "local_prepare_cancel_event", None)
@@ -1858,6 +1894,7 @@ class LauncherApi:
         self,
         repair: bool,
         model_cache_root: str,
+        engine: str,
         cancel_event: Event,
     ) -> None:
         def on_progress(message: str, percent: int, stage: str) -> None:
@@ -1877,6 +1914,7 @@ class LauncherApi:
                 cancel_event=cancel_event,
                 repair=repair,
                 model_cache_root=model_cache_root,
+                engine=engine,
             )
             if cancel_event.is_set():
                 return
@@ -2076,6 +2114,29 @@ def _segmentation_option(
     return str(value)
 
 
+_TAIL_STRIP_CANDIDATES = "，。"
+
+
+def _transcribe_strip_tail_punct(env_path: Path) -> str:
+    """Derive transcription tail-strip set from the shared 保留符号 settings.
+
+    The ⚙️ settings section edits the same postprocess plan (`match` step) as
+    the 文稿匹配 toolbox; symbols marked as preserved are subtracted from the
+    strip candidates so transcription output keeps them at cue tails.
+    """
+    plan = load_postprocess_plan(env_path)
+    steps = plan.get("steps")
+    preserved: set[str] = set()
+    if isinstance(steps, Sequence) and not isinstance(steps, (str, bytes)):
+        for step in steps:
+            if isinstance(step, Mapping) and step.get("id") == "match":
+                value = step.get("preservePunctuation")
+                if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+                    preserved = {str(item) for item in value if str(item)}
+                break
+    return "".join(candidate for candidate in _TAIL_STRIP_CANDIDATES if candidate not in preserved)
+
+
 def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> TranscriptionRequest:
     media_text = str(payload.get("mediaPath") or "").strip()
     srt_text = str(payload.get("srtPath") or "").strip()
@@ -2101,6 +2162,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     max_len = _segmentation_option(payload, field="maxLen", label="最大字数", minimum=1)
     min_len = _segmentation_option(payload, field="minLen", label="短句合并阈值", minimum=1)
     gap_split = _segmentation_option(payload, field="gapSplit", label="停顿切句阈值", minimum=0)
+    strip_tail_punct = _transcribe_strip_tail_punct(env_path)
     if max_len and min_len and int(max_len) < int(min_len):
         raise PreflightError(
             "maxLen",
@@ -2203,6 +2265,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         max_len=max_len,
         min_len=min_len,
         gap_split=gap_split,
+        strip_tail_punct=strip_tail_punct,
         qwen_audio_context=qwen_audio_context,
         qwen_audio_hotwords=qwen_audio_hotwords,
         qwen_audio_hotwords_file=qwen_audio_hotwords_file,
@@ -2533,6 +2596,19 @@ def _stop_external_maw_server(port: int) -> bool:
     return result.returncode == 0
 
 
+def _open_external(target: str) -> None:
+    if sys.platform == "linux" and getattr(sys, "frozen", False):
+        env = os.environ.copy()
+        original = env.get("LD_LIBRARY_PATH_ORIG")
+        if original is not None:
+            env["LD_LIBRARY_PATH"] = original
+        else:
+            env.pop("LD_LIBRARY_PATH", None)
+        subprocess.Popen(["xdg-open", target], env=env)
+    else:
+        webbrowser.open(target)
+
+
 def _open_existing_path(path: Path) -> dict[str, object]:
     target = Path(path).expanduser()
     if not target.exists():
@@ -2540,7 +2616,7 @@ def _open_existing_path(path: Path) -> dict[str, object]:
     if os.name == "nt":
         os.startfile(str(target))
     else:
-        webbrowser.open(target.resolve().as_uri())
+        _open_external(target.resolve().as_uri())
     return {"ok": True}
 
 

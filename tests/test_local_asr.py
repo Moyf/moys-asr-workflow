@@ -11,6 +11,9 @@ from generate_subtitle_qwen_api import extract_audio
 from generate_subtitle_local import build_parser, default_output_path, load_hotword_files
 from maw.local_asr import (
     FUNASR_DEFAULT_MODEL,
+    MOSS_DEFAULT_MODEL,
+    MOSS_DEFAULT_REVISION,
+    MOSS_MAX_NEW_TOKENS,
     QWEN_DEFAULT_CHUNK_SECONDS,
     QWEN_DEFAULT_FORCED_ALIGNER,
     QWEN_DEFAULT_MODEL,
@@ -100,6 +103,101 @@ class LocalAsrNormalizationTests(unittest.TestCase):
             "text": "没有时间戳",
             "items": [],
         }])
+
+
+class LocalSegmentationTuningTests(unittest.TestCase):
+    """max_len/min_len/gap_split_ms 必须作用于引擎自带分段（MOSS 等粗粒度输出）。"""
+
+    def test_oversized_coarse_segment_resplits_within_max_len(self) -> None:
+        text = "本地模型，AI校准和翻译，双语字幕，免费ASR，这些功能全都加上了。这么长一句话！"
+        coarse = {
+            "start": 1000,
+            "end": 11500,
+            "text": text,
+            "items": [{"text": text, "start": 1000, "end": 11500, "speaker": "S01"}],
+            "speaker": "S01",
+        }
+        result = LocalTranscription(text, "zh", [], [coarse], "moss-test")
+
+        segments = build_local_segments(result, duration_ms=12_000, max_len=15, min_len=5, gap_split_ms=300)
+
+        self.assertEqual([seg["text"] for seg in segments], [
+            "本地模型，AI校准和翻译",
+            "双语字幕，免费ASR",
+            "这些功能全都加上了",
+            "这么长一句话！",
+        ])
+        self.assertTrue(all(len(seg["text"]) <= 15 for seg in segments))
+        self.assertTrue(all(seg.get("speaker") == "S01" for seg in segments))
+        self.assertTrue(all(seg["items"] and seg["items"][0].get("speaker") == "S01" for seg in segments))
+        # 块首尾真实时间保持不变，中间为整数毫秒单调插值且互不重叠。
+        self.assertEqual(segments[0]["start"], 1000)
+        self.assertEqual(segments[-1]["end"], 11_500)
+        for previous, current in zip(segments, segments[1:]):
+            self.assertLessEqual(previous["end"], current["start"])
+            self.assertLess(current["start"], current["end"])
+
+    def test_trailing_full_width_punct_is_stripped(self) -> None:
+        text = "这是结尾。"
+        coarse = {"start": 0, "end": 2000, "text": text, "items": [{"text": text, "start": 0, "end": 2000}]}
+        result = LocalTranscription(text, "zh", [], [coarse], "test-model")
+
+        segments = build_local_segments(result, duration_ms=2000)
+
+        self.assertEqual(len(segments), 1)
+        self.assertEqual(segments[0]["text"], "这是结尾")
+        self.assertEqual(segments[0]["items"][-1]["text"], "这是结尾")
+
+    def test_strip_tail_punct_empty_disables_stripping(self) -> None:
+        # 共享保留符号配置把 ，。 全部保留时，转写侧剥尾整体禁用。
+        text = "这是结尾，"
+        coarse = {"start": 0, "end": 2000, "text": text, "items": [{"text": text, "start": 0, "end": 2000}]}
+        result = LocalTranscription(text, "zh", [], [coarse], "test-model")
+
+        segments = build_local_segments(result, duration_ms=2000, strip_tail_punct="")
+
+        self.assertEqual(segments[0]["text"], "这是结尾，")
+
+    def test_short_engine_segments_pass_through_without_resplit(self) -> None:
+        short_a = {"start": 0, "end": 1200, "text": "你好呀", "items": [{"text": "你好呀", "start": 0, "end": 1200}]}
+        short_b = {"start": 5000, "end": 6000, "text": "再见啦", "items": [{"text": "再见啦", "start": 5000, "end": 6000}]}
+        result = LocalTranscription("你好呀再见啦", "zh", [], [short_a, short_b], "test-model")
+
+        segments = build_local_segments(result, duration_ms=7000, max_len=15)
+
+        self.assertEqual([seg["text"] for seg in segments], ["你好呀", "再见啦"])
+        self.assertEqual([seg["start"] for seg in segments], [0, 5000])
+        self.assertEqual([seg["end"] for seg in segments], [1200, 6000])
+
+    def test_word_level_timestamps_are_kept_when_resplitting(self) -> None:
+        text = "哈哈哈哈，呵呵呵呵"
+        word_items = [
+            {"text": "哈哈哈哈，", "start": 100, "end": 900},
+            {"text": "呵呵呵呵", "start": 900, "end": 1800},
+        ]
+        coarse = {"start": 100, "end": 1800, "text": text, "items": word_items}
+        result = LocalTranscription(text, "zh", [], [coarse], "test-model")
+
+        segments = build_local_segments(result, duration_ms=2000, max_len=7)
+
+        self.assertEqual([seg["text"] for seg in segments], ["哈哈哈哈", "呵呵呵呵"])
+        # 切分边界来自真实词级时间码，而不是字符插值估计。
+        self.assertEqual(segments[0]["start"], 100)
+        self.assertEqual(segments[0]["end"], 900)
+        self.assertEqual(segments[1]["start"], 900)
+        self.assertEqual(segments[1]["end"], 1800)
+
+    def test_max_len_setting_changes_output(self) -> None:
+        text = "一句特别特别长的中文台词需要被整理"
+        coarse = {"start": 0, "end": 4000, "text": text, "items": [{"text": text, "start": 0, "end": 4000}]}
+        result = LocalTranscription(text, "zh", [], [coarse], "test-model")
+
+        loose = build_local_segments(result, duration_ms=4000, max_len=40)
+        strict = build_local_segments(result, duration_ms=4000, max_len=8)
+
+        self.assertEqual([seg["text"] for seg in loose], [text])
+        self.assertGreater(len(strict), 1)
+        self.assertTrue(all(len(seg["text"]) <= 8 for seg in strict))
 
 
 class LocalAsrFlowTests(unittest.TestCase):
@@ -269,6 +367,95 @@ class LocalAsrFlowTests(unittest.TestCase):
         self.assertEqual(nano.vad_model, "fsmn-vad")
         self.assertEqual(nano.vad_max_single_segment_time, 30000)
 
+    def test_engine_factory_supports_moss(self) -> None:
+        moss = create_local_engine("moss")
+
+        self.assertEqual(moss.model, MOSS_DEFAULT_MODEL)
+
+    def test_moss_default_revision_is_pinned(self) -> None:
+        self.assertRegex(MOSS_DEFAULT_REVISION, r"^[0-9a-f]{40}$")
+
+    def test_moss_default_revision_is_forwarded_to_model_and_processor(self) -> None:
+        engine = create_local_engine("moss")
+        model = mock.Mock()
+        model.to.return_value = model
+        model.eval.return_value = model
+        processor = object()
+        auto_model = mock.Mock()
+        auto_model.from_pretrained.return_value = model
+        auto_processor = mock.Mock()
+        auto_processor.from_pretrained.return_value = processor
+        torch = SimpleNamespace(
+            bfloat16="bfloat16",
+            float32="float32",
+            device=lambda value: SimpleNamespace(type=value),
+        )
+        attention = mock.Mock(return_value=(model, {}))
+        with mock.patch.dict("sys.modules", {
+            "torch": torch,
+            "transformers": SimpleNamespace(
+                AutoModelForCausalLM=auto_model,
+                AutoProcessor=auto_processor,
+            ),
+            "moss_transcribe_diarize.attention": SimpleNamespace(
+                load_model_with_attention_fallback=attention,
+            ),
+        }):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cpu"):
+                engine._load()
+
+        model_loader = attention.call_args.kwargs["model_loader"]
+        model_loader("model-path")
+        self.assertEqual(auto_model.from_pretrained.call_args.kwargs["revision"], MOSS_DEFAULT_REVISION)
+        self.assertEqual(auto_processor.from_pretrained.call_args.kwargs["revision"], MOSS_DEFAULT_REVISION)
+
+    def test_moss_transcript_is_normalized_to_speaker_segments(self) -> None:
+        class FakeModel:
+            def parameters(self):
+                return iter([SimpleNamespace(device="cpu", dtype="float32")])
+
+        engine = create_local_engine("moss")
+        engine._runtime = (FakeModel(), object(), {})
+        parsed = [
+            SimpleNamespace(start=0.5, end=1.25, speaker="S01", text="你好"),
+            SimpleNamespace(start=1.5, end=2.0, speaker="S02", text="世界"),
+        ]
+        with mock.patch("maw.local_asr.get_duration_sec", return_value=2.0):
+            with mock.patch.dict("sys.modules", {
+                "moss_transcribe_diarize": SimpleNamespace(parse_transcript=mock.Mock(return_value=parsed)),
+                "moss_transcribe_diarize.inference_utils": SimpleNamespace(
+                    build_transcription_messages=mock.Mock(return_value=[]),
+                    generate_transcription=mock.Mock(return_value={"text": "raw"}),
+                ),
+            }):
+                with mock.patch("maw.local_asr.MossDiarizeEngine._load", return_value=engine._runtime):
+                    result = engine.transcribe(Path("sample.wav"))
+
+        self.assertEqual([(item["start"], item["end"]) for item in result.items], [(500, 1250), (1500, 2000)])
+        self.assertEqual([segment["speaker"] for segment in result.segments], ["S01", "S02"])
+
+    def test_moss_warns_when_generation_reaches_output_limit(self) -> None:
+        class FakeModel:
+            def parameters(self):
+                return iter([SimpleNamespace(device="cpu", dtype="float32")])
+
+        engine = create_local_engine("moss")
+        engine._runtime = (FakeModel(), object(), {})
+        events: list[str] = []
+        with mock.patch("maw.local_asr.get_duration_sec", return_value=2.0):
+            with mock.patch.dict("sys.modules", {
+                "moss_transcribe_diarize": SimpleNamespace(parse_transcript=lambda _text: []),
+                "moss_transcribe_diarize.inference_utils": SimpleNamespace(
+                    build_transcription_messages=lambda _path: [],
+                    generate_transcription=lambda *_args, **_kwargs: {
+                        "text": "", "generated_tokens": MOSS_MAX_NEW_TOKENS,
+                    },
+                ),
+            }):
+                engine.transcribe(Path("sample.wav"), on_event=events.append)
+
+        self.assertTrue(any("达到最大 token 数" in event for event in events))
+
     def test_sensevoice_requests_sentence_timestamps_and_preserves_cues(self) -> None:
         class FakeRuntime:
             def generate(self, **kwargs):
@@ -359,6 +546,8 @@ class LocalAsrFlowTests(unittest.TestCase):
         path = default_output_path(Path("D:/media/sample.mp4"), "funasr")
 
         self.assertEqual(path.name, "sample.funasr-local.srt")
+
+        self.assertEqual(default_output_path(Path("D:/media/sample.mp4"), "moss").name, "sample.moss-local.srt")
 
     def test_write_local_outputs_writes_mosp_without_editing_media(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -25,6 +25,7 @@ from generate_subtitle_qwen_api import (
     extract_audio,
     generate_srt,
     get_duration_sec,
+    is_cjk_char,
     parse_duration,
     repair_nonpositive_duration_segments,
     split_segments_auto,
@@ -43,6 +44,19 @@ QWEN_DEFAULT_CHUNK_SECONDS = 30
 QWEN_MAX_NEW_TOKENS = 1024
 FUNASR_DEFAULT_MODEL = "paraformer-zh"
 SENSEVOICE_DEFAULT_MERGE_LENGTH_S = 15
+MOSS_DEFAULT_MODEL = "OpenMOSS-Team/MOSS-Transcribe-Diarize"
+MOSS_DEFAULT_REVISION = "e8681d68e7042738ffca8ac8212bc8fcb1131ab8"
+MOSS_MAX_NEW_TOKENS = 65_536
+MOSS_MAX_AUDIO_SECONDS = 90 * 60
+
+
+def _missing_moss_dependency(cause: ImportError) -> MissingLocalDependency:
+    actual = str(getattr(cause, "name", "") or "").strip()
+    package = actual or "moss-transcribe-diarize"
+    return MissingLocalDependency(
+        f"缺少 MOSS 本地运行环境依赖 {package}；请在 Launcher 中安装 MOSS 运行环境，"
+        "或按 docs/LOCAL_ASR.md 配置独立的 MOSS 开发环境。"
+    )
 
 
 class LocalAsrError(RuntimeError):
@@ -808,6 +822,115 @@ class FunAsrEngine:
         )
 
 
+class MossDiarizeEngine:
+    """Lazy MOSS-Transcribe-Diarize adapter with speaker-aware segments."""
+
+    def __init__(self, model: str = MOSS_DEFAULT_MODEL, *, model_path: str | Path | None = None, device: str = "auto") -> None:
+        self.model = model
+        self.model_path = str(model_path) if model_path else model
+        self.device = device
+        self._runtime: tuple[Any, Any, Any] | None = None
+
+    def _load(self, on_event: ProgressCallback | None = None) -> tuple[Any, Any, Any]:
+        if self._runtime is not None:
+            return self._runtime
+        try:
+            import torch  # type: ignore[import-not-found]
+            from transformers import AutoModelForCausalLM, AutoProcessor  # type: ignore[import-not-found]
+            from moss_transcribe_diarize.attention import load_model_with_attention_fallback  # type: ignore[import-not-found]
+        except ImportError as error:
+            raise _missing_moss_dependency(error) from error
+
+        resolved = resolve_device(self.device)
+        device = torch.device("cuda:0" if resolved == "cuda" else resolved)
+        dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
+        if on_event:
+            on_event(f"[local] loading MOSS-Transcribe-Diarize: {self.model_path} ({device})")
+        revision = MOSS_DEFAULT_REVISION if self.model == MOSS_DEFAULT_MODEL else ""
+        model_loader = None
+        if revision:
+            def model_loader(model_path: str, **kwargs: Any) -> Any:
+                return AutoModelForCausalLM.from_pretrained(model_path, revision=revision, **kwargs)
+
+        model, attention_report = load_model_with_attention_fallback(
+            self.model_path,
+            device=device,
+            dtype=dtype,
+            model_loader=model_loader,
+        )
+        model = model.to(dtype=dtype).to(device).eval()
+        if revision:
+            processor = AutoProcessor.from_pretrained(
+                self.model_path,
+                revision=revision,
+                trust_remote_code=True,
+            )
+        else:
+            processor = AutoProcessor.from_pretrained(self.model_path, trust_remote_code=True)
+        self._runtime = (model, processor, attention_report)
+        if on_event:
+            on_event("[local] MOSS-Transcribe-Diarize loaded")
+        return self._runtime
+
+    def transcribe(
+        self,
+        audio_path: Path,
+        *,
+        language: str | None = None,
+        batch_size_s: int = 300,
+        hotwords: Sequence[str] = (),
+        on_event: ProgressCallback | None = None,
+    ) -> LocalTranscription:
+        del batch_size_s
+        if language and on_event:
+            on_event("[local] MOSS 自动识别语言，已忽略语言提示")
+        if hotwords and on_event:
+            on_event("[local] MOSS 不接受 MAW 热词参数，已忽略热词")
+        duration_s = get_duration_sec(str(audio_path))
+        if math.isfinite(duration_s) and duration_s > MOSS_MAX_AUDIO_SECONDS:
+            raise LocalAsrError("MOSS 单次推理最多支持约 90 分钟音频；请先裁剪媒体后重试。")
+        try:
+            from moss_transcribe_diarize import parse_transcript  # type: ignore[import-not-found]
+            from moss_transcribe_diarize.inference_utils import build_transcription_messages, generate_transcription  # type: ignore[import-not-found]
+        except ImportError as error:
+            raise _missing_moss_dependency(error) from error
+        model, processor, attention_report = self._load(on_event)
+        if on_event:
+            on_event(f"[local] transcribing: {audio_path.name}")
+        messages = build_transcription_messages(audio_path)
+        result = generate_transcription(
+            model,
+            processor,
+            messages,
+            max_new_tokens=MOSS_MAX_NEW_TOKENS,
+            do_sample=False,
+            device=next(model.parameters()).device,
+            dtype=next(model.parameters()).dtype,
+            attention_report=attention_report,
+        )
+        if int(result.get("generated_tokens") or 0) >= MOSS_MAX_NEW_TOKENS and on_event:
+            on_event("[local] 警告：MOSS 输出达到最大 token 数，字幕可能在音频结尾处被截断")
+        parsed = parse_transcript(str(result.get("text") or ""))
+        segments: list[dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
+        for entry in parsed:
+            start = _as_seconds_ms(entry.start)
+            end = _as_seconds_ms(entry.end)
+            if end <= start or not entry.text:
+                continue
+            item = _item(entry.text, start, end, entry.speaker)
+            segment = _segment(entry.text, start, end, [item], entry.speaker)
+            items.append(item)
+            segments.append(segment)
+        if not segments and result.get("text") and on_event:
+            on_event("[local] 警告：MOSS 返回的文本未解析出有效时间戳")
+        for previous, current in zip(segments, segments[1:]):
+            if current["start"] - previous["end"] > 10_000 and on_event:
+                on_event(f"[local] 警告：检测到超过 10 秒的无字幕空档（{previous['end']}–{current['start']}ms）")
+        language_value = language or ""
+        return LocalTranscription(str(result.get("text") or ""), language_value, items, segments, self.model)
+
+
 def create_local_engine(
     engine: str,
     *,
@@ -840,7 +963,131 @@ def create_local_engine(
             trust_remote_code=trust_remote_code,
             rich_postprocess=rich_postprocess,
         )
-    raise ValueError("engine must be one of: qwen-asr, funasr")
+    if normalized == "moss":
+        return MossDiarizeEngine(
+            model or MOSS_DEFAULT_MODEL,
+            model_path=model_path,
+            device=device,
+        )
+    raise ValueError("engine must be one of: qwen-asr, funasr, moss")
+
+
+_LOCAL_TAIL_PUNCT = "，。"
+
+
+def _char_weight_weights(text: str) -> list[float]:
+    """Estimate relative speaking duration per character (CJK heavier than latin)."""
+    return [
+        1.0 if is_cjk_char(char) or char.isdigit() else 0.5
+        for char in text
+    ]
+
+
+def _expand_coarse_item(item: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Split one sentence-span item into per-character items with estimated times.
+
+    Local engines such as MOSS return one item covering a whole sentence with a
+    single start/end pair.  MAW's splitter can only regroup items, so a coarse
+    item is expanded into character units whose timings are interpolated from
+    the enclosing span; the last character always ends exactly at the original
+    ``end`` so neighbouring segments keep their real boundaries.
+    """
+    text = str(item.get("text") or "")
+    start = int(item.get("start") or 0)
+    end = int(item.get("end") or 0)
+    if not text or end <= start:
+        return [dict(item)]
+    weights = _char_weight_weights(text)
+    total_weight = sum(weights) or float(len(weights))
+    span = end - start
+    expanded: list[dict[str, Any]] = []
+    consumed = 0.0
+    cursor = start
+    for index, (char, weight) in enumerate(zip(text, weights)):
+        consumed += weight
+        if index == len(text) - 1:
+            char_end = end
+        else:
+            char_end = start + int(round(span * consumed / total_weight))
+            if char_end <= cursor:
+                char_end = cursor + 1
+        expanded.append(_item(char, cursor, char_end, item.get("speaker")))
+        cursor = char_end
+    return expanded
+
+
+def _segment_speaker(engine_segment: Mapping[str, Any]) -> str | None:
+    value = engine_segment.get("speaker")
+    if value is not None:
+        speaker_value = _speaker(value)
+        if speaker_value is not None:
+            return speaker_value
+    for nested_item in engine_segment.get("items") or []:
+        found = _speaker(nested_item.get("speaker")) if isinstance(nested_item, Mapping) else None
+        if found is not None:
+            return found
+    return None
+
+
+def _resplit_engine_segment(
+    engine_segment: Mapping[str, Any],
+    *,
+    max_len: int,
+    min_len: int,
+    gap_split_ms: int,
+) -> list[dict[str, Any]]:
+    """Re-group one engine-provided segment through MAW's shared splitter.
+
+    Only oversized segments (text longer than ``max_len``) are rebuilt; well
+    behaved engine cues pass through untouched so real word timestamps keep
+    dominating whenever they exist.  Items lacking usable sub-granularity are
+    expanded via ``_expand_coarse_item`` first.
+    """
+    text = str(engine_segment.get("text") or "")
+    if len(text) <= max_len:
+        return [dict(engine_segment)]
+    unit_items: list[dict[str, Any]] = []
+    for nested_item in engine_segment.get("items") or []:
+        if isinstance(nested_item, Mapping) and len(str(nested_item.get("text") or "")) > max_len:
+            unit_items.extend(_expand_coarse_item(nested_item))
+        else:
+            unit_items.append(dict(nested_item))
+    if not unit_items:
+        return [dict(engine_segment)]
+    rebuilt = split_segments_auto(
+        unit_items,
+        max_len=max_len,
+        min_len=min_len,
+        gap_split_ms=gap_split_ms,
+    )
+    if not rebuilt:
+        return [dict(engine_segment)]
+    speaker = _segment_speaker(engine_segment)
+    if speaker is not None:
+        for rebuilt_segment in rebuilt:
+            rebuilt_segment.setdefault("speaker", speaker)
+    return rebuilt
+
+
+def _strip_trailing_punct(segments: list[dict[str, Any]], strip_chars: str = _LOCAL_TAIL_PUNCT) -> None:
+    """Strip trailing punctuation, mirroring the cloud pipeline.
+
+    ``strip_chars`` comes from the shared 保留符号 settings (symbols kept at
+    cue tails are subtracted from the strip candidates); an empty string
+    disables stripping entirely.
+    """
+    if not strip_chars:
+        return
+    for segment in segments:
+        segment["text"] = segment["text"].rstrip(strip_chars)
+        segment_items = segment.get("items")
+        if segment_items:
+            k = len(segment_items) - 1
+            while k >= 0:
+                segment_items[k]["text"] = segment_items[k]["text"].rstrip(strip_chars)
+                if segment_items[k]["text"]:
+                    break
+                k -= 1
 
 
 def build_local_segments(
@@ -850,10 +1097,20 @@ def build_local_segments(
     max_len: int = 21,
     min_len: int = 5,
     gap_split_ms: int = 1000,
+    strip_tail_punct: str = _LOCAL_TAIL_PUNCT,
 ) -> list[dict[str, Any]]:
     """Turn adapter output into MAW's integer-millisecond subtitle segments."""
     if transcription.segments:
-        segments = [dict(segment) for segment in transcription.segments]
+        segments: list[dict[str, Any]] = []
+        for source in transcription.segments:
+            segments.extend(
+                _resplit_engine_segment(
+                    source,
+                    max_len=max_len,
+                    min_len=min_len,
+                    gap_split_ms=gap_split_ms,
+                )
+            )
     elif transcription.items:
         segments = split_segments_auto(
             transcription.items,
@@ -865,6 +1122,7 @@ def build_local_segments(
         segments = [{"start": 0, "end": max(duration_ms, 1), "text": transcription.text, "items": []}]
     else:
         return []
+    _strip_trailing_punct(segments, strip_tail_punct)
     return repair_nonpositive_duration_segments(segments)
 
 
@@ -963,6 +1221,10 @@ def write_local_outputs(
 
 __all__ = [
     "FUNASR_DEFAULT_MODEL",
+    "MOSS_DEFAULT_MODEL",
+    "MOSS_DEFAULT_REVISION",
+    "MOSS_MAX_NEW_TOKENS",
+    "MOSS_MAX_AUDIO_SECONDS",
     "LocalAsrEngine",
     "LocalAsrError",
     "LocalOutputPaths",
@@ -973,6 +1235,7 @@ __all__ = [
     "QWEN_DEFAULT_CHUNK_SECONDS",
     "QWEN_MAX_NEW_TOKENS",
     "FunAsrEngine",
+    "MossDiarizeEngine",
     "QwenAsrEngine",
     "build_local_segments",
     "create_local_engine",
