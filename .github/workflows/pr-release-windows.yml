@@ -49,6 +49,12 @@ jobs:
       - name: Run Python tests
         run: uv run python -m unittest discover -s tests -p "test_*.py"
 
+      - name: Download embedded Python bootstrap assets
+        run: |
+          mkdir -p build
+          curl -L --retry 3 --connect-timeout 20 --max-time 300 -o build/python-3.11.9-embed-amd64.zip https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip
+          curl -L --retry 3 --connect-timeout 20 --max-time 120 -o build/get-pip.py https://bootstrap.pypa.io/get-pip.py
+
       - name: Build MAW bundle
         shell: pwsh
         run: .\scripts\build-windows.ps1 -SkipTests
