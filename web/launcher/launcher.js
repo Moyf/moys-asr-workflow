@@ -1013,7 +1013,8 @@
     const key = installing ? "local_runtime_installing" : ({ ready: "local_runtime_ready", broken: "local_runtime_broken", missing: "local_runtime_missing", installing: "local_runtime_installing" }[runtime.status] || "local_runtime_missing");
     renderLocalRuntimePaths(runtime);
     const target = $("localRuntimeStatus");
-    target.textContent = installing && state.localRuntimeProgressMessage ? state.localRuntimeProgressMessage : t(key);
+    // 实时流水只保留在进度条下方的 ProgressMessage 行，避免上下双显同一句。
+    target.textContent = t(key);
     target.className = `local-status ${installing ? "warn" : (runtime.ready ? "ready" : "warn")}`;
     $("localRuntimeHint").textContent = runtime.detail || (runtime.ready ? t("local_runtime_ready_hint") : t("local_runtime_hint"));
     $("localModelCachePath").value = state.config.modelCacheRoot || runtime.modelCachePath || $("localModelCachePath").value || "";
@@ -1032,7 +1033,8 @@
     const installing = state.ocrRuntimeInstalling;
     const key = installing ? "ocr_runtime_installing" : ({ ready: "ocr_runtime_ready", broken: "ocr_runtime_broken", missing: "ocr_runtime_missing", installing: "ocr_runtime_installing" }[runtime.status] || "ocr_runtime_missing");
     const target = $("ocrRuntimeStatus");
-    target.textContent = installing && state.ocrRuntimeProgressMessage ? state.ocrRuntimeProgressMessage : t(key);
+    // 与 localRuntime 一致：状态行固定文案，实时流水只在进度条下方。
+    target.textContent = t(key);
     target.className = `local-status ${installing ? "warn" : (runtime.ready ? "ready" : "warn")}`;
     $("ocrRuntimePath").value = runtime.path || $("ocrRuntimePath").value || "";
     const location = runtime.path ? `${t("ocr_runtime_path")}: ${runtime.path}` : "";
@@ -1076,7 +1078,8 @@
     const preparing = state.localPreparing;
     const target = $("localModelStatus");
     const key = status.status === "installed" && status.path ? "local_path_selected" : ({ installed: "local_installed", partial: "local_partial", runtime_missing: "local_runtime_missing", path_mismatch: "local_model_path_mismatch", missing: "local_missing" }[status.status] || "local_missing");
-    target.textContent = preparing && state.localProgressMessage ? state.localProgressMessage : t(key);
+    // 与 runtime 面板一致：preparing 状态行固定"正在准备"文案，实时流水只在进度条下方。
+    target.textContent = t(preparing ? "local_prepare_running" : key);
     target.className = `local-status ${preparing ? "warn" : (status.status === "installed" ? "ready" : "warn")}`;
     $("localModelHint").textContent = status.detail || t("local_prepare_hint");
     $("localModelPath").value = status.path || $("localModelPath").value || "";
@@ -1448,6 +1451,8 @@
       state.localPreparing = false;
       state.localProgressMessage = "";
       state.localProgress = null;
+      // 与本地运行环境安装失败保持一致：失败时自动滚到日志区看 [detail]。
+      $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     if (event.type === "error" && ["local_runtime_install_failed", "local_runtime_cancelled"].includes(event.code)) {
       state.localRuntimeInstalling = false;
