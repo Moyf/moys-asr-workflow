@@ -43,6 +43,7 @@ NINJA_SFX_NAMES = frozenset(
 mimetypes.add_type("audio/ogg", ".opus")
 
 import edit  # noqa: E402
+from maw.console import configure_utf8_stdio  # noqa: E402
 from maw import reapeaks  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
 from maw.project import (  # noqa: E402
@@ -1713,6 +1714,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
 
 
 def main() -> int:
+    configure_utf8_stdio()
     parser = argparse.ArgumentParser(
         description="启动 MAWE localhost 编辑器（与自包含 HTML 共用 web/ 源码，支持媒体 Range seek）",
     )

@@ -32,6 +32,7 @@ _ESTIMATED_CACHE_GIB: dict[str, tuple[float, float]] = {
     "qwen3-asr-local": (2.5, 4.5),
     "qwen3-asr-1.7b-local": (5.0, 9.0),
     "funasr-local": (2.0, 4.0),
+    "moss-transcribe-diarize-local": (3.0, 6.0),
 }
 
 
@@ -68,7 +69,7 @@ def inspect_local_model(
 ) -> LocalModelStatus:
     """Return a UI-safe status without loading an optional model runtime."""
     missing_runtime = _missing_runtime_packages(model.requires_runtime)
-    managed = managed_runtime_status(model_cache_root)
+    managed = managed_runtime_status(model_cache_root, engine=model.engine)
     runtime_source = "current" if not missing_runtime else ("managed" if managed.ready else "missing")
     runtime_python = managed.python_path if runtime_source == "managed" else ""
     runtime_available = not missing_runtime or managed.ready
@@ -287,7 +288,7 @@ def prepare_local_model(
             device=device,
             forced_aligner=aligner,
             vad_model="fsmn-vad" if _funasr_model_uses_vad(model.model_ref) else "",
-            trust_remote_code="fun-asr-nano" in model.model_ref.casefold(),
+            trust_remote_code=model.engine == "moss" or "fun-asr-nano" in model.model_ref.casefold(),
             model_cache_root=model_cache_root,
             on_event=emit,
             cancel_event=cancel_event,
@@ -331,7 +332,7 @@ def _prepare_in_managed_runtime(
             device=device,
             forced_aligner=forced_aligner or (model.required_model_refs[0] if model.required_model_refs else ""),
             vad_model="fsmn-vad" if _funasr_model_uses_vad(model.model_ref) else "",
-            trust_remote_code="fun-asr-nano" in model.model_ref.casefold(),
+            trust_remote_code=model.engine == "moss" or "fun-asr-nano" in model.model_ref.casefold(),
             model_cache_root=model_cache_root,
             on_event=emit,
             cancel_event=cancel_event,
@@ -434,7 +435,7 @@ def _model_watch_paths(
 ) -> list[Path]:
     explicit = _normalise_directory(model_path)
     paths: list[Path] = [explicit] if explicit is not None else []
-    if model.engine in {"qwen-asr", "qwen", "qwen3-asr"}:
+    if model.engine in {"qwen-asr", "qwen", "qwen3-asr", "moss"}:
         for ref in (model.model_ref, *model.required_model_refs):
             paths.extend(_huggingface_repo_paths(ref, model_cache_root))
     elif model.engine in {"funasr", "fun-asr"}:
@@ -522,9 +523,11 @@ def _normalise_directory(value: str | Path) -> Path | None:
 def _explicit_path_mismatch(model: ModelConfig, path: Path) -> str:
     """Reject an obvious model-family mix-up without blocking custom folders."""
     value = str(path).casefold().replace("_", "-")
-    if model.engine in {"qwen-asr", "qwen", "qwen3-asr"}:
+    if model.engine in {"qwen-asr", "qwen", "qwen3-asr", "moss"}:
         if "funasr" in value or "paraformer" in value:
-            return "当前目录看起来属于 FunASR / Paraformer，不是 Qwen3-ASR。"
+            return "当前目录看起来属于 FunASR / Paraformer，不是当前模型。"
+        if model.engine == "moss" and ("qwen3-asr" in value or "forcedaligner" in value or "forced-aligner" in value):
+            return "当前目录看起来属于 Qwen3-ASR，不是 MOSS。"
     if model.engine in {"funasr", "fun-asr"}:
         if "qwen3-asr" in value or "forcedaligner" in value or "forced-aligner" in value:
             return "当前目录看起来属于 Qwen3-ASR，不是 FunASR / Paraformer。"
@@ -535,7 +538,7 @@ def _find_model_paths(
     model: ModelConfig,
     model_cache_root: str | Path | None = None,
 ) -> tuple[Path, list[str]] | None:
-    if model.engine in {"qwen-asr", "qwen", "qwen3-asr"}:
+    if model.engine in {"qwen-asr", "qwen", "qwen3-asr", "moss"}:
         main = _find_huggingface_model(model.model_ref, model_cache_root)
         if main is None:
             return None

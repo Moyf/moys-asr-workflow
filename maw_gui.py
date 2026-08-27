@@ -8,6 +8,8 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from maw.console import configure_utf8_stdio
+
 
 _INTERNAL_FLAGS = frozenset(
     {
@@ -66,6 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    configure_utf8_stdio()
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     if raw_argv and not _is_gui_debug_invocation(raw_argv) and raw_argv[0] not in _INTERNAL_FLAGS:
         from maw.cli import main as cli_main

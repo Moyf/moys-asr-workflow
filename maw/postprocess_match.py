@@ -6,14 +6,22 @@ from __future__ import annotations
 
 import copy
 import difflib
+import json
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import Sequence
 
 from maw.postprocess import OutputMode, _reconcile_items
 from maw.postprocess_io import SubtitleArtifact, PostprocessFileError, read_project, read_srt, write_artifacts
 from maw.project import normalize_project
-from maw.project_preview import JsonDict
+from maw.project_preview import JsonDict, JsonValue
+from scripts.mosp_match_text import (
+    PRESERVED_END_PUNCTUATION,
+    SPLIT_PUNCTUATION,
+    AlignmentError,
+    generate_matched_mosp,
+)
 
 
 SCRIPT_EXTENSIONS = frozenset({".txt", ".md", ".markdown"})
@@ -66,13 +74,25 @@ def run_script_match(request: ScriptMatchRequest) -> SubtitleArtifact:
         extra_split_punctuation,
         preserve_punctuation,
     )
-    matched, warnings = _match_project(
-        project,
-        prepared_script,
-        DEFAULT_SPLIT_PUNCTUATION | frozenset(extra_split_punctuation),
-        DEFAULT_SPLIT_PUNCTUATION | frozenset(preserve_punctuation),
-        request.match_mode,
-    )
+    if (
+        request.match_mode == "script"
+        and source_project is not None
+        and _has_complete_item_timings(project)
+    ):
+        matched, warnings = _match_project_with_character_timings(
+            project,
+            prepared_script,
+            request.extra_split_punctuation,
+            request.preserve_punctuation,
+        )
+    else:
+        matched, warnings = _match_project(
+            project,
+            prepared_script,
+            DEFAULT_SPLIT_PUNCTUATION | frozenset(request.extra_split_punctuation),
+            DEFAULT_SPLIT_PUNCTUATION | frozenset(request.preserve_punctuation),
+            request.match_mode,
+        )
     return write_artifacts(
         matched,
         source_project_path=source_project,
@@ -103,6 +123,146 @@ def prepare_script_text(
     if not split_symbols:
         return script_text, "未配置额外断句符号。"
     return script_text, f"额外断句符号：{len(split_symbols)} 个；保留：{len(preserve_symbols)} 个。"
+
+
+def _has_complete_item_timings(project: JsonDict) -> bool:
+    segments = project.get("segments")
+    if not isinstance(segments, list) or not segments:
+        return False
+    enabled_count = 0
+    for segment in segments:
+        if not isinstance(segment, dict):
+            return False
+        if segment.get("disabled") is True:
+            continue
+        enabled_count += 1
+        items = segment.get("items")
+        if not isinstance(items, list) or not items:
+            return False
+        if any(
+            not isinstance(item, dict)
+            or not isinstance(item.get("text"), str)
+            or not isinstance(item.get("start"), (int, float))
+            or isinstance(item.get("start"), bool)
+            or not isinstance(item.get("end"), (int, float))
+            or isinstance(item.get("end"), bool)
+            for item in items
+        ):
+            return False
+    return enabled_count > 0
+
+
+def _match_project_with_character_timings(
+    project: JsonDict,
+    script_text: str,
+    extra_split_punctuation: tuple[str, ...],
+    preserve_punctuation: tuple[str, ...],
+) -> tuple[JsonDict, tuple[str, ...]]:
+    split_punctuation = SPLIT_PUNCTUATION | frozenset(extra_split_punctuation)
+    preserved = (
+        DEFAULT_SPLIT_PUNCTUATION
+        | PRESERVED_END_PUNCTUATION
+        | frozenset(preserve_punctuation)
+    )
+    if any(len(symbol) != 1 for symbol in split_punctuation | preserved):
+        return _match_project(project, script_text, split_punctuation, preserved, "script")
+
+    source_segments = project.get("segments")
+    if not isinstance(source_segments, list):
+        raise ValueError("project segments must be an array")
+    matcher_project = copy.deepcopy(project)
+    matcher_project["segments"] = [
+        segment
+        for segment in source_segments
+        if isinstance(segment, dict) and segment.get("disabled") is not True
+    ]
+    mosp_text = json.dumps(matcher_project, ensure_ascii=False)
+    try:
+        _cues, report, matched_text = generate_matched_mosp(
+            mosp_text,
+            script_text,
+            split_punctuation=split_punctuation,
+            preserve_punctuation=preserved,
+        )
+    except AlignmentError as error:
+        raise ValueError(str(error)) from error
+
+    asr_characters = _report_integer(report, "asr_characters")
+    manuscript_characters = _report_integer(report, "manuscript_characters")
+    matched_characters = _report_integer(report, "matched_characters")
+    coverage = matched_characters / max(1, min(asr_characters, manuscript_characters))
+    if coverage < MIN_MATCH_COVERAGE:
+        raise ValueError(
+            f"script and subtitle match coverage is too low ({coverage:.0%}); "
+            f"at least {MIN_MATCH_COVERAGE:.0%} of the shorter text must match"
+        )
+
+    raw_matched: JsonValue = json.loads(matched_text)
+    if not isinstance(raw_matched, dict):
+        raise ValueError("character matcher returned an invalid project")
+    _preserve_equal_count_segment_metadata(matcher_project, raw_matched)
+    raw_matched["segments"] = _merge_disabled_segments(source_segments, raw_matched)
+    matched = normalize_project(raw_matched)
+    warnings = (
+        f"文稿匹配度：{coverage:.0%}；已按字词时间码重新生成字幕段。",
+    )
+    return matched, warnings
+
+
+def _report_integer(report: dict[str, object], key: str) -> int:
+    value = report.get(key)
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"character matcher report field {key!r} is invalid")
+    return value
+
+
+def _integer_field(segment: JsonDict, key: str, default: int | None = None) -> int:
+    value = segment.get(key)
+    if value is None:
+        value = default
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ValueError(f"project segment field {key!r} is invalid")
+    return round(value)
+
+
+def _merge_disabled_segments(
+    source_segments: list[JsonValue],
+    matched: JsonDict,
+) -> list[JsonValue]:
+    matched_segments = matched.get("segments")
+    if not isinstance(matched_segments, list):
+        raise ValueError("character matcher returned invalid segments")
+    disabled_segments = [
+        copy.deepcopy(segment)
+        for segment in source_segments
+        if isinstance(segment, dict) and segment.get("disabled") is True
+    ]
+    combined = [*matched_segments, *disabled_segments]
+    combined.sort(
+        key=lambda segment: (
+            segment.get("start", 0) if isinstance(segment, dict) else 0,
+            segment.get("end", 0) if isinstance(segment, dict) else 0,
+        )
+    )
+    return combined
+
+
+def _preserve_equal_count_segment_metadata(
+    source: JsonDict,
+    matched: JsonDict,
+) -> None:
+    source_segments = source.get("segments")
+    matched_segments = matched.get("segments")
+    if not isinstance(source_segments, list) or not isinstance(matched_segments, list):
+        return
+    if len(source_segments) != len(matched_segments):
+        return
+    for source_segment, matched_segment in zip(source_segments, matched_segments, strict=True):
+        if not isinstance(source_segment, dict) or not isinstance(matched_segment, dict):
+            continue
+        for key in ("id", "speaker", "disabled", "sticker", "sticker_ref", "color", "color_ref"):
+            if key in source_segment:
+                matched_segment[key] = copy.deepcopy(source_segment[key])
 
 
 def _match_project(
@@ -167,7 +327,9 @@ def _match_project(
 
     if match_mode == "script" and ("\n" in script_text or "\r" in script_text) and len(punctuation_segments) == len(spans):
         result = copy.deepcopy(project)
-        result_segments = result["segments"]
+        result_segments = result.get("segments")
+        if not isinstance(result_segments, list):
+            raise ValueError("project segments must be an array")
         changed = 0
         for span, replacement in zip(spans, punctuation_segments):
             source_segment = segments[span.segment_index]
@@ -183,7 +345,9 @@ def _match_project(
                 if reconciled_items is None:
                     target_segment.pop("items", None)
                 else:
-                    target_segment["items"] = reconciled_items
+                    reconciled_items_value: list[JsonValue] = []
+                    reconciled_items_value.extend(reconciled_items)
+                    target_segment["items"] = reconciled_items_value
                 changed += 1
         return normalize_project(result), (f"文稿匹配度：100%；已按文稿换行更新 {changed} 个字幕段。",)
 
@@ -195,7 +359,9 @@ def _match_project(
 
     boundaries = _alignment_boundaries(len(source_text), len(script.value), blocks)
     result = copy.deepcopy(project)
-    result_segments = result["segments"]
+    result_segments = result.get("segments")
+    if not isinstance(result_segments, list):
+        raise ValueError("project segments must be an array")
     unmatched = 0
     changed = 0
     for span in spans:
@@ -223,7 +389,9 @@ def _match_project(
             if reconciled_items is None:
                 target_segment.pop("items", None)
             else:
-                target_segment["items"] = reconciled_items
+                items_value: list[JsonValue] = []
+                items_value.extend(reconciled_items)
+                target_segment["items"] = items_value
             changed += 1
 
     warnings: list[str] = [f"文稿匹配度：{coverage:.0%}；已更新 {changed} 个字幕段。"]
@@ -241,7 +409,7 @@ def _match_project(
 
 def _resegment_project(
     project: JsonDict,
-    segments: list[object],
+    segments: Sequence[JsonValue],
     spans: list[_CueSpan],
     manuscript_segments: tuple[str, ...],
     source_text: str,
@@ -252,7 +420,9 @@ def _resegment_project(
     if any(isinstance(segment, dict) and segment.get("disabled") is True for segment in segments):
         return None
     result = copy.deepcopy(project)
-    original_segments = [segment for segment in segments if isinstance(segment, dict)]
+    original_segments: list[JsonDict] = [
+        segment for segment in segments if isinstance(segment, dict)
+    ]
     if len(original_segments) != len(spans):
         return None
     source_length = len(source_text)
@@ -269,9 +439,11 @@ def _resegment_project(
             if position <= span.normalized_end:
                 segment = original_segments[span.segment_index]
                 ratio = (position - span.normalized_start) / max(1, span.normalized_end - span.normalized_start)
-                return round(int(segment["start"]) + ratio * (int(segment["end"]) - int(segment["start"])))
+                start = _integer_field(segment, "start")
+                end = _integer_field(segment, "end")
+                return round(start + ratio * (end - start))
         segment = original_segments[-1]
-        return int(segment["end"])
+        return _integer_field(segment, "end")
 
     rebuilt: list[JsonDict] = []
     for index, text in enumerate(manuscript_segments):
@@ -287,11 +459,11 @@ def _resegment_project(
         segment["text"] = text
         segment.pop("items", None)
         rebuilt.append(segment)
-    last_end = rebuilt[-1]["end"] if rebuilt else 0
+    last_end = _integer_field(rebuilt[-1], "end") if rebuilt else 0
     untouched = [
         copy.deepcopy(segment)
         for segment in segments
-        if isinstance(segment, dict) and int(segment.get("start", 0)) >= int(last_end)
+        if isinstance(segment, dict) and _integer_field(segment, "start", 0) >= last_end
     ]
     result["segments"] = [*rebuilt, *untouched]
     return normalize_project(result)

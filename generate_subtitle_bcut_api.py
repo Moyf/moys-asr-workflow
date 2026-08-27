@@ -33,6 +33,7 @@ from generate_subtitle_qwen_api import (
     get_duration_sec,
     parse_duration,
 )
+from maw.console import configure_utf8_stdio
 from maw.bcut import (
     SUPPORTED_AUDIO_EXTS,
     build_segments,
@@ -44,6 +45,7 @@ from maw.media_cache import embed_media_caches, merge_media_caches
 
 
 def main():
+    configure_utf8_stdio()
     parser = argparse.ArgumentParser(
         description="使用必剪 ASR API 生成视频字幕（云端版，实验性，免 API Key）",
     )

@@ -88,6 +88,50 @@ class ScriptMatchTests(unittest.TestCase):
         self.assertTrue(segments[0]["disabled"])
         self.assertEqual(segments[1]["text"], "错字正确")
 
+    def test_disabled_segments_with_items_stay_untouched_during_character_matching(self) -> None:
+        self.project_path.write_text(
+            json.dumps(
+                {
+                    "segments": [
+                        {
+                            "start": 0,
+                            "end": 1000,
+                            "text": "保留",
+                            "disabled": True,
+                            "items": [{"start": 0, "end": 1000, "text": "保留"}],
+                        },
+                        {
+                            "start": 1000,
+                            "end": 2000,
+                            "text": "错字",
+                            "items": [
+                                {"start": 1000, "end": 1500, "text": "错"},
+                                {"start": 1500, "end": 2000, "text": "字"},
+                            ],
+                        },
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        self.script_path.write_text("错。字", encoding="utf-8")
+
+        result = run_script_match(
+            ScriptMatchRequest(self.project_path, None, self.script_path, OutputMode.JSON)
+        )
+
+        assert result.project_path is not None
+        segments = read_project(result.project_path)["segments"]
+        self.assertEqual(segments[0]["text"], "保留")
+        self.assertEqual(segments[0]["items"][0]["text"], "保留")
+        self.assertEqual(segments[1]["text"], "错。")
+        self.assertEqual(segments[2]["text"], "字")
+        self.assertEqual(
+            [(item["start"], item["end"]) for item in segments[1]["items"]],
+            [(1000, 1500)],
+        )
+
     def test_low_match_refuses_to_write_output(self) -> None:
         self.project_path.write_text(
             json.dumps({"segments": [{"start": 0, "end": 1000, "text": "字幕甲乙丙"}]}, ensure_ascii=False),
@@ -207,6 +251,54 @@ class ScriptMatchTests(unittest.TestCase):
         project = read_project(result.project_path)
         self.assertEqual([segment["text"] for segment in project["segments"]], ["甲乙", "丙丁", "戊己庚"])
         self.assertEqual([(segment["start"], segment["end"]) for segment in project["segments"]], [(0, 1500), (1500, 3000), (3000, 6000)])
+
+    def test_mosp_items_drive_character_timed_script_matching(self) -> None:
+        self.project_path.write_text(
+            json.dumps(
+                {
+                    "segments": [
+                        {
+                            "start": 0,
+                            "end": 1000,
+                            "text": "甲乙",
+                            "items": [
+                                {"start": 0, "end": 500, "text": "甲"},
+                                {"start": 500, "end": 1000, "text": "乙"},
+                            ],
+                        },
+                        {
+                            "start": 1000,
+                            "end": 2000,
+                            "text": "丙丁",
+                            "items": [
+                                {"start": 1000, "end": 1500, "text": "丙"},
+                                {"start": 1500, "end": 2000, "text": "丁"},
+                            ],
+                        },
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        self.script_path.write_text("甲。乙丙，丁", encoding="utf-8")
+
+        result = run_script_match(
+            ScriptMatchRequest(self.project_path, None, self.script_path, OutputMode.BOTH)
+        )
+
+        assert result.project_path is not None
+        project = read_project(result.project_path)
+        segments = project["segments"]
+        self.assertEqual(
+            [(segment["start"], segment["end"], segment["text"]) for segment in segments],
+            [(0, 500, "甲。"), (500, 1500, "乙丙，"), (1500, 2000, "丁")],
+        )
+        self.assertEqual(
+            [(item["start"], item["end"]) for item in segments[1]["items"]],
+            [(500, 1000), (1000, 1500)],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

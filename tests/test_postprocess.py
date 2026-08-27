@@ -381,7 +381,6 @@ class PostprocessTests(unittest.TestCase):
         if result.project_path is None:
             self.fail("JSON output mode must create a project")
         self.assertEqual(read_project(result.project_path)["media"], str(self.media))
-
     def test_llm_groups_can_redistribute_text_but_not_timing(self) -> None:
         project = sample_project(self.media)
         groups: JsonDict = {
@@ -540,6 +539,104 @@ class PostprocessTests(unittest.TestCase):
             [(item["text"], item["start"], item["end"]) for item in segment_items(result)],
             [("酒", 100, 300), ("很适合饮用", 300, 900)],
         )
+
+    def test_llm_equal_length_text_edit_reuses_word_timings(self) -> None:
+        project = sample_project(self.media)
+        processed = apply_llm_groups(project, {
+            "groups": [
+                {"id": "c0001", "text": "洒很好喝"},
+                {"id": "c0002", "text": "下一句"},
+            ]
+        })
+
+        result = project_segments(processed)[0]
+        self.assertEqual([item["text"] for item in result["items"]], ["洒", "很好喝"])
+        self.assertEqual(
+            [(item["start"], item["end"]) for item in result["items"]],
+            [(100, 300), (300, 900)],
+        )
+
+    def test_mosp_resegment_uses_atom_boundaries_and_preserves_word_timings(self) -> None:
+        project = sample_project(self.media)
+        project_segments(project)[1]["items"] = [
+            {"start": 1200, "end": 1600, "text": "下"},
+            {"start": 1600, "end": 2200, "text": "一句"},
+        ]
+        _ = self.project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+        received: list[tuple[str, list[dict[str, object]]]] = []
+
+        def complete(system_prompt: str, cues: list[dict[str, object]]) -> JsonDict:
+            received.append((system_prompt, cues))
+            return {
+                "groups": [
+                    {"atom_ids": ["c0001a0001"]},
+                    {"atom_ids": ["c0001a0002", "c0002a0001"]},
+                    {"atom_ids": ["c0002a0002"]},
+                ]
+            }
+
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.JSON,
+                operation="resegment",
+                custom_prompt="",
+            ),
+            complete=complete,
+        )
+
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project file")
+        output_segments = project_segments(read_project(result.project_path))
+        self.assertEqual([segment["text"] for segment in output_segments], ["酒", "很好喝下", "一句"])
+        self.assertEqual(
+            [(segment["start"], segment["end"]) for segment in output_segments],
+            [(100, 300), (300, 1600), (1600, 2200)],
+        )
+        self.assertEqual(
+            [[item["text"] for item in segment["items"]] for segment in output_segments],
+            [["酒"], ["很好喝", "下"], ["一句"]],
+        )
+        self.assertIn("字词时间码", "\n".join(result.warnings))
+        self.assertEqual(len(received), 1)
+        self.assertIn("atom ID", received[0][0])
+        self.assertEqual(received[0][1][0]["items"][0]["id"], "c0001a0001")
+
+    def test_mosp_resegment_assigns_unique_ids_when_one_cue_splits(self) -> None:
+        project = sample_project(self.media)
+        segments = project_segments(project)
+        segments[0]["id"] = "source-first"
+        segments[1]["id"] = "source-second"
+        segments[1]["items"] = [
+            {"start": 1200, "end": 1600, "text": "下"},
+            {"start": 1600, "end": 2200, "text": "一句"},
+        ]
+        self.project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.JSON,
+                operation="resegment",
+                custom_prompt="",
+            ),
+            complete=lambda _prompt, _cues: {
+                "groups": [
+                    {"atom_ids": ["c0001a0001"]},
+                    {"atom_ids": ["c0001a0002"]},
+                    {"atom_ids": ["c0002a0001", "c0002a0002"]},
+                ]
+            },
+        )
+
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project file")
+        output = project_segments(read_project(result.project_path))
+        ids = [str(segment["id"]) for segment in output]
+        self.assertEqual(ids, ["source-first-part-001", "source-first-part-002", "source-second-part-001"])
+        self.assertEqual(len(ids), len(set(ids)))
 
     def test_llm_regroup_removes_all_positional_visual_refs_and_word_timings(self) -> None:
         project = sample_project(self.media)

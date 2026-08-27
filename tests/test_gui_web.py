@@ -2406,6 +2406,29 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('output_collision: "检测到同名输出文件', script)
         self.assertIn("result.outputRenamed", script)
 
+    def test_launcher_file_path_inputs_have_drop_routes(self) -> None:
+        """Given Launcher path inputs, When checking drag/drop wiring, Then every file/path target is bound."""
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        for field, target in (
+            ("mediaPath", "media"),
+            ("serverMediaPath", "serverMedia"),
+            ("localModelCachePath", "localModelCache"),
+            ("localModelPath", "localModel"),
+            ("ocrRuntimePath", "ocrRuntime"),
+            ("ffmpegPath", "ffmpeg"),
+            ("stickerDir", "stickerDir"),
+        ):
+            self.assertIn(f'id="{field}"', page)
+            self.assertIn(f'bindDropField("{field}", "{target}")', script)
+
+        self.assertIn('if (target === "serverMedia")', script)
+        self.assertIn('setServerMedia(value)', script)
+        self.assertIn('!state.dropTarget && window.MAWLauncher?.onBatchDrop', script)
+        self.assertIn("#serverMediaPath.drag-over", stylesheet)
+
     def test_launcher_exposes_segmentation_controls_and_payload_fields(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
