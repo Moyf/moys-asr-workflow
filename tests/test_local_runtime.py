@@ -17,6 +17,7 @@ from maw.local_runtime import (
     managed_runtime_status,
     model_cache_environment,
     prepare_model_in_process,
+    prepare_model_in_runtime,
 )
 from maw.runtimes import LOCAL
 
@@ -158,6 +159,40 @@ class LocalRuntimeTests(unittest.TestCase):
         self.assertIn("--forced-aligner", command)
         environment = run_process.call_args.kwargs["env"]
         self.assertEqual(environment["HF_HUB_CACHE"], model_cache_environment()["HF_HUB_CACHE"])
+
+    def test_prepare_entries_forward_process_error_mapping_kwargs(self) -> None:
+        """回归：`runtimes.base._run_process` 的 cwd / error_class / cancelled_class /
+        cancelled_message / message_prefix 是必填关键字参数。prepare 两个入口若漏传，
+        GUI「下载模型」点击即抛 TypeError（PR #77 实测），mock 无法替它兜底。"""
+        from maw.local_runtime import (
+            LocalRuntimeCancelled,
+            LocalRuntimeError,
+            LocalRuntimeStatus,
+        )
+        from maw.runtimes.base import RuntimeCancelled
+
+        ready = LocalRuntimeStatus("ready", True, "path", "python", "cache", "")
+
+        def assert_mapping_kwargs(run_process: mock.Mock) -> None:
+            kwargs = run_process.call_args.kwargs
+            self.assertIs(kwargs["error_class"], LocalRuntimeError)
+            self.assertTrue(issubclass(kwargs["cancelled_class"], RuntimeCancelled))
+            self.assertTrue(str(kwargs["cancelled_message"]).strip())
+            self.assertTrue(str(kwargs["message_prefix"]).strip())
+            self.assertTrue(Path(str(kwargs["cwd"])).is_dir())
+
+        with mock.patch("maw.local_runtime.managed_runtime_status", return_value=ready):
+            with mock.patch("maw.local_runtime._run_process", return_value=0) as run_process:
+                prepare_model_in_runtime(
+                    engine="whisper",
+                    model="Systran/faster-whisper-large-v3",
+                    device="cpu",
+                )
+        assert_mapping_kwargs(run_process)
+
+        with mock.patch("maw.local_runtime._run_process", return_value=0) as run_process:
+            prepare_model_in_process(engine="qwen-asr", model="Qwen/Qwen3-ASR-0.6B", device="cpu")
+        assert_mapping_kwargs(run_process)
 
 
 if __name__ == "__main__":
