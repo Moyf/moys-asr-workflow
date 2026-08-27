@@ -7,5 +7,16 @@
       "type": "service",
       "command": "uv run python server-editor/serve.py"
     }
+  },
+  "metadataGeneration": {
+    "branchName": {
+      "instructions": "分支以feat/或fix/开头"
+    },
+    "commitMessage": {
+      "instructions": "使用带scope的Conventional Commits\n使用中文\n在描述中写上具体的修改内容，但别太啰嗦"
+    },
+    "pullRequest": {
+      "instructions": "在提交 PR 之前检查 CHANGELOG 是否含有本次的主要更新内容。"
+    }
   }
 }
