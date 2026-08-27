@@ -474,7 +474,7 @@ class AutoFreezeRequirementsTests(unittest.TestCase):
              "--format", "requirements-txt", "-o", str(build / "requirements-ocr.txt")],
         )
         self.assertIsNone(base_mod._freeze_requirements_command(uv, OCR_SPEC, cpu=True, build_dir=build))
-        # moss：uv pip compile（in 文件 pin cu130，必须带 extra index）；无 CPU 变体
+        # moss：uv pip compile（in 文件 pin cu130，必须带 extra index）
         self.assertEqual(
             base_mod._freeze_requirements_command(uv, MOSS_SPEC, cpu=False, build_dir=build),
             [str(uv), "pip", "compile", "moss-requirements.in", "-p", "3.11",
@@ -482,7 +482,14 @@ class AutoFreezeRequirementsTests(unittest.TestCase):
              "--index-strategy", "unsafe-best-match",
              "-o", str(build / "requirements-moss.txt")],
         )
-        self.assertIsNone(base_mod._freeze_requirements_command(uv, MOSS_SPEC, cpu=True, build_dir=build))
+        # moss CPU 变体：独立 in 文件原生冻结（带哈希），与 local-cpu 同构
+        self.assertEqual(
+            base_mod._freeze_requirements_command(uv, MOSS_SPEC, cpu=True, build_dir=build),
+            [str(uv), "pip", "compile", "moss-cpu-requirements.in", "-p", "3.11",
+             "--generate-hashes",
+             "--index-strategy", "unsafe-best-match",
+             "-o", str(build / "requirements-moss-cpu.txt")],
+        )
 
     def test_missing_main_txt_is_generated_with_progress_events(self) -> None:
         build = self._temp_build_dir()
@@ -517,16 +524,28 @@ class AutoFreezeRequirementsTests(unittest.TestCase):
                     emit=lambda *event: None, cancel=Event(),
                 )
 
-    def test_unsupported_cpu_variant_is_reported_not_installed_wrongly(self) -> None:
-        # moss 的 in 文件 pin +cu130，管线不生成 moss-cpu：ensure 静默跳过，
-        # 由上层 requirements_path 给出准确指引，而不是装错清单。
+    def test_missing_moss_cpu_txt_is_generated_for_no_nvidia_machines(self) -> None:
+        # MOSS 无 GPU 首装走 moss-cpu 清单（独立声明文件原生冻结，与 local-cpu 同构）。
         build = self._temp_build_dir()
+        calls: list[list[str]] = []
+
+        def fake_run(command: list[str], **_kwargs: object) -> int:
+            calls.append(command)
+            index = command.index("-o")
+            Path(command[index + 1]).write_text("transformers==5.16.1\ntorch==2.13.0\n", encoding="utf-8")
+            return 0
+
         with mock.patch.object(base_mod, "_build_dir", return_value=build):
-            with mock.patch("maw.runtimes.base._run_process", side_effect=AssertionError("must not run")):
+            with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
                 MOSS._ensure_frozen_requirements(
                     Path("C:/tools/uv.exe"), cpu=True,
                     emit=lambda *event: None, cancel=Event(),
                 )
+
+        self.assertTrue((build / "requirements-moss-cpu.txt").is_file())
+        self.assertEqual(calls[0][1:4], ["pip", "compile", "moss-cpu-requirements.in"])
+        self.assertIn("--generate-hashes", calls[0])
+        self.assertNotIn("extra-index-url", calls[0])
 
     def test_generation_failure_wraps_error_and_keeps_hint(self) -> None:
         build = self._temp_build_dir()
