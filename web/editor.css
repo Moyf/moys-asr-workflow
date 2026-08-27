@@ -136,6 +136,9 @@
     --gap-stripe-a:           rgba(218, 128, 65, 0.30);
     --gap-stripe-b:           rgba(82, 51, 35, 0.34);
     --gap-stripe-border:      rgba(250, 192, 92, 0.9);
+    /* 受保护空隙：青蓝边界表示该空隙不会被批量清理 */
+    --gap-protected-edge:     rgb(122 222 244 / 98%);
+    --gap-protected-inset:    rgb(65 174 207 / 35%);
     --gap-restored-stripe-a:  rgba(100, 126, 145, 0.13);
     --gap-restored-stripe-b:  rgba(44, 55, 65, 0.17);
     --gap-restored-border:    rgba(132, 159, 178, 0.55);
@@ -336,6 +339,9 @@
     --gap-stripe-a:           rgba(154, 106, 30, 0.30);
     --gap-stripe-b:           rgba(154, 106, 30, 0.15);
     --gap-stripe-border:      rgba(143, 106, 8, 0.85);
+    /* 亮色背景使用较深的高饱和青蓝，保证边界仍清楚可见 */
+    --gap-protected-edge:     rgb(38 151 184 / 96%);
+    --gap-protected-inset:    rgb(65 174 207 / 35%);
     --gap-restored-stripe-a:  rgba(90, 105, 122, 0.16);
     --gap-restored-stripe-b:  rgba(90, 105, 122, 0.08);
     --gap-restored-border:    rgba(96, 110, 126, 0.55);

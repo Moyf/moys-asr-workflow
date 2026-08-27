@@ -204,16 +204,114 @@
       pointer-events: none;
       z-index: 1;
     }
-    .gap-overlay { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+    .gap-overlay { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
     .gap-range {
       position: absolute;
       top: 0;
       bottom: 0;
       min-width: 2px;
+      z-index: 1;
       background: repeating-linear-gradient(135deg, rgba(231,199,89,.16) 0 5px, rgba(122,105,39,.05) 5px 10px);
       border-left: 1px solid rgba(245,225,133,.75);
       border-right: 1px solid rgba(245,225,133,.75);
+      cursor: grab;
+      pointer-events: auto;
     }
+    .gap-range:hover { filter: brightness(1.22); }
+    .gap-range.protected {
+      border-left-color: rgba(166,210,231,.92);
+      border-right-color: rgba(166,210,231,.92);
+      box-shadow: inset 0 0 0 1px rgba(166,210,231,.16);
+    }
+    .gap-range.restored {
+      background: repeating-linear-gradient(135deg, rgba(111,145,170,.18) 0 5px, rgba(67,91,108,.08) 5px 10px);
+      border-color: rgba(174,207,226,.72);
+    }
+    .gap-label {
+      position: absolute;
+      top: 6px;
+      left: 4px;
+      max-width: calc(100% - 8px);
+      overflow: hidden;
+      color: #ffe2a7;
+      background: rgba(31,24,10,.62);
+      border-radius: 3px;
+      padding: 1px 3px;
+      font-size: 10px;
+      line-height: 1.2;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    .gap-range.restored .gap-label { color: #c8d9e5; background: rgba(25,38,48,.72); }
+    .gap-range.dragging {
+      cursor: grabbing;
+      opacity: .9;
+      border-color: rgba(94,184,255,.98);
+      background: repeating-linear-gradient(135deg, rgba(65,153,229,.62) 0 5px, rgba(29,74,128,.62) 5px 10px);
+    }
+    .gap-handle {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      z-index: 2;
+      width: 9px;
+      opacity: 0;
+      cursor: ew-resize;
+      transition: opacity .1s ease, background .1s ease;
+    }
+    .gap-handle.left { left: -5px; }
+    .gap-handle.right { right: -5px; }
+    .gap-handle::after {
+      position: absolute;
+      top: 20%;
+      bottom: 20%;
+      left: 4px;
+      width: 2px;
+      border-radius: 2px;
+      background: #5ab6ff;
+      box-shadow: 0 0 0 1px rgba(14,42,76,.75);
+      content: '';
+    }
+    .gap-range.boundary-editable:hover .gap-handle,
+    .gap-range.boundary-editable.dragging .gap-handle { opacity: 1; }
+    .gap-range-preview {
+      z-index: 2;
+      pointer-events: none;
+      border: 1px solid rgba(94,184,255,.95);
+      background: repeating-linear-gradient(135deg, rgba(65,153,229,.42) 0 5px, rgba(29,74,128,.36) 5px 10px);
+    }
+    .gap-range-preview.restore { border-color: rgba(128,198,255,.95); background: repeating-linear-gradient(135deg, rgba(84,159,216,.42) 0 5px, rgba(37,81,120,.36) 5px 10px); }
+    .gap-range-drag-preview { border-style: dashed; }
+    .gap-range-drag-preview.copy { border-color: rgba(140,222,255,.98); }
+    .gap-range-boundary-preview { border-width: 2px; }
+    .gap-range-drag-preview .gap-label,
+    .gap-range-boundary-preview .gap-label { color: #fff0bf; }
+    .gap-range.hidden-source { visibility: hidden; }
+    .gap-context-menu {
+      position: fixed;
+      z-index: 40;
+      min-width: 190px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #1b222b;
+      box-shadow: 0 8px 24px rgba(0,0,0,.38);
+    }
+    .gap-context-menu[hidden] { display: none; }
+    .gap-context-menu button {
+      display: flex;
+      width: 100%;
+      justify-content: space-between;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      padding: 7px 9px;
+      text-align: left;
+    }
+    .gap-context-menu button:hover { background: #2b3c4d; }
+    .gap-context-menu .danger { color: var(--red); }
+    .gap-context-menu .separator { height: 1px; margin: 4px 0; background: var(--line); }
     .waveform-hint {
       position: absolute;
       inset: 0;
@@ -311,6 +409,7 @@
     .take-range.distant-match { background: rgba(205, 157, 78, .76); color: #f5ecdc; }
     .take-range.incomplete { background: rgba(119, 129, 142, .78); color: #e7edf2; }
     .take-range.manual-enabled { background: rgba(99, 213, 150, .88); color: #081017; }
+    .take-range.manual-disabled { background: repeating-linear-gradient(135deg, #806b3d 0 5px, #62532f 5px 10px); color: #f5ecdc; }
     .take-range.selected-incomplete { outline: 1px dashed var(--amber); outline-offset: 1px; }
     .take-range.extra { background: rgba(240, 189, 100, .88); }
     .take-range.discard { background: repeating-linear-gradient(135deg, #68727e 0 5px, #4e5864 5px 10px); color: #e7edf2; }
@@ -324,6 +423,7 @@
     .legend .match::before { background: var(--green); }
     .legend .disabled::before { background: var(--disabled); }
     .legend .manual::before { background: var(--green); }
+    .legend .manual-disabled::before { background: var(--amber); }
     .legend .extra::before { background: var(--amber); }
     .legend .gap::before { background: var(--yellow); }
     .panel { padding: 15px; margin-top: 14px; }
@@ -345,6 +445,7 @@
     .line-state.match { color: var(--green); }
     .line-state.incomplete { color: var(--amber); }
     .line-state.manual { color: var(--green); }
+    .line-state.manual-disabled { color: var(--amber); }
     .line-state.missing { color: var(--red); }
     .recording-list { display: grid; gap: 0; margin-top: 10px; }
     .candidate-list { display: grid; gap: 7px; margin: 10px 0 0 54px; }
@@ -361,6 +462,7 @@
     .candidate.selected { border-color: var(--green); background: #182a25; }
     .candidate.incomplete { opacity: .76; }
     .candidate.manual-enabled { opacity: 1; border-color: var(--green); }
+    .candidate.manual-disabled { opacity: .76; border-color: var(--amber); background: #30291d; }
     .candidate-text { min-width: 0; }
     .candidate-text strong { display: block; }
     .candidate-text small { display: block; }
@@ -379,6 +481,7 @@
     .badge.extra { color: var(--amber); }
     .badge.skip-source { color: var(--disabled); }
     .candidate.manual-enabled .badge.incomplete { color: var(--green); }
+    .candidate.manual-disabled .badge.match { color: var(--amber); }
     .empty { margin-left: 54px; color: var(--red); }
     .missing-line-list { display: grid; gap: 7px; margin-top: 12px; }
     .missing-line {
@@ -416,7 +519,7 @@
   <h1>MAW 录制对齐</h1>
   <p id="meta" class="muted">正在读取 mosp……</p>
     <div class="notice">
-    输入是「文稿 + 媒体 + ASR 生成的 mosp」。波形上的绿色块是采用的完整匹配，蓝色块是同一局部录制组的 Alternative（未选中的会自动静音），棕色块是远距离命中（默认保留、等待确认），灰色块是自动禁用的口吃/不完整/重复；不完整 take 可以直接点击波形块，或在下方手动启用，启用后会以绿色显示但仍保留 incomplete 标记。橙色块是默认保留的 Extra，黄色斜纹是播放和导出时会移除的空隙。导出会生成新的对齐 `.mosp`，不会覆盖源工程。
+    输入是「文稿 + 媒体 + ASR 生成的 mosp」。波形上的绿色块是采用的完整匹配，蓝色块是同一局部录制组的 Alternative（未选中的会自动静音），棕色块是远距离命中（默认保留、等待确认），灰色块是自动禁用的口吃/不完整/重复；不完整 take 可以直接点击波形块，或在下方手动启用，启用后会以绿色显示但仍保留 incomplete 标记。已采用的完整 take 也可以在下方「手动禁用」，让 Extra 版本替代它。橙色块是默认保留的 Extra，黄色斜纹是播放和导出时会移除的空隙。导出会生成新的对齐 `.mosp`，不会覆盖源工程。
   </div>
 <div class="toolbar">
   <div class="toolbar-row">
@@ -435,7 +538,7 @@
     <h2>波形与 take 块</h2>
     <div id="media-host"><p class="muted">工程没有可播放媒体，仍可查看对齐结果。</p></div>
     <div class="timeline-help">
-      <span id="timeline-help-text">基础模式横向滚动查看整段 · 滚轮横向滚动 · 单击定位 · 双击/空格播放暂停 · 按住左键拖动播放头 · Ctrl+单击块跳到下方 card</span>
+      <span id="timeline-help-text">基础模式横向滚动查看整段 · 滚轮横向滚动 · 单击定位/试听 gap · 双击/空格播放暂停 · 按住左键拖动播放头 · Alt+左键空白处添加 gap · Ctrl+单击块跳到下方 card</span>
       <div class="timeline-options">
         <div class="waveform-mode-options" role="group" aria-label="波形显示模式">
           <span>波形：</span>
@@ -461,9 +564,18 @@
             </select>
           </label>
         </div>
-        <label class="timeline-option" title="关闭时，播放头会正常经过 gap；导出仍按 gap_remove 处理">
-          <input id="skip-gap-playback" type="checkbox">
+        <label class="timeline-option" title="关闭时，播放头会正常经过 gap；导出仍保留 gap_remove 区段记录">
+          <input id="skip-gap-playback" type="checkbox" checked>
           播放时跳过 gap
+        </label>
+        <label class="timeline-option" title="复刻 MAWE 的 Gap 人工修正方式；Alt+左键拖动空白处始终可以新增范围">
+          Gap 操作
+          <select id="gap-operation-mode">
+            <option value="none">无</option>
+            <option value="boundary_drag" selected>拖动边界</option>
+            <option value="middle_drag">中键拖动</option>
+            <option value="boundary_and_middle">边界与中键</option>
+          </select>
         </label>
         <label class="timeline-option" title="播放头跳到视口外时，自动滚动到附近">
           <input id="follow-playhead" type="checkbox" checked>
@@ -486,11 +598,13 @@
         </div>
       </div>
     </div>
+    <div id="gap-context-menu" class="gap-context-menu" hidden></div>
     <div class="legend">
       <span class="match">采用匹配</span>
       <span>Alternative</span>
       <span class="disabled">自动禁用</span>
       <span class="manual">手动启用</span>
+      <span class="manual-disabled">手动禁用</span>
       <span class="extra">Extra 保留</span>
       <span class="gap">移除空隙</span>
     </div>
@@ -502,6 +616,10 @@
   </section>
 </main>
 <script>
+/* Injected by server-align/serve.py from web/gap-remove-core.js. */
+/* __GAP_REMOVE_CORE_JS__ */
+</script>
+<script>
   let state = null;
   let alignment = null;
   let selectedByLine = {};
@@ -509,6 +627,17 @@
   let candidateActions = {};
   let selectionPreview = null;
   let removedGaps = [];
+  let gapRemoveConfig = null;
+  let visibleGapProjectionSource = null;
+  let visibleGapProjectionCache = [];
+  let gapRemoveDirty = false;
+  let gapOperationMode = 'boundary_drag';
+  let gapPreviewRange = null;
+  let gapRangeDrag = null;
+  let gapBoundaryDrag = null;
+  let gapMoveDrag = null;
+  let gapPreviewFrameId = 0;
+  let suppressGapClickUntil = 0;
   let activeRangeEndMs = 0;
   let auditioningRange = false;
   let waveform = null;
@@ -528,6 +657,10 @@
   const TIMELINE_WAVEFORM_SCALE = 2.2;
   const TIMELINE_MULTI_ROW_GAP = 10;
   const TIMELINE_MAX_CANVAS_DIMENSION = 32767;
+  const GAP_REMOVE_CORE = window.AsrGapRemoveCore;
+  if (!GAP_REMOVE_CORE) throw new Error('AsrGapRemoveCore must load before the alignment UI');
+  const DEFAULT_GAP_OPERATION_MODE = GAP_REMOVE_CORE.DEFAULT_GAP_REMOVE_OPERATION_MODE;
+  const MIN_GAP_RANGE_MS = 10;
 
   const $ = (selector) => document.querySelector(selector);
 
@@ -579,6 +712,232 @@
     return Math.max(0, Number(timeMs) / 1000 * TIMELINE_PIXELS_PER_SECOND);
   }
 
+  const normalizeGapOperationMode = GAP_REMOVE_CORE.normalizeGapOperationMode;
+  const coalesceGapEntries = GAP_REMOVE_CORE.coalesceGapRemoveGaps;
+  const applyGapRange = GAP_REMOVE_CORE.applyGapRemoveRange;
+  const normalizeGapProvenance = GAP_REMOVE_CORE.normalizeGapRemoveProvenance;
+  const gapRangesFromProvenance = GAP_REMOVE_CORE.gapRangesFromProvenance;
+  const decorateGapEntries = GAP_REMOVE_CORE.decorateGapRemoveGaps;
+  const appendManualGapOverrides = GAP_REMOVE_CORE.appendGapRemoveManualOverrides;
+  const moveGapRemoveProvenance = GAP_REMOVE_CORE.moveGapRemoveProvenance;
+  const resizeGapRemoveProvenanceBoundary = GAP_REMOVE_CORE.resizeGapRemoveProvenanceBoundary;
+  const getGapRemoveDisplayType = GAP_REMOVE_CORE.getGapRemoveDisplayType;
+  const isGapRemoveDisplayProtected = GAP_REMOVE_CORE.isGapRemoveDisplayProtected;
+  const removeGapRemoveProvenanceRange = GAP_REMOVE_CORE.removeGapRemoveProvenanceRange;
+  const getGapRemoveDisplayGaps = GAP_REMOVE_CORE.getGapRemoveDisplayGaps;
+
+  const GAP_DISPLAY_LABELS = Object.freeze({
+    audio_gate: '静音空隙（自动生成）',
+    audio_gate_manual: '静音空隙（自动生成+手动调整）',
+    manual: '跳过空隙（手动创建）',
+    script_alignment: '台本对齐自动移除',
+    script_alignment_manual: '台本对齐自动移除（手动调整）',
+    multi_source: '自动移除（多来源）',
+    multi_source_manual: '自动移除（多来源+手动调整）',
+    unknown: '空隙',
+  });
+
+  function gapDisplayLabel(gap) {
+    return GAP_DISPLAY_LABELS[getGapRemoveDisplayType(gap)] || GAP_DISPLAY_LABELS.unknown;
+  }
+
+  // Provenance stays internal. The timeline exposes one final layer containing
+  // both enabled gaps and visible-but-ineffective restored gaps.
+  function visibleGapEntries() {
+    const source = Array.isArray(gapRemoveConfig?.gaps)
+      ? gapRemoveConfig.gaps : removedGaps;
+    if (source === visibleGapProjectionSource) return visibleGapProjectionCache;
+    visibleGapProjectionSource = source;
+    visibleGapProjectionCache = getGapRemoveDisplayGaps(source);
+    return visibleGapProjectionCache;
+  }
+
+  function gapOperationAllowsBoundary() {
+    return GAP_REMOVE_CORE.gapOperationAllowsBoundary(gapOperationMode);
+  }
+
+  function gapOperationAllowsMiddle() {
+    return GAP_REMOVE_CORE.gapOperationAllowsMiddle(gapOperationMode);
+  }
+
+  function translateGapRange(gaps, index, deltaMs, copy) {
+    return copy
+      ? GAP_REMOVE_CORE.copyGapRemoveRange(gaps, index, deltaMs, timelineDurationMs())
+      : GAP_REMOVE_CORE.moveGapRemoveRange(gaps, index, deltaMs, timelineDurationMs());
+  }
+
+  function resizeGapBoundary(gaps, index, edge, valueMs) {
+    return GAP_REMOVE_CORE.resizeGapRemoveBoundary(
+      gaps,
+      index,
+      edge,
+      valueMs,
+      MIN_GAP_RANGE_MS,
+    );
+  }
+
+  function gapRemovePayload() {
+    const source = gapRemoveConfig && typeof gapRemoveConfig === 'object'
+      ? gapRemoveConfig : {};
+    const provenance = normalizeGapProvenance(source.provenance, removedGaps);
+    const gaps = coalesceGapEntries(gapRangesFromProvenance(provenance));
+    return {
+      ...source,
+      schema: GAP_REMOVE_CORE.GAP_REMOVE_SCHEMA,
+      detector: 'audio_gate',
+      skip_playback: $('#skip-gap-playback')?.checked !== false,
+      manual_corrections: provenance.manual_overrides.length > 0,
+      operation_mode: gapOperationMode,
+      gaps: decorateGapEntries(gaps, provenance),
+      provenance,
+    };
+  }
+
+  function commitGapRanges(nextGaps, message = '', manualOverrides = []) {
+    const next = coalesceGapEntries(nextGaps);
+    const current = coalesceGapEntries(removedGaps);
+    const source = gapRemoveConfig && typeof gapRemoveConfig === 'object'
+      ? gapRemoveConfig : {};
+    let provenance = normalizeGapProvenance(source.provenance, current);
+    const additions = Array.isArray(manualOverrides) ? manualOverrides.filter(Boolean) : [];
+    if (additions.length) {
+      provenance = appendManualGapOverrides(provenance, additions, current);
+    }
+    const projected = coalesceGapEntries(gapRangesFromProvenance(provenance));
+    if (JSON.stringify(projected) === JSON.stringify(current) && !additions.length) return false;
+    removedGaps = projected;
+    gapRemoveConfig = {
+      ...source,
+      gaps: decorateGapEntries(projected, provenance),
+      provenance,
+      manual_corrections: provenance.manual_overrides.length > 0,
+    };
+    gapRemoveDirty = true;
+    gapPreviewRange = null;
+    render();
+    if (message) $('#status').textContent = message;
+    return true;
+  }
+
+  function commitGapProvenance(nextProvenance, message = '') {
+    const current = coalesceGapEntries(removedGaps);
+    const source = gapRemoveConfig && typeof gapRemoveConfig === 'object'
+      ? gapRemoveConfig : {};
+    const provenance = normalizeGapProvenance(nextProvenance, current);
+    const projected = coalesceGapEntries(gapRangesFromProvenance(provenance));
+    removedGaps = projected;
+    gapRemoveConfig = {
+      ...source,
+      gaps: decorateGapEntries(projected, provenance),
+      provenance,
+      manual_corrections: provenance.manual_overrides.length > 0,
+    };
+    gapRemoveDirty = true;
+    gapPreviewRange = null;
+    render();
+    if (message) $('#status').textContent = message;
+    return true;
+  }
+
+  function gapAtTime(timeMs, removedOnly = false) {
+    return GAP_REMOVE_CORE.findGapRemoveAtTime(removedGaps, timeMs, removedOnly);
+  }
+
+  function previewGapAt(timeMs) {
+    const gap = gapAtTime(timeMs, true);
+    if ($('#skip-gap-playback')?.checked !== true || !gap) {
+      gapPreviewRange = null;
+      return;
+    }
+    gapPreviewRange = {start: gap.start, end: gap.end};
+    $('#status').textContent = '正在预览此 gap；播放头离开后恢复跳过';
+  }
+
+  function gapMinimumMs() {
+    const value = Number(gapRemoveConfig?.minimum_ms);
+    return Number.isFinite(value) ? Math.max(100, Math.min(60000, Math.round(value))) : 500;
+  }
+
+  function addGapAtTimelineTime(timeMs) {
+    const duration = timelineDurationMs();
+    const point = Number(timeMs);
+    if (!Number.isFinite(point) || duration <= 1) return false;
+    const length = Math.min(duration, gapMinimumMs());
+    const snappedPoint = Math.max(0, Math.min(duration, Math.round(point / 10) * 10));
+    const start = Math.min(snappedPoint, Math.max(0, duration - length));
+    const end = Math.min(duration, start + length);
+    if (end - start < MIN_GAP_RANGE_MS) {
+      $('#status').textContent = '媒体时长不足，无法添加 gap';
+      return false;
+    }
+    const next = applyGapRange(removedGaps, start, end, true);
+    if (JSON.stringify(next) === JSON.stringify(coalesceGapEntries(removedGaps))) {
+      $('#status').textContent = '该位置已经是空隙';
+      return false;
+    }
+    return commitGapRanges(
+      next,
+      `已添加 ${formatTime(end - start)} 的 gap`,
+      [{start, end, removed: true}],
+    );
+  }
+
+  function hideGapContextMenu() {
+    const menu = $('#gap-context-menu');
+    if (menu) menu.hidden = true;
+  }
+
+  function showGapContextMenu(clientX, clientY, index = null, timeMs = null) {
+    const menu = $('#gap-context-menu');
+    if (!menu) return;
+    menu.replaceChildren();
+    const addItem = (label, handler, danger = false) => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.textContent = label;
+      if (danger) item.classList.add('danger');
+      item.addEventListener('click', () => {
+        hideGapContextMenu();
+        handler();
+      });
+      menu.append(item);
+    };
+    const addSeparator = () => {
+      const separator = document.createElement('div');
+      separator.className = 'separator';
+      menu.append(separator);
+    };
+    const gap = Number.isInteger(index) ? visibleGapEntries()[index] : null;
+    if (gap) {
+      addItem(gap.removed === false ? '移除这个 gap 区段' : '恢复这个 gap 区段', () => {
+        const next = applyGapRange(removedGaps, gap.start, gap.end, gap.removed === false);
+        commitGapRanges(
+          next,
+          gap.removed === false ? '已人工移除 gap' : '已人工恢复 gap',
+          [{start: gap.start, end: gap.end, removed: gap.removed === false}],
+        );
+      });
+      addSeparator();
+      addItem('清理这个 gap 记录', () => {
+        commitGapProvenance(
+          removeGapRemoveProvenanceRange(
+            gapRemoveConfig?.provenance,
+            gap.start,
+            gap.end,
+            removedGaps,
+          ),
+          '已清理 gap 记录',
+        );
+      }, true);
+    } else {
+      addItem(`在此处添加 gap（${formatTime(gapMinimumMs())}）`, () => addGapAtTimelineTime(timeMs));
+    }
+    menu.hidden = false;
+    const rect = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(4, Math.min(Number(clientX) || 4, window.innerWidth - rect.width - 4))}px`;
+    menu.style.top = `${Math.max(4, Math.min(Number(clientY) || 4, window.innerHeight - rect.height - 4))}px`;
+  }
+
   function timelineRangePieces(startMs, endMs) {
     const duration = timelineDurationMs();
     const start = Math.max(0, Math.min(duration, Number(startMs) || 0));
@@ -591,6 +950,8 @@
         top: 0,
         height: TIMELINE_STAGE_HEIGHT,
         rowIndex: 0,
+        startMs: start,
+        endMs: end,
       }];
     }
     const rowDuration = multiRowDurationMs();
@@ -609,6 +970,8 @@
         top: rowIndex * multiRowStride(),
         height: Math.max(1, Number(multiRowHeight) || 120),
         rowIndex,
+        startMs: pieceStart,
+        endMs: pieceEnd,
       });
     }
     return pieces;
@@ -775,6 +1138,10 @@
     return candidate?.status === 'incomplete' && candidateActions[candidate.id] === 'keep';
   }
 
+  function isCandidateManuallyDisabled(candidate) {
+    return candidate?.status === 'match' && candidateActions[candidate.id] === 'discard';
+  }
+
   function currentExtras() {
     return selectionPreview?.extraRanges || alignment.extras || [];
   }
@@ -847,6 +1214,10 @@
   function setPath(pathId, {preserveActions = false} = {}) {
     const path = alignment.paths.find((item) => item.id === pathId);
     if (!path) return;
+    if (!preserveActions) {
+      gapRemoveDirty = false;
+      gapPreviewRange = null;
+    }
     selectedByLine = {};
     for (const choice of path.choices) {
       if (choice.candidateId) selectedByLine[choice.lineId] = choice.candidateId;
@@ -859,17 +1230,23 @@
     const serial = ++previewSerial;
     const oldActions = {...extraActions};
     const oldCandidateActions = {...candidateActions};
+    const oldGapRemove = gapRemoveDirty ? gapRemovePayload() : null;
+    let sentGapRemove = Boolean(oldGapRemove);
     $('#status').textContent = '正在更新对齐……';
     try {
-      const requestPreview = (actions, candidateActionState) => fetch('/api/preview', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
+      const requestPreview = (actions, candidateActionState, gapRemove = oldGapRemove) => {
+        const body = {
           selectedByLine,
           extraActions: actions,
           candidateActions: candidateActionState,
-        }),
-      });
+        };
+        if (gapRemove) body.gapRemove = gapRemove;
+        return fetch('/api/preview', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(body),
+        });
+      };
       let response = await requestPreview(
         preserveActions ? oldActions : {},
         preserveActions ? oldCandidateActions : {},
@@ -878,13 +1255,36 @@
       // Choosing another take can invalidate IDs for the old gap pieces.
       // Rebuild with the new path defaults before treating that as an error.
       if ((!response.ok || !result.ok) && preserveActions) {
-        response = await requestPreview({}, {});
+        response = await requestPreview({}, {}, null);
+        sentGapRemove = false;
         result = await response.json();
       }
       if (!response.ok || !result.ok) throw new Error(result.error || '预览失败');
       if (serial !== previewSerial) return;
       selectionPreview = result.selection;
-      removedGaps = result.gapRanges || [];
+      gapRemoveConfig = result.gapRemove && typeof result.gapRemove === 'object'
+        ? result.gapRemove : {gaps: result.gapRanges || []};
+      const normalizedProvenance = normalizeGapProvenance(
+        gapRemoveConfig.provenance,
+        gapRemoveConfig.gaps || result.gapRanges || [],
+      );
+      const normalizedGapRanges = gapRangesFromProvenance(normalizedProvenance);
+      removedGaps = coalesceGapEntries(
+        gapRemoveConfig.provenance ? normalizedGapRanges : result.gapRanges || gapRemoveConfig.gaps || [],
+      );
+      gapRemoveConfig = {
+        ...gapRemoveConfig,
+        gaps: decorateGapEntries(removedGaps, normalizedProvenance),
+        provenance: normalizedProvenance,
+        manual_corrections: normalizedProvenance.manual_overrides.length > 0,
+      };
+      gapOperationMode = normalizeGapOperationMode(gapRemoveConfig.operation_mode);
+      gapPreviewRange = null;
+      const skipGap = $('#skip-gap-playback');
+      if (skipGap) skipGap.checked = gapRemoveConfig.skip_playback !== false;
+      const gapMode = $('#gap-operation-mode');
+      if (gapMode) gapMode.value = gapOperationMode;
+      gapRemoveDirty = sentGapRemove;
       syncActions(selectionPreview.extraRanges || [], preserveActions);
       candidateActions = {...(selectionPreview.candidateActions || {})};
       selectionPreview.extraActions = {...extraActions};
@@ -910,6 +1310,7 @@
     if (!Number.isFinite(start) || !Number.isFinite(end)) return;
     // 试听必须能够听到原始 take，即使这个 take 在最终预览中属于被移除的 gap。
     // 最终播放仍由 handlePlayerTimeUpdate 负责跳过 gap；两条路径不能混用。
+    gapPreviewRange = null;
     auditioningRange = true;
     activeRangeEndMs = end;
     player.currentTime = start / 1000;
@@ -962,6 +1363,9 @@
   function handlePlayerTimeUpdate(event) {
     const player = event.currentTarget;
     const now = player.currentTime * 1000;
+    if (gapPreviewRange && (now < gapPreviewRange.start || now >= gapPreviewRange.end)) {
+      gapPreviewRange = null;
+    }
     updateTimelinePlayhead();
     if (auditioningRange) {
       if (activeRangeEndMs && now >= activeRangeEndMs) {
@@ -971,12 +1375,18 @@
       }
       return;
     }
-    if ($('#skip-gap-playback')?.checked === true) {
-      const gap = removedGaps.find((item) => item.removed !== false && now >= Number(item.start) && now < Number(item.end) - 5);
-      if (gap) {
-        player.currentTime = Number(gap.end) / 1000;
-        return;
-      }
+    const skippedGap = GAP_REMOVE_CORE.getGapPlaybackSkip(
+      removedGaps,
+      now,
+      {
+        skipPlayback: $('#skip-gap-playback')?.checked === true,
+        isPlaying: !player.paused,
+        previewRange: gapPreviewRange,
+      },
+    );
+    if (skippedGap) {
+      player.currentTime = Number(skippedGap.end) / 1000;
+      return;
     }
     if (activeRangeEndMs && now >= activeRangeEndMs) {
       player.pause();
@@ -990,8 +1400,9 @@
     const matchCount = selectionPreview?.selected?.filter((item) => item.status === 'match').length || 0;
     const incompleteCount = selectionPreview?.incompleteLineIds?.length || 0;
     const extras = currentExtras();
-    const disabledCount = extras.filter((extra) => actionFor(extra) === 'discard').length;
-    const removedCount = removedGaps.filter((gap) => gap.removed !== false).length;
+    const disabledCount = extras.filter((extra) => actionFor(extra) === 'discard').length
+      + (selectionPreview?.manuallyDisabledCandidateIds?.length || 0);
+    const removedCount = visibleGapEntries().length;
     const values = [
       ['文稿行', lineCount],
       ['采用', `${selectedCount}/${lineCount}`],
@@ -1233,6 +1644,7 @@
         const complete = candidate.status === 'match';
         const localAlternative = isLocalAlternative(line.id, candidate);
         const manuallyEnabled = selected && isCandidateManuallyEnabled(candidate);
+        const manuallyDisabled = selected && isCandidateManuallyDisabled(candidate);
         const take = document.createElement('button');
         take.type = 'button';
         const classes = ['take-range'];
@@ -1242,26 +1654,29 @@
           classes.push('incomplete');
           if (manuallyEnabled) classes.push('manual-enabled');
         }
-        if (!selected || (candidate.status === 'incomplete' && !manuallyEnabled)) classes.push('muted');
+        if (manuallyDisabled) classes.push('manual-disabled');
+        if (!selected || manuallyDisabled || (candidate.status === 'incomplete' && !manuallyEnabled)) classes.push('muted');
         if (selected) classes.push('selected');
         if (selected && !complete) classes.push('selected-incomplete');
         take.className = classes.join(' ');
         take.dataset.alternativeGroup = candidate.alternativeGroupId || line.id;
         take.dataset.candidateId = candidate.id;
-        take.setAttribute('aria-pressed', String(complete ? selected : manuallyEnabled));
+        take.setAttribute('aria-pressed', String(complete ? selected && !manuallyDisabled : manuallyEnabled));
         const badgeText = complete
-          ? (selected ? '采用' : localAlternative ? '备选' : '远距命中')
+          ? (selected ? manuallyDisabled ? '手动禁用' : '采用' : localAlternative ? '备选' : '远距命中')
           : manuallyEnabled ? '手动启用' : '不完整';
         const sourceText = candidate.sourceText || line.text;
         appendTakeContent(take, badgeText, sourceText);
-        const stateText = selected && !complete
-          ? (manuallyEnabled ? ' · 手动启用' : ' · 自动禁用')
+        const stateText = selected
+          ? complete
+            ? manuallyDisabled ? ' · 手动禁用' : ''
+            : manuallyEnabled ? ' · 手动启用' : ' · 自动禁用'
           : '';
         const localityText = !selected && complete && !localAlternative
           ? ' · 不自动归入 Alternative'
           : '';
         const actionText = complete
-          ? '点击切换采用的 take'
+          ? manuallyDisabled ? '请在下方卡片中取消手动禁用，或切换采用的 take' : '点击切换采用的 take'
           : manuallyEnabled ? '点击恢复自动禁用' : '点击启用此不完整 take';
         take.title = `${badgeText}${stateText}${localityText} · ${actionText} · ${sourceText} ${formatTime(candidate.start)}–${formatTime(candidate.end)}`;
         take.setAttribute('aria-label', take.title);
@@ -1294,24 +1709,385 @@
     }
   }
 
+  function setGapPieceGeometry(node, piece) {
+    node.style.left = `${piece.left}px`;
+    node.style.width = `${piece.width}px`;
+    if (isMultiWaveform()) {
+      node.style.top = `${piece.top}px`;
+      node.style.bottom = 'auto';
+      node.style.height = `${piece.height}px`;
+    } else {
+      node.style.top = '0';
+      node.style.bottom = '0';
+      node.style.height = '';
+    }
+  }
+
+  function appendGapPiece(root, gap, index, piece, {preview = false, labelText = ''} = {}) {
+    const node = document.createElement('div');
+    const classes = ['gap-range'];
+    if (gap.removed === false) classes.push('restored');
+    if (!preview && gap.removed !== false && isGapRemoveDisplayProtected(gap)) {
+      classes.push('protected');
+    }
+    if (preview) {
+      classes.push(labelText === '边界预览' ? 'gap-range-boundary-preview' : 'gap-range-drag-preview');
+      if (labelText === '复制') classes.push('copy');
+      if (gap.removed === false) classes.push('restore');
+    }
+    node.className = classes.join(' ');
+    node.dataset.gapIndex = String(index);
+    setGapPieceGeometry(node, piece);
+    const stateText = gap.removed === false ? '空隙（未激活）' : '空隙';
+    const label = document.createElement('span');
+    label.className = 'gap-label';
+    label.textContent = labelText || stateText;
+    node.append(label);
+    node.title = preview ? (labelText || gapDisplayLabel(gap)) : gapDisplayLabel(gap);
+    node.setAttribute('aria-label', node.title);
+    if (preview) {
+      node.classList.add('gap-range-preview');
+      return node;
+    }
+    node.classList.toggle('boundary-editable', gapOperationAllowsBoundary());
+    if (gapOperationAllowsBoundary()) {
+      if (piece.startMs === gap.start) {
+        const left = document.createElement('span');
+        left.className = 'gap-handle left';
+        node.append(left);
+      }
+      if (piece.endMs === gap.end) {
+        const right = document.createElement('span');
+        right.className = 'gap-handle right';
+        node.append(right);
+      }
+    }
+    node.addEventListener('pointerdown', (event) => {
+      const handle = event.target.closest('.gap-handle');
+      if (event.button === 0 && !handle) {
+        beginGapMoveDrag(event, index, event.ctrlKey || event.metaKey ? 'copy' : 'move');
+        return;
+      }
+      if (!handle || event.altKey || event.ctrlKey || event.metaKey) return;
+      beginGapBoundaryDrag(
+        event,
+        index,
+        handle.classList.contains('left') ? 'start' : 'end',
+      );
+    });
+    node.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (Date.now() < suppressGapClickUntil) return;
+      if (event.altKey) {
+        const current = visibleGapEntries()[index];
+        if (!current) return;
+        const next = applyGapRange(removedGaps, current.start, current.end, current.removed === false);
+        commitGapRanges(
+          next,
+          current.removed === false ? '已人工移除 gap' : '已人工恢复 gap',
+          [{start: current.start, end: current.end, removed: current.removed === false}],
+        );
+        return;
+      }
+      const time = timelineTimeFromEvent(event);
+      previewGapAt(time);
+      seekTimeline(time);
+    });
+    node.addEventListener('dblclick', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    node.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      showGapContextMenu(event.clientX, event.clientY, index);
+    });
+    return node;
+  }
+
+  function appendGapEntries(root, gaps, {preview = false, labelText = ''} = {}) {
+    gaps.forEach((gap, index) => {
+      for (const piece of timelineRangePieces(gap.start, gap.end)) {
+        root.append(appendGapPiece(root, gap, index, piece, {preview, labelText}));
+      }
+    });
+  }
+
   function renderGaps() {
     const root = $('#gap-overlay');
     root.replaceChildren();
-    for (const gap of removedGaps.filter((item) => item.removed !== false)) {
-      for (const piece of timelineRangePieces(gap.start, gap.end)) {
-        const node = document.createElement('div');
-        node.className = 'gap-range';
-        node.style.left = `${piece.left}px`;
-        node.style.width = `${piece.width}px`;
-        if (isMultiWaveform()) {
-          node.style.top = `${piece.top}px`;
-          node.style.bottom = 'auto';
-          node.style.height = `${piece.height}px`;
-        }
-        node.title = `移除空隙 ${formatTime(gap.start)}–${formatTime(gap.end)}`;
-        root.append(node);
-      }
+    appendGapEntries(root, visibleGapEntries());
+  }
+
+  function clearGapDragPreview() {
+    const root = $('#gap-overlay');
+    root?.querySelectorAll('.gap-range-preview').forEach((node) => node.remove());
+    root?.querySelectorAll('.gap-range.hidden-source').forEach((node) => node.classList.remove('hidden-source'));
+  }
+
+  function renderGapMovePreview(drag) {
+    clearGapDragPreview();
+    if (!drag.moved || !drag.targetGap) return;
+    if (drag.mode === 'move') {
+      document.querySelectorAll(`#gap-overlay .gap-range[data-gap-index="${drag.index}"]`)
+        .forEach((node) => node.classList.add('hidden-source'));
     }
+    appendGapEntries($('#gap-overlay'), [drag.targetGap], {
+      preview: true,
+      labelText: drag.mode === 'copy' ? '复制' : '移动',
+    });
+  }
+
+  function renderGapBoundaryPreview(drag) {
+    clearGapDragPreview();
+    document.querySelectorAll('#gap-overlay .gap-range:not(.gap-range-preview)')
+      .forEach((node) => node.classList.add('hidden-source'));
+    appendGapEntries($('#gap-overlay'), drag.nextGaps, {preview: true, labelText: '边界预览'});
+  }
+
+  function renderGapRangePreview(drag) {
+    clearGapDragPreview();
+    const start = Math.min(drag.startMs, drag.endMs);
+    const end = Math.max(drag.startMs, drag.endMs);
+    if (end <= start) {
+      const point = Math.max(0, Math.min(timelineDurationMs(), start));
+      appendGapEntries($('#gap-overlay'), [{start: point, end: Math.min(timelineDurationMs(), point + 1), removed: drag.removed}], {
+        preview: true,
+        labelText: drag.removed ? '增加静音' : '恢复声音',
+      });
+      return;
+    }
+    appendGapEntries($('#gap-overlay'), [{start, end, removed: drag.removed}], {
+      preview: true,
+      labelText: drag.removed ? '增加静音' : '恢复声音',
+    });
+  }
+
+  function scheduleGapPreview(kind, drag) {
+    if (gapPreviewFrameId) return;
+    gapPreviewFrameId = requestAnimationFrame(() => {
+      gapPreviewFrameId = 0;
+      if (kind === 'move' && gapMoveDrag === drag) renderGapMovePreview(drag);
+      if (kind === 'boundary' && gapBoundaryDrag === drag) renderGapBoundaryPreview(drag);
+      if (kind === 'range' && gapRangeDrag === drag) renderGapRangePreview(drag);
+    });
+  }
+
+  function beginGapMoveDrag(event, index, mode) {
+    if (event.button !== 0 || !['move', 'copy'].includes(mode)) return;
+    const gaps = visibleGapEntries();
+    const original = gaps[index];
+    if (!original) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const captureTarget = event.currentTarget;
+    gapMoveDrag = {
+      pointerId: event.pointerId,
+      index,
+      mode,
+      captureTarget,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startPointerMs: timelineTimeFromEvent(event),
+      originalGaps: gaps,
+      targetGap: {...original},
+      nextGaps: gaps,
+      deltaMs: 0,
+      moved: false,
+      changed: false,
+    };
+    captureTarget.classList.add('dragging');
+    captureTarget.setPointerCapture?.(event.pointerId);
+    window.addEventListener('pointermove', gapMoveDrag.onMove = (moveEvent) => {
+      if (!gapMoveDrag || moveEvent.pointerId !== gapMoveDrag.pointerId) return;
+      moveEvent.preventDefault();
+      const dx = moveEvent.clientX - gapMoveDrag.startClientX;
+      const dy = moveEvent.clientY - gapMoveDrag.startClientY;
+      if (dx * dx + dy * dy >= 9) gapMoveDrag.moved = true;
+      const pointerMs = timelineTimeFromEvent(moveEvent);
+      const originalGap = gapMoveDrag.originalGaps[gapMoveDrag.index];
+      const length = Math.max(1, originalGap.end - originalGap.start);
+      const maxStart = Math.max(0, timelineDurationMs() - length);
+      const start = Math.min(
+        maxStart,
+        Math.max(0, originalGap.start + Math.round(pointerMs - gapMoveDrag.startPointerMs)),
+      );
+      gapMoveDrag.targetGap = {...originalGap, start, end: start + length};
+      gapMoveDrag.deltaMs = start - originalGap.start;
+      gapMoveDrag.nextGaps = translateGapRange(
+        gapMoveDrag.originalGaps,
+        gapMoveDrag.index,
+        gapMoveDrag.deltaMs,
+        gapMoveDrag.mode === 'copy',
+      );
+      gapMoveDrag.changed = JSON.stringify(gapMoveDrag.nextGaps) !== JSON.stringify(gapMoveDrag.originalGaps);
+      scheduleGapPreview('move', gapMoveDrag);
+    });
+    window.addEventListener('pointerup', gapMoveDrag.onEnd = (upEvent) => endGapMoveDrag(upEvent), {once: true});
+    window.addEventListener('pointercancel', gapMoveDrag.onEnd);
+  }
+
+  function endGapMoveDrag(event) {
+    const drag = gapMoveDrag;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    window.removeEventListener('pointermove', drag.onMove);
+    window.removeEventListener('pointerup', drag.onEnd);
+    window.removeEventListener('pointercancel', drag.onEnd);
+    try { drag.captureTarget.releasePointerCapture?.(event.pointerId); } catch (_) {}
+    drag.captureTarget.classList.remove('dragging');
+    clearGapDragPreview();
+    gapMoveDrag = null;
+    if (event.type === 'pointercancel' || !drag.moved || !drag.changed) {
+      renderGaps();
+      return;
+    }
+    suppressGapClickUntil = Date.now() + 250;
+    const original = drag.originalGaps[drag.index];
+    if (drag.mode === 'move') {
+      const result = moveGapRemoveProvenance(
+        gapRemoveConfig?.provenance,
+        drag.originalGaps,
+        drag.index,
+        drag.deltaMs,
+        timelineDurationMs(),
+        removedGaps,
+      );
+      if (!result?.changed) {
+        renderGaps();
+        return;
+      }
+      commitGapProvenance(result.provenance, '已移动 gap');
+      return;
+    }
+    const overrides = [{
+      start: drag.targetGap.start,
+      end: drag.targetGap.end,
+      removed: original.removed !== false,
+    }];
+    commitGapRanges(
+      drag.nextGaps,
+      '已复制并移动 gap',
+      overrides,
+    );
+  }
+
+  function beginGapBoundaryDrag(event, index, edge) {
+    if (event.button !== 0 || !gapOperationAllowsBoundary()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const gaps = visibleGapEntries();
+    if (!gaps[index]) return;
+    const captureTarget = event.currentTarget;
+    gapBoundaryDrag = {
+      pointerId: event.pointerId,
+      index,
+      edge,
+      captureTarget,
+      originalGaps: gaps,
+      nextGaps: gaps,
+      valueMs: 0,
+      changed: false,
+    };
+    captureTarget.classList.add('dragging');
+    captureTarget.setPointerCapture?.(event.pointerId);
+    window.addEventListener('pointermove', gapBoundaryDrag.onMove = (moveEvent) => {
+      if (!gapBoundaryDrag || moveEvent.pointerId !== gapBoundaryDrag.pointerId) return;
+      moveEvent.preventDefault();
+      gapBoundaryDrag.valueMs = Math.max(0, Math.min(timelineDurationMs(), Math.round(timelineTimeFromEvent(moveEvent))));
+      gapBoundaryDrag.nextGaps = resizeGapBoundary(
+        gapBoundaryDrag.originalGaps,
+        gapBoundaryDrag.index,
+        gapBoundaryDrag.edge,
+        gapBoundaryDrag.valueMs,
+      );
+      gapBoundaryDrag.changed = JSON.stringify(gapBoundaryDrag.nextGaps) !== JSON.stringify(gapBoundaryDrag.originalGaps);
+      scheduleGapPreview('boundary', gapBoundaryDrag);
+    });
+    window.addEventListener('pointerup', gapBoundaryDrag.onEnd = (upEvent) => endGapBoundaryDrag(upEvent), {once: true});
+    window.addEventListener('pointercancel', gapBoundaryDrag.onEnd);
+  }
+
+  function endGapBoundaryDrag(event) {
+    const drag = gapBoundaryDrag;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    window.removeEventListener('pointermove', drag.onMove);
+    window.removeEventListener('pointerup', drag.onEnd);
+    window.removeEventListener('pointercancel', drag.onEnd);
+    try { drag.captureTarget.releasePointerCapture?.(event.pointerId); } catch (_) {}
+    drag.captureTarget.classList.remove('dragging');
+    clearGapDragPreview();
+    gapBoundaryDrag = null;
+    if (event.type === 'pointercancel' || !drag.changed) {
+      renderGaps();
+      return;
+    }
+    suppressGapClickUntil = Date.now() + 250;
+    const result = resizeGapRemoveProvenanceBoundary(
+      gapRemoveConfig?.provenance,
+      drag.originalGaps,
+      drag.index,
+      drag.edge,
+      drag.valueMs,
+      removedGaps,
+    );
+    if (!result?.changed) {
+      renderGaps();
+      return;
+    }
+    commitGapProvenance(result.provenance, '已人工调整 gap 边界');
+  }
+
+  function beginGapRangeDrag(event, {removed = !event.altKey} = {}) {
+    if (event.button !== 0 && event.button !== 1) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const captureTarget = event.currentTarget;
+    const startMs = Math.max(0, Math.min(timelineDurationMs(), Math.round(timelineTimeFromEvent(event))));
+    gapRangeDrag = {
+      pointerId: event.pointerId,
+      captureTarget,
+      startMs,
+      endMs: startMs,
+      removed,
+      pointAdd: event.button === 0 && event.altKey,
+    };
+    renderGapRangePreview(gapRangeDrag);
+    captureTarget.setPointerCapture?.(event.pointerId);
+    window.addEventListener('pointermove', gapRangeDrag.onMove = (moveEvent) => {
+      if (!gapRangeDrag || moveEvent.pointerId !== gapRangeDrag.pointerId) return;
+      moveEvent.preventDefault();
+      gapRangeDrag.endMs = Math.max(0, Math.min(timelineDurationMs(), Math.round(timelineTimeFromEvent(moveEvent))));
+      scheduleGapPreview('range', gapRangeDrag);
+    });
+    window.addEventListener('pointerup', gapRangeDrag.onEnd = (upEvent) => endGapRangeDrag(upEvent), {once: true});
+    window.addEventListener('pointercancel', gapRangeDrag.onEnd);
+  }
+
+  function endGapRangeDrag(event) {
+    const drag = gapRangeDrag;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    window.removeEventListener('pointermove', drag.onMove);
+    window.removeEventListener('pointerup', drag.onEnd);
+    window.removeEventListener('pointercancel', drag.onEnd);
+    try { drag.captureTarget.releasePointerCapture?.(event.pointerId); } catch (_) {}
+    clearGapDragPreview();
+    gapRangeDrag = null;
+    if (event.type === 'pointercancel') return;
+    const start = Math.min(drag.startMs, drag.endMs);
+    const end = Math.max(drag.startMs, drag.endMs);
+    if (end - start < MIN_GAP_RANGE_MS) {
+      renderGaps();
+      if (drag.pointAdd) addGapAtTimelineTime(drag.startMs);
+      return;
+    }
+    suppressGapClickUntil = Date.now() + 250;
+    const next = applyGapRange(removedGaps, start, end, drag.removed);
+    commitGapRanges(
+      next,
+      drag.removed ? '已人工移除所选范围' : '已人工恢复所选范围',
+      [{start, end, removed: drag.removed}],
+    );
   }
 
   function renderLines() {
@@ -1331,10 +2107,11 @@
       text.textContent = line.text;
       const selected = map.get(selectedByLine[line.id]);
       const selectedManuallyEnabled = isCandidateManuallyEnabled(selected);
+      const selectedManuallyDisabled = isCandidateManuallyDisabled(selected);
       const lineState = document.createElement('span');
-      lineState.className = `line-state ${selected?.status === 'match' ? 'match' : selectedManuallyEnabled ? 'manual' : selected ? 'incomplete' : 'missing'}`;
+      lineState.className = `line-state ${selected?.status === 'match' ? selectedManuallyDisabled ? 'manual-disabled' : 'match' : selectedManuallyEnabled ? 'manual' : selected ? 'incomplete' : 'missing'}`;
       lineState.textContent = selected?.status === 'match'
-        ? 'match · 保留'
+        ? selectedManuallyDisabled ? 'match · 手动禁用' : 'match · 保留'
         : selectedManuallyEnabled ? 'incomplete · 手动启用' : selected ? 'incomplete · 自动禁用' : 'missing-script';
       header.append(number, text, lineState);
       card.append(header);
@@ -1351,12 +2128,13 @@
         const isSelected = selectedByLine[line.id] === candidate.id;
         const localAlternative = isLocalAlternative(line.id, candidate);
         const manuallyEnabled = isSelected && isCandidateManuallyEnabled(candidate);
+        const manuallyDisabled = isSelected && isCandidateManuallyDisabled(candidate);
         const row = document.createElement('div');
-        row.className = `candidate ${isSelected ? 'selected' : ''} ${candidate.status === 'incomplete' ? 'incomplete' : ''} ${manuallyEnabled ? 'manual-enabled' : ''}`;
+        row.className = `candidate ${isSelected ? 'selected' : ''} ${candidate.status === 'incomplete' ? 'incomplete' : ''} ${manuallyEnabled ? 'manual-enabled' : ''} ${manuallyDisabled ? 'manual-disabled' : ''}`;
         const select = document.createElement('button');
         select.type = 'button';
         select.textContent = isSelected
-          ? (candidate.status === 'match' ? '已采用' : manuallyEnabled ? '已手动启用' : '已选但禁用')
+          ? (candidate.status === 'match' ? manuallyDisabled ? '已手动禁用' : '已采用' : manuallyEnabled ? '已手动启用' : '已选但禁用')
           : '采用此 take';
         select.addEventListener('click', () => chooseCandidate(line.id, candidate.id));
         const body = document.createElement('div');
@@ -1382,6 +2160,16 @@
             : '选择此 take，并覆盖 incomplete 的自动禁用';
           enable.addEventListener('click', () => toggleCandidateEnabled(line.id, candidate.id));
         }
+        const disable = candidate.status === 'match' && isSelected ? document.createElement('button') : null;
+        if (disable) {
+          disable.type = 'button';
+          disable.className = manuallyDisabled ? 'active' : '';
+          disable.textContent = manuallyDisabled ? '取消手动禁用' : '手动禁用';
+          disable.title = manuallyDisabled
+            ? '恢复此 take 的保留状态'
+            : '手动禁用此 take；文稿行仍保留，但该片段会转为移除空隙';
+          disable.addEventListener('click', () => toggleCandidateDisabled(line.id, candidate.id));
+        }
         const play = document.createElement('button');
         play.type = 'button';
         play.className = 'play';
@@ -1389,6 +2177,7 @@
         play.addEventListener('click', () => playRange(candidate.start, candidate.end));
         row.append(select, body, badge);
         if (enable) row.append(enable);
+        if (disable) row.append(disable);
         row.append(play);
         list.append(row);
       });
@@ -1466,9 +2255,9 @@
     scriptText.textContent = line.text;
     const lineState = document.createElement('span');
     lineState.className = 'line-state '
-      + (selected?.status === 'match' ? 'match' : selectedManuallyEnabled ? 'manual' : selected ? 'incomplete' : 'missing');
+      + (selected?.status === 'match' ? isCandidateManuallyDisabled(selected) ? 'manual-disabled' : 'match' : selectedManuallyEnabled ? 'manual' : selected ? 'incomplete' : 'missing');
     lineState.textContent = selected?.status === 'match'
-      ? 'match · 保留'
+      ? isCandidateManuallyDisabled(selected) ? 'match · 手动禁用' : 'match · 保留'
       : selectedManuallyEnabled ? 'incomplete · 手动启用' : selected ? 'incomplete · 自动禁用' : 'missing-script';
     header.append(number, scriptText, lineState);
 
@@ -1478,11 +2267,13 @@
       const isSelected = selectedByLine[line.id] === candidate.id;
       const localAlternative = isLocalAlternative(line.id, candidate);
       const manuallyEnabled = isSelected && isCandidateManuallyEnabled(candidate);
+      const manuallyDisabled = isSelected && isCandidateManuallyDisabled(candidate);
       const row = document.createElement('div');
       const rowClasses = ['candidate', 'recording-entry'];
       if (isSelected) rowClasses.push('selected');
       if (candidate.status === 'incomplete') rowClasses.push('incomplete');
       if (manuallyEnabled) rowClasses.push('manual-enabled');
+      if (manuallyDisabled) rowClasses.push('manual-disabled');
       row.className = rowClasses.join(' ');
       row.dataset.lineId = line.id;
       row.dataset.candidateId = candidate.id;
@@ -1490,7 +2281,7 @@
       const select = document.createElement('button');
       select.type = 'button';
       select.textContent = isSelected
-        ? (candidate.status === 'match' ? '已采用' : manuallyEnabled ? '已手动启用' : '已选但禁用')
+        ? (candidate.status === 'match' ? manuallyDisabled ? '已手动禁用' : '已采用' : manuallyEnabled ? '已手动启用' : '已选但禁用')
         : '采用此 take';
       select.addEventListener('click', () => chooseCandidate(line.id, candidate.id));
 
@@ -1524,6 +2315,17 @@
         enable.addEventListener('click', () => toggleCandidateEnabled(line.id, candidate.id));
       }
 
+      const disable = candidate.status === 'match' && isSelected ? document.createElement('button') : null;
+      if (disable) {
+        disable.type = 'button';
+        disable.className = manuallyDisabled ? 'active' : '';
+        disable.textContent = manuallyDisabled ? '取消手动禁用' : '手动禁用';
+        disable.title = manuallyDisabled
+          ? '恢复此 take 的保留状态'
+          : '手动禁用此 take；文稿行仍保留，但该片段会转为移除空隙';
+        disable.addEventListener('click', () => toggleCandidateDisabled(line.id, candidate.id));
+      }
+
       const play = document.createElement('button');
       play.type = 'button';
       play.className = 'play';
@@ -1531,6 +2333,7 @@
       play.addEventListener('click', () => playRange(candidate.start, candidate.end));
       row.append(select, body, badge);
       if (enable) row.append(enable);
+      if (disable) row.append(disable);
       row.append(play);
       candidateList.append(row);
     });
@@ -1688,6 +2491,22 @@
     refreshPreview();
   }
 
+  function toggleCandidateDisabled(lineId, candidateId) {
+    const candidate = candidateMap().get(candidateId);
+    if (
+      !candidate
+      || candidate.status !== 'match'
+      || selectedByLine[lineId] !== candidateId
+    ) return;
+    if (isCandidateManuallyDisabled(candidate)) {
+      delete candidateActions[candidateId];
+    } else {
+      candidateActions[candidateId] = 'discard';
+    }
+    render();
+    refreshPreview();
+  }
+
   function chooseCandidate(lineId, candidateId) {
     // 每个文稿行只有一个有效 take；更新选择即自动将同组 alternative 静音。
     const previousCandidateId = selectedByLine[lineId];
@@ -1818,12 +2637,14 @@
     const player = $('#media-player');
     activeRangeEndMs = 0;
     auditioningRange = false;
+    const targetTime = Math.max(0, Math.min(timelineDurationMs(), Number(timeMs) || 0));
+    previewGapAt(targetTime);
     if (!player) {
       $('#status').className = 'status warn';
       $('#status').textContent = '当前没有可播放媒体，无法定位播放';
       return;
     }
-    player.currentTime = Math.max(0, Number(timeMs) || 0) / 1000;
+    player.currentTime = targetTime / 1000;
     updateTimelinePlayhead();
   }
 
@@ -1889,7 +2710,21 @@
       if (!timelineDrag) $('#waveform-pointer').hidden = true;
     });
     stage.addEventListener('pointerdown', (event) => {
+      if (event.button === 1) {
+        if (gapOperationAllowsMiddle()) beginGapRangeDrag(event, {removed: !event.altKey});
+        return;
+      }
       if (event.button !== 0) return;
+      if (
+        event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        !event.target.closest?.('.take-range, .gap-range')
+      ) {
+        beginGapRangeDrag(event, {removed: true});
+        return;
+      }
       event.preventDefault();
       timelineDrag = {pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, moved: false};
       stage.setPointerCapture?.(event.pointerId);
@@ -1902,6 +2737,20 @@
       timelineDrag = null;
     });
     stage.addEventListener('pointercancel', () => { timelineDrag = null; });
+    stage.addEventListener('auxclick', (event) => {
+      if (event.button === 1 && gapOperationAllowsMiddle()) event.preventDefault();
+    });
+    stage.addEventListener('contextmenu', (event) => {
+      if (event.target.closest?.('.take-range, .gap-range')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      showGapContextMenu(
+        event.clientX,
+        event.clientY,
+        null,
+        timelineTimeFromEvent(event),
+      );
+    });
     stage.addEventListener('dblclick', (event) => {
       event.preventDefault();
       seekTimeline(timelineTimeFromEvent(event));
@@ -2024,10 +2873,12 @@
     const status = $('#status');
     status.textContent = '正在生成对齐 mosp……';
     try {
+      const body = {selectedByLine, candidateActions, extraActions};
+      if (gapRemoveDirty) body.gapRemove = gapRemovePayload();
       const response = await fetch('/api/export', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({selectedByLine, candidateActions, extraActions}),
+        body: JSON.stringify(body),
       });
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || '导出失败');
@@ -2092,7 +2943,34 @@
   updateWaveformModeControls();
   $('#reset').addEventListener('click', () => setPath(alignment.defaultPathId, {preserveActions: false}));
   $('#export').addEventListener('click', exportProject);
+  $('#skip-gap-playback').addEventListener('change', (event) => {
+    gapRemoveDirty = true;
+    gapRemoveConfig = {
+      ...(gapRemoveConfig || {}),
+      skip_playback: event.target.checked,
+    };
+    if (!event.target.checked) gapPreviewRange = null;
+    updateTimelinePlayhead();
+  });
+  $('#gap-operation-mode').addEventListener('change', (event) => {
+    const next = normalizeGapOperationMode(event.target.value);
+    if (next === gapOperationMode) return;
+    gapOperationMode = next;
+    gapRemoveConfig = {
+      ...(gapRemoveConfig || {}),
+      operation_mode: next,
+    };
+    gapRemoveDirty = true;
+    render();
+  });
   $('#follow-playhead').addEventListener('change', updateTimelinePlayhead);
+  document.addEventListener('pointerdown', (event) => {
+    const menu = $('#gap-context-menu');
+    if (menu && !menu.contains(event.target)) hideGapContextMenu();
+  }, true);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') hideGapContextMenu();
+  });
   document.addEventListener('click', releasePlaybackFocus, true);
   document.addEventListener('keydown', handleSpacebar);
   init().catch((error) => { $('#meta').textContent = `加载失败：${error.message}`; });

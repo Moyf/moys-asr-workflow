@@ -219,6 +219,8 @@
     '符合条件的字幕已全部禁用': 'All matching subtitles are already disabled', '没有符合条件的字幕': 'No subtitles match the rules',
     '前端预留': 'Lead-in padding', '后端预留': 'Lead-out padding', '滞回': 'Hysteresis', '收缩空隙': 'Shrink gaps', '按当前前后预留收缩现有空隙': 'Shrink existing gaps by the current lead-in and lead-out padding',
     '扫描并移除': 'Scan and remove',
+    '重新生成静音区域': 'Regenerate silence ranges',
+    '只替换静音检测结果，保留对齐和手工调整': 'Replace only audio-gate results; preserve alignment and manual adjustments',
     '根据当前参数重新分析整段波形': 'Analyze the full waveform with these settings',
     '尚未扫描空隙。': 'Gaps have not been scanned.',
     '尚未找到符合门限的音量空隙。': 'No volume gaps matched the current thresholds.',
