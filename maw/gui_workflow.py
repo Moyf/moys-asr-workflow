@@ -197,6 +197,8 @@ def default_srt_path(
             tag = ".qwen3-asr-1.7b-local"
         elif "moss" in local_model:
             tag = ".moss-local"
+        elif "whisper" in local_model:
+            tag = ".whisper-local"
         else:
             tag = ".qwen-asr-local"
     else:

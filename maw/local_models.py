@@ -33,6 +33,7 @@ _ESTIMATED_CACHE_GIB: dict[str, tuple[float, float]] = {
     "qwen3-asr-1.7b-local": (5.0, 9.0),
     "funasr-local": (2.0, 4.0),
     "moss-transcribe-diarize-local": (3.0, 6.0),
+    "whisper-large-v3-local": (2.5, 4.0),
 }
 
 
@@ -435,7 +436,7 @@ def _model_watch_paths(
 ) -> list[Path]:
     explicit = _normalise_directory(model_path)
     paths: list[Path] = [explicit] if explicit is not None else []
-    if model.engine in {"qwen-asr", "qwen", "qwen3-asr", "moss"}:
+    if model.engine in {"qwen-asr", "qwen", "qwen3-asr", "moss", "whisper"}:
         for ref in (model.model_ref, *model.required_model_refs):
             paths.extend(_huggingface_repo_paths(ref, model_cache_root))
     elif model.engine in {"funasr", "fun-asr"}:
@@ -523,14 +524,23 @@ def _normalise_directory(value: str | Path) -> Path | None:
 def _explicit_path_mismatch(model: ModelConfig, path: Path) -> str:
     """Reject an obvious model-family mix-up without blocking custom folders."""
     value = str(path).casefold().replace("_", "-")
-    if model.engine in {"qwen-asr", "qwen", "qwen3-asr", "moss"}:
+    if model.engine in {"qwen-asr", "qwen", "qwen3-asr", "moss", "whisper"}:
         if "funasr" in value or "paraformer" in value:
             return "当前目录看起来属于 FunASR / Paraformer，不是当前模型。"
         if model.engine == "moss" and ("qwen3-asr" in value or "forcedaligner" in value or "forced-aligner" in value):
             return "当前目录看起来属于 Qwen3-ASR，不是 MOSS。"
+        if model.engine == "whisper" and (
+            "qwen3-asr" in value
+            or "forcedaligner" in value
+            or "forced-aligner" in value
+            or "transcribe-diarize" in value
+        ):
+            return "当前目录看起来属于 Qwen3-ASR 或 MOSS，不是 Faster-Whisper。"
     if model.engine in {"funasr", "fun-asr"}:
         if "qwen3-asr" in value or "forcedaligner" in value or "forced-aligner" in value:
             return "当前目录看起来属于 Qwen3-ASR，不是 FunASR / Paraformer。"
+        if "faster-whisper" in value or "faster_whisper" in value:
+            return "当前目录看起来属于 Faster-Whisper，不是 FunASR / Paraformer。"
     return ""
 
 
@@ -538,7 +548,7 @@ def _find_model_paths(
     model: ModelConfig,
     model_cache_root: str | Path | None = None,
 ) -> tuple[Path, list[str]] | None:
-    if model.engine in {"qwen-asr", "qwen", "qwen3-asr", "moss"}:
+    if model.engine in {"qwen-asr", "qwen", "qwen3-asr", "moss", "whisper"}:
         main = _find_huggingface_model(model.model_ref, model_cache_root)
         if main is None:
             return None

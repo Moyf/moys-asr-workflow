@@ -2,7 +2,7 @@
 
 The optional model packages are deliberately imported inside the adapters.  The
 cloud-only MAW installation therefore remains importable and testable without
-Torch, QwenASR, or FunASR installed.
+Torch, QwenASR, FunASR, or faster-whisper installed.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from __future__ import annotations
 import inspect
 import json
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -48,6 +49,15 @@ MOSS_DEFAULT_MODEL = "OpenMOSS-Team/MOSS-Transcribe-Diarize"
 MOSS_DEFAULT_REVISION = "e8681d68e7042738ffca8ac8212bc8fcb1131ab8"
 MOSS_MAX_NEW_TOKENS = 65_536
 MOSS_MAX_AUDIO_SECONDS = 90 * 60
+WHISPER_DEFAULT_MODEL = "large-v3"
+WHISPER_DEFAULT_VAD_MIN_SILENCE_MS = 500
+
+# faster-whisper 返回 ISO 语言码；空格分隔语言需要词间保留单个前导空格，
+# 与 Qwen 路径的英文处理（_QWEN_SPACE_SEPARATED_LANGUAGES）语义一致。
+_WHISPER_SPACE_SEPARATED_LANGUAGES = frozenset({
+    "ar", "cs", "da", "nl", "en", "fi", "fr", "de", "el", "hi", "hu", "id",
+    "it", "ms", "mk", "fa", "pl", "pt", "ro", "ru", "es", "sv", "th", "tr", "vi",
+})
 
 
 def _missing_moss_dependency(cause: ImportError) -> MissingLocalDependency:
@@ -123,7 +133,10 @@ def _missing_dependency(
 ) -> MissingLocalDependency:
     actual = str(getattr(cause, "name", "") or "").strip()
     if actual:
-        package = {"qwen_asr": "qwen-asr"}.get(actual, actual)
+        package = {
+            "qwen_asr": "qwen-asr",
+            "faster_whisper": "faster-whisper",
+        }.get(actual, actual)
     return MissingLocalDependency(
         f"缺少本地模型依赖 {package}；请先运行 `uv sync --extra {extra}`。"
     )
@@ -931,6 +944,121 @@ class MossDiarizeEngine:
         return LocalTranscription(str(result.get("text") or ""), language_value, items, segments, self.model)
 
 
+class WhisperEngine:
+    """Lazy faster-whisper (CTranslate2) adapter.
+
+    faster-whisper 自带 Silero VAD、30 秒滑窗与 word-level timestamps，
+    长音频由上游内部处理，不需要 MAW 的 FFmpeg 分块。词级时间戳以
+    浮点秒返回，统一归一化为 MAW 要求的整数毫秒 items；句段拆分交给
+    共享的 ``split_segments_auto``（与 Qwen Forced Aligner 路径一致）。
+    """
+
+    def __init__(
+        self,
+        model: str = WHISPER_DEFAULT_MODEL,
+        *,
+        model_path: str | Path | None = None,
+        device: str = "auto",
+    ) -> None:
+        self.model = model
+        self.model_path = str(model_path) if model_path else model
+        self.device = device
+        self._runtime: Any = None
+
+    def _load(self, on_event: ProgressCallback | None = None) -> Any:
+        if self._runtime is not None:
+            return self._runtime
+        try:
+            from faster_whisper import WhisperModel  # type: ignore[import-not-found]
+        except ImportError as error:
+            raise _missing_dependency("faster-whisper", cause=error) from error
+
+        resolved_device = resolve_device(self.device)
+        compute_type = "float16" if resolved_device == "cuda" else "int8"
+        if on_event:
+            on_event(
+                f"[local] loading faster-whisper: {self.model_path}"
+                f" ({resolved_device}, compute_type={compute_type})"
+            )
+        kwargs: dict[str, Any] = {
+            "device": resolved_device,
+            "compute_type": compute_type,
+        }
+        # 仅当按模型 ID（HF Hub）加载时才应用统一的模型缓存根目录；
+        # 显式本地目录是已转换好的 CTranslate2 工程，不涉及下载。
+        cache_root = os.environ.get("MAW_MODEL_CACHE_ROOT", "").strip()
+        if cache_root and not Path(self.model_path).is_dir():
+            kwargs["download_root"] = cache_root
+        try:
+            self._runtime = WhisperModel(self.model_path, **kwargs)
+        except (TypeError, ValueError, RuntimeError) as error:
+            raise LocalAsrError(f"faster-whisper 模型加载失败: {error}") from error
+        if on_event:
+            on_event("[local] faster-whisper loaded")
+        return self._runtime
+
+    def transcribe(
+        self,
+        audio_path: Path,
+        *,
+        language: str | None = None,
+        batch_size_s: int = 300,
+        hotwords: Sequence[str] = (),
+        on_event: ProgressCallback | None = None,
+    ) -> LocalTranscription:
+        del batch_size_s  # 上游自行处理长音频，MAW 无需再分块
+        runtime = self._load(on_event)
+        if on_event:
+            on_event(f"[local] transcribing: {audio_path.name}")
+        kwargs: dict[str, Any] = {
+            "word_timestamps": True,
+            "vad_filter": True,
+            # 关闭跨段上下文：长音频中一句幻觉会被后续段落持续放大。
+            "condition_on_previous_text": False,
+            "vad_parameters": {
+                "min_silence_duration_ms": WHISPER_DEFAULT_VAD_MIN_SILENCE_MS,
+            },
+        }
+        if language:
+            kwargs["language"] = language
+        if hotwords:
+            kwargs["hotwords"] = " ".join(hotwords)
+
+        raw_segments, info = runtime.transcribe(str(audio_path), **kwargs)
+        language_value = _as_text(_read_field(info, "language"))
+        uses_spaces = language_value.lower() in _WHISPER_SPACE_SEPARATED_LANGUAGES
+        items: list[dict[str, Any]] = []
+        texts: list[str] = []
+        # ``transcribe`` 返回生成器，迭代到 segment 时才真正执行推理。
+        for segment in raw_segments:
+            added_before = len(items)
+            words = _read_field(segment, "words") or []
+            for word in words:
+                word_text = _as_text(_read_field(word, "word"))
+                if not word_text.strip():
+                    continue
+                start = _as_seconds_ms(_read_field(word, "start"))
+                end = _as_seconds_ms(_read_field(word, "end"))
+                if end <= start:
+                    continue
+                if uses_spaces and items and not word_text.startswith(" "):
+                    word_text = f" {word_text}"
+                items.append(_item(word_text, start, end))
+            start_ms = _as_seconds_ms(_read_field(segment, "start"))
+            end_ms = _as_seconds_ms(_read_field(segment, "end"))
+            text_value = _as_text(_read_field(segment, "text")).strip()
+            if len(items) == added_before and text_value and end_ms > start_ms:
+                # 带 VAD 的常规输出不会走到这里：仅在某句拿不到可用词级
+                # 时间戳时保留句级字幕，不伪造字词边界。
+                items.append(_item(text_value, start_ms, end_ms))
+            if text_value:
+                texts.append(text_value.strip())
+        if on_event:
+            on_event(f"[local] detected language: {language_value or 'unknown'}")
+        text = (" ".join(texts) if uses_spaces else "".join(texts)).strip()
+        return LocalTranscription(text, language_value, items, [], self.model)
+
+
 def create_local_engine(
     engine: str,
     *,
@@ -969,7 +1097,13 @@ def create_local_engine(
             model_path=model_path,
             device=device,
         )
-    raise ValueError("engine must be one of: qwen-asr, funasr, moss")
+    if normalized == "whisper":
+        return WhisperEngine(
+            model or WHISPER_DEFAULT_MODEL,
+            model_path=model_path,
+            device=device,
+        )
+    raise ValueError("engine must be one of: qwen-asr, funasr, moss, whisper")
 
 
 _LOCAL_TAIL_PUNCT = "，。"
@@ -1225,6 +1359,8 @@ __all__ = [
     "MOSS_DEFAULT_REVISION",
     "MOSS_MAX_NEW_TOKENS",
     "MOSS_MAX_AUDIO_SECONDS",
+    "WHISPER_DEFAULT_MODEL",
+    "WHISPER_DEFAULT_VAD_MIN_SILENCE_MS",
     "LocalAsrEngine",
     "LocalAsrError",
     "LocalOutputPaths",
@@ -1237,6 +1373,7 @@ __all__ = [
     "FunAsrEngine",
     "MossDiarizeEngine",
     "QwenAsrEngine",
+    "WhisperEngine",
     "build_local_segments",
     "create_local_engine",
     "funasr_output_to_transcription",
