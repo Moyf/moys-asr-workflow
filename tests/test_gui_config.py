@@ -277,6 +277,7 @@ class GuiConfigTests(unittest.TestCase):
                 "funasr-local",
                 "sensevoice-small-local",
                 "moss-transcribe-diarize-local",
+                "whisper-large-v3-local",
             ],
         )
         self.assertEqual(
@@ -288,6 +289,7 @@ class GuiConfigTests(unittest.TestCase):
                 "FunASR paraformer-zh",
                 "SenseVoice Small",
                 "MOSS Transcribe-Diarize 0.9B",
+                "Faster-Whisper large-v3（实验）",
             ],
         )
         qwen06 = provider.models[0]
@@ -301,10 +303,15 @@ class GuiConfigTests(unittest.TestCase):
         sensevoice = provider.models[4]
         self.assertEqual(sensevoice.model_ref, "iic/SenseVoiceSmall")
         self.assertIn("funasr", sensevoice.requires_runtime)
-        moss = provider.models[-1]
+        moss = provider.models[-2]
         self.assertEqual(moss.engine, "moss")
         self.assertTrue(moss.supports_speaker)
         self.assertIn("transformers", moss.requires_runtime)
+        whisper = provider.models[-1]
+        self.assertEqual(whisper.engine, "whisper")
+        self.assertEqual(whisper.model_ref, "Systran/faster-whisper-large-v3")
+        self.assertIn("faster_whisper", whisper.requires_runtime)
+        self.assertFalse(whisper.supports_speaker)
         self.assertEqual(gui_config.api_key_for_provider("local"), "")
 
     def test_qwen_languages_single_select_with_auto_and_documented_28(self) -> None:
