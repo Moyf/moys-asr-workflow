@@ -689,6 +689,9 @@ def _huggingface_cache_roots(model_cache_root: str | Path | None = None) -> list
     managed_root = managed_runtime_status(model_cache_root).model_cache_path
     if managed_root:
         roots.append(Path(managed_root) / "huggingface" / "hub")
+        # 兼容直接落在缓存根本体的 hub 布局（faster-whisper 早期版本曾把
+        # download_root 指到裸根）：已下载的权重仍可被发现，无需重新下载。
+        roots.append(Path(managed_root))
     roots.append(Path.home() / ".cache" / "huggingface" / "hub")
     return _unique_paths(roots)
 

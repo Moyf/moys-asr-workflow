@@ -71,6 +71,24 @@ class LocalModelDiscoveryTests(unittest.TestCase):
         self.assertEqual(installed.status, "installed")
         self.assertEqual(Path(installed.path).resolve(), main.resolve())
 
+    def test_whisper_flat_managed_cache_layout_is_detected(self) -> None:
+        """download_root 曾被指向缓存根本体，models--* 仓库直接落在其下；
+        缓存发现必须兼容这种扁平布局，避免已下载的权重被判「未检测到」。"""
+        model = local_model("whisper-large-v3-local")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            managed_root = Path(temp_dir)
+            main = managed_root / "models--Systran--faster-whisper-large-v3" / "snapshots" / "main"
+            main.mkdir(parents=True)
+
+            with mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()):
+                missing = inspect_local_model(model, model_cache_root=managed_root)
+                (main / "model.bin").write_bytes(b"weights")
+                installed = inspect_local_model(model, model_cache_root=managed_root)
+
+        self.assertEqual(missing.status, "missing")
+        self.assertEqual(installed.status, "installed")
+        self.assertEqual(Path(installed.path).resolve(), main.resolve())
+
     def test_explicit_folder_is_used_without_persisting_it(self) -> None:
         model = local_model("funasr-local")
         with tempfile.TemporaryDirectory() as temp_dir:
