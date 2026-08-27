@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from maw.speaker import apply_speaker_colors
 from maw.tencent import build_tc3_headers, parse_result, poll_task, submit_task
 
 
@@ -65,6 +66,20 @@ class TencentProviderTests(unittest.TestCase):
         with mock.patch("maw.tencent._request", return_value={"Response": {"Data": None}}):
             with self.assertRaisesRegex(RuntimeError, "TaskId"):
                 submit_task("", config, "https://example.test/audio.wav")
+
+    def test_apply_speaker_colors_writes_snapshot_for_tencent_segments(self) -> None:
+        segments = [
+            {"start": 0, "end": 100, "text": "甲", "speaker": "1", "items": []},
+            {"start": 100, "end": 200, "text": "乙", "speaker": "2", "items": []},
+            {"start": 200, "end": 300, "text": "甲", "speaker": "1", "items": []},
+        ]
+
+        summary = apply_speaker_colors(segments)
+
+        self.assertEqual(summary["speakers"], ["1", "2"])
+        self.assertEqual(segments[0]["color"]["name"], "yellow")
+        self.assertEqual(segments[1]["color"]["name"], "green")
+        self.assertEqual(segments[2]["color"]["name"], "yellow")
 
     def test_poll_task_reads_success_from_response_data(self) -> None:
         config = {"poll_timeout": 1, "poll_interval": 1}

@@ -17,6 +17,7 @@ from generate_subtitle_qwen_api import (
 )
 from maw.media_cache import embed_media_caches, merge_media_caches
 from maw.project import repair_segment_durations, validate_project
+from maw.speaker import apply_speaker_colors
 from maw.tencent import DEFAULT_ENGINE, load_config, transcribe
 
 
@@ -30,7 +31,7 @@ def main() -> int:
     parser.add_argument("--keep-punct", action="store_true", help="保留字幕末尾标点")
     parser.add_argument("--gap-split", type=int, default=1500, help="静音切句阈值（毫秒）")
     parser.add_argument("--speaker", action="store_true", help="请求腾讯云说话人分离并保留 speaker 标签")
-    parser.add_argument("--speaker-colors", action="store_true", help="兼容参数；同时请求腾讯云说话人分离")
+    parser.add_argument("--speaker-colors", action="store_true", help="请求说话人分离并写入一次性的字幕颜色快照")
     parser.add_argument("--json", dest="json_out", action="store_true", help="同时输出 .mosp 工程")
     parser.add_argument("--with-waveform", action="store_true", help="将波形嵌入工程")
     parser.add_argument("--with-spectral", action="store_true", help="生成频谱波形")
@@ -110,6 +111,8 @@ def main() -> int:
             segment["text"] = str(segment["text"]).rstrip(args.strip_tail_punct)
             for item in segment.get("items", []):
                 item["text"] = str(item["text"]).rstrip(args.strip_tail_punct)
+    if args.speaker_colors:
+        apply_speaker_colors(segments)
     output_path.write_text(generate_srt(segments), encoding="utf-8", newline="\n")
     print(f"字幕已保存到: {output_path}")
     if args.debug_raw:
