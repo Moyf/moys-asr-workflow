@@ -16,6 +16,8 @@
 - **unix 打包版宿主 venv 与源码模式零资产安装** ： unix（Linux / macOS）打包版不再内嵌解释器，runtime 安装改用系统 `python3 -m venv` 创建环境后按同一份 frozen 清单直装（无 python3 或版本低于 3.11 时给出明确提示），产物不再携带 unix 平台用不到的引导资产；源码模式同样零引导资产，检测开发环境的 uv 后以 `uv pip install --python <MAW 解释器> --target <site-packages>` 接入与打包版一致的托管目录布局。全新 clone 首次安装时若 `build/` 下缺 frozen 清单，会按构建管线同款 `uv export` / `uv pip compile` 命令用 uv 自动补齐；未检测到 uv 时在进度日志输出安装指引警告。
 - **CUDA 检测前置** ： 无 NVIDIA GPU（非 macOS）时在首次依赖安装前即切换 CPU 版 Torch——CPU 清单由独立声明文件原生冻结（local / moss 分别为 `local-cpu-requirements.in` / `moss-cpu-requirements.in`，屏蔽 GPU 源后 `uv pip compile --generate-hashes`，哈希与 CPU wheel 匹配），随包分发且首装直接调用；不再"冻结后文本剔除 +cu130"（会遗留 cu130 wheel 哈希导致 pip 校验失败），也不再先下载完整 CUDA wheel 与 nvidia-* 依赖再覆盖。
 - **Launcher 本地面板路径与修复交互** ： 运行环境与模型缓存路径可点击打开所在文件夹（后端白名单接口 `open_runtime_folder`，不接收任意路径）；「安装本地模型支持」按钮按运行时状态区分首次安装与修复。
+- **转写默认切句参数调整** ： `--gap-split` 默认从 1500ms 收紧为 800ms（本地引擎原为 1000ms，一并对齐），`--max-len` 默认从 21 字调整为 18 字；CLI 帮助文本与 `docs/CLI.md`、`docs/LOCAL_ASR.md` 同步更新。显式传参不受影响。
+- **Server 编辑器端口自动顺延** ： `server-editor/serve.py` 不带 `--port` 启动时从 8250 起探测监听能力，端口被占用会自动改用下一个空闲端口并在终端提示实际地址；显式 `--port` 保持“必须监听该端口”，失败输出明确错误并以退出码 1 结束。
 
 ### 🐛 问题修复
 
