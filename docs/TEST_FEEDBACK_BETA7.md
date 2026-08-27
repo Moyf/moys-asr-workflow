@@ -53,6 +53,17 @@
 | 36 | 编辑器 / 纯文本编辑 | 新增全角标点后保存出现越界 item；删除该标点后错误仍残留；应用后不应把全部字幕标为 dirty | 修改 | 已修复 |
 | 37 | 编辑器 / 多字幕列表 | 双列多重字幕模式下，主字幕左侧的黄条覆盖文字 | 修改 | 已修复 |
 | 38 | 编辑器 / 多字幕命名 | 将「拓展字幕」及「扩展字幕」统一命名为「副字幕」 | 修改 | 已修复 |
+| 39 | 编辑器 / 导出菜单 | 去空隙版本与更多导出需要按字幕、OTIO、XML、动态字幕/Resolve JSON 等类别加分隔线；OTIO/OTIOZ 文案统一；去空隙菜单增加 FCPXML | 修改 | 已修复 |
+| 40 | 编辑器 / 导出文件名 | 工程名 MAW-1.4更新说明 导出 FCPXML 时被截断为 MAW-1.xml | 修改 | 已修复 |
+
+## 增量记录（任务 39、40：导出菜单分组、FCPXML 默认模式与点号工程名）
+
+- 任务 39 已按类别整理两个导出菜单：去空隙版本分为字幕、OTIO、FFconcat/JSON 三组，并将去空隙 FCPXML 放在 OTIO 组末尾；更多导出分为 XML、OTIO、动态字幕/Resolve JSON 三组。OTIO 文案统一为“OTIO 工程”，OTIOZ 文案统一为“OTIOZ 打包工程”，中英文翻译同步更新。
+- FCPXML 弹窗默认的“导出时间线模式”改为“去空隙时间线”；从“导出去空隙版本”打开 FCPXML 时也会强制选择去空隙模式，避免沿用上一次手动选择的原始时间线。
+- 任务 40 的根因是文件名清理把任意最后一个点号当作扩展名；现在仅移除已知扩展名，因此 `MAW-1.4更新说明` 会生成 `MAW-1.4更新说明.xml`，不会截断为 `MAW-1.xml`。
+
+- 已验证：`.venv\Scripts\python.exe edit.py --blank`；`node --check web\editor.js`、`web\editor-utils.js`、`web\editor-i18n.js`；`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（215/215）；`.venv\Scripts\python.exe -m unittest tests.test_waveform tests.test_editor_assets`（26/26）；使用 `.venv\Scripts\python.exe` 启动服务器的 `fcp7-export.spec.mjs` 浏览器回归（8/8）；`git diff --check`。
+- 首次直接运行 FCPXML 浏览器回归时使用了缺少 reapeaks 模块的系统 Python，服务器在启动阶段退出；切换到项目 .venv 解释器后全部通过。该次失败属于验证环境问题，不是代码断言失败。
 
 ## 增量记录（字幕列表批量操作与文本处理）
 

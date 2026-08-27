@@ -267,6 +267,9 @@ test('translates adjacent adjustment and current-cue operation settings to Engli
 });
 
 test('translates OTIOZ export labels, mode hints and dynamic messages to English', () => {
+  assert.equal(i18n.translateText('表情包 OTIO 工程', 'en'), 'Sticker OTIO project');
+  assert.equal(i18n.translateText('表情包 OTIOZ 打包工程', 'en'), 'Sticker OTIOZ bundle');
+  assert.equal(i18n.translateText('下载表情包 OTIOZ 打包工程', 'en'), 'Download sticker OTIOZ bundle');
   assert.equal(i18n.translateText('表情包 OTIOZ', 'en'), 'Sticker OTIOZ');
   assert.equal(i18n.translateText('下载表情包 OTIOZ 工程', 'en'), 'Download sticker OTIOZ project');
   const hint = '服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出 OTIOZ';
@@ -2276,6 +2279,12 @@ test('sanitizes deterministic names and escapes XML and file URLs', () => {
     assert.equal(safe, safe.replace(/[. ]+$/, ''));
     assert.ok(!/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:[. ]*)$/i.test(safe));
   }
+  const dottedProject = helpers.buildExportNames('MAW-1.4更新说明');
+  assert.equal(dottedProject.baseName, 'MAW-1.4更新说明');
+  assert.deepEqual(JSON.parse(JSON.stringify(dottedProject.files)), {
+    project: 'MAW-1.4更新说明.xml',
+    subtitles: 'MAW-1.4更新说明.srt',
+  });
   assert.equal(helpers.escapeExportXml('a<&>"\''), 'a&lt;&amp;&gt;&quot;&apos;');
   assert.equal(
     helpers.exportPathToFileUrl('C:\\Fixtures\\测试 & take\".mp4'),

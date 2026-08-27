@@ -10827,7 +10827,7 @@ async function exportStickerOtoz(kind, buildTimeline, filename, description) {
     flashHint(tr('当前工程无法导出表情包 OTIOZ（需要以 server-editor 打开并绑定工程文件）'), 'warning');
     return;
   }
-  flashHint(tr('正在生成表情包 OTIOZ 工程…'));
+  flashHint(tr('正在生成表情包 OTIOZ 打包工程…'));
   try {
     const response = await fetch(new URL(SERVER_CONFIG.otiozStickerExportUrl, window.location.href), {
       method: 'POST',
@@ -11897,6 +11897,11 @@ function openFcp7ExportModal() {
   fcp7ExportTimelineMode.focus();
 }
 
+function openGapRemovedFcp7ExportModal() {
+  fcp7ExportTimelineMode.value = 'gap_removed';
+  openFcp7ExportModal();
+}
+
 async function exportFcp7Xml() {
   fcp7ExportConfirm.disabled = true;
   try {
@@ -11940,6 +11945,7 @@ async function exportFcp7Xml() {
 }
 
 document.getElementById('download-fcp7-export')?.addEventListener('click', openFcp7ExportModal);
+document.getElementById('download-gap-removed-fcp7-export')?.addEventListener('click', openGapRemovedFcp7ExportModal);
 fcp7ExportCancel?.addEventListener('click', closeFcp7ExportModal);
 fcp7ExportConfirm?.addEventListener('click', () => { void exportFcp7Xml(); });
 fcp7ExportModal?.addEventListener('click', (event) => {
@@ -12343,14 +12349,14 @@ document.getElementById('download-gap-removed-sticker-otioz')?.addEventListener(
   }
   await exportStickerOtoz(
     'gap-removed-stickers', buildGapRemovedStickerOtio,
-    `${FILENAME_BASE}_gap-removed-stickers.otioz`, '去空隙表情包 OTIOZ 工程'
+    `${FILENAME_BASE}_gap-removed-stickers.otioz`, '去空隙表情包 OTIOZ 打包工程'
   );
 });
 document.getElementById('download-sticker-otioz')?.addEventListener('click', async () => {
   if (stickerExportBlocked('download-sticker-otioz')) return;
   await exportStickerOtoz(
     'stickers', buildStickerOtio,
-    `${FILENAME_BASE}_stickers.otioz`, '表情包 OTIOZ 工程'
+    `${FILENAME_BASE}_stickers.otioz`, '表情包 OTIOZ 打包工程'
   );
 });
 
