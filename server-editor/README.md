@@ -18,7 +18,10 @@ uv run python server-editor\serve.py
 # 打开空白编辑器，再从页面新建工程或拖入工程、媒体、SRT
 uv run python server-editor\serve.py --blank
 
-# 端口被占用时交给系统选择，并手动复制终端输出的地址
+# 不指定端口时，从 8250 起自动顺延到下一个空闲端口（终端会提示实际地址）
+uv run python server-editor\serve.py D:\path\project.json --no-open
+
+# 显式 --port 必须可用，被占用直接报错；--port 0 交给系统任选
 uv run python server-editor\serve.py D:\path\project.json --port 0 --no-open
 ```
 

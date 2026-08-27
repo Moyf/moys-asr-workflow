@@ -1,4 +1,4 @@
-"""Local QwenASR / FunASR -> SRT + MAW project CLI.
+"""Local QwenASR / FunASR / MOSS / faster-whisper -> SRT + MAW project CLI.
 
 This remains a source-mode first step.  Model packages are optional; the
 Launcher only routes to this CLI and lets the upstream runtime prepare its
@@ -11,11 +11,13 @@ import argparse
 from pathlib import Path
 from typing import Sequence
 
+from maw.console import configure_utf8_stdio
 from maw.local_asr import (
     FUNASR_DEFAULT_MODEL,
     QWEN_DEFAULT_CHUNK_SECONDS,
     QWEN_DEFAULT_FORCED_ALIGNER,
     QWEN_DEFAULT_MODEL,
+    WHISPER_DEFAULT_MODEL,
     build_local_segments,
     create_local_engine,
     parse_duration,
@@ -26,15 +28,19 @@ from maw.local_asr import (
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="使用本地 QwenASR 或 FunASR 生成 MAW 字幕工程",
+        description="使用本地 QwenASR、FunASR、MOSS 或 faster-whisper 生成 MAW 字幕工程",
     )
     parser.add_argument("input", help="输入视频或音频文件路径")
     parser.add_argument(
-        "--engine", choices=("qwen-asr", "funasr"), default="qwen-asr",
-        help="本地推理引擎（默认: qwen-asr）",
+        "--engine", choices=("qwen-asr", "funasr", "moss", "whisper"), default="qwen-asr",
+        help="本地推理引擎（默认: qwen-asr；whisper 走 faster-whisper/CTranslate2 运行时）",
     )
     parser.add_argument(
-        "--model", help=f"模型 ID 或本地模型路径（Qwen 默认: {QWEN_DEFAULT_MODEL}；FunASR 默认: {FUNASR_DEFAULT_MODEL}）",
+        "--model", help=(
+            f"模型 ID 或本地模型路径（Qwen 默认: {QWEN_DEFAULT_MODEL}；"
+            f"FunASR 默认: {FUNASR_DEFAULT_MODEL}；Whisper 默认: {WHISPER_DEFAULT_MODEL}，"
+            "也可用 small/turbo 等 HF Hub 名称或已转换的 CTranslate2 目录）"
+        ),
     )
     parser.add_argument("--model-path", help="显式指定已经下载好的模型目录")
     parser.add_argument(
@@ -48,6 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--vad-model", help="FunASR 可选 VAD 模型")
     parser.add_argument("--punc-model", help="FunASR 可选标点模型")
     parser.add_argument("--speaker-model", help="FunASR 可选说话人模型")
+    parser.add_argument("--speaker-colors", action="store_true", help="为说话人段落生成颜色快照")
     parser.add_argument("--language", help="语言提示，例如 zh 或 en")
     parser.add_argument("--hotword", action="append", default=[], help="热词，可重复传入")
     parser.add_argument(
@@ -60,9 +67,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("-ll", "--length-limit", type=parse_duration, help="只处理前 N 秒，例如 2m")
     parser.add_argument("-o", "--output", help="输出 SRT 路径（默认与输入同目录）")
-    parser.add_argument("--max-len", type=int, default=21, help="中文单条字幕最大字符数")
+    parser.add_argument("--max-len", type=int, default=18, help="中文单条字幕最大字符数")
     parser.add_argument("--min-len", type=int, default=5, help="中文短句合并阈值")
-    parser.add_argument("--gap-split", type=int, default=1000, help="静音超过多少毫秒时切句")
+    parser.add_argument("--gap-split", type=int, default=800, help="静音超过多少毫秒时切句")
+    parser.add_argument(
+        "--strip-tail-punct", default="，。",
+        help="句尾剥除的标点集合；传空串禁用剥除（默认剥逗号和句号）",
+    )
     parser.add_argument("--json", action="store_true", help="同时生成 .mosp 工程")
     parser.add_argument("--with-waveform", action="store_true", help="把波形缓存嵌入 .mosp")
     parser.add_argument(
@@ -78,7 +89,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def default_output_path(input_path: Path, engine: str) -> Path:
-    tag = "qwen-asr-local" if engine == "qwen-asr" else "funasr-local"
+    tag = {
+        "qwen-asr": "qwen-asr-local",
+        "funasr": "funasr-local",
+        "moss": "moss-local",
+        "whisper": "whisper-local",
+    }.get(engine, "local")
     return input_path.with_name(f"{input_path.stem}.{tag}.srt")
 
 
@@ -95,6 +111,7 @@ def load_hotword_files(paths: Sequence[str]) -> list[str]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    configure_utf8_stdio()
     args = build_parser().parse_args(argv)
     input_path = Path(args.input).expanduser().resolve()
     if not input_path.exists() or not input_path.is_file():
@@ -149,7 +166,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 max_len=args.max_len,
                 min_len=args.min_len,
                 gap_split_ms=args.gap_split,
+                strip_tail_punct=args.strip_tail_punct,
             )
+            if args.speaker_colors:
+                from maw.speaker import apply_speaker_colors
+
+                apply_speaker_colors(segments)
             if not segments:
                 print("错误: 本地模型没有返回可用的转写文本")
                 return 1

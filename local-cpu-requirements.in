@@ -1,0 +1,24 @@
+# 本地 ASR runtime 的 CPU 变体依赖（无 NVIDIA GPU 机器首装用）。
+#
+# 与 pyproject [project.optional-dependencies].local 的唯一差别：
+# torch / torchaudio 使用 PyPI 原生 CPU 构建（不带 cu130 本地版本号、不指向
+# pytorch-cu130 index）。因为 [tool.uv.sources] 把 torch 强制指到
+# cu130 index，同一 uv.lock 无法表达 CPU 解析（与 moss 因 Transformers
+# 互斥而独立声明同理），所以按 moss 先例独立声明、独立冻结：
+#
+#   uv pip compile local-cpu-requirements.in -p 3.11 \
+#     --generate-hashes --index-strategy unsafe-best-match \
+#     -o build/requirements-local-cpu.txt
+#
+# --generate-hashes 让 CPU wheel 拥有与版本匹配的真实哈希（此前"冻结后
+# 文本剔除 cu130 后缀"会遗留 cu130 wheel 的哈希，pip 校验必然失败）。
+#
+# 直接依赖的精确 pin 必须与 pyproject [local] extra / uv.lock 保持一致；
+# tests/test_packaging_contract.py 有版本对齐断言，升级时同步修改。
+accelerate==1.12.0
+faster-whisper==1.2.1
+funasr==1.4.2
+hf-xet==1.6.0
+qwen-asr==0.0.6
+torch==2.13.0
+torchaudio==2.11.0

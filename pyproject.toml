@@ -1,6 +1,6 @@
 [project]
 name = "moys-asr-workflow"
-version = "1.5.0-beta.3"
+version = "1.5.0-beta.4"
 description = "A small cloud ASR API to local subtitle-editor workflow."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -20,11 +20,17 @@ dependencies = [
 [project.optional-dependencies]
 local = [
     "accelerate>=1.12",
-    "funasr>=1.2.6",
+    # faster-whisper（CTranslate2 后端）不依赖 transformers，不会与
+    # qwen-asr 锁定的 Transformers 4.x 冲突；onnxruntime 是其硬依赖
+    # （Silero VAD），与 ocr extra 的 onnxruntime>=1.18 范围兼容。
+    "faster-whisper>=1.2,<2",
+    "funasr>=1.3.29",
     "hf-xet>=1.5",
     "qwen-asr>=0.0.6",
-    "torch>=2.13.0",
-    "torchaudio>=2.11.0",
+    "torch==2.13.0+cu130; sys_platform != 'darwin'",
+    "torch>=2.13.0; sys_platform == 'darwin'",
+    "torchaudio==2.11.0+cu130; sys_platform != 'darwin'",
+    "torchaudio>=2.11.0; sys_platform == 'darwin'",
 ]
 ocr = [
     # numpy 由 OCR 路径使用（maw/postprocess_ocr 内 lazy import）；.ReaPeaks
@@ -34,6 +40,10 @@ ocr = [
     "pillow>=10.0.0",
     "rapidocr>=3.9.0",
 ]
+# maw：MOSS runtime 依赖（Transformers 5.x）与 local extra 的 qwen-asr
+# （Transformers==4.57.6）互斥，无法承载于同一个 uv.lock（uv lock 解析
+# 全部 extras 组合），故独立声明在 moss-requirements.in 并由
+# `uv pip compile` 冻结（与 local/ocr 的 uv export 管线并行）。
 
 [[tool.uv.index]]
 name = "pytorch-cu130"
@@ -41,8 +51,8 @@ url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 
 [tool.uv.sources]
-torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
-torchaudio = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
+torch = [{ index = "pytorch-cu130", marker = "sys_platform != 'darwin'" }]
+torchaudio = [{ index = "pytorch-cu130", marker = "sys_platform != 'darwin'" }]
 
 [tool.ruff]
 target-version = "py311"

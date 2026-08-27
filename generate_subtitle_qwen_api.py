@@ -33,6 +33,7 @@ from edit import get_default_sticker_dir
 from maw.project import repair_segment_durations
 from maw.qwen_audio import parse_qwen_audio_hotwords
 from maw.speaker import apply_speaker_colors, split_items_by_speaker
+from maw.console import configure_utf8_stdio
 
 from maw.media_cache import embed_media_caches, merge_media_caches
 
@@ -57,19 +58,8 @@ FFMPEG_MISSING_MESSAGE = (
 
 
 def configure_console_output() -> None:
-    """让直接 CLI 和 GUI 子进程都按行把进度消息交给父进程。"""
-    for stream in (sys.stdout, sys.stderr):
-        reconfigure = getattr(stream, "reconfigure", None)
-        if reconfigure is None:
-            continue
-        try:
-            reconfigure(line_buffering=True, write_through=True)
-        except (OSError, TypeError, ValueError):
-            # 某些嵌入式/测试流只接受 line_buffering，或不支持 reconfigure。
-            try:
-                reconfigure(line_buffering=True)
-            except (OSError, TypeError, ValueError):
-                pass
+    """Backward-compatible alias for the shared UTF-8 console setup."""
+    configure_utf8_stdio()
 
 # 本地 language 名 → DashScope language code
 LANGUAGE_MAP = {
@@ -1491,14 +1481,15 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
 # ===== main CLI =====
 
 def main():
+    configure_utf8_stdio()
     parser = argparse.ArgumentParser(
         description="使用阿里云百炼 Qwen / Qwen-Audio / Fun-ASR API 生成视频字幕（云端版）",
     )
     parser.add_argument("input", help="输入视频或音频文件路径")
     parser.add_argument("-o", "--output", help="输出 SRT 路径（默认与输入同目录）")
     parser.add_argument(
-        "-l", "--max-len", type=int, default=21,
-        help="每条字幕最大字数（默认 21；仅 CJK 内容生效，空格语言按词数自动处理）",
+        "-l", "--max-len", type=int, default=18,
+        help="每条字幕最大字数（默认 18；仅 CJK 内容生效，空格语言按词数自动处理）",
     )
     parser.add_argument(
         "--min-len", type=int, default=5,
@@ -1513,8 +1504,12 @@ def main():
         help="保留每条字幕末尾的逗号和句号（默认去除）",
     )
     parser.add_argument(
-        "--gap-split", type=int, default=1500,
-        help="静音切句阈值（毫秒），相邻字停顿超过此值则切句（默认 1500）",
+        "--strip-tail-punct", default="，。",
+        help="句尾剥除的标点集合；传空串禁用剥除（默认剥逗号和句号）",
+    )
+    parser.add_argument(
+        "--gap-split", type=int, default=800,
+        help="静音切句阈值（毫秒），相邻字停顿超过此值则切句（默认 800）",
     )
     parser.add_argument(
         "--speaker", action="store_true",
@@ -1593,7 +1588,6 @@ def main():
         help="保存 ASR 服务端返回的完整原始 JSON，用于排查断句、标点和时间码",
     )
     args = parser.parse_args()
-    configure_console_output()
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
     enable_speaker = args.speaker or args.speaker_colors
@@ -1770,15 +1764,15 @@ def main():
             if stats["overflow"]:
                 print("[警告] 说话人超过 5 个，颜色已循环复用，请在编辑器中手动调整")
 
-    # 剥句末标点（与本地版一致）
-    if not args.keep_punct:
+    # 剥句末标点（与本地版一致；--keep-punct 优先，空集合禁用）
+    if not args.keep_punct and args.strip_tail_punct:
         for seg in segments:
-            seg["text"] = seg["text"].rstrip("，。")
+            seg["text"] = seg["text"].rstrip(args.strip_tail_punct)
             seg_items = seg.get("items")
             if seg_items:
                 k = len(seg_items) - 1
                 while k >= 0:
-                    seg_items[k]["text"] = seg_items[k]["text"].rstrip("，。")
+                    seg_items[k]["text"] = seg_items[k]["text"].rstrip(args.strip_tail_punct)
                     if seg_items[k]["text"]:
                         break
                     k -= 1

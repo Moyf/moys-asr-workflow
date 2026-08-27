@@ -26,7 +26,7 @@
 | 整体拖动 Gap 或【已恢复】会不断追加/扩大恢复范围 | 已修复 | 整体拖动改为共用核心的 `move` 操作记录：只移动当前可见状态，原位置不再写入 `removed:false`；重复拖动更新同一条记录，移动【已恢复】时清除原可见恢复范围，不补回底层自动移除，因此原位置不会留下【已移除】 | `web/gap-remove-core.js`、`web/editor.js`、`web/waveform.js`、`server-align/index.html`、`tests/test_editor_utils.mjs`、`docs/GAP_PROVENANCE.md`、`JSON_SCHEMA.md` | Core 覆盖启用 Gap、重复移动、【已恢复】移动与回到原位；浏览器真实拖动待补充 |
 | 移动 Gap 覆盖已有 Gap 时出现重复层、旧 Gap 重新出现或带动相邻异状态 Gap | 已修复 | `move` 记录保留被清空的 base，只裁剪其当前目标区间（可拆成 `target_ranges`）；拖动中的 Gap 始终按原可见范围加 delta 保存精确目标，不从投影合并结果反推。同状态目标可被完整吸收，异状态目标仅裁掉重叠范围；相邻 inactive/active 保持两个独立拖动对象 | `web/gap-remove-core.js`、`tests/test_editor_utils.mjs`、`docs/GAP_PROVENANCE.md`、`JSON_SCHEMA.md` | Core 回归覆盖同状态目标重叠且长度固定、旧 restored move 的局部/完全覆盖、active/inactive 相邻拖动；202 项 JS 与 729 项 Python（跳过 4 项）通过；浏览器真实拖动待补充 |
 | 边界拖动穿过现有 Gap 会被拦住，或回拖后露出被覆盖的旧 Gap | 已修复 | 边界只移动被点中的 Gap；向外扩张时，完全覆盖的可见 Gap 整段清理，部分覆盖的可见 Gap 只裁掉重叠部分。`boundary_resize.cleared_ranges` 持久记录已裁掉的部分，回拖后不会从来源层或旧操作记录中复活 | `web/gap-remove-core.js`、`tests/test_editor_utils.mjs`、`docs/GAP_PROVENANCE.md`、`JSON_SCHEMA.md` | Core 回归覆盖 active→restored 与 restored→active 的部分覆盖/回拖、完全覆盖删除、共享边界只移动命中对象；201 项 JS、16 项资产测试与 729 项 Python（跳过 4 项）通过；浏览器真实拖动待补充 |
-| 缩小恢复 Gap 边界时凭空插入启用 Gap | 已修复 | 恢复 Gap 向内拖动边界时，只缩短当前 `removed:false` 区段；缩掉的范围从最终投影清除，不写入 `removed:true`，也不重新激活底层空隙 | `web/gap-remove-core.js`、`tests/test_editor_utils.mjs`、`docs/GAP_PROVENANCE.md`、`JSON_SCHEMA.md` | Core 回归覆盖左右边界缩小、带 `audio_gate` 底层时不插入启用 Gap、回拖到原边界；合并 JS 203 项通过 |
+| 缩小恢复 Gap 边界时凭空插入启用 Gap | 已修复 | 恢复 Gap 向内拖动边界时，只缩短当前 `removed:false` 区段；缩掉的范围从最终投影清除，不写入 `removed:true`，也不重新激活底层空隙 | `web/gap-remove-core.js`、`tests/test_editor_utils.mjs`、`docs/GAP_PROVENANCE.md`、`JSON_SCHEMA.md` | Core 回归覆盖左右边界缩小、带 `audio_gate` 底层时不插入启用 Gap、回拖到原边界；合并后 JS 242 项、Python 832 项（跳过 5 项）通过 |
 | Gap 状态文案不清晰 | 已修复 | 启用的 Gap 显示为「空隙」，恢复但未生效的 Gap 显示为「空隙（未激活）」；MAWE 与 Align 保持一致 | `web/waveform.js`、`server-align/index.html`、`tests/test_editor_assets.py`、`tests/test_server_align.py` | MAWE/Align 静态文案契约通过；资产 17 项、Align 服务 5 项通过 |
 | 手动拖动的视觉提示不够明确 | 已修复 | MAWE 与 Align 的 Gap 边界把手、整体/边界拖动预览统一为蓝色，建立“用户正在手动修改”的视觉映射；复制操作继续保留独立的虚线提示 | `web/waveform.css`、`server-align/index.html`、`tests/test_editor_assets.py` | 编辑器资产 CSS 契约 16 项通过；全量 Python 回归通过；浏览器视觉回归待补充 |
 | 多行波形重复计算 Gap 投影 | 已修复 | 共享 core 按 Gap 数组身份缓存显示投影；MAWE 编辑器的 Gap getter 在同一状态版本内返回同一数组，多个波形行直接复用，不再逐行重复投影 | `web/gap-remove-core.js`、`web/editor.js`、`web/waveform.js`、`server-align/index.html`、`tests/test_editor_utils.mjs`、`docs/GAP_PROVENANCE.md` | 投影缓存身份测试、JS 语法与静态契约检查；浏览器性能 profile 待补充 |
@@ -34,10 +34,10 @@
 
 ## 验证结果
 
-- `node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`：203 项通过。
+- `node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`：合并后 242 项通过。
 - `uv run python -m unittest discover -s tests -p "test_editor_assets.py" -q`：17 项通过。
 - `uv run python -m unittest tests.test_script_alignment tests.test_server_align -q`：22 项通过，覆盖旧 Gap 迁移后的对齐/Align API 输出。
-- `uv run python -m unittest discover -s tests -p "test_*.py" -q`：上一阶段 729 项通过，4 项跳过；本轮已重新启动，但尚未获得最终退出结果。
+- `uv run python -m unittest discover -s tests -p "test_*.py" -q`：合并后 832 项通过，5 项跳过。
 - `node` `new Function(...)`：`server-align/index.html` 内嵌 JavaScript 语法通过；滚轮横向滚动、控件释放焦点、Ctrl 定位 card、Gap 临时试听和人工操作契约检查通过。
 - 示例工程 `MAW-1.4更新说明.bcut.mosp`：页面、状态接口和媒体 HEAD 请求均返回 200；媒体声明支持 `bytes` Range。
 - 本次示例 Server smoke：`/` 与 `/api/state` 均返回 200，服务已正常停止。

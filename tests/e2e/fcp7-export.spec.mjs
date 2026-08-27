@@ -23,6 +23,7 @@ function generateFcp7ProjectJson(filePath) {
   const project = {
     media: 'synthetic.wav',
     gap_remove: {
+      detector: 'audio_gate',
       gaps: [
         { start: 1000, end: 1600, removed: true },
         { start: 4000, end: 4500, removed: true },
@@ -81,6 +82,12 @@ async function openFcp7Modal(page) {
   await expect(page.locator('#fcp7-export-modal')).toHaveClass(/show/);
 }
 
+async function openGapRemovedFcp7Modal(page) {
+  await page.locator('#gap-removed-export-btn').click();
+  await page.locator('#download-gap-removed-fcp7-export').click();
+  await expect(page.locator('#fcp7-export-modal')).toHaveClass(/show/);
+}
+
 let tempDir;
 let server;
 
@@ -115,10 +122,22 @@ test('opens the export modal with native text unchecked and closed choices only'
   const trackOptions = page.locator('#fcp7-export-subtitle-tracks option');
   expect(await trackOptions.evaluateAll((options) => options.map((option) => option.value)))
     .toEqual(['main', 'main_and_extension']);
-  // 工程没有扩展轨：组合选项被禁用而不是悄悄猜测。
+  // 工程没有副轨：组合选项被禁用而不是悄悄猜测。
   await expect(page.locator('#fcp7-export-subtitle-tracks option[value="main_and_extension"]'))
     .toBeDisabled();
   await expect(page.locator('#fcp7-export-subtitle-tracks')).toHaveValue('main');
+
+  await page.locator('#fcp7-export-cancel').click();
+  await expect(page.locator('#fcp7-export-modal')).not.toHaveClass(/show/);
+});
+
+test('opens FCPXML from the gap-removed menu with the gap-removed timeline', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await expect(page.locator('#gap-removed-export-dropdown')).toBeVisible();
+
+  await openGapRemovedFcp7Modal(page);
+  await expect(page.locator('#fcp7-export-timeline-mode')).toHaveValue('gap_removed');
 
   await page.locator('#fcp7-export-cancel').click();
   await expect(page.locator('#fcp7-export-modal')).not.toHaveClass(/show/);

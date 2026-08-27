@@ -50,6 +50,28 @@ test('artifact rows localize type labels while preserving MOSP-first and SRT-onl
   await expect(page.locator('#toolboxInputPath')).toHaveValue('D:\\Demo\\clip.fixed.srt');
 });
 
+test('server media accepts a dropped file even when batch mode is selected', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#jsonPath').fill('D:\\Demo\\missing-media.mosp');
+  await page.locator('#serverMediaField').evaluate((element) => element.classList.remove('hidden'));
+  await page.locator('#batchMode').click();
+
+  await page.locator('#serverMediaPath').evaluate((input) => {
+    const dataTransfer = { types: ['Files'], files: [{ path: 'D:\\Demo\\clip.mp4' }] };
+    const dragEnter = new Event('dragenter', { bubbles: true, cancelable: true });
+    Object.defineProperty(dragEnter, 'dataTransfer', { value: dataTransfer });
+    input.dispatchEvent(dragEnter);
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', { value: dataTransfer });
+    input.dispatchEvent(drop);
+  });
+
+  await expect(page.locator('#serverMediaPath')).toHaveValue('D:\\Demo\\clip.mp4');
+  await expect(page.locator('#serverMediaPath')).not.toHaveClass(/drag-over/);
+  await expect(page.locator('.batch-row')).toHaveCount(0);
+});
+
 test('artifact context menu exposes exactly three actions and closes on every required path', async ({ page }) => {
   await openLauncher(page);
   await runReplacement(page);

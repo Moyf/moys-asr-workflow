@@ -368,6 +368,32 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         model_ref="iic/SenseVoiceSmall",
         requires_runtime=("funasr", "torchaudio"),
     ),
+    ModelConfig(
+        id="moss-transcribe-diarize-local",
+        label="MOSS Transcribe-Diarize 0.9B（无字词时间码）",
+        env_key="",
+        # 无字词级时间码是 MOSS 输出契约的硬限制，超长段重切只能按字符权重
+        # 估算子段时间（见 docs/LOCAL_ASR.md），必须在模型说明里提前告知。
+        note="端到端转写与说话人分离；仅段级时间戳，无字词级时间码；需要独立的 Transformers 5.x 运行环境，建议 CUDA",
+        supports_speaker=True,
+        languages=LANGUAGES,
+        kind="local",
+        engine="moss",
+        model_ref="OpenMOSS-Team/MOSS-Transcribe-Diarize",
+        requires_runtime=("moss_transcribe_diarize", "transformers", "torch"),
+    ),
+    ModelConfig(
+        id="whisper-large-v3-local",
+        label="Faster-Whisper large-v3（实验）",
+        env_key="",
+        note="OpenAI Whisper 多语种本地识别；CTranslate2 运行时自带 VAD，无说话人分离；GPU 需 CUDA12/cuDNN9",
+        languages=LANGUAGES,
+        kind="local",
+        engine="whisper",
+        # Hugging Face Hub 上的官方 CTranslate2 转换版；词级时间戳由上游内部处理
+        model_ref="Systran/faster-whisper-large-v3",
+        requires_runtime=("faster_whisper",),
+    ),
 )
 
 # 必剪（B 站非官方免费接口）：仅中文、无语言参数，单文件上限见 maw/bcut.py
