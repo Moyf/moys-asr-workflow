@@ -26,13 +26,13 @@ from pathlib import Path
 from edit import get_default_sticker_dir
 from generate_subtitle_qwen_api import (
     LANGUAGE_MAP,
-    configure_console_output,
     extract_audio,
     _run_media_tool,
     generate_srt,
     get_duration_sec,
     parse_duration,
 )
+from maw.console import configure_utf8_stdio
 from maw.project import repair_segment_durations, validate_project
 from maw.soniox import (
     MAX_AUDIO_SECONDS,
@@ -59,6 +59,7 @@ def _language_hints(raw: str | None) -> list[str]:
 
 
 def main():
+    configure_utf8_stdio()
     parser = argparse.ArgumentParser(
         description="使用 Soniox 异步 STT API 生成视频字幕（云端版，可选说话人分离）",
     )
@@ -79,6 +80,10 @@ def main():
     parser.add_argument(
         "--keep-punct", action="store_true",
         help="保留每条字幕末尾的逗号和句号（默认去除）",
+    )
+    parser.add_argument(
+        "--strip-tail-punct", default="，。",
+        help="句尾剥除的标点集合；传空串禁用剥除（默认剥逗号和句号）",
     )
     parser.add_argument(
         "--gap-split", type=int, default=1500,
@@ -133,7 +138,6 @@ def main():
         help="保存 Soniox transcript API 返回的完整原始 JSON，用于排查解析和时间码",
     )
     args = parser.parse_args()
-    configure_console_output()
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
 
@@ -274,15 +278,15 @@ def main():
                 print(f"[警告] 说话人超过 {len(stats['speakers'])} 个（>5），颜色已循环复用，"
                       f"不同说话人可能同色，请在编辑器中手动调整")
 
-    # 剥句末标点（与 Qwen 版一致）
-    if not args.keep_punct:
+    # 剥句末标点（与 Qwen 版一致；--keep-punct 优先，空集合禁用）
+    if not args.keep_punct and args.strip_tail_punct:
         for seg in segments:
-            seg["text"] = seg["text"].rstrip("，。")
+            seg["text"] = seg["text"].rstrip(args.strip_tail_punct)
             seg_items = seg.get("items")
             if seg_items:
                 k = len(seg_items) - 1
                 while k >= 0:
-                    seg_items[k]["text"] = seg_items[k]["text"].rstrip("，。")
+                    seg_items[k]["text"] = seg_items[k]["text"].rstrip(args.strip_tail_punct)
                     if seg_items[k]["text"]:
                         break
                     k -= 1

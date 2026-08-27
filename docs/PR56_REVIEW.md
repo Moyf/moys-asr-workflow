@@ -101,7 +101,7 @@ PR #56 将多选字幕分配贴图时，head 的贴图时间范围从“首条�
 建议内容：
 
 ```markdown
-- PR #56：新增实验性的 Premiere FCP 7 XML 交接导出，支持去空隙 / 原始时间线、可选原生 GraphicAndType 字幕文本、贴图素材路径和扩展字幕轨导出。
+- PR #56：新增实验性的 Premiere FCP 7 XML 交接导出，支持去空隙 / 原始时间线、可选原生 GraphicAndType 字幕文本、贴图素材路径和副字幕轨导出。
 ```
 
 同时保留“尚未在 Premiere 实机确认图片自动重链和字体显示”的限制说明。

@@ -72,7 +72,7 @@ def default_postprocess_plan() -> dict[str, object]:
                 "scriptPath": "",
                 "matchMode": "script",
                 "extraSplitPunctuation": [],
-                "preservePunctuation": [],
+                "preservePunctuation": ["？", "！"],
             },
             {"id": "replace", "enabled": False, "replacements": [], "replacementSeparator": "arrow", "replacementTrim": True, "replacementCustomSeparator": "", "conversion": TextConversion.OFF.value},
             {"id": "proofread", "enabled": False, "providerId": "deepseek", "customPrompt": ""},

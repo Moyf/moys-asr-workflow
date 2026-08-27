@@ -26,8 +26,11 @@ class LottieGlyphError(ValueError):
 _FONT_SUFFIXES = frozenset({".otf", ".ttf", ".ttc", ".otc"})
 _FALLBACK_FAMILIES = (
     "Microsoft YaHei",
+    "PingFang SC",
+    "Hiragino Sans GB",
     "Noto Sans CJK SC",
     "Noto Sans SC",
+    "WenQuanYi Zen Hei",
     "SimSun",
     "Arial",
 )

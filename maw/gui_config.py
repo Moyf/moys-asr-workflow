@@ -379,6 +379,18 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         model_ref="iic/SenseVoiceSmall",
         requires_runtime=("funasr", "torchaudio"),
     ),
+    ModelConfig(
+        id="moss-transcribe-diarize-local",
+        label="MOSS Transcribe-Diarize 0.9B",
+        env_key="",
+        note="端到端转写与说话人分离；需要独立的 Transformers 5.x 运行环境，建议 CUDA",
+        supports_speaker=True,
+        languages=LANGUAGES,
+        kind="local",
+        engine="moss",
+        model_ref="OpenMOSS-Team/MOSS-Transcribe-Diarize",
+        requires_runtime=("moss_transcribe_diarize", "transformers", "torch"),
+    ),
 )
 
 # 必剪（B 站非官方免费接口）：仅中文、无语言参数，单文件上限见 maw/bcut.py

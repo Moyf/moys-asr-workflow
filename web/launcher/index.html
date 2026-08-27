@@ -22,7 +22,7 @@
       <div class="hero-brand">
         <img class="hero-icon" src="../../assets/show.webp" alt="" aria-hidden="true">
         <div class="hero-copy">
-          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.5.0-beta.2</span></div>
+          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.5.0-beta.4</span></div>
           <p data-i18n="hero_desc">📺 本地媒体 ➜  🤖 AI 转写 ➜ ✨ 可编辑字幕工程</p>
           <span id="demoBadge" class="demo-badge hidden" data-i18n="demo_mode">演示模式</span>
         </div>
@@ -119,6 +119,7 @@
       </div>
       <div id="localRuntimePanel" class="local-runtime-panel hidden">
         <p class="hint" data-i18n="local_beta_note">当前为 beta 版本，未经过充分测试，不保证后续的维护和更新，请谨慎使用。</p>
+        <div id="localRuntimePaths" class="runtime-paths hidden"></div>
         <div class="local-status-row">
           <p id="localRuntimeStatus" class="local-status" aria-live="polite"></p>
           <button id="refreshLocalRuntime" class="ghost small" type="button" data-i18n="local_refresh">重新扫描</button>
@@ -127,8 +128,10 @@
           <div class="task-progress-track"><span id="localRuntimeProgressBar"></span></div>
           <p id="localRuntimeProgressMessage" class="hint"></p>
         </div>
-        <p id="localRuntimeHint" class="hint"></p>
-        <button id="installLocalRuntime" class="primary small" type="button" data-i18n="local_runtime_install">安装本地模型支持</button>
+        <div class="repair-row">
+          <p id="localRuntimeHint" class="hint"></p>
+          <button id="installLocalRuntime" class="primary small" type="button" data-i18n="local_runtime_install">安装本地模型支持</button>
+        </div>
       </div>
       <div id="localModelPanel" class="local-model-panel hidden">
         <div class="local-status-row">
@@ -567,19 +570,7 @@
          <p class="hint" data-i18n="toolbox_match_mode_hint">按文稿换行会使用文稿中的换行和断句符号；只更正文本保留现有字幕分段。</p>
          <p id="postprocessMatchStats" class="match-stats hidden" aria-live="polite"></p>
         </div>
-        <div id="postprocessMatchSegmentationOptions" class="match-segmentation-options">
-          <div class="match-segmentation-field field">
-            <label for="postprocessExtraSplitPunctuation" data-i18n="toolbox_extra_split_punctuation">额外断句符号</label>
-            <textarea id="postprocessExtraSplitPunctuation" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_extra_split_punctuation_placeholder" placeholder="？\n！\n——\n~"></textarea>
-            <p class="hint" data-i18n="toolbox_extra_split_punctuation_hint">每行一个符号；默认逗号、句号和换行仍然生效。</p>
-          </div>
-          <div class="match-segmentation-field field">
-            <label for="postprocessPreservePunctuation" data-i18n="toolbox_preserve_punctuation">断句后保留符号</label>
-            <textarea id="postprocessPreservePunctuation" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_preserve_punctuation_placeholder" placeholder="？\n！\n~"></textarea>
-            <p id="postprocessPreservePunctuationError" class="field-error"></p>
-            <p class="hint" data-i18n="toolbox_preserve_punctuation_hint">断句后仍将符号保留在对应字幕末尾。</p>
-          </div>
-        </div>
+        <p class="hint"><button id="openPunctSettings" class="inline-link" type="button" data-i18n="toolbox_punct_open_settings">在 ⚙️ 设置中配置断句与保留符号</button></p>
     </section>
 
     <section id="toolboxOcrPanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxOcrTab">
@@ -874,6 +865,21 @@
           <input id="llmBaseUrl" type="url" autocomplete="off">
           <p id="llmBaseUrlError" class="field-error"></p>
           <p class="hint" data-i18n="llm_base_url_hint">远程服务使用 HTTPS；明文 HTTP 只允许本机环回地址。</p>
+        </div>
+      </div>
+      <div class="settings-section" id="punctuationSettingsSection">
+        <h3 data-i18n="settings_punctuation_title">断句与标点</h3>
+        <p class="hint" data-i18n="settings_punctuation_hint">文稿匹配与转写后处理共用这里的断句与保留符号。</p>
+        <div class="field">
+          <label for="postprocessExtraSplitPunctuation" data-i18n="toolbox_extra_split_punctuation">额外断句符号</label>
+          <textarea id="postprocessExtraSplitPunctuation" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_extra_split_punctuation_placeholder" placeholder="？\n！\n——\n~"></textarea>
+          <p class="hint" data-i18n="toolbox_extra_split_punctuation_hint">每行一个符号；逗号、句号、问号、感叹号和换行默认生效，同时对转写后处理的句尾剥除生效。</p>
+        </div>
+        <div class="field">
+          <label for="postprocessPreservePunctuation" data-i18n="toolbox_preserve_punctuation">断句后保留符号</label>
+          <textarea id="postprocessPreservePunctuation" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_preserve_punctuation_placeholder" placeholder="？\n！\n~"></textarea>
+          <p id="postprocessPreservePunctuationError" class="field-error"></p>
+          <p class="hint" data-i18n="toolbox_preserve_punctuation_hint">断句后仍将符号保留在字幕末尾；转写输出的这些尾部符号同样保留，其余默认剥除逗号和句号。</p>
         </div>
       </div>
       <div class="settings-section" id="ocrSettingsSection">
