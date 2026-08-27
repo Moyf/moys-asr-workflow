@@ -138,6 +138,76 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(helpers.normalizeEditorSettings({ waveShapeSource: 'invalid' }).waveShapeSource, 'reapeaks');
 });
 
+test('falls back to default split trim symbols and keeps single characters from free input', () => {
+  const defaults = JSON.parse(JSON.stringify(helpers.DEFAULT_SPLIT_TRIM_SYMBOLS));
+  // 默认集合 = 前 5 个 chip（全角）+ 文本框预填的半角逗号句点。
+  assert.deepEqual(defaults, ['，', '。', '、', '！', '？', ',', '.']);
+  // undefined → 默认；多字符片段与重复项被丢弃，任意单字符保留（自由文本框）。
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.normalizeSplitTrimSymbols(undefined))),
+    defaults,
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.normalizeSplitTrimSymbols(['。', 'x', '。', '——', '“']))),
+    ['。', 'x', '“'],
+  );
+  // 显式空数组表示关闭全部符号（仅修剪空白），不能被静默替换成默认值。
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.normalizeEditorSettings({ splitTrimSymbols: [] }).splitTrimSymbols)),
+    [],
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.normalizeEditorSettings({}).splitTrimSymbols)),
+    defaults,
+  );
+  // 自由文本框解析：按空白拆分、展开单字符并去重。
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.parseSplitTrimSymbolInput(' , . ； ； …'))),
+    [',', '.', '；', '…'],
+  );
+});
+
+test('splits merge join separator settings per subtitle type with legacy fallback', () => {
+  const fresh = helpers.normalizeEditorSettings({});
+  // 连续型默认直接拼接，单词型默认一个空格。
+  assert.equal(fresh.mergeJoinTextContinuous, '');
+  assert.equal(fresh.mergeJoinTextWord, ' ');
+  // 旧版 mergeJoinText 有自定义值时两个类型都沿用；新键优先于旧键。
+  const legacy = helpers.normalizeEditorSettings({ mergeJoinText: '-' });
+  assert.equal(legacy.mergeJoinTextContinuous, '-');
+  assert.equal(legacy.mergeJoinTextWord, '-');
+  const migrated = helpers.normalizeEditorSettings({ mergeJoinText: '-', mergeJoinTextWord: '+' });
+  assert.equal(migrated.mergeJoinTextContinuous, '-');
+  assert.equal(migrated.mergeJoinTextWord, '+');
+});
+
+test('applies configured split trim symbols at split edges across the shared helpers', () => {
+  const restore = () => helpers.setSplitTrimSymbols([...helpers.DEFAULT_SPLIT_TRIM_SYMBOLS]);
+  try {
+    // 默认行为保持：拆分边缘移除逗号/句号；省略号需在文本框中额外配置。
+    assert.deepEqual(JSON.parse(JSON.stringify(
+      helpers.splitSubtitleText('你好，世界', 2, 'continuous'),
+    )), { left: '你好', right: '世界', offset: 2 });
+    assert.equal(helpers.applySplitEdgeTrim('真的？'), '真的');
+    assert.equal(helpers.applySplitEdgeTrim('、、是的', 'start'), '是的');
+
+    // 关闭全部符号后只修剪空白：句号随右侧边缘一起保留。
+    helpers.setSplitTrimSymbols([]);
+    assert.equal(helpers.applySplitEdgeTrim('好吧？', 'end'), '好吧？');
+    assert.equal(helpers.applySplitEdgeTrim('　那好。', 'start'), '那好。');
+    assert.deepEqual(JSON.parse(JSON.stringify(
+      helpers.cleanSplitTextParts('这样说。那样说', 3),
+    )), { left: '这样说', right: '。那样说', offset: 3 });
+
+    // 仅保留句号：问号不再被移除，句号仍被修剪。
+    helpers.setSplitTrimSymbols(['。']);
+    assert.equal(helpers.applySplitEdgeTrim('好的？', 'end'), '好的？');
+    assert.equal(helpers.applySplitEdgeTrim('嗯。', 'end'), '嗯');
+  } finally {
+    restore();
+  }
+});
+
 test('normalizes gap-remove data and returns independent gap values', () => {
   const input = { detector: 'legacy_subtitle_gap', minimum_ms: 1, gaps: [{ start: 10, end: 20 }] };
   const normalized = helpers.normalizeGapRemoveData(input);

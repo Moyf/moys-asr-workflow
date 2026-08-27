@@ -933,6 +933,85 @@
   .editor-settings-field > .editor-settings-item { width: auto; }
   .editor-settings-field > label.toggle.editor-settings-item { align-self: stretch; width: 100%; }
   .editor-settings-field > .editor-settings-hint { margin: 0; }
+  /* 拆分移除符号：勾选式字符网格；每个 chip 是一个可点选的 checkbox。 */
+  .split-trim-symbols-field { gap: 5px; }
+  /* chips 与「恢复默认符号」同行：网格居左，按钮贴右侧、默认状态隐藏。 */
+  .split-trim-symbol-row {
+    display: flex; align-items: center; gap: 8px;
+    max-width: 100%;
+  }
+  .split-trim-symbol-row > .split-trim-symbol-grid { flex: 0 1 auto; }
+  .split-trim-symbol-row > #split-trim-symbols-reset {
+    margin-left: auto; padding: 3px 10px; font-size: 12px;
+  }
+  .editor-settings-panel .split-join-row input[type="text"] {
+    min-width: 0;
+    width: auto;
+    flex: 1 1 auto;
+  }
+  /* 「其他符号」行：标签 + 输入框占满整行，输入框吃掉剩余宽度。 */
+  .split-trim-symbols-field > .split-join-row {
+    align-self: stretch; width: 100%;
+  }
+  /* 「合并字幕时插入字符」的两组（字符型/单词型）同一行、各占一半；
+     面板过窄放不下两组时才退回上下两行。 */
+  .split-join-inline-row {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+    max-width: 100%; width: 100%;
+  }
+  .split-join-inline-row > .split-join-row {
+    /* 各占一半（减去间距）；文本框在半栏内吃掉剩余宽度。 */
+    flex: 1 1 calc(50% - 10px);
+    min-width: 0;
+  }
+  /* 标题与主字幕类型提示同行：标题居左，提示+切换按钮贴右；
+     宽度不足时提示组整体换行到下一行，按钮不会被截断或越界。 */
+  .split-join-title-row {
+    display: flex; flex-wrap: wrap; align-items: baseline;
+    gap: 2px 8px;
+    align-self: stretch; width: 100%;
+  }
+  .split-join-mode-hint-group {
+    display: inline-flex; flex-wrap: wrap; align-items: baseline;
+    gap: 2px 8px;
+    margin-left: auto; min-width: 0; max-width: 100%;
+  }
+  .split-join-mode-hint-group[hidden] { display: none; }
+  .split-join-mode-hint-group > #merge-join-mode-text { white-space: nowrap; }
+  .split-join-mode-switch {
+    background: none; border: none; padding: 0;
+    color: var(--accent); cursor: pointer;
+    font-size: 12px; line-height: inherit; white-space: nowrap;
+    text-decoration: underline; text-underline-offset: 2px;
+  }
+  .split-join-mode-switch:hover { color: var(--accent-hover); }
+  .split-trim-symbol-grid {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    max-width: 100%;
+  }
+  .split-trim-symbol-grid label {
+    display: inline-flex; align-items: center;
+    cursor: pointer; user-select: none;
+  }
+  .split-trim-symbol-grid input[type="checkbox"] {
+    position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;
+  }
+  .split-trim-symbol-grid input[type="checkbox"]:focus-visible + span {
+    outline: 2px solid var(--accent-line); outline-offset: 1px;
+  }
+  .split-trim-symbol-grid span {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 24px; padding: 2px 6px; border-radius: var(--radius-sm);
+    background: var(--bg-overlay); border: 1px solid var(--border-subtle);
+    color: var(--text-muted); font-size: 13px; line-height: 1.35;
+  }
+  .split-trim-symbol-grid input[type="checkbox"]:checked + span {
+    background: var(--accent-tint); border-color: var(--accent);
+    color: var(--text-primary); font-weight: 600;
+  }
+  .split-trim-symbol-grid label:hover span {
+    border-color: var(--btn-border-hover); color: var(--text-primary);
+  }
   .editor-settings-list-fields { flex-wrap: wrap; }
   .editor-settings-list-fields > span { color: var(--text-muted); }
   .editor-settings-toggle-group > .toggle { white-space: nowrap; }
@@ -1029,6 +1108,42 @@
     width: max-content; min-width: 150px; max-width: min(260px, calc(100vw - 16px));
     z-index: 1000;
   }
+  /* 颜色过滤：🎨 按钮与工程中存在彩色字幕时的固定定位菜单。 */
+  .toolbar #color-filter-btn {
+    padding: 3px 7px; font-size: 14px; line-height: 1;
+    min-width: 30px;
+  }
+  .toolbar #color-filter-btn[hidden] { display: none; }
+  .toolbar #color-filter-btn.filter-active {
+    background: var(--accent-tint); border-color: var(--accent);
+  }
+  .toolbar .color-filter-dropdown > .dropdown-menu {
+    position: fixed; left: 0; right: auto; top: 0;
+    width: max-content; min-width: 190px; max-width: min(280px, calc(100vw - 16px));
+    z-index: 1000; display: none; flex-direction: column; gap: 2px; padding: 6px;
+  }
+  .toolbar .color-filter-dropdown.open > .dropdown-menu { display: flex; }
+  .color-filter-item {
+    display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto;
+    align-items: center; gap: 7px;
+    padding: 4px 8px; border-radius: var(--radius-sm);
+    color: var(--text-secondary); font-size: 12.5px; cursor: pointer; user-select: none;
+  }
+  .color-filter-item:hover { background: var(--accent-tint); color: var(--text-primary); }
+  .color-filter-item .color-dot {
+    width: 12px; height: 12px; border-radius: 50%;
+    border: 1px solid rgba(127, 127, 127, 0.45);
+  }
+  .color-filter-item .color-dot.is-default {
+    background: transparent;
+    border-style: dashed;
+  }
+  .color-filter-item .color-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .color-filter-item .color-count { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .toolbar .color-filter-menu .color-filter-clear {
+    margin-top: 2px; text-align: center; color: var(--text-secondary);
+  }
+  .toolbar .color-filter-menu .color-filter-clear[hidden] { display: none; }
   .toolbar .dropdown.open .dropdown-menu { display: block; }
   #batch-operations-dropdown.open > #batch-operations-menu {
     display: flex; flex-direction: column; gap: 4px; padding: 6px;
@@ -1053,6 +1168,12 @@
   }
   .multi-subtitle-setting-row > span { min-width: 0; white-space: normal; line-height: 1.3; }
   .multi-subtitle-setting-row select { width: 108px; min-width: 0; }
+  /* 已开启多重字幕但尚未加载第二条字幕：开关右侧的行内提示。 */
+  .multi-subtitle-empty-hint {
+    color: var(--text-muted); font-size: 12px;
+    white-space: nowrap;
+  }
+  .multi-subtitle-empty-hint[hidden] { display: none !important; }
   .multi-subtitle-setting-hint {
     display: grid; gap: 2px; margin: 4px 7px 7px; padding: 7px 9px;
     border-left: 3px solid var(--accent); border-radius: var(--radius-sm);
@@ -3749,6 +3870,7 @@
       <input type="checkbox" id="multi-subtitle-toggle" title="当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。">
       多重字幕
     </label>
+    <small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden>请拖入第二条字幕以开启多重字幕编辑</small>
     <span class="dropdown multi-subtitle-settings-dropdown" id="multi-subtitle-settings-dropdown" hidden>
       <button type="button" id="multi-subtitle-settings-toggle" title="多重字幕设置" aria-label="多重字幕设置" aria-expanded="false" aria-controls="multi-subtitle-settings-menu" aria-haspopup="menu">⚙️</button>
       <div class="dropdown-menu multi-subtitle-settings-menu" id="multi-subtitle-settings-menu" role="menu">
@@ -4358,16 +4480,40 @@
         <option value="ctrl-enter">Ctrl+Enter</option>
     </select>
   </label>
-    <label class="toggle editor-settings-item" title="开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置">
+    <label class="toggle editor-settings-item" title="开启时，会自动按可用时间码拆分；关闭后将打开拆分弹窗，手动进行拆分">
       <input type="checkbox" id="split-use-word-timestamps" checked> 主字幕自动使用时间码拆分
     </label>
-    <small class="editor-settings-hint" id="split-use-word-timestamps-hint">开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置。</small>
+    <small class="editor-settings-hint" id="split-use-word-timestamps-hint">开启时，会自动按可用时间码拆分；关闭后将打开拆分弹窗，手动进行拆分。</small>
     <div class="editor-settings-field">
-    <label class="editor-settings-item" title="合并两条字幕时，中间插入的字符（如果不需要可以留空）">
-      合并字幕时插入字符
-      <input type="text" id="merge-join-text" placeholder="留空则直接拼接">
-    </label>
-    <small class="editor-settings-hint">合并两条字幕时，中间插入的字符（如果不需要可以留空）</small>
+      <div class="split-join-title-row">
+        <span class="editor-settings-item">合并字幕时插入字符</span>
+        <span class="split-join-mode-hint-group" id="merge-join-mode-hint" hidden>
+          <small class="editor-settings-hint" id="merge-join-mode-text"></small>
+          <button type="button" class="split-join-mode-switch" id="merge-join-mode-switch"></button>
+        </span>
+      </div>
+      <div class="split-join-inline-row">
+        <label class="editor-settings-item split-join-row">
+          字符型
+          <input type="text" id="merge-join-text-continuous" placeholder="留空则直接拼接">
+        </label>
+        <label class="editor-settings-item split-join-row">
+          单词型
+          <input type="text" id="merge-join-text-word" placeholder="默认一个空格">
+        </label>
+      </div>
+    </div>
+    <div class="editor-settings-field split-trim-symbols-field">
+      <span class="editor-settings-item" id="split-trim-symbols-label">拆分时移除的标点符号</span>
+      <div class="split-trim-symbol-row">
+        <div class="split-trim-symbol-grid" id="split-trim-symbol-grid" role="group" aria-labelledby="split-trim-symbols-label"></div>
+        <button type="button" id="split-trim-symbols-reset">恢复默认符号</button>
+      </div>
+      <label class="editor-settings-item split-join-row" title="其他需要移除的符号，用空格分隔；输入的每个符号都会在拆分后从两侧文本边缘移除">
+        其他符号
+        <input type="text" id="split-trim-extra-symbols" placeholder="其他符号，用空格分隔" autocomplete="off">
+      </label>
+      <small class="editor-settings-hint">勾选或填写的符号会在拆分后从两侧文本边缘自动移除；空格与换行始终修剪。</small>
     </div>
     </div>
   </div>
@@ -4878,6 +5024,10 @@
         <input type="text" id="search" placeholder="过滤字幕…" autocomplete="off">
         <span class="clear-x" id="search-clear" title="清空">×</span>
       </span>
+      <div class="dropdown color-filter-dropdown" id="color-filter-dropdown">
+        <button type="button" id="color-filter-btn" hidden title="按颜色过滤显示的字幕" aria-expanded="false" aria-controls="color-filter-menu">🎨</button>
+        <div class="dropdown-menu color-filter-menu" id="color-filter-menu" role="menu"></div>
+      </div>
       <span class="info">显示 <b id="visible-count">0</b> / <b id="total-count">0</b></span>
       <span class="sep"></span>
       <div class="dropdown batch-operations-dropdown" id="batch-operations-dropdown">
@@ -7723,14 +7873,86 @@
   }
 
   const EDITOR_SETTING_ROW_HEIGHTS = [64, 80, 96, 120, 144, 168];
+  // 拆分边界符号修剪配置：勾选/填写的符号会在拆分后从两侧文本边缘移除。
+  // 空格与换行永远修剪，不参与配置。
+  // 仅前 5 个高频符号提供勾选 chip；其余符号由设置面板的自由文本框维护
+  // （空格分隔），文本框默认预填半角逗号和句点，延续旧版行为。
+  const SPLIT_TRIM_PRIMARY_SYMBOLS = Object.freeze([
+    { ch: '，', name: '全角逗号' },
+    { ch: '。', name: '句号' },
+    { ch: '、', name: '顿号' },
+    { ch: '！', name: '全角感叹号' },
+    { ch: '？', name: '全角问号' },
+  ]);
+  const DEFAULT_EXTRA_SPLIT_TRIM_SYMBOLS = Object.freeze([',', '.']);
+  const DEFAULT_SPLIT_TRIM_SYMBOLS = Object.freeze(
+    [...SPLIT_TRIM_PRIMARY_SYMBOLS.map((option) => option.ch), ...DEFAULT_EXTRA_SPLIT_TRIM_SYMBOLS],
+  );
+
+  // 设置面板文本框解析：按空白拆分后把每个片段展开为单字符并去重，
+  // 这样「,.」与「, .」等价，减少手动输入格式差异带来的意外。
+  function parseSplitTrimSymbolInput(text) {
+    const seen = new Set();
+    String(text || '').split(/\s+/u).forEach((token) => {
+      Array.from(token).forEach((ch) => { if (ch.trim()) seen.add(ch); });
+    });
+    return [...seen];
+  }
+
+  // 归一化存储值：保留单个字符的字符串项，去重并保持顺序；
+  // 接受任意字符（自由文本框），显式空数组表示关闭全部符号（仅修剪空白）。
+  function normalizeSplitTrimSymbols(value) {
+    if (!Array.isArray(value)) return [...DEFAULT_SPLIT_TRIM_SYMBOLS];
+    const seen = new Set();
+    const result = [];
+    value.forEach((symbol) => {
+      if (typeof symbol !== 'string') return;
+      const characters = Array.from(symbol);
+      if (characters.length !== 1 || seen.has(characters[0])) return;
+      seen.add(characters[0]);
+      result.push(characters[0]);
+    });
+    return result;
+  }
+
+  function escapeSplitTrimPatternSource(symbol) {
+    return String(symbol).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  }
+
+  let activeSplitTrimSymbols = [...DEFAULT_SPLIT_TRIM_SYMBOLS];
+  let activeEndTrimPattern = null;
+  let activeStartTrimPattern = null;
+
+  function rebuildSplitTrimPatterns() {
+    const source = activeSplitTrimSymbols.map(escapeSplitTrimPatternSource).join('|');
+    activeEndTrimPattern = new RegExp(`(?:${source}|\\s)+$`, 'u');
+    activeStartTrimPattern = new RegExp(`^(?:${source}|\\s)+`, 'u');
+  }
+  rebuildSplitTrimPatterns();
+
+  // editor 启动时把用户设置同步进来；之后拆分相关的所有修剪路径共用同一份符号表。
+  function setSplitTrimSymbols(symbols) {
+    activeSplitTrimSymbols = normalizeSplitTrimSymbols(symbols);
+    rebuildSplitTrimPatterns();
+    return [...activeSplitTrimSymbols];
+  }
+
+  function applySplitEdgeTrim(value, edge = 'end') {
+    const text = String(value || '');
+    if (edge === 'start') return text.replace(activeStartTrimPattern, '');
+    return text.replace(activeEndTrimPattern, '');
+  }
   const DEFAULT_EDITOR_SETTINGS = Object.freeze({
     splitKey: 'enter', splitUseWordTimestamps: true, splitAutoSubmit: true,
+    mainSplitModeOverride: null,
+    splitTrimSymbols: [...DEFAULT_SPLIT_TRIM_SYMBOLS],
     overlayEnabled: true, extensionOverlayEnabled: true, multiSubtitleRowHeight: 168,
     exportStartAtZero: false, cueListShowIndex: true, cueListShowTime: true,
     cueListShowSticker: true, cueListShowCharcount: true, cueListAutoScrollOnClick: true,
     cueListKeepSplitVisible: true, cueListHideDisabled: false, cueListCharcountThreshold: 16,
     cueEditorShowNavigation: false, cueEditorShowTimeActions: false, cueEditorShowSticker: false,
-    cueEditorCancelOnEscape: false, selectGroupMembers: false, mergeJoinText: '',
+    cueEditorCancelOnEscape: false, selectGroupMembers: false,
+    mergeJoinTextContinuous: '', mergeJoinTextWord: ' ',
     autoMergeGapMs: 200, autoMergeSnapDirection: 'backward', autoMergeShortCount: 3,
     autoMergeAbsorbShort: true, autoMergeAbsorbDirection: 'previous', exportColorUnified: true,
     autoSaveProject: true, autoSaveIntervalSeconds: 30, stickerOverlayEnabled: false,
@@ -7759,6 +7981,13 @@
       splitKey: savedSettings.splitKey === 'ctrl-enter' ? 'ctrl-enter' : 'enter',
       splitUseWordTimestamps: savedSettings.splitUseWordTimestamps !== false,
       splitAutoSubmit: savedSettings.splitAutoSubmit !== false,
+      // 主字幕拆分类型手动指定偏好：word / continuous / null（跟随工程与检测）。
+      mainSplitModeOverride: ['word', 'continuous'].includes(savedSettings.mainSplitModeOverride)
+        ? savedSettings.mainSplitModeOverride : null,
+      // undefined → 默认集合；显式空数组表示用户关闭了全部符号（仅修剪空白）。
+      splitTrimSymbols: Array.isArray(savedSettings.splitTrimSymbols)
+        ? normalizeSplitTrimSymbols(savedSettings.splitTrimSymbols)
+        : [...DEFAULT_SPLIT_TRIM_SYMBOLS],
       overlayEnabled: savedSettings.overlayEnabled !== false,
       extensionOverlayEnabled: savedSettings.extensionOverlayEnabled !== false,
       multiSubtitleRowHeight: EDITOR_SETTING_ROW_HEIGHTS.includes(Number(savedSettings.multiSubtitleRowHeight))
@@ -7777,7 +8006,14 @@
       cueEditorShowSticker: savedSettings.cueEditorShowSticker === true,
       cueEditorCancelOnEscape: savedSettings.cueEditorCancelOnEscape === true,
       selectGroupMembers: savedSettings.selectGroupMembers === true,
-      mergeJoinText: typeof savedSettings.mergeJoinText === 'string' ? savedSettings.mergeJoinText : '',
+      // 合并连接符按字幕拆分类型区分：连续型默认直接拼接，单词型默认空格。
+      // 旧版只有 mergeJoinText 一个值；用户自定义过则两个类型都沿用旧值。
+      mergeJoinTextContinuous: typeof savedSettings.mergeJoinTextContinuous === 'string'
+        ? savedSettings.mergeJoinTextContinuous
+        : typeof savedSettings.mergeJoinText === 'string' ? savedSettings.mergeJoinText : '',
+      mergeJoinTextWord: typeof savedSettings.mergeJoinTextWord === 'string'
+        ? savedSettings.mergeJoinTextWord
+        : typeof savedSettings.mergeJoinText === 'string' ? savedSettings.mergeJoinText : ' ',
       autoMergeGapMs: clampInteger(savedSettings.autoMergeGapMs, 200, 0, 10000),
       autoMergeSnapDirection: savedSettings.autoMergeSnapDirection === 'forward' ? 'forward' : 'backward',
       autoMergeShortCount: clampInteger(savedSettings.autoMergeShortCount, 3, 1, 20),
@@ -8160,8 +8396,8 @@
   function cleanSplitTextParts(text, offset, preserveWordConnector = false) {
     const value = String(text || '');
     const safeOffset = Math.max(0, Math.min(value.length, Math.round(Number(offset) || 0)));
-    const trimPattern = preserveWordConnector ? /\s+$/u : /[，。,.!?！？；;：:\s]+$/u;
-    const trimStartPattern = preserveWordConnector ? /^\s+/u : /^[，。,.!?！？；;：:\s]+/u;
+    const trimPattern = preserveWordConnector ? /\s+$/u : activeEndTrimPattern;
+    const trimStartPattern = preserveWordConnector ? /^\s+/u : activeStartTrimPattern;
     const left = value.slice(0, safeOffset).replace(trimPattern, '');
     const right = value.slice(safeOffset).replace(trimStartPattern, '');
     return { left, right, offset: safeOffset };
@@ -10318,6 +10554,13 @@ export default MawDynamicCaptions;
     normalizeMultiSubtitleProject,
     detectSubtitleSplitMode,
     isWordSplitConnector,
+    SPLIT_TRIM_PRIMARY_SYMBOLS,
+    DEFAULT_EXTRA_SPLIT_TRIM_SYMBOLS,
+    DEFAULT_SPLIT_TRIM_SYMBOLS,
+    parseSplitTrimSymbolInput,
+    normalizeSplitTrimSymbols,
+    setSplitTrimSymbols,
+    applySplitEdgeTrim,
     subtitleSplitOffsets,
     cleanSplitTextParts,
     splitSubtitleText,
@@ -10507,7 +10750,7 @@ export default MawDynamicCaptions;
     '拆分与合并': 'Split and merge', '波形形状来源': 'Waveform shape source', '自研波形': 'Self-built waveform', 'ReaPeaks 波形层': 'ReaPeaks waveform layer',
     '显示方式': 'Display mode', '语言类型': 'Language type', '主字幕': 'Main subtitle', '副字幕': 'Secondary subtitle', '主字幕语言类型': 'Main subtitle language type', '副字幕语言类型': 'Secondary subtitle language type', '副字幕时波形高度': 'Waveform height with secondary subtitles', '跨轨道吸附': 'Cross-track snapping', '同时选中主副字幕': 'Select main and secondary subtitles together', '绑定时自动同步时长': 'Automatically sync duration when binding', '显示轨道徽标': 'Show track badges', '在多重字幕波形中显示主字幕和副字幕的轨道编号徽标': 'Show main and secondary track number badges in the multiple-subtitle waveform', '交换主副字幕': 'Swap main and secondary subtitles', '普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕': 'Normal clicks follow the last clicked track; clicking a bound subtitle only adds the other subtitle actually bound to it',
     '开启后显示副轨、双列列表和绑定操作；关闭只隐藏副字幕数据，不删除': 'Show the secondary track, two-column list, and binding actions; turning it off only hides secondary data',
-    '启用多重字幕时使用的波形行高度': 'Waveform row height used when multiple subtitles are enabled', '请拖入第二个 srt 字幕以开启多重字幕功能': 'Drop a second SRT subtitle to enable multiple subtitles', '是否选择导入第二条字幕以开启多重字幕模式？': 'Import a second subtitle to enable multiple-subtitle mode?', '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。': 'When the current project has more than one subtitle, you can enable multiple-subtitle mode for bilingual subtitle editing and similar workflows.',
+    '启用多重字幕时使用的波形行高度': 'Waveform row height used when multiple subtitles are enabled', '请拖入第二个 srt 字幕以开启多重字幕功能': 'Drop a second SRT subtitle to enable multiple subtitles', '请拖入第二条字幕以开启多重字幕编辑': 'Drop a second subtitle to enable multi-subtitle editing', '是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）': 'Import the second subtitle? (You can also drop a subtitle or project file into the editor later)', '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。': 'When the current project has more than one subtitle, you can enable multiple-subtitle mode for bilingual subtitle editing and similar workflows.',
     '拖动多重字幕时，允许吸附到另一条字幕轨道的起点和终点': 'Snap multiple subtitles to the start and end boundaries of the other track while dragging',
     '点击主字幕或副字幕时，如果存在绑定字幕，同时选中对应字幕': 'When clicking a main or secondary subtitle, also select its bound counterpart if one exists',
     '交换主字幕和副字幕的文本、时间与绑定关系': 'Swap the text, timing, and bindings between the main and secondary subtitles',
@@ -10884,6 +11127,7 @@ export default MawDynamicCaptions;
     '按文字位置拆分': 'Split at text position', '跳转到字幕并播放': 'Seek to subtitle and play',
     '分配表情包…': 'Assign sticker…', '删除表情包': 'Remove sticker',
     '标记颜色': 'Mark color', '清除颜色': 'Clear color',
+    '切换主字幕语言类型': 'Change main subtitle language type',
     '启用此条': 'Enable this subtitle', '禁用此条': 'Disable this subtitle',
     '删除字幕': 'Delete subtitle', '拓展表情包时长': 'Extend sticker duration',
     '统一分配表情包…': 'Assign sticker to selection…',
@@ -11057,7 +11301,28 @@ export default MawDynamicCaptions;
     '拖动调整布局区域比例': 'Drag to resize layout areas',
     '拖动调整左右区域宽度': 'Drag to resize left and right areas',
     '拖动调整视频与当前字幕高度': 'Drag to resize video and current-subtitle heights',
-    '拖动调整当前字幕与字幕列表高度': 'Drag to resize current-subtitle and subtitle-list heights'
+    '拖动调整当前字幕与字幕列表高度': 'Drag to resize current-subtitle and subtitle-list heights',
+    // 颜色过滤与拆分移除符号设置
+    '按颜色过滤显示的字幕': 'Filter visible subtitles by color',
+    '清除颜色过滤': 'Clear color filter',
+    '默认': 'Default',
+    '主字幕自动使用时间码拆分': 'Auto-split main subtitles with word timings',
+    '开启时，会自动按可用时间码拆分；关闭后将打开拆分弹窗，手动进行拆分。':
+      'When enabled, cues split automatically at usable word timings; otherwise the split dialog opens for manual splitting.',
+    '合并字幕时插入字符': 'Text inserted when merging subtitles',
+    '留空则直接拼接': 'Leave empty to join directly', '默认一个空格': 'Defaults to one space',
+    '拆分时移除的标点符号': 'Punctuation removed when splitting',
+    '勾选或填写的符号会在拆分后从两侧文本边缘自动移除；空格与换行始终修剪。':
+      'Checked symbols and symbols in the extra field are trimmed from both text edges after a split; spaces and line breaks are always trimmed.',
+    '其他符号': 'Other symbols',
+    '其他符号，用空格分隔': 'Other symbols, separated by spaces',
+    '其他需要移除的符号，用空格分隔；输入的每个符号都会在拆分后从两侧文本边缘移除':
+      'Additional symbols to remove, separated by spaces; every symbol entered is trimmed from both text edges after a split',
+    '恢复默认符号': 'Restore default symbols',
+    '全角逗号': 'Fullwidth comma', '句号': 'Period', '顿号': 'Enumerated comma',
+    '全角感叹号': 'Fullwidth exclamation mark', '全角问号': 'Fullwidth question mark',
+    '单词型：英语等西文语言，按空格分隔多个单词': 'Word-based: Latin-script languages such as English, where words are separated by spaces',
+    '字符型：中文、日文等按字符拆分的语言': 'Character-based: languages such as Chinese and Japanese, split per character',
   };
 
   const textOriginals = new WeakMap();
@@ -11267,6 +11532,16 @@ export default MawDynamicCaptions;
     if (text === '副字幕已随主字幕联动调整') return 'Secondary subtitle followed the main subtitle';
     match = /^已交换主副字幕：主轨\s+(\d+)\s+条，副轨\s+(\d+)\s+条$/.exec(text);
     if (match) return `Swapped main and secondary subtitles: ${match[1]} main, ${match[2]} secondary`;
+    // 合并连接设置旁的主字幕类型提示与切换按钮 title（目标类型语言说明）
+    match = /^当前为「(.+)」$/.exec(text);
+    if (match) return `Current: ${translateText(match[1], EN)}`;
+    match = /^切换为(单词型|字符型)$/.exec(text);
+    if (match) return `Switch to ${translateText(match[1], EN)}`;
+    // 颜色过滤行 title：该颜色的字幕共 N 条；点击条目只显示此颜色，勾选可多选
+    match = /^该颜色的字幕共\s*(\d+)\s*条；点击条目只显示此颜色，勾选可多选$/.exec(text);
+    if (match) {
+      return `This color has ${match[1]} subtitles; click a row to show only that color, check boxes to select multiple`;
+    }
     // flashHint：已拼接/合并字幕：吸附 2 处间隔，吸收 1 条短字幕
     match = /^(已拼接\/合并字幕|已拼合字幕)：(.+)$/.exec(text);
     if (match) {
@@ -16763,7 +17038,7 @@ const MULTI_SUBTITLE_TOLERANCE_MS = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_TOLERANC
 const MULTI_SUBTITLE_MERGE_OVERLAP_TOLERANCE_MS = 500;
 const SUBTITLE_MIN_DURATION_MS = 100;
 const PROJECT_SEGMENT_OVERLAP_AUTO_FIX_MAX_MS = 2;
-const MULTI_SUBTITLE_IMPORT_PROMPT = '是否选择导入第二条字幕以开启多重字幕模式？';
+const MULTI_SUBTITLE_IMPORT_PROMPT = '是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）';
 const MULTI_SUBTITLE_TOGGLE_TITLE = '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。';
 maweDomContractCheck();
 let normalizedMultiSubtitleReference = null;
@@ -16798,6 +17073,11 @@ function isConfiguredSubtitleSplitMode(value) {
 }
 
 function getMainSubtitleSplitMode(segment = null) {
+  // 类型来源三级：用户手动指定（本地偏好，两个入口共享、多重字幕开关无关）
+  // → 工程显式配置的 main_split_mode（仅多重字幕开启时沿用旧契约语义）
+  // → 按主字幕文本实时检测。
+  const override = EDITOR_SETTINGS.mainSplitModeOverride;
+  if (override === 'word' || override === 'continuous') return override;
   const multi = getMultiSubtitleState();
   if (multi.enabled === true && isConfiguredSubtitleSplitMode(multi.main_split_mode)) {
     return multi.main_split_mode;
@@ -16814,6 +17094,13 @@ function getExtensionSubtitleSplitMode(track = getActiveExtensionTrack(), segmen
 
 function splitModeLabel(mode) {
   return mode === 'continuous' ? '字符型' : '单词型';
+}
+
+// 合并多条字幕时按「字符型/单词型」取对应连接符：中文直接拼接，西文默认空格。
+function mergeJoinSeparatorForMode(splitMode) {
+  return splitMode === 'continuous'
+    ? EDITOR_SETTINGS.mergeJoinTextContinuous
+    : EDITOR_SETTINGS.mergeJoinTextWord;
 }
 
 function multiSubtitleWaveformStructureKey(state = getMultiSubtitleState()) {
@@ -17337,6 +17624,8 @@ function clampCueMoveStepMs(value) {
 const DEFAULT_EDITOR_SETTINGS = {
   splitKey: 'enter',
   splitUseWordTimestamps: true,
+  // 主字幕拆分类型手动指定偏好：word / continuous / null（跟随工程与检测）。
+  mainSplitModeOverride: null,
   // 拆分弹窗中选完所有需要确认的断点后自动提交。
   splitAutoSubmit: true,
   overlayEnabled: true,
@@ -17485,6 +17774,8 @@ function saveEditorSettings(settings) {
 }
 
 const EDITOR_SETTINGS = readEditorSettings();
+// 把用户配置的拆分移除符号同步给共享工具层；设置面板修改时也会同步。
+MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(EDITOR_SETTINGS.splitTrimSymbols);
 
 // 标记颜色：5 种基础色，用于给字幕分组着色。
 // 数据模型与表情包同构：head 持完整 color {name, value, start, end}，后续 ref 持 color_ref {name, headIdx}
@@ -17862,7 +18153,8 @@ const mediaFullscreen = document.getElementById('media-fullscreen');
 const playerStage = playerWrap?.querySelector('.player-stage') || playerWrap;
 const splitKeySel = document.getElementById('split-key');
 const splitUseWordTimestampsToggle = document.getElementById('split-use-word-timestamps');
-const mergeJoinTextInput = document.getElementById('merge-join-text');
+const mergeJoinTextContinuousInput = document.getElementById('merge-join-text-continuous');
+const mergeJoinTextWordInput = document.getElementById('merge-join-text-word');
 const cueListShowIndexToggle = document.getElementById('cue-list-show-index');
 const cueListShowTimeToggle = document.getElementById('cue-list-show-time');
 const cueListShowStickerToggle = document.getElementById('cue-list-show-sticker');
@@ -17994,6 +18286,8 @@ const subtitleExportDropdown = document.getElementById('subtitle-export-dropdown
 const multiSubtitleControls = document.getElementById('multi-subtitle-controls');
 const multiSubtitleToggleLabel = document.getElementById('multi-subtitle-toggle-label');
 const multiSubtitleSettingsDropdown = document.getElementById('multi-subtitle-settings-dropdown');
+// 已开启多重字幕但尚未加载第二条字幕时的开关右侧提示。
+const multiSubtitleEmptyHint = document.getElementById('multi-subtitle-empty-hint');
 const multiSubtitleSwapButton = document.getElementById('multi-subtitle-swap');
 const multiSubtitleCrossTrackSnapToggle = document.getElementById('multi-subtitle-cross-track-snap');
 const multiSubtitleSelectBoundPairToggle = document.getElementById('multi-subtitle-select-bound-pair');
@@ -18418,18 +18712,26 @@ function updateMultiSubtitleUi() {
   const enteringEnabled = enabled && !previousMultiSubtitlePreviewEnabled;
   const leavingEnabled = !enabled && previousMultiSubtitlePreviewEnabled;
   syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEnabled);
+  refreshMergeJoinModeHint();
   if (multiSubtitleControls) multiSubtitleControls.hidden = !hasMainSubtitle;
   if (multiSubtitleSettingsDropdown) {
+    // 齿轮仅在已导入副轨（真正进入多重字幕编辑）时显示；
+    // 已开启但还没有第二条字幕时改在开关右侧显示拖入提示。
     multiSubtitleSettingsDropdown.hidden = !enabled;
-    if (!enabled) {
+    if (multiSubtitleSettingsDropdown.hidden) {
       multiSubtitleSettingsDropdown.classList.remove('open');
       multiSubtitleSettingsDropdown.querySelector('button[aria-expanded]')
         ?.setAttribute('aria-expanded', 'false');
     }
   }
+  if (multiSubtitleEmptyHint) {
+    // 提示与齿轮互斥：开启但无副轨 → 显示；其余隐藏。
+    multiSubtitleEmptyHint.hidden = !(getMultiSubtitleState().enabled === true && !enabled);
+  }
   if (multiSubtitleToggle) {
-    multiSubtitleToggle.checked = enabled;
-    // 没有副轨时仍允许点击，由 change 处理器询问是否选择导入第二条字幕。
+    // 勾选状态跟随「多重字幕编辑模式」开关本身：未导入副轨时同样保持勾选。
+    multiSubtitleToggle.checked = getMultiSubtitleState().enabled === true;
+    // 没有副轨时仍允许点击，由 change 处理器询问是否现在导入第二条字幕。
     multiSubtitleToggle.disabled = false;
   }
   if (multiSubtitleToggleLabel) {
@@ -18583,7 +18885,56 @@ if (splitUseWordTimestampsToggle) splitUseWordTimestampsToggle.checked = EDITOR_
 if (multiSubtitleSplitAutoSubmit) multiSubtitleSplitAutoSubmit.checked = EDITOR_SETTINGS.splitAutoSubmit;
 applyPlatformKeyLabels();
 refreshSplitKeyHelp();
-if (mergeJoinTextInput) mergeJoinTextInput.value = EDITOR_SETTINGS.mergeJoinText;
+if (mergeJoinTextContinuousInput) mergeJoinTextContinuousInput.value = EDITOR_SETTINGS.mergeJoinTextContinuous;
+if (mergeJoinTextWordInput) mergeJoinTextWordInput.value = EDITOR_SETTINGS.mergeJoinTextWord;
+// 「合并字幕时插入字符」旁的提示：显示当前主字幕拆分类型（自动检测或已指定），
+// 并提供一键切换。手动指定的类型存入 EDITOR_SETTINGS.mainSplitModeOverride
+// （本地偏好，多重字幕开关无关），同时同步 multi_subtitle.main_split_mode，
+// 与多重字幕菜单的「主字幕语言类型」互为镜像。
+const mergeJoinModeHint = document.getElementById('merge-join-mode-hint');
+const mergeJoinModeText = document.getElementById('merge-join-mode-text');
+const mergeJoinModeSwitch = document.getElementById('merge-join-mode-switch');
+function isConfiguredMainSplitModeOverride(value) {
+  return value === 'word' || value === 'continuous';
+}
+function refreshMergeJoinModeHint() {
+  if (!mergeJoinModeHint || !mergeJoinModeText || !mergeJoinModeSwitch) return;
+  const text = DATA.segments.map((item) => item?.text || '').join('\n');
+  if (!text) {
+    mergeJoinModeHint.hidden = true;
+    return;
+  }
+  const detected = MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(text);
+  const override = EDITOR_SETTINGS.mainSplitModeOverride;
+  const hasPinned = isConfiguredMainSplitModeOverride(override);
+  mergeJoinModeHint.hidden = false;
+  // 提示不区分「自动检测」与「手动指定」：统一展示当前生效类型；
+  // 用户觉得不对就自己点按钮换。
+  const effective = hasPinned ? override : detected;
+  const other = effective === 'continuous' ? 'word' : 'continuous';
+  mergeJoinModeText.textContent = `当前为「${splitModeLabel(effective)}」`;
+  // 按钮 title 给出目标类型的语言说明，帮助用户选择。
+  mergeJoinModeSwitch.textContent = `切换为${splitModeLabel(other)}`;
+  mergeJoinModeSwitch.title = other === 'word'
+    ? '单词型：英语等西文语言，按空格分隔多个单词'
+    : '字符型：中文、日文等按字符拆分的语言';
+  mergeJoinModeSwitch.dataset.targetMode = other;
+}
+function setMainSubtitleSplitModeBinding(mode) {
+  const next = isConfiguredSubtitleSplitMode(mode) ? mode : null;
+  if (!next || next === EDITOR_SETTINGS.mainSplitModeOverride) return;
+  pushUndo('切换主字幕语言类型');
+  // 本地偏好立即生效；工程内的 main_split_mode 同步写入，
+  // 保证多重字幕菜单与保存后的工程文件读到同一类型。
+  updateEditorSettings({ mainSplitModeOverride: next });
+  getMultiSubtitleState().main_split_mode = next;
+  markMultiSubtitleDirty();
+  // renderAll → updateMultiSubtitleUi 会回写多重字幕下拉框并刷新本提示。
+  renderAll({ waveform: 'none' });
+}
+mergeJoinModeSwitch?.addEventListener('click', () => {
+  setMainSubtitleSplitModeBinding(mergeJoinModeSwitch.dataset.targetMode);
+});
 syncAutoMergePanelInputs();
 overlayToggle.checked = EDITOR_SETTINGS.overlayEnabled;
 if (extensionOverlayToggle) extensionOverlayToggle.checked = false;
@@ -18626,21 +18977,20 @@ applyCueEditorDisplaySettings();
 multiSubtitleToggle?.addEventListener('change', () => {
   const multi = getMultiSubtitleState();
   const next = multiSubtitleToggle.checked;
-  if (next && !getActiveExtensionTrack()) {
-    // 先恢复未选中状态，避免用户取消确认或取消文件选择后留下假开启状态。
-    multiSubtitleToggle.checked = false;
-    if (!confirm(MULTI_SUBTITLE_IMPORT_PROMPT)) return;
-    pendingSrtImportAsExtension = true;
-    loadSrtFileInput.value = '';
-    loadSrtFileInput.click();
-    return;
-  }
+  const promptImportSecondSrt = next && !getActiveExtensionTrack();
   multi.enabled = !next;
   pushUndo(next ? '开启多重字幕' : '关闭多重字幕');
   multi.enabled = next;
   multi._dirty = true;
   // 开关会改变波形是否需要副字幕 lane，因此这里才执行完整波形重建。
   renderAll({ waveform: 'full' });
+  if (!promptImportSecondSrt) return;
+  // 多重字幕模式已开启；提示只决定是否现在导入第二条字幕，
+  // 用户取消导入也保持开启，之后仍可拖入 SRT 或重新走导入流程。
+  if (!confirm(MULTI_SUBTITLE_IMPORT_PROMPT)) return;
+  pendingSrtImportAsExtension = true;
+  loadSrtFileInput.value = '';
+  loadSrtFileInput.click();
 });
 multiSubtitleDisplayMode?.addEventListener('change', () => {
   const multi = getMultiSubtitleState();
@@ -18656,9 +19006,12 @@ multiSubtitleMainLanguageMode?.addEventListener('change', () => {
   const multi = getMultiSubtitleState();
   const next = isConfiguredSubtitleSplitMode(multiSubtitleMainLanguageMode.value)
     ? multiSubtitleMainLanguageMode.value : 'word';
-  if (multi.main_split_mode === next) return;
+  if (multi.main_split_mode === next
+      && EDITOR_SETTINGS.mainSplitModeOverride === next) return;
   pushUndo('切换主字幕语言类型');
   multi.main_split_mode = next;
+  // 与设置面板的类型提示共用同一个手动指定偏好，两个入口互为镜像。
+  updateEditorSettings({ mainSplitModeOverride: next });
   markMultiSubtitleDirty();
   renderAll({ waveform: 'none' });
 });
@@ -18898,8 +19251,87 @@ splitUseWordTimestampsToggle?.addEventListener('change', () => {
 multiSubtitleSplitAutoSubmit?.addEventListener('change', () => {
   updateEditorSettings({ splitAutoSubmit: multiSubtitleSplitAutoSubmit.checked });
 });
-if (mergeJoinTextInput) mergeJoinTextInput.addEventListener('input', () => {
-  updateEditorSettings({ mergeJoinText: mergeJoinTextInput.value });
+if (mergeJoinTextContinuousInput) mergeJoinTextContinuousInput.addEventListener('input', () => {
+  updateEditorSettings({ mergeJoinTextContinuous: mergeJoinTextContinuousInput.value });
+});
+if (mergeJoinTextWordInput) mergeJoinTextWordInput.addEventListener('input', () => {
+  updateEditorSettings({ mergeJoinTextWord: mergeJoinTextWordInput.value });
+});
+// 拆分移除符号：前 5 个高频符号用勾选 chip，其余走「其他符号」自由文本框
+// （空格分隔）；两者合并后即时持久化并同步给共享工具层。
+const splitTrimSymbolGrid = document.getElementById('split-trim-symbol-grid');
+const splitTrimSymbolsReset = document.getElementById('split-trim-symbols-reset');
+const splitTrimExtraInput = document.getElementById('split-trim-extra-symbols');
+function currentSplitTrimPrimaryChars() {
+  return MULTI_SUBTITLE_UTILS.SPLIT_TRIM_PRIMARY_SYMBOLS.map((option) => option.ch);
+}
+function splitTrimPrimaryCheckedSet() {
+  const primaries = new Set(currentSplitTrimPrimaryChars());
+  return new Set(EDITOR_SETTINGS.splitTrimSymbols.filter((ch) => primaries.has(ch)));
+}
+function splitTrimExtraSymbols() {
+  const primaries = new Set(currentSplitTrimPrimaryChars());
+  return EDITOR_SETTINGS.splitTrimSymbols.filter((ch) => !primaries.has(ch));
+}
+function updateSplitTrimSymbolsResetVisibility() {
+  const defaults = MULTI_SUBTITLE_UTILS.DEFAULT_SPLIT_TRIM_SYMBOLS;
+  const current = EDITOR_SETTINGS.splitTrimSymbols;
+  splitTrimSymbolsReset?.toggleAttribute(
+    'hidden',
+    current.length === defaults.length && defaults.every((ch) => current.includes(ch)),
+  );
+}
+function persistSplitTrimSymbols(nextSymbols) {
+  // 归一化去重并保持顺序：先按传入顺序，chip 前置、文本框追加在后。
+  const normalized = MULTI_SUBTITLE_UTILS.normalizeSplitTrimSymbols(nextSymbols);
+  updateEditorSettings({ splitTrimSymbols: normalized });
+  MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(normalized);
+  updateSplitTrimSymbolsResetVisibility();
+}
+function renderSplitTrimSymbolGrid() {
+  if (!splitTrimSymbolGrid) return;
+  const checked = splitTrimPrimaryCheckedSet();
+  splitTrimSymbolGrid.replaceChildren();
+  MULTI_SUBTITLE_UTILS.SPLIT_TRIM_PRIMARY_SYMBOLS.forEach((option) => {
+    const label = document.createElement('label');
+    label.title = option.name;
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = checked.has(option.ch);
+    input.value = option.ch;
+    input.addEventListener('change', () => {
+      const next = new Set(splitTrimPrimaryCheckedSet());
+      if (input.checked) next.add(option.ch);
+      else next.delete(option.ch);
+      persistSplitTrimSymbols([...next, ...splitTrimExtraSymbols()]);
+      refreshSplitTrimExtraInput();
+    });
+    const chip = document.createElement('span');
+    chip.textContent = option.ch;
+    label.append(input, chip);
+    splitTrimSymbolGrid.appendChild(label);
+  });
+  updateSplitTrimSymbolsResetVisibility();
+}
+function refreshSplitTrimExtraInput() {
+  if (splitTrimExtraInput && document.activeElement !== splitTrimExtraInput) {
+    splitTrimExtraInput.value = splitTrimExtraSymbols().join(' ');
+  }
+}
+renderSplitTrimSymbolGrid();
+refreshSplitTrimExtraInput();
+splitTrimExtraInput?.addEventListener('change', () => {
+  const extras = MULTI_SUBTITLE_UTILS.parseSplitTrimSymbolInput(splitTrimExtraInput.value);
+  persistSplitTrimSymbols([...splitTrimPrimaryCheckedSet(), ...extras]);
+  refreshSplitTrimExtraInput();
+});
+splitTrimSymbolsReset?.addEventListener('click', () => {
+  const defaults = MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(
+    [...MULTI_SUBTITLE_UTILS.DEFAULT_SPLIT_TRIM_SYMBOLS],
+  );
+  updateEditorSettings({ splitTrimSymbols: defaults });
+  renderSplitTrimSymbolGrid();
+  refreshSplitTrimExtraInput();
 });
 // 拼合字幕工具窗：参数即时持久化；number 输入 change 时把显示值回钳到合法区间。
 const autoMergeFloatingPanel = createFloatingPanel({
@@ -20579,6 +21011,7 @@ function renderAll({ waveform = 'overlay' } = {}) {
   }
   container.appendChild(cueFragment);
   applyCueListDisplaySettings();
+  refreshColorFilterUi();
   totalCountEl.textContent = multiVisible && displayMode === 'extension'
     ? getActiveExtensionTrack()?.segments.length || 0
     : DATA.segments.length;
@@ -21446,6 +21879,151 @@ function refreshAllCharCounts() {
   });
 }
 
+// === 颜色过滤 ===
+// 工程中存在彩色字幕时，在过滤输入框右侧显示 🎨 按钮：
+// 点击行（非 checkbox）= 只显示该颜色；勾选 checkbox = 多选；清除 = 全部显示。
+const COLOR_FILTER_DEFAULT_KEY = '__default__';
+const colorFilterDropdown = document.getElementById('color-filter-dropdown');
+const colorFilterButton = document.getElementById('color-filter-btn');
+const colorFilterMenu = document.getElementById('color-filter-menu');
+let colorFilterSelection = null; // null = 不过滤；Set<string> = 仅显示这些颜色键
+let colorFilterUsageCache = new Map();
+
+function effectiveCueColorKey(mainSeg) {
+  if (!mainSeg) return COLOR_FILTER_DEFAULT_KEY;
+  return MULTI_SUBTITLE_UTILS.effectiveColorName(mainSeg, DATA.segments) || COLOR_FILTER_DEFAULT_KEY;
+}
+
+// 仅副轨显示模式下列表行不携带颜色信息；此时按钮隐藏且过滤暂停生效，
+// 避免出现“看不到过滤开关但列表被过滤”的死角。
+function colorFilterSuspended() {
+  return multiSubtitleVisible() && getMultiSubtitleState().display_mode === 'extension';
+}
+
+function collectProjectColorUsage() {
+  const counts = new Map();
+  DATA.segments.forEach((seg) => {
+    const key = effectiveCueColorKey(seg);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  return counts;
+}
+
+function colorFilterLabelFor(key) {
+  if (key === COLOR_FILTER_DEFAULT_KEY) return '默认';
+  return COLOR_BY_NAME[key]?.label || key;
+}
+
+function colorFilterValueFor(key) {
+  return COLOR_BY_NAME[key]?.value || null;
+}
+
+function syncColorFilterControls() {
+  const hasColors = !colorFilterSuspended()
+    && [...colorFilterUsageCache.keys()].some((key) => key !== COLOR_FILTER_DEFAULT_KEY);
+  colorFilterButton?.toggleAttribute('hidden', !hasColors);
+  colorFilterButton?.classList.toggle('filter-active', Boolean(colorFilterSelection));
+  renderColorFilterMenu();
+}
+
+function renderColorFilterMenu() {
+  if (!colorFilterMenu) return;
+  const usage = colorFilterUsageCache;
+  // 过滤掉工程里已不存在的选择项，避免按钮显示“过滤中”但列表为空。
+  if (colorFilterSelection) {
+    const kept = new Set([...colorFilterSelection].filter((key) => usage.has(key)));
+    colorFilterSelection = kept.size ? kept : null;
+  }
+  const keys = [COLOR_FILTER_DEFAULT_KEY];
+  COLOR_PALETTE.forEach((palette) => { if (usage.has(palette.name)) keys.push(palette.name); });
+  usage.forEach((_count, key) => { if (!keys.includes(key)) keys.push(key); });
+  colorFilterMenu.replaceChildren();
+  keys.forEach((key) => {
+    colorFilterMenu.appendChild(buildColorFilterItem(key, usage.get(key) || 0));
+  });
+  const clearBtn = document.createElement('button');
+  clearBtn.type = 'button';
+  clearBtn.className = 'dropdown-item color-filter-clear';
+  clearBtn.textContent = '清除颜色过滤';
+  clearBtn.hidden = !colorFilterSelection;
+  clearBtn.addEventListener('click', () => setColorFilterSelection(null));
+  colorFilterMenu.appendChild(clearBtn);
+}
+
+function setColorFilterSelection(next) {
+  colorFilterSelection = next && next.size ? new Set(next) : null;
+  renderColorFilterMenu();
+  applySearch(searchEl.value);
+}
+
+function buildColorFilterItem(key, count) {
+  const label = document.createElement('label');
+  label.className = 'color-filter-item';
+  label.dataset.colorKey = key;
+  label.title = `该颜色的字幕共 ${count} 条；点击条目只显示此颜色，勾选可多选`;
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.checked = Boolean(colorFilterSelection?.has(key));
+  input.addEventListener('change', () => {
+    const next = new Set(colorFilterSelection || []);
+    if (input.checked) next.add(key); else next.delete(key);
+    setColorFilterSelection(next);
+  });
+  const dot = document.createElement('span');
+  dot.className = `color-dot${key === COLOR_FILTER_DEFAULT_KEY ? ' is-default' : ''}`;
+  const value = colorFilterValueFor(key);
+  if (value) dot.style.background = value;
+  const nameEl = document.createElement('span');
+  nameEl.className = 'color-name';
+  nameEl.textContent = colorFilterLabelFor(key);
+  const countEl = document.createElement('span');
+  countEl.className = 'color-count';
+  countEl.textContent = String(count);
+  label.addEventListener('click', (event) => {
+    // checkbox 自身的多选行为走 change 事件；点击行内其余区域 = 仅显示该颜色。
+    // 行内点击会同步重建菜单，必须阻止冒泡，否则点击目标脱离下拉容器后
+    // 会命中 document 的“点击外部关闭”逻辑，把刚选中的菜单关掉。
+    if (event.target === input) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setColorFilterSelection(new Set([key]));
+  });
+  label.append(input, dot, nameEl, countEl);
+  return label;
+}
+
+function refreshColorFilterUi() {
+  colorFilterUsageCache = collectProjectColorUsage();
+  syncColorFilterControls();
+}
+
+renderColorFilterMenu();
+function positionColorFilterMenu() {
+  if (!colorFilterDropdown?.classList.contains('open') || !colorFilterButton || !colorFilterMenu) return;
+  const buttonRect = colorFilterButton.getBoundingClientRect();
+  const menuWidth = colorFilterMenu.offsetWidth;
+  const menuHeight = colorFilterMenu.offsetHeight;
+  const margin = 8;
+  const left = Math.min(
+    Math.max(margin, buttonRect.left),
+    Math.max(margin, window.innerWidth - menuWidth - margin),
+  );
+  const belowTop = buttonRect.bottom + 6;
+  const aboveTop = buttonRect.top - menuHeight - 6;
+  let top = belowTop;
+  if (belowTop + menuHeight > window.innerHeight - margin && aboveTop >= margin) {
+    top = aboveTop;
+  } else if (belowTop + menuHeight > window.innerHeight - margin) {
+    top = Math.max(margin, window.innerHeight - menuHeight - margin);
+  }
+  colorFilterMenu.style.left = `${left}px`;
+  colorFilterMenu.style.top = `${top}px`;
+}
+bindToolbarExportDropdown(
+  'color-filter-dropdown', 'color-filter-btn', 'color-filter-menu',
+  positionColorFilterMenu,
+);
+
 // === 搜索 ===
 function applySearch(query, { refreshText = true } = {}) {
   const trimmed = query.trim();
@@ -21471,6 +22049,9 @@ function applySearch(query, { refreshText = true } = {}) {
     }
     let matched = !re || re.test(searchableText);
     if (re) re.lastIndex = 0;
+    if (matched && colorFilterSelection && !colorFilterSuspended()) {
+      matched = colorFilterSelection.has(effectiveCueColorKey(mainSeg));
+    }
     const keepTemporaryVisible = filterOver
       && EDITOR_SETTINGS.cueListKeepSplitVisible
       && cueElementHasTemporarySplitVisibility(el);
@@ -21846,9 +22427,9 @@ function cleanSplitItems(items, side) {
     .map((item, index, list) => ({
       ...item,
       text: side === 'left' && index === list.length - 1
-        ? item.text.replace(/[，。,.!?！？；;：:\s]+$/u, '')
+        ? MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(item.text, 'end')
         : side === 'right' && index === 0
-          ? item.text.replace(/^[，。,.!?！？；;：:\s]+/u, '')
+          ? MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(item.text, 'start')
           : item.text,
     }))
     .filter((item) => item.text && Number.isFinite(item.start)
@@ -23228,10 +23809,8 @@ function splitAtCursor(
     return false;
   }
 
-  let leftText = fullText.slice(0, cursorOffset)
-    .replace(/[，。,. \t]+$/, '').replace(/^[ \t]+/, '');
-  let rightText = fullText.slice(cursorOffset)
-    .replace(/^[，。,. \t]+/, '').replace(/[ \t]+$/, '');
+  let leftText = MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(fullText.slice(0, cursorOffset), 'end');
+  let rightText = MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(fullText.slice(cursorOffset), 'start');
   if (!leftText || !rightText) {
     finishEdit(false);
     flashHint('拆分后任一段为空，已取消', 'warning');
@@ -23538,7 +24117,10 @@ function mergeContiguousIndices(sorted) {
     ),
     start: segs[0].start,
     end: segs[segs.length - 1].end,
-    text: window.AsrEditorUtils.joinSegmentTexts(segs, EDITOR_SETTINGS.mergeJoinText),
+    text: window.AsrEditorUtils.joinSegmentTexts(
+      segs,
+      mergeJoinSeparatorForMode(getMainSubtitleSplitMode({ text: segs.map((s) => s.text || '').join('\n') })),
+    ),
     items: segs.flatMap(s => s.items || []),
     sticker: stickerGroup.head,
     sticker_ref: stickerGroup.ref,
@@ -23558,7 +24140,12 @@ function mergeContiguousIndices(sorted) {
       ),
       start: Math.min(...extensionMergeSegments.map((segment) => segment.start)),
       end: Math.max(...extensionMergeSegments.map((segment) => segment.end)),
-      text: window.AsrEditorUtils.joinSegmentTexts(extensionMergeSegments, EDITOR_SETTINGS.mergeJoinText),
+      text: window.AsrEditorUtils.joinSegmentTexts(
+        extensionMergeSegments,
+        mergeJoinSeparatorForMode(getExtensionSubtitleSplitMode(extensionTrack, {
+          text: extensionMergeSegments.map((s) => s.text || '').join('\n'),
+        })),
+      ),
       _dirty: true,
     };
     if (extensionMergeSegments.some((segment) => Array.isArray(segment.items))) {
@@ -23669,7 +24256,12 @@ function mergeExtensionSegments(idxs, track = getActiveExtensionTrack()) {
     ),
     start: segments[0].start,
     end: segments[segments.length - 1].end,
-    text: window.AsrEditorUtils.joinSegmentTexts(segments, EDITOR_SETTINGS.mergeJoinText),
+    text: window.AsrEditorUtils.joinSegmentTexts(
+      segments,
+      mergeJoinSeparatorForMode(getExtensionSubtitleSplitMode(track, {
+        text: segments.map((s) => s.text || '').join('\n'),
+      })),
+    ),
     _dirty: true,
   };
   const hadBindings = oldIds.some((id) => MULTI_SUBTITLE_UTILS.bindingForSegment(
@@ -31166,7 +31758,9 @@ function updateTimedTextEditReport() {
 }
 
 function refreshTimedTextEditTrackOptions(kind = currentTimedTextEditKind()) {
-  const multiSubtitleEnabled = getMultiSubtitleState().enabled === true;
+  const multi = getMultiSubtitleState();
+  // 「已开启模式但尚未导入副轨」时没有第二条字幕可编辑，不显示轨道切换控件。
+  const multiSubtitleEnabled = multi.enabled === true && Boolean((multi.tracks || []).length);
   if (timedTextEditTrackControl) timedTextEditTrackControl.hidden = !multiSubtitleEnabled;
   const extensionAvailable = multiSubtitleEnabled && Boolean(getActiveExtensionTrack()?.segments?.length);
   const extensionOption = timedTextEditTrack.querySelector('option[value="extension"]');
