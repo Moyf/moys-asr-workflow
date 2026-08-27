@@ -111,6 +111,26 @@ class LocalModelDiscoveryTests(unittest.TestCase):
         self.assertFalse(status.installed)
         self.assertIn("Qwen3-ASR", status.detail)
 
+    def test_whisper_does_not_accept_a_qwen_or_moss_model_cache_folder(self) -> None:
+        whisper_model = local_model("whisper-large-v3-local")
+        qwen_path = tempfile.TemporaryDirectory(prefix="models--Qwen--Qwen3-ForcedAligner-0.6B-")
+        moss_path = tempfile.TemporaryDirectory(prefix="models--OpenMOSS--MOSS-Transcribe-Diarize-")
+        try:
+            with mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()):
+                with_qwen = inspect_local_model(whisper_model, qwen_path.name)
+                (Path(qwen_path.name) / "model.safetensors").write_bytes(b"w")
+                with_moss = inspect_local_model(whisper_model, moss_path.name)
+
+        finally:
+            qwen_path.cleanup()
+            moss_path.cleanup()
+
+        # 前者被拒为家族误配；后者目录含权重但同样按误配拒绝
+        self.assertEqual(with_qwen.status, "path_mismatch")
+        self.assertIn("Qwen3-ASR 或 MOSS", with_qwen.detail)
+        self.assertEqual(with_moss.status, "path_mismatch")
+        self.assertIn("Qwen3-ASR 或 MOSS", with_moss.detail)
+
     def test_funasr_hub_style_modelscope_cache_is_detected(self) -> None:
         model = local_model("funasr-local")
         with tempfile.TemporaryDirectory() as temp_dir:
