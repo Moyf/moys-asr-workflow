@@ -313,7 +313,7 @@ TENCENT_MODELS: Final[tuple[ModelConfig, ...]] = (
         label="腾讯云录音文件识别（大模型 2.0）",
         env_key="TENCENT_SECRET_ID",
         note="SecretId 写入此处；SecretKey 请在本机 .env 配置",
-        supports_speaker=False,
+        supports_speaker=True,
         languages=LANGUAGES,
     ),
 )

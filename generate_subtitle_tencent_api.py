@@ -29,8 +29,8 @@ def main() -> int:
     parser.add_argument("--language", help="保留参数；腾讯云录音文件识别由引擎自动识别")
     parser.add_argument("--keep-punct", action="store_true", help="保留字幕末尾标点")
     parser.add_argument("--gap-split", type=int, default=1500, help="静音切句阈值（毫秒）")
-    parser.add_argument("--speaker", action="store_true", help="保留腾讯云返回的说话人标签")
-    parser.add_argument("--speaker-colors", action="store_true", help="兼容参数；当前不请求腾讯云说话人分离")
+    parser.add_argument("--speaker", action="store_true", help="请求腾讯云说话人分离并保留 speaker 标签")
+    parser.add_argument("--speaker-colors", action="store_true", help="兼容参数；同时请求腾讯云说话人分离")
     parser.add_argument("--json", dest="json_out", action="store_true", help="同时输出 .mosp 工程")
     parser.add_argument("--with-waveform", action="store_true", help="将波形嵌入工程")
     parser.add_argument("--with-spectral", action="store_true", help="生成频谱波形")
@@ -39,6 +39,8 @@ def main() -> int:
     parser.add_argument("-ll", "--length-limit", type=parse_duration, help="只处理媒体前 N 秒")
     parser.add_argument("--file-url", help="公网或 COS 音频 URL；大于 5MB 时必须使用")
     parser.add_argument("--model", default=None, help=f"腾讯云引擎（默认 {DEFAULT_ENGINE}）")
+    parser.add_argument("--strip-tail-punct", default="，。", help="句尾剥除的标点集合；传空串禁用剥除")
+    parser.add_argument("--debug", action="store_true", help="输出 API 调试摘要")
     parser.add_argument("--debug-raw", action="store_true", help="保存完整 API 原始 JSON")
     args = parser.parse_args()
     configure_console_output()
@@ -51,6 +53,8 @@ def main() -> int:
         return 1
     output_path = Path(args.output) if args.output else input_path.with_suffix(".srt")
     config = load_config()
+    if not config["secret_id"] or not config["secret_key"]:
+        parser.error("未配置 TENCENT_SECRET_ID / TENCENT_SECRET_KEY；请在 .env 或系统环境变量中填写")
     if args.model:
         config["engine"] = args.model
     print(f"[准备] 已载入腾讯云录音文件识别配置（引擎: {config['engine']}）")
@@ -79,7 +83,12 @@ def main() -> int:
             audio_path = limited_path
             duration = args.length_limit
 
-        result = transcribe(audio_path, config, args.file_url)
+        result = transcribe(
+            audio_path,
+            config,
+            args.file_url,
+            speaker_diarization=args.speaker or args.speaker_colors,
+        )
         raw_response = result.pop("_raw_response", None)
         if not result.get("text"):
             print("错误: 未识别到任何内容", file=sys.stderr)
@@ -98,15 +107,17 @@ def main() -> int:
 
     if not args.keep_punct:
         for segment in segments:
-            segment["text"] = str(segment["text"]).rstrip("，。")
+            segment["text"] = str(segment["text"]).rstrip(args.strip_tail_punct)
             for item in segment.get("items", []):
-                item["text"] = str(item["text"]).rstrip("，。")
+                item["text"] = str(item["text"]).rstrip(args.strip_tail_punct)
     output_path.write_text(generate_srt(segments), encoding="utf-8", newline="\n")
     print(f"字幕已保存到: {output_path}")
     if args.debug_raw:
         raw_path = output_path.with_suffix(".asr-response.json")
         raw_path.write_text(json.dumps(raw_response, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
         print(f"[调试] 原始返回已保存到: {raw_path}")
+    if args.debug:
+        print(f"[调试] 返回 {len(result.get('items', []))} 个字词时间码项")
     if args.json_out:
         json_path = output_path.with_suffix(".mosp")
         project = {
