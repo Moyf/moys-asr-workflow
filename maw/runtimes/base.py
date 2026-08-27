@@ -178,7 +178,9 @@ def default_app_data_root() -> Path:
     override = os.environ.get("MAW_APP_DATA_ROOT", "").strip()
     if override:
         return Path(override).expanduser().resolve(strict=False)
-    if os.name == "nt":
+    # 平台判定统一用 sys.platform：os.name 是全局属性，测试 mock 它会在
+    # posix 上污染 pathlib（WindowsPath 无法实例化）。
+    if sys.platform == "win32":
         return Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local")) / "MAW"
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / "MAW"
@@ -244,7 +246,10 @@ class ManagedRuntime:
         # 布局约定（仅作占位路径，实际解释器由 :meth:`interpreter` 决定）。
         if _uses_host_venv():
             return target / "bin" / "python"
-        relative = Path("python") / "python.exe" if os.name == "nt" else Path("python") / "bin" / "python"
+        # python 可执行文件相对布局（win 内嵌流 python/python.exe；unix venv
+        # python/bin/python）。用 sys.platform 而非 os.name：mock 友好且对
+        # pathlib 无副作用（见 default_app_data_root 注释）。
+        relative = Path("python") / "python.exe" if sys.platform == "win32" else Path("python") / "bin" / "python"
         return target / relative
 
     def interpreter(self, root: str | Path | None = None) -> Path:
