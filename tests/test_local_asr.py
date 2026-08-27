@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,9 +18,12 @@ from maw.local_asr import (
     QWEN_DEFAULT_CHUNK_SECONDS,
     QWEN_DEFAULT_FORCED_ALIGNER,
     QWEN_DEFAULT_MODEL,
+    WHISPER_DEFAULT_MODEL,
+    WHISPER_DEFAULT_VAD_MIN_SILENCE_MS,
     FunAsrEngine,
     LocalTranscription,
     QwenAsrEngine,
+    WhisperEngine,
     build_local_segments,
     create_local_engine,
     funasr_output_to_transcription,
@@ -372,6 +376,154 @@ class LocalAsrFlowTests(unittest.TestCase):
 
         self.assertEqual(moss.model, MOSS_DEFAULT_MODEL)
 
+    def test_engine_factory_supports_whisper(self) -> None:
+        engine = create_local_engine("whisper")
+
+        self.assertIsInstance(engine, WhisperEngine)
+        self.assertEqual(engine.model, WHISPER_DEFAULT_MODEL)
+        self.assertEqual(engine.model_path, WHISPER_DEFAULT_MODEL)
+
+        local_dir = "D:/models/faster-whisper-large-v3-ct2"
+        local = create_local_engine("whisper", model=local_dir)
+        self.assertEqual(local.model, local_dir)
+        self.assertEqual(local.model_path, local_dir)
+
+    def test_whisper_runtime_import_is_lazy(self) -> None:
+        engine = create_local_engine("whisper")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": None}):
+            with self.assertRaisesRegex(RuntimeError, "faster-whisper"):
+                engine._load()
+
+    def test_whisper_download_root_follows_cache_env_for_model_ids(self) -> None:
+        captured: dict[str, object] = {}
+        model_refs: list[str] = []
+
+        def fake_whisper_model(model_ref: str, **kwargs: object) -> object:
+            model_refs.append(model_ref)
+            captured.update(kwargs)
+            return object()
+
+        faster_whisper_module = SimpleNamespace(WhisperModel=fake_whisper_model)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_root = Path(temp_dir) / "model-cache"
+            cache_root.mkdir()
+            with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+                with mock.patch.dict(os.environ, {"MAW_MODEL_CACHE_ROOT": str(cache_root)}):
+                    with mock.patch("maw.local_asr.resolve_device", return_value="cpu"):
+                        create_local_engine("whisper")._load()
+                        self.assertEqual(model_refs, [WHISPER_DEFAULT_MODEL])
+                        self.assertEqual(captured.get("download_root"), str(cache_root))
+
+                        captured.clear()
+                        create_local_engine("whisper", model=str(cache_root))._load()
+                        self.assertNotIn("download_root", captured)
+
+    def test_whisper_word_timestamps_are_normalized_to_milliseconds(self) -> None:
+        class FakeRuntime:
+            def __init__(self) -> None:
+                self.audio = ""
+                self.kwargs: dict[str, object] = {}
+
+            def transcribe(self, audio: str, **kwargs: object):
+                self.audio = audio
+                self.kwargs = kwargs
+                segment = SimpleNamespace(
+                    start=0.1,
+                    end=0.9,
+                    text=" 你好。",
+                    words=[
+                        SimpleNamespace(word="你", start=0.123, end=0.456),
+                        SimpleNamespace(word="好。", start=0.456, end=0.9),
+                    ],
+                )
+                return [segment], SimpleNamespace(language="zh")
+
+        engine = create_local_engine("whisper")
+        runtime = FakeRuntime()
+        engine._runtime = runtime
+
+        result = engine.transcribe(Path("sample.wav"), language="zh", hotwords=["MAW"])
+
+        self.assertEqual([(item["start"], item["end"]) for item in result.items], [
+            (123, 456),
+            (456, 900),
+        ])
+        self.assertEqual(result.text, "你好。")
+        self.assertEqual(result.language, "zh")
+        self.assertEqual(runtime.audio, "sample.wav")
+        self.assertTrue(runtime.kwargs["word_timestamps"])
+        self.assertTrue(runtime.kwargs["vad_filter"])
+        self.assertFalse(runtime.kwargs["condition_on_previous_text"])
+        self.assertEqual(
+            runtime.kwargs["vad_parameters"],
+            {"min_silence_duration_ms": WHISPER_DEFAULT_VAD_MIN_SILENCE_MS},
+        )
+        self.assertEqual(runtime.kwargs["language"], "zh")
+        self.assertEqual(runtime.kwargs["hotwords"], "MAW")
+
+    def test_whisper_english_items_keep_inter_word_spacing(self) -> None:
+        class FakeRuntime:
+            def transcribe(self, audio: str, **kwargs: object):
+                segments = [
+                    SimpleNamespace(
+                        start=0.0,
+                        end=0.9,
+                        text="Hello, world.",
+                        words=[
+                            SimpleNamespace(word="Hello,", start=0.0, end=0.4),
+                            SimpleNamespace(word="world.", start=0.4, end=0.9),
+                        ],
+                    ),
+                    SimpleNamespace(
+                        start=1.0,
+                        end=2.0,
+                        text="Next sentence works!",
+                        words=[
+                            SimpleNamespace(word="Next", start=1.0, end=1.3),
+                            SimpleNamespace(word="sentence", start=1.3, end=1.6),
+                            SimpleNamespace(word="works!", start=1.6, end=2.0),
+                        ],
+                    ),
+                ]
+                return segments, SimpleNamespace(language="en")
+
+        engine = create_local_engine("whisper")
+        engine._runtime = FakeRuntime()
+
+        result = engine.transcribe(Path("sample.wav"))
+
+        # 跨 Whisper 句段边界也要保留英文单词间的前导空格（与 Qwen 对齐路径一致）。
+        self.assertEqual([item["text"] for item in result.items], [
+            "Hello,", " world.", " Next", " sentence", " works!",
+        ])
+        self.assertEqual(result.text, "Hello, world. Next sentence works!")
+        self.assertEqual(
+            [segment["text"] for segment in build_local_segments(result, duration_ms=2000)],
+            ["Hello, world.", " Next sentence works!"],
+        )
+
+    def test_whisper_segment_without_words_keeps_sentence_item(self) -> None:
+        class FakeRuntime:
+            def transcribe(self, audio: str, **kwargs: object):
+                segments = [
+                    SimpleNamespace(
+                        start=0.0,
+                        end=1.0,
+                        text=" 只有句子级时间戳。",
+                        words=None,
+                    ),
+                ]
+                return segments, SimpleNamespace(language="zh")
+
+        engine = create_local_engine("whisper")
+        engine._runtime = FakeRuntime()
+
+        result = engine.transcribe(Path("sample.wav"))
+
+        self.assertEqual(result.items[0]["text"], "只有句子级时间戳。")
+        self.assertEqual((result.items[0]["start"], result.items[0]["end"]), (0, 1000))
+
     def test_moss_default_revision_is_pinned(self) -> None:
         self.assertRegex(MOSS_DEFAULT_REVISION, r"^[0-9a-f]{40}$")
 
@@ -548,6 +700,7 @@ class LocalAsrFlowTests(unittest.TestCase):
         self.assertEqual(path.name, "sample.funasr-local.srt")
 
         self.assertEqual(default_output_path(Path("D:/media/sample.mp4"), "moss").name, "sample.moss-local.srt")
+        self.assertEqual(default_output_path(Path("D:/media/sample.mp4"), "whisper").name, "sample.whisper-local.srt")
 
     def test_write_local_outputs_writes_mosp_without_editing_media(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -589,6 +742,11 @@ class LocalCliParserTests(unittest.TestCase):
         self.assertEqual(args.engine, "funasr")
         self.assertEqual(args.length_limit, 120.0)
         self.assertEqual(args.hotword, ["MAW"])
+
+    def test_parser_accepts_whisper_engine(self) -> None:
+        args = build_parser().parse_args(["sample.mp4", "--engine", "whisper"])
+
+        self.assertEqual(args.engine, "whisper")
 
     def test_hotword_files_support_comments_and_deduplication(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

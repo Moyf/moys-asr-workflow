@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from maw.runtimes.base import ManagedRuntimeError, RuntimeCancelled, RuntimeSpec
 
-RUNTIME_VERSION = "5"
+RUNTIME_VERSION = "6"
 PYTHON_VERSION = "3.11"
 PYTORCH_INDEX = "https://download.pytorch.org/whl/cu130"
 EMBED_PYTHON_ZIP = "python-3.11.9-embed-amd64.zip"
 
+# 版本 6：local extra 新增 faster-whisper（CTranslate2 运行时），老安装需
+# 重装一次本地运行环境以补齐依赖。
 _VERIFY_COMMAND = (
     "from funasr import AutoModel; from qwen_asr import Qwen3ASRModel; "
+    "from faster_whisper import WhisperModel; "
     "import jieba, torch, torchaudio; print('MAW_LOCAL_RUNTIME_READY')"
 )
 
@@ -28,11 +31,11 @@ LOCAL_SPEC = RuntimeSpec(
     runtime_version=RUNTIME_VERSION,
     python_version=PYTHON_VERSION,
     embed_python_zip=EMBED_PYTHON_ZIP,
-    requirements_emit="正在安装本地 ASR 依赖（Torch、FunASR、QwenASR）……",
+    requirements_emit="正在安装本地 ASR 依赖（Torch、FunASR、QwenASR、faster-whisper）……",
     requirements_key="local",
     requirements_bundle_name="requirements-local.txt",
     verify_command=_VERIFY_COMMAND,
-    package_dirs=("funasr", "qwen_asr", "jieba", "torch", "torchaudio", "reapeaks"),
+    package_dirs=("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "reapeaks"),
     worker_module="maw.local_runtime_worker",
     message_prefix="本地运行环境",
     feature_label="本地模型",
