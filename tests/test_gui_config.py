@@ -287,7 +287,7 @@ class GuiConfigTests(unittest.TestCase):
                 "Fun-ASR-Nano 2512（GPU）",
                 "FunASR paraformer-zh",
                 "SenseVoice Small",
-                "MOSS Transcribe-Diarize 0.9B",
+                "MOSS Transcribe-Diarize 0.9B（无字词时间码）",
             ],
         )
         qwen06 = provider.models[0]
@@ -305,6 +305,8 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual(moss.engine, "moss")
         self.assertTrue(moss.supports_speaker)
         self.assertIn("transformers", moss.requires_runtime)
+        # MOSS 输出契约只有段级时间戳（docs/LOCAL_ASR.md），说明里必须提前提醒。
+        self.assertIn("无字词级时间码", moss.note)
         self.assertEqual(gui_config.api_key_for_provider("local"), "")
 
     def test_qwen_languages_single_select_with_auto_and_documented_28(self) -> None:
