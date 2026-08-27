@@ -635,9 +635,8 @@ class ManagedRuntime:
             pass
         command = _freeze_requirements_command(uv_executable, self.spec, cpu=cpu, build_dir=_build_dir())
         if command is None:
-            # 该 CPU 变体不由本仓库管线生成（如 moss：in 文件 pin +cu130，
-            # 无法原生冻结出 CPU 版）；交回上层用 requirements_path 的缺失
-            # 报错给出明确指引，而不是装错清单。
+            # 该 CPU 变体不由本仓库管线生成（ocr 无 CUDA 组件）；交回上层用
+            # requirements_path 的缺失报错给出明确指引，而不是装错清单。
             return
         emit(f"正在生成{self.spec.message_prefix}依赖清单（uv 冻结，与构建管线一致）……", 22, "bootstrap")
         try:
@@ -847,9 +846,9 @@ def _freeze_requirements_command(
     """按构建管线（build-windows.ps1 / build-appimage.sh / release.yml）同款
     命令冻结清单；``cpu=True`` 返回 ``-cpu.txt`` 变体命令。
 
-    返回 ``None`` 表示该清单不由本仓库管线生成（ocr 无 CUDA 组件；moss 的
-    in 文件直接 pin ``torch==2.13.0+cu130``，去掉 extra index 无法解析出 CPU
-    版本——需要独立声明文件，当前未提供）。
+    CPU 变体来自独立声明文件（local-cpu-requirements.in /
+    moss-cpu-requirements.in，去 cu130 后原生冻结带真实哈希）。返回
+    ``None`` 表示该清单不由本仓库管线生成（ocr 无 CUDA 组件）。
     """
     uv_text = str(uv_executable)
     target_main = str(build_dir / spec.requirements_bundle_name)
@@ -876,7 +875,12 @@ def _freeze_requirements_command(
         ]
     if spec.key == "moss":
         if cpu:
-            return None  # 见 docstring：in 文件 pin +cu130，无法原生冻结 CPU 版
+            return [
+                uv_text, "pip", "compile", "moss-cpu-requirements.in", "-p", "3.11",
+                "--generate-hashes",
+                "--index-strategy", "unsafe-best-match",
+                "-o", str(build_dir / "requirements-moss-cpu.txt"),
+            ]
         return [
             uv_text, "pip", "compile", "moss-requirements.in", "-p", "3.11",
             # torch==2.13.0+cu130 只存在于 pytorch cu130 index（见
