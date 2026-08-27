@@ -82,10 +82,10 @@ datas = [
 ]
 opencc_datas = collect_data_files("opencc")
 datas.extend(opencc_datas)
-# 托管 Runtime 依赖清单（CI 构建时 uv export / uv pip compile 生成，frozen
+# 托管 Runtime 依赖清单（CI 构建时由 maw/runtimes/freezer.py 生成，frozen
 # 后随包分发；缺失时跳过——源码模式不打包 runtime txt）。CPU 变体由
-# local-cpu-requirements.in / moss-cpu-requirements.in 原生冻结（带 CPU wheel
-# 真实哈希），供无 NVIDIA GPU 的机器首装时直接使用。
+# freezer 从声明源剥离 GPU 参数后原生冻结（带 CPU wheel 真实哈希），供无
+# NVIDIA GPU 的机器首装时直接使用。
 _runtime_req_local = ROOT / "build" / "requirements-local.txt"
 _runtime_req_ocr = ROOT / "build" / "requirements-ocr.txt"
 _runtime_req_moss = ROOT / "build" / "requirements-moss.txt"
@@ -150,6 +150,7 @@ a = Analysis(
         "maw.ocr_runtime",
         "maw.runtimes",
         "maw.runtimes.base",
+        "maw.runtimes.freezer",
         "maw.runtimes.local_spec",
         "maw.runtimes.ocr_spec",
         "maw.runtimes.moss_spec",

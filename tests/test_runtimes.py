@@ -459,37 +459,37 @@ class AutoFreezeRequirementsTests(unittest.TestCase):
         build = Path("repo/build")
         # local 主清单：uv export（uv.lock 离线）
         self.assertEqual(
-            base_mod._freeze_requirements_command(uv, LOCAL_SPEC, cpu=False, build_dir=build),
+            base_mod.freezer.main_freeze_command(uv, LOCAL_SPEC, build),
             [str(uv), "export", "--frozen", "--extra", "local", "--no-dev",
              "--format", "requirements-txt", "-o", str(build / "requirements-local.txt")],
         )
-        # local CPU 变体：独立 in 文件原生冻结（带哈希）
+        # local CPU 变体：生成式 in（build/ 下）原生冻结（带哈希）
         self.assertEqual(
-            base_mod._freeze_requirements_command(uv, LOCAL_SPEC, cpu=True, build_dir=build),
-            [str(uv), "pip", "compile", "local-cpu-requirements.in", "-p", "3.11",
+            base_mod.freezer.cpu_freeze_command(uv, LOCAL_SPEC, build),
+            [str(uv), "pip", "compile", str(build / "local-cpu-requirements.in"), "-p", "3.11",
              "--generate-hashes",
              "--index-strategy", "unsafe-best-match",
              "-o", str(build / "requirements-local-cpu.txt")],
         )
         # ocr：仅主清单；无 CPU 变体
         self.assertEqual(
-            base_mod._freeze_requirements_command(uv, OCR_SPEC, cpu=False, build_dir=build),
+            base_mod.freezer.main_freeze_command(uv, OCR_SPEC, build),
             [str(uv), "export", "--frozen", "--extra", "ocr", "--no-dev",
              "--format", "requirements-txt", "-o", str(build / "requirements-ocr.txt")],
         )
-        self.assertIsNone(base_mod._freeze_requirements_command(uv, OCR_SPEC, cpu=True, build_dir=build))
+        self.assertIsNone(base_mod.freezer.cpu_freeze_command(uv, OCR_SPEC, build))
         # moss：uv pip compile（in 文件 pin cu130，必须带 extra index）
         self.assertEqual(
-            base_mod._freeze_requirements_command(uv, MOSS_SPEC, cpu=False, build_dir=build),
+            base_mod.freezer.main_freeze_command(uv, MOSS_SPEC, build),
             [str(uv), "pip", "compile", "moss-requirements.in", "-p", "3.11",
              "--extra-index-url", MOSS_PYTORCH_INDEX,
              "--index-strategy", "unsafe-best-match",
              "-o", str(build / "requirements-moss.txt")],
         )
-        # moss CPU 变体：独立 in 文件原生冻结（带哈希），与 local-cpu 同构
+        # moss CPU 变体：同一 in 文件剥离生成（带哈希），与 local-cpu 同构
         self.assertEqual(
-            base_mod._freeze_requirements_command(uv, MOSS_SPEC, cpu=True, build_dir=build),
-            [str(uv), "pip", "compile", "moss-cpu-requirements.in", "-p", "3.11",
+            base_mod.freezer.cpu_freeze_command(uv, MOSS_SPEC, build),
+            [str(uv), "pip", "compile", str(build / "moss-cpu-requirements.in"), "-p", "3.11",
              "--generate-hashes",
              "--index-strategy", "unsafe-best-match",
              "-o", str(build / "requirements-moss-cpu.txt")],
@@ -529,7 +529,8 @@ class AutoFreezeRequirementsTests(unittest.TestCase):
                 )
 
     def test_missing_moss_cpu_txt_is_generated_for_no_nvidia_machines(self) -> None:
-        # MOSS 无 GPU 首装走 moss-cpu 清单（独立声明文件原生冻结，与 local-cpu 同构）。
+        # MOSS 无 GPU 首装走 moss-cpu 清单（from moss-requirements.in 剥离生成，
+        # in 先落盘 build/ 再原生冻结，与 local-cpu 同构）。
         build = self._temp_build_dir()
         calls: list[list[str]] = []
 
@@ -547,7 +548,13 @@ class AutoFreezeRequirementsTests(unittest.TestCase):
                 )
 
         self.assertTrue((build / "requirements-moss-cpu.txt").is_file())
-        self.assertEqual(calls[0][1:4], ["pip", "compile", "moss-cpu-requirements.in"])
+        # 生成式 in 已落盘，再由 uv pip compile 原生冻结
+        self.assertTrue((build / "moss-cpu-requirements.in").is_file())
+        cpu_in = (build / "moss-cpu-requirements.in").read_text(encoding="utf-8")
+        self.assertIn("torch==2.13.0\n", cpu_in)
+        self.assertNotIn("+cu130", cpu_in)
+        self.assertEqual(calls[0][1:3], ["pip", "compile"])
+        self.assertIn(str(build / "moss-cpu-requirements.in"), calls[0])
         self.assertIn("--generate-hashes", calls[0])
         self.assertNotIn("extra-index-url", calls[0])
 

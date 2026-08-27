@@ -48,6 +48,7 @@ from maw.runtime_manifest import (
     write_runtime_manifest,
 )
 from maw.runtime_mirror_picker import pick_fastest_mirror
+from maw.runtimes import freezer
 
 GET_PIP_SCRIPT: Final = "get-pip.py"
 
@@ -82,7 +83,10 @@ class RuntimeSpec:
     - 身份：key / runtime_version / python_version
     - 安装资产与依赖：embed_python_zip / requirements_key（frozen txt 的
       pyproject extra 名）/ requirements_bundle_name / requirements（moss
-      迁移期的手写列表，之后删除）/ extra_index_url / cuda_fallback_packages
+      迁移期的手写列表，之后删除）/ requirements_in（主清单用 uv pip
+      compile 冻结的 in 文件；None 则 uv export extra）/ requirements_in_args
+      （compile 附加参数，如 moss 的 pytorch cu130 index）/
+      extra_index_url / cuda_fallback_packages
     - 进度与文案：requirements_emit / ready_emit_done / missing_detail /
       ready_detail / message_prefix / feature_label / fix_action_label
     - 布局：dir_name（app-data 下目录名）/ root_env（覆盖环境变量）/
@@ -115,6 +119,12 @@ class RuntimeSpec:
     bundle_dir: str
     # 依赖与模型（可选）
     requirements: tuple[str, ...] | None = None
+    # 主清单声明源：非 None 时用 uv pip compile <in>（moss——与 local 的
+    # Transformers 互斥而独立声明）；None 时用 uv export --extra requirements_key
+    # （依赖声明于 pyproject optional-dependencies）。CPU 变体的冻结配方
+    # 由 maw/runtimes/freezer.py 按本字段与 cuda_fallback_packages 推导。
+    requirements_in: str | None = None
+    requirements_in_args: tuple[str, ...] = ()
     extra_index_url: str | None = None
     cuda_fallback_packages: tuple[str, ...] = ()
     model_id: str | None = None
@@ -277,10 +287,10 @@ class ManagedRuntime:
         """frozen requirements txt（打包版随包分发；源码模式在 build/ 下，由 CI 生成）。
 
         传 ``cpu=True`` 时返回 `requirements-{key}-cpu.txt`：构建期由
-        ``local-cpu-requirements.in``（屏蔽 GPU 源的独立声明，moss 先例）
-        原生冻结的 CPU 清单，带 CPU wheel 真实哈希，供无 NVIDIA GPU 的
-        机器一次性安装 CPU Torch（与 cu130 清单并列打包，运行时不再做
-        文本转换）。
+        ``maw.runtimes.freezer`` 从声明源（uv export 直接依赖 / in 文件）
+        剥离 GPU 参数后原生冻结的 CPU 清单，带 CPU wheel 真实哈希，供无
+        NVIDIA GPU 的机器一次性安装 CPU Torch（与 cu130 清单并列打包，
+        运行时不再做文本转换）。
         """
         bundle_name = self.spec.requirements_bundle_name
         if cpu:
@@ -293,8 +303,8 @@ class ManagedRuntime:
             kind = "CPU 版依赖清单" if cpu else "依赖清单"
             raise self._error(
                 f"{self.spec.message_prefix}{kind}缺失：" + str(path) + "。"
-                "打包版应随包分发；源码模式在「安装/修复」时会用 uv 自动按构建"
-                "管线的同款冻结命令补齐（见 _freeze_requirements_command），"
+                "打包版应随包分发；源码模式在「安装/修复」时会用 uv 按构建"
+                "管线同源逻辑自动补齐（见 maw/runtimes/freezer.py），"
                 + (
                     "请检查该命令的输出来定位失败原因后重试"
                     if cpu
@@ -620,35 +630,42 @@ class ManagedRuntime:
         """源码模式：缺 frozen 清单时用开发环境的 uv 自动补齐（幂等）。
 
         全新 clone 的 ``build/`` 是 gitignored 的 CI 产物，初始为空。既然源码
-        安装已约定必须具备 uv，这里替用户执行与打包脚本完全一致的冻结命令
-        （见 :func:`_freeze_requirements_command`），使首次安装零手工步骤。
-        清单已存在则直接返回，不触发任何 subprocess。
+        安装已约定必须具备 uv，这里委托 ``maw.runtimes.freezer`` 执行与三
+        条构建管线（build-windows.ps1 / build-appimage.sh / release.yml）
+        完全同源的冻结逻辑，使首次安装零手工步骤；清单已存在则直接返回。
         """
         if uv_executable is None:
             # 理论上不可达：install() 门槛已保证 uv 存在；防御时给出同款警告。
             emit(f"[警告] {UV_MISSING_WARNING}", 22, "bootstrap")
             raise self._error(UV_MISSING_WARNING)
-        try:
-            self.requirements_path(cpu=cpu)
-            return
-        except self.spec.error_class:
-            pass
-        command = _freeze_requirements_command(uv_executable, self.spec, cpu=cpu, build_dir=_build_dir())
-        if command is None:
-            # 该 CPU 变体不由本仓库管线生成（ocr 无 CUDA 组件）；交回上层用
-            # requirements_path 的缺失报错给出明确指引，而不是装错清单。
-            return
-        emit(f"正在生成{self.spec.message_prefix}依赖清单（uv 冻结，与构建管线一致）……", 22, "bootstrap")
-        try:
-            self.run(
+
+        def run(command: list[str]) -> int:
+            return self.run(
                 command,
                 env=self.environment(),
                 cancel=cancel,
                 on_line=_bootstrap_line(emit, 23),
                 cwd=_build_dir().parent,
             )
+
+        def notify(message: str) -> None:
+            emit(message, 22, "bootstrap")
+
+        try:
+            freezer.ensure_frozen(
+                uv_executable,
+                self.spec,
+                cpu=cpu,
+                build_dir=_build_dir(),
+                run=run,
+                emit=notify,
+            )
         except self.spec.error_class as error:
             raise self._error(f"自动生成依赖清单失败：{error}") from error
+        if cpu and not self.spec.cuda_fallback_packages:
+            # 该 runtime 无 CPU 变体（ocr 无 CUDA 组件）；交回上层用
+            # requirements_path 的缺失报错给出明确指引，而不是装错清单。
+            return
         # 重试读取；仍缺失说明命令未产出文件，让 requirements_path 报最终
         # 缺失错误（含目标路径，便于排查）。
         try:
@@ -834,62 +851,6 @@ def _pip_install_command(
     if packages:
         command.extend(packages)
     return command
-
-
-def _freeze_requirements_command(
-    uv_executable: Path,
-    spec: RuntimeSpec,
-    *,
-    cpu: bool,
-    build_dir: Path,
-) -> list[str] | None:
-    """按构建管线（build-windows.ps1 / build-appimage.sh / release.yml）同款
-    命令冻结清单；``cpu=True`` 返回 ``-cpu.txt`` 变体命令。
-
-    CPU 变体来自独立声明文件（local-cpu-requirements.in /
-    moss-cpu-requirements.in，去 cu130 后原生冻结带真实哈希）。返回
-    ``None`` 表示该清单不由本仓库管线生成（ocr 无 CUDA 组件）。
-    """
-    uv_text = str(uv_executable)
-    target_main = str(build_dir / spec.requirements_bundle_name)
-    if spec.key == "local":
-        if cpu:
-            return [
-                uv_text, "pip", "compile", "local-cpu-requirements.in", "-p", "3.11",
-                "--generate-hashes",
-                "--index-strategy", "unsafe-best-match",
-                "-o", str(build_dir / "requirements-local-cpu.txt"),
-            ]
-        return [
-            uv_text, "export", "--frozen", "--extra", spec.requirements_key, "--no-dev",
-            "--format", "requirements-txt",
-            "-o", target_main,
-        ]
-    if spec.key == "ocr":
-        if cpu:
-            return None  # ocr 无 torch/cuXXX 依赖，从不生成 CPU 变体
-        return [
-            uv_text, "export", "--frozen", "--extra", spec.requirements_key, "--no-dev",
-            "--format", "requirements-txt",
-            "-o", target_main,
-        ]
-    if spec.key == "moss":
-        if cpu:
-            return [
-                uv_text, "pip", "compile", "moss-cpu-requirements.in", "-p", "3.11",
-                "--generate-hashes",
-                "--index-strategy", "unsafe-best-match",
-                "-o", str(build_dir / "requirements-moss-cpu.txt"),
-            ]
-        return [
-            uv_text, "pip", "compile", "moss-requirements.in", "-p", "3.11",
-            # torch==2.13.0+cu130 只存在于 pytorch cu130 index（见
-            # moss-requirements.in 头注释）。
-            "--extra-index-url", "https://download.pytorch.org/whl/cu130",
-            "--index-strategy", "unsafe-best-match",
-            "-o", target_main,
-        ]
-    return None
 
 
 def _requirement_package_names(path: Path) -> set[str]:
