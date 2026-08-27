@@ -2114,6 +2114,29 @@ def _segmentation_option(
     return str(value)
 
 
+_TAIL_STRIP_CANDIDATES = "，。"
+
+
+def _transcribe_strip_tail_punct(env_path: Path) -> str:
+    """Derive transcription tail-strip set from the shared 保留符号 settings.
+
+    The ⚙️ settings section edits the same postprocess plan (`match` step) as
+    the 文稿匹配 toolbox; symbols marked as preserved are subtracted from the
+    strip candidates so transcription output keeps them at cue tails.
+    """
+    plan = load_postprocess_plan(env_path)
+    steps = plan.get("steps")
+    preserved: set[str] = set()
+    if isinstance(steps, Sequence) and not isinstance(steps, (str, bytes)):
+        for step in steps:
+            if isinstance(step, Mapping) and step.get("id") == "match":
+                value = step.get("preservePunctuation")
+                if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+                    preserved = {str(item) for item in value if str(item)}
+                break
+    return "".join(candidate for candidate in _TAIL_STRIP_CANDIDATES if candidate not in preserved)
+
+
 def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> TranscriptionRequest:
     media_text = str(payload.get("mediaPath") or "").strip()
     srt_text = str(payload.get("srtPath") or "").strip()
@@ -2139,6 +2162,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     max_len = _segmentation_option(payload, field="maxLen", label="最大字数", minimum=1)
     min_len = _segmentation_option(payload, field="minLen", label="短句合并阈值", minimum=1)
     gap_split = _segmentation_option(payload, field="gapSplit", label="停顿切句阈值", minimum=0)
+    strip_tail_punct = _transcribe_strip_tail_punct(env_path)
     if max_len and min_len and int(max_len) < int(min_len):
         raise PreflightError(
             "maxLen",
@@ -2241,6 +2265,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         max_len=max_len,
         min_len=min_len,
         gap_split=gap_split,
+        strip_tail_punct=strip_tail_punct,
         qwen_audio_context=qwen_audio_context,
         qwen_audio_hotwords=qwen_audio_hotwords,
         qwen_audio_hotwords_file=qwen_audio_hotwords_file,

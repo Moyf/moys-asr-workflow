@@ -25,6 +25,7 @@ from generate_subtitle_qwen_api import (
     extract_audio,
     generate_srt,
     get_duration_sec,
+    is_cjk_char,
     parse_duration,
     repair_nonpositive_duration_segments,
     split_segments_auto,
@@ -971,6 +972,124 @@ def create_local_engine(
     raise ValueError("engine must be one of: qwen-asr, funasr, moss")
 
 
+_LOCAL_TAIL_PUNCT = "，。"
+
+
+def _char_weight_weights(text: str) -> list[float]:
+    """Estimate relative speaking duration per character (CJK heavier than latin)."""
+    return [
+        1.0 if is_cjk_char(char) or char.isdigit() else 0.5
+        for char in text
+    ]
+
+
+def _expand_coarse_item(item: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Split one sentence-span item into per-character items with estimated times.
+
+    Local engines such as MOSS return one item covering a whole sentence with a
+    single start/end pair.  MAW's splitter can only regroup items, so a coarse
+    item is expanded into character units whose timings are interpolated from
+    the enclosing span; the last character always ends exactly at the original
+    ``end`` so neighbouring segments keep their real boundaries.
+    """
+    text = str(item.get("text") or "")
+    start = int(item.get("start") or 0)
+    end = int(item.get("end") or 0)
+    if not text or end <= start:
+        return [dict(item)]
+    weights = _char_weight_weights(text)
+    total_weight = sum(weights) or float(len(weights))
+    span = end - start
+    expanded: list[dict[str, Any]] = []
+    consumed = 0.0
+    cursor = start
+    for index, (char, weight) in enumerate(zip(text, weights)):
+        consumed += weight
+        if index == len(text) - 1:
+            char_end = end
+        else:
+            char_end = start + int(round(span * consumed / total_weight))
+            if char_end <= cursor:
+                char_end = cursor + 1
+        expanded.append(_item(char, cursor, char_end, item.get("speaker")))
+        cursor = char_end
+    return expanded
+
+
+def _segment_speaker(engine_segment: Mapping[str, Any]) -> str | None:
+    value = engine_segment.get("speaker")
+    if value is not None:
+        speaker_value = _speaker(value)
+        if speaker_value is not None:
+            return speaker_value
+    for nested_item in engine_segment.get("items") or []:
+        found = _speaker(nested_item.get("speaker")) if isinstance(nested_item, Mapping) else None
+        if found is not None:
+            return found
+    return None
+
+
+def _resplit_engine_segment(
+    engine_segment: Mapping[str, Any],
+    *,
+    max_len: int,
+    min_len: int,
+    gap_split_ms: int,
+) -> list[dict[str, Any]]:
+    """Re-group one engine-provided segment through MAW's shared splitter.
+
+    Only oversized segments (text longer than ``max_len``) are rebuilt; well
+    behaved engine cues pass through untouched so real word timestamps keep
+    dominating whenever they exist.  Items lacking usable sub-granularity are
+    expanded via ``_expand_coarse_item`` first.
+    """
+    text = str(engine_segment.get("text") or "")
+    if len(text) <= max_len:
+        return [dict(engine_segment)]
+    unit_items: list[dict[str, Any]] = []
+    for nested_item in engine_segment.get("items") or []:
+        if isinstance(nested_item, Mapping) and len(str(nested_item.get("text") or "")) > max_len:
+            unit_items.extend(_expand_coarse_item(nested_item))
+        else:
+            unit_items.append(dict(nested_item))
+    if not unit_items:
+        return [dict(engine_segment)]
+    rebuilt = split_segments_auto(
+        unit_items,
+        max_len=max_len,
+        min_len=min_len,
+        gap_split_ms=gap_split_ms,
+    )
+    if not rebuilt:
+        return [dict(engine_segment)]
+    speaker = _segment_speaker(engine_segment)
+    if speaker is not None:
+        for rebuilt_segment in rebuilt:
+            rebuilt_segment.setdefault("speaker", speaker)
+    return rebuilt
+
+
+def _strip_trailing_punct(segments: list[dict[str, Any]], strip_chars: str = _LOCAL_TAIL_PUNCT) -> None:
+    """Strip trailing punctuation, mirroring the cloud pipeline.
+
+    ``strip_chars`` comes from the shared 保留符号 settings (symbols kept at
+    cue tails are subtracted from the strip candidates); an empty string
+    disables stripping entirely.
+    """
+    if not strip_chars:
+        return
+    for segment in segments:
+        segment["text"] = segment["text"].rstrip(strip_chars)
+        segment_items = segment.get("items")
+        if segment_items:
+            k = len(segment_items) - 1
+            while k >= 0:
+                segment_items[k]["text"] = segment_items[k]["text"].rstrip(strip_chars)
+                if segment_items[k]["text"]:
+                    break
+                k -= 1
+
+
 def build_local_segments(
     transcription: LocalTranscription,
     *,
@@ -978,10 +1097,20 @@ def build_local_segments(
     max_len: int = 21,
     min_len: int = 5,
     gap_split_ms: int = 1000,
+    strip_tail_punct: str = _LOCAL_TAIL_PUNCT,
 ) -> list[dict[str, Any]]:
     """Turn adapter output into MAW's integer-millisecond subtitle segments."""
     if transcription.segments:
-        segments = [dict(segment) for segment in transcription.segments]
+        segments: list[dict[str, Any]] = []
+        for source in transcription.segments:
+            segments.extend(
+                _resplit_engine_segment(
+                    source,
+                    max_len=max_len,
+                    min_len=min_len,
+                    gap_split_ms=gap_split_ms,
+                )
+            )
     elif transcription.items:
         segments = split_segments_auto(
             transcription.items,
@@ -993,6 +1122,7 @@ def build_local_segments(
         segments = [{"start": 0, "end": max(duration_ms, 1), "text": transcription.text, "items": []}]
     else:
         return []
+    _strip_trailing_punct(segments, strip_tail_punct)
     return repair_nonpositive_duration_segments(segments)
 
 

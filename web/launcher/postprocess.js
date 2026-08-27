@@ -132,11 +132,6 @@
     return !message;
   }
 
-  function renderMatchMode() {
-    const options = $("postprocessMatchSegmentationOptions");
-    if (options) options.classList.toggle("hidden", $("postprocessMatchMode").value !== "script");
-  }
-
   function hideSplitPreview() {
     $("postprocessSplitPreview").classList.add("hidden");
     $("postprocessSplitPreviewText").textContent = "";
@@ -1161,7 +1156,6 @@
     $("postprocessExtraSplitPunctuation").value = Array.isArray(match.extraSplitPunctuation) ? match.extraSplitPunctuation.join("\n") : "";
     $("postprocessPreservePunctuation").value = Array.isArray(match.preservePunctuation) ? match.preservePunctuation.join("\n") : "";
     validateMatchPunctuation();
-    renderMatchMode();
     void refreshScriptPreview();
     const replace = byId.get("replace") || {};
     $("postprocessReplacementSeparator").value = ["arrow", "comma", "tab", "custom"].includes(replace.replacementSeparator) ? replace.replacementSeparator : "arrow";
@@ -1548,10 +1542,11 @@
   $("postprocessScriptPath").addEventListener("input", () => { void refreshScriptPreview(); });
   $("postprocessExtraSplitPunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshSplitPreview(); persistAutoPlanSoon(); });
   $("postprocessPreservePunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshSplitPreview(); persistAutoPlanSoon(); });
-  $("postprocessMatchMode").addEventListener("change", () => { renderMatchMode(); validateMatchPunctuation(); void refreshSplitPreview(); persistAutoPlanSoon(); });
+  $("postprocessMatchMode").addEventListener("change", () => { validateMatchPunctuation(); void refreshSplitPreview(); persistAutoPlanSoon(); });
   $("runOcrDedup").addEventListener("click", runOcrDedup);
   $("ocrModel").addEventListener("change", renderOcrModel);
   $("openOcrSettings").addEventListener("click", () => window.MAWLauncher.openSettings("ocrSettingsSection"));
+  $("openPunctSettings").addEventListener("click", () => window.MAWLauncher.openSettings("punctuationSettingsSection"));
   $("runLlmPostprocess").addEventListener("click", runLlm);
   $("runFixedProcess").addEventListener("click", runFixedProcess);
   $("runFfconcatRebuild").addEventListener("click", runFfconcat);

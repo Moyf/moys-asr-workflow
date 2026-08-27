@@ -170,9 +170,16 @@ class ScriptMatchTests(unittest.TestCase):
         self.assertEqual(text, "甲？乙！丙~")
         self.assertIn("额外断句符号：3 个", warning)
 
+    def test_preserved_punctuation_may_use_default_split_symbols(self) -> None:
+        # 基础断句集（含 ？！）始终生效：默认保留符号无需在额外断句符号中声明。
+        text, warning = prepare_script_text("甲？乙！", (), ("？", "！"))
+
+        self.assertEqual(text, "甲？乙！")
+        self.assertIn("未配置额外断句符号", warning)
+
     def test_preserved_punctuation_must_be_declared_as_a_split_symbol(self) -> None:
         with self.assertRaisesRegex(ValueError, "保留符号"):
-            prepare_script_text("甲？", ("！",), ("？",))
+            prepare_script_text("甲～", ("！",), ("～",))
 
     def test_punctuation_segments_do_not_override_alignment_boundaries(self) -> None:
         self.project_path.write_text(

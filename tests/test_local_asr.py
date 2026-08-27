@@ -105,6 +105,101 @@ class LocalAsrNormalizationTests(unittest.TestCase):
         }])
 
 
+class LocalSegmentationTuningTests(unittest.TestCase):
+    """max_len/min_len/gap_split_ms 必须作用于引擎自带分段（MOSS 等粗粒度输出）。"""
+
+    def test_oversized_coarse_segment_resplits_within_max_len(self) -> None:
+        text = "本地模型，AI校准和翻译，双语字幕，免费ASR，这些功能全都加上了。这么长一句话！"
+        coarse = {
+            "start": 1000,
+            "end": 11500,
+            "text": text,
+            "items": [{"text": text, "start": 1000, "end": 11500, "speaker": "S01"}],
+            "speaker": "S01",
+        }
+        result = LocalTranscription(text, "zh", [], [coarse], "moss-test")
+
+        segments = build_local_segments(result, duration_ms=12_000, max_len=15, min_len=5, gap_split_ms=300)
+
+        self.assertEqual([seg["text"] for seg in segments], [
+            "本地模型，AI校准和翻译",
+            "双语字幕，免费ASR",
+            "这些功能全都加上了",
+            "这么长一句话！",
+        ])
+        self.assertTrue(all(len(seg["text"]) <= 15 for seg in segments))
+        self.assertTrue(all(seg.get("speaker") == "S01" for seg in segments))
+        self.assertTrue(all(seg["items"] and seg["items"][0].get("speaker") == "S01" for seg in segments))
+        # 块首尾真实时间保持不变，中间为整数毫秒单调插值且互不重叠。
+        self.assertEqual(segments[0]["start"], 1000)
+        self.assertEqual(segments[-1]["end"], 11_500)
+        for previous, current in zip(segments, segments[1:]):
+            self.assertLessEqual(previous["end"], current["start"])
+            self.assertLess(current["start"], current["end"])
+
+    def test_trailing_full_width_punct_is_stripped(self) -> None:
+        text = "这是结尾。"
+        coarse = {"start": 0, "end": 2000, "text": text, "items": [{"text": text, "start": 0, "end": 2000}]}
+        result = LocalTranscription(text, "zh", [], [coarse], "test-model")
+
+        segments = build_local_segments(result, duration_ms=2000)
+
+        self.assertEqual(len(segments), 1)
+        self.assertEqual(segments[0]["text"], "这是结尾")
+        self.assertEqual(segments[0]["items"][-1]["text"], "这是结尾")
+
+    def test_strip_tail_punct_empty_disables_stripping(self) -> None:
+        # 共享保留符号配置把 ，。 全部保留时，转写侧剥尾整体禁用。
+        text = "这是结尾，"
+        coarse = {"start": 0, "end": 2000, "text": text, "items": [{"text": text, "start": 0, "end": 2000}]}
+        result = LocalTranscription(text, "zh", [], [coarse], "test-model")
+
+        segments = build_local_segments(result, duration_ms=2000, strip_tail_punct="")
+
+        self.assertEqual(segments[0]["text"], "这是结尾，")
+
+    def test_short_engine_segments_pass_through_without_resplit(self) -> None:
+        short_a = {"start": 0, "end": 1200, "text": "你好呀", "items": [{"text": "你好呀", "start": 0, "end": 1200}]}
+        short_b = {"start": 5000, "end": 6000, "text": "再见啦", "items": [{"text": "再见啦", "start": 5000, "end": 6000}]}
+        result = LocalTranscription("你好呀再见啦", "zh", [], [short_a, short_b], "test-model")
+
+        segments = build_local_segments(result, duration_ms=7000, max_len=15)
+
+        self.assertEqual([seg["text"] for seg in segments], ["你好呀", "再见啦"])
+        self.assertEqual([seg["start"] for seg in segments], [0, 5000])
+        self.assertEqual([seg["end"] for seg in segments], [1200, 6000])
+
+    def test_word_level_timestamps_are_kept_when_resplitting(self) -> None:
+        text = "哈哈哈哈，呵呵呵呵"
+        word_items = [
+            {"text": "哈哈哈哈，", "start": 100, "end": 900},
+            {"text": "呵呵呵呵", "start": 900, "end": 1800},
+        ]
+        coarse = {"start": 100, "end": 1800, "text": text, "items": word_items}
+        result = LocalTranscription(text, "zh", [], [coarse], "test-model")
+
+        segments = build_local_segments(result, duration_ms=2000, max_len=7)
+
+        self.assertEqual([seg["text"] for seg in segments], ["哈哈哈哈", "呵呵呵呵"])
+        # 切分边界来自真实词级时间码，而不是字符插值估计。
+        self.assertEqual(segments[0]["start"], 100)
+        self.assertEqual(segments[0]["end"], 900)
+        self.assertEqual(segments[1]["start"], 900)
+        self.assertEqual(segments[1]["end"], 1800)
+
+    def test_max_len_setting_changes_output(self) -> None:
+        text = "一句特别特别长的中文台词需要被整理"
+        coarse = {"start": 0, "end": 4000, "text": text, "items": [{"text": text, "start": 0, "end": 4000}]}
+        result = LocalTranscription(text, "zh", [], [coarse], "test-model")
+
+        loose = build_local_segments(result, duration_ms=4000, max_len=40)
+        strict = build_local_segments(result, duration_ms=4000, max_len=8)
+
+        self.assertEqual([seg["text"] for seg in loose], [text])
+        self.assertGreater(len(strict), 1)
+        self.assertTrue(all(len(seg["text"]) <= 8 for seg in strict))
+
+
 class LocalAsrFlowTests(unittest.TestCase):
     def test_extract_audio_passes_duration_limit_to_ffmpeg(self) -> None:
         with mock.patch("generate_subtitle_qwen_api.subprocess.run") as run:

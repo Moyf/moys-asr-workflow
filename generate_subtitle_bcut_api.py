@@ -64,6 +64,10 @@ def main():
         help="保留每条字幕末尾的逗号和句号（默认去除）",
     )
     parser.add_argument(
+        "--strip-tail-punct", default="，。",
+        help="句尾剥除的标点集合；传空串禁用剥除（默认剥逗号和句号）",
+    )
+    parser.add_argument(
         "--gap-split", type=int, default=1500,
         help="静音切句阈值（毫秒），相邻字停顿超过此值则切句（默认 1500）",
     )
@@ -204,15 +208,15 @@ def main():
                 generate_spectral=args.with_spectral,
             )
 
-    # 剥句末标点（与 Qwen 版一致）
-    if not args.keep_punct:
+    # 剥句末标点（与 Qwen 版一致；--keep-punct 优先，空集合禁用）
+    if not args.keep_punct and args.strip_tail_punct:
         for seg in segments:
-            seg["text"] = seg["text"].rstrip("，。")
+            seg["text"] = seg["text"].rstrip(args.strip_tail_punct)
             seg_items = seg.get("items")
             if seg_items:
                 k = len(seg_items) - 1
                 while k >= 0:
-                    seg_items[k]["text"] = seg_items[k]["text"].rstrip("，。")
+                    seg_items[k]["text"] = seg_items[k]["text"].rstrip(args.strip_tail_punct)
                     if seg_items[k]["text"]:
                         break
                     k -= 1
