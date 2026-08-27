@@ -85,6 +85,11 @@ git diff
 - 检查任务表是否仍有 `进行中`、`待处理` 或 `阻塞`，并对每一项给出下一步或原因；不能只说“基本完成”。
 - 在共享工作区中保留用户和其他任务的 WIP：操作前后都检查状态，只修改本任务文件/代码，不使用 `git reset`、`git clean` 或覆盖无关 diff。
 
+## Codegraph 使用注意
+
+- 在本仓库调用 `codegraph_explore` **必须显式传 `projectPath="D:\Codes\moys-asr-workflow"`**。省略时使用会话默认项目，可能落到 `D:\Codes\.codegraph` 这个父级混合索引（把 D:\Codes 下所有同级项目建在一个库），返回其他仓库（如 `graph-animation-controller`）的代码并造成误改。
+- 背景：`.codegraph/` 目录若存在但为空，工具会沿目录树向上回退到父级索引；2026-08 已在本仓库运行 `codegraph init` 重建了本仓库自己的索引。若再次出现外仓库结果，先检查 `.codegraph/codegraph.db` 是否还在。
+
 ## 代码与安全约束
 
 - 提交信息不附加任何代理 / AI 署名：禁止 `Co-authored-by`、`Ultraworked with`、工具链接等尾注；提交身份只能是维护者本人。
