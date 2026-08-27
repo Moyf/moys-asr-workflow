@@ -343,6 +343,10 @@ class VenvRuntimeInstallTests(unittest.TestCase):
     def test_venv_install_uses_host_python_without_bootstrap_assets(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "local-runtime"
+            # GitHub Runner 的 %TEMP% 可能是 8.3 短路径（如 C:\Users\RUNNER~1\...）；
+            # install() 会把 runtime_root 经 Path.resolve() 规范化后再拼进命令，
+            # 断言与桩必须使用同一份规范化结果，否则仅在短路径环境下失败。
+            canonical_root = root.expanduser().resolve(strict=False)
             requirements_txt = Path(temp_dir) / "requirements-local.txt"
             requirements_txt.write_text("funasr==1.4.2\njieba==0.42.1\n", encoding="utf-8")
             calls: list[list[str]] = []
@@ -350,12 +354,12 @@ class VenvRuntimeInstallTests(unittest.TestCase):
             def fake_run(command: list[str], **_kwargs: object) -> int:
                 calls.append(command)
                 if "-m" in command and "venv" in command[2:4]:
-                    python = root / "bin" / "python"
+                    python = canonical_root / "bin" / "python"
                     python.parent.mkdir(parents=True, exist_ok=True)
                     python.write_bytes(b"python")
                 elif "install" in command:
                     for name in ("funasr", "qwen_asr", "jieba", "torch", "torchaudio", "reapeaks"):
-                        (self._venv_site_packages(root) / name).mkdir(parents=True, exist_ok=True)
+                        (self._venv_site_packages(canonical_root) / name).mkdir(parents=True, exist_ok=True)
                 return 0
 
             def forbid_bootstrap(_filename: str) -> Path:
@@ -377,10 +381,10 @@ class VenvRuntimeInstallTests(unittest.TestCase):
             self.assertTrue(status.ready)
             # venv 创建：宿主 python3 -m venv <root>（root 不存在，无 --clear）
             self.assertEqual(create_command[:3], ["python3", "-m", "venv"])
-            self.assertTrue(any(str(root) in str(arg) for arg in create_command))
+            self.assertTrue(any(str(canonical_root) in str(arg) for arg in create_command))
             self.assertNotIn("--clear", create_command)
             # pip 直装 venv：bin/python -m pip install -r <主清单>，无 --target
-            bin_python = str(root / "bin" / "python")
+            bin_python = str(canonical_root / "bin" / "python")
             self.assertEqual(install_command[0], bin_python)
             self.assertIn("-r", install_command)
             self.assertTrue(any("requirements-local.txt" in str(arg) for arg in install_command))
