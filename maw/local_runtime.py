@@ -201,7 +201,7 @@ def prepare_model_in_runtime(
         command.append("--trust-remote-code")
     return _run_process(
         command,
-        env=_runtime_env(model_cache_root, default_runtime_root()),
+        env=_runtime_env(model_cache_root, default_runtime_root(engine)),
         cancel=cancel_event or Event(),
         on_line=on_event or (lambda _line: None),
     )
@@ -262,8 +262,9 @@ def _runtime_env(
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     if runtime_root is not None:
-        site_packages = runtime_root / "site-packages"
-        env["PYTHONPATH"] = str(site_packages)
+        # 托管依赖目录按平台安装模式解析（unix 打包版为 venv 的
+        # lib/python3.x/site-packages；其余为扁平 site-packages）。
+        env["PYTHONPATH"] = str(LOCAL.site_packages(runtime_root))
     return env
 
 

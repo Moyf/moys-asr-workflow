@@ -84,6 +84,9 @@ class LocalRuntimeTests(unittest.TestCase):
         self.assertNotEqual(Path(status.path), Path(status.model_cache_path))
         self.assertEqual(Path(environment["HF_HUB_CACHE"]), cache.resolve() / "huggingface" / "hub")
 
+    # 内嵌流测试固定 win32：install 分支与 python_path 布局在 mac/linux CI 上一致。
+    @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
+    @mock.patch("maw.runtimes.base.sys.platform", "win32")
     def test_install_creates_manifest_after_venv_and_dependency_steps(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "runtime"
@@ -128,6 +131,8 @@ class LocalRuntimeTests(unittest.TestCase):
         self.assertIn("--target", install_command)
         self.assertIn("import jieba", verify_command[-1])
 
+    @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
+    @mock.patch("maw.runtimes.base.sys.platform", "win32")
     def test_install_without_bootstrap_assets_explains_packaged_requirement(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": temp_dir}):

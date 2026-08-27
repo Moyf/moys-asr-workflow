@@ -243,8 +243,8 @@ def _runtime_env(runtime_root: Path | None = None) -> dict[str, str]:
     configure_utf8_environment(env)
     env["PYTHONNOUSERSITE"] = "1"
     if runtime_root is not None:
-        site_packages = runtime_root / "site-packages"
-        env["PYTHONPATH"] = str(site_packages)
+        # 托管依赖目录按平台安装模式解析（unix 打包版为 venv 布局，见 base）。
+        env["PYTHONPATH"] = str(OCR.site_packages(runtime_root))
     return env
 
 

@@ -119,6 +119,7 @@
       </div>
       <div id="localRuntimePanel" class="local-runtime-panel hidden">
         <p class="hint" data-i18n="local_beta_note">当前为 beta 版本，未经过充分测试，不保证后续的维护和更新，请谨慎使用。</p>
+        <div id="localRuntimePaths" class="runtime-paths hidden"></div>
         <div class="local-status-row">
           <p id="localRuntimeStatus" class="local-status" aria-live="polite"></p>
           <button id="refreshLocalRuntime" class="ghost small" type="button" data-i18n="local_refresh">重新扫描</button>
@@ -127,8 +128,10 @@
           <div class="task-progress-track"><span id="localRuntimeProgressBar"></span></div>
           <p id="localRuntimeProgressMessage" class="hint"></p>
         </div>
-        <p id="localRuntimeHint" class="hint"></p>
-        <button id="installLocalRuntime" class="primary small" type="button" data-i18n="local_runtime_install">安装本地模型支持</button>
+        <div class="repair-row">
+          <p id="localRuntimeHint" class="hint"></p>
+          <button id="installLocalRuntime" class="primary small" type="button" data-i18n="local_runtime_install">安装本地模型支持</button>
+        </div>
       </div>
       <div id="localModelPanel" class="local-model-panel hidden">
         <div class="local-status-row">

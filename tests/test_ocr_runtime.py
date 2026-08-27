@@ -36,6 +36,9 @@ class OcrRuntimeTests(unittest.TestCase):
         self.assertEqual(status.model_id, OCR_MODEL_ID)
         self.assertEqual(status.path, str(self.root.resolve()))
 
+    # 内嵌流测试固定 win32：install 分支与布局在 mac/linux CI 上一致。
+    @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
+    @mock.patch("maw.runtimes.base.sys.platform", "win32")
     def test_install_creates_venv_installs_exact_runtime_requirements_and_writes_manifest(self) -> None:
         calls: list[list[str]] = []
 

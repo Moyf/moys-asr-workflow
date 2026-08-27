@@ -11,8 +11,9 @@
 ### 🔄 变更
 
 - **托管 Runtime 共性抽象** ： local / ocr / moss 三个托管 Runtime 统一到 `maw/runtimes`（`RuntimeSpec` 声明式规格 + `ManagedRuntime` 生命周期基类），`maw/local_runtime.py` 与 `maw/ocr_runtime.py` 收窄为薄壳委托，新增 `engine` 维度（local / moss）支持。
-- **移除 bundled uv** ： 三个托管 Runtime 一律 embedded Python + get-pip + `pip install --target` 安装；moss 依赖因与 local（qwen-asr 固定 Transformers 4.57.6）互斥而独立声明于 `moss-requirements.in`，由 `uv pip compile` 冻结（与 local/ocr 的 `uv export` 管线并行），macOS 产物不再内置 uv。
-- **CUDA 检测前置** ： 无 NVIDIA GPU（非 macOS）时在首次依赖安装前即切换 CPU 版 Torch——构建期生成去 `+cu130` 的 `requirements-{key}-cpu.txt` 随包分发，同时剔除 cu 构建专属的 `nvidia-*` 依赖块并移除随之失效的 wheel 哈希行（避免首装哈希校验失败），首装直接调用该清单，不再先下载完整 CUDA wheel 与 nvidia-* 依赖再覆盖。
+- **移除 bundled uv** ： Windows 打包版托管 Runtime 一律 embedded Python + get-pip + `pip install --target` 安装（unix 打包版与源码模式见下条）；moss 依赖因与 local（qwen-asr 固定 Transformers 4.57.6）互斥而独立声明于 `moss-requirements.in`，由 `uv pip compile` 冻结（与 local/ocr 的 `uv export` 管线并行），macOS 产物不再内置 uv。
+- **unix 打包版宿主 venv 与源码模式零资产安装** ： unix（Linux / macOS）打包版不再内嵌解释器，runtime 安装改用系统 `python3 -m venv` 创建环境后按同一份 frozen 清单直装（无 python3 或版本低于 3.11 时给出明确提示），产物不再携带 unix 平台用不到的引导资产；源码模式同样零引导资产，检测开发环境的 uv 后以 `uv pip install --python <MAW 解释器> --target <site-packages>` 接入与打包版一致的托管目录布局。全新 clone 首次安装时若 `build/` 下缺 frozen 清单，会按构建管线同款 `uv export` / `uv pip compile` 命令用 uv 自动补齐；未检测到 uv 时在进度日志输出安装指引警告。
+- **CUDA 检测前置** ： 无 NVIDIA GPU（非 macOS）时在首次依赖安装前即切换 CPU 版 Torch——CPU 清单由独立的 `local-cpu-requirements.in` 原生冻结（屏蔽 GPU 源后 `uv pip compile --generate-hashes`，哈希与 CPU wheel 匹配），随包分发且首装直接调用；不再"冻结后文本剔除 +cu130"（会遗留 cu130 wheel 哈希导致 pip 校验失败），也不再先下载完整 CUDA wheel 与 nvidia-* 依赖再覆盖。
 
 ### 🐛 问题修复
 

@@ -4,8 +4,13 @@ The Launcher installs optional inference dependencies into separate Python
 environments under the user's app-data directory instead of growing the
 frozen MAW package.  Every managed runtime shares the same lifecycle:
 
-    embedded Python 解压 -> get-pip -> pip install --target -r frozen txt
-    ->（可选）CUDA 兜底 -> import 自检 -> runtime.json manifest
+    [Windows 打包] embedded Python 解压 -> get-pip ->
+        pip install --target -r frozen txt（引导资产随包分发）
+    [unix 打包]   宿主 python3 -m venv -> venv 内 pip 直装同一份 frozen txt
+        （不内嵌解释器，产物不携带 unix 用不到的引导资产）
+    [源码模式]    零下载 —— 检测开发环境的 uv，直接
+        ``uv pip install -r frozen txt --target <site-packages>``，
+        自检/worker 复用 MAW 自己的解释器。
 
 ``RuntimeSpec`` 声明式描述单个 Runtime（frozen txt 名 / 镜像 / verify 命令 /
 关键包目录等）；``ManagedRuntime`` 把生命周期实现一次，local / ocr / moss
@@ -45,6 +50,14 @@ from maw.runtime_manifest import (
 from maw.runtime_mirror_picker import pick_fastest_mirror
 
 GET_PIP_SCRIPT: Final = "get-pip.py"
+
+# 源码模式对开发环境的硬性要求（uv 用于托管依赖冻结与 --target 安装）。
+UV_MISSING_WARNING: Final = (
+    "未检测到 uv。源码模式安装/修复运行环境需要它——"
+    'Windows PowerShell 执行 powershell -c "irm https://astral.sh/uv/install.ps1 | iex"；'
+    "macOS / Linux 执行 curl -LsSf https://astral.sh/uv/install.sh | sh；"
+    "安装后重启 MAW 再重试。"
+)
 
 RuntimeEvent = Callable[[str, int, str], None]
 RuntimeLine = Callable[[str], None]
@@ -189,6 +202,11 @@ def model_cache_environment(model_cache_root: str | Path | None = None) -> dict[
     }
 
 
+def _build_dir() -> Path:
+    """源码模式的冻结清单目录（<repo>/build；gitignored，首次安装自动补齐）。"""
+    return Path(__file__).resolve().parents[2] / "build"
+
+
 # ---------------------------------------------------------------------------
 # ManagedRuntime：一个 Runtime 的完整生命周期
 # ---------------------------------------------------------------------------
@@ -211,11 +229,31 @@ class ManagedRuntime:
 
     def python_path(self, root: str | Path | None = None) -> Path:
         target = self.resolve_root(root) if root is None else Path(root)
+        # unix 打包版走宿主 python3 的 venv（root/bin/python）；Windows 打包版
+        # 用 bundle 内嵌解释器（root/python/python.exe）；源码模式沿用 embedded
+        # 布局约定（仅作占位路径，实际解释器由 :meth:`interpreter` 决定）。
+        if _uses_host_venv():
+            return target / "bin" / "python"
         relative = Path("python") / "python.exe" if os.name == "nt" else Path("python") / "bin" / "python"
         return target / relative
 
+    def interpreter(self, root: str | Path | None = None) -> Path:
+        """实际执行自检 / worker 的解释器。
+
+        打包版 = 托管环境内的解释器（Windows 内嵌 Python / unix 宿主 venv）；
+        源码模式 = MAW 自己的开发环境解释器（依赖通过 ``--target site-packages``
+        + PYTHONPATH 接入），因此源码模式不需要下载任何 bootstrap 资产。
+        """
+        if not getattr(sys, "frozen", False):
+            return Path(sys.executable).resolve()
+        return self.python_path(root)
+
     def site_packages(self, root: str | Path | None = None) -> Path:
         target = self.resolve_root(root) if root is None else Path(root)
+        if _uses_host_venv():
+            # venv 的 site-packages 按 python 版本分目录（lib/python3.x/site-packages）。
+            candidates = sorted(target.glob("lib/python*/site-packages"))
+            return candidates[0] if candidates else target / "lib" / "site-packages"
         return target / "site-packages"
 
     def package_dirs_ok(self, root: str | Path | None = None) -> bool:
@@ -238,9 +276,11 @@ class ManagedRuntime:
     def requirements_path(self, *, cpu: bool = False) -> Path:
         """frozen requirements txt（打包版随包分发；源码模式在 build/ 下，由 CI 生成）。
 
-        传 ``cpu=True`` 时返回 `requirements-{key}-cpu.txt`：构建期由主清单
-        去掉 ``+cuXXX`` 生成的 CPU 版清单，供无 NVIDIA GPU 的机器一次性
-        安装 CPU Torch（与 cu130 清单并列打包，运行时不再做文本转换）。
+        传 ``cpu=True`` 时返回 `requirements-{key}-cpu.txt`：构建期由
+        ``local-cpu-requirements.in``（屏蔽 GPU 源的独立声明，moss 先例）
+        原生冻结的 CPU 清单，带 CPU wheel 真实哈希，供无 NVIDIA GPU 的
+        机器一次性安装 CPU Torch（与 cu130 清单并列打包，运行时不再做
+        文本转换）。
         """
         bundle_name = self.spec.requirements_bundle_name
         if cpu:
@@ -248,27 +288,17 @@ class ManagedRuntime:
         if getattr(sys, "frozen", False):
             path = asset_path(f"{self.spec.bundle_dir}/{bundle_name}")
         else:
-            path = Path(__file__).resolve().parents[2] / "build" / bundle_name
+            path = _build_dir() / bundle_name
         if not path.is_file():
             kind = "CPU 版依赖清单" if cpu else "依赖清单"
             raise self._error(
                 f"{self.spec.message_prefix}{kind}缺失：" + str(path) + "。"
-                "打包版应随包分发；源码运行请先运行 "
+                "打包版应随包分发；源码模式在「安装/修复」时会用 uv 自动按构建"
+                "管线的同款冻结命令补齐（见 _freeze_requirements_command），"
                 + (
-                    "uv pip compile moss-requirements.in -p 3.11 "
-                    "--extra-index-url https://download.pytorch.org/whl/cu130 "
-                    "--index-strategy unsafe-best-match "
-                    f"-o build/{self.spec.requirements_bundle_name}"
-                    if self.spec.key == "moss"
-                    else (
-                        f"uv export --frozen --extra {self.spec.requirements_key} --no-dev "
-                        f"--format requirements-txt -o build/{self.spec.requirements_bundle_name}"
-                    )
-                )
-                + (
-                    "，并在构建脚本生成 CPU 变体（去除 +cuXXX）后重试"
+                    "请检查该命令的输出来定位失败原因后重试"
                     if cpu
-                    else ""
+                    else "或手动执行对应命令生成"
                 )
             )
         return path
@@ -283,7 +313,7 @@ class ManagedRuntime:
     ) -> RuntimeStatus:
         """missing / broken / installing / ready，复用 runtime.json manifest。"""
         root = self.resolve_root(runtime_root)
-        python = self.python_path(root)
+        python = self.interpreter(root)
         model_cache = resolve_model_cache_root(model_cache_root) if self.spec.has_model_cache else ""
         if not root.exists():
             return self._status("missing", False, root, "", self.spec.missing_detail, model_cache=model_cache)
@@ -362,7 +392,12 @@ class ManagedRuntime:
         runtime_root: str | Path | None = None,
         model_cache_root: str | Path | None = None,
     ) -> RuntimeStatus:
-        """Create or repair the runtime: embedded Python -> pip -> verify -> manifest."""
+        """Create or repair the managed runtime environment.
+
+        Windows 打包版：bootstrap embedded Python -> pip -> verify -> manifest；
+        unix 打包版：宿主 python3 建 venv -> venv 内 pip 直装同一份 frozen 清单；
+        源码模式：uv --target 接入开发解释器（无解压 / get-pip 步骤）。
+        """
         emit = on_event or (lambda _message, _percent, _stage: None)
         cancel = cancel_event or Event()
         spec = self.spec
@@ -372,20 +407,38 @@ class ManagedRuntime:
             raise self._error(f"{spec.message_prefix}路径不能是一个文件：{root}")
         root.parent.mkdir(parents=True, exist_ok=True)
 
-        embed_zip = _find_bootstrap_asset(spec.embed_python_zip)
-        get_pip = _find_bootstrap_asset(GET_PIP_SCRIPT)
-        if embed_zip is None or get_pip is None:
-            raise self._error(
-                f"未找到{spec.feature_label}安装资产（embedded Python 或 get-pip.py）。"
-                "请使用官方打包版。"
-            )
+        # 引导策略按运行形态分叉：打包版（Windows）依赖随包分发的 bootstrap
+        # 资产；打包版（unix）用宿主 python3 建 venv，无需任何 bundle 资产；
+        # 源码模式零下载，复用开发环境现成的 uv 与解释器。
+        frozen = bool(getattr(sys, "frozen", False))
+        host_venv = _uses_host_venv()
+        embed_zip: Path | None = None
+        get_pip: Path | None = None
+        uv_executable: Path | None = None
+        if not frozen:
+            found_uv = shutil.which("uv")
+            uv_executable = Path(found_uv) if found_uv else None
+            if uv_executable is None:
+                # 先发进度事件（Launcher 日志可见），再以可操作文案中断安装。
+                emit(f"[警告] {UV_MISSING_WARNING}", 5, "bootstrap")
+                raise self._error(
+                    f"源码模式安装{spec.feature_label}需要 uv。" + UV_MISSING_WARNING
+                )
+        elif not host_venv:
+            embed_zip = _find_bootstrap_asset(spec.embed_python_zip)
+            get_pip = _find_bootstrap_asset(GET_PIP_SCRIPT)
+            if embed_zip is None or get_pip is None:
+                raise self._error(
+                    f"未找到{spec.feature_label}安装资产（embedded Python 或 get-pip.py）。"
+                    "请使用官方打包版。"
+                )
 
         if self.status(runtime_root=runtime_root, model_cache_root=model_cache_root).ready and not repair:
             emit(spec.ready_emit_done, 100, "ready")
             return self.status(runtime_root=runtime_root, model_cache_root=model_cache_root)
 
         _may_cancel(cancel, spec)
-        python = self.python_path(root)
+        python = self.interpreter(root)
         if root.exists() and not python.exists() and any(root.iterdir()) and not repair:
             raise self._error(f"{spec.message_prefix}目录已存在但不完整，请更换路径或手动清理后重试。")
         # 安装开始即写入 installing 状态，避免安装过程中被判定为"需要修复"。
@@ -396,49 +449,89 @@ class ManagedRuntime:
             python_version=spec.python_version,
         )
 
-        emit(f"正在解压嵌入式 {spec.feature_label} Python 运行环境……", 5, "bootstrap")
-        python_dir = root / "python"
-        if repair or not python.exists():
-            if python_dir.exists():
-                shutil.rmtree(python_dir)
-            _extract_embed_python(embed_zip, python_dir)
-        _may_cancel(cancel, spec)
-        if not python.exists():
-            raise self._error(f"{spec.message_prefix}解压失败：未找到 {python}")
+        emit(f"正在准备{spec.feature_label}运行环境……", 5, "bootstrap")
+        if frozen and host_venv:
+            self._prepare_host_venv(
+                root,
+                python,
+                repair=repair,
+                emit=emit,
+                cancel=cancel,
+                model_cache_root=model_cache_root,
+            )
+            _may_cancel(cancel, spec)
+        elif frozen:
+            python_dir = root / "python"
+            if repair or not self.python_path(root).exists():
+                if python_dir.exists():
+                    shutil.rmtree(python_dir)
+                _extract_embed_python(embed_zip, python_dir)
+            _may_cancel(cancel, spec)
 
-        emit("正在安装 pip……", 12, "bootstrap")
-        self.run(
-            _get_pip_command(python, get_pip),
-            env=self.environment(root, model_cache_root),
-            cancel=cancel,
-            on_line=_bootstrap_line(emit, 15),
-        )
-        _may_cancel(cancel, spec)
+            emit("正在安装 pip……", 12, "bootstrap")
+            self.run(
+                _get_pip_command(self.python_path(root), get_pip),
+                env=self.environment(root, model_cache_root),
+                cancel=cancel,
+                on_line=_bootstrap_line(emit, 15),
+            )
+            _may_cancel(cancel, spec)
+        if frozen and not python.exists():
+            raise self._error(f"{spec.message_prefix}Python 环境创建失败：未找到 {python}")
 
         emit(spec.requirements_emit, 25, "dependencies")
+        # CUDA 兜底判定需先于清单获取：决定补齐/读取哪份 frozen txt。
+        # 无 NVIDIA GPU（非 darwin）时直接使用构建期冻结的 CPU 版清单
+        # （requirements-{key}-cpu.txt，原生 CPU wheel 版本与哈希，不附加
+        # cu130 index），一次性安装 CPU Torch，避免先下载完整 cu130 wheel
+        # 与 nvidia-* 依赖再覆盖（PR review 3862518679）。
+        needs_cpu_fallback = sys.platform != "darwin" and spec.cuda_fallback_packages and not _has_cuda()
+        if not frozen:
+            # 全新 clone 的 build/ 下没有清单；源码模式已具备 uv，按构建管线
+            # 同款命令自动补齐，实现首次安装零手工步骤。
+            self._ensure_frozen_requirements(
+                uv_executable,
+                cpu=needs_cpu_fallback,
+                emit=emit,
+                cancel=cancel,
+            )
         requirements_file = self.requirements_path()
         site_packages = self.site_packages(root)
         fastest_index = pick_fastest_mirror()
-        # CUDA 检测前置（不得晚于首次 pip 安装）：无 NVIDIA GPU（非 darwin）
-        # 时直接使用构建期生成的 CPU 版清单（requirements-{key}-cpu.txt，
-        # 已去除 +cuXXX 且不附加 cu130 index），一次性安装 CPU Torch，
-        # 避免先下载完整 cu130 wheel 与 nvidia-* 依赖再覆盖（PR review
-        # 3862518679）。
-        needs_cpu_fallback = sys.platform != "darwin" and spec.cuda_fallback_packages and not _has_cuda()
         requirements_arg = requirements_file
         extra_index = spec.extra_index_url
         if needs_cpu_fallback:
             emit("未检测到 NVIDIA CUDA，改用 CPU 版 Torch……", 25, "dependencies")
             requirements_arg = self.requirements_path(cpu=True)
             extra_index = None
-        self.run(
-            _pip_install_command(
+        # 安装方式三分支：unix 打包版 venv 直装（venv 自带 pip，无需 --target）；
+        # Windows 打包版 pip --target 定向安装；源码模式 uv 接入开发解释器。
+        if frozen and host_venv:
+            install_command = _venv_pip_install_command(
+                python,
+                index_url=fastest_index,
+                extra_index_url=extra_index,
+                requirements_file=requirements_arg,
+            )
+        elif frozen:
+            install_command = _pip_install_command(
+                self.python_path(root),
+                site_packages,
+                requirements_arg,
+                index_url=fastest_index,
+                extra_index_url=extra_index,
+            )
+        else:
+            install_command = _uv_install_command(
+                uv_executable,
                 python,
                 site_packages,
                 requirements_arg,
                 index_url=fastest_index,
                 extra_index_url=extra_index,
-            ),
+            )
+        self.run(
+            install_command,
             env=self.environment(root, model_cache_root),
             cancel=cancel,
             on_line=_dependency_line(emit, requirements_arg),
@@ -473,6 +566,96 @@ class ManagedRuntime:
                 path.mkdir(parents=True, exist_ok=True)
         emit(spec.ready_emit_done, 100, "ready")
         return self.status(runtime_root=runtime_root, model_cache_root=model_cache_root)
+
+    def _prepare_host_venv(
+        self,
+        root: Path,
+        python: Path,
+        *,
+        repair: bool,
+        emit: RuntimeEvent,
+        cancel: Event,
+        model_cache_root: str | Path | None,
+    ) -> None:
+        """unix 打包版：用宿主 python3 创建 venv（bundle 不携带内嵌资产）。"""
+        spec = self.spec
+        host = shutil.which("python3")
+        if host is None:
+            raise self._error(
+                f"未找到宿主 python3。{spec.message_prefix}依赖系统安装的 Python 3.11+"
+                "（unix 平台不再内嵌解释器）；请安装后重试。"
+            )
+        probe = subprocess.run(
+            [host, "-c", "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        if probe.returncode != 0:
+            raise self._error(f"宿主 python3 版本过低：{spec.message_prefix}需要 Python 3.11+。")
+        emit(f"正在创建 {spec.feature_label} Python 虚拟环境（宿主 python3）……", 5, "bootstrap")
+        venv_args = [host, "-m", "venv"]
+        if repair:
+            # 修复时重建：root 已在安装开始写 installing manifest 时创建，
+            # 不能在初次安装因 root 已存在而 --clear（会清掉 installing 状态）。
+            venv_args.append("--clear")
+        venv_args.append(str(root))
+        self.run(
+            venv_args,
+            env=self.environment(root, model_cache_root),
+            cancel=cancel,
+            on_line=_bootstrap_line(emit, 10),
+        )
+
+    def _ensure_frozen_requirements(
+        self,
+        uv_executable: Path | None,
+        *,
+        cpu: bool,
+        emit: RuntimeEvent,
+        cancel: Event,
+    ) -> None:
+        """源码模式：缺 frozen 清单时用开发环境的 uv 自动补齐（幂等）。
+
+        全新 clone 的 ``build/`` 是 gitignored 的 CI 产物，初始为空。既然源码
+        安装已约定必须具备 uv，这里替用户执行与打包脚本完全一致的冻结命令
+        （见 :func:`_freeze_requirements_command`），使首次安装零手工步骤。
+        清单已存在则直接返回，不触发任何 subprocess。
+        """
+        if uv_executable is None:
+            # 理论上不可达：install() 门槛已保证 uv 存在；防御时给出同款警告。
+            emit(f"[警告] {UV_MISSING_WARNING}", 22, "bootstrap")
+            raise self._error(UV_MISSING_WARNING)
+        try:
+            self.requirements_path(cpu=cpu)
+            return
+        except self.spec.error_class:
+            pass
+        command = _freeze_requirements_command(uv_executable, self.spec, cpu=cpu, build_dir=_build_dir())
+        if command is None:
+            # 该 CPU 变体不由本仓库管线生成（如 moss：in 文件 pin +cu130，
+            # 无法原生冻结出 CPU 版）；交回上层用 requirements_path 的缺失
+            # 报错给出明确指引，而不是装错清单。
+            return
+        emit(f"正在生成{self.spec.message_prefix}依赖清单（uv 冻结，与构建管线一致）……", 22, "bootstrap")
+        try:
+            self.run(
+                command,
+                env=self.environment(),
+                cancel=cancel,
+                on_line=_bootstrap_line(emit, 23),
+                cwd=_build_dir().parent,
+            )
+        except self.spec.error_class as error:
+            raise self._error(f"自动生成依赖清单失败：{error}") from error
+        # 重试读取；仍缺失说明命令未产出文件，让 requirements_path 报最终
+        # 缺失错误（含目标路径，便于排查）。
+        try:
+            self.requirements_path(cpu=cpu)
+        except self.spec.error_class as verify_error:
+            raise self._error(f"自动生成依赖清单后仍未找到文件：{verify_error}") from verify_error
 
     # -- 进程与环境 -----------------------------------------------------------
 
@@ -524,14 +707,25 @@ class ManagedRuntime:
 # ---------------------------------------------------------------------------
 
 
+def _uses_host_venv() -> bool:
+    """打包形态的平台差异：unix 打包版用宿主 python3 创建的 venv。
+
+    仅在 ``sys.frozen``（官方打包版）且非 Windows 时成立；源码模式依赖开发
+    环境自己的 uv 与解释器，托管目录布局与 Windows 打包版一致（扁平
+    site-packages）。
+    """
+    return bool(getattr(sys, "frozen", False)) and sys.platform != "win32"
+
+
 def _find_bootstrap_asset(filename: str) -> Path | None:
-    """在 bundle / exe 邻目录 / 源码 build/ 里找安装资产（embedded zip、get-pip.py）。"""
+    """在 bundle / exe 邻目录里找安装资产（embedded zip、get-pip.py）。
+
+    仅打包版安装流程使用；源码模式走 uv（见 :meth:`ManagedRuntime.install`）。
+    """
     candidates: list[Path] = [
         asset_path(f"bootstrap/{filename}"),
         Path(sys.executable).resolve().parent / "bootstrap" / filename,
     ]
-    if not getattr(sys, "frozen", False):
-        candidates.append(Path(__file__).resolve().parents[2] / "build" / filename)
     for candidate in candidates:
         if candidate.is_file():
             return candidate.resolve()
@@ -561,6 +755,64 @@ def _get_pip_command(python_exe: Path, get_pip_path: Path) -> list[str]:
     return [str(python_exe), str(get_pip_path)]
 
 
+def _uv_install_command(
+    uv_executable: Path | None,
+    interpreter: Path,
+    target_dir: Path,
+    requirements_file: Path | None,
+    *,
+    index_url: str = "https://pypi.org/simple",
+    extra_index_url: str | None = None,
+) -> list[str]:
+    """Build the source-mode install command: reuse the dev interpreter, no downloads.
+
+    ``uv`` 自带锁定解析与并行下载；``--python`` 指向 MAW 自己的 venv 解释器，
+    依赖经 ``--target site-packages`` 与打包版保持同一目录布局，因此
+    status / verify / worker 启动逻辑在两种模式下完全一致。
+    """
+    if uv_executable is None:
+        raise ManagedRuntimeError("源码模式安装需要 uv（https://docs.astral.sh/uv/）。")
+    command = [
+        str(uv_executable),
+        "pip",
+        "install",
+        "--python",
+        str(interpreter),
+        "--target",
+        str(target_dir),
+        # 镜像快照可能缺少某个锁定的精确版本（如 torch 生态传递依赖）；
+        # 与 moss 清单冻结管线一致采用聚合索引策略，避免 first-index-wins 误杀。
+        "--index-strategy",
+        "unsafe-best-match",
+        "--index-url",
+        index_url,
+    ]
+    if extra_index_url:
+        command.extend(["--extra-index-url", extra_index_url])
+    if requirements_file is not None:
+        command.extend(["-r", str(requirements_file)])
+    return command
+
+
+def _venv_pip_install_command(
+    python_exe: Path,
+    *,
+    index_url: str = "https://pypi.org/simple",
+    extra_index_url: str | None = None,
+    requirements_file: Path | None = None,
+) -> list[str]:
+    """Build the pip install command inside a host venv（无 --target，直装 venv）。"""
+    command = [
+        str(python_exe), "-m", "pip", "install", "--upgrade",
+        "--index-url", index_url,
+    ]
+    if extra_index_url:
+        command.extend(["--extra-index-url", extra_index_url])
+    if requirements_file is not None:
+        command.extend(["-r", str(requirements_file)])
+    return command
+
+
 def _pip_install_command(
     python_exe: Path,
     target_dir: Path,
@@ -583,6 +835,57 @@ def _pip_install_command(
     if packages:
         command.extend(packages)
     return command
+
+
+def _freeze_requirements_command(
+    uv_executable: Path,
+    spec: RuntimeSpec,
+    *,
+    cpu: bool,
+    build_dir: Path,
+) -> list[str] | None:
+    """按构建管线（build-windows.ps1 / build-appimage.sh / release.yml）同款
+    命令冻结清单；``cpu=True`` 返回 ``-cpu.txt`` 变体命令。
+
+    返回 ``None`` 表示该清单不由本仓库管线生成（ocr 无 CUDA 组件；moss 的
+    in 文件直接 pin ``torch==2.13.0+cu130``，去掉 extra index 无法解析出 CPU
+    版本——需要独立声明文件，当前未提供）。
+    """
+    uv_text = str(uv_executable)
+    target_main = str(build_dir / spec.requirements_bundle_name)
+    if spec.key == "local":
+        if cpu:
+            return [
+                uv_text, "pip", "compile", "local-cpu-requirements.in", "-p", "3.11",
+                "--generate-hashes",
+                "--index-strategy", "unsafe-best-match",
+                "-o", str(build_dir / "requirements-local-cpu.txt"),
+            ]
+        return [
+            uv_text, "export", "--frozen", "--extra", spec.requirements_key, "--no-dev",
+            "--format", "requirements-txt",
+            "-o", target_main,
+        ]
+    if spec.key == "ocr":
+        if cpu:
+            return None  # ocr 无 torch/cuXXX 依赖，从不生成 CPU 变体
+        return [
+            uv_text, "export", "--frozen", "--extra", spec.requirements_key, "--no-dev",
+            "--format", "requirements-txt",
+            "-o", target_main,
+        ]
+    if spec.key == "moss":
+        if cpu:
+            return None  # 见 docstring：in 文件 pin +cu130，无法原生冻结 CPU 版
+        return [
+            uv_text, "pip", "compile", "moss-requirements.in", "-p", "3.11",
+            # torch==2.13.0+cu130 只存在于 pytorch cu130 index（见
+            # moss-requirements.in 头注释）。
+            "--extra-index-url", "https://download.pytorch.org/whl/cu130",
+            "--index-strategy", "unsafe-best-match",
+            "-o", target_main,
+        ]
+    return None
 
 
 def _requirement_package_names(path: Path) -> set[str]:
