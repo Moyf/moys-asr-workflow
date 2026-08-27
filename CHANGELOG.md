@@ -6,6 +6,7 @@
 
 ### 🚀 全新特性
 
+- **Faster-Whisper 本地引擎（实验）** ： `generate_subtitle_local.py` 新增 `--engine whisper`，通过 faster-whisper（CTranslate2 运行时、CT2 权重与 Silero VAD 内置）输出词级整数毫秒时间戳，并复用统一切句、SRT 与 `.mosp` 流程；依赖随 `uv sync --extra local` 安装。默认模型 `large-v3`，可传 `--model` 切换 `turbo` 等 HF Hub 名称或本地 CTranslate2 目录；不提供说话人分离，Launcher 本地模型选择暂未接入。
 - **MOSS 本地转录引擎** ： 引入 MOSS Transcribe-Diarize（Transformers 5.x）本地识别引擎，独立安装到 `local-runtime-moss` 环境，模型与其余引擎共用缓存目录。
 
 ### 🔄 变更

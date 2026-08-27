@@ -20,6 +20,10 @@ dependencies = [
 [project.optional-dependencies]
 local = [
     "accelerate>=1.12",
+    # faster-whisper（CTranslate2 后端）不依赖 transformers，不会与
+    # qwen-asr 锁定的 Transformers 4.x 冲突；onnxruntime 是其硬依赖
+    # （Silero VAD），与 ocr extra 的 onnxruntime>=1.18 范围兼容。
+    "faster-whisper>=1.2,<2",
     "funasr>=1.3.29",
     "hf-xet>=1.5",
     "qwen-asr>=0.0.6",
