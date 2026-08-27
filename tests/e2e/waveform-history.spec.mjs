@@ -1836,7 +1836,12 @@ test('server media loads from the resolved project path and OTIO keeps its absol
       skip_playback: true,
       operation_mode: 'middle_drag',
       manual_corrections: false,
-      gaps: [{ start: 20000, end: 30000, removed: true }],
+      gaps: [
+        { start: 0, end: 13890, removed: true },
+        { start: 15990, end: 18140, removed: true },
+        { start: 18870, end: 20570, removed: true },
+        { start: 21560, end: 21940, removed: true },
+      ],
     };
     updateGapRemoveUi();
     renderAll();
@@ -1855,4 +1860,26 @@ test('server media loads from the resolved project path and OTIO keeps its absol
     .media_references.DEFAULT_MEDIA.target_url;
   expect(targetUrl).toMatch(/^file:\/\/\//);
   expect(decodeURI(targetUrl)).toContain('synthetic.wav');
+
+  const clips = payload.tracks.children[0].children.filter((child) => child.OTIO_SCHEMA === 'Clip.2');
+  let sequenceStart = 0;
+  const ranges = clips.map((clip) => {
+    const sourceRange = clip.source_range;
+    const availableRange = clip.media_references.DEFAULT_MEDIA.available_range;
+    const result = {
+      sequenceStart,
+      sourceStart: sourceRange.start_time.value,
+      sourceDuration: sourceRange.duration.value,
+      availableStart: availableRange.start_time.value,
+      availableDuration: availableRange.duration.value,
+    };
+    sequenceStart += sourceRange.duration.value;
+    return result;
+  });
+  expect(ranges).toEqual([
+    { sequenceStart: 0, sourceStart: 833, sourceDuration: 126, availableStart: 0, availableDuration: 18000 },
+    { sequenceStart: 126, sourceStart: 1088, sourceDuration: 44, availableStart: 0, availableDuration: 18000 },
+    { sequenceStart: 170, sourceStart: 1234, sourceDuration: 60, availableStart: 0, availableDuration: 18000 },
+    { sequenceStart: 230, sourceStart: 1316, sourceDuration: 16684, availableStart: 0, availableDuration: 18000 },
+  ]);
 });

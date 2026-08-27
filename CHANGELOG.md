@@ -7,15 +7,44 @@
 ### 🚀 全新特性
 
 - **录制文稿对齐（实验性）** ： 新增 `server-align` 本地工具，输入 `.mosp`、文稿与媒体后可把实际录制内容分为匹配、失败片段、不完整录制、备选 take、缺失文稿与 Extra；在波形上选择 take、试听、调整空隙并导出可继续交给 MAWE 编辑的工程。
+- **Faster-Whisper 本地引擎（实验）** ： `generate_subtitle_local.py` 新增 `--engine whisper`，通过 faster-whisper（CTranslate2 运行时、CT2 权重与 Silero VAD 内置）输出词级整数毫秒时间戳，并复用统一切句、SRT 与 `.mosp` 流程；依赖随 `uv sync --extra local` 安装。默认模型 `large-v3`，可传 `--model` 切换 `turbo` 等 HF Hub 名称或本地 CTranslate2 目录；不提供说话人分离。Launcher「本地模型」同步提供 large-v3 入口（缓存发现与目录误判防护与其他引擎一致）；本地运行环境升级至版本 6，已装用户首次进入时按提示重装以补齐 faster-whisper 依赖。
+- **MOSS 本地转录引擎** ： 引入 MOSS Transcribe-Diarize（Transformers 5.x）本地识别引擎，独立安装到 `local-runtime-moss` 环境，模型与其余引擎共用缓存目录。
+- **MAW 字幕颜色过滤与可配置拆分移除符号** ： 编辑器支持按颜色过滤字幕段落查看，并可配置在断句拆分时移除哪些符号（PR #76，含对应单元与端到端测试）。
 
 ### ✨ 提升
 
 - **静音空隙处理** ： 编辑器支持右键添加空隙、跨行边界与中键范围操作、边界与中键组合模式、`Alt` 整体移动和 `Ctrl/Cmd` 复制；`gap_remove.provenance` 将静音检测、台本对齐与人工调整分层保存，重扫时可保留手工结果。「空隙检测与调整」还可按当前前后预留量对已有空隙额外向内收缩，并支持重复操作与撤销。
 - **空隙内字幕控制** ： 在「空隙检测与调整」中按覆盖率和剩余时长阈值批量禁用静音空隙内的主字幕，不改写字幕时间并支持撤销。
 
+### 🔄 变更
+
+- **托管 Runtime 共性抽象** ： local / ocr / moss 三个托管 Runtime 统一到 `maw/runtimes`（`RuntimeSpec` 声明式规格 + `ManagedRuntime` 生命周期基类），`maw/local_runtime.py` 与 `maw/ocr_runtime.py` 收窄为薄壳委托，新增 `engine` 维度（local / moss）支持。
+- **移除 bundled uv** ： Windows 打包版托管 Runtime 一律 embedded Python + get-pip + `pip install --target` 安装（unix 打包版与源码模式见下条）；moss 依赖因与 local（qwen-asr 固定 Transformers 4.57.6）互斥而独立声明于 `moss-requirements.in`，由 `uv pip compile` 冻结（与 local/ocr 的 `uv export` 管线并行），macOS 产物不再内置 uv。
+- **unix 打包版宿主 venv 与源码模式零资产安装** ： unix（Linux / macOS）打包版不再内嵌解释器，runtime 安装改用系统 `python3 -m venv` 创建环境后按同一份 frozen 清单直装（无 python3 或版本低于 3.11 时给出明确提示），产物不再携带 unix 平台用不到的引导资产；源码模式同样零引导资产，检测开发环境的 uv 后以 `uv pip install --python <MAW 解释器> --target <site-packages>` 接入与打包版一致的托管目录布局。全新 clone 首次安装时若 `build/` 下缺 frozen 清单，会按构建管线同款 `uv export` / `uv pip compile` 命令用 uv 自动补齐；未检测到 uv 时在进度日志输出安装指引警告。
+- **CUDA 检测前置** ： 无 NVIDIA GPU（非 macOS）时在首次依赖安装前即切换 CPU 版 Torch——CPU 清单由独立声明文件原生冻结（local / moss 分别为 `local-cpu-requirements.in` / `moss-cpu-requirements.in`，屏蔽 GPU 源后 `uv pip compile --generate-hashes`，哈希与 CPU wheel 匹配），随包分发且首装直接调用；不再"冻结后文本剔除 +cu130"（会遗留 cu130 wheel 哈希导致 pip 校验失败），也不再先下载完整 CUDA wheel 与 nvidia-* 依赖再覆盖。
+- **Launcher 本地面板路径与修复交互** ： 运行环境与模型缓存路径可点击打开所在文件夹（后端白名单接口 `open_runtime_folder`，不接收任意路径）；「安装本地模型支持」按钮按运行时状态区分首次安装与修复。
+- **转写默认切句参数调整** ： `--gap-split` 默认从 1500ms 收紧为 800ms（本地引擎原为 1000ms，一并对齐），`--max-len` 默认从 21 字调整为 18 字；CLI 帮助文本与 `docs/CLI.md`、`docs/LOCAL_ASR.md` 同步更新。显式传参不受影响。
+- **Server 编辑器端口自动顺延** ： `server-editor/serve.py` 不带 `--port` 启动时从 8250 起探测监听能力，端口被占用会自动改用下一个空闲端口并在终端提示实际地址；显式 `--port` 保持“必须监听该端口”，失败输出明确错误并以退出码 1 结束。
+
+### 🐛 问题修复
+
+- **空隙人工调整** ： 修复恢复空隙在边界缩小、整体移动或覆盖相邻空隙时产生残留区段、意外重新激活或连带移动的问题；时间轴改为始终显示一层可编辑空隙。
+- **本地引擎忽略分段整理参数** ： `build_local_segments` 在引擎自带分段时（Qwen3-ASR / FunASR / MOSS 均如此）原样放行，「最大字数」「短句合并阈值」「停顿切句」形同虚设。现对超过最大字数的分段走共享切句管线重组——粗粒度（一句一项）分段先按字符权重插值出子段时间再重切，词级时间戳仍优先使用真实值，结果段回填说话人信息。
+- **本地引擎不剥尾标点** ： 本地转写输出的每条字幕结尾现与云端默认一致，去除全角逗号与句号。
+- **MOSS 模型准备子进程环境** ： 托管依赖目录统一经 `site_packages()` 解析并按引擎传递 runtime root，修正 MOSS worker 曾误用 local 运行环境目录作为 PYTHONPATH 的问题。
+- **AppImage 打开外部程序失效** ： Linux 打包版打开外部 URL / 路径前恢复 `LD_LIBRARY_PATH_ORIG`（AppImage 内的 Qt 库路径），避免污染外部 `xdg-open` 子进程（PR 74 移植）。
+- **NixOS 打开字幕编辑器崩溃** ： PyInstaller 排除 `readline` 模块并在 AppImage 内物理剔除 `libreadline.so`（与既有 C++ 运行时剔除模式一致），避免 AppImage 内的旧版 readline 污染 `webbrowser.open` → xdg-open → bash 子进程；release CI 增加产物回归断言。
+- **Pages 部署路径过滤** ： `deploy-editor-pages.yml` 的 `paths` 清理失效的 `reapeaks_io.py` 条目（main 实际文件为 `maw/reapeaks.py`，已被 `maw/**` 覆盖，仅为消除残留）。
+
+## [1.5.0-beta.4] - 2026-08-26
+
+### 🚀 全新特性
+
+- **纯文本编辑模式** ： 新增整体 / 逐条字幕文本编辑视图，支持直接新增、删除或移动换行并预览变更；会按文本内容尽量匹配字幕和字词时间码，支持拆分、合并、边界移动、自动估算及有效覆盖率 / 原始时间码复用率提示。两种视图保持同步，可切换显示已禁用字幕，编辑结果也会正确标记 dirty 状态。
+
 ### 🐛 修复
 
-- **静音空隙跨行预览** ： 修复中键或边界拖动跨行时新行预览不显示，以及跨行缩短后残留旧预览的问题；同时修复切换中键操作模式后交互不生效的情况。
+- **Windows UTF-8 输出** ： 统一 GUI、CLI、服务端及运行时子进程的 UTF-8 输出配置，避免非 UTF-8 Windows 区域设置下输出中文或其他 Unicode 字符时崩溃。
 
 ## [1.5.0-beta.3] - 2026-08-26
 

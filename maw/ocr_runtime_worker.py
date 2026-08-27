@@ -12,6 +12,7 @@ _BUNDLE_ROOT = Path(__file__).resolve().parents[1]
 if str(_BUNDLE_ROOT) not in sys.path:
     sys.path.insert(0, str(_BUNDLE_ROOT))
 
+from maw.console import configure_utf8_stdio  # noqa: E402
 from maw.postprocess import OutputMode  # noqa: E402
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion, run_ocr_dedup  # noqa: E402
 
@@ -23,6 +24,7 @@ OCR_MODEL_TYPES = {
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure_utf8_stdio()
     parser = _parser()
     args = parser.parse_args(argv)
     try:

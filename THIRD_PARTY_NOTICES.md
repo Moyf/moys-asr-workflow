@@ -1,6 +1,6 @@
 # Third-party notices
 
-本仓库不打包模型或云端 API 服务。默认的 `MAW-Windows` 与 `MAW-macOS-arm64` 包会附带对应平台的 `ffmpeg` 与 `ffprobe`；可选的 `MAW-lite` 包不含 FFmpeg；Linux 的 `MAW-Linux-x86_64.AppImage` 始终内置静态 `ffmpeg`/`ffprobe`（BtbN 构建）。Windows 包还会在 `bootstrap/uv.exe` 携带 uv，供用户通过 GUI 创建本地 ASR 运行环境。运行时可能使用下列外部组件；许可证和服务条款以各项目及服务方的最新文本为准。
+本仓库不打包模型或云端 API 服务。默认的 `MAW-Windows` 与 `MAW-macOS-arm64` 包会附带对应平台的 `ffmpeg` 与 `ffprobe`；可选的 `MAW-lite` 包不含 FFmpeg；Linux 的 `MAW-Linux-x86_64.AppImage` 始终内置静态 `ffmpeg`/`ffprobe`（BtbN 构建）。Windows 包还会在 `bootstrap/` 携带嵌入式 Python（python-3.11.9-embed-amd64.zip）与 `get-pip.py`，供用户通过 GUI 创建本地 ASR 运行环境。运行时可能使用下列外部组件；许可证和服务条款以各项目及服务方的最新文本为准。
 
 | Component | Purpose | License / terms |
 |---|---|---|
@@ -21,6 +21,7 @@
 | [uv](https://github.com/astral-sh/uv) | Bootstrap a user-managed Python environment for optional local ASR | MIT or Apache-2.0; the bundled binary is obtained from the uv release used by the Windows build |
 | [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) / `qwen-asr` | Optional local Qwen speech-recognition runtime | Not installed by default and not bundled; runtime code and downloaded model checkpoints remain subject to their upstream licenses and terms |
 | [FunASR](https://github.com/modelscope/FunASR) / `funasr` | Optional local speech-recognition runtime | Not installed by default and not bundled; runtime code and downloaded model checkpoints remain subject to their upstream licenses and terms |
+| [faster-whisper](https://github.com/SYSTRAN/faster-whisper) / [CTranslate2](https://github.com/OpenNMT/CTranslate2) | Optional local Whisper speech-recognition runtime (MIT) | MIT; not installed by default and not bundled; runtime code and downloaded model checkpoints remain subject to their upstream licenses and terms |
 | Alibaba Cloud Model Studio / Qwen ASR | Speech recognition API | External service; subject to Alibaba Cloud terms, billing, and privacy policy |
 | [Soniox](https://soniox.com/) | Speech recognition API | External service; subject to Soniox terms, billing, and privacy policy |
 | [DeepSeek](https://www.deepseek.com/) / [Zhipu Coding Plan](https://open.bigmodel.cn/) / Alibaba Cloud Model Studio Qwen / custom OpenAI-compatible endpoint | Optional subtitle text post-processing in the Launcher toolbox | External services; subject to the selected provider's terms, billing, and privacy policy |

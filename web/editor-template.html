@@ -68,6 +68,7 @@ __WAVEFORM_CSS__
       <input type="checkbox" id="multi-subtitle-toggle" title="当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。">
       多重字幕
     </label>
+    <small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden>请拖入第二条字幕以开启多重字幕编辑</small>
     <span class="dropdown multi-subtitle-settings-dropdown" id="multi-subtitle-settings-dropdown" hidden>
       <button type="button" id="multi-subtitle-settings-toggle" title="多重字幕设置" aria-label="多重字幕设置" aria-expanded="false" aria-controls="multi-subtitle-settings-menu" aria-haspopup="menu">⚙️</button>
       <div class="dropdown-menu multi-subtitle-settings-menu" id="multi-subtitle-settings-menu" role="menu">
@@ -128,7 +129,7 @@ __WAVEFORM_CSS__
 
   <span class="right-group">
       <button id="download-srt">导出字幕</button>
-    <button type="button" id="download-multi-srt" hidden title="导出当前扩展字幕轨（SRT）">导出扩展字幕</button>
+    <button type="button" id="download-multi-srt" hidden title="导出当前副字幕轨（SRT）">导出副字幕</button>
     <span class="dropdown" id="subtitle-export-dropdown" hidden>
       <button id="subtitle-export-btn" title="导出完整字幕或按颜色分别导出字幕">导出字幕 ▾</button>
       <div class="dropdown-menu" id="subtitle-export-menu">
@@ -143,22 +144,27 @@ __WAVEFORM_CSS__
       <div class="dropdown-menu" id="gap-removed-export-menu">
         <div class="dropdown-item" id="download-gap-removed-srt" title="按移除静音空隙后的时间轴导出字幕；原工程时间不变">字幕 SRT</div>
         <div class="dropdown-item" id="download-gap-removed-color-srt" title="按移除静音空隙后的时间轴，为每种已使用颜色分别导出一份字幕">按颜色导出字幕</div>
+        <div class="dropdown-separator" role="separator"></div>
         <div class="dropdown-item" id="download-gap-removed-otio" title="导出原视频/音频的去空隙 OTIO 时间线，供支持 OTIO 的剪辑工具或工作流使用">时间线 OTIO 工程</div>
+        <div class="dropdown-item" id="download-gap-removed-sticker-otio" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIO；完全落在空隙内的表情包会被丢弃">表情包 OTIO 工程</div>
+        <div class="dropdown-item" id="download-gap-removed-sticker-otioz" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）；完全落在空隙内的表情包会被丢弃">表情包 OTIOZ 打包工程</div>
+        <div class="dropdown-item" id="download-gap-removed-fcp7-export" title="实验性 Premiere 交接：导出 FCP 7 XML">Premiere FCP 7 XML（实验性）</div>
+        <div class="dropdown-separator" role="separator"></div>
         <div class="dropdown-item" id="download-gap-removed-ffconcat" title="导出 FFmpeg concat demuxer 可读取的保留区间；流复制的切点精度受关键帧和编码包限制">FFconcat 文件</div>
         <div class="dropdown-item" id="download-gap-removed-regions-json" title="以毫秒为单位导出原媒体中的全部保留区域，供自定义脚本或工具读取">保留区域 JSON</div>
-        <div class="dropdown-item" id="download-gap-removed-sticker-otio" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIO；完全落在空隙内的表情包会被丢弃">表情包 OTIO</div>
-        <div class="dropdown-item" id="download-gap-removed-sticker-otioz" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIOZ 工程（服务器打包图片进 zip，需校验表情包根目录）；完全落在空隙内的表情包会被丢弃">表情包 OTIOZ</div>
       </div>
     </span>
     <span class="dropdown" id="extra-export-dropdown">
       <button id="extra-export-btn" title="更多导出">更多导出 ▾</button>
       <div class="dropdown-menu" id="extra-export-menu">
         <div class="dropdown-item" id="download-fcp7-export" title="实验性 Premiere 交接：导出 FCP 7 XML">Premiere FCP 7 XML（实验性）</div>
+        <div class="dropdown-separator" role="separator"></div>
+        <div class="dropdown-item" id="download-sticker-otio" title="导出只包含表情包图片轨道的 OTIO 工程">下载表情包 OTIO 工程</div>
+        <div class="dropdown-item" id="download-sticker-otioz" title="导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）">下载表情包 OTIOZ 打包工程</div>
+        <div class="dropdown-separator" role="separator"></div>
         <div class="dropdown-item" id="download-resolve-json" title="导出颜色与表情包的 Resolve JSON，供兼容执行脚本批量导入">下载 Resolve JSON</div>
         <div class="dropdown-item" id="download-lottie" title="导出逐字高亮动态字幕 .lottie（需要以 server-editor 打开并绑定工程文件）">动态字幕（Lottie）</div>
         <div class="dropdown-item" id="download-ograf" title="导出符合 OGraf 规范的动态字幕包（需要以 server-editor 打开并绑定工程文件）">动态字幕（OGraf）</div>
-        <div class="dropdown-item" id="download-sticker-otio" title="导出只包含表情包图片轨道的 OTIO 工程">下载表情包 OTIO 工程</div>
-        <div class="dropdown-item" id="download-sticker-otioz" title="导出表情包图片轨道 OTIOZ 工程（服务器打包图片进 zip，需校验表情包根目录）">下载表情包 OTIOZ 工程</div>
       </div>
     </span>
   </span>
@@ -672,16 +678,40 @@ __WAVEFORM_CSS__
         <option value="ctrl-enter">Ctrl+Enter</option>
     </select>
   </label>
-    <label class="toggle editor-settings-item" title="开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置">
+    <label class="toggle editor-settings-item" title="开启时，会自动按可用时间码拆分；关闭后将打开拆分弹窗，手动进行拆分">
       <input type="checkbox" id="split-use-word-timestamps" checked> 主字幕自动使用时间码拆分
     </label>
-    <small class="editor-settings-hint" id="split-use-word-timestamps-hint">开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置。</small>
+    <small class="editor-settings-hint" id="split-use-word-timestamps-hint">开启时，会自动按可用时间码拆分；关闭后将打开拆分弹窗，手动进行拆分。</small>
     <div class="editor-settings-field">
-    <label class="editor-settings-item" title="合并两条字幕时，中间插入的字符（如果不需要可以留空）">
-      合并字幕时插入字符
-      <input type="text" id="merge-join-text" placeholder="留空则直接拼接">
-    </label>
-    <small class="editor-settings-hint">合并两条字幕时，中间插入的字符（如果不需要可以留空）</small>
+      <div class="split-join-title-row">
+        <span class="editor-settings-item">合并字幕时插入字符</span>
+        <span class="split-join-mode-hint-group" id="merge-join-mode-hint" hidden>
+          <small class="editor-settings-hint" id="merge-join-mode-text"></small>
+          <button type="button" class="split-join-mode-switch" id="merge-join-mode-switch"></button>
+        </span>
+      </div>
+      <div class="split-join-inline-row">
+        <label class="editor-settings-item split-join-row">
+          字符型
+          <input type="text" id="merge-join-text-continuous" placeholder="留空则直接拼接">
+        </label>
+        <label class="editor-settings-item split-join-row">
+          单词型
+          <input type="text" id="merge-join-text-word" placeholder="默认一个空格">
+        </label>
+      </div>
+    </div>
+    <div class="editor-settings-field split-trim-symbols-field">
+      <span class="editor-settings-item" id="split-trim-symbols-label">拆分时移除的标点符号</span>
+      <div class="split-trim-symbol-row">
+        <div class="split-trim-symbol-grid" id="split-trim-symbol-grid" role="group" aria-labelledby="split-trim-symbols-label"></div>
+        <button type="button" id="split-trim-symbols-reset">恢复默认符号</button>
+      </div>
+      <label class="editor-settings-item split-join-row" title="其他需要移除的符号，用空格分隔；输入的每个符号都会在拆分后从两侧文本边缘移除">
+        其他符号
+        <input type="text" id="split-trim-extra-symbols" placeholder="其他符号，用空格分隔" autocomplete="off">
+      </label>
+      <small class="editor-settings-hint">勾选或填写的符号会在拆分后从两侧文本边缘自动移除；空格与换行始终修剪。</small>
     </div>
     </div>
   </div>
@@ -1192,9 +1222,20 @@ __WAVEFORM_CSS__
         <input type="text" id="search" placeholder="过滤字幕…" autocomplete="off">
         <span class="clear-x" id="search-clear" title="清空">×</span>
       </span>
+      <div class="dropdown color-filter-dropdown" id="color-filter-dropdown">
+        <button type="button" id="color-filter-btn" hidden title="按颜色过滤显示的字幕" aria-expanded="false" aria-controls="color-filter-menu">🎨</button>
+        <div class="dropdown-menu color-filter-menu" id="color-filter-menu" role="menu"></div>
+      </div>
       <span class="info">显示 <b id="visible-count">0</b> / <b id="total-count">0</b></span>
       <span class="sep"></span>
-      <button id="replace-btn">批量替换…</button>
+      <div class="dropdown batch-operations-dropdown" id="batch-operations-dropdown">
+        <button type="button" id="batch-operations-btn" aria-expanded="false" aria-controls="batch-operations-menu" aria-haspopup="menu">批量操作 ▾</button>
+        <div class="dropdown-menu" id="batch-operations-menu" role="menu">
+          <button type="button" class="dropdown-item" id="replace-btn" role="menuitem">批量替换</button>
+          <button type="button" class="dropdown-item" id="timed-text-edit-btn" role="menuitem" title="集中编辑字幕文本，并预览拆分、合并和字词时间码映射结果">纯文本编辑</button>
+          <button type="button" class="dropdown-item" id="text-process-btn" role="menuitem">文本处理</button>
+        </div>
+      </div>
       <span class="sep"></span>
       <button id="filter-over" title="只显示超过阈值的字幕（再次点击关闭）">仅看超长</button>
     </div>
@@ -1222,10 +1263,10 @@ __WAVEFORM_CSS__
       <option value="60">60 fps</option>
       <option value="60000/1001">60000/1001 fps</option>
     </select>
-    <label for="fcp7-export-subtitle-tracks">导出扩展字幕轨</label>
+    <label for="fcp7-export-subtitle-tracks">导出副字幕轨</label>
     <select id="fcp7-export-subtitle-tracks">
       <option value="main" selected>主轨字幕</option>
-      <option value="main_and_extension">主轨与扩展轨字幕</option>
+      <option value="main_and_extension">主轨与副轨字幕</option>
     </select>
     <label class="row" for="fcp7-export-native-text">
       <input type="checkbox" id="fcp7-export-native-text"> 写入原生字幕文本对象
@@ -1246,7 +1287,7 @@ __WAVEFORM_CSS__
     <label for="lottie-export-track">字幕轨道</label>
     <select id="lottie-export-track">
       <option value="main" selected>主轨字幕</option>
-      <option value="extension">扩展字幕轨</option>
+      <option value="extension">副字幕轨</option>
     </select>
     <label for="lottie-export-resolution">合成尺寸</label>
     <select id="lottie-export-resolution">
@@ -1285,7 +1326,7 @@ __WAVEFORM_CSS__
     <label for="ograf-export-track">字幕轨道</label>
     <select id="ograf-export-track">
       <option value="main" selected>主轨字幕</option>
-      <option value="extension">扩展字幕轨</option>
+      <option value="extension">副字幕轨</option>
     </select>
     <label for="ograf-export-resolution">合成尺寸</label>
     <select id="ograf-export-resolution">
@@ -1331,6 +1372,11 @@ __WAVEFORM_CSS__
   <div class="modal">
     <h3 id="replace-modal-title">批量替换</h3>
     <div id="replace-scope-info" style="font-size:12px;color:#888;margin-bottom:8px;">范围：全部字幕</div>
+    <label class="modal-check-row" for="replace-selected-only">
+      <input type="checkbox" id="replace-selected-only" disabled>
+      <span>仅处理选中的字幕</span>
+      <span id="replace-selected-only-hint" class="modal-hint batch-selected-only-hint" hidden>需要先选中至少1条字幕才可启用</span>
+    </label>
     <label>查找</label>
     <input type="text" id="find-input" placeholder="要查找的内容" autocomplete="off">
     <label>替换为</label>
@@ -1343,6 +1389,127 @@ __WAVEFORM_CSS__
     <div class="actions">
       <button id="replace-cancel">取消</button>
       <button id="replace-confirm" class="primary">替换全部</button>
+    </div>
+  </div>
+</div>
+
+<!-- 常用文本处理 modal：保持字幕行和时间范围结构，只批量变更文本。 -->
+<div class="modal-mask" id="text-process-modal">
+  <div class="modal text-process-modal" role="dialog" aria-modal="true"
+       aria-labelledby="text-process-title" aria-describedby="text-process-description">
+    <h3 id="text-process-title">文本处理</h3>
+    <p class="modal-desc" id="text-process-description">
+      选择要执行的文本操作；字幕行不会被删除，处理为空时会保留空字幕行。字词时间码会按文本编辑规则尽量保留。
+    </p>
+    <div id="text-process-scope-info" class="text-process-scope-info">范围：全部字幕</div>
+    <label class="modal-check-row" for="text-process-selected-only">
+      <input type="checkbox" id="text-process-selected-only" disabled>
+      <span>仅处理选中的字幕</span>
+      <span id="text-process-selected-only-hint" class="modal-hint batch-selected-only-hint" hidden>需要先选中至少1条字幕才可启用</span>
+    </label>
+    <div class="text-process-operations" aria-label="文本处理操作">
+      <label class="text-process-operation" for="text-process-trim">
+        <input type="checkbox" id="text-process-trim">
+        <span>修剪前后空白</span>
+        <span class="modal-hint">去除字幕前方和后方的空格</span>
+      </label>
+      <label class="text-process-operation" for="text-process-capitalize">
+        <input type="checkbox" id="text-process-capitalize">
+        <span>首字母大写</span>
+        <span class="modal-hint">只作用于第一个字母</span>
+      </label>
+      <label class="text-process-operation text-process-operation-input" for="text-process-prefix">
+        <input type="checkbox" id="text-process-prefix">
+        <span>添加前缀</span>
+        <input type="text" id="text-process-prefix-input" placeholder="插入到字幕开头" disabled>
+      </label>
+      <label class="text-process-operation text-process-operation-input" for="text-process-suffix">
+        <input type="checkbox" id="text-process-suffix">
+        <span>附加内容</span>
+        <input type="text" id="text-process-suffix-input" placeholder="插入到字幕结尾" disabled>
+      </label>
+      <label class="text-process-operation" for="text-process-strip-markdown">
+        <input type="checkbox" id="text-process-strip-markdown">
+        <span>去除 md 格式符号</span>
+        <span class="modal-hint">移除常见 Markdown 标记</span>
+      </label>
+    </div>
+    <div class="preview text-process-preview" id="text-process-preview">选择操作后查看预览</div>
+    <div class="actions">
+      <button type="button" id="text-process-cancel">取消</button>
+      <button type="button" id="text-process-confirm" class="primary" disabled>应用处理</button>
+    </div>
+  </div>
+</div>
+
+<!-- 支持调整字幕行结构并预览字词时间码映射的纯文本编辑 MVP。 -->
+<div class="modal-mask" id="timed-text-edit-modal">
+  <div class="modal timed-text-edit-modal" role="dialog" aria-modal="true"
+       aria-labelledby="timed-text-edit-title" aria-describedby="timed-text-edit-description">
+    <div class="timed-text-edit-header">
+      <div>
+        <h3 id="timed-text-edit-title">纯文本编辑</h3>
+        <p class="modal-desc" id="timed-text-edit-description">
+           集中修改字幕文字；新增、删除或移动换行时会尝试拆分、合并并重新分配字词时间码；确认前会分析映射结果。
+        </p>
+      </div>
+      <button type="button" id="timed-text-edit-close" class="timed-text-edit-close"
+              title="关闭（Esc）" aria-label="关闭纯文本编辑">×</button>
+    </div>
+    <div class="timed-text-edit-toolbar">
+      <div class="timed-text-edit-track-control" id="timed-text-edit-track-control">
+        <label for="timed-text-edit-track">编辑轨道</label>
+        <select id="timed-text-edit-track">
+          <option value="main">主字幕</option>
+          <option value="extension">副字幕</option>
+        </select>
+      </div>
+      <div class="timed-text-edit-view-control">
+        <span>编辑视图</span>
+        <div id="timed-text-edit-view" class="timed-text-edit-view-switch" role="group" aria-label="编辑视图">
+          <button type="button" data-view="rows" aria-pressed="true">逐条编辑</button>
+          <button type="button" data-view="single" aria-pressed="false">整体编辑</button>
+        </div>
+      </div>
+      <div class="timed-text-edit-charcount-control" id="timed-text-edit-charcount-control" hidden>
+        <label for="timed-text-edit-charcount-threshold">字数阈值</label>
+        <input id="timed-text-edit-charcount-threshold" type="number" min="1" max="200" step="1" value="16">
+      </div>
+      <label class="timed-text-edit-show-disabled-control" for="timed-text-edit-show-disabled">
+        <input type="checkbox" id="timed-text-edit-show-disabled">
+        显示已禁用字幕
+      </label>
+      <span class="timed-text-edit-source-info" id="timed-text-edit-source-info"></span>
+    </div>
+    <div class="timed-text-edit-layout">
+      <section class="timed-text-edit-input-panel" aria-labelledby="timed-text-edit-input-title">
+        <div class="timed-text-edit-section-heading">
+          <strong id="timed-text-edit-input-title">字幕文本</strong>
+          <span class="modal-hint">每一行对应一条当前字幕；新增、删除或移动换行会尝试调整字幕行结构。⌚️有效覆盖率 · ♻️原始时间码复用率</span>
+        </div>
+        <div class="timed-text-edit-rows" id="timed-text-edit-rows"></div>
+        <div id="timed-text-edit-single-editor" class="timed-text-edit-single-editor" hidden>
+          <textarea id="timed-text-edit-single-textarea" class="timed-text-edit-single-textarea"
+                    aria-label="单文本框编辑" spellcheck="false" wrap="off"></textarea>
+          <span id="timed-text-edit-single-guide" class="timed-text-edit-single-guide" aria-hidden="true"></span>
+        </div>
+        <div id="timed-text-edit-single-hint" class="timed-text-edit-single-hint" hidden></div>
+      </section>
+      <aside class="timed-text-edit-report" aria-labelledby="timed-text-edit-report-title">
+        <h4 id="timed-text-edit-report-title">修改影响</h4>
+        <div class="timed-text-edit-report-summary" id="timed-text-edit-report-summary"></div>
+        <div class="timed-text-edit-report-mapping" id="timed-text-edit-report-mapping"></div>
+        <button type="button" id="timed-text-edit-show-all" class="timed-text-edit-show-all" hidden>显示全部</button>
+        <div class="timed-text-edit-report-hint" id="timed-text-edit-report-hint"></div>
+        <details class="timed-text-edit-change-list" id="timed-text-edit-change-details">
+          <summary>查看修改内容</summary>
+          <div id="timed-text-edit-change-list"></div>
+        </details>
+      </aside>
+    </div>
+    <div class="actions">
+      <button type="button" id="timed-text-edit-cancel">取消</button>
+      <button type="button" id="timed-text-edit-apply" class="primary" disabled>应用修改</button>
     </div>
   </div>
 </div>
@@ -1392,7 +1559,7 @@ __WAVEFORM_CSS__
   </div>
 </div>
 
-<!-- 导入扩展字幕时的语义选择/匹配预览 -->
+<!-- 导入副字幕时的语义选择/匹配预览 -->
 <div class="modal-mask" id="multi-subtitle-import-modal">
   <div class="modal multi-subtitle-import-modal" role="dialog" aria-modal="true" aria-labelledby="multi-subtitle-import-title">
     <h3 id="multi-subtitle-import-title">导入字幕</h3>
@@ -1412,7 +1579,7 @@ __WAVEFORM_CSS__
 <!-- 绑定字幕的近似联动拆分弹窗 -->
 <div class="modal-mask" id="multi-subtitle-split-modal">
   <div class="modal multi-subtitle-split-modal" role="dialog" aria-modal="true" aria-labelledby="multi-subtitle-split-title">
-    <h3 id="multi-subtitle-split-title">联动拆分扩展字幕</h3>
+    <h3 id="multi-subtitle-split-title">联动拆分副字幕</h3>
     <p class="modal-desc">移动鼠标点击，或用键盘选择拆分断点。</p>
     <div class="multi-subtitle-split-language-hint" role="note" aria-label="语言类型提示">
       <div>字符型语言（中文等）按字符拆分。</div>

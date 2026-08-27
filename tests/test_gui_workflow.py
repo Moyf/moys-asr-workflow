@@ -50,6 +50,42 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(paths.json, self.root / "out.mosp")
         self.assertEqual(paths.html, self.root / "out.edit.html")
 
+    def test_child_environment_prepends_managed_site_packages_for_local_provider(self) -> None:
+        """Given source-mode local transcription, When building env, Then managed site-packages go first on PYTHONPATH."""
+        runtime_root = self.root / "local-runtime-moss"
+        (runtime_root / "site-packages").mkdir(parents=True, exist_ok=True)
+
+        with mock.patch.dict(os.environ, {"MAW_MOSS_RUNTIME_ROOT": str(runtime_root)}):
+            env = _child_environment(
+                {"PATH": "", "PYTHONPATH": str(self.root / "dev-stubs")},
+                api_key="",
+                provider="local",
+                engine="moss",
+            )
+
+        python_path = env["PYTHONPATH"].split(os.pathsep)
+        self.assertEqual(python_path[0], str(runtime_root / "site-packages"))
+        self.assertIn(str(self.root / "dev-stubs"), python_path)
+
+    def test_child_environment_skips_missing_site_packages_and_non_local_providers(self) -> None:
+        """Given no managed runtime installed (or cloud provider), Then PYTHONPATH stays untouched."""
+        missing_root = self.root / "not-installed"
+        with mock.patch.dict(os.environ, {"MAW_MOSS_RUNTIME_ROOT": str(missing_root)}):
+            env = _child_environment(
+                {"PATH": "", "PYTHONPATH": "keep-me"},
+                api_key="",
+                provider="local",
+                engine="moss",
+            )
+        self.assertEqual(env["PYTHONPATH"], "keep-me")
+
+        cloud = _child_environment(
+            {"PATH": "", "PYTHONPATH": "keep-me"},
+            api_key="",
+            provider="qwen",
+        )
+        self.assertEqual(cloud["PYTHONPATH"], "keep-me")
+
     def test_unique_output_path_adds_suffix_for_existing_sidecar(self) -> None:
         self.srt_path.with_suffix(".mosp").write_text("{}", encoding="utf-8")
 
@@ -107,6 +143,28 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(command[command.index("--max-len") + 1], "14")
         self.assertEqual(command[command.index("--min-len") + 1], "3")
         self.assertEqual(command[command.index("--gap-split") + 1], "800")
+
+    def test_build_transcribe_command_always_sends_strip_tail_punct(self) -> None:
+        # 空串也要显式下发：表示共享保留符号配置要求完全不剥尾。
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            strip_tail_punct="。",
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertEqual(command[command.index("--strip-tail-punct") + 1], "。")
+
+        empty = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            strip_tail_punct="",
+        )
+
+        empty_command = build_transcribe_command(empty, executable=Path("python.exe"), frozen=False)
+
+        self.assertEqual(empty_command[empty_command.index("--strip-tail-punct") + 1], "")
 
     def test_build_transcribe_command_debug_raw_saves_full_response(self) -> None:
         request = TranscriptionRequest(
@@ -241,6 +299,21 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertNotIn("--transcribe-local", command)
         self.assertIn("--engine", command)
         self.assertIn("funasr", command)
+
+    def test_build_transcribe_command_passes_moss_speaker_colors(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="local",
+            engine="moss",
+            model="OpenMOSS-Team/MOSS-Transcribe-Diarize",
+            runtime_python="moss-python",
+            speaker_colors=True,
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertIn("--speaker-colors", command)
 
     def test_run_transcription_passes_api_key_only_in_child_environment(self) -> None:
         request = TranscriptionRequest(
@@ -377,7 +450,7 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertEqual(env["PYTHONUNBUFFERED"], "1")
         self.assertEqual(env["PYTHONUTF8"], "1")
-        self.assertEqual(env["PYTHONIOENCODING"], "utf-8")
+        self.assertEqual(env["PYTHONIOENCODING"], "utf-8:replace")
         self.assertEqual(env["DASHSCOPE_API_KEY"], "secret-key")
         self.assertEqual(env["DASHSCOPE_WORKSPACE_ID"], "workspace-123")
 
@@ -770,11 +843,12 @@ class GuiWorkflowTests(unittest.TestCase):
     def test_entrypoint_smoke_import_argument_does_not_open_window(self) -> None:
         import maw_gui
 
-        with mock.patch("maw.gui_web.run_app") as run_app:
+        with mock.patch("maw.gui_web.run_app") as run_app, mock.patch("maw_gui.configure_utf8_stdio") as configure:
             exit_code = maw_gui.main(["--smoke-import"])
 
         self.assertEqual(exit_code, 0)
         run_app.assert_not_called()
+        configure.assert_called_once_with()
 
     def test_entrypoint_debug_aliases_configure_launcher_debug_modes(self) -> None:
         import maw_gui

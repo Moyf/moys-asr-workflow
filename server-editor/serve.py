@@ -16,6 +16,7 @@ import mimetypes
 import os
 import secrets
 import shutil
+import socket
 import struct
 import sys
 import tempfile
@@ -43,6 +44,7 @@ NINJA_SFX_NAMES = frozenset(
 mimetypes.add_type("audio/ogg", ".opus")
 
 import edit  # noqa: E402
+from maw.console import configure_utf8_stdio  # noqa: E402
 from maw import reapeaks  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
 from maw.project import (  # noqa: E402
@@ -66,6 +68,10 @@ PRPROJ_CAPABILITY = {
     "route": "/api/prproj",
 }
 STICKER_IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"})
+
+# 省略 --port 时从这里开始找空闲端口；连续这么多个都不可用属于异常环境，给出明确报错。
+DEFAULT_EDITOR_PORT = 8250
+EDITOR_PORT_ATTEMPTS = 64
 
 
 class ByteRange(NamedTuple):
@@ -1712,7 +1718,79 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         print(f"[http] {self.address_string()} - {format % args}")
 
 
+def _port_is_free(host: str, port: int) -> bool:
+    """True only when nothing else accepts connections on ``host:port``.
+
+    不带 SO_REUSEADDR、并按平台设置排他绑定来探测；EditorServer 自身的
+    allow_reuse_address 在 Windows 上会对正在监听的端口静默二次绑定成功，
+    不能用作占用的判据。
+    """
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        if os.name == "nt":
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        probe.bind((host, port))
+        return True
+    except OSError:
+        return False
+    finally:
+        probe.close()
+
+
+def open_editor_server(
+    host: str,
+    requested_port: int | None,
+    project: ServerProject,
+    *,
+    settings: ServerSettings | None = None,
+    settings_path: Path | None = None,
+    stickers_dir: str | None = None,
+    no_waveform: bool = False,
+    defer_reapeaks: bool = True,
+    peaks_per_second: int = edit.DEFAULT_PEAKS_PER_SECOND,
+) -> tuple[EditorServer, bool]:
+    """Bind the editor server and report whether the port had to be advanced.
+
+    省略 --port 时从 DEFAULT_EDITOR_PORT 起，用 _port_is_free 逐个跳过被占用端口，
+    直到找到空闲端口或耗尽 EDITOR_PORT_ATTEMPTS。显式 --port 保持“必须监听该端口”：
+    探测发现被占用立即抛 OSError，--port 0 仍由系统任选。
+    """
+    base_port = DEFAULT_EDITOR_PORT if requested_port is None else requested_port
+    attempts = EDITOR_PORT_ATTEMPTS if requested_port is None else 1
+    scan = requested_port is None
+    last_error: OSError | None = None
+    for offset in range(attempts):
+        port = base_port + offset
+        if port != 0 and not _port_is_free(host, port):
+            last_error = OSError(f"端口 {host}:{port} 已被其他程序占用")
+            if not scan:
+                break
+            continue
+        try:
+            return (
+                EditorServer(
+                    (host, port),
+                    project,
+                    settings=settings,
+                    settings_path=settings_path,
+                    stickers_dir=stickers_dir,
+                    no_waveform=no_waveform,
+                    defer_reapeaks=defer_reapeaks,
+                    peaks_per_second=peaks_per_second,
+                ),
+                offset > 0,
+            )
+        except OSError as error:
+            last_error = error
+            if not scan:
+                break
+            continue
+    assert last_error is not None
+    raise last_error
+
+
 def main() -> int:
+    configure_utf8_stdio()
     parser = argparse.ArgumentParser(
         description="启动 MAWE localhost 编辑器（与自包含 HTML 共用 web/ 源码，支持媒体 Range seek）",
     )
@@ -1720,7 +1798,10 @@ def main() -> int:
     parser.add_argument("-m", "--media", help="媒体文件路径（默认按 JSON.media / 同目录探测）")
     parser.add_argument("-s", "--stickers", help="表情包目录（默认读取 .env 的 STICKER_DIR）")
     parser.add_argument("--blank", action="store_true", help="启动空白编辑器，之后在页面中选择 JSON 与媒体")
-    parser.add_argument("-p", "--port", type=int, default=8250, help="监听端口（默认 8250，0=自动选择）")
+    parser.add_argument(
+        "-p", "--port", type=int, default=None,
+        help=f"监听端口（省略时从 {DEFAULT_EDITOR_PORT} 起自动跳过被占用端口；显式指定则必须可用，0=系统选择）",
+    )
     parser.add_argument("--no-open", action="store_true", help="只启动服务，不自动打开浏览器")
     parser.add_argument("--no-waveform", action="store_true", help="跳过 ffmpeg 波形预计算")
     parser.add_argument(
@@ -1773,16 +1854,28 @@ def main() -> int:
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as error:
         parser.error(str(error))
 
-    with EditorServer(
-        ("127.0.0.1", args.port),
-        project,
-        settings=settings,
-        settings_path=settings_path,
-        stickers_dir=args.stickers,
-        no_waveform=args.no_waveform,
-        defer_reapeaks=defer_reapeaks,
-        peaks_per_second=args.waveform_peaks_per_second,
-    ) as server:
+    try:
+        server, port_advanced = open_editor_server(
+            "127.0.0.1",
+            args.port,
+            project,
+            settings=settings,
+            settings_path=settings_path,
+            stickers_dir=args.stickers,
+            no_waveform=args.no_waveform,
+            defer_reapeaks=defer_reapeaks,
+            peaks_per_second=args.waveform_peaks_per_second,
+        )
+    except OSError as error:
+        if args.port is None:
+            last_port = DEFAULT_EDITOR_PORT + EDITOR_PORT_ATTEMPTS - 1
+            print(f"端口 {DEFAULT_EDITOR_PORT}～{last_port} 均无法监听：{error}", file=sys.stderr)
+        else:
+            print(f"指定的端口 {args.port} 无法监听：{error}", file=sys.stderr)
+        return 1
+    if port_advanced:
+        print(f"[serve] 端口 {DEFAULT_EDITOR_PORT} 已被占用，已改用 {server.server_address[1]}")
+    with server:
         host, port = server.server_address[:2]
         url = f"http://{host}:{port}/"
         if startup_settings_dirty:

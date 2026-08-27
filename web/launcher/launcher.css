@@ -533,6 +533,43 @@ label {
   overflow-wrap: anywhere;
 }
 
+.runtime-paths {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--border-subtle);
+}
+
+.runtime-path-line {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.runtime-path-link {
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.repair-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.repair-row .hint {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.repair-row > .primary {
+  flex: 0 0 auto;
+}
+
 .task-progress {
   display: grid;
   gap: 5px;
@@ -1029,9 +1066,16 @@ textarea::placeholder {
   font-weight: 600;
 }
 
+#mediaPath.drag-over,
 #qwenAudioHotwords.drag-over,
 #qwenAudioHotwordsFile.drag-over,
-#jsonPath.drag-over {
+#jsonPath.drag-over,
+#serverMediaPath.drag-over,
+#localModelCachePath.drag-over,
+#localModelPath.drag-over,
+#ocrRuntimePath.drag-over,
+#ffmpegPath.drag-over,
+#stickerDir.drag-over {
   border-color: var(--accent);
   background-color: var(--bg-raised);
   box-shadow: 0 0 0 2px var(--accent-soft);

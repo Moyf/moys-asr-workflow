@@ -115,6 +115,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("name='MAW'", spec)
         self.assertIn("console=False", spec)
         self.assertIn("upx=False", spec)
+        self.assertIn('"maw.console"', spec)
+        self.assertIn("pyinstaller_utf8.py", spec)
         self.assertIn("maw.gui_web", spec)
         self.assertIn("maw.cli", spec)
         self.assertNotIn('collect_all("rapidocr")', spec)
@@ -161,10 +163,100 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("MAW-lite", faq)
         self.assertIn("下载带内置 FFmpeg 的完整版 MAW 包", faq)
         self.assertIn("FAQ-常见问题.txt", spec)
-        for excluded_module in ("funasr", "qwen_asr", "onnxruntime", "PIL", "rapidocr", "torch", "torchaudio"):
+        for excluded_module in ("funasr", "qwen_asr", "onnxruntime", "PIL", "rapidocr", "torch", "torchaudio", "readline"):
             self.assertIn(f'"{excluded_module}"', spec)
+        self.assertIn('"maw.waveform"', spec)
+        self.assertNotIn('"waveform",', spec)
         self.assertNotIn('"*.mp4"', spec)
         self.assertNotIn('"*.srt"', spec)
+
+    def test_runtime_uses_frozen_requirements_txt_not_handwritten_constants(self) -> None:
+        """Given the frozen txt runtime install design, When runtime specs and base are read, Then no hand-written requirement constants remain and install reads -r txt."""
+        spec = read_text("MAW.spec")
+        runtimes_base = read_text("maw/runtimes/base.py")
+        local_spec = read_text("maw/runtimes/local_spec.py")
+        ocr_spec = read_text("maw/runtimes/ocr_spec.py")
+        release = read_text(".github/workflows/release.yml")
+
+        # 三套 Runtime 统一由 RuntimeSpec 描述；手写依赖常量仅允许 moss 迁移期占位。
+        for text in (local_spec, ocr_spec):
+            self.assertNotIn("GENERAL_REQUIREMENTS", text)
+            self.assertNotIn("WINDOWS_TORCH_REQUIREMENTS", text)
+            self.assertNotIn("OTHER_TORCH_REQUIREMENTS", text)
+        self.assertNotIn("OCR_REQUIREMENTS", ocr_spec)
+
+        self.assertIn("requirements_key", local_spec)
+        self.assertIn("requirements_key", ocr_spec)
+        self.assertIn("requirements_path", runtimes_base)
+        self.assertIn('"-r"', runtimes_base)
+
+        self.assertIn("requirements-local.txt", spec)
+        self.assertIn("requirements-ocr.txt", spec)
+
+        self.assertIn("uv export --frozen --extra local", release)
+        self.assertIn("uv export --frozen --extra ocr", release)
+
+        self.assertIn('RUNTIME_VERSION = "6"', local_spec)
+        self.assertIn('OCR_RUNTIME_VERSION = "3"', ocr_spec)
+
+        self.assertIn("_has_cuda", runtimes_base)
+
+    def test_cpu_requirements_variant_is_frozen_before_export_with_real_hashes(self) -> None:
+        """Given no-GPU machines install from requirements-local-cpu.txt, Then pins mirror the local extra and builds freeze it natively."""
+        import re as _re
+
+        pyproject = read_text("pyproject.toml")
+        cpu_in = read_text("local-cpu-requirements.in")
+
+        # torch / torchaudio 的版本 pin 必须与 pyproject [local] extra 一致
+        # （CPU 变体只是去掉 +cu130 后缀，不能悄悄漂移到其它版本）。
+        for package in ("torch", "torchaudio"):
+            gpu_match = _re.search(rf'{package}==(\d+\.\d+\.\d+)\+cu130', pyproject)
+            self.assertIsNotNone(gpu_match, f"pyproject 缺少 {package} 的 cu130 pin")
+            self.assertIn(f"{package}=={gpu_match.group(1)}\n", cpu_in)
+        # 直接依赖全集与 [local] extra 对齐（不含带 marker 的 torch/torchaudio 行）。
+        for direct in ("accelerate", "funasr", "hf-xet", "qwen-asr"):
+            self.assertRegex(cpu_in, rf"(?m)^{direct}==")
+            self.assertIn(f'"{direct}>=', pyproject)
+
+        # 冻结管线必须原生导出（--generate-hashes 产出 CPU wheel 真实哈希），
+        # 不再允许"冻结后文本剔除 +cuXXX"的旧方案。
+        for build_entry in (
+            read_text("scripts/build-windows.ps1"),
+            read_text("scripts/build-appimage.sh"),
+            read_text(".github/workflows/release.yml"),
+        ):
+            self.assertIn("local-cpu-requirements.in", build_entry)
+            self.assertIn("moss-cpu-requirements.in", build_entry)
+            self.assertIn("--generate-hashes", build_entry)
+            self.assertNotIn("freeze_cpu_requirements", build_entry)
+        self.assertNotIn("+cu130", cpu_in)
+
+    def test_moss_cpu_requirements_variant_pins_match_gpu_variant(self) -> None:
+        """Given no-GPU machines install MOSS from requirements-moss-cpu.txt, Then pins mirror moss-requirements.in natively."""
+        import re as _re
+
+        gpu_in = read_text("moss-requirements.in")
+        cpu_in = read_text("moss-cpu-requirements.in")
+
+        # torch / torchaudio 的版本 pin 必须与 moss-requirements.in 一致
+        # （CPU 变体只是去掉 +cu130 后缀，不能悄悄漂移到其它版本）。
+        for package in ("torch", "torchaudio"):
+            gpu_match = _re.search(rf"(?m)^{package}==(\d+\.\d+\.\d+)\+cu130;", gpu_in)
+            self.assertIsNotNone(gpu_match, f"moss-requirements.in 缺少 {package} 的 cu130 pin")
+            self.assertIn(f"{package}=={gpu_match.group(1)}\n", cpu_in)
+        # 其余直接依赖全集保持一致（CPU 变体仅去掉 darwin marker 行与 +cu130）。
+        for direct in ("av>=", "librosa>=", "numba>=", "packaging>=", "safetensors>=", "soundfile>=", "soxr>="):
+            self.assertRegex(cpu_in, rf"(?m)^{_re.escape(direct.split('>=')[0])}>=")
+            self.assertIn(direct, gpu_in)
+        self.assertIn("transformers>=5.6.0,<6.0.0", cpu_in)
+        self.assertIn(
+            "moss-transcribe-diarize @ https://github.com/OpenMOSS/MOSS-Transcribe-Diarize/archive/",
+            cpu_in,
+        )
+        # CPU 变体不带任何 marker 行（仅被非 darwin 无 GPU 机器消费）。
+        self.assertNotIn("; sys_platform", cpu_in)
+        self.assertNotIn("+cu130", cpu_in)
 
     def test_ocr_dependencies_are_optional_and_runtime_worker_is_bundled_purely(self) -> None:
         """Given optional OCR support, When metadata and the frozen spec are read, Then the main package stays OCR-free."""
@@ -192,6 +284,7 @@ class PackagingContractTests(unittest.TestCase):
             "maw/ocr_runtime_worker.py",
             "maw/postprocess_ocr.py",
             "maw/postprocess_io.py",
+            "maw/console.py",
         ):
             self.assertIn(f'(str(ROOT / "{relative.split("/")[0]}" / "{relative.split("/")[1]}"), "ocr-runtime/maw")', spec)
 
@@ -276,8 +369,10 @@ class PackagingContractTests(unittest.TestCase):
 
         self.assertIn('rm -f "$APP_DIR/_internal/libstdc++.so.6" "$APP_DIR/_internal/libgcc_s.so.1"', script)
         self.assertIn('"$APP_DIR/_internal/libgbm.so.1"', script)
+        self.assertIn('"$APP_DIR"/_internal/libreadline.so.*', script)
         self.assertIn("Verify no bundled C++ runtime in AppImage", workflow)
         self.assertIn("_internal/libgbm.so.1", workflow)
+        self.assertIn("_internal/libreadline.so.*", workflow)
 
     def test_appimage_build_ships_ffmpeg_gpl_license_and_source_notice(self) -> None:
         """Given the AppImage build script, When the BtbN GPL ffmpeg build is bundled, Then the GPLv3 license text and a source notice are written into the bundle."""
@@ -287,6 +382,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn('dist/MAW/ffmpeg/GPLv3.txt', script)
         self.assertIn('dist/MAW/ffmpeg/SOURCE.txt', script)
         self.assertIn('https://www.gnu.org/licenses/gpl-3.0.txt', script)
+        self.assertIn('raw.githubusercontent.com/spdx/license-list-data', script)
         self.assertIn('Build provider: https://github.com/BtbN/FFmpeg-Builds', script)
         self.assertIn('Archive SHA-256: $FFMPEG_SHA256', script)
 
@@ -305,7 +401,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("desktop", script)
         self.assertNotIn("MOSE", script)
         self.assertIn("bootstrap", script)
-        self.assertIn("uv.exe", script)
+        self.assertIn("python-3.11.9-embed-amd64.zip", script)
+        self.assertIn("get-pip.py", script)
         self.assertIn("$ErrorActionPreference = 'Stop'", script)
 
     def test_windows_preview_workflow_verifies_launcher_version(self) -> None:
@@ -313,6 +410,23 @@ class PackagingContractTests(unittest.TestCase):
         workflow = read_text(".github/workflows/pr-release-windows.yml")
 
         self.assertIn("scripts/sync_launcher_version.py --check", workflow)
+
+    def test_windows_preview_workflow_downloads_bootstrap_assets_before_build(self) -> None:
+        """Given a clean checkout, When the preview builds, Then bootstrap assets exist before PyInstaller runs."""
+        workflow = read_text(".github/workflows/pr-release-windows.yml")
+
+        self.assertIn("Download embedded Python bootstrap assets", workflow)
+        self.assertIn(
+            "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip",
+            workflow,
+        )
+        self.assertIn("https://bootstrap.pypa.io/get-pip.py", workflow)
+        self.assertIn("build-windows.ps1 -SkipTests", workflow)
+        self.assertLess(
+            workflow.index("python-3.11.9-embed-amd64.zip"),
+            workflow.index("build-windows.ps1 -SkipTests"),
+            "bootstrap 下载步骤必须在调用 build-windows.ps1 之前",
+        )
 
     def test_release_workflow_is_tag_triggered_and_publishes_both_windows_packages(self) -> None:
         """Given a v* tag push, When workflow is read, Then it releases MAW and MAW-lite builds."""
