@@ -292,6 +292,25 @@ test('translates OTIOZ export labels, mode hints and dynamic messages to English
 });
 
 
+test('translates gap-removed media EDL labels and outcomes to English', () => {
+  const keys = [
+    '导出原视频/音频的去空隙 EDL 时间线，保留源媒体入出点并压缩移除的空隙',
+    '时间线 EDL',
+    '去空隙 EDL 时间线文件',
+    '无法获得媒体文件名；请先加载媒体后再导出 EDL',
+    '去空隙 EDL 导出失败',
+  ];
+  assert.equal(JSON.stringify(i18n.validateTranslationKeys(keys)), JSON.stringify({ zh: [], en: [] }));
+  assert.equal(i18n.translateText('时间线 EDL', 'en'), 'Timeline EDL');
+  assert.equal(i18n.translateText('去空隙 EDL 时间线文件', 'en'), 'Gap-removed EDL timeline file');
+  assert.equal(
+    i18n.translateText('无法获得媒体文件名；请先加载媒体后再导出 EDL', 'en'),
+    'The media filename is unavailable; load media before exporting EDL',
+  );
+  for (const key of keys) assert.equal(i18n.translateText(key, 'zh'), key);
+});
+
+
 test('translates Lottie dynamic-caption export labels and messages to English', () => {
   assert.equal(i18n.translateText('更多导出 ▾', 'en'), 'More exports ▾');
   assert.equal(i18n.translateText('更多导出', 'en'), 'More exports');
@@ -2697,6 +2716,43 @@ test('builds an ffconcat plan from kept media intervals', () => {
     'outpoint 4.500',
     '',
   ].join('\n'));
+});
+
+
+test('serializes kept media intervals as packed CMX 3600 video and audio events', () => {
+  const edl = helpers.serializeMediaEdl('C:\\Media\\source take.mp4', [
+    { start: 4500, end: 6000 },
+    { start: 0, end: 1000 },
+    { start: 1600, end: 4000 },
+  ], { title: 'project_gap-removed', fps: 30, trackMode: 'video_audio' });
+
+  assert.equal(edl.split('\n')[0], 'TITLE: project_gap-removed');
+  assert.equal(edl.split('\n')[1], 'FCM: NON-DROP FRAME');
+  assert.match(edl, /^001  source_t V\s+C\s+00:00:00:00 00:00:01:00 00:00:00:00 00:00:01:00$/m);
+  assert.match(edl, /^001  source_t AA\s+C\s+00:00:00:00 00:00:01:00 00:00:00:00 00:00:01:00$/m);
+  assert.match(edl, /^002  source_t V\s+C\s+00:00:01:18 00:00:04:00 00:00:01:00 00:00:03:12$/m);
+  assert.match(edl, /^003  source_t V\s+C\s+00:00:04:15 00:00:06:00 00:00:03:12 00:00:04:27$/m);
+  assert.equal((edl.match(/^\d{3}  source_t (?:V|AA)/gm) || []).length, 6);
+  assert.match(edl, /\* FROM CLIP NAME: source take\.mp4/);
+  assert.match(edl, /\* SOURCE FILE: C:\\Media\\source take\.mp4/);
+});
+
+
+test('serializes audio-only EDLs and rejects malformed media intervals', () => {
+  const edl = helpers.serializeMediaEdl('/media/source.wav', [
+    { start: 1000, end: 2000 },
+  ], { trackMode: 'audio' });
+  assert.match(edl, /^001  source\.w AA\s+C\s+00:00:01:00 00:00:02:00 00:00:00:00 00:00:01:00$/m);
+  assert.doesNotMatch(edl, /^001  source\.w V/m);
+  assert.throws(() => helpers.serializeMediaEdl('', [{ start: 0, end: 1000 }]), /missing EDL media path/);
+  assert.throws(() => helpers.serializeMediaEdl('source.mp4', []), /no media intervals/);
+  assert.throws(() => helpers.serializeMediaEdl('source.mp4', [
+    { start: 100, end: 100 },
+  ]), /invalid EDL media interval/);
+  assert.throws(() => helpers.serializeMediaEdl('source.mp4', [
+    { start: 0, end: 1000 },
+    { start: 900, end: 1200 },
+  ]), /overlapping EDL media intervals/);
 });
 
 

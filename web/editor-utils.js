@@ -4145,6 +4145,114 @@
     return `${lines.join('\n')}\n`;
   }
 
+  function edlLineText(value, fallback = '') {
+    return String(value ?? fallback).replace(/[\r\n]+/gu, ' ').trim();
+  }
+
+  function formatEdlFrames(frames, profile) {
+    const totalFrames = Math.max(0, Math.round(Number(frames)));
+    if (!Number.isFinite(totalFrames)) throw new Error('invalid EDL frame count');
+    // CMX timecode uses the nominal integer timebase in HH:MM:SS:FF even
+    // when the media rate is a fractional profile such as 30000/1001.
+    const nominalFps = Math.max(1, Math.round(profile.numerator / profile.denominator));
+    const frame = totalFrames % nominalFps;
+    let totalSeconds = Math.floor(totalFrames / nominalFps);
+    const seconds = totalSeconds % 60;
+    totalSeconds = Math.floor(totalSeconds / 60);
+    const minutes = totalSeconds % 60;
+    const hours = Math.floor(totalSeconds / 60);
+    const pad = (value) => String(value).padStart(2, '0');
+    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}:${pad(frame)}`;
+  }
+
+  function edlReelName(value, fallback = 'MEDIA') {
+    const normalized = edlLineText(value, fallback)
+      .replace(/[\s|]+/gu, '_')
+      .replace(/[^A-Za-z0-9_.-]/gu, '_');
+    return Array.from(normalized || fallback).slice(0, 8).join('').padEnd(8, ' ');
+  }
+
+  // Serialize the source video/audio cuts used by the gap-removed timeline
+  // as a CMX 3600 EDL. Each kept interval is one source-media event whose
+  // record range is packed consecutively after the removed gaps. A combined
+  // video timeline emits paired V/AA rows with the same event number; an
+  // audio-only timeline emits only the AA row.
+  function serializeMediaEdl(mediaPath, intervals, options = {}) {
+    if (!edlLineText(mediaPath)) throw new Error('missing EDL media path');
+    if (!Array.isArray(intervals)) throw new Error('EDL intervals must be an array');
+    if (!intervals.length) throw new Error('EDL has no media intervals');
+    if (!options || typeof options !== 'object' || Array.isArray(options)) {
+      throw new Error('EDL options must be an object');
+    }
+    if (options.dropFrame !== undefined && typeof options.dropFrame !== 'boolean') {
+      throw new Error('drop-frame option must be boolean');
+    }
+    const trackMode = options.trackMode ?? 'video_audio';
+    const tracksByMode = {
+      video: ['V'],
+      audio: ['AA'],
+      video_audio: ['V', 'AA'],
+    };
+    const tracks = tracksByMode[trackMode];
+    if (!tracks) throw new Error(`unsupported EDL track mode: ${trackMode}`);
+    const profile = resolveExportFrameProfile(options.fps ?? 30, options.dropFrame === true);
+    const source = edlLineText(mediaPath);
+    const normalized = intervals.map((interval, index) => {
+      const startMs = Number(interval?.start ?? interval?.startMs);
+      const endMs = Number(interval?.end ?? interval?.endMs);
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs)
+          || startMs < 0 || endMs <= startMs) {
+        throw new Error('invalid EDL media interval');
+      }
+      return { index, startMs, endMs };
+    }).sort((left, right) => (
+      left.startMs - right.startMs
+      || left.endMs - right.endMs
+      || left.index - right.index
+    ));
+    for (let index = 1; index < normalized.length; index++) {
+      if (normalized[index].startMs < normalized[index - 1].endMs) {
+        throw new Error('overlapping EDL media intervals');
+      }
+    }
+    const title = edlLineText(options.title, 'MAW gap-removed media') || 'MAW gap-removed media';
+    const reel = edlReelName(options.reel || fileBasename(source));
+    const clipName = edlLineText(options.clipName, fileBasename(source) || source) || source;
+    const lines = [`TITLE: ${title}`, 'FCM: NON-DROP FRAME', ''];
+    let previousSourceEndFrame = -1;
+    let recordFrame = 0;
+    normalized.forEach((interval, index) => {
+      const sourceInFrame = exportMsToFrames(interval.startMs, profile, 'floor');
+      const sourceOutFrame = Math.max(
+        sourceInFrame + 1,
+        exportMsToFrames(interval.endMs, profile, 'ceil'),
+      );
+      if (sourceInFrame < previousSourceEndFrame) {
+        throw new Error('overlapping EDL media intervals after frame conversion');
+      }
+      const durationFrames = sourceOutFrame - sourceInFrame;
+      const recordInFrame = recordFrame;
+      const recordOutFrame = recordFrame + durationFrames;
+      const eventNumber = String(index + 1).padStart(3, '0');
+      const sourceIn = formatEdlFrames(sourceInFrame, profile);
+      const sourceOut = formatEdlFrames(sourceOutFrame, profile);
+      const recordIn = formatEdlFrames(recordInFrame, profile);
+      const recordOut = formatEdlFrames(recordOutFrame, profile);
+      tracks.forEach((track) => {
+        lines.push(
+          `${eventNumber}  ${reel} ${track.padEnd(5, ' ')}C        `
+            + `${sourceIn} ${sourceOut} ${recordIn} ${recordOut}`,
+        );
+      });
+      lines.push(`* FROM CLIP NAME: ${clipName}`);
+      lines.push(`* SOURCE FILE: ${source}`);
+      lines.push('');
+      previousSourceEndFrame = sourceOutFrame;
+      recordFrame = recordOutFrame;
+    });
+    return lines.join('\n');
+  }
+
   // macOS 上用 ⌘（event.metaKey）替代 Ctrl；Win/Linux 仍是 Ctrl。
   function isMacPlatform(nav) {
     const n = nav || globalThis.navigator;
@@ -5043,6 +5151,7 @@ export default MawDynamicCaptions;
     buildFcp7ExportArtifacts,
     saveSequentialExportArtifacts,
     buildFfconcat,
+    serializeMediaEdl,
     configuredEnterAction,
     isMacPlatform,
     createHistoryStack,

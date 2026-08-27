@@ -117,6 +117,17 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn("'gap-removed-stickers', buildGapRemovedStickerOtio", script)
         self.assertIn("timeline: JSON.parse(payload)", script)
 
+    def test_gap_removed_media_edl_export_is_in_gap_menu_only(self) -> None:
+        template = edit.read_web_asset("editor-template.html")
+        script = edit.read_web_asset("editor.js")
+        self.assertIn('id="download-gap-removed-edl"', template)
+        self.assertNotIn('id="download-gap-removed-sticker-edl"', template)
+        self.assertNotIn('id="download-sticker-edl"', template)
+        self.assertIn("function buildGapRemovedEdl()", script)
+        self.assertIn("serializeMediaEdl", script)
+        self.assertIn("_gap-removed.edl", script)
+        self.assertNotIn("serializeStickerEdl", script)
+
     def test_portable_sticker_export_capability_syncs_after_project_binding(self) -> None:
         script = edit.read_web_asset("editor.js")
         self.assertIn("function syncStickerOtioExportMode()", script)

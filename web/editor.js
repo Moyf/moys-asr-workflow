@@ -10293,6 +10293,28 @@ function buildGapRemovedFfconcat() {
   return window.AsrEditorUtils.buildFfconcat(media, context.intervals);
 }
 
+function buildGapRemovedEdl() {
+  const context = gapRemovedExportContext();
+  if (!context) return null;
+  const tr = (message) => window.MAWE_I18N?.translateText?.(message) || message;
+  const media = gapRemovedMediaReference();
+  if (!media) {
+    flashHint(tr('无法获得媒体文件名；请先加载媒体后再导出 EDL'), 'invalid');
+    return null;
+  }
+  const trackMode = player?.tagName === 'AUDIO' ? 'audio' : 'video_audio';
+  try {
+    return window.AsrEditorUtils.serializeMediaEdl(media, context.intervals, {
+      title: `${FILENAME_BASE}_gap-removed`,
+      fps: 30,
+      trackMode,
+    });
+  } catch (error) {
+    flashHint(`${tr('去空隙 EDL 导出失败')}：${error.message || error}`, 'warning');
+    return null;
+  }
+}
+
 function buildGapRemovedRegionsJson() {
   const context = gapRemovedExportContext();
   if (!context) return null;
@@ -12311,6 +12333,15 @@ document.getElementById('download-gap-removed-otio')?.addEventListener('click', 
   if (payload) {
     await downloadFile(payload, `${FILENAME_BASE}_gap-removed.otio`, 'application/vnd.opentimelineio+json', {
       desc: '去空隙 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
+    });
+  }
+});
+document.getElementById('download-gap-removed-edl')?.addEventListener('click', async () => {
+  if (editingState) finishEdit(true);
+  const payload = buildGapRemovedEdl();
+  if (payload) {
+    await downloadFile(payload, `${FILENAME_BASE}_gap-removed.edl`, 'text/plain', {
+      desc: '去空隙 EDL 时间线', types: { 'text/plain': ['.edl'] }
     });
   }
 });

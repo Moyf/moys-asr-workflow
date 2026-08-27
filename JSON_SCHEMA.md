@@ -176,7 +176,7 @@
 
 ### 1.3 gap_remove 空隙移除
 
-`gap_remove` 是编辑决策，不会重写 `segments[*].start/end` 或原媒体。编辑器把其中 `removed: true` 的区间从**派生时间轴**压缩掉，用于自动跳过播放、去空隙 SRT 和去空隙 OTIO；`removed: false` 表示用户已恢复该空隙。
+`gap_remove` 是编辑决策，不会重写 `segments[*].start/end` 或原媒体。编辑器把其中 `removed: true` 的区间从**派生时间轴**压缩掉，用于自动跳过播放、去空隙 SRT、去空隙 OTIO 和去空隙视频/音频 EDL；`removed: false` 表示用户已恢复该空隙。
 
 ```json
 {
@@ -422,7 +422,7 @@
 | `filename` | 完整文件名（含扩展名） |
 | `rel` | 相对 `sticker_root` 的路径。平铺目录下等于 `filename` |
 | `width` / `height` | 可选正整数，原始图片像素宽高。旧工程缺失时，导出器使用兼容默认值。 |
-| `start` / `end` | 表情包时间范围（毫秒）。导出 EDL 时使用；跨多句时通常等于 head 段的 `start` 与最后一句的 `end` |
+| `start` / `end` | 表情包时间范围（毫秒）。跨多句时通常等于 head 段的 `start` 与最后一句的 `end` |
 
 ### 4.2 sticker_ref（后续条引用 head）
 

@@ -3830,6 +3830,7 @@
         <div class="dropdown-item" id="download-gap-removed-sticker-otioz" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）；完全落在空隙内的表情包会被丢弃">表情包 OTIOZ 打包工程</div>
         <div class="dropdown-item" id="download-gap-removed-fcp7-export" title="实验性 Premiere 交接：导出 FCP 7 XML">Premiere FCP 7 XML（实验性）</div>
         <div class="dropdown-separator" role="separator"></div>
+        <div class="dropdown-item" id="download-gap-removed-edl" title="导出原视频/音频的去空隙 EDL 时间线，保留源媒体入出点并压缩移除的空隙">时间线 EDL</div>
         <div class="dropdown-item" id="download-gap-removed-ffconcat" title="导出 FFmpeg concat demuxer 可读取的保留区间；流复制的切点精度受关键帧和编码包限制">FFconcat 文件</div>
         <div class="dropdown-item" id="download-gap-removed-regions-json" title="以毫秒为单位导出原媒体中的全部保留区域，供自定义脚本或工具读取">保留区域 JSON</div>
       </div>
@@ -9489,6 +9490,114 @@
     return `${lines.join('\n')}\n`;
   }
 
+  function edlLineText(value, fallback = '') {
+    return String(value ?? fallback).replace(/[\r\n]+/gu, ' ').trim();
+  }
+
+  function formatEdlFrames(frames, profile) {
+    const totalFrames = Math.max(0, Math.round(Number(frames)));
+    if (!Number.isFinite(totalFrames)) throw new Error('invalid EDL frame count');
+    // CMX timecode uses the nominal integer timebase in HH:MM:SS:FF even
+    // when the media rate is a fractional profile such as 30000/1001.
+    const nominalFps = Math.max(1, Math.round(profile.numerator / profile.denominator));
+    const frame = totalFrames % nominalFps;
+    let totalSeconds = Math.floor(totalFrames / nominalFps);
+    const seconds = totalSeconds % 60;
+    totalSeconds = Math.floor(totalSeconds / 60);
+    const minutes = totalSeconds % 60;
+    const hours = Math.floor(totalSeconds / 60);
+    const pad = (value) => String(value).padStart(2, '0');
+    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}:${pad(frame)}`;
+  }
+
+  function edlReelName(value, fallback = 'MEDIA') {
+    const normalized = edlLineText(value, fallback)
+      .replace(/[\s|]+/gu, '_')
+      .replace(/[^A-Za-z0-9_.-]/gu, '_');
+    return Array.from(normalized || fallback).slice(0, 8).join('').padEnd(8, ' ');
+  }
+
+  // Serialize the source video/audio cuts used by the gap-removed timeline
+  // as a CMX 3600 EDL. Each kept interval is one source-media event whose
+  // record range is packed consecutively after the removed gaps. A combined
+  // video timeline emits paired V/AA rows with the same event number; an
+  // audio-only timeline emits only the AA row.
+  function serializeMediaEdl(mediaPath, intervals, options = {}) {
+    if (!edlLineText(mediaPath)) throw new Error('missing EDL media path');
+    if (!Array.isArray(intervals)) throw new Error('EDL intervals must be an array');
+    if (!intervals.length) throw new Error('EDL has no media intervals');
+    if (!options || typeof options !== 'object' || Array.isArray(options)) {
+      throw new Error('EDL options must be an object');
+    }
+    if (options.dropFrame !== undefined && typeof options.dropFrame !== 'boolean') {
+      throw new Error('drop-frame option must be boolean');
+    }
+    const trackMode = options.trackMode ?? 'video_audio';
+    const tracksByMode = {
+      video: ['V'],
+      audio: ['AA'],
+      video_audio: ['V', 'AA'],
+    };
+    const tracks = tracksByMode[trackMode];
+    if (!tracks) throw new Error(`unsupported EDL track mode: ${trackMode}`);
+    const profile = resolveExportFrameProfile(options.fps ?? 30, options.dropFrame === true);
+    const source = edlLineText(mediaPath);
+    const normalized = intervals.map((interval, index) => {
+      const startMs = Number(interval?.start ?? interval?.startMs);
+      const endMs = Number(interval?.end ?? interval?.endMs);
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs)
+          || startMs < 0 || endMs <= startMs) {
+        throw new Error('invalid EDL media interval');
+      }
+      return { index, startMs, endMs };
+    }).sort((left, right) => (
+      left.startMs - right.startMs
+      || left.endMs - right.endMs
+      || left.index - right.index
+    ));
+    for (let index = 1; index < normalized.length; index++) {
+      if (normalized[index].startMs < normalized[index - 1].endMs) {
+        throw new Error('overlapping EDL media intervals');
+      }
+    }
+    const title = edlLineText(options.title, 'MAW gap-removed media') || 'MAW gap-removed media';
+    const reel = edlReelName(options.reel || fileBasename(source));
+    const clipName = edlLineText(options.clipName, fileBasename(source) || source) || source;
+    const lines = [`TITLE: ${title}`, 'FCM: NON-DROP FRAME', ''];
+    let previousSourceEndFrame = -1;
+    let recordFrame = 0;
+    normalized.forEach((interval, index) => {
+      const sourceInFrame = exportMsToFrames(interval.startMs, profile, 'floor');
+      const sourceOutFrame = Math.max(
+        sourceInFrame + 1,
+        exportMsToFrames(interval.endMs, profile, 'ceil'),
+      );
+      if (sourceInFrame < previousSourceEndFrame) {
+        throw new Error('overlapping EDL media intervals after frame conversion');
+      }
+      const durationFrames = sourceOutFrame - sourceInFrame;
+      const recordInFrame = recordFrame;
+      const recordOutFrame = recordFrame + durationFrames;
+      const eventNumber = String(index + 1).padStart(3, '0');
+      const sourceIn = formatEdlFrames(sourceInFrame, profile);
+      const sourceOut = formatEdlFrames(sourceOutFrame, profile);
+      const recordIn = formatEdlFrames(recordInFrame, profile);
+      const recordOut = formatEdlFrames(recordOutFrame, profile);
+      tracks.forEach((track) => {
+        lines.push(
+          `${eventNumber}  ${reel} ${track.padEnd(5, ' ')}C        `
+            + `${sourceIn} ${sourceOut} ${recordIn} ${recordOut}`,
+        );
+      });
+      lines.push(`* FROM CLIP NAME: ${clipName}`);
+      lines.push(`* SOURCE FILE: ${source}`);
+      lines.push('');
+      previousSourceEndFrame = sourceOutFrame;
+      recordFrame = recordOutFrame;
+    });
+    return lines.join('\n');
+  }
+
   // macOS 上用 ⌘（event.metaKey）替代 Ctrl；Win/Linux 仍是 Ctrl。
   function isMacPlatform(nav) {
     const n = nav || globalThis.navigator;
@@ -10387,6 +10496,7 @@ export default MawDynamicCaptions;
     buildFcp7ExportArtifacts,
     saveSequentialExportArtifacts,
     buildFfconcat,
+    serializeMediaEdl,
     configuredEnterAction,
     isMacPlatform,
     createHistoryStack,
@@ -11022,6 +11132,11 @@ export default MawDynamicCaptions;
     '按移除静音空隙后的时间轴导出字幕；原工程时间不变': 'Export subtitles on the gap-removed timeline; project timing stays unchanged',
     '按移除静音空隙后的时间轴，为每种已使用颜色分别导出一份字幕': 'Export one subtitle file per used color on the gap-removed timeline',
     '导出原视频/音频的去空隙 OTIO 时间线，供支持 OTIO 的剪辑工具或工作流使用': 'Export a gap-removed OTIO timeline for compatible editing tools',
+    '导出原视频/音频的去空隙 EDL 时间线，保留源媒体入出点并压缩移除的空隙': 'Export a gap-removed EDL timeline for the original video/audio, preserving source in/out points while packing removed gaps',
+    '时间线 EDL': 'Timeline EDL',
+    '去空隙 EDL 时间线文件': 'Gap-removed EDL timeline file',
+    '无法获得媒体文件名；请先加载媒体后再导出 EDL': 'The media filename is unavailable; load media before exporting EDL',
+    '去空隙 EDL 导出失败': 'Gap-removed EDL export failed',
     '导出 FFmpeg concat demuxer 可读取的保留区间；流复制的切点精度受关键帧和编码包限制': 'Export kept intervals for FFmpeg concat; stream-copy cut accuracy depends on keyframes and packets',
     '以毫秒为单位导出原媒体中的全部保留区域，供自定义脚本或工具读取': 'Export all kept source-media regions in milliseconds',
     '按移除静音空隙后的时间轴导出表情包图片轨道 OTIO；完全落在空隙内的表情包会被丢弃': 'Export sticker image tracks on the gap-removed OTIO timeline; stickers fully inside gaps are omitted',
@@ -27005,6 +27120,28 @@ function buildGapRemovedFfconcat() {
   return window.AsrEditorUtils.buildFfconcat(media, context.intervals);
 }
 
+function buildGapRemovedEdl() {
+  const context = gapRemovedExportContext();
+  if (!context) return null;
+  const tr = (message) => window.MAWE_I18N?.translateText?.(message) || message;
+  const media = gapRemovedMediaReference();
+  if (!media) {
+    flashHint(tr('无法获得媒体文件名；请先加载媒体后再导出 EDL'), 'invalid');
+    return null;
+  }
+  const trackMode = player?.tagName === 'AUDIO' ? 'audio' : 'video_audio';
+  try {
+    return window.AsrEditorUtils.serializeMediaEdl(media, context.intervals, {
+      title: `${FILENAME_BASE}_gap-removed`,
+      fps: 30,
+      trackMode,
+    });
+  } catch (error) {
+    flashHint(`${tr('去空隙 EDL 导出失败')}：${error.message || error}`, 'warning');
+    return null;
+  }
+}
+
 function buildGapRemovedRegionsJson() {
   const context = gapRemovedExportContext();
   if (!context) return null;
@@ -29023,6 +29160,15 @@ document.getElementById('download-gap-removed-otio')?.addEventListener('click', 
   if (payload) {
     await downloadFile(payload, `${FILENAME_BASE}_gap-removed.otio`, 'application/vnd.opentimelineio+json', {
       desc: '去空隙 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
+    });
+  }
+});
+document.getElementById('download-gap-removed-edl')?.addEventListener('click', async () => {
+  if (editingState) finishEdit(true);
+  const payload = buildGapRemovedEdl();
+  if (payload) {
+    await downloadFile(payload, `${FILENAME_BASE}_gap-removed.edl`, 'text/plain', {
+      desc: '去空隙 EDL 时间线', types: { 'text/plain': ['.edl'] }
     });
   }
 });
