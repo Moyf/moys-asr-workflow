@@ -22540,6 +22540,9 @@ function splitItemsAtChar(
   ));
   const requested = Number(requestedCutMs);
   let splitMs = Number.isFinite(requested) ? Math.round(requested) : null;
+  // 切点两侧相邻 item 的实际时间区间；else 分支填充，供下方非对称边界使用。
+  let previousRange = null;
+  let nextRange = null;
 
   if (inside) {
     const range = timeRangeFor(inside.item);
@@ -22553,15 +22556,14 @@ function splitItemsAtChar(
     if (!records.length && Number.isFinite(splitMs)) {
       splitMs = Math.round(splitMs);
     }
-    // 文字切点在 item 边界或词间空白时，优先落在对应 item 的真实边界。
-    // 这会把“模型”后的手工切点从 26526 吸附到“模型”的 end 26680，
-    // 避免左字幕范围先于完整 item 结束。
-    const previousRange = previous ? timeRangeFor(previous.item) : null;
-    const nextRange = next ? timeRangeFor(next.item) : null;
-    const lower = previousRange?.end ?? safeSegmentStart;
-    const upper = nextRange?.start ?? safeSegmentEnd;
+    // 文字切点在 item 边界或词间空白时，吸附到相邻 item 的真实边界：
+    // 优先跟随左侧词尾，这会把“模型”后的手工切点从 26526 吸附到
+    // “模型”的 end 26680，避免左字幕范围先于完整 item 结束。
+    // （连续 item 上两侧相等；有静音空隙时由下方非对称边界接管。）
+    previousRange = previous ? timeRangeFor(previous.item) : null;
+    nextRange = next ? timeRangeFor(next.item) : null;
     if (records.length && (!preserveCutMs || !Number.isFinite(splitMs))) {
-      splitMs = nextRange?.start ?? previousRange?.end ?? null;
+      splitMs = previousRange?.end ?? nextRange?.start ?? null;
     }
   }
 
@@ -22570,6 +22572,21 @@ function splitItemsAtChar(
     splitMs = Math.round(safeSegmentStart + (safeSegmentEnd - safeSegmentStart) * ratio);
   }
   splitMs = Math.max(safeSegmentStart, Math.min(safeSegmentEnd, Math.round(splitMs)));
+
+  // 非对称拆分边界：切点两词之间存在真实静音空隙（如本地 ASR 的
+  // “型、”6160-6480 与下一词 6720 起）时，左段停在自家最后一个词的
+  // end，右段从自家第一个词的 start 开始，保留真实空隙，而不是把一侧
+  // 硬拉过静音。仅在两侧候选都有效且严格正序（timeRangeFor 对病态时间
+  // 的钳制可能倒挂）时启用；缺词或缺时间码时落回单一共享切点。
+  let leftEndMs = splitMs;
+  let rightStartMs = splitMs;
+  const prevEdgeMs = previousRange?.end ?? null;
+  const nextEdgeMs = nextRange?.start ?? null;
+  if (Number.isFinite(prevEdgeMs) && Number.isFinite(nextEdgeMs)
+      && nextEdgeMs - prevEdgeMs > 0) {
+    leftEndMs = prevEdgeMs;
+    rightStartMs = nextEdgeMs;
+  }
 
   const leftItems = [];
   const rightItems = [];
@@ -22606,14 +22623,14 @@ function splitItemsAtChar(
       continue;
     }
     if (textEnd <= safeOffset) {
-      const end = Math.min(range.end, splitMs);
+      const end = Math.min(range.end, leftEndMs);
       if (end > range.start) leftItems.push({ ...record.item, start: range.start, end });
     } else if (textStart >= safeOffset) {
-      const start = Math.max(range.start, splitMs);
+      const start = Math.max(range.start, rightStartMs);
       if (range.end > start) rightItems.push({ ...record.item, start, end: range.end });
     } else if (splitMs >= range.start && splitMs <= range.end) {
       // 退回顺序映射或异常 item 文本对齐时，仍不得让 item 穿过字幕边界。
-      const end = Math.min(range.end, splitMs);
+      const end = Math.min(range.end, leftEndMs);
       if (end > range.start) leftItems.push({ ...record.item, start: range.start, end });
     }
   }
@@ -22627,7 +22644,7 @@ function splitItemsAtChar(
       }
     }
   }
-  return { leftItems, rightItems, splitMs, hasItems };
+  return { leftItems, rightItems, splitMs, leftEndMs, rightStartMs, hasItems };
 }
 
 function buildSplitPair(
@@ -22653,19 +22670,23 @@ function buildSplitPair(
   const leftItems = cleanSplitItems(itemParts.leftItems, 'left');
   const rightItems = cleanSplitItems(itemParts.rightItems, 'right');
   const splitMs = Number.isFinite(itemParts.splitMs) ? itemParts.splitMs : Math.round(cutMs);
+  // 左右两段可各自贴合自家词边界（词间有静音空隙时非对称）。
+  const leftEnd = Number.isFinite(itemParts.leftEndMs) ? itemParts.leftEndMs : splitMs;
+  const rightStart = Number.isFinite(itemParts.rightStartMs) ? itemParts.rightStartMs : splitMs;
   const segmentStart = Number(segment?.start);
   const segmentEnd = Number(segment?.end);
   if (!Number.isFinite(splitMs)
       || !Number.isFinite(segmentStart)
       || !Number.isFinite(segmentEnd)
       || segmentEnd - segmentStart < SUBTITLE_MIN_DURATION_MS * 2
-      || splitMs - segmentStart < SUBTITLE_MIN_DURATION_MS
-      || segmentEnd - splitMs < SUBTITLE_MIN_DURATION_MS) return null;
+      || leftEnd - segmentStart < SUBTITLE_MIN_DURATION_MS
+      || segmentEnd - rightStart < SUBTITLE_MIN_DURATION_MS
+      || rightStart < leftEnd) return null;
   const left = {
     ...segment,
     id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment], `${idBase}-a`, 'segment'),
     start: segment.start,
-    end: splitMs,
+    end: leftEnd,
     text: parts.left,
     items: leftItems.length ? leftItems : null,
     _dirty: true,
@@ -22673,7 +22694,7 @@ function buildSplitPair(
   const right = {
     ...segment,
     id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment, left], `${idBase}-b`, 'segment'),
-    start: splitMs,
+    start: rightStart,
     end: segment.end,
     text: parts.right,
     items: rightItems.length ? rightItems : null,
@@ -23834,9 +23855,27 @@ function splitAtCursor(
     // 只有第二次强制拆分才把它钳制到两侧各 100ms 的安全范围。
     splitMs = Math.round(t);
   }
-  const timingValid = Number.isFinite(splitMs)
-    && splitMs - seg.start >= SUBTITLE_MIN_DURATION_MS
-    && seg.end - splitMs >= SUBTITLE_MIN_DURATION_MS;
+  // 左右两段的结算边界：默认跟随共享切点；词级 items 提供非对称切分
+  // （左段停在自家最后一词的 end，右段起自首词的 start）时分别取用。
+  // 缺词或缺时间码时两者都保持 splitMs，与旧行为一致。
+  let leftEnd = splitMs;
+  let rightStart = splitMs;
+  const resolveSplitBounds = () => {
+    let leftEndMs = Number.isFinite(splitMs) ? splitMs : null;
+    let rightStartMs = leftEndMs;
+    if (itemSplit && itemSplit.hasItems && Number.isFinite(splitMs)
+        && Number.isFinite(itemSplit.leftEndMs)) {
+      leftEndMs = itemSplit.leftEndMs;
+      rightStartMs = Number.isFinite(itemSplit.rightStartMs)
+        ? itemSplit.rightStartMs : leftEndMs;
+    }
+    leftEnd = leftEndMs ?? NaN;
+    rightStart = rightStartMs ?? NaN;
+  };
+  resolveSplitBounds();
+  const timingValid = Number.isFinite(leftEnd) && Number.isFinite(rightStart)
+    && leftEnd - seg.start >= SUBTITLE_MIN_DURATION_MS
+    && seg.end - rightStart >= SUBTITLE_MIN_DURATION_MS;
   if (!timingValid && !force) {
     editingState.forceSplitArmed = true;
     flashHint(forcedSplitRetryHint(), 'warning');
@@ -23856,13 +23895,25 @@ function splitAtCursor(
       splitMs,
       { preserveCutMs: true, forceCut: true },
     );
+    resolveSplitBounds();
+    if (Number.isFinite(forcedCut)) {
+      // 强制拆分承诺两侧各 >= 100ms：当自然词边界使某一侧过短
+      // （如最后一个词紧贴字幕末尾）时，该侧退回用户确认的强制切点，
+      // 另一侧保留非对称自然边界。
+      if (!Number.isFinite(leftEnd) || leftEnd - seg.start < SUBTITLE_MIN_DURATION_MS) {
+        leftEnd = forcedCut;
+      }
+      if (!Number.isFinite(rightStart) || seg.end - rightStart < SUBTITLE_MIN_DURATION_MS) {
+        rightStart = forcedCut;
+      }
+      if (rightStart < leftEnd) rightStart = leftEnd;
+    }
   }
   // 字幕列表手工拆分允许用户指定任意字符位置，但时间码必须落在实际 item
   // 的安全范围内；当切点在 item 内时，splitItemsAtChar 已为两侧生成 item 副本。
+  // 左右边界已在上文（含强制重试的降级调和）结算完毕，这里直接消费。
   const leftItemsClean = cleanSplitItems(itemSplit.leftItems, 'left');
   const rightItemsClean = cleanSplitItems(itemSplit.rightItems, 'right');
-  const leftEnd = splitMs;
-  const rightStart = splitMs;
 
   const leftSeg = {
     id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([seg], `${seg.id || `main-${idx}`}-a`, 'main'),
