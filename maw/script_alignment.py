@@ -2515,7 +2515,6 @@ def _looks_like_incomplete_retry(
     and the range is not a much longer independent sentence.
     """
     cue_index = _int_value(source_slice.get("sourceCueIndex"))
-    source_start = _int_value(source_slice.get("start"))
     source_end = _int_value(source_slice.get("end"))
     source_text = normalize_alignment_text(str(source_slice.get("sourceText") or ""))
     if cue_index is None or not source_text or len(source_text) < 3:
