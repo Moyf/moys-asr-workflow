@@ -8,7 +8,7 @@ from threading import Event
 from types import SimpleNamespace
 from unittest import mock
 
-from maw.gui_web import LauncherApi, LauncherPaths, _request_from_payload
+from maw.gui_web import LauncherApi, LauncherPaths, _request_from_payload, _transcribe_strip_tail_punct
 from maw.postprocess import LlmPostprocessRequest
 from maw.postprocess_io import SubtitleArtifact
 from maw.postprocess_ocr import OcrDedupArtifact
@@ -557,3 +557,23 @@ class PostprocessPreflightTests(unittest.TestCase):
 
         self.assertIsNotNone(request.postprocess_plan)
         self.assertEqual(request.postprocess_plan["steps"][0]["id"], "match")
+
+    def test_default_plan_preserves_question_and_exclamation_for_transcription(self) -> None:
+        self.assertEqual(
+            default_postprocess_plan()["steps"][0]["preservePunctuation"],
+            ["？", "！"],
+        )
+        # 默认保留 ？！ → 转写剥尾只剥逗号和句号。
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，。")
+
+    def test_transcribe_strip_tail_punct_follows_saved_preserve_symbols(self) -> None:
+        plan = default_postprocess_plan()
+        plan["steps"][0]["preservePunctuation"] = ["。"]
+        save_postprocess_plan(self.env_path, plan)
+
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，")
+
+        plan["steps"][0]["preservePunctuation"] = ["。", "，"]
+        save_postprocess_plan(self.env_path, plan)
+
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "")

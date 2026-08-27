@@ -17,6 +17,8 @@
 
 ### 🐛 问题修复
 
+- **本地引擎忽略分段整理参数** ： `build_local_segments` 在引擎自带分段时（Qwen3-ASR / FunASR / MOSS 均如此）原样放行，「最大字数」「短句合并阈值」「停顿切句」形同虚设。现对超过最大字数的分段走共享切句管线重组——粗粒度（一句一项）分段先按字符权重插值出子段时间再重切，词级时间戳仍优先使用真实值，结果段回填说话人信息。
+- **本地引擎不剥尾标点** ： 本地转写输出的每条字幕结尾现与云端默认一致，去除全角逗号与句号。
 - **AppImage 打开外部程序失效** ： Linux 打包版打开外部 URL / 路径前恢复 `LD_LIBRARY_PATH_ORIG`（AppImage 内的 Qt 库路径），避免污染外部 `xdg-open` 子进程（PR 74 移植）。
 - **NixOS 打开字幕编辑器崩溃** ： PyInstaller 排除 `readline` 模块并在 AppImage 内物理剔除 `libreadline.so`（与既有 C++ 运行时剔除模式一致），避免 AppImage 内的旧版 readline 污染 `webbrowser.open` → xdg-open → bash 子进程；release CI 增加产物回归断言。
 - **Pages 部署路径过滤** ： `deploy-editor-pages.yml` 的 `paths` 清理失效的 `reapeaks_io.py` 条目（main 实际文件为 `maw/reapeaks.py`，已被 `maw/**` 覆盖，仅为消除残留）。
