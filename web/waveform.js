@@ -14,12 +14,41 @@
     return window.MAWE_I18N?.language === 'en' ? en : zh;
   }
 
+  const GAP_REMOVE_DISPLAY_LABELS = Object.freeze({
+    zh: Object.freeze({
+      audio_gate: '静音空隙（自动生成）',
+      audio_gate_manual: '静音空隙（自动生成+手动调整）',
+      manual: '跳过空隙（手动创建）',
+      script_alignment: '台本对齐自动移除',
+      script_alignment_manual: '台本对齐自动移除（手动调整）',
+      multi_source: '自动移除（多来源）',
+      multi_source_manual: '自动移除（多来源+手动调整）',
+      unknown: '空隙',
+    }),
+    en: Object.freeze({
+      audio_gate: 'Silence gap (auto-generated)',
+      audio_gate_manual: 'Silence gap (auto-generated + manually adjusted)',
+      manual: 'Skip gap (manually created)',
+      script_alignment: 'Script alignment auto-removal',
+      script_alignment_manual: 'Script alignment auto-removal (manually adjusted)',
+      multi_source: 'Auto-removal (multiple sources)',
+      multi_source_manual: 'Auto-removal (multiple sources + manually adjusted)',
+      unknown: 'Gap',
+    }),
+  });
+
+  function gapRemoveDisplayLabel(gap) {
+    const type = window.AsrGapRemoveCore?.getGapRemoveDisplayType?.(gap) || 'unknown';
+    const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+    return GAP_REMOVE_DISPLAY_LABELS[language][type] || GAP_REMOVE_DISPLAY_LABELS[language].unknown;
+  }
+
   function gapOperationAllowsBoundary(mode) {
-    return mode === 'boundary_drag' || mode === 'boundary_and_middle';
+    return window.AsrGapRemoveCore.gapOperationAllowsBoundary(mode);
   }
 
   function gapOperationAllowsMiddle(mode) {
-    return mode === 'middle_drag' || mode === 'boundary_and_middle';
+    return window.AsrGapRemoveCore.gapOperationAllowsMiddle(mode);
   }
 
   // 渲染器预设：classic / wave-right 由专属 CSS 网格渲染；custom 由 layoutTree 渲染
@@ -2948,6 +2977,8 @@
     }
 
     appendGapBlocks(row, startMs, endMs) {
+      // Editor/Align 提供的 getter 已经返回共享的最终显示投影；这里不要
+      // 对每一行再次做投影，避免多行波形重复扫描同一组 Gap。
       const gaps = this.options.getGapRemoveGaps?.() || [];
       const gapOperationMode = this.options.getGapOperationMode?.() || 'boundary_drag';
       const boundaryEnabled = gapOperationAllowsBoundary(gapOperationMode);
@@ -2962,21 +2993,18 @@
         block.className = 'waveform-gap-block';
         block.dataset.gapIndex = String(index);
         block.classList.toggle('restored', gap.removed === false);
+        if (gap.removed !== false) {
+          block.classList.toggle(
+            'protected',
+            window.AsrGapRemoveCore.isGapRemoveDisplayProtected(gap),
+          );
+        }
         block.classList.toggle('boundary-editable', boundaryEnabled);
-        const stateTitle = gap.removed === false
-          ? '已保留空隙；左键跳转播放头，Alt+左键移除'
-          : '已移除静音空隙；左键跳转播放头，Alt+左键恢复';
-        const operationTitle = boundaryEnabled && middleEnabled
-          ? `${stateTitle}；可拖动左右边界，也可用中键调整范围`
-          : boundaryEnabled
-          ? `${stateTitle}；拖动左右边界可人工调整范围`
-          : middleEnabled
-            ? `${stateTitle}；中键拖动增加静音，Alt+中键拖动恢复声音`
-            : stateTitle;
-        block.title = `${operationTitle}；空白处 Alt+左键拖动增加，空隙块左键或 Alt+左键拖动整体偏移，Ctrl/Cmd+拖动复制`;
+        block.title = gapRemoveDisplayLabel(gap);
+        block.setAttribute('aria-label', block.title);
         const label = document.createElement('span');
         label.className = 'waveform-gap-label';
-        label.textContent = gap.removed === false ? '已恢复' : '已移除';
+        label.textContent = gap.removed === false ? '空隙（未激活）' : '空隙';
         block.appendChild(label);
         if (boundaryEnabled) {
           if (gap.start >= startMs) {

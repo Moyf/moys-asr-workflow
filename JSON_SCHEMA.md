@@ -195,23 +195,52 @@
   "disable_coverage_percent": 80,
   "disable_remaining_ms": 300,
   "gaps": [
-    { "start": 1280, "end": 2440, "removed": true },
-    { "start": 6120, "end": 7050, "removed": false }
-  ]
+    {
+      "start": 1280,
+      "end": 2440,
+      "removed": true,
+      "source": "audio_gate",
+      "origins": ["audio_gate"]
+    },
+    {
+      "start": 6120,
+      "end": 7050,
+      "removed": false,
+      "source": "audio_gate",
+      "origins": ["audio_gate", "manual"]
+    }
+  ],
+  "provenance": {
+    "schema": "moy.asr.gap_provenance.v1",
+    "sources": {
+      "script_alignment": [],
+      "audio_gate": [
+        { "id": "silence-001", "start": 1280, "end": 2440 }
+      ]
+    },
+    "manual_overrides": [
+      { "id": "manual-001", "start": 6120, "end": 7050, "removed": false }
+    ],
+    "legacy": []
+  }
 }
 ```
 
 - `detector` 固定为 `audio_gate`：扫描波形峰值包络，声音高于 `threshold_db` 时打开 gate，低于 `threshold_db - hysteresis_db` 后才关闭；不会用字幕之间的时间差推断空隙。
+- `gaps[*].source` 和 `gaps[*].origins` 是根据 `provenance` 派生的可读字段：`source` 表示唯一的初始自动来源；`origins` 列出当前区间的全部贡献来源。多个自动来源重叠时 `source` 为 `null`；只有人工覆盖时才为 `manual`。它们不是来源真源，旧客户端可以忽略。
+- `provenance` 是可选的来源真源，当前来源层为 `script_alignment`、`audio_gate` 与 `manual_overrides`；`legacy` 是兼容读取字段，启用的旧范围会迁入 `audio_gate`，旧的 `removed: false` 范围会迁入 `manual_overrides`，规范化输出中的 `legacy` 为空数组。支持它的新客户端据此分层重扫和重建最终 `gaps`。
 - `minimum_ms` 的允许范围是 100–60000，单位为毫秒；默认 500。判定基于应用前/后端预留后的最终移除区间，预留吃完整段时不纳入移除。
 - `threshold_db` 的范围是 -96–0，默认 -24；`hysteresis_db` 的范围是 0–30，默认 2。比如阈值 -24、滞回 2 时，声音达到 -24 才算有声，低于 -26 才重新算静音。建议使用 1–3dB；过高会延迟回到静音。滞回位于「空隙检测与调整」折叠区内。
 - `lead_in_ms` / `lead_out_ms` 是每段空隙两侧保留的静音毫秒数，范围 0–2000，默认前端 40、后端 80。扫描得到的原始静音区间会在起点加 `lead_in_ms`、终点减 `lead_out_ms` 后再写入 `gaps`，避免剪掉空隙后两句贴得太急；预留后的区间短于 `minimum_ms` 时整段保留。这两个值在扫描生成空隙时继续生效；对已有结果点击「收缩空隙」时，会再次按当前值向内调整现有区间，是额外的可撤销微调。
-- `manual_corrections` 表示当前结果是否包含人工修正。Alt+左键切换整段、边界拖动、Alt+整体拖动、Ctrl/Cmd+复制拖动、中键范围操作和“全部恢复”都会设为 `true`；重新扫描前会要求确认，扫描成功后重置为 `false`。
-- `operation_mode` 控制人工修正交互：`none` 仅保留 Alt+点击整段切换，`boundary_drag` 在 hover 空隙时显示左右边界手柄，`middle_drag` 默认用中键增加静音、按住 Alt 才恢复声音，`boundary_and_middle`（界面显示「边界与中键」）同时启用边界手柄和中键范围操作；当前界面默认 `boundary_drag`。边界拖入另一段空隙时会直接合并两段。
+- `manual_corrections` 表示当前结果是否包含人工修正。新客户端根据 `provenance.manual_overrides` 是否为空维护它；旧客户端仍可把它当作全局摘要。Alt+左键切换整段、Ctrl/Cmd+复制拖动、中键范围操作和“全部恢复”都会留下普通人工覆盖；整体拖动会留下 `operation: "move"` 的内部记录，保存 `base_start`/`base_end` 和 `target_start`/`target_end`，重复拖动时更新原记录；旧移动目标被后续操作从中间覆盖时，记录可使用 `target_ranges` 保存剩余目标片段。边界拖动会留下 `operation: "boundary_resize"` 的内部记录，保存 `edge`、`base`、`boundary` 与可选 `cleared_ranges`。两类记录都直接调整同一条 Gap 的范围，不会在原位置追加 `removed: false` 恢复块；重新扫描不会删除这些人工调整。
+- `operation: "move"` 移动的是用户看到的整条 Gap：先清除原可见范围，再把相同状态放到固定长度的目标范围。通常使用 `target_start`/`target_end`；旧移动目标被后续操作从中间覆盖时，使用可选 `target_ranges` 保存剩余片段（可以为空以继续清除 base）。同状态的被覆盖 Gap 会被吸收，`removed` 状态不同的 Gap 只缩小其重叠部分，因此相邻的 active/inactive Gap 仍是独立对象。普通 `removed: false` 仍然表示用户明确保留、但不参与跳过的恢复区。
+- `removed: false` 的恢复区段仍保留在时间轴上，但不参与播放跳过、去空隙导出或“禁用空隙内字幕”；“清理区段”则从来源层删除选中范围内的记录，不留下恢复覆盖，因此之后重新扫描可能再次生成同一段静音 Gap。
+- `operation_mode` 控制人工修正交互：`none` 仅保留 Alt+点击整段切换，`boundary_drag` 在 hover 空隙时显示左右边界手柄，`middle_drag` 默认用中键增加静音、按住 Alt 才恢复声音，`boundary_and_middle`（界面显示「边界与中键」）同时启用边界手柄和中键范围操作；当前界面默认 `boundary_drag`。边界只移动被点中的 Gap，不会联动相邻 Gap；向内缩小启用或未激活 Gap 时，被让出的边缘会从最终投影清除，未激活 Gap 不会凭此产生启用 Gap。向外覆盖另一段时，完整覆盖会清理整段，部分覆盖只裁掉相交范围，并在 `cleared_ranges` 中保留已覆盖范围以防回拖时旧 Gap 复活。重复拖动同一边界会更新已有的 `boundary_resize` 记录。
 - `disable_coverage_percent` 与 `disable_remaining_ms` 是“禁用空隙内字幕”设置，均为可选字段，缺失时默认分别为 80% 和 300ms。执行“禁用字幕”时，编辑器先把所有 `removed: true` 空隙合并，再筛选空隙覆盖字幕时长达到该比例、且未被覆盖的剩余字幕时长不超过该阈值的主字幕；完全落在空隙内的字幕会命中。该操作只设置字幕的 `disabled` 标记，不改写起止时间，并可通过撤销恢复。
-- 「空隙检测与调整」中的「收缩空隙」是对现有 `audio_gate` 空隙的额外处理：每段起点增加当前 `lead_in_ms`，终点减少当前 `lead_out_ms`；被预留量完全吃掉的区间会丢弃，其他区间保留原有 `removed` 状态。它只修改 `gaps`、标记 `manual_corrections`，不改写字幕起止时间；重复点击会继续收缩，且每次都可撤销。
+- 「空隙检测与调整」中的「收缩空隙」是对现有 `audio_gate` 空隙的额外处理：每段起点增加当前 `lead_in_ms`，终点减少当前 `lead_out_ms`；被预留量完全吃掉的区间会丢弃，其他区间保留原有 `removed` 状态。它直接重写 `provenance.sources.audio_gate` 的区间并据此重建 `gaps`，不新增 `manual_overrides`，也不因此标记 `manual_corrections`；已有人工覆盖仍然保留。不改写字幕起止时间；重复点击会继续收缩，且每次都可撤销。
 - 扫描不会移除开头或结尾的素材。
-- 波形将 `removed: true` 画为橙色斜纹、`removed: false` 画为灰蓝斜纹；左键仅跳转播放头，Alt+左键才在两种状态间切换。
-- 旧版按字幕间隔扫描的结果会保留在工程中，但为避免误删已停用；重新扫描后会写入 `detector: "audio_gate"`。
+- 波形将 `removed: true` 画为橙色斜纹、`removed: false` 画为灰蓝斜纹；边界把手和整体/边界拖动预览使用蓝色表示正在进行人工修改；左键仅跳转播放头，Alt+左键才在两种状态间切换。
+- 旧工程没有 provenance、或使用 `legacy_subtitle_gap` detector 时，现有 `removed: true` 范围会按 `audio_gate` 迁入并继续启用，`removed: false` 范围迁为人工恢复；重新扫描和「收缩空隙」都会处理迁入的自动静音范围。
 
 ### 1.3a script_alignment 录制对齐记录
 
@@ -229,18 +258,23 @@
 }
 ```
 
-选中的 `incomplete` 候选默认不会进入保留区间；用户明确手动启用后，选择记录会保留原始 `incomplete` 分类，并增加以下字段：
+选中的 `incomplete` 候选默认不会进入保留区间；用户明确手动启用后，选择记录会保留原始 `incomplete` 分类。完整的 `match` 候选默认进入保留区间；用户也可以手动禁用当前已采用的候选，让它从保留区间中移除。两类覆盖都会保留在选择记录中：
 
 ```json
 {
-  "candidateActions": {"candidate-001-01": "keep"},
+  "candidateActions": {
+    "candidate-001-01": "keep",
+    "candidate-002-01": "discard"
+  },
   "manuallyEnabledCandidateIds": ["candidate-001-01"],
   "manuallyEnabledLineIds": ["line-001"],
+  "manuallyDisabledCandidateIds": ["candidate-002-01"],
+  "manuallyDisabledLineIds": ["line-002"],
   "blockedIncompleteLineIds": []
 }
 ```
 
-`candidateActions` 只记录用户对选中不完整候选的 `keep` / `discard` 覆盖；`manuallyEnabledCandidateIds` 表示实际解除自动禁用的候选，`blockedIncompleteLineIds` 表示仍会被禁用的不完整文稿行。这样可以区分“识别结果是不完整”和“用户确认仍要使用”这两个状态。
+`candidateActions` 只记录用户对已选候选的显式覆盖：`incomplete` 使用 `keep` 手动启用，完整 `match` 使用 `discard` 手动禁用；`manuallyEnabledCandidateIds` 表示实际解除自动禁用的候选，`manuallyDisabledCandidateIds` 表示从默认保留中排除的完整候选，`blockedIncompleteLineIds` 表示仍会被禁用的不完整文稿行。这样可以区分识别结果、自动建议和用户确认。
 
 当源段只有部分 item 被采用时，导出的工程会在相应 item 边界拆分字幕段；未采用部分设置 `disabled: true`，其间的时间同时写入 `gap_remove.gaps`。没有有效 `items` 时，录制对齐工具退回到源字幕段边界。
 

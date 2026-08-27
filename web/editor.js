@@ -551,7 +551,7 @@ function constrainBoundExtensionPanelEdit(extension, track, oldStart, oldEnd) {
 
 normalizeMultiSubtitleState();
 const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';
-const GAP_REMOVE_SCHEMA = 'moy.asr.gap_remove.v1';
+const GAP_REMOVE_SCHEMA = window.AsrGapRemoveCore.GAP_REMOVE_SCHEMA;
 const MEDIA_SEEK_STEP_MIN_MS = 10;
 const MEDIA_SEEK_STEP_MAX_MS = 60000;
 const MEDIA_SEEK_STEP_FINE_THRESHOLD_MS = 100;
@@ -784,7 +784,7 @@ const DEFAULT_GAP_REMOVE_THRESHOLD_DB = -24;
 const DEFAULT_GAP_REMOVE_HYSTERESIS_DB = 2;
 const DEFAULT_GAP_REMOVE_LEAD_IN_MS = 40;
 const DEFAULT_GAP_REMOVE_LEAD_OUT_MS = 80;
-const DEFAULT_GAP_REMOVE_OPERATION_MODE = 'boundary_drag';
+const DEFAULT_GAP_REMOVE_OPERATION_MODE = window.AsrGapRemoveCore.DEFAULT_GAP_REMOVE_OPERATION_MODE;
 const DEFAULT_GAP_REMOVE_DISABLE_COVERAGE_PERCENT = EDITOR_SETTINGS_UTILS.GAP_REMOVE_DISABLE_COVERAGE_DEFAULT ?? 80;
 const DEFAULT_GAP_REMOVE_DISABLE_REMAINING_MS = EDITOR_SETTINGS_UTILS.GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS ?? 300;
 const GAP_REMOVE_ADVANCED_OPEN_KEY = 'moy.asr.gap_remove.advanced_open.v1';
@@ -796,6 +796,9 @@ const clampGapRemoveDisableRemaining = EDITOR_SETTINGS_UTILS.clampGapRemoveDisab
 
 let normalizedGapRemoveReference = null;
 let normalizedGapRemoveCache = null;
+let gapRemoveDisplayCacheState = null;
+let gapRemoveDisplayCacheSource = null;
+let gapRemoveDisplayCache = [];
 let removedGapRangesCacheState = null;
 let removedGapRangesCache = [];
 
@@ -804,6 +807,9 @@ function getGapRemoveData(create = false) {
   if (!source && !create) {
     normalizedGapRemoveReference = null;
     normalizedGapRemoveCache = null;
+    gapRemoveDisplayCacheState = null;
+    gapRemoveDisplayCacheSource = null;
+    gapRemoveDisplayCache = [];
     removedGapRangesCacheState = null;
     removedGapRangesCache = [];
     return null;
@@ -812,6 +818,9 @@ function getGapRemoveData(create = false) {
   if (source !== normalizedGapRemoveReference) {
     normalizedGapRemoveReference = source;
     normalizedGapRemoveCache = normalizedGapRemoveData(source);
+    gapRemoveDisplayCacheState = null;
+    gapRemoveDisplayCacheSource = null;
+    gapRemoveDisplayCache = [];
     removedGapRangesCacheState = null;
     removedGapRangesCache = [];
   }
@@ -820,7 +829,13 @@ function getGapRemoveData(create = false) {
 
 function getGapRemoveGaps() {
   const state = getGapRemoveData(false);
-  return state?.detector === 'audio_gate' ? state.gaps : [];
+  if (state?.detector !== 'audio_gate') return [];
+  if (state === gapRemoveDisplayCacheState
+      && state.gaps === gapRemoveDisplayCacheSource) return gapRemoveDisplayCache;
+  gapRemoveDisplayCacheState = state;
+  gapRemoveDisplayCacheSource = state.gaps;
+  gapRemoveDisplayCache = window.AsrGapRemoveCore.getGapRemoveDisplayGaps(state.gaps);
+  return gapRemoveDisplayCache;
 }
 
 function getRemovedGapRanges() {
@@ -2521,11 +2536,42 @@ function refreshJklPlaybackModeUi() {
 refreshJklPlaybackModeUi();
 document.addEventListener('mawe:languagechange', refreshJklPlaybackModeUi);
 
-function setGapRemoveData(next, { dirty = true } = {}) {
-  DATA.gap_remove = normalizedGapRemoveData(next);
+function setGapRemoveData(
+  next,
+  { dirty = true, provenance = null, manualOverrides = null, clearProvenance = false } = {},
+) {
+  const payload = next && typeof next === 'object' ? { ...next } : {};
+  if (clearProvenance) {
+    payload.provenance = window.AsrGapRemoveCore.normalizeGapRemoveProvenance(null, []);
+  } else if (provenance) {
+    payload.provenance = provenance;
+  } else if (manualOverrides) {
+    payload.provenance = window.AsrGapRemoveCore.appendGapRemoveManualOverrides(
+      payload.provenance,
+      manualOverrides,
+      payload.gaps,
+    );
+  }
+  DATA.gap_remove = normalizedGapRemoveData(payload);
   gapPreviewRange = null;
   if (dirty) gapRemoveDirty = true;
   updateGapRemoveUi();
+}
+
+function commitManualGapRemoveChange(state, overrides) {
+  const core = window.AsrGapRemoveCore;
+  const currentGaps = core.normalizeGapRemoveGaps(state?.gaps);
+  const provenance = core.appendGapRemoveManualOverrides(
+    state?.provenance,
+    overrides,
+    currentGaps,
+  );
+  const projectedGaps = core.gapRangesFromProvenance(provenance);
+  state.gaps = projectedGaps;
+  state.provenance = provenance;
+  state.manual_corrections = true;
+  setGapRemoveData(state, { provenance });
+  return projectedGaps;
 }
 
 function gapRemoveTotalMs(gaps) {
@@ -2557,7 +2603,7 @@ function getGapRemoveOperationMode() {
 function renderGapRemoveList() {
   if (!gapRemoveList) return;
   const state = getGapRemoveData(false);
-  const gaps = state?.gaps || [];
+  const gaps = getGapRemoveGaps();
   gapRemoveList.replaceChildren();
   if (state?.detector === 'legacy_subtitle_gap') {
     gapRemoveList.textContent = '此工程含有旧版按字幕间隔识别的结果。为避免误删，旧结果已停用；请按当前波形重新扫描。';
@@ -2633,9 +2679,6 @@ function scanAndRemoveGaps() {
     return;
   }
   const previousState = getGapRemoveData(false);
-  if (previousState?.manual_corrections && !confirm(
-    '当前空隙中包含人工修正。\n\n重新“扫描并移除”会丢失 Alt+点击、边界拖动或中键拖动产生的全部人工修正。仍要继续吗？'
-  )) return;
   const gaps = window.AsrEditorUtils.detectAudioGapRemoveGaps(waveform, {
     minimumMs,
     thresholdDb,
@@ -2643,6 +2686,12 @@ function scanAndRemoveGaps() {
     leadInMs,
     leadOutMs,
   });
+  const provenance = window.AsrGapRemoveCore.replaceGapRemoveProvenanceSource(
+    previousState?.provenance,
+    'audio_gate',
+    gaps,
+    previousState?.gaps,
+  );
   pushGapRemoveUndo('扫描并移除静音空隙');
   setGapRemoveData({
     detector: 'audio_gate',
@@ -2652,12 +2701,11 @@ function scanAndRemoveGaps() {
     lead_in_ms: leadInMs,
     lead_out_ms: leadOutMs,
     skip_playback: previousState?.skip_playback,
-    manual_corrections: false,
     operation_mode: previousState?.operation_mode,
     disable_coverage_percent: previousState?.disable_coverage_percent,
     disable_remaining_ms: previousState?.disable_remaining_ms,
-    gaps,
-  });
+    gaps: window.AsrGapRemoveCore.gapRangesFromProvenance(provenance),
+  }, { provenance });
   flashHint(
     gaps.length
       ? `已移除 ${gaps.length} 段音量空隙，共 ${formatGapRemoveTotal(gapRemoveTotalMs(gaps))}`
@@ -2680,25 +2728,38 @@ function readGapRemoveLeadPadding() {
 
 function shrinkExistingGaps() {
   const state = getGapRemoveData(false);
-  const gaps = getGapRemoveGaps();
-  if (!state || !gaps.length) {
+  const core = window.AsrGapRemoveCore;
+  const audioGaps = core.normalizeGapRemoveGaps(
+    state?.provenance?.sources?.audio_gate,
+  );
+  if (!state || !audioGaps.length) {
     flashHint('当前没有可收缩的静音空隙', 'invalid');
     return;
   }
   const { leadInMs, leadOutMs } = readGapRemoveLeadPadding();
-  const nextGaps = window.AsrEditorUtils.shrinkGapRemoveGaps(gaps, leadInMs, leadOutMs);
-  if (JSON.stringify(nextGaps) === JSON.stringify(gaps)) {
+  const nextAudioGaps = window.AsrEditorUtils.shrinkGapRemoveGaps(audioGaps, leadInMs, leadOutMs);
+  if (JSON.stringify(nextAudioGaps) === JSON.stringify(audioGaps)) {
     flashHint('当前空隙无法按预留量继续收缩', 'invalid');
     return;
   }
   pushGapRemoveUndo('按预留量收缩空隙');
+  // 批量收缩属于 audio_gate 的重建，不是用户逐段做出的 manual 覆盖。
+  // 因此只替换静音来源，保留已有的人工恢复/移动等 overrides。
+  const provenance = core.replaceGapRemoveProvenanceSource(
+    state.provenance,
+    'audio_gate',
+    nextAudioGaps,
+    state.gaps,
+  );
+  const nextGaps = core.gapRangesFromProvenance(provenance);
   state.lead_in_ms = leadInMs;
   state.lead_out_ms = leadOutMs;
   state.gaps = nextGaps;
-  state.manual_corrections = true;
-  setGapRemoveData(state);
+  state.provenance = provenance;
+  state.manual_corrections = provenance.manual_overrides.length > 0;
+  setGapRemoveData(state, { provenance });
   flashHint(
-    `已按前端 ${leadInMs}ms、后端 ${leadOutMs}ms 收缩 ${gaps.length} 段空隙`,
+    `已按前端 ${leadInMs}ms、后端 ${leadOutMs}ms 收缩 ${audioGaps.length} 段空隙`,
     'success',
   );
 }
@@ -2746,30 +2807,42 @@ function disableSubtitlesInRemovedGaps() {
 
 function toggleGapRemoved(index) {
   const state = getGapRemoveData(false);
-  const gap = state?.gaps?.[index];
+  const gaps = getGapRemoveGaps();
+  const gap = gaps[index];
   if (!gap) return;
   pushGapRemoveUndo(gap.removed === false ? '再次移除静音空隙' : '恢复静音空隙');
   const removed = gap.removed === false;
-  state.gaps = window.AsrEditorUtils.applyGapRemoveRange(state.gaps, gap.start, gap.end, removed);
-  state.manual_corrections = true;
-  setGapRemoveData(state);
+  commitManualGapRemoveChange(
+    state,
+    [{ start: gap.start, end: gap.end, removed }],
+  );
   flashHint(removed ? '已人工移除静音空隙' : '已人工恢复静音空隙', 'success');
 }
 
 function clearGap(index) {
   const state = getGapRemoveData(false);
-  const gap = state?.gaps?.[index];
+  const gaps = getGapRemoveGaps();
+  const gap = gaps[index];
   if (!gap) return;
+  const core = window.AsrGapRemoveCore;
+  const provenance = core.removeGapRemoveProvenanceRange(
+    state?.provenance,
+    gap.start,
+    gap.end,
+    state?.gaps,
+  );
+  const nextGaps = core.gapRangesFromProvenance(provenance);
   pushGapRemoveUndo('清理空隙区段');
-  state.gaps = state.gaps.filter((_, gapIndex) => gapIndex !== index);
-  state.manual_corrections = state.gaps.length > 0;
-  setGapRemoveData(state);
+  state.gaps = nextGaps;
+  state.provenance = provenance;
+  state.manual_corrections = provenance.manual_overrides.length > 0;
+  setGapRemoveData(state, { provenance });
   flashHint('已清理空隙区段', 'success');
 }
 
 function applyManualGapRange(startMs, endMs, removed) {
   const state = getGapRemoveData(true);
-  const sourceGaps = state.detector === 'audio_gate' ? state.gaps : [];
+  const sourceGaps = window.AsrGapRemoveCore.normalizeGapRemoveGaps(state.gaps);
   const nextGaps = window.AsrEditorUtils.applyGapRemoveRange(sourceGaps, startMs, endMs, removed);
   if (JSON.stringify(nextGaps) === JSON.stringify(sourceGaps)) {
     flashHint(removed ? '所选范围已经处于移除状态' : '所选范围内没有已移除的静音空隙', 'invalid');
@@ -2777,9 +2850,10 @@ function applyManualGapRange(startMs, endMs, removed) {
   }
   pushGapRemoveUndo(removed ? '人工移除范围' : '人工恢复范围');
   state.detector = 'audio_gate';
-  state.gaps = nextGaps;
-  state.manual_corrections = true;
-  setGapRemoveData(state);
+  commitManualGapRemoveChange(
+    state,
+    [{ start: Math.min(Number(startMs), Number(endMs)), end: Math.max(Number(startMs), Number(endMs)), removed }],
+  );
   flashHint(removed ? '已人工移除所选范围' : '已人工恢复所选范围', 'success');
 }
 
@@ -2792,7 +2866,7 @@ function addGapAtWaveformTime(timeMs) {
   const point = Number(timeMs);
   if (!Number.isFinite(point)) return false;
   const state = getGapRemoveData(true);
-  const sourceGaps = state.detector === 'audio_gate' ? state.gaps : [];
+  const sourceGaps = window.AsrGapRemoveCore.normalizeGapRemoveGaps(state.gaps);
   const requestedLength = clampGapRemoveMinimum(state.minimum_ms);
   const length = Math.min(duration, requestedLength);
   const snappedPoint = Math.max(0, Math.min(duration, Math.round(point / 10) * 10));
@@ -2809,9 +2883,10 @@ function addGapAtWaveformTime(timeMs) {
   }
   pushGapRemoveUndo('右键添加空隙');
   state.detector = 'audio_gate';
-  state.gaps = nextGaps;
-  state.manual_corrections = true;
-  setGapRemoveData(state);
+  commitManualGapRemoveChange(
+    state,
+    [{ start, end, removed: true }],
+  );
   waveformEditor?.revealTime(start, true);
   flashHint(`已添加 ${formatGapRemoveTotal(end - start)} 静音空隙`, 'success');
   return true;
@@ -2819,29 +2894,67 @@ function addGapAtWaveformTime(timeMs) {
 
 function translateManualGap(index, deltaMs, mode = 'move') {
   const state = getGapRemoveData(false);
-  if (!state || state.detector !== 'audio_gate') return false;
+  if (!state) return false;
+  const core = window.AsrGapRemoveCore;
+  const gaps = getGapRemoveGaps();
+  const original = gaps[index];
+  if (!original) return false;
   const duration = gapRemoveMediaDurationMs();
+  if (mode === 'move') {
+    const result = core.moveGapRemoveProvenance(
+      state.provenance,
+      gaps,
+      index,
+      deltaMs,
+      duration,
+      state.gaps,
+    );
+    if (!result?.changed) return false;
+    pushGapRemoveUndo('整体偏移空隙');
+    state.gaps = result.gaps;
+    state.provenance = result.provenance;
+    state.manual_corrections = result.provenance.manual_overrides.length > 0;
+    setGapRemoveData(state, { provenance: result.provenance });
+    flashHint('已整体偏移空隙', 'success');
+    return true;
+  }
+  if (mode !== 'copy') return false;
   const nextGaps = mode === 'copy'
-    ? window.AsrEditorUtils.copyGapRemoveRange(state.gaps, index, deltaMs, duration)
-    : window.AsrEditorUtils.moveGapRemoveRange(state.gaps, index, deltaMs, duration);
-  if (JSON.stringify(nextGaps) === JSON.stringify(state.gaps)) return false;
+    ? window.AsrEditorUtils.copyGapRemoveRange(gaps, index, deltaMs, duration)
+    : window.AsrEditorUtils.moveGapRemoveRange(gaps, index, deltaMs, duration);
+  if (JSON.stringify(nextGaps) === JSON.stringify(gaps)) return false;
+  const length = original.end - original.start;
+  const maxStart = Number.isFinite(duration) && duration > 0
+    ? Math.max(0, duration - length) : Infinity;
+  const targetStart = Math.min(maxStart, Math.max(0, original.start + Math.round(Number(deltaMs) || 0)));
+  const targetEnd = targetStart + length;
   pushGapRemoveUndo(mode === 'copy' ? '复制并偏移空隙' : '整体偏移空隙');
-  state.gaps = nextGaps;
-  state.manual_corrections = true;
-  setGapRemoveData(state);
+  const overrides = [];
+  overrides.push({ start: targetStart, end: targetEnd, removed: original.removed !== false });
+  commitManualGapRemoveChange(state, overrides);
   flashHint(mode === 'copy' ? '已复制并偏移空隙' : '已整体偏移空隙', 'success');
   return true;
 }
 
 function resizeManualGapBoundary(index, edge, valueMs) {
   const state = getGapRemoveData(false);
-  if (!state || state.detector !== 'audio_gate') return;
-  const nextGaps = window.AsrEditorUtils.resizeGapRemoveBoundary(state.gaps, index, edge, valueMs);
-  if (JSON.stringify(nextGaps) === JSON.stringify(state.gaps)) return;
+  if (!state) return;
+  const core = window.AsrGapRemoveCore;
+  const gaps = getGapRemoveGaps();
+  const result = core.resizeGapRemoveProvenanceBoundary(
+    state.provenance,
+    gaps,
+    index,
+    edge,
+    valueMs,
+    state.gaps,
+  );
+  if (!result?.changed) return;
   pushGapRemoveUndo('人工调整空隙边界');
-  state.gaps = nextGaps;
-  state.manual_corrections = true;
-  setGapRemoveData(state);
+  state.gaps = result.gaps;
+  state.provenance = result.provenance;
+  state.manual_corrections = result.provenance.manual_overrides.length > 0;
+  setGapRemoveData(state, { provenance: result.provenance });
   flashHint('已人工调整空隙边界', 'success');
 }
 
@@ -2853,8 +2966,7 @@ function clearAllGaps() {
   )) return;
   pushGapRemoveUndo('清理全部空隙区段');
   state.gaps = [];
-  state.manual_corrections = false;
-  setGapRemoveData(state);
+  setGapRemoveData(state, { clearProvenance: true });
   flashHint('已清理全部空隙区段', 'success');
 }
 
@@ -3182,8 +3294,7 @@ gapRemoveClearAllButton?.addEventListener('click', clearAllGaps);
 gapRemoveCloseButton?.addEventListener('click', closeGapRemovePanel);
 gapRemoveOperationMode?.addEventListener('change', () => {
   const state = getGapRemoveData(true);
-  const nextMode = ['none', 'boundary_drag', 'middle_drag', 'boundary_and_middle'].includes(gapRemoveOperationMode.value)
-    ? gapRemoveOperationMode.value : DEFAULT_GAP_REMOVE_OPERATION_MODE;
+  const nextMode = window.AsrGapRemoveCore.normalizeGapOperationMode(gapRemoveOperationMode.value);
   if (state.operation_mode === nextMode) return;
   pushGapRemoveUndo('切换空隙操作方式');
   state.operation_mode = nextMode;
@@ -9791,19 +9902,6 @@ function extensionSegmentAtTime(tMs, mainIndex = -1) {
   return isSubtitlePreviewActive(segment, tMs) ? segment : null;
 }
 
-function removedGapAt(timeMs) {
-  const ranges = getRemovedGapRanges();
-  let low = 0;
-  let high = ranges.length;
-  while (low < high) {
-    const middle = (low + high) >> 1;
-    if (Number(ranges[middle]?.end) <= timeMs) low = middle + 1;
-    else high = middle;
-  }
-  const gap = ranges[low];
-  return gap && timeMs >= gap.start && timeMs < gap.end ? gap : null;
-}
-
 function previewGapAt(index, timeMs) {
   const state = getGapRemoveData(false);
   const gap = getGapRemoveGaps()[index];
@@ -9814,15 +9912,6 @@ function previewGapAt(index, timeMs) {
   }
   gapPreviewRange = { start: gap.start, end: gap.end };
   flashHint('正在预览此空隙；播放头离开后恢复跳过');
-}
-
-function isPreviewingGap(gap, timeMs) {
-  if (!gapPreviewRange) return false;
-  if (timeMs < gapPreviewRange.start || timeMs >= gapPreviewRange.end) {
-    gapPreviewRange = null;
-    return false;
-  }
-  return gap.start === gapPreviewRange.start && gap.end === gapPreviewRange.end;
 }
 
 function updateActiveCue(idx) {
@@ -9849,8 +9938,16 @@ function updatePlaybackFrame() {
     gapPreviewRange = null;
   }
   const gapState = getGapRemoveData(false);
-  const skippedGap = gapState?.skip_playback && !player.paused ? removedGapAt(tMs) : null;
-  if (skippedGap && !isPreviewingGap(skippedGap, tMs)) {
+  const skippedGap = window.AsrGapRemoveCore.getGapPlaybackSkip(
+    getRemovedGapRanges(),
+    tMs,
+    {
+      skipPlayback: gapState?.skip_playback === true,
+      isPlaying: !player.paused,
+      previewRange: gapPreviewRange,
+    },
+  );
+  if (skippedGap) {
     player.currentTime = skippedGap.end / 1000;
     return;
   }
@@ -9895,8 +9992,16 @@ function update() {
     gapPreviewRange = null;
   }
   const gapState = getGapRemoveData(false);
-  const skippedGap = gapState?.skip_playback && !player.paused ? removedGapAt(tMs) : null;
-  if (skippedGap && !isPreviewingGap(skippedGap, tMs)) {
+  const skippedGap = window.AsrGapRemoveCore.getGapPlaybackSkip(
+    getRemovedGapRanges(),
+    tMs,
+    {
+      skipPlayback: gapState?.skip_playback === true,
+      isPlaying: !player.paused,
+      previewRange: gapPreviewRange,
+    },
+  );
+  if (skippedGap) {
     player.currentTime = skippedGap.end / 1000;
     return;
   }

@@ -14,6 +14,7 @@ import copy
 import base64
 import binascii
 import difflib
+import math
 import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -39,6 +40,20 @@ MIN_NEAR_REPETITION_GAP_MS: Final[int] = 250
 MIN_NEAR_REPETITION_TEXT_LENGTH: Final[int] = 8
 MIN_NEAR_REPETITION_PREFIX_LENGTH: Final[int] = 4
 MIN_NEAR_REPETITION_PREFIX_RATIO: Final[float] = 0.35
+GAP_REMOVE_OPERATION_MODES: Final[frozenset[str]] = frozenset({
+    "none",
+    "boundary_drag",
+    "middle_drag",
+    "boundary_and_middle",
+})
+DEFAULT_GAP_REMOVE_OPERATION_MODE: Final[str] = "boundary_drag"
+GAP_PROVENANCE_SCHEMA: Final[str] = "moy.asr.gap_provenance.v1"
+GAP_PROVENANCE_SOURCES: Final[tuple[str, ...]] = (
+    "script_alignment",
+    "audio_gate",
+    "manual",
+    "legacy",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,8 +230,9 @@ def make_selection_manifest(
 
     ``candidate_actions`` contains explicit overrides for selected candidates.
     An incomplete candidate remains automatically disabled until its action is
-    ``keep``.  The alignment classification is deliberately preserved as
-    ``incomplete`` so the override remains visible and auditable.
+    ``keep``; a complete candidate remains enabled unless its action is
+    ``discard``.  The alignment classification is deliberately preserved so
+    the override remains visible and auditable.
     """
 
     raw_lines = alignment.get("scriptLines")
@@ -293,6 +309,10 @@ def make_selection_manifest(
                 status == "incomplete"
                 and requested_candidate_actions.get(candidate_id) == "keep"
             ),
+            "manualDisabled": (
+                status == "match"
+                and requested_candidate_actions.get(candidate_id) == "discard"
+            ),
             "alternativeGroupId": candidate.get("alternativeGroupId", ""),
             "alternativeGroupSize": candidate.get("alternativeGroupSize", 1),
             "internalSkips": copy.deepcopy(candidate.get("internalSkips", [])),
@@ -318,7 +338,16 @@ def make_selection_manifest(
         for candidate_id, action in requested_candidate_actions.items()
         if (
             candidate_id in selected_by_candidate_id
-            and selected_by_candidate_id[candidate_id].get("status") == "incomplete"
+            and (
+                (
+                    selected_by_candidate_id[candidate_id].get("status") == "incomplete"
+                    and action == "keep"
+                )
+                or (
+                    selected_by_candidate_id[candidate_id].get("status") == "match"
+                    and action == "discard"
+                )
+            )
             and action is not None
         )
     }
@@ -379,6 +408,16 @@ def make_selection_manifest(
         for item in selected
         if item.get("manualEnabled") is True
     ]
+    manually_disabled_candidate_ids = [
+        str(item["candidateId"])
+        for item in selected
+        if item.get("manualDisabled") is True
+    ]
+    manually_disabled_line_ids = [
+        str(item["lineId"])
+        for item in selected
+        if item.get("manualDisabled") is True
+    ]
     blocked_incomplete_lines = [
         line_id for line_id in incomplete_lines
         if line_id not in manually_enabled_line_ids
@@ -416,6 +455,8 @@ def make_selection_manifest(
         "blockedIncompleteLineIds": blocked_incomplete_lines,
         "manuallyEnabledCandidateIds": manually_enabled_candidate_ids,
         "manuallyEnabledLineIds": manually_enabled_line_ids,
+        "manuallyDisabledCandidateIds": manually_disabled_candidate_ids,
+        "manuallyDisabledLineIds": manually_disabled_line_ids,
         "candidateActions": normalized_candidate_actions,
         "extraRanges": copy.deepcopy(actual_extras),
         "extraActions": actions,
@@ -425,6 +466,275 @@ def make_selection_manifest(
         "keepRanges": keep_ranges,
         "readyForMediaTrim": not missing_lines and not blocked_incomplete_lines and not unresolved_extras and bool(selected),
     }
+
+
+def _provenance_time(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    return max(0, int(round(numeric)))
+
+
+def _provenance_id(value: object, source: str, index: int, used: set[str]) -> str:
+    requested = value.strip()[:160] if isinstance(value, str) else ""
+    base = requested or f"{source}-{index + 1:03d}"
+    result = base
+    suffix = 2
+    while result in used:
+        result = f"{base}-{suffix}"
+        suffix += 1
+    used.add(result)
+    return result
+
+
+def _normalize_provenance_ranges(
+    raw_ranges: object,
+    source: str,
+    *,
+    sort: bool = False,
+) -> list[dict[str, object]]:
+    if not isinstance(raw_ranges, list) or source not in GAP_PROVENANCE_SOURCES:
+        return []
+    used: set[str] = set()
+    result: list[dict[str, object]] = []
+    for index, raw_range in enumerate(raw_ranges):
+        if not isinstance(raw_range, Mapping):
+            continue
+        start = _provenance_time(raw_range.get("start"))
+        end = _provenance_time(raw_range.get("end"))
+        if start is None or end is None or end <= start:
+            continue
+        result.append({
+            "id": _provenance_id(raw_range.get("id"), source, index, used),
+            "source": source,
+            "start": start,
+            "end": end,
+            "removed": raw_range.get("removed") is not False
+            if source in {"manual", "legacy"} else True,
+        })
+    if sort:
+        result.sort(key=lambda item: (int(item["start"]), int(item["end"]), str(item["id"])))
+    return result
+
+
+def _normalize_gap_entries(raw_gaps: object) -> list[dict[str, object]]:
+    if not isinstance(raw_gaps, list):
+        return []
+    result: list[dict[str, object]] = []
+    for item in raw_gaps:
+        if not isinstance(item, Mapping):
+            continue
+        start = _provenance_time(item.get("start"))
+        end = _provenance_time(item.get("end"))
+        if start is not None and end is not None and end > start:
+            result.append({"start": start, "end": end, "removed": item.get("removed") is not False})
+    return result
+
+
+def _coalesce_gap_states(gaps: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
+    ordered = sorted(
+        (
+            {"start": int(item["start"]), "end": int(item["end"]), "removed": item.get("removed") is not False}
+            for item in gaps
+            if _provenance_time(item.get("start")) is not None
+            and _provenance_time(item.get("end")) is not None
+            and int(item["end"]) > int(item["start"])
+        ),
+        key=lambda item: (int(item["start"]), int(item["end"])),
+    )
+    result: list[dict[str, object]] = []
+    for gap in ordered:
+        if not result:
+            result.append(gap)
+            continue
+        previous = result[-1]
+        if gap["start"] <= previous["end"] and gap["removed"] == previous["removed"]:
+            previous["end"] = max(int(previous["end"]), int(gap["end"]))
+            continue
+        start = max(int(gap["start"]), int(previous["end"]))
+        if int(gap["end"]) > start:
+            result.append({**gap, "start": start})
+    return result
+
+
+def _apply_gap_state_range(
+    gaps: Sequence[Mapping[str, object]],
+    start_value: object,
+    end_value: object,
+    removed: bool,
+    *,
+    preserve_uncovered: bool = False,
+) -> list[dict[str, object]]:
+    source = _coalesce_gap_states(gaps)
+    try:
+        start_numeric = min(float(start_value), float(end_value))
+        end_numeric = max(float(start_value), float(end_value))
+    except (TypeError, ValueError, OverflowError):
+        return source
+    start = _provenance_time(start_numeric)
+    end = _provenance_time(end_numeric)
+    if start is None or end is None or end <= start:
+        return source
+    next_gaps: list[dict[str, object]] = []
+    for gap in source:
+        gap_start = int(gap["start"])
+        gap_end = int(gap["end"])
+        if gap_end <= start or gap_start >= end:
+            next_gaps.append(dict(gap))
+            continue
+        if gap_start < start:
+            next_gaps.append({**gap, "end": start})
+        if not removed and not preserve_uncovered:
+            next_gaps.append({
+                "start": max(gap_start, start),
+                "end": min(gap_end, end),
+                "removed": False,
+            })
+        if gap_end > end:
+            next_gaps.append({**gap, "start": end})
+    if removed or preserve_uncovered:
+        next_gaps.append({"start": start, "end": end, "removed": removed})
+    return _coalesce_gap_states(next_gaps)
+
+
+def _normalize_gap_provenance(
+    value: object,
+    fallback_gaps: object = None,
+) -> dict[str, object]:
+    has_value = isinstance(value, Mapping)
+    source = value if has_value else {}
+    raw_sources = source.get("sources") if isinstance(source.get("sources"), Mapping) else {}
+    # Provenance was introduced after the editor had already used the audio
+    # gate for every persisted Gap. Migrate enabled legacy ranges into that
+    # source so a later scan or shrink replaces them. A legacy restoration is
+    # retained as a manual override to preserve the existing playback result.
+    legacy = _normalize_provenance_ranges(
+        source.get("legacy") if has_value else _normalize_gap_entries(fallback_gaps),
+        "legacy",
+    )
+    legacy_audio_gaps = [item for item in legacy if item["removed"] is not False]
+    legacy_manual_overrides = [item for item in legacy if item["removed"] is False]
+    raw_audio_gaps = raw_sources.get("audio_gate")
+    raw_manual_overrides = source.get("manual_overrides")
+    return {
+        "schema": GAP_PROVENANCE_SCHEMA,
+        "sources": {
+            "script_alignment": _normalize_provenance_ranges(
+                raw_sources.get("script_alignment"), "script_alignment", sort=True,
+            ),
+            "audio_gate": _normalize_provenance_ranges(
+                [
+                    *(raw_audio_gaps if isinstance(raw_audio_gaps, list) else []),
+                    *legacy_audio_gaps,
+                ],
+                "audio_gate",
+                sort=True,
+            ),
+        },
+        "manual_overrides": _normalize_provenance_ranges(
+            [
+                *legacy_manual_overrides,
+                *(raw_manual_overrides if isinstance(raw_manual_overrides, list) else []),
+            ],
+            "manual",
+        ),
+        "legacy": [],
+    }
+
+
+def _gap_ranges_from_provenance(value: Mapping[str, object]) -> list[dict[str, object]]:
+    sources = value.get("sources") if isinstance(value.get("sources"), Mapping) else {}
+    result: list[dict[str, object]] = []
+    for source_name in ("script_alignment", "audio_gate"):
+        ranges = sources.get(source_name, [])
+        if isinstance(ranges, list):
+            for item in ranges:
+                result = _apply_gap_state_range(result, item["start"], item["end"], True)
+    for key in ("legacy", "manual_overrides"):
+        ranges = value.get(key, [])
+        if isinstance(ranges, list):
+            for item in ranges:
+                result = _apply_gap_state_range(
+                    result,
+                    item["start"],
+                    item["end"],
+                    item.get("removed") is not False,
+                    preserve_uncovered=item.get("removed") is False,
+                )
+    return _coalesce_gap_states(result)
+
+
+def _decorate_gap_ranges(
+    gaps: Sequence[Mapping[str, object]],
+    provenance: Mapping[str, object],
+) -> list[dict[str, object]]:
+    final_gaps = _coalesce_gap_states(gaps)
+    sources = provenance.get("sources") if isinstance(provenance.get("sources"), Mapping) else {}
+    records: list[Mapping[str, object]] = []
+    for source_name in ("script_alignment", "audio_gate"):
+        ranges = sources.get(source_name, [])
+        if isinstance(ranges, list):
+            records.extend(item for item in ranges if isinstance(item, Mapping))
+    for key in ("manual_overrides", "legacy"):
+        ranges = provenance.get(key, [])
+        if isinstance(ranges, list):
+            records.extend(item for item in ranges if isinstance(item, Mapping))
+
+    decorated: list[dict[str, object]] = []
+    for gap in final_gaps:
+        start = int(gap["start"])
+        end = int(gap["end"])
+        boundaries = {start, end}
+        for record in records:
+            record_start = int(record["start"])
+            record_end = int(record["end"])
+            if record_end > start and record_start < end:
+                boundaries.add(max(start, record_start))
+                boundaries.add(min(end, record_end))
+        points = sorted(boundaries)
+        for left, right in zip(points, points[1:]):
+            if right <= left:
+                continue
+            origins = [
+                source_name for source_name in GAP_PROVENANCE_SOURCES
+                if any(
+                    record.get("source") == source_name
+                    and int(record["start"]) < right
+                    and int(record["end"]) > left
+                    for record in records
+                )
+            ]
+            base_origins = [source_name for source_name in origins if source_name != "manual"]
+            source = (
+                base_origins[0] if len(base_origins) == 1
+                else "manual" if not base_origins and "manual" in origins
+                else None
+            )
+            decorated.append({
+                **gap,
+                "start": left,
+                "end": right,
+                "source": source,
+                "origins": origins,
+            })
+    return decorated
+
+
+def _replace_provenance_source(
+    value: object,
+    source: str,
+    ranges: object,
+    fallback_gaps: object = None,
+) -> dict[str, object]:
+    result = _normalize_gap_provenance(value, fallback_gaps)
+    if source in {"script_alignment", "audio_gate"}:
+        result["sources"][source] = _normalize_provenance_ranges(ranges, source, sort=True)
+    return result
 
 
 def apply_alignment_to_project(
@@ -438,13 +748,15 @@ def apply_alignment_to_project(
     hysteresis_db: float = 2,
     lead_in_ms: int = 40,
     lead_out_ms: int = 80,
+    gap_remove_override: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Create a MAWE-compatible project from one alignment selection.
 
     The source project is copied.  Selected complete candidates, manually
     enabled incomplete candidates, and explicitly kept extras remain enabled;
-    every other source cue is disabled.  When a kept range only covers part of
-    a cue with valid items, that cue is split into item-aligned
+    selected complete candidates with a manual ``discard`` action and every
+    other source cue are disabled.  When a kept range only covers part of a
+    cue with valid items, that cue is split into item-aligned
     enabled/disabled segments.  The complement of those kept ranges, plus
     optional waveform-detected silence, is written as ``gap_remove.gaps``.
     """
@@ -467,6 +779,10 @@ def apply_alignment_to_project(
         source_start = 0
         source_end = 0
     removed_ranges = _complement_ranges(source_start, source_end, kept_intervals)
+    script_alignment_ranges = [
+        {"start": start, "end": end}
+        for start, end in removed_ranges
+    ]
     audio_gap_ranges: list[dict[str, int]] = []
     waveform = output.get("waveform")
     if detect_audio_gaps and isinstance(waveform, Mapping):
@@ -491,17 +807,23 @@ def apply_alignment_to_project(
 
     existing_gap = output.get("gap_remove")
     existing_gaps = existing_gap.get("gaps", []) if isinstance(existing_gap, Mapping) else []
-    existing_removed = [
-        (int(item["start"]), int(item["end"]))
-        for item in existing_gaps
-        if isinstance(item, Mapping)
-        and item.get("removed") is not False
-        and type(item.get("start")) is int
-        and type(item.get("end")) is int
-        and int(item["end"]) > int(item["start"])
-    ]
-    removed_ranges = _merge_ranges([*existing_removed, *removed_ranges])
-    output["gap_remove"] = {
+    existing_provenance = _normalize_gap_provenance(
+        existing_gap.get("provenance") if isinstance(existing_gap, Mapping) else None,
+        existing_gaps,
+    )
+    provenance = _replace_provenance_source(
+        existing_provenance,
+        "script_alignment",
+        script_alignment_ranges,
+    )
+    if detect_audio_gaps:
+        provenance = _replace_provenance_source(
+            provenance,
+            "audio_gate",
+            audio_gap_ranges,
+        )
+    final_gaps = _decorate_gap_ranges(_gap_ranges_from_provenance(provenance), provenance)
+    gap_remove = {
         "schema": "moy.asr.gap_remove.v1",
         "detector": "audio_gate",
         "minimum_ms": max(100, min(60000, int(minimum_gap_ms))),
@@ -510,13 +832,36 @@ def apply_alignment_to_project(
         "lead_in_ms": max(0, min(2000, int(lead_in_ms))),
         "lead_out_ms": max(0, min(2000, int(lead_out_ms))),
         "skip_playback": True,
-        "manual_corrections": True,
-        "operation_mode": "middle_drag",
-        "gaps": [
-            {"start": start, "end": end, "removed": True}
-            for start, end in removed_ranges
-        ],
+        "manual_corrections": bool(provenance["manual_overrides"]),
+        "operation_mode": DEFAULT_GAP_REMOVE_OPERATION_MODE,
+        "disable_coverage_percent": 80,
+        "disable_remaining_ms": 300,
+        "gaps": final_gaps,
+        "provenance": provenance,
     }
+    if gap_remove_override is not None:
+        gap_remove = _normalize_gap_remove_override(
+            gap_remove_override,
+            gap_remove,
+            output,
+        )
+        if isinstance(gap_remove_override.get("provenance"), Mapping):
+            override_provenance = _replace_provenance_source(
+                gap_remove.get("provenance"),
+                "script_alignment",
+                script_alignment_ranges,
+            )
+            gap_remove["provenance"] = override_provenance
+            gap_remove["gaps"] = _decorate_gap_ranges(
+                _gap_ranges_from_provenance(override_provenance),
+                override_provenance,
+            )
+    output["gap_remove"] = gap_remove
+    removed_gap_count = sum(
+        1
+        for item in gap_remove["gaps"]
+        if isinstance(item, Mapping) and item.get("removed") is not False
+    )
     output["script_alignment"] = {
         "schema": "moy.asr.script_alignment.v1",
         "selected": copy.deepcopy(selection.get("selected", [])),
@@ -525,14 +870,151 @@ def apply_alignment_to_project(
         "blockedIncompleteLineIds": copy.deepcopy(selection.get("blockedIncompleteLineIds", [])),
         "manuallyEnabledCandidateIds": copy.deepcopy(selection.get("manuallyEnabledCandidateIds", [])),
         "manuallyEnabledLineIds": copy.deepcopy(selection.get("manuallyEnabledLineIds", [])),
+        "manuallyDisabledCandidateIds": copy.deepcopy(selection.get("manuallyDisabledCandidateIds", [])),
+        "manuallyDisabledLineIds": copy.deepcopy(selection.get("manuallyDisabledLineIds", [])),
         "candidateActions": copy.deepcopy(selection.get("candidateActions", {})),
         "extraRanges": copy.deepcopy(selection.get("extraRanges", [])),
         "extraActions": copy.deepcopy(selection.get("extraActions", {})),
-        "removedGapCount": len(removed_ranges),
+        "removedGapCount": removed_gap_count,
         "audioGapCount": len(audio_gap_ranges),
         "readyForMediaTrim": selection.get("readyForMediaTrim") is True,
     }
     return output
+
+
+def _normalize_gap_remove_override(
+    override: Mapping[str, object],
+    fallback: Mapping[str, object],
+    project: Mapping[str, object],
+) -> dict[str, object]:
+    """Validate the editable gap state sent by the standalone Align UI."""
+
+    result = dict(fallback)
+    result["schema"] = "moy.asr.gap_remove.v1"
+    result["detector"] = "audio_gate"
+
+    def bounded_int(name: str, default: int, lower: int, upper: int) -> int:
+        value = override.get(name, default)
+        if isinstance(value, bool):
+            return default
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return default
+        if not math.isfinite(numeric):
+            return default
+        return max(lower, min(upper, int(round(numeric))))
+
+    def bounded_float(name: str, default: float, lower: float, upper: float) -> float:
+        value = override.get(name, default)
+        if isinstance(value, bool):
+            return default
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return default
+        if not math.isfinite(numeric):
+            return default
+        return max(lower, min(upper, numeric))
+
+    result["minimum_ms"] = bounded_int(
+        "minimum_ms", int(fallback.get("minimum_ms", 500)), 100, 60000,
+    )
+    result["threshold_db"] = bounded_float(
+        "threshold_db", float(fallback.get("threshold_db", -24)), -96, 0,
+    )
+    result["hysteresis_db"] = bounded_float(
+        "hysteresis_db", float(fallback.get("hysteresis_db", 2)), 0, 30,
+    )
+    result["lead_in_ms"] = bounded_int(
+        "lead_in_ms", int(fallback.get("lead_in_ms", 40)), 0, 2000,
+    )
+    result["lead_out_ms"] = bounded_int(
+        "lead_out_ms", int(fallback.get("lead_out_ms", 80)), 0, 2000,
+    )
+    result["disable_coverage_percent"] = bounded_float(
+        "disable_coverage_percent",
+        float(fallback.get("disable_coverage_percent", 80)),
+        0,
+        100,
+    )
+    result["disable_remaining_ms"] = bounded_int(
+        "disable_remaining_ms", int(fallback.get("disable_remaining_ms", 300)), 0, 60000,
+    )
+    result["skip_playback"] = override.get(
+        "skip_playback", fallback.get("skip_playback", True),
+    ) is not False
+    result["manual_corrections"] = override.get(
+        "manual_corrections", fallback.get("manual_corrections", False),
+    ) is True
+    operation_mode = override.get(
+        "operation_mode", fallback.get("operation_mode", DEFAULT_GAP_REMOVE_OPERATION_MODE),
+    )
+    result["operation_mode"] = (
+        operation_mode
+        if isinstance(operation_mode, str) and operation_mode in GAP_REMOVE_OPERATION_MODES
+        else DEFAULT_GAP_REMOVE_OPERATION_MODE
+    )
+
+    waveform = project.get("waveform")
+    duration_value = waveform.get("duration_ms") if isinstance(waveform, Mapping) else None
+    duration_ms: int | None = None
+    if not isinstance(duration_value, bool):
+        try:
+            numeric_duration = float(duration_value)
+        except (TypeError, ValueError):
+            numeric_duration = 0
+        if math.isfinite(numeric_duration) and numeric_duration > 0:
+            duration_ms = int(round(numeric_duration))
+
+    raw_gaps = override.get("gaps", fallback.get("gaps", []))
+    if not isinstance(raw_gaps, list):
+        raise ValueError("gapRemove.gaps 必须是数组")
+    gaps: list[dict[str, object]] = []
+    for item in raw_gaps:
+        if not isinstance(item, Mapping):
+            raise ValueError("gapRemove.gaps 中的项目必须是对象")
+        if isinstance(item.get("start"), bool) or isinstance(item.get("end"), bool):
+            raise ValueError("gapRemove.gaps 的时间必须是数字")
+        try:
+            start = int(round(float(item.get("start"))))
+            end = int(round(float(item.get("end"))))
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError("gapRemove.gaps 的时间必须是有限数字") from None
+        if not math.isfinite(float(start)) or not math.isfinite(float(end)):
+            raise ValueError("gapRemove.gaps 的时间必须是有限数字")
+        start = max(0, start)
+        end = max(0, end)
+        if duration_ms is not None:
+            start = min(duration_ms, start)
+            end = min(duration_ms, end)
+        if end > start:
+            gaps.append({"start": start, "end": end, "removed": item.get("removed") is not False})
+    gaps.sort(key=lambda item: (int(item["start"]), int(item["end"])))
+    coalesced: list[dict[str, object]] = []
+    for gap in gaps:
+        if not coalesced:
+            coalesced.append(gap)
+            continue
+        previous = coalesced[-1]
+        if gap["start"] <= previous["end"] and gap["removed"] == previous["removed"]:
+            previous["end"] = max(int(previous["end"]), int(gap["end"]))
+            continue
+        start = max(int(gap["start"]), int(previous["end"]))
+        if int(gap["end"]) > start:
+            coalesced.append({**gap, "start": start})
+    has_provenance = isinstance(override.get("provenance"), Mapping)
+    provenance = _normalize_gap_provenance(
+        override.get("provenance") if has_provenance else None,
+        coalesced,
+    )
+    result["provenance"] = provenance
+    result["manual_corrections"] = result["manual_corrections"] or bool(provenance["manual_overrides"])
+    result["gaps"] = _decorate_gap_ranges(
+        _gap_ranges_from_provenance(provenance),
+        provenance,
+    )
+    return result
 
 
 def detect_waveform_gaps(
@@ -1345,7 +1827,13 @@ def _default_path_id(
         pool,
         key=lambda path: (
             group_support(path),
-            tuple(int(value) for value in path.get("startSourceOrdinals", []) if type(value) is int),
+            # Compare later script lines first. This keeps a later take for a
+            # given line from being overridden by an earlier-line tie-break.
+            tuple(
+                int(value)
+                for value in reversed(path.get("startSourceOrdinals", []))
+                if type(value) is int
+            ),
             int(path.get("endSourceOrdinal") or 0),
             float(path.get("score") or 0),
         ),
@@ -2228,7 +2716,10 @@ def _kept_intervals_by_cue(
             if (
                 isinstance(item, Mapping)
                 and (
-                    item.get("status") == "match"
+                    (
+                        item.get("status") == "match"
+                        and item.get("manualDisabled") is not True
+                    )
                     or item.get("manualEnabled") is True
                 )
             ):

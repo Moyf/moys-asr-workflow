@@ -9,9 +9,12 @@ import { TextDecoder, TextEncoder } from 'node:util';
 import vm from 'node:vm';
 
 
-const source = fs.readFileSync(new URL('../web/editor-utils.js', import.meta.url), 'utf8');
 const context = { window: {}, TextDecoder, TextEncoder, Uint8Array };
+const gapCoreSource = fs.readFileSync(new URL('../web/gap-remove-core.js', import.meta.url), 'utf8');
+vm.runInNewContext(gapCoreSource, context);
+const source = fs.readFileSync(new URL('../web/editor-utils.js', import.meta.url), 'utf8');
 vm.runInNewContext(source, context);
+const gapCore = context.window.AsrGapRemoveCore;
 const helpers = context.window.AsrEditorUtils;
 const i18nSource = fs.readFileSync(new URL('../web/editor-i18n.js', import.meta.url), 'utf8');
 const i18nContext = { window: {} };
@@ -142,12 +145,722 @@ test('normalizes gap-remove data and returns independent gap values', () => {
   const input = { detector: 'legacy_subtitle_gap', minimum_ms: 1, gaps: [{ start: 10, end: 20 }] };
   const normalized = helpers.normalizeGapRemoveData(input);
   assert.equal(normalized.minimum_ms, 100);
-  assert.equal(normalized.detector, 'legacy_subtitle_gap');
+  assert.equal(normalized.detector, 'audio_gate');
   assert.equal(normalized.disable_coverage_percent, 80);
   assert.equal(normalized.disable_remaining_ms, 300);
-  assert.deepEqual(JSON.parse(JSON.stringify(normalized.gaps)), [{ start: 10, end: 20, removed: true }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(normalized.gaps)), [{
+    start: 10, end: 20, removed: true, source: 'audio_gate', origins: ['audio_gate'],
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(normalized.provenance.sources.audio_gate)), [{
+    id: 'legacy-001', source: 'audio_gate', start: 10, end: 20, removed: true,
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(normalized.provenance.legacy)), []);
   input.gaps[0].start = 999;
   assert.equal(normalized.gaps[0].start, 10);
+});
+
+test('derives initial source and all contributing origins for final gap slices', () => {
+  const normalized = helpers.normalizeGapRemoveData({
+    gaps: [],
+    provenance: {
+      schema: 'moy.asr.gap_provenance.v1',
+      sources: {
+        script_alignment: [{ id: 'align', start: 100, end: 200 }],
+        audio_gate: [{ id: 'audio', start: 150, end: 250 }],
+      },
+      manual_overrides: [{ id: 'restore', start: 180, end: 220, removed: false }],
+      legacy: [],
+    },
+  });
+  assert.equal(normalized.detector, 'audio_gate');
+  assert.deepEqual(JSON.parse(JSON.stringify(normalized.gaps)), [
+    { start: 100, end: 150, removed: true, source: 'script_alignment', origins: ['script_alignment'] },
+    { start: 150, end: 180, removed: true, source: null, origins: ['script_alignment', 'audio_gate'] },
+    { start: 180, end: 200, removed: false, source: null, origins: ['script_alignment', 'audio_gate', 'manual'] },
+    { start: 200, end: 220, removed: false, source: 'audio_gate', origins: ['audio_gate', 'manual'] },
+    { start: 220, end: 250, removed: true, source: 'audio_gate', origins: ['audio_gate'] },
+  ]);
+});
+
+test('migrates legacy active gaps to audio_gate and preserves legacy restorations manually', () => {
+  const provenance = gapCore.normalizeGapRemoveProvenance(null, [
+    { start: 100, end: 300, removed: true },
+    { start: 140, end: 180, removed: false },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(provenance.sources.audio_gate)), [{
+    id: 'legacy-001', source: 'audio_gate', start: 100, end: 300, removed: true,
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(provenance.manual_overrides)), [{
+    id: 'legacy-002', source: 'manual', start: 140, end: 180, removed: false,
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(provenance.legacy)), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(gapCore.gapRangesFromProvenance(provenance))), [
+    { start: 100, end: 140, removed: true },
+    { start: 140, end: 180, removed: false },
+    { start: 180, end: 300, removed: true },
+  ]);
+
+  const rescanned = gapCore.replaceGapRemoveProvenanceSource(
+    provenance,
+    'audio_gate',
+    [{ id: 'rescan', start: 400, end: 600 }],
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(gapCore.gapRangesFromProvenance(rescanned))), [
+    { start: 140, end: 180, removed: false },
+    { start: 400, end: 600, removed: true },
+  ]);
+});
+
+test('keeps restored gaps visible in the single-layer display view', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(gapCore.getGapRemoveDisplayGaps([
+    { start: 100, end: 150, removed: true },
+    { start: 150, end: 180, removed: true },
+    { start: 180, end: 220, removed: false },
+    { start: 220, end: 250, removed: true },
+  ]))), [
+    { start: 100, end: 180, removed: true },
+    { start: 180, end: 220, removed: false },
+    { start: 220, end: 250, removed: true },
+  ]);
+});
+
+test('projects overlapping enabled and restored ranges into one non-overlapping layer', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(gapCore.getGapRemoveDisplayGaps([
+    { start: 100, end: 300, removed: true, origins: ['audio_gate'] },
+    { start: 150, end: 200, removed: false, origins: ['audio_gate', 'manual'] },
+  ]))), [
+    { start: 100, end: 150, removed: true, source: 'audio_gate', origins: ['audio_gate'] },
+    { start: 150, end: 200, removed: false, source: 'audio_gate', origins: ['audio_gate', 'manual'] },
+    { start: 200, end: 300, removed: true, source: 'audio_gate', origins: ['audio_gate'] },
+  ]);
+});
+
+test('keeps display provenance metadata while presenting one merged gap', () => {
+  const visible = gapCore.getGapRemoveDisplayGaps([
+    { start: 100, end: 150, removed: true, source: 'audio_gate', origins: ['audio_gate'] },
+    { start: 150, end: 180, removed: true, source: 'audio_gate', origins: ['audio_gate', 'manual'] },
+    { start: 180, end: 220, removed: true, source: 'script_alignment', origins: ['script_alignment'] },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(visible)), [{
+    start: 100,
+    end: 220,
+    removed: true,
+    source: null,
+    origins: ['script_alignment', 'audio_gate', 'manual'],
+  }]);
+  assert.equal(gapCore.getGapRemoveDisplayType(visible[0]), 'multi_source_manual');
+  assert.equal(gapCore.isGapRemoveDisplayProtected(visible[0]), true);
+});
+
+test('classifies common and legacy-migrated gap display types', () => {
+  const cases = [
+    [{ source: 'audio_gate', origins: ['audio_gate'] }, 'audio_gate', false],
+    [{ source: 'audio_gate', origins: ['audio_gate', 'manual'] }, 'audio_gate_manual', true],
+    [{ source: 'manual', origins: ['manual'] }, 'manual', true],
+    [{ source: 'script_alignment', origins: ['script_alignment'] }, 'script_alignment', true],
+    [{ source: 'legacy', origins: ['legacy'] }, 'audio_gate', false],
+    [{ source: null, origins: ['script_alignment', 'audio_gate'] }, 'multi_source', true],
+    [{ source: null, origins: ['audio_gate', 'legacy'] }, 'audio_gate', false],
+  ];
+  for (const [gap, type, protectedGap] of cases) {
+    assert.equal(gapCore.getGapRemoveDisplayType(gap), type);
+    assert.equal(gapCore.isGapRemoveDisplayProtected(gap), protectedGap);
+  }
+});
+
+test('resizing an enabled gap can fully cover an adjacent restored gap', () => {
+  const visible = gapCore.getGapRemoveDisplayGaps([
+    { start: 100, end: 180, removed: true },
+    { start: 180, end: 220, removed: false },
+    { start: 220, end: 300, removed: true },
+  ]);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(gapCore.resizeGapRemoveBoundary(visible, 0, 'end', 250, 10))),
+    [{ start: 100, end: 300, removed: true }],
+  );
+});
+
+test('clearing a gap removes its source records instead of creating a restoration mask', () => {
+  const initial = gapCore.normalizeGapRemoveProvenance({
+    sources: { audio_gate: [{ id: 'audio', start: 100, end: 300 }] },
+    manual_overrides: [{ id: 'restore', start: 150, end: 200, removed: false }],
+  });
+  const cleared = gapCore.removeGapRemoveProvenanceRange(initial, 150, 200);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(gapCore.gapRangesFromProvenance(cleared))),
+    [
+      { start: 100, end: 150, removed: true },
+      { start: 200, end: 300, removed: true },
+    ],
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(cleared.manual_overrides)), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(cleared.sources.audio_gate)), [
+    { id: 'audio', source: 'audio_gate', start: 100, end: 150, removed: true },
+    { id: 'audio-2', source: 'audio_gate', start: 200, end: 300, removed: true },
+  ]);
+});
+
+test('replaces one provenance source without losing the other layers', () => {
+  const initial = gapCore.normalizeGapRemoveProvenance({
+    sources: {
+      script_alignment: [{ id: 'align', start: 0, end: 100 }],
+      audio_gate: [{ id: 'old-audio', start: 200, end: 300 }],
+    },
+    manual_overrides: [{ id: 'manual', start: 400, end: 500, removed: true }],
+  });
+  const replaced = gapCore.replaceGapRemoveProvenanceSource(
+    initial,
+    'audio_gate',
+    [{ id: 'new-audio', start: 600, end: 700 }],
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(gapCore.gapRangesFromProvenance(replaced))),
+    [
+      { start: 0, end: 100, removed: true },
+      { start: 400, end: 500, removed: true },
+      { start: 600, end: 700, removed: true },
+    ],
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(replaced.sources.script_alignment)),
+    [{ id: 'align', source: 'script_alignment', start: 0, end: 100, removed: true }],
+  );
+});
+
+test('regenerates an audio source while retaining a manual restoration', () => {
+  const initial = gapCore.normalizeGapRemoveProvenance({
+    sources: {
+      audio_gate: [{ id: 'old-audio', start: 100, end: 300 }],
+    },
+    manual_overrides: [{ id: 'restore', start: 150, end: 200, removed: false }],
+  });
+  const replaced = gapCore.replaceGapRemoveProvenanceSource(
+    initial,
+    'audio_gate',
+    [{ id: 'new-audio', start: 120, end: 340 }],
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(gapCore.gapRangesFromProvenance(replaced))),
+    [
+      { start: 120, end: 150, removed: true },
+      { start: 150, end: 200, removed: false },
+      { start: 200, end: 340, removed: true },
+    ],
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(replaced.manual_overrides)), [
+    { id: 'restore', source: 'manual', start: 150, end: 200, removed: false },
+  ]);
+});
+
+test('shrinks a pure audio gate by changing its duration without adding a manual layer', () => {
+  const initial = gapCore.normalizeGapRemoveProvenance({
+    sources: { audio_gate: [{ id: 'audio', start: 100, end: 500 }] },
+  });
+  const shortened = gapCore.shrinkGapRemoveGaps(initial.sources.audio_gate, 40, 80);
+  const replaced = gapCore.replaceGapRemoveProvenanceSource(
+    initial,
+    'audio_gate',
+    shortened,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(replaced.sources.audio_gate)), [
+    { id: 'audio_gate-001', source: 'audio_gate', start: 140, end: 420, removed: true },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(replaced.manual_overrides)), []);
+  const normalized = gapCore.normalizeGapRemoveData({
+    gaps: [],
+    provenance: replaced,
+  });
+  assert.equal(normalized.manual_corrections, false);
+  assert.deepEqual(JSON.parse(JSON.stringify(normalized.gaps)), [
+    { start: 140, end: 420, removed: true, source: 'audio_gate', origins: ['audio_gate'] },
+  ]);
+});
+
+test('resizing one provenance gap updates one boundary record instead of stacking restorations', () => {
+  const initial = gapCore.normalizeGapRemoveProvenance({
+    sources: { audio_gate: [{ id: 'audio', start: 100, end: 500 }] },
+  });
+  const first = gapCore.resizeGapRemoveProvenanceBoundary(
+    initial,
+    gapCore.gapRangesFromProvenance(initial),
+    0,
+    'end',
+    420,
+  );
+  assert.equal(first.changed, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(first.gaps)), [
+    { start: 100, end: 420, removed: true },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(first.provenance.manual_overrides)), [{
+    id: 'manual-001',
+    source: 'manual',
+    start: 420,
+    end: 500,
+    removed: true,
+    operation: 'boundary_resize',
+    edge: 'end',
+    base: 500,
+    boundary: 420,
+  }]);
+
+  const second = gapCore.resizeGapRemoveProvenanceBoundary(
+    first.provenance,
+    first.gaps,
+    0,
+    'end',
+    380,
+  );
+  assert.equal(second.changed, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(second.gaps)), [
+    { start: 100, end: 380, removed: true },
+  ]);
+  assert.equal(second.provenance.manual_overrides.length, 1);
+  assert.equal(second.provenance.manual_overrides[0].boundary, 380);
+  assert.equal(second.gaps.some((gap) => gap.removed === false), false);
+
+  const third = gapCore.resizeGapRemoveProvenanceBoundary(
+    second.provenance,
+    second.gaps,
+    0,
+    'start',
+    140,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(third.gaps)), [
+    { start: 140, end: 380, removed: true },
+  ]);
+  assert.equal(third.provenance.manual_overrides.length, 2);
+  assert.equal(
+    third.provenance.manual_overrides.find((item) => item.edge === 'start')?.boundary,
+    140,
+  );
+  assert.equal(third.gaps.some((gap) => gap.removed === false), false);
+
+  const regenerated = gapCore.replaceGapRemoveProvenanceSource(
+    third.provenance,
+    'audio_gate',
+    [{ id: 'new-audio', start: 100, end: 500 }],
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(gapCore.gapRangesFromProvenance(regenerated))), [
+    { start: 140, end: 380, removed: true },
+  ]);
+});
+
+test('shrinking a restored gap boundary clears only its vacated edge', () => {
+  const initial = gapCore.normalizeGapRemoveProvenance({
+    sources: { audio_gate: [{ id: 'audio', start: 100, end: 500 }] },
+    manual_overrides: [{ id: 'restore', start: 100, end: 500, removed: false }],
+  });
+  const shrinkEnd = gapCore.resizeGapRemoveProvenanceBoundary(
+    initial,
+    gapCore.gapRangesFromProvenance(initial),
+    0,
+    'end',
+    420,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(shrinkEnd.gaps)), [
+    { start: 100, end: 420, removed: false },
+  ]);
+  assert.equal(shrinkEnd.gaps.some((gap) => gap.removed), false);
+  assert.deepEqual(JSON.parse(JSON.stringify(shrinkEnd.provenance.manual_overrides.at(-1))), {
+    id: 'manual-002',
+    source: 'manual',
+    start: 420,
+    end: 500,
+    removed: false,
+    operation: 'boundary_resize',
+    edge: 'end',
+    base: 500,
+    boundary: 420,
+  });
+
+  const restoredEnd = gapCore.resizeGapRemoveProvenanceBoundary(
+    shrinkEnd.provenance,
+    shrinkEnd.gaps,
+    0,
+    'end',
+    500,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(restoredEnd.gaps)), [
+    { start: 100, end: 500, removed: false },
+  ]);
+
+  const shrinkStart = gapCore.resizeGapRemoveProvenanceBoundary(
+    initial,
+    gapCore.gapRangesFromProvenance(initial),
+    0,
+    'start',
+    180,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(shrinkStart.gaps)), [
+    { start: 180, end: 500, removed: false },
+  ]);
+  assert.equal(shrinkStart.gaps.some((gap) => gap.removed), false);
+});
+
+test('resizing across a restored gap partially clears it and does not revive it on return', () => {
+  const initial = gapCore.normalizeGapRemoveProvenance({
+    sources: { audio_gate: [{ id: 'audio', start: 100, end: 700 }] },
+    manual_overrides: [{ id: 'restore', start: 400, end: 500, removed: false }],
+  });
+  const result = gapCore.resizeGapRemoveProvenanceBoundary(
+    initial,
+    gapCore.gapRangesFromProvenance(initial),
+    0,
+    'end',
+    450,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(result.gaps)), [
+    { start: 100, end: 450, removed: true },
+    { start: 450, end: 500, removed: false },
+    { start: 500, end: 700, removed: true },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.provenance.manual_overrides)), [
+    { id: 'restore', source: 'manual', start: 450, end: 500, removed: false },
+    {
+      id: 'manual-002', source: 'manual', start: 400, end: 450, removed: true,
+      operation: 'boundary_resize', edge: 'end', base: 400, boundary: 450,
+      cleared_ranges: [{ start: 400, end: 450 }],
+    },
+  ]);
+  const returned = gapCore.resizeGapRemoveProvenanceBoundary(
+    result.provenance,
+    result.gaps,
+    0,
+    'end',
+    400,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(returned.gaps)), [
+    { start: 100, end: 400, removed: true },
+    { start: 450, end: 500, removed: false },
+    { start: 500, end: 700, removed: true },
+  ]);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(returned.provenance.manual_overrides.at(-1).cleared_ranges)),
+    [{ start: 400, end: 450 }],
+  );
+});
+
+test('resizing across a fully covered restored gap clears the whole gap', () => {
+  const initial = gapCore.normalizeGapRemoveProvenance({
+    sources: { audio_gate: [{ id: 'audio', start: 100, end: 400 }] },
+    manual_overrides: [{ id: 'restore', start: 400, end: 500, removed: false }],
+  });
+  const covered = gapCore.resizeGapRemoveProvenanceBoundary(
+    initial,
+    gapCore.gapRangesFromProvenance(initial),
+    0,
+    'end',
+    520,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(covered.gaps)), [
+    { start: 100, end: 520, removed: true },
+  ]);
+  assert.equal(covered.provenance.manual_overrides.some((item) => item.id === 'restore'), false);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(covered.provenance.manual_overrides[0].cleared_ranges)),
+    [{ start: 400, end: 500 }],
+  );
+  const returned = gapCore.resizeGapRemoveProvenanceBoundary(
+    covered.provenance,
+    covered.gaps,
+    0,
+    'end',
+    400,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(returned.gaps)), [
+    { start: 100, end: 400, removed: true },
+  ]);
+});
+
+test('a restored boundary can partially clear an enabled gap without coupling the neighbor', () => {
+  const initial = gapCore.normalizeGapRemoveProvenance({
+    sources: { audio_gate: [{ id: 'audio', start: 400, end: 500 }] },
+    manual_overrides: [{ id: 'restore', start: 100, end: 400, removed: false }],
+  });
+  const result = gapCore.resizeGapRemoveProvenanceBoundary(
+    initial,
+    gapCore.gapRangesFromProvenance(initial),
+    0,
+    'end',
+    450,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(result.gaps)), [
+    { start: 100, end: 450, removed: false },
+    { start: 450, end: 500, removed: true },
+  ]);
+  const returned = gapCore.resizeGapRemoveProvenanceBoundary(
+    result.provenance,
+    result.gaps,
+    0,
+    'end',
+    400,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(returned.gaps)), [
+    { start: 100, end: 400, removed: false },
+    { start: 450, end: 500, removed: true },
+  ]);
+});
+
+test('moving one enabled gap updates one move record instead of stacking restorations', () => {
+  const initial = gapCore.normalizeGapRemoveProvenance({
+    sources: { audio_gate: [{ id: 'audio', start: 100, end: 500 }] },
+  });
+  const first = gapCore.moveGapRemoveProvenance(
+    initial,
+    gapCore.gapRangesFromProvenance(initial),
+    0,
+    200,
+    1000,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(first.gaps)), [
+    { start: 300, end: 700, removed: true },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(first.provenance.manual_overrides)), [{
+    id: 'manual-001',
+    source: 'manual',
+    start: 100,
+    end: 700,
+    removed: true,
+    operation: 'move',
+    base_start: 100,
+    base_end: 500,
+    target_start: 300,
+    target_end: 700,
+  }]);
+
+  const second = gapCore.moveGapRemoveProvenance(
+    first.provenance,
+    first.gaps,
+    0,
+    100,
+    1000,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(second.gaps)), [
+    { start: 400, end: 800, removed: true },
+  ]);
+  assert.equal(second.provenance.manual_overrides.length, 1);
+  assert.equal(second.provenance.manual_overrides[0].target_start, 400);
+  assert.equal(second.provenance.manual_overrides[0].target_end, 800);
+  assert.equal(second.gaps.some((gap) => gap.removed === false), false);
+
+  const returned = gapCore.moveGapRemoveProvenance(
+    second.provenance,
+    second.gaps,
+    0,
+    -300,
+    1000,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(returned.gaps)), [
+    { start: 100, end: 500, removed: true },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(returned.provenance.manual_overrides)), []);
+});
+
+test('moving a restored gap removes the old restoration before applying its new range', () => {
+  const initial = gapCore.normalizeGapRemoveProvenance({
+    sources: { audio_gate: [{ id: 'audio', start: 100, end: 700 }] },
+    manual_overrides: [{ id: 'restore', start: 300, end: 400, removed: false }],
+  });
+  const first = gapCore.moveGapRemoveProvenance(
+    initial,
+    gapCore.gapRangesFromProvenance(initial),
+    1,
+    100,
+    1000,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(first.gaps)), [
+    { start: 100, end: 300, removed: true },
+    { start: 400, end: 500, removed: false },
+    { start: 500, end: 700, removed: true },
+  ]);
+  assert.equal(first.provenance.manual_overrides.length, 2);
+  assert.equal(first.provenance.manual_overrides.at(-1).operation, 'move');
+
+  const second = gapCore.moveGapRemoveProvenance(
+    first.provenance,
+    first.gaps,
+    1,
+    100,
+    1000,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(second.gaps)), [
+    { start: 100, end: 300, removed: true },
+    { start: 500, end: 600, removed: false },
+    { start: 600, end: 700, removed: true },
+  ]);
+  assert.equal(second.provenance.manual_overrides.length, 2);
+  assert.equal(second.provenance.manual_overrides.at(-1).target_start, 500);
+  assert.equal(second.provenance.manual_overrides.at(-1).target_end, 600);
+});
+
+test('moving a gap absorbs an overlapping equal-state gap without changing target length', () => {
+  const initial = gapCore.normalizeGapRemoveProvenance({
+    sources: {
+      audio_gate: [
+        { id: 'first', start: 100, end: 300 },
+        { id: 'covered', start: 500, end: 700 },
+      ],
+    },
+  });
+  const first = gapCore.moveGapRemoveProvenance(
+    initial,
+    gapCore.gapRangesFromProvenance(initial),
+    0,
+    300,
+    1000,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(first.gaps)), [
+    { start: 400, end: 600, removed: true },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(first.provenance.sources.audio_gate)), [{
+    id: 'first',
+    source: 'audio_gate',
+    start: 100,
+    end: 300,
+    removed: true,
+  }]);
+
+  const second = gapCore.moveGapRemoveProvenance(
+    first.provenance,
+    first.gaps,
+    0,
+    100,
+    1000,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(second.gaps)), [
+    { start: 500, end: 700, removed: true },
+  ]);
+  assert.equal(second.provenance.manual_overrides.length, 1);
+  assert.equal(second.provenance.manual_overrides[0].target_start, 500);
+  assert.equal(second.provenance.manual_overrides[0].target_end, 700);
+});
+
+test('moving an enabled gap across a moved restoration only clips its visible target', () => {
+  const initial = gapCore.normalizeGapRemoveProvenance({
+    manual_overrides: [
+      { id: 'restore-base', start: 100, end: 200, removed: false },
+      {
+        id: 'restore-move',
+        start: 100,
+        end: 400,
+        removed: false,
+        operation: 'move',
+        base_start: 100,
+        base_end: 200,
+        target_start: 200,
+        target_end: 400,
+      },
+      { id: 'active', start: 500, end: 550, removed: true },
+    ],
+  });
+  const first = gapCore.moveGapRemoveProvenance(
+    initial,
+    gapCore.gapRangesFromProvenance(initial),
+    1,
+    -225,
+    1000,
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(first.gaps)), [
+    { start: 200, end: 275, removed: false },
+    { start: 275, end: 325, removed: true },
+    { start: 325, end: 400, removed: false },
+  ]);
+  const restoreMove = first.provenance.manual_overrides.find((item) => item.id === 'restore-move');
+  assert.deepEqual(JSON.parse(JSON.stringify(restoreMove.target_ranges)), [
+    { start: 200, end: 275 },
+    { start: 325, end: 400 },
+  ]);
+  assert.equal(first.gaps.some((gap) => gap.start < 200), false);
+
+  const second = gapCore.moveGapRemoveProvenance(
+    first.provenance,
+    first.gaps,
+    1,
+    225,
+    1000,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(second.gaps)), [
+    { start: 200, end: 275, removed: false },
+    { start: 325, end: 400, removed: false },
+    { start: 500, end: 550, removed: true },
+  ]);
+});
+
+test('fully covering a moved restoration keeps its cleared base from returning', () => {
+  const initial = gapCore.normalizeGapRemoveProvenance({
+    manual_overrides: [
+      { id: 'restore-base', start: 100, end: 200, removed: false },
+      {
+        id: 'restore-move',
+        start: 100,
+        end: 400,
+        removed: false,
+        operation: 'move',
+        base_start: 100,
+        base_end: 200,
+        target_start: 300,
+        target_end: 400,
+      },
+      { id: 'active', start: 500, end: 600, removed: true },
+    ],
+  });
+  const covered = gapCore.moveGapRemoveProvenance(
+    initial,
+    gapCore.gapRangesFromProvenance(initial),
+    1,
+    -200,
+    1000,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(covered.gaps)), [
+    { start: 300, end: 400, removed: true },
+  ]);
+  const restoreMove = covered.provenance.manual_overrides.find((item) => item.id === 'restore-move');
+  assert.deepEqual(JSON.parse(JSON.stringify(restoreMove.target_ranges)), []);
+
+  const movedAway = gapCore.moveGapRemoveProvenance(
+    covered.provenance,
+    covered.gaps,
+    0,
+    400,
+    1000,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(movedAway.gaps)), [
+    { start: 700, end: 800, removed: true },
+  ]);
+  assert.equal(movedAway.gaps.some((gap) => gap.start < 300), false);
+});
+
+test('moving an active gap beside an inactive gap keeps both geometries independent', () => {
+  const initial = gapCore.normalizeGapRemoveProvenance({
+    manual_overrides: [
+      { id: 'inactive', start: 100, end: 200, removed: false },
+      { id: 'active', start: 200, end: 260, removed: true },
+    ],
+  });
+  const moved = gapCore.moveGapRemoveProvenance(
+    initial,
+    gapCore.gapRangesFromProvenance(initial),
+    1,
+    120,
+    1000,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(moved.gaps)), [
+    { start: 100, end: 200, removed: false },
+    { start: 320, end: 380, removed: true },
+  ]);
+});
+
+test('reuses one cached display projection for every waveform row', () => {
+  const gaps = [
+    { start: 100, end: 250, removed: true, source: 'audio_gate', origins: ['audio_gate'] },
+  ];
+  const first = gapCore.getGapRemoveDisplayGaps(gaps);
+  const second = gapCore.getGapRemoveDisplayGaps(gaps);
+  assert.strictEqual(second, first);
+  assert.deepEqual(JSON.parse(JSON.stringify(first)), [
+    { start: 100, end: 250, removed: true, source: 'audio_gate', origins: ['audio_gate'] },
+  ]);
 });
 
 test('preserves the combined gap boundary and middle operation mode', () => {
@@ -1071,6 +1784,24 @@ test('drops a gap entirely when lead padding consumes its duration', () => {
 });
 
 
+test('only skips a removed gap while playing and respects an explicit gap preview', () => {
+  const gaps = [{ start: 100, end: 300, removed: true }];
+  assert.equal(gapCore.getGapPlaybackSkip(gaps, 150, {
+    skipPlayback: true,
+    isPlaying: false,
+  }), null);
+  assert.deepEqual(gapCore.getGapPlaybackSkip(gaps, 150, {
+    skipPlayback: true,
+    isPlaying: true,
+  }), gaps[0]);
+  assert.equal(gapCore.getGapPlaybackSkip(gaps, 150, {
+    skipPlayback: true,
+    isPlaying: true,
+    previewRange: { start: 100, end: 300 },
+  }), null);
+});
+
+
 test('Alt-middle restoration only affects removed parts overlapped by the range', () => {
   const gaps = helpers.applyGapRemoveRange([
     { start: 100, end: 500, removed: true },
@@ -1158,7 +1889,7 @@ test('whole-gap moves can cross an earlier row boundary', () => {
 });
 
 
-test('dragging a shared gap boundary adjusts both neighboring states', () => {
+test('dragging a shared gap boundary expands only the selected gap', () => {
   const gaps = helpers.resizeGapRemoveBoundary([
     { start: 100, end: 400, removed: true },
     { start: 400, end: 700, removed: false },
@@ -1170,14 +1901,15 @@ test('dragging a shared gap boundary adjusts both neighboring states', () => {
 });
 
 
-test('dragging a gap boundary into the next gap merges both ranges', () => {
+test('dragging a gap boundary partially covering the next gap trims that gap', () => {
   const gaps = helpers.resizeGapRemoveBoundary([
     { start: 100, end: 400, removed: true },
     { start: 700, end: 900, removed: false },
     { start: 1100, end: 1300, removed: true },
   ], 0, 'end', 750);
   assert.deepEqual(JSON.parse(JSON.stringify(gaps)), [
-    { start: 100, end: 900, removed: true },
+    { start: 100, end: 750, removed: true },
+    { start: 750, end: 900, removed: false },
     { start: 1100, end: 1300, removed: true },
   ]);
 });

@@ -37,6 +37,8 @@ from maw.script_alignment import (  # noqa: E402
 
 
 PAGE_PATH = Path(__file__).with_name("index.html")
+GAP_REMOVE_CORE_PATH = ROOT / "web" / "gap-remove-core.js"
+PAGE_CORE_PLACEHOLDER = "/* __GAP_REMOVE_CORE_JS__ */"
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
 
 
@@ -101,12 +103,15 @@ class AlignmentRequestHandler(BaseHTTPRequestHandler):
                 selected = request.get("selectedByLine", {})
                 extra_actions = request.get("extraActions", {})
                 candidate_actions = request.get("candidateActions", {})
+                gap_remove = request.get("gapRemove")
                 if not isinstance(selected, dict):
                     raise ValueError("selectedByLine 必须是对象")
                 if not isinstance(extra_actions, dict):
                     raise ValueError("extraActions 必须是对象")
                 if not isinstance(candidate_actions, dict):
                     raise ValueError("candidateActions 必须是对象")
+                if gap_remove is not None and not isinstance(gap_remove, dict):
+                    raise ValueError("gapRemove 必须是对象")
                 selection = make_selection_manifest(
                     self.server.state.alignment,
                     selected,
@@ -117,11 +122,13 @@ class AlignmentRequestHandler(BaseHTTPRequestHandler):
                     self.server.state.project,
                     self.server.state.alignment,
                     selection,
+                    gap_remove_override=gap_remove,
                 )
                 self.send_json(HTTPStatus.OK, {
                     "ok": True,
                     "selection": selection,
                     "gapRanges": preview_project.get("gap_remove", {}).get("gaps", []),
+                    "gapRemove": preview_project.get("gap_remove", {}),
                 })
             except (UnicodeDecodeError, json.JSONDecodeError, OSError, ValueError) as error:
                 self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
@@ -138,8 +145,11 @@ class AlignmentRequestHandler(BaseHTTPRequestHandler):
             if not isinstance(extra_actions, dict):
                 raise ValueError("extraActions 必须是对象")
             candidate_actions = request.get("candidateActions", {})
+            gap_remove = request.get("gapRemove")
             if not isinstance(candidate_actions, dict):
                 raise ValueError("candidateActions 必须是对象")
+            if gap_remove is not None and not isinstance(gap_remove, dict):
+                raise ValueError("gapRemove 必须是对象")
             selection = make_selection_manifest(
                 self.server.state.alignment,
                 selected,
@@ -150,6 +160,7 @@ class AlignmentRequestHandler(BaseHTTPRequestHandler):
                 self.server.state.project,
                 self.server.state.alignment,
                 selection,
+                gap_remove_override=gap_remove,
             )
             output_project["script_alignment"]["createdAt"] = datetime.now().astimezone().isoformat(timespec="seconds")
             output_project["script_alignment"]["sourceProjectPath"] = str(self.server.state.project_path)
@@ -170,8 +181,8 @@ class AlignmentRequestHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/":
             try:
-                body = PAGE_PATH.read_bytes()
-            except OSError as error:
+                body = render_page()
+            except (OSError, ValueError) as error:
                 self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(error)})
                 return
             self.send_response(HTTPStatus.OK)
@@ -324,6 +335,15 @@ def write_project(project_path: Path, payload: dict[str, object]) -> Path:
         Path(temporary_name).unlink(missing_ok=True)
         raise
     return candidate.resolve()
+
+
+def render_page() -> bytes:
+    """Inline the shared gap-remove core into the standalone alignment page."""
+    page = PAGE_PATH.read_text(encoding="utf-8")
+    core = GAP_REMOVE_CORE_PATH.read_text(encoding="utf-8").rstrip()
+    if page.count(PAGE_CORE_PLACEHOLDER) != 1:
+        raise ValueError("对齐页面缺少唯一的 Gap Core 注入占位符")
+    return page.replace(PAGE_CORE_PLACEHOLDER, core).encode("utf-8")
 
 
 def main() -> int:
