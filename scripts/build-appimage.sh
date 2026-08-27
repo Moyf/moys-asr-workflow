@@ -19,8 +19,8 @@ uv export --frozen --extra local --no-dev --format requirements-txt -o build/req
 uv export --frozen --extra ocr --no-dev --format requirements-txt -o build/requirements-ocr.txt
 # moss 依赖与 local（qwen-asr/Transformers 4.x）互斥，独立声明、独立冻结。
 uv pip compile moss-requirements.in -p 3.11 --extra-index-url https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match -o build/requirements-moss.txt
-# 生成 CPU 版清单（去除 +cuXXX），供无 NVIDIA GPU 的机器首装时直接使用。
-uv run python scripts/freeze_cpu_requirements.py
+# CPU 变体：屏蔽 GPU 源后原生冻结（带 CPU wheel 真实哈希，而非冻结后文本剔除）。
+uv pip compile local-cpu-requirements.in -p 3.11 --generate-hashes --index-strategy unsafe-best-match -o build/requirements-local-cpu.txt
 uv run --group build pyinstaller --noconfirm --clean MAW.spec
 # PyInstaller 6 places datas under _internal in an onedir bundle. Keep the
 # user-facing FAQ at the AppImage root as well, where users can find it easily.
