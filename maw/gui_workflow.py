@@ -19,6 +19,7 @@ from typing import BinaryIO, Final, TextIO, final
 from maw.console import configure_utf8_environment
 from maw.gui_config import QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, load_env
 from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
+from maw.media import read_bwf_time_reference
 from maw.qwen_audio import split_qwen_audio_hotwords
 from maw.local_runtime import default_runtime_root, model_cache_environment
 from maw.runtimes import LOCAL
@@ -390,6 +391,10 @@ def render_editor_html(json_path: Path, media_path: Path, html_path: Path, ui_la
     project = json.loads(Path(json_path).read_text(encoding="utf-8"))
     normalized = normalize_project(project)
     media = Path(media_path).expanduser().resolve()
+    normalized.pop("media_time_reference", None)
+    media_time_reference = read_bwf_time_reference(media)
+    if media_time_reference is not None:
+        normalized["media_time_reference"] = media_time_reference
     try:
         media_url = media.relative_to(Path(html_path).parent.resolve()).as_posix()
     except ValueError:

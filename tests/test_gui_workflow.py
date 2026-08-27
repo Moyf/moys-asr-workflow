@@ -2,6 +2,7 @@
 
 import json
 import os
+import struct
 import subprocess
 import sys
 import tempfile
@@ -29,6 +30,19 @@ from maw.gui_workflow import (  # noqa: E402
     run_transcription,
 )
 from maw.gui_platform import _terminate_registered_job, terminate_process_tree  # noqa: E402
+
+
+def _write_bwf_wav(path: Path, sample_rate: int, time_reference_samples: int) -> None:
+    fmt = struct.pack('<HHIIHH', 1, 1, sample_rate, sample_rate * 2, 2, 16)
+    bext = bytearray(346)
+    bext[338:346] = struct.pack('<II', time_reference_samples & 0xFFFFFFFF, time_reference_samples >> 32)
+    data = bytes(4)
+    chunks = (
+        b'fmt ' + struct.pack('<I', len(fmt)) + fmt
+        + b'bext' + struct.pack('<I', len(bext)) + bext
+        + b'data' + struct.pack('<I', len(data)) + data
+    )
+    path.write_bytes(b'RIFF' + struct.pack('<I', 4 + len(chunks)) + b'WAVE' + chunks)
 
 
 class GuiWorkflowTests(unittest.TestCase):
@@ -444,6 +458,19 @@ class GuiWorkflowTests(unittest.TestCase):
         page = html_path.read_text(encoding="utf-8")
         self.assertIn('const GENERATED_LANGUAGE = typeof "en"', page)
         self.assertNotIn("__UI_LANGUAGE_JSON__", page)
+
+    def test_render_editor_html_embeds_bwf_time_reference(self) -> None:
+        json_path = self.srt_path.with_suffix('.mosp')
+        html_path = self.srt_path.with_suffix('.edit.html')
+        media_path = self.root / 'recording.wav'
+        json_path.write_text(json.dumps({'segments': []}), encoding='utf-8')
+        _write_bwf_wav(media_path, 48000, 8895762)
+
+        result = render_editor_html(json_path, media_path, html_path)
+        self.assertEqual(result, html_path)
+        page = html_path.read_text(encoding='utf-8')
+        self.assertIn('"sample_rate": 48000', page)
+        self.assertIn('"time_reference_samples": 8895762', page)
 
     def test_child_environment_forces_unbuffered_python_stdout(self) -> None:
         env = _child_environment({"PYTHONUNBUFFERED": "0"}, "secret-key", "workspace-123")
