@@ -9,7 +9,6 @@ repaired without redownloading model weights.
 
 from __future__ import annotations
 
-import json
 import os
 import queue
 import re
@@ -17,7 +16,6 @@ import shutil
 import subprocess
 import sys
 import threading
-import time
 import zipfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -26,6 +24,7 @@ from threading import Event
 from typing import Final, TextIO
 
 from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
+from maw.runtime_manifest import STATUS_INSTALLING, STATUS_READY, read_runtime_manifest, write_runtime_manifest
 
 
 RUNTIME_VERSION: Final = "5"
@@ -123,7 +122,6 @@ def managed_runtime_status(model_cache_root: str | Path | None = None) -> LocalR
     root = default_runtime_root()
     python = runtime_python_path(root)
     model_cache = resolve_model_cache_root(model_cache_root)
-    manifest_path = root / "runtime.json"
     if not root.exists():
         return LocalRuntimeStatus("missing", False, str(root), "", str(model_cache), "本地运行环境尚未安装。")
     if not python.exists():
@@ -135,8 +133,18 @@ def managed_runtime_status(model_cache_root: str | Path | None = None) -> LocalR
             str(model_cache),
             "本地运行环境不完整，请点击“修复运行环境”。",
         )
-    manifest = _read_manifest(manifest_path)
-    if manifest.get("status") != "ready" or manifest.get("runtimeVersion") != RUNTIME_VERSION:
+    manifest = read_runtime_manifest(root)
+    if manifest.installing:
+        return LocalRuntimeStatus(
+            "installing",
+            False,
+            str(root),
+            str(python),
+            str(model_cache),
+            "本地运行环境正在安装中，请稍候。",
+            manifest.runtime_version or RUNTIME_VERSION,
+        )
+    if not manifest.is_ready_for(RUNTIME_VERSION):
         return LocalRuntimeStatus(
             "broken",
             False,
@@ -144,7 +152,7 @@ def managed_runtime_status(model_cache_root: str | Path | None = None) -> LocalR
             str(python),
             str(model_cache),
             "本地运行环境需要修复，请点击“修复运行环境”。",
-            str(manifest.get("runtimeVersion") or RUNTIME_VERSION),
+            manifest.runtime_version or RUNTIME_VERSION,
         )
     if not _runtime_package_dirs_present(root):
         return LocalRuntimeStatus(
@@ -182,6 +190,8 @@ def install_local_runtime(
     cancel = cancel_event or Event()
     root = default_runtime_root()
     root.parent.mkdir(parents=True, exist_ok=True)
+    # 安装开始即写入 installing 状态，避免安装过程中被判定为"需要修复"。
+    write_runtime_manifest(root, status=STATUS_INSTALLING, runtime_version=RUNTIME_VERSION, python_version=PYTHON_VERSION)
 
     embed_zip = _find_bootstrap_asset(EMBED_PYTHON_ZIP)
     get_pip = _find_bootstrap_asset(GET_PIP_SCRIPT)
@@ -258,7 +268,7 @@ def install_local_runtime(
     ]
     _run_process(verify_args, env=_runtime_env(model_cache_root, root), cancel=cancel, on_line=lambda line: emit(line, 94, "verify"))
     _check_cancel(cancel)
-    _write_manifest(root, {"status": "ready", "runtimeVersion": RUNTIME_VERSION, "pythonVersion": PYTHON_VERSION, "installedAt": int(time.time())})
+    write_runtime_manifest(root, status=STATUS_READY, runtime_version=RUNTIME_VERSION, python_version=PYTHON_VERSION)
     cache_environment = model_cache_environment(model_cache_root)
     for path in (resolve_model_cache_root(model_cache_root), Path(cache_environment["HF_HUB_CACHE"]), Path(cache_environment["MODELSCOPE_CACHE"])):
         path.mkdir(parents=True, exist_ok=True)
@@ -574,25 +584,9 @@ def _check_cancel(cancel: Event) -> None:
         raise LocalRuntimeCancelled("本地运行环境安装已取消。")
 
 
-def _read_manifest(path: Path) -> dict[str, object]:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return dict(value) if isinstance(value, Mapping) else {}
-
-
 def _runtime_package_dirs_present(root: Path) -> bool:
     site_packages = root / "site-packages"
     return all((site_packages / name).exists() for name in ("funasr", "qwen_asr", "jieba", "torch", "torchaudio", "reapeaks"))
-
-
-def _write_manifest(root: Path, values: Mapping[str, object]) -> None:
-    root.mkdir(parents=True, exist_ok=True)
-    target = root / "runtime.json"
-    temporary = root / "runtime.json.tmp"
-    temporary.write_text(json.dumps(dict(values), ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
-    temporary.replace(target)
 
 
 __all__ = [
