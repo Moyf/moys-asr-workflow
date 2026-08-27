@@ -408,16 +408,34 @@ class LocalAsrFlowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             cache_root = Path(temp_dir) / "model-cache"
             cache_root.mkdir()
+            hub_cache = cache_root / "huggingface" / "hub"
             with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
-                with mock.patch.dict(os.environ, {"MAW_MODEL_CACHE_ROOT": str(cache_root)}):
-                    with mock.patch("maw.local_asr.resolve_device", return_value="cpu"):
+                with mock.patch("maw.local_asr.resolve_device", return_value="cpu"):
+                    # 运行时环境同时注入两个变量（model_cache_environment）；
+                    # 显式 download_root 必须与 HF_HUB_CACHE 的 hub 目录一致，
+                    # 而不是 MAW_MODEL_CACHE_ROOT 裸根——否则 models--* 仓库
+                    # 会落在缓存根本体，偏离统一的缓存发现布局。
+                    with mock.patch.dict(os.environ, {
+                        "MAW_MODEL_CACHE_ROOT": str(cache_root),
+                        "HF_HUB_CACHE": str(hub_cache),
+                    }):
                         create_local_engine("whisper")._load()
                         self.assertEqual(model_refs, [WHISPER_DEFAULT_MODEL])
-                        self.assertEqual(captured.get("download_root"), str(cache_root))
+                        self.assertEqual(captured.get("download_root"), str(hub_cache))
 
+                    # 只注入裸根时按约定派生 hub 子目录。
+                    with mock.patch.dict(os.environ, {
+                        "MAW_MODEL_CACHE_ROOT": str(cache_root),
+                        "HF_HUB_CACHE": "",
+                        "HUGGINGFACE_HUB_CACHE": "",
+                    }):
                         captured.clear()
-                        create_local_engine("whisper", model=str(cache_root))._load()
-                        self.assertNotIn("download_root", captured)
+                        create_local_engine("whisper")._load()
+                        self.assertEqual(captured.get("download_root"), str(hub_cache))
+
+                    captured.clear()
+                    create_local_engine("whisper", model=str(cache_root))._load()
+                    self.assertNotIn("download_root", captured)
 
     def test_whisper_word_timestamps_are_normalized_to_milliseconds(self) -> None:
         class FakeRuntime:
