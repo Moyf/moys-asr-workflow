@@ -56,6 +56,7 @@
 | 39 | 编辑器 / 导出菜单 | 去空隙版本与更多导出需要按字幕、OTIO、XML、动态字幕/Resolve JSON 等类别加分隔线；OTIO/OTIOZ 文案统一；去空隙菜单增加 FCPXML | 修改 | 已修复 |
 | 40 | 编辑器 / 导出文件名 | 工程名 MAW-1.4更新说明 导出 FCPXML 时被截断为 MAW-1.xml | 修改 | 已修复 |
 | 41 | 编辑器 / 去空隙 OTIO | 导入 Resolve 后片段长度正确但源内容范围错位：前段大量从媒体 0 开始，后段虽有非零起点仍不正确 | 修改 | 已修复 |
+| 42 | 编辑器 / 切分 | 词级时间码存在静音空隙时（如本地 ASR「型、」end 6480 与下一词「AI」start 6720），在词后拆分左半句被拉长贴住下一词起点；应左段停在自家最后一词的 end、右段从自家首词的 start 开始并保留空隙。缺词或缺时间码时维持原共享切点 / 光标比例估算兜底 | 修改 | 已修复 |
 
 ## 增量记录（任务 39、40：导出菜单分组、FCPXML 默认模式与点号工程名）
 
@@ -73,6 +74,15 @@
 - 已增加文本处理弹窗：Trim、首字母大写、添加前缀、附加内容、去除 Markdown 格式符号；处理保持字幕行，时间码通过纯文本编辑的映射规则尽量保留，应用为空时保留空字幕行。
 - 已验证：`node --check web\\editor.js`、`node --check web\\editor-utils.js`、`node --check web\\editor-i18n.js`；`node --test tests\\test_editor_utils.mjs`（129/129）；`uv run python edit.py --blank`；`git diff --check`。
 - 浏览器 E2E 未完成：本机 `npx playwright` 访问 npm 缓存时因 `EPERM` 无法创建 `C:\\Users\\lei.hu\\AppData\\Local\\npm-cache\\_cacache\\tmp`，未产生页面断言结果。
+
+## 增量记录（任务 42：词间静音的非对称拆分）
+
+- 根因：`splitItemsAtChar` 在文字切点落在相邻 item 边界上时取时优先级为 `next.start` > `prev.end`，且拆分两侧强制共用同一毫秒值。两词之间存在真实静音（本次测试工程 6480→6720 共 240ms 空档）时，左段被拉长跨过静音贴住下一词起点。
+- 方案 B（用户确认）：切点两词存在正间隙时输出非对称边界——左段 `end = prevRange.end`（自家最后词尾），右段 `start = nextRange.start`（自家首词起点）；仅有当两侧候选都有限且严格正序（防病态钳制倒挂）才启用。连续 item / 缺 items / 缺时间码场景全部回落到旧共享切点行为（默认吸附从 `next.start` 翻转为 `prev.end`，两者在连续 item 上等价，零回归面）。
+- 校验同步收紧：`buildSplitPair` 与内联 `splitAtCursor` 改用最终左右边界分别校验两侧 >= 100ms；强制重试路径若自然边界使某一侧过短（末词紧贴字幕末尾等），该侧降级回用户确认的强制切点，另一侧保留自然边界。
+- 说明项：`web/waveform.js` 的 `splitSegmentAtTime`（波形工具函数，当前仅被单元测试引用、不在任何 UI 拆分链路上）保留原"最近 item 中点"契约；UI 上的剃刀拆分经 editor.js 文本管线执行，已随本次改动获得新语义。
+- 验证证据见下方修复记录第 42 行。
+- 未验证边界：联动拆分弹窗在词间空隙上的完整点击流未实机走查（其确认逻辑同样经 `buildSplitPair` 生效）；针对本行为的持久化 e2e 回归用例暂未入库，本轮以真实浏览器冒烟脚本代替。
 
 ## 修复与验证记录
 
@@ -99,6 +109,7 @@
 | 27 | 已修复 | 自动后处理 OCR 改为复用已安装的 managed runtime，并把运行结果转换回流水线产物契约；安装完成事件同时刷新 OCR 控件和自动步骤状态，自动步骤可在运行时状态就绪后恢复。OCR runtime / OCR 后处理 / 自动后处理 / Launcher GUI 回归分别纳入 64/64 和 154/154 通过批次；相关 MAW Python 模块、Launcher JS 和编辑器 JS 语法检查，以及 `git diff --check` 通过。 |
 | 33 | 已修复 | 批量区域新增独立拖入提示；不支持格式和重复文件不再写入单文件错误区，重复文件提示“文件已在当前列表内”；`batch_item_log` 阶段名同步写入总日志并以内联形式显示；跳过已完成文件改为自定义“是 / 否”确认按钮。已通过完整 Python 643/643、Launcher 190/190、Node 126/126、Launcher JS 语法、便携版生成、`git diff --check` 和浏览器冒烟验证。 |
 | 34 | 已修复 | 批量开始时状态区显示当前文件序号（如 `正在处理第 1/3 个文件`）；切换文件时更新当前处理文件；每个文件完成、失败或取消时写入总日志；批量结束时汇总成功/失败数量。已通过 Launcher 190/190、Launcher JS 语法检查和浏览器批量冒烟验证。 |
+| 42 | 已修复 | `node --check web\editor.js`；`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（218/218 通过）；`.venv\Scripts\python.exe edit.py --blank` 重生成便携版；真实浏览器 Playwright 冒烟（serve.py 挂载测试工程 → 双击第 0 行进入编辑 → 光标定位偏移 5「、」后 → Enter）：拆分前 row0 `00:05.760→00:08.880 本地模型、AI校准和翻译…`，拆分后 row0 `00:05.760→00:06.480 本地模型`、row1 `00:06.720→00:08.880 AI校准和翻译…`，左段停在 6480、右段起于 6720，240ms 词间静音保留；`git diff --check` 通过。 |
 
 ## 询问项结论
 
