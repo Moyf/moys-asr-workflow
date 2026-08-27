@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+### 🚀 全新特性
+
+- **MOSS 本地转录引擎** ： 引入 MOSS Transcribe-Diarize（Transformers 5.x）本地识别引擎，独立安装到 `local-runtime-moss` 环境，模型与其余引擎共用缓存目录。
+
+### 🔄 变更
+
+- **托管 Runtime 共性抽象** ： local / ocr / moss 三个托管 Runtime 统一到 `maw/runtimes`（`RuntimeSpec` 声明式规格 + `ManagedRuntime` 生命周期基类），`maw/local_runtime.py` 与 `maw/ocr_runtime.py` 收窄为薄壳委托，新增 `engine` 维度（local / moss）支持。
+- **移除 bundled uv** ： 三个托管 Runtime 一律 embedded Python + get-pip + `pip install --target` 安装；moss 依赖因与 local（qwen-asr 固定 Transformers 4.57.6）互斥而独立声明于 `moss-requirements.in`，由 `uv pip compile` 冻结（与 local/ocr 的 `uv export` 管线并行），macOS 产物不再内置 uv。
+- **CUDA 检测前置** ： 无 NVIDIA GPU（非 macOS）时在首次依赖安装前即切换 CPU 版 Torch——构建期生成去 `+cu130` 的 `requirements-{key}-cpu.txt` 随包分发，同时剔除 cu 构建专属的 `nvidia-*` 依赖块并移除随之失效的 wheel 哈希行（避免首装哈希校验失败），首装直接调用该清单，不再先下载完整 CUDA wheel 与 nvidia-* 依赖再覆盖。
+
+### 🐛 问题修复
+
+- **AppImage 打开外部程序失效** ： Linux 打包版打开外部 URL / 路径前恢复 `LD_LIBRARY_PATH_ORIG`（AppImage 内的 Qt 库路径），避免污染外部 `xdg-open` 子进程（PR 74 移植）。
+- **NixOS 打开字幕编辑器崩溃** ： PyInstaller 排除 `readline` 模块并在 AppImage 内物理剔除 `libreadline.so`（与既有 C++ 运行时剔除模式一致），避免 AppImage 内的旧版 readline 污染 `webbrowser.open` → xdg-open → bash 子进程；release CI 增加产物回归断言。
+- **Pages 部署路径过滤** ： `deploy-editor-pages.yml` 的 `paths` 清理失效的 `reapeaks_io.py` 条目（main 实际文件为 `maw/reapeaks.py`，已被 `maw/**` 覆盖，仅为消除残留）。
+
 ## [1.5.0-beta.4] - 2026-08-26
 
 ### 🚀 全新特性

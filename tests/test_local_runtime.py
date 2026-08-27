@@ -11,16 +11,14 @@ from unittest import mock
 
 
 from maw.local_runtime import (
-    GENERAL_REQUIREMENTS,
     LocalRuntimeError,
-    MOSS_RUNTIME_VERSION,
     default_model_cache_root,
     install_local_runtime,
     managed_runtime_status,
     model_cache_environment,
     prepare_model_in_process,
-    runtime_python_path,
 )
+from maw.runtimes import LOCAL
 
 
 class LocalRuntimeTests(unittest.TestCase):
@@ -92,24 +90,28 @@ class LocalRuntimeTests(unittest.TestCase):
             cache = Path(temp_dir) / "models"
             events: list[tuple[str, int, str]] = []
 
+            def fake_extract(_zip_path: Path, target_dir: Path) -> None:
+                python = target_dir / ("python.exe" if os.name == "nt" else "bin/python")
+                python.parent.mkdir(parents=True, exist_ok=True)
+                python.touch()
+
             def fake_run(command: list[str], **_kwargs: object) -> int:
-                if command[1] == "venv":
-                    python = runtime_python_path(root)
-                    python.parent.mkdir(parents=True, exist_ok=True)
-                    python.touch()
-                if command[1:3] == ["pip", "install"]:
-                    if os.name == "nt":
-                        packages = root / "Lib" / "site-packages"
-                    else:
-                        packages = root / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
-                    for name in ("funasr", "qwen_asr", "jieba", "torch", "torchaudio"):
+                if "install" in command:
+                    packages = root / "site-packages"
+                    for name in ("funasr", "qwen_asr", "jieba", "torch", "torchaudio", "reapeaks"):
                         (packages / name).mkdir(parents=True, exist_ok=True)
                 return 0
 
+            requirements_txt = Path(temp_dir) / "requirements-local.txt"
+            requirements_txt.write_text("funasr==1.4.2\nqwen-asr==0.0.6\n", encoding="utf-8")
             with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(root), "MAW_MODEL_CACHE_ROOT": str(cache)}):
-                with mock.patch("maw.local_runtime._find_uv", return_value=Path("uv.exe")):
-                    with mock.patch("maw.local_runtime._run_process", side_effect=fake_run) as run_process:
-                        status = install_local_runtime(on_event=lambda *event: events.append(event))
+                with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
+                    with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=fake_extract):
+                        with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
+                            with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
+                                with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                    with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run) as run_process:
+                                        status = install_local_runtime(on_event=lambda *event: events.append(event))
 
             self.assertTrue(status.ready)
             self.assertTrue((root / "runtime.json").exists())
@@ -121,18 +123,19 @@ class LocalRuntimeTests(unittest.TestCase):
             install_command = run_process.call_args_list[1].args[0]
             verify_command = run_process.call_args_list[2].args[0]
 
-        self.assertIn("jieba>=0.42", GENERAL_REQUIREMENTS)
-        self.assertIn("jieba>=0.42", install_command)
+        self.assertIn("-r", install_command)
+        self.assertTrue(any("requirements-local.txt" in str(arg) for arg in install_command))
+        self.assertIn("--target", install_command)
         self.assertIn("import jieba", verify_command[-1])
 
-    def test_install_without_uv_explains_packaged_bootstrap_requirement(self) -> None:
+    def test_install_without_bootstrap_assets_explains_packaged_requirement(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": temp_dir}):
-                with mock.patch("maw.local_runtime._find_uv", return_value=None):
+                with mock.patch("maw.runtimes.base._find_bootstrap_asset", return_value=None):
                     with self.assertRaises(LocalRuntimeError) as context:
                         install_local_runtime()
 
-        self.assertIn("uv", str(context.exception))
+        self.assertIn("embedded Python", str(context.exception))
 
     def test_source_model_prepare_uses_current_python_and_shared_cache(self) -> None:
         with mock.patch("maw.local_runtime._run_process", return_value=0) as run_process:
@@ -150,59 +153,6 @@ class LocalRuntimeTests(unittest.TestCase):
         self.assertIn("--forced-aligner", command)
         environment = run_process.call_args.kwargs["env"]
         self.assertEqual(environment["HF_HUB_CACHE"], model_cache_environment()["HF_HUB_CACHE"])
-
-    def test_moss_runtime_uses_separate_root_and_requirements(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir) / "runtime"
-            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(Path(temp_dir) / "app")}):
-                with mock.patch("maw.local_runtime._find_uv", return_value=Path("uv.exe")):
-                    with mock.patch("maw.local_runtime._run_process", return_value=0) as run_process:
-                        moss_root = Path(temp_dir) / "app" / "local-runtime-moss"
-
-                        def fake_run(command: list[str], **_kwargs: object) -> int:
-                            if command[1] == "venv":
-                                python = runtime_python_path(moss_root)
-                                python.parent.mkdir(parents=True, exist_ok=True)
-                                python.touch()
-                            if command[1:3] == ["pip", "install"]:
-                                packages = moss_root / "Lib" / "site-packages"
-                                for name in ("moss_transcribe_diarize", "transformers", "torch", "torchaudio"):
-                                    (packages / name).mkdir(parents=True, exist_ok=True)
-                            return 0
-
-                        run_process.side_effect = fake_run
-                        status = install_local_runtime(engine="moss")
-
-        self.assertTrue(status.ready)
-        self.assertIn("local-runtime-moss", status.path)
-        install_command = run_process.call_args_list[1].args[0]
-        self.assertTrue(any("transformers>=5.6.0" in value for value in install_command))
-
-    def test_moss_ready_status_reports_moss_runtime_version(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir) / "runtime"
-            moss_root = root.with_name(f"{root.name}-moss")
-            python = runtime_python_path(moss_root)
-            python.parent.mkdir(parents=True, exist_ok=True)
-            python.touch()
-            site_packages = (
-                moss_root / "Lib" / "site-packages"
-                if os.name == "nt"
-                else moss_root / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
-            )
-            for name in ("moss_transcribe_diarize", "transformers", "torch", "torchaudio"):
-                (site_packages / name).mkdir(parents=True, exist_ok=True)
-            (moss_root / "runtime.json").write_text(
-                '{"status": "ready", "runtimeVersion": "1"}\n',
-                encoding="utf-8",
-                newline="\n",
-            )
-            with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(root)}):
-                status = managed_runtime_status(engine="moss")
-
-        self.assertTrue(status.ready)
-        self.assertEqual(status.runtime_version, MOSS_RUNTIME_VERSION)
-        self.assertEqual(status.to_payload()["runtimeVersion"], MOSS_RUNTIME_VERSION)
 
 
 if __name__ == "__main__":

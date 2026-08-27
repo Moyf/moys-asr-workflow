@@ -19,6 +19,14 @@ if (-not (Test-Path -LiteralPath $EntryPoint -PathType Leaf)) {
 Push-Location -LiteralPath $RepoRoot
 try {
     uv sync --group build --frozen
+    # 生成托管 Runtime 的 frozen requirements txt（MAW.spec datas 条件追加打包）。
+    New-Item -ItemType Directory -Path 'build' -Force | Out-Null
+    uv export --frozen --extra local --no-dev --format requirements-txt -o build/requirements-local.txt
+    uv export --frozen --extra ocr --no-dev --format requirements-txt -o build/requirements-ocr.txt
+    # moss 依赖与 local（qwen-asr/Transformers 4.x）互斥，独立声明、独立冻结。
+    uv pip compile moss-requirements.in -p 3.11 --extra-index-url https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match -o build/requirements-moss.txt
+    # 生成 CPU 版清单（去除 +cuXXX），供无 NVIDIA GPU 的机器首装时直接使用。
+    uv run python scripts\freeze_cpu_requirements.py
 
     if (-not $SkipTests) {
         uv run python -m unittest tests.test_packaging_contract
@@ -37,10 +45,16 @@ try {
         throw "Build completed but did not copy FAQ-常见问题.txt beside MAW.exe."
     }
 
-    $UvCommand = Get-Command uv -ErrorAction Stop
     $BootstrapDirectory = Join-Path (Split-Path -Parent $ExePath) 'bootstrap'
     New-Item -ItemType Directory -Path $BootstrapDirectory -Force | Out-Null
-    Copy-Item -LiteralPath $UvCommand.Source -Destination (Join-Path $BootstrapDirectory 'uv.exe') -Force
+    $EmbedZip = Join-Path $RepoRoot 'build' 'python-3.11.9-embed-amd64.zip'
+    $GetPip = Join-Path $RepoRoot 'build' 'get-pip.py'
+    foreach ($Asset in @($EmbedZip, $GetPip)) {
+        if (-not (Test-Path -LiteralPath $Asset -PathType Leaf)) {
+            throw "Missing bootstrap asset: $Asset"
+        }
+        Copy-Item -LiteralPath $Asset -Destination (Join-Path $BootstrapDirectory (Split-Path -Leaf $Asset)) -Force
+    }
 
     Write-Host "Built $ExePath"
 }
