@@ -76,6 +76,12 @@ jobs:
       - name: Run Python tests
         run: uv run python -m unittest discover -s tests -p "test_*.py"
 
+      - name: Download embedded Python bootstrap assets
+        run: |
+          mkdir -p build
+          curl -L --retry 3 --connect-timeout 20 --max-time 300 -o build/python-3.11.9-embed-amd64.zip https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip
+          curl -L --retry 3 --connect-timeout 20 --max-time 120 -o build/get-pip.py https://bootstrap.pypa.io/get-pip.py
+
       - name: Build MAW bundle
         shell: pwsh
         run: .\scripts\build-windows.ps1 -SkipTests
@@ -111,6 +117,22 @@ jobs:
             }
           } else {
             Stop-Process -Id $GuiProcess.Id -Force
+          }
+
+      - name: Verify runtime requirements bundled
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Required = @(
+            '_internal\local-runtime\requirements-local.txt'
+            '_internal\ocr-runtime\requirements-ocr.txt'
+            '_internal\moss-runtime\requirements-moss.txt'
+          )
+          foreach ($Relative in $Required) {
+            $Path = Join-Path 'dist\MAW' $Relative
+            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+              throw "Missing runtime requirements in bundle: $Path"
+            }
           }
 
       - name: Create standard release archive
@@ -294,7 +316,12 @@ jobs:
 
       - name: Build MAW GUI bundle
         if: matrix.platform == 'macos'
-        run: uv run --group build pyinstaller --noconfirm --clean MAW.spec
+        run: |
+          uv export --frozen --extra local --no-dev --format requirements-txt -o build/requirements-local.txt
+          uv export --frozen --extra ocr --no-dev --format requirements-txt -o build/requirements-ocr.txt
+          uv pip compile moss-requirements.in -p 3.11 --extra-index-url https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match -o build/requirements-moss.txt
+          uv run python scripts/freeze_cpu_requirements.py
+          uv run --group build pyinstaller --noconfirm --clean MAW.spec
 
       - name: Verify bundled FAQ
         if: matrix.platform == 'macos'
@@ -304,16 +331,19 @@ jobs:
           FaqPath="$(find dist/MAW.app -type f -name 'FAQ-常见问题.txt' -print -quit)"
           test -n "$FaqPath"
 
-      - name: Bundle uv bootstrap for optional runtimes
+      - name: Verify runtime requirements bundled
         if: matrix.platform == 'macos'
         shell: bash
         run: |
           set -euo pipefail
-          UvCommand="$(command -v uv)"
-          BootstrapDirectory="dist/MAW.app/Contents/Resources/bootstrap"
-          mkdir -p "$BootstrapDirectory"
-          cp "$UvCommand" "$BootstrapDirectory/uv"
-          chmod +x "$BootstrapDirectory/uv"
+          for Req in requirements-local.txt requirements-ocr.txt requirements-moss.txt; do
+            Found="$(find dist/MAW.app -type f -name "$Req" -print -quit)"
+            if [ -z "$Found" ]; then
+              echo "Missing $Req in macOS bundle"
+              exit 1
+            fi
+          done
+          echo "OK: runtime requirements txt 随包分发"
 
       - name: Smoke MAW executable
         if: matrix.platform == 'macos'
@@ -486,12 +516,16 @@ jobs:
           set -euo pipefail
           cd build-appimage
           ./MAW-Linux-x86_64.AppImage --appimage-extract >/dev/null 2>&1
-          if [ -e squashfs-root/_internal/libstdc++.so.6 ] || [ -e squashfs-root/_internal/libgcc_s.so.1 ] || [ -e squashfs-root/_internal/libgbm.so.1 ]; then
-            echo "FAIL: AppImage 内置了 libstdc++/libgcc_s/libgbm，会污染系统 Mesa 驱动加载"
+          if [ -e squashfs-root/_internal/libstdc++.so.6 ] || [ -e squashfs-root/_internal/libgcc_s.so.1 ] || [ -e squashfs-root/_internal/libgbm.so.1 ] || ls squashfs-root/_internal/libreadline.so.* >/dev/null 2>&1; then
+            echo "FAIL: AppImage 内置了 libstdc++/libgcc_s/libgbm/libreadline，会污染系统 Mesa 驱动加载"
             exit 1
           fi
           test -f squashfs-root/FAQ-常见问题.txt
-          echo "OK: 未内置 libstdc++/libgcc_s/libgbm"
+          echo "OK: 未内置 libstdc++/libgcc_s/libgbm/libreadline"
+          test -f squashfs-root/_internal/local-runtime/requirements-local.txt
+          test -f squashfs-root/_internal/ocr-runtime/requirements-ocr.txt
+          test -f squashfs-root/_internal/moss-runtime/requirements-moss.txt
+          echo "OK: runtime requirements txt 随包分发"
           rm -r squashfs-root
 
       - name: Diagnose AppImage libraries
