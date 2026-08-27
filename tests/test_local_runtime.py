@@ -101,7 +101,7 @@ class LocalRuntimeTests(unittest.TestCase):
             def fake_run(command: list[str], **_kwargs: object) -> int:
                 if "install" in command:
                     packages = root / "site-packages"
-                    for name in ("funasr", "qwen_asr", "jieba", "torch", "torchaudio", "reapeaks"):
+                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "reapeaks"):
                         (packages / name).mkdir(parents=True, exist_ok=True)
                 return 0
 

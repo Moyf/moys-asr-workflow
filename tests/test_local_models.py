@@ -53,6 +53,24 @@ class LocalModelDiscoveryTests(unittest.TestCase):
         self.assertEqual(installed.status, "installed")
         self.assertEqual(Path(installed.path).resolve(), main.resolve())
 
+    def test_whisper_huggingface_cache_is_detected(self) -> None:
+        model = local_model("whisper-large-v3-local")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache = Path(temp_dir)
+            main = cache / "models--Systran--faster-whisper-large-v3" / "snapshots" / "main"
+            main.mkdir(parents=True)
+
+            with mock.patch.dict(os.environ, {"HF_HUB_CACHE": str(cache)}):
+                with mock.patch("maw.local_models._huggingface_cache_roots", return_value=[cache]):
+                    with mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()):
+                        missing = inspect_local_model(model)
+                        (main / "model.bin").write_bytes(b"weights")
+                        installed = inspect_local_model(model)
+
+        self.assertEqual(missing.status, "missing")
+        self.assertEqual(installed.status, "installed")
+        self.assertEqual(Path(installed.path).resolve(), main.resolve())
+
     def test_explicit_folder_is_used_without_persisting_it(self) -> None:
         model = local_model("funasr-local")
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -190,6 +208,17 @@ class LocalModelDiscoveryTests(unittest.TestCase):
 
         self.assertTrue(prepare.call_args.kwargs["trust_remote_code"])
 
+        model = local_model("whisper-large-v3-local")
+        missing = LocalModelStatus(model.id, model.engine, model.model_ref, "missing", True, False)
+        installed = LocalModelStatus(model.id, model.engine, model.model_ref, "installed", True, True)
+        with mock.patch("maw.local_models.inspect_local_model", side_effect=[missing, installed]):
+            with mock.patch("maw.local_models.prepare_model_in_process", return_value=0) as prepare:
+                prepare_local_model(model)
+
+        # Whisper 无 VAD/对齐器组件，也不需要 trust_remote_code
+        self.assertEqual(prepare.call_args.kwargs["vad_model"], "")
+        self.assertFalse(prepare.call_args.kwargs["trust_remote_code"])
+
     def test_prepare_progress_includes_a_broad_cache_estimate(self) -> None:
         model = local_model("qwen3-asr-local")
 
@@ -200,6 +229,15 @@ class LocalModelDiscoveryTests(unittest.TestCase):
         self.assertEqual(payload["estimatedMinBytes"], int(2.5 * 1024**3))
         self.assertEqual(payload["estimatedMaxBytes"], int(4.5 * 1024**3))
         self.assertGreater(payload["percentMax"], payload["percentMin"])
+        self.assertIn("预计总量约", payload["message"])
+
+    def test_prepare_progress_includes_a_whisper_cache_estimate(self) -> None:
+        model = local_model("whisper-large-v3-local")
+
+        payload = _prepare_progress_payload(model, "05:01", 6, int(3.0 * 1024**3))
+
+        self.assertEqual(payload["estimatedMinBytes"], int(2.5 * 1024**3))
+        self.assertEqual(payload["estimatedMaxBytes"], int(4.0 * 1024**3))
         self.assertIn("预计总量约", payload["message"])
 
     def test_managed_prepare_forwards_cancel_event_to_runtime_process(self) -> None:
