@@ -171,20 +171,24 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn('"*.srt"', spec)
 
     def test_runtime_uses_frozen_requirements_txt_not_handwritten_constants(self) -> None:
-        """Given the frozen txt runtime install design, When runtime modules and spec are read, Then no hand-written requirement constants remain and install reads -r txt."""
+        """Given the frozen txt runtime install design, When runtime specs and base are read, Then no hand-written requirement constants remain and install reads -r txt."""
         spec = read_text("MAW.spec")
-        local_runtime = read_text("maw/local_runtime.py")
-        ocr_runtime = read_text("maw/ocr_runtime.py")
+        runtimes_base = read_text("maw/runtimes/base.py")
+        local_spec = read_text("maw/runtimes/local_spec.py")
+        ocr_spec = read_text("maw/runtimes/ocr_spec.py")
         release = read_text(".github/workflows/release.yml")
 
-        self.assertNotIn("GENERAL_REQUIREMENTS", local_runtime)
-        self.assertNotIn("WINDOWS_TORCH_REQUIREMENTS", local_runtime)
-        self.assertNotIn("OTHER_TORCH_REQUIREMENTS", local_runtime)
-        self.assertNotIn("OCR_REQUIREMENTS", ocr_runtime)
+        # 三套 Runtime 统一由 RuntimeSpec 描述；手写依赖常量仅允许 moss 迁移期占位。
+        for text in (local_spec, ocr_spec):
+            self.assertNotIn("GENERAL_REQUIREMENTS", text)
+            self.assertNotIn("WINDOWS_TORCH_REQUIREMENTS", text)
+            self.assertNotIn("OTHER_TORCH_REQUIREMENTS", text)
+        self.assertNotIn("OCR_REQUIREMENTS", ocr_spec)
 
-        self.assertIn("_runtime_requirements_path", local_runtime)
-        self.assertIn('"-r"', local_runtime)
-        self.assertIn("_ocr_requirements_path", ocr_runtime)
+        self.assertIn("requirements_key", local_spec)
+        self.assertIn("requirements_key", ocr_spec)
+        self.assertIn("requirements_path", runtimes_base)
+        self.assertIn('"-r"', runtimes_base)
 
         self.assertIn("requirements-local.txt", spec)
         self.assertIn("requirements-ocr.txt", spec)
@@ -192,11 +196,11 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("uv export --frozen --extra local", release)
         self.assertIn("uv export --frozen --extra ocr", release)
 
-        self.assertIn('RUNTIME_VERSION: Final = "5"', local_runtime)
-        self.assertIn('OCR_RUNTIME_VERSION: Final = "3"', ocr_runtime)
+        self.assertIn('RUNTIME_VERSION = "5"', local_spec)
+        self.assertIn('OCR_RUNTIME_VERSION = "3"', ocr_spec)
 
-        self.assertIn("_has_cuda", local_runtime)
-        self.assertIn("torch==2.13.0", local_runtime)
+        self.assertIn("_has_cuda", runtimes_base)
+        self.assertIn("torch==2.13.0", local_spec)
 
     def test_ocr_dependencies_are_optional_and_runtime_worker_is_bundled_purely(self) -> None:
         """Given optional OCR support, When metadata and the frozen spec are read, Then the main package stays OCR-free."""
