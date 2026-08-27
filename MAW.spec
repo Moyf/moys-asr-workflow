@@ -82,17 +82,24 @@ datas = [
 ]
 opencc_datas = collect_data_files("opencc")
 datas.extend(opencc_datas)
-# 托管 Runtime 依赖清单（CI 构建时 uv export 生成，frozen 后随包分发；
-# 缺失时跳过——源码模式不打包 runtime txt）。
+# 托管 Runtime 依赖清单（CI 构建时 uv export / uv pip compile 生成，frozen
+# 后随包分发；缺失时跳过——源码模式不打包 runtime txt）。CPU 变体（去
+# +cuXXX）供无 NVIDIA GPU 的机器首装时直接使用。
 _runtime_req_local = ROOT / "build" / "requirements-local.txt"
 _runtime_req_ocr = ROOT / "build" / "requirements-ocr.txt"
 _runtime_req_moss = ROOT / "build" / "requirements-moss.txt"
+_runtime_req_local_cpu = ROOT / "build" / "requirements-local-cpu.txt"
+_runtime_req_moss_cpu = ROOT / "build" / "requirements-moss-cpu.txt"
 if _runtime_req_local.is_file():
     datas.append((str(_runtime_req_local), "local-runtime"))
 if _runtime_req_ocr.is_file():
     datas.append((str(_runtime_req_ocr), "ocr-runtime"))
 if _runtime_req_moss.is_file():
     datas.append((str(_runtime_req_moss), "moss-runtime"))
+if _runtime_req_local_cpu.is_file():
+    datas.append((str(_runtime_req_local_cpu), "local-runtime"))
+if _runtime_req_moss_cpu.is_file():
+    datas.append((str(_runtime_req_moss_cpu), "moss-runtime"))
 opencc_hiddenimports = collect_submodules("opencc")
 
 # OCR dependencies and model files stay outside the frozen bundle. The bundled
