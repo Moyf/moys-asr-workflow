@@ -9,6 +9,8 @@
 - **Faster-Whisper 本地引擎（实验）** ： `generate_subtitle_local.py` 新增 `--engine whisper`，通过 faster-whisper（CTranslate2 运行时、CT2 权重与 Silero VAD 内置）输出词级整数毫秒时间戳，并复用统一切句、SRT 与 `.mosp` 流程；依赖随 `uv sync --extra local` 安装。默认模型 `large-v3`，可传 `--model` 切换 `turbo` 等 HF Hub 名称或本地 CTranslate2 目录；不提供说话人分离。Launcher「本地模型」同步提供 large-v3 入口，缓存发现与目录误判防护与其他引擎一致。
 - **MOSS 本地转录引擎** ： 引入 MOSS Transcribe-Diarize（Transformers 5.x）本地识别引擎，独立安装到 `local-runtime-moss` 环境，模型与其余引擎共用缓存目录；模型条目已标注仅提供段级时间戳、无字词级时间码。
 - **MAW 字幕颜色过滤与可配置拆分移除符号** ： 编辑器支持按颜色过滤字幕段落查看，并可配置在断句拆分时移除哪些符号（PR #76）。
+- **预览字幕说话人颜色描边** ： 播放预览可按字幕的颜色快照给文字描边以区分说话人，默认开启，可在「预览字幕样式」设置中关闭；只影响预览画面，不改变字幕文本。
+- **颜色过滤全选过滤结果** ： 颜色过滤菜单新增「全选过滤结果」，把当前过滤命中的主轨字幕一键全部选中，可配合批量替换（仅选中）等按选区工作的工具，例如给不同说话人的字幕批量加前缀。
 
 ### 🔄 变更
 

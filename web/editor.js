@@ -1142,6 +1142,7 @@ const subtitleBackgroundColorInput = document.getElementById('subtitle-backgroun
 const subtitleBackgroundAlphaInput = document.getElementById('subtitle-background-alpha');
 const subtitleBackgroundAlphaValue = document.getElementById('subtitle-background-alpha-value');
 const subtitleColorInput = document.getElementById('subtitle-color');
+const subtitleSpeakerStrokeInput = document.getElementById('subtitle-speaker-stroke');
 const extensionSubtitlePreviewSettings = document.getElementById('extension-subtitle-preview-settings');
 const extensionSubtitleFontSizeSelect = document.getElementById('extension-subtitle-font-size');
 const extensionSubtitleFontFamilySelect = document.getElementById('extension-subtitle-font-family');
@@ -2600,6 +2601,11 @@ document.addEventListener('mawe:languagechange', () => {
 subtitleColorInput?.addEventListener('change', () => {
   pushPreviewUndo('调整主字幕颜色', snapshotPreviewState());
   setSubtitleAppearance({ color: subtitleColorInput.value });
+  update();
+});
+subtitleSpeakerStrokeInput?.addEventListener('change', () => {
+  pushPreviewUndo('调整预览字幕说话人描边', snapshotPreviewState());
+  setSubtitleAppearance({ speaker_stroke: subtitleSpeakerStrokeInput.checked });
   update();
 });
 extensionSubtitleFontSizeSelect?.addEventListener('change', () => {
@@ -4954,6 +4960,13 @@ function renderColorFilterMenu() {
   keys.forEach((key) => {
     colorFilterMenu.appendChild(buildColorFilterItem(key, usage.get(key) || 0));
   });
+  const selectFilteredBtn = document.createElement('button');
+  selectFilteredBtn.type = 'button';
+  selectFilteredBtn.className = 'dropdown-item color-filter-clear';
+  selectFilteredBtn.textContent = '全选过滤结果';
+  selectFilteredBtn.hidden = !colorFilterSelection;
+  selectFilteredBtn.addEventListener('click', () => selectAllFilteredCues());
+  colorFilterMenu.appendChild(selectFilteredBtn);
   const clearBtn = document.createElement('button');
   clearBtn.type = 'button';
   clearBtn.className = 'dropdown-item color-filter-clear';
@@ -4967,6 +4980,28 @@ function setColorFilterSelection(next) {
   colorFilterSelection = next && next.size ? new Set(next) : null;
   renderColorFilterMenu();
   applySearch(searchEl.value);
+}
+
+function selectAllFilteredCues() {
+  // 颜色过滤只作用于主轨字幕列表，这里同样只选中主轨里过滤命中的字幕，
+  // 便于配合「批量替换（仅选中）」等按选区工作的工具，例如给不同说话人加前缀。
+  if (!colorFilterSelection || colorFilterSuspended()) {
+    flashHint('当前没有生效的颜色过滤', 'invalid');
+    return;
+  }
+  commitCuePanelEdit();
+  clearSelection({ silent: true });
+  DATA.segments.forEach((seg, idx) => {
+    if (isHiddenDisabled(idx)) return;
+    if (!colorFilterSelection.has(effectiveCueColorKey(seg))) return;
+    selectedIdxs.add(idx);
+    const el = container.querySelector(`.cue[data-idx="${idx}"]`);
+    if (el) el.classList.add('selected');
+  });
+  updateMultiSelectionClasses();
+  if (waveformEditor) waveformEditor.updateSelection();
+  selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
+  flashHint(`已选中 ${selectedIdxs.size} 条过滤字幕`, selectedIdxs.size ? 'success' : 'invalid');
 }
 
 function buildColorFilterItem(key, count) {
@@ -9737,11 +9772,16 @@ function normalizeSubtitleAppearance(value) {
   if (backgroundAlpha !== null) result.background_alpha = backgroundAlpha;
   const color = normalizeSubtitleColor(value?.color);
   if (color) result.color = color;
+  if (value?.speaker_stroke === false) result.speaker_stroke = false;
   return result;
 }
 function getSubtitleAppearance(value = DATA.preview?.subtitle) {
   const result = normalizeSubtitleAppearance(value);
-  return { ...result, color: result.color || DEFAULT_SUBTITLE_COLOR };
+  return {
+    ...result,
+    color: result.color || DEFAULT_SUBTITLE_COLOR,
+    speaker_stroke: result.speaker_stroke !== false,
+  };
 }
 function getStoredExtensionSubtitleAppearance(value = DATA.preview?.extension_subtitle) {
   return normalizeSubtitleAppearance(value);
@@ -9773,6 +9813,9 @@ function syncSubtitleFontSizeSelect(select, sizeValue) {
 }
 function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
   syncSubtitleFontSizeSelect(subtitleFontSizeSelect, appearance.font_size);
+  if (subtitleSpeakerStrokeInput) {
+    subtitleSpeakerStrokeInput.checked = appearance.speaker_stroke !== false;
+  }
   if (subtitleFontFamilySelect) {
     subtitleFontFamilySelect.querySelectorAll('option[data-generated="true"]').forEach((option) => option.remove());
     const family = appearance.font_family || 'default';
@@ -9890,6 +9933,11 @@ function setSubtitleAppearance(patch, { markDirty = true } = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, 'color')) {
     const color = normalizeSubtitleColor(patch.color);
     if (color) next.color = color;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'speaker_stroke')) {
+    // true 是默认值，不落盘；只在关闭时写入 speaker_stroke: false。
+    if (patch.speaker_stroke) delete next.speaker_stroke;
+    else next.speaker_stroke = false;
   }
   if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
   DATA.preview.subtitle = { ...getPreviewGeometry(), ...next };
@@ -10322,6 +10370,20 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (mainVisible && overlayTextEl.textContent !== mainText) overlayTextEl.textContent = mainText;
   if (extensionVisible && overlayExtensionTextEl.textContent !== extensionText) {
     overlayExtensionTextEl.textContent = extensionText;
+  }
+  // 说话人颜色描边：读取当前字幕的颜色快照（head/color_ref）给预览文字描边。
+  // dataset 记录上次应用的颜色，避免播放刷新每帧都写内联样式。
+  const speakerStrokeEnabled = DATA.preview?.subtitle?.speaker_stroke !== false;
+  let speakerStroke = '';
+  if (mainVisible && speakerStrokeEnabled && seg) {
+    const colorName = MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments);
+    const strokeColor = colorName ? COLOR_BY_NAME[colorName]?.value : null;
+    if (strokeColor) speakerStroke = `0.045em ${strokeColor}`;
+  }
+  if (overlayTextEl.dataset.speakerStroke !== speakerStroke) {
+    overlayTextEl.dataset.speakerStroke = speakerStroke;
+    overlayTextEl.style.webkitTextStroke = speakerStroke;
+    overlayTextEl.style.paintOrder = speakerStroke ? 'stroke fill' : '';
   }
   const overlayHidden = !mainVisible && !extensionVisible;
   if (overlayEl.classList.contains('hidden') !== overlayHidden) {
