@@ -12,7 +12,7 @@ import unittest
 import urllib.error
 from unittest import mock
 
-from scripts.runtime_mirror_picker import (
+from maw.runtime_mirror_picker import (
     DEFAULT_SOURCES,
     FALLBACK_SOURCE,
     _main,
@@ -88,7 +88,7 @@ class ParseSimpleLinksTests(unittest.TestCase):
 
 class MeasureOneTests(unittest.TestCase):
     def test_ok_records_latency_and_speed(self) -> None:
-        with mock.patch("scripts.runtime_mirror_picker._open_probe") as open_mock:
+        with mock.patch("maw.runtime_mirror_picker._open_probe") as open_mock:
             open_mock.return_value = _FakeResponse(body=b"z" * 100_000)
             result = measure_sources(timeout=5.0, sources=["https://example.org/simple"])
 
@@ -101,7 +101,7 @@ class MeasureOneTests(unittest.TestCase):
 
     def test_certificate_error_retries_with_unverified_context(self) -> None:
         cert_error = ssl.SSLCertVerificationError("unable to get local issuer certificate")
-        with mock.patch("scripts.runtime_mirror_picker._open_probe") as open_mock:
+        with mock.patch("maw.runtime_mirror_picker._open_probe") as open_mock:
             open_mock.side_effect = [cert_error, _FakeResponse(body=b"a" * 8192)]
             result = measure_sources(timeout=5.0, sources=["https://badcert.example/simple"])
 
@@ -116,7 +116,7 @@ class MeasureOneTests(unittest.TestCase):
         wrapped = urllib.error.URLError(
             ssl.SSLCertVerificationError("self-signed certificate")
         )
-        with mock.patch("scripts.runtime_mirror_picker._open_probe") as open_mock:
+        with mock.patch("maw.runtime_mirror_picker._open_probe") as open_mock:
             open_mock.side_effect = [wrapped, _FakeResponse()]
             result = measure_sources(timeout=5.0, sources=["https://badcert.example/simple"])
 
@@ -125,7 +125,7 @@ class MeasureOneTests(unittest.TestCase):
 
     def test_timeout_is_isolated_not_retried(self) -> None:
         timeout_error = urllib.error.URLError(TimeoutError("timed out"))
-        with mock.patch("scripts.runtime_mirror_picker._open_probe") as open_mock:
+        with mock.patch("maw.runtime_mirror_picker._open_probe") as open_mock:
             open_mock.side_effect = timeout_error
             result = measure_sources(timeout=0.1, sources=["https://slow.example/simple"])
 
@@ -136,7 +136,7 @@ class MeasureOneTests(unittest.TestCase):
 
     def test_http_error_is_reported_and_skipped(self) -> None:
         http_error = urllib.error.HTTPError("https://x/setuptools/", 404, "Not Found", None, None)
-        with mock.patch("scripts.runtime_mirror_picker._open_probe") as open_mock:
+        with mock.patch("maw.runtime_mirror_picker._open_probe") as open_mock:
             open_mock.side_effect = http_error
             result = measure_sources(timeout=5.0, sources=["https://gone.example/simple"])
 
@@ -149,7 +149,7 @@ class MeasureOneTests(unittest.TestCase):
 class MeasureSourcesTests(unittest.TestCase):
     def test_concurrent_preserves_input_order(self) -> None:
         sources = ["https://a.example/simple", "https://b.example/simple"]
-        with mock.patch("scripts.runtime_mirror_picker._measure_one") as measure_mock:
+        with mock.patch("maw.runtime_mirror_picker._measure_one") as measure_mock:
             measure_mock.side_effect = [
                 {"url": "https://a.example/simple", "ok": True,
                  "latency_ms": 10.0, "bytes_per_sec": 1.0, "error": None},
@@ -163,7 +163,7 @@ class MeasureSourcesTests(unittest.TestCase):
         self.assertFalse(results[1]["ok"])
 
     def test_unexpected_exception_from_worker_is_captured(self) -> None:
-        with mock.patch("scripts.runtime_mirror_picker._measure_one") as measure_mock:
+        with mock.patch("maw.runtime_mirror_picker._measure_one") as measure_mock:
             measure_mock.side_effect = RuntimeError("unexpected")
             results = measure_sources(timeout=5.0, sources=["https://a.example/simple"])
 
@@ -215,7 +215,7 @@ class PickFastestTests(unittest.TestCase):
         self.assertEqual(_pick_fastest(results), FALLBACK_SOURCE)
 
     def test_pick_fastest_mirror_delegates_to_measure_sources(self) -> None:
-        with mock.patch("scripts.runtime_mirror_picker.measure_sources") as measure_mock:
+        with mock.patch("maw.runtime_mirror_picker.measure_sources") as measure_mock:
             measure_mock.return_value = [
                 self._ok("https://pypi.org/simple", latency=500.0),
                 self._ok("https://cn.example/simple", latency=30.0),
@@ -235,7 +235,7 @@ class CliTests(unittest.TestCase):
              "latency_ms": None, "bytes_per_sec": None, "error": "timeout"},
         ]
         captured = io.StringIO()
-        with mock.patch("scripts.runtime_mirror_picker.measure_sources",
+        with mock.patch("maw.runtime_mirror_picker.measure_sources",
                         return_value=ok_items):
             with mock.patch("sys.stdout", captured):
                 exit_code = _main(["--json", "--timeout", "2.0"])
