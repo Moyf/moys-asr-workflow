@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "gui": {
+      "command": "uv run python maw_gui.py"
+    },
+    "serve": {
+      "type": "service",
+      "command": "uv run python server-editor/serve.py"
+    }
+  }
+}
