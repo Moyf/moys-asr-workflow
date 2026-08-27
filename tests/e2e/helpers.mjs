@@ -183,6 +183,19 @@ export function generateWav(filePath, durationSec = 60) {
   return filePath;
 }
 
+export function addBwfTimeReference(filePath, timeReferenceSamples) {
+  const source = readFileSync(filePath);
+  const bext = Buffer.alloc(8 + 346);
+  bext.write('bext', 0);
+  bext.writeUInt32LE(346, 4);
+  bext.writeUInt32LE(timeReferenceSamples >>> 0, 8 + 338);
+  bext.writeUInt32LE(Math.floor(timeReferenceSamples / 0x100000000), 8 + 342);
+  const output = Buffer.concat([source.subarray(0, 36), bext, source.subarray(36)]);
+  output.writeUInt32LE(output.length - 8, 4);
+  writeFileSync(filePath, output);
+  return filePath;
+}
+
 // ---------------------------------------------------------------------------
 // Generate deterministic waveform payload (moy.asr.waveform.v1 format).
 // ---------------------------------------------------------------------------

@@ -10893,6 +10893,17 @@ function msToOtioFrames(ms, fps = OTIO_STICKER_FPS) {
   return Math.round(ms / 1000 * fps);
 }
 
+function mediaStartOtioFrames() {
+  const reference = DATA.media_time_reference;
+  const sampleRate = Number(reference?.sample_rate);
+  const samples = Number(reference?.time_reference_samples);
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0
+      || !Number.isFinite(samples) || samples < 0) {
+    return 0;
+  }
+  return samples / sampleRate * OTIO_STICKER_FPS;
+}
+
 function stickerTargetUrl(absPath) {
   let value = String(absPath || '').trim();
   if (!value) return '';
@@ -10916,7 +10927,9 @@ function mediaTargetUrl() {
   return '';
 }
 
-function buildGapRemovedMediaClip(interval, index, kind, targetUrl, sourceDurationFrames) {
+function buildGapRemovedMediaClip(
+  interval, index, kind, targetUrl, sourceStartFrame, sourceDurationFrames,
+) {
   const startFrame = msToOtioFrames(interval.start);
   const endFrame = msToOtioFrames(interval.end);
   const durationFrames = Math.max(1, endFrame - startFrame);
@@ -10930,7 +10943,7 @@ function buildGapRemovedMediaClip(interval, index, kind, targetUrl, sourceDurati
       },
     },
     name: `${kind} ${index + 1}`,
-    source_range: otioTimeRange(startFrame, durationFrames),
+    source_range: otioTimeRange(sourceStartFrame + startFrame, durationFrames),
     effects: [],
     markers: [],
     enabled: true,
@@ -10940,7 +10953,7 @@ function buildGapRemovedMediaClip(interval, index, kind, targetUrl, sourceDurati
         OTIO_SCHEMA: 'ExternalReference.1',
         metadata: {},
         name: '',
-        available_range: otioTimeRange(0, sourceDurationFrames),
+        available_range: otioTimeRange(sourceStartFrame, sourceDurationFrames),
         available_image_bounds: null,
         target_url: targetUrl,
       },
@@ -10971,6 +10984,7 @@ function buildGapRemovedOtio() {
     return null;
   }
   const sourceDurationFrames = Math.max(1, msToOtioFrames(durationMs));
+  const sourceStartFrame = mediaStartOtioFrames();
   const trackSpecs = player?.tagName === 'AUDIO'
     ? [{ name: '音频', kind: 'Audio' }]
     : [{ name: '视频', kind: 'Video' }, { name: '音频', kind: 'Audio' }];
@@ -10984,7 +10998,7 @@ function buildGapRemovedOtio() {
     enabled: true,
     color: null,
     children: intervals.map((interval, index) => buildGapRemovedMediaClip(
-      interval, index, track.name, targetUrl, sourceDurationFrames,
+      interval, index, track.name, targetUrl, sourceStartFrame, sourceDurationFrames,
     )),
     kind: track.kind,
   }));
@@ -12904,6 +12918,7 @@ function applyCanonicalProject(data, filename) {
   DATA.media = typeof data.media === 'string' ? data.media : '';
   DATA.language = data.language || '';
   DATA.model = data.model || '';
+  DATA.media_time_reference = data.media_time_reference || null;
   DATA.waveform = data.waveform || null;
   DATA.spectral = data.spectral || null;
   DATA.waveform_reapeaks = data.waveform_reapeaks || null;
@@ -13714,6 +13729,13 @@ async function loadMediaFile(file) {
     return false;
   }
 
+  let mediaTimeReference = null;
+  try {
+    mediaTimeReference = await window.AsrEditorUtils.readBwfTimeReferenceFromFile(file);
+  } catch (_) {
+    // BWF metadata is optional; an unreadable header must not block playback.
+  }
+
   if (waveformEditor) waveformEditor.attachPlayer(player);
   syncPlayerPlaceholder();
   // 部分浏览器会在 load() 完成前暂时不给 currentSrc；文件既已由用户选定，立即恢复彩色波形。
@@ -13727,6 +13749,7 @@ async function loadMediaFile(file) {
   const stem = file.name.replace(/\.[^.]+$/, '');
   FILENAME_BASE = stem;
   DATA.media = file.name;
+  DATA.media_time_reference = mediaTimeReference;
   const mnEl = document.getElementById('media-name');
   if (mnEl) {
     mnEl.textContent = file.name;

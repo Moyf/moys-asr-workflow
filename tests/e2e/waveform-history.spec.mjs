@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import {
   cleanupTempDir,
+  addBwfTimeReference,
   DURATION_MS,
   findFreePort,
   generateProjectJson,
@@ -20,6 +21,7 @@ test.beforeAll(async () => {
   const mediaPath = join(tempDir, 'synthetic.wav');
   const projectPath = join(tempDir, 'project.json');
   generateWav(mediaPath, DURATION_MS / 1000);
+  addBwfTimeReference(mediaPath, 1234);
   generateProjectJson(projectPath);
   server = await startServer(projectPath, mediaPath, await findFreePort());
 });
@@ -1862,6 +1864,7 @@ test('server media loads from the resolved project path and OTIO keeps its absol
   expect(decodeURI(targetUrl)).toContain('synthetic.wav');
 
   const clips = payload.tracks.children[0].children.filter((child) => child.OTIO_SCHEMA === 'Clip.2');
+  const mediaStart = 1234 / 8000 * 60;
   let sequenceStart = 0;
   const ranges = clips.map((clip) => {
     const sourceRange = clip.source_range;
@@ -1877,9 +1880,9 @@ test('server media loads from the resolved project path and OTIO keeps its absol
     return result;
   });
   expect(ranges).toEqual([
-    { sequenceStart: 0, sourceStart: 833, sourceDuration: 126, availableStart: 0, availableDuration: 18000 },
-    { sequenceStart: 126, sourceStart: 1088, sourceDuration: 44, availableStart: 0, availableDuration: 18000 },
-    { sequenceStart: 170, sourceStart: 1234, sourceDuration: 60, availableStart: 0, availableDuration: 18000 },
-    { sequenceStart: 230, sourceStart: 1316, sourceDuration: 16684, availableStart: 0, availableDuration: 18000 },
+    { sequenceStart: 0, sourceStart: mediaStart + 833, sourceDuration: 126, availableStart: mediaStart, availableDuration: 18000 },
+    { sequenceStart: 126, sourceStart: mediaStart + 1088, sourceDuration: 44, availableStart: mediaStart, availableDuration: 18000 },
+    { sequenceStart: 170, sourceStart: mediaStart + 1234, sourceDuration: 60, availableStart: mediaStart, availableDuration: 18000 },
+    { sequenceStart: 230, sourceStart: mediaStart + 1316, sourceDuration: 16684, availableStart: mediaStart, availableDuration: 18000 },
   ]);
 });
