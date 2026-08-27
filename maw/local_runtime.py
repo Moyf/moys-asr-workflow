@@ -87,23 +87,49 @@ class LocalRuntimeStatus:
         }
 
 
-def default_runtime_root() -> Path:
-    """兼容入口：local runtime 根目录（环境变量「MAW_LOCAL_RUNTIME_ROOT」/ 默认 app-data）。"""
+def _is_moss_engine(engine: str) -> bool:
+    return engine.strip().casefold() == "moss"
+
+
+def _moss_runtime():
+    """Lazily import ``maw.moss_runtime`` at call time.
+
+    ``maw.moss_runtime`` imports this module's shared helpers at module level,
+    so importing it here at load time would create a circular import.
+    """
+
+    from maw import moss_runtime  # noqa: F401
+
+    return moss_runtime
+
+
+def default_runtime_root(engine: str = "") -> Path:
+    """兼容入口：runtime 根目录（「MAW_LOCAL_RUNTIME_ROOT」/ 默认 app-data；MOSS 走独立目录）。"""
+    if _is_moss_engine(engine):
+        return _moss_runtime().default_runtime_root()
     return LOCAL.resolve_root()
 
 
-def runtime_python_path(root: Path | None = None) -> Path:
+def runtime_python_path(root: Path | None = None, *, engine: str = "") -> Path:
+    if _is_moss_engine(engine):
+        return _moss_runtime().runtime_python_path(root)
     target = root or default_runtime_root()
     return LOCAL.python_path(target)
 
 
-def managed_runtime_status(model_cache_root: str | Path | None = None) -> LocalRuntimeStatus:
-    """委托 ``maw.runtimes.LOCAL.status`` 并转换为旧契约状态类型。"""
+def managed_runtime_status(
+    model_cache_root: str | Path | None = None,
+    *,
+    engine: str = "",
+) -> LocalRuntimeStatus:
+    """委托 ``maw.runtimes`` 对应实例的 status 并转换为旧契约状态类型。"""
+    if _is_moss_engine(engine):
+        return _moss_runtime().managed_runtime_status(model_cache_root)
     return _from_runtime_status(LOCAL.status(model_cache_root=model_cache_root))
 
 
-def managed_runtime_python() -> str:
-    status = managed_runtime_status()
+def managed_runtime_python(engine: str = "") -> str:
+    status = managed_runtime_status(engine=engine)
     return status.python_path if status.ready else ""
 
 
@@ -113,8 +139,16 @@ def install_local_runtime(
     cancel_event: Event | None = None,
     repair: bool = False,
     model_cache_root: str | Path | None = None,
+    engine: str = "",
 ) -> LocalRuntimeStatus:
-    """委托 ``maw.runtimes.LOCAL.install``（完整生命周期在 base）。"""
+    """委托 ``maw.runtimes`` 对应实例的 install（完整生命周期在 base）。"""
+    if _is_moss_engine(engine):
+        return _moss_runtime().install_local_runtime(
+            on_event=on_event,
+            cancel_event=cancel_event,
+            repair=repair,
+            model_cache_root=model_cache_root,
+        )
     return _from_runtime_status(
         LOCAL.install(
             on_event=on_event,
@@ -141,9 +175,14 @@ def prepare_model_in_runtime(
     cancel_event: Event | None = None,
 ) -> int:
     """在托管环境里跑模型加载器（不经 MAW.exe 本进程）。"""
-    status = managed_runtime_status(model_cache_root)
-    if not status.ready:
-        raise LocalRuntimeError("本地模型运行时尚未安装，请先安装本地模型支持。")
+    if _is_moss_engine(engine):
+        status = _moss_runtime().managed_runtime_status(model_cache_root)
+        if not status.ready:
+            raise LocalRuntimeError("MOSS 运行环境尚未安装，请先安装 MOSS 本地支持。")
+    else:
+        status = managed_runtime_status(model_cache_root)
+        if not status.ready:
+            raise LocalRuntimeError("本地模型运行时尚未安装，请先安装本地模型支持。")
     helper = LOCAL.bundle_path("maw/local_runtime_worker.py")
     if not helper.exists():
         raise LocalRuntimeError(f"本地运行时助手缺失：{helper}")

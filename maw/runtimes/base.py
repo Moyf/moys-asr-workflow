@@ -107,8 +107,6 @@ class RuntimeSpec:
     model_id: str | None = None
     model_id_label: str | None = None
     has_model_cache: bool = False
-    # 迁移期标记：moss 尚未迁 embedded（uv 移除后删除）
-    install_uv: bool = False
     # 异常
     error_class: type[ManagedRuntimeError] = ManagedRuntimeError
     cancelled_class: type[RuntimeCancelled] = RuntimeCancelled
@@ -247,8 +245,17 @@ class ManagedRuntime:
             raise self._error(
                 f"{self.spec.message_prefix}依赖清单缺失：" + str(path) + "。"
                 "打包版应随包分发；源码运行请先运行 "
-                f"uv export --frozen --extra {self.spec.requirements_key} --no-dev "
-                f"--format requirements-txt -o build/{self.spec.requirements_bundle_name}"
+                + (
+                    "uv pip compile moss-requirements.in -p 3.11 "
+                    "--extra-index-url https://download.pytorch.org/whl/cu130 "
+                    "--index-strategy unsafe-best-match "
+                    f"-o build/{self.spec.requirements_bundle_name}"
+                    if self.spec.key == "moss"
+                    else (
+                        f"uv export --frozen --extra {self.spec.requirements_key} --no-dev "
+                        f"--format requirements-txt -o build/{self.spec.requirements_bundle_name}"
+                    )
+                )
             )
         return path
 
@@ -345,11 +352,6 @@ class ManagedRuntime:
         emit = on_event or (lambda _message, _percent, _stage: None)
         cancel = cancel_event or Event()
         spec = self.spec
-        if spec.install_uv:
-            # TODO: moss 迁 embedded（uv 全量移除）后删除该分支。
-            raise NotImplementedError(
-                f"{spec.message_prefix}尚未完成嵌入式安装迁移（install_uv 占位）。"
-            )
 
         root = self.resolve_root(runtime_root)
         if root.exists() and not root.is_dir():
