@@ -230,6 +230,9 @@ class RuntimeStatusTransitionTests(unittest.TestCase):
             self.assertEqual(status.python_path, "")
             self.assertEqual(Path(status.model_cache_path), cache.resolve())
             self.assertNotEqual(Path(status.path), Path(status.model_cache_path))
+            # 所有负载字段必须可 JSON 序列化（WindowsPath 会击穿 pywebview bridge）
+            json.dumps(status.to_payload())
+            self.assertIsInstance(status.model_cache_path, str)
 
 
 if __name__ == "__main__":
