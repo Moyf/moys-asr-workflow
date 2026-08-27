@@ -235,15 +235,24 @@ class ManagedRuntime:
             return asset_path(f"{self.spec.bundle_dir}/{relative}")
         return Path(__file__).resolve().parents[2] / relative
 
-    def requirements_path(self) -> Path:
-        """frozen requirements txt（打包版随包分发；源码模式在 build/ 下，由 CI uv export 生成）。"""
+    def requirements_path(self, *, cpu: bool = False) -> Path:
+        """frozen requirements txt（打包版随包分发；源码模式在 build/ 下，由 CI 生成）。
+
+        传 ``cpu=True`` 时返回 `requirements-{key}-cpu.txt`：构建期由主清单
+        去掉 ``+cuXXX`` 生成的 CPU 版清单，供无 NVIDIA GPU 的机器一次性
+        安装 CPU Torch（与 cu130 清单并列打包，运行时不再做文本转换）。
+        """
+        bundle_name = self.spec.requirements_bundle_name
+        if cpu:
+            bundle_name = bundle_name[: -len(".txt")] + "-cpu.txt"
         if getattr(sys, "frozen", False):
-            path = asset_path(f"{self.spec.bundle_dir}/{self.spec.requirements_bundle_name}")
+            path = asset_path(f"{self.spec.bundle_dir}/{bundle_name}")
         else:
-            path = Path(__file__).resolve().parents[2] / "build" / self.spec.requirements_bundle_name
+            path = Path(__file__).resolve().parents[2] / "build" / bundle_name
         if not path.is_file():
+            kind = "CPU 版依赖清单" if cpu else "依赖清单"
             raise self._error(
-                f"{self.spec.message_prefix}依赖清单缺失：" + str(path) + "。"
+                f"{self.spec.message_prefix}{kind}缺失：" + str(path) + "。"
                 "打包版应随包分发；源码运行请先运行 "
                 + (
                     "uv pip compile moss-requirements.in -p 3.11 "
@@ -255,6 +264,11 @@ class ManagedRuntime:
                         f"uv export --frozen --extra {self.spec.requirements_key} --no-dev "
                         f"--format requirements-txt -o build/{self.spec.requirements_bundle_name}"
                     )
+                )
+                + (
+                    "，并在构建脚本生成 CPU 变体（去除 +cuXXX）后重试"
+                    if cpu
+                    else ""
                 )
             )
         return path
@@ -405,36 +419,31 @@ class ManagedRuntime:
         requirements_file = self.requirements_path()
         site_packages = self.site_packages(root)
         fastest_index = pick_fastest_mirror()
+        # CUDA 检测前置（不得晚于首次 pip 安装）：无 NVIDIA GPU（非 darwin）
+        # 时直接使用构建期生成的 CPU 版清单（requirements-{key}-cpu.txt，
+        # 已去除 +cuXXX 且不附加 cu130 index），一次性安装 CPU Torch，
+        # 避免先下载完整 cu130 wheel 与 nvidia-* 依赖再覆盖（PR review
+        # 3862518679）。
+        needs_cpu_fallback = sys.platform != "darwin" and spec.cuda_fallback_packages and not _has_cuda()
+        requirements_arg = requirements_file
+        extra_index = spec.extra_index_url
+        if needs_cpu_fallback:
+            emit("未检测到 NVIDIA CUDA，改用 CPU 版 Torch……", 25, "dependencies")
+            requirements_arg = self.requirements_path(cpu=True)
+            extra_index = None
         self.run(
             _pip_install_command(
                 python,
                 site_packages,
-                requirements_file,
+                requirements_arg,
                 index_url=fastest_index,
-                extra_index_url=spec.extra_index_url,
+                extra_index_url=extra_index,
             ),
             env=self.environment(root, model_cache_root),
             cancel=cancel,
-            on_line=_dependency_line(emit, requirements_file),
+            on_line=_dependency_line(emit, requirements_arg),
         )
         _may_cancel(cancel, spec)
-
-        if sys.platform != "darwin" and spec.cuda_fallback_packages and not _has_cuda():
-            emit("未检测到 NVIDIA CUDA，切换 Torch 为 CPU 版……", 88, "cuda-fallback")
-            cpu_command = _pip_install_command(
-                python,
-                site_packages,
-                None,
-                index_url=fastest_index,
-                packages=list(spec.cuda_fallback_packages),
-            )
-            self.run(
-                cpu_command,
-                env=self.environment(root, model_cache_root),
-                cancel=cancel,
-                on_line=lambda line: emit(line, 89, "cuda-fallback"),
-            )
-            _may_cancel(cancel, spec)
 
         emit(f"正在验证{spec.feature_label}运行时……", 90, "verify")
         verify_command = [str(python), "-c", spec.verify_command]
