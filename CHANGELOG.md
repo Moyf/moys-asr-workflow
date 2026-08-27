@@ -15,6 +15,7 @@
 
 ### 🐛 问题修复
 
+- **AppImage 打开外部程序失效** ： Linux 打包版打开外部 URL / 路径前恢复 `LD_LIBRARY_PATH_ORIG`（AppImage 内的 Qt 库路径），避免污染外部 `xdg-open` 子进程（PR 74 移植）。
 - **NixOS 打开字幕编辑器崩溃** ： PyInstaller 排除 `readline` 模块并在 AppImage 内物理剔除 `libreadline.so`（与既有 C++ 运行时剔除模式一致），避免 AppImage 内的旧版 readline 污染 `webbrowser.open` → xdg-open → bash 子进程；release CI 增加产物回归断言。
 - **Pages 部署路径过滤** ： `deploy-editor-pages.yml` 的 `paths` 清理失效的 `reapeaks_io.py` 条目（main 实际文件为 `maw/reapeaks.py`，已被 `maw/**` 覆盖，仅为消除残留）。
 
