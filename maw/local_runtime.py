@@ -25,6 +25,7 @@ from typing import Final, TextIO
 
 from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
 from maw.runtime_manifest import STATUS_INSTALLING, STATUS_READY, read_runtime_manifest, write_runtime_manifest
+from maw.runtime_mirror_picker import pick_fastest_mirror
 
 
 RUNTIME_VERSION: Final = "5"
@@ -230,10 +231,12 @@ def install_local_runtime(
     emit("正在安装本地 ASR 依赖（Torch、FunASR、QwenASR）……", 25, "dependencies")
     requirements_file = _runtime_requirements_path()
     site_packages = root / "site-packages"
+    fastest_index = pick_fastest_mirror()
     install_args = _pip_install_command(
         python,
         site_packages,
         requirements_file,
+        index_url=fastest_index,
         extra_index_url=PYTORCH_INDEX,
     )
     _run_process(
@@ -250,6 +253,7 @@ def install_local_runtime(
             python,
             site_packages,
             None,
+            index_url=fastest_index,
             packages=["torch==2.13.0", "torchaudio==2.11.0"],
         )
         _run_process(
@@ -421,6 +425,7 @@ def _pip_install_command(
     target_dir: Path,
     requirements_file: Path | None,
     *,
+    index_url: str = "https://pypi.org/simple",
     extra_index_url: str | None = None,
     packages: list[str] | None = None,
 ) -> list[str]:
@@ -428,7 +433,7 @@ def _pip_install_command(
     command = [
         str(python_exe), "-m", "pip", "install", "--upgrade",
         "--target", str(target_dir),
-        "--index-url", "https://pypi.org/simple",
+        "--index-url", index_url,
     ]
     if extra_index_url:
         command.extend(["--extra-index-url", extra_index_url])
