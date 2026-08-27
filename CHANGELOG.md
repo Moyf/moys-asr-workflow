@@ -12,7 +12,7 @@
 
 - **托管 Runtime 共性抽象** ： local / ocr / moss 三个托管 Runtime 统一到 `maw/runtimes`（`RuntimeSpec` 声明式规格 + `ManagedRuntime` 生命周期基类），`maw/local_runtime.py` 与 `maw/ocr_runtime.py` 收窄为薄壳委托，新增 `engine` 维度（local / moss）支持。
 - **移除 bundled uv** ： 三个托管 Runtime 一律 embedded Python + get-pip + `pip install --target` 安装；moss 依赖因与 local（qwen-asr 固定 Transformers 4.57.6）互斥而独立声明于 `moss-requirements.in`，由 `uv pip compile` 冻结（与 local/ocr 的 `uv export` 管线并行），macOS 产物不再内置 uv。
-- **CUDA 检测前置** ： 无 NVIDIA GPU（非 macOS）时在首次依赖安装前即切换 CPU 版 Torch——构建期生成去 `+cu130` 的 `requirements-{key}-cpu.txt` 随包分发，首装直接调用该清单，不再先下载完整 CUDA wheel 与 nvidia-* 依赖再覆盖。
+- **CUDA 检测前置** ： 无 NVIDIA GPU（非 macOS）时在首次依赖安装前即切换 CPU 版 Torch——构建期生成去 `+cu130` 的 `requirements-{key}-cpu.txt` 随包分发，同时剔除 cu 构建专属的 `nvidia-*` 依赖块并移除随之失效的 wheel 哈希行（避免首装哈希校验失败），首装直接调用该清单，不再先下载完整 CUDA wheel 与 nvidia-* 依赖再覆盖。
 
 ### 🐛 问题修复
 
