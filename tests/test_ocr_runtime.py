@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -43,7 +44,7 @@ class OcrRuntimeTests(unittest.TestCase):
         calls: list[list[str]] = []
 
         def fake_extract(_zip_path, target_dir):
-            python = target_dir / ("python.exe" if os.name == "nt" else "bin/python")
+            python = target_dir / ("python.exe" if sys.platform == "win32" else "bin/python")
             python.parent.mkdir(parents=True, exist_ok=True)
             python.write_bytes(b"python")
 
@@ -121,7 +122,7 @@ class OcrRuntimeTests(unittest.TestCase):
         self.assertIn(str(self.root.parent / "ocr-output"), command)
 
     def _make_ready_runtime(self) -> None:
-        python = self.root / ("python/python.exe" if os.name == "nt" else "python/bin/python")
+        python = self.root / ("python/python.exe" if sys.platform == "win32" else "python/bin/python")
         python.parent.mkdir(parents=True, exist_ok=True)
         python.write_bytes(b"python")
         site_packages = self.root / "site-packages"

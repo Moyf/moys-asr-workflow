@@ -95,7 +95,7 @@ class LocalRuntimeTests(unittest.TestCase):
             events: list[tuple[str, int, str]] = []
 
             def fake_extract(_zip_path: Path, target_dir: Path) -> None:
-                python = target_dir / ("python.exe" if os.name == "nt" else "bin/python")
+                python = target_dir / ("python.exe" if sys.platform == "win32" else "bin/python")
                 python.parent.mkdir(parents=True, exist_ok=True)
                 python.touch()
 
