@@ -140,7 +140,7 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 | `--debug` | 输出更多 API 调试信息。调试日志仍不会输出 API Key。 |
 | `-s PATH`, `--stickers PATH` | 指定表情包目录。它会传递给转写后生成的编辑器工程，也可用于 Server。 |
 
-`--speaker-colors` 已经包含说话人分离，不必同时重复写 `--speaker`。Qwen3-ASR 不支持说话人开关；Qwen-Audio、Fun-ASR 和 Soniox 支持情况以当前供应商及账户能力为准。
+`--speaker-colors` 已经包含说话人分离，不必同时重复写 `--speaker`。Qwen3-ASR 不支持说话人开关；Qwen-Audio、Fun-ASR、Soniox 和腾讯云 `16k_zh_en_2.0` 支持情况以当前供应商及账户能力为准。腾讯云大于 5MB 的媒体需要 `--file-url`。
 
 ### 4.3 Qwen / 百炼专用参数
 
