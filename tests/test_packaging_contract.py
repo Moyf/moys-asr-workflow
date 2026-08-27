@@ -370,6 +370,7 @@ class PackagingContractTests(unittest.TestCase):
         windows = read_text("scripts/build-windows.ps1")
         appimage = read_text("scripts/build-appimage.sh")
         release = read_text(".github/workflows/release.yml")
+        lint = read_text(".github/workflows/python-lint.yml")
 
         for key in ("windows-x86_64", "macos-arm64", "linux-x86_64"):
             self.assertIn(f'"{key}"', registry)
@@ -392,6 +393,10 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("smoke_runtime_bootstrap.py --platform linux-x86_64", appimage)
         self.assertIn("Contents/Resources/bootstrap/cpython-3.11.16", release)
         self.assertIn("_internal/bootstrap/cpython-3.11.16", release)
+        self.assertIn("Runtime bootstrap smoke (${{ matrix.name }})", lint)
+        self.assertIn("platform: macos-arm64", lint)
+        self.assertIn("platform: linux-x86_64", lint)
+        self.assertIn("smoke_runtime_bootstrap.py --platform ${{ matrix.platform }}", lint)
 
     def test_release_workflow_is_tag_triggered_and_publishes_both_windows_packages(self) -> None:
         """Given a v* tag push, When workflow is read, Then it releases MAW and MAW-lite builds."""

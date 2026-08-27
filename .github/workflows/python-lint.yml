@@ -33,3 +33,35 @@ jobs:
 
       - name: Run Ruff check
         run: uv run --frozen ruff check
+
+  runtime-bootstrap-smoke:
+    name: Runtime bootstrap smoke (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64
+            os: macos-14
+            arch: arm64
+            platform: macos-arm64
+          - name: Linux x86_64
+            os: ubuntu-22.04
+            arch: x64
+            platform: linux-x86_64
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: ${{ matrix.arch }}
+
+      - name: Prepare runtime bootstrap
+        run: python scripts/prepare_runtime_bootstrap.py --platform ${{ matrix.platform }}
+
+      - name: Smoke runtime bootstrap
+        run: python scripts/smoke_runtime_bootstrap.py --platform ${{ matrix.platform }}
