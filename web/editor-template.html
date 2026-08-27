@@ -68,6 +68,7 @@ __WAVEFORM_CSS__
       <input type="checkbox" id="multi-subtitle-toggle" title="当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。">
       多重字幕
     </label>
+    <small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden>请拖入第二条字幕以开启多重字幕编辑</small>
     <span class="dropdown multi-subtitle-settings-dropdown" id="multi-subtitle-settings-dropdown" hidden>
       <button type="button" id="multi-subtitle-settings-toggle" title="多重字幕设置" aria-label="多重字幕设置" aria-expanded="false" aria-controls="multi-subtitle-settings-menu" aria-haspopup="menu">⚙️</button>
       <div class="dropdown-menu multi-subtitle-settings-menu" id="multi-subtitle-settings-menu" role="menu">
@@ -677,16 +678,40 @@ __WAVEFORM_CSS__
         <option value="ctrl-enter">Ctrl+Enter</option>
     </select>
   </label>
-    <label class="toggle editor-settings-item" title="开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置">
+    <label class="toggle editor-settings-item" title="开启时，会自动按可用时间码拆分；关闭后将打开拆分弹窗，手动进行拆分">
       <input type="checkbox" id="split-use-word-timestamps" checked> 主字幕自动使用时间码拆分
     </label>
-    <small class="editor-settings-hint" id="split-use-word-timestamps-hint">开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置。</small>
+    <small class="editor-settings-hint" id="split-use-word-timestamps-hint">开启时，会自动按可用时间码拆分；关闭后将打开拆分弹窗，手动进行拆分。</small>
     <div class="editor-settings-field">
-    <label class="editor-settings-item" title="合并两条字幕时，中间插入的字符（如果不需要可以留空）">
-      合并字幕时插入字符
-      <input type="text" id="merge-join-text" placeholder="留空则直接拼接">
-    </label>
-    <small class="editor-settings-hint">合并两条字幕时，中间插入的字符（如果不需要可以留空）</small>
+      <div class="split-join-title-row">
+        <span class="editor-settings-item">合并字幕时插入字符</span>
+        <span class="split-join-mode-hint-group" id="merge-join-mode-hint" hidden>
+          <small class="editor-settings-hint" id="merge-join-mode-text"></small>
+          <button type="button" class="split-join-mode-switch" id="merge-join-mode-switch"></button>
+        </span>
+      </div>
+      <div class="split-join-inline-row">
+        <label class="editor-settings-item split-join-row">
+          字符型
+          <input type="text" id="merge-join-text-continuous" placeholder="留空则直接拼接">
+        </label>
+        <label class="editor-settings-item split-join-row">
+          单词型
+          <input type="text" id="merge-join-text-word" placeholder="默认一个空格">
+        </label>
+      </div>
+    </div>
+    <div class="editor-settings-field split-trim-symbols-field">
+      <span class="editor-settings-item" id="split-trim-symbols-label">拆分时移除的标点符号</span>
+      <div class="split-trim-symbol-row">
+        <div class="split-trim-symbol-grid" id="split-trim-symbol-grid" role="group" aria-labelledby="split-trim-symbols-label"></div>
+        <button type="button" id="split-trim-symbols-reset">恢复默认符号</button>
+      </div>
+      <label class="editor-settings-item split-join-row" title="其他需要移除的符号，用空格分隔；输入的每个符号都会在拆分后从两侧文本边缘移除">
+        其他符号
+        <input type="text" id="split-trim-extra-symbols" placeholder="其他符号，用空格分隔" autocomplete="off">
+      </label>
+      <small class="editor-settings-hint">勾选或填写的符号会在拆分后从两侧文本边缘自动移除；空格与换行始终修剪。</small>
     </div>
     </div>
   </div>
@@ -1197,6 +1222,10 @@ __WAVEFORM_CSS__
         <input type="text" id="search" placeholder="过滤字幕…" autocomplete="off">
         <span class="clear-x" id="search-clear" title="清空">×</span>
       </span>
+      <div class="dropdown color-filter-dropdown" id="color-filter-dropdown">
+        <button type="button" id="color-filter-btn" hidden title="按颜色过滤显示的字幕" aria-expanded="false" aria-controls="color-filter-menu">🎨</button>
+        <div class="dropdown-menu color-filter-menu" id="color-filter-menu" role="menu"></div>
+      </div>
       <span class="info">显示 <b id="visible-count">0</b> / <b id="total-count">0</b></span>
       <span class="sep"></span>
       <div class="dropdown batch-operations-dropdown" id="batch-operations-dropdown">
