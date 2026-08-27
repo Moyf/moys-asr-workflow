@@ -26,7 +26,7 @@ from scripts.mosp_match_text import (
 
 SCRIPT_EXTENSIONS = frozenset({".txt", ".md", ".markdown"})
 MIN_MATCH_COVERAGE = 0.55
-DEFAULT_SPLIT_PUNCTUATION = frozenset({"，", "。", ",", ".", "\n"})
+DEFAULT_SPLIT_PUNCTUATION = frozenset({"，", "。", "？", "！", ",", ".", "?", "!", "\n"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,7 +115,13 @@ def prepare_script_text(
 
     split_symbols = tuple(symbol for symbol in extra_split_punctuation if symbol)
     preserve_symbols = tuple(symbol for symbol in preserve_punctuation if symbol)
-    missing = tuple(symbol for symbol in preserve_symbols if symbol not in split_symbols)
+    # 基础断句集（逗号、句号、问号、感叹号、换行）始终生效，保留符号直接
+    # 引用基础集成员时无需在额外断句符号中重复声明。
+    missing = tuple(
+        symbol
+        for symbol in preserve_symbols
+        if symbol not in split_symbols and symbol not in DEFAULT_SPLIT_PUNCTUATION
+    )
     if missing:
         raise ValueError(
             "保留符号必须来自额外断句符号：" + "、".join(missing)

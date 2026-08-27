@@ -42,6 +42,7 @@ class TranscriptionRequest:
     max_len: str = ""
     min_len: str = ""
     gap_split: str = ""
+    strip_tail_punct: str = ""
     qwen_audio_context: str = ""
     qwen_audio_hotwords: str = ""
     qwen_audio_hotwords_file: str = ""
@@ -277,6 +278,8 @@ def build_transcribe_command(
     _append_option(command, "--max-len", request.max_len)
     _append_option(command, "--min-len", request.min_len)
     _append_option(command, "--gap-split", request.gap_split)
+    # 始终显式下发（含空串）：空串表示共享保留符号配置要求完全不剥尾。
+    command.extend(["--strip-tail-punct", request.strip_tail_punct])
     if request.provider == "qwen" and request.model == QWEN_AUDIO_MODEL_ID:
         _append_option(command, "--vocabulary-id", request.qwen_audio_vocabulary_id)
         _append_option(command, "--hotword-weight", request.qwen_audio_hotword_weight)

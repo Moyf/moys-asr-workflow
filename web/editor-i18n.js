@@ -99,7 +99,7 @@
     '拆分与合并': 'Split and merge', '波形形状来源': 'Waveform shape source', '自研波形': 'Self-built waveform', 'ReaPeaks 波形层': 'ReaPeaks waveform layer',
     '显示方式': 'Display mode', '语言类型': 'Language type', '主字幕': 'Main subtitle', '副字幕': 'Secondary subtitle', '主字幕语言类型': 'Main subtitle language type', '副字幕语言类型': 'Secondary subtitle language type', '副字幕时波形高度': 'Waveform height with secondary subtitles', '跨轨道吸附': 'Cross-track snapping', '同时选中主副字幕': 'Select main and secondary subtitles together', '绑定时自动同步时长': 'Automatically sync duration when binding', '显示轨道徽标': 'Show track badges', '在多重字幕波形中显示主字幕和副字幕的轨道编号徽标': 'Show main and secondary track number badges in the multiple-subtitle waveform', '交换主副字幕': 'Swap main and secondary subtitles', '普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕': 'Normal clicks follow the last clicked track; clicking a bound subtitle only adds the other subtitle actually bound to it',
     '开启后显示副轨、双列列表和绑定操作；关闭只隐藏副字幕数据，不删除': 'Show the secondary track, two-column list, and binding actions; turning it off only hides secondary data',
-    '启用多重字幕时使用的波形行高度': 'Waveform row height used when multiple subtitles are enabled', '请拖入第二个 srt 字幕以开启多重字幕功能': 'Drop a second SRT subtitle to enable multiple subtitles', '是否选择导入第二条字幕以开启多重字幕模式？': 'Import a second subtitle to enable multiple-subtitle mode?', '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。': 'When the current project has more than one subtitle, you can enable multiple-subtitle mode for bilingual subtitle editing and similar workflows.',
+    '启用多重字幕时使用的波形行高度': 'Waveform row height used when multiple subtitles are enabled', '请拖入第二个 srt 字幕以开启多重字幕功能': 'Drop a second SRT subtitle to enable multiple subtitles', '请拖入第二条字幕以开启多重字幕编辑': 'Drop a second subtitle to enable multi-subtitle editing', '是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）': 'Import the second subtitle? (You can also drop a subtitle or project file into the editor later)', '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。': 'When the current project has more than one subtitle, you can enable multiple-subtitle mode for bilingual subtitle editing and similar workflows.',
     '拖动多重字幕时，允许吸附到另一条字幕轨道的起点和终点': 'Snap multiple subtitles to the start and end boundaries of the other track while dragging',
     '点击主字幕或副字幕时，如果存在绑定字幕，同时选中对应字幕': 'When clicking a main or secondary subtitle, also select its bound counterpart if one exists',
     '交换主字幕和副字幕的文本、时间与绑定关系': 'Swap the text, timing, and bindings between the main and secondary subtitles',
@@ -476,6 +476,7 @@
     '按文字位置拆分': 'Split at text position', '跳转到字幕并播放': 'Seek to subtitle and play',
     '分配表情包…': 'Assign sticker…', '删除表情包': 'Remove sticker',
     '标记颜色': 'Mark color', '清除颜色': 'Clear color',
+    '切换主字幕语言类型': 'Change main subtitle language type',
     '启用此条': 'Enable this subtitle', '禁用此条': 'Disable this subtitle',
     '删除字幕': 'Delete subtitle', '拓展表情包时长': 'Extend sticker duration',
     '统一分配表情包…': 'Assign sticker to selection…',
@@ -649,7 +650,28 @@
     '拖动调整布局区域比例': 'Drag to resize layout areas',
     '拖动调整左右区域宽度': 'Drag to resize left and right areas',
     '拖动调整视频与当前字幕高度': 'Drag to resize video and current-subtitle heights',
-    '拖动调整当前字幕与字幕列表高度': 'Drag to resize current-subtitle and subtitle-list heights'
+    '拖动调整当前字幕与字幕列表高度': 'Drag to resize current-subtitle and subtitle-list heights',
+    // 颜色过滤与拆分移除符号设置
+    '按颜色过滤显示的字幕': 'Filter visible subtitles by color',
+    '清除颜色过滤': 'Clear color filter',
+    '默认': 'Default',
+    '主字幕自动使用时间码拆分': 'Auto-split main subtitles with word timings',
+    '开启时，会自动按可用时间码拆分；关闭后将打开拆分弹窗，手动进行拆分。':
+      'When enabled, cues split automatically at usable word timings; otherwise the split dialog opens for manual splitting.',
+    '合并字幕时插入字符': 'Text inserted when merging subtitles',
+    '留空则直接拼接': 'Leave empty to join directly', '默认一个空格': 'Defaults to one space',
+    '拆分时移除的标点符号': 'Punctuation removed when splitting',
+    '勾选或填写的符号会在拆分后从两侧文本边缘自动移除；空格与换行始终修剪。':
+      'Checked symbols and symbols in the extra field are trimmed from both text edges after a split; spaces and line breaks are always trimmed.',
+    '其他符号': 'Other symbols',
+    '其他符号，用空格分隔': 'Other symbols, separated by spaces',
+    '其他需要移除的符号，用空格分隔；输入的每个符号都会在拆分后从两侧文本边缘移除':
+      'Additional symbols to remove, separated by spaces; every symbol entered is trimmed from both text edges after a split',
+    '恢复默认符号': 'Restore default symbols',
+    '全角逗号': 'Fullwidth comma', '句号': 'Period', '顿号': 'Enumerated comma',
+    '全角感叹号': 'Fullwidth exclamation mark', '全角问号': 'Fullwidth question mark',
+    '单词型：英语等西文语言，按空格分隔多个单词': 'Word-based: Latin-script languages such as English, where words are separated by spaces',
+    '字符型：中文、日文等按字符拆分的语言': 'Character-based: languages such as Chinese and Japanese, split per character',
   };
 
   const textOriginals = new WeakMap();
@@ -859,6 +881,16 @@
     if (text === '副字幕已随主字幕联动调整') return 'Secondary subtitle followed the main subtitle';
     match = /^已交换主副字幕：主轨\s+(\d+)\s+条，副轨\s+(\d+)\s+条$/.exec(text);
     if (match) return `Swapped main and secondary subtitles: ${match[1]} main, ${match[2]} secondary`;
+    // 合并连接设置旁的主字幕类型提示与切换按钮 title（目标类型语言说明）
+    match = /^当前为「(.+)」$/.exec(text);
+    if (match) return `Current: ${translateText(match[1], EN)}`;
+    match = /^切换为(单词型|字符型)$/.exec(text);
+    if (match) return `Switch to ${translateText(match[1], EN)}`;
+    // 颜色过滤行 title：该颜色的字幕共 N 条；点击条目只显示此颜色，勾选可多选
+    match = /^该颜色的字幕共\s*(\d+)\s*条；点击条目只显示此颜色，勾选可多选$/.exec(text);
+    if (match) {
+      return `This color has ${match[1]} subtitles; click a row to show only that color, check boxes to select multiple`;
+    }
     // flashHint：已拼接/合并字幕：吸附 2 处间隔，吸收 1 条短字幕
     match = /^(已拼接\/合并字幕|已拼合字幕)：(.+)$/.exec(text);
     if (match) {

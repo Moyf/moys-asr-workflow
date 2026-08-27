@@ -27,6 +27,7 @@ try {
     uv pip compile moss-requirements.in -p 3.11 --extra-index-url https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match -o build/requirements-moss.txt
     # CPU 变体：屏蔽 GPU 源后原生冻结（带 CPU wheel 真实哈希，而非冻结后文本剔除）。
     uv pip compile local-cpu-requirements.in -p 3.11 --generate-hashes --index-strategy unsafe-best-match -o build/requirements-local-cpu.txt
+    uv pip compile moss-cpu-requirements.in -p 3.11 --generate-hashes --index-strategy unsafe-best-match -o build/requirements-moss-cpu.txt
 
     if (-not $SkipTests) {
         uv run python -m unittest tests.test_packaging_contract
