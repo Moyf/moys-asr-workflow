@@ -158,9 +158,12 @@ def poll_task(task_id: int, config: dict[str, str | int], on_status=print) -> di
     deadline = time.monotonic() + int(config["poll_timeout"])
     while time.monotonic() < deadline:
         response = _request("DescribeTaskStatus", {"TaskId": task_id}, config)
-        result = response.get("Response", {})
-        if not isinstance(result, dict):
+        envelope = response.get("Response", {})
+        if not isinstance(envelope, dict):
             raise RuntimeError("腾讯云任务状态响应无效")
+        result = envelope.get("Data", {})
+        if not isinstance(result, dict):
+            raise RuntimeError("腾讯云任务状态响应缺少 Data")
         status = int(result.get("Status", -1))
         on_status(f"[tencent] 任务状态: {result.get('StatusStr', status)}")
         if status == SUCCESS_STATUS:
