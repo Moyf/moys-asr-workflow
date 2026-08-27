@@ -916,6 +916,85 @@
   .editor-settings-field > .editor-settings-item { width: auto; }
   .editor-settings-field > label.toggle.editor-settings-item { align-self: stretch; width: 100%; }
   .editor-settings-field > .editor-settings-hint { margin: 0; }
+  /* 拆分移除符号：勾选式字符网格；每个 chip 是一个可点选的 checkbox。 */
+  .split-trim-symbols-field { gap: 5px; }
+  /* chips 与「恢复默认符号」同行：网格居左，按钮贴右侧、默认状态隐藏。 */
+  .split-trim-symbol-row {
+    display: flex; align-items: center; gap: 8px;
+    max-width: 100%;
+  }
+  .split-trim-symbol-row > .split-trim-symbol-grid { flex: 0 1 auto; }
+  .split-trim-symbol-row > #split-trim-symbols-reset {
+    margin-left: auto; padding: 3px 10px; font-size: 12px;
+  }
+  .editor-settings-panel .split-join-row input[type="text"] {
+    min-width: 0;
+    width: auto;
+    flex: 1 1 auto;
+  }
+  /* 「其他符号」行：标签 + 输入框占满整行，输入框吃掉剩余宽度。 */
+  .split-trim-symbols-field > .split-join-row {
+    align-self: stretch; width: 100%;
+  }
+  /* 「合并字幕时插入字符」的两组（字符型/单词型）同一行、各占一半；
+     面板过窄放不下两组时才退回上下两行。 */
+  .split-join-inline-row {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+    max-width: 100%; width: 100%;
+  }
+  .split-join-inline-row > .split-join-row {
+    /* 各占一半（减去间距）；文本框在半栏内吃掉剩余宽度。 */
+    flex: 1 1 calc(50% - 10px);
+    min-width: 0;
+  }
+  /* 标题与主字幕类型提示同行：标题居左，提示+切换按钮贴右；
+     宽度不足时提示组整体换行到下一行，按钮不会被截断或越界。 */
+  .split-join-title-row {
+    display: flex; flex-wrap: wrap; align-items: baseline;
+    gap: 2px 8px;
+    align-self: stretch; width: 100%;
+  }
+  .split-join-mode-hint-group {
+    display: inline-flex; flex-wrap: wrap; align-items: baseline;
+    gap: 2px 8px;
+    margin-left: auto; min-width: 0; max-width: 100%;
+  }
+  .split-join-mode-hint-group[hidden] { display: none; }
+  .split-join-mode-hint-group > #merge-join-mode-text { white-space: nowrap; }
+  .split-join-mode-switch {
+    background: none; border: none; padding: 0;
+    color: var(--accent); cursor: pointer;
+    font-size: 12px; line-height: inherit; white-space: nowrap;
+    text-decoration: underline; text-underline-offset: 2px;
+  }
+  .split-join-mode-switch:hover { color: var(--accent-hover); }
+  .split-trim-symbol-grid {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    max-width: 100%;
+  }
+  .split-trim-symbol-grid label {
+    display: inline-flex; align-items: center;
+    cursor: pointer; user-select: none;
+  }
+  .split-trim-symbol-grid input[type="checkbox"] {
+    position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;
+  }
+  .split-trim-symbol-grid input[type="checkbox"]:focus-visible + span {
+    outline: 2px solid var(--accent-line); outline-offset: 1px;
+  }
+  .split-trim-symbol-grid span {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 24px; padding: 2px 6px; border-radius: var(--radius-sm);
+    background: var(--bg-overlay); border: 1px solid var(--border-subtle);
+    color: var(--text-muted); font-size: 13px; line-height: 1.35;
+  }
+  .split-trim-symbol-grid input[type="checkbox"]:checked + span {
+    background: var(--accent-tint); border-color: var(--accent);
+    color: var(--text-primary); font-weight: 600;
+  }
+  .split-trim-symbol-grid label:hover span {
+    border-color: var(--btn-border-hover); color: var(--text-primary);
+  }
   .editor-settings-list-fields { flex-wrap: wrap; }
   .editor-settings-list-fields > span { color: var(--text-muted); }
   .editor-settings-toggle-group > .toggle { white-space: nowrap; }
@@ -1012,6 +1091,42 @@
     width: max-content; min-width: 150px; max-width: min(260px, calc(100vw - 16px));
     z-index: 1000;
   }
+  /* 颜色过滤：🎨 按钮与工程中存在彩色字幕时的固定定位菜单。 */
+  .toolbar #color-filter-btn {
+    padding: 3px 7px; font-size: 14px; line-height: 1;
+    min-width: 30px;
+  }
+  .toolbar #color-filter-btn[hidden] { display: none; }
+  .toolbar #color-filter-btn.filter-active {
+    background: var(--accent-tint); border-color: var(--accent);
+  }
+  .toolbar .color-filter-dropdown > .dropdown-menu {
+    position: fixed; left: 0; right: auto; top: 0;
+    width: max-content; min-width: 190px; max-width: min(280px, calc(100vw - 16px));
+    z-index: 1000; display: none; flex-direction: column; gap: 2px; padding: 6px;
+  }
+  .toolbar .color-filter-dropdown.open > .dropdown-menu { display: flex; }
+  .color-filter-item {
+    display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto;
+    align-items: center; gap: 7px;
+    padding: 4px 8px; border-radius: var(--radius-sm);
+    color: var(--text-secondary); font-size: 12.5px; cursor: pointer; user-select: none;
+  }
+  .color-filter-item:hover { background: var(--accent-tint); color: var(--text-primary); }
+  .color-filter-item .color-dot {
+    width: 12px; height: 12px; border-radius: 50%;
+    border: 1px solid rgba(127, 127, 127, 0.45);
+  }
+  .color-filter-item .color-dot.is-default {
+    background: transparent;
+    border-style: dashed;
+  }
+  .color-filter-item .color-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .color-filter-item .color-count { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .toolbar .color-filter-menu .color-filter-clear {
+    margin-top: 2px; text-align: center; color: var(--text-secondary);
+  }
+  .toolbar .color-filter-menu .color-filter-clear[hidden] { display: none; }
   .toolbar .dropdown.open .dropdown-menu { display: block; }
   #batch-operations-dropdown.open > #batch-operations-menu {
     display: flex; flex-direction: column; gap: 4px; padding: 6px;
@@ -1036,6 +1151,12 @@
   }
   .multi-subtitle-setting-row > span { min-width: 0; white-space: normal; line-height: 1.3; }
   .multi-subtitle-setting-row select { width: 108px; min-width: 0; }
+  /* 已开启多重字幕但尚未加载第二条字幕：开关右侧的行内提示。 */
+  .multi-subtitle-empty-hint {
+    color: var(--text-muted); font-size: 12px;
+    white-space: nowrap;
+  }
+  .multi-subtitle-empty-hint[hidden] { display: none !important; }
   .multi-subtitle-setting-hint {
     display: grid; gap: 2px; margin: 4px 7px 7px; padding: 7px 9px;
     border-left: 3px solid var(--accent); border-radius: var(--radius-sm);

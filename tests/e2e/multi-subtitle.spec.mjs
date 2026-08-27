@@ -118,7 +118,8 @@ test('explains where to configure automatic timecode splitting', async ({ page }
   await page.goto(server.url);
   await page.locator('#editor-settings-toggle').click();
   const hint = page.locator('#split-use-word-timestamps-hint');
-  await expect(hint).toContainText('开启时，有可用字词时间码的主字幕会自动按时间码拆分');
+  await expect(hint).toContainText('开启时，会自动按可用时间码拆分');
+  await expect(hint).toContainText('关闭后将打开拆分弹窗');
   await expect(hint).not.toContainText('右上角「🔧 设置 → 拆分与合并」');
 });
 
@@ -133,17 +134,26 @@ test('offers importing a second SRT when enabling multiple subtitles without an 
     .toHaveAttribute('title', '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。');
   expect(await page.locator('#multi-subtitle-toggle-label').evaluate((element) => (
     element.nextElementSibling?.id
-  ))).toBe('multi-subtitle-settings-dropdown');
+  ))).toBe('multi-subtitle-empty-hint');
 
+  // 开关状态恒等跟随多重字幕编辑模式本身：勾选即开启，
+  // 提示只决定是否现在导入第二条字幕。
   page.once('dialog', (dialog) => {
-    expect(dialog.message()).toBe('是否选择导入第二条字幕以开启多重字幕模式？');
+    expect(dialog.message()).toBe('是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）');
     dialog.dismiss();
   });
+  await page.locator('#multi-subtitle-toggle').click();
+  await expect(page.locator('#multi-subtitle-toggle')).toBeChecked();
+  // 已开启但尚未导入副轨：齿轮不显示，改为开关右侧提示拖入第二条字幕。
+  await expect(page.locator('#multi-subtitle-settings-toggle')).toBeHidden();
+  await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
+
+  // 再次点击 = 关闭多重字幕（回到未开启状态）。
   await page.locator('#multi-subtitle-toggle').click();
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeChecked();
 
   page.once('dialog', (dialog) => {
-    expect(dialog.message()).toBe('是否选择导入第二条字幕以开启多重字幕模式？');
+    expect(dialog.message()).toBe('是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）');
     dialog.accept();
   });
   const chooserPromise = page.waitForEvent('filechooser');
@@ -155,7 +165,6 @@ test('offers importing a second SRT when enabling multiple subtitles without an 
     buffer: Buffer.from(extensionSrt, 'utf8'),
   });
   await expect(page.locator('#multi-subtitle-import-modal')).toHaveClass(/show/);
-  await expect(page.locator('#multi-subtitle-toggle')).not.toBeChecked();
   await page.locator('#multi-subtitle-import-result-confirm').click();
   await expect(page.locator('#multi-subtitle-toggle')).toBeChecked();
   await expect(page.locator('#multi-subtitle-settings-toggle')).toBeVisible();
@@ -230,6 +239,8 @@ test('extension list clicks auto-scroll and double-click places the caret at the
   const autoScroll = page.locator('#cue-list-auto-scroll-on-click');
   await page.locator('#editor-settings-toggle').click();
   await autoScroll.check();
+  // 关闭设置面板，避免面板高度压缩列表视口影响后续滚动几何断言。
+  await page.locator('#editor-settings-toggle').click();
   const list = page.locator('#cues-container');
   const target = page.locator('.multi-dual-cue[data-ext-idx="20"] .multi-cue-column.extension');
   const targetRow = page.locator('.multi-dual-cue[data-ext-idx="20"]');
