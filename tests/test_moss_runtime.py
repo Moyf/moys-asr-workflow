@@ -1,13 +1,18 @@
+"""Tests for the MOSS runtime thin shim (maw.moss_runtime).
+
+安装不联网：embedded Python 解压 / pip 安装 / verify 全部 mock，断言委托链
+``install_local_runtime(engine="moss")`` → ``maw.runtimes.MOSS.install``
+的嵌入安装流程（frozen txt + cu130 extra index + verify 自检）与状态机。
+"""
+
 from __future__ import annotations
 
 import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from maw import moss_runtime
 from maw.local_runtime import LocalRuntimeError, install_local_runtime, managed_runtime_status
 from maw.moss_runtime import (
     MOSS_PACKAGE_DIRS,
@@ -19,14 +24,22 @@ from maw.moss_runtime import (
     default_runtime_root,
     runtime_python_path,
 )
+from maw.runtimes import MOSS
+from maw.runtimes.moss_spec import PYTORCH_INDEX
 
-_PYTHON_RELATIVE = Path("Scripts") / "python.exe" if os.name == "nt" else Path("bin") / "python"
+_PYTHON_RELATIVE = Path("python") / "python.exe" if os.name == "nt" else Path("python") / "bin" / "python"
+
+
+def _fake_extract(_zip_path: Path, target_dir: Path) -> None:
+    python = target_dir / ("python.exe" if os.name == "nt" else "bin/python")
+    python.parent.mkdir(parents=True, exist_ok=True)
+    python.write_bytes(b"python")
 
 
 class MossRuntimeConstantTests(unittest.TestCase):
     def test_constant_values(self) -> None:
         self.assertEqual(MOSS_RUNTIME_VERSION, "1")
-        self.assertEqual(MOSS_PYTHON_VERSION, "3.12")
+        self.assertEqual(MOSS_PYTHON_VERSION, "3.11")
         self.assertEqual(MOSS_RUNTIME_ROOT_NAME, "local-runtime-moss")
 
     def test_requirements_pin_transformers_5x_and_moss_package(self) -> None:
@@ -51,20 +64,19 @@ class MossRuntimePathTests(unittest.TestCase):
         self.assertEqual(root.name, "local-runtime-moss")
         self.assertEqual(root.parent, (Path(temp_dir) / "app").resolve())
 
-    def test_override_root_keeps_moss_suffix(self) -> None:
+    def test_override_root_uses_own_env_variable(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            base = Path(temp_dir) / "runtime"
-            with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(base)}):
+            base = Path(temp_dir) / "moss-runtime"
+            with mock.patch.dict(os.environ, {"MAW_MOSS_RUNTIME_ROOT": str(base)}):
                 root = default_runtime_root()
-        self.assertEqual(root.name, "runtime-moss")
-        self.assertEqual(root.parent, base.parent.resolve())
+        self.assertEqual(root, base.resolve())
 
-    def test_python_path_sits_inside_moss_root(self) -> None:
+    def test_python_path_sits_inside_moss_root_embedded_layout(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             base = Path(temp_dir) / "runtime"
-            with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(base)}):
+            with mock.patch.dict(os.environ, {"MAW_MOSS_RUNTIME_ROOT": str(base)}):
                 python = runtime_python_path()
-        self.assertEqual(python, base.with_name(f"{base.name}-moss") / _PYTHON_RELATIVE)
+        self.assertEqual(python, base.resolve() / _PYTHON_RELATIVE)
 
 
 class MossRuntimeStatusTests(unittest.TestCase):
@@ -72,37 +84,30 @@ class MossRuntimeStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "runtime"
             cache = Path(temp_dir) / "models"
-            with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(root), "MAW_MODEL_CACHE_ROOT": str(cache)}):
-                status = moss_runtime.managed_runtime_status()
-                delegated = managed_runtime_status(engine="moss")
+            with mock.patch.dict(os.environ, {"MAW_MOSS_RUNTIME_ROOT": str(root), "MAW_MODEL_CACHE_ROOT": str(cache)}):
+                status = managed_runtime_status(engine="moss")
 
         self.assertEqual(status.status, "missing")
         self.assertFalse(status.ready)
         self.assertEqual(status.runtime_version, MOSS_RUNTIME_VERSION)
-        self.assertEqual(Path(status.path), root.with_name("runtime-moss").resolve())
+        self.assertEqual(Path(status.path), root.resolve())
         self.assertEqual(Path(status.model_cache_path), cache.resolve())
-        self.assertEqual(delegated, status)
 
     def test_ready_moss_status_requires_manifest_and_packages(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "runtime"
-            moss_root = root.with_name(f"{root.name}-moss")
-            python = runtime_python_path(moss_root)
+            python = runtime_python_path(root)
             python.parent.mkdir(parents=True, exist_ok=True)
-            python.touch()
-            site_packages = (
-                moss_root / "Lib" / "site-packages"
-                if os.name == "nt"
-                else moss_root / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
-            )
+            python.write_bytes(b"python")
+            site_packages = root / "site-packages"
             for name in MOSS_PACKAGE_DIRS:
                 (site_packages / name).mkdir(parents=True, exist_ok=True)
-            (moss_root / "runtime.json").write_text(
+            (root / "runtime.json").write_text(
                 '{"status": "ready", "runtimeVersion": "1"}\n',
                 encoding="utf-8",
                 newline="\n",
             )
-            with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(root)}):
+            with mock.patch.dict(os.environ, {"MAW_MOSS_RUNTIME_ROOT": str(root)}):
                 status = managed_runtime_status(engine="moss")
 
         self.assertTrue(status.ready)
@@ -112,18 +117,17 @@ class MossRuntimeStatusTests(unittest.TestCase):
     def test_wrong_manifest_version_is_broken(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "runtime"
-            moss_root = root.with_name(f"{root.name}-moss")
-            python = runtime_python_path(moss_root)
+            python = runtime_python_path(root)
             python.parent.mkdir(parents=True, exist_ok=True)
-            python.touch()
+            python.write_bytes(b"python")
             for name in MOSS_PACKAGE_DIRS:
-                ((moss_root / "Lib" / "site-packages") / name).mkdir(parents=True, exist_ok=True)
-            (moss_root / "runtime.json").write_text(
+                ((root / "site-packages") / name).mkdir(parents=True, exist_ok=True)
+            (root / "runtime.json").write_text(
                 '{"status": "ready", "runtimeVersion": "2"}\n',
                 encoding="utf-8",
                 newline="\n",
             )
-            with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(root)}):
+            with mock.patch.dict(os.environ, {"MAW_MOSS_RUNTIME_ROOT": str(root)}):
                 status = managed_runtime_status(engine="moss")
 
         self.assertEqual(status.status, "broken")
@@ -132,46 +136,53 @@ class MossRuntimeStatusTests(unittest.TestCase):
 
 
 class MossRuntimeInstallTests(unittest.TestCase):
-    def test_install_uses_moss_root_venv_and_requirements(self) -> None:
+    def test_install_delegates_to_embedded_runtime_with_frozen_txt(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(Path(temp_dir) / "app")}):
-                with mock.patch("maw.moss_runtime._find_uv", return_value=Path("uv.exe")):
-                    with mock.patch("maw.moss_runtime._run_process", return_value=0) as run_process:
-                        moss_root = Path(temp_dir) / "app" / "local-runtime-moss"
+            root = Path(temp_dir) / "local-runtime-moss"
+            requirements_txt = Path(temp_dir) / "requirements-moss.txt"
+            requirements_txt.write_text(
+                "transformers==5.16.1\ntorch==2.13.0+cu130\nmoss-transcribe-diarize @ https://github.com/OpenMOSS/MOSS-Transcribe-Diarize/archive/e607537b1b870475e7898969d40b864de8b691b6.zip\n",
+                encoding="utf-8",
+            )
+            calls: list[list[str]] = []
 
-                        def fake_run(command: list[str], **_kwargs: object) -> int:
-                            if command[1] == "venv":
-                                python = runtime_python_path(moss_root)
-                                python.parent.mkdir(parents=True, exist_ok=True)
-                                python.touch()
-                            if command[1:3] == ["pip", "install"]:
-                                packages = moss_root / "Lib" / "site-packages"
-                                for name in MOSS_PACKAGE_DIRS:
-                                    (packages / name).mkdir(parents=True, exist_ok=True)
-                            return 0
+            def fake_run(command: list[str], **_kwargs: object) -> int:
+                calls.append(command)
+                if "install" in command:
+                    site = root / "site-packages"
+                    for name in MOSS_PACKAGE_DIRS:
+                        (site / name).mkdir(parents=True, exist_ok=True)
+                return 0
 
-                        run_process.side_effect = fake_run
-                        status = install_local_runtime(engine="moss")
+            with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
+                with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
+                    with mock.patch.object(MOSS, "requirements_path", return_value=requirements_txt):
+                        with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
+                            with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
+                                    with mock.patch.dict(os.environ, {"MAW_MOSS_RUNTIME_ROOT": str(root)}):
+                                        status = install_local_runtime(engine="moss")
 
-        self.assertTrue(status.ready)
-        self.assertIn("local-runtime-moss", status.path)
-        venv_command = run_process.call_args_list[0].args[0]
-        self.assertIn("--python", venv_command)
-        self.assertIn(MOSS_PYTHON_VERSION, venv_command)
-        install_command = run_process.call_args_list[1].args[0]
-        self.assertIn("--extra-index-url", install_command)
-        self.assertTrue(any("transformers>=5.6.0" in value for value in install_command))
-        verify_command = run_process.call_args_list[2].args[0]
-        self.assertIn(MOSS_VERIFY_IMPORT, verify_command)
+            install_command = calls[1]
+            verify_command = calls[2]
+            self.assertTrue(status.ready)
+            self.assertTrue(status.path.endswith("local-runtime-moss"))
+            self.assertIn("-r", install_command)
+            self.assertTrue(any("requirements-moss.txt" in str(arg) for arg in install_command))
+            self.assertIn("--index-url", install_command)
+            self.assertIn("--extra-index-url", install_command)
+            self.assertIn(PYTORCH_INDEX, install_command)
+            self.assertTrue(any(MOSS_VERIFY_IMPORT in str(arg) for arg in verify_command))
 
-    def test_install_without_uv_explains_packaged_bootstrap_requirement(self) -> None:
+    def test_install_without_bootstrap_assets_explains_packaged_requirement(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(Path(temp_dir) / "app")}):
-                with mock.patch("maw.moss_runtime._find_uv", return_value=None):
+            with mock.patch("maw.runtimes.base._find_bootstrap_asset", return_value=None):
+                with mock.patch.dict(os.environ, {"MAW_MOSS_RUNTIME_ROOT": str(Path(temp_dir) / "runtime")}):
                     with self.assertRaises(LocalRuntimeError) as context:
                         install_local_runtime(engine="moss")
 
-        self.assertIn("uv", str(context.exception))
+        self.assertIn("安装资产", str(context.exception))
+        self.assertIn("官方打包版", str(context.exception))
 
 
 if __name__ == "__main__":

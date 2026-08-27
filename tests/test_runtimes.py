@@ -51,12 +51,14 @@ class RuntimeRegistryTests(unittest.TestCase):
             self.assertTrue(spec.requirements_key)
         self.assertIsInstance(LOCAL, ManagedRuntime)
 
-    def test_moss_spec_is_placeholder_marked_for_uv_migration(self) -> None:
-        self.assertTrue(MOSS.spec.install_uv)
-        self.assertIsNotNone(MOSS.spec.requirements)
-        self.assertIn("torch", MOSS.spec.requirements)
-        with self.assertRaises(NotImplementedError):
-            MOSS.install(runtime_root=Path(tempfile.mkdtemp()))
+    def test_moss_spec_is_real_embedded_spec_not_placeholder(self) -> None:
+        # uv 迁移后 moss 与 local/ocr 走同一 embedded + frozen txt 机制：
+        # 无 install_uv 占位、无手写 requirements 列表。
+        self.assertFalse(getattr(MOSS.spec, "install_uv", False))
+        self.assertIsNone(MOSS.spec.requirements)
+        self.assertEqual(MOSS.spec.package_dirs, ("moss_transcribe_diarize", "transformers", "torch", "torchaudio"))
+        self.assertEqual(MOSS.spec.requirements_key, "moss")
+        self.assertEqual(MOSS.spec.requirements_bundle_name, "requirements-moss.txt")
 
 
 class RuntimeInstallCommandTests(unittest.TestCase):
@@ -156,6 +158,43 @@ class RuntimeInstallCommandTests(unittest.TestCase):
             self.assertTrue(any("torch==2.13.0" in str(arg) for arg in fallback_command))
             self.assertNotIn("extra-index-url", fallback_command)
             self.assertTrue(any("import jieba" in str(arg) for arg in calls[3]))
+
+    def test_moss_install_uses_frozen_txt_and_cu130_extra_index(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "local-runtime-moss"
+            requirements_txt = Path(temp_dir) / "requirements-moss.txt"
+            requirements_txt.write_text(
+                "transformers==5.16.1\ntorch==2.13.0+cu130\nmoss-transcribe-diarize @ https://github.com/OpenMOSS/MOSS-Transcribe-Diarize/archive/e607537b1b870475e7898969d40b864de8b691b6.zip\n",
+                encoding="utf-8",
+            )
+            calls: list[list[str]] = []
+
+            def fake_run(command: list[str], **_kwargs: object) -> int:
+                calls.append(command)
+                if "install" in command:
+                    site = root / "site-packages"
+                    for name in ("moss_transcribe_diarize", "transformers", "torch", "torchaudio"):
+                        (site / name).mkdir(parents=True, exist_ok=True)
+                return 0
+
+            with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
+                with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
+                    with mock.patch.object(MOSS, "requirements_path", return_value=requirements_txt):
+                        with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
+                            with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
+                                    status = MOSS.install(runtime_root=root)
+
+            install_command = calls[1]
+            verify_command = calls[2]
+            self.assertTrue(status.ready)
+            self.assertIn("-r", install_command)
+            self.assertTrue(any("requirements-moss.txt" in str(arg) for arg in install_command))
+            self.assertIn("--index-url", install_command)
+            self.assertIn("--extra-index-url", install_command)
+            self.assertIn(PYTORCH_INDEX, install_command)
+            # verify 命令是 python -c 自检（moss_transcribe_diarize 导入）
+            self.assertTrue(any("moss_transcribe_diarize" in str(arg) for arg in verify_command))
 
 
 class RuntimeStatusTransitionTests(unittest.TestCase):
