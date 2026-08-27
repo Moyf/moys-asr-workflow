@@ -984,11 +984,22 @@ class WhisperEngine:
             "device": resolved_device,
             "compute_type": compute_type,
         }
-        # 仅当按模型 ID（HF Hub）加载时才应用统一的模型缓存根目录；
-        # 显式本地目录是已转换好的 CTranslate2 工程，不涉及下载。
-        cache_root = os.environ.get("MAW_MODEL_CACHE_ROOT", "").strip()
-        if cache_root and not Path(self.model_path).is_dir():
-            kwargs["download_root"] = cache_root
+        # 仅当按模型 ID（HF Hub）加载时才应用统一的模型缓存目录；显式本地
+        # 目录是已转换好的 CTranslate2 工程，不涉及下载。faster-whisper 的
+        # download_root 是显式参数，会覆盖 HF_HUB_CACHE 环境变量，因此必须
+        # 自己对齐 model_cache_environment 的 hub 约定（<缓存根>/huggingface/
+        # hub）——直接用 MAW_MODEL_CACHE_ROOT 裸根会把 models--* 仓库下载
+        # 到缓存根本体，导致统一的缓存发现看不到它。
+        hub_cache = (
+            os.environ.get("HF_HUB_CACHE", "").strip()
+            or os.environ.get("HUGGINGFACE_HUB_CACHE", "").strip()
+        )
+        if not hub_cache:
+            cache_root = os.environ.get("MAW_MODEL_CACHE_ROOT", "").strip()
+            if cache_root:
+                hub_cache = str(Path(cache_root) / "huggingface" / "hub")
+        if hub_cache and not Path(self.model_path).is_dir():
+            kwargs["download_root"] = hub_cache
         try:
             self._runtime = WhisperModel(self.model_path, **kwargs)
         except (TypeError, ValueError, RuntimeError) as error:
