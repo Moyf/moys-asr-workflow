@@ -134,6 +134,7 @@ a = Analysis(
         "maw.local_models",
         "maw.local_runtime",
         "maw.local_asr",
+        "maw.moss_runtime",
         "maw.ocr_runtime",
         "maw.cli",
         "maw.postprocess",
