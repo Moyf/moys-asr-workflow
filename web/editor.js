@@ -10548,7 +10548,7 @@ function mediaTargetUrl() {
   return '';
 }
 
-function buildGapRemovedMediaClip(interval, index, kind, targetUrl) {
+function buildGapRemovedMediaClip(interval, index, kind, targetUrl, sourceDurationFrames) {
   const startFrame = msToOtioFrames(interval.start);
   const endFrame = msToOtioFrames(interval.end);
   const durationFrames = Math.max(1, endFrame - startFrame);
@@ -10572,7 +10572,7 @@ function buildGapRemovedMediaClip(interval, index, kind, targetUrl) {
         OTIO_SCHEMA: 'ExternalReference.1',
         metadata: {},
         name: '',
-        available_range: null,
+        available_range: otioTimeRange(0, sourceDurationFrames),
         available_image_bounds: null,
         target_url: targetUrl,
       },
@@ -10602,6 +10602,7 @@ function buildGapRemovedOtio() {
     flashHint('移除静音空隙后没有剩余媒体，无法导出 OTIO', 'warning');
     return null;
   }
+  const sourceDurationFrames = Math.max(1, msToOtioFrames(durationMs));
   const trackSpecs = player?.tagName === 'AUDIO'
     ? [{ name: '音频', kind: 'Audio' }]
     : [{ name: '视频', kind: 'Video' }, { name: '音频', kind: 'Audio' }];
@@ -10614,7 +10615,9 @@ function buildGapRemovedOtio() {
     markers: [],
     enabled: true,
     color: null,
-    children: intervals.map((interval, index) => buildGapRemovedMediaClip(interval, index, track.name, targetUrl)),
+    children: intervals.map((interval, index) => buildGapRemovedMediaClip(
+      interval, index, track.name, targetUrl, sourceDurationFrames,
+    )),
     kind: track.kind,
   }));
   return JSON.stringify({
