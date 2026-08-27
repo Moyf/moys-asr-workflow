@@ -12,12 +12,10 @@ from unittest import mock
 
 from maw.local_runtime import (
     LocalRuntimeError,
-    default_model_cache_root,
     install_local_runtime,
     managed_runtime_status,
     model_cache_environment,
     prepare_model_in_process,
-    runtime_python_path,
 )
 
 
@@ -105,8 +103,9 @@ class LocalRuntimeTests(unittest.TestCase):
                     with mock.patch("maw.local_runtime._extract_embed_python", side_effect=fake_extract):
                         with mock.patch("maw.local_runtime._runtime_requirements_path", return_value=requirements_txt):
                             with mock.patch("maw.local_runtime._has_cuda", return_value=True):
-                                with mock.patch("maw.local_runtime._run_process", side_effect=fake_run) as run_process:
-                                    status = install_local_runtime(on_event=lambda *event: events.append(event))
+                                with mock.patch("maw.local_runtime.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                    with mock.patch("maw.local_runtime._run_process", side_effect=fake_run) as run_process:
+                                        status = install_local_runtime(on_event=lambda *event: events.append(event))
 
             self.assertTrue(status.ready)
             self.assertTrue((root / "runtime.json").exists())

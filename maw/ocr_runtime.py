@@ -40,6 +40,7 @@ from maw.runtime_manifest import (
     read_runtime_manifest,
     write_runtime_manifest,
 )
+from maw.runtime_mirror_picker import pick_fastest_mirror
 from maw.postprocess_ocr import OcrDedupRequest
 
 
@@ -248,7 +249,10 @@ def install_ocr_runtime(
     emit("正在安装 OCR 模型和依赖……", 25, "dependencies")
     requirements_file = _ocr_requirements_path()
     site_packages = root / "site-packages"
-    install_args = _pip_install_command(python, site_packages, requirements_file)
+    install_args = _pip_install_command(
+        python, site_packages, requirements_file,
+        index_url=pick_fastest_mirror(),
+    )
     _run_process(
         install_args,
         env=_runtime_env(root),
