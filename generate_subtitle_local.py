@@ -70,6 +70,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-len", type=int, default=21, help="中文单条字幕最大字符数")
     parser.add_argument("--min-len", type=int, default=5, help="中文短句合并阈值")
     parser.add_argument("--gap-split", type=int, default=1000, help="静音超过多少毫秒时切句")
+    parser.add_argument(
+        "--strip-tail-punct", default="，。",
+        help="句尾剥除的标点集合；传空串禁用剥除（默认剥逗号和句号）",
+    )
     parser.add_argument("--json", action="store_true", help="同时生成 .mosp 工程")
     parser.add_argument("--with-waveform", action="store_true", help="把波形缓存嵌入 .mosp")
     parser.add_argument(
@@ -162,6 +166,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 max_len=args.max_len,
                 min_len=args.min_len,
                 gap_split_ms=args.gap_split,
+                strip_tail_punct=args.strip_tail_punct,
             )
             if args.speaker_colors:
                 from maw.speaker import apply_speaker_colors

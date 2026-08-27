@@ -125,8 +125,10 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $Required = @(
             '_internal\local-runtime\requirements-local.txt'
+            '_internal\local-runtime\requirements-local-cpu.txt'
             '_internal\ocr-runtime\requirements-ocr.txt'
             '_internal\moss-runtime\requirements-moss.txt'
+            '_internal\moss-runtime\requirements-moss-cpu.txt'
           )
           foreach ($Relative in $Required) {
             $Path = Join-Path 'dist\MAW' $Relative
@@ -321,6 +323,7 @@ jobs:
           uv export --frozen --extra ocr --no-dev --format requirements-txt -o build/requirements-ocr.txt
           uv pip compile moss-requirements.in -p 3.11 --extra-index-url https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match -o build/requirements-moss.txt
           uv pip compile local-cpu-requirements.in -p 3.11 --generate-hashes --index-strategy unsafe-best-match -o build/requirements-local-cpu.txt
+          uv pip compile moss-cpu-requirements.in -p 3.11 --generate-hashes --index-strategy unsafe-best-match -o build/requirements-moss-cpu.txt
           uv run --group build pyinstaller --noconfirm --clean MAW.spec
 
       - name: Verify bundled FAQ

@@ -227,8 +227,35 @@ class PackagingContractTests(unittest.TestCase):
             read_text(".github/workflows/release.yml"),
         ):
             self.assertIn("local-cpu-requirements.in", build_entry)
+            self.assertIn("moss-cpu-requirements.in", build_entry)
             self.assertIn("--generate-hashes", build_entry)
             self.assertNotIn("freeze_cpu_requirements", build_entry)
+        self.assertNotIn("+cu130", cpu_in)
+
+    def test_moss_cpu_requirements_variant_pins_match_gpu_variant(self) -> None:
+        """Given no-GPU machines install MOSS from requirements-moss-cpu.txt, Then pins mirror moss-requirements.in natively."""
+        import re as _re
+
+        gpu_in = read_text("moss-requirements.in")
+        cpu_in = read_text("moss-cpu-requirements.in")
+
+        # torch / torchaudio 的版本 pin 必须与 moss-requirements.in 一致
+        # （CPU 变体只是去掉 +cu130 后缀，不能悄悄漂移到其它版本）。
+        for package in ("torch", "torchaudio"):
+            gpu_match = _re.search(rf"(?m)^{package}==(\d+\.\d+\.\d+)\+cu130;", gpu_in)
+            self.assertIsNotNone(gpu_match, f"moss-requirements.in 缺少 {package} 的 cu130 pin")
+            self.assertIn(f"{package}=={gpu_match.group(1)}\n", cpu_in)
+        # 其余直接依赖全集保持一致（CPU 变体仅去掉 darwin marker 行与 +cu130）。
+        for direct in ("av>=", "librosa>=", "numba>=", "packaging>=", "safetensors>=", "soundfile>=", "soxr>="):
+            self.assertRegex(cpu_in, rf"(?m)^{_re.escape(direct.split('>=')[0])}>=")
+            self.assertIn(direct, gpu_in)
+        self.assertIn("transformers>=5.6.0,<6.0.0", cpu_in)
+        self.assertIn(
+            "moss-transcribe-diarize @ https://github.com/OpenMOSS/MOSS-Transcribe-Diarize/archive/",
+            cpu_in,
+        )
+        # CPU 变体不带任何 marker 行（仅被非 darwin 无 GPU 机器消费）。
+        self.assertNotIn("; sys_platform", cpu_in)
         self.assertNotIn("+cu130", cpu_in)
 
     def test_ocr_dependencies_are_optional_and_runtime_worker_is_bundled_purely(self) -> None:

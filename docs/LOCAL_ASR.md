@@ -126,6 +126,14 @@ uv run python generate_subtitle_local.py "D:\Videos\example.mp4" `
   --hotword-file ".\terms.txt"
 ```
 
+## 分段整理（字数上限 / 停顿切句）
+
+Launcher 与 CLI 的 `--max-len`（中文单条最大字符数，默认 21）、`--min-len`（短句合并阈值，默认 5）、`--gap-split`（停顿切句毫秒，默认 1000）对所有本地引擎（Qwen3-ASR、FunASR、MOSS）同样生效。引擎返回的分段中超过最大字数的条目会按既有切句逻辑重组：优先句号等强标点边界，其次逗号等弱标点，最后按字数硬切；组内过短片段按阈值合并。
+
+MOSS 模型输出契约只有"段级"一对 start/end 时间戳（`[start][Sxx]文本[end]`），没有字词级时序。因此拆分超长段时，子段内部时间是按字符权重（CJK=1、其他=0.5）线性估算的，段首尾保持真实时间码；需要更精确的字级时间可考虑后续接入 Qwen3-ForcedAligner 做强制对齐（尚未实现）。
+
+与云端管线默认行为一致，本地引擎输出的每条字幕结尾的全角逗号、句号会被去除（`！`、`？`保留）。
+
 ## 当前边界
 
 - Launcher 的「下载模型」按钮调用 QwenASR / FunASR 上游加载器准备缓存；当前正式列出 SenseVoice Small、Fun-ASR-Nano、Qwen3-ASR 0.6B、Qwen3-ASR 1.7B、Paraformer 兼容选项和 Faster-Whisper large-v3。本地运行环境由 GUI 独立安装，不放入 Windows 冻结包，Torch / TorchAudio 和模型权重仍按需下载。

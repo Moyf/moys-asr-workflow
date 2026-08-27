@@ -144,6 +144,28 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(command[command.index("--min-len") + 1], "3")
         self.assertEqual(command[command.index("--gap-split") + 1], "800")
 
+    def test_build_transcribe_command_always_sends_strip_tail_punct(self) -> None:
+        # 空串也要显式下发：表示共享保留符号配置要求完全不剥尾。
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            strip_tail_punct="。",
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertEqual(command[command.index("--strip-tail-punct") + 1], "。")
+
+        empty = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            strip_tail_punct="",
+        )
+
+        empty_command = build_transcribe_command(empty, executable=Path("python.exe"), frozen=False)
+
+        self.assertEqual(empty_command[empty_command.index("--strip-tail-punct") + 1], "")
+
     def test_build_transcribe_command_debug_raw_saves_full_response(self) -> None:
         request = TranscriptionRequest(
             media_path=self.media_path,
