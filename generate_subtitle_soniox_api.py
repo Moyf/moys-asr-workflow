@@ -66,8 +66,8 @@ def main():
     parser.add_argument("input", help="输入视频或音频文件路径")
     parser.add_argument("-o", "--output", help="输出 SRT 路径（默认与输入同目录）")
     parser.add_argument(
-        "-l", "--max-len", type=int, default=21,
-        help="每条字幕最大字数（默认 21；仅 CJK 内容生效，空格语言按词数自动处理）",
+        "-l", "--max-len", type=int, default=18,
+        help="每条字幕最大字数（默认 18；仅 CJK 内容生效，空格语言按词数自动处理）",
     )
     parser.add_argument(
         "--min-len", type=int, default=5,
@@ -86,8 +86,8 @@ def main():
         help="句尾剥除的标点集合；传空串禁用剥除（默认剥逗号和句号）",
     )
     parser.add_argument(
-        "--gap-split", type=int, default=1500,
-        help="静音切句阈值（毫秒），相邻字停顿超过此值则切句（默认 1500）",
+        "--gap-split", type=int, default=800,
+        help="静音切句阈值（毫秒），相邻字停顿超过此值则切句（默认 800）",
     )
     parser.add_argument(
         "--speaker", action="store_true",
