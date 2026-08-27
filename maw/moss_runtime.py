@@ -6,7 +6,7 @@
 
 MOSS Transcribe-Diarize 依赖 Transformers 5.x，与 QwenASR / FunASR
 （funasr / Transformers 4.x 侧）不能共享一个环境，因此独立安装到
-``local-runtime-moss``（Python 3.11，与 local 共用同一 embedded zip）；
+``local-runtime-moss``（Python 3.11，与 local 共用当前平台引导包）；
 模型缓存与其余引擎共用。
 """
 
@@ -65,7 +65,7 @@ def install_local_runtime(
     repair: bool = False,
     model_cache_root: str | Path | None = None,
 ) -> LocalRuntimeStatus:
-    """创建或修复 MOSS 环境（embedded Python + pip --target + frozen txt）。"""
+    """创建或修复 MOSS 环境（平台 Python + pip --target + frozen txt）。"""
     return _from_runtime_status(
         MOSS.install(
             on_event=on_event,

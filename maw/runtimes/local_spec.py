@@ -7,7 +7,6 @@ from maw.runtimes.base import ManagedRuntimeError, RuntimeCancelled, RuntimeSpec
 RUNTIME_VERSION = "5"
 PYTHON_VERSION = "3.11"
 PYTORCH_INDEX = "https://download.pytorch.org/whl/cu130"
-EMBED_PYTHON_ZIP = "python-3.11.9-embed-amd64.zip"
 
 _VERIFY_COMMAND = (
     "from funasr import AutoModel; from qwen_asr import Qwen3ASRModel; "
@@ -27,7 +26,6 @@ LOCAL_SPEC = RuntimeSpec(
     key="local",
     runtime_version=RUNTIME_VERSION,
     python_version=PYTHON_VERSION,
-    embed_python_zip=EMBED_PYTHON_ZIP,
     requirements_emit="正在安装本地 ASR 依赖（Torch、FunASR、QwenASR）……",
     requirements_key="local",
     requirements_bundle_name="requirements-local.txt",

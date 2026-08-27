@@ -345,8 +345,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("desktop", script)
         self.assertNotIn("MOSE", script)
         self.assertIn("bootstrap", script)
-        self.assertIn("python-3.11.9-embed-amd64.zip", script)
-        self.assertIn("get-pip.py", script)
+        self.assertIn("prepare_runtime_bootstrap.py --platform windows-x86_64", script)
+        self.assertIn("smoke_runtime_bootstrap.py --platform windows-x86_64", script)
         self.assertIn("$ErrorActionPreference = 'Stop'", script)
 
     def test_windows_preview_workflow_verifies_launcher_version(self) -> None:
@@ -355,22 +355,43 @@ class PackagingContractTests(unittest.TestCase):
 
         self.assertIn("scripts/sync_launcher_version.py --check", workflow)
 
-    def test_windows_preview_workflow_downloads_bootstrap_assets_before_build(self) -> None:
-        """Given a clean checkout, When the preview builds, Then bootstrap assets exist before PyInstaller runs."""
+    def test_windows_preview_workflow_verifies_bundled_bootstrap_assets(self) -> None:
+        """Given a clean checkout, When preview packaging completes, Then Windows bootstrap assets are present."""
         workflow = read_text(".github/workflows/pr-release-windows.yml")
 
-        self.assertIn("Download embedded Python bootstrap assets", workflow)
-        self.assertIn(
-            "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip",
-            workflow,
-        )
-        self.assertIn("https://bootstrap.pypa.io/get-pip.py", workflow)
         self.assertIn("build-windows.ps1 -SkipTests", workflow)
-        self.assertLess(
-            workflow.index("python-3.11.9-embed-amd64.zip"),
-            workflow.index("build-windows.ps1 -SkipTests"),
-            "bootstrap 下载步骤必须在调用 build-windows.ps1 之前",
-        )
+        self.assertIn(r"_internal\bootstrap\python-3.11.9-embed-amd64.zip", workflow)
+        self.assertIn(r"_internal\bootstrap\get-pip.py", workflow)
+
+    def test_cross_platform_runtime_bootstrap_is_pinned_and_built_everywhere(self) -> None:
+        """Given three release platforms, When packages are built, Then one pinned registry drives every bootstrap."""
+        registry = read_text("maw/runtime_bootstrap.py")
+        spec = read_text("MAW.spec")
+        windows = read_text("scripts/build-windows.ps1")
+        appimage = read_text("scripts/build-appimage.sh")
+        release = read_text(".github/workflows/release.yml")
+
+        for key in ("windows-x86_64", "macos-arm64", "linux-x86_64"):
+            self.assertIn(f'"{key}"', registry)
+        for digest in (
+            "009d6bf7e3b2ddca3d784fa09f90fe54336d5b60f0e0f305c37f400bf83cfd3b",
+            "a84adc050a29e0c7387c885ff13e6ac4b0027f9e841359e200d647313dbb5b03",
+            "232f75c9dd6733b41a8101b5076b2a248360722dedded5688f4ac7d5931d8eac",
+            "fb24e693bab954209a063d90953621412ccad4a500905a726286e038f508ddf6",
+        ):
+            self.assertIn(digest, registry)
+        self.assertIn("current_python_bootstrap()", spec)
+        self.assertIn("asset_matches(_bootstrap_path, _bootstrap_asset)", spec)
+        self.assertIn('datas.append((str(_bootstrap_path), "bootstrap"))', spec)
+        self.assertIn("Missing or invalid runtime bootstrap asset", spec)
+        self.assertIn("prepare_runtime_bootstrap.py --platform windows-x86_64", windows)
+        self.assertIn("smoke_runtime_bootstrap.py --platform windows-x86_64", windows)
+        self.assertIn("prepare_runtime_bootstrap.py --platform macos-arm64", release)
+        self.assertIn("smoke_runtime_bootstrap.py --platform macos-arm64", release)
+        self.assertIn("prepare_runtime_bootstrap.py --platform linux-x86_64", appimage)
+        self.assertIn("smoke_runtime_bootstrap.py --platform linux-x86_64", appimage)
+        self.assertIn("Contents/Resources/bootstrap/cpython-3.11.16", release)
+        self.assertIn("_internal/bootstrap/cpython-3.11.16", release)
 
     def test_release_workflow_is_tag_triggered_and_publishes_both_windows_packages(self) -> None:
         """Given a v* tag push, When workflow is read, Then it releases MAW and MAW-lite builds."""

@@ -15,6 +15,8 @@ mkdir -p "$BUILD_DIR"
 echo "==> 1/6 PyInstaller 构建 dist/MAW"
 # 生成托管 Runtime 的 frozen requirements txt（MAW.spec datas 条件追加打包）。
 mkdir -p build
+uv run python scripts/prepare_runtime_bootstrap.py --platform linux-x86_64
+uv run python scripts/smoke_runtime_bootstrap.py --platform linux-x86_64
 uv export --frozen --extra local --no-dev --format requirements-txt -o build/requirements-local.txt
 uv export --frozen --extra ocr --no-dev --format requirements-txt -o build/requirements-ocr.txt
 # moss 依赖与 local（qwen-asr/Transformers 4.x）互斥，独立声明、独立冻结。

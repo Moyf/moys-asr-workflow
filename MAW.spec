@@ -3,13 +3,17 @@
 import sys
 from pathlib import Path
 
+ROOT = Path(SPECPATH).resolve()
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from maw.runtime_bootstrap import GET_PIP_ASSET, asset_matches, current_python_bootstrap
+
 try:
     from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 except ImportError:  # pragma: no cover - only reached outside a PyInstaller build
     collect_data_files = lambda _package: []
     collect_submodules = lambda _package: []
-
-ROOT = Path(SPECPATH).resolve()
 
 binaries = []
 if sys.platform == "linux":
@@ -80,6 +84,21 @@ datas = [
     (str(ROOT / "maw" / "project_preview.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "ocr_runtime_worker.py"), "ocr-runtime/maw"),
 ]
+
+# 所有官方产物都必须携带当前平台 Python 引导包和固定 get-pip.py。
+# 构建入口在 PyInstaller 前运行 prepare_runtime_bootstrap.py；这里
+# 故意严格失败，防止生成“可打开但无法安装 Runtime”的坏包。
+_python_bootstrap = current_python_bootstrap()
+_bootstrap_root = ROOT / "build" / "bootstrap"
+for _bootstrap_asset in (_python_bootstrap.asset, GET_PIP_ASSET):
+    _bootstrap_path = _bootstrap_root / _bootstrap_asset.filename
+    if not asset_matches(_bootstrap_path, _bootstrap_asset):
+        raise SystemExit(
+            f"Missing or invalid runtime bootstrap asset: {_bootstrap_path}. "
+            "Run scripts/prepare_runtime_bootstrap.py before PyInstaller."
+        )
+    datas.append((str(_bootstrap_path), "bootstrap"))
+
 opencc_datas = collect_data_files("opencc")
 datas.extend(opencc_datas)
 # 托管 Runtime 依赖清单（CI 构建时 uv export / uv pip compile 生成，frozen
@@ -133,6 +152,7 @@ a = Analysis(
         "maw.media_cache",
         "maw.waveform",
         "maw.reapeaks",
+        "maw.runtime_bootstrap",
         "generate_subtitle_qwen_api",
         "generate_subtitle_soniox_api",
         "generate_subtitle_local",

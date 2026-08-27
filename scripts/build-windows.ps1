@@ -19,6 +19,8 @@ if (-not (Test-Path -LiteralPath $EntryPoint -PathType Leaf)) {
 Push-Location -LiteralPath $RepoRoot
 try {
     uv sync --group build --frozen
+    uv run python scripts\prepare_runtime_bootstrap.py --platform windows-x86_64
+    uv run python scripts\smoke_runtime_bootstrap.py --platform windows-x86_64
     # 生成托管 Runtime 的 frozen requirements txt（MAW.spec datas 条件追加打包）。
     New-Item -ItemType Directory -Path 'build' -Force | Out-Null
     uv export --frozen --extra local --no-dev --format requirements-txt -o build/requirements-local.txt
@@ -43,17 +45,6 @@ try {
     Copy-Item -LiteralPath $FaqSource -Destination $FaqBundlePath -Force
     if (-not (Test-Path -LiteralPath $FaqBundlePath -PathType Leaf)) {
         throw "Build completed but did not copy FAQ-常见问题.txt beside MAW.exe."
-    }
-
-    $BootstrapDirectory = Join-Path (Split-Path -Parent $ExePath) 'bootstrap'
-    New-Item -ItemType Directory -Path $BootstrapDirectory -Force | Out-Null
-    $EmbedZip = Join-Path $RepoRoot 'build' 'python-3.11.9-embed-amd64.zip'
-    $GetPip = Join-Path $RepoRoot 'build' 'get-pip.py'
-    foreach ($Asset in @($EmbedZip, $GetPip)) {
-        if (-not (Test-Path -LiteralPath $Asset -PathType Leaf)) {
-            throw "Missing bootstrap asset: $Asset"
-        }
-        Copy-Item -LiteralPath $Asset -Destination (Join-Path $BootstrapDirectory (Split-Path -Leaf $Asset)) -Force
     }
 
     Write-Host "Built $ExePath"

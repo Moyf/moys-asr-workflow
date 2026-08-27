@@ -40,7 +40,6 @@ OCR_SPEC = RuntimeSpec(
     key="ocr",
     runtime_version=OCR_RUNTIME_VERSION,
     python_version=OCR_PYTHON_VERSION,
-    embed_python_zip="python-3.11.9-embed-amd64.zip",
     requirements_emit="正在安装 OCR 模型和依赖……",
     requirements_key="ocr",
     requirements_bundle_name="requirements-ocr.txt",

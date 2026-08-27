@@ -22,7 +22,6 @@ import shutil
 import subprocess
 import sys
 import threading
-import zipfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,9 +41,16 @@ from maw.runtime_manifest import (
     read_runtime_manifest,
     write_runtime_manifest,
 )
+from maw.runtime_bootstrap import (
+    BootstrapAsset,
+    GET_PIP_ASSET,
+    asset_matches,
+    current_python_bootstrap,
+    extract_python_bootstrap,
+)
 from maw.runtime_mirror_picker import pick_fastest_mirror
 
-GET_PIP_SCRIPT: Final = "get-pip.py"
+GET_PIP_SCRIPT: Final = GET_PIP_ASSET.filename
 
 RuntimeEvent = Callable[[str, int, str], None]
 RuntimeLine = Callable[[str], None]
@@ -67,8 +73,8 @@ class RuntimeSpec:
 
     字段按用途分组：
     - 身份：key / runtime_version / python_version
-    - 安装资产与依赖：embed_python_zip / requirements_key（frozen txt 的
-      pyproject extra 名）/ requirements_bundle_name / requirements（moss
+    - 安装资产与依赖：requirements_key（frozen txt 的 pyproject
+      extra 名）/ requirements_bundle_name / requirements（moss
       迁移期的手写列表，之后删除）/ extra_index_url / cuda_fallback_packages
     - 进度与文案：requirements_emit / ready_emit_done / missing_detail /
       ready_detail / message_prefix / feature_label / fix_action_label
@@ -84,7 +90,6 @@ class RuntimeSpec:
     key: str
     runtime_version: str
     python_version: str
-    embed_python_zip: str
     requirements_emit: str
     requirements_key: str
     requirements_bundle_name: str
@@ -211,8 +216,8 @@ class ManagedRuntime:
 
     def python_path(self, root: str | Path | None = None) -> Path:
         target = self.resolve_root(root) if root is None else Path(root)
-        relative = Path("python") / "python.exe" if os.name == "nt" else Path("python") / "bin" / "python"
-        return target / relative
+        bootstrap = current_python_bootstrap()
+        return target / "python" / bootstrap.python_relative_path
 
     def site_packages(self, root: str | Path | None = None) -> Path:
         target = self.resolve_root(root) if root is None else Path(root)
@@ -372,11 +377,15 @@ class ManagedRuntime:
             raise self._error(f"{spec.message_prefix}路径不能是一个文件：{root}")
         root.parent.mkdir(parents=True, exist_ok=True)
 
-        embed_zip = _find_bootstrap_asset(spec.embed_python_zip)
-        get_pip = _find_bootstrap_asset(GET_PIP_SCRIPT)
-        if embed_zip is None or get_pip is None:
+        bootstrap = current_python_bootstrap()
+        python_archive = _find_bootstrap_asset(
+            bootstrap.asset.filename, expected=bootstrap.asset
+        )
+        get_pip = _find_bootstrap_asset(GET_PIP_SCRIPT, expected=GET_PIP_ASSET)
+        if python_archive is None or get_pip is None:
             raise self._error(
-                f"未找到{spec.feature_label}安装资产（embedded Python 或 get-pip.py）。"
+                f"未找到或无法校验{spec.feature_label}安装资产"
+                f"（{bootstrap.key} embedded Python 或 get-pip.py）。"
                 "请使用官方打包版。"
             )
 
@@ -401,7 +410,7 @@ class ManagedRuntime:
         if repair or not python.exists():
             if python_dir.exists():
                 shutil.rmtree(python_dir)
-            _extract_embed_python(embed_zip, python_dir)
+            _extract_embed_python(python_archive, python_dir)
         _may_cancel(cancel, spec)
         if not python.exists():
             raise self._error(f"{spec.message_prefix}解压失败：未找到 {python}")
@@ -524,40 +533,32 @@ class ManagedRuntime:
 # ---------------------------------------------------------------------------
 
 
-def _find_bootstrap_asset(filename: str) -> Path | None:
-    """在 bundle / exe 邻目录 / 源码 build/ 里找安装资产（embedded zip、get-pip.py）。"""
+def _find_bootstrap_asset(
+    filename: str,
+    *,
+    expected: BootstrapAsset | None = None,
+) -> Path | None:
+    """在 bundle / exe 邻目录 / 源码 build/ 中查找并校验引导资产。"""
     candidates: list[Path] = [
         asset_path(f"bootstrap/{filename}"),
         Path(sys.executable).resolve().parent / "bootstrap" / filename,
     ]
     if not getattr(sys, "frozen", False):
-        candidates.append(Path(__file__).resolve().parents[2] / "build" / filename)
+        build_root = Path(__file__).resolve().parents[2] / "build"
+        candidates.extend((build_root / "bootstrap" / filename, build_root / filename))
     for candidate in candidates:
-        if candidate.is_file():
+        if candidate.is_file() and (expected is None or asset_matches(candidate, expected)):
             return candidate.resolve()
     return None
 
 
-def _extract_embed_python(zip_path: Path, target_dir: Path) -> None:
-    """解压 embedded Python 并打开 site + target 支持（改 python*._pth）。"""
-    target_dir.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(zip_path) as archive:
-        archive.extractall(target_dir)
-    pth_files = sorted(target_dir.glob("python*._pth"))
-    if not pth_files:
-        return
-    pth_path = pth_files[0]
-    text = pth_path.read_text(encoding="utf-8")
-    text = text.replace("#import site", "import site")
-    # 嵌入版 Python 的 _pth 控制 sys.path 且忽略 PYTHONPATH；把 pip --target
-    # 安装目录 ../site-packages 加进去。
-    if "../site-packages" not in text:
-        text = text.rstrip() + "\n../site-packages\n"
-    pth_path.write_text(text, encoding="utf-8", newline="\n")
+def _extract_embed_python(archive_path: Path, target_dir: Path) -> None:
+    """兼容旧内部名称；实际按当前平台解压 ZIP 或 tar 归档。"""
+    extract_python_bootstrap(archive_path, target_dir)
 
 
 def _get_pip_command(python_exe: Path, get_pip_path: Path) -> list[str]:
-    """Build the command to bootstrap pip into an embedded Python."""
+    """Build the command to bootstrap pip into a managed Python."""
     return [str(python_exe), str(get_pip_path)]
 
 

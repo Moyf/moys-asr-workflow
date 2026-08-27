@@ -35,7 +35,6 @@ from maw.runtimes.base import (
     resolve_model_cache_root,
 )
 from maw.runtimes.local_spec import (
-    EMBED_PYTHON_ZIP,
     PYTORCH_INDEX,
     PYTHON_VERSION,
     RUNTIME_VERSION,
@@ -44,7 +43,6 @@ from maw.runtimes.local_spec import (
 )
 
 __all__ = [
-    "EMBED_PYTHON_ZIP",
     "PYTORCH_INDEX",
     "PYTHON_VERSION",
     "RUNTIME_VERSION",
