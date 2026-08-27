@@ -23,6 +23,8 @@ try {
     New-Item -ItemType Directory -Path 'build' -Force | Out-Null
     uv export --frozen --extra local --no-dev --format requirements-txt -o build/requirements-local.txt
     uv export --frozen --extra ocr --no-dev --format requirements-txt -o build/requirements-ocr.txt
+    # moss 依赖与 local（qwen-asr/Transformers 4.x）互斥，独立声明、独立冻结。
+    uv pip compile moss-requirements.in -p 3.11 --extra-index-url https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match -o build/requirements-moss.txt
 
     if (-not $SkipTests) {
         uv run python -m unittest tests.test_packaging_contract

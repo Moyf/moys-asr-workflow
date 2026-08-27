@@ -17,6 +17,8 @@ echo "==> 1/6 PyInstaller 构建 dist/MAW"
 mkdir -p build
 uv export --frozen --extra local --no-dev --format requirements-txt -o build/requirements-local.txt
 uv export --frozen --extra ocr --no-dev --format requirements-txt -o build/requirements-ocr.txt
+# moss 依赖与 local（qwen-asr/Transformers 4.x）互斥，独立声明、独立冻结。
+uv pip compile moss-requirements.in -p 3.11 --extra-index-url https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match -o build/requirements-moss.txt
 uv run --group build pyinstaller --noconfirm --clean MAW.spec
 # PyInstaller 6 places datas under _internal in an onedir bundle. Keep the
 # user-facing FAQ at the AppImage root as well, where users can find it easily.

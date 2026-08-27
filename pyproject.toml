@@ -36,6 +36,10 @@ ocr = [
     "pillow>=10.0.0",
     "rapidocr>=3.9.0",
 ]
+# maw：MOSS runtime 依赖（Transformers 5.x）与 local extra 的 qwen-asr
+# （Transformers==4.57.6）互斥，无法承载于同一个 uv.lock（uv lock 解析
+# 全部 extras 组合），故独立声明在 moss-requirements.in 并由
+# `uv pip compile` 冻结（与 local/ocr 的 uv export 管线并行）。
 
 [[tool.uv.index]]
 name = "pytorch-cu130"

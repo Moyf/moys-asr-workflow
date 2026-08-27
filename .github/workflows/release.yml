@@ -303,6 +303,7 @@ jobs:
         run: |
           uv export --frozen --extra local --no-dev --format requirements-txt -o build/requirements-local.txt
           uv export --frozen --extra ocr --no-dev --format requirements-txt -o build/requirements-ocr.txt
+          uv pip compile moss-requirements.in -p 3.11 --extra-index-url https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match -o build/requirements-moss.txt
           uv run --group build pyinstaller --noconfirm --clean MAW.spec
 
       - name: Verify bundled FAQ
@@ -312,17 +313,6 @@ jobs:
           set -euo pipefail
           FaqPath="$(find dist/MAW.app -type f -name 'FAQ-常见问题.txt' -print -quit)"
           test -n "$FaqPath"
-
-      - name: Bundle uv bootstrap for optional runtimes
-        if: matrix.platform == 'macos'
-        shell: bash
-        run: |
-          set -euo pipefail
-          UvCommand="$(command -v uv)"
-          BootstrapDirectory="dist/MAW.app/Contents/Resources/bootstrap"
-          mkdir -p "$BootstrapDirectory"
-          cp "$UvCommand" "$BootstrapDirectory/uv"
-          chmod +x "$BootstrapDirectory/uv"
 
       - name: Smoke MAW executable
         if: matrix.platform == 'macos'
@@ -503,6 +493,7 @@ jobs:
           echo "OK: 未内置 libstdc++/libgcc_s/libgbm/libreadline"
           test -f squashfs-root/_internal/local-runtime/requirements-local.txt
           test -f squashfs-root/_internal/ocr-runtime/requirements-ocr.txt
+          test -f squashfs-root/_internal/moss-runtime/requirements-moss.txt
           echo "OK: runtime requirements txt 随包分发"
           rm -r squashfs-root
 
