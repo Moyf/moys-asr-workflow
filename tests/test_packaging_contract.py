@@ -200,7 +200,36 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn('OCR_RUNTIME_VERSION = "3"', ocr_spec)
 
         self.assertIn("_has_cuda", runtimes_base)
-        self.assertIn("torch==2.13.0", local_spec)
+
+    def test_cpu_requirements_variant_is_frozen_before_export_with_real_hashes(self) -> None:
+        """Given no-GPU machines install from requirements-local-cpu.txt, Then pins mirror the local extra and builds freeze it natively."""
+        import re as _re
+
+        pyproject = read_text("pyproject.toml")
+        cpu_in = read_text("local-cpu-requirements.in")
+
+        # torch / torchaudio 的版本 pin 必须与 pyproject [local] extra 一致
+        # （CPU 变体只是去掉 +cu130 后缀，不能悄悄漂移到其它版本）。
+        for package in ("torch", "torchaudio"):
+            gpu_match = _re.search(rf'{package}==(\d+\.\d+\.\d+)\+cu130', pyproject)
+            self.assertIsNotNone(gpu_match, f"pyproject 缺少 {package} 的 cu130 pin")
+            self.assertIn(f"{package}=={gpu_match.group(1)}\n", cpu_in)
+        # 直接依赖全集与 [local] extra 对齐（不含带 marker 的 torch/torchaudio 行）。
+        for direct in ("accelerate", "funasr", "hf-xet", "qwen-asr"):
+            self.assertRegex(cpu_in, rf"(?m)^{direct}==")
+            self.assertIn(f'"{direct}>=', pyproject)
+
+        # 冻结管线必须原生导出（--generate-hashes 产出 CPU wheel 真实哈希），
+        # 不再允许"冻结后文本剔除 +cuXXX"的旧方案。
+        for build_entry in (
+            read_text("scripts/build-windows.ps1"),
+            read_text("scripts/build-appimage.sh"),
+            read_text(".github/workflows/release.yml"),
+        ):
+            self.assertIn("local-cpu-requirements.in", build_entry)
+            self.assertIn("--generate-hashes", build_entry)
+            self.assertNotIn("freeze_cpu_requirements", build_entry)
+        self.assertNotIn("+cu130", cpu_in)
 
     def test_ocr_dependencies_are_optional_and_runtime_worker_is_bundled_purely(self) -> None:
         """Given optional OCR support, When metadata and the frozen spec are read, Then the main package stays OCR-free."""
