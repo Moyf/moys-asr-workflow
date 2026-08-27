@@ -51,6 +51,8 @@
 | 34 | Launcher / 批量进度 | 批量运行时总日志和状态区缺少当前文件、完成/失败和汇总反馈 | 修改 | 已修复 |
 | 35 | 编辑器 / 批量操作 | 字幕列表顶部整合批量操作入口；批量替换和文本处理支持限定选中字幕；增加常用文本处理 | 修改 | 已修复 |
 | 36 | 编辑器 / 纯文本编辑 | 新增全角标点后保存出现越界 item；删除该标点后错误仍残留；应用后不应把全部字幕标为 dirty | 修改 | 已修复 |
+| 37 | 编辑器 / 多字幕列表 | 双列多重字幕模式下，主字幕左侧的黄条覆盖文字 | 修改 | 已修复 |
+| 38 | 编辑器 / 多字幕命名 | 将「拓展字幕」及「扩展字幕」统一命名为「副字幕」 | 修改 | 已修复 |
 
 ## 增量记录（字幕列表批量操作与文本处理）
 
@@ -139,7 +141,7 @@
 ## 增量记录（任务 6：多字幕批量操作）
 
 - H 现在支持同时选中多条副字幕，按各自绑定关系批量对齐到主字幕时间范围，并只生成一条批量撤销记录；未绑定项会跳过并在提示中说明。
-- 绑定自动同步时长、主字幕合并同步副字幕、扩展字幕合并/拆分及其撤销路径均已通过浏览器回归；批量对齐后的副字幕冲突会按现有规则挤压或删除无法保留 100ms 的冲突项，不反向改变主字幕时间范围。
+- 绑定自动同步时长、主字幕合并同步副字幕、副字幕合并/拆分及其撤销路径均已通过浏览器回归；批量对齐后的副字幕冲突会按现有规则挤压或删除无法保留 100ms 的冲突项，不反向改变主字幕时间范围。
 - 已重新生成 `blank-editor.html`，模板中的“批量对齐”按钮、H 帮助文案和中英文映射与源码一致。
 
 已验证：批量 H 与撤销 1/1 通过；绑定/合并/联动相关回归 4/4 通过。
@@ -292,3 +294,9 @@
 - 修复：新增标点、符号、emoji 和符号型颜文字并入相邻的已有 item，复用其时间范围，不再生成独立零宽 item；兼容清理旧版本残留的标点 item，已删除的字符会被移除。保存前的时间码修复改为只标记实际被修复的字幕，不再因一处修复把整轨字幕标为 dirty。
 
 已验证：`node --check web\\editor.js`、`node --check web\\editor-utils.js`、`node --check web\\editor-i18n.js`；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（通过）；`uv run python edit.py --blank`；`git diff --check`。未执行真实浏览器与用户工程的手动复现。
+## 增量记录（任务 37、38：多字幕列表黄条与命名统一）
+
+- 任务 37 已修复：多重字幕双列列表的主列 dirty 标记继续使用 3px 琥珀色内描边，同时为 `.multi-cue-column.main.dirty` 预留 `3px` 左内边距并使用 `border-box`，首个文字不再被黄条覆盖；新增浏览器回归断言。
+- 任务 38 已修复：用户可见的「拓展字幕」「扩展字幕」「扩展轨」已统一为「副字幕」「副轨」，英文界面同步使用 `secondary`；内部 `role: extension`、CSS 类、数据字段和导出协议保持不变。
+- 已验证：`.venv\\Scripts\\python.exe edit.py --blank`；`node --check web\\editor.js`、`node --check web\\editor-utils.js`、`node --check web\\editor-i18n.js`、`node --check tests\\e2e\\multi-subtitle.spec.mjs`；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（215/215）；`git diff --check`；本地 Chromium 目标回归（使用 `MAW_E2E_PYTHON=.venv\\Scripts\\python.exe`）1/1。
+- localhost `server-editor --blank` 返回 200，页面包含副字幕文案和主列 dirty 规则，未发现旧中文称呼。完整 `multi-subtitle.spec.mjs` 为 80/81：唯一失败是既有的未绑定副字幕文本处理用例，其夹具的首个双列行本来是空主列，失败断言与本次修改无关。

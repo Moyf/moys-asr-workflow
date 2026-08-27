@@ -23,22 +23,22 @@
     '自动保存': 'Auto-save', '自动保存间隔': 'Auto-save interval', '秒': 'sec',
     '导出字幕': 'Export subtitles', '导出字幕 ▾': 'Export subtitles ▾',
     '导出完整字幕': 'Export full subtitles', '导出完整字幕（SRT）': 'Export full subtitles (SRT)',
-    '导出扩展字幕': 'Export extension subtitles', '导出当前扩展字幕轨（SRT）': 'Export the current extension subtitle track (SRT)',
+    '导出副字幕': 'Export secondary subtitles', '导出当前副字幕轨（SRT）': 'Export the current secondary subtitle track (SRT)',
     '按颜色导出字幕': 'Export by color', '按颜色导出字幕（SRT）': 'Export by color (SRT)',
     '导出纯文本（TXT）': 'Export plain text (TXT)',
     '导出工程': 'Export project', '导出去空隙版本 ▾': 'Export gap-removed version ▾',
     '字幕 SRT': 'Subtitle SRT', '时间线 OTIO 工程': 'Timeline OTIO project',
     '导出时间线模式': 'Export timeline mode', '去空隙时间线': 'Gap-removed timeline', '原始时间线': 'Source timeline',
     '导出帧率': 'Export frame rate', '写入原生字幕文本对象': 'Write native subtitle text objects',
-    '导出扩展字幕轨': 'Export extension subtitle track', '主轨字幕': 'Main-track subtitles',
-    '主轨与扩展轨字幕': 'Main and extension subtitles', '导出文件名': 'Export filename',
+    '导出副字幕轨': 'Export secondary subtitle track', '主轨字幕': 'Main-track subtitles',
+    '主轨与副轨字幕': 'Main and secondary subtitles', '导出文件名': 'Export filename',
     '动态字幕（Lottie）': 'Dynamic captions (Lottie)',
     '导出逐字高亮动态字幕 .lottie（需要以 server-editor 打开并绑定工程文件）': 'Export word-highlight dynamic captions as .lottie (requires server-editor with a bound project file)',
     '动态字幕（OGraf）': 'Dynamic captions (OGraf)',
     '导出符合 OGraf 规范的动态字幕包（需要以 server-editor 打开并绑定工程文件）': 'Export an OGraf-compliant dynamic-caption package (requires server-editor with a bound project file)',
     'Lottie 动态字幕': 'Lottie dynamic captions',
     '导出单个 .lottie 文件，可直接拖入 DaVinci Resolve 21 的 Media Pool 或时间线。当前版本使用逐字/逐词高亮，并沿用 MAW 的字幕预览字体、颜色和位置。': 'Export one .lottie file that can be dragged into DaVinci Resolve 21 Media Pool or the timeline. This version uses character/word highlighting and follows the MAW subtitle preview font, color, and position.',
-    '字幕轨道': 'Subtitle track', '扩展字幕轨': 'Extension subtitles', '合成尺寸': 'Composition size',
+    '字幕轨道': 'Subtitle track', '副字幕轨': 'Secondary subtitles', '合成尺寸': 'Composition size',
     '1920 × 1080（横屏）': '1920 × 1080 (landscape)', '1080 × 1920（竖屏）': '1080 × 1920 (portrait)',
     '3840 × 2160（4K 横屏）': '3840 × 2160 (4K landscape)',
     '文字渲染': 'Text rendering',
@@ -52,7 +52,7 @@
     '导出 .ograf.zip': 'Export .ograf.zip',
     '服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出动态字幕': 'Server packaging is unavailable: open the project via server-editor and bind a project file before exporting dynamic captions',
     '当前模式不可用：动态字幕 .lottie 导出需要以 server-editor 打开并绑定工程文件': 'Unavailable here: dynamic-caption .lottie export requires server-editor with a bound project file',
-    '当前扩展字幕轨没有可导出的字幕': 'The current extension subtitle track has no exportable subtitles',
+    '当前副字幕轨没有可导出的字幕': 'The current secondary subtitle track has no exportable subtitles',
     '当前主轨没有可导出的字幕': 'The main subtitle track has no exportable subtitles',
     '正在生成动态字幕 .lottie…': 'Generating dynamic-caption .lottie…',
     '动态字幕 .lottie 已生成': 'Dynamic-caption .lottie generated',
@@ -90,20 +90,20 @@
     'OTIOZ 已生成，图片已打包进 zip': 'OTIOZ generated; images are packed into the zip',
     '没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除': 'No silent gaps removed yet; scan with "Remove silent gaps" first',
     '字幕': 'Subtitles', '字幕预览': 'Subtitle preview', '表情包预览': 'Sticker preview', '字幕列表和编辑区': 'Subtitle list & editor', '字幕编辑区': 'Subtitle editor',
-    '多重字幕': 'Multiple subtitles', '多重字幕设置': 'Multiple-subtitle settings', '主轨': 'Main track', '扩展轨': 'Extension track', '副轨': 'Secondary track', '双列': 'Two columns', '绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H': 'After binding, sync the secondary subtitle start and end to the main subtitle, equivalent to pressing H', '交换主字幕和副字幕的文本、时间与绑定关系': 'Swap the main and secondary subtitle text, timing, and bindings',
+    '多重字幕': 'Multiple subtitles', '多重字幕设置': 'Multiple-subtitle settings', '主轨': 'Main track', '副轨': 'Secondary track', '双列': 'Two columns', '绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H': 'After binding, sync the secondary subtitle start and end to the main subtitle, equivalent to pressing H', '交换主字幕和副字幕的文本、时间与绑定关系': 'Swap the main and secondary subtitle text, timing, and bindings',
     '拆分与合并': 'Split and merge', '波形形状来源': 'Waveform shape source', '自研波形': 'Self-built waveform', 'ReaPeaks 波形层': 'ReaPeaks waveform layer',
-    '显示方式': 'Display mode', '语言类型': 'Language type', '主字幕': 'Main subtitle', '副字幕': 'Secondary subtitle', '主字幕语言类型': 'Main subtitle language type', '副字幕语言类型': 'Secondary subtitle language type', '拓展字幕时波形高度': 'Waveform height with extension subtitles', '副字幕时波形高度': 'Waveform height with secondary subtitles', '跨轨道吸附': 'Cross-track snapping', '同时选中主副字幕': 'Select main and secondary subtitles together', '绑定时自动同步时长': 'Automatically sync duration when binding', '显示轨道徽标': 'Show track badges', '在多重字幕波形中显示主字幕和副字幕的轨道编号徽标': 'Show main and secondary track number badges in the multiple-subtitle waveform', '交换主副字幕': 'Swap main and secondary subtitles', '普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕': 'Normal clicks follow the last clicked track; clicking a bound subtitle only adds the other subtitle actually bound to it',
-    '开启后显示扩展字幕轨、双列列表和绑定操作；关闭只隐藏扩展数据，不删除': 'Show the extension track, two-column list, and binding actions; turning it off only hides extension data',
+    '显示方式': 'Display mode', '语言类型': 'Language type', '主字幕': 'Main subtitle', '副字幕': 'Secondary subtitle', '主字幕语言类型': 'Main subtitle language type', '副字幕语言类型': 'Secondary subtitle language type', '副字幕时波形高度': 'Waveform height with secondary subtitles', '跨轨道吸附': 'Cross-track snapping', '同时选中主副字幕': 'Select main and secondary subtitles together', '绑定时自动同步时长': 'Automatically sync duration when binding', '显示轨道徽标': 'Show track badges', '在多重字幕波形中显示主字幕和副字幕的轨道编号徽标': 'Show main and secondary track number badges in the multiple-subtitle waveform', '交换主副字幕': 'Swap main and secondary subtitles', '普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕': 'Normal clicks follow the last clicked track; clicking a bound subtitle only adds the other subtitle actually bound to it',
+    '开启后显示副轨、双列列表和绑定操作；关闭只隐藏副字幕数据，不删除': 'Show the secondary track, two-column list, and binding actions; turning it off only hides secondary data',
     '启用多重字幕时使用的波形行高度': 'Waveform row height used when multiple subtitles are enabled', '请拖入第二个 srt 字幕以开启多重字幕功能': 'Drop a second SRT subtitle to enable multiple subtitles', '是否选择导入第二条字幕以开启多重字幕模式？': 'Import a second subtitle to enable multiple-subtitle mode?', '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。': 'When the current project has more than one subtitle, you can enable multiple-subtitle mode for bilingual subtitle editing and similar workflows.',
     '拖动多重字幕时，允许吸附到另一条字幕轨道的起点和终点': 'Snap multiple subtitles to the start and end boundaries of the other track while dragging',
     '点击主字幕或副字幕时，如果存在绑定字幕，同时选中对应字幕': 'When clicking a main or secondary subtitle, also select its bound counterpart if one exists',
-    '交换主字幕和扩展字幕的文本、时间与绑定关系': 'Swap the text, timing, and bindings between the main and extension subtitles',
+    '交换主字幕和副字幕的文本、时间与绑定关系': 'Swap the text, timing, and bindings between the main and secondary subtitles',
     '请先开启多重字幕': 'Enable multiple subtitles first',
-    '当前只支持交换唯一的扩展字幕轨': 'Swapping is currently supported only with one extension track',
-    '主字幕和扩展字幕都不能为空': 'The main and extension subtitles cannot be empty',
-    '交换主副字幕失败': 'Could not swap the main and extension subtitles',
+    '当前只支持交换唯一的副字幕轨': 'Swapping is currently supported only with one secondary track',
+    '主字幕和副字幕都不能为空': 'The main and secondary subtitles cannot be empty',
+    '交换主副字幕失败': 'Could not swap the main and secondary subtitles',
     '请点击一条主字幕完成绑定': 'Click a main subtitle to complete the binding',
-    '已取消绑定扩展字幕': 'Extension subtitle binding cancelled',
+    '已取消绑定副字幕': 'Secondary subtitle binding cancelled',
     '请点击一条主字幕完成绑定；按 Esc 或点击空白处取消': 'Click a main subtitle to complete the binding, or press Esc or click blank space to cancel',
     '请先选中至少一条副字幕': 'Select at least one secondary subtitle first',
     '选中的副字幕中没有可对齐的绑定关系': 'None of the selected secondary subtitles has a binding to align',
@@ -113,16 +113,16 @@
     '字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms': 'The subtitle is shorter than 200 ms, so both split sides cannot be at least 100 ms',
     '当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件': 'The current server has no bound project; export a .mosp file and reopen it',
     '重叠的主字幕已有绑定，请点击主字幕后替换绑定；按 Esc 取消': 'The overlapping main subtitle is already bound; click a main subtitle to replace it, or press Esc to cancel',
-    '有多条主字幕与当前副字幕重叠，请点击要绑定的主字幕': 'Multiple main subtitles overlap this extension subtitle; click the one to bind',
-    '未找到与当前副字幕时间重叠的主字幕，请手动选择': 'No main subtitle overlaps this extension subtitle; choose one manually',
+    '有多条主字幕与当前副字幕重叠，请点击要绑定的主字幕': 'Multiple main subtitles overlap this secondary subtitle; click the one to bind',
+    '未找到与当前副字幕时间重叠的主字幕，请手动选择': 'No main subtitle overlaps this secondary subtitle; choose one manually',
     '字符型': 'Character-based', '单词型': 'Word-based', '绑定': 'Bind', '解绑': 'Unbind', '批量对齐': 'Batch align',
     '主字幕调整时副字幕只跟随；冲突时优先限制副字幕，必要时保留重叠，不会缩短主字幕': 'When the main subtitle changes, the secondary subtitle only follows; conflicts limit the secondary subtitle first without shortening the main subtitle',
     '主字幕调整时副字幕只跟随；冲突时优先限制副字幕，不会缩短主字幕': 'When the main subtitle changes, the secondary subtitle only follows; conflicts limit the secondary subtitle first without shortening the main subtitle',
     '副字幕调整时受主字幕轨道边界限制，主字幕没有可用空间时无法继续拖动': 'When the secondary subtitle changes, the main-track boundaries limit the operation; dragging stops when the main track has no room',
-    '字体大小': 'Font size', '字幕大小': 'Font size', '主字幕大小': 'Main subtitle size', '拓展字幕大小': 'Extension subtitle size', '副字幕大小': 'Secondary subtitle size',
+    '字体大小': 'Font size', '字幕大小': 'Font size', '主字幕大小': 'Main subtitle size', '副字幕大小': 'Secondary subtitle size',
     '自动（响应式）': 'Auto (responsive)', '自动（比主字幕小一号）': 'Auto (two px smaller than main)', '字体': 'Font',
-    '主字幕字体': 'Main subtitle font', '拓展字幕字体': 'Extension subtitle font', '副字幕字体': 'Secondary subtitle font', '默认无衬线': 'Default sans-serif',
-    '主字幕颜色': 'Main subtitle color', '拓展字幕颜色': 'Extension subtitle color', '副字幕颜色': 'Secondary subtitle color',
+    '主字幕字体': 'Main subtitle font', '副字幕字体': 'Secondary subtitle font', '默认无衬线': 'Default sans-serif',
+    '主字幕颜色': 'Main subtitle color', '副字幕颜色': 'Secondary subtitle color',
     '微软雅黑 / 苹方': 'Microsoft YaHei / PingFang', '黑体': 'SimHei', '宋体': 'SimSun', 'Arial / Segoe UI': 'Arial / Segoe UI',
     '读取本机字体': 'Read local fonts', '点击读取本机字体（首次需要授权）': 'Click to read local fonts (permission required the first time)',
     '文字颜色': 'Text color', '背景颜色': 'Background color', '背景不透明度': 'Background opacity',
@@ -139,7 +139,7 @@
     '调整播放器画面内副字幕预览的背景色': 'Adjust the background color used by the secondary subtitle preview in the player',
     '调整播放器画面内副字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the secondary subtitle preview background opacity in the player; set it to 0 to hide the background',
     '样式会保存到工程的 preview.subtitle；旧工程默认使用原来的响应式字号。': 'Styles are saved in preview.subtitle; legacy projects keep the original responsive font size.',
-    '媒体': 'Media', '媒体设置': 'Media settings', '预览字幕': 'Subtitle preview', '预览字幕样式': 'Subtitle preview style', '预览拓展字幕': 'Extension subtitle preview', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
+    '媒体': 'Media', '媒体设置': 'Media settings', '预览字幕': 'Subtitle preview', '预览字幕样式': 'Subtitle preview style', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
     '播放预览': 'Playback preview', '自动预览鼠标位置画面': 'Automatically preview the frame under the pointer', 'JKL 按键播放控制': 'JKL playback controls',
     '跳转时长': 'Seek duration', '每次跳转': 'Each jump', '每次跳转时长': 'Seek duration per action', '媒体控制按钮和左右方向键每次跳转的毫秒数': 'Milliseconds to jump with the media controls and left/right arrow keys', '控制按钮和左右方向键的每次跳转时长（单位：ms）': 'Duration for each jump from the controls and left/right arrow keys (unit: ms)',
     '频谱颜色': 'Spectral colors', '正在应用频谱颜色…': 'Applying spectral colors…', '正在关闭频谱颜色…': 'Removing spectral colors…',
@@ -174,13 +174,13 @@
     '间隔阈值': 'Interval threshold', '拓展方向': 'Snap direction', '吸附方向': 'Snap direction',
     '向前拓展': 'Extend earlier', '向后拓展': 'Extend later',
     '向前吸附': 'Snap earlier', '向后吸附': 'Snap later',
-    '相邻字幕间隔在此范围内时，拓展字幕长度把它们拼在一起；0 表示不处理':
+    '相邻字幕间隔在此范围内时，延长字幕时长并把它们拼在一起；0 表示不处理':
       'When adjacent subtitle intervals are within this threshold, extend their timing to snap them together; 0 disables it',
     '将间隔过短的前后字幕直接吸附在一起，去除中间的短暂空白；0 表示不处理':
       'Snap nearby subtitles together to remove the brief gap between them; 0 disables it',
     '吸收过短字幕': 'Absorb short subtitles', '短字幕阈值': 'Short-subtitle threshold', '吸收方向': 'Absorb direction',
     '向前吸收': 'Into previous', '向后吸收': 'Into next',
-    '相邻字幕间隔小于此值时，拓展字幕长度把它们拼在一起；0 表示不处理':
+    '相邻字幕间隔小于此值时，延长字幕时长并把它们拼在一起；0 表示不处理':
       'When the interval between adjacent subtitles is below this value, extend their lengths to snap them together; 0 disables it',
     '向前：后方字幕的起点前拓；向后：前方字幕的终点后延':
       'Earlier: the later subtitle extends its start backward; Later: the earlier subtitle extends its end forward',
@@ -237,7 +237,7 @@
     '字幕编辑显示': 'Subtitle editor', '编辑': 'Edit', '编辑设置': 'Editor settings', '跳转按钮': 'Navigation buttons', '前后跳转': 'Navigation buttons', '时间操作': 'Time actions',
     '操作': 'Behavior', '通用操作': 'General', '按键调整字幕': 'Keyboard subtitle adjustment', '单击行为': 'Click behavior', '点击字幕块时': 'Click subtitle behavior', '仅选中（不跳转）': 'Select only (do not seek)', '选中并跳转（自动播放）': 'Select and seek (autoplay)', 'JKL 播放模式': 'JKL playback mode', '播放模式': 'Playback mode', '慢速和倍速': 'Slower and faster', '倒放和正放': 'Reverse and forward', '倒放/停止/正放': 'Reverse/stop/forward', '倒放/停止/1×播放': 'Reverse/stop/1× play', '选择 J/K/L 的播放控制方式': 'Choose how J/K/L control playback', 'J 倒放，K 停止（重置播放速度），K 播放。多次按 J/K 可以倍增速度。': 'J reverses; K stops (resetting playback speed), and K plays. Press J/K repeatedly to multiply the speed.',
     '字幕忍者': 'Subtitle Ninja', '开启后，分割工具改用 🔪 图标，并可启用拆分音效与刀光特效': 'When enabled, the Razor tool uses a 🔪 icon, and split sounds and slash effects become available', '播放音效': 'Play sound', '开启后，成功拆分时播放随机刀光音效': 'When enabled, successful splits play a random slash sound', '显示刀光特效': 'Show slash effect', '开启后，成功拆分时在屏幕上显示一道白色刀光': 'Show a white slash across the screen after a successful split', '刀光长度': 'Slash length', '刀光长度，按视口高度的百分比计算': 'Slash length as a percentage of the viewport height', '随机旋转幅度': 'Random rotation', '0 度为完全垂直；30 度表示在左右各 30 度范围内随机倾斜': '0° is fully vertical; 30° tilts randomly within ±30°', '打开字幕忍者模式，让拆分字幕变得更加有趣': 'Open Subtitle Ninja mode to make splitting subtitles more fun',
-    '副字幕总时长不足 200ms，无法联动拆分': 'The extension subtitle is shorter than 200ms, so a linked split is impossible', '主字幕总时长不足 200ms，无法联动拆分': 'The main subtitle is shorter than 200ms, so a linked split is impossible', '主副字幕时间重叠不足，无法找到共同切点': 'The main and extension subtitles overlap too little to share a split point', '副字幕总时长不足 200ms，无法拆分': 'The extension subtitle is shorter than 200ms, so it cannot be split', '当前切点无法同时拆分主副字幕，请调整断点位置': 'This cut point cannot split both subtitles; adjust the break position', '当前断点无法把主副字幕文本各拆成两段': 'This break position cannot split both subtitle texts into two parts',
+    '副字幕总时长不足 200ms，无法联动拆分': 'The secondary subtitle is shorter than 200ms, so a linked split is impossible', '主字幕总时长不足 200ms，无法联动拆分': 'The main subtitle is shorter than 200ms, so a linked split is impossible', '主副字幕时间重叠不足，无法找到共同切点': 'The main and secondary subtitles overlap too little to share a split point', '副字幕总时长不足 200ms，无法拆分': 'The secondary subtitle is shorter than 200ms, so it cannot be split', '当前切点无法同时拆分主副字幕，请调整断点位置': 'This cut point cannot split both subtitles; adjust the break position', '当前断点无法把主副字幕文本各拆成两段': 'This break position cannot split both subtitle texts into two parts',
     '选中并跳转': 'Select and seek', '跳转目标': 'Seek target', '字幕开头': 'Subtitle start', '鼠标所在位置': 'Pointer position',
     '主字幕自动使用时间码拆分': 'Automatically split the main subtitle using timecodes',
     '已勾选“主字幕自动使用时间码拆分”，但当前主字幕没有可用的字词时间码，本次设置不生效，已改用拆分面板。': '“Automatically split the main subtitle using timecodes” is enabled, but this subtitle has no usable word timestamps, so the setting does not apply here. The split dialog is used instead.',
@@ -252,11 +252,11 @@
     '跳转到字幕起点，并在暂停时自动开始播放。': 'Seek to the subtitle start and start playback when paused.',
     '只选中，不改变播放位置；可用 F 或右键菜单跳转并播放。': 'Select only without changing the playhead; use F or the context menu to seek and play.',
     '字幕列表点击始终跳转到字幕开头；此设置只影响波形区点击字幕块': 'Subtitle-list clicks always seek to the subtitle start; this setting only affects waveform subtitle clicks',
-    '开启后显示扩展字幕轨、双列列表和绑定操作；关闭只隐藏扩展数据，不删除': 'When enabled, show the extension track, two-column list, and binding controls; when disabled, hide extension data without deleting it',
+    '开启后显示副轨、双列列表和绑定操作；关闭只隐藏副字幕数据，不删除': 'When enabled, show the secondary track, two-column list, and binding controls; when disabled, hide secondary data without deleting it',
     '多重字幕列表显示方式': 'Multiple-subtitle list display mode', '英文、西文等按空格拆分请选择「单词型」；中文、日文等按字符拆分请选择「字符型」。': 'Choose Word-based for English and other space-separated languages; choose Character-based for Chinese, Japanese, and other character-separated languages.',
     '单词型：英语、西文等按空格拆分': 'Word-based: English and other space-separated languages',
     '字符型：中文、日文等按字符拆分': 'Character-based: Chinese, Japanese, and other character-separated languages',
-    '分别选中主轨和扩展轨字幕后建立绑定': 'Select one main-track and one extension-track subtitle to bind them',
+    '分别选中主轨和副轨字幕后建立绑定': 'Select one main-track and one secondary-track subtitle to bind them',
     '移除当前选中字幕的绑定关系': 'Remove the binding for the selected subtitle',
     '批量对齐选中的副字幕到各自主字幕时间轴': 'Batch-align selected secondary subtitles to their main-subtitle timelines',
     '将当前选中的副字幕批量对齐到各自绑定的主字幕时间范围': 'Batch-align the selected secondary subtitles to their bound main-subtitle ranges',
@@ -277,14 +277,14 @@
     '只把第一条导出字幕的起点拉到 00:00，保留其结束时间和后续字幕时间码；不改动工程或 OTIO 的时间轴': 'Only move the first exported subtitle to 00:00; keep its end time and all later timecodes unchanged in the project and OTIO',
     '导入字幕': 'Import subtitles', '请选择你要执行的行为：': 'Choose what to do:',
     '替换当前字幕': 'Replace current subtitles', '作为多重字幕': 'Add as multiple subtitles', '导入': 'Import',
-    '联动拆分扩展字幕': 'Split linked extension subtitle', '主字幕拆分': 'Main subtitle split', '副字幕拆分': 'Secondary subtitle split',
+    '联动拆分副字幕': 'Split linked secondary subtitle', '主字幕拆分': 'Main subtitle split', '副字幕拆分': 'Secondary subtitle split',
     '当前切分位置固定为波形指针位置': 'The split position is fixed to the waveform pointer', '当前切分位置由字词时间码推定': 'The split position is inferred from word timestamps', '默认位置参考主字幕字词时间码，可继续调整': 'The default position follows the main subtitle word timestamps and can be adjusted',
     '移动鼠标并点击选择拆分断点。': 'Move the mouse and click to choose a split boundary.',
     '字符型语言（中文等）按字符拆分。': 'Character-based languages such as Chinese split by character.',
     '单词型语言（英语等）只在空格处切分，确保不会拆碎单词；可在多重字幕 ⚙️ 设置中切换语言类型。': 'Word-based languages such as English split only at spaces so words stay intact; switch the language type in the multiple-subtitle ⚙️ settings.',
     '移动鼠标并点击选择的拆分断点；字符型语言（中文等）按字符拆分，单词型语言（英语等）只在空格处切分，确保不会拆碎单词。你可以在多重字幕设置中切换语言类型。': 'Move the mouse and click to choose a split boundary. Character-based languages such as Chinese split by character; word-based languages such as English split only at spaces so words stay intact. Change the language type in the multiple-subtitle settings.',
     '选择副字幕拆分点': 'Choose a secondary subtitle split point', '选择副字幕断点': 'Choose a secondary subtitle split point', '选择主字幕拆分点': 'Choose a main subtitle split point', '主字幕按时间码定位，选择副字幕拆分点': 'Main subtitle positioned by timecode; choose the secondary subtitle split point', '⌚️ 主字幕按时间码会拆在这里': '⌚️ The main subtitle will split here by timecode', '主字幕按时间码拆分位置，不可交互': 'Main subtitle timecode split position; not interactive', '主字幕按时间码拆分于此处，不可交互': 'The main subtitle splits here by timecode; not interactive',
-    '在鼠标位置拆分': 'Split at pointer position', '拆分拓展字幕': 'Split extension subtitle',
+    '在鼠标位置拆分': 'Split at pointer position', '拆分副字幕': 'Split secondary subtitle',
     '取消（Esc）': 'Cancel (Esc)', '拆分（Enter / B）': 'Split (Enter / B)', '全部拆分后自动提交': 'Auto-submit after all split points are selected',
     '分割工具（R）：点击字幕块在指针位置安全拆分（默认按字词时间码对齐；没有可用字词时间码或关闭设置后打开拆分点弹窗，拒绝 100ms 以内的边缘拆分）；Esc 切回选择': 'Razor tool (R): click a subtitle block to safely split at the pointer (by default aligned to word timestamps; when no usable word timestamps exist or the setting is disabled, open the split-point dialog; reject splits within 100 ms of an edge); Esc returns to Select',
     '菜单': 'Menu', '显示菜单': 'Show menu', '单击': 'Click',
@@ -321,17 +321,17 @@
     '鼠标': 'Mouse', '编辑状态': 'Editing', '功能快捷键': 'Action shortcuts',
     '工具': 'Tools', '滚轮': 'Wheel', '字幕导航': 'Subtitle navigation',
     '切换字幕禁用': 'Toggle subtitle disabled', '删除所选字幕': 'Delete selected subtitles',
-    '合并所选字幕': 'Merge selected subtitles', '合并副字幕块': 'Merge extension subtitle blocks',
+    '合并所选字幕': 'Merge selected subtitles', '合并副字幕块': 'Merge secondary subtitle blocks',
     '按所在区域拆分字幕': 'Split a subtitle based on the pointer area',
-    '单选副字幕后绑定到主字幕（唯一重叠时自动匹配）': 'With one extension subtitle selected, bind it to a main subtitle (auto-match the earliest unbound overlap)',
-    '单选副字幕后绑定到主字幕（自动匹配时间最早的未绑定主字幕）': 'With one extension subtitle selected, bind it to a main subtitle (auto-match the earliest unbound overlap)',
+    '单选副字幕后绑定到主字幕（唯一重叠时自动匹配）': 'With one secondary subtitle selected, bind it to a main subtitle (auto-match the earliest unbound overlap)',
+    '单选副字幕后绑定到主字幕（自动匹配时间最早的未绑定主字幕）': 'With one secondary subtitle selected, bind it to a main subtitle (auto-match the earliest unbound overlap)',
     '语言类型提示': 'Language type hint',
-    '解绑当前副字幕': 'Unbind the current extension subtitle',
-    '对齐副字幕到主字幕时间轴': 'Align the extension subtitle to the main subtitle timeline',
-    '单选副字幕后打开副字幕拆分': 'With one extension subtitle selected, open extension subtitle splitting',
+    '解绑当前副字幕': 'Unbind the current secondary subtitle',
+    '对齐副字幕到主字幕时间轴': 'Align the secondary subtitle to the main subtitle timeline',
+    '单选副字幕后打开副字幕拆分': 'With one secondary subtitle selected, open secondary subtitle splitting',
     '波形标记：': 'Waveform labels:',
     '语言类型：单词型适合英语等空格语言，字符型适合中文/日文等': 'Language type: Word-based suits English and other space-separated languages; Character-based suits Chinese/Japanese and similar languages',
-    '普通点击以最后点击的轨道为准；未绑定副字幕不会保留旧主字幕选区。开启「同时选中主副字幕」时，仅补选当前字幕实际绑定的另一条；编辑区仍以最后点击的字幕为准': 'Normal clicks follow the last clicked track; an unbound extension subtitle does not keep an old main selection. When “Select main and secondary subtitles together” is enabled, only the subtitle actually bound to the clicked cue is added; the editor still follows the last clicked subtitle',
+    '普通点击以最后点击的轨道为准；未绑定副字幕不会保留旧主字幕选区。开启「同时选中主副字幕」时，仅补选当前字幕实际绑定的另一条；编辑区仍以最后点击的字幕为准': 'Normal clicks follow the last clicked track; an unbound secondary subtitle does not keep an old main selection. When “Select main and secondary subtitles together” is enabled, only the subtitle actually bound to the clicked cue is added; the editor still follows the last clicked subtitle',
     '播放与编辑': 'Playback and editing', '空格': 'Space',
     '选择工具': 'Select tool', '分割工具': 'Razor tool',
     '播放/暂停': 'Play/pause',
@@ -496,12 +496,9 @@
     '字幕背景色': 'Subtitle background color',
     '调整播放器画面内字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the subtitle preview background opacity in the player; 0 hides the background',
     '字幕背景不透明度': 'Subtitle background opacity',
-    '只影响播放器画面内的拓展字幕预览': 'Only affects extension subtitle preview in the player',
     '波形形状来源：默认使用媒体旁 .ReaPeaks 的最细 wave 层（缺数据时自动回退自研缓存）；需要时可切回自研': 'Waveform shape source: use the finest wave layer beside the media from .ReaPeaks by default (falls back to the self-built cache when missing); switch back to self-built when needed',
-    '选择播放器画面内拓展字幕预览使用的字体族': 'Choose the font family used by the extension subtitle preview in the player',
     '选择播放器画面内副字幕预览使用的字体族': 'Choose the font family used by the secondary subtitle preview in the player',
     '选择播放器画面内主字幕预览的颜色': 'Choose the color of the main subtitle preview in the player',
-    '选择播放器画面内拓展字幕预览的颜色': 'Choose the color of the extension subtitle preview in the player',
     '调整播放器画面内副字幕预览的背景色': 'Adjust the secondary subtitle preview background color in the player',
     '选择播放器画面内副字幕预览的颜色': 'Choose the color of the secondary subtitle preview in the player',
     '字幕预览设置': 'Subtitle preview settings',
@@ -836,27 +833,27 @@
     }
     match = /^合并\s+(\d+)\s+条字幕$/.exec(text);
     if (match) return `Merge ${match[1]} subtitles`;
-    match = /^已合并\s+(\d+)\s+条扩展字幕(，原绑定已解除)?$/.exec(text);
-    if (match) return `Merged ${match[1]} extension subtitle${match[1] === '1' ? '' : 's'}${match[2] ? '; previous bindings were removed' : ''}`;
-    match = /^已绑定主字幕\s+(\d+)\s+与扩展字幕\s+(\d+)$/.exec(text);
-    if (match) return `Bound main subtitle ${match[1]} to extension subtitle ${match[2]}`;
-    match = /^已替换主字幕\s+(\d+)\s+的绑定，改为扩展字幕\s+(\d+)$/.exec(text);
-    if (match) return `Replaced the binding for main subtitle ${match[1]} with extension subtitle ${match[2]}`;
+    match = /^已合并\s+(\d+)\s+条副字幕(，原绑定已解除)?$/.exec(text);
+    if (match) return `Merged ${match[1]} secondary subtitle${match[1] === '1' ? '' : 's'}${match[2] ? '; previous bindings were removed' : ''}`;
+    match = /^已绑定主字幕\s+(\d+)\s+与副字幕\s+(\d+)$/.exec(text);
+    if (match) return `Bound main subtitle ${match[1]} to secondary subtitle ${match[2]}`;
+    match = /^已替换主字幕\s+(\d+)\s+的绑定，改为副字幕\s+(\d+)$/.exec(text);
+    if (match) return `Replaced the binding for main subtitle ${match[1]} with secondary subtitle ${match[2]}`;
     match = /^有多条主字幕与当前副字幕重叠，已自动绑定时间最早的未绑定主字幕（第\s*(\d+)\s*条）$/.exec(text);
-    if (match) return `Multiple main subtitles overlap this extension subtitle; automatically bound the earliest unbound main subtitle (subtitle ${match[1]})`;
+    if (match) return `Multiple main subtitles overlap this secondary subtitle; automatically bound the earliest unbound main subtitle (subtitle ${match[1]})`;
     match = /^已批量对齐\s*(\d+)\s*条副字幕(?:，跳过\s*(\d+)\s*条未绑定副字幕)?$/.exec(text);
     if (match) return `Batch-aligned ${match[1]} secondary subtitle${match[1] === '1' ? '' : 's'}${match[2] ? `; skipped ${match[2]} unbound` : ''}`;
     match = /^(已对齐到主字幕范围|副字幕发生冲突，已)(?:，)?(?:挤压\s*(\d+)\s*条副字幕)?(?:，删除\s*(\d+)\s*条副字幕)?(并解除绑定)?$/.exec(text);
     if (match && (match[2] || match[3])) {
       const parts = [];
-      if (match[2]) parts.push(`squeezed ${match[2]} extension subtitle${match[2] === '1' ? '' : 's'}`);
-      if (match[3]) parts.push(`deleted ${match[3]} extension subtitle${match[3] === '1' ? '' : 's'}`);
+      if (match[2]) parts.push(`squeezed ${match[2]} secondary subtitle${match[2] === '1' ? '' : 's'}`);
+      if (match[3]) parts.push(`deleted ${match[3]} secondary subtitle${match[3] === '1' ? '' : 's'}`);
       if (match[4]) parts.push('and removed their bindings');
-      return `${match[1] === '已对齐到主字幕范围' ? 'Aligned to the main subtitle range' : 'Extension subtitle conflict resolved'}: ${parts.join(', ')}`;
+      return `${match[1] === '已对齐到主字幕范围' ? 'Aligned to the main subtitle range' : 'Secondary subtitle conflict resolved'}: ${parts.join(', ')}`;
     }
-    if (text === '副字幕已随主字幕联动调整') return 'Extension subtitle followed the main subtitle';
+    if (text === '副字幕已随主字幕联动调整') return 'Secondary subtitle followed the main subtitle';
     match = /^已交换主副字幕：主轨\s+(\d+)\s+条，副轨\s+(\d+)\s+条$/.exec(text);
-    if (match) return `Swapped main and extension subtitles: ${match[1]} main, ${match[2]} extension`;
+    if (match) return `Swapped main and secondary subtitles: ${match[1]} main, ${match[2]} secondary`;
     // flashHint：已拼接/合并字幕：吸附 2 处间隔，吸收 1 条短字幕
     match = /^(已拼接\/合并字幕|已拼合字幕)：(.+)$/.exec(text);
     if (match) {

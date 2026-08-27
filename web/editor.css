@@ -1923,6 +1923,9 @@
   .multi-subtitle-split-error { min-height: 20px; color: var(--red-hover); font-size: 12px; }
   .multi-cue-column { min-width: 0; position: relative; }
   .multi-cue-column.dirty { box-shadow: inset 3px 0 0 var(--amber); }
+  /* 主列没有像副列那样自带左侧分隔内边距；为 dirty 标记预留宽度，
+     避免黄色内描边压住主字幕的首个字符。 */
+  .multi-cue-column.main.dirty { box-sizing: border-box; padding-left: 3px; }
   .multi-cue-column.extension { color: var(--text-secondary); }
   .multi-cue-column.unbound { opacity: .82; }
   .multi-cue-column.disabled {

@@ -128,7 +128,7 @@ __WAVEFORM_CSS__
 
   <span class="right-group">
       <button id="download-srt">导出字幕</button>
-    <button type="button" id="download-multi-srt" hidden title="导出当前扩展字幕轨（SRT）">导出扩展字幕</button>
+    <button type="button" id="download-multi-srt" hidden title="导出当前副字幕轨（SRT）">导出副字幕</button>
     <span class="dropdown" id="subtitle-export-dropdown" hidden>
       <button id="subtitle-export-btn" title="导出完整字幕或按颜色分别导出字幕">导出字幕 ▾</button>
       <div class="dropdown-menu" id="subtitle-export-menu">
@@ -1229,10 +1229,10 @@ __WAVEFORM_CSS__
       <option value="60">60 fps</option>
       <option value="60000/1001">60000/1001 fps</option>
     </select>
-    <label for="fcp7-export-subtitle-tracks">导出扩展字幕轨</label>
+    <label for="fcp7-export-subtitle-tracks">导出副字幕轨</label>
     <select id="fcp7-export-subtitle-tracks">
       <option value="main" selected>主轨字幕</option>
-      <option value="main_and_extension">主轨与扩展轨字幕</option>
+      <option value="main_and_extension">主轨与副轨字幕</option>
     </select>
     <label class="row" for="fcp7-export-native-text">
       <input type="checkbox" id="fcp7-export-native-text"> 写入原生字幕文本对象
@@ -1253,7 +1253,7 @@ __WAVEFORM_CSS__
     <label for="lottie-export-track">字幕轨道</label>
     <select id="lottie-export-track">
       <option value="main" selected>主轨字幕</option>
-      <option value="extension">扩展字幕轨</option>
+      <option value="extension">副字幕轨</option>
     </select>
     <label for="lottie-export-resolution">合成尺寸</label>
     <select id="lottie-export-resolution">
@@ -1292,7 +1292,7 @@ __WAVEFORM_CSS__
     <label for="ograf-export-track">字幕轨道</label>
     <select id="ograf-export-track">
       <option value="main" selected>主轨字幕</option>
-      <option value="extension">扩展字幕轨</option>
+      <option value="extension">副字幕轨</option>
     </select>
     <label for="ograf-export-resolution">合成尺寸</label>
     <select id="ograf-export-resolution">
@@ -1525,7 +1525,7 @@ __WAVEFORM_CSS__
   </div>
 </div>
 
-<!-- 导入扩展字幕时的语义选择/匹配预览 -->
+<!-- 导入副字幕时的语义选择/匹配预览 -->
 <div class="modal-mask" id="multi-subtitle-import-modal">
   <div class="modal multi-subtitle-import-modal" role="dialog" aria-modal="true" aria-labelledby="multi-subtitle-import-title">
     <h3 id="multi-subtitle-import-title">导入字幕</h3>
@@ -1545,7 +1545,7 @@ __WAVEFORM_CSS__
 <!-- 绑定字幕的近似联动拆分弹窗 -->
 <div class="modal-mask" id="multi-subtitle-split-modal">
   <div class="modal multi-subtitle-split-modal" role="dialog" aria-modal="true" aria-labelledby="multi-subtitle-split-title">
-    <h3 id="multi-subtitle-split-title">联动拆分扩展字幕</h3>
+    <h3 id="multi-subtitle-split-title">联动拆分副字幕</h3>
     <p class="modal-desc">移动鼠标点击，或用键盘选择拆分断点。</p>
     <div class="multi-subtitle-split-language-hint" role="note" aria-label="语言类型提示">
       <div>字符型语言（中文等）按字符拆分。</div>
