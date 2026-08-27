@@ -119,6 +119,22 @@ jobs:
             Stop-Process -Id $GuiProcess.Id -Force
           }
 
+      - name: Verify runtime requirements bundled
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Required = @(
+            '_internal\local-runtime\requirements-local.txt'
+            '_internal\ocr-runtime\requirements-ocr.txt'
+            '_internal\moss-runtime\requirements-moss.txt'
+          )
+          foreach ($Relative in $Required) {
+            $Path = Join-Path 'dist\MAW' $Relative
+            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+              throw "Missing runtime requirements in bundle: $Path"
+            }
+          }
+
       - name: Create standard release archive
         shell: pwsh
         run: |
@@ -313,6 +329,20 @@ jobs:
           set -euo pipefail
           FaqPath="$(find dist/MAW.app -type f -name 'FAQ-常见问题.txt' -print -quit)"
           test -n "$FaqPath"
+
+      - name: Verify runtime requirements bundled
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for Req in requirements-local.txt requirements-ocr.txt requirements-moss.txt; do
+            Found="$(find dist/MAW.app -type f -name "$Req" -print -quit)"
+            if [ -z "$Found" ]; then
+              echo "Missing $Req in macOS bundle"
+              exit 1
+            fi
+          done
+          echo "OK: runtime requirements txt 随包分发"
 
       - name: Smoke MAW executable
         if: matrix.platform == 'macos'

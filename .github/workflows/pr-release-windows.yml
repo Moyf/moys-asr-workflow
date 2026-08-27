@@ -61,6 +61,22 @@ jobs:
             throw 'Missing dist\MAW\FAQ-常见问题.txt after build.'
           }
 
+      - name: Verify runtime requirements bundled
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Required = @(
+            '_internal\local-runtime\requirements-local.txt'
+            '_internal\ocr-runtime\requirements-ocr.txt'
+            '_internal\moss-runtime\requirements-moss.txt'
+          )
+          foreach ($Relative in $Required) {
+            $Path = Join-Path 'dist\MAW' $Relative
+            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+              throw "Missing runtime requirements in bundle: $Path"
+            }
+          }
+
       - name: Smoke MAW executable
         shell: pwsh
         run: |
