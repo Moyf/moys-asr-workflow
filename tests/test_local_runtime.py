@@ -18,6 +18,7 @@ from maw.local_runtime import (
     model_cache_environment,
     prepare_model_in_process,
 )
+from maw.runtimes import LOCAL
 
 
 class LocalRuntimeTests(unittest.TestCase):
@@ -104,12 +105,12 @@ class LocalRuntimeTests(unittest.TestCase):
             requirements_txt = Path(temp_dir) / "requirements-local.txt"
             requirements_txt.write_text("funasr==1.4.2\nqwen-asr==0.0.6\n", encoding="utf-8")
             with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(root), "MAW_MODEL_CACHE_ROOT": str(cache)}):
-                with mock.patch("maw.local_runtime._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
-                    with mock.patch("maw.local_runtime._extract_embed_python", side_effect=fake_extract):
-                        with mock.patch("maw.local_runtime._runtime_requirements_path", return_value=requirements_txt):
-                            with mock.patch("maw.local_runtime._has_cuda", return_value=True):
-                                with mock.patch("maw.local_runtime.pick_fastest_mirror", return_value="https://pypi.org/simple"):
-                                    with mock.patch("maw.local_runtime._run_process", side_effect=fake_run) as run_process:
+                with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
+                    with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=fake_extract):
+                        with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
+                            with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
+                                with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                    with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run) as run_process:
                                         status = install_local_runtime(on_event=lambda *event: events.append(event))
 
             self.assertTrue(status.ready)
@@ -130,7 +131,7 @@ class LocalRuntimeTests(unittest.TestCase):
     def test_install_without_bootstrap_assets_explains_packaged_requirement(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": temp_dir}):
-                with mock.patch("maw.local_runtime._find_bootstrap_asset", return_value=None):
+                with mock.patch("maw.runtimes.base._find_bootstrap_asset", return_value=None):
                     with self.assertRaises(LocalRuntimeError) as context:
                         install_local_runtime()
 

@@ -17,6 +17,7 @@ from maw.ocr_runtime import (
 )
 from maw.postprocess import OutputMode
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
+from maw.runtimes import OCR
 
 
 class OcrRuntimeTests(unittest.TestCase):
@@ -43,7 +44,7 @@ class OcrRuntimeTests(unittest.TestCase):
             python.parent.mkdir(parents=True, exist_ok=True)
             python.write_bytes(b"python")
 
-        def fake_run(command, *, env, cancel, on_line, cwd):
+        def fake_run(command, *, env, cancel, on_line, cwd, **_unused):
             _ = (env, cancel, cwd)
             calls.append(command)
             if "install" in command:
@@ -55,11 +56,11 @@ class OcrRuntimeTests(unittest.TestCase):
 
         requirements_txt = self.root.parent / "requirements-ocr.txt"
         requirements_txt.write_text("numpy==2.4.6\nonnxruntime==1.28.0\nrapidocr==3.9.2\n", encoding="utf-8")
-        with mock.patch("maw.ocr_runtime._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
-            with mock.patch("maw.ocr_runtime._extract_embed_python", side_effect=fake_extract):
-                with mock.patch("maw.ocr_runtime._ocr_requirements_path", return_value=requirements_txt):
-                    with mock.patch("maw.ocr_runtime.pick_fastest_mirror", return_value="https://pypi.org/simple"):
-                        with mock.patch("maw.ocr_runtime._run_process", side_effect=fake_run):
+        with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
+            with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=fake_extract):
+                with mock.patch.object(OCR, "requirements_path", return_value=requirements_txt):
+                    with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                        with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
                             status = install_ocr_runtime(runtime_root=self.root, cancel_event=Event())
 
         self.assertTrue(status.ready)
