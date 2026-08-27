@@ -1672,5 +1672,40 @@ class LocalEditorServerTests(unittest.TestCase):
                 thread.join(timeout=2)
 
 
+def _blank_project() -> "server_editor.ServerProject":
+    """A minimal bind-only project; avoids scanning the developer sticker dir."""
+    return server_editor.ServerProject(
+        {"segments": [], "media": "", "language": "", "model": ""}, None, None, None, [],
+    )
+
+
+class EditorPortSelectionTests(unittest.TestCase):
+    def test_open_editor_server_advances_when_omitted_port_is_busy(self) -> None:
+        """Given 端口省略且起始端口被占用，When 绑定服务，Then 自动顺延到之后的空闲端口并标记 advanced。"""
+        blocker = server_editor.EditorServer(("127.0.0.1", 0), _blank_project())
+        try:
+            busy_port = blocker.server_address[1]
+            with mock.patch.object(server_editor, "DEFAULT_EDITOR_PORT", busy_port):
+                server, advanced = server_editor.open_editor_server("127.0.0.1", None, _blank_project())
+            try:
+                self.assertTrue(advanced)
+                chosen = server.server_address[1]
+                self.assertNotEqual(chosen, busy_port)
+                self.assertGreaterEqual(chosen, busy_port + 1)
+            finally:
+                server.server_close()
+        finally:
+            blocker.server_close()
+
+    def test_open_editor_server_keeps_explicit_busy_port_failure(self) -> None:
+        """Given 显式 --port 指向正被占用的端口，When 绑定服务，Then 抛出 OSError 而不是顺延。"""
+        blocker = server_editor.EditorServer(("127.0.0.1", 0), _blank_project())
+        try:
+            with self.assertRaises(OSError):
+                server_editor.open_editor_server("127.0.0.1", blocker.server_address[1], _blank_project())
+        finally:
+            blocker.server_close()
+
+
 if __name__ == "__main__":
     unittest.main()
