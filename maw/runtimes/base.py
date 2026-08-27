@@ -332,7 +332,7 @@ class ManagedRuntime:
             python_path=str(python),
             detail=detail,
             runtime_version=runtime_version or self.spec.runtime_version,
-            model_cache_path=model_cache,
+            model_cache_path=str(model_cache),
             model_id=self.spec.model_id,
             model_label=self.spec.model_id_label,
         )
