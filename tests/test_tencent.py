@@ -50,11 +50,21 @@ class TencentProviderTests(unittest.TestCase):
                 "region": "ap-guangzhou", "engine": "16k_zh_en_2.0",
             }
             with mock.patch("maw.tencent._request", return_value={"Response": {"Data": {"TaskId": 7}}}) as request:
-                self.assertEqual(submit_task(str(audio), config), 7)
+                self.assertEqual(submit_task(str(audio), config, speaker_diarization=True), 7)
 
             payload = request.call_args.args[1]
             self.assertEqual(payload["SourceType"], 1)
+            self.assertEqual(payload["SpeakerDiarization"], 1)
             self.assertEqual(base64.b64decode(payload["Data"]), b"wav")
+
+    def test_submit_task_rejects_missing_data_without_attribute_error(self) -> None:
+        config = {
+            "secret_id": "id", "secret_key": "key", "app_id": "app",
+            "region": "ap-guangzhou", "engine": "16k_zh_en_2.0",
+        }
+        with mock.patch("maw.tencent._request", return_value={"Response": {"Data": None}}):
+            with self.assertRaisesRegex(RuntimeError, "TaskId"):
+                submit_task("", config, "https://example.test/audio.wav")
 
     def test_poll_task_reads_success_from_response_data(self) -> None:
         config = {"poll_timeout": 1, "poll_interval": 1}
