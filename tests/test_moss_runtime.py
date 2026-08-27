@@ -136,6 +136,9 @@ class MossRuntimeStatusTests(unittest.TestCase):
 
 
 class MossRuntimeInstallTests(unittest.TestCase):
+    # 内嵌流测试固定 win32：委托链与布局在 mac/linux CI 上一致。
+    @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
+    @mock.patch("maw.runtimes.base.sys.platform", "win32")
     def test_install_delegates_to_embedded_runtime_with_frozen_txt(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "local-runtime-moss"
@@ -174,6 +177,8 @@ class MossRuntimeInstallTests(unittest.TestCase):
             self.assertIn(PYTORCH_INDEX, install_command)
             self.assertTrue(any(MOSS_VERIFY_IMPORT in str(arg) for arg in verify_command))
 
+    @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
+    @mock.patch("maw.runtimes.base.sys.platform", "win32")
     def test_install_without_bootstrap_assets_explains_packaged_requirement(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             with mock.patch("maw.runtimes.base._find_bootstrap_asset", return_value=None):

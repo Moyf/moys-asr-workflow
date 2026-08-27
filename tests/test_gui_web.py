@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
+from maw.runtimes.base import RuntimeStatus  # noqa: E402
 
 
 class FakeWindow:
@@ -2163,6 +2164,54 @@ class LauncherRuntimeTests(unittest.TestCase):
 
 
 @final
+class OpenRuntimeFolderTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.env_path = self.root / ".env"
+        self.paths = LauncherPaths(root=self.root, env_path=self.env_path, launcher_html=self.root / "launcher.html")
+        self.api = LauncherApi(paths=self.paths, window_getter=lambda: FakeWindow())
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_open_runtime_folder_opens_model_cache_directory_from_backend_config(self) -> None:
+        """Given the model-cache kind, When opening, Then backend resolves the dir and no raw path is trusted."""
+        with mock.patch("maw.gui_web.resolve_model_cache_root", return_value=self.root) as resolver:
+            with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as opener:
+                result = self.api.open_runtime_folder({"kind": "model-cache"})
+
+        self.assertTrue(result["ok"])
+        resolver.assert_called_once()
+        opener.assert_called_once_with(self.root)
+
+    def test_open_runtime_folder_resolves_managed_runtime_by_selected_model_engine(self) -> None:
+        """Given the runtime kind, When opening, Then the managed runtime root is resolved server-side."""
+        with mock.patch("maw.gui_web.effective_config", return_value=SimpleNamespace(model_cache_root="")):
+            with mock.patch(
+                "maw.gui_web.managed_runtime_status",
+                return_value=RuntimeStatus(status="broken", ready=False, path=str(self.root), python_path="", detail="", runtime_version="1"),
+            ) as status:
+                with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as opener:
+                    result = self.api.open_runtime_folder({"kind": "runtime", "modelId": "moss-local"})
+
+        self.assertTrue(result["ok"])
+        status.assert_called_once()
+        opener.assert_called_once_with(self.root)
+
+    def test_open_runtime_folder_rejects_unknown_kind_and_missing_directories(self) -> None:
+        """Given an unknown kind or non-existent directory, Then no filesystem access happens."""
+        result = self.api.open_runtime_folder({"kind": "../escape"})
+        self.assertFalse(result["ok"])
+
+        missing = self.root / "not-created"
+        with mock.patch("maw.gui_web.resolve_model_cache_root", return_value=missing):
+            result = self.api.open_runtime_folder({"kind": "model-cache"})
+        self.assertFalse(result["ok"])
+        self.assertIn("尚未创建", str(result.get("error")))
+
+
+@final
 class LauncherAssetContractTests(unittest.TestCase):
     def test_launcher_exposes_chainable_postprocess_toolbox(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -2832,7 +2881,14 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="localRuntimeProgressBar"', page)
         self.assertIn('id="localModelProgress"', page)
         self.assertIn('id="localModelProgressBar"', page)
-        self.assertIn('bridge("install_local_runtime"', script)
+        # 路径块（可点击打开文件夹）位于状态行上方；detail 与修复按钮同行。
+        self.assertIn('id="localRuntimePaths"', page)
+        self.assertLess(page.index('id="localRuntimePaths"'), page.index('id="localRuntimeStatus"'))
+        self.assertIn('<div class="repair-row">', page)
+        self.assertIn('bridge("open_runtime_folder"', script)
+        self.assertIn('def open_runtime_folder(', backend)
+        self.assertIn("repair: state.config.ocrRuntime?.status === \"broken\"", script)
+        self.assertIn('runtimeStatus !== "missing"', script)
         self.assertIn('event.type === "localRuntimeProgress"', script)
         self.assertIn('event.type === "localRuntimeReady"', script)
         self.assertIn('def install_local_runtime(', backend)
