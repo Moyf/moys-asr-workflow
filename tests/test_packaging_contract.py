@@ -196,7 +196,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("uv export --frozen --extra local", release)
         self.assertIn("uv export --frozen --extra ocr", release)
 
-        self.assertIn('RUNTIME_VERSION = "5"', local_spec)
+        self.assertIn('RUNTIME_VERSION = "6"', local_spec)
         self.assertIn('OCR_RUNTIME_VERSION = "3"', ocr_spec)
 
         self.assertIn("_has_cuda", runtimes_base)

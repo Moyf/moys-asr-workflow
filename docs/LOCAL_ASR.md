@@ -128,13 +128,13 @@ uv run python generate_subtitle_local.py "D:\Videos\example.mp4" `
 
 ## 当前边界
 
-- Launcher 的「下载模型」按钮调用 QwenASR / FunASR 上游加载器准备缓存；当前正式列出 SenseVoice Small、Fun-ASR-Nano、Qwen3-ASR 0.6B、Qwen3-ASR 1.7B 和 Paraformer 兼容选项。本地运行环境由 GUI 独立安装，不放入 Windows 冻结包，Torch / TorchAudio 和模型权重仍按需下载。
+- Launcher 的「下载模型」按钮调用 QwenASR / FunASR 上游加载器准备缓存；当前正式列出 SenseVoice Small、Fun-ASR-Nano、Qwen3-ASR 0.6B、Qwen3-ASR 1.7B、Paraformer 兼容选项和 Faster-Whisper large-v3。本地运行环境由 GUI 独立安装，不放入 Windows 冻结包，Torch / TorchAudio 和模型权重仍按需下载。
 - Launcher 也列出 MOSS Transcribe-Diarize 0.9B；它使用单独的 `local-runtime-moss` 环境和 Hugging Face 缓存，不与 QwenASR / FunASR 运行环境混装。
 - Launcher 可以把模型缓存切换到自定义目录；它参考了 [Voicebox 的模型目录配置方式](https://github.com/jamiepine/voicebox/blob/main/backend/config.py)，把运行环境和 Hugging Face / ModelScope 模型缓存分开管理。
 - Qwen3-ASR 0.6B 和 1.7B 都使用同一个 Forced Aligner；时间戳按秒读取并归一化为 MAW 要求的整数毫秒。FunASR 的常见句级/字词级时间戳也会归一化为同一格式。
 - Qwen3-ASR 长音频采用独立的 FFmpeg 分块识别，默认每块 30 秒，并在合并前恢复原始时间偏移，避免单次生成长度限制导致后半段字幕缺失。
 - 当模型没有可可靠映射的词级时间戳时，仍保留句级字幕，不人为伪造字词边界。
-- faster-whisper 目前仅提供源码 CLI 入口（`--engine whisper`），Launcher 的「本地模型」选择和「下载模型」按钮尚未接入该引擎；Silero VAD 与分块由上游内部处理，`--batch-size-s` 对它无效。
+- faster-whisper 在 Launcher「本地模型」中提供 large-v3 入口，与 Qwen/FunASR 共用同一本地运行环境；因 local extra 新增依赖（faster-whisper / CTranslate2），运行环境版本升级为 6，已有安装会提示重新安装或修复一次以补齐依赖。「下载模型」同样复用其 Hugging Face 上游加载器；Silero VAD 与分块由上游内部处理，`--batch-size-s` 对它无效。
 - SenseVoice 默认启用 FSMN-VAD 和富文本后处理；Fun-ASR-Nano 默认启用 FSMN-VAD、远程模型代码和句级时间戳请求，适合 CUDA 环境；其他 FunASR 的 VAD、标点、说话人模型可以通过对应参数传入，但不同模型组合的兼容性仍需要真实环境验证。
 - 本地 CPU 推理、模型下载、实际显存/内存、长媒体速度和不同模型版本尚未在本项目中做完整验收。
 

@@ -380,6 +380,18 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         model_ref="OpenMOSS-Team/MOSS-Transcribe-Diarize",
         requires_runtime=("moss_transcribe_diarize", "transformers", "torch"),
     ),
+    ModelConfig(
+        id="whisper-large-v3-local",
+        label="Faster-Whisper large-v3（实验）",
+        env_key="",
+        note="OpenAI Whisper 多语种本地识别；CTranslate2 运行时自带 VAD，无说话人分离；GPU 需 CUDA12/cuDNN9",
+        languages=LANGUAGES,
+        kind="local",
+        engine="whisper",
+        # Hugging Face Hub 上的官方 CTranslate2 转换版；词级时间戳由上游内部处理
+        model_ref="Systran/faster-whisper-large-v3",
+        requires_runtime=("faster_whisper",),
+    ),
 )
 
 # 必剪（B 站非官方免费接口）：仅中文、无语言参数，单文件上限见 maw/bcut.py
