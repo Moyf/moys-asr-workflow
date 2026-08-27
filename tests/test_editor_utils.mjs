@@ -239,11 +239,11 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('副字幕 1', 'en'), 'Secondary subtitle 1');
  assert.equal(
     i18n.translateText('已交换主副字幕：主轨 2 条，副轨 3 条', 'en'),
-    'Swapped main and extension subtitles: 2 main, 3 extension',
+    'Swapped main and secondary subtitles: 2 main, 3 secondary',
   );
   assert.equal(
-    i18n.translateText('已替换主字幕 1 的绑定，改为扩展字幕 2', 'en'),
-    'Replaced the binding for main subtitle 1 with extension subtitle 2',
+    i18n.translateText('已替换主字幕 1 的绑定，改为副字幕 2', 'en'),
+    'Replaced the binding for main subtitle 1 with secondary subtitle 2',
   );
   assert.equal(i18n.translateText('保存工程', 'zh'), '保存工程');
 });
@@ -2573,7 +2573,7 @@ test('rejects serializer input that lacks media path, duration, or frame profile
 test('translates every project-export option, outcome, and warning key in both locales', () => {
   const keys = [
     '导出时间线模式', '去空隙时间线', '原始时间线', '导出帧率', '写入原生字幕文本对象',
-    '导出扩展字幕轨', '主轨字幕', '主轨与扩展轨字幕', '导出文件名', '导出媒体路径缺失',
+    '导出副字幕轨', '主轨字幕', '主轨与副轨字幕', '导出文件名', '导出媒体路径缺失',
     '导出媒体时长缺失', '导出文件名无效', '导出警告',
     'Premiere FCP 7 XML（实验性）',
     '实验性 Premiere 交接：导出 FCP 7 XML',

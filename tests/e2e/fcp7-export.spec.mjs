@@ -115,7 +115,7 @@ test('opens the export modal with native text unchecked and closed choices only'
   const trackOptions = page.locator('#fcp7-export-subtitle-tracks option');
   expect(await trackOptions.evaluateAll((options) => options.map((option) => option.value)))
     .toEqual(['main', 'main_and_extension']);
-  // 工程没有扩展轨：组合选项被禁用而不是悄悄猜测。
+  // 工程没有副轨：组合选项被禁用而不是悄悄猜测。
   await expect(page.locator('#fcp7-export-subtitle-tracks option[value="main_and_extension"]'))
     .toBeDisabled();
   await expect(page.locator('#fcp7-export-subtitle-tracks')).toHaveValue('main');

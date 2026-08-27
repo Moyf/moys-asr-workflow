@@ -628,7 +628,7 @@ const DEFAULT_EDITOR_SETTINGS = {
   // 拆分弹窗中选完所有需要确认的断点后自动提交。
   splitAutoSubmit: true,
   overlayEnabled: true,
-  // 多重字幕开启时，拓展字幕预览默认自动显示。
+  // 多重字幕开启时，副字幕预览默认自动显示。
   extensionOverlayEnabled: true,
   // 多重字幕开启时使用的波形行高度；关闭多重字幕后恢复「配置」中的高度。
   multiSubtitleRowHeight: 168,
@@ -653,7 +653,7 @@ const DEFAULT_EDITOR_SETTINGS = {
   selectGroupMembers: false,
   // 合并字幕时各段文本之间插入的连接符（默认两个空格；留空则直接拼接）。
   mergeJoinText: '',
-  // 拼合字幕：相邻间隔不超过该毫秒值时拓展字幕长度拼合（0 表示不处理间隔）。
+  // 拼合字幕：相邻间隔不超过该毫秒值时延长字幕时长并拼合（0 表示不处理间隔）。
   autoMergeGapMs: 200,
   // 拼合字幕：backward 向前拓展（默认，后方字幕起点前拓）/ forward 向后拓展（前方字幕终点后延）。
   autoMergeSnapDirection: 'backward',
@@ -1717,7 +1717,7 @@ function updateMultiSubtitleUi() {
   }
   if (multiSubtitleToggle) {
     multiSubtitleToggle.checked = enabled;
-    // 没有扩展轨时仍允许点击，由 change 处理器询问是否选择导入第二条字幕。
+    // 没有副轨时仍允许点击，由 change 处理器询问是否选择导入第二条字幕。
     multiSubtitleToggle.disabled = false;
   }
   if (multiSubtitleToggleLabel) {
@@ -1927,7 +1927,7 @@ multiSubtitleToggle?.addEventListener('change', () => {
   pushUndo(next ? '开启多重字幕' : '关闭多重字幕');
   multi.enabled = next;
   multi._dirty = true;
-  // 开关会改变波形是否需要拓展 lane，因此这里才执行完整波形重建。
+  // 开关会改变波形是否需要副字幕 lane，因此这里才执行完整波形重建。
   renderAll({ waveform: 'full' });
 });
 multiSubtitleDisplayMode?.addEventListener('change', () => {
@@ -3311,7 +3311,7 @@ let lastClickedExtensionIdx = -1;
 // “仅看超长”开启时，刚拆出的字幕临时绕过字数过滤；使用稳定 ID，避免 splice 后下标错位。
 const temporaryVisibleSplitCueKeys = new Set();
 // 右键选择「绑定到主字幕」后的等待状态。使用稳定 ID 而不是数组下标，
-// 这样等待期间即使列表重绘，也不会把另一条扩展字幕误绑定过去。
+// 这样等待期间即使列表重绘，也不会把另一条副字幕误绑定过去。
 let pendingExtensionBinding = null;
 // 隐藏开关开启时，禁用项视为"不可选"（Shift 范围选 / Ctrl 切换都跳过）
 function isHiddenDisabled(idx, track = 'main') {
@@ -3321,7 +3321,7 @@ function isHiddenDisabled(idx, track = 'main') {
   return hideDisabled && !!(segments[idx] && segments[idx].disabled);
 }
 
-function cancelPendingExtensionBinding(message = '已取消绑定扩展字幕') {
+function cancelPendingExtensionBinding(message = '已取消绑定副字幕') {
   if (!pendingExtensionBinding) return false;
   pendingExtensionBinding = null;
   flashHint(message);
@@ -3624,10 +3624,10 @@ function selectCueByClick(idx) {
       (segment) => segment.id === pending.extensionId,
     ) ?? -1;
     if (extensionIndex < 0) {
-      flashHint('扩展字幕已不存在，绑定已取消', 'warning');
+      flashHint('副字幕已不存在，绑定已取消', 'warning');
       return;
     }
-    // selectOnly 会清空扩展轨选择，因此先完成主轨选择，再恢复待绑定的扩展轨选择。
+    // selectOnly 会清空副轨选择，因此先完成主轨选择，再恢复待绑定的副轨选择。
     selectOnly(idx, false);
     selectOnlyExtension(extensionIndex, track, false, true);
     bindSelectedSubtitlePair();
@@ -3693,7 +3693,7 @@ function beginPendingExtensionBinding(index, track = getActiveExtensionTrack()) 
 function bindSelectedSubtitlePair({ successMessage = null } = {}) {
   if (!multiSubtitleVisible()) return;
   if (selectedIdxs.size !== 1 || selectedExtensionIdxs.size !== 1) {
-    flashHint('请分别选中一条主字幕和一条扩展字幕后再绑定', 'invalid');
+    flashHint('请分别选中一条主字幕和一条副字幕后再绑定', 'invalid');
     return;
   }
   const mainIndex = [...selectedIdxs][0];
@@ -3715,8 +3715,8 @@ function bindSelectedSubtitlePair({ successMessage = null } = {}) {
   waveformEditor?.updateSelection();
   const bindingMessage = successMessage
     || (replacedBinding
-      ? `已替换主字幕 ${mainIndex + 1} 的绑定，改为扩展字幕 ${extensionIndex + 1}`
-      : `已绑定主字幕 ${mainIndex + 1} 与扩展字幕 ${extensionIndex + 1}`);
+      ? `已替换主字幕 ${mainIndex + 1} 的绑定，改为副字幕 ${extensionIndex + 1}`
+      : `已绑定主字幕 ${mainIndex + 1} 与副字幕 ${extensionIndex + 1}`);
   flashHint(`${bindingMessage}${autoSynced ? '，并同步时长' : ''}`, 'success');
 }
 
@@ -4871,7 +4871,7 @@ function finishExtensionEdit(save) {
   if (segment && save) {
     const nextText = textEl.innerText.replace(/\r\n?/g, '\n').trimEnd();
     if (nextText !== original) {
-      pushUndo('编辑扩展字幕');
+      pushUndo('编辑副字幕');
       segment.text = nextText;
       segment._dirty = true;
       markMultiSubtitleDirty();
@@ -5448,7 +5448,7 @@ function buildSplitPair(
     mainOffset: initialMainOffset,
     mainCutMs: initialMainCutMs,
     offset: initialOffset,
-    // 联动拆分只有一个绝对切点；拓展轨的 offset 只负责选择文字边界。
+    // 联动拆分只有一个绝对切点；副轨的 offset 只负责选择文字边界。
     cutMs: initialMainCutMs,
     extensionCutMs: initialMainCutMs,
     extensionMode,
@@ -6106,8 +6106,8 @@ function updateLinkedSplitPreview(offset, lane = 'extension') {
     ? forceSplitCutForSegments(forceSegments, state.cutMs)
     : null;
   state.forceEligible = textValid && !state.timingValid && Number.isFinite(state.forceCutMs);
-  // 联动模式下，拓展轨无法形成合法拆分（文本断点非法，或最短 100ms 钳制也救不回来）、
-  // 而主轨自身仍可拆时，允许降级为「只拆主轨并解除绑定」，避免主轨被拓展轨阻塞。
+  // 联动模式下，副轨无法形成合法拆分（文本断点非法，或最短 100ms 钳制也救不回来）、
+  // 而主轨自身仍可拆时，允许降级为「只拆主轨并解除绑定」，避免主轨被副轨阻塞。
   state.mainOnlyFallbackEligible = false;
   if (state.kind === 'linked' && main && extension && mainTextValid && !valid && !state.forceEligible) {
     const mainRescuable = mainTimingValid
@@ -6124,14 +6124,14 @@ function updateLinkedSplitPreview(offset, lane = 'extension') {
     if (mainOnly) {
       renderSplitMeta(`主轨：${splitModeLabel(state.mainMode)} · 切点 ${fmtShort(state.mainCutMs)} · 字符位置 ${state.mainOffset ?? '—'}`, state);
     } else if (extensionOnly) {
-      renderSplitMeta(`拓展轨：${splitModeLabel(state.extensionMode)} · 切点 ${fmtShort(state.extensionCutMs)}`, state);
+      renderSplitMeta(`副轨：${splitModeLabel(state.extensionMode)} · 切点 ${fmtShort(state.extensionCutMs)}`, state);
     } else {
       const mainLabel = state.mainTimestampLocked
         ? `⌚️主轨时间码锚点 ${fmtShort(state.mainCutMs)}`
         : state.mainInteractive
           ? `主轨文字断点 ${state.mainOffset ?? '—'}`
           : `主轨字词锚点 ${fmtShort(state.mainCutMs)}`;
-      renderSplitMeta(`${mainLabel} · 拓展轨文字断点 ${state.offset ?? '—'} · 共用绝对切点 ${fmtShort(state.cutMs)}`, state);
+      renderSplitMeta(`${mainLabel} · 副轨文字断点 ${state.offset ?? '—'} · 共用绝对切点 ${fmtShort(state.cutMs)}`, state);
     }
   }
   if (multiSubtitleSplitPreview) {
@@ -6148,8 +6148,8 @@ function updateLinkedSplitPreview(offset, lane = 'extension') {
     multiSubtitleSplitError.textContent = valid ? '' : (state.mainOnlyFallbackEligible
       ? '副字幕无法在当前切点形成合法拆分；确认后只拆分主字幕，并解除与副字幕的绑定。'
       : extensionOnly
-        ? '拓展字幕切点必须为两侧各留至少 100ms。'
-        : '主字幕和拓展字幕切点都必须为两侧各留至少 100ms。');
+        ? '副字幕切点必须为两侧各留至少 100ms。'
+        : '主字幕和副字幕切点都必须为两侧各留至少 100ms。');
   }
   if (multiSubtitleSplitConfirm) {
     multiSubtitleSplitConfirm.disabled = !valid && !state.mainOnlyFallbackEligible;
@@ -6260,7 +6260,7 @@ function commitMainWaveformSplit(state, { force = false, successMessage = '已�
   return true;
 }
 
-// 降级路径：拓展轨无法形成合法拆分时，只拆主轨并解除与副字幕的绑定。
+// 降级路径：副轨无法形成合法拆分时，只拆主轨并解除与副字幕的绑定。
 function commitLinkedSplitMainOnly(state) {
   const main = DATA.segments[state.mainIndex];
   if (!main) return false;
@@ -6315,9 +6315,9 @@ function commitExtensionSplit(state, { force = false } = {}) {
 
   const oldExtensionId = extension.id;
   const wasBound = Boolean(bindingForExtensionIndex(extensionIndex, track));
-  pushUndo('拆分拓展字幕', { captureView: true });
-  // 一对一绑定无法让一个主段同时指向拆出的两条拓展段；独立拆分后
-  // 保留两条拓展字幕，但解除旧关系，等待用户按需要重新绑定。
+  pushUndo('拆分副字幕', { captureView: true });
+  // 一对一绑定无法让一个主段同时指向拆出的两条副轨段；独立拆分后
+  // 保留两条副字幕，但解除旧关系，等待用户按需要重新绑定。
   removeBindingsForSegmentIds([], [oldExtensionId]);
   track.segments.splice(extensionIndex, 1, pair.left, pair.right);
   markMultiSubtitleDirty();
@@ -6342,8 +6342,8 @@ function commitExtensionSplit(state, { force = false } = {}) {
   triggerNinjaSplitFeedback(ninjaModalSplitPoint(state, splitMs, 'extension'));
   flashHint(
     wasBound
-      ? '已独立拆分拓展字幕并解除原绑定'
-      : '已按选择的断点拆分拓展字幕',
+      ? '已独立拆分副字幕并解除原绑定'
+      : '已按选择的断点拆分副字幕',
     'success',
   );
   return true;
@@ -6357,7 +6357,7 @@ function confirmLinkedSplit() {
   const previewValid = updateLinkedSplitPreview(previewOffset, previewLane);
   let force = false;
   if (!previewValid) {
-    // 拓展轨救不回来而主轨可拆：降级为只拆主轨并解除绑定，主轨不被拓展轨阻塞。
+    // 副轨救不回来而主轨可拆：降级为只拆主轨并解除绑定，主轨不被副轨阻塞。
     if (state.kind === 'linked' && state.mainOnlyFallbackEligible) {
       commitLinkedSplitMainOnly(state);
       return;
@@ -6396,7 +6396,7 @@ function confirmLinkedSplit() {
   if (!Number.isFinite(sharedCutMs)
       || sharedCutMs !== Number(state.mainCutMs)
       || sharedCutMs !== Number(state.extensionCutMs)) {
-    flashHint('主字幕和拓展字幕必须使用同一个绝对切点', 'warning');
+    flashHint('主字幕和副字幕必须使用同一个绝对切点', 'warning');
     return;
   }
   const mainPair = buildSplitPair(
@@ -6620,7 +6620,7 @@ function splitAtCursor(
   pushUndo('拆分字幕', { captureView: true });
   clearSelection({ silent: true });
   // 关闭多字幕模式时，绑定关系仍保存在工程中；拆分主轨后旧 ID 不再存在，
-  // 只移除这条关系，保留隐藏的扩展字幕供用户重新绑定。
+  // 只移除这条关系，保留隐藏的副字幕供用户重新绑定。
   removeBindingsForSegmentIds([seg.id], []);
   DATA.segments.splice(idx, 1, leftSeg, rightSeg);
 
@@ -6929,19 +6929,19 @@ function mergeSegments(idxs) {
   flashHint(`已合并 ${sorted.length} 条`, 'success');
 }
 
-// 只合并扩展轨连续字幕。扩展字幕没有主轨的 group 引用和 items，
+// 只合并副轨连续字幕。副字幕没有主轨的 group 引用和 items，
 // 因此这里保留独立轨的文本/时间合并语义；如果被合并段存在一对一绑定，
 // 合并后无法同时指向多个主字幕，旧绑定会被移除并提示用户重新绑定。
 function mergeExtensionSegments(idxs, track = getActiveExtensionTrack()) {
   if (!track || !idxs?.length) return false;
   const sorted = [...new Set(idxs)].sort((a, b) => a - b);
   if (sorted.length < 2) {
-    flashHint('请选择至少两个扩展字幕块！', 'invalid');
+    flashHint('请选择至少两个副字幕块！', 'invalid');
     return false;
   }
   for (let i = 1; i < sorted.length; i++) {
     if (sorted[i] !== sorted[i - 1] + 1) {
-      flashHint('选中的扩展字幕必须连续', 'invalid');
+      flashHint('选中的副字幕必须连续', 'invalid');
       return false;
     }
   }
@@ -6965,7 +6965,7 @@ function mergeExtensionSegments(idxs, track = getActiveExtensionTrack()) {
   ));
 
   clearSelection();
-  pushUndo('合并扩展字幕');
+  pushUndo('合并副字幕');
   removeBindingsForSegmentIds([], oldIds);
   track.segments.splice(sorted[0], sorted.length, merged);
   markMultiSubtitleDirty();
@@ -6975,8 +6975,8 @@ function mergeExtensionSegments(idxs, track = getActiveExtensionTrack()) {
   lastClickedExtensionIdx = sorted[0];
   flashHint(
     hadBindings
-      ? `已合并 ${sorted.length} 条扩展字幕，原绑定已解除`
-      : `已合并 ${sorted.length} 条扩展字幕`,
+      ? `已合并 ${sorted.length} 条副字幕，原绑定已解除`
+      : `已合并 ${sorted.length} 条副字幕`,
     'success',
   );
   return true;
@@ -7233,7 +7233,7 @@ function deleteSegments(idxs) {
     const extensionIndex = extensionTrack?.segments?.findIndex((segment) => segment.id === extensionId);
     if (extensionIndex >= 0) pairedExtensionIndices.add(extensionIndex);
   });
-  // 关闭多字幕时仍清理已失效的主轨绑定，但不删除隐藏的扩展字幕。
+  // 关闭多字幕时仍清理已失效的主轨绑定，但不删除隐藏的副字幕。
   removeBindingsForSegmentIds(
     pairedMainIds,
     multiSubtitleVisible()
@@ -7299,8 +7299,8 @@ function deleteExtensionSegments(indices, track = getActiveExtensionTrack()) {
   resetCuePanelEditState();
   const ids = sorted.map((index) => track.segments[index]?.id).filter(Boolean);
 
-  // 删除绑定扩展字幕时沿用主轨删除语义：绑定关系和另一侧字幕一起删除，
-  // 这样从任意 lane 删除都能用同一条撤销记录完整恢复。未绑定的扩展段
+  // 删除绑定副字幕时沿用主轨删除语义：绑定关系和另一侧字幕一起删除，
+  // 这样从任意 lane 删除都能用同一条撤销记录完整恢复。未绑定的副轨段
   // 仍允许单独删除；混合选择时两类操作会分别使用各自的历史记录。
   const pairedMainIndices = new Set();
   const unboundIds = new Set(ids);
@@ -7323,13 +7323,13 @@ function deleteExtensionSegments(indices, track = getActiveExtensionTrack()) {
     .filter((index) => index >= 0);
   if (!remainingIndices.length) return;
 
-  pushUndo(`删除 ${sorted.length} 条扩展字幕`);
+  pushUndo(`删除 ${sorted.length} 条副字幕`);
   removeBindingsForSegmentIds([], [...unboundIds]);
   remainingIndices.reverse().forEach((index) => track.segments.splice(index, 1));
   markMultiSubtitleDirty();
   selectedExtensionIdxs.clear();
   renderAll();
-  flashHint(`已删除 ${remainingIndices.length} 条扩展字幕`, 'success');
+  flashHint(`已删除 ${remainingIndices.length} 条副字幕`, 'success');
 }
 
 // === 滚动 ===
@@ -7418,7 +7418,7 @@ let cueSplitPreviewEl = null;
 let cueSplitPreviewFrame = 0;
 let cueSplitPreviewRequest = null;
 
-// 等待绑定时，点击主/扩展字幕本身交给各自的选择事件处理；其它空白或
+// 等待绑定时，点击主/副字幕本身交给各自的选择事件处理；其它空白或
 // 非字幕区域视为取消，避免用户进入等待状态后无从退出。
 document.addEventListener('pointerdown', (event) => {
   if (!pendingExtensionBinding) return;
@@ -7697,7 +7697,7 @@ function bindCueEvents(el, idx) {
     if (isSecondDoubleClick) {
       // 第一次 pointerdown 已经完成选中；双击的第二次按下不要再次刷新波形布局。
       // 但仍要更新当前编辑焦点：主副字幕可以同时保持选中，且前一次主轨点击
-      // 可能与扩展轨点击被隔开，此时不能因为本次字幕仍处于 selected 就停留在副字幕面板。
+      // 可能与副轨点击被隔开，此时不能因为本次字幕仍处于 selected 就停留在副字幕面板。
       setCurrentCuePanelIndex(idx);
       pointerDownState = { handled: true, suppressClick: true, time: now };
       return;
@@ -10119,7 +10119,7 @@ refreshPreviewGeometryEditable();
 
 bindPlayerEvents(player);
 overlayToggle.addEventListener('change', () => {
-  // change 触发时 checked 已是新值；其它预览样式和拓展开关仍从当前快照保留。
+  // change 触发时 checked 已是新值；其它预览样式和副字幕开关仍从当前快照保留。
   const previous = snapshotPreviewState();
   previous.overlay = !overlayToggle.checked;
   pushPreviewUndo('切换字幕预览', previous);
@@ -10352,7 +10352,7 @@ function buildJson() {
     tracks: (multi.tracks || []).map((track) => ({
       id: track.id,
       role: 'extension',
-      name: track.name || '扩展字幕',
+      name: track.name || '副字幕',
       language: track.language || '',
       split_mode: track.split_mode || 'word',
       source_name: track.source_name || '',
@@ -12007,7 +12007,7 @@ async function exportLottieDynamicCaptions() {
     const segments = extension ? track?.segments : DATA.segments;
     if (!Array.isArray(segments) || !segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
       throw new Error(translatedEditorText(
-        extension ? '当前扩展字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
+        extension ? '当前副字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
       ));
     }
     const durationMs = waveformEditor?.durationMs
@@ -12119,7 +12119,7 @@ async function exportOgrafDynamicCaptions() {
     const segments = extension ? track?.segments : DATA.segments;
     if (!Array.isArray(segments) || !segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
       throw new Error(translatedEditorText(
-        extension ? '当前扩展字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
+        extension ? '当前副字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
       ));
     }
     const durationMs = waveformEditor?.durationMs
@@ -12186,7 +12186,7 @@ downloadMultiSrtButton?.addEventListener('click', async () => {
   const track = getActiveExtensionTrack();
   if (!track) return;
   await downloadFile(buildExtensionSrt(track), `${FILENAME_BASE}_extension.srt`, 'text/plain', {
-    desc: '扩展字幕 SRT 文件', types: { 'text/plain': ['.srt'] },
+    desc: '副字幕 SRT 文件', types: { 'text/plain': ['.srt'] },
   });
 });
 document.getElementById('download-full-srt')?.addEventListener('click', async () => {
@@ -12804,7 +12804,7 @@ async function parseSubtitleImportFile(file) {
     window.AsrEditorUtils.normalizeSegmentTimings(sourceSegments);
     const validSegments = sourceSegments.filter((segment) => segment.text.trim());
     if (!validSegments.length) {
-      throw new Error('扩展字幕没有可导入的有效文本或时间码');
+      throw new Error('副字幕没有可导入的有效文本或时间码');
     }
     return validSegments;
   } finally {
@@ -12834,7 +12834,7 @@ function renderMultiImportPreview(match = null, segments = []) {
   }
   multiSubtitleImportPreview.hidden = false;
   multiSubtitleImportPreview.innerHTML = [
-    `<div class="summary">扩展字幕 ${segments.length} 条 · 自动绑定 ${match.matches.length} 条</div>`,
+    `<div class="summary">副字幕 ${segments.length} 条 · 自动绑定 ${match.matches.length} 条</div>`,
     `<div>未绑定 ${match.unmatchedExtension.length} 条 · 主轨未绑定 ${match.unmatchedMain.length} 条 · 冲突 ${match.conflicts} 组</div>`,
     `<div class="warning">时间容差：${match.tolerance_ms}ms。未绑定字幕会保留，可稍后手动绑定。</div>`,
   ].join('');
@@ -12880,7 +12880,7 @@ async function showMultiSubtitleImportChoice(file, segments, options = {}) {
   if (multiSubtitleImportDescription) multiSubtitleImportDescription.textContent = '请选择你要执行的行为：';
   if (multiSubtitleImportReplace) {
     multiSubtitleImportReplace.textContent = projectImport
-      ? '打开工程' : (existingTrack ? '替换扩展轨' : '替换当前字幕');
+      ? '打开工程' : (existingTrack ? '替换副轨' : '替换当前字幕');
   }
   if (multiSubtitleImportExtension) {
     multiSubtitleImportExtension.hidden = projectImport ? false : Boolean(existingTrack);
@@ -12944,7 +12944,7 @@ function commitMultiSubtitleImport() {
   const track = {
     id: trackId,
     role: 'extension',
-    name: pending.file.name.replace(/\.[^.]+$/i, '') || '扩展字幕',
+    name: pending.file.name.replace(/\.[^.]+$/i, '') || '副字幕',
     language: '',
     source_name: pending.file.name,
     split_mode: MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(
@@ -12952,7 +12952,7 @@ function commitMultiSubtitleImport() {
     ),
     segments: extensionSegments,
   };
-  pushUndo(replacing ? '替换扩展字幕' : '导入多重字幕');
+  pushUndo(replacing ? '替换副字幕' : '导入多重字幕');
   if (replacing) {
     const oldIds = new Set(oldTrack?.segments?.map((segment) => segment.id) || []);
     multi.bindings = (multi.bindings || []).filter((binding) => (
@@ -12977,10 +12977,10 @@ function commitMultiSubtitleImport() {
   markMultiSubtitleDirty();
   closeMultiSubtitleImportModal();
   clearSelection();
-  // 导入可能首次创建拓展 lane，必须重建波形行结构。
+  // 导入可能首次创建副字幕 lane，必须重建波形行结构。
   renderAll({ waveform: 'full' });
   update();
-  flashHint(`已导入扩展字幕：绑定 ${match.matches.length} 条，未绑定 ${match.unmatchedExtension.length} 条`, 'success');
+  flashHint(`已导入副字幕：绑定 ${match.matches.length} 条，未绑定 ${match.unmatchedExtension.length} 条`, 'success');
   return true;
 }
 
@@ -12992,11 +12992,11 @@ function swapMainAndExtensionSubtitles() {
     return false;
   }
   if ((multi.tracks || []).length !== 1) {
-    flashHint('当前只支持交换唯一的扩展字幕轨', 'invalid');
+    flashHint('当前只支持交换唯一的副字幕轨', 'invalid');
     return false;
   }
   if (!track?.segments?.length || !DATA.segments.length) {
-    flashHint('主字幕和扩展字幕都不能为空', 'invalid');
+    flashHint('主字幕和副字幕都不能为空', 'invalid');
     return false;
   }
   pushUndo('交换主副字幕');
@@ -15286,7 +15286,7 @@ function addExtensionAtWaveformTime(timeMs, clickX, clickY, track = getActiveExt
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
   if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
   if (!track || !Array.isArray(track.segments)) {
-    flashHint('当前没有可用的扩展字幕轨', 'invalid');
+    flashHint('当前没有可用的副字幕轨', 'invalid');
     return;
   }
   const insertAt = track.segments.findIndex((segment) => Number(segment.start) > timeMs);
@@ -15294,7 +15294,7 @@ function addExtensionAtWaveformTime(timeMs, clickX, clickY, track = getActiveExt
   const previousEnd = index > 0 ? Number(track.segments[index - 1].end) : 0;
   const nextStart = index < track.segments.length ? Number(track.segments[index].start) : duration;
   if (timeMs < previousEnd || timeMs > nextStart) {
-    flashHint('当前位置已有拓展字幕，请先调整相邻字幕时间', 'invalid');
+    flashHint('当前位置已有副字幕，请先调整相邻字幕时间', 'invalid');
     return;
   }
   const gap = nextStart - previousEnd;
@@ -15309,7 +15309,7 @@ function addExtensionAtWaveformTime(timeMs, clickX, clickY, track = getActiveExt
     flashHint('这里没有足够的空白区域', 'warning');
     return;
   }
-  pushUndo('新增拓展字幕');
+  pushUndo('新增副字幕');
   const segment = {
     id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
       track.segments,
@@ -15336,7 +15336,7 @@ function addExtensionAtWaveformTime(timeMs, clickX, clickY, track = getActiveExt
     setTimeout(() => startExtensionEdit(extensionText, index, track), 0);
   }
   waveformEditor?.revealTime(adjustedStart, true);
-  flashHint(`已新增第 ${index + 1} 条拓展字幕`, 'success');
+  flashHint(`已新增第 ${index + 1} 条副字幕`, 'success');
 }
 
 function getBoundDragTarget(index, sourceSegments) {
@@ -15732,7 +15732,7 @@ function showExtensionContextMenu(x, y, index, timeMs = null, track = getActiveE
     item.appendChild(key);
     if (disabled) {
       item.setAttribute('aria-disabled', 'true');
-      item.title = '请先解绑当前扩展字幕';
+      item.title = '请先解绑当前副字幕';
     } else item.addEventListener('click', () => {
       ctxmenu.classList.remove('show');
       fn();
@@ -15757,7 +15757,7 @@ function showExtensionContextMenu(x, y, index, timeMs = null, track = getActiveE
     false,
     'Alt+点击',
   );
-  addItem('删除扩展字幕', () => deleteExtensionSegments([index]), true);
+  addItem('删除副字幕', () => deleteExtensionSegments([index]), true);
   if (binding) addItem('对齐主字幕时间范围', () => alignExtensionToMainTimeRange(index, track), false, false, 'H');
   if (binding) addItem('解绑', () => {
     selectOnlyExtension(index);
@@ -15769,7 +15769,7 @@ function showExtensionContextMenu(x, y, index, timeMs = null, track = getActiveE
   } else {
     if (selectedIdxs.size === 1) {
       addItem('与选中的主字幕绑定', () => {
-        // 右键不会触发扩展字幕的普通 pointerdown；先补上扩展选择，
+        // 右键不会触发副字幕的普通 pointerdown；先补上副轨选择，
         // 再复用顶部「绑定」操作。这里是用户明确保留主字幕后发起的绑定，
         // 因此保留主字幕选区，作为有意的直接绑定/替换入口。
         selectOnlyExtension(index, track, true, true);

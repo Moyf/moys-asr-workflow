@@ -2555,7 +2555,7 @@
 
   // === 多重字幕（双语字幕）===
   // 这组 helper 刻意不依赖 DOM，便携 HTML、localhost 编辑器和 Node 测试共用同一套
-  // 数据/匹配/近似拆分规则。主轨仍然是顶层 segments；扩展轨的 items 不参与拆分。
+  // 数据/匹配/近似拆分规则。主轨仍然是顶层 segments；副轨的 items 不参与拆分。
   const MULTI_SUBTITLE_SCHEMA = 'moy.asr.multi_subtitle.v1';
   const MULTI_SUBTITLE_TOLERANCE_MS = 300;
   const MULTI_SUBTITLE_DISPLAY_MODES = new Set(['main', 'extension', 'both']);
@@ -2640,7 +2640,7 @@
       return {
         id,
         role: 'extension',
-        name: typeof track.name === 'string' && track.name.trim() ? track.name : '扩展字幕',
+        name: typeof track.name === 'string' && track.name.trim() ? track.name : '副字幕',
         language: typeof track.language === 'string' ? track.language : '',
         source_name: typeof track.source_name === 'string' ? track.source_name : '',
         split_mode: MULTI_SUBTITLE_SPLIT_MODES.has(track.split_mode)
@@ -2887,7 +2887,7 @@
     return multiSubtitle;
   }
 
-  // 交换主轨与当前唯一扩展轨。扩展轨保留可选的 items，
+  // 交换主轨与当前唯一副轨。副轨保留可选的 items，
   // 但不携带表情包和颜色分组等主轨专属字段。
   // 绑定关系按端点整体交换，并在新主轨写入后重新计算 offset。
   function swapMainAndExtensionSubtitle(project, trackId = null) {
