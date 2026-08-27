@@ -115,7 +115,13 @@ def _request(action: str, payload: dict[str, object], config: dict[str, str | in
     return result
 
 
-def _file_payload(audio_path: str, *, engine: str, app_id: str) -> dict[str, object]:
+def _file_payload(
+    audio_path: str,
+    *,
+    engine: str,
+    app_id: str,
+    speaker_diarization: bool,
+) -> dict[str, object]:
     path = Path(audio_path)
     data = path.read_bytes()
     if len(data) > MAX_INLINE_BYTES:
@@ -129,10 +135,18 @@ def _file_payload(audio_path: str, *, engine: str, app_id: str) -> dict[str, obj
     }
     if app_id:
         payload["AppId"] = app_id
+    if speaker_diarization:
+        payload["SpeakerDiarization"] = 1
     return payload
 
 
-def submit_task(audio_path: str, config: dict[str, str | int], file_url: str | None = None) -> int:
+def submit_task(
+    audio_path: str,
+    config: dict[str, str | int],
+    file_url: str | None = None,
+    *,
+    speaker_diarization: bool = False,
+) -> int:
     """Submit a URL or small local audio file and return TaskId."""
     if file_url:
         payload: dict[str, object] = {
@@ -144,10 +158,19 @@ def submit_task(audio_path: str, config: dict[str, str | int], file_url: str | N
         }
         if config["app_id"]:
             payload["AppId"] = str(config["app_id"])
+        if speaker_diarization:
+            payload["SpeakerDiarization"] = 1
     else:
-        payload = _file_payload(audio_path, engine=str(config["engine"]), app_id=str(config["app_id"]))
+        payload = _file_payload(
+            audio_path,
+            engine=str(config["engine"]),
+            app_id=str(config["app_id"]),
+            speaker_diarization=speaker_diarization,
+        )
     response = _request("CreateRecTask", payload, config)
-    task_id = response.get("Response", {}).get("Data", {}).get("TaskId") if isinstance(response.get("Response"), dict) else None
+    envelope = response.get("Response")
+    data = envelope.get("Data") if isinstance(envelope, dict) else None
+    task_id = data.get("TaskId") if isinstance(data, dict) else None
     if not isinstance(task_id, int):
         raise RuntimeError(f"腾讯云未返回 TaskId: {response}")
     return task_id
@@ -218,9 +241,21 @@ def parse_result(response: dict[str, object]) -> dict[str, object]:
     return {"text": text, "language": "", "items": items, "sentences": sentences}
 
 
-def transcribe(audio_path: str, config: dict[str, str | int], file_url: str | None = None, *, on_status=print) -> dict[str, object]:
+def transcribe(
+    audio_path: str,
+    config: dict[str, str | int],
+    file_url: str | None = None,
+    *,
+    speaker_diarization: bool = False,
+    on_status=print,
+) -> dict[str, object]:
     """Submit, poll, and normalize one Tencent recording-recognition task."""
-    task_id = submit_task(audio_path, config, file_url)
+    task_id = submit_task(
+        audio_path,
+        config,
+        file_url,
+        speaker_diarization=speaker_diarization,
+    )
     on_status(f"[tencent] 任务已提交: task_id={task_id}")
     result = poll_task(task_id, config, on_status=on_status)
     normalized = parse_result(result)
