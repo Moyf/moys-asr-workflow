@@ -529,6 +529,13 @@ def _explicit_path_mismatch(model: ModelConfig, path: Path) -> str:
             return "当前目录看起来属于 FunASR / Paraformer，不是当前模型。"
         if model.engine == "moss" and ("qwen3-asr" in value or "forcedaligner" in value or "forced-aligner" in value):
             return "当前目录看起来属于 Qwen3-ASR，不是 MOSS。"
+        if model.engine == "whisper" and (
+            "qwen3-asr" in value
+            or "forcedaligner" in value
+            or "forced-aligner" in value
+            or "transcribe-diarize" in value
+        ):
+            return "当前目录看起来属于 Qwen3-ASR 或 MOSS，不是 Faster-Whisper。"
     if model.engine in {"funasr", "fun-asr"}:
         if "qwen3-asr" in value or "forcedaligner" in value or "forced-aligner" in value:
             return "当前目录看起来属于 Qwen3-ASR，不是 FunASR / Paraformer。"
