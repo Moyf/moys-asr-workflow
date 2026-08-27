@@ -638,6 +638,14 @@ class ManagedRuntime:
             # 理论上不可达：install() 门槛已保证 uv 存在；防御时给出同款警告。
             emit(f"[警告] {UV_MISSING_WARNING}", 22, "bootstrap")
             raise self._error(UV_MISSING_WARNING)
+        # 清单已可用（打包版随包分发 / 此前已生成）则直接跳过：requirements_path
+        # 才是权威判定，避免对 build/ 目录的偶然状态敏感（干净 checkout 的
+        # build/ 为空，但在线用户无需任何冻结步骤）。
+        try:
+            self.requirements_path(cpu=cpu)
+            return
+        except self.spec.error_class:
+            pass
 
         def run(command: list[str]) -> int:
             return self.run(
