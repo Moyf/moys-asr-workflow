@@ -41,6 +41,40 @@ class ServerAlignTests(unittest.TestCase):
         self.assertIn("const gap = Number.isInteger(index) ? visibleGapEntries()[index] : null;", page)
         self.assertIn("isPlaying: !player.paused", page)
         self.assertNotIn("isPreviewingGap(gap, now)", page)
+        self.assertIn("let waveformMode = 'multi';", page)
+        self.assertIn('data-waveform-mode="multi">多行</button>', page)
+        self.assertIn("function previewGapAt(timeMs, gap = null)", page)
+        self.assertIn("seekTimeline(time, current);", page)
+        self.assertIn("if (event.button === 0 && event.altKey)", page)
+        self.assertIn("Alt+点击切换禁用", page)
+        self.assertIn("toggleCandidateDisabled(line.id, candidate.id)", page)
+        self.assertIn("box-shadow: inset 0 0 0 4px rgba(65,174,207,.35);", page)
+        self.assertIn("<span class=\"extra\">额外保留</span>", page)
+        self.assertNotIn("播放时跳过 gap", page)
+        self.assertNotIn("Gap 操作", page)
+
+    def test_timeline_edge_labels_and_select_controls_do_not_overflow_or_close(self) -> None:
+        page = SERVER.render_page().decode("utf-8")
+        self.assertIn(".time-tick.edge-right span", page)
+        self.assertIn("const rulerRight = Math.max(0, width - 1);", page)
+        self.assertIn("tick.classList.toggle('edge-right', isEndTick);", page)
+        self.assertIn(
+            "const control = event.target?.closest?.('button, input[type=\"checkbox\"], input[type=\"radio\"], input[type=\"range\"], audio, video, label');",
+            page,
+        )
+        self.assertNotIn(
+            "active?.matches?.('button, input[type=\"checkbox\"], input[type=\"radio\"], input[type=\"range\"], select, audio, video')",
+            page,
+        )
+
+    def test_candidate_rows_expose_waveform_jump_controls(self) -> None:
+        page = SERVER.render_page().decode("utf-8")
+        self.assertIn(".candidate-locate-row", page)
+        self.assertIn(".candidate-waveform-jump", page)
+        self.assertIn("function scrollTimelineToRange(startMs, endMs)", page)
+        self.assertIn("button.dataset.action = 'jump-to-waveform';", page)
+        self.assertIn("appendCandidateRow(list, row, candidate.start, candidate.end);", page)
+        self.assertIn("appendCandidateRow(candidateList, row, candidate.start, candidate.end);", page)
 
     def test_preview_and_export_return_mawe_project(self) -> None:
         with TemporaryDirectory() as temporary:
@@ -131,10 +165,71 @@ class ServerAlignTests(unittest.TestCase):
 
             self.assertTrue(preview["ok"])
             self.assertTrue(preview["selection"]["readyForMediaTrim"])
-            self.assertEqual(
-                preview["selection"]["manuallyEnabledCandidateIds"],
-                [candidate["id"]],
+
+    def test_launcher_gap_settings_are_used_when_request_omits_gap_state(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project_path = root / "source.mosp"
+            script_path = root / "script.txt"
+            project_path.write_text(json.dumps({
+                "media": "",
+                "segments": [
+                    {"id": "s1", "start": 0, "end": 1000, "text": "hello", "items": []},
+                ],
+            }), encoding="utf-8")
+            script_path.write_text("hello\n", encoding="utf-8")
+            state = SERVER.load_state(
+                project_path,
+                script_path,
+                None,
+                {
+                    "minimum_ms": 650,
+                    "threshold_db": -35,
+                    "hysteresis_db": 3.5,
+                    "lead_in_ms": 55,
+                    "lead_out_ms": 95,
+                },
             )
+
+            with SERVER.AlignmentServer(("127.0.0.1", 0), state) as server:
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                base = f"http://127.0.0.1:{server.server_address[1]}"
+                body = json.dumps({
+                    "requestToken": server.request_token,
+                    "selectedByLine": state.alignment["defaultSelection"],
+                    "candidateActions": {},
+                    "extraActions": {},
+                }).encode("utf-8")
+                preview_request = Request(
+                    f"{base}/api/preview",
+                    data=body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urlopen(preview_request) as response:
+                    preview = json.loads(response.read())
+                export_request = Request(
+                    f"{base}/api/export",
+                    data=body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urlopen(export_request) as response:
+                    exported = json.loads(response.read())
+                server.shutdown()
+
+            self.assertEqual(preview["gapRemove"]["minimum_ms"], 650)
+            self.assertEqual(preview["gapRemove"]["threshold_db"], -35)
+            self.assertEqual(preview["gapRemove"]["hysteresis_db"], 3.5)
+            self.assertEqual(preview["gapRemove"]["lead_in_ms"], 55)
+            self.assertEqual(preview["gapRemove"]["lead_out_ms"], 95)
+            output = json.loads(Path(exported["path"]).read_text(encoding="utf-8"))
+            self.assertEqual(output["gap_remove"]["minimum_ms"], 650)
+            self.assertEqual(output["gap_remove"]["threshold_db"], -35)
+            self.assertEqual(output["gap_remove"]["hysteresis_db"], 3.5)
+            self.assertEqual(output["gap_remove"]["lead_in_ms"], 55)
+            self.assertEqual(output["gap_remove"]["lead_out_ms"], 95)
 
     def test_preview_accepts_manual_complete_candidate_disable(self) -> None:
         with TemporaryDirectory() as temporary:

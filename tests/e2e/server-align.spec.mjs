@@ -51,6 +51,49 @@ test('fully overlapping candidate takes remain independently clickable', async (
   );
 });
 
+test('candidate locate button scrolls the basic waveform to its range', async ({ page }) => {
+  await page.setViewportSize({width: 520, height: 800});
+  await page.goto(server.url);
+  await page.locator('[data-waveform-mode="basic"]').click();
+
+  const timeline = page.locator('#timeline-scroll');
+  const locateRow = page.locator('#lines .candidate-locate-row').filter({hasText: '第二句测试'}).first();
+  await expect(locateRow.locator('.candidate-waveform-jump')).toHaveAttribute(
+    'aria-label',
+    /在上方波形中定位/,
+  );
+
+  const before = await timeline.evaluate((element) => element.scrollLeft);
+  await locateRow.locator('.candidate-waveform-jump').click();
+  await expect.poll(
+    () => timeline.evaluate((element) => element.scrollLeft),
+    {timeout: 2000},
+  ).toBeGreaterThan(before);
+});
+
+test('defaults to multi-row mode and adopted takes toggle manual disable', async ({ page }) => {
+  await page.goto(server.url);
+
+  const multiMode = page.locator('.waveform-mode[data-waveform-mode="multi"]');
+  const basicMode = page.locator('.waveform-mode[data-waveform-mode="basic"]');
+  await expect(multiMode).toHaveClass(/active/);
+  await expect(basicMode).not.toHaveClass(/active/);
+  await expect(page.locator('#multi-row-seconds-setting')).toBeVisible();
+  await expect(page.locator('#multi-row-height-setting')).toBeVisible();
+
+  const selected = page.locator('#take-overlay [data-candidate-id][aria-pressed="true"]').first();
+  await expect(selected).toBeVisible();
+  await selected.click();
+  await expect(selected).toHaveClass(/manual-disabled/);
+  await expect(selected).toHaveClass(/manual-correction/);
+  await expect(selected).toHaveAttribute('aria-pressed', 'false');
+
+  await selected.click();
+  await expect(selected).not.toHaveClass(/manual-disabled/);
+  await expect(selected).not.toHaveClass(/manual-correction/);
+  await expect(selected).toHaveAttribute('aria-pressed', 'true');
+});
+
 test('dragging one gap boundary highlights only that gap', async ({ page }) => {
   await page.goto(server.url);
   const gaps = page.locator('#gap-overlay .gap-range:not(.gap-range-preview)');
@@ -69,4 +112,17 @@ test('dragging one gap boundary highlights only that gap', async ({ page }) => {
   await expect(gaps.nth(1)).not.toHaveClass(/hidden-source/);
 
   await page.mouse.up();
+});
+
+test('Alt-clicking a gap toggles its disabled state without starting a move', async ({ page }) => {
+  await page.goto(server.url);
+  const gap = page.locator('#gap-overlay .gap-range:not(.gap-range-preview)').first();
+  await expect(gap).toBeVisible();
+  await expect(gap).not.toHaveClass(/restored/);
+
+  await gap.click({modifiers: ['Alt']});
+  await expect(gap).toHaveClass(/restored/);
+
+  await gap.click({modifiers: ['Alt']});
+  await expect(gap).not.toHaveClass(/restored/);
 });
