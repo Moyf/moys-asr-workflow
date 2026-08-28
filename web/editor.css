@@ -720,10 +720,39 @@
   .toolbar.player-toolbar > *,
   .toolbar.cue-list-toolbar > *,
   .toolbar.waveform-toolbar > *,
-  .toolbar.cue-editor-toolbar > * { flex: 0 0 auto; }
-  /* 字幕编辑区工具栏不出横向滚动条；空间不足时由 key-hints 收缩省略（见下方规则）。 */
+  .toolbar.cue-editor-toolbar > * {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  /* 齿轮固定在工具栏最右侧；左侧控件允许收缩，不能把齿轮推出可视区域。 */
+  .toolbar.player-toolbar > .settings-anchor,
+  .toolbar.cue-list-toolbar > .settings-anchor,
+  .toolbar.waveform-toolbar > .settings-anchor,
+  .toolbar.cue-editor-toolbar > .settings-anchor {
+    flex: 0 0 auto;
+    min-width: 30px;
+  }
+  /* 各工具栏都不依赖横向滚动才能看到所属设置；内容不足时由左侧项让位。 */
+  .toolbar.player-toolbar,
+  .toolbar.cue-list-toolbar,
+  .toolbar.waveform-toolbar,
   .toolbar.cue-editor-toolbar { overflow-x: hidden; }
-  .toolbar.cue-list-toolbar .input-clear input[type=text] { min-width: 140px; width: 20ch; }
+  .toolbar.cue-list-toolbar .input-clear { flex: 1 1 auto; min-width: 0; }
+  .toolbar.cue-list-toolbar .input-clear input[type=text] { min-width: 0; width: 20ch; max-width: 100%; }
+  /* 字幕列表操作按钮在窄宽度下保持单行，并用省略号收缩文本。 */
+  .toolbar.cue-list-toolbar #batch-operations-dropdown,
+  .toolbar.cue-list-toolbar #batch-operations-btn,
+  .toolbar.cue-list-toolbar #filter-over {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .toolbar.cue-list-toolbar #batch-operations-btn,
+  .toolbar.cue-list-toolbar #filter-over {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .settings-anchor {
     display: inline-flex; align-items: center;
     order: 99; margin-left: auto;
@@ -743,6 +772,7 @@
     border-radius: var(--radius-md); box-shadow: var(--shadow-3);
   }
   .settings-panel[hidden] { display: none; }
+  .waveform-settings-panel { max-height: min(620px, calc(100vh - 16px)); }
   .settings-panel-owner-open {
     position: relative; z-index: 80;
   }
@@ -755,6 +785,13 @@
   .settings-panel-title {
     flex: 0 0 100%; color: var(--text-secondary); font-size: 12px; font-weight: 600;
     letter-spacing: .08em; text-align: center;
+  }
+  .settings-panel-title-row {
+    display: flex; flex: 0 0 100%; align-items: center; justify-content: space-between; gap: 8px;
+    min-width: 0;
+  }
+  .settings-panel-title-row > .settings-panel-title {
+    flex: 1 1 auto; min-width: 0; text-align: left;
   }
   .settings-panel-item {
     display: inline-flex; align-items: center; gap: 6px;
@@ -798,6 +835,17 @@
     outline: 2px solid var(--accent-line); outline-offset: 1px;
   }
   .settings-panel-section button:disabled { opacity: .42; cursor: not-allowed; }
+  .settings-panel-section .settings-panel-help-link {
+    flex: 0 0 auto; min-width: 0; min-height: 0; padding: 2px 6px;
+    color: var(--text-muted); background: transparent; border-color: var(--border-subtle);
+    font-size: 11px; line-height: 1.2;
+  }
+  .settings-panel-section .settings-panel-help-link:hover:not(:disabled) {
+    color: var(--text-primary); background: var(--bg-input); border-color: var(--border);
+  }
+  .settings-panel-section .settings-panel-help-link:focus-visible {
+    outline: 2px solid var(--accent-line); outline-offset: 1px;
+  }
   .subtitle-preview-settings-panel { width: min(400px, calc(100vw - 16px)); }
   .cue-list-settings-panel { width: min(340px, calc(100vw - 16px)); }
   .cue-editor-settings-panel { width: min(300px, calc(100vw - 16px)); }
@@ -940,11 +988,62 @@
   .editor-settings-field > .editor-settings-item { width: auto; }
   .editor-settings-field > label.toggle.editor-settings-item { align-self: stretch; width: 100%; }
   .editor-settings-field > .editor-settings-hint { margin: 0; }
-  /* 拆分移除符号：勾选式字符网格；每个 chip 是一个可点选的 checkbox。 */
-  .split-trim-symbols-field { gap: 5px; }
+  /* 字幕语言类型独立成组，避免提示与「合并字幕时插入字符」标题挤在一起。 */
+  .split-language-type-field {
+    gap: 5px; padding-top: 7px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .split-language-type-title { font-weight: 600; }
+  .split-language-type-row {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px;
+    width: 100%; min-width: 0;
+  }
+  .split-language-type-row > .split-join-mode-hint-group { margin-left: 0; }
+  .split-language-type-hint { width: 100%; }
+
+  /* 合并字符与拆分标点使用同一行的两个配置入口。 */
+  .split-join-settings-actions {
+    flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 6px;
+  }
+  .split-join-settings-anchor,
+  .split-trim-settings-anchor {
+    position: relative; display: inline-flex; align-items: center;
+  }
+  .split-join-settings-anchor > button,
+  .split-trim-settings-anchor > button {
+    padding: 3px 4px; font-size: 12px; white-space: nowrap;
+  }
+  .split-join-settings-anchor > button.active,
+  .split-trim-settings-anchor > button.active {
+    position: relative; z-index: 421;
+  }
+  .merge-join-settings-panel { width: min(360px, calc(100vw - 16px)); }
+  .merge-join-settings-section {
+    display: flex; flex-direction: column; align-items: stretch; gap: 8px;
+  }
+  .merge-join-settings-section > .settings-panel-title {
+    flex: 0 0 auto; width: 100%; text-align: left;
+  }
+  .merge-join-settings-section .split-join-inline-row { width: 100%; }
+
+  /* 拆分移除符号收进按钮浮窗，避免平时占用拆分与合并设置的空间。 */
+  .split-trim-settings-panel { width: min(400px, calc(100vw - 16px)); }
+  .split-trim-settings-section {
+    display: flex; flex-direction: column; align-items: stretch; gap: 8px;
+  }
+  .split-trim-settings-section > .settings-panel-title {
+    flex: 0 0 auto; width: 100%; text-align: left;
+  }
+  .split-trim-settings-section .split-trim-symbol-row { width: 100%; }
+  .split-trim-settings-section .split-trim-symbol-grid { flex: 1 1 auto; }
+  .split-trim-extra-symbol-row { width: 100%; }
+  .split-trim-extra-symbol-row > input[type="text"] {
+    min-width: 0; width: 100%; flex: 1 1 auto;
+  }
+
   /* chips 与「恢复默认符号」同行：网格居左，按钮贴右侧、默认状态隐藏。 */
   .split-trim-symbol-row {
-    display: flex; align-items: center; gap: 8px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
     max-width: 100%;
   }
   .split-trim-symbol-row > .split-trim-symbol-grid { flex: 0 1 auto; }
@@ -953,12 +1052,8 @@
   }
   .editor-settings-panel .split-join-row input[type="text"] {
     min-width: 0;
-    width: auto;
-    flex: 1 1 auto;
-  }
-  /* 「其他符号」行：标签 + 输入框占满整行，输入框吃掉剩余宽度。 */
-  .split-trim-symbols-field > .split-join-row {
-    align-self: stretch; width: 100%;
+    width: 100px;
+    flex: 0 1 100px;
   }
   /* 「合并字幕时插入字符」的两组（字符型/单词型）同一行、各占一半；
      面板过窄放不下两组时才退回上下两行。 */
@@ -970,13 +1065,6 @@
     /* 各占一半（减去间距）；文本框在半栏内吃掉剩余宽度。 */
     flex: 1 1 calc(50% - 10px);
     min-width: 0;
-  }
-  /* 标题与主字幕类型提示同行：标题居左，提示+切换按钮贴右；
-     宽度不足时提示组整体换行到下一行，按钮不会被截断或越界。 */
-  .split-join-title-row {
-    display: flex; flex-wrap: wrap; align-items: baseline;
-    gap: 2px 8px;
-    align-self: stretch; width: 100%;
   }
   .split-join-mode-hint-group {
     display: inline-flex; flex-wrap: wrap; align-items: baseline;
@@ -1258,10 +1346,24 @@
     resize: both;
     container: help-panel / inline-size;
   }
+  .help-tab-bar {
+    flex: 0 0 auto; display: flex; align-items: flex-end; min-width: 0;
+    padding: 9px 14px 0; overflow: hidden; border-bottom: 1px solid var(--border-subtle);
+  }
   .help-tabs {
     flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 4px 6px; align-content: flex-start;
     padding: 9px 14px 0; overflow: hidden; border-bottom: 1px solid var(--border-subtle);
   }
+  .help-tab-bar .help-tabs {
+    flex: 1 1 auto; min-width: 0; padding: 0; overflow: visible; border-bottom: 0;
+  }
+  .help-advanced-toggle { margin-left: 6px; }
+  .help-advanced-toggle[aria-expanded="true"] {
+    color: var(--text-primary); background: var(--bg-raised);
+    border-color: var(--border-subtle); border-bottom-color: var(--bg-raised);
+    margin-bottom: -1px;
+  }
+  .help-advanced-tabs[hidden] { display: none; }
   .help-tab {
     flex: 0 0 auto; min-height: 35px; padding: 7px 13px;
     color: var(--text-muted); background: transparent;
@@ -1281,11 +1383,11 @@
   .help-tab-panel { width: 100%; box-sizing: border-box; }
   .help-group {
     display: grid; grid-template-columns: 1fr; align-content: flex-start; gap: 8px;
-    width: 100%; min-width: 0; box-sizing: border-box; color: var(--text-secondary); font-size: 12px;
+    width: 100%; min-width: 0; box-sizing: border-box; color: var(--text-secondary); font-size: 13px;
   }
   .help-title {
     margin: 0 4px 2px; color: var(--text-secondary); font-weight: 600; letter-spacing: .08em;
-    text-transform: uppercase; font-size: 12px;
+    text-transform: uppercase; font-size: 13px;
   }
   .help-subgroup {
     display: grid; grid-template-columns: 1fr; align-content: flex-start; gap: 8px;
@@ -1293,8 +1395,8 @@
     background: var(--bg-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
   }
   .help-subtitle {
-    margin: 0; color: var(--text-muted);
-    font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+    flex: 0 0 100%; margin: 0; color: var(--text-secondary);
+    font-size: 12px; font-weight: 600; letter-spacing: .04em;
   }
   .help-category {
     display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px 12px; min-width: 0;
@@ -1305,11 +1407,19 @@
   }
   .help-category-title {
     flex: 0 0 100%; margin: 0; color: var(--text-secondary);
-    font-size: 11px; font-weight: 600; letter-spacing: .04em;
+    font-size: 12px; font-weight: 600; letter-spacing: .04em;
   }
   .help-note {
-    flex: 0 0 100%; color: var(--text-muted); font-size: 11px; line-height: 1.5;
+    flex: 0 0 100%; color: var(--text-muted); font-size: 12px; line-height: 1.55;
   }
+  .help-inline-action {
+    display: inline; margin: 0; padding: 0; border: 0; color: inherit; background: transparent;
+    font: inherit; line-height: inherit; text-align: inherit; text-decoration: underline;
+    text-underline-offset: 2px;
+    vertical-align: baseline; cursor: pointer;
+  }
+  .help-inline-action:hover { color: inherit; }
+  .help-inline-action:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; }
   .help-important { color: var(--amber-hover); font-weight: 500; }
   .help-important kbd {
     color: var(--bg-base); background: var(--amber); border-color: var(--amber-hover);
@@ -1318,7 +1428,7 @@
   .help-panel kbd,
   .cue-editor-key-hints kbd {
     background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm);
-    padding: 2px 6px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);
+    padding: 2px 6px; font-size: 13px; color: var(--text-secondary); font-family: var(--font-mono);
     box-shadow: 0 1px 0 var(--border-subtle);
   }
   /* 字幕编辑区工具栏不出现横向滚动条：空间不足时压缩按键提示并用省略号截断，
@@ -1346,7 +1456,7 @@
     background: var(--accent-tint); color: var(--text-secondary);
   }
   .help-tip-text {
-    flex: 1 1 auto; min-width: 0; color: var(--text-secondary); font-size: 11px; line-height: 1.5;
+    flex: 1 1 auto; min-width: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5;
   }
   .help-wasd {
     display: grid; grid-template-columns: repeat(3, 30px); grid-template-rows: repeat(2, 30px);
@@ -1744,6 +1854,7 @@
   .cue .time-start, .cue .time-arrow, .cue .time-end { white-space: nowrap; }
   /* 列表变窄时，所有行同时切到同一个两行时间码列，避免逐行 flex 收缩造成错位。 */
   @container cue-list (max-width: 700px) {
+    .cue-list-count { display: none; }
     .cue .time {
       grid-template-columns: max-content max-content;
       grid-template-areas:
@@ -2385,7 +2496,6 @@
   .toolbar #gap-remove-manage:focus-visible,
   .toolbar #gap-removed-export-btn:focus-visible { outline: 2px solid var(--amber-line); outline-offset: 1px; }
   .toolbar .gap-removed-export-dropdown .dropdown-menu { border-color: var(--gap-accent-menu-border); }
-  .gap-remove-summary { color: var(--amber-hover); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .gap-skip-toggle { white-space: nowrap; }
 
   /* 拼接/合并字幕 —— 复用 .gap-remove-panel 家族样式，只补充自有差异 */
@@ -2418,6 +2528,7 @@
     box-shadow: var(--shadow-3), 0 0 0 1px var(--gap-panel-inset) inset;
     backdrop-filter: blur(10px);
   }
+  .gap-remove-panel:not(.help-panel) { z-index: 340; }
   .gap-remove-panel.show { display: flex; animation: gap-remove-panel-in .14s ease-out; }
   .gap-remove-panel.dragging {
     user-select: none; box-shadow: var(--shadow-3), 0 0 0 1px var(--gap-panel-drag-inset) inset;
@@ -2430,6 +2541,17 @@
     border-bottom: 1px solid var(--border-subtle); cursor: grab; touch-action: none;
   }
   .gap-remove-panel.dragging .gap-remove-panel-header { cursor: grabbing; }
+  .gap-remove-header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+  .gap-remove-help-button {
+    flex: 0 0 auto; min-height: 26px; padding: 4px 8px;
+    color: var(--text-secondary); background: var(--gap-close-bg); border: 1px solid transparent;
+    border-radius: var(--radius-sm); font-size: 11px; line-height: 1.2; cursor: pointer;
+    transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast);
+  }
+  .gap-remove-help-button:hover {
+    color: var(--text-primary); background: var(--gap-close-hover-bg); border-color: var(--gap-close-hover-border);
+  }
+  .gap-remove-help-button:focus-visible { outline: 2px solid var(--amber-line); outline-offset: 1px; }
   .gap-remove-heading { min-width: 0; }
   .gap-remove-eyebrow {
     display: block; margin-bottom: 1px; color: var(--text-secondary);
@@ -2513,6 +2635,20 @@
     border-radius: 0 0 var(--radius-sm) var(--radius-sm);
   }
   .gap-remove-fields-advanced { /* 继承 .gap-remove-fields 的 2 列网格；滞回为奇数末位会自动跨满列 */ }
+  .gap-remove-inline-action {
+    display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px;
+    margin-top: 10px;
+  }
+  .gap-remove-inline-button {
+    flex: 0 0 auto; padding: 5px 10px; color: var(--text-primary); background: var(--bg-input);
+    border: 1px solid var(--border); border-radius: var(--radius-sm); font: 600 11px/1.2 var(--font-sans);
+    cursor: pointer; transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast);
+  }
+  .gap-remove-inline-button:hover { color: var(--text-primary); background: var(--bg-raised); border-color: var(--accent); }
+  .gap-remove-inline-button:active { transform: translateY(1px); }
+  .gap-remove-inline-button:focus-visible { outline: 2px solid var(--amber-line); outline-offset: 2px; }
+  .gap-remove-inline-button:disabled { opacity: .45; cursor: not-allowed; }
+  .gap-remove-inline-action > small { min-width: 0; color: var(--text-muted); font-size: 11px; line-height: 1.4; }
   .gap-remove-scan {
     display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
     width: 100%; min-height: 51px; margin: 11px 0; padding: 9px 13px;
@@ -2828,12 +2964,15 @@
   .toolbar.cue-list-toolbar,
   .toolbar.waveform-toolbar,
   .modal .preview,
+  .settings-panel,
+  .multi-subtitle-import-preview,
   .gap-remove-list,
   .gap-remove-panel-body,
   .sticker-grid,
   .timed-text-edit-rows,
   .timed-text-edit-report,
-  .timed-text-edit-single-textarea {
+  .timed-text-edit-single-textarea,
+  .hint-project-preview-value {
     scrollbar-width: thin;
     scrollbar-color: var(--scroll-thumb) var(--scroll-track);
   }
@@ -2843,36 +2982,45 @@
   .toolbar.cue-list-toolbar::-webkit-scrollbar,
   .toolbar.waveform-toolbar::-webkit-scrollbar,
   .modal .preview::-webkit-scrollbar,
+  .settings-panel::-webkit-scrollbar,
+  .multi-subtitle-import-preview::-webkit-scrollbar,
   .gap-remove-list::-webkit-scrollbar,
   .gap-remove-panel-body::-webkit-scrollbar,
   .sticker-grid::-webkit-scrollbar,
   .timed-text-edit-rows::-webkit-scrollbar,
   .timed-text-edit-report::-webkit-scrollbar,
-  .timed-text-edit-single-textarea::-webkit-scrollbar { width: 8px; height: 8px; }
+  .timed-text-edit-single-textarea::-webkit-scrollbar,
+  .hint-project-preview-value::-webkit-scrollbar { width: 6px; height: 6px; }
   .cues-container::-webkit-scrollbar-track,
   .waveform-scroll::-webkit-scrollbar-track,
   .toolbar.player-toolbar::-webkit-scrollbar-track,
   .toolbar.cue-list-toolbar::-webkit-scrollbar-track,
   .toolbar.waveform-toolbar::-webkit-scrollbar-track,
   .modal .preview::-webkit-scrollbar-track,
+  .settings-panel::-webkit-scrollbar-track,
+  .multi-subtitle-import-preview::-webkit-scrollbar-track,
   .gap-remove-list::-webkit-scrollbar-track,
   .gap-remove-panel-body::-webkit-scrollbar-track,
   .sticker-grid::-webkit-scrollbar-track,
   .timed-text-edit-rows::-webkit-scrollbar-track,
   .timed-text-edit-report::-webkit-scrollbar-track,
-  .timed-text-edit-single-textarea::-webkit-scrollbar-track { background: var(--scroll-track); }
+  .timed-text-edit-single-textarea::-webkit-scrollbar-track,
+  .hint-project-preview-value::-webkit-scrollbar-track { background: var(--scroll-track); }
   .cues-container::-webkit-scrollbar-thumb,
   .waveform-scroll::-webkit-scrollbar-thumb,
   .toolbar.player-toolbar::-webkit-scrollbar-thumb,
   .toolbar.cue-list-toolbar::-webkit-scrollbar-thumb,
   .toolbar.waveform-toolbar::-webkit-scrollbar-thumb,
   .modal .preview::-webkit-scrollbar-thumb,
+  .settings-panel::-webkit-scrollbar-thumb,
+  .multi-subtitle-import-preview::-webkit-scrollbar-thumb,
   .gap-remove-list::-webkit-scrollbar-thumb,
   .gap-remove-panel-body::-webkit-scrollbar-thumb,
   .sticker-grid::-webkit-scrollbar-thumb,
   .timed-text-edit-rows::-webkit-scrollbar-thumb,
   .timed-text-edit-report::-webkit-scrollbar-thumb,
-  .timed-text-edit-single-textarea::-webkit-scrollbar-thumb {
+  .timed-text-edit-single-textarea::-webkit-scrollbar-thumb,
+  .hint-project-preview-value::-webkit-scrollbar-thumb {
     background: var(--scroll-thumb); border-radius: 4px;
     border: 2px solid transparent; background-clip: padding-box;
   }
@@ -2882,9 +3030,12 @@
   .toolbar.cue-list-toolbar::-webkit-scrollbar-thumb:hover,
   .toolbar.waveform-toolbar::-webkit-scrollbar-thumb:hover,
   .modal .preview::-webkit-scrollbar-thumb:hover,
+  .settings-panel::-webkit-scrollbar-thumb:hover,
+  .multi-subtitle-import-preview::-webkit-scrollbar-thumb:hover,
   .gap-remove-list::-webkit-scrollbar-thumb:hover,
   .gap-remove-panel-body::-webkit-scrollbar-thumb:hover,
   .sticker-grid::-webkit-scrollbar-thumb:hover,
   .timed-text-edit-rows::-webkit-scrollbar-thumb:hover,
   .timed-text-edit-report::-webkit-scrollbar-thumb:hover,
-  .timed-text-edit-single-textarea::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); background-clip: padding-box; }
+  .timed-text-edit-single-textarea::-webkit-scrollbar-thumb:hover,
+  .hint-project-preview-value::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); background-clip: padding-box; }

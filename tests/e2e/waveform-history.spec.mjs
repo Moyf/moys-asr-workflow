@@ -37,6 +37,42 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test('removes adjacent corner radii from cue fragments split across waveform rows', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    waveformEditor.settings.mode = 'multi';
+    waveformEditor.settings.secondsPerRow = 5;
+    waveformEditor.multiRange = [-1, -1];
+    waveformEditor.render();
+  });
+
+  const fragments = await page.evaluate(() => [0, 1].map((rowIndex) => {
+    const block = document.querySelector(
+      `.waveform-row[data-row-index="${rowIndex}"] .waveform-cue-block[data-idx="0"]`,
+    );
+    if (!block) return null;
+    const style = getComputedStyle(block);
+    return {
+      classes: [...block.classList],
+      borderTopLeftRadius: style.borderTopLeftRadius,
+      borderTopRightRadius: style.borderTopRightRadius,
+      borderBottomLeftRadius: style.borderBottomLeftRadius,
+      borderBottomRightRadius: style.borderBottomRightRadius,
+    };
+  }));
+
+  expect(fragments[0]).not.toBeNull();
+  expect(fragments[1]).not.toBeNull();
+  expect(fragments[0].classes).toContain('continues-to-next-row');
+  expect(fragments[1].classes).toContain('continues-from-previous-row');
+  expect(fragments[0].borderTopRightRadius).toBe('0px');
+  expect(fragments[0].borderBottomRightRadius).toBe('0px');
+  expect(fragments[1].borderTopLeftRadius).toBe('0px');
+  expect(fragments[1].borderBottomLeftRadius).toBe('0px');
+  expect(fragments[0].borderTopLeftRadius).not.toBe('0px');
+  expect(fragments[1].borderTopRightRadius).not.toBe('0px');
+});
+
 test('undoing a waveform-created subtitle keeps redo available', async ({ page }) => {
   await page.goto(server.url);
   const row = page.locator('.waveform-row').filter({ has: page.locator('[data-idx="0"]') }).first();
@@ -245,6 +281,30 @@ test('gap context menu and modifier drags update the gap timeline', async ({ pag
   expect(copied.some((gap) => gap.start > 12500)).toBe(true);
 });
 
+test('gap settings expose compact actions and screenshot defaults', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('#gap-remove-manage').click();
+
+  await expect(page.locator('#gap-remove-threshold')).toHaveValue('400');
+  await expect(page.locator('#gap-remove-volume-threshold')).toHaveValue('-28');
+  await expect(page.locator('#gap-remove-lead-in')).toHaveValue('120');
+  await expect(page.locator('#gap-remove-lead-out')).toHaveValue('80');
+  await expect(page.locator('#gap-remove-hysteresis')).toHaveValue('2');
+  await expect(page.locator('#gap-remove-summary')).toHaveCount(0);
+
+  const shrinkAction = page.locator('#gap-remove-shrink').locator('xpath=..');
+  await expect(shrinkAction).toHaveClass(/gap-remove-inline-action/);
+  await expect(page.locator('#gap-remove-shrink')).toHaveClass(/gap-remove-inline-button/);
+  await expect(page.locator('#gap-remove-shrink')).toHaveText('进一步收缩空隙');
+  await expect(shrinkAction.locator('small')).toHaveText('在现有基础上，使当前所有空隙进一步收缩');
+
+  const disableAction = page.locator('#gap-remove-disable-button').locator('xpath=..');
+  await expect(disableAction).toHaveClass(/gap-remove-inline-action/);
+  await expect(page.locator('#gap-remove-disable-button')).toHaveClass(/gap-remove-inline-button/);
+  await expect(disableAction.locator('small')).toHaveText('禁用位于空隙范围内的字幕（当前有 0 条未禁用）');
+  await expect(page.locator('#gap-remove-lead-in').locator('xpath=../../small')).toHaveCSS('font-size', '11px');
+});
+
 test('disables subtitles by removed-gap coverage and remaining duration thresholds', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
@@ -282,20 +342,24 @@ test('disables subtitles by removed-gap coverage and remaining duration threshol
   await expect(page.locator('#gap-remove-disable-coverage')).toHaveValue('80');
   await expect(page.locator('#gap-remove-disable-remaining')).toHaveValue('300');
   await expect(page.locator('#gap-remove-disable-button')).toBeEnabled();
+  await expect(page.locator('#gap-remove-disable-hint')).toHaveText('禁用位于空隙范围内的字幕（当前有 2 条未禁用）');
 
   await page.locator('#gap-remove-disable-button').click();
   await expect.poll(() => page.evaluate(() => DATA.segments.map((segment) => Boolean(segment.disabled))))
     .toEqual([true, false, true, false]);
+  await expect(page.locator('#gap-remove-disable-hint')).toHaveText('禁用位于空隙范围内的字幕（当前有 0 条未禁用）');
   await expect(page.locator('#hint-stack')).toContainText('已禁用 2 条静音空隙内的字幕');
 
   await page.locator('#undo-btn').click();
   await expect.poll(() => page.evaluate(() => DATA.segments.map((segment) => Boolean(segment.disabled))))
     .toEqual([false, false, false, false]);
+  await expect(page.locator('#gap-remove-disable-hint')).toHaveText('禁用位于空隙范围内的字幕（当前有 2 条未禁用）');
 
   await page.locator('#gap-remove-disable-coverage').fill('50');
   await page.locator('#gap-remove-disable-coverage').press('Tab');
   await page.locator('#gap-remove-disable-remaining').fill('1000');
   await page.locator('#gap-remove-disable-remaining').press('Tab');
+  await expect(page.locator('#gap-remove-disable-hint')).toHaveText('禁用位于空隙范围内的字幕（当前有 3 条未禁用）');
   await page.locator('#gap-remove-disable-button').click();
   await expect.poll(() => page.evaluate(() => DATA.segments.map((segment) => Boolean(segment.disabled))))
     .toEqual([true, true, true, false]);
@@ -708,6 +772,49 @@ test('C merge refreshes the paused main subtitle preview', async ({ page }) => {
   await expect(page.locator('#overlay-main-text')).toHaveText('AlphaBravo');
 });
 
+test('C merge keeps the subtitle list at its current position', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    const segments = Array.from({ length: 40 }, (_, index) => ({
+      start: index * 5000,
+      end: index * 5000 + 3000,
+      text: `Cue ${index + 1}`,
+      items: [],
+    }));
+    DATA.segments.splice(0, DATA.segments.length, ...segments);
+    const clickBehavior = document.getElementById('click-behavior');
+    clickBehavior.value = 'select-only';
+    clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
+    EDITOR_SETTINGS.cueListAutoScrollOnClick = false;
+    renderAll({ waveform: 'none' });
+    const list = document.getElementById('cues-container');
+    const target = list.querySelector('.cue[data-idx="30"]');
+    list.scrollTop = Math.max(
+      0,
+      target.offsetTop - list.clientHeight / 2 + target.offsetHeight / 2,
+    );
+  });
+
+  const list = page.locator('#cues-container');
+  const first = page.locator('.cue[data-idx="30"]');
+  const second = page.locator('.cue[data-idx="31"]');
+  await first.click();
+  await second.click({ modifiers: ['Control'] });
+  const before = await first.evaluate((element) => ({
+    top: element.getBoundingClientRect().top,
+    scrollTop: element.closest('#cues-container').scrollTop,
+  }));
+
+  await page.keyboard.press('c');
+
+  const merged = page.locator('.cue[data-idx="30"]');
+  await expect(merged).toHaveText(/Cue 31 Cue 32/);
+  await expect.poll(() => merged.evaluate((element) => element.getBoundingClientRect().top))
+    .toBe(before.top);
+  await expect.poll(() => list.evaluate((element) => element.scrollTop))
+    .toBe(before.scrollTop);
+});
+
 test('B splits the selected subtitle under the cue-list pointer and supports undo and redo', async ({ page }) => {
   await page.goto(server.url);
   await makeFirstCueWordSplittable(page);
@@ -1060,10 +1167,10 @@ test('Home and End preserve native search and help-tab behavior', async ({ page 
   }
 
   await page.locator('#help-toggle').click();
-  const generalTab = page.locator('#help-tab-general');
+  const basicTab = page.locator('#help-tab-basic');
   const playbackTab = page.locator('#help-tab-playback');
-  await generalTab.focus();
-  await generalTab.press('End');
+  await basicTab.focus();
+  await basicTab.press('End');
   await expect(playbackTab).toBeFocused();
   await expect(playbackTab).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.cue[data-idx="2"]')).toHaveClass(/selected/);
@@ -1508,9 +1615,11 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   ));
   await expect(helpSplitKey).toHaveText('Enter');
   await expect(page.locator('#help-waveform-split-key')).toHaveText('B');
+  await expect(page.locator('#help-tab-panel-waveform')).toContainText('按当前时间基准拆分字幕');
+  await expect(page.locator('#help-tab-panel-waveform')).not.toContainText('红色播放指针');
   await expect(helpPanel).toContainText('绑定到主副字幕（自动匹配）');
   await expect(helpPanel).toContainText('解绑当前副字幕');
-  await expect(helpPanel).toContainText('批量对齐选中的副字幕到各自主字幕时间轴');
+  await expect(helpPanel).toContainText('将选中的副字幕的时长对齐到绑定主字幕');
   await expect(helpPanel).not.toContainText('波形轨道徽标');
   await expect(helpPanel).not.toContainText('语言类型：单词型适合英语等空格语言，字符型适合中文/日文等');
   await expect(helpPanel).not.toContainText('主字幕自动使用时间码拆分：单轨可直接拆分');
@@ -1535,6 +1644,86 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   await page.keyboard.press('Escape');
   await expect(helpPanel).not.toHaveClass(/show/);
   await expect(helpPanel).toHaveAttribute('aria-hidden', 'true');
+});
+
+test('contextual help links open their matching Help tabs', async ({ page }) => {
+  await page.goto(server.url);
+  const helpPanel = page.locator('#help-panel');
+
+  await page.locator('#gap-remove-manage').click();
+  await page.locator('#gap-remove-help').click();
+  await expect(helpPanel).toHaveClass(/show/);
+  await expect(page.locator('#help-tab-gap')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#gap-remove-panel')).not.toHaveClass(/show/);
+  await page.locator('#help-close').click();
+
+  for (const { button, tab } of [
+    { button: '#waveform-settings-help', tab: '#help-tab-waveform' },
+    { button: '#keyboard-settings-help', tab: '#help-tab-fine-tuning' },
+    { button: '#gap-settings-help', tab: '#help-tab-gap' },
+  ]) {
+    await page.locator('#waveform-settings-toggle').click();
+    await expect(page.locator('#waveform-settings-panel')).toBeVisible();
+    await page.locator(button).click();
+    await expect(helpPanel).toHaveClass(/show/);
+    await expect(page.locator(tab)).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#waveform-settings-panel')).toBeHidden();
+    await page.locator('#help-close').click();
+  }
+});
+
+test('Help settings actions open the related waveform and media settings', async ({ page }) => {
+  await page.goto(server.url);
+  const helpPanel = page.locator('#help-panel');
+
+  await page.locator('#help-toggle').click();
+  await helpPanel.getByRole('tab', { name: '波形区', exact: true }).click();
+  const waveformSettingsActionStyles = await helpPanel.locator('#help-open-waveform-settings').evaluate((element) => {
+    const style = getComputedStyle(element);
+    const parentStyle = getComputedStyle(element.parentElement);
+    return {
+      color: style.color,
+      parentColor: parentStyle.color,
+      textDecorationLine: style.textDecorationLine,
+    };
+  });
+  expect(waveformSettingsActionStyles.color).toBe(waveformSettingsActionStyles.parentColor);
+  expect(waveformSettingsActionStyles.textDecorationLine).toBe('underline');
+  await helpPanel.locator('#help-open-waveform-settings').click();
+  await expect(helpPanel).toHaveClass(/show/);
+  await expect(page.locator('#waveform-settings-panel')).toBeVisible();
+  const waveformSettingsMetrics = await page.locator('#waveform-settings-panel').evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(waveformSettingsMetrics.scrollHeight).toBeLessThanOrEqual(waveformSettingsMetrics.clientHeight);
+  await page.locator('#waveform-settings-toggle').click();
+  await expect(helpPanel).toHaveClass(/show/);
+
+  await helpPanel.locator('#help-advanced-toggle').click();
+  await helpPanel.getByRole('tab', { name: '微调字幕', exact: true }).click();
+  await helpPanel.locator('#help-open-waveform-keyboard-settings').click();
+  await expect(helpPanel).toHaveClass(/show/);
+  await expect(page.locator('#waveform-settings-panel')).toBeVisible();
+  await page.locator('#waveform-settings-toggle').click();
+
+  await helpPanel.getByRole('tab', { name: '空隙操作', exact: true }).click();
+  await helpPanel.locator('#help-open-gap-settings').click();
+  await expect(helpPanel).toHaveClass(/show/);
+  await expect(page.locator('#waveform-settings-panel')).toBeVisible();
+  await page.locator('#waveform-settings-toggle').click();
+
+  await helpPanel.getByRole('tab', { name: '播放与导航', exact: true }).click();
+  await helpPanel.locator('#help-open-media-settings').click();
+  await expect(helpPanel).toHaveClass(/show/);
+  await expect(page.locator('#subtitle-preview-settings-panel')).toBeVisible();
+  await expect(page.locator('#waveform-settings-panel')).toBeHidden();
+
+  await page.locator('#subtitle-preview-settings-toggle').click();
+  await helpPanel.getByRole('tab', { name: '空隙操作', exact: true }).click();
+  await helpPanel.locator('#help-open-gap-remove-panel').click();
+  await expect(helpPanel).toHaveClass(/show/);
+  await expect(page.locator('#gap-remove-panel')).toHaveClass(/show/);
 });
 
 test('waveform toolbar exposes grouped icon controls and selected cues use a yellow border', async ({ page }) => {
