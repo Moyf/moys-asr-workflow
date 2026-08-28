@@ -70,10 +70,10 @@ WINDOW_TITLE = "MAW Launcher"
 MEDIA_EXTS: Final = frozenset({".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"})
 MOSE_REGISTRY_KEY = r"Software\Moy\MOSE"
 MOSE_FILE_TYPE = "Moy.MOSE.Project"
-# 工程恢复会同步准备自研波形；大型工程可能需要超过默认的网络探测窗口。
+# 服务端先监听再在后台准备工程；这里的窗口只负责兜底探测进程是否已响应。
 SERVER_START_TIMEOUT: Final = 30.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.5.0-beta.4"
+BUNDLED_APP_VERSION = "1.5.0-beta.5"
 MOSE_VERSION = "0.1.0"
 
 
