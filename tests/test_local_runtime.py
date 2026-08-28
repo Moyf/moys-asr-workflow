@@ -12,7 +12,6 @@ from unittest import mock
 
 from maw.local_runtime import (
     LocalRuntimeError,
-    default_model_cache_root,
     install_local_runtime,
     managed_runtime_status,
     model_cache_environment,
@@ -23,6 +22,62 @@ from maw.runtimes import LOCAL
 
 
 class LocalRuntimeTests(unittest.TestCase):
+    def test_local_transcription_script_imports_bundled_maw_without_script_path(self) -> None:
+        """回归：Windows embedded Python 的 ``._pth`` 不会自动加入脚本目录。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            bundle_root = temp_root / "local-runtime"
+            package_root = bundle_root / "maw"
+            package_root.mkdir(parents=True)
+            shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "generate_subtitle_local.py",
+                bundle_root / "generate_subtitle_local.py",
+            )
+            (package_root / "__init__.py").write_text("\n", encoding="utf-8")
+            (package_root / "console.py").write_text(
+                "def configure_utf8_stdio():\n"
+                "    pass\n",
+                encoding="utf-8",
+            )
+            (package_root / "local_asr.py").write_text(
+                "FUNASR_DEFAULT_MODEL = 'funasr'\n"
+                "QWEN_DEFAULT_CHUNK_SECONDS = 30\n"
+                "QWEN_DEFAULT_FORCED_ALIGNER = 'aligner'\n"
+                "QWEN_DEFAULT_MODEL = 'qwen'\n"
+                "WHISPER_DEFAULT_MODEL = 'whisper'\n"
+                "def build_local_segments(*args, **kwargs): pass\n"
+                "def create_local_engine(*args, **kwargs): pass\n"
+                "def parse_duration(value): return int(value)\n"
+                "def prepared_audio(*args, **kwargs): pass\n"
+                "def write_local_outputs(*args, **kwargs): pass\n",
+                encoding="utf-8",
+            )
+            script = bundle_root / "generate_subtitle_local.py"
+            work_dir = temp_root / "work"
+            work_dir.mkdir()
+            environment = dict(os.environ)
+            environment.pop("PYTHONPATH", None)
+            driver = (
+                "import sys\n"
+                "from pathlib import Path\n"
+                f"script = Path({str(script)!r})\n"
+                "sys.path = [entry for entry in sys.path if Path(entry or '.').resolve() != script.parent.resolve()]\n"
+                "sys.argv = [str(script), '--help']\n"
+                "namespace = {'__name__': '__main__', '__file__': str(script), '__package__': None}\n"
+                "exec(compile(script.read_text(encoding='utf-8'), str(script), 'exec'), namespace, namespace)\n"
+            )
+            result = subprocess.run(
+                [sys.executable, "-c", driver],
+                cwd=work_dir,
+                capture_output=True,
+                text=True,
+                env=environment,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("usage:", result.stdout.lower())
+
     def test_runtime_worker_imports_maw_when_started_by_file_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
@@ -165,7 +220,6 @@ class LocalRuntimeTests(unittest.TestCase):
         cancelled_message / message_prefix 是必填关键字参数。prepare 两个入口若漏传，
         GUI「下载模型」点击即抛 TypeError（PR #77 实测），mock 无法替它兜底。"""
         from maw.local_runtime import (
-            LocalRuntimeCancelled,
             LocalRuntimeError,
             LocalRuntimeStatus,
         )
