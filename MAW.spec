@@ -69,6 +69,7 @@ datas = [
     (str(ROOT / "maw" / "project.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "project_preview.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "qwen_audio.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "colors.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "speaker.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "__init__.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "console.py"), "ocr-runtime/maw"),

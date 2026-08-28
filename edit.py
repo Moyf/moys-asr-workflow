@@ -33,6 +33,7 @@ import sys
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
+from maw.colors import COLOR_PALETTE
 from maw.console import configure_utf8_stdio
 from maw.project import ProjectValidationFailed, normalize_project
 from maw.media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS, read_bwf_time_reference
@@ -246,12 +247,21 @@ def build_editor_scripts() -> str:
     return "\n\n".join(read_web_asset(name).rstrip() for name in read_editor_script_manifest())
 
 
+def build_palette_json() -> str:
+    """Serialize the single-source subtitle color palette for editor injection."""
+    return json.dumps(
+        [{"name": name, "value": value} for name, value in COLOR_PALETTE],
+        ensure_ascii=False,
+    )
+
+
 def render_editor_page(**context: str) -> str:
     """Render the modular web sources back into one portable HTML file."""
     replacements = {
         "__EDITOR_CSS__": read_web_asset("editor.css").rstrip(),
         "__WAVEFORM_CSS__": read_web_asset("waveform.css").rstrip(),
         "__EDITOR_SCRIPTS_JS__": build_editor_scripts(),
+        "__PALETTE_JSON__": build_palette_json(),
         "__TITLE__": context["title"],
         "__MEDIA_HTML__": context["media_html"],
         "__DATA_JSON__": context["data_json"],

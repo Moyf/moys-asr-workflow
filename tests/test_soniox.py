@@ -273,7 +273,7 @@ class SpeakerColorTests(unittest.TestCase):
         })
         self.assertEqual(segments[1]["color_ref"], {"name": "yellow", "headIdx": 0})
         self.assertEqual(segments[2]["color"], {
-            "name": "green", "value": "#2ecc71", "start": 200, "end": 300,
+            "name": "green", "value": "#66bb6a", "start": 200, "end": 300,
         })
         self.assertEqual(stats["speakers"], ["1", "2"])
         self.assertEqual(stats["colored_segments"], 3)
