@@ -1236,6 +1236,7 @@
     try {
       const requestPreview = (actions, candidateActionState, gapRemove = oldGapRemove) => {
         const body = {
+          requestToken: state.requestToken,
           selectedByLine,
           extraActions: actions,
           candidateActions: candidateActionState,
@@ -1615,7 +1616,22 @@
   function renderTimelineTakes() {
     const root = $('#take-overlay');
     root.replaceChildren();
+    const rangeKey = (start, end) => `${Number(start)}:${Number(end)}`;
+    const rangeCounts = new Map();
+    const countRange = (start, end) => {
+      const key = rangeKey(start, end);
+      rangeCounts.set(key, (rangeCounts.get(key) || 0) + 1);
+    };
+    alignment.candidatesByLine.forEach((candidates) => {
+      candidates.forEach((candidate) => countRange(candidate.start, candidate.end));
+    });
+    currentExtras().forEach((extra) => countRange(extra.start, extra.end));
+    const rangeOffsets = new Map();
     const appendRange = (take, start, end, callback) => {
+      const key = rangeKey(start, end);
+      const stackCount = rangeCounts.get(key) || 1;
+      const stackIndex = rangeOffsets.get(key) || 0;
+      rangeOffsets.set(key, stackIndex + 1);
       const pieces = timelineRangePieces(start, end);
       pieces.forEach((piece, pieceIndex) => {
         const node = pieceIndex === 0 ? take : take.cloneNode(true);
@@ -1625,13 +1641,21 @@
         if (isMultiWaveform()) {
           // 多行模式在同一行内给普通 take 和重复段各留一个轨道；
           // 行高较小时同步缩短块，避免 repetition 溢出到上一行。
-          const takeHeight = Math.max(24, Math.min(52, Math.floor((piece.height - 16) / 2)));
+          const trackHeight = Math.max(24, Math.min(52, Math.floor((piece.height - 16) / 2)));
+          const takeHeight = stackCount > 1
+            ? Math.max(16, Math.floor((trackHeight - (stackCount - 1) * 3) / stackCount))
+            : trackHeight;
           const regularBottom = 6;
-          const repetitionBottom = regularBottom + takeHeight + 4;
-          const rowBottom = take.classList.contains('repetition') ? repetitionBottom : regularBottom;
+          const stackBottom = regularBottom + stackIndex * (takeHeight + 3);
+          const repetitionBottom = regularBottom + trackHeight + 4;
+          const rowBottom = take.classList.contains('repetition') ? repetitionBottom : stackBottom;
           node.style.height = `${takeHeight}px`;
           node.style.top = `${piece.top + piece.height - rowBottom - takeHeight}px`;
           node.style.bottom = 'auto';
+        } else if (stackCount > 1) {
+          const takeHeight = Math.max(16, Math.floor((52 - (stackCount - 1) * 4) / stackCount));
+          node.style.height = `${takeHeight}px`;
+          node.style.bottom = `${10 + stackIndex * (takeHeight + 4)}px`;
         }
         root.append(node);
       });
@@ -1841,9 +1865,16 @@
 
   function renderGapBoundaryPreview(drag) {
     clearGapDragPreview();
-    document.querySelectorAll('#gap-overlay .gap-range:not(.gap-range-preview)')
+    document.querySelectorAll(`#gap-overlay .gap-range[data-gap-index="${drag.index}"]:not(.gap-range-preview)`)
       .forEach((node) => node.classList.add('hidden-source'));
-    appendGapEntries($('#gap-overlay'), drag.nextGaps, {preview: true, labelText: '边界预览'});
+    const original = drag.originalGaps[drag.index];
+    if (!original) return;
+    const anchor = drag.edge === 'start' ? original.end - 1 : original.start + 1;
+    const target = drag.nextGaps.find((gap) => (
+      gap.removed === original.removed && gap.start <= anchor && gap.end > anchor
+    ));
+    if (!target) return;
+    appendGapEntries($('#gap-overlay'), [target], {preview: true, labelText: '边界预览'});
   }
 
   function renderGapRangePreview(drag) {
@@ -2873,7 +2904,12 @@
     const status = $('#status');
     status.textContent = '正在生成对齐 mosp……';
     try {
-      const body = {selectedByLine, candidateActions, extraActions};
+      const body = {
+        requestToken: state.requestToken,
+        selectedByLine,
+        candidateActions,
+        extraActions,
+      };
       if (gapRemoveDirty) body.gapRemove = gapRemovePayload();
       const response = await fetch('/api/export', {
         method: 'POST',
