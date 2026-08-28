@@ -53,3 +53,28 @@
 ## 未验证边界
 
 - 未执行全量 Playwright 套件；本次只覆盖新增的 Launcher 和 Editor 窄宽度回归。
+
+## 增量记录：字幕列表异常滚动（2026-08-28）
+
+| 编号 | 范围 | 反馈摘要 | 类型 | 状态 |
+| --- | --- | --- | --- | --- |
+| 11 | Editor / 字幕列表 | 分配字幕颜色后列表发生异常滚动，并排查同类列表重绘与过滤路径 | 修改 | 已修复 |
+
+### 根因与处理
+
+- 颜色分配与清除路径在 `renderAll()` 后调用 `update()`；`updateActiveCue()` 会把当前活动字幕自动滚入视口，因而覆盖用户当前位置。相关结构重绘后的刷新统一改为不触发字幕列表自动跟随的路径。
+- `renderAll()` 会替换字幕行，`content-visibility: auto` 在随后的几帧内回填真实行高；仅保存数值 `scrollTop` 仍可能因累计行高误差产生位移。现统一保存可见字幕行的屏幕位置，重绘后按视觉锚点补偿，并使用稳定字幕 ID 重新定位。
+- 颜色和表情包分配/清除属于属性更新，现在只原地刷新已有字幕行、预览和相关菜单，不调用 `renderAll()`，因此不会触发列表滚动。搜索过滤、颜色过滤、显示设置和隐藏禁用项等确实会改变行显隐或布局的路径仍使用视觉锚点保护；如果锚点行被过滤或隐藏，则回退到原 `scrollTop`，补偿检测到用户滚轮、指针、键盘或调用方主动设置滚动位置后立即让出控制权。
+- 拆分、合并、新建字幕和列表点击等本来就有明确导航意图的路径保留显式居中或原位逻辑，不由通用补偿覆盖。
+
+### 增量验证
+
+- `node --check web/editor.js`、`node --check tests/e2e/cue-color-filter.spec.mjs`、`git diff --check`：通过。
+- `node --test tests/test_editor_utils.mjs tests/test_waveform_js.mjs`（隔离项目内 uv 缓存并允许 Python 子进程）：245/245 通过。
+- `npx playwright test tests/e2e/cue-color-filter.spec.mjs --grep "assigning a color|assigning and clearing a sticker|search filtering" --repeat-each=2 --reporter=line`：8/8 通过，覆盖颜色/表情包原地更新、搜索后锚点仍可见和锚点被过滤三种情况。
+- 既有表情包列表布局与导出回归：2/2 通过；按 `B` 拆分的关键滚动/选中回归：4/4 通过。
+- 既有列表点击、拆分、波形导航、Home/End 和多字幕位置回归：14/14 通过。
+
+### 增量未验证边界
+
+- 未执行全量 Playwright 套件；本轮仅执行颜色/过滤场景及受影响的既有滚动回归。
