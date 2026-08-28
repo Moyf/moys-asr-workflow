@@ -61,6 +61,33 @@ test('LLM settings refill the saved key and save only after a successful connect
   await expect(page.locator('#llmApiKey')).toHaveValue('sk-entered-for-test');
 });
 
+test('Custom provider labels and missing-key errors follow the selected language', async ({ page }) => {
+  await openLauncher(page);
+
+  const customOption = page.locator('#postprocessProvider option[value="custom"]');
+  const settingsCustomOption = page.locator('#llmProvider option[value="custom"]');
+  await expect(customOption).toHaveText('自定义（兼容 OpenAI）');
+  await expect(settingsCustomOption).toHaveText('自定义（兼容 OpenAI）');
+
+  await page.locator('#langToggle').click();
+  await expect(customOption).toHaveText('Custom (OpenAI-compatible)');
+  await expect(settingsCustomOption).toHaveText('Custom (OpenAI-compatible)');
+  await page.locator('#toolboxLlmTab').click();
+  await page.locator('#openLlmSettings').click();
+  await page.evaluate(() => {
+    window.MAWLauncher.callBackend = async (method) => (
+      method === 'test_postprocess_connection'
+        ? { ok: false, field: 'postprocessApiKey', code: 'api_key_missing', detail: 'Post-processing API key is required.', error: 'Post-processing API key is required.' }
+        : { ok: true }
+    );
+  });
+
+  await page.locator('#llmApiKey').fill('');
+  await page.locator('#testLlmConnection').click();
+  await expect(page.locator('#llmSettingsSaveStatus')).toHaveText('Enter an API Key, or save one first in Settings / API key.');
+  await expect(page.locator('#llmApiKeyError')).toHaveText('Enter an API Key, or save one first in Settings / API key.');
+});
+
 test('artifact rows localize type labels while preserving MOSP-first and SRT-only selection', async ({ page }) => {
   await openLauncher(page);
   await runReplacement(page);
