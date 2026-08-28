@@ -18,6 +18,7 @@ _INTERNAL_FLAGS = frozenset(
         "--transcribe-soniox",
         "--transcribe-local",
         "--transcribe-bcut",
+        "--transcribe-tencent",
         "--serve",
     }
 )
@@ -47,6 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=argparse.SUPPRESS,
     )
+    parser.add_argument("--transcribe-tencent", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
         "--serve",
         action="store_true",
@@ -86,6 +88,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_internal_transcribe_local(rest)
     if args.transcribe_bcut:
         return _run_internal_transcribe_bcut(rest)
+    if args.transcribe_tencent:
+        return _run_internal_transcribe_tencent(rest)
     if args.serve:
         return _run_internal_serve(rest)
 
@@ -142,6 +146,18 @@ def _run_internal_transcribe_bcut(argv: Sequence[str]) -> int:
     try:
         sys.argv = ["generate_subtitle_bcut_api.py", *argv]
         result = generate_subtitle_bcut_api.main()
+    finally:
+        sys.argv = old_argv
+    return 0 if result is None else int(result)
+
+
+def _run_internal_transcribe_tencent(argv: Sequence[str]) -> int:
+    import generate_subtitle_tencent_api
+
+    old_argv = sys.argv[:]
+    try:
+        sys.argv = ["generate_subtitle_tencent_api.py", *argv]
+        result = generate_subtitle_tencent_api.main()
     finally:
         sys.argv = old_argv
     return 0 if result is None else int(result)
