@@ -44,6 +44,10 @@ MOSS_SPEC = RuntimeSpec(
     requirements_emit="正在安装 MOSS 本地依赖（Transformers 5.x、Torch）……",
     requirements_key="moss",
     requirements_bundle_name="requirements-moss.txt",
+    # 主清单独立声明于 moss-requirements.in（uv pip compile 冻结，须带
+    # pytorch cu130 index）；CPU 变体由 freezer 从同一 in 文件剥离生成。
+    requirements_in="moss-requirements.in",
+    requirements_in_args=("--extra-index-url", PYTORCH_INDEX),
     verify_command=_VERIFY_COMMAND,
     package_dirs=("moss_transcribe_diarize", "transformers", "torch", "torchaudio"),
     worker_module="maw.local_runtime_worker",
