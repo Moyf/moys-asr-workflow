@@ -24,6 +24,7 @@
 
 ### 🐛 问题修复
 
+- **Windows 发布包启动与 FFmpeg 报错提示** ： Launcher 启动阶段若 `Python.Runtime.dll` 因下载 ZIP 的 Windows 安全标记而无法加载，改用简明原生弹窗说明“解除锁定后重新完整解压”，并优先把 traceback 写入 MAW.exe 同级目录（目录不可写时回退到 %LOCALAPPDATA%\MAW）；冻结版在任务启动前检查 FFmpeg / FFprobe，内部转写异常不再触发 PyInstaller 英文 traceback 弹窗，Launcher 同时提供醒目的错误卡片和 FFmpeg 配置 / FAQ 快捷入口。
 - **本地模型准备入口崩溃** ： 托管 Runtime 收紧子进程封装签名后，模型准备的两处调用未同步更新，GUI 点击「下载 / 准备模型」会直接抛出类型错误（影响 Qwen / FunASR / MOSS / Whisper 全部本地引擎）。现按必填参数补齐错误映射并新增回归测试。
 - **Whisper 模型下载目录偏离缓存发现布局** ： faster-whisper 的显式 `download_root` 曾指向缓存根本体，权重落在 `model-cache\models--*`，而缓存发现只扫描 `model-cache\huggingface\hub`，导致准备成功后状态仍显示「未检测到本地模型」。现对齐 `HF_HUB_CACHE` 约定，且缓存发现兼容已下载的扁平布局（无需重新下载）。
 - **去空隙 OTIO 导出源范围错位** ： 为去空隙 OTIO 的音视频外部引用写入完整源媒体 available_range，并保留各保留区间原始的 source_range 起点，修复 Resolve 导入后片段内容偏移。

@@ -598,10 +598,11 @@
       hotwords_file_missing: "请选择存在且为 UTF-8 编码的 .txt 热词文件。",
       output_missing: "请填写 SRT 输出路径。",
       segmentation_invalid: "切句参数无效：请输入整数，并确保最大字数不小于短句合并阈值。",
-      ffmpeg_start_failed: "FFmpeg 启动失败（Windows 错误 0xC0000142）。请检查 FFmpeg 是否完整、可执行文件是否被安全软件拦截；本次任务已停止，可以修复后重新尝试。",
+      ffmpeg_missing: "未找到 FFmpeg / FFprobe，无法读取媒体。请下载不带 lite 的完整 MAW；或在“配置 → FFmpeg”选择同时包含 ffmpeg.exe 和 ffprobe.exe 的 bin 目录。",
+      ffmpeg_start_failed: "FFmpeg 被 Windows 阻止启动。请退出 MAW，对下载的 ZIP 解除锁定后重新完整解压，并检查 Windows 安全中心的拦截记录。",
       transcription_failed: "转写失败，本次任务已停止。请查看日志后修正问题，再重新尝试。",
       transcription_cancelled: "转写已停止。",
-      ffprobe_start_failed: "ffprobe 启动失败（Windows 错误 0xC0000142）。请重新运行 MAW；如果仍然失败，请重新下载并完整解压 MAW，并检查 Windows 安全中心是否拦截了 ffprobe.exe。",
+      ffprobe_start_failed: "FFprobe 被 Windows 阻止启动。请退出 MAW，对下载的 ZIP 解除锁定后重新完整解压，并检查 Windows 安全中心的拦截记录。",
       config_save_failed: (detail) => `无法保存本地配置：${detail || "请检查应用数据目录权限后重试。"}`,
       server_no_response: (detail) => `编辑器服务器没有响应（${detail || "http://127.0.0.1"}）——端口可能被占用，请检查端口后重试。`,
       server_start_failed: (detail) => `编辑器服务器启动失败：${detail || "请查看下方日志。"}`,
@@ -641,10 +642,11 @@
       hotwords_file_missing: "Choose an existing UTF-8 .txt hotword file.",
       output_missing: "Enter an SRT output path.",
       segmentation_invalid: "Invalid segmentation settings: enter integers and ensure max characters is at least the merge threshold.",
-      ffmpeg_start_failed: "FFmpeg failed to start (Windows error 0xC0000142). Check that FFmpeg is complete and not blocked by security software, then retry.",
+      ffmpeg_missing: "FFmpeg / FFprobe was not found, so the media cannot be read. Download the full MAW package (not lite), or choose a bin folder containing both tools in Settings → FFmpeg.",
+      ffmpeg_start_failed: "Windows blocked FFmpeg from starting. Close MAW, unblock the downloaded ZIP, extract the complete package again, and check Windows Security protection history.",
       transcription_failed: "Transcription failed and this run has stopped. Check the log, fix the problem, and retry.",
       transcription_cancelled: "Transcription stopped.",
-      ffprobe_start_failed: "ffprobe failed to start (Windows error 0xC0000142). Please run MAW again. If it keeps happening, download and fully extract MAW again, and check Windows Security for a blocked ffprobe.exe.",
+      ffprobe_start_failed: "Windows blocked FFprobe from starting. Close MAW, unblock the downloaded ZIP, extract the complete package again, and check Windows Security protection history.",
       config_save_failed: (detail) => `Could not save local configuration: ${detail || "check the app-data directory permissions and try again."}`,
       server_no_response: (detail) => `The editor server did not respond (${detail || "http://127.0.0.1"}). The port may be occupied; check the port and retry.`,
       server_start_failed: (detail) => `The editor server failed to start: ${detail || "check the logs below."}`,
@@ -654,10 +656,30 @@
   Object.assign(STRINGS.zh, {
     start_server_editor: "🚀 启动字幕编辑器",
     toolbox_chain_hint: "每次生成新文件，并自动作为下一步输入；选择工具后运行。",
+    error_notice_title: "任务未完成",
+    error_notice_close: "关闭提示",
+    error_open_ffmpeg_settings: "FFmpeg 配置项",
+    error_open_faq: "常见问题修复",
+    error_open_faq_failed: "无法打开常见问题，请查看下方日志。",
+    error_open_issue: "项目主页",
+    error_open_issue_failed: "无法打开项目主页，请检查网络并查看下方日志。",
+    error_copy_report: "复制错误报告",
+    error_copy_report_success: "已复制",
+    error_copy_report_failed: "复制失败，请手动复制日志。",
   });
   Object.assign(STRINGS.en, {
     start_server_editor: "🚀 Start Editor",
     toolbox_chain_hint: "Choose a tool to run; each run creates a new file and uses it as the next input.",
+    error_notice_title: "Task not completed",
+    error_notice_close: "Dismiss message",
+    error_open_ffmpeg_settings: "FFmpeg settings",
+    error_open_faq: "FAQ fixes",
+    error_open_faq_failed: "Could not open the FAQ. Check the log below.",
+    error_open_issue: "Project homepage",
+    error_open_issue_failed: "Could not open the project homepage. Check your connection and the log below.",
+    error_copy_report: "Copy error report",
+    error_copy_report_success: "Copied",
+    error_copy_report_failed: "Copy failed; please copy the log manually.",
   });
 
   const HOME_URL = "https://github.com/Moyf/moys-asr-workflow";
@@ -673,7 +695,7 @@
   const HOTWORD_WEIGHTS = new Set([1, 2, 3, 4, 5, 50]);
   const MAX_HOTWORDS = 2000;
   const MAX_SUPER_HOTWORDS = 50;
-  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false };
+  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false };
   const dragState = { depth: 0 };
   let api = null;
   let prefsTimer = 0;
@@ -841,6 +863,7 @@
       cancel_batch_transcription: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "batchDone", cancelled: true }), 120); return { ok: true }; },
       open_output_folder: async () => ({ ok: true }),
       open_html: async () => ({ ok: true }),
+      open_faq: async () => ({ ok: true }),
       get_emoji_font_path: async () => ({ ok: true, path: "" })
     };
   }
@@ -884,6 +907,150 @@
     if (cursor < value.length) appendMessageText(container, value.slice(cursor));
   }
   const setStatus = (message) => { if (state.detectedServerUrl) setServerStatus(state.detectedServerUrl, true, message); else renderMessage($("status"), message); };
+  function syncFixedFooterClearance() {
+    const footer = document.querySelector(".actions");
+    if (!footer) return;
+    const footerTop = footer.getBoundingClientRect().top;
+    const clearance = Math.max(116, Math.ceil(window.innerHeight - footerTop + 24));
+    document.documentElement.style.setProperty("--launcher-footer-clearance", `${clearance}px`);
+  }
+  function revealErrorNotice(notice) {
+    syncFixedFooterClearance();
+    notice.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    window.requestAnimationFrame(() => {
+      const footer = document.querySelector(".actions");
+      if (!footer) return;
+      const overlap = notice.getBoundingClientRect().bottom - footer.getBoundingClientRect().top + 1;
+      if (overlap > 0) window.scrollBy({ top: overlap, behavior: "smooth" });
+    });
+  }
+  function redactSensitive(value) {
+    // Cover common key/value forms and HTTP Authorization: Bearer <token>
+    // output before an error report is copied out of the local Launcher.
+    return String(value || "")
+      .replace(/\bsk-[A-Za-z0-9_-]{4,}\b/gu, "[REDACTED_API_KEY]")
+      .replace(/(\b(?:api[-_ ]?key|access[-_ ]?token)\s*[:=]\s*)([^\s,;]+)/giu, "$1[REDACTED]")
+      .replace(/(\bbearer\s*(?::|=|\s)\s*)([^\s,;]+)/giu, "$1[REDACTED]");
+  }
+  function clearErrorReport() {
+    state.errorReport = null;
+    if (state.errorCopyTimer) { clearTimeout(state.errorCopyTimer); state.errorCopyTimer = 0; }
+    const button = $("errorNoticeCopy");
+    if (button) { button.disabled = false; button.textContent = t("error_copy_report"); }
+  }
+  function hideErrorNotice() {
+    const notice = $("errorNotice");
+    notice.classList.add("hidden");
+    notice.dataset.action = "";
+    clearErrorReport();
+  }
+  function showErrorNotice(message, code = "", detail = "") {
+    const notice = $("errorNotice");
+    const action = $("errorNoticeAction");
+    const issue = $("errorNoticeIssue");
+    clearErrorReport();
+    state.errorReport = { code: code || "backend_error", message: String(message || ""), detail: String(detail || "") };
+    $("errorNoticeTitle").textContent = t("error_notice_title");
+    renderMessage($("errorNoticeMessage"), message);
+    if (code === "ffmpeg_missing") {
+      notice.dataset.action = "ffmpeg-settings";
+      action.textContent = t("error_open_ffmpeg_settings");
+      action.classList.remove("hidden");
+    } else {
+      notice.dataset.action = "";
+      action.classList.add("hidden");
+    }
+    // The worker uses transcription_failed as its catch-all for unclassified
+    // runtime exceptions, so it must retain the Issue route despite having a
+    // friendly localized message.
+    const knownCode = Boolean(code && code !== "transcription_failed" && Object.prototype.hasOwnProperty.call(ERROR_TEXT.zh, code));
+    issue.classList.toggle("hidden", knownCode);
+    notice.classList.remove("hidden");
+    revealErrorNotice(notice);
+  }
+  function errorReportText() {
+    const report = state.errorReport;
+    if (!report) return "";
+    const version = state.config?.appVersion || $("appVersion")?.textContent?.trim() || "unknown";
+    const log = redactSensitive($("log")?.textContent || "");
+    const labels = state.lang === "zh"
+      ? { title: "MAW Launcher 错误报告", version: "版本", code: "错误码", message: "提示", detail: "详细信息", log: "日志" }
+      : { title: "MAW Launcher error report", version: "Version", code: "Error code", message: "Message", detail: "Detail", log: "Log" };
+    const message = compactDetail(report.message);
+    const detail = compactDetail(report.detail);
+    return [
+      labels.title,
+      `${labels.version}: ${redactSensitive(version)}`,
+      `${labels.code}: ${redactSensitive(report.code)}`,
+      `${labels.message}: ${redactSensitive(report.message)}`,
+      ...(detail && detail !== message ? [`${labels.detail}: ${redactSensitive(report.detail)}`] : []),
+      `${labels.log}:`,
+      log,
+    ].join("\n");
+  }
+  function fallbackCopy(text) {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.append(area);
+    area.select();
+    let copied = false;
+    try { copied = document.execCommand("copy"); } finally { area.remove(); }
+    return copied;
+  }
+  function setCopyReportButton(key) {
+    const button = $("errorNoticeCopy");
+    if (!button) return;
+    button.disabled = key !== "error_copy_report";
+    button.textContent = t(key);
+    if (state.errorCopyTimer) clearTimeout(state.errorCopyTimer);
+    if (key !== "error_copy_report") {
+      state.errorCopyTimer = setTimeout(() => { state.errorCopyTimer = 0; if (state.errorReport) setCopyReportButton("error_copy_report"); }, 2200);
+    }
+  }
+  async function copyErrorReport() {
+    const text = errorReportText();
+    if (!text) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        try { await navigator.clipboard.writeText(text); }
+        catch (_error) { if (!fallbackCopy(text)) throw new Error("clipboard fallback failed"); }
+      } else if (!fallbackCopy(text)) {
+        throw new Error("clipboard fallback failed");
+      }
+      setCopyReportButton("error_copy_report_success");
+    } catch (_error) {
+      setCopyReportButton("error_copy_report_failed");
+    }
+  }
+  async function openErrorFaq() {
+    try {
+      const result = await window.MAWLauncher.callBackend("open_faq");
+      if (result?.ok) return;
+      const detail = result?.detail || result?.error || t("error_open_faq_failed");
+      setStatus(detail);
+      appendLog(`[error] open_faq: ${detail}`);
+    } catch (error) {
+      const detail = error?.message || String(error || t("error_open_faq_failed"));
+      setStatus(detail);
+      appendLog(`[error] open_faq: ${detail}`);
+    }
+  }
+  async function openErrorIssue() {
+    try {
+      const result = await window.MAWLauncher.callBackend("open_url", { url: "https://github.com/Moyf/moys-asr-workflow" });
+      if (result?.ok) return;
+      const detail = result?.detail || result?.error || t("error_open_issue_failed");
+      setStatus(detail);
+      appendLog(`[error] open_issue: ${detail}`);
+    } catch (error) {
+      const detail = error?.message || String(error || t("error_open_issue_failed"));
+      setStatus(detail);
+      appendLog(`[error] open_issue: ${detail}`);
+    }
+  }
   function setServerStatus(url, alreadyRunning = false, prefix = "") {
     const status = $("status");
     status.replaceChildren();
@@ -943,7 +1110,7 @@
   function setError(field, message) { const input = $(field); const hint = $(`${field}Error`); if (input) input.classList.toggle("invalid", Boolean(message)); if (hint) { renderMessage(hint, message); hint.classList.toggle("visible", Boolean(message)); } }
   function setOutputNotice(message) { const notice = $("srtPathNotice"); if (!notice) return; renderMessage(notice, message); notice.classList.toggle("hidden", !message); }
   function mediaDropError() { const separator = state.lang === "zh" ? "、" : ", "; return t("drop_reject_media").replace("{extensions}", Array.from(MEDIA_EXTS).join(separator)); }
-  function clearErrors() { ["mediaPath", "srtPath", "apiKey", "workspaceId", "localModelPath", "localModelCachePath", "maxLen", "minLen", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => setError(field, "")); }
+  function clearErrors() { ["mediaPath", "srtPath", "apiKey", "workspaceId", "localModelPath", "localModelCachePath", "maxLen", "minLen", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => setError(field, "")); hideErrorNotice(); }
   function formPayload() { return { providerId: $("provider").value, modelId: $("model").value, mediaPath: $("mediaPath").value.trim(), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), device: $("localDevice").value, language: languageValue(), lengthLimit: $("lengthLimit").value.trim(), maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
   function serverPayload() { return { jsonPath: $("jsonPath").value.trim(), mediaPath: $("serverMediaPath").value.trim(), port: $("port").value || "8250", guiLang: state.lang }; }
   function renderServerButton() {
@@ -1191,7 +1358,7 @@
     return setDroppedPath("serverMediaPath", value);
   }
   function setJsonPath(path) { $("jsonPath").value = path; setError("jsonPath", ""); if (path !== state.serverProjectPath) $("openMawe").classList.add("attention"); refreshServerMedia(); }
-  function applyErrorResult(result, logDetail = true) { const message = errText(result.code, result.detail || result.error); const fieldMessage = result.code === "server_start_failed" ? t("server_start_failed_hint") : (result.code === "server_no_response" ? t("server_no_response_hint") : message); if (result.field) setError(result.field, fieldMessage); if (result.field === "port" || result.field === "serverMediaPath" || result.field === "jsonPath") expandServer(); if (result.postprocessStep) window.MAWLauncher?.openAutoPostprocessStep?.(result.postprocessStep, result.field); else if (result.field === "autoPostprocessEnabled") $("autoPostprocessCard")?.scrollIntoView({ behavior: "smooth", block: "start" }); setStatus(message); if (logDetail && (result.detail || result.error)) appendLog(`[error] ${result.code || "backend_error"}: ${result.detail || result.error}`); }
+  function applyErrorResult(result, logDetail = true) { const detail = result.detail || result.error || ""; const message = errText(result.code, detail); const fieldMessage = result.code === "server_start_failed" ? t("server_start_failed_hint") : (result.code === "server_no_response" ? t("server_no_response_hint") : message); if (result.field) setError(result.field, fieldMessage); if (result.field === "port" || result.field === "serverMediaPath" || result.field === "jsonPath") expandServer(); if (result.postprocessStep) window.MAWLauncher?.openAutoPostprocessStep?.(result.postprocessStep, result.field); else if (result.field === "autoPostprocessEnabled") $("autoPostprocessCard")?.scrollIntoView({ behavior: "smooth", block: "start" }); setStatus(message); if (logDetail && detail) appendLog(`[detail] ${detail}`); showErrorNotice(message, result.code || "", detail); }
   function validateSegmentation(data) { for (const [field, minimum] of [["maxLen", 1], ["minLen", 1], ["gapSplit", 0]]) { const value = data[field]; if (!value) continue; if (!/^\d+$/u.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < minimum) return fail(field, errText("segmentation_invalid", "")); } if (data.maxLen && data.minLen && Number(data.maxLen) < Number(data.minLen)) return fail("maxLen", errText("segmentation_invalid", "")); return true; }
   function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!validateSegmentation(data)) return false; if (isLocalProvider()) { const runtime = state.config.localRuntime || {}; const status = localStatus(); if (!runtime.ready && runtime.status !== "ready") return fail("model", errText("local_runtime_missing", "")); if (status.status === "runtime_missing") return fail("model", errText("local_runtime_missing", "")); if (status.status === "path_invalid") return fail("localModelPath", errText("local_model_path_invalid", "")); if (status.status === "path_mismatch") return fail("localModelPath", errText("local_model_path_mismatch", "")); if (status.status === "missing") return fail("model", errText("local_model_missing", "")); if (status.status === "partial") return fail("model", errText("local_model_incomplete", "")); return true; } if (provider().requiresApiKey !== false && !data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (provider().id === "qwen" && selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (provider().id === "soniox" && selectedModel().supportsContext && Array.from([data.sonioxContextGeneral, data.sonioxContextText, data.sonioxContextTerms, data.sonioxContextTranslationTerms].join("\n")).length > 10000) return fail("sonioxContextText", errText("soniox_context_too_long", "")); if (provider().id === "qwen" && selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
   function fail(field, message) { setError(field, message); setStatus(message); const input = $(field); if (input && input.scrollIntoView) input.scrollIntoView({ behavior: "smooth", block: "center" }); return false; }
@@ -1473,14 +1640,16 @@
       $("retryPostprocess")?.classList.toggle("hidden", !event.canRetry);
       const detail = event.detail || event.message || "";
       const message = event.code ? errText(event.code, detail) : detail || t("failed");
+      // 友好提示归错误卡片、status 与复制报告的结构化字段所有；日志只保留后端原始 detail。
       setStatus(message);
-      appendLog(`[error] ${message}`);
-      if (detail && detail !== message) appendLog(`[detail] ${detail}`);
+      if (detail) appendLog(`[detail] ${detail}`);
+      showErrorNotice(message, event.code || "", detail);
       renderLocalModelStatus();
     }
     if (event.type === "done") {
       state.result = event.result;
       setRunning(false);
+      hideErrorNotice();
       $("retryPostprocess")?.classList.add("hidden");
       if (event.result?.srtPath) $("srtPath").value = event.result.srtPath;
       setJsonPath(event.result?.jsonPath || "");
@@ -1494,12 +1663,20 @@
     if (event.type === "dropReject" && !state.dropTarget && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
     if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
   }
-  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onLanguageChanged() {} };
+  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart: hideErrorNotice, onBatchError: (result) => applyErrorResult(result, false), onLanguageChanged() {} };
 
   $("langToggle").addEventListener("click", async () => { state.lang = state.lang === "zh" ? "en" : "zh"; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (!result.ok) applyErrorResult(result); });
   $("themeLight").addEventListener("click", () => setTheme("light")); $("themeDark").addEventListener("click", () => setTheme("dark")); $("themeSystem").addEventListener("click", () => setTheme("system"));
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme(); });
   $("homeLink").addEventListener("click", () => bridge("open_url", { url: HOME_URL }));
+  $("errorNoticeClose").addEventListener("click", hideErrorNotice);
+  $("errorNoticeCopy").addEventListener("click", () => { void copyErrorReport(); });
+  $("errorNoticeFaq").addEventListener("click", () => { void openErrorFaq(); });
+  $("errorNoticeIssue").addEventListener("click", () => { void openErrorIssue(); });
+  $("errorNoticeAction").addEventListener("click", () => {
+    const action = $("errorNotice").dataset.action;
+    if (action === "ffmpeg-settings") openSettings("ffmpegSettingsSection", "ffmpegPath");
+  });
   $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => { applySelectedModel(true); if (isLocalProvider()) { void refreshLocalRuntime(); void refreshLocalModels(); } }); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("region").addEventListener("change", syncWorkspace); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
   $("testRun").addEventListener("change", syncTestRun);
   $("generateHtml").addEventListener("change", syncHtmlMenu);
@@ -1535,9 +1712,9 @@
   $("showRareLangs").addEventListener("change", async () => { state.config.showRareLangs = $("showRareLangs").checked; applyProviderLanguages(provider(), selectedModel()); const result = await bridge("save_prefs", { showRareLangs: state.config.showRareLangs }); if (result.ok) setStatus(t("saved")); else applyErrorResult(result); });
   $("languageReset").addEventListener("click", () => { const el = $("language"); Array.from(el.options).forEach((o) => { o.selected = false; }); savePrefsDebounced({ language: "" }); });
   $("saveSettings").addEventListener("click", async () => { const result = await bridge("save_settings", formPayload()); if (result.ok) { const current = provider(); current.apiKey = $("apiKey").value.trim(); current.maskedApiKey = result.maskedApiKey; state.config.apiKey = current.apiKey; state.config.maskedApiKey = result.maskedApiKey; renderKeyStatus(); setStatus(t("saved")); } else applyErrorResult(result); });
-  $("start").addEventListener("click", async () => { if (!validateLocal()) return; $("retryPostprocess")?.classList.add("hidden"); $("log").textContent = ""; state.lastLogMessage = ""; const latest = $("logLatest"); latest.textContent = ""; latest.classList.add("hidden"); setRunning(true); $("logTitle").scrollIntoView({ behavior: "smooth", block: "start" }); const result = await bridge("start_transcription", formPayload()); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } else if (result.outputPath) { $("srtPath").value = result.outputPath; if (result.outputRenamed) setOutputNotice(t("output_collision")); } });
+  $("start").addEventListener("click", async () => { if (!validateLocal()) return; hideErrorNotice(); $("retryPostprocess")?.classList.add("hidden"); $("log").textContent = ""; state.lastLogMessage = ""; const latest = $("logLatest"); latest.textContent = ""; latest.classList.add("hidden"); setRunning(true); $("logTitle").scrollIntoView({ behavior: "smooth", block: "start" }); const result = await bridge("start_transcription", formPayload()); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } else if (result.outputPath) { $("srtPath").value = result.outputPath; if (result.outputRenamed) setOutputNotice(t("output_collision")); } });
   $("stop").addEventListener("click", async () => { if (!state.running) return; $("stop").disabled = true; setStatus(t("batch_stopping")); const result = await bridge("cancel_transcription"); if (!result.ok) { $("stop").disabled = false; setStatus(result.detail || result.error || t("failed")); } });
-  $("retryPostprocess").addEventListener("click", async () => { $("retryPostprocess").classList.add("hidden"); setRunning(true); const result = await bridge("retry_postprocess"); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } });
+  $("retryPostprocess").addEventListener("click", async () => { hideErrorNotice(); $("retryPostprocess").classList.add("hidden"); setRunning(true); const result = await bridge("retry_postprocess"); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } });
   $("openMawe").addEventListener("click", openServerEditor); $("stopServer").addEventListener("click", stopEditorServer); $("openFolder").addEventListener("click", () => bridge("open_output_folder"));
   $("openMenu").addEventListener("click", () => $("htmlMenu").classList.toggle("hidden")); $("openHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_html"); }); $("openBlankHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_blank_html"); }); document.addEventListener("click", (event) => { if (!event.target.closest(".split-wrap")) $("htmlMenu").classList.add("hidden"); });
   $("mediaCard").addEventListener("dragenter", onDragEnter); $("mediaCard").addEventListener("dragleave", onDragLeave);
@@ -1575,6 +1752,10 @@
     handleRoutedDrop(file?.path || file?.name || "");
   });
   setupScrollbarFlash();
+  syncFixedFooterClearance();
+  window.addEventListener("resize", syncFixedFooterClearance);
+  const footer = document.querySelector(".actions");
+  if (footer && window.ResizeObserver) new ResizeObserver(syncFixedFooterClearance).observe(footer);
   document.addEventListener("DOMContentLoaded", init);
   document.addEventListener("keydown", handleZoomKeydown);
   document.addEventListener("wheel", handleZoomWheel, { passive: false });

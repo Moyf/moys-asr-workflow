@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import os
 import sys
+import traceback
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -21,7 +23,19 @@ _INTERNAL_FLAGS = frozenset(
         "--serve",
     }
 )
+_TRANSCRIPTION_FLAGS = frozenset(
+    {
+        "--transcribe",
+        "--transcribe-soniox",
+        "--transcribe-local",
+        "--transcribe-bcut",
+    }
+)
 _GUI_DEBUG_FLAGS = frozenset({"-dbg", "--debug", "-dt", "--devtools"})
+_WINDOWS_BLOCKED_RUNTIME_MARKERS = (
+    "python.runtime.loader.initialize",
+    "python.runtime.dll",
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -95,6 +109,174 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
+def run_entrypoint(argv: Sequence[str] | None = None) -> int:
+    """Handle only the two known frozen-package failures at the executable boundary.
+
+    This is deliberately a narrow boundary.  PyInstaller's native traceback is
+    useful for every other GUI, server, and CLI failure, so unknown exceptions
+    must continue through unchanged.
+    """
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    try:
+        return main(raw_argv)
+    except Exception as error:  # noqa: BLE001 - final executable boundary
+        if _is_gui_invocation(raw_argv):
+            if not _is_windows_blocked_runtime_error(error):
+                if sys.platform == "win32":
+                    _show_unknown_startup_hint()
+                raise
+            log_path = _write_startup_error_log(error)
+            _show_startup_error(error, log_path)
+            return 1
+        if _is_transcription_invocation(raw_argv) and _is_ffmpeg_missing_error(error):
+            print(f"错误：{_friendly_child_error(error)}", file=sys.stderr)
+            return 1
+        raise
+
+
+def _is_gui_invocation(argv: Sequence[str]) -> bool:
+    return not argv or _is_gui_debug_invocation(argv)
+
+
+def _is_transcription_invocation(argv: Sequence[str]) -> bool:
+    return bool(argv) and argv[0] in _TRANSCRIPTION_FLAGS
+
+
+def _is_windows_blocked_runtime_error(error: Exception) -> bool:
+    if sys.platform != "win32":
+        return False
+    detail = str(error).casefold()
+    return any(marker in detail for marker in _WINDOWS_BLOCKED_RUNTIME_MARKERS)
+
+
+def _show_unknown_startup_hint() -> None:
+    """Give Windows users a short owner/FAQ route before the native traceback."""
+    if sys.platform != "win32":
+        return
+    message = (
+        "MAW 启动时遇到未识别错误。\n\n"
+        "此提示不会替代随后出现的完整错误信息。请先查看发布包内的 FAQ-常见问题.txt；"
+        "如仍无法解决，可前往项目 Issue 页面反馈：\n"
+        "https://github.com/Moyf/moys-asr-workflow/issues/new\n\n"
+        "随后将保留并显示原始错误详情。"
+    )
+    try:
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(None, message, "MAW 启动失败", 0x10)
+    except (AttributeError, OSError):
+        pass
+
+
+def _is_ffmpeg_missing_error(error: Exception) -> bool:
+    """Return true only for an explicit missing FFmpeg/FFprobe executable.
+
+    A generic ``FileNotFoundError`` is commonly a missing media/config file and
+    must not be presented as an FFmpeg problem.  Require either the executable
+    name as the exception filename, or an explicit WinError/not-found message
+    that names one of the two tools.
+    """
+    detail = str(error).casefold()
+    filename = Path(str(getattr(error, "filename", "") or "")).name.casefold()
+    if filename in {"ffmpeg", "ffmpeg.exe", "ffprobe", "ffprobe.exe"}:
+        return True
+    mentions_tool = "ffmpeg" in detail or "ffprobe" in detail
+    if not mentions_tool:
+        return False
+    return any(
+        marker in detail
+        for marker in (
+            "[winerror 2]",
+            "system cannot find",
+            "系统找不到指定的文件",
+            "not found",
+            "找不到",
+        )
+    )
+
+
+def _friendly_child_error(error: Exception) -> str:
+    detail = str(error).strip()
+    filename = Path(str(getattr(error, "filename", "") or "")).name.casefold()
+    if isinstance(error, FileNotFoundError) and filename in {"ffmpeg", "ffmpeg.exe", "ffprobe", "ffprobe.exe"}:
+        return (
+            "找不到 FFmpeg / FFprobe。请下载不带 lite 的完整 MAW；"
+            "或安装 FFmpeg，并确保 ffmpeg 与 ffprobe 均可用。"
+        )
+    return detail or error.__class__.__name__
+
+
+def _startup_error_log_path() -> Path:
+    if sys.platform == "win32":
+        if getattr(sys, "frozen", False):
+            return Path(sys.executable).resolve().parent / "launcher-startup.log"
+        return Path(__file__).resolve().parent / "launcher-startup.log"
+    return Path.home() / ".maw" / "launcher-startup.log"
+
+
+def _startup_error_fallback_log_path() -> Path:
+    """Return the shared MAW app-data path when the package directory is read-only."""
+    override = os.environ.get("MAW_APP_DATA_ROOT", "").strip()
+    if override:
+        return Path(override).expanduser().resolve(strict=False) / "launcher-startup.log"
+    if os.name == "nt":
+        base = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local")) / "MAW"
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support" / "MAW"
+    else:
+        base = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "MAW"
+    return base / "launcher-startup.log"
+
+
+def _write_startup_error_log(error: Exception) -> Path | None:
+    content = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+    paths = [_startup_error_log_path()]
+    fallback = _startup_error_fallback_log_path()
+    if fallback not in paths:
+        paths.append(fallback)
+    for path in paths:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8", newline="\n")
+        except OSError:
+            continue
+        return path
+    return None
+
+
+def _startup_error_message(error: Exception, log_path: Path | None = None) -> str:
+    detail = str(error).strip()
+    if any(marker in detail.casefold() for marker in _WINDOWS_BLOCKED_RUNTIME_MARKERS):
+        message = (
+            "MAW 的运行组件被 Windows 阻止加载。\n\n"
+            "请按以下步骤处理：\n"
+            "1. 退出 MAW，并找到最初下载的 MAW ZIP 压缩包。\n"
+            "2. 右键 ZIP → 属性 → 勾选“解除锁定”→ 应用。\n"
+            "3. 删除当前解压目录，再从已解除锁定的 ZIP 完整解压。\n"
+            "4. 保留 MAW.exe、_internal 和 bootstrap 在同一目录中。\n\n"
+            "若仍无法启动，请查看发布包内的 FAQ-常见问题.txt。"
+        )
+    else:
+        summary = detail or error.__class__.__name__
+        message = f"MAW 启动失败：{summary}\n\n请查看发布包内的 FAQ-常见问题.txt。"
+    if log_path is not None:
+        message += f"\n\n诊断日志：{log_path}"
+    return message
+
+
+def _show_startup_error(error: Exception, log_path: Path | None = None) -> None:
+    message = _startup_error_message(error, log_path)
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            ctypes.windll.user32.MessageBoxW(None, message, "MAW 启动失败", 0x10)
+            return
+        except (AttributeError, OSError):
+            pass
+    print(message, file=sys.stderr)
+
+
 def _is_gui_debug_invocation(argv: Sequence[str]) -> bool:
     return bool(argv) and all(argument in _GUI_DEBUG_FLAGS for argument in argv)
 
@@ -163,4 +345,4 @@ def _run_internal_serve(argv: Sequence[str]) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_entrypoint())

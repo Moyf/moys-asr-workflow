@@ -20,6 +20,263 @@ async function runReplacement(page, { outputMode = 'both' } = {}) {
   await expect(page.locator('.toolbox-chain-item')).toHaveCount(previousCount + 1);
 }
 
+test('runtime errors show an actionable notice outside the log', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await expect(page.locator('#status')).toBeVisible();
+  await expect(page.locator('#status')).toHaveText('就绪');
+
+  await page.evaluate(() => window.MAWLauncher.onBackendEvent({
+    type: 'error',
+    code: 'ffmpeg_missing',
+    detail: 'ffmpeg and ffprobe were not found',
+  }));
+
+  const notice = page.locator('#errorNotice');
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText('未找到 FFmpeg / FFprobe');
+  await expect(page.locator('#status')).toBeVisible();
+  await expect(page.locator('#status')).toContainText('未找到 FFmpeg / FFprobe');
+  await expect(page.locator('#errorNoticeActions')).toBeVisible();
+  await expect(page.locator('#errorNoticeAction')).toHaveText('FFmpeg 配置项');
+  await expect(page.locator('#errorNoticeFaq')).toHaveText('常见问题修复');
+  await expect(page.locator('#errorNoticeIssue')).toBeHidden();
+  await expect(page.locator('#errorNoticeActions > button')).toHaveCount(4);
+  await expect(page.locator('#errorNoticeActions')).toHaveCSS('display', 'grid');
+  await page.setViewportSize({ width: 480, height: 800 });
+  await expect(page.locator('#errorNoticeActions')).toHaveCSS('grid-template-columns', /\S+\s+\S+/);
+  await expect.poll(() => page.locator('#errorNoticeCopy').evaluate((element) => getComputedStyle(element.parentElement.previousElementSibling).gridColumn)).toBe('1');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.evaluate(() => {
+    const original = window.MAWLauncher.callBackend;
+    window.__faqCalls = [];
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'open_faq') window.__faqCalls.push({ method, payload });
+      return original(method, payload);
+    };
+  });
+  await page.locator('#errorNoticeFaq').click();
+  await expect.poll(() => page.evaluate(() => window.__faqCalls.length)).toBe(1);
+  await page.locator('#errorNoticeAction').click();
+  await expect(page.locator('#settingsModal')).toBeVisible();
+  await expect(page.locator('#ffmpegSettingsSection')).toBeVisible();
+
+  await page.locator('#settingsClose').click();
+  await page.locator('#errorNoticeClose').click();
+  await expect(notice).toBeHidden();
+  await expect(page.locator('#status')).toBeVisible();
+  await expect(page.locator('#status')).toContainText('未找到 FFmpeg / FFprobe');
+});
+
+test('error notice and status remain above the fixed footer at desktop and narrow widths', async ({ page }) => {
+  const measure = () => page.evaluate(() => {
+    const box = (selector) => {
+      const element = document.querySelector(selector);
+      const rect = element?.getBoundingClientRect();
+      return rect ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height } : null;
+    };
+    return {
+      notice: box('#errorNotice'),
+      copy: box('.error-notice-copy'),
+      actions: box('#errorNoticeActions'),
+      close: box('#errorNoticeClose'),
+      status: box('#status'),
+      footer: box('.actions'),
+    };
+  });
+  const showFailure = async () => {
+    await page.evaluate(() => {
+      window.MAWLauncher.onBackendEvent({ type: 'error', code: 'ffmpeg_missing', detail: 'ffmpeg and ffprobe were not found' });
+    });
+    await expect(page.locator('#errorNotice')).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await expect.poll(async () => {
+      const metrics = await measure();
+      return metrics.notice.bottom <= metrics.footer.top + 1 && metrics.status.bottom <= metrics.footer.top + 1;
+    }).toBe(true);
+  };
+  const showRetry = async () => {
+    await page.evaluate(() => document.querySelector('#retryPostprocess').classList.remove('hidden'));
+    // Let ResizeObserver recalculate the shell's bottom reserve before moving
+    // to the document end; this models the real late-arriving retry action.
+    await page.waitForTimeout(80);
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await expect.poll(async () => {
+      const metrics = await measure();
+      return metrics.notice.bottom <= metrics.footer.top + 1 && metrics.status.bottom <= metrics.footer.top + 1;
+    }).toBe(true);
+  };
+
+  await page.setViewportSize({ width: 1180, height: 520 });
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await showFailure();
+  const desktopNormal = await measure();
+  expect(desktopNormal.notice.bottom).toBeLessThanOrEqual(desktopNormal.footer.top + 1);
+  expect(desktopNormal.status.bottom).toBeLessThanOrEqual(desktopNormal.footer.top + 1);
+  expect(desktopNormal.copy.width).toBeGreaterThan(250);
+  expect(desktopNormal.actions.left).toBeGreaterThanOrEqual(desktopNormal.copy.right - 1);
+  expect(desktopNormal.close.left).toBeGreaterThanOrEqual(desktopNormal.actions.right - 1);
+  expect(desktopNormal.actions.height).toBeGreaterThan(30);
+  await showRetry();
+  const desktopDynamic = await measure();
+  await expect(page.locator('#retryPostprocess')).toBeVisible();
+  expect(desktopDynamic.footer.height).toBeGreaterThanOrEqual(desktopNormal.footer.height);
+  expect(desktopDynamic.notice.bottom).toBeLessThanOrEqual(desktopDynamic.footer.top + 1);
+  expect(desktopDynamic.status.bottom).toBeLessThanOrEqual(desktopDynamic.footer.top + 1);
+
+  await page.setViewportSize({ width: 520, height: 520 });
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await showFailure();
+  const narrowNormal = await measure();
+  expect(narrowNormal.notice.bottom).toBeLessThanOrEqual(narrowNormal.footer.top + 1);
+  expect(narrowNormal.status.bottom).toBeLessThanOrEqual(narrowNormal.footer.top + 1);
+  expect(narrowNormal.actions.top).toBeGreaterThanOrEqual(narrowNormal.copy.bottom - 1);
+  expect(narrowNormal.close.bottom).toBeLessThanOrEqual(narrowNormal.actions.top + 1);
+  expect(narrowNormal.copy.right).toBeLessThanOrEqual(narrowNormal.close.left + 1);
+  await showRetry();
+  const narrowDynamic = await measure();
+  expect(narrowDynamic.footer.height).toBeGreaterThan(narrowNormal.footer.height);
+  expect(narrowDynamic.notice.bottom).toBeLessThanOrEqual(narrowDynamic.footer.top + 1);
+  expect(narrowDynamic.status.bottom).toBeLessThanOrEqual(narrowDynamic.footer.top + 1);
+  expect(narrowDynamic.actions.top).toBeGreaterThanOrEqual(narrowDynamic.copy.bottom - 1);
+  expect(narrowDynamic.close.bottom).toBeLessThanOrEqual(narrowDynamic.actions.top + 1);
+  expect(narrowDynamic.copy.right).toBeLessThanOrEqual(narrowDynamic.close.left + 1);
+});
+
+test('error reports copy safe details and support file URL fallback', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#apiKey').fill('sk-secret-test-key');
+  await page.evaluate(() => {
+    window.MAWLauncher.appendLog('child output: duration probe failed');
+    window.MAWLauncher.appendLog('Authorization: Bearer secret-bearer-token');
+    window.__copiedReports = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text) => window.__copiedReports.push(text) },
+    });
+  });
+  await page.evaluate(() => {
+    const event = { type: 'error', code: 'transcription_failed', detail: 'backend detail' };
+    window.MAWLauncher.onBackendEvent(event);
+    window.MAWLauncher.onBackendEvent(event);
+    window.MAWLauncher.appendLog('[error] unrelated child failure');
+    window.MAWLauncher.appendLog('[detail] unrelated child detail');
+  });
+  await expect(page.locator('#errorNoticeIssue')).toBeVisible();
+  await page.locator('#errorNoticeCopy').click();
+  await expect(page.locator('#errorNoticeCopy')).toHaveText('已复制');
+  const report = (await page.evaluate(() => window.__copiedReports[0]));
+  expect(report).toContain('错误码: transcription_failed');
+  expect(report).toContain('backend detail');
+  expect(report).toContain('child output: duration probe failed');
+  expect(report).toContain('[error] unrelated child failure');
+  expect(report).toContain('[detail] unrelated child detail');
+  expect(report).not.toContain('[error] 转写失败，本次任务已停止。请查看日志后修正问题，再重新尝试。');
+  expect(report).not.toContain('secret-bearer-token');
+  expect(report.match(/详细信息: backend detail/g)?.length).toBe(1);
+  expect(report.match(/\[detail\] backend detail/g)?.length).toBe(2);
+  expect(report).toContain('1.5.0-beta.4');
+  expect(report).not.toContain('sk-secret-test-key');
+
+  await page.evaluate(() => {
+    window.__copiedReports = [];
+    navigator.clipboard.writeText = async () => { throw new Error('denied'); };
+    document.execCommand = () => { window.__fallbackCopyUsed = true; return true; };
+  });
+  await page.locator('#errorNoticeCopy').click();
+  await expect(page.locator('#errorNoticeCopy')).toHaveText('已复制');
+  await expect.poll(() => page.evaluate(() => Boolean(window.__fallbackCopyUsed))).toBe(true);
+
+  await page.evaluate(() => {
+    navigator.clipboard.writeText = async () => { throw new Error('denied'); };
+    document.execCommand = () => false;
+  });
+  await page.locator('#errorNoticeCopy').click();
+  await expect(page.locator('#errorNoticeCopy')).toHaveText('复制失败，请手动复制日志。');
+  await page.locator('#errorNoticeClose').click();
+  await expect(page.locator('#errorNotice')).toBeHidden();
+  await expect(page.locator('#errorNoticeCopy')).toHaveText('复制错误报告');
+});
+
+test('unknown errors stay generic and do not expose FFmpeg actions', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => window.MAWLauncher.onBackendEvent({
+    type: 'error', code: 'unknown_backend_failure', detail: 'service exploded',
+  }));
+  await expect(page.locator('#errorNotice')).toBeVisible();
+  await expect(page.locator('#errorNoticeMessage')).toContainText('service exploded');
+  await expect(page.locator('#errorNoticeAction')).toBeHidden();
+  await expect(page.locator('#errorNoticeFaq')).toBeVisible();
+  await expect(page.locator('#errorNoticeFaq')).toHaveText('常见问题修复');
+  await expect(page.locator('#errorNoticeCopy')).toHaveText('复制错误报告');
+  await expect(page.locator('#errorNoticeIssue')).toHaveText('项目主页');
+  await expect(page.locator('#errorNoticeIssue')).toBeVisible();
+  await page.evaluate(() => {
+    const original = window.MAWLauncher.callBackend;
+    window.__issueCalls = [];
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'open_url') window.__issueCalls.push({ method, payload });
+      return original(method, payload);
+    };
+  });
+  await page.locator('#errorNoticeIssue').click();
+  await expect.poll(() => page.evaluate(() => window.__issueCalls[0])).toEqual({
+    method: 'open_url', payload: { url: 'https://github.com/Moyf/moys-asr-workflow' },
+  });
+});
+
+test('error reports keep one structured hint when detail matches the hint', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => {
+    window.__copiedReports = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text) => window.__copiedReports.push(text) },
+    });
+    window.MAWLauncher.onBackendEvent({
+      type: 'error', code: 'unknown_backend_failure', detail: 'same\nmessage',
+    });
+  });
+  await expect(page.locator('#errorNotice')).toBeVisible();
+  await expect(page.locator('#status')).toBeVisible();
+  await expect(page.locator('#status')).toHaveText('same message');
+  await page.locator('#errorNoticeCopy').click();
+  await expect(page.locator('#errorNoticeCopy')).toHaveText('已复制');
+  const report = await page.evaluate(() => window.__copiedReports[0]);
+  expect(report.match(/提示: same message/g)?.length).toBe(1);
+  expect(report).not.toContain('详细信息: same message');
+  expect(report).toContain('[detail] same\nmessage');
+  await page.locator('#errorNoticeClose').click();
+  await expect(page.locator('#status')).toBeVisible();
+  await expect(page.locator('#status')).toHaveText('same message');
+});
+
+test('FAQ open failures remain visible without an unhandled rejection', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => {
+    window.MAWLauncher.callBackend = async (method) => method === 'open_faq' ? { ok: false, error: 'FAQ unavailable' } : { ok: true };
+    window.MAWLauncher.onBackendEvent({ type: 'error', code: 'transcription_failed', detail: 'failed' });
+  });
+  await page.locator('#errorNoticeFaq').click();
+  await expect(page.locator('#status')).toBeVisible();
+  await expect(page.locator('#status')).toContainText('FAQ unavailable');
+  await expect(page.locator('#log')).toContainText('open_faq: FAQ unavailable');
+  await page.evaluate(() => {
+    window.MAWLauncher.callBackend = async (method) => method === 'open_url' ? { ok: false, error: 'Issue page unavailable' } : { ok: true };
+    window.MAWLauncher.onBackendEvent({ type: 'error', code: 'unknown_backend_failure', detail: 'unknown failure' });
+  });
+  await page.locator('#errorNoticeIssue').click();
+  await expect(page.locator('#status')).toBeVisible();
+  await expect(page.locator('#status')).toContainText('Issue page unavailable');
+  await expect(page.locator('#log')).toContainText('open_issue: Issue page unavailable');
+});
+
 test('artifact rows localize type labels while preserving MOSP-first and SRT-only selection', async ({ page }) => {
   await openLauncher(page);
   await runReplacement(page);
