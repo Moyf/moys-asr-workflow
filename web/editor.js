@@ -1142,7 +1142,7 @@ const subtitleBackgroundColorInput = document.getElementById('subtitle-backgroun
 const subtitleBackgroundAlphaInput = document.getElementById('subtitle-background-alpha');
 const subtitleBackgroundAlphaValue = document.getElementById('subtitle-background-alpha-value');
 const subtitleColorInput = document.getElementById('subtitle-color');
-const subtitleSpeakerStrokeInput = document.getElementById('subtitle-speaker-stroke');
+const subtitleColorUnderlineInput = document.getElementById('subtitle-color-underline');
 const extensionSubtitlePreviewSettings = document.getElementById('extension-subtitle-preview-settings');
 const extensionSubtitleFontSizeSelect = document.getElementById('extension-subtitle-font-size');
 const extensionSubtitleFontFamilySelect = document.getElementById('extension-subtitle-font-family');
@@ -2603,9 +2603,9 @@ subtitleColorInput?.addEventListener('change', () => {
   setSubtitleAppearance({ color: subtitleColorInput.value });
   update();
 });
-subtitleSpeakerStrokeInput?.addEventListener('change', () => {
-  pushPreviewUndo('调整预览字幕说话人描边', snapshotPreviewState());
-  setSubtitleAppearance({ speaker_stroke: subtitleSpeakerStrokeInput.checked });
+subtitleColorUnderlineInput?.addEventListener('change', () => {
+  pushPreviewUndo('切换预览字幕颜色下划线', snapshotPreviewState());
+  setSubtitleAppearance({ color_underline: subtitleColorUnderlineInput.checked });
   update();
 });
 extensionSubtitleFontSizeSelect?.addEventListener('change', () => {
@@ -4913,10 +4913,11 @@ function effectiveCueColorKey(mainSeg) {
   return MULTI_SUBTITLE_UTILS.effectiveColorName(mainSeg, DATA.segments) || COLOR_FILTER_DEFAULT_KEY;
 }
 
-// 仅副轨显示模式下列表行不携带颜色信息；此时按钮隐藏且过滤暂停生效，
-// 避免出现“看不到过滤开关但列表被过滤”的死角。
+// 双列 / 仅副轨显示模式下，列表行不携带颜色条：按钮隐藏且过滤暂停生效，
+// 避免出现“看不到过滤开关但列表被过滤”的死角。只有单列主轨列表参与过滤。
 function colorFilterSuspended() {
-  return multiSubtitleVisible() && getMultiSubtitleState().display_mode === 'extension';
+  if (!multiSubtitleVisible()) return false;
+  return getMultiSubtitleState().display_mode !== 'main';
 }
 
 function collectProjectColorUsage() {
@@ -9772,7 +9773,7 @@ function normalizeSubtitleAppearance(value) {
   if (backgroundAlpha !== null) result.background_alpha = backgroundAlpha;
   const color = normalizeSubtitleColor(value?.color);
   if (color) result.color = color;
-  if (value?.speaker_stroke === false) result.speaker_stroke = false;
+  if (value?.color_underline === false) result.color_underline = false;
   return result;
 }
 function getSubtitleAppearance(value = DATA.preview?.subtitle) {
@@ -9780,7 +9781,7 @@ function getSubtitleAppearance(value = DATA.preview?.subtitle) {
   return {
     ...result,
     color: result.color || DEFAULT_SUBTITLE_COLOR,
-    speaker_stroke: result.speaker_stroke !== false,
+    color_underline: result.color_underline !== false,
   };
 }
 function getStoredExtensionSubtitleAppearance(value = DATA.preview?.extension_subtitle) {
@@ -9813,8 +9814,8 @@ function syncSubtitleFontSizeSelect(select, sizeValue) {
 }
 function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
   syncSubtitleFontSizeSelect(subtitleFontSizeSelect, appearance.font_size);
-  if (subtitleSpeakerStrokeInput) {
-    subtitleSpeakerStrokeInput.checked = appearance.speaker_stroke !== false;
+  if (subtitleColorUnderlineInput) {
+    subtitleColorUnderlineInput.checked = appearance.color_underline !== false;
   }
   if (subtitleFontFamilySelect) {
     subtitleFontFamilySelect.querySelectorAll('option[data-generated="true"]').forEach((option) => option.remove());
@@ -9934,10 +9935,10 @@ function setSubtitleAppearance(patch, { markDirty = true } = {}) {
     const color = normalizeSubtitleColor(patch.color);
     if (color) next.color = color;
   }
-  if (Object.prototype.hasOwnProperty.call(patch, 'speaker_stroke')) {
-    // true 是默认值，不落盘；只在关闭时写入 speaker_stroke: false。
-    if (patch.speaker_stroke) delete next.speaker_stroke;
-    else next.speaker_stroke = false;
+  if (Object.prototype.hasOwnProperty.call(patch, 'color_underline')) {
+    // true 是默认值，不落盘；只在关闭时写入 color_underline: false。
+    if (patch.color_underline) delete next.color_underline;
+    else next.color_underline = false;
   }
   if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
   DATA.preview.subtitle = { ...getPreviewGeometry(), ...next };
@@ -10371,19 +10372,19 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (extensionVisible && overlayExtensionTextEl.textContent !== extensionText) {
     overlayExtensionTextEl.textContent = extensionText;
   }
-  // 说话人颜色描边：读取当前字幕的颜色快照（head/color_ref）给预览文字描边。
+  // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref）给预览文字加下划线。
   // dataset 记录上次应用的颜色，避免播放刷新每帧都写内联样式。
-  const speakerStrokeEnabled = DATA.preview?.subtitle?.speaker_stroke !== false;
-  let speakerStroke = '';
-  if (mainVisible && speakerStrokeEnabled && seg) {
+  const colorUnderlineEnabled = DATA.preview?.subtitle?.color_underline !== false;
+  let colorUnderline = '';
+  if (mainVisible && colorUnderlineEnabled && seg) {
     const colorName = MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments);
-    const strokeColor = colorName ? COLOR_BY_NAME[colorName]?.value : null;
-    if (strokeColor) speakerStroke = `0.045em ${strokeColor}`;
+    colorUnderline = colorName ? COLOR_BY_NAME[colorName]?.value || '' : '';
   }
-  if (overlayTextEl.dataset.speakerStroke !== speakerStroke) {
-    overlayTextEl.dataset.speakerStroke = speakerStroke;
-    overlayTextEl.style.webkitTextStroke = speakerStroke;
-    overlayTextEl.style.paintOrder = speakerStroke ? 'stroke fill' : '';
+  if (overlayTextEl.dataset.colorUnderline !== colorUnderline) {
+    overlayTextEl.dataset.colorUnderline = colorUnderline;
+    overlayTextEl.style.textDecorationLine = colorUnderline ? 'underline' : '';
+    overlayTextEl.style.textDecorationColor = colorUnderline;
+    overlayTextEl.style.textUnderlineOffset = colorUnderline ? '0.25em' : '';
   }
   const overlayHidden = !mainVisible && !extensionVisible;
   if (overlayEl.classList.contains('hidden') !== overlayHidden) {
@@ -15502,6 +15503,8 @@ function assignColor(idxs, colorName) {
   const isUnifiedGroup = sorted.length > 1
     || DATA.segments.some((s) => s.color_ref && s.color_ref.headIdx === sorted[0]);
   renderAll();
+  // 被标记的字幕可能正显示在预览画面里，刷新预览让颜色描边立即生效。
+  update();
   flashHint(isUnifiedGroup
     ? `已将关联字幕统一设为「${def.label}色」`
     : `已将字幕设为「${def.label}色」`, 'success');
@@ -15520,6 +15523,8 @@ function clearColorOnTargets(idxs) {
   // 一次性切除所有目标 idx，触发组拆分
   splitGroupsAtCutPoints(new Set(idxs), 'color', 'color_ref');
   renderAll();
+  // 清除的颜色可能正显示在预览画面里，刷新预览让颜色描边同步消失。
+  update();
   flashHint('已清除颜色', 'success');
 }
 
