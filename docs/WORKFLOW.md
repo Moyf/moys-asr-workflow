@@ -269,6 +269,8 @@ uv run python edit.py "D:\Videos\example.qwen3-asr-api.mosp" -m "D:\Videos\examp
 uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.mosp"
 ```
 
+服务器会先绑定并响应本机端口，再在后台读取工程、准备媒体和生成或读取波形；页面会显示“准备中”及当前阶段，完成后自动载入完整工程。长视频不再因为首次波形准备超过启动器的等待窗口而被误报为服务器无响应；如果工程读取失败，页面会保留并显示具体错误。
+
 服务器只监听本机 `127.0.0.1`。它会尝试按工程文件的 `media` 字段加载原媒体；媒体搬家后，显式指定：
 
 ```powershell

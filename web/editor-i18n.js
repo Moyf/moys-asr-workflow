@@ -96,8 +96,8 @@
     '没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除': 'No silent gaps removed yet; scan with "Remove silent gaps" first',
     '字幕': 'Subtitles', '字幕预览': 'Subtitle preview', '表情包预览': 'Sticker preview', '字幕列表和编辑区': 'Subtitle list & editor', '字幕编辑区': 'Subtitle editor',
     '多重字幕': 'Multiple subtitles', '多重字幕设置': 'Multiple-subtitle settings', '主轨': 'Main track', '副轨': 'Secondary track', '双列': 'Two columns', '绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H': 'After binding, sync the secondary subtitle start and end to the main subtitle, equivalent to pressing H', '交换主字幕和副字幕的文本、时间与绑定关系': 'Swap the main and secondary subtitle text, timing, and bindings',
-    '拆分与合并': 'Split and merge', '波形形状来源': 'Waveform shape source', '自研波形': 'Self-built waveform', 'ReaPeaks 波形层': 'ReaPeaks waveform layer',
-    '显示方式': 'Display mode', '语言类型': 'Language type', '主字幕': 'Main subtitle', '副字幕': 'Secondary subtitle', '主字幕语言类型': 'Main subtitle language type', '副字幕语言类型': 'Secondary subtitle language type', '副字幕时波形高度': 'Waveform height with secondary subtitles', '跨轨道吸附': 'Cross-track snapping', '同时选中主副字幕': 'Select main and secondary subtitles together', '绑定时自动同步时长': 'Automatically sync duration when binding', '显示轨道徽标': 'Show track badges', '在多重字幕波形中显示主字幕和副字幕的轨道编号徽标': 'Show main and secondary track number badges in the multiple-subtitle waveform', '交换主副字幕': 'Swap main and secondary subtitles', '普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕': 'Normal clicks follow the last clicked track; clicking a bound subtitle only adds the other subtitle actually bound to it',
+    '拆分与合并': 'Split and merge', '拆分与合并配置': 'Split and merge settings', '波形形状来源': 'Waveform shape source', '自研波形': 'Self-built waveform', 'ReaPeaks 波形层': 'ReaPeaks waveform layer',
+    '显示方式': 'Display mode', '语言类型': 'Language type', '字幕语言类型': 'Subtitle language type', '主字幕': 'Main subtitle', '副字幕': 'Secondary subtitle', '主字幕语言类型': 'Main subtitle language type', '副字幕语言类型': 'Secondary subtitle language type', '副字幕时波形高度': 'Waveform height with secondary subtitles', '跨轨道吸附': 'Cross-track snapping', '同时选中主副字幕': 'Select main and secondary subtitles together', '绑定时自动同步时长': 'Automatically sync duration when binding', '显示轨道徽标': 'Show track badges', '在多重字幕波形中显示主字幕和副字幕的轨道编号徽标': 'Show main and secondary track number badges in the multiple-subtitle waveform', '交换主副字幕': 'Swap main and secondary subtitles', '普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕': 'Normal clicks follow the last clicked track; clicking a bound subtitle only adds the other subtitle actually bound to it',
     '开启后显示副轨、双列列表和绑定操作；关闭只隐藏副字幕数据，不删除': 'Show the secondary track, two-column list, and binding actions; turning it off only hides secondary data',
     '启用多重字幕时使用的波形行高度': 'Waveform row height used when multiple subtitles are enabled', '请拖入第二个 srt 字幕以开启多重字幕功能': 'Drop a second SRT subtitle to enable multiple subtitles', '请拖入第二条字幕以开启多重字幕编辑': 'Drop a second subtitle to enable multi-subtitle editing', '是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）': 'Import the second subtitle? (You can also drop a subtitle or project file into the editor later)', '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。': 'When the current project has more than one subtitle, you can enable multiple-subtitle mode for bilingual subtitle editing and similar workflows.',
     '拖动多重字幕时，允许吸附到另一条字幕轨道的起点和终点': 'Snap multiple subtitles to the start and end boundaries of the other track while dragging',
@@ -478,7 +478,7 @@
     'Trim': 'Trim', '修剪前后空白': 'Trim surrounding whitespace', '去除字幕前方和后方的空格': 'Remove spaces before and after the subtitle text', '去除前后空白': 'Remove surrounding whitespace', '首字母大写': 'Capitalize first letter', '只作用于第一个字母': 'Only affects the first letter',
     '添加前缀': 'Add prefix', '插入到字幕开头': 'Insert at the beginning', '附加内容': 'Add suffix', '插入到字幕结尾': 'Insert at the end',
     '去除 md 格式符号': 'Remove Markdown formatting', '移除常见 Markdown 标记': 'Remove common Markdown markers',
-    '选择操作后查看预览': 'Select an operation to preview', '至少选择一项文本处理操作': 'Select at least one text-processing operation', '当前文本处理对于选中的字幕没有任何影响，未作改动': 'The current text processing has no effect on the selected subtitles; no changes were made',
+    '文本处理操作': 'Text-processing operations', '选择操作后查看预览': 'Select an operation to preview', '至少选择一项文本处理操作': 'Select at least one text-processing operation', '当前文本处理对于选中的字幕没有任何影响，未作改动': 'The current text processing has no effect on the selected subtitles; no changes were made',
     '应用处理': 'Apply processing', '处理前：': 'Before: ', '处理后：': 'After: ',
     '选择要执行的文本操作；字幕行不会被删除，处理为空时会保留空字幕行。字词时间码会按文本编辑规则尽量保留。': 'Choose text operations; subtitle rows are not deleted, and empty results remain as empty rows. Word timings are retained when possible using the text-editing rules.',
     '取消': 'Cancel', '替换全部': 'Replace all', '分配表情包': 'Assign sticker',
@@ -675,6 +675,8 @@
     '在多行波形中，为成组（颜色/表情包）字幕在块上方显示队长皇冠与组内序号': 'Show a leader crown and member index above grouped color/sticker subtitles in multi-row mode',
     '启用后，在波形空白区域按住左键拖动时，播放指针会实时跟随鼠标位置': 'When enabled, dragging with the left button on empty waveform areas moves the playhead along with the mouse',
     '移除静音空隙的人工修正方式；Alt+左键始终切换整段；中键拖动默认增加静音，按住 Alt 才恢复声音，边界碰到另一空隙时会合并': 'Manual silent-gap correction mode; Alt+click toggles a full region; middle-drag adds silence, Alt restores audio, and touching regions merge',
+    '移除静音空隙的人工修正方式；Alt+左键点击切换整段，空白处 Alt+左键拖动增加空隙；空隙块左键或 Alt+左键拖动整体偏移，Ctrl/Cmd+拖动复制；中键拖动默认增加静音，按住 Alt 才恢复声音；“边界与中键”可同时启用两种方式': 'Manual silent-gap correction: Alt+left-click toggles a whole region; Alt+drag on empty space adds a gap; left-click or Alt+drag on a gap block moves it; Ctrl/Cmd+drag copies it; middle-button drag adds silence by default, while Alt restores audio; “Boundary and middle button” enables both methods.',
+    '边界与中键': 'Boundary and middle button',
     '勾选后按颜色导出会先选择一个 SRT 文件名作为前缀，再下载「前缀_颜色.srt」；取消勾选则逐个颜色弹出保存对话框': 'When enabled, choose an SRT filename as the prefix, then download prefix_color.srt files; otherwise choose each file separately',
     '拖动调整波形与字幕区域比例': 'Drag to resize waveform and subtitle areas',
     '拖动调整布局区域比例': 'Drag to resize layout areas',
@@ -687,8 +689,13 @@
     '全选过滤结果': 'Select all filtered', '当前没有生效的颜色过滤': 'No color filter is active',
     '默认': 'Default',
     '主字幕自动使用时间码拆分': 'Auto-split main subtitles with word timings',
+    '开启时，自动按可用时间码拆分；关闭后将打开拆分弹窗，手动拆分': 'When enabled, split automatically using available timecodes; otherwise open the split dialog for manual splitting',
     '开启时，会自动按可用时间码拆分；关闭后将打开拆分弹窗，手动进行拆分。':
       'When enabled, cues split automatically at usable word timings; otherwise the split dialog opens for manual splitting.',
+    '开启时，自动按可用时间码拆分；关闭后将打开拆分弹窗，手动拆分。':
+      'When enabled, split automatically using available timecodes; otherwise the split dialog opens for manual splitting.',
+    '语言类型会影响拆分面板的分隔判断，以及合并时是否插入空格等。': 'Language type affects split-boundary decisions and whether spaces are inserted when merging.',
+    '配置合并字幕时插入字符': 'Configure characters inserted when merging subtitles', '配置合并字符': 'Configure merge separator', '配置拆分标点': 'Configure split punctuation',
     '合并字幕时插入字符': 'Text inserted when merging subtitles',
     '留空则直接拼接': 'Leave empty to join directly', '默认一个空格': 'Defaults to one space',
     '拆分时移除的标点符号': 'Punctuation removed when splitting',
@@ -702,6 +709,7 @@
     '全角逗号': 'Fullwidth comma', '句号': 'Period', '顿号': 'Enumerated comma',
     '全角感叹号': 'Fullwidth exclamation mark', '全角问号': 'Fullwidth question mark',
     '单词型：英语等西文语言，按空格分隔多个单词': 'Word-based: Latin-script languages such as English, where words are separated by spaces',
+    '适用于英文、俄文等': 'for English, Russian, and similar languages', '适用于中文、日文等': 'for Chinese, Japanese, and similar languages',
     '字符型：中文、日文等按字符拆分的语言': 'Character-based: languages such as Chinese and Japanese, split per character',
   };
 
@@ -915,8 +923,12 @@
     match = /^已交换主副字幕：主轨\s+(\d+)\s+条，副轨\s+(\d+)\s+条$/.exec(text);
     if (match) return `Swapped main and secondary subtitles: ${match[1]} main, ${match[2]} secondary`;
     // 合并连接设置旁的主字幕类型提示与切换按钮 title（目标类型语言说明）
-    match = /^当前为「(.+)」$/.exec(text);
-    if (match) return `Current: ${translateText(match[1], EN)}`;
+    match = /^当前为「(.+)」(?:（(.+)）)?$/.exec(text);
+    if (match) {
+      const mode = translateText(match[1], EN);
+      const example = match[2] ? translateText(match[2], EN) : '';
+      return `Current: ${mode}${example ? ` (${example})` : ''}`;
+    }
     match = /^切换为(单词型|字符型)$/.exec(text);
     if (match) return `Switch to ${translateText(match[1], EN)}`;
     // 颜色过滤行 title：该颜色的字幕共 N 条；点击条目只显示此颜色，勾选可多选
