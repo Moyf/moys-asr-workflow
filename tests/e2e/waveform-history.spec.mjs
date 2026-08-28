@@ -1776,6 +1776,72 @@ test('sticker Resolve and OTIO exports expand references per enabled subtitle', 
   expect(result.otioClips).toEqual([[1000, 2000], [3000, 4000]]);
 });
 
+test('gap-removed OTIO exports subtitle text as clip markers with Resolve colors', async ({ page }) => {
+  await page.goto(server.url);
+  const result = await page.evaluate(() => {
+    DATA.segments.splice(
+      0,
+      DATA.segments.length,
+      { id: 'marker-yellow', start: 0, end: 1000, text: 'yellow', items: [], color: { name: 'yellow' } },
+      { id: 'marker-green', start: 1000, end: 2000, text: 'green', items: [], color: { name: 'green' } },
+      { id: 'marker-removed', start: 2200, end: 2800, text: 'removed', items: [], color: { name: 'red' } },
+      { id: 'marker-red', start: 3000, end: 4000, text: 'red', items: [], color: { name: 'red' } },
+      { id: 'marker-blue', start: 4000, end: 5000, text: 'blue', items: [], color: { name: 'blue' } },
+      { id: 'marker-purple', start: 5000, end: 6000, text: 'purple', items: [], color: { name: 'purple' } },
+      {
+        id: 'marker-purple-ref',
+        start: 6000,
+        end: 7000,
+        text: 'purple ref',
+        items: [],
+        color_ref: { name: 'purple', headIdx: 5 },
+      },
+      { id: 'marker-default', start: 7000, end: 8000, text: 'default', items: [] },
+      { id: 'marker-disabled', start: 8000, end: 9000, text: 'disabled', items: [], disabled: true },
+    );
+    DATA.gap_remove = {
+      schema: 'moy.asr.gap_remove.v1',
+      detector: 'audio_gate',
+      minimum_ms: 500,
+      threshold_db: -24,
+      hysteresis_db: 2,
+      lead_in_ms: 40,
+      lead_out_ms: 80,
+      skip_playback: true,
+      operation_mode: 'middle_drag',
+      manual_corrections: false,
+      gaps: [{ start: 2000, end: 3000, removed: true }],
+    };
+    const otio = JSON.parse(buildGapRemovedOtio());
+    return otio.tracks.children[0].children.map((clip) => ({
+      markers: clip.markers.map((marker) => ({
+        name: marker.name,
+        color: marker.color,
+        start: marker.marked_range.start_time.value,
+        duration: marker.marked_range.duration.value,
+      })),
+    }));
+  });
+
+  expect(result).toEqual([
+    {
+      markers: [
+        { name: 'yellow', color: 'YELLOW', start: 0, duration: 60 },
+        { name: 'green', color: 'GREEN', start: 60, duration: 60 },
+      ],
+    },
+    {
+      markers: [
+        { name: 'red', color: 'RED', start: 0, duration: 60 },
+        { name: 'blue', color: 'BLUE', start: 60, duration: 60 },
+        { name: 'purple', color: 'PURPLE', start: 120, duration: 60 },
+        { name: 'purple ref', color: 'PURPLE', start: 180, duration: 60 },
+        { name: 'default', color: 'WHITE', start: 240, duration: 60 },
+      ],
+    },
+  ]);
+});
+
 test('gap-removed export includes color SRT and names OTIO as a timeline project', async ({ page }) => {
   // 关闭「彩色字幕统一导出」，回到逐个下载的行为（默认勾选时会走目录选择器，自动化无法处理）
   await page.addInitScript(() => {
