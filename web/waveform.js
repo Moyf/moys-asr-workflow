@@ -230,13 +230,11 @@
       editorDisplay: CINEMA_SCREEN_EDITOR_DISPLAY,
     },
   };
-  const PALETTE = {
-    yellow: '#f1c40f',
-    green: '#2ecc71',
-    red: '#e74c3c',
-    purple: '#9b59b6',
-    blue: '#168cff',
-  };
+  // 调色板数值唯一来源于 maw/speaker.py，渲染时注入 window.ASR_EDITOR_PALETTE；
+  // Node 测试等无注入环境回退为空表（colorForSegment 走存储值兜底）。
+  const PALETTE = Object.fromEntries(
+    ((typeof window !== 'undefined' && window.ASR_EDITOR_PALETTE) || []).map((c) => [c.name, c.value]),
+  );
 
   function clamp(value, low, high) {
     return Math.max(low, Math.min(high, value));

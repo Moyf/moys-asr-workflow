@@ -93,6 +93,7 @@ MAW 的工程文件会保存 `segments[*].items` 字/词级时间码。存在这
 - **工程文件（`.mosp` / `.json`）**：继续编辑时优先保存它；新工程建议使用 `.mosp`，`.json` 用于兼容旧工程和已有工作流。
 - **SRT / TXT**：SRT 用于播放器、剪辑软件和普通字幕交付；可选择把首条字幕的起点拉到 0（只延长首条，不改变其结束时间或后续字幕时间码）。工程存在颜色标记时，可导出完整字幕，或按每种已使用颜色（含无颜色的 `default`）分别生成带颜色名后缀的 SRT。也可导出逐字幕行排列的纯文本 TXT。
 - **去空隙导出**：仅在有已移除空隙时出现，包括完整或按颜色拆分的 SRT、时间线 OTIO、FFconcat 和保留区域 JSON。
+- **去空隙 OTIO marker**：每个保留区间会生成一个媒体 clip，启用字幕会作为 clip marker 写入，marker 名称是字幕内容；有颜色时映射为 DaVinci Resolve 的 `RED`、`YELLOW`、`GREEN`、`BLUE`、`PURPLE` 五种标记色，跨越被移除空隙的字幕会按保留区间拆分。视频素材只写入视频 clip，纯音频素材写入音频 clip；无颜色字幕使用白色默认标记。Resolve 还提供 Blue、Cyan、Green、Yellow、Red、Pink、Purple、Fuchsia、Rose、Lavender、Sky、Mint、Lemon、Sand、Cocoa、Cream 这 16 种可用颜色，当前 MAW 只使用其中五色。
 - **表情包 OTIO**：将已分配的表情包输出为独立图片轨道时间线。
 - **Resolve JSON**：保存字幕、颜色、表情包与媒体的批量导入数据。它是导出用的交换文件，不是 MAW 工程文件；MAW 只负责导出这个数据文件，要实际操作达芬奇仍需在达芬奇环境中运行兼容的执行脚本。
 

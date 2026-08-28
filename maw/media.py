@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import struct
 import subprocess
 from dataclasses import dataclass
 from enum import Enum
@@ -28,6 +29,61 @@ AUDIO_EXTENSIONS = frozenset({
 })
 MEDIA_EXTENSIONS = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
 CONVERSION_EXTENSIONS = frozenset({".flv"})
+
+
+def read_bwf_time_reference(path: Path) -> dict[str, int] | None:
+    """Read the BWF bext media origin from a WAV file.
+
+    The time_reference field is the sample position of the first sample on
+    the source timeline. It is deliberately kept as sample units here; the
+    editor converts it to its fixed 60 fps OTIO rate. Non-BWF WAV files and
+    malformed or unreadable files return None so media loading remains
+    optional metadata enrichment.
+    """
+
+    if path.suffix.lower() != ".wav":
+        return None
+    try:
+        with path.open("rb") as stream:
+            header = stream.read(12)
+            if (
+                len(header) != 12
+                or header[0:4] not in {b"RIFF", b"RF64"}
+                or header[8:12] != b"WAVE"
+            ):
+                return None
+
+            sample_rate: int | None = None
+            time_reference: int | None = None
+            while True:
+                chunk_header = stream.read(8)
+                if len(chunk_header) != 8:
+                    break
+                chunk_id = chunk_header[0:4]
+                chunk_size = struct.unpack("<I", chunk_header[4:8])[0]
+                payload_size = min(chunk_size, 346 if chunk_id == b"bext" else 8)
+                payload = stream.read(payload_size)
+                if len(payload) != payload_size:
+                    break
+                if chunk_size > payload_size:
+                    stream.seek(chunk_size - payload_size, os.SEEK_CUR)
+                if chunk_size % 2:
+                    stream.seek(1, os.SEEK_CUR)
+
+                if chunk_id == b"fmt " and chunk_size >= 8:
+                    sample_rate = struct.unpack("<I", payload[4:8])[0]
+                elif chunk_id == b"bext" and chunk_size >= 346:
+                    low, high = struct.unpack("<II", payload[338:346])
+                    time_reference = low | (high << 32)
+
+                if sample_rate and time_reference is not None:
+                    return {
+                        "sample_rate": sample_rate,
+                        "time_reference_samples": time_reference,
+                    }
+    except (OSError, struct.error, ValueError):
+        return None
+    return None
 
 
 @dataclass(frozen=True, slots=True)

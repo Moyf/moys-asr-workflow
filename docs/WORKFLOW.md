@@ -180,6 +180,29 @@ uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" -ll 2m --j
 
 输出文件与 Qwen 流程相同（SRT / `.mosp` / edit.html），文件命名标签为 `.soniox.`。注意：Soniox 单文件最长 5 小时；token 粒度是 word/sub-word，中文不保证逐字；转写完成后脚本会自动删除云端文件与转写记录。
 
+## 用腾讯云录音文件识别转写（可选，支持字词时间码与说话人）
+
+在 `.env` 中填写 `TENCENT_SECRET_ID` 和 `TENCENT_SECRET_KEY` 后，可以使用默认的 `16k_zh_en_2.0` 引擎：
+
+```powershell
+uv run python generate_subtitle_tencent_api.py "D:\Videos\example.mp4" -ll 2m --json
+```
+
+常用可选项：
+
+```text
+--file-url URL        使用 COS / 公网 URL，适用于超过 5MB 的媒体
+--speaker             请求腾讯云说话人分离并保留 speaker 标签
+--speaker-colors      兼容参数，同时请求说话人分离
+--model ENGINE        覆盖引擎，默认 16k_zh_en_2.0
+--keep-punct          保留句尾逗号和句号
+--strip-tail-punct S  指定要剥除的句尾标点集合
+--debug               输出字词时间码数量
+--debug-raw           保存腾讯云完整原始响应
+```
+
+腾讯云结果中的 `Words` 会映射为工程 `items`，其中 `OffsetStartMs` / `OffsetEndMs` 是整数毫秒。启用 `--speaker` 时，MAW 会发送 `SpeakerDiarization=1`；说话人标签是匿名 ID。小于等于 5MB 的本地文件可直传，较大文件必须先上传到 COS 或其他公网可访问地址并使用 `--file-url`。
+
 ## 用必剪转写（实验性，免 Key，仅中文）
 
 > [!warning]
@@ -321,6 +344,7 @@ LLM 工具支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 Ope
 - 播放器内的字幕预览可直接拖动；悬停或聚焦后拖动八个手柄可缩放。方向键移动，`Shift` 加速移动，`Alt + 方向键` 调整尺寸。几何保存在工程 `preview.subtitle`，不会改变字幕时间。
 - “移除静音空隙”只建立可逆的压缩时间线，不修改原媒体和原字幕时间。
 - 常规 SRT 通过工具栏导出；若启用了空隙移除，可选择去空隙 SRT、OTIO、FFconcat 或保留区域 JSON。
+- 去空隙 OTIO 会把启用字幕作为保留媒体 clip 上的 marker，名称为字幕内容；字幕颜色映射为 Resolve 的 `RED`、`YELLOW`、`GREEN`、`BLUE`、`PURPLE`，跨越被移除空隙的字幕按保留区间拆分，无颜色时使用白色默认标记。Resolve 的可用颜色参考还包括 Blue、Cyan、Green、Yellow、Red、Pink、Purple、Fuchsia、Rose、Lavender、Sky、Mint、Lemon、Sand、Cocoa、Cream；当前 MAW 使用其中五色。
 
 完整 JSON 约束在 [JSON_SCHEMA.md](../JSON_SCHEMA.md)。若你打算用其他 ASR 或 LLM 生成工程，至少保证顶层有 `segments`，时间全部是整数毫秒。
 

@@ -7,6 +7,7 @@
 ### 🚀 全新特性
 
 - **录制文稿对齐（实验性）** ： 新增 `server-align` 本地工具，输入 `.mosp`、文稿与媒体后可把实际录制内容分为匹配、失败片段、不完整录制、备选 take、缺失文稿与 Extra；在波形上选择 take、试听、调整空隙并导出可继续交给 MAWE 编辑的工程。
+- **腾讯云录音文件识别** ： 新增腾讯云「录音文件识别」供应商：使用 TC3-HMAC-SHA256 鉴权、异步任务轮询和结构化毫秒时间戳，支持 `16k_zh_en_2.0` 引擎（PR #65）；5MB 以上媒体可通过 COS / 公网 URL 识别。
 - **Faster-Whisper 本地引擎（实验）** ： `generate_subtitle_local.py` 新增 `--engine whisper`，通过 faster-whisper（CTranslate2 运行时、CT2 权重与 Silero VAD 内置）输出词级整数毫秒时间戳，并复用统一切句、SRT 与 `.mosp` 流程；依赖随 `uv sync --extra local` 安装。默认模型 `large-v3`，可传 `--model` 切换 `turbo` 等 HF Hub 名称或本地 CTranslate2 目录；不提供说话人分离。Launcher「本地模型」同步提供 large-v3 入口，缓存发现与目录误判防护与其他引擎一致。
 - **MOSS 本地转录引擎** ： 引入 MOSS Transcribe-Diarize（Transformers 5.x）本地识别引擎，独立安装到 `local-runtime-moss` 环境，模型与其余引擎共用缓存目录；模型条目已标注仅提供段级时间戳、无字词级时间码。
 - **MAW 字幕颜色过滤与可配置拆分移除符号** ： 编辑器支持按颜色过滤字幕段落查看，并可配置在断句拆分时移除哪些符号（PR #76）。
@@ -15,9 +16,13 @@
 
 - **静音空隙处理** ： 编辑器支持右键添加空隙、跨行边界与中键范围操作、边界与中键组合模式、`Alt` 整体移动和 `Ctrl/Cmd` 复制；`gap_remove.provenance` 将静音检测、台本对齐与人工调整分层保存，重扫时可保留手工结果。「空隙检测与调整」还可按当前前后预留量对已有空隙额外向内收缩，并支持重复操作与撤销。
 - **空隙内字幕控制** ： 在「空隙检测与调整」中按覆盖率和剩余时长阈值批量禁用静音空隙内的主字幕，不改写字幕时间并支持撤销。
+- **预览字幕颜色下划线** ： 播放预览可按字幕的颜色快照给文字加下划线以区分不同颜色的字幕，默认开启，可在「预览字幕样式」设置中关闭；只影响预览画面，不改变字幕文本。
+- **颜色过滤全选过滤结果** ： 颜色过滤菜单新增「全选过滤结果」，把当前过滤命中的主轨字幕一键全部选中，可配合批量替换（仅选中）等按选区工作的工具，例如给不同说话人的字幕批量加前缀；双列等不显示颜色条的列表模式下自动隐藏过滤按钮。
+- **去空隙 OTIO 字幕标记** ： 导出 OTIO 时把启用字幕作为媒体 clip 的 marker 写入，marker 名称为字幕内容；继承字幕颜色并映射到 DaVinci Resolve 的 `RED`、`YELLOW`、`GREEN`、`BLUE`、`PURPLE`，跨越被移除空隙的字幕按保留 clip 拆分，无颜色字幕使用白色默认标记。
 
 ### 🔄 变更
 
+- **字幕颜色调色板单一来源** ： 5 色调色板收敛到 `maw/colors.py` 一处定义——speaker 自动取色、1~5 手动标记与编辑器/波形显示共用，渲染时注入 `window.ASR_EDITOR_PALETTE`，web 侧不再各自硬编码色值。五色明度（OKLCH L≈0.718）以绿色 `#66bb6a` 为锚统一：黄 `#c4a019`、红 `#f07f6f`、紫 `#bf89e6`、蓝 `#61a7fa`，并顺带统一了此前蓝色在编辑器/波形与生成端不一致的取值；旧工程已存储的颜色快照值保持不变。
 - **托管 Runtime 共性抽象** ： local / ocr / moss 三个托管 Runtime 统一到 `maw/runtimes`（`RuntimeSpec` 声明式规格 + `ManagedRuntime` 生命周期基类），`maw/local_runtime.py` 与 `maw/ocr_runtime.py` 收窄为薄壳委托，新增 `engine` 维度（local / moss）支持。
 - **移除 bundled uv** ： Windows 打包版托管 Runtime 一律 embedded Python + get-pip + `pip install --target` 安装（unix 打包版与源码模式见下条）；moss 依赖因与 local（qwen-asr 固定 Transformers 4.57.6）互斥而独立声明于 `moss-requirements.in`，由 `uv pip compile` 冻结（与 local/ocr 的 `uv export` 管线并行），macOS 产物不再内置 uv。
 - **unix 打包版宿主 venv 与源码模式零资产安装** ： unix（Linux / macOS）打包版不再内嵌解释器，runtime 安装改用系统 `python3 -m venv` 创建环境后按同一份 frozen 清单直装（无 python3 或版本低于 3.11 时给出明确提示），产物不再携带 unix 平台用不到的引导资产；源码模式同样零引导资产，检测开发环境的 uv 后以 `uv pip install --python <MAW 解释器> --target <site-packages>` 接入与打包版一致的托管目录布局。全新 clone 首次安装时若 `build/` 下缺 frozen 清单，会按构建管线同款 `uv export` / `uv pip compile` 命令用 uv 自动补齐；未检测到 uv 时在进度日志输出安装指引警告。
@@ -31,6 +36,7 @@
 ### 🐛 问题修复
 
 - **空隙人工调整** ： 修复恢复空隙在边界缩小、整体移动或覆盖相邻空隙时产生残留区段、意外重新激活或连带移动的问题；时间轴改为始终显示一层可编辑空隙。
+- **有分组色的字幕播放高亮被覆盖** ： 主字幕列表播放中（active）行不再把背景统一覆盖成 accent 蓝，而是在原分组色上增强背景与左边条颜色；选中 + 播放中叠加时以原色为主轻混 accent，选中琥珀环保持不变。
 - **本地模型准备入口崩溃** ： 托管 Runtime 收紧子进程封装签名后，模型准备的两处调用未同步更新，GUI 点击「下载 / 准备模型」会直接抛出类型错误（影响 Qwen / FunASR / MOSS / Whisper 全部本地引擎）。现按必填参数补齐错误映射并新增回归测试。
 - **Whisper 模型下载目录偏离缓存发现布局** ： faster-whisper 的显式 `download_root` 曾指向缓存根本体，权重落在 `model-cache\models--*`，而缓存发现只扫描 `model-cache\huggingface\hub`，导致准备成功后状态仍显示「未检测到本地模型」。现对齐 `HF_HUB_CACHE` 约定，且缓存发现兼容已下载的扁平布局（无需重新下载）。
 - **去空隙 OTIO 导出源范围错位** ： 为去空隙 OTIO 的音视频外部引用写入完整源媒体 available_range，并保留各保留区间原始的 source_range 起点，修复 Resolve 导入后片段内容偏移。
@@ -50,6 +56,8 @@
 
 ### 🐛 修复
 
+- **颜色过滤弹窗被布局拖动条遮挡** ： 字幕列表工具栏内的下拉菜单（颜色过滤等）打开时统一提升工具栏层级，修复弹窗被 z-index 更高的布局拖动条盖住的问题；该规则一次性覆盖工具栏内现有与后续新增的下拉，契约已记录到 `DESIGN.md`。
+- **静音空隙跨行预览** ： 修复中键或边界拖动跨行时新行预览不显示，以及跨行缩短后残留旧预览的问题；同时修复切换中键操作模式后交互不生效的情况。
 - **Windows UTF-8 输出** ： 统一 GUI、CLI、服务端及运行时子进程的 UTF-8 输出配置，避免非 UTF-8 Windows 区域设置下输出中文或其他 Unicode 字符时崩溃。
 
 ## [1.5.0-beta.3] - 2026-08-26

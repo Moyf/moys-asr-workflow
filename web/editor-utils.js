@@ -49,6 +49,72 @@
     }
   }
 
+  function readUint32LittleEndian(bytes, offset) {
+    if (offset < 0 || offset + 4 > bytes.length) return null;
+    return (
+      bytes[offset]
+      | (bytes[offset + 1] << 8)
+      | (bytes[offset + 2] << 16)
+      | (bytes[offset + 3] << 24)
+    ) >>> 0;
+  }
+
+  function parseBwfTimeReference(input) {
+    const bytes = input instanceof Uint8Array ? input : new Uint8Array(input || []);
+    if (bytes.length < 12) return null;
+    const isRiff = bytes[0] === 0x52 && bytes[1] === 0x49
+      && bytes[2] === 0x46 && bytes[3] === 0x46;
+    const isRf64 = bytes[0] === 0x52 && bytes[1] === 0x46
+      && bytes[2] === 0x36 && bytes[3] === 0x34;
+    const isWave = bytes[8] === 0x57 && bytes[9] === 0x41
+      && bytes[10] === 0x56 && bytes[11] === 0x45;
+    if ((!isRiff && !isRf64) || !isWave) return null;
+
+    let offset = 12;
+    let sampleRate = null;
+    let timeReferenceSamples = null;
+    while (offset + 8 <= bytes.length) {
+      const chunkId = String.fromCharCode(
+        bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3],
+      );
+      const chunkSize = readUint32LittleEndian(bytes, offset + 4);
+      if (chunkSize === null) break;
+      const payloadStart = offset + 8;
+      if (chunkSize > bytes.length - payloadStart) break;
+
+      if (chunkId === 'fmt ' && chunkSize >= 8) {
+        sampleRate = readUint32LittleEndian(bytes, payloadStart + 4);
+      } else if (chunkId === 'bext' && chunkSize >= 346) {
+        const low = readUint32LittleEndian(bytes, payloadStart + 338);
+        const high = readUint32LittleEndian(bytes, payloadStart + 342);
+        if (low !== null && high !== null) {
+          timeReferenceSamples = high * 0x100000000 + low;
+        }
+      }
+      if (
+        Number.isInteger(sampleRate)
+        && sampleRate > 0
+        && Number.isSafeInteger(timeReferenceSamples)
+        && timeReferenceSamples >= 0
+      ) {
+        return {
+          sample_rate: sampleRate,
+          time_reference_samples: timeReferenceSamples,
+        };
+      }
+      offset = payloadStart + chunkSize + (chunkSize % 2);
+    }
+    return null;
+  }
+
+  async function readBwfTimeReferenceFromFile(file) {
+    if (!file || !/\.wav$/iu.test(String(file.name || '')) || typeof file.slice !== 'function') {
+      return null;
+    }
+    const header = await file.slice(0, 1024 * 1024).arrayBuffer();
+    return parseBwfTimeReference(new Uint8Array(header));
+  }
+
   const KEYBOARD_OPERATION_REFERENCE_MODES = new Set(['pointer', 'playhead']);
 
   function normalizeKeyboardOperationReferenceMode(value) {
@@ -4713,6 +4779,8 @@ export default MawDynamicCaptions;
   window.AsrEditorUtils = {
     subtitleFontFamilyDisplayName,
     decodeSubtitleText,
+    parseBwfTimeReference,
+    readBwfTimeReferenceFromFile,
     normalizeKeyboardOperationReferenceMode,
     resolveKeyboardOperationReference,
     buildReplacementPreview,

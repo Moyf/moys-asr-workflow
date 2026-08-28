@@ -33,9 +33,10 @@ import sys
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
+from maw.colors import COLOR_PALETTE
 from maw.console import configure_utf8_stdio
 from maw.project import ProjectValidationFailed, normalize_project
-from maw.media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS
+from maw.media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS, read_bwf_time_reference
 from maw.waveform import (
     DEFAULT_PEAKS_PER_SECOND,
     WaveformError,
@@ -246,12 +247,21 @@ def build_editor_scripts() -> str:
     return "\n\n".join(read_web_asset(name).rstrip() for name in read_editor_script_manifest())
 
 
+def build_palette_json() -> str:
+    """Serialize the single-source subtitle color palette for editor injection."""
+    return json.dumps(
+        [{"name": name, "value": value} for name, value in COLOR_PALETTE],
+        ensure_ascii=False,
+    )
+
+
 def render_editor_page(**context: str) -> str:
     """Render the modular web sources back into one portable HTML file."""
     replacements = {
         "__EDITOR_CSS__": read_web_asset("editor.css").rstrip(),
         "__WAVEFORM_CSS__": read_web_asset("waveform.css").rstrip(),
         "__EDITOR_SCRIPTS_JS__": build_editor_scripts(),
+        "__PALETTE_JSON__": build_palette_json(),
         "__TITLE__": context["title"],
         "__MEDIA_HTML__": context["media_html"],
         "__DATA_JSON__": context["data_json"],
@@ -395,6 +405,13 @@ def main():
     if not media_path or not media_path.exists():
         print("错误: 找不到媒体文件，请用 -m 参数指定")
         return 1
+
+    # BWF 的媒体时间基准属于源媒体，不属于字幕时间码；每次根据当前
+    # 实际加载的文件重新读取，避免沿用工程中可能过期的值。
+    data.pop("media_time_reference", None)
+    media_time_reference = read_bwf_time_reference(media_path)
+    if media_time_reference is not None:
+        data["media_time_reference"] = media_time_reference
 
     if not args.no_waveform:
         try:
