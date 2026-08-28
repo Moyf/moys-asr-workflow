@@ -370,6 +370,33 @@ test('clearing a gap removes its source records instead of creating a restoratio
   ]);
 });
 
+test('clearing a moved gap removes its stateful provenance without restoring the source', () => {
+  const initial = gapCore.normalizeGapRemoveProvenance({
+    sources: {
+      audio_gate: [{ id: 'audio', start: 1000, end: 2000 }],
+    },
+    manual_overrides: [{
+      id: 'move',
+      source: 'manual',
+      operation: 'move',
+      start: 1000,
+      end: 6000,
+      removed: true,
+      base_start: 1000,
+      base_end: 2000,
+      target_start: 5000,
+      target_end: 6000,
+    }],
+  });
+
+  const cleared = gapCore.removeGapRemoveProvenanceRange(initial, 5000, 6000);
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(gapCore.gapRangesFromProvenance(cleared))),
+    [],
+  );
+});
+
 test('replaces one provenance source without losing the other layers', () => {
   const initial = gapCore.normalizeGapRemoveProvenance({
     sources: {
