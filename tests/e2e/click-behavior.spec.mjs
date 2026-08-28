@@ -658,6 +658,131 @@ test('B split keeps the source cue visually anchored while lazy rows relayout', 
   }).toBeLessThan(1.5);
 });
 
+test('C merge keeps the source cue visually anchored while lazy rows relayout', async ({ page }) => {
+  await page.goto(server.url);
+  // 关闭点击后的自动滚动，只观察 C 合并本身的列表重绘和懒布局回填。
+  await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('moy.asr.editor.settings.v1') || '{}');
+    saved.cueListAutoScrollOnClick = false;
+    localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify(saved));
+  });
+  await page.reload();
+  await page.evaluate(() => {
+    const samples = [
+      '短字幕',
+      '这是一条会在字幕列表里自动换行的真实长度字幕',
+      '较长字幕用于模拟采访视频中的自然断句和不同的列表行高',
+      '中等长度字幕内容',
+    ];
+    DATA.segments = Array.from({ length: 90 }, (_, index) => {
+      const start = index * 2000;
+      return {
+        start,
+        end: start + 1800,
+        text: `${samples[index % samples.length]} ${index}`,
+        items: [],
+      };
+    });
+    renderAll();
+    document.querySelector('.cue[data-idx="56"]').scrollIntoView({ block: 'end' });
+  });
+
+  const first = page.locator('.cue[data-idx="56"]');
+  const second = page.locator('.cue[data-idx="57"]');
+  await expect.poll(async () => {
+    const firstTop = await first.evaluate((element) => element.getBoundingClientRect().top);
+    await page.waitForTimeout(100);
+    const secondTop = await first.evaluate((element) => element.getBoundingClientRect().top);
+    return Math.abs(firstTop - secondTop);
+  }, { timeout: 4000 }).toBeLessThan(0.5);
+
+  await first.locator('.text').click();
+  await second.locator('.text').click({ modifiers: ['Shift'] });
+  await expect(page.locator('.cue.selected')).toHaveCount(2);
+  await expect.poll(() => page.locator('.cue.selected').evaluateAll(
+    (elements) => elements.map((element) => Number(element.dataset.idx)),
+  )).toEqual([56, 57]);
+  const beforeTop = await first.evaluate((element) => element.getBoundingClientRect().top);
+  await page.keyboard.press('c');
+
+  await expect.poll(() => page.locator('.cue').count()).toBe(89);
+  const merged = page.locator('.cue[data-idx="56"]');
+  await expect(merged).toHaveClass(/selected/);
+  await expect.poll(async () => {
+    const currentTop = await merged.evaluate((element) => element.getBoundingClientRect().top);
+    return Math.abs(currentTop - beforeTop);
+  }).toBeLessThan(1.5);
+  await expect(merged).toHaveCSS('content-visibility', 'auto');
+});
+
+test('C merge keeps the extension cue visually anchored while lazy rows relayout', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('moy.asr.editor.settings.v1') || '{}');
+    saved.cueListAutoScrollOnClick = false;
+    localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify(saved));
+  });
+  await page.reload();
+  await page.evaluate(() => {
+    const samples = [
+      'Short subtitle',
+      'This is a naturally wrapped extension subtitle with realistic line height',
+      'A longer translated subtitle simulates interviews with uneven rows in the cue list',
+      'Medium length extension subtitle',
+    ];
+    DATA.multi_subtitle = {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'extension',
+      tracks: [{
+        id: 'extension-1',
+        role: 'extension',
+        name: 'English',
+        language: 'en',
+        split_mode: 'word',
+        source_name: 'translation.srt',
+        segments: Array.from({ length: 90 }, (_, index) => {
+          const start = index * 2000;
+          return {
+            id: `extension-${index}`,
+            start,
+            end: start + 1800,
+            text: `${samples[index % samples.length]} ${index}`,
+          };
+        }),
+      }],
+      bindings: [],
+    };
+    normalizedMultiSubtitleReference = null;
+    renderAll();
+    document.querySelector('.cue[data-ext-idx="56"]').scrollIntoView({ block: 'end' });
+  });
+
+  const first = page.locator('.cue[data-ext-idx="56"]');
+  const second = page.locator('.cue[data-ext-idx="57"]');
+  await expect.poll(async () => {
+    const firstTop = await first.evaluate((element) => element.getBoundingClientRect().top);
+    await page.waitForTimeout(100);
+    const secondTop = await first.evaluate((element) => element.getBoundingClientRect().top);
+    return Math.abs(firstTop - secondTop);
+  }, { timeout: 4000 }).toBeLessThan(0.5);
+
+  await first.locator('.text').click();
+  await second.locator('.text').click({ modifiers: ['Shift'] });
+  await expect(page.locator('.cue.selected')).toHaveCount(2);
+  const beforeTop = await first.evaluate((element) => element.getBoundingClientRect().top);
+  await page.keyboard.press('c');
+
+  await expect.poll(() => page.locator('.cue[data-ext-idx]').count()).toBe(89);
+  const merged = page.locator('.cue[data-ext-idx="56"]');
+  await expect(merged).toHaveClass(/selected/);
+  await expect.poll(async () => {
+    const currentTop = await merged.evaluate((element) => element.getBoundingClientRect().top);
+    return Math.abs(currentTop - beforeTop);
+  }).toBeLessThan(1.5);
+  await expect(merged).toHaveCSS('content-visibility', 'auto');
+});
+
 test('B flashes a yellow marker after splitting at the waveform pointer without a selection', async ({ page }) => {
   await page.goto(server.url);
   // 默认主字幕按单词模式拆分；'Alpha' 单词内无词边界，先改造成两词再测拆分闪光。
