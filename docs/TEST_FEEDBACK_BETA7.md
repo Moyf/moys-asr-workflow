@@ -332,9 +332,11 @@
 - 已验证：`.venv\\Scripts\\python.exe edit.py --blank`；`node --check web\\editor.js`、`node --check web\\editor-utils.js`、`node --check web\\editor-i18n.js`、`node --check tests\\e2e\\multi-subtitle.spec.mjs`；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（215/215）；`git diff --check`；本地 Chromium 目标回归（使用 `MAW_E2E_PYTHON=.venv\\Scripts\\python.exe`）1/1。
 - localhost `server-editor --blank` 返回 200，页面包含副字幕文案和主列 dirty 规则，未发现旧中文称呼。完整 `multi-subtitle.spec.mjs` 为 80/81：唯一失败是既有的未绑定副字幕文本处理用例，其夹具的首个双列行本来是空主列，失败断言与本次修改无关。
 
-## 增量记录（任务 41：去空隙 OTIO 源范围错位）
+## 增量记录（任务 41：去空隙 OTIO 源范围错位，复核）
 
-- 根因：去空隙 OTIO 的每个 `ExternalReference` 没有写入 `available_range`（原值为 `null`）。片段的 `source_range` 虽然包含原始媒体起点，但 Resolve 缺少完整媒体可用范围时会错误解释这些源范围，表现为片段长度正确而源内容错位。
-- 修复：保留每个保留区间原始的 `source_range.start_time`，并为每个媒体引用写入从 0 开始、覆盖完整源媒体时长的 `available_range`；视频和音频轨道共用同一媒体范围。`blank-editor.html` 已从 `web/` 源码重新生成。
-- 已增加多空隙回归：覆盖开头空隙、多个中间空隙和末尾保留区间，断言每个 clip 的序列连续性、源起点、源时长以及完整媒体 `available_range`。
-- 当前状态：代码、标准 OTIO 解析和浏览器回归均已验证；Resolve 实机导入仍未完成，本机未发现预期的 `Resolve.exe`，因此 Resolve 最终显示效果保留为未验证。
+- 复核结论：上一版把 `available_range` 从 `null` 改成 `0..全长`，但这只补了字段，仍然丢失了 BWF 媒体时间基准；用户再次用示例 OTIO 对比后确认问题仍在。
+- 证据：用户提供的参考 OTIO 对应 WAV 的 `bext.time_reference` 是 `8895762` samples，采样率是 `48000`；换算到 OTIO 固定 60 fps 为 `8895762 / 48000 * 60 = 11119.7025` 帧。参考文件的 `available_range.start_time` 正是 `11119.7025`；三个 clip 起点分别为 `11461.7025`、`11600.7025`、`11664.7025`，减去媒体起点后是 `342`、`481`、`545` 帧。
+- 根因：旧导出把媒体当成从文件第 0 帧开始，虽然 clip 时长和相对剪辑区间正确，Resolve 解释 source range 时却没有原始媒体的时间坐标。因此前部 clip 会被钳到 0，后部 clip 也会产生固定偏移。
+- 修复：新增 BWF `bext` 解析，`edit.py`、GUI 生成器和 server-editor 在页面数据中注入 `media_time_reference`；便携版手动加载 WAV 时从文件头重新读取。去空隙 OTIO 现在将 `available_range.start_time` 设为媒体起点，并将每个 `source_range.start_time` 设为媒体起点加片段相对起点；无 BWF 的 WAV 和其他媒体仍回退到 0。该字段是页面运行时元数据，不扩展 mosp 工程契约。
+- 回归：Python BWF 解析、GUI 页面注入、editor-utils 解析和带非零 BWF 起点的 Chromium OTIO 导出均已加入测试；`blank-editor.html` 已从 `web/` 源码重新生成。标准 OTIO 数值检查覆盖 available range、clip 源起点、源时长和去空隙后的连续序列。
+- 当前状态：代码、语法、单元测试和浏览器回归均已验证；Resolve 实机导入仍未完成，本机未发现预期的 `Resolve.exe`，因此 Resolve 最终显示效果保留为未验证。

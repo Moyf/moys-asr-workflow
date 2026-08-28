@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+- 新增腾讯云「录音文件识别」供应商：使用 TC3-HMAC-SHA256 鉴权、异步任务轮询和结构化毫秒时间戳，支持 `16k_zh_en_2.0` 引擎；5MB 以上媒体可通过 COS / 公网 URL 识别。
+
 ### 🚀 全新特性
 
 - **Faster-Whisper 本地引擎（实验）** ： `generate_subtitle_local.py` 新增 `--engine whisper`，通过 faster-whisper（CTranslate2 运行时、CT2 权重与 Silero VAD 内置）输出词级整数毫秒时间戳，并复用统一切句、SRT 与 `.mosp` 流程；依赖随 `uv sync --extra local` 安装。默认模型 `large-v3`，可传 `--model` 切换 `turbo` 等 HF Hub 名称或本地 CTranslate2 目录；不提供说话人分离。Launcher「本地模型」同步提供 large-v3 入口，缓存发现与目录误判防护与其他引擎一致。
