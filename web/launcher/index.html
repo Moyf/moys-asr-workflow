@@ -198,7 +198,7 @@
               <div class="segmentation-row">
                 <div class="segmentation-control">
                   <label for="maxLen" data-i18n="max_len">最大字数</label>
-                  <input id="maxLen" type="number" min="1" step="1" inputmode="numeric" data-i18n-placeholder="max_len_placeholder" placeholder="21" autocomplete="off">
+                  <input id="maxLen" type="number" min="1" step="1" inputmode="numeric" data-i18n-placeholder="max_len_placeholder" placeholder="18" autocomplete="off">
                   <p id="maxLenError" class="field-error"></p>
                 </div>
                 <div class="segmentation-control">
@@ -208,11 +208,11 @@
                 </div>
                 <div class="segmentation-control">
                   <label for="gapSplit" data-i18n="gap_split">停顿切句（毫秒）</label>
-                  <input id="gapSplit" type="number" min="0" step="1" inputmode="numeric" data-i18n-placeholder="gap_split_placeholder" placeholder="1500" autocomplete="off">
+                  <input id="gapSplit" type="number" min="0" step="1" inputmode="numeric" data-i18n-placeholder="gap_split_placeholder" placeholder="800" autocomplete="off">
                   <p id="gapSplitError" class="field-error"></p>
                 </div>
               </div>
-              <p class="hint" data-i18n="segmentation_hint">留空使用模型默认值（停顿切句：云端 1500ms，本地 1000ms）；最大/最小字数主要作用于中文，停顿阈值单位为毫秒。</p>
+              <p class="hint" data-i18n="segmentation_hint">留空使用默认值（最大字数：18，短句合并阈值：5，停顿切句：800ms）；最大/最小字数主要作用于中文，停顿阈值单位为毫秒。</p>
             </div>
             <div id="qwenAudioOptions" class="adv-group qwen-audio-options hidden">
               <h3 data-i18n="qwen_audio_options_title">Qwen 上下文与热词</h3>

@@ -1239,9 +1239,9 @@ def build_local_segments(
     transcription: LocalTranscription,
     *,
     duration_ms: int,
-    max_len: int = 21,
+    max_len: int = 18,
     min_len: int = 5,
-    gap_split_ms: int = 1000,
+    gap_split_ms: int = 800,
     strip_tail_punct: str = _LOCAL_TAIL_PUNCT,
 ) -> list[dict[str, Any]]:
     """Turn adapter output into MAW's integer-millisecond subtitle segments."""
