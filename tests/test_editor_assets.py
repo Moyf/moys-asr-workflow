@@ -20,6 +20,7 @@ class EditorAssetContractTests(unittest.TestCase):
             edit.read_editor_script_manifest(),
             (
                 "editor-runtime.js",
+                "gap-remove-core.js",
                 "editor-utils.js",
                 "editor-i18n.js",
                 "waveform.js",
@@ -33,6 +34,7 @@ class EditorAssetContractTests(unittest.TestCase):
         previous_index = -1
         markers = (
             "// Shared frontend runtime registry.",
+            "// Shared gap-remove data and playback helpers",
             "// Pure editor helpers kept separate",
             "(function initMaweI18n(global) {",
             "// Framework-neutral waveform runtime.",
@@ -43,6 +45,64 @@ class EditorAssetContractTests(unittest.TestCase):
             current_index = payload.index(marker)
             self.assertGreater(current_index, previous_index, asset_name)
             previous_index = current_index
+
+    def test_waveform_gap_display_type_uses_shared_core_and_subtle_protected_style(self) -> None:
+        waveform = edit.read_web_asset("waveform.js")
+        styles = edit.read_web_asset("waveform.css")
+        self.assertIn("getGapRemoveDisplayType", waveform)
+        self.assertIn("isGapRemoveDisplayProtected", waveform)
+        self.assertIn("block.classList.toggle('restored', gap.removed === false)", waveform)
+        self.assertIn("waveform-gap-block.protected", styles)
+        self.assertIn("box-shadow: inset 0 0 0 4px", styles)
+        self.assertIn("this.options.getGapRemoveGaps?.() || []", waveform)
+
+    def test_gap_state_labels_match_in_mawe_and_align(self) -> None:
+        waveform = edit.read_web_asset("waveform.js")
+        align_page = (ROOT / "server-align" / "index.html").read_text(encoding="utf-8")
+        label = "gap.removed === false ? '空隙（未激活）' : '空隙'"
+        self.assertIn(label, waveform)
+        self.assertIn(label, align_page)
+
+    def test_gap_manual_drag_uses_blue_handles_and_preview_in_both_editors(self) -> None:
+        waveform_styles = edit.read_web_asset("waveform.css")
+        align_page = (ROOT / "server-align" / "index.html").read_text(encoding="utf-8")
+        for styles, handle, dragging in (
+            (waveform_styles, ".waveform-gap-handle::after", ".waveform-gap-block.dragging"),
+            (align_page, ".gap-handle::after", ".gap-range.dragging"),
+        ):
+            self.assertIn(handle, styles)
+            self.assertIn(dragging, styles)
+            self.assertIn("background: #5ab6ff", styles)
+            self.assertIn("rgba(94", styles)
+
+    def test_gap_core_exposes_restore_and_clear_semantics(self) -> None:
+        core = edit.read_web_asset("gap-remove-core.js")
+        self.assertIn("function getGapRemoveDisplayGaps", core)
+        self.assertIn("removed: false", core)
+        self.assertIn("function removeGapRemoveProvenanceRange", core)
+        self.assertIn("GAP_DISPLAY_PROJECTION_CACHE", core)
+        self.assertIn("function moveGapRemoveProvenance", core)
+        self.assertIn("function absorbGapRemoveProvenanceRanges", core)
+        self.assertIn("GAP_REMOVE_MANUAL_OPERATION_MOVE", core)
+        self.assertIn("cleared_ranges", core)
+        self.assertNotIn("underlying", core)
+
+    def test_editor_overall_gap_move_uses_shared_provenance_operation(self) -> None:
+        script = edit.read_web_asset("editor.js")
+        start = script.index("function translateManualGap(")
+        end = script.index("function resizeManualGapBoundary(", start)
+        section = script[start:end]
+        self.assertIn("core.moveGapRemoveProvenance", section)
+        self.assertNotIn("original.start, end: original.end, removed: false", section)
+
+    def test_shrink_gaps_replaces_audio_source_without_manual_override(self) -> None:
+        script = edit.read_web_asset("editor.js")
+        start = script.index("function shrinkExistingGaps()")
+        end = script.index("function readGapRemoveDisableSettings()", start)
+        section = script[start:end]
+        self.assertIn("core.replaceGapRemoveProvenanceSource", section)
+        self.assertIn("state.manual_corrections = provenance.manual_overrides.length > 0", section)
+        self.assertNotIn("commitManualGapRemoveChange(state, overrides)", section)
 
     def test_template_uses_one_script_token(self) -> None:
         template = edit.read_web_asset("editor-template.html")
@@ -148,6 +208,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertNotIn("生成时间", page)
         markers = (
             "// Shared frontend runtime registry.",
+            "global.AsrGapRemoveCore = Object.freeze({",
             "window.AsrEditorUtils = {",
             "global.MAWE_I18N = {",
             "window.AsrWaveform = {",

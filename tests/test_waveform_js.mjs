@@ -4,7 +4,6 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 
-const source = fs.readFileSync(new URL('../web/waveform.js', import.meta.url), 'utf8');
 const context = {
   window: {
     // 与 maw/colors.py COLOR_PALETTE 一致的最小 fixture（仅测试用）。
@@ -19,6 +18,9 @@ const context = {
   atob: (value) => Buffer.from(value, 'base64').toString('binary'),
   btoa: (value) => Buffer.from(value, 'binary').toString('base64'),
 };
+const gapCoreSource = fs.readFileSync(new URL('../web/gap-remove-core.js', import.meta.url), 'utf8');
+vm.runInNewContext(gapCoreSource, context);
+const source = fs.readFileSync(new URL('../web/waveform.js', import.meta.url), 'utf8');
 vm.runInNewContext(source, context);
 const helpers = context.window.AsrWaveform.testing;
 const builtinWorkspaces = context.window.AsrWaveform.builtinWorkspaces;

@@ -647,6 +647,11 @@
   cursor: pointer;
 }
 .waveform-gap-block:hover { filter: brightness(var(--wave-gap-hover-brightness)); }
+.waveform-gap-block.protected {
+  border-left-color: var(--gap-protected-edge);
+  border-right-color: var(--gap-protected-edge);
+  box-shadow: inset 0 0 0 4px var(--gap-protected-inset);
+}
 .waveform-gap-block.restored {
   background: repeating-linear-gradient(
     135deg,
@@ -672,16 +677,25 @@
 }
 .waveform-gap-block.restored .waveform-gap-label { color: #b9cbd8; background: rgba(27, 38, 47, 0.76); }
 .waveform-gap-block.boundary-editable { cursor: pointer; }
-.waveform-gap-block.dragging { cursor: grabbing; opacity: .82; }
+.waveform-gap-block.dragging {
+  cursor: grabbing;
+  opacity: .9;
+  border-color: rgba(94, 184, 255, .98);
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(65, 153, 229, .62) 0 5px,
+    rgba(29, 74, 128, .62) 5px 10px
+  );
+}
 .waveform-gap-block.waveform-gap-drag-preview,
 .waveform-gap-block.waveform-gap-boundary-preview {
   z-index: 13;
   pointer-events: none;
-  border: 1px solid rgba(255, 213, 116, .98);
+  border: 1px solid rgba(94, 184, 255, .98);
   background: repeating-linear-gradient(
     135deg,
-    rgba(255, 170, 76, .58) 0 5px,
-    rgba(112, 65, 31, .58) 5px 10px
+    rgba(65, 153, 229, .58) 0 5px,
+    rgba(29, 74, 128, .58) 5px 10px
   );
   opacity: .92;
 }
@@ -696,11 +710,11 @@
 }
 .waveform-gap-block.waveform-gap-drag-preview.restored,
 .waveform-gap-block.waveform-gap-boundary-preview.restored {
-  border-color: rgba(185, 220, 239, .98);
+  border-color: rgba(128, 198, 255, .98);
   background: repeating-linear-gradient(
     135deg,
-    rgba(93, 141, 169, .58) 0 5px,
-    rgba(40, 70, 87, .58) 5px 10px
+    rgba(84, 159, 216, .58) 0 5px,
+    rgba(37, 81, 120, .58) 5px 10px
   );
 }
 .waveform-gap-handle {
@@ -723,8 +737,8 @@
   left: 4px;
   width: 2px;
   border-radius: 2px;
-  background: #f0bd72;
-  box-shadow: 0 0 0 1px rgba(38, 24, 12, .65);
+  background: #5ab6ff;
+  box-shadow: 0 0 0 1px rgba(14, 42, 76, .75);
 }
 .waveform-gap-block.boundary-editable:hover .waveform-gap-handle,
 .waveform-gap-block.boundary-editable.dragging .waveform-gap-handle { opacity: 1; }

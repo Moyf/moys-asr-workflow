@@ -394,6 +394,20 @@ export async function startBlankServer(port, settingsRoot) {
   });
 }
 
+export async function startAlignmentServer(projectPath, scriptPath, port) {
+  const pythonArgs = [
+    'server-align/serve.py',
+    projectPath,
+    scriptPath,
+    '--port', String(port),
+    '--no-open',
+  ];
+  return launchServerProcess(pythonArgs, port, {
+    ...process.env,
+    PYTHONUNBUFFERED: '1',
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Start a minimal static file server for portable HTML testing.
 // ---------------------------------------------------------------------------

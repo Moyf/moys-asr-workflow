@@ -2645,44 +2645,36 @@
   function clampAutoMergeGapMs(value) { return clampInteger(value, 200, 0, 10000); }
   function clampAutoMergeShortCount(value) { return clampInteger(value, 3, 1, 20); }
 
-  const GAP_REMOVE_SCHEMA = 'moy.asr.gap_remove.v1';
-  const GAP_REMOVE_DISABLE_COVERAGE_DEFAULT = 80;
-  const GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS = 300;
-  const GAP_REMOVE_DISABLE_REMAINING_MAX_MS = 60000;
-  function clampGapRemoveDisableCoverage(value) {
-    const numeric = typeof value === 'string' && !value.trim() ? NaN : Number(value);
-    return Math.min(100, Math.max(0, Number.isFinite(numeric)
-      ? numeric : GAP_REMOVE_DISABLE_COVERAGE_DEFAULT));
-  }
-  function clampGapRemoveDisableRemaining(value) {
-    const numeric = typeof value === 'string' && !value.trim() ? NaN : value;
-    return clampInteger(
-      numeric,
-      GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS,
-      0,
-      GAP_REMOVE_DISABLE_REMAINING_MAX_MS,
-    );
-  }
-  function normalizeGapRemoveData(value) {
-    const source = value && typeof value === 'object' ? value : {};
-    const gaps = cloneJsonValue(normalizeGapRemoveGaps(source.gaps)) || [];
-    return {
-      schema: GAP_REMOVE_SCHEMA,
-      detector: source.detector === 'audio_gate' || !gaps.length ? 'audio_gate' : 'legacy_subtitle_gap',
-      minimum_ms: clampInteger(source.minimum_ms, 500, 100, 60000),
-      threshold_db: Math.min(0, Math.max(-96, Number.isFinite(Number(source.threshold_db)) ? Number(source.threshold_db) : -24)),
-      hysteresis_db: Math.min(30, Math.max(0, Number.isFinite(Number(source.hysteresis_db)) ? Number(source.hysteresis_db) : 2)),
-      lead_in_ms: clampInteger(source.lead_in_ms, 40, 0, 2000),
-      lead_out_ms: clampInteger(source.lead_out_ms, 80, 0, 2000),
-      skip_playback: source.skip_playback !== false,
-      manual_corrections: source.manual_corrections === true,
-      operation_mode: ['none', 'boundary_drag', 'middle_drag', 'boundary_and_middle'].includes(source.operation_mode)
-        ? source.operation_mode : 'boundary_drag',
-      disable_coverage_percent: clampGapRemoveDisableCoverage(source.disable_coverage_percent),
-      disable_remaining_ms: clampGapRemoveDisableRemaining(source.disable_remaining_ms),
-      gaps,
-    };
-  }
+  const GAP_REMOVE_CORE = window.AsrGapRemoveCore;
+  if (!GAP_REMOVE_CORE) throw new Error('AsrGapRemoveCore must load before AsrEditorUtils');
+  const GAP_REMOVE_SCHEMA = GAP_REMOVE_CORE.GAP_REMOVE_SCHEMA;
+  const GAP_REMOVE_DISABLE_COVERAGE_DEFAULT = GAP_REMOVE_CORE.GAP_REMOVE_DISABLE_COVERAGE_DEFAULT;
+  const GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS = GAP_REMOVE_CORE.GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS;
+  const GAP_REMOVE_DISABLE_REMAINING_MAX_MS = GAP_REMOVE_CORE.GAP_REMOVE_DISABLE_REMAINING_MAX_MS;
+  const clampGapRemoveDisableCoverage = GAP_REMOVE_CORE.clampGapRemoveDisableCoverage;
+  const clampGapRemoveDisableRemaining = GAP_REMOVE_CORE.clampGapRemoveDisableRemaining;
+  const normalizeGapRemoveData = GAP_REMOVE_CORE.normalizeGapRemoveData;
+  const normalizeGapRemoveGaps = GAP_REMOVE_CORE.normalizeGapRemoveGaps;
+  const normalizeGapRemoveProvenance = GAP_REMOVE_CORE.normalizeGapRemoveProvenance;
+  const gapRangesFromProvenance = GAP_REMOVE_CORE.gapRangesFromProvenance;
+  const decorateGapRemoveGaps = GAP_REMOVE_CORE.decorateGapRemoveGaps;
+  const getGapRemoveDisplayType = GAP_REMOVE_CORE.getGapRemoveDisplayType;
+  const isGapRemoveDisplayProtected = GAP_REMOVE_CORE.isGapRemoveDisplayProtected;
+  const removeGapRemoveProvenanceRange = GAP_REMOVE_CORE.removeGapRemoveProvenanceRange;
+  const getGapRemoveDisplayGaps = GAP_REMOVE_CORE.getGapRemoveDisplayGaps;
+  const replaceGapRemoveProvenanceSource = GAP_REMOVE_CORE.replaceGapRemoveProvenanceSource;
+  const appendGapRemoveManualOverrides = GAP_REMOVE_CORE.appendGapRemoveManualOverrides;
+  const applyGapRemoveRange = GAP_REMOVE_CORE.applyGapRemoveRange;
+  const shrinkGapRemoveGaps = GAP_REMOVE_CORE.shrinkGapRemoveGaps;
+  const moveGapRemoveRange = GAP_REMOVE_CORE.moveGapRemoveRange;
+  const copyGapRemoveRange = GAP_REMOVE_CORE.copyGapRemoveRange;
+  const moveGapRemoveProvenance = GAP_REMOVE_CORE.moveGapRemoveProvenance;
+  const resizeGapRemoveBoundary = GAP_REMOVE_CORE.resizeGapRemoveBoundary;
+  const detectAudioGapRemoveGaps = GAP_REMOVE_CORE.detectAudioGapRemoveGaps;
+  const getRemovedGapRanges = GAP_REMOVE_CORE.getRemovedGapRanges;
+  const findGapRemoveDisableMatches = GAP_REMOVE_CORE.findGapRemoveDisableMatches;
+  const mapGapRemovedTime = GAP_REMOVE_CORE.mapGapRemovedTime;
+  const buildGapRemovedIntervals = GAP_REMOVE_CORE.buildGapRemovedIntervals;
 
   const HISTORY_RECORD_DEFAULT_LABELS = Object.freeze({
     segments: '编辑', layout: '调整工作区', gap_remove: '空隙移除', preview: '预览',
@@ -3346,302 +3338,6 @@
 
   function fileBasename(value) {
     return String(value || '').trim().split(/[\\/]/).pop() || '';
-  }
-
-  function gapKey(gap) {
-    return `${Math.round(Number(gap.start))}:${Math.round(Number(gap.end))}`;
-  }
-
-  function normalizeGapRemoveGaps(gaps) {
-    if (!Array.isArray(gaps)) return [];
-    const seen = new Set();
-    return gaps
-      .map((gap) => ({
-        start: Math.max(0, Math.round(Number(gap?.start))),
-        end: Math.max(0, Math.round(Number(gap?.end))),
-        removed: gap?.removed !== false,
-      }))
-      .filter((gap) => Number.isFinite(gap.start) && Number.isFinite(gap.end) && gap.end > gap.start)
-      .sort((left, right) => left.start - right.start || left.end - right.end)
-      .filter((gap) => {
-        const key = gapKey(gap);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-  }
-
-  function coalesceGapRemoveGaps(gaps) {
-    const result = [];
-    normalizeGapRemoveGaps(gaps).forEach((gap) => {
-      const previous = result[result.length - 1];
-      if (!previous) {
-        result.push({ ...gap });
-        return;
-      }
-      if (gap.start <= previous.end && gap.removed === previous.removed) {
-        previous.end = Math.max(previous.end, gap.end);
-        return;
-      }
-      const start = Math.max(gap.start, previous.end);
-      if (gap.end > start) result.push({ ...gap, start });
-    });
-    return result;
-  }
-
-  function applyGapRemoveRange(gaps, startMs, endMs, removed) {
-    const source = coalesceGapRemoveGaps(gaps);
-    const start = Math.max(0, Math.round(Math.min(Number(startMs), Number(endMs))));
-    const end = Math.max(0, Math.round(Math.max(Number(startMs), Number(endMs))));
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return source;
-
-    const next = [];
-    source.forEach((gap) => {
-      if (gap.end <= start || gap.start >= end) {
-        next.push({ ...gap });
-        return;
-      }
-      if (gap.start < start) next.push({ ...gap, end: start });
-      if (!removed) {
-        next.push({
-          start: Math.max(gap.start, start),
-          end: Math.min(gap.end, end),
-          removed: false,
-        });
-      }
-      if (gap.end > end) next.push({ ...gap, start: end });
-    });
-    if (removed) next.push({ start, end, removed: true });
-    return coalesceGapRemoveGaps(next);
-  }
-
-  function shrinkGapRemoveGaps(gaps, leadInMs, leadOutMs) {
-    const source = coalesceGapRemoveGaps(gaps);
-    const leadIn = clampInteger(leadInMs, 40, 0, 2000);
-    const leadOut = clampInteger(leadOutMs, 80, 0, 2000);
-    return coalesceGapRemoveGaps(source
-      .map((gap) => ({
-        ...gap,
-        start: gap.start + leadIn,
-        end: gap.end - leadOut,
-      }))
-      .filter((gap) => gap.end > gap.start));
-  }
-
-  // 将一个已有区段作为整体平移或复制到目标位置。与人工“范围移除”不同，
-  // 这里保留区段的 removed 状态，因此恢复区段也可以被整体拖动/复制。
-  function overlayGapRemoveRange(gaps, startMs, endMs, removed) {
-    const source = coalesceGapRemoveGaps(gaps);
-    const start = Math.max(0, Math.round(Math.min(Number(startMs), Number(endMs))));
-    const end = Math.max(0, Math.round(Math.max(Number(startMs), Number(endMs))));
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return source;
-    const next = [];
-    source.forEach((gap) => {
-      if (gap.end <= start || gap.start >= end) {
-        next.push({ ...gap });
-        return;
-      }
-      if (gap.start < start) next.push({ ...gap, end: start });
-      if (gap.end > end) next.push({ ...gap, start: end });
-    });
-    next.push({ start, end, removed: removed !== false });
-    return coalesceGapRemoveGaps(next);
-  }
-
-  function translateGapRemoveRange(gaps, index, deltaMs, durationMs, copy) {
-    const source = coalesceGapRemoveGaps(gaps);
-    const gapIndex = Math.round(Number(index));
-    const delta = Math.round(Number(deltaMs));
-    if (!Number.isFinite(gapIndex) || !Number.isFinite(delta)
-        || gapIndex < 0 || gapIndex >= source.length) return source;
-    const original = source[gapIndex];
-    const durationValue = Number(durationMs);
-    const hasDuration = Number.isFinite(durationValue) && durationValue > 0;
-    const duration = hasDuration ? Math.round(durationValue) : Infinity;
-    const length = Math.min(original.end - original.start, duration);
-    if (!Number.isFinite(length) || length <= 0) return source;
-    const maxStart = Math.max(0, duration - length);
-    const start = Math.min(maxStart, Math.max(0, original.start + delta));
-    const end = start + length;
-    if (start === original.start && end === original.end) return source;
-    const remaining = copy ? source : source.filter((_, sourceIndex) => sourceIndex !== gapIndex);
-    return overlayGapRemoveRange(remaining, start, end, original.removed);
-  }
-
-  function moveGapRemoveRange(gaps, index, deltaMs, durationMs) {
-    return translateGapRemoveRange(gaps, index, deltaMs, durationMs, false);
-  }
-
-  function copyGapRemoveRange(gaps, index, deltaMs, durationMs) {
-    return translateGapRemoveRange(gaps, index, deltaMs, durationMs, true);
-  }
-
-  function resizeGapRemoveBoundary(gaps, index, edge, valueMs, minimumMs = 10) {
-    const source = coalesceGapRemoveGaps(gaps);
-    let gapIndex = Math.round(Number(index));
-    const value = Math.round(Number(valueMs));
-    const minimum = Math.max(1, Math.round(Number(minimumMs) || 10));
-    if (!Number.isFinite(gapIndex) || !Number.isFinite(value)
-        || gapIndex < 0 || gapIndex >= source.length || !['start', 'end'].includes(edge)) {
-      return source;
-    }
-    const next = source.map((gap) => ({ ...gap }));
-    const gap = next[gapIndex];
-    if (edge === 'start') {
-      const previous = next[gapIndex - 1];
-      const shared = previous && previous.end === gap.start;
-      if (shared) {
-        const boundary = Math.min(
-          gap.end - minimum,
-          Math.max(previous.start + minimum, value),
-        );
-        previous.end = boundary;
-        gap.start = boundary;
-      } else {
-        gap.start = Math.min(gap.end - minimum, Math.max(0, value));
-        while (gapIndex > 0 && next[gapIndex - 1].end > gap.start) {
-          gap.start = Math.min(gap.start, next[gapIndex - 1].start);
-          next.splice(gapIndex - 1, 1);
-          gapIndex--;
-        }
-      }
-    } else {
-      const following = next[gapIndex + 1];
-      const shared = following && following.start === gap.end;
-      if (shared) {
-        const boundary = Math.min(
-          following.end - minimum,
-          Math.max(gap.start + minimum, value),
-        );
-        gap.end = boundary;
-        following.start = boundary;
-      } else {
-        gap.end = Math.max(gap.start + minimum, value);
-        while (gapIndex + 1 < next.length && next[gapIndex + 1].start < gap.end) {
-          gap.end = Math.max(gap.end, next[gapIndex + 1].end);
-          next.splice(gapIndex + 1, 1);
-        }
-      }
-    }
-    return coalesceGapRemoveGaps(next);
-  }
-
-  function waveformPeakDb(peaks, index) {
-    const low = Number(peaks[index * 2]);
-    const high = Number(peaks[index * 2 + 1]);
-    const magnitude = Math.min(127, Math.max(Math.abs(low), Math.abs(high)));
-    return magnitude > 0 ? 20 * Math.log10(magnitude / 127) : -Infinity;
-  }
-
-  function detectAudioGapRemoveGaps(waveform, options = {}) {
-    const peaks = waveform?.peaks;
-    const peaksPerSecond = Number(waveform?.peaks_per_second);
-    const durationMs = Math.max(0, Math.round(Number(waveform?.duration_ms) || 0));
-    if (!peaks || !Number.isFinite(peaksPerSecond) || peaksPerSecond <= 0 || !durationMs) return [];
-
-    const minimumMs = Math.max(0, Math.round(Number(options.minimumMs) || 0));
-    const thresholdDb = Math.min(0, Math.max(-96, Number(options.thresholdDb)));
-    const openThresholdDb = Number.isFinite(thresholdDb) ? thresholdDb : -24;
-    const hysteresisDb = Math.min(30, Math.max(0, Number(options.hysteresisDb) || 0));
-    const closeThresholdDb = openThresholdDb - hysteresisDb;
-    // 前/后端预留：在每段空隙两侧各保留若干毫秒静音不纳入移除，避免剪掉空隙后两句贴得太急。
-    const leadInMs = Math.max(0, Math.round(Number(options.leadInMs) || 0));
-    const leadOutMs = Math.max(0, Math.round(Number(options.leadOutMs) || 0));
-    const sampleCount = Math.min(
-      Math.floor(peaks.length / 2),
-      Math.max(0, Math.ceil((durationMs / 1000) * peaksPerSecond)),
-    );
-    const timeAt = (index) => Math.min(durationMs, Math.round((index * 1000) / peaksPerSecond));
-    const rawGaps = [];
-    let gateOpen = false;
-    let foundAudio = false;
-    let silenceStart = null;
-
-    for (let index = 0; index < sampleCount; index++) {
-      const levelDb = waveformPeakDb(peaks, index);
-      if (gateOpen) {
-        if (levelDb < closeThresholdDb) {
-          gateOpen = false;
-          silenceStart = timeAt(index);
-        }
-        continue;
-      }
-      if (levelDb < openThresholdDb) continue;
-      if (foundAudio && silenceStart != null) {
-        const end = timeAt(index);
-        if (end > silenceStart) {
-          // 应用前/后端预留后再决定是否纳入移除区间
-          const gapStart = Math.min(durationMs, silenceStart + leadInMs);
-          const gapEnd = end - leadOutMs;
-          if (gapEnd > gapStart) rawGaps.push({ start: gapStart, end: gapEnd, removed: true });
-        }
-      }
-      foundAudio = true;
-      gateOpen = true;
-      silenceStart = null;
-    }
-    return rawGaps.filter((gap) => gap.end - gap.start >= minimumMs);
-  }
-
-  function getRemovedGapRanges(gaps) {
-    const merged = [];
-    normalizeGapRemoveGaps(gaps).filter((gap) => gap.removed).forEach((gap) => {
-      const previous = merged[merged.length - 1];
-      if (previous && gap.start <= previous.end) {
-        previous.end = Math.max(previous.end, gap.end);
-      } else {
-        merged.push({ start: gap.start, end: gap.end });
-      }
-    });
-    return merged;
-  }
-
-  function findGapRemoveDisableMatches(segments, gaps, options = {}) {
-    const coverageThreshold = clampGapRemoveDisableCoverage(options.coveragePercent);
-    const remainingThreshold = clampGapRemoveDisableRemaining(options.remainingMs);
-    const removedRanges = getRemovedGapRanges(gaps);
-    const source = Array.isArray(segments) ? segments : [];
-    const matches = [];
-    source.forEach((segment, index) => {
-      const start = Number(segment?.start);
-      const end = Number(segment?.end);
-      const durationMs = end - start;
-      if (!Number.isFinite(start) || !Number.isFinite(end) || durationMs <= 0) return;
-      const coveredMs = removedRanges.reduce((total, range) => {
-        const overlap = Math.min(end, range.end) - Math.max(start, range.start);
-        return total + Math.max(0, overlap);
-      }, 0);
-      const remainingMs = Math.max(0, durationMs - coveredMs);
-      const coveragePercent = (coveredMs / durationMs) * 100;
-      if (coveragePercent + Number.EPSILON < coverageThreshold || remainingMs > remainingThreshold) return;
-      matches.push({ index, durationMs, coveredMs, remainingMs, coveragePercent });
-    });
-    return matches;
-  }
-
-  function mapGapRemovedTime(sourceMs, gaps) {
-    const source = Math.max(0, Math.round(Number(sourceMs) || 0));
-    let removedBefore = 0;
-    for (const gap of getRemovedGapRanges(gaps)) {
-      if (source <= gap.start) break;
-      if (source < gap.end) return Math.max(0, gap.start - removedBefore);
-      removedBefore += gap.end - gap.start;
-    }
-    return Math.max(0, source - removedBefore);
-  }
-
-  function buildGapRemovedIntervals(durationMs, gaps) {
-    const duration = Math.max(0, Math.round(Number(durationMs) || 0));
-    const intervals = [];
-    let cursor = 0;
-    getRemovedGapRanges(gaps).forEach((gap) => {
-      const start = Math.min(duration, Math.max(cursor, gap.start));
-      const end = Math.min(duration, Math.max(start, gap.end));
-      if (start > cursor) intervals.push({ start: cursor, end: start });
-      cursor = Math.max(cursor, end);
-    });
-    if (cursor < duration) intervals.push({ start: cursor, end: duration });
-    return intervals;
   }
 
   const EXPORT_FRAME_PROFILES = Object.freeze({
@@ -5169,6 +4865,15 @@ export default MawDynamicCaptions;
     clampGapRemoveDisableCoverage,
     clampGapRemoveDisableRemaining,
     normalizeGapRemoveData,
+    normalizeGapRemoveProvenance,
+    gapRangesFromProvenance,
+    decorateGapRemoveGaps,
+    getGapRemoveDisplayType,
+    isGapRemoveDisplayProtected,
+    removeGapRemoveProvenanceRange,
+    getGapRemoveDisplayGaps,
+    replaceGapRemoveProvenanceSource,
+    appendGapRemoveManualOverrides,
     buildSegmentsHistorySnapshot,
     buildHistoryRecord,
     effectiveColorName,
@@ -5182,6 +4887,7 @@ export default MawDynamicCaptions;
     shrinkGapRemoveGaps,
     moveGapRemoveRange,
     copyGapRemoveRange,
+    moveGapRemoveProvenance,
     resizeGapRemoveBoundary,
     detectAudioGapRemoveGaps,
     getRemovedGapRanges,
