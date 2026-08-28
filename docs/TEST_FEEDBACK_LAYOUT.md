@@ -53,6 +53,3 @@
 ## 未验证边界
 
 - 未执行全量 Playwright 套件；本次只覆盖新增的 Launcher 和 Editor 窄宽度回归。
-| 10 | Editor / 字幕列表 | 批量操作与仅看超长按钮宽度不足时保持单行，文本显示省略号 | 修改 | 已修复 |
-- 反馈 10：`web/editor.css` 为批量操作下拉按钮及「仅看超长」按钮增加可收缩的最小宽度、单行和省略号规则；新增布局回归覆盖 180px 窄工具栏，确认两个按钮不换行且保持可见。
-- `npx playwright test tests/e2e/cue-list-action-buttons-layout.spec.mjs --project=chromium --reporter=line`：1/1 通过（180px 窄工具栏中的两个操作按钮；提升权限运行）。

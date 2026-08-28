@@ -724,20 +724,6 @@
   /* 字幕编辑区工具栏不出横向滚动条；空间不足时由 key-hints 收缩省略（见下方规则）。 */
   .toolbar.cue-editor-toolbar { overflow-x: hidden; }
   .toolbar.cue-list-toolbar .input-clear input[type=text] { min-width: 140px; width: 20ch; }
-  /* 字幕列表操作按钮在窄宽度下保持单行，并用省略号收缩文本。 */
-  .toolbar.cue-list-toolbar #batch-operations-dropdown,
-  .toolbar.cue-list-toolbar #batch-operations-btn,
-  .toolbar.cue-list-toolbar #filter-over {
-    flex: 0 1 auto;
-    min-width: 0;
-  }
-  .toolbar.cue-list-toolbar #batch-operations-btn,
-  .toolbar.cue-list-toolbar #filter-over {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
   .settings-anchor {
     display: inline-flex; align-items: center;
     order: 99; margin-left: auto;
