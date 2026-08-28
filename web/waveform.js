@@ -1323,6 +1323,17 @@
     return low;
   }
 
+  function cueBlockContinuationEdges(segment, startMs, endMs) {
+    const segmentStart = Number(segment?.start);
+    const segmentEnd = Number(segment?.end);
+    const rowStart = Number(startMs);
+    const rowEnd = Number(endMs);
+    return {
+      fromPreviousRow: Number.isFinite(segmentStart) && Number.isFinite(rowStart) && segmentStart < rowStart,
+      toNextRow: Number.isFinite(segmentEnd) && Number.isFinite(rowEnd) && segmentEnd > rowEnd,
+    };
+  }
+
   function findActiveCueIndex(segments, timeMs, skipDisabled = true) {
     if (!Array.isArray(segments) || !segments.length || !Number.isFinite(Number(timeMs))) return -1;
     let index = lastCueIndexAtOrBefore(segments, Number(timeMs));
@@ -3129,7 +3140,7 @@
           rightHandle.className = 'waveform-cue-handle right';
           block.appendChild(rightHandle);
         }
-        this.layoutBlock(block, segment, startMs, endMs);
+        this.layoutBlock(block, segment, startMs, endMs, row);
         block.dataset.track = 'main';
         block.addEventListener('pointerdown', (event) => this.beginCueDrag(event, index, row, 'main'));
         block.addEventListener('contextmenu', (event) => {
@@ -3186,7 +3197,7 @@
           rightHandle.className = 'waveform-cue-handle right';
           block.appendChild(rightHandle);
         }
-        this.layoutBlock(block, segment, startMs, endMs);
+        this.layoutBlock(block, segment, startMs, endMs, row);
         block.addEventListener('pointerdown', (event) => this.beginCueDrag(event, index, row, 'extension'));
         block.addEventListener('contextmenu', (event) => {
           event.preventDefault();
@@ -3221,7 +3232,7 @@
       block.appendChild(next);
     }
 
-    layoutBlock(block, segment, startMs, endMs) {
+    layoutBlock(block, segment, startMs, endMs, ownerRow = null) {
       const duration = Math.max(1, endMs - startMs);
       const visibleStart = Math.max(startMs, segment.start);
       const visibleEnd = Math.min(endMs, segment.end);
@@ -3230,6 +3241,13 @@
       block.style.left = `${left}%`;
       block.style.width = `${width}%`;
       block.hidden = visibleEnd <= visibleStart;
+      const row = ownerRow || block.closest('.waveform-row');
+      // 时间上的多行模式与“多重字幕”双轨不是同一个概念；普通多行波形也
+      // 必须在行边界清除相接侧圆角。基础模式的单行窗口则保留完整圆角。
+      const isMultiRow = Boolean(row && row.dataset.basic !== 'true');
+      const continuation = cueBlockContinuationEdges(segment, startMs, endMs);
+      block.classList.toggle('continues-from-previous-row', isMultiRow && continuation.fromPreviousRow);
+      block.classList.toggle('continues-to-next-row', isMultiRow && continuation.toNextRow);
     }
 
     layoutGapBlock(block, gap, startMs, endMs) {
@@ -5343,6 +5361,7 @@
       waveformTopEdgeMs,
       restoreWaveformTopEdgeMs,
       computeGroupBadges,
+      cueBlockContinuationEdges,
     },
   };
   if (window.MAWE?.register) {

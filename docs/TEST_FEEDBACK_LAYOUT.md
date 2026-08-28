@@ -14,6 +14,8 @@
 | 6 | Editor / 字幕列表 | 宽度不足时隐藏“显示 150 / 150”数量计数，为工具栏其他控件让出空间 | 修改 | 已修复 |
 | 7 | Editor / 全局设置 | 拆分与合并设置中收窄合并输入框，独立显示字幕语言类型，并将拆分标点改为按钮浮窗配置 | 修改 | 已修复 |
 | 8 | E2E 测试环境 | Python 子进程不应默认使用缺少项目依赖的系统解释器 | 修改 | 已修复 |
+| 9 | Editor / 全局设置 | 将合并字符与拆分标点改为同一行的两个配置按钮，并补充字幕语言类型说明 | 修改 | 已修复 |
+| 10 | Editor / 字幕列表 | 批量操作与仅看超长按钮宽度不足时保持单行，文本显示省略号 | 修改 | 已修复 |
 
 ## 基线事实
 
@@ -30,8 +32,10 @@
 - 反馈 4：`web/waveform.js` 改为对所有非 basic 的时间多行 row 应用 `continues-from-previous-row` / `continues-to-next-row`；普通时间多行和“多重字幕”双轨的主、副字幕块都走同一套波形区判断。`web/waveform.css` 清除相接侧上下圆角，真实编辑器回归确认两段的对应 computed radius 为 `0px`，双轨专项回归也确认主轨和副轨均生效。
 - 反馈 5：`web/launcher/launcher.css` / `web/launcher/launcher.js` 覆盖文稿预览、批量详情、模型列表、日志、工具箱结果 / 输出等滚动区域；`web/editor.css` 同步覆盖编辑器列表、波形、设置面板、导入文稿预览等区域，统一为 `thin` 与 6px，并让滚动条闪现绑定覆盖 Launcher 内部区域。浏览器断言通过。
 - 反馈 6：在字幕列表工具栏的数量计数增加 `.cue-list-count` 标记，`cue-list` 容器宽度不足时隐藏该计数，保留字幕标题、搜索框和设置齿轮。
-- 反馈 7：`web/editor-template.html` 将字幕语言提示独立为「字幕语言类型」分组，使用 `editor-settings-item` 样式并显示 `当前为「单词型」（例如：英语）` / `当前为「字符型」（例如：中文）` 说明，置于合并插入设置上方；合并插入文本框收窄为 100px 目标宽度并允许更窄容器继续收缩；拆分标点改为「配置拆分标点」按钮，沿用原有控件与持久化逻辑，在固定定位浮窗中配置，并支持点击外部或 Esc 关闭。
+- 反馈 7：`web/editor-template.html` 将字幕语言提示独立为「字幕语言类型」分组，使用 `editor-settings-item` 样式并显示 `当前为「单词型」（适用于英文、俄文等）` / `当前为「字符型」（适用于中文、日文等）` 说明，置于合并插入设置上方；合并插入文本框收窄为 100px 目标宽度并允许更窄容器继续收缩；拆分标点改为「配置拆分标点」按钮，沿用原有控件与持久化逻辑，在固定定位浮窗中配置，并支持点击外部或 Esc 关闭。
 - 反馈 8：`tests/e2e/helpers.mjs` 默认使用 `uv run --frozen python` 启动 `edit.py`、`server-editor` 和 `server-align`，不再把系统解释器与仓库 `.venv` 的 `site-packages` 混用；`MAW_E2E_PYTHON` 仅作为显式解释器覆盖，并保留清晰的 `uv sync` 提示。
+- 反馈 9：全局设置中新增字幕语言类型 hint；「配置合并字符」与「配置拆分标点」并排显示，合并字符输入项移入独立浮窗，两个浮窗均支持定位、点击外部关闭和 Esc 关闭。
+- 反馈 10：`web/editor.css` 为批量操作下拉按钮及「仅看超长」按钮增加可收缩的最小宽度、单行和省略号规则；新增布局回归覆盖 180px 窄工具栏，确认两个按钮不换行且保持可见。
 
 ## 验证记录
 
@@ -46,8 +50,9 @@
 - `$env:MAW_E2E_PYTHON = (Resolve-Path .venv\Scripts\python.exe).Path; npx playwright test tests/e2e/multi-subtitle.spec.mjs --project=chromium --grep "keeps adjacent corners square" --reporter=line`：1/1 通过（显式解释器覆盖仍可用）。
 - `node --check tests/e2e/helpers.mjs`：通过。
 - `npx playwright test tests/e2e/cue-list-count-layout.spec.mjs --project=chromium --reporter=line`：1/1 通过（620 / 480 / 360 宽度）。
-- `npx playwright test tests/e2e/cue-color-filter.spec.mjs --project=chromium --grep "split trim|merge join" --reporter=line`：2/2 通过（标点浮窗、语言分组、合并输入框宽度与原有设置持久化）。
-- `npx playwright test tests/e2e/cue-color-filter.spec.mjs --project=chromium --grep "merge join" --reporter=line`：1/1 通过（`editor-settings-item` 样式与两种语言示例文案）。
+- `npx playwright test tests/e2e/cue-list-action-buttons-layout.spec.mjs --project=chromium --reporter=line`：1/1 通过（180px 窄工具栏中的两个操作按钮；提升权限运行）。
+- `npx playwright test tests/e2e/cue-color-filter.spec.mjs --project=chromium --grep "split trim|merge join" --reporter=line`：2/2 通过（两个配置按钮同行、两个浮窗、语言分组与原有设置持久化）。
+- `npx playwright test tests/e2e/cue-color-filter.spec.mjs --project=chromium --grep "merge join" --reporter=line`：1/1 通过（`editor-settings-item` 样式与两种语言适用范围文案）。
 - `git diff --check`：通过。
 
 ## 未验证边界

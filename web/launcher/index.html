@@ -18,6 +18,7 @@
 </head>
 <body>
   <main class="shell">
+    <div class="shell-scroll">
     <header class="hero">
       <div class="hero-brand">
         <img class="hero-icon" src="../../assets/show.webp" alt="" aria-hidden="true">
@@ -428,6 +429,8 @@
         <div class="field compact"><label for="port" data-i18n="port">端口</label><div class="port-row"><input id="port" type="number" min="1" max="65535" value="8250"><button id="refreshServerStatus" class="ghost small" type="button" data-i18n="server_refresh" title="刷新当前端口的服务器状态">刷新</button></div><p id="portError" class="field-error"></p></div>
       </div>
     </section>
+    <div id="status" class="status">就绪</div>
+    </div>
 
     <footer class="actions">
       <button id="start" class="primary" type="button" data-i18n="start">生成字幕和工程</button>
@@ -446,7 +449,6 @@
       <button id="openFolder" class="ghost hidden" type="button" data-i18n="open_folder">打开输出文件夹</button>
       <button id="retryPostprocess" class="ghost hidden" type="button" data-i18n="retry_postprocess">从失败步骤重试后处理</button>
     </footer>
-    <div id="status" class="status">就绪</div>
   </main>
 
   <button id="toolboxFab" class="toolbox-fab" type="button" aria-controls="toolboxDrawer" aria-expanded="false" data-i18n-title="toolbox_open" title="打开工具箱">

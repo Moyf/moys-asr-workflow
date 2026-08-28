@@ -302,6 +302,22 @@ test('locates the first cue overlapping a waveform row without scanning earlier 
 });
 
 
+test('marks cue fragments that continue across multi-row boundaries', () => {
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.cueBlockContinuationEdges({ start: 9000, end: 12000 }, 10000, 20000))),
+    { fromPreviousRow: true, toNextRow: false },
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.cueBlockContinuationEdges({ start: 19000, end: 22000 }, 10000, 20000))),
+    { fromPreviousRow: false, toNextRow: true },
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.cueBlockContinuationEdges({ start: 10000, end: 20000 }, 10000, 20000))),
+    { fromPreviousRow: false, toNextRow: false },
+  );
+});
+
+
 test('Alt temporarily reverses the automatic adjacent-cue setting', () => {
   assert.equal(helpers.shouldAdjustAdjacentCuesIndependently(false, false), true);
   assert.equal(helpers.shouldAdjustAdjacentCuesIndependently(true, false), false);

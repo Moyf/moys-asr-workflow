@@ -325,26 +325,53 @@ test('merge join hint shows detected main type; clicking pins and syncs the mult
   const hintText = page.locator('#merge-join-mode-text');
   const switchButton = page.locator('#merge-join-mode-switch');
   const multiSelect = page.locator('#multi-subtitle-main-language-mode');
+  const languageTypeGroup = page.locator('.split-language-type-field');
+
+  await expect(languageTypeGroup.locator('#split-language-type-title')).toHaveText('字幕语言类型');
+  expect(await hintText.evaluate((element) => Boolean(element.closest('.split-language-type-field')))).toBe(true);
+  expect(await hintText.evaluate((element) => Boolean(element.closest('.merge-join-settings-field')))).toBe(false);
+  expect(await page.evaluate(() => {
+    const language = document.querySelector('.split-language-type-field');
+    const merge = document.querySelector('.merge-join-settings-field');
+    return Boolean(language && merge
+      && (language.compareDocumentPosition(merge) & Node.DOCUMENT_POSITION_FOLLOWING));
+  })).toBe(true);
+  await expect(hintText).toHaveClass(/editor-settings-item/);
 
   // 英文工程 → 自动检测为单词型；短提示 + 统一的「切换为」按钮。
-  await expect(hintText).toContainText('当前为「单词型」');
+  await expect(hintText).toHaveText('当前为「单词型」（适用于英文、俄文等）');
   await expect(switchButton).toHaveText('切换为字符型');
   // 与多重字幕菜单的「主字幕语言类型」共享同一状态（下拉框此时是检测值）。
   await expect(multiSelect).toHaveValue('word');
 
   // 点击 → 指定为字符型；提示统一样式并同步多重字幕下拉框。
   await switchButton.click();
-  await expect(hintText).toContainText('当前为「字符型」');
+  await expect(hintText).toHaveText('当前为「字符型」（适用于中文、日文等）');
   await expect(switchButton).toHaveText('切换为单词型');
   await expect(multiSelect).toHaveValue('continuous');
   expect(await page.evaluate(() => DATA.multi_subtitle.main_split_mode)).toBe('continuous');
 
   // 再点一次切回单词型。
   await switchButton.click();
-  await expect(hintText).toContainText('当前为「单词型」');
+  await expect(hintText).toHaveText('当前为「单词型」（适用于英文、俄文等）');
   await expect(multiSelect).toHaveValue('word');
 
-  // 连续型/单词型两组在同一行、各占约一半宽度（列标签右缘不超过彼此起点）。
+  const mergeSettingsToggle = page.locator('#merge-join-settings-toggle');
+  const mergeSettingsPanel = page.locator('#merge-join-settings-panel');
+  await expect(mergeSettingsToggle).toHaveText('配置合并字符');
+  await expect(mergeSettingsPanel).toBeHidden();
+  await mergeSettingsToggle.click();
+  await expect(mergeSettingsPanel).toBeVisible();
+  await expect(mergeSettingsPanel).toHaveCSS('position', 'fixed');
+
+  // 合并字符与拆分标点两个配置按钮保持同一行。
+  const actionBoxes = await page.evaluate(() =>
+    [...document.querySelectorAll('.split-join-settings-actions > div')]
+      .map((el) => el.getBoundingClientRect()));
+  expect(actionBoxes).toHaveLength(2);
+  expect(actionBoxes[0].top).toBeCloseTo(actionBoxes[1].top, 0);
+
+  // 浮窗内的连续型/单词型两组仍在同一行、各占约一半宽度。
   const rowBoxes = await page.evaluate(() => {
     const rows = [...document.querySelectorAll('.split-join-inline-row > .split-join-row')];
     return rows.map((el) => el.getBoundingClientRect());
@@ -352,6 +379,11 @@ test('merge join hint shows detected main type; clicking pins and syncs the mult
   expect(rowBoxes).toHaveLength(2);
   expect(rowBoxes[0].top).toBeCloseTo(rowBoxes[1].top, 0);
   expect(Math.abs(rowBoxes[0].width - rowBoxes[1].width)).toBeLessThan(24);
+  const inputWidths = await page.evaluate(() =>
+    [...document.querySelectorAll('.split-join-inline-row input[type="text"]')]
+      .map((el) => el.getBoundingClientRect().width));
+  expect(inputWidths).toHaveLength(2);
+  expect(Math.max(...inputWidths)).toBeLessThanOrEqual(100.5);
 
   // 提示按钮在窄容器下不越界：面板已保持足够宽，这里仅确认元素可点击可见。
   await expect(switchButton).toBeVisible();

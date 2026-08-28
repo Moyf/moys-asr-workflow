@@ -2752,6 +2752,7 @@ def _provider_payload(
         "models": [
             _model_payload(item, model_cache_root=model_cache_root)
             for item in provider.models
+            if not item.hidden
         ],
         "regions": [{"id": value, "label": label} for value, label in provider.regions],
         "languages": [{"id": value, "label": label} for value, label in provider.languages],
