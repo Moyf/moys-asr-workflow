@@ -6,7 +6,16 @@ import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('../web/waveform.js', import.meta.url), 'utf8');
 const context = {
-  window: {},
+  window: {
+    // 与 maw/colors.py COLOR_PALETTE 一致的最小 fixture（仅测试用）。
+    ASR_EDITOR_PALETTE: [
+      { name: 'yellow', value: '#f1c40f' },
+      { name: 'green', value: '#66bb6a' },
+      { name: 'red', value: '#e74c3c' },
+      { name: 'purple', value: '#b57edc' },
+      { name: 'blue', value: '#168cff' },
+    ],
+  },
   atob: (value) => Buffer.from(value, 'base64').toString('binary'),
   btoa: (value) => Buffer.from(value, 'binary').toString('base64'),
 };

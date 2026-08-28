@@ -792,13 +792,17 @@ MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(EDITOR_SETTINGS.splitTrimSymbols);
 
 // 标记颜色：5 种基础色，用于给字幕分组着色。
 // 数据模型与表情包同构：head 持完整 color {name, value, start, end}，后续 ref 持 color_ref {name, headIdx}
-const COLOR_PALETTE = [
-  { name: 'yellow', label: '黄', value: '#f1c40f' },
-  { name: 'green',  label: '绿', value: '#2ecc71' },
-  { name: 'red',    label: '红', value: '#e74c3c' },
-  { name: 'purple', label: '紫', value: '#b57edc' },
-  { name: 'blue',   label: '蓝', value: '#168cff' },
-];
+// 调色板数值唯一来源于 maw/colors.py（渲染时注入 window.ASR_EDITOR_PALETTE）；
+// 这里只补充编辑器 UI 用的中文标签。
+const COLOR_LABELS = { yellow: '黄', green: '绿', red: '红', purple: '紫', blue: '蓝' };
+if (!Array.isArray(window.ASR_EDITOR_PALETTE) || !window.ASR_EDITOR_PALETTE.length) {
+  throw new Error('调色板未注入：缺少 window.ASR_EDITOR_PALETTE（检查 edit.py / serve.py 渲染管线）');
+}
+const COLOR_PALETTE = window.ASR_EDITOR_PALETTE.map((c) => ({
+  name: c.name,
+  label: COLOR_LABELS[c.name] || c.name,
+  value: c.value,
+}));
 const COLOR_BY_NAME = Object.fromEntries(COLOR_PALETTE.map(c => [c.name, c]));
 function colorValue(name) { return COLOR_BY_NAME[name]?.value || '#777'; }
 
