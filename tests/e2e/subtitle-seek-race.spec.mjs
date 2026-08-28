@@ -106,6 +106,42 @@ test('clicking a waveform subtitle while paused seeks to the pointer position', 
   }, expectedTime);
 });
 
+test('dragging the waveform playhead crosses multi-row boundaries', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto(server.url);
+  await waitForMedia(page);
+  await page.evaluate(() => {
+    const editor = waveformEditor;
+    editor.settings.mode = 'multi';
+    editor.settings.secondsPerRow = 10;
+    editor.settings.rowHeight = 120;
+    editor.settings.dragPlayhead = true;
+    editor.render();
+    document.getElementById('waveform-scroll').scrollTop = 5 * (editor.settings.rowHeight + 10);
+  });
+
+  const row = page.locator('.waveform-row[data-row-index="6"]');
+  await expect(row).toBeVisible();
+  const rowBox = await row.boundingBox();
+  expect(rowBox).not.toBeNull();
+  const y = rowBox.y + rowBox.height / 2;
+  const startX = rowBox.x + rowBox.width * 0.5;
+
+  await page.mouse.move(startX, y);
+  await page.mouse.down();
+  await page.mouse.move(rowBox.x + rowBox.width * 1.15, y, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime))
+    .toBeGreaterThan(70.5);
+
+  await page.mouse.move(startX, y);
+  await page.mouse.down();
+  await page.mouse.move(Math.max(1, rowBox.x - 4), y, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime))
+    .toBeLessThan(60);
+});
+
 test('the default waveform subtitle target follows the pointer', async ({ page }) => {
   await page.goto(server.url);
   await waitForMedia(page);

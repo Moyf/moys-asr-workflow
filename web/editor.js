@@ -10353,8 +10353,10 @@ if (typeof ResizeObserver === 'function') {
 
 // === 当前行高亮 + overlay ===
 let lastActive = -1;
-// 列表点击关闭自动滚动时，避免这次 seek 的同步 active 更新再次滚动列表。
+// 列表点击关闭自动滚动时，避免这次 seek 的同步 active 更新再次滚动列表；
+// 播放指针拖动期间也暂时保持列表位置，避免连续 seek 触发滚动布局。
 let suppressCueListAutoScroll = false;
+let waveformPlayheadDragging = false;
 function findActiveSegmentIndex(segments, tMs, skipDisabled = false) {
   if (!Array.isArray(segments) || !segments.length || !Number.isFinite(Number(tMs))) return -1;
   let lo = 0;
@@ -10418,7 +10420,7 @@ function updateActiveCue(idx) {
     const cur = container.querySelector(`.cue[data-idx="${idx}"]`);
     if (cur) {
       cur.classList.add('active');
-      if (!editingState && !suppressCueListAutoScroll) {
+      if (!editingState && !suppressCueListAutoScroll && !waveformPlayheadDragging) {
         scrollCueIntoViewIfNeeded(cur, { behavior: 'auto' });
       }
     }
@@ -16563,7 +16565,7 @@ function syncTimelineGroupRanges() {
   sync('color', 'color_ref');
 }
 
-function seekFromWaveform(timeSec) {
+function seekFromWaveform(timeSec, { dragPreview = false } = {}) {
   const seekableEnd = player.seekable.length ? player.seekable.end(player.seekable.length - 1) : 0;
   if (seekableEnd <= 0 && !seekWarned) {
     if (player.readyState < 1 || player.networkState === HTMLMediaElement.NETWORK_LOADING) {
@@ -16575,10 +16577,12 @@ function seekFromWaveform(timeSec) {
   }
   try {
     player.currentTime = Math.max(0, timeSec);
-    update();
-    // currentTime 的 seeked/timeupdate 事件是异步触发的；先同步刷新波形，
-    // 避免字幕已选中但红色播放头要等下一拍才移动。
-    waveformEditor?.updatePlayback();
+    if (!dragPreview) {
+      update();
+      // currentTime 的 seeked/timeupdate 事件是异步触发的；先同步刷新波形，
+      // 避免字幕已选中但红色播放头要等下一拍才移动。
+      waveformEditor?.updatePlayback();
+    }
   } catch (error) {
     flashHint(`跳转失败：${error.message}`, 'warning');
   }
@@ -16670,6 +16674,9 @@ function initWaveformEditor() {
       idxs.forEach((idx) => addExtensionToSelection(idx, track));
     },
     seek: seekFromWaveform,
+    onPlayheadDragStateChange: (active) => {
+      waveformPlayheadDragging = active === true;
+    },
     togglePlayback,
     toggleDisabled: (idxs, track = 'main') => toggleDisabled(idxs, track),
     getHideDisabled: () => hideDisabled,

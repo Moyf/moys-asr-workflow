@@ -157,6 +157,9 @@
   const MAX_WAVEFORM_SCALE = 6;
   const SNAP_MS = 80;
   const ROUND_MS = 10;
+  // 连续 seek 会让浏览器反复解码并触发编辑器刷新；拖动时保留约 30 FPS
+  // 的定位更新，松开指针时再补一次精确 seek。
+  const PLAYHEAD_DRAG_SEEK_INTERVAL_MS = 32;
   const WAVEFORM_ADJUST_DEBOUNCE_MS = 160;
   const BROWSER_DECODE_LIMIT = 512 * 1024 * 1024;
   const BROWSER_PCM_ESTIMATE_LIMIT = 768 * 1024 * 1024;
@@ -1385,6 +1388,7 @@
       this.hoverSeekPreviewFrame = 0;
       this.hoverSeekPreviewLastEvent = null;
       this.hoverSeekPreviewRow = null;
+      this.playheadDragActive = false;
       // Shift+滚轮调振幅的 debounce：滚动期间只累计净步数，停止后一次性重绘
       this.pendingScaleDirection = 0;
       this.scaleDebounceTimer = 0;
@@ -1562,7 +1566,7 @@
     // 最新事件合并到每帧最多一次；真正 seek 前重新检查开关与播放状态，
     // 避免调度之后状态已变化（开始播放、关闭开关、行被虚拟化重建）仍执行。
     scheduleHoverSeekPreview(event, row) {
-      if (this.options.getHoverSeekPreview?.() !== true) return;
+      if (this.playheadDragActive || this.options.getHoverSeekPreview?.() !== true) return;
       this.hoverSeekPreviewLastEvent = event;
       this.hoverSeekPreviewRow = row;
       if (this.hoverSeekPreviewFrame) return;
@@ -3464,8 +3468,21 @@
       if (!spectral && pathOpen) ctx.stroke();
     }
 
-    seekFromPointer(event, row, playAfterSeek = false, geometry = null) {
-      this.options.seek(this.timeFromPointer(event, row, geometry) / 1000);
+    seekFromPointer(
+      event,
+      row,
+      playAfterSeek = false,
+      geometry = null,
+      allowCrossRow = false,
+      dragPreview = false,
+    ) {
+      const requestedMs = allowCrossRow
+        ? this.timeFromPointerUnbounded(event, row, geometry)
+        : this.timeFromPointer(event, row, geometry);
+      const timeMs = allowCrossRow
+        ? clamp(requestedMs, 0, Math.max(0, this.durationMs))
+        : requestedMs;
+      this.options.seek(timeMs / 1000, { dragPreview });
       this.updatePlayback();
       if (playAfterSeek && this.player?.paused) this.options.togglePlayback?.();
     }
@@ -3791,37 +3808,65 @@
     }
 
     // 「允许拖动指针」：在波形空白区域按住左键拖动时，播放指针实时跟随鼠标
-    // 所在位置。高回报率指针事件用 rAF 合并，每帧最多 seek 一次；松开时以
-    // 最终位置再 seek 一次保证落点精确。指针捕获让拖出行范围时按行边界钳制。
+    // 所在位置。高回报率指针事件用 rAF 合并，并限制连续 seek 的频率，避免
+    // 浏览器反复解码和编辑器刷新造成拖动卡顿；松开时以最终位置再 seek 一次
+    // 保证落点精确。多行模式下允许拖出当前行边界，并把时间限制在整个媒体范围内。
     beginPlayheadDrag(event, row, geometry = null) {
       geometry = geometry || this.captureRowGeometry(row);
       try { row.setPointerCapture?.(event.pointerId); } catch (_) {}
       let frame = 0;
       let lastEvent = null;
+      let lastSeekAt = -Infinity;
+      let active = true;
+      let dragging = false;
       let moved = false;
       const startX = event.clientX;
       const startY = event.clientY;
       const flush = () => {
         frame = 0;
-        if (lastEvent) this.seekFromPointer(lastEvent, row, false, geometry);
+        if (!lastEvent) return;
+        const now = performance.now();
+        if (now - lastSeekAt < PLAYHEAD_DRAG_SEEK_INTERVAL_MS) {
+          frame = requestAnimationFrame(flush);
+          return;
+        }
+        const eventToSeek = lastEvent;
         lastEvent = null;
+        lastSeekAt = now;
+        this.seekFromPointer(eventToSeek, row, false, geometry, true, true);
       };
       const cleanup = () => {
+        if (!active) return;
+        active = false;
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onUp);
         window.removeEventListener('pointercancel', onCancel);
         if (frame) { cancelAnimationFrame(frame); frame = 0; }
+        try { row.releasePointerCapture?.(event.pointerId); } catch (_) {}
         lastEvent = null;
+        if (dragging) {
+          this.playheadDragActive = false;
+          this.cancelHoverSeekPreview();
+          this.options.onPlayheadDragStateChange?.(false);
+        }
       };
       const onMove = (moveEvent) => {
         if (!(moveEvent.buttons & 1)) { cleanup(); return; }
-        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) >= 3) moved = true;
+        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) >= 3) {
+          moved = true;
+          if (!dragging) {
+            dragging = true;
+            this.playheadDragActive = true;
+            this.cancelHoverSeekPreview();
+            this.options.onPlayheadDragStateChange?.(true);
+          }
+        }
         lastEvent = moveEvent;
         if (!frame) frame = requestAnimationFrame(flush);
       };
       const onUp = (upEvent) => {
         cleanup();
-        if (moved) this.seekFromPointer(upEvent, row, false, geometry);
+        if (moved) this.seekFromPointer(upEvent, row, false, geometry, true, false);
       };
       const onCancel = () => cleanup();
       window.addEventListener('pointermove', onMove);
