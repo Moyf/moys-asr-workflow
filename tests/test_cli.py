@@ -159,6 +159,20 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(generated[generated.index("--context-json") + 1], '{"terms":["MRI"]}')
 
+    def test_tencent_forwards_debug_and_speaker_flags(self) -> None:
+        args = cli.build_parser("MAW.exe").parse_args(
+            [
+                "--provider", "tencent", "-i", "clip.mp3", "--debug", "--speaker",
+                "--strip-tail-punct", "，。！？",
+            ]
+        )
+
+        generated = cli._generator_args(args, Path("clip.mp3"), Path("out.srt"))
+
+        self.assertIn("--debug", generated)
+        self.assertIn("--speaker", generated)
+        self.assertEqual(generated[generated.index("--strip-tail-punct") + 1], "，。！？")
+
 
 if __name__ == "__main__":
     unittest.main()
