@@ -12,10 +12,12 @@ import argparse
 import json
 import mimetypes
 import os
+import secrets
 import tempfile
 import webbrowser
 from dataclasses import dataclass
 from datetime import datetime
+from hmac import compare_digest
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -83,6 +85,7 @@ class AlignmentServer(ThreadingHTTPServer):
 
     def __init__(self, address: tuple[str, int], state: AlignmentState) -> None:
         self.state = state
+        self.request_token = secrets.token_urlsafe(32)
         super().__init__(address, AlignmentRequestHandler)
 
 
@@ -100,6 +103,7 @@ class AlignmentRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/preview":
             try:
                 request = self.read_json()
+                self.check_request_token(request)
                 selected = request.get("selectedByLine", {})
                 extra_actions = request.get("extraActions", {})
                 candidate_actions = request.get("candidateActions", {})
@@ -130,6 +134,8 @@ class AlignmentRequestHandler(BaseHTTPRequestHandler):
                     "gapRanges": preview_project.get("gap_remove", {}).get("gaps", []),
                     "gapRemove": preview_project.get("gap_remove", {}),
                 })
+            except PermissionError as error:
+                self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
             except (UnicodeDecodeError, json.JSONDecodeError, OSError, ValueError) as error:
                 self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
@@ -138,6 +144,7 @@ class AlignmentRequestHandler(BaseHTTPRequestHandler):
             return
         try:
             request = self.read_json()
+            self.check_request_token(request)
             selected = request.get("selectedByLine", {})
             if not isinstance(selected, dict):
                 raise ValueError("selectedByLine 必须是对象")
@@ -167,6 +174,9 @@ class AlignmentRequestHandler(BaseHTTPRequestHandler):
             output_project["script_alignment"]["scriptPath"] = str(self.server.state.script_path)
             output_project = normalize_project(output_project)
             output_path = write_project(self.server.state.project_path, output_project)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
         except (UnicodeDecodeError, json.JSONDecodeError, OSError, ValueError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
@@ -194,7 +204,10 @@ class AlignmentRequestHandler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
             return
         if path == "/api/state":
-            self.send_json(HTTPStatus.OK, self.server.state.payload())
+            self.send_json(HTTPStatus.OK, {
+                **self.server.state.payload(),
+                "requestToken": self.server.request_token,
+            })
             return
         if path == "/api/waveform":
             waveform = self.server.state.project.get("waveform")
@@ -223,6 +236,11 @@ class AlignmentRequestHandler(BaseHTTPRequestHandler):
         if not isinstance(payload, dict):
             raise ValueError("请求内容必须是对象")
         return payload
+
+    def check_request_token(self, request: dict[str, object]) -> None:
+        token = request.get("requestToken")
+        if not isinstance(token, str) or not compare_digest(token, self.server.request_token):
+            raise PermissionError("请求令牌无效")
 
     def send_json(self, status: HTTPStatus, payload: dict[str, object]) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")

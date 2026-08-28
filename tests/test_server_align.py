@@ -7,6 +7,7 @@ import threading
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 
@@ -68,6 +69,7 @@ class ServerAlignTests(unittest.TestCase):
 
                 selected = state.alignment["defaultSelection"]
                 body = json.dumps({
+                    "requestToken": server.request_token,
                     "selectedByLine": selected,
                     "candidateActions": {},
                     "extraActions": {},
@@ -112,6 +114,7 @@ class ServerAlignTests(unittest.TestCase):
                 thread.start()
                 base = f"http://127.0.0.1:{server.server_address[1]}"
                 body = json.dumps({
+                    "requestToken": server.request_token,
                     "selectedByLine": state.alignment["defaultSelection"],
                     "candidateActions": {candidate["id"]: "keep"},
                     "extraActions": {},
@@ -153,6 +156,7 @@ class ServerAlignTests(unittest.TestCase):
                 thread.start()
                 base = f"http://127.0.0.1:{server.server_address[1]}"
                 body = json.dumps({
+                    "requestToken": server.request_token,
                     "selectedByLine": state.alignment["defaultSelection"],
                     "candidateActions": {candidate["id"]: "discard"},
                     "extraActions": {},
@@ -208,6 +212,7 @@ class ServerAlignTests(unittest.TestCase):
                 thread.start()
                 base = f"http://127.0.0.1:{server.server_address[1]}"
                 body = json.dumps({
+                    "requestToken": server.request_token,
                     "selectedByLine": state.alignment["defaultSelection"],
                     "candidateActions": {},
                     "extraActions": {},
@@ -256,6 +261,77 @@ class ServerAlignTests(unittest.TestCase):
                 for item in provenance["manual_overrides"]],
                 [(100, 300, False)],
             )
+
+    def test_export_rejects_requests_without_the_page_token(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project_path = root / "source.mosp"
+            script_path = root / "script.txt"
+            project_path.write_text(json.dumps({
+                "media": "",
+                "segments": [
+                    {"id": "s1", "start": 0, "end": 500, "text": "hello", "items": []},
+                ],
+            }), encoding="utf-8")
+            script_path.write_text("hello\n", encoding="utf-8")
+            state = SERVER.load_state(project_path, script_path, None)
+
+            with SERVER.AlignmentServer(("127.0.0.1", 0), state) as server:
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                base = f"http://127.0.0.1:{server.server_address[1]}"
+                body = json.dumps({
+                    "selectedByLine": state.alignment["defaultSelection"],
+                    "candidateActions": {},
+                    "extraActions": {},
+                }).encode("utf-8")
+                request = Request(
+                    f"{base}/api/export",
+                    data=body,
+                    headers={"Content-Type": "text/plain"},
+                    method="POST",
+                )
+                with self.assertRaises(HTTPError) as context:
+                    urlopen(request)
+                server.shutdown()
+
+            self.assertEqual(context.exception.code, 403)
+            self.assertFalse((root / "source.aligned.mosp").exists())
+
+    def test_preview_rejects_requests_without_the_page_token(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project_path = root / "source.mosp"
+            script_path = root / "script.txt"
+            project_path.write_text(json.dumps({
+                "media": "",
+                "segments": [
+                    {"id": "s1", "start": 0, "end": 500, "text": "hello", "items": []},
+                ],
+            }), encoding="utf-8")
+            script_path.write_text("hello\n", encoding="utf-8")
+            state = SERVER.load_state(project_path, script_path, None)
+
+            with SERVER.AlignmentServer(("127.0.0.1", 0), state) as server:
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                base = f"http://127.0.0.1:{server.server_address[1]}"
+                body = json.dumps({
+                    "selectedByLine": state.alignment["defaultSelection"],
+                    "candidateActions": {},
+                    "extraActions": {},
+                }).encode("utf-8")
+                request = Request(
+                    f"{base}/api/preview",
+                    data=body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with self.assertRaises(HTTPError) as context:
+                    urlopen(request)
+                server.shutdown()
+
+            self.assertEqual(context.exception.code, 403)
 
 
 if __name__ == "__main__":
