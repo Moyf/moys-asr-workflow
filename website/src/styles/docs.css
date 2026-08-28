@@ -39,7 +39,7 @@
 }
 
 .docs-sidebar { position: sticky; top: 96px; }
-.docs-sidebar-label { margin-bottom: 12px; color: var(--dim); font: 10px/1.4 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; }
+.docs-sidebar-label { margin-bottom: 12px; color: var(--dim); font: 11px/1.4 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; }
 .docs-sidebar nav { display: grid; gap: 3px; }
 .docs-sidebar a { padding: 7px 10px; border-left: 1px solid transparent; color: var(--muted); font-size: 13px; }
 .docs-sidebar a:hover, .docs-sidebar a[aria-current="page"] { border-left-color: var(--mint); color: var(--mint); background: rgba(127, 214, 178, 0.06); }
@@ -75,7 +75,7 @@
 .docs-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .docs-card { display: flex; min-height: 152px; flex-direction: column; justify-content: space-between; padding: 20px; border: 1px solid var(--line-soft); border-radius: 5px; background: var(--surface); transition: border-color 0.15s ease, transform 0.15s ease; }
 .docs-card:hover { border-color: rgba(127, 214, 178, 0.52); transform: translateY(-2px); }
-.docs-card small { color: var(--mint); font: 10px/1.4 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.docs-card small { color: var(--mint); font: 11px/1.4 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
 .docs-card h2 { margin: 14px 0 8px; border: 0; padding: 0; color: var(--ink); font-size: 17px; }
 .docs-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
 .docs-card-arrow { align-self: flex-end; color: var(--dim); font: 16px/1 var(--mono); }

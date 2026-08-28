@@ -173,3 +173,20 @@ stacking contexts limit paint order, not positioning.
 4. When a popover opens upward (space-below flip), it may extend over the resizer
    strips too; the same owner promotion is what keeps it visible. Verify new
    popovers in both flip directions next to a layout resizer before shipping.
+
+## 7. Typography and readability
+
+Readability is a product constraint, not optional polish.
+
+- UI text uses `11px` or larger by default. Do not introduce `9px` or `10px`
+  text for prose, labels, hints, controls, status messages, or keyboard help.
+- A value below `11px` requires an explicit component-level justification and
+  must be limited to compact, non-prose chrome. The current exceptions are
+  `.gap-remove-unit` at `10px` for short units (`ms`, `dB`, `%`, `秒`, `°`),
+  and `.waveform-row.multi-subtitle-row::before/::after` at `10px` for the
+  compact `1`/`2` track badges.
+- Relative units such as `em` must be checked against their inherited size;
+  their computed result must not fall below `11px` unless covered by an explicit
+  exception.
+- `web/` is the source of truth. After changing editor CSS, regenerate
+  `blank-editor.html` with `uv run python edit.py --blank`.
