@@ -17,7 +17,7 @@ echo "==> 1/6 PyInstaller 构建 dist/MAW"
 # 主清单与 CPU 变体统一由 freezer 模块执行（与 build-windows.ps1 /
 # release.yml / 源码模式自动补齐完全同源）。
 mkdir -p build
-uv run python -m maw.runtimes.freezer freeze
+uv run python -m maw.runtimes.freezer freeze --force
 uv run --group build pyinstaller --noconfirm --clean MAW.spec
 # PyInstaller 6 places datas under _internal in an onedir bundle. Keep the
 # user-facing FAQ at the AppImage root as well, where users can find it easily.

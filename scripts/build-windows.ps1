@@ -24,7 +24,7 @@ try {
     # （从声明源剥离 GPU 参数后原生冻结）统一由 freezer 模块执行，与
     # build-appimage.sh / release.yml / 源码模式自动补齐完全同源。
     New-Item -ItemType Directory -Path 'build' -Force | Out-Null
-    uv run python -m maw.runtimes.freezer freeze
+    uv run python -m maw.runtimes.freezer freeze --force
 
     if (-not $SkipTests) {
         uv run python -m unittest tests.test_packaging_contract

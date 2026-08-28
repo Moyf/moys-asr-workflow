@@ -322,7 +322,7 @@ jobs:
           # 主清单与 CPU 变体统一由 freezer 模块生成（与 build-windows.ps1 /
           # build-appimage.sh / 源码模式自动补齐完全同源）。
           mkdir -p build
-          uv run python -m maw.runtimes.freezer freeze
+          uv run python -m maw.runtimes.freezer freeze --force
           uv run --group build pyinstaller --noconfirm --clean MAW.spec
 
       - name: Verify bundled FAQ
