@@ -236,8 +236,26 @@
   }
 
   function providerLabel(item) {
-    if (item.id === "custom") return item.displayName || item.defaultLabel || item.label || CUSTOM_DEFAULT_LABEL;
+    if (item.id === "custom") return item.displayName || t("llm_custom_provider") || item.defaultLabel || item.label || CUSTOM_DEFAULT_LABEL;
     return item.label || item.defaultLabel || item.id;
+  }
+
+  function postprocessErrorText(result) {
+    const detail = result?.detail || result?.error || "";
+    return window.MAWLauncher.errorText
+      ? window.MAWLauncher.errorText(result?.code || "", detail)
+      : (detail || t("failed"));
+  }
+
+  function postprocessFieldId(field) {
+    return ({
+      postprocessApiKey: "llmApiKey",
+      postprocessBaseUrl: "llmBaseUrl",
+      postprocessModel: "llmModel",
+      postprocessReasoningMode: "llmReasoningMode",
+      postprocessDisplayName: "llmCustomDisplayName",
+      postprocessPrompt: "postprocessPrompt",
+    })[field] || "";
   }
 
   function syncProviderOptionLabels() {
@@ -1317,12 +1335,11 @@
       displayName: item.id === "custom" ? $("llmCustomDisplayName").value.trim() : "",
     });
     if (!result.ok) {
-      const field = result.field === "postprocessApiKey"
-        ? "llmApiKey"
-        : (result.field === "postprocessBaseUrl" ? "llmBaseUrl" : (result.field === "postprocessModel" ? "llmModel" : (result.field === "postprocessReasoningMode" ? "llmReasoningMode" : (result.field === "postprocessDisplayName" ? "llmCustomDisplayName" : ""))));
-      if (field) setFieldError(field, result.detail || result.error || t("failed"));
-      setSettingsSaveStatus(result.error || result.detail || t("failed"), "error");
-      setResult(result.error || result.detail || t("failed"), "error");
+      const field = postprocessFieldId(result.field);
+      const message = postprocessErrorText(result);
+      if (field) setFieldError(field, message);
+      setSettingsSaveStatus(message, "error");
+      setResult(message, "error");
       return result;
     }
     ["llmApiKey", "llmBaseUrl", "llmModel", "llmReasoningMode", "llmCustomDisplayName"].forEach((field) => setFieldError(field, ""));
@@ -1368,7 +1385,12 @@
         renderAutoPostprocessState();
         maybeEnablePendingAutoStep();
       }
-      else setSettingsSaveStatus(result.detail || result.error || t("failed"), "error", 0);
+      else {
+        const message = postprocessErrorText(result);
+        const field = postprocessFieldId(result.field);
+        if (field) setFieldError(field, message);
+        setSettingsSaveStatus(message, "error", 0);
+      }
       return result;
     } catch (error) {
       setSettingsSaveStatus(String(error?.message || error || t("failed")), "error", 0);
@@ -1392,11 +1414,10 @@
         model: $("llmModel").value.trim(),
       });
       if (!result.ok) {
-        const field = result.field === "postprocessApiKey"
-          ? "llmApiKey"
-          : (result.field === "postprocessBaseUrl" ? "llmBaseUrl" : (result.field === "postprocessModel" ? "llmModel" : ""));
-        if (field) setFieldError(field, result.detail || result.error || t("failed"));
-        setSettingsSaveStatus(result.detail || result.error || t("failed"), "error", 0);
+        const field = postprocessFieldId(result.field);
+        const message = postprocessErrorText(result);
+        if (field) setFieldError(field, message);
+        setSettingsSaveStatus(message, "error", 0);
         return;
       }
       const models = Array.isArray(result.models)
@@ -1447,8 +1468,9 @@
       else {
         const message = result.code === "custom_prompt_required"
           ? t("toolbox_custom_prompt_required")
-          : (result.error || result.detail || t("failed"));
-        if (result.field === "postprocessPrompt") setFieldError("postprocessPrompt", message);
+          : postprocessErrorText(result);
+        const field = postprocessFieldId(result.field);
+        if (field) setFieldError(field, message);
         setResult(message, "error");
       }
     } finally {
@@ -1730,6 +1752,8 @@
   };
   window.MAWLauncher.getAutoPostprocessPayload = autoPlanFromControls;
   window.MAWLauncher.onLanguageChanged = () => {
+    syncProviderOptionLabels();
+    if (window.MAWLauncher.config?.postprocessProviders?.length) renderProviderKeyStatus(provider());
     document.querySelectorAll(".toolbox-chain-file").forEach(renderArtifactButton);
     renderAutoPostprocessState();
   };

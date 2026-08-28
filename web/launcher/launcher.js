@@ -416,6 +416,7 @@
     settings_punctuation_hint: "文稿匹配与转写后处理共用这里的断句与保留符号。",
     llm_model: "模型",
     llm_api_key: "API Key",
+    llm_custom_provider: "自定义（兼容 OpenAI）",
     llm_custom_display_name: "自定义显示名称",
     llm_custom_display_name_placeholder: "可选",
     llm_test_connection: "测试连接",
@@ -451,6 +452,7 @@
     settings_punctuation_hint: "Script match and transcription post-processing share these split and preserved symbols.",
     llm_model: "Model",
     llm_api_key: "API Key",
+    llm_custom_provider: "Custom (OpenAI-compatible)",
     llm_custom_display_name: "Custom display name",
     llm_custom_display_name_placeholder: "Optional",
     llm_test_connection: "Test connection",
@@ -1497,7 +1499,7 @@
     if (event.type === "dropReject" && !state.dropTarget && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
     if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
   }
-  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onLanguageChanged() {} };
+  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onLanguageChanged() {} };
 
   $("langToggle").addEventListener("click", async () => { state.lang = state.lang === "zh" ? "en" : "zh"; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (!result.ok) applyErrorResult(result); });
   $("themeLight").addEventListener("click", () => setTheme("light")); $("themeDark").addEventListener("click", () => setTheme("dark")); $("themeSystem").addEventListener("click", () => setTheme("system"));
