@@ -3,18 +3,31 @@
 // Event/process/port-based lifecycle — no arbitrary sleeps for correctness.
 import { execFileSync, spawn } from 'node:child_process';
 import { writeFileSync, readFileSync, existsSync, rmSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { randomBytes } from 'node:crypto';
 
-// The editor server and portable HTML generator use only the repository's
-// Python sources and standard library.  Running them directly avoids making
-// browser tests depend on uv's global cache (which may be locked down on a
-// developer machine).  Set MAW_E2E_PYTHON when a specific interpreter is
-// needed.
+// The editor server imports maw.reapeaks even for --no-waveform startup. Keep
+// the test process usable when the selected interpreter is system Python by
+// adding the repository venv's installed packages to its import path. Set
+// MAW_E2E_PYTHON when a specific interpreter is needed.
 const PYTHON_COMMAND = process.env.MAW_E2E_PYTHON
   || (process.platform === 'win32' ? 'python' : 'python3');
+const REPO_SITE_PACKAGES = process.platform === 'win32'
+  ? join(process.cwd(), '.venv', 'Lib', 'site-packages')
+  : null;
+
+function buildE2EPythonEnv(extra = {}) {
+  const environment = { ...process.env, ...extra };
+  const pythonPaths = [];
+  if (REPO_SITE_PACKAGES && existsSync(REPO_SITE_PACKAGES)) {
+    pythonPaths.push(REPO_SITE_PACKAGES);
+  }
+  if (process.env.PYTHONPATH) pythonPaths.push(process.env.PYTHONPATH);
+  if (pythonPaths.length) environment.PYTHONPATH = pythonPaths.join(delimiter);
+  return environment;
+}
 
 // ---------------------------------------------------------------------------
 // Process cleanup for interrupted E2E runs.
@@ -367,12 +380,11 @@ export async function startServer(projectJsonPath, mediaPath, port) {
     '--port', String(port),
     '--no-open',
   ];
-  return launchServerProcess(pythonArgs, port, {
-    ...process.env,
+  return launchServerProcess(pythonArgs, port, buildE2EPythonEnv({
     PYTHONUNBUFFERED: '1',
     LOCALAPPDATA: settingsRoot,
     XDG_CONFIG_HOME: settingsRoot,
-  });
+  }));
 }
 
 // 空白服务器（--blank）：用于「浏览器打开工程后由服务器接管」的回归测试。
@@ -386,12 +398,11 @@ export async function startBlankServer(port, settingsRoot) {
     '--port', String(port),
     '--no-open',
   ];
-  return launchServerProcess(pythonArgs, port, {
-    ...process.env,
+  return launchServerProcess(pythonArgs, port, buildE2EPythonEnv({
     PYTHONUNBUFFERED: '1',
     LOCALAPPDATA: settingsRoot,
     XDG_CONFIG_HOME: settingsRoot,
-  });
+  }));
 }
 
 export async function startAlignmentServer(projectPath, scriptPath, port) {
@@ -402,10 +413,9 @@ export async function startAlignmentServer(projectPath, scriptPath, port) {
     '--port', String(port),
     '--no-open',
   ];
-  return launchServerProcess(pythonArgs, port, {
-    ...process.env,
+  return launchServerProcess(pythonArgs, port, buildE2EPythonEnv({
     PYTHONUNBUFFERED: '1',
-  });
+  }));
 }
 
 // ---------------------------------------------------------------------------
