@@ -23,6 +23,7 @@ import tempfile
 import threading
 import webbrowser
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -96,6 +97,10 @@ class ServerProject:
     stickers: list[dict]
     source_media_path: Path | None = None
     reapeaks_path: Path | None = None
+
+
+ProjectLoadProgressCallback = Callable[[str, int], None]
+ProjectLoader = Callable[[ProjectLoadProgressCallback], ServerProject]
 
 
 @dataclass(frozen=True)
@@ -284,8 +289,14 @@ def load_project(
     no_waveform: bool,
     load_reapeaks: bool = True,
     peaks_per_second: int,
+    progress: ProjectLoadProgressCallback | None = None,
 ) -> ServerProject:
+    def report(stage: str, progress_value: int) -> None:
+        if progress is not None:
+            progress(stage, progress_value)
+
     json_path = json_path.resolve()
+    report("reading_project", 5)
     if not json_path.exists():
         raise FileNotFoundError(f"JSON 文件不存在 - {json_path}")
     raw_data = json.loads(json_path.read_text(encoding="utf-8"))
@@ -295,6 +306,7 @@ def load_project(
     if repaired_count:
         print(f"[project] 已兜底修复 {repaired_count} 处异常时间码（保底 100ms）")
     data = normalize_project(raw_data)
+    report("validating_project", 20)
     sticker_source = data.get("sticker_root")
     sticker_root: Path | None = None
     stickers: list[dict] = []
@@ -310,8 +322,10 @@ def load_project(
             root_text, stickers = edit.scan_stickers(fallback_path)
             sticker_root = Path(root_text) if root_text else None
 
+    report("preparing_media", 35)
     media_value = data.get("media")
     if explicit_media is None and (not isinstance(media_value, str) or not media_value.strip()):
+        report("finalizing", 95)
         return ServerProject(
             data,
             json_path,
@@ -343,6 +357,7 @@ def load_project(
     # 请求路径（requested_path）查找，否则会漏读源媒体旁的缓存。
     reapeaks_base = resolution.requested_path or source_media_path
     if not no_waveform:
+        report("preparing_waveform", 50)
         try:
             waveform, extracted = edit.load_or_extract_waveform(
                 data.get("waveform"), media_path, peaks_per_second=peaks_per_second,
@@ -371,6 +386,7 @@ def load_project(
                     f"({reapeaks_wave['peaks_per_second']}/秒)"
                 )
 
+    report("finalizing", 95)
     return ServerProject(
         data,
         json_path,
@@ -413,9 +429,16 @@ def build_server_page(
     project: ServerProject,
     settings: ServerSettings | None = None,
     request_token: str = "",
+    startup_status: dict[str, object] | None = None,
 ) -> bytes:
     """Render with current web/ assets on every page request to prevent UI drift."""
     settings = settings or ServerSettings()
+    startup_status = startup_status or {
+        "status": "ready",
+        "stage": "ready",
+        "progress": 100,
+        "error": "",
+    }
     if project.media_path:
         media_html = edit.media_tag(project.media_path, "/media")
         source_media = project.source_media_path or project.media_path
@@ -475,6 +498,11 @@ def build_server_page(
             "lottieExportUrl": "/api/exports/lottie",
             "ografExportUrl": "/api/exports/ograf",
             "waveformUrl": "/api/waveform",
+            "startupStatusUrl": "/api/startup-status",
+            "startupStatus": startup_status.get("status", "ready"),
+            "startupStage": startup_status.get("stage", "ready"),
+            "startupProgress": startup_status.get("progress", 100),
+            "startupError": startup_status.get("error", ""),
             "canSave": project.json_path is not None,
             "canPortableStickerExport": project.json_path is not None,
             "canOtozStickerExport": project.json_path is not None,
@@ -516,6 +544,7 @@ class EditorServer(ThreadingHTTPServer):
         no_waveform: bool = False,
         defer_reapeaks: bool = True,
         peaks_per_second: int = edit.DEFAULT_PEAKS_PER_SECOND,
+        project_loader: ProjectLoader | None = None,
     ):
         self.defer_reapeaks = defer_reapeaks and not no_waveform
         if self.defer_reapeaks:
@@ -538,6 +567,13 @@ class EditorServer(ThreadingHTTPServer):
         self.reapeaks_payload: dict[str, dict] = {}
         self.reapeaks_thread: threading.Thread | None = None
         self.reapeaks_project: ServerProject | None = None
+        self.startup_lock = threading.Lock()
+        self.project_loader = project_loader
+        self.startup_thread: threading.Thread | None = None
+        self.startup_status = "loading" if project_loader is not None else "ready"
+        self.startup_stage = "starting" if project_loader is not None else "ready"
+        self.startup_progress = 0 if project_loader is not None else 100
+        self.startup_error = ""
         super().__init__(address, EditorRequestHandler)
 
     def persist_settings(self) -> None:
@@ -558,6 +594,70 @@ class EditorServer(ThreadingHTTPServer):
                 print(f"[settings] 后台保存失败: {error}", file=sys.stderr)
 
         threading.Thread(target=persist, daemon=True, name="maw-save-settings").start()
+
+    def update_startup_progress(self, stage: str, progress: int) -> None:
+        with self.startup_lock:
+            if self.startup_status != "loading":
+                return
+            self.startup_stage = stage
+            self.startup_progress = max(0, min(99, int(progress)))
+
+    def startup_status_payload(self) -> dict[str, object]:
+        with self.startup_lock:
+            return {
+                "ok": True,
+                "status": self.startup_status,
+                "stage": self.startup_stage,
+                "progress": self.startup_progress,
+                "error": self.startup_error,
+            }
+
+    def start_project_load(self) -> bool:
+        """Start the initial project load after the listening socket is ready."""
+        with self.startup_lock:
+            loader = self.project_loader
+            if loader is None:
+                return False
+            self.project_loader = None
+        thread = threading.Thread(
+            target=self._load_initial_project,
+            args=(loader,),
+            daemon=True,
+            name="maw-load-project",
+        )
+        self.startup_thread = thread
+        thread.start()
+        return True
+
+    def _load_initial_project(self, loader: ProjectLoader) -> None:
+        try:
+            project = loader(self.update_startup_progress)
+            if self.defer_reapeaks:
+                project = without_deferred_reapeaks(project)
+            self.project = project
+            if project.json_path is not None:
+                try:
+                    self.remember_project(project.json_path)
+                except OSError as error:
+                    print(f"[settings] 后台保存最近工程失败: {error}", file=sys.stderr)
+            with self.startup_lock:
+                self.startup_status = "ready"
+                self.startup_stage = "ready"
+                self.startup_progress = 100
+                self.startup_error = ""
+            if project.json_path is not None:
+                print(f"已加载工程: {project.json_path}")
+            self.start_deferred_reapeaks_load()
+        except Exception as error:  # noqa: BLE001 - keep the health server alive for UI diagnostics
+            detail = str(error) or error.__class__.__name__
+            print(f"[project] 后台加载失败: {detail}", file=sys.stderr)
+            with self.startup_lock:
+                self.startup_status = "error"
+                self.startup_stage = "error"
+                self.startup_progress = 0
+                self.startup_error = detail
+            with self.reapeaks_lock:
+                self.reapeaks_status = "disabled"
 
     def set_sticker_root(self, raw_path: str) -> tuple[Path, list[dict]]:
         """Scan a root before atomically making it the active sticker scope."""
@@ -632,7 +732,8 @@ class EditorServer(ThreadingHTTPServer):
 
     def serve_forever(self, poll_interval: float = 0.5) -> None:
         """Start optional cache loading immediately before serving requests."""
-        self.start_deferred_reapeaks_load()
+        if not self.start_project_load():
+            self.start_deferred_reapeaks_load()
         super().serve_forever(poll_interval)
 
     def reapeaks_status_payload(self) -> dict[str, object]:
@@ -1615,6 +1716,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/prproj-capability":
             self.send_json(HTTPStatus.OK, PRPROJ_CAPABILITY)
             return
+        if path == "/api/startup-status":
+            self.send_json(HTTPStatus.OK, self.editor_server.startup_status_payload())
+            return
         if path == "/api/waveform":
             self.send_json(HTTPStatus.OK, self.editor_server.reapeaks_status_payload())
             return
@@ -1623,6 +1727,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 self.editor_server.project,
                 self.editor_server.settings,
                 self.editor_server.request_token,
+                self.editor_server.startup_status_payload(),
             )
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -1763,6 +1868,7 @@ def open_editor_server(
     no_waveform: bool = False,
     defer_reapeaks: bool = True,
     peaks_per_second: int = edit.DEFAULT_PEAKS_PER_SECOND,
+    project_loader: ProjectLoader | None = None,
 ) -> tuple[EditorServer, bool]:
     """Bind the editor server and report whether the port had to be advanced.
 
@@ -1792,6 +1898,7 @@ def open_editor_server(
                     no_waveform=no_waveform,
                     defer_reapeaks=defer_reapeaks,
                     peaks_per_second=peaks_per_second,
+                    project_loader=project_loader,
                 ),
                 offset > 0,
             )
@@ -1830,44 +1937,36 @@ def main() -> int:
     settings_path = default_settings_path()
     settings = read_server_settings(settings_path)
     defer_reapeaks = not args.no_waveform
-    startup_settings_dirty = False
+    project = load_blank_project(args.stickers)
+    project_loader: ProjectLoader | None = None
+    if args.json_path:
+        json_path = Path(args.json_path)
 
-    try:
-        if args.blank:
-            project = load_blank_project(args.stickers)
-        elif args.json_path:
-            project = load_project(
-                Path(args.json_path), args.media, args.stickers,
+        def load_requested_project(progress: ProjectLoadProgressCallback) -> ServerProject:
+            return load_project(
+                json_path, args.media, args.stickers,
                 no_waveform=args.no_waveform,
                 load_reapeaks=not defer_reapeaks,
                 peaks_per_second=args.waveform_peaks_per_second,
+                progress=progress,
             )
-            if defer_reapeaks:
-                project = without_deferred_reapeaks(project)
-            settings = remember_project(settings, project.json_path)
-            startup_settings_dirty = True
-        elif settings.auto_open_last_project and settings.recent_projects:
-            last_project = settings.recent_projects[0]
-            try:
-                project = load_project(
-                    last_project.path, None, args.stickers,
-                    no_waveform=args.no_waveform,
-                    load_reapeaks=not defer_reapeaks,
-                    peaks_per_second=args.waveform_peaks_per_second,
-                )
-                if defer_reapeaks:
-                    project = without_deferred_reapeaks(project)
-            except (FileNotFoundError, ValueError, json.JSONDecodeError) as error:
-                print(f"无法恢复上次打开的工程：{error}；已启动空白编辑器", file=sys.stderr)
-                project = load_blank_project(args.stickers)
-            else:
-                settings = remember_project(settings, project.json_path)
-                startup_settings_dirty = True
-                print(f"已恢复上次打开的工程: {project.json_path}")
-        else:
-            project = load_blank_project(args.stickers)
-    except (FileNotFoundError, ValueError, json.JSONDecodeError) as error:
-        parser.error(str(error))
+
+        project_loader = load_requested_project
+    elif not args.blank and settings.auto_open_last_project and settings.recent_projects:
+        last_project = settings.recent_projects[0]
+
+        def load_last_project(progress: ProjectLoadProgressCallback) -> ServerProject:
+            project = load_project(
+                last_project.path, None, args.stickers,
+                no_waveform=args.no_waveform,
+                load_reapeaks=not defer_reapeaks,
+                peaks_per_second=args.waveform_peaks_per_second,
+                progress=progress,
+            )
+            print(f"已恢复上次打开的工程: {project.json_path}")
+            return project
+
+        project_loader = load_last_project
 
     try:
         server, port_advanced = open_editor_server(
@@ -1880,6 +1979,7 @@ def main() -> int:
             no_waveform=args.no_waveform,
             defer_reapeaks=defer_reapeaks,
             peaks_per_second=args.waveform_peaks_per_second,
+            project_loader=project_loader,
         )
     except OSError as error:
         if args.port is None:
@@ -1893,8 +1993,6 @@ def main() -> int:
     with server:
         host, port = server.server_address[:2]
         url = f"http://{host}:{port}/"
-        if startup_settings_dirty:
-            server.persist_settings_async()
         print("MAWE 已启动（仅本机可访问）")
         print(f"地址: {url}")
         print("按 Ctrl+C 停止服务；修改 web/ 下源码后刷新页面即可看到最新界面。")
