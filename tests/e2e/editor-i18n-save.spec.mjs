@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   cleanupTempDir,
+  disableOnboarding,
   DURATION_MS,
   findFreePort,
   generateProjectJson,
@@ -164,6 +165,7 @@ test('validation save error previews the item and jumps to its subtitle', async 
 });
 
 test('small subtitle-segment overlap can be auto-repaired and saved again', async ({ page }) => {
+  await disableOnboarding(page);
   await page.goto(server.url);
   let saveAttempts = 0;
   await page.route('**/api/project', async (route) => {
@@ -207,6 +209,7 @@ test('small subtitle-segment overlap can be auto-repaired and saved again', asyn
 });
 
 test('larger subtitle-segment overlap requires an explicit repair direction', async ({ page }) => {
+  await disableOnboarding(page);
   await page.goto(server.url);
   await page.route('**/api/project', async (route) => {
     if (route.request().method() !== 'POST') {
