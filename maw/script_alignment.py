@@ -509,14 +509,60 @@ def _normalize_provenance_ranges(
         end = _provenance_time(raw_range.get("end"))
         if start is None or end is None or end <= start:
             continue
-        result.append({
+        normalized: dict[str, object] = {
             "id": _provenance_id(raw_range.get("id"), source, index, used),
             "source": source,
             "start": start,
             "end": end,
             "removed": raw_range.get("removed") is not False
             if source in {"manual", "legacy"} else True,
-        })
+        }
+        if source == "manual" and raw_range.get("operation") == "move":
+            base_start = _provenance_time(raw_range.get("base_start"))
+            base_end = _provenance_time(raw_range.get("base_end"))
+            raw_targets = raw_range.get("target_ranges")
+            if isinstance(raw_targets, list):
+                targets = _normalize_gap_entries(raw_targets)
+            else:
+                target_start = _provenance_time(raw_range.get("target_start"))
+                target_end = _provenance_time(raw_range.get("target_end"))
+                targets = (
+                    [{"start": target_start, "end": target_end, "removed": True}]
+                    if target_start is not None and target_end is not None and target_end > target_start
+                    else []
+                )
+            if base_start is not None and base_end is not None and base_end > base_start and targets:
+                normalized.update({
+                    "operation": "move",
+                    "base_start": base_start,
+                    "base_end": base_end,
+                })
+                if len(targets) == 1:
+                    normalized["target_start"] = targets[0]["start"]
+                    normalized["target_end"] = targets[0]["end"]
+                else:
+                    normalized["target_ranges"] = [
+                        {"start": target["start"], "end": target["end"]}
+                        for target in targets
+                    ]
+        elif source == "manual" and raw_range.get("operation") == "boundary_resize":
+            edge = raw_range.get("edge")
+            base = _provenance_time(raw_range.get("base"))
+            boundary = _provenance_time(raw_range.get("boundary"))
+            cleared_ranges = _normalize_gap_entries(raw_range.get("cleared_ranges"))
+            if edge in {"start", "end"} and base is not None and boundary is not None:
+                normalized.update({
+                    "operation": "boundary_resize",
+                    "edge": edge,
+                    "base": base,
+                    "boundary": boundary,
+                })
+                if cleared_ranges:
+                    normalized["cleared_ranges"] = [
+                        {"start": item["start"], "end": item["end"]}
+                        for item in cleared_ranges
+                    ]
+        result.append(normalized)
     if sort:
         result.sort(key=lambda item: (int(item["start"]), int(item["end"]), str(item["id"])))
     return result
@@ -602,6 +648,33 @@ def _apply_gap_state_range(
     return _coalesce_gap_states(next_gaps)
 
 
+def _clear_gap_state_range(
+    gaps: Sequence[Mapping[str, object]],
+    start_value: object,
+    end_value: object,
+    removed: bool | None = None,
+) -> list[dict[str, object]]:
+    source = _coalesce_gap_states(gaps)
+    start = _provenance_time(start_value)
+    end = _provenance_time(end_value)
+    if start is None or end is None or end <= start:
+        return source
+    result: list[dict[str, object]] = []
+    for gap in source:
+        gap_start = int(gap["start"])
+        gap_end = int(gap["end"])
+        if gap_end <= start or gap_start >= end or (
+            removed is not None and (gap.get("removed") is not False) != removed
+        ):
+            result.append(dict(gap))
+            continue
+        if gap_start < start:
+            result.append({**gap, "end": start})
+        if gap_end > end:
+            result.append({**gap, "start": end})
+    return _coalesce_gap_states(result)
+
+
 def _normalize_gap_provenance(
     value: object,
     fallback_gaps: object = None,
@@ -659,13 +732,60 @@ def _gap_ranges_from_provenance(value: Mapping[str, object]) -> list[dict[str, o
         ranges = value.get(key, [])
         if isinstance(ranges, list):
             for item in ranges:
-                result = _apply_gap_state_range(
-                    result,
-                    item["start"],
-                    item["end"],
-                    item.get("removed") is not False,
-                    preserve_uncovered=item.get("removed") is False,
-                )
+                removed = item.get("removed") is not False
+                if item.get("operation") == "move":
+                    result = _clear_gap_state_range(
+                        result, item["base_start"], item["base_end"], removed,
+                    )
+                    raw_targets = item.get("target_ranges")
+                    targets = raw_targets if isinstance(raw_targets, list) else [{
+                        "start": item.get("target_start"),
+                        "end": item.get("target_end"),
+                    }]
+                    for target in targets:
+                        if isinstance(target, Mapping):
+                            result = _apply_gap_state_range(
+                                result,
+                                target.get("start"),
+                                target.get("end"),
+                                removed,
+                                preserve_uncovered=not removed,
+                            )
+                elif item.get("operation") == "boundary_resize":
+                    cleared_ranges = item.get("cleared_ranges")
+                    if isinstance(cleared_ranges, list):
+                        for cleared in cleared_ranges:
+                            if isinstance(cleared, Mapping):
+                                result = _clear_gap_state_range(
+                                    result, cleared.get("start"), cleared.get("end"),
+                                )
+                    base = item["base"]
+                    boundary = item["boundary"]
+                    edge = item["edge"]
+                    if (edge == "start" and int(boundary) > int(base)) or (
+                        edge == "end" and int(boundary) < int(base)
+                    ):
+                        result = _clear_gap_state_range(
+                            result,
+                            min(int(base), int(boundary)),
+                            max(int(base), int(boundary)),
+                        )
+                    else:
+                        result = _apply_gap_state_range(
+                            result,
+                            boundary if edge == "start" else base,
+                            base if edge == "start" else boundary,
+                            removed,
+                            preserve_uncovered=not removed,
+                        )
+                else:
+                    result = _apply_gap_state_range(
+                        result,
+                        item["start"],
+                        item["end"],
+                        removed,
+                        preserve_uncovered=not removed,
+                    )
     return _coalesce_gap_states(result)
 
 
@@ -804,6 +924,7 @@ def apply_alignment_to_project(
         kept_intervals_by_cue,
         removed_ranges,
     )
+    _refresh_main_binding_offsets(output)
 
     existing_gap = output.get("gap_remove")
     existing_gaps = existing_gap.get("gaps", []) if isinstance(existing_gap, Mapping) else []
@@ -816,7 +937,7 @@ def apply_alignment_to_project(
         "script_alignment",
         script_alignment_ranges,
     )
-    if detect_audio_gaps:
+    if detect_audio_gaps and isinstance(waveform, Mapping):
         provenance = _replace_provenance_source(
             provenance,
             "audio_gate",
@@ -839,6 +960,18 @@ def apply_alignment_to_project(
         "gaps": final_gaps,
         "provenance": provenance,
     }
+    if isinstance(existing_gap, Mapping):
+        normalized_existing_gap = {
+            **existing_gap,
+            "gaps": _normalize_gap_entries(existing_gaps),
+        }
+        gap_remove = _normalize_gap_remove_override(normalized_existing_gap, gap_remove, output)
+        gap_remove["provenance"] = provenance
+        gap_remove["manual_corrections"] = bool(provenance["manual_overrides"])
+        gap_remove["gaps"] = _decorate_gap_ranges(
+            _gap_ranges_from_provenance(provenance),
+            provenance,
+        )
     if gap_remove_override is not None:
         gap_remove = _normalize_gap_remove_override(
             gap_remove_override,
@@ -2759,9 +2892,11 @@ def _apply_kept_intervals_to_segments(
         if isinstance(segment, Mapping) and isinstance(segment.get("id"), str)
     }
     output: list[object] = []
+    output_source_ordinals: list[int] = []
     for ordinal, raw_segment in enumerate(raw_segments):
         if not isinstance(raw_segment, dict):
             output.append(raw_segment)
+            output_source_ordinals.append(ordinal)
             continue
         segment_id = str(raw_segment.get("id") or f"main-{ordinal + 1:03d}")
         source_index = source_index_by_id.get(segment_id)
@@ -2771,6 +2906,7 @@ def _apply_kept_intervals_to_segments(
             if start is not None and end is not None and _contains_range(removed_ranges, start, end):
                 raw_segment["disabled"] = True
             output.append(raw_segment)
+            output_source_ordinals.append(ordinal)
             continue
 
         cue = source_cues[source_index]
@@ -2778,9 +2914,11 @@ def _apply_kept_intervals_to_segments(
         if not kept_intervals:
             raw_segment["disabled"] = True
             output.append(raw_segment)
+            output_source_ordinals.append(ordinal)
             continue
         if _intervals_cover_range(kept_intervals, cue.start, cue.end):
             output.append(raw_segment)
+            output_source_ordinals.append(ordinal)
             continue
 
         pieces = _split_segment_by_item_intervals(
@@ -2791,12 +2929,96 @@ def _apply_kept_intervals_to_segments(
         )
         if pieces:
             output.extend(pieces)
+            output_source_ordinals.extend([ordinal] * len(pieces))
         else:
             # A partial range should only be produced from valid items.  Keep
             # the cue visible rather than silently throwing away audio if a
             # legacy project does not provide enough item information.
             output.append(raw_segment)
+            output_source_ordinals.append(ordinal)
+    _remap_split_visual_references(output, output_source_ordinals)
     return output
+
+
+def _remap_split_visual_references(
+    segments: Sequence[object],
+    source_ordinals: Sequence[int],
+) -> None:
+    first_output_by_source: dict[int, int] = {}
+    for output_index, source_ordinal in enumerate(source_ordinals):
+        first_output_by_source.setdefault(source_ordinal, output_index)
+
+    for output_index, (segment, source_ordinal) in enumerate(zip(segments, source_ordinals, strict=True)):
+        if not isinstance(segment, dict):
+            continue
+        first_output = first_output_by_source[source_ordinal]
+        for head_field, ref_field in (("sticker", "sticker_ref"), ("color", "color_ref")):
+            head = segment.get(head_field)
+            if output_index != first_output and isinstance(head, Mapping):
+                segment.pop(head_field, None)
+                segment[ref_field] = {
+                    "name": str(head.get("name") or ""),
+                    "headIdx": first_output,
+                }
+                continue
+            reference = segment.get(ref_field)
+            if not isinstance(reference, dict):
+                continue
+            old_head_index = _int_value(reference.get("headIdx"))
+            if old_head_index in first_output_by_source:
+                reference["headIdx"] = first_output_by_source[old_head_index]
+
+
+def _refresh_main_binding_offsets(project: Mapping[str, object]) -> None:
+    raw_segments = project.get("segments")
+    raw_multi = project.get("multi_subtitle")
+    if not isinstance(raw_segments, list) or not isinstance(raw_multi, Mapping):
+        return
+    main_by_id = {
+        str(segment.get("id")): segment
+        for segment in raw_segments
+        if isinstance(segment, Mapping) and isinstance(segment.get("id"), str)
+    }
+    raw_tracks = raw_multi.get("tracks")
+    raw_bindings = raw_multi.get("bindings")
+    if not isinstance(raw_tracks, list) or not isinstance(raw_bindings, list):
+        return
+    tracks_by_id = {
+        str(track.get("id")): track
+        for track in raw_tracks
+        if isinstance(track, Mapping) and isinstance(track.get("id"), str)
+    }
+    for binding in raw_bindings:
+        if not isinstance(binding, dict):
+            continue
+        main_ids = binding.get("main_segment_ids")
+        extension_ids = binding.get("extension_segment_ids")
+        track = tracks_by_id.get(str(binding.get("track_id") or ""))
+        if (
+            not isinstance(main_ids, list)
+            or len(main_ids) != 1
+            or not isinstance(extension_ids, list)
+            or len(extension_ids) != 1
+            or not isinstance(track, Mapping)
+        ):
+            continue
+        main = main_by_id.get(str(main_ids[0]))
+        extension_segments = track.get("segments")
+        if not isinstance(main, Mapping) or not isinstance(extension_segments, list):
+            continue
+        extension = next((
+            item for item in extension_segments
+            if isinstance(item, Mapping) and item.get("id") == extension_ids[0]
+        ), None)
+        if not isinstance(extension, Mapping):
+            continue
+        main_start = _int_value(main.get("start"))
+        main_end = _int_value(main.get("end"))
+        extension_start = _int_value(extension.get("start"))
+        extension_end = _int_value(extension.get("end"))
+        if None not in {main_start, main_end, extension_start, extension_end}:
+            binding["start_offset_ms"] = int(extension_start) - int(main_start)
+            binding["end_offset_ms"] = int(extension_end) - int(main_end)
 
 
 def _split_segment_by_item_intervals(
