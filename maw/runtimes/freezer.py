@@ -41,20 +41,14 @@ _DARWIN_ONLY_RE = re.compile(r";\s*sys_platform\s*==\s*'darwin'")
 _NON_DARWIN_MARKER_RE = re.compile(r";\s*sys_platform\s*!=\s*'darwin'")
 
 
-def strip_gpu_pins(text: str) -> str:
-    """剥离依赖声明文本中的 GPU 本地版本后缀（``+cuNNN``）。
+def strip_gpu_pins(line: str) -> str:
+    """剥离单条依赖 spec 中的 GPU 本地版本后缀（``+cuNNN``）。
 
-    仅作用于非注释行；注释与 marker 原样保留（moss-requirements.in 顶部
-    注释里对 ``+cu130`` 的说明不会被改动）。保留原文本的尾随换行。
+    ``torch==2.13.0+cu130`` → ``torch==2.13.0``；无后缀的行原样返回。
+    GPU 本地版本只存在于 pytorch 专用 index，在 PyPI（CPU wheel 源）无效，
+    CPU 变体必须剥掉后才能被默认源解析。
     """
-    lines: list[str] = []
-    for line in text.splitlines():
-        if line.lstrip().startswith("#"):
-            lines.append(line)
-        else:
-            lines.append(_CU_PIN_RE.sub("", line))
-    result = "\n".join(lines)
-    return result + "\n" if text.endswith("\n") else result
+    return _CU_PIN_RE.sub("", line)
 
 
 def cpu_requirements_lines(source: str) -> list[str]:
@@ -75,7 +69,7 @@ def cpu_requirements_lines(source: str) -> list[str]:
         if _DARWIN_ONLY_RE.search(line):
             continue
         line = _NON_DARWIN_MARKER_RE.sub("", line).rstrip()
-        lines.append(_CU_PIN_RE.sub("", line))
+        lines.append(strip_gpu_pins(line))
     return lines
 
 

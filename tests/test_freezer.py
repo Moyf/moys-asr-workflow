@@ -52,19 +52,15 @@ funasr==1.4.2 \\
 
 
 class StripGpuPinsTests(unittest.TestCase):
-    def test_strips_local_version_suffix_from_dependency_lines(self) -> None:
+    def test_strips_local_version_suffix(self) -> None:
         self.assertEqual(
-            freezer_mod.strip_gpu_pins("torch==2.13.0+cu130\n"),
-            "torch==2.13.0\n",
+            freezer_mod.strip_gpu_pins("torch==2.13.0+cu130"),
+            "torch==2.13.0",
         )
 
-    def test_keeps_comment_lines_untouched(self) -> None:
-        text = "# torch==2.13.0+cu130 注释里的说明文字\nav>=14.0\n"
-        self.assertEqual(freezer_mod.strip_gpu_pins(text), text)
-
     def test_no_cu_pin_is_identity(self) -> None:
-        text = "numba>=0.61.0\ntransformers>=5.6.0,<6.0.0\n"
-        self.assertEqual(freezer_mod.strip_gpu_pins(text), text)
+        line = "numba>=0.61.0"
+        self.assertEqual(freezer_mod.strip_gpu_pins(line), line)
 
 
 class CpuRequirementsLinesTests(unittest.TestCase):
