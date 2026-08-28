@@ -30,6 +30,7 @@ from maw.gui_workflow import (  # noqa: E402
     run_transcription,
 )
 from maw.gui_platform import _terminate_registered_job, terminate_process_tree  # noqa: E402
+from maw_gui import _is_ffmpeg_missing_error, _startup_error_log_path  # noqa: E402
 
 
 def _write_bwf_wav(path: Path, sample_rate: int, time_reference_samples: int) -> None:
@@ -877,9 +878,32 @@ class GuiWorkflowTests(unittest.TestCase):
         run_app.assert_not_called()
         configure.assert_called_once_with()
 
+    def test_startup_error_log_path_uses_frozen_executable_directory(self) -> None:
+        import maw_gui
+
+        with mock.patch.object(maw_gui.sys, "platform", "win32"), mock.patch.object(
+            maw_gui.sys, "executable", str(self.root / "MAW.exe")
+        ), mock.patch.object(maw_gui.sys, "frozen", True, create=True):
+            self.assertEqual(
+                _startup_error_log_path(),
+                self.root / "launcher-startup.log",
+            )
+
+    def test_startup_error_fallback_uses_shared_maw_app_data_root(self) -> None:
+        import maw_gui
+
+        with mock.patch.object(maw_gui.os, "name", "nt"), mock.patch.dict(
+            maw_gui.os.environ,
+            {"LOCALAPPDATA": str(self.root / "LocalAppData"), "MAW_APP_DATA_ROOT": ""},
+            clear=False,
+        ):
+            self.assertEqual(
+                maw_gui._startup_error_fallback_log_path(),
+                self.root / "LocalAppData" / "MAW" / "launcher-startup.log",
+            )
+
     def test_entrypoint_debug_aliases_configure_launcher_debug_modes(self) -> None:
         import maw_gui
-        import maw.gui_web
 
         for argv, expected in (
             (["-dbg"], mock.call(debug=True, devtools=False)),
@@ -890,6 +914,117 @@ class GuiWorkflowTests(unittest.TestCase):
             with self.subTest(argv=argv), mock.patch("maw.gui_web.run_app") as run_app:
                 self.assertEqual(maw_gui.main(argv), 0)
                 run_app.assert_called_once_with(**expected.kwargs)
+
+    def test_entrypoint_gui_failure_uses_friendly_startup_boundary(self) -> None:
+        import maw_gui
+
+        error = RuntimeError(
+            r"Failed to resolve Python.Runtime.Loader.Initialize from C:\MAW\_internal\pythonnet\runtime\Python.Runtime.dll"
+        )
+        log_path = Path(r"C:\Temp\launcher-startup.log")
+        with mock.patch("maw_gui.sys.platform", "win32"):
+            with mock.patch("maw_gui.main", side_effect=error):
+                with mock.patch("maw_gui._write_startup_error_log", return_value=log_path):
+                    with mock.patch("maw_gui._show_startup_error") as show_error:
+                        exit_code = maw_gui.run_entrypoint([])
+
+        self.assertEqual(exit_code, 1)
+        show_error.assert_called_once_with(error, log_path)
+        message = maw_gui._startup_error_message(error, log_path)
+        self.assertIn("解除锁定", message)
+        self.assertIn("完整解压", message)
+        self.assertNotIn("Traceback", message)
+
+    def test_entrypoint_unknown_windows_gui_shows_hint_then_reraises(self) -> None:
+        import maw_gui
+
+        error = RuntimeError("unrelated GUI failure")
+        with mock.patch("maw_gui.sys.platform", "win32"):
+            with mock.patch("maw_gui.main", side_effect=error):
+                with mock.patch("maw_gui._show_unknown_startup_hint") as show_hint:
+                    with self.assertRaises(RuntimeError) as raised:
+                        maw_gui.run_entrypoint([])
+
+        self.assertIs(raised.exception, error)
+        show_hint.assert_called_once_with()
+
+    def test_entrypoint_python_runtime_marker_is_not_owned_on_non_windows(self) -> None:
+        import maw_gui
+
+        error = RuntimeError("Python.Runtime.Loader.Initialize failed: Python.Runtime.dll")
+        with mock.patch("maw_gui.sys.platform", "linux"):
+            with mock.patch("maw_gui.main", side_effect=error):
+                with mock.patch("maw_gui._write_startup_error_log") as write_log:
+                    with mock.patch("maw_gui._show_startup_error") as show_error:
+                        with mock.patch("maw_gui._show_unknown_startup_hint") as show_hint:
+                            with self.assertRaises(RuntimeError) as raised:
+                                maw_gui.run_entrypoint([])
+
+        self.assertIs(raised.exception, error)
+        write_log.assert_not_called()
+        show_error.assert_not_called()
+        show_hint.assert_not_called()
+
+    def test_entrypoint_internal_failure_prints_concise_ffmpeg_error(self) -> None:
+        import maw_gui
+
+        error = FileNotFoundError(2, "not found", "ffprobe.exe")
+        with mock.patch("maw_gui.sys.platform", "win32"):
+            with mock.patch("maw_gui.main", side_effect=error):
+                with mock.patch("maw_gui._show_startup_error") as show_error:
+                    with mock.patch("builtins.print") as print_message:
+                        exit_code = maw_gui.run_entrypoint(["--transcribe"])
+
+        self.assertEqual(exit_code, 1)
+        show_error.assert_not_called()
+        self.assertIn("找不到 FFmpeg / FFprobe", str(print_message.call_args.args[0]))
+
+    def test_entrypoint_unknown_gui_failure_is_reraised_unchanged(self) -> None:
+        import maw_gui
+
+        error = RuntimeError("unrelated GUI failure")
+        with mock.patch("maw_gui.sys.platform", "win32"):
+            with mock.patch("maw_gui.main", side_effect=error):
+                with mock.patch("maw_gui._show_startup_error") as show_error:
+                    with mock.patch("maw_gui._show_unknown_startup_hint") as show_hint:
+                        with self.assertRaises(RuntimeError) as raised:
+                            maw_gui.run_entrypoint([])
+
+        self.assertIs(raised.exception, error)
+        show_error.assert_not_called()
+        show_hint.assert_called_once_with()
+
+    def test_entrypoint_unknown_internal_failure_is_reraised_unchanged(self) -> None:
+        import maw_gui
+
+        error = RuntimeError("unrelated transcription failure")
+        with mock.patch("maw_gui.main", side_effect=error):
+            with mock.patch("builtins.print") as print_message:
+                with self.assertRaises(RuntimeError) as raised:
+                    maw_gui.run_entrypoint(["--transcribe"])
+
+        self.assertIs(raised.exception, error)
+        print_message.assert_not_called()
+
+    def test_entrypoint_serve_ffmpeg_failure_is_not_reclassified(self) -> None:
+        import maw_gui
+
+        error = FileNotFoundError(2, "not found", "ffmpeg.exe")
+        with mock.patch("maw_gui.sys.platform", "win32"):
+            with mock.patch("maw_gui.main", side_effect=error):
+                with mock.patch("builtins.print") as print_message:
+                    with self.assertRaises(FileNotFoundError) as raised:
+                        maw_gui.run_entrypoint(["--serve"])
+
+        self.assertIs(raised.exception, error)
+        print_message.assert_not_called()
+
+    def test_ffmpeg_missing_boundary_does_not_match_generic_file_error(self) -> None:
+        with mock.patch("maw_gui.sys.platform", "win32"):
+            self.assertTrue(_is_ffmpeg_missing_error(FileNotFoundError(2, "not found", "ffprobe.exe")))
+            self.assertTrue(_is_ffmpeg_missing_error(RuntimeError("[WinError 2] ffmpeg.exe was not found")))
+            self.assertFalse(_is_ffmpeg_missing_error(FileNotFoundError(2, "input media is missing", "clip.mp3")))
+            self.assertFalse(_is_ffmpeg_missing_error(RuntimeError("[WinError 2] a configuration file was not found")))
 
     def test_debug_flag_with_transcription_arguments_remains_public_cli(self) -> None:
         import maw_gui
