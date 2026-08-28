@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
+from maw.postprocess_llm import LlmClientError  # noqa: E402
 from maw.runtimes.base import RuntimeStatus  # noqa: E402
 
 
@@ -101,6 +102,10 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(local["models"][2]["id"], "fun-asr-nano-local")
         self.assertEqual(local["models"][3]["id"], "funasr-local")
         self.assertEqual(local["models"][4]["modelRef"], "iic/SenseVoiceSmall")
+        whisper = local["models"][-1]
+        self.assertEqual(whisper["id"], "whisper-large-v3-local")
+        self.assertIn("用户自行安装 CUDA 12 和 cuDNN 9", whisper["note"])
+        self.assertIn("自动回退到 CPU", whisper["note"])
         self.assertIn(local["models"][0]["localStatus"]["status"], {"runtime_missing", "missing", "installed", "partial", "path_invalid", "broken"})
         self.assertEqual(config["modelCacheRoot"], "")
 
@@ -178,6 +183,21 @@ class GuiWebBridgeTests(unittest.TestCase):
             self.env_path.read_text(encoding="utf-8"),
             "# keep\nDASHSCOPE_REGION=beijing\nSTICKER_DIR=stickers\nMAW_GUI_LAST_MODEL=stt-async-v5\nMAW_GUI_LAST_LANGUAGE=\n",
         )
+
+    def test_save_prefs_persists_theme_and_get_config_restores_it(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("MAW_GUI_THEME", None)
+            result = self.api.save_prefs({"theme": "dark"})
+
+            self.assertTrue(result["ok"])
+            self.assertIn("MAW_GUI_THEME=dark", self.env_path.read_text(encoding="utf-8"))
+            self.assertEqual(self.api.get_config()["theme"], "dark")
+
+            result = self.api.save_prefs({"theme": "unsupported"})
+
+            self.assertTrue(result["ok"])
+            self.assertIn("MAW_GUI_THEME=system", self.env_path.read_text(encoding="utf-8"))
+            self.assertEqual(self.api.get_config()["theme"], "system")
 
     def test_zoom_preference_round_trips_normalized_through_config(self) -> None:
         result = self.api.save_prefs({"zoomPercent": 115})
@@ -270,6 +290,19 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn("MAW_POSTPROCESS_DEEPSEEK_MODEL=deepseek-reasoner", saved)
         self.assertEqual(result["maskedApiKey"], "sk-…-key")
 
+    def test_get_postprocess_settings_returns_raw_key_for_explicit_provider_read(self) -> None:
+        self.env_path.write_text(
+            "MAW_POSTPROCESS_DEEPSEEK_API_KEY=sk-read-this-key\n",
+            encoding="utf-8",
+        )
+
+        with mock.patch.dict(os.environ, {"MAW_POSTPROCESS_DEEPSEEK_API_KEY": ""}, clear=False):
+            result = self.api.get_postprocess_settings({"providerId": "deepseek"})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["apiKey"], "sk-read-this-key")
+        self.assertEqual(result["maskedApiKey"], "sk-…-key")
+
     def test_postprocess_provider_presets_include_zhipu_coding_plan(self) -> None:
         config = self.api.get_config()
         raw_providers = config["postprocessProviders"]
@@ -350,6 +383,44 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(settings.api_key, "sk-entered")
         self.assertEqual(settings.base_url, "https://example.com/v1")
         self.assertEqual(settings.model, "custom-model")
+        self.assertFalse(self.env_path.exists())
+
+    def test_postprocess_connection_saves_only_after_successful_check(self) -> None:
+        events: list[tuple[str, bool]] = []
+
+        def check_connection(_settings) -> None:
+            events.append(("tested", self.env_path.exists()))
+
+        with mock.patch("maw.gui_web.test_llm_connection", side_effect=check_connection):
+            result = self.api.test_postprocess_connection({
+                "providerId": "custom",
+                "apiKey": "sk-tested",
+                "baseUrl": "https://example.com/v1",
+                "model": "custom-model",
+                "save": True,
+            })
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["saved"])
+        self.assertTrue(result["verified"])
+        self.assertEqual(events, [("tested", False)])
+        self.assertIn("MAW_POSTPROCESS_CUSTOM_API_KEY=sk-tested", self.env_path.read_text(encoding="utf-8"))
+
+    def test_postprocess_connection_does_not_save_when_check_fails(self) -> None:
+        with mock.patch(
+            "maw.gui_web.test_llm_connection",
+            side_effect=LlmClientError("connection failed"),
+        ):
+            result = self.api.test_postprocess_connection({
+                "providerId": "custom",
+                "apiKey": "sk-not-saved",
+                "baseUrl": "https://example.com/v1",
+                "model": "custom-model",
+                "save": True,
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "postprocess_connection_failed")
         self.assertFalse(self.env_path.exists())
 
     def test_postprocess_models_use_form_values_without_writing_config(self) -> None:
@@ -2270,6 +2341,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('bridge("run_ffconcat_rebuild"', script)
         self.assertIn('bridge("save_postprocess_settings"', script)
         self.assertIn('bridge("test_postprocess_connection"', script)
+        self.assertIn('bridge("get_postprocess_settings"', script)
         self.assertIn('bridge("get_postprocess_models"', script)
         self.assertIn('class="primary"', page)
         self.assertIn('llm_models_loaded: "已获取 {count} 个模型，可在上方快速选择"', launcher_script)
@@ -2488,9 +2560,23 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn("window.setTimeout(() => setSettingsSaveStatus(\"\"), timeoutMs)", script)
         self.assertIn('toolbox_saved: "LLM 设置已保存。"', launcher_script)
         self.assertIn('toolbox_saved: "LLM settings saved."', launcher_script)
-        self.assertIn("if (autoTest && enteredApiKey)", script)
-        self.assertIn('await testConnection({ alreadySaved: true });', script)
-        self.assertIn('$("saveLlmSettings").addEventListener("click", () => { void saveSettings({ autoTest: true }); });', script)
+        self.assertIn('llm_connection_saved: "连接成功（已自动保存到本地环境）"', launcher_script)
+        self.assertIn('llm_connection_saved: "Connection successful (saved to local environment automatically)."', launcher_script)
+        self.assertIn('llm_custom_provider: "自定义（兼容 OpenAI）"', launcher_script)
+        self.assertIn('llm_custom_provider: "Custom (OpenAI-compatible)"', launcher_script)
+        self.assertIn('toolbox_key_loaded: "已从本地环境读取密钥 {key}"', launcher_script)
+        self.assertIn('toolbox_key_loaded: "Loaded key from local environment: {key}"', launcher_script)
+        self.assertIn('errorText: errText', launcher_script)
+        self.assertIn('field.value = result.apiKey || "";', script)
+        self.assertIn('void loadPostprocessApiKey(item.id, item.maskedApiKey || "");', script)
+        self.assertIn('function postprocessErrorText(result)', script)
+        self.assertIn('window.MAWLauncher.errorText(result?.code || "", detail)', script)
+        self.assertIn('function postprocessFieldId(field)', script)
+        self.assertIn('postprocessApiKey: "llmApiKey"', script)
+        self.assertIn('save: true,', script)
+        self.assertIn('setSettingsSaveStatus(result.saved ? t("llm_connection_saved") : t("llm_connection_success"), "success");', script)
+        self.assertNotIn("autoTest", script)
+        self.assertIn('$("saveLlmSettings").addEventListener("click", () => { void saveSettings(); });', script)
         pending_step = script[script.index("function maybeEnablePendingAutoStep()"):script.index("function applyAutoPostprocessPlan")]
         self.assertNotIn("closeSettings", pending_step)
         self.assertNotIn("setOpen(true)", pending_step)
@@ -2801,13 +2887,19 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('data-i18n="advanced_params"', page)
         self.assertIn('data-i18n="advanced_misc"', page)
         self.assertIn('data-i18n="qwen_audio_options_title"', page)
+        self.assertIn('id="maxLen" type="number"', page)
+        self.assertIn('placeholder="18"', page)
+        self.assertIn('id="gapSplit" type="number"', page)
+        self.assertIn('placeholder="800"', page)
         self.assertIn('advanced_params: "识别参数"', script)
         self.assertIn('advanced_misc: "其他"', script)
         self.assertIn('qwen_audio_options_title: "Qwen 上下文与热词"', script)
-        self.assertIn('gap_split_placeholder: "默认 1500"', script)
-        self.assertIn('gap_split_placeholder: "Default: 1500"', script)
-        self.assertIn("停顿切句：云端 1500ms，本地 1000ms", script)
-        self.assertIn("pause split: cloud 1500 ms, local 1000 ms", script)
+        self.assertIn('max_len_placeholder: "默认 18"', script)
+        self.assertIn('max_len_placeholder: "Default: 18"', script)
+        self.assertIn('gap_split_placeholder: "默认 800"', script)
+        self.assertIn('gap_split_placeholder: "Default: 800"', script)
+        self.assertIn("最大字数：18，短句合并阈值：5，停顿切句：800ms", script)
+        self.assertIn("max characters: 18, short-cue merge threshold: 5, pause split: 800 ms", script)
         self.assertIn('$("languageGroup").classList.toggle("hidden", current.supportsLanguage === false)', script)
         self.assertIn(".advanced-col {\n  display: grid;\n  grid-template-columns: 1fr 1fr;", stylesheet)
         self.assertNotIn("display: contents", stylesheet)
@@ -2840,6 +2932,18 @@ class LauncherAssetContractTests(unittest.TestCase):
         for expected in ("1️⃣ 媒体与输出", "2️⃣ 识别设置", "3️⃣ 转写后自动处理 （Beta）", "4️⃣ 日志", "5️⃣ 字幕编辑器设置"):
             self.assertIn(expected, page)
         self.assertIn(".card h2 {\n  margin: 0 0 12px;\n  color: var(--text-secondary);\n  font-size: 16px;", stylesheet)
+
+    def test_launcher_theme_round_trips_through_local_config(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
+
+        self.assertIn('id="themeDark"', page)
+        self.assertIn('function readStoredTheme()', script)
+        self.assertIn('void bridge("save_prefs", { theme: pref })', script)
+        self.assertIn('if (isThemePreference(state.config.theme)) { state.theme = state.config.theme;', script)
+        self.assertIn('"theme": config.theme', backend)
+        self.assertIn('updates["MAW_GUI_THEME"]', backend)
 
     def test_server_start_button_exposes_disabled_starting_state(self) -> None:
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")

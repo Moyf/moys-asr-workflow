@@ -21,12 +21,23 @@ const i18nContext = { window: {} };
 vm.runInNewContext(i18nSource, i18nContext);
 const i18n = i18nContext.window.MAWE_I18N;
 
+// XML assertions are part of the Node unit suite, but still need a Python
+// subprocess. Keep it on the same locked project environment as E2E instead
+// of silently selecting whichever python.exe happens to be on PATH.
+const configuredPython = String(process.env.MAW_TEST_PYTHON || '').trim();
+const PYTHON_COMMAND = configuredPython || 'uv';
+const PYTHON_PREFIX_ARGS = configuredPython ? [] : ['run', '--frozen', 'python'];
+
+function pythonCommandArgs(args) {
+  return [...PYTHON_PREFIX_ARGS, ...args];
+}
+
 function parseXml(xml) {
-  const result = spawnSync('python', ['-c', [
+  const result = spawnSync(PYTHON_COMMAND, pythonCommandArgs(['-c', [
     'import sys, xml.etree.ElementTree as ET',
     'ET.fromstring(sys.stdin.read())',
     'print("ok")',
-  ].join(';')], { input: xml, encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1' } });
+  ].join(';')]), { input: xml, encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1' } });
   assert.equal(result.status, 0, result.stderr);
   return xml;
 }
@@ -40,7 +51,11 @@ function parseXmlFileAudio(xml) {
     '  files.append({"id": element.attrib["id"], "channelcount": audio.findtext("channelcount") if audio is not None else None})',
     'print(json.dumps(files))',
   ].join('\n');
-  const result = spawnSync('python', ['-c', script], { input: xml, encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1' } });
+  const result = spawnSync(PYTHON_COMMAND, pythonCommandArgs(['-c', script]), {
+    input: xml,
+    encoding: 'utf8',
+    env: { ...process.env, PYTHONUTF8: '1' },
+  });
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout);
 }
@@ -238,6 +253,9 @@ test('normalizes gap-remove data and returns independent gap values', () => {
   const input = { detector: 'legacy_subtitle_gap', minimum_ms: 1, gaps: [{ start: 10, end: 20 }] };
   const normalized = helpers.normalizeGapRemoveData(input);
   assert.equal(normalized.minimum_ms, 100);
+  assert.equal(normalized.threshold_db, -28);
+  assert.equal(normalized.lead_in_ms, 120);
+  assert.equal(normalized.lead_out_ms, 80);
   assert.equal(normalized.detector, 'audio_gate');
   assert.equal(normalized.disable_coverage_percent, 80);
   assert.equal(normalized.disable_remaining_ms, 300);
@@ -1062,7 +1080,69 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('字幕大小', 'en'), 'Font size');
   assert.equal(i18n.translateText('字幕预览设置', 'en'), 'Subtitle preview settings');
   assert.equal(i18n.translateText('空隙检测与调整', 'en'), 'Gap detection and adjustment');
-  assert.equal(i18n.translateText('收缩空隙', 'en'), 'Shrink gaps');
+  assert.equal(i18n.translateText('进一步收缩空隙', 'en'), 'Shrink gaps further');
+  assert.equal(
+    i18n.translateText('在现有基础上，使当前所有空隙进一步收缩', 'en'),
+    'Further shrink all current gaps based on the existing ranges',
+  );
+  assert.equal(
+    i18n.translateText('禁用位于空隙范围内的字幕（当前有 3 条未禁用）', 'en'),
+    'Disable subtitles within gap ranges (3 not disabled)',
+  );
+  assert.equal(i18n.translateText('空隙状态', 'en'), 'Gap states');
+  assert.equal(i18n.translateText('移动与调整', 'en'), 'Movement and adjustment');
+  assert.equal(i18n.translateText('批量操作', 'en'), 'Batch actions');
+  assert.equal(i18n.translateText('清理空隙', 'en'), 'Clear gap');
+  assert.equal(i18n.translateText('进阶', 'en'), 'Advanced');
+  assert.equal(i18n.translateText('将选中的副字幕的时长对齐到绑定主字幕', 'en'), 'Align the selected secondary subtitle durations to their bound main subtitles');
+  assert.equal(i18n.translateText('无选中时前后跳转（时长：', 'en'), 'Seek back/forward with no selection (duration:');
+  assert.equal(i18n.translateText('⚙️设置按钮', 'en'), '⚙️ Settings button');
+  assert.equal(i18n.translateText('⚙️设置', 'en'), '⚙️ settings');
+  assert.equal(i18n.translateText('仅在拖动边界模式生效', 'en'), 'Only active in Boundary drag mode');
+  assert.equal(i18n.translateText('仅在中键拖动模式生效', 'en'), 'Only active in Middle-button drag mode');
+  assert.equal(
+    i18n.translateText('具体操作取决于波形区的', 'en'),
+    'The exact behavior depends on the waveform area’s',
+  );
+  assert.equal(
+    i18n.translateText('中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', 'en'),
+    '“Gap region operation” in the settings; “Boundary and middle” enables both operation sets.',
+  );
+  assert.equal(i18n.translateText('操作支持撤销/重做。', 'en'), 'Operations support undo/redo.');
+  assert.equal(i18n.translateText('处理范围', 'en'), 'Scope');
+  assert.equal(i18n.translateText('查找并批量替换字幕文本', 'en'), 'Find and batch-replace subtitle text');
+  assert.equal(
+    i18n.translateText('集中编辑字幕文本，可预览拆分、合并和字词时间码映射', 'en'),
+    'Edit subtitle text in one place and preview split, merge, and word-timing mappings',
+  );
+  assert.equal(
+    i18n.translateText('批量替换和文本处理支持勾选「仅处理选中的字幕」限定范围', 'en'),
+    'Batch replace and text processing can be limited by checking “Only process selected subtitles”',
+  );
+  assert.equal(i18n.translateText('注：微调幅度可在波形区的', 'en'), 'Note: Adjust the fine-tuning amount in the waveform area’s');
+  assert.equal(i18n.translateText('中调节，默认 50ms', 'en'), 'to adjust it; the default is 50 ms');
+  assert.equal(i18n.translateText('切换空隙的启用/禁用状态', 'en'), 'Toggle whether the gap is enabled');
+  assert.equal(i18n.translateText('添加新的移除空隙', 'en'), 'Add a new removed gap');
+  assert.equal(
+    i18n.translateText('点击「生成静音空隙」按当前参数扫描并替换检测结果', 'en'),
+    'Click “Generate silence gaps” to scan with the current parameters and replace the detection results',
+  );
+  assert.equal(
+    i18n.translateText('点击「进一步收缩空隙」在现有结果上继续收缩', 'en'),
+    'Click “Shrink gaps further” to shrink the current gaps again',
+  );
+  assert.equal(
+    i18n.translateText('在空隙上右键选择「清理空隙」 清除当前空隙', 'en'),
+    'Right-click a gap and choose “Clear gap” to clear the current gap',
+  );
+  assert.equal(
+    i18n.translateText('在「', 'en'),
+    'In “',
+  );
+  assert.equal(
+    i18n.translateText('」中点击「全部清理」 清除所有空隙', 'en'),
+    '”, click “Clear all” to clear all gaps',
+  );
   assert.equal(i18n.translateText('禁用空隙内字幕', 'en'), 'Disable subtitles in gaps');
   assert.equal(i18n.translateText('覆盖率', 'en'), 'Coverage');
   assert.equal(i18n.translateText('剩余时长阈值', 'en'), 'Remaining duration threshold');

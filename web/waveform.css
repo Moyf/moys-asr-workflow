@@ -78,7 +78,7 @@
 .waveform-status.busy { color: var(--amber-hover); }
 .waveform-spectral-status {
   color: var(--amber-hover);
-  font-size: 10px;
+  font-size: 11px;
   white-space: nowrap;
 }
 .waveform-spectral-status[hidden] { display: none; }
@@ -509,7 +509,7 @@
   border-radius: var(--radius-sm);
   color: var(--accent-hover);
   background: var(--wave-badge-bg);
-  font: 10px/1.3 var(--font-mono);
+  font: 11px/1.3 var(--font-mono);
   pointer-events: none;
   font-variant-numeric: tabular-nums;
 }
@@ -522,7 +522,7 @@
   border-radius: 2px;
   color: var(--text-faint);
   background: var(--wave-badge-bg);
-  font: 9px/1.25 var(--font-mono);
+  font: 10px/1.25 var(--font-mono);
   display: flex;
   align-items: center;
   box-sizing: border-box;
@@ -672,7 +672,7 @@
   background: rgba(35, 24, 14, 0.78);
   border-radius: 2px;
   padding: 1px 3px;
-  font: 10px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 11px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace;
   pointer-events: none;
 }
 .waveform-gap-block.restored .waveform-gap-label { color: #b9cbd8; background: rgba(27, 38, 47, 0.76); }
@@ -766,7 +766,7 @@
   color: #d9efff;
   background: rgba(19, 36, 48, 0.86);
   white-space: nowrap;
-  font: 10px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 11px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .waveform-gap-range-preview.remove > span {
   color: #ffe1b4;

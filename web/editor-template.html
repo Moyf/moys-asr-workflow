@@ -221,7 +221,10 @@ __WAVEFORM_CSS__
       <span class="gap-remove-eyebrow">波形处理</span>
       <h3 id="gap-remove-panel-title">移除静音空隙</h3>
     </div>
-    <button type="button" id="gap-remove-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭移除静音空隙工具窗">×</button>
+    <div class="gap-remove-header-actions">
+      <button type="button" id="gap-remove-help" class="gap-remove-help-button" data-help-tab-target="gap" title="打开帮助中的空隙操作说明" aria-label="打开帮助中的空隙操作说明">帮助</button>
+      <button type="button" id="gap-remove-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭移除静音空隙工具窗">×</button>
+    </div>
   </header>
   <div class="gap-remove-panel-body">
     <div class="gap-remove-parameters-heading">
@@ -232,7 +235,7 @@ __WAVEFORM_CSS__
       <label class="gap-remove-field">
         <span class="gap-remove-field-label">最小空隙</span>
         <span class="gap-remove-number-control">
-          <input type="number" id="gap-remove-threshold" min="100" max="60000" step="50" value="500" inputmode="numeric">
+          <input type="number" id="gap-remove-threshold" min="100" max="60000" step="50" value="400" inputmode="numeric">
           <span class="gap-remove-unit">ms</span>
         </span>
         <small>短于此值不处理</small>
@@ -240,7 +243,7 @@ __WAVEFORM_CSS__
       <label class="gap-remove-field">
         <span class="gap-remove-field-label">音量阈值</span>
         <span class="gap-remove-number-control">
-          <input type="number" id="gap-remove-volume-threshold" min="-96" max="0" step="1" value="-24" inputmode="decimal">
+          <input type="number" id="gap-remove-volume-threshold" min="-96" max="0" step="1" value="-28" inputmode="decimal">
           <span class="gap-remove-unit">dB</span>
         </span>
         <small>达到此音量才算有声</small>
@@ -257,7 +260,7 @@ __WAVEFORM_CSS__
           <label class="gap-remove-field">
             <span class="gap-remove-field-label">前端预留</span>
             <span class="gap-remove-number-control">
-              <input type="number" id="gap-remove-lead-in" min="0" max="2000" step="10" value="40" inputmode="numeric">
+              <input type="number" id="gap-remove-lead-in" min="0" max="2000" step="10" value="120" inputmode="numeric">
               <span class="gap-remove-unit">ms</span>
             </span>
             <small>每段空隙开头保留的静音，避免上一句收尾被切掉</small>
@@ -279,10 +282,10 @@ __WAVEFORM_CSS__
             <small id="gap-remove-hysteresis-hint">当音频判定为有声时，需要降低到比阈值更低 2 dB 的时候才视作恢复静音。建议 1–3 dB，过高会延迟回到静音</small>
           </label>
         </div>
-        <button type="button" id="gap-remove-shrink" class="gap-remove-scan">
-          <span>收缩空隙</span>
-          <small>按当前前后预留收缩现有空隙</small>
-        </button>
+        <div class="gap-remove-inline-action">
+          <button type="button" id="gap-remove-shrink" class="gap-remove-inline-button">进一步收缩空隙</button>
+          <small>在现有基础上，使当前所有空隙进一步收缩</small>
+        </div>
       </div>
     </div>
     <div class="gap-remove-advanced gap-remove-disable-settings">
@@ -310,14 +313,14 @@ __WAVEFORM_CSS__
             <small>覆盖后剩余字幕时长不超过此值</small>
           </label>
         </div>
-        <button type="button" id="gap-remove-disable-button" class="gap-remove-scan">
-          <span>禁用字幕</span>
-          <small>按以上条件处理主字幕</small>
-        </button>
+        <div class="gap-remove-inline-action">
+          <button type="button" id="gap-remove-disable-button" class="gap-remove-inline-button">禁用字幕</button>
+          <small id="gap-remove-disable-hint">禁用位于空隙范围内的字幕（当前有 0 条未禁用）</small>
+        </div>
       </div>
     </div>
     <button type="button" id="gap-remove-scan" class="gap-remove-scan">
-      <span>重新生成静音区域</span>
+      <span>生成静音空隙</span>
       <small>只替换静音检测结果，保留对齐和手工调整</small>
     </button>
     <div class="gap-remove-list" id="gap-remove-list" aria-live="polite">尚未扫描空隙。</div>
@@ -448,14 +451,23 @@ __WAVEFORM_CSS__
       <button type="button" id="help-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭帮助窗口">×</button>
     </div>
   </header>
-  <div class="help-tabs" role="tablist" aria-label="帮助分类">
-    <button type="button" class="help-tab" id="help-tab-general" role="tab" aria-selected="true" aria-controls="help-tab-panel-general" data-help-tab="general">通用</button>
-    <button type="button" class="help-tab" id="help-tab-waveform" role="tab" aria-selected="false" aria-controls="help-tab-panel-waveform" data-help-tab="waveform" tabindex="-1">波形区</button>
-    <button type="button" class="help-tab" id="help-tab-playback" role="tab" aria-selected="false" aria-controls="help-tab-panel-playback" data-help-tab="playback" tabindex="-1">播放与编辑</button>
+  <div class="help-tab-bar">
+    <div class="help-tabs" role="tablist" aria-label="常用帮助分类">
+      <button type="button" class="help-tab" id="help-tab-basic" role="tab" aria-selected="true" aria-controls="help-tab-panel-basic" data-help-tab="basic">基础操作</button>
+      <button type="button" class="help-tab" id="help-tab-shortcuts" role="tab" aria-selected="false" aria-controls="help-tab-panel-shortcuts" data-help-tab="shortcuts" tabindex="-1">快捷操作</button>
+      <button type="button" class="help-tab" id="help-tab-waveform" role="tab" aria-selected="false" aria-controls="help-tab-panel-waveform" data-help-tab="waveform" tabindex="-1">波形区</button>
+      <button type="button" class="help-tab" id="help-tab-playback" role="tab" aria-selected="false" aria-controls="help-tab-panel-playback" data-help-tab="playback" tabindex="-1">播放与导航</button>
+    </div>
+    <button type="button" class="help-tab help-advanced-toggle" id="help-advanced-toggle" aria-expanded="false" aria-controls="help-advanced-tabs">进阶</button>
+  </div>
+  <div class="help-tabs help-advanced-tabs" id="help-advanced-tabs" role="tablist" aria-label="进阶帮助分类" hidden>
+    <button type="button" class="help-tab" id="help-tab-fine-tuning" role="tab" aria-selected="false" aria-controls="help-tab-panel-fine-tuning" data-help-tab="fine-tuning" tabindex="-1">微调字幕</button>
+    <button type="button" class="help-tab" id="help-tab-gap" role="tab" aria-selected="false" aria-controls="help-tab-panel-gap" data-help-tab="gap" tabindex="-1">空隙操作</button>
+    <button type="button" class="help-tab" id="help-tab-batch" role="tab" aria-selected="false" aria-controls="help-tab-panel-batch" data-help-tab="batch" tabindex="-1">批量操作</button>
   </div>
   <div class="gap-remove-panel-body help-panel-body">
-    <section class="help-group help-tab-panel" id="help-tab-panel-general" role="tabpanel" aria-labelledby="help-tab-general" data-help-tab-panel="general" tabindex="0">
-      <h4 class="help-title">通用</h4>
+    <section class="help-group help-tab-panel" id="help-tab-panel-basic" role="tabpanel" aria-labelledby="help-tab-basic" data-help-tab-panel="basic" tabindex="0">
+      <h4 class="help-title">基础操作</h4>
       <section class="help-subgroup">
         <h5 class="help-subtitle">鼠标操作</h5>
         <div class="help-category">
@@ -465,27 +477,24 @@ __WAVEFORM_CSS__
         </div>
       </section>
       <section class="help-subgroup">
-        <h5 class="help-subtitle">选择操作</h5>
+        <h5 class="help-subtitle">编辑</h5>
+        <div class="help-category">
+          <span class="help-important"><kbd data-mod-key>Ctrl+Z</kbd> 撤销</span>
+          <span><kbd data-mod-key>Ctrl+Shift+Z</kbd> 重做</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">字幕操作</h5>
         <div class="help-category">
           <span><kbd data-mod-key>Ctrl+点击</kbd> 多选</span>
           <span><kbd>Shift+点击</kbd> 连选</span>
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd data-mod-key>Ctrl+A</kbd> 选中所有字幕（非编辑状态）</span>
           <span><kbd data-mod-key>Ctrl+D</kbd> 取消选择</span>
-        </div>
-        <div class="help-category">
-          <h6 class="help-category-title">字幕列表</h6>
-          <span><kbd>W</kbd>/<kbd>S</kbd> 选择前/后字幕</span>
           <span class="help-break" aria-hidden="true"></span>
-          <span><kbd>Shift+W</kbd>/<kbd>Shift+S</kbd> 连选前/后字幕</span>
-          <span class="help-break" aria-hidden="true"></span>
-          <span><kbd>Home</kbd>/<kbd>End</kbd> 选择并显示当前轨道首/末条可见字幕</span>
-        </div>
-        <div class="help-category">
-          <h6 class="help-category-title">波形区</h6>
-          <span><kbd>A</kbd>/<kbd>D</kbd> 选择前/后字幕</span>
-          <span class="help-break" aria-hidden="true"></span>
-          <span><kbd>Shift+A</kbd>/<kbd>Shift+D</kbd> 连选前/后字幕</span>
+          <span class="help-important"><kbd>WASD</kbd> 选择前/后字幕</span>
+          <span><kbd>Shift+WASD</kbd> 连选前/后字幕</span>
+          <span class="help-important"><kbd data-mod-key>Ctrl+Shift+A/D</kbd> 合并前/后字幕</span>
         </div>
         <aside class="help-tip-callout" role="note">
           <span class="help-wasd" role="img" aria-label="WASD 方向键">
@@ -494,27 +503,31 @@ __WAVEFORM_CSS__
             <kbd data-wasd-direction="down" aria-hidden="true">S</kbd>
             <kbd data-wasd-direction="right" aria-hidden="true">D</kbd>
           </span>
-          <span class="help-tip-text">其实就是用 WASD 啦，从字幕列表看是上下跳，从波形区看是左右跳 : P</span>
+          <span class="help-tip-text">其实就是用 WASD 啦，从字幕列表看是上下跳，从波形区看是左右跳 😝</span>
         </aside>
       </section>
+    </section>
+    <section class="help-group help-tab-panel" id="help-tab-panel-shortcuts" role="tabpanel" aria-labelledby="help-tab-shortcuts" data-help-tab-panel="shortcuts" tabindex="0" hidden>
+      <h4 class="help-title">快捷操作</h4>
       <section class="help-subgroup">
         <h5 class="help-subtitle">编辑操作</h5>
         <div class="help-category">
           <span class="help-important"><kbd>B</kbd> 拆分字幕（取决于鼠标位置）</span>
           <span class="help-important"><kbd>C</kbd> 合并所选字幕</span>
           <span class="help-break" aria-hidden="true"></span>
-          <span class="help-important"><kbd>Alt+点击</kbd> 启用/禁用字幕</span>
+          <span><kbd>Alt+点击</kbd> 启用/禁用字幕</span>
           <span class="help-break" aria-hidden="true"></span>
           <span class="help-important"><kbd>Enter</kbd> 编辑选中字幕（根据最后点击区域）</span>
+          <span class="help-break" aria-hidden="true"></span>
           <span><kbd>Esc</kbd> 退出字幕编辑区（文本编辑时）</span>
           <span class="help-break" aria-hidden="true"></span>
-          <span class="help-important"><kbd>Delete</kbd>/<kbd>Backspace</kbd> 删除字幕</span>
+          <span><kbd>Delete</kbd>/<kbd>Backspace</kbd> 删除字幕</span>
         </div>
       </section>
       <section class="help-subgroup">
         <h5 class="help-subtitle">快捷功能</h5>
         <div class="help-category">
-          <span><kbd>1~5</kbd> 标记颜色 <kbd>0</kbd> 清除颜色</span>
+          <span class="help-important"><kbd>1~5</kbd> 分配颜色 <kbd>0</kbd> 清除颜色</span>
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd>T</kbd> 分配表情包</span>
         </div>
@@ -537,22 +550,47 @@ __WAVEFORM_CSS__
           <span><kbd>右键波形背景</kbd> 显示菜单</span>
           <span class="help-break" aria-hidden="true"></span>
           <span class="help-important"><kbd>N</kbd> 在鼠标位置创建字幕（仅波形）</span>
+          <span class="help-break" aria-hidden="true"></span>
           <span><kbd data-mod-key>Ctrl+拖拽空白处</kbd> 拖动创建指定时长字幕</span>
-          <span><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span class="help-important"><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>
         </div>
       </section>
       <section class="help-subgroup">
         <h5 class="help-subtitle">波形区字幕操作</h5>
         <div class="help-category">
-          <span class="help-important"><kbd>Enter</kbd> 编辑选中字幕（激活编辑区）</span>
-          <span><kbd>Esc</kbd> 退出字幕编辑区（文本编辑时）</span>
+          <span class="help-note">通用快捷键见「快捷操作」；此处只列出波形区特有的操作</span>
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd>Esc</kbd> 清除字幕选择（非编辑状态）</span>
           <span><kbd id="help-split-key">Enter</kbd>（编辑字幕文本时）在文字光标处拆分</span>
-          <span class="help-important"><kbd id="help-waveform-split-key">B</kbd> 在红色播放指针处拆分字幕</span>
+          <span class="help-important"><kbd id="help-waveform-split-key">B</kbd> 按当前时间基准拆分字幕</span>
         </div>
       </section>
-      <h4 class="help-title">按键微调字幕</h4>
+      <h4 class="help-title">多重字幕</h4>
+      <section class="help-subgroup">
+        <div class="help-category">
+          <span class="help-important"><kbd>G</kbd> 绑定到主副字幕（自动匹配）</span>
+          <span><kbd>Shift+G</kbd> 解绑当前副字幕</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span class="help-important"><kbd>H</kbd> 将选中的副字幕的时长对齐到绑定主字幕</span>
+        </div>
+      </section>
+      <h4 class="help-title">波形外观调整</h4>
+      <section class="help-subgroup">
+        <div class="help-category">
+          <span class="help-note">在波形区的
+            <button type="button" class="help-inline-action" id="help-open-waveform-settings" data-help-open-waveform-settings aria-controls="waveform-settings-panel">⚙️设置按钮</button>
+            中，可调整音频波形外观的具体参数。</span>
+          <span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd data-mod-key>Ctrl+滚轮</kbd> 调整时间缩放/每行长度</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd data-mod-key>Ctrl+Shift+滚轮</kbd> 调整每行高度</span>
+        </div>
+      </section>
+    </section>
+    <section class="help-group help-tab-panel" id="help-tab-panel-fine-tuning" role="tabpanel" aria-labelledby="help-tab-fine-tuning" data-help-tab-panel="fine-tuning" tabindex="0" hidden>
+      <h4 class="help-title">微调字幕</h4>
       <section class="help-subgroup">
         <h5 class="help-subtitle">选中字幕</h5>
         <div class="help-category">
@@ -560,7 +598,7 @@ __WAVEFORM_CSS__
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd>Shift+←/→</kbd> 将字幕起点/终点贴到前一条结尾/后一条开头</span>
           <span class="help-break" aria-hidden="true"></span>
-          <span><kbd>Z</kbd>/<kbd>X</kbd> 将字幕起点/终点定位到鼠标位置</span>
+          <span class="help-important"><kbd>Z</kbd>/<kbd>X</kbd> 将字幕起点/终点定位到鼠标位置</span>
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd data-mod-key>Ctrl+←/→</kbd> 微调字幕左边界（起点）</span>
           <span><kbd data-mod-key>Ctrl+Shift+←/→</kbd> 微调字幕右边界（终点）</span>
@@ -575,63 +613,93 @@ __WAVEFORM_CSS__
           <span><kbd>Shift+A</kbd> 将字幕起点贴到前一条结尾</span>
           <span><kbd>Shift+D</kbd> 将字幕终点贴到后一条开头</span>
         </div>
-        <span class="help-note">注：微调幅度可在「设置-&gt;波形区」中调节，默认 50ms</span>
+        <span class="help-note">注：微调幅度可在波形区的
+          <button type="button" class="help-inline-action" id="help-open-waveform-keyboard-settings" data-help-open-waveform-settings aria-controls="waveform-settings-panel">⚙️设置</button>
+          中调节，默认 50ms</span>
       </section>
-      <h4 class="help-title">多重字幕</h4>
+    </section>
+    <section class="help-group help-tab-panel" id="help-tab-panel-gap" role="tabpanel" aria-labelledby="help-tab-gap" data-help-tab-panel="gap" tabindex="0" hidden>
+      <h4 class="help-title">空隙操作</h4>
       <section class="help-subgroup">
+        <h5 class="help-subtitle">空隙状态</h5>
         <div class="help-category">
-          <span><kbd>G</kbd> 绑定到主副字幕（自动匹配）</span>
-          <span><kbd>Shift+G</kbd> 解绑当前副字幕</span>
-          <span><kbd>H</kbd> 批量对齐选中的副字幕到各自主字幕时间轴</span>
+          <span><kbd>Alt+点击</kbd> 切换空隙的启用/禁用状态</span>
+          <span class="help-important"><kbd>Alt+左键拖动</kbd> 添加新的移除空隙</span>
+          <span class="help-note">（也可以在右键中选择「添加空隙」）</span>
         </div>
       </section>
-      <h4 class="help-title">波形外观调整</h4>
       <section class="help-subgroup">
+        <h5 class="help-subtitle">移动与调整</h5>
         <div class="help-category">
-          <span class="help-note">点击波形区 header 右侧的【⚙️】后，可调整【音频波形区】的具体参数</span>
-          <span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>
-          <span><kbd data-mod-key>Ctrl+滚轮</kbd> 调整时间缩放/每行长度</span>
-          <span><kbd data-mod-key>Ctrl+Shift+滚轮</kbd> 调整每行高度</span>
+          <span><kbd>左键拖动</kbd> 移动空隙</span>
+          <span><kbd data-mod-key>Ctrl+拖动</kbd> 复制空隙</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>拖动边界</kbd> 调整空隙范围</span>
+          <span class="help-note">仅在拖动边界模式生效</span>
+          <span><kbd>中键拖动</kbd> 添加静音区段；<kbd>Alt+中键拖动</kbd> 添加恢复区段</span>
+          <span class="help-note">仅在中键拖动模式生效</span>
+          <span class="help-note">具体操作取决于波形区的
+            <button type="button" class="help-inline-action" id="help-open-gap-settings" data-help-open-waveform-settings aria-controls="waveform-settings-panel">⚙️设置</button>
+            中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。</span>
         </div>
       </section>
-      <h4 class="help-title">静音空隙操作</h4>
       <section class="help-subgroup">
+        <h5 class="help-subtitle">清理空隙</h5>
         <div class="help-category">
-          <span><kbd>Alt+点击静音空隙区段</kbd> 切换移除/保留</span>
-          <span>空白处 <kbd>Alt+左键拖动</kbd> 增加 Gap；空隙块 <kbd>左键拖动</kbd> 整体偏移；<kbd data-mod-key>Ctrl+拖动</kbd> 复制 Gap</span>
-          <span class="help-note">波形空白处右键可用“添加空隙”，默认使用设置中的最小空隙时长</span>
-          <span class="help-note">空隙区段操作方式设为「中键拖动」或「边界与中键」时：</span>
-          <span><kbd>中键拖动</kbd> 增加静音区段</span>
-          <span><kbd>Alt+中键拖动</kbd> 增加恢复区段</span>
+          <span>在空隙上右键选择「清理空隙」 清除当前空隙</span>
+          <span>在「<button type="button" class="help-inline-action" id="help-open-gap-remove-panel" aria-controls="gap-remove-panel">静音空隙</button>」中点击「全部清理」 清除所有空隙</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">批量操作</h5>
+        <div class="help-category">
+          <span>点击「生成静音空隙」按当前参数扫描并替换检测结果</span>
+          <span>点击「进一步收缩空隙」在现有结果上继续收缩</span>
+          <span>点击「禁用字幕」批量禁用空隙内字幕（右侧显示可禁用数量）</span>
+          <span class="help-note">操作支持撤销/重做。</span>
+        </div>
+      </section>
+    </section>
+    <section class="help-group help-tab-panel" id="help-tab-panel-batch" role="tabpanel" aria-labelledby="help-tab-batch" data-help-tab-panel="batch" tabindex="0" hidden>
+      <h4 class="help-title">批量操作</h4>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">字幕列表</h5>
+        <div class="help-category">
+          <span><kbd>批量替换</kbd> 查找并批量替换字幕文本</span>
+          <span><kbd>纯文本编辑</kbd> 集中编辑字幕文本，可预览拆分、合并和字词时间码映射</span>
+          <span><kbd>文本处理</kbd> 批量修剪空白、首字母大写、添加前缀/后缀或去除 Markdown 符号</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">处理范围</h5>
+        <div class="help-category">
+          <span>批量替换和文本处理支持勾选「仅处理选中的字幕」限定范围</span>
         </div>
       </section>
     </section>
     <section class="help-group help-tab-panel" id="help-tab-panel-playback" role="tabpanel" aria-labelledby="help-tab-playback" data-help-tab-panel="playback" tabindex="0" hidden>
-      <h4 class="help-title">播放与编辑</h4>
+      <h4 class="help-title">播放与导航</h4>
       <section class="help-subgroup">
         <h5 class="help-subtitle">播放</h5>
         <div class="help-category">
           <span class="help-important"><kbd>空格</kbd> 播放/暂停</span>
           <span class="help-break" aria-hidden="true"></span>
-          <span><kbd>←</kbd>/<kbd>→</kbd> 无选中时前后跳转 <span id="help-media-seek-step">1000ms</span></span>
+          <span><kbd>←</kbd>/<kbd>→</kbd> 无选中时前后跳转（时长：<span id="help-media-seek-step">1000ms</span>）</span>
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd>Home</kbd>/<kbd>End</kbd> 在波形区或播放器跳转到媒体开头/结尾</span>
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> <span id="help-jkl-mode">倒放/停止/1×播放</span></span>
-          <span class="help-note">提示：可在「媒体」设置中切换 J/K/L 的「慢放/快放」或「倒放/正放」，也可调整跳转时长。</span>
+          <span class="help-note">可在媒体区的
+            <button type="button" class="help-inline-action" id="help-open-media-settings" data-help-open-media-settings aria-controls="subtitle-preview-settings-panel">⚙️设置</button>
+            中调整 JKL 按键模式，或是跳转的时长。</span>
         </div>
       </section>
       <section class="help-subgroup">
         <h5 class="help-subtitle">字幕导航</h5>
         <div class="help-category">
           <span class="help-important"><kbd>F</kbd> 跳转并播放选中字幕</span>
-        </div>
-      </section>
-      <section class="help-subgroup">
-        <h5 class="help-subtitle">编辑</h5>
-        <div class="help-category">
-          <span class="help-important"><kbd data-mod-key>Ctrl+Z</kbd> 撤销</span>
-          <span><kbd data-mod-key>Ctrl+Shift+Z</kbd> 重做</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Home</kbd>/<kbd>End</kbd> 选择并显示当前轨道首/末条可见字幕</span>
         </div>
       </section>
     </section>
@@ -678,40 +746,56 @@ __WAVEFORM_CSS__
         <option value="ctrl-enter">Ctrl+Enter</option>
     </select>
   </label>
-    <label class="toggle editor-settings-item" title="开启时，会自动按可用时间码拆分；关闭后将打开拆分弹窗，手动进行拆分">
+    <label class="toggle editor-settings-item" title="开启时，自动按可用时间码拆分；关闭后将打开拆分弹窗，手动拆分">
       <input type="checkbox" id="split-use-word-timestamps" checked> 主字幕自动使用时间码拆分
     </label>
-    <small class="editor-settings-hint" id="split-use-word-timestamps-hint">开启时，会自动按可用时间码拆分；关闭后将打开拆分弹窗，手动进行拆分。</small>
-    <div class="editor-settings-field">
-      <div class="split-join-title-row">
-        <span class="editor-settings-item">合并字幕时插入字符</span>
+    <small class="editor-settings-hint" id="split-use-word-timestamps-hint">开启时，自动按可用时间码拆分；关闭后将打开拆分弹窗，手动拆分。</small>
+    <div class="editor-settings-field split-language-type-field" role="group" aria-labelledby="split-language-type-title">
+      <span class="editor-settings-item split-language-type-title" id="split-language-type-title">字幕语言类型</span>
+      <div class="split-language-type-row">
         <span class="split-join-mode-hint-group" id="merge-join-mode-hint" hidden>
-          <small class="editor-settings-hint" id="merge-join-mode-text"></small>
+          <span class="editor-settings-item" id="merge-join-mode-text"></span>
           <button type="button" class="split-join-mode-switch" id="merge-join-mode-switch"></button>
         </span>
       </div>
-      <div class="split-join-inline-row">
-        <label class="editor-settings-item split-join-row">
-          字符型
-          <input type="text" id="merge-join-text-continuous" placeholder="留空则直接拼接">
-        </label>
-        <label class="editor-settings-item split-join-row">
-          单词型
-          <input type="text" id="merge-join-text-word" placeholder="默认一个空格">
-        </label>
-      </div>
+      <small class="editor-settings-hint split-language-type-hint">语言类型会影响拆分面板的分隔判断，以及合并时是否插入空格等。</small>
     </div>
-    <div class="editor-settings-field split-trim-symbols-field">
-      <span class="editor-settings-item" id="split-trim-symbols-label">拆分时移除的标点符号</span>
-      <div class="split-trim-symbol-row">
-        <div class="split-trim-symbol-grid" id="split-trim-symbol-grid" role="group" aria-labelledby="split-trim-symbols-label"></div>
-        <button type="button" id="split-trim-symbols-reset">恢复默认符号</button>
+    <div class="editor-settings-field split-join-settings-actions" role="group" aria-label="拆分与合并配置">
+      <div class="split-join-settings-anchor merge-join-settings-field" id="merge-join-settings">
+        <button type="button" id="merge-join-settings-toggle" title="配置合并字幕时插入字符" aria-expanded="false" aria-controls="merge-join-settings-panel" aria-haspopup="dialog">配置合并字符</button>
+        <div class="settings-panel merge-join-settings-panel" id="merge-join-settings-panel" role="dialog" aria-modal="false" aria-labelledby="merge-join-settings-title" hidden>
+          <div class="settings-panel-section merge-join-settings-section">
+            <span class="settings-panel-title" id="merge-join-settings-title">合并字幕时插入字符</span>
+            <div class="split-join-inline-row">
+              <label class="editor-settings-item split-join-row">
+                字符型
+                <input type="text" id="merge-join-text-continuous" placeholder="留空则直接拼接">
+              </label>
+              <label class="editor-settings-item split-join-row">
+                单词型
+                <input type="text" id="merge-join-text-word" placeholder="默认一个空格">
+              </label>
+            </div>
+          </div>
+        </div>
       </div>
-      <label class="editor-settings-item split-join-row" title="其他需要移除的符号，用空格分隔；输入的每个符号都会在拆分后从两侧文本边缘移除">
-        其他符号
-        <input type="text" id="split-trim-extra-symbols" placeholder="其他符号，用空格分隔" autocomplete="off">
-      </label>
-      <small class="editor-settings-hint">勾选或填写的符号会在拆分后从两侧文本边缘自动移除；空格与换行始终修剪。</small>
+      <div class="split-trim-settings-anchor" id="split-trim-settings">
+        <button type="button" id="split-trim-settings-toggle" aria-expanded="false" aria-controls="split-trim-settings-panel" aria-haspopup="dialog">配置拆分标点</button>
+        <div class="settings-panel split-trim-settings-panel" id="split-trim-settings-panel" role="dialog" aria-modal="false" aria-labelledby="split-trim-settings-title" hidden>
+          <div class="settings-panel-section split-trim-settings-section">
+            <span class="settings-panel-title" id="split-trim-settings-title">拆分时移除的标点符号</span>
+            <div class="split-trim-symbol-row">
+              <div class="split-trim-symbol-grid" id="split-trim-symbol-grid" role="group" aria-labelledby="split-trim-settings-title"></div>
+              <button type="button" id="split-trim-symbols-reset">恢复默认符号</button>
+            </div>
+            <label class="settings-panel-item split-trim-extra-symbol-row" title="其他需要移除的符号，用空格分隔；输入的每个符号都会在拆分后从两侧文本边缘移除">
+              <span>其他符号</span>
+              <input type="text" id="split-trim-extra-symbols" placeholder="其他符号，用空格分隔" autocomplete="off">
+            </label>
+            <small class="settings-panel-hint">勾选或填写的符号会在拆分后从两侧文本边缘自动移除；空格与换行始终修剪。</small>
+          </div>
+        </div>
+      </div>
     </div>
     </div>
   </div>
@@ -1065,7 +1149,10 @@ __WAVEFORM_CSS__
         <button type="button" id="waveform-settings-toggle" class="waveform-settings-toggle" title="波形设置" aria-label="波形设置" aria-expanded="false" aria-controls="waveform-settings-panel" aria-haspopup="dialog">⚙️</button>
         <div class="settings-panel waveform-settings-panel" id="waveform-settings-panel" role="dialog" aria-label="波形设置" hidden>
           <div class="settings-panel-section waveform-settings-section">
-            <span class="settings-panel-title waveform-settings-title">音频波形区</span>
+            <div class="settings-panel-title-row">
+              <span class="settings-panel-title waveform-settings-title">音频波形区</span>
+              <button type="button" class="settings-panel-help-link" id="waveform-settings-help" data-help-tab-target="waveform" title="打开帮助中的波形区说明" aria-label="打开帮助中的波形区说明">帮助</button>
+            </div>
             <label class="editor-settings-item" title="波形形状来源：默认使用媒体旁 .ReaPeaks 的最细 wave 层（缺数据时自动回退自研缓存）；需要时可切回自研">波形形状来源
               <select id="waveform-shape-source">
                 <option value="self">自研波形</option>
@@ -1137,7 +1224,10 @@ __WAVEFORM_CSS__
             <small class="settings-panel-hint" id="keyboard-operation-reference-hint">B/Z/X/N 使用鼠标所在波形位置；波形外不执行时间操作。</small>
           </div>
           <div class="settings-panel-section waveform-settings-section">
-            <span class="settings-panel-title waveform-settings-title">按键调整字幕</span>
+            <div class="settings-panel-title-row">
+              <span class="settings-panel-title waveform-settings-title">按键调整字幕</span>
+              <button type="button" class="settings-panel-help-link" id="keyboard-settings-help" data-help-tab-target="fine-tuning" title="打开帮助中的微调字幕说明" aria-label="打开帮助中的微调字幕说明">帮助</button>
+            </div>
             <label class="editor-settings-item" title="选中字幕时，方向键和按住字幕块/边界时的 A/D 每次调整的毫秒数">
               字幕按键微调幅度
               <span class="gap-remove-number-control">
@@ -1145,10 +1235,13 @@ __WAVEFORM_CSS__
                 <span class="gap-remove-unit">ms</span>
               </span>
             </label>
-            <small class="settings-panel-hint">具体用法详见帮助的「按键调整」区</small>
+            <small class="settings-panel-hint">具体用法详见帮助的「微调字幕」区</small>
           </div>
           <div class="settings-panel-section waveform-settings-section">
-            <span class="settings-panel-title waveform-settings-title">静音空隙</span>
+            <div class="settings-panel-title-row">
+              <span class="settings-panel-title waveform-settings-title">静音空隙</span>
+              <button type="button" class="settings-panel-help-link" id="gap-settings-help" data-help-tab-target="gap" title="打开帮助中的空隙操作说明" aria-label="打开帮助中的空隙操作说明">帮助</button>
+            </div>
             <label class="editor-settings-item" title="移除静音空隙的人工修正方式；Alt+左键点击切换整段，空白处 Alt+左键拖动增加空隙；空隙块左键或 Alt+左键拖动整体偏移，Ctrl/Cmd+拖动复制；中键拖动默认增加静音，按住 Alt 才恢复声音；“边界与中键”可同时启用两种方式">
               空隙区段操作方式
               <select id="gap-remove-operation-mode">
@@ -1166,9 +1259,8 @@ __WAVEFORM_CSS__
         <button type="button" data-waveform-mode="basic">基础</button>
       </span>
       <span class="sep"></span>
-      <button type="button" id="gap-remove-manage" title="打开可拖动的移除静音空隙工具窗" aria-expanded="false" aria-controls="gap-remove-panel">移除静音空隙</button>
+      <button type="button" id="gap-remove-manage" title="打开可拖动的移除静音空隙工具窗" aria-expanded="false" aria-controls="gap-remove-panel">静音空隙</button>
       <label class="toggle gap-skip-toggle" title="播放时跳过已移除的静音空隙；左键定位到空隙内时可临时预览"><input type="checkbox" id="gap-skip-playback" checked> 播放时跳过空隙</label>
-      <span class="gap-remove-summary" id="gap-remove-summary">未扫描空隙</span>
       <span class="sep"></span>
       <button type="button" id="auto-merge-manage" title="将间隔过短的前后字幕直接吸附在一起，去除中间的短暂空白（可直接吸收短字幕）" aria-expanded="false" aria-controls="auto-merge-panel">拼接/合并字幕</button>
       <button type="button" id="subtitle-extend-manage" title="打开可拖动的延长字幕工具窗" aria-expanded="false" aria-controls="subtitle-extend-panel">延长字幕</button>
@@ -1230,7 +1322,7 @@ __WAVEFORM_CSS__
         <button type="button" id="color-filter-btn" hidden title="按颜色过滤显示的字幕" aria-expanded="false" aria-controls="color-filter-menu">🎨</button>
         <div class="dropdown-menu color-filter-menu" id="color-filter-menu" role="menu"></div>
       </div>
-      <span class="info">显示 <b id="visible-count">0</b> / <b id="total-count">0</b></span>
+      <span class="info cue-list-count">显示 <b id="visible-count">0</b> / <b id="total-count">0</b></span>
       <span class="sep"></span>
       <div class="dropdown batch-operations-dropdown" id="batch-operations-dropdown">
         <button type="button" id="batch-operations-btn" aria-expanded="false" aria-controls="batch-operations-menu" aria-haspopup="menu">批量操作 ▾</button>

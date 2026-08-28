@@ -23,7 +23,7 @@ from typing import BinaryIO, Final, final
 
 from maw.media_cache import embed_media_caches
 from maw.waveform import is_waveform_payload
-from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, MODELS, PROVIDERS, ModelConfig, ProviderConfig, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
+from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, MODELS, PROVIDERS, ModelConfig, ProviderConfig, _gui_theme, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
@@ -50,6 +50,7 @@ from maw.postprocess_pipeline import (
     invalidate_llm_verification_if_changed,
     is_llm_verified,
     load_postprocess_plan,
+    record_llm_verification,
     run_postprocess_pipeline,
     save_postprocess_plan,
     snapshot_postprocess_llm_settings,
@@ -468,9 +469,16 @@ def download_emoji_font(urls: Sequence[str], dest: Path, timeout: float = 20.0) 
 
 @final
 class LauncherApi:
-    def __init__(self, *, paths: LauncherPaths | None = None, window_getter: Callable[[], object | None] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        paths: LauncherPaths | None = None,
+        window_getter: Callable[[], object | None] | None = None,
+        default_server_port: int | None = None,
+    ) -> None:
         self.paths = paths or default_paths()
         self.window_getter = window_getter or _active_window
+        self.default_server_port = default_server_port
         self.cancel_event: Event | None = None
         self.worker: threading.Thread | None = None
         self.batch_worker: threading.Thread | None = None
@@ -552,6 +560,7 @@ class LauncherApi:
             "showRareLangs": config.show_rare_langs,
             "lastModel": config.last_model,
             "lastLanguage": config.last_language,
+            "theme": config.theme,
             "localRuntime": managed_runtime_status(config.model_cache_root).to_payload(),
             "ocrRuntime": ocr_runtime.to_payload(),
             "ocrModels": ocr_models_payload(ocr_runtime),
@@ -564,6 +573,28 @@ class LauncherApi:
             "postprocessProviders": _postprocess_provider_payloads(self.paths.env_path),
             "postprocessAutoPlan": load_postprocess_plan(self.paths.env_path),
             "zoomPercent": config.zoom_percent,
+            "serverPort": self.default_server_port,
+        }
+
+    def get_postprocess_settings(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Return the selected provider's effective settings for the local form.
+
+        The bulk config deliberately exposes only masked keys. This explicit
+        provider read is used to refill the password input without putting raw
+        keys into the provider registry payload.
+        """
+
+        preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
+        values = _postprocess_values(self.paths.env_path, preset.env_prefix)
+        return {
+            "ok": True,
+            "providerId": preset.id,
+            "apiKey": values["apiKey"],
+            "maskedApiKey": masked_secret(values["apiKey"]),
+            "baseUrl": values["baseUrl"] or preset.base_url,
+            "model": values["model"] or preset.model,
+            "reasoningMode": values["reasoningMode"] or DEFAULT_REASONING_MODE,
+            "displayName": values["displayName"] if preset.id == "custom" else "",
         }
 
     def default_output(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -622,6 +653,8 @@ class LauncherApi:
             updates["MAW_GUI_LAST_LANGUAGE"] = str(payload.get("language") or "")
         if "showRareLangs" in payload:
             updates["MAW_GUI_SHOW_RARE_LANGS"] = "true" if payload.get("showRareLangs") else "false"
+        if "theme" in payload:
+            updates["MAW_GUI_THEME"] = _gui_theme(str(payload.get("theme") or "")) or "system"
         if "zoomPercent" in payload:
             from maw.gui_config import normalize_zoom_percent
 
@@ -733,14 +766,33 @@ class LauncherApi:
         except LlmClientError as error:
             detail = str(error)
             return {"ok": False, "field": "postprocessProvider", "code": "postprocess_connection_failed", "detail": detail, "error": detail}
+        if bool(payload.get("save")):
+            saved = self.save_postprocess_settings({
+                "providerId": preset.id,
+                "apiKey": settings.api_key,
+                "baseUrl": settings.base_url,
+                "model": settings.model,
+                "reasoningMode": reasoning_mode,
+                "displayName": str(payload.get("displayName") or "").strip(),
+            })
+            if not saved.get("ok"):
+                return saved
+            record_llm_verification(self.paths.env_path, preset.id, {
+                "apiKey": settings.api_key,
+                "baseUrl": settings.base_url,
+                "model": settings.model,
+            })
+            return {
+                **saved,
+                "saved": True,
+                "verified": True,
+            }
         stored = _postprocess_values(self.paths.env_path, preset.env_prefix)
         if (
             stored["apiKey"] == settings.api_key
             and (stored["baseUrl"] or preset.base_url) == settings.base_url
             and (stored["model"] or preset.model) == settings.model
         ):
-            from maw.postprocess_pipeline import record_llm_verification
-
             record_llm_verification(self.paths.env_path, preset.id, {
                 "apiKey": settings.api_key,
                 "baseUrl": settings.base_url,
@@ -2032,7 +2084,7 @@ class LauncherApi:
                 self.pump.flush()
 
 
-def run_app(*, debug: bool = False, devtools: bool = False) -> None:
+def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | None = None) -> None:
     import webview
 
     # pywebview opens DevTools automatically in debug mode when this setting is
@@ -2040,7 +2092,7 @@ def run_app(*, debug: bool = False, devtools: bool = False) -> None:
     # controllable so normal development does not force an extra window.
     webview.settings["OPEN_DEVTOOLS_IN_DEBUG"] = devtools
     paths = default_paths()
-    api = LauncherApi(paths=paths)
+    api = LauncherApi(paths=paths, default_server_port=server_port)
     window = webview.create_window(
         WINDOW_TITLE,
         url=paths.launcher_html.resolve().as_uri(),
