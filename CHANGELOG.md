@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### 🐛 修复
+
+- **Launcher 工具箱波形生成** ： 直接使用 Launcher 已识别的配置或随包 FFmpeg，避免 Windows 打包版因 FFmpeg 未加入系统 PATH 而无法生成波形；失败时同时显示实际解码原因，不再暴露 `waveform_unavailable` 内部错误码。
+
 ## [1.5.0-beta.7] - 2026-08-28
 
 ### 🐛 修复

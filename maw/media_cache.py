@@ -50,6 +50,7 @@ def embed_media_caches(
     *,
     source_media_path: Path | str | None = None,
     generate_spectral: bool = False,
+    ffmpeg_bin: str | None = None,
 ) -> MediaCacheResult:
     """嵌入波形缓存并生成 .ReaPeaks 缓存（best-effort）。
 
@@ -67,7 +68,7 @@ def embed_media_caches(
     source_path = (
         Path(source_media_path) if source_media_path is not None else cache_path
     )
-    waveform_result = embed_waveform(project, cache_path)
+    waveform_result = embed_waveform(project, cache_path, ffmpeg_bin=ffmpeg_bin)
     project = waveform_result.project
     if waveform_result.error is None:
         payload = project.get("waveform")
@@ -87,6 +88,7 @@ def embed_media_caches(
         print("[reapeaks] 正在生成波形缓存（已跳过频谱计算）……")
     reapeaks_path = reapeaks.generate_for_media(
         cache_path,
+        ffmpeg_bin=ffmpeg_bin,
         include_spectral=generate_spectral,
         source_media_path=source_path,
     )
