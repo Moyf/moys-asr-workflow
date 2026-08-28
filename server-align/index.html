@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MAW 录制对齐</title>
+  <title>MAW 口播对齐</title>
   <style>
     :root {
       color-scheme: dark;
@@ -108,19 +108,42 @@
       align-items: center;
       color: var(--text);
     }
-    .waveform-mode-options {
+    .waveform-mode-control {
       display: inline-flex;
-      flex-wrap: wrap;
       align-items: center;
-      gap: 5px;
+      gap: 6px;
     }
-    .waveform-mode-options > span { color: var(--muted); }
+    .waveform-mode-label { color: var(--muted); }
+    .waveform-mode-options {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(68px, 1fr));
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #111820;
+    }
     .waveform-mode {
-      padding: 3px 8px;
+      min-height: 30px;
+      padding: 3px 9px;
+      border: 0;
       border-radius: 5px;
       font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      background: transparent;
+      transition: background .15s ease, color .15s ease, box-shadow .15s ease;
     }
-    .waveform-mode.active { border-color: var(--blue); background: #1d4164; }
+    .waveform-mode:hover,
+    .waveform-mode.active {
+      color: var(--text);
+      background: #2b3c4d;
+    }
+    .waveform-mode.active {
+      color: var(--blue);
+      background: #1d4164;
+      box-shadow: inset 0 0 0 1px var(--blue);
+    }
     .waveform-mode-setting { gap: 4px; }
     .waveform-mode-setting select { padding: 3px 5px; font-size: 12px; }
     .waveform-mode-setting[hidden] { display: none; }
@@ -183,6 +206,10 @@
       left: 4px;
       white-space: nowrap;
     }
+    .time-tick.edge-right span {
+      left: auto;
+      right: 4px;
+    }
     .waveform-stage {
       position: relative;
       height: 180px;
@@ -219,9 +246,9 @@
     }
     .gap-range:hover { filter: brightness(1.22); }
     .gap-range.protected {
-      border-left-color: rgba(166,210,231,.92);
-      border-right-color: rgba(166,210,231,.92);
-      box-shadow: inset 0 0 0 1px rgba(166,210,231,.16);
+      border-left-color: rgba(122,222,244,.98);
+      border-right-color: rgba(122,222,244,.98);
+      box-shadow: inset 0 0 0 4px rgba(65,174,207,.35);
     }
     .gap-range.restored {
       background: repeating-linear-gradient(135deg, rgba(111,145,170,.18) 0 5px, rgba(67,91,108,.08) 5px 10px);
@@ -410,6 +437,11 @@
     .take-range.incomplete { background: rgba(119, 129, 142, .78); color: #e7edf2; }
     .take-range.manual-enabled { background: rgba(99, 213, 150, .88); color: #081017; }
     .take-range.manual-disabled { background: repeating-linear-gradient(135deg, #806b3d 0 5px, #62532f 5px 10px); color: #f5ecdc; }
+    .take-range.manual-correction,
+    .candidate.manual-correction,
+    .extra-row.manual-correction {
+      box-shadow: inset 0 0 0 4px rgba(65,174,207,.35);
+    }
     .take-range.selected-incomplete { outline: 1px dashed var(--amber); outline-offset: 1px; }
     .take-range.extra { background: rgba(240, 189, 100, .88); }
     .take-range.discard { background: repeating-linear-gradient(135deg, #68727e 0 5px, #4e5864 5px 10px); color: #e7edf2; }
@@ -449,17 +481,32 @@
     .line-state.missing { color: var(--red); }
     .recording-list { display: grid; gap: 0; margin-top: 10px; }
     .candidate-list { display: grid; gap: 7px; margin: 10px 0 0 54px; }
-    .candidate {
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto auto auto;
-      gap: 8px;
-      align-items: center;
+     .candidate {
+       display: grid;
+       grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+       gap: 8px;
+       align-items: center;
       padding: 8px;
       border: 1px solid var(--line);
-      border-radius: 7px;
-      background: #171d24;
-    }
-    .candidate.selected { border-color: var(--green); background: #182a25; }
+       border-radius: 7px;
+       background: #171d24;
+     }
+     .candidate-locate-row {
+       display: grid;
+       grid-template-columns: 46px minmax(0, 1fr);
+       gap: 8px;
+       align-items: center;
+       min-width: 0;
+       margin-left: -54px;
+     }
+     .candidate-locate-row > .candidate { min-width: 0; }
+     .candidate-waveform-jump {
+       width: 46px;
+       padding: 5px 4px;
+       color: var(--muted);
+       font-size: 12px;
+     }
+     .candidate.selected { border-color: var(--green); background: #182a25; }
     .candidate.incomplete { opacity: .76; }
     .candidate.manual-enabled { opacity: 1; border-color: var(--green); }
     .candidate.manual-disabled { opacity: .76; border-color: var(--amber); background: #30291d; }
@@ -499,11 +546,12 @@
 .status { margin-left: 0; color: var(--muted); }
     .status.ready { color: var(--green); }
     .status.warn { color: var(--amber); }
-    @media (max-width: 820px) {
-      main { padding: 14px; }
-      .summary { grid-template-columns: repeat(3, 1fr); }
-      .candidate-list, .empty { margin-left: 0; }
-    }
+     @media (max-width: 820px) {
+       main { padding: 14px; }
+       .summary { grid-template-columns: repeat(3, 1fr); }
+       .candidate-list, .empty { margin-left: 0; }
+       .candidate-locate-row { margin-left: 0; }
+     }
     @media (max-width: 560px) {
       .summary { grid-template-columns: repeat(2, 1fr); }
       .candidate { grid-template-columns: 1fr auto; }
@@ -516,10 +564,10 @@
 </head>
 <body>
 <main>
-  <h1>MAW 录制对齐</h1>
+  <h1>MAW 口播对齐</h1>
   <p id="meta" class="muted">正在读取 mosp……</p>
     <div class="notice">
-    输入是「文稿 + 媒体 + ASR 生成的 mosp」。波形上的绿色块是采用的完整匹配，蓝色块是同一局部录制组的 Alternative（未选中的会自动静音），棕色块是远距离命中（默认保留、等待确认），灰色块是自动禁用的口吃/不完整/重复；不完整 take 可以直接点击波形块，或在下方手动启用，启用后会以绿色显示但仍保留 incomplete 标记。已采用的完整 take 也可以在下方「手动禁用」，让 Extra 版本替代它。橙色块是默认保留的 Extra，黄色斜纹是播放和导出时会移除的空隙。导出会生成新的对齐 `.mosp`，不会覆盖源工程。
+    输入是「文稿 + 媒体 + ASR 生成的 mosp」。波形上的绿色块是采用的完整匹配，蓝色块是同一局部录制组的 Alternative（未选中的会自动静音），棕色块是远距离命中（默认保留、等待确认），灰色块是自动禁用的口吃/不完整/重复；不完整 take 可以直接点击波形块，或在下方手动启用，启用后会以绿色显示但仍保留 incomplete 标记。已采用的完整 take 可以直接点击切换「人工禁用」，也可以在下方操作，让额外版本替代它。橙色块是默认保留的额外片段，黄色斜纹是播放和导出时会移除的空隙。导出会生成新的对齐 `.mosp`，不会覆盖源工程。
   </div>
 <div class="toolbar">
   <div class="toolbar-row">
@@ -538,38 +586,40 @@
     <h2>波形与 take 块</h2>
     <div id="media-host"><p class="muted">工程没有可播放媒体，仍可查看对齐结果。</p></div>
     <div class="timeline-help">
-      <span id="timeline-help-text">基础模式横向滚动查看整段 · 滚轮横向滚动 · 单击定位/试听 gap · 双击/空格播放暂停 · 按住左键拖动播放头 · Alt+左键空白处添加 gap · Ctrl+单击块跳到下方 card</span>
+      <span id="timeline-help-text">多行模式按每行时长排列 · 单击定位，单击空隙临时试听 · 双击/空格播放暂停 · 按住左键拖动播放头 · 空白处 Alt+左键添加空隙 · 已有空隙 Alt+点击切换禁用 · Ctrl+单击块跳到下方卡片</span>
       <div class="timeline-options">
-        <div class="waveform-mode-options" role="group" aria-label="波形显示模式">
-          <span>波形：</span>
-          <button class="waveform-mode active" type="button" data-waveform-mode="basic">基础</button>
-          <button class="waveform-mode" type="button" data-waveform-mode="multi">多行</button>
-          <label class="timeline-option waveform-mode-setting" id="multi-row-seconds-setting" hidden>
-            每行
-            <select id="multi-row-seconds">
-              <option value="5">5 秒</option>
-              <option value="10" selected>10 秒</option>
-              <option value="20">20 秒</option>
-              <option value="30">30 秒</option>
-            </select>
-          </label>
-          <label class="timeline-option waveform-mode-setting" id="multi-row-height-setting" hidden>
-            行高
-            <select id="multi-row-height">
-              <option value="64">64 px</option>
-              <option value="80">80 px</option>
-              <option value="96">96 px</option>
-              <option value="120" selected>120 px</option>
-              <option value="144">144 px</option>
-            </select>
-          </label>
+        <div class="waveform-mode-control">
+          <span class="waveform-mode-label">波形：</span>
+          <div class="waveform-mode-options" role="group" aria-label="波形显示模式">
+            <button class="waveform-mode" type="button" data-waveform-mode="basic">基础</button>
+            <button class="waveform-mode active" type="button" data-waveform-mode="multi">多行</button>
+          </div>
         </div>
-        <label class="timeline-option" title="关闭时，播放头会正常经过 gap；导出仍保留 gap_remove 区段记录">
-          <input id="skip-gap-playback" type="checkbox" checked>
-          播放时跳过 gap
+        <label class="timeline-option waveform-mode-setting" id="multi-row-seconds-setting" hidden>
+          每行
+          <select id="multi-row-seconds">
+            <option value="5">5 秒</option>
+            <option value="10" selected>10 秒</option>
+            <option value="20">20 秒</option>
+            <option value="30">30 秒</option>
+          </select>
         </label>
-        <label class="timeline-option" title="复刻 MAWE 的 Gap 人工修正方式；Alt+左键拖动空白处始终可以新增范围">
-          Gap 操作
+        <label class="timeline-option waveform-mode-setting" id="multi-row-height-setting" hidden>
+          行高
+          <select id="multi-row-height">
+            <option value="64">64 px</option>
+            <option value="80">80 px</option>
+            <option value="96">96 px</option>
+            <option value="120" selected>120 px</option>
+            <option value="144">144 px</option>
+          </select>
+        </label>
+        <label class="timeline-option" title="关闭时，播放头会正常经过空隙；导出仍保留空隙移除区段记录">
+          <input id="skip-gap-playback" type="checkbox" checked>
+          播放时跳过空隙
+        </label>
+        <label class="timeline-option" title="复刻 MAWE 的空隙人工修正方式；空白处 Alt+左键拖动始终可以新增范围；已有空隙可用 Alt+点击切换禁用">
+          空隙操作
           <select id="gap-operation-mode">
             <option value="none">无</option>
             <option value="boundary_drag" selected>拖动边界</option>
@@ -605,13 +655,13 @@
       <span class="disabled">自动禁用</span>
       <span class="manual">手动启用</span>
       <span class="manual-disabled">手动禁用</span>
-      <span class="extra">Extra 保留</span>
+      <span class="extra">额外保留</span>
       <span class="gap">移除空隙</span>
     </div>
   </section>
   <section class="panel">
     <h2>文稿行与录制候选</h2>
-    <p class="muted">以文稿行顺序为主；同一行的候选按 ASR 起始时间排列，Extra 按录音时间插入相邻位置，并可直接试听、保留或禁用。</p>
+    <p class="muted">以文稿行顺序为主；同一行的候选按 ASR 起始时间排列，额外片段按录音时间插入相邻位置，并可直接试听、保留或禁用。</p>
     <div id="lines"></div>
   </section>
 </main>
@@ -643,7 +693,7 @@
   let waveform = null;
   let previewSerial = 0;
   let timelineDrag = null;
-  let waveformMode = 'basic';
+  let waveformMode = 'multi';
   let multiRowSeconds = 10;
   let multiRowHeight = 120;
   let playbackFrameId = 0;
@@ -843,14 +893,20 @@
     return GAP_REMOVE_CORE.findGapRemoveAtTime(removedGaps, timeMs, removedOnly);
   }
 
-  function previewGapAt(timeMs) {
-    const gap = gapAtTime(timeMs, true);
-    if ($('#skip-gap-playback')?.checked !== true || !gap) {
+  function previewGapAt(timeMs, gap = null) {
+    const previewGap = gap || gapAtTime(timeMs, true);
+    if (
+      $('#skip-gap-playback')?.checked !== true
+      || !previewGap
+      || previewGap.removed === false
+      || timeMs < previewGap.start
+      || timeMs >= previewGap.end
+    ) {
       gapPreviewRange = null;
       return;
     }
-    gapPreviewRange = {start: gap.start, end: gap.end};
-    $('#status').textContent = '正在预览此 gap；播放头离开后恢复跳过';
+    gapPreviewRange = {start: previewGap.start, end: previewGap.end};
+    $('#status').textContent = '正在预览此空隙；播放头离开后恢复跳过';
   }
 
   function gapMinimumMs() {
@@ -867,7 +923,7 @@
     const start = Math.min(snappedPoint, Math.max(0, duration - length));
     const end = Math.min(duration, start + length);
     if (end - start < MIN_GAP_RANGE_MS) {
-      $('#status').textContent = '媒体时长不足，无法添加 gap';
+      $('#status').textContent = '媒体时长不足，无法添加空隙';
       return false;
     }
     const next = applyGapRange(removedGaps, start, end, true);
@@ -877,7 +933,7 @@
     }
     return commitGapRanges(
       next,
-      `已添加 ${formatTime(end - start)} 的 gap`,
+      `已添加 ${formatTime(end - start)} 的空隙`,
       [{start, end, removed: true}],
     );
   }
@@ -909,16 +965,16 @@
     };
     const gap = Number.isInteger(index) ? visibleGapEntries()[index] : null;
     if (gap) {
-      addItem(gap.removed === false ? '移除这个 gap 区段' : '恢复这个 gap 区段', () => {
+      addItem(gap.removed === false ? '移除这个空隙区段' : '恢复这个空隙区段', () => {
         const next = applyGapRange(removedGaps, gap.start, gap.end, gap.removed === false);
         commitGapRanges(
           next,
-          gap.removed === false ? '已人工移除 gap' : '已人工恢复 gap',
+          gap.removed === false ? '已人工移除空隙' : '已人工恢复空隙',
           [{start: gap.start, end: gap.end, removed: gap.removed === false}],
         );
       });
       addSeparator();
-      addItem('清理这个 gap 记录', () => {
+      addItem('清理这个空隙记录', () => {
         commitGapProvenance(
           removeGapRemoveProvenanceRange(
             gapRemoveConfig?.provenance,
@@ -926,11 +982,11 @@
             gap.end,
             removedGaps,
           ),
-          '已清理 gap 记录',
+          '已清理空隙记录',
         );
       }, true);
     } else {
-      addItem(`在此处添加 gap（${formatTime(gapMinimumMs())}）`, () => addGapAtTimelineTime(timeMs));
+      addItem(`在此处添加空隙（${formatTime(gapMinimumMs())}）`, () => addGapAtTimelineTime(timeMs));
     }
     menu.hidden = false;
     const rect = menu.getBoundingClientRect();
@@ -975,6 +1031,56 @@
       });
     }
     return pieces;
+  }
+
+  function scrollTimelineToRange(startMs, endMs) {
+    const scroll = $('#timeline-scroll');
+    if (!scroll) return;
+    setTimelineGeometry();
+    const duration = timelineDurationMs();
+    const rawStart = Number(startMs);
+    const rawEnd = Number(endMs);
+    const start = Math.max(
+      0,
+      Math.min(Math.max(0, duration - 1), Number.isFinite(rawStart) ? rawStart : 0),
+    );
+    const end = Math.max(
+      start + 1,
+      Number.isFinite(rawEnd) ? Math.min(duration, rawEnd) : start + 1,
+    );
+    if (isMultiWaveform()) {
+      const pieces = timelineRangePieces(start, end);
+      const first = pieces[0];
+      const last = pieces[pieces.length - 1] || first;
+      const viewportHeight = scroll.clientHeight;
+      const maxScroll = Math.max(0, scroll.scrollHeight - viewportHeight);
+      if (!first || viewportHeight <= 0 || maxScroll <= 0) return;
+      const rulerHeight = $('#time-ruler')?.offsetHeight || 0;
+      const rangeTop = rulerHeight + first.top;
+      const rangeBottom = rulerHeight + last.top + last.height;
+      const target = rangeBottom - rangeTop <= viewportHeight
+        ? (rangeTop + rangeBottom - viewportHeight) / 2
+        : rangeTop;
+      const nextTop = Math.max(0, Math.min(maxScroll, target));
+      if (Math.abs(nextTop - scroll.scrollTop) > 1) {
+        timelineAutoScrollTarget = null;
+        scroll.scrollTo({top: nextTop, behavior: 'smooth'});
+      }
+      return;
+    }
+    const viewportWidth = scroll.clientWidth;
+    const maxScroll = Math.max(0, scroll.scrollWidth - viewportWidth);
+    if (viewportWidth <= 0 || maxScroll <= 0) return;
+    const left = timeToTimelinePx(start);
+    const right = Math.max(left + 1, timeToTimelinePx(end));
+    const target = right - left <= viewportWidth
+      ? (left + right - viewportWidth) / 2
+      : left;
+    const nextLeft = Math.max(0, Math.min(maxScroll, target));
+    if (Math.abs(nextLeft - scroll.scrollLeft) > 1) {
+      timelineAutoScrollTarget = null;
+      scroll.scrollTo({left: nextLeft, behavior: 'smooth'});
+    }
   }
 
   function setTimelineGeometry() {
@@ -1069,13 +1175,16 @@
     const duration = isMultiWaveform() ? multiRowDurationMs() : timelineDurationMs();
     const durationSeconds = duration / 1000;
     const stepSeconds = durationSeconds > 180 ? 10 : durationSeconds > 60 ? 5 : 2;
+    const rulerRight = Math.max(0, width - 1);
     const timeToRulerPx = (seconds) => isMultiWaveform()
       ? seconds / Math.max(.001, durationSeconds) * width
       : seconds * TIMELINE_PIXELS_PER_SECOND;
     for (let seconds = 0; seconds <= durationSeconds + 0.001; seconds += stepSeconds) {
       const tick = document.createElement('div');
       tick.className = 'time-tick';
-      tick.style.left = `${Math.min(width, timeToRulerPx(seconds))}px`;
+      const isEndTick = durationSeconds > 0 && seconds >= durationSeconds - 0.001;
+      tick.classList.toggle('edge-right', isEndTick);
+      tick.style.left = `${Math.max(0, Math.min(rulerRight, timeToRulerPx(seconds)))}px`;
       const label = document.createElement('span');
       label.textContent = formatTime(seconds * 1000);
       tick.append(label);
@@ -1083,8 +1192,8 @@
     }
     if (durationSeconds > 0 && durationSeconds % stepSeconds > 0.001) {
       const tick = document.createElement('div');
-      tick.className = 'time-tick';
-      tick.style.left = `${Math.max(0, width - 1)}px`;
+      tick.className = 'time-tick edge-right';
+      tick.style.left = `${rulerRight}px`;
       const label = document.createElement('span');
       label.textContent = formatTime(duration);
       tick.append(label);
@@ -1142,12 +1251,21 @@
     return candidate?.status === 'match' && candidateActions[candidate.id] === 'discard';
   }
 
+  function isCandidateManuallyAdjusted(candidate) {
+    return isCandidateManuallyEnabled(candidate) || isCandidateManuallyDisabled(candidate);
+  }
+
   function currentExtras() {
     return selectionPreview?.extraRanges || alignment.extras || [];
   }
 
   function actionFor(extra) {
     return extraActions[extra.id] || extra.defaultAction || (extra.kind === 'skip-source' ? 'discard' : 'keep');
+  }
+
+  function isExtraManuallyAdjusted(extra) {
+    const defaultAction = extra?.defaultAction || (extra?.kind === 'skip-source' ? 'discard' : 'keep');
+    return actionFor(extra) !== defaultAction;
   }
 
   function syncActions(extras, preserve = true) {
@@ -1172,8 +1290,8 @@
     const help = $('#timeline-help-text');
     if (help) {
       help.textContent = multi
-        ? '多行模式按每行时长排列 · 单击定位 · 双击/空格播放暂停 · 按住左键拖动播放头 · Ctrl+单击块跳到下方 card'
-        : '基础模式横向滚动查看整段 · 滚轮横向滚动 · 单击定位 · 双击/空格播放暂停 · 按住左键拖动播放头 · Ctrl+单击块跳到下方 card';
+        ? '多行模式按每行时长排列 · 单击定位，单击空隙临时试听 · 双击/空格播放暂停 · 按住左键拖动播放头 · 空白处 Alt+左键添加空隙 · 已有空隙 Alt+点击切换禁用 · Ctrl+单击块跳到下方卡片'
+        : '基础模式横向滚动查看整段 · 滚轮横向滚动 · 单击定位，单击空隙临时试听 · 双击/空格播放暂停 · 按住左键拖动播放头 · 空白处 Alt+左键添加空隙 · 已有空隙 Alt+点击切换禁用 · Ctrl+单击块跳到下方卡片';
     }
     const secondsSelect = $('#multi-row-seconds');
     const heightSelect = $('#multi-row-height');
@@ -1582,6 +1700,25 @@
     window.setTimeout(() => card.classList.remove('jump-target'), 900);
   }
 
+  function createWaveformJumpButton(startMs, endMs) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'candidate-waveform-jump';
+    button.dataset.action = 'jump-to-waveform';
+    button.textContent = '定位';
+    button.title = `在上方波形中定位 ${formatTime(startMs)}–${formatTime(endMs)}`;
+    button.setAttribute('aria-label', button.title);
+    button.addEventListener('click', () => scrollTimelineToRange(startMs, endMs));
+    return button;
+  }
+
+  function appendCandidateRow(list, row, startMs, endMs) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'candidate-locate-row';
+    wrapper.append(createWaveformJumpButton(startMs, endMs), row);
+    list.append(wrapper);
+  }
+
   function bindTakeButton(take, callback) {
     // 波形容器本身负责定位/拖动播放头；点击块时处理 take 选择，
     // 或切换 incomplete take 的手动启用状态。Ctrl+单击只跳到下方对应 card。
@@ -1602,12 +1739,12 @@
   }
 
   function releasePlaybackFocus(event) {
-    const control = event.target?.closest?.('button, input[type="checkbox"], input[type="radio"], input[type="range"], select, audio, video, label');
-    if (!control && !document.activeElement?.matches?.('button, input[type="checkbox"], input[type="radio"], input[type="range"], select, audio, video')) return;
+    const control = event.target?.closest?.('button, input[type="checkbox"], input[type="radio"], input[type="range"], audio, video, label');
+    if (!control && !document.activeElement?.matches?.('button, input[type="checkbox"], input[type="radio"], input[type="range"], audio, video')) return;
     // 点击操作控件后，下一次空格键应继续控制时间轴播放；文本输入框不在这里处理。
     window.setTimeout(() => {
       const active = document.activeElement;
-      if (active?.matches?.('button, input[type="checkbox"], input[type="radio"], input[type="range"], select, audio, video')) {
+      if (active?.matches?.('button, input[type="checkbox"], input[type="radio"], input[type="range"], audio, video')) {
         active.blur();
       }
     }, 0);
@@ -1679,6 +1816,7 @@
           if (manuallyEnabled) classes.push('manual-enabled');
         }
         if (manuallyDisabled) classes.push('manual-disabled');
+        if (isCandidateManuallyAdjusted(candidate)) classes.push('manual-correction');
         if (!selected || manuallyDisabled || (candidate.status === 'incomplete' && !manuallyEnabled)) classes.push('muted');
         if (selected) classes.push('selected');
         if (selected && !complete) classes.push('selected-incomplete');
@@ -1700,12 +1838,16 @@
           ? ' · 不自动归入 Alternative'
           : '';
         const actionText = complete
-          ? manuallyDisabled ? '请在下方卡片中取消手动禁用，或切换采用的 take' : '点击切换采用的 take'
+          ? selected
+            ? manuallyDisabled ? '点击取消人工禁用，恢复采用' : '点击人工禁用此 take'
+            : '点击切换采用的 take'
           : manuallyEnabled ? '点击恢复自动禁用' : '点击启用此不完整 take';
         take.title = `${badgeText}${stateText}${localityText} · ${actionText} · ${sourceText} ${formatTime(candidate.start)}–${formatTime(candidate.end)}`;
         take.setAttribute('aria-label', take.title);
         const activate = complete
-          ? () => chooseCandidate(line.id, candidate.id)
+          ? selected
+            ? () => toggleCandidateDisabled(line.id, candidate.id)
+            : () => chooseCandidate(line.id, candidate.id)
           : () => toggleCandidateEnabled(line.id, candidate.id);
         bindTakeButton(take, activate);
         appendRange(take, candidate.start, candidate.end, activate);
@@ -1721,9 +1863,10 @@
       const classes = ['take-range', kept ? 'extra' : 'discard'];
       if (!kept) classes.push('muted');
       if (repetition) classes.push('repetition');
+      if (isExtraManuallyAdjusted(extra)) classes.push('manual-correction');
       take.className = classes.join(' ');
       take.dataset.extraId = extra.id;
-      const badgeText = kept ? 'Extra' : '禁用';
+      const badgeText = kept ? '额外' : '额外 · 禁用';
       appendTakeContent(take, badgeText, extra.sourceText);
       take.title = `${badgeText} · ${extra.sourceText} ${formatTime(extra.start)}–${formatTime(extra.end)}`;
       take.setAttribute('aria-label', take.title);
@@ -1767,7 +1910,9 @@
     label.className = 'gap-label';
     label.textContent = labelText || stateText;
     node.append(label);
-    node.title = preview ? (labelText || gapDisplayLabel(gap)) : gapDisplayLabel(gap);
+    node.title = preview
+      ? (labelText || gapDisplayLabel(gap))
+      : `${gapDisplayLabel(gap)} · Alt+点击切换禁用`;
     node.setAttribute('aria-label', node.title);
     if (preview) {
       node.classList.add('gap-range-preview');
@@ -1788,6 +1933,12 @@
     }
     node.addEventListener('pointerdown', (event) => {
       const handle = event.target.closest('.gap-handle');
+      if (event.button === 0 && event.altKey) {
+        // Alt+点击只切换空隙状态，不应先进入整体移动手势。
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       if (event.button === 0 && !handle) {
         beginGapMoveDrag(event, index, event.ctrlKey || event.metaKey ? 'copy' : 'move');
         return;
@@ -1803,20 +1954,19 @@
       event.preventDefault();
       event.stopPropagation();
       if (Date.now() < suppressGapClickUntil) return;
+      const current = visibleGapEntries()[index];
       if (event.altKey) {
-        const current = visibleGapEntries()[index];
         if (!current) return;
         const next = applyGapRange(removedGaps, current.start, current.end, current.removed === false);
         commitGapRanges(
           next,
-          current.removed === false ? '已人工移除 gap' : '已人工恢复 gap',
+          current.removed === false ? '已人工移除空隙' : '已人工恢复空隙',
           [{start: current.start, end: current.end, removed: current.removed === false}],
         );
         return;
       }
       const time = timelineTimeFromEvent(event);
-      previewGapAt(time);
-      seekTimeline(time);
+      seekTimeline(time, current);
     });
     node.addEventListener('dblclick', (event) => {
       event.preventDefault();
@@ -1988,7 +2138,7 @@
         renderGaps();
         return;
       }
-      commitGapProvenance(result.provenance, '已移动 gap');
+      commitGapProvenance(result.provenance, '已移动空隙');
       return;
     }
     const overrides = [{
@@ -1998,7 +2148,7 @@
     }];
     commitGapRanges(
       drag.nextGaps,
-      '已复制并移动 gap',
+      '已复制并移动空隙',
       overrides,
     );
   }
@@ -2066,7 +2216,7 @@
       renderGaps();
       return;
     }
-    commitGapProvenance(result.provenance, '已人工调整 gap 边界');
+    commitGapProvenance(result.provenance, '已人工调整空隙边界');
   }
 
   function beginGapRangeDrag(event, {removed = !event.altKey} = {}) {
@@ -2161,7 +2311,13 @@
         const manuallyEnabled = isSelected && isCandidateManuallyEnabled(candidate);
         const manuallyDisabled = isSelected && isCandidateManuallyDisabled(candidate);
         const row = document.createElement('div');
-        row.className = `candidate ${isSelected ? 'selected' : ''} ${candidate.status === 'incomplete' ? 'incomplete' : ''} ${manuallyEnabled ? 'manual-enabled' : ''} ${manuallyDisabled ? 'manual-disabled' : ''}`;
+        const rowClasses = ['candidate'];
+        if (isSelected) rowClasses.push('selected');
+        if (candidate.status === 'incomplete') rowClasses.push('incomplete');
+        if (manuallyEnabled) rowClasses.push('manual-enabled');
+        if (manuallyDisabled) rowClasses.push('manual-disabled');
+        if (isCandidateManuallyAdjusted(candidate)) rowClasses.push('manual-correction');
+        row.className = rowClasses.join(' ');
         const select = document.createElement('button');
         select.type = 'button';
         select.textContent = isSelected
@@ -2210,7 +2366,7 @@
         if (enable) row.append(enable);
         if (disable) row.append(disable);
         row.append(play);
-        list.append(row);
+         appendCandidateRow(list, row, candidate.start, candidate.end);
       });
       card.append(list);
       root.append(card);
@@ -2223,7 +2379,7 @@
     for (const extra of currentExtras()) {
       const action = actionFor(extra);
       const row = document.createElement('div');
-      row.className = `extra-row ${extra.kind === 'skip-source' ? 'skip-source' : 'extra'}`;
+      row.className = `extra-row ${extra.kind === 'skip-source' ? 'skip-source' : 'extra'}${isExtraManuallyAdjusted(extra) ? ' manual-correction' : ''}`;
       const kind = document.createElement('strong');
       if (extra.kind === 'skip-source') {
         kind.textContent = extra.reasonCode === 'alternative'
@@ -2234,7 +2390,7 @@
       } else if (extra.reasonCode === 'distant-match') {
         kind.textContent = action === 'keep' ? '远距命中 · 保留' : '远距命中 · 禁用';
       } else {
-        kind.textContent = action === 'keep' ? 'Extra · 保留' : 'Extra · 禁用';
+        kind.textContent = action === 'keep' ? '额外 · 保留' : '额外 · 禁用';
       }
       const body = document.createElement('span');
       const title = document.createElement('strong');
@@ -2305,6 +2461,7 @@
       if (candidate.status === 'incomplete') rowClasses.push('incomplete');
       if (manuallyEnabled) rowClasses.push('manual-enabled');
       if (manuallyDisabled) rowClasses.push('manual-disabled');
+      if (isCandidateManuallyAdjusted(candidate)) rowClasses.push('manual-correction');
       row.className = rowClasses.join(' ');
       row.dataset.lineId = line.id;
       row.dataset.candidateId = candidate.id;
@@ -2366,7 +2523,7 @@
       if (enable) row.append(enable);
       if (disable) row.append(disable);
       row.append(play);
-      candidateList.append(row);
+       appendCandidateRow(candidateList, row, candidate.start, candidate.end);
     });
     card.append(header, candidateList);
     list.append(card);
@@ -2379,7 +2536,7 @@
     const isRepetition = extra.kind === 'skip-source'
       && extra.reasonCode === 'repetition';
     const entryLabel = isExtra
-      ? 'Extra'
+      ? '额外'
       : isRepetition
         ? '重复 Item'
         : extra.reasonCode === 'alternative'
@@ -2410,6 +2567,7 @@
     const rowClasses = ['candidate', 'recording-entry', 'extra-entry'];
     if (extra.kind === 'skip-source') rowClasses.push('skip-source');
     if (!kept) rowClasses.push('discarded');
+    if (isExtraManuallyAdjusted(extra)) rowClasses.push('manual-correction');
     row.className = rowClasses.join(' ');
     row.dataset.extraId = extra.id;
 
@@ -2664,12 +2822,12 @@
     $('#status').textContent = `播放失败：${error?.message || '浏览器无法播放媒体'}`;
   }
 
-  function seekTimeline(timeMs) {
+  function seekTimeline(timeMs, gap = null) {
     const player = $('#media-player');
     activeRangeEndMs = 0;
     auditioningRange = false;
     const targetTime = Math.max(0, Math.min(timelineDurationMs(), Number(timeMs) || 0));
-    previewGapAt(targetTime);
+    previewGapAt(targetTime, gap);
     if (!player) {
       $('#status').className = 'status warn';
       $('#status').textContent = '当前没有可播放媒体，无法定位播放';

@@ -132,8 +132,28 @@ column. Long paths use `overflow-wrap: anywhere` and never force horizontal scro
 - The primary navigation is immediately below the Toolbox header:「后处理」is selected
   by default and owns the subtitle / `.mosp` input, artifact chain, output selector,
   and script match, OCR dedup, LLM, and fixed replacement tools.「实用工具」owns a
-  separate media input and waveform generation plus FFconcat rebuild; it never exposes
-  the subtitle input or artifact chain.
+  single shared media input and waveform generation, speech alignment, plus FFconcat
+  rebuild; it never exposes the subtitle input or artifact chain. The shared media
+  input keeps the label「媒体文件」for every utility and is not duplicated inside a
+  utility panel.
+- Utility tabs are ordered by the workflow priority:「口播对齐」comes first, followed
+  by waveform generation and FFconcat rebuild. When a tool needs multiple source files,
+  each `.toolbox-input` is a separate visual block; the parent must provide a visible
+  vertical gap (use the existing 10px toolbox spacing) so adjacent inputs never touch.
+- The「口播对齐」panel keeps its automatic-gap settings inside `.toolbox-content`,
+  below the MAW project and proofreading-script inputs. The five controls mirror
+  MAWE's current defaults (400ms minimum, -28dB threshold, 2dB hysteresis, 120ms
+  lead-in, 80ms lead-out), use the existing grouped-card and 10–12px grid spacing,
+  and persist under the Launcher-only `maw.launcher.alignment.gap_remove` key;
+  they must not read or overwrite MAWE's editor settings.
+- The standalone `server-align` page uses the same waveform interaction language as MAWE:
+  `多行` is the default view, and `基础` / `多行` live in one two-option segmented slot.
+  Clicking an active gap temporarily previews its original audio even when skip-gap playback
+  is enabled; `Alt` + click toggles an existing gap, while `Alt` + click/drag on blank waveform
+  adds a gap. Clicking an adopted complete take toggles its manual-disabled state.
+- Manual take overrides and manually adjusted gap ranges use the MAWE light-blue inset treatment:
+  `box-shadow: inset 0 0 0 4px rgb(65 174 207 / 35%)`. Visible standalone labels use「空隙」and「额外」;
+  internal `gap_remove` / `extra` field names remain data-contract identifiers.
 - The Utilities media input follows the Launcher's media path until the user chooses,
   drops, or types an override. Clearing that override restores following behavior.
   Waveform offers separate generate-only and generate-and-open-editor actions, with a
