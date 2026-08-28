@@ -322,6 +322,11 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual(whisper.model_ref, "Systran/faster-whisper-large-v3")
         self.assertIn("faster_whisper", whisper.requires_runtime)
         self.assertFalse(whisper.supports_speaker)
+        self.assertEqual(
+            whisper.note,
+            "OpenAI Whisper 多语种本地识别；CTranslate2 运行时自带 VAD，无说话人分离；"
+            "GPU 运行需要用户自行安装 CUDA 12 和 cuDNN 9，否则自动回退到 CPU",
+        )
         self.assertEqual(gui_config.api_key_for_provider("local"), "")
 
     def test_qwen_languages_single_select_with_auto_and_documented_28(self) -> None:
