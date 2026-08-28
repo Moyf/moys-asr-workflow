@@ -344,6 +344,7 @@ LLM 工具支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 Ope
 - 播放器内的字幕预览可直接拖动；悬停或聚焦后拖动八个手柄可缩放。方向键移动，`Shift` 加速移动，`Alt + 方向键` 调整尺寸。几何保存在工程 `preview.subtitle`，不会改变字幕时间。
 - “移除静音空隙”只建立可逆的压缩时间线，不修改原媒体和原字幕时间。
 - 常规 SRT 通过工具栏导出；若启用了空隙移除，可选择去空隙 SRT、OTIO、FFconcat 或保留区域 JSON。
+- 去空隙 OTIO 会把启用字幕作为保留媒体 clip 上的 marker，名称为字幕内容；字幕颜色映射为 Resolve 的 `RED`、`YELLOW`、`GREEN`、`BLUE`、`PURPLE`，跨越被移除空隙的字幕按保留区间拆分，无颜色时使用白色默认标记。Resolve 的可用颜色参考还包括 Blue、Cyan、Green、Yellow、Red、Pink、Purple、Fuchsia、Rose、Lavender、Sky、Mint、Lemon、Sand、Cocoa、Cream；当前 MAW 使用其中五色。
 
 完整 JSON 约束在 [JSON_SCHEMA.md](../JSON_SCHEMA.md)。若你打算用其他 ASR 或 LLM 生成工程，至少保证顶层有 `segments`，时间全部是整数毫秒。
 

@@ -10978,7 +10978,7 @@ const OTIO_MARKER_COLORS = Object.freeze({
   purple: 'PURPLE',
   blue: 'BLUE',
 });
-const OTIO_DEFAULT_MARKER_COLOR = 'RED';
+const OTIO_DEFAULT_MARKER_COLOR = 'WHITE';
 
 function buildGapRemovedSubtitleMarkers(interval) {
   const intervalStartMs = Math.max(0, Math.round(Number(interval?.start) || 0));
