@@ -469,9 +469,16 @@ def download_emoji_font(urls: Sequence[str], dest: Path, timeout: float = 20.0) 
 
 @final
 class LauncherApi:
-    def __init__(self, *, paths: LauncherPaths | None = None, window_getter: Callable[[], object | None] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        paths: LauncherPaths | None = None,
+        window_getter: Callable[[], object | None] | None = None,
+        default_server_port: int | None = None,
+    ) -> None:
         self.paths = paths or default_paths()
         self.window_getter = window_getter or _active_window
+        self.default_server_port = default_server_port
         self.cancel_event: Event | None = None
         self.worker: threading.Thread | None = None
         self.batch_worker: threading.Thread | None = None
@@ -566,6 +573,7 @@ class LauncherApi:
             "postprocessProviders": _postprocess_provider_payloads(self.paths.env_path),
             "postprocessAutoPlan": load_postprocess_plan(self.paths.env_path),
             "zoomPercent": config.zoom_percent,
+            "serverPort": self.default_server_port,
         }
 
     def get_postprocess_settings(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -2076,7 +2084,7 @@ class LauncherApi:
                 self.pump.flush()
 
 
-def run_app(*, debug: bool = False, devtools: bool = False) -> None:
+def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | None = None) -> None:
     import webview
 
     # pywebview opens DevTools automatically in debug mode when this setting is
@@ -2084,7 +2092,7 @@ def run_app(*, debug: bool = False, devtools: bool = False) -> None:
     # controllable so normal development does not force an extra window.
     webview.settings["OPEN_DEVTOOLS_IN_DEBUG"] = devtools
     paths = default_paths()
-    api = LauncherApi(paths=paths)
+    api = LauncherApi(paths=paths, default_server_port=server_port)
     window = webview.create_window(
         WINDOW_TITLE,
         url=paths.launcher_html.resolve().as_uri(),

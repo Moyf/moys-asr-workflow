@@ -8,7 +8,7 @@ script = "uv sync"
 [[actions]]
 name = "gui"
 icon = "run"
-command = "uv run python maw_gui.py"
+command = "uv run python maw_gui.py -dbg --port 8258"
 
 [[actions]]
 name = "server"

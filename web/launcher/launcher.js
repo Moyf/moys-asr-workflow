@@ -1364,6 +1364,10 @@
     $("lengthLimitField").classList.toggle("hidden", !SHOW_LENGTH_LIMIT_FIELD);
     $("demoBadge").classList.toggle("hidden", window.MAWLauncher.backend !== "mock");
     state.config = await bridge("get_config");
+    const configuredServerPort = Number(state.config.serverPort);
+    if (Number.isInteger(configuredServerPort) && configuredServerPort >= 1 && configuredServerPort <= 65535) {
+      $("port").value = String(configuredServerPort);
+    }
     if (isThemePreference(state.config.theme)) { state.theme = state.config.theme; storeTheme(state.theme); }
     else if (savedTheme !== "system") { state.config.theme = savedTheme; void bridge("save_prefs", { theme: savedTheme }); }
     applyTheme();

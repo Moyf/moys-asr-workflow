@@ -25,6 +25,16 @@ _INTERNAL_FLAGS = frozenset(
 _GUI_DEBUG_FLAGS = frozenset({"-dbg", "--debug", "-dt", "--devtools"})
 
 
+def _gui_port_value(value: str) -> int:
+    try:
+        port = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("端口必须是 1 到 65535 之间的整数") from error
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError("端口必须是 1 到 65535 之间的整数")
+    return port
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Moy's ASR Workflow GUI")
     parser.add_argument("--smoke-import", action="store_true", help=argparse.SUPPRESS)
@@ -66,6 +76,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="启动 Launcher 后自动打开 DevTools（同时开启调试）",
     )
+    parser.add_argument(
+        "--port",
+        dest="debug_port",
+        type=_gui_port_value,
+        help="调试 Launcher 时默认使用的本机编辑器端口",
+    )
     return parser
 
 
@@ -95,12 +111,27 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     from maw.gui_web import run_app
 
-    run_app(debug=args.debug or args.devtools, devtools=args.devtools)
+    if args.debug_port is None:
+        run_app(debug=args.debug or args.devtools, devtools=args.devtools)
+    else:
+        run_app(debug=args.debug or args.devtools, devtools=args.devtools, server_port=args.debug_port)
     return 0
 
 
 def _is_gui_debug_invocation(argv: Sequence[str]) -> bool:
-    return bool(argv) and all(argument in _GUI_DEBUG_FLAGS for argument in argv)
+    if not argv or not any(argument in _GUI_DEBUG_FLAGS for argument in argv):
+        return False
+    expects_port = False
+    for argument in argv:
+        if expects_port:
+            expects_port = False
+            continue
+        if argument == "--port" or argument.startswith("--port="):
+            expects_port = argument == "--port"
+            continue
+        if argument not in _GUI_DEBUG_FLAGS:
+            return False
+    return not expects_port
 
 
 def _run_internal_transcribe(argv: Sequence[str]) -> int:
