@@ -223,6 +223,7 @@ class PackagingContractTests(unittest.TestCase):
             read_text(".github/workflows/release.yml"),
         ):
             self.assertIn("maw.runtimes.freezer", build_entry)
+            self.assertIn("freeze --force", build_entry)
             self.assertNotIn("local-cpu-requirements.in", build_entry)
             self.assertNotIn("moss-cpu-requirements.in", build_entry)
             self.assertNotIn("freeze_cpu_requirements", build_entry)

@@ -167,28 +167,35 @@ def ensure_frozen(
     build_dir: Path,
     run: Callable[[list[str]], object],
     emit: Callable[[str], None] | None = None,
+    force: bool = False,
 ) -> None:
-    """补足缺失的 frozen 清单（幂等；命令经 ``run`` 执行，可被测试注入）。
+    """补足 frozen 清单（默认幂等；命令经 ``run`` 执行，可被测试注入）。
 
     - 主清单缺失 → 执行主清单冻结命令；
     - CPU 变体缺失 → 先保证声明源就绪（local 需要主清单 export 产物提取
       直接依赖；moss 直接读 in 文件），生成式 in 写进 ``build/`` 后 compile。
     - 无 CUDA 组件的 runtime（ocr）请求 CPU 变体时直接返回，交上层
       ``requirements_path`` 给出缺失指引（实际不会被请求）。
+    - ``force=True`` 时无论输出是否存在都重新生成，供发布构建避免复用旧清单；
+      源码模式保持默认的缺失即生成行为。
     """
+    build_dir.mkdir(parents=True, exist_ok=True)
     if not cpu:
         command = main_freeze_command(uv, spec, build_dir)
-        if command is None or (build_dir / spec.requirements_bundle_name).is_file():
+        if command is None or (not force and (build_dir / spec.requirements_bundle_name).is_file()):
             return
         _notify(emit, spec)
         run(command)
         return
     if not spec.cuda_fallback_packages:
         return
-    if cpu_output_path(spec, build_dir).is_file():
+    if not force and cpu_output_path(spec, build_dir).is_file():
         return
     if spec.requirements_in is not None:
-        source_text = Path(spec.requirements_in).read_text(encoding="utf-8")
+        source_path = Path(spec.requirements_in)
+        if not source_path.is_absolute():
+            source_path = build_dir.parent / source_path
+        source_text = source_path.read_text(encoding="utf-8")
         source_name = spec.requirements_in
     else:
         # local：直接依赖的唯一真源是 uv.lock（经 uv export 锁定版本）。
@@ -258,6 +265,11 @@ def main(argv: list[str] | None = None) -> None:
         choices=list(RUNTIME_KEYS),
         help="只处理指定 runtime（可重复）；缺省全部",
     )
+    freeze.add_argument(
+        "--force",
+        action="store_true",
+        help="即使目标清单已存在也重新生成（发布构建使用）",
+    )
     args = parser.parse_args(argv)
     if args.command != "freeze":
         parser.error(f"未知命令：{args.command}")
@@ -283,6 +295,7 @@ def main(argv: list[str] | None = None) -> None:
                 build_dir=build_dir,
                 run=lambda command: _cli_run(command, _repo_root()),
                 emit=lambda message: print(message, flush=True),
+                force=args.force,
             )
     print("OK: 托管 Runtime 依赖清单已就绪。")
 

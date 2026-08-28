@@ -65,6 +65,14 @@ class RuntimeRegistryTests(unittest.TestCase):
         self.assertEqual(MOSS.spec.requirements_bundle_name, "requirements-moss.txt")
 
 
+class RuntimePathTests(unittest.TestCase):
+    @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
+    @mock.patch("maw.runtimes.base.sys.platform", "win32")
+    def test_frozen_windows_embedded_path_is_stable_on_unix_runners(self) -> None:
+        root = Path("runtime")
+        self.assertEqual(LOCAL.python_path(root), root / "python" / "python.exe")
+
+
 class RuntimeInstallCommandTests(unittest.TestCase):
     # 内嵌流（embedded）测试固定 win32 + frozen：install 分支、CUDA 兜底与
     # python_path 布局在 mac/linux CI 上与 Windows 一致。
@@ -532,6 +540,10 @@ class AutoFreezeRequirementsTests(unittest.TestCase):
         # MOSS 无 GPU 首装走 moss-cpu 清单（from moss-requirements.in 剥离生成，
         # in 先落盘 build/ 再原生冻结，与 local-cpu 同构）。
         build = self._temp_build_dir()
+        (build.parent / "moss-requirements.in").write_text(
+            "torch==2.13.0+cu130; sys_platform != 'darwin'\n",
+            encoding="utf-8",
+        )
         calls: list[list[str]] = []
 
         def fake_run(command: list[str], **_kwargs: object) -> int:

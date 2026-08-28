@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 import tempfile
 import unittest
 import unittest.mock
@@ -149,7 +151,7 @@ class EnsureFrozenTests(unittest.TestCase):
     def _temp_build_dir(self) -> Path:
         build = Path(tempfile.mkdtemp()) / "build"
         build.mkdir(parents=True)
-        self.addCleanup(lambda: __import__("shutil").rmtree(build.parent, ignore_errors=True))
+        self.addCleanup(lambda: shutil.rmtree(build.parent, ignore_errors=True))
         return build
 
     def _fake_run(self, calls: list[list[str]]) -> object:
@@ -208,13 +210,15 @@ class EnsureFrozenTests(unittest.TestCase):
         in_path.write_text(MOSS_IN, encoding="utf-8")
         calls: list[list[str]] = []
 
-        with unittest.mock.patch.object(
-            freezer_mod.Path, "read_text", autospec=True
-        ) as read_text:
-            read_text.side_effect = lambda self, **kw: (
-                MOSS_IN if Path(self).name == "moss-requirements.in" else "unexpected"
-            )
-            freezer_mod.ensure_frozen(UV, MOSS_SPEC, cpu=True, build_dir=build, run=self._fake_run(calls))
+        with tempfile.TemporaryDirectory() as unrelated_cwd:
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(unrelated_cwd)
+                freezer_mod.ensure_frozen(
+                    UV, MOSS_SPEC, cpu=True, build_dir=build, run=self._fake_run(calls)
+                )
+            finally:
+                os.chdir(old_cwd)
 
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0][1:3], ["pip", "compile"])
@@ -237,6 +241,39 @@ class EnsureFrozenTests(unittest.TestCase):
         calls: list[list[str]] = []
         freezer_mod.ensure_frozen(UV, MOSS_SPEC, cpu=True, build_dir=build, run=self._fake_run(calls))
         self.assertEqual(calls, [])
+
+    def test_cpu_generation_creates_missing_build_dir(self) -> None:
+        parent = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: shutil.rmtree(parent, ignore_errors=True))
+        build = parent / "build"
+        (parent / "moss-requirements.in").write_text(MOSS_IN, encoding="utf-8")
+        calls: list[list[str]] = []
+
+        freezer_mod.ensure_frozen(UV, MOSS_SPEC, cpu=True, build_dir=build, run=self._fake_run(calls))
+
+        self.assertTrue((build / "moss-cpu-requirements.in").is_file())
+        self.assertTrue((build / "requirements-moss-cpu.txt").is_file())
+        self.assertEqual(len(calls), 1)
+
+    def test_force_regenerates_existing_main_and_cpu_outputs(self) -> None:
+        build = self._temp_build_dir()
+        (build / "requirements-moss.txt").write_text("old-main\n", encoding="utf-8")
+        (build / "requirements-moss-cpu.txt").write_text("old-cpu\n", encoding="utf-8")
+        (build.parent / "moss-requirements.in").write_text(MOSS_IN, encoding="utf-8")
+        calls: list[list[str]] = []
+
+        freezer_mod.ensure_frozen(
+            UV, MOSS_SPEC, cpu=False, build_dir=build,
+            run=self._fake_run(calls), force=True,
+        )
+        freezer_mod.ensure_frozen(
+            UV, MOSS_SPEC, cpu=True, build_dir=build,
+            run=self._fake_run(calls), force=True,
+        )
+
+        self.assertEqual(len(calls), 2)
+        self.assertNotEqual((build / "requirements-moss.txt").read_text(encoding="utf-8"), "old-main\n")
+        self.assertNotEqual((build / "requirements-moss-cpu.txt").read_text(encoding="utf-8"), "old-cpu\n")
 
 
 class RuntimeSpecDefaultsTests(unittest.TestCase):
