@@ -11472,7 +11472,7 @@ const OTIO_MARKER_COLORS = Object.freeze({
 });
 const OTIO_DEFAULT_MARKER_COLOR = 'WHITE';
 
-function buildGapRemovedSubtitleMarkers(interval) {
+function buildGapRemovedSubtitleMarkers(interval, sourceStartFrame = 0) {
   const intervalStartMs = Math.max(0, Math.round(Number(interval?.start) || 0));
   const intervalEndMs = Math.max(
     intervalStartMs,
@@ -11494,8 +11494,8 @@ function buildGapRemovedSubtitleMarkers(interval) {
     const endMs = Math.min(intervalEndMs, segmentEndMs);
     if (endMs <= startMs) return [];
 
-    const markerStartFrame = msToOtioFrames(startMs) - clipStartFrame;
-    const markerEndFrame = msToOtioFrames(endMs) - clipStartFrame;
+    const markerStartFrame = sourceStartFrame + msToOtioFrames(startMs);
+    const markerEndFrame = sourceStartFrame + msToOtioFrames(endMs);
     if (markerEndFrame <= markerStartFrame) return [];
 
     const colorName = window.AsrEditorUtils.effectiveColorName(segment, DATA.segments);
@@ -11554,7 +11554,9 @@ function buildGapRemovedMediaClip(
     name: `${kind} ${index + 1}`,
     source_range: otioTimeRange(sourceStartFrame + startFrame, durationFrames),
     effects: [],
-    markers: includeSubtitleMarkers ? buildGapRemovedSubtitleMarkers(interval) : [],
+    markers: includeSubtitleMarkers
+      ? buildGapRemovedSubtitleMarkers(interval, sourceStartFrame)
+      : [],
     enabled: true,
     color: null,
     media_references: {
