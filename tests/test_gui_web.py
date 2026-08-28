@@ -622,7 +622,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('id="toolboxUtilitiesView" class="toolbox-primary-view hidden" role="tabpanel"', html)
         for tab_id in ("toolboxMatchTab", "toolboxOcrTab", "toolboxLlmTab", "toolboxReplaceTab"):
             self.assertIn(f'id="{tab_id}"', postprocess_html)
-        for tab_id in ("toolboxWaveformTab", "toolboxFfconcatTab"):
+        for tab_id in ("toolboxWaveformTab", "toolboxFfconcatTab", "toolboxAlignmentTab"):
             self.assertIn(f'id="{tab_id}"', utilities_html)
         self.assertNotIn('id="toolboxWaveformTab"', postprocess_html)
         self.assertNotIn('id="toolboxFfconcatTab"', postprocess_html)
@@ -645,6 +645,71 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('let utilityMediaManual = false;', script)
         self.assertIn('$("toolboxUtilityMediaPath").value = $("mediaPath").value.trim();', script)
         self.assertIn('bridge("choose_file", { kind: "media" })', script)
+
+    def test_launcher_exposes_separate_speech_alignment_toolbox_contract(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        postprocess_script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+        styles = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        for element_id in (
+            "toolboxAlignmentTab",
+            "toolboxAlignmentPanel",
+            "toolboxAlignmentInputs",
+            "toolboxAlignmentProjectDropZone",
+            "toolboxAlignmentProjectPath",
+            "pickToolboxAlignmentProject",
+            "toolboxAlignmentScriptDropZone",
+            "toolboxAlignmentScriptPath",
+            "pickToolboxAlignmentScript",
+            "toolboxAlignmentGapSettings",
+            "toolboxAlignmentGapMinimum",
+            "toolboxAlignmentGapThreshold",
+            "toolboxAlignmentGapLeadIn",
+            "toolboxAlignmentGapLeadOut",
+            "runToolboxAlignment",
+            "stopToolboxAlignment",
+        ):
+            self.assertIn(f'id="{element_id}"', page)
+        self.assertIn('id="toolboxAlignmentProjectPath"', page)
+        self.assertIn('data-i18n="toolbox_alignment_input_project">MAW 工程</label>', page)
+        self.assertIn('data-i18n="toolbox_alignment_input_script">校对文稿</label>', page)
+        self.assertNotIn('id="toolboxAlignmentMediaDropZone"', page)
+        self.assertNotIn('id="toolboxAlignmentMediaPath"', page)
+        self.assertEqual(page.count('id="toolboxUtilityMediaDropZone"'), 1)
+        self.assertGreater(page.index('id="toolboxAlignmentInputs"'), page.index('class="toolbox-content"'))
+        self.assertGreater(page.index('id="toolboxAlignmentGapSettings"'), page.index('id="toolboxAlignmentInputs"'))
+        self.assertIn('data-i18n="toolbox_alignment_gap_heading">自动生成空隙</h3>', page)
+        self.assertIn('id="toolboxAlignmentGapMinimum" type="number" min="100" max="60000" step="50" value="400"', page)
+        self.assertIn('id="toolboxAlignmentGapThreshold" type="number" min="-96" max="0" step="1" value="-28"', page)
+        self.assertIn('id="toolboxAlignmentGapLeadIn" type="number" min="0" max="2000" step="10" value="120"', page)
+        self.assertIn('id="toolboxAlignmentGapLeadOut" type="number" min="0" max="2000" step="10" value="80"', page)
+        self.assertNotIn('id="toolboxAlignmentGapHysteresis"', page)
+        self.assertLess(page.index('id="toolboxUtilityMediaDropZone"'), page.index('id="toolboxUtilitiesTabList"'))
+        self.assertIn('data-tool="alignment"', page)
+        alignment_tab = page.index('id="toolboxAlignmentTab"')
+        self.assertLess(alignment_tab, page.index('id="toolboxWaveformTab"'))
+        self.assertLess(alignment_tab, page.index('id="toolboxFfconcatTab"'))
+        self.assertIn('data-tool-action="alignment"', page)
+        self.assertIn('toolbox_alignment: "口播对齐"', launcher_script)
+        self.assertIn('toolbox_alignment: "Speech alignment"', launcher_script)
+        self.assertIn('bridge("start_alignment_server"', postprocess_script)
+        self.assertIn('bridge("stop_alignment_server")', postprocess_script)
+        self.assertIn('target === "toolboxAlignmentProject"', launcher_script)
+        self.assertIn('target === "toolboxAlignmentScript"', launcher_script)
+        self.assertNotIn('target === "toolboxAlignmentMedia"', launcher_script)
+        self.assertIn('return ["alignment", "waveform", "ffconcat"].includes(tool)', postprocess_script)
+        self.assertIn('$("toolboxUtilityMediaDropZone").classList.toggle("hidden", section !== "utilities")', postprocess_script)
+        self.assertIn('mediaPath: $("toolboxUtilityMediaPath").value.trim()', postprocess_script)
+        self.assertNotIn("toolboxAlignmentMediaPath", postprocess_script)
+        self.assertIn('const ALIGNMENT_GAP_REMOVE_KEY = "maw.launcher.alignment.gap_remove";', postprocess_script)
+        self.assertIn("function initializeAlignmentGapRemove()", postprocess_script)
+        self.assertIn("saveAlignmentGapRemove(alignmentGapRemove);", postprocess_script)
+        self.assertIn("const gapRemove = alignmentGapRemoveFromControls({ normalizeFields: true });", postprocess_script)
+        self.assertIn('.toolbox-alignment-inputs {\n  display: grid;\n  gap: 10px;\n}', styles)
+        self.assertIn('.toolbox-panel .toolbox-alignment-gap-settings {\n  margin-top: 12px;\n}', styles)
+        self.assertIn('.toolbox-utility-tab-list {\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }', styles)
+        self.assertNotIn('"alignment"', postprocess_script[postprocess_script.index("const AUTO_STEP_ORDER"):postprocess_script.index("let autoPlanSaveTimer")])
 
     def test_toolbox_close_restores_trigger_focus_and_ffconcat_marks_its_input(self) -> None:
         """Given Toolbox source, When closing or validating FFconcat, Then focus and invalid state stay accessible."""
@@ -974,6 +1039,139 @@ class GuiWebBridgeTests(unittest.TestCase):
             ],
         )
         self.assertNotIn("serverAlreadyRunning", result)
+
+    def test_start_alignment_server_builds_standalone_command_and_returns_localhost_url(self) -> None:
+        project = self.root / "project.mosp"
+        script = self.root / "script.txt"
+        media = self.root / "clip.wav"
+        project.write_text(json.dumps({"media": str(media), "segments": []}), encoding="utf-8")
+        script.write_text("第一句\n第二句\n", encoding="utf-8")
+        media.write_bytes(b"media")
+
+        class FakeProcess:
+            returncode = None
+
+            def poll(self) -> int | None:
+                return None
+
+            def terminate(self) -> None:
+                self.returncode = -15
+
+            def wait(self, timeout: float | None = None) -> int:
+                return self.returncode or 0
+
+        with mock.patch("maw.gui_web.subprocess.Popen", return_value=FakeProcess()) as popen:
+            with mock.patch("maw.gui_web._free_local_port", return_value=9877):
+                with mock.patch("maw.gui_web._wait_for_server", return_value=True) as wait_for_server:
+                    result = self.api.start_alignment_server({
+                        "projectPath": str(project),
+                        "scriptPath": str(script),
+                        "mediaPath": str(media),
+                        "gapRemove": {
+                            "minimum_ms": 400,
+                            "threshold_db": -28,
+                            "hysteresis_db": 2,
+                            "lead_in_ms": 120,
+                            "lead_out_ms": 80,
+                        },
+                        "guiLang": "en",
+                    })
+
+        command = popen.call_args.args[0]
+        self.assertIn("server-align", command[1])
+        self.assertIn("serve.py", command[1])
+        self.assertEqual(command[2:4], [str(project.resolve()), str(script.resolve())])
+        self.assertEqual(command[command.index("--media") + 1], str(media.resolve()))
+        self.assertEqual(command[command.index("--gap-minimum-ms") + 1], "400")
+        self.assertEqual(command[command.index("--gap-threshold-db") + 1], "-28.0")
+        self.assertEqual(command[command.index("--gap-hysteresis-db") + 1], "2.0")
+        self.assertEqual(command[command.index("--gap-lead-in-ms") + 1], "120")
+        self.assertEqual(command[command.index("--gap-lead-out-ms") + 1], "80")
+        self.assertEqual(command[command.index("--port") + 1], "9877")
+        self.assertEqual(command[-1], "--no-open")
+        self.assertEqual(result["url"], "http://127.0.0.1:9877/?lang=en")
+        self.assertEqual(result["gapRemove"]["minimum_ms"], 400)
+        self.assertEqual(result["gapRemove"]["threshold_db"], -28)
+        self.assertEqual(result["gapRemove"]["lead_in_ms"], 120)
+        self.assertEqual(wait_for_server.call_args, mock.call("http://127.0.0.1:9877/", timeout=SERVER_START_TIMEOUT))
+        self.assertTrue(self.api.stop_alignment_server()["stopped"])
+
+    def test_start_alignment_server_validates_project_script_and_media_inputs(self) -> None:
+        script = self.root / "script.txt"
+        project = self.root / "project.json"
+        bad_script = self.root / "script.srt"
+        script.write_text("第一句\n", encoding="utf-8")
+        bad_script.write_text("1\n00:00:00,000 --> 00:00:01,000\n第一句\n", encoding="utf-8")
+        project.write_text('{"segments": []}\n', encoding="utf-8")
+
+        missing_project = self.api.start_alignment_server({"projectPath": str(self.root / "missing.mosp"), "scriptPath": str(script)})
+        self.assertFalse(missing_project["ok"])
+        self.assertEqual(missing_project["code"], "alignment_project_invalid")
+        self.assertEqual(missing_project["field"], "toolboxAlignmentProjectPath")
+
+        invalid_script = self.api.start_alignment_server({"projectPath": str(project), "scriptPath": str(bad_script)})
+        self.assertFalse(invalid_script["ok"])
+        self.assertEqual(invalid_script["code"], "alignment_script_missing")
+        self.assertEqual(invalid_script["field"], "toolboxAlignmentScriptPath")
+
+        invalid_media = self.api.start_alignment_server({
+            "projectPath": str(project),
+            "scriptPath": str(script),
+            "mediaPath": str(self.root / "missing.mp4"),
+        })
+        self.assertFalse(invalid_media["ok"])
+        self.assertEqual(invalid_media["code"], "alignment_media_invalid")
+        self.assertEqual(invalid_media["field"], "toolboxUtilityMediaPath")
+
+    def test_start_alignment_server_reuses_owned_server_for_same_inputs(self) -> None:
+        project = self.root / "project.mosp"
+        script = self.root / "script.md"
+        project.write_text('{"segments": []}\n', encoding="utf-8")
+        script.write_text("第一句\n", encoding="utf-8")
+
+        class RunningProcess:
+            def poll(self) -> int | None:
+                return None
+
+        process = RunningProcess()
+        self.api.alignment_process = process
+        self.api.alignment_server_port = 9878
+        self.api.alignment_project_path = project.resolve()
+        self.api.alignment_script_path = script.resolve()
+        self.api.alignment_media_path = None
+        self.api.alignment_gap_remove = {
+            "minimum_ms": 400,
+            "threshold_db": -28,
+            "hysteresis_db": 2,
+            "lead_in_ms": 120,
+            "lead_out_ms": 80,
+        }
+
+        with mock.patch("maw.gui_web._wait_for_server", return_value=True) as wait_for_server:
+            with mock.patch("maw.gui_web.subprocess.Popen") as popen:
+                result = self.api.start_alignment_server({
+                    "projectPath": str(project),
+                    "scriptPath": str(script),
+                    "gapRemove": {
+                        "minimum_ms": 400,
+                        "threshold_db": -28,
+                        "hysteresis_db": 2,
+                        "lead_in_ms": 120,
+                        "lead_out_ms": 80,
+                    },
+                    "guiLang": "zh",
+                })
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["serverAlreadyRunning"])
+        self.assertEqual(result["url"], "http://127.0.0.1:9878/?lang=zh")
+        wait_for_server.assert_called_once_with("http://127.0.0.1:9878/", timeout=0.25)
+        popen.assert_not_called()
+        self.api.alignment_process = None
+        self.api.alignment_server_port = None
+        self.api.alignment_project_path = None
+        self.api.alignment_script_path = None
+        self.api.alignment_gap_remove = None
 
     def test_open_mose_passes_project_path_to_packaged_executable(self) -> None:
         project = self.root / "project.mosp"

@@ -140,12 +140,14 @@ column. Long paths use `overflow-wrap: anywhere` and never force horizontal scro
   by waveform generation and FFconcat rebuild. When a tool needs multiple source files,
   each `.toolbox-input` is a separate visual block; the parent must provide a visible
   vertical gap (use the existing 10px toolbox spacing) so adjacent inputs never touch.
-- The「口播对齐」panel keeps its automatic-gap settings inside `.toolbox-content`,
-  below the MAW project and proofreading-script inputs. The five controls mirror
-  MAWE's current defaults (400ms minimum, -28dB threshold, 2dB hysteresis, 120ms
-  lead-in, 80ms lead-out), use the existing grouped-card and 10–12px grid spacing,
-  and persist under the Launcher-only `maw.launcher.alignment.gap_remove` key;
-  they must not read or overwrite MAWE's editor settings.
+- The「口播对齐」panel keeps its four visible automatic-gap settings inside
+  `.toolbox-content`, below the MAW project and proofreading-script inputs. The
+  visible controls mirror MAWE's current defaults (400ms minimum, -28dB threshold,
+  120ms lead-in, 80ms lead-out); the less frequently used 2dB hysteresis remains an
+  internal compatibility default. The settings use the existing grouped-card and
+  10–12px grid spacing, persist under the Launcher-only
+  `maw.launcher.alignment.gap_remove` key, and must not read or overwrite MAWE's
+  editor settings.
 - The standalone `server-align` page uses the same waveform interaction language as MAWE:
   `多行` is the default view, and `基础` / `多行` live in one two-option segmented slot.
   Clicking an active gap temporarily previews its original audio even when skip-gap playback
