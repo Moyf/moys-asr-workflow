@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT))
 
 from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
+from maw.local_log import LocalLogSink  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
 from maw.postprocess_llm import LlmClientError  # noqa: E402
 from maw.runtimes.base import RuntimeStatus  # noqa: E402
@@ -2502,6 +2503,63 @@ class GuiWebBridgeTests(unittest.TestCase):
 
 
 @final
+class LauncherLogSinkTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.env_path = self.root / ".env"
+        _ = self.env_path.write_text("", encoding="utf-8")
+        self.paths = LauncherPaths(root=self.root, env_path=self.env_path, launcher_html=self.root / "launcher.html")
+        self.window = FakeWindow()
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_emit_forwards_events_to_log_sink(self) -> None:
+        sink = _FakeLogSink()
+        api = LauncherApi(paths=self.paths, window_getter=lambda: self.window, log_sink=sink)
+        api._emit({"type": "log", "message": "hello"})
+        api._emit({"type": "error", "code": "transcription_failed", "detail": "boom"})
+        self.assertEqual(sink.events[0], {"type": "log", "message": "hello"})
+        self.assertEqual(sink.events[1], {"type": "error", "code": "transcription_failed", "detail": "boom"})
+
+    def test_emit_without_sink_does_not_crash(self) -> None:
+        api = LauncherApi(paths=self.paths, window_getter=lambda: self.window)
+        api._emit({"type": "log", "message": "hello"})
+
+    def test_shutdown_closes_log_sink(self) -> None:
+        sink = _FakeLogSink()
+        api = LauncherApi(paths=self.paths, window_getter=lambda: self.window, log_sink=sink)
+        api.shutdown()
+        self.assertTrue(sink.closed)
+
+    def test_open_log_folder_creates_directory_and_opens_it(self) -> None:
+        directory = self.root / "logs"
+        api = LauncherApi(
+            paths=self.paths,
+            window_getter=lambda: self.window,
+            log_sink=LocalLogSink(directory=directory),
+        )
+        with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as opener:
+            result = api.open_log_folder()
+        self.assertEqual(result, {"ok": True})
+        self.assertTrue(directory.is_dir())
+        opener.assert_called_once_with(directory)
+
+
+class _FakeLogSink:
+    def __init__(self) -> None:
+        self.events: list[dict[str, object]] = []
+        self.closed = False
+
+    def append(self, event: Mapping[str, object]) -> None:
+        self.events.append(dict(event))
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@final
 class LauncherRuntimeTests(unittest.TestCase):
     def test_run_app_passes_debug_and_controls_automatic_devtools(self) -> None:
         paths = LauncherPaths(
@@ -2518,13 +2576,14 @@ class LauncherRuntimeTests(unittest.TestCase):
             with (
                 mock.patch.dict(sys.modules, {"webview": fake_webview}),
                 mock.patch("maw.gui_web.default_paths", return_value=paths),
-                mock.patch("maw.gui_web.LauncherApi"),
+                mock.patch("maw.gui_web.LauncherApi") as launcher_api_cls,
                 mock.patch("maw.gui_web.asset_path", return_value=Path("missing.ico")),
             ):
                 run_app(debug=debug, devtools=devtools)
 
             self.assertEqual(fake_webview.settings["OPEN_DEVTOOLS_IN_DEBUG"], devtools)
             self.assertEqual(fake_webview.start.call_args.kwargs["debug"], debug or devtools)
+            self.assertIsInstance(launcher_api_cls.call_args.kwargs["log_sink"], LocalLogSink)
             fake_webview.reset_mock()
 
 
