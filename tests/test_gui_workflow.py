@@ -921,6 +921,14 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(exit_code, 7)
         cli_main.assert_called_once_with(["--debug", "--input", "clip.mp3"])
 
+    def test_entrypoint_debug_port_is_forwarded_to_launcher(self) -> None:
+        import maw_gui
+
+        with mock.patch("maw.gui_web.run_app") as run_app:
+            self.assertEqual(maw_gui.main(["-dbg", "--port", "8258"]), 0)
+
+        run_app.assert_called_once_with(debug=True, devtools=False, server_port=8258)
+
     def test_entrypoint_help_subprocess_is_headless_safe(self) -> None:
         completed = subprocess.run(
             [sys.executable, str(ROOT / "maw_gui.py"), "--help"],
