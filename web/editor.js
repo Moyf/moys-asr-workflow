@@ -10971,6 +10971,55 @@ function mediaStartOtioFrames() {
   return samples / sampleRate * OTIO_STICKER_FPS;
 }
 
+const OTIO_MARKER_COLORS = Object.freeze({
+  yellow: 'YELLOW',
+  green: 'GREEN',
+  red: 'RED',
+  purple: 'PURPLE',
+  blue: 'BLUE',
+});
+const OTIO_DEFAULT_MARKER_COLOR = 'RED';
+
+function buildGapRemovedSubtitleMarkers(interval) {
+  const intervalStartMs = Math.max(0, Math.round(Number(interval?.start) || 0));
+  const intervalEndMs = Math.max(
+    intervalStartMs,
+    Math.round(Number(interval?.end) || 0),
+  );
+  const clipStartFrame = msToOtioFrames(intervalStartMs);
+  const clipEndFrame = msToOtioFrames(intervalEndMs);
+  if (clipEndFrame <= clipStartFrame) return [];
+
+  return DATA.segments.flatMap((segment) => {
+    if (!segment || segment.disabled) return [];
+    const segmentStartMs = Number(segment.start);
+    const segmentEndMs = Number(segment.end);
+    if (!Number.isFinite(segmentStartMs) || !Number.isFinite(segmentEndMs)
+        || segmentEndMs <= segmentStartMs) {
+      return [];
+    }
+    const startMs = Math.max(intervalStartMs, segmentStartMs);
+    const endMs = Math.min(intervalEndMs, segmentEndMs);
+    if (endMs <= startMs) return [];
+
+    const markerStartFrame = msToOtioFrames(startMs) - clipStartFrame;
+    const markerEndFrame = msToOtioFrames(endMs) - clipStartFrame;
+    if (markerEndFrame <= markerStartFrame) return [];
+
+    const colorName = window.AsrEditorUtils.effectiveColorName(segment, DATA.segments);
+    return [{
+      OTIO_SCHEMA: 'Marker.2',
+      metadata: {},
+      name: String(segment.text || ''),
+      color: OTIO_MARKER_COLORS[colorName] || OTIO_DEFAULT_MARKER_COLOR,
+      marked_range: otioTimeRange(
+        markerStartFrame,
+        markerEndFrame - markerStartFrame,
+      ),
+    }];
+  });
+}
+
 function stickerTargetUrl(absPath) {
   let value = String(absPath || '').trim();
   if (!value) return '';
@@ -10996,6 +11045,7 @@ function mediaTargetUrl() {
 
 function buildGapRemovedMediaClip(
   interval, index, kind, targetUrl, sourceStartFrame, sourceDurationFrames,
+  includeSubtitleMarkers = false,
 ) {
   const startFrame = msToOtioFrames(interval.start);
   const endFrame = msToOtioFrames(interval.end);
@@ -11012,7 +11062,7 @@ function buildGapRemovedMediaClip(
     name: `${kind} ${index + 1}`,
     source_range: otioTimeRange(sourceStartFrame + startFrame, durationFrames),
     effects: [],
-    markers: [],
+    markers: includeSubtitleMarkers ? buildGapRemovedSubtitleMarkers(interval) : [],
     enabled: true,
     color: null,
     media_references: {
@@ -11066,6 +11116,7 @@ function buildGapRemovedOtio() {
     color: null,
     children: intervals.map((interval, index) => buildGapRemovedMediaClip(
       interval, index, track.name, targetUrl, sourceStartFrame, sourceDurationFrames,
+      track.kind === 'Video' || trackSpecs.length === 1,
     )),
     kind: track.kind,
   }));

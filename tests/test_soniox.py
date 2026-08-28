@@ -269,7 +269,7 @@ class SpeakerColorTests(unittest.TestCase):
         stats = soniox.apply_speaker_colors(segments)
 
         self.assertEqual(segments[0]["color"], {
-            "name": "yellow", "value": "#f1c40f", "start": 0, "end": 200,
+            "name": "yellow", "value": "#c4a019", "start": 0, "end": 200,
         })
         self.assertEqual(segments[1]["color_ref"], {"name": "yellow", "headIdx": 0})
         self.assertEqual(segments[2]["color"], {
