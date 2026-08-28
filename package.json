@@ -4,8 +4,8 @@
   "private": true,
   "description": "Dev-only browser regression tooling for MAW (Playwright). No production dependency.",
   "scripts": {
-    "test": "npx playwright test --project=chromium",
-    "test:headed": "npx playwright test --project=chromium --headed"
+    "test": "playwright test --project=chromium",
+    "test:headed": "playwright test --project=chromium --headed"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0"

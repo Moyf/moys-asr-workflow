@@ -21,12 +21,23 @@ const i18nContext = { window: {} };
 vm.runInNewContext(i18nSource, i18nContext);
 const i18n = i18nContext.window.MAWE_I18N;
 
+// XML assertions are part of the Node unit suite, but still need a Python
+// subprocess. Keep it on the same locked project environment as E2E instead
+// of silently selecting whichever python.exe happens to be on PATH.
+const configuredPython = String(process.env.MAW_TEST_PYTHON || '').trim();
+const PYTHON_COMMAND = configuredPython || 'uv';
+const PYTHON_PREFIX_ARGS = configuredPython ? [] : ['run', '--frozen', 'python'];
+
+function pythonCommandArgs(args) {
+  return [...PYTHON_PREFIX_ARGS, ...args];
+}
+
 function parseXml(xml) {
-  const result = spawnSync('python', ['-c', [
+  const result = spawnSync(PYTHON_COMMAND, pythonCommandArgs(['-c', [
     'import sys, xml.etree.ElementTree as ET',
     'ET.fromstring(sys.stdin.read())',
     'print("ok")',
-  ].join(';')], { input: xml, encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1' } });
+  ].join(';')]), { input: xml, encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1' } });
   assert.equal(result.status, 0, result.stderr);
   return xml;
 }
@@ -40,7 +51,11 @@ function parseXmlFileAudio(xml) {
     '  files.append({"id": element.attrib["id"], "channelcount": audio.findtext("channelcount") if audio is not None else None})',
     'print(json.dumps(files))',
   ].join('\n');
-  const result = spawnSync('python', ['-c', script], { input: xml, encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1' } });
+  const result = spawnSync(PYTHON_COMMAND, pythonCommandArgs(['-c', script]), {
+    input: xml,
+    encoding: 'utf8',
+    env: { ...process.env, PYTHONUTF8: '1' },
+  });
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout);
 }
