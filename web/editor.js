@@ -7692,16 +7692,21 @@ function mergeSegments(idxs) {
       return;
     }
   }
+  const sourceEl = container.querySelector(`.cue[data-idx="${sorted[0]}"]`);
+  const cueListAnchor = captureVisibleCueListVisualAnchor(sourceEl);
   commitCuePanelEdit();
   clearSelection({ silent: true });
   pushUndo('合并字幕');
   mergeContiguousIndices(sorted);
-  // C 合并与 B 拆分一样属于列表内结构变更：保留用户正在查看的列表位置，
-  // 合并结果选中即可，不要再把它强制居中，避免出现“先滚走再拉回”的跳动。
   renderAll();
-  updateWithoutCueListAutoScroll();
   // 合并完成后选中合并结果，方便继续对这句新字幕操作
   selectOnly(sorted[0]);
+  const el = container.querySelector(`.cue[data-idx="${sorted[0]}"]`);
+  updateWithoutCueListAutoScroll();
+  // C 合并和 B 拆分一样会重建整张字幕列表；保留首条源字幕的屏幕位置，
+  // 避免主动居中与 content-visibility 行高回填叠加成一次大幅跳动。
+  if (cueListAnchor) restoreCueListVisualAnchor(el, cueListAnchor);
+  else if (el) scrollCueToCenter(el);
   flashHint(`已合并 ${sorted.length} 条`, 'success');
 }
 
@@ -7723,6 +7728,8 @@ function mergeExtensionSegments(idxs, track = getActiveExtensionTrack()) {
   }
   const segments = sorted.map((index) => track.segments[index]).filter(Boolean);
   if (segments.length !== sorted.length) return false;
+  const sourceEl = container.querySelector(`.cue[data-ext-idx="${sorted[0]}"]`);
+  const cueListAnchor = captureVisibleCueListVisualAnchor(sourceEl);
 
   const oldIds = segments.map((segment) => segment.id).filter(Boolean);
   const merged = {
@@ -7751,9 +7758,11 @@ function mergeExtensionSegments(idxs, track = getActiveExtensionTrack()) {
   track.segments.splice(sorted[0], sorted.length, merged);
   markMultiSubtitleDirty();
   renderAll();
-  updateWithoutCueListAutoScroll();
   selectOnlyExtension(sorted[0]);
   lastClickedExtensionIdx = sorted[0];
+  updateWithoutCueListAutoScroll();
+  const el = container.querySelector(`.cue[data-ext-idx="${sorted[0]}"]`);
+  if (cueListAnchor) restoreCueListVisualAnchor(el, cueListAnchor);
   flashHint(
     hadBindings
       ? `已合并 ${sorted.length} 条副字幕，原绑定已解除`
@@ -8142,6 +8151,14 @@ function captureCueListVisualAnchor(cueEl) {
   if (!cueEl?.isConnected || cueEl.classList.contains('hidden')) return null;
   const top = cueEl.getBoundingClientRect().top;
   return Number.isFinite(top) ? { top } : null;
+}
+
+function captureVisibleCueListVisualAnchor(cueEl) {
+  if (!cueEl?.isConnected || cueEl.classList.contains('hidden')) return null;
+  const rect = cueEl.getBoundingClientRect();
+  const { top, bottom } = cueListVisibleBounds();
+  if (rect.bottom <= top || rect.top >= bottom) return null;
+  return captureCueListVisualAnchor(cueEl);
 }
 
 function captureCueListRenderAnchor() {
