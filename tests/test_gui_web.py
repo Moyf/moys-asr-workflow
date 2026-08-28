@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
+from maw.postprocess_llm import LlmClientError  # noqa: E402
 from maw.runtimes.base import RuntimeStatus  # noqa: E402
 
 
@@ -274,6 +275,19 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn("MAW_POSTPROCESS_DEEPSEEK_MODEL=deepseek-reasoner", saved)
         self.assertEqual(result["maskedApiKey"], "sk-…-key")
 
+    def test_get_postprocess_settings_returns_raw_key_for_explicit_provider_read(self) -> None:
+        self.env_path.write_text(
+            "MAW_POSTPROCESS_DEEPSEEK_API_KEY=sk-read-this-key\n",
+            encoding="utf-8",
+        )
+
+        with mock.patch.dict(os.environ, {"MAW_POSTPROCESS_DEEPSEEK_API_KEY": ""}, clear=False):
+            result = self.api.get_postprocess_settings({"providerId": "deepseek"})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["apiKey"], "sk-read-this-key")
+        self.assertEqual(result["maskedApiKey"], "sk-…-key")
+
     def test_postprocess_provider_presets_include_zhipu_coding_plan(self) -> None:
         config = self.api.get_config()
         raw_providers = config["postprocessProviders"]
@@ -354,6 +368,44 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(settings.api_key, "sk-entered")
         self.assertEqual(settings.base_url, "https://example.com/v1")
         self.assertEqual(settings.model, "custom-model")
+        self.assertFalse(self.env_path.exists())
+
+    def test_postprocess_connection_saves_only_after_successful_check(self) -> None:
+        events: list[tuple[str, bool]] = []
+
+        def check_connection(_settings) -> None:
+            events.append(("tested", self.env_path.exists()))
+
+        with mock.patch("maw.gui_web.test_llm_connection", side_effect=check_connection):
+            result = self.api.test_postprocess_connection({
+                "providerId": "custom",
+                "apiKey": "sk-tested",
+                "baseUrl": "https://example.com/v1",
+                "model": "custom-model",
+                "save": True,
+            })
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["saved"])
+        self.assertTrue(result["verified"])
+        self.assertEqual(events, [("tested", False)])
+        self.assertIn("MAW_POSTPROCESS_CUSTOM_API_KEY=sk-tested", self.env_path.read_text(encoding="utf-8"))
+
+    def test_postprocess_connection_does_not_save_when_check_fails(self) -> None:
+        with mock.patch(
+            "maw.gui_web.test_llm_connection",
+            side_effect=LlmClientError("connection failed"),
+        ):
+            result = self.api.test_postprocess_connection({
+                "providerId": "custom",
+                "apiKey": "sk-not-saved",
+                "baseUrl": "https://example.com/v1",
+                "model": "custom-model",
+                "save": True,
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "postprocess_connection_failed")
         self.assertFalse(self.env_path.exists())
 
     def test_postprocess_models_use_form_values_without_writing_config(self) -> None:
@@ -2274,6 +2326,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('bridge("run_ffconcat_rebuild"', script)
         self.assertIn('bridge("save_postprocess_settings"', script)
         self.assertIn('bridge("test_postprocess_connection"', script)
+        self.assertIn('bridge("get_postprocess_settings"', script)
         self.assertIn('bridge("get_postprocess_models"', script)
         self.assertIn('class="primary"', page)
         self.assertIn('llm_models_loaded: "已获取 {count} 个模型，可在上方快速选择"', launcher_script)
@@ -2492,9 +2545,16 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn("window.setTimeout(() => setSettingsSaveStatus(\"\"), timeoutMs)", script)
         self.assertIn('toolbox_saved: "LLM 设置已保存。"', launcher_script)
         self.assertIn('toolbox_saved: "LLM settings saved."', launcher_script)
-        self.assertIn("if (autoTest && enteredApiKey)", script)
-        self.assertIn('await testConnection({ alreadySaved: true });', script)
-        self.assertIn('$("saveLlmSettings").addEventListener("click", () => { void saveSettings({ autoTest: true }); });', script)
+        self.assertIn('llm_connection_saved: "连接成功（已自动保存到本地环境）"', launcher_script)
+        self.assertIn('llm_connection_saved: "Connection successful (saved to local environment automatically)."', launcher_script)
+        self.assertIn('toolbox_key_loaded: "已从本地环境读取密钥 {key}"', launcher_script)
+        self.assertIn('toolbox_key_loaded: "Loaded key from local environment: {key}"', launcher_script)
+        self.assertIn('field.value = result.apiKey || "";', script)
+        self.assertIn('void loadPostprocessApiKey(item.id, item.maskedApiKey || "");', script)
+        self.assertIn('save: true,', script)
+        self.assertIn('setSettingsSaveStatus(result.saved ? t("llm_connection_saved") : t("llm_connection_success"), "success");', script)
+        self.assertNotIn("autoTest", script)
+        self.assertIn('$("saveLlmSettings").addEventListener("click", () => { void saveSettings(); });', script)
         pending_step = script[script.index("function maybeEnablePendingAutoStep()"):script.index("function applyAutoPostprocessPlan")]
         self.assertNotIn("closeSettings", pending_step)
         self.assertNotIn("setOpen(true)", pending_step)
