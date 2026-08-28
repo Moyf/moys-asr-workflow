@@ -69,6 +69,31 @@ test('dropping only a project still prompts to pick the associated media', async
   await expect(page.locator('#project-media-modal')).toHaveClass(/show/);
 });
 
+test('opening and serializing a project preserves script alignment metadata', async ({ page }) => {
+  const scriptAlignment = {
+    schema: 'moy.asr.script_alignment.v1',
+    selected: [{ lineId: 'line-001', candidateId: 'candidate-001' }],
+    removedGapCount: 1,
+  };
+  const alignedProject = {
+    media: '',
+    segments: [{ id: 'main-001', start: 100, end: 1900, text: 'aligned' }],
+    script_alignment: scriptAlignment,
+  };
+  const alignedSpec = {
+    name: 'aligned.mosp',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(alignedProject), 'utf8').toString('base64'),
+  };
+
+  await page.goto(server.url);
+  await dropFiles(page, [alignedSpec]);
+  await expect(page.locator('#json-name')).toHaveText('aligned.mosp');
+
+  const serialized = await page.evaluate(() => JSON.parse(buildJson()));
+  expect(serialized.script_alignment).toEqual(scriptAlignment);
+});
+
 test('dropping a project over an existing project asks before offering open or extension choices', async ({ page }) => {
   await page.goto(server.url);
   await dropFiles(page, [projectSpec()]);
