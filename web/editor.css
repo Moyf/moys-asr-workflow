@@ -1811,6 +1811,25 @@
     background: color-mix(in srgb, var(--color-bar, #777) 30%, var(--accent) 30%);
     box-shadow: inset 0 0 0 1px var(--amber-hover);
   }
+  /* 有分组色的行播放中：保留字幕色身份，用原色加深背景、左边条换原色，
+     而不是被 .cue.active 覆盖成 accent 蓝。 */
+  .cue.has-color.active {
+    background: color-mix(in srgb, var(--color-bar, #777) 45%, var(--bg-raised));
+    border-left-color: var(--color-bar, #777);
+  }
+  .cue.has-color.active:hover {
+    background: color-mix(in srgb, var(--color-bar, #777) 52%, var(--bg-raised));
+    box-shadow: inset 0 0 0 1px var(--color-bar, #777);
+  }
+  /* 选中 + 播放中 + 有分组色：原色为主、轻混 accent 表示叠加状态，选中环保持琥珀 */
+  .cue.selected.has-color.active {
+    background: color-mix(in srgb, var(--color-bar, #777) 38%, var(--accent) 22%);
+    box-shadow: inset 0 0 0 1px var(--amber-hover);
+  }
+  .cue.selected.has-color.active:hover {
+    background: color-mix(in srgb, var(--color-bar, #777) 44%, var(--accent) 28%);
+    box-shadow: inset 0 0 0 1px var(--color-bar, #777);
+  }
   /* 禁用项：灰色底不透明，文字变淡；active 高亮照常覆盖以便播放时定位 */
   .cue.disabled { background: var(--disabled-cue-bg); border-left-color: var(--border-strong); }
   .cue.disabled .text { color: var(--text-muted); }
@@ -2061,8 +2080,9 @@
   .multi-cue-column { min-width: 0; position: relative; }
   .multi-cue-column.dirty { box-shadow: inset 3px 0 0 var(--amber); }
   /* 主列没有像副列那样自带左侧分隔内边距；为 dirty 标记预留宽度，
-     避免黄色内描边压住主字幕的首个字符。 */
-  .multi-cue-column.main.dirty { box-sizing: border-box; padding-left: 3px; }
+     避免黄色内描边压住主字幕的首个字符。3px 仅与描边等宽，文字仍贴边，
+     这里再加一档作为兜底。 */
+  .multi-cue-column.main.dirty { box-sizing: border-box; padding-left: 8px; }
   .multi-cue-column.extension { color: var(--text-secondary); }
   .multi-cue-column.unbound { opacity: .82; }
   .multi-cue-column.disabled {
