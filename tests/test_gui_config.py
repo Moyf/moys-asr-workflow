@@ -32,6 +32,25 @@ class GuiConfigTests(unittest.TestCase):
 
         self.assertEqual(resolved.zoom_percent, 115)
 
+    def test_effective_config_reads_and_normalizes_theme(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            _ = env_path.write_text("MAW_GUI_THEME=dark\n", encoding="utf-8")
+
+            with mock.patch.dict(os.environ, {}, clear=True):
+                resolved = gui_config.effective_config(env_path)
+
+        self.assertEqual(resolved.theme, "dark")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            _ = env_path.write_text("MAW_GUI_THEME=unexpected\n", encoding="utf-8")
+
+            with mock.patch.dict(os.environ, {}, clear=True):
+                resolved = gui_config.effective_config(env_path)
+
+        self.assertEqual(resolved.theme, "system")
+
     def test_default_env_path_uses_macos_application_support(self) -> None:
         with mock.patch.object(gui_config.sys, "platform", "darwin"):
             with mock.patch.object(gui_config.Path, "home", return_value=Path("/Users/test-user")):
