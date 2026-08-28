@@ -1000,9 +1000,34 @@ class WhisperEngine:
                 hub_cache = str(Path(cache_root) / "huggingface" / "hub")
         if hub_cache and not Path(self.model_path).is_dir():
             kwargs["download_root"] = hub_cache
+        requested_device = self.device.strip().lower()
         try:
             self._runtime = WhisperModel(self.model_path, **kwargs)
-        except (TypeError, ValueError, RuntimeError) as error:
+        except RuntimeError as error:
+            # ``auto`` 可能只验证了 Torch 的 CUDA，而 CTranslate2 还需要
+            # 自己的 CUDA 12/cuDNN 9 DLL。遇到这类 CUDA 初始化错误时回退
+            # CPU；显式选择 ``cuda`` 时保留原错误，避免隐藏用户的配置问题。
+            error_text = str(error).lower()
+            is_cuda_error = any(
+                marker in error_text
+                for marker in ("cuda", "cublas", "cudnn")
+            )
+            if requested_device != "auto" or resolved_device != "cuda" or not is_cuda_error:
+                raise LocalAsrError(f"faster-whisper 模型加载失败: {error}") from error
+            if on_event:
+                on_event(
+                    "[local] faster-whisper CUDA 不可用，自动回退到 CPU "
+                    "（如需 GPU，请安装 CUDA 12 和 cuDNN 9）"
+                )
+            fallback_kwargs = {**kwargs, "device": "cpu", "compute_type": "int8"}
+            try:
+                self._runtime = WhisperModel(self.model_path, **fallback_kwargs)
+            except (TypeError, ValueError, RuntimeError) as fallback_error:
+                raise LocalAsrError(
+                    "faster-whisper 模型加载失败；CUDA 错误："
+                    f"{error}；自动回退 CPU 也失败：{fallback_error}"
+                ) from fallback_error
+        except (TypeError, ValueError) as error:
             raise LocalAsrError(f"faster-whisper 模型加载失败: {error}") from error
         if on_event:
             on_event("[local] faster-whisper loaded")
@@ -1239,9 +1264,9 @@ def build_local_segments(
     transcription: LocalTranscription,
     *,
     duration_ms: int,
-    max_len: int = 21,
+    max_len: int = 18,
     min_len: int = 5,
-    gap_split_ms: int = 1000,
+    gap_split_ms: int = 800,
     strip_tail_punct: str = _LOCAL_TAIL_PUNCT,
 ) -> list[dict[str, Any]]:
     """Turn adapter output into MAW's integer-millisecond subtitle segments."""

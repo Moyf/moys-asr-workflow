@@ -481,6 +481,75 @@ test('raises both subtitle lanes moderately in basic waveform mode', async ({ pa
   expect(laneHeights.extension).toBe(laneHeights.main);
 });
 
+test('keeps adjacent corners square on both subtitle lanes across waveform rows', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-cross-row', start: 4000, end: 7000, text: '主字幕跨行', items: [] }],
+    waveform: generateWaveformPayload(10000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-cross-row',
+        role: 'extension',
+        name: 'English',
+        language: 'English',
+        split_mode: 'word',
+        segments: [{ id: 'extension-cross-row', start: 4200, end: 6800, text: '副字幕跨行', items: [] }],
+      }],
+      bindings: [],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'multi-cross-row-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+  await expect(page.locator('.waveform-row.multi-subtitle-row')).not.toHaveCount(0);
+
+  await page.evaluate(() => {
+    waveformEditor.settings.mode = 'multi';
+    waveformEditor.settings.secondsPerRow = 5;
+    waveformEditor.multiRange = [-1, -1];
+    waveformEditor.render();
+  });
+
+  const lanes = await page.evaluate(() => ['main', 'extension'].map((track) => {
+    const selector = track === 'main'
+      ? '[data-track="main"][data-idx="0"]'
+      : '[data-track="extension"][data-ext-idx="0"]';
+    const readBlock = (rowIndex) => {
+      const block = document.querySelector(
+        `.waveform-row[data-row-index="${rowIndex}"] .waveform-cue-block${selector}`,
+      );
+      if (!block) return null;
+      const style = getComputedStyle(block);
+      return {
+        classes: [...block.classList],
+        topLeft: style.borderTopLeftRadius,
+        topRight: style.borderTopRightRadius,
+        bottomLeft: style.borderBottomLeftRadius,
+        bottomRight: style.borderBottomRightRadius,
+      };
+    };
+    return { track, first: readBlock(0), second: readBlock(1) };
+  }));
+
+  for (const lane of lanes) {
+    expect(lane.first).not.toBeNull();
+    expect(lane.second).not.toBeNull();
+    expect(lane.first.classes).toContain('continues-to-next-row');
+    expect(lane.second.classes).toContain('continues-from-previous-row');
+    expect(lane.first.topRight).toBe('0px');
+    expect(lane.first.bottomRight).toBe('0px');
+    expect(lane.second.topLeft).toBe('0px');
+    expect(lane.second.bottomLeft).toBe('0px');
+    expect(lane.first.topLeft).not.toBe('0px');
+    expect(lane.second.topRight).not.toBe('0px');
+  }
+});
+
 test('keeps main and secondary language types independent and reuses them for counts', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-result-confirm').click();

@@ -279,10 +279,10 @@
     max_len: "最大字数",
     min_len: "短句合并阈值",
     gap_split: "停顿切句（毫秒）",
-    max_len_placeholder: "默认 21",
+    max_len_placeholder: "默认 18",
     min_len_placeholder: "默认 5",
-    gap_split_placeholder: "默认 1500",
-    segmentation_hint: "留空使用模型默认值（停顿切句：云端 1500ms，本地 1000ms）；最大/最小字数主要作用于中文，停顿阈值单位为毫秒。",
+    gap_split_placeholder: "默认 800",
+    segmentation_hint: "留空使用默认值（最大字数：18，短句合并阈值：5，停顿切句：800ms）；最大/最小字数主要作用于中文，停顿阈值单位为毫秒。",
     qwen_audio_options_title: "Qwen 上下文与热词",
     toolbox_group_ocr_video: "视频来源",
     toolbox_group_ocr_region: "识别区域与模型",
@@ -347,10 +347,10 @@
     max_len: "Max characters",
     min_len: "Short-phrase merge threshold",
     gap_split: "Pause split (ms)",
-    max_len_placeholder: "Default: 21",
+    max_len_placeholder: "Default: 18",
     min_len_placeholder: "Default: 5",
-    gap_split_placeholder: "Default: 1500",
-    segmentation_hint: "Leave blank to use the model defaults (pause split: cloud 1500 ms, local 1000 ms); character thresholds mainly apply to CJK, and the pause threshold is in milliseconds.",
+    gap_split_placeholder: "Default: 800",
+    segmentation_hint: "Leave blank to use the defaults (max characters: 18, short-cue merge threshold: 5, pause split: 800 ms); character thresholds mainly apply to CJK, and the pause threshold is in milliseconds.",
     qwen_audio_options_title: "Qwen context & hotwords",
     toolbox_group_ocr_video: "Video source",
     toolbox_group_ocr_region: "Region & model",
@@ -416,6 +416,7 @@
     settings_punctuation_hint: "文稿匹配与转写后处理共用这里的断句与保留符号。",
     llm_model: "模型",
     llm_api_key: "API Key",
+    llm_custom_provider: "自定义（兼容 OpenAI）",
     llm_custom_display_name: "自定义显示名称",
     llm_custom_display_name_placeholder: "可选",
     llm_test_connection: "测试连接",
@@ -429,6 +430,7 @@
     llm_quick_actions: "快捷功能",
     llm_connection_testing: "正在测试连接……",
     llm_connection_success: "连接成功。",
+    llm_connection_saved: "连接成功（已自动保存到本地环境）",
     llm_base_url: "API URL",
     llm_base_url_hint: "远程服务使用 HTTPS；明文 HTTP 只允许本机环回地址。",
     llm_reasoning_mode: "思考强度",
@@ -450,6 +452,7 @@
     settings_punctuation_hint: "Script match and transcription post-processing share these split and preserved symbols.",
     llm_model: "Model",
     llm_api_key: "API Key",
+    llm_custom_provider: "Custom (OpenAI-compatible)",
     llm_custom_display_name: "Custom display name",
     llm_custom_display_name_placeholder: "Optional",
     llm_test_connection: "Test connection",
@@ -463,6 +466,7 @@
     llm_quick_actions: "Quick actions",
     llm_connection_testing: "Testing connection…",
     llm_connection_success: "Connection successful.",
+    llm_connection_saved: "Connection successful (saved to local environment automatically).",
     llm_base_url: "API URL",
     llm_base_url_hint: "Use HTTPS for remote services; plain HTTP is limited to loopback addresses.",
     llm_reasoning_mode: "Reasoning effort",
@@ -480,7 +484,7 @@
      toolbox_llm: "LLM 处理", toolbox_replace: "固定处理", toolbox_ffconcat: "媒体重组", toolbox_provider: "供应商", toolbox_operation: "任务", toolbox_proofread: "校对文本", toolbox_resegment: "重新断句", toolbox_translate_en: "翻译成英文", toolbox_translate_zh: "翻译成中文", toolbox_custom: "自定义",
     toolbox_open_settings: "在 ⚙️ 设置中配置 API Key", toolbox_preset_prompt: "预设提示词", toolbox_preset_prompt_hint: "由当前任务决定，不可编辑。", toolbox_prompt: "自定义提示词", toolbox_prompt_placeholder: "例如：保留专有名词，不要使用书面腔。", toolbox_prompt_hint: "可按需追加要求；留空则只使用预设提示词。", toolbox_task_none: "（无）", toolbox_task_proofread: "校对字幕中的错别字、漏字和明显识别错误，不扩写事实。", toolbox_task_resegment: "重新整理句子的字幕拆分。可以合并或拆分连续字幕，但不得删除内容。", toolbox_task_translate_en: "翻译为自然英文。必须保持原字幕的段数、顺序和每段时间范围，一条输入字幕只能对应一条输出字幕；不得合并、拆分或重排相邻字幕。", toolbox_task_translate_zh: "翻译为自然中文。必须保持原字幕的段数、顺序和每段时间范围，一条输入字幕只能对应一条输出字幕；不得合并、拆分或重排相邻字幕。", toolbox_time_hint: "模型只处理带 ID 的文字；本地时间槽始终是时间真源。", toolbox_output: "输出", toolbox_output_both: "工程 + SRT", toolbox_output_project: "仅工程", toolbox_output_srt: "仅 SRT", toolbox_run: "运行处理",
      toolbox_group_fixed_replacements: "批量替换", toolbox_group_fixed_conversion: "简繁转换", toolbox_conversion: "转换方向", toolbox_conversion_off: "不转换", toolbox_conversion_to_simplified: "转为简体", toolbox_conversion_to_traditional: "转为繁体（通用）", toolbox_conversion_to_traditional_tw: "转为繁体（台湾）", toolbox_conversion_to_traditional_twp: "转为繁体（台湾增强）", toolbox_conversion_to_traditional_hk: "转为繁体（香港）", toolbox_conversion_hint: "先执行批量替换，再转换文字；不访问网络。", toolbox_replace_rules: "批量替换规则", toolbox_replace_placeholder: "错别字 => 正确文字\n旧名称 => 新名称", toolbox_replace_separator: "替换分隔符号", toolbox_replace_separator_arrow: "=>", toolbox_replace_separator_comma: "中英文逗号", toolbox_replace_separator_tab: "Tab 制表符", toolbox_replace_separator_custom: "自定义", toolbox_replace_custom_separator: "自定义分隔符", toolbox_replace_trim: "自动去除前后空白", toolbox_replace_preview: "规则预览", toolbox_replace_preview_hint: "输入规则后显示解析结果。", toolbox_replace_preview_empty: "没有识别到有效规则。", toolbox_replace_hint: "每行一条替换规则；修改文本后会移除失真的逐词时间。", toolbox_replace_safe: "分段起止时间保持不变。", toolbox_run_replace: "执行固定处理",
-     toolbox_ffconcat_placeholder: "选择或拖入 FFconcat 文件；将通过 FFmpeg 按清单重组当前媒体", toolbox_ffconcat_warning: "先在编辑器中执行「移除静音空隙」，然后可选择导出 FFconcat 文件。只允许引用当前媒体；重组会生成新媒体，但不会改写字幕时间轴。", toolbox_run_media: "生成新媒体", toolbox_ready: "选择工具后运行；始终生成新文件，不覆盖源文件。", toolbox_running: "处理中……", toolbox_status_starting: "正在准备处理……", toolbox_status_reading: "正在读取字幕文件……", toolbox_status_matching: "正在匹配文稿……", toolbox_status_fixed_processing: "正在执行固定处理……", toolbox_status_preparing_llm: "正在准备大模型……", toolbox_status_llm_batch: "正在处理第 {current}/{total} 批字幕……", toolbox_status_llm_batch_done: "已完成第 {current}/{total} 批字幕。", toolbox_status_reorganizing: "正在整理模型结果……", toolbox_status_writing: "正在写出处理结果……", toolbox_status_validating_media: "正在校验媒体清单……", toolbox_status_rebuilding_media: "正在重组媒体……", toolbox_stream_title: "模型实时输出", toolbox_thinking: "思考", toolbox_model_output: "模型输出（JSON）", toolbox_stream_batch: "第 {batch} 批", toolbox_stream_chars: "{count} 个字符", toolbox_saved: "LLM 设置已保存。", toolbox_key_empty: "未保存此供应商的密钥", toolbox_key_loaded: "已保存密钥 {key}", toolbox_chain_match: "[文稿匹配]", toolbox_chain_replace: "[固定处理]", toolbox_chain_llm_proofread: "[LLM 处理/校对]", toolbox_chain_llm_resegment: "[LLM 处理/重新断句]", toolbox_chain_llm_translate: "[LLM 处理/翻译]", toolbox_chain_llm_custom: "[LLM 处理/自定义]",
+     toolbox_ffconcat_placeholder: "选择或拖入 FFconcat 文件；将通过 FFmpeg 按清单重组当前媒体", toolbox_ffconcat_warning: "先在编辑器中执行「移除静音空隙」，然后可选择导出 FFconcat 文件。只允许引用当前媒体；重组会生成新媒体，但不会改写字幕时间轴。", toolbox_run_media: "生成新媒体", toolbox_ready: "选择工具后运行；始终生成新文件，不覆盖源文件。", toolbox_running: "处理中……", toolbox_status_starting: "正在准备处理……", toolbox_status_reading: "正在读取字幕文件……", toolbox_status_matching: "正在匹配文稿……", toolbox_status_fixed_processing: "正在执行固定处理……", toolbox_status_preparing_llm: "正在准备大模型……", toolbox_status_llm_batch: "正在处理第 {current}/{total} 批字幕……", toolbox_status_llm_batch_done: "已完成第 {current}/{total} 批字幕。", toolbox_status_reorganizing: "正在整理模型结果……", toolbox_status_writing: "正在写出处理结果……", toolbox_status_validating_media: "正在校验媒体清单……", toolbox_status_rebuilding_media: "正在重组媒体……", toolbox_stream_title: "模型实时输出", toolbox_thinking: "思考", toolbox_model_output: "模型输出（JSON）", toolbox_stream_batch: "第 {batch} 批", toolbox_stream_chars: "{count} 个字符", toolbox_saved: "LLM 设置已保存。", toolbox_key_empty: "未保存此供应商的密钥", toolbox_key_loaded: "已从本地环境读取密钥 {key}", toolbox_chain_match: "[文稿匹配]", toolbox_chain_replace: "[固定处理]", toolbox_chain_llm_proofread: "[LLM 处理/校对]", toolbox_chain_llm_resegment: "[LLM 处理/重新断句]", toolbox_chain_llm_translate: "[LLM 处理/翻译]", toolbox_chain_llm_custom: "[LLM 处理/自定义]",
       toolbox_need_source: "请先选择工程或 SRT。", toolbox_need_script: "请选择文稿文件。", toolbox_need_rules: "请至少填写一条有效批量替换规则或选择简繁转换。", toolbox_need_ffconcat: "请选择 .ffconcat 文件。", toolbox_need_media: "请先选择当前媒体。", toolbox_custom_prompt_required: "自定义任务需要填写提示词。", toolbox_done: "处理完成，已切换到新产物：", toolbox_media_done: "媒体重组完成，已切换到新媒体：", toolbox_config_only_hint: "这里只配置自动后处理；生成后会自动执行。", toolbox_match_rate: "匹配率", toolbox_match_preview_stats: "根据文稿重新换行后，共有 {from} -> {to} 句字幕（{change}）", toolbox_match_preview_too_low: "偏差过多，无法匹配，请检查文稿。", toolbox_match_preview_failed: "无法生成匹配预览，请检查文稿。"
    });
    Object.assign(STRINGS.en, {
@@ -490,7 +494,7 @@
      toolbox_llm: "LLM", toolbox_replace: "Fixed processing", toolbox_ffconcat: "Media rebuild", toolbox_provider: "Provider", toolbox_operation: "Task", toolbox_proofread: "Proofread text", toolbox_resegment: "Resegment", toolbox_translate_en: "Translate into English", toolbox_translate_zh: "Translate into Chinese", toolbox_custom: "Custom",
     toolbox_open_settings: "Configure the API key in ⚙️ Settings", toolbox_preset_prompt: "Preset prompt", toolbox_preset_prompt_hint: "Determined by the current task and cannot be edited.", toolbox_prompt: "Custom prompt", toolbox_prompt_placeholder: "Example: preserve product names and use conversational language.", toolbox_prompt_hint: "Add extra requirements as needed; leave empty to use only the preset prompt.", toolbox_task_none: "(None)", toolbox_task_proofread: "Proofread subtitle typos, omissions, and obvious recognition errors without expanding facts.", toolbox_task_resegment: "Reorganize subtitle sentence breaks. You may merge or split consecutive subtitles, but do not delete content.", toolbox_task_translate_en: "Translate into natural English. Preserve the original cue count, order, and time ranges; each input cue must produce exactly one output cue. Do not merge, split, or reorder adjacent cues.", toolbox_task_translate_zh: "Translate into natural Chinese. Preserve the original cue count, order, and time ranges; each input cue must produce exactly one output cue. Do not merge, split, or reorder adjacent cues.", toolbox_time_hint: "The model edits ID-tagged text only; local time slots remain authoritative.", toolbox_output: "Output", toolbox_output_both: "Project + SRT", toolbox_output_project: "Project only", toolbox_output_srt: "SRT only", toolbox_run: "Run",
       toolbox_group_fixed_replacements: "Batch replacement", toolbox_group_fixed_conversion: "Chinese conversion", toolbox_conversion: "Conversion direction", toolbox_conversion_off: "No conversion", toolbox_conversion_to_simplified: "Convert to Simplified", toolbox_conversion_to_traditional: "Convert to Traditional (General)", toolbox_conversion_to_traditional_tw: "Convert to Traditional (Taiwan)", toolbox_conversion_to_traditional_twp: "Convert to Traditional (Taiwan enhanced)", toolbox_conversion_to_traditional_hk: "Convert to Traditional (Hong Kong)", toolbox_conversion_hint: "Apply batch replacements first, then convert text locally.", toolbox_replace_rules: "Batch replacement rules", toolbox_replace_placeholder: "old text => new text", toolbox_replace_separator: "Replacement separator", toolbox_replace_separator_arrow: "=>", toolbox_replace_separator_comma: "English or Chinese comma", toolbox_replace_separator_tab: "Tab", toolbox_replace_separator_custom: "Custom", toolbox_replace_custom_separator: "Custom separator", toolbox_replace_trim: "Trim surrounding whitespace automatically", toolbox_replace_preview: "Rule preview", toolbox_replace_preview_hint: "Parsed rules will appear here.", toolbox_replace_preview_empty: "No valid rules detected.", toolbox_replace_hint: "One replacement rule per line. Stale word timings are removed when text changes.", toolbox_replace_safe: "Segment start and end times stay unchanged.", toolbox_run_replace: "Run fixed processing",
-     toolbox_ffconcat_placeholder: "Choose or drop an FFconcat file; FFmpeg will rebuild the current media from its entries", toolbox_ffconcat_warning: "First use the editor to remove silence gaps, then export an FFconcat file. Only the current media may be referenced; rebuilding creates a new media file without changing subtitle timing.", toolbox_run_media: "Build media", toolbox_ready: "Choose a tool and run it; tools always write new files and never overwrite sources.", toolbox_running: "Processing…", toolbox_status_starting: "Preparing the operation…", toolbox_status_reading: "Reading subtitle files…", toolbox_status_matching: "Matching the script…", toolbox_status_fixed_processing: "Applying fixed processing…", toolbox_status_preparing_llm: "Preparing the LLM…", toolbox_status_llm_batch: "Processing subtitle batch {current}/{total}…", toolbox_status_llm_batch_done: "Completed subtitle batch {current}/{total}.", toolbox_status_reorganizing: "Organizing the model result…", toolbox_status_writing: "Writing the processed files…", toolbox_status_validating_media: "Validating the media list…", toolbox_status_rebuilding_media: "Rebuilding the media…", toolbox_stream_title: "Live model output", toolbox_thinking: "Thinking", toolbox_model_output: "Model output (JSON)", toolbox_stream_batch: "Batch {batch}", toolbox_stream_chars: "{count} chars", toolbox_saved: "LLM settings saved.", toolbox_key_empty: "No saved key for this provider", toolbox_key_loaded: "Saved key {key}", toolbox_chain_match: "[Script match]", toolbox_chain_replace: "[Fixed processing]", toolbox_chain_llm_proofread: "[LLM / Proofread]", toolbox_chain_llm_resegment: "[LLM / Resegment]", toolbox_chain_llm_translate: "[LLM / Translate]", toolbox_chain_llm_custom: "[LLM / Custom]",
+     toolbox_ffconcat_placeholder: "Choose or drop an FFconcat file; FFmpeg will rebuild the current media from its entries", toolbox_ffconcat_warning: "First use the editor to remove silence gaps, then export an FFconcat file. Only the current media may be referenced; rebuilding creates a new media file without changing subtitle timing.", toolbox_run_media: "Build media", toolbox_ready: "Choose a tool and run it; tools always write new files and never overwrite sources.", toolbox_running: "Processing…", toolbox_status_starting: "Preparing the operation…", toolbox_status_reading: "Reading subtitle files…", toolbox_status_matching: "Matching the script…", toolbox_status_fixed_processing: "Applying fixed processing…", toolbox_status_preparing_llm: "Preparing the LLM…", toolbox_status_llm_batch: "Processing subtitle batch {current}/{total}…", toolbox_status_llm_batch_done: "Completed subtitle batch {current}/{total}.", toolbox_status_reorganizing: "Organizing the model result…", toolbox_status_writing: "Writing the processed files…", toolbox_status_validating_media: "Validating the media list…", toolbox_status_rebuilding_media: "Rebuilding the media…", toolbox_stream_title: "Live model output", toolbox_thinking: "Thinking", toolbox_model_output: "Model output (JSON)", toolbox_stream_batch: "Batch {batch}", toolbox_stream_chars: "{count} chars", toolbox_saved: "LLM settings saved.", toolbox_key_empty: "No saved key for this provider", toolbox_key_loaded: "Loaded key from local environment: {key}", toolbox_chain_match: "[Script match]", toolbox_chain_replace: "[Fixed processing]", toolbox_chain_llm_proofread: "[LLM / Proofread]", toolbox_chain_llm_resegment: "[LLM / Resegment]", toolbox_chain_llm_translate: "[LLM / Translate]", toolbox_chain_llm_custom: "[LLM / Custom]",
       toolbox_need_source: "Choose a project or SRT first.", toolbox_need_script: "Choose a script file.", toolbox_need_rules: "Enter at least one valid batch replacement rule or choose a conversion.", toolbox_need_ffconcat: "Choose an .ffconcat file.", toolbox_need_media: "Choose the current media first.", toolbox_custom_prompt_required: "Enter a custom prompt before running the Custom task.", toolbox_done: "Done. Chained to the new artifact:", toolbox_media_done: "Media rebuilt. Chained to the new media:", toolbox_config_only_hint: "Configure automatic post-processing here; it will run after generation.", toolbox_match_rate: "match rate", toolbox_match_preview_stats: "After applying manuscript line breaks, subtitles: {from} -> {to} ({change})", toolbox_match_preview_too_low: "Mismatch is too large; unable to match. Please check the manuscript.", toolbox_match_preview_failed: "Unable to generate the match preview. Please check the manuscript."
   });
   Object.assign(STRINGS.zh, {
@@ -679,7 +683,7 @@
   let prefsTimer = 0;
 
   function mockApi() {
-    let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "zh", customDisplayName: "" };
+    let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "zh", customDisplayName: "", postprocessApiKeys: {}, theme: null };
     const chainedPath = (path, operation, fallback) => path
       ? path.replace(/(\.[^.\\/]+)$/u, `.${operation}$1`)
       : fallback;
@@ -696,7 +700,8 @@
         region: saved.region,
         language: saved.language,
         workspaceId: saved.workspaceId,
-        guiLang: saved.guiLang,
+         guiLang: saved.guiLang,
+         theme: saved.theme,
         showRareLangs: saved.showRareLangs || false,
         appVersion: "1.5.0-beta.4",
         stickerDir: saved.stickerDir || "",
@@ -800,15 +805,16 @@
       get_local_models: async ({ modelId, modelPath }) => ({ ok: true, runtime: state.config?.localRuntime || {}, models: (state.config?.providers.find((item) => item.id === "local")?.models || []).map((model) => ({ ...model, localStatus: { ...(model.localStatus || {}), ...(model.id === modelId && modelPath ? { status: "installed", installed: true, path: modelPath, detail: "已使用指定的模型目录。" } : {}) } })) }),
       prepare_local_model: async ({ modelId }) => { clearTimeout(modelPrepareTimer); modelPrepareTimer = setTimeout(() => { state.config?.providers.find((item) => item.id === "local")?.models.forEach((model) => { if (model.id === modelId) model.localStatus = { ...(model.localStatus || {}), status: "installed", installed: true, runtimeAvailable: true, canPrepare: false, detail: "已检测到本地模型。" }; }); window.MAWLauncher.onBackendEvent({ type: "modelPrepared", modelId }); }, 400); return { ok: true, preparing: true, modelId }; },
       cancel_local_model: async () => { clearTimeout(modelPrepareTimer); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "localPrepareCancelled" }), 80); return { ok: true, cancelling: true }; },
-       save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); if (Object.prototype.hasOwnProperty.call(payload, "zoomPercent")) localStorage.setItem(ZOOM_PERCENT_KEY, String(payload.zoomPercent)); return { ok: true, zoomPercent: Number(localStorage.getItem(ZOOM_PERCENT_KEY)) || ZOOM_DEFAULT }; },
+       save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); if (Object.prototype.hasOwnProperty.call(payload, "theme")) saved.theme = payload.theme || "system"; if (Object.prototype.hasOwnProperty.call(payload, "zoomPercent")) localStorage.setItem(ZOOM_PERCENT_KEY, String(payload.zoomPercent)); return { ok: true, zoomPercent: Number(localStorage.getItem(ZOOM_PERCENT_KEY)) || ZOOM_DEFAULT }; },
       open_url: async ({ url }) => { window.open(url, "_blank"); return { ok: true }; },
       open_blank_html: async () => ({ ok: true }),
       check_ffmpeg: async () => ({ ok: true, found: true, directory: "D:\\FFmpeg\\bin", ffmpeg: "D:\\FFmpeg\\bin\\ffmpeg.exe", ffprobe: "D:\\FFmpeg\\bin\\ffprobe.exe" }),
       save_ffmpeg_path: async ({ path }) => ({ ok: Boolean(path), found: Boolean(path), directory: path || "", ffmpeg: path || "", ffprobe: path || "" }),
       choose_folder: async ({ kind } = {}) => ({ ok: true, path: kind === "model-cache" ? "D:\\Models\\MAW" : (kind === "ocr-runtime" ? "D:\\Models\\MAW\\ocr-runtime" : "D:\\Stickers") }),
       save_sticker_dir: async ({ path }) => { saved.stickerDir = path || ""; return { ok: Boolean(path), stickerDir: saved.stickerDir, field: path ? "" : "stickerDir", error: path ? "" : "missing" }; },
-      save_postprocess_settings: async ({ providerId, apiKey, displayName, reasoningMode }) => { if (providerId === "custom") saved.customDisplayName = displayName || ""; return { ok: true, providerId, label: providerId === "custom" ? (displayName || "Custom (OpenAI-compatible)") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")), displayName: providerId === "custom" ? (displayName || "") : "", maskedApiKey: apiKey ? "sk-…mock" : "", reasoningMode: reasoningMode || "off", verified: false }; },
-      test_postprocess_connection: async ({ providerId }) => ({ ok: true, providerId, verified: true }),
+      get_postprocess_settings: async ({ providerId }) => { const apiKey = saved.postprocessApiKeys[providerId] || ""; return { ok: true, providerId, apiKey, maskedApiKey: apiKey ? "sk-…mock" : "" }; },
+      save_postprocess_settings: async ({ providerId, apiKey, displayName, reasoningMode }) => { if (providerId === "custom") saved.customDisplayName = displayName || ""; if (apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, label: providerId === "custom" ? (displayName || "Custom (OpenAI-compatible)") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")), displayName: providerId === "custom" ? (displayName || "") : "", maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "", reasoningMode: reasoningMode || "off", verified: false }; },
+      test_postprocess_connection: async ({ providerId, apiKey, save }) => { if (save && apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, verified: true, saved: Boolean(save), maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "" }; },
       save_postprocess_plan: async ({ plan }) => { saved.postprocessAutoPlan = plan; return { ok: true, plan }; },
       validate_postprocess_plan: async ({ plan }) => ({ ok: true, plan, errors: [] }),
       get_postprocess_models: async ({ providerId }) => ({ ok: true, providerId, models: providerId === "qwen" ? ["qwen-plus", "qwen3-max"] : (providerId === "zhipu" ? ["glm-5.2", "glm-4.5"] : (providerId === "custom" ? ["local-model"] : ["deepseek-v4-flash", "deepseek-chat"])) }),
@@ -903,9 +909,12 @@
   function confirmAction(message) { $("batchConfirmMessage").textContent = String(message || ""); $("batchConfirmModal").classList.remove("hidden"); $("batchConfirmYes").focus(); return new Promise((resolve) => { window.MAWLauncher.confirmResolve = resolve; }); }
   function finishConfirm(value) { const resolve = window.MAWLauncher.confirmResolve; window.MAWLauncher.confirmResolve = null; $("batchConfirmModal").classList.add("hidden"); resolve?.(value); }
 
+  function isThemePreference(value) { return value === "light" || value === "dark" || value === "system"; }
+  function readStoredTheme() { try { const savedTheme = localStorage.getItem(THEME_KEY); return isThemePreference(savedTheme) ? savedTheme : "system"; } catch (error) { return "system"; } }
+  function storeTheme(pref) { try { localStorage.setItem(THEME_KEY, pref); } catch (error) { /* localStorage 不可用时交给后端持久化 */ } }
   function resolveTheme() { if (state.theme === "light" || state.theme === "dark") return state.theme; return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; }
   function applyTheme() { if (resolveTheme() === "light") document.documentElement.dataset.theme = "light"; else delete document.documentElement.dataset.theme; $("themeLight").classList.toggle("active", state.theme === "light"); $("themeDark").classList.toggle("active", state.theme === "dark"); $("themeSystem").classList.toggle("active", state.theme === "system"); }
-  function setTheme(pref) { state.theme = pref; try { localStorage.setItem(THEME_KEY, pref); } catch (error) { /* localStorage 不可用时仅作用于本次会话 */ } applyTheme(); }
+  function setTheme(pref) { if (!isThemePreference(pref)) return; state.theme = pref; storeTheme(pref); applyTheme(); void bridge("save_prefs", { theme: pref }).then((result) => { if (result.ok) { if (state.config) state.config.theme = pref; } else applyErrorResult(result); }); }
 
   // keycap 表情（1️⃣ 等）依赖彩色 emoji 字体：后端把 Noto Color Emoji 缓存到本机
   // 后提供 file:// URI，这里注入 @font-face；注入一次即可，重复事件会被跳过。
@@ -1349,12 +1358,19 @@
     const realApi = await waitForBackend();
     api = realApi || mockApi();
     window.MAWLauncher.backend = realApi ? "real" : "mock";
-    const savedTheme = localStorage.getItem(THEME_KEY);
-    state.theme = savedTheme === "light" || savedTheme === "dark" || savedTheme === "system" ? savedTheme : "system";
+    const savedTheme = readStoredTheme();
+    state.theme = savedTheme;
     applyTheme();
     $("lengthLimitField").classList.toggle("hidden", !SHOW_LENGTH_LIMIT_FIELD);
     $("demoBadge").classList.toggle("hidden", window.MAWLauncher.backend !== "mock");
     state.config = await bridge("get_config");
+    const configuredServerPort = Number(state.config.serverPort);
+    if (Number.isInteger(configuredServerPort) && configuredServerPort >= 1 && configuredServerPort <= 65535) {
+      $("port").value = String(configuredServerPort);
+    }
+    if (isThemePreference(state.config.theme)) { state.theme = state.config.theme; storeTheme(state.theme); }
+    else if (savedTheme !== "system") { state.config.theme = savedTheme; void bridge("save_prefs", { theme: savedTheme }); }
+    applyTheme();
     state.config.zoomPercent = applyZoomPercent(state.config.zoomPercent);
     window.MAWLauncher.config = state.config;
     const emojiFont = await bridge("get_emoji_font_path");
@@ -1494,7 +1510,7 @@
     if (event.type === "dropReject" && !state.dropTarget && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
     if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
   }
-  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onLanguageChanged() {} };
+  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onLanguageChanged() {} };
 
   $("langToggle").addEventListener("click", async () => { state.lang = state.lang === "zh" ? "en" : "zh"; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (!result.ok) applyErrorResult(result); });
   $("themeLight").addEventListener("click", () => setTheme("light")); $("themeDark").addEventListener("click", () => setTheme("dark")); $("themeSystem").addEventListener("click", () => setTheme("system"));

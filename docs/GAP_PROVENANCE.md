@@ -162,7 +162,7 @@ provenance.sources.audio_gate
 
 扫描完成后重新计算 `gaps`。因此，用户手动添加的 gap 不会被删除，文稿对齐产生的禁用范围也不会被静音扫描覆盖。
 
-「收缩空隙」也属于 `audio_gate` 的批量重建：它直接缩短 `sources.audio_gate` 中的区间，再重新计算最终 `gaps`，不会在原区间两侧追加 `removed: false`，也不会因此新增 `manual_overrides`。已有的人工覆盖仍按原规则保留。
+「进一步收缩空隙」也属于 `audio_gate` 的批量重建：它直接缩短 `sources.audio_gate` 中的区间，再重新计算最终 `gaps`，不会在原区间两侧追加 `removed: false`，也不会因此新增 `manual_overrides`。已有的人工覆盖仍按原规则保留。
 
 ### 5.2 重新运行文稿匹配/对齐
 
@@ -204,7 +204,7 @@ provenance.sources.script_alignment
 1. 将每个 `removed: true` 范围迁入 `sources.audio_gate`。
 2. 将每个 `removed: false` 范围迁入 `manual_overrides`，保持原有的恢复播放结果。
 3. 清空兼容字段 `legacy`，并将 detector 规范化为 `audio_gate`。
-4. 使用普通静音空隙的样式；「收缩空隙」、清理和重新扫描都按 `audio_gate` 处理启用范围。
+4. 使用普通静音空隙的样式；「进一步收缩空隙」、清理和重新扫描都按 `audio_gate` 处理启用范围。
 
 这项默认基于 MAWE 旧工程的实际来源：历史 Gap 通常由静音 gate 产生。它让旧的启用 Gap 能在下一次重新扫描时被替换；旧的恢复状态仍然作为人工决定保留。
 

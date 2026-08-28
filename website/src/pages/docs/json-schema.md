@@ -102,13 +102,13 @@ source: "JSON_SCHEMA.md"
 
 - `data` 每个频谱采样占 4 字节：主频 uint16（低 15 位有效，0–32767）、密度 uint16（低 14 位有效，0–16383），整体再做 base64。
 - `division` 是时间对齐用的每采样样本数：`sample_rate / division` 即每秒频谱采样数。`sample_rate`、`source` 与主波形一致。
-- **生成时机**：转写生成工程时，`--with-waveform` 在媒体旁自动生成 `<媒体名>.ReaPeaks` 的 wave 层（GUI 默认开启）；只有同时勾选 Launcher 的“生成 ReaPeaks 频谱数据”或传入 `--with-spectral`，才额外执行频谱 FFT 并写入 spectral 层。`--with-spectral` 必须与 `--with-waveform` 一起使用。服务器只读取已有的 `.ReaPeaks`，不负责生成。自动生成依赖 `numpy`，缺少 ffmpeg/numpy 时静默跳过。
+- **生成时机**：转写生成工程时，`--with-waveform` 在媒体旁自动生成 `<媒体名>.ReaPeaks` 的 wave 层（GUI 默认开启）；只有同时勾选 Launcher 的“生成 ReaPeaks 频谱数据”或传入 `--with-spectral`，才额外执行频谱 FFT 并写入 spectral 层。`--with-spectral` 必须与 `--with-waveform` 一起使用。服务器只读取已有的 `.ReaPeaks`，不负责生成。生成由 Rust 内核（`reapeaks`）承担，经 ffmpeg 解码媒体；缺少 ffmpeg 或解码失败时打日志跳过。numpy 不参与 `.ReaPeaks` 生成（仅 OCR 后处理路径 lazy import）。
 - 解析器读取 REAPER 的 `RPKN`/`RPKL` 文件，取匹配 `peaks_per_second` 分辨率的 spectral 层（`-(int)'s'` 标记）；无 spectral 层、文件缺失或损坏时静默降级，不影响编辑器。
 - 未识别的 `schema` / `encoding` 会被忽略。浏览器端在 `decodeSpectralPayload` 校验这两字段与 `data` 长度（`peak_count * 4`）。
 
 ### 1.1b waveform_reapeaks 波形层（可选）
 
-`waveform_reapeaks` 是 `.ReaPeaks` 最细 wave 层转成的 `moy.asr.waveform.v1` payload（字段与 §1.1 完全一致）。它作为**可选的波形形状来源**：编辑器默认使用自研 `waveform`；用户可以在波形设置中切换到本字段绘制包络。没有可用 `.ReaPeaks` 时仍可使用自研 `waveform`（1000 Hz 重采样）。
+`waveform_reapeaks` 是 `.ReaPeaks` 最细 wave 层转成的 `moy.asr.waveform.v1` payload（字段与 §1.1 完全一致）。它是**默认的波形形状来源**：编辑器默认使用本字段绘制包络，没有可用 `.ReaPeaks` 时自动回退自研 `waveform`（1000 Hz 重采样）；用户可在波形设置中手动切换两种来源。
 
 ```json
 {
@@ -191,14 +191,16 @@ source: "JSON_SCHEMA.md"
 {
   "schema": "moy.asr.gap_remove.v1",
   "detector": "audio_gate",
-  "minimum_ms": 500,
-  "threshold_db": -24,
+  "minimum_ms": 400,
+  "threshold_db": -28,
   "hysteresis_db": 2,
-  "lead_in_ms": 40,
+  "lead_in_ms": 120,
   "lead_out_ms": 80,
   "skip_playback": true,
   "manual_corrections": false,
   "operation_mode": "middle_drag",
+  "disable_coverage_percent": 80,
+  "disable_remaining_ms": 300,
   "gaps": [
     { "start": 1280, "end": 2440, "removed": true },
     { "start": 6120, "end": 7050, "removed": false }
@@ -207,11 +209,13 @@ source: "JSON_SCHEMA.md"
 ```
 
 - `detector` 固定为 `audio_gate`：扫描波形峰值包络，声音高于 `threshold_db` 时打开 gate，低于 `threshold_db - hysteresis_db` 后才关闭；不会用字幕之间的时间差推断空隙。
-- `minimum_ms` 的允许范围是 100–60000，单位为毫秒；默认 500。判定基于应用前/后端预留后的最终移除区间，预留吃完整段时不纳入移除。
-- `threshold_db` 的范围是 -96–0，默认 -24；`hysteresis_db` 的范围是 0–30，默认 2。比如阈值 -24、滞回 2 时，声音达到 -24 才算有声，低于 -26 才重新算静音。建议使用 1–3dB；过高会延迟回到静音。滞回位于「高级设置」折叠区内。
-- `lead_in_ms` / `lead_out_ms` 是每段空隙两侧保留的静音毫秒数，范围 0–2000，默认前端 40、后端 80。扫描得到的原始静音区间会在起点加 `lead_in_ms`、终点减 `lead_out_ms` 后再写入 `gaps`，避免剪掉空隙后两句贴得太急；预留后的区间短于 `minimum_ms` 时整段保留。
-- `manual_corrections` 表示当前结果是否包含人工修正。Alt+左键切换整段、边界拖动、中键范围操作和“全部恢复”都会设为 `true`；重新扫描前会要求确认，扫描成功后重置为 `false`。
-- `operation_mode` 控制人工修正交互：`none` 仅保留 Alt+点击整段切换，`boundary_drag` 在 hover 空隙时显示左右边界手柄，`middle_drag` 默认用中键增加静音、按住 Alt 才恢复声音；默认 `middle_drag`。边界拖入另一段空隙时会直接合并两段。
+- `minimum_ms` 的允许范围是 100–60000，单位为毫秒；默认 400。判定基于应用前/后端预留后的最终移除区间，预留吃完整段时不纳入移除。
+- `threshold_db` 的范围是 -96–0，默认 -28；`hysteresis_db` 的范围是 0–30，默认 2。比如阈值 -28、滞回 2 时，声音达到 -28 才算有声，低于 -30 才重新算静音。建议使用 1–3dB；过高会延迟回到静音。滞回位于「空隙检测与调整」折叠区内。
+- `lead_in_ms` / `lead_out_ms` 是每段空隙两侧保留的静音毫秒数，范围 0–2000，默认前端 120、后端 80。扫描得到的原始静音区间会在起点加 `lead_in_ms`、终点减 `lead_out_ms` 后再写入 `gaps`，避免剪掉空隙后两句贴得太急；预留后的区间短于 `minimum_ms` 时整段保留。这两个值在扫描生成空隙时继续生效；对已有结果点击「进一步收缩空隙」时，会再次按当前值向内调整现有区间，是额外的可撤销微调。
+- `manual_corrections` 表示当前结果是否包含人工修正。Alt+左键切换整段、边界拖动、Alt+整体拖动、Ctrl/Cmd+复制拖动、中键范围操作和“全部恢复”都会设为 `true`；重新扫描前会要求确认，扫描成功后重置为 `false`。
+- `operation_mode` 控制人工修正交互：`none` 仅保留 Alt+点击整段切换，`boundary_drag` 在 hover 空隙时显示左右边界手柄，`middle_drag` 默认用中键增加静音、按住 Alt 才恢复声音，`boundary_and_middle`（界面显示「边界与中键」）同时启用边界手柄和中键范围操作；当前界面默认 `boundary_drag`。边界拖入另一段空隙时会直接合并两段。
+- `disable_coverage_percent` 与 `disable_remaining_ms` 是“禁用空隙内字幕”设置，均为可选字段，缺失时默认分别为 80% 和 300ms。执行“禁用字幕”时，编辑器先把所有 `removed: true` 空隙合并，再筛选空隙覆盖字幕时长达到该比例、且未被覆盖的剩余字幕时长不超过该阈值的主字幕；完全落在空隙内的字幕会命中。该操作只设置字幕的 `disabled` 标记，不改写起止时间，并可通过撤销恢复。
+- 「空隙检测与调整」中的「进一步收缩空隙」是对现有 `audio_gate` 空隙的额外处理：每段起点增加当前 `lead_in_ms`，终点减少当前 `lead_out_ms`；被预留量完全吃掉的区间会丢弃，其他区间保留原有 `removed` 状态。它只修改 `gaps`、标记 `manual_corrections`，不改写字幕起止时间；重复点击会继续收缩，且每次都可撤销。
 - 扫描不会移除开头或结尾的素材。
 - 波形将 `removed: true` 画为橙色斜纹、`removed: false` 画为灰蓝斜纹；左键仅跳转播放头，Alt+左键才在两种状态间切换。
 - 旧版按字幕间隔扫描的结果会保留在工程中，但为避免误删已停用；重新扫描后会写入 `detector: "audio_gate"`。
@@ -239,6 +243,7 @@ source: "JSON_SCHEMA.md"
 | `background_color` | `string` | 否 | 字幕预览背景色，6 位十六进制颜色 `#RRGGBB`；缺失时使用黑色 |
 | `background_alpha` | `number` | 否 | 字幕预览背景不透明度，范围 `[0, 1]`；缺失时使用 `0.65`，设为 `0` 时隐藏背景 |
 | `color` | `string` | 否 | 六位十六进制颜色，如 `#ffffff`；主字幕默认白色，拓展字幕默认黄色 `#ffd34d` |
+| `color_underline` | `boolean` | 否 | 播放预览按字幕颜色快照给文字加下划线以区分不同颜色的字幕；缺失时视为 `true`（默认开启），设为 `false` 时关闭下划线。编辑器仅在关闭时写入该字段 |
 | `preview.extension_subtitle` | `object` | 否 | 拓展字幕样式；同样支持 `font_size`、`font_family`、`color`，没有字号时默认比主字幕小 2px |
 
 ### 约束
@@ -246,6 +251,7 @@ source: "JSON_SCHEMA.md"
 - `x`、`y`、`width`、`height` 四个字段都必须是数字（不接受字符串、布尔），且落在 `[0, 1]`。
 - 若存在 `font_size`，必须是 `[12, 96]` 内的数字；若存在 `font_family`，必须是内置字体键或非空本机字体族名称，最长 128 个字符，不能包含控制字符；若存在 `background_color`，必须是 `#RRGGBB` 格式；若存在 `background_alpha`，必须是 `[0, 1]` 内的数字。
 - 若存在 `color`，必须是 `#RRGGBB` 六位十六进制颜色；拓展字幕样式不包含独立几何，沿用 `preview.subtitle` 的预览框。
+- 若存在 `color_underline`，必须是布尔值；其他取值视为缺失并按默认 `true` 处理。
 - 盒子必须留在播放器内：`x + width <= 1` 且 `y + height <= 1`。
 - 编辑器额外强制最小可读尺寸 `width >= 0.20`、`height >= 0.08`（这是编辑器 UX 钳制，非数据契约的硬校验；导入时会被编辑器再钳制）。
 - `preview` 缺失或 `preview.subtitle` 缺失时按**旧工程**处理，编辑器使用默认几何 `{ x: 0.1, y: 0.76, width: 0.8, height: 0.16 }`——字幕带占 76%→92%（底部留 8%），宽度 80% 居中。
@@ -414,6 +420,8 @@ source: "JSON_SCHEMA.md"
   "name": "表情包名（去扩展名）",
   "filename": "表情包名.png",
   "rel": "相对 sticker_root 的路径，通常等于 filename",
+  "width": 1920,
+  "height": 1080,
   "start": 1234,
   "end": 9999
 }
@@ -424,6 +432,7 @@ source: "JSON_SCHEMA.md"
 | `name` | 显示名，通常等于文件名去扩展名 |
 | `filename` | 完整文件名（含扩展名） |
 | `rel` | 相对 `sticker_root` 的路径。平铺目录下等于 `filename` |
+| `width` / `height` | 可选正整数，原始图片像素宽高。旧工程缺失时，导出器使用兼容默认值。 |
 | `start` / `end` | 表情包时间范围（毫秒）。导出 EDL 时使用；跨多句时通常等于 head 段的 `start` 与最后一句的 `end` |
 
 ### 4.2 sticker_ref（后续条引用 head）
@@ -440,18 +449,18 @@ source: "JSON_SCHEMA.md"
 ### 4.3 color head
 
 ```json
-{ "name": "red", "value": "#e74c3c", "start": 1234, "end": 9999 }
+{ "name": "red", "value": "#f07f6f", "start": 1234, "end": 9999 }
 ```
 
-`name` 只能是以下 5 种之一：
+`name` 只能是以下 5 种之一（调色板唯一权威定义在 `maw/colors.py` 的 `COLOR_PALETTE`：speaker 自动取色、1~5 手动标记与编辑器/波形显示共用，构建时注入编辑器；下表为当前值，旧工程可能保留调整前存储的 `value`）：
 
 | name | value |
 |---|---|
-| `yellow` | `#f1c40f` |
-| `green` | `#2ecc71` |
-| `red` | `#e74c3c` |
-| `purple` | `#9b59b6` |
-| `blue` | `#3498db` |
+| `yellow` | `#c4a019` |
+| `green` | `#66bb6a` |
+| `red` | `#f07f6f` |
+| `purple` | `#bf89e6` |
+| `blue` | `#61a7fa` |
 
 ### 4.4 color_ref
 

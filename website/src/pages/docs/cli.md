@@ -127,18 +127,18 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 | `-i PATH`, `--input PATH` | 转写模式下必填；音频或视频路径。Server 模式不能使用。 |
 | `-o PATH [PATH]`, `--output PATH [PATH]` | 第一个路径为 SRT，第二个可选路径为 `.mosp`；最多两个路径。 |
 | `--mosp PATH` | 单独指定 `.mosp` 输出路径；不能和 `-o` 的第二个路径同时使用。 |
-| `--provider qwen\|soniox\|bcut` | 选择供应商，默认 `qwen`。`qwen` 覆盖 Qwen-Audio、Qwen3-ASR 和 Fun-ASR；`bcut` 为免 Key 的实验性非官方接口，仅中文，详见 [WORKFLOW](../workflow/) 的风险说明。 |
+| `--provider qwen\|soniox\|tencent\|bcut` | 选择供应商，默认 `qwen`。`tencent` 使用腾讯云录音文件识别；`bcut` 为免 Key 的实验性非官方接口。 |
 | `--model MODEL` | 覆盖供应商的模型。Qwen 常用值为 `qwen-audio-3.0-asr-flash-filetrans`、`qwen3-asr-flash-filetrans`、`fun-asr`；Soniox 默认读取 `.env`，否则使用其内置默认模型。 |
 
 ### 4.2 字幕切分、说话人和工程内容
 
 | 参数 | 说明 |
 | --- | --- |
-| `--max-len N` | 每条字幕最大字数；未指定时使用生成器默认值 `21`。对空格分词语言按供应商规则处理。 |
+| `--max-len N` | 每条字幕最大字数；未指定时使用生成器默认值 `18`。对空格分词语言按供应商规则处理。 |
 | `--min-len N` | 句号之间的最短字数；未指定时使用默认值 `5`，主要影响 CJK 文本的合并。 |
 | `--language VALUE` | 语言提示。Qwen 可写 `zh`、`en` 等；Soniox 可写逗号分隔的 `zh,en`。不确定语言时可以省略，让供应商自动识别。 |
 | `--keep-punct` | 保留每条字幕末尾的逗号和句号；默认会去掉。 |
-| `--gap-split MS` | 相邻文字停顿超过指定毫秒数时强制切句；默认 `1500`。 |
+| `--gap-split MS` | 相邻文字停顿超过指定毫秒数时强制切句；默认 `800`。 |
 | `--speaker` | 启用说话人分离，并把匿名 speaker 标签写入 `.mosp`。需要选择支持该功能的模型。 |
 | `--speaker-colors` | 启用说话人分离，并按首次出现顺序写入一次性的字幕颜色快照；之后仍可在编辑器中修改。 |
 | `-ll VALUE`, `--length-limit VALUE` | 只处理媒体前指定时长，例如 `2m`、`20s`、`1h`、`90`。 |
@@ -149,7 +149,7 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 | `--debug` | 输出更多 API 调试信息。调试日志仍不会输出 API Key。 |
 | `-s PATH`, `--stickers PATH` | 指定表情包目录。它会传递给转写后生成的编辑器工程，也可用于 Server。 |
 
-`--speaker-colors` 已经包含说话人分离，不必同时重复写 `--speaker`。Qwen3-ASR 不支持说话人开关；Qwen-Audio、Fun-ASR 和 Soniox 支持情况以当前供应商及账户能力为准。
+`--speaker-colors` 已经包含说话人分离，不必同时重复写 `--speaker`。Qwen3-ASR 不支持说话人开关；Qwen-Audio、Fun-ASR、Soniox 和腾讯云 `16k_zh_en_2.0` 支持情况以当前供应商及账户能力为准。腾讯云大于 5MB 的媒体需要 `--file-url`。
 
 ### 4.3 Qwen / 百炼专用参数
 

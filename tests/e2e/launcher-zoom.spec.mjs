@@ -4,6 +4,21 @@ import { fileURLToPath } from 'node:url';
 
 const launcherPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/launcher/index.html');
 
+test('Launcher theme choice remains selected after reload', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+
+  await page.locator('#settingsButton').click();
+  await page.locator('#themeDark').click();
+  await expect(page.locator('#themeDark')).toHaveClass(/active/);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('MAW_GUI_THEME'))).toBe('dark');
+
+  await page.reload();
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#settingsButton').click();
+  await expect(page.locator('#themeDark')).toHaveClass(/active/);
+});
+
 test('Launcher Ctrl+wheel zoom is bounded, persisted, and leaves ordinary wheel alone', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.zoomPercent === 100);

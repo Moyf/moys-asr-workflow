@@ -39,6 +39,7 @@
   let activeLlmOperation = "";
   let artifactMenuTarget = null;
   let batchMode = false;
+  let postprocessApiKeyRequest = 0;
 
   function t(key) {
     return window.MAWLauncher.translate(key);
@@ -235,8 +236,26 @@
   }
 
   function providerLabel(item) {
-    if (item.id === "custom") return item.displayName || item.defaultLabel || item.label || CUSTOM_DEFAULT_LABEL;
+    if (item.id === "custom") return item.displayName || t("llm_custom_provider") || item.defaultLabel || item.label || CUSTOM_DEFAULT_LABEL;
     return item.label || item.defaultLabel || item.id;
+  }
+
+  function postprocessErrorText(result) {
+    const detail = result?.detail || result?.error || "";
+    return window.MAWLauncher.errorText
+      ? window.MAWLauncher.errorText(result?.code || "", detail)
+      : (detail || t("failed"));
+  }
+
+  function postprocessFieldId(field) {
+    return ({
+      postprocessApiKey: "llmApiKey",
+      postprocessBaseUrl: "llmBaseUrl",
+      postprocessModel: "llmModel",
+      postprocessReasoningMode: "llmReasoningMode",
+      postprocessDisplayName: "llmCustomDisplayName",
+      postprocessPrompt: "postprocessPrompt",
+    })[field] || "";
   }
 
   function syncProviderOptionLabels() {
@@ -247,6 +266,38 @@
         if (option) option.textContent = providerLabel(item);
       });
     });
+  }
+
+  function renderProviderKeyStatus(item) {
+    const keyStatus = item.maskedApiKey
+      ? t("toolbox_key_loaded").replace("{key}", item.maskedApiKey)
+      : t("toolbox_key_empty");
+    $("llmKeyStatus").textContent = keyStatus;
+    $("postprocessProviderStatus").textContent = `${providerLabel(item)} · ${keyStatus}`;
+  }
+
+  async function loadPostprocessApiKey(providerId, fallbackMask = "") {
+    const requestId = ++postprocessApiKeyRequest;
+    try {
+      const result = await bridge("get_postprocess_settings", { providerId });
+      if (requestId !== postprocessApiKeyRequest || $("postprocessProvider").value !== providerId) return;
+      const field = $("llmApiKey");
+      if (!result?.ok) {
+        if (!field.value.trim()) field.placeholder = fallbackMask;
+        return;
+      }
+      const item = provider(providerId);
+      item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
+      item.hasApiKey = Boolean(result.apiKey || item.hasApiKey);
+      renderProviderKeyStatus(item);
+      if (field.value.trim()) return;
+      field.value = result.apiKey || "";
+      field.placeholder = "";
+    } catch (error) {
+      if (requestId === postprocessApiKeyRequest && $("postprocessProvider").value === providerId && !$("llmApiKey").value.trim()) {
+        $("llmApiKey").placeholder = fallbackMask;
+      }
+    }
   }
 
   function renderModelChoiceList(query = "") {
@@ -303,10 +354,7 @@
     item.displayName = String(value || "").trim();
     item.label = providerLabel(item);
     syncProviderOptionLabels();
-    if (provider().id === "custom") {
-      const keyStatus = item.maskedApiKey ? t("toolbox_key_loaded").replace("{key}", item.maskedApiKey) : t("toolbox_key_empty");
-      $("postprocessProviderStatus").textContent = `${providerLabel(item)} · ${keyStatus}`;
-    }
+    if (provider().id === "custom") renderProviderKeyStatus(item);
   }
 
   function autoSourcePath() {
@@ -405,16 +453,14 @@
     renderModelChoices(item.availableModels || []);
     $("llmReasoningMode").value = item.reasoningMode || "off";
     $("llmApiKey").value = "";
-    $("llmApiKey").placeholder = item.maskedApiKey || "";
+    $("llmApiKey").placeholder = "";
     $("llmCustomDisplayNameField").classList.toggle("hidden", item.id !== "custom");
     $("llmCustomDisplayName").value = item.id === "custom" ? item.displayName || "" : "";
     setFieldError("llmCustomDisplayName", "");
     setFieldError("llmReasoningMode", "");
     setSettingsSaveStatus("");
-    $("llmKeyStatus").textContent = item.maskedApiKey
-      ? t("toolbox_key_loaded").replace("{key}", item.maskedApiKey)
-      : t("toolbox_key_empty");
-    $("postprocessProviderStatus").textContent = `${providerLabel(item)} · ${item.maskedApiKey ? t("toolbox_key_loaded").replace("{key}", item.maskedApiKey) : t("toolbox_key_empty")}`;
+    renderProviderKeyStatus(item);
+    void loadPostprocessApiKey(item.id, item.maskedApiKey || "");
   }
 
   function setOpen(open) {
@@ -1278,10 +1324,8 @@
     }
   }
 
-  async function saveSettings({ autoTest = false } = {}) {
-    setSettingsSaveStatus("");
+  async function saveSettings() {
     const item = provider();
-    const enteredApiKey = $("llmApiKey").value.trim();
     const result = await bridge("save_postprocess_settings", {
       providerId: item.id,
       apiKey: $("llmApiKey").value.trim(),
@@ -1291,12 +1335,11 @@
       displayName: item.id === "custom" ? $("llmCustomDisplayName").value.trim() : "",
     });
     if (!result.ok) {
-      const field = result.field === "postprocessApiKey"
-        ? "llmApiKey"
-        : (result.field === "postprocessBaseUrl" ? "llmBaseUrl" : (result.field === "postprocessModel" ? "llmModel" : (result.field === "postprocessReasoningMode" ? "llmReasoningMode" : (result.field === "postprocessDisplayName" ? "llmCustomDisplayName" : ""))));
-      if (field) setFieldError(field, result.detail || result.error || t("failed"));
-      setSettingsSaveStatus(result.error || result.detail || t("failed"), "error");
-      setResult(result.error || result.detail || t("failed"), "error");
+      const field = postprocessFieldId(result.field);
+      const message = postprocessErrorText(result);
+      if (field) setFieldError(field, message);
+      setSettingsSaveStatus(message, "error");
+      setResult(message, "error");
       return result;
     }
     ["llmApiKey", "llmBaseUrl", "llmModel", "llmReasoningMode", "llmCustomDisplayName"].forEach((field) => setFieldError(field, ""));
@@ -1311,25 +1354,17 @@
     item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
     item.verified = Boolean(result.verified);
     syncProviderOptionLabels();
-    renderProvider(item.id);
+    renderProviderKeyStatus(item);
     renderAutoPostprocessState();
-    if (autoTest && enteredApiKey) {
-      await testConnection({ alreadySaved: true });
-    } else {
-      setSettingsSaveStatus(t("toolbox_saved"), "success");
-    }
+    setSettingsSaveStatus(t("toolbox_saved"), "success");
     return result;
   }
 
-  async function testConnection({ alreadySaved = false } = {}) {
+  async function testConnection() {
     setSettingsSaveStatus(t("llm_connection_testing"), "", 0);
     $("testLlmConnection").disabled = true;
     $("getLlmModels").disabled = true;
     try {
-      if (!alreadySaved) {
-        const saved = await saveSettings({ autoTest: false });
-        if (!saved?.ok) return saved;
-      }
       const item = provider();
       const result = await bridge("test_postprocess_connection", {
         providerId: item.id,
@@ -1337,14 +1372,25 @@
         baseUrl: $("llmBaseUrl").value.trim(),
         model: $("llmModel").value.trim(),
         reasoningMode: $("llmReasoningMode").value,
+        displayName: item.id === "custom" ? $("llmCustomDisplayName").value.trim() : "",
+        save: true,
       });
       if (result.ok) {
         item.verified = Boolean(result.verified);
-        setSettingsSaveStatus(t("llm_connection_success"), "success");
+        item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
+        item.hasApiKey = Boolean(result.maskedApiKey || $("llmApiKey").value.trim() || item.hasApiKey);
+        syncProviderOptionLabels();
+        renderProviderKeyStatus(item);
+        setSettingsSaveStatus(result.saved ? t("llm_connection_saved") : t("llm_connection_success"), "success");
         renderAutoPostprocessState();
         maybeEnablePendingAutoStep();
       }
-      else setSettingsSaveStatus(result.detail || result.error || t("failed"), "error", 0);
+      else {
+        const message = postprocessErrorText(result);
+        const field = postprocessFieldId(result.field);
+        if (field) setFieldError(field, message);
+        setSettingsSaveStatus(message, "error", 0);
+      }
       return result;
     } catch (error) {
       setSettingsSaveStatus(String(error?.message || error || t("failed")), "error", 0);
@@ -1368,11 +1414,10 @@
         model: $("llmModel").value.trim(),
       });
       if (!result.ok) {
-        const field = result.field === "postprocessApiKey"
-          ? "llmApiKey"
-          : (result.field === "postprocessBaseUrl" ? "llmBaseUrl" : (result.field === "postprocessModel" ? "llmModel" : ""));
-        if (field) setFieldError(field, result.detail || result.error || t("failed"));
-        setSettingsSaveStatus(result.detail || result.error || t("failed"), "error", 0);
+        const field = postprocessFieldId(result.field);
+        const message = postprocessErrorText(result);
+        if (field) setFieldError(field, message);
+        setSettingsSaveStatus(message, "error", 0);
         return;
       }
       const models = Array.isArray(result.models)
@@ -1423,8 +1468,9 @@
       else {
         const message = result.code === "custom_prompt_required"
           ? t("toolbox_custom_prompt_required")
-          : (result.error || result.detail || t("failed"));
-        if (result.field === "postprocessPrompt") setFieldError("postprocessPrompt", message);
+          : postprocessErrorText(result);
+        const field = postprocessFieldId(result.field);
+        if (field) setFieldError(field, message);
         setResult(message, "error");
       }
     } finally {
@@ -1531,7 +1577,7 @@
   $("postprocessProvider").addEventListener("change", () => { renderProvider(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("postprocessOperation").addEventListener("change", () => switchLlmOperation($("postprocessOperation").value));
   $("llmProvider").addEventListener("change", () => { $("postprocessProvider").value = $("llmProvider").value; renderProvider(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
-  $("saveLlmSettings").addEventListener("click", () => { void saveSettings({ autoTest: true }); });
+  $("saveLlmSettings").addEventListener("click", () => { void saveSettings(); });
   $("testLlmConnection").addEventListener("click", testConnection);
   $("getLlmModels").addEventListener("click", getModels);
   $("llmModelChoicesToggle").addEventListener("mousedown", (event) => event.preventDefault());
@@ -1706,6 +1752,8 @@
   };
   window.MAWLauncher.getAutoPostprocessPayload = autoPlanFromControls;
   window.MAWLauncher.onLanguageChanged = () => {
+    syncProviderOptionLabels();
+    if (window.MAWLauncher.config?.postprocessProviders?.length) renderProviderKeyStatus(provider());
     document.querySelectorAll(".toolbox-chain-file").forEach(renderArtifactButton);
     renderAutoPostprocessState();
   };

@@ -585,6 +585,7 @@ class LocalEditorServerTests(unittest.TestCase):
         finally:
             server.shutdown()
             thread.join(timeout=2)
+            server.server_close()
         with zipfile.ZipFile(io.BytesIO(body)) as archive:
             names = set(archive.namelist())
             self.assertIn("content.otio", names)
@@ -838,6 +839,7 @@ class LocalEditorServerTests(unittest.TestCase):
         finally:
             server.shutdown()
             thread.join(timeout=2)
+            server.server_close()
         self.assertEqual(status, 400)
         result = json.loads(body.decode("utf-8"))
         self.assertFalse(result["ok"])
@@ -855,6 +857,7 @@ class LocalEditorServerTests(unittest.TestCase):
         finally:
             server.shutdown()
             thread.join(timeout=2)
+            server.server_close()
         self.assertEqual(status, 400)
         result = json.loads(body.decode("utf-8"))
         self.assertFalse(result["ok"])
@@ -873,6 +876,7 @@ class LocalEditorServerTests(unittest.TestCase):
         finally:
             server.shutdown()
             thread.join(timeout=2)
+            server.server_close()
         self.assertEqual(status, 400)
         result = json.loads(body.decode("utf-8"))
         self.assertFalse(result["ok"])

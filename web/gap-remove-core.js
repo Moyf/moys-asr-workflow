@@ -792,10 +792,10 @@
       // carry a provenance layer. Normalize them into the current detector so
       // their display, shrinking, clearing, and rescanning stay consistent.
       detector: 'audio_gate',
-      minimum_ms: clampInteger(source.minimum_ms, 500, 100, 60000),
-      threshold_db: Math.min(0, Math.max(-96, Number.isFinite(Number(source.threshold_db)) ? Number(source.threshold_db) : -24)),
+      minimum_ms: clampInteger(source.minimum_ms, 400, 100, 60000),
+      threshold_db: Math.min(0, Math.max(-96, Number.isFinite(Number(source.threshold_db)) ? Number(source.threshold_db) : -28)),
       hysteresis_db: Math.min(30, Math.max(0, Number.isFinite(Number(source.hysteresis_db)) ? Number(source.hysteresis_db) : 2)),
-      lead_in_ms: clampInteger(source.lead_in_ms, 40, 0, 2000),
+      lead_in_ms: clampInteger(source.lead_in_ms, 120, 0, 2000),
       lead_out_ms: clampInteger(source.lead_out_ms, 80, 0, 2000),
       skip_playback: source.skip_playback !== false,
       manual_corrections: source.manual_corrections === true || provenance.manual_overrides.length > 0,

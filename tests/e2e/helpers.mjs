@@ -8,13 +8,27 @@ import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { randomBytes } from 'node:crypto';
 
-// The editor server and portable HTML generator use only the repository's
-// Python sources and standard library.  Running them directly avoids making
-// browser tests depend on uv's global cache (which may be locked down on a
-// developer machine).  Set MAW_E2E_PYTHON when a specific interpreter is
-// needed.
-const PYTHON_COMMAND = process.env.MAW_E2E_PYTHON
-  || (process.platform === 'win32' ? 'python' : 'python3');
+// E2E tests exercise Python-backed editor servers and edit.py. Use the
+// repository's locked uv environment by default so the runner cannot silently
+// fall back to a system interpreter with an incomplete dependency set. Set
+// MAW_E2E_PYTHON only when deliberately testing with a specific interpreter.
+const configuredPython = String(process.env.MAW_E2E_PYTHON || '').trim();
+const PYTHON_RUNNER = configuredPython
+  ? { command: configuredPython, prefixArgs: [] }
+  : { command: 'uv', prefixArgs: ['run', '--frozen', 'python'] };
+
+function pythonCommandArgs(args) {
+  return [...PYTHON_RUNNER.prefixArgs, ...args];
+}
+
+function buildE2EProcessEnv(extra = {}) {
+  const environment = { ...process.env, ...extra };
+  // An inherited PYTHONPATH can reintroduce packages from a different
+  // interpreter. The explicit MAW_E2E_PYTHON escape hatch keeps its old
+  // behavior, while the default uv path stays isolated and reproducible.
+  if (!configuredPython) delete environment.PYTHONPATH;
+  return environment;
+}
 
 // ---------------------------------------------------------------------------
 // Process cleanup for interrupted E2E runs.
@@ -298,7 +312,7 @@ export function generateProjectJson(filePath) {
 // when the process has fully exited.
 // ---------------------------------------------------------------------------
 async function launchServerProcess(pythonArgs, port, env) {
-  const proc = spawn(PYTHON_COMMAND, pythonArgs, {
+  const proc = spawn(PYTHON_RUNNER.command, pythonCommandArgs(pythonArgs), {
     cwd: process.cwd(),
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
@@ -367,12 +381,11 @@ export async function startServer(projectJsonPath, mediaPath, port) {
     '--port', String(port),
     '--no-open',
   ];
-  return launchServerProcess(pythonArgs, port, {
-    ...process.env,
+  return launchServerProcess(pythonArgs, port, buildE2EProcessEnv({
     PYTHONUNBUFFERED: '1',
     LOCALAPPDATA: settingsRoot,
     XDG_CONFIG_HOME: settingsRoot,
-  });
+  }));
 }
 
 // 空白服务器（--blank）：用于「浏览器打开工程后由服务器接管」的回归测试。
@@ -386,12 +399,11 @@ export async function startBlankServer(port, settingsRoot) {
     '--port', String(port),
     '--no-open',
   ];
-  return launchServerProcess(pythonArgs, port, {
-    ...process.env,
+  return launchServerProcess(pythonArgs, port, buildE2EProcessEnv({
     PYTHONUNBUFFERED: '1',
     LOCALAPPDATA: settingsRoot,
     XDG_CONFIG_HOME: settingsRoot,
-  });
+  }));
 }
 
 export async function startAlignmentServer(projectPath, scriptPath, port) {
@@ -402,10 +414,9 @@ export async function startAlignmentServer(projectPath, scriptPath, port) {
     '--port', String(port),
     '--no-open',
   ];
-  return launchServerProcess(pythonArgs, port, {
-    ...process.env,
+  return launchServerProcess(pythonArgs, port, buildE2EProcessEnv({
     PYTHONUNBUFFERED: '1',
-  });
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -447,11 +458,20 @@ export async function startStaticServer(filePath, port) {
 // ---------------------------------------------------------------------------
 export function generateBlankEditor(outputPath) {
   const args = ['edit.py', '--blank', '-o', outputPath];
-  execFileSync(PYTHON_COMMAND, args, {
-    cwd: process.cwd(),
-    encoding: 'utf-8',
-    timeout: 30000,
-    windowsHide: true,
-  });
+  try {
+    execFileSync(PYTHON_RUNNER.command, pythonCommandArgs(args), {
+      cwd: process.cwd(),
+      encoding: 'utf-8',
+      timeout: 30000,
+      windowsHide: true,
+    });
+  } catch (error) {
+    if (!configuredPython && (error?.code === 'ENOENT' || error?.status === 127)) {
+      throw new Error(
+        `E2E requires uv to run the project Python environment. Run "uv sync" first, or set MAW_E2E_PYTHON explicitly. Original error: ${error.message}`,
+      );
+    }
+    throw error;
+  }
   return outputPath;
 }
