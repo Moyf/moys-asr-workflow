@@ -91,13 +91,17 @@ h2[data-i18n] {
 }
 
 html {
+  block-size: 100%;
+  overflow: hidden;
   background: var(--bg-base);
   color: var(--text-primary);
 }
 
 body {
   margin: 0;
+  block-size: 100%;
   min-height: 100dvh;
+  overflow: hidden;
   background: radial-gradient(circle at top, rgba(108, 165, 232, .08), transparent 34rem), var(--bg-base);
   font-family: var(--font-sans);
   font-size: 14px;
@@ -125,9 +129,21 @@ button:disabled {
 }
 
 .shell {
-  width: min(640px, calc(100vw - 32px));
-  margin: 0 auto;
-  padding: 18px 0 92px;
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px max(16px, calc((100vw - 640px) / 2)) 20px;
 }
 
 .hero {
@@ -1075,7 +1091,8 @@ textarea::placeholder {
 #localModelPath.drag-over,
 #ocrRuntimePath.drag-over,
 #ffmpegPath.drag-over,
-#stickerDir.drag-over {
+#stickerDir.drag-over,
+#postprocessScriptPath.drag-over {
   border-color: var(--accent);
   background-color: var(--bg-raised);
   box-shadow: 0 0 0 2px var(--accent-soft);
@@ -1287,10 +1304,9 @@ textarea::placeholder {
 }
 
 .actions {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  position: static;
+  flex: 0 0 auto;
+  width: 100%;
   display: flex;
   justify-content: center;
   gap: 8px;
@@ -2281,8 +2297,8 @@ code {
   }
 }
 
- @media (max-width:620px) {
-   .grid-two,
+@media (max-width:620px) {
+  .grid-two,
    .advanced-col,
    .qwen-audio-options-grid,
    .soniox-context-options-grid,
@@ -2379,11 +2395,20 @@ html[data-theme="light"] {
 }
 
 html,
+.shell-scroll,
+.batch-queue,
+.batch-details pre,
+.llm-model-options,
+.script-preview pre,
+.replace-rule-preview pre,
 .log,
 .modal-card,
 .settings-scroll,
 .toolbox-content,
 .toolbox-chain-list,
+.toolbox-result,
+.toolbox-stream-text,
+select[multiple],
 textarea {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
@@ -2399,18 +2424,27 @@ textarea::-webkit-scrollbar-thumb {
 }
 
 html.scrolling,
+.shell-scroll.scrolling,
+.batch-queue.scrolling,
+.batch-details pre.scrolling,
+.llm-model-options.scrolling,
+.script-preview pre.scrolling,
+.replace-rule-preview pre.scrolling,
 .log.scrolling,
 .modal-card.scrolling,
 .settings-scroll.scrolling,
 .toolbox-content.scrolling,
 .toolbox-chain-list.scrolling,
+.toolbox-result.scrolling,
+.toolbox-stream-text.scrolling,
+select[multiple].scrolling,
 textarea.scrolling {
   scrollbar-color: var(--text-muted) transparent;
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner {

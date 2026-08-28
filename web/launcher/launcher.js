@@ -1208,8 +1208,10 @@
   function setupScrollbarFlash() {
     const VISIBLE_MS = 900;
     const bind = (target, host) => { let timer = 0; target.addEventListener("scroll", () => { host.classList.add("scrolling"); clearTimeout(timer); timer = setTimeout(() => host.classList.remove("scrolling"), VISIBLE_MS); }, { passive: true }); };
-    bind(window, document.documentElement);
-    document.querySelectorAll(".log, .modal-card, .settings-scroll, .toolbox-content, .toolbox-chain-list, textarea").forEach((el) => bind(el, el));
+    const shellScroll = document.querySelector(".shell-scroll");
+    if (shellScroll) bind(shellScroll, shellScroll);
+    else bind(window, document.documentElement);
+    document.querySelectorAll(".batch-queue, .batch-details pre, .llm-model-options, .script-preview pre, .replace-rule-preview pre, .log, .modal-card, .settings-scroll, .toolbox-content, .toolbox-chain-list, .toolbox-result, .toolbox-stream-text, select[multiple], textarea").forEach((el) => bind(el, el));
   }
   function expandServer() { $("serverCard").classList.remove("collapsed"); renderChevron("serverCard"); }
   function hasFileDrag(event) { return !event.dataTransfer || Array.from(event.dataTransfer.types || []).includes("Files"); }

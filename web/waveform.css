@@ -805,6 +805,16 @@
   box-shadow: 0 1px 5px var(--wave-cue-shadow);
   touch-action: none;
 }
+/* 多行波形中被行边界截开的同一字幕：去掉相接一侧的上下圆角，
+   让上一行末端与下一行起端看起来像一块连续字幕。 */
+.waveform-cue-block.continues-from-previous-row {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.waveform-cue-block.continues-to-next-row {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
 .waveform-cue-block:hover { filter: brightness(var(--wave-hover-brightness)); }
 /* 分组徽章：放在块上方的行内区域（bottom = 块高35 + 块底7 + 间距2），
    纯视觉提示不遮挡块内文字；left 由 JS 按块位置写入 */

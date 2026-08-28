@@ -327,6 +327,9 @@ class GuiConfigTests(unittest.TestCase):
         self.assertIn("Qwen/Qwen3-ForcedAligner-0.6B", qwen17.required_model_refs)
         nano = provider.models[2]
         self.assertEqual(nano.model_ref, "FunAudioLLM/Fun-ASR-Nano-2512")
+        self.assertTrue(nano.hidden)
+        paraformer = provider.models[3]
+        self.assertTrue(paraformer.hidden)
         sensevoice = provider.models[4]
         self.assertEqual(sensevoice.model_ref, "iic/SenseVoiceSmall")
         self.assertIn("funasr", sensevoice.requires_runtime)

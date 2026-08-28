@@ -60,6 +60,8 @@ class ModelConfig:
     # 上游缓存中的实际模型 ID；当引擎用简写加载（如 FunASR paraformer-zh）
     # 而缓存目录使用完整 ID 时，扫描器靠它定位已下载的模型。
     cache_refs: tuple[str, ...] = ()
+    # 暂时保留底层配置与 CLI 能力，但不在 Launcher 的模型列表中展示。
+    hidden: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -354,6 +356,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         engine="funasr",
         model_ref="FunAudioLLM/Fun-ASR-Nano-2512",
         requires_runtime=("funasr", "torchaudio"),
+        hidden=True,
     ),
     ModelConfig(
         id="funasr-local",
@@ -368,6 +371,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         # FunASR model zoo 把 paraformer-zh 解析为这个 ModelScope ID；
         # GUI 不能导入 FunASR，扫描缓存时需要显式的映射。
         cache_refs=("iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",),
+        hidden=True,
     ),
     ModelConfig(
         id="sensevoice-small-local",

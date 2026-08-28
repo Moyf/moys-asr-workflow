@@ -99,9 +99,11 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(local["kind"], "local")
         self.assertEqual(local["models"][0]["id"], "qwen3-asr-local")
         self.assertEqual(local["models"][1]["id"], "qwen3-asr-1.7b-local")
-        self.assertEqual(local["models"][2]["id"], "fun-asr-nano-local")
-        self.assertEqual(local["models"][3]["id"], "funasr-local")
-        self.assertEqual(local["models"][4]["modelRef"], "iic/SenseVoiceSmall")
+        visible_ids = [model["id"] for model in local["models"]]
+        self.assertNotIn("fun-asr-nano-local", visible_ids)
+        self.assertNotIn("funasr-local", visible_ids)
+        self.assertEqual(local["models"][2]["modelRef"], "iic/SenseVoiceSmall")
+        self.assertEqual(local["models"][3]["id"], "moss-transcribe-diarize-local")
         whisper = local["models"][-1]
         self.assertEqual(whisper["id"], "whisper-large-v3-local")
         self.assertIn("用户自行安装 CUDA 12 和 cuDNN 9", whisper["note"])
