@@ -467,12 +467,14 @@
   }
   .player-stage video { display: block; cursor: pointer; }
   .media-controls {
-    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;
     min-height: 34px; margin-top: 4px; padding: 5px 7px;
+    min-width: 0; container: media-controls / inline-size;
     color: var(--text-secondary); background: var(--panel-toolbar-bg);
     border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
     font-size: 12px; font-variant-numeric: tabular-nums;
   }
+  .media-controls > * { min-width: 0; }
   .media-controls button,
   .media-controls select {
     min-height: var(--control-h); padding: 3px 8px;
@@ -488,16 +490,27 @@
   .media-controls button:disabled { opacity: .42; cursor: not-allowed; }
   .media-controls .media-step-button { width: 32px; padding: 3px 6px; }
   .media-seek-icon { display: block; width: 16px; height: 16px; margin: auto; fill: currentColor; }
-  .media-clock { min-width: 92px; text-align: center; color: var(--text-secondary); }
-  .media-controls #media-seek { flex: 1 1 180px; min-width: 120px; accent-color: var(--accent); }
+  .media-clock { flex: 0 0 auto; min-width: 92px; text-align: center; color: var(--text-secondary); }
+  .media-controls #media-seek { flex: 1 1 180px; width: 0; min-width: 120px; accent-color: var(--accent); }
   .media-volume-control,
-  .media-rate-control { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
-  .media-volume-control input { width: 78px; accent-color: var(--accent); }
-  .media-rate-control select { padding: 3px 4px; }
-  @media (max-width: 680px) {
-    .media-controls { gap: 4px; }
+  .media-rate-control { display: inline-flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; }
+  .media-volume-control input { width: 78px; min-width: 0; accent-color: var(--accent); }
+  .media-rate-control select { min-width: 0; padding: 3px 4px; }
+  .media-controls #media-fullscreen { flex: 0 0 auto; }
+  @container media-controls (max-width: 680px) {
+    .media-controls { gap: 4px; padding-inline: 5px; }
+    .media-controls .media-step-button { display: none; }
     .media-clock { min-width: 82px; }
-    .media-controls #media-seek { order: 10; flex-basis: 100%; min-width: 0; }
+    .media-controls #media-seek { flex-basis: 88px; min-width: 48px; }
+  }
+  @container media-controls (max-width: 520px) {
+    .media-volume-control { display: none; }
+    .media-controls #media-seek { flex-basis: 64px; min-width: 32px; }
+  }
+  @container media-controls (max-width: 360px) {
+    .media-clock { min-width: 68px; }
+    .media-controls #media-seek { flex-basis: 40px; min-width: 20px; }
+    .media-rate-control select { padding-inline: 2px; }
   }
   .player-wrap.empty-state {
     min-height: 132px;
@@ -5448,7 +5461,7 @@
 
 <script>
 // 调色板单一来源：maw/speaker.py SPEAKER_COLOR_PALETTE，由 edit.py / serve.py 渲染时注入。
-window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#f1c40f"}, {"name": "green", "value": "#66bb6a"}, {"name": "red", "value": "#e74c3c"}, {"name": "purple", "value": "#b57edc"}, {"name": "blue", "value": "#168cff"}];
+window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "green", "value": "#66bb6a"}, {"name": "red", "value": "#f07f6f"}, {"name": "purple", "value": "#bf89e6"}, {"name": "blue", "value": "#61a7fa"}];
 </script>
 
 <script>
@@ -28038,6 +28051,55 @@ function mediaStartOtioFrames() {
   return samples / sampleRate * OTIO_STICKER_FPS;
 }
 
+const OTIO_MARKER_COLORS = Object.freeze({
+  yellow: 'YELLOW',
+  green: 'GREEN',
+  red: 'RED',
+  purple: 'PURPLE',
+  blue: 'BLUE',
+});
+const OTIO_DEFAULT_MARKER_COLOR = 'RED';
+
+function buildGapRemovedSubtitleMarkers(interval) {
+  const intervalStartMs = Math.max(0, Math.round(Number(interval?.start) || 0));
+  const intervalEndMs = Math.max(
+    intervalStartMs,
+    Math.round(Number(interval?.end) || 0),
+  );
+  const clipStartFrame = msToOtioFrames(intervalStartMs);
+  const clipEndFrame = msToOtioFrames(intervalEndMs);
+  if (clipEndFrame <= clipStartFrame) return [];
+
+  return DATA.segments.flatMap((segment) => {
+    if (!segment || segment.disabled) return [];
+    const segmentStartMs = Number(segment.start);
+    const segmentEndMs = Number(segment.end);
+    if (!Number.isFinite(segmentStartMs) || !Number.isFinite(segmentEndMs)
+        || segmentEndMs <= segmentStartMs) {
+      return [];
+    }
+    const startMs = Math.max(intervalStartMs, segmentStartMs);
+    const endMs = Math.min(intervalEndMs, segmentEndMs);
+    if (endMs <= startMs) return [];
+
+    const markerStartFrame = msToOtioFrames(startMs) - clipStartFrame;
+    const markerEndFrame = msToOtioFrames(endMs) - clipStartFrame;
+    if (markerEndFrame <= markerStartFrame) return [];
+
+    const colorName = window.AsrEditorUtils.effectiveColorName(segment, DATA.segments);
+    return [{
+      OTIO_SCHEMA: 'Marker.2',
+      metadata: {},
+      name: String(segment.text || ''),
+      color: OTIO_MARKER_COLORS[colorName] || OTIO_DEFAULT_MARKER_COLOR,
+      marked_range: otioTimeRange(
+        markerStartFrame,
+        markerEndFrame - markerStartFrame,
+      ),
+    }];
+  });
+}
+
 function stickerTargetUrl(absPath) {
   let value = String(absPath || '').trim();
   if (!value) return '';
@@ -28063,6 +28125,7 @@ function mediaTargetUrl() {
 
 function buildGapRemovedMediaClip(
   interval, index, kind, targetUrl, sourceStartFrame, sourceDurationFrames,
+  includeSubtitleMarkers = false,
 ) {
   const startFrame = msToOtioFrames(interval.start);
   const endFrame = msToOtioFrames(interval.end);
@@ -28079,7 +28142,7 @@ function buildGapRemovedMediaClip(
     name: `${kind} ${index + 1}`,
     source_range: otioTimeRange(sourceStartFrame + startFrame, durationFrames),
     effects: [],
-    markers: [],
+    markers: includeSubtitleMarkers ? buildGapRemovedSubtitleMarkers(interval) : [],
     enabled: true,
     color: null,
     media_references: {
@@ -28133,6 +28196,7 @@ function buildGapRemovedOtio() {
     color: null,
     children: intervals.map((interval, index) => buildGapRemovedMediaClip(
       interval, index, track.name, targetUrl, sourceStartFrame, sourceDurationFrames,
+      track.kind === 'Video' || trackSpecs.length === 1,
     )),
     kind: track.kind,
   }));

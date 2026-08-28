@@ -15,10 +15,11 @@
 
 - **预览字幕颜色下划线** ： 播放预览可按字幕的颜色快照给文字加下划线以区分不同颜色的字幕，默认开启，可在「预览字幕样式」设置中关闭；只影响预览画面，不改变字幕文本。
 - **颜色过滤全选过滤结果** ： 颜色过滤菜单新增「全选过滤结果」，把当前过滤命中的主轨字幕一键全部选中，可配合批量替换（仅选中）等按选区工作的工具，例如给不同说话人的字幕批量加前缀；双列等不显示颜色条的列表模式下自动隐藏过滤按钮。
+- **去空隙 OTIO 字幕标记** ： 导出 OTIO 时把启用字幕作为媒体 clip 的 marker 写入，marker 名称为字幕内容；继承字幕颜色并映射到 DaVinci Resolve 的 `RED`、`YELLOW`、`GREEN`、`BLUE`、`PURPLE`，跨越被移除空隙的字幕按保留 clip 拆分，无颜色字幕使用红色默认标记。
 
 ### 🔄 变更
 
-- **字幕颜色调色板单一来源** ： 5 色调色板收敛到 `maw/colors.py` 一处定义——speaker 自动取色、1~5 手动标记与编辑器/波形显示共用，渲染时注入 `window.ASR_EDITOR_PALETTE`，web 侧不再各自硬编码色值；绿色调整为森林系 `#66bb6a`，蓝色统一为 `#168cff`（此前编辑器/波形与生成端不一致），紫色提亮为 `#b57edc`；旧工程已存储的颜色快照值保持不变。
+- **字幕颜色调色板单一来源** ： 5 色调色板收敛到 `maw/colors.py` 一处定义——speaker 自动取色、1~5 手动标记与编辑器/波形显示共用，渲染时注入 `window.ASR_EDITOR_PALETTE`，web 侧不再各自硬编码色值。五色明度（OKLCH L≈0.718）以绿色 `#66bb6a` 为锚统一：黄 `#c4a019`、红 `#f07f6f`、紫 `#bf89e6`、蓝 `#61a7fa`，并顺带统一了此前蓝色在编辑器/波形与生成端不一致的取值；旧工程已存储的颜色快照值保持不变。
 - **托管 Runtime 共性抽象** ： local / ocr / moss 三个托管 Runtime 统一到 `maw/runtimes`（`RuntimeSpec` 声明式规格 + `ManagedRuntime` 生命周期基类），`maw/local_runtime.py` 与 `maw/ocr_runtime.py` 收窄为薄壳委托，新增 `engine` 维度（local / moss）支持。
 - **移除 bundled uv** ： Windows 打包版托管 Runtime 一律 embedded Python + get-pip + `pip install --target` 安装（unix 打包版与源码模式见下条）；moss 依赖因与 local（qwen-asr 固定 Transformers 4.57.6）互斥而独立声明于 `moss-requirements.in`，由 `uv pip compile` 冻结（与 local/ocr 的 `uv export` 管线并行），macOS 产物不再内置 uv。
 - **unix 打包版宿主 venv 与源码模式零资产安装** ： unix（Linux / macOS）打包版不再内嵌解释器，runtime 安装改用系统 `python3 -m venv` 创建环境后按同一份 frozen 清单直装（无 python3 或版本低于 3.11 时给出明确提示），产物不再携带 unix 平台用不到的引导资产；源码模式同样零引导资产，检测开发环境的 uv 后以 `uv pip install --python <MAW 解释器> --target <site-packages>` 接入与打包版一致的托管目录布局。全新 clone 首次安装时若 `build/` 下缺 frozen 清单，会按构建管线同款 `uv export` / `uv pip compile` 命令用 uv 自动补齐；未检测到 uv 时在进度日志输出安装指引警告。

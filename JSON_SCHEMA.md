@@ -440,18 +440,18 @@
 ### 4.3 color head
 
 ```json
-{ "name": "red", "value": "#e74c3c", "start": 1234, "end": 9999 }
+{ "name": "red", "value": "#f07f6f", "start": 1234, "end": 9999 }
 ```
 
 `name` 只能是以下 5 种之一（调色板唯一权威定义在 `maw/colors.py` 的 `COLOR_PALETTE`：speaker 自动取色、1~5 手动标记与编辑器/波形显示共用，构建时注入编辑器；下表为当前值，旧工程可能保留调整前存储的 `value`）：
 
 | name | value |
 |---|---|
-| `yellow` | `#f1c40f` |
+| `yellow` | `#c4a019` |
 | `green` | `#66bb6a` |
-| `red` | `#e74c3c` |
-| `purple` | `#b57edc` |
-| `blue` | `#168cff` |
+| `red` | `#f07f6f` |
+| `purple` | `#bf89e6` |
+| `blue` | `#61a7fa` |
 
 ### 4.4 color_ref
 
