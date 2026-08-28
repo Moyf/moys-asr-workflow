@@ -565,13 +565,26 @@
     const end = Math.max(0, Math.round(Math.max(Number(startMs), Number(endMs))));
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return provenance;
 
+    const baseRangesToClear = provenance.manual_overrides.flatMap((record) => (
+      isGapMoveRecord(record) && gapMoveTargetRanges(record).some((target) => (
+        target.start < end && target.end > start
+      ))
+        ? [{start: record.base_start, end: record.base_end}]
+        : []
+    ));
+    const clearRanges = [{start, end}, ...baseRangesToClear];
     const removeFrom = (ranges, source, sort) => normalizeProvenanceRangeList(
       ranges.flatMap((range) => {
-        if (range.end <= start || range.start >= end) return [{...range}];
-        const remaining = [];
-        if (range.start < start) remaining.push({...range, end: start});
-        if (range.end > end) remaining.push({...range, start: end});
-        return remaining;
+        if (isGapMoveRecord(range) && gapMoveTargetRanges(range).some((target) => (
+          target.start < end && target.end > start
+        ))) return [];
+        return clearRanges.reduce((remaining, clearRange) => remaining.flatMap((piece) => {
+          if (piece.end <= clearRange.start || piece.start >= clearRange.end) return [{...piece}];
+          const pieces = [];
+          if (piece.start < clearRange.start) pieces.push({...piece, end: clearRange.start});
+          if (piece.end > clearRange.end) pieces.push({...piece, start: clearRange.end});
+          return pieces;
+        }), [{...range}]);
       }),
       source,
       {sort},
