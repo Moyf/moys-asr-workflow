@@ -10855,6 +10855,7 @@ function buildJson() {
   if (DATA.spectral) out.spectral = DATA.spectral;
   if (DATA.waveform_reapeaks) out.waveform_reapeaks = DATA.waveform_reapeaks;
   if (DATA.gap_remove) out.gap_remove = normalizedGapRemoveData(DATA.gap_remove);
+  if (DATA.script_alignment) out.script_alignment = DATA.script_alignment;
   const workspace = buildCurrentWorkspaceData();
   if (workspace) out.workspace = workspace;
   // 预览几何：始终写入归一化后的当前几何，便于跨机/重开保持位置。
@@ -13014,6 +13015,7 @@ function applyCanonicalProject(data, filename) {
   DATA.waveform_reapeaks = data.waveform_reapeaks || null;
   DATA.workspace = data.workspace || null;
   DATA.gap_remove = data.gap_remove || null;
+  DATA.script_alignment = data.script_alignment || null;
   DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
   gapRemoveDirty = false;
   previewGeometryDirty = false;
