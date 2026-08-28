@@ -1624,9 +1624,12 @@
     margin: 0 -4px 4px;
     border-radius: calc(var(--radius-md) - 2px) calc(var(--radius-md) - 2px) 0 0;
   }
-  /* 批量菜单位于 sticky 工具栏的 stacking context 内；打开时提升整个工具栏，
-     确保菜单不会被右侧布局拖动条（z-index: 50）的伪元素盖住。 */
-  .cues-container > .cue-list-toolbar:has(#batch-operations-dropdown.open) {
+  /* 层级陷阱：cue-list-toolbar 是 sticky（z-index: 30），自身形成 stacking context；
+     布局拖动条（.layout-resizer，z-index: 50）在 paint 顺序上高于整个工具栏。
+     工具栏内任何弹层（颜色过滤、批量操作等下拉菜单）即使 position: fixed +
+     更高 z-index，也会被困在工具栏层级内被拖动条盖住。任何下拉打开时统一把
+     工具栏提升到 60；新增弹层不要再单独打补丁（契约见 DESIGN.md 第 6 节）。 */
+  .cues-container > .cue-list-toolbar:has(.dropdown.open) {
     z-index: 60;
   }
   /* 布局编辑模式下，dock-handle 已在文档流中占位（顶部圆角归把手），
