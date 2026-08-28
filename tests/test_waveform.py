@@ -11,6 +11,7 @@ import tempfile
 import unittest
 import wave
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -121,6 +122,36 @@ class WaveformExtractionTests(unittest.TestCase):
         self.assertIsNotNone(result.error)
         self.assertIs(result.project, project)
         self.assertEqual(project, {"segments": [], "waveform": {"stale": True}})
+
+    def test_embed_waveform_forwards_explicit_ffmpeg_path(self) -> None:
+        project = {"segments": []}
+        payload = {
+            "schema": waveform_module.WAVEFORM_SCHEMA,
+            "encoding": waveform_module.WAVEFORM_ENCODING,
+            "peaks_per_second": 100,
+            "peak_count": 1,
+            "duration_ms": 10,
+            "data": "AAA=",
+            "source": waveform_module.media_signature(self.media_path),
+        }
+
+        with mock.patch.object(
+            waveform_module,
+            "extract_waveform",
+            return_value=payload,
+        ) as extract:
+            result = waveform_module.embed_waveform(
+                project,
+                self.media_path,
+                ffmpeg_bin="C:/MAW/ffmpeg.exe",
+            )
+
+        self.assertIsNone(result.error)
+        extract.assert_called_once_with(
+            self.media_path,
+            peaks_per_second=waveform_module.DEFAULT_PEAKS_PER_SECOND,
+            ffmpeg_bin="C:/MAW/ffmpeg.exe",
+        )
 
 
 class EditorAssetTests(unittest.TestCase):

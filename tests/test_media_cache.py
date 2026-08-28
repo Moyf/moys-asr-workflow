@@ -9,6 +9,8 @@ import tempfile
 import unittest
 import wave
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 from maw import media_cache, reapeaks
 
@@ -129,6 +131,32 @@ class MediaCacheTests(unittest.TestCase):
         self.assertIsNone(result.reapeaks_path)
         # 工程未被篡改（无 waveform 键）
         self.assertNotIn("waveform", result.project)
+
+    def test_explicit_ffmpeg_path_is_shared_by_both_cache_generators(self) -> None:
+        ffmpeg = "C:/MAW/ffmpeg.exe"
+        with (
+            mock.patch(
+                "maw.media_cache.embed_waveform",
+                return_value=SimpleNamespace(project=self.project, error=None),
+            ) as embed,
+            mock.patch(
+                "maw.media_cache.reapeaks.generate_for_media",
+                return_value=None,
+            ) as generate,
+        ):
+            media_cache.embed_media_caches(
+                self.project,
+                self.wav,
+                ffmpeg_bin=ffmpeg,
+            )
+
+        embed.assert_called_once_with(self.project, self.wav, ffmpeg_bin=ffmpeg)
+        generate.assert_called_once_with(
+            self.wav,
+            ffmpeg_bin=ffmpeg,
+            include_spectral=False,
+            source_media_path=self.wav,
+        )
 
 
 if __name__ == "__main__":
