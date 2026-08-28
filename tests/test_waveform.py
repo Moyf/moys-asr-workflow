@@ -244,6 +244,12 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('id="cancel-subtitle-drag-on-escape"', page)
         self.assertIn('id="waveform-settings-toggle"', page)
         self.assertIn('id="waveform-settings-panel"', page)
+        self.assertIn('id="waveform-settings-help"', page)
+        self.assertIn('id="keyboard-settings-help"', page)
+        self.assertIn('id="gap-settings-help"', page)
+        self.assertIn('id="gap-remove-help"', page)
+        self.assertEqual(page.count('data-help-tab-target='), 4)
+        self.assertIn('具体用法详见帮助的「微调字幕」区', page)
         waveform_pane_start = page.index('<section class="waveform-pane"')
         editor_settings = page[page.index('id="editor-settings-panel"'):waveform_pane_start]
         editor_settings_panel_end = page.index('</section>', page.index('id="editor-settings-panel"'))
@@ -284,27 +290,132 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="help-media-seek-step"', page)
         self.assertIn('class="help-break"', page)
         self.assertIn(
-            '<span><kbd>←</kbd>/<kbd>→</kbd> 无选中时前后跳转 <span id="help-media-seek-step">1000ms</span></span>\n'
+            '<span><kbd>←</kbd>/<kbd>→</kbd> 无选中时前后跳转（时长：<span id="help-media-seek-step">1000ms</span>）</span>\n'
             '          <span class="help-break" aria-hidden="true"></span>\n'
             '          <span><kbd>Home</kbd>/<kbd>End</kbd> 在波形区或播放器跳转到媒体开头/结尾</span>\n'
             '          <span class="help-break" aria-hidden="true"></span>\n'
             '          <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> <span id="help-jkl-mode">倒放/停止/1×播放</span></span>',
             page,
         )
-        self.assertIn('其实就是用 WASD 啦，从字幕列表看是上下跳，从波形区看是左右跳 : P', page)
+        self.assertIn('其实就是用 WASD 啦，从字幕列表看是上下跳，从波形区看是左右跳 😝', page)
         self.assertNotIn('id="jkl-playback-mode"', editor_settings_panel)
         self.assertIn('id="help-split-key"', page)
         self.assertIn('id="help-waveform-split-key"', page)
-        self.assertEqual(page.count('data-help-tab='), 3)
-        self.assertIn('id="help-tab-panel-general"', page)
+        self.assertIn('按当前时间基准拆分字幕', page)
+        self.assertIn('通用快捷键见「快捷操作」；此处只列出波形区特有的操作', page)
+        self.assertIn('<span class="help-important"><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>', page)
+        self.assertIn(
+            '<span class="help-important"><kbd>N</kbd> 在鼠标位置创建字幕（仅波形）</span>\n'
+            '          <span class="help-break" aria-hidden="true"></span>\n'
+            '          <span><kbd data-mod-key>Ctrl+拖拽空白处</kbd> 拖动创建指定时长字幕</span>\n'
+            '          <span class="help-break" aria-hidden="true"></span>\n'
+            '          <span class="help-important"><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>',
+            page,
+        )
+        self.assertIn('<span class="help-important"><kbd>G</kbd> 绑定到主副字幕（自动匹配）</span>', page)
+        self.assertIn('<span class="help-important"><kbd>H</kbd> 将选中的副字幕的时长对齐到绑定主字幕</span>', page)
+        self.assertIn(
+            '<span><kbd>Shift+G</kbd> 解绑当前副字幕</span>\n'
+            '          <span class="help-break" aria-hidden="true"></span>\n'
+            '          <span class="help-important"><kbd>H</kbd> 将选中的副字幕的时长对齐到绑定主字幕</span>',
+            page,
+        )
+        self.assertIn('<button type="button" class="help-inline-action" id="help-open-waveform-settings"', page)
+        self.assertIn('data-help-open-waveform-settings', page)
+        self.assertIn('⚙️设置按钮', page)
+        self.assertIn('在波形区的', page)
+        self.assertIn('中，可调整音频波形外观的具体参数。', page)
+        self.assertIn('id="help-open-waveform-keyboard-settings"', page)
+        self.assertIn('<button type="button" class="help-inline-action" id="help-open-media-settings"', page)
+        self.assertIn('data-help-open-media-settings', page)
+        self.assertIn('⚙️设置', page)
+        self.assertNotIn('红色播放指针', page)
+        self.assertEqual(page.count('data-help-tab='), 7)
+        self.assertIn('id="help-tab-panel-basic"', page)
+        self.assertIn('id="help-tab-panel-shortcuts"', page)
         self.assertIn('id="help-tab-panel-waveform"', page)
+        self.assertIn('id="help-tab-panel-fine-tuning"', page)
+        self.assertIn('id="help-tab-panel-gap"', page)
+        self.assertIn('id="help-tab-panel-batch"', page)
+        self.assertIn('id="help-advanced-toggle"', page)
+        self.assertIn('id="help-advanced-tabs"', page)
+        self.assertIn('aria-label="常用帮助分类"', page)
+        self.assertIn('aria-label="进阶帮助分类"', page)
         self.assertNotIn('id="help-tab-panel-advanced"', page)
         self.assertIn('class="help-tip-callout"', page)
         self.assertIn('class="help-category"', page)
-        self.assertIn('通用', page)
+        self.assertIn('color: var(--text-secondary); font-size: 13px;', page)
+        self.assertIn('padding: 2px 6px; font-size: 13px;', page)
+        self.assertIn('.waveform-settings-panel { max-height: min(620px, calc(100vh - 16px)); }', page)
+        self.assertIn('<h5 class="help-subtitle">字幕操作</h5>', page)
+        self.assertNotIn('<h5 class="help-subtitle">选择操作</h5>', page)
+        self.assertNotIn('<h5 class="help-subtitle">通用操作</h5>', page)
+        self.assertIn('<span class="help-important"><kbd>WASD</kbd> 选择前/后字幕</span>', page)
+        self.assertIn('<span class="help-important"><kbd data-mod-key>Ctrl+Shift+A/D</kbd> 合并前/后字幕</span>', page)
+        self.assertIn('<kbd>Home</kbd>/<kbd>End</kbd> 选择并显示当前轨道首/末条可见字幕', page)
+        self.assertIn(
+            '<span class="help-important"><kbd>F</kbd> 跳转并播放选中字幕</span>\n'
+            '          <span class="help-break" aria-hidden="true"></span>\n'
+            '          <span><kbd>Home</kbd>/<kbd>End</kbd> 选择并显示当前轨道首/末条可见字幕</span>',
+            page,
+        )
+        self.assertIn('基础操作', page)
+        self.assertIn('快捷操作', page)
         self.assertIn('波形外观调整', page)
-        self.assertIn('静音空隙操作', page)
-        self.assertEqual(page.count('<section class="help-subgroup">'), 15)
+        self.assertIn('微调字幕', page)
+        self.assertIn('空隙操作', page)
+        self.assertIn('批量替换字幕文本', page)
+        self.assertIn('纯文本编辑', page)
+        self.assertIn('文本处理', page)
+        self.assertIn('处理范围', page)
+        self.assertIn('播放与导航', page)
+        self.assertNotIn('播放与编辑', page)
+        self.assertIn('编辑', page)
+        self.assertIn('Ctrl+Z', page)
+        self.assertIn('编辑操作', page)
+        self.assertIn('快捷功能', page)
+        self.assertIn('切换工具', page)
+        self.assertIn(
+            '<span class="help-important"><kbd>Enter</kbd> 编辑选中字幕（根据最后点击区域）</span>\n'
+            '          <span class="help-break" aria-hidden="true"></span>\n'
+            '          <span><kbd>Esc</kbd> 退出字幕编辑区（文本编辑时）</span>',
+            page,
+        )
+        self.assertIn('<h5 class="help-subtitle">空隙状态</h5>', page)
+        self.assertIn('<h5 class="help-subtitle">移动与调整</h5>', page)
+        self.assertIn('<h5 class="help-subtitle">批量操作</h5>', page)
+        self.assertIn('切换空隙的启用/禁用状态', page)
+        self.assertIn('添加新的移除空隙', page)
+        self.assertIn('Alt+左键拖动', page)
+        self.assertIn('<span class="help-important"><kbd>Alt+左键拖动</kbd> 添加新的移除空隙</span>', page)
+        self.assertIn('右侧显示可禁用数量', page)
+        self.assertIn('点击「进一步收缩空隙」在现有结果上继续收缩', page)
+        self.assertIn('仅在拖动边界模式生效', page)
+        self.assertIn('仅在中键拖动模式生效', page)
+        self.assertIn(
+            '<span><kbd data-mod-key>Ctrl+拖动</kbd> 复制空隙</span>\n'
+            '          <span class="help-break" aria-hidden="true"></span>\n'
+            '          <span><kbd>拖动边界</kbd> 调整空隙范围</span>',
+            page,
+        )
+        self.assertIn('具体操作取决于波形区的', page)
+        self.assertIn('id="help-open-gap-settings"', page)
+        self.assertIn('中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', page)
+        self.assertIn(
+            '<span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>\n'
+            '          <span class="help-break" aria-hidden="true"></span>\n'
+            '          <span><kbd data-mod-key>Ctrl+滚轮</kbd> 调整时间缩放/每行长度</span>\n'
+            '          <span class="help-break" aria-hidden="true"></span>\n'
+            '          <span><kbd data-mod-key>Ctrl+Shift+滚轮</kbd> 调整每行高度</span>',
+            page,
+        )
+        self.assertIn('<span class="help-note">操作支持撤销/重做。</span>', page)
+        self.assertIn('<h5 class="help-subtitle">清理空隙</h5>', page)
+        self.assertIn('在空隙上右键选择「清理空隙」 清除当前空隙', page)
+        self.assertIn('id="help-open-gap-remove-panel"', page)
+        self.assertIn('在「', page)
+        self.assertIn('」中点击「全部清理」 清除所有空隙', page)
+        self.assertEqual(page.count('<section class="help-subgroup">'), 20)
         self.assertNotIn('确定删除第 ${idx + 1} 条字幕', page)
         self.assertNotIn('确定删除选中的 ${targetIdxs.length} 条字幕', page)
         self.assertIn('id="export-start-at-zero"', page)
@@ -401,13 +512,26 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('overflow: hidden; text-overflow: ellipsis; white-space: nowrap;', page)
         self.assertIn('id="gap-remove-manage"', page)
         self.assertIn('id="gap-remove-panel"', page)
-        self.assertIn('>移除静音空隙</button>', page)
+        self.assertIn('.gap-remove-panel:not(.help-panel) { z-index: 340; }', page)
+        self.assertIn('class="gap-remove-panel help-panel"', page)
+        self.assertIn('>静音空隙</button>', page)
         self.assertNotIn('>移除静音空隙…</button>', page)
         self.assertIn('id="gap-remove-panel-title">移除静音空隙</h3>', page)
         self.assertIn('aria-modal="false"', page)
         self.assertIn('id="gap-remove-drag-handle"', page)
         self.assertIn('id="gap-remove-close"', page)
         self.assertIn('id="gap-remove-threshold"', page)
+        self.assertIn('id="gap-remove-threshold" min="100" max="60000" step="50" value="400"', page)
+        self.assertIn('id="gap-remove-volume-threshold" min="-96" max="0" step="1" value="-28"', page)
+        self.assertIn('id="gap-remove-lead-in" min="0" max="2000" step="10" value="120"', page)
+        self.assertIn('<span>生成静音空隙</span>', page)
+        self.assertNotIn('<span>重新生成静音区域</span>', page)
+        self.assertNotIn('id="gap-remove-summary"', page)
+        self.assertIn('id="gap-remove-shrink" class="gap-remove-inline-button">进一步收缩空隙</button>', page)
+        self.assertIn('>在现有基础上，使当前所有空隙进一步收缩</small>', page)
+        self.assertIn('id="gap-remove-disable-button" class="gap-remove-inline-button">禁用字幕</button>', page)
+        self.assertIn('id="gap-remove-disable-hint">禁用位于空隙范围内的字幕（当前有 0 条未禁用）</small>', page)
+        self.assertIn('font-size: 11px; line-height: 1.4;', page)
         self.assertNotIn('id="gap-remove-minimum-sound"', page)
         self.assertIn('id="gap-skip-playback" checked', page)
         self.assertIn('id="gap-remove-hysteresis" min="0" max="30" step="0.5" value="2"', page)
@@ -496,7 +620,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertLess(second_separator, extra_menu.index('id="download-ograf"'))
         self.assertIn('showGapContextMenu?.(event.clientX, event.clientY, index)', page)
         self.assertIn("gap.removed === false ? '移除区段' : '恢复区段'", page)
-        self.assertIn("addItem('清理该区段', () => clearGap(index), { danger: true });", page)
+        self.assertIn("addItem('清理空隙', () => clearGap(index), { danger: true });", page)
         self.assertIn('id="waveform-pane" aria-label="音频波形" tabindex="-1"', page)
         self.assertIn("this.pane.addEventListener('pointerdown', () => {", page)
         self.assertIn("this.autoScrollTarget = null;", page)
