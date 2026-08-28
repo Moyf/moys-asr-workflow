@@ -12037,7 +12037,7 @@ function repairProjectSegmentOverlap(target, mode, card) {
     ? '，已清除受影响字幕的字词时间码'
     : '';
   flashHint(`已修复字幕时间重叠${suffix}，正在重新保存`, result.itemsCleared ? 'warning' : 'success');
-  window.setTimeout(() => { void saveCurrentProject({ silent: true }); }, 0);
+  window.setTimeout(() => { void saveCurrentProject({ silent: false }); }, 0);
   return true;
 }
 

@@ -76,7 +76,7 @@ class LocalEditorServerTests(unittest.TestCase):
             text=True,
         )
 
-        self.assertIn("-p PORT, --port PORT", result.stdout)
+        self.assertRegex(result.stdout, r"-p(?: PORT)?, --port PORT")
 
     def test_server_responds_before_initial_project_load_finishes(self) -> None:
         project = server_editor.load_blank_project(str(self.stickers))

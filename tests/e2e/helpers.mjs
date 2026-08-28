@@ -311,7 +311,7 @@ export function generateProjectJson(filePath) {
 // Returns { url, proc, stop } where stop() returns a Promise that resolves
 // when the process has fully exited.
 // ---------------------------------------------------------------------------
-async function launchServerProcess(pythonArgs, port, env) {
+async function launchServerProcess(pythonArgs, port, env, { waitForStartup = false } = {}) {
   const proc = spawn(PYTHON_RUNNER.command, pythonCommandArgs(pythonArgs), {
     cwd: process.cwd(),
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -361,6 +361,30 @@ async function launchServerProcess(pythonArgs, port, env) {
     throw error;
   }
 
+  if (waitForStartup) {
+    const deadline = Date.now() + 30000;
+    while (true) {
+      try {
+        const response = await fetch(`${url}api/startup-status`, { cache: 'no-store' });
+        const result = await response.json().catch(() => ({}));
+        if (response.ok && result.status === 'ready') break;
+        if (response.ok && result.status === 'error') {
+          throw new Error(`Server project startup failed: ${result.error || 'unknown error'}`);
+        }
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith('Server project startup failed:')) {
+          await stopServerProcess(proc);
+          throw error;
+        }
+      }
+      if (Date.now() >= deadline) {
+        await stopServerProcess(proc);
+        throw new Error('Server project startup did not become ready within 30s');
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
   return {
     url,
     proc,
@@ -385,7 +409,7 @@ export async function startServer(projectJsonPath, mediaPath, port) {
     PYTHONUNBUFFERED: '1',
     LOCALAPPDATA: settingsRoot,
     XDG_CONFIG_HOME: settingsRoot,
-  }));
+  }), { waitForStartup: true });
 }
 
 // 空白服务器（--blank）：用于「浏览器打开工程后由服务器接管」的回归测试。
