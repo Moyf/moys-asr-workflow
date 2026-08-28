@@ -184,6 +184,21 @@ class GuiWebBridgeTests(unittest.TestCase):
             "# keep\nDASHSCOPE_REGION=beijing\nSTICKER_DIR=stickers\nMAW_GUI_LAST_MODEL=stt-async-v5\nMAW_GUI_LAST_LANGUAGE=\n",
         )
 
+    def test_save_prefs_persists_theme_and_get_config_restores_it(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("MAW_GUI_THEME", None)
+            result = self.api.save_prefs({"theme": "dark"})
+
+            self.assertTrue(result["ok"])
+            self.assertIn("MAW_GUI_THEME=dark", self.env_path.read_text(encoding="utf-8"))
+            self.assertEqual(self.api.get_config()["theme"], "dark")
+
+            result = self.api.save_prefs({"theme": "unsupported"})
+
+            self.assertTrue(result["ok"])
+            self.assertIn("MAW_GUI_THEME=system", self.env_path.read_text(encoding="utf-8"))
+            self.assertEqual(self.api.get_config()["theme"], "system")
+
     def test_zoom_preference_round_trips_normalized_through_config(self) -> None:
         result = self.api.save_prefs({"zoomPercent": 115})
 
@@ -2917,6 +2932,18 @@ class LauncherAssetContractTests(unittest.TestCase):
         for expected in ("1️⃣ 媒体与输出", "2️⃣ 识别设置", "3️⃣ 转写后自动处理 （Beta）", "4️⃣ 日志", "5️⃣ 字幕编辑器设置"):
             self.assertIn(expected, page)
         self.assertIn(".card h2 {\n  margin: 0 0 12px;\n  color: var(--text-secondary);\n  font-size: 16px;", stylesheet)
+
+    def test_launcher_theme_round_trips_through_local_config(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
+
+        self.assertIn('id="themeDark"', page)
+        self.assertIn('function readStoredTheme()', script)
+        self.assertIn('void bridge("save_prefs", { theme: pref })', script)
+        self.assertIn('if (isThemePreference(state.config.theme)) { state.theme = state.config.theme;', script)
+        self.assertIn('"theme": config.theme', backend)
+        self.assertIn('updates["MAW_GUI_THEME"]', backend)
 
     def test_server_start_button_exposes_disabled_starting_state(self) -> None:
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")

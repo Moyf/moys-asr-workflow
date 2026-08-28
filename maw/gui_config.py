@@ -97,6 +97,7 @@ class EffectiveConfig:
     last_language: str | None = None
     model_cache_root: str = ""
     zoom_percent: int = 100
+    theme: str | None = None
 
 
 REGIONS: Final[tuple[tuple[str, str], ...]] = (
@@ -562,6 +563,7 @@ def effective_config(path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] |
         last_language=pick_optional("MAW_GUI_LAST_LANGUAGE"),
         model_cache_root=pick("MAW_MODEL_CACHE_ROOT").strip(),
         zoom_percent=normalize_zoom_percent(pick("MAW_GUI_ZOOM_PERCENT", "100")),
+        theme=_gui_theme(pick_optional("MAW_GUI_THEME")),
     )
 
 
@@ -650,3 +652,10 @@ def _env_key(line: str) -> str | None:
 
 def _gui_language(value: str) -> str:
     return "en" if value.strip().lower() == "en" else "zh"
+
+
+def _gui_theme(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip().lower()
+    return normalized if normalized in {"light", "dark", "system"} else "system"
