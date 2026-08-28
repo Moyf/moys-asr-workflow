@@ -98,13 +98,185 @@ test('clicking a row shows only that color; checkboxes multi-select; clear resto
   await expect(page.locator('#color-filter-btn')).not.toHaveClass(/filter-active/);
 });
 
+test('assigning a color keeps the subtitle list at its current scroll position', async ({ page }) => {
+  await waitEditorReady(page);
+  await page.evaluate(() => {
+    const segments = Array.from({ length: 40 }, (_, index) => ({
+      start: index * 5000,
+      end: index * 5000 + 3000,
+      text: `Cue ${index + 1}`,
+      items: [],
+    }));
+    DATA.segments.splice(0, DATA.segments.length, ...segments);
+    const clickBehavior = document.getElementById('click-behavior');
+    clickBehavior.value = 'select-only';
+    clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
+    renderAll({ waveform: 'none' });
+  });
+
+  const target = page.locator('.cue[data-idx="30"]');
+  const list = page.locator('#cues-container');
+  await target.click();
+  // 普通点击使用平滑居中；等它完成后再记录稳定的视觉位置。
+  await page.waitForTimeout(500);
+  const before = await list.evaluate((element) => ({
+    targetTop: element.querySelector('.cue[data-idx="30"]')?.getBoundingClientRect().top,
+  }));
+  expect(await list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await target.evaluate((element) => {
+    element.dataset.colorUpdateSentinel = 'preserve';
+  });
+
+  await page.keyboard.press('3');
+
+  await expect(target).toHaveAttribute('data-color-update-sentinel', 'preserve');
+  await expect.poll(() => list.evaluate((element) => (
+    element.querySelector('.cue[data-idx="30"]')?.getBoundingClientRect().top
+  ))).toBe(before.targetTop);
+  await expect(target).toHaveClass(/has-color/);
+  await expect.poll(() => page.evaluate(() => DATA.segments[30].color?.name)).toBe('red');
+
+  await page.keyboard.press('0');
+  await expect(target).toHaveAttribute('data-color-update-sentinel', 'preserve');
+  await expect.poll(() => list.evaluate((element) => (
+    element.querySelector('.cue[data-idx="30"]')?.getBoundingClientRect().top
+  ))).toBe(before.targetTop);
+  await expect(target).not.toHaveClass(/has-color/);
+  await expect.poll(() => page.evaluate(() => DATA.segments[30].color)).toBe(null);
+});
+
+test('assigning and clearing a sticker keeps the subtitle row in place', async ({ page }) => {
+  await waitEditorReady(page);
+  await page.evaluate(() => {
+    const segments = Array.from({ length: 40 }, (_, index) => ({
+      start: index * 5000,
+      end: index * 5000 + 3000,
+      text: `Cue ${index + 1}`,
+      items: [],
+    }));
+    EDITOR_SETTINGS.cueListShowSticker = true;
+    EDITOR_SETTINGS.cueEditorShowSticker = true;
+    segments[0].sticker = {
+      name: 'existing', filename: 'existing.png',
+      start: segments[0].start, end: segments[0].end,
+    };
+    DATA.segments.splice(0, DATA.segments.length, ...segments);
+    const clickBehavior = document.getElementById('click-behavior');
+    clickBehavior.value = 'select-only';
+    clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
+    renderAll({ waveform: 'none' });
+  });
+
+  const target = page.locator('.cue[data-idx="30"]');
+  const list = page.locator('#cues-container');
+  await target.click();
+  await page.waitForTimeout(500);
+  const beforeTop = await target.evaluate((element) => element.getBoundingClientRect().top);
+  expect(await list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await target.evaluate((element) => {
+    element.dataset.stickerUpdateSentinel = 'preserve';
+  });
+
+  await page.evaluate(() => {
+    stickerTargetMode = 'single';
+    stickerTargetIdxs = [30];
+    assignSticker({ name: 'reaction', filename: 'reaction.png' });
+  });
+
+  await expect(target).toHaveAttribute('data-sticker-update-sentinel', 'preserve');
+  await expect(target.locator('.sticker-slot .sname')).toHaveText('reaction');
+  await expect.poll(() => target.evaluate((element) => element.getBoundingClientRect().top))
+    .toBe(beforeTop);
+
+  await page.evaluate(() => {
+    stickerTargetIdxs = [30];
+    clearStickerOnTargets();
+  });
+  await expect(target).toHaveAttribute('data-sticker-update-sentinel', 'preserve');
+  await expect(target.locator('.sticker-slot')).toBeEmpty();
+  await expect.poll(() => target.evaluate((element) => element.getBoundingClientRect().top))
+    .toBe(beforeTop);
+});
+
+test('search filtering keeps the selected subtitle in the same visual position', async ({ page }) => {
+  await waitEditorReady(page);
+  await page.evaluate(() => {
+    const segments = Array.from({ length: 40 }, (_, index) => ({
+      start: index * 5000,
+      end: index * 5000 + 3000,
+      text: index % 2 === 0 ? `Keep ${index + 1}` : `Other ${index + 1}`,
+      items: [],
+    }));
+    DATA.segments.splice(0, DATA.segments.length, ...segments);
+    const clickBehavior = document.getElementById('click-behavior');
+    clickBehavior.value = 'select-only';
+    clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
+    EDITOR_SETTINGS.cueListAutoScrollOnClick = false;
+    renderAll({ waveform: 'none' });
+  });
+
+  const target = page.locator('.cue[data-idx="20"]');
+  const list = page.locator('#cues-container');
+  await target.click();
+  await page.waitForTimeout(500);
+  const beforeTop = await target.evaluate((element) => element.getBoundingClientRect().top);
+
+  await page.evaluate(() => {
+    searchEl.value = 'Keep';
+    applySearch('Keep');
+  });
+  await expect(page.locator('#visible-count')).toHaveText('20');
+  await expect(target).not.toHaveClass(/hidden/);
+  await expect.poll(() => target.evaluate((element) => element.getBoundingClientRect().top))
+    .toBe(beforeTop);
+  expect(await list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+});
+
+test('search filtering does not jump to the top when the selected subtitle is hidden', async ({ page }) => {
+  await waitEditorReady(page);
+  await page.evaluate(() => {
+    const segments = Array.from({ length: 40 }, (_, index) => ({
+      start: index * 5000,
+      end: index * 5000 + 3000,
+      text: index % 2 === 0 ? `Keep ${index + 1}` : `Other ${index + 1}`,
+      items: [],
+    }));
+    DATA.segments.splice(0, DATA.segments.length, ...segments);
+    const clickBehavior = document.getElementById('click-behavior');
+    clickBehavior.value = 'select-only';
+    clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
+    EDITOR_SETTINGS.cueListAutoScrollOnClick = false;
+    renderAll({ waveform: 'none' });
+  });
+
+  const target = page.locator('.cue[data-idx="21"]');
+  const list = page.locator('#cues-container');
+  await target.click();
+  await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+
+  await page.evaluate(() => {
+    searchEl.value = 'Keep';
+    applySearch('Keep');
+  });
+  await expect(target).toHaveClass(/hidden/);
+  await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+});
+
 test('split trim chips and extra input drive shared trim behavior and persist', async ({ page }) => {
   await waitEditorReady(page);
   await page.evaluate(() => {
     window.MAWE_EDITOR_BRIDGE.setEditorSettingsPanelOpen(true);
   });
+  const settingsToggle = page.locator('#split-trim-settings-toggle');
+  const settingsPanel = page.locator('#split-trim-settings-panel');
   const grid = page.locator('#split-trim-symbol-grid');
+  await expect(settingsToggle).toBeVisible();
+  await expect(settingsPanel).toBeHidden();
+  await expect(grid).toBeHidden();
+  await settingsToggle.click();
+  await expect(settingsPanel).toBeVisible();
   await expect(grid).toBeVisible();
+  await expect(settingsPanel).toHaveCSS('position', 'fixed');
   const labels = grid.locator('label');
   // 仅前 5 个高频符号提供 chip；其余走「其他符号」文本框。
   await expect(labels).toHaveCount(
