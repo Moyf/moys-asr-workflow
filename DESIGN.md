@@ -140,3 +140,36 @@ column. Long paths use `overflow-wrap: anywhere` and never force horizontal scro
   scoped optional spectral-cache checkbox; only the latter changes the Launcher project
   and starts the existing MAWE Server flow. FFconcat accepts a picked or dropped script
   that references the scoped Utilities media input.
+
+## 6. Layering contract: popovers inside the sticky cue-list toolbar
+
+This rule exists because the same bug shipped three times (batch-operations menu,
+cue-list settings panel, color-filter menu): a popover opens fine but is covered by
+a layout resizer bar.
+
+**The trap.** `.cues-container > .cue-list-toolbar` is `position: sticky` with
+`z-index: 30`, so it forms its own stacking context. The layout resizers
+(`.layout-resizer`, `z-index: 50`) are outside that context, so they paint above
+the whole toolbar. Any popover inside the toolbar — even `position: fixed` with a
+huge `z-index` (the color-filter menu uses 1000, settings panels use 420) — is
+trapped at level 30 and loses to anything at 50. `position: fixed` does not escape:
+stacking contexts limit paint order, not positioning.
+
+**The contract.**
+
+1. A popover must not rely on its own `z-index` to beat elements outside the
+   toolbar's stacking context. Its owner (toolbar / container) must be promoted
+   while the popover is open.
+2. Dropdowns (`.dropdown.open` inside the toolbar) are covered by one shared rule:
+   `.cues-container > .cue-list-toolbar:has(.dropdown.open) { z-index: 60; }`.
+   When adding a new dropdown to this toolbar, do nothing — it is covered. Do not
+   add per-dropdown `:has(...)` patches; extend the shared rule only if the
+   selector stops matching.
+3. Settings panels (`position: fixed; z-index: 420`) use the JS helper
+   `setSettingsPanelOwnerOpen`, which toggles `.settings-panel-owner-open`
+   (`z-index: 80`) on the popover's scroll/grid owner (`.player-wrap`,
+   `.current-cue-panel`, `.cues-container`, `.waveform-pane`). New settings panels
+   must call that helper on open/close, not invent another escape hatch.
+4. When a popover opens upward (space-below flip), it may extend over the resizer
+   strips too; the same owner promotion is what keeps it visible. Verify new
+   popovers in both flip directions next to a layout resizer before shipping.

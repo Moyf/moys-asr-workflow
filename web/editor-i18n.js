@@ -148,6 +148,7 @@
     '播放预览': 'Playback preview', '自动预览鼠标位置画面': 'Automatically preview the frame under the pointer', 'JKL 按键播放控制': 'JKL playback controls',
     '跳转时长': 'Seek duration', '每次跳转': 'Each jump', '每次跳转时长': 'Seek duration per action', '媒体控制按钮和左右方向键每次跳转的毫秒数': 'Milliseconds to jump with the media controls and left/right arrow keys', '控制按钮和左右方向键的每次跳转时长（单位：ms）': 'Duration for each jump from the controls and left/right arrow keys (unit: ms)',
     '频谱颜色': 'Spectral colors', '正在应用频谱颜色…': 'Applying spectral colors…', '正在关闭频谱颜色…': 'Removing spectral colors…',
+    '预览字幕颜色': 'Color underline', '按字幕颜色快照给预览文字加下划线，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本': 'Underline the preview text with each subtitle color snapshot to tell colored subtitles apart; only affects the in-player preview, never subtitle text',
     '播放': 'Play', '暂停': 'Pause', '后退 1000ms': 'Back 1000ms', '前进 1000ms': 'Forward 1000ms',
     '媒体进度': 'Media progress', '音量': 'Volume', '速度': 'Speed', '播放速度': 'Playback speed',
     '全屏': 'Fullscreen', '退出全屏': 'Exit fullscreen',
@@ -656,6 +657,7 @@
     // 颜色过滤与拆分移除符号设置
     '按颜色过滤显示的字幕': 'Filter visible subtitles by color',
     '清除颜色过滤': 'Clear color filter',
+    '全选过滤结果': 'Select all filtered', '当前没有生效的颜色过滤': 'No color filter is active',
     '默认': 'Default',
     '主字幕自动使用时间码拆分': 'Auto-split main subtitles with word timings',
     '开启时，会自动按可用时间码拆分；关闭后将打开拆分弹窗，手动进行拆分。':

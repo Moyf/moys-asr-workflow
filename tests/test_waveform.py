@@ -540,6 +540,23 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('getSrtExportFirstIndex(', page)
         self.assertNotRegex(page, r"__[A-Z][A-Z0-9_]+__")
 
+    def test_media_controls_stay_on_one_line_and_preserve_fullscreen(self) -> None:
+        page = edit.build_blank_html()
+        controls_start = page.index("  .media-controls {\n")
+        controls_end = page.index("  .player-wrap.empty-state", controls_start)
+        controls_css = page[controls_start:controls_end]
+
+        self.assertIn("flex-wrap: nowrap;", controls_css)
+        self.assertIn("container: media-controls / inline-size;", controls_css)
+        self.assertIn("@container media-controls (max-width: 680px)", controls_css)
+        self.assertIn(".media-controls .media-step-button { display: none; }", controls_css)
+        self.assertIn("@container media-controls (max-width: 520px)", controls_css)
+        self.assertIn(".media-volume-control { display: none; }", controls_css)
+        self.assertIn("flex-basis: 88px; min-width: 48px;", controls_css)
+        self.assertIn("flex-basis: 64px; min-width: 32px;", controls_css)
+        self.assertNotIn("order: 10;", controls_css)
+        self.assertIn('id="media-fullscreen"', page)
+
     def test_blank_editor_does_not_inline_local_stickers(self) -> None:
         with tempfile.TemporaryDirectory() as sticker_dir:
             sticker_path = Path(sticker_dir) / "private-sticker.png"

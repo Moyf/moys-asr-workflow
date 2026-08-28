@@ -52,7 +52,15 @@ from maw.project import (  # noqa: E402
     normalize_project,
     repair_project_timing_ranges,
 )
-from maw.media import MEDIA_EXTENSIONS, MediaConversionError, MediaResolutionError, MediaStatus, convert_media_for_browser, resolve_project_media  # noqa: E402
+from maw.media import (  # noqa: E402
+    MEDIA_EXTENSIONS,
+    MediaConversionError,
+    MediaResolutionError,
+    MediaStatus,
+    convert_media_for_browser,
+    read_bwf_time_reference,
+    resolve_project_media,
+)
 from maw.lottie_glyphs import LottieGlyphError, vectorize_lottie_animation  # noqa: E402
 
 
@@ -433,6 +441,13 @@ def build_server_page(
         media_class = "empty"
 
     page_data = copy.deepcopy(project.data)
+    page_data.pop("media_time_reference", None)
+    if project.media_path:
+        media_time_reference = read_bwf_time_reference(
+            project.source_media_path or project.media_path,
+        )
+        if media_time_reference is not None:
+            page_data["media_time_reference"] = media_time_reference
     if isinstance(page_data.get("workspace"), dict):
         page_data["workspace"].pop("navigation", None)
     project_workspace = page_data.get("workspace")

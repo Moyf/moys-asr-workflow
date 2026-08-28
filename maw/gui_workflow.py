@@ -19,6 +19,7 @@ from typing import BinaryIO, Final, TextIO, final
 from maw.console import configure_utf8_environment
 from maw.gui_config import QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, load_env
 from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
+from maw.media import read_bwf_time_reference
 from maw.qwen_audio import split_qwen_audio_hotwords
 from maw.local_runtime import default_runtime_root, model_cache_environment
 from maw.runtimes import LOCAL
@@ -165,6 +166,7 @@ PROVIDER_SRT_TAGS: Final = {
     "soniox": ".soniox",
     "local": ".qwen-asr-local",
     "bcut": ".bcut",
+    "tencent": ".tencent-asr",
 }
 
 
@@ -216,12 +218,15 @@ def build_transcribe_command(
     exe = str(executable or sys.executable)
     is_frozen = bool(getattr(sys, "frozen", False) if frozen is None else frozen)
     is_soniox = request.provider == "soniox"
+    is_tencent = request.provider == "tencent"
     is_bcut = request.provider == "bcut"
     is_local = request.provider == "local"
     if is_local:
         script_name = "generate_subtitle_local.py"
     elif is_bcut:
         script_name = "generate_subtitle_bcut_api.py"
+    elif is_tencent:
+        script_name = "generate_subtitle_tencent_api.py"
     else:
         script_name = "generate_subtitle_soniox_api.py" if is_soniox else "generate_subtitle_qwen_api.py"
     script = Path(__file__).resolve().parents[1] / script_name
@@ -233,6 +238,8 @@ def build_transcribe_command(
             command = [exe, "--transcribe-local"]
         elif is_bcut:
             command = [exe, "--transcribe-bcut"]
+        elif is_tencent:
+            command = [exe, "--transcribe-tencent"]
         else:
             command = [exe, "--transcribe-soniox" if is_soniox else "--transcribe"]
     else:
@@ -262,6 +269,11 @@ def build_transcribe_command(
                 "--context-json",
                 json.dumps(request.soniox_context, ensure_ascii=False, separators=(",", ":")),
             )
+    elif is_tencent:
+        _append_option(command, "--model", request.model)
+        _append_option(command, "--language", request.language)
+        if request.speaker_colors:
+            command.append("--speaker-colors")
     elif is_bcut:
         # 必剪接口无语言/模型/说话人参数，这里一律不下发
         pass
@@ -390,6 +402,10 @@ def render_editor_html(json_path: Path, media_path: Path, html_path: Path, ui_la
     project = json.loads(Path(json_path).read_text(encoding="utf-8"))
     normalized = normalize_project(project)
     media = Path(media_path).expanduser().resolve()
+    normalized.pop("media_time_reference", None)
+    media_time_reference = read_bwf_time_reference(media)
+    if media_time_reference is not None:
+        normalized["media_time_reference"] = media_time_reference
     try:
         media_url = media.relative_to(Path(html_path).parent.resolve()).as_posix()
     except ValueError:
@@ -488,6 +504,12 @@ def _child_environment(
             env["SONIOX_API_KEY"] = api_key
     elif provider == "bcut":
         pass  # 必剪为非官方免 Key 接口，无需注入凭据
+    elif provider == "tencent":
+        if api_key:
+            env["TENCENT_SECRET_ID"] = api_key
+        secret_key = parent.get("TENCENT_SECRET_KEY") or load_env(DEFAULT_ENV_PATH).get("TENCENT_SECRET_KEY", "")
+        if secret_key:
+            env["TENCENT_SECRET_KEY"] = secret_key
     else:
         if api_key:
             env["DASHSCOPE_API_KEY"] = api_key

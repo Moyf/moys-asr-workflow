@@ -473,12 +473,14 @@
   }
   .player-stage video { display: block; cursor: pointer; }
   .media-controls {
-    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;
     min-height: 34px; margin-top: 4px; padding: 5px 7px;
+    min-width: 0; container: media-controls / inline-size;
     color: var(--text-secondary); background: var(--panel-toolbar-bg);
     border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
     font-size: 12px; font-variant-numeric: tabular-nums;
   }
+  .media-controls > * { min-width: 0; }
   .media-controls button,
   .media-controls select {
     min-height: var(--control-h); padding: 3px 8px;
@@ -494,16 +496,27 @@
   .media-controls button:disabled { opacity: .42; cursor: not-allowed; }
   .media-controls .media-step-button { width: 32px; padding: 3px 6px; }
   .media-seek-icon { display: block; width: 16px; height: 16px; margin: auto; fill: currentColor; }
-  .media-clock { min-width: 92px; text-align: center; color: var(--text-secondary); }
-  .media-controls #media-seek { flex: 1 1 180px; min-width: 120px; accent-color: var(--accent); }
+  .media-clock { flex: 0 0 auto; min-width: 92px; text-align: center; color: var(--text-secondary); }
+  .media-controls #media-seek { flex: 1 1 180px; width: 0; min-width: 120px; accent-color: var(--accent); }
   .media-volume-control,
-  .media-rate-control { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
-  .media-volume-control input { width: 78px; accent-color: var(--accent); }
-  .media-rate-control select { padding: 3px 4px; }
-  @media (max-width: 680px) {
-    .media-controls { gap: 4px; }
+  .media-rate-control { display: inline-flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; }
+  .media-volume-control input { width: 78px; min-width: 0; accent-color: var(--accent); }
+  .media-rate-control select { min-width: 0; padding: 3px 4px; }
+  .media-controls #media-fullscreen { flex: 0 0 auto; }
+  @container media-controls (max-width: 680px) {
+    .media-controls { gap: 4px; padding-inline: 5px; }
+    .media-controls .media-step-button { display: none; }
     .media-clock { min-width: 82px; }
-    .media-controls #media-seek { order: 10; flex-basis: 100%; min-width: 0; }
+    .media-controls #media-seek { flex-basis: 88px; min-width: 48px; }
+  }
+  @container media-controls (max-width: 520px) {
+    .media-volume-control { display: none; }
+    .media-controls #media-seek { flex-basis: 64px; min-width: 32px; }
+  }
+  @container media-controls (max-width: 360px) {
+    .media-clock { min-width: 68px; }
+    .media-controls #media-seek { flex-basis: 40px; min-width: 20px; }
+    .media-rate-control select { padding-inline: 2px; }
   }
   .player-wrap.empty-state {
     min-height: 132px;
@@ -1630,9 +1643,12 @@
     margin: 0 -4px 4px;
     border-radius: calc(var(--radius-md) - 2px) calc(var(--radius-md) - 2px) 0 0;
   }
-  /* 批量菜单位于 sticky 工具栏的 stacking context 内；打开时提升整个工具栏，
-     确保菜单不会被右侧布局拖动条（z-index: 50）的伪元素盖住。 */
-  .cues-container > .cue-list-toolbar:has(#batch-operations-dropdown.open) {
+  /* 层级陷阱：cue-list-toolbar 是 sticky（z-index: 30），自身形成 stacking context；
+     布局拖动条（.layout-resizer，z-index: 50）在 paint 顺序上高于整个工具栏。
+     工具栏内任何弹层（颜色过滤、批量操作等下拉菜单）即使 position: fixed +
+     更高 z-index，也会被困在工具栏层级内被拖动条盖住。任何下拉打开时统一把
+     工具栏提升到 60；新增弹层不要再单独打补丁（契约见 DESIGN.md 第 6 节）。 */
+  .cues-container > .cue-list-toolbar:has(.dropdown.open) {
     z-index: 60;
   }
   /* 布局编辑模式下，dock-handle 已在文档流中占位（顶部圆角归把手），
@@ -1817,6 +1833,25 @@
   .cue.selected.has-color:hover {
     background: color-mix(in srgb, var(--color-bar, #777) 30%, var(--accent) 30%);
     box-shadow: inset 0 0 0 1px var(--amber-hover);
+  }
+  /* 有分组色的行播放中：保留字幕色身份，用原色加深背景、左边条换原色，
+     而不是被 .cue.active 覆盖成 accent 蓝。 */
+  .cue.has-color.active {
+    background: color-mix(in srgb, var(--color-bar, #777) 45%, var(--bg-raised));
+    border-left-color: var(--color-bar, #777);
+  }
+  .cue.has-color.active:hover {
+    background: color-mix(in srgb, var(--color-bar, #777) 52%, var(--bg-raised));
+    box-shadow: inset 0 0 0 1px var(--color-bar, #777);
+  }
+  /* 选中 + 播放中 + 有分组色：原色为主、轻混 accent 表示叠加状态，选中环保持琥珀 */
+  .cue.selected.has-color.active {
+    background: color-mix(in srgb, var(--color-bar, #777) 38%, var(--accent) 22%);
+    box-shadow: inset 0 0 0 1px var(--amber-hover);
+  }
+  .cue.selected.has-color.active:hover {
+    background: color-mix(in srgb, var(--color-bar, #777) 44%, var(--accent) 28%);
+    box-shadow: inset 0 0 0 1px var(--color-bar, #777);
   }
   /* 禁用项：灰色底不透明，文字变淡；active 高亮照常覆盖以便播放时定位 */
   .cue.disabled { background: var(--disabled-cue-bg); border-left-color: var(--border-strong); }
@@ -2068,8 +2103,9 @@
   .multi-cue-column { min-width: 0; position: relative; }
   .multi-cue-column.dirty { box-shadow: inset 3px 0 0 var(--amber); }
   /* 主列没有像副列那样自带左侧分隔内边距；为 dirty 标记预留宽度，
-     避免黄色内描边压住主字幕的首个字符。 */
-  .multi-cue-column.main.dirty { box-sizing: border-box; padding-left: 3px; }
+     避免黄色内描边压住主字幕的首个字符。3px 仅与描边等宽，文字仍贴边，
+     这里再加一档作为兜底。 */
+  .multi-cue-column.main.dirty { box-sizing: border-box; padding-left: 8px; }
   .multi-cue-column.extension { color: var(--text-secondary); }
   .multi-cue-column.unbound { opacity: .82; }
   .multi-cue-column.disabled {
@@ -4729,6 +4765,10 @@
                     <output id="subtitle-background-alpha-value" for="subtitle-background-alpha">65%</output>
                   </div>
                 </label>
+                <label class="subtitle-preview-setting-row" title="按字幕颜色快照给预览文字加下划线，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本">
+                  <span>预览字幕颜色</span>
+                  <input type="checkbox" id="subtitle-color-underline" checked aria-label="预览字幕颜色">
+                </label>
               </div>
             </section>
             <section class="subtitle-preview-track-settings subtitle-preview-extension-settings" id="extension-subtitle-preview-settings" hidden>
@@ -5458,6 +5498,11 @@
 
 <!-- 字幕忍者刀光：默认不参与布局与鼠标交互，仅在成功拆分时短暂显示。 -->
 <div id="ninja-slash-flash" aria-hidden="true"></div>
+
+<script>
+// 调色板单一来源：maw/speaker.py SPEAKER_COLOR_PALETTE，由 edit.py / serve.py 渲染时注入。
+window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "green", "value": "#66bb6a"}, {"name": "red", "value": "#f07f6f"}, {"name": "purple", "value": "#bf89e6"}, {"name": "blue", "value": "#61a7fa"}];
+</script>
 
 <script>
 // Shared frontend runtime registry.
@@ -6970,6 +7015,72 @@
     } catch {
       return new TextDecoder('gb18030').decode(bytes);
     }
+  }
+
+  function readUint32LittleEndian(bytes, offset) {
+    if (offset < 0 || offset + 4 > bytes.length) return null;
+    return (
+      bytes[offset]
+      | (bytes[offset + 1] << 8)
+      | (bytes[offset + 2] << 16)
+      | (bytes[offset + 3] << 24)
+    ) >>> 0;
+  }
+
+  function parseBwfTimeReference(input) {
+    const bytes = input instanceof Uint8Array ? input : new Uint8Array(input || []);
+    if (bytes.length < 12) return null;
+    const isRiff = bytes[0] === 0x52 && bytes[1] === 0x49
+      && bytes[2] === 0x46 && bytes[3] === 0x46;
+    const isRf64 = bytes[0] === 0x52 && bytes[1] === 0x46
+      && bytes[2] === 0x36 && bytes[3] === 0x34;
+    const isWave = bytes[8] === 0x57 && bytes[9] === 0x41
+      && bytes[10] === 0x56 && bytes[11] === 0x45;
+    if ((!isRiff && !isRf64) || !isWave) return null;
+
+    let offset = 12;
+    let sampleRate = null;
+    let timeReferenceSamples = null;
+    while (offset + 8 <= bytes.length) {
+      const chunkId = String.fromCharCode(
+        bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3],
+      );
+      const chunkSize = readUint32LittleEndian(bytes, offset + 4);
+      if (chunkSize === null) break;
+      const payloadStart = offset + 8;
+      if (chunkSize > bytes.length - payloadStart) break;
+
+      if (chunkId === 'fmt ' && chunkSize >= 8) {
+        sampleRate = readUint32LittleEndian(bytes, payloadStart + 4);
+      } else if (chunkId === 'bext' && chunkSize >= 346) {
+        const low = readUint32LittleEndian(bytes, payloadStart + 338);
+        const high = readUint32LittleEndian(bytes, payloadStart + 342);
+        if (low !== null && high !== null) {
+          timeReferenceSamples = high * 0x100000000 + low;
+        }
+      }
+      if (
+        Number.isInteger(sampleRate)
+        && sampleRate > 0
+        && Number.isSafeInteger(timeReferenceSamples)
+        && timeReferenceSamples >= 0
+      ) {
+        return {
+          sample_rate: sampleRate,
+          time_reference_samples: timeReferenceSamples,
+        };
+      }
+      offset = payloadStart + chunkSize + (chunkSize % 2);
+    }
+    return null;
+  }
+
+  async function readBwfTimeReferenceFromFile(file) {
+    if (!file || !/\.wav$/iu.test(String(file.name || '')) || typeof file.slice !== 'function') {
+      return null;
+    }
+    const header = await file.slice(0, 1024 * 1024).arrayBuffer();
+    return parseBwfTimeReference(new Uint8Array(header));
   }
 
   const KEYBOARD_OPERATION_REFERENCE_MODES = new Set(['pointer', 'playhead']);
@@ -11636,6 +11747,8 @@ export default MawDynamicCaptions;
   window.AsrEditorUtils = {
     subtitleFontFamilyDisplayName,
     decodeSubtitleText,
+    parseBwfTimeReference,
+    readBwfTimeReferenceFromFile,
     normalizeKeyboardOperationReferenceMode,
     resolveKeyboardOperationReference,
     buildReplacementPreview,
@@ -11934,6 +12047,7 @@ export default MawDynamicCaptions;
     '播放预览': 'Playback preview', '自动预览鼠标位置画面': 'Automatically preview the frame under the pointer', 'JKL 按键播放控制': 'JKL playback controls',
     '跳转时长': 'Seek duration', '每次跳转': 'Each jump', '每次跳转时长': 'Seek duration per action', '媒体控制按钮和左右方向键每次跳转的毫秒数': 'Milliseconds to jump with the media controls and left/right arrow keys', '控制按钮和左右方向键的每次跳转时长（单位：ms）': 'Duration for each jump from the controls and left/right arrow keys (unit: ms)',
     '频谱颜色': 'Spectral colors', '正在应用频谱颜色…': 'Applying spectral colors…', '正在关闭频谱颜色…': 'Removing spectral colors…',
+    '预览字幕颜色': 'Color underline', '按字幕颜色快照给预览文字加下划线，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本': 'Underline the preview text with each subtitle color snapshot to tell colored subtitles apart; only affects the in-player preview, never subtitle text',
     '播放': 'Play', '暂停': 'Pause', '后退 1000ms': 'Back 1000ms', '前进 1000ms': 'Forward 1000ms',
     '媒体进度': 'Media progress', '音量': 'Volume', '速度': 'Speed', '播放速度': 'Playback speed',
     '全屏': 'Fullscreen', '退出全屏': 'Exit fullscreen',
@@ -12442,6 +12556,7 @@ export default MawDynamicCaptions;
     // 颜色过滤与拆分移除符号设置
     '按颜色过滤显示的字幕': 'Filter visible subtitles by color',
     '清除颜色过滤': 'Clear color filter',
+    '全选过滤结果': 'Select all filtered', '当前没有生效的颜色过滤': 'No color filter is active',
     '默认': 'Default',
     '主字幕自动使用时间码拆分': 'Auto-split main subtitles with word timings',
     '开启时，会自动按可用时间码拆分；关闭后将打开拆分弹窗，手动进行拆分。':
@@ -13073,13 +13188,11 @@ export default MawDynamicCaptions;
       editorDisplay: CINEMA_SCREEN_EDITOR_DISPLAY,
     },
   };
-  const PALETTE = {
-    yellow: '#f1c40f',
-    green: '#2ecc71',
-    red: '#e74c3c',
-    purple: '#9b59b6',
-    blue: '#168cff',
-  };
+  // 调色板数值唯一来源于 maw/speaker.py，渲染时注入 window.ASR_EDITOR_PALETTE；
+  // Node 测试等无注入环境回退为空表（colorForSegment 走存储值兜底）。
+  const PALETTE = Object.fromEntries(
+    ((typeof window !== 'undefined' && window.ASR_EDITOR_PALETTE) || []).map((c) => [c.name, c.value]),
+  );
 
   function clamp(value, low, high) {
     return Math.max(low, Math.min(high, value));
@@ -18944,13 +19057,17 @@ MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(EDITOR_SETTINGS.splitTrimSymbols);
 
 // 标记颜色：5 种基础色，用于给字幕分组着色。
 // 数据模型与表情包同构：head 持完整 color {name, value, start, end}，后续 ref 持 color_ref {name, headIdx}
-const COLOR_PALETTE = [
-  { name: 'yellow', label: '黄', value: '#f1c40f' },
-  { name: 'green',  label: '绿', value: '#2ecc71' },
-  { name: 'red',    label: '红', value: '#e74c3c' },
-  { name: 'purple', label: '紫', value: '#9b59b6' },
-  { name: 'blue',   label: '蓝', value: '#168cff' },
-];
+// 调色板数值唯一来源于 maw/colors.py（渲染时注入 window.ASR_EDITOR_PALETTE）；
+// 这里只补充编辑器 UI 用的中文标签。
+const COLOR_LABELS = { yellow: '黄', green: '绿', red: '红', purple: '紫', blue: '蓝' };
+if (!Array.isArray(window.ASR_EDITOR_PALETTE) || !window.ASR_EDITOR_PALETTE.length) {
+  throw new Error('调色板未注入：缺少 window.ASR_EDITOR_PALETTE（检查 edit.py / serve.py 渲染管线）');
+}
+const COLOR_PALETTE = window.ASR_EDITOR_PALETTE.map((c) => ({
+  name: c.name,
+  label: COLOR_LABELS[c.name] || c.name,
+  value: c.value,
+}));
 const COLOR_BY_NAME = Object.fromEntries(COLOR_PALETTE.map(c => [c.name, c]));
 function colorValue(name) { return COLOR_BY_NAME[name]?.value || '#777'; }
 
@@ -19309,6 +19426,7 @@ const subtitleBackgroundColorInput = document.getElementById('subtitle-backgroun
 const subtitleBackgroundAlphaInput = document.getElementById('subtitle-background-alpha');
 const subtitleBackgroundAlphaValue = document.getElementById('subtitle-background-alpha-value');
 const subtitleColorInput = document.getElementById('subtitle-color');
+const subtitleColorUnderlineInput = document.getElementById('subtitle-color-underline');
 const extensionSubtitlePreviewSettings = document.getElementById('extension-subtitle-preview-settings');
 const extensionSubtitleFontSizeSelect = document.getElementById('extension-subtitle-font-size');
 const extensionSubtitleFontFamilySelect = document.getElementById('extension-subtitle-font-family');
@@ -20767,6 +20885,11 @@ document.addEventListener('mawe:languagechange', () => {
 subtitleColorInput?.addEventListener('change', () => {
   pushPreviewUndo('调整主字幕颜色', snapshotPreviewState());
   setSubtitleAppearance({ color: subtitleColorInput.value });
+  update();
+});
+subtitleColorUnderlineInput?.addEventListener('change', () => {
+  pushPreviewUndo('切换预览字幕颜色下划线', snapshotPreviewState());
+  setSubtitleAppearance({ color_underline: subtitleColorUnderlineInput.checked });
   update();
 });
 extensionSubtitleFontSizeSelect?.addEventListener('change', () => {
@@ -23170,10 +23293,11 @@ function effectiveCueColorKey(mainSeg) {
   return MULTI_SUBTITLE_UTILS.effectiveColorName(mainSeg, DATA.segments) || COLOR_FILTER_DEFAULT_KEY;
 }
 
-// 仅副轨显示模式下列表行不携带颜色信息；此时按钮隐藏且过滤暂停生效，
-// 避免出现“看不到过滤开关但列表被过滤”的死角。
+// 双列 / 仅副轨显示模式下，列表行不携带颜色条：按钮隐藏且过滤暂停生效，
+// 避免出现“看不到过滤开关但列表被过滤”的死角。只有单列主轨列表参与过滤。
 function colorFilterSuspended() {
-  return multiSubtitleVisible() && getMultiSubtitleState().display_mode === 'extension';
+  if (!multiSubtitleVisible()) return false;
+  return getMultiSubtitleState().display_mode !== 'main';
 }
 
 function collectProjectColorUsage() {
@@ -23217,6 +23341,13 @@ function renderColorFilterMenu() {
   keys.forEach((key) => {
     colorFilterMenu.appendChild(buildColorFilterItem(key, usage.get(key) || 0));
   });
+  const selectFilteredBtn = document.createElement('button');
+  selectFilteredBtn.type = 'button';
+  selectFilteredBtn.className = 'dropdown-item color-filter-clear';
+  selectFilteredBtn.textContent = '全选过滤结果';
+  selectFilteredBtn.hidden = !colorFilterSelection;
+  selectFilteredBtn.addEventListener('click', () => selectAllFilteredCues());
+  colorFilterMenu.appendChild(selectFilteredBtn);
   const clearBtn = document.createElement('button');
   clearBtn.type = 'button';
   clearBtn.className = 'dropdown-item color-filter-clear';
@@ -23230,6 +23361,28 @@ function setColorFilterSelection(next) {
   colorFilterSelection = next && next.size ? new Set(next) : null;
   renderColorFilterMenu();
   applySearch(searchEl.value);
+}
+
+function selectAllFilteredCues() {
+  // 颜色过滤只作用于主轨字幕列表，这里同样只选中主轨里过滤命中的字幕，
+  // 便于配合「批量替换（仅选中）」等按选区工作的工具，例如给不同说话人加前缀。
+  if (!colorFilterSelection || colorFilterSuspended()) {
+    flashHint('当前没有生效的颜色过滤', 'invalid');
+    return;
+  }
+  commitCuePanelEdit();
+  clearSelection({ silent: true });
+  DATA.segments.forEach((seg, idx) => {
+    if (isHiddenDisabled(idx)) return;
+    if (!colorFilterSelection.has(effectiveCueColorKey(seg))) return;
+    selectedIdxs.add(idx);
+    const el = container.querySelector(`.cue[data-idx="${idx}"]`);
+    if (el) el.classList.add('selected');
+  });
+  updateMultiSelectionClasses();
+  if (waveformEditor) waveformEditor.updateSelection();
+  selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
+  flashHint(`已选中 ${selectedIdxs.size} 条过滤字幕`, selectedIdxs.size ? 'success' : 'invalid');
 }
 
 function buildColorFilterItem(key, count) {
@@ -28000,11 +28153,16 @@ function normalizeSubtitleAppearance(value) {
   if (backgroundAlpha !== null) result.background_alpha = backgroundAlpha;
   const color = normalizeSubtitleColor(value?.color);
   if (color) result.color = color;
+  if (value?.color_underline === false) result.color_underline = false;
   return result;
 }
 function getSubtitleAppearance(value = DATA.preview?.subtitle) {
   const result = normalizeSubtitleAppearance(value);
-  return { ...result, color: result.color || DEFAULT_SUBTITLE_COLOR };
+  return {
+    ...result,
+    color: result.color || DEFAULT_SUBTITLE_COLOR,
+    color_underline: result.color_underline !== false,
+  };
 }
 function getStoredExtensionSubtitleAppearance(value = DATA.preview?.extension_subtitle) {
   return normalizeSubtitleAppearance(value);
@@ -28036,6 +28194,9 @@ function syncSubtitleFontSizeSelect(select, sizeValue) {
 }
 function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
   syncSubtitleFontSizeSelect(subtitleFontSizeSelect, appearance.font_size);
+  if (subtitleColorUnderlineInput) {
+    subtitleColorUnderlineInput.checked = appearance.color_underline !== false;
+  }
   if (subtitleFontFamilySelect) {
     subtitleFontFamilySelect.querySelectorAll('option[data-generated="true"]').forEach((option) => option.remove());
     const family = appearance.font_family || 'default';
@@ -28153,6 +28314,11 @@ function setSubtitleAppearance(patch, { markDirty = true } = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, 'color')) {
     const color = normalizeSubtitleColor(patch.color);
     if (color) next.color = color;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'color_underline')) {
+    // true 是默认值，不落盘；只在关闭时写入 color_underline: false。
+    if (patch.color_underline) delete next.color_underline;
+    else next.color_underline = false;
   }
   if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
   DATA.preview.subtitle = { ...getPreviewGeometry(), ...next };
@@ -28571,6 +28737,20 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (mainVisible && overlayTextEl.textContent !== mainText) overlayTextEl.textContent = mainText;
   if (extensionVisible && overlayExtensionTextEl.textContent !== extensionText) {
     overlayExtensionTextEl.textContent = extensionText;
+  }
+  // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref）给预览文字加下划线。
+  // dataset 记录上次应用的颜色，避免播放刷新每帧都写内联样式。
+  const colorUnderlineEnabled = DATA.preview?.subtitle?.color_underline !== false;
+  let colorUnderline = '';
+  if (mainVisible && colorUnderlineEnabled && seg) {
+    const colorName = MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments);
+    colorUnderline = colorName ? COLOR_BY_NAME[colorName]?.value || '' : '';
+  }
+  if (overlayTextEl.dataset.colorUnderline !== colorUnderline) {
+    overlayTextEl.dataset.colorUnderline = colorUnderline;
+    overlayTextEl.style.textDecorationLine = colorUnderline ? 'underline' : '';
+    overlayTextEl.style.textDecorationColor = colorUnderline;
+    overlayTextEl.style.textUnderlineOffset = colorUnderline ? '0.25em' : '';
   }
   const overlayHidden = !mainVisible && !extensionVisible;
   if (overlayEl.classList.contains('hidden') !== overlayHidden) {
@@ -29151,6 +29331,66 @@ function msToOtioFrames(ms, fps = OTIO_STICKER_FPS) {
   return Math.round(ms / 1000 * fps);
 }
 
+function mediaStartOtioFrames() {
+  const reference = DATA.media_time_reference;
+  const sampleRate = Number(reference?.sample_rate);
+  const samples = Number(reference?.time_reference_samples);
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0
+      || !Number.isFinite(samples) || samples < 0) {
+    return 0;
+  }
+  return samples / sampleRate * OTIO_STICKER_FPS;
+}
+
+const OTIO_MARKER_COLORS = Object.freeze({
+  yellow: 'YELLOW',
+  green: 'GREEN',
+  red: 'RED',
+  purple: 'PURPLE',
+  blue: 'BLUE',
+});
+const OTIO_DEFAULT_MARKER_COLOR = 'WHITE';
+
+function buildGapRemovedSubtitleMarkers(interval) {
+  const intervalStartMs = Math.max(0, Math.round(Number(interval?.start) || 0));
+  const intervalEndMs = Math.max(
+    intervalStartMs,
+    Math.round(Number(interval?.end) || 0),
+  );
+  const clipStartFrame = msToOtioFrames(intervalStartMs);
+  const clipEndFrame = msToOtioFrames(intervalEndMs);
+  if (clipEndFrame <= clipStartFrame) return [];
+
+  return DATA.segments.flatMap((segment) => {
+    if (!segment || segment.disabled) return [];
+    const segmentStartMs = Number(segment.start);
+    const segmentEndMs = Number(segment.end);
+    if (!Number.isFinite(segmentStartMs) || !Number.isFinite(segmentEndMs)
+        || segmentEndMs <= segmentStartMs) {
+      return [];
+    }
+    const startMs = Math.max(intervalStartMs, segmentStartMs);
+    const endMs = Math.min(intervalEndMs, segmentEndMs);
+    if (endMs <= startMs) return [];
+
+    const markerStartFrame = msToOtioFrames(startMs) - clipStartFrame;
+    const markerEndFrame = msToOtioFrames(endMs) - clipStartFrame;
+    if (markerEndFrame <= markerStartFrame) return [];
+
+    const colorName = window.AsrEditorUtils.effectiveColorName(segment, DATA.segments);
+    return [{
+      OTIO_SCHEMA: 'Marker.2',
+      metadata: {},
+      name: String(segment.text || ''),
+      color: OTIO_MARKER_COLORS[colorName] || OTIO_DEFAULT_MARKER_COLOR,
+      marked_range: otioTimeRange(
+        markerStartFrame,
+        markerEndFrame - markerStartFrame,
+      ),
+    }];
+  });
+}
+
 function stickerTargetUrl(absPath) {
   let value = String(absPath || '').trim();
   if (!value) return '';
@@ -29174,7 +29414,10 @@ function mediaTargetUrl() {
   return '';
 }
 
-function buildGapRemovedMediaClip(interval, index, kind, targetUrl, sourceDurationFrames) {
+function buildGapRemovedMediaClip(
+  interval, index, kind, targetUrl, sourceStartFrame, sourceDurationFrames,
+  includeSubtitleMarkers = false,
+) {
   const startFrame = msToOtioFrames(interval.start);
   const endFrame = msToOtioFrames(interval.end);
   const durationFrames = Math.max(1, endFrame - startFrame);
@@ -29188,9 +29431,9 @@ function buildGapRemovedMediaClip(interval, index, kind, targetUrl, sourceDurati
       },
     },
     name: `${kind} ${index + 1}`,
-    source_range: otioTimeRange(startFrame, durationFrames),
+    source_range: otioTimeRange(sourceStartFrame + startFrame, durationFrames),
     effects: [],
-    markers: [],
+    markers: includeSubtitleMarkers ? buildGapRemovedSubtitleMarkers(interval) : [],
     enabled: true,
     color: null,
     media_references: {
@@ -29198,7 +29441,7 @@ function buildGapRemovedMediaClip(interval, index, kind, targetUrl, sourceDurati
         OTIO_SCHEMA: 'ExternalReference.1',
         metadata: {},
         name: '',
-        available_range: otioTimeRange(0, sourceDurationFrames),
+        available_range: otioTimeRange(sourceStartFrame, sourceDurationFrames),
         available_image_bounds: null,
         target_url: targetUrl,
       },
@@ -29229,6 +29472,7 @@ function buildGapRemovedOtio() {
     return null;
   }
   const sourceDurationFrames = Math.max(1, msToOtioFrames(durationMs));
+  const sourceStartFrame = mediaStartOtioFrames();
   const trackSpecs = player?.tagName === 'AUDIO'
     ? [{ name: '音频', kind: 'Audio' }]
     : [{ name: '视频', kind: 'Video' }, { name: '音频', kind: 'Audio' }];
@@ -29242,7 +29486,8 @@ function buildGapRemovedOtio() {
     enabled: true,
     color: null,
     children: intervals.map((interval, index) => buildGapRemovedMediaClip(
-      interval, index, track.name, targetUrl, sourceDurationFrames,
+      interval, index, track.name, targetUrl, sourceStartFrame, sourceDurationFrames,
+      track.kind === 'Video' || trackSpecs.length === 1,
     )),
     kind: track.kind,
   }));
@@ -31162,6 +31407,7 @@ function applyCanonicalProject(data, filename) {
   DATA.media = typeof data.media === 'string' ? data.media : '';
   DATA.language = data.language || '';
   DATA.model = data.model || '';
+  DATA.media_time_reference = data.media_time_reference || null;
   DATA.waveform = data.waveform || null;
   DATA.spectral = data.spectral || null;
   DATA.waveform_reapeaks = data.waveform_reapeaks || null;
@@ -31973,6 +32219,13 @@ async function loadMediaFile(file) {
     return false;
   }
 
+  let mediaTimeReference = null;
+  try {
+    mediaTimeReference = await window.AsrEditorUtils.readBwfTimeReferenceFromFile(file);
+  } catch (_) {
+    // BWF metadata is optional; an unreadable header must not block playback.
+  }
+
   if (waveformEditor) waveformEditor.attachPlayer(player);
   syncPlayerPlaceholder();
   // 部分浏览器会在 load() 完成前暂时不给 currentSrc；文件既已由用户选定，立即恢复彩色波形。
@@ -31986,6 +32239,7 @@ async function loadMediaFile(file) {
   const stem = file.name.replace(/\.[^.]+$/, '');
   FILENAME_BASE = stem;
   DATA.media = file.name;
+  DATA.media_time_reference = mediaTimeReference;
   const mnEl = document.getElementById('media-name');
   if (mnEl) {
     mnEl.textContent = file.name;
@@ -33699,6 +33953,8 @@ function assignColor(idxs, colorName) {
   const isUnifiedGroup = sorted.length > 1
     || DATA.segments.some((s) => s.color_ref && s.color_ref.headIdx === sorted[0]);
   renderAll();
+  // 被标记的字幕可能正显示在预览画面里，刷新预览让颜色描边立即生效。
+  update();
   flashHint(isUnifiedGroup
     ? `已将关联字幕统一设为「${def.label}色」`
     : `已将字幕设为「${def.label}色」`, 'success');
@@ -33717,6 +33973,8 @@ function clearColorOnTargets(idxs) {
   // 一次性切除所有目标 idx，触发组拆分
   splitGroupsAtCutPoints(new Set(idxs), 'color', 'color_ref');
   renderAll();
+  // 清除的颜色可能正显示在预览画面里，刷新预览让颜色描边同步消失。
+  update();
   flashHint('已清除颜色', 'success');
 }
 

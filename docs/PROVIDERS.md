@@ -8,15 +8,18 @@ MAW 本身不托管转写服务。你选择的服务商会直接接收待转写�
 | --- | --- | --- |
 | Qwen-Audio / Qwen3-ASR / Fun-ASR | 默认云端路径、中文和说话人分离 | 使用阿里云百炼 API Key；Launcher 默认优先 Qwen-Audio。 |
 | Soniox | 多语言、小语种和说话人分离 | 使用 Soniox Console API Key。 |
+| 腾讯云录音文件识别 | 中文/英文长音频的异步文件识别 | 使用 `TENCENT_SECRET_ID`、`TENCENT_SECRET_KEY`；大于 5MB 的媒体需使用 COS/公网 URL。 |
 | 必剪 ASR | 不想申请 Key 的中文快速体验 | 实验性、非官方接口，可能限流或失效。 |
 | 本地 Qwen3-ASR / FunASR | 希望离线转写且有合适硬件 | 实验性，需要单独安装运行环境和模型。 |
 
 ## API Key 配置
 
 - 图形版：在 Launcher 中填写并保存到本机环境。
-- 源码或 CLI：复制 `.env.example` 为 `.env`，填写 `DASHSCOPE_API_KEY` 或 `SONIOX_API_KEY`。
+- 源码或 CLI：复制 `.env.example` 为 `.env`，填写 `DASHSCOPE_API_KEY`、`SONIOX_API_KEY`，或腾讯云的 `TENCENT_SECRET_ID` 与 `TENCENT_SECRET_KEY`。
 - API Key 只应保存在环境变量或本机 `.env` 中，不要放进命令行、工程、日志、截图或 AI 对话。
 - Qwen Key 申请见[阿里云百炼官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)；Soniox Key 见 [Soniox Console](https://console.soniox.com)。
+- 腾讯云密钥见[API 密钥管理](https://console.cloud.tencent.com/cam/capi)；录音文件识别使用 `CreateRecTask` / `DescribeTaskStatus`，默认引擎为 `16k_zh_en_2.0`。
+- 腾讯云的 `Words` 结果包含字词级毫秒时间码；传入 `--speaker` 会启用说话人分离并保留匿名 speaker 标签。完整示例见[完整工作流](WORKFLOW.md)。
 
 区域、模型、热词、上下文和完整参数见[完整工作流](WORKFLOW.md)与[CLI 文档](CLI.md)。
 

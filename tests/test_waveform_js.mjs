@@ -5,7 +5,16 @@ import vm from 'node:vm';
 
 
 const context = {
-  window: {},
+  window: {
+    // 与 maw/colors.py COLOR_PALETTE 一致的最小 fixture（仅测试用）。
+    ASR_EDITOR_PALETTE: [
+      { name: 'yellow', value: '#c4a019' },
+      { name: 'green', value: '#66bb6a' },
+      { name: 'red', value: '#f07f6f' },
+      { name: 'purple', value: '#bf89e6' },
+      { name: 'blue', value: '#61a7fa' },
+    ],
+  },
   atob: (value) => Buffer.from(value, 'base64').toString('binary'),
   btoa: (value) => Buffer.from(value, 'binary').toString('base64'),
 };
