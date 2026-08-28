@@ -20,6 +20,47 @@ async function runReplacement(page, { outputMode = 'both' } = {}) {
   await expect(page.locator('.toolbox-chain-item')).toHaveCount(previousCount + 1);
 }
 
+test('LLM settings refill the saved key and save only after a successful connection test', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#toolboxLlmTab').click();
+  await page.locator('#openLlmSettings').click();
+  await page.evaluate(async () => {
+    await window.MAWLauncher.callBackend('save_postprocess_settings', {
+      providerId: 'deepseek',
+      apiKey: 'sk-saved-for-test',
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-v4-flash',
+    });
+    const select = document.querySelector('#postprocessProvider');
+    select.value = 'zhipu';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    select.value = 'deepseek';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+
+  await expect(page.locator('#llmApiKey')).toHaveValue('sk-saved-for-test');
+  await expect(page.locator('#llmKeyStatus')).toHaveText('已从本地环境读取密钥 sk-…mock');
+  await page.locator('#llmApiKey').fill('sk-entered-for-test');
+  await page.evaluate(() => {
+    const callBackend = window.MAWLauncher.callBackend;
+    window.__llmCalls = [];
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'test_postprocess_connection' || method === 'save_postprocess_settings') {
+        window.__llmCalls.push({ method, payload });
+      }
+      return callBackend(method, payload);
+    };
+  });
+
+  await page.locator('#testLlmConnection').click();
+  await expect(page.locator('#llmSettingsSaveStatus')).toHaveText('连接成功（已自动保存到本地环境）');
+  expect(await page.evaluate(() => window.__llmCalls.map(({ method }) => method))).toEqual([
+    'test_postprocess_connection',
+  ]);
+  expect(await page.evaluate(() => window.__llmCalls[0].payload.save)).toBe(true);
+  await expect(page.locator('#llmApiKey')).toHaveValue('sk-entered-for-test');
+});
+
 test('artifact rows localize type labels while preserving MOSP-first and SRT-only selection', async ({ page }) => {
   await openLauncher(page);
   await runReplacement(page);

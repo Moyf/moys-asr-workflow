@@ -50,6 +50,7 @@ from maw.postprocess_pipeline import (
     invalidate_llm_verification_if_changed,
     is_llm_verified,
     load_postprocess_plan,
+    record_llm_verification,
     run_postprocess_pipeline,
     save_postprocess_plan,
     snapshot_postprocess_llm_settings,
@@ -566,6 +567,27 @@ class LauncherApi:
             "zoomPercent": config.zoom_percent,
         }
 
+    def get_postprocess_settings(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Return the selected provider's effective settings for the local form.
+
+        The bulk config deliberately exposes only masked keys. This explicit
+        provider read is used to refill the password input without putting raw
+        keys into the provider registry payload.
+        """
+
+        preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
+        values = _postprocess_values(self.paths.env_path, preset.env_prefix)
+        return {
+            "ok": True,
+            "providerId": preset.id,
+            "apiKey": values["apiKey"],
+            "maskedApiKey": masked_secret(values["apiKey"]),
+            "baseUrl": values["baseUrl"] or preset.base_url,
+            "model": values["model"] or preset.model,
+            "reasoningMode": values["reasoningMode"] or DEFAULT_REASONING_MODE,
+            "displayName": values["displayName"] if preset.id == "custom" else "",
+        }
+
     def default_output(self, payload: Mapping[str, object]) -> dict[str, object]:
         media_text = str(payload.get("mediaPath") or "").strip()
         provider_id = str(payload.get("providerId") or "qwen")
@@ -733,14 +755,33 @@ class LauncherApi:
         except LlmClientError as error:
             detail = str(error)
             return {"ok": False, "field": "postprocessProvider", "code": "postprocess_connection_failed", "detail": detail, "error": detail}
+        if bool(payload.get("save")):
+            saved = self.save_postprocess_settings({
+                "providerId": preset.id,
+                "apiKey": settings.api_key,
+                "baseUrl": settings.base_url,
+                "model": settings.model,
+                "reasoningMode": reasoning_mode,
+                "displayName": str(payload.get("displayName") or "").strip(),
+            })
+            if not saved.get("ok"):
+                return saved
+            record_llm_verification(self.paths.env_path, preset.id, {
+                "apiKey": settings.api_key,
+                "baseUrl": settings.base_url,
+                "model": settings.model,
+            })
+            return {
+                **saved,
+                "saved": True,
+                "verified": True,
+            }
         stored = _postprocess_values(self.paths.env_path, preset.env_prefix)
         if (
             stored["apiKey"] == settings.api_key
             and (stored["baseUrl"] or preset.base_url) == settings.base_url
             and (stored["model"] or preset.model) == settings.model
         ):
-            from maw.postprocess_pipeline import record_llm_verification
-
             record_llm_verification(self.paths.env_path, preset.id, {
                 "apiKey": settings.api_key,
                 "baseUrl": settings.base_url,
