@@ -1,16 +1,9 @@
 from __future__ import annotations
 
-
-# 与 JSON_SCHEMA.md 第四节的 5 色一致。
-SPEAKER_COLOR_PALETTE: tuple[tuple[str, str], ...] = (
-    ("yellow", "#f1c40f"),
-    ("green", "#2ecc71"),
-    ("red", "#e74c3c"),
-    ("purple", "#9b59b6"),
-    ("blue", "#3498db"),
-)
+from maw.colors import COLOR_PALETTE
 
 
+# speaker 只是调色板的取色者之一：色值权威定义见 maw/colors.py。
 def split_items_by_speaker(items: list[dict]) -> list[list[dict]]:
     """按 speaker 变化硬切分，避免两个说话人进入同一字幕段。
 
@@ -48,9 +41,9 @@ def apply_speaker_colors(segments: list[dict]) -> dict:
     if not speaker_order:
         return {"speakers": [], "colored_segments": 0, "overflow": False}
 
-    overflow = len(speaker_order) > len(SPEAKER_COLOR_PALETTE)
+    overflow = len(speaker_order) > len(COLOR_PALETTE)
     palette_of = {
-        speaker: SPEAKER_COLOR_PALETTE[index % len(SPEAKER_COLOR_PALETTE)]
+        speaker: COLOR_PALETTE[index % len(COLOR_PALETTE)]
         for index, speaker in enumerate(speaker_order)
     }
 

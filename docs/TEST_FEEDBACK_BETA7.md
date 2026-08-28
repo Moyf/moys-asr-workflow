@@ -82,7 +82,14 @@
 - 校验同步收紧：`buildSplitPair` 与内联 `splitAtCursor` 改用最终左右边界分别校验两侧 >= 100ms；强制重试路径若自然边界使某一侧过短（末词紧贴字幕末尾等），该侧降级回用户确认的强制切点，另一侧保留自然边界。
 - 说明项：`web/waveform.js` 的 `splitSegmentAtTime`（波形工具函数，当前仅被单元测试引用、不在任何 UI 拆分链路上）保留原"最近 item 中点"契约；UI 上的剃刀拆分经 editor.js 文本管线执行，已随本次改动获得新语义。
 - 验证证据见下方修复记录第 42 行。
-- 未验证边界：联动拆分弹窗在词间空隙上的完整点击流未实机走查（其确认逻辑同样经 `buildSplitPair` 生效）；针对本行为的持久化 e2e 回归用例暂未入库，本轮以真实浏览器冒烟脚本代替。
+- 未验证边界：联动拆分弹窗在词间空隙上的完整点击流未实机走查（其确认逻辑同样经 `buildSplitPair` 生效）。
+
+## 增量记录（任务 42 补充：入库 e2e 回归）
+
+- 新增 `tests/e2e/split-word-gap.spec.mjs`（3/3 通过），把词间静音拆分行为固化为持久化回归：静音空隙场景断言左段 `end=6480`、右段 `start=6720` 且各自 item 贴合；连续词场景断言左右段仍共享 `20800` 单一切点；词内切点场景断言按比例插值共享 `6320` 且左右 item 不越过段边界。
+- 断言发现并记录既有行为：`cleanSplitItems` 会把左段末 item 的尾部标点裁掉（`型、`→`型`），时间不变；该行为早于本次改动，用例按现状固化。
+- 相邻既有拆分回归（`waveform-history.spec.mjs` 内联拆分 / 强制重试 / B 拆分 3 条）复跑 3/3 通过，确认无相互影响。
+- 运行方式：`$env:MAW_E2E_PYTHON='.venv\Scripts\python.exe'; npx playwright test tests/e2e/split-word-gap.spec.mjs --project=chromium`（系统 python 缺 `reapeaks`，按 beta7 既有结论使用仓库 .venv）。
 
 ## 修复与验证记录
 
@@ -110,6 +117,7 @@
 | 33 | 已修复 | 批量区域新增独立拖入提示；不支持格式和重复文件不再写入单文件错误区，重复文件提示“文件已在当前列表内”；`batch_item_log` 阶段名同步写入总日志并以内联形式显示；跳过已完成文件改为自定义“是 / 否”确认按钮。已通过完整 Python 643/643、Launcher 190/190、Node 126/126、Launcher JS 语法、便携版生成、`git diff --check` 和浏览器冒烟验证。 |
 | 34 | 已修复 | 批量开始时状态区显示当前文件序号（如 `正在处理第 1/3 个文件`）；切换文件时更新当前处理文件；每个文件完成、失败或取消时写入总日志；批量结束时汇总成功/失败数量。已通过 Launcher 190/190、Launcher JS 语法检查和浏览器批量冒烟验证。 |
 | 42 | 已修复 | `node --check web\editor.js`；`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（218/218 通过）；`.venv\Scripts\python.exe edit.py --blank` 重生成便携版；真实浏览器 Playwright 冒烟（serve.py 挂载测试工程 → 双击第 0 行进入编辑 → 光标定位偏移 5「、」后 → Enter）：拆分前 row0 `00:05.760→00:08.880 本地模型、AI校准和翻译…`，拆分后 row0 `00:05.760→00:06.480 本地模型`、row1 `00:06.720→00:08.880 AI校准和翻译…`，左段停在 6480、右段起于 6720，240ms 词间静音保留；`git diff --check` 通过。 |
+| 42 补 | 已修复 | 入库 e2e：`npx playwright test tests/e2e/split-word-gap.spec.mjs --project=chromium`（3/3 通过，MAW_E2E_PYTHON 指向仓库 .venv）；相邻既有拆分回归 `waveform-history.spec.mjs --grep "retries an inline split|manual text split keeps malformed|B splits the selected subtitle under"`（3/3 通过）；`git diff --check` 通过。 |
 
 ## 询问项结论
 
@@ -324,9 +332,11 @@
 - 已验证：`.venv\\Scripts\\python.exe edit.py --blank`；`node --check web\\editor.js`、`node --check web\\editor-utils.js`、`node --check web\\editor-i18n.js`、`node --check tests\\e2e\\multi-subtitle.spec.mjs`；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（215/215）；`git diff --check`；本地 Chromium 目标回归（使用 `MAW_E2E_PYTHON=.venv\\Scripts\\python.exe`）1/1。
 - localhost `server-editor --blank` 返回 200，页面包含副字幕文案和主列 dirty 规则，未发现旧中文称呼。完整 `multi-subtitle.spec.mjs` 为 80/81：唯一失败是既有的未绑定副字幕文本处理用例，其夹具的首个双列行本来是空主列，失败断言与本次修改无关。
 
-## 增量记录（任务 41：去空隙 OTIO 源范围错位）
+## 增量记录（任务 41：去空隙 OTIO 源范围错位，复核）
 
-- 根因：去空隙 OTIO 的每个 `ExternalReference` 没有写入 `available_range`（原值为 `null`）。片段的 `source_range` 虽然包含原始媒体起点，但 Resolve 缺少完整媒体可用范围时会错误解释这些源范围，表现为片段长度正确而源内容错位。
-- 修复：保留每个保留区间原始的 `source_range.start_time`，并为每个媒体引用写入从 0 开始、覆盖完整源媒体时长的 `available_range`；视频和音频轨道共用同一媒体范围。`blank-editor.html` 已从 `web/` 源码重新生成。
-- 已增加多空隙回归：覆盖开头空隙、多个中间空隙和末尾保留区间，断言每个 clip 的序列连续性、源起点、源时长以及完整媒体 `available_range`。
-- 当前状态：代码、标准 OTIO 解析和浏览器回归均已验证；Resolve 实机导入仍未完成，本机未发现预期的 `Resolve.exe`，因此 Resolve 最终显示效果保留为未验证。
+- 复核结论：上一版把 `available_range` 从 `null` 改成 `0..全长`，但这只补了字段，仍然丢失了 BWF 媒体时间基准；用户再次用示例 OTIO 对比后确认问题仍在。
+- 证据：用户提供的参考 OTIO 对应 WAV 的 `bext.time_reference` 是 `8895762` samples，采样率是 `48000`；换算到 OTIO 固定 60 fps 为 `8895762 / 48000 * 60 = 11119.7025` 帧。参考文件的 `available_range.start_time` 正是 `11119.7025`；三个 clip 起点分别为 `11461.7025`、`11600.7025`、`11664.7025`，减去媒体起点后是 `342`、`481`、`545` 帧。
+- 根因：旧导出把媒体当成从文件第 0 帧开始，虽然 clip 时长和相对剪辑区间正确，Resolve 解释 source range 时却没有原始媒体的时间坐标。因此前部 clip 会被钳到 0，后部 clip 也会产生固定偏移。
+- 修复：新增 BWF `bext` 解析，`edit.py`、GUI 生成器和 server-editor 在页面数据中注入 `media_time_reference`；便携版手动加载 WAV 时从文件头重新读取。去空隙 OTIO 现在将 `available_range.start_time` 设为媒体起点，并将每个 `source_range.start_time` 设为媒体起点加片段相对起点；无 BWF 的 WAV 和其他媒体仍回退到 0。该字段是页面运行时元数据，不扩展 mosp 工程契约。
+- 回归：Python BWF 解析、GUI 页面注入、editor-utils 解析和带非零 BWF 起点的 Chromium OTIO 导出均已加入测试；`blank-editor.html` 已从 `web/` 源码重新生成。标准 OTIO 数值检查覆盖 available range、clip 源起点、源时长和去空隙后的连续序列。
+- 当前状态：代码、语法、单元测试和浏览器回归均已验证；Resolve 实机导入仍未完成，本机未发现预期的 `Resolve.exe`，因此 Resolve 最终显示效果保留为未验证。

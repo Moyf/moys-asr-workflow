@@ -121,6 +121,29 @@ test('normalizes and resolves keyboard operation references', () => {
   assert.equal(helpers.resolveKeyboardOperationReference('pointer', { pointer: null }), null);
 });
 
+test('parses BWF time_reference from a WAV header', () => {
+  const bytes = new Uint8Array(12 + 8 + 16 + 8 + 346);
+  const view = new DataView(bytes.buffer);
+  const writeAscii = (offset, value) => bytes.set([...value].map((char) => char.charCodeAt(0)), offset);
+  writeAscii(0, 'RIFF');
+  view.setUint32(4, bytes.length - 8, true);
+  writeAscii(8, 'WAVE');
+  writeAscii(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint32(24, 48000, true);
+  writeAscii(36, 'bext');
+  view.setUint32(40, 346, true);
+  const timeReferenceSamples = (2 * 0x100000000) + 8895762;
+  view.setUint32(36 + 8 + 338, timeReferenceSamples >>> 0, true);
+  view.setUint32(36 + 8 + 342, 2, true);
+
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.parseBwfTimeReference(bytes))), {
+    sample_rate: 48000,
+    time_reference_samples: timeReferenceSamples,
+  });
+  assert.equal(helpers.parseBwfTimeReference(new Uint8Array(44)), null);
+});
+
 test('normalizes editor settings without preserving invalid persisted values', () => {
   const settings = helpers.normalizeEditorSettings({
     multiSubtitleRowHeight: 999,
