@@ -792,13 +792,17 @@ MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(EDITOR_SETTINGS.splitTrimSymbols);
 
 // 标记颜色：5 种基础色，用于给字幕分组着色。
 // 数据模型与表情包同构：head 持完整 color {name, value, start, end}，后续 ref 持 color_ref {name, headIdx}
-const COLOR_PALETTE = [
-  { name: 'yellow', label: '黄', value: '#f1c40f' },
-  { name: 'green',  label: '绿', value: '#2ecc71' },
-  { name: 'red',    label: '红', value: '#e74c3c' },
-  { name: 'purple', label: '紫', value: '#9b59b6' },
-  { name: 'blue',   label: '蓝', value: '#168cff' },
-];
+// 调色板数值唯一来源于 maw/colors.py（渲染时注入 window.ASR_EDITOR_PALETTE）；
+// 这里只补充编辑器 UI 用的中文标签。
+const COLOR_LABELS = { yellow: '黄', green: '绿', red: '红', purple: '紫', blue: '蓝' };
+if (!Array.isArray(window.ASR_EDITOR_PALETTE) || !window.ASR_EDITOR_PALETTE.length) {
+  throw new Error('调色板未注入：缺少 window.ASR_EDITOR_PALETTE（检查 edit.py / serve.py 渲染管线）');
+}
+const COLOR_PALETTE = window.ASR_EDITOR_PALETTE.map((c) => ({
+  name: c.name,
+  label: COLOR_LABELS[c.name] || c.name,
+  value: c.value,
+}));
 const COLOR_BY_NAME = Object.fromEntries(COLOR_PALETTE.map(c => [c.name, c]));
 function colorValue(name) { return COLOR_BY_NAME[name]?.value || '#777'; }
 
@@ -1157,6 +1161,7 @@ const subtitleBackgroundColorInput = document.getElementById('subtitle-backgroun
 const subtitleBackgroundAlphaInput = document.getElementById('subtitle-background-alpha');
 const subtitleBackgroundAlphaValue = document.getElementById('subtitle-background-alpha-value');
 const subtitleColorInput = document.getElementById('subtitle-color');
+const subtitleColorUnderlineInput = document.getElementById('subtitle-color-underline');
 const extensionSubtitlePreviewSettings = document.getElementById('extension-subtitle-preview-settings');
 const extensionSubtitleFontSizeSelect = document.getElementById('extension-subtitle-font-size');
 const extensionSubtitleFontFamilySelect = document.getElementById('extension-subtitle-font-family');
@@ -2615,6 +2620,11 @@ document.addEventListener('mawe:languagechange', () => {
 subtitleColorInput?.addEventListener('change', () => {
   pushPreviewUndo('调整主字幕颜色', snapshotPreviewState());
   setSubtitleAppearance({ color: subtitleColorInput.value });
+  update();
+});
+subtitleColorUnderlineInput?.addEventListener('change', () => {
+  pushPreviewUndo('切换预览字幕颜色下划线', snapshotPreviewState());
+  setSubtitleAppearance({ color_underline: subtitleColorUnderlineInput.checked });
   update();
 });
 extensionSubtitleFontSizeSelect?.addEventListener('change', () => {
@@ -5018,10 +5028,11 @@ function effectiveCueColorKey(mainSeg) {
   return MULTI_SUBTITLE_UTILS.effectiveColorName(mainSeg, DATA.segments) || COLOR_FILTER_DEFAULT_KEY;
 }
 
-// 仅副轨显示模式下列表行不携带颜色信息；此时按钮隐藏且过滤暂停生效，
-// 避免出现“看不到过滤开关但列表被过滤”的死角。
+// 双列 / 仅副轨显示模式下，列表行不携带颜色条：按钮隐藏且过滤暂停生效，
+// 避免出现“看不到过滤开关但列表被过滤”的死角。只有单列主轨列表参与过滤。
 function colorFilterSuspended() {
-  return multiSubtitleVisible() && getMultiSubtitleState().display_mode === 'extension';
+  if (!multiSubtitleVisible()) return false;
+  return getMultiSubtitleState().display_mode !== 'main';
 }
 
 function collectProjectColorUsage() {
@@ -5065,6 +5076,13 @@ function renderColorFilterMenu() {
   keys.forEach((key) => {
     colorFilterMenu.appendChild(buildColorFilterItem(key, usage.get(key) || 0));
   });
+  const selectFilteredBtn = document.createElement('button');
+  selectFilteredBtn.type = 'button';
+  selectFilteredBtn.className = 'dropdown-item color-filter-clear';
+  selectFilteredBtn.textContent = '全选过滤结果';
+  selectFilteredBtn.hidden = !colorFilterSelection;
+  selectFilteredBtn.addEventListener('click', () => selectAllFilteredCues());
+  colorFilterMenu.appendChild(selectFilteredBtn);
   const clearBtn = document.createElement('button');
   clearBtn.type = 'button';
   clearBtn.className = 'dropdown-item color-filter-clear';
@@ -5078,6 +5096,28 @@ function setColorFilterSelection(next) {
   colorFilterSelection = next && next.size ? new Set(next) : null;
   renderColorFilterMenu();
   applySearch(searchEl.value);
+}
+
+function selectAllFilteredCues() {
+  // 颜色过滤只作用于主轨字幕列表，这里同样只选中主轨里过滤命中的字幕，
+  // 便于配合「批量替换（仅选中）」等按选区工作的工具，例如给不同说话人加前缀。
+  if (!colorFilterSelection || colorFilterSuspended()) {
+    flashHint('当前没有生效的颜色过滤', 'invalid');
+    return;
+  }
+  commitCuePanelEdit();
+  clearSelection({ silent: true });
+  DATA.segments.forEach((seg, idx) => {
+    if (isHiddenDisabled(idx)) return;
+    if (!colorFilterSelection.has(effectiveCueColorKey(seg))) return;
+    selectedIdxs.add(idx);
+    const el = container.querySelector(`.cue[data-idx="${idx}"]`);
+    if (el) el.classList.add('selected');
+  });
+  updateMultiSelectionClasses();
+  if (waveformEditor) waveformEditor.updateSelection();
+  selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
+  flashHint(`已选中 ${selectedIdxs.size} 条过滤字幕`, selectedIdxs.size ? 'success' : 'invalid');
 }
 
 function buildColorFilterItem(key, count) {
@@ -9848,11 +9888,16 @@ function normalizeSubtitleAppearance(value) {
   if (backgroundAlpha !== null) result.background_alpha = backgroundAlpha;
   const color = normalizeSubtitleColor(value?.color);
   if (color) result.color = color;
+  if (value?.color_underline === false) result.color_underline = false;
   return result;
 }
 function getSubtitleAppearance(value = DATA.preview?.subtitle) {
   const result = normalizeSubtitleAppearance(value);
-  return { ...result, color: result.color || DEFAULT_SUBTITLE_COLOR };
+  return {
+    ...result,
+    color: result.color || DEFAULT_SUBTITLE_COLOR,
+    color_underline: result.color_underline !== false,
+  };
 }
 function getStoredExtensionSubtitleAppearance(value = DATA.preview?.extension_subtitle) {
   return normalizeSubtitleAppearance(value);
@@ -9884,6 +9929,9 @@ function syncSubtitleFontSizeSelect(select, sizeValue) {
 }
 function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
   syncSubtitleFontSizeSelect(subtitleFontSizeSelect, appearance.font_size);
+  if (subtitleColorUnderlineInput) {
+    subtitleColorUnderlineInput.checked = appearance.color_underline !== false;
+  }
   if (subtitleFontFamilySelect) {
     subtitleFontFamilySelect.querySelectorAll('option[data-generated="true"]').forEach((option) => option.remove());
     const family = appearance.font_family || 'default';
@@ -10001,6 +10049,11 @@ function setSubtitleAppearance(patch, { markDirty = true } = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, 'color')) {
     const color = normalizeSubtitleColor(patch.color);
     if (color) next.color = color;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'color_underline')) {
+    // true 是默认值，不落盘；只在关闭时写入 color_underline: false。
+    if (patch.color_underline) delete next.color_underline;
+    else next.color_underline = false;
   }
   if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
   DATA.preview.subtitle = { ...getPreviewGeometry(), ...next };
@@ -10419,6 +10472,20 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (mainVisible && overlayTextEl.textContent !== mainText) overlayTextEl.textContent = mainText;
   if (extensionVisible && overlayExtensionTextEl.textContent !== extensionText) {
     overlayExtensionTextEl.textContent = extensionText;
+  }
+  // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref）给预览文字加下划线。
+  // dataset 记录上次应用的颜色，避免播放刷新每帧都写内联样式。
+  const colorUnderlineEnabled = DATA.preview?.subtitle?.color_underline !== false;
+  let colorUnderline = '';
+  if (mainVisible && colorUnderlineEnabled && seg) {
+    const colorName = MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments);
+    colorUnderline = colorName ? COLOR_BY_NAME[colorName]?.value || '' : '';
+  }
+  if (overlayTextEl.dataset.colorUnderline !== colorUnderline) {
+    overlayTextEl.dataset.colorUnderline = colorUnderline;
+    overlayTextEl.style.textDecorationLine = colorUnderline ? 'underline' : '';
+    overlayTextEl.style.textDecorationColor = colorUnderline;
+    overlayTextEl.style.textUnderlineOffset = colorUnderline ? '0.25em' : '';
   }
   const overlayHidden = !mainVisible && !extensionVisible;
   if (overlayEl.classList.contains('hidden') !== overlayHidden) {
@@ -10998,6 +11065,66 @@ function msToOtioFrames(ms, fps = OTIO_STICKER_FPS) {
   return Math.round(ms / 1000 * fps);
 }
 
+function mediaStartOtioFrames() {
+  const reference = DATA.media_time_reference;
+  const sampleRate = Number(reference?.sample_rate);
+  const samples = Number(reference?.time_reference_samples);
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0
+      || !Number.isFinite(samples) || samples < 0) {
+    return 0;
+  }
+  return samples / sampleRate * OTIO_STICKER_FPS;
+}
+
+const OTIO_MARKER_COLORS = Object.freeze({
+  yellow: 'YELLOW',
+  green: 'GREEN',
+  red: 'RED',
+  purple: 'PURPLE',
+  blue: 'BLUE',
+});
+const OTIO_DEFAULT_MARKER_COLOR = 'WHITE';
+
+function buildGapRemovedSubtitleMarkers(interval) {
+  const intervalStartMs = Math.max(0, Math.round(Number(interval?.start) || 0));
+  const intervalEndMs = Math.max(
+    intervalStartMs,
+    Math.round(Number(interval?.end) || 0),
+  );
+  const clipStartFrame = msToOtioFrames(intervalStartMs);
+  const clipEndFrame = msToOtioFrames(intervalEndMs);
+  if (clipEndFrame <= clipStartFrame) return [];
+
+  return DATA.segments.flatMap((segment) => {
+    if (!segment || segment.disabled) return [];
+    const segmentStartMs = Number(segment.start);
+    const segmentEndMs = Number(segment.end);
+    if (!Number.isFinite(segmentStartMs) || !Number.isFinite(segmentEndMs)
+        || segmentEndMs <= segmentStartMs) {
+      return [];
+    }
+    const startMs = Math.max(intervalStartMs, segmentStartMs);
+    const endMs = Math.min(intervalEndMs, segmentEndMs);
+    if (endMs <= startMs) return [];
+
+    const markerStartFrame = msToOtioFrames(startMs) - clipStartFrame;
+    const markerEndFrame = msToOtioFrames(endMs) - clipStartFrame;
+    if (markerEndFrame <= markerStartFrame) return [];
+
+    const colorName = window.AsrEditorUtils.effectiveColorName(segment, DATA.segments);
+    return [{
+      OTIO_SCHEMA: 'Marker.2',
+      metadata: {},
+      name: String(segment.text || ''),
+      color: OTIO_MARKER_COLORS[colorName] || OTIO_DEFAULT_MARKER_COLOR,
+      marked_range: otioTimeRange(
+        markerStartFrame,
+        markerEndFrame - markerStartFrame,
+      ),
+    }];
+  });
+}
+
 function stickerTargetUrl(absPath) {
   let value = String(absPath || '').trim();
   if (!value) return '';
@@ -11021,7 +11148,10 @@ function mediaTargetUrl() {
   return '';
 }
 
-function buildGapRemovedMediaClip(interval, index, kind, targetUrl, sourceDurationFrames) {
+function buildGapRemovedMediaClip(
+  interval, index, kind, targetUrl, sourceStartFrame, sourceDurationFrames,
+  includeSubtitleMarkers = false,
+) {
   const startFrame = msToOtioFrames(interval.start);
   const endFrame = msToOtioFrames(interval.end);
   const durationFrames = Math.max(1, endFrame - startFrame);
@@ -11035,9 +11165,9 @@ function buildGapRemovedMediaClip(interval, index, kind, targetUrl, sourceDurati
       },
     },
     name: `${kind} ${index + 1}`,
-    source_range: otioTimeRange(startFrame, durationFrames),
+    source_range: otioTimeRange(sourceStartFrame + startFrame, durationFrames),
     effects: [],
-    markers: [],
+    markers: includeSubtitleMarkers ? buildGapRemovedSubtitleMarkers(interval) : [],
     enabled: true,
     color: null,
     media_references: {
@@ -11045,7 +11175,7 @@ function buildGapRemovedMediaClip(interval, index, kind, targetUrl, sourceDurati
         OTIO_SCHEMA: 'ExternalReference.1',
         metadata: {},
         name: '',
-        available_range: otioTimeRange(0, sourceDurationFrames),
+        available_range: otioTimeRange(sourceStartFrame, sourceDurationFrames),
         available_image_bounds: null,
         target_url: targetUrl,
       },
@@ -11076,6 +11206,7 @@ function buildGapRemovedOtio() {
     return null;
   }
   const sourceDurationFrames = Math.max(1, msToOtioFrames(durationMs));
+  const sourceStartFrame = mediaStartOtioFrames();
   const trackSpecs = player?.tagName === 'AUDIO'
     ? [{ name: '音频', kind: 'Audio' }]
     : [{ name: '视频', kind: 'Video' }, { name: '音频', kind: 'Audio' }];
@@ -11089,7 +11220,8 @@ function buildGapRemovedOtio() {
     enabled: true,
     color: null,
     children: intervals.map((interval, index) => buildGapRemovedMediaClip(
-      interval, index, track.name, targetUrl, sourceDurationFrames,
+      interval, index, track.name, targetUrl, sourceStartFrame, sourceDurationFrames,
+      track.kind === 'Video' || trackSpecs.length === 1,
     )),
     kind: track.kind,
   }));
@@ -13009,6 +13141,7 @@ function applyCanonicalProject(data, filename) {
   DATA.media = typeof data.media === 'string' ? data.media : '';
   DATA.language = data.language || '';
   DATA.model = data.model || '';
+  DATA.media_time_reference = data.media_time_reference || null;
   DATA.waveform = data.waveform || null;
   DATA.spectral = data.spectral || null;
   DATA.waveform_reapeaks = data.waveform_reapeaks || null;
@@ -13819,6 +13952,13 @@ async function loadMediaFile(file) {
     return false;
   }
 
+  let mediaTimeReference = null;
+  try {
+    mediaTimeReference = await window.AsrEditorUtils.readBwfTimeReferenceFromFile(file);
+  } catch (_) {
+    // BWF metadata is optional; an unreadable header must not block playback.
+  }
+
   if (waveformEditor) waveformEditor.attachPlayer(player);
   syncPlayerPlaceholder();
   // 部分浏览器会在 load() 完成前暂时不给 currentSrc；文件既已由用户选定，立即恢复彩色波形。
@@ -13832,6 +13972,7 @@ async function loadMediaFile(file) {
   const stem = file.name.replace(/\.[^.]+$/, '');
   FILENAME_BASE = stem;
   DATA.media = file.name;
+  DATA.media_time_reference = mediaTimeReference;
   const mnEl = document.getElementById('media-name');
   if (mnEl) {
     mnEl.textContent = file.name;
@@ -15545,6 +15686,8 @@ function assignColor(idxs, colorName) {
   const isUnifiedGroup = sorted.length > 1
     || DATA.segments.some((s) => s.color_ref && s.color_ref.headIdx === sorted[0]);
   renderAll();
+  // 被标记的字幕可能正显示在预览画面里，刷新预览让颜色描边立即生效。
+  update();
   flashHint(isUnifiedGroup
     ? `已将关联字幕统一设为「${def.label}色」`
     : `已将字幕设为「${def.label}色」`, 'success');
@@ -15563,6 +15706,8 @@ function clearColorOnTargets(idxs) {
   // 一次性切除所有目标 idx，触发组拆分
   splitGroupsAtCutPoints(new Set(idxs), 'color', 'color_ref');
   renderAll();
+  // 清除的颜色可能正显示在预览画面里，刷新预览让颜色描边同步消失。
+  update();
   flashHint('已清除颜色', 'success');
 }
 
