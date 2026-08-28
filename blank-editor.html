@@ -6079,13 +6079,26 @@
     const end = Math.max(0, Math.round(Math.max(Number(startMs), Number(endMs))));
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return provenance;
 
+    const baseRangesToClear = provenance.manual_overrides.flatMap((record) => (
+      isGapMoveRecord(record) && gapMoveTargetRanges(record).some((target) => (
+        target.start < end && target.end > start
+      ))
+        ? [{start: record.base_start, end: record.base_end}]
+        : []
+    ));
+    const clearRanges = [{start, end}, ...baseRangesToClear];
     const removeFrom = (ranges, source, sort) => normalizeProvenanceRangeList(
       ranges.flatMap((range) => {
-        if (range.end <= start || range.start >= end) return [{...range}];
-        const remaining = [];
-        if (range.start < start) remaining.push({...range, end: start});
-        if (range.end > end) remaining.push({...range, start: end});
-        return remaining;
+        if (isGapMoveRecord(range) && gapMoveTargetRanges(range).some((target) => (
+          target.start < end && target.end > start
+        ))) return [];
+        return clearRanges.reduce((remaining, clearRange) => remaining.flatMap((piece) => {
+          if (piece.end <= clearRange.start || piece.start >= clearRange.end) return [{...piece}];
+          const pieces = [];
+          if (piece.start < clearRange.start) pieces.push({...piece, end: clearRange.start});
+          if (piece.end > clearRange.end) pieces.push({...piece, start: clearRange.end});
+          return pieces;
+        }), [{...range}]);
       }),
       source,
       {sort},
@@ -28994,6 +29007,7 @@ function buildJson() {
   if (DATA.spectral) out.spectral = DATA.spectral;
   if (DATA.waveform_reapeaks) out.waveform_reapeaks = DATA.waveform_reapeaks;
   if (DATA.gap_remove) out.gap_remove = normalizedGapRemoveData(DATA.gap_remove);
+  if (DATA.script_alignment) out.script_alignment = DATA.script_alignment;
   const workspace = buildCurrentWorkspaceData();
   if (workspace) out.workspace = workspace;
   // 预览几何：始终写入归一化后的当前几何，便于跨机/重开保持位置。
@@ -31153,6 +31167,7 @@ function applyCanonicalProject(data, filename) {
   DATA.waveform_reapeaks = data.waveform_reapeaks || null;
   DATA.workspace = data.workspace || null;
   DATA.gap_remove = data.gap_remove || null;
+  DATA.script_alignment = data.script_alignment || null;
   DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
   gapRemoveDirty = false;
   previewGeometryDirty = false;
