@@ -3,29 +3,30 @@
 // Event/process/port-based lifecycle — no arbitrary sleeps for correctness.
 import { execFileSync, spawn } from 'node:child_process';
 import { writeFileSync, readFileSync, existsSync, rmSync, mkdirSync } from 'node:fs';
-import { delimiter, dirname, join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { randomBytes } from 'node:crypto';
 
-// The editor server imports maw.reapeaks even for --no-waveform startup. Keep
-// the test process usable when the selected interpreter is system Python by
-// adding the repository venv's installed packages to its import path. Set
-// MAW_E2E_PYTHON when a specific interpreter is needed.
-const PYTHON_COMMAND = process.env.MAW_E2E_PYTHON
-  || (process.platform === 'win32' ? 'python' : 'python3');
-const REPO_SITE_PACKAGES = process.platform === 'win32'
-  ? join(process.cwd(), '.venv', 'Lib', 'site-packages')
-  : null;
+// E2E tests exercise Python-backed editor servers and edit.py. Use the
+// repository's locked uv environment by default so the runner cannot silently
+// fall back to a system interpreter with an incomplete dependency set. Set
+// MAW_E2E_PYTHON only when deliberately testing with a specific interpreter.
+const configuredPython = String(process.env.MAW_E2E_PYTHON || '').trim();
+const PYTHON_RUNNER = configuredPython
+  ? { command: configuredPython, prefixArgs: [] }
+  : { command: 'uv', prefixArgs: ['run', '--frozen', 'python'] };
 
-function buildE2EPythonEnv(extra = {}) {
+function pythonCommandArgs(args) {
+  return [...PYTHON_RUNNER.prefixArgs, ...args];
+}
+
+function buildE2EProcessEnv(extra = {}) {
   const environment = { ...process.env, ...extra };
-  const pythonPaths = [];
-  if (REPO_SITE_PACKAGES && existsSync(REPO_SITE_PACKAGES)) {
-    pythonPaths.push(REPO_SITE_PACKAGES);
-  }
-  if (process.env.PYTHONPATH) pythonPaths.push(process.env.PYTHONPATH);
-  if (pythonPaths.length) environment.PYTHONPATH = pythonPaths.join(delimiter);
+  // An inherited PYTHONPATH can reintroduce packages from a different
+  // interpreter. The explicit MAW_E2E_PYTHON escape hatch keeps its old
+  // behavior, while the default uv path stays isolated and reproducible.
+  if (!configuredPython) delete environment.PYTHONPATH;
   return environment;
 }
 
@@ -311,7 +312,7 @@ export function generateProjectJson(filePath) {
 // when the process has fully exited.
 // ---------------------------------------------------------------------------
 async function launchServerProcess(pythonArgs, port, env) {
-  const proc = spawn(PYTHON_COMMAND, pythonArgs, {
+  const proc = spawn(PYTHON_RUNNER.command, pythonCommandArgs(pythonArgs), {
     cwd: process.cwd(),
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
@@ -380,7 +381,7 @@ export async function startServer(projectJsonPath, mediaPath, port) {
     '--port', String(port),
     '--no-open',
   ];
-  return launchServerProcess(pythonArgs, port, buildE2EPythonEnv({
+  return launchServerProcess(pythonArgs, port, buildE2EProcessEnv({
     PYTHONUNBUFFERED: '1',
     LOCALAPPDATA: settingsRoot,
     XDG_CONFIG_HOME: settingsRoot,
@@ -398,7 +399,7 @@ export async function startBlankServer(port, settingsRoot) {
     '--port', String(port),
     '--no-open',
   ];
-  return launchServerProcess(pythonArgs, port, buildE2EPythonEnv({
+  return launchServerProcess(pythonArgs, port, buildE2EProcessEnv({
     PYTHONUNBUFFERED: '1',
     LOCALAPPDATA: settingsRoot,
     XDG_CONFIG_HOME: settingsRoot,
@@ -413,7 +414,7 @@ export async function startAlignmentServer(projectPath, scriptPath, port) {
     '--port', String(port),
     '--no-open',
   ];
-  return launchServerProcess(pythonArgs, port, buildE2EPythonEnv({
+  return launchServerProcess(pythonArgs, port, buildE2EProcessEnv({
     PYTHONUNBUFFERED: '1',
   }));
 }
@@ -457,11 +458,20 @@ export async function startStaticServer(filePath, port) {
 // ---------------------------------------------------------------------------
 export function generateBlankEditor(outputPath) {
   const args = ['edit.py', '--blank', '-o', outputPath];
-  execFileSync(PYTHON_COMMAND, args, {
-    cwd: process.cwd(),
-    encoding: 'utf-8',
-    timeout: 30000,
-    windowsHide: true,
-  });
+  try {
+    execFileSync(PYTHON_RUNNER.command, pythonCommandArgs(args), {
+      cwd: process.cwd(),
+      encoding: 'utf-8',
+      timeout: 30000,
+      windowsHide: true,
+    });
+  } catch (error) {
+    if (!configuredPython && (error?.code === 'ENOENT' || error?.status === 127)) {
+      throw new Error(
+        `E2E requires uv to run the project Python environment. Run "uv sync" first, or set MAW_E2E_PYTHON explicitly. Original error: ${error.message}`,
+      );
+    }
+    throw error;
+  }
   return outputPath;
 }
