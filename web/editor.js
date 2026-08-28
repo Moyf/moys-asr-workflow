@@ -796,7 +796,7 @@ const COLOR_PALETTE = [
   { name: 'yellow', label: '黄', value: '#f1c40f' },
   { name: 'green',  label: '绿', value: '#2ecc71' },
   { name: 'red',    label: '红', value: '#e74c3c' },
-  { name: 'purple', label: '紫', value: '#9b59b6' },
+  { name: 'purple', label: '紫', value: '#b57edc' },
   { name: 'blue',   label: '蓝', value: '#168cff' },
 ];
 const COLOR_BY_NAME = Object.fromEntries(COLOR_PALETTE.map(c => [c.name, c]));

@@ -205,7 +205,7 @@
     yellow: '#f1c40f',
     green: '#2ecc71',
     red: '#e74c3c',
-    purple: '#9b59b6',
+    purple: '#b57edc',
     blue: '#168cff',
   };
 
