@@ -918,8 +918,7 @@
         generateSpectral: $("toolboxGenerateSpectral").checked,
       });
       if (!result.ok) {
-        const errorKeys = new Set(["waveform_unavailable", "waveform_generation_failed"]);
-        setResult(errorKeys.has(result.code) ? t(result.code) : (result.error || result.detail || t("failed")), "error");
+        setResult(postprocessErrorText(result), "error");
         return;
       }
       if (openEditor) {

@@ -514,7 +514,11 @@ class GuiWebBridgeTests(unittest.TestCase):
             },
         }
 
-        with mock.patch("maw.gui_web.embed_media_caches", return_value=SimpleNamespace(project=embedded, waveform_error=None, reapeaks_path=None)) as embed:
+        ffmpeg = self.root / "ffmpeg.exe"
+        with (
+            mock.patch("maw.gui_web._postprocess_ffmpeg", return_value=ffmpeg),
+            mock.patch("maw.gui_web.embed_media_caches", return_value=SimpleNamespace(project=embedded, waveform_error=None, reapeaks_path=None)) as embed,
+        ):
             result = self.api.generate_waveform_project({"mediaPath": str(media), "generateSpectral": True})
 
         self.assertTrue(result["ok"])
@@ -530,6 +534,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             media.resolve(),
             source_media_path=media.resolve(),
             generate_spectral=True,
+            ffmpeg_bin=str(ffmpeg),
         )
 
     def test_generate_waveform_project_rejects_invalid_embedded_waveform(self) -> None:
@@ -543,6 +548,7 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["code"], "waveform_unavailable")
+        self.assertEqual(result["detail"], "decode failed")
         self.assertFalse((self.root / "clip.waveform.mosp").exists())
 
     def test_generate_waveform_project_uses_collision_safe_project_name(self) -> None:
@@ -596,6 +602,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('id="runWaveform"', html)
         self.assertIn('toolbox_run_waveform: "生成波形并打开编辑器"', (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8"))
         self.assertIn("async function generateWaveformProject(openEditor)", script)
+        self.assertIn('setResult(postprocessErrorText(result), "error")', script)
+        self.assertNotIn("t(result.code)", script)
         self.assertIn("if (openEditor) {", script)
         self.assertIn("await window.MAWLauncher.openServerEditor()", script)
 

@@ -6,6 +6,9 @@
 
 ### 🐛 修复
 
+### 🐛 修复
+
+- **Launcher 工具箱波形生成** ： 直接使用 Launcher 已识别的配置或随包 FFmpeg，避免 Windows 打包版因 FFmpeg 未加入系统 PATH 而无法生成波形；失败时同时显示实际解码原因，不再暴露 `waveform_unavailable` 内部错误码。
 - **去空隙 OTIO 字幕 marker 源坐标错位** ： 将 marker 的 `marked_range` 与 clip 的 `source_range` 统一到媒体源坐标，并保留 BWF `bext.time_reference` 的非零起点，修复 Resolve 导入后片段长度虽正确但字幕 marker 对应内容错位的问题。
 
 ## [1.5.0-beta.7] - 2026-08-28

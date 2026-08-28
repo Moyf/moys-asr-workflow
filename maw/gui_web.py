@@ -1656,16 +1656,22 @@ class LauncherApi:
         project_path = output_seed.with_suffix(".mosp")
         project: dict[str, object] = {"media": str(media_path), "segments": []}
         try:
+            ffmpeg_path = _postprocess_ffmpeg(self.paths.env_path)
             cached = embed_media_caches(
                 project,
                 media_path,
                 source_media_path=media_path,
                 generate_spectral=bool(payload.get("generateSpectral")),
+                ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
             )
             normalized = normalize_project(cached.project)
             waveform = normalized.get("waveform")
             if not is_waveform_payload(waveform) or int(waveform["peak_count"]) <= 0:
-                return _error_result("mediaPath", "waveform_unavailable", str(media_path))
+                detail = str(
+                    cached.waveform_error
+                    or "FFmpeg did not return any decodable audio samples."
+                )
+                return _error_result("mediaPath", "waveform_unavailable", detail)
             project_path.write_bytes((json.dumps(normalized, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
         except (OSError, TypeError, ValueError) as error:
             return _error_result("mediaPath", "waveform_generation_failed", str(error))
