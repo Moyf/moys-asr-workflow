@@ -5,6 +5,7 @@ import json
 import unittest
 from pathlib import Path
 
+from maw.project import validate_project
 from maw.script_alignment import (
     align_project_to_script,
     apply_alignment_to_project,
@@ -173,6 +174,149 @@ class ScriptAlignmentTests(unittest.TestCase):
         self.assertEqual(
             [(gap["start"], gap["end"], gap["source"]) for gap in output["gap_remove"]["gaps"]],
             [(200, 300, "audio_gate"), (400, 500, "manual")],
+        )
+
+    def test_alignment_preserves_moved_gap_provenance_semantics(self) -> None:
+        project = {"segments": [segment("s1", 0, 7000, "hello")]}
+        alignment = align_project_to_script(project, "hello")
+        selection = make_selection_manifest(alignment, alignment["defaultSelection"])
+        gap_remove = {
+            "gaps": [{"start": 5000, "end": 6000, "removed": True}],
+            "provenance": {
+                "schema": "moy.asr.gap_provenance.v1",
+                "sources": {
+                    "script_alignment": [],
+                    "audio_gate": [{"id": "audio", "start": 1000, "end": 2000}],
+                },
+                "manual_overrides": [{
+                    "id": "move",
+                    "start": 1000,
+                    "end": 6000,
+                    "removed": True,
+                    "operation": "move",
+                    "base_start": 1000,
+                    "base_end": 2000,
+                    "target_start": 5000,
+                    "target_end": 6000,
+                }],
+                "legacy": [],
+            },
+        }
+
+        output = apply_alignment_to_project(
+            project,
+            alignment,
+            selection,
+            detect_audio_gaps=False,
+            gap_remove_override=gap_remove,
+        )
+
+        self.assertEqual(
+            [gap_shape(gap) for gap in output["gap_remove"]["gaps"]],
+            [(5000, 6000, True)],
+        )
+        self.assertEqual(
+            output["gap_remove"]["provenance"]["manual_overrides"][0]["operation"],
+            "move",
+        )
+
+    def test_alignment_replays_right_boundary_shrink(self) -> None:
+        project = {"segments": [segment("s1", 0, 7000, "hello")]}
+        alignment = align_project_to_script(project, "hello")
+        selection = make_selection_manifest(alignment, alignment["defaultSelection"])
+        gap_remove = {
+            "gaps": [{"start": 4000, "end": 5000, "removed": True}],
+            "provenance": {
+                "schema": "moy.asr.gap_provenance.v1",
+                "sources": {
+                    "script_alignment": [],
+                    "audio_gate": [{"id": "audio", "start": 4000, "end": 6000}],
+                },
+                "manual_overrides": [{
+                    "id": "shrink-end",
+                    "start": 5000,
+                    "end": 6000,
+                    "removed": True,
+                    "operation": "boundary_resize",
+                    "edge": "end",
+                    "base": 6000,
+                    "boundary": 5000,
+                }],
+                "legacy": [],
+            },
+        }
+
+        output = apply_alignment_to_project(
+            project,
+            alignment,
+            selection,
+            detect_audio_gaps=False,
+            gap_remove_override=gap_remove,
+        )
+
+        self.assertEqual(
+            [gap_shape(gap) for gap in output["gap_remove"]["gaps"]],
+            [(4000, 5000, True)],
+        )
+
+    def test_alignment_tolerates_malformed_existing_gap_ranges(self) -> None:
+        project = {
+            "segments": [segment("s1", 0, 1000, "hello")],
+            "gap_remove": {
+                "gaps": [
+                    {"start": 200, "end": 300, "removed": True},
+                    {"start": True, "end": 400, "removed": True},
+                    "invalid",
+                ],
+            },
+        }
+        alignment = align_project_to_script(project, "hello")
+        selection = make_selection_manifest(alignment, alignment["defaultSelection"])
+
+        output = apply_alignment_to_project(project, alignment, selection, detect_audio_gaps=False)
+
+        self.assertEqual(
+            [gap_shape(gap) for gap in output["gap_remove"]["gaps"]],
+            [(200, 300, True)],
+        )
+
+    def test_alignment_preserves_existing_gap_settings_and_audio_source(self) -> None:
+        project = {
+            "segments": [segment("s1", 0, 1000, "hello")],
+            "gap_remove": {
+                "minimum_ms": 900,
+                "threshold_db": -30,
+                "hysteresis_db": 4,
+                "lead_in_ms": 20,
+                "lead_out_ms": 60,
+                "skip_playback": False,
+                "operation_mode": "middle_drag",
+                "disable_coverage_percent": 50,
+                "disable_remaining_ms": 100,
+                "provenance": {
+                    "schema": "moy.asr.gap_provenance.v1",
+                    "sources": {
+                        "script_alignment": [],
+                        "audio_gate": [{"id": "silence", "start": 200, "end": 300}],
+                    },
+                    "manual_overrides": [],
+                    "legacy": [],
+                },
+            },
+        }
+        alignment = align_project_to_script(project, "hello")
+        selection = make_selection_manifest(alignment, alignment["defaultSelection"])
+
+        output = apply_alignment_to_project(project, alignment, selection)
+
+        gap_remove = output["gap_remove"]
+        self.assertEqual(gap_remove["minimum_ms"], 900)
+        self.assertEqual(gap_remove["threshold_db"], -30)
+        self.assertFalse(gap_remove["skip_playback"])
+        self.assertEqual(gap_remove["operation_mode"], "middle_drag")
+        self.assertEqual(
+            [(item["start"], item["end"]) for item in gap_remove["provenance"]["sources"]["audio_gate"]],
+            [(200, 300)],
         )
 
     def test_alignment_migrates_legacy_gap_ranges_to_audio_gate(self) -> None:
@@ -396,6 +540,88 @@ class ScriptAlignmentTests(unittest.TestCase):
         }
         compact_alignment = align_project_to_script(compact_project, target)
         self.assertEqual(compact_alignment["candidatesByLine"][0], [])
+
+    def test_item_split_remaps_visual_refs_and_preserves_subtitle_binding(self) -> None:
+        target = "目前支持画面上的这些模型"
+        tail = "之后还会继续增加"
+        items: list[dict[str, object]] = []
+        cursor = 0
+        for text in target:
+            items.append({"text": text, "start": cursor, "end": cursor + 100})
+            cursor += 100
+        cursor += 280
+        for text in tail:
+            items.append({"text": text, "start": cursor, "end": cursor + 100})
+            cursor += 100
+        project = {
+            "segments": [
+                {
+                    "id": "s1",
+                    "start": 0,
+                    "end": cursor,
+                    "text": target + tail,
+                    "items": items,
+                    "sticker": {"name": "intro", "start": 0, "end": cursor},
+                    "color": {"name": "red", "start": 0, "end": cursor},
+                },
+                {
+                    **segment("s2", cursor + 100, cursor + 500, "next"),
+                    "sticker": {"name": "next", "start": cursor + 100, "end": cursor + 900},
+                    "color": {"name": "blue", "start": cursor + 100, "end": cursor + 900},
+                },
+                {
+                    **segment("s3", cursor + 500, cursor + 900, "member"),
+                    "sticker_ref": {"name": "next", "headIdx": 1},
+                    "color_ref": {"name": "blue", "headIdx": 1},
+                },
+            ],
+            "multi_subtitle": {
+                "schema": "moy.asr.multi_subtitle.v1",
+                "enabled": True,
+                "display_mode": "both",
+                "tracks": [{
+                    "id": "extension-1",
+                    "role": "extension",
+                    "split_mode": "word",
+                    "segments": [{
+                        "id": "extension-001",
+                        "start": 0,
+                        "end": cursor,
+                        "text": "target translation",
+                    }],
+                }],
+                "bindings": [{
+                    "id": "binding-001",
+                    "track_id": "extension-1",
+                    "main_segment_ids": ["s1"],
+                    "extension_segment_ids": ["extension-001"],
+                    "start_offset_ms": 0,
+                    "end_offset_ms": 0,
+                }],
+            },
+        }
+        alignment = align_project_to_script(project, f"{target}\nnext\nmember")
+        selection = make_selection_manifest(alignment, alignment["defaultSelection"])
+
+        output = apply_alignment_to_project(project, alignment, selection, detect_audio_gaps=False)
+
+        self.assertEqual([item["id"] for item in output["segments"]], ["s1", "s1--align-002", "s2", "s3"])
+        self.assertNotIn("sticker", output["segments"][1])
+        self.assertNotIn("color", output["segments"][1])
+        self.assertEqual(output["segments"][1]["sticker_ref"], {"name": "intro", "headIdx": 0})
+        self.assertEqual(output["segments"][1]["color_ref"], {"name": "red", "headIdx": 0})
+        self.assertEqual(output["segments"][3]["sticker_ref"]["headIdx"], 2)
+        self.assertEqual(output["segments"][3]["color_ref"]["headIdx"], 2)
+        self.assertEqual(
+            output["multi_subtitle"]["bindings"][0]["main_segment_ids"],
+            ["s1"],
+        )
+        self.assertEqual(output["multi_subtitle"]["bindings"][0]["start_offset_ms"], 0)
+        self.assertEqual(
+            output["multi_subtitle"]["bindings"][0]["end_offset_ms"],
+            cursor - output["segments"][0]["end"],
+        )
+        self.assertTrue(validate_project(output).ok)
 
     def test_internal_repetition_is_not_an_alternative_and_is_removed(self) -> None:
         project = {
