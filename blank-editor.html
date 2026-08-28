@@ -3863,6 +3863,16 @@
   box-shadow: 0 1px 5px var(--wave-cue-shadow);
   touch-action: none;
 }
+/* 多行波形中被行边界截开的同一字幕：去掉相接一侧的上下圆角，
+   让上一行末端与下一行起端看起来像一块连续字幕。 */
+.waveform-cue-block.continues-from-previous-row {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.waveform-cue-block.continues-to-next-row {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
 .waveform-cue-block:hover { filter: brightness(var(--wave-hover-brightness)); }
 /* 分组徽章：放在块上方的行内区域（bottom = 块高35 + 块底7 + 间距2），
    纯视觉提示不遮挡块内文字；left 由 JS 按块位置写入 */
@@ -4037,7 +4047,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.5.0-beta.4</span>
+  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.5.0-beta.5</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="toolbar row-actions">
@@ -12243,8 +12253,8 @@ export default MawDynamicCaptions;
     '没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除': 'No silent gaps removed yet; scan with "Remove silent gaps" first',
     '字幕': 'Subtitles', '字幕预览': 'Subtitle preview', '表情包预览': 'Sticker preview', '字幕列表和编辑区': 'Subtitle list & editor', '字幕编辑区': 'Subtitle editor',
     '多重字幕': 'Multiple subtitles', '多重字幕设置': 'Multiple-subtitle settings', '主轨': 'Main track', '副轨': 'Secondary track', '双列': 'Two columns', '绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H': 'After binding, sync the secondary subtitle start and end to the main subtitle, equivalent to pressing H', '交换主字幕和副字幕的文本、时间与绑定关系': 'Swap the main and secondary subtitle text, timing, and bindings',
-    '拆分与合并': 'Split and merge', '波形形状来源': 'Waveform shape source', '自研波形': 'Self-built waveform', 'ReaPeaks 波形层': 'ReaPeaks waveform layer',
-    '显示方式': 'Display mode', '语言类型': 'Language type', '主字幕': 'Main subtitle', '副字幕': 'Secondary subtitle', '主字幕语言类型': 'Main subtitle language type', '副字幕语言类型': 'Secondary subtitle language type', '副字幕时波形高度': 'Waveform height with secondary subtitles', '跨轨道吸附': 'Cross-track snapping', '同时选中主副字幕': 'Select main and secondary subtitles together', '绑定时自动同步时长': 'Automatically sync duration when binding', '显示轨道徽标': 'Show track badges', '在多重字幕波形中显示主字幕和副字幕的轨道编号徽标': 'Show main and secondary track number badges in the multiple-subtitle waveform', '交换主副字幕': 'Swap main and secondary subtitles', '普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕': 'Normal clicks follow the last clicked track; clicking a bound subtitle only adds the other subtitle actually bound to it',
+    '拆分与合并': 'Split and merge', '拆分与合并配置': 'Split and merge settings', '波形形状来源': 'Waveform shape source', '自研波形': 'Self-built waveform', 'ReaPeaks 波形层': 'ReaPeaks waveform layer',
+    '显示方式': 'Display mode', '语言类型': 'Language type', '字幕语言类型': 'Subtitle language type', '主字幕': 'Main subtitle', '副字幕': 'Secondary subtitle', '主字幕语言类型': 'Main subtitle language type', '副字幕语言类型': 'Secondary subtitle language type', '副字幕时波形高度': 'Waveform height with secondary subtitles', '跨轨道吸附': 'Cross-track snapping', '同时选中主副字幕': 'Select main and secondary subtitles together', '绑定时自动同步时长': 'Automatically sync duration when binding', '显示轨道徽标': 'Show track badges', '在多重字幕波形中显示主字幕和副字幕的轨道编号徽标': 'Show main and secondary track number badges in the multiple-subtitle waveform', '交换主副字幕': 'Swap main and secondary subtitles', '普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕': 'Normal clicks follow the last clicked track; clicking a bound subtitle only adds the other subtitle actually bound to it',
     '开启后显示副轨、双列列表和绑定操作；关闭只隐藏副字幕数据，不删除': 'Show the secondary track, two-column list, and binding actions; turning it off only hides secondary data',
     '启用多重字幕时使用的波形行高度': 'Waveform row height used when multiple subtitles are enabled', '请拖入第二个 srt 字幕以开启多重字幕功能': 'Drop a second SRT subtitle to enable multiple subtitles', '请拖入第二条字幕以开启多重字幕编辑': 'Drop a second subtitle to enable multi-subtitle editing', '是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）': 'Import the second subtitle? (You can also drop a subtitle or project file into the editor later)', '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。': 'When the current project has more than one subtitle, you can enable multiple-subtitle mode for bilingual subtitle editing and similar workflows.',
     '拖动多重字幕时，允许吸附到另一条字幕轨道的起点和终点': 'Snap multiple subtitles to the start and end boundaries of the other track while dragging',
@@ -12625,7 +12635,7 @@ export default MawDynamicCaptions;
     'Trim': 'Trim', '修剪前后空白': 'Trim surrounding whitespace', '去除字幕前方和后方的空格': 'Remove spaces before and after the subtitle text', '去除前后空白': 'Remove surrounding whitespace', '首字母大写': 'Capitalize first letter', '只作用于第一个字母': 'Only affects the first letter',
     '添加前缀': 'Add prefix', '插入到字幕开头': 'Insert at the beginning', '附加内容': 'Add suffix', '插入到字幕结尾': 'Insert at the end',
     '去除 md 格式符号': 'Remove Markdown formatting', '移除常见 Markdown 标记': 'Remove common Markdown markers',
-    '选择操作后查看预览': 'Select an operation to preview', '至少选择一项文本处理操作': 'Select at least one text-processing operation', '当前文本处理对于选中的字幕没有任何影响，未作改动': 'The current text processing has no effect on the selected subtitles; no changes were made',
+    '文本处理操作': 'Text-processing operations', '选择操作后查看预览': 'Select an operation to preview', '至少选择一项文本处理操作': 'Select at least one text-processing operation', '当前文本处理对于选中的字幕没有任何影响，未作改动': 'The current text processing has no effect on the selected subtitles; no changes were made',
     '应用处理': 'Apply processing', '处理前：': 'Before: ', '处理后：': 'After: ',
     '选择要执行的文本操作；字幕行不会被删除，处理为空时会保留空字幕行。字词时间码会按文本编辑规则尽量保留。': 'Choose text operations; subtitle rows are not deleted, and empty results remain as empty rows. Word timings are retained when possible using the text-editing rules.',
     '取消': 'Cancel', '替换全部': 'Replace all', '分配表情包': 'Assign sticker',
@@ -12822,6 +12832,8 @@ export default MawDynamicCaptions;
     '在多行波形中，为成组（颜色/表情包）字幕在块上方显示队长皇冠与组内序号': 'Show a leader crown and member index above grouped color/sticker subtitles in multi-row mode',
     '启用后，在波形空白区域按住左键拖动时，播放指针会实时跟随鼠标位置': 'When enabled, dragging with the left button on empty waveform areas moves the playhead along with the mouse',
     '移除静音空隙的人工修正方式；Alt+左键始终切换整段；中键拖动默认增加静音，按住 Alt 才恢复声音，边界碰到另一空隙时会合并': 'Manual silent-gap correction mode; Alt+click toggles a full region; middle-drag adds silence, Alt restores audio, and touching regions merge',
+    '移除静音空隙的人工修正方式；Alt+左键点击切换整段，空白处 Alt+左键拖动增加空隙；空隙块左键或 Alt+左键拖动整体偏移，Ctrl/Cmd+拖动复制；中键拖动默认增加静音，按住 Alt 才恢复声音；“边界与中键”可同时启用两种方式': 'Manual silent-gap correction: Alt+left-click toggles a whole region; Alt+drag on empty space adds a gap; left-click or Alt+drag on a gap block moves it; Ctrl/Cmd+drag copies it; middle-button drag adds silence by default, while Alt restores audio; “Boundary and middle button” enables both methods.',
+    '边界与中键': 'Boundary and middle button',
     '勾选后按颜色导出会先选择一个 SRT 文件名作为前缀，再下载「前缀_颜色.srt」；取消勾选则逐个颜色弹出保存对话框': 'When enabled, choose an SRT filename as the prefix, then download prefix_color.srt files; otherwise choose each file separately',
     '拖动调整波形与字幕区域比例': 'Drag to resize waveform and subtitle areas',
     '拖动调整布局区域比例': 'Drag to resize layout areas',
@@ -12834,8 +12846,13 @@ export default MawDynamicCaptions;
     '全选过滤结果': 'Select all filtered', '当前没有生效的颜色过滤': 'No color filter is active',
     '默认': 'Default',
     '主字幕自动使用时间码拆分': 'Auto-split main subtitles with word timings',
+    '开启时，自动按可用时间码拆分；关闭后将打开拆分弹窗，手动拆分': 'When enabled, split automatically using available timecodes; otherwise open the split dialog for manual splitting',
     '开启时，会自动按可用时间码拆分；关闭后将打开拆分弹窗，手动进行拆分。':
       'When enabled, cues split automatically at usable word timings; otherwise the split dialog opens for manual splitting.',
+    '开启时，自动按可用时间码拆分；关闭后将打开拆分弹窗，手动拆分。':
+      'When enabled, split automatically using available timecodes; otherwise the split dialog opens for manual splitting.',
+    '语言类型会影响拆分面板的分隔判断，以及合并时是否插入空格等。': 'Language type affects split-boundary decisions and whether spaces are inserted when merging.',
+    '配置合并字幕时插入字符': 'Configure characters inserted when merging subtitles', '配置合并字符': 'Configure merge separator', '配置拆分标点': 'Configure split punctuation',
     '合并字幕时插入字符': 'Text inserted when merging subtitles',
     '留空则直接拼接': 'Leave empty to join directly', '默认一个空格': 'Defaults to one space',
     '拆分时移除的标点符号': 'Punctuation removed when splitting',
@@ -12849,6 +12866,7 @@ export default MawDynamicCaptions;
     '全角逗号': 'Fullwidth comma', '句号': 'Period', '顿号': 'Enumerated comma',
     '全角感叹号': 'Fullwidth exclamation mark', '全角问号': 'Fullwidth question mark',
     '单词型：英语等西文语言，按空格分隔多个单词': 'Word-based: Latin-script languages such as English, where words are separated by spaces',
+    '适用于英文、俄文等': 'for English, Russian, and similar languages', '适用于中文、日文等': 'for Chinese, Japanese, and similar languages',
     '字符型：中文、日文等按字符拆分的语言': 'Character-based: languages such as Chinese and Japanese, split per character',
   };
 
@@ -13062,8 +13080,12 @@ export default MawDynamicCaptions;
     match = /^已交换主副字幕：主轨\s+(\d+)\s+条，副轨\s+(\d+)\s+条$/.exec(text);
     if (match) return `Swapped main and secondary subtitles: ${match[1]} main, ${match[2]} secondary`;
     // 合并连接设置旁的主字幕类型提示与切换按钮 title（目标类型语言说明）
-    match = /^当前为「(.+)」$/.exec(text);
-    if (match) return `Current: ${translateText(match[1], EN)}`;
+    match = /^当前为「(.+)」(?:（(.+)）)?$/.exec(text);
+    if (match) {
+      const mode = translateText(match[1], EN);
+      const example = match[2] ? translateText(match[2], EN) : '';
+      return `Current: ${mode}${example ? ` (${example})` : ''}`;
+    }
     match = /^切换为(单词型|字符型)$/.exec(text);
     if (match) return `Switch to ${translateText(match[1], EN)}`;
     // 颜色过滤行 title：该颜色的字幕共 N 条；点击条目只显示此颜色，勾选可多选
@@ -14556,6 +14578,17 @@ export default MawDynamicCaptions;
     }
     if (low > 0 && Number(segments[low - 1]?.end) > startMs) return low - 1;
     return low;
+  }
+
+  function cueBlockContinuationEdges(segment, startMs, endMs) {
+    const segmentStart = Number(segment?.start);
+    const segmentEnd = Number(segment?.end);
+    const rowStart = Number(startMs);
+    const rowEnd = Number(endMs);
+    return {
+      fromPreviousRow: Number.isFinite(segmentStart) && Number.isFinite(rowStart) && segmentStart < rowStart,
+      toNextRow: Number.isFinite(segmentEnd) && Number.isFinite(rowEnd) && segmentEnd > rowEnd,
+    };
   }
 
   function findActiveCueIndex(segments, timeMs, skipDisabled = true) {
@@ -16364,7 +16397,7 @@ export default MawDynamicCaptions;
           rightHandle.className = 'waveform-cue-handle right';
           block.appendChild(rightHandle);
         }
-        this.layoutBlock(block, segment, startMs, endMs);
+        this.layoutBlock(block, segment, startMs, endMs, row);
         block.dataset.track = 'main';
         block.addEventListener('pointerdown', (event) => this.beginCueDrag(event, index, row, 'main'));
         block.addEventListener('contextmenu', (event) => {
@@ -16421,7 +16454,7 @@ export default MawDynamicCaptions;
           rightHandle.className = 'waveform-cue-handle right';
           block.appendChild(rightHandle);
         }
-        this.layoutBlock(block, segment, startMs, endMs);
+        this.layoutBlock(block, segment, startMs, endMs, row);
         block.addEventListener('pointerdown', (event) => this.beginCueDrag(event, index, row, 'extension'));
         block.addEventListener('contextmenu', (event) => {
           event.preventDefault();
@@ -16456,7 +16489,7 @@ export default MawDynamicCaptions;
       block.appendChild(next);
     }
 
-    layoutBlock(block, segment, startMs, endMs) {
+    layoutBlock(block, segment, startMs, endMs, ownerRow = null) {
       const duration = Math.max(1, endMs - startMs);
       const visibleStart = Math.max(startMs, segment.start);
       const visibleEnd = Math.min(endMs, segment.end);
@@ -16465,6 +16498,13 @@ export default MawDynamicCaptions;
       block.style.left = `${left}%`;
       block.style.width = `${width}%`;
       block.hidden = visibleEnd <= visibleStart;
+      const row = ownerRow || block.closest('.waveform-row');
+      // 时间上的多行模式与“多重字幕”双轨不是同一个概念；普通多行波形也
+      // 必须在行边界清除相接侧圆角。基础模式的单行窗口则保留完整圆角。
+      const isMultiRow = Boolean(row && row.dataset.basic !== 'true');
+      const continuation = cueBlockContinuationEdges(segment, startMs, endMs);
+      block.classList.toggle('continues-from-previous-row', isMultiRow && continuation.fromPreviousRow);
+      block.classList.toggle('continues-to-next-row', isMultiRow && continuation.toNextRow);
     }
 
     layoutGapBlock(block, gap, startMs, endMs) {
@@ -18578,6 +18618,7 @@ export default MawDynamicCaptions;
       waveformTopEdgeMs,
       restoreWaveformTopEdgeMs,
       computeGroupBadges,
+      cueBlockContinuationEdges,
     },
   };
   if (window.MAWE?.register) {
@@ -30624,7 +30665,7 @@ function repairProjectSegmentOverlap(target, mode, card) {
     ? '，已清除受影响字幕的字词时间码'
     : '';
   flashHint(`已修复字幕时间重叠${suffix}，正在重新保存`, result.itemsCleared ? 'warning' : 'success');
-  window.setTimeout(() => { void saveCurrentProject({ silent: true }); }, 0);
+  window.setTimeout(() => { void saveCurrentProject({ silent: false }); }, 0);
   return true;
 }
 
@@ -35752,6 +35793,82 @@ async function loadDeferredReapeaks() {
   }
 }
 
+const SERVER_STARTUP_LABELS = {
+  zh: {
+    starting: '正在启动编辑器…',
+    reading_project: '正在读取工程…',
+    validating_project: '正在校验工程…',
+    preparing_media: '正在准备媒体…',
+    preparing_waveform: '正在生成波形…',
+    finalizing: '正在完成工程加载…',
+    ready: '工程加载完成',
+    error: '工程加载失败',
+    preparing: '正在准备工程…',
+  },
+  en: {
+    starting: 'Starting editor…',
+    reading_project: 'Reading project…',
+    validating_project: 'Validating project…',
+    preparing_media: 'Preparing media…',
+    preparing_waveform: 'Generating waveform…',
+    finalizing: 'Finishing project loading…',
+    ready: 'Project loaded',
+    error: 'Project loading failed',
+    preparing: 'Preparing project…',
+  },
+};
+
+function serverStartupLabel(stage) {
+  const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+  return SERVER_STARTUP_LABELS[language][stage] || SERVER_STARTUP_LABELS[language].preparing;
+}
+
+async function loadServerStartup() {
+  const url = SERVER_CONFIG?.startupStatusUrl;
+  const status = SERVER_CONFIG?.startupStatus;
+  if (!url || status === 'ready') return;
+  if (status === 'error') {
+    const detail = SERVER_CONFIG.startupError || serverStartupLabel('error');
+    flashHint(`${serverStartupLabel('error')}：${detail}`, 'warning');
+    return;
+  }
+
+  const finishLoading = beginEditorLoading(
+    serverStartupLabel(SERVER_CONFIG.startupStage),
+    SERVER_CONFIG.startupProgress,
+  );
+  const poll = async () => {
+    try {
+      const response = await fetch(url, { cache: 'no-store' });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok !== true) {
+        throw new Error(result.error || `服务器返回 ${response.status}`);
+      }
+      if (result.status === 'ready') {
+        updateEditorLoading(100, serverStartupLabel('ready'));
+        finishLoading();
+        // 页面中的 DATA、媒体标签和保存能力都由服务端工程一起渲染；
+        // 工程准备好后刷新一次即可无竞态地接管完整工程和波形。
+        window.location.reload();
+        return;
+      }
+      if (result.status === 'error') {
+        finishLoading();
+        flashHint(
+          `${serverStartupLabel('error')}：${result.error || serverStartupLabel('error')}`,
+          'warning',
+        );
+        return;
+      }
+      updateEditorLoading(result.progress, serverStartupLabel(result.stage));
+      window.setTimeout(() => { void poll(); }, 500);
+    } catch (_error) {
+      window.setTimeout(() => { void poll(); }, 1000);
+    }
+  };
+  await poll();
+}
+
 // === Drag & Drop：拖入视频/音频/JSON/SRT 自动加载 ===
 const dragOverlay = document.getElementById('drag-overlay');
 function isJsonFile(f) {
@@ -35905,7 +36022,8 @@ if (repairedTimingCount > 0) {
 } else if (repairedGroupReferenceCount > 0) {
   flashHint(`已自动修复 ${repairedGroupReferenceCount} 处分组引用`, 'warning');
 }
-void loadDeferredReapeaks();
+void loadServerStartup();
+if (SERVER_CONFIG?.startupStatus !== 'loading') void loadDeferredReapeaks();
 
 document.getElementById('filter-over')?.addEventListener('click', (e) => {
   e.currentTarget.classList.toggle('active');

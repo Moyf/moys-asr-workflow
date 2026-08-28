@@ -12037,7 +12037,7 @@ function repairProjectSegmentOverlap(target, mode, card) {
     ? '，已清除受影响字幕的字词时间码'
     : '';
   flashHint(`已修复字幕时间重叠${suffix}，正在重新保存`, result.itemsCleared ? 'warning' : 'success');
-  window.setTimeout(() => { void saveCurrentProject({ silent: true }); }, 0);
+  window.setTimeout(() => { void saveCurrentProject({ silent: false }); }, 0);
   return true;
 }
 
@@ -17165,6 +17165,82 @@ async function loadDeferredReapeaks() {
   }
 }
 
+const SERVER_STARTUP_LABELS = {
+  zh: {
+    starting: '正在启动编辑器…',
+    reading_project: '正在读取工程…',
+    validating_project: '正在校验工程…',
+    preparing_media: '正在准备媒体…',
+    preparing_waveform: '正在生成波形…',
+    finalizing: '正在完成工程加载…',
+    ready: '工程加载完成',
+    error: '工程加载失败',
+    preparing: '正在准备工程…',
+  },
+  en: {
+    starting: 'Starting editor…',
+    reading_project: 'Reading project…',
+    validating_project: 'Validating project…',
+    preparing_media: 'Preparing media…',
+    preparing_waveform: 'Generating waveform…',
+    finalizing: 'Finishing project loading…',
+    ready: 'Project loaded',
+    error: 'Project loading failed',
+    preparing: 'Preparing project…',
+  },
+};
+
+function serverStartupLabel(stage) {
+  const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+  return SERVER_STARTUP_LABELS[language][stage] || SERVER_STARTUP_LABELS[language].preparing;
+}
+
+async function loadServerStartup() {
+  const url = SERVER_CONFIG?.startupStatusUrl;
+  const status = SERVER_CONFIG?.startupStatus;
+  if (!url || status === 'ready') return;
+  if (status === 'error') {
+    const detail = SERVER_CONFIG.startupError || serverStartupLabel('error');
+    flashHint(`${serverStartupLabel('error')}：${detail}`, 'warning');
+    return;
+  }
+
+  const finishLoading = beginEditorLoading(
+    serverStartupLabel(SERVER_CONFIG.startupStage),
+    SERVER_CONFIG.startupProgress,
+  );
+  const poll = async () => {
+    try {
+      const response = await fetch(url, { cache: 'no-store' });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok !== true) {
+        throw new Error(result.error || `服务器返回 ${response.status}`);
+      }
+      if (result.status === 'ready') {
+        updateEditorLoading(100, serverStartupLabel('ready'));
+        finishLoading();
+        // 页面中的 DATA、媒体标签和保存能力都由服务端工程一起渲染；
+        // 工程准备好后刷新一次即可无竞态地接管完整工程和波形。
+        window.location.reload();
+        return;
+      }
+      if (result.status === 'error') {
+        finishLoading();
+        flashHint(
+          `${serverStartupLabel('error')}：${result.error || serverStartupLabel('error')}`,
+          'warning',
+        );
+        return;
+      }
+      updateEditorLoading(result.progress, serverStartupLabel(result.stage));
+      window.setTimeout(() => { void poll(); }, 500);
+    } catch (_error) {
+      window.setTimeout(() => { void poll(); }, 1000);
+    }
+  };
+  await poll();
+}
+
 // === Drag & Drop：拖入视频/音频/JSON/SRT 自动加载 ===
 const dragOverlay = document.getElementById('drag-overlay');
 function isJsonFile(f) {
@@ -17318,7 +17394,8 @@ if (repairedTimingCount > 0) {
 } else if (repairedGroupReferenceCount > 0) {
   flashHint(`已自动修复 ${repairedGroupReferenceCount} 处分组引用`, 'warning');
 }
-void loadDeferredReapeaks();
+void loadServerStartup();
+if (SERVER_CONFIG?.startupStatus !== 'loading') void loadDeferredReapeaks();
 
 document.getElementById('filter-over')?.addEventListener('click', (e) => {
   e.currentTarget.classList.toggle('active');
