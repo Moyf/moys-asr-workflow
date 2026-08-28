@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### 🐛 修复
+
+- **去空隙 OTIO 字幕 marker 源坐标错位** ： 将 marker 的 `marked_range` 与 clip 的 `source_range` 统一到媒体源坐标，并保留 BWF `bext.time_reference` 的非零起点，修复 Resolve 导入后片段长度虽正确但字幕 marker 对应内容错位的问题。
+
 ## [1.5.0-beta.7] - 2026-08-28
 
 ### 🐛 修复

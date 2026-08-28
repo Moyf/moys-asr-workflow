@@ -2006,7 +2006,7 @@ test('gap-removed OTIO exports subtitle text as clip markers with Resolve colors
       markers: clip.markers.map((marker) => ({
         name: marker.name,
         color: marker.color,
-        start: marker.marked_range.start_time.value,
+        start: Math.round(marker.marked_range.start_time.value * 10000) / 10000,
         duration: marker.marked_range.duration.value,
       })),
     }));
@@ -2015,17 +2015,17 @@ test('gap-removed OTIO exports subtitle text as clip markers with Resolve colors
   expect(result).toEqual([
     {
       markers: [
-        { name: 'yellow', color: 'YELLOW', start: 0, duration: 60 },
-        { name: 'green', color: 'GREEN', start: 60, duration: 60 },
+        { name: 'yellow', color: 'YELLOW', start: 9.255, duration: 60 },
+        { name: 'green', color: 'GREEN', start: 69.255, duration: 60 },
       ],
     },
     {
       markers: [
-        { name: 'red', color: 'RED', start: 0, duration: 60 },
-        { name: 'blue', color: 'BLUE', start: 60, duration: 60 },
-        { name: 'purple', color: 'PURPLE', start: 120, duration: 60 },
-        { name: 'purple ref', color: 'PURPLE', start: 180, duration: 60 },
-        { name: 'default', color: 'WHITE', start: 240, duration: 60 },
+        { name: 'red', color: 'RED', start: 189.255, duration: 60 },
+        { name: 'blue', color: 'BLUE', start: 249.255, duration: 60 },
+        { name: 'purple', color: 'PURPLE', start: 309.255, duration: 60 },
+        { name: 'purple ref', color: 'PURPLE', start: 369.255, duration: 60 },
+        { name: 'default', color: 'WHITE', start: 429.255, duration: 60 },
       ],
     },
   ]);

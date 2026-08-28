@@ -340,3 +340,10 @@
 - 修复：新增 BWF `bext` 解析，`edit.py`、GUI 生成器和 server-editor 在页面数据中注入 `media_time_reference`；便携版手动加载 WAV 时从文件头重新读取。去空隙 OTIO 现在将 `available_range.start_time` 设为媒体起点，并将每个 `source_range.start_time` 设为媒体起点加片段相对起点；无 BWF 的 WAV 和其他媒体仍回退到 0。该字段是页面运行时元数据，不扩展 mosp 工程契约。
 - 回归：Python BWF 解析、GUI 页面注入、editor-utils 解析和带非零 BWF 起点的 Chromium OTIO 导出均已加入测试；`blank-editor.html` 已从 `web/` 源码重新生成。标准 OTIO 数值检查覆盖 available range、clip 源起点、源时长和去空隙后的连续序列。
 - 当前状态：代码、语法、单元测试和浏览器回归均已验证；Resolve 实机导入仍未完成，本机未发现预期的 `Resolve.exe`，因此 Resolve 最终显示效果保留为未验证。
+
+## 增量记录（任务 41 补充：去空隙 OTIO marker 源坐标）
+
+- 复核发现：上一版字幕 marker 的 `marked_range` 仍以每个 clip 的 0 帧为起点；这与 Resolve 示例使用的媒体源坐标不一致，所以即使 clip 时长和 `source_range` 长度正确，marker 仍可能指向错误的源内容。
+- 修复：marker 起止帧现在使用媒体源起点加字幕在原始时间线中的毫秒位置，与同一 clip 的 `source_range` 及外部引用 `available_range` 共用坐标系；无 BWF 起点的媒体仍从 0 帧回退。
+- 回归：带 `1234` samples、`8000Hz` BWF 起点的 WAV 断言 marker 起点包含 `9.255` OTIO 帧媒体偏移，并保留颜色、颜色引用、默认白色、禁用字幕和跨空隙拆分覆盖。
+- 当前状态：已完成源码/便携版生成、语法检查、Node 回归和 Chromium 回归；本次目标 E2E 为 2/2，Node 编辑器/波形回归为 245/245。Resolve 实机导入仍需用户在目标环境确认。
