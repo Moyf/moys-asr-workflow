@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -76,6 +77,95 @@ class LocalEditorServerTests(unittest.TestCase):
         )
 
         self.assertIn("-p PORT, --port PORT", result.stdout)
+
+    def test_server_responds_before_initial_project_load_finishes(self) -> None:
+        project = server_editor.load_blank_project(str(self.stickers))
+        load_started = threading.Event()
+        release_load = threading.Event()
+        waveform = {
+            "schema": "moy.asr.waveform.v1",
+            "encoding": "i8-minmax-base64",
+            "peaks_per_second": 100,
+            "peak_count": 1,
+            "duration_ms": 1000,
+            "data": "AIA=",
+        }
+
+        def load_project_in_background(progress: server_editor.ProjectLoadProgressCallback) -> server_editor.ServerProject:
+            progress("preparing_waveform", 50)
+            load_started.set()
+            release_load.wait(timeout=3)
+            return server_editor.load_project(
+                self.project_path, None, str(self.stickers),
+                no_waveform=False, load_reapeaks=False,
+                peaks_per_second=100, progress=progress,
+            )
+
+        with mock.patch.object(server_editor.edit, "load_or_extract_waveform", return_value=(waveform, False)):
+            with server_editor.EditorServer(
+                ("127.0.0.1", 0), project,
+                project_loader=load_project_in_background,
+            ) as server:
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                try:
+                    self.assertTrue(load_started.wait(timeout=2))
+                    with urllib.request.urlopen(f"{base_url}/api/startup-status", timeout=2) as response:
+                        status = json.loads(response.read())
+                    self.assertEqual(status["status"], "loading")
+                    self.assertEqual(status["stage"], "preparing_waveform")
+
+                    with urllib.request.urlopen(base_url, timeout=2) as response:
+                        page = response.read().decode("utf-8")
+                    self.assertIn('"startupStatus": "loading"', page)
+
+                    release_load.set()
+                    deadline = time.monotonic() + 2
+                    while time.monotonic() < deadline:
+                        with urllib.request.urlopen(f"{base_url}/api/startup-status", timeout=2) as response:
+                            status = json.loads(response.read())
+                        if status["status"] == "ready":
+                            break
+                        time.sleep(0.02)
+                    self.assertEqual(status["status"], "ready")
+                    self.assertEqual(server.project.json_path, self.project_path.resolve())
+                    self.assertIs(server.project.data["waveform"], waveform)
+                finally:
+                    release_load.set()
+                    server.shutdown()
+                    thread.join(timeout=2)
+
+    def test_initial_project_load_error_keeps_server_available(self) -> None:
+        project = server_editor.load_blank_project(str(self.stickers))
+
+        def fail_project_load(progress: server_editor.ProjectLoadProgressCallback) -> server_editor.ServerProject:
+            progress("reading_project", 5)
+            raise ValueError("测试工程无法读取")
+
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, no_waveform=True,
+            project_loader=fail_project_load,
+        ) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            base_url = f"http://127.0.0.1:{server.server_address[1]}"
+            try:
+                deadline = time.monotonic() + 2
+                status = {}
+                while time.monotonic() < deadline:
+                    with urllib.request.urlopen(f"{base_url}/api/startup-status", timeout=2) as response:
+                        status = json.loads(response.read())
+                    if status["status"] == "error":
+                        break
+                    time.sleep(0.02)
+                self.assertEqual(status["status"], "error")
+                self.assertIn("测试工程无法读取", status["error"])
+                with urllib.request.urlopen(base_url, timeout=2) as response:
+                    self.assertEqual(response.status, 200)
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
 
     def test_range_parser_handles_standard_and_suffix_ranges(self) -> None:
         self.assertEqual(server_editor.parse_byte_range("bytes=2-5", 10), (2, 5))
