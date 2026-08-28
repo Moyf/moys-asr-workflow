@@ -53,7 +53,7 @@ python server-align\serve.py path\source.mosp path\script.txt --media path\recor
 - 如果输入 mosp 有内嵌 waveform，则按 MAWE 的 audio gate 规则额外检测静音空隙；
 - 写入 `script_alignment` 元数据，保留选择结果和缺失/不完整状态，便于后续诊断。
 
-从 Launcher 的「口播对齐」入口启动时，自动空隙检测会使用 Launcher 面板中的最小空隙、音量阈值、滞回、前端预留和后端预留；这份配置与 MAWE 的编辑器设置分开保存。直接启动本 Server 时，也可以通过 `--gap-minimum-ms`、`--gap-threshold-db`、`--gap-hysteresis-db`、`--gap-lead-in-ms` 和 `--gap-lead-out-ms` 传入同样的参数。
+从 Launcher 的「口播对齐」入口启动时，自动空隙检测会使用 Launcher 面板中的最小空隙、音量阈值、前端预留和后端预留；滞回沿用 2dB 的内部默认值。这份配置与 MAWE 的编辑器设置分开保存。直接启动本 Server 时，也可以通过 `--gap-minimum-ms`、`--gap-threshold-db`、`--gap-hysteresis-db`、`--gap-lead-in-ms` 和 `--gap-lead-out-ms` 传入同样的参数。
 
 当前 MVP 只做选择、禁用和 gap-remove 工程输出，不重编码媒体；打开输出的 `.mosp` 后，MAWE 可以继续播放跳过空隙、编辑字幕和导出去空隙版本。没有内嵌 waveform 时，take 块仍可用，但需要在 MAWE 中重新扫描静音空隙。
 

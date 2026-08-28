@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT))
 from maw.gui_workflow import (  # noqa: E402
     TranscriptionProcessError,
     TranscriptionRequest,
+    build_alignment_serve_command,
     build_serve_command,
     build_output_paths,
     build_transcribe_command,
@@ -873,6 +874,56 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertNotIn("-m", command)
         self.assertEqual(command[command.index("--port") + 1], "8765")
 
+    def test_build_alignment_serve_command_source_mode_uses_standalone_server(self) -> None:
+        project_path = self.root / "project.mosp"
+        script_path = self.root / "script.txt"
+        media_path = self.root / "clip.wav"
+
+        command = build_alignment_serve_command(
+            project_path,
+            script_path,
+            media_path,
+            9877,
+            gap_remove={
+                "minimum_ms": 400,
+                "threshold_db": -28,
+                "hysteresis_db": 2,
+                "lead_in_ms": 120,
+                "lead_out_ms": 80,
+            },
+            executable=Path("python.exe"),
+            frozen=False,
+        )
+
+        self.assertEqual(command[0], "python.exe")
+        self.assertIn("server-align", command[1])
+        self.assertIn("serve.py", command[1])
+        self.assertEqual(command[2:4], [str(project_path), str(script_path)])
+        self.assertEqual(command[command.index("--media") + 1], str(media_path))
+        self.assertEqual(command[command.index("--gap-minimum-ms") + 1], "400")
+        self.assertEqual(command[command.index("--gap-threshold-db") + 1], "-28")
+        self.assertEqual(command[command.index("--gap-hysteresis-db") + 1], "2")
+        self.assertEqual(command[command.index("--gap-lead-in-ms") + 1], "120")
+        self.assertEqual(command[command.index("--gap-lead-out-ms") + 1], "80")
+        self.assertEqual(command[command.index("--port") + 1], "9877")
+
+    def test_build_alignment_serve_command_frozen_mode_dispatches_same_executable(self) -> None:
+        project_path = self.root / "project.mosp"
+        script_path = self.root / "script.txt"
+
+        command = build_alignment_serve_command(
+            project_path,
+            script_path,
+            None,
+            9877,
+            executable=Path("MAW.exe"),
+            frozen=True,
+        )
+
+        self.assertEqual(command[:4], ["MAW.exe", "--serve-alignment", str(project_path), str(script_path)])
+        self.assertNotIn("--media", command)
+        self.assertEqual(command[command.index("--port") + 1], "9877")
+
     def test_build_serve_command_without_project_leaves_restore_to_server(self) -> None:
         command = build_serve_command(None, None, 8765, executable=Path("python.exe"), frozen=False)
 
@@ -898,6 +949,14 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         run_app.assert_not_called()
         configure.assert_called_once_with()
+
+    def test_entrypoint_alignment_server_dispatches_to_internal_server(self) -> None:
+        import maw_gui
+
+        with mock.patch("maw_gui._run_internal_alignment_serve", return_value=0) as run_server:
+            self.assertEqual(maw_gui.main(["--serve-alignment", "project.mosp", "script.txt"]), 0)
+
+        run_server.assert_called_once_with(["project.mosp", "script.txt"])
 
     def test_entrypoint_debug_aliases_configure_launcher_debug_modes(self) -> None:
         import maw_gui

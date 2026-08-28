@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import importlib.util
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -20,6 +21,7 @@ _INTERNAL_FLAGS = frozenset(
         "--transcribe-bcut",
         "--transcribe-tencent",
         "--serve",
+        "--serve-alignment",
     }
 )
 _GUI_DEBUG_FLAGS = frozenset({"-dbg", "--debug", "-dt", "--devtools"})
@@ -61,6 +63,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--transcribe-tencent", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
         "--serve",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--serve-alignment",
         action="store_true",
         help=argparse.SUPPRESS,
     )
@@ -108,6 +115,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_internal_transcribe_tencent(rest)
     if args.serve:
         return _run_internal_serve(rest)
+    if args.serve_alignment:
+        return _run_internal_alignment_serve(rest)
 
     from maw.gui_web import run_app
 
@@ -199,6 +208,24 @@ def _run_internal_serve(argv: Sequence[str]) -> int:
     if str(server_dir) not in sys.path:
         sys.path.insert(0, str(server_dir))
     serve = importlib.import_module("serve")
+
+    old_argv = sys.argv[:]
+    try:
+        sys.argv = ["serve.py", *argv]
+        result = serve.main()
+    finally:
+        sys.argv = old_argv
+    return 0 if result is None else int(result)
+
+
+def _run_internal_alignment_serve(argv: Sequence[str]) -> int:
+    server_path = Path(__file__).resolve().parent / "server-align" / "serve.py"
+    spec = importlib.util.spec_from_file_location("_maw_alignment_server", server_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"无法加载口播对齐 Server：{server_path}")
+    serve = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = serve
+    spec.loader.exec_module(serve)
 
     old_argv = sys.argv[:]
     try:

@@ -1699,6 +1699,11 @@ textarea::placeholder {
   font-size: 12px;
 }
 
+.toolbox-alignment-inputs {
+  display: grid;
+  gap: 10px;
+}
+
 .toolbox-chain {
   margin-top: 8px;
   padding: 8px 10px;
@@ -1878,7 +1883,7 @@ textarea::placeholder {
 }
 
 .toolbox-utility-tab-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .toolbox-tab {
@@ -1929,6 +1934,14 @@ textarea::placeholder {
 
 .toolbox-panel .adv-group:first-of-type {
   margin-top: 0;
+}
+
+.toolbox-panel .toolbox-alignment-gap-settings {
+  margin-top: 12px;
+}
+
+.toolbox-alignment-gap-settings .toolbox-grid {
+  row-gap: 12px;
 }
 
 .adv-group .toolbox-settings-hint {
@@ -2352,6 +2365,9 @@ code {
   }
   .toolbox-tab-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .toolbox-utility-tab-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .toolbox-footer {
     align-items: stretch;
