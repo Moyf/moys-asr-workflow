@@ -2,6 +2,7 @@
 
 import json
 import os
+import struct
 import subprocess
 import sys
 import tempfile
@@ -29,6 +30,19 @@ from maw.gui_workflow import (  # noqa: E402
     run_transcription,
 )
 from maw.gui_platform import _terminate_registered_job, terminate_process_tree  # noqa: E402
+
+
+def _write_bwf_wav(path: Path, sample_rate: int, time_reference_samples: int) -> None:
+    fmt = struct.pack('<HHIIHH', 1, 1, sample_rate, sample_rate * 2, 2, 16)
+    bext = bytearray(346)
+    bext[338:346] = struct.pack('<II', time_reference_samples & 0xFFFFFFFF, time_reference_samples >> 32)
+    data = bytes(4)
+    chunks = (
+        b'fmt ' + struct.pack('<I', len(fmt)) + fmt
+        + b'bext' + struct.pack('<I', len(bext)) + bext
+        + b'data' + struct.pack('<I', len(data)) + data
+    )
+    path.write_bytes(b'RIFF' + struct.pack('<I', 4 + len(chunks)) + b'WAVE' + chunks)
 
 
 class GuiWorkflowTests(unittest.TestCase):
@@ -445,6 +459,19 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertIn('const GENERATED_LANGUAGE = typeof "en"', page)
         self.assertNotIn("__UI_LANGUAGE_JSON__", page)
 
+    def test_render_editor_html_embeds_bwf_time_reference(self) -> None:
+        json_path = self.srt_path.with_suffix('.mosp')
+        html_path = self.srt_path.with_suffix('.edit.html')
+        media_path = self.root / 'recording.wav'
+        json_path.write_text(json.dumps({'segments': []}), encoding='utf-8')
+        _write_bwf_wav(media_path, 48000, 8895762)
+
+        result = render_editor_html(json_path, media_path, html_path)
+        self.assertEqual(result, html_path)
+        page = html_path.read_text(encoding='utf-8')
+        self.assertIn('"sample_rate": 48000', page)
+        self.assertIn('"time_reference_samples": 8895762', page)
+
     def test_child_environment_forces_unbuffered_python_stdout(self) -> None:
         env = _child_environment({"PYTHONUNBUFFERED": "0"}, "secret-key", "workspace-123")
 
@@ -758,6 +785,19 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(command[:3], ["MAW.exe", "--transcribe-soniox", str(self.media_path)])
         self.assertEqual(command.count("--with-waveform"), 1)
 
+    def test_build_transcribe_command_frozen_tencent_dispatches_tencent_flag(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="tencent",
+            model="16k_zh_en_2.0",
+        )
+
+        command = build_transcribe_command(request, executable=Path("MAW.exe"), frozen=True)
+
+        self.assertEqual(command[:3], ["MAW.exe", "--transcribe-tencent", str(self.media_path)])
+        self.assertIn("--model", command)
+
     def test_child_environment_soniox_uses_soniox_key_only(self) -> None:
         env = _child_environment({}, "secret-key", "workspace-123", "soniox")
 
@@ -765,6 +805,15 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertNotIn("DASHSCOPE_API_KEY", env)
         self.assertNotIn("DASHSCOPE_WORKSPACE_ID", env)
         self.assertEqual(env["PYTHONUNBUFFERED"], "1")
+
+    def test_child_environment_tencent_injects_secret_id_and_system_secret_key(self) -> None:
+        env = _child_environment(
+            {"TENCENT_SECRET_KEY": "system-secret"}, "secret-id", provider="tencent"
+        )
+
+        self.assertEqual(env["TENCENT_SECRET_ID"], "secret-id")
+        self.assertEqual(env["TENCENT_SECRET_KEY"], "system-secret")
+        self.assertNotIn("DASHSCOPE_API_KEY", env)
 
     def test_default_srt_path_uses_provider_tag(self) -> None:
         from maw.gui_workflow import default_srt_path
@@ -852,7 +901,6 @@ class GuiWorkflowTests(unittest.TestCase):
 
     def test_entrypoint_debug_aliases_configure_launcher_debug_modes(self) -> None:
         import maw_gui
-        import maw.gui_web
 
         for argv, expected in (
             (["-dbg"], mock.call(debug=True, devtools=False)),

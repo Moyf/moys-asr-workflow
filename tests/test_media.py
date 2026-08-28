@@ -1,11 +1,32 @@
 from __future__ import annotations
 
+import struct
 import tempfile
 import unittest
-from unittest import mock
 from pathlib import Path
+from unittest import mock
 
-from maw.media import MediaConversionError, MediaStatus, convert_media_for_browser, resolve_project_media
+from maw.media import (
+    MediaConversionError,
+    MediaStatus,
+    convert_media_for_browser,
+    read_bwf_time_reference,
+    resolve_project_media,
+)
+
+
+
+def _write_bwf_wav(path: Path, sample_rate: int, time_reference_samples: int) -> None:
+    fmt = struct.pack('<HHIIHH', 1, 1, sample_rate, sample_rate * 2, 2, 16)
+    bext = bytearray(346)
+    bext[338:346] = struct.pack('<II', time_reference_samples & 0xFFFFFFFF, time_reference_samples >> 32)
+    data = bytes(4)
+    chunks = (
+        b'fmt ' + struct.pack('<I', len(fmt)) + fmt
+        + b'bext' + struct.pack('<I', len(bext)) + bext
+        + b'data' + struct.pack('<I', len(data)) + data
+    )
+    path.write_bytes(b'RIFF' + struct.pack('<I', 4 + len(chunks)) + b'WAVE' + chunks)
 
 
 class MediaResolutionTests(unittest.TestCase):
@@ -23,6 +44,28 @@ class MediaResolutionTests(unittest.TestCase):
         result = resolve_project_media(self.project, {"media": str(media)})
         self.assertEqual(result.status, MediaStatus.SUCCESS)
         self.assertEqual(result.resolved_path, media)
+
+    def test_reads_bwf_time_reference_from_wav(self) -> None:
+        media = self.root / 'recording.wav'
+        time_reference_samples = (2 << 32) + 8895762
+        _write_bwf_wav(media, 48000, time_reference_samples)
+
+        self.assertEqual(
+            read_bwf_time_reference(media),
+            {
+                'sample_rate': 48000,
+                'time_reference_samples': time_reference_samples,
+            },
+        )
+
+    def test_ignores_non_bwf_wav_and_non_wav_files(self) -> None:
+        wav = self.root / 'plain.wav'
+        wav.write_bytes(b'RIFF' + bytes(4) + b'WAVE')
+        mp3 = self.root / 'recording.mp3'
+        mp3.write_bytes(b'not wav')
+
+        self.assertIsNone(read_bwf_time_reference(wav))
+        self.assertIsNone(read_bwf_time_reference(mp3))
 
     def test_missing_project_media_falls_back_to_one_same_name_candidate(self) -> None:
         media = self.root / "take.flv"

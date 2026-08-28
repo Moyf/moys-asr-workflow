@@ -180,6 +180,29 @@ uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" -ll 2m --j
 
 输出文件与 Qwen 流程相同（SRT / `.mosp` / edit.html），文件命名标签为 `.soniox.`。注意：Soniox 单文件最长 5 小时；token 粒度是 word/sub-word，中文不保证逐字；转写完成后脚本会自动删除云端文件与转写记录。
 
+## 用腾讯云录音文件识别转写（可选，支持字词时间码与说话人）
+
+在 `.env` 中填写 `TENCENT_SECRET_ID` 和 `TENCENT_SECRET_KEY` 后，可以使用默认的 `16k_zh_en_2.0` 引擎：
+
+```powershell
+uv run python generate_subtitle_tencent_api.py "D:\Videos\example.mp4" -ll 2m --json
+```
+
+常用可选项：
+
+```text
+--file-url URL        使用 COS / 公网 URL，适用于超过 5MB 的媒体
+--speaker             请求腾讯云说话人分离并保留 speaker 标签
+--speaker-colors      兼容参数，同时请求说话人分离
+--model ENGINE        覆盖引擎，默认 16k_zh_en_2.0
+--keep-punct          保留句尾逗号和句号
+--strip-tail-punct S  指定要剥除的句尾标点集合
+--debug               输出字词时间码数量
+--debug-raw           保存腾讯云完整原始响应
+```
+
+腾讯云结果中的 `Words` 会映射为工程 `items`，其中 `OffsetStartMs` / `OffsetEndMs` 是整数毫秒。启用 `--speaker` 时，MAW 会发送 `SpeakerDiarization=1`；说话人标签是匿名 ID。小于等于 5MB 的本地文件可直传，较大文件必须先上传到 COS 或其他公网可访问地址并使用 `--file-url`。
+
 ## 用必剪转写（实验性，免 Key，仅中文）
 
 > [!warning]
