@@ -193,51 +193,68 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("requirements-local.txt", spec)
         self.assertIn("requirements-ocr.txt", spec)
 
-        self.assertIn("uv export --frozen --extra local", release)
-        self.assertIn("uv export --frozen --extra ocr", release)
+        # 构建管线不再内联 uv 冻结命令：统一走 freezer 模块（声明驱动）。
+        self.assertIn("maw.runtimes.freezer", release)
+        self.assertNotIn("uv export --frozen", release)
 
         self.assertIn('RUNTIME_VERSION = "6"', local_spec)
         self.assertIn('OCR_RUNTIME_VERSION = "3"', ocr_spec)
 
         self.assertIn("_has_cuda", runtimes_base)
+        self.assertIn("requirements_in", runtimes_base)
 
-    def test_cpu_requirements_variant_is_frozen_before_export_with_real_hashes(self) -> None:
-        """Given no-GPU machines install from requirements-local-cpu.txt, Then pins mirror the local extra and builds freeze it natively."""
-        import re as _re
+    def test_cpu_requirements_variant_is_generated_natively_not_hand_edited(self) -> None:
+        """Given no-GPU machines install from requirements-*-cpu.txt, Then CPU variants
+        derive from the single source (uv export / in 文件) via the freezer, and no
+        hand-edited declaration files or inline build commands remain."""
+        from maw.runtimes import freezer as freezer_mod
 
         pyproject = read_text("pyproject.toml")
-        cpu_in = read_text("local-cpu-requirements.in")
+        spec = read_text("MAW.spec")
 
-        # torch / torchaudio 的版本 pin 必须与 pyproject [local] extra 一致
-        # （CPU 变体只是去掉 +cu130 后缀，不能悄悄漂移到其它版本）。
-        for package in ("torch", "torchaudio"):
-            gpu_match = _re.search(rf'{package}==(\d+\.\d+\.\d+)\+cu130', pyproject)
-            self.assertIsNotNone(gpu_match, f"pyproject 缺少 {package} 的 cu130 pin")
-            self.assertIn(f"{package}=={gpu_match.group(1)}\n", cpu_in)
-        # 直接依赖全集与 [local] extra 对齐（不含带 marker 的 torch/torchaudio 行）。
-        for direct in ("accelerate", "funasr", "hf-xet", "qwen-asr"):
-            self.assertRegex(cpu_in, rf"(?m)^{direct}==")
-            self.assertIn(f'"{direct}>=', pyproject)
+        # 手写 CPU 声明文件已退役：声明源单一（pyproject extra / moss-requirements.in）。
+        for legacy in ("local-cpu-requirements.in", "moss-cpu-requirements.in"):
+            self.assertFalse((ROOT / legacy).exists(), f"{legacy} 应已退役（生成式替代）")
 
-        # 冻结管线必须原生导出（--generate-hashes 产出 CPU wheel 真实哈希），
-        # 不再允许"冻结后文本剔除 +cuXXX"的旧方案。
+        # 构建管线统一引用 freezer 模块，不再内联 uv 冻结命令。
         for build_entry in (
             read_text("scripts/build-windows.ps1"),
             read_text("scripts/build-appimage.sh"),
             read_text(".github/workflows/release.yml"),
         ):
-            self.assertIn("local-cpu-requirements.in", build_entry)
-            self.assertIn("moss-cpu-requirements.in", build_entry)
-            self.assertIn("--generate-hashes", build_entry)
+            self.assertIn("maw.runtimes.freezer", build_entry)
+            self.assertIn("freeze --force", build_entry)
+            self.assertNotIn("local-cpu-requirements.in", build_entry)
+            self.assertNotIn("moss-cpu-requirements.in", build_entry)
             self.assertNotIn("freeze_cpu_requirements", build_entry)
-        self.assertNotIn("+cu130", cpu_in)
 
-    def test_moss_cpu_requirements_variant_pins_match_gpu_variant(self) -> None:
-        """Given no-GPU machines install MOSS from requirements-moss-cpu.txt, Then pins mirror moss-requirements.in natively."""
+        # CPU 变体 frozen txt 仍随包分发（MAW.spec datas 条件追加）。
+        for txt in ("requirements-local-cpu.txt", "requirements-moss-cpu.txt"):
+            self.assertIn(txt, spec)
+
+        # 生成规则防"版本漂移"：pyproject 的 cu130 pin 剥去本地版本号后
+        # 必须可由生成函数复现（torch/torchaudio 版本不悄悄漂移）。
+        import re as _re
+
+        for package in ("torch", "torchaudio"):
+            gpu_match = _re.search(rf'{package}==(\d+\.\d+\.\d+)\+cu130', pyproject)
+            self.assertIsNotNone(gpu_match, f"pyproject 缺少 {package} 的 cu130 pin")
+        cpu_pins = freezer_mod.cpu_requirements_lines(
+            "torch==2.13.0+cu130; sys_platform != 'darwin'\n"
+            "torchaudio==2.11.0+cu130; sys_platform != 'darwin'\n"
+        )
+        self.assertEqual(cpu_pins, ["torch==2.13.0", "torchaudio==2.11.0"])
+        self.assertNotIn("+cu130", "\n".join(cpu_pins))
+
+    def test_moss_cpu_requirements_generated_from_gpu_variant(self) -> None:
+        """Given no-GPU machines install MOSS from requirements-moss-cpu.txt, Then the
+        generated CPU input mirrors moss-requirements.in natively (pin 对齐、无 marker)。"""
+        from maw.runtimes import freezer as freezer_mod
+
         import re as _re
 
         gpu_in = read_text("moss-requirements.in")
-        cpu_in = read_text("moss-cpu-requirements.in")
+        cpu_in = freezer_mod.cpu_input_text(gpu_in, header="# MOSS CPU 变体\n")
 
         # torch / torchaudio 的版本 pin 必须与 moss-requirements.in 一致
         # （CPU 变体只是去掉 +cu130 后缀，不能悄悄漂移到其它版本）。

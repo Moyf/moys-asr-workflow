@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -27,11 +28,13 @@ from maw.moss_runtime import (
 from maw.runtimes import MOSS
 from maw.runtimes.moss_spec import PYTORCH_INDEX
 
-_PYTHON_RELATIVE = Path("python") / "python.exe" if os.name == "nt" else Path("python") / "bin" / "python"
+# 与 maw/runtimes/base.py 的 interpreter 布局判定保持一致（sys.platform 可被
+# 内嵌流测试 mock；os.name 是全局属性且 mock 会污染 pathlib）。
+_PYTHON_RELATIVE = Path("python") / "python.exe" if sys.platform == "win32" else Path("python") / "bin" / "python"
 
 
 def _fake_extract(_zip_path: Path, target_dir: Path) -> None:
-    python = target_dir / ("python.exe" if os.name == "nt" else "bin/python")
+    python = target_dir / ("python.exe" if sys.platform == "win32" else "bin/python")
     python.parent.mkdir(parents=True, exist_ok=True)
     python.write_bytes(b"python")
 
