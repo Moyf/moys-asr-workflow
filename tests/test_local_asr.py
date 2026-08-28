@@ -21,6 +21,7 @@ from maw.local_asr import (
     WHISPER_DEFAULT_MODEL,
     WHISPER_DEFAULT_VAD_MIN_SILENCE_MS,
     FunAsrEngine,
+    LocalAsrError,
     LocalTranscription,
     QwenAsrEngine,
     WhisperEngine,
@@ -436,6 +437,43 @@ class LocalAsrFlowTests(unittest.TestCase):
                     captured.clear()
                     create_local_engine("whisper", model=str(cache_root))._load()
                     self.assertNotIn("download_root", captured)
+
+    def test_whisper_auto_falls_back_to_cpu_when_cuda_runtime_is_unavailable(self) -> None:
+        calls: list[dict[str, object]] = []
+        events: list[str] = []
+
+        def fake_whisper_model(model_ref: str, **kwargs: object) -> object:
+            del model_ref
+            calls.append(kwargs)
+            if kwargs["device"] == "cuda":
+                raise RuntimeError("Library cublas64_12.dll is not found or cannot be loaded")
+            return object()
+
+        faster_whisper_module = SimpleNamespace(WhisperModel=fake_whisper_model)
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                runtime = create_local_engine("whisper", device="auto")._load(events.append)
+
+        self.assertIsNotNone(runtime)
+        self.assertEqual([call["device"] for call in calls], ["cuda", "cpu"])
+        self.assertEqual([call["compute_type"] for call in calls], ["float16", "int8"])
+        self.assertTrue(any("自动回退到 CPU" in event for event in events))
+
+    def test_whisper_explicit_cuda_does_not_fall_back(self) -> None:
+        calls: list[dict[str, object]] = []
+
+        def fake_whisper_model(model_ref: str, **kwargs: object) -> object:
+            del model_ref
+            calls.append(kwargs)
+            raise RuntimeError("Library cublas64_12.dll is not found or cannot be loaded")
+
+        faster_whisper_module = SimpleNamespace(WhisperModel=fake_whisper_model)
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                with self.assertRaisesRegex(LocalAsrError, "模型加载失败"):
+                    create_local_engine("whisper", device="cuda")._load()
+
+        self.assertEqual([call["device"] for call in calls], ["cuda"])
 
     def test_whisper_word_timestamps_are_normalized_to_milliseconds(self) -> None:
         class FakeRuntime:

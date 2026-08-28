@@ -101,6 +101,10 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(local["models"][2]["id"], "fun-asr-nano-local")
         self.assertEqual(local["models"][3]["id"], "funasr-local")
         self.assertEqual(local["models"][4]["modelRef"], "iic/SenseVoiceSmall")
+        whisper = local["models"][-1]
+        self.assertEqual(whisper["id"], "whisper-large-v3-local")
+        self.assertIn("用户自行安装 CUDA 12 和 cuDNN 9", whisper["note"])
+        self.assertIn("自动回退到 CPU", whisper["note"])
         self.assertIn(local["models"][0]["localStatus"]["status"], {"runtime_missing", "missing", "installed", "partial", "path_invalid", "broken"})
         self.assertEqual(config["modelCacheRoot"], "")
 
