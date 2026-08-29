@@ -29,7 +29,14 @@ _SENSITIVE_KEYS = ("key", "secret", "token", "password")
 
 
 def default_log_directory() -> Path:
-    """返回平台对应的 MAW 用户数据日志目录（与 emoji 字体缓存同一命名空间）。"""
+    """返回平台对应的 MAW 用户数据日志目录（与 emoji 字体缓存同一命名空间）。
+
+    `MAW_APP_DATA_ROOT` 覆盖整个基目录（打包/测试环境用），与启动错误
+    日志的回退路径保持同一命名空间，避免日志分散在两处。
+    """
+    override = os.environ.get("MAW_APP_DATA_ROOT", "").strip()
+    if override:
+        return Path(override).expanduser().resolve(strict=False) / "logs"
     if sys.platform == "darwin":
         base = Path.home() / "Library" / "Application Support" / "Moy" / "MAW"
     elif sys.platform == "win32":

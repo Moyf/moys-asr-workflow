@@ -249,9 +249,6 @@ def _startup_error_log_path() -> Path:
 
 def _startup_error_fallback_log_path() -> Path:
     """Return the shared MAW log directory when the package directory is read-only."""
-    override = os.environ.get("MAW_APP_DATA_ROOT", "").strip()
-    if override:
-        return Path(override).expanduser().resolve(strict=False) / "launcher-startup.log"
     from maw.local_log import default_log_directory
 
     return default_log_directory() / "launcher-startup.log"
