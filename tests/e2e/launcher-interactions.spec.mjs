@@ -245,7 +245,7 @@ test('error reports copy safe details and support file URL fallback', async ({ p
   expect(report).not.toContain('secret-bearer-token');
   expect(report.match(/详细信息: backend detail/g)?.length).toBe(1);
   expect(report.match(/\[detail\] backend detail/g)?.length).toBe(2);
-  expect(report).toContain('1.5.0-beta.7');
+  expect(report).toContain('1.5.0-beta.8');
   expect(report).not.toContain('sk-secret-test-key');
 
   await page.evaluate(() => {
