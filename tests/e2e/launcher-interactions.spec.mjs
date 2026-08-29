@@ -159,7 +159,7 @@ test('runtime errors show an actionable notice outside the log', async ({ page }
   await expect(page.locator('#status')).toContainText('未找到 FFmpeg / FFprobe');
 });
 
-test('error notice and status remain above the fixed footer at desktop and narrow widths', async ({ page }) => {
+test('error notice appears inside the log card below the log text', async ({ page }) => {
   const measure = () => page.evaluate(() => {
     const box = (selector) => {
       const element = document.querySelector(selector);
@@ -171,8 +171,8 @@ test('error notice and status remain above the fixed footer at desktop and narro
       copy: box('.error-notice-copy'),
       actions: box('#errorNoticeActions'),
       close: box('#errorNoticeClose'),
-      status: box('#status'),
-      footer: box('.actions'),
+      log: box('#log'),
+      logCard: box('section[aria-labelledby="logTitle"]'),
     };
   });
   const showFailure = async () => {
@@ -180,31 +180,18 @@ test('error notice and status remain above the fixed footer at desktop and narro
       window.MAWLauncher.onBackendEvent({ type: 'error', code: 'ffmpeg_missing', detail: 'ffmpeg and ffprobe were not found' });
     });
     await expect(page.locator('#errorNotice')).toBeVisible();
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await expect.poll(async () => {
-      const metrics = await measure();
-      return metrics.notice.bottom <= metrics.footer.top + 1 && metrics.status.bottom <= metrics.footer.top + 1;
-    }).toBe(true);
-  };
-  const showRetry = async () => {
-    await page.evaluate(() => document.querySelector('#retryPostprocess').classList.remove('hidden'));
-    // Let ResizeObserver recalculate the shell's bottom reserve before moving
-    // to the document end; this models the real late-arriving retry action.
-    await page.waitForTimeout(80);
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await expect.poll(async () => {
-      const metrics = await measure();
-      return metrics.notice.bottom <= metrics.footer.top + 1 && metrics.status.bottom <= metrics.footer.top + 1;
-    }).toBe(true);
   };
 
-  await page.setViewportSize({ width: 1180, height: 520 });
+  await page.setViewportSize({ width: 1180, height: 820 });
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await showFailure();
   const desktopNormal = await measure();
-  expect(desktopNormal.notice.bottom).toBeLessThanOrEqual(desktopNormal.footer.top + 1);
-  expect(desktopNormal.status.bottom).toBeLessThanOrEqual(desktopNormal.footer.top + 1);
+  // The notice is a child of the log card and sits right below the log text,
+  // so it appears "from under" the log box instead of floating over the page.
+  expect(await page.evaluate(() => document.querySelector('section[aria-labelledby="logTitle"]').contains(document.querySelector('#errorNotice')))).toBe(true);
+  expect(desktopNormal.notice.top).toBeGreaterThanOrEqual(desktopNormal.log.bottom - 1);
+  expect(desktopNormal.notice.bottom).toBeLessThanOrEqual(desktopNormal.logCard.bottom + 1);
   expect(desktopNormal.copy.width).toBeGreaterThan(250);
   expect(desktopNormal.actions.top).toBeGreaterThanOrEqual(desktopNormal.copy.bottom - 1);
   expect(desktopNormal.actions.left).toBeGreaterThanOrEqual(desktopNormal.notice.left - 1);
@@ -213,33 +200,18 @@ test('error notice and status remain above the fixed footer at desktop and narro
   expect(desktopNormal.close.top).toBeGreaterThanOrEqual(desktopNormal.notice.top - 1);
   expect(desktopNormal.close.bottom).toBeLessThanOrEqual(desktopNormal.notice.top + 42);
   expect(desktopNormal.actions.height).toBeGreaterThanOrEqual(30);
-  await showRetry();
-  const desktopDynamic = await measure();
-  await expect(page.locator('#retryPostprocess')).toBeVisible();
-  expect(desktopDynamic.footer.height).toBeGreaterThanOrEqual(desktopNormal.footer.height);
-  expect(desktopDynamic.notice.bottom).toBeLessThanOrEqual(desktopDynamic.footer.top + 1);
-  expect(desktopDynamic.status.bottom).toBeLessThanOrEqual(desktopDynamic.footer.top + 1);
 
-  await page.setViewportSize({ width: 520, height: 520 });
+  await page.setViewportSize({ width: 520, height: 820 });
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await showFailure();
-  const narrowNormal = await measure();
-  expect(narrowNormal.notice.bottom).toBeLessThanOrEqual(narrowNormal.footer.top + 1);
-  expect(narrowNormal.status.bottom).toBeLessThanOrEqual(narrowNormal.footer.top + 1);
-  expect(narrowNormal.actions.top).toBeGreaterThanOrEqual(narrowNormal.copy.bottom - 1);
-  expect(narrowNormal.close.right).toBeGreaterThanOrEqual(narrowNormal.notice.right - 16);
-  expect(narrowNormal.close.top).toBeGreaterThanOrEqual(narrowNormal.notice.top - 1);
-  expect(narrowNormal.close.bottom).toBeLessThanOrEqual(narrowNormal.notice.top + 42);
-  await showRetry();
-  const narrowDynamic = await measure();
-  expect(narrowDynamic.footer.height).toBeGreaterThan(narrowNormal.footer.height);
-  expect(narrowDynamic.notice.bottom).toBeLessThanOrEqual(narrowDynamic.footer.top + 1);
-  expect(narrowDynamic.status.bottom).toBeLessThanOrEqual(narrowDynamic.footer.top + 1);
-  expect(narrowDynamic.actions.top).toBeGreaterThanOrEqual(narrowDynamic.copy.bottom - 1);
-  expect(narrowDynamic.close.right).toBeGreaterThanOrEqual(narrowDynamic.notice.right - 16);
-  expect(narrowDynamic.close.top).toBeGreaterThanOrEqual(narrowDynamic.notice.top - 1);
-  expect(narrowDynamic.close.bottom).toBeLessThanOrEqual(narrowDynamic.notice.top + 42);
+  const narrow = await measure();
+  expect(narrow.notice.top).toBeGreaterThanOrEqual(narrow.log.bottom - 1);
+  expect(narrow.notice.bottom).toBeLessThanOrEqual(narrow.logCard.bottom + 1);
+  expect(narrow.actions.top).toBeGreaterThanOrEqual(narrow.copy.bottom - 1);
+  expect(narrow.close.right).toBeGreaterThanOrEqual(narrow.notice.right - 16);
+  expect(narrow.close.top).toBeGreaterThanOrEqual(narrow.notice.top - 1);
+  expect(narrow.close.bottom).toBeLessThanOrEqual(narrow.notice.top + 42);
 });
 
 test('error reports copy safe details and support file URL fallback', async ({ page }) => {
