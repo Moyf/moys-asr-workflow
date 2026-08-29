@@ -102,7 +102,9 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "workspace_missing": "Workspace ID is required for Singapore region.",
     "output_missing": "SRT output path is required.",
     "segmentation_invalid": "Subtitle segmentation settings are invalid.",
+    "ffmpeg_missing": "FFmpeg and FFprobe were not found.",
     "ffmpeg_start_failed": "FFmpeg failed to start.",
+    "ffprobe_start_failed": "FFprobe failed to start.",
     "transcription_failed": "Transcription failed.",
     "transcription_cancelled": "转写已取消。",
     "context_too_long": "Qwen-Audio context is limited to 400 characters.",
@@ -157,6 +159,27 @@ def _is_ffmpeg_start_failure(lines: Sequence[str]) -> bool:
     return "ffmpeg" in detail and any(
         marker in detail for marker in ("3221225794", "0xc0000142", "c0000142")
     )
+
+
+def _is_ffmpeg_missing_failure(lines: Sequence[str]) -> bool:
+    """Recognise missing FFmpeg tools without mistaking a missing media file."""
+    detail = "\n".join(lines).casefold()
+    explicit = any(
+        marker in detail
+        for marker in (
+            "找不到 ffmpeg",
+            "ffmpeg / ffprobe",
+            "ffmpeg and ffprobe were not found",
+            "ffmpeg not found",
+            "ffprobe not found",
+        )
+    )
+    legacy_winerror = any(
+        marker in detail for marker in ("[winerror 2]", "系统找不到指定的文件")
+    ) and any(
+        marker in detail for marker in ("ffmpeg", "ffprobe", "get_duration_sec")
+    )
+    return explicit or legacy_winerror
 
 
 def _registered_mose_executable() -> Path | None:
@@ -1495,6 +1518,9 @@ class LauncherApi:
             request = _request_from_payload(payload, self.paths.env_path)
         except PreflightError as error:
             return error.as_result()
+        ffmpeg_error = _frozen_ffmpeg_preflight(self.paths.env_path)
+        if ffmpeg_error is not None:
+            return ffmpeg_error
         selected_output = unique_output_path(request.srt_path)
         output_renamed = selected_output != request.srt_path
         if output_renamed:
@@ -1570,6 +1596,9 @@ class LauncherApi:
                 "error": "No valid batch items were provided.",
                 "detail": details,
             }
+        ffmpeg_error = _frozen_ffmpeg_preflight(self.paths.env_path)
+        if ffmpeg_error is not None:
+            return ffmpeg_error
         manifest_path = Path(manifest_text).expanduser() if manifest_text else _unique_batch_manifest_path(first_request.srt_path.parent)
         self.batch_cancel_event = Event()
         self.pump.start()
@@ -1867,6 +1896,14 @@ class LauncherApi:
             return {"ok": False, "error": f"blank-editor.html not found: {path}"}
         return _open_existing_path(path)
 
+    def open_faq(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        path = self.paths.root / "FAQ-常见问题.txt"
+        if not path.is_file():
+            path = Path(sys.executable).resolve().parent / "FAQ-常见问题.txt"
+        if not path.is_file():
+            return {"ok": False, "error": f"FAQ-常见问题.txt not found: {path}"}
+        return _open_existing_path(path)
+
     def check_ffmpeg(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         return _check_ffmpeg(self.paths.env_path)
 
@@ -1925,7 +1962,13 @@ class LauncherApi:
             self.pump.flush()
             return
         except TranscriptionProcessError as error:
-            if _is_ffprobe_start_failure(child_output):
+            if _is_ffmpeg_missing_failure(child_output):
+                self._emit({
+                    "type": "error",
+                    "code": "ffmpeg_missing",
+                    "detail": str(error),
+                })
+            elif _is_ffprobe_start_failure(child_output):
                 self._emit({
                     "type": "error",
                     "code": "ffprobe_start_failed",
@@ -2879,6 +2922,20 @@ def _postprocess_ffmpeg(env_path: Path) -> Path | None:
             if candidate.is_file():
                 return candidate.resolve()
     return ffmpeg.resolve() if ffmpeg is not None else None
+
+
+def _frozen_ffmpeg_preflight(env_path: Path) -> dict[str, object] | None:
+    """Stop release tasks before spawning a child when both media tools are absent."""
+    if not getattr(sys, "frozen", False):
+        return None
+    result = _check_ffmpeg(env_path)
+    if result.get("found"):
+        return None
+    return _error_result(
+        "ffmpegPath",
+        "ffmpeg_missing",
+        "One or both required tools (ffmpeg and ffprobe) were not found in this MAW package, FFMPEG_PATH, or PATH.",
+    )
 
 
 def _check_ffmpeg(env_path: Path, override: str = "") -> dict[str, object]:
