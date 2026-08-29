@@ -18,6 +18,7 @@ from maw.postprocess_pipeline import (
     default_postprocess_plan,
     is_llm_verified,
     load_postprocess_config,
+    normalize_plan,
     record_llm_verification,
     run_postprocess_pipeline,
     save_postprocess_plan,
@@ -73,6 +74,16 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertEqual([step["id"] for step in plan["steps"]], ["match", "replace", "proofread", "resegment", "ocr", "translate"])
         self.assertEqual(plan["steps"][1]["conversion"], "off")
         self.assertEqual(plan["steps"][0]["matchMode"], "script")
+        self.assertEqual(plan["steps"][0]["extraSplitPunctuation"], ["？", "！", ","])
+        self.assertEqual(plan["steps"][0]["preservePunctuation"], ["？", "！"])
+
+    def test_normalize_plan_migrates_legacy_preserved_question_marks(self) -> None:
+        plan = default_postprocess_plan()
+        plan["steps"][0]["extraSplitPunctuation"] = []
+
+        normalized = normalize_plan(plan)
+
+        self.assertEqual(normalized["steps"][0]["extraSplitPunctuation"], ["？", "！"])
 
     def test_match_mode_is_preserved_when_normalizing_plan(self) -> None:
         plan = default_postprocess_plan()

@@ -171,11 +171,15 @@ class ScriptMatchTests(unittest.TestCase):
         self.assertIn("额外断句符号：3 个", warning)
 
     def test_preserved_punctuation_may_use_default_split_symbols(self) -> None:
-        # 基础断句集（含 ？！）始终生效：默认保留符号无需在额外断句符号中声明。
-        text, warning = prepare_script_text("甲？乙！", (), ("？", "！"))
+        # 基础断句集（逗号、句号、换行）始终生效。
+        text, warning = prepare_script_text("甲，乙。", (), ("，", "。"))
 
-        self.assertEqual(text, "甲？乙！")
+        self.assertEqual(text, "甲，乙。")
         self.assertIn("未配置额外断句符号", warning)
+
+    def test_question_and_exclamation_must_be_declared_as_extra_split_symbols(self) -> None:
+        with self.assertRaisesRegex(ValueError, "保留符号"):
+            prepare_script_text("甲？乙！", (), ("？", "！"))
 
     def test_preserved_punctuation_must_be_declared_as_a_split_symbol(self) -> None:
         with self.assertRaisesRegex(ValueError, "保留符号"):

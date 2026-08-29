@@ -55,6 +55,7 @@ STEP_ORDER: Final[tuple[str, ...]] = (
 )
 TRANSLATION_TARGETS: Final[frozenset[str]] = frozenset({"zh", "en"})
 SCRIPT_EXTENSIONS: Final[frozenset[str]] = frozenset({".txt", ".md", ".markdown"})
+DEFAULT_EXTRA_SPLIT_PUNCTUATION: Final[tuple[str, ...]] = ("？", "！", ",")
 VIDEO_EXTENSIONS: Final[frozenset[str]] = frozenset({
     ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v",
 })
@@ -71,7 +72,7 @@ def default_postprocess_plan() -> dict[str, object]:
                 "enabled": False,
                 "scriptPath": "",
                 "matchMode": "script",
-                "extraSplitPunctuation": [],
+                "extraSplitPunctuation": list(DEFAULT_EXTRA_SPLIT_PUNCTUATION),
                 "preservePunctuation": ["？", "！"],
             },
             {"id": "replace", "enabled": False, "replacements": [], "replacementSeparator": "arrow", "replacementTrim": True, "replacementCustomSeparator": "", "conversion": TextConversion.OFF.value},
@@ -133,6 +134,18 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = [str(item).strip() for item in value if str(item).strip()] if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) else []
             else:
                 step[key] = str(value or "").strip()
+        if step_id == "match":
+            extra = step.get("extraSplitPunctuation")
+            preserve = step.get("preservePunctuation")
+            if isinstance(extra, list) and isinstance(preserve, list):
+                legacy_preserved = {"？", "！", "?", "!"}
+                migrated = [
+                    symbol
+                    for symbol in preserve
+                    if symbol in legacy_preserved and symbol not in extra
+                ]
+                if migrated:
+                    step["extraSplitPunctuation"] = [*extra, *migrated]
         normalized_steps.append(step)
     plan["steps"] = normalized_steps
     return plan
