@@ -1293,6 +1293,7 @@ const fcp7ExportCancel = document.getElementById('fcp7-export-cancel');
 const fcp7ExportConfirm = document.getElementById('fcp7-export-confirm');
 const lottieExportModal = document.getElementById('lottie-export-modal');
 const lottieExportTrack = document.getElementById('lottie-export-track');
+const lottieExportGapRemoved = document.getElementById('lottie-export-gap-removed');
 const lottieExportResolution = document.getElementById('lottie-export-resolution');
 const lottieExportFps = document.getElementById('lottie-export-fps');
 const lottieExportRenderMode = document.getElementById('lottie-export-render-mode');
@@ -1300,6 +1301,7 @@ const lottieExportCancel = document.getElementById('lottie-export-cancel');
 const lottieExportConfirm = document.getElementById('lottie-export-confirm');
 const ografExportModal = document.getElementById('ograf-export-modal');
 const ografExportTrack = document.getElementById('ograf-export-track');
+const ografExportGapRemoved = document.getElementById('ograf-export-gap-removed');
 const ografExportResolution = document.getElementById('ograf-export-resolution');
 const ografExportFps = document.getElementById('ograf-export-fps');
 const ografExportCancel = document.getElementById('ograf-export-cancel');
@@ -1323,9 +1325,10 @@ const saveProjectButton = document.getElementById('save-project');
 const saveProjectAsButton = document.getElementById('save-project-as');
 const saveProjectDropdown = document.getElementById('save-project-dropdown');
 const gapRemovedExportDropdown = document.getElementById('gap-removed-export-dropdown');
-const downloadSrtButton = document.getElementById('download-srt');
 const downloadMultiSrtButton = document.getElementById('download-multi-srt');
 const subtitleExportDropdown = document.getElementById('subtitle-export-dropdown');
+const downloadColorSrtItem = document.getElementById('download-color-srt');
+const downloadGapRemovedColorSrtItem = document.getElementById('download-gap-removed-color-srt');
 const multiSubtitleControls = document.getElementById('multi-subtitle-controls');
 const multiSubtitleToggleLabel = document.getElementById('multi-subtitle-toggle-label');
 const multiSubtitleSettingsDropdown = document.getElementById('multi-subtitle-settings-dropdown');
@@ -9091,6 +9094,7 @@ document.addEventListener('keydown', (e) => {
   if (multiSubtitleSplitModal?.classList.contains('show')) return;
   const target = e.target instanceof Element ? e.target : document.activeElement;
   if (target?.closest?.('.geo-box, input, select, textarea')) return;
+  if (target?.closest?.('[role="menu"]')) return;
   if (!isPlaybackKeyboardTarget(e) && isNativeKeyboardControl(e)) return;
   if (isPlayerKeyboardTarget(e)) return;
   const commandKey = e.ctrlKey || e.metaKey;
@@ -11109,11 +11113,9 @@ function usedSubtitleColors() {
 
 function updateSubtitleExportUi() {
   const hasColors = usedSubtitleColors().some((color) => color.name !== 'default');
-  if (downloadSrtButton) downloadSrtButton.hidden = hasColors;
-  if (subtitleExportDropdown) {
-    subtitleExportDropdown.hidden = !hasColors;
-    if (!hasColors) subtitleExportDropdown.classList.remove('open');
-  }
+  if (downloadColorSrtItem) downloadColorSrtItem.hidden = !hasColors;
+  if (downloadGapRemovedColorSrtItem) downloadGapRemovedColorSrtItem.hidden = !hasColors;
+  if (subtitleExportDropdown) subtitleExportDropdown.hidden = false;
   if (downloadMultiSrtButton) {
     downloadMultiSrtButton.hidden = !(multiSubtitleVisible() && getActiveExtensionTrack()?.segments?.length);
   }
@@ -11202,6 +11204,27 @@ function gapRemovedExportContext() {
     return null;
   }
   return { durationMs, intervals, removed };
+}
+
+function buildDynamicCaptionExportData(segments, gapRemoved) {
+  const source = Array.isArray(segments) ? segments : [];
+  const sourceDurationMs = waveformEditor?.durationMs
+    || Math.round(Number(player?.duration) * 1000)
+    || DATA.waveform?.duration_ms
+    || 0;
+  if (!gapRemoved) {
+    return { segments: source, durationMs: sourceDurationMs };
+  }
+  const context = gapRemovedExportContext();
+  if (!context) return null;
+  const durationMs = context.intervals.reduce(
+    (total, interval) => total + Math.max(0, interval.end - interval.start),
+    0,
+  );
+  return {
+    segments: window.AsrEditorUtils.buildGapRemovedDynamicSegments(source, context.removed),
+    durationMs,
+  };
 }
 
 function gapRemovedMediaReference() {
@@ -12971,11 +12994,6 @@ function openFcp7ExportModal() {
   fcp7ExportTimelineMode.focus();
 }
 
-function openGapRemovedFcp7ExportModal() {
-  fcp7ExportTimelineMode.value = 'gap_removed';
-  openFcp7ExportModal();
-}
-
 async function exportFcp7Xml() {
   fcp7ExportConfirm.disabled = true;
   try {
@@ -13019,7 +13037,6 @@ async function exportFcp7Xml() {
 }
 
 document.getElementById('download-fcp7-export')?.addEventListener('click', openFcp7ExportModal);
-document.getElementById('download-gap-removed-fcp7-export')?.addEventListener('click', openGapRemovedFcp7ExportModal);
 fcp7ExportCancel?.addEventListener('click', closeFcp7ExportModal);
 fcp7ExportConfirm?.addEventListener('click', () => { void exportFcp7Xml(); });
 fcp7ExportModal?.addEventListener('click', (event) => {
@@ -13084,16 +13101,23 @@ async function exportLottieDynamicCaptions() {
   try {
     const extension = lottieExportTrack?.value === 'extension';
     const track = extension ? getActiveExtensionTrack() : null;
-    const segments = extension ? track?.segments : DATA.segments;
-    if (!Array.isArray(segments) || !segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
+    const sourceSegments = extension ? track?.segments : DATA.segments;
+    if (!Array.isArray(sourceSegments) || !sourceSegments.some((segment) => (
+      !segment?.disabled && String(segment?.text || '').trim()
+    ))) {
       throw new Error(translatedEditorText(
         extension ? '当前副字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
       ));
     }
-    const durationMs = waveformEditor?.durationMs
-      || Math.round(Number(player?.duration) * 1000)
-      || DATA.waveform?.duration_ms
-      || 0;
+    const gapRemoved = lottieExportGapRemoved?.checked === true;
+    const exportData = buildDynamicCaptionExportData(sourceSegments, gapRemoved);
+    if (!exportData) return;
+    const { segments, durationMs } = exportData;
+    if (!segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
+      throw new Error(translatedEditorText(
+        extension ? '当前副字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
+      ));
+    }
     const size = lottieExportCanvasSize();
     const appearance = extension ? getExtensionSubtitleAppearance() : getSubtitleAppearance();
     const animation = window.AsrEditorUtils.buildLottieAnimation(segments, {
@@ -13117,9 +13141,10 @@ async function exportLottieDynamicCaptions() {
     const blob = await response.blob();
     closeLottieExportModal();
     const suffix = extension ? '_extension' : '';
+    const gapSuffix = gapRemoved ? '_gap-removed' : '';
     const saved = await downloadFile(
       blob,
-      `${FILENAME_BASE}${suffix}_dynamic-caption.lottie`,
+      `${FILENAME_BASE}${suffix}${gapSuffix}_dynamic-caption.lottie`,
       'application/zip+dotlottie',
       { desc: 'Lottie 动态字幕', types: { 'application/zip+dotlottie': ['.lottie'] } },
     );
@@ -13196,16 +13221,23 @@ async function exportOgrafDynamicCaptions() {
   try {
     const extension = ografExportTrack?.value === 'extension';
     const track = extension ? getActiveExtensionTrack() : null;
-    const segments = extension ? track?.segments : DATA.segments;
-    if (!Array.isArray(segments) || !segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
+    const sourceSegments = extension ? track?.segments : DATA.segments;
+    if (!Array.isArray(sourceSegments) || !sourceSegments.some((segment) => (
+      !segment?.disabled && String(segment?.text || '').trim()
+    ))) {
       throw new Error(translatedEditorText(
         extension ? '当前副字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
       ));
     }
-    const durationMs = waveformEditor?.durationMs
-      || Math.round(Number(player?.duration) * 1000)
-      || DATA.waveform?.duration_ms
-      || 0;
+    const gapRemoved = ografExportGapRemoved?.checked === true;
+    const exportData = buildDynamicCaptionExportData(sourceSegments, gapRemoved);
+    if (!exportData) return;
+    const { segments, durationMs } = exportData;
+    if (!segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
+      throw new Error(translatedEditorText(
+        extension ? '当前副字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
+      ));
+    }
     const size = ografExportCanvasSize();
     const appearance = extension ? getExtensionSubtitleAppearance() : getSubtitleAppearance();
     const graphic = window.AsrEditorUtils.buildOgrafGraphic(segments, {
@@ -13228,9 +13260,10 @@ async function exportOgrafDynamicCaptions() {
     const blob = await response.blob();
     closeOgrafExportModal();
     const suffix = extension ? '_extension' : '';
+    const gapSuffix = gapRemoved ? '_gap-removed' : '';
     const saved = await downloadFile(
       blob,
-      `${FILENAME_BASE}${suffix}_dynamic-caption.ograf.zip`,
+      `${FILENAME_BASE}${suffix}${gapSuffix}_dynamic-caption.ograf.zip`,
       'application/zip',
       { desc: 'OGraf 动态字幕', types: { 'application/zip': ['.zip'] } },
     );
@@ -13255,12 +13288,6 @@ document.addEventListener('keydown', (event) => {
   closeOgrafExportModal();
 }, true);
 
-document.getElementById('download-srt')?.addEventListener('click', async () => {
-  if (editingState) finishEdit(true);
-  await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
-    desc: 'SRT 字幕文件', types: { 'text/plain': ['.srt'] }
-  });
-});
 downloadMultiSrtButton?.addEventListener('click', async () => {
   if (extensionEditingState) finishExtensionEdit(true);
   const track = getActiveExtensionTrack();
@@ -13466,15 +13493,139 @@ updateLottieExportButton();
 updateOgrafExportButton();
 
 // === 工具栏导出下拉菜单 ===
+const SUBMENU_CLOSE_DELAY_MS = 160;
+const SUBMENU_AIM_TOLERANCE_PX = 8;
+
 function bindToolbarExportDropdown(dropdownId, buttonId, menuId, positioner = null) {
   const dd = document.getElementById(dropdownId);
   const btn = document.getElementById(buttonId);
   const menu = document.getElementById(menuId);
   if (!dd || !btn || !menu) return;
-  const setOpen = (open) => {
+  const submenuWrappers = [...menu.children].filter((item) => item.classList.contains('dropdown-submenu'));
+  const submenuCloseTimers = new WeakMap();
+  let pendingSubmenuSwitch = null;
+  let lastPointerPoint = null;
+  let previousPointerPoint = null;
+  let lastPointInsideOpenWrapper = null;
+  const directItems = (container) => [...container.children].flatMap((child) => {
+    if (child.classList.contains('dropdown-item')) {
+      return child.classList.contains('disabled') || child.hidden ? [] : [child];
+    }
+    if (!child.classList.contains('dropdown-submenu')) return [];
+    const toggle = child.querySelector(':scope > .dropdown-submenu-toggle');
+    return toggle && !toggle.classList.contains('disabled') && !toggle.hidden ? [toggle] : [];
+  });
+  const pointerPoint = (event) => {
+    if (!event || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return null;
+    return { x: event.clientX, y: event.clientY };
+  };
+  const clearPendingSubmenuSwitch = () => {
+    if (!pendingSubmenuSwitch) return;
+    clearTimeout(pendingSubmenuSwitch.timer);
+    pendingSubmenuSwitch = null;
+  };
+  const openSubmenu = () => submenuWrappers.find((wrapper) => wrapper.classList.contains('open'));
+  const pointInTriangle = (point, a, b, c) => {
+    const sign = (p1, p2, p3) => (
+      (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y)
+    );
+    const first = sign(point, a, b);
+    const second = sign(point, b, c);
+    const third = sign(point, c, a);
+    const hasNegative = first < 0 || second < 0 || third < 0;
+    const hasPositive = first > 0 || second > 0 || third > 0;
+    return !(hasNegative && hasPositive);
+  };
+  const shouldDelaySubmenuSwitch = (wrapper, point, previousPoint) => {
+    const active = openSubmenu();
+    const apex = previousPoint || lastPointInsideOpenWrapper;
+    if (!active || active === wrapper || !point || !apex) return false;
+    const submenu = active.querySelector(':scope > .dropdown-submenu-menu');
+    if (!submenu) return false;
+    const activeRect = active.getBoundingClientRect();
+    const submenuRect = submenu.getBoundingClientRect();
+    const opensLeft = submenuRect.right <= activeRect.left + SUBMENU_AIM_TOLERANCE_PX;
+    const opensRight = submenuRect.left >= activeRect.right - SUBMENU_AIM_TOLERANCE_PX;
+    if (!opensLeft && !opensRight) return false;
+    const direction = opensLeft ? -1 : 1;
+    if ((direction < 0 && point.x > apex.x + SUBMENU_AIM_TOLERANCE_PX)
+      || (direction > 0 && point.x < apex.x - SUBMENU_AIM_TOLERANCE_PX)) return false;
+    const edgeX = direction < 0 ? submenuRect.right : submenuRect.left;
+    return pointInTriangle(
+      point,
+      apex,
+      { x: edgeX, y: submenuRect.top - SUBMENU_AIM_TOLERANCE_PX },
+      { x: edgeX, y: submenuRect.bottom + SUBMENU_AIM_TOLERANCE_PX },
+    );
+  };
+  const clearSubmenuClose = (wrapper) => {
+    const timer = submenuCloseTimers.get(wrapper);
+    if (timer) {
+      clearTimeout(timer);
+      submenuCloseTimers.delete(wrapper);
+    }
+  };
+  const closeSubmenu = (wrapper) => {
+    clearSubmenuClose(wrapper);
+    if (wrapper.classList.contains('open')) lastPointInsideOpenWrapper = null;
+    wrapper.classList.remove('open');
+    wrapper.querySelector(':scope > .dropdown-submenu-toggle')
+      ?.setAttribute('aria-expanded', 'false');
+  };
+  const closeSubmenus = () => {
+    submenuWrappers.forEach(closeSubmenu);
+  };
+  const scheduleSubmenuSwitch = (wrapper) => {
+    // menu-aim：鼠标进入同级菜单项时，沿当前子菜单近侧边缘的三角通道移动，先保留当前菜单。
+    clearPendingSubmenuSwitch();
+    const active = openSubmenu();
+    if (active && active !== wrapper) clearSubmenuClose(active);
+    const timer = setTimeout(() => {
+      if (!pendingSubmenuSwitch || pendingSubmenuSwitch.wrapper !== wrapper) return;
+      pendingSubmenuSwitch = null;
+      if (wrapper.matches(':hover') || wrapper.contains(document.activeElement)) {
+        setSubmenuOpen(wrapper, true);
+      }
+    }, SUBMENU_CLOSE_DELAY_MS);
+    pendingSubmenuSwitch = { wrapper, timer };
+  };
+  const setSubmenuOpen = (wrapper, open, focusFirst = false) => {
+    if (!wrapper) return;
+    const toggle = wrapper.querySelector(':scope > .dropdown-submenu-toggle');
+    const submenu = wrapper.querySelector(':scope > .dropdown-submenu-menu');
+    if (!toggle || !submenu) return;
+    clearSubmenuClose(wrapper);
+    if (open) {
+      clearPendingSubmenuSwitch();
+      submenuWrappers.forEach((other) => {
+        if (other !== wrapper) closeSubmenu(other);
+      });
+    }
+    wrapper.classList.toggle('open', open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open && focusFirst) directItems(submenu)[0]?.focus();
+  };
+  const scheduleSubmenuClose = (wrapper) => {
+    clearSubmenuClose(wrapper);
+    const timer = setTimeout(() => {
+      submenuCloseTimers.delete(wrapper);
+      if (!wrapper.matches(':hover') && !wrapper.contains(document.activeElement)) {
+        closeSubmenu(wrapper);
+      }
+    }, SUBMENU_CLOSE_DELAY_MS);
+    submenuCloseTimers.set(wrapper, timer);
+  };
+  const setOpen = (open, { restoreFocus = false } = {}) => {
     dd.classList.toggle('open', open);
     if (btn.hasAttribute('aria-expanded')) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open) {
+      closeSubmenus();
+      lastPointerPoint = null;
+      previousPointerPoint = null;
+      lastPointInsideOpenWrapper = null;
+    }
     if (open && positioner) requestAnimationFrame(positioner);
+    if (!open && restoreFocus) btn.focus();
   };
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -13482,20 +13633,124 @@ function bindToolbarExportDropdown(dropdownId, buttonId, menuId, positioner = nu
       if (other !== dd) {
         other.classList.remove('open');
         other.querySelector('button[aria-expanded]')?.setAttribute('aria-expanded', 'false');
+        other.querySelectorAll('.dropdown-submenu').forEach((submenu) => {
+          submenu.classList.remove('open');
+          submenu.querySelector('.dropdown-submenu-toggle')?.setAttribute('aria-expanded', 'false');
+        });
       }
     });
     setOpen(!dd.classList.contains('open'));
   });
+  btn.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    setOpen(true);
+    const items = directItems(menu);
+    items[e.key === 'ArrowDown' ? 0 : items.length - 1]?.focus();
+  });
+  submenuWrappers.forEach((wrapper) => {
+    const submenu = wrapper.querySelector(':scope > .dropdown-submenu-menu');
+    const keepOpen = (event) => {
+      const point = pointerPoint(event);
+      const sameAsLastPoint = point && lastPointerPoint
+        && point.x === lastPointerPoint.x && point.y === lastPointerPoint.y;
+      const previousPoint = point
+        ? (sameAsLastPoint ? previousPointerPoint : lastPointerPoint)
+        : null;
+      if (point && !sameAsLastPoint) previousPointerPoint = lastPointerPoint;
+      if (point) lastPointerPoint = point;
+      if (point && shouldDelaySubmenuSwitch(wrapper, point, previousPoint)) {
+        scheduleSubmenuSwitch(wrapper);
+        return;
+      }
+      setSubmenuOpen(wrapper, true);
+      if (point) lastPointInsideOpenWrapper = point;
+    };
+    const deferClose = (event) => {
+      if (pendingSubmenuSwitch?.wrapper === wrapper
+        && (!event?.relatedTarget || !wrapper.contains(event.relatedTarget))) {
+        clearPendingSubmenuSwitch();
+        const active = openSubmenu();
+        if (active && active !== wrapper) scheduleSubmenuClose(active);
+      }
+      scheduleSubmenuClose(wrapper);
+    };
+    wrapper.addEventListener('pointerenter', keepOpen);
+    wrapper.addEventListener('pointerleave', deferClose);
+    wrapper.addEventListener('focusin', keepOpen);
+    wrapper.addEventListener('focusout', (e) => {
+      if (!e.relatedTarget || !wrapper.contains(e.relatedTarget)) deferClose();
+    });
+    submenu?.addEventListener('pointerenter', keepOpen);
+    submenu?.addEventListener('pointerleave', deferClose);
+  });
+  menu.addEventListener('pointermove', (event) => {
+    const point = pointerPoint(event);
+    if (!point) return;
+    if (!lastPointerPoint || point.x !== lastPointerPoint.x || point.y !== lastPointerPoint.y) {
+      previousPointerPoint = lastPointerPoint;
+    }
+    lastPointerPoint = point;
+    const active = openSubmenu();
+    if (active?.contains(event.target)) lastPointInsideOpenWrapper = point;
+  });
   menu.addEventListener('click', (e) => {
-    if (e.target.classList.contains('dropdown-item')) {
-      setOpen(false);
+    const item = e.target.closest('.dropdown-item');
+    if (!item || !menu.contains(item)) return;
+    if (item.classList.contains('dropdown-submenu-toggle')) {
+      e.stopPropagation();
+      const wrapper = item.closest('.dropdown-submenu');
+      setSubmenuOpen(wrapper, !wrapper.classList.contains('open'));
+      return;
+    }
+    setOpen(false);
+  });
+  menu.addEventListener('keydown', (e) => {
+    const item = e.target.closest('.dropdown-item');
+    if (!item || !menu.contains(item)) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(false, { restoreFocus: true });
+      return;
+    }
+    const submenuWrapper = item.closest('.dropdown-submenu');
+    const submenu = submenuWrapper?.querySelector(':scope > .dropdown-submenu-menu');
+    if (e.key === 'ArrowRight' && item.classList.contains('dropdown-submenu-toggle')) {
+      e.preventDefault();
+      setSubmenuOpen(submenuWrapper, true, true);
+      return;
+    }
+    if (e.key === 'ArrowLeft' && submenuWrapper && !item.classList.contains('dropdown-submenu-toggle')) {
+      e.preventDefault();
+      setSubmenuOpen(submenuWrapper, false);
+      submenuWrapper.querySelector(':scope > .dropdown-submenu-toggle')?.focus();
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const container = submenu && submenu.contains(item) ? submenu : menu;
+      const items = directItems(container);
+      const index = items.indexOf(item);
+      if (index < 0 || !items.length) return;
+      const offset = e.key === 'ArrowDown' ? 1 : -1;
+      items[(index + offset + items.length) % items.length].focus();
+      return;
+    }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      item.click();
+      if (!item.classList.contains('dropdown-submenu-toggle')) btn.focus();
     }
   });
   document.addEventListener('click', (e) => {
     if (!dd.contains(e.target)) setOpen(false);
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') setOpen(false);
+    if (e.key === 'Escape' && dd.classList.contains('open')) {
+      e.preventDefault();
+      setOpen(false, { restoreFocus: true });
+    }
   });
   if (positioner) {
     window.addEventListener('resize', positioner);

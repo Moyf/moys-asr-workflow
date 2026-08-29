@@ -1119,20 +1119,17 @@
     flex: 0 0 100%; margin-top: 2px;
   }
   .ninja-toggle-group {
-    display: grid; grid-template-columns: max-content max-content;
-    flex: 0 0 100%; gap: 3px 12px; align-items: center;
+    display: flex; flex-wrap: wrap; align-items: center;
+    flex: 0 0 100%; gap: 3px 12px;
   }
-  .ninja-toggle-group > .editor-settings-hint { grid-column: 1 / -1; }
-  /* 刀光参数行：刀光特效开启后显示在开关下一行，横向排列长度与旋转幅度。 */
+  .ninja-toggle-group > .editor-settings-hint { flex: 0 0 100%; }
+  /* 刀光参数紧跟显示开关；空间足够时同行，不足时自动换行。 */
   .ninja-slash-params {
-    grid-column: 1 / -1;
-    display: flex; flex-wrap: wrap; align-items: center; gap: 3px 16px;
+    flex-direction: row; flex-wrap: wrap; align-items: center; gap: 3px 16px;
+    flex: 1 1 320px; min-width: min(100%, 320px);
   }
   .ninja-slash-params[hidden] { display: none; }
-  .ninja-slash-param {
-    display: inline-flex; align-items: center; gap: 6px;
-    color: var(--text-muted); font-size: 12px; white-space: nowrap;
-  }
+  .ninja-slash-params > .editor-settings-item { white-space: nowrap; }
   .editor-settings-panel select {
     background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);
     border-radius: var(--radius-sm); padding: 4px 6px; font-size: 12px; cursor: pointer;
@@ -1240,6 +1237,36 @@
   }
   .toolbar .color-filter-menu .color-filter-clear[hidden] { display: none; }
   .toolbar .dropdown.open .dropdown-menu { display: block; }
+  .toolbar .dropdown-submenu { position: relative; }
+  .toolbar .dropdown-submenu > .dropdown-submenu-menu {
+    display: none;
+    top: -5px; right: calc(100% - 1px); left: auto;
+    width: max-content; min-width: 240px; max-width: min(320px, calc(100vw - 16px));
+  }
+  .toolbar .dropdown-submenu:not(.open) > .dropdown-submenu-menu {
+    display: none;
+  }
+  .toolbar .dropdown-submenu.open > .dropdown-submenu-menu,
+  .toolbar .dropdown-submenu:focus-within > .dropdown-submenu-menu {
+    display: block;
+  }
+  .toolbar .dropdown-submenu-toggle {
+    position: relative;
+    display: block; width: 100%; box-sizing: border-box;
+    text-align: left;
+    padding-right: 30px;
+  }
+  .toolbar .dropdown-submenu-toggle::after {
+    content: '‹';
+    position: absolute; right: 12px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted); font-size: 16px; line-height: 1;
+  }
+  .toolbar .dropdown-item:focus-visible {
+    outline: 2px solid var(--accent-line);
+    outline-offset: -2px;
+  }
+  .toolbar .dropdown-item[hidden] { display: none; }
   #batch-operations-dropdown.open > #batch-operations-menu {
     display: flex; flex-direction: column; gap: 4px; padding: 6px;
     z-index: 1000;

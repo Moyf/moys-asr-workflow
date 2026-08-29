@@ -1180,8 +1180,21 @@ test('translates adjacent adjustment and current-cue operation settings to Engli
 });
 
 test('translates OTIOZ export labels, mode hints and dynamic messages to English', () => {
+  assert.equal(i18n.translateText('完整字幕（SRT）', 'en'), 'Full subtitles (SRT)');
   assert.equal(i18n.translateText('表情包 OTIO 工程', 'en'), 'Sticker OTIO project');
   assert.equal(i18n.translateText('表情包 OTIOZ 打包工程', 'en'), 'Sticker OTIOZ bundle');
+  assert.equal(i18n.translateText('时间线 OTIO 工程', 'en'), 'Timeline OTIO project');
+  assert.equal(i18n.translateText('时间线 OTIOZ 打包工程', 'en'), 'Timeline OTIOZ bundle');
+  assert.equal(i18n.translateText('OpenTimelineIO', 'en'), 'OpenTimelineIO');
+  assert.equal(i18n.translateText('OpenTimeline', 'en'), 'OpenTimeline');
+  assert.equal(i18n.translateText('OTIO', 'en'), 'OTIO');
+  assert.equal(i18n.translateText('数据', 'en'), 'Data');
+  assert.equal(i18n.translateText('数据文件', 'en'), 'Data files');
+  assert.equal(i18n.translateText('表情包', 'en'), 'Stickers');
+  assert.equal(i18n.translateText('彩蛋', 'en'), 'Easter eggs');
+  assert.equal(i18n.translateText('动态图形', 'en'), 'Dynamic graphics');
+  assert.equal(i18n.translateText('纯文本 TXT', 'en'), 'Plain text TXT');
+  assert.equal(i18n.translateText('Resolve JSON', 'en'), 'Resolve JSON');
   assert.equal(i18n.translateText('下载表情包 OTIOZ 打包工程', 'en'), 'Download sticker OTIOZ bundle');
   assert.equal(i18n.translateText('表情包 OTIOZ', 'en'), 'Sticker OTIOZ');
   assert.equal(i18n.translateText('下载表情包 OTIOZ 工程', 'en'), 'Download sticker OTIOZ project');
@@ -1212,6 +1225,11 @@ test('translates Lottie dynamic-caption export labels and messages to English', 
   assert.equal(i18n.translateText('Lottie 动态字幕', 'en'), 'Lottie dynamic captions');
   assert.equal(i18n.translateText('导出 .lottie', 'en'), 'Export .lottie');
   assert.equal(i18n.translateText('文字渲染', 'en'), 'Text rendering');
+  assert.equal(i18n.translateText('去除间隙', 'en'), 'Remove gaps');
+  assert.equal(
+    i18n.translateText('勾选后将字幕和字词时间映射到去除静音空隙后的压缩时间线。', 'en'),
+    'Map caption and word timing to the compressed timeline after removing silent gaps.',
+  );
   assert.equal(i18n.translateText('文本模式（依赖系统字体）', 'en'), 'Text mode (requires a system font)');
   assert.equal(i18n.translateText('矢量模式（内置字形，文件更大）', 'en'), 'Vector mode (bundled glyphs, larger file)');
   assert.equal(i18n.translateText('正在生成动态字幕 .lottie…', 'en'), 'Generating dynamic-caption .lottie…');
@@ -2977,6 +2995,56 @@ test('maps source time and media intervals after restored gaps are excluded', ()
     { start: 1600, end: 4000 },
     { start: 4500, end: 6000 },
   ]);
+});
+
+test('maps dynamic caption segments and item timing without mutating the source', () => {
+  const gaps = [
+    { start: 1000, end: 1600, removed: true },
+    { start: 3000, end: 3300, removed: true },
+  ];
+  const segments = [
+    {
+      id: 'crossing',
+      start: 800,
+      end: 2200,
+      text: 'ABC',
+      items: [
+        { text: 'A', start: 800, end: 1000 },
+        { text: 'B', start: 1200, end: 1500 },
+        { text: 'C', start: 1600, end: 1900 },
+      ],
+    },
+    { id: 'inside-gap', start: 1100, end: 1500, text: 'omit' },
+    { id: 'after', start: 2000, end: 3600, text: 'after', items: [{ text: 'x', start: 3300, end: 3500 }] },
+  ];
+  const before = JSON.stringify(segments);
+  const mapped = helpers.buildGapRemovedDynamicSegments(segments, gaps);
+  assert.deepEqual(mapped.map(({ id, start, end, items }) => ({
+    id,
+    start,
+    end,
+    items: items?.map(({ text, start: itemStart, end: itemEnd }) => ({
+      text, start: itemStart, end: itemEnd,
+    })),
+  })), [
+    {
+      id: 'crossing',
+      start: 800,
+      end: 1600,
+      items: [
+        { text: 'A', start: 800, end: 1000 },
+        { text: 'B', start: 1000, end: 1000 },
+        { text: 'C', start: 1000, end: 1300 },
+      ],
+    },
+    {
+      id: 'after',
+      start: 1400,
+      end: 2700,
+      items: [{ text: 'x', start: 2400, end: 2600 }],
+    },
+  ]);
+  assert.equal(JSON.stringify(segments), before);
 });
 
 test('characterizes removed-gap mapping and sticker inheritance without mutation', () => {
