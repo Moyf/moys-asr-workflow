@@ -414,7 +414,8 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('"requestToken": "", "stickerRootUrl": "/api/stickers/root", ', page)
         self.assertIn('"portableStickerExportUrl": "/api/exports/sticker-otio", ', page)
         self.assertIn('"otiozStickerExportUrl": "/api/exports/sticker-otioz", ', page)
-        self.assertIn('"canPortableStickerExport": true, "canOtozStickerExport": true, "initialStickerCount": 1, ', page)
+        self.assertIn('"canPortableStickerExport": true, "canOtozStickerExport": true, ', page)
+        self.assertIn('"canOtozTimelineExport": true, "initialStickerCount": 1, ', page)
         self.assertIn('"autoLoadedMediaName": "clip.mp3", "recentProjectsUrl": "/api/recent-projects/open", ', page)
         self.assertIn('"attachUrl": "/api/project/attach", "settingsUrl": "/api/settings", ', page)
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
@@ -645,6 +646,172 @@ class LocalEditorServerTests(unittest.TestCase):
         except urllib.error.HTTPError as error:
             return error.code, dict(error.headers), error.read()
 
+    def _post_timeline_otioz(
+        self, base_url: str, server: server_editor.EditorServer, timeline: dict, *, kind: str = "gap-removed",
+    ) -> tuple[int, object, bytes]:
+        request = urllib.request.Request(
+            f"{base_url}/api/exports/timeline-otioz",
+            data=json.dumps({"requestToken": server.request_token, "kind": kind, "timeline": timeline}).encode(),
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request) as response:
+                return response.status, dict(response.headers), response.read()
+        except urllib.error.HTTPError as error:
+            return error.code, dict(error.headers), error.read()
+
+    def test_timeline_otioz_export_packages_bound_media_and_rewrites_client_paths(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        timeline = {
+            "OTIO_SCHEMA": "Timeline.1",
+            "tracks": {"children": [{"children": [{
+                "OTIO_SCHEMA": "Clip.2",
+                "source_range": {"OTIO_SCHEMA": "TimeRange.1"},
+                "media_references": {
+                    "DEFAULT_MEDIA": {
+                        "OTIO_SCHEMA": "ExternalReference.1",
+                        "target_url": "file:///outside/should-not-be-read.mp4",
+                    },
+                },
+            }]}]},
+        }
+        source_before = json.dumps(timeline, sort_keys=True)
+        zip_bytes, otio_name = server_editor.export_timeline_otioz(project, "gap-removed", timeline)
+        self.assertEqual(otio_name, "clip_gap-removed.otio")
+        self.assertEqual(json.dumps(timeline, sort_keys=True), source_before)
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
+            self.assertEqual(
+                set(archive.namelist()),
+                {"content.otio", "version.txt", "media/clip.mp3"},
+            )
+            self.assertEqual(archive.read("media/clip.mp3"), b"0123456789")
+            exported = json.loads(archive.read("content.otio").decode("utf-8"))
+        target = exported["tracks"]["children"][0]["children"][0]["media_references"]["DEFAULT_MEDIA"]["target_url"]
+        self.assertEqual(target, "media/clip.mp3")
+
+    def test_timeline_otioz_export_supports_source_mode_without_gap_suffix(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        timeline = {
+            "OTIO_SCHEMA": "Timeline.1",
+            "tracks": {"children": [{"children": [{
+                "OTIO_SCHEMA": "Clip.2",
+                "media_references": {
+                    "DEFAULT_MEDIA": {
+                        "OTIO_SCHEMA": "ExternalReference.1",
+                        "target_url": "file:///client/source.mp4",
+                    },
+                },
+            }]}]},
+        }
+        zip_bytes, otio_name = server_editor.export_timeline_otioz(project, "source", timeline)
+        self.assertEqual(otio_name, "clip.otio")
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
+            self.assertEqual(
+                set(archive.namelist()),
+                {"content.otio", "version.txt", "media/clip.mp3"},
+            )
+            exported = json.loads(archive.read("content.otio").decode("utf-8"))
+        target = exported["tracks"]["children"][0]["children"][0]["media_references"]["DEFAULT_MEDIA"]["target_url"]
+        self.assertEqual(target, "media/clip.mp3")
+
+    def test_timeline_otioz_export_preserves_non_ascii_media_name(self) -> None:
+        source = self.root / "中文 音频#.wav"
+        source.write_bytes(b"unicode-media")
+        project_path = self.root / "中文工程.json"
+        project_path.write_text(
+            json.dumps({"media": str(source), "segments": []}), encoding="utf-8",
+        )
+        project = server_editor.load_project(
+            project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        timeline = {
+            "OTIO_SCHEMA": "Timeline.1",
+            "tracks": {"children": [{"children": [{
+                "OTIO_SCHEMA": "Clip.2",
+                "media_references": {
+                    "DEFAULT_MEDIA": {
+                        "OTIO_SCHEMA": "ExternalReference.1",
+                        "target_url": "file:///outside/client-media.wav",
+                    },
+                },
+            }]}]},
+        }
+        zip_bytes, otio_name = server_editor.export_timeline_otioz(project, "gap-removed", timeline)
+        self.assertEqual(otio_name, "中文工程_gap-removed.otio")
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
+            self.assertEqual(
+                set(archive.namelist()),
+                {"content.otio", "version.txt", "media/中文 音频#.wav"},
+            )
+            self.assertEqual(archive.read("media/中文 音频#.wav"), b"unicode-media")
+            exported = json.loads(archive.read("content.otio").decode("utf-8"))
+        target = exported["tracks"]["children"][0]["children"][0]["media_references"]["DEFAULT_MEDIA"]["target_url"]
+        self.assertEqual(target, "media/中文 音频#.wav")
+
+    def test_timeline_otioz_export_rejects_multiple_media_references(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        timeline = {"OTIO_SCHEMA": "Timeline.1", "tracks": {"children": [{"children": [
+            {"OTIO_SCHEMA": "Clip.2", "media_references": {
+                "DEFAULT_MEDIA": {"OTIO_SCHEMA": "ExternalReference.1", "target_url": self.media.as_uri()},
+            }},
+            {"OTIO_SCHEMA": "Clip.2", "media_references": {
+                "DEFAULT_MEDIA": {"OTIO_SCHEMA": "ExternalReference.1", "target_url": self.other_media.as_uri()},
+            }},
+        ]}]}}
+        with self.assertRaisesRegex(ValueError, "只绑定一个源媒体"):
+            server_editor.export_timeline_otioz(project, "source", timeline)
+
+    def test_timeline_otioz_endpoint_requires_token_and_returns_zip(self) -> None:
+        server, thread, base_url = self._sticker_otioz_serve()
+        timeline = {
+            "OTIO_SCHEMA": "Timeline.1",
+            "tracks": {"children": [{"children": [{
+                "OTIO_SCHEMA": "Clip.2",
+                "media_references": {
+                    "DEFAULT_MEDIA": {
+                        "OTIO_SCHEMA": "ExternalReference.1",
+                        "target_url": "file:///client/path.mp4",
+                    },
+                },
+            }]}]},
+        }
+        try:
+            request = urllib.request.Request(
+                f"{base_url}/api/exports/timeline-otioz",
+                data=json.dumps({"requestToken": "wrong", "kind": "gap-removed", "timeline": timeline}).encode(),
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            with self.assertRaises(urllib.error.HTTPError) as context:
+                urllib.request.urlopen(request)
+            self.assertEqual(context.exception.code, 403)
+
+            status, headers, body = self._post_timeline_otioz(base_url, server, timeline)
+            self.assertEqual(status, 200)
+            self.assertEqual(headers["Content-Type"], "application/zip")
+            self.assertIn("clip_gap-removed.otioz", headers["Content-Disposition"])
+            with zipfile.ZipFile(io.BytesIO(body)) as archive:
+                self.assertIn("content.otio", archive.namelist())
+                self.assertIn("media/clip.mp3", archive.namelist())
+
+            status, headers, body = self._post_timeline_otioz(
+                base_url, server, timeline, kind="source",
+            )
+            self.assertEqual(status, 200)
+            self.assertIn("clip.otioz", headers["Content-Disposition"])
+            with zipfile.ZipFile(io.BytesIO(body)) as archive:
+                self.assertIn("content.otio", archive.namelist())
+                self.assertIn("media/clip.mp3", archive.namelist())
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+            server.server_close()
+
     def test_sticker_otioz_export_returns_zip_with_media_and_metadata(self) -> None:
         first = self.stickers / "a" / "x.png"
         first.parent.mkdir()
@@ -700,6 +867,32 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertEqual(second_ref["available_range"]["duration"]["rate"], 60)
         third_ref = clips[2]["media_references"]["DEFAULT_MEDIA"]
         self.assertEqual(third_ref["available_range"]["duration"]["value"], 5.0)
+
+    def test_sticker_otioz_export_preserves_non_ascii_filename(self) -> None:
+        filename = "猫 表情#.png"
+        source = self.stickers / filename
+        source.write_bytes(b"unicode-sticker")
+        timeline = {"OTIO_SCHEMA": "Timeline.1", "tracks": {"children": [{"children": [
+            {"OTIO_SCHEMA": "Clip.2", "metadata": {"moy": {"sticker_rel": filename}},
+             "media_references": {"DEFAULT_MEDIA": {"target_url": "old"}}},
+        ]}]}}
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        zip_bytes, otio_name, count = server_editor.export_sticker_otioz(
+            project, "stickers", timeline, self.stickers,
+        )
+        self.assertEqual(otio_name, "clip_stickers.otio")
+        self.assertEqual(count, 1)
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
+            self.assertEqual(
+                set(archive.namelist()),
+                {"content.otio", "version.txt", "media/猫 表情#.png"},
+            )
+            self.assertEqual(archive.read("media/猫 表情#.png"), b"unicode-sticker")
+            exported = json.loads(archive.read("content.otio").decode("utf-8"))
+        target = exported["tracks"]["children"][0]["children"][0]["media_references"]["DEFAULT_MEDIA"]["target_url"]
+        self.assertEqual(target, "media/猫 表情#.png")
 
     def test_sticker_otioz_export_dedupes_same_named_stickers(self) -> None:
         first = self.stickers / "a" / "x.png"

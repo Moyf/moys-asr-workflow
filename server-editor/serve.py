@@ -146,6 +146,10 @@ class StickerExportInProgressError(RuntimeError):
     """Another portable sticker export currently owns the sticker lock."""
 
 
+class TimelineOtiozExportInProgressError(RuntimeError):
+    """Another timeline OTIOZ export currently owns the timeline lock."""
+
+
 class LottieExportInProgressError(RuntimeError):
     """Another dynamic-caption export currently owns the Lottie lock."""
 
@@ -495,6 +499,7 @@ def build_server_page(
             "stickerRootUrl": "/api/stickers/root",
             "portableStickerExportUrl": "/api/exports/sticker-otio",
             "otiozStickerExportUrl": "/api/exports/sticker-otioz",
+            "otiozTimelineExportUrl": "/api/exports/timeline-otioz",
             "lottieExportUrl": "/api/exports/lottie",
             "ografExportUrl": "/api/exports/ograf",
             "waveformUrl": "/api/waveform",
@@ -506,6 +511,7 @@ def build_server_page(
             "canSave": project.json_path is not None,
             "canPortableStickerExport": project.json_path is not None,
             "canOtozStickerExport": project.json_path is not None,
+            "canOtozTimelineExport": project.json_path is not None,
             "initialStickerCount": len(project.stickers),
             "canLottieExport": project.json_path is not None,
             "canOgrafExport": project.json_path is not None,
@@ -558,6 +564,7 @@ class EditorServer(ThreadingHTTPServer):
         self.request_token = secrets.token_urlsafe(32)
         self.save_lock = threading.Lock()
         self.sticker_lock = threading.Lock()
+        self.timeline_otioz_lock = threading.Lock()
         self.lottie_lock = threading.Lock()
         self.ograf_lock = threading.Lock()
         self.settings_lock = threading.Lock()
@@ -1115,7 +1122,9 @@ def export_sticker_otioz(project: ServerProject, kind: str, timeline: dict, root
             if isinstance(references, dict):
                 for reference in references.values():
                     if isinstance(reference, dict) and isinstance(reference.get("target_url"), str):
-                        reference["target_url"] = "media/" + quote(used[source], safe="")
+                        # Resolve treats OTIOZ target_url as a package path and
+                        # does not reliably URI-decode its final component.
+                        reference["target_url"] = "media/" + used[source]
         references = value.get("media_references")
         if isinstance(references, dict):
             fps = 60
@@ -1154,6 +1163,69 @@ def export_sticker_otioz(project: ServerProject, kind: str, timeline: dict, root
         for source, filename in used.items():
             archive.writestr(f"media/{filename}", source.read_bytes(), compress_type=zipfile.ZIP_STORED)
     return buffer.getvalue(), otio_name, len(used)
+
+
+def export_timeline_otioz(project: ServerProject, kind: str, timeline: dict) -> tuple[bytes, str]:
+    """Build an OTIOZ archive containing only the bound project's source media."""
+    if project.json_path is None:
+        raise ValueError("当前服务器没有绑定工程文件")
+    if timeline.get("OTIO_SCHEMA") != "Timeline.1":
+        raise ValueError("OTIO 必须是 Timeline")
+    if kind not in {"source", "gap-removed"}:
+        raise ValueError("不支持的时间线 OTIOZ 类型")
+    source = project.source_media_path or project.media_path
+    if source is None:
+        raise ValueError("当前工程没有可打包的媒体文件")
+    try:
+        source = source.resolve(strict=True)
+    except OSError as error:
+        raise ValueError("当前工程的媒体文件不存在") from error
+    if not source.is_file():
+        raise ValueError("当前工程的媒体路径不是文件")
+
+    # Keep the original UTF-8 name. The zip member and target_url must be
+    # exactly the same string for Resolve's OTIOZ relinker.
+    media_target = "media/" + source.name
+    payload = copy.deepcopy(timeline)
+    reference_count = 0
+    target_urls: set[str] = set()
+
+    def visit(value: dict) -> None:
+        nonlocal reference_count
+        if value.get("OTIO_SCHEMA") == "ExternalReference.1":
+            target_url = value.get("target_url")
+            if not isinstance(target_url, str) or not target_url.strip():
+                raise ValueError("时间线 OTIO 缺少媒体引用")
+            target_urls.add(unquote(target_url.strip().replace("\\", "/")).casefold())
+            # Never trust client-supplied paths: every reference in this
+            # endpoint is rewritten to the server's bound project media.
+            value["target_url"] = media_target
+            reference_count += 1
+        for child in value.values():
+            if isinstance(child, dict):
+                visit(child)
+            elif isinstance(child, list):
+                for item in child:
+                    if isinstance(item, dict):
+                        visit(item)
+
+    visit(payload)
+    if reference_count == 0:
+        raise ValueError("时间线 OTIO 没有可打包的媒体引用")
+    if len(target_urls) > 1:
+        raise ValueError("当前 MAW 工程只绑定一个源媒体，无法导出含多个媒体文件的 OTIOZ")
+    suffix = "_gap-removed" if kind == "gap-removed" else ""
+    otio_name = f"{project.json_path.stem}{suffix}.otio"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "content.otio",
+            json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8") + b"\n",
+            compress_type=zipfile.ZIP_DEFLATED,
+        )
+        archive.writestr("version.txt", "1.0.0".encode("utf-8"), compress_type=zipfile.ZIP_DEFLATED)
+        archive.writestr(media_target, source.read_bytes(), compress_type=zipfile.ZIP_STORED)
+    return buffer.getvalue(), otio_name
 
 
 def export_lottie(project: ServerProject, animation: dict) -> tuple[bytes, str]:
@@ -1338,6 +1410,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.export_sticker_otio()
         elif path == "/api/exports/sticker-otioz":
             self.export_sticker_otioz()
+        elif path == "/api/exports/timeline-otioz":
+            self.export_timeline_otioz()
         elif path == "/api/exports/lottie":
             self.export_lottie()
         elif path == "/api/exports/ograf":
@@ -1480,6 +1554,47 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "application/zip")
         self.send_header("Content-Disposition", f'attachment; filename="{otio_name[:-5]}.otioz"')
+        self.send_header("Content-Length", str(len(zip_bytes)))
+        self.end_headers()
+        self.wfile.write(zip_bytes)
+
+    def export_timeline_otioz(self) -> None:
+        try:
+            request = self.read_json_request()
+            self._check_request_token(request)
+            kind = request.get("kind")
+            timeline = request.get("timeline")
+            if not isinstance(kind, str) or not isinstance(timeline, dict):
+                raise ValueError("时间线 OTIOZ 请求格式不正确")
+            if not self.editor_server.timeline_otioz_lock.acquire(blocking=False):
+                raise TimelineOtiozExportInProgressError("另一个时间线 OTIOZ 导出操作正在进行")
+            try:
+                zip_bytes, otio_name = export_timeline_otioz(
+                    self.editor_server.project, kind, timeline,
+                )
+            finally:
+                self.editor_server.timeline_otioz_lock.release()
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except TimelineOtiozExportInProgressError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        except OSError as error:
+            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": f"时间线 OTIOZ 导出失败：{error}"})
+            return
+        download_name = f"{otio_name[:-5]}.otioz"
+        ascii_name = ''.join(
+            char if 32 <= ord(char) < 127 and char not in (chr(34), chr(92), ';') else '_'
+            for char in download_name
+        ) or "maw_gap-removed.otioz"
+        disposition = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(download_name, safe='')}"
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Disposition", disposition)
         self.send_header("Content-Length", str(len(zip_bytes)))
         self.end_headers()
         self.wfile.write(zip_bytes)
