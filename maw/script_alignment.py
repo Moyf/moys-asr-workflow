@@ -911,11 +911,11 @@ def apply_alignment_to_project(
     selection: Mapping[str, object],
     *,
     detect_audio_gaps: bool = True,
-    minimum_gap_ms: int = 500,
-    threshold_db: float = -24,
-    hysteresis_db: float = 2,
-    lead_in_ms: int = 40,
-    lead_out_ms: int = 80,
+    minimum_gap_ms: int = int(MAWE_GAP_REMOVE_DEFAULTS["minimum_ms"]),
+    threshold_db: float = float(MAWE_GAP_REMOVE_DEFAULTS["threshold_db"]),
+    hysteresis_db: float = float(MAWE_GAP_REMOVE_DEFAULTS["hysteresis_db"]),
+    lead_in_ms: int = int(MAWE_GAP_REMOVE_DEFAULTS["lead_in_ms"]),
+    lead_out_ms: int = int(MAWE_GAP_REMOVE_DEFAULTS["lead_out_ms"]),
     gap_remove_override: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Create a MAWE-compatible project from one alignment selection.
@@ -1201,11 +1201,11 @@ def _normalize_gap_remove_override(
 def detect_waveform_gaps(
     waveform: Mapping[str, object],
     *,
-    minimum_ms: int = 500,
-    threshold_db: float = -24,
-    hysteresis_db: float = 2,
-    lead_in_ms: int = 40,
-    lead_out_ms: int = 80,
+    minimum_ms: int = int(MAWE_GAP_REMOVE_DEFAULTS["minimum_ms"]),
+    threshold_db: float = float(MAWE_GAP_REMOVE_DEFAULTS["threshold_db"]),
+    hysteresis_db: float = float(MAWE_GAP_REMOVE_DEFAULTS["hysteresis_db"]),
+    lead_in_ms: int = int(MAWE_GAP_REMOVE_DEFAULTS["lead_in_ms"]),
+    lead_out_ms: int = int(MAWE_GAP_REMOVE_DEFAULTS["lead_out_ms"]),
 ) -> list[dict[str, int]]:
     """Mirror MAWE's audio-gate detector for an embedded waveform payload."""
 

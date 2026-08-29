@@ -83,15 +83,18 @@ test('defaults to multi-row mode and adopted takes toggle manual disable', async
 
   const selected = page.locator('#take-overlay [data-candidate-id][aria-pressed="true"]').first();
   await expect(selected).toBeVisible();
-  await selected.click();
-  await expect(selected).toHaveClass(/manual-disabled/);
-  await expect(selected).toHaveClass(/manual-correction/);
-  await expect(selected).toHaveAttribute('aria-pressed', 'false');
+  const selectedCandidateId = await selected.getAttribute('data-candidate-id');
+  expect(selectedCandidateId).toBeTruthy();
+  const selectedTake = page.locator(`#take-overlay [data-candidate-id="${selectedCandidateId}"]`).first();
+  await selectedTake.click();
+  await expect(selectedTake).toHaveClass(/manual-disabled/);
+  await expect(selectedTake).toHaveClass(/manual-correction/);
+  await expect(selectedTake).toHaveAttribute('aria-pressed', 'false');
 
-  await selected.click();
-  await expect(selected).not.toHaveClass(/manual-disabled/);
-  await expect(selected).not.toHaveClass(/manual-correction/);
-  await expect(selected).toHaveAttribute('aria-pressed', 'true');
+  await selectedTake.click();
+  await expect(selectedTake).not.toHaveClass(/manual-disabled/);
+  await expect(selectedTake).not.toHaveClass(/manual-correction/);
+  await expect(selectedTake).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('dragging one gap boundary highlights only that gap', async ({ page }) => {
