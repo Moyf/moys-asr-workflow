@@ -82,12 +82,6 @@ async function openFcp7Modal(page) {
   await expect(page.locator('#fcp7-export-modal')).toHaveClass(/show/);
 }
 
-async function openGapRemovedFcp7Modal(page) {
-  await page.locator('#gap-removed-export-btn').click();
-  await page.locator('#download-gap-removed-fcp7-export').click();
-  await expect(page.locator('#fcp7-export-modal')).toHaveClass(/show/);
-}
-
 let tempDir;
 let server;
 
@@ -131,12 +125,12 @@ test('opens the export modal with native text unchecked and closed choices only'
   await expect(page.locator('#fcp7-export-modal')).not.toHaveClass(/show/);
 });
 
-test('opens FCPXML from the gap-removed menu with the gap-removed timeline', async ({ page }) => {
+test('opens the single FCP 7 XML entry with the gap-removed timeline by default', async ({ page }) => {
   await disableOnboarding(page);
   await page.goto(server.url);
-  await expect(page.locator('#gap-removed-export-dropdown')).toBeVisible();
+  await expect(page.locator('#extra-export-dropdown')).toBeVisible();
 
-  await openGapRemovedFcp7Modal(page);
+  await openFcp7Modal(page);
   await expect(page.locator('#fcp7-export-timeline-mode')).toHaveValue('gap_removed');
 
   await page.locator('#fcp7-export-cancel').click();

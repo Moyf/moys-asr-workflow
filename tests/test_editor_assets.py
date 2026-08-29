@@ -205,7 +205,9 @@ class EditorAssetContractTests(unittest.TestCase):
             f'<span class="app-version" id="app-version" data-label="版本号">版本号 v{edit.get_app_version()}</span>',
             page,
         )
-        self.assertNotIn("生成时间", page)
+        # 便携页禁止携带「生成时间：…」式硬编码时间戳；「正在生成时间线 OTIOZ…」
+        # 这类把「生成时间」作为前缀子串的普通文案不受限制。
+        self.assertNotRegex(page, r"生成时间\s*[:：]")
         markers = (
             "// Shared frontend runtime registry.",
             "global.AsrGapRemoveCore = Object.freeze({",

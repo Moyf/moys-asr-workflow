@@ -2676,6 +2676,39 @@
   const mapGapRemovedTime = GAP_REMOVE_CORE.mapGapRemovedTime;
   const buildGapRemovedIntervals = GAP_REMOVE_CORE.buildGapRemovedIntervals;
 
+  // Dynamic-caption exporters need the same compressed timeline as SRT/OTIO,
+  // while preserving the source segment objects for the editor. Items that are
+  // wholly inside a removed gap remain as zero-width mapped ranges so their
+  // text-to-item correspondence is not lost; the builders already ignore
+  // zero-duration highlight ranges when appropriate.
+  function buildGapRemovedDynamicSegments(segments, gaps) {
+    const source = Array.isArray(segments) ? segments : [];
+    return source.flatMap((segment) => {
+      if (!segment || typeof segment !== 'object') return [];
+      const start = Number(segment.start);
+      const end = Number(segment.end);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
+      const mappedStart = mapGapRemovedTime(start, gaps);
+      const mappedEnd = mapGapRemovedTime(end, gaps);
+      if (mappedEnd <= mappedStart) return [];
+      const mapped = { ...segment, start: mappedStart, end: mappedEnd };
+      if (Array.isArray(segment.items)) {
+        mapped.items = segment.items.map((item) => {
+          if (!item || typeof item !== 'object') return item;
+          const itemStart = Number(item.start);
+          const itemEnd = Number(item.end);
+          if (!Number.isFinite(itemStart) || !Number.isFinite(itemEnd)) return { ...item };
+          return {
+            ...item,
+            start: mapGapRemovedTime(itemStart, gaps),
+            end: mapGapRemovedTime(itemEnd, gaps),
+          };
+        });
+      }
+      return [mapped];
+    });
+  }
+
   const HISTORY_RECORD_DEFAULT_LABELS = Object.freeze({
     segments: '编辑', layout: '调整工作区', gap_remove: '空隙移除', preview: '预览',
   });
@@ -4894,6 +4927,7 @@ export default MawDynamicCaptions;
     findGapRemoveDisableMatches,
     mapGapRemovedTime,
     buildGapRemovedIntervals,
+    buildGapRemovedDynamicSegments,
     EXPORT_FRAME_PROFILES,
     resolveExportFrameProfile,
     exportMsToFrames,

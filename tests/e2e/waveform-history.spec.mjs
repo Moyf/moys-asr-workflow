@@ -1897,12 +1897,10 @@ test('colored subtitles export per-color SRT files including the uncolored defau
     window.showSaveFilePicker = undefined;
   });
 
-  await expect(page.locator('#download-srt')).toBeHidden();
   await expect(page.locator('#subtitle-export-dropdown')).toBeVisible();
   await page.locator('#subtitle-export-btn').click();
   await expect(page.locator('#download-full-srt')).toBeVisible();
   await expect(page.locator('#download-color-srt')).toBeVisible();
-  await expect(page.locator('#download-plain-text')).toBeVisible();
 
   const downloads = [];
   page.on('download', (download) => downloads.push(download));
@@ -1919,24 +1917,115 @@ test('colored subtitles export per-color SRT files including the uncolored defau
     return Buffer.concat(chunks).toString('utf8');
   })).toContain('Alpha');
 
-  await page.locator('#subtitle-export-btn').click();
+  await page.locator('#extra-export-btn').click();
+  await page.locator('#extra-export-menu > .dropdown-submenu').nth(2)
+    .locator('.dropdown-submenu-toggle').click();
+  await expect(page.locator('#extra-data-menu')).toBeVisible();
   const textDownload = page.waitForEvent('download');
   await page.locator('#download-plain-text').click();
   expect((await textDownload).suggestedFilename()).toBe('project.txt');
 });
 
-test('subtitle export stays direct when only disabled subtitles have colors', async ({ page }) => {
+test('subtitle export keeps a stable menu and hides colors without enabled colored subtitles', async ({ page }) => {
   await page.goto(server.url);
-  await expect(page.locator('#download-srt')).toBeVisible();
-  await expect(page.locator('#subtitle-export-dropdown')).toBeHidden();
+  await expect(page.locator('#download-srt')).toHaveCount(0);
+  await expect(page.locator('#subtitle-export-dropdown')).toBeVisible();
+  await page.locator('#subtitle-export-btn').click();
+  await expect(page.locator('#download-full-srt')).toBeVisible();
+  await expect(page.locator('#download-color-srt')).toBeHidden();
 
   await page.evaluate(() => {
     DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 8000 };
     DATA.segments[0].disabled = true;
     renderAll();
   });
-  await expect(page.locator('#download-srt')).toBeVisible();
-  await expect(page.locator('#subtitle-export-dropdown')).toBeHidden();
+  await expect(page.locator('#subtitle-export-dropdown')).toBeVisible();
+  await expect(page.locator('#download-color-srt')).toBeHidden();
+
+  await page.evaluate(() => {
+    DATA.gap_remove = {
+      schema: 'moy.asr.gap_remove.v1',
+      detector: 'audio_gate',
+      minimum_ms: 500,
+      threshold_db: -24,
+      hysteresis_db: 2,
+      lead_in_ms: 40,
+      lead_out_ms: 80,
+      skip_playback: true,
+      operation_mode: 'boundary_drag',
+      manual_corrections: false,
+      gaps: [{ start: 1000, end: 1600, removed: true }],
+    };
+    updateGapRemoveUi();
+    renderAll();
+  });
+  await expect(page.locator('#gap-removed-export-dropdown')).toBeVisible();
+  await page.locator('#gap-removed-export-btn').click();
+  await expect(page.locator('#download-gap-removed-color-srt')).toBeHidden();
+});
+
+test('nested export menus preserve pointer reachability and keyboard focus', async ({ page }) => {
+  await page.goto(server.url);
+  const exportButton = page.locator('#extra-export-btn');
+  const otioToggle = page.locator('#extra-export-menu > .dropdown-submenu').first()
+    .locator(':scope > .dropdown-submenu-toggle');
+
+  await exportButton.click();
+  await otioToggle.hover();
+  await expect(page.locator('#extra-otio-menu')).toBeVisible();
+  const submenuBox = await page.locator('#extra-otio-menu').boundingBox();
+  expect(submenuBox).not.toBeNull();
+  await page.mouse.move(
+    submenuBox.x + submenuBox.width / 2,
+    submenuBox.y + submenuBox.height / 2,
+  );
+  await expect(page.locator('#download-otio')).toBeVisible();
+
+  await exportButton.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('#download-fcp7-export')).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(otioToggle).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#download-otio')).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
+  await expect(otioToggle).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(exportButton).toBeFocused();
+  await expect(page.locator('#extra-export-dropdown')).not.toHaveClass(/open/);
+});
+
+test('nested export menus keep the current submenu while the pointer crosses its aim corridor', async ({ page }) => {
+  await page.goto(server.url);
+  const exportButton = page.locator('#extra-export-btn');
+  const otioWrapper = page.locator('#extra-export-menu > .dropdown-submenu').first();
+  const dynamicWrapper = page.locator('#extra-export-menu > .dropdown-submenu').nth(1);
+  const otioToggle = otioWrapper.locator(':scope > .dropdown-submenu-toggle');
+  const dynamicToggle = dynamicWrapper.locator(':scope > .dropdown-submenu-toggle');
+
+  await exportButton.click();
+  await otioToggle.hover();
+  await expect(page.locator('#extra-otio-menu')).toBeVisible();
+
+  const otioToggleBox = await otioToggle.boundingBox();
+  const dynamicToggleBox = await dynamicToggle.boundingBox();
+  expect(otioToggleBox).not.toBeNull();
+  expect(dynamicToggleBox).not.toBeNull();
+
+  await page.mouse.move(
+    otioToggleBox.x + otioToggleBox.width * 0.7,
+    otioToggleBox.y + otioToggleBox.height / 2,
+  );
+  await page.mouse.move(
+    dynamicToggleBox.x + dynamicToggleBox.width * 0.05,
+    dynamicToggleBox.y + dynamicToggleBox.height / 2,
+    { steps: 12 },
+  );
+  await page.waitForTimeout(40);
+  await expect(page.locator('#extra-otio-menu')).toBeVisible({ timeout: 100 });
+  await expect(page.locator('#extra-dynamic-menu')).toBeHidden();
+  await page.waitForTimeout(180);
+  await expect(page.locator('#extra-dynamic-menu')).toBeVisible();
 });
 
 test('sticker Resolve and OTIO exports expand references per enabled subtitle', async ({ page }) => {
@@ -2106,6 +2195,8 @@ test('server media loads from the resolved project path and OTIO keeps its absol
   });
   const downloadPromise = page.waitForEvent('download');
   await page.locator('#gap-removed-export-btn').click();
+  await page.locator('#gap-removed-export-menu > .dropdown-submenu').first()
+    .locator(':scope > .dropdown-submenu-toggle').click();
   await page.locator('#download-gap-removed-otio').click();
   const download = await downloadPromise;
   const payload = await download.createReadStream().then(async (stream) => {

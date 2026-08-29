@@ -289,7 +289,18 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('静音空隙', editor_settings)
         self.assertNotIn('id="cue-move-step"', editor_settings_panel)
         self.assertIn('<span class="editor-settings-title">通用操作</span>', page)
-        self.assertIn('<span class="editor-settings-title">其他</span>', page)
+        self.assertIn('<span class="editor-settings-title">表情包</span>', page)
+        self.assertIn('<span class="editor-settings-title">彩蛋</span>', page)
+        self.assertNotIn('<span class="editor-settings-title">其他</span>', page)
+        self.assertIn('id="sticker-root-btn"', page)
+        self.assertIn('id="sticker-otio-export-mode"', page)
+        self.assertIn('id="sticker-otio-export-mode-hint"', page)
+        self.assertIn('选择引用原始表情包素材；选择便携模式时，服务器会将素材复制到工程同目录。', page)
+        self.assertLess(page.index('id="editor-settings-panel"'), page.index('id="sticker-root-btn"'))
+        sticker_group_start = page.index('<span class="editor-settings-title">表情包</span>')
+        sticker_group_end = page.index('\n  </div>\n</section>', sticker_group_start)
+        sticker_group = page[sticker_group_start:sticker_group_end]
+        self.assertIn('<span class="editor-settings-title">彩蛋</span>', sticker_group)
         self.assertNotIn('<span class="editor-settings-title">🥷🏻</span>', page)
         self.assertEqual(page.count('class="editor-settings-group"'), 4)
         self.assertLess(page.index('id="cue-move-step"'), page.index('<span class="settings-panel-title waveform-settings-title">静音空隙</span>'))
@@ -580,22 +591,32 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="gap-removed-export-dropdown" hidden', page)
         self.assertIn('id="gap-removed-export-btn"', page)
         self.assertIn('导出去空隙版本', page)
-        self.assertIn('id="subtitle-export-dropdown" hidden', page)
+        self.assertIn('id="subtitle-export-dropdown"', page)
+        self.assertNotIn('id="download-srt"', page)
         self.assertIn('id="download-full-srt"', page)
         self.assertIn('id="download-color-srt"', page)
-        self.assertIn('id="download-plain-text"', page)
         self.assertIn('id="download-gap-removed-srt"', page)
         self.assertIn('id="download-gap-removed-color-srt"', page)
         self.assertIn('id="download-gap-removed-otio"', page)
+        self.assertIn('>OpenTimelineIO</div>', page)
         self.assertIn('>时间线 OTIO 工程</div>', page)
+        self.assertIn('id="download-gap-removed-otioz"', page)
+        self.assertIn('>时间线 OTIOZ 打包工程</div>', page)
         self.assertIn('id="download-gap-removed-sticker-otio"', page)
         self.assertIn('>表情包 OTIO 工程</div>', page)
         self.assertIn('id="download-gap-removed-sticker-otioz"', page)
         self.assertIn('>表情包 OTIOZ 打包工程</div>', page)
-        self.assertIn('id="download-gap-removed-fcp7-export"', page)
         self.assertIn('id="download-gap-removed-ffconcat"', page)
         self.assertIn('id="download-gap-removed-regions-json"', page)
+        self.assertIn('>数据文件</div>', page)
         self.assertIn('id="download-fcp7-export"', page)
+        self.assertIn('id="download-otio"', page)
+        self.assertIn('id="download-otioz"', page)
+        self.assertIn('id="download-plain-text"', page)
+        self.assertIn('>纯文本 TXT</div>', page)
+        self.assertIn('>Resolve JSON</div>', page)
+        self.assertNotIn('>下载表情包 OTIO', page)
+        self.assertNotIn('>下载 Resolve JSON</div>', page)
         self.assertIn('<option value="gap_removed" selected>去空隙时间线</option>', page)
         self.assertIn('id="fcp7-export-modal"', page)
         self.assertIn('id="fcp7-export-fps"', page)
@@ -621,7 +642,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('gapOperationAllowsBoundary', page)
         self.assertIn('gapOperationAllowsMiddle', page)
 
-        gap_menu_start = page.index('<div class="dropdown-menu" id="gap-removed-export-menu">')
+        gap_menu_start = page.index('<div class="dropdown-menu" id="gap-removed-export-menu" role="menu">')
         gap_menu_end = page.index('<span class="dropdown" id="extra-export-dropdown">', gap_menu_start)
         gap_menu = page[gap_menu_start:gap_menu_end]
         separator = '<div class="dropdown-separator" role="separator"></div>'
@@ -630,25 +651,27 @@ class EditorAssetTests(unittest.TestCase):
         second_separator = gap_menu.index(separator, first_separator + len(separator))
         self.assertLess(gap_menu.index('id="download-gap-removed-color-srt"'), first_separator)
         self.assertLess(first_separator, gap_menu.index('id="download-gap-removed-otio"'))
+        self.assertLess(gap_menu.index('id="download-gap-removed-otioz"'), second_separator)
         self.assertLess(
             gap_menu.index('id="download-gap-removed-sticker-otioz"'),
-            gap_menu.index('id="download-gap-removed-fcp7-export"'),
+            second_separator,
         )
-        self.assertLess(gap_menu.index('id="download-gap-removed-fcp7-export"'), second_separator)
         self.assertLess(second_separator, gap_menu.index('id="download-gap-removed-ffconcat"'))
 
-        extra_menu_start = page.index('<div class="dropdown-menu" id="extra-export-menu">')
+        extra_menu_start = page.index('<div class="dropdown-menu" id="extra-export-menu" role="menu">')
         extra_menu_end = page.index('\n      </div>\n    </span>\n  </span>\n</div>', extra_menu_start)
         extra_menu = page[extra_menu_start:extra_menu_end]
-        self.assertEqual(extra_menu.count(separator), 2)
+        self.assertEqual(extra_menu.count(separator), 3)
         first_separator = extra_menu.index(separator)
         second_separator = extra_menu.index(separator, first_separator + len(separator))
+        third_separator = extra_menu.index(separator, second_separator + len(separator))
         self.assertLess(extra_menu.index('id="download-fcp7-export"'), first_separator)
-        self.assertLess(first_separator, extra_menu.index('id="download-sticker-otio"'))
+        self.assertLess(first_separator, extra_menu.index('id="download-otio"'))
         self.assertLess(extra_menu.index('id="download-sticker-otioz"'), second_separator)
-        self.assertLess(second_separator, extra_menu.index('id="download-resolve-json"'))
         self.assertLess(second_separator, extra_menu.index('id="download-lottie"'))
-        self.assertLess(second_separator, extra_menu.index('id="download-ograf"'))
+        self.assertLess(extra_menu.index('id="download-ograf"'), third_separator)
+        self.assertLess(third_separator, extra_menu.index('id="download-plain-text"'))
+        self.assertLess(extra_menu.index('id="download-plain-text"'), extra_menu.index('id="download-resolve-json"'))
         self.assertIn('showGapContextMenu?.(event.clientX, event.clientY, index)', page)
         self.assertIn("gap.removed === false ? '移除区段' : '恢复区段'", page)
         self.assertIn("addItem('清理空隙', () => clearGap(index), { danger: true });", page)
@@ -740,6 +763,7 @@ class EditorAssetTests(unittest.TestCase):
             'id="ninja-slash-effect"',
             'id="ninja-slash-effect-field"',
             'id="ninja-slash-params-field"',
+            'class="editor-settings-field ninja-slash-params"',
             'id="ninja-slash-length"',
             'id="ninja-slash-rotate"',
             'const NINJA_SFX_BASE_URL = "web/sfx/";',
@@ -750,6 +774,9 @@ class EditorAssetTests(unittest.TestCase):
             '刀光长度',
             '随机旋转幅度',
             '打开字幕忍者模式，让拆分字幕变得更加有趣',
+            '.ninja-toggle-group {\n    display: flex; flex-wrap: wrap; align-items: center;',
+            '.ninja-toggle-group > .editor-settings-hint { flex: 0 0 100%; }',
+            '.ninja-slash-params {\n    flex-direction: row; flex-wrap: wrap; align-items: center; gap: 3px 16px;\n    flex: 1 1 320px; min-width: min(100%, 320px);',
         ):
             self.assertIn(marker, page)
         # 仓库只内置 Opus 音效；OGG 备选格式已移除。

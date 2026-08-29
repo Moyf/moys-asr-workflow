@@ -53,7 +53,7 @@
 | 36 | 编辑器 / 纯文本编辑 | 新增全角标点后保存出现越界 item；删除该标点后错误仍残留；应用后不应把全部字幕标为 dirty | 修改 | 已修复 |
 | 37 | 编辑器 / 多字幕列表 | 双列多重字幕模式下，主字幕左侧的黄条覆盖文字 | 修改 | 已修复 |
 | 38 | 编辑器 / 多字幕命名 | 将「拓展字幕」及「扩展字幕」统一命名为「副字幕」 | 修改 | 已修复 |
-| 39 | 编辑器 / 导出菜单 | 去空隙版本与更多导出需要按字幕、OTIO、XML、动态字幕/Resolve JSON 等类别加分隔线；OTIO/OTIOZ 文案统一；去空隙菜单增加 FCPXML | 修改 | 已修复 |
+| 39 | 编辑器 / 导出菜单 | 去空隙版本与更多导出需要按字幕、OTIO、XML、动态字幕/Resolve JSON 等类别加分隔线；OTIO/OTIOZ 文案统一；去空隙菜单增加 FCPXML；二级菜单鼠标移动容易丢失焦点 | 修改 | 已修复 |
 | 40 | 编辑器 / 导出文件名 | 工程名 MAW-1.4更新说明 导出 FCPXML 时被截断为 MAW-1.xml | 修改 | 已修复 |
 | 41 | 编辑器 / 去空隙 OTIO | 导入 Resolve 后片段长度正确但源内容范围错位：前段大量从媒体 0 开始，后段虽有非零起点仍不正确 | 修改 | 已修复 |
 | 42 | 编辑器 / 切分 | 词级时间码存在静音空隙时（如本地 ASR「型、」end 6480 与下一词「AI」start 6720），在词后拆分左半句被拉长贴住下一词起点；应左段停在自家最后一词的 end、右段从自家首词的 start 开始并保留空隙。缺词或缺时间码时维持原共享切点 / 光标比例估算兜底 | 修改 | 已修复 |
@@ -66,6 +66,12 @@
 
 - 已验证：`.venv\Scripts\python.exe edit.py --blank`；`node --check web\editor.js`、`web\editor-utils.js`、`web\editor-i18n.js`；`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（215/215）；`.venv\Scripts\python.exe -m unittest tests.test_waveform tests.test_editor_assets`（26/26）；使用 `.venv\Scripts\python.exe` 启动服务器的 `fcp7-export.spec.mjs` 浏览器回归（8/8）；`git diff --check`。
 - 首次直接运行 FCPXML 浏览器回归时使用了缺少 reapeaks 模块的系统 Python，服务器在启动阶段退出；切换到项目 .venv 解释器后全部通过。该次失败属于验证环境问题，不是代码断言失败。
+
+## 增量记录（任务 39 补充：二级菜单鼠标通道）
+
+- 采用常见的 menu-aim 做法：记录鼠标进入候选菜单项前的轨迹点，以当前已展开子菜单靠近一级菜单的一侧上下角构成三角通道；鼠标沿通道前往子菜单时暂缓切换同级菜单，停留在候选项后再切换，离开候选项则恢复关闭计时。
+- 二级菜单关闭/切换延迟从 300ms 调整为 160ms；移除 `:hover` 直显，避免候选菜单绕过通道判断；全局方向键监听跳过菜单区域，保留 `ArrowLeft/Right` 的菜单焦点导航。
+- 已验证：`node --check web\editor.js`、`node --check tests\e2e\waveform-history.spec.mjs`；`npx playwright test tests/e2e/waveform-history.spec.mjs --grep "nested export menus" --project=chromium`（2/2）；`git diff --check`。真实用户鼠标设备上的轨迹速度和不同缩放比例仍未单独实测。
 
 ## 增量记录（字幕列表批量操作与文本处理）
 

@@ -1136,20 +1136,17 @@
     flex: 0 0 100%; margin-top: 2px;
   }
   .ninja-toggle-group {
-    display: grid; grid-template-columns: max-content max-content;
-    flex: 0 0 100%; gap: 3px 12px; align-items: center;
+    display: flex; flex-wrap: wrap; align-items: center;
+    flex: 0 0 100%; gap: 3px 12px;
   }
-  .ninja-toggle-group > .editor-settings-hint { grid-column: 1 / -1; }
-  /* 刀光参数行：刀光特效开启后显示在开关下一行，横向排列长度与旋转幅度。 */
+  .ninja-toggle-group > .editor-settings-hint { flex: 0 0 100%; }
+  /* 刀光参数紧跟显示开关；空间足够时同行，不足时自动换行。 */
   .ninja-slash-params {
-    grid-column: 1 / -1;
-    display: flex; flex-wrap: wrap; align-items: center; gap: 3px 16px;
+    flex-direction: row; flex-wrap: wrap; align-items: center; gap: 3px 16px;
+    flex: 1 1 320px; min-width: min(100%, 320px);
   }
   .ninja-slash-params[hidden] { display: none; }
-  .ninja-slash-param {
-    display: inline-flex; align-items: center; gap: 6px;
-    color: var(--text-muted); font-size: 12px; white-space: nowrap;
-  }
+  .ninja-slash-params > .editor-settings-item { white-space: nowrap; }
   .editor-settings-panel select {
     background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);
     border-radius: var(--radius-sm); padding: 4px 6px; font-size: 12px; cursor: pointer;
@@ -1257,6 +1254,36 @@
   }
   .toolbar .color-filter-menu .color-filter-clear[hidden] { display: none; }
   .toolbar .dropdown.open .dropdown-menu { display: block; }
+  .toolbar .dropdown-submenu { position: relative; }
+  .toolbar .dropdown-submenu > .dropdown-submenu-menu {
+    display: none;
+    top: -5px; right: calc(100% - 1px); left: auto;
+    width: max-content; min-width: 240px; max-width: min(320px, calc(100vw - 16px));
+  }
+  .toolbar .dropdown-submenu:not(.open) > .dropdown-submenu-menu {
+    display: none;
+  }
+  .toolbar .dropdown-submenu.open > .dropdown-submenu-menu,
+  .toolbar .dropdown-submenu:focus-within > .dropdown-submenu-menu {
+    display: block;
+  }
+  .toolbar .dropdown-submenu-toggle {
+    position: relative;
+    display: block; width: 100%; box-sizing: border-box;
+    text-align: left;
+    padding-right: 30px;
+  }
+  .toolbar .dropdown-submenu-toggle::after {
+    content: '‹';
+    position: absolute; right: 12px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted); font-size: 16px; line-height: 1;
+  }
+  .toolbar .dropdown-item:focus-visible {
+    outline: 2px solid var(--accent-line);
+    outline-offset: -2px;
+  }
+  .toolbar .dropdown-item[hidden] { display: none; }
   #batch-operations-dropdown.open > #batch-operations-menu {
     display: flex; flex-direction: column; gap: 4px; padding: 6px;
     z-index: 1000;
@@ -4079,8 +4106,6 @@
     </div>
   </span>
   <span class="sep"></span>
-  <button id="sticker-root-btn" title="设置表情包根目录">🦊 表情包</button>
-  <span class="sep"></span>
   <span class="undo-redo-group" role="group" aria-label="撤销重做">
     <button type="button" id="undo-btn" title="撤销 (Ctrl(Cmd)+Z)" disabled>↶ 撤销</button>
     <button type="button" id="redo-btn" title="重做 (Ctrl(Cmd)+Shift+Z)" disabled>↷ 重做</button>
@@ -4152,46 +4177,70 @@
   </span>
 
   <span class="right-group">
-      <button id="download-srt">导出字幕</button>
     <button type="button" id="download-multi-srt" hidden title="导出当前副字幕轨（SRT）">导出副字幕</button>
-    <span class="dropdown" id="subtitle-export-dropdown" hidden>
-      <button id="subtitle-export-btn" title="导出完整字幕或按颜色分别导出字幕">导出字幕 ▾</button>
-      <div class="dropdown-menu" id="subtitle-export-menu">
-        <div class="dropdown-item" id="download-full-srt">导出完整字幕（SRT）</div>
-        <div class="dropdown-item" id="download-color-srt">按颜色导出字幕（SRT）</div>
-        <div class="dropdown-item" id="download-plain-text">导出纯文本（TXT）</div>
+    <span class="dropdown" id="subtitle-export-dropdown">
+      <button id="subtitle-export-btn" title="导出完整字幕或按颜色分别导出字幕" aria-expanded="false" aria-controls="subtitle-export-menu" aria-haspopup="menu">导出字幕 ▾</button>
+      <div class="dropdown-menu" id="subtitle-export-menu" role="menu">
+        <div class="dropdown-item" id="download-full-srt" role="menuitem" tabindex="0">完整字幕（SRT）</div>
+        <div class="dropdown-item" id="download-color-srt" role="menuitem" tabindex="0" hidden>按颜色导出字幕</div>
       </div>
     </span>
     <button id="download-json">导出工程</button>
     <span class="dropdown gap-removed-export-dropdown" id="gap-removed-export-dropdown" hidden>
-      <button id="gap-removed-export-btn" title="导出应用当前空隙移除结果的字幕、时间线或保留区域计划">导出去空隙版本 ▾</button>
-      <div class="dropdown-menu" id="gap-removed-export-menu">
-        <div class="dropdown-item" id="download-gap-removed-srt" title="按移除静音空隙后的时间轴导出字幕；原工程时间不变">字幕 SRT</div>
-        <div class="dropdown-item" id="download-gap-removed-color-srt" title="按移除静音空隙后的时间轴，为每种已使用颜色分别导出一份字幕">按颜色导出字幕</div>
+      <button id="gap-removed-export-btn" title="导出应用当前空隙移除结果的字幕、时间线或保留区域计划" aria-expanded="false" aria-controls="gap-removed-export-menu" aria-haspopup="menu">导出去空隙版本 ▾</button>
+      <div class="dropdown-menu" id="gap-removed-export-menu" role="menu">
+        <div class="dropdown-item" id="download-gap-removed-srt" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出字幕；原工程时间不变">字幕 SRT</div>
+        <div class="dropdown-item" id="download-gap-removed-color-srt" role="menuitem" tabindex="0" hidden title="按移除静音空隙后的时间轴，为每种已使用颜色分别导出一份字幕">按颜色导出字幕</div>
         <div class="dropdown-separator" role="separator"></div>
-        <div class="dropdown-item" id="download-gap-removed-otio" title="导出原视频/音频的去空隙 OTIO 时间线，供支持 OTIO 的剪辑工具或工作流使用">时间线 OTIO 工程</div>
-         <div class="dropdown-item" id="download-gap-removed-otioz" title="导出原视频/音频的去空隙 OTIOZ 时间线；服务器只打包当前工程媒体文件">时间线 OTIOZ 打包工程</div>
-        <div class="dropdown-item" id="download-gap-removed-sticker-otio" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIO；完全落在空隙内的表情包会被丢弃">表情包 OTIO 工程</div>
-        <div class="dropdown-item" id="download-gap-removed-sticker-otioz" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）；完全落在空隙内的表情包会被丢弃">表情包 OTIOZ 打包工程</div>
-        <div class="dropdown-item" id="download-gap-removed-fcp7-export" title="实验性 Premiere 交接：导出 FCP 7 XML">Premiere FCP 7 XML（实验性）</div>
+        <div class="dropdown-submenu" role="none">
+          <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="gap-removed-otio-menu">OpenTimelineIO</div>
+          <div class="dropdown-menu dropdown-submenu-menu" id="gap-removed-otio-menu" role="menu">
+            <div class="dropdown-item" id="download-gap-removed-otio" role="menuitem" tabindex="0" title="导出原视频/音频的去空隙 OTIO 时间线，供支持 OTIO 的剪辑工具或工作流使用">时间线 OTIO 工程</div>
+            <div class="dropdown-item" id="download-gap-removed-otioz" role="menuitem" tabindex="0" title="导出原视频/音频的去空隙 OTIOZ 时间线；服务器只打包当前工程媒体文件">时间线 OTIOZ 打包工程</div>
+            <div class="dropdown-item" id="download-gap-removed-sticker-otio" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIO；完全落在空隙内的表情包会被丢弃">表情包 OTIO 工程</div>
+            <div class="dropdown-item" id="download-gap-removed-sticker-otioz" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）；完全落在空隙内的表情包会被丢弃">表情包 OTIOZ 打包工程</div>
+          </div>
+        </div>
         <div class="dropdown-separator" role="separator"></div>
-        <div class="dropdown-item" id="download-gap-removed-ffconcat" title="导出 FFmpeg concat demuxer 可读取的保留区间；流复制的切点精度受关键帧和编码包限制">FFconcat 文件</div>
-        <div class="dropdown-item" id="download-gap-removed-regions-json" title="以毫秒为单位导出原媒体中的全部保留区域，供自定义脚本或工具读取">保留区域 JSON</div>
+        <div class="dropdown-submenu" role="none">
+          <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="gap-removed-data-menu">数据文件</div>
+          <div class="dropdown-menu dropdown-submenu-menu" id="gap-removed-data-menu" role="menu">
+            <div class="dropdown-item" id="download-gap-removed-ffconcat" role="menuitem" tabindex="0" title="导出 FFmpeg concat demuxer 可读取的保留区间；流复制的切点精度受关键帧和编码包限制">FFconcat 文件</div>
+            <div class="dropdown-item" id="download-gap-removed-regions-json" role="menuitem" tabindex="0" title="以毫秒为单位导出原媒体中的全部保留区域，供自定义脚本或工具读取">保留区域 JSON</div>
+          </div>
+        </div>
       </div>
     </span>
     <span class="dropdown" id="extra-export-dropdown">
-      <button id="extra-export-btn" title="更多导出">更多导出 ▾</button>
-      <div class="dropdown-menu" id="extra-export-menu">
-        <div class="dropdown-item" id="download-fcp7-export" title="实验性 Premiere 交接：导出 FCP 7 XML">Premiere FCP 7 XML（实验性）</div>
-         <div class="dropdown-item" id="download-otio" title="导出原视频/音频的完整 OTIO 时间线，供支持 OTIO 的剪辑工具或工作流使用">时间线 OTIO 工程</div>
-         <div class="dropdown-item" id="download-otioz" title="导出原视频/音频的完整 OTIOZ 时间线；服务器只打包当前工程媒体文件">时间线 OTIOZ 打包工程</div>
+      <button id="extra-export-btn" title="更多导出" aria-expanded="false" aria-controls="extra-export-menu" aria-haspopup="menu">更多导出 ▾</button>
+      <div class="dropdown-menu" id="extra-export-menu" role="menu">
+        <div class="dropdown-item" id="download-fcp7-export" role="menuitem" tabindex="0" title="实验性 Premiere 交接：导出 FCP 7 XML">Premiere FCP 7 XML（实验性）</div>
         <div class="dropdown-separator" role="separator"></div>
-        <div class="dropdown-item" id="download-sticker-otio" title="导出只包含表情包图片轨道的 OTIO 工程">下载表情包 OTIO 工程</div>
-        <div class="dropdown-item" id="download-sticker-otioz" title="导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）">下载表情包 OTIOZ 打包工程</div>
+        <div class="dropdown-submenu" role="none">
+          <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="extra-otio-menu">OTIO</div>
+          <div class="dropdown-menu dropdown-submenu-menu" id="extra-otio-menu" role="menu">
+            <div class="dropdown-item" id="download-otio" role="menuitem" tabindex="0" title="导出原视频/音频的完整 OTIO 时间线，供支持 OTIO 的剪辑工具或工作流使用">时间线 OTIO 工程</div>
+            <div class="dropdown-item" id="download-otioz" role="menuitem" tabindex="0" title="导出原视频/音频的完整 OTIOZ 时间线；服务器只打包当前工程媒体文件">时间线 OTIOZ 打包工程</div>
+            <div class="dropdown-item" id="download-sticker-otio" role="menuitem" tabindex="0" title="导出只包含表情包图片轨道的 OTIO 工程">表情包 OTIO 工程</div>
+            <div class="dropdown-item" id="download-sticker-otioz" role="menuitem" tabindex="0" title="导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）">表情包 OTIOZ 打包工程</div>
+          </div>
+        </div>
         <div class="dropdown-separator" role="separator"></div>
-        <div class="dropdown-item" id="download-resolve-json" title="导出颜色与表情包的 Resolve JSON，供兼容执行脚本批量导入">下载 Resolve JSON</div>
-        <div class="dropdown-item" id="download-lottie" title="导出逐字高亮动态字幕 .lottie（需要以 server-editor 打开并绑定工程文件）">动态字幕（Lottie）</div>
-        <div class="dropdown-item" id="download-ograf" title="导出符合 OGraf 规范的动态字幕包（需要以 server-editor 打开并绑定工程文件）">动态字幕（OGraf）</div>
+        <div class="dropdown-submenu" role="none">
+          <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="extra-dynamic-menu">动态图形</div>
+          <div class="dropdown-menu dropdown-submenu-menu" id="extra-dynamic-menu" role="menu">
+            <div class="dropdown-item" id="download-lottie" role="menuitem" tabindex="0" title="导出逐字高亮动态字幕 .lottie（需要以 server-editor 打开并绑定工程文件）">动态字幕（Lottie）</div>
+            <div class="dropdown-item" id="download-ograf" role="menuitem" tabindex="0" title="导出符合 OGraf 规范的动态字幕包（需要以 server-editor 打开并绑定工程文件）">动态字幕（OGraf）</div>
+          </div>
+        </div>
+        <div class="dropdown-separator" role="separator"></div>
+        <div class="dropdown-submenu" role="none">
+          <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="extra-data-menu">数据文件</div>
+          <div class="dropdown-menu dropdown-submenu-menu" id="extra-data-menu" role="menu">
+            <div class="dropdown-item" id="download-plain-text" role="menuitem" tabindex="0" title="导出纯文本 TXT 字幕">纯文本 TXT</div>
+            <div class="dropdown-item" id="download-resolve-json" role="menuitem" tabindex="0" title="导出颜色与表情包的 Resolve JSON，供兼容执行脚本批量导入">Resolve JSON</div>
+          </div>
+        </div>
       </div>
     </span>
   </span>
@@ -4867,13 +4916,6 @@
     </label>
     <small class="editor-settings-hint">选中时，会将所有不同颜色的字幕按「文件名_颜色」格式统一导出；否则每个颜色都会弹出单独的保存框。</small>
     </div>
-    <label class="editor-settings-item" title="选择表情包 OTIO 引用原始素材，或由服务器复制素材并生成便携文件夹">
-      表情包 OTIO
-      <select id="sticker-otio-export-mode">
-        <option value="original" selected>引用原始素材</option>
-        <option value="portable">便携 OTIO 文件夹（工程同目录）</option>
-      </select>
-    </label>
     </div>
     <div id="server-auto-save-settings" class="editor-settings-sub-group" hidden>
       <span class="editor-settings-title">保存</span>
@@ -4890,7 +4932,19 @@
   </div>
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
-      <span class="editor-settings-title">其他</span>
+      <span class="editor-settings-title">表情包</span>
+      <div class="editor-settings-field">
+        <button type="button" id="sticker-root-btn" title="设置表情包根目录">设置表情包根目录</button>
+      </div>
+      <label class="editor-settings-item" title="选择表情包 OTIO 引用原始素材，或由服务器复制素材并生成便携文件夹">
+        表情包 OTIO
+        <select id="sticker-otio-export-mode">
+          <option value="original" selected>引用原始素材</option>
+          <option value="portable">便携 OTIO 文件夹（工程同目录）</option>
+        </select>
+      </label>
+      <small class="editor-settings-hint" id="sticker-otio-export-mode-hint">选择引用原始表情包素材；选择便携模式时，服务器会将素材复制到工程同目录。</small>
+      <span class="editor-settings-title">彩蛋</span>
       <div class="editor-settings-toggle-group ninja-toggle-group">
         <label class="toggle editor-settings-item" title="开启后，分割工具改用 🔪 图标，并可启用拆分音效与刀光特效">
           <input type="checkbox" id="ninja-mode"> 字幕忍者
@@ -4901,15 +4955,15 @@
         <label class="toggle editor-settings-item" id="ninja-slash-effect-field" title="开启后，成功拆分时在屏幕上显示一道白色刀光" hidden>
           <input type="checkbox" id="ninja-slash-effect" checked> 显示刀光特效
         </label>
-        <div class="ninja-slash-params" id="ninja-slash-params-field" hidden>
-          <label class="ninja-slash-param" title="刀光长度，按视口高度的百分比计算">
+        <div class="editor-settings-field ninja-slash-params" id="ninja-slash-params-field" hidden>
+          <label class="editor-settings-item" title="刀光长度，按视口高度的百分比计算">
             刀光长度
             <span class="gap-remove-number-control">
               <input id="ninja-slash-length" type="number" min="20" max="400" step="5" value="80">
               <span class="gap-remove-unit">%</span>
             </span>
           </label>
-          <label class="ninja-slash-param" title="0 度为完全垂直；30 度表示在左右各 30 度范围内随机倾斜">
+          <label class="editor-settings-item" title="0 度为完全垂直；30 度表示在左右各 30 度范围内随机倾斜">
             随机旋转幅度
             <span class="gap-remove-number-control">
               <input id="ninja-slash-rotate" type="number" min="0" max="60" step="1" value="6">
@@ -5412,6 +5466,10 @@
       <option value="main" selected>主轨字幕</option>
       <option value="extension">副字幕轨</option>
     </select>
+    <label class="row" for="lottie-export-gap-removed">
+      <input type="checkbox" id="lottie-export-gap-removed"> 去除间隙
+    </label>
+    <p class="modal-hint">勾选后将字幕和字词时间映射到去除静音空隙后的压缩时间线。</p>
     <label for="lottie-export-resolution">合成尺寸</label>
     <select id="lottie-export-resolution">
       <option value="1920x1080" selected>1920 × 1080（横屏）</option>
@@ -5451,6 +5509,10 @@
       <option value="main" selected>主轨字幕</option>
       <option value="extension">副字幕轨</option>
     </select>
+    <label class="row" for="ograf-export-gap-removed">
+      <input type="checkbox" id="ograf-export-gap-removed"> 去除间隙
+    </label>
+    <p class="modal-hint">勾选后将字幕和字词时间映射到去除静音空隙后的压缩时间线。</p>
     <label for="ograf-export-resolution">合成尺寸</label>
     <select id="ograf-export-resolution">
       <option value="1920x1080" selected>1920 × 1080（横屏）</option>
@@ -9905,6 +9967,39 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
   const mapGapRemovedTime = GAP_REMOVE_CORE.mapGapRemovedTime;
   const buildGapRemovedIntervals = GAP_REMOVE_CORE.buildGapRemovedIntervals;
 
+  // Dynamic-caption exporters need the same compressed timeline as SRT/OTIO,
+  // while preserving the source segment objects for the editor. Items that are
+  // wholly inside a removed gap remain as zero-width mapped ranges so their
+  // text-to-item correspondence is not lost; the builders already ignore
+  // zero-duration highlight ranges when appropriate.
+  function buildGapRemovedDynamicSegments(segments, gaps) {
+    const source = Array.isArray(segments) ? segments : [];
+    return source.flatMap((segment) => {
+      if (!segment || typeof segment !== 'object') return [];
+      const start = Number(segment.start);
+      const end = Number(segment.end);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
+      const mappedStart = mapGapRemovedTime(start, gaps);
+      const mappedEnd = mapGapRemovedTime(end, gaps);
+      if (mappedEnd <= mappedStart) return [];
+      const mapped = { ...segment, start: mappedStart, end: mappedEnd };
+      if (Array.isArray(segment.items)) {
+        mapped.items = segment.items.map((item) => {
+          if (!item || typeof item !== 'object') return item;
+          const itemStart = Number(item.start);
+          const itemEnd = Number(item.end);
+          if (!Number.isFinite(itemStart) || !Number.isFinite(itemEnd)) return { ...item };
+          return {
+            ...item,
+            start: mapGapRemovedTime(itemStart, gaps),
+            end: mapGapRemovedTime(itemEnd, gaps),
+          };
+        });
+      }
+      return [mapped];
+    });
+  }
+
   const HISTORY_RECORD_DEFAULT_LABELS = Object.freeze({
     segments: '编辑', layout: '调整工作区', gap_remove: '空隙移除', preview: '预览',
   });
@@ -12123,6 +12218,7 @@ export default MawDynamicCaptions;
     findGapRemoveDisableMatches,
     mapGapRemovedTime,
     buildGapRemovedIntervals,
+    buildGapRemovedDynamicSegments,
     EXPORT_FRAME_PROFILES,
     resolveExportFrameProfile,
     exportMsToFrames,
@@ -12183,16 +12279,22 @@ export default MawDynamicCaptions;
     '自动保存': 'Auto-save', '自动保存间隔': 'Auto-save interval', '秒': 'sec',
     '导出字幕': 'Export subtitles', '导出字幕 ▾': 'Export subtitles ▾',
     '导出完整字幕': 'Export full subtitles', '导出完整字幕（SRT）': 'Export full subtitles (SRT)',
+    '完整字幕（SRT）': 'Full subtitles (SRT)',
     '导出副字幕': 'Export secondary subtitles', '导出当前副字幕轨（SRT）': 'Export the current secondary subtitle track (SRT)',
     '按颜色导出字幕': 'Export by color', '按颜色导出字幕（SRT）': 'Export by color (SRT)',
     '导出纯文本（TXT）': 'Export plain text (TXT)',
     '导出工程': 'Export project', '导出去空隙版本 ▾': 'Export gap-removed version ▾',
     '字幕 SRT': 'Subtitle SRT', '时间线 OTIO 工程': 'Timeline OTIO project', '时间线 OTIOZ 打包工程': 'Timeline OTIOZ bundle',
     '表情包 OTIO 工程': 'Sticker OTIO project', '表情包 OTIOZ 打包工程': 'Sticker OTIOZ bundle',
+    'OpenTimeline': 'OpenTimeline', 'OpenTimelineIO': 'OpenTimelineIO', 'OTIO': 'OTIO', '数据': 'Data', '数据文件': 'Data files',
+    '彩蛋': 'Easter eggs', '动态图形': 'Dynamic graphics',
     '导出时间线模式': 'Export timeline mode', '去空隙时间线': 'Gap-removed timeline', '原始时间线': 'Source timeline',
     '导出帧率': 'Export frame rate', '写入原生字幕文本对象': 'Write native subtitle text objects',
     '导出副字幕轨': 'Export secondary subtitle track', '主轨字幕': 'Main-track subtitles',
     '主轨与副轨字幕': 'Main and secondary subtitles', '导出文件名': 'Export filename',
+    '去除间隙': 'Remove gaps',
+    '勾选后将字幕和字词时间映射到去除静音空隙后的压缩时间线。': 'Map caption and word timing to the compressed timeline after removing silent gaps.',
+    '选择引用原始表情包素材；选择便携模式时，服务器会将素材复制到工程同目录。': 'Reference the original sticker files, or have the server copy them beside the project in portable mode.',
     '动态字幕（Lottie）': 'Dynamic captions (Lottie)',
     '导出逐字高亮动态字幕 .lottie（需要以 server-editor 打开并绑定工程文件）': 'Export word-highlight dynamic captions as .lottie (requires server-editor with a bound project file)',
     '动态字幕（OGraf）': 'Dynamic captions (OGraf)',
@@ -12240,7 +12342,9 @@ export default MawDynamicCaptions;
     'FFconcat 文件': 'FFconcat file', '保留区域 JSON': 'Kept-regions JSON',
     '表情包 OTIO': 'Sticker OTIO', '表情包 OTIOZ': 'Sticker OTIOZ', '更多导出 ▾': 'More exports ▾',
     '选择表情包 OTIO 引用原始素材，或由服务器复制素材并生成便携文件夹': 'Choose whether sticker OTIO references original media or the server copies media into a portable folder',
-    '下载 Resolve JSON': 'Download Resolve JSON',
+    '下载 Resolve JSON': 'Download Resolve JSON', 'Resolve JSON': 'Resolve JSON',
+    '纯文本 TXT': 'Plain text TXT',
+    '导出纯文本 TXT 字幕': 'Export plain-text TXT subtitles',
     '下载表情包 OTIO 工程': 'Download sticker OTIO project',
     '下载表情包 OTIOZ 工程': 'Download sticker OTIOZ project',
     '下载表情包 OTIOZ 打包工程': 'Download sticker OTIOZ bundle',
@@ -12248,8 +12352,6 @@ export default MawDynamicCaptions;
     '按移除静音空隙后的时间轴导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）；完全落在空隙内的表情包会被丢弃': 'Export the sticker track as an OTIOZ bundle on the gap-removed timeline (server packs images into zip; validated sticker root required); stickers fully inside gaps are omitted',
     '导出表情包图片轨道 OTIOZ 工程（服务器打包图片进 zip，需校验表情包根目录）': 'Export a sticker-track OTIOZ bundle (server packs images into zip; validated sticker root required)',
     '导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）': 'Export a sticker-track OTIOZ bundle (server packs images into zip; validated sticker root required)',
-    '服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出 OTIOZ': 'Server packaging is unavailable: open the project via server-editor and bind a project file before exporting OTIOZ',
-    '当前工程无法导出表情包 OTIOZ（需要以 server-editor 打开并绑定工程文件）': 'Cannot export sticker OTIOZ here (requires server-editor with a bound project file)',
     '导出原视频/音频的去空隙 OTIOZ 时间线；服务器只打包当前工程媒体文件': 'Export the gap-removed OTIOZ timeline for the source media; the server packs only the current project media file',
     '导出原视频/音频的完整 OTIO 时间线，供支持 OTIO 的剪辑工具或工作流使用': 'Export the complete OTIO timeline for the source media for OTIO-capable editing tools or workflows',
     '导出原视频/音频的完整 OTIOZ 时间线；服务器只打包当前工程媒体文件': 'Export the complete OTIOZ timeline for the source media; the server packs only the current project media file',
@@ -12258,6 +12360,8 @@ export default MawDynamicCaptions;
     '正在生成时间线 OTIOZ 打包工程…': 'Generating timeline OTIOZ bundle…',
     '时间线 OTIOZ 已生成，媒体已打包进 zip': 'Timeline OTIOZ generated; media is packed into the zip',
     '时间线 OTIOZ 导出失败': 'Timeline OTIOZ export failed',
+    '服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出 OTIOZ': 'Server packaging is unavailable: open the project via server-editor and bind a project file before exporting OTIOZ',
+    '当前工程无法导出表情包 OTIOZ（需要以 server-editor 打开并绑定工程文件）': 'Cannot export sticker OTIOZ here (requires server-editor with a bound project file)',
     '正在生成表情包 OTIOZ 工程…': 'Generating sticker OTIOZ bundle…',
     '正在生成表情包 OTIOZ 打包工程…': 'Generating sticker OTIOZ bundle…',
     'OTIOZ 已生成，图片已打包进 zip': 'OTIOZ generated; images are packed into the zip',
@@ -19932,6 +20036,7 @@ const fcp7ExportCancel = document.getElementById('fcp7-export-cancel');
 const fcp7ExportConfirm = document.getElementById('fcp7-export-confirm');
 const lottieExportModal = document.getElementById('lottie-export-modal');
 const lottieExportTrack = document.getElementById('lottie-export-track');
+const lottieExportGapRemoved = document.getElementById('lottie-export-gap-removed');
 const lottieExportResolution = document.getElementById('lottie-export-resolution');
 const lottieExportFps = document.getElementById('lottie-export-fps');
 const lottieExportRenderMode = document.getElementById('lottie-export-render-mode');
@@ -19939,6 +20044,7 @@ const lottieExportCancel = document.getElementById('lottie-export-cancel');
 const lottieExportConfirm = document.getElementById('lottie-export-confirm');
 const ografExportModal = document.getElementById('ograf-export-modal');
 const ografExportTrack = document.getElementById('ograf-export-track');
+const ografExportGapRemoved = document.getElementById('ograf-export-gap-removed');
 const ografExportResolution = document.getElementById('ograf-export-resolution');
 const ografExportFps = document.getElementById('ograf-export-fps');
 const ografExportCancel = document.getElementById('ograf-export-cancel');
@@ -19962,9 +20068,10 @@ const saveProjectButton = document.getElementById('save-project');
 const saveProjectAsButton = document.getElementById('save-project-as');
 const saveProjectDropdown = document.getElementById('save-project-dropdown');
 const gapRemovedExportDropdown = document.getElementById('gap-removed-export-dropdown');
-const downloadSrtButton = document.getElementById('download-srt');
 const downloadMultiSrtButton = document.getElementById('download-multi-srt');
 const subtitleExportDropdown = document.getElementById('subtitle-export-dropdown');
+const downloadColorSrtItem = document.getElementById('download-color-srt');
+const downloadGapRemovedColorSrtItem = document.getElementById('download-gap-removed-color-srt');
 const multiSubtitleControls = document.getElementById('multi-subtitle-controls');
 const multiSubtitleToggleLabel = document.getElementById('multi-subtitle-toggle-label');
 const multiSubtitleSettingsDropdown = document.getElementById('multi-subtitle-settings-dropdown');
@@ -27730,6 +27837,7 @@ document.addEventListener('keydown', (e) => {
   if (multiSubtitleSplitModal?.classList.contains('show')) return;
   const target = e.target instanceof Element ? e.target : document.activeElement;
   if (target?.closest?.('.geo-box, input, select, textarea')) return;
+  if (target?.closest?.('[role="menu"]')) return;
   if (!isPlaybackKeyboardTarget(e) && isNativeKeyboardControl(e)) return;
   if (isPlayerKeyboardTarget(e)) return;
   const commandKey = e.ctrlKey || e.metaKey;
@@ -29748,11 +29856,9 @@ function usedSubtitleColors() {
 
 function updateSubtitleExportUi() {
   const hasColors = usedSubtitleColors().some((color) => color.name !== 'default');
-  if (downloadSrtButton) downloadSrtButton.hidden = hasColors;
-  if (subtitleExportDropdown) {
-    subtitleExportDropdown.hidden = !hasColors;
-    if (!hasColors) subtitleExportDropdown.classList.remove('open');
-  }
+  if (downloadColorSrtItem) downloadColorSrtItem.hidden = !hasColors;
+  if (downloadGapRemovedColorSrtItem) downloadGapRemovedColorSrtItem.hidden = !hasColors;
+  if (subtitleExportDropdown) subtitleExportDropdown.hidden = false;
   if (downloadMultiSrtButton) {
     downloadMultiSrtButton.hidden = !(multiSubtitleVisible() && getActiveExtensionTrack()?.segments?.length);
   }
@@ -29841,6 +29947,27 @@ function gapRemovedExportContext() {
     return null;
   }
   return { durationMs, intervals, removed };
+}
+
+function buildDynamicCaptionExportData(segments, gapRemoved) {
+  const source = Array.isArray(segments) ? segments : [];
+  const sourceDurationMs = waveformEditor?.durationMs
+    || Math.round(Number(player?.duration) * 1000)
+    || DATA.waveform?.duration_ms
+    || 0;
+  if (!gapRemoved) {
+    return { segments: source, durationMs: sourceDurationMs };
+  }
+  const context = gapRemovedExportContext();
+  if (!context) return null;
+  const durationMs = context.intervals.reduce(
+    (total, interval) => total + Math.max(0, interval.end - interval.start),
+    0,
+  );
+  return {
+    segments: window.AsrEditorUtils.buildGapRemovedDynamicSegments(source, context.removed),
+    durationMs,
+  };
 }
 
 function gapRemovedMediaReference() {
@@ -31610,11 +31737,6 @@ function openFcp7ExportModal() {
   fcp7ExportTimelineMode.focus();
 }
 
-function openGapRemovedFcp7ExportModal() {
-  fcp7ExportTimelineMode.value = 'gap_removed';
-  openFcp7ExportModal();
-}
-
 async function exportFcp7Xml() {
   fcp7ExportConfirm.disabled = true;
   try {
@@ -31658,7 +31780,6 @@ async function exportFcp7Xml() {
 }
 
 document.getElementById('download-fcp7-export')?.addEventListener('click', openFcp7ExportModal);
-document.getElementById('download-gap-removed-fcp7-export')?.addEventListener('click', openGapRemovedFcp7ExportModal);
 fcp7ExportCancel?.addEventListener('click', closeFcp7ExportModal);
 fcp7ExportConfirm?.addEventListener('click', () => { void exportFcp7Xml(); });
 fcp7ExportModal?.addEventListener('click', (event) => {
@@ -31723,16 +31844,23 @@ async function exportLottieDynamicCaptions() {
   try {
     const extension = lottieExportTrack?.value === 'extension';
     const track = extension ? getActiveExtensionTrack() : null;
-    const segments = extension ? track?.segments : DATA.segments;
-    if (!Array.isArray(segments) || !segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
+    const sourceSegments = extension ? track?.segments : DATA.segments;
+    if (!Array.isArray(sourceSegments) || !sourceSegments.some((segment) => (
+      !segment?.disabled && String(segment?.text || '').trim()
+    ))) {
       throw new Error(translatedEditorText(
         extension ? '当前副字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
       ));
     }
-    const durationMs = waveformEditor?.durationMs
-      || Math.round(Number(player?.duration) * 1000)
-      || DATA.waveform?.duration_ms
-      || 0;
+    const gapRemoved = lottieExportGapRemoved?.checked === true;
+    const exportData = buildDynamicCaptionExportData(sourceSegments, gapRemoved);
+    if (!exportData) return;
+    const { segments, durationMs } = exportData;
+    if (!segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
+      throw new Error(translatedEditorText(
+        extension ? '当前副字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
+      ));
+    }
     const size = lottieExportCanvasSize();
     const appearance = extension ? getExtensionSubtitleAppearance() : getSubtitleAppearance();
     const animation = window.AsrEditorUtils.buildLottieAnimation(segments, {
@@ -31756,9 +31884,10 @@ async function exportLottieDynamicCaptions() {
     const blob = await response.blob();
     closeLottieExportModal();
     const suffix = extension ? '_extension' : '';
+    const gapSuffix = gapRemoved ? '_gap-removed' : '';
     const saved = await downloadFile(
       blob,
-      `${FILENAME_BASE}${suffix}_dynamic-caption.lottie`,
+      `${FILENAME_BASE}${suffix}${gapSuffix}_dynamic-caption.lottie`,
       'application/zip+dotlottie',
       { desc: 'Lottie 动态字幕', types: { 'application/zip+dotlottie': ['.lottie'] } },
     );
@@ -31835,16 +31964,23 @@ async function exportOgrafDynamicCaptions() {
   try {
     const extension = ografExportTrack?.value === 'extension';
     const track = extension ? getActiveExtensionTrack() : null;
-    const segments = extension ? track?.segments : DATA.segments;
-    if (!Array.isArray(segments) || !segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
+    const sourceSegments = extension ? track?.segments : DATA.segments;
+    if (!Array.isArray(sourceSegments) || !sourceSegments.some((segment) => (
+      !segment?.disabled && String(segment?.text || '').trim()
+    ))) {
       throw new Error(translatedEditorText(
         extension ? '当前副字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
       ));
     }
-    const durationMs = waveformEditor?.durationMs
-      || Math.round(Number(player?.duration) * 1000)
-      || DATA.waveform?.duration_ms
-      || 0;
+    const gapRemoved = ografExportGapRemoved?.checked === true;
+    const exportData = buildDynamicCaptionExportData(sourceSegments, gapRemoved);
+    if (!exportData) return;
+    const { segments, durationMs } = exportData;
+    if (!segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
+      throw new Error(translatedEditorText(
+        extension ? '当前副字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
+      ));
+    }
     const size = ografExportCanvasSize();
     const appearance = extension ? getExtensionSubtitleAppearance() : getSubtitleAppearance();
     const graphic = window.AsrEditorUtils.buildOgrafGraphic(segments, {
@@ -31867,9 +32003,10 @@ async function exportOgrafDynamicCaptions() {
     const blob = await response.blob();
     closeOgrafExportModal();
     const suffix = extension ? '_extension' : '';
+    const gapSuffix = gapRemoved ? '_gap-removed' : '';
     const saved = await downloadFile(
       blob,
-      `${FILENAME_BASE}${suffix}_dynamic-caption.ograf.zip`,
+      `${FILENAME_BASE}${suffix}${gapSuffix}_dynamic-caption.ograf.zip`,
       'application/zip',
       { desc: 'OGraf 动态字幕', types: { 'application/zip': ['.zip'] } },
     );
@@ -31894,12 +32031,6 @@ document.addEventListener('keydown', (event) => {
   closeOgrafExportModal();
 }, true);
 
-document.getElementById('download-srt')?.addEventListener('click', async () => {
-  if (editingState) finishEdit(true);
-  await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
-    desc: 'SRT 字幕文件', types: { 'text/plain': ['.srt'] }
-  });
-});
 downloadMultiSrtButton?.addEventListener('click', async () => {
   if (extensionEditingState) finishExtensionEdit(true);
   const track = getActiveExtensionTrack();
@@ -32105,15 +32236,139 @@ updateLottieExportButton();
 updateOgrafExportButton();
 
 // === 工具栏导出下拉菜单 ===
+const SUBMENU_CLOSE_DELAY_MS = 160;
+const SUBMENU_AIM_TOLERANCE_PX = 8;
+
 function bindToolbarExportDropdown(dropdownId, buttonId, menuId, positioner = null) {
   const dd = document.getElementById(dropdownId);
   const btn = document.getElementById(buttonId);
   const menu = document.getElementById(menuId);
   if (!dd || !btn || !menu) return;
-  const setOpen = (open) => {
+  const submenuWrappers = [...menu.children].filter((item) => item.classList.contains('dropdown-submenu'));
+  const submenuCloseTimers = new WeakMap();
+  let pendingSubmenuSwitch = null;
+  let lastPointerPoint = null;
+  let previousPointerPoint = null;
+  let lastPointInsideOpenWrapper = null;
+  const directItems = (container) => [...container.children].flatMap((child) => {
+    if (child.classList.contains('dropdown-item')) {
+      return child.classList.contains('disabled') || child.hidden ? [] : [child];
+    }
+    if (!child.classList.contains('dropdown-submenu')) return [];
+    const toggle = child.querySelector(':scope > .dropdown-submenu-toggle');
+    return toggle && !toggle.classList.contains('disabled') && !toggle.hidden ? [toggle] : [];
+  });
+  const pointerPoint = (event) => {
+    if (!event || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return null;
+    return { x: event.clientX, y: event.clientY };
+  };
+  const clearPendingSubmenuSwitch = () => {
+    if (!pendingSubmenuSwitch) return;
+    clearTimeout(pendingSubmenuSwitch.timer);
+    pendingSubmenuSwitch = null;
+  };
+  const openSubmenu = () => submenuWrappers.find((wrapper) => wrapper.classList.contains('open'));
+  const pointInTriangle = (point, a, b, c) => {
+    const sign = (p1, p2, p3) => (
+      (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y)
+    );
+    const first = sign(point, a, b);
+    const second = sign(point, b, c);
+    const third = sign(point, c, a);
+    const hasNegative = first < 0 || second < 0 || third < 0;
+    const hasPositive = first > 0 || second > 0 || third > 0;
+    return !(hasNegative && hasPositive);
+  };
+  const shouldDelaySubmenuSwitch = (wrapper, point, previousPoint) => {
+    const active = openSubmenu();
+    const apex = previousPoint || lastPointInsideOpenWrapper;
+    if (!active || active === wrapper || !point || !apex) return false;
+    const submenu = active.querySelector(':scope > .dropdown-submenu-menu');
+    if (!submenu) return false;
+    const activeRect = active.getBoundingClientRect();
+    const submenuRect = submenu.getBoundingClientRect();
+    const opensLeft = submenuRect.right <= activeRect.left + SUBMENU_AIM_TOLERANCE_PX;
+    const opensRight = submenuRect.left >= activeRect.right - SUBMENU_AIM_TOLERANCE_PX;
+    if (!opensLeft && !opensRight) return false;
+    const direction = opensLeft ? -1 : 1;
+    if ((direction < 0 && point.x > apex.x + SUBMENU_AIM_TOLERANCE_PX)
+      || (direction > 0 && point.x < apex.x - SUBMENU_AIM_TOLERANCE_PX)) return false;
+    const edgeX = direction < 0 ? submenuRect.right : submenuRect.left;
+    return pointInTriangle(
+      point,
+      apex,
+      { x: edgeX, y: submenuRect.top - SUBMENU_AIM_TOLERANCE_PX },
+      { x: edgeX, y: submenuRect.bottom + SUBMENU_AIM_TOLERANCE_PX },
+    );
+  };
+  const clearSubmenuClose = (wrapper) => {
+    const timer = submenuCloseTimers.get(wrapper);
+    if (timer) {
+      clearTimeout(timer);
+      submenuCloseTimers.delete(wrapper);
+    }
+  };
+  const closeSubmenu = (wrapper) => {
+    clearSubmenuClose(wrapper);
+    if (wrapper.classList.contains('open')) lastPointInsideOpenWrapper = null;
+    wrapper.classList.remove('open');
+    wrapper.querySelector(':scope > .dropdown-submenu-toggle')
+      ?.setAttribute('aria-expanded', 'false');
+  };
+  const closeSubmenus = () => {
+    submenuWrappers.forEach(closeSubmenu);
+  };
+  const scheduleSubmenuSwitch = (wrapper) => {
+    // menu-aim：鼠标进入同级菜单项时，沿当前子菜单近侧边缘的三角通道移动，先保留当前菜单。
+    clearPendingSubmenuSwitch();
+    const active = openSubmenu();
+    if (active && active !== wrapper) clearSubmenuClose(active);
+    const timer = setTimeout(() => {
+      if (!pendingSubmenuSwitch || pendingSubmenuSwitch.wrapper !== wrapper) return;
+      pendingSubmenuSwitch = null;
+      if (wrapper.matches(':hover') || wrapper.contains(document.activeElement)) {
+        setSubmenuOpen(wrapper, true);
+      }
+    }, SUBMENU_CLOSE_DELAY_MS);
+    pendingSubmenuSwitch = { wrapper, timer };
+  };
+  const setSubmenuOpen = (wrapper, open, focusFirst = false) => {
+    if (!wrapper) return;
+    const toggle = wrapper.querySelector(':scope > .dropdown-submenu-toggle');
+    const submenu = wrapper.querySelector(':scope > .dropdown-submenu-menu');
+    if (!toggle || !submenu) return;
+    clearSubmenuClose(wrapper);
+    if (open) {
+      clearPendingSubmenuSwitch();
+      submenuWrappers.forEach((other) => {
+        if (other !== wrapper) closeSubmenu(other);
+      });
+    }
+    wrapper.classList.toggle('open', open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open && focusFirst) directItems(submenu)[0]?.focus();
+  };
+  const scheduleSubmenuClose = (wrapper) => {
+    clearSubmenuClose(wrapper);
+    const timer = setTimeout(() => {
+      submenuCloseTimers.delete(wrapper);
+      if (!wrapper.matches(':hover') && !wrapper.contains(document.activeElement)) {
+        closeSubmenu(wrapper);
+      }
+    }, SUBMENU_CLOSE_DELAY_MS);
+    submenuCloseTimers.set(wrapper, timer);
+  };
+  const setOpen = (open, { restoreFocus = false } = {}) => {
     dd.classList.toggle('open', open);
     if (btn.hasAttribute('aria-expanded')) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open) {
+      closeSubmenus();
+      lastPointerPoint = null;
+      previousPointerPoint = null;
+      lastPointInsideOpenWrapper = null;
+    }
     if (open && positioner) requestAnimationFrame(positioner);
+    if (!open && restoreFocus) btn.focus();
   };
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -32121,20 +32376,124 @@ function bindToolbarExportDropdown(dropdownId, buttonId, menuId, positioner = nu
       if (other !== dd) {
         other.classList.remove('open');
         other.querySelector('button[aria-expanded]')?.setAttribute('aria-expanded', 'false');
+        other.querySelectorAll('.dropdown-submenu').forEach((submenu) => {
+          submenu.classList.remove('open');
+          submenu.querySelector('.dropdown-submenu-toggle')?.setAttribute('aria-expanded', 'false');
+        });
       }
     });
     setOpen(!dd.classList.contains('open'));
   });
+  btn.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    setOpen(true);
+    const items = directItems(menu);
+    items[e.key === 'ArrowDown' ? 0 : items.length - 1]?.focus();
+  });
+  submenuWrappers.forEach((wrapper) => {
+    const submenu = wrapper.querySelector(':scope > .dropdown-submenu-menu');
+    const keepOpen = (event) => {
+      const point = pointerPoint(event);
+      const sameAsLastPoint = point && lastPointerPoint
+        && point.x === lastPointerPoint.x && point.y === lastPointerPoint.y;
+      const previousPoint = point
+        ? (sameAsLastPoint ? previousPointerPoint : lastPointerPoint)
+        : null;
+      if (point && !sameAsLastPoint) previousPointerPoint = lastPointerPoint;
+      if (point) lastPointerPoint = point;
+      if (point && shouldDelaySubmenuSwitch(wrapper, point, previousPoint)) {
+        scheduleSubmenuSwitch(wrapper);
+        return;
+      }
+      setSubmenuOpen(wrapper, true);
+      if (point) lastPointInsideOpenWrapper = point;
+    };
+    const deferClose = (event) => {
+      if (pendingSubmenuSwitch?.wrapper === wrapper
+        && (!event?.relatedTarget || !wrapper.contains(event.relatedTarget))) {
+        clearPendingSubmenuSwitch();
+        const active = openSubmenu();
+        if (active && active !== wrapper) scheduleSubmenuClose(active);
+      }
+      scheduleSubmenuClose(wrapper);
+    };
+    wrapper.addEventListener('pointerenter', keepOpen);
+    wrapper.addEventListener('pointerleave', deferClose);
+    wrapper.addEventListener('focusin', keepOpen);
+    wrapper.addEventListener('focusout', (e) => {
+      if (!e.relatedTarget || !wrapper.contains(e.relatedTarget)) deferClose();
+    });
+    submenu?.addEventListener('pointerenter', keepOpen);
+    submenu?.addEventListener('pointerleave', deferClose);
+  });
+  menu.addEventListener('pointermove', (event) => {
+    const point = pointerPoint(event);
+    if (!point) return;
+    if (!lastPointerPoint || point.x !== lastPointerPoint.x || point.y !== lastPointerPoint.y) {
+      previousPointerPoint = lastPointerPoint;
+    }
+    lastPointerPoint = point;
+    const active = openSubmenu();
+    if (active?.contains(event.target)) lastPointInsideOpenWrapper = point;
+  });
   menu.addEventListener('click', (e) => {
-    if (e.target.classList.contains('dropdown-item')) {
-      setOpen(false);
+    const item = e.target.closest('.dropdown-item');
+    if (!item || !menu.contains(item)) return;
+    if (item.classList.contains('dropdown-submenu-toggle')) {
+      e.stopPropagation();
+      const wrapper = item.closest('.dropdown-submenu');
+      setSubmenuOpen(wrapper, !wrapper.classList.contains('open'));
+      return;
+    }
+    setOpen(false);
+  });
+  menu.addEventListener('keydown', (e) => {
+    const item = e.target.closest('.dropdown-item');
+    if (!item || !menu.contains(item)) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(false, { restoreFocus: true });
+      return;
+    }
+    const submenuWrapper = item.closest('.dropdown-submenu');
+    const submenu = submenuWrapper?.querySelector(':scope > .dropdown-submenu-menu');
+    if (e.key === 'ArrowRight' && item.classList.contains('dropdown-submenu-toggle')) {
+      e.preventDefault();
+      setSubmenuOpen(submenuWrapper, true, true);
+      return;
+    }
+    if (e.key === 'ArrowLeft' && submenuWrapper && !item.classList.contains('dropdown-submenu-toggle')) {
+      e.preventDefault();
+      setSubmenuOpen(submenuWrapper, false);
+      submenuWrapper.querySelector(':scope > .dropdown-submenu-toggle')?.focus();
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const container = submenu && submenu.contains(item) ? submenu : menu;
+      const items = directItems(container);
+      const index = items.indexOf(item);
+      if (index < 0 || !items.length) return;
+      const offset = e.key === 'ArrowDown' ? 1 : -1;
+      items[(index + offset + items.length) % items.length].focus();
+      return;
+    }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      item.click();
+      if (!item.classList.contains('dropdown-submenu-toggle')) btn.focus();
     }
   });
   document.addEventListener('click', (e) => {
     if (!dd.contains(e.target)) setOpen(false);
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') setOpen(false);
+    if (e.key === 'Escape' && dd.classList.contains('open')) {
+      e.preventDefault();
+      setOpen(false, { restoreFocus: true });
+    }
   });
   if (positioner) {
     window.addEventListener('resize', positioner);
