@@ -339,6 +339,18 @@
     })[field] || "";
   }
 
+  function renderSettingsError(result) {
+    const field = postprocessFieldId(result?.field);
+    const message = postprocessErrorText(result);
+    if (field) {
+      setFieldError(field, message);
+      setSettingsSaveStatus("", "", 0);
+    } else {
+      setSettingsSaveStatus(message, "error", 0);
+    }
+    return message;
+  }
+
   function syncProviderOptionLabels() {
     const providers = window.MAWLauncher.config?.postprocessProviders || [];
     [$("postprocessProvider"), $("llmProvider")].forEach((select) => {
@@ -553,8 +565,7 @@
     $("llmApiKey").placeholder = "";
     $("llmCustomDisplayNameField").classList.toggle("hidden", item.id !== "custom");
     $("llmCustomDisplayName").value = item.id === "custom" ? item.displayName || "" : "";
-    setFieldError("llmCustomDisplayName", "");
-    setFieldError("llmReasoningMode", "");
+    clearSettingsErrors();
     setSettingsSaveStatus("");
     renderProviderKeyStatus(item);
     void loadPostprocessApiKey(item.id, item.maskedApiKey || "");
@@ -966,6 +977,10 @@
       hint.textContent = message;
       hint.classList.toggle("visible", Boolean(message));
     }
+  }
+
+  function clearSettingsErrors() {
+    ["llmApiKey", "llmBaseUrl", "llmModel", "llmReasoningMode", "llmCustomDisplayName"].forEach((field) => setFieldError(field, ""));
   }
 
   function chainLabel(kind, operation = "") {
@@ -1523,14 +1538,11 @@
       displayName: item.id === "custom" ? $("llmCustomDisplayName").value.trim() : "",
     });
     if (!result.ok) {
-      const field = postprocessFieldId(result.field);
-      const message = postprocessErrorText(result);
-      if (field) setFieldError(field, message);
-      setSettingsSaveStatus(message, "error");
+      const message = renderSettingsError(result);
       setResult(message, "error");
       return result;
     }
-    ["llmApiKey", "llmBaseUrl", "llmModel", "llmReasoningMode", "llmCustomDisplayName"].forEach((field) => setFieldError(field, ""));
+    clearSettingsErrors();
     item.baseUrl = $("llmBaseUrl").value.trim();
     item.model = $("llmModel").value.trim();
     item.hasApiKey = Boolean(result.maskedApiKey || item.maskedApiKey || $("llmApiKey").value.trim());
@@ -1564,6 +1576,7 @@
         save: true,
       });
       if (result.ok) {
+        clearSettingsErrors();
         item.verified = Boolean(result.verified);
         item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
         item.hasApiKey = Boolean(result.maskedApiKey || $("llmApiKey").value.trim() || item.hasApiKey);
@@ -1574,10 +1587,7 @@
         maybeEnablePendingAutoStep();
       }
       else {
-        const message = postprocessErrorText(result);
-        const field = postprocessFieldId(result.field);
-        if (field) setFieldError(field, message);
-        setSettingsSaveStatus(message, "error", 0);
+        renderSettingsError(result);
       }
       return result;
     } catch (error) {
@@ -1602,12 +1612,10 @@
         model: $("llmModel").value.trim(),
       });
       if (!result.ok) {
-        const field = postprocessFieldId(result.field);
-        const message = postprocessErrorText(result);
-        if (field) setFieldError(field, message);
-        setSettingsSaveStatus(message, "error", 0);
+        renderSettingsError(result);
         return;
       }
+      clearSettingsErrors();
       const models = Array.isArray(result.models)
         ? result.models.map((value) => String(value || "").trim()).filter(Boolean)
         : [];

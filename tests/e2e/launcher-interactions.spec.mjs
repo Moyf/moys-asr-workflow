@@ -84,8 +84,27 @@ test('Custom provider labels and missing-key errors follow the selected language
 
   await page.locator('#llmApiKey').fill('');
   await page.locator('#testLlmConnection').click();
-  await expect(page.locator('#llmSettingsSaveStatus')).toHaveText('Enter an API Key, or save one first in Settings / API key.');
+  await expect(page.locator('#llmSettingsSaveStatus')).toHaveText('');
+  await expect(page.locator('#llmSettingsSaveStatus')).toBeHidden();
   await expect(page.locator('#llmApiKeyError')).toHaveText('Enter an API Key, or save one first in Settings / API key.');
+  await expect(page.locator('#llmApiKey')).toHaveClass(/invalid/);
+
+  await page.locator('#llmProvider').selectOption('zhipu');
+  await expect(page.locator('#llmApiKey')).not.toHaveClass(/invalid/);
+  await expect(page.locator('#llmApiKeyError')).toHaveText('');
+
+  await page.evaluate(() => {
+    window.MAWLauncher.callBackend = async (method) => (
+      method === 'test_postprocess_connection'
+        ? { ok: true, saved: true, verified: true, maskedApiKey: 'sk-…mock' }
+        : { ok: true }
+    );
+  });
+  await page.locator('#llmApiKey').fill('sk-success');
+  await page.locator('#testLlmConnection').click();
+  await expect(page.locator('#llmSettingsSaveStatus')).toHaveText('Connection successful (saved to local environment automatically).');
+  await expect(page.locator('#llmApiKeyError')).toHaveText('');
+  await expect(page.locator('#llmApiKey')).not.toHaveClass(/invalid/);
 });
 test('runtime errors show an actionable notice outside the log', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
