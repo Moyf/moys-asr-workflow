@@ -971,7 +971,7 @@ class GuiWorkflowTests(unittest.TestCase):
     def test_startup_error_fallback_uses_shared_maw_log_directory(self) -> None:
         import maw_gui
 
-        with mock.patch.dict(
+        with mock.patch("maw.local_log.sys.platform", "win32"), mock.patch.dict(
             os.environ,
             {"LOCALAPPDATA": str(self.root / "LocalAppData"), "MAW_APP_DATA_ROOT": ""},
             clear=False,
