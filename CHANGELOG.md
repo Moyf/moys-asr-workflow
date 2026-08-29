@@ -6,7 +6,7 @@
 
 ### ✨ 提升
 
-- **本地日志落盘** ： Launcher 运行与故障日志按天写入用户数据目录（Windows `%LOCALAPPDATA%\Moy\MAW\logs`，macOS 与 Linux 对应目录），程序关闭或崩溃后仍可回看，默认保留 7 天；日志面板新增「打开日志文件夹」入口一键定位。API Key 等敏感内容自动打码，写盘失败不影响主流程。
+- **本地日志落盘** ： Launcher 运行与故障日志按天写入用户数据目录（Windows `%LOCALAPPDATA%\Moy\MAW\logs`，macOS 与 Linux 对应目录），程序关闭或崩溃后仍可回看，默认保留 7 天；日志面板新增「打开日志文件夹」入口一键定位。除事件流外，进程内 print / traceback（如波形缓存生成、FFmpeg 警告）经 stdout/stderr 三通一并落盘，打包版无控制台时也不再丢失；启动失败诊断日志回退到同一目录。API Key 等敏感内容自动打码，写盘失败不影响主流程。
 
 ## [1.5.0-beta.7] - 2026-08-28
 
