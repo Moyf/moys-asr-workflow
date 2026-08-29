@@ -2958,6 +2958,9 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('function postprocessErrorText(result)', script)
         self.assertIn('window.MAWLauncher.errorText(result?.code || "", detail)', script)
         self.assertIn('function postprocessFieldId(field)', script)
+        self.assertIn('function renderSettingsError(result)', script)
+        self.assertIn('setFieldError(field, message);\n      setSettingsSaveStatus("", "", 0);', script)
+        self.assertIn('function clearSettingsErrors()', script)
         self.assertIn('postprocessApiKey: "llmApiKey"', script)
         self.assertIn('save: true,', script)
         self.assertIn('setSettingsSaveStatus(result.saved ? t("llm_connection_saved") : t("llm_connection_success"), "success");', script)
@@ -2977,6 +2980,23 @@ class LauncherAssetContractTests(unittest.TestCase):
 
         expected = r'''const urlPattern = /https?:\/\/[^\s<>"'|)\]}，。；：！？）】》」』]+/gi;'''
         self.assertIn(expected, script)
+
+    def test_launcher_punctuation_defaults_match_the_shared_settings_copy(self) -> None:
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertIn(
+            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["？", "！", ","], preservePunctuation: ["？", "！"] },',
+            script,
+        )
+        self.assertIn(
+            'toolbox_extra_split_punctuation_hint: "每行一个符号；逗号、句号和换行默认生效，同时对转写后处理的句尾剥除生效。"',
+            launcher_script,
+        )
+        self.assertIn(
+            'toolbox_extra_split_punctuation_hint: "One symbol per line; comma, period, and newline apply by default, and also drive tail-punctuation stripping in transcription post-processing."',
+            launcher_script,
+        )
 
     def test_launcher_hero_shows_the_bundled_brand_icon(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")

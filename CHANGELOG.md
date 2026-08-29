@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### 🐛 修复
+
+- **默认断句符号配置** ： Launcher 预填问号、感叹号和英文逗号到「额外断句符号」，并修正说明文案，避免默认「保留符号」校验报错。
+
 ### 🔄 变更
 
 - **MAW 用户数据路径统一** ： 普通日志、启动诊断日志、Linux Emoji 字体缓存和 server-editor 设置统一使用 MAW 用户数据根；Windows 默认根目录为 `%LOCALAPPDATA%\MAW`，原 server-editor 设置路径仅在新文件不存在时作为升级读取回退，后续保存始终写入新路径。Release 版 `.env` 优先读取应用程序同目录文件，不存在时回退到 `%LOCALAPPDATA%\MAW\.env`；源码开发继续使用仓库根 `.env`。

@@ -301,7 +301,7 @@
       enabled: false,
       retainIntermediate: false,
       steps: [
-        { id: "match", enabled: false, scriptPath: "", matchMode: "script" },
+        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["？", "！", ","], preservePunctuation: ["？", "！"] },
         { id: "replace", enabled: false, replacements: [], conversion: "off" },
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "resegment", enabled: false, providerId: "deepseek", customPrompt: "" },

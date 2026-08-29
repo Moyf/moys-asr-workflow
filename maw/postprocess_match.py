@@ -17,8 +17,6 @@ from maw.postprocess_io import SubtitleArtifact, PostprocessFileError, read_proj
 from maw.project import normalize_project
 from maw.project_preview import JsonDict, JsonValue
 from scripts.mosp_match_text import (
-    PRESERVED_END_PUNCTUATION,
-    SPLIT_PUNCTUATION,
     AlignmentError,
     generate_matched_mosp,
 )
@@ -26,7 +24,7 @@ from scripts.mosp_match_text import (
 
 SCRIPT_EXTENSIONS = frozenset({".txt", ".md", ".markdown"})
 MIN_MATCH_COVERAGE = 0.55
-DEFAULT_SPLIT_PUNCTUATION = frozenset({"，", "。", "？", "！", ",", ".", "?", "!", "\n"})
+DEFAULT_SPLIT_PUNCTUATION = frozenset({"，", "。", ",", ".", "\n"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,8 +113,8 @@ def prepare_script_text(
 
     split_symbols = tuple(symbol for symbol in extra_split_punctuation if symbol)
     preserve_symbols = tuple(symbol for symbol in preserve_punctuation if symbol)
-    # 基础断句集（逗号、句号、问号、感叹号、换行）始终生效，保留符号直接
-    # 引用基础集成员时无需在额外断句符号中重复声明。
+    # 基础断句集（逗号、句号、换行）始终生效；问号和感叹号由额外
+    # 断句符号配置提供。
     missing = tuple(
         symbol
         for symbol in preserve_symbols
@@ -164,12 +162,8 @@ def _match_project_with_character_timings(
     extra_split_punctuation: tuple[str, ...],
     preserve_punctuation: tuple[str, ...],
 ) -> tuple[JsonDict, tuple[str, ...]]:
-    split_punctuation = SPLIT_PUNCTUATION | frozenset(extra_split_punctuation)
-    preserved = (
-        DEFAULT_SPLIT_PUNCTUATION
-        | PRESERVED_END_PUNCTUATION
-        | frozenset(preserve_punctuation)
-    )
+    split_punctuation = DEFAULT_SPLIT_PUNCTUATION | frozenset(extra_split_punctuation)
+    preserved = DEFAULT_SPLIT_PUNCTUATION | frozenset(preserve_punctuation)
     if any(len(symbol) != 1 for symbol in split_punctuation | preserved):
         return _match_project(project, script_text, split_punctuation, preserved, "script")
 

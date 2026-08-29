@@ -7,8 +7,8 @@
 1. 工具箱的「额外断句符号 / 保留符号」统一迁入 ⚙️ 设置，作为**共享配置**：编辑器文稿处理与模型转写后处理同时生效。
 2. 工具箱原位置替换为"打开设置并滚动到对应位置"的提示文本（既有先例："在 ⚙️ 设置中下载安装 OCR 支持"）。
 3. 默认符号集扩充并明确保留策略：
-   - 逗号（，）、句号（。）：断句生效，**不保留**（剥除）
-   - 问号（？）、感叹号（！）：断句生效，**保留**在字幕末尾
+   - 逗号（，）、句号（。）和换行：作为基础断句符号默认生效
+   - 问号（？）、感叹号（！）：预填到「额外断句符号」，并默认列入「保留符号」
 4. 该共享配置同时约束：Python 转写后处理（local/cloud 剥尾与断句符号集）与编辑器文稿侧断句/保留逻辑。
 
 ## 处理清单
@@ -17,7 +17,7 @@
 | --- | --- | --- | --- | --- |
 | 1 | 调研 | 前端/后端链路已探明（见事实基线补充） | 调研 | 已修复 |
 | 2 | 前端 | 工具箱两个 textarea → ⚙️ 设置新 section（`punctuationSettingsSection`），工具箱原位替换为 `openSettings` 内联链接（复用 OCR 先例）；i18n 中英同步；hint 文案更新 | 修改 | 已修复 |
-| 3 | 后端 | `DEFAULT_SPLIT_PUNCTUATION` 扩为 `，。？！, . ? !` + 换行；`prepare_script_text` 校验放行"保留 ∈ 基础断句集"；默认计划 `preservePunctuation=["？","！"]` | 修改 | 已修复 |
+| 3 | 后端 | 基础断句集调整为 `，。,.` + 换行；问号/感叹号和英文逗号预填到默认计划的 `extraSplitPunctuation`；`prepare_script_text` 允许保留基础或额外断句符号 | 修改 | 已修复 |
 | 4 | 后端 | 转写剥尾接入共享配置：`TranscriptionRequest.strip_tail_punct`（gui_web 从已存计划推导 = `，。` − 保留符号），经 `--strip-tail-punct` 下发至 local/qwen/soniox/bcut 四个脚本；空串禁用；`--keep-punct` 优先级不变 | 修改 | 已修复 |
 | 5 | 验证 | Python 单测 + node 检查 + 记录回写；Launcher 桌面端交互留待维护者实机确认 | 验证 | 已修复（实机项见未验证边界） |
 
@@ -29,10 +29,10 @@
   - `postprocess.js` 新增 `openPunctSettings` → `window.MAWLauncher.openSettings("punctuationSettingsSection")`；同时移除随 wrapper 消亡的死代码 `renderMatchMode()`（定义 + 两处调用），满足"零孤儿引用"；
   - `launcher.js` 中英 i18n：两条 hint 按共享语义改写，新增 `toolbox_punct_open_settings`、`settings_punctuation_title`、`settings_punctuation_hint` 三组键。
 - **后端**：
-  - `postprocess_match.py`：基础断句集扩为 `{"，","。","？","！",",",".","?","!","\n"}`；`prepare_script_text` 校验改为"保留 ∈ 额外断句 ∪ 基础集"——默认保留 `？！` 无需用户配置即可通过；
-  - `postprocess_pipeline.py`：默认计划 `preservePunctuation=["？","！"]`（仅影响新计划；旧计划显式 `[]` 保持原语义，无强制迁移）；
+  - `postprocess_match.py`：基础断句集调整为逗号、句号、英文逗号、英文句号和换行；`prepare_script_text` 允许保留基础或额外断句符号；
+  - `postprocess_pipeline.py`：默认计划预填 `extraSplitPunctuation=["？","！",","]`，并默认保留 `preservePunctuation=["？","！"]`；旧计划中已保留的问号/感叹号会自动补回额外断句符号；
   - 转写剥尾链路：`gui_web._transcribe_strip_tail_punct(env_path)` 读取已存计划 → `strip = "，。" − 保留符号` → `TranscriptionRequest.strip_tail_punct` → `build_transcribe_command` **恒显式下发** `--strip-tail-punct`（空串=禁用，与 `_append_option` 的跳过语义区分）→ 四个转写脚本（local/qwen/soniox/bcut）新增同名参数（默认 `，。`），剥尾循环改为 `not keep_punct and strip_tail_punct` 双条件，`rstrip` 参数化；`build_local_segments(strip_tail_punct=…)` 贯穿本地引擎。
-- **行为变化（预期内）**：新装用户的文稿匹配与转写输出默认保留 `？！` 句尾（此前文稿匹配默认不保留）；`，。` 默认剥除与现状一致。
+- **行为变化（预期内）**：新装用户的文稿匹配与转写输出默认保留 `？！` 句尾；逗号、句号和换行是基础断句符号，问号/感叹号由默认额外断句配置提供。
 
 ## 验证记录
 
@@ -51,7 +51,7 @@
 ## 边界说明（方案取舍）
 
 - **额外断句符号不接入 ASR 切句管线**：转写切句仍由模型分段 + 既有 STRONG/WEAK 标点逻辑决定；共享到转写后处理的是"保留符号 → 剥尾候选集（固定 `，。`）减法"推导出的剥除集。这样默认行为（逗号句号剥、问号感叹号留）与现网一致，且不会为个别符号去改动 jieba/词性切分深层逻辑。
-- **已保存的旧计划不强制迁移**：normalize 仅在键缺失时用新默认 `["？","！"]`；旧计划显式 `[]` 保持原语义（文稿匹配不保留、转写剥 `，。`），与今日行为一致。
+- **已保存的旧计划兼容迁移**：normalize 会把旧计划中已保留但未列入额外断句符号的问号/感叹号补回额外列表；其他显式空列表仍保持原设置。
 - **工具箱配置本就在 Launcher 后端持久化**（`maw-postprocess.json`，经 `save_postprocess_plan` 桥），迁移仅动 UI 位置与 ID 不变，持久化/消费代码零改动。
 - MAWE 编辑器（`web/editor.js`，localStorage `moy.asr.editor.settings.v1`）与此配置无关，不涉及 server-editor。
 
@@ -61,6 +61,13 @@
 - `_strip_trailing_punct` 当前固定 `，。`，与云端 `rstrip("，。")` 一致；`！？` 保留。
 - 工具箱截图显示：保留符号 textarea 预填 `？ ！ ～`；断句符号 hint 写明"默认逗号、句号和换行仍然生效"。
 - 待探索结果补充：前端持久化键、消费函数、设置页架构、OCR 提示模式、后端配置存储候选。
+
+## 2026-08-30 后续修正
+
+- **状态**：已修复。
+- **默认值**：额外断句符号预填「？」「！」和英文逗号；保留符号默认保留「？」「！」。
+- **说明**：额外断句符号的提示改为仅说明逗号、句号和换行默认生效；基础断句集同步收窄为逗号、句号和换行，旧计划中已保留的问号/感叹号会自动补回额外断句符号。
+- **验证**：全量 Python 单元测试 985 项通过（跳过 6 项）；Node 编辑器测试 246 项通过；Launcher 两个 JS 文件语法检查和 git diff --check 通过。
 
 ## 探索结论（补充事实基线）
 
