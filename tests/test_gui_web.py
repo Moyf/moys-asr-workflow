@@ -18,7 +18,7 @@ from urllib.error import URLError
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
+from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
 from maw.postprocess_llm import LlmClientError  # noqa: E402
@@ -1716,6 +1716,52 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("blank-editor.html", result["error"])
 
+    def test_open_faq_uses_bundled_troubleshooting_file(self) -> None:
+        faq = self.root / "FAQ-常见问题.txt"
+        faq.write_text("help\n", encoding="utf-8")
+
+        with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as open_path:
+            result = self.api.open_faq()
+
+        self.assertTrue(result["ok"])
+        open_path.assert_called_once_with(faq)
+
+    def test_open_faq_uses_frozen_resource_root_before_executable_directory(self) -> None:
+        faq = self.root / "FAQ-常见问题.txt"
+        faq.write_text("help\n", encoding="utf-8")
+        executable_faq = self.root / "exe" / "FAQ-常见问题.txt"
+        executable_faq.parent.mkdir()
+        executable_faq.write_text("fallback\n", encoding="utf-8")
+
+        with mock.patch("maw.gui_web.sys.executable", str(self.root / "exe" / "MAW.exe")), mock.patch(
+            "maw.gui_web._open_existing_path", return_value={"ok": True}
+        ) as open_path:
+            result = self.api.open_faq()
+
+        self.assertTrue(result["ok"])
+        open_path.assert_called_once_with(faq)
+
+    def test_open_faq_falls_back_to_executable_directory_when_frozen_root_is_missing(self) -> None:
+        executable_faq = self.root / "exe" / "FAQ-常见问题.txt"
+        executable_faq.parent.mkdir()
+        executable_faq.write_text("fallback\n", encoding="utf-8")
+
+        with mock.patch("maw.gui_web.sys.executable", str(self.root / "exe" / "MAW.exe")), mock.patch(
+            "maw.gui_web._open_existing_path", return_value={"ok": True}
+        ) as open_path:
+            result = self.api.open_faq()
+
+        self.assertTrue(result["ok"])
+        open_path.assert_called_once_with(executable_faq)
+
+    def test_open_faq_returns_structured_failure_when_both_release_locations_are_missing(self) -> None:
+        with mock.patch("maw.gui_web.sys.executable", str(self.root / "exe" / "MAW.exe")):
+            result = self.api.open_faq()
+
+        self.assertFalse(result["ok"])
+        self.assertIn("FAQ-常见问题.txt not found", result["error"])
+        self.assertIn(str(self.root / "exe"), result["error"])
+
     def test_check_ffmpeg_reports_found_when_both_tools_exist(self) -> None:
         ffmpeg = self.root / "bin" / "ffmpeg.exe"
         ffprobe = self.root / "bin" / "ffprobe.exe"
@@ -1956,6 +2002,24 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.api.cancel_transcription()
+
+    def test_frozen_launcher_rejects_missing_ffmpeg_before_worker(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+
+        with mock.patch("maw.gui_web.sys.frozen", True, create=True):
+            with mock.patch("maw.gui_web._check_ffmpeg", return_value={"ok": True, "found": False}):
+                with mock.patch("maw.gui_web.threading.Thread") as worker:
+                    result = self.api.start_transcription({
+                        "mediaPath": str(media),
+                        "srtPath": str(self.root / "out.srt"),
+                        "apiKey": "sk-test",
+                    })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["field"], "ffmpegPath")
+        self.assertEqual(result["code"], "ffmpeg_missing")
+        worker.assert_not_called()
 
     def test_request_from_payload_treats_enabled_empty_postprocess_as_disabled(self) -> None:
         """Given an enabled plan with no selected steps, When building a request, Then transcription proceeds without a pipeline."""
@@ -2293,6 +2357,18 @@ class GuiWebBridgeTests(unittest.TestCase):
             "returned non-zero exit status 1.",
         ]))
 
+    def test_missing_ffmpeg_is_recognised_from_friendly_and_legacy_output(self) -> None:
+        self.assertTrue(_is_ffmpeg_missing_failure([
+            "错误：找不到 FFmpeg / FFprobe。请下载不带 lite 的完整 MAW。",
+        ]))
+        self.assertTrue(_is_ffmpeg_missing_failure([
+            "File generate_subtitle_qwen_api.py, line 266, in get_duration_sec",
+            "FileNotFoundError: [WinError 2] 系统找不到指定的文件。",
+        ]))
+        self.assertFalse(_is_ffmpeg_missing_failure([
+            "FileNotFoundError: [WinError 2] input.mp3",
+        ]))
+
     def test_ffmpeg_start_failure_is_recognised_from_child_output(self) -> None:
         self.assertTrue(_is_ffmpeg_start_failure([
             "Traceback: Command ['ffmpeg', '-i', 'clip.mp4']",
@@ -2353,6 +2429,24 @@ class GuiWebBridgeTests(unittest.TestCase):
         event_script = self.window.scripts[-1]
         self.assertIn('"code": "ffprobe_start_failed"', event_script)
         self.assertIn('"detail": "Transcription failed with exit code 1"', event_script)
+
+    def test_worker_emits_specific_error_when_ffmpeg_is_missing(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.root / "clip.wav",
+            srt_path=self.root / "clip.srt",
+        )
+
+        def fail_without_ffmpeg(*_args: object, **kwargs: object) -> None:
+            callback = kwargs["on_event"]
+            assert callable(callback)
+            callback("错误：找不到 FFmpeg / FFprobe。请下载不带 lite 的完整 MAW。")
+            raise TranscriptionProcessError(1)
+
+        with mock.patch("maw.gui_web.run_transcription", side_effect=fail_without_ffmpeg):
+            self.api._worker_main(request, threading.Event())
+
+        self.assertTrue(self.window.scripts)
+        self.assertIn('"code": "ffmpeg_missing"', self.window.scripts[-1])
 
     def test_worker_emits_cancellation_error_for_cancelled_transcription(self) -> None:
         request = TranscriptionRequest(
