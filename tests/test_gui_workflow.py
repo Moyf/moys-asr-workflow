@@ -969,7 +969,7 @@ class GuiWorkflowTests(unittest.TestCase):
                 self.root / "launcher-startup.log",
             )
 
-    def test_startup_error_fallback_uses_shared_maw_app_data_root(self) -> None:
+    def test_startup_error_fallback_uses_shared_maw_log_directory(self) -> None:
         import maw_gui
 
         with mock.patch.object(maw_gui.os, "name", "nt"), mock.patch.dict(
@@ -979,7 +979,7 @@ class GuiWorkflowTests(unittest.TestCase):
         ):
             self.assertEqual(
                 maw_gui._startup_error_fallback_log_path(),
-                self.root / "LocalAppData" / "MAW" / "launcher-startup.log",
+                self.root / "LocalAppData" / "Moy" / "MAW" / "logs" / "launcher-startup.log",
             )
 
     def test_entrypoint_debug_aliases_configure_launcher_debug_modes(self) -> None:
