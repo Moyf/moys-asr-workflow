@@ -21,6 +21,7 @@ from pathlib import Path
 from threading import Event
 from typing import BinaryIO, Final, final
 
+from maw.app_paths import default_emoji_font_path
 from maw.ffmpeg import resolve_ffmpeg_tools
 from maw.media_cache import embed_media_caches
 from maw.waveform import is_waveform_payload
@@ -427,9 +428,8 @@ def default_paths() -> LauncherPaths:
 # 段落标题的 keycap 表情（1️⃣ 等）由「数字 + U+FE0F + U+20E3」组成，需要彩色 emoji 字体
 # 完整覆盖才可正常成型；部分 Linux 发行版（如 SteamOS 的 Twemoji）缺少 U+FE0F，会渲染成
 # 「3x」。Windows / macOS 系统 emoji 字体已覆盖 keycap，无需额外处理。
-# Linux 下首次启动时按顺序尝试以下地址下载到用户缓存目录，成功即缓存，之后离线可用；
+# Linux 下首次启动时按顺序尝试以下地址下载到 MAW 用户数据目录，成功即缓存，之后离线可用；
 # 可通过 MAW_EMOJI_FONT_URL 环境变量整体覆盖（例如指向其它可用镜像）。
-_EMOJI_FONT_FILE_NAME = "NotoColorEmoji.ttf"
 _EMOJI_FONT_MIN_BYTES = 1_000_000
 _EMOJI_FONT_REMOTE_URLS: Final[Sequence[str]] = (
     "https://cdn.jsdelivr.net/gh/googlefonts/noto-emoji@main/fonts/NotoColorEmoji.ttf",
@@ -439,14 +439,8 @@ _EMOJI_FONT_REMOTE_URLS: Final[Sequence[str]] = (
 
 
 def _emoji_font_cache_path() -> Path:
-    """返回平台对应的用户级缓存路径（与 macOS 的 .env 目录命名空间一致）。"""
-    if sys.platform == "darwin":
-        base = Path.home() / "Library" / "Application Support" / "Moy" / "MAW"
-    elif sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))) / "Moy" / "MAW"
-    else:
-        base = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "Moy" / "MAW"
-    return base / _EMOJI_FONT_FILE_NAME
+    """返回 MAW 用户数据目录中的 Emoji 字体缓存路径。"""
+    return default_emoji_font_path()
 
 
 def _emoji_font_urls() -> list[str]:

@@ -11,7 +11,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw import gui_config  # noqa: E402
+from maw import app_paths, gui_config  # noqa: E402
 
 
 class GuiConfigTests(unittest.TestCase):
@@ -51,56 +51,53 @@ class GuiConfigTests(unittest.TestCase):
 
         self.assertEqual(resolved.theme, "system")
 
-    def test_default_env_path_uses_macos_application_support(self) -> None:
-        with mock.patch.object(gui_config.sys, "platform", "darwin"):
-            with mock.patch.object(gui_config.Path, "home", return_value=Path("/Users/test-user")):
-                self.assertEqual(
-                    gui_config.default_env_path(),
-                    Path("/Users/test-user/Library/Application Support/Moy/MAW/.env"),
-                )
+    def test_default_env_path_keeps_repo_root_for_source_on_macos(self) -> None:
+        with mock.patch.object(app_paths.sys, "platform", "darwin"):
+            self.assertEqual(gui_config.default_env_path(), ROOT / ".env")
 
     def test_default_env_path_keeps_repo_root_when_running_from_source(self) -> None:
         """Given 源码运行（非冻结）的 Linux, When 解析, Then 保持仓库根 .env 不变。"""
-        with mock.patch.object(gui_config.sys, "platform", "linux"):
-            self.assertFalse(getattr(gui_config.sys, "frozen", False))
+        with mock.patch.object(app_paths.sys, "platform", "linux"):
+            self.assertFalse(getattr(app_paths.sys, "frozen", False))
             self.assertEqual(gui_config.default_env_path(), ROOT / ".env")
 
-    def test_default_env_path_frozen_linux_uses_config_dir(self) -> None:
-        """Given 冻结（AppImage）Linux 且 ~/.config 可写, When 解析, Then 用用户配置目录。"""
-        with mock.patch.object(gui_config.sys, "platform", "linux"), mock.patch.object(gui_config.sys, "frozen", True, create=True):
-            with mock.patch.object(gui_config.Path, "home", return_value=Path("/home/test-user")):
-                with mock.patch.dict(os.environ, {}, clear=True):
-                    with mock.patch.object(gui_config.Path, "mkdir"):
-                        self.assertEqual(
-                            gui_config.default_env_path(),
-                            Path("/home/test-user/.config/Moy/MAW/.env"),
-                        )
+    def test_default_env_path_frozen_prefers_file_beside_executable(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app_dir = Path(temp_dir) / "MAW"
+            app_dir.mkdir()
+            adjacent = app_dir / ".env"
+            adjacent.write_text("CONFIG_SOURCE=adjacent\n", encoding="utf-8")
+            with mock.patch.object(app_paths.sys, "platform", "win32"), mock.patch.object(
+                app_paths.sys, "frozen", True, create=True
+            ), mock.patch.object(app_paths.sys, "executable", str(app_dir / "MAW.exe")):
+                with mock.patch.dict(
+                    os.environ,
+                    {"LOCALAPPDATA": str(Path(temp_dir) / "LocalAppData"), "MAW_ENV_FILE": ""},
+                    clear=True,
+                ):
+                    self.assertEqual(gui_config.default_env_path(), adjacent.resolve())
 
-    def test_default_env_path_frozen_linux_falls_back_to_cache_dir(self) -> None:
-        """Given 冻结 Linux 且 ~/.config 不可写, When 解析, Then 回退 ~/.cache。"""
-        with mock.patch.object(gui_config.sys, "platform", "linux"), mock.patch.object(gui_config.sys, "frozen", True, create=True):
-            with mock.patch.object(gui_config.Path, "home", return_value=Path("/home/test-user")):
-                with mock.patch.dict(os.environ, {}, clear=True):
-                    with mock.patch.object(gui_config.Path, "mkdir", side_effect=[OSError("read-only"), None]):
-                        self.assertEqual(
-                            gui_config.default_env_path(),
-                            Path("/home/test-user/.cache/Moy/MAW/.env"),
-                        )
-
-    def test_default_env_path_frozen_linux_honors_xdg_config_home(self) -> None:
-        """Given 冻结 Linux 且设置 XDG_CONFIG_HOME, When 解析, Then 优先使用该目录。"""
-        with mock.patch.object(gui_config.sys, "platform", "linux"), mock.patch.object(gui_config.sys, "frozen", True, create=True):
-            with mock.patch.object(gui_config.Path, "home", return_value=Path("/home/test-user")):
-                with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": "/custom/config"}, clear=True):
-                    with mock.patch.object(gui_config.Path, "mkdir"):
-                        self.assertEqual(
-                            gui_config.default_env_path(),
-                            Path("/custom/config/Moy/MAW/.env"),
-                        )
+    def test_default_env_path_frozen_falls_back_to_shared_app_data(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app_dir = Path(temp_dir) / "MAW"
+            app_dir.mkdir()
+            local_app_data = Path(temp_dir) / "LocalAppData"
+            with mock.patch.object(app_paths.sys, "platform", "win32"), mock.patch.object(
+                app_paths.sys, "frozen", True, create=True
+            ), mock.patch.object(app_paths.sys, "executable", str(app_dir / "MAW.exe")):
+                with mock.patch.dict(
+                    os.environ,
+                    {"LOCALAPPDATA": str(local_app_data), "MAW_ENV_FILE": ""},
+                    clear=True,
+                ):
+                    self.assertEqual(
+                        gui_config.default_env_path(),
+                        (local_app_data / "MAW" / ".env").resolve(),
+                    )
 
     def test_default_env_path_keeps_windows_at_repo_root(self) -> None:
         """Given Windows, When resolving, Then it stays at the repository root (unchanged)."""
-        with mock.patch.object(gui_config.sys, "platform", "win32"):
+        with mock.patch.object(app_paths.sys, "platform", "win32"):
             with mock.patch.object(gui_config.Path, "home", return_value=Path("C:\\Users\\test-user")):
                 self.assertEqual(gui_config.default_env_path(), ROOT / ".env")
 

@@ -13,6 +13,7 @@ from typing import Final
 
 import requests
 
+from maw.app_paths import default_env_path
 
 SERVICE: Final = "asr"
 HOST: Final = "asr.tencentcloudapi.com"
@@ -26,7 +27,7 @@ FAILURE_STATUS: Final = 3
 
 
 def _load_env_file() -> dict[str, str]:
-    path = Path(__file__).resolve().parents[1] / ".env"
+    path = default_env_path()
     if not path.exists():
         return {}
     values: dict[str, str] = {}

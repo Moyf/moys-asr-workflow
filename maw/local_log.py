@@ -9,7 +9,6 @@ print / traceback 一并接入，供崩溃／退出后排查。写盘失败一�
 from __future__ import annotations
 
 import io
-import os
 import re
 import sys
 import threading
@@ -17,6 +16,8 @@ from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import TextIO
+
+from maw.app_paths import default_log_directory
 
 # 启动时清理多少天前的日志文件。
 LOG_RETENTION_DAYS = 7
@@ -26,24 +27,6 @@ _LOG_FILE_PATTERN = "maw-*.log"
 # 形态再做一层兜底，避免事件消息意外携带 API Key。
 _SECRET_PATTERN = re.compile(r"sk-[A-Za-z0-9_-]{4,}")
 _SENSITIVE_KEYS = ("key", "secret", "token", "password")
-
-
-def default_log_directory() -> Path:
-    """返回平台对应的 MAW 用户数据日志目录（与 emoji 字体缓存同一命名空间）。
-
-    `MAW_APP_DATA_ROOT` 覆盖整个基目录（打包/测试环境用），与启动错误
-    日志的回退路径保持同一命名空间，避免日志分散在两处。
-    """
-    override = os.environ.get("MAW_APP_DATA_ROOT", "").strip()
-    if override:
-        return Path(override).expanduser().resolve(strict=False) / "logs"
-    if sys.platform == "darwin":
-        base = Path.home() / "Library" / "Application Support" / "Moy" / "MAW"
-    elif sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))) / "Moy" / "MAW"
-    else:
-        base = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "Moy" / "MAW"
-    return base / "logs"
 
 
 def _log_path_for(directory: Path, day: datetime) -> Path:

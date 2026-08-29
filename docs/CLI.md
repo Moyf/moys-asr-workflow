@@ -44,7 +44,7 @@ DASHSCOPE_API_KEY=你的百炼密钥
 SONIOX_API_KEY=你的 Soniox 密钥
 ```
 
-Windows Release 包的 `.env` 通常放在 `MAW.exe` 同目录；源码方式放在仓库根目录。环境变量优先于 `.env`。API Key 的申请方式见 [ASR 服务与配置](PROVIDERS.md) 和[阿里云官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)。
+Windows Release 包会优先读取 `MAW.exe` 同目录的 `.env`；该文件不存在时回退到 `%LOCALAPPDATA%\MAW\.env`。macOS / Linux 也优先读取应用程序同目录的 `.env`，再回退到对应的 MAW 用户数据目录；源码方式继续读取仓库根 `.env`。环境变量优先于 `.env`。API Key 的申请方式见 [ASR 服务与配置](PROVIDERS.md) 和[阿里云官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)。
 
 ### PowerShell 路径
 
@@ -331,7 +331,7 @@ if (-not (Test-Path -LiteralPath $mospPath)) {
 常见问题：
 
 - `ffmpeg` 或 `ffprobe` 找不到：改用默认的 `MAW` 包，或把 FFmpeg 安装目录加入 PATH。
-- 报未配置 API Key：检查对应供应商的环境变量名，或检查 `.env` 是否位于 Release 的 `MAW.exe` 同目录。
+- 报未配置 API Key：检查对应供应商的环境变量名，或检查 `.env` 是否位于 Release 的 `MAW.exe` 同目录；若未放置同目录文件，再检查 `%LOCALAPPDATA%\MAW\.env`。
 - 输出路径包含空格但文件没有生成：检查 PowerShell 命令是否给路径加了双引号。
 - Server 打不开工程媒体：工程里的媒体路径可能已失效，使用 `PROJECT --media PATH` 指定当前媒体。
 - Server 端口被占用：选择其他 `--port`，或先对正确的端口执行 `--stop-server`。

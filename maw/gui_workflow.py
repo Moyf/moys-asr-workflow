@@ -514,6 +514,9 @@ def _child_environment(
     engine: str = "",
 ) -> dict[str, str]:
     env = dict(parent)
+    # The bundled local-runtime Python is not itself PyInstaller-frozen, so
+    # pass the parent process's resolved configuration file explicitly.
+    env["MAW_ENV_FILE"] = str(DEFAULT_ENV_PATH)
     env["PYTHONUNBUFFERED"] = "1"
     configure_utf8_environment(env)
     configured_path = parent.get("FFMPEG_PATH") or load_env(DEFAULT_ENV_PATH).get("FFMPEG_PATH", "")

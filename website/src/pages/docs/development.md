@@ -44,10 +44,12 @@ uv run python edit.py --blank
 | `segments` | `.mosp` / `.json` 工程文件 | 字幕真源；时间均为整数毫秒。 |
 | `waveform` | 工程文件或可重建 sidecar | 性能缓存，不是字幕真源。 |
 | `workspace` | 工程文件（可选） | 随工程携带的窗口布局与显示状态。 |
-| 自定义服务器工作区 | 用户本机 `server-editor-settings.json` | 命名工作区库，跨工程复用，不改写工程文件。 |
+| 自定义服务器工作区 | 用户本机 `MAW/server-editor-settings.json` | 命名工作区库，跨工程复用，不改写工程文件。 |
 | 编辑器、波形偏好 | 浏览器 `localStorage` | 浏览器与 origin 级别偏好；`file://` 或隐私模式可能不可用。 |
 
-服务器设置文件的位置由 `server-editor/serve.py:default_settings_path()` 决定：Windows 为 `%LOCALAPPDATA%/Moy/moys-asr-workflow/server-editor-settings.json`，其他系统为用户数据目录下的 `Moy/moys-asr-workflow/server-editor-settings.json`。它包含最近工程、自动打开开关、`preset_workspaces`、`saved_workspaces` 和 `active_workspace_name`。
+服务器设置文件的位置由 `server-editor/serve.py:default_settings_path()` 决定：Windows 为 `%LOCALAPPDATA%/MAW/server-editor-settings.json`，macOS 为 `~/Library/Application Support/MAW/server-editor-settings.json`，Linux 为 `$XDG_DATA_HOME/MAW/server-editor-settings.json`（未设置时使用 `~/.local/share/MAW`）。它包含最近工程、自动打开开关、`preset_workspaces`、`saved_workspaces` 和 `active_workspace_name`。Windows 升级时只在新文件不存在时读取旧的 `%LOCALAPPDATA%/Moy/moys-asr-workflow/server-editor-settings.json`，保存始终写入新路径。
+
+用户级目录和 `.env` 的公共解析规则集中在 `maw/app_paths.py`：源码运行继续读取仓库根 `.env`；冻结版优先读取应用程序同目录 `.env`，不存在时回退到 MAW 用户数据目录。Windows 用户数据根为 `%LOCALAPPDATA%/MAW`，其中还包括 `logs`、`local-runtime`、`model-cache` 和 Emoji 字体缓存。
 
 覆盖保存工程时，服务器保留原扩展名并先创建同目录备份：`project.mosp.bak` 或 `project.json.bak`。`.workspace.json`、Resolve JSON 和保留区域 JSON 是交换/配置文件，不是字幕工程真源。
 

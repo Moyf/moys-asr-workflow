@@ -66,6 +66,13 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(paths.json, self.root / "out.mosp")
         self.assertEqual(paths.html, self.root / "out.edit.html")
 
+    def test_child_environment_forwards_resolved_env_path(self) -> None:
+        env_path = self.root / "config.env"
+        with mock.patch("maw.gui_workflow.DEFAULT_ENV_PATH", env_path):
+            env = _child_environment({"PATH": ""}, api_key="")
+
+        self.assertEqual(env["MAW_ENV_FILE"], str(env_path))
+
     def test_child_environment_prepends_managed_site_packages_for_local_provider(self) -> None:
         """Given source-mode local transcription, When building env, Then managed site-packages go first on PYTHONPATH."""
         runtime_root = self.root / "local-runtime-moss"
@@ -957,28 +964,32 @@ class GuiWorkflowTests(unittest.TestCase):
             self.assertEqual(maw_gui.main(["--serve-alignment", "project.mosp", "script.txt"]), 0)
 
         run_server.assert_called_once_with(["project.mosp", "script.txt"])
-    def test_startup_error_log_path_uses_frozen_executable_directory(self) -> None:
+    def test_startup_error_log_path_uses_shared_maw_log_directory(self) -> None:
         import maw_gui
 
         with mock.patch.object(maw_gui.sys, "platform", "win32"), mock.patch.object(
             maw_gui.sys, "executable", str(self.root / "MAW.exe")
-        ), mock.patch.object(maw_gui.sys, "frozen", True, create=True):
+        ), mock.patch.object(maw_gui.sys, "frozen", True, create=True), mock.patch.dict(
+            os.environ,
+            {"LOCALAPPDATA": str(self.root / "LocalAppData"), "MAW_APP_DATA_ROOT": ""},
+            clear=False,
+        ):
             self.assertEqual(
                 _startup_error_log_path(),
-                self.root / "launcher-startup.log",
+                self.root / "LocalAppData" / "MAW" / "logs" / "launcher-startup.log",
             )
 
     def test_startup_error_fallback_uses_shared_maw_log_directory(self) -> None:
         import maw_gui
 
-        with mock.patch("maw.local_log.sys.platform", "win32"), mock.patch.dict(
+        with mock.patch("maw.app_paths.sys.platform", "win32"), mock.patch.dict(
             os.environ,
             {"LOCALAPPDATA": str(self.root / "LocalAppData"), "MAW_APP_DATA_ROOT": ""},
             clear=False,
         ):
             self.assertEqual(
                 maw_gui._startup_error_fallback_log_path(),
-                self.root / "LocalAppData" / "Moy" / "MAW" / "logs" / "launcher-startup.log",
+                self.root / "LocalAppData" / "MAW" / "logs" / "launcher-startup.log",
             )
 
     def test_entrypoint_debug_aliases_configure_launcher_debug_modes(self) -> None:

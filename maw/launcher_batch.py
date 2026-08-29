@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import Event
 
+from maw.app_paths import default_env_path
 from maw.gui_workflow import (
     MissingOutputError,
     TranscriptionCancelledError,
@@ -105,7 +106,7 @@ def run_batch(
                     media_path=request.media_path,
                     project_path=result.json_path,
                     srt_path=result.srt_path,
-                    env_path=env_path or manifest_path.parent / ".env",
+                    env_path=env_path or default_env_path(),
                     ffmpeg_path=ffmpeg_path,
                     ocr_runtime_root=ocr_runtime_root,
                     cancel_event=cancel_event,

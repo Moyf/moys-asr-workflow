@@ -47,6 +47,7 @@ mimetypes.add_type("audio/ogg", ".opus")
 import edit  # noqa: E402
 from maw.console import configure_utf8_stdio  # noqa: E402
 from maw import reapeaks  # noqa: E402
+from maw.app_paths import default_server_settings_path, legacy_server_settings_path  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
 from maw.project import (  # noqa: E402
@@ -67,7 +68,6 @@ from maw.lottie_glyphs import LottieGlyphError, vectorize_lottie_animation  # no
 
 
 MAX_RECENT_PROJECTS = 10
-SETTINGS_FILE_NAME = "server-editor-settings.json"
 BUILTIN_WORKSPACE_IDS = frozenset({"classic", "wave-right", "three-fold", "cinema"})
 PRPROJ_CAPABILITY = {
     "ok": False,
@@ -161,11 +161,18 @@ class OgrafExportInProgressError(RuntimeError):
 
 def default_settings_path() -> Path:
     """Return a per-user app-data path, outside the project and browser storage."""
-    if os.name == "nt":
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-    else:
-        base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-    return base / "Moy" / "moys-asr-workflow" / SETTINGS_FILE_NAME
+    return default_server_settings_path()
+
+
+def load_default_server_settings() -> ServerSettings:
+    """Read the new settings path, falling back to the legacy path once."""
+    path = default_settings_path()
+    if path.is_file():
+        return read_server_settings(path)
+    legacy_path = legacy_server_settings_path()
+    if legacy_path != path and legacy_path.is_file():
+        return read_server_settings(legacy_path)
+    return ServerSettings()
 
 
 def read_server_settings(path: Path) -> ServerSettings:
@@ -2057,7 +2064,7 @@ def main() -> int:
         parser.error("--blank 不能与 json_path 同时使用")
 
     settings_path = default_settings_path()
-    settings = read_server_settings(settings_path)
+    settings = load_default_server_settings()
     defer_reapeaks = not args.no_waveform
     project = load_blank_project(args.stickers)
     project_loader: ProjectLoader | None = None
