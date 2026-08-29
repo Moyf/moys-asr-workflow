@@ -208,7 +208,7 @@ class LocalSegmentationTuningTests(unittest.TestCase):
 class LocalAsrFlowTests(unittest.TestCase):
     def test_extract_audio_passes_duration_limit_to_ffmpeg(self) -> None:
         with mock.patch("generate_subtitle_qwen_api.subprocess.run") as run:
-            extract_audio("clip.mp4", "clip.wav", duration_limit=2.0)
+            extract_audio("clip.mp4", "clip.wav", duration_limit=2.0, ffmpeg_path="ffmpeg")
 
         command = run.call_args.args[0]
         self.assertEqual(command[command.index("-t") + 1], "2.0")
@@ -338,6 +338,7 @@ class LocalAsrFlowTests(unittest.TestCase):
                         language="en",
                         batch_size_s=QWEN_DEFAULT_CHUNK_SECONDS,
                         on_event=events.append,
+                        ffmpeg_path="ffmpeg",
                     )
 
         self.assertEqual(len(runtime.calls), 3)

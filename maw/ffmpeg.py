@@ -208,6 +208,7 @@ def resolve_ffmpeg_tools(
         )
 
     platform_value = sys.platform if platform is None else platform
+    macos_search_directories = macos_directories if include_macos else ()
     if include_macos and platform_value == "darwin":
         candidates.extend(
             (Path(directory) / _tool_filename("ffmpeg"), Path(directory) / _tool_filename("ffprobe"))
@@ -220,7 +221,7 @@ def resolve_ffmpeg_tools(
         lookup_path = ffmpeg_search_path(
             raw_path,
             platform=platform_value,
-            macos_directories=macos_directories,
+            macos_directories=macos_search_directories,
         )
         # shutil.which(..., path=None) falls back to the current process
         # environment. An explicitly empty PATH must remain empty so a

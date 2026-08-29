@@ -989,7 +989,7 @@ class GuiWebBridgeTests(unittest.TestCase):
                 result = self.api.run_ffconcat_rebuild({"mediaPath": str(media), "ffconcatPath": str(concat)})
 
         self.assertTrue(result["ok"])
-        self.assertEqual(rebuild.call_args.kwargs["ffmpeg_path"], ffmpeg.resolve())
+        self.assertEqual(rebuild.call_args.kwargs["ffmpeg_path"], ffmpeg)
         resolve_ffmpeg.assert_called_once()
 
     def test_get_config_exposes_last_language_empty_vs_absent(self) -> None:
@@ -1786,11 +1786,11 @@ class GuiWebBridgeTests(unittest.TestCase):
         def which(name: str, *, path: str | None = None) -> str:
             return str(ffmpeg if name == "ffmpeg" else ffprobe)
 
-        with mock.patch("maw.ffmpeg.shutil.which", side_effect=which):
+        with mock.patch("maw.gui_web._ffmpeg_search_path", return_value=str(ffmpeg.parent)), mock.patch("maw.ffmpeg.shutil.which", side_effect=which):
             result = self.api.check_ffmpeg()
 
         self.assertTrue(result["found"])
-        self.assertEqual(result["directory"], str(ffmpeg.parent))
+        self.assertEqual(result["directory"], str(ffmpeg.parent.resolve()))
 
     def test_check_ffmpeg_falls_back_to_bundled_tools(self) -> None:
         ffmpeg_dir = self.root / "ffmpeg" / "bin"
@@ -1825,7 +1825,7 @@ class GuiWebBridgeTests(unittest.TestCase):
                     result = self.api.check_ffmpeg()
 
         self.assertTrue(result["found"])
-        self.assertEqual(result["directory"], str(ffmpeg_dir))
+        self.assertEqual(result["directory"], str(ffmpeg_dir.resolve()))
 
     def test_save_ffmpeg_path_invalid_stays_missing(self) -> None:
         result = self.api.save_ffmpeg_path({"path": str(self.root / "missing")})
@@ -1854,7 +1854,7 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertTrue(result["found"])
-        self.assertEqual(result["directory"], str(ffmpeg_dir))
+        self.assertEqual(result["directory"], str(ffmpeg_dir.resolve()))
         self.assertIn(f"FFMPEG_PATH={ffmpeg_dir}", self.env_path.read_text(encoding="utf-8"))
 
     def test_save_sticker_dir_rejects_missing_directory(self) -> None:

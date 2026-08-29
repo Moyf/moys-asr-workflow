@@ -55,7 +55,7 @@ class QwenMediaExtractionTests(unittest.TestCase):
 
     def test_video_extraction_can_limit_duration_in_the_first_ffmpeg_pass(self) -> None:
         with mock.patch("generate_subtitle_qwen_api.subprocess.run") as run:
-            extract_audio("input.mp4", "output.wav", duration_limit=120)
+            extract_audio("input.mp4", "output.wav", duration_limit=120, ffmpeg_path="ffmpeg")
 
         # FFmpeg 经统一解析器解析，可能是绝对路径；按可执行名断言。
         command = run.call_args.args[0]

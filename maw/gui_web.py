@@ -76,7 +76,7 @@ MOSE_FILE_TYPE = "Moy.MOSE.Project"
 # 服务端先监听再在后台准备工程；这里的窗口只负责兜底探测进程是否已响应。
 SERVER_START_TIMEOUT: Final = 30.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.5.0-beta.8"
+BUNDLED_APP_VERSION = "1.5.0-beta.9"
 MOSE_VERSION = "0.1.0"
 
 

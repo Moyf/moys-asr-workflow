@@ -29,6 +29,8 @@ class FfmpegResolverTests(unittest.TestCase):
         for tool in tools:
             path = self._tool_path(directory, tool)
             path.write_bytes(tool.encode("ascii"))
+            if os.name != "nt":
+                path.chmod(path.stat().st_mode | 0o111)
             result[tool] = path
         return result
 
@@ -94,6 +96,8 @@ class FfmpegResolverTests(unittest.TestCase):
         with mock.patch.object(ffmpeg_module.shutil, "which", return_value=str(self.root / "unexpected")) as which:
             result = resolve_ffmpeg_tools(
                 environment={"PATH": ""},
+                platform="darwin",
+                macos_directories=(self.root / "homebrew",),
                 include_bundled=False,
                 include_macos=False,
             )
