@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import importlib
 import importlib.util
-import os
 import sys
 import traceback
 from collections.abc import Sequence

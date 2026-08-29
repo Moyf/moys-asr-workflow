@@ -1753,7 +1753,8 @@ class GuiWebBridgeTests(unittest.TestCase):
             result = self.api.open_faq()
 
         self.assertTrue(result["ok"])
-        open_path.assert_called_once_with(executable_faq)
+        # open_faq 内部对 sys.executable 做 resolve，Windows 8.3 短路径下会展开成长路径。
+        open_path.assert_called_once_with(executable_faq.resolve())
 
     def test_open_faq_returns_structured_failure_when_both_release_locations_are_missing(self) -> None:
         with mock.patch("maw.gui_web.sys.executable", str(self.root / "exe" / "MAW.exe")):
@@ -1761,7 +1762,7 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertIn("FAQ-常见问题.txt not found", result["error"])
-        self.assertIn(str(self.root / "exe"), result["error"])
+        self.assertIn(str((self.root / "exe").resolve()), result["error"])
 
     def test_check_ffmpeg_reports_found_when_both_tools_exist(self) -> None:
         ffmpeg = self.root / "bin" / "ffmpeg.exe"
