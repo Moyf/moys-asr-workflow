@@ -508,6 +508,7 @@
         </div>
         <nav id="toolboxUtilitiesTabList" class="toolbox-tabs" role="tablist" aria-labelledby="toolboxUtilitiesPrimaryTab">
           <div class="toolbox-tab-list toolbox-utility-tab-list">
+            <button id="toolboxAlignmentTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxAlignmentPanel" data-tool="alignment" tabindex="-1" data-i18n="toolbox_alignment">口播对齐</button>
             <button id="toolboxWaveformTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxWaveformPanel" data-tool="waveform" data-i18n="toolbox_waveform">生成波形</button>
             <button id="toolboxFfconcatTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxFfconcatPanel" data-tool="ffconcat" tabindex="-1" data-i18n="toolbox_ffconcat">媒体重组</button>
           </div>
@@ -540,6 +541,63 @@
           </label>
           <p class="hint" data-i18n="generate_spectral_hint">默认只生成 ReaPeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。</p>
         </div>
+      </section>
+
+      <section id="toolboxAlignmentPanel" class="toolbox-panel hidden toolbox-utility-panel" role="tabpanel" aria-labelledby="toolboxAlignmentTab">
+        <p class="hint toolbox-panel-hint" data-i18n="toolbox_alignment_hint">适合初版 ASR 中有口吃、重录、重复或顺序混乱的口播；需要 MAW 工程和校对文稿，人工选择 take 后导出新工程。</p>
+        <div id="toolboxAlignmentInputs" class="toolbox-alignment-inputs">
+          <div id="toolboxAlignmentProjectDropZone" class="field toolbox-input">
+            <div class="toolbox-input-heading">
+              <label for="toolboxAlignmentProjectPath" data-i18n="toolbox_alignment_input_project">MAW 工程</label>
+              <span id="toolboxAlignmentProjectName" class="toolbox-input-name empty" aria-live="polite" data-i18n="toolbox_input_empty">未选择文件</span>
+            </div>
+            <div class="path-row">
+              <input id="toolboxAlignmentProjectPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_alignment_project_placeholder" placeholder="选择或拖入 .mosp / .json 工程">
+              <button id="pickToolboxAlignmentProject" class="ghost" type="button" data-i18n="choose">选择</button>
+            </div>
+            <p class="hint" data-i18n="toolbox_alignment_project_hint">默认跟随当前 Launcher 工程；口播对齐需要 MAW 工程中的 ASR 时间码，不能只使用 SRT。</p>
+            <p id="toolboxAlignmentProjectPathError" class="field-error"></p>
+          </div>
+          <div id="toolboxAlignmentScriptDropZone" class="field toolbox-input">
+            <div class="toolbox-input-heading">
+              <label for="toolboxAlignmentScriptPath" data-i18n="toolbox_alignment_input_script">校对文稿</label>
+              <span id="toolboxAlignmentScriptName" class="toolbox-input-name empty" aria-live="polite" data-i18n="toolbox_input_empty">未选择文件</span>
+            </div>
+            <div class="path-row">
+              <input id="toolboxAlignmentScriptPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_alignment_script_placeholder" placeholder="选择或拖入 UTF-8 .txt / .md 校对文稿">
+              <button id="pickToolboxAlignmentScript" class="ghost" type="button" data-i18n="choose">选择</button>
+            </div>
+            <p class="hint" data-i18n="toolbox_alignment_script_hint">每个非空行视为一行校对文稿。</p>
+            <p id="toolboxAlignmentScriptPathError" class="field-error"></p>
+          </div>
+        </div>
+        <div id="toolboxAlignmentGapSettings" class="adv-group toolbox-alignment-gap-settings">
+          <h3 data-i18n="toolbox_alignment_gap_heading">自动生成空隙</h3>
+          <div class="toolbox-grid">
+            <div class="field">
+              <label for="toolboxAlignmentGapMinimum" data-i18n="toolbox_alignment_gap_minimum">最小空隙（ms）</label>
+              <input id="toolboxAlignmentGapMinimum" type="number" min="100" max="60000" step="50" value="400" inputmode="numeric">
+              <p class="hint" data-i18n="toolbox_alignment_gap_minimum_hint">短于此值的静音不处理。</p>
+            </div>
+            <div class="field">
+              <label for="toolboxAlignmentGapThreshold" data-i18n="toolbox_alignment_gap_threshold">音量阈值（dB）</label>
+              <input id="toolboxAlignmentGapThreshold" type="number" min="-96" max="0" step="1" value="-28" inputmode="decimal">
+              <p class="hint" data-i18n="toolbox_alignment_gap_threshold_hint">达到此音量才算有声。</p>
+            </div>
+            <div class="field">
+              <label for="toolboxAlignmentGapLeadIn" data-i18n="toolbox_alignment_gap_lead_in">前端预留（ms）</label>
+              <input id="toolboxAlignmentGapLeadIn" type="number" min="0" max="2000" step="10" value="120" inputmode="numeric">
+              <p class="hint" data-i18n="toolbox_alignment_gap_lead_in_hint">每段空隙开头保留的静音，避免上一句收尾被切掉。</p>
+            </div>
+            <div class="field">
+              <label for="toolboxAlignmentGapLeadOut" data-i18n="toolbox_alignment_gap_lead_out">后端预留（ms）</label>
+              <input id="toolboxAlignmentGapLeadOut" type="number" min="0" max="2000" step="10" value="80" inputmode="numeric">
+              <p class="hint" data-i18n="toolbox_alignment_gap_lead_out_hint">每段空隙结尾保留的静音，避免下一句贴得太紧。</p>
+            </div>
+          </div>
+          <p class="hint toolbox-alignment-gap-hint" data-i18n="toolbox_alignment_gap_hint">仅作用于口播对齐导出的自动空隙；与 MAWE 设置分开保存。</p>
+        </div>
+        <p class="toolbox-notice" data-i18n="toolbox_alignment_notice">不会覆盖输入工程；导出后会生成 source.aligned.mosp。</p>
       </section>
 
     <section id="toolboxMatchPanel" class="toolbox-panel" role="tabpanel" aria-labelledby="toolboxMatchTab">
@@ -763,6 +821,10 @@
         <div class="toolbox-action-slot hidden" data-tool-action="waveform">
           <button id="generateWaveform" class="ghost" type="button" data-i18n="toolbox_generate_waveform">生成波形文件</button>
           <button id="runWaveform" class="primary" type="button" data-i18n="toolbox_run_waveform">生成波形并打开编辑器</button>
+        </div>
+        <div class="toolbox-action-slot hidden" data-tool-action="alignment">
+          <button id="runToolboxAlignment" class="primary" type="button" data-i18n="toolbox_run_alignment">启动并打开口播对齐</button>
+          <button id="stopToolboxAlignment" class="ghost hidden" type="button" data-i18n="toolbox_stop_alignment">停止服务</button>
         </div>
         <div class="toolbox-action-slot" data-tool-action="match">
           <button id="runScriptMatch" class="primary" type="button" data-i18n="toolbox_run_match">匹配文稿</button>

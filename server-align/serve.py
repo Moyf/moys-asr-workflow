@@ -15,6 +15,7 @@ import os
 import secrets
 import tempfile
 import webbrowser
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from hmac import compare_digest
@@ -35,6 +36,7 @@ from maw.script_alignment import (  # noqa: E402
     align_project_to_script,
     apply_alignment_to_project,
     make_selection_manifest,
+    normalize_gap_remove_settings,
 )
 
 
@@ -56,6 +58,7 @@ class AlignmentState:
     media_path: Path | None
     project: dict[str, object]
     alignment: dict[str, object]
+    gap_remove_override: dict[str, int | float] | None = None
 
     def payload(self) -> dict[str, object]:
         media_kind = ""
@@ -114,7 +117,9 @@ class AlignmentRequestHandler(BaseHTTPRequestHandler):
                     raise ValueError("extraActions 必须是对象")
                 if not isinstance(candidate_actions, dict):
                     raise ValueError("candidateActions 必须是对象")
-                if gap_remove is not None and not isinstance(gap_remove, dict):
+                if gap_remove is None:
+                    gap_remove = self.server.state.gap_remove_override
+                elif not isinstance(gap_remove, dict):
                     raise ValueError("gapRemove 必须是对象")
                 selection = make_selection_manifest(
                     self.server.state.alignment,
@@ -126,6 +131,7 @@ class AlignmentRequestHandler(BaseHTTPRequestHandler):
                     self.server.state.project,
                     self.server.state.alignment,
                     selection,
+                    **_gap_detection_kwargs(self.server.state),
                     gap_remove_override=gap_remove,
                 )
                 self.send_json(HTTPStatus.OK, {
@@ -155,7 +161,9 @@ class AlignmentRequestHandler(BaseHTTPRequestHandler):
             gap_remove = request.get("gapRemove")
             if not isinstance(candidate_actions, dict):
                 raise ValueError("candidateActions 必须是对象")
-            if gap_remove is not None and not isinstance(gap_remove, dict):
+            if gap_remove is None:
+                gap_remove = self.server.state.gap_remove_override
+            elif not isinstance(gap_remove, dict):
                 raise ValueError("gapRemove 必须是对象")
             selection = make_selection_manifest(
                 self.server.state.alignment,
@@ -167,6 +175,7 @@ class AlignmentRequestHandler(BaseHTTPRequestHandler):
                 self.server.state.project,
                 self.server.state.alignment,
                 selection,
+                **_gap_detection_kwargs(self.server.state),
                 gap_remove_override=gap_remove,
             )
             output_project["script_alignment"]["createdAt"] = datetime.now().astimezone().isoformat(timespec="seconds")
@@ -316,12 +325,42 @@ def parse_byte_range(value: str | None, size: int) -> ByteRange | None:
     return ByteRange(start, end)
 
 
-def load_state(project_path: Path, script_path: Path, media_path: Path | None) -> AlignmentState:
+def load_state(
+    project_path: Path,
+    script_path: Path,
+    media_path: Path | None,
+    gap_remove_override: Mapping[str, object] | None = None,
+) -> AlignmentState:
     project = read_project(project_path)
     script = script_path.read_text(encoding="utf-8-sig")
     alignment = align_project_to_script(project, script)
     resolved_media = resolve_media_path(project_path, project, media_path)
-    return AlignmentState(project_path.resolve(), script_path.resolve(), resolved_media, project, alignment)
+    normalized_gap_remove = (
+        normalize_gap_remove_settings(gap_remove_override)
+        if gap_remove_override is not None
+        else None
+    )
+    return AlignmentState(
+        project_path.resolve(),
+        script_path.resolve(),
+        resolved_media,
+        project,
+        alignment,
+        normalized_gap_remove,
+    )
+
+
+def _gap_detection_kwargs(state: AlignmentState) -> dict[str, object]:
+    settings = state.gap_remove_override
+    if settings is None:
+        return {}
+    return {
+        "minimum_gap_ms": settings["minimum_ms"],
+        "threshold_db": settings["threshold_db"],
+        "hysteresis_db": settings["hysteresis_db"],
+        "lead_in_ms": settings["lead_in_ms"],
+        "lead_out_ms": settings["lead_out_ms"],
+    }
 
 
 def resolve_media_path(project_path: Path, project: dict[str, object], override: Path | None) -> Path | None:
@@ -365,11 +404,16 @@ def render_page() -> bytes:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="启动 MAW 文稿对齐 MVP Server（仅本机访问）")
+    parser = argparse.ArgumentParser(description="启动 MAW 口播对齐 MVP Server（仅本机访问）")
     parser.add_argument("project_path", help="MAW .mosp/.json 工程")
     parser.add_argument("script_path", help="UTF-8 文稿，每个非空行视为一行文稿")
     parser.add_argument("-m", "--media", help="覆盖工程中的媒体路径")
     parser.add_argument("-p", "--port", type=int, default=8260, help="监听端口（默认 8260，0=自动选择）")
+    parser.add_argument("--gap-minimum-ms", type=int, help="自动空隙的最小长度（由 Launcher 传入时使用面板值）")
+    parser.add_argument("--gap-threshold-db", type=float, help="自动空隙的音量阈值（由 Launcher 传入时使用面板值）")
+    parser.add_argument("--gap-hysteresis-db", type=float, help="自动空隙的滞回值（由 Launcher 传入时使用面板值）")
+    parser.add_argument("--gap-lead-in-ms", type=int, help="自动空隙的前端预留量（由 Launcher 传入时使用面板值）")
+    parser.add_argument("--gap-lead-out-ms", type=int, help="自动空隙的后端预留量（由 Launcher 传入时使用面板值）")
     parser.add_argument("--no-open", action="store_true", help="只启动服务，不自动打开浏览器")
     args = parser.parse_args()
 
@@ -379,15 +423,31 @@ def main() -> int:
         parser.error(f"工程文件不存在：{project_path}")
     if not script_path.is_file():
         parser.error(f"文稿文件不存在：{script_path}")
+    gap_remove_override = {
+        name: value
+        for name, value in (
+            ("minimum_ms", args.gap_minimum_ms),
+            ("threshold_db", args.gap_threshold_db),
+            ("hysteresis_db", args.gap_hysteresis_db),
+            ("lead_in_ms", args.gap_lead_in_ms),
+            ("lead_out_ms", args.gap_lead_out_ms),
+        )
+        if value is not None
+    }
     try:
-        state = load_state(project_path, script_path, Path(args.media).expanduser() if args.media else None)
+        state = load_state(
+            project_path,
+            script_path,
+            Path(args.media).expanduser() if args.media else None,
+            gap_remove_override or None,
+        )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         parser.error(str(error))
 
     with AlignmentServer(("127.0.0.1", args.port), state) as server:
         host, port = server.server_address[:2]
         url = f"http://{host}:{port}/"
-        print("MAW 文稿对齐 MVP Server 已启动（仅本机可访问）")
+        print("MAW 口播对齐 MVP Server 已启动（仅本机可访问）")
         print(f"工程: {project_path}")
         print(f"文稿: {script_path}")
         print(f"地址: {url}")
@@ -396,7 +456,7 @@ def main() -> int:
         try:
             server.serve_forever()
         except KeyboardInterrupt:
-            print("\nMAW 文稿对齐 MVP Server 已停止")
+            print("\nMAW 口播对齐 MVP Server 已停止")
     return 0
 
 

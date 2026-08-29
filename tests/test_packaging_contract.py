@@ -119,6 +119,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("pyinstaller_utf8.py", spec)
         self.assertIn("maw.gui_web", spec)
         self.assertIn("maw.cli", spec)
+        self.assertIn("maw.script_alignment", spec)
         self.assertNotIn('collect_all("rapidocr")', spec)
         self.assertNotIn('collect_all("onnxruntime")', spec)
         self.assertIn('binaries=binaries', spec)
@@ -152,7 +153,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("icon=str(ROOT / 'assets' / 'maw.ico')", spec)
         self.assertIn("COLLECT(", spec)
         self.assertNotIn("onefile=True", spec)
-        for bundled_path in ("web", "server-editor", "LICENSE", "THIRD_PARTY_NOTICES.md"):
+        for bundled_path in ("web", "server-editor", "server-align", "LICENSE", "THIRD_PARTY_NOTICES.md"):
             self.assertIn(bundled_path, spec)
         faq_path = ROOT / "FAQ-常见问题.txt"
         self.assertTrue(faq_path.is_file())

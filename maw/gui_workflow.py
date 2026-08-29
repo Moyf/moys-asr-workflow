@@ -328,6 +328,37 @@ def build_serve_command(
     return command
 
 
+def build_alignment_serve_command(
+    project_path: Path,
+    script_path: Path,
+    media_path: Path | None,
+    port: int,
+    *,
+    gap_remove: Mapping[str, object] | None = None,
+    executable: Path | str | None = None,
+    frozen: bool | None = None,
+) -> list[str]:
+    """Build the command for the standalone speech-alignment server."""
+    exe = str(executable or sys.executable)
+    is_frozen = bool(getattr(sys, "frozen", False) if frozen is None else frozen)
+    script = Path(__file__).resolve().parents[1] / "server-align" / "serve.py"
+    command = [exe, "--serve-alignment"] if is_frozen else [exe, str(script)]
+    command.extend([str(project_path), str(script_path)])
+    if media_path:
+        command.extend(["--media", str(media_path)])
+    for option, name in (
+        ("--gap-minimum-ms", "minimum_ms"),
+        ("--gap-threshold-db", "threshold_db"),
+        ("--gap-hysteresis-db", "hysteresis_db"),
+        ("--gap-lead-in-ms", "lead_in_ms"),
+        ("--gap-lead-out-ms", "lead_out_ms"),
+    ):
+        if gap_remove is not None and name in gap_remove:
+            command.extend([option, str(gap_remove[name])])
+    command.extend(["--port", str(port)])
+    return command
+
+
 def run_transcription(
     request: TranscriptionRequest,
     *,

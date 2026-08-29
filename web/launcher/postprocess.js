@@ -2,13 +2,23 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const panels = { waveform: "toolboxWaveformPanel", match: "toolboxMatchPanel", ocr: "toolboxOcrPanel", llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel" };
+  const panels = { waveform: "toolboxWaveformPanel", match: "toolboxMatchPanel", ocr: "toolboxOcrPanel", llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel", alignment: "toolboxAlignmentPanel" };
   const TASK_PROMPT_KEYS = { proofread: "toolbox_task_proofread", resegment: "toolbox_task_resegment", translate_en: "toolbox_task_translate_en", translate_zh: "toolbox_task_translate_zh" };
   const SUBTITLE_EXTS = new Set([".mosp", ".json", ".srt"]);
+  const ALIGNMENT_PROJECT_EXTS = new Set([".mosp", ".json"]);
+  const MEDIA_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"]);
   const VIDEO_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"]);
   const SCRIPT_EXTS = new Set([".txt", ".md", ".markdown"]);
   const TOOLBOX_SIZE_KEY = "maw.launcher.toolbox.size";
   const LLM_PROMPTS_KEY = "maw.launcher.llm.prompts";
+  const ALIGNMENT_GAP_REMOVE_KEY = "maw.launcher.alignment.gap_remove";
+  const ALIGNMENT_GAP_REMOVE_DEFAULTS = Object.freeze({
+    minimum_ms: 400,
+    threshold_db: -28,
+    hysteresis_db: 2,
+    lead_in_ms: 120,
+    lead_out_ms: 80,
+  });
   const TOOLBOX_MIN_WIDTH = 360;
   const TOOLBOX_MIN_HEIGHT = 320;
   const TOOLBOX_MAX_HEIGHT = 680;
@@ -30,6 +40,8 @@
   let busy = false;
   let inputManual = false;
   let utilityMediaManual = false;
+  let alignmentProjectManual = false;
+  let alignmentRunning = false;
   let activeToolboxSection = "postprocess";
   let ocrVideoManual = false;
   let saveStatusTimer = 0;
@@ -40,6 +52,7 @@
   let artifactMenuTarget = null;
   let batchMode = false;
   let postprocessApiKeyRequest = 0;
+  let alignmentGapRemove = null;
 
   function t(key) {
     return window.MAWLauncher.translate(key);
@@ -73,6 +86,74 @@
     } catch (error) {
       // 某些嵌入式浏览器会禁用 localStorage；内存中的提示词仍可在本次运行中使用。
     }
+  }
+
+  function normalizeAlignmentGapNumber(value, fallback, lower, upper, integer = false) {
+    if (value === null || value === undefined || (typeof value === "string" && !value.trim())) return fallback;
+    const number = Number(value);
+    if (!Number.isFinite(number)) return fallback;
+    const normalized = integer ? Math.round(number) : number;
+    return Math.min(upper, Math.max(lower, normalized));
+  }
+
+  function normalizeAlignmentGapRemove(value) {
+    const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    return {
+      minimum_ms: normalizeAlignmentGapNumber(source.minimum_ms, ALIGNMENT_GAP_REMOVE_DEFAULTS.minimum_ms, 100, 60000, true),
+      threshold_db: normalizeAlignmentGapNumber(source.threshold_db, ALIGNMENT_GAP_REMOVE_DEFAULTS.threshold_db, -96, 0),
+      hysteresis_db: normalizeAlignmentGapNumber(source.hysteresis_db, ALIGNMENT_GAP_REMOVE_DEFAULTS.hysteresis_db, 0, 30),
+      lead_in_ms: normalizeAlignmentGapNumber(source.lead_in_ms, ALIGNMENT_GAP_REMOVE_DEFAULTS.lead_in_ms, 0, 2000, true),
+      lead_out_ms: normalizeAlignmentGapNumber(source.lead_out_ms, ALIGNMENT_GAP_REMOVE_DEFAULTS.lead_out_ms, 0, 2000, true),
+    };
+  }
+
+  function loadAlignmentGapRemove() {
+    try {
+      const raw = window.localStorage?.getItem(ALIGNMENT_GAP_REMOVE_KEY);
+      return normalizeAlignmentGapRemove(raw ? JSON.parse(raw) : null);
+    } catch (error) {
+      return normalizeAlignmentGapRemove(null);
+    }
+  }
+
+  function saveAlignmentGapRemove(value) {
+    try {
+      window.localStorage?.setItem(ALIGNMENT_GAP_REMOVE_KEY, JSON.stringify(value));
+    } catch (error) {
+      // 某些嵌入式浏览器会禁用 localStorage；内存中的参数仍可在本次运行中使用。
+    }
+  }
+
+  function renderAlignmentGapRemove() {
+    const fields = {
+      minimum_ms: "toolboxAlignmentGapMinimum",
+      threshold_db: "toolboxAlignmentGapThreshold",
+      lead_in_ms: "toolboxAlignmentGapLeadIn",
+      lead_out_ms: "toolboxAlignmentGapLeadOut",
+    };
+    const settings = alignmentGapRemove || normalizeAlignmentGapRemove(null);
+    Object.entries(fields).forEach(([name, id]) => {
+      const field = $(id);
+      if (field) field.value = String(settings[name]);
+    });
+  }
+
+  function initializeAlignmentGapRemove() {
+    alignmentGapRemove = loadAlignmentGapRemove();
+    renderAlignmentGapRemove();
+  }
+
+  function alignmentGapRemoveFromControls({ normalizeFields = false } = {}) {
+    alignmentGapRemove = normalizeAlignmentGapRemove({
+      minimum_ms: $("toolboxAlignmentGapMinimum")?.value,
+      threshold_db: $("toolboxAlignmentGapThreshold")?.value,
+      hysteresis_db: alignmentGapRemove?.hysteresis_db,
+      lead_in_ms: $("toolboxAlignmentGapLeadIn")?.value,
+      lead_out_ms: $("toolboxAlignmentGapLeadOut")?.value,
+    });
+    saveAlignmentGapRemove(alignmentGapRemove);
+    if (normalizeFields) renderAlignmentGapRemove();
+    return { ...alignmentGapRemove };
   }
 
   function getLlmPrompt(operation = $("postprocessOperation").value) {
@@ -389,12 +470,28 @@
     name.classList.toggle("empty", !hasPath);
   }
 
+  function syncAlignmentName(pathId, nameId) {
+    const path = $(pathId).value.trim();
+    const name = $(nameId);
+    const hasPath = Boolean(path);
+    name.textContent = hasPath ? fileName(path) : t("toolbox_input_empty");
+    name.title = path;
+    name.classList.toggle("empty", !hasPath);
+  }
+
+  function syncAlignmentNames() {
+    syncAlignmentName("toolboxAlignmentProjectPath", "toolboxAlignmentProjectName");
+    syncAlignmentName("toolboxAlignmentScriptPath", "toolboxAlignmentScriptName");
+  }
+
   function syncPaths() {
     if (!inputManual) $("toolboxInputPath").value = autoSourcePath();
     if (!utilityMediaManual) $("toolboxUtilityMediaPath").value = $("mediaPath").value.trim();
+    if (!alignmentProjectManual) $("toolboxAlignmentProjectPath").value = $("jsonPath").value.trim();
     syncOcrVideo();
     syncInputName();
     syncUtilityMediaName();
+    syncAlignmentNames();
   }
 
   function autoOcrVideoPath() {
@@ -483,7 +580,7 @@
   }
 
   function toolboxSectionForTool(tool) {
-    return ["waveform", "ffconcat"].includes(tool) ? "utilities" : "postprocess";
+    return ["alignment", "waveform", "ffconcat"].includes(tool) ? "utilities" : "postprocess";
   }
 
   function activeToolboxView() {
@@ -518,6 +615,7 @@
       action.classList.toggle("hidden", action.dataset.toolAction !== tool || toolboxOpenMode === "auto-config");
     });
     $("toolboxInputDropZone").classList.toggle("hidden", section !== "postprocess");
+    $("toolboxUtilityMediaDropZone").classList.toggle("hidden", section !== "utilities");
     $("toolboxChain").classList.toggle("hidden", section !== "postprocess" || !$("toolboxChainList").children.length);
     const configOnly = toolboxOpenMode === "auto-config";
     $("toolboxOutputField").classList.toggle("hidden", section !== "postprocess" || configOnly);
@@ -707,13 +805,104 @@
   function setBusy(nextBusy, statusKey = "toolbox_running") {
     busy = nextBusy;
     $("toolboxProgress").classList.toggle("hidden", !busy);
-    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
+    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
       $(id).disabled = busy;
     });
     renderOcrModel();
     applyBatchModeLocks();
+    renderAlignmentAction();
     if (busy) setModelChoicesOpen(false);
     if (busy) setResult(t(statusKey));
+  }
+
+  function renderAlignmentAction() {
+    const run = $("runToolboxAlignment");
+    const stop = $("stopToolboxAlignment");
+    if (!run || !stop) return;
+    run.textContent = t(alignmentRunning ? "toolbox_reopen_alignment" : "toolbox_run_alignment");
+    run.disabled = busy;
+    stop.classList.toggle("hidden", !alignmentRunning);
+    stop.disabled = busy;
+  }
+
+  function alignmentInputs() {
+    return {
+      projectPath: $("toolboxAlignmentProjectPath").value.trim(),
+      scriptPath: $("toolboxAlignmentScriptPath").value.trim(),
+      mediaPath: $("toolboxUtilityMediaPath").value.trim(),
+    };
+  }
+
+  function validateAlignmentInputs() {
+    const paths = alignmentInputs();
+    if (!paths.projectPath || !ALIGNMENT_PROJECT_EXTS.has(extension(paths.projectPath))) {
+      const message = t("toolbox_alignment_project_invalid");
+      setFieldError("toolboxAlignmentProjectPath", message);
+      setResult(message, "error");
+      return null;
+    }
+    if (!paths.scriptPath || !SCRIPT_EXTS.has(extension(paths.scriptPath))) {
+      const message = t("toolbox_alignment_script_missing");
+      setFieldError("toolboxAlignmentScriptPath", message);
+      setResult(message, "error");
+      return null;
+    }
+    if (paths.mediaPath && !MEDIA_EXTS.has(extension(paths.mediaPath))) {
+      const message = t("toolbox_alignment_media_invalid");
+      setFieldError("toolboxUtilityMediaPath", message);
+      setResult(message, "error");
+      return null;
+    }
+    setFieldError("toolboxAlignmentProjectPath", "");
+    setFieldError("toolboxAlignmentScriptPath", "");
+    setFieldError("toolboxUtilityMediaPath", "");
+    return paths;
+  }
+
+  async function runToolboxAlignment() {
+    if (busy) return;
+    const paths = validateAlignmentInputs();
+    if (!paths) return;
+    const gapRemove = alignmentGapRemoveFromControls({ normalizeFields: true });
+    setBusy(true, "toolbox_status_alignment_starting");
+    try {
+      const result = await bridge("start_alignment_server", { ...paths, gapRemove, guiLang: document.documentElement.lang === "en" ? "en" : "zh" });
+      if (!result.ok) {
+        if (result.code?.startsWith("alignment_server_")) {
+          alignmentRunning = false;
+        }
+        const message = postprocessErrorText(result);
+        if (result.field) setFieldError(result.field, message);
+        setResult(message, "error");
+        return;
+      }
+      alignmentRunning = true;
+      const opened = result.url ? await bridge("open_url", { url: result.url }) : { ok: false };
+      const message = opened.ok === false
+        ? `${t("toolbox_alignment_started")}\n${result.url || ""}\n${t("toolbox_alignment_open_failed")}`
+        : `${t("toolbox_alignment_started")}\n${result.url || ""}`;
+      setResult(message, opened.ok === false ? "error" : "success");
+    } finally {
+      setBusy(false);
+      renderAlignmentAction();
+    }
+  }
+
+  async function stopToolboxAlignment() {
+    if (busy || !alignmentRunning) return;
+    setBusy(true, "toolbox_status_alignment_stopping");
+    try {
+      const result = await bridge("stop_alignment_server");
+      if (!result.ok) {
+        setResult(postprocessErrorText(result), "error");
+        return;
+      }
+      alignmentRunning = false;
+      setResult(t("toolbox_alignment_stopped"), "success");
+    } finally {
+      setBusy(false);
+      renderAlignmentAction();
+    }
   }
 
   async function generateWaveformProject(openEditor) {
@@ -1537,11 +1726,13 @@
     syncProviderOptionLabels();
     renderProvider();
     initializeLlmPrompts();
+    initializeAlignmentGapRemove();
     renderTaskPrompt();
     renderOcrRegion();
     renderOcrModel();
     selectToolboxSection("postprocess");
     syncPaths();
+    renderAlignmentAction();
     initializeAutoPostprocess();
   }
 
@@ -1584,6 +1775,8 @@
   $("llmModelChoicesToggle").addEventListener("click", () => setModelChoicesOpen(!modelChoicesOpen));
   $("generateWaveform").addEventListener("click", () => { void generateWaveformProject(false); });
   $("runWaveform").addEventListener("click", () => { void generateWaveformProject(true); });
+  $("runToolboxAlignment").addEventListener("click", () => { void runToolboxAlignment(); });
+  $("stopToolboxAlignment").addEventListener("click", () => { void stopToolboxAlignment(); });
   $("runScriptMatch").addEventListener("click", runScriptMatch);
   $("postprocessScriptPath").addEventListener("input", () => { void refreshScriptPreview(); });
   $("postprocessExtraSplitPunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshSplitPreview(); persistAutoPlanSoon(); });
@@ -1628,6 +1821,21 @@
       syncUtilityMediaName();
     }
   });
+  $("pickToolboxAlignmentProject").addEventListener("click", async () => {
+    const result = await bridge("choose_file", { kind: "json" });
+    if (result.ok) {
+      alignmentProjectManual = true;
+      $("toolboxAlignmentProjectPath").value = result.path;
+      $("toolboxAlignmentProjectPath").dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  });
+  $("pickToolboxAlignmentScript").addEventListener("click", async () => {
+    const result = await bridge("choose_file", { kind: "script" });
+    if (result.ok) {
+      $("toolboxAlignmentScriptPath").value = result.path;
+      $("toolboxAlignmentScriptPath").dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  });
   $("pickOcrVideo").addEventListener("click", async () => {
     const result = await bridge("choose_file", { kind: "video" });
     if (result.ok) {
@@ -1653,6 +1861,19 @@
     utilityMediaManual = Boolean($("toolboxUtilityMediaPath").value.trim());
     setFieldError("toolboxUtilityMediaPath", "");
     syncPaths();
+  });
+  $("toolboxAlignmentProjectPath").addEventListener("input", () => {
+    alignmentProjectManual = Boolean($("toolboxAlignmentProjectPath").value.trim());
+    if (!alignmentProjectManual) $("toolboxAlignmentProjectPath").value = $("jsonPath").value.trim();
+    setFieldError("toolboxAlignmentProjectPath", "");
+    syncAlignmentNames();
+  });
+  $("toolboxAlignmentScriptPath").addEventListener("input", () => {
+    setFieldError("toolboxAlignmentScriptPath", "");
+    syncAlignmentNames();
+  });
+  ["toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut"].forEach((id) => {
+    $(id).addEventListener("change", () => alignmentGapRemoveFromControls({ normalizeFields: true }));
   });
   $("ocrVideoPath").addEventListener("input", () => {
     ocrVideoManual = Boolean($("ocrVideoPath").value.trim());
@@ -1755,7 +1976,13 @@
     syncProviderOptionLabels();
     if (window.MAWLauncher.config?.postprocessProviders?.length) renderProviderKeyStatus(provider());
     document.querySelectorAll(".toolbox-chain-file").forEach(renderArtifactButton);
+    syncAlignmentNames();
+    renderAlignmentAction();
     renderAutoPostprocessState();
+  };
+  window.MAWLauncher.onProjectPathChanged = () => {
+    if (!alignmentProjectManual) $("toolboxAlignmentProjectPath").value = $("jsonPath").value.trim();
+    syncAlignmentNames();
   };
   function applyBatchModeLocks() {
     $("toolboxMatchTab").disabled = batchMode;

@@ -7,6 +7,7 @@ import os
 import queue
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -25,7 +26,7 @@ from maw.media_cache import embed_media_caches
 from maw.waveform import is_waveform_payload
 from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, MODELS, PROVIDERS, ModelConfig, ProviderConfig, _gui_theme, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
-from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
+from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
 from maw.local_runtime import (
     LocalRuntimeCancelled,
@@ -57,6 +58,7 @@ from maw.postprocess_pipeline import (
     validate_plan,
 )
 from maw.postprocess_pipeline import PostprocessPipelineError
+from maw.script_alignment import normalize_gap_remove_settings
 from maw.text_conversion import TextConversionUnavailable, normalize_text_conversion_mode
 from maw.ocr_runtime import OCR_MODEL_ID, OcrRuntimeCancelled, OcrRuntimeError, install_ocr_runtime, managed_ocr_runtime_status, ocr_model_type, ocr_models_payload, run_ocr_in_runtime
 from maw.project_preview import JsonValue
@@ -109,6 +111,11 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "hotwords_file_missing": "Choose an existing UTF-8 .txt hotword file.",
     "server_no_response": "Editor server did not respond.",
     "server_start_failed": "Editor server failed to start.",
+    "alignment_project_invalid": "Speech alignment requires a valid .mosp or .json project.",
+    "alignment_script_missing": "Speech alignment requires a valid script file.",
+    "alignment_media_invalid": "The selected speech-alignment media file does not exist or is unsupported.",
+    "alignment_server_no_response": "Speech-alignment server did not respond.",
+    "alignment_server_start_failed": "Speech-alignment server failed to start.",
     "mose_not_found": "MOSE desktop editor was not found in this MAW package.",
     "mose_start_failed": "MOSE desktop editor failed to start.",
     "server_stop_not_maw": "The process using this port is not a MAW editor server.",
@@ -492,6 +499,13 @@ class LauncherApi:
         self.ocr_runtime_worker: threading.Thread | None = None
         self.server_process: subprocess.Popen[str] | None = None
         self.server_log_file: BinaryIO | None = None
+        self.alignment_process: subprocess.Popen[str] | None = None
+        self.alignment_log_file: BinaryIO | None = None
+        self.alignment_server_port: int | None = None
+        self.alignment_project_path: Path | None = None
+        self.alignment_script_path: Path | None = None
+        self.alignment_media_path: Path | None = None
+        self.alignment_gap_remove: dict[str, int | float] | None = None
         self.result: TranscriptionResult | None = None
         self.postprocess_retry_context: dict[str, object] | None = None
         self.postprocess_workspace_directory: Path | None = None
@@ -1212,6 +1226,138 @@ class LauncherApi:
         self._close_server_log()
         return {"ok": True, "url": launch_url}
 
+    def start_alignment_server(self, payload: Mapping[str, object]) -> dict[str, object]:
+        gap_remove = normalize_gap_remove_settings(payload.get("gapRemove"))
+        project_path = _optional_path(payload.get("projectPath"))
+        if project_path is None:
+            return _error_result(
+                "toolboxAlignmentProjectPath",
+                "alignment_project_invalid",
+                "",
+            )
+        project_path = project_path.expanduser()
+        if not project_path.is_file():
+            return _error_result("toolboxAlignmentProjectPath", "alignment_project_invalid", str(project_path))
+        project_path = project_path.resolve()
+        if project_path.suffix.lower() not in {".mosp", ".json"}:
+            return _error_result(
+                "toolboxAlignmentProjectPath",
+                "alignment_project_invalid",
+                str(project_path),
+            )
+        try:
+            read_project(project_path)
+        except (OSError, UnicodeError, ValueError) as error:
+            return _error_result("toolboxAlignmentProjectPath", "alignment_project_invalid", str(error))
+
+        script_path = _optional_path(payload.get("scriptPath"))
+        if script_path is None:
+            return _error_result(
+                "toolboxAlignmentScriptPath",
+                "alignment_script_missing",
+                "",
+            )
+        script_path = script_path.expanduser()
+        if not script_path.is_file() or script_path.suffix.lower() not in SCRIPT_EXTENSIONS:
+            return _error_result("toolboxAlignmentScriptPath", "alignment_script_missing", str(script_path))
+        script_path = script_path.resolve()
+        try:
+            script_path.read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeError) as error:
+            return _error_result("toolboxAlignmentScriptPath", "alignment_script_missing", str(error))
+
+        media_path = _optional_path(payload.get("mediaPath"))
+        if media_path is not None:
+            media_path = media_path.expanduser()
+            if not media_path.is_file() or media_path.suffix.lower() not in MEDIA_EXTS:
+                return _error_result("toolboxUtilityMediaPath", "alignment_media_invalid", str(media_path))
+            media_path = media_path.resolve()
+
+        existing_process = self.alignment_process
+        if existing_process is not None and existing_process.poll() is None:
+            same_inputs = (
+                self.alignment_project_path == project_path
+                and self.alignment_script_path == script_path
+                and self.alignment_media_path == media_path
+                and self.alignment_gap_remove == gap_remove
+                and self.alignment_server_port is not None
+            )
+            if same_inputs:
+                url = f"http://127.0.0.1:{self.alignment_server_port}/"
+                if _wait_for_server(url, timeout=0.25):
+                    return {
+                        "ok": True,
+                        "url": f"{url}?lang={_gui_lang(payload)}",
+                        "serverAlreadyRunning": True,
+                        "projectPath": str(project_path),
+                        "scriptPath": str(script_path),
+                        "mediaPath": str(media_path or ""),
+                        "gapRemove": gap_remove,
+                    }
+            _ = self._stop_owned_alignment_server()
+        elif existing_process is not None:
+            _ = self._stop_owned_alignment_server()
+
+        try:
+            port = _free_local_port()
+        except OSError as error:
+            return _error_result("", "alignment_server_start_failed", str(error))
+        url = f"http://127.0.0.1:{port}/"
+        launch_url = f"{url}?lang={_gui_lang(payload)}"
+        command = build_alignment_serve_command(
+            project_path,
+            script_path,
+            media_path,
+            port,
+            gap_remove=gap_remove,
+        )
+        command.append("--no-open")
+        self.alignment_log_file = tempfile.TemporaryFile(mode="w+b")
+        try:
+            self.alignment_process = popen_process_tree(
+                command,
+                stdout=self.alignment_log_file,
+                stderr=subprocess.STDOUT,
+                text=True,
+                env=_child_environment(os.environ, "", provider=""),
+                cwd=str(self.paths.root),
+                **process_group_kwargs(),
+            )
+            self.alignment_server_port = port
+            self.alignment_project_path = project_path
+            self.alignment_script_path = script_path
+            self.alignment_media_path = media_path
+            self.alignment_gap_remove = gap_remove
+        except OSError as error:
+            self._close_alignment_log()
+            self.alignment_process = None
+            self.alignment_server_port = None
+            self.alignment_project_path = None
+            self.alignment_script_path = None
+            self.alignment_media_path = None
+            self.alignment_gap_remove = None
+            return _error_result("", "alignment_server_start_failed", f"{url} | {error}")
+
+        if not _wait_for_server(url, timeout=SERVER_START_TIMEOUT):
+            exit_code = self.alignment_process.poll() if self.alignment_process else None
+            if exit_code is not None:
+                detail = self._read_alignment_log()
+                detail = f"{url} | process exited with code {exit_code}" + (f": {detail}" if detail else "")
+                _ = self._stop_owned_alignment_server()
+                return _error_result("", "alignment_server_start_failed", detail)
+            _ = self._stop_owned_alignment_server()
+            return _error_result("", "alignment_server_no_response", url)
+        self._close_alignment_log()
+        return {
+            "ok": True,
+            "url": launch_url,
+            "port": port,
+            "projectPath": str(project_path),
+            "scriptPath": str(script_path),
+            "mediaPath": str(media_path or ""),
+            "gapRemove": gap_remove,
+        }
+
     def get_server_status(self, payload: Mapping[str, object]) -> dict[str, object]:
         """Report a responding MAW server on the currently selected localhost port."""
         port = _port(payload)
@@ -1279,6 +1425,45 @@ class LauncherApi:
             except OSError:
                 pass
 
+    def _stop_owned_alignment_server(self) -> bool:
+        process = self.alignment_process
+        self.alignment_process = None
+        self.alignment_server_port = None
+        self.alignment_project_path = None
+        self.alignment_script_path = None
+        self.alignment_media_path = None
+        self.alignment_gap_remove = None
+        stopped = False
+        try:
+            if process and process.poll() is None:
+                terminate_process_tree(process)
+                stopped = True
+            return stopped
+        finally:
+            if process is not None:
+                release_process_tree(process)
+            self._close_alignment_log()
+
+    def _read_alignment_log(self) -> str:
+        log_file = self.alignment_log_file
+        if log_file is None:
+            return ""
+        try:
+            log_file.flush()
+            log_file.seek(0)
+            return log_file.read().decode("utf-8", errors="replace").strip()
+        except (OSError, ValueError):
+            return ""
+
+    def _close_alignment_log(self) -> None:
+        log_file = self.alignment_log_file
+        self.alignment_log_file = None
+        if log_file is not None:
+            try:
+                log_file.close()
+            except OSError:
+                pass
+
     def stop_server(self, payload: Mapping[str, object] | None = None) -> dict[str, object]:
         if self._stop_owned_server():
             return {"ok": True, "stopped": True}
@@ -1291,6 +1476,11 @@ class LauncherApi:
         if _maw_server_process_id(port) is None:
             return _error_result("port", "server_stop_not_maw", url)
         return _error_result("port", "server_stop_failed", url)
+
+    def stop_alignment_server(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        if self._stop_owned_alignment_server():
+            return {"ok": True, "stopped": True}
+        return {"ok": True, "stopped": False}
 
     def start_transcription(self, payload: Mapping[str, object]) -> dict[str, object]:
         if self.batch_worker and self.batch_worker.is_alive():
@@ -1711,6 +1901,7 @@ class LauncherApi:
         if self.ocr_runtime_cancel_event:
             self.ocr_runtime_cancel_event.set()
         _ = self.stop_server()
+        _ = self.stop_alignment_server()
         self.pump.shutdown()
 
     def _worker_main(self, request: TranscriptionRequest, cancel_event: Event) -> None:
@@ -2434,6 +2625,12 @@ def _port(payload: Mapping[str, object]) -> int:
     except ValueError:
         return 8250
     return min(65535, max(1, value))
+
+
+def _free_local_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
 
 
 def _error_result(field: str, code: str, detail: str = "") -> dict[str, object]:
