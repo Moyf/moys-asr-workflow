@@ -3,14 +3,14 @@ version = 1
 name = "moys-asr-workflow"
 
 [setup]
-script = "uv sync"
+script = ""
 
 [[actions]]
 name = "gui"
 icon = "run"
-command = "uv run python maw_gui.py -dbg --port 8258"
+command = "uv run python maw_gui.py -dbg"
 
 [[actions]]
 name = "server"
 icon = "tool"
-command = "uv run python server-editor\\serve.py"
+command = "uv run python server-editor/serve.py --port 8258"
