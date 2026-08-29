@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import importlib
 import importlib.util
-import os
 import sys
 import traceback
 from collections.abc import Sequence
@@ -248,17 +247,10 @@ def _startup_error_log_path() -> Path:
 
 
 def _startup_error_fallback_log_path() -> Path:
-    """Return the shared MAW app-data path when the package directory is read-only."""
-    override = os.environ.get("MAW_APP_DATA_ROOT", "").strip()
-    if override:
-        return Path(override).expanduser().resolve(strict=False) / "launcher-startup.log"
-    if os.name == "nt":
-        base = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local")) / "MAW"
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Application Support" / "MAW"
-    else:
-        base = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "MAW"
-    return base / "launcher-startup.log"
+    """Return the shared MAW log directory when the package directory is read-only."""
+    from maw.local_log import default_log_directory
+
+    return default_log_directory() / "launcher-startup.log"
 
 
 def _write_startup_error_log(error: Exception) -> Path | None:

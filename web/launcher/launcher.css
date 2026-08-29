@@ -276,6 +276,12 @@ button:disabled {
   letter-spacing: 0;
 }
 
+.log-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: -8px 0 8px;
+}
+
 .drop-zone {
   border: 1px dashed var(--border);
   border-radius: var(--radius-md);
