@@ -16,6 +16,7 @@ from generate_subtitle_qwen_api import (
     parse_duration,
 )
 from maw.media_cache import embed_media_caches, merge_media_caches
+from maw.ffmpeg import resolve_ffmpeg_tools
 from maw.project import repair_segment_durations, validate_project
 from maw.speaker import apply_speaker_colors
 from maw.tencent import DEFAULT_ENGINE, load_config, transcribe
@@ -54,6 +55,9 @@ def main() -> int:
         return 1
     output_path = Path(args.output) if args.output else input_path.with_suffix(".srt")
     config = load_config()
+    ffmpeg_tools = resolve_ffmpeg_tools(configured_path=config.get("ffmpeg_path"))
+    ffmpeg_path = ffmpeg_tools.ffmpeg
+    ffprobe_path = ffmpeg_tools.ffprobe
     if not config["secret_id"] or not config["secret_key"]:
         parser.error("未配置 TENCENT_SECRET_ID / TENCENT_SECRET_KEY；请在 .env 或系统环境变量中填写")
     if args.model:
@@ -70,17 +74,30 @@ def main() -> int:
             audio_path = ""
         elif is_video:
             audio_path = str(Path(tmpdir) / "audio.wav")
-            source_duration = get_duration_sec(str(input_path))
+            source_duration = get_duration_sec(
+                str(input_path),
+                ffprobe_path=ffprobe_path,
+            )
             limit = args.length_limit if args.length_limit and args.length_limit < source_duration else None
-            extract_audio(str(input_path), audio_path, duration_limit=limit)
-            duration = get_duration_sec(audio_path)
+            extract_audio(
+                str(input_path),
+                audio_path,
+                duration_limit=limit,
+                ffmpeg_path=ffmpeg_path,
+            )
+            duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
         else:
             audio_path = str(Path(tmpdir) / input_path.name)
             shutil.copy2(input_path, audio_path)
-            duration = get_duration_sec(audio_path)
+            duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
         if args.length_limit and audio_path and args.length_limit < duration:
             limited_path = str(Path(tmpdir) / "audio_limited.wav")
-            extract_audio(audio_path, limited_path, duration_limit=args.length_limit)
+            extract_audio(
+                audio_path,
+                limited_path,
+                duration_limit=args.length_limit,
+                ffmpeg_path=ffmpeg_path,
+            )
             audio_path = limited_path
             duration = args.length_limit
 
@@ -104,6 +121,7 @@ def main() -> int:
             cache_result = embed_media_caches(
                 {"media": str(input_path)}, Path(audio_path), source_media_path=input_path,
                 generate_spectral=args.with_spectral,
+                ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
             )
 
     if not args.keep_punct:

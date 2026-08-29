@@ -144,6 +144,7 @@ def load_config() -> dict:
             MIN_MAX_AUDIO_SECONDS,
             pick_int("BCUT_MAX_AUDIO_SECONDS", DEFAULT_MAX_AUDIO_SECONDS),
         ),
+        "ffmpeg_path": pick("FFMPEG_PATH"),
     }
 
 

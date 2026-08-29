@@ -105,6 +105,7 @@ def load_config() -> dict:
         "base_url": pick("SONIOX_BASE_URL", BASE_URL) or BASE_URL,
         "poll_interval": int(pick("SONIOX_POLL_INTERVAL", "3") or "3"),
         "poll_timeout": int(pick("SONIOX_POLL_TIMEOUT", "1800") or "1800"),
+        "ffmpeg_path": pick("FFMPEG_PATH"),
     }
 
 

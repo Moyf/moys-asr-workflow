@@ -34,6 +34,7 @@ from maw.project import repair_segment_durations
 from maw.qwen_audio import parse_qwen_audio_hotwords
 from maw.speaker import apply_speaker_colors, split_items_by_speaker
 from maw.console import configure_utf8_stdio
+from maw.ffmpeg import resolve_ffmpeg_tool, resolve_ffmpeg_tools
 
 from maw.media_cache import embed_media_caches, merge_media_caches
 
@@ -116,6 +117,7 @@ def _get_config() -> dict:
         "qwen_audio_context_file": pick("DASHSCOPE_QWEN_AUDIO_CONTEXT_FILE"),
         "poll_interval": int(pick("DASHSCOPE_POLL_INTERVAL", "5") or "5"),
         "poll_timeout": int(pick("DASHSCOPE_POLL_TIMEOUT", "1800") or "1800"),
+        "ffmpeg_path": pick("FFMPEG_PATH"),
         "base_url": _compute_base_url(region, workspace_id),
     }
 
@@ -241,14 +243,34 @@ def _run_media_tool(cmd: list[str], **kwargs):
     try:
         return subprocess.run(cmd, **kwargs)
     except FileNotFoundError as exc:
-        executable = Path(cmd[0]).name.lower() if cmd else ""
+        executable = Path(str(cmd[0])).stem.lower() if cmd else ""
         if executable in {"ffmpeg", "ffprobe"}:
             raise RuntimeError(FFMPEG_MISSING_MESSAGE) from exc
         raise
 
 
-def extract_audio(video_path: str, output_path: str, duration_limit: float | None = None) -> None:
-    cmd = ["ffmpeg", "-i", video_path]
+def _resolve_media_tool(
+    tool: str,
+    configured_path: str | os.PathLike[str] | None = None,
+) -> str:
+    resolved = resolve_ffmpeg_tool(
+        tool,
+        configured_path,
+        allow_missing_explicit=bool(configured_path),
+    )
+    if resolved is None:
+        raise RuntimeError(FFMPEG_MISSING_MESSAGE)
+    return str(resolved)
+
+
+def extract_audio(
+    video_path: str,
+    output_path: str,
+    duration_limit: float | None = None,
+    *,
+    ffmpeg_path: str | os.PathLike[str] | None = None,
+) -> None:
+    cmd = [_resolve_media_tool("ffmpeg", ffmpeg_path), "-i", video_path]
     if duration_limit is not None:
         cmd.extend(["-t", str(duration_limit)])
     cmd.extend([
@@ -261,9 +283,13 @@ def extract_audio(video_path: str, output_path: str, duration_limit: float | Non
     print("[ffmpeg] 音频提取完成")
 
 
-def get_duration_sec(filepath: str) -> float:
+def get_duration_sec(
+    filepath: str,
+    *,
+    ffprobe_path: str | os.PathLike[str] | None = None,
+) -> float:
     cmd = [
-        "ffprobe", "-v", "quiet",
+        _resolve_media_tool("ffprobe", ffprobe_path), "-v", "quiet",
         "-show_entries", "format=duration",
         "-of", "csv=p=0", filepath,
     ]
@@ -1608,6 +1634,9 @@ def main():
 
     # 读配置（CLI args 覆盖 .env）
     config = _get_config()
+    ffmpeg_tools = resolve_ffmpeg_tools(configured_path=config.get("ffmpeg_path"))
+    ffmpeg_path = ffmpeg_tools.ffmpeg
+    ffprobe_path = ffmpeg_tools.ffprobe
     print(f"[准备] 已载入转写配置（模型: {args.model}）")
     if args.region:
         config["region"] = args.region.lower()
@@ -1642,11 +1671,19 @@ def main():
             if is_video:
                 audio_path = str(Path(tmpdir) / "audio.wav")
                 print("[媒体] 正在读取原始视频时长...")
-                source_duration = get_duration_sec(str(input_path))
+                source_duration = get_duration_sec(
+                    str(input_path),
+                    ffprobe_path=ffprobe_path,
+                )
                 video_limit = args.length_limit if args.length_limit and args.length_limit < source_duration else None
-                extract_audio(str(input_path), audio_path, duration_limit=video_limit)
+                extract_audio(
+                    str(input_path),
+                    audio_path,
+                    duration_limit=video_limit,
+                    ffmpeg_path=ffmpeg_path,
+                )
                 print("[媒体] 正在读取提取后音频时长...")
-                duration = get_duration_sec(audio_path)
+                duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
                 if video_limit is not None:
                     lm, ls = divmod(int(video_limit), 60)
                     print(f"[info] 测试模式：从视频直接提取前 {lm}分{ls}秒，跳过其余内容")
@@ -1658,7 +1695,7 @@ def main():
 
             if not is_video:
                 print("[媒体] 正在读取音频时长...")
-                duration = get_duration_sec(audio_path)
+                duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
             m, s = divmod(int(duration), 60)
             print(f"[info] 音频总时长: {m}分{s}秒")
             if enable_speaker and duration > 2 * 60 * 60:
@@ -1672,7 +1709,7 @@ def main():
                 limited_path = str(Path(tmpdir) / "audio_limited.wav")
                 print("[ffmpeg] 正在为测试模式截取并重新采样音频...")
                 cmd = [
-                    "ffmpeg", "-i", audio_path,
+                    _resolve_media_tool("ffmpeg", ffmpeg_path), "-i", audio_path,
                     "-t", str(limit_sec),
                     "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
                     "-y", limited_path,
@@ -1753,6 +1790,7 @@ def main():
                 Path(audio_path) if audio_path else input_path,
                 source_media_path=input_path,
                 generate_spectral=args.with_spectral,
+                ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
             )
 
     if enable_speaker:

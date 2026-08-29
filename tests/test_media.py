@@ -185,7 +185,7 @@ class MediaResolutionTests(unittest.TestCase):
     def test_flv_conversion_reports_missing_ffmpeg(self) -> None:
         source = self.root / "take.flv"
         source.write_bytes(b"flv")
-        with mock.patch("maw.media.shutil.which", return_value=None):
+        with mock.patch("maw.media.find_ffmpeg", return_value=None):
             with self.assertRaises(MediaConversionError):
                 convert_media_for_browser(source, cache_dir=self.root / "cache")
 

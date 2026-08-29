@@ -11,13 +11,14 @@ from __future__ import annotations
 
 import base64
 import json
-import shutil
 import subprocess
 import sys
 from array import array
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from maw.ffmpeg import resolve_ffmpeg_tool
 
 
 WAVEFORM_SCHEMA = "moy.asr.waveform.v1"
@@ -133,7 +134,11 @@ def extract_waveform(
     if pcm_sample_rate < peaks_per_second:
         raise ValueError("pcm_sample_rate must be >= peaks_per_second")
 
-    ffmpeg = ffmpeg_bin or shutil.which("ffmpeg")
+    ffmpeg = resolve_ffmpeg_tool(
+        "ffmpeg",
+        ffmpeg_bin,
+        allow_missing_explicit=bool(ffmpeg_bin),
+    )
     if not ffmpeg:
         raise WaveformError("找不到 ffmpeg，无法预生成波形")
 
@@ -245,6 +250,7 @@ def load_or_extract_waveform(
     media_path: Path,
     *,
     peaks_per_second: int = DEFAULT_PEAKS_PER_SECOND,
+    ffmpeg_bin: str | None = None,
 ) -> tuple[dict[str, Any], bool]:
     """Return cached peaks when valid, otherwise extract a fresh payload."""
     if (
@@ -258,7 +264,11 @@ def load_or_extract_waveform(
         and sidecar["peaks_per_second"] == peaks_per_second
     ):
         return sidecar, False
-    payload = extract_waveform(media_path, peaks_per_second=peaks_per_second)
+    payload = extract_waveform(
+        media_path,
+        peaks_per_second=peaks_per_second,
+        ffmpeg_bin=ffmpeg_bin,
+    )
     try:
         save_waveform_sidecar(payload, media_path)
     except OSError:
