@@ -47,6 +47,7 @@ mimetypes.add_type("audio/ogg", ".opus")
 import edit  # noqa: E402
 from maw.console import configure_utf8_stdio  # noqa: E402
 from maw import reapeaks  # noqa: E402
+from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
 from maw.project import (  # noqa: E402
     ProjectValidationFailed,
@@ -346,11 +347,14 @@ def load_project(
     assert resolution.resolved_path is not None
     source_media_path = resolution.resolved_path
     media_path = source_media_path
+    configured_ffmpeg = os.environ.get("FFMPEG_PATH") or load_env(DEFAULT_ENV_PATH).get("FFMPEG_PATH", "")
+    ffmpeg_path = resolve_ffmpeg_tools(
+        configured_path=configured_ffmpeg or None,
+    ).ffmpeg
     if resolution.status is MediaStatus.CONVERSION_NEEDED:
         print("[media] flv 无法预览，将会自动转换成 mp4 格式")
-        configured_ffmpeg = os.environ.get("FFMPEG_PATH") or load_env(DEFAULT_ENV_PATH).get("FFMPEG_PATH", "")
         try:
-            media_path = convert_media_for_browser(source_media_path, ffmpeg_path=configured_ffmpeg)
+            media_path = convert_media_for_browser(source_media_path, ffmpeg_path=ffmpeg_path)
         except MediaConversionError as error:
             raise MediaConversionError(f"{error}（源文件：{source_media_path}）") from error
         print(f"[media] 已为浏览器准备播放缓存: {media_path}")
@@ -364,7 +368,10 @@ def load_project(
         report("preparing_waveform", 50)
         try:
             waveform, extracted = edit.load_or_extract_waveform(
-                data.get("waveform"), media_path, peaks_per_second=peaks_per_second,
+                data.get("waveform"),
+                media_path,
+                peaks_per_second=peaks_per_second,
+                ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
             )
             data["waveform"] = waveform
             state = "已提取" if extracted else "使用缓存"

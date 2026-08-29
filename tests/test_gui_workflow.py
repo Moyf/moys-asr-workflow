@@ -499,7 +499,7 @@ class GuiWorkflowTests(unittest.TestCase):
         (ffmpeg_dir / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).write_bytes(b"exe")
         (ffmpeg_dir / ("ffprobe.exe" if os.name == "nt" else "ffprobe")).write_bytes(b"exe")
 
-        with mock.patch("maw.gui_workflow.asset_path", return_value=ffmpeg_dir):
+        with mock.patch("maw.ffmpeg.bundled_ffmpeg_directories", return_value=(ffmpeg_dir,)):
             with mock.patch("maw.gui_workflow.load_env", return_value={}):
                 env = _child_environment({"PATH": "C:\\Windows"}, "", "")
 
@@ -521,9 +521,8 @@ class GuiWorkflowTests(unittest.TestCase):
 
     def test_child_environment_appends_macos_candidate_directories(self) -> None:
         with mock.patch.object(sys, "platform", "darwin"):
-            with mock.patch("maw.gui_workflow.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", ("/opt/homebrew/bin", "/usr/local/bin")):
-                with mock.patch("maw.gui_workflow.load_env", return_value={}):
-                    with mock.patch("maw.gui_workflow._bundled_ffmpeg_directory", return_value=None):
+                with mock.patch("maw.gui_workflow.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", ("/opt/homebrew/bin", "/usr/local/bin")):
+                    with mock.patch("maw.gui_workflow.load_env", return_value={}):
                         env = _child_environment({"PATH": "/usr/bin"}, "", "")
 
         self.assertEqual(
