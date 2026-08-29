@@ -28,6 +28,7 @@ from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, MODELS, PROVIDERS
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
+from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee
 from maw.local_runtime import (
     LocalRuntimeCancelled,
     LocalRuntimeError,
@@ -505,10 +506,12 @@ class LauncherApi:
         paths: LauncherPaths | None = None,
         window_getter: Callable[[], object | None] | None = None,
         default_server_port: int | None = None,
+        log_sink: LocalLogSink | None = None,
     ) -> None:
         self.paths = paths or default_paths()
         self.window_getter = window_getter or _active_window
         self.default_server_port = default_server_port
+        self._log_sink = log_sink
         self.cancel_event: Event | None = None
         self.worker: threading.Thread | None = None
         self.batch_worker: threading.Thread | None = None
@@ -1878,6 +1881,14 @@ class LauncherApi:
             return {"ok": False, "error": "没有可打开的自动后处理中间产物。"}
         return _open_existing_path(directory)
 
+    def open_log_folder(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        directory = self._log_sink.directory if self._log_sink is not None else default_log_directory()
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            return {"ok": False, "error": str(error)}
+        return _open_existing_path(directory)
+
     def open_html(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         if self.result and self.result.html_path and self.result.html_path.exists():
             return _open_existing_path(self.result.html_path)
@@ -1935,6 +1946,11 @@ class LauncherApi:
             self.ocr_runtime_cancel_event.set()
         _ = self.stop_server()
         _ = self.stop_alignment_server()
+        if self._log_sink is not None:
+            for stream in (sys.stdout, sys.stderr):
+                if isinstance(stream, TeeWriter) and stream._sink is self._log_sink:
+                    stream.flush()
+            self._log_sink.close()
         self.pump.shutdown()
 
     def _worker_main(self, request: TranscriptionRequest, cancel_event: Event) -> None:
@@ -2305,6 +2321,8 @@ class LauncherApi:
             self.pump.flush()
 
     def _emit(self, event: Mapping[str, object]) -> None:
+        if self._log_sink is not None:
+            self._log_sink.append(event)
         self.pump.enqueue(event)
 
     def handle_drop_paths(self, paths: Sequence[str]) -> None:
@@ -2322,7 +2340,10 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
     # controllable so normal development does not force an extra window.
     webview.settings["OPEN_DEVTOOLS_IN_DEBUG"] = devtools
     paths = default_paths()
-    api = LauncherApi(paths=paths, default_server_port=server_port)
+    # 事件流与进程内 print/traceback 共用同一个 sink：单锁单文件。
+    log_sink = LocalLogSink()
+    api = LauncherApi(paths=paths, default_server_port=server_port, log_sink=log_sink)
+    install_stdio_tee(log_sink)
     window = webview.create_window(
         WINDOW_TITLE,
         url=paths.launcher_html.resolve().as_uri(),

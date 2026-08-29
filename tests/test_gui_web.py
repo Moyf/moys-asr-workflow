@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.ffmpeg import FfmpegTools  # noqa: E402
+from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
 from maw.postprocess_llm import LlmClientError  # noqa: E402
 from maw.runtimes.base import RuntimeStatus  # noqa: E402
@@ -1764,7 +1765,8 @@ class GuiWebBridgeTests(unittest.TestCase):
             result = self.api.open_faq()
 
         self.assertTrue(result["ok"])
-        open_path.assert_called_once_with(executable_faq)
+        # open_faq 内部对 sys.executable 做 resolve，Windows 8.3 短路径下会展开成长路径。
+        open_path.assert_called_once_with(executable_faq.resolve())
 
     def test_open_faq_returns_structured_failure_when_both_release_locations_are_missing(self) -> None:
         with mock.patch("maw.gui_web.sys.executable", str(self.root / "exe" / "MAW.exe")):
@@ -1772,7 +1774,7 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertIn("FAQ-常见问题.txt not found", result["error"])
-        self.assertIn(str(self.root / "exe"), result["error"])
+        self.assertIn(str((self.root / "exe").resolve()), result["error"])
 
     def test_check_ffmpeg_reports_found_when_both_tools_exist(self) -> None:
         ffmpeg = self.root / "bin" / "ffmpeg.exe"
@@ -2516,6 +2518,77 @@ class GuiWebBridgeTests(unittest.TestCase):
 
 
 @final
+class LauncherLogSinkTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.env_path = self.root / ".env"
+        _ = self.env_path.write_text("", encoding="utf-8")
+        self.paths = LauncherPaths(root=self.root, env_path=self.env_path, launcher_html=self.root / "launcher.html")
+        self.window = FakeWindow()
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_emit_forwards_events_to_log_sink(self) -> None:
+        sink = _FakeLogSink()
+        api = LauncherApi(paths=self.paths, window_getter=lambda: self.window, log_sink=sink)
+        api._emit({"type": "log", "message": "hello"})
+        api._emit({"type": "error", "code": "transcription_failed", "detail": "boom"})
+        self.assertEqual(sink.events[0], {"type": "log", "message": "hello"})
+        self.assertEqual(sink.events[1], {"type": "error", "code": "transcription_failed", "detail": "boom"})
+
+    def test_emit_without_sink_does_not_crash(self) -> None:
+        api = LauncherApi(paths=self.paths, window_getter=lambda: self.window)
+        api._emit({"type": "log", "message": "hello"})
+
+    def test_shutdown_closes_log_sink(self) -> None:
+        sink = _FakeLogSink()
+        api = LauncherApi(paths=self.paths, window_getter=lambda: self.window, log_sink=sink)
+        api.shutdown()
+        self.assertTrue(sink.closed)
+
+    def test_shutdown_flushes_partial_stdio_line_before_closing_sink(self) -> None:
+        directory = self.root / "logs"
+        sink = LocalLogSink(directory=directory)
+        api = LauncherApi(paths=self.paths, window_getter=lambda: self.window, log_sink=sink)
+        writer = TeeWriter(sink, None, label="stdout")
+        writer.write("tail")
+
+        with mock.patch.object(sys, "stdout", writer):
+            api.shutdown()
+
+        log_files = list(directory.glob("maw-*.log"))
+        self.assertEqual(len(log_files), 1)
+        self.assertIn("tail", log_files[0].read_text(encoding="utf-8"))
+
+    def test_open_log_folder_creates_directory_and_opens_it(self) -> None:
+        directory = self.root / "logs"
+        api = LauncherApi(
+            paths=self.paths,
+            window_getter=lambda: self.window,
+            log_sink=LocalLogSink(directory=directory),
+        )
+        with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as opener:
+            result = api.open_log_folder()
+        self.assertEqual(result, {"ok": True})
+        self.assertTrue(directory.is_dir())
+        opener.assert_called_once_with(directory)
+
+
+class _FakeLogSink:
+    def __init__(self) -> None:
+        self.events: list[dict[str, object]] = []
+        self.closed = False
+
+    def append(self, event: Mapping[str, object]) -> None:
+        self.events.append(dict(event))
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@final
 class LauncherRuntimeTests(unittest.TestCase):
     def test_run_app_passes_debug_and_controls_automatic_devtools(self) -> None:
         paths = LauncherPaths(
@@ -2532,13 +2605,18 @@ class LauncherRuntimeTests(unittest.TestCase):
             with (
                 mock.patch.dict(sys.modules, {"webview": fake_webview}),
                 mock.patch("maw.gui_web.default_paths", return_value=paths),
-                mock.patch("maw.gui_web.LauncherApi"),
+                mock.patch("maw.gui_web.LauncherApi") as launcher_api_cls,
+                mock.patch("maw.gui_web.install_stdio_tee") as install_tee,
                 mock.patch("maw.gui_web.asset_path", return_value=Path("missing.ico")),
             ):
                 run_app(debug=debug, devtools=devtools)
 
             self.assertEqual(fake_webview.settings["OPEN_DEVTOOLS_IN_DEBUG"], devtools)
             self.assertEqual(fake_webview.start.call_args.kwargs["debug"], debug or devtools)
+            api_sink = launcher_api_cls.call_args.kwargs["log_sink"]
+            self.assertIsInstance(api_sink, LocalLogSink)
+            # 事件流与 stdout/stderr tee 必须共享同一个 sink 实例（单锁单文件）。
+            install_tee.assert_called_once_with(api_sink)
             fake_webview.reset_mock()
 
 
