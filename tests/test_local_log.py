@@ -270,5 +270,19 @@ class InstallStdioTeeTests(unittest.TestCase):
         self.assertIs(sys.stdout, first_stdout)
 
 
+class DefaultLogDirectoryOverrideTests(unittest.TestCase):
+    def test_maw_app_data_root_overrides_base_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(Path(tmp) / "app-data")}, clear=False):
+                result = default_log_directory()
+        self.assertEqual(result, Path(tmp) / "app-data" / "logs")
+
+    def test_blank_override_falls_back_to_platform_directory(self) -> None:
+        with patch.dict(os.environ, {"MAW_APP_DATA_ROOT": "   "}, clear=False):
+            result = default_log_directory()
+        self.assertEqual(result.name, "logs")
+        self.assertIn("MAW", result.parts)
+
+
 if __name__ == "__main__":
     unittest.main()
