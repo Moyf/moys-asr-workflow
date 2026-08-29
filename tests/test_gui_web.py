@@ -2577,13 +2577,17 @@ class LauncherRuntimeTests(unittest.TestCase):
                 mock.patch.dict(sys.modules, {"webview": fake_webview}),
                 mock.patch("maw.gui_web.default_paths", return_value=paths),
                 mock.patch("maw.gui_web.LauncherApi") as launcher_api_cls,
+                mock.patch("maw.gui_web.install_stdio_tee") as install_tee,
                 mock.patch("maw.gui_web.asset_path", return_value=Path("missing.ico")),
             ):
                 run_app(debug=debug, devtools=devtools)
 
             self.assertEqual(fake_webview.settings["OPEN_DEVTOOLS_IN_DEBUG"], devtools)
             self.assertEqual(fake_webview.start.call_args.kwargs["debug"], debug or devtools)
-            self.assertIsInstance(launcher_api_cls.call_args.kwargs["log_sink"], LocalLogSink)
+            api_sink = launcher_api_cls.call_args.kwargs["log_sink"]
+            self.assertIsInstance(api_sink, LocalLogSink)
+            # 事件流与 stdout/stderr tee 必须共享同一个 sink 实例（单锁单文件）。
+            install_tee.assert_called_once_with(api_sink)
             fake_webview.reset_mock()
 
 

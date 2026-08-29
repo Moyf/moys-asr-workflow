@@ -11,7 +11,14 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-from maw.local_log import LocalLogSink, _log_path_for, default_log_directory, format_log_line
+from maw.local_log import (
+    LocalLogSink,
+    TeeWriter,
+    _log_path_for,
+    default_log_directory,
+    format_log_line,
+    install_stdio_tee,
+)
 
 
 def _now(year: int = 2026, month: int = 8, day: int = 29, hour: int = 14, minute: int = 32, second: int = 1) -> datetime:
@@ -151,6 +158,116 @@ class DefaultLogDirectoryTests(unittest.TestCase):
             with patch.dict(os.environ, {"LOCALAPPDATA": tmp}, clear=False):
                 result = default_log_directory()
         self.assertEqual(result, Path(tmp) / "Moy" / "MAW" / "logs")
+
+
+class _RecordingStream:
+    def __init__(self) -> None:
+        self.chunks: list[str] = []
+        self.flushes = 0
+
+    @property
+    def encoding(self) -> str:
+        return "utf-8"
+
+    def write(self, text: str) -> int:
+        self.chunks.append(text)
+        return len(text)
+
+    def flush(self) -> None:
+        self.flushes += 1
+
+    def isatty(self) -> bool:
+        return False
+
+    def fileno(self) -> int:
+        return 1
+
+
+class WriteTextTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.sink = LocalLogSink(directory=Path(self._tmp.name), now=lambda: _now())
+
+    def test_write_text_renders_label_and_message(self) -> None:
+        self.sink.write_text("hello", label="stdout")
+        lines = _log_path_for(Path(self._tmp.name), _now()).read_text(encoding="utf-8").splitlines()
+        self.assertEqual(lines, ["14:32:01.123 [stdout] hello"])
+
+    def test_write_text_masks_secret_keys(self) -> None:
+        self.sink.write_text("auth=sk-abc12345defxyz", label="stderr")
+        lines = _log_path_for(Path(self._tmp.name), _now()).read_text(encoding="utf-8").splitlines()
+        self.assertIn("sk-***", lines[0])
+        self.assertNotIn("sk-abc12345defxyz", lines[0])
+
+
+class TeeWriterTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.sink = LocalLogSink(directory=Path(self._tmp.name), now=lambda: _now())
+        self.stream = _RecordingStream()
+        self.writer = TeeWriter(self.sink, self.stream, label="stdout")
+
+    def _logged_lines(self) -> list[str]:
+        path = _log_path_for(Path(self._tmp.name), _now())
+        return path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+
+    def test_full_line_goes_to_sink_and_original_stream(self) -> None:
+        self.writer.write("hello\n")
+        lines = self._logged_lines()
+        self.assertEqual(lines, ["14:32:01.123 [stdout] hello"])
+        self.assertEqual(self.stream.chunks, ["hello\n"])
+
+    def test_split_writes_accumulate_until_newline(self) -> None:
+        self.writer.write("hel")
+        self.writer.write("lo\n")
+        lines = self._logged_lines()
+        self.assertEqual(lines, ["14:32:01.123 [stdout] hello"])
+        self.assertEqual("".join(self.stream.chunks), "hello\n")
+
+    def test_flush_writes_trailing_text_without_newline(self) -> None:
+        self.writer.write("tail")
+        self.assertEqual(self._logged_lines(), [])
+        self.writer.flush()
+        self.assertEqual(self._logged_lines(), ["14:32:01.123 [stdout] tail"])
+        self.assertEqual(self.stream.flushes, 1)
+
+    def test_no_original_stream_does_not_crash(self) -> None:
+        writer = TeeWriter(self.sink, None, label="stderr")
+        writer.write("panic\n")
+        self.assertEqual(self._logged_lines(), ["14:32:01.123 [stderr] panic"])
+
+    def test_multi_line_single_write(self) -> None:
+        self.writer.write("a\nb\n")
+        self.assertEqual(self._logged_lines(), ["14:32:01.123 [stdout] a", "14:32:01.123 [stdout] b"])
+
+
+class InstallStdioTeeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self._original_stdout = sys.stdout
+        self._original_stderr = sys.stderr
+        self.addCleanup(self._restore_streams)
+        self.sink = LocalLogSink(directory=Path(self._tmp.name), now=lambda: _now())
+
+    def _restore_streams(self) -> None:
+        sys.stdout = self._original_stdout
+        sys.stderr = self._original_stderr
+
+    def test_routes_print_output_to_sink(self) -> None:
+        install_stdio_tee(self.sink)
+        print("hello tee", flush=True)
+        path = _log_path_for(Path(self._tmp.name), _now())
+        lines = path.read_text(encoding="utf-8").splitlines()
+        self.assertTrue(any("hello tee" in line for line in lines))
+
+    def test_install_is_idempotent(self) -> None:
+        install_stdio_tee(self.sink)
+        first_stdout = sys.stdout
+        install_stdio_tee(self.sink)
+        self.assertIs(sys.stdout, first_stdout)
 
 
 if __name__ == "__main__":
