@@ -6,7 +6,6 @@ import json
 import os
 import queue
 import re
-import shutil
 import socket
 import subprocess
 import sys
@@ -22,6 +21,7 @@ from pathlib import Path
 from threading import Event
 from typing import BinaryIO, Final, final
 
+from maw.ffmpeg import resolve_ffmpeg_tools
 from maw.media_cache import embed_media_caches
 from maw.waveform import is_waveform_payload
 from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, MODELS, PROVIDERS, ModelConfig, ProviderConfig, _gui_theme, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
@@ -36,7 +36,7 @@ from maw.local_runtime import (
     resolve_model_cache_root,
 )
 from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
-from maw.media import find_ffmpeg, resolve_project_media
+from maw.media import resolve_project_media
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_io import read_project, read_srt
 from maw.project import normalize_project
@@ -918,12 +918,7 @@ class LauncherApi:
             _ = ocr_model_type(model_id)
         except ValueError as error:
             return _error_result("ocrModel", "ocr_model_missing", str(error))
-        configured = effective_config_value(self.paths.env_path, "FFMPEG_PATH")
-        ffmpeg = find_ffmpeg(configured)
-        if ffmpeg is None:
-            bundled_directory = _bundled_ffmpeg_directory()
-            if bundled_directory is not None:
-                ffmpeg = (bundled_directory / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).resolve()
+        ffmpeg = _postprocess_ffmpeg(self.paths.env_path)
         if ffmpeg is None:
             return {"ok": False, "field": "ocrVideoPath", "code": "postprocess_failed", "detail": "找不到 FFmpeg，无法抽取视频画面。", "error": "找不到 FFmpeg，无法抽取视频画面。"}
         self._emit_postprocess_status("toolbox_status_reading")
@@ -1007,12 +1002,7 @@ class LauncherApi:
         return _subtitle_artifact_result(result)
 
     def run_ffconcat_rebuild(self, payload: Mapping[str, object]) -> dict[str, object]:
-        configured = effective_config_value(self.paths.env_path, "FFMPEG_PATH")
-        ffmpeg = find_ffmpeg(configured)
-        if ffmpeg is None:
-            bundled_directory = _bundled_ffmpeg_directory()
-            if bundled_directory is not None:
-                ffmpeg = (bundled_directory / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).resolve()
+        ffmpeg = _postprocess_ffmpeg(self.paths.env_path)
         if ffmpeg is None:
             return {"ok": False, "field": "postprocessFfconcat", "code": "postprocess_failed", "detail": "FFmpeg was not found.", "error": "FFmpeg was not found."}
         self._emit_postprocess_status("toolbox_status_validating_media")
@@ -2920,14 +2910,11 @@ def _open_existing_path(path: Path) -> dict[str, object]:
 
 def _postprocess_ffmpeg(env_path: Path) -> Path | None:
     configured = effective_config_value(env_path, "FFMPEG_PATH")
-    ffmpeg = find_ffmpeg(configured)
-    if ffmpeg is None:
-        bundled_directory = _bundled_ffmpeg_directory()
-        if bundled_directory is not None:
-            candidate = bundled_directory / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
-            if candidate.is_file():
-                return candidate.resolve()
-    return ffmpeg.resolve() if ffmpeg is not None else None
+    return resolve_ffmpeg_tools(
+        configured_path=configured or None,
+        platform=sys.platform,
+        search_path=_ffmpeg_search_path() or "",
+    ).ffmpeg
 
 
 def _frozen_ffmpeg_preflight(env_path: Path) -> dict[str, object] | None:
@@ -2945,49 +2932,28 @@ def _frozen_ffmpeg_preflight(env_path: Path) -> dict[str, object] | None:
 
 
 def _check_ffmpeg(env_path: Path, override: str = "") -> dict[str, object]:
-    ffmpeg_path = _which_ffmpeg_tool("ffmpeg")
-    ffprobe_path = _which_ffmpeg_tool("ffprobe")
-    configured_value = override or os.environ.get("FFMPEG_PATH", "") or effective_config_value(env_path, "FFMPEG_PATH")
-    configured_dir = _ffmpeg_directory(configured_value)
-    if override and configured_dir is None:
-        return {"ok": True, "found": False, "ffmpeg": "", "ffprobe": "", "directory": ""}
-    if configured_dir:
-        ffmpeg_candidate = configured_dir / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
-        ffprobe_candidate = configured_dir / ("ffprobe.exe" if os.name == "nt" else "ffprobe")
-        if ffmpeg_candidate.exists() and ffprobe_candidate.exists():
-            ffmpeg_path = str(ffmpeg_candidate)
-            ffprobe_path = str(ffprobe_candidate)
-    if not (ffmpeg_path and ffprobe_path):
-        bundled_dir = _bundled_ffmpeg_directory()
-        if bundled_dir:
-            ffmpeg_path = str(bundled_dir / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg"))
-            ffprobe_path = str(bundled_dir / ("ffprobe.exe" if os.name == "nt" else "ffprobe"))
-    found = bool(ffmpeg_path and ffprobe_path)
-    directory = str(Path(ffmpeg_path).parent) if ffmpeg_path else ""
-    return {"ok": True, "found": found, "ffmpeg": ffmpeg_path or "", "ffprobe": ffprobe_path or "", "directory": directory}
-
-
-def _which_ffmpeg_tool(name: str) -> str | None:
-    if sys.platform != "darwin":
-        return shutil.which(name)
-    return shutil.which(name, path=_ffmpeg_search_path())
+    configured_value = override.strip() or os.environ.get("FFMPEG_PATH", "") or effective_config_value(env_path, "FFMPEG_PATH")
+    tools = resolve_ffmpeg_tools(
+        configured_path=configured_value or None,
+        platform=sys.platform,
+        search_path=_ffmpeg_search_path() or "",
+        strict_config=bool(override.strip()),
+    )
+    ffmpeg_path = str(tools.ffmpeg) if tools.ffmpeg is not None else ""
+    ffprobe_path = str(tools.ffprobe) if tools.ffprobe is not None else ""
+    return {
+        "ok": True,
+        "found": tools.complete,
+        "ffmpeg": ffmpeg_path,
+        "ffprobe": ffprobe_path,
+        "directory": str(tools.ffmpeg.parent) if tools.ffmpeg is not None else "",
+    }
 
 
 def effective_config_value(env_path: Path, key: str) -> str:
     from maw.gui_config import load_env
 
     return os.environ.get(key) or load_env(env_path).get(key, "")
-
-
-def _ffmpeg_directory(value: str) -> Path | None:
-    if not value.strip():
-        return None
-    candidate = Path(value.strip()).expanduser()
-    if candidate.is_dir():
-        return candidate
-    if candidate.exists():
-        return candidate.parent
-    return None
 
 
 def _provider_payload(

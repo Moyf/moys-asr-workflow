@@ -17,6 +17,7 @@ from threading import Event
 from typing import BinaryIO, Final, TextIO, final
 
 from maw.console import configure_utf8_environment
+from maw.ffmpeg import MACOS_FFMPEG_CANDIDATE_DIRECTORIES, bundled_ffmpeg_directory, ffmpeg_search_path, resolve_ffmpeg_tools
 from maw.gui_config import QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, load_env
 from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
 from maw.media import read_bwf_time_reference
@@ -79,12 +80,6 @@ class TranscriptionResult:
 
 ProgressCallback = Callable[[str], None]
 ProcessStartCallback = Callable[[int], None]
-
-
-MACOS_FFMPEG_CANDIDATE_DIRECTORIES: Final[tuple[str, ...]] = (
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-)
 
 
 @final
@@ -522,14 +517,23 @@ def _child_environment(
     env["PYTHONUNBUFFERED"] = "1"
     configure_utf8_environment(env)
     configured_path = parent.get("FFMPEG_PATH") or load_env(DEFAULT_ENV_PATH).get("FFMPEG_PATH", "")
-    configured = _prepend_ffmpeg_path(env, configured_path) if configured_path else False
-    if not configured:
-        bundled_directory = _bundled_ffmpeg_directory()
-        if bundled_directory:
-            _prepend_ffmpeg_path(env, str(bundled_directory))
-    candidate_path = _ffmpeg_search_path(env.get("PATH", ""))
-    if candidate_path:
-        env["PATH"] = candidate_path
+    lookup_path = _ffmpeg_search_path(env.get("PATH", "")) or ""
+    tools = resolve_ffmpeg_tools(
+        configured_path=configured_path or None,
+        environment=env,
+        search_path=lookup_path,
+        platform=sys.platform,
+        macos_directories=MACOS_FFMPEG_CANDIDATE_DIRECTORIES,
+    )
+    # Put the exact directories selected by the shared resolver in front of
+    # the inherited PATH. This keeps a child CLI's independent resolution
+    # aligned with the Launcher process, including bundled and Homebrew tools.
+    for executable in (tools.ffprobe, tools.ffmpeg):
+        if executable is not None:
+            _prepend_ffmpeg_path(env, str(executable.parent))
+    final_path = _ffmpeg_search_path(env.get("PATH", ""))
+    if final_path:
+        env["PATH"] = final_path
     if provider == "soniox":
         if api_key:
             env["SONIOX_API_KEY"] = api_key
@@ -575,25 +579,19 @@ def _prepend_ffmpeg_path(env: dict[str, str], configured_path: str) -> bool:
 
 def _ffmpeg_search_path(path: str | None = None) -> str | None:
     """Add common macOS Homebrew directories after the inherited PATH."""
-    current = os.environ.get("PATH", "") if path is None else path
-    entries = [entry for entry in current.split(os.pathsep) if entry]
-    if sys.platform == "darwin":
-        for directory in MACOS_FFMPEG_CANDIDATE_DIRECTORIES:
-            if directory not in entries:
-                entries.append(directory)
-    return os.pathsep.join(entries) or None
+    return ffmpeg_search_path(
+        path,
+        platform=sys.platform,
+        macos_directories=MACOS_FFMPEG_CANDIDATE_DIRECTORIES,
+    )
 
 
 def _bundled_ffmpeg_directory() -> Path | None:
-    ffmpeg_name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
-    ffprobe_name = "ffprobe.exe" if os.name == "nt" else "ffprobe"
-    candidates = [asset_path("ffmpeg/bin")]
-    if getattr(sys, "frozen", False):
-        candidates.insert(0, Path(sys.executable).resolve().parent / "ffmpeg" / "bin")
-    for directory in candidates:
-        if (directory / ffmpeg_name).is_file() and (directory / ffprobe_name).is_file():
-            return directory
-    return None
+    return bundled_ffmpeg_directory(
+        executable=sys.executable,
+        frozen=bool(getattr(sys, "frozen", False)),
+        candidates=(asset_path("ffmpeg/bin"),),
+    )
 
 
 def _terminate(process: subprocess.Popen[bytes]) -> None:

@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT))
 
 from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
+from maw.ffmpeg import FfmpegTools  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
 from maw.postprocess_llm import LlmClientError  # noqa: E402
 from maw.runtimes.base import RuntimeStatus  # noqa: E402
@@ -817,7 +818,7 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         runtime = SimpleNamespace(ready=True, path=str(self.root / "ocr-runtime"), detail="")
         with mock.patch("maw.gui_web.managed_ocr_runtime_status", return_value=runtime):
-            with mock.patch("maw.gui_web.find_ffmpeg", return_value=ffmpeg) as find_ffmpeg:
+            with mock.patch("maw.gui_web._postprocess_ffmpeg", return_value=ffmpeg) as resolve_ffmpeg:
                 with mock.patch("maw.gui_web.run_ocr_in_runtime", return_value={
                     "sourceProjectPath": str(project),
                     "sourceSrtPath": "",
@@ -848,7 +849,7 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["reportPath"], str(fake.report_path))
-        find_ffmpeg.assert_called_once()
+        resolve_ffmpeg.assert_called_once_with(self.env_path)
         request = process.call_args.args[0]
         self.assertEqual(request.video_path, video)
         self.assertEqual(request.fallback_video_path, self.root / "current.mp4")
@@ -974,18 +975,21 @@ class GuiWebBridgeTests(unittest.TestCase):
         _ = ffmpeg.write_bytes(b"exe")
         _ = concat.write_text(f"ffconcat version 1.0\nfile '{media.as_posix()}'\n", encoding="utf-8")
 
-        with mock.patch("maw.gui_web.find_ffmpeg", return_value=None):
-            with mock.patch("maw.gui_web._bundled_ffmpeg_directory", return_value=bundled):
-                with mock.patch("maw.gui_web.process_ffconcat_rebuild") as rebuild:
-                    rebuild.return_value = mock.Mock(
-                        source_media_path=media.resolve(),
-                        media_path=(self.root / "clip.gap-removed.mp4").resolve(),
-                        ffconcat_path=concat.resolve(),
-                    )
-                    result = self.api.run_ffconcat_rebuild({"mediaPath": str(media), "ffconcatPath": str(concat)})
+        with mock.patch(
+            "maw.gui_web.resolve_ffmpeg_tools",
+            return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=None),
+        ) as resolve_ffmpeg:
+            with mock.patch("maw.gui_web.process_ffconcat_rebuild") as rebuild:
+                rebuild.return_value = mock.Mock(
+                    source_media_path=media.resolve(),
+                    media_path=(self.root / "clip.gap-removed.mp4").resolve(),
+                    ffconcat_path=concat.resolve(),
+                )
+                result = self.api.run_ffconcat_rebuild({"mediaPath": str(media), "ffconcatPath": str(concat)})
 
         self.assertTrue(result["ok"])
         self.assertEqual(rebuild.call_args.kwargs["ffmpeg_path"], ffmpeg.resolve())
+        resolve_ffmpeg.assert_called_once()
 
     def test_get_config_exposes_last_language_empty_vs_absent(self) -> None:
         self.env_path.write_text("MAW_GUI_LAST_MODEL=stt-async-v5\nMAW_GUI_LAST_LANGUAGE=\n", encoding="utf-8")
@@ -1780,7 +1784,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         def which(name: str, *, path: str | None = None) -> str:
             return str(ffmpeg if name == "ffmpeg" else ffprobe)
 
-        with mock.patch("maw.gui_web.shutil.which", side_effect=which):
+        with mock.patch("maw.ffmpeg.shutil.which", side_effect=which):
             result = self.api.check_ffmpeg()
 
         self.assertTrue(result["found"])
@@ -1794,9 +1798,9 @@ class GuiWebBridgeTests(unittest.TestCase):
         ffmpeg.write_bytes(b"exe")
         ffprobe.write_bytes(b"exe")
 
-        with mock.patch("maw.gui_web.shutil.which", return_value=None):
-            with mock.patch("maw.gui_web._bundled_ffmpeg_directory", return_value=ffmpeg_dir):
-                result = self.api.check_ffmpeg()
+        with mock.patch("maw.gui_web.resolve_ffmpeg_tools") as resolve_ffmpeg:
+            resolve_ffmpeg.return_value = FfmpegTools(ffmpeg=ffmpeg, ffprobe=ffprobe)
+            result = self.api.check_ffmpeg()
 
         self.assertTrue(result["found"])
         self.assertEqual(result["ffmpeg"], str(ffmpeg))
@@ -1805,6 +1809,8 @@ class GuiWebBridgeTests(unittest.TestCase):
     def test_check_ffmpeg_uses_macos_candidate_directories(self) -> None:
         ffmpeg_dir = self.root / "homebrew" / "bin"
         ffmpeg_dir.mkdir(parents=True)
+        (ffmpeg_dir / "ffmpeg.exe").write_bytes(b"exe")
+        (ffmpeg_dir / "ffprobe.exe").write_bytes(b"exe")
 
         def which(name: str, *, path: str | None = None) -> str:
             assert path is not None
@@ -1813,7 +1819,7 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         with mock.patch.object(sys, "platform", "darwin"):
             with mock.patch("maw.gui_workflow.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", (str(ffmpeg_dir),)):
-                with mock.patch("maw.gui_web.shutil.which", side_effect=which):
+                with mock.patch("maw.ffmpeg.shutil.which", side_effect=which):
                     result = self.api.check_ffmpeg()
 
         self.assertTrue(result["found"])

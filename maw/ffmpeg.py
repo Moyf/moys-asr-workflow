@@ -167,6 +167,7 @@ def resolve_ffmpeg_tools(
     *,
     environment: Mapping[str, str] | None = None,
     search_path: str | None = None,
+    platform: str | None = None,
     bundled_directories: Sequence[str | os.PathLike[str]] | None = None,
     include_bundled: bool = True,
     include_macos: bool = True,
@@ -206,7 +207,8 @@ def resolve_ffmpeg_tools(
             for directory in directories
         )
 
-    if include_macos and (sys.platform == "darwin"):
+    platform_value = sys.platform if platform is None else platform
+    if include_macos and platform_value == "darwin":
         candidates.extend(
             (Path(directory) / _tool_filename("ffmpeg"), Path(directory) / _tool_filename("ffprobe"))
             for directory in macos_directories
@@ -214,15 +216,26 @@ def resolve_ffmpeg_tools(
 
     lookup_path = search_path
     if lookup_path is None:
+        raw_path = str(values.get("PATH", "") or "")
         lookup_path = ffmpeg_search_path(
-            str(values.get("PATH", "") or ""),
+            raw_path,
+            platform=platform_value,
             macos_directories=macos_directories,
         )
-    path_by_tool = {
-        tool: Path(found).expanduser()
-        for tool in FFMPEG_TOOL_NAMES
-        if (found := shutil.which(tool, path=lookup_path))
-    }
+        # shutil.which(..., path=None) falls back to the current process
+        # environment. An explicitly empty PATH must remain empty so a
+        # child-environment resolution cannot accidentally see the Launcher
+        # process's PATH.
+        if lookup_path is None:
+            lookup_path = ""
+    path_by_tool: dict[str, Path] = {}
+    # An empty PATH must not make ``shutil.which`` search the current folder.
+    if lookup_path:
+        path_by_tool = {
+            tool: Path(found).expanduser()
+            for tool in FFMPEG_TOOL_NAMES
+            if (found := shutil.which(tool, path=lookup_path))
+        }
 
     resolved: dict[str, Path | None] = {tool: None for tool in FFMPEG_TOOL_NAMES}
     for ffmpeg_candidate, ffprobe_candidate in candidates:
@@ -244,6 +257,7 @@ def resolve_ffmpeg_tool(
     *,
     environment: Mapping[str, str] | None = None,
     search_path: str | None = None,
+    platform: str | None = None,
     bundled_directories: Sequence[str | os.PathLike[str]] | None = None,
     include_bundled: bool = True,
     include_macos: bool = True,
@@ -258,6 +272,7 @@ def resolve_ffmpeg_tool(
         configured_path,
         environment=environment,
         search_path=search_path,
+        platform=platform,
         bundled_directories=bundled_directories,
         include_bundled=include_bundled,
         include_macos=include_macos,

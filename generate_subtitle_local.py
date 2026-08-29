@@ -21,6 +21,7 @@ if str(_BUNDLE_ROOT) not in sys.path:
     sys.path.insert(0, str(_BUNDLE_ROOT))
 
 from maw.console import configure_utf8_stdio  # noqa: E402
+from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.local_asr import (  # noqa: E402
     FUNASR_DEFAULT_MODEL,
     QWEN_DEFAULT_CHUNK_SECONDS,
@@ -149,6 +150,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         batch_size_s = QWEN_DEFAULT_CHUNK_SECONDS if args.engine == "qwen-asr" else 300
 
     output_srt = Path(args.output).expanduser().resolve() if args.output else default_output_path(input_path, args.engine)
+    ffmpeg_tools = resolve_ffmpeg_tools()
+    ffmpeg_path = ffmpeg_tools.ffmpeg
+    ffprobe_path = ffmpeg_tools.ffprobe
     engine = create_local_engine(
         args.engine,
         model=args.model,
@@ -161,13 +165,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     try:
-        with prepared_audio(input_path, args.length_limit, on_event=print) as (audio_path, duration_ms):
+        with prepared_audio(
+            input_path,
+            args.length_limit,
+            on_event=print,
+            ffmpeg_path=ffmpeg_path,
+            ffprobe_path=ffprobe_path,
+        ) as (audio_path, duration_ms):
             result = engine.transcribe(
                 audio_path,
                 language=args.language,
                 batch_size_s=batch_size_s,
                 hotwords=hotwords,
                 on_event=print,
+                ffmpeg_path=ffmpeg_path,
+                ffprobe_path=ffprobe_path,
             )
             segments = build_local_segments(
                 result,
@@ -194,6 +206,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 generate_html=args.json and not args.no_html,
                 with_waveform=args.with_waveform,
                 generate_spectral=args.with_spectral,
+                ffmpeg_path=ffmpeg_path,
             )
     except Exception as error:  # noqa: BLE001 - CLI boundary prints actionable error.
         print(f"错误: {error}")

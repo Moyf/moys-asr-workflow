@@ -31,6 +31,7 @@ from generate_subtitle_qwen_api import (
     repair_nonpositive_duration_segments,
     split_segments_auto,
 )
+from maw.ffmpeg import resolve_ffmpeg_tool
 
 
 ProgressCallback = Callable[[str], None]
@@ -108,7 +109,36 @@ class LocalAsrEngine(Protocol):
         batch_size_s: int = 300,
         hotwords: Sequence[str] = (),
         on_event: ProgressCallback | None = None,
+        ffmpeg_path: str | Path | None = None,
+        ffprobe_path: str | Path | None = None,
     ) -> LocalTranscription: ...
+
+
+def _media_duration_seconds(
+    filepath: str,
+    ffprobe_path: str | Path | None = None,
+) -> float:
+    if ffprobe_path is None:
+        return get_duration_sec(filepath)
+    return get_duration_sec(filepath, ffprobe_path=ffprobe_path)
+
+
+def _extract_audio_for_local(
+    source_path: str,
+    output_path: str,
+    duration_limit: float | None = None,
+    *,
+    ffmpeg_path: str | Path | None = None,
+) -> None:
+    if ffmpeg_path is None:
+        extract_audio(source_path, output_path, duration_limit=duration_limit)
+    else:
+        extract_audio(
+            source_path,
+            output_path,
+            duration_limit=duration_limit,
+            ffmpeg_path=ffmpeg_path,
+        )
 
 
 def resolve_device(device: str) -> str:
@@ -562,9 +592,17 @@ class QwenAsrEngine:
         *,
         start_s: float,
         duration_s: float,
+        ffmpeg_path: str | Path | None = None,
     ) -> None:
-        command = [
+        ffmpeg = resolve_ffmpeg_tool(
             "ffmpeg",
+            ffmpeg_path,
+            allow_missing_explicit=bool(ffmpeg_path),
+        )
+        if ffmpeg is None:
+            raise LocalAsrError("找不到 ffmpeg，无法切分本地音频")
+        command = [
+            str(ffmpeg),
             "-v", "error",
             "-ss", f"{start_s:.3f}",
             "-i", str(source_path),
@@ -641,6 +679,8 @@ class QwenAsrEngine:
         batch_size_s: int = QWEN_DEFAULT_CHUNK_SECONDS,
         hotwords: Sequence[str] = (),
         on_event: ProgressCallback | None = None,
+        ffmpeg_path: str | Path | None = None,
+        ffprobe_path: str | Path | None = None,
     ) -> LocalTranscription:
         if batch_size_s <= 0:
             raise ValueError("batch_size_s must be greater than 0")
@@ -654,7 +694,7 @@ class QwenAsrEngine:
                 on_event=on_event,
             )
 
-        duration_s = get_duration_sec(str(audio_path))
+        duration_s = _media_duration_seconds(str(audio_path), ffprobe_path)
         if not math.isfinite(duration_s) or duration_s <= batch_size_s:
             return self._transcribe_one(
                 runtime,
@@ -689,6 +729,7 @@ class QwenAsrEngine:
                     chunk_path,
                     start_s=start_s,
                     duration_s=chunk_duration_s,
+                    ffmpeg_path=ffmpeg_path,
                 )
                 chunk_result = self._transcribe_one(
                     runtime,
@@ -797,6 +838,8 @@ class FunAsrEngine:
         batch_size_s: int = 300,
         hotwords: Sequence[str] = (),
         on_event: ProgressCallback | None = None,
+        ffmpeg_path: str | Path | None = None,
+        ffprobe_path: str | Path | None = None,
     ) -> LocalTranscription:
         runtime = self._load(on_event)
         if language and on_event:
@@ -893,13 +936,15 @@ class MossDiarizeEngine:
         batch_size_s: int = 300,
         hotwords: Sequence[str] = (),
         on_event: ProgressCallback | None = None,
+        ffmpeg_path: str | Path | None = None,
+        ffprobe_path: str | Path | None = None,
     ) -> LocalTranscription:
         del batch_size_s
         if language and on_event:
             on_event("[local] MOSS 自动识别语言，已忽略语言提示")
         if hotwords and on_event:
             on_event("[local] MOSS 不接受 MAW 热词参数，已忽略热词")
-        duration_s = get_duration_sec(str(audio_path))
+        duration_s = _media_duration_seconds(str(audio_path), ffprobe_path)
         if math.isfinite(duration_s) and duration_s > MOSS_MAX_AUDIO_SECONDS:
             raise LocalAsrError("MOSS 单次推理最多支持约 90 分钟音频；请先裁剪媒体后重试。")
         try:
@@ -1041,6 +1086,8 @@ class WhisperEngine:
         batch_size_s: int = 300,
         hotwords: Sequence[str] = (),
         on_event: ProgressCallback | None = None,
+        ffmpeg_path: str | Path | None = None,
+        ffprobe_path: str | Path | None = None,
     ) -> LocalTranscription:
         del batch_size_s  # 上游自行处理长音频，MAW 无需再分块
         runtime = self._load(on_event)
@@ -1302,6 +1349,8 @@ def prepared_audio(
     length_limit_s: float | None = None,
     *,
     on_event: ProgressCallback | None = None,
+    ffmpeg_path: str | Path | None = None,
+    ffprobe_path: str | Path | None = None,
 ) -> Iterator[tuple[Path, int]]:
     """Provide a local 16 kHz mono WAV for video or limited-length inputs."""
     if not input_path.exists():
@@ -1310,7 +1359,7 @@ def prepared_audio(
         raise ValueError("length limit must be greater than 0")
     needs_temp = input_path.suffix.lower() in VIDEO_EXTENSIONS or length_limit_s is not None
     if not needs_temp:
-        duration_ms = max(int(round(get_duration_sec(str(input_path)) * 1000)), 1)
+        duration_ms = max(int(round(_media_duration_seconds(str(input_path), ffprobe_path) * 1000)), 1)
         if on_event:
             on_event("[local] 正在准备加载模型……")
         yield input_path, duration_ms
@@ -1319,10 +1368,15 @@ def prepared_audio(
     with tempfile.TemporaryDirectory(prefix="maw-local-") as temp_dir:
         audio_path = Path(temp_dir) / "audio.wav"
         if input_path.suffix.lower() in VIDEO_EXTENSIONS or length_limit_s is not None:
-            extract_audio(str(input_path), str(audio_path), duration_limit=length_limit_s)
+            _extract_audio_for_local(
+                str(input_path),
+                str(audio_path),
+                duration_limit=length_limit_s,
+                ffmpeg_path=ffmpeg_path,
+            )
         else:
             shutil.copy2(input_path, audio_path)
-        duration_s = get_duration_sec(str(audio_path))
+        duration_s = _media_duration_seconds(str(audio_path), ffprobe_path)
         if length_limit_s is not None:
             duration_s = min(duration_s, length_limit_s)
         if on_event:
@@ -1341,6 +1395,7 @@ def write_local_outputs(
     generate_html: bool,
     with_waveform: bool,
     generate_spectral: bool = False,
+    ffmpeg_path: str | Path | None = None,
 ) -> LocalOutputPaths:
     """Write SRT and optional MAW project/portable editor outputs."""
     output_srt.parent.mkdir(parents=True, exist_ok=True)
@@ -1358,11 +1413,16 @@ def write_local_outputs(
     if with_waveform:
         from maw.media_cache import embed_media_caches
 
+        cache_kwargs: dict[str, object] = {
+            "source_media_path": input_path,
+            "generate_spectral": generate_spectral,
+        }
+        if ffmpeg_path is not None:
+            cache_kwargs["ffmpeg_bin"] = str(ffmpeg_path)
         project = embed_media_caches(
             project,
             cache_media_path or input_path,
-            source_media_path=input_path,
-            generate_spectral=generate_spectral,
+            **cache_kwargs,
         ).project
     json_path.write_text(
         json.dumps(project, ensure_ascii=False, indent=2),

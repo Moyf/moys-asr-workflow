@@ -34,6 +34,10 @@ class LocalRuntimeTests(unittest.TestCase):
                 bundle_root / "generate_subtitle_local.py",
             )
             (package_root / "__init__.py").write_text("\n", encoding="utf-8")
+            shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "maw" / "ffmpeg.py",
+                package_root / "ffmpeg.py",
+            )
             (package_root / "console.py").write_text(
                 "def configure_utf8_stdio():\n"
                 "    pass\n",
