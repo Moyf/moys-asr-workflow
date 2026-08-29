@@ -10,6 +10,7 @@ import traceback
 from collections.abc import Sequence
 from pathlib import Path
 
+from maw.app_paths import default_log_directory
 from maw.console import configure_utf8_stdio
 
 
@@ -239,17 +240,12 @@ def _friendly_child_error(error: Exception) -> str:
 
 
 def _startup_error_log_path() -> Path:
-    if sys.platform == "win32":
-        if getattr(sys, "frozen", False):
-            return Path(sys.executable).resolve().parent / "launcher-startup.log"
-        return Path(__file__).resolve().parent / "launcher-startup.log"
-    return Path.home() / ".maw" / "launcher-startup.log"
+    """Return the shared MAW startup diagnostics path."""
+    return default_log_directory() / "launcher-startup.log"
 
 
 def _startup_error_fallback_log_path() -> Path:
-    """Return the shared MAW log directory when the package directory is read-only."""
-    from maw.local_log import default_log_directory
-
+    """Return the shared MAW startup diagnostics path."""
     return default_log_directory() / "launcher-startup.log"
 
 

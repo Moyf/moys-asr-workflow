@@ -41,6 +41,7 @@ from pathlib import Path
 import requests
 from requests.exceptions import RequestException
 
+from maw.app_paths import default_env_path
 from generate_subtitle_qwen_api import (
     WESTERN_MAX_WORDS,
     WESTERN_MIN_WORDS,
@@ -81,7 +82,7 @@ MAX_TRIES = 3              # 申请上传/单个分片重试次数
 MAX_CONSECUTIVE_NETWORK_ERRORS = 5
 RETRYABLE_HTTP_STATUS_CODES = frozenset({408, 425, 429})
 
-ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+ENV_FILE = default_env_path()
 
 # 任务状态（上游 ResultStateEnum）
 STATE_QUEUED = 0

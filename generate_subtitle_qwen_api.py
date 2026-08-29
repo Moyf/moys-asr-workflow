@@ -30,6 +30,7 @@ from pathlib import Path
 import requests
 
 from edit import get_default_sticker_dir
+from maw.app_paths import default_env_path
 from maw.project import repair_segment_durations
 from maw.qwen_audio import parse_qwen_audio_hotwords
 from maw.speaker import apply_speaker_colors, split_items_by_speaker
@@ -42,7 +43,7 @@ from maw.media_cache import embed_media_caches, merge_media_caches
 # ===== 路径与常量 =====
 
 HOTWORDS_FILE = Path(__file__).parent / "hotwords.txt"
-ENV_FILE = Path(__file__).parent / ".env"
+ENV_FILE = default_env_path()
 
 QWEN3_ASR_FILETRANS_MODEL = "qwen3-asr-flash-filetrans"
 QWEN_AUDIO_FILETRANS_MODEL = "qwen-audio-3.0-asr-flash-filetrans"

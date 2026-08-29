@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import os
 import struct
 import subprocess
 import sys
@@ -77,6 +78,47 @@ class LocalEditorServerTests(unittest.TestCase):
         )
 
         self.assertRegex(result.stdout, r"-p(?: PORT)?, --port PORT")
+
+    def test_default_settings_path_uses_unified_maw_namespace(self) -> None:
+        with mock.patch.object(server_editor.sys, "platform", "win32"), mock.patch.dict(
+            os.environ,
+            {"LOCALAPPDATA": str(self.root / "LocalAppData"), "MAW_APP_DATA_ROOT": ""},
+            clear=True,
+        ):
+            self.assertEqual(
+                server_editor.default_settings_path(),
+                self.root / "LocalAppData" / "MAW" / "server-editor-settings.json",
+            )
+
+    def test_default_settings_read_uses_legacy_file_only_when_new_file_is_absent(self) -> None:
+        primary = self.root / "MAW" / "server-editor-settings.json"
+        legacy = self.root / "Moy" / "moys-asr-workflow" / "server-editor-settings.json"
+        legacy.parent.mkdir(parents=True)
+        legacy_settings = server_editor.replace(server_editor.ServerSettings(), auto_open_last_project=False)
+        server_editor.write_server_settings(legacy, legacy_settings)
+
+        with mock.patch.object(server_editor, "default_settings_path", return_value=primary), mock.patch.object(
+            server_editor, "legacy_server_settings_path", return_value=legacy
+        ):
+            loaded = server_editor.load_default_server_settings()
+
+        self.assertFalse(loaded.auto_open_last_project)
+        self.assertFalse(primary.exists())
+
+    def test_default_settings_read_prefers_new_file_over_legacy_file(self) -> None:
+        primary = self.root / "MAW" / "server-editor-settings.json"
+        legacy = self.root / "Moy" / "moys-asr-workflow" / "server-editor-settings.json"
+        primary.parent.mkdir(parents=True)
+        legacy.parent.mkdir(parents=True)
+        server_editor.write_server_settings(primary, server_editor.replace(server_editor.ServerSettings(), auto_open_last_project=False))
+        server_editor.write_server_settings(legacy, server_editor.replace(server_editor.ServerSettings(), auto_open_last_project=True))
+
+        with mock.patch.object(server_editor, "default_settings_path", return_value=primary), mock.patch.object(
+            server_editor, "legacy_server_settings_path", return_value=legacy
+        ):
+            loaded = server_editor.load_default_server_settings()
+
+        self.assertFalse(loaded.auto_open_last_project)
 
     def test_server_responds_before_initial_project_load_finishes(self) -> None:
         project = server_editor.load_blank_project(str(self.stickers))

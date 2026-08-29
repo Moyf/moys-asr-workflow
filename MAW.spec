@@ -63,6 +63,7 @@ datas = [
     (str(ROOT / "maw" / "reapeaks.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "media_cache.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "__init__.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "app_paths.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "console.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "local_asr.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "local_runtime_worker.py"), "local-runtime/maw"),

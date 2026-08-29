@@ -164,7 +164,7 @@ class DefaultLogDirectoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with patch.dict(os.environ, {"LOCALAPPDATA": tmp}, clear=False):
                 result = default_log_directory()
-        self.assertEqual(result, Path(tmp) / "Moy" / "MAW" / "logs")
+        self.assertEqual(result, Path(tmp) / "MAW" / "logs")
 
 
 class _RecordingStream:

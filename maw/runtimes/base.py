@@ -34,6 +34,7 @@ from pathlib import Path
 from threading import Event
 from typing import Final, TextIO
 
+from maw.app_paths import default_app_data_root
 from maw.gui_platform import (
     asset_path,
     popen_process_tree,
@@ -172,19 +173,6 @@ class RuntimeStatus:
 # ---------------------------------------------------------------------------
 # 目录助手（模型缓存对全部 Runtime 通用；默认 app-data 根对全部 Runtime 通用）
 # ---------------------------------------------------------------------------
-
-
-def default_app_data_root() -> Path:
-    override = os.environ.get("MAW_APP_DATA_ROOT", "").strip()
-    if override:
-        return Path(override).expanduser().resolve(strict=False)
-    # 平台判定统一用 sys.platform：os.name 是全局属性，测试 mock 它会在
-    # posix 上污染 pathlib（WindowsPath 无法实例化）。
-    if sys.platform == "win32":
-        return Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local")) / "MAW"
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "MAW"
-    return Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "MAW"
 
 
 def resolve_model_cache_root(configured: str | Path | None = None) -> Path:

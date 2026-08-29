@@ -33,6 +33,7 @@ from pathlib import Path
 import requests
 from requests.exceptions import RequestException
 
+from maw.app_paths import default_env_path
 from generate_subtitle_qwen_api import (
     WESTERN_MAX_WORDS,
     WESTERN_MIN_WORDS,
@@ -60,7 +61,7 @@ MAX_AUDIO_SECONDS = 300 * 60
 MAX_CONSECUTIVE_NETWORK_ERRORS = 5
 POLL_HEARTBEAT_SECONDS = 15
 
-ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+ENV_FILE = default_env_path()
 
 
 class TranscriptionFailedError(RuntimeError):

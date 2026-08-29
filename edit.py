@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import NotRequired, TypedDict
 
 from maw.colors import COLOR_PALETTE
+from maw.app_paths import default_env_path
 from maw.console import configure_utf8_stdio
 from maw.project import ProjectValidationFailed, normalize_project
 from maw.media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS, read_bwf_time_reference
@@ -124,14 +125,14 @@ def media_tag(media_path: Path, media_url: str) -> str:
     )
 
 
-def load_env() -> dict[str, str]:
-    """读取脚本同目录下的 .env 文件，返回 key=value 字典。
+def load_env(path: Path | None = None) -> dict[str, str]:
+    """读取 MAW .env 文件，返回 key=value 字典。
 
     零依赖实现（不引入 python-dotenv）。仅做简单 KEY=VALUE 解析，
     忽略空行和 # 注释行。调用方若需系统环境变量优先，请用 os.getenv 覆盖。
     文件不存在时返回空字典。
     """
-    env_path = Path(__file__).parent / ".env"
+    env_path = Path(path) if path is not None else default_env_path()
     if not env_path.exists():
         return {}
     result: dict[str, str] = {}
