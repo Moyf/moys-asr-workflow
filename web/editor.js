@@ -11535,22 +11535,22 @@ function mediaTargetUrl() {
   return '';
 }
 
-function buildGapRemovedMediaClip(
+function buildTimelineMediaClip(
   interval, index, kind, targetUrl, sourceStartFrame, sourceDurationFrames,
-  includeSubtitleMarkers = false,
+  { includeSubtitleMarkers = false, gapRemoved = false } = {},
 ) {
   const startFrame = msToOtioFrames(interval.start);
   const endFrame = msToOtioFrames(interval.end);
   const durationFrames = Math.max(1, endFrame - startFrame);
   return {
     OTIO_SCHEMA: 'Clip.2',
-    metadata: {
+    metadata: gapRemoved ? {
       moy: {
         gap_remove_source_start_ms: interval.start,
         gap_remove_source_end_ms: interval.end,
         gap_remove_sequence_index: index,
       },
-    },
+    } : {},
     name: `${kind} ${index + 1}`,
     source_range: otioTimeRange(sourceStartFrame + startFrame, durationFrames),
     effects: [],
@@ -11573,9 +11573,9 @@ function buildGapRemovedMediaClip(
   };
 }
 
-function buildGapRemovedOtio() {
-  const removed = getRemovedGapRanges();
-  if (!removed.length) {
+function buildTimelineOtio({ gapRemoved = false } = {}) {
+  const removed = gapRemoved ? getRemovedGapRanges() : [];
+  if (gapRemoved && !removed.length) {
     flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
     return null;
   }
@@ -11589,9 +11589,14 @@ function buildGapRemovedOtio() {
     flashHint('无法获得媒体绝对路径；请用 edit.py / server-editor 打开工程后再导出 OTIO', 'invalid');
     return null;
   }
-  const intervals = window.AsrEditorUtils.buildGapRemovedIntervals(durationMs, removed);
+  const intervals = gapRemoved
+    ? window.AsrEditorUtils.buildGapRemovedIntervals(durationMs, removed)
+    : [{ start: 0, end: durationMs }];
   if (!intervals.length) {
-    flashHint('移除静音空隙后没有剩余媒体，无法导出 OTIO', 'warning');
+    flashHint(
+      gapRemoved ? '移除静音空隙后没有剩余媒体，无法导出 OTIO' : '媒体时长不可用，无法导出 OTIO',
+      'warning',
+    );
     return null;
   }
   const sourceDurationFrames = Math.max(1, msToOtioFrames(durationMs));
@@ -11608,22 +11613,33 @@ function buildGapRemovedOtio() {
     markers: [],
     enabled: true,
     color: null,
-    children: intervals.map((interval, index) => buildGapRemovedMediaClip(
-      interval, index, track.name, targetUrl, sourceStartFrame, sourceDurationFrames,
-      track.kind === 'Video' || trackSpecs.length === 1,
+    children: intervals.map((interval, index) => buildTimelineMediaClip(
+      interval,
+      index,
+      track.name,
+      targetUrl,
+      sourceStartFrame,
+      sourceDurationFrames,
+      {
+        includeSubtitleMarkers: track.kind === 'Video' || trackSpecs.length === 1,
+        gapRemoved,
+      },
     )),
     kind: track.kind,
   }));
+  const metadata = {
+    moy: {
+      source_media: targetUrl,
+      ...(gapRemoved ? {
+        gap_remove_schema: GAP_REMOVE_SCHEMA,
+        removed_gaps_ms: removed,
+      } : {}),
+    },
+  };
   return JSON.stringify({
     OTIO_SCHEMA: 'Timeline.1',
-    metadata: {
-      moy: {
-        gap_remove_schema: GAP_REMOVE_SCHEMA,
-        source_media: targetUrl,
-        removed_gaps_ms: removed,
-      },
-    },
-    name: `${FILENAME_BASE}_去空隙`,
+    metadata,
+    name: gapRemoved ? `${FILENAME_BASE}_去空隙` : FILENAME_BASE,
     global_start_time: otioTime(0),
     tracks: {
       OTIO_SCHEMA: 'Stack.1',
@@ -11637,6 +11653,14 @@ function buildGapRemovedOtio() {
       children: tracks,
     },
   }, null, 4);
+}
+
+function buildSourceOtio() {
+  return buildTimelineOtio({ gapRemoved: false });
+}
+
+function buildGapRemovedOtio() {
+  return buildTimelineOtio({ gapRemoved: true });
 }
 
 function stickerOtioName(sticker, absPath) {
@@ -11847,6 +11871,59 @@ async function exportStickerOtoz(kind, buildTimeline, filename, description) {
   } catch (error) {
     flashHint(`表情包 OTIOZ 导出失败：${error.message || error}`, 'warning');
   }
+}
+
+async function exportTimelineOtioz(kind, buildTimeline, filename, description) {
+  const tr = (s) => window.MAWE_I18N?.translateText?.(s) || s;
+  if (editingState) finishEdit(true);
+  const payload = buildTimeline();
+  if (!payload) return;
+  if (!SERVER_CONFIG?.canOtozTimelineExport || !SERVER_CONFIG?.otiozTimelineExportUrl) {
+    flashHint(tr('当前工程无法导出时间线 OTIOZ（需要以 server-editor 打开并绑定工程文件）'), 'warning');
+    return;
+  }
+  flashHint(tr('正在生成时间线 OTIOZ 打包工程…'));
+  try {
+    const response = await fetch(new URL(SERVER_CONFIG.otiozTimelineExportUrl, window.location.href), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requestToken: SERVER_CONFIG.requestToken,
+        kind,
+        timeline: JSON.parse(payload),
+      }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || `服务器返回 ${response.status}`);
+    }
+    const blob = await response.blob();
+    flashHint(tr('时间线 OTIOZ 已生成，媒体已打包进 zip'), 'success');
+    await downloadFile(blob, filename, 'application/zip', {
+      desc: description, types: { 'application/zip': ['.otioz'] },
+    });
+  } catch (error) {
+    flashHint(`${tr('时间线 OTIOZ 导出失败')}：${error.message || error}`, 'warning');
+  }
+}
+
+
+const TIMELINE_OTIOZ_BUTTONS = ['download-otioz', 'download-gap-removed-otioz'];
+
+function updateTimelineOtiozExportButtons() {
+  const available = Boolean(
+    SERVER_CONFIG?.canOtozTimelineExport && SERVER_CONFIG?.otiozTimelineExportUrl,
+  );
+  TIMELINE_OTIOZ_BUTTONS.forEach((id) => {
+    const button = document.getElementById(id);
+    if (!button) return;
+    if (!button.dataset.originalTitle) button.dataset.originalTitle = button.title;
+    button.classList.toggle('sticker-disabled', !available);
+    button.setAttribute('aria-disabled', available ? 'false' : 'true');
+    button.title = available
+      ? button.dataset.originalTitle
+      : translatedEditorText('服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出 OTIOZ');
+  });
 }
 
 // 表情包导出的两种交付格式：
@@ -13302,6 +13379,23 @@ document.getElementById('download-gap-removed-srt')?.addEventListener('click', a
   }
 });
 document.getElementById('download-gap-removed-color-srt')?.addEventListener('click', () => downloadColorSrts(true));
+document.getElementById('download-otio')?.addEventListener('click', async () => {
+  if (editingState) finishEdit(true);
+  const payload = buildSourceOtio();
+  if (payload) {
+    await downloadFile(payload, FILENAME_BASE + '.otio', 'application/vnd.opentimelineio+json', {
+      desc: 'OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
+    });
+  }
+});
+document.getElementById('download-otioz')?.addEventListener('click', async () => {
+  await exportTimelineOtioz(
+    'source',
+    buildSourceOtio,
+    FILENAME_BASE + '.otioz',
+    'OTIOZ 打包工程',
+  );
+});
 document.getElementById('download-gap-removed-otio')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedOtio();
@@ -13310,6 +13404,14 @@ document.getElementById('download-gap-removed-otio')?.addEventListener('click', 
       desc: '去空隙 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
     });
   }
+});
+document.getElementById('download-gap-removed-otioz')?.addEventListener('click', async () => {
+  await exportTimelineOtioz(
+    'gap-removed',
+    buildGapRemovedOtio,
+    `${FILENAME_BASE}_gap-removed.otioz`,
+    '去空隙时间线 OTIOZ 打包工程',
+  );
 });
 document.getElementById('download-gap-removed-ffconcat')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
@@ -13359,6 +13461,7 @@ document.getElementById('download-sticker-otioz')?.addEventListener('click', asy
 
 // 初始按服务器模式刷新表情包 OTIOZ 导出按钮的可用性
 updateStickerExportButtons();
+updateTimelineOtiozExportButtons();
 updateLottieExportButton();
 updateOgrafExportButton();
 
