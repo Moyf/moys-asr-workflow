@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
 import struct
 import subprocess
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any
+
+from maw.ffmpeg import resolve_ffmpeg_tool
 
 
 class MediaStatus(str, Enum):
@@ -124,17 +125,8 @@ class MediaConversionError(ValueError):
 
 
 def find_ffmpeg(configured_path: str | os.PathLike[str] | None = None) -> Path | None:
-    """Find ffmpeg from an explicit setting or the current process PATH."""
-
-    configured = str(configured_path or os.environ.get("FFMPEG_PATH", "")).strip()
-    if configured:
-        candidate = Path(configured).expanduser()
-        if candidate.is_dir():
-            candidate = candidate / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
-        if candidate.is_file():
-            return candidate.resolve()
-    found = shutil.which("ffmpeg")
-    return Path(found).resolve() if found else None
+    """Find FFmpeg through the shared application-wide resolver."""
+    return resolve_ffmpeg_tool("ffmpeg", configured_path)
 
 
 def _conversion_output_path(source: Path, cache_dir: Path | None = None) -> Path:

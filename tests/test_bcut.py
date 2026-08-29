@@ -533,7 +533,7 @@ class BcutCliAudioPreparationTests(unittest.TestCase):
             input_path.write_bytes(b"media")
             durations = []
 
-            def duration_for(path: str) -> float:
+            def duration_for(path: str, ffprobe_path=None) -> float:
                 durations.append(path)
                 return 10800.0 if Path(path).suffix.lower() == ".mp3" else 600.0
 
@@ -564,7 +564,7 @@ class BcutCliAudioPreparationTests(unittest.TestCase):
                 main()
 
             extract_audio.assert_called_once_with(
-                str(input_path), mock.ANY, duration_limit=600.0
+                str(input_path), mock.ANY, duration_limit=600.0, ffmpeg_path=mock.ANY
             )
             copy2.assert_not_called()
             self.assertEqual(len(durations), 1)

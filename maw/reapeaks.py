@@ -14,8 +14,6 @@ non-spectral file degrades to ``None``.
 from __future__ import annotations
 
 import base64
-import os
-import shutil
 import struct
 import subprocess
 import tempfile
@@ -24,6 +22,7 @@ from pathlib import Path
 
 import reapeaks as rust_generate
 from maw import waveform as waveform_module
+from maw.ffmpeg import resolve_ffmpeg_tool
 
 MAGIC_V10 = b"RPKM"  # v1.0: min == -max (mirrored)
 MAGIC_V11 = b"RPKN"  # v1.1: explicit min/max
@@ -393,19 +392,13 @@ def load_spectral_payload(
 
 
 def resolve_ffmpeg(ffmpeg_bin: str | None = None) -> str | None:
-    """Locate an ffmpeg executable: explicit path, FFMPEG_PATH, then PATH."""
-    if ffmpeg_bin:
-        return str(ffmpeg_bin)
-    configured = os.environ.get("FFMPEG_PATH", "").strip()
-    if configured:
-        candidate = Path(configured)
-        if candidate.is_file():
-            return str(candidate)
-        if candidate.is_dir():
-            exe = candidate / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
-            if exe.is_file():
-                return str(exe)
-    return shutil.which("ffmpeg")
+    """Locate FFmpeg through the shared application-wide resolver."""
+    resolved = resolve_ffmpeg_tool(
+        "ffmpeg",
+        ffmpeg_bin,
+        allow_missing_explicit=bool(ffmpeg_bin),
+    )
+    return str(resolved) if resolved is not None else None
 
 
 def _parse_wav_header(header: bytes) -> tuple[int, int, int] | None:

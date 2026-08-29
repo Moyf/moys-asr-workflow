@@ -34,6 +34,7 @@ from generate_subtitle_qwen_api import (
     parse_duration,
 )
 from maw.console import configure_utf8_stdio
+from maw.ffmpeg import resolve_ffmpeg_tools
 from maw.bcut import (
     SUPPORTED_AUDIO_EXTS,
     build_segments,
@@ -118,6 +119,9 @@ def main():
         output_path = input_path.with_suffix(".srt")
 
     config = load_config()
+    ffmpeg_tools = resolve_ffmpeg_tools(configured_path=config.get("ffmpeg_path"))
+    ffmpeg_path = ffmpeg_tools.ffmpeg
+    ffprobe_path = ffmpeg_tools.ffprobe
 
     video_exts = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"}
     is_video = input_path.suffix.lower() in video_exts
@@ -127,14 +131,22 @@ def main():
     with tempfile.TemporaryDirectory() as tmpdir:
         if needs_transcode:
             audio_path = str(Path(tmpdir) / "audio.wav")
-            source_duration = get_duration_sec(str(input_path))
+            source_duration = get_duration_sec(
+                str(input_path),
+                ffprobe_path=ffprobe_path,
+            )
             media_limit = (
                 args.length_limit
                 if args.length_limit is not None and args.length_limit < source_duration
                 else None
             )
-            extract_audio(str(input_path), audio_path, duration_limit=media_limit)
-            duration = get_duration_sec(audio_path)
+            extract_audio(
+                str(input_path),
+                audio_path,
+                duration_limit=media_limit,
+                ffmpeg_path=ffmpeg_path,
+            )
+            duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
             if media_limit is not None:
                 lm, ls = divmod(int(media_limit), 60)
                 print(f"[info] 测试模式：从源文件直接提取前 {lm}分{ls}秒，跳过其余内容")
@@ -142,15 +154,20 @@ def main():
             # 已支持的音频格式在 -ll 下也直接转为限长 wav，避免先复制完整文件并
             # 按完整时长触发必剪上限，再进行第二次 ffmpeg 裁剪。
             audio_path = str(Path(tmpdir) / "audio.wav")
-            extract_audio(str(input_path), audio_path, duration_limit=args.length_limit)
-            duration = get_duration_sec(audio_path)
+            extract_audio(
+                str(input_path),
+                audio_path,
+                duration_limit=args.length_limit,
+                ffmpeg_path=ffmpeg_path,
+            )
+            duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
             lm, ls = divmod(int(min(args.length_limit, duration)), 60)
             print(f"[info] 测试模式：从源文件直接提取前 {lm}分{ls}秒，跳过其余内容")
         else:
             # 无裁剪需求时复制到 tmpdir 统一处理（避免改动原文件）
             audio_path = str(Path(tmpdir) / input_path.name)
             shutil.copy2(input_path, audio_path)
-            duration = get_duration_sec(audio_path)
+            duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
 
         m, s = divmod(int(duration), 60)
         print(f"[info] 音频总时长: {m}分{s}秒")
@@ -206,6 +223,7 @@ def main():
                 Path(audio_path),
                 source_media_path=input_path,
                 generate_spectral=args.with_spectral,
+                ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
             )
 
     # 剥句末标点（与 Qwen 版一致；--keep-punct 优先，空集合禁用）

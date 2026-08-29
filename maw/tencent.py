@@ -53,6 +53,7 @@ def load_config() -> dict[str, str | int]:
         "engine": pick("TENCENT_ASR_ENGINE", DEFAULT_ENGINE),
         "poll_interval": int(pick("TENCENT_POLL_INTERVAL", "3") or "3"),
         "poll_timeout": int(pick("TENCENT_POLL_TIMEOUT", "1800") or "1800"),
+        "ffmpeg_path": pick("FFMPEG_PATH"),
     }
 
 

@@ -4,6 +4,7 @@ import io
 import sys
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
 from unittest import mock
 
 from generate_subtitle_qwen_api import (
@@ -56,9 +57,10 @@ class QwenMediaExtractionTests(unittest.TestCase):
         with mock.patch("generate_subtitle_qwen_api.subprocess.run") as run:
             extract_audio("input.mp4", "output.wav", duration_limit=120)
 
+        # FFmpeg 经统一解析器解析，可能是绝对路径；按可执行名断言。
         command = run.call_args.args[0]
-        self.assertEqual(command[:4], ["ffmpeg", "-i", "input.mp4", "-t"])
-        self.assertEqual(command[4], "120")
+        self.assertEqual(Path(command[0]).stem.lower(), "ffmpeg")
+        self.assertEqual(command[1:5], ["-i", "input.mp4", "-t", "120"])
         self.assertEqual(command[-1], "output.wav")
 
 

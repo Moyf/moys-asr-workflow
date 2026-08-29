@@ -27,12 +27,12 @@ from edit import get_default_sticker_dir
 from generate_subtitle_qwen_api import (
     LANGUAGE_MAP,
     extract_audio,
-    _run_media_tool,
     generate_srt,
     get_duration_sec,
     parse_duration,
 )
 from maw.console import configure_utf8_stdio
+from maw.ffmpeg import resolve_ffmpeg_tools
 from maw.project import repair_segment_durations, validate_project
 from maw.soniox import (
     MAX_AUDIO_SECONDS,
@@ -153,6 +153,9 @@ def main():
 
     enable_speaker = args.speaker or args.speaker_colors
     config = load_config()
+    ffmpeg_tools = resolve_ffmpeg_tools(configured_path=config.get("ffmpeg_path"))
+    ffmpeg_path = ffmpeg_tools.ffmpeg
+    ffprobe_path = ffmpeg_tools.ffprobe
     print(f"[准备] 已载入 Soniox 转写配置（模型: {args.model or config['model']}）")
 
     try:
@@ -168,11 +171,19 @@ def main():
         if is_video:
             audio_path = str(Path(tmpdir) / "audio.wav")
             print("[媒体] 正在读取原始视频时长...")
-            source_duration = get_duration_sec(str(input_path))
+            source_duration = get_duration_sec(
+                str(input_path),
+                ffprobe_path=ffprobe_path,
+            )
             video_limit = args.length_limit if args.length_limit and args.length_limit < source_duration else None
-            extract_audio(str(input_path), audio_path, duration_limit=video_limit)
+            extract_audio(
+                str(input_path),
+                audio_path,
+                duration_limit=video_limit,
+                ffmpeg_path=ffmpeg_path,
+            )
             print("[媒体] 正在读取提取后音频时长...")
-            duration = get_duration_sec(audio_path)
+            duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
             if video_limit is not None:
                 lm, ls = divmod(int(video_limit), 60)
                 print(f"[info] 测试模式：从视频直接提取前 {lm}分{ls}秒，跳过其余内容")
@@ -184,7 +195,7 @@ def main():
 
         if not is_video:
             print("[媒体] 正在读取音频时长...")
-            duration = get_duration_sec(audio_path)
+            duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
         m, s = divmod(int(duration), 60)
         print(f"[info] 音频总时长: {m}分{s}秒")
 
@@ -197,14 +208,12 @@ def main():
         if args.length_limit and args.length_limit < duration:
             limit_sec = args.length_limit
             limited_path = str(Path(tmpdir) / "audio_limited.wav")
-            print("[ffmpeg] 正在为测试模式截取并重新采样音频...")
-            cmd = [
-                "ffmpeg", "-i", audio_path,
-                "-t", str(limit_sec),
-                "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
-                "-y", limited_path,
-            ]
-            _run_media_tool(cmd, check=True, capture_output=True)
+            extract_audio(
+                audio_path,
+                limited_path,
+                duration_limit=limit_sec,
+                ffmpeg_path=ffmpeg_path,
+            )
             audio_path = limited_path
             duration = limit_sec
             lm, ls = divmod(int(limit_sec), 60)
@@ -266,6 +275,7 @@ def main():
                 Path(audio_path),
                 source_media_path=input_path,
                 generate_spectral=args.with_spectral,
+                ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
             )
 
     if enable_speaker:
