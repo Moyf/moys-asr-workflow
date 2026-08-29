@@ -239,6 +239,7 @@
     state.progress = { total: itemsToRun.length, finished: 0, done: 0, failed: 0 };
     state.running = true;
     state.cancelling = false;
+    window.MAWLauncher.onBatchStart?.();
     lockControls(true);
     $("status").textContent = t("batch_starting");
     // 单文件的媒体/输出路径不进批量载荷：每个条目的输出由后端按媒体权威分配。
