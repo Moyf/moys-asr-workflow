@@ -1,12 +1,14 @@
-"""GUI 后端事件流的本地日志落盘。
+"""本地日志落盘：GUI 事件流与进程 stdout/stderr 统一按天写入用户数据目录。
 
 Launcher 的「4️⃣ 日志」面板只把事件渲染进页面内存，重启即失；本模块把
-同一事件流按天追加写入用户数据目录，供崩溃／退出后排查。写盘失败一律
-静默降级，绝不影响主流程。
+同一事件流按天追加写入用户数据目录，并通过 TeeWriter 把进程内的
+print / traceback 一并接入，供崩溃／退出后排查。写盘失败一律静默降级，
+绝不影响主流程。
 """
 
 from __future__ import annotations
 
+import io
 import os
 import re
 import sys
@@ -14,6 +16,7 @@ import threading
 from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
+from typing import TextIO
 
 # 启动时清理多少天前的日志文件。
 LOG_RETENTION_DAYS = 7
@@ -112,14 +115,24 @@ class LocalLogSink:
         self._swept_on = ""
 
     def append(self, event: Mapping[str, object]) -> None:
-        if self._closed:
-            return
         try:
             line = format_log_line(event, now=self._now())
         except Exception:
             # 格式化失败（如异常对象无法转换）不应影响主流程。
             return
-        if not line:
+        self._write_line(line)
+
+    def write_text(self, text: str, *, label: str = "print") -> None:
+        """把一段非事件文本（如 print 输出）写成一行的日志。"""
+        try:
+            stamp = self._now().strftime("%H:%M:%S.%f")[:-3]
+            line = f"{stamp} [{label}] " + _SECRET_PATTERN.sub("sk-***", str(text))
+        except Exception:
+            return
+        self._write_line(line)
+
+    def _write_line(self, line: str) -> None:
+        if not line or self._closed:
             return
         try:
             with self._lock:
@@ -155,3 +168,64 @@ class LocalLogSink:
                     continue
         except OSError:
             pass
+
+
+class TeeWriter(io.TextIOBase):
+    """把写入的文本按行追加到 LocalLogSink，同时透明转发给原流。
+
+    print 的 write 调用可能不带换行（分段到达），这里累积到行边界再落盘；
+    flush 时把残留的半行也写掉。原流为 None（如 pythonw 无控制台）时只写
+    sink。所有对原流的转发异常都不向上抛，避免写日志拖垮主流程。
+    """
+
+    def __init__(self, sink: LocalLogSink, stream: TextIO | None, *, label: str) -> None:
+        super().__init__()
+        self._sink = sink
+        self._stream = stream
+        self._label = label
+        self._buffer = ""
+        self._lock = threading.Lock()
+
+    @property
+    def encoding(self) -> str:
+        return self._stream.encoding if self._stream is not None else "utf-8"
+
+    def write(self, s: str) -> int:
+        text = str(s)
+        with self._lock:
+            self._buffer += text
+            while "\n" in self._buffer:
+                line, _, self._buffer = self._buffer.partition("\n")
+                self._sink.write_text(line, label=self._label)
+        if self._stream is not None:
+            try:
+                return self._stream.write(text)
+            except (OSError, ValueError):
+                pass
+        return len(text)
+
+    def flush(self) -> None:
+        with self._lock:
+            if self._buffer:
+                self._sink.write_text(self._buffer, label=self._label)
+                self._buffer = ""
+        if self._stream is not None:
+            try:
+                self._stream.flush()
+            except (OSError, ValueError):
+                pass
+
+    def isatty(self) -> bool:
+        return self._stream.isatty() if self._stream is not None else False
+
+    def fileno(self) -> int:
+        return self._stream.fileno() if self._stream is not None else -1
+
+
+def install_stdio_tee(sink: LocalLogSink) -> None:
+    """把 sys.stdout / sys.stderr 替换为 TeeWriter；重复调用不会叠加包装。"""
+    for name, label in (("stdout", "stdout"), ("stderr", "stderr")):
+        current = getattr(sys, name, None)
+        if isinstance(current, TeeWriter):
+            continue
+        setattr(sys, name, TeeWriter(sink, current, label=label))

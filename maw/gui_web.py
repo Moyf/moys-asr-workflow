@@ -28,7 +28,7 @@ from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, MODELS, PROVIDERS
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
-from maw.local_log import LocalLogSink, default_log_directory
+from maw.local_log import LocalLogSink, default_log_directory, install_stdio_tee
 from maw.local_runtime import (
     LocalRuntimeCancelled,
     LocalRuntimeError,
@@ -2341,7 +2341,10 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
     # controllable so normal development does not force an extra window.
     webview.settings["OPEN_DEVTOOLS_IN_DEBUG"] = devtools
     paths = default_paths()
-    api = LauncherApi(paths=paths, default_server_port=server_port, log_sink=LocalLogSink())
+    # 事件流与进程内 print/traceback 共用同一个 sink：单锁单文件。
+    log_sink = LocalLogSink()
+    api = LauncherApi(paths=paths, default_server_port=server_port, log_sink=log_sink)
+    install_stdio_tee(log_sink)
     window = webview.create_window(
         WINDOW_TITLE,
         url=paths.launcher_html.resolve().as_uri(),
