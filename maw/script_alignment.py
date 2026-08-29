@@ -47,6 +47,16 @@ GAP_REMOVE_OPERATION_MODES: Final[frozenset[str]] = frozenset({
     "boundary_and_middle",
 })
 DEFAULT_GAP_REMOVE_OPERATION_MODE: Final[str] = "boundary_drag"
+# Keep the Launcher and standalone alignment entry point aligned with the
+# current visible defaults in MAWE's「静音空隙」controls.  The Launcher stores
+# its own copy; this constant is only the shared default contract.
+MAWE_GAP_REMOVE_DEFAULTS: Final[dict[str, int | float]] = {
+    "minimum_ms": 400,
+    "threshold_db": -28,
+    "hysteresis_db": 2,
+    "lead_in_ms": 120,
+    "lead_out_ms": 80,
+}
 GAP_PROVENANCE_SCHEMA: Final[str] = "moy.asr.gap_provenance.v1"
 GAP_PROVENANCE_SOURCES: Final[tuple[str, ...]] = (
     "script_alignment",
@@ -54,6 +64,44 @@ GAP_PROVENANCE_SOURCES: Final[tuple[str, ...]] = (
     "manual",
     "legacy",
 )
+
+
+def normalize_gap_remove_settings(value: object = None) -> dict[str, int | float]:
+    """Normalize the five audio-gate settings exposed by MAWE and Launcher."""
+
+    source = value if isinstance(value, Mapping) else {}
+
+    def bounded_int(name: str, lower: int, upper: int) -> int:
+        raw = source.get(name, MAWE_GAP_REMOVE_DEFAULTS[name])
+        if isinstance(raw, bool):
+            return int(MAWE_GAP_REMOVE_DEFAULTS[name])
+        try:
+            number = float(raw)
+        except (TypeError, ValueError):
+            return int(MAWE_GAP_REMOVE_DEFAULTS[name])
+        if not math.isfinite(number):
+            return int(MAWE_GAP_REMOVE_DEFAULTS[name])
+        return max(lower, min(upper, int(round(number))))
+
+    def bounded_float(name: str, lower: float, upper: float) -> float:
+        raw = source.get(name, MAWE_GAP_REMOVE_DEFAULTS[name])
+        if isinstance(raw, bool):
+            return float(MAWE_GAP_REMOVE_DEFAULTS[name])
+        try:
+            number = float(raw)
+        except (TypeError, ValueError):
+            return float(MAWE_GAP_REMOVE_DEFAULTS[name])
+        if not math.isfinite(number):
+            return float(MAWE_GAP_REMOVE_DEFAULTS[name])
+        return max(lower, min(upper, number))
+
+    return {
+        "minimum_ms": bounded_int("minimum_ms", 100, 60000),
+        "threshold_db": bounded_float("threshold_db", -96, 0),
+        "hysteresis_db": bounded_float("hysteresis_db", 0, 30),
+        "lead_in_ms": bounded_int("lead_in_ms", 0, 2000),
+        "lead_out_ms": bounded_int("lead_out_ms", 0, 2000),
+    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -863,11 +911,11 @@ def apply_alignment_to_project(
     selection: Mapping[str, object],
     *,
     detect_audio_gaps: bool = True,
-    minimum_gap_ms: int = 500,
-    threshold_db: float = -24,
-    hysteresis_db: float = 2,
-    lead_in_ms: int = 40,
-    lead_out_ms: int = 80,
+    minimum_gap_ms: int = int(MAWE_GAP_REMOVE_DEFAULTS["minimum_ms"]),
+    threshold_db: float = float(MAWE_GAP_REMOVE_DEFAULTS["threshold_db"]),
+    hysteresis_db: float = float(MAWE_GAP_REMOVE_DEFAULTS["hysteresis_db"]),
+    lead_in_ms: int = int(MAWE_GAP_REMOVE_DEFAULTS["lead_in_ms"]),
+    lead_out_ms: int = int(MAWE_GAP_REMOVE_DEFAULTS["lead_out_ms"]),
     gap_remove_override: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Create a MAWE-compatible project from one alignment selection.
@@ -1153,11 +1201,11 @@ def _normalize_gap_remove_override(
 def detect_waveform_gaps(
     waveform: Mapping[str, object],
     *,
-    minimum_ms: int = 500,
-    threshold_db: float = -24,
-    hysteresis_db: float = 2,
-    lead_in_ms: int = 40,
-    lead_out_ms: int = 80,
+    minimum_ms: int = int(MAWE_GAP_REMOVE_DEFAULTS["minimum_ms"]),
+    threshold_db: float = float(MAWE_GAP_REMOVE_DEFAULTS["threshold_db"]),
+    hysteresis_db: float = float(MAWE_GAP_REMOVE_DEFAULTS["hysteresis_db"]),
+    lead_in_ms: int = int(MAWE_GAP_REMOVE_DEFAULTS["lead_in_ms"]),
+    lead_out_ms: int = int(MAWE_GAP_REMOVE_DEFAULTS["lead_out_ms"]),
 ) -> list[dict[str, int]]:
     """Mirror MAWE's audio-gate detector for an embedded waveform payload."""
 

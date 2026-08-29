@@ -49,6 +49,7 @@ if sys.platform == "linux":
 datas = [
     (str(ROOT / "web"), "web"),
     (str(ROOT / "server-editor"), "server-editor"),
+    (str(ROOT / "server-align"), "server-align"),
     (str(ROOT / "LICENSE"), "."),
     (str(ROOT / "THIRD_PARTY_NOTICES.md"), "."),
     (str(ROOT / "FAQ-常见问题.txt"), "."),
@@ -141,6 +142,7 @@ a = Analysis(
         "generate_subtitle_local",
         "generate_subtitle_bcut_api",
         "serve",
+        "maw.script_alignment",
         "maw.gui_web",
         "maw.gui_config",
         "maw.gui_workflow",
