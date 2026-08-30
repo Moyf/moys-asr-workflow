@@ -142,6 +142,7 @@ __WAVEFORM_CSS__
       </div>
     </span>
     <button id="download-json">导出工程</button>
+    <button type="button" id="rough-cut-preview-toggle" hidden title="播放时跳过已标记的文稿粗剪区间">粗剪预览：关</button>
     <span class="dropdown gap-removed-export-dropdown" id="gap-removed-export-dropdown" hidden>
       <button id="gap-removed-export-btn" title="导出应用当前空隙移除结果的字幕、时间线或保留区域计划" aria-expanded="false" aria-controls="gap-removed-export-menu" aria-haspopup="menu">导出去空隙版本 ▾</button>
       <div class="dropdown-menu" id="gap-removed-export-menu" role="menu">
@@ -1366,6 +1367,7 @@ __WAVEFORM_CSS__
         <div class="dropdown-menu" id="batch-operations-menu" role="menu">
           <button type="button" class="dropdown-item" id="replace-btn" role="menuitem">批量替换</button>
           <button type="button" class="dropdown-item" id="timed-text-edit-btn" role="menuitem" title="集中编辑字幕文本，并预览拆分、合并和字词时间码映射结果">纯文本编辑</button>
+          <button type="button" class="dropdown-item" id="rough-cut-btn" role="menuitem" title="直接修改文稿，并明确标记需要从视频中剪掉的整句内容">文稿粗剪</button>
           <button type="button" class="dropdown-item" id="text-process-btn" role="menuitem">文本处理</button>
         </div>
       </div>
@@ -1651,6 +1653,83 @@ __WAVEFORM_CSS__
     <div class="actions">
       <button type="button" id="timed-text-edit-cancel">取消</button>
       <button type="button" id="timed-text-edit-apply" class="primary" disabled>应用修改</button>
+    </div>
+  </div>
+</div>
+
+<!-- 基于主字幕稳定 ID 的非破坏性文稿粗剪。 -->
+<div class="modal-mask" id="rough-cut-modal" aria-hidden="true">
+  <div class="modal rough-cut-modal" role="dialog" aria-modal="true"
+       aria-labelledby="rough-cut-title" aria-describedby="rough-cut-description">
+    <div class="rough-cut-header">
+      <div>
+        <h3 id="rough-cut-title">文稿粗剪</h3>
+        <p class="modal-desc" id="rough-cut-description">
+          可以直接修改字幕文字；只有明确点为“剪掉”的整句才会删除对应音视频，原媒体和原字幕时间轴不会改写。
+        </p>
+      </div>
+      <button type="button" id="rough-cut-close" class="rough-cut-close"
+              title="关闭（Esc）" aria-label="关闭文稿粗剪">×</button>
+    </div>
+    <div class="rough-cut-plan-toolbar">
+      <label for="rough-cut-plan-select">粗剪方案</label>
+      <select id="rough-cut-plan-select" aria-label="当前粗剪方案"></select>
+      <label class="rough-cut-plan-name" for="rough-cut-plan-name">
+        方案名称
+        <input type="text" id="rough-cut-plan-name" maxlength="160">
+      </label>
+      <button type="button" id="rough-cut-plan-rename">重命名</button>
+      <button type="button" id="rough-cut-plan-new">新建方案</button>
+      <button type="button" id="rough-cut-plan-copy">复制方案</button>
+      <button type="button" id="rough-cut-plan-delete">删除方案</button>
+      <span id="rough-cut-plan-count">1 个方案</span>
+    </div>
+    <div class="rough-cut-summary" aria-live="polite">
+      <div><span>待剪字幕</span><strong id="rough-cut-count">0 条</strong></div>
+      <div><span>待剪时长</span><strong id="rough-cut-removed-duration">0秒</strong></div>
+      <div><span>预计成片</span><strong id="rough-cut-output-duration">0秒</strong></div>
+    </div>
+    <div class="rough-cut-srt-import">
+      <div class="rough-cut-srt-drop" id="rough-cut-srt-drop">
+        <div>
+          <strong>导入修改后的 SRT</strong>
+          <span>拖入从当前工程导出并删改过的 SRT，自动识别整条删除；存疑内容不会剪。</span>
+        </div>
+        <button type="button" id="rough-cut-srt-pick">选择 SRT</button>
+        <input type="file" id="rough-cut-srt-file" accept=".srt,application/x-subrip" hidden>
+      </div>
+      <div class="rough-cut-srt-report" id="rough-cut-srt-report" hidden>
+        <div class="rough-cut-srt-report-head">
+          <strong id="rough-cut-srt-name">修改版 SRT</strong>
+          <button type="button" id="rough-cut-srt-clear">清除匹配</button>
+        </div>
+        <div class="rough-cut-srt-stats">
+          <span>识别删除 <strong id="rough-cut-srt-removed">0</strong></span>
+          <span>文字修改 <strong id="rough-cut-srt-text">0</strong></span>
+          <span>合并保留 <strong id="rough-cut-srt-merged">0</strong></span>
+          <span>存疑 <strong id="rough-cut-srt-ambiguous">0</strong></span>
+        </div>
+        <p id="rough-cut-srt-message"></p>
+        <button type="button" id="rough-cut-srt-apply" class="primary">应用匹配结果</button>
+      </div>
+    </div>
+    <div class="rough-cut-toolbar">
+      <label class="rough-cut-preview-control">
+        <input type="checkbox" id="rough-cut-preview-checkbox"> 应用后开启粗剪预览
+      </label>
+      <label class="rough-cut-output-control" for="rough-cut-output-name">
+        输出名称
+        <input type="text" id="rough-cut-output-name" maxlength="160" placeholder="可选，默认 工程名_rough-cut">
+      </label>
+    </div>
+    <div class="rough-cut-hint">修改文字不会触发剪辑。请使用每行右侧的“剪掉”按钮明确决定视频取舍。</div>
+    <div class="rough-cut-rows" id="rough-cut-rows"></div>
+    <div class="rough-cut-status" id="rough-cut-status" role="status" aria-live="polite"></div>
+    <div class="actions rough-cut-actions">
+      <button type="button" id="rough-cut-cancel">取消</button>
+      <button type="button" id="rough-cut-apply" class="primary">应用到工程</button>
+      <button type="button" id="rough-cut-export" class="primary">导出粗剪视频 + SRT</button>
+      <button type="button" id="rough-cut-export-all">批量导出全部方案</button>
     </div>
   </div>
 </div>

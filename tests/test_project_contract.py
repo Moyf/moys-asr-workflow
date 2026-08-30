@@ -37,6 +37,106 @@ class ProjectContractTests(unittest.TestCase):
             ["main-001-generated", "main-001", "main-003"],
         )
 
+    def test_validate_project_accepts_rough_cut_segment_references(self) -> None:
+        project = {
+            "segments": [
+                {"id": "main-a", "start": 0, "end": 1000, "text": "保留"},
+                {"id": "main-b", "start": 1000, "end": 2000, "text": "剪掉"},
+            ],
+            "rough_cut": {"removed_segment_ids": ["main-b"]},
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.project["rough_cut"], {
+            "schema": "moy.asr.rough_cut.v2",
+            "active_plan_id": "rough-cut-default",
+            "plans": [{
+                "id": "rough-cut-default",
+                "name": "默认方案",
+                "output_name": "",
+                "source_srt_name": "",
+                "kept_segment_ids": ["main-a"],
+            }],
+        })
+
+    def test_validate_project_accepts_multiple_rough_cut_plans(self) -> None:
+        project = {
+            "segments": [
+                {"id": "main-a", "start": 0, "end": 1000, "text": "第一句"},
+                {"id": "main-b", "start": 1000, "end": 2000, "text": "第二句"},
+                {"id": "main-c", "start": 2000, "end": 3000, "text": "第三句"},
+            ],
+            "rough_cut": {
+                "schema": "moy.asr.rough_cut.v2",
+                "active_plan_id": "short-b",
+                "plans": [
+                    {
+                        "id": "short-a",
+                        "name": "短片 A",
+                        "output_name": "成片_A",
+                        "source_srt_name": "A.srt",
+                        "kept_segment_ids": ["main-a", "main-b"],
+                    },
+                    {
+                        "id": "short-b",
+                        "name": "短片 B",
+                        "kept_segment_ids": ["main-c"],
+                    },
+                ],
+            },
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok)
+        rough_cut = result.project["rough_cut"]
+        self.assertEqual(rough_cut["active_plan_id"], "short-b")
+        self.assertEqual(rough_cut["plans"][0]["output_name"], "成片_A")
+        self.assertEqual(rough_cut["plans"][1]["output_name"], "")
+        self.assertEqual(rough_cut["plans"][1]["source_srt_name"], "")
+
+    def test_validate_project_rejects_invalid_multi_plan_rough_cut_references(self) -> None:
+        project = {
+            "segments": [{"id": "main-a", "start": 0, "end": 1000, "text": "保留"}],
+            "rough_cut": {
+                "schema": "moy.asr.rough_cut.v2",
+                "active_plan_id": "missing-plan",
+                "plans": [
+                    {"id": "same", "name": "A", "kept_segment_ids": ["main-a", "main-a"]},
+                    {"id": "same", "name": "A", "kept_segment_ids": ["missing"]},
+                ],
+            },
+        }
+
+        result = validate_project(project)
+        paths = {error.path for error in result.errors}
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.rough_cut.active_plan_id", paths)
+        self.assertIn("$.rough_cut.plans[0].kept_segment_ids[1]", paths)
+        self.assertIn("$.rough_cut.plans[1].id", paths)
+        self.assertIn("$.rough_cut.plans[1].name", paths)
+        self.assertIn("$.rough_cut.plans[1].kept_segment_ids[0]", paths)
+
+    def test_validate_project_rejects_unknown_and_duplicate_rough_cut_ids(self) -> None:
+        project = {
+            "segments": [{"id": "main-a", "start": 0, "end": 1000, "text": "保留"}],
+            "rough_cut": {
+                "schema": "wrong",
+                "removed_segment_ids": ["missing", "main-a", "main-a"],
+            },
+        }
+
+        result = validate_project(project)
+        paths = [error.path for error in result.errors]
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.rough_cut.schema", paths)
+        self.assertIn("$.rough_cut.removed_segment_ids[0]", paths)
+        self.assertIn("$.rough_cut.removed_segment_ids[2]", paths)
+
     def test_validate_project_accepts_optional_multi_subtitle_items(self) -> None:
         project = {
             "segments": [

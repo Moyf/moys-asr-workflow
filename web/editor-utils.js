@@ -2712,8 +2712,12 @@
   const HISTORY_RECORD_DEFAULT_LABELS = Object.freeze({
     segments: '编辑', layout: '调整工作区', gap_remove: '空隙移除', preview: '预览',
   });
-  function buildSegmentsHistorySnapshot(segments, multiSubtitle) {
-    return { segments: cloneJsonValue(segments), multi_subtitle: cloneJsonValue(multiSubtitle) };
+  function buildSegmentsHistorySnapshot(segments, multiSubtitle, roughCut = null) {
+    return {
+      segments: cloneJsonValue(segments),
+      multi_subtitle: cloneJsonValue(multiSubtitle),
+      rough_cut: cloneJsonValue(roughCut),
+    };
   }
   function buildHistoryRecord(kind, label, payload, view = null) {
     const recordKind = Object.prototype.hasOwnProperty.call(HISTORY_RECORD_DEFAULT_LABELS, kind)
@@ -3367,6 +3371,316 @@
       .filter((segment) => segment && !segment.disabled)
       .map((segment) => String(segment.text || '').replace(/\r\n?/g, '\n'))
       .join('\n');
+  }
+
+  const ROUGH_CUT_SCHEMA_V1 = 'moy.asr.rough_cut.v1';
+  const ROUGH_CUT_SCHEMA = 'moy.asr.rough_cut.v2';
+  const ROUGH_CUT_DEFAULT_PLAN_ID = 'rough-cut-default';
+
+  function roughCutSegmentIds(segments) {
+    return (Array.isArray(segments) ? segments : [])
+      .map((segment) => stableId(segment?.id)).filter(Boolean);
+  }
+
+  function uniqueRoughCutPlanId(plans, preferred = 'rough-cut-plan') {
+    const used = new Set((Array.isArray(plans) ? plans : [])
+      .map((plan) => stableId(plan?.id)).filter(Boolean));
+    const base = stableId(preferred) || 'rough-cut-plan';
+    if (!used.has(base)) return base;
+    let index = 2;
+    while (used.has(`${base}-${index}`)) index += 1;
+    return `${base}-${index}`;
+  }
+
+  function uniqueRoughCutPlanName(plans, preferred = '新方案') {
+    const used = new Set((Array.isArray(plans) ? plans : [])
+      .map((plan) => String(plan?.name || '').trim().toLocaleLowerCase()).filter(Boolean));
+    const base = String(preferred || '').trim().slice(0, 160) || '新方案';
+    if (!used.has(base.toLocaleLowerCase())) return base;
+    let index = 2;
+    while (used.has(`${base} ${index}`.toLocaleLowerCase())) index += 1;
+    return `${base} ${index}`.slice(0, 160);
+  }
+
+  function normalizeRoughCutData(value, segments = []) {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const segmentIds = roughCutSegmentIds(segments);
+    const validIds = new Set(segmentIds);
+    const legacy = source.schema === ROUGH_CUT_SCHEMA_V1
+      || Array.isArray(source.removed_segment_ids);
+    if (legacy) {
+      const removedIds = new Set((Array.isArray(source.removed_segment_ids)
+        ? source.removed_segment_ids : []).map(stableId).filter(Boolean));
+      return {
+        schema: ROUGH_CUT_SCHEMA,
+        active_plan_id: ROUGH_CUT_DEFAULT_PLAN_ID,
+        plans: [{
+          id: ROUGH_CUT_DEFAULT_PLAN_ID,
+          name: '默认方案',
+          output_name: '',
+          source_srt_name: '',
+          kept_segment_ids: segmentIds.filter((id) => !removedIds.has(id)),
+        }],
+      };
+    }
+    const rawPlans = Array.isArray(source.plans) ? source.plans : [];
+    const plans = [];
+    rawPlans.slice(0, 100).forEach((rawPlan, index) => {
+      const planSource = rawPlan && typeof rawPlan === 'object' && !Array.isArray(rawPlan)
+        ? rawPlan : {};
+      const id = uniqueRoughCutPlanId(
+        plans,
+        stableId(planSource.id) || `rough-cut-plan-${index + 1}`,
+      );
+      const seen = new Set();
+      const keptIds = [];
+      (Array.isArray(planSource.kept_segment_ids) ? planSource.kept_segment_ids : [])
+        .forEach((rawId) => {
+          const keptId = stableId(rawId);
+          if (!keptId || seen.has(keptId) || !validIds.has(keptId)) return;
+          seen.add(keptId);
+          keptIds.push(keptId);
+        });
+      const requestedName = String(planSource.name || '').trim().slice(0, 160)
+        || (index === 0 ? '默认方案' : `方案 ${index + 1}`);
+      plans.push({
+        id,
+        name: uniqueRoughCutPlanName(plans, requestedName),
+        output_name: String(planSource.output_name || '').slice(0, 160),
+        source_srt_name: String(planSource.source_srt_name || '').slice(0, 255),
+        kept_segment_ids: keptIds,
+      });
+    });
+    if (!plans.length) {
+      plans.push({
+        id: ROUGH_CUT_DEFAULT_PLAN_ID,
+        name: '默认方案',
+        output_name: '',
+        source_srt_name: '',
+        kept_segment_ids: [...segmentIds],
+      });
+    }
+    const requestedActiveId = stableId(source.active_plan_id);
+    return {
+      schema: ROUGH_CUT_SCHEMA,
+      active_plan_id: plans.some((plan) => plan.id === requestedActiveId)
+        ? requestedActiveId : plans[0].id,
+      plans,
+    };
+  }
+
+  function roughCutActivePlan(value, planId = '') {
+    const plans = Array.isArray(value?.plans) ? value.plans : [];
+    const requested = stableId(planId) || stableId(value?.active_plan_id);
+    return plans.find((plan) => plan.id === requested) || plans[0] || null;
+  }
+
+  function roughCutStateHasDecisions(value, segments = []) {
+    const state = normalizeRoughCutData(value, segments);
+    if (state.plans.length !== 1) return true;
+    const plan = state.plans[0];
+    const segmentIds = roughCutSegmentIds(segments);
+    return plan.id !== ROUGH_CUT_DEFAULT_PLAN_ID
+      || plan.name !== '默认方案'
+      || Boolean(plan.output_name || plan.source_srt_name)
+      || plan.kept_segment_ids.length !== segmentIds.length
+      || plan.kept_segment_ids.some((id, index) => id !== segmentIds[index]);
+  }
+
+  function buildRoughCutPlan(segments, value, durationMs, planId = '') {
+    const source = Array.isArray(segments) ? segments : [];
+    const duration = Math.max(0, Math.round(Number(durationMs) || 0));
+    const state = normalizeRoughCutData(value, source);
+    const activePlan = roughCutActivePlan(state, planId);
+    const keptIds = new Set(activePlan?.kept_segment_ids || []);
+    const rawRanges = source.flatMap((segment) => {
+      const id = stableId(segment?.id);
+      const start = Math.max(0, Math.round(Number(segment?.start) || 0));
+      const end = Math.min(duration, Math.max(start, Math.round(Number(segment?.end) || 0)));
+      return id && !keptIds.has(id) && end > start ? [{ start, end, removed: true }] : [];
+    }).sort((left, right) => left.start - right.start || left.end - right.end);
+    const removedIntervals = [];
+    rawRanges.forEach((range) => {
+      const previous = removedIntervals[removedIntervals.length - 1];
+      if (previous && range.start <= previous.end) {
+        previous.end = Math.max(previous.end, range.end);
+      } else {
+        removedIntervals.push({ ...range });
+      }
+    });
+    const keptIntervals = duration > 0
+      ? buildGapRemovedIntervals(duration, removedIntervals) : [];
+    const removedDurationMs = removedIntervals.reduce(
+      (sum, interval) => sum + interval.end - interval.start, 0,
+    );
+    return {
+      schema: ROUGH_CUT_SCHEMA,
+      state,
+      activePlan,
+      removedIntervals,
+      keptIntervals,
+      removedDurationMs,
+      outputDurationMs: Math.max(0, duration - removedDurationMs),
+      sourceDurationMs: duration,
+    };
+  }
+
+  function normalizeRoughCutMatchText(value) {
+    const source = String(value || '');
+    const normalized = typeof source.normalize === 'function' ? source.normalize('NFKC') : source;
+    return normalized.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+  }
+
+  function roughCutTextSimilarity(left, right) {
+    const source = [...normalizeRoughCutMatchText(left)].slice(0, 400);
+    const target = [...normalizeRoughCutMatchText(right)].slice(0, 400);
+    if (!source.length && !target.length) return 1;
+    if (!source.length || !target.length) return 0;
+    const previous = new Uint16Array(target.length + 1);
+    const current = new Uint16Array(target.length + 1);
+    for (let sourceIndex = 1; sourceIndex <= source.length; sourceIndex++) {
+      for (let targetIndex = 1; targetIndex <= target.length; targetIndex++) {
+        current[targetIndex] = source[sourceIndex - 1] === target[targetIndex - 1]
+          ? previous[targetIndex - 1] + 1
+          : Math.max(previous[targetIndex], current[targetIndex - 1]);
+      }
+      previous.set(current);
+      current.fill(0);
+    }
+    return previous[target.length] / Math.max(source.length, target.length);
+  }
+
+  // 将“由当前工程导出后修改”的 SRT 与原主字幕匹配。时间轴是主证据；
+  // 文字只用于容忍轻微时间漂移，绝不根据文字缺失直接推断视频删除。
+  function matchRoughCutSrtSegments(sourceSegments, importedSegments, options = {}) {
+    const source = Array.isArray(sourceSegments) ? sourceSegments : [];
+    const imported = Array.isArray(importedSegments) ? importedSegments : [];
+    const toleranceMs = Math.max(0, Math.round(Number(options.toleranceMs) || 500));
+    const exactBoundaryMs = Math.min(
+      toleranceMs,
+      Math.max(0, Math.round(Number(options.exactBoundaryMs) || 120)),
+    );
+    const textThreshold = Math.max(0, Math.min(1, Number(options.textThreshold) || 0.35));
+    const sourceIds = source.map((segment) => stableId(segment?.id));
+    const mappings = [];
+    const unmatchedImported = [];
+
+    imported.forEach((cue, importedIndex) => {
+      const start = Math.round(Number(cue?.start));
+      const end = Math.round(Number(cue?.end));
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        unmatchedImported.push(importedIndex);
+        return;
+      }
+      const overlaps = [];
+      source.forEach((segment, sourceIndex) => {
+        const sourceStart = Number(segment?.start);
+        const sourceEnd = Number(segment?.end);
+        if (!Number.isFinite(sourceStart) || !Number.isFinite(sourceEnd) || sourceEnd <= sourceStart) return;
+        if (Math.min(end, sourceEnd) - Math.max(start, sourceStart) > 0) overlaps.push(sourceIndex);
+      });
+
+      let sourceIndexes = overlaps;
+      if (!sourceIndexes.length) {
+        const candidates = source.map((segment, sourceIndex) => {
+          const startDiff = Math.abs(start - Number(segment?.start));
+          const endDiff = Math.abs(end - Number(segment?.end));
+          return { sourceIndex, startDiff, endDiff, cost: startDiff + endDiff };
+        }).filter((candidate) => candidate.startDiff <= toleranceMs && candidate.endDiff <= toleranceMs)
+          .sort((left, right) => left.cost - right.cost || left.sourceIndex - right.sourceIndex);
+        if (candidates.length) sourceIndexes = [candidates[0].sourceIndex];
+      }
+      if (!sourceIndexes.length) {
+        unmatchedImported.push(importedIndex);
+        return;
+      }
+
+      const firstIndex = sourceIndexes[0];
+      const lastIndex = sourceIndexes[sourceIndexes.length - 1];
+      sourceIndexes = Array.from(
+        { length: lastIndex - firstIndex + 1 },
+        (_, offset) => firstIndex + offset,
+      );
+      const sourceStart = Number(source[firstIndex]?.start);
+      const sourceEnd = Number(source[lastIndex]?.end);
+      const startDiff = Math.abs(start - sourceStart);
+      const endDiff = Math.abs(end - sourceEnd);
+      const sourceText = sourceIndexes.map((index) => String(source[index]?.text || '')).join('\n');
+      const textSimilarity = roughCutTextSimilarity(sourceText, cue?.text);
+      const exactBoundaries = startDiff <= exactBoundaryMs && endDiff <= exactBoundaryMs;
+      const strong = startDiff <= toleranceMs && endDiff <= toleranceMs
+        && (exactBoundaries || textSimilarity >= textThreshold);
+      mappings.push({
+        importedIndex,
+        sourceIndexes,
+        sourceIds: sourceIndexes.map((index) => sourceIds[index]).filter(Boolean),
+        startDiff,
+        endDiff,
+        textSimilarity,
+        strong,
+        merged: sourceIndexes.length > 1,
+      });
+    });
+
+    let previousEnd = -1;
+    let rangesMonotonic = true;
+    mappings.sort((left, right) => left.importedIndex - right.importedIndex);
+    mappings.forEach((mapping) => {
+      const first = mapping.sourceIndexes[0];
+      const last = mapping.sourceIndexes[mapping.sourceIndexes.length - 1];
+      if (!Number.isInteger(first) || first <= previousEnd) rangesMonotonic = false;
+      previousEnd = Math.max(previousEnd, Number.isInteger(last) ? last : previousEnd);
+    });
+    const compatible = source.length > 0
+      && imported.length > 0
+      && unmatchedImported.length === 0
+      && mappings.length === imported.length
+      && mappings.every((mapping) => mapping.strong)
+      && rangesMonotonic;
+    const coveredIndexes = new Set(mappings.flatMap((mapping) => mapping.sourceIndexes));
+    const removedSourceIndexes = [];
+    const ambiguousSourceIndexes = [];
+    source.forEach((_segment, sourceIndex) => {
+      if (coveredIndexes.has(sourceIndex)) return;
+      if (compatible) removedSourceIndexes.push(sourceIndex);
+      else ambiguousSourceIndexes.push(sourceIndex);
+    });
+
+    const sourceMappingCounts = new Map();
+    mappings.forEach((mapping) => mapping.sourceIndexes.forEach((sourceIndex) => {
+      sourceMappingCounts.set(sourceIndex, (sourceMappingCounts.get(sourceIndex) || 0) + 1);
+    }));
+    const textUpdates = mappings.flatMap((mapping) => {
+      if (!mapping.strong || mapping.sourceIndexes.length !== 1) return [];
+      const sourceIndex = mapping.sourceIndexes[0];
+      if (sourceMappingCounts.get(sourceIndex) !== 1) return [];
+      const text = String(imported[mapping.importedIndex]?.text || '');
+      if (text === String(source[sourceIndex]?.text || '')) return [];
+      return [{ sourceIndex, sourceId: sourceIds[sourceIndex], text }];
+    });
+    const keptSourceIndexes = [...coveredIndexes].sort((left, right) => left - right);
+    let reason = '';
+    if (!source.length) reason = 'source_empty';
+    else if (!imported.length) reason = 'import_empty';
+    else if (unmatchedImported.length) reason = 'unmatched_imported';
+    else if (!mappings.every((mapping) => mapping.strong)) reason = 'weak_mapping';
+    else if (!rangesMonotonic) reason = 'non_monotonic';
+
+    return {
+      compatible,
+      reason,
+      toleranceMs,
+      mappings,
+      keptSourceIndexes,
+      keptSourceIds: keptSourceIndexes.map((index) => sourceIds[index]).filter(Boolean),
+      removedSourceIndexes,
+      removedSourceIds: removedSourceIndexes.map((index) => sourceIds[index]).filter(Boolean),
+      ambiguousSourceIndexes,
+      ambiguousSourceIds: ambiguousSourceIndexes.map((index) => sourceIds[index]).filter(Boolean),
+      unmatchedImported,
+      textUpdates,
+      mergedCueCount: mappings.filter((mapping) => mapping.merged).length,
+    };
   }
 
   function fileBasename(value) {
@@ -4827,6 +5141,7 @@ export default MawDynamicCaptions;
     buildTimedTextEditReport,
     timedTextEditDirtyFlags,
     applyTimedTextEdit,
+    reconcileTimedTextItems,
     countTextUnits,
     countSubtitleUnits,
     cueMetrics,
@@ -4914,6 +5229,17 @@ export default MawDynamicCaptions;
     repairGroupReferenceIndices,
     buildSrtPayload,
     buildPlainTextPayload,
+    ROUGH_CUT_SCHEMA,
+    ROUGH_CUT_DEFAULT_PLAN_ID,
+    normalizeRoughCutData,
+    roughCutActivePlan,
+    roughCutStateHasDecisions,
+    uniqueRoughCutPlanId,
+    uniqueRoughCutPlanName,
+    buildRoughCutPlan,
+    normalizeRoughCutMatchText,
+    roughCutTextSimilarity,
+    matchRoughCutSrtSegments,
     fileBasename,
     normalizeGapRemoveGaps,
     applyGapRemoveRange,

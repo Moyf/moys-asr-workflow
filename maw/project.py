@@ -14,6 +14,10 @@ from maw.project_preview import JsonDict, JsonValue, clamped_preview, validate_p
 
 MIN_SEGMENT_DURATION_MS = 100
 MULTI_SUBTITLE_SCHEMA = "moy.asr.multi_subtitle.v1"
+ROUGH_CUT_SCHEMA_V1 = "moy.asr.rough_cut.v1"
+ROUGH_CUT_SCHEMA = "moy.asr.rough_cut.v2"
+ROUGH_CUT_DEFAULT_PLAN_ID = "rough-cut-default"
+MAX_ROUGH_CUT_PLANS = 100
 MULTI_SUBTITLE_DISPLAY_MODES = frozenset({"main", "extension", "both"})
 MULTI_SUBTITLE_SPLIT_MODES = frozenset({"continuous", "word"})
 MAX_STABLE_ID_LENGTH = 160
@@ -233,9 +237,175 @@ def _normalize_copy(project: JsonValue, errors: list[ProjectValidationError]) ->
         if _valid_segment_time(segment) and _is_int_ms(end):
             previous_end = end
     _validate_head_refs(segments, errors)
+    _normalize_rough_cut(normalized, segments, errors)
     _normalize_multi_subtitle(normalized, segments, errors)
     errors.extend(ProjectValidationError(path, message) for path, message in validate_preview(normalized))
     return normalized
+
+
+def _normalize_rough_cut(
+    project: JsonDict,
+    main_segments: list[JsonValue],
+    errors: list[ProjectValidationError],
+) -> None:
+    """Validate multi-plan whole-cue rough cuts and migrate the v1 shape."""
+    if "rough_cut" not in project or project.get("rough_cut") is None:
+        return
+    raw = project.get("rough_cut")
+    if not isinstance(raw, dict):
+        errors.append(ProjectValidationError("$.rough_cut", "must be an object"))
+        return
+    valid_ids = [
+        str(segment.get("id")).strip()
+        for segment in main_segments
+        if isinstance(segment, dict) and _is_stable_id(segment.get("id"))
+    ]
+    valid_id_set = set(valid_ids)
+
+    schema = raw.get("schema")
+    legacy = "removed_segment_ids" in raw or (
+        schema in {None, ROUGH_CUT_SCHEMA_V1} and "plans" not in raw
+    )
+    if legacy:
+        if schema not in {None, ROUGH_CUT_SCHEMA_V1}:
+            errors.append(ProjectValidationError(
+                "$.rough_cut.schema", f"must be {ROUGH_CUT_SCHEMA_V1} or {ROUGH_CUT_SCHEMA}",
+            ))
+        removed = _normalize_rough_cut_segment_ids(
+            raw.get("removed_segment_ids", []),
+            "$.rough_cut.removed_segment_ids",
+            valid_id_set,
+            errors,
+        )
+        if removed is None:
+            return
+        removed_set = set(removed)
+        raw.clear()
+        raw.update({
+            "schema": ROUGH_CUT_SCHEMA,
+            "active_plan_id": ROUGH_CUT_DEFAULT_PLAN_ID,
+            "plans": [{
+                "id": ROUGH_CUT_DEFAULT_PLAN_ID,
+                "name": "默认方案",
+                "output_name": "",
+                "source_srt_name": "",
+                "kept_segment_ids": [value for value in valid_ids if value not in removed_set],
+            }],
+        })
+        return
+
+    if schema is None:
+        raw["schema"] = ROUGH_CUT_SCHEMA
+    elif schema != ROUGH_CUT_SCHEMA:
+        errors.append(ProjectValidationError("$.rough_cut.schema", f"must be {ROUGH_CUT_SCHEMA}"))
+
+    plans = raw.get("plans")
+    if not isinstance(plans, list) or not plans:
+        errors.append(ProjectValidationError("$.rough_cut.plans", "must be a non-empty array"))
+        return
+    if len(plans) > MAX_ROUGH_CUT_PLANS:
+        errors.append(ProjectValidationError(
+            "$.rough_cut.plans", f"must contain at most {MAX_ROUGH_CUT_PLANS} plans",
+        ))
+
+    plan_ids: list[str] = []
+    seen_plan_ids: set[str] = set()
+    seen_plan_names: set[str] = set()
+    for index, plan in enumerate(plans):
+        path = f"$.rough_cut.plans[{index}]"
+        if not isinstance(plan, dict):
+            errors.append(ProjectValidationError(path, "must be an object"))
+            continue
+        plan_id = plan.get("id")
+        if plan_id is None:
+            plan_id = f"rough-cut-plan-{index + 1:03d}"
+            plan["id"] = plan_id
+        elif not _is_stable_id(plan_id):
+            errors.append(ProjectValidationError(f"{path}.id", "must be a stable plan ID"))
+            continue
+        else:
+            plan_id = str(plan_id).strip()
+            plan["id"] = plan_id
+        if plan_id in seen_plan_ids:
+            errors.append(ProjectValidationError(f"{path}.id", "must be unique"))
+        seen_plan_ids.add(plan_id)
+        plan_ids.append(plan_id)
+
+        name = plan.get("name")
+        if name is None:
+            normalized_name = "默认方案" if index == 0 else f"方案 {index + 1}"
+            plan["name"] = normalized_name
+        elif not isinstance(name, str) or not name.strip() or len(name.strip()) > MAX_STABLE_ID_LENGTH:
+            errors.append(ProjectValidationError(
+                f"{path}.name", f"must be a non-empty string up to {MAX_STABLE_ID_LENGTH} characters",
+            ))
+            normalized_name = ""
+        else:
+            normalized_name = name.strip()
+            plan["name"] = normalized_name
+        name_key = normalized_name.casefold()
+        if name_key and name_key in seen_plan_names:
+            errors.append(ProjectValidationError(f"{path}.name", "must be unique"))
+        if name_key:
+            seen_plan_names.add(name_key)
+
+        for key, limit in (("output_name", 160), ("source_srt_name", 255)):
+            value = plan.get(key)
+            if value is None:
+                plan[key] = ""
+            elif not isinstance(value, str) or len(value) > limit:
+                errors.append(ProjectValidationError(
+                    f"{path}.{key}", f"must be a string up to {limit} characters",
+                ))
+
+        kept = _normalize_rough_cut_segment_ids(
+            plan.get("kept_segment_ids", []),
+            f"{path}.kept_segment_ids",
+            valid_id_set,
+            errors,
+        )
+        if kept is not None:
+            plan["kept_segment_ids"] = kept
+
+    active_plan_id = raw.get("active_plan_id")
+    if active_plan_id is None and plan_ids:
+        raw["active_plan_id"] = plan_ids[0]
+    elif not _is_stable_id(active_plan_id):
+        errors.append(ProjectValidationError("$.rough_cut.active_plan_id", "must be a stable plan ID"))
+    else:
+        normalized_active = str(active_plan_id).strip()
+        raw["active_plan_id"] = normalized_active
+        if normalized_active not in seen_plan_ids:
+            errors.append(ProjectValidationError(
+                "$.rough_cut.active_plan_id", "must reference an existing rough-cut plan",
+            ))
+
+
+def _normalize_rough_cut_segment_ids(
+    values: JsonValue,
+    path_prefix: str,
+    valid_ids: set[str],
+    errors: list[ProjectValidationError],
+) -> list[str] | None:
+    if not isinstance(values, list):
+        errors.append(ProjectValidationError(path_prefix, "must be an array"))
+        return None
+    seen: set[str] = set()
+    normalized_values: list[str] = []
+    for index, value in enumerate(values):
+        path = f"{path_prefix}[{index}]"
+        if not _is_stable_id(value):
+            errors.append(ProjectValidationError(path, "must be a stable main-segment ID"))
+            continue
+        normalized = value.strip()
+        if normalized not in valid_ids:
+            errors.append(ProjectValidationError(path, "must reference an existing main segment"))
+        elif normalized in seen:
+            errors.append(ProjectValidationError(path, "must be unique"))
+        else:
+            normalized_values.append(normalized)
+        seen.add(normalized)
+    return normalized_values
 
 
 def _is_stable_id(value: JsonValue) -> bool:

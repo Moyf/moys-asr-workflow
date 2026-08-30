@@ -446,6 +446,46 @@
     '在光标处拆分': 'Split at cursor', '在光标处拆分（': 'Split at cursor (', '范围：全部字幕': 'Scope: all subtitles',
     '查找': 'Find', '替换为': 'Replace with', '批量替换': 'Batch replace',
     '纯文本编辑…': 'Plain text edit…', '纯文本编辑': 'Plain text edit', '编辑轨道': 'Edit track',
+    '文稿粗剪': 'Transcript rough cut', '粗剪预览：关': 'Rough-cut preview: off',
+    '粗剪预览：开': 'Rough-cut preview: on', '待剪字幕': 'Cues to cut',
+    '粗剪方案': 'Rough-cut plan', '当前粗剪方案': 'Current rough-cut plan',
+    '方案名称': 'Plan name', '重命名': 'Rename', '新建方案': 'New plan',
+    '复制方案': 'Duplicate plan', '删除方案': 'Delete plan',
+    '再次确认删除': 'Confirm deletion', '默认方案': 'Default plan',
+    '批量导出全部方案': 'Export all plans', '正在批量导出…': 'Exporting plans…',
+    '待剪时长': 'Duration to cut', '预计成片': 'Estimated output',
+    '导入修改后的 SRT': 'Import edited SRT',
+    '拖入从当前工程导出并删改过的 SRT，自动识别整条删除；存疑内容不会剪。': 'Drop an SRT exported from this project and edited elsewhere. Whole-cue deletions are detected automatically; uncertain content is never cut.',
+    '选择 SRT': 'Choose SRT', '修改版 SRT': 'Edited SRT', '清除匹配': 'Clear match',
+    '识别删除': 'Detected cuts', '文字修改': 'Text edits', '合并保留': 'Merged and kept', '存疑': 'Uncertain',
+    '应用匹配结果': 'Apply match', '已应用匹配结果': 'Match applied',
+    'SRT：建议剪掉': 'SRT: suggested cut', 'SRT：存疑，不自动剪': 'SRT: uncertain; not cut',
+    'SRT：文字修改': 'SRT: text edit', 'SRT：合并保留': 'SRT: merged and kept',
+    '时间轴匹配通过。整条缺失会标为剪掉；一对一改字会同步，合并字幕只保留视频、不改写原分段。': 'Timeline match passed. Missing whole cues are marked for cutting; one-to-one text edits are applied, while merged cues keep their video without rewriting the original segmentation.',
+    '时间轴结构发生拆分或无法完整确认；本次不会自动生成剪除决定。': 'The timeline was split or could not be fully verified; no automatic cut decisions will be created.',
+    '已清除匹配报告；已经采用的粗剪草稿保持不变。': 'Match report cleared; already applied rough-cut draft changes remain.',
+    '请选择一个 SRT 字幕文件。': 'Choose an SRT subtitle file.',
+    '请拖入一个 SRT 字幕文件。': 'Drop an SRT subtitle file.',
+    '应用后开启粗剪预览': 'Enable rough-cut preview after applying',
+    '输出名称': 'Output name', '应用到工程': 'Apply to project',
+    '导出粗剪视频 + SRT': 'Export rough-cut video + SRT', '正在导出…': 'Exporting…',
+    '剪掉': 'Cut', '恢复': 'Keep',
+    '修改文字不会触发剪辑。请使用每行右侧的“剪掉”按钮明确决定视频取舍。': 'Editing text does not cut video. Use the Cut button on each row to explicitly choose what to remove.',
+    '直接修改文稿，并明确标记需要从视频中剪掉的整句内容': 'Edit the transcript and explicitly mark whole cues to remove from the video',
+    '播放时跳过已标记的文稿粗剪区间': 'Skip marked rough-cut ranges during playback',
+    '在当前工程中直接改文稿，并明确标记要从视频中剪掉的整句内容。改字、清空或换行本身不会自动剪视频。': 'Edit the transcript in this project and explicitly mark whole cues to remove. Text edits, clearing text, or line breaks never cut video automatically.',
+    '可以直接修改字幕文字；只有明确点为“剪掉”的整句才会删除对应音视频，原媒体和原字幕时间轴不会改写。': 'Edit subtitle text directly; only whole cues explicitly marked Cut remove their audio and video. The source media and original subtitle timeline remain unchanged.',
+    '关闭文稿粗剪': 'Close transcript rough cut',
+    '可选，默认 工程名_rough-cut': 'Optional; defaults to project-name_rough-cut',
+    '保留这条字幕对应的音视频': 'Keep the audio and video for this cue',
+    '剪掉这条字幕对应的音视频': 'Remove the audio and video for this cue',
+    '按当前决定重新编码并导出粗剪 MP4 与匹配 SRT': 'Re-encode and export a rough-cut MP4 with a matching SRT',
+    '请至少标记一条待剪字幕，并确保粗剪后仍有视频内容': 'Mark at least one cue to cut and leave some video in the result',
+    '直接渲染视频仅支持本地 Server 编辑器': 'Direct video rendering is available only in the local Server editor',
+    '正在重新编码粗剪视频；长视频可能需要等待一段时间…': 'Re-encoding the rough-cut video; long videos may take some time…',
+    '文稿粗剪视频和匹配字幕已导出': 'Rough-cut video and matching subtitles exported',
+    '当前工程没有可用于粗剪的主字幕': 'This project has no main subtitles available for rough cutting',
+    '直接渲染视频需要从本地 Server 编辑器打开已绑定媒体的工程。': 'Direct video rendering requires a project with bound media opened in the local Server editor.',
     '编辑视图': 'Edit view', '逐条编辑': 'Edit row by row', '整体编辑': 'Whole text', '单文本框': 'Single text area',
     '显示已禁用字幕': 'Show disabled subtitles',
     '显示全部': 'Show all',
@@ -794,6 +834,12 @@
     if (EN_ATTR[text]) return EN_ATTR[text];
     let match = /^(主字幕|副字幕)\s+(\d+)$/.exec(text);
     if (match) return `${translateText(match[1], EN)} ${match[2]}`;
+    match = /^(\d+)\s*条$/.exec(text);
+    if (match) return `${match[1]} cue${match[1] === '1' ? '' : 's'}`;
+    match = /^(\d+)\s*个方案$/.exec(text);
+    if (match) return `${match[1]} plan${match[1] === '1' ? '' : 's'}`;
+    match = /^批量导出\s*(\d+)\s*个有效方案$/.exec(text);
+    if (match) return `Export ${match[1]} valid plan${match[1] === '1' ? '' : 's'}`;
     match = /^(主字幕|副字幕)(?:（(.+)）)?\s*·\s*(\d+)\s*条$/.exec(text);
     if (match) {
       const label = translateText(match[1], EN);
@@ -908,6 +954,27 @@
         + (match[2] ? `; removed ${match[2]} empty subtitle row${match[2] === '1' ? '' : 's'}` : '')
         + (match[3] ? `; word timings cleared for ${match[3]}` : '');
     }
+    match = /^已应用：(\d+) 条待剪字幕(，已开启预览跳过)?$/.exec(text);
+    if (match) {
+      return `Applied: ${match[1]} cue${match[1] === '1' ? '' : 's'} marked for cutting`
+        + (match[2] ? '; preview skipping is on' : '');
+    }
+    match = /^粗剪预览已(开启|关闭)$/.exec(text);
+    if (match) return `Rough-cut preview ${match[1] === '开启' ? 'enabled' : 'disabled'}`;
+    match = /^时间轴未能完整确认：(\d+) 条仅列为存疑，不会自动剪除。$/.exec(text);
+    if (match) return `The timeline could not be fully verified. ${match[1]} cue${match[1] === '1' ? '' : 's'} remain uncertain and will not be cut automatically.`;
+    match = /^SRT 匹配完成：识别删除 (\d+) 条，请确认后应用匹配结果。$/.exec(text);
+    if (match) return `SRT match complete: ${match[1]} deletion${match[1] === '1' ? '' : 's'} detected. Review and apply the match.`;
+    match = /^SRT 匹配存在存疑：(\d+) 条不会自动剪除，请先核对。$/.exec(text);
+    if (match) return `SRT match has ${match[1]} uncertain cue${match[1] === '1' ? '' : 's'}; they will not be cut automatically. Review them first.`;
+    match = /^已采用 SRT 匹配：(\d+) 条待剪，(\d+) 条改字，(\d+) 条存疑未动；请检查后应用到工程。$/.exec(text);
+    if (match) return `SRT match adopted: ${match[1]} to cut, ${match[2]} text edits, and ${match[3]} uncertain left unchanged. Review, then apply to the project.`;
+    match = /^SRT 匹配失败：(.+)$/.exec(text);
+    if (match) return `SRT match failed: ${match[1]}`;
+    match = /^导出完成：(.+)；字幕：(.+)$/.exec(text);
+    if (match) return `Export complete: ${match[1]}; subtitles: ${match[2]}`;
+    match = /^导出失败：(.+)$/.exec(text);
+    if (match) return `Export failed: ${match[1]}`;
     match = /^总长度\s+(.+)$/.exec(text);
     if (match) return `Total length ${match[1]}`;
     match = /^字\/秒\s+(.+)$/.exec(text);

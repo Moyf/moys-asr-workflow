@@ -1075,6 +1075,20 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('上次打开：demo.json', 'en'), 'Last opened: demo.json');
   assert.equal(i18n.translateText('已加载媒体：synthetic.wav', 'en'), 'Media loaded: synthetic.wav');
   assert.equal(i18n.translateText('保存成功！', 'en'), 'Saved!');
+  assert.equal(i18n.translateText('文稿粗剪', 'en'), 'Transcript rough cut');
+  assert.equal(i18n.translateText('导入修改后的 SRT', 'en'), 'Import edited SRT');
+  assert.equal(i18n.translateText('SRT：存疑，不自动剪', 'en'), 'SRT: uncertain; not cut');
+  assert.equal(i18n.translateText('3 条', 'en'), '3 cues');
+  assert.equal(i18n.translateText('2 个方案', 'en'), '2 plans');
+  assert.equal(i18n.translateText('批量导出 2 个有效方案', 'en'), 'Export 2 valid plans');
+  assert.equal(
+    i18n.translateText('已应用：3 条待剪字幕，已开启预览跳过', 'en'),
+    'Applied: 3 cues marked for cutting; preview skipping is on',
+  );
+  assert.equal(
+    i18n.translateText('SRT 匹配完成：识别删除 2 条，请确认后应用匹配结果。', 'en'),
+    'SRT match complete: 2 deletions detected. Review and apply the match.',
+  );
   assert.equal(i18n.translateText('字幕忍者', 'en'), 'Subtitle Ninja');
   assert.equal(i18n.translateText('显示刀光特效', 'en'), 'Show slash effect');
   assert.equal(i18n.translateText('字幕大小', 'en'), 'Font size');
@@ -3697,6 +3711,154 @@ test('builds an ffconcat plan from kept media intervals', () => {
     'outpoint 4.500',
     '',
   ].join('\n'));
+});
+
+test('normalizes rough-cut IDs and builds merged source/keep intervals', () => {
+  const segments = [
+    { id: 'c1', start: 0, end: 1000, text: '保留一' },
+    { id: 'c2', start: 1000, end: 2000, text: '剪掉一' },
+    { id: 'c3', start: 2000, end: 2800, text: '剪掉二' },
+    { id: 'c4', start: 3000, end: 4000, text: '保留二' },
+  ];
+  const state = helpers.normalizeRoughCutData({
+    schema: 'old',
+    removed_segment_ids: ['c2', 'missing', 'c3', 'c2', 3],
+  }, segments);
+  assert.deepEqual(JSON.parse(JSON.stringify(state)), {
+    schema: 'moy.asr.rough_cut.v2',
+    active_plan_id: 'rough-cut-default',
+    plans: [{
+      id: 'rough-cut-default',
+      name: '默认方案',
+      output_name: '',
+      source_srt_name: '',
+      kept_segment_ids: ['c1', 'c4'],
+    }],
+  });
+
+  const plan = helpers.buildRoughCutPlan(segments, state, 5000);
+  assert.deepEqual(JSON.parse(JSON.stringify(plan.removedIntervals)), [
+    { start: 1000, end: 2800, removed: true },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(plan.keptIntervals)), [
+    { start: 0, end: 1000 },
+    { start: 2800, end: 5000 },
+  ]);
+  assert.equal(plan.removedDurationMs, 1800);
+  assert.equal(plan.outputDurationMs, 3200);
+});
+
+test('normalizes independent rough-cut plans and resolves the requested plan', () => {
+  const segments = [
+    { id: 'c1', start: 0, end: 1000, text: '一' },
+    { id: 'c2', start: 1000, end: 2000, text: '二' },
+    { id: 'c3', start: 2000, end: 3000, text: '三' },
+  ];
+  const state = helpers.normalizeRoughCutData({
+    schema: 'moy.asr.rough_cut.v2',
+    active_plan_id: 'plan-b',
+    plans: [
+      {
+        id: 'plan-a', name: '片段 A', output_name: 'output-a',
+        source_srt_name: 'a.srt', kept_segment_ids: ['c1', 'c2'],
+      },
+      {
+        id: 'plan-b', name: '片段 B', output_name: 'output-b',
+        source_srt_name: 'b.srt', kept_segment_ids: ['c3', 'missing', 'c3'],
+      },
+    ],
+  }, segments);
+
+  assert.equal(state.active_plan_id, 'plan-b');
+  assert.deepEqual(JSON.parse(JSON.stringify(state.plans[1].kept_segment_ids)), ['c3']);
+  assert.equal(helpers.roughCutActivePlan(state).id, 'plan-b');
+  assert.equal(helpers.roughCutActivePlan(state, 'plan-a').id, 'plan-a');
+  assert.equal(helpers.roughCutStateHasDecisions(state, segments), true);
+
+  const activePlan = helpers.buildRoughCutPlan(segments, state, 3000);
+  assert.deepEqual(JSON.parse(JSON.stringify(activePlan.removedIntervals)), [
+    { start: 0, end: 2000, removed: true },
+  ]);
+  const otherPlan = helpers.buildRoughCutPlan(segments, state, 3000, 'plan-a');
+  assert.deepEqual(JSON.parse(JSON.stringify(otherPlan.removedIntervals)), [
+    { start: 2000, end: 3000, removed: true },
+  ]);
+  assert.equal(helpers.uniqueRoughCutPlanId(state.plans, 'plan-a'), 'plan-a-2');
+  assert.equal(helpers.uniqueRoughCutPlanName(state.plans, '片段 A'), '片段 A 2');
+});
+
+test('matches a same-timeline edited SRT and detects only whole-cue deletions', () => {
+  const source = [
+    { id: 'c1', start: 0, end: 900, text: '大家好' },
+    { id: 'c2', start: 1000, end: 1900, text: '这一句会删掉' },
+    { id: 'c3', start: 2000, end: 3000, text: '原来的文字' },
+    { id: 'c4', start: 3100, end: 4000, text: '结尾也删掉' },
+  ];
+  const imported = [
+    { start: 0, end: 900, text: '大家好' },
+    { start: 2000, end: 3000, text: '修改后的文字' },
+  ];
+  const result = helpers.matchRoughCutSrtSegments(source, imported);
+  assert.equal(result.compatible, true);
+  assert.deepEqual([...result.keptSourceIds], ['c1', 'c3']);
+  assert.deepEqual([...result.removedSourceIds], ['c2', 'c4']);
+  assert.deepEqual([...result.ambiguousSourceIds], []);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.textUpdates)), [
+    { sourceIndex: 2, sourceId: 'c3', text: '修改后的文字' },
+  ]);
+});
+
+test('treats a merged SRT cue as retained source cues without guessing text distribution', () => {
+  const source = [
+    { id: 'c1', start: 0, end: 900, text: '第一句' },
+    { id: 'c2', start: 1000, end: 1900, text: '第二句' },
+    { id: 'c3', start: 2000, end: 2900, text: '删除我' },
+  ];
+  const result = helpers.matchRoughCutSrtSegments(source, [
+    { start: 0, end: 1900, text: '第一句 第二句' },
+  ]);
+  assert.equal(result.compatible, true);
+  assert.equal(result.mergedCueCount, 1);
+  assert.deepEqual([...result.keptSourceIds], ['c1', 'c2']);
+  assert.deepEqual([...result.removedSourceIds], ['c3']);
+  assert.deepEqual([...result.textUpdates], []);
+});
+
+test('accepts slight timing drift when text still anchors the source cue', () => {
+  const source = [
+    { id: 'c1', start: 1000, end: 2000, text: '时间有一点漂移' },
+    { id: 'c2', start: 2200, end: 3000, text: '删掉' },
+  ];
+  const result = helpers.matchRoughCutSrtSegments(source, [
+    { start: 1180, end: 2180, text: '时间有一点漂移' },
+  ]);
+  assert.equal(result.compatible, true);
+  assert.deepEqual([...result.removedSourceIds], ['c2']);
+});
+
+test('protects all missing cues when imported SRT is not on the source timeline', () => {
+  const source = [
+    { id: 'c1', start: 0, end: 900, text: '第一句' },
+    { id: 'c2', start: 1000, end: 1900, text: '第二句' },
+  ];
+  const result = helpers.matchRoughCutSrtSegments(source, [
+    { start: 5000, end: 5900, text: '完全不同的时间轴' },
+  ]);
+  assert.equal(result.compatible, false);
+  assert.equal(result.reason, 'unmatched_imported');
+  assert.deepEqual([...result.removedSourceIds], []);
+  assert.deepEqual([...result.ambiguousSourceIds], ['c1', 'c2']);
+});
+
+test('does not infer cuts when one source cue was split into multiple imported cues', () => {
+  const source = [{ id: 'c1', start: 0, end: 2000, text: '一整条原字幕' }];
+  const result = helpers.matchRoughCutSrtSegments(source, [
+    { start: 0, end: 900, text: '一整条' },
+    { start: 900, end: 2000, text: '原字幕' },
+  ]);
+  assert.equal(result.compatible, false);
+  assert.deepEqual([...result.removedSourceIds], []);
+  assert.deepEqual([...result.keptSourceIds], ['c1']);
 });
 
 

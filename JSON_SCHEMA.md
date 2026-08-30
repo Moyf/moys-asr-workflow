@@ -18,6 +18,7 @@
   "sticker_root": "...",
   "waveform": { ... },
   "gap_remove": { ... },
+  "rough_cut": { ... },
   "script_alignment": { ... },
   "workspace": { ... },
   "preview": { ... },
@@ -34,6 +35,7 @@
 | `sticker_root` | `string` | 否 | 表情包根目录绝对路径。打开工程时会覆盖编辑器内的 `STICKER_ROOT` |
 | `waveform` | `object` | 否 | 可丢弃的紧凑波形缓存。由 `edit.py` 或浏览器自动生成；不影响字幕语义 |
 | `gap_remove` | `object` | 否 | 可逆的空隙移除决定。保留原始媒体/字幕时间，仅描述导出与跳过播放时使用的派生时间轴 |
+| `rough_cut` | `object` | 否 | 文稿粗剪决定。按主字幕稳定 ID 记录整句剪除，不删除原字幕或改写原媒体 |
 | `script_alignment` | `object` | 否 | 录制对齐工具写入的选择记录；不改变 MAWE 的字幕与时间码语义 |
 | `workspace` | `object` | 否 | 编辑器工作区：四个功能区的窗口布局与显示状态；不影响字幕和波形缓存。服务器版也可使用独立的本机命名工作区库跨工程复用 |
 | `preview` | `object` | 否 | 预览呈现设置。含 `preview.subtitle`（主字幕预览框与样式）、可选的 `preview.extension_subtitle`（拓展字幕样式）和 `preview.sticker`（表情包预览层）。不影响字幕时间与文本 |
@@ -242,7 +244,34 @@
 - 波形将 `removed: true` 画为橙色斜纹、`removed: false` 画为灰蓝斜纹；边界把手和整体/边界拖动预览使用蓝色表示正在进行人工修改；左键仅跳转播放头，Alt+左键才在两种状态间切换。
 - 旧工程没有 provenance、或使用 `legacy_subtitle_gap` detector 时，现有 `removed: true` 范围会按 `audio_gate` 迁入并继续启用，`removed: false` 范围迁为人工恢复；重新扫描和「收缩空隙」都会处理迁入的自动静音范围。
 
-### 1.3a script_alignment 录制对齐记录
+### 1.3a rough_cut 文稿粗剪
+
+`rough_cut` 是可逆的整句视频剪辑决定，不会删除主字幕或改写原媒体。编辑器仅把用户明确标记的主字幕 ID 对应时间范围从派生粗剪时间轴中移除；修改文字、清空字幕或调整断句本身不会自动剪视频。
+
+```json
+{
+  "schema": "moy.asr.rough_cut.v2",
+  "active_plan_id": "rough-cut-default",
+  "plans": [
+    {
+      "id": "rough-cut-default",
+      "name": "默认方案",
+      "output_name": "采访_短片A",
+      "source_srt_name": "采访_修改版.srt",
+      "kept_segment_ids": ["c0001", "c0002", "c0014"]
+    }
+  ]
+}
+```
+
+- `schema` 固定为 `moy.asr.rough_cut.v2`；旧版 `moy.asr.rough_cut.v1` 的 `removed_segment_ids` 打开时自动转为一个默认方案，剪辑结果不变。
+- `active_plan_id` 必须引用 `plans` 内的一个方案；方案最多 100 个，`id` 和 `name` 均不可重复。
+- `kept_segment_ids` 必须是去重后的主字幕稳定 ID，且每个 ID 都必须存在于顶层 `segments`；未列出的主字幕就是该方案的待剪内容。
+- `output_name` 和 `source_srt_name` 按方案保存；母稿文字和时间轴仍由顶层 `segments` 共享，不为每个方案复制字幕。
+- 相交或首尾相接的待剪字幕在预览和导出时合并为一个移除区间。
+- 直接渲染粗剪视频仅由绑定当前工程和媒体的 localhost Server 执行；输出目录固定为工程目录。
+
+### 1.3b script_alignment 录制对齐记录
 
 `script_alignment` 是录制对齐 Server 写入的可选诊断与选择记录，不替代 `segments` 或 `gap_remove`。候选、选择和 Extra 范围可以包含 `sourceSlices`，用于记录一个源字幕段内的 item 子范围：
 
@@ -693,6 +722,7 @@ uv run python edit.py your_generated.mosp
 | `sticker_root` | string | ❌ | 表情包根目录 |
 | `waveform` | object | ❌ | 可丢弃的 `moy.asr.waveform.v1` 峰值缓存 |
 | `gap_remove` | object | ❌ | 可逆的 `moy.asr.gap_remove.v1` 空隙移除决定 |
+| `rough_cut` | object | ❌ | 可逆的 `moy.asr.rough_cut.v2` 多方案整句文稿粗剪决定 |
 | `multi_subtitle` | object | ❌ | 可选的 `moy.asr.multi_subtitle.v1` 主轨/扩展轨与绑定 |
 | `preview` | object | ❌ | 预览呈现设置容器 |
 | `preview.subtitle.x` | number | ❌ | 归一化 `[0,1]`，`x + width <= 1` |

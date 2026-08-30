@@ -16,6 +16,7 @@ import urllib.request
 import zipfile
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 
@@ -452,6 +453,18 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('let STICKER_URL_PREFIX = "/stickers";', page)
         self.assertIn('const NINJA_SFX_BASE_URL = "/sfx/";', page)
         self.assertIn('const SERVER_CONFIG = {"saveUrl": "/api/project", ', page)
+        self.assertIn('"roughCutExportUrl": "/api/exports/rough-cut"', page)
+        self.assertIn('"canRoughCutExport": true', page)
+        self.assertIn('id="rough-cut-btn"', page)
+        self.assertIn('id="rough-cut-modal"', page)
+        self.assertIn('id="rough-cut-srt-drop"', page)
+        self.assertIn('id="rough-cut-srt-file"', page)
+        self.assertIn('id="rough-cut-srt-report"', page)
+        self.assertIn('id="rough-cut-plan-select"', page)
+        self.assertIn('id="rough-cut-plan-new"', page)
+        self.assertIn('id="rough-cut-plan-copy"', page)
+        self.assertIn('id="rough-cut-plan-delete"', page)
+        self.assertIn('id="rough-cut-export-all"', page)
         self.assertNotIn('createUrl', page)
         self.assertIn('"requestToken": "", "stickerRootUrl": "/api/stickers/root", ', page)
         self.assertIn('"portableStickerExportUrl": "/api/exports/sticker-otio", ', page)
@@ -506,6 +519,65 @@ class LocalEditorServerTests(unittest.TestCase):
                 server.shutdown()
                 thread.join(timeout=2)
 
+    def test_rough_cut_endpoint_validates_token_and_uses_bound_media(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        result = SimpleNamespace(
+            video_path=self.root / "clip_rough-cut.mp4",
+            srt_path=self.root / "clip_rough-cut.srt",
+            source_duration_ms=3000,
+            output_duration_ms=2200,
+        )
+        tools = SimpleNamespace(
+            ready=True,
+            ffmpeg=self.root / "ffmpeg",
+            ffprobe=self.root / "ffprobe",
+            detail="测试工具",
+        )
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                invalid = urllib.request.Request(
+                    f"{base_url}/api/exports/rough-cut",
+                    data=json.dumps({"intervals": []}).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with self.assertRaises(urllib.error.HTTPError) as context:
+                    urllib.request.urlopen(invalid)
+                self.assertEqual(context.exception.code, 403)
+
+                payload = {
+                    "requestToken": server.request_token,
+                    "outputName": "访谈粗剪",
+                    "intervals": [{"start": 0, "end": 1000}, {"start": 1800, "end": 3000}],
+                    "srt": "1\n00:00:00,000 --> 00:00:01,000\n保留\n",
+                }
+                request = urllib.request.Request(
+                    f"{base_url}/api/exports/rough-cut",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with (
+                    mock.patch.object(server_editor, "resolve_ffmpeg_tools", return_value=tools),
+                    mock.patch.object(server_editor, "render_rough_cut", return_value=result) as render,
+                ):
+                    with urllib.request.urlopen(request) as response:
+                        body = json.loads(response.read())
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["videoPath"], str(result.video_path))
+        render.assert_called_once()
+        self.assertEqual(render.call_args.kwargs["source"], self.media.resolve())
+        self.assertEqual(render.call_args.kwargs["project_directory"], self.root)
+        self.assertEqual(render.call_args.kwargs["intervals"], payload["intervals"])
     def test_sticker_root_endpoint_validates_token_and_preserves_state_on_failure(self) -> None:
         project = server_editor.load_blank_project(str(self.stickers))
         alternate = self.root / "alternate-stickers"

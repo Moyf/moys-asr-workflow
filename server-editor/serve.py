@@ -65,6 +65,7 @@ from maw.media import (  # noqa: E402
     resolve_project_media,
 )
 from maw.lottie_glyphs import LottieGlyphError, vectorize_lottie_animation  # noqa: E402
+from maw.rough_cut import RoughCutError, render_rough_cut  # noqa: E402
 
 
 MAX_RECENT_PROJECTS = 10
@@ -157,6 +158,10 @@ class LottieExportInProgressError(RuntimeError):
 
 class OgrafExportInProgressError(RuntimeError):
     """Another dynamic-caption export currently owns the OGraf lock."""
+
+
+class RoughCutExportInProgressError(RuntimeError):
+    """Another rough-cut export currently owns the render lock."""
 
 
 def default_settings_path() -> Path:
@@ -516,6 +521,7 @@ def build_server_page(
             "otiozTimelineExportUrl": "/api/exports/timeline-otioz",
             "lottieExportUrl": "/api/exports/lottie",
             "ografExportUrl": "/api/exports/ograf",
+            "roughCutExportUrl": "/api/exports/rough-cut",
             "waveformUrl": "/api/waveform",
             "startupStatusUrl": "/api/startup-status",
             "startupStatus": startup_status.get("status", "ready"),
@@ -529,6 +535,7 @@ def build_server_page(
             "initialStickerCount": len(project.stickers),
             "canLottieExport": project.json_path is not None,
             "canOgrafExport": project.json_path is not None,
+            "canRoughCutExport": project.json_path is not None and project.media_path is not None,
             "autoLoadedMediaName": (project.source_media_path or project.media_path).name if project.media_path else None,
             "recentProjectsUrl": "/api/recent-projects/open",
             "attachUrl": "/api/project/attach",
@@ -581,6 +588,7 @@ class EditorServer(ThreadingHTTPServer):
         self.timeline_otioz_lock = threading.Lock()
         self.lottie_lock = threading.Lock()
         self.ograf_lock = threading.Lock()
+        self.rough_cut_lock = threading.Lock()
         self.settings_lock = threading.Lock()
         self.reapeaks_lock = threading.Lock()
         self.reapeaks_generation = 0
@@ -1430,6 +1438,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.export_lottie()
         elif path == "/api/exports/ograf":
             self.export_ograf()
+        elif path == "/api/exports/rough-cut":
+            self.export_rough_cut()
         else:
             self.send_localized_error(HTTPStatus.NOT_FOUND, "未知 API")
 
@@ -1686,6 +1696,60 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(ograf_bytes)))
         self.end_headers()
         self.wfile.write(ograf_bytes)
+
+    def export_rough_cut(self) -> None:
+        try:
+            request = self.read_json_request()
+            self._check_request_token(request)
+            output_name = request.get("outputName", "")
+            intervals = request.get("intervals")
+            srt_text = request.get("srt", "")
+            if not isinstance(output_name, str) or not isinstance(srt_text, str):
+                raise RoughCutError("粗剪输出名称或字幕格式不正确")
+            if not self.editor_server.rough_cut_lock.acquire(blocking=False):
+                raise RoughCutExportInProgressError("另一个文稿粗剪导出正在进行")
+            try:
+                project = self.editor_server.project
+                media_path = project.source_media_path or project.media_path
+                if project.json_path is None or media_path is None:
+                    raise RoughCutError("当前服务器没有同时绑定工程和源媒体")
+                configured = os.environ.get("FFMPEG_PATH") or load_env(DEFAULT_ENV_PATH).get("FFMPEG_PATH", "")
+                tools = resolve_ffmpeg_tools(configured_path=configured)
+                if not tools.ready or tools.ffmpeg is None or tools.ffprobe is None:
+                    raise RoughCutError(f"找不到完整 FFmpeg 工具：{tools.detail}")
+                result = render_rough_cut(
+                    source=media_path,
+                    project_directory=project.json_path.parent,
+                    output_name=output_name,
+                    fallback_stem=project.json_path.stem,
+                    intervals=intervals,
+                    srt_text=srt_text,
+                    ffmpeg=tools.ffmpeg,
+                    ffprobe=tools.ffprobe,
+                )
+            finally:
+                self.editor_server.rough_cut_lock.release()
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except RoughCutExportInProgressError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RoughCutError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        except OSError as error:
+            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": f"文稿粗剪导出失败：{error}"})
+            return
+        print(f"[rough-cut] 视频已导出: {result.video_path}", flush=True)
+        print(f"[rough-cut] 字幕已导出: {result.srt_path}", flush=True)
+        self.send_json(HTTPStatus.OK, {
+            "ok": True,
+            "videoPath": str(result.video_path),
+            "srtPath": str(result.srt_path),
+            "sourceDurationMs": result.source_duration_ms,
+            "outputDurationMs": result.output_duration_ms,
+        })
 
     def read_json_request(self) -> dict:
         length = int(self.headers.get("Content-Length", "0"))

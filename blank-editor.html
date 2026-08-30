@@ -2540,6 +2540,120 @@
   .timed-text-edit-change-item.deleted { border: 1px solid color-mix(in srgb, var(--red) 50%, var(--border-subtle)); }
   .timed-text-edit-change-item-title { color: var(--text-secondary); margin-bottom: 4px; }
   .timed-text-edit-change-item .timed-text-edit-diff-line { margin-top: 3px; }
+
+  /* 文稿粗剪：文字修改与视频剪除决定分离，待剪行始终保留可见。 */
+  .rough-cut-modal {
+    width: min(1040px, calc(100vw - 28px));
+    height: min(880px, calc(100vh - 28px));
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .rough-cut-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .rough-cut-header h3 { margin: 0 0 6px; }
+  .rough-cut-header .modal-desc { max-width: 780px; margin: 0; line-height: 1.5; }
+  .rough-cut-close {
+    width: 32px; height: 32px; padding: 0; flex: 0 0 auto;
+    color: var(--text-muted); background: transparent; border: 1px solid transparent;
+    border-radius: var(--radius-sm); font-size: 22px; line-height: 1; cursor: pointer;
+  }
+  .rough-cut-close:hover { color: var(--text-primary); background: var(--hover-bg); border-color: var(--border-subtle); }
+  .rough-cut-plan-toolbar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 9px 11px; background: var(--bg-raised); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+  }
+  .rough-cut-plan-toolbar > label { margin: 0; color: var(--text-muted); font-size: 12px; }
+  .rough-cut-plan-toolbar select,
+  .rough-cut-plan-toolbar input {
+    min-width: 0; padding: 6px 8px; color: var(--text-primary); background: var(--bg-input);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  }
+  .rough-cut-plan-toolbar select { flex: 1 1 190px; max-width: 280px; }
+  .rough-cut-plan-name { display: flex; align-items: center; gap: 7px; flex: 1 1 240px; }
+  .rough-cut-plan-name input { flex: 1 1 auto; }
+  .rough-cut-plan-toolbar select:focus,
+  .rough-cut-plan-toolbar input:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+  #rough-cut-plan-count { margin-left: auto; color: var(--text-faint); font-size: 11px; }
+  #rough-cut-plan-delete.confirming { color: var(--danger-hover-fg); border-color: var(--red); background: var(--red-soft); }
+  .rough-cut-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .rough-cut-summary > div {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+    padding: 9px 11px; background: var(--bg-raised); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+  }
+  .rough-cut-summary span { color: var(--text-muted); font-size: 12px; }
+  .rough-cut-summary strong { color: var(--text-primary); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .rough-cut-srt-import { display: grid; gap: 8px; }
+  .rough-cut-srt-drop {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 9px 11px; background: var(--bg-raised); border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-sm); transition: border-color .15s, background .15s;
+  }
+  .rough-cut-srt-drop.dragover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--bg-raised)); }
+  .rough-cut-srt-drop > div { min-width: 0; display: grid; gap: 2px; }
+  .rough-cut-srt-drop strong { color: var(--text-primary); font-size: 12px; }
+  .rough-cut-srt-drop span { color: var(--text-muted); font-size: 11px; line-height: 1.4; }
+  .rough-cut-srt-drop button { flex: 0 0 auto; }
+  .rough-cut-srt-report {
+    padding: 9px 11px; background: color-mix(in srgb, var(--accent) 5%, var(--bg-raised));
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  }
+  .rough-cut-srt-report-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .rough-cut-srt-report-head > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rough-cut-srt-report-head button { padding: 4px 8px; font-size: 11px; }
+  .rough-cut-srt-stats { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 7px; color: var(--text-muted); font-size: 11px; }
+  .rough-cut-srt-stats strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  .rough-cut-srt-report p { margin: 7px 0; color: var(--text-secondary); font-size: 11px; line-height: 1.45; }
+  .rough-cut-srt-report.warning { border-color: var(--amber-line); background: color-mix(in srgb, var(--amber-line) 8%, var(--bg-raised)); }
+  .rough-cut-srt-report.warning p { color: var(--amber-hover); }
+  .rough-cut-srt-report.applied { border-color: color-mix(in srgb, var(--green-hover) 45%, var(--border-subtle)); }
+  #rough-cut-srt-apply { padding: 5px 9px; font-size: 11px; }
+  .rough-cut-toolbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .rough-cut-preview-control { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+  .rough-cut-preview-control input { margin: 0; accent-color: var(--accent); }
+  .rough-cut-output-control { display: flex; align-items: center; gap: 8px; margin: 0; flex: 1 1 360px; }
+  .rough-cut-output-control input {
+    min-width: 0; flex: 1 1 auto; padding: 7px 9px; color: var(--text-primary);
+    background: var(--bg-input); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  }
+  .rough-cut-output-control input:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+  .rough-cut-hint {
+    padding: 8px 10px; color: var(--amber-hover); background: color-mix(in srgb, var(--amber-line) 8%, transparent);
+    border: 1px solid var(--amber-line); border-radius: var(--radius-sm); font-size: 12px;
+  }
+  .rough-cut-rows { flex: 1 1 auto; min-height: 220px; overflow: auto; padding-right: 4px; }
+  .rough-cut-row {
+    display: grid; grid-template-columns: 88px minmax(0, 1fr) 76px; gap: 10px; align-items: center;
+    margin-bottom: 7px; padding: 8px; background: var(--bg-raised); border: 1px solid var(--border-subtle);
+    border-left: 3px solid transparent; border-radius: var(--radius-sm);
+  }
+  .rough-cut-row.removed { border-color: color-mix(in srgb, var(--red) 58%, var(--border-subtle)); border-left-color: var(--red); background: color-mix(in srgb, var(--red) 9%, var(--bg-raised)); }
+  .rough-cut-row.srt-suggested-remove:not(.removed) { border-left-color: var(--red); border-style: dashed; }
+  .rough-cut-row.srt-ambiguous { border-left-color: var(--amber-line); background: color-mix(in srgb, var(--amber-line) 7%, var(--bg-raised)); }
+  .rough-cut-row-time { color: var(--text-faint); font: 11px/1.35 var(--font-mono); white-space: pre-line; }
+  .rough-cut-row-note { display: block; margin-top: 4px; color: var(--accent); font-family: var(--font-ui); }
+  .rough-cut-row.srt-suggested-remove .rough-cut-row-note { color: var(--red-hover); }
+  .rough-cut-row.srt-ambiguous .rough-cut-row-note { color: var(--amber-hover); }
+  .rough-cut-row textarea {
+    width: 100%; min-height: 44px; resize: vertical; padding: 7px 9px;
+    color: var(--text-primary); background: var(--bg-input); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm); line-height: 1.45;
+  }
+  .rough-cut-row textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+  .rough-cut-toggle { min-width: 70px; color: var(--text-secondary); }
+  .rough-cut-row.removed .rough-cut-toggle { color: var(--danger-hover-fg); border-color: var(--red); background: var(--red-soft); }
+  .rough-cut-status { min-height: 20px; color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
+  .rough-cut-status.success { color: var(--green-hover); }
+  .rough-cut-status.error { color: var(--red-hover); }
+  .rough-cut-actions { margin-top: 0; }
+  #rough-cut-preview-toggle.active { color: var(--amber-hover); border-color: var(--amber-line); background: var(--amber-soft); }
+  @media (max-width: 700px) {
+    .rough-cut-summary { grid-template-columns: 1fr; }
+    .rough-cut-srt-drop { align-items: flex-start; flex-direction: column; }
+    .rough-cut-row { grid-template-columns: 72px minmax(0, 1fr); }
+    .rough-cut-toggle { grid-column: 2; justify-self: end; }
+    .rough-cut-plan-toolbar select { max-width: none; }
+    #rough-cut-plan-count { width: 100%; margin-left: 0; }
+  }
   @media (max-width: 820px) {
     .timed-text-edit-modal { height: min(900px, calc(100vh - 16px)); }
     .timed-text-edit-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(280px, 1fr) auto; }
@@ -3040,6 +3154,7 @@
   .timed-text-edit-rows,
   .timed-text-edit-report,
   .timed-text-edit-single-textarea,
+  .rough-cut-rows,
   .hint-project-preview-value {
     scrollbar-width: thin;
     scrollbar-color: var(--scroll-thumb) var(--scroll-track);
@@ -3058,6 +3173,7 @@
   .timed-text-edit-rows::-webkit-scrollbar,
   .timed-text-edit-report::-webkit-scrollbar,
   .timed-text-edit-single-textarea::-webkit-scrollbar,
+  .rough-cut-rows::-webkit-scrollbar,
   .hint-project-preview-value::-webkit-scrollbar { width: 6px; height: 6px; }
   .cues-container::-webkit-scrollbar-track,
   .waveform-scroll::-webkit-scrollbar-track,
@@ -3073,6 +3189,7 @@
   .timed-text-edit-rows::-webkit-scrollbar-track,
   .timed-text-edit-report::-webkit-scrollbar-track,
   .timed-text-edit-single-textarea::-webkit-scrollbar-track,
+  .rough-cut-rows::-webkit-scrollbar-track,
   .hint-project-preview-value::-webkit-scrollbar-track { background: var(--scroll-track); }
   .cues-container::-webkit-scrollbar-thumb,
   .waveform-scroll::-webkit-scrollbar-thumb,
@@ -3088,6 +3205,7 @@
   .timed-text-edit-rows::-webkit-scrollbar-thumb,
   .timed-text-edit-report::-webkit-scrollbar-thumb,
   .timed-text-edit-single-textarea::-webkit-scrollbar-thumb,
+  .rough-cut-rows::-webkit-scrollbar-thumb,
   .hint-project-preview-value::-webkit-scrollbar-thumb {
     background: var(--scroll-thumb); border-radius: 4px;
     border: 2px solid transparent; background-clip: padding-box;
@@ -3106,6 +3224,7 @@
   .timed-text-edit-rows::-webkit-scrollbar-thumb:hover,
   .timed-text-edit-report::-webkit-scrollbar-thumb:hover,
   .timed-text-edit-single-textarea::-webkit-scrollbar-thumb:hover,
+  .rough-cut-rows::-webkit-scrollbar-thumb:hover,
   .hint-project-preview-value::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); background-clip: padding-box; }
 /* Waveform-specific styles live here so the same UI can be reused by a desktop shell. */
 
@@ -4217,6 +4336,7 @@
       </div>
     </span>
     <button id="download-json">导出工程</button>
+    <button type="button" id="rough-cut-preview-toggle" hidden title="播放时跳过已标记的文稿粗剪区间">粗剪预览：关</button>
     <span class="dropdown gap-removed-export-dropdown" id="gap-removed-export-dropdown" hidden>
       <button id="gap-removed-export-btn" title="导出应用当前空隙移除结果的字幕、时间线或保留区域计划" aria-expanded="false" aria-controls="gap-removed-export-menu" aria-haspopup="menu">导出去空隙版本 ▾</button>
       <div class="dropdown-menu" id="gap-removed-export-menu" role="menu">
@@ -5441,6 +5561,7 @@
         <div class="dropdown-menu" id="batch-operations-menu" role="menu">
           <button type="button" class="dropdown-item" id="replace-btn" role="menuitem">批量替换</button>
           <button type="button" class="dropdown-item" id="timed-text-edit-btn" role="menuitem" title="集中编辑字幕文本，并预览拆分、合并和字词时间码映射结果">纯文本编辑</button>
+          <button type="button" class="dropdown-item" id="rough-cut-btn" role="menuitem" title="直接修改文稿，并明确标记需要从视频中剪掉的整句内容">文稿粗剪</button>
           <button type="button" class="dropdown-item" id="text-process-btn" role="menuitem">文本处理</button>
         </div>
       </div>
@@ -5726,6 +5847,83 @@
     <div class="actions">
       <button type="button" id="timed-text-edit-cancel">取消</button>
       <button type="button" id="timed-text-edit-apply" class="primary" disabled>应用修改</button>
+    </div>
+  </div>
+</div>
+
+<!-- 基于主字幕稳定 ID 的非破坏性文稿粗剪。 -->
+<div class="modal-mask" id="rough-cut-modal" aria-hidden="true">
+  <div class="modal rough-cut-modal" role="dialog" aria-modal="true"
+       aria-labelledby="rough-cut-title" aria-describedby="rough-cut-description">
+    <div class="rough-cut-header">
+      <div>
+        <h3 id="rough-cut-title">文稿粗剪</h3>
+        <p class="modal-desc" id="rough-cut-description">
+          可以直接修改字幕文字；只有明确点为“剪掉”的整句才会删除对应音视频，原媒体和原字幕时间轴不会改写。
+        </p>
+      </div>
+      <button type="button" id="rough-cut-close" class="rough-cut-close"
+              title="关闭（Esc）" aria-label="关闭文稿粗剪">×</button>
+    </div>
+    <div class="rough-cut-plan-toolbar">
+      <label for="rough-cut-plan-select">粗剪方案</label>
+      <select id="rough-cut-plan-select" aria-label="当前粗剪方案"></select>
+      <label class="rough-cut-plan-name" for="rough-cut-plan-name">
+        方案名称
+        <input type="text" id="rough-cut-plan-name" maxlength="160">
+      </label>
+      <button type="button" id="rough-cut-plan-rename">重命名</button>
+      <button type="button" id="rough-cut-plan-new">新建方案</button>
+      <button type="button" id="rough-cut-plan-copy">复制方案</button>
+      <button type="button" id="rough-cut-plan-delete">删除方案</button>
+      <span id="rough-cut-plan-count">1 个方案</span>
+    </div>
+    <div class="rough-cut-summary" aria-live="polite">
+      <div><span>待剪字幕</span><strong id="rough-cut-count">0 条</strong></div>
+      <div><span>待剪时长</span><strong id="rough-cut-removed-duration">0秒</strong></div>
+      <div><span>预计成片</span><strong id="rough-cut-output-duration">0秒</strong></div>
+    </div>
+    <div class="rough-cut-srt-import">
+      <div class="rough-cut-srt-drop" id="rough-cut-srt-drop">
+        <div>
+          <strong>导入修改后的 SRT</strong>
+          <span>拖入从当前工程导出并删改过的 SRT，自动识别整条删除；存疑内容不会剪。</span>
+        </div>
+        <button type="button" id="rough-cut-srt-pick">选择 SRT</button>
+        <input type="file" id="rough-cut-srt-file" accept=".srt,application/x-subrip" hidden>
+      </div>
+      <div class="rough-cut-srt-report" id="rough-cut-srt-report" hidden>
+        <div class="rough-cut-srt-report-head">
+          <strong id="rough-cut-srt-name">修改版 SRT</strong>
+          <button type="button" id="rough-cut-srt-clear">清除匹配</button>
+        </div>
+        <div class="rough-cut-srt-stats">
+          <span>识别删除 <strong id="rough-cut-srt-removed">0</strong></span>
+          <span>文字修改 <strong id="rough-cut-srt-text">0</strong></span>
+          <span>合并保留 <strong id="rough-cut-srt-merged">0</strong></span>
+          <span>存疑 <strong id="rough-cut-srt-ambiguous">0</strong></span>
+        </div>
+        <p id="rough-cut-srt-message"></p>
+        <button type="button" id="rough-cut-srt-apply" class="primary">应用匹配结果</button>
+      </div>
+    </div>
+    <div class="rough-cut-toolbar">
+      <label class="rough-cut-preview-control">
+        <input type="checkbox" id="rough-cut-preview-checkbox"> 应用后开启粗剪预览
+      </label>
+      <label class="rough-cut-output-control" for="rough-cut-output-name">
+        输出名称
+        <input type="text" id="rough-cut-output-name" maxlength="160" placeholder="可选，默认 工程名_rough-cut">
+      </label>
+    </div>
+    <div class="rough-cut-hint">修改文字不会触发剪辑。请使用每行右侧的“剪掉”按钮明确决定视频取舍。</div>
+    <div class="rough-cut-rows" id="rough-cut-rows"></div>
+    <div class="rough-cut-status" id="rough-cut-status" role="status" aria-live="polite"></div>
+    <div class="actions rough-cut-actions">
+      <button type="button" id="rough-cut-cancel">取消</button>
+      <button type="button" id="rough-cut-apply" class="primary">应用到工程</button>
+      <button type="button" id="rough-cut-export" class="primary">导出粗剪视频 + SRT</button>
+      <button type="button" id="rough-cut-export-all">批量导出全部方案</button>
     </div>
   </div>
 </div>
@@ -10034,8 +10232,12 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
   const HISTORY_RECORD_DEFAULT_LABELS = Object.freeze({
     segments: '编辑', layout: '调整工作区', gap_remove: '空隙移除', preview: '预览',
   });
-  function buildSegmentsHistorySnapshot(segments, multiSubtitle) {
-    return { segments: cloneJsonValue(segments), multi_subtitle: cloneJsonValue(multiSubtitle) };
+  function buildSegmentsHistorySnapshot(segments, multiSubtitle, roughCut = null) {
+    return {
+      segments: cloneJsonValue(segments),
+      multi_subtitle: cloneJsonValue(multiSubtitle),
+      rough_cut: cloneJsonValue(roughCut),
+    };
   }
   function buildHistoryRecord(kind, label, payload, view = null) {
     const recordKind = Object.prototype.hasOwnProperty.call(HISTORY_RECORD_DEFAULT_LABELS, kind)
@@ -10689,6 +10891,316 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       .filter((segment) => segment && !segment.disabled)
       .map((segment) => String(segment.text || '').replace(/\r\n?/g, '\n'))
       .join('\n');
+  }
+
+  const ROUGH_CUT_SCHEMA_V1 = 'moy.asr.rough_cut.v1';
+  const ROUGH_CUT_SCHEMA = 'moy.asr.rough_cut.v2';
+  const ROUGH_CUT_DEFAULT_PLAN_ID = 'rough-cut-default';
+
+  function roughCutSegmentIds(segments) {
+    return (Array.isArray(segments) ? segments : [])
+      .map((segment) => stableId(segment?.id)).filter(Boolean);
+  }
+
+  function uniqueRoughCutPlanId(plans, preferred = 'rough-cut-plan') {
+    const used = new Set((Array.isArray(plans) ? plans : [])
+      .map((plan) => stableId(plan?.id)).filter(Boolean));
+    const base = stableId(preferred) || 'rough-cut-plan';
+    if (!used.has(base)) return base;
+    let index = 2;
+    while (used.has(`${base}-${index}`)) index += 1;
+    return `${base}-${index}`;
+  }
+
+  function uniqueRoughCutPlanName(plans, preferred = '新方案') {
+    const used = new Set((Array.isArray(plans) ? plans : [])
+      .map((plan) => String(plan?.name || '').trim().toLocaleLowerCase()).filter(Boolean));
+    const base = String(preferred || '').trim().slice(0, 160) || '新方案';
+    if (!used.has(base.toLocaleLowerCase())) return base;
+    let index = 2;
+    while (used.has(`${base} ${index}`.toLocaleLowerCase())) index += 1;
+    return `${base} ${index}`.slice(0, 160);
+  }
+
+  function normalizeRoughCutData(value, segments = []) {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const segmentIds = roughCutSegmentIds(segments);
+    const validIds = new Set(segmentIds);
+    const legacy = source.schema === ROUGH_CUT_SCHEMA_V1
+      || Array.isArray(source.removed_segment_ids);
+    if (legacy) {
+      const removedIds = new Set((Array.isArray(source.removed_segment_ids)
+        ? source.removed_segment_ids : []).map(stableId).filter(Boolean));
+      return {
+        schema: ROUGH_CUT_SCHEMA,
+        active_plan_id: ROUGH_CUT_DEFAULT_PLAN_ID,
+        plans: [{
+          id: ROUGH_CUT_DEFAULT_PLAN_ID,
+          name: '默认方案',
+          output_name: '',
+          source_srt_name: '',
+          kept_segment_ids: segmentIds.filter((id) => !removedIds.has(id)),
+        }],
+      };
+    }
+    const rawPlans = Array.isArray(source.plans) ? source.plans : [];
+    const plans = [];
+    rawPlans.slice(0, 100).forEach((rawPlan, index) => {
+      const planSource = rawPlan && typeof rawPlan === 'object' && !Array.isArray(rawPlan)
+        ? rawPlan : {};
+      const id = uniqueRoughCutPlanId(
+        plans,
+        stableId(planSource.id) || `rough-cut-plan-${index + 1}`,
+      );
+      const seen = new Set();
+      const keptIds = [];
+      (Array.isArray(planSource.kept_segment_ids) ? planSource.kept_segment_ids : [])
+        .forEach((rawId) => {
+          const keptId = stableId(rawId);
+          if (!keptId || seen.has(keptId) || !validIds.has(keptId)) return;
+          seen.add(keptId);
+          keptIds.push(keptId);
+        });
+      const requestedName = String(planSource.name || '').trim().slice(0, 160)
+        || (index === 0 ? '默认方案' : `方案 ${index + 1}`);
+      plans.push({
+        id,
+        name: uniqueRoughCutPlanName(plans, requestedName),
+        output_name: String(planSource.output_name || '').slice(0, 160),
+        source_srt_name: String(planSource.source_srt_name || '').slice(0, 255),
+        kept_segment_ids: keptIds,
+      });
+    });
+    if (!plans.length) {
+      plans.push({
+        id: ROUGH_CUT_DEFAULT_PLAN_ID,
+        name: '默认方案',
+        output_name: '',
+        source_srt_name: '',
+        kept_segment_ids: [...segmentIds],
+      });
+    }
+    const requestedActiveId = stableId(source.active_plan_id);
+    return {
+      schema: ROUGH_CUT_SCHEMA,
+      active_plan_id: plans.some((plan) => plan.id === requestedActiveId)
+        ? requestedActiveId : plans[0].id,
+      plans,
+    };
+  }
+
+  function roughCutActivePlan(value, planId = '') {
+    const plans = Array.isArray(value?.plans) ? value.plans : [];
+    const requested = stableId(planId) || stableId(value?.active_plan_id);
+    return plans.find((plan) => plan.id === requested) || plans[0] || null;
+  }
+
+  function roughCutStateHasDecisions(value, segments = []) {
+    const state = normalizeRoughCutData(value, segments);
+    if (state.plans.length !== 1) return true;
+    const plan = state.plans[0];
+    const segmentIds = roughCutSegmentIds(segments);
+    return plan.id !== ROUGH_CUT_DEFAULT_PLAN_ID
+      || plan.name !== '默认方案'
+      || Boolean(plan.output_name || plan.source_srt_name)
+      || plan.kept_segment_ids.length !== segmentIds.length
+      || plan.kept_segment_ids.some((id, index) => id !== segmentIds[index]);
+  }
+
+  function buildRoughCutPlan(segments, value, durationMs, planId = '') {
+    const source = Array.isArray(segments) ? segments : [];
+    const duration = Math.max(0, Math.round(Number(durationMs) || 0));
+    const state = normalizeRoughCutData(value, source);
+    const activePlan = roughCutActivePlan(state, planId);
+    const keptIds = new Set(activePlan?.kept_segment_ids || []);
+    const rawRanges = source.flatMap((segment) => {
+      const id = stableId(segment?.id);
+      const start = Math.max(0, Math.round(Number(segment?.start) || 0));
+      const end = Math.min(duration, Math.max(start, Math.round(Number(segment?.end) || 0)));
+      return id && !keptIds.has(id) && end > start ? [{ start, end, removed: true }] : [];
+    }).sort((left, right) => left.start - right.start || left.end - right.end);
+    const removedIntervals = [];
+    rawRanges.forEach((range) => {
+      const previous = removedIntervals[removedIntervals.length - 1];
+      if (previous && range.start <= previous.end) {
+        previous.end = Math.max(previous.end, range.end);
+      } else {
+        removedIntervals.push({ ...range });
+      }
+    });
+    const keptIntervals = duration > 0
+      ? buildGapRemovedIntervals(duration, removedIntervals) : [];
+    const removedDurationMs = removedIntervals.reduce(
+      (sum, interval) => sum + interval.end - interval.start, 0,
+    );
+    return {
+      schema: ROUGH_CUT_SCHEMA,
+      state,
+      activePlan,
+      removedIntervals,
+      keptIntervals,
+      removedDurationMs,
+      outputDurationMs: Math.max(0, duration - removedDurationMs),
+      sourceDurationMs: duration,
+    };
+  }
+
+  function normalizeRoughCutMatchText(value) {
+    const source = String(value || '');
+    const normalized = typeof source.normalize === 'function' ? source.normalize('NFKC') : source;
+    return normalized.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+  }
+
+  function roughCutTextSimilarity(left, right) {
+    const source = [...normalizeRoughCutMatchText(left)].slice(0, 400);
+    const target = [...normalizeRoughCutMatchText(right)].slice(0, 400);
+    if (!source.length && !target.length) return 1;
+    if (!source.length || !target.length) return 0;
+    const previous = new Uint16Array(target.length + 1);
+    const current = new Uint16Array(target.length + 1);
+    for (let sourceIndex = 1; sourceIndex <= source.length; sourceIndex++) {
+      for (let targetIndex = 1; targetIndex <= target.length; targetIndex++) {
+        current[targetIndex] = source[sourceIndex - 1] === target[targetIndex - 1]
+          ? previous[targetIndex - 1] + 1
+          : Math.max(previous[targetIndex], current[targetIndex - 1]);
+      }
+      previous.set(current);
+      current.fill(0);
+    }
+    return previous[target.length] / Math.max(source.length, target.length);
+  }
+
+  // 将“由当前工程导出后修改”的 SRT 与原主字幕匹配。时间轴是主证据；
+  // 文字只用于容忍轻微时间漂移，绝不根据文字缺失直接推断视频删除。
+  function matchRoughCutSrtSegments(sourceSegments, importedSegments, options = {}) {
+    const source = Array.isArray(sourceSegments) ? sourceSegments : [];
+    const imported = Array.isArray(importedSegments) ? importedSegments : [];
+    const toleranceMs = Math.max(0, Math.round(Number(options.toleranceMs) || 500));
+    const exactBoundaryMs = Math.min(
+      toleranceMs,
+      Math.max(0, Math.round(Number(options.exactBoundaryMs) || 120)),
+    );
+    const textThreshold = Math.max(0, Math.min(1, Number(options.textThreshold) || 0.35));
+    const sourceIds = source.map((segment) => stableId(segment?.id));
+    const mappings = [];
+    const unmatchedImported = [];
+
+    imported.forEach((cue, importedIndex) => {
+      const start = Math.round(Number(cue?.start));
+      const end = Math.round(Number(cue?.end));
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        unmatchedImported.push(importedIndex);
+        return;
+      }
+      const overlaps = [];
+      source.forEach((segment, sourceIndex) => {
+        const sourceStart = Number(segment?.start);
+        const sourceEnd = Number(segment?.end);
+        if (!Number.isFinite(sourceStart) || !Number.isFinite(sourceEnd) || sourceEnd <= sourceStart) return;
+        if (Math.min(end, sourceEnd) - Math.max(start, sourceStart) > 0) overlaps.push(sourceIndex);
+      });
+
+      let sourceIndexes = overlaps;
+      if (!sourceIndexes.length) {
+        const candidates = source.map((segment, sourceIndex) => {
+          const startDiff = Math.abs(start - Number(segment?.start));
+          const endDiff = Math.abs(end - Number(segment?.end));
+          return { sourceIndex, startDiff, endDiff, cost: startDiff + endDiff };
+        }).filter((candidate) => candidate.startDiff <= toleranceMs && candidate.endDiff <= toleranceMs)
+          .sort((left, right) => left.cost - right.cost || left.sourceIndex - right.sourceIndex);
+        if (candidates.length) sourceIndexes = [candidates[0].sourceIndex];
+      }
+      if (!sourceIndexes.length) {
+        unmatchedImported.push(importedIndex);
+        return;
+      }
+
+      const firstIndex = sourceIndexes[0];
+      const lastIndex = sourceIndexes[sourceIndexes.length - 1];
+      sourceIndexes = Array.from(
+        { length: lastIndex - firstIndex + 1 },
+        (_, offset) => firstIndex + offset,
+      );
+      const sourceStart = Number(source[firstIndex]?.start);
+      const sourceEnd = Number(source[lastIndex]?.end);
+      const startDiff = Math.abs(start - sourceStart);
+      const endDiff = Math.abs(end - sourceEnd);
+      const sourceText = sourceIndexes.map((index) => String(source[index]?.text || '')).join('\n');
+      const textSimilarity = roughCutTextSimilarity(sourceText, cue?.text);
+      const exactBoundaries = startDiff <= exactBoundaryMs && endDiff <= exactBoundaryMs;
+      const strong = startDiff <= toleranceMs && endDiff <= toleranceMs
+        && (exactBoundaries || textSimilarity >= textThreshold);
+      mappings.push({
+        importedIndex,
+        sourceIndexes,
+        sourceIds: sourceIndexes.map((index) => sourceIds[index]).filter(Boolean),
+        startDiff,
+        endDiff,
+        textSimilarity,
+        strong,
+        merged: sourceIndexes.length > 1,
+      });
+    });
+
+    let previousEnd = -1;
+    let rangesMonotonic = true;
+    mappings.sort((left, right) => left.importedIndex - right.importedIndex);
+    mappings.forEach((mapping) => {
+      const first = mapping.sourceIndexes[0];
+      const last = mapping.sourceIndexes[mapping.sourceIndexes.length - 1];
+      if (!Number.isInteger(first) || first <= previousEnd) rangesMonotonic = false;
+      previousEnd = Math.max(previousEnd, Number.isInteger(last) ? last : previousEnd);
+    });
+    const compatible = source.length > 0
+      && imported.length > 0
+      && unmatchedImported.length === 0
+      && mappings.length === imported.length
+      && mappings.every((mapping) => mapping.strong)
+      && rangesMonotonic;
+    const coveredIndexes = new Set(mappings.flatMap((mapping) => mapping.sourceIndexes));
+    const removedSourceIndexes = [];
+    const ambiguousSourceIndexes = [];
+    source.forEach((_segment, sourceIndex) => {
+      if (coveredIndexes.has(sourceIndex)) return;
+      if (compatible) removedSourceIndexes.push(sourceIndex);
+      else ambiguousSourceIndexes.push(sourceIndex);
+    });
+
+    const sourceMappingCounts = new Map();
+    mappings.forEach((mapping) => mapping.sourceIndexes.forEach((sourceIndex) => {
+      sourceMappingCounts.set(sourceIndex, (sourceMappingCounts.get(sourceIndex) || 0) + 1);
+    }));
+    const textUpdates = mappings.flatMap((mapping) => {
+      if (!mapping.strong || mapping.sourceIndexes.length !== 1) return [];
+      const sourceIndex = mapping.sourceIndexes[0];
+      if (sourceMappingCounts.get(sourceIndex) !== 1) return [];
+      const text = String(imported[mapping.importedIndex]?.text || '');
+      if (text === String(source[sourceIndex]?.text || '')) return [];
+      return [{ sourceIndex, sourceId: sourceIds[sourceIndex], text }];
+    });
+    const keptSourceIndexes = [...coveredIndexes].sort((left, right) => left - right);
+    let reason = '';
+    if (!source.length) reason = 'source_empty';
+    else if (!imported.length) reason = 'import_empty';
+    else if (unmatchedImported.length) reason = 'unmatched_imported';
+    else if (!mappings.every((mapping) => mapping.strong)) reason = 'weak_mapping';
+    else if (!rangesMonotonic) reason = 'non_monotonic';
+
+    return {
+      compatible,
+      reason,
+      toleranceMs,
+      mappings,
+      keptSourceIndexes,
+      keptSourceIds: keptSourceIndexes.map((index) => sourceIds[index]).filter(Boolean),
+      removedSourceIndexes,
+      removedSourceIds: removedSourceIndexes.map((index) => sourceIds[index]).filter(Boolean),
+      ambiguousSourceIndexes,
+      ambiguousSourceIds: ambiguousSourceIndexes.map((index) => sourceIds[index]).filter(Boolean),
+      unmatchedImported,
+      textUpdates,
+      mergedCueCount: mappings.filter((mapping) => mapping.merged).length,
+    };
   }
 
   function fileBasename(value) {
@@ -12149,6 +12661,7 @@ export default MawDynamicCaptions;
     buildTimedTextEditReport,
     timedTextEditDirtyFlags,
     applyTimedTextEdit,
+    reconcileTimedTextItems,
     countTextUnits,
     countSubtitleUnits,
     cueMetrics,
@@ -12236,6 +12749,17 @@ export default MawDynamicCaptions;
     repairGroupReferenceIndices,
     buildSrtPayload,
     buildPlainTextPayload,
+    ROUGH_CUT_SCHEMA,
+    ROUGH_CUT_DEFAULT_PLAN_ID,
+    normalizeRoughCutData,
+    roughCutActivePlan,
+    roughCutStateHasDecisions,
+    uniqueRoughCutPlanId,
+    uniqueRoughCutPlanName,
+    buildRoughCutPlan,
+    normalizeRoughCutMatchText,
+    roughCutTextSimilarity,
+    matchRoughCutSrtSegments,
     fileBasename,
     normalizeGapRemoveGaps,
     applyGapRemoveRange,
@@ -12733,6 +13257,46 @@ export default MawDynamicCaptions;
     '在光标处拆分': 'Split at cursor', '在光标处拆分（': 'Split at cursor (', '范围：全部字幕': 'Scope: all subtitles',
     '查找': 'Find', '替换为': 'Replace with', '批量替换': 'Batch replace',
     '纯文本编辑…': 'Plain text edit…', '纯文本编辑': 'Plain text edit', '编辑轨道': 'Edit track',
+    '文稿粗剪': 'Transcript rough cut', '粗剪预览：关': 'Rough-cut preview: off',
+    '粗剪预览：开': 'Rough-cut preview: on', '待剪字幕': 'Cues to cut',
+    '粗剪方案': 'Rough-cut plan', '当前粗剪方案': 'Current rough-cut plan',
+    '方案名称': 'Plan name', '重命名': 'Rename', '新建方案': 'New plan',
+    '复制方案': 'Duplicate plan', '删除方案': 'Delete plan',
+    '再次确认删除': 'Confirm deletion', '默认方案': 'Default plan',
+    '批量导出全部方案': 'Export all plans', '正在批量导出…': 'Exporting plans…',
+    '待剪时长': 'Duration to cut', '预计成片': 'Estimated output',
+    '导入修改后的 SRT': 'Import edited SRT',
+    '拖入从当前工程导出并删改过的 SRT，自动识别整条删除；存疑内容不会剪。': 'Drop an SRT exported from this project and edited elsewhere. Whole-cue deletions are detected automatically; uncertain content is never cut.',
+    '选择 SRT': 'Choose SRT', '修改版 SRT': 'Edited SRT', '清除匹配': 'Clear match',
+    '识别删除': 'Detected cuts', '文字修改': 'Text edits', '合并保留': 'Merged and kept', '存疑': 'Uncertain',
+    '应用匹配结果': 'Apply match', '已应用匹配结果': 'Match applied',
+    'SRT：建议剪掉': 'SRT: suggested cut', 'SRT：存疑，不自动剪': 'SRT: uncertain; not cut',
+    'SRT：文字修改': 'SRT: text edit', 'SRT：合并保留': 'SRT: merged and kept',
+    '时间轴匹配通过。整条缺失会标为剪掉；一对一改字会同步，合并字幕只保留视频、不改写原分段。': 'Timeline match passed. Missing whole cues are marked for cutting; one-to-one text edits are applied, while merged cues keep their video without rewriting the original segmentation.',
+    '时间轴结构发生拆分或无法完整确认；本次不会自动生成剪除决定。': 'The timeline was split or could not be fully verified; no automatic cut decisions will be created.',
+    '已清除匹配报告；已经采用的粗剪草稿保持不变。': 'Match report cleared; already applied rough-cut draft changes remain.',
+    '请选择一个 SRT 字幕文件。': 'Choose an SRT subtitle file.',
+    '请拖入一个 SRT 字幕文件。': 'Drop an SRT subtitle file.',
+    '应用后开启粗剪预览': 'Enable rough-cut preview after applying',
+    '输出名称': 'Output name', '应用到工程': 'Apply to project',
+    '导出粗剪视频 + SRT': 'Export rough-cut video + SRT', '正在导出…': 'Exporting…',
+    '剪掉': 'Cut', '恢复': 'Keep',
+    '修改文字不会触发剪辑。请使用每行右侧的“剪掉”按钮明确决定视频取舍。': 'Editing text does not cut video. Use the Cut button on each row to explicitly choose what to remove.',
+    '直接修改文稿，并明确标记需要从视频中剪掉的整句内容': 'Edit the transcript and explicitly mark whole cues to remove from the video',
+    '播放时跳过已标记的文稿粗剪区间': 'Skip marked rough-cut ranges during playback',
+    '在当前工程中直接改文稿，并明确标记要从视频中剪掉的整句内容。改字、清空或换行本身不会自动剪视频。': 'Edit the transcript in this project and explicitly mark whole cues to remove. Text edits, clearing text, or line breaks never cut video automatically.',
+    '可以直接修改字幕文字；只有明确点为“剪掉”的整句才会删除对应音视频，原媒体和原字幕时间轴不会改写。': 'Edit subtitle text directly; only whole cues explicitly marked Cut remove their audio and video. The source media and original subtitle timeline remain unchanged.',
+    '关闭文稿粗剪': 'Close transcript rough cut',
+    '可选，默认 工程名_rough-cut': 'Optional; defaults to project-name_rough-cut',
+    '保留这条字幕对应的音视频': 'Keep the audio and video for this cue',
+    '剪掉这条字幕对应的音视频': 'Remove the audio and video for this cue',
+    '按当前决定重新编码并导出粗剪 MP4 与匹配 SRT': 'Re-encode and export a rough-cut MP4 with a matching SRT',
+    '请至少标记一条待剪字幕，并确保粗剪后仍有视频内容': 'Mark at least one cue to cut and leave some video in the result',
+    '直接渲染视频仅支持本地 Server 编辑器': 'Direct video rendering is available only in the local Server editor',
+    '正在重新编码粗剪视频；长视频可能需要等待一段时间…': 'Re-encoding the rough-cut video; long videos may take some time…',
+    '文稿粗剪视频和匹配字幕已导出': 'Rough-cut video and matching subtitles exported',
+    '当前工程没有可用于粗剪的主字幕': 'This project has no main subtitles available for rough cutting',
+    '直接渲染视频需要从本地 Server 编辑器打开已绑定媒体的工程。': 'Direct video rendering requires a project with bound media opened in the local Server editor.',
     '编辑视图': 'Edit view', '逐条编辑': 'Edit row by row', '整体编辑': 'Whole text', '单文本框': 'Single text area',
     '显示已禁用字幕': 'Show disabled subtitles',
     '显示全部': 'Show all',
@@ -13081,6 +13645,12 @@ export default MawDynamicCaptions;
     if (EN_ATTR[text]) return EN_ATTR[text];
     let match = /^(主字幕|副字幕)\s+(\d+)$/.exec(text);
     if (match) return `${translateText(match[1], EN)} ${match[2]}`;
+    match = /^(\d+)\s*条$/.exec(text);
+    if (match) return `${match[1]} cue${match[1] === '1' ? '' : 's'}`;
+    match = /^(\d+)\s*个方案$/.exec(text);
+    if (match) return `${match[1]} plan${match[1] === '1' ? '' : 's'}`;
+    match = /^批量导出\s*(\d+)\s*个有效方案$/.exec(text);
+    if (match) return `Export ${match[1]} valid plan${match[1] === '1' ? '' : 's'}`;
     match = /^(主字幕|副字幕)(?:（(.+)）)?\s*·\s*(\d+)\s*条$/.exec(text);
     if (match) {
       const label = translateText(match[1], EN);
@@ -13195,6 +13765,27 @@ export default MawDynamicCaptions;
         + (match[2] ? `; removed ${match[2]} empty subtitle row${match[2] === '1' ? '' : 's'}` : '')
         + (match[3] ? `; word timings cleared for ${match[3]}` : '');
     }
+    match = /^已应用：(\d+) 条待剪字幕(，已开启预览跳过)?$/.exec(text);
+    if (match) {
+      return `Applied: ${match[1]} cue${match[1] === '1' ? '' : 's'} marked for cutting`
+        + (match[2] ? '; preview skipping is on' : '');
+    }
+    match = /^粗剪预览已(开启|关闭)$/.exec(text);
+    if (match) return `Rough-cut preview ${match[1] === '开启' ? 'enabled' : 'disabled'}`;
+    match = /^时间轴未能完整确认：(\d+) 条仅列为存疑，不会自动剪除。$/.exec(text);
+    if (match) return `The timeline could not be fully verified. ${match[1]} cue${match[1] === '1' ? '' : 's'} remain uncertain and will not be cut automatically.`;
+    match = /^SRT 匹配完成：识别删除 (\d+) 条，请确认后应用匹配结果。$/.exec(text);
+    if (match) return `SRT match complete: ${match[1]} deletion${match[1] === '1' ? '' : 's'} detected. Review and apply the match.`;
+    match = /^SRT 匹配存在存疑：(\d+) 条不会自动剪除，请先核对。$/.exec(text);
+    if (match) return `SRT match has ${match[1]} uncertain cue${match[1] === '1' ? '' : 's'}; they will not be cut automatically. Review them first.`;
+    match = /^已采用 SRT 匹配：(\d+) 条待剪，(\d+) 条改字，(\d+) 条存疑未动；请检查后应用到工程。$/.exec(text);
+    if (match) return `SRT match adopted: ${match[1]} to cut, ${match[2]} text edits, and ${match[3]} uncertain left unchanged. Review, then apply to the project.`;
+    match = /^SRT 匹配失败：(.+)$/.exec(text);
+    if (match) return `SRT match failed: ${match[1]}`;
+    match = /^导出完成：(.+)；字幕：(.+)$/.exec(text);
+    if (match) return `Export complete: ${match[1]}; subtitles: ${match[2]}`;
+    match = /^导出失败：(.+)$/.exec(text);
+    if (match) return `Export failed: ${match[1]}`;
     match = /^总长度\s+(.+)$/.exec(text);
     if (match) return `Total length ${match[1]}`;
     match = /^字\/秒\s+(.+)$/.exec(text);
@@ -19654,6 +20245,47 @@ function getRemovedGapRanges() {
   return removedGapRangesCache;
 }
 
+let roughCutPreviewEnabled = false;
+
+function getRoughCutState(value = DATA.rough_cut) {
+  return window.AsrEditorUtils.normalizeRoughCutData(value, DATA.segments);
+}
+
+function roughCutSourceDurationMs() {
+  const loadedMediaDuration = Number(player?.duration) * 1000;
+  if (Number.isFinite(loadedMediaDuration) && loadedMediaDuration > 0) {
+    return Math.round(loadedMediaDuration);
+  }
+  const waveformDuration = Number(waveformEditor?.durationMs);
+  if (Number.isFinite(waveformDuration) && waveformDuration > 0) {
+    return Math.round(waveformDuration);
+  }
+  const candidates = [
+    Number(DATA.waveform?.duration_ms),
+    Number(DATA.waveform_reapeaks?.duration_ms),
+    ...DATA.segments.map((segment) => Number(segment?.end)),
+  ].filter((value) => Number.isFinite(value) && value > 0);
+  return candidates.length ? Math.max(...candidates.map(Math.round)) : 0;
+}
+
+function getRoughCutPlan(value = DATA.rough_cut, planId = '') {
+  return window.AsrEditorUtils.buildRoughCutPlan(
+    DATA.segments,
+    value,
+    roughCutSourceDurationMs(),
+    planId,
+  );
+}
+
+function getRoughCutPlaybackSkip(timeMs) {
+  if (!roughCutPreviewEnabled) return null;
+  return window.AsrGapRemoveCore.getGapPlaybackSkip(
+    getRoughCutPlan().removedIntervals,
+    timeMs,
+    { skipPlayback: true, isPlaying: !player.paused, previewRange: null },
+  );
+}
+
 const container = document.getElementById('cues-container');
 let player = document.getElementById('player');  // 可被「加载媒体」替换为新 <video>/<audio>
 let waveformEditor = null;
@@ -19685,10 +20317,15 @@ function isReapeaksFile(file) {
 const UNDO_LIMIT = 100;
 const editorHistory = window.AsrEditorUtils.createHistoryStack(UNDO_LIMIT);
 let gapRemoveDirty = false;
+let roughCutDirty = false;
 function snapshotSegments() {
   // _dirty 也保留，恢复后能再次导出"工程文件"时正确标记；多字幕数据与主轨
   // 必须处于同一条记录中，绑定/成对删除/联动拆分才能原子撤销。
-  return EDITOR_SETTINGS_UTILS.buildSegmentsHistorySnapshot(DATA.segments, getMultiSubtitleState());
+  return EDITOR_SETTINGS_UTILS.buildSegmentsHistorySnapshot(
+    DATA.segments,
+    getMultiSubtitleState(),
+    DATA.rough_cut || null,
+  );
 }
 function snapshotEditorSelection() {
   const extensionTrack = getActiveExtensionTrack();
@@ -19850,6 +20487,10 @@ function applyHistoryRecord(record) {
   DATA.multi_subtitle = snapshot.multi_subtitle || {
     schema: 'moy.asr.multi_subtitle.v1', enabled: false, display_mode: 'both', tracks: [], bindings: [],
   };
+  DATA.rough_cut = snapshot.rough_cut || null;
+  roughCutDirty = true;
+  if (!getRoughCutPlan().removedIntervals.length) roughCutPreviewEnabled = false;
+  updateRoughCutUi();
   normalizeMultiSubtitleState();
   // 历史恢复会改变下标身份；丢弃旧面板绑定，避免 clearSelection() 把旧面板
   // 内容提交到恢复后占据同一下标的另一条字幕，并因此生成新历史、清空 redo。
@@ -20055,6 +20696,43 @@ const TIMED_TEXT_EDIT_REPORT_DEBOUNCE_MS = 160;
 let timedTextEditDraft = null;
 let timedTextEditReturnFocus = null;
 let timedTextEditReportTimer = null;
+const roughCutButton = document.getElementById('rough-cut-btn');
+const roughCutModal = document.getElementById('rough-cut-modal');
+const roughCutClose = document.getElementById('rough-cut-close');
+const roughCutCancel = document.getElementById('rough-cut-cancel');
+const roughCutApply = document.getElementById('rough-cut-apply');
+const roughCutExport = document.getElementById('rough-cut-export');
+const roughCutExportAll = document.getElementById('rough-cut-export-all');
+const roughCutPlanSelect = document.getElementById('rough-cut-plan-select');
+const roughCutPlanName = document.getElementById('rough-cut-plan-name');
+const roughCutPlanRename = document.getElementById('rough-cut-plan-rename');
+const roughCutPlanNew = document.getElementById('rough-cut-plan-new');
+const roughCutPlanCopy = document.getElementById('rough-cut-plan-copy');
+const roughCutPlanDelete = document.getElementById('rough-cut-plan-delete');
+const roughCutPlanCount = document.getElementById('rough-cut-plan-count');
+const roughCutRows = document.getElementById('rough-cut-rows');
+const roughCutCount = document.getElementById('rough-cut-count');
+const roughCutRemovedDuration = document.getElementById('rough-cut-removed-duration');
+const roughCutOutputDuration = document.getElementById('rough-cut-output-duration');
+const roughCutPreviewCheckbox = document.getElementById('rough-cut-preview-checkbox');
+const roughCutPreviewToggle = document.getElementById('rough-cut-preview-toggle');
+const roughCutOutputName = document.getElementById('rough-cut-output-name');
+const roughCutStatus = document.getElementById('rough-cut-status');
+const roughCutSrtDrop = document.getElementById('rough-cut-srt-drop');
+const roughCutSrtPick = document.getElementById('rough-cut-srt-pick');
+const roughCutSrtFile = document.getElementById('rough-cut-srt-file');
+const roughCutSrtReport = document.getElementById('rough-cut-srt-report');
+const roughCutSrtName = document.getElementById('rough-cut-srt-name');
+const roughCutSrtRemoved = document.getElementById('rough-cut-srt-removed');
+const roughCutSrtText = document.getElementById('rough-cut-srt-text');
+const roughCutSrtMerged = document.getElementById('rough-cut-srt-merged');
+const roughCutSrtAmbiguous = document.getElementById('rough-cut-srt-ambiguous');
+const roughCutSrtMessage = document.getElementById('rough-cut-srt-message');
+const roughCutSrtApply = document.getElementById('rough-cut-srt-apply');
+const roughCutSrtClear = document.getElementById('rough-cut-srt-clear');
+let roughCutDraft = null;
+let roughCutExportInFlight = false;
+let roughCutSrtDragCounter = 0;
 const stickerModal = document.getElementById('sticker-modal');
 const stickerPreviewModal = document.getElementById('sticker-preview-modal');
 const projectMediaModal = document.getElementById('project-media-modal');
@@ -20736,6 +21414,12 @@ document.addEventListener('mawe:languagechange', () => {
   renderCurrentCuePanel();
   refreshMediaSeekStepHelp();
   refreshMediaSeekControlLabels();
+  updateRoughCutUi();
+  if (roughCutModal?.classList.contains('show')) {
+    renderRoughCutPlanControls();
+    renderRoughCutRows();
+    renderRoughCutSrtReport();
+  }
 });
 
 splitKeySel.value = EDITOR_SETTINGS.splitKey;
@@ -29611,6 +30295,11 @@ function updatePlaybackFrame() {
     player.currentTime = skippedGap.end / 1000;
     return;
   }
+  const skippedRoughCut = getRoughCutPlaybackSkip(tMs);
+  if (skippedRoughCut) {
+    player.currentTime = skippedRoughCut.end / 1000;
+    return;
+  }
   const nowLabel = fmtShort(tMs);
   if (nowEl.textContent !== nowLabel) nowEl.textContent = nowLabel;
   const idx = findActive(tMs);
@@ -29677,6 +30366,11 @@ function update() {
   );
   if (skippedGap) {
     player.currentTime = skippedGap.end / 1000;
+    return;
+  }
+  const skippedRoughCut = getRoughCutPlaybackSkip(tMs);
+  if (skippedRoughCut) {
+    player.currentTime = skippedRoughCut.end / 1000;
     return;
   }
   nowEl.textContent = fmtShort(tMs);
@@ -30107,6 +30801,10 @@ function buildJson() {
   if (DATA.spectral) out.spectral = DATA.spectral;
   if (DATA.waveform_reapeaks) out.waveform_reapeaks = DATA.waveform_reapeaks;
   if (DATA.gap_remove) out.gap_remove = normalizedGapRemoveData(DATA.gap_remove);
+  const roughCut = getRoughCutState();
+  if (window.AsrEditorUtils.roughCutStateHasDecisions(roughCut, DATA.segments)) {
+    out.rough_cut = roughCut;
+  }
   if (DATA.script_alignment) out.script_alignment = DATA.script_alignment;
   const workspace = buildCurrentWorkspaceData();
   if (workspace) out.workspace = workspace;
@@ -31123,7 +31821,7 @@ function scheduleAutoSave() {
 function hasUnsavedProjectChanges() {
   const multiDirty = Boolean(DATA.multi_subtitle?._dirty)
     || (DATA.multi_subtitle?.tracks || []).some((track) => track.segments?.some((segment) => segment._dirty));
-  return projectImportDirty || gapRemoveDirty || previewGeometryDirty
+  return projectImportDirty || gapRemoveDirty || roughCutDirty || previewGeometryDirty
     || DATA.segments.some((segment) => segment._dirty)
     || multiDirty;
 }
@@ -31615,6 +32313,7 @@ function markProjectSaved(filename, backupName, { silent = false } = {}) {
   delete multi._dirty;
   (multi.tracks || []).forEach((track) => track.segments.forEach((segment) => { delete segment._dirty; }));
   gapRemoveDirty = false;
+  roughCutDirty = false;
   previewGeometryDirty = false;
   projectImportDirty = false;
   FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
@@ -32670,9 +33369,12 @@ function applyCanonicalProject(data, filename) {
   DATA.waveform_reapeaks = data.waveform_reapeaks || null;
   DATA.workspace = data.workspace || null;
   DATA.gap_remove = data.gap_remove || null;
+  DATA.rough_cut = data.rough_cut || null;
+  roughCutPreviewEnabled = false;
   DATA.script_alignment = data.script_alignment || null;
   DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
   gapRemoveDirty = false;
+  roughCutDirty = false;
   previewGeometryDirty = false;
   projectImportDirty = false;
   // 外部载入的工程没有页面持有的文件句柄；新建/另存为会在载入后重新绑定句柄。
@@ -32699,6 +33401,7 @@ function applyCanonicalProject(data, filename) {
     waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks, { render: false });
   }
   updateGapRemoveUi();
+  updateRoughCutUi();
   renderAll({ waveform: 'full', preserveCueListScroll: false });
   refreshSubtitlePreview(0, -1);
   updateUnloadedMediaLabel(DATA.media);
@@ -32779,6 +33482,7 @@ function detachServerProjectSaving() {
     SERVER_CONFIG.canPortableStickerExport = false;
     SERVER_CONFIG.canLottieExport = false;
     SERVER_CONFIG.canOgrafExport = false;
+    SERVER_CONFIG.canRoughCutExport = false;
   }
   configureServerSaveControls();
   updateLottieExportButton();
@@ -32873,12 +33577,16 @@ function replaceMainTrack(segments, displayName = '字幕') {
   };
   MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(DATA);
   DATA.gap_remove = null;
+  DATA.rough_cut = null;
+  roughCutPreviewEnabled = false;
+  roughCutDirty = false;
   gapRemoveDirty = false;
   projectImportDirty = true;
   updateUndoRedoButtons();
   clearSelection({ commitCuePanel: false });
   lastActive = -1;
   updateGapRemoveUi();
+  updateRoughCutUi();
   renderAll({ preserveCueListScroll: false });
   FILENAME_BASE = displayName.replace(/\.[^.]+$/i, '');
   const jsonEl = document.getElementById('json-name');
@@ -34123,6 +34831,774 @@ textProcessConfirm?.addEventListener('click', () => {
   updateUndoRedoButtons();
   flashHint(`已应用文本处理：${result.changedCount} 条字幕`, 'success');
 });
+
+// === 文稿粗剪（整条主字幕明确标记，原始时间轴保持不变） ===
+function roughCutAllSegmentIds() {
+  return DATA.segments.map((segment) => String(segment?.id || '')).filter(Boolean);
+}
+
+function roughCutDraftActivePlan(state = roughCutDraft?.state) {
+  return window.AsrEditorUtils.roughCutActivePlan(state || getRoughCutState());
+}
+
+function roughCutRemovedIdsForPlan(plan) {
+  const kept = new Set(plan?.kept_segment_ids || []);
+  return new Set(roughCutAllSegmentIds().filter((id) => !kept.has(id)));
+}
+
+function roughCutDefaultOutputName(plan, state) {
+  if (String(plan?.output_name || '').trim()) return String(plan.output_name).trim();
+  if ((state?.plans || []).length === 1
+      && plan?.id === window.AsrEditorUtils.ROUGH_CUT_DEFAULT_PLAN_ID) {
+    return `${FILENAME_BASE}_rough-cut`;
+  }
+  const suffix = String(plan?.name || '粗剪方案')
+    .replace(/[\\/:*?"<>|\x00-\x1f]+/g, '_').trim() || '粗剪方案';
+  return `${FILENAME_BASE}_${suffix}`;
+}
+
+function setRoughCutStatus(message = '', type = '') {
+  if (!roughCutStatus) return;
+  roughCutStatus.textContent = translatedEditorText(message);
+  roughCutStatus.classList.toggle('success', type === 'success');
+  roughCutStatus.classList.toggle('error', type === 'error');
+}
+
+function roughCutDraftData() {
+  if (!roughCutDraft) return getRoughCutState();
+  const state = window.AsrEditorUtils.normalizeRoughCutData(roughCutDraft.state, DATA.segments);
+  const activePlan = window.AsrEditorUtils.roughCutActivePlan(state);
+  if (activePlan) {
+    activePlan.kept_segment_ids = roughCutAllSegmentIds()
+      .filter((id) => !roughCutDraft.removedIds.has(id));
+    activePlan.output_name = String(roughCutOutputName?.value || '').slice(0, 160);
+  }
+  roughCutDraft.state = state;
+  return state;
+}
+
+function roughCutDraftSegments() {
+  if (!roughCutDraft) return DATA.segments;
+  return DATA.segments.map((segment, index) => ({
+    ...segment,
+    text: roughCutDraft.texts[index] ?? String(segment?.text || ''),
+  }));
+}
+
+function roughCutPlanFromDraft() {
+  return window.AsrEditorUtils.buildRoughCutPlan(
+    roughCutDraftSegments(),
+    roughCutDraftData(),
+    roughCutSourceDurationMs(),
+  );
+}
+
+function updateRoughCutSummary() {
+  if (!roughCutDraft) return;
+  const plan = roughCutPlanFromDraft();
+  if (roughCutCount) {
+    roughCutCount.textContent = translatedEditorText(`${roughCutDraft.removedIds.size} 条`);
+  }
+  if (roughCutRemovedDuration) {
+    roughCutRemovedDuration.textContent = translatedEditorText(
+      window.AsrEditorUtils.formatHumanDuration(plan.removedDurationMs),
+    );
+  }
+  if (roughCutOutputDuration) {
+    roughCutOutputDuration.textContent = translatedEditorText(
+      window.AsrEditorUtils.formatHumanDuration(plan.outputDurationMs),
+    );
+  }
+  const canExport = Boolean(
+    SERVER_CONFIG?.roughCutExportUrl
+      && SERVER_CONFIG?.canRoughCutExport
+      && plan.removedIntervals.length
+      && plan.keptIntervals.length,
+  );
+  if (roughCutExport) {
+    roughCutExport.disabled = roughCutExportInFlight || !canExport;
+    roughCutExport.title = translatedEditorText(canExport
+      ? '按当前决定重新编码并导出粗剪 MP4 与匹配 SRT'
+      : SERVER_CONFIG?.roughCutExportUrl
+        ? '请至少标记一条待剪字幕，并确保粗剪后仍有视频内容'
+        : '直接渲染视频仅支持本地 Server 编辑器');
+  }
+  const validPlanCount = (plan.state.plans || []).filter((candidate) => {
+    const candidatePlan = getRoughCutPlan(plan.state, candidate.id);
+    return candidatePlan.removedIntervals.length && candidatePlan.keptIntervals.length;
+  }).length;
+  if (roughCutExportAll) {
+    roughCutExportAll.disabled = roughCutExportInFlight || !SERVER_CONFIG?.canRoughCutExport
+      || validPlanCount === 0;
+    roughCutExportAll.title = translatedEditorText(
+      validPlanCount ? `批量导出 ${validPlanCount} 个有效方案` : '没有可导出的有效粗剪方案',
+    );
+  }
+  if (roughCutApply) roughCutApply.disabled = roughCutExportInFlight;
+  [roughCutPlanSelect, roughCutPlanName, roughCutPlanRename, roughCutPlanNew,
+    roughCutPlanCopy, roughCutOutputName].forEach((control) => {
+    if (control) control.disabled = roughCutExportInFlight;
+  });
+  if (roughCutPlanDelete) {
+    roughCutPlanDelete.disabled = roughCutExportInFlight || plan.state.plans.length <= 1;
+  }
+}
+
+function roughCutSrtConfirmedKeptIds(result) {
+  return [...new Set((result?.mappings || [])
+    .filter((mapping) => mapping.strong)
+    .flatMap((mapping) => mapping.sourceIds || []))];
+}
+
+function roughCutSrtMarkerMap(result) {
+  const markers = new Map();
+  (result?.mappings || []).filter((mapping) => mapping.merged).forEach((mapping) => {
+    (mapping.sourceIds || []).forEach((id) => markers.set(id, 'merged'));
+  });
+  (result?.textUpdates || []).forEach((update) => {
+    if (update.sourceId) markers.set(update.sourceId, 'text-update');
+  });
+  (result?.removedSourceIds || []).forEach((id) => markers.set(id, 'suggested-remove'));
+  (result?.ambiguousSourceIds || []).forEach((id) => markers.set(id, 'ambiguous'));
+  return markers;
+}
+
+function roughCutSrtMarkerLabel(marker) {
+  if (marker === 'suggested-remove') return 'SRT：建议剪掉';
+  if (marker === 'ambiguous') return 'SRT：存疑，不自动剪';
+  if (marker === 'text-update') return 'SRT：文字修改';
+  if (marker === 'merged') return 'SRT：合并保留';
+  return '';
+}
+
+function renderRoughCutSrtReport() {
+  const pending = roughCutDraft?.pendingSrtMatch;
+  if (!roughCutSrtReport) return;
+  roughCutSrtReport.hidden = !pending;
+  if (!pending) return;
+  const { result } = pending;
+  if (roughCutSrtName) {
+    roughCutSrtName.textContent = pending.fileName;
+    roughCutSrtName.title = pending.fileName;
+  }
+  if (roughCutSrtRemoved) roughCutSrtRemoved.textContent = String(result.removedSourceIds.length);
+  if (roughCutSrtText) roughCutSrtText.textContent = String(result.textUpdates.length);
+  if (roughCutSrtMerged) roughCutSrtMerged.textContent = String(result.mergedCueCount);
+  if (roughCutSrtAmbiguous) roughCutSrtAmbiguous.textContent = String(result.ambiguousSourceIds.length);
+  roughCutSrtReport.classList.toggle('warning', !result.compatible);
+  roughCutSrtReport.classList.toggle('applied', pending.applied === true);
+  if (roughCutSrtMessage) {
+    const matchMessage = result.compatible
+      ? '时间轴匹配通过。整条缺失会标为剪掉；一对一改字会同步，合并字幕只保留视频、不改写原分段。'
+      : result.ambiguousSourceIds.length
+        ? `时间轴未能完整确认：${result.ambiguousSourceIds.length} 条仅列为存疑，不会自动剪除。`
+        : '时间轴结构发生拆分或无法完整确认；本次不会自动生成剪除决定。';
+    roughCutSrtMessage.textContent = translatedEditorText(matchMessage);
+  }
+  if (roughCutSrtApply) {
+    const confirmedKept = roughCutSrtConfirmedKeptIds(result);
+    const restoresExisting = confirmedKept.some((id) => roughCutDraft.removedIds.has(id));
+    const actionable = result.removedSourceIds.length > 0
+      || result.textUpdates.length > 0
+      || restoresExisting;
+    roughCutSrtApply.disabled = pending.applied === true || !actionable;
+    roughCutSrtApply.textContent = translatedEditorText(
+      pending.applied === true ? '已应用匹配结果' : '应用匹配结果',
+    );
+  }
+}
+
+function clearRoughCutSrtMatch() {
+  if (!roughCutDraft) return;
+  const hadAppliedResult = roughCutDraft.pendingSrtMatch?.applied === true;
+  roughCutDraft.pendingSrtMatch = null;
+  roughCutDraft.srtMarkers = new Map();
+  renderRoughCutSrtReport();
+  renderRoughCutRows();
+  if (hadAppliedResult) {
+    setRoughCutStatus('已清除匹配报告；已经采用的粗剪草稿保持不变。');
+  } else {
+    setRoughCutStatus();
+  }
+}
+
+function applyRoughCutSrtMatch() {
+  const pending = roughCutDraft?.pendingSrtMatch;
+  if (!pending || pending.applied) return false;
+  const { result } = pending;
+  roughCutSrtConfirmedKeptIds(result).forEach((id) => roughCutDraft.removedIds.delete(id));
+  result.removedSourceIds.forEach((id) => roughCutDraft.removedIds.add(id));
+  result.textUpdates.forEach((update) => {
+    if (update.sourceIndex < 0 || update.sourceIndex >= roughCutDraft.texts.length) return;
+    roughCutDraft.texts[update.sourceIndex] = update.text;
+  });
+  const activePlan = roughCutDraftActivePlan();
+  if (activePlan) activePlan.source_srt_name = pending.fileName;
+  pending.applied = true;
+  roughCutDraft.srtMarkers = roughCutSrtMarkerMap(result);
+  renderRoughCutRows();
+  renderRoughCutSrtReport();
+  setRoughCutStatus(
+    `已采用 SRT 匹配：${result.removedSourceIds.length} 条待剪，${result.textUpdates.length} 条改字，${result.ambiguousSourceIds.length} 条存疑未动；请检查后应用到工程。`,
+    result.ambiguousSourceIds.length ? '' : 'success',
+  );
+  return true;
+}
+
+async function loadRoughCutSrtMatch(file) {
+  if (!roughCutDraft) return false;
+  if (!file || !isSrtFile(file)) {
+    setRoughCutStatus('请选择一个 SRT 字幕文件。', 'error');
+    return false;
+  }
+  const finishLoading = beginEditorLoading(`正在匹配 ${file.name}…`, 5);
+  try {
+    const importedSegments = parseSrtSegments(await readFileTextWithProgress(file));
+    updateEditorLoading(70, `正在匹配 ${file.name}…`);
+    const result = window.AsrEditorUtils.matchRoughCutSrtSegments(
+      roughCutDraftSegments(),
+      importedSegments,
+    );
+    roughCutDraft.pendingSrtMatch = { fileName: file.name, result, applied: false };
+    roughCutDraft.srtMarkers = roughCutSrtMarkerMap(result);
+    renderRoughCutRows();
+    renderRoughCutSrtReport();
+    setRoughCutStatus(result.compatible
+      ? `SRT 匹配完成：识别删除 ${result.removedSourceIds.length} 条，请确认后应用匹配结果。`
+      : `SRT 匹配存在存疑：${result.ambiguousSourceIds.length} 条不会自动剪除，请先核对。`,
+    result.compatible ? 'success' : '');
+    updateEditorLoading(100, 'SRT 匹配完成');
+    return true;
+  } catch (error) {
+    setRoughCutStatus(`SRT 匹配失败：${error.message || error}`, 'error');
+    return false;
+  } finally {
+    finishLoading();
+  }
+}
+
+function renderRoughCutRows() {
+  if (!roughCutRows || !roughCutDraft) return;
+  roughCutRows.innerHTML = '';
+  const fragment = document.createDocumentFragment();
+  DATA.segments.forEach((segment, index) => {
+    const id = String(segment?.id || '');
+    const removed = roughCutDraft.removedIds.has(id);
+    const srtMarker = roughCutDraft.srtMarkers?.get(id) || '';
+    const row = document.createElement('div');
+    row.className = [
+      'rough-cut-row',
+      removed ? 'removed' : '',
+      srtMarker === 'suggested-remove' ? 'srt-suggested-remove' : '',
+      srtMarker === 'ambiguous' ? 'srt-ambiguous' : '',
+    ].filter(Boolean).join(' ');
+    row.dataset.index = String(index);
+
+    const time = document.createElement('div');
+    time.className = 'rough-cut-row-time';
+    time.textContent = `${index + 1}\n${fmtShort(segment.start)}\n${fmtShort(segment.end)}`;
+    const markerLabel = roughCutSrtMarkerLabel(srtMarker);
+    if (markerLabel) {
+      const note = document.createElement('span');
+      note.className = 'rough-cut-row-note';
+      note.textContent = translatedEditorText(markerLabel);
+      time.append(note);
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.dataset.index = String(index);
+    textarea.value = roughCutDraft.texts[index] ?? String(segment.text || '');
+    textarea.setAttribute('aria-label', `第 ${index + 1} 条字幕文字`);
+    textarea.spellcheck = false;
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'rough-cut-toggle';
+    toggle.dataset.id = id;
+    toggle.setAttribute('aria-pressed', String(removed));
+    toggle.textContent = translatedEditorText(removed ? '恢复' : '剪掉');
+    toggle.title = translatedEditorText(
+      removed ? '保留这条字幕对应的音视频' : '剪掉这条字幕对应的音视频',
+    );
+    row.append(time, textarea, toggle);
+    fragment.append(row);
+  });
+  roughCutRows.append(fragment);
+  updateRoughCutSummary();
+}
+
+function resetRoughCutDeleteConfirmation() {
+  if (roughCutDraft) roughCutDraft.deleteConfirmPlanId = null;
+  roughCutPlanDelete?.classList.remove('confirming');
+  if (roughCutPlanDelete) roughCutPlanDelete.textContent = translatedEditorText('删除方案');
+}
+
+function renderRoughCutPlanControls() {
+  if (!roughCutDraft) return;
+  const state = roughCutDraftData();
+  const activePlan = window.AsrEditorUtils.roughCutActivePlan(state);
+  if (roughCutPlanSelect) {
+    roughCutPlanSelect.innerHTML = '';
+    state.plans.forEach((plan) => {
+      const option = document.createElement('option');
+      option.value = plan.id;
+      option.textContent = plan.name;
+      roughCutPlanSelect.append(option);
+    });
+    roughCutPlanSelect.value = activePlan?.id || '';
+  }
+  if (roughCutPlanName) roughCutPlanName.value = activePlan?.name || '';
+  if (roughCutOutputName) {
+    roughCutOutputName.value = activePlan?.output_name || '';
+    roughCutOutputName.placeholder = roughCutDefaultOutputName(activePlan, state);
+  }
+  if (roughCutPlanCount) {
+    roughCutPlanCount.textContent = translatedEditorText(`${state.plans.length} 个方案`);
+  }
+  if (roughCutPlanDelete) roughCutPlanDelete.disabled = state.plans.length <= 1 || roughCutExportInFlight;
+}
+
+function activateRoughCutDraftPlan(planId, message = '') {
+  if (!roughCutDraft || roughCutExportInFlight) return false;
+  const state = roughCutDraftData();
+  const target = state.plans.find((plan) => plan.id === planId);
+  if (!target) return false;
+  state.active_plan_id = target.id;
+  roughCutDraft.state = state;
+  roughCutDraft.removedIds = roughCutRemovedIdsForPlan(target);
+  roughCutDraft.pendingSrtMatch = null;
+  roughCutDraft.srtMarkers = new Map();
+  resetRoughCutDeleteConfirmation();
+  if (roughCutOutputName) roughCutOutputName.value = target.output_name || '';
+  if (!applyRoughCutDraft({ announce: false })) return false;
+  renderRoughCutPlanControls();
+  renderRoughCutSrtReport();
+  renderRoughCutRows();
+  if (message) setRoughCutStatus(message, 'success');
+  return true;
+}
+
+function createRoughCutPlan({ duplicate = false } = {}) {
+  if (!roughCutDraft || roughCutExportInFlight) return false;
+  const state = roughCutDraftData();
+  if (state.plans.length >= 100) {
+    setRoughCutStatus('粗剪方案数量已达到 100 个上限。', 'error');
+    return false;
+  }
+  const current = window.AsrEditorUtils.roughCutActivePlan(state);
+  const preferredName = duplicate ? `${current?.name || '方案'} 副本` : '新方案';
+  const name = window.AsrEditorUtils.uniqueRoughCutPlanName(state.plans, preferredName);
+  const plan = {
+    id: window.AsrEditorUtils.uniqueRoughCutPlanId(state.plans),
+    name,
+    output_name: '',
+    source_srt_name: duplicate ? String(current?.source_srt_name || '') : '',
+    kept_segment_ids: duplicate
+      ? [...(current?.kept_segment_ids || [])] : roughCutAllSegmentIds(),
+  };
+  state.plans.push(plan);
+  roughCutDraft.state = state;
+  return activateRoughCutDraftPlan(
+    plan.id,
+    duplicate ? `已复制方案：${name}` : `已新建方案：${name}`,
+  );
+}
+
+function renameRoughCutPlan() {
+  if (!roughCutDraft || roughCutExportInFlight) return false;
+  const state = roughCutDraftData();
+  const activePlan = window.AsrEditorUtils.roughCutActivePlan(state);
+  const name = String(roughCutPlanName?.value || '').trim().slice(0, 160);
+  if (!activePlan || !name) {
+    setRoughCutStatus('方案名称不能为空。', 'error');
+    return false;
+  }
+  const duplicate = state.plans.some((plan) => plan.id !== activePlan.id
+    && plan.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+  if (duplicate) {
+    setRoughCutStatus('已经存在同名粗剪方案。', 'error');
+    return false;
+  }
+  activePlan.name = name;
+  roughCutDraft.state = state;
+  resetRoughCutDeleteConfirmation();
+  return activateRoughCutDraftPlan(activePlan.id, `方案已重命名为：${name}`);
+}
+
+function deleteRoughCutPlan() {
+  if (!roughCutDraft || roughCutExportInFlight) return false;
+  const state = roughCutDraftData();
+  const activePlan = window.AsrEditorUtils.roughCutActivePlan(state);
+  if (!activePlan || state.plans.length <= 1) return false;
+  if (roughCutDraft.deleteConfirmPlanId !== activePlan.id) {
+    roughCutDraft.deleteConfirmPlanId = activePlan.id;
+    roughCutPlanDelete?.classList.add('confirming');
+    if (roughCutPlanDelete) roughCutPlanDelete.textContent = translatedEditorText('再次确认删除');
+    setRoughCutStatus(`再次点击确认删除方案「${activePlan.name}」；母稿和其他方案不会受影响。`);
+    return false;
+  }
+  const index = state.plans.findIndex((plan) => plan.id === activePlan.id);
+  state.plans.splice(index, 1);
+  const target = state.plans[Math.min(index, state.plans.length - 1)];
+  state.active_plan_id = target.id;
+  roughCutDraft.state = state;
+  roughCutDraft.removedIds = roughCutRemovedIdsForPlan(target);
+  roughCutDraft.pendingSrtMatch = null;
+  roughCutDraft.srtMarkers = new Map();
+  resetRoughCutDeleteConfirmation();
+  if (roughCutOutputName) roughCutOutputName.value = target.output_name || '';
+  if (!applyRoughCutDraft({ announce: false })) return false;
+  renderRoughCutPlanControls();
+  renderRoughCutSrtReport();
+  renderRoughCutRows();
+  setRoughCutStatus(`已删除方案：${activePlan.name}`, 'success');
+  return true;
+}
+
+function loadRoughCutDraft() {
+  const state = getRoughCutState();
+  const activePlan = window.AsrEditorUtils.roughCutActivePlan(state);
+  roughCutDraft = {
+    snapshots: DATA.segments.map((segment) => ({
+      id: segment.id,
+      start: segment.start,
+      end: segment.end,
+      text: String(segment.text || ''),
+    })),
+    texts: DATA.segments.map((segment) => String(segment.text || '')),
+    state,
+    originalState: JSON.stringify(state),
+    removedIds: roughCutRemovedIdsForPlan(activePlan),
+    pendingSrtMatch: null,
+    srtMarkers: new Map(),
+    deleteConfirmPlanId: null,
+  };
+  if (roughCutPreviewCheckbox) roughCutPreviewCheckbox.checked = roughCutPreviewEnabled;
+  if (roughCutOutputName) roughCutOutputName.value = activePlan?.output_name || '';
+  setRoughCutStatus();
+  renderRoughCutPlanControls();
+  renderRoughCutSrtReport();
+  renderRoughCutRows();
+}
+
+function roughCutDraftChanged() {
+  if (!roughCutDraft) return false;
+  const textChanged = roughCutDraft.texts.some(
+    (text, index) => text !== roughCutDraft.snapshots[index]?.text,
+  );
+  const currentState = JSON.stringify(roughCutDraftData());
+  return textChanged || currentState !== roughCutDraft.originalState;
+}
+
+function updateRoughCutUi() {
+  if (!roughCutPreviewToggle) return;
+  const plan = getRoughCutPlan();
+  const hasCuts = plan.removedIntervals.length > 0;
+  if (!hasCuts) roughCutPreviewEnabled = false;
+  roughCutPreviewToggle.hidden = !hasCuts;
+  roughCutPreviewToggle.classList.toggle('active', roughCutPreviewEnabled);
+  roughCutPreviewToggle.textContent = translatedEditorText(
+    `粗剪预览：${roughCutPreviewEnabled ? '开' : '关'}`,
+  );
+  roughCutPreviewToggle.setAttribute('aria-pressed', String(roughCutPreviewEnabled));
+}
+
+function applyRoughCutDraft({ announce = true } = {}) {
+  if (!roughCutDraft) return false;
+  const matchesSnapshot = DATA.segments.length === roughCutDraft.snapshots.length
+    && DATA.segments.every((segment, index) => {
+      const snapshot = roughCutDraft.snapshots[index];
+      return segment?.id === snapshot?.id
+        && segment?.start === snapshot?.start
+        && segment?.end === snapshot?.end
+        && String(segment?.text || '') === snapshot?.text;
+    });
+  if (!matchesSnapshot) {
+    setRoughCutStatus('字幕在窗口打开后发生了变化，请关闭后重新打开文稿粗剪。', 'error');
+    return false;
+  }
+  const changed = roughCutDraftChanged();
+  if (changed) pushUndo('文稿粗剪');
+  let textChanged = false;
+  roughCutDraft.texts.forEach((text, index) => {
+    const segment = DATA.segments[index];
+    if (!segment || String(segment.text || '') === text) return;
+    const mapping = window.AsrEditorUtils.reconcileTimedTextItems(
+      String(segment.text || ''),
+      segment.items,
+      text,
+    );
+    segment.text = text;
+    if (mapping.status === 'full' || mapping.status === 'partial') segment.items = mapping.items;
+    else delete segment.items;
+    segment._dirty = true;
+    textChanged = true;
+  });
+  const state = window.AsrEditorUtils.normalizeRoughCutData(roughCutDraftData(), DATA.segments);
+  DATA.rough_cut = window.AsrEditorUtils.roughCutStateHasDecisions(state, DATA.segments)
+    ? state : null;
+  roughCutDraft.state = state;
+  if (changed) {
+    roughCutDirty = true;
+    scheduleAutoSaveFlush();
+  }
+  roughCutPreviewEnabled = Boolean(
+    roughCutPreviewCheckbox?.checked && getRoughCutPlan(state).removedIntervals.length,
+  );
+  updateRoughCutUi();
+  if (textChanged) {
+    renderAll({ waveform: 'overlay' });
+    updateWithoutCueListAutoScroll();
+  } else {
+    refreshSubtitlePreview();
+  }
+  roughCutDraft.snapshots = DATA.segments.map((segment) => ({
+    id: segment.id, start: segment.start, end: segment.end, text: String(segment.text || ''),
+  }));
+  roughCutDraft.originalState = JSON.stringify(state);
+  renderRoughCutPlanControls();
+  if (announce) {
+    const previewSuffix = roughCutPreviewEnabled ? '，已开启预览跳过' : '';
+    setRoughCutStatus(`已应用：${roughCutDraft.removedIds.size} 条待剪字幕${previewSuffix}`, 'success');
+  }
+  updateRoughCutSummary();
+  updateUndoRedoButtons();
+  return true;
+}
+
+function closeRoughCutModal() {
+  if (!roughCutModal || roughCutExportInFlight) return;
+  roughCutModal.classList.remove('show');
+  roughCutModal.setAttribute('aria-hidden', 'true');
+  roughCutSrtDragCounter = 0;
+  roughCutSrtDrop?.classList.remove('dragover');
+  roughCutDraft = null;
+  roughCutButton?.focus();
+}
+
+function openRoughCutModal() {
+  if (!DATA.segments.length) {
+    flashHint('当前工程没有可用于粗剪的主字幕', 'invalid');
+    return;
+  }
+  if (editingState) finishEdit(true);
+  if (extensionEditingState) finishExtensionEdit(true);
+  commitCuePanelEdit();
+  loadRoughCutDraft();
+  roughCutModal?.classList.add('show');
+  roughCutModal?.setAttribute('aria-hidden', 'false');
+  setTimeout(() => roughCutRows?.querySelector('textarea')?.focus(), 0);
+}
+
+function roughCutSrtPayload(plan) {
+  const keptIds = new Set(plan.activePlan?.kept_segment_ids || []);
+  const segments = DATA.segments.filter((segment) => keptIds.has(String(segment?.id || '')));
+  return window.AsrEditorUtils.buildSrtPayload(segments, {
+    mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, plan.removedIntervals),
+    ensurePositiveDuration: true,
+    formatTime: fmtSrtTime,
+  });
+}
+
+async function requestRoughCutExport(plan, outputName) {
+  const response = await fetch(new URL(SERVER_CONFIG.roughCutExportUrl, window.location.href), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      requestToken: SERVER_CONFIG.requestToken,
+      outputName,
+      intervals: plan.keptIntervals,
+      srt: roughCutSrtPayload(plan),
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
+  return result;
+}
+
+async function exportRoughCut() {
+  if (roughCutExportInFlight || !applyRoughCutDraft({ announce: false })) return;
+  const state = getRoughCutState();
+  const plan = getRoughCutPlan(state);
+  if (!plan.removedIntervals.length || !plan.keptIntervals.length) {
+    setRoughCutStatus('请至少标记一条待剪字幕，并确保粗剪后仍有视频内容。', 'error');
+    return;
+  }
+  if (!SERVER_CONFIG?.roughCutExportUrl || !SERVER_CONFIG?.canRoughCutExport) {
+    setRoughCutStatus('直接渲染视频需要从本地 Server 编辑器打开已绑定媒体的工程。', 'error');
+    return;
+  }
+  roughCutExportInFlight = true;
+  updateRoughCutSummary();
+  roughCutExport.textContent = translatedEditorText('正在导出…');
+  const planName = plan.activePlan?.name || '当前方案';
+  setRoughCutStatus(`正在导出方案「${planName}」；长视频可能需要等待一段时间…`);
+  try {
+    const result = await requestRoughCutExport(
+      plan,
+      roughCutDefaultOutputName(plan.activePlan, state),
+    );
+    setRoughCutStatus(`导出完成：${result.videoPath}；字幕：${result.srtPath}`, 'success');
+    flashHint('文稿粗剪视频和匹配字幕已导出', 'success');
+  } catch (error) {
+    setRoughCutStatus(`导出失败：${error.message || error}`, 'error');
+  } finally {
+    roughCutExportInFlight = false;
+    roughCutExport.textContent = translatedEditorText('导出粗剪视频 + SRT');
+    updateRoughCutSummary();
+  }
+}
+
+async function exportAllRoughCutPlans() {
+  if (roughCutExportInFlight || !applyRoughCutDraft({ announce: false })) return;
+  if (!SERVER_CONFIG?.roughCutExportUrl || !SERVER_CONFIG?.canRoughCutExport) {
+    setRoughCutStatus('直接渲染视频需要从本地 Server 编辑器打开已绑定媒体的工程。', 'error');
+    return;
+  }
+  const state = getRoughCutState();
+  const candidates = state.plans.map((candidate) => ({
+    candidate,
+    plan: getRoughCutPlan(state, candidate.id),
+  }));
+  const valid = candidates.filter(({ plan }) => plan.removedIntervals.length && plan.keptIntervals.length);
+  const skipped = candidates.length - valid.length;
+  if (!valid.length) {
+    setRoughCutStatus('没有可导出的有效粗剪方案。每个方案至少剪掉一条，并保留部分视频。', 'error');
+    return;
+  }
+
+  roughCutExportInFlight = true;
+  if (roughCutExportAll) roughCutExportAll.textContent = translatedEditorText('正在批量导出…');
+  updateRoughCutSummary();
+  const succeeded = [];
+  const failed = [];
+  try {
+    for (let index = 0; index < valid.length; index += 1) {
+      const { candidate, plan } = valid[index];
+      setRoughCutStatus(`正在导出 ${index + 1}/${valid.length}：${candidate.name}`);
+      try {
+        const result = await requestRoughCutExport(
+          plan,
+          roughCutDefaultOutputName(candidate, state),
+        );
+        succeeded.push({ candidate, result });
+      } catch (error) {
+        failed.push({ candidate, error: error.message || String(error) });
+      }
+    }
+  } finally {
+    roughCutExportInFlight = false;
+    if (roughCutExportAll) roughCutExportAll.textContent = translatedEditorText('批量导出全部方案');
+    updateRoughCutSummary();
+  }
+  const summary = `批量导出完成：成功 ${succeeded.length}，失败 ${failed.length}，跳过 ${skipped}`;
+  if (failed.length) {
+    const details = failed.map(({ candidate, error }) => `${candidate.name}：${error}`).join('；');
+    setRoughCutStatus(`${summary}。${details}`, 'error');
+  } else {
+    setRoughCutStatus(summary, 'success');
+    flashHint('全部有效粗剪方案已导出', 'success');
+  }
+}
+
+roughCutButton?.addEventListener('click', openRoughCutModal);
+roughCutClose?.addEventListener('click', closeRoughCutModal);
+roughCutCancel?.addEventListener('click', closeRoughCutModal);
+roughCutApply?.addEventListener('click', () => applyRoughCutDraft());
+roughCutExport?.addEventListener('click', () => { void exportRoughCut(); });
+roughCutExportAll?.addEventListener('click', () => { void exportAllRoughCutPlans(); });
+roughCutPlanSelect?.addEventListener('change', () => {
+  activateRoughCutDraftPlan(roughCutPlanSelect.value);
+});
+roughCutPlanNew?.addEventListener('click', () => createRoughCutPlan());
+roughCutPlanCopy?.addEventListener('click', () => createRoughCutPlan({ duplicate: true }));
+roughCutPlanRename?.addEventListener('click', renameRoughCutPlan);
+roughCutPlanName?.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  renameRoughCutPlan();
+});
+roughCutPlanName?.addEventListener('input', resetRoughCutDeleteConfirmation);
+roughCutPlanDelete?.addEventListener('click', deleteRoughCutPlan);
+roughCutOutputName?.addEventListener('input', () => {
+  resetRoughCutDeleteConfirmation();
+  updateRoughCutSummary();
+});
+roughCutSrtPick?.addEventListener('click', () => {
+  if (!roughCutSrtFile) return;
+  roughCutSrtFile.value = '';
+  roughCutSrtFile.click();
+});
+roughCutSrtFile?.addEventListener('change', (event) => {
+  const file = event.target.files?.[0];
+  if (file) void loadRoughCutSrtMatch(file);
+});
+roughCutSrtApply?.addEventListener('click', applyRoughCutSrtMatch);
+roughCutSrtClear?.addEventListener('click', clearRoughCutSrtMatch);
+roughCutSrtDrop?.addEventListener('dragenter', (event) => {
+  if (!event.dataTransfer?.types.includes('Files')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  roughCutSrtDrop.classList.add('dragover');
+});
+roughCutSrtDrop?.addEventListener('dragover', (event) => {
+  if (!event.dataTransfer?.types.includes('Files')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+});
+roughCutSrtDrop?.addEventListener('dragleave', (event) => {
+  event.stopPropagation();
+  if (!roughCutSrtDrop.contains(event.relatedTarget)) roughCutSrtDrop.classList.remove('dragover');
+});
+roughCutSrtDrop?.addEventListener('drop', (event) => {
+  if (!event.dataTransfer?.types.includes('Files')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  roughCutSrtDrop.classList.remove('dragover');
+  const file = Array.from(event.dataTransfer.files).find(isSrtFile);
+  if (file) void loadRoughCutSrtMatch(file);
+  else setRoughCutStatus('请拖入一个 SRT 字幕文件。', 'error');
+});
+roughCutRows?.addEventListener('input', (event) => {
+  const textarea = event.target.closest?.('textarea[data-index]');
+  if (!textarea || !roughCutDraft) return;
+  const index = Number(textarea.dataset.index);
+  if (!Number.isInteger(index) || index < 0 || index >= roughCutDraft.texts.length) return;
+  roughCutDraft.texts[index] = textarea.value.replace(/\r\n?/g, '\n');
+});
+roughCutRows?.addEventListener('click', (event) => {
+  const button = event.target.closest?.('.rough-cut-toggle[data-id]');
+  if (!button || !roughCutDraft) return;
+  const id = button.dataset.id;
+  if (roughCutDraft.removedIds.has(id)) roughCutDraft.removedIds.delete(id);
+  else roughCutDraft.removedIds.add(id);
+  const row = button.closest('.rough-cut-row');
+  const removed = roughCutDraft.removedIds.has(id);
+  row?.classList.toggle('removed', removed);
+  button.setAttribute('aria-pressed', String(removed));
+  button.textContent = translatedEditorText(removed ? '恢复' : '剪掉');
+  button.title = translatedEditorText(
+    removed ? '保留这条字幕对应的音视频' : '剪掉这条字幕对应的音视频',
+  );
+  updateRoughCutSummary();
+});
+roughCutModal?.addEventListener('click', (event) => {
+  if (event.target === roughCutModal) closeRoughCutModal();
+});
+roughCutPreviewToggle?.addEventListener('click', () => {
+  const hasCuts = getRoughCutPlan().removedIntervals.length > 0;
+  if (!hasCuts) return;
+  roughCutPreviewEnabled = !roughCutPreviewEnabled;
+  updateRoughCutUi();
+  flashHint(`粗剪预览已${roughCutPreviewEnabled ? '开启' : '关闭'}`, 'success');
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !roughCutModal?.classList.contains('show')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeRoughCutModal();
+}, true);
 
 // === 纯文本编辑（支持调整字幕行结构的 MVP） ===
 function timedTextEditSegments(kind) {
@@ -36528,20 +38004,44 @@ let dragCounter = 0;  // dragenter/leave 计数，避免子元素进出导致遮
 window.addEventListener('dragenter', (e) => {
   if (!e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
   e.preventDefault();
+  if (roughCutModal?.classList.contains('show')) {
+    roughCutSrtDragCounter++;
+    roughCutSrtDrop?.classList.add('dragover');
+    return;
+  }
   dragCounter++;
   if (dragCounter === 1) dragOverlay.classList.add('show');
 });
 window.addEventListener('dragover', (e) => {
-  if (e.dataTransfer && e.dataTransfer.types.includes('Files')) e.preventDefault();
+  if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
+    e.preventDefault();
+    if (roughCutModal?.classList.contains('show')) e.dataTransfer.dropEffect = 'copy';
+  }
 });
 window.addEventListener('dragleave', (e) => {
   if (!e.dataTransfer) return;
+  if (roughCutModal?.classList.contains('show')) {
+    roughCutSrtDragCounter--;
+    if (roughCutSrtDragCounter <= 0) {
+      roughCutSrtDragCounter = 0;
+      roughCutSrtDrop?.classList.remove('dragover');
+    }
+    return;
+  }
   dragCounter--;
   if (dragCounter <= 0) { dragCounter = 0; dragOverlay.classList.remove('show'); }
 });
 window.addEventListener('drop', (e) => {
   if (!e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
   e.preventDefault();
+  if (roughCutModal?.classList.contains('show')) {
+    roughCutSrtDragCounter = 0;
+    roughCutSrtDrop?.classList.remove('dragover');
+    const file = Array.from(e.dataTransfer.files).find(isSrtFile);
+    if (file) void loadRoughCutSrtMatch(file);
+    else setRoughCutStatus('请拖入一个 SRT 字幕文件。', 'error');
+    return;
+  }
   dragCounter = 0;
   dragOverlay.classList.remove('show');
   void handleDroppedFiles(Array.from(e.dataTransfer.files));
@@ -36587,6 +38087,7 @@ window.MAWE_EDITOR_BRIDGE = Object.freeze({
 });
 window.MAWE?.register('editor-bridge', () => window.MAWE_EDITOR_BRIDGE);
 renderAll({ waveform: 'full' });
+updateRoughCutUi();
 maweDebug('boot:complete', {
   renderedSegments: container?.querySelectorAll?.('.cue-row')?.length || 0,
   recentProjectsVisible: recentProjectsEl ? !recentProjectsEl.hidden : false,
