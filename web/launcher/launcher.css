@@ -2376,6 +2376,10 @@ textarea::placeholder {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
+.settings-tab.active:focus-visible {
+  box-shadow: var(--focus-ring), inset 0 0 0 1px var(--accent);
+}
+
 .settings-panel {
   animation: settings-panel-enter 160ms ease-out;
 }
