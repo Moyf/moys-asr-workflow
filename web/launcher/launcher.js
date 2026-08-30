@@ -1374,10 +1374,10 @@
     const serverButton = $("openServerEditor");
     if (serverButton) {
       serverButton.textContent = (state.serverRunning || state.detectedServerUrl) ? t("open_editor") : t("start_server_editor");
-      serverButton.disabled = state.serverStarting || state.moseStarting;
+      serverButton.disabled = state.serverStarting || state.serverStopping || state.moseStarting;
     }
     $("stopServer").classList.toggle("hidden", !state.serverRunning && !state.detectedServerUrl);
-    $("stopServer").disabled = state.serverStarting || state.moseStarting;
+    $("stopServer").disabled = state.serverStarting || state.serverStopping || state.moseStarting;
   }
   async function applyServerLaunchResult(result, projectPath, prefix = "") {
     if (!result.ok) {
@@ -1789,7 +1789,7 @@
   async function openServerEditor() {
     clearErrors();
     $("htmlMenu").classList.add("hidden");
-    if (state.serverStarting || state.moseStarting) return;
+    if (state.serverStarting || state.serverStopping || state.moseStarting) return;
     const projectPath = $("jsonPath").value.trim();
     const currentUrl = state.detectedServerUrl || `http://127.0.0.1:${$("port").value || "8250"}/?lang=${state.lang}`;
     if ((state.serverRunning && projectPath === state.serverProjectPath) || (state.detectedServerUrl && !projectPath)) { await bridge("open_url", { url: currentUrl }); return; }

@@ -1495,7 +1495,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         named_values = {(path, name): value for path, name, value in fake_winreg.values if name is not None}
         self.assertEqual(named_values[(r"Software\Moy\MOSE", "InstallPath")], str(self.root))
         self.assertEqual(named_values[(r"Software\Moy\MOSE", "ExecutablePath")], str(executable))
-        self.assertEqual(named_values[(r"Software\Moy\MOSE", "Version")], "1.5.0-beta.10")
+        self.assertEqual(named_values[(r"Software\Moy\MOSE", "Version")], "1.5.0")
 
     def test_register_mosp_association_preserves_existing_user_choice(self) -> None:
         executable = self.root / "MOSE.exe"
@@ -3501,7 +3501,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn("if (state.serverStopping) return;", script)
         self.assertIn("state.serverStopping = true;", script)
         self.assertIn("state.serverStopping = false;", script)
-        self.assertIn('$("stopServer").disabled = state.serverStarting || state.serverStopping;', script)
+        self.assertIn('$("stopServer").disabled = state.serverStarting || state.serverStopping || state.moseStarting;', script)
         self.assertIn("guiLang: state.lang", script)
 
     def test_launcher_log_and_server_notice_layout(self) -> None:
