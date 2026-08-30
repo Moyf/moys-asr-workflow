@@ -20,6 +20,129 @@ async function runReplacement(page, { outputMode = 'both' } = {}) {
   await expect(page.locator('.toolbox-chain-item')).toHaveCount(previousCount + 1);
 }
 
+test('software update status, download progress, cancellation, and restart flow stay in the dedicated settings area', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => {
+    const original = window.MAWLauncher.callBackend;
+    window.__updateCalls = [];
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'check_update') {
+        return {
+          ok: true,
+          currentVersion: '1.5.0-beta.10',
+          latestVersion: '1.6.0',
+          latestTag: 'v1.6.0',
+          available: true,
+          assetAvailable: true,
+          capability: 'installer',
+          releaseUrl: 'https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.6.0',
+          releaseNotes: '# 更新说明\n\n- **安全渲染**\n- [完整说明](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.6.0)\n\n> 只允许安全节点\n\n行内 `代码`。\n\n```text\n<script>code stays text\n```\n\n<script>must stay text',
+          installation: { kind: 'installer', platform: 'windows', arch: 'x64', canApply: true },
+          checking: false,
+        };
+      }
+      window.__updateCalls.push({ method, payload });
+      if (method === 'start_update') {
+        window.MAWLauncher.onBackendEvent({ type: 'updateDownloadProgress', tag: 'v1.6.0', percent: 42 });
+        window.MAWLauncher.onBackendEvent({ type: 'updateReady', tag: 'v1.6.0', path: 'D:\\Demo\\update.exe', version: '1.6.0' });
+        return { ok: true, started: true, tag: 'v1.6.0' };
+      }
+      if (method === 'apply_update') return { ok: true, restarting: true, tag: 'v1.6.0' };
+      return original(method, payload);
+    };
+  });
+
+  await page.locator('#appVersion').click();
+  await expect(page.locator('#settingsModal')).toBeVisible();
+  await expect(page.locator('#updateBadge')).toBeVisible();
+  await expect(page.locator('#updateSettingsStatus')).toContainText('发现新版本 v1.6.0');
+  await expect(page.locator('#updateReleaseNotes h1')).toHaveText('更新说明');
+  await expect(page.locator('#updateReleaseNotes strong')).toHaveText('安全渲染');
+  await expect(page.locator('#updateReleaseNotes a')).toHaveText('完整说明');
+  await expect(page.locator('#updateReleaseNotes ul li')).toHaveCount(2);
+  await expect(page.locator('#updateReleaseNotes blockquote')).toHaveText('只允许安全节点');
+  await expect(page.locator('#updateReleaseNotes p code')).toHaveText('代码');
+  await expect(page.locator('#updateReleaseNotes pre code')).toContainText('<script>code stays text');
+  await expect(page.locator('#updateReleaseNotes')).toContainText('<script>must stay text');
+  await expect(page.locator('#updateReleaseNotes script')).toHaveCount(0);
+  await page.locator('#updateNow').click();
+  await expect(page.locator('#updateProgressMessage')).toContainText('更新包已校验');
+  await expect(page.locator('#updateNow')).toHaveText('重启并安装');
+  await page.locator('#updateNow').click();
+  await expect(page.locator('#batchConfirmModal')).toBeVisible();
+  await page.locator('#batchConfirmYes').click();
+  await expect.poll(() => page.evaluate(() => window.__updateCalls.map(({ method }) => method))).toContain('apply_update');
+  await page.locator('#settingsClose').click();
+  await page.locator('#langToggle').click();
+  await page.locator('#settingsButton').click();
+  await expect(page.locator('[data-i18n="settings_updates"]')).toHaveText('Software updates');
+  await expect(page.locator('#updateNow')).toHaveText('Restart and install');
+});
+
+test('portable copies expose manual download and installer migration without claiming one-click update', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => window.MAWLauncher.onBackendEvent({
+    type: 'updateCheckCompleted',
+    manual: true,
+    result: {
+      ok: true,
+      currentVersion: '1.5.0-beta.10',
+      latestVersion: '1.6.0',
+      latestTag: 'v1.6.0',
+      available: true,
+      assetAvailable: true,
+      capability: 'manual',
+      releaseUrl: 'https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.6.0',
+      installation: { kind: 'portable', platform: 'windows', arch: 'x64', canApply: false },
+    },
+  }));
+  await page.locator('#settingsButton').click();
+  await expect(page.locator('#updateNow')).toHaveText('下载新版');
+  await expect(page.locator('#updateOpenRelease')).toHaveText('改用安装版');
+  await page.locator('#updateNow').click();
+  await expect(page.locator('#settingsModal')).toBeVisible();
+});
+
+test('update download can be cancelled and leaves the settings action recoverable', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#settingsButton').click();
+  await page.evaluate(() => {
+    const original = window.MAWLauncher.callBackend;
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'check_update') return {
+        ok: true, currentVersion: '1.5.0-beta.10', latestVersion: '1.6.0', latestTag: 'v1.6.0',
+        available: true, assetAvailable: true, capability: 'installer',
+        installation: { kind: 'installer', platform: 'windows', arch: 'x64', canApply: true },
+        releaseUrl: 'https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.6.0', checking: false,
+      };
+      if (method === 'start_update') return { ok: true, started: true, tag: 'v1.6.0' };
+      if (method === 'cancel_update') {
+        window.MAWLauncher.onBackendEvent({ type: 'updateFailed', stage: 'download', code: 'update_cancelled' });
+        return { ok: true, cancelled: true };
+      }
+      return original(method, payload);
+    };
+    window.MAWLauncher.onBackendEvent({
+      type: 'updateCheckCompleted',
+      manual: true,
+      result: {
+        ok: true, currentVersion: '1.5.0-beta.10', latestVersion: '1.6.0', latestTag: 'v1.6.0',
+        available: true, assetAvailable: true, capability: 'installer',
+        installation: { kind: 'installer', platform: 'windows', arch: 'x64', canApply: true },
+        releaseUrl: 'https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.6.0',
+      },
+    });
+  });
+  await page.locator('#updateNow').click();
+  await expect(page.locator('#updateCancel')).toBeVisible();
+  await page.locator('#updateCancel').click();
+  await expect(page.locator('#updateCancel')).toBeHidden();
+  await expect(page.locator('#updateSettingsStatus')).toContainText('更新下载已取消');
+});
+
 test('LLM settings refill the saved key and save only after a successful connection test', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#toolboxLlmTab').click();

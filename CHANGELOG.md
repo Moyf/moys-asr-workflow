@@ -126,6 +126,10 @@
 
 ## [Unreleased]
 
+### 🚀 全新特性
+
+- **Windows Installer 与软件内更新** ： 新增无需管理员权限的 Windows x64 Inno Setup 安装包（安装到 `%LOCALAPPDATA%\Programs\MAW`），并为全平台 Launcher 增加稳定/Beta 频道版本检查、ETag 缓存、Release 清单与 SHA-256 校验。Windows 安装版可在空闲时下载、确认并自动重启升级；便携版、macOS 和 Linux 提供精确 Release 页面手动下载入口。升级和卸载均保留 `%LOCALAPPDATA%\MAW` 下的用户配置、日志、模型缓存与更新状态；更新说明会以安全的 Markdown 摘要展示，完整内容交给浏览器打开；Installer 暂未配置代码签名，SmartScreen 提示需由用户核验来源。
+
 ## [1.5.0-beta.10] - 2026-08-30
 
 ### 🐛 修复

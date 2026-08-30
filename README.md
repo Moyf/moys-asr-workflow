@@ -15,12 +15,14 @@ MAW 是一个以 API 转写为主的字幕生成与编辑工作流。它提供 W
 
 ## 快速开始
 
-1. [下载最新版](https://github.com/Moyf/moys-asr-workflow/releases/latest)。默认下载带 FFmpeg 的 `MAW-Windows-x64-v*.zip`；如果已安装 `ffmpeg` / `ffprobe`，也可以选择体积更小的 `MAW-lite-Windows-x64-v*.zip`，macOS 下载对应的 `MAW.app` 或 `MAW-lite.app`。
-2. 解压并启动 `MAW.exe` 或 `MAW.app`。
+1. [下载最新版](https://github.com/Moyf/moys-asr-workflow/releases/latest)。Windows x64 推荐使用 `MAW-Setup-Windows-x64-v*.exe` 安装包；它按当前用户安装到 `%LOCALAPPDATA%\Programs\MAW`，不需要管理员权限。也可以继续下载带 FFmpeg 的便携 `MAW-Windows-x64-v*.zip`，或已安装 `ffmpeg` / `ffprobe` 时使用更小的 `MAW-lite-Windows-x64-v*.zip`；macOS 下载对应的 `MAW.app` 或 `MAW-lite.app`。
+2. 启动安装后的 `MAW.exe`，或解压后启动便携版 `MAW.exe` / `MAW.app`。
 3. 在 Launcher 配置转写服务的 API Key，选择媒体并点击生成。
 4. 在 MAWE 中检查、编辑字幕，导出 SRT 或其他格式。
 
 第一次使用、API 配置、编辑和排错：请从[完整工作流](docs/WORKFLOW.md)开始。
+
+Windows 安装版会在 Launcher 启动时每天最多检查一次新版本，也可以在「配置 → 软件更新」手动检查。安装版支持下载、校验并重启安装；便携版、macOS 和 Linux 会打开对应 Release 页面供手动下载。更新不会删除 `%LOCALAPPDATA%\MAW` 下的 `.env`、日志、模型缓存或更新状态。更新器从首个带更新器的版本开始服务后续版本；更旧、尚未带更新器的 MAW 仍需手动安装。当前 Windows Installer 未配置代码签名，首次运行可能出现 SmartScreen 提示；请确认来源为本项目 GitHub Release。
 
 ## 核心能力
 

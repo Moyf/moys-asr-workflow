@@ -478,6 +478,70 @@
     llm_reasoning_mode_hint: "Off is the default; Auto follows the model default."
   });
   Object.assign(STRINGS.zh, {
+    update_open_settings: "检查更新",
+    update_available_badge: "有新版本",
+    update_view_details: "查看更新",
+    settings_updates: "软件更新",
+    update_current_version: "当前版本",
+    update_latest_version: "最新版本",
+    update_release_notes: "更新说明",
+    update_check: "检查更新",
+    update_checking: "正在检查更新……",
+    update_up_to_date: "已是最新版本",
+    update_available: "发现新版本 v{version}",
+    update_download: "下载更新",
+    update_download_new: "下载新版",
+    update_switch_installer: "改用安装版",
+    update_cancel: "取消下载",
+    update_download_progress: "正在下载更新包 {percent}%",
+    update_download_ready: "更新包已校验，可以重启安装。",
+    update_restart: "重启并安装",
+    update_confirm: "MAW 将关闭当前窗口并安装 v{version}，完成后自动重启。确定继续吗？",
+    update_open_release: "打开发布页",
+    update_manual_only: "当前是便携版，请打开发布页下载新版；安装版支持一键更新。",
+    update_no_asset: "当前平台没有可自动安装的资产，请打开发布页手动下载。",
+    update_install_success: "已更新到 v{version}。",
+    update_install_failed: "上次更新没有完成，可以重新尝试或打开发布页。",
+    update_download_failed: "更新下载失败，请重试或打开发布页。",
+    update_check_failed: "暂时无法检查更新。",
+    update_last_checked: "上次检查：{time}",
+    update_channel_beta: "Beta 频道",
+    update_channel_stable: "稳定频道",
+    update_auto_check: "启动时自动检查（每天一次）"
+  });
+  Object.assign(STRINGS.en, {
+    update_open_settings: "Check for updates",
+    update_available_badge: "Update available",
+    update_view_details: "View update",
+    settings_updates: "Software updates",
+    update_current_version: "Current version",
+    update_latest_version: "Latest version",
+    update_release_notes: "Release notes",
+    update_check: "Check for updates",
+    update_checking: "Checking for updates…",
+    update_up_to_date: "You are up to date",
+    update_available: "Version v{version} is available",
+    update_download: "Download update",
+    update_download_new: "Download newer version",
+    update_switch_installer: "Switch to installer",
+    update_cancel: "Cancel download",
+    update_download_progress: "Downloading update package {percent}%",
+    update_download_ready: "The update package is verified and ready to install.",
+    update_restart: "Restart and install",
+    update_confirm: "MAW will close this window, install v{version}, and restart automatically. Continue?",
+    update_open_release: "Open release page",
+    update_manual_only: "This is a portable copy. Open the release page to download an update; installed copies support one-click updates.",
+    update_no_asset: "No automatically installable asset is available for this platform. Open the release page to download it manually.",
+    update_install_success: "Updated to v{version}.",
+    update_install_failed: "The previous update did not finish. You can retry or open the release page.",
+    update_download_failed: "The update download failed. Retry or open the release page.",
+    update_check_failed: "Updates could not be checked right now.",
+    update_last_checked: "Last checked: {time}",
+    update_channel_beta: "Beta channel",
+    update_channel_stable: "Stable channel",
+    update_auto_check: "Check at startup (once per day)"
+  });
+  Object.assign(STRINGS.zh, {
     toolbox_open: "打开工具箱", toolbox_title: "工具箱", toolbox_group_postprocess: "后处理", toolbox_group_utilities: "实用工具", toolbox_chain_hint: "每次生成新文件，并自动作为下一步输入。", toolbox_no_media: "未选择媒体", toolbox_input_empty: "未选择文件", toolbox_chain_heading: "处理产物（点击文件名切换输入）", toolbox_resize_width: "调整工具箱宽度", toolbox_resize_height: "调整工具箱高度",
     toolbox_input: "处理文件", toolbox_input_placeholder: "跟随工程文件，也可拖入 .mosp / .json / .srt", toolbox_input_hint: "默认跟随「工程文件」并随每次处理更新；手动选择或拖入后以这里为准。", toolbox_drop_reject: "这里只接受 .mosp / .json / .srt 字幕或工程文件。", toolbox_utility_media: "媒体文件", toolbox_utility_media_placeholder: "默认跟随 Launcher 媒体，也可选择或拖入媒体文件", toolbox_utility_media_hint: "默认跟随 Launcher 媒体；选择或拖入媒体后，以这里为准。清空可恢复跟随。", toolbox_utility_media_reject: "这里仅接受媒体文件。", toolbox_ffconcat_reject: "这里只接受 .ffconcat 文件。",
      toolbox_waveform: "生成波形", toolbox_waveform_hint: "仅使用上方媒体生成带内嵌波形的媒体工程，不需要字幕或转写；打开编辑器后可扫描静音空隙并导出去空隙 OTIO。", toolbox_generate_waveform: "生成波形文件", toolbox_run_waveform: "生成波形并打开编辑器", toolbox_match: "文稿匹配", toolbox_script: "文稿文件", toolbox_script_placeholder: "UTF-8 .txt / .md 文稿", toolbox_script_hint: "文稿文字会替换字幕文字；原字幕时间保持不变。", toolbox_script_preview: "文稿预览（前 240 字）", toolbox_script_reject: "文稿只支持 .txt / .md / .markdown 文件。", toolbox_split_preview: "拆分预览", toolbox_match_mode: "换行来源", toolbox_match_mode_script: "按文稿换行（默认）", toolbox_match_mode_text: "只更正文本", toolbox_match_mode_hint: "按文稿换行会使用文稿中的换行和断句符号；只更正文本保留现有字幕分段。", toolbox_extra_split_punctuation: "额外断句符号", toolbox_extra_split_punctuation_placeholder: "？\n！\n——\n~", toolbox_extra_split_punctuation_hint: "每行一个符号；逗号、句号和换行默认生效，同时对转写后处理的句尾剥除生效。", toolbox_preserve_punctuation: "保留符号", toolbox_preserve_punctuation_placeholder: "？\n！\n~", toolbox_preserve_punctuation_hint: "断句后仍将符号保留在字幕末尾；转写输出的这些尾部符号同样保留，其余默认剥除逗号和句号。", toolbox_preserve_punctuation_invalid: "保留符号必须存在于额外断句符号中：", toolbox_match_hint: "匹配度过低时会停止，不写出可能错配的结果。", toolbox_run_match: "匹配文稿", toolbox_punct_open_settings: "在 ⚙️ 设置中配置断句与保留符号",
@@ -612,7 +676,27 @@
       server_start_failed: (detail) => `编辑器服务器启动失败：${detail || "请查看下方日志。"}`,
       alignment_server_no_response: (detail) => `口播对齐 Server 没有响应：${detail || "请重试。"}`,
       alignment_server_start_failed: (detail) => `口播对齐 Server 启动失败：${detail || "请查看日志后重试。"}`,
-      sticker_dir_invalid: "表情包根目录不存在。"
+      sticker_dir_invalid: "表情包根目录不存在。",
+      offline: "无法连接 GitHub，稍后再试。",
+      rate_limited: "GitHub 请求次数已达到限制，请稍后再试。",
+      manifest_missing: "此 Release 没有更新清单，请打开发布页手动下载。",
+      manifest_invalid: "更新清单无效，请打开发布页手动下载。",
+      asset_url_invalid: "更新下载地址无效。",
+      asset_size_invalid: "更新包大小与清单不符。",
+      checksum_mismatch: "更新包校验失败，请重新下载。",
+      download_failed: "更新包下载失败。",
+      update_cancelled: "更新下载已取消。",
+      update_target_invalid: "更新目标已失效，请重新检查版本。",
+      update_not_downloaded: "更新包尚未下载完成。",
+      update_manual_only: "当前 MAW 副本需要手动下载更新。",
+      disk_space_low: "磁盘空间不足，无法准备更新。",
+      install_not_writable: "MAW 安装目录不可写，请检查权限。",
+      installer_start_failed: "无法启动 MAW 更新安装程序。",
+      update_busy: "请先完成当前任务，再更新 MAW。",
+      state_write_failed: "无法保存更新状态，请检查应用数据目录权限。",
+      update_http_error: (detail) => `GitHub 请求失败：${detail || "请稍后再试。"}`,
+      update_response_invalid: "GitHub 返回的版本信息无效。",
+      response_too_large: "GitHub 返回的数据过大，无法检查更新。"
     },
     en: {
       json_not_found: "Project file does not exist. Check the path.",
@@ -658,7 +742,27 @@
       server_start_failed: (detail) => `The editor server failed to start: ${detail || "check the logs below."}`,
       alignment_server_no_response: (detail) => `The speech-alignment server did not respond: ${detail || "retry the operation."}`,
       alignment_server_start_failed: (detail) => `The speech-alignment server failed to start: ${detail || "check the log and retry."}`,
-      sticker_dir_invalid: "Sticker root directory does not exist."
+      sticker_dir_invalid: "Sticker root directory does not exist.",
+      offline: "GitHub could not be reached. Try again later.",
+      rate_limited: "GitHub rate-limited the update check. Try again later.",
+      manifest_missing: "This Release has no update manifest. Open the release page to download it manually.",
+      manifest_invalid: "The update manifest is invalid. Open the release page to download it manually.",
+      asset_url_invalid: "The update download URL is invalid.",
+      asset_size_invalid: "The update package size does not match its manifest.",
+      checksum_mismatch: "The update package checksum failed. Download it again.",
+      download_failed: "The update package could not be downloaded.",
+      update_cancelled: "The update download was cancelled.",
+      update_target_invalid: "The update target is no longer valid. Check for updates again.",
+      update_not_downloaded: "The update package has not finished downloading.",
+      update_manual_only: "This MAW copy needs a manual download from the release page.",
+      disk_space_low: "There is not enough free disk space to prepare the update.",
+      install_not_writable: "The MAW installation directory is not writable.",
+      installer_start_failed: "The MAW update installer could not be started.",
+      update_busy: "Finish the current task before updating MAW.",
+      state_write_failed: "The update state could not be saved. Check the MAW app-data folder permissions.",
+      update_http_error: (detail) => `GitHub request failed: ${detail || "try again later."}`,
+      update_response_invalid: "GitHub returned invalid release information.",
+      response_too_large: "GitHub returned too much data to check for updates."
     }
   };
   Object.assign(STRINGS.zh, {
@@ -743,7 +847,7 @@
   const HOTWORD_WEIGHTS = new Set([1, 2, 3, 4, 5, 50]);
   const MAX_HOTWORDS = 2000;
   const MAX_SUPER_HOTWORDS = 50;
-  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false };
+  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, update: null, updateChecking: false, updateCheckGeneration: 0, updateDownloading: false, updateManualCheck: false, updateReady: false, updateApplying: false, updateError: "", updateErrorCode: "", updateErrorDetail: "", updateProgress: 0 };
   const dragState = { depth: 0 };
   let api = null;
   let prefsTimer = 0;
@@ -770,6 +874,7 @@
          theme: saved.theme,
         showRareLangs: saved.showRareLangs || false,
         appVersion: "1.5.0-beta.10",
+        update: { ok: true, currentVersion: "1.5.0-beta.10", latestVersion: "1.5.0-beta.10", latestTag: "v1.5.0-beta.10", available: false, assetAvailable: false, capability: "none", channel: "beta", autoCheck: true, installation: { kind: "source", platform: "windows", arch: "x64", canApply: false } },
         stickerDir: saved.stickerDir || "",
         postprocessProviders: [
           { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
@@ -875,6 +980,11 @@
       open_url: async ({ url }) => { window.open(url, "_blank"); return { ok: true }; },
       open_blank_html: async () => ({ ok: true }),
       check_ffmpeg: async () => ({ ok: true, found: true, directory: "D:\\FFmpeg\\bin", ffmpeg: "D:\\FFmpeg\\bin\\ffmpeg.exe", ffprobe: "D:\\FFmpeg\\bin\\ffprobe.exe" }),
+      check_update: async () => ({ ...(state.config?.update || {}), ok: true, checking: false }),
+      start_update: async () => ({ ok: true, started: true }),
+      cancel_update: async () => ({ ok: true, cancelled: true }),
+      apply_update: async () => ({ ok: false, code: "update_manual_only", error: "portable" }),
+      set_update_preferences: async ({ autoCheck }) => { if (state.config?.update) state.config.update.autoCheck = Boolean(autoCheck); return { ok: true, autoCheck: Boolean(autoCheck) }; },
       save_ffmpeg_path: async ({ path }) => ({ ok: Boolean(path), found: Boolean(path), directory: path || "", ffmpeg: path || "", ffprobe: path || "" }),
       choose_folder: async ({ kind } = {}) => ({ ok: true, path: kind === "model-cache" ? "D:\\Models\\MAW" : (kind === "ocr-runtime" ? "D:\\Models\\MAW\\ocr-runtime" : "D:\\Stickers") }),
       save_sticker_dir: async ({ path }) => { saved.stickerDir = path || ""; return { ok: Boolean(path), stickerDir: saved.stickerDir, field: path ? "" : "stickerDir", error: path ? "" : "missing" }; },
@@ -958,6 +1068,181 @@
       cursor = index + rawUrl.length;
     }
     if (cursor < value.length) appendMessageText(container, value.slice(cursor));
+  }
+  function releaseLink(url) {
+    try {
+      const parsed = new URL(String(url || ""), window.location.href);
+      return ["http:", "https:"].includes(parsed.protocol) ? parsed.href : "";
+    } catch (_error) {
+      return "";
+    }
+  }
+  // Release bodies are untrusted GitHub input. Build only allowlisted DOM
+  // nodes so Markdown is useful without ever interpreting raw HTML.
+  function appendReleaseLink(container, label, url) {
+    const safeUrl = releaseLink(url);
+    if (!safeUrl) {
+      container.append(document.createTextNode(String(label || "")));
+      return;
+    }
+    const link = document.createElement("a");
+    link.className = "update-release-link";
+    link.href = safeUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = String(label || safeUrl);
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      void bridge("open_url", { url: safeUrl });
+    });
+    container.append(link);
+  }
+  function appendReleaseInline(container, value) {
+    const source = String(value || "");
+    let rest = source;
+    while (rest) {
+      const matches = [];
+      const addMatch = (regex, type, priority = 0) => {
+        const match = regex.exec(rest);
+        if (match) matches.push({ match, type, priority });
+      };
+      addMatch(/`([^`\n]+)`/u, "code");
+      addMatch(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)(?:\s+"[^"]*")?\)/iu, "link");
+      addMatch(/(\*\*|__)([^\n]+?)\1/u, "strong");
+      addMatch(/(~~)([^\n]+?)\1/u, "strike");
+      addMatch(/(\*|_)([^\n]+?)\1/u, "emphasis", 1);
+      addMatch(/https?:\/\/[^\s<>"'`]+/iu, "url", 2);
+      if (!matches.length) {
+        container.append(document.createTextNode(rest));
+        break;
+      }
+      matches.sort((left, right) => (left.match.index ?? 0) - (right.match.index ?? 0) || left.priority - right.priority);
+      const chosen = matches[0];
+      const match = chosen.match;
+      const index = match.index ?? 0;
+      if (index > 0) container.append(document.createTextNode(rest.slice(0, index)));
+      if (chosen.type === "code") {
+        const code = document.createElement("code");
+        code.textContent = match[1];
+        container.append(code);
+      } else if (chosen.type === "link") {
+        appendReleaseLink(container, match[1], match[2]);
+      } else if (chosen.type === "url") {
+        const raw = match[0];
+        const url = raw.replace(/[),.;:!?，。；：！？）】》」』]+$/u, "");
+        appendReleaseLink(container, url, url);
+        if (raw.length > url.length) container.append(document.createTextNode(raw.slice(url.length)));
+      } else {
+        const element = document.createElement(chosen.type === "strong" ? "strong" : chosen.type === "strike" ? "del" : "em");
+        appendReleaseInline(element, match[2]);
+        container.append(element);
+      }
+      rest = rest.slice(index + match[0].length);
+    }
+  }
+  function appendReleaseBlock(container, type, lines, marker = "") {
+    const value = lines.join(" ").trim();
+    if (!value) return;
+    if (type === "heading") {
+      const heading = document.createElement(`h${Math.max(1, Math.min(6, marker.length))}`);
+      appendReleaseInline(heading, value);
+      container.append(heading);
+      return;
+    }
+    if (type === "quote") {
+      const quote = document.createElement("blockquote");
+      appendReleaseInline(quote, value);
+      container.append(quote);
+      return;
+    }
+    const paragraph = document.createElement("p");
+    appendReleaseInline(paragraph, value);
+    container.append(paragraph);
+  }
+  function renderReleaseNotes(container, markdown) {
+    container.replaceChildren();
+    const lines = String(markdown || "").replace(/\r\n?/gu, "\n").split("\n");
+    let paragraph = [];
+    let quote = [];
+    let list = null;
+    let code = null;
+    const flushParagraph = () => {
+      if (paragraph.length) appendReleaseBlock(container, "paragraph", paragraph);
+      paragraph = [];
+    };
+    const flushQuote = () => {
+      if (quote.length) appendReleaseBlock(container, "quote", quote);
+      quote = [];
+    };
+    const flushList = () => {
+      if (!list) return;
+      const element = document.createElement(list.ordered ? "ol" : "ul");
+      list.items.forEach((item) => {
+        const row = document.createElement("li");
+        appendReleaseInline(row, item);
+        element.append(row);
+      });
+      container.append(element);
+      list = null;
+    };
+    const flushCode = () => {
+      if (!code) return;
+      const pre = document.createElement("pre");
+      const codeElement = document.createElement("code");
+      if (code.language) codeElement.className = `language-${code.language}`;
+      codeElement.textContent = code.lines.join("\n");
+      pre.append(codeElement);
+      container.append(pre);
+      code = null;
+    };
+    for (const line of lines) {
+      if (code) {
+        const closing = /^\s*```\s*$/u.test(line);
+        if (closing) flushCode();
+        else code.lines.push(line);
+        continue;
+      }
+      const fence = /^\s*```\s*([A-Za-z0-9_-]*)\s*$/u.exec(line);
+      if (fence) {
+        flushParagraph(); flushQuote(); flushList();
+        code = { language: fence[1], lines: [] };
+        continue;
+      }
+      const heading = /^(#{1,6})\s+(.+?)(?:\s+#+)?\s*$/u.exec(line);
+      if (heading) {
+        flushParagraph(); flushQuote(); flushList();
+        appendReleaseBlock(container, "heading", [heading[2]], heading[1]);
+        continue;
+      }
+      const unordered = /^\s*[-+*]\s+(.+)$/u.exec(line);
+      const ordered = /^\s*\d+[.)]\s+(.+)$/u.exec(line);
+      if (unordered || ordered) {
+        flushParagraph(); flushQuote();
+        const orderedList = Boolean(ordered);
+        if (!list || list.ordered !== orderedList) { flushList(); list = { ordered: orderedList, items: [] }; }
+        list.items.push((ordered || unordered)[1]);
+        continue;
+      }
+      const quoteLine = /^\s*>\s?(.*)$/u.exec(line);
+      if (quoteLine) {
+        flushParagraph(); flushList();
+        quote.push(quoteLine[1]);
+        continue;
+      }
+      if (/^\s*(?:---+|\*\*\*+)\s*$/u.test(line)) {
+        flushParagraph(); flushQuote(); flushList();
+        container.append(document.createElement("hr"));
+        continue;
+      }
+      if (!line.trim()) {
+        flushParagraph(); flushQuote(); flushList();
+        continue;
+      }
+      flushQuote(); flushList();
+      paragraph.push(line.trim());
+    }
+    if (code) flushCode();
+    flushParagraph(); flushQuote(); flushList();
   }
   const setStatus = (message) => { if (state.detectedServerUrl) setServerStatus(state.detectedServerUrl, true, message); else renderMessage($("status"), message); };
   function syncFixedFooterClearance() {
@@ -1197,6 +1482,261 @@
   function syncHtmlMenu() { const enabled = $("generateHtml").checked; $("openHtml").classList.toggle("hidden", !enabled); $("openHtml").disabled = enabled && !state.result?.htmlPath; }
   function renderChevron(id) { const arrow = $(id).querySelector(".chevron"); if (arrow) arrow.textContent = $(id).classList.contains("collapsed") ? "▸" : "▾"; }
   function renderStickerCurrent() { $("stickerCurrent").textContent = state.config?.stickerDir || t("unset"); $("stickerDir").value = state.config?.stickerDir || ""; }
+
+  function updateCanApply() {
+    const update = state.update || {};
+    return Boolean(update.available && update.assetAvailable && update.capability === "installer" && update.installation?.canApply);
+  }
+  function updateHasManualAsset() {
+    const update = state.update || {};
+    return Boolean(update.available && update.assetAvailable && !updateCanApply());
+  }
+  function updateReleaseUrl() {
+    return String(state.update?.releaseUrl || "https://github.com/Moyf/moys-asr-workflow/releases");
+  }
+  function formatUpdateTime(value) {
+    const seconds = Number(value);
+    if (!Number.isFinite(seconds) || seconds <= 0) return "";
+    try {
+      return new Intl.DateTimeFormat(state.lang, { dateStyle: "short", timeStyle: "short" }).format(new Date(seconds * 1000));
+    } catch (_error) {
+      return new Date(seconds * 1000).toLocaleString();
+    }
+  }
+  function updateChannelText(value) {
+    return value === "beta" ? t("update_channel_beta") : t("update_channel_stable");
+  }
+  function renderUpdate() {
+    const update = state.update || {};
+    const current = String(update.currentVersion || state.config?.appVersion || "").trim();
+    if (current) $("appVersion").textContent = `v${current.replace(/^v/iu, "")}`;
+    const available = Boolean(update.available);
+    const canApply = updateCanApply();
+    const manualAsset = updateHasManualAsset();
+    const startup = update.startup || {};
+    const status = $("updateSettingsStatus");
+    const currentVersion = $("updateCurrentVersion");
+    const latestVersion = $("updateLatestVersion");
+    const lastChecked = $("updateLastChecked");
+    const notes = $("updateReleaseNotes");
+    const notice = $("updateNotice");
+    const badge = $("updateBadge");
+    const checkButton = $("checkUpdate");
+    const actionButton = $("updateNow");
+    const cancelButton = $("updateCancel");
+    const releaseButton = $("updateOpenRelease");
+    const autoCheck = $("autoUpdateCheck");
+    const progress = $("updateProgress");
+    const progressBar = $("updateProgressBar");
+    const progressMessage = $("updateProgressMessage");
+    if (!status || !actionButton || !cancelButton || !releaseButton) return;
+
+    if (currentVersion) currentVersion.textContent = current ? `v${current.replace(/^v/iu, "")}` : "—";
+    if (latestVersion) latestVersion.textContent = update.latestVersion ? `v${String(update.latestVersion).replace(/^v/iu, "")}` : "—";
+
+    let statusText = "";
+    const updateErrorText = state.updateErrorCode
+      ? errText(state.updateErrorCode, state.updateErrorDetail)
+      : state.updateError;
+    if (updateErrorText) {
+      statusText = updateErrorText;
+    } else if (state.updateChecking || update.checking) {
+      statusText = t("update_checking");
+    } else if (state.updateApplying) {
+      statusText = t("update_restart");
+    } else if (startup.status === "success") {
+      statusText = t("update_install_success").replace("{version}", startup.targetVersion || current);
+    } else if (startup.status === "failed") {
+      statusText = t("update_install_failed");
+    } else if (available) {
+      statusText = t("update_available").replace("{version}", update.latestVersion || "");
+      if (update.channel) statusText += ` · ${updateChannelText(update.channel)}`;
+      if (!update.assetAvailable) statusText += ` ${t("update_no_asset")}`;
+      else if (!canApply) statusText += ` ${t("update_manual_only")}`;
+    } else {
+      statusText = t("update_up_to_date");
+    }
+    const checked = formatUpdateTime(update.lastCheckedAt);
+    if (lastChecked) {
+      lastChecked.textContent = checked && !state.updateChecking
+        ? t("update_last_checked").replace("{time}", checked)
+        : "";
+    }
+    renderMessage(status, statusText);
+
+    const releaseNotes = String(update.releaseNotes || "").trim();
+    if (releaseNotes && available) {
+      const excerpt = releaseNotes.length > 1200 ? `${releaseNotes.slice(0, 1200)}…` : releaseNotes;
+      renderReleaseNotes(notes, excerpt);
+      notes.classList.remove("hidden");
+    } else {
+      notes.replaceChildren();
+      notes.classList.add("hidden");
+    }
+
+    badge.classList.toggle("hidden", !available);
+    notice.classList.toggle("hidden", !available);
+    if (available) {
+      $("updateNoticeTitle").textContent = t("update_available").replace("{version}", update.latestVersion || "");
+      $("updateNoticeMessage").textContent = canApply ? t("update_download") : t("update_manual_only");
+    } else {
+      $("updateNoticeTitle").textContent = "";
+      $("updateNoticeMessage").textContent = "";
+    }
+
+    const ready = Boolean(state.updateReady && String(update.latestTag || "") === String(state.updateReadyTag || update.latestTag || ""));
+    actionButton.classList.toggle("hidden", !canApply && !manualAsset && !ready);
+    actionButton.disabled = state.updateDownloading || state.updateApplying || state.updateChecking;
+    if (ready) actionButton.textContent = t("update_restart");
+    else if (manualAsset) actionButton.textContent = t("update_download_new");
+    else actionButton.textContent = t("update_download");
+    cancelButton.classList.toggle("hidden", !state.updateDownloading);
+    cancelButton.disabled = state.updateApplying;
+    releaseButton.classList.toggle("hidden", !available || !updateReleaseUrl());
+    releaseButton.textContent = update.installation?.kind === "portable" && update.installation?.platform === "windows"
+      ? t("update_switch_installer")
+      : t("update_open_release");
+    checkButton.disabled = state.updateChecking || state.updateDownloading || state.updateApplying;
+    checkButton.textContent = state.updateChecking ? t("update_checking") : t("update_check");
+    autoCheck.checked = update.autoCheck !== false;
+    const showProgress = state.updateDownloading || state.updateReady;
+    progress.classList.toggle("hidden", !showProgress);
+    progressBar.style.width = `${Math.max(0, Math.min(100, Number(state.updateProgress || (state.updateReady ? 100 : 0))))}%`;
+    if (state.updateReady) progressMessage.textContent = t("update_download_ready");
+    else if (state.updateDownloading) progressMessage.textContent = t("update_download_progress").replace("{percent}", String(state.updateProgress || 0));
+    else progressMessage.textContent = "";
+  }
+  function setUpdateResult(result, showError = true) {
+    if (!result || typeof result !== "object") return;
+    const previousTag = String(state.update?.latestTag || "");
+    const next = result.update && typeof result.update === "object" ? result.update : result;
+    state.update = { ...(state.update || {}), ...next };
+    if (result.update && result.autoCheck !== undefined) state.update.autoCheck = Boolean(result.autoCheck);
+    if (!result.checking) state.updateChecking = false;
+    if (result.errorCode && showError) {
+      state.updateErrorCode = String(result.errorCode);
+      state.updateErrorDetail = String(result.errorDetail || "");
+      state.updateError = errText(state.updateErrorCode, state.updateErrorDetail);
+    } else if (!showError || result.ok !== false) {
+      state.updateError = "";
+      state.updateErrorCode = "";
+      state.updateErrorDetail = "";
+    }
+    if (!result.checking && ((result.available === false) || (result.latestTag && previousTag && String(result.latestTag) !== previousTag))) {
+      state.updateReady = false;
+      state.updateReadyTag = "";
+      state.updateProgress = 0;
+    }
+    renderUpdate();
+  }
+  function handleUpdateFailure(result, manual = true) {
+    const code = result?.code || result?.errorCode || "update_http_error";
+    const detail = result?.detail || result?.errorDetail || result?.error || "";
+    state.updateChecking = false;
+    if (result?.stage !== "check") {
+      state.updateDownloading = false;
+      state.updateReady = false;
+      state.updateReadyTag = "";
+    }
+    state.updateErrorCode = code;
+    state.updateErrorDetail = detail;
+    state.updateError = errText(code, detail);
+    if (!manual) {
+      state.updateError = "";
+      state.updateErrorCode = "";
+      state.updateErrorDetail = "";
+      renderUpdate();
+      return;
+    }
+    renderUpdate();
+    if (manual) {
+      setStatus(state.updateError);
+      if (detail) appendLog(`[update] ${detail}`);
+    }
+  }
+  async function openUpdateRelease() {
+    const result = await window.MAWLauncher.callBackend("open_url", { url: updateReleaseUrl() });
+    if (!result.ok) handleUpdateFailure(result, true);
+  }
+  async function checkForUpdates(force = true) {
+    if (state.updateChecking && !force) return;
+    const requestId = ++state.updateCheckGeneration;
+    state.updateManualCheck = force;
+    state.updateChecking = true;
+    state.updateError = "";
+    state.updateErrorCode = "";
+    state.updateErrorDetail = "";
+    renderUpdate();
+    const result = await window.MAWLauncher.callBackend("check_update", { force, requestId });
+    if (requestId !== state.updateCheckGeneration) return;
+    if (!result.ok) {
+      handleUpdateFailure(result, force);
+      return;
+    }
+    if (result.checking) {
+      state.update = { ...(state.update || {}), ...result };
+      renderUpdate();
+    } else {
+      setUpdateResult(result, force);
+    }
+  }
+  async function startOrApplyUpdate() {
+    const update = state.update || {};
+    const tag = String(update.latestTag || "");
+    if (!tag) return;
+    if (!updateCanApply() && !state.updateReady) {
+      await openUpdateRelease();
+      return;
+    }
+    if (state.updateReady && !updateCanApply()) {
+      await openUpdateRelease();
+      return;
+    }
+    if (state.updateReady) {
+      const confirmed = await confirmAction(t("update_confirm").replace("{version}", update.latestVersion || ""));
+      if (!confirmed) return;
+      state.updateApplying = true;
+      renderUpdate();
+      const result = await window.MAWLauncher.callBackend("apply_update", { tag });
+      if (!result.ok) {
+        state.updateApplying = false;
+        handleUpdateFailure(result, true);
+      }
+      return;
+    }
+    state.updateDownloading = true;
+    state.updateProgress = 0;
+    state.updateError = "";
+    state.updateErrorCode = "";
+    state.updateErrorDetail = "";
+    renderUpdate();
+    const result = await window.MAWLauncher.callBackend("start_update", { tag });
+    if (!result.ok) {
+      handleUpdateFailure(result, true);
+    } else {
+      renderUpdate();
+    }
+  }
+  async function cancelUpdateDownload() {
+    if (!state.updateDownloading) return;
+    const result = await window.MAWLauncher.callBackend("cancel_update");
+    if (!result.ok) {
+      handleUpdateFailure(result, true);
+      return;
+    }
+    // The backend normally emits updateFailed(update_cancelled), but clear
+    // the local state as well so a fast cancellation remains recoverable even
+    // when the event arrives after this bridge call (or is unavailable in a
+    // mock/older backend).
+    state.updateDownloading = false;
+    state.updateReady = false;
+    state.updateReadyTag = "";
+    state.updateProgress = 0;
+    state.updateErrorCode = "update_cancelled";
+    state.updateErrorDetail = "";
+    state.updateError = errText(state.updateErrorCode, state.updateErrorDetail);
+    renderUpdate();
+  }
   async function saveStickerDirectory(path) { $("stickerDir").value = path; const result = await bridge("save_sticker_dir", { path }); setError("stickerDir", result.ok ? "" : errText(result.code, result.detail || result.error)); if (result.ok) { state.config.stickerDir = result.stickerDir; renderStickerCurrent(); setStatus(t("saved")); } else setStatus(errText(result.code, result.detail || result.error)); return result; }
   function renderKeyStatus() { const masked = state.config && !isLocalProvider() ? provider().maskedApiKey : ""; $("keyStatus").textContent = masked ? t("key_loaded").replace("{key}", masked) : t("key_empty"); }
   function syncQwenAudioOptions(model) { const enabled = provider().id === "qwen" && Boolean(model?.supportsContext || model?.supportsHotwords); $("qwenAudioOptions").classList.toggle("hidden", !enabled); $("qwenAudioContextField").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsContext)); $("qwenAudioHotwordsSection").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsHotwords)); syncQwenAudioHotwordsMode(); }
@@ -1380,7 +1920,7 @@
     setStatus(t("saved"));
     return result;
   }
-  function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); document.querySelectorAll("[data-i18n-aria-label]").forEach((node) => { node.setAttribute("aria-label", t(node.dataset.i18nAriaLabel)); }); $("langToggle").textContent = t("other_language"); $("demoBadge").textContent = t("demo_mode"); renderKeyStatus(); renderStickerCurrent(); renderPromptCharacterCount(); renderSonioxContextCharacterCount(); renderHotwordWarnings(); renderServerButton(); renderLocalRuntime(); renderOcrRuntime(); renderLocalModelStatus(); window.MAWLauncher?.onLanguageChanged?.(); }
+  function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); document.querySelectorAll("[data-i18n-aria-label]").forEach((node) => { node.setAttribute("aria-label", t(node.dataset.i18nAriaLabel)); }); $("langToggle").textContent = t("other_language"); $("demoBadge").textContent = t("demo_mode"); renderKeyStatus(); renderStickerCurrent(); renderPromptCharacterCount(); renderSonioxContextCharacterCount(); renderHotwordWarnings(); renderServerButton(); renderLocalRuntime(); renderOcrRuntime(); renderLocalModelStatus(); renderUpdate(); window.MAWLauncher?.onLanguageChanged?.(); }
   function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); const local = isLocalProvider(); $("apiKeyField").classList.toggle("hidden", local || current.requiresApiKey === false); $("localRuntimePanel").classList.toggle("hidden", !local); $("localModelPanel").classList.toggle("hidden", !local); $("localDeviceField").classList.toggle("hidden", !local); $("openKeyUrl").classList.toggle("hidden", local || current.requiresApiKey === false); $("apiKey").value = current.apiKey || ""; $("openKeyUrl").textContent = current.label; $("providerNote").textContent = current.note || ""; $("providerNote").classList.toggle("hidden", !current.note); applySelectedModel(persistReset); $("regionField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || current.regions.length === 0); renderKeyStatus(); syncWorkspace(); syncAdvancedParamsGroup(); if (local) { renderLocalRuntime(); void refreshLocalRuntime(); void refreshLocalModels(); } }
   function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); syncLocalModelPath(model); $("modelNote").textContent = model.note || ""; applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncSonioxContextOptions(model); renderLocalModelStatus(); syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
   function applyProviderLanguages(current, model, persistReset = false) { const el = $("language"); $("languageGroup").classList.toggle("hidden", current.supportsLanguage === false); const previous = el.multiple ? Array.from(el.selectedOptions).map((o) => o.value) : (el.value ? [el.value] : []); const remembered = state.config.lastLanguage; const wanted = previous.length && persistReset ? previous : (remembered !== null && remembered !== undefined ? (remembered ? remembered.split(",") : []) : [state.config.language].filter(Boolean)); el.multiple = Boolean(current.multiLanguage); $("advancedOptionsGrid").classList.toggle("single-language", !current.multiLanguage); if (current.multiLanguage) el.size = 6; else el.removeAttribute("size"); const showRare = Boolean(state.config.showRareLangs); const commons = current.commonLanguages || []; const available = model.languages?.length ? model.languages : current.languages; const visible = !showRare && commons.length ? available.filter((item) => commons.includes(item.id)) : available; fillSelect("language", visible, ""); const codes = new Set(visible.map((item) => item.id)); const restored = wanted.filter((code) => code && codes.has(code)); if (current.multiLanguage) { Array.from(el.options).forEach((o) => { o.selected = restored.includes(o.value); }); } else { el.value = restored[0] || ""; } $("languageHint").classList.toggle("hidden", !current.multiLanguage); $("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0); $("languageReset").classList.toggle("hidden", !current.multiLanguage); }
@@ -1544,6 +2084,7 @@
   function ffmpegSaveError(result) { if (result.code) return errText(result.code, result.detail || result.error); if (result.found === false) return t("ffmpeg_missing"); return compactDetail(result.error) || t("failed"); }
   function openSettings(sectionId = "", focusId = "") {
     $("settingsModal").classList.remove("hidden");
+    renderUpdate();
     refreshFfmpeg();
     void refreshOcrRuntime();
     renderStickerCurrent();
@@ -1603,6 +2144,7 @@
     $("lengthLimitField").classList.toggle("hidden", !SHOW_LENGTH_LIMIT_FIELD);
     $("demoBadge").classList.toggle("hidden", window.MAWLauncher.backend !== "mock");
     state.config = await bridge("get_config");
+    state.update = state.config?.update || { currentVersion: state.config?.appVersion || "", autoCheck: true };
     const configuredServerPort = Number(state.config.serverPort);
     if (Number.isInteger(configuredServerPort) && configuredServerPort >= 1 && configuredServerPort <= 65535) {
       $("port").value = String(configuredServerPort);
@@ -1618,11 +2160,46 @@
     fillSelect("provider", state.config.providers, state.config.providerId || "qwen");
     applyProvider(false);
     $("workspaceId").value = state.config.workspaceId || "";
-    syncWorkspace(); syncTestRun(); renderChevron("advancedCard"); renderChevron("serverCard"); renderLanguage(); refreshFfmpeg();
-    appendLog(window.MAWLauncher.backend === "real" ? "MAW launcher ready." : "[mock] Static browser demo mode enabled."); setStatus(t("ready")); await checkExistingServer(); window.dispatchEvent(new CustomEvent("mawlauncherready"));
+    syncWorkspace(); syncTestRun(); renderChevron("advancedCard"); renderChevron("serverCard"); renderLanguage(); renderUpdate(); refreshFfmpeg();
+    appendLog(window.MAWLauncher.backend === "real" ? "MAW launcher ready." : "[mock] Static browser demo mode enabled."); setStatus(t("ready")); await checkExistingServer();
+    if (state.update?.autoCheck !== false) {
+      void checkForUpdates(false);
+    }
+    window.dispatchEvent(new CustomEvent("mawlauncherready"));
   }
 
   function handleBackendEvent(event) {
+    if (event.type === "updateCheckCompleted") {
+      state.updateManualCheck = Boolean(event.manual);
+      setUpdateResult(event.result || {}, Boolean(event.manual));
+      if (event.manual && event.result?.ok && !event.result?.available && !event.result?.errorCode) setStatus(t("update_up_to_date"));
+      return;
+    }
+    if (event.type === "updateDownloadProgress") {
+      state.updateDownloading = true;
+      state.updateProgress = Math.max(0, Math.min(100, Number(event.percent || 0)));
+      if (event.tag) state.updateReadyTag = String(event.tag);
+      renderUpdate();
+      return;
+    }
+    if (event.type === "updateReady") {
+      state.updateDownloading = false;
+      state.updateReady = true;
+      state.updateReadyTag = String(event.tag || state.update?.latestTag || "");
+      state.updateProgress = 100;
+      state.updateError = "";
+      state.updateErrorCode = "";
+      state.updateErrorDetail = "";
+      state.update = { ...(state.update || {}), downloaded: true, downloadPath: event.path || "", latestTag: state.updateReadyTag, latestVersion: event.version || state.update?.latestVersion || "" };
+      renderUpdate();
+      setStatus(t("update_download_ready"));
+      return;
+    }
+    if (event.type === "updateFailed") {
+      const manual = event.stage !== "check" || event.manual === true;
+      handleUpdateFailure(event, manual);
+      return;
+    }
     if (["batchStarted", "batchItem", "batchItemLog", "batchDone", "batch_started", "batch_item", "batch_item_log", "batch_done"].includes(event.type)) window.MAWLauncher?.onBatchEvent?.(event);
     if (event.type === "emojiFontReady" && event.path) injectEmojiFont(event.path);
     if (event.type === "log") appendLog(event.message, { quietLatest: Boolean(state.localRuntimeInstalling || state.ocrRuntimeInstalling) });
@@ -1757,6 +2334,23 @@
   $("themeLight").addEventListener("click", () => setTheme("light")); $("themeDark").addEventListener("click", () => setTheme("dark")); $("themeSystem").addEventListener("click", () => setTheme("system"));
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme(); });
   $("homeLink").addEventListener("click", () => bridge("open_url", { url: HOME_URL }));
+  $("appVersion").addEventListener("click", () => { openSettings("updateSettingsSection"); void checkForUpdates(true); });
+  $("updateNoticeAction").addEventListener("click", () => openSettings("updateSettingsSection"));
+  $("checkUpdate").addEventListener("click", () => { void checkForUpdates(true); });
+  $("updateNow").addEventListener("click", () => { void startOrApplyUpdate(); });
+  $("updateCancel").addEventListener("click", () => { void cancelUpdateDownload(); });
+  $("updateOpenRelease").addEventListener("click", () => { void openUpdateRelease(); });
+  $("autoUpdateCheck").addEventListener("change", async () => {
+    const enabled = $("autoUpdateCheck").checked;
+    const result = await bridge("set_update_preferences", { autoCheck: enabled });
+    if (!result.ok) {
+      $("autoUpdateCheck").checked = !enabled;
+      handleUpdateFailure(result, true);
+      return;
+    }
+    state.update = { ...(state.update || {}), ...(result.update || {}), autoCheck: Boolean(result.autoCheck) };
+    renderUpdate();
+  });
   $("errorNoticeClose").addEventListener("click", hideErrorNotice);
   $("errorNoticeCopy").addEventListener("click", () => { void copyErrorReport(); });
   $("errorNoticeFaq").addEventListener("click", () => { void openErrorFaq(); });

@@ -13,12 +13,14 @@ MAW is an API-first subtitle generation and editing workflow. It provides Window
 
 ## Quick start
 
-1. [Download the latest release](https://github.com/Moyf/moys-asr-workflow/releases/latest). The default Windows package is `MAW-Windows-x64-v*.zip` and includes FFmpeg; if `ffmpeg` and `ffprobe` are already available, choose the smaller `MAW-lite-Windows-x64-v*.zip`. macOS users can choose the corresponding `MAW.app` or `MAW-lite.app` package.
-2. Extract the package and launch `MAW.exe` or `MAW.app`.
+1. [Download the latest release](https://github.com/Moyf/moys-asr-workflow/releases/latest). Windows x64 users should prefer `MAW-Setup-Windows-x64-v*.exe`, a per-user installer under `%LOCALAPPDATA%\Programs\MAW` that does not require administrator rights. The FFmpeg-enabled portable package remains `MAW-Windows-x64-v*.zip`; use the smaller `MAW-lite-Windows-x64-v*.zip` when `ffmpeg` and `ffprobe` are already available. macOS users can choose the corresponding `MAW.app` or `MAW-lite.app` package.
+2. Launch the installed `MAW.exe`, or extract and launch the portable `MAW.exe` / `MAW.app`.
 3. Configure an ASR provider API key in the Launcher, choose your media, and start transcription.
 4. Review and edit the subtitles in MAWE, then export SRT or another supported format.
 
 For installation, provider setup, editing, and troubleshooting, start with the [complete workflow guide](docs/WORKFLOW.md) (currently in Chinese).
+
+The Windows installer checks for updates at startup at most once per day; you can also check manually in Settings → Software updates. Installed Windows copies can download, verify, and restart into an update. Portable, macOS, and Linux copies open the exact GitHub Release page for manual downloads. Updates keep `.env`, logs, model caches, and update state under `%LOCALAPPDATA%\MAW`. The updater starts serving releases after the first updater-enabled version; older MAW versions without an updater still need a manual install. The Windows installer is not code-signed yet, so SmartScreen may warn on first launch; verify that it came from this project's GitHub Release.
 
 ## Core capabilities
 

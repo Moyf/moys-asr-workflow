@@ -149,6 +149,7 @@ a = Analysis(
         "maw.gui_web",
         "maw.gui_config",
         "maw.gui_workflow",
+        "maw.updater",
         "maw.local_models",
         "maw.local_runtime",
         "maw.local_asr",

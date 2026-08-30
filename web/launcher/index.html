@@ -23,7 +23,7 @@
       <div class="hero-brand">
         <img class="hero-icon" src="../../assets/show.webp" alt="" aria-hidden="true">
         <div class="hero-copy">
-          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.5.0-beta.10</span></div>
+          <div class="wordmark">Moy's ASR Workflow <button id="appVersion" class="version version-button" type="button" data-i18n-title="update_open_settings" title="检查更新">v1.5.0-beta.10</button><span id="updateBadge" class="update-badge hidden" data-i18n="update_available_badge">有新版本</span></div>
           <p data-i18n="hero_desc">📺 本地媒体 ➜  🤖 AI 转写 ➜ ✨ 可编辑字幕工程</p>
           <span id="demoBadge" class="demo-badge hidden" data-i18n="demo_mode">演示模式</span>
         </div>
@@ -34,6 +34,13 @@
       </nav>
       <button id="homeLink" class="text-link hero-home" type="button" data-i18n="project_home">项目官网</button>
     </header>
+    <div id="updateNotice" class="update-notice hidden" role="status" aria-live="polite">
+      <div class="update-notice-copy">
+        <strong id="updateNoticeTitle"></strong>
+        <span id="updateNoticeMessage"></span>
+      </div>
+      <button id="updateNoticeAction" class="ghost small" type="button" data-i18n="update_view_details">查看更新</button>
+    </div>
 
     <section id="mediaCard" class="card drop-card" aria-labelledby="mediaTitle">
       <h2 id="mediaTitle" data-i18n="media_output">1️⃣ 媒体与输出</h2>
@@ -877,6 +884,30 @@
         <button id="settingsClose" class="ghost small" type="button" aria-label="close">×</button>
       </header>
       <div class="settings-scroll">
+      <div class="settings-section" id="updateSettingsSection">
+        <h3 data-i18n="settings_updates">软件更新</h3>
+        <div class="update-version-summary" aria-live="polite">
+          <span><span class="update-version-label" data-i18n="update_current_version">当前版本</span><strong id="updateCurrentVersion">—</strong></span>
+          <span><span class="update-version-label" data-i18n="update_latest_version">最新版本</span><strong id="updateLatestVersion">—</strong></span>
+        </div>
+        <p id="updateSettingsStatus" class="hint" aria-live="polite"></p>
+        <p id="updateLastChecked" class="hint"></p>
+        <div id="updateReleaseNotes" class="hint update-release-notes hidden" data-i18n-aria-label="update_release_notes" aria-label="更新说明"></div>
+        <div id="updateProgress" class="task-progress hidden" aria-live="polite">
+          <div class="task-progress-track"><span id="updateProgressBar"></span></div>
+          <p id="updateProgressMessage" class="hint"></p>
+        </div>
+        <div class="settings-actions update-actions">
+          <button id="checkUpdate" class="ghost" type="button" data-i18n="update_check">检查更新</button>
+          <button id="updateNow" class="primary hidden" type="button" data-i18n="update_download">下载更新</button>
+          <button id="updateCancel" class="ghost hidden" type="button" data-i18n="update_cancel">取消下载</button>
+          <button id="updateOpenRelease" class="ghost hidden" type="button" data-i18n="update_open_release">打开发布页</button>
+        </div>
+        <label class="check-field update-auto-check" for="autoUpdateCheck">
+          <input id="autoUpdateCheck" type="checkbox" checked>
+          <span data-i18n="update_auto_check">启动时自动检查（每天一次）</span>
+        </label>
+      </div>
       <div class="settings-section">
         <h3 data-i18n="settings_appearance">外观</h3>
         <div class="segmented" role="group">

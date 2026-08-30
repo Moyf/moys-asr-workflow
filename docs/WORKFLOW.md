@@ -4,7 +4,9 @@
 
 ## 0. 安装依赖
 
-如果使用 GitHub Releases 提供的 Windows 或 macOS 图形版，Python、uv、FFmpeg 与 ffprobe 已由默认 `MAW` 包打包，不需要单独安装；体积更小的 `MAW-lite` 包不包含 FFmpeg，需要系统已安装并可在 PATH 中找到 `ffmpeg` 和 `ffprobe`。Windows 解压后双击 `MAW.exe`；macOS 解压后打开 `MAW.app` 或 `MAW-lite.app`。Launcher 默认启动 Server 版编辑器，右侧菜单可打开工程 HTML 编辑器或空白 HTML 编辑器；MOSE 桌面版暂不随 Release 分发。
+如果使用 GitHub Releases 提供的 Windows 或 macOS 图形版，Python、uv、FFmpeg 与 ffprobe 已由默认 `MAW` 包打包，不需要单独安装；体积更小的 `MAW-lite` 包不包含 FFmpeg，需要系统已安装并可在 PATH 中找到 `ffmpeg` 和 `ffprobe`。Windows x64 推荐使用 `MAW-Setup-Windows-x64-v*.exe` 安装包，它按当前用户安装到 `%LOCALAPPDATA%\Programs\MAW`，不需要管理员权限；也可以继续使用便携 ZIP。Windows 解压后双击 `MAW.exe`；macOS 解压后打开 `MAW.app` 或 `MAW-lite.app`。Launcher 默认启动 Server 版编辑器，右侧菜单可打开工程 HTML 编辑器或空白 HTML 编辑器；MOSE 桌面版暂不随 Release 分发。
+
+安装版 Launcher 默认开启软件更新检查，每 24 小时最多请求一次；「配置 → 软件更新」中的手动检查会立即请求并继续使用 ETag 缓存。稳定版只接收正式版，Beta 版可接收 Beta 或正式版。更新说明会在设置页安全渲染常见 Markdown，完整内容可通过「打开发布页」查看。安装版会在下载后校验 Release 清单中的文件名、大小和 SHA-256，再确认一次后由 Installer 关闭并重启 MAW；转写、批处理、本地模型/OCR Runtime 安装或后处理进行中会拒绝更新。便携版、macOS 和 Linux 只显示版本并打开对应 Release 页面，不会声称可以自动替换。更新状态、下载包和失败记录保存在 `%LOCALAPPDATA%\MAW\updates`，`.env`、日志和模型缓存不会因升级或卸载删除。
 
 源码方式继续按下列步骤安装：
 

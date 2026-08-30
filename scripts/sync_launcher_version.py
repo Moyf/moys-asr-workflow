@@ -18,8 +18,8 @@ def _targets() -> tuple[tuple[str, Path, str, str], ...]:
         (
             "Launcher HTML",
             ROOT / "web" / "launcher" / "index.html",
-            r'(id="appVersion">v)[^<]+(</span>)',
-            r'id="appVersion">v([^<]+)</span>',
+            r'(id="appVersion"[^>]*>v)[^<]+(</button>)',
+            r'id="appVersion"[^>]*>v([^<]+)</button>',
         ),
         (
             "Launcher mock API",
