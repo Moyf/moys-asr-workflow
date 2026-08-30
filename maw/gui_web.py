@@ -77,7 +77,7 @@ MOSE_FILE_TYPE = "Moy.MOSE.Project"
 # 服务端先监听再在后台准备工程；这里的窗口只负责兜底探测进程是否已响应。
 SERVER_START_TIMEOUT: Final = 30.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.5.0-beta.9"
+BUNDLED_APP_VERSION = "1.5.0-beta.10"
 MOSE_VERSION = "0.1.0"
 
 
@@ -571,14 +571,17 @@ class LauncherApi:
     def get_config(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         config = effective_config(self.paths.env_path)
         ocr_runtime = self._ocr_runtime_status()
+        visible_providers = tuple(item for item in PROVIDERS if not item.hidden)
+        default_provider = visible_providers[0] if visible_providers else PROVIDERS[0]
         remembered_model = config.last_model or MODELS[0].id
         provider = provider_for_model(remembered_model)
+        if provider.hidden:
+            provider = default_provider
+        visible_models = tuple(item for item in provider.models if not item.hidden)
         selected_model = next(
-            (item for item in provider.models if item.id == remembered_model),
-            MODELS[0],
+            (item for item in visible_models if item.id == remembered_model),
+            visible_models[0] if visible_models else MODELS[0],
         )
-        if selected_model.id != remembered_model:
-            provider = provider_for_model(selected_model.id)
         selected_api_key = api_key_for_provider(provider.id, self.paths.env_path)
         return {
             "providerId": provider.id,
@@ -603,7 +606,10 @@ class LauncherApi:
             "models": [_model_payload(item, model_cache_root=config.model_cache_root) for item in provider.models],
             "regions": [{"id": value, "label": label} for value, label in provider.regions],
             "languages": [{"id": value, "label": label} for value, label in provider.languages],
-            "providers": [_provider_payload(item, self.paths.env_path, config.model_cache_root) for item in PROVIDERS],
+            "providers": [
+                _provider_payload(item, self.paths.env_path, config.model_cache_root)
+                for item in visible_providers
+            ],
             "postprocessProviders": _postprocess_provider_payloads(self.paths.env_path),
             "postprocessAutoPlan": load_postprocess_plan(self.paths.env_path),
             "zoomPercent": config.zoom_percent,

@@ -80,6 +80,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn(config["ocrRuntime"]["status"], {"missing", "broken", "ready"})
         self.assertEqual([model["id"] for model in config["ocrModels"]], ["pp-ocrv6-tiny", "pp-ocrv6-small"])
         self.assertEqual(config["providers"][0]["keyUrl"], "https://help.aliyun.com/zh/model-studio/get-api-key")
+        self.assertNotIn("tencent", [provider["id"] for provider in config["providers"]])
         self.assertEqual(len(config["providers"][0]["commonLanguages"]), 10)
         self.assertEqual(len(config["providers"][1]["commonLanguages"]), 8)
         self.assertEqual(config["models"][0]["id"], "qwen-audio-3.0-asr-flash-filetrans")
@@ -92,6 +93,17 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(config["models"][0]["languages"][0]["id"], "")
         self.assertFalse(config["models"][2]["supportsSpeaker"])
         self.assertEqual(config["languages"][0]["id"], "")
+
+    def test_get_config_falls_back_from_hidden_tencent_provider(self) -> None:
+        _ = self.env_path.write_text("MAW_GUI_LAST_MODEL=16k_zh_en_2.0\n", encoding="utf-8")
+
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("MAW_GUI_LAST_MODEL", None)
+            config = self.api.get_config()
+
+        self.assertEqual(config["providerId"], "qwen")
+        self.assertEqual(config["modelId"], "qwen-audio-3.0-asr-flash-filetrans")
+        self.assertNotIn("tencent", [provider["id"] for provider in config["providers"]])
 
     def test_get_config_exposes_local_provider_and_runtime_status(self) -> None:
         config = self.api.get_config()

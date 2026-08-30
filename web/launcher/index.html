@@ -23,7 +23,7 @@
       <div class="hero-brand">
         <img class="hero-icon" src="../../assets/show.webp" alt="" aria-hidden="true">
         <div class="hero-copy">
-          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.5.0-beta.9</span></div>
+          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.5.0-beta.10</span></div>
           <p data-i18n="hero_desc">📺 本地媒体 ➜  🤖 AI 转写 ➜ ✨ 可编辑字幕工程</p>
           <span id="demoBadge" class="demo-badge hidden" data-i18n="demo_mode">演示模式</span>
         </div>
@@ -400,12 +400,12 @@
 
     <section class="card" aria-labelledby="logTitle">
       <h2 id="logTitle" data-i18n="logs">4️⃣ 日志</h2>
-      <div class="log-toolbar">
-        <button id="openLogFolder" class="ghost small" type="button" data-i18n="open_log_folder">📁 打开日志文件夹</button>
-      </div>
       <div id="progress" class="progress hidden" aria-hidden="true"><span></span></div>
       <p id="logLatest" class="log-latest hidden" aria-live="polite"></p>
       <pre id="log" class="log" aria-live="polite"></pre>
+      <div class="log-toolbar">
+        <button id="openLogFolder" class="inline-link" type="button" data-i18n="open_log_folder">📁 打开日志文件夹</button>
+      </div>
     </section>
 
     <section id="serverCard" class="card" aria-labelledby="serverTitle">

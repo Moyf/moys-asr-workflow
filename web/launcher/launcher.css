@@ -279,7 +279,7 @@ button:disabled {
 .log-toolbar {
   display: flex;
   justify-content: flex-end;
-  margin: -8px 0 8px;
+  margin: 8px 4px 0px;
 }
 
 .drop-zone {

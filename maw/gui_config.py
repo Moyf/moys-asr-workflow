@@ -65,6 +65,8 @@ class ProviderConfig:
     supports_language: bool = True
     # 供应商级风险提示（如非官方接口）；非空时 GUI 在供应商下方展示。
     note: str = ""
+    # 暂时保留底层配置与 CLI 能力，但不在 Launcher 的供应商列表中展示。
+    hidden: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -433,12 +435,13 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
     ProviderConfig(
         id="tencent",
         label="腾讯云录音文件识别",
-        key_url="https://console.cloud.tencent.com/cam/capi",
+        key_url="https://console.cloud.tencent.com/tokenhub/apikey",
         models=TENCENT_MODELS,
         regions=(),
         languages=LANGUAGES,
         common_languages=QWEN_COMMON_LANGUAGES,
         note="需要 TENCENT_SECRET_ID 与 TENCENT_SECRET_KEY；大于 5MB 的媒体请使用 COS URL",
+        hidden=True,
     ),
     ProviderConfig(
         id="local",
