@@ -486,7 +486,6 @@ class UpdateClient:
         state = _json_read(self.state_path)
         if not bool(state.get("autoCheck", True)):
             return False
-        cached = state.get("result")
         try:
             checked_at = float(state.get("lastCheckedAt") or 0)
         except (TypeError, ValueError):

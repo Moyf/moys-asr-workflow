@@ -7,7 +7,6 @@ import unittest
 from pathlib import Path
 from threading import Event
 from unittest import mock
-from urllib.error import HTTPError
 from urllib.request import Request
 
 from maw.updater import (
