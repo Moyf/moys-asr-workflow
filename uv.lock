@@ -1497,7 +1497,7 @@ wheels = [
 
 [[package]]
 name = "moys-asr-workflow"
-version = "1.5.0b10"
+version = "1.5.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fonttools" },
