@@ -3531,6 +3531,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('selectSettingsTab(settingsTabForSection(sectionId) || activeSettingsTab);', script)
         self.assertIn('.settings-tabs {', stylesheet)
         self.assertIn('.settings-tab.active {', stylesheet)
+        self.assertIn('.settings-tab.active:focus-visible {', stylesheet)
         self.assertIn('.settings-modal-card {', stylesheet)
         self.assertIn('scrollbar-gutter: stable;', stylesheet)
         self.assertIn('settings_tab_llm: "大语言模型（AI）"', script)
