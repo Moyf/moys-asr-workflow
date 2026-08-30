@@ -570,6 +570,11 @@
     soniox_context_too_long: "Soniox context is limited to approximately 10,000 characters."
   });
   Object.assign(STRINGS.zh, {
+    settings_tablist_label: "设置分类",
+    settings_tab_general: "通用",
+    settings_tab_llm: "大语言模型（AI）",
+    settings_tab_processing: "断句与标点",
+    settings_tab_runtime: "运行环境",
     settings_appearance: "外观",
     theme_light: "明亮模式",
     theme_dark: "暗色模式",
@@ -606,6 +611,11 @@
     llm_reasoning_mode_hint: "默认关闭；自动表示跟随模型默认。"
   });
   Object.assign(STRINGS.en, {
+    settings_tablist_label: "Settings categories",
+    settings_tab_general: "General",
+    settings_tab_llm: "LLM",
+    settings_tab_processing: "Split & punctuation",
+    settings_tab_runtime: "Runtime",
     settings_appearance: "Appearance",
     theme_light: "Light",
     theme_dark: "Dark",
@@ -911,6 +921,7 @@
   const dragState = { depth: 0 };
   let api = null;
   let prefsTimer = 0;
+  let activeSettingsTab = "general";
 
   function mockApi() {
     let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "zh", customDisplayName: "", postprocessApiKeys: {}, theme: null };
@@ -1706,7 +1717,45 @@
   async function refreshServerMedia() { const jsonPath = $("jsonPath").value.trim(); const result = await bridge("check_server_media", { jsonPath }); state.serverMediaOk = Boolean(result.hasMedia && result.mediaExists); $("serverMediaField").classList.toggle("hidden", state.serverMediaOk || !jsonPath); return result; }
   async function refreshFfmpeg() { const result = await bridge("check_ffmpeg"); $("modalFfmpegFound").classList.toggle("hidden", !result.found); $("modalFfmpegMissing").classList.toggle("hidden", Boolean(result.found)); $("ffmpegPathBox").classList.toggle("hidden", Boolean(result.found)); $("settingsDot").classList.toggle("hidden", Boolean(result.found)); $("modalFfmpegFound").title = result.directory || ""; $("ffmpegDir").textContent = result.directory || ""; return result; }
   function ffmpegSaveError(result) { if (result.code) return errText(result.code, result.detail || result.error); if (result.found === false) return t("ffmpeg_missing"); return compactDetail(result.error) || t("failed"); }
+  function selectSettingsTab(tabName) {
+    const tabs = [...document.querySelectorAll("[data-settings-tab]")];
+    const tab = tabs.find((item) => item.dataset.settingsTab === tabName);
+    if (!tab) return;
+    activeSettingsTab = tabName;
+    tabs.forEach((item) => {
+      const active = item === tab;
+      item.classList.toggle("active", active);
+      item.setAttribute("aria-selected", String(active));
+      item.tabIndex = active ? 0 : -1;
+    });
+    document.querySelectorAll("[data-settings-panel]").forEach((panel) => {
+      const active = panel.dataset.settingsPanel === tabName;
+      panel.classList.toggle("hidden", !active);
+      panel.setAttribute("aria-hidden", String(!active));
+    });
+    const scroll = document.querySelector(".settings-scroll");
+    if (scroll) scroll.scrollTop = 0;
+  }
+  function settingsTabForSection(sectionId) {
+    return $(sectionId)?.closest("[data-settings-panel]")?.dataset.settingsPanel || "";
+  }
+  function moveSettingsFocus(event) {
+    const tabs = [...event.currentTarget.closest('[role="tablist"]').querySelectorAll("[data-settings-tab]")];
+    const currentIndex = tabs.indexOf(event.currentTarget);
+    if (currentIndex < 0) return;
+    const offset = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
+    const target = event.key === "Home"
+      ? tabs[0]
+      : event.key === "End"
+        ? tabs.at(-1)
+        : tabs[(currentIndex + offset + tabs.length) % tabs.length];
+    if (!target) return;
+    event.preventDefault();
+    selectSettingsTab(target.dataset.settingsTab);
+    target.focus();
+  }
   function openSettings(sectionId = "", focusId = "") {
+    selectSettingsTab(settingsTabForSection(sectionId) || activeSettingsTab);
     $("settingsModal").classList.remove("hidden");
     refreshFfmpeg();
     void refreshOcrRuntime();
@@ -1919,6 +1968,12 @@
 
   $("langToggle").addEventListener("click", async () => { state.lang = state.lang === "zh" ? "en" : "zh"; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (!result.ok) applyErrorResult(result); });
   $("themeLight").addEventListener("click", () => setTheme("light")); $("themeDark").addEventListener("click", () => setTheme("dark")); $("themeSystem").addEventListener("click", () => setTheme("system"));
+  document.querySelectorAll("[data-settings-tab]").forEach((tab) => {
+    tab.addEventListener("click", () => selectSettingsTab(tab.dataset.settingsTab));
+    tab.addEventListener("keydown", (event) => {
+      if (["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp", "Home", "End"].includes(event.key)) moveSettingsFocus(event);
+    });
+  });
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme(); });
   $("homeLink").addEventListener("click", () => bridge("open_url", { url: HOME_URL }));
   $("errorNoticeClose").addEventListener("click", hideErrorNotice);

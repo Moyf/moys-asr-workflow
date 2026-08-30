@@ -2299,6 +2299,12 @@ textarea::placeholder {
   padding: 16px;
 }
 
+.settings-modal-card {
+  height: min(720px, calc(100vh - 36px));
+  block-size: min(720px, calc(100dvh - 36px));
+  max-block-size: calc(100dvh - 36px);
+}
+
 .batch-confirm-card {
   width: min(480px, calc(100vw - 32px));
 }
@@ -2331,10 +2337,65 @@ textarea::placeholder {
   font-size: 16px;
 }
 
+.settings-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  flex: 0 0 auto;
+  margin: 0 0 12px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+}
+
+.settings-tab {
+  min-width: 0;
+  min-height: 34px;
+  overflow: hidden;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast);
+}
+
+.settings-tab:hover {
+  color: var(--text-primary);
+  background: var(--btn-bg-hover);
+}
+
+.settings-tab.active {
+  color: var(--accent-hover);
+  background: var(--accent-tint-strong);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.settings-panel {
+  animation: settings-panel-enter 160ms ease-out;
+}
+
+@keyframes settings-panel-enter {
+  from {
+    opacity: .72;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .settings-scroll {
   min-block-size: 0;
   flex: 1 1 auto;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   overscroll-behavior: contain;
   padding-inline-end: 2px;
 }
@@ -2437,6 +2498,9 @@ code {
   .toolbox-grid {
     grid-template-columns: 1fr;
   }
+  .settings-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .toolbox-tab-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2458,6 +2522,12 @@ code {
   }
   .toolbox-action-slot .primary {
     width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-panel {
+    animation: none;
   }
 }
 
