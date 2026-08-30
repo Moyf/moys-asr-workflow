@@ -26,6 +26,13 @@ __WAVEFORM_CSS__
   <span class="app-version" id="app-version" data-label="版本号">版本号 __APP_VERSION__</span>
   <span class="json-name __JSON_NAME_CLASS__" id="json-name" title="点击复制工程文件名">__JSON_DISPLAY__</span>
 </h1>
+<div class="server-connection-banner" id="server-connection-banner" hidden role="alert" aria-live="assertive">
+  <span class="server-connection-banner-icon" aria-hidden="true">!</span>
+  <div class="server-connection-banner-copy">
+    <strong class="server-connection-banner-title">服务器连接已断开</strong>
+    <span class="server-connection-banner-message">请在 Launcher 中确认服务器状态；当前无法自动保存工程，请使用右上角「导出工程」下载当前工程，避免进度丢失。</span>
+  </div>
+</div>
 <div class="toolbar row-actions">
   <button type="button" id="new-project" title="创建并保存一个空白工程">新建工程</button>
   <span class="dropdown button-split" id="open-project-dropdown">
