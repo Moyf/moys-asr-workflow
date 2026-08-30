@@ -19,7 +19,7 @@ MAW 本身不托管转写服务。你选择的服务商会直接接收待转写�
 - 源码运行：继续使用仓库根目录的 `.env`，可从 `.env.example` 复制后填写 `DASHSCOPE_API_KEY`、`SONIOX_API_KEY`，或腾讯云的 `TENCENT_SECRET_ID` 与 `TENCENT_SECRET_KEY`。
 - API Key 只应保存在环境变量或本机 `.env` 中，不要放进命令行、工程、日志、截图或 AI 对话。
 - Qwen Key 申请见[阿里云百炼官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)；Soniox Key 见 [Soniox Console](https://console.soniox.com)。
-- 腾讯云密钥见[API 密钥管理](https://console.cloud.tencent.com/cam/capi)；录音文件识别使用 `CreateRecTask` / `DescribeTaskStatus`，默认引擎为 `16k_zh_en_2.0`。
+- 腾讯云密钥见[API 密钥管理](https://console.cloud.tencent.com/tokenhub/apikey)；录音文件识别使用 `CreateRecTask` / `DescribeTaskStatus`，默认引擎为 `16k_zh_en_2.0`。
 - 腾讯云的 `Words` 结果包含字词级毫秒时间码；传入 `--speaker` 会启用说话人分离并保留匿名 speaker 标签。完整示例见[完整工作流](WORKFLOW.md)。
 
 区域、模型、热词、上下文和完整参数见[完整工作流](WORKFLOW.md)与[CLI 文档](CLI.md)。

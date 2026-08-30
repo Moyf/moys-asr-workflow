@@ -282,6 +282,8 @@ class GuiConfigTests(unittest.TestCase):
     def test_provider_registry_contains_tencent_recording_recognition(self) -> None:
         provider = gui_config.provider_by_id("tencent")
 
+        self.assertEqual(provider.key_url, "https://console.cloud.tencent.com/tokenhub/apikey")
+        self.assertTrue(provider.hidden)
         self.assertEqual(provider.models[0].id, "16k_zh_en_2.0")
         self.assertEqual(provider.models[0].env_key, "TENCENT_SECRET_ID")
         self.assertEqual(provider.regions, ())

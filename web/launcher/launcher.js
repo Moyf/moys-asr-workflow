@@ -769,7 +769,7 @@
          guiLang: saved.guiLang,
          theme: saved.theme,
         showRareLangs: saved.showRareLangs || false,
-        appVersion: "1.5.0-beta.9",
+        appVersion: "1.5.0-beta.10",
         stickerDir: saved.stickerDir || "",
         postprocessProviders: [
           { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
