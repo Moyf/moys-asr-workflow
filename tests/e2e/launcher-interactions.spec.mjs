@@ -125,13 +125,18 @@ test('runtime errors show an actionable notice outside the log', async ({ page }
   await expect(page.locator('#status')).toContainText('未找到 FFmpeg / FFprobe');
   await expect(page.locator('#errorNoticeActions')).toBeVisible();
   await expect(page.locator('#errorNoticeAction')).toHaveText('FFmpeg 配置项');
-  await expect(page.locator('#errorNoticeFaq')).toHaveText('常见问题修复');
+  await expect(page.locator('#errorNoticeFaq')).toHaveText('查看常见问题');
   await expect(page.locator('#errorNoticeIssue')).toBeHidden();
   await expect(page.locator('#errorNoticeActions > button')).toHaveCount(4);
-  await expect(page.locator('#errorNoticeActions')).toHaveCSS('display', 'grid');
+  await expect(notice).toHaveCSS('display', 'flex');
+  await expect(notice).toHaveCSS('flex-direction', 'column');
+  await expect(page.locator('#errorNoticeActions')).toHaveCSS('display', 'flex');
+  await expect(page.locator('#errorNoticeActions')).toHaveCSS('flex-direction', 'row');
+  await expect(page.locator('#errorNoticeActions')).toHaveCSS('flex-wrap', 'wrap');
+  await expect(page.locator('#errorNoticeClose')).toHaveCSS('position', 'absolute');
   await page.setViewportSize({ width: 480, height: 800 });
-  await expect(page.locator('#errorNoticeActions')).toHaveCSS('grid-template-columns', /\S+\s+\S+/);
-  await expect.poll(() => page.locator('#errorNoticeCopy').evaluate((element) => getComputedStyle(element.parentElement.previousElementSibling).gridColumn)).toBe('1');
+  await expect(page.locator('#errorNoticeActions')).toHaveCSS('display', 'flex');
+  await expect(page.locator('#errorNoticeActions')).toHaveCSS('flex-direction', 'row');
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.evaluate(() => {
     const original = window.MAWLauncher.callBackend;
@@ -201,9 +206,13 @@ test('error notice and status remain above the fixed footer at desktop and narro
   expect(desktopNormal.notice.bottom).toBeLessThanOrEqual(desktopNormal.footer.top + 1);
   expect(desktopNormal.status.bottom).toBeLessThanOrEqual(desktopNormal.footer.top + 1);
   expect(desktopNormal.copy.width).toBeGreaterThan(250);
-  expect(desktopNormal.actions.left).toBeGreaterThanOrEqual(desktopNormal.copy.right - 1);
-  expect(desktopNormal.close.left).toBeGreaterThanOrEqual(desktopNormal.actions.right - 1);
-  expect(desktopNormal.actions.height).toBeGreaterThan(30);
+  expect(desktopNormal.actions.top).toBeGreaterThanOrEqual(desktopNormal.copy.bottom - 1);
+  expect(desktopNormal.actions.left).toBeGreaterThanOrEqual(desktopNormal.notice.left - 1);
+  expect(desktopNormal.actions.right).toBeLessThanOrEqual(desktopNormal.notice.right + 1);
+  expect(desktopNormal.close.right).toBeGreaterThanOrEqual(desktopNormal.notice.right - 16);
+  expect(desktopNormal.close.top).toBeGreaterThanOrEqual(desktopNormal.notice.top - 1);
+  expect(desktopNormal.close.bottom).toBeLessThanOrEqual(desktopNormal.notice.top + 42);
+  expect(desktopNormal.actions.height).toBeGreaterThanOrEqual(30);
   await showRetry();
   const desktopDynamic = await measure();
   await expect(page.locator('#retryPostprocess')).toBeVisible();
@@ -219,16 +228,18 @@ test('error notice and status remain above the fixed footer at desktop and narro
   expect(narrowNormal.notice.bottom).toBeLessThanOrEqual(narrowNormal.footer.top + 1);
   expect(narrowNormal.status.bottom).toBeLessThanOrEqual(narrowNormal.footer.top + 1);
   expect(narrowNormal.actions.top).toBeGreaterThanOrEqual(narrowNormal.copy.bottom - 1);
-  expect(narrowNormal.close.bottom).toBeLessThanOrEqual(narrowNormal.actions.top + 1);
-  expect(narrowNormal.copy.right).toBeLessThanOrEqual(narrowNormal.close.left + 1);
+  expect(narrowNormal.close.right).toBeGreaterThanOrEqual(narrowNormal.notice.right - 16);
+  expect(narrowNormal.close.top).toBeGreaterThanOrEqual(narrowNormal.notice.top - 1);
+  expect(narrowNormal.close.bottom).toBeLessThanOrEqual(narrowNormal.notice.top + 42);
   await showRetry();
   const narrowDynamic = await measure();
   expect(narrowDynamic.footer.height).toBeGreaterThan(narrowNormal.footer.height);
   expect(narrowDynamic.notice.bottom).toBeLessThanOrEqual(narrowDynamic.footer.top + 1);
   expect(narrowDynamic.status.bottom).toBeLessThanOrEqual(narrowDynamic.footer.top + 1);
   expect(narrowDynamic.actions.top).toBeGreaterThanOrEqual(narrowDynamic.copy.bottom - 1);
-  expect(narrowDynamic.close.bottom).toBeLessThanOrEqual(narrowDynamic.actions.top + 1);
-  expect(narrowDynamic.copy.right).toBeLessThanOrEqual(narrowDynamic.close.left + 1);
+  expect(narrowDynamic.close.right).toBeGreaterThanOrEqual(narrowDynamic.notice.right - 16);
+  expect(narrowDynamic.close.top).toBeGreaterThanOrEqual(narrowDynamic.notice.top - 1);
+  expect(narrowDynamic.close.bottom).toBeLessThanOrEqual(narrowDynamic.notice.top + 42);
 });
 
 test('error reports copy safe details and support file URL fallback', async ({ page }) => {
@@ -297,9 +308,9 @@ test('unknown errors stay generic and do not expose FFmpeg actions', async ({ pa
   await expect(page.locator('#errorNoticeMessage')).toContainText('service exploded');
   await expect(page.locator('#errorNoticeAction')).toBeHidden();
   await expect(page.locator('#errorNoticeFaq')).toBeVisible();
-  await expect(page.locator('#errorNoticeFaq')).toHaveText('常见问题修复');
+  await expect(page.locator('#errorNoticeFaq')).toHaveText('查看常见问题');
   await expect(page.locator('#errorNoticeCopy')).toHaveText('复制错误报告');
-  await expect(page.locator('#errorNoticeIssue')).toHaveText('项目主页');
+  await expect(page.locator('#errorNoticeIssue')).toHaveText('打开项目主页');
   await expect(page.locator('#errorNoticeIssue')).toBeVisible();
   await page.evaluate(() => {
     const original = window.MAWLauncher.callBackend;
