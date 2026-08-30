@@ -449,6 +449,30 @@
   h1 .json-name:hover { background: var(--bg-raised); color: var(--accent-hover); border-color: var(--border-strong); }
   h1 .json-name.empty { color: var(--text-faint); border-color: var(--border-subtle); background: transparent; cursor: default; pointer-events: none; }
 
+  /* === Server connection warning ===
+     This is a persistent state banner rather than a transient flashHint: once
+     the local editor server disappears, users must be able to see the warning
+     while preserving and exporting any edits still held by the page. */
+  .server-connection-banner {
+    flex: 0 0 auto; display: flex; align-items: flex-start; gap: 10px;
+    margin: 0 0 10px; padding: 10px 14px;
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--red) 16%, var(--bg-panel) 84%);
+    border: 2px solid var(--red); border-left-width: 6px;
+    border-radius: var(--radius-md);
+    box-shadow: 0 0 0 1px var(--red-soft), var(--shadow-2);
+  }
+  .server-connection-banner[hidden] { display: none; }
+  .server-connection-banner-icon {
+    flex: 0 0 auto; display: grid; place-items: center;
+    width: 22px; height: 22px; margin-top: 1px;
+    color: var(--danger-hover-fg); background: var(--red);
+    border-radius: 50%; font-size: 15px; font-weight: 800; line-height: 1;
+  }
+  .server-connection-banner-copy { display: grid; gap: 2px; min-width: 0; }
+  .server-connection-banner-title { color: var(--red-hover); font-size: 14px; line-height: 1.35; }
+  .server-connection-banner-message { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+
   /* === 媒体区 === */
   /* player-wrap 是媒体预览面板：顶部 .player-toolbar + 下方 .player-stage（视频与预览层）。
      预览层（字幕/表情包）的几何以 stage 为定位与测量基准，工具栏不参与。 */
@@ -2409,6 +2433,7 @@
     border-radius: var(--radius-sm); background: var(--bg-raised);
     transition: border-color var(--t-fast), background var(--t-fast);
   }
+  .timed-text-edit-row[hidden] { display: none; }
   .timed-text-edit-row:last-child { margin-bottom: 0; }
   /* 修改行与字幕列表的 dirty 状态保持一致，使用琥珀色提示。 */
   .timed-text-edit-row.changed { border-color: var(--border-subtle); border-left-color: var(--amber); background: color-mix(in srgb, var(--amber) 3%, var(--bg-raised)); }

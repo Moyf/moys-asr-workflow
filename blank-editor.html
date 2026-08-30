@@ -466,6 +466,30 @@
   h1 .json-name:hover { background: var(--bg-raised); color: var(--accent-hover); border-color: var(--border-strong); }
   h1 .json-name.empty { color: var(--text-faint); border-color: var(--border-subtle); background: transparent; cursor: default; pointer-events: none; }
 
+  /* === Server connection warning ===
+     This is a persistent state banner rather than a transient flashHint: once
+     the local editor server disappears, users must be able to see the warning
+     while preserving and exporting any edits still held by the page. */
+  .server-connection-banner {
+    flex: 0 0 auto; display: flex; align-items: flex-start; gap: 10px;
+    margin: 0 0 10px; padding: 10px 14px;
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--red) 16%, var(--bg-panel) 84%);
+    border: 2px solid var(--red); border-left-width: 6px;
+    border-radius: var(--radius-md);
+    box-shadow: 0 0 0 1px var(--red-soft), var(--shadow-2);
+  }
+  .server-connection-banner[hidden] { display: none; }
+  .server-connection-banner-icon {
+    flex: 0 0 auto; display: grid; place-items: center;
+    width: 22px; height: 22px; margin-top: 1px;
+    color: var(--danger-hover-fg); background: var(--red);
+    border-radius: 50%; font-size: 15px; font-weight: 800; line-height: 1;
+  }
+  .server-connection-banner-copy { display: grid; gap: 2px; min-width: 0; }
+  .server-connection-banner-title { color: var(--red-hover); font-size: 14px; line-height: 1.35; }
+  .server-connection-banner-message { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+
   /* === 媒体区 === */
   /* player-wrap 是媒体预览面板：顶部 .player-toolbar + 下方 .player-stage（视频与预览层）。
      预览层（字幕/表情包）的几何以 stage 为定位与测量基准，工具栏不参与。 */
@@ -2426,6 +2450,7 @@
     border-radius: var(--radius-sm); background: var(--bg-raised);
     transition: border-color var(--t-fast), background var(--t-fast);
   }
+  .timed-text-edit-row[hidden] { display: none; }
   .timed-text-edit-row:last-child { margin-bottom: 0; }
   /* 修改行与字幕列表的 dirty 状态保持一致，使用琥珀色提示。 */
   .timed-text-edit-row.changed { border-color: var(--border-subtle); border-left-color: var(--amber); background: color-mix(in srgb, var(--amber) 3%, var(--bg-raised)); }
@@ -4074,9 +4099,16 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.5.0-beta.10</span>
+  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.5.0</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
+<div class="server-connection-banner" id="server-connection-banner" hidden role="alert" aria-live="assertive">
+  <span class="server-connection-banner-icon" aria-hidden="true">!</span>
+  <div class="server-connection-banner-copy">
+    <strong class="server-connection-banner-title">服务器连接已断开</strong>
+    <span class="server-connection-banner-message">请在 Launcher 中确认服务器状态；当前无法自动保存工程，请使用右上角「导出工程」下载当前工程，避免进度丢失。</span>
+  </div>
+</div>
 <div class="toolbar row-actions">
   <button type="button" id="new-project" title="创建并保存一个空白工程">新建工程</button>
   <span class="dropdown button-split" id="open-project-dropdown">
@@ -12270,6 +12302,8 @@ export default MawDynamicCaptions;
     '当前有未保存的改动，是否确定新建工程？将丢失未保存内容。': 'There are unsaved changes. Create a new project and discard them?',
     '打开工程': 'Open project',
     '最近工程': 'Recent projects', '自动打开上次工程': 'Automatically open last project',
+    '服务器连接已断开': 'Server connection lost',
+    '请在 Launcher 中确认服务器状态；当前无法自动保存工程，请使用右上角「导出工程」下载当前工程，避免进度丢失。': 'Check the server status in Launcher. Auto-saving is currently unavailable; use “Export project” in the upper-right corner to download the current project and avoid losing your progress.',
     '加载媒体': 'Load media', '加载字幕': 'Load subtitles', '保存工程': 'Save project', '另存为…': 'Save as…', '保存': 'Save', '保存成功！': 'Saved!', '保存失败': 'Save failed',
     'item 内容': 'Item content', '字幕内容': 'Subtitle content', '关闭提示': 'Dismiss notification',
     '拖入工程、媒体或 SRT 开始编辑': 'Drop a project, media, or SRT to start editing',
@@ -12727,6 +12761,7 @@ export default MawDynamicCaptions;
     '当前字幕没有可用于拆分的文字。': 'The current subtitles have no text that can be used for splitting.',
     '等待可靠时间码映射': 'Waiting for a reliable timing mapping',
     '当前没有可编辑的字幕': 'There are no subtitles to edit',
+    '当前没有文本修改，未作改动': 'There are no text changes to apply',
     '字幕在编辑窗口打开后发生了变化，请关闭窗口并重新打开': 'The subtitles changed while the editor was open. Close and reopen it.',
     '无法应用文本修改：字幕行结构发生了变化': 'Cannot apply text changes: the subtitle rows changed',
     '切换轨道会丢弃当前未应用的文本修改，是否继续？': 'Switching tracks will discard unapplied text changes. Continue?',
@@ -34586,7 +34621,7 @@ function updateTimedTextEditReport() {
   if (!timedTextEditDraft.sourceSegments.length && timedTextEditDraft.allSourceSegments.length) {
     timedTextEditReportHint.textContent = '当前没有显示中的字幕；打开“显示已禁用字幕”后才能编辑。';
   }
-  timedTextEditApply.disabled = !report.valid || stats.changedSegments === 0;
+  timedTextEditApply.disabled = !report.valid;
 }
 
 function refreshTimedTextEditTrackOptions(kind = currentTimedTextEditKind()) {
@@ -34933,7 +34968,11 @@ timedTextEditApply?.addEventListener('click', () => {
   if (!draft) return;
   syncTimedTextEditDraftFromDom();
   flushTimedTextEditReport();
-  if (!draft.report?.valid || !draft.report.stats.changedSegments) return;
+  if (!draft.report?.valid) return;
+  if (!draft.report.stats.changedSegments) {
+    flashHint('当前没有文本修改，未作改动', 'invalid');
+    return;
+  }
   const targetSegments = timedTextEditSegments(draft.kind);
   const snapshotSegments = Array.isArray(draft.allSourceSegments)
     ? draft.allSourceSegments : draft.sourceSegments;
@@ -36296,6 +36335,75 @@ async function loadDeferredReapeaks() {
   }
 }
 
+// Server-editor 页面可能在本地服务退出后继续留在浏览器中。定期复用
+// startup-status 这个轻量 JSON 接口：断联时保留页面里的编辑内容，并显示
+// 持久横幅；服务恢复后自动清掉横幅，不刷新页面，避免覆盖未保存的改动。
+const SERVER_CONNECTION_CHECK_INTERVAL_MS = 2000;
+const SERVER_CONNECTION_REQUEST_TIMEOUT_MS = 1500;
+const SERVER_CONNECTION_FAILURE_THRESHOLD = 2;
+const serverConnectionBanner = document.getElementById('server-connection-banner');
+let serverConnectionCheckTimer = 0;
+let serverConnectionCheckInFlight = false;
+let serverConnectionFailureCount = 0;
+
+function serverConnectionCheckUrl() {
+  return SERVER_CONFIG?.healthUrl || SERVER_CONFIG?.startupStatusUrl || '';
+}
+
+function renderServerConnectionBanner(disconnected) {
+  if (serverConnectionBanner) serverConnectionBanner.hidden = !disconnected;
+}
+
+function scheduleServerConnectionCheck(delayMs = SERVER_CONNECTION_CHECK_INTERVAL_MS) {
+  if (!serverConnectionCheckUrl()) return;
+  if (serverConnectionCheckTimer) window.clearTimeout(serverConnectionCheckTimer);
+  serverConnectionCheckTimer = window.setTimeout(() => {
+    serverConnectionCheckTimer = 0;
+    void checkServerConnection();
+  }, Math.max(0, delayMs));
+}
+
+async function checkServerConnection() {
+  const url = serverConnectionCheckUrl();
+  if (!url || serverConnectionCheckInFlight) return;
+  serverConnectionCheckInFlight = true;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), SERVER_CONNECTION_REQUEST_TIMEOUT_MS);
+  let healthy = false;
+  try {
+    const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
+    const result = await response.json().catch(() => null);
+    healthy = response.ok && result?.ok === true;
+  } catch (_error) {
+    // A refused/aborted local request is the expected signal that the server disappeared.
+  } finally {
+    window.clearTimeout(timeout);
+    serverConnectionCheckInFlight = false;
+  }
+
+  if (healthy) {
+    serverConnectionFailureCount = 0;
+    renderServerConnectionBanner(false);
+  } else {
+    serverConnectionFailureCount += 1;
+    if (serverConnectionFailureCount >= SERVER_CONNECTION_FAILURE_THRESHOLD) {
+      renderServerConnectionBanner(true);
+    }
+  }
+  scheduleServerConnectionCheck();
+}
+
+function startServerConnectionMonitor() {
+  if (!serverConnectionBanner || !serverConnectionCheckUrl()) return;
+  renderServerConnectionBanner(false);
+  void checkServerConnection();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) scheduleServerConnectionCheck(0);
+});
+window.addEventListener('online', () => scheduleServerConnectionCheck(0));
+
 const SERVER_STARTUP_LABELS = {
   zh: {
     starting: '正在启动编辑器…',
@@ -36526,6 +36634,7 @@ if (repairedTimingCount > 0) {
   flashHint(`已自动修复 ${repairedGroupReferenceCount} 处分组引用`, 'warning');
 }
 void loadServerStartup();
+startServerConnectionMonitor();
 if (SERVER_CONFIG?.startupStatus !== 'loading') void loadDeferredReapeaks();
 
 document.getElementById('filter-over')?.addEventListener('click', (e) => {

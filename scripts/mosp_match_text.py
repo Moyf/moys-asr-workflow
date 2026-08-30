@@ -12,6 +12,7 @@ import argparse
 import difflib
 import json
 import math
+import re
 import sys
 import unicodedata
 from dataclasses import dataclass
@@ -23,6 +24,8 @@ PRESERVED_END_PUNCTUATION = frozenset("！？：!?:")
 REMOVED_END_PUNCTUATION = frozenset("，。；、,.;")
 SPLIT_PUNCTUATION = PRESERVED_END_PUNCTUATION | REMOVED_END_PUNCTUATION | frozenset("\n")
 CLOSING_PUNCTUATION = frozenset("”’」』】〕〉》）)]}」』】〕〉》")
+MARKDOWN_EXTENSIONS = frozenset({".md", ".markdown"})
+_MARKDOWN_HEADING_PREFIX = re.compile(r"^[ \t]{0,3}#{1,6}(?:[ \t]+|$)", re.MULTILINE)
 
 
 class AlignmentError(ValueError):
@@ -69,6 +72,32 @@ def normalize_character(character: str) -> str:
 
 def normalize_text(text: str) -> str:
     return "".join(normalize_character(character) for character in text)
+
+
+def clean_markdown_text(text: str) -> str:
+    """Remove leading YAML front matter and ATX heading markers."""
+
+    normalized = (
+        text.lstrip("\ufeff")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+    )
+    lines = normalized.split("\n")
+    front_matter_end = None
+    if lines and lines[0].strip() == "---":
+        front_matter_end = next(
+            (
+                index
+                for index, line in enumerate(lines[1:], start=1)
+                if line.strip() in {"---", "..."}
+            ),
+            None,
+        )
+    if front_matter_end is not None:
+        lines = lines[front_matter_end + 1 :]
+        while lines and not lines[0]:
+            lines.pop(0)
+    return _MARKDOWN_HEADING_PREFIX.sub("", "\n".join(lines))
 
 
 def _milliseconds(value: object, location: str) -> int:
@@ -614,6 +643,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         mosp_text = input_mosp.read_text(encoding="utf-8-sig")
         manuscript_text = input_text.read_text(encoding="utf-8-sig")
+        if input_text.suffix.lower() in MARKDOWN_EXTENSIONS:
+            manuscript_text = clean_markdown_text(manuscript_text)
         output_cues, report, matched_mosp = generate_matched_mosp(
             mosp_text, manuscript_text, args.mismatch_policy
         )

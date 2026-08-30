@@ -1,7 +1,7 @@
 {
   "name": "mose-desktop",
   "private": true,
-  "version": "1.5.0-beta.10",
+  "version": "1.5.0",
   "description": "MOSE — Moy's Open Subtitle Editor (Electron desktop app)",
   "main": "src/main.cjs",
   "scripts": {

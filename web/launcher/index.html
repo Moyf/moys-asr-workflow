@@ -23,7 +23,7 @@
       <div class="hero-brand">
         <img class="hero-icon" src="../../assets/show.webp" alt="" aria-hidden="true">
         <div class="hero-copy">
-          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.5.0-beta.10</span></div>
+          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.5.0</span></div>
           <p data-i18n="hero_desc">📺 本地媒体 ➜  🤖 AI 转写 ➜ ✨ 可编辑字幕工程</p>
           <span id="demoBadge" class="demo-badge hidden" data-i18n="demo_mode">演示模式</span>
         </div>
@@ -404,7 +404,7 @@
       <p id="logLatest" class="log-latest hidden" aria-live="polite"></p>
       <pre id="log" class="log" aria-live="polite"></pre>
       <div class="log-toolbar">
-        <button id="openLogFolder" class="inline-link" type="button" data-i18n="open_log_folder">📁 打开日志文件夹</button>
+        <button id="openLogFolder" class="inline-link" type="button" data-i18n="open_log_folder">打开日志文件夹</button>
       </div>
     </section>
 
@@ -429,7 +429,7 @@
           <p id="serverMediaFlvHint" class="hint warn hidden" data-i18n="flv_media_hint" aria-live="polite">flv 无法预览，将会自动转换成 mp4 格式</p>
           <p id="serverMediaPathError" class="field-error"></p>
         </div>
-        <div class="field compact"><label for="port" data-i18n="port">端口</label><div class="port-row"><input id="port" type="number" min="1" max="65535" value="8250"><button id="refreshServerStatus" class="ghost small" type="button" data-i18n="server_refresh" title="刷新当前端口的服务器状态">刷新</button></div><p id="portError" class="field-error"></p></div>
+        <div class="field"><label for="port" data-i18n="port">端口</label><div class="port-row"><input id="port" type="number" min="1" max="65535" value="8250"><button id="refreshServerStatus" class="ghost small" type="button" data-i18n="server_refresh" title="刷新当前端口的服务器状态">刷新</button></div><p id="portError" class="field-error"></p></div>
       </div>
     </section>
     <div id="errorNotice" class="error-notice hidden" role="alert" aria-live="assertive">
@@ -439,9 +439,9 @@
       </div>
       <div id="errorNoticeActions" class="error-notice-actions">
         <button id="errorNoticeAction" class="ghost small hidden" type="button"></button>
-        <button id="errorNoticeFaq" class="ghost small" type="button" data-i18n="error_open_faq">常见问题修复</button>
+        <button id="errorNoticeFaq" class="ghost small" type="button" data-i18n="error_open_faq">查看常见问题</button>
         <button id="errorNoticeCopy" class="ghost small" type="button" data-i18n="error_copy_report">复制错误报告</button>
-        <button id="errorNoticeIssue" class="ghost small hidden" type="button" data-i18n="error_open_issue">项目主页</button>
+        <button id="errorNoticeIssue" class="ghost small hidden" type="button" data-i18n="error_open_issue">打开项目主页</button>
       </div>
       <button id="errorNoticeClose" class="error-notice-close" type="button" data-i18n-aria-label="error_notice_close" aria-label="关闭提示">×</button>
     </div>
