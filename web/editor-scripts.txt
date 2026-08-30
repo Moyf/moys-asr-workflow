@@ -1,4 +1,5 @@
-# MAWE editor scripts are inlined in this order by edit.py and the Tauri build.
+# MAWE editor scripts are inlined in this order by edit.py and the Server build;
+# Electron loads the same rendered Server page at runtime.
 # Keep runtime/bootstrap modules before the modules that consume their exports.
 editor-runtime.js
 gap-remove-core.js

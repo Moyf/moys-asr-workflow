@@ -12352,6 +12352,34 @@ function hasUnsavedProjectChanges() {
     || multiDirty;
 }
 
+let suppressBeforeUnload = false;
+
+async function openDesktopProjectPath(projectPath) {
+  if (!SERVER_CONFIG?.desktopOpenProjectUrl || typeof projectPath !== 'string' || !projectPath.trim()) return;
+  if (hasUnsavedProjectChanges()
+      && !confirm('当前有未保存的改动，是否确定打开新工程？将丢失未保存内容。')) return;
+  try {
+    const response = await fetch(SERVER_CONFIG.desktopOpenProjectUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: projectPath }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
+    // The confirmation above covers this intentional project switch.  Avoid
+    // asking a second time when the reload fires the global beforeunload hook.
+    suppressBeforeUnload = true;
+    window.location.reload();
+  } catch (error) {
+    flashHint(`打开工程失败：${error.message || error}`, 'warning');
+  }
+}
+
+window.addEventListener('message', (event) => {
+  if (event.source !== window || event.data?.source !== 'mose-desktop') return;
+  if (event.data.type === 'open-project') void openDesktopProjectPath(event.data.path);
+});
+
 // 文字编辑先写入页面内存，避免每个按键都请求服务器；失焦后短暂防抖保存，
 // 这样点击其它字幕或刷新页面时不会因为 30 秒定时保存尚未到点而丢失刚完成的修改。
 function scheduleAutoSaveFlush() {
@@ -17794,5 +17822,5 @@ hideDisabledToggle?.addEventListener('change', () => {
 
 // 离开提示
 window.addEventListener('beforeunload', (e) => {
-  if (hasUnsavedProjectChanges()) { e.preventDefault(); e.returnValue = ''; }
+  if (!suppressBeforeUnload && hasUnsavedProjectChanges()) { e.preventDefault(); e.returnValue = ''; }
 });

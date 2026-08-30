@@ -220,17 +220,30 @@ class EditorAssetContractTests(unittest.TestCase):
         indices = [page.index(marker) for marker in markers]
         self.assertEqual(indices, sorted(indices))
 
-    def test_tauri_builder_consumes_the_shared_script_manifest(self) -> None:
-        build_script = (ROOT / "desktop" / "src-tauri" / "build.rs").read_text(encoding="utf-8")
-        self.assertIn('web_dir.join("editor-scripts.txt")', build_script)
-        self.assertIn('("__EDITOR_SCRIPTS_JS__", editor_scripts.as_str())', build_script)
-        for legacy_token in (
-            "__EDITOR_UTILS_JS__",
-            "__EDITOR_I18N_JS__",
-            "__WAVEFORM_JS__",
-            "__EDITOR_JS__",
-        ):
-            self.assertNotIn(legacy_token, build_script)
+    def test_electron_uses_the_shared_server_and_frontend_source(self) -> None:
+        package_json = (ROOT / "desktop" / "package.json").read_text(encoding="utf-8")
+        main_process = (ROOT / "desktop" / "src" / "main.cjs").read_text(encoding="utf-8")
+        preload = (ROOT / "desktop" / "src" / "preload.cjs").read_text(encoding="utf-8")
+        editor = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
+
+        self.assertIn('"main": "src/main.cjs"', package_json)
+        self.assertIn('"electron": "37.2.6"', package_json)
+        self.assertIn('"electron-builder": "26.0.12"', package_json)
+        # The Electron source path is assembled with Node's platform-aware
+        # ``path.join`` rather than a hard-coded slash-separated literal.
+        self.assertIn("server-editor", main_process)
+        self.assertIn("serve.py", main_process)
+        self.assertIn("MAW_DESKTOP_TOKEN", main_process)
+        self.assertIn("MAW_DESKTOP_READY", main_process)
+        self.assertIn("contextIsolation: true", main_process)
+        self.assertIn("nodeIntegration: false", main_process)
+        self.assertIn("sandbox: true", main_process)
+        self.assertIn("X-MAW-Desktop-Token", main_process)
+        self.assertIn("window.postMessage({ source: 'mose-desktop'", preload)
+        self.assertIn("desktopOpenProjectUrl", editor)
+        self.assertIn("let suppressBeforeUnload = false;", editor)
+        self.assertIn("suppressBeforeUnload = true;", editor)
+        self.assertFalse((ROOT / "desktop" / "src-tauri").exists())
 
 
 class StickerScanTests(unittest.TestCase):

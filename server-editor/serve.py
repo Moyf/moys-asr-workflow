@@ -448,6 +448,7 @@ def build_server_page(
     settings: ServerSettings | None = None,
     request_token: str = "",
     startup_status: dict[str, object] | None = None,
+    desktop_mode: bool = False,
 ) -> bytes:
     """Render with current web/ assets on every page request to prevent UI drift."""
     settings = settings or ServerSettings()
@@ -498,6 +499,41 @@ def build_server_page(
         page_data["workspace"] = copy.deepcopy(active_workspace)
         page_data["workspace"].pop("navigation", None)
         page_data["workspace"]["selectedPreset"] = f"saved:{settings.active_workspace_name}"
+    server_config = {
+        "saveUrl": "/api/project",
+        "requestToken": request_token,
+        "stickerRootUrl": "/api/stickers/root",
+        "portableStickerExportUrl": "/api/exports/sticker-otio",
+        "otiozStickerExportUrl": "/api/exports/sticker-otioz",
+        "otiozTimelineExportUrl": "/api/exports/timeline-otioz",
+        "lottieExportUrl": "/api/exports/lottie",
+        "ografExportUrl": "/api/exports/ograf",
+        "waveformUrl": "/api/waveform",
+        "startupStatusUrl": "/api/startup-status",
+        "startupStatus": startup_status.get("status", "ready"),
+        "startupStage": startup_status.get("stage", "ready"),
+        "startupProgress": startup_status.get("progress", 100),
+        "startupError": startup_status.get("error", ""),
+        "canSave": project.json_path is not None,
+        "canPortableStickerExport": project.json_path is not None,
+        "canOtozStickerExport": project.json_path is not None,
+        "canOtozTimelineExport": project.json_path is not None,
+        "initialStickerCount": len(project.stickers),
+        "canLottieExport": project.json_path is not None,
+        "canOgrafExport": project.json_path is not None,
+        "autoLoadedMediaName": (project.source_media_path or project.media_path).name if project.media_path else None,
+        "recentProjectsUrl": "/api/recent-projects/open",
+        "attachUrl": "/api/project/attach",
+        "settingsUrl": "/api/settings",
+        "recentProjects": [item.to_json() for item in settings.recent_projects],
+        "autoOpenLastProject": settings.auto_open_last_project,
+        "savedWorkspaces": settings.saved_workspaces,
+        "presetWorkspaces": settings.preset_workspaces,
+        "activeWorkspaceName": settings.active_workspace_name,
+    }
+    if desktop_mode:
+        server_config["desktopMode"] = True
+        server_config["desktopOpenProjectUrl"] = "/api/desktop/project/open"
     page = edit.render_editor_page(
         title=title,
         media_html=media_html,
@@ -507,38 +543,7 @@ def build_server_page(
         sticker_root_json=json.dumps(project.sticker_root.as_posix() if project.sticker_root else "", ensure_ascii=False),
         sticker_url_prefix_json=json.dumps("/stickers", ensure_ascii=False),
         ninja_sfx_base_url_json=json.dumps("/sfx/", ensure_ascii=False),
-        server_config_json=json.dumps({
-            "saveUrl": "/api/project",
-            "requestToken": request_token,
-            "stickerRootUrl": "/api/stickers/root",
-            "portableStickerExportUrl": "/api/exports/sticker-otio",
-            "otiozStickerExportUrl": "/api/exports/sticker-otioz",
-            "otiozTimelineExportUrl": "/api/exports/timeline-otioz",
-            "lottieExportUrl": "/api/exports/lottie",
-            "ografExportUrl": "/api/exports/ograf",
-            "waveformUrl": "/api/waveform",
-            "startupStatusUrl": "/api/startup-status",
-            "startupStatus": startup_status.get("status", "ready"),
-            "startupStage": startup_status.get("stage", "ready"),
-            "startupProgress": startup_status.get("progress", 100),
-            "startupError": startup_status.get("error", ""),
-            "canSave": project.json_path is not None,
-            "canPortableStickerExport": project.json_path is not None,
-            "canOtozStickerExport": project.json_path is not None,
-            "canOtozTimelineExport": project.json_path is not None,
-            "initialStickerCount": len(project.stickers),
-            "canLottieExport": project.json_path is not None,
-            "canOgrafExport": project.json_path is not None,
-            "autoLoadedMediaName": (project.source_media_path or project.media_path).name if project.media_path else None,
-            "recentProjectsUrl": "/api/recent-projects/open",
-            "attachUrl": "/api/project/attach",
-            "settingsUrl": "/api/settings",
-            "recentProjects": [item.to_json() for item in settings.recent_projects],
-            "autoOpenLastProject": settings.auto_open_last_project,
-            "savedWorkspaces": settings.saved_workspaces,
-            "presetWorkspaces": settings.preset_workspaces,
-            "activeWorkspaceName": settings.active_workspace_name,
-        }, ensure_ascii=False),
+        server_config_json=json.dumps(server_config, ensure_ascii=False),
         app_version=html.escape(f"v{edit.get_app_version()}"),
         json_display=html.escape(json_display),
         json_name_class=json_class,
@@ -565,6 +570,8 @@ class EditorServer(ThreadingHTTPServer):
         defer_reapeaks: bool = True,
         peaks_per_second: int = edit.DEFAULT_PEAKS_PER_SECOND,
         project_loader: ProjectLoader | None = None,
+        desktop_mode: bool = False,
+        desktop_token: str = "",
     ):
         self.defer_reapeaks = defer_reapeaks and not no_waveform
         if self.defer_reapeaks:
@@ -576,6 +583,8 @@ class EditorServer(ThreadingHTTPServer):
         self.no_waveform = no_waveform
         self.peaks_per_second = peaks_per_second
         self.request_token = secrets.token_urlsafe(32)
+        self.desktop_mode = desktop_mode
+        self.desktop_token = desktop_token
         self.save_lock = threading.Lock()
         self.sticker_lock = threading.Lock()
         self.timeline_otioz_lock = threading.Lock()
@@ -588,6 +597,12 @@ class EditorServer(ThreadingHTTPServer):
         self.reapeaks_payload: dict[str, dict] = {}
         self.reapeaks_thread: threading.Thread | None = None
         self.reapeaks_project: ServerProject | None = None
+        # Project loads can outlive the HTTP request that started them (the
+        # initial project is deliberately loaded in the background).  Keep a
+        # monotonically increasing generation so an older loader can never
+        # overwrite a newer desktop/recent-project switch.
+        self.project_lock = threading.RLock()
+        self.project_generation = 0
         self.startup_lock = threading.Lock()
         self.project_loader = project_loader
         self.startup_thread: threading.Thread | None = None
@@ -633,45 +648,48 @@ class EditorServer(ThreadingHTTPServer):
                 "error": self.startup_error,
             }
 
-    def start_project_load(self) -> bool:
-        """Start the initial project load after the listening socket is ready."""
-        with self.startup_lock:
-            loader = self.project_loader
-            if loader is None:
-                return False
-            self.project_loader = None
-        thread = threading.Thread(
-            target=self._load_initial_project,
-            args=(loader,),
-            daemon=True,
-            name="maw-load-project",
-        )
-        self.startup_thread = thread
-        thread.start()
-        return True
+    def begin_project_switch(self) -> int:
+        """Invalidate older asynchronous project loads and return a token."""
+        with self.project_lock:
+            self.project_generation += 1
+            return self.project_generation
 
-    def _load_initial_project(self, loader: ProjectLoader) -> None:
-        try:
-            project = loader(self.update_startup_progress)
-            if self.defer_reapeaks:
-                project = without_deferred_reapeaks(project)
+    def project_generation_is_current(self, generation: int) -> bool:
+        with self.project_lock:
+            return generation == self.project_generation
+
+    def commit_project(self, project: ServerProject, generation: int | None = None) -> bool:
+        """Atomically publish a project if its load generation is still current."""
+        with self.project_lock:
+            if generation is not None and generation != self.project_generation:
+                return False
             self.project = project
             if project.json_path is not None:
                 try:
                     self.remember_project(project.json_path)
                 except OSError as error:
+                    # A settings-directory failure must not discard a
+                    # successfully loaded project.
                     print(f"[settings] 后台保存最近工程失败: {error}", file=sys.stderr)
+            return True
+
+    def mark_project_ready(self, generation: int) -> bool:
+        """Finish the startup state only when no newer project switch exists."""
+        with self.project_lock:
+            if generation != self.project_generation:
+                return False
             with self.startup_lock:
                 self.startup_status = "ready"
                 self.startup_stage = "ready"
                 self.startup_progress = 100
                 self.startup_error = ""
-            if project.json_path is not None:
-                print(f"已加载工程: {project.json_path}")
-            self.start_deferred_reapeaks_load()
-        except Exception as error:  # noqa: BLE001 - keep the health server alive for UI diagnostics
-            detail = str(error) or error.__class__.__name__
-            print(f"[project] 后台加载失败: {detail}", file=sys.stderr)
+            return True
+
+    def mark_project_error(self, generation: int, detail: str) -> bool:
+        """Expose a failed current-generation load without reviving stale errors."""
+        with self.project_lock:
+            if generation != self.project_generation:
+                return False
             with self.startup_lock:
                 self.startup_status = "error"
                 self.startup_stage = "error"
@@ -679,6 +697,45 @@ class EditorServer(ThreadingHTTPServer):
                 self.startup_error = detail
             with self.reapeaks_lock:
                 self.reapeaks_status = "disabled"
+            return True
+
+    def start_project_load(self) -> bool:
+        """Start the initial project load after the listening socket is ready."""
+        with self.startup_lock:
+            loader = self.project_loader
+            if loader is None:
+                return False
+            self.project_loader = None
+        with self.project_lock:
+            generation = self.project_generation
+        thread = threading.Thread(
+            target=self._load_initial_project,
+            args=(loader, generation),
+            daemon=True,
+            name="maw-load-project",
+        )
+        self.startup_thread = thread
+        thread.start()
+        return True
+
+    def _load_initial_project(self, loader: ProjectLoader, generation: int) -> None:
+        try:
+            project = loader(self.update_startup_progress)
+            if self.defer_reapeaks:
+                project = without_deferred_reapeaks(project)
+            committed = self.commit_project(project, generation)
+            if not committed:
+                # A newer desktop/recent-project request owns the current
+                # generation.  Its result (or error) controls the UI state.
+                return
+            self.mark_project_ready(generation)
+            if project.json_path is not None:
+                print(f"已加载工程: {project.json_path}")
+            self.start_deferred_reapeaks_load()
+        except Exception as error:  # noqa: BLE001 - keep the health server alive for UI diagnostics
+            detail = str(error) or error.__class__.__name__
+            print(f"[project] 后台加载失败: {detail}", file=sys.stderr)
+            self.mark_project_error(generation, detail)
 
     def set_sticker_root(self, raw_path: str) -> tuple[Path, list[dict]]:
         """Scan a root before atomically making it the active sticker scope."""
@@ -869,20 +926,58 @@ class EditorServer(ThreadingHTTPServer):
             known = next((item for item in self.settings.recent_projects if item.path == candidate), None)
             if not known:
                 raise RecentProjectError("该工程不在本机最近打开记录中")
-        project = load_project(
-            known.path,
-            None,
-            self.stickers_dir,
-            no_waveform=self.no_waveform,
-            load_reapeaks=not self.defer_reapeaks,
-            peaks_per_second=self.peaks_per_second,
-        )
+        with self.startup_lock:
+            startup_loading = self.startup_status == "loading"
+        generation = self.begin_project_switch()
+        try:
+            project = load_project(
+                known.path,
+                None,
+                self.stickers_dir,
+                no_waveform=self.no_waveform,
+                load_reapeaks=not self.defer_reapeaks,
+                peaks_per_second=self.peaks_per_second,
+            )
+        except Exception as error:  # noqa: BLE001 - preserve the HTTP error while settling startup state
+            if startup_loading:
+                self.mark_project_error(generation, str(error) or error.__class__.__name__)
+            raise
         if self.defer_reapeaks:
             project = without_deferred_reapeaks(project)
-        with self.settings_lock:
-            self.project = project
-            self.settings = remember_project(self.settings, project.json_path)
-            self.persist_settings()
+        if not self.commit_project(project, generation):
+            raise ProjectMutationInProgressError("工程切换已被更新请求取代")
+        self.mark_project_ready(generation)
+        self.start_deferred_reapeaks_load()
+        return project
+
+    def open_project_path(self, project_path: str) -> ServerProject:
+        """Load an on-disk project requested by the Electron desktop host."""
+        candidate = Path(project_path).expanduser().resolve()
+        if candidate.suffix.lower() not in {".json", ".mosp"}:
+            raise ValueError("工程文件必须是 .mosp 或 .json")
+        if not candidate.is_file():
+            raise FileNotFoundError(f"工程文件不存在：{candidate}")
+        with self.startup_lock:
+            startup_loading = self.startup_status == "loading"
+        generation = self.begin_project_switch()
+        try:
+            project = load_project(
+                candidate,
+                None,
+                self.stickers_dir,
+                no_waveform=self.no_waveform,
+                load_reapeaks=not self.defer_reapeaks,
+                peaks_per_second=self.peaks_per_second,
+            )
+        except Exception as error:  # noqa: BLE001 - preserve the HTTP error while settling startup state
+            if startup_loading:
+                self.mark_project_error(generation, str(error) or error.__class__.__name__)
+            raise
+        if self.defer_reapeaks:
+            project = without_deferred_reapeaks(project)
+        if not self.commit_project(project, generation):
+            raise ProjectMutationInProgressError("工程切换已被更新请求取代")
+        self.mark_project_ready(generation)
         self.start_deferred_reapeaks_load()
         return project
 
@@ -925,22 +1020,29 @@ class EditorServer(ThreadingHTTPServer):
             normalized_browser = normalize_project(browser_data)
         except ProjectValidationFailed as error:
             raise AttachProjectError(f"打开的工程内容无效：{error}") from error
-        project = load_project(
-            project_path,
-            None,
-            self.stickers_dir,
-            no_waveform=self.no_waveform,
-            load_reapeaks=not self.defer_reapeaks,
-            peaks_per_second=self.peaks_per_second,
-        )
-        if self.defer_reapeaks:
-            project = without_deferred_reapeaks(project)
-        if project.data.get("segments") != normalized_browser.get("segments"):
-            raise AttachProjectError("媒体同目录的同名工程与打开的副本内容不一致，未接管")
-        with self.settings_lock:
-            self.project = project
-            self.settings = remember_project(self.settings, project.json_path)
-            self.persist_settings()
+        with self.startup_lock:
+            startup_loading = self.startup_status == "loading"
+        generation = self.begin_project_switch()
+        try:
+            project = load_project(
+                project_path,
+                None,
+                self.stickers_dir,
+                no_waveform=self.no_waveform,
+                load_reapeaks=not self.defer_reapeaks,
+                peaks_per_second=self.peaks_per_second,
+            )
+            if self.defer_reapeaks:
+                project = without_deferred_reapeaks(project)
+            if project.data.get("segments") != normalized_browser.get("segments"):
+                raise AttachProjectError("媒体同目录的同名工程与打开的副本内容不一致，未接管")
+        except Exception as error:  # noqa: BLE001 - settle startup state before returning the HTTP error
+            if startup_loading:
+                self.mark_project_error(generation, str(error) or error.__class__.__name__)
+            raise
+        if not self.commit_project(project, generation):
+            raise ProjectMutationInProgressError("工程切换已被更新请求取代")
+        self.mark_project_ready(generation)
         self.start_deferred_reapeaks_load()
         return project
 
@@ -1404,7 +1506,29 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
     def do_HEAD(self) -> None:  # noqa: N802
         self.handle_request(include_body=False)
 
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        """Apply the desktop token gate to preflight requests as well.
+
+        The editor currently uses same-origin requests and does not need a
+        CORS preflight, but treating OPTIONS like the other HTTP entry points
+        keeps the private desktop server fail-closed for future integrations.
+        """
+        if not self.editor_server.desktop_mode:
+            # Preserve the public Server's historical response for methods it
+            # does not implement; this branch is only a desktop hardening
+            # boundary, not a new public CORS API.
+            self.send_error(HTTPStatus.NOT_IMPLEMENTED)
+            return
+        if not self._desktop_request_allowed():
+            return
+        self.send_response(HTTPStatus.NO_CONTENT)
+        self.send_header("Allow", "GET, HEAD, POST, OPTIONS")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_POST(self) -> None:  # noqa: N802
+        if not self._desktop_request_allowed():
+            return
         path = urlsplit(self.path).path
         if path == "/api/shutdown":
             self.shutdown_server()
@@ -1412,6 +1536,15 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.save_project()
         elif path == "/api/project/attach":
             self.attach_project()
+        elif path == "/api/desktop/project/open":
+            # Keep the Electron-only project switch endpoint out of the
+            # ordinary public Server contract.  Desktop mode already passed
+            # the token gate above; a normal browser Server should see the
+            # same not-found response as any other unknown API.
+            if self.editor_server.desktop_mode:
+                self.open_desktop_project()
+            else:
+                self.send_localized_error(HTTPStatus.NOT_FOUND, "未知 API")
         elif path == "/api/recent-projects/open":
             self.open_recent_project()
         elif path == "/api/settings":
@@ -1441,6 +1574,20 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         """Stop this loopback-only server from the MAW CLI."""
         self.send_json(HTTPStatus.OK, {"ok": True, "service": "maw-editor"})
         threading.Thread(target=self.editor_server.shutdown, daemon=True).start()
+
+    def _desktop_request_allowed(self) -> bool:
+        """Require the Electron-only token when the server is privately embedded."""
+        if not self.editor_server.desktop_mode:
+            return True
+        supplied = self.headers.get("X-MAW-Desktop-Token", "")
+        if supplied and compare_digest(supplied, self.editor_server.desktop_token):
+            return True
+        # An unauthorized POST may still carry a request body.  Closing the
+        # connection prevents those unread bytes from being interpreted as a
+        # second HTTP request on a keep-alive socket.
+        self.close_connection = True
+        self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "桌面请求令牌无效"})
+        return False
 
     def save_project(self) -> None:
         try:
@@ -1706,6 +1853,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         except FileNotFoundError as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error), "missing": True})
             return
+        except ProjectMutationInProgressError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecentProjectError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
@@ -1731,8 +1881,36 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         except (UnicodeDecodeError, json.JSONDecodeError, FileNotFoundError, ValueError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
+        except ProjectMutationInProgressError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
         except OSError as error:
             self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": f"接管工程失败：{error}"})
+            return
+        self.send_json(HTTPStatus.OK, {
+            "ok": True,
+            "name": project.json_path.name if project.json_path else "",
+            "mediaName": (project.source_media_path or project.media_path).name if project.media_path else "",
+        })
+
+    def open_desktop_project(self) -> None:
+        try:
+            request = self.read_json_request()
+            project_path = request.get("path")
+            if not isinstance(project_path, str) or not project_path.strip():
+                raise ValueError("工程路径格式不正确")
+            project = self.editor_server.open_project_path(project_path)
+        except FileNotFoundError as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error), "missing": True})
+            return
+        except ProjectMutationInProgressError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, ProjectValidationFailed, MediaResolutionError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        except OSError as error:
+            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": f"加载工程失败：{error}"})
             return
         self.send_json(HTTPStatus.OK, {
             "ok": True,
@@ -1841,6 +2019,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         return False
 
     def handle_request(self, *, include_body: bool) -> None:
+        if not self._desktop_request_allowed():
+            return
         path = urlsplit(self.path).path
         if path == "/api/prproj-capability":
             self.send_json(HTTPStatus.OK, PRPROJ_CAPABILITY)
@@ -1857,6 +2037,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 self.editor_server.settings,
                 self.editor_server.request_token,
                 self.editor_server.startup_status_payload(),
+                self.editor_server.desktop_mode,
             )
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -1998,6 +2179,8 @@ def open_editor_server(
     defer_reapeaks: bool = True,
     peaks_per_second: int = edit.DEFAULT_PEAKS_PER_SECOND,
     project_loader: ProjectLoader | None = None,
+    desktop_mode: bool = False,
+    desktop_token: str = "",
 ) -> tuple[EditorServer, bool]:
     """Bind the editor server and report whether the port had to be advanced.
 
@@ -2028,6 +2211,8 @@ def open_editor_server(
                     defer_reapeaks=defer_reapeaks,
                     peaks_per_second=peaks_per_second,
                     project_loader=project_loader,
+                    desktop_mode=desktop_mode,
+                    desktop_token=desktop_token,
                 ),
                 offset > 0,
             )
@@ -2056,12 +2241,20 @@ def main() -> int:
     parser.add_argument("--no-open", action="store_true", help="只启动服务，不自动打开浏览器")
     parser.add_argument("--no-waveform", action="store_true", help="跳过 ffmpeg 波形预计算")
     parser.add_argument(
+        "--desktop-mode",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--waveform-peaks-per-second", type=int, default=edit.DEFAULT_PEAKS_PER_SECOND,
         help=f"波形峰值密度（默认: {edit.DEFAULT_PEAKS_PER_SECOND}/秒）",
     )
     args = parser.parse_args()
     if args.blank and args.json_path:
         parser.error("--blank 不能与 json_path 同时使用")
+    desktop_token = os.environ.get("MAW_DESKTOP_TOKEN", "") if args.desktop_mode else ""
+    if args.desktop_mode and not desktop_token:
+        parser.error("--desktop-mode requires MAW_DESKTOP_TOKEN")
 
     settings_path = default_settings_path()
     settings = load_default_server_settings()
@@ -2081,7 +2274,12 @@ def main() -> int:
             )
 
         project_loader = load_requested_project
-    elif not args.blank and settings.auto_open_last_project and settings.recent_projects:
+    elif (
+        not args.blank
+        and os.environ.get("MAW_DESKTOP_SMOKE") != "1"
+        and settings.auto_open_last_project
+        and settings.recent_projects
+    ):
         last_project = settings.recent_projects[0]
 
         def load_last_project(progress: ProjectLoadProgressCallback) -> ServerProject:
@@ -2109,6 +2307,8 @@ def main() -> int:
             defer_reapeaks=defer_reapeaks,
             peaks_per_second=args.waveform_peaks_per_second,
             project_loader=project_loader,
+            desktop_mode=args.desktop_mode,
+            desktop_token=desktop_token,
         )
     except OSError as error:
         if args.port is None:
@@ -2121,11 +2321,17 @@ def main() -> int:
         print(f"[serve] 端口 {DEFAULT_EDITOR_PORT} 已被占用，已改用 {server.server_address[1]}")
     with server:
         host, port = server.server_address[:2]
+        if args.desktop_mode:
+            print(
+                "MAW_DESKTOP_READY "
+                + json.dumps({"host": host, "port": port}, ensure_ascii=True),
+                flush=True,
+            )
         url = f"http://{host}:{port}/"
         print("MAWE 已启动（仅本机可访问）")
         print(f"地址: {url}")
         print("按 Ctrl+C 停止服务；修改 web/ 下源码后刷新页面即可看到最新界面。")
-        if not args.no_open:
+        if not args.no_open and not args.desktop_mode:
             webbrowser.open(url)
         try:
             server.serve_forever()

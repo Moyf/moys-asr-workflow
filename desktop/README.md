@@ -1,71 +1,71 @@
-# MOSE — Tauri 桌面应用开发目录
+# MOSE — Electron 桌面编辑器
 
-本目录是 **MOSE（Moy's Open Subtitle Editor）** 的 Tauri 桌面应用开发目录，属于 MAW 仓库的一部分。
+MOSE（Moy's Open Subtitle Editor）是 MAW 的 Windows x64 Electron 壳。它不复制
+编辑器前端，也不另实现一套工程存储：Electron 启动同一套件中的 `MAW.exe`，由
+`server-editor/serve.py` 提供受令牌保护的 localhost 页面和全部保存、波形、媒体、
+最近工程与导出能力。
 
-## 架构定位
+## 目录关系
 
+```text
+moys-asr-workflow/
+├── web/                     # 编辑器唯一前端真源
+├── server-editor/serve.py   # MAW 与 MOSE 共用的 Server
+├── desktop/src/main.cjs     # Electron 主进程
+├── desktop/src/preload.cjs  # 最小化 contextBridge
+└── desktop/src/runtime_helpers.cjs
 ```
-moys-asr-workflow/           (MAW，本仓库)
-├── web/                     ← 编辑器源码（真源，被 desktop/ 引用）
-├── desktop/                 ← 本目录，Tauri 项目
-│   └── src-tauri/           ← Rust 后端 + Tauri 配置
-├── server-editor/serve.py   ← localhost 编辑器（保留，作为 MAW fallback）
-└── edit.py                  ← 便携 HTML 生成器（继续支持）
 
-moys-open-subtitle-editor/   (MOSE 发布仓库，独立)
-└── 仅放 release 快照 + issue 跟踪
+发布套件固定为：
+
+```text
+MAW-MOSE-Windows-x64-<version>.zip
+└── MAW/
+    ├── MAW.exe
+    └── MOSE/
+        ├── MOSE.exe
+        └── resources/…
 ```
 
-## 开发流程
+`MOSE` 目录不能脱离同一套件的 `MAW.exe` 单独运行。MAW Launcher 会优先检测
+`MAW\MOSE\MOSE.exe`，并在 Windows 当前用户范围内更新 `.mosp` 的打开命令和
+MOSE 图标；不会写入管理员范围的注册表，也不会修改 Windows 已有的 `UserChoice`。
+
+## 本地开发
 
 ```powershell
-# 前提：Rust 工具链已装（https://rustup.rs/），且当前终端的 PATH 里有 cargo
-cargo --version   # 能出版本号 = OK
-
-# 进入 desktop/ 开发
-cd D:\Codes\moys-asr-workflow\desktop
-npm install       # 首次：安装 @tauri-apps/cli（package.json 里已声明）
-npx tauri dev     # 启动开发模式（编译 Rust + 从 web/ 生成 index.html + 开 webview 窗口）
-npx tauri build   # 仅构建本地开发包；MOSE 暂不随 MAW Release 分发
+cd desktop
+npm ci
+npm run dev
 ```
 
-启动后：
-- Cargo 构建脚本自动从 `../web/` 生成 `desktop/src/index.html`（等价 `edit.py --blank`）
-- webview 加载该文件，显示完整 MAWE 编辑器界面
-- 改 `web/` 源码后需要重启 `npx tauri dev`（暂无 watch 热重载）
-
-### 关于 PATH
-
-如果终端报 `cargo not found`，说明终端是在装 Rust 之前开的。**开一个新的 PowerShell 窗口**即可（不需要重启电脑）。
-
-## 与 web/ 的关系
-
-`desktop/` 的 Tauri 构建脚本读取 `../web/editor-template.html`，在构建时做 `__DATA_JSON__` 等 token 替换（与 `edit.py:render_editor_page` 等价），然后把结果编入 MOSE。运行 Release 包不再依赖仓库源码路径。
-
-**web/ 永远是编辑器真源。desktop/ 不复制 web/，只引用。**
-
-## 与工程文件格式的关系
-
-MOSE 与 MAW/MAWE 共享同一份工程文件契约：内容是 UTF-8 JSON，推荐扩展名为 `.mosp`，同时兼容旧的 `.json`。`.workspace.json` 是独立的工作区迁移文件，不是字幕工程。
-
-## 同步到 MOSE 发布仓库
-
-每次 MOSE release 时，将 `desktop/` + `../web/` 快照同步到 `moys-open-subtitle-editor` 仓库：
+开发模式会调用仓库根目录的 `server-editor/serve.py`。如需指定 Python，可设置
+`MAW_MOSE_PYTHON`。打开工程时把 `.mosp` 或旧 `.json` 路径作为参数传给 Electron：
 
 ```powershell
-# 同步脚本尚未纳入当前 MAW 开发流程
-.\scripts\sync-to-mose-release.ps1
+npm start -- "D:\Projects\clip.mosp"
 ```
 
-## 当前状态
+安全边界：窗口启用 `contextIsolation`、sandbox 且关闭 `nodeIntegration`；只允许
+导航到本次启动的精确 `127.0.0.1` 地址，外部链接交给系统浏览器。后端使用系统
+随机端口，并通过 `MAW_DESKTOP_TOKEN` 环境变量传递一次性令牌，令牌不会出现在
+命令行或日志中。
 
-这是 MOSE 的开发目录，不是 MAW 的稳定发布入口。目前已完成并在主线保留：
+## 验证与构建
 
-- Tauri 项目骨架，以及从 `web/` 构建 MOSE 页面；
-- 工程打开、保存、最近工程和本机工作区设置 IPC；
-- 媒体自动加载、表情包目录扫描和 FFmpeg 波形 sidecar；
-- `.mosp` 文件关联配置，以及 MAW Release Launcher 直接启动同目录 MOSE 并传入工程路径的集成。
+```powershell
+npm test
+npm run build       # Windows x64 win-unpacked
+npm run smoke       # 启动后端、加载页面、正常退出
+```
 
-MOSE 当前仅保留在本目录开发，暂不随 MAW Windows/macOS Release 分发，Launcher 的「在 MOSE 中打开」入口也已隐藏。独立 MOSE 安装包、独立发布仓库同步脚本和稳定版发布周期仍未承诺。MAW 的 localhost 服务器与便携 HTML 是当前正式支持的编辑入口。
+修改 `web/` 后先在仓库根目录重新生成便携页面：
+
+```powershell
+..\.venv\Scripts\python.exe edit.py --blank
+```
+
+Installer、卸载清理、开始菜单快捷方式、代码签名、自动更新以及 macOS/Linux
+Electron 版本不在当前范围内；本轮只发布 Windows x64 套件 ZIP。
 
 License: AGPL-3.0-only（与 MAW 主仓库一致）。

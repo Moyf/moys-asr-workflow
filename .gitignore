@@ -35,13 +35,8 @@ website/dist/
 playwright-report/
 test-results/
 
-# desktop/ — MOSE Tauri 项目（Rust 构建产物不入库）
-desktop/src-tauri/target/
-desktop/src-tauri/gen/
-# ffmpeg sidecar 二进制（构建前由 scripts/download-ffmpeg.ps1 下载）
-desktop/src-tauri/binaries/
-# index.html 由 Rust 从 web/ 渲染生成（等价 edit.py --blank）
-desktop/src/index.html
+# desktop/ — MOSE Electron 项目（构建产物不入库）
+desktop/dist/
 
 # Local Windows GUI packaging outputs. Keep generated executables local.
 /build/

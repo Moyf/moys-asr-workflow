@@ -570,6 +570,7 @@
   const ERROR_TEXT = {
     zh: {
       json_not_found: "工程文件不存在，请检查路径。",
+      json_invalid: "工程文件必须是 .mosp 或 .json。",
       media_not_found: "媒体文件不存在，请重新选择。",
       server_media_missing: "工程无可用媒体，请手动选择媒体文件。",
       server_stop_not_maw: "当前端口上的进程不是 MAW 字幕编辑服务器，未执行停止。",
@@ -616,6 +617,7 @@
     },
     en: {
       json_not_found: "Project file does not exist. Check the path.",
+      json_invalid: "Project file must use the .mosp or .json extension.",
       media_not_found: "Media file does not exist. Choose it again.",
       server_media_missing: "The project has no usable media. Choose the media file manually.",
       server_stop_not_maw: "The current port is not used by a MAW subtitle editor server, so it was not stopped.",
@@ -662,7 +664,12 @@
     }
   };
   Object.assign(STRINGS.zh, {
-    start_server_editor: "🚀 启动字幕编辑器",
+    start_server_editor: "🌐 启动 Server 版字幕编辑器",
+    open_preferred_editor: "🎬 在 MOSE 中打开",
+    open_mose: "🎬 在 MOSE 中打开",
+    mose_starting: "正在启动 MOSE……",
+    mose_started: "MOSE 编辑器已启动",
+    mose_fallback: "MOSE 不可用，已回退到 Server 版编辑器。",
     toolbox_chain_hint: "每次生成新文件，并自动作为下一步输入；选择工具后运行。",
     error_notice_title: "任务未完成",
     error_notice_close: "关闭提示",
@@ -676,7 +683,12 @@
     error_copy_report_failed: "复制失败，请手动复制日志。",
   });
   Object.assign(STRINGS.en, {
-    start_server_editor: "🚀 Start Editor",
+    start_server_editor: "🌐 Start Server editor",
+    open_preferred_editor: "🎬 Open in MOSE",
+    open_mose: "🎬 Open in MOSE",
+    mose_starting: "Starting MOSE…",
+    mose_started: "MOSE editor started",
+    mose_fallback: "MOSE is unavailable; opened the Server editor instead.",
     toolbox_chain_hint: "Choose a tool to run; each run creates a new file and uses it as the next input.",
     error_notice_title: "Task not completed",
     error_notice_close: "Dismiss message",
@@ -768,6 +780,8 @@
         workspaceId: saved.workspaceId,
          guiLang: saved.guiLang,
          theme: saved.theme,
+        moseAvailable: true,
+        moseBundled: true,
         showRareLangs: saved.showRareLangs || false,
         appVersion: "1.5.0-beta.10",
         stickerDir: saved.stickerDir || "",
@@ -898,6 +912,7 @@
        stop_alignment_server: async () => ({ ok: true, stopped: true }),
        check_server_media: async ({ jsonPath }) => ({ ok: Boolean(jsonPath), hasMedia: Boolean(jsonPath), mediaPath: "D:\\Demo\\clip.mp4", mediaExists: Boolean(jsonPath) }),
       start_server: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "log", message: "[mock] would open http://127.0.0.1:8250/ after server responds" }), 120); return { ok: true, url: "http://127.0.0.1:8250/" }; },
+      open_preferred_editor: async () => ({ ok: true, usedMose: true, path: "D:\\Demo\\MOSE\\MOSE.exe" }),
       get_server_status: async ({ port = "8250" }) => ({ ok: true, running: false, url: `http://127.0.0.1:${port}/` }),
       stop_server: async () => ({ ok: true }),
        start_transcription: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "log", message: "[mock] 上传完成" }), 250); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "done", result: { srtPath: "D:\\Demo\\clip.srt", jsonPath: "D:\\Demo\\clip.json", htmlPath: "D:\\Demo\\clip.edit.html" } }), 900); return { ok: true }; },
@@ -1182,15 +1197,40 @@
   function clearErrors() { ["mediaPath", "srtPath", "apiKey", "workspaceId", "localModelPath", "localModelCachePath", "maxLen", "minLen", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir", "toolboxUtilityMediaPath", "toolboxAlignmentProjectPath", "toolboxAlignmentScriptPath"].forEach((field) => setError(field, "")); hideErrorNotice(); }
   function formPayload() { return { providerId: $("provider").value, modelId: $("model").value, mediaPath: $("mediaPath").value.trim(), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), device: $("localDevice").value, language: languageValue(), lengthLimit: $("lengthLimit").value.trim(), maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
   function serverPayload() { return { jsonPath: $("jsonPath").value.trim(), mediaPath: $("serverMediaPath").value.trim(), port: $("port").value || "8250", guiLang: state.lang }; }
+  function moseAvailable() { return Boolean(state.config?.moseAvailable); }
   function renderServerButton() {
     const button = $("openMawe");
     if (!button) return;
-    button.textContent = state.serverStarting
-      ? SERVER_STARTING_TEXT[state.lang]
-      : ((state.serverRunning || state.detectedServerUrl) ? t("open_editor") : t("start_server_editor"));
-    button.disabled = state.serverStarting;
+    button.textContent = state.moseStarting
+      ? t("mose_starting")
+      : (moseAvailable() ? t("open_preferred_editor") : (state.serverStarting
+        ? SERVER_STARTING_TEXT[state.lang]
+        : ((state.serverRunning || state.detectedServerUrl) ? t("open_editor") : t("start_server_editor"))));
+    button.disabled = state.moseStarting || state.serverStarting;
+    const serverButton = $("openServerEditor");
+    if (serverButton) {
+      serverButton.textContent = (state.serverRunning || state.detectedServerUrl) ? t("open_editor") : t("start_server_editor");
+      serverButton.disabled = state.serverStarting || state.moseStarting;
+    }
     $("stopServer").classList.toggle("hidden", !state.serverRunning && !state.detectedServerUrl);
-    $("stopServer").disabled = state.serverStarting;
+    $("stopServer").disabled = state.serverStarting || state.moseStarting;
+  }
+  async function applyServerLaunchResult(result, projectPath, prefix = "") {
+    if (!result.ok) {
+      applyErrorResult(result);
+      return false;
+    }
+    state.serverRunning = !result.serverAlreadyRunning;
+    state.serverProjectPath = state.serverRunning ? projectPath : "";
+    state.detectedServerUrl = result.serverAlreadyRunning ? result.url || "" : "";
+    $("openMawe").classList.remove("attention");
+    renderServerButton();
+    if (result.url) {
+      setServerStatus(result.url, Boolean(result.serverAlreadyRunning), prefix);
+      await bridge("open_url", { url: result.url });
+    } else if (prefix) setStatus(prefix);
+    else setStatus(t("ready"));
+    return true;
   }
   async function stopEditorServer() { const result = await bridge("stop_server", serverPayload()); if (!result.ok) { applyErrorResult(result); return; } state.serverRunning = false; state.serverProjectPath = ""; state.detectedServerUrl = ""; renderServerButton(); setStatus(t("ready")); }
   async function checkExistingServer(prefix = "") { const previousUrl = state.detectedServerUrl; state.detectedServerUrl = ""; const result = await bridge("get_server_status", serverPayload()); if (!result.ok || !result.running || !result.url) { state.serverRunning = false; state.serverProjectPath = ""; if (prefix) setStatus(`${prefix}，${t("server_start_hint")}`); else if (previousUrl) setStatus(t("ready")); renderServerButton(); return; } const isExternalServer = !state.serverRunning; state.detectedServerUrl = isExternalServer ? result.url : ""; setServerStatus(result.url, isExternalServer, prefix); renderServerButton(); }
@@ -1556,10 +1596,36 @@
     }
   }
   function closeSettings() { $("settingsModal").classList.add("hidden"); }
+  async function openPreferredEditor() {
+    clearErrors();
+    $("htmlMenu").classList.add("hidden");
+    if (state.moseStarting || state.serverStarting) return;
+    const projectPath = $("jsonPath").value.trim();
+    state.moseStarting = true;
+    renderServerButton();
+    try {
+      const result = await bridge("open_preferred_editor", serverPayload());
+      if (!result.ok) {
+        applyErrorResult(result);
+        return;
+      }
+      if (result.usedMose) {
+        $("openMawe").classList.remove("attention");
+        setStatus(t("mose_started"));
+        appendLog(t("mose_started"));
+        return;
+      }
+      appendLog(t("mose_fallback"));
+      await applyServerLaunchResult(result, projectPath, t("mose_fallback"));
+    } finally {
+      state.moseStarting = false;
+      renderServerButton();
+    }
+  }
   async function openServerEditor() {
     clearErrors();
     $("htmlMenu").classList.add("hidden");
-    if (state.serverStarting) return;
+    if (state.serverStarting || state.moseStarting) return;
     const projectPath = $("jsonPath").value.trim();
     const currentUrl = state.detectedServerUrl || `http://127.0.0.1:${$("port").value || "8250"}/?lang=${state.lang}`;
     if ((state.serverRunning && projectPath === state.serverProjectPath) || (state.detectedServerUrl && !projectPath)) { await bridge("open_url", { url: currentUrl }); return; }
@@ -1574,19 +1640,7 @@
         }
       }
       const result = await bridge("start_server", serverPayload());
-      if (result.ok) {
-        state.serverRunning = !result.serverAlreadyRunning;
-        state.serverProjectPath = state.serverRunning ? projectPath : "";
-        state.detectedServerUrl = result.serverAlreadyRunning ? result.url || "" : "";
-        $("openMawe").classList.remove("attention");
-        renderServerButton();
-        if (result.url) {
-          setServerStatus(result.url, Boolean(result.serverAlreadyRunning));
-          await bridge("open_url", { url: result.url });
-        } else setStatus(t("ready"));
-      } else {
-        applyErrorResult(result);
-      }
+      await applyServerLaunchResult(result, projectPath);
     } finally {
       state.serverStarting = false;
       renderServerButton();
@@ -1751,7 +1805,7 @@
     if (event.type === "dropReject" && !state.dropTarget && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
     if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
   }
-  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart: hideErrorNotice, onBatchError: (result) => applyErrorResult(result, false), onLanguageChanged() {}, onProjectPathChanged() {} };
+  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, openPreferredEditor, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart: hideErrorNotice, onBatchError: (result) => applyErrorResult(result, false), onLanguageChanged() {}, onProjectPathChanged() {} };
 
   $("langToggle").addEventListener("click", async () => { state.lang = state.lang === "zh" ? "en" : "zh"; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (!result.ok) applyErrorResult(result); });
   $("themeLight").addEventListener("click", () => setTheme("light")); $("themeDark").addEventListener("click", () => setTheme("dark")); $("themeSystem").addEventListener("click", () => setTheme("system"));
@@ -1803,7 +1857,7 @@
   $("start").addEventListener("click", async () => { if (!validateLocal()) return; hideErrorNotice(); $("retryPostprocess")?.classList.add("hidden"); $("log").textContent = ""; state.lastLogMessage = ""; const latest = $("logLatest"); latest.textContent = ""; latest.classList.add("hidden"); setRunning(true); $("logTitle").scrollIntoView({ behavior: "smooth", block: "start" }); const result = await bridge("start_transcription", formPayload()); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } else if (result.outputPath) { $("srtPath").value = result.outputPath; if (result.outputRenamed) setOutputNotice(t("output_collision")); } });
   $("stop").addEventListener("click", async () => { if (!state.running) return; $("stop").disabled = true; setStatus(t("batch_stopping")); const result = await bridge("cancel_transcription"); if (!result.ok) { $("stop").disabled = false; setStatus(result.detail || result.error || t("failed")); } });
   $("retryPostprocess").addEventListener("click", async () => { hideErrorNotice(); $("retryPostprocess").classList.add("hidden"); setRunning(true); const result = await bridge("retry_postprocess"); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } });
-  $("openMawe").addEventListener("click", openServerEditor); $("stopServer").addEventListener("click", stopEditorServer); $("openFolder").addEventListener("click", () => bridge("open_output_folder")); $("openLogFolder").addEventListener("click", () => bridge("open_log_folder"));
+  $("openMawe").addEventListener("click", openPreferredEditor); $("openServerEditor").addEventListener("click", openServerEditor); $("stopServer").addEventListener("click", stopEditorServer); $("openFolder").addEventListener("click", () => bridge("open_output_folder")); $("openLogFolder").addEventListener("click", () => bridge("open_log_folder"));
   $("openMenu").addEventListener("click", () => $("htmlMenu").classList.toggle("hidden")); $("openHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_html"); }); $("openBlankHtml").addEventListener("click", () => { $("htmlMenu").classList.add("hidden"); bridge("open_blank_html"); }); document.addEventListener("click", (event) => { if (!event.target.closest(".split-wrap")) $("htmlMenu").classList.add("hidden"); });
   $("mediaCard").addEventListener("dragenter", onDragEnter); $("mediaCard").addEventListener("dragleave", onDragLeave);
   bindDropField("mediaPath", "media");

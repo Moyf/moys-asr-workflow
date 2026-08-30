@@ -40,7 +40,7 @@ Phase 1 起，编辑器脚本顺序唯一记录在 `web/editor-scripts.txt`：
 5. `editor.js`：启动主编辑器，建立 `window.MAWE_EDITOR_BRIDGE`，并注册 `editor-bridge`。
 6. `editor-onboarding.js`：建立 `window.MAWE_ONBOARDING`，并注册 `onboarding`。
 
-`edit.py`、Server 页面和 Tauri 构建都读取同一份清单；模板底部只保留 `__EDITOR_SCRIPTS_JS__` 一个脚本 token。旧的兼容出口继续存在，注册表不持有工程数据或控制器实例。
+`edit.py`、Server 页面和 Electron 桌面壳都读取同一份清单；模板底部只保留 `__EDITOR_SCRIPTS_JS__` 一个脚本 token。旧的兼容出口继续存在，注册表不持有工程数据或控制器实例。
 
 ## 状态与依赖清单
 
@@ -106,13 +106,14 @@ git diff --check
 | Python 定向测试 | 17/17 通过 | 资产契约与波形页面生成 |
 | Playwright 几何回归 | 7/7 通过 | Server 与便携 HTML 均覆盖 |
 | i18n / onboarding 定向回归 | 7/8 通过 | 1 项既有未翻译文案失败，与本批次装配改动无关 |
-| Tauri `cargo check` | 未完成 | 本机无法从 crates.io 获取缺失的 `http-range`；`rustfmt` 已单独检查 `build.rs` |
-| Python 全量测试 | 未完成 | 当前解释器缺少 `requests`、`numpy` 等项目依赖；定向测试不受影响 |
+| Electron `npm test` / build | 已完成 | Node 单元测试和 Windows x64 `win-unpacked` 构建已通过；真实 GUI smoke 需在 Windows runner 验证 |
+| Electron source / packaged smoke | 阻塞 | 当前受限桌面环境在 Electron 启动阶段返回 crashpad `not connected`；CI runner 需完成后端启动、页面加载和正常退出闭环 |
+| Python 全量测试 | 已完成 | 当前验证环境全量 1009 项通过（2 项按现有环境跳过） |
 
 ## Phase 0–1 出口
 
 - 基线文档、资产清单和模板脚本 token 可审查。
-- `edit.py` 和 Tauri 构建使用同一份脚本顺序，重复或缺失资产会在生成时失败。
+- `edit.py`、Server 和 Electron 构建使用同一份脚本顺序，重复或缺失资产会在生成时失败。
 - 注册表单元测试通过，旧的 `window.*` 兼容出口仍可用。
 - Server 页面和便携 HTML 能生成；没有未解析模板 token。
 - 没有把 Store、命令层或 React 迁移提前混入本批次。

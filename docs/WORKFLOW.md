@@ -4,7 +4,9 @@
 
 ## 0. 安装依赖
 
-如果使用 GitHub Releases 提供的 Windows 或 macOS 图形版，Python、uv、FFmpeg 与 ffprobe 已由默认 `MAW` 包打包，不需要单独安装；体积更小的 `MAW-lite` 包不包含 FFmpeg，需要系统已安装并可在 PATH 中找到 `ffmpeg` 和 `ffprobe`。Windows 解压后双击 `MAW.exe`；macOS 解压后打开 `MAW.app` 或 `MAW-lite.app`。Launcher 默认启动 Server 版编辑器，右侧菜单可打开工程 HTML 编辑器或空白 HTML 编辑器；MOSE 桌面版暂不随 Release 分发。
+如果使用 GitHub Releases 提供的 Windows 或 macOS 图形版，Python、uv、FFmpeg 与 ffprobe 已由默认 `MAW` 包打包，不需要单独安装；体积更小的 `MAW-lite` 包不包含 FFmpeg，需要系统已安装并可在 PATH 中找到 `ffmpeg` 和 `ffprobe`。Windows 解压后双击 `MAW.exe`；macOS 解压后打开 `MAW.app` 或 `MAW-lite.app`。Windows 另提供 `MAW-MOSE-Windows-x64-v*.zip` 套件，内含优先使用的 Electron MOSE（`MAW\MOSE\MOSE.exe`）；Launcher 主按钮会优先打开 MOSE，缺失或启动失败时自动回退到 Server 版，右侧菜单始终可以强制启动 Server。
+
+MOSE 与 MAW 共用 `server-editor/serve.py` 和 `.mosp` 工程契约。套件目录必须保持 `MAW\MAW.exe` 与 `MAW\MOSE\MOSE.exe` 的相对关系，MOSE 不能从套件中单独拷出运行；Launcher 只为当前用户注册 `.mosp`，不会关联旧的 `.json` 或覆盖 Windows 的 `UserChoice`。
 
 源码方式继续按下列步骤安装：
 

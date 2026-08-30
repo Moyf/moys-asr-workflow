@@ -79,6 +79,115 @@ class LocalEditorServerTests(unittest.TestCase):
 
         self.assertRegex(result.stdout, r"-p(?: PORT)?, --port PORT")
 
+    def test_desktop_mode_requires_environment_token_before_starting(self) -> None:
+        with mock.patch.object(server_editor.sys, "argv", [str(SERVER_PATH), "--desktop-mode"]):
+            with mock.patch.dict(os.environ, {"MAW_DESKTOP_TOKEN": ""}, clear=False):
+                with self.assertRaises(SystemExit) as raised:
+                    server_editor.main()
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_desktop_mode_reports_readiness_after_binding(self) -> None:
+        class FakeServer:
+            server_address = ("127.0.0.1", 43210)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def serve_forever(self):
+                raise KeyboardInterrupt
+
+        with mock.patch.object(server_editor.sys, "argv", [str(SERVER_PATH), "--desktop-mode", "--port", "0", "--no-open", "--no-waveform"]):
+            with mock.patch.dict(os.environ, {"MAW_DESKTOP_TOKEN": "desktop-secret"}, clear=False):
+                with mock.patch.object(server_editor, "default_settings_path", return_value=self.root / "settings.json"):
+                    with mock.patch.object(server_editor, "load_default_server_settings", return_value=server_editor.ServerSettings()):
+                        with mock.patch.object(server_editor, "open_editor_server", return_value=(FakeServer(), False)) as open_server:
+                            with mock.patch.object(server_editor, "load_blank_project", return_value=server_editor.ServerProject({"segments": []}, None, None, None, [])):
+                                with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                                    self.assertEqual(server_editor.main(), 0)
+
+        output = stdout.getvalue()
+        self.assertIn('MAW_DESKTOP_READY {"host": "127.0.0.1", "port": 43210}', output)
+        self.assertLess(output.index("MAW_DESKTOP_READY"), output.index("MAWE 已启动"))
+        self.assertTrue(open_server.call_args.kwargs["desktop_mode"])
+        self.assertEqual(open_server.call_args.kwargs["desktop_token"], "desktop-secret")
+
+    def test_desktop_mode_never_opens_an_external_browser(self) -> None:
+        class FakeServer:
+            server_address = ("127.0.0.1", 43212)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def serve_forever(self):
+                raise KeyboardInterrupt
+
+        with mock.patch.object(
+            server_editor.sys,
+            "argv",
+            [str(SERVER_PATH), "--desktop-mode", "--port", "0"],
+        ):
+            with mock.patch.dict(os.environ, {"MAW_DESKTOP_TOKEN": "desktop-secret"}, clear=False):
+                with mock.patch.object(server_editor, "default_settings_path", return_value=self.root / "settings.json"):
+                    with mock.patch.object(server_editor, "load_default_server_settings", return_value=server_editor.ServerSettings()):
+                        with mock.patch.object(server_editor, "open_editor_server", return_value=(FakeServer(), False)):
+                            with mock.patch.object(
+                                server_editor,
+                                "load_blank_project",
+                                return_value=server_editor.ServerProject({"segments": []}, None, None, None, []),
+                            ):
+                                with mock.patch.object(server_editor.webbrowser, "open") as open_browser:
+                                    with mock.patch("sys.stdout", new_callable=io.StringIO):
+                                        self.assertEqual(server_editor.main(), 0)
+
+        open_browser.assert_not_called()
+
+    def test_desktop_smoke_does_not_restore_a_persisted_recent_project(self) -> None:
+        recent = server_editor.RecentProject(self.project_path.resolve(), self.project_path.name)
+        settings = server_editor.replace(
+            server_editor.ServerSettings(), recent_projects=(recent,), auto_open_last_project=True,
+        )
+
+        class FakeServer:
+            server_address = ("127.0.0.1", 43211)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def serve_forever(self):
+                raise KeyboardInterrupt
+
+        with mock.patch.object(
+            server_editor.sys,
+            "argv",
+            [str(SERVER_PATH), "--desktop-mode", "--port", "0", "--no-open", "--no-waveform"],
+        ):
+            with mock.patch.dict(
+                os.environ,
+                {"MAW_DESKTOP_TOKEN": "desktop-secret", "MAW_DESKTOP_SMOKE": "1"},
+                clear=False,
+            ):
+                with mock.patch.object(server_editor, "default_settings_path", return_value=self.root / "settings.json"):
+                    with mock.patch.object(server_editor, "load_default_server_settings", return_value=settings):
+                        with mock.patch.object(server_editor, "open_editor_server", return_value=(FakeServer(), False)) as open_server:
+                            with mock.patch.object(
+                                server_editor,
+                                "load_blank_project",
+                                return_value=server_editor.ServerProject({"segments": []}, None, None, None, []),
+                            ):
+                                with mock.patch("sys.stdout", new_callable=io.StringIO):
+                                    self.assertEqual(server_editor.main(), 0)
+
+        self.assertIsNone(open_server.call_args.kwargs["project_loader"])
+
     def test_default_settings_path_uses_unified_maw_namespace(self) -> None:
         with mock.patch.object(server_editor.sys, "platform", "win32"), mock.patch.dict(
             os.environ,
@@ -395,6 +504,213 @@ class LocalEditorServerTests(unittest.TestCase):
                 self.assertEqual(json.loads(response.read()), {"ok": True, "service": "maw-editor"})
             thread.join(timeout=2)
             self.assertFalse(thread.is_alive())
+
+    def test_desktop_mode_requires_token_for_page_and_api_requests(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0),
+            project,
+            no_waveform=True,
+            desktop_mode=True,
+            desktop_token="desktop-secret",
+        ) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            base_url = f"http://127.0.0.1:{server.server_address[1]}"
+            try:
+                for headers in ({}, {"X-MAW-Desktop-Token": "wrong"}):
+                    request = urllib.request.Request(f"{base_url}/", headers=headers)
+                    with self.assertRaises(urllib.error.HTTPError) as context:
+                        urllib.request.urlopen(request)
+                    self.assertEqual(context.exception.code, 403)
+
+                request = urllib.request.Request(
+                    f"{base_url}/",
+                    headers={"X-MAW-Desktop-Token": "desktop-secret"},
+                )
+                with urllib.request.urlopen(request) as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertIn('"desktopMode": true', response.read().decode("utf-8"))
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_desktop_mode_applies_token_gate_to_options_requests(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0),
+            project,
+            no_waveform=True,
+            desktop_mode=True,
+            desktop_token="desktop-secret",
+        ) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+            def options(token: str | None) -> int:
+                headers = {}
+                if token is not None:
+                    headers["X-MAW-Desktop-Token"] = token
+                request = urllib.request.Request(f"{base_url}/", headers=headers, method="OPTIONS")
+                try:
+                    with urllib.request.urlopen(request) as response:
+                        return response.status
+                except urllib.error.HTTPError as error:
+                    return error.code
+
+            try:
+                self.assertEqual(options(None), 403)
+                self.assertEqual(options("desktop-secret"), 204)
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_desktop_project_open_requires_token_and_rejects_invalid_paths(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0),
+            project,
+            no_waveform=True,
+            desktop_mode=True,
+            desktop_token="desktop-secret",
+        ) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+            def post(path: str, payload: dict, token: str | None = "desktop-secret") -> tuple[int, dict]:
+                headers = {"Content-Type": "application/json"}
+                if token is not None:
+                    headers["X-MAW-Desktop-Token"] = token
+                request = urllib.request.Request(
+                    f"{base_url}{path}",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers=headers,
+                    method="POST",
+                )
+                try:
+                    with urllib.request.urlopen(request) as response:
+                        return response.status, json.loads(response.read())
+                except urllib.error.HTTPError as error:
+                    return error.code, json.loads(error.read())
+
+            try:
+                status, result = post(
+                    "/api/desktop/project/open",
+                    {"path": str(self.other_project_path)},
+                    token=None,
+                )
+                self.assertEqual(status, 403)
+                self.assertFalse(result["ok"])
+                self.assertEqual(server.project.json_path, self.project_path.resolve())
+
+                status, result = post(
+                    "/api/desktop/project/open",
+                    {"path": str(self.root / "notes.txt")},
+                )
+                self.assertEqual(status, 400)
+                self.assertFalse(result["ok"])
+
+                status, result = post(
+                    "/api/desktop/project/open",
+                    {"path": str(self.other_project_path)},
+                )
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+                self.assertEqual(result["name"], self.other_project_path.name)
+                self.assertEqual(server.project.json_path, self.other_project_path.resolve())
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_desktop_project_open_endpoint_is_not_exposed_by_public_server(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0),
+            project,
+            no_waveform=True,
+        ) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{server.server_address[1]}/api/desktop/project/open",
+                data=json.dumps({"path": str(self.other_project_path)}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with self.assertRaises(urllib.error.HTTPError) as context:
+                    urllib.request.urlopen(request)
+                self.assertEqual(context.exception.code, 404)
+                self.assertEqual(server.project.json_path, self.project_path.resolve())
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_desktop_project_switch_wins_over_a_late_initial_load(self) -> None:
+        """A startup loader finishing late must not restore the old project."""
+        initial_started = threading.Event()
+        release_initial = threading.Event()
+
+        def load_initial(_progress: server_editor.ProjectLoadProgressCallback) -> server_editor.ServerProject:
+            initial_started.set()
+            release_initial.wait(timeout=3)
+            return server_editor.load_project(
+                self.project_path,
+                None,
+                str(self.stickers),
+                no_waveform=True,
+                peaks_per_second=100,
+            )
+
+        blank = server_editor.load_blank_project(str(self.stickers))
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0),
+            blank,
+            no_waveform=True,
+            project_loader=load_initial,
+            desktop_mode=True,
+            desktop_token="desktop-secret",
+        ) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            base_url = f"http://127.0.0.1:{server.server_address[1]}"
+            try:
+                self.assertTrue(initial_started.wait(timeout=2))
+                request = urllib.request.Request(
+                    f"{base_url}/api/desktop/project/open",
+                    data=json.dumps({"path": str(self.other_project_path)}).encode("utf-8"),
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-MAW-Desktop-Token": "desktop-secret",
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    self.assertEqual(response.status, 200)
+                self.assertEqual(server.project.json_path, self.other_project_path.resolve())
+
+                # Let the original loader complete after the switch.  Its
+                # generation is stale and must not overwrite the selected file.
+                release_initial.set()
+                assert server.startup_thread is not None
+                server.startup_thread.join(timeout=2)
+                self.assertFalse(server.startup_thread.is_alive())
+                self.assertEqual(server.project.json_path, self.other_project_path.resolve())
+                self.assertEqual(server.startup_status_payload()["status"], "ready")
+            finally:
+                release_initial.set()
+                server.shutdown()
+                thread.join(timeout=2)
 
     def test_prproj_capability_endpoint_is_stable_and_loopback_only(self) -> None:
         project = server_editor.load_project(
@@ -2009,6 +2325,15 @@ def _blank_project() -> "server_editor.ServerProject":
 
 
 class EditorPortSelectionTests(unittest.TestCase):
+    def test_open_editor_server_uses_system_random_port_when_zero_requested(self) -> None:
+        server, advanced = server_editor.open_editor_server("127.0.0.1", 0, _blank_project(), no_waveform=True)
+        try:
+            self.assertFalse(advanced)
+            self.assertGreater(server.server_address[1], 0)
+            self.assertLessEqual(server.server_address[1], 65535)
+        finally:
+            server.server_close()
+
     def test_open_editor_server_advances_when_omitted_port_is_busy(self) -> None:
         """Given 端口省略且起始端口被占用，When 绑定服务，Then 自动顺延到之后的空闲端口并标记 advanced。"""
         blocker = server_editor.EditorServer(("127.0.0.1", 0), _blank_project())

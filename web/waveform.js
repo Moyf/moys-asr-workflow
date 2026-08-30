@@ -1,4 +1,4 @@
-// Framework-neutral waveform runtime. Browser/Tauri-specific file access is
+// Framework-neutral waveform runtime. Browser/Electron-specific file access is
 // isolated behind setPayload/processFile and callbacks supplied by editor.js.
 (function () {
   'use strict';

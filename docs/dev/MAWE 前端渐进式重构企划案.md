@@ -28,7 +28,7 @@ status: in_progress
 
 - 当前分支：`refactor/mawe-p0-p1`
 - 当前范围：Phase 0（重构基线）与 Phase 1（统一脚本装配、模块注册）
-- 当前状态：实现已完成，Server / 便携页面主要定向验收通过；1 项既有 i18n 失败和 Tauri 构建环境限制待记录处理，整体批次待验收
+- 当前状态：实现已完成，Server / 便携页面主要定向验收通过；Electron 桌面壳改由 Node 测试、source smoke 和 Windows 打包 smoke 验收，整体批次待验收
 - 当前预算：约 30–50 工时；完成后进行继续 / 调整 / 暂停评审
 - 长期预算：Phase 2–3 约 60–100 工时；Phase 4–6 只有在维护压力和验证结果证明值得时才启动
 - 当前不做：React 迁移、Store 全量改造、功能改版和无关 bug 修复
@@ -252,7 +252,7 @@ web/
 
 工作项：
 
-1. 在 `web/editor-scripts.txt` 建立有序的编辑器脚本资产清单，`edit.py`、Server 和 Tauri 构建共用。
+1. 在 `web/editor-scripts.txt` 建立有序的编辑器脚本资产清单，`edit.py`、Server 和 Electron 构建共用。
 2. 将模板中的多个 JS 占位符收敛为一个由生成器提供的有序内联结果。
 3. 引入只负责模块工厂注册的 `window.MAWE` 命名空间。
 4. 保留 `AsrEditorUtils`、`AsrWaveform`、`MAWE_I18N`、`MAWE_ONBOARDING` 和 `MAWE_EDITOR_BRIDGE` 兼容出口，不在本阶段改调用者。

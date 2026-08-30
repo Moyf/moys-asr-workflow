@@ -13,8 +13,8 @@ MAW is an API-first subtitle generation and editing workflow. It provides Window
 
 ## Quick start
 
-1. [Download the latest release](https://github.com/Moyf/moys-asr-workflow/releases/latest). The default Windows package is `MAW-Windows-x64-v*.zip` and includes FFmpeg; if `ffmpeg` and `ffprobe` are already available, choose the smaller `MAW-lite-Windows-x64-v*.zip`. macOS users can choose the corresponding `MAW.app` or `MAW-lite.app` package.
-2. Extract the package and launch `MAW.exe` or `MAW.app`.
+1. [Download the latest release](https://github.com/Moyf/moys-asr-workflow/releases/latest). Windows users can choose the FFmpeg-enabled `MAW-Windows-x64-v*.zip`, the smaller `MAW-lite-Windows-x64-v*.zip`, or the `MAW-MOSE-Windows-x64-v*.zip` suite with the Electron editor. macOS users can choose the corresponding `MAW.app` or `MAW-lite.app` package.
+2. Extract the package and launch `MAW.exe` or `MAW.app`. In the suite ZIP you can also launch `MAW\MOSE\MOSE.exe` directly or double-click a `.mosp` project.
 3. Configure an ASR provider API key in the Launcher, choose your media, and start transcription.
 4. Review and edit the subtitles in MAWE, then export SRT or another supported format.
 
@@ -24,6 +24,7 @@ For installation, provider setup, editing, and troubleshooting, start with the [
 
 - Transcribe with Qwen, Fun-ASR, or Soniox and generate SRT plus a `.mosp` project.
 - Edit in the MAWE Server editor with waveform navigation, split/merge, silence-gap handling, video preview, and multiple export formats.
+- The Windows suite includes the preferred MOSE Electron editor. It shares the MAW Server, `.mosp` project, waveform, media, and export contracts; the Launcher falls back to the Server editor when MOSE is unavailable.
 - Use the public CLI for batch jobs and AI automation: [CLI documentation](docs/CLI.md) (Chinese).
 - [Local Qwen3-ASR / FunASR](docs/LOCAL_ASR.md) and the key-free Bcut ASR path are experimental.
 
@@ -42,6 +43,7 @@ For installation, provider setup, editing, and troubleshooting, start with the [
 
 - When a cloud provider is selected, media is uploaded directly to that provider. MAW has no hosted transcription service and does not manage your API keys.
 - The `.mosp` project is the source of truth. SRT is useful for delivery but does not preserve all word-level timing, waveform, color, or project metadata.
+- Keep the suite layout as `MAW\MAW.exe` and `MAW\MOSE\MOSE.exe`; MOSE cannot run without the sibling `MAW.exe`. The Launcher registers `.mosp` only for the current user, respects an existing Windows default-app choice, and still accepts legacy `.json` files without associating that extension.
 - Pricing, retention, and availability depend on each provider; see [ASR providers and configuration](docs/PROVIDERS.md).
 - [Three-minute video overview](https://www.bilibili.com/video/BV1hXum6yELT)
 

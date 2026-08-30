@@ -11,6 +11,37 @@ from maw import cli
 
 
 class CliTests(unittest.TestCase):
+    def test_server_port_accepts_zero_for_system_selected_port(self) -> None:
+        self.assertEqual(cli._port_value("0"), 0)
+        args = cli.build_parser("MAW.exe").parse_args(["--server", "--port", "0"])
+        self.assertEqual(args.port, 0)
+        self.assertEqual(cli._resolve_server_target(cli.build_parser(), args.server, args.port, None), (0, None))
+
+    def test_desktop_mode_is_forwarded_only_for_server_invocations(self) -> None:
+        args = cli.build_parser("MAW.exe").parse_args(["--server", "--port", "0", "--desktop-mode"])
+        self.assertTrue(args.desktop_mode)
+        with mock.patch("maw.cli._invoke_server", return_value=0) as invoke:
+            self.assertEqual(cli.main(["--server", "--port", "0", "--desktop-mode"]), 0)
+        self.assertIn("--desktop-mode", invoke.call_args.args[0])
+
+    def test_desktop_mode_is_rejected_for_transcription(self) -> None:
+        with redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as raised:
+                cli.main(["--desktop-mode", "-i", "clip.mp3"])
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_desktop_mode_is_rejected_for_stop_server(self) -> None:
+        with redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as raised:
+                cli.main(["--stop-server", "--desktop-mode"])
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_server_port_rejects_values_outside_zero_to_65535(self) -> None:
+        for value in ("-1", "65536"):
+            with self.subTest(value=value):
+                with self.assertRaises(Exception):
+                    cli._port_value(value)
+
     def test_parser_accepts_srt_and_optional_mosp_outputs(self) -> None:
         args = cli.build_parser("MAW.exe").parse_args(
             ["-i", "clip.mp3", "-o", "clip.srt", "clip.mosp"]
