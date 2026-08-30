@@ -129,6 +129,12 @@
 - **MAW 用户数据路径统一** ： 普通日志、启动诊断日志、Linux Emoji 字体缓存和 server-editor 设置统一使用 MAW 用户数据根；Windows 默认根目录为 `%LOCALAPPDATA%\MAW`，原 server-editor 设置路径仅在新文件不存在时作为升级读取回退，后续保存始终写入新路径。Release 版 `.env` 优先读取应用程序同目录文件，不存在时回退到 `%LOCALAPPDATA%\MAW\.env`；源码开发继续使用仓库根 `.env`。
 - **腾讯云 Launcher 入口** ： API Key 链接改为 TokenHub 密钥管理页面，并暂时从供应商下拉列表隐藏「腾讯云录音文件识别」；底层 CLI 与配置能力保留。
 
+### 🐛 修复
+
+- **后处理与工具箱报错友好化** ： Launcher 前端新增 12 个错误码的中英文翻译（`postprocess_connection_failed`、`postprocess_models_failed`、`batch_items_*`、`mose_*`、`alignment_*`、`invalid_reasoning_mode` 等），覆盖 LLM 连接/模型获取、批量任务、MOSE 编辑器、口播对齐等场景；所有用户可见错误均通过红框错误卡片展示操作指引，不阻断底部状态栏，后端日志保持英文便于排查。
+
+- **批处理诊断补全** ： 混合队列逐项失败保留错误码并使用统一的友好提示；启动错误日志、本地事件日志和错误报告覆盖常见 API Key、Secret、Token、Password 与 Bearer 凭据格式的脱敏。
+
 ## [1.5.0-beta.9] - 2026-08-29
 
 ### ✨ 提升

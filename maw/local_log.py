@@ -23,9 +23,16 @@ from maw.app_paths import default_log_directory
 LOG_RETENTION_DAYS = 7
 _LOG_FILE_PATTERN = "maw-*.log"
 
-# 防御性打码：批处理链路已有 _without_secrets 先例，这里针对 sk-xxx
-# 形态再做一层兜底，避免事件消息意外携带 API Key。
+# 防御性打码：批处理链路已有 _without_secrets 先例，这里再覆盖
+# 自由文本中的常见密钥赋值和 Authorization 形式，避免事件消息或异常
+# traceback 意外把凭据写入日志。
 _SECRET_PATTERN = re.compile(r"sk-[A-Za-z0-9_-]{4,}")
+_SECRET_ASSIGNMENT_PATTERN = re.compile(
+    r'''(?i)(\b[\w.-]*(?:api[-_ ]?key|access[-_ ]?token|secret(?:[-_ ]?(?:key|id))?|password)\b\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;]+)'''
+)
+_BEARER_PATTERN = re.compile(
+    r'''(?i)(\bauthorization\s*[:=]\s*bearer\s+|\bbearer\s*(?::|=|\s)\s*)("[^"]*"|'[^']*'|[^\s,;]+)'''
+)
 _SENSITIVE_KEYS = ("key", "secret", "token", "password")
 
 
@@ -36,6 +43,14 @@ def _log_path_for(directory: Path, day: datetime) -> Path:
 def _sensitive_key(key: str) -> bool:
     lowered = key.casefold()
     return any(token in lowered for token in _SENSITIVE_KEYS)
+
+
+def redact_sensitive_text(value: object) -> str:
+    """Mask credentials embedded in free-form diagnostic text."""
+    text = str(value)
+    text = _SECRET_ASSIGNMENT_PATTERN.sub(r"\1[REDACTED]", text)
+    text = _BEARER_PATTERN.sub(r"\1[REDACTED]", text)
+    return _SECRET_PATTERN.sub("sk-***", text)
 
 
 def _scalar_pairs(value: object) -> list[tuple[str, object]]:
@@ -73,7 +88,7 @@ def _format_event(event: Mapping[str, object]) -> str:
                 parts.append(f"{str(key)}={value}")
         payload = " ".join(parts)
         body = f"[{event_type}] {payload}" if payload else f"[{event_type}]"
-    return _SECRET_PATTERN.sub("sk-***", body)
+    return redact_sensitive_text(body)
 
 
 def format_log_line(event: Mapping[str, object], *, now: datetime) -> str:
@@ -116,7 +131,7 @@ class LocalLogSink:
         """把一段非事件文本（如 print 输出）写成一行的日志。"""
         try:
             stamp = self._now().strftime("%H:%M:%S.%f")[:-3]
-            line = f"{stamp} [{label}] " + _SECRET_PATTERN.sub("sk-***", str(text))
+            line = f"{stamp} [{label}] " + redact_sensitive_text(text)
         except Exception:
             return
         self._write_line(line)

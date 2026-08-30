@@ -802,7 +802,20 @@
       server_start_failed: (detail) => `编辑器服务器启动失败：${detail || "请查看下方日志。"}`,
       alignment_server_no_response: (detail) => `口播对齐 Server 没有响应：${detail || "请重试。"}`,
       alignment_server_start_failed: (detail) => `口播对齐 Server 启动失败：${detail || "请查看日志后重试。"}`,
-      sticker_dir_invalid: "表情包根目录不存在。"
+      sticker_dir_invalid: "表情包根目录不存在。",
+      postprocess_connection_failed: (detail) => `大模型连接测试失败：${detail || "请检查 API Key、API 地址和网络连接。"}`,
+      postprocess_models_failed: (detail) => `获取模型列表失败：${detail || "请检查 API Key 和 API 地址是否正确。"}`,
+      batch_items_invalid: "批量任务中存在无效项目，请检查媒体文件路径。",
+      batch_item_invalid: "该批量项目无效，请检查媒体文件路径。",
+      batch_items_required: "请添加至少一个批量任务项目。",
+      mose_not_found: "未找到 MOSE 桌面编辑器，请确认 MAW 完整安装。",
+      mose_start_failed: "MOSE 桌面编辑器启动失败，请查看日志后重试。",
+      script_preview_failed: (detail) => `脚本预览失败：${detail || "请检查脚本文件格式。"}`,
+      script_preview_missing: "请先选择脚本文件。",
+      alignment_media_invalid: "口播对齐的媒体文件不存在或格式不支持。",
+      alignment_project_invalid: "口播对齐需要有效的 .mosp 或 .json 工程文件。",
+      alignment_script_missing: "口播对齐需要有效的脚本文件。",
+      invalid_reasoning_mode: (detail) => `推理模式设置无效：${detail || "请检查后处理配置。"}`,
     },
     en: {
       json_not_found: "Project file does not exist. Check the path.",
@@ -853,7 +866,20 @@
       server_start_failed: (detail) => `The editor server failed to start: ${detail || "check the logs below."}`,
       alignment_server_no_response: (detail) => `The speech-alignment server did not respond: ${detail || "retry the operation."}`,
       alignment_server_start_failed: (detail) => `The speech-alignment server failed to start: ${detail || "check the log and retry."}`,
-      sticker_dir_invalid: "Sticker root directory does not exist."
+      sticker_dir_invalid: "Sticker root directory does not exist.",
+      postprocess_connection_failed: (detail) => `LLM connection test failed: ${detail || "check the API key, URL, and network."}`,
+      postprocess_models_failed: (detail) => `Failed to get model list: ${detail || "check the API key and URL."}`,
+      batch_items_invalid: "Some batch items are invalid. Check the media file paths.",
+      batch_item_invalid: "This batch item is invalid. Check the media file path.",
+      batch_items_required: "Add at least one batch item.",
+      mose_not_found: "MOSE desktop editor was not found. Ensure MAW is fully installed.",
+      mose_start_failed: "MOSE desktop editor failed to start. Check the log and retry.",
+      script_preview_failed: (detail) => `Script preview failed: ${detail || "check the script file format."}`,
+      script_preview_missing: "Choose a script file first.",
+      alignment_media_invalid: "The speech-alignment media file does not exist or is unsupported.",
+      alignment_project_invalid: "Speech alignment requires a valid .mosp or .json project.",
+      alignment_script_missing: "Speech alignment requires a valid script file.",
+      invalid_reasoning_mode: (detail) => `Invalid reasoning mode: ${detail || "check the post-processing settings."}`,
     }
   };
   Object.assign(STRINGS.zh, {
@@ -1123,6 +1149,24 @@
   }
 
   const t = (key) => STRINGS[state.lang][key] || key;
+  const DIAGNOSTIC_LABELS = {
+    zh: { processState: "进程状态", pid: "PID", lastProbe: "最后探测", startupLogTail: "启动日志尾部" },
+    en: { processState: "Process", pid: "PID", lastProbe: "Last probe", startupLogTail: "Startup log tail" },
+  };
+  function diagnosticText(value) {
+    if (value === null || value === undefined || value === "") return "";
+    if (typeof value === "string") return redactSensitive(value).trim();
+    if (typeof value !== "object") return redactSensitive(String(value));
+    return Object.entries(value).map(([key, item]) => {
+      if (item === null || item === undefined || item === "") return "";
+      const raw = typeof item === "object" ? JSON.stringify(item) : String(item);
+      const shown = key === "processState" && item === "running"
+        ? (state.lang === "zh" ? "仍在运行" : "running")
+        : raw;
+      const label = DIAGNOSTIC_LABELS[state.lang]?.[key] || key;
+      return label + ": " + redactSensitive(shown);
+    }).filter(Boolean).join("\n");
+  }
   function compactDetail(detail) { return String(detail || "").replace(/\s+/g, " ").trim(); }
   function errText(code, detail) { const entry = ERROR_TEXT[state.lang][code]; const compact = compactDetail(detail); if (typeof entry === "function") return entry(compact); return entry || compact || t("failed"); }
   const ext = (path) => (path.match(/\.[^.\\/]+$/)?.[0] || "").toLowerCase();
@@ -1196,14 +1240,16 @@
     // output before an error report is copied out of the local Launcher.
     return String(value || "")
       .replace(/\bsk-[A-Za-z0-9_-]{4,}\b/gu, "[REDACTED_API_KEY]")
-      .replace(/(\b(?:api[-_ ]?key|access[-_ ]?token)\s*[:=]\s*)([^\s,;]+)/giu, "$1[REDACTED]")
-      .replace(/(\bbearer\s*(?::|=|\s)\s*)([^\s,;]+)/giu, "$1[REDACTED]");
+      .replace(/(\b[\w.-]*(?:api[-_ ]?key|access[-_ ]?token|secret(?:[-_ ]?(?:key|id))?|password)\b\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;]+)/giu, "$1[REDACTED]")
+      .replace(/(\bauthorization\s*[:=]\s*bearer\s+|\bbearer\s*(?::|=|\s)\s*)("[^"]*"|'[^']*'|[^\s,;]+)/giu, "$1[REDACTED]");
   }
   function clearErrorReport() {
     state.errorReport = null;
     if (state.errorCopyTimer) { clearTimeout(state.errorCopyTimer); state.errorCopyTimer = 0; }
     const button = $("errorNoticeCopy");
     if (button) { button.disabled = false; button.textContent = t("error_copy_report"); }
+    const diagnostics = $("errorNoticeDiagnostics");
+    if (diagnostics) { diagnostics.replaceChildren(); diagnostics.classList.add("hidden"); }
   }
   function hideErrorNotice() {
     const notice = $("errorNotice");
@@ -1211,14 +1257,20 @@
     notice.dataset.action = "";
     clearErrorReport();
   }
-  function showErrorNotice(message, code = "", detail = "") {
+  function showErrorNotice(message, code = "", detail = "", diagnostics = "") {
     const notice = $("errorNotice");
     const action = $("errorNoticeAction");
     const issue = $("errorNoticeIssue");
     clearErrorReport();
-    state.errorReport = { code: code || "backend_error", message: String(message || ""), detail: String(detail || "") };
+    const diagnostic = diagnosticText(diagnostics);
+    state.errorReport = { code: code || "backend_error", message: String(message || ""), detail: String(detail || ""), diagnostics: diagnostic };
     $("errorNoticeTitle").textContent = t("error_notice_title");
     renderMessage($("errorNoticeMessage"), message);
+    const diagnosticNode = $("errorNoticeDiagnostics");
+    if (diagnosticNode) {
+      renderMessage(diagnosticNode, diagnostic);
+      diagnosticNode.classList.toggle("hidden", !diagnostic);
+    }
     if (code === "ffmpeg_missing") {
       notice.dataset.action = "ffmpeg-settings";
       action.textContent = t("error_open_ffmpeg_settings");
@@ -1241,12 +1293,14 @@
     const version = state.config?.appVersion || $("appVersion")?.textContent?.trim() || "unknown";
     const log = redactSensitive($("log")?.textContent || "");
     const labels = state.lang === "zh"
-      ? { title: "MAW Launcher 错误报告", version: "版本", code: "错误码", message: "提示", detail: "详细信息", log: "日志" }
-      : { title: "MAW Launcher error report", version: "Version", code: "Error code", message: "Message", detail: "Detail", log: "Log" };
+      ? { title: "MAW Launcher 错误报告", version: "版本", code: "错误码", message: "提示", detail: "详细信息", diagnostics: "诊断信息", log: "日志" }
+      : { title: "MAW Launcher error report", version: "Version", code: "Error code", message: "Message", detail: "Detail", diagnostics: "Diagnostics", log: "Log" };
     const message = compactDetail(report.message);
     const detail = compactDetail(report.detail);
+    const diagnostics = compactDetail(report.diagnostics);
     return [
       labels.title,
+      ...(diagnostics ? [labels.diagnostics + ": " + redactSensitive(report.diagnostics)] : []),
       `${labels.version}: ${redactSensitive(version)}`,
       `${labels.code}: ${redactSensitive(report.code)}`,
       `${labels.message}: ${redactSensitive(report.message)}`,
@@ -1648,7 +1702,20 @@
     return setDroppedPath("serverMediaPath", value);
   }
   function setJsonPath(path) { $("jsonPath").value = path; setError("jsonPath", ""); if (path !== state.serverProjectPath) $("openMawe").classList.add("attention"); refreshServerMedia(); window.MAWLauncher?.onProjectPathChanged?.(); }
-  function applyErrorResult(result, logDetail = true) { const detail = result.detail || result.error || ""; const message = errText(result.code, detail); const fieldMessage = result.code === "server_start_failed" ? t("server_start_failed_hint") : (result.code === "server_no_response" ? t("server_no_response_hint") : message); if (result.field) setError(result.field, fieldMessage); if (result.field === "port" || result.field === "serverMediaPath" || result.field === "jsonPath") expandServer(); if (result.postprocessStep) window.MAWLauncher?.openAutoPostprocessStep?.(result.postprocessStep, result.field); else if (result.field === "autoPostprocessEnabled") $("autoPostprocessCard")?.scrollIntoView({ behavior: "smooth", block: "start" }); setStatus(message); if (logDetail && detail) appendLog(`[detail] ${detail}`); showErrorNotice(message, result.code || "", detail); }
+  function applyErrorResult(result, logDetail = true) {
+    const detail = result.detail || result.error || "";
+    const diagnostics = diagnosticText(result.diagnostics);
+    const message = errText(result.code, detail);
+    const fieldMessage = result.code === "server_start_failed" ? t("server_start_failed_hint") : (result.code === "server_no_response" ? t("server_no_response_hint") : message);
+    if (result.field) setError(result.field, fieldMessage);
+    if (result.field === "port" || result.field === "serverMediaPath" || result.field === "jsonPath") expandServer();
+    if (result.postprocessStep) window.MAWLauncher?.openAutoPostprocessStep?.(result.postprocessStep, result.field);
+    else if (result.field === "autoPostprocessEnabled") $("autoPostprocessCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setStatus(message);
+    if (logDetail && detail) appendLog(`[detail] ${detail}`);
+    if (logDetail && diagnostics) appendLog("[diagnostics] " + diagnostics);
+    showErrorNotice(message, result.code || "", detail, diagnostics);
+  }
   function validateSegmentation(data) { for (const [field, minimum] of [["maxLen", 1], ["minLen", 1], ["gapSplit", 0]]) { const value = data[field]; if (!value) continue; if (!/^\d+$/u.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < minimum) return fail(field, errText("segmentation_invalid", "")); } if (data.maxLen && data.minLen && Number(data.maxLen) < Number(data.minLen)) return fail("maxLen", errText("segmentation_invalid", "")); return true; }
   function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!validateSegmentation(data)) return false; if (isLocalProvider()) { const runtime = state.config.localRuntime || {}; const status = localStatus(); if (!runtime.ready && runtime.status !== "ready") return fail("model", errText("local_runtime_missing", "")); if (status.status === "runtime_missing") return fail("model", errText("local_runtime_missing", "")); if (status.status === "path_invalid") return fail("localModelPath", errText("local_model_path_invalid", "")); if (status.status === "path_mismatch") return fail("localModelPath", errText("local_model_path_mismatch", "")); if (status.status === "missing") return fail("model", errText("local_model_missing", "")); if (status.status === "partial") return fail("model", errText("local_model_incomplete", "")); return true; } if (provider().requiresApiKey !== false && !data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (provider().id === "qwen" && selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (provider().id === "soniox" && selectedModel().supportsContext && Array.from([data.sonioxContextGeneral, data.sonioxContextText, data.sonioxContextTerms, data.sonioxContextTranslationTerms].join("\n")).length > 10000) return fail("sonioxContextText", errText("soniox_context_too_long", "")); if (provider().id === "qwen" && selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
   function fail(field, message) { setError(field, message); setStatus(message); const input = $(field); if (input && input.scrollIntoView) input.scrollIntoView({ behavior: "smooth", block: "center" }); return false; }
@@ -1991,11 +2058,13 @@
       setRunning(false);
       $("retryPostprocess")?.classList.toggle("hidden", !event.canRetry);
       const detail = event.detail || event.message || "";
+      const diagnostics = diagnosticText(event.diagnostics);
       const message = event.code ? errText(event.code, detail) : detail || t("failed");
-      // 友好提示归错误卡片、status 与复制报告的结构化字段所有；日志只保留后端原始 detail。
+      // 友好提示归错误卡片与 status；复制报告同时保留 detail 和诊断信息。
       setStatus(message);
       if (detail) appendLog(`[detail] ${detail}`);
-      showErrorNotice(message, event.code || "", detail);
+      if (diagnostics) appendLog("[diagnostics] " + diagnostics);
+      showErrorNotice(message, event.code || "", detail, diagnostics);
       renderLocalModelStatus();
     }
     if (event.type === "done") {

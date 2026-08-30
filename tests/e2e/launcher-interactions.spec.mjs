@@ -395,6 +395,40 @@ test('error reports copy safe details and support file URL fallback', async ({ p
   await expect(page.locator('#errorNoticeCopy')).toHaveText('复制错误报告');
 });
 
+test('server timeout diagnostics are visible and copied with the error report', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => {
+    window.__copiedReports = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text) => window.__copiedReports.push(text) },
+    });
+    window.MAWLauncher.onBackendEvent({
+      type: 'error',
+      code: 'server_no_response',
+      detail: 'http://127.0.0.1:8250/',
+      diagnostics: {
+        processState: 'running',
+        pid: 4321,
+        lastProbe: 'Connection refused',
+        startupLogTail: 'MAWE started\n[http] probe pending',
+      },
+    });
+  });
+  await expect(page.locator('#errorNoticeDiagnostics')).toBeVisible();
+  await expect(page.locator('#errorNoticeDiagnostics')).toContainText('进程状态: 仍在运行');
+  await expect(page.locator('#errorNoticeDiagnostics')).toContainText('PID: 4321');
+  await expect(page.locator('#errorNoticeDiagnostics')).toContainText('最后探测: Connection refused');
+  await expect(page.locator('#errorNoticeDiagnostics')).toContainText('启动日志尾部: MAWE started');
+  await page.locator('#errorNoticeCopy').click();
+  await expect(page.locator('#errorNoticeCopy')).toHaveText('已复制');
+  const report = await page.evaluate(() => window.__copiedReports[0]);
+  expect(report).toContain('诊断信息:');
+  expect(report).toContain('PID: 4321');
+  expect(report).toContain('Connection refused');
+});
+
 test('unknown errors stay generic and do not expose FFmpeg actions', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);

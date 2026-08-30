@@ -31,7 +31,7 @@ from maw.gui_workflow import (  # noqa: E402
     run_transcription,
 )
 from maw.gui_platform import _terminate_registered_job, terminate_process_tree  # noqa: E402
-from maw_gui import _is_ffmpeg_missing_error, _startup_error_log_path  # noqa: E402
+from maw_gui import _is_ffmpeg_missing_error, _startup_error_log_path, _write_startup_error_log  # noqa: E402
 
 
 def _write_bwf_wav(path: Path, sample_rate: int, time_reference_samples: int) -> None:
@@ -991,6 +991,21 @@ class GuiWorkflowTests(unittest.TestCase):
                 maw_gui._startup_error_fallback_log_path(),
                 self.root / "LocalAppData" / "MAW" / "logs" / "launcher-startup.log",
             )
+
+    def test_startup_error_log_redacts_secret_assignments(self) -> None:
+        import maw_gui
+
+        target = self.root / "launcher-startup.log"
+        error = RuntimeError("DASHSCOPE_API_KEY=dash-secret Authorization: Bearer bearer-secret")
+        with mock.patch.object(maw_gui, "_startup_error_log_path", return_value=target), mock.patch.object(
+            maw_gui, "_startup_error_fallback_log_path", return_value=target
+        ):
+            self.assertEqual(_write_startup_error_log(error), target)
+
+        content = target.read_text(encoding="utf-8")
+        self.assertNotIn("dash-secret", content)
+        self.assertNotIn("bearer-secret", content)
+        self.assertIn("[REDACTED]", content)
 
     def test_entrypoint_debug_aliases_configure_launcher_debug_modes(self) -> None:
         import maw_gui

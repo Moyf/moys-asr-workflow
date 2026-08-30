@@ -12,7 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import final
 from unittest import mock
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1654,6 +1654,54 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["code"], "server_no_response")
         open_browser.assert_not_called()
 
+    def test_start_server_includes_bounded_diagnostics_when_process_stays_alive(self) -> None:
+        project = self.root / "project.json"
+        media = self.root / "clip.mp4"
+        project.write_text(json.dumps({"media": str(media), "segments": []}), encoding="utf-8")
+        media.write_bytes(b"media")
+
+        class RunningProcess:
+            pid = 4321
+            returncode = None
+
+            def poll(self) -> int | None:
+                return None
+
+            def terminate(self) -> None:
+                self.returncode = -15
+
+            def wait(self, timeout: float | None = None) -> int:
+                return self.returncode or 0
+
+        def spawn(*_args, **kwargs):
+            kwargs["stdout"].write((
+                "MAWE 已启动\n"
+                "[project] 等待工程加载\n"
+                "Authorization: Bearer secret-token\n"
+            ).encode("utf-8"))
+            kwargs["stdout"].flush()
+            return RunningProcess()
+
+        with mock.patch("maw.gui_web.subprocess.Popen", side_effect=spawn):
+            with mock.patch("maw.gui_web._wait_for_server", return_value=False):
+                with mock.patch("maw.gui_web._probe_server", return_value=(False, "Connection refused")):
+                    with mock.patch("maw.gui_web.terminate_process_tree"):
+                        with mock.patch("maw.gui_web.release_process_tree"):
+                            result = self.api.start_server({"jsonPath": str(project), "mediaPath": str(media), "port": "9876"})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "server_no_response")
+        self.assertEqual(result["detail"], "http://127.0.0.1:9876/")
+        self.assertEqual(
+            result["diagnostics"],
+            {
+                "processState": "running",
+                "pid": 4321,
+                "lastProbe": "Connection refused",
+                "startupLogTail": "MAWE 已启动\n[project] 等待工程加载\nAuthorization: Bearer [REDACTED]",
+            },
+        )
+
     def test_start_server_exposes_child_startup_log_when_process_exits(self) -> None:
         project = self.root / "project.json"
         media = self.root / "clip.mp4"
@@ -1716,6 +1764,16 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(calls, ["wait", "wait"])
+
+    def test_server_probe_treats_http_client_errors_as_reachable(self) -> None:
+        from maw.gui_web import _probe_server
+
+        error = HTTPError("http://127.0.0.1:9876/", 404, "Not found", {}, None)
+        with mock.patch("maw.gui_web.urlopen", side_effect=error):
+            ready, detail = _probe_server("http://127.0.0.1:9876/")
+
+        self.assertTrue(ready)
+        self.assertEqual(detail, "HTTP 404")
 
     def test_start_server_returns_existing_server_url_without_spawning(self) -> None:
         """Given a responding port, When starting server, Then it reports the existing server instead of spawning."""

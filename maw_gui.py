@@ -250,7 +250,9 @@ def _startup_error_fallback_log_path() -> Path:
 
 
 def _write_startup_error_log(error: Exception) -> Path | None:
-    content = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+    from maw.local_log import redact_sensitive_text
+
+    content = redact_sensitive_text("".join(traceback.format_exception(type(error), error, error.__traceback__)))
     paths = [_startup_error_log_path()]
     fallback = _startup_error_fallback_log_path()
     if fallback not in paths:

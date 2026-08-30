@@ -27,6 +27,7 @@ class BatchItem:
     item_id: str
     request: TranscriptionRequest | None
     preflight_error: str = ""
+    preflight_code: str = ""
 
 
 BatchEvent = Callable[[Mapping[str, object]], None]
@@ -80,6 +81,7 @@ def run_batch(
                 "id": item.item_id,
                 "status": "failed",
                 "index": index,
+                "code": item.preflight_code or "batch_item_invalid",
                 "error": item.preflight_error or "Batch item is invalid.",
             }
             outcomes.append(outcome)
@@ -146,7 +148,13 @@ def run_batch(
             TranscriptionProcessError,
             ValueError,
         ) as error:
-            outcome = {"id": item.item_id, "status": "failed", "index": index, "error": str(error)}
+            outcome = {
+                "id": item.item_id,
+                "status": "failed",
+                "index": index,
+                "code": "postprocess_failed" if isinstance(error, PostprocessPipelineError) else "transcription_failed",
+                "error": str(error),
+            }
         outcomes.append(outcome)
         _update_manifest(manifest, index, outcome, manifest_path)
         _emit(on_event, {"type": "batch_item", **outcome})

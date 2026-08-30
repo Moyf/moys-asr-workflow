@@ -1450,6 +1450,25 @@ textarea::placeholder {
   overflow-wrap: anywhere;
 }
 
+.error-notice-detail {
+  max-height: 160px;
+  margin-top: 8px !important;
+  padding: 8px 10px;
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted) !important;
+  background: var(--bg-input);
+  font-family: var(--font-mono);
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+  overflow-wrap: anywhere;
+}
+
+.error-notice-detail .status-link {
+  color: var(--accent);
+}
+
 .error-notice-actions {
   display: flex;
   align-items: center;

@@ -13,7 +13,7 @@ import threading
 import tempfile
 import time
 import webbrowser
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -29,7 +29,7 @@ from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, MODELS, PROVIDERS
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
-from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee
+from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee, redact_sensitive_text
 from maw.local_runtime import (
     LocalRuntimeCancelled,
     LocalRuntimeError,
@@ -86,6 +86,8 @@ MOSE_REGISTRY_KEY = r"Software\Moy\MOSE"
 MOSE_FILE_TYPE = "Moy.MOSE.Project"
 # 服务端先监听再在后台准备工程；这里的窗口只负责兜底探测进程是否已响应。
 SERVER_START_TIMEOUT: Final = 30.0
+SERVER_DIAGNOSTIC_LOG_LINES: Final = 12
+SERVER_DIAGNOSTIC_LOG_CHARS: Final = 2000
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
 BUNDLED_APP_VERSION = "1.5.3"
 MOSE_VERSION = "0.1.0"
@@ -1389,8 +1391,11 @@ class LauncherApi:
                 detail = f"{url} | 进程退出码 {exit_code}" + (f"：{detail}" if detail else "")
                 _ = self._stop_owned_server()
                 return _error_result("port", "server_start_failed", detail)
+            diagnostics = self._server_no_response_diagnostics(url)
             _ = self._stop_owned_server()
-            return _error_result("port", "server_no_response", url)
+            result = _error_result("port", "server_no_response", url)
+            result["diagnostics"] = diagnostics
+            return result
         self._close_server_log()
         return {"ok": True, "url": launch_url}
 
@@ -1584,6 +1589,23 @@ class LauncherApi:
         except (OSError, ValueError):
             return ""
 
+    def _server_no_response_diagnostics(self, url: str) -> dict[str, object]:
+        """Collect bounded diagnostics while the still-running child is observable."""
+        diagnostics: dict[str, object] = {"processState": "running"}
+        process = self.server_process
+        pid = getattr(process, "pid", None)
+        if isinstance(pid, int) and pid > 0:
+            diagnostics["pid"] = pid
+
+        _ready, probe_detail = _probe_server(url)
+        if probe_detail:
+            diagnostics["lastProbe"] = probe_detail
+
+        log_tail = _diagnostic_tail(self._read_server_log())
+        if log_tail:
+            diagnostics["startupLogTail"] = log_tail
+        return diagnostics
+
     def _close_server_log(self) -> None:
         log_file = self.server_log_file
         self.server_log_file = None
@@ -1723,9 +1745,9 @@ class LauncherApi:
                 items.append(BatchItem(str(raw_item.get("id") or index), replace(request, srt_path=selected)))
                 reserved.update(_artifact_paths(selected))
             except PreflightError as error:
-                items.append(BatchItem(item_id, None, error.message))
+                items.append(BatchItem(item_id, None, error.message, error.code))
             except (OSError, ValueError) as error:
-                items.append(BatchItem(item_id, None, str(error)))
+                items.append(BatchItem(item_id, None, str(error), "batch_item_invalid"))
         manifest_text = str(payload.get("manifestPath") or "").strip()
         first_request = next((item.request for item in items if item.request is not None), None)
         if first_request is None:
@@ -2986,15 +3008,46 @@ def _drop_paths_from_event(event: Mapping[str, object]) -> list[str]:
     return paths
 
 
+def _diagnostic_tail(value: str) -> str:
+    text = redact_sensitive_text(value).strip()
+    if not text:
+        return ""
+    lines = text.splitlines()
+    if len(lines) > SERVER_DIAGNOSTIC_LOG_LINES:
+        lines = lines[-SERVER_DIAGNOSTIC_LOG_LINES:]
+    text = "\n".join(lines)
+    if len(text) > SERVER_DIAGNOSTIC_LOG_CHARS:
+        text = text[-SERVER_DIAGNOSTIC_LOG_CHARS:]
+    return text
+
+
+def _probe_server(url: str) -> tuple[bool, str]:
+    """Probe one local server URL and return readiness plus a concise reason."""
+    try:
+        with urlopen(url, timeout=0.25) as response:
+            status = getattr(response, "status", None)
+            if isinstance(status, int) and 200 <= status < 500:
+                return True, f"HTTP {status}"
+            return False, f"HTTP {status if status is not None else 'unknown'}"
+    except HTTPError as error:
+        # urllib raises HTTPError for 4xx responses even though they prove that
+        # the HTTP server is reachable and ready to serve requests.
+        if 400 <= error.code < 500:
+            return True, f"HTTP {error.code}"
+        return False, f"HTTP {error.code}: {error.reason}"
+    except (OSError, URLError) as error:
+        reason = getattr(error, "reason", None)
+        detail = str(reason or error).strip() or error.__class__.__name__
+        return False, f"{error.__class__.__name__}: {detail}"
+
+
 def _wait_for_server(url: str, *, timeout: float) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        try:
-            with urlopen(url, timeout=0.25) as response:
-                if 200 <= response.status < 500:
-                    return True
-        except (OSError, URLError):
-            time.sleep(0.1)
+        ready, _detail = _probe_server(url)
+        if ready:
+            return True
+        time.sleep(0.1)
     return False
 
 

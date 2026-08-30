@@ -15,6 +15,7 @@ from maw.local_log import (
     LocalLogSink,
     TeeWriter,
     _log_path_for,
+    redact_sensitive_text,
     default_log_directory,
     format_log_line,
     install_stdio_tee,
@@ -57,6 +58,15 @@ class LogLineFormattingTests(unittest.TestCase):
         line = format_log_line({"type": "log", "message": "auth=sk-abc12345defxyz"}, now=_now())
         self.assertIn("sk-***", line)
         self.assertNotIn("sk-abc12345defxyz", line)
+
+    def test_common_secret_assignments_are_masked(self) -> None:
+        text = redact_sensitive_text(
+            "DASHSCOPE_API_KEY=dash-secret TENCENT_SECRET_ID='tencent-id' Authorization: Bearer bearer-secret"
+        )
+        self.assertNotIn("dash-secret", text)
+        self.assertNotIn("tencent-id", text)
+        self.assertNotIn("bearer-secret", text)
+        self.assertEqual(text.count("[REDACTED]"), 3)
 
     def test_sensitive_keys_are_dropped_from_structured_payload(self) -> None:
         line = format_log_line({"type": "batch_item", "id": "1", "apiKey": "sk-x"}, now=_now())
