@@ -43,7 +43,7 @@ from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMo
 from maw.postprocess_io import read_project, read_srt
 from maw.project import normalize_project
 from maw.postprocess_ffmpeg import FfconcatRequest, run_ffconcat_rebuild as process_ffconcat_rebuild
-from maw.postprocess_match import DEFAULT_SPLIT_PUNCTUATION, SCRIPT_EXTENSIONS, ScriptMatchRequest, _match_project, _read_script, prepare_script_text, run_script_match as process_script_match
+from maw.postprocess_match import DEFAULT_SPLIT_PUNCTUATION, MARKDOWN_EXTENSIONS, SCRIPT_EXTENSIONS, ScriptMatchRequest, _match_project, _read_script, clean_markdown_text, prepare_script_text, run_script_match as process_script_match
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
 from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, preset_by_id, test_llm_connection
 from maw.postprocess_pipeline import (
@@ -1069,6 +1069,8 @@ class LauncherApi:
             text = path.read_text(encoding="utf-8-sig")
         except (OSError, UnicodeError) as error:
             return _error_result("postprocessScriptPath", "script_preview_failed", str(error))
+        if path.suffix.lower() in MARKDOWN_EXTENSIONS:
+            text = clean_markdown_text(text)
         preview_limit = 240
         preview = text.replace("\r\n", "\n").replace("\r", "\n")[:preview_limit]
         return {"ok": True, "path": str(path), "preview": preview, "truncated": len(text) > preview_limit}

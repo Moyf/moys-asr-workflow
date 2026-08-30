@@ -2433,6 +2433,7 @@
     border-radius: var(--radius-sm); background: var(--bg-raised);
     transition: border-color var(--t-fast), background var(--t-fast);
   }
+  .timed-text-edit-row[hidden] { display: none; }
   .timed-text-edit-row:last-child { margin-bottom: 0; }
   /* 修改行与字幕列表的 dirty 状态保持一致，使用琥珀色提示。 */
   .timed-text-edit-row.changed { border-color: var(--border-subtle); border-left-color: var(--amber); background: color-mix(in srgb, var(--amber) 3%, var(--bg-raised)); }

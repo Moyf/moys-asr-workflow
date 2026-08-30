@@ -18,11 +18,13 @@ from maw.project import normalize_project
 from maw.project_preview import JsonDict, JsonValue
 from scripts.mosp_match_text import (
     AlignmentError,
+    MARKDOWN_EXTENSIONS,
+    clean_markdown_text,
     generate_matched_mosp,
 )
 
 
-SCRIPT_EXTENSIONS = frozenset({".txt", ".md", ".markdown"})
+SCRIPT_EXTENSIONS = frozenset({".txt", *MARKDOWN_EXTENSIONS})
 MIN_MATCH_COVERAGE = 0.55
 DEFAULT_SPLIT_PUNCTUATION = frozenset({"，", "。", ",", ".", "\n"})
 
@@ -581,6 +583,8 @@ def _read_script(path: Path) -> tuple[Path, str]:
         text = source.read_text(encoding="utf-8-sig")
     except (OSError, UnicodeError) as error:
         raise PostprocessFileError(source, f"cannot read script: {error}") from error
+    if source.suffix.lower() in MARKDOWN_EXTENSIONS:
+        text = clean_markdown_text(text)
     if not text.strip():
         raise PostprocessFileError(source, "script is empty")
     return source, text

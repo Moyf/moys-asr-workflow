@@ -2450,6 +2450,7 @@
     border-radius: var(--radius-sm); background: var(--bg-raised);
     transition: border-color var(--t-fast), background var(--t-fast);
   }
+  .timed-text-edit-row[hidden] { display: none; }
   .timed-text-edit-row:last-child { margin-bottom: 0; }
   /* 修改行与字幕列表的 dirty 状态保持一致，使用琥珀色提示。 */
   .timed-text-edit-row.changed { border-color: var(--border-subtle); border-left-color: var(--amber); background: color-mix(in srgb, var(--amber) 3%, var(--bg-raised)); }
@@ -12760,6 +12761,7 @@ export default MawDynamicCaptions;
     '当前字幕没有可用于拆分的文字。': 'The current subtitles have no text that can be used for splitting.',
     '等待可靠时间码映射': 'Waiting for a reliable timing mapping',
     '当前没有可编辑的字幕': 'There are no subtitles to edit',
+    '当前没有文本修改，未作改动': 'There are no text changes to apply',
     '字幕在编辑窗口打开后发生了变化，请关闭窗口并重新打开': 'The subtitles changed while the editor was open. Close and reopen it.',
     '无法应用文本修改：字幕行结构发生了变化': 'Cannot apply text changes: the subtitle rows changed',
     '切换轨道会丢弃当前未应用的文本修改，是否继续？': 'Switching tracks will discard unapplied text changes. Continue?',
@@ -34591,7 +34593,7 @@ function updateTimedTextEditReport() {
   if (!timedTextEditDraft.sourceSegments.length && timedTextEditDraft.allSourceSegments.length) {
     timedTextEditReportHint.textContent = '当前没有显示中的字幕；打开“显示已禁用字幕”后才能编辑。';
   }
-  timedTextEditApply.disabled = !report.valid || stats.changedSegments === 0;
+  timedTextEditApply.disabled = !report.valid;
 }
 
 function refreshTimedTextEditTrackOptions(kind = currentTimedTextEditKind()) {
@@ -34938,7 +34940,11 @@ timedTextEditApply?.addEventListener('click', () => {
   if (!draft) return;
   syncTimedTextEditDraftFromDom();
   flushTimedTextEditReport();
-  if (!draft.report?.valid || !draft.report.stats.changedSegments) return;
+  if (!draft.report?.valid) return;
+  if (!draft.report.stats.changedSegments) {
+    flashHint('当前没有文本修改，未作改动', 'invalid');
+    return;
+  }
   const targetSegments = timedTextEditSegments(draft.kind);
   const snapshotSegments = Array.isArray(draft.allSourceSegments)
     ? draft.allSourceSegments : draft.sourceSegments;

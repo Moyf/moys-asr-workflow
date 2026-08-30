@@ -791,6 +791,24 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(len(str(result["preview"])), 240)
         self.assertTrue(result["truncated"])
 
+    def test_markdown_script_preview_omits_front_matter_and_heading_markers(self) -> None:
+        script = self.root / "preview.md"
+        script.write_text(
+            "---\n"
+            "title: 测试文稿\n"
+            "tags: []\n"
+            "---\n\n"
+            "# 标题\n"
+            "正文\n",
+            encoding="utf-8",
+        )
+
+        result = self.api.read_script_preview({"path": str(script)})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["preview"], "标题\n正文\n")
+        self.assertFalse(result["truncated"])
+
     def test_script_match_preview_returns_split_text(self) -> None:
         project = self.root / "clip.mosp"
         script = self.root / "preview.txt"

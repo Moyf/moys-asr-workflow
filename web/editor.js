@@ -15815,7 +15815,7 @@ function updateTimedTextEditReport() {
   if (!timedTextEditDraft.sourceSegments.length && timedTextEditDraft.allSourceSegments.length) {
     timedTextEditReportHint.textContent = '当前没有显示中的字幕；打开“显示已禁用字幕”后才能编辑。';
   }
-  timedTextEditApply.disabled = !report.valid || stats.changedSegments === 0;
+  timedTextEditApply.disabled = !report.valid;
 }
 
 function refreshTimedTextEditTrackOptions(kind = currentTimedTextEditKind()) {
@@ -16162,7 +16162,11 @@ timedTextEditApply?.addEventListener('click', () => {
   if (!draft) return;
   syncTimedTextEditDraftFromDom();
   flushTimedTextEditReport();
-  if (!draft.report?.valid || !draft.report.stats.changedSegments) return;
+  if (!draft.report?.valid) return;
+  if (!draft.report.stats.changedSegments) {
+    flashHint('当前没有文本修改，未作改动', 'invalid');
+    return;
+  }
   const targetSegments = timedTextEditSegments(draft.kind);
   const snapshotSegments = Array.isArray(draft.allSourceSegments)
     ? draft.allSourceSegments : draft.sourceSegments;
