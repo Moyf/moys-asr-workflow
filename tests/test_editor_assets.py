@@ -116,6 +116,16 @@ class EditorAssetContractTests(unittest.TestCase):
         ):
             self.assertNotIn(legacy_token, template)
 
+    def test_server_connection_warning_uses_shared_editor_contract(self) -> None:
+        template = edit.read_web_asset("editor-template.html")
+        styles = edit.read_web_asset("editor.css")
+        script = edit.read_web_asset("editor.js")
+        self.assertIn('id="server-connection-banner"', template)
+        self.assertIn("SERVER_CONNECTION_FAILURE_THRESHOLD", script)
+        self.assertIn("function checkServerConnection()", script)
+        self.assertIn(".server-connection-banner", styles)
+        self.assertIn(".server-connection-banner[hidden]", styles)
+
     def test_new_project_action_precedes_open_project(self) -> None:
         template = edit.read_web_asset("editor-template.html")
         self.assertIn('id="new-project"', template)

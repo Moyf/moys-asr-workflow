@@ -263,3 +263,16 @@ test('a disconnected save endpoint offers a JSON fallback download', async ({ pa
   await page.keyboard.press('Control+s');
   expect((await download).suggestedFilename()).toBe('project.mosp');
 });
+
+test('shows a persistent warning when the server connection is lost and clears after recovery', async ({ page }) => {
+  await page.route('**/api/startup-status', (route) => route.abort('connectionrefused'));
+  await page.goto(server.url);
+
+  const banner = page.locator('#server-connection-banner');
+  await expect(banner).toBeVisible({ timeout: 7000 });
+  await expect(banner).toContainText('服务器连接已断开');
+  await expect(banner).toContainText('请在 Launcher 中确认服务器状态；当前无法自动保存工程');
+
+  await page.unroute('**/api/startup-status');
+  await expect(banner).toBeHidden({ timeout: 7000 });
+});

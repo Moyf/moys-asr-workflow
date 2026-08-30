@@ -14,6 +14,8 @@
     '当前有未保存的改动，是否确定新建工程？将丢失未保存内容。': 'There are unsaved changes. Create a new project and discard them?',
     '打开工程': 'Open project',
     '最近工程': 'Recent projects', '自动打开上次工程': 'Automatically open last project',
+    '服务器连接已断开': 'Server connection lost',
+    '请在 Launcher 中确认服务器状态；当前无法自动保存工程，请使用右上角「导出工程」下载当前工程，避免进度丢失。': 'Check the server status in Launcher. Auto-saving is currently unavailable; use “Export project” in the upper-right corner to download the current project and avoid losing your progress.',
     '加载媒体': 'Load media', '加载字幕': 'Load subtitles', '保存工程': 'Save project', '另存为…': 'Save as…', '保存': 'Save', '保存成功！': 'Saved!', '保存失败': 'Save failed',
     'item 内容': 'Item content', '字幕内容': 'Subtitle content', '关闭提示': 'Dismiss notification',
     '拖入工程、媒体或 SRT 开始编辑': 'Drop a project, media, or SRT to start editing',

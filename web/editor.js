@@ -17525,6 +17525,75 @@ async function loadDeferredReapeaks() {
   }
 }
 
+// Server-editor 页面可能在本地服务退出后继续留在浏览器中。定期复用
+// startup-status 这个轻量 JSON 接口：断联时保留页面里的编辑内容，并显示
+// 持久横幅；服务恢复后自动清掉横幅，不刷新页面，避免覆盖未保存的改动。
+const SERVER_CONNECTION_CHECK_INTERVAL_MS = 2000;
+const SERVER_CONNECTION_REQUEST_TIMEOUT_MS = 1500;
+const SERVER_CONNECTION_FAILURE_THRESHOLD = 2;
+const serverConnectionBanner = document.getElementById('server-connection-banner');
+let serverConnectionCheckTimer = 0;
+let serverConnectionCheckInFlight = false;
+let serverConnectionFailureCount = 0;
+
+function serverConnectionCheckUrl() {
+  return SERVER_CONFIG?.healthUrl || SERVER_CONFIG?.startupStatusUrl || '';
+}
+
+function renderServerConnectionBanner(disconnected) {
+  if (serverConnectionBanner) serverConnectionBanner.hidden = !disconnected;
+}
+
+function scheduleServerConnectionCheck(delayMs = SERVER_CONNECTION_CHECK_INTERVAL_MS) {
+  if (!serverConnectionCheckUrl()) return;
+  if (serverConnectionCheckTimer) window.clearTimeout(serverConnectionCheckTimer);
+  serverConnectionCheckTimer = window.setTimeout(() => {
+    serverConnectionCheckTimer = 0;
+    void checkServerConnection();
+  }, Math.max(0, delayMs));
+}
+
+async function checkServerConnection() {
+  const url = serverConnectionCheckUrl();
+  if (!url || serverConnectionCheckInFlight) return;
+  serverConnectionCheckInFlight = true;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), SERVER_CONNECTION_REQUEST_TIMEOUT_MS);
+  let healthy = false;
+  try {
+    const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
+    const result = await response.json().catch(() => null);
+    healthy = response.ok && result?.ok === true;
+  } catch (_error) {
+    // A refused/aborted local request is the expected signal that the server disappeared.
+  } finally {
+    window.clearTimeout(timeout);
+    serverConnectionCheckInFlight = false;
+  }
+
+  if (healthy) {
+    serverConnectionFailureCount = 0;
+    renderServerConnectionBanner(false);
+  } else {
+    serverConnectionFailureCount += 1;
+    if (serverConnectionFailureCount >= SERVER_CONNECTION_FAILURE_THRESHOLD) {
+      renderServerConnectionBanner(true);
+    }
+  }
+  scheduleServerConnectionCheck();
+}
+
+function startServerConnectionMonitor() {
+  if (!serverConnectionBanner || !serverConnectionCheckUrl()) return;
+  renderServerConnectionBanner(false);
+  void checkServerConnection();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) scheduleServerConnectionCheck(0);
+});
+window.addEventListener('online', () => scheduleServerConnectionCheck(0));
+
 const SERVER_STARTUP_LABELS = {
   zh: {
     starting: '正在启动编辑器…',
@@ -17755,6 +17824,7 @@ if (repairedTimingCount > 0) {
   flashHint(`已自动修复 ${repairedGroupReferenceCount} 处分组引用`, 'warning');
 }
 void loadServerStartup();
+startServerConnectionMonitor();
 if (SERVER_CONFIG?.startupStatus !== 'loading') void loadDeferredReapeaks();
 
 document.getElementById('filter-over')?.addEventListener('click', (e) => {
