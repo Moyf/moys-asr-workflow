@@ -68,7 +68,7 @@ def default_env_path() -> Path:
     adjacent = application_directory() / ".env"
     if adjacent.is_file():
         return adjacent
-    return default_app_data_root() / ".env"
+    return (default_app_data_root() / ".env").resolve(strict=False)
 
 
 def default_log_directory() -> Path:
