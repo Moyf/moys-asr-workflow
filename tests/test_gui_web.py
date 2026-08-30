@@ -833,6 +833,24 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(len(str(result["preview"])), 240)
         self.assertTrue(result["truncated"])
 
+    def test_markdown_script_preview_omits_front_matter_and_heading_markers(self) -> None:
+        script = self.root / "preview.md"
+        script.write_text(
+            "---\n"
+            "title: 测试文稿\n"
+            "tags: []\n"
+            "---\n\n"
+            "# 标题\n"
+            "正文\n",
+            encoding="utf-8",
+        )
+
+        result = self.api.read_script_preview({"path": str(script)})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["preview"], "标题\n正文\n")
+        self.assertFalse(result["truncated"])
+
     def test_script_match_preview_returns_split_text(self) -> None:
         project = self.root / "clip.mosp"
         script = self.root / "preview.txt"
@@ -3412,7 +3430,34 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn("button.disabled = state.serverStarting;", script)
         self.assertIn("state.serverStarting = true;", script)
         self.assertIn("state.serverStarting = false;", script)
+        self.assertIn("serverStopping: false", script)
+        self.assertIn("if (state.serverStopping) return;", script)
+        self.assertIn("state.serverStopping = true;", script)
+        self.assertIn("state.serverStopping = false;", script)
+        self.assertIn('$("stopServer").disabled = state.serverStarting || state.serverStopping;', script)
         self.assertIn("guiLang: state.lang", script)
+
+    def test_launcher_log_and_server_notice_layout(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="openLogFolder" class="inline-link" type="button" data-i18n="open_log_folder">打开日志文件夹', page)
+        self.assertNotIn("📁 打开日志文件夹", page)
+        self.assertLess(page.index('<pre id="log"'), page.index('id="openLogFolder"'))
+        self.assertIn('<div class="field"><label for="port"', page)
+        self.assertNotIn('<div class="field compact"><label for="port"', page)
+        self.assertIn('data-i18n="error_open_faq">查看常见问题', page)
+        self.assertIn('data-i18n="error_open_issue">打开项目主页', page)
+        self.assertIn('error_open_faq: "View FAQ"', script)
+        self.assertIn('error_open_issue: "Open project homepage"', script)
+        self.assertIn(".error-notice {\n  position: relative;\n  display: flex;\n  flex-direction: column;", stylesheet)
+        self.assertIn(".error-notice-actions {\n  display: flex;\n  align-items: center;\n  justify-content: flex-end;\n  flex-wrap: wrap;", stylesheet)
+        self.assertIn(".error-notice-actions .small {\n  width: auto;\n  min-height: 30px;\n  white-space: nowrap;", stylesheet)
+        self.assertIn(".error-notice-close {\n  position: absolute;\n  top: 13px;\n  right: 14px;", stylesheet)
+        self.assertNotIn("grid-template-columns: minmax(0, 1fr) minmax(0, 250px) 26px;", stylesheet)
+        self.assertNotIn(".error-notice-actions {\n  display: grid;", stylesheet)
+        self.assertIn("  margin-bottom: 12px;", stylesheet)
 
     def test_local_model_preparation_exposes_progress_events_and_cache_heartbeat(self) -> None:
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")

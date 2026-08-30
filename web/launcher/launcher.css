@@ -655,10 +655,6 @@ button:disabled {
   margin-top: 0;
 }
 
-.compact {
-  max-width: 150px;
-}
-
 label {
   color: var(--text-muted);
   font-size: 13px;
@@ -1570,11 +1566,13 @@ textarea::placeholder {
 }
 
 .error-notice {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 250px) 26px;
-  align-items: flex-start;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 12px;
   margin-top: 12px;
+  margin-bottom: 12px;
   padding: 13px 14px;
   border: 1px solid var(--red);
   border-radius: var(--radius-md);
@@ -1586,6 +1584,7 @@ textarea::placeholder {
 
 .error-notice-copy {
   min-width: 0;
+  padding-right: 30px;
 }
 
 .error-notice-copy strong {
@@ -1604,53 +1603,25 @@ textarea::placeholder {
 }
 
 .error-notice-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
-  width: 250px;
+  width: auto;
 }
 
 .error-notice-actions .small {
-  width: 100%;
+  width: auto;
   min-height: 30px;
-  white-space: normal;
-}
-
-@media (max-width: 560px) {
-  .error-notice {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .error-notice-copy {
-    grid-column: 1;
-  }
-
-  .error-notice-actions {
-    grid-column: 1 / -1;
-    width: 100%;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .error-notice-actions .small {
-    flex: initial;
-  }
-
-  .error-notice-close {
-    grid-column: 2;
-    grid-row: 1;
-  }
-}
-
-@media (max-width: 400px) {
-  .error-notice-actions {
-    grid-template-columns: 1fr;
-  }
+  white-space: nowrap;
 }
 
 .error-notice-close {
-  align-self: flex-start;
+  position: absolute;
+  top: 13px;
+  right: 14px;
   width: 26px;
   height: 26px;
   padding: 0;
