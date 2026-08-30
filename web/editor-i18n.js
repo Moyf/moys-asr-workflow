@@ -473,6 +473,7 @@
     '当前字幕没有可用于拆分的文字。': 'The current subtitles have no text that can be used for splitting.',
     '等待可靠时间码映射': 'Waiting for a reliable timing mapping',
     '当前没有可编辑的字幕': 'There are no subtitles to edit',
+    '当前没有文本修改，未作改动': 'There are no text changes to apply',
     '字幕在编辑窗口打开后发生了变化，请关闭窗口并重新打开': 'The subtitles changed while the editor was open. Close and reopen it.',
     '无法应用文本修改：字幕行结构发生了变化': 'Cannot apply text changes: the subtitle rows changed',
     '切换轨道会丢弃当前未应用的文本修改，是否继续？': 'Switching tracks will discard unapplied text changes. Continue?',

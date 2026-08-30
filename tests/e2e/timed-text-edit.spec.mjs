@@ -51,6 +51,21 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
+test('shows an invalid toast when applying unchanged text', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed');
+  });
+  await page.goto(server.url);
+
+  await page.locator('#batch-operations-btn').click();
+  await page.locator('#timed-text-edit-btn').click();
+  await expect(page.locator('#timed-text-edit-apply')).toBeEnabled();
+
+  await page.locator('#timed-text-edit-apply').click();
+  await expect(page.locator('#timed-text-edit-modal')).toHaveClass(/show/);
+  await expect(page.locator('#hint-stack .hint-card.hint-invalid')).toContainText('当前没有文本修改，未作改动');
+});
+
 test('previews text changes and applies the reported item-timing mapping', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed');
@@ -92,6 +107,7 @@ test('previews text changes and applies the reported item-timing mapping', async
   await expect(page.locator('#timed-text-edit-report-mapping')).toContainText('修改后完整映射');
   await expect(page.locator('#timed-text-edit-report-mapping')).toContainText('部分保留');
   await expect(page.locator('#timed-text-edit-change-list')).toContainText('就是那颗');
+  await expect(page.locator('#timed-text-edit-change-list')).toContainText('abXc');
   await expect(page.locator('#timed-text-edit-apply')).toBeEnabled();
 
   await page.locator('#timed-text-edit-report-mapping .timed-text-edit-stat-filter').filter({ hasText: '1 条' }).nth(1).click();

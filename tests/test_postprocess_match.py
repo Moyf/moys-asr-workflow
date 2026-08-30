@@ -164,6 +164,42 @@ class ScriptMatchTests(unittest.TestCase):
         self.assertIn("新文", result.srt_path.read_text(encoding="utf-8"))
         self.assertEqual(read_project(result.project_path)["segments"][0]["text"], "新文")
 
+    def test_markdown_script_ignores_front_matter_and_heading_markers(self) -> None:
+        markdown_path = self.root / "script.md"
+        self.project_path.write_text(
+            json.dumps(
+                {
+                    "segments": [
+                        {"start": 0, "end": 1000, "text": "标题"},
+                        {"start": 1000, "end": 2000, "text": "正文"},
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        markdown_path.write_text(
+            "---\n"
+            "title: 测试文稿\n"
+            "aliases: []\n"
+            "parent:\n"
+            "- \"[[moys-asr-workflow]]\"\n"
+            "---\n\n"
+            "# 标题\n"
+            "## 正文\n",
+            encoding="utf-8",
+        )
+
+        result = run_script_match(
+            ScriptMatchRequest(self.project_path, None, markdown_path, OutputMode.JSON)
+        )
+
+        assert result.project_path is not None
+        self.assertEqual(
+            [segment["text"] for segment in read_project(result.project_path)["segments"]],
+            ["标题", "正文"],
+        )
+
     def test_extra_punctuation_reports_configuration(self) -> None:
         text, warning = prepare_script_text("甲？乙！丙~", ("？", "！", "~"), ("？", "~"))
 
