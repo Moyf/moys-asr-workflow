@@ -869,14 +869,21 @@
     <button id="artifactOpenFile" type="button" role="menuitem" data-i18n="artifact_open_file">打开文件</button>
   </div>
 
-  <div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+  <div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="launcherSettingsTitle">
     <div id="settingsBackdrop" class="modal-backdrop"></div>
-    <section class="modal-card">
+    <section class="modal-card settings-modal-card">
       <header class="modal-header">
-        <h2 id="settingsTitle" data-i18n="settings_title">配置</h2>
+        <h2 id="launcherSettingsTitle" data-i18n="settings_title">配置</h2>
         <button id="settingsClose" class="ghost small" type="button" aria-label="close">×</button>
       </header>
+      <nav id="settingsTabList" class="settings-tabs" role="tablist" aria-labelledby="launcherSettingsTitle" data-i18n-aria-label="settings_tablist_label">
+        <button id="settingsGeneralTab" class="settings-tab active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="settingsGeneralPanel" data-settings-tab="general" data-i18n="settings_tab_general">通用</button>
+        <button id="settingsLlmTab" class="settings-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="settingsLlmPanel" data-settings-tab="llm" data-i18n="settings_tab_llm">大语言模型（AI）</button>
+        <button id="settingsProcessingTab" class="settings-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="settingsProcessingPanel" data-settings-tab="processing" data-i18n="settings_tab_processing">断句与标点</button>
+        <button id="settingsRuntimeTab" class="settings-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="settingsRuntimePanel" data-settings-tab="runtime" data-i18n="settings_tab_runtime">运行环境</button>
+      </nav>
       <div class="settings-scroll">
+      <section id="settingsGeneralPanel" class="settings-panel" role="tabpanel" aria-labelledby="settingsGeneralTab" data-settings-panel="general" aria-hidden="false">
       <div class="settings-section">
         <h3 data-i18n="settings_appearance">外观</h3>
         <div class="segmented" role="group">
@@ -885,6 +892,29 @@
           <button type="button" class="segment" id="themeSystem" data-i18n="theme_system">跟随系统设置</button>
         </div>
       </div>
+      <div class="settings-section">
+        <h3 data-i18n="settings_language">语言</h3>
+        <label class="check-field" for="showRareLangs">
+          <input id="showRareLangs" type="checkbox">
+          <span data-i18n="show_rare_langs">显示相对小众的语言</span>
+        </label>
+        <p class="hint" data-i18n="show_rare_langs_hint">开启后，「语言」列表显示供应商支持的全部语种；关闭时只显示 8 种常用语言。</p>
+      </div>
+      <div class="settings-section">
+        <h3 data-i18n="settings_stickers">默认表情包路径</h3>
+        <p class="hint" data-i18n="stickers_explain">表情包根目录供 HTML 编辑器使用；支持嵌套子目录（如 大狗/、Nox/ 等）。</p>
+        <p class="hint"><span data-i18n="current_value">当前</span>：<code id="stickerCurrent">未设置</code></p>
+        <div class="field">
+          <label for="stickerDir" data-i18n="sticker_dir">表情包根目录</label>
+          <div class="path-row">
+            <input id="stickerDir" type="text" autocomplete="off">
+            <button id="pickStickerDir" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
+          </div>
+          <p id="stickerDirError" class="field-error"></p>
+        </div>
+      </div>
+      </section>
+      <section id="settingsLlmPanel" class="settings-panel hidden" role="tabpanel" aria-labelledby="settingsLlmTab" data-settings-panel="llm" aria-hidden="true">
       <div class="settings-section" id="llmSettingsSection">
         <h3 data-i18n="settings_llm">LLM 后处理</h3>
         <p class="hint" data-i18n="settings_llm_hint">文稿匹配之外的 LLM 工具会使用这里保存的供应商配置。密钥只保存在本机环境文件。</p>
@@ -947,6 +977,8 @@
           <p class="hint" data-i18n="llm_base_url_hint">远程服务使用 HTTPS；明文 HTTP 只允许本机环回地址。</p>
         </div>
       </div>
+      </section>
+      <section id="settingsProcessingPanel" class="settings-panel hidden" role="tabpanel" aria-labelledby="settingsProcessingTab" data-settings-panel="processing" aria-hidden="true">
       <div class="settings-section" id="punctuationSettingsSection">
         <h3 data-i18n="settings_punctuation_title">断句与标点</h3>
         <p class="hint" data-i18n="settings_punctuation_hint">文稿匹配与转写后处理共用这里的断句与保留符号。</p>
@@ -962,6 +994,8 @@
           <p class="hint" data-i18n="toolbox_preserve_punctuation_hint">断句后仍将符号保留在字幕末尾；转写输出的这些尾部符号同样保留，其余默认剥除逗号和句号。</p>
         </div>
       </div>
+      </section>
+      <section id="settingsRuntimePanel" class="settings-panel hidden" role="tabpanel" aria-labelledby="settingsRuntimeTab" data-settings-panel="runtime" aria-hidden="true">
       <div class="settings-section" id="ocrSettingsSection">
         <h3 data-i18n="settings_ocr">OCR 支持</h3>
         <p class="hint" data-i18n="settings_ocr_hint">OCR 识别功能用于去除与画面上的文本重复的字幕，常用于配音游戏实况等视频内容。主程序不预装 OCR 依赖，首次使用时在这里下载独立运行环境。</p>
@@ -1001,27 +1035,7 @@
           <p class="hint"><button id="ffmpegHelp" class="inline-link" type="button" data-i18n="ffmpeg_help">如何安装 FFmpeg ↗</button></p>
         </div>
       </div>
-      <div class="settings-section">
-        <h3 data-i18n="settings_language">语言</h3>
-        <label class="check-field" for="showRareLangs">
-          <input id="showRareLangs" type="checkbox">
-          <span data-i18n="show_rare_langs">显示相对小众的语言</span>
-        </label>
-        <p class="hint" data-i18n="show_rare_langs_hint">开启后，「语言」列表显示供应商支持的全部语种；关闭时只显示 8 种常用语言。</p>
-      </div>
-      <div class="settings-section">
-        <h3 data-i18n="settings_stickers">默认表情包路径</h3>
-        <p class="hint" data-i18n="stickers_explain">表情包根目录供 HTML 编辑器使用；支持嵌套子目录（如 大狗/、Nox/ 等）。</p>
-        <p class="hint"><span data-i18n="current_value">当前</span>：<code id="stickerCurrent">未设置</code></p>
-        <div class="field">
-          <label for="stickerDir" data-i18n="sticker_dir">表情包根目录</label>
-          <div class="path-row">
-            <input id="stickerDir" type="text" autocomplete="off">
-            <button id="pickStickerDir" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
-          </div>
-          <p id="stickerDirError" class="field-error"></p>
-        </div>
-      </div>
+      </section>
       </div>
     </section>
   </div>

@@ -654,7 +654,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('toolbox_group_utilities: "实用工具"', strings)
         self.assertIn('toolbox_utility_media: "媒体文件"', strings)
         self.assertIn('toolbox_utility_media: "Media file"', strings)
-        self.assertEqual(html.count('role="tablist"'), 3)
+        self.assertEqual(html.count('role="tablist"'), 4)
         self.assertIn('id="toolboxPostprocessTabList"', html)
         self.assertIn('id="toolboxUtilitiesTabList"', html)
         self.assertIn('id="toolboxMatchTab" class="toolbox-tab active" type="button" role="tab" tabindex="0"', html)
@@ -3511,6 +3511,29 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('overscroll-behavior: contain;', stylesheet)
         self.assertIn('#toolboxClose,', stylesheet)
         self.assertIn('#settingsClose {', stylesheet)
+
+    def test_launcher_settings_use_tabs_and_preserve_deep_links(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        self.assertIn('id="settingsTabList" class="settings-tabs" role="tablist"', page)
+        for tab, panel in (
+            ("settingsGeneralTab", "settingsGeneralPanel"),
+            ("settingsLlmTab", "settingsLlmPanel"),
+            ("settingsProcessingTab", "settingsProcessingPanel"),
+            ("settingsRuntimeTab", "settingsRuntimePanel"),
+        ):
+            self.assertIn(f'id="{tab}"', page)
+            self.assertIn(f'aria-controls="{panel}"', page)
+        self.assertIn('function selectSettingsTab(tabName)', script)
+        self.assertIn('function settingsTabForSection(sectionId)', script)
+        self.assertIn('selectSettingsTab(settingsTabForSection(sectionId) || activeSettingsTab);', script)
+        self.assertIn('.settings-tabs {', stylesheet)
+        self.assertIn('.settings-tab.active {', stylesheet)
+        self.assertIn('.settings-modal-card {', stylesheet)
+        self.assertIn('scrollbar-gutter: stable;', stylesheet)
+        self.assertIn('settings_tab_llm: "大语言模型（AI）"', script)
 
 
 @final

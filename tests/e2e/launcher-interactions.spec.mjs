@@ -20,6 +20,59 @@ async function runReplacement(page, { outputMode = 'both' } = {}) {
   await expect(page.locator('.toolbox-chain-item')).toHaveCount(previousCount + 1);
 }
 
+test('Launcher settings switch between accessible tabs and deep links', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#settingsButton').click();
+
+  const tabs = page.locator('#settingsTabList [role="tab"]');
+  await expect(tabs).toHaveCount(4);
+  await expect(page.locator('#settingsTabList')).toHaveAttribute('aria-label', '设置分类');
+  await expect(page.locator('#settingsGeneralPanel')).toBeVisible();
+  await expect(page.locator('#settingsLlmPanel')).toBeHidden();
+  await expect(page.locator('#settingsLlmTab')).toHaveText('大语言模型（AI）');
+
+  const settingsCard = page.locator('#settingsModal .settings-modal-card');
+  const initialCard = await settingsCard.boundingBox();
+  const initialScroll = await page.locator('.settings-scroll').evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollbarGutter: getComputedStyle(element).scrollbarGutter,
+  }));
+
+  await page.locator('#settingsLlmTab').click();
+  await expect(page.locator('#settingsLlmTab')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#settingsLlmPanel')).toBeVisible();
+  await expect(page.locator('#settingsGeneralPanel')).toBeHidden();
+  const llmCard = await settingsCard.boundingBox();
+  const llmScroll = await page.locator('.settings-scroll').evaluate((element) => element.clientWidth);
+  expect(Math.abs(llmCard.y - initialCard.y)).toBeLessThan(1);
+  expect(Math.abs(llmCard.height - initialCard.height)).toBeLessThan(1);
+  expect(initialScroll.scrollbarGutter).toContain('stable');
+  expect(llmScroll).toBe(initialScroll.clientWidth);
+
+  await page.locator('#settingsLlmTab').press('ArrowRight');
+  await expect(page.locator('#settingsProcessingTab')).toBeFocused();
+  await expect(page.locator('#settingsProcessingPanel')).toBeVisible();
+  await page.locator('#settingsProcessingTab').press('End');
+  await expect(page.locator('#settingsRuntimeTab')).toBeFocused();
+  await expect(page.locator('#settingsRuntimePanel')).toBeVisible();
+
+  await page.evaluate(() => window.MAWLauncher.openSettings('ffmpegSettingsSection'));
+  await expect(page.locator('#settingsRuntimeTab')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#ffmpegSettingsSection')).toBeVisible();
+
+  await page.setViewportSize({ width: 520, height: 520 });
+  await page.reload();
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#settingsButton').click();
+  const tabLayout = await page.locator('#settingsTabList').evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { columns: style.gridTemplateColumns.split(' ').length, overflow: element.scrollWidth > element.clientWidth };
+  });
+  expect(tabLayout.columns).toBe(2);
+  expect(tabLayout.overflow).toBe(false);
+});
+
 test('LLM settings refill the saved key and save only after a successful connection test', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#toolboxLlmTab').click();
