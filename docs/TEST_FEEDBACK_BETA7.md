@@ -353,3 +353,13 @@
 - 修复：marker 起止帧现在使用媒体源起点加字幕在原始时间线中的毫秒位置，与同一 clip 的 `source_range` 及外部引用 `available_range` 共用坐标系；无 BWF 起点的媒体仍从 0 帧回退。
 - 回归：带 `1234` samples、`8000Hz` BWF 起点的 WAV 断言 marker 起点包含 `9.255` OTIO 帧媒体偏移，并保留颜色、颜色引用、默认白色、禁用字幕和跨空隙拆分覆盖。
 - 当前状态：已完成源码/便携版生成、语法检查、Node 回归和 Chromium 回归；本次目标 E2E 为 2/2，Node 编辑器/波形回归为 245/245。Resolve 实机导入仍需用户在目标环境确认。
+
+## 增量记录（任务 43：OCR 工具箱文案与视频拖放反馈）
+
+状态：已修复
+
+- OCR 模型和运行环境均就绪时，工具箱设置入口改为“在 ⚙️ 设置中查看”；未安装时仍显示“在 ⚙️ 设置中下载安装 OCR 支持”，并同步维护中英文文案。
+- “视频画面”输入复用“处理文件”的 `toolbox-input` 样式，因此拖入支持的视频文件时会显示相同的边框、底色和高亮反馈；文件类型校验与原有路径路由保持不变。
+- 新增定向浏览器回归，覆盖 OCR 就绪文案和视频拖放高亮；未能执行浏览器断言：Playwright 启动 Chromium 报 `spawn EPERM`，`agent-browser` 也无法建立 CDP 通道。该环境限制不作为页面通过证据。
+
+已验证：`node --check web\\launcher\\launcher.js`、`node --check web\\launcher\\postprocess.js`、`node --check tests\\e2e\\layout-feedback.spec.mjs`、`git diff --check` 通过。
