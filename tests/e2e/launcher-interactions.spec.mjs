@@ -20,6 +20,49 @@ async function runReplacement(page, { outputMode = 'both' } = {}) {
   await expect(page.locator('.toolbox-chain-item')).toHaveCount(previousCount + 1);
 }
 
+test('translation merge option follows manual and automatic translation controls', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#toolboxLlmTab').click();
+
+  const manualOptions = page.locator('#postprocessTranslationOptions');
+  await expect(manualOptions).toBeHidden();
+  await expect(page.locator('#postprocessMergeBilingual')).not.toBeChecked();
+
+  await page.locator('#postprocessOperation').selectOption('translate_en');
+  await expect(manualOptions).toBeVisible();
+  await expect(page.locator('#postprocessMergeBilingual')).not.toBeChecked();
+  await page.locator('#postprocessOperation').selectOption('proofread');
+  await expect(manualOptions).toBeHidden();
+  await page.locator('#toolboxClose').click();
+
+  await page.evaluate(() => {
+    const provider = window.MAWLauncher.config.postprocessProviders.find((item) => item.id === 'deepseek');
+    Object.assign(provider, { verified: true, hasApiKey: true, hasBaseUrl: true, hasModel: true });
+    window.__savedPlans = [];
+    const original = window.MAWLauncher.callBackend;
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'save_postprocess_plan') window.__savedPlans.push(JSON.parse(JSON.stringify(payload.plan)));
+      return original(method, payload);
+    };
+  });
+  await page.locator('#autoPostprocessEnabled').check();
+  await page.locator('#autoStepTranslate').check();
+  await expect(page.locator('#autoTranslateTargetField')).toBeVisible();
+  await expect(page.locator('#autoTranslateMergeField')).toBeVisible();
+  await expect(page.locator('#autoTranslateMergeBilingual')).not.toBeChecked();
+
+  await page.locator('#autoTranslateMergeBilingual').check();
+  await expect.poll(() => page.evaluate(() => {
+    const plans = window.__savedPlans || [];
+    const latest = plans[plans.length - 1];
+    return latest?.steps?.find((step) => step.id === 'translate')?.mergeBilingual;
+  })).toBe(true);
+
+  await page.locator('#autoStepTranslate').uncheck();
+  await expect(page.locator('#autoTranslateTargetField')).toBeHidden();
+  await expect(page.locator('#autoTranslateMergeField')).toBeHidden();
+});
+
 test('Launcher settings switch between accessible tabs and deep links', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);

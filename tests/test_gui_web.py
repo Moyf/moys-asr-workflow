@@ -957,6 +957,30 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('"kind": "reasoning"', scripts)
         self.assertIn('"kind": "content"', scripts)
 
+    def test_llm_bridge_forwards_bilingual_merge_option(self) -> None:
+        artifact = SimpleNamespace(
+            source_project_path=None,
+            source_srt_path=None,
+            project_path=None,
+            srt_path=None,
+            translated_srt_path=None,
+            warnings=(),
+        )
+        with mock.patch("maw.gui_web.process_llm_postprocess", return_value=artifact) as process:
+            result = self.api.run_llm_postprocess({
+                "operation": "translate_en",
+                "providerId": "deepseek",
+                "apiKey": "sk-test",
+                "baseUrl": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+                "customPrompt": "",
+                "mergeBilingual": True,
+            })
+
+        self.assertTrue(result["ok"])
+        request = process.call_args.args[0]
+        self.assertTrue(request.merge_bilingual)
+
     def test_llm_custom_bridge_rejects_empty_prompt_before_provider_call(self) -> None:
         with mock.patch("maw.gui_web.complete_subtitle_groups") as complete:
             result = self.api.run_llm_postprocess({
@@ -2720,6 +2744,8 @@ class LauncherAssetContractTests(unittest.TestCase):
             "toolboxLlmPanel",
             "toolboxReplacePanel",
             "postprocessConversion",
+            "postprocessMergeBilingual",
+            "autoTranslateMergeBilingual",
             "toolboxFfconcatPanel",
             "postprocessScriptPath",
             "postprocessProvider",
@@ -2750,6 +2776,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn("fallbackVideoPath", script)
         self.assertIn('mediaPath: $("mediaPath").value.trim()', script)
         self.assertIn('bridge("run_llm_postprocess"', script)
+        self.assertIn('mergeBilingual: Boolean($("postprocessMergeBilingual")?.checked)', script)
+        self.assertIn('mergeBilingual: Boolean($("autoTranslateMergeBilingual")?.checked)', script)
         self.assertIn('bridge("run_fixed_process"', script)
         self.assertIn('value="to_traditional_tw"', page)
         self.assertIn('value="to_traditional_twp"', page)
@@ -2839,6 +2867,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="postprocessTaskPrompt"', page)
         self.assertIn('data-i18n="toolbox_preset_prompt"', page)
         self.assertIn('data-i18n="toolbox_prompt_hint"', page)
+        self.assertIn('data-i18n="toolbox_merge_bilingual"', page)
+        self.assertIn('data-i18n="auto_merge_bilingual"', page)
         self.assertIn('id="autoPostprocessOptions" class="auto-postprocess-options hidden"', page)
         self.assertIn('id="autoPostprocessStepsCard" class="sub-accordion collapsed"', page)
         self.assertIn('id="autoPostprocessStepsToggle"', page)
