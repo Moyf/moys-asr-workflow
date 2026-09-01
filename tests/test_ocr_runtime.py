@@ -12,6 +12,8 @@ from unittest import mock
 from maw.ocr_runtime import (
     OCR_MODEL_ID,
     OCR_SMALL_MODEL_ID,
+    OcrRuntimeCancelled,
+    OcrRuntimeError,
     install_ocr_runtime,
     managed_ocr_runtime_status,
     run_ocr_in_runtime,
@@ -92,8 +94,23 @@ class OcrRuntimeTests(unittest.TestCase):
         )
         command_lines: list[list[str]] = []
 
-        def fake_run(command, *, env, cancel, on_line, cwd):
+        def fake_run(
+            command,
+            *,
+            env,
+            cancel,
+            on_line,
+            cwd,
+            error_class,
+            cancelled_class,
+            cancelled_message,
+            message_prefix,
+        ):
             _ = (env, cancel, cwd)
+            self.assertIs(error_class, OcrRuntimeError)
+            self.assertIs(cancelled_class, OcrRuntimeCancelled)
+            self.assertEqual(cancelled_message, "OCR 运行环境操作已取消。")
+            self.assertEqual(message_prefix, "OCR 运行环境")
             command_lines.append(command)
             on_line(json.dumps({"type": "status", "key": "toolbox_status_writing", "details": {}}))
             on_line(json.dumps({"type": "result", "projectPath": "out.mosp", "srtPath": "out.srt", "warnings": []}))
