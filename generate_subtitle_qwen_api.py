@@ -1302,12 +1302,17 @@ def build_segments_from_api_sentences(
     segments: list[dict] = []
     for sentence in sentences:
         items = [dict(item) for item in sentence.get("items", []) if item.get("text")]
+        if items and not any(str(item.get("text") or "").strip() for item in items):
+            items = []
         sentence_text = str(sentence.get("text") or "".join(
             item["text"] for item in items
         ))
         sentence_speaker = sentence.get("speaker")
 
         if not items:
+            sentence_text = sentence_text.strip()
+            if not sentence_text:
+                continue
             start = sentence.get("start", 0)
             end = sentence.get("end", start)
             segment = {"start": start, "end": end, "text": sentence_text, "items": []}
@@ -1773,6 +1778,12 @@ def main():
                 gap_split_ms=args.gap_split,
             )
             print(f"[解析] 字幕整理完成：{len(segments)} 条。")
+
+        original_segment_count = len(segments)
+        segments = [segment for segment in segments if str(segment.get("text") or "").strip()]
+        removed_blank_count = original_segment_count - len(segments)
+        if removed_blank_count:
+            print(f"[警告] 已过滤 {removed_blank_count} 条空白识别结果")
 
         # 兜底：上游可能返回 0 长（甚至倒挂）的词/段时间码，
         # 拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。

@@ -415,6 +415,30 @@ class QwenAudioAdapterTests(unittest.TestCase):
         )
         self.assertTrue(all(len(segment["text"]) <= 21 for segment in segments))
 
+    def test_qwen_audio_ignores_whitespace_only_sentences(self) -> None:
+        segments = build_segments_from_api_sentences(
+            [
+                {
+                    "start": 100,
+                    "end": 110,
+                    "text": " ",
+                    "items": [{"start": 100, "end": 110, "text": " "}],
+                },
+                {
+                    "start": 200,
+                    "end": 800,
+                    "text": "有效字幕",
+                    "items": [{"start": 200, "end": 800, "text": "有效字幕"}],
+                },
+            ],
+            max_len=21,
+            min_len=5,
+            gap_split_ms=1500,
+        )
+
+        self.assertEqual([segment["text"] for segment in segments], ["有效字幕"])
+        self.assertEqual((segments[0]["start"], segments[0]["end"]), (200, 800))
+
 
 if __name__ == "__main__":
     _ = unittest.main()
