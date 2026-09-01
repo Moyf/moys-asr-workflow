@@ -54,6 +54,7 @@ class LlmPostprocessRequest:
     task_prompt: str | None = None
     output_directory: Path | None = None
     media_path: Path | None = None
+    merge_bilingual: bool = False
 
 
 LlmComplete = Callable[[str, list[dict[str, JsonValue]]], Mapping[str, JsonValue]]
@@ -296,6 +297,9 @@ def run_llm_postprocess(
         )
     if len(batches) > 1:
         warnings = (f"字幕较长，已分批处理（共 {len(batches)} 批）。",) + warnings
+    if request.merge_bilingual and strict_translation:
+        processed = merge_bilingual_project(project, processed)
+        warnings = ("已将原始文本和翻译文本合并为单条双语字幕。", *warnings)
     _notify_status(on_status, "toolbox_status_writing")
     return _write(
         processed,
@@ -307,6 +311,40 @@ def run_llm_postprocess(
         output_directory=request.output_directory,
         media_path=request.media_path,
     )
+
+
+def merge_bilingual_project(source_project: JsonDict, translated_project: JsonDict) -> JsonDict:
+    """Combine matching source and translated cues into one subtitle track."""
+
+    source_segments = _segments(source_project)
+    translated_segments = _segments(translated_project)
+    if len(source_segments) != len(translated_segments):
+        raise ValueError("双语字幕合并要求翻译前后保持相同的字幕段数。")
+
+    merged_segments: list[JsonValue] = []
+    for index, (source, translated) in enumerate(zip(source_segments, translated_segments, strict=True), 1):
+        if (
+            source.get("id") != translated.get("id")
+            or source.get("start") != translated.get("start")
+            or source.get("end") != translated.get("end")
+        ):
+            raise ValueError(f"第 {index} 条翻译结果未保持原字幕时间范围或稳定 ID，无法合并双语字幕。")
+        source_text = source.get("text")
+        translated_text = translated.get("text")
+        if not isinstance(source_text, str) or not isinstance(translated_text, str):
+            raise ValueError(f"第 {index} 条字幕缺少有效的原始文本或翻译文本。")
+        merged = copy.deepcopy(source)
+        merged["text"] = f"{source_text}\n{translated_text}"
+        _ = merged.pop("items", None)
+        merged_segments.append(merged)
+
+    merged_project = copy.deepcopy(source_project)
+    merged_project["segments"] = merged_segments
+    # A bilingual merge is intentionally a single-track result.  Do not carry
+    # an older extension track into the final project if the input was already
+    # a multi-subtitle project.
+    merged_project.pop("multi_subtitle", None)
+    return normalize_project(merged_project)
 
 
 def _notify_status(on_status: LlmStatus | None, key: str, **details: int) -> None:
