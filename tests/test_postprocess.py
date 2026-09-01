@@ -1375,6 +1375,63 @@ class PostprocessTests(unittest.TestCase):
         self.assertEqual([segment["text"] for segment in segments], ["Translation c0001", "Translation c0002"])
         self.assertEqual(calls, [["c0001", "c0002"], ["c0001"], ["c0002"]])
 
+    def test_llm_translation_preserves_blank_cues_without_sending_them_to_model(self) -> None:
+        project = sample_project(self.media)
+        blank_segment: JsonDict = {
+            "start": 950,
+            "end": 960,
+            "text": " ",
+            "items": [{"start": 950, "end": 960, "text": " "}],
+        }
+        project["segments"] = [project_segments(project)[0], blank_segment, project_segments(project)[1]]
+        _ = self.project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+        calls: list[list[str]] = []
+
+        def complete(_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            calls.append([str(cue["id"]) for cue in cues])
+            return {"groups": [
+                {"id": cue["id"], "text": f"Translated {cue['id']}"}
+                for cue in cues
+            ]}
+
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.JSON,
+                operation="translate_en",
+                custom_prompt="",
+            ),
+            complete=complete,
+        )
+
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project")
+        segments = project_segments(read_project(result.project_path))
+        self.assertEqual(calls, [["c0001", "c0003"]])
+        self.assertEqual([segment["text"] for segment in segments], [
+            "Translated c0001", " ", "Translated c0003",
+        ])
+        self.assertEqual(segment_items(segments[1]), blank_segment["items"])
+        self.assertIn("原样保留 1 条空字幕", "\n".join(result.warnings))
+
+    def test_llm_translation_rejects_an_all_blank_project_before_calling_model(self) -> None:
+        project = sample_project(self.media)
+        project["segments"] = [{"start": 100, "end": 110, "text": " "}]
+        _ = self.project_path.write_text(json.dumps(project), encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "没有可翻译的非空字幕"):
+            _ = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.JSON,
+                    operation="translate_en",
+                    custom_prompt="",
+                ),
+                complete=lambda _prompt, _cues: self.fail("空工程不应请求翻译模型"),
+            )
+
     def test_llm_translation_rejects_a_previous_translation_as_input(self) -> None:
         translated_path = self.root / "source.translate-en.mosp"
         translated_path.write_text(json.dumps(sample_project(self.media), ensure_ascii=False), encoding="utf-8")
