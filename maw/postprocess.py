@@ -185,6 +185,17 @@ def run_llm_postprocess(
         item_aware_resegment=item_aware_resegment,
     )
     cues = _llm_cues(project, include_items=item_aware_resegment)
+    preserved_blank_source_ids: set[str] = set()
+    if strict_translation:
+        preserved_blank_source_ids = {
+            str(cue["id"])
+            for cue in cues
+            if not str(cue.get("text") or "").strip()
+        }
+        if preserved_blank_source_ids:
+            cues = [cue for cue in cues if str(cue["id"]) not in preserved_blank_source_ids]
+        if not cues:
+            raise ValueError("工程没有可翻译的非空字幕，未写出输出产物。")
     batches = _llm_batches(cues)
     _notify_status(on_status, "toolbox_status_preparing_llm")
     responses: list[Mapping[str, JsonValue]] = []
@@ -260,11 +271,13 @@ def run_llm_postprocess(
     elif item_aware_resegment:
         raise ValueError("LLM 分批返回了不一致的字词边界协议，未写出输出产物。")
     else:
+        application_skipped_source_ids = skipped_source_ids | preserved_blank_source_ids
         processed, warnings = _apply_llm_groups_with_warnings(
             project,
             response,
             strict_translation=strict_translation,
-            skipped_source_ids=skipped_source_ids,
+            skipped_source_ids=application_skipped_source_ids,
+            preserve_skipped_source_ids=preserved_blank_source_ids,
             preserve_items_on_equal_text=not strict_translation,
             drop_items=strict_translation,
         )
@@ -276,6 +289,11 @@ def run_llm_postprocess(
         )
     else:
         warnings = tuple(warnings)
+    if preserved_blank_source_ids:
+        warnings = (
+            f"翻译时已跳过并原样保留 {len(preserved_blank_source_ids)} 条空字幕；这些字幕未发送给模型。",
+            *warnings,
+        )
     if len(batches) > 1:
         warnings = (f"字幕较长，已分批处理（共 {len(batches)} 批）。",) + warnings
     _notify_status(on_status, "toolbox_status_writing")
@@ -723,6 +741,7 @@ def _apply_llm_groups_with_warnings(
     *,
     strict_translation: bool = False,
     skipped_source_ids: Collection[str] = (),
+    preserve_skipped_source_ids: Collection[str] = (),
     preserve_items_on_equal_text: bool = True,
     drop_items: bool = False,
 ) -> tuple[JsonDict, tuple[str, ...]]:
@@ -748,6 +767,9 @@ def _apply_llm_groups_with_warnings(
         parsed.append((source_ids, text.strip()))
     all_expected = [f"c{index:04d}" for index in range(1, len(source_segments) + 1)]
     skipped = set(skipped_source_ids) & set(all_expected)
+    preserved = set(preserve_skipped_source_ids) & skipped
+    if preserved and not strict_translation:
+        raise ValueError("only one-to-one translation can preserve skipped source cues")
     expected = [cue_id for cue_id in all_expected if cue_id not in skipped]
     if strict_translation and (
         len(parsed) != len(expected)
@@ -774,6 +796,22 @@ def _apply_llm_groups_with_warnings(
         preserve_items_on_equal_text=preserve_items_on_equal_text,
         drop_items=drop_items,
     )
+    if preserved:
+        # 空字幕没有可翻译内容，但仍可能携带时间或展示元数据；按原位置完整放回。
+        translated = iter(new_segments)
+        rebuilt_segments: list[JsonValue] = []
+        for source_id, source_segment in zip(all_expected, source_segments):
+            if source_id in preserved:
+                rebuilt_segments.append(copy.deepcopy(source_segment))
+            else:
+                rebuilt_segments.append(next(translated))
+        try:
+            _ = next(translated)
+        except StopIteration:
+            pass
+        else:
+            raise ValueError("translation output contains unexpected extra cues")
+        new_segments = rebuilt_segments
     result = copy.deepcopy(project)
     result["segments"] = new_segments
     warnings: list[str] = []
