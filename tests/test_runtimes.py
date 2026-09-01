@@ -43,6 +43,12 @@ class RuntimeRegistryTests(unittest.TestCase):
         self.assertIs(get_runtime("ocr"), OCR)
         self.assertIs(get_runtime("moss"), MOSS)
 
+    def test_runtime_default_directories_are_distinct(self) -> None:
+        self.assertEqual(
+            {LOCAL.spec.dir_name, OCR.spec.dir_name, MOSS.spec.dir_name},
+            {"local-runtime", "ocr-runtime", "local-runtime-moss"},
+        )
+
     def test_get_runtime_unknown_key_raises(self) -> None:
         with self.assertRaises(KeyError):
             get_runtime("nonsense")
@@ -465,10 +471,10 @@ class AutoFreezeRequirementsTests(unittest.TestCase):
     def test_freeze_commands_mirror_build_pipeline(self) -> None:
         uv = Path("C:/tools/uv.exe")
         build = Path("repo/build")
-        # local 主清单：uv export（uv.lock 离线）
+        # local 主清单：独立 dependency group 的 uv export（uv.lock 离线）
         self.assertEqual(
             base_mod.freezer.main_freeze_command(uv, LOCAL_SPEC, build),
-            [str(uv), "export", "--frozen", "--extra", "local", "--no-dev",
+            [str(uv), "export", "--frozen", "--only-group", "local",
              "--format", "requirements-txt", "-o", str(build / "requirements-local.txt")],
         )
         # local CPU 变体：生成式 in（build/ 下）原生冻结（带哈希）
@@ -482,7 +488,7 @@ class AutoFreezeRequirementsTests(unittest.TestCase):
         # ocr：仅主清单；无 CPU 变体
         self.assertEqual(
             base_mod.freezer.main_freeze_command(uv, OCR_SPEC, build),
-            [str(uv), "export", "--frozen", "--extra", "ocr", "--no-dev",
+            [str(uv), "export", "--frozen", "--only-group", "ocr",
              "--format", "requirements-txt", "-o", str(build / "requirements-ocr.txt")],
         )
         self.assertIsNone(base_mod.freezer.cpu_freeze_command(uv, OCR_SPEC, build))

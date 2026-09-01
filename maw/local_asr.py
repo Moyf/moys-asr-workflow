@@ -168,7 +168,7 @@ def _missing_dependency(
             "faster_whisper": "faster-whisper",
         }.get(actual, actual)
     return MissingLocalDependency(
-        f"缺少本地模型依赖 {package}；请先运行 `uv sync --extra {extra}`。"
+        f"缺少本地模型依赖 {package}；请先运行 `uv sync --group {extra}`。"
     )
 
 

@@ -22,8 +22,8 @@ from maw.runtimes.base import RuntimeEvent
 from maw.runtimes.moss_spec import MOSS_PYTHON_VERSION, MOSS_RUNTIME_VERSION
 
 MOSS_RUNTIME_ROOT_NAME: Final = "local-runtime-moss"
-# 兼容导出的依赖常量：实际安装依赖的唯一真源是 pyproject
-# 「[optional-dependencies].moss」经 CI 冻结的 requirements-moss.txt，
+# 兼容导出的依赖常量：实际安装依赖的唯一真源是仓库根
+# 「moss-requirements.in」经 CI 冻结的 requirements-moss.txt，
 # 此列表仅作记录，不再参与安装流程。
 MOSS_REQUIREMENTS: Final[tuple[str, ...]] = (
     "av>=14.0",

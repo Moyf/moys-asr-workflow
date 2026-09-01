@@ -2,6 +2,12 @@
 
 本项目采用 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 的记录方式。
 
+## [Unreleased]
+
+### ✨ 提升
+
+- **托管运行时依赖隔离** ： 将 local / OCR 依赖拆为独立 uv dependency group；OCR 清单从 46 个包收窄到 22 个最小闭包，local 清单同步移除 GUI / OpenCC / 字体工具依赖，减少首次安装时间与体积。
+
 ## [1.5.2] - 2026-09-01
 
 ### 🐛 修复
