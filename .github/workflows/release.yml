@@ -346,7 +346,11 @@ jobs:
               exit 1
             fi
           done
-          test -f "$(find dist/MAW.app -type f -path '*/_internal/ocr-runtime/maw/text_conversion.py' -print -quit)"
+          OcrConversion="$(find dist/MAW.app -type f -path '*/ocr-runtime/maw/text_conversion.py' -print -quit)"
+          if [ -z "$OcrConversion" ] || [ ! -f "$OcrConversion" ]; then
+            echo "Missing OCR runtime text conversion module in macOS bundle"
+            exit 1
+          fi
           echo "OK: runtime requirements txt 随包分发"
 
       - name: Smoke MAW executable
