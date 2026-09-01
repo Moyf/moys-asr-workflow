@@ -223,7 +223,11 @@ def run_ocr_in_runtime(
         env=_runtime_env(resolve_ocr_runtime_root(runtime_root)),
         cancel=cancel_event or Event(),
         on_line=handle_line,
-        cwd=worker.parent.parent,
+        cwd=str(worker.parent.parent),
+        error_class=OcrRuntimeError,
+        cancelled_class=OcrRuntimeCancelled,
+        cancelled_message="OCR 运行环境操作已取消。",
+        message_prefix="OCR 运行环境",
     )
     if worker_error:
         raise OcrRuntimeError(worker_error)
