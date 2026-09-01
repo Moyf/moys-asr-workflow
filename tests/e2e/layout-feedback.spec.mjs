@@ -98,6 +98,42 @@ test('keeps the Launcher action bar outside the scrolling content and highlights
 });
 
 
+test('shows the installed OCR settings hint and highlights video drops', async ({ page }) => {
+  await openLauncher(page);
+
+  const state = await page.evaluate(() => {
+    const config = window.MAWLauncher.config;
+    config.ocrRuntime = { ...(config.ocrRuntime || {}), status: 'ready', ready: true };
+    config.ocrModels = (config.ocrModels || []).map((model) => ({ ...model, installed: true, status: 'installed' }));
+    window.MAWLauncher.onOcrRuntimeChanged();
+
+    const field = document.getElementById('ocrVideoPathField');
+    const before = getComputedStyle(field);
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(['video'], 'video.mp4', { type: 'video/mp4' }));
+    field.dispatchEvent(new DragEvent('dragenter', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer: transfer,
+    }));
+    const after = getComputedStyle(field);
+    return {
+      settingsHint: document.getElementById('openOcrSettings')?.textContent || '',
+      status: document.getElementById('ocrModelStatus')?.textContent || '',
+      hasHighlight: field.classList.contains('drag-over'),
+      borderChanged: before.borderTopColor !== after.borderTopColor,
+      backgroundChanged: before.backgroundColor !== after.backgroundColor,
+    };
+  });
+
+  expect(state.settingsHint).toBe('在 ⚙️ 设置中查看');
+  expect(state.status).toBe('已安装，可直接使用');
+  expect(state.hasHighlight).toBe(true);
+  expect(state.borderChanged).toBe(true);
+  expect(state.backgroundChanged).toBe(true);
+});
+
+
 test('keeps every Editor settings gear visible while left toolbar content shrinks', async ({ page }) => {
   await disableOnboarding(page);
   await page.goto(blankEditorUrl);

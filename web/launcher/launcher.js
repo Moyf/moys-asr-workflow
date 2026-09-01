@@ -683,6 +683,7 @@
     ocr_runtime_install_done: "OCR 支持已安装完成",
     ocr_runtime_cancelled: "OCR 支持安装已取消",
     toolbox_ocr_open_settings: "在 ⚙️ 设置中下载安装 OCR 支持",
+    toolbox_ocr_view_settings: "在 ⚙️ 设置中查看",
     toolbox_ocr_model_ready: "已安装，可直接使用",
     toolbox_ocr_model_missing: "尚未安装，请打开设置下载安装",
   });
@@ -718,6 +719,7 @@
     ocr_runtime_install_done: "OCR support is installed",
     ocr_runtime_cancelled: "OCR support installation was cancelled",
     toolbox_ocr_open_settings: "Download OCR support in ⚙️ Settings",
+    toolbox_ocr_view_settings: "View in ⚙️ Settings",
     toolbox_ocr_model_ready: "Installed and ready",
     toolbox_ocr_model_missing: "Not installed; open Settings to download it",
   });
