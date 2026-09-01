@@ -19,8 +19,9 @@ OCR_MODEL_LABELS: dict[str, str] = {
     OCR_MODEL_ID: OCR_MODEL_LABEL,
     OCR_SMALL_MODEL_ID: OCR_SMALL_MODEL_LABEL,
 }
-# OCR 依赖清单由 pyproject ocr extra 经 CI uv export 冻结（build/requirements-ocr.txt），
-# frozen 后随包分发于 asset_path("ocr-runtime/requirements-ocr.txt")。
+# OCR 依赖清单由 pyproject ocr dependency-group 经 CI uv export --only-group
+# 冻结（build/requirements-ocr.txt），frozen 后随包分发于
+# asset_path("ocr-runtime/requirements-ocr.txt")。
 
 _VERIFY_COMMAND = (
     "from rapidocr import RapidOCR; import numpy, onnxruntime; "
@@ -44,6 +45,8 @@ OCR_SPEC = RuntimeSpec(
     requirements_emit="正在安装 OCR 模型和依赖……",
     requirements_key="ocr",
     requirements_bundle_name="requirements-ocr.txt",
+    # OCR 是 pyproject dependency-groups 中的独立最小运行时依赖组。
+    requirements_group="ocr",
     verify_command=_VERIFY_COMMAND,
     package_dirs=("numpy", "onnxruntime", "PIL", "rapidocr"),
     worker_module="maw.ocr_runtime_worker",

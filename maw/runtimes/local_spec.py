@@ -9,7 +9,7 @@ PYTHON_VERSION = "3.11"
 PYTORCH_INDEX = "https://download.pytorch.org/whl/cu130"
 EMBED_PYTHON_ZIP = "python-3.11.9-embed-amd64.zip"
 
-# 版本 6：local extra 新增 faster-whisper（CTranslate2 运行时），老安装需
+# 版本 6：local dependency group 新增 faster-whisper（CTranslate2 运行时），老安装需
 # 重装一次本地运行环境以补齐依赖。
 _VERIFY_COMMAND = (
     "from funasr import AutoModel; from qwen_asr import Qwen3ASRModel; "
@@ -34,6 +34,9 @@ LOCAL_SPEC = RuntimeSpec(
     requirements_emit="正在安装本地 ASR 依赖（Torch、FunASR、QwenASR、faster-whisper）……",
     requirements_key="local",
     requirements_bundle_name="requirements-local.txt",
+    # local 是 pyproject dependency-groups 中的独立运行时依赖组，不继承
+    # MAW 主程序的 GUI / OpenCC / 字体工具依赖。
+    requirements_group="local",
     verify_command=_VERIFY_COMMAND,
     package_dirs=("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "reapeaks"),
     worker_module="maw.local_runtime_worker",
@@ -46,7 +49,7 @@ LOCAL_SPEC = RuntimeSpec(
     dir_name="local-runtime",
     root_env="MAW_LOCAL_RUNTIME_ROOT",
     bundle_dir="local-runtime",
-    # torch 固定版本来自 pyproject local extra 的 CPU 兜底（cu130 构建额外走
+    # torch 固定版本来自 pyproject local dependency group 的 CPU 兜底（cu130 构建额外走
     # pytorch index；无 NVIDIA GPU 时切回 CPU wheel，见 base 的 cuda 兜底步）。
     extra_index_url=PYTORCH_INDEX,
     cuda_fallback_packages=("torch==2.13.0", "torchaudio==2.11.0"),
