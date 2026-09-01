@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Update PR build comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const run = context.payload.workflow_run;
