@@ -81,6 +81,7 @@ datas = [
     (str(ROOT / "maw" / "postprocess.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_io.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_ocr.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "text_conversion.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "project.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "project_preview.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "ocr_runtime_worker.py"), "ocr-runtime/maw"),

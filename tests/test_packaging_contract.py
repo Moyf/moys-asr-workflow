@@ -50,8 +50,8 @@ def _local_import_modules(path: Path, module_name: str) -> set[str]:
     return imported
 
 
-def _local_runtime_import_graph() -> set[str]:
-    modules = {"maw.local_runtime_worker", "generate_subtitle_local"}
+def _local_import_graph(seed_modules: set[str]) -> set[str]:
+    modules = set(seed_modules)
     pending = list(modules)
     while pending:
         module_name = pending.pop()
@@ -63,6 +63,14 @@ def _local_runtime_import_graph() -> set[str]:
                 modules.add(imported)
                 pending.append(imported)
     return modules
+
+
+def _local_runtime_import_graph() -> set[str]:
+    return _local_import_graph({"maw.local_runtime_worker", "generate_subtitle_local"})
+
+
+def _ocr_runtime_import_graph() -> set[str]:
+    return _local_import_graph({"maw.ocr_runtime_worker"})
 
 
 def _local_runtime_spec_entry(relative_path: str) -> str:
@@ -145,7 +153,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("local_runtime_worker.py", spec)
         self.assertIn("ocr-runtime", spec)
         self.assertIn("ocr_runtime_worker.py", spec)
-        for module in ("media.py", "postprocess.py", "postprocess_io.py", "postprocess_ocr.py", "project.py", "project_preview.py"):
+        for module in ("media.py", "postprocess.py", "postprocess_io.py", "postprocess_ocr.py", "text_conversion.py", "project.py", "project_preview.py"):
             self.assertIn(f'"{module}"), "ocr-runtime/maw"', spec)
         self.assertIn("maw.bcut", spec)
         self.assertIn("assets", spec)
@@ -304,6 +312,7 @@ class PackagingContractTests(unittest.TestCase):
             "maw/postprocess_ocr.py",
             "maw/postprocess_io.py",
             "maw/console.py",
+            "maw/text_conversion.py",
         ):
             self.assertIn(f'(str(ROOT / "{relative.split("/")[0]}" / "{relative.split("/")[1]}"), "ocr-runtime/maw")', spec)
 
@@ -319,6 +328,20 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("maw/qwen_audio.py", bundled_paths)
         for relative_path in sorted(bundled_paths):
             self.assertIn(_local_runtime_spec_entry(relative_path), spec)
+
+    def test_ocr_runtime_bundles_every_local_import_dependency(self) -> None:
+        """Given the OCR worker entrypoint, When packaging is read, Then its local imports are copied beside it."""
+        spec = read_text("MAW.spec")
+        bundled_paths = {
+            str(_local_module_path(module).relative_to(ROOT)).replace("\\", "/")
+            for module in _ocr_runtime_import_graph()
+            if _local_module_path(module) is not None
+        }
+
+        for relative_path in sorted(bundled_paths):
+            parts = Path(relative_path).parts
+            expression = " / ".join(["ROOT", *(f'"{part}"' for part in parts)])
+            self.assertIn(f'(str({expression}), "ocr-runtime/maw")', spec)
 
     def test_macos_bundle_uses_the_icns_app_icon(self) -> None:
         """Given a macOS app bundle, When PyInstaller builds it, Then the bundle has the branded ICNS icon."""

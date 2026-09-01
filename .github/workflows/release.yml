@@ -127,6 +127,7 @@ jobs:
             '_internal\local-runtime\requirements-local.txt'
             '_internal\local-runtime\requirements-local-cpu.txt'
             '_internal\ocr-runtime\requirements-ocr.txt'
+            '_internal\ocr-runtime\maw\text_conversion.py'
             '_internal\moss-runtime\requirements-moss.txt'
             '_internal\moss-runtime\requirements-moss-cpu.txt'
           )
@@ -345,6 +346,7 @@ jobs:
               exit 1
             fi
           done
+          test -f "$(find dist/MAW.app -type f -path '*/_internal/ocr-runtime/maw/text_conversion.py' -print -quit)"
           echo "OK: runtime requirements txt 随包分发"
 
       - name: Smoke MAW executable
@@ -526,6 +528,7 @@ jobs:
           echo "OK: 未内置 libstdc++/libgcc_s/libgbm/libreadline"
           test -f squashfs-root/_internal/local-runtime/requirements-local.txt
           test -f squashfs-root/_internal/ocr-runtime/requirements-ocr.txt
+          test -f squashfs-root/_internal/ocr-runtime/maw/text_conversion.py
           test -f squashfs-root/_internal/moss-runtime/requirements-moss.txt
           echo "OK: runtime requirements txt 随包分发"
           rm -r squashfs-root

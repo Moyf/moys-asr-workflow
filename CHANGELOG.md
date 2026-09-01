@@ -2,6 +2,12 @@
 
 本项目采用 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 的记录方式。
 
+## [1.5.2] - 2026-09-01
+
+### 🐛 修复
+
+- **OCR 运行环境缺少简繁转换模块** ： 修复打包时未将 `maw.text_conversion` 复制到隔离 OCR runtime，避免 OCR worker 启动时因 `ModuleNotFoundError` 失败。
+
 ## [1.5.1] - 2026-09-01
 
 ### 🐛 修复
