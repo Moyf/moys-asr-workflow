@@ -43,6 +43,7 @@ from maw.gui_platform import (
     terminate_process_tree,
 )
 from maw.runtime_manifest import (
+    STATUS_BROKEN,
     STATUS_INSTALLING,
     STATUS_READY,
     read_runtime_manifest,
@@ -362,6 +363,25 @@ class ManagedRuntime:
                 model_cache=model_cache,
             )
         return self._status("ready", True, root, python, self.spec.ready_detail, model_cache=model_cache)
+
+    def mark_install_aborted(self, runtime_root: str | Path | None = None) -> bool:
+        """Mark an interrupted install as broken instead of leaving ``installing`` behind."""
+        root = self.resolve_root(runtime_root)
+        manifest = read_runtime_manifest(root)
+        if not manifest.installing:
+            return False
+        extra = {"modelId": manifest.model_id} if manifest.model_id else None
+        try:
+            write_runtime_manifest(
+                root,
+                status=STATUS_BROKEN,
+                runtime_version=manifest.runtime_version or self.spec.runtime_version,
+                python_version=manifest.python_version or self.spec.python_version,
+                extra=extra,
+            )
+        except OSError:
+            return False
+        return True
 
     def _status(
         self,

@@ -51,6 +51,7 @@ __all__ = [
     "OcrRuntimeError",
     "OcrRuntimeStatus",
     "install_ocr_runtime",
+    "recover_ocr_runtime_install",
     "managed_ocr_runtime_status",
     "ocr_model_payload",
     "ocr_model_type",
@@ -120,6 +121,11 @@ def install_ocr_runtime(
             runtime_root=runtime_root,
         )
     )
+
+
+def recover_ocr_runtime_install(runtime_root: str | Path | None = None) -> bool:
+    """Clear a stale OCR install marker after cancellation, failure, or app exit."""
+    return OCR.mark_install_aborted(runtime_root)
 
 
 def ocr_model_type(model_id: str) -> str:

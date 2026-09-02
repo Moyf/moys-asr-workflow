@@ -363,3 +363,13 @@
 - 新增定向浏览器回归，覆盖 OCR 就绪文案和视频拖放高亮；未能执行浏览器断言：Playwright 启动 Chromium 报 `spawn EPERM`，`agent-browser` 也无法建立 CDP 通道。该环境限制不作为页面通过证据。
 
 已验证：`node --check web\\launcher\\launcher.js`、`node --check web\\launcher\\postprocess.js`、`node --check tests\\e2e\\layout-feedback.spec.mjs`、`git diff --check` 通过。
+
+## 增量记录（任务 44：OCR 运行环境取消与目录提示）
+
+状态：已修复
+
+- OCR 安装被取消、失败或程序中途退出后，不再遗留 `runtime.json` 的 `installing` 状态；Launcher 刷新时也会自动回收没有活动安装线程的旧标记，避免状态显示“仍在安装”但进度条消失并重复启动安装。
+- 安装完成提示改为两行显示，运行环境目录渲染为安全的可点击链接；后端仅接受 `ocr-runtime` 白名单类型，并按当前配置解析目录后打开文件夹。
+- 新增 OCR runtime、Launcher bridge、目录打开和页面回归覆盖。
+
+已验证：`uv run python -m unittest tests.test_runtimes tests.test_ocr_runtime tests.test_gui_web`（240 个测试通过，1 个既有跳过项）；`node --check web\\launcher\\launcher.js`、`node --check tests\\e2e\\layout-feedback.spec.mjs`；`npx playwright test tests/e2e/layout-feedback.spec.mjs --grep "installed OCR" --reporter=line`（1/1）；`git diff --check` 通过。

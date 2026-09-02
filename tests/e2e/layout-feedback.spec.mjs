@@ -103,12 +103,21 @@ test('shows the installed OCR settings hint and highlights video drops', async (
 
   const state = await page.evaluate(() => {
     const config = window.MAWLauncher.config;
-    config.ocrRuntime = { ...(config.ocrRuntime || {}), status: 'ready', ready: true };
+    config.ocrRuntime = {
+      ...(config.ocrRuntime || {}),
+      status: 'ready',
+      ready: true,
+      path: 'D:\\Demo\\ocr-runtime',
+      detail: 'OCR 模型已安装，可以在工具箱中使用。',
+    };
     config.ocrModels = (config.ocrModels || []).map((model) => ({ ...model, installed: true, status: 'installed' }));
-    window.MAWLauncher.onOcrRuntimeChanged();
+    window.MAWLauncher.onBackendEvent({ type: 'ocrRuntimeReady', runtime: config.ocrRuntime, models: config.ocrModels });
 
     const field = document.getElementById('ocrVideoPathField');
-    const before = getComputedStyle(field);
+    const before = {
+      borderTopColor: getComputedStyle(field).borderTopColor,
+      backgroundColor: getComputedStyle(field).backgroundColor,
+    };
     const transfer = new DataTransfer();
     transfer.items.add(new File(['video'], 'video.mp4', { type: 'video/mp4' }));
     field.dispatchEvent(new DragEvent('dragenter', {
@@ -117,9 +126,14 @@ test('shows the installed OCR settings hint and highlights video drops', async (
       dataTransfer: transfer,
     }));
     const after = getComputedStyle(field);
+    const hint = document.getElementById('ocrRuntimeHint');
+    const hintText = Array.from(hint?.childNodes || []).map((node) => node.nodeName === 'BR' ? '\n' : node.textContent || '').join('');
+    const pathLink = hint?.querySelector('.runtime-path-link');
     return {
       settingsHint: document.getElementById('openOcrSettings')?.textContent || '',
       status: document.getElementById('ocrModelStatus')?.textContent || '',
+      runtimeHint: hintText,
+      runtimePath: pathLink?.textContent || '',
       hasHighlight: field.classList.contains('drag-over'),
       borderChanged: before.borderTopColor !== after.borderTopColor,
       backgroundChanged: before.backgroundColor !== after.backgroundColor,
@@ -128,9 +142,15 @@ test('shows the installed OCR settings hint and highlights video drops', async (
 
   expect(state.settingsHint).toBe('在 ⚙️ 设置中查看');
   expect(state.status).toBe('已安装，可直接使用');
+  expect(state.runtimeHint).toBe('OCR 模型已安装，可以在工具箱中使用。\nOCR 运行环境目录: D:\\Demo\\ocr-runtime');
+  expect(state.runtimePath).toBe('D:\\Demo\\ocr-runtime');
   expect(state.hasHighlight).toBe(true);
   expect(state.borderChanged).toBe(true);
   expect(state.backgroundChanged).toBe(true);
+
+  await page.locator('#settingsButton').click();
+  await page.locator('#ocrRuntimeHint .runtime-path-link').click();
+  await expect.poll(() => page.evaluate(() => window.__openedRuntimeFolder)).toEqual({ kind: 'ocr-runtime' });
 });
 
 
