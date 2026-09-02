@@ -6,6 +6,7 @@ import json
 import subprocess
 import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
 from typing import final
 from unittest import mock
@@ -22,7 +23,7 @@ from maw.postprocess import (
     run_fixed_replacement,
     run_llm_postprocess,
 )
-from maw.postprocess_ffmpeg import FfconcatRequest, parse_ffconcat, run_ffconcat_rebuild
+from maw.postprocess_ffmpeg import AudioTrack, BurnSubtitleRequest, ExtractAudioRequest, FfconcatRequest, parse_ffconcat, probe_audio_tracks, run_burn_subtitles, run_extract_audio, run_ffconcat_rebuild
 from maw.postprocess_io import PostprocessFileError, _atomic_write, read_project, read_srt, render_srt
 from maw.postprocess_llm import LlmClientError, LlmSettings, _chat_endpoint, _models_endpoint, _reasoning_parameters, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, test_llm_connection as check_llm_connection
 from maw.project_preview import JsonDict, JsonValue
@@ -1687,6 +1688,96 @@ class FfconcatTests(unittest.TestCase):
                 )
 
         self.assertFalse((self.root / "clip.gap-removed.part.mp4").exists())
+
+
+@final
+class MediaToolTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.media = self.root / "clip.mp4"
+        self.subtitle = self.root / "clip.srt"
+        _ = self.media.write_bytes(b"media")
+        _ = self.subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\n你好\n", encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    @staticmethod
+    def _fake_process(command: list[str], **_kwargs: object):
+        class FakeProcess:
+            pid = None
+
+            def __init__(self) -> None:
+                self.stdout = StringIO("out_time_ms=100000\nprogress=end\n")
+                self.stderr = StringIO("")
+
+            def poll(self) -> int:
+                return 0
+
+            def wait(self) -> int:
+                return 0
+
+        process = FakeProcess()
+        _ = Path(command[-1]).write_bytes(b"encoded")
+        return process
+
+    def test_probe_audio_tracks_parses_stream_metadata_and_default_flag(self) -> None:
+        completed = mock.Mock(
+            returncode=0,
+            stderr="",
+            stdout=json.dumps({
+                "streams": [
+                    {"index": 1, "codec_name": "aac", "channels": 2, "sample_rate": "48000", "tags": {"language": "zh", "title": "中文"}, "disposition": {"default": 1}},
+                    {"index": 2, "codec_name": "aac", "channels": 2, "sample_rate": "44100", "tags": {"language": "en"}, "disposition": {"default": 0}},
+                ],
+            }),
+        )
+
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=completed) as run:
+            tracks = probe_audio_tracks(self.media, ffprobe_path=Path("ffprobe"))
+
+        self.assertEqual(tracks, (
+            AudioTrack(0, 1, "aac", 2, 48000, "zh", "中文", True),
+            AudioTrack(1, 2, "aac", 2, 44100, "en", "", False),
+        ))
+        command = run.call_args.args[0]
+        self.assertIn("-select_streams", command)
+        self.assertIn("a", command)
+        self.assertIn(str(self.media.resolve()), command)
+
+    def test_burn_subtitles_reencodes_to_new_mp4_and_uses_subtitles_filter(self) -> None:
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
+            result = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        command = popen.call_args.args[0]
+        self.assertIn("-vf", command)
+        self.assertIn("subtitles=filename='clip.srt'", command[command.index("-vf") + 1])
+        self.assertIn("libx264", command)
+        self.assertEqual(result.media_path.name, "clip.subtitled.mp4")
+        self.assertTrue(result.media_path.read_bytes())
+        self.assertEqual(self.media.read_bytes(), b"media")
+
+    def test_extract_audio_probes_selected_stream_and_writes_m4a(self) -> None:
+        probe_result = mock.Mock(
+            returncode=0,
+            stderr="",
+            stdout=json.dumps({"streams": [{"index": 1, "codec_name": "aac", "channels": 2, "sample_rate": "48000", "disposition": {"default": 1}}, {"index": 2, "codec_name": "aac", "channels": 2, "sample_rate": "48000", "disposition": {"default": 0}}]}),
+        )
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=probe_result), mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
+            result = run_extract_audio(
+                ExtractAudioRequest(media_path=self.media, audio_index=1),
+                ffmpeg_path=Path("ffmpeg"),
+                ffprobe_path=Path("ffprobe"),
+            )
+
+        command = popen.call_args.args[0]
+        self.assertEqual(command[command.index("-map") + 1], "0:2")
+        self.assertEqual(result.media_path.name, "clip.audio.m4a")
+        self.assertEqual(result.audio_track.stream_index, 2)
 
 
 if __name__ == "__main__":

@@ -170,6 +170,12 @@
     }
   };
   Object.assign(STRINGS.zh, {
+    toolbox_burn_subtitle: "压制字幕", toolbox_burn_subtitle_hint: "将 SRT / ASS 字幕直接绘制进新的视频文件；会重新编码视频，不覆盖源文件。", toolbox_burn_subtitle_input: "字幕文件", toolbox_burn_subtitle_placeholder: "选择或拖入 .srt / .ass / .ssa 字幕", toolbox_burn_subtitle_input_hint: "默认跟随当前的 SRT 输出，也支持手动选择 ASS / SSA。", toolbox_burn_subtitle_invalid: "请选择 .srt、.ass 或 .ssa 字幕文件。", toolbox_burn_done: "字幕压制完成，已切换到新媒体：", toolbox_extract_audio: "提取音频", toolbox_extract_audio_hint: "从视频或音频中提取一个音轨，输出新的 AAC/M4A 文件；不会修改源文件。", toolbox_audio_track: "音轨", toolbox_audio_track_choose: "先选择媒体，MAW 会读取可用音轨。", toolbox_audio_tracks_reading: "正在读取音轨……", toolbox_audio_tracks_found: "已找到 {count} 条音轨。", toolbox_audio_tracks_none: "没有检测到可用音轨。", toolbox_audio_track_item: "音轨", toolbox_audio_track_default: "默认", toolbox_audio_track_invalid: "所选音轨无效，请重新选择。", toolbox_extract_audio_done: "音频提取完成，已切换到新媒体：", toolbox_utility_video_required: "压制字幕需要包含视频画面的媒体文件。", toolbox_status_burning: "正在压制字幕并重新编码视频……", toolbox_status_extracting: "正在提取音频……", toolbox_status_cancelling: "正在停止媒体处理……"
+  });
+  Object.assign(STRINGS.en, {
+    toolbox_burn_subtitle: "Burn subtitles", toolbox_burn_subtitle_hint: "Render SRT / ASS subtitles into a new video file. Video is re-encoded and the source is kept unchanged.", toolbox_burn_subtitle_input: "Subtitle file", toolbox_burn_subtitle_placeholder: "Choose or drop an .srt / .ass / .ssa subtitle", toolbox_burn_subtitle_input_hint: "Follows the current SRT output by default; ASS / SSA can be chosen manually.", toolbox_burn_subtitle_invalid: "Choose an .srt, .ass, or .ssa subtitle file.", toolbox_burn_done: "Subtitles burned; switched to the new media:", toolbox_extract_audio: "Extract audio", toolbox_extract_audio_hint: "Extract one audio track from video or audio into a new AAC/M4A file; the source is kept unchanged.", toolbox_audio_track: "Audio track", toolbox_audio_track_choose: "Choose media first; MAW will read its available tracks.", toolbox_audio_tracks_reading: "Reading audio tracks…", toolbox_audio_tracks_found: "Found {count} audio track(s).", toolbox_audio_tracks_none: "No usable audio tracks were found.", toolbox_audio_track_item: "Track", toolbox_audio_track_default: "default", toolbox_audio_track_invalid: "The selected audio track is invalid. Choose it again.", toolbox_extract_audio_done: "Audio extracted; switched to the new media:", toolbox_utility_video_required: "Burning subtitles requires media with a video stream.", toolbox_status_burning: "Burning subtitles and re-encoding the video…", toolbox_status_extracting: "Extracting audio…", toolbox_status_cancelling: "Stopping media operation…"
+  });
+  Object.assign(STRINGS.zh, {
     test_run: "快速测试",
     test_run_title: "仅截取前2分钟内容，用于快速测试功能和 API",
     test_run_override: "快速测试已限定前 2 分钟",
@@ -743,6 +749,7 @@
 
   const MEDIA_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"]);
   const VIDEO_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"]);
+  const SUBTITLE_BURN_EXTS = new Set([".srt", ".ass", ".ssa"]);
   const PROJECT_EXTS = new Set([".mosp", ".json"]);
   const SCRIPT_EXTS = new Set([".txt", ".md", ".markdown"]);
   const ERROR_TEXT = {
@@ -777,6 +784,11 @@
       postprocess_cancelled: "自动后处理已取消，原始转写产物仍然保留。",
       waveform_unavailable: (detail) => `无法从该媒体生成可用波形：${detail || "请检查 FFmpeg 和媒体文件。"}`,
       waveform_generation_failed: (detail) => `波形工程生成失败：${detail || "请检查媒体与输出目录权限。"}`,
+      media_tool_busy: "已有媒体工具正在运行，请等待完成。",
+      media_tool_cancelled: "媒体处理已取消。",
+      media_tool_failed: (detail) => `媒体处理失败：${detail || "请检查 FFmpeg 和输入文件。"}`,
+      audio_track_invalid: "所选音轨无效，请重新选择。",
+      audio_tracks_missing: "没有检测到可用音轨。",
       hotwords_file_missing: "请选择存在且为 UTF-8 编码的 .txt 热词文件。",
       output_missing: "请填写 SRT 输出路径。",
       segmentation_invalid: "切句参数无效：请输入整数，并确保最大字数不小于短句合并阈值。",
@@ -820,6 +832,11 @@
       postprocess_config_invalid: (detail) => `Automatic post-processing is not configured: ${detail || "open the toolbox to finish setup."}`,
       waveform_unavailable: (detail) => `No usable waveform could be generated: ${detail || "check FFmpeg and the media file."}`,
       waveform_generation_failed: (detail) => `Waveform project generation failed: ${detail || "check the media and output-folder permissions."}`,
+      media_tool_busy: "Another media operation is already running. Please wait for it to finish.",
+      media_tool_cancelled: "Media operation cancelled.",
+      media_tool_failed: (detail) => `Media operation failed: ${detail || "check FFmpeg and the input file."}`,
+      audio_track_invalid: "The selected audio track is invalid. Choose it again.",
+      audio_tracks_missing: "No usable audio tracks were found.",
       postprocess_failed: (detail) => `Transcription completed, but automatic post-processing failed: ${detail || "check the log."}`,
       postprocess_cancelled: "Automatic post-processing was cancelled; the original transcription remains available.",
       soniox_context_invalid: "Soniox context format is invalid. Check the Advanced options format.",
@@ -1036,7 +1053,7 @@
         ]
       }),
       default_output: async ({ mediaPath, providerId, modelId, testRun }) => ({ ok: true, path: mediaPath ? mediaPath.replace(/\.[^.\\/]+$/, `${providerId === "soniox" ? ".soniox" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))) : (modelId === "fun-asr" ? ".fun-asr" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio" : ".qwen3-asr-api"))))}${testRun ? "-test" : ""}.srt`) : "" }),
-      choose_file: async ({ kind }) => ({ ok: true, path: kind === "json" ? "D:\\Demo\\project.json" : (kind === "subtitle" ? "D:\\Demo\\project.mosp" : (kind === "video" ? "D:\\Demo\\clip.mp4" : (kind === "ffconcat" ? "D:\\Demo\\clip.ffconcat" : (kind === "script" ? "D:\\Demo\\script.txt" : (kind === "hotwords" ? "D:\\Demo\\hotwords.txt" : "D:\\Demo\\clip.mp4"))))) }),
+      choose_file: async ({ kind }) => ({ ok: true, path: kind === "json" ? "D:\\Demo\\project.json" : (kind === "subtitle" ? "D:\\Demo\\project.mosp" : (kind === "subtitle-burn" ? "D:\\Demo\\clip.srt" : (kind === "video" ? "D:\\Demo\\clip.mp4" : (kind === "ffconcat" ? "D:\\Demo\\clip.ffconcat" : (kind === "script" ? "D:\\Demo\\script.txt" : (kind === "hotwords" ? "D:\\Demo\\hotwords.txt" : "D:\\Demo\\clip.mp4")))))) }),
       read_script_preview: async () => ({ ok: true, path: "D:\\Demo\\script.txt", preview: "第一行\n第二行", truncated: false }),
       read_hotword_file: async () => ({ ok: true, path: "D:\\Demo\\hotwords.txt", text: "张三\n阿里云百炼\n专业术语\n" }),
       save_settings: async (payload) => { saved = { ...saved, ...payload }; if (Object.prototype.hasOwnProperty.call(payload, "modelCacheRoot")) { state.config.modelCacheRoot = payload.modelCacheRoot || ""; state.config.localRuntime = { ...(state.config.localRuntime || {}), modelCachePath: payload.modelCacheRoot || "D:\\Models\\MAW" }; } return { ok: true, maskedApiKey: payload.apiKey ? "sk-…mock" : "", modelCacheRoot: Object.prototype.hasOwnProperty.call(payload, "modelCacheRoot") ? (payload.modelCacheRoot || "") : (state.config?.modelCacheRoot || ""), message: "mock saved" }; },
@@ -1073,6 +1090,10 @@
       run_fixed_process: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "fixed", "D:\\Demo\\clip.fixed.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "fixed", "D:\\Demo\\clip.fixed.srt"), warnings: [] }),
       run_fixed_replacement: async (payload) => window.MAWLauncher.callBackend("run_fixed_process", payload),
        run_ffconcat_rebuild: async () => ({ ok: true, mediaPath: "D:\\Demo\\clip.gap-removed.mp4" }),
+       probe_audio_tracks: async () => ({ ok: true, tracks: [{ audioIndex: 0, streamIndex: 1, codec: "aac", channels: 2, sampleRate: 48000, language: "zh", title: "中文", default: true }, { audioIndex: 1, streamIndex: 2, codec: "aac", channels: 2, sampleRate: 48000, language: "en", title: "English", default: false }] }),
+       run_burn_subtitles: async () => ({ ok: true, mediaPath: "D:\\Demo\\clip.subtitled.mp4" }),
+       run_extract_audio: async () => ({ ok: true, mediaPath: "D:\\Demo\\clip.audio.m4a", audioTrack: { audioIndex: 0 } }),
+       cancel_media_tool: async () => ({ ok: true, cancelling: true }),
        generate_waveform_project: async ({ mediaPath }) => ({ ok: true, mediaPath, projectPath: "D:\\Demo\\clip.waveform.mosp", warnings: [], reapeaksPath: "" }),
        start_alignment_server: async ({ projectPath, scriptPath, mediaPath, gapRemove, guiLang }) => ({ ok: true, url: `http://127.0.0.1:8260/?lang=${guiLang || "zh"}`, projectPath, scriptPath, mediaPath: mediaPath || "D:\\Demo\\clip.mp4", gapRemove }),
        stop_alignment_server: async () => ({ ok: true, stopped: true }),
@@ -1359,7 +1380,7 @@
   function setError(field, message) { const input = $(field); const hint = $(`${field}Error`); if (input) input.classList.toggle("invalid", Boolean(message)); if (hint) { renderMessage(hint, message); hint.classList.toggle("visible", Boolean(message)); } }
   function setOutputNotice(message) { const notice = $("srtPathNotice"); if (!notice) return; renderMessage(notice, message); notice.classList.toggle("hidden", !message); }
   function mediaDropError() { const separator = state.lang === "zh" ? "、" : ", "; return t("drop_reject_media").replace("{extensions}", Array.from(MEDIA_EXTS).join(separator)); }
-  function clearErrors() { ["mediaPath", "srtPath", "apiKey", "workspaceId", "localModelPath", "localModelCachePath", "maxLen", "minLen", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir", "toolboxUtilityMediaPath", "toolboxAlignmentProjectPath", "toolboxAlignmentScriptPath"].forEach((field) => setError(field, "")); hideErrorNotice(); }
+  function clearErrors() { ["mediaPath", "srtPath", "apiKey", "workspaceId", "localModelPath", "localModelCachePath", "maxLen", "minLen", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir", "toolboxUtilityMediaPath", "toolboxBurnSubtitlePath", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "toolboxAlignmentScriptPath"].forEach((field) => setError(field, "")); hideErrorNotice(); }
   function formPayload() { return { providerId: $("provider").value, modelId: $("model").value, mediaPath: $("mediaPath").value.trim(), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), device: $("localDevice").value, language: languageValue(), lengthLimit: $("lengthLimit").value.trim(), maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
   function serverPayload() { return { jsonPath: $("jsonPath").value.trim(), mediaPath: $("serverMediaPath").value.trim(), port: $("port").value || "8250", guiLang: state.lang }; }
   function renderServerButton() {
@@ -1390,7 +1411,7 @@
   function renderHotwordWarnings(value = $("qwenAudioHotwords").value, weight = Number($("qwenAudioHotwordWeight").value), ignoreComments = false) { const warning = $("qwenAudioHotwordsWarning"); const issues = collectHotwordWarnings(value, weight, ignoreComments); if (!issues.length) { warning.textContent = ""; warning.classList.remove("visible"); return; } const details = issues.slice(0, 5).map((issue) => t("qwen_audio_hotword_warning_item").replace("{label}", hotwordWarningLabel(issue)).replace("{reason}", t(`qwen_audio_hotword_issue_${issue.code}`))); if (issues.length > details.length) details.push(t("qwen_audio_hotword_warning_more")); warning.textContent = `${t("qwen_audio_hotwords_warning").replace("{count}", String(issues.length))}\n${details.join("\n")}`; warning.classList.add("visible"); }
   function syncQwenAudioHotwordsMode() { const fileMode = $("qwenAudioHotwordsMode").value === "file"; $("qwenAudioHotwordsTextField").classList.toggle("hidden", fileMode); $("qwenAudioHotwordsFileField").classList.toggle("hidden", !fileMode); renderHotwordWarnings(fileMode ? "" : $("qwenAudioHotwords").value, Number($("qwenAudioHotwordWeight").value)); }
   function setHotwordsMode(mode) { $("qwenAudioHotwordsMode").value = mode; $("qwenAudioHotwordsModeText").classList.toggle("active", mode === "text"); $("qwenAudioHotwordsModeFile").classList.toggle("active", mode === "file"); syncQwenAudioHotwordsMode(); }
-  function clearDropState() { dragState.depth = 0; state.dropTarget = ""; setDropHighlight(false); ["mediaPath", "qwenAudioHotwords", "qwenAudioHotwordsFile", "jsonPath", "serverMediaPath", "localModelCachePath", "localModelPath", "ocrRuntimePath", "ffmpegPath", "stickerDir", "toolboxInputDropZone", "toolboxUtilityMediaDropZone", "toolboxFfconcatDropZone", "toolboxAlignmentProjectDropZone", "toolboxAlignmentScriptDropZone", "ocrVideoPathField", "postprocessScriptPath"].forEach((id) => $(id)?.classList.remove("drag-over")); }
+  function clearDropState() { dragState.depth = 0; state.dropTarget = ""; setDropHighlight(false); ["mediaPath", "qwenAudioHotwords", "qwenAudioHotwordsFile", "jsonPath", "serverMediaPath", "localModelCachePath", "localModelPath", "ocrRuntimePath", "ffmpegPath", "stickerDir", "toolboxInputDropZone", "toolboxUtilityMediaDropZone", "toolboxBurnSubtitleDropZone", "toolboxFfconcatDropZone", "toolboxAlignmentProjectDropZone", "toolboxAlignmentScriptDropZone", "ocrVideoPathField", "postprocessScriptPath"].forEach((id) => $(id)?.classList.remove("drag-over")); }
   function setQwenAudioHotwordsFile(path) { if (ext(path) !== ".txt") { setError("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return false; } $("qwenAudioHotwordsFile").value = path; setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); return true; }
   async function loadHotwordFile(path, appendToText = false) { if (ext(path) !== ".txt") { setError("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); clearDropState(); return; } const result = await bridge("read_hotword_file", { path }); if (!result.ok) { applyErrorResult(result, false); clearDropState(); return; } if (appendToText) { const incoming = String(result.text || "").trim(); if (incoming) { const current = $("qwenAudioHotwords").value.trimEnd(); $("qwenAudioHotwords").value = current ? `${current}\n${incoming}` : incoming; } setHotwordsMode("text"); renderHotwordWarnings($("qwenAudioHotwords").value); setStatus(t("qwen_audio_hotwords_loaded")); } else { setQwenAudioHotwordsFile(result.path || path); renderHotwordWarnings(String(result.text || ""), Number($("qwenAudioHotwordWeight").value), true); } clearDropState(); }
   function isLocalProvider() { return provider()?.kind === "local" || provider()?.id === "local"; }
@@ -1608,7 +1629,7 @@
     $("mediaPathFlvHint")?.classList.toggle("hidden", ext($("mediaPath").value.trim()) !== ".flv");
     $("serverMediaFlvHint")?.classList.toggle("hidden", ext($("serverMediaPath").value.trim()) !== ".flv");
   }
-  function setMedia(path) { $("mediaPath").value = path; setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); }
+  function setMedia(path) { $("mediaPath").value = path; setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); window.MAWLauncher?.onMediaPathChanged?.(); }
   function setDroppedPath(field, path, eventType = "input") {
     const value = String(path || "").trim();
     const input = $(field);
@@ -1684,6 +1705,11 @@
     if (target === "toolboxUtilityMedia") {
       if (MEDIA_EXTS.has(suffix)) setDroppedPath("toolboxUtilityMediaPath", value);
       else setError("toolboxUtilityMediaPath", t("toolbox_utility_media_reject"));
+      return;
+    }
+    if (target === "toolboxBurnSubtitle") {
+      if (SUBTITLE_BURN_EXTS.has(suffix)) setDroppedPath("toolboxBurnSubtitlePath", value);
+      else setError("toolboxBurnSubtitlePath", t("toolbox_burn_subtitle_invalid"));
       return;
     }
     if (target === "toolboxFfconcat") {
@@ -1989,7 +2015,7 @@
     if (event.type === "dropReject" && !state.dropTarget && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
     if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
   }
-  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart: hideErrorNotice, onBatchError: (result) => applyErrorResult(result, false), onLanguageChanged() {}, onProjectPathChanged() {} };
+  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart: hideErrorNotice, onBatchError: (result) => applyErrorResult(result, false), onLanguageChanged() {}, onProjectPathChanged() {}, onMediaPathChanged() {} };
 
   $("langToggle").addEventListener("click", async () => { state.lang = state.lang === "zh" ? "en" : "zh"; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (!result.ok) applyErrorResult(result); });
   $("themeLight").addEventListener("click", () => setTheme("light")); $("themeDark").addEventListener("click", () => setTheme("dark")); $("themeSystem").addEventListener("click", () => setTheme("system"));
@@ -2062,6 +2088,7 @@
   bindDropField("stickerDir", "stickerDir");
   bindDropField("toolboxInputDropZone", "toolboxInput", "toolboxInputDropZone");
   bindDropField("toolboxUtilityMediaDropZone", "toolboxUtilityMedia", "toolboxUtilityMediaDropZone");
+  bindDropField("toolboxBurnSubtitleDropZone", "toolboxBurnSubtitle", "toolboxBurnSubtitleDropZone");
   bindDropField("toolboxFfconcatDropZone", "toolboxFfconcat", "toolboxFfconcatDropZone");
   bindDropField("toolboxAlignmentProjectDropZone", "toolboxAlignmentProject", "toolboxAlignmentProjectDropZone");
   bindDropField("toolboxAlignmentScriptDropZone", "toolboxAlignmentScript", "toolboxAlignmentScriptDropZone");

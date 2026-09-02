@@ -18,11 +18,11 @@ from urllib.request import urlopen
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from threading import Event
+from threading import Event, Lock
 from typing import BinaryIO, Final, final
 
 from maw.app_paths import default_emoji_font_path
-from maw.ffmpeg import resolve_ffmpeg_tools
+from maw.ffmpeg import FfmpegTools, resolve_ffmpeg_tools
 from maw.media_cache import embed_media_caches
 from maw.waveform import is_waveform_payload
 from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, MODELS, PROVIDERS, ModelConfig, ProviderConfig, _gui_theme, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
@@ -42,7 +42,17 @@ from maw.media import resolve_project_media
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_io import read_project, read_srt
 from maw.project import normalize_project
-from maw.postprocess_ffmpeg import FfconcatRequest, run_ffconcat_rebuild as process_ffconcat_rebuild
+from maw.postprocess_ffmpeg import (
+    BurnSubtitleRequest,
+    ExtractAudioRequest,
+    MediaToolCancelled,
+    MediaToolError,
+    FfconcatRequest,
+    probe_audio_tracks as inspect_audio_tracks,
+    run_burn_subtitles as process_burn_subtitles,
+    run_extract_audio as process_extract_audio,
+    run_ffconcat_rebuild as process_ffconcat_rebuild,
+)
 from maw.postprocess_match import DEFAULT_SPLIT_PUNCTUATION, MARKDOWN_EXTENSIONS, SCRIPT_EXTENSIONS, ScriptMatchRequest, _match_project, _read_script, clean_markdown_text, prepare_script_text, run_script_match as process_script_match
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
 from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, preset_by_id, test_llm_connection
@@ -132,6 +142,11 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "postprocess_cancelled": "自动后处理已取消，原始转写产物仍然保留。",
     "waveform_unavailable": "Waveform data could not be embedded.",
     "waveform_generation_failed": "Waveform project generation failed.",
+    "media_tool_busy": "Another media operation is already running.",
+    "media_tool_cancelled": "Media operation cancelled.",
+    "media_tool_failed": "Media operation failed.",
+    "audio_track_invalid": "The selected audio track is invalid.",
+    "audio_tracks_missing": "No audio tracks were found in this media.",
 }
 
 
@@ -526,6 +541,9 @@ class LauncherApi:
         self.alignment_script_path: Path | None = None
         self.alignment_media_path: Path | None = None
         self.alignment_gap_remove: dict[str, int | float] | None = None
+        self._media_tool_lock = Lock()
+        self.media_tool_process: subprocess.Popen[str] | None = None
+        self.media_tool_cancel_event: Event | None = None
         self.result: TranscriptionResult | None = None
         self.postprocess_retry_context: dict[str, object] | None = None
         self.postprocess_workspace_directory: Path | None = None
@@ -1034,12 +1052,137 @@ class LauncherApi:
             "ffconcatPath": str(result.ffconcat_path),
         }
 
+    def probe_audio_tracks(self, payload: Mapping[str, object]) -> dict[str, object]:
+        tools = _postprocess_ffmpeg_tools(self.paths.env_path)
+        if tools.ffprobe is None:
+            return _error_result("toolboxUtilityMediaPath", "ffmpeg_missing", "FFprobe was not found.")
+        try:
+            tracks = inspect_audio_tracks(
+                Path(str(payload.get("mediaPath") or "")),
+                ffprobe_path=tools.ffprobe,
+            )
+        except (MediaToolError, OSError, ValueError) as error:
+            return _error_result("toolboxUtilityMediaPath", "media_tool_failed", str(error))
+        return {
+            "ok": True,
+            "mediaPath": str(Path(str(payload.get("mediaPath") or "")).expanduser().resolve()),
+            "tracks": [_audio_track_payload(track) for track in tracks],
+        }
+
+    def run_burn_subtitles(self, payload: Mapping[str, object]) -> dict[str, object]:
+        tools = _postprocess_ffmpeg_tools(self.paths.env_path)
+        if tools.ffmpeg is None:
+            return _error_result("toolboxBurnSubtitlePath", "ffmpeg_missing", "FFmpeg was not found.")
+        cancel_event = self._begin_media_tool()
+        if cancel_event is None:
+            return _error_result("toolboxBurnSubtitlePath", "media_tool_busy", "Another media operation is already running.")
+        self._emit_postprocess_status("toolbox_status_burning")
+        try:
+            result = process_burn_subtitles(
+                BurnSubtitleRequest(
+                    media_path=Path(str(payload.get("mediaPath") or "")),
+                    subtitle_path=Path(str(payload.get("subtitlePath") or "")),
+                ),
+                ffmpeg_path=tools.ffmpeg,
+                cancel_event=cancel_event,
+                on_process=self._set_media_tool_process,
+                on_progress=lambda details: self._emit_media_tool_progress("toolbox_status_burning", details),
+            )
+        except MediaToolCancelled as error:
+            return _error_result("toolboxBurnSubtitlePath", "media_tool_cancelled", str(error))
+        except (MediaToolError, OSError, ValueError) as error:
+            return _error_result("toolboxBurnSubtitlePath", "media_tool_failed", str(error))
+        finally:
+            self._finish_media_tool(cancel_event)
+        return {
+            "ok": True,
+            "sourceMediaPath": str(result.source_media_path),
+            "subtitlePath": str(result.subtitle_path),
+            "mediaPath": str(result.media_path),
+        }
+
+    def run_extract_audio(self, payload: Mapping[str, object]) -> dict[str, object]:
+        tools = _postprocess_ffmpeg_tools(self.paths.env_path)
+        if tools.ffmpeg is None or tools.ffprobe is None:
+            return _error_result("toolboxUtilityMediaPath", "ffmpeg_missing", "FFmpeg and FFprobe were not found.")
+        try:
+            audio_index = int(str(payload.get("audioIndex") if payload.get("audioIndex") is not None else "0"))
+        except (TypeError, ValueError):
+            return _error_result("toolboxAudioTrack", "audio_track_invalid", "The selected audio track is invalid.")
+        cancel_event = self._begin_media_tool()
+        if cancel_event is None:
+            return _error_result("toolboxAudioTrack", "media_tool_busy", "Another media operation is already running.")
+        self._emit_postprocess_status("toolbox_status_extracting")
+        try:
+            result = process_extract_audio(
+                ExtractAudioRequest(
+                    media_path=Path(str(payload.get("mediaPath") or "")),
+                    audio_index=audio_index,
+                ),
+                ffmpeg_path=tools.ffmpeg,
+                ffprobe_path=tools.ffprobe,
+                cancel_event=cancel_event,
+                on_process=self._set_media_tool_process,
+                on_progress=lambda details: self._emit_media_tool_progress("toolbox_status_extracting", details),
+            )
+        except MediaToolCancelled as error:
+            return _error_result("toolboxAudioTrack", "media_tool_cancelled", str(error))
+        except (MediaToolError, OSError, ValueError) as error:
+            return _error_result("toolboxUtilityMediaPath", "media_tool_failed", str(error))
+        finally:
+            self._finish_media_tool(cancel_event)
+        return {
+            "ok": True,
+            "sourceMediaPath": str(result.source_media_path),
+            "mediaPath": str(result.media_path),
+            "audioTrack": _audio_track_payload(result.audio_track),
+        }
+
+    def cancel_media_tool(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        with self._media_tool_lock:
+            cancel_event = self.media_tool_cancel_event
+            process = self.media_tool_process
+        active = cancel_event is not None
+        if cancel_event is not None:
+            cancel_event.set()
+        if process is not None and process.poll() is None:
+            terminate_process_tree(process)
+        return {"ok": True, "cancelling": active}
+
+    def _begin_media_tool(self) -> Event | None:
+        with self._media_tool_lock:
+            if self.media_tool_cancel_event is not None:
+                return None
+            cancel_event = Event()
+            self.media_tool_cancel_event = cancel_event
+            self.media_tool_process = None
+            return cancel_event
+
+    def _set_media_tool_process(self, process: subprocess.Popen[str]) -> None:
+        with self._media_tool_lock:
+            if self.media_tool_cancel_event is not None:
+                self.media_tool_process = process
+
+    def _finish_media_tool(self, cancel_event: Event) -> None:
+        with self._media_tool_lock:
+            if self.media_tool_cancel_event is cancel_event:
+                self.media_tool_cancel_event = None
+                self.media_tool_process = None
+
+    def _emit_media_tool_progress(self, key: str, _details: Mapping[str, str]) -> None:
+        now = time.monotonic()
+        if now - self._last_postprocess_progress_at >= 0.8:
+            self._last_postprocess_progress_at = now
+            self._emit_postprocess_status(key)
+
     def choose_file(self, payload: Mapping[str, object]) -> dict[str, object]:
         kind = str(payload.get("kind") or "media")
         if kind == "json":
             file_types = ("MAW projects (*.mosp;*.json)",)
         elif kind == "subtitle":
             file_types = ("Subtitle files (*.mosp;*.json;*.srt)",)
+        elif kind == "subtitle-burn":
+            file_types = ("Subtitle files (*.srt;*.ass;*.ssa)", "All files (*.*)")
         elif kind == "video":
             file_types = ("Video files (*.mp4;*.mkv;*.avi;*.mov;*.wmv;*.flv;*.webm;*.ts;*.m4v)", "All files (*.*)")
         elif kind == "ffconcat":
@@ -1949,6 +2092,7 @@ class LauncherApi:
     def shutdown(self) -> None:
         self.cancel_transcription()
         self.cancel_batch_transcription()
+        self.cancel_media_tool()
         if self.local_prepare_cancel_event:
             self.local_prepare_cancel_event.set()
         if self.local_runtime_cancel_event:
@@ -2943,12 +3087,29 @@ def _open_existing_path(path: Path) -> dict[str, object]:
 
 
 def _postprocess_ffmpeg(env_path: Path) -> Path | None:
+    return _postprocess_ffmpeg_tools(env_path).ffmpeg
+
+
+def _postprocess_ffmpeg_tools(env_path: Path) -> FfmpegTools:
     configured = effective_config_value(env_path, "FFMPEG_PATH")
     return resolve_ffmpeg_tools(
         configured_path=configured or None,
         platform=sys.platform,
         search_path=_ffmpeg_search_path() or "",
-    ).ffmpeg
+    )
+
+
+def _audio_track_payload(track: object) -> dict[str, object]:
+    return {
+        "audioIndex": int(getattr(track, "audio_index", 0)),
+        "streamIndex": int(getattr(track, "stream_index", 0)),
+        "codec": str(getattr(track, "codec_name", "") or ""),
+        "channels": getattr(track, "channels", None),
+        "sampleRate": getattr(track, "sample_rate", None),
+        "language": str(getattr(track, "language", "") or ""),
+        "title": str(getattr(track, "title", "") or ""),
+        "default": bool(getattr(track, "default", False)),
+    }
 
 
 def _frozen_ffmpeg_preflight(env_path: Path) -> dict[str, object] | None:
