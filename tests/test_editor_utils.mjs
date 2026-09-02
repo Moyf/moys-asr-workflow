@@ -2637,6 +2637,29 @@ test('only extends the first SRT cue to zero without shifting later cues', () =>
   ].join('\n'));
 });
 
+test('builds ASS subtitles with the selected font, size, color and safe text', () => {
+  const ass = helpers.buildAssPayload([
+    { start: 1200, end: 3456, text: '你好\nHello, {tag}\\path' },
+    { start: 5000, end: 5011, text: 'later' },
+    { start: 6000, end: 7000, text: 'disabled', disabled: true },
+  ], {
+    alignFirstStart: true,
+    appearance: { font_family: 'yahei', font_size: 32, color: '#123456' },
+  });
+
+  assert.equal(helpers.assColorFromHex('#123456'), '&H00563412');
+  assert.equal(helpers.normalizeAssFontFamily('song'), 'SimSun');
+  assert.equal(helpers.normalizeAssFontFamily('MAW, Test'), 'MAW Test');
+  assert.equal(helpers.formatAssTime(0), '0:00:00.00');
+  assert.equal(helpers.formatAssTime(Infinity), '0:00:00.00');
+  assert.equal(helpers.formatAssTime(3723456), '1:02:03.46');
+  assert.match(ass, /\[Script Info\][\s\S]*\[V4\+ Styles\][\s\S]*\[Events\]/);
+  assert.match(ass, /Style: Default,Microsoft YaHei,32,&H00563412,&H00563412,/);
+  assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:03\.46,Default,,0,0,0,,你好\\NHello, \\{tag\\}\\\\path/);
+  assert.match(ass, /Dialogue: 0,0:00:05\.00,0:00:05\.01,Default,,0,0,0,,later/);
+  assert.doesNotMatch(ass, /disabled/);
+});
+
 
 test('keeps the shared timeline when a color export starts after the first cue', () => {
   const segments = [
