@@ -695,6 +695,7 @@
     ocr_runtime_install_done: "OCR 支持已安装完成",
     ocr_runtime_cancelled: "OCR 支持安装已取消",
     toolbox_ocr_open_settings: "在 ⚙️ 设置中下载安装 OCR 支持",
+    toolbox_ocr_view_settings: "在 ⚙️ 设置中查看",
     toolbox_ocr_model_ready: "已安装，可直接使用",
     toolbox_ocr_model_missing: "尚未安装，请打开设置下载安装",
   });
@@ -730,6 +731,7 @@
     ocr_runtime_install_done: "OCR support is installed",
     ocr_runtime_cancelled: "OCR support installation was cancelled",
     toolbox_ocr_open_settings: "Download OCR support in ⚙️ Settings",
+    toolbox_ocr_view_settings: "View in ⚙️ Settings",
     toolbox_ocr_model_ready: "Installed and ready",
     toolbox_ocr_model_missing: "Not installed; open Settings to download it",
   });
@@ -1050,6 +1052,7 @@
       cancel_local_model: async () => { clearTimeout(modelPrepareTimer); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "localPrepareCancelled" }), 80); return { ok: true, cancelling: true }; },
        save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); if (Object.prototype.hasOwnProperty.call(payload, "theme")) saved.theme = payload.theme || "system"; if (Object.prototype.hasOwnProperty.call(payload, "zoomPercent")) localStorage.setItem(ZOOM_PERCENT_KEY, String(payload.zoomPercent)); return { ok: true, zoomPercent: Number(localStorage.getItem(ZOOM_PERCENT_KEY)) || ZOOM_DEFAULT }; },
       open_url: async ({ url }) => { window.open(url, "_blank"); return { ok: true }; },
+      open_runtime_folder: async (payload) => { window.__openedRuntimeFolder = payload; return { ok: true }; },
       open_blank_html: async () => ({ ok: true }),
       check_ffmpeg: async () => ({ ok: true, found: true, directory: "D:\\FFmpeg\\bin", ffmpeg: "D:\\FFmpeg\\bin\\ffmpeg.exe", ffprobe: "D:\\FFmpeg\\bin\\ffprobe.exe" }),
       save_ffmpeg_path: async ({ path }) => ({ ok: Boolean(path), found: Boolean(path), directory: path || "", ffmpeg: path || "", ffprobe: path || "" }),
@@ -1419,6 +1422,27 @@
     }
     container.classList.toggle("hidden", !entries.length);
   }
+  function renderOcrRuntimeHint(runtime) {
+    const container = $("ocrRuntimeHint");
+    container.replaceChildren();
+    const detail = runtime.detail || (runtime.ready ? t("ocr_runtime_ready") : t("settings_ocr_hint"));
+    if (detail) appendMessageText(container, detail);
+    if (!runtime.path) return;
+    if (detail) container.append(document.createElement("br"));
+    container.append(document.createTextNode(`${t("ocr_runtime_path")}: `));
+    const link = document.createElement("a");
+    link.href = "#";
+    link.className = "inline-link runtime-path-link";
+    link.textContent = runtime.path;
+    link.title = t("open_folder_hint");
+    link.addEventListener("click", async (event) => {
+      event.preventDefault();
+      const result = await bridge("open_runtime_folder", { kind: "ocr-runtime" });
+      if (!result.ok) setStatus(result.detail || result.error || t("failed"));
+      else setStatus(t("saved"));
+    });
+    container.append(link);
+  }
   function renderLocalRuntime() {
     if (!isLocalProvider()) return;
     const runtime = state.config.localRuntime || {};
@@ -1450,8 +1474,7 @@
     target.textContent = t(key);
     target.className = `local-status ${installing ? "warn" : (runtime.ready ? "ready" : "warn")}`;
     $("ocrRuntimePath").value = runtime.path || $("ocrRuntimePath").value || "";
-    const location = runtime.path ? `${t("ocr_runtime_path")}: ${runtime.path}` : "";
-    $("ocrRuntimeHint").textContent = [runtime.detail || (runtime.ready ? t("ocr_runtime_ready") : t("settings_ocr_hint")), location].filter(Boolean).join("\n");
+    renderOcrRuntimeHint(runtime);
     const button = $("installOcrRuntime");
     button.disabled = false;
     button.classList.toggle("hidden", !installing && runtime.status === "ready");

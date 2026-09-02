@@ -410,7 +410,7 @@ class _RapidOcrRecognizer:
             message = (
                 "OCR 依赖未安装，请在 Launcher 设置中安装 OCR 支持。"
                 if getattr(sys, "frozen", False)
-                else "OCR 依赖未安装，请在开发环境中运行 `uv sync --extra ocr`。"
+                else "OCR 依赖未安装，请在开发环境中运行 `uv sync --group ocr`。"
             )
             raise RuntimeError(message) from error
 
