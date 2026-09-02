@@ -381,12 +381,18 @@
                 <button id="configureAutoTranslate" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
               </div>
             </div>
-            <div id="autoTranslateTargetField" class="field auto-translate-target hidden">
-              <label for="autoTranslateTarget" data-i18n="auto_translate_target">翻译目标</label>
-              <select id="autoTranslateTarget">
-                <option value="zh" data-i18n="auto_translate_zh">中文</option>
-                <option value="en" data-i18n="auto_translate_en">英文</option>
-              </select>
+            <div class="auto-translate-options">
+              <div id="autoTranslateTargetField" class="field auto-translate-target hidden">
+                <label for="autoTranslateTarget" data-i18n="auto_translate_target">翻译目标</label>
+                <select id="autoTranslateTarget">
+                  <option value="zh" data-i18n="auto_translate_zh">中文</option>
+                  <option value="en" data-i18n="auto_translate_en">英文</option>
+                </select>
+              </div>
+              <label id="autoTranslateMergeField" class="check-field auto-translate-merge hidden" for="autoTranslateMergeBilingual">
+                <input id="autoTranslateMergeBilingual" type="checkbox">
+                <span data-i18n="auto_merge_bilingual">合并双语字幕</span>
+              </label>
             </div>
             <label class="check-field" for="autoPostprocessRetain">
               <input id="autoPostprocessRetain" type="checkbox">
@@ -739,6 +745,12 @@
               <option value="custom" data-i18n="toolbox_custom">自定义</option>
             </select>
           </div>
+        </div>
+        <div id="postprocessTranslationOptions" class="toolbox-translation-options hidden">
+          <label class="check-field" for="postprocessMergeBilingual">
+            <input id="postprocessMergeBilingual" type="checkbox">
+            <span data-i18n="toolbox_merge_bilingual">合并双语字幕</span>
+          </label>
         </div>
         <p class="toolbox-settings-hint"><span id="postprocessProviderStatus" class="hint"></span> <button id="openLlmSettings" class="inline-link" type="button" data-i18n="toolbox_open_settings">在 ⚙️ 设置中配置 API Key</button></p>
       </div>
