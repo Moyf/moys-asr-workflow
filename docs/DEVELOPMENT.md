@@ -131,3 +131,22 @@ git diff --check
 ```
 
 交互改动还应手动启动 `uv run python server-editor\serve.py --blank`，验证拖放、播放、Seek、工作区拖动及保存。所有文本保持 UTF-8 与 LF。
+
+### 浏览器回归环境
+
+`tests/e2e/helpers.mjs` 默认通过 `uv run --frozen python` 启动 Python-backed server，并删除继承的 `PYTHONPATH`；只有明确设置 `MAW_E2E_PYTHON` 时才使用指定解释器。这样可以避免把系统 Python 与仓库 `.venv` 的 `site-packages` 混用。
+
+Windows 上建议使用项目入口运行浏览器回归：
+
+```powershell
+.\scripts\run-e2e.ps1 tests/e2e/ass-export.spec.mjs --reporter=line
+```
+
+入口会先验证仓库 `.venv` 是否能导入锁定的 `reapeaks`；若不能，则用 `py -3` 找到系统 Python，在 `%TEMP%\maw-e2e` 下按 `uv.lock` 创建隔离环境和缓存，并以 `MAW_E2E_PYTHON` 启动测试。它还把默认 Playwright 输出放到用户临时目录，避免共享工作树的 `test-results` 权限或占用影响测试。
+
+如果本机的 Playwright Chromium 被安全策略阻止启动，可显式指定已安装且可执行的 Chromium 系浏览器，不改变默认浏览器选择：
+
+```powershell
+$env:MAW_E2E_CHROMIUM_PATH = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+.\scripts\run-e2e.ps1 tests/e2e/ass-export.spec.mjs --reporter=line
+```
